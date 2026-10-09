@@ -233,12 +233,16 @@ static void unrot(int r, int u, int v, int *a, int *b) {   // world (u,v) -> loc
 }
 static int shade_of(int nx, int ny, int nz) { int L = gfx_light(nx, ny, nz); return CLAMP(L, 40, 200); }
 
+// a side: a top-to-bottom gradient, darker where it meets what it stands on (contact shading, like the walls). ao = the bottom's light /256
+static int box_ao = 256;
 static void tex_face(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d, const TexRef *tp, int nx, int ny, int nz, int flip) {
     if (!tp->tpage) return;
     TexRef t = *tp;
     int u0 = t.u, u1 = t.u + t.w - 1;
     if (flip) { int tmp = u0; u0 = u1; u1 = tmp; }
-    gfx_quad_ft(a, b, c, d, t.tpage, 0, u0, t.v, u1, t.v, u0, t.v + t.h - 1, u1, t.v + t.h - 1, shade_of(nx, ny, nz), 1, 0);
+    int s = shade_of(nx, ny, nz), st = s + (s >> 4), sb = (s * box_ao) >> 8;
+    u32 ct = (u32)st * 0x010101, cb = (u32)sb * 0x010101;
+    gfx_quad_gt(a, b, c, d, t.tpage, 0, u0, t.v, u1, t.v, u0, t.v + t.h - 1, u1, t.v + t.h - 1, ct, ct, cb, cb, 1);
 }
 
 static void draw_box(const IBox *bx, const TexRef *ref, int r, int ox, int oz, int t) {
@@ -250,6 +254,7 @@ static void draw_box(const IBox *bx, const TexRef *ref, int r, int ox, int oz, i
     int y0 = -bx->z1 * IZ, y1 = -bx->z0 * IZ;
     if (bx->z1 == bx->z0) y0 = y1 - 2;
     (void)t;
+    { int h = bx->z1 - bx->z0; box_ao = bx->z0 == 0 ? (h > 8 ? 176 : 150) : 214; }   // on the floor: a dark foot (stronger on low things); higher up: a soft one
     SVECTOR A, B, C, Dd;
     // world faces: 0 south (+v), 1 east (+u), 2 north (-v), 3 west (-u) show local face (wf - r)
     const TexRef *mS = &ref[(0 - r) & 3], *mE = &ref[(1 - r) & 3], *mN = &ref[(2 - r) & 3], *mW = &ref[(3 - r) & 3];
@@ -291,17 +296,10 @@ void items_draw(char ch, int mx, int my, int rot, int along, int t) {
             int ua, va, ub, vb; rotPt(r, a0, b0, &ua, &va); rotPt(r, a1, b1, &ub, &vb);
             int u0 = MIN(ua, ub), u1 = MAX(ua, ub), v0 = MIN(va, vb), v1 = MAX(va, vb);
             int x0 = ox + u0 * IUNIT - 10, x1 = ox + u1 * IUNIT + 10, zN = -(oz + v0 * IUNIT) + 10, zS = -(oz + v1 * IUNIT) - 10;
-            SVECTOR A, B, C, Dd; POLY_F4 *q; int otz, p;
+            SVECTOR A, B, C, Dd;
+            x0 -= 26; x1 += 26; zN += 26; zS -= 26;                     // the soft edge reaches past the footprint
             setVector(&A, x0, -2, zN); setVector(&B, x1, -2, zN); setVector(&C, x0, -2, zS); setVector(&Dd, x1, -2, zS);
-            q = (POLY_F4 *)gfx_alloc(sizeof(POLY_F4));
-            if (q) {
-                gte_ldv3(&A, &B, &C); gte_rtpt(); gte_nclip(); gte_stopz(&p);
-                if (p > 0) {
-                    gte_stsxy3(&q->x0, &q->x1, &q->x2); gte_ldv0(&Dd); gte_rtps(); gte_stsxy(&q->x3);
-                    gte_avsz4(); gte_stotz(&otz);
-                    if (otz >= Z_NEAR) { setPolyF4(q); setRGB0(q, 0, 0, 0); setSemiTrans(q, 1); addPrim(gfx_ot() + MIN(OT_LEN - 1, (otz >> OT_SHIFT) + 1), q); }
-                }
-            }
+            gfx_shadow_quad(&A, &B, &C, &Dd);
         }
     }
     for (int i = 0; i < n; i++) draw_box(&b[i], box_ref[base + i], r, ox, oz, t);

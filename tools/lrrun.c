@@ -48,6 +48,9 @@ static bool env_cb(unsigned cmd, void *data) {
             if (!strcmp(v->key, "pcsx_rearmed_drc")) v->value = "disabled";
             if (!strcmp(v->key, "pcsx_rearmed_show_bios_bootlogo")) v->value = "disabled";
             if (!strcmp(v->key, "pcsx_rearmed_dithering")) v->value = "enabled";
+            if (!strcmp(v->key, "pcsx_rearmed_psxclock")) v->value = getenv("PSXCLOCK") ? getenv("PSXCLOCK") : "100";   /* the real CPU speed */
+            if (!strcmp(v->key, "pcsx_rearmed_nostalls")) v->value = "disabled";
+            if (!strcmp(v->key, "pcsx_rearmed_icache_emulation")) v->value = "enabled";
             if (!strcmp(v->key, "pcsx_rearmed_pad1type")) v->value = "analog";
             return v->value != NULL;
         }

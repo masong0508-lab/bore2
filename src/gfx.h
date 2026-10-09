@@ -6,6 +6,9 @@
 #define OT_SHIFT   1              // view-space z >> OT_SHIFT = OT index (z up to 8192 units)
 #define PACKET_LEN (96*1024)
 #define Z_NEAR     40
+#define OT_FLOOR   (OT_LEN - 2)   // the floor: behind everything but the sky
+#define OT_SHADOW  (OT_LEN - 3)   // shadows: just on top of the floor
+extern int gfx_floor_pass;
 
 void  gfx_init(void);
 void  gfx_flip(void);
@@ -55,4 +58,5 @@ void gfx_sprite(int x, int y, int w, int h, u16 tpage, u16 clut, int u, int v, i
 void gfx_sprite_blend(int x, int y, int w, int h, u16 tpage, u16 clut, int u, int v, int tw, int th, int r, int g, int b);   // semi-transparent, coloured
 void gfx_set_clear(int r, int g, int b);
 void gfx_sky(u32 top, u32 bottom);           // a full-screen gradient behind everything (0xBBGGRR)
-void gfx_shadow(const VECTOR *pos, int radius);   // a soft dark blob on the floor under something
+void gfx_shadow(const VECTOR *pos, int radius);
+void gfx_shadow_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d);   // a soft shadow over a flat quad   // a soft dark blob on the floor under something

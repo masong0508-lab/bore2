@@ -111,7 +111,8 @@ static int kind_of(int slot) { return slot == 1 ? 2 : (slot == 6 || slot == 7) ?
 
 // ---- a plain block (skin, clothes, hats, parts) ----
 // c = its 8 corners (top 4 then bottom 4, index k = (x?1:0)|(z?2:0)); m = wedge mask; hide = bit per face (0 -z, 1 +z, 2 -x, 3 +x, 4 top, 5 bottom)
-// gx/gz = the grid cell for the rounded light (-1: light the faces flat)
+// gx/gz = the grid cell for the rounded light (-1: light the faces flat, -2: a limb, round about its own axis)
+static int Ldiag[4];           // a limb's rounded light: each vertical edge lit along its diagonal, so arms and legs shade like cylinders
 static int Lf6[6];             // the light on the six axis faces of the current group: -z +z -x +x top bottom
 static u8 Lrad[D + 1][W + 1];  // the radial (rounded body) light at each x,z grid point, this person, this frame
 static void block(const SVECTOR *c, int m, int hide, int slot, u16 col, int kind, int gx, int gz) {
@@ -119,7 +120,7 @@ static void block(const SVECTOR *c, int m, int hide, int slot, u16 col, int kind
     hide |= cull_bits(t[0].vx + 4, t[3].vx - 4, t[0].vy, bt[0].vy, t[0].vz + 4, t[3].vz - 4) & (m ? 0x0f : 0x3f);
     if ((hide & 0x3f) == 0x3f) return;
     int Lr[4];
-    for (int k = 0; k < 4; k++) Lr[k] = (gx >= 0) ? Lrad[gz + (k >> 1)][gx + (k & 1)] : -1;
+    for (int k = 0; k < 4; k++) Lr[k] = (gx >= 0) ? Lrad[gz + (k >> 1)][gx + (k & 1)] : (gx == -2) ? Ldiag[k] : -1;
     #define VL(k, Lf) (Lr[k] >= 0 ? ((Lr[k] + (Lf)) >> 1) : (Lf))
     #define FACE4(a, b, c_, d, ka, kb, kc, kd, Lf) face4(a, b, c_, d, slot, VL(ka, Lf), VL(kb, Lf), VL(kc, Lf), VL(kd, Lf), kind);
     if (!(hide & 16)) {
@@ -160,6 +161,7 @@ static void box(int x0, int x1, int y0, int y1, int z0, int z1, int m, int slot,
 static void lights_for_group(void) {   // the six axis face lights under the current light yaw
     Lf6[0] = gfx_light(0, 0, -ONE); Lf6[1] = gfx_light(0, 0, ONE); Lf6[2] = gfx_light(-ONE, 0, 0); Lf6[3] = gfx_light(ONE, 0, 0);
     Lf6[4] = gfx_light(0, -ONE, 0); Lf6[5] = gfx_light(0, ONE, 0);
+    for (int k = 0; k < 4; k++) Ldiag[k] = CLAMP(gfx_light((k & 1) ? 2896 : -2896, -400, (k & 2) ? 2896 : -2896), 0, 255);
 }
 static void radial_table(void) {       // the rounded body light at every x,z grid point
     for (int gz = 0; gz <= D; gz++) for (int gx = 0; gx <= W; gx++) {
@@ -176,8 +178,20 @@ static void radial_table(void) {       // the rounded body light at every x,z gr
 // the displacement of the TOP corners of layer y at grid point (X, Z): every exposed corner of the hull is pulled in, so the
 // body reads as a rounded shape instead of a pile of bricks; hair corners also drop where the cut is exposed from above.
 // Shared corners are worked out from the same neighbourhood by every block that touches them: no cracks.
-#define RK   5      // how far an exposed corner is pulled in (units)
+#define RK   8      // how far an exposed corner is pulled in (units)
+#define TK   7      // how far an exposed TOP corner of skin / clothes is pulled down per missing neighbour (a soft, pillowy top: heads, shoulders)
 #define HK2  5      // how far a hair corner is pulled down per missing neighbour
+static int is_hull(int v) { return v && (v >> 4) != 1 && (v >> 4) != 2 && (v >> 4) != 3; }
+// the top rounding of a grid point on layer y: lower it where the hull's top edge is exposed (nothing solid above any of its 4 cells)
+static int top_round(const Bore *b, int X, int y, int Z) {
+    int s = 0;
+    for (int k = 0; k < 4; k++) {
+        int cx = (k & 1) ? X : X - 1, cz = (k & 2) ? Z : Z - 1;
+        if (is_hull(solid_at(b, cx, y + 1, cz))) return 0;
+        if (is_hull(solid_at(b, cx, y, cz))) s++;
+    }
+    return s == 1 ? 2 * TK : s == 2 ? TK : 0;
+}
 static void corner_disp(const Bore *b, int X, int y, int Z, int *dx, int *dz, int *drop) {
     int solid = 0, nonhair = 0, px = 0, mx = 0, pz = 0, mz = 0, above = 0;
     for (int k = 0; k < 4; k++) {
@@ -443,7 +457,7 @@ void voxel_prepare(Bore *b) {
                 if (!in) {
                     int gX = (k & 1) ? x + 1 : x, gZ = (k & 2) ? z + 1 : z, d2;
                     corner_disp(b, gX, y, gZ, &dx, &dz, &drop);
-                    if (!is_hair) drop = 0;
+                    if (!is_hair) drop = top_round(b, gX, y, gZ);
                     if (below) corner_disp(b, gX, y - 1, gZ, &bx, &bz, &d2);
                 }
                 int ty = low ? (is_hair ? y0 + VOX * 7 / 10 : y1) : y0 + drop;   // a wedge corner: hair drops 70%, the rest the full block (the GBA's slopes)
@@ -515,7 +529,7 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
         if (c[5] != grp) { grp = c[5]; gfx_set_object_m(&gm[grp]); if (grp != G_BODY) cam_cull = 0; }
         int slot = v & 15, sh = v >> 4, m = (sh >= 4 && sh <= 11) ? wMask2[sh - 4] : 0;
         if (fl & 1) { hair_block(b, x, y, z, m, hide, b->col[slot], b->cell[i].c); continue; }
-        block(b->cell[i].c, m, hide, slot, b->col[slot], kind_of(slot), (fl & 2) ? -1 : x, z);
+        block(b->cell[i].c, m, hide, slot, b->col[slot], kind_of(slot), (fl & 2) ? -2 : x, z);
     }
     gfx_set_object_m(&gm[G_BODY]);
     gfx_set_zbias(6);                                            // the face art and the bangs lie on the blocks: pull them in front

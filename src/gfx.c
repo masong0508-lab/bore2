@@ -168,6 +168,34 @@ static inline int tri_offscreen(const DVECTOR *a, const DVECTOR *b, const DVECTO
 static int zbias;
 static int fog_near = 0, fog_far = 0;   // depth fade: colours darken from fog_near to fog_far (0 = off)
 void gfx_set_fog(int near, int far) { fog_near = near; fog_far = far; }
+
+// ---- the colour grade: lit surfaces lean warm (sunlight), shaded ones lean cool (sky bounce) instead of plain grey darkening ----
+int gfx_grade = 1;
+static inline u32 grade_rgb(int r, int g, int b) {      // a lit colour (0..255 each) -> 0xBBGGRR
+    if (gfx_grade) {
+        int l = (r * 77 + g * 150 + b * 29) >> 8, w = (l - 118) >> 3;
+        r += w; b -= w + (w >> 1); g += w >> 2;
+    }
+    r = CLAMP(r, 0, 255); g = CLAMP(g, 0, 255); b = CLAMP(b, 0, 255);
+    return (u32)r | ((u32)g << 8) | ((u32)b << 16);
+}
+static u32 grade_lut[256]; static int grade_lut_for = -1;
+static u32 grade_tex_calc(int s) {
+    int r = s, g = s, b = s;
+    if (gfx_grade) { int w = (s - 120) >> 2; r += w; b -= w + (w >> 2); g += w >> 3; }
+    r = CLAMP(r, 0, 255); g = CLAMP(g, 0, 255); b = CLAMP(b, 0, 255);
+    return (u32)r | ((u32)g << 8) | ((u32)b << 16);
+}
+static inline u32 grade_tex(int s) {                     // a texture shade (128 = the texture as it is), from a table
+    if (grade_lut_for != gfx_grade) { for (int i = 0; i < 256; i++) grade_lut[i] = grade_tex_calc(i); grade_lut_for = gfx_grade; }
+    return grade_lut[s & 255];
+}
+static inline u32 gt_grade(u32 c, int f) {
+    int r = ((c & 255) * f) >> 8, g = (((c >> 8) & 255) * f) >> 8, b = (((c >> 16) & 255) * f) >> 8;
+    if (r == g && g == b) return grade_tex(g);
+    return grade_rgb(r, g, b);
+}
+#define SET_C(q, n, c) setRGB##n(q, (c) & 255, ((c) >> 8) & 255, ((c) >> 16) & 255)
 static inline int fog_scale(int otz) {   // 256 = as is
     if (!fog_far || otz <= fog_near) return 256;
     int t = ((otz - fog_near) << 8) / (fog_far - fog_near);
@@ -175,7 +203,9 @@ static inline int fog_scale(int otz) {   // 256 = as is
 }
 int gfx_prim_count;                 // taken off every primitive's depth: decals sit in front of what they are stuck on
 void gfx_set_zbias(int b) { zbias = b; }
+int gfx_floor_pass;                       // set while drawing the floor: it goes to the very back (nothing is ever under it), so shadows can lie on it
 static inline int ot_index(int otz) {
+    if (gfx_floor_pass) return OT_FLOOR;
     int i = (otz >> OT_SHIFT) - zbias;
     if (i < 1) i = 1;
     if (i >= OT_LEN) i = OT_LEN - 1;
@@ -203,7 +233,7 @@ int gfx_quad_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECT
     gte_avsz4();
     gte_stotz(&otz);
     setPolyF4(q);
-    { int f = fog_scale(otz); setRGB0(q, (r * f) >> 8, (g * f) >> 8, (b8 * f) >> 8); }
+    { int f = fog_scale(otz); u32 c_ = grade_rgb((r * f) >> 8, (g * f) >> 8, (b8 * f) >> 8); SET_C(q, 0, c_); }
     addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++;
     return 1;
 }
@@ -222,7 +252,7 @@ int gfx_tri_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, int r, int g
     gte_avsz3();
     gte_stotz(&otz);
     setPolyF3(q);
-    { int f = fog_scale(otz); setRGB0(q, (r * f) >> 8, (g * f) >> 8, (b8 * f) >> 8); }
+    { int f = fog_scale(otz); u32 c_ = grade_rgb((r * f) >> 8, (g * f) >> 8, (b8 * f) >> 8); SET_C(q, 0, c_); }
     addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++;
     return 1;
 }
@@ -246,10 +276,9 @@ int gfx_quad_g(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECT
     gte_avsz4();
     gte_stotz(&otz);
     setPolyG4(q);
-    setRGB0(q, c0 & 255, (c0 >> 8) & 255, (c0 >> 16) & 255);
-    setRGB1(q, c1 & 255, (c1 >> 8) & 255, (c1 >> 16) & 255);
-    setRGB2(q, c2 & 255, (c2 >> 8) & 255, (c2 >> 16) & 255);
-    setRGB3(q, c3 & 255, (c3 >> 8) & 255, (c3 >> 16) & 255);
+    { u32 g0 = grade_rgb(c0 & 255, (c0 >> 8) & 255, (c0 >> 16) & 255), g1 = grade_rgb(c1 & 255, (c1 >> 8) & 255, (c1 >> 16) & 255),
+          g2 = grade_rgb(c2 & 255, (c2 >> 8) & 255, (c2 >> 16) & 255), g3 = grade_rgb(c3 & 255, (c3 >> 8) & 255, (c3 >> 16) & 255);
+      SET_C(q, 0, g0); SET_C(q, 1, g1); SET_C(q, 2, g2); SET_C(q, 3, g3); }
     addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++;
     return 1;
 }
@@ -275,7 +304,7 @@ int gfx_quad_ft(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVEC
     gte_stotz(&otz);
     setPolyFT4(q);
     shade = (shade * fog_scale(otz)) >> 8;
-    setRGB0(q, shade, shade, shade);
+    { u32 c_ = grade_tex(shade); SET_C(q, 0, c_); }
     q->tpage = tpage; q->clut = clut;
     q->u0 = u0; q->v0 = v0; q->u1 = u1; q->v1 = v1; q->u2 = u2; q->v2 = v2; q->u3 = u3; q->v3 = v3;
     if (semi) setSemiTrans(q, 1);
@@ -304,10 +333,8 @@ int gfx_quad_gt(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVEC
     gte_stotz(&otz);
     setPolyGT4(q);
     { int f = fog_scale(otz);
-      setRGB0(q, ((c0 & 255) * f) >> 8, (((c0 >> 8) & 255) * f) >> 8, (((c0 >> 16) & 255) * f) >> 8);
-      setRGB1(q, ((c1 & 255) * f) >> 8, (((c1 >> 8) & 255) * f) >> 8, (((c1 >> 16) & 255) * f) >> 8);
-      setRGB2(q, ((c2 & 255) * f) >> 8, (((c2 >> 8) & 255) * f) >> 8, (((c2 >> 16) & 255) * f) >> 8);
-      setRGB3(q, ((c3 & 255) * f) >> 8, (((c3 >> 8) & 255) * f) >> 8, (((c3 >> 16) & 255) * f) >> 8); }
+      u32 g0 = gt_grade(c0, f), g1 = gt_grade(c1, f), g2 = gt_grade(c2, f), g3 = gt_grade(c3, f);
+      SET_C(q, 0, g0); SET_C(q, 1, g1); SET_C(q, 2, g2); SET_C(q, 3, g3); }
     q->tpage = tpage; q->clut = clut;
     q->u0 = u0; q->v0 = v0; q->u1 = u1; q->v1 = v1; q->u2 = u2; q->v2 = v2; q->u3 = u3; q->v3 = v3;
     addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++;
@@ -368,21 +395,52 @@ void gfx_sky(u32 top, u32 bottom) {
     setRGB2(q, bottom & 255, (bottom >> 8) & 255, (bottom >> 16) & 255); setRGB3(q, bottom & 255, (bottom >> 8) & 255, (bottom >> 16) & 255);
     addPrim(gfx_ot() + (OT_LEN - 1), q);
 }
-void gfx_shadow(const VECTOR *pos, int radius) {
-    gfx_set_object(pos, 0);
-    SVECTOR a, b, c, d; int r = radius, r2 = radius * 2 / 3;
-    // an octagon-ish blob out of two quads, half dark
-    setVector(&a, -r2, -2, r); setVector(&b, r2, -2, r); setVector(&c, -r2, -2, -r); setVector(&d, r2, -2, -r);
-    POLY_F4 *q; int otz, p;
-    for (int k = 0; k < 2; k++) {
-        if (k) { setVector(&a, -r, -2, r2); setVector(&b, r, -2, r2); setVector(&c, -r, -2, -r2); setVector(&d, r, -2, -r2); }
-        q = (POLY_F4 *)gfx_alloc(sizeof(POLY_F4)); if (!q) return;
-        gte_ldv3(&a, &b, &c); gte_rtpt(); gte_nclip(); gte_stopz(&p); if (p <= 0) continue;
-        gte_stsxy3(&q->x0, &q->x1, &q->x2); gte_ldv0(&d); gte_rtps(); gte_stsxy(&q->x3);
-        gte_avsz4(); gte_stotz(&otz); if (otz < Z_NEAR) continue;
-        setPolyF4(q); setRGB0(q, 0, 0, 0); setSemiTrans(q, 1);
-        addPrim(gfx_ot() + ot_index(otz) + 1, q);
+// a soft round shadow: a radial gradient texture drawn SUBTRACTIVE (the floor minus the texel), so it fades out smoothly at its rim
+#include "atlas.h"
+static TexRef shadow_tex; static u16 shadow_tpage; static int shadow_ready;
+static void shadow_init(void) {
+    static u16 px[32 * 32];
+    for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
+        int dx = x * 2 - 31, dy = y * 2 - 31, d2 = dx * dx + dy * dy;          // 0 .. 961 at the rim
+        int a = 961 - d2; if (a < 0) a = 0;
+        int v = (a * a / 961) * 11 / 961;                                     // (1 - r^2)^2, up to 11/31 dark
+        if (d2 < 961 && v < 1 && a > 0) v = 1;
+        px[y * 32 + x] = v ? (u16)(0x8000 | v | (v << 5) | (v << 10)) : 0;  // STP set: this texel blends; 0: nothing drawn
     }
+    shadow_tex = atlas_add(32, 32, px);
+    shadow_tpage = (u16)((shadow_tex.tpage & ~(3 << 5)) | (2 << 5));         // blend mode 2: back - front
+    shadow_ready = 1;
+}
+void gfx_shadow_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d) {   // the soft shadow over any flat quad (current object space)
+    if (!shadow_ready) shadow_init();
+    POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4)); if (!q) return;
+    int otz;
+    gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c); gte_rtpt();
+    gte_stsxy3(&q->x0, &q->x1, &q->x2); gte_ldv0((SVECTOR *)d); gte_rtps(); gte_stsxy(&q->x3);
+    gte_avsz4(); gte_stotz(&otz); if (otz < Z_NEAR) return;
+    if (quad_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2, (DVECTOR *)&q->x3)) return;
+    setPolyFT4(q); setRGB0(q, 128, 128, 128); setSemiTrans(q, 1);
+    int u0 = shadow_tex.u, v0 = shadow_tex.v, u1 = u0 + 31, v1 = v0 + 31;
+    q->u0 = u0; q->v0 = v0; q->u1 = u1; q->v1 = v0; q->u2 = u0; q->v2 = v1; q->u3 = u1; q->v3 = v1;
+    q->tpage = shadow_tpage; q->clut = 0;
+    addPrim(gfx_ot() + OT_SHADOW, q);
+}
+void gfx_shadow(const VECTOR *pos, int radius) {
+    if (!shadow_ready) shadow_init();
+    gfx_set_object(pos, 0);
+    SVECTOR a, b, c, d; int r = radius + radius / 3;
+    setVector(&a, -r, -2, r); setVector(&b, r, -2, r); setVector(&c, -r, -2, -r); setVector(&d, r, -2, -r);
+    POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4)); if (!q) return;
+    int otz, p;
+    gte_ldv3(&a, &b, &c); gte_rtpt();                                        // (no back-face test: it lies flat on the floor, seen from above)
+    gte_stsxy3(&q->x0, &q->x1, &q->x2); gte_ldv0(&d); gte_rtps(); gte_stsxy(&q->x3);
+    gte_avsz4(); gte_stotz(&otz); if (otz < Z_NEAR) return;
+    (void)p;
+    setPolyFT4(q); setRGB0(q, 128, 128, 128); setSemiTrans(q, 1);
+    int u0 = shadow_tex.u, v0 = shadow_tex.v, u1 = u0 + 31, v1 = v0 + 31;
+    q->u0 = u0; q->v0 = v0; q->u1 = u1; q->v1 = v0; q->u2 = u0; q->v2 = v1; q->u3 = u1; q->v3 = v1;
+    q->tpage = shadow_tpage; q->clut = 0;
+    addPrim(gfx_ot() + OT_SHADOW, q);
 }
 void gfx_sprite_blend(int x, int y, int w, int h, u16 tpage, u16 clut, int u, int v, int tw, int th, int r, int g, int b) {
     POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4));

@@ -412,7 +412,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         if (v.vz < -TILE * 2) continue;
         if (ABS(v.vx) > (v.vz * 3) / 4 + TILE * 3) continue;
         if (ABS(v.vy) > (v.vz * 5) / 8 + TILE * 4) continue;
-        floor_block(mx, my);
+        gfx_floor_pass = 1; floor_block(mx, my); gfx_floor_pass = 0;
         done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 1;
     }
     for (int my = y0; my <= y1; my++) for (int mx = x0; mx <= x1; mx++) {
@@ -425,7 +425,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         if (v.vz < -TILE) continue;
         if (ABS(v.vx) > (v.vz * 3) / 4 + TILE * 2) continue;
         if (ABS(v.vy) > (v.vz * 5) / 8 + TILE * 3) continue;
-        if (!done[my][mx]) floor_tile(mx, my);
+        if (!done[my][mx]) { gfx_floor_pass = 1; floor_tile(mx, my); gfx_floor_pass = 0; }
         if (is_wall(c)) {
             int h = (c == 'w') ? WALL_LOW : WALL_FULL, cut = 0;
             if (cutaway && c != 'w') {
