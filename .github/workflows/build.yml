@@ -1,0 +1,21 @@
+name: build
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  lite-disc:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PSn00bSDK
+        run: |
+          sudo apt-get update && sudo apt-get install -y cmake ninja-build unzip
+          # get the Linux release zip from https://github.com/Lameguy64/PSn00bSDK/releases and unpack it to /opt/psn00bsdk
+          # (edit the URL below to the release you want)
+          curl -fsSL "$PSN00BSDK_URL" -o sdk.zip && unzip -q sdk.zip -d /opt/psn00bsdk
+        env:
+          PSN00BSDK_URL: ${{ vars.PSN00BSDK_URL }}
+      - name: Build the lite disc
+        run: |
+          export PATH=/opt/psn00bsdk/bin:$PATH PSN00BSDK_LIBS=/opt/psn00bsdk/lib/libpsn00b
+          cmake --preset default && cmake --build build --target iso_lite
+      - uses: actions/upload-artifact@v4
+        with: { name: bore2_lite, path: "build/bore2_lite.*" }

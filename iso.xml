@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<iso_project>
+	<track type="data">
+		<identifiers
+			system        ="PLAYSTATION"
+			volume        ="BORE2"
+			volume_set    ="BORE2"
+			publisher     ="DIPPINN"
+			data_preparer ="PSN00BSDK ${PSN00BSDK_VERSION}"
+			application   ="PLAYSTATION"
+			copyright     ="README.TXT;1"
+		/>
+		<directory_tree>
+			<file name="SYSTEM.CNF" type="data" source="${PROJECT_SOURCE_DIR}/system.cnf" />
+			<file name="BORE2.EXE"  type="data" source="bore2.exe" />
+			<file name="MUSIC0.XA"  type="xa"   source="${PROJECT_SOURCE_DIR}/assets/MUSIC0.XA" />
+			<file name="MUSIC1.XA"  type="xa"   source="${PROJECT_SOURCE_DIR}/assets/MUSIC1.XA" />
+			<file name="MUSIC2.XA"  type="xa"   source="${PROJECT_SOURCE_DIR}/assets/MUSIC2.XA" />
+			<file name="MUSIC3.XA"  type="xa"   source="${PROJECT_SOURCE_DIR}/assets/MUSIC3.XA" />
+			<file name="MUSIC4.XA"  type="xa"   source="${PROJECT_SOURCE_DIR}/assets/MUSIC4.XA" />
+			<dummy sectors="512"/>
+		</directory_tree>
+	</track>
+</iso_project>

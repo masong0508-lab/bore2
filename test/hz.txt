@@ -1,0 +1,6 @@
+150 start
+190 down
+220 b
+260 r
+280 r
+330 shot

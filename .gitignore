@@ -1,0 +1,8 @@
+build/
+*.XA
+*.xa
+*.xa18
+music_src/
+test/*.png
+test/*.ppm
+test/*.raw
