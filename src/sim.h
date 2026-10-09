@@ -30,6 +30,10 @@ typedef struct {
     int  skill_cook, skill_body, skill_fun;
     int  dead;
     u8   grump;                 // the housemate who will NOT have a thing floating over their head
+    // wants & fears (wants.c)
+    struct { u8 kind, arg; u16 pts, age; } want[4], fear[2];
+    int  asp_pts;               // the aspiration meter 0..12000
+    s8   rel[MAX_SIMS];         // the daily relationship with each housemate, -100..100 (friend at 50)
 } Sim;
 
 extern Sim  sims[MAX_SIMS];

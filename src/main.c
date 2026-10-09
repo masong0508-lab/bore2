@@ -7,6 +7,7 @@
 #include "items.h"
 #include "world.h"
 #include "sim.h"
+#include "wants.h"
 #include "audio.h"
 #include "font.h"
 
@@ -67,7 +68,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int create_tab, create_row, create_from, create_turn;
@@ -163,6 +164,8 @@ static void draw_mood_face(int x, int y, int m) {   // a little round face: the 
     else if (m > -15) gfx_rect(x + 4, y + 10, 8, 1, INK, 0);
     else { gfx_rect(x + 4, y + 11, 8, 1, INK, 0); gfx_rect(x + 3, y + 12, 1, 1, INK, 0); gfx_rect(x + 12, y + 12, 1, 1, INK, 0); }
 }
+static const char *const aspLvNm[4] = { "RED", "GREEN", "GOLD", "PLATINUM" };
+static const int aspLvCol[4][3] = { {255,80,70}, {90,220,90}, {255,200,40}, {220,235,255} };
 static void hud_life(void) {
     Sim *s = &sims[player];
     char b[48];
@@ -193,6 +196,14 @@ static void hud_life(void) {
     sprintf(b, "$%ld", cash);
     gfx_text(232, 20, 1, b, 120, 255, 120);
     if (sim_speed > 1) { sprintf(b, "X%d", sim_speed == 2 ? 3 : 15); gfx_text(296, 20, 1, b, 255, 120, 60); }
+    {   // the wants: the meter beside the face, the current want under the clock
+        int lv = wants_level(s);
+        gfx_rect(214, 230, 20, 3, 30, 32, 40, 0); gfx_rect(214, 230, 20 * s->asp_pts / ASP_MAX, 3, aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2], 0);
+        char t[32]; wants_text(s, (frame / 240) & 3, t);
+        sprintf(b, "WANT: %s", t); int w = gfx_text_w(1, b) + 8;
+        gfx_rect(316 - w, 32, w, 10, 8, 10, 22, 1); gfx_text(320 - w, 33, 1, b, 200, 220, 255);
+        if (wants_flash_t > 0) gfx_textc(160, 60, 2, wants_flash, wants_flash[0] == 'W' ? 120 : 255, wants_flash[0] == 'W' ? 255 : 110, 120);
+    }
     if (last_note_t > 0) { int w = gfx_text_w(2, last_note) + 16; gfx_rect(160 - w / 2, 40, w, 18, 8, 10, 22, 1); gfx_textc(160, 43, 2, last_note, 255, 240, 160); }
     if (frame < 900) gfx_textc(160, 180, 1, "STICK MOVES   L1 R1 ORBIT   L2 R2 ZOOM   X USES   SQUARE RUNS", GREY);
     if (show_fps) { extern int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block;
@@ -269,7 +280,7 @@ static void travel_update(void) {
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = ST_LIFE; return; }
     if (PRESSED(PAD_CROSS)) {
         if (!zone_unlocked(travel_sel)) { audio_voice(VOICE_NAH); return; }
-        if (travel_sel != world_zone) { travel_go(travel_sel); story_visit[travel_sel] = 1; }
+        if (travel_sel != world_zone) { travel_go(travel_sel); story_visit[travel_sel] = 1; for (int i = 0; i < nsims; i++) { wants_event(&sims[i], travel_sel == 1 ? W_ISLAND : W_TOWN, 0); wants_reroll(&sims[i]); } }
         state = ST_LIFE;
     }
 }
@@ -289,8 +300,8 @@ static void travel_draw(void) {
 }
 
 // ---- the pause menu ----
-static const char *const pauseNm[] = { "RESUME", "THE STORY", "TRAVEL", "CREATE A BORE", "ADD A BORE", "BUILD MODE", "JUKEBOX", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
-#define NPAUSE 10
+static const char *const pauseNm[] = { "RESUME", "WANTS AND FEARS", "THE STORY", "TRAVEL", "CREATE A BORE", "ADD A BORE", "BUILD MODE", "JUKEBOX", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
+#define NPAUSE 11
 static void pause_update(void) {
     if (PRESSED(PAD_UP)) menu_sel = (menu_sel + NPAUSE - 1) % NPAUSE;
     if (PRESSED(PAD_DOWN)) menu_sel = (menu_sel + 1) % NPAUSE;
@@ -298,24 +309,48 @@ static void pause_update(void) {
     if (PRESSED(PAD_CROSS)) {
         switch (menu_sel) {
             case 0: state = ST_LIFE; break;
-            case 1: state = ST_STORY; break;
-            case 2: travel_sel = world_zone; state = ST_TRAVEL; break;
-            case 3: edit = sims[player].bore; create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
-            case 4: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
+            case 1: state = ST_WANTS; break;
+            case 2: state = ST_STORY; break;
+            case 3: travel_sel = world_zone; state = ST_TRAVEL; break;
+            case 4: edit = sims[player].bore; create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
+            case 5: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); state = ST_LIFE; } break;
-            case 5: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); state = ST_BUILD; break;
-            case 6: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
-            case 7: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 8: life_started = 0; start_life(); state = ST_LIFE; break;
-            case 9: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; break;
+            case 6: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); state = ST_BUILD; break;
+            case 7: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
+            case 8: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
+            case 9: life_started = 0; start_life(); state = ST_LIFE; break;
+            case 10: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; break;
         }
     }
 }
 static void pause_draw(void) {
     life_draw();
-    draw_panel(88, 30, 144, 146);
-    gfx_textc(160, 34, 2, "PAUSED", GOLD);
-    for (int i = 0; i < NPAUSE; i++) menu_row(94, 54 + i * 11, 132, pauseNm[i], i == menu_sel);
+    draw_panel(88, 24, 144, 158);
+    gfx_textc(160, 28, 2, "PAUSED", GOLD);
+    for (int i = 0; i < NPAUSE; i++) menu_row(94, 48 + i * 11, 132, pauseNm[i], i == menu_sel);
+}
+
+// ---- the wants and fears page ----
+static void wants_update(void) {
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_CROSS) || PRESSED(PAD_START)) state = ST_PAUSE;
+}
+static void wants_draw(void) {
+    life_draw();
+    Sim *s = &sims[player];
+    draw_panel(44, 30, 232, 150);
+    char b[40], t[32];
+    sprintf(b, "%s WANTS", s->bore.first); gfx_textc(160, 34, 2, b, GOLD);
+    sprintf(b, "ASPIRATION: %s", look_asp_name(s->bore.asp)); gfx_text(54, 50, 1, b, DIM);
+    int lv = wants_level(s);
+    gfx_rect(54, 60, 212, 6, 30, 32, 40, 0);
+    gfx_rect(54, 60, 212 * s->asp_pts / ASP_MAX, 6, aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2], 0);
+    for (int k = 1; k < 4; k++) { int x = 54 + 212 * (k == 1 ? 3000 : k == 2 ? 7000 : 10000) / ASP_MAX; gfx_rect(x, 59, 1, 8, 13, 15, 21, 0); }
+    sprintf(b, "%s%s", aspLvNm[lv], lv == 3 ? " - NOTHING CAN BRING THEM DOWN" : wants_desperate(s) ? " - DESPERATE" : ""); gfx_text(54, 69, 1, b, aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2]);
+    gfx_text(54, 84, 1, "WANTS", GOLD);
+    for (int i = 0; i < 4; i++) { wants_text(s, i, t); gfx_text(62, 94 + i * 10, 1, t, 230, 230, 240); sprintf(b, "%d", s->want[i].pts); gfx_text(236, 94 + i * 10, 1, b, 90, 230, 90); }
+    gfx_text(54, 138, 1, "FEARS", 255, 120, 110);
+    for (int i = 0; i < 2; i++) { fears_text(s, i, t); gfx_text(62, 148 + i * 10, 1, t, 230, 200, 200); sprintf(b, "-%d", s->fear[i].pts); gfx_text(236, 148 + i * 10, 1, b, 255, 100, 90); }
+    gfx_textc(160, 170, 1, "O BACK", GREY);
 }
 
 // ---- the story page: the goals of this life, Bustin' Out style ----
@@ -469,7 +504,7 @@ static void build_update(void) {
     int occupied = 0; for (int i = 0; i < nsims; i++) if (sim_tile_x(&sims[i]) == build_x && sim_tile_y(&sims[i]) == build_y) occupied = 1;
     if (PRESSED(PAD_CROSS) && !occupied) {
         if (build_tool == 0) { char ch = items_at(build_item); int cost = items_cost(ch);
-            if (*cell == '.' && cash >= cost) { *cell = ch; cash -= cost; audio_voice(VOICE_FINISHED); } else audio_voice(VOICE_NAH); }
+            if (*cell == '.' && cash >= cost) { *cell = ch; cash -= cost; audio_voice(VOICE_FINISHED); wants_event(&sims[player], W_BUY, 0); } else audio_voice(VOICE_NAH); }
         if (build_tool == 1) { if (*cell == '.' && cash >= 50) { *cell = 'W'; wallMap[build_y][build_x] = (u8)build_wp; cash -= 50; } }
         if (build_tool == 2) { if (cash >= 10) { floorMap[build_y][build_x] = (u8)build_fl; cash -= 10; } }
         if (build_tool == 3) { if (*cell == 'W' || *cell == 'w') wallMap[build_y][build_x] = (u8)build_wp; }
@@ -649,6 +684,7 @@ int main(void) {
             case ST_HELP: help_update(); help_draw(); break;
             case ST_TRAVEL: travel_update(); travel_draw(); break;
             case ST_STORY: story_update(); story_draw(); break;
+            case ST_WANTS: wants_update(); wants_draw(); break;
         }
         gfx_flip();
     }

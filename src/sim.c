@@ -1,5 +1,6 @@
 // sim.c - the household and the life: BORE's needs, clock, bills and job, with free 3D movement and a path finder for the others.
 #include "sim.h"
+#include "wants.h"
 #include "world.h"
 #include "items.h"
 #include "audio.h"
@@ -80,6 +81,8 @@ void sim_add(const Bore *b, int mx, int my, int ai) {
     s->bore = *b;
     s->x = mx * TILE + TILE / 2; s->z = -(my * TILE + TILE / 2);
     s->yaw = 0; s->ai = ai; s->talk_to = -1; s->think = -1; s->grump = 0;
+    for (int i = 0; i < MAX_SIMS; i++) s->rel[i] = 0;
+    wants_roll_all(s);
     for (int i = 0; i < NEED_N; i++) s->need[i] = (70 + (int)(look_rand() % 25)) << 10;
     s->need[N_ROOM] = 50 << 10;
     s->mood = 20;
@@ -204,7 +207,27 @@ static void begin_action(Sim *s, int act, int mx, int my) {
     if (act == ACT_SLEEP) audio_voice(VOICE_SNORE);
     if (act == ACT_EAT) audio_voice(VOICE_YEHA);
 }
+static void chat_done(Sim *s, Sim *o) {   // a finished chat: the relationship grows (more between compatible people), the wants notice
+    int me = (int)(s - sims), him = (int)(o - sims), bonus = 0;
+    for (int t = 0; t < TR_N; t++) if (ABS((int)s->bore.tr[t] - (int)o->bore.tr[t]) <= 2) bonus++;
+    int was = s->rel[him], now = was + 8 + bonus; if (now > 100) now = 100;
+    s->rel[him] = (s8)now; if (o->rel[me] < now) o->rel[me] = (s8)now;
+    wants_event(s, W_CHAT, 0); wants_event(s, W_CHAT_WITH, him);
+    if (was < 50 && now >= 50) { wants_event(s, W_FRIEND, him); if (me == player) { sim_note("YOU MADE A FRIEND"); } }
+}
 static void end_action(Sim *s) {
+    switch (s->action) {   // what just finished: the wants are watching
+        case ACT_EAT: wants_event(s, W_EAT, 0); break;
+        case ACT_SLEEP: wants_event(s, W_SLEEP, 0); if (s->act_t <= 0) wants_reroll(s); break;   // a full sleep: new wants on waking
+        case ACT_SHOWER: wants_event(s, W_SHOWER, 0); break;
+        case ACT_FUN: wants_event(s, W_FUN, 0); break;
+        case ACT_READ: wants_event(s, W_READ, 0); break;
+        case ACT_COFFEE: wants_event(s, W_COFFEE, 0); break;
+        case ACT_RUN: wants_event(s, W_RUN, 0); break;
+        case ACT_PHONE: wants_event(s, W_PHONE, 0); break;
+        case ACT_WORK: wants_event(s, W_WORK, 0); break;
+        case ACT_TALK: if (s->talk_to >= 0 && s->talk_to < nsims) chat_done(s, &sims[s->talk_to]); break;
+    }
     if (s->action == ACT_TALK && s->talk_to >= 0 && s->talk_to < nsims) {
         Sim *o = &sims[s->talk_to];
         if (o->action == ACT_TALK && o->talk_to == (int)(s - sims)) { o->action = ACT_NONE; o->talk_to = -1; o->gait.wave = 0; }
@@ -345,6 +368,10 @@ static void tick_needs(Sim *s) {
     // mood: the needs feed HAPPY
     int sum = 0; for (int i = 0; i < NEED_N; i++) sum += s->need[i] >> 10;
     int m = (sum / NEED_N - 50) * 2;
+    m += (s->asp_pts - 6000) / 150;                                        // the aspiration meter colours the mood
+    if (wants_desperate(s)) m -= 40;
+    if (wants_level(s) == ASP_PLATINUM) m = 100;                            // PLATINUM: nothing can bring it down
+    m = CLAMP(m, -100, 100);
     s->mood += (m - s->mood) / 64;
     // the thought bubble: the most urgent need
     int worst = -1, wv = 101;
@@ -354,8 +381,12 @@ static void tick_needs(Sim *s) {
         audio_voice(s->think == N_FOOD ? VOICE_HUNGRY : s->think == N_WC ? VOICE_PEE : VOICE_NEED);
     }
     // passing out
-    if ((s->need[N_REST] >> 10) == 0 && s->action != ACT_SLEEP) { s->need[N_REST] = 25 << 10; s->mood -= 30; sim_say(s, "PASSED OUT"); audio_voice(VOICE_GROAN); }
-    if ((s->need[N_WC] >> 10) == 0) { s->need[N_WC] = 100 << 10; s->need[N_CLEAN] = 0; s->mood -= 40; sim_say(s, "OH NO"); audio_voice(VOICE_PEE); }
+    if ((s->need[N_REST] >> 10) == 0 && s->action != ACT_SLEEP) { s->need[N_REST] = 25 << 10; s->mood -= 30; sim_say(s, "PASSED OUT"); audio_voice(VOICE_GROAN); wants_fear(s, F_PASSOUT); }
+    if ((s->need[N_WC] >> 10) == 0) { s->need[N_WC] = 100 << 10; s->need[N_CLEAN] = 0; s->mood -= 40; sim_say(s, "OH NO"); audio_voice(VOICE_PEE); wants_fear(s, F_PEE); }
+    if (wants_desperate(s) && (s->think_t % 700) == 1 && s->action == ACT_NONE) {   // rock bottom: acting out
+        static const char *const act[4] = { "KICKS THE BIN", "JUMPS ON THE SOFA", "SULKS LOUDLY", "WONT LEARN A THING" };
+        sim_say(s, act[look_rand() & 3]);
+    }
 }
 
 static void clock_tick(void) {
@@ -367,21 +398,24 @@ static void clock_tick(void) {
     if (++acc < spm) return;
     acc = 0;
     clock_min++;
+    for (int i = 0; i < nsims; i++) wants_minute(&sims[i]);
+    if (clock_min == 16 * 60) for (int i = 0; i < nsims; i++) for (int j = 0; j < nsims; j++) { int r = sims[i].rel[j]; sims[i].rel[j] = (s8)(r > 0 ? r - 2 : r < 0 ? r + 2 : 0); }   // 4 PM: the day's warmth fades a little
     if (clock_min == WORK_FROM && clock_day < 5) { sim_note("WORK: 9 TO 5 AT THE MARKER"); job_worked = 0; }
     if (clock_min == WORK_TO && clock_day < 5) {
         int quota = 300, pay = 0;
         if (job_worked >= quota) { pay = PAY0 + PAY_LVL * job_level; job_days_good++; if (job_worked >= quota * 2) pay += 600; }
         else if (job_worked >= quota / 2) { pay = (PAY0 + PAY_LVL * job_level) / 2; }
         else { job_strikes++; }
-        if (pay) { cash += pay; story_paid++; char b[32]; sprintf(b, "PAID %d", pay); sim_note(b);
-                   if (story_paid == 1) sim_note("PAID! THE ISLAND FERRY WILL TAKE YOU NOW"); audio_voice(VOICE_YAHOO); } else sim_note("NO PAY TODAY");
-        if (job_days_good >= 3 && job_level < 5) { job_level++; job_days_good = 0; sim_note("PROMOTED!"); }
-        if (job_strikes >= 3 && job_level > 0) { job_level--; job_strikes = 0; sim_note("DEMOTED"); }
+        if (pay) { cash += pay; story_paid++; char b[32]; sprintf(b, "PAID %d", pay); sim_note(b); wants_event(&sims[player], W_PAID, 0);
+                   if (story_paid == 1) sim_note("PAID! THE ISLAND FERRY WILL TAKE YOU NOW"); audio_voice(VOICE_YAHOO); }
+        else { sim_note("NO PAY TODAY"); wants_fear(&sims[player], F_BADDAY); }
+        if (job_days_good >= 3 && job_level < 5) { job_level++; job_days_good = 0; sim_note("PROMOTED!"); wants_event(&sims[player], W_PROMO, 0); }
+        if (job_strikes >= 3 && job_level > 0) { job_level--; job_strikes = 0; sim_note("DEMOTED"); wants_fear(&sims[player], F_DEMOTED); }
     }
     if (clock_min >= 1440) {
         clock_min = 0; clock_day = (clock_day + 1) % 7;
         cash -= BILLS;
-        if (cash < 0) { cash = 0; sim_note("BROKE! BILLS UNPAID"); sims[player].mood -= 30; audio_voice(VOICE_CRY); }
+        if (cash < 0) { cash = 0; sim_note("BROKE! BILLS UNPAID"); sims[player].mood -= 30; audio_voice(VOICE_CRY); wants_fear(&sims[player], F_BROKE); }
         else sim_note("BILLS PAID: 800");
     }
 }
@@ -461,6 +495,7 @@ int sim_player_interact(void) {
     if (!target_of(s, &mx, &my, &who)) return 0;
     if (who >= 0) {
         Sim *o = &sims[who];
+        if (o->mood < -45 && !(look_rand() & 3)) { sim_say(o, "NOT NOW."); wants_fear(s, F_REJECT); s->rel[who] -= 4; audio_voice(VOICE_DISAGREE); return 1; }   // turned down
         if (o->action != ACT_NONE && o->action != ACT_WALK) end_action(o);
         begin_action(s, ACT_TALK, sim_tile_x(o), sim_tile_y(o));
         begin_action(o, ACT_TALK, sim_tile_x(s), sim_tile_y(s));
