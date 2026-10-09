@@ -4,6 +4,7 @@
 #include "atlas.h"
 
 #include "items_data.inc"   // defines Mat, IBox, IObj and the MAT macro, straight from the GBA game
+#include "items_more.inc"   // BORE 2's furniture pack (tools/make_items2.py)
 
 // ---- the sound pack, the phone and the DeadSet: boxes made for BORE 2 (the GBA drew them as pixel art) ----
 static const u16 pRad[5] = { RGB(6,6,8), RGB(20,20,22), RGB(28,28,30), RGB(30,24,4), RGB(12,12,14) };
@@ -154,7 +155,7 @@ static const ItemDef defs[] = {
     { 'x', "WORK MARKER", bxWork, 1, 0, 0, F_FLAT, 0 },
     { 'P', "SPAWN", bxSpawn, 1, 0, 0, F_FLAT, 0 },
     { 'B', "BOARD", bxBoard, 5, 0, 0, F_FLAT, 0 },
-    { 'K', "STAIRS", bxBoard, 1, 0, 0, F_ROT, 400 },
+    { '|', "STAIRS", bxBoard, 1, 0, 0, F_ROT, 400 },
     { 'g', "PALM TREE", bxPalm, 3, 0, 0, 0, 150 },
     { 'u', "CACTUS", bxCactus, 3, 0, 0, 0, 40 },
     { 's', "CAMPFIRE", bxCampfire, 2, 0, 0, 0, 80 },
@@ -165,6 +166,7 @@ static const ItemDef defs[] = {
     { '@', "BOAT", bxBoat, 3, 0, 0, F_ROT, 0 },
     { '+', "BUS STOP", bxBusStop, 2, 0, 0, F_ROT, 0 },
     { '%', "LOG BENCH", bxLogBench, 1, 0, 0, F_ROT, 30 },
+    ITEMS_MORE
 };
 #define NDEFS ((int)(sizeof(defs) / sizeof(defs[0])))
 static const ItemDef *def_of(char ch) {
@@ -209,7 +211,7 @@ static TexRef mat_ref(const Mat *m) {
     return t;
 }
 // every box face's texture, resolved once: ref_of(def, variant, box, face)
-#define MAXBOX 440
+#define MAXBOX 640
 static TexRef box_ref[MAXBOX][5];
 static int box_base[NDEFS][2];     // first box index of each def's main / along-y boxes
 static int nbox;
@@ -338,7 +340,7 @@ static void stairs_item(int mx, int my, int r) {   // a flight of stairs filling
 
 void items_draw(char ch, int mx, int my, int rot, int along, int t) {
     if (ch == 'P') return;
-    if (ch == 'K') { stairs_item(mx, my, rot); return; }
+    if (ch == '|') { stairs_item(mx, my, rot); return; }
     if (ch == 'B') { skate_item(mx, my, rot); return; }                    // the SPAWN marker: where the Bore starts, nothing to see (in 3D the GBA's pad read as a figurine base)
     const ItemDef *d = def_of(ch);
     if (!d) return;

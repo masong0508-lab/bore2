@@ -116,6 +116,40 @@ static void music_silence(void) {
     for (int ch = 0; ch < MUS_CH; ch++) { SPU_CH_VOL_L(ch) = 0; SPU_CH_VOL_R(ch) = 0; }
 }
 
+// ---- REVERB: the sound chip's own, one preset per song (songs.inc fx) ----
+// The delays are the hardware docs' ROOM layout (a 0x26C0-byte work area at the top of sound memory); the presets change how
+// loud the reverb is, how dark (vIIR) and how long it rings (vWALL, vCOMB) - DRY, ROOM, WARM, BIG SPACE, CAVE.
+#define REV_SIZE 0x26C0
+#define REV_ADDR (0x80000 - REV_SIZE)
+static const u16 revRoom[32] = { 0x007D, 0x005B, 0x6D80, 0x54B8, 0xBED0, 0x0000, 0x0000, 0xBA80, 0x5800, 0x5300, 0x04D6, 0x0333, 0x03F0, 0x0227,
+                                 0x0374, 0x01EF, 0x0334, 0x01B5, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x01B4, 0x0136,
+                                 0x00B8, 0x005C, 0x8000, 0x8000 };
+static const struct { u16 send, iir, wall, comb1, comb2; } revFx[5] = {
+    { 0x0000, 0x6D80, 0xBA80, 0x54B8, 0xBED0 },   // DRY
+    { 0x1600, 0x6D80, 0xBA80, 0x54B8, 0xBED0 },   // ROOM
+    { 0x2000, 0x4E00, 0xB000, 0x5C00, 0xBA00 },   // WARM (darker, a little longer)
+    { 0x2A00, 0x6D80, 0xA400, 0x6600, 0xB400 },   // BIG SPACE
+    { 0x3000, 0x5800, 0x9C00, 0x7000, 0xAE00 },   // CAVE (long and dark)
+};
+static int rev_ready;
+static void reverb_set(int fx) {
+    if (!rev_ready) {   // the work area starts silent
+        static u32 zero[256];
+        for (int a = REV_ADDR; a < 0x80000; a += sizeof zero) spu_write(a, zero, sizeof zero);
+        SPU_REVERB_ADDR = getSPUAddr(REV_ADDR);
+        rev_ready = 1;
+    }
+    fx %= 5;
+    for (int i = 0; i < 32; i++) {
+        u16 v = revRoom[i];
+        if (i == 2) v = revFx[fx].iir; if (i == 7) v = revFx[fx].wall; if (i == 3) v = revFx[fx].comb1; if (i == 4) v = revFx[fx].comb2;
+        _MMIO16((IOBASE | 0x1dc0) + 2 * i) = v;
+    }
+    SPU_REVERB_VOL_L = revFx[fx].send; SPU_REVERB_VOL_R = revFx[fx].send;
+    SPU_REVERB_ON1 = revFx[fx].send ? 0xffff : 0;     // the music voices (0..15) feed it; the voice clips stay dry
+    SPU_CTRL |= 0x80;
+}
+
 // ---- jukebox ----
 static int cur_song = -1, shuffle = 1;
 static int play_frames;
@@ -146,6 +180,7 @@ void audio_jukebox_play(int i) {
     if (!cd_ok || i < 0 || i >= NSONGS) return;
     music_silence();
     cur_song = -1;
+    if (song_base + (int)sidx[i].smp_bytes > REV_ADDR) return;     // (never into the reverb's work area)
     // the samples: through the sequence buffer, a chunk at a time, into sound memory after the voices
     int left = (int)sidx[i].smp_sectors, sec = (int)(sidx[i].sector + sidx[i].seq_sectors), addr = song_base;
     while (left > 0) {
@@ -166,6 +201,7 @@ void audio_jukebox_play(int i) {
     sq_rowlen = (sq->rowN * 256 + sq->rfr) * TICK_HZ;
     sq_acc = sq_rowlen - MIXR * 256;                     // the first row sounds on the first tick
     play_frames = 0; cur_song = i;
+    reverb_set(songs[i].fx);
     sq_on = 1;
 }
 void audio_jukebox_next(void) {

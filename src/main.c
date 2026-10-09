@@ -535,7 +535,7 @@ static const char *const toolNm[5] = { "BUY", "WALL", "FLOOR", "WALLPAPER", "ROO
 static int floor_supported(int l, int x, int y) {   // an upper floor needs something under it, or a floor beside it on its own storey
     if (l == 0) return 1;
     char below = world_at_l(l - 1, x, y);
-    if (below != ' ' && below != 'K') return 1;
+    if (below != ' ' && below != '|') return 1;
     static const signed char dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
     for (int k = 0; k < 4; k++) { char c = world_at_l(l, x + dx[k], y + dy[k]); if (c != ' ') return 1; }
     return 0;
@@ -575,7 +575,7 @@ static void build_update(void) {
         int ok = 0;
         if (build_tool == 0) { char ch = items_at(build_item); int cost = items_cost(ch);
             if (*cell == '.' && cash >= cost) {
-                if (ch == 'K') {   // stairs: there must be a storey above, and its tile over the stairs becomes the stairwell
+                if (ch == '|') {   // stairs: there must be a storey above, and its tile over the stairs becomes the stairwell
                     if (L >= NUP) { sim_note("NO STOREY ABOVE THE TOP ONE"); }
                     else { char *up = world_cell(L + 1, build_x, build_y); if (*up == '.' || *up == ' ') { *up = ' '; *cell = ch; cash -= cost; ok = 1; } }
                 } else { *cell = ch; cash -= cost; ok = 1; wants_event(&sims[player], W_BUY, 0); }
@@ -590,7 +590,7 @@ static void build_update(void) {
     if (HELD(PAD_CROSS) && build_tool == 2 && L > 0 && *cell == ' ' && cash >= 10 && floor_supported(L, build_x, build_y)) { *cell = '.'; *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; }
     if (PRESSED(PAD_SQUARE) && !occupied) {
         if (*cell != '.' && *cell != 'P' && *cell != ' ') { int back = items_is_item(*cell) ? items_cost(*cell) * 3 / 4 : (*cell == 'W' ? 25 : 0);
-            if (*cell == 'K' && L < NUP) { char *up = world_cell(L + 1, build_x, build_y); if (*up == ' ' && floor_supported(L + 1, build_x, build_y)) *up = '.'; }   // close the stairwell again
+            if (*cell == '|' && L < NUP) { char *up = world_cell(L + 1, build_x, build_y); if (*up == ' ' && floor_supported(L + 1, build_x, build_y)) *up = '.'; }   // close the stairwell again
             *cell = '.'; cash += back; }
         else if (*cell == '.' && L > 0) { *cell = ' '; cash += 5; }                       // take the floor itself away (upper storeys)
     }

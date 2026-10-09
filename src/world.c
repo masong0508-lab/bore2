@@ -125,7 +125,7 @@ static void gFree(int x, int y, char c) { if (x >= 0 && y >= 0 && x < MW && y < 
 // THE MAN BASE gets an upstairs: stairs in the crate room rise to a bedroom over its north-east corner (shows off the storeys)
 static void gUpstairs(void) {
     const int x0 = 10, y0 = 2, x1 = 17, y1 = 9, sx = 15, sy = 7;
-    lifeMap[sy][sx] = 'K';                                          // the stairs, rising to the north
+    lifeMap[sy][sx] = '|';                                          // the stairs, rising to the north
     Level *U = &UP[0];
     for (int j = y0; j <= y1; j++) for (int i = x0; i <= x1; i++) {
         U->map[j][i] = (i == x0 || i == x1 || j == y0 || j == y1) ? 'W' : '.'; U->fl[j][i] = 6; U->wp[j][i] = (u8)(NWP + 12);

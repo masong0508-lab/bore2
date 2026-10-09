@@ -227,7 +227,15 @@ static int action_for(char c) {
         case 'F': case 's': return ACT_EAT; case 'T': case '&': return ACT_WC; case 'S': case 'z': return ACT_SLEEP; case 'H': case '0': return ACT_SHOWER;
         case 'C': case 'U': case 'h': case 'N': case '%': return ACT_SIT;
         case '@': case '+': return ACT_TRAVEL;
-        case 'K': return ACT_STAIRS;
+        case '|': return ACT_STAIRS;
+        // the furniture pack
+        case '!': case '$': case '(': case ')': case '>': case '[': case 'j': case 'n': case '{': case '}': case '`': return ACT_FUN;
+        case ',': case '-': return ACT_SHOWER;
+        case '/': case ':': return ACT_EAT;
+        case ';': return ACT_SIT;
+        case '<': return ACT_SLEEP;
+        case '?': return ACT_READ;
+        case ']': case '_': return ACT_RUN;
         case 'v': case 'R': case 'A': case 'Q': case 'q': case 'G': case 'V': return ACT_FUN;
         case 'b': return ACT_READ; case 'c': return ACT_COFFEE; case 'm': return ACT_RUN; case 'I': return ACT_PHONE; case 'x': return ACT_WORK;
         default: return ACT_NONE;
@@ -238,6 +246,16 @@ static const char *act_hint(int act, char c) {
     switch (act) {
         case ACT_TRAVEL: return c == '@' ? "SAIL" : "TAKE THE BUS";
         case ACT_STAIRS: return "STAIRS";
+        default: break;
+    }
+    switch (c) {   // the furniture pack's own words
+        case '!': return "PLAY ARCADE"; case '$': return "PLAY PIANO"; case '(': return "PLAY GUITAR"; case ')': return "PAINT";
+        case '>': return "SOAK"; case '[': return "USE COMPUTER"; case 'j': return "PICK A SONG"; case 'n': return "PLAY"; case '{': return "PLAY HOUSE";
+        case '}': return "MAKE A WISH"; case '`': return "PRACTICE SPEECH"; case ',': return "TAKE A BATH"; case '-': return "WASH HANDS";
+        case '/': return "COOK"; case ':': return "MICROWAVE"; case ';': return "SIT"; case '<': return "SLEEP"; case '?': return "PLAY CHESS";
+        case ']': return "LIFT WEIGHTS"; case '_': return "SHOOT HOOPS";
+    }
+    switch (act) {
         case ACT_EAT: return c == 's' ? "COOK AND EAT" : "EAT"; case ACT_WC: return c == '&' ? "USE OUTHOUSE" : "USE TOILET"; case ACT_SLEEP: return "SLEEP"; case ACT_SHOWER: return "SHOWER";
         case ACT_SIT: return c == 'h' ? "SIT" : "LOUNGE"; case ACT_FUN: return c == 'v' ? "WATCH TV" : c == 'R' ? "TUNE RADIO" : c == 'A' ? "CRANK IT" : c == 'Q' ? "JACK IN" : c == 'q' ? "FEED THE FISH" : "CHILL";
         case ACT_READ: return "READ"; case ACT_COFFEE: return "A CUP"; case ACT_RUN: return "A RUN"; case ACT_PHONE: return "CALL"; case ACT_WORK: return "WORK";
@@ -535,7 +553,7 @@ static int target_of(const Sim *s, int *mx, int *my, int *who) {
     static const signed char dx[5] = { 0, 0, 1, 0, -1 }, dy[5] = { 0, 1, 0, -1, 0 };
     for (int k = 0; k < 5; k++) { int tx = cx + dx[k], ty = cy + dy[k]; if (action_for(world_at(tx, ty)) != ACT_NONE) { *mx = tx; *my = ty; return 1; } }
     if (s->lvl > 0) for (int k = 0; k < 5; k++) { int tx = cx + dx[k], ty = cy + dy[k];   // the top of a flight of stairs (open air, the stairs below)
-        if (world_at_l(s->lvl, tx, ty) == ' ' && world_at_l(s->lvl - 1, tx, ty) == 'K') { *mx = tx; *my = ty; return 1; } }
+        if (world_at_l(s->lvl, tx, ty) == ' ' && world_at_l(s->lvl - 1, tx, ty) == '|') { *mx = tx; *my = ty; return 1; } }
     return 0;
 }
 static const char *sim_hint_(void) {
