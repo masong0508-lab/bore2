@@ -39,3 +39,9 @@ The creature code: `python3 tools/port_look.py <bore-gba-main>/source/main.c src
 
 ## Known gaps
 About 20 FPS in life mode (target 30), no memory-card saves, wants/fears only partly done, tested only in an emulator.
+
+## DS port (in progress)
+The game code is split so a Nintendo DS build can sit beside the PS1 one:
+- `src/platform/compat_math.*` the PS1 SDK maths (rotations, matrices, sin, sqrt) in plain C, tested against the real values.
+- Still PS1-only: `gfx.c` (GTE drawing), `audio.c` (SPU and CD music), the pad code in `main.c`, and the GTE calls in `items.c`.
+- Plan: `src/platform/nds/gfx_nds.c` on libnds' 3D engine (it sorts depth itself, so no ordering table, and gouraud colour is free), BlocksDS to build.
