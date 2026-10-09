@@ -33,13 +33,24 @@ const char *world_wall_name(int wp) { return wp < NWP ? look_wp_tex(wp)->nm : wx
 static const Tex *floor_tex(int i) { return i < NFL ? look_fl_tex(i) : &outTex[(i - NFL) % 6]; }
 const char *world_floor_name(int fl) { return floor_tex(fl % NFLOORS)->nm; }
 
-void world_init(void) {
+static u16 fl_soft[NFLOORS][4];   // the floor colours, calmed: a GBA pattern blown up across a 3D floor shouts, so each colour leans toward the tile's average
+static void soften_floors(void) {
     for (int i = 0; i < NFLOORS; i++) {
         const Tex *t = floor_tex(i);
-        for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) { u16 c = t->c[t->p[y & 7][x & 7] - '0']; tb[y * 16 + x] = c ? c : 0x8000; }
+        int r = 0, g = 0, b = 0, n = 0;
+        for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) { u16 c = t->c[t->p[y][x] - '0']; r += C_R(c); g += C_G(c); b += C_B(c); n++; }
+        r /= n; g /= n; b /= n;
+        for (int k = 0; k < 4; k++) { u16 c = t->c[k]; fl_soft[i][k] = RGB((C_R(c) * 9 + r * 7) / 16, (C_G(c) * 9 + g * 7) / 16, (C_B(c) * 9 + b * 7) / 16); }
+    }
+}
+void world_init(void) {
+    soften_floors();
+    for (int i = 0; i < NFLOORS; i++) {
+        const Tex *t = floor_tex(i);
+        for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) { u16 c = fl_soft[i][t->p[y & 7][x & 7] - '0']; tb[y * 16 + x] = c ? c : 0x8000; }
         fl_tex[i] = atlas_add(16, 16, tb);
         for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
-            u16 c = t->c[t->p[y & 7][x & 7] - '0'];
+            u16 c = fl_soft[i][t->p[y & 7][x & 7] - '0'];
             int odd = ((x >> 3) + (y >> 3)) & 1, k = odd ? fl_odd[i] : 16;
             u16 o = RGB(C_R(c) * k / 16, C_G(c) * k / 16, C_B(c) * k / 16);
             tb[y * 32 + x] = o ? o : 0x8000;

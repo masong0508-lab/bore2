@@ -13,6 +13,8 @@ int  sim_speed = 1;
 int  bills_due = 800;
 char last_note[32]; int last_note_t;
 int  travel_asked;
+int  story_paid, story_talks;
+u8   story_visit[3];
 
 // BORE tuning (sims.h), per logic step in 1/1024 points
 #define STEPS_MIN 15
@@ -77,7 +79,7 @@ void sim_add(const Bore *b, int mx, int my, int ai) {
     memset(s, 0, sizeof *s);
     s->bore = *b;
     s->x = mx * TILE + TILE / 2; s->z = -(my * TILE + TILE / 2);
-    s->yaw = 0; s->ai = ai; s->talk_to = -1; s->think = -1;
+    s->yaw = 0; s->ai = ai; s->talk_to = -1; s->think = -1; s->grump = 0;
     for (int i = 0; i < NEED_N; i++) s->need[i] = (70 + (int)(look_rand() % 25)) << 10;
     s->need[N_ROOM] = 50 << 10;
     s->mood = 20;
@@ -88,6 +90,7 @@ void sim_switch_player(void) {
     player = (player + 1) % nsims;
     sims[player].ai = 0;
     sims[player].path_n = 0;
+    if (sims[player].grump) sim_note("THIS ONE REFUSES THE MARKER. NOTHING FLOATS.");
 }
 
 // ---- walking with collision (the lot's tiles) ----
@@ -149,12 +152,17 @@ static int follow_path(Sim *s) {   // 1 while walking, 0 when there
     int tx = s->path_x[s->path_i] * TILE + TILE / 2, tz = -(s->path_y[s->path_i] * TILE + TILE / 2);
     int dx = tx - s->x, dz = tz - s->z;
     int sp = speed_of(s);
+    {   // housemates walk the same way: turn first, quarter speed while cornering
+        int want = yaw_towards(dx, dz), diff = ((want - s->yaw + 2048) & 4095) - 2048;
+        turn_to(s, want, 300 + (ABS(diff) >> 3));
+        int align = 4096 - ABS(diff) * 2; if (align < 1024) align = 1024;
+        sp = (sp * align) >> 12; if (sp < 2) sp = 2;
+    }
     if (ABS(dx) <= sp && ABS(dz) <= sp) { s->x = tx; s->z = tz; s->path_i++; if (s->path_i >= s->path_n) return 0; return 1; }
     int mx = CLAMP(dx, -sp, sp), mz = CLAMP(dz, -sp, sp);
     // the last tile may be the item itself: step straight in
     if (s->path_i == s->path_n - 1) { s->x += mx; s->z += mz; }
     else if (!walk(s, mx, mz)) { s->x += mx; s->z += mz; }
-    turn_to(s, yaw_towards(dx, dz), 300);
     s->gait.amp = 4096; s->gait.phase = (s->gait.phase + 140) & 4095;
     return 1;
 }
@@ -185,6 +193,7 @@ static int act_len(int act) {
                    case ACT_COFFEE: return 90; case ACT_RUN: return 360; case ACT_PHONE: return 300; case ACT_TALK: return 240; default: return 9999; }
 }
 static void begin_action(Sim *s, int act, int mx, int my) {
+    if (act == ACT_TALK && (int)(s - sims) == player) story_talks++;
     s->action = act; s->act_t = act_len(act); s->act_x = mx; s->act_y = my;
     s->path_n = 0;
     if (on_item(act)) { s->x = mx * TILE + TILE / 2; s->z = -(my * TILE + TILE / 2); s->yaw = (world_item_facing(mx, my) * 1024) & 4095; }
@@ -262,6 +271,10 @@ static int approach_tile(const Sim *s, int mx, int my, int *tx, int *ty) {   // 
     (void)s; return 0;
 }
 
+// the running gag: one housemate vehemently refuses any floating marker. They have a speech about it.
+static const char *const grumpNm[8] = { "NO PLUMBOBS. EVER.", "I SAID NO PLUMBOBS", "NOT OVER MY HEAD", "I CAN HEAR IT SPIN",
+                                        "KEEP THE GEM AWAY", "AND NO ARROWS EITHER", "IT DRIPS SMUGNESS", "A DIAMOND? OVER ME?" };
+const char *grump_line(void) { static int k; return grumpNm[k++ & 7]; }
 static void ai_think(Sim *s) {
     if (s->action != ACT_NONE || s->path_i < s->path_n) return;
     if (s->wander_t > 0) { s->wander_t--; return; }
@@ -291,6 +304,7 @@ static void ai_think(Sim *s) {
         int tx = sim_tile_x(s) + (int)(look_rand() % 11) - 5, ty = sim_tile_y(s) + (int)(look_rand() % 11) - 5;
         if (tx > 0 && ty > 0 && tx < MW - 1 && ty < MH - 1 && world_walkable(tx, ty) && sim_find_path(s, tx, ty)) { s->action = ACT_WALK; s->act_x = -1; s->act_t = 9999; break; }
     }
+    if (s->grump && !(look_rand() % 3)) sim_say(s, grump_line());
     s->wander_t = 120 + (int)(look_rand() % 300);
 }
 
@@ -359,7 +373,8 @@ static void clock_tick(void) {
         if (job_worked >= quota) { pay = PAY0 + PAY_LVL * job_level; job_days_good++; if (job_worked >= quota * 2) pay += 600; }
         else if (job_worked >= quota / 2) { pay = (PAY0 + PAY_LVL * job_level) / 2; }
         else { job_strikes++; }
-        if (pay) { cash += pay; char b[32]; sprintf(b, "PAID %d", pay); sim_note(b); audio_voice(VOICE_YAHOO); } else sim_note("NO PAY TODAY");
+        if (pay) { cash += pay; story_paid++; char b[32]; sprintf(b, "PAID %d", pay); sim_note(b);
+                   if (story_paid == 1) sim_note("PAID! THE ISLAND FERRY WILL TAKE YOU NOW"); audio_voice(VOICE_YAHOO); } else sim_note("NO PAY TODAY");
         if (job_days_good >= 3 && job_level < 5) { job_level++; job_days_good = 0; sim_note("PROMOTED!"); }
         if (job_strikes >= 3 && job_level > 0) { job_level--; job_strikes = 0; sim_note("DEMOTED"); }
     }
@@ -393,13 +408,18 @@ void sim_player_move(int dx, int dz, int run) {
     if (s->action != ACT_NONE && s->action != ACT_WALK) { if (s->action == ACT_WORK || s->action == ACT_SLEEP) return; end_action(s); }
     s->path_n = 0; s->action = ACT_NONE;
     if (!dx && !dz) { s->gait.amp = s->gait.amp > 300 ? s->gait.amp - 300 : 0; return; }
-    int sp = speed_of(s); if (run) sp = sp * 3 / 2;
-    int mag = SquareRoot0(dx * dx + dz * dz); if (mag < 1) mag = 1;
-    int mx = (dx * sp) / mag, mz = (dz * sp) / mag;
-    if (ABS(mx) > sp) mx = mx > 0 ? sp : -sp; if (ABS(mz) > sp) mz = mz > 0 ? sp : -sp;
-    walk(s, mx, mz);
-    turn_to(s, yaw_towards(dx, dz), 350);
-    s->gait.amp = 4096; s->gait.phase = (s->gait.phase + (run ? 200 : 150)) & 4095;
+    // REAL 3D WALKING: the Bore turns toward the push first and only ever moves the way it FACES -
+    // far from the push direction it pivots on the spot, so it never slides sideways like a 2D sprite.
+    int want = yaw_towards(dx, dz);
+    int diff = ((want - s->yaw + 2048) & 4095) - 2048;                       // how far round it still has to turn
+    turn_to(s, want, 260 + (ABS(diff) >> 3));                                // the wider the turn, the faster it swings
+    int mag = SquareRoot0(dx * dx + dz * dz); if (mag > 4096) mag = 4096;    // stick tilt = walk speed
+    int align = 4096 - ABS(diff) * 2; if (align < 0) align = 0;              // 4096 facing it .. 0 facing away
+    int sp0 = speed_of(s); if (run) sp0 = sp0 * 3 / 2;
+    int sp = ((sp0 * mag) >> 12) * align >> 12;
+    if (sp) walk(s, (isin(s->yaw) * sp) >> 12, -((icos(s->yaw) * sp) >> 12));
+    s->gait.amp = MAX(1600, (mag * align) >> 12);                            // pivoting: small steps; under way: the full swing
+    s->gait.phase = (s->gait.phase + (((run ? 200 : 150) * MAX(mag, 2048)) >> 12)) & 4095;
 }
 
 static int front_tile(const Sim *s, int *mx, int *my) {
@@ -445,6 +465,7 @@ int sim_player_interact(void) {
         begin_action(s, ACT_TALK, sim_tile_x(o), sim_tile_y(o));
         begin_action(o, ACT_TALK, sim_tile_x(s), sim_tile_y(s));
         s->talk_to = who; o->talk_to = player; o->path_n = 0;
+        if (o->grump) sim_say(o, grump_line());
         audio_voice(look_rand() & 1 ? VOICE_JOKE : VOICE_AGREE);
         return 1;
     }

@@ -67,7 +67,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int create_tab, create_row, create_from, create_turn;
@@ -79,10 +79,19 @@ static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sim
 static int travel_sel;
 
 static void draw_panel(int x, int y, int w, int h) {
-    gfx_rect(x, y, w, h, 10, 12, 18, 1);
+    gfx_rect(x, y, w, h, 13, 15, 21, 0);   // a solid card: the blend here is additive, so "dark glass" is impossible
+    gfx_rect(x, y, w, h, 10, 12, 18, 1);   // twice: the room behind fades to a quarter, so the text owns the panel
     gfx_rect(x, y, w, 1, 255, 200, 40, 0);
     gfx_rect(x, y + h - 1, w, 1, 60, 60, 70, 0);
 }
+
+static void menu_row(int x, int y, int w, const char *txt, int sel) {   // one Sims-style menu line: highlight bar, gem, label
+    if (sel) { gfx_rect(x, y - 2, w, 11, 28, 48, 62, 0); gfx_rect(x, y - 2, 1, 11, 255, 200, 40, 0); gfx_text(x + 4, y, 1, ">", GOLD); }
+    gfx_text(x + 14, y, 1, txt, sel ? 255 : 175, sel ? 255 : 175, sel ? 255 : 185);
+}
+// which story zones are open (the island comes with the first paycheck, the town with the SPONSORED job level)
+static int zone_unlocked(int z) { return z == 0 || (z == 1 && story_paid > 0) || (z == 2 && job_level >= 2); }
+
 static void draw_bar(int x, int y, int w, int v, int r, int g, int b) {
     gfx_rect(x, y, w, 6, 30, 30, 36, 0);
     int fw = (w - 2) * v / 100;
@@ -98,29 +107,24 @@ static void start_life(void) {
     sim_add(&edit, px, py, 0);
     // two housemates from the dice
     Bore b; look_default(&b); b.stage = AG_ADULT; look_random(&b); sim_add(&b, px + 2, py + 1, 1);
+    strcpy(sims[1].bore.first, "MOSS"); sims[1].grump = 1;   // MOSS will not have a thing floating overhead. Do not ask.
     look_default(&b); b.stage = AG_CHILD; look_random(&b); sim_add(&b, px - 1, py + 2, 1);
     life_started = 1;
+    story_paid = 0; story_talks = 0; story_visit[0] = 1; story_visit[1] = 0; story_visit[2] = 0;
     sim_note("WELCOME HOME. X USES THINGS.");
 }
 
-static void draw_plumbob(const Sim *s) {   // the green crystal over the Bore you play: it spins, and it colours with the mood
+static void draw_marker(const Sim *s) {   // who you are playing: a bobbing gold arrow. (It used to be a green diamond. MOSS won.)
     VECTOR p; setVector(&p, s->x, 0, s->z);
-    int top = -H * VOX - 30 - (isin((frame * 60) & 4095) >> 9);
-    gfx_set_object(&p, (frame * 50) & 4095);
-    int m = s->mood;
-    int r = m > 15 ? 40 : m > -15 ? 230 : 255, g = m > 15 ? 230 : m > -15 ? 200 : 60, b = m > 15 ? 60 : m > -15 ? 40 : 60;
-    SVECTOR apex, base[4], bot;
-    setVector(&apex, 0, top - 58, 0); setVector(&bot, 0, top + 30, 0);
-    setVector(&base[0], -22, top, -22); setVector(&base[1], 22, top, -22); setVector(&base[2], 22, top, 22); setVector(&base[3], -22, top, 22);
-    gfx_set_light_yaw((frame * 50) & 4095);
-    for (int k = 0; k < 4; k++) {
-        const SVECTOR *b0 = &base[k], *b1 = &base[(k + 1) & 3];
-        int nx = (b0->vx + b1->vx), nz = (b0->vz + b1->vz);
-        int L = gfx_light(nx * 90, -2400, nz * 90);
-        gfx_tri_f(&apex, b1, b0, (r * L) >> 7, (g * L) >> 7, (b * L) >> 7, 0);
-        L = gfx_light(nx * 90, 2400, nz * 90);
-        gfx_tri_f(b0, b1, &bot, (r * L) >> 8, (g * L) >> 8, (b * L) >> 8, 0);
-    }
+    int top = -H * VOX - 24 - (isin((frame * 70) & 4095) >> 9);
+    gfx_set_object(&p, cam_yaw & 4095);                       // flat to the camera
+    SVECTOR a, b, c, d;
+    setVector(&a, -12, top - 15, 0); setVector(&b, 12, top - 15, 0); setVector(&c, 0, top, 0);
+    gfx_tri_f(&a, &b, &c, 255, 204, 48, 0);
+    setVector(&a, -4, top - 34, 0); setVector(&b, 4, top - 34, 0); setVector(&c, -4, top - 15, 0); setVector(&d, 4, top - 15, 0);
+    gfx_quad_f(&a, &b, &c, &d, 255, 204, 48, 0);
+    setVector(&a, -12, top - 13, -2); setVector(&b, 12, top - 13, -2); setVector(&c, 0, top + 2, -2);
+    gfx_tri_f(&a, &b, &c, 90, 60, 10, 0);                     // a dark edge behind, so it reads on bright rooms
 }
 static void draw_sims(void) {
     for (int i = 0; i < nsims; i++) {
@@ -131,7 +135,7 @@ static void draw_sims(void) {
         voxel_draw(&s->bore, &p, s->yaw, &s->gait);
         if (s->action != ACT_SLEEP) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
-    if (nsims) draw_plumbob(&sims[player]);
+    if (nsims && !sims[player].grump) draw_marker(&sims[player]);   // MOSS gets nothing. MOSS made that very clear.
 }
 
 static void draw_bubbles(void) {   // thoughts and notes over heads
@@ -263,24 +267,30 @@ static void travel_update(void) {
     if (PRESSED(PAD_UP)) travel_sel = (travel_sel + ZONE_N - 1) % ZONE_N;
     if (PRESSED(PAD_DOWN)) travel_sel = (travel_sel + 1) % ZONE_N;
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = ST_LIFE; return; }
-    if (PRESSED(PAD_CROSS)) { if (travel_sel != world_zone) travel_go(travel_sel); state = ST_LIFE; }
+    if (PRESSED(PAD_CROSS)) {
+        if (!zone_unlocked(travel_sel)) { audio_voice(VOICE_NAH); return; }
+        if (travel_sel != world_zone) { travel_go(travel_sel); story_visit[travel_sel] = 1; }
+        state = ST_LIFE;
+    }
 }
 static void travel_draw(void) {
     life_draw();
     draw_panel(70, 50, 180, 90);
     gfx_textc(160, 54, 2, "WHERE TO?", GOLD);
     static const char *const blurb[ZONE_N] = { "HOME: THE HOUSE, THE FACTORY, THE RAIL PARK", "A SAND ISLAND: A CAMP, PALMS, THE SEA", "A DESERT MAIN STREET: DINER, TRAILER, THE LAB" };
+    static const char *const lockTxt[ZONE_N] = { "", "LOCKED: EARN YOUR FIRST PAYCHECK", "LOCKED: GET SPONSORED AT WORK" };
     for (int i = 0; i < ZONE_N; i++) {
-        int sel = i == travel_sel, here = i == world_zone;
-        gfx_text(86, 74 + i * 20, 1, world_zone_name(i), sel ? 255 : here ? 120 : 190, sel ? 255 : here ? 120 : 190, sel ? 255 : 130);
-        gfx_text(86, 83 + i * 20, 1, here ? "YOU ARE HERE" : blurb[i], DIM);
+        int sel = i == travel_sel, here = i == world_zone, open_ = zone_unlocked(i);
+        if (!open_) gfx_text(86, 74 + i * 20, 1, world_zone_name(i), 110, 110, 120);
+        else gfx_text(86, 74 + i * 20, 1, world_zone_name(i), sel ? 255 : here ? 120 : 190, sel ? 255 : here ? 120 : 190, sel ? 255 : 130);
+        gfx_text(86, 83 + i * 20, 1, !open_ ? lockTxt[i] : here ? "YOU ARE HERE" : blurb[i], DIM);
         if (sel) gfx_text(76, 74 + i * 20, 1, ">", GOLD);
     }
 }
 
 // ---- the pause menu ----
-static const char *const pauseNm[] = { "RESUME", "TRAVEL", "CREATE A BORE", "ADD A BORE", "BUILD MODE", "JUKEBOX", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
-#define NPAUSE 9
+static const char *const pauseNm[] = { "RESUME", "THE STORY", "TRAVEL", "CREATE A BORE", "ADD A BORE", "BUILD MODE", "JUKEBOX", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
+#define NPAUSE 10
 static void pause_update(void) {
     if (PRESSED(PAD_UP)) menu_sel = (menu_sel + NPAUSE - 1) % NPAUSE;
     if (PRESSED(PAD_DOWN)) menu_sel = (menu_sel + 1) % NPAUSE;
@@ -288,24 +298,53 @@ static void pause_update(void) {
     if (PRESSED(PAD_CROSS)) {
         switch (menu_sel) {
             case 0: state = ST_LIFE; break;
-            case 1: travel_sel = world_zone; state = ST_TRAVEL; break;
-            case 2: edit = sims[player].bore; create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
-            case 3: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
+            case 1: state = ST_STORY; break;
+            case 2: travel_sel = world_zone; state = ST_TRAVEL; break;
+            case 3: edit = sims[player].bore; create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
+            case 4: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); state = ST_LIFE; } break;
-            case 4: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); state = ST_BUILD; break;
-            case 5: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
-            case 6: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 7: life_started = 0; start_life(); state = ST_LIFE; break;
-            case 8: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; break;
+            case 5: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); state = ST_BUILD; break;
+            case 6: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
+            case 7: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
+            case 8: life_started = 0; start_life(); state = ST_LIFE; break;
+            case 9: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; break;
         }
     }
 }
 static void pause_draw(void) {
     life_draw();
-    draw_panel(90, 36, 140, 132);
-    gfx_textc(160, 40, 2, "PAUSED", GOLD);
-    for (int i = 0; i < NPAUSE; i++) gfx_text(104, 62 + i * 11, 1, pauseNm[i], i == menu_sel ? 255 : 170, i == menu_sel ? 255 : 170, i == menu_sel ? 255 : 180);
-    gfx_text(96, 62 + menu_sel * 11, 1, ">", GOLD);
+    draw_panel(88, 30, 144, 146);
+    gfx_textc(160, 34, 2, "PAUSED", GOLD);
+    for (int i = 0; i < NPAUSE; i++) menu_row(94, 54 + i * 11, 132, pauseNm[i], i == menu_sel);
+}
+
+// ---- the story page: the goals of this life, Bustin' Out style ----
+static void story_update(void) {
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_CROSS) || PRESSED(PAD_START)) state = ST_PAUSE;
+}
+static void story_draw(void) {
+    life_draw();
+    draw_panel(52, 34, 216, 142);
+    gfx_textc(160, 38, 2, "THE STORY SO FAR", GOLD);
+    struct { const char *txt; int done; } g[6] = {
+        { "EARN A PAYCHECK (WORK 9 TO 5, MON-FRI)", story_paid > 0 },
+        { "SAIL TO CAPTAVAT ISLAND", story_visit[1] },
+        { "GET SPONSORED AT WORK", job_level >= 2 },
+        { "SEE THE DESERT TOWN", story_visit[2] },
+        { "MAKE FRIENDS: CHAT 5 TIMES", story_talks >= 5 },
+        { "SAVE UP 20000", cash >= 20000 },
+    };
+    int done = 0;
+    for (int i = 0; i < 6; i++) {
+        int y = 58 + i * 14;
+        gfx_rect(62, y, 8, 8, 70, 70, 80, 0); gfx_rect(63, y + 1, 6, 6, 13, 15, 21, 0);
+        if (g[i].done) gfx_rect(64, y + 2, 4, 4, 90, 230, 90, 0);
+        gfx_text(74, y, 1, g[i].txt, g[i].done ? 120 : 200, g[i].done ? 255 : 200, g[i].done ? 160 : 210);
+        if (g[i].done) { gfx_text(236, y, 1, "DONE", 90, 230, 90); done++; }
+    }
+    char b[40]; sprintf(b, "%d OF 6 - A NEW GOAL OPENS EACH DOOR", done);
+    gfx_textc(160, 148, 1, b, DIM);
+    gfx_textc(160, 162, 1, "O BACK", GREY);
 }
 
 // ---- the creator ----
@@ -550,7 +589,8 @@ static void title_draw(void) {
     gfx_textc(160, 200, 1, "THE VOXEL LIFE, NOW IN FULL 3D", 180, 200, 255);
     if ((title_t / 20) & 1) gfx_textc(160, 222, 1, "PRESS START", WHITE);
 }
-static const char *const menuNm[] = { "PLAY", "CREATE A BORE", "JUKEBOX", "HOW TO PLAY" };
+static const char *const menuNm[] = { "STORY MODE", "CREATE A BORE", "JUKEBOX", "HOW TO PLAY" };
+static const char *const menuBlurb[] = { "HOME, THE ISLAND, THE TOWN", "SCULPT YOUR BORE", "ALL 33 SONGS", "CONTROLS AND TIPS" };
 static void menu_update(void) {
     title_t++;
     if (PRESSED(PAD_UP)) menu_sel = (menu_sel + 3) % 4;
@@ -567,9 +607,10 @@ static void menu_update(void) {
 }
 static void menu_draw(void) {
     title_draw();
-    draw_panel(100, 70, 120, 70);
-    for (int i = 0; i < 4; i++) gfx_text(114, 78 + i * 14, 1, menuNm[i], i == menu_sel ? 255 : 170, i == menu_sel ? 255 : 170, i == menu_sel ? 255 : 180);
-    gfx_text(106, 78 + menu_sel * 14, 1, ">", GOLD);
+    draw_panel(94, 66, 132, 90);
+    for (int i = 0; i < 4; i++) menu_row(100, 76 + i * 14, 120, menuNm[i], i == menu_sel);
+    gfx_rect(100, 134, 120, 1, 60, 60, 70, 0);
+    gfx_textc(160, 140, 1, menuBlurb[menu_sel], DIM);
 }
 
 int main(void) {
@@ -607,6 +648,7 @@ int main(void) {
             case ST_JUKEBOX: juke_update(); juke_draw(); break;
             case ST_HELP: help_update(); help_draw(); break;
             case ST_TRAVEL: travel_update(); travel_draw(); break;
+            case ST_STORY: story_update(); story_draw(); break;
         }
         gfx_flip();
     }

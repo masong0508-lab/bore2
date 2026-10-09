@@ -29,6 +29,7 @@ typedef struct {
     int  hurt_t;
     int  skill_cook, skill_body, skill_fun;
     int  dead;
+    u8   grump;                 // the housemate who will NOT have a thing floating over their head
 } Sim;
 
 extern Sim  sims[MAX_SIMS];
@@ -57,3 +58,8 @@ int  sim_need_val(const Sim *s, int n);    // 0..100
 int  sim_awake(const Sim *s);
 void sim_switch_player(void);
 int  sim_find_path(Sim *s, int tx, int ty);
+
+// the story: what this life has done so far (the travel zones unlock from these)
+extern int story_paid;         // paychecks earned
+extern int story_talks;        // chats the player started
+extern u8  story_visit[3];     // zones set foot in
