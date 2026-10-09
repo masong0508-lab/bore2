@@ -204,7 +204,31 @@ void audio_jukebox_play(int i) {
     reverb_set(songs[i].fx);
     sq_on = 1;
 }
+// ---- RADIO STATIONS: the songs grouped by feel; a radio, stereo or jukebox tunes one in ----
+static const char *const stNm[4] = { "BORE FM", "RAVE 101", "CHILL WAVE", "SPACE RADIO" };
+static const char *const stKey[4] = { "DIPPER|EXCUSES|CORA|BARRACHO|FLEXICODE|WINNER",
+                                      "HOT DAMN|COCAINE|CYNICAL|EMERGENCY|AIM AND|CONDENSED",
+                                      "TREE|CLOUDS|SUNMAN|WHISTLER|CLOSER",
+                                      "SPACE|MARS|BOMB|MAGIC|NURSERY|STAGED|AMIGA" };
+static int station = -1;
+static int in_station(int st, int i) {   // does song i's name hold one of the station's words
+    const char *k = stKey[st], *n = songs[i].name;
+    while (*k) { char w[16]; int l = 0; while (*k && *k != '|' && l < 15) w[l++] = *k++; w[l] = 0; if (*k == '|') k++;
+                 if (strstr(n, w)) return 1; }
+    return 0;
+}
+int audio_station_count(void) { return 4; }
+const char *audio_station_name(int s) { return s >= 0 && s < 4 ? stNm[s] : "OFF"; }
+int audio_station(void) { return station; }
+void audio_station_play(int s) {
+    station = s;
+    if (s < 0) { audio_jukebox_stop(); return; }
+    int pick[NSONGS], n = 0;
+    for (int i = 0; i < NSONGS; i++) if (in_station(s, i) && i != cur_song) pick[n++] = i;
+    if (n) audio_jukebox_play(pick[rand() % n]);
+}
 void audio_jukebox_next(void) {
+    if (station >= 0) { audio_station_play(station); return; }
     if (NSONGS == 0) return;
     int n = shuffle ? (int)(rand() % NSONGS) : (cur_song + 1) % NSONGS;
     if (shuffle && n == cur_song) n = (n + 1) % NSONGS;

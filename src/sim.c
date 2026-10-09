@@ -606,6 +606,10 @@ static int sim_pie_open_(char opt[8][16]) {
         case ACT_READ: OPT("READ", 0) OPT("STUDY", 1) break;
         case ACT_PHONE: OPT("CALL A FRIEND", 0) OPT("ORDER PIZZA", 1) break;
         case ACT_STAIRS: OPT("GO UP", 0) break;
+        case ACT_FUN: if (c == 'R' || c == 'A' || c == 'j') {   // a radio: the stations
+                          for (int k = 0; k < audio_station_count(); k++) OPT(audio_station_name(k), 10 + k)
+                          OPT("TURN IT OFF", 9) break; }
+                      OPT(act_hint(act, c), 0) break;
         default: OPT(act_hint(act, c), 0) break;
     }
     #undef OPT
@@ -660,7 +664,11 @@ static void sim_pie_do_(int i) {
         s->lvl = (u8)tl; s->x = tx * TILE + TILE / 2; s->z = -(ty * TILE + TILE / 2); s->yaw = up ? ((4096 - f * 1024 + 2048) & 4095) : ((4096 - f * 1024) & 4095);
         audio_voice(VOICE_FINISHED); return;
     }
-    if (c == 'R' || c == 'A') audio_jukebox_next();
+    if (pie_code[i] >= 9 && (c == 'R' || c == 'A' || c == 'j')) {   // tune in (or off), then dance to it
+        int st = pie_code[i] == 9 ? -1 : pie_code[i] - 10; audio_station_play(st);
+        char b[32]; sprintf(b, st < 0 ? "RADIO OFF" : "NOW ON %s", audio_station_name(st)); sim_note(b);
+        if (st < 0) return;
+    }
     if (act == ACT_TRAVEL) { travel_asked = 1; return; }
     if (act == ACT_PHONE && pie_code[i] == 1) { if (cash < 40) { sim_note("PIZZA IS $40"); return; } cash -= 40; }
     begin_action(s, act, pie_mx, pie_my);

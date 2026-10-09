@@ -641,7 +641,7 @@ static void juke_update(void) {
     if (n) {
         if (PRESSED(PAD_UP)) juke_sel = (juke_sel + n - 1) % n;
         if (PRESSED(PAD_DOWN)) juke_sel = (juke_sel + 1) % n;
-        if (PRESSED(PAD_CROSS)) { if (audio_jukebox_current() == juke_sel) audio_jukebox_stop(); else audio_jukebox_play(juke_sel); }
+        if (PRESSED(PAD_CROSS)) { audio_station_play(-1); if (audio_jukebox_current() == juke_sel) audio_jukebox_stop(); else audio_jukebox_play(juke_sel); }
         if (PRESSED(PAD_L1)) audio_jukebox_play((audio_jukebox_current() + n - 1) % n);
         if (PRESSED(PAD_R1)) audio_jukebox_next();
         if (PRESSED(PAD_SQUARE)) audio_jukebox_toggle_shuffle();
@@ -655,7 +655,7 @@ static void juke_draw(void) {
     int cur = audio_jukebox_current();
     char b[64];
     if (cur >= 0) {
-        sprintf(b, "NOW PLAYING: %s", audio_song_name(cur)); gfx_text(16, 22, 1, b, 120, 255, 160);
+        sprintf(b, "%s: %s", audio_station() >= 0 ? audio_station_name(audio_station()) : "NOW PLAYING", audio_song_name(cur)); gfx_text(16, 22, 1, b, 120, 255, 160);
         int e = audio_jukebox_elapsed(), l = audio_song_len(cur);
         sprintf(b, "%s   %d:%02d / %d:%02d", audio_song_artist(cur), e / 60, e % 60, l / 60, l % 60); gfx_text(16, 32, 1, b, GREY);
         draw_bar(16, 42, 288, l ? MIN(100, e * 100 / l) : 0, 120, 255, 160);

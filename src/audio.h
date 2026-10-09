@@ -22,3 +22,8 @@ int  audio_jukebox_elapsed(void);         // seconds
 void audio_jukebox_toggle_shuffle(void);
 int  audio_jukebox_shuffle(void);
 int  audio_cd_ok(void);
+// radio stations
+int  audio_station_count(void);
+const char *audio_station_name(int s);
+int  audio_station(void);            // -1: none
+void audio_station_play(int s);      // -1: off
