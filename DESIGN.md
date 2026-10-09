@@ -99,6 +99,13 @@ The first three already exist in some form. The rest is the roadmap. Each one na
     NEAT FREAK / SLOB, SOCIAL BUTTERFLY / LONER, ATHLETIC / COUCH POTATO, GOOFBALL / SERIOUS, GOOD / MEAN. *Done.*
 4d. **Body language**: relaxed A-pose, breathing, a head on its own neck (curious tilts, nods while talking, droops
     when sad), happy hops, a sad slouch, a lean into the stride. *Done.*
+4e. **Storeys and roofs** (`world.c`): the ground plus four floors above (5 storeys) per zone. Upper floors need
+    support (something below or a floor beside them), walls stand on them, STAIRS ($400) connect a storey to the
+    next (GO UP / GO DOWN in the pie menu) and open a stairwell above. The Sims 2 floor view: storeys above the
+    one you are on are hidden. ROOFS are generated over every enclosed building from its footprint (HIP, GABLE or
+    FLAT; LOW, MEDIUM or STEEP; six shingle colours), with eaves, gable-end walls, and wide buildings levelling off.
+    The building you are in opens its roof; every other one keeps it. Build mode: L2 R2 storey, L3 see the roof,
+    the ROOF tool. THE MAN BASE now has an upstairs bedroom. *Done.*
 5. **Relationships** — daily score per pair, friend at 50, decay 2/day; chats move it, mood and
    compatible traits (NEAT/OUTGOING/ACTIVE/PLAYFUL/NICE) decide acceptance. Rejection is a fear.
 6. **A cast** — give the housemates and the townies names, homes and jobs; MOSS already exists (the one

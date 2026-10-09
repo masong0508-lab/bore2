@@ -72,7 +72,7 @@ enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int create_tab, create_row, create_from, create_turn;
-static int build_tool, build_item, build_x = 8, build_y = 8, build_fl = 1, build_wp = 1;
+static int build_tool, build_item, build_x = 8, build_y = 8, build_fl = 1, build_wp = 1, build_lvl, build_peek;
 static int juke_sel, juke_scroll;
 static int life_started;
 static int help_page;
@@ -117,7 +117,7 @@ static void start_life(void) {
 }
 
 static void draw_marker(const Sim *s) {   // who you are playing: a bobbing gold arrow. (It used to be a green diamond. MOSS won.)
-    VECTOR p; setVector(&p, s->x, 0, s->z);
+    VECTOR p; setVector(&p, s->x, -s->lvl * WALL_FULL, s->z);
     int top = s->bore.w_heady - 34 - (isin((frame * 70) & 4095) >> 9);   // just over this Bore's own head
     gfx_set_object(&p, cam_yaw & 4095);                       // flat to the camera
     SVECTOR a, b, c, d;
@@ -131,12 +131,14 @@ static void draw_marker(const Sim *s) {   // who you are playing: a bobbing gold
 static void draw_sims(void) {
     for (int i = 0; i < nsims; i++) {
         Sim *s = &sims[i];
+        if (s->lvl > world_view_lvl) continue;                      // upstairs, out of the floor view
         VECTOR p; setVector(&p, s->x, 0, s->z);
         if (s->action == ACT_SLEEP) p.vy = -items_height('S') + 40;
         if (s->action == ACT_SIT || s->action == ACT_WC) p.vy = -items_height(world_at(s->act_x, s->act_y)) / 2 + 10;
         s->gait.mood = s->mood; s->gait.talk = s->action == ACT_TALK; s->gait.seed = i; s->gait.clock = frame;
+        p.vy -= s->lvl * WALL_FULL;
         voxel_draw(&s->bore, &p, s->yaw, &s->gait);
-        if (s->action != ACT_SLEEP) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
+        if (s->action != ACT_SLEEP && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
     if (nsims && !sims[player].grump) draw_marker(&sims[player]);   // MOSS gets nothing. MOSS made that very clear.
 }
@@ -145,7 +147,8 @@ static void draw_bubbles(void) {   // thoughts and notes over heads
     for (int i = 0; i < nsims; i++) {
         Sim *s = &sims[i];
         if (s->think < 0 && s->note_t <= 0) continue;
-        VECTOR p; setVector(&p, s->x, 0, s->z);
+        if (s->lvl > world_view_lvl) continue;
+        VECTOR p; setVector(&p, s->x, -s->lvl * WALL_FULL, s->z);
         gfx_set_object(&p, 0);
         SVECTOR top; setVector(&top, 0, -H * VOX - 40, 0);
         int sx, sy, sz;
@@ -246,7 +249,8 @@ static void life_update(int steps) {
 
 static void life_draw(void) {
     Sim *s = &sims[player];
-    camera_apply(s->x, -200, s->z);
+    camera_apply(s->x, -200 - s->lvl * WALL_FULL, s->z);
+    world_view_lvl = s->lvl; world_roof_show = 0;
     // the day-night sky and light
     int t = clock_min;
     int day = (t > 360 && t < 1200) ? 255 : (t >= 1200 && t < 1320) ? 255 - (t - 1200) * 2 : (t >= 300 && t <= 360) ? (t - 300) * 4 : 20;
@@ -479,6 +483,7 @@ static void create_draw(void) {
     cam.eye.vy = cam_fy - ((dist * isin(pitch)) >> 12);
     gfx_camera_update();
     gfx_set_fog(0, 0);
+    world_view_lvl = 0; world_roof_show = 0;
     world_draw(4, 5, frame, 1);
     VECTOR p; setVector(&p, bx, 0, bz);
     Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (frame * 90) & 4095; g.amp = 0;
@@ -525,7 +530,16 @@ static void create_draw(void) {
 }
 
 // ---- build mode ----
-static const char *const toolNm[4] = { "ITEM", "WALL", "FLOOR", "WALLPAPER" };
+static const char *const toolNm[5] = { "BUY", "WALL", "FLOOR", "WALLPAPER", "ROOF" };
+#define NTOOL 5
+static int floor_supported(int l, int x, int y) {   // an upper floor needs something under it, or a floor beside it on its own storey
+    if (l == 0) return 1;
+    char below = world_at_l(l - 1, x, y);
+    if (below != ' ' && below != 'K') return 1;
+    static const signed char dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
+    for (int k = 0; k < 4; k++) { char c = world_at_l(l, x + dx[k], y + dy[k]); if (c != ' ') return 1; }
+    return 0;
+}
 static void build_update(void) {
     static int rep;
     int dx = 0, dy = 0;
@@ -533,56 +547,92 @@ static void build_update(void) {
     if (l || r || u || d) { if (rep == 0 || rep > 12) { if (l) dx = -1; if (r) dx = 1; if (u) dy = -1; if (d) dy = 1; if (rep > 12) rep = 9; } rep++; } else rep = 0;
     if (dx || dy) {   // move with the camera: "up" is away from it
         int c = icos(cam_yaw), sn = isin(cam_yaw);
-        int wx = (dx * c * 4096 - dy * sn * 4096) >> 24, wz = (-dy * c * 4096 - dx * sn * 4096) >> 24;   // sign: map y grows south = world -z
-        (void)wx; (void)wz;
-        // pick the dominant world direction
         int vx = dx * c - (-dy) * sn, vz = (-dy) * c + dx * sn;
         if (ABS(vx) >= ABS(vz)) build_x += vx > 0 ? 1 : -1; else build_y += vz > 0 ? -1 : 1;
         build_x = CLAMP(build_x, 1, MW - 2); build_y = CLAMP(build_y, 1, MH - 2);
     }
-    if (PRESSED(PAD_SELECT)) build_tool = (build_tool + 1) & 3;
+    if (PRESSED(PAD_SELECT)) build_tool = (build_tool + 1) % NTOOL;
+    if (PRESSED(PAD_R2) && build_lvl < NUP) { build_lvl++; audio_voice(VOICE_AGREE); }     // the storey you build on
+    if (PRESSED(PAD_L2) && build_lvl > 0) { build_lvl--; audio_voice(VOICE_AGREE); }
+    if (PRESSED(PAD_L3)) build_peek ^= 1;                                                  // see the roof
+    if (analog) { cam_yaw += rs_x / 3; cam_pitch += rs_y / 4; cam_pitch = CLAMP(cam_pitch, 300, 1000); }
     if (build_tool == 0) { if (PRESSED(PAD_L1)) build_item = (build_item + items_count() - 1) % items_count(); if (PRESSED(PAD_R1)) build_item = (build_item + 1) % items_count(); }
     if (build_tool == 2) { if (PRESSED(PAD_L1)) build_fl = (build_fl + NFLOORS - 1) % NFLOORS; if (PRESSED(PAD_R1)) build_fl = (build_fl + 1) % NFLOORS; }
     if (build_tool == 3) { if (PRESSED(PAD_L1)) build_wp = (build_wp + NWALLS - 1) % NWALLS; if (PRESSED(PAD_R1)) build_wp = (build_wp + 1) % NWALLS; }
-    if (build_tool == 1 || build_tool == 0) { if (HELD(PAD_L2)) cam_yaw -= 40; if (HELD(PAD_R2)) cam_yaw += 40; }
-    char *cell = &lifeMap[build_y][build_x];
-    int occupied = 0; for (int i = 0; i < nsims; i++) if (sim_tile_x(&sims[i]) == build_x && sim_tile_y(&sims[i]) == build_y) occupied = 1;
+    if (build_tool == 1) { if (PRESSED(PAD_L1)) build_wp = (build_wp + NWALLS - 1) % NWALLS; if (PRESSED(PAD_R1)) build_wp = (build_wp + 1) % NWALLS; }
+    if (build_tool == 4) {   // the roof: L1 R1 colour, X style, SQUARE pitch
+        if (PRESSED(PAD_L1)) { world_roof_col = (world_roof_col + NROOF_COL - 1) % NROOF_COL; world_touched(); }
+        if (PRESSED(PAD_R1)) { world_roof_col = (world_roof_col + 1) % NROOF_COL; world_touched(); }
+        if (PRESSED(PAD_CROSS)) { world_roof_style = (world_roof_style + 1) % NROOF_STYLE; world_touched(); audio_voice(VOICE_FINISHED); }
+        if (PRESSED(PAD_SQUARE)) { world_roof_pitch = (world_roof_pitch + 1) % NROOF_PITCH; world_touched(); audio_voice(VOICE_FINISHED); }
+        if (PRESSED(PAD_TRIANGLE) || PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { build_lvl = 0; state = ST_LIFE; }
+        return;
+    }
+    int L = build_lvl;
+    char *cell = world_cell(L, build_x, build_y);
+    int occupied = 0; for (int i = 0; i < nsims; i++) if (sims[i].lvl == L && sim_tile_x(&sims[i]) == build_x && sim_tile_y(&sims[i]) == build_y) occupied = 1;
     if (PRESSED(PAD_CROSS) && !occupied) {
+        int ok = 0;
         if (build_tool == 0) { char ch = items_at(build_item); int cost = items_cost(ch);
-            if (*cell == '.' && cash >= cost) { *cell = ch; cash -= cost; audio_voice(VOICE_FINISHED); wants_event(&sims[player], W_BUY, 0); } else audio_voice(VOICE_NAH); }
-        if (build_tool == 1) { if (*cell == '.' && cash >= 50) { *cell = 'W'; wallMap[build_y][build_x] = (u8)build_wp; cash -= 50; } }
-        if (build_tool == 2) { if (cash >= 10) { floorMap[build_y][build_x] = (u8)build_fl; cash -= 10; } }
-        if (build_tool == 3) { if (*cell == 'W' || *cell == 'w') wallMap[build_y][build_x] = (u8)build_wp; }
+            if (*cell == '.' && cash >= cost) {
+                if (ch == 'K') {   // stairs: there must be a storey above, and its tile over the stairs becomes the stairwell
+                    if (L >= NUP) { sim_note("NO STOREY ABOVE THE TOP ONE"); }
+                    else { char *up = world_cell(L + 1, build_x, build_y); if (*up == '.' || *up == ' ') { *up = ' '; *cell = ch; cash -= cost; ok = 1; } }
+                } else { *cell = ch; cash -= cost; ok = 1; wants_event(&sims[player], W_BUY, 0); }
+            } }
+        if (build_tool == 1) { if (*cell == '.' && cash >= 50) { *cell = 'W'; *world_wall_cell(L, build_x, build_y) = (u8)build_wp; cash -= 50; ok = 1; } }
+        if (build_tool == 2) { if (*cell == ' ' && !floor_supported(L, build_x, build_y)) sim_note("A FLOOR UP HERE NEEDS SOMETHING UNDER IT");
+                               else if (cash >= 10) { if (*cell == ' ') *cell = '.'; *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; ok = 1; } }
+        if (build_tool == 3) { if (*cell == 'W' || *cell == 'w') { *world_wall_cell(L, build_x, build_y) = (u8)build_wp; ok = 1; } }
+        audio_voice(ok ? VOICE_FINISHED : VOICE_NAH);
     }
-    if (HELD(PAD_CROSS) && build_tool == 2 && cash >= 10 && floorMap[build_y][build_x] != build_fl) { floorMap[build_y][build_x] = (u8)build_fl; cash -= 10; }
+    if (HELD(PAD_CROSS) && build_tool == 2 && cash >= 10 && *cell != ' ' && *world_floor_cell(L, build_x, build_y) != build_fl) { *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; }
+    if (HELD(PAD_CROSS) && build_tool == 2 && L > 0 && *cell == ' ' && cash >= 10 && floor_supported(L, build_x, build_y)) { *cell = '.'; *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; }
     if (PRESSED(PAD_SQUARE) && !occupied) {
-        if (*cell != '.' && *cell != 'P') { int back = items_is_item(*cell) ? items_cost(*cell) * 3 / 4 : (*cell == 'W' ? 25 : 0); *cell = '.'; cash += back; }
+        if (*cell != '.' && *cell != 'P' && *cell != ' ') { int back = items_is_item(*cell) ? items_cost(*cell) * 3 / 4 : (*cell == 'W' ? 25 : 0);
+            if (*cell == 'K' && L < NUP) { char *up = world_cell(L + 1, build_x, build_y); if (*up == ' ' && floor_supported(L + 1, build_x, build_y)) *up = '.'; }   // close the stairwell again
+            *cell = '.'; cash += back; }
+        else if (*cell == '.' && L > 0) { *cell = ' '; cash += 5; }                       // take the floor itself away (upper storeys)
     }
-    if (PRESSED(PAD_CROSS) || PRESSED(PAD_SQUARE)) world_touched();
-    if (PRESSED(PAD_TRIANGLE) || PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) state = ST_LIFE;
+    if (PRESSED(PAD_CROSS) || PRESSED(PAD_SQUARE) || HELD(PAD_CROSS)) world_touched();
+    if (PRESSED(PAD_TRIANGLE) || PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { build_lvl = 0; state = ST_LIFE; }
 }
 static void build_draw(void) {
-    camera_apply(build_x * TILE + TILE / 2, -100, -(build_y * TILE + TILE / 2));
+    {   // looking at the roof: lift the camera above the ridge and pull back, so the whole roof is in view
+        int roofv = build_tool == 4 || build_peek, keep = cam_dist;
+        if (roofv) cam_dist = MAX(cam_dist, 2600);
+        camera_apply(build_x * TILE + TILE / 2, -100 - build_lvl * WALL_FULL - (roofv ? WALL_FULL + 300 : 0), -(build_y * TILE + TILE / 2));
+        cam_dist = keep;
+    }
     gfx_set_clear(20 * 8, 26 * 8, 31 * 8);
     gfx_set_ambient(100, 84);
-    world_draw(build_x, build_y, frame, 1);
+    world_view_lvl = build_lvl; world_roof_show = build_tool == 4 || build_peek;
+    world_draw(build_x, build_y, frame, build_tool != 4 && !build_peek);
     draw_sims();
     // the cursor: a frame around the tile, and a ghost of the item
     gfx_set_identity();
-    { int x0 = build_x * TILE, z1 = -build_y * TILE; SVECTOR a, b, c, d;
-      setVector(&a, x0, -4, z1); setVector(&b, x0 + TILE, -4, z1); setVector(&c, x0, -4, z1 - TILE); setVector(&d, x0 + TILE, -4, z1 - TILE);
+    { int x0 = build_x * TILE, z1 = -build_y * TILE, yy = -4 - build_lvl * WALL_FULL; SVECTOR a, b, c, d;
+      setVector(&a, x0, yy, z1); setVector(&b, x0 + TILE, yy, z1); setVector(&c, x0, yy, z1 - TILE); setVector(&d, x0 + TILE, yy, z1 - TILE);
       int pulse = 160 + (isin((frame * 120) & 4095) >> 6);
       gfx_quad_f(&a, &b, &c, &d, pulse, pulse, 40, 0); }
-    if (build_tool == 0 && lifeMap[build_y][build_x] == '.') { char ch = items_at(build_item); items_draw(ch, build_x, build_y, world_item_facing(build_x, build_y), items_along(ch) ? world_along(build_x, build_y, ch) : 0, frame); }
-    draw_panel(4, 4, 200, 34);
-    char b[48];
-    sprintf(b, "BUILD: %s   $%ld", toolNm[build_tool], cash); gfx_text(8, 8, 1, b, GOLD);
+    if (build_tool == 0 && world_at_l(build_lvl, build_x, build_y) == '.') {
+        char ch = items_at(build_item);
+        world_lvl = build_lvl; world_cam_push(build_lvl);
+        items_draw(ch, build_x, build_y, world_item_facing(build_x, build_y), items_along(ch) ? world_along(build_x, build_y, ch) : 0, frame);
+        world_cam_pop(); world_lvl = 0;
+    }
+    draw_panel(4, 4, 232, 44);
+    char b[64];
+    sprintf(b, "BUILD: %s  STOREY %d/%d  AT %d,%d  $%ld", toolNm[build_tool], build_lvl + 1, NLEVELS, build_x, build_y, cash); gfx_text(8, 8, 1, b, GOLD);
     if (build_tool == 0) sprintf(b, "%s  $%d", items_name(items_at(build_item)), items_cost(items_at(build_item)));
     else if (build_tool == 1) sprintf(b, "WALL $50  (%s)", world_wall_name(build_wp));
-    else if (build_tool == 2) sprintf(b, "%s $10", world_floor_name(build_fl));
-    else sprintf(b, "%s", world_wall_name(build_wp));
+    else if (build_tool == 2) sprintf(b, "%s $10 A TILE", world_floor_name(build_fl));
+    else if (build_tool == 3) sprintf(b, "%s", world_wall_name(build_wp));
+    else sprintf(b, "%s ROOF, %s PITCH, %s", world_roof_style_name(world_roof_style), world_roof_pitch_name(world_roof_pitch), world_roof_col_name(world_roof_col));
     gfx_text(8, 18, 1, b, WHITE);
-    gfx_text(8, 28, 1, "L1 R1 PICK  X PLACE  SQ ERASE  SEL TOOL  O DONE", GREY);
+    if (build_tool == 4) gfx_text(8, 28, 1, "X STYLE  SQ PITCH  L1 R1 COLOUR  SEL TOOL  O DONE", GREY);
+    else gfx_text(8, 28, 1, "L1 R1 PICK  X PLACE  SQ ERASE  SEL TOOL  O DONE", GREY);
+    gfx_text(8, 38, 1, "L2 R2 STOREY DOWN / UP   L3 SEE THE ROOF   R-STICK TURN", GREY);
 }
 
 // ---- the jukebox ----
@@ -659,6 +709,7 @@ static void title_draw(void) {
     cam_yaw = (2048 + (isin((title_t * 3) & 4095) >> 3)) & 4095; cam_pitch = 420; cam_dist = 1500;
     camera_apply(fx, -220, fz);
     gfx_set_fog(2000, 5000);
+    world_view_lvl = NUP; world_roof_show = 0;
     world_draw(tx, ty, title_t, 1);
     VECTOR p; setVector(&p, fx, 0, fz);
     Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (title_t * 120) & 4095; g.amp = 4096;

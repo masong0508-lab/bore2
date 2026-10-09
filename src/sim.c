@@ -129,7 +129,7 @@ void sim_add(const Bore *b, int mx, int my, int ai) {
     memset(s, 0, sizeof *s);
     s->bore = *b;
     s->x = mx * TILE + TILE / 2; s->z = -(my * TILE + TILE / 2);
-    s->yaw = 0; s->ai = ai; s->talk_to = -1; s->think = -1; s->grump = 0;
+    s->yaw = 0; s->ai = ai; s->talk_to = -1; s->think = -1; s->grump = 0; s->lvl = 0;
     for (int i = 0; i < MAX_SIMS; i++) s->rel[i] = 0;
     for (int i = 0; i < 6; i++) s->ml[i].id = 0;
     s->act_var = 0;
@@ -227,6 +227,7 @@ static int action_for(char c) {
         case 'F': case 's': return ACT_EAT; case 'T': case '&': return ACT_WC; case 'S': case 'z': return ACT_SLEEP; case 'H': case '0': return ACT_SHOWER;
         case 'C': case 'U': case 'h': case 'N': case '%': return ACT_SIT;
         case '@': case '+': return ACT_TRAVEL;
+        case 'K': return ACT_STAIRS;
         case 'v': case 'R': case 'A': case 'Q': case 'q': case 'G': case 'V': return ACT_FUN;
         case 'b': return ACT_READ; case 'c': return ACT_COFFEE; case 'm': return ACT_RUN; case 'I': return ACT_PHONE; case 'x': return ACT_WORK;
         default: return ACT_NONE;
@@ -236,6 +237,7 @@ static int on_item(int act) { return act == ACT_WC || act == ACT_SLEEP || act ==
 static const char *act_hint(int act, char c) {
     switch (act) {
         case ACT_TRAVEL: return c == '@' ? "SAIL" : "TAKE THE BUS";
+        case ACT_STAIRS: return "STAIRS";
         case ACT_EAT: return c == 's' ? "COOK AND EAT" : "EAT"; case ACT_WC: return c == '&' ? "USE OUTHOUSE" : "USE TOILET"; case ACT_SLEEP: return "SLEEP"; case ACT_SHOWER: return "SHOWER";
         case ACT_SIT: return c == 'h' ? "SIT" : "LOUNGE"; case ACT_FUN: return c == 'v' ? "WATCH TV" : c == 'R' ? "TUNE RADIO" : c == 'A' ? "CRANK IT" : c == 'Q' ? "JACK IN" : c == 'q' ? "FEED THE FISH" : "CHILL";
         case ACT_READ: return "READ"; case ACT_COFFEE: return "A CUP"; case ACT_RUN: return "A RUN"; case ACT_PHONE: return "CALL"; case ACT_WORK: return "WORK";
@@ -476,6 +478,7 @@ void sim_step(void) {
     clock_tick();
     for (int i = 0; i < nsims; i++) {
         Sim *s = &sims[i];
+        world_lvl = s->lvl;
         tick_needs(s);
         if (s->note_t > 0) s->note_t--;
         if (s->gait.wave > 0 && s->action != ACT_TALK && s->action != ACT_PHONE) s->gait.wave--;
@@ -485,12 +488,14 @@ void sim_step(void) {
         if (s->action != ACT_WALK && s->action != ACT_RUN && s->action != ACT_NONE) s->gait.amp = 0;
         if (s->action == ACT_NONE && s->gait.amp > 0 && i != player) s->gait.amp = 0;
     }
+    world_lvl = 0;
     if (last_note_t > 0) last_note_t--;
 }
 
 // ---- the player ----
 void sim_player_move(int dx, int dz, int run) {
     Sim *s = &sims[player];
+    world_lvl = s->lvl;
     if (s->action != ACT_NONE && s->action != ACT_WALK) { if (s->action == ACT_WORK || s->action == ACT_SLEEP) return; end_action(s); }
     s->path_n = 0; s->action = ACT_NONE;
     if (!dx && !dz) { s->gait.amp = s->gait.amp > 300 ? s->gait.amp - 300 : 0; return; }
@@ -506,6 +511,7 @@ void sim_player_move(int dx, int dz, int run) {
     if (sp) walk(s, (isin(s->yaw) * sp) >> 12, -((icos(s->yaw) * sp) >> 12));
     s->gait.amp = MAX(1600, (mag * align) >> 12);                            // pivoting: small steps; under way: the full swing
     s->gait.phase = (s->gait.phase + (((run ? 200 : 150) * MAX(mag, 2048)) >> 12)) & 4095;
+    world_lvl = 0;
 }
 
 static int front_tile(const Sim *s, int *mx, int *my) {
@@ -528,9 +534,11 @@ static int target_of(const Sim *s, int *mx, int *my, int *who) {
     int cx = sim_tile_x(s), cy = sim_tile_y(s);
     static const signed char dx[5] = { 0, 0, 1, 0, -1 }, dy[5] = { 0, 1, 0, -1, 0 };
     for (int k = 0; k < 5; k++) { int tx = cx + dx[k], ty = cy + dy[k]; if (action_for(world_at(tx, ty)) != ACT_NONE) { *mx = tx; *my = ty; return 1; } }
+    if (s->lvl > 0) for (int k = 0; k < 5; k++) { int tx = cx + dx[k], ty = cy + dy[k];   // the top of a flight of stairs (open air, the stairs below)
+        if (world_at_l(s->lvl, tx, ty) == ' ' && world_at_l(s->lvl - 1, tx, ty) == 'K') { *mx = tx; *my = ty; return 1; } }
     return 0;
 }
-const char *sim_hint(void) {
+static const char *sim_hint_(void) {
     const Sim *s = &sims[player];
     if (s->action != ACT_NONE && s->action != ACT_WALK) return "GET UP";
     int mx, my, who;
@@ -547,7 +555,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
-int sim_pie_open(char opt[8][16]) {
+static int sim_pie_open_(char opt[8][16]) {
     Sim *s = &sims[player];
     pie_n = 0;
     if (s->action != ACT_NONE && s->action != ACT_WALK) return 0;        // busy: X just stops (sim_player_interact)
@@ -567,6 +575,7 @@ int sim_pie_open(char opt[8][16]) {
         return pie_n;
     }
     char c = world_at(mx, my); int act = action_for(c);
+    if (c == ' ') { strcpy(pie_title, "STAIRS"); strcpy(opt[0], "GO DOWN"); pie_code[0] = 1; pie_n = 1; return 1; }
     if (c == 'x' && !is_work()) { sim_note("WORK IS 9 TO 5, MON TO FRI"); return 0; }
     strcpy(pie_title, act_hint(act, c));
     #define OPT(txt, v) { strcpy(opt[pie_n], txt); pie_code[pie_n++] = v; }
@@ -578,6 +587,7 @@ int sim_pie_open(char opt[8][16]) {
         case ACT_COFFEE: OPT("A CUP", 0) OPT("ESPRESSO", 1) break;
         case ACT_READ: OPT("READ", 0) OPT("STUDY", 1) break;
         case ACT_PHONE: OPT("CALL A FRIEND", 0) OPT("ORDER PIZZA", 1) break;
+        case ACT_STAIRS: OPT("GO UP", 0) break;
         default: OPT(act_hint(act, c), 0) break;
     }
     #undef OPT
@@ -617,11 +627,21 @@ static void social(Sim *s, Sim *o, int move) {   // a social move: the other Bor
     begin_action(o, ACT_TALK, sim_tile_x(s), sim_tile_y(s));
     s->talk_to = who; o->talk_to = me; o->path_n = 0;
 }
-void sim_pie_do(int i) {
+static void sim_pie_do_(int i) {
     Sim *s = &sims[player];
     if (i < 0 || i >= pie_n) return;
     if (pie_who >= 0) { social(s, &sims[pie_who], pie_code[i]); return; }
     char c = world_at(pie_mx, pie_my); int act = action_for(c);
+    if (c == ' ' || act == ACT_STAIRS) {   // the stairs: up from the bottom, down from the top
+        static const signed char fx[4] = { 0, 1, 0, -1 }, fy[4] = { 1, 0, -1, 0 };
+        int up = c != ' ', lo = up ? s->lvl : s->lvl - 1;
+        int keep = world_lvl; world_lvl = lo; int f = world_item_facing(pie_mx, pie_my); world_lvl = keep;
+        int tx = up ? pie_mx - fx[f] : pie_mx + fx[f], ty = up ? pie_my - fy[f] : pie_my + fy[f], tl = up ? lo + 1 : lo;
+        world_lvl = tl; int ok = world_walkable(tx, ty); world_lvl = keep;
+        if (!ok) { sim_note(up ? "BUILD A FLOOR WHERE THE STAIRS COME OUT" : "SOMETHING IS IN THE WAY DOWN THERE"); return; }
+        s->lvl = (u8)tl; s->x = tx * TILE + TILE / 2; s->z = -(ty * TILE + TILE / 2); s->yaw = up ? ((4096 - f * 1024 + 2048) & 4095) : ((4096 - f * 1024) & 4095);
+        audio_voice(VOICE_FINISHED); return;
+    }
     if (c == 'R' || c == 'A') audio_jukebox_next();
     if (act == ACT_TRAVEL) { travel_asked = 1; return; }
     if (act == ACT_PHONE && pie_code[i] == 1) { if (cash < 40) { sim_note("PIZZA IS $40"); return; } cash -= 40; }
@@ -631,7 +651,7 @@ void sim_pie_do(int i) {
     if (act == ACT_EAT && s->act_var == 1) s->act_t = 420;                // cooking takes a while
 }
 
-int sim_player_interact(void) {
+static int sim_player_interact_(void) {
     Sim *s = &sims[player];
     if (s->action != ACT_NONE && s->action != ACT_WALK) { end_action(s); return 1; }
     int mx, my, who;
@@ -656,3 +676,11 @@ int sim_player_interact(void) {
 }
 void sim_player_cancel(void) { Sim *s = &sims[player]; if (s->action != ACT_NONE) end_action(s); }
 void sim_player_cancel_sim(Sim *s) { if (s->action != ACT_NONE) end_action(s); }
+
+const char * sim_hint(void) { world_lvl = sims[player].lvl; const char * r = sim_hint_(); world_lvl = 0; return r; }
+
+int sim_pie_open(char opt[8][16]) { world_lvl = sims[player].lvl; int r = sim_pie_open_(opt); world_lvl = 0; return r; }
+
+void sim_pie_do(int i) { world_lvl = sims[player].lvl; sim_pie_do_(i); world_lvl = 0; }
+
+int sim_player_interact(void) { world_lvl = sims[player].lvl; int r = sim_player_interact_(); world_lvl = 0; return r; }

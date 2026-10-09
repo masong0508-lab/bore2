@@ -154,6 +154,7 @@ static const ItemDef defs[] = {
     { 'x', "WORK MARKER", bxWork, 1, 0, 0, F_FLAT, 0 },
     { 'P', "SPAWN", bxSpawn, 1, 0, 0, F_FLAT, 0 },
     { 'B', "BOARD", bxBoard, 5, 0, 0, F_FLAT, 0 },
+    { 'K', "STAIRS", bxBoard, 1, 0, 0, F_ROT, 400 },
     { 'g', "PALM TREE", bxPalm, 3, 0, 0, 0, 150 },
     { 'u', "CACTUS", bxCactus, 3, 0, 0, 0, 40 },
     { 's', "CAMPFIRE", bxCampfire, 2, 0, 0, 0, 80 },
@@ -322,8 +323,22 @@ static void skate_item(int mx, int my, int r) {
     gfx_set_identity();
 }
 
+static void stairs_item(int mx, int my, int r) {   // a flight of stairs filling one tile: eight steps up a whole storey, rising away from the open side
+    VECTOR p; setVector(&p, mx * TILE + TILE / 2, 0, -(my * TILE + TILE / 2));
+    gfx_set_object(&p, (4096 - r * 1024) & 4095);
+    for (int i = 0; i < 8; i++) {
+        int z0 = -TILE / 2 + i * (TILE / 8), z1 = z0 + TILE / 8, top = -(i + 1) * (WALL_FULL / 8), k = (i & 1) ? 0 : 14;
+        sk_box(-104, 104, top, 0, z0, z1, 176 + k, 128 + k, 84 + k / 2);                // the step, solid to the floor
+        sk_box(-104, 104, top - 4, top, z0 - 6, z1, 214, 170, 118);                       // its nosing
+    }
+    sk_box(-118, -104, -WALL_FULL - 30, 0, -TILE / 2, TILE / 2, 120, 84, 56);            // the side stringers
+    sk_box(104, 118, -WALL_FULL - 30, 0, -TILE / 2, TILE / 2, 120, 84, 56);
+    gfx_set_identity();
+}
+
 void items_draw(char ch, int mx, int my, int rot, int along, int t) {
     if (ch == 'P') return;
+    if (ch == 'K') { stairs_item(mx, my, rot); return; }
     if (ch == 'B') { skate_item(mx, my, rot); return; }                    // the SPAWN marker: where the Bore starts, nothing to see (in 3D the GBA's pad read as a figurine base)
     const ItemDef *d = def_of(ch);
     if (!d) return;

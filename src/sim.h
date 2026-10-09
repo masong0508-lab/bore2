@@ -7,7 +7,7 @@
 #define MAX_SIMS 6
 #define NEED_N 8
 enum { N_FOOD, N_WC, N_REST, N_CLEAN, N_COMFY, N_FUN, N_SOCIAL, N_ROOM };
-enum { ACT_NONE, ACT_EAT, ACT_WC, ACT_SLEEP, ACT_SHOWER, ACT_SIT, ACT_FUN, ACT_TALK, ACT_WORK, ACT_WALK, ACT_COFFEE, ACT_READ, ACT_RUN, ACT_PHONE, ACT_TRAVEL };
+enum { ACT_NONE, ACT_EAT, ACT_WC, ACT_SLEEP, ACT_SHOWER, ACT_SIT, ACT_FUN, ACT_TALK, ACT_WORK, ACT_WALK, ACT_COFFEE, ACT_READ, ACT_RUN, ACT_PHONE, ACT_TRAVEL, ACT_STAIRS };
 
 typedef struct {
     Bore bore;
@@ -35,6 +35,7 @@ typedef struct {
     int  asp_pts;               // the aspiration meter 0..12000
     s8   rel[MAX_SIMS];         // the daily relationship with each housemate, -100..100 (friend at 50)
     u8   act_var;               // which pie-menu option started the action (0 the plain one)
+    u8   lvl;                   // the storey it stands on (0 the ground .. 4)
     struct { u8 id; s8 val; u16 t; } ml[6];   // MOODLETS (Sims 3): id, mood points, game minutes left
 } Sim;
 

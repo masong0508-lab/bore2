@@ -37,3 +37,23 @@ const char *world_wall_name(int wp);
 const char *world_floor_name(int fl);
 int  world_room_score(int mx, int my);           // how nice the place you stand in is (0..100): furniture nearby
 int  world_count(char ch);
+
+// ---- storeys and roofs: the ground plus four floors above (5 in all), and a roof over every enclosed building ----
+#define NUP 4
+#define NLEVELS (NUP + 1)
+extern int world_lvl;                            // the storey world_at / world_walkable read (the Bore being moved, the build cursor)
+extern int world_view_lvl;                       // storeys above this are not drawn (the Sims 2 floor view)
+extern int world_roof_show;                      // 1: the roof over the focused building shows too (build mode's roof tool)
+extern int world_roof_style, world_roof_col, world_roof_pitch;   // HIP / GABLE / FLAT, the shingle colour, LOW / MID / STEEP
+#define NROOF_STYLE 3
+#define NROOF_COL 6
+#define NROOF_PITCH 3
+const char *world_roof_style_name(int s);
+const char *world_roof_col_name(int c);
+const char *world_roof_pitch_name(int p);
+char world_at_l(int l, int mx, int my);          // any storey (' ' = open air on the upper floors)
+char *world_cell(int l, int mx, int my);         // build mode: the tile itself on storey l
+u8  *world_floor_cell(int l, int mx, int my);
+u8  *world_wall_cell(int l, int mx, int my);
+void world_cam_push(int l);                      // draw what follows as if it stood on storey l (the camera drops by l storeys)
+void world_cam_pop(void);

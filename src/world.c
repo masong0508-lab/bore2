@@ -6,6 +6,41 @@
 #include "tex.h"
 #include "wallart.h"
 
+// ---- the storeys above the ground (per zone, and one set for the creator's studio) ----
+typedef struct { char map[MH][MW + 1]; u8 fl[MH][MW]; u8 wp[MH][MW]; } Level;
+static Level zup[ZONE_N + 1][NUP];
+static Level *UP = zup[0];
+int world_lvl, world_view_lvl, world_roof_show;
+int world_roof_style, world_roof_col = 0, world_roof_pitch = 1;
+static int roof_dirty = 1;
+static u8 lvl_used[NLEVELS];
+static void levels_clear(Level *L) {
+    for (int k = 0; k < NUP; k++) { for (int y = 0; y < MH; y++) { memset(L[k].map[y], ' ', MW); L[k].map[y][MW] = 0; } memset(L[k].fl, 0, sizeof L[k].fl); memset(L[k].wp, 0, sizeof L[k].wp); }
+    roof_dirty = 1;
+}
+char world_at_l(int l, int mx, int my) {
+    if (mx < 0 || my < 0 || mx >= MW || my >= MH) return l ? ' ' : 'W';
+    return l <= 0 ? lifeMap[my][mx] : l > NUP ? ' ' : UP[l - 1].map[my][mx];
+}
+char *world_cell(int l, int mx, int my) { return l <= 0 ? &lifeMap[my][mx] : &UP[l - 1].map[my][mx]; }
+u8 *world_floor_cell(int l, int mx, int my) { return l <= 0 ? &floorMap[my][mx] : &UP[l - 1].fl[my][mx]; }
+u8 *world_wall_cell(int l, int mx, int my) { return l <= 0 ? &wallMap[my][mx] : &UP[l - 1].wp[my][mx]; }
+static VECTOR cam_keep_eye, cam_keep_at; static int cam_pushed;
+void world_cam_push(int l) {
+    if (cam_pushed || l <= 0) return;
+    cam_keep_eye = cam.eye; cam_keep_at = cam.at; cam_pushed = 1;
+    cam.eye.vy += l * WALL_FULL; cam.at.vy += l * WALL_FULL; gfx_camera_update();
+}
+void world_cam_pop(void) { if (!cam_pushed) return; cam.eye = cam_keep_eye; cam.at = cam_keep_at; gfx_camera_update(); cam_pushed = 0; }
+static const char *const roofStyleNm[NROOF_STYLE] = { "HIP", "GABLE", "FLAT" };
+static const char *const roofColNm[NROOF_COL] = { "CLAY RED", "SLATE", "CEDAR", "MOSS GREEN", "NAVY", "SANDSTONE" };
+static const u8 roofCol[NROOF_COL][3] = { { 196, 92, 64 }, { 104, 112, 128 }, { 150, 104, 66 }, { 92, 132, 84 }, { 70, 86, 140 }, { 206, 180, 128 } };
+static const char *const roofPitchNm[NROOF_PITCH] = { "LOW", "MEDIUM", "STEEP" };
+static const s16 roofPitch[NROOF_PITCH] = { 110, 170, 250 };   // rise per tile run (a tile is 256: 250 is about 45 degrees)
+const char *world_roof_style_name(int s) { return roofStyleNm[s % NROOF_STYLE]; }
+const char *world_roof_col_name(int c) { return roofColNm[c % NROOF_COL]; }
+const char *world_roof_pitch_name(int p) { return roofPitchNm[p % NROOF_PITCH]; }
+
 char lifeMap[MH][MW + 1];
 static int ao_dirty = 1;
 int dbg_noao, dbg_nograd;   // the floor shading needs working out again (world_touched)
@@ -44,6 +79,7 @@ static void soften_floors(void) {
     }
 }
 void world_init(void) {
+    for (int z = 0; z <= ZONE_N; z++) levels_clear(zup[z]);
     soften_floors();
     for (int i = 0; i < NFLOORS; i++) {
         const Tex *t = floor_tex(i);
@@ -86,6 +122,19 @@ static void gLine(int x0, int y0, int x1, int y1, char c, int wp) { for (int y =
 static void gPut(int x, int y, char c) { lifeMap[y][x] = c; }
 static void gFree(int x, int y, char c) { if (x >= 0 && y >= 0 && x < MW && y < MH && lifeMap[y][x] == '.') lifeMap[y][x] = c; }
 
+// THE MAN BASE gets an upstairs: stairs in the crate room rise to a bedroom over its north-east corner (shows off the storeys)
+static void gUpstairs(void) {
+    const int x0 = 10, y0 = 2, x1 = 17, y1 = 9, sx = 15, sy = 7;
+    lifeMap[sy][sx] = 'K';                                          // the stairs, rising to the north
+    Level *U = &UP[0];
+    for (int j = y0; j <= y1; j++) for (int i = x0; i <= x1; i++) {
+        U->map[j][i] = (i == x0 || i == x1 || j == y0 || j == y1) ? 'W' : '.'; U->fl[j][i] = 6; U->wp[j][i] = (u8)(NWP + 12);
+    }
+    U->map[y0][13] = 'E'; U->map[y0][15] = 'E'; U->map[5][x1] = 'E'; U->map[y1][12] = 'E';
+    U->map[sy][sx] = ' ';                                           // the stairwell
+    U->map[4][12] = 'S'; U->map[3][16] = 'b'; U->map[7][11] = 'l'; U->map[3][11] = 'C';
+    roof_dirty = 1;
+}
 void world_gen(void) {
     ao_dirty = 1;   // THE MAN BASE, as the GBA game lays it out (mapGen)
     for (int y = 0; y < MH; y++) { for (int x = 0; x < MW; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = FL_GRASS; wallMap[y][x] = 0; } lifeMap[y][MW] = 0; }
@@ -129,12 +178,13 @@ void world_gen(void) {
     for (int x = 17; x <= 20; x++) gFree(x, 26, 'M');
     gFree(20, 37, 'a'); gFree(4, 36, 'k');
     gBox(9, 22, 9, 23, FL_PAVING); gPut(10, 23, '+');                                   // the bus stop at the end of the path
+    levels_clear(UP); gUpstairs();
 }
 
 static char bk_map[MH][MW + 1]; static u8 bk_fl[MH][MW], bk_wp[MH][MW]; static int bk_on;
-void world_backup(void) { if (bk_on) return; memcpy(bk_map, lifeMap, sizeof bk_map); memcpy(bk_fl, floorMap, sizeof bk_fl); memcpy(bk_wp, wallMap, sizeof bk_wp); bk_on = 1; }
+void world_backup(void) { if (bk_on) return; memcpy(bk_map, lifeMap, sizeof bk_map); memcpy(bk_fl, floorMap, sizeof bk_fl); memcpy(bk_wp, wallMap, sizeof bk_wp); bk_on = 1; UP = zup[ZONE_N]; levels_clear(UP); }
 void world_restore(void) {
-    ao_dirty = 1; if (!bk_on) return; memcpy(lifeMap, bk_map, sizeof bk_map); memcpy(floorMap, bk_fl, sizeof bk_fl); memcpy(wallMap, bk_wp, sizeof bk_wp); bk_on = 0; }
+    ao_dirty = 1; roof_dirty = 1; if (!bk_on) return; UP = zup[world_zone]; memcpy(lifeMap, bk_map, sizeof bk_map); memcpy(floorMap, bk_fl, sizeof bk_fl); memcpy(wallMap, bk_wp, sizeof bk_wp); bk_on = 0; }
 void world_gen_studio(void) {
     ao_dirty = 1;   // a 9x9 parlour: the creator's stage
     for (int y = 0; y < MH; y++) { for (int x = 0; x < MW; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = 4; wallMap[y][x] = 0; } lifeMap[y][MW] = 0; }
@@ -150,6 +200,7 @@ static const char *const zoneNm[ZONE_N] = { "THE MAN BASE", "CASTAWAY ISLAND", "
 const char *world_zone_name(int z) { return zoneNm[z % ZONE_N]; }
 typedef struct { char map[MH][MW + 1]; u8 fl[MH][MW]; u8 wp[MH][MW]; u8 made; } ZoneSave;
 static ZoneSave zones[ZONE_N];
+
 static void gCircle(int cx, int cy, int r, int fl) { for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) floorMap[y][x] = (u8)fl; }
 void world_gen_island(void) {
     ao_dirty = 1;   // Castaway: a sand island in the sea, a camp, palms
@@ -192,21 +243,22 @@ void world_switch(int z) {
     if (z == world_zone) return;
     ZoneSave *cur = &zones[world_zone];
     memcpy(cur->map, lifeMap, sizeof cur->map); memcpy(cur->fl, floorMap, sizeof cur->fl); memcpy(cur->wp, wallMap, sizeof cur->wp); cur->made = 1;
-    world_zone = z;
+    world_zone = z; UP = zup[z]; roof_dirty = 1;
     ZoneSave *nx = &zones[z];
+    if (!nx->made) levels_clear(UP);
     if (nx->made) { memcpy(lifeMap, nx->map, sizeof nx->map); memcpy(floorMap, nx->fl, sizeof nx->fl); memcpy(wallMap, nx->wp, sizeof nx->wp); }
     else if (z == ZONE_ISLAND) world_gen_island();
     else if (z == ZONE_TOWN) world_gen_town();
     else world_gen();
 }
 void world_reset_all(void) {
-    ao_dirty = 1; for (int i = 0; i < ZONE_N; i++) zones[i].made = 0; world_zone = ZONE_HOME; world_gen(); }
-char world_at(int mx, int my) { if (mx < 0 || my < 0 || mx >= MW || my >= MH) return 'W'; return lifeMap[my][mx]; }
+    ao_dirty = 1; for (int i = 0; i < ZONE_N; i++) { zones[i].made = 0; levels_clear(zup[i]); } world_zone = ZONE_HOME; UP = zup[0]; world_gen(); }
+char world_at(int mx, int my) { return world_at_l(world_lvl, mx, my); }
 static int is_wall(char c) { return c == 'W' || c == 'w' || c == 'E' || c == 'e' || c == 'f'; }
 int world_walkable(int mx, int my) {
     char c = world_at(mx, my);
-    if (is_wall(c)) return 0;
-    if (mx >= 0 && my >= 0 && mx < MW && my < MH && floorMap[my][mx] == FL_WATER) return 0;
+    if (is_wall(c) || c == ' ') return 0;                       // (' ': open air on an upper storey)
+    if (world_lvl == 0 && mx >= 0 && my >= 0 && mx < MW && my < MH && floorMap[my][mx] == FL_WATER) return 0;
     if (c == '.' || c == 'D' || c == 'P' || c == 'B') return 1;
     return !items_blocking(c);
 }
@@ -216,7 +268,7 @@ void world_find(char ch, int *mx, int *my) {
     *mx = -1; *my = -1;
 }
 int world_count(char ch) { int n = 0; for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if (lifeMap[y][x] == ch) n++; return n; }
-static int item_open(int x, int y) { if (x < 0 || y < 0 || x >= MW || y >= MH) return 0; char c = lifeMap[y][x]; return c == '.' || c == 'D' || c == 'B' || c == 'P' || c == 'r'; }
+static int item_open(int x, int y) { if (x < 0 || y < 0 || x >= MW || y >= MH) return 0; char c = world_at(x, y); return c == '.' || c == 'D' || c == 'B' || c == 'P' || c == 'r'; }
 int world_item_facing(int x, int y) {
     static const signed char dx[4] = { 0, 1, 0, -1 }, dy[4] = { 1, 0, -1, 0 };
     for (int d = 0; d < 4; d++) if (item_open(x + dx[d], y + dy[d]) && !item_open(x + dx[(d + 2) & 3], y + dy[(d + 2) & 3])) return d;
@@ -242,7 +294,7 @@ int world_room_score(int mx, int my) {
 static int frame_t;
 // the floor's contact shading: how many walls stand round each floor corner, worked out when the map changes
 static u8 ao[MH + 1][MW + 1];
-void world_touched(void) { ao_dirty = 1; }
+void world_touched(void) { ao_dirty = 1; roof_dirty = 1; }
 static void ao_update(void) {
     for (int Y = 0; Y <= MH; Y++) for (int X = 0; X <= MW; X++) {
         int n = 0;
@@ -398,10 +450,22 @@ static void door_tile(int mx, int my, int h) {
 }
 
 int world_dbg_walls;
-void world_draw(int fx, int fy, int t, int cutaway) {
-    gfx_set_identity(); world_dbg_walls = 0;
-    frame_t = t;
-    if (ao_dirty) ao_update();
+// a floor slab's edge where an upper storey stops (open air beside it): a plaster band, so floors read as solid
+static void fascia(int mx, int my) {
+    static const signed char ddx[4] = { 0, 1, 0, -1 }, ddy[4] = { 1, 0, -1, 0 };
+    for (int k = 0; k < 4; k++) {
+        if (world_at(mx + ddx[k], my + ddy[k]) != ' ') continue;
+        int x0 = mx * TILE, x1 = x0 + TILE, zN = -my * TILE, zS = zN - TILE, T = 26;
+        SVECTOR a, b, c, d;
+        if (k == 0) { setVector(&a, x0, 0, zS); setVector(&b, x1, 0, zS); setVector(&c, x0, T, zS); setVector(&d, x1, T, zS); }
+        else if (k == 1) { setVector(&a, x1, 0, zS); setVector(&b, x1, 0, zN); setVector(&c, x1, T, zS); setVector(&d, x1, T, zN); }
+        else if (k == 2) { setVector(&a, x1, 0, zN); setVector(&b, x0, 0, zN); setVector(&c, x1, T, zN); setVector(&d, x0, T, zN); }
+        else { setVector(&a, x0, 0, zN); setVector(&b, x0, 0, zS); setVector(&c, x0, T, zN); setVector(&d, x0, T, zS); }
+        int L = gfx_light(ddx[k] * ONE, 0, -ddy[k] * ONE);
+        gfx_quad_f(&a, &b, &c, &d, MIN(255, (220 * L) >> 7), MIN(255, (212 * L) >> 7), MIN(255, (196 * L) >> 7), 1);
+    }
+}
+static void draw_layer(int fx, int fy, int t, int cutaway, int lvl) {
     // the camera's forward on the ground (unit, 4096), to decide which walls stand between it and the focus
     int cdx = cam.at.vx - cam.eye.vx, cdz = cam.at.vz - cam.eye.vz;
     int len = SquareRoot0(cdx * cdx + cdz * cdz); if (len < 1) len = 1;
@@ -415,6 +479,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         int ok = (mx + 1 < MW && my + 1 < MH);
         int f0 = floorMap[my][mx];
         if (ok) ok = f0 != FL_WATER && floorMap[my][mx + 1] == f0 && floorMap[my + 1][mx] == f0 && floorMap[my + 1][mx + 1] == f0;
+        if (ok && lvl) ok = lifeMap[my][mx] != ' ' && lifeMap[my][mx + 1] != ' ' && lifeMap[my + 1][mx] != ' ' && lifeMap[my + 1][mx + 1] != ' ';
         done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 0;
         if (!ok) continue;
         int wx = (mx + 1) * TILE, wz = -(my + 1) * TILE;
@@ -423,20 +488,22 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         if (v.vz < -TILE * 2) continue;
         if (ABS(v.vx) > (v.vz * 3) / 4 + TILE * 3) continue;
         if (ABS(v.vy) > (v.vz * 5) / 8 + TILE * 4) continue;
-        gfx_floor_pass = 1; floor_block(mx, my); gfx_floor_pass = 0;
+        gfx_floor_pass = !lvl; floor_block(mx, my); gfx_floor_pass = 0;
         done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 1;
     }
     for (int my = y0; my <= y1; my++) for (int mx = x0; mx <= x1; mx++) {
         int wx = mx * TILE + TILE / 2, wz = -(my * TILE + TILE / 2);
         char c = lifeMap[my][mx];
-        if (done[my][mx] && c == '.') continue;                      // floor already drawn, nothing on it
+        if (c == ' ') continue;                                       // open air (upper storeys)
+        if (done[my][mx] && c == '.' && !lvl) continue;              // floor already drawn, nothing on it
         // frustum: the tile centre in view space (rotation only, after taking the eye off)
         VECTOR d, v; setVector(&d, wx - cam.eye.vx, -WALL_FULL / 2 - cam.eye.vy, wz - cam.eye.vz);
         ApplyMatrixLV(&cam.view, &d, &v);
         if (v.vz < -TILE) continue;
         if (ABS(v.vx) > (v.vz * 3) / 4 + TILE * 2) continue;
         if (ABS(v.vy) > (v.vz * 5) / 8 + TILE * 3) continue;
-        if (!done[my][mx]) { gfx_floor_pass = 1; floor_tile(mx, my); gfx_floor_pass = 0; }
+        if (!done[my][mx]) { gfx_floor_pass = !lvl; floor_tile(mx, my); gfx_floor_pass = 0; }
+        if (lvl) { fascia(mx, my); if (c == '.') continue; }
         if (is_wall(c)) {
             int h = (c == 'w') ? WALL_LOW : WALL_FULL, cut = 0;
             if (cutaway && c != 'w') {
@@ -451,4 +518,175 @@ void world_draw(int fx, int fy, int t, int cutaway) {
             items_draw(c, mx, my, rot, along, t);
         }
     }
+}
+
+
+// ================================================================== ROOFS
+// Every enclosed building gets a roof over its top storey, worked out from its footprint: the height at each grid corner is
+// its distance in from the footprint's edge (chessboard distance for a HIP roof, across the short side for a GABLE, none
+// for FLAT), capped so a big building levels off. Eaves overhang the walls; gable ends are filled with plaster walls.
+static u8 roofH[NLEVELS][MH + 1][MW + 1];        // corner heights, in pitch steps
+static u8 roofM[NLEVELS][MH][MW];                 // 1: this tile is under the roof of storey l
+static u8 bld[MH][MW];                             // the building each ground tile belongs to (0: outdoors)
+static u8 roof_tex_ok; static TexRef roof_tex;
+static int enclose(char c) { return c == 'W' || c == 'E' || c == 'e' || c == 'D'; }
+static void roof_rebuild(void) {
+    static u8 out[MH][MW]; static u16 q[MH * MW];
+    memset(roofM, 0, sizeof roofM); memset(roofH, 0, sizeof roofH);
+    for (int l = 0; l < NLEVELS; l++) {
+        int used = 0;
+        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if (world_at_l(l, x, y) != ' ') used = 1;
+        lvl_used[l] = (u8)(l == 0 || used);
+        if (!lvl_used[l]) continue;
+        // outdoors: everything the map's edge reaches without crossing a wall, a door or a window
+        memset(out, 0, sizeof out); int qh = 0, qt = 0;
+        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++)
+            if ((x == 0 || y == 0 || x == MW - 1 || y == MH - 1) && !enclose(world_at_l(l, x, y))) { out[y][x] = 1; q[qt++] = (u16)(y * MW + x); }
+        while (qh < qt) { int c = q[qh++], cx = c % MW, cy = c / MW;
+            static const signed char dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
+            for (int k = 0; k < 4; k++) { int nx = cx + dx[k], ny = cy + dy[k];
+                if (nx < 0 || ny < 0 || nx >= MW || ny >= MH || out[ny][nx] || enclose(world_at_l(l, nx, ny))) continue;
+                out[ny][nx] = 1; q[qt++] = (u16)(ny * MW + nx); } }
+        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
+            if (out[y][x]) continue;
+            if (l < NUP && world_at_l(l + 1, x, y) != ' ') continue;   // a storey above covers it: no roof here
+            if (l > 0 && world_at_l(l, x, y) == ' ' && !enclose(world_at_l(l, x, y))) { /* a hole inside walls (a stairwell): still roofed */ }
+            roofM[l][y][x] = 1;
+        }
+        if (l == 0) { memset(bld, 0, sizeof bld); int id = 0;   // the buildings: connected indoor areas of the ground storey
+            for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
+                if (out[y][x] || bld[y][x]) continue;
+                if (++id > 250) id = 250;
+                qh = qt = 0; bld[y][x] = (u8)id; q[qt++] = (u16)(y * MW + x);
+                while (qh < qt) { int c = q[qh++], cx = c % MW, cy = c / MW;
+                    static const signed char dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
+                    for (int k = 0; k < 4; k++) { int nx = cx + dx[k], ny = cy + dy[k];
+                        if (nx < 0 || ny < 0 || nx >= MW || ny >= MH || out[ny][nx] || bld[ny][nx]) continue;
+                        bld[ny][nx] = (u8)id; q[qt++] = (u16)(ny * MW + nx); } } } }
+        // the distance in from the edge, per tile
+        static u8 Dd[MH][MW];
+        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) Dd[y][x] = 0;
+        if (world_roof_style == 0) {          // HIP: chessboard distance, so the hips run at 45 degrees
+            for (int pass = 1; pass < 40; pass++) { int any = 0;
+                for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
+                    if (!roofM[l][y][x] || Dd[y][x]) continue;
+                    int mn = 255;
+                    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int nx = x + i, ny = y + j;
+                        int v = (nx < 0 || ny < 0 || nx >= MW || ny >= MH || !roofM[l][ny][nx]) ? 0 : Dd[ny][nx] ? Dd[ny][nx] : 255; if (v < mn) mn = v; }
+                    if (mn == pass - 1) { Dd[y][x] = (u8)pass; any = 1; } }
+                if (!any) break; }
+        } else if (world_roof_style == 1) {   // GABLE: the ridge runs along each building's longer side
+            for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
+                if (!roofM[l][y][x]) continue;
+                int up = 0, dn = 0, lf = 0, rt = 0;
+                while (y - up - 1 >= 0 && roofM[l][y - up - 1][x]) up++;
+                while (y + dn + 1 < MH && roofM[l][y + dn + 1][x]) dn++;
+                while (x - lf - 1 >= 0 && roofM[l][y][x - lf - 1]) lf++;
+                while (x + rt + 1 < MW && roofM[l][y][x + rt + 1]) rt++;
+                int across_y = MIN(up, dn) + 1, across_x = MIN(lf, rt) + 1;
+                Dd[y][x] = (u8)((up + dn) <= (lf + rt) ? across_y : across_x);   // slope across the narrow way
+            }
+        }
+        for (int Y = 0; Y <= MH; Y++) for (int X = 0; X <= MW; X++) {
+            int mn = 255;
+            for (int k = 0; k < 4; k++) { int x = X - 1 + (k & 1), y = Y - 1 + (k >> 1);
+                int v = (x < 0 || y < 0 || x >= MW || y >= MH || !roofM[l][y][x]) ? 0 : Dd[y][x]; if (v < mn) mn = v; }
+            roofH[l][Y][X] = (u8)(world_roof_style == 2 ? 0 : MIN(mn, 3));   // capped: wide buildings level off
+        }
+    }
+    roof_dirty = 0;
+}
+static void roof_tex_make(void) {   // shingles: courses of overlapping tiles, every other course offset
+    static u16 px[16 * 16];
+    for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) {
+        int course = y / 4, off = (course & 1) * 4, v = 15 - (y & 3);          // each shingle darkens toward its lower edge
+        if (((x + off) & 7) == 0) v -= 5;                                       // the gaps between shingles
+        if ((y & 3) == 3) v -= 6;
+        v += ((x * 7 + y * 13) & 3) - 1;
+        v = CLAMP(v, 4, 20); px[y * 16 + x] = RGB(v, v, v);
+    }
+    roof_tex = atlas_add(16, 16, px); roof_tex_ok = 1;
+}
+static inline int rmask(int l, int x, int y) { return x >= 0 && y >= 0 && x < MW && y < MH && roofM[l][y][x]; }
+static void roof_corner(int l, int X, int Y, SVECTOR *v, int base, int pitch) {   // a roof corner, the eaves pushed out at the footprint's edge
+    int h = roofH[l][Y][X], ox = 0, oz = 0, OVH = 34;
+    if (!rmask(l, X - 1, Y - 1) && !rmask(l, X - 1, Y)) ox = -OVH;
+    if (!rmask(l, X, Y - 1) && !rmask(l, X, Y)) ox = OVH;
+    if (!rmask(l, X - 1, Y - 1) && !rmask(l, X, Y - 1)) oz = OVH;
+    if (!rmask(l, X - 1, Y) && !rmask(l, X, Y)) oz = -OVH;
+    if (world_roof_style == 2) { ox = ox / 2; oz = oz / 2; }      // a flat roof: a short lip, no slope
+    int drop = (h == 0 && world_roof_style != 2) ? (OVH * pitch) >> 8 : 0;
+    setVector(v, X * TILE + ox, base - h * pitch + drop - (world_roof_style == 2 ? 10 : 0), -Y * TILE + oz);
+}
+static void roofs_draw(int fx, int fy, int x0, int x1, int y0, int y1) {
+    if (!roof_tex_ok) roof_tex_make();
+    int focus = (fx >= 0 && fy >= 0 && fx < MW && fy < MH) ? bld[fy][fx] : 0;
+    int pitch = roofPitch[world_roof_pitch % NROOF_PITCH];
+    const u8 *rc = roofCol[world_roof_col % NROOF_COL];
+    gfx_set_identity();
+    for (int l = 0; l <= world_view_lvl && l < NLEVELS; l++) {
+        if (!lvl_used[l]) continue;
+        int base = -(l + 1) * WALL_FULL;
+        for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
+            if (!roofM[l][y][x]) continue;
+            if (focus && bld[y][x] == focus && !world_roof_show) continue;   // the building you are in shows its rooms
+            VECTOR d, vv; setVector(&d, x * TILE + TILE / 2 - cam.eye.vx, base - cam.eye.vy, -(y * TILE + TILE / 2) - cam.eye.vz);
+            ApplyMatrixLV(&cam.view, &d, &vv);
+            if (vv.vz < -TILE) continue;
+            if (ABS(vv.vx) > (vv.vz * 3) / 4 + TILE * 2) continue;
+            SVECTOR A, B, C, DQ;
+            roof_corner(l, x, y, &A, base, pitch); roof_corner(l, x + 1, y, &B, base, pitch);
+            roof_corner(l, x, y + 1, &C, base, pitch); roof_corner(l, x + 1, y + 1, &DQ, base, pitch);
+            int hA = roofH[l][y][x], hB = roofH[l][y][x + 1], hC = roofH[l][y + 1][x], hD = roofH[l][y + 1][x + 1];
+            int dhx = ((hB + hD - hA - hC) * pitch) / 2, dhz = ((hA + hB - hC - hD) * pitch) / 2;   // the slope across the tile
+            int len = SquareRoot0(dhx * dhx + TILE * TILE + dhz * dhz); if (len < 1) len = 1;
+            int L = gfx_light((-dhx << 12) / len, (-TILE << 12) / len, (-dhz << 12) / len);
+            u32 c = (u32)MIN(255, (rc[0] * L) >> 7) | ((u32)MIN(255, (rc[1] * L) >> 7) << 8) | ((u32)MIN(255, (rc[2] * L) >> 7) << 16);
+            int u0 = roof_tex.u, v0 = roof_tex.v, u1 = u0 + 15, v1 = v0 + 15;
+            if (ABS(dhz) >= ABS(dhx)) gfx_quad_gt(&A, &B, &C, &DQ, roof_tex.tpage, 0, u0, v0, u1, v0, u0, v1, u1, v1, c, c, c, c, 1);   // courses run across the slope
+            else gfx_quad_gt(&A, &B, &C, &DQ, roof_tex.tpage, 0, u0, v0, u0, v1, u1, v0, u1, v1, c, c, c, c, 1);
+            // the gable ends: where the roof stands above a footprint edge, a wall closes it
+            static const signed char ex[4] = { 0, 1, 0, -1 }, ey[4] = { 1, 0, -1, 0 };
+            for (int k = 0; k < 4; k++) {
+                if (rmask(l, x + ex[k], y + ey[k])) continue;
+                int X1, Y1, X2, Y2;   // the edge's two corners, in the order that faces outward
+                if (k == 0) { X1 = x; Y1 = y + 1; X2 = x + 1; Y2 = y + 1; } else if (k == 1) { X1 = x + 1; Y1 = y + 1; X2 = x + 1; Y2 = y; }
+                else if (k == 2) { X1 = x + 1; Y1 = y; X2 = x; Y2 = y; } else { X1 = x; Y1 = y; X2 = x; Y2 = y + 1; }
+                int h1 = roofH[l][Y1][X1], h2 = roofH[l][Y2][X2];
+                if (!h1 && !h2) continue;
+                SVECTOR a, b, cc, dd;
+                setVector(&a, X1 * TILE, base - h1 * pitch, -Y1 * TILE); setVector(&b, X2 * TILE, base - h2 * pitch, -Y2 * TILE);
+                setVector(&cc, X1 * TILE, base, -Y1 * TILE); setVector(&dd, X2 * TILE, base, -Y2 * TILE);
+                int Lw = gfx_light(ex[k] * ONE, 0, -ey[k] * ONE);
+                gfx_quad_f(&a, &b, &cc, &dd, MIN(255, (226 * Lw) >> 7), MIN(255, (214 * Lw) >> 7), MIN(255, (190 * Lw) >> 7), 1);
+            }
+        }
+    }
+}
+
+void world_draw(int fx, int fy, int t, int cutaway) {
+    gfx_set_identity(); world_dbg_walls = 0;
+    frame_t = t;
+    if (ao_dirty) ao_update();
+    if (roof_dirty) roof_rebuild();
+    int keep_lvl = world_lvl; world_lvl = 0;
+    draw_layer(fx, fy, t, cutaway, 0);
+    int top = MIN(world_view_lvl, NUP), any = 0;
+    for (int l = 1; l <= top; l++) any |= lvl_used[l];
+    if (any) {   // the storeys above: each is swapped into the ground's arrays and drawn with the camera dropped by its height
+        static char k_map[MH][MW + 1]; static u8 k_fl[MH][MW], k_wp[MH][MW];
+        memcpy(k_map, lifeMap, sizeof k_map); memcpy(k_fl, floorMap, sizeof k_fl); memcpy(k_wp, wallMap, sizeof k_wp);
+        int keep_ao = dbg_noao; dbg_noao = 1;
+        for (int l = 1; l <= top; l++) {
+            if (!lvl_used[l]) continue;
+            memcpy(lifeMap, UP[l - 1].map, sizeof k_map); memcpy(floorMap, UP[l - 1].fl, sizeof k_fl); memcpy(wallMap, UP[l - 1].wp, sizeof k_wp);
+            world_cam_push(l);
+            draw_layer(fx, fy, t, cutaway && l == world_view_lvl, l);
+            world_cam_pop();
+        }
+        memcpy(lifeMap, k_map, sizeof k_map); memcpy(floorMap, k_fl, sizeof k_fl); memcpy(wallMap, k_wp, sizeof k_wp);
+        dbg_noao = keep_ao;
+    }
+    { int R = 12; roofs_draw(fx, fy, MAX(0, fx - R), MIN(MW - 1, fx + R), MAX(0, fy - R), MIN(MH - 1, fy + R)); }
+    world_lvl = keep_lvl;
 }
