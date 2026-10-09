@@ -34,6 +34,8 @@ typedef struct {
     struct { u8 kind, arg; u16 pts, age; } want[4], fear[2];
     int  asp_pts;               // the aspiration meter 0..12000
     s8   rel[MAX_SIMS];         // the daily relationship with each housemate, -100..100 (friend at 50)
+    u8   act_var;               // which pie-menu option started the action (0 the plain one)
+    struct { u8 id; s8 val; u16 t; } ml[6];   // MOODLETS (Sims 3): id, mood points, game minutes left
 } Sim;
 
 extern Sim  sims[MAX_SIMS];
@@ -50,6 +52,12 @@ void sim_init(void);
 void sim_add(const Bore *b, int mx, int my, int ai);
 void sim_step(void);                       // one logic step (60 per second)
 void sim_player_move(int dx, int dz, int run);   // world-space push from the stick, -4096..4096 each
+int  sim_pie_open(char opt[8][16]);       // X: the pie menu for what is in front (0 = nothing there)
+void sim_pie_do(int i);                    // the option picked
+const char *sim_pie_title(void);           // whose / what menu it is
+int  sim_traits(const Sim *s, const char *out[3]);   // Sims 3 traits read off the personality: how many (up to 3)
+const char *sim_moodlet_name(int id);
+void sim_moodlet(Sim *s, int id);          // give a moodlet (re-giving refreshes it)
 int  sim_player_interact(void);            // X: use the thing in front, talk to the person in front. Returns 1 if something started
 void sim_player_cancel(void);              // B: get up
 void sim_player_cancel_sim(Sim *s);

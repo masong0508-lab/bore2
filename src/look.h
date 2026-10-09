@@ -41,6 +41,7 @@ typedef struct {
     s16  w_hx, w_hy, w_hz;                       // the right hand's bottom centre (in the right arm's space)
     // the head's sculpt (voxel.c head_xf): scaled about its bottom centre, the jaw tapered, lifted onto a neck
     s16  h_cx, h_cz, h_cy0, h_top, h_k, h_jaw, h_lift, h_neckw;
+    s16  w_lax, w_rax, w_lgx, w_rgx;             // the shoulder and hip joints' x (arm and leg centres), for the A-pose and the stance
     u8   decc[8];               // the cells that carry a face sprite's top-left
 } Bore;
 

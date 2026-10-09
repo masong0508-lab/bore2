@@ -56,6 +56,55 @@ void sim_note(const char *s) { strncpy(last_note, s, 31); last_note[31] = 0; las
 static void sim_say(Sim *s, const char *t) { strncpy(s->note, t, 23); s->note[23] = 0; s->note_t = 150; }
 
 // ---- integer atan2 (4096 = a turn) ----
+// ================================================================== MOODLETS (Sims 3) and TRAITS
+enum { ML_NONE, ML_GOOD_MEAL, ML_SNACKED, ML_RESTED, ML_FRESH, ML_GOOD_CHAT, ML_FRIEND, ML_PROMOTED, ML_PAYDAY, ML_EMBARRASSED,
+       ML_PASSED_OUT, ML_WET, ML_REJECTED, ML_TEASED, ML_HUGGED, ML_FUN_TIME, ML_GOT_A_LAUGH, ML_FLIRTY, ML_WORKOUT, ML_CAFFEINE,
+       ML_HUNGRY, ML_TIRED, ML_STINKY, ML_BURSTING, ML_LONELY, ML_BORED, ML_SINGING, ML_PIZZA, ML_N };
+static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
+    { "", 0, 0 }, { "GOOD MEAL", 12, 240 }, { "SNACKED", 4, 90 }, { "WELL RESTED", 12, 300 }, { "FRESH", 8, 180 }, { "GOOD CHAT", 10, 180 },
+    { "MADE A FRIEND", 20, 480 }, { "PROMOTED", 25, 720 }, { "PAYDAY", 15, 360 }, { "EMBARRASSED", -12, 120 },
+    { "PASSED OUT", -15, 240 }, { "WET MYSELF", -25, 180 }, { "TURNED DOWN", -10, 180 }, { "TEASED", -15, 180 }, { "HUGGED", 12, 180 },
+    { "FUN TIME", 8, 120 }, { "GOT A LAUGH", 10, 120 }, { "FLIRTY", 14, 180 }, { "WORKED OUT", 10, 180 }, { "CAFFEINATED", 6, 90 },
+    { "HUNGRY", -12, 0 }, { "TIRED", -10, 0 }, { "STINKY", -15, 0 }, { "BURSTING", -15, 0 }, { "LONELY", -12, 0 }, { "BORED", -8, 0 },
+    { "SANG IT OUT", 9, 120 }, { "PIZZA NIGHT", 14, 240 },
+};
+const char *sim_moodlet_name(int id) { return mlDef[id % ML_N].nm; }
+static int has_trait(const Sim *s, int t, int hi) { int v = s->bore.tr[t]; return hi ? v >= 8 : v <= 2; }
+int sim_traits(const Sim *s, const char *out[3]) {
+    static const char *const hiNm[TR_N] = { "NEAT FREAK", "SOCIAL BUTTERFLY", "ATHLETIC", "GOOFBALL", "GOOD" };
+    static const char *const loNm[TR_N] = { "SLOB", "LONER", "COUCH POTATO", "SERIOUS", "MEAN" };
+    int n = 0;
+    for (int t = 0; t < TR_N && n < 3; t++) { if (has_trait(s, t, 1)) out[n++] = hiNm[t]; else if (has_trait(s, t, 0)) out[n++] = loNm[t]; }
+    return n;
+}
+void sim_moodlet(Sim *s, int id) {
+    int slot = -1;
+    for (int i = 0; i < 6; i++) if (s->ml[i].id == id) slot = i;
+    if (slot < 0) for (int i = 0; i < 6; i++) if (!s->ml[i].id) { slot = i; break; }
+    if (slot < 0) { int lo = 0; for (int i = 1; i < 6; i++) if (s->ml[i].t < s->ml[lo].t) lo = i; slot = lo; }   // full: the one nearest to running out goes
+    int v = mlDef[id].val;
+    if (id == ML_FRESH && has_trait(s, TR_NEAT, 1)) v += 6;                   // NEAT FREAK: clean feels great
+    if (id == ML_GOOD_CHAT && has_trait(s, TR_OUT, 1)) v += 6;                // SOCIAL BUTTERFLY
+    if (id == ML_WORKOUT && has_trait(s, TR_ACT, 1)) v += 8;                  // ATHLETIC
+    if (id == ML_GOT_A_LAUGH && has_trait(s, TR_PLAY, 1)) v += 8;             // GOOFBALL
+    s->ml[slot].id = (u8)id; s->ml[slot].val = (s8)v; s->ml[slot].t = mlDef[id].mins ? mlDef[id].mins : 1;
+}
+static void moodlets_minute(Sim *s) {   // the timed ones run down; the need ones come and go with the need
+    for (int i = 0; i < 6; i++) if (s->ml[i].id && mlDef[s->ml[i].id].mins) { if (s->ml[i].t) s->ml[i].t--; if (!s->ml[i].t) s->ml[i].id = 0; }
+    static const struct { u8 need, ml, lim; } nm[6] = { { N_FOOD, ML_HUNGRY, 25 }, { N_REST, ML_TIRED, 20 }, { N_CLEAN, ML_STINKY, 22 }, { N_WC, ML_BURSTING, 20 }, { N_SOCIAL, ML_LONELY, 22 }, { N_FUN, ML_BORED, 20 } };
+    for (int k = 0; k < 6; k++) {
+        int lim = nm[k].lim;
+        if (nm[k].ml == ML_STINKY && has_trait(s, TR_NEAT, 0)) lim = -1;       // SLOB: doesn't notice
+        if (nm[k].ml == ML_LONELY && has_trait(s, TR_OUT, 0)) lim = -1;        // LONER: fine, thanks
+        if (nm[k].ml == ML_LONELY && has_trait(s, TR_OUT, 1)) lim += 15;       // SOCIAL BUTTERFLY: lonely sooner
+        int low = (s->need[nm[k].need] >> 10) < lim, at = -1;
+        for (int i = 0; i < 6; i++) if (s->ml[i].id == nm[k].ml) at = i;
+        if (low && at < 0) sim_moodlet(s, nm[k].ml);
+        if (!low && at >= 0) s->ml[at].id = 0;
+    }
+}
+static int moodlet_sum(const Sim *s) { int m = 0; for (int i = 0; i < 6; i++) if (s->ml[i].id) m += s->ml[i].val; return m; }
+
 static int iatan2(int y, int x) {
     if (x == 0 && y == 0) return 0;
     int ax = ABS(x), ay = ABS(y);
@@ -82,6 +131,8 @@ void sim_add(const Bore *b, int mx, int my, int ai) {
     s->x = mx * TILE + TILE / 2; s->z = -(my * TILE + TILE / 2);
     s->yaw = 0; s->ai = ai; s->talk_to = -1; s->think = -1; s->grump = 0;
     for (int i = 0; i < MAX_SIMS; i++) s->rel[i] = 0;
+    for (int i = 0; i < 6; i++) s->ml[i].id = 0;
+    s->act_var = 0;
     wants_roll_all(s);
     for (int i = 0; i < NEED_N; i++) s->need[i] = (70 + (int)(look_rand() % 25)) << 10;
     s->need[N_ROOM] = 50 << 10;
@@ -197,7 +248,7 @@ static int act_len(int act) {
 }
 static void begin_action(Sim *s, int act, int mx, int my) {
     if (act == ACT_TALK && (int)(s - sims) == player) story_talks++;
-    s->action = act; s->act_t = act_len(act); s->act_x = mx; s->act_y = my;
+    s->action = act; s->act_t = act_len(act); s->act_x = mx; s->act_y = my; s->act_var = 0;
     s->path_n = 0;
     if (on_item(act)) { s->x = mx * TILE + TILE / 2; s->z = -(my * TILE + TILE / 2); s->yaw = (world_item_facing(mx, my) * 1024) & 4095; }
     else { s->yaw = yaw_towards(mx * TILE + TILE / 2 - s->x, -(my * TILE + TILE / 2) - s->z); }
@@ -212,19 +263,19 @@ static void chat_done(Sim *s, Sim *o) {   // a finished chat: the relationship g
     for (int t = 0; t < TR_N; t++) if (ABS((int)s->bore.tr[t] - (int)o->bore.tr[t]) <= 2) bonus++;
     int was = s->rel[him], now = was + 8 + bonus; if (now > 100) now = 100;
     s->rel[him] = (s8)now; if (o->rel[me] < now) o->rel[me] = (s8)now;
-    wants_event(s, W_CHAT, 0); wants_event(s, W_CHAT_WITH, him);
-    if (was < 50 && now >= 50) { wants_event(s, W_FRIEND, him); if (me == player) { sim_note("YOU MADE A FRIEND"); } }
+    wants_event(s, W_CHAT, 0); wants_event(s, W_CHAT_WITH, him); sim_moodlet(s, ML_GOOD_CHAT);
+    if (was < 50 && now >= 50) { wants_event(s, W_FRIEND, him); if (me == player) { sim_note("YOU MADE A FRIEND"); } sim_moodlet(s, ML_FRIEND); sim_moodlet(o, ML_FRIEND); }
 }
 static void end_action(Sim *s) {
     switch (s->action) {   // what just finished: the wants are watching
-        case ACT_EAT: wants_event(s, W_EAT, 0); break;
-        case ACT_SLEEP: wants_event(s, W_SLEEP, 0); if (s->act_t <= 0) wants_reroll(s); break;   // a full sleep: new wants on waking
-        case ACT_SHOWER: wants_event(s, W_SHOWER, 0); break;
-        case ACT_FUN: wants_event(s, W_FUN, 0); break;
+        case ACT_EAT: wants_event(s, W_EAT, 0); sim_moodlet(s, s->act_var == 1 ? ML_GOOD_MEAL : ML_SNACKED); break;
+        case ACT_SLEEP: wants_event(s, W_SLEEP, 0); if (s->act_t <= 0 && s->act_var == 0) { wants_reroll(s); sim_moodlet(s, ML_RESTED); } break;   // a full sleep: new wants on waking
+        case ACT_SHOWER: wants_event(s, W_SHOWER, 0); sim_moodlet(s, ML_FRESH); if (s->act_var == 1) sim_moodlet(s, ML_SINGING); break;
+        case ACT_FUN: wants_event(s, W_FUN, 0); sim_moodlet(s, ML_FUN_TIME); break;
         case ACT_READ: wants_event(s, W_READ, 0); break;
-        case ACT_COFFEE: wants_event(s, W_COFFEE, 0); break;
-        case ACT_RUN: wants_event(s, W_RUN, 0); break;
-        case ACT_PHONE: wants_event(s, W_PHONE, 0); break;
+        case ACT_COFFEE: wants_event(s, W_COFFEE, 0); sim_moodlet(s, ML_CAFFEINE); break;
+        case ACT_RUN: wants_event(s, W_RUN, 0); sim_moodlet(s, ML_WORKOUT); break;
+        case ACT_PHONE: wants_event(s, W_PHONE, 0); if (s->act_var == 1) sim_moodlet(s, ML_PIZZA); break;
         case ACT_WORK: wants_event(s, W_WORK, 0); break;
         case ACT_TALK: if (s->talk_to >= 0 && s->talk_to < nsims) chat_done(s, &sims[s->talk_to]); break;
     }
@@ -247,17 +298,17 @@ static int is_work(void) { return clock_day < 5 && clock_min >= WORK_FROM && clo
 static void run_action(Sim *s) {
     int me = (int)(s - sims);
     switch (s->action) {
-        case ACT_EAT: s->need[N_FOOD] += GAIN_EAT; break;
+        case ACT_EAT: s->need[N_FOOD] += s->act_var == 1 ? GAIN_EAT * 3 / 2 : GAIN_EAT; if (s->act_var == 1 && !(s->act_t & 7)) s->skill_cook++; break;
         case ACT_WC: s->need[N_WC] += GAIN_WC; break;
         case ACT_SLEEP: s->need[N_REST] += is_night() ? GAIN_SLEEP * 5 / 4 : GAIN_SLEEP; s->need[N_COMFY] += 40;
                         if ((s->need[N_REST] >> 10) >= 100 && (!is_night() || clock_min < NIGHT_FROM)) { s->act_t = 0; sim_say(s, "RESTED"); } break;
-        case ACT_SHOWER: s->need[N_CLEAN] += GAIN_WASH; break;
+        case ACT_SHOWER: s->need[N_CLEAN] += GAIN_WASH; if (s->act_var == 1) s->need[N_FUN] += 90; break;
         case ACT_SIT: s->need[N_COMFY] += GAIN_SIT; if ((s->need[N_COMFY] >> 10) >= 100) s->act_t = 0; break;
         case ACT_FUN: s->need[N_FUN] += GAIN_FUN; s->need[N_COMFY] += 30; break;
-        case ACT_READ: s->need[N_FUN] += GAIN_FUN / 2; s->skill_fun++; break;
-        case ACT_COFFEE: s->need[N_REST] += 180; s->need[N_WC] -= 60; break;
-        case ACT_RUN: s->need[N_FUN] += 120; s->need[N_CLEAN] -= 90; s->skill_body++; s->gait.amp = 4096; s->gait.phase = (s->gait.phase + 200) & 4095; break;
-        case ACT_PHONE: s->need[N_SOCIAL] += GAIN_TALK; s->gait.wave = 2; break;
+        case ACT_READ: s->need[N_FUN] += s->act_var == 1 ? GAIN_FUN / 4 : GAIN_FUN / 2; s->skill_fun += s->act_var == 1 ? 3 : 1; break;
+        case ACT_COFFEE: s->need[N_REST] += s->act_var == 1 ? 320 : 180; s->need[N_WC] -= s->act_var == 1 ? 110 : 60; break;
+        case ACT_RUN: s->need[N_FUN] += 120; s->need[N_CLEAN] -= s->act_var == 1 ? 160 : 90; s->skill_body += s->act_var == 1 ? 2 : 1; s->gait.amp = 4096; s->gait.phase = (s->gait.phase + 200) & 4095; break;
+        case ACT_PHONE: if (s->act_var == 1) s->need[N_FOOD] += 300; else s->need[N_SOCIAL] += GAIN_TALK; s->gait.wave = 2; break;
         case ACT_TALK: s->need[N_SOCIAL] += GAIN_TALK; s->need[N_FUN] += 40; if ((s->act_t & 63) == 0) s->gait.wave = 40; break;
         case ACT_WORK: if (is_work()) { if (me == player) job_worked++; s->need[N_FUN] -= 20; } else { s->act_t = 0; } break;
         default: break;
@@ -368,6 +419,7 @@ static void tick_needs(Sim *s) {
     // mood: the needs feed HAPPY
     int sum = 0; for (int i = 0; i < NEED_N; i++) sum += s->need[i] >> 10;
     int m = (sum / NEED_N - 50) * 2;
+    m = m / 2 + moodlet_sum(s);                                           // the needs AND the moodlets (Sims 3)
     m += (s->asp_pts - 6000) / 150;                                        // the aspiration meter colours the mood
     if (wants_desperate(s)) m -= 40;
     if (wants_level(s) == ASP_PLATINUM) m = 100;                            // PLATINUM: nothing can bring it down
@@ -381,8 +433,8 @@ static void tick_needs(Sim *s) {
         audio_voice(s->think == N_FOOD ? VOICE_HUNGRY : s->think == N_WC ? VOICE_PEE : VOICE_NEED);
     }
     // passing out
-    if ((s->need[N_REST] >> 10) == 0 && s->action != ACT_SLEEP) { s->need[N_REST] = 25 << 10; s->mood -= 30; sim_say(s, "PASSED OUT"); audio_voice(VOICE_GROAN); wants_fear(s, F_PASSOUT); }
-    if ((s->need[N_WC] >> 10) == 0) { s->need[N_WC] = 100 << 10; s->need[N_CLEAN] = 0; s->mood -= 40; sim_say(s, "OH NO"); audio_voice(VOICE_PEE); wants_fear(s, F_PEE); }
+    if ((s->need[N_REST] >> 10) == 0 && s->action != ACT_SLEEP) { s->need[N_REST] = 25 << 10; s->mood -= 30; sim_say(s, "PASSED OUT"); audio_voice(VOICE_GROAN); wants_fear(s, F_PASSOUT); sim_moodlet(s, ML_PASSED_OUT); }
+    if ((s->need[N_WC] >> 10) == 0) { s->need[N_WC] = 100 << 10; s->need[N_CLEAN] = 0; s->mood -= 40; sim_say(s, "OH NO"); audio_voice(VOICE_PEE); wants_fear(s, F_PEE); sim_moodlet(s, ML_WET); sim_moodlet(s, ML_EMBARRASSED); }
     if (wants_desperate(s) && (s->think_t % 700) == 1 && s->action == ACT_NONE) {   // rock bottom: acting out
         static const char *const act[4] = { "KICKS THE BIN", "JUMPS ON THE SOFA", "SULKS LOUDLY", "WONT LEARN A THING" };
         sim_say(s, act[look_rand() & 3]);
@@ -398,7 +450,7 @@ static void clock_tick(void) {
     if (++acc < spm) return;
     acc = 0;
     clock_min++;
-    for (int i = 0; i < nsims; i++) wants_minute(&sims[i]);
+    for (int i = 0; i < nsims; i++) { wants_minute(&sims[i]); moodlets_minute(&sims[i]); }
     if (clock_min == 16 * 60) for (int i = 0; i < nsims; i++) for (int j = 0; j < nsims; j++) { int r = sims[i].rel[j]; sims[i].rel[j] = (s8)(r > 0 ? r - 2 : r < 0 ? r + 2 : 0); }   // 4 PM: the day's warmth fades a little
     if (clock_min == WORK_FROM && clock_day < 5) { sim_note("WORK: 9 TO 5 AT THE MARKER"); job_worked = 0; }
     if (clock_min == WORK_TO && clock_day < 5) {
@@ -406,10 +458,10 @@ static void clock_tick(void) {
         if (job_worked >= quota) { pay = PAY0 + PAY_LVL * job_level; job_days_good++; if (job_worked >= quota * 2) pay += 600; }
         else if (job_worked >= quota / 2) { pay = (PAY0 + PAY_LVL * job_level) / 2; }
         else { job_strikes++; }
-        if (pay) { cash += pay; story_paid++; char b[32]; sprintf(b, "PAID %d", pay); sim_note(b); wants_event(&sims[player], W_PAID, 0);
+        if (pay) { cash += pay; story_paid++; char b[32]; sprintf(b, "PAID %d", pay); sim_note(b); wants_event(&sims[player], W_PAID, 0); sim_moodlet(&sims[player], ML_PAYDAY);
                    if (story_paid == 1) sim_note("PAID! THE ISLAND FERRY WILL TAKE YOU NOW"); audio_voice(VOICE_YAHOO); }
         else { sim_note("NO PAY TODAY"); wants_fear(&sims[player], F_BADDAY); }
-        if (job_days_good >= 3 && job_level < 5) { job_level++; job_days_good = 0; sim_note("PROMOTED!"); wants_event(&sims[player], W_PROMO, 0); }
+        if (job_days_good >= 3 && job_level < 5) { job_level++; job_days_good = 0; sim_note("PROMOTED!"); wants_event(&sims[player], W_PROMO, 0); sim_moodlet(&sims[player], ML_PROMOTED); }
         if (job_strikes >= 3 && job_level > 0) { job_level--; job_strikes = 0; sim_note("DEMOTED"); wants_fear(&sims[player], F_DEMOTED); }
     }
     if (clock_min >= 1440) {
@@ -488,6 +540,97 @@ const char *sim_hint(void) {
     if (c == 'x' && !is_work()) return "NOT WORK TIME";
     return act_hint(action_for(c), c);
 }
+// ================================================================== THE PIE MENU (Sims 1 & 2)
+// X opens it on what is in front: a person gets the social moves, a thing gets its ways of being used.
+enum { SO_TALK, SO_JOKE, SO_HUG, SO_COMPLIMENT, SO_FLIRT, SO_TEASE, SO_N };
+static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FLIRT", "TEASE" };
+static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
+static char pie_title[24];
+const char *sim_pie_title(void) { return pie_title; }
+int sim_pie_open(char opt[8][16]) {
+    Sim *s = &sims[player];
+    pie_n = 0;
+    if (s->action != ACT_NONE && s->action != ACT_WALK) return 0;        // busy: X just stops (sim_player_interact)
+    int mx, my, who;
+    if (!target_of(s, &mx, &my, &who)) return 0;
+    pie_who = who; pie_mx = mx; pie_my = my;
+    if (who >= 0) {
+        Sim *o = &sims[who];
+        strcpy(pie_title, o->bore.first);
+        int adults = s->bore.stage >= AG_TEEN && o->bore.stage >= AG_TEEN;
+        for (int k = 0; k < SO_N; k++) {
+            if (k == SO_HUG && s->rel[who] < 25) continue;                  // you hug friends
+            if (k == SO_FLIRT && (!adults || s->rel[who] < 35)) continue;   // flirting needs grown-ups who get on
+            if (k == SO_TEASE && s->mood > 40 && !has_trait(s, TR_NICE, 0)) continue;   // a good mood doesn't think of teasing (MEAN always does)
+            strcpy(opt[pie_n], soNm[k]); pie_code[pie_n++] = (u8)k;
+        }
+        return pie_n;
+    }
+    char c = world_at(mx, my); int act = action_for(c);
+    if (c == 'x' && !is_work()) { sim_note("WORK IS 9 TO 5, MON TO FRI"); return 0; }
+    strcpy(pie_title, act_hint(act, c));
+    #define OPT(txt, v) { strcpy(opt[pie_n], txt); pie_code[pie_n++] = v; }
+    switch (act) {
+        case ACT_EAT: OPT("SNACK", 0) OPT("COOK A MEAL", 1) break;
+        case ACT_SLEEP: OPT("SLEEP", 0) OPT("NAP", 1) break;
+        case ACT_SHOWER: OPT("SHOWER", 0) OPT("SING IN IT", 1) break;
+        case ACT_RUN: OPT("JOG", 0) OPT("SPRINT", 1) break;
+        case ACT_COFFEE: OPT("A CUP", 0) OPT("ESPRESSO", 1) break;
+        case ACT_READ: OPT("READ", 0) OPT("STUDY", 1) break;
+        case ACT_PHONE: OPT("CALL A FRIEND", 0) OPT("ORDER PIZZA", 1) break;
+        default: OPT(act_hint(act, c), 0) break;
+    }
+    #undef OPT
+    return pie_n;
+}
+static void social(Sim *s, Sim *o, int move) {   // a social move: the other Bore accepts or rejects it (Sims 2: mood, the relationship, personality)
+    int me = (int)(s - sims), who = (int)(o - sims);
+    int chance = 55 + s->rel[who] / 2 + o->mood / 4;
+    for (int t = 0; t < TR_N; t++) if (ABS((int)s->bore.tr[t] - (int)o->bore.tr[t]) <= 2) chance += 4;   // compatible
+    if (move == SO_JOKE) chance += has_trait(o, TR_PLAY, 1) ? 30 : has_trait(o, TR_PLAY, 0) ? -25 : 0;
+    if (move == SO_HUG) chance += has_trait(o, TR_NICE, 1) ? 15 : -5;
+    if (move == SO_FLIRT) chance -= 25;
+    if (move == SO_TEASE) chance = 100;                                   // it always lands. That's the problem.
+    if (o->grump && move == SO_JOKE) chance = 100;                        // MOSS loves a joke (that isn't about floating things)
+    int ok = (int)(look_rand() % 100) < chance;
+    static const s8 gain_[SO_N] = { 6, 9, 11, 8, 13, -12 };
+    if (!ok) {
+        sim_say(o, move == SO_FLIRT ? "UH... NO." : move == SO_HUG ? "PERSONAL SPACE!" : "NOT FUNNY.");
+        s->rel[who] -= 5; if (o->rel[me] > -100) o->rel[me] -= 3;
+        wants_fear(s, F_REJECT); sim_moodlet(s, ML_REJECTED); if (move == SO_FLIRT) sim_moodlet(s, ML_EMBARRASSED);
+        audio_voice(VOICE_DISAGREE); return;
+    }
+    int g = gain_[move]; if (has_trait(s, TR_NICE, 1) && g > 0) g += 3;
+    int r = s->rel[who] + g; s->rel[who] = (s8)CLAMP(r, -100, 100);
+    r = o->rel[me] + g; o->rel[me] = (s8)CLAMP(r, -100, 100);
+    switch (move) {
+        case SO_TALK: sim_say(o, "OH TOTALLY"); audio_voice(VOICE_AGREE); break;
+        case SO_JOKE: sim_say(o, "HAHAHA!"); audio_voice(VOICE_LAUGH); sim_moodlet(o, ML_GOT_A_LAUGH); sim_moodlet(s, ML_GOT_A_LAUGH); break;
+        case SO_HUG: sim_say(o, "AWW"); audio_voice(VOICE_AGREE); sim_moodlet(o, ML_HUGGED); sim_moodlet(s, ML_HUGGED); break;
+        case SO_COMPLIMENT: sim_say(o, "YOU THINK SO?"); audio_voice(VOICE_YAHOO); o->mood += 10; break;
+        case SO_FLIRT: sim_say(o, "OH, STOP IT"); audio_voice(VOICE_FLIRT); sim_moodlet(o, ML_FLIRTY); sim_moodlet(s, ML_FLIRTY); break;
+        case SO_TEASE: sim_say(o, "HEY!"); audio_voice(VOICE_ANGRY); sim_moodlet(o, ML_TEASED); if (has_trait(s, TR_NICE, 0)) sim_moodlet(s, ML_GOT_A_LAUGH); break;
+    }
+    if (o->grump && !(look_rand() & 1)) sim_say(o, grump_line());
+    if (o->action != ACT_NONE && o->action != ACT_WALK) end_action(o);
+    begin_action(s, ACT_TALK, sim_tile_x(o), sim_tile_y(o));
+    begin_action(o, ACT_TALK, sim_tile_x(s), sim_tile_y(s));
+    s->talk_to = who; o->talk_to = me; o->path_n = 0;
+}
+void sim_pie_do(int i) {
+    Sim *s = &sims[player];
+    if (i < 0 || i >= pie_n) return;
+    if (pie_who >= 0) { social(s, &sims[pie_who], pie_code[i]); return; }
+    char c = world_at(pie_mx, pie_my); int act = action_for(c);
+    if (c == 'R' || c == 'A') audio_jukebox_next();
+    if (act == ACT_TRAVEL) { travel_asked = 1; return; }
+    if (act == ACT_PHONE && pie_code[i] == 1) { if (cash < 40) { sim_note("PIZZA IS $40"); return; } cash -= 40; }
+    begin_action(s, act, pie_mx, pie_my);
+    s->act_var = pie_code[i];
+    if (act == ACT_SLEEP && s->act_var == 1) s->act_t = 300;              // a nap: an hour or so
+    if (act == ACT_EAT && s->act_var == 1) s->act_t = 420;                // cooking takes a while
+}
+
 int sim_player_interact(void) {
     Sim *s = &sims[player];
     if (s->action != ACT_NONE && s->action != ACT_WALK) { end_action(s); return 1; }

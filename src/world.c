@@ -141,7 +141,7 @@ void world_gen_studio(void) {
     gRoom(0, 0, 8, 8, 1, NWP + 64);                                            // a light, airy room: beige carpet, pale walls
     gPut(2, 8, 'E'); gPut(6, 8, 'E'); gPut(0, 3, 'E'); gPut(8, 5, 'E');         // windows on the wall behind the Bore and the sides
     gPut(1, 1, 'i'); gPut(7, 1, 'l'); gPut(1, 7, 'p'); gPut(7, 7, 'p'); gPut(4, 1, 'b');
-    gPut(4, 4, 'r'); gPut(4, 5, 'P');
+    gPut(4, 4, 'r'); gPut(4, 5, 'P'); gPut(6, 6, 'B');
     gPut(6, 1, 'V'); gPut(2, 1, 'c'); gPut(7, 4, 'C'); gPut(1, 4, 'l');
 }
 // ---- the zones ----

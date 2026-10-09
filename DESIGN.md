@@ -90,7 +90,15 @@ The first three already exist in some form. The rest is the roadmap. Each one na
 2. **A world of lots** (`world.c`) — HOME, CASTAWAY ISLAND, STRANGE TOWN; thin walls, build mode. *Done.*
    The island and the town are now **story unlocks** (first paycheck, SPONSORED at work).
 3. **Direct 3D control** (`sim_player_move`) — turn, then walk. *Done.*
-4. **WANTS & FEARS + the aspiration meter** (`wants.c`) — *this is the next thing, see §4.*
+4. **WANTS & FEARS + the aspiration meter** (`wants.c`). *Done.*
+4b. **The pie menu** (Sims 1/2): X opens the choices round a circle; people get TALK / JOKE / HUG / COMPLIMENT /
+    FLIRT / TEASE (accepted or rejected on mood, relationship and personality), things get their variants
+    (SNACK or COOK A MEAL, SLEEP or NAP, SHOWER or SING IN IT, JOG or SPRINT, CALL or ORDER PIZZA). *Done.*
+4c. **Moodlets** (Sims 3): timed mood points from events (GOOD MEAL, HUGGED, TEASED, PROMOTED...) and from low
+    needs (HUNGRY, STINKY, LONELY), summed into the mood. **Traits** (Sims 3) read off the personality:
+    NEAT FREAK / SLOB, SOCIAL BUTTERFLY / LONER, ATHLETIC / COUCH POTATO, GOOFBALL / SERIOUS, GOOD / MEAN. *Done.*
+4d. **Body language**: relaxed A-pose, breathing, a head on its own neck (curious tilts, nods while talking, droops
+    when sad), happy hops, a sad slouch, a lean into the stride. *Done.*
 5. **Relationships** — daily score per pair, friend at 50, decay 2/day; chats move it, mood and
    compatible traits (NEAT/OUTGOING/ACTIVE/PLAYFUL/NICE) decide acceptance. Rejection is a fear.
 6. **A cast** — give the housemates and the townies names, homes and jobs; MOSS already exists (the one

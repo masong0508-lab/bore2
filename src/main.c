@@ -68,7 +68,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int create_tab, create_row, create_from, create_turn;
@@ -78,6 +78,7 @@ static int life_started;
 static int help_page;
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
+static char pie_opt[8][16]; static int pie_n, pie_sel;   // the pie menu
 
 static void draw_panel(int x, int y, int w, int h) {
     gfx_rect(x, y, w, h, 13, 15, 21, 0);   // a solid card: the blend here is additive, so "dark glass" is impossible
@@ -117,7 +118,7 @@ static void start_life(void) {
 
 static void draw_marker(const Sim *s) {   // who you are playing: a bobbing gold arrow. (It used to be a green diamond. MOSS won.)
     VECTOR p; setVector(&p, s->x, 0, s->z);
-    int top = -H * VOX - 24 - (isin((frame * 70) & 4095) >> 9);
+    int top = s->bore.w_heady - 34 - (isin((frame * 70) & 4095) >> 9);   // just over this Bore's own head
     gfx_set_object(&p, cam_yaw & 4095);                       // flat to the camera
     SVECTOR a, b, c, d;
     setVector(&a, -12, top - 15, 0); setVector(&b, 12, top - 15, 0); setVector(&c, 0, top, 0);
@@ -133,6 +134,7 @@ static void draw_sims(void) {
         VECTOR p; setVector(&p, s->x, 0, s->z);
         if (s->action == ACT_SLEEP) p.vy = -items_height('S') + 40;
         if (s->action == ACT_SIT || s->action == ACT_WC) p.vy = -items_height(world_at(s->act_x, s->act_y)) / 2 + 10;
+        s->gait.mood = s->mood; s->gait.talk = s->action == ACT_TALK; s->gait.seed = i; s->gait.clock = frame;
         voxel_draw(&s->bore, &p, s->yaw, &s->gait);
         if (s->action != ACT_SLEEP) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
@@ -225,7 +227,12 @@ static void life_update(int steps) {
         int wx = (mx * c + mz * sn) >> 12, wz = (mz * c - mx * sn) >> 12;
         for (int k = 0; k < steps; k++) sim_player_move(wx, wz, HELD(PAD_SQUARE));
     } else sim_player_move(0, 0, 0);
-    if (PRESSED(PAD_CROSS)) { if (!sim_player_interact()) audio_voice(VOICE_NAH); }
+    if (PRESSED(PAD_CROSS)) {   // X: busy - stop; otherwise the pie menu (one option: just do it)
+        Sim *me = &sims[player];
+        if (me->action != ACT_NONE && me->action != ACT_WALK) sim_player_interact();
+        else { pie_n = sim_pie_open(pie_opt);
+               if (pie_n == 1) sim_pie_do(0); else if (pie_n > 1) { pie_sel = 0; state = ST_PIE; } else audio_voice(VOICE_NAH); }
+    }
     if (PRESSED(PAD_CIRCLE)) sim_player_cancel();
     if (PRESSED(PAD_TRIANGLE)) { sim_speed = sim_speed % 3 + 1; }
     if (PRESSED(PAD_L3)) show_fps ^= 1;
@@ -330,6 +337,36 @@ static void pause_draw(void) {
     for (int i = 0; i < NPAUSE; i++) menu_row(94, 48 + i * 11, 132, pauseNm[i], i == menu_sel);
 }
 
+// ---- the pie menu (Sims 1 & 2): the choices round a circle, the d-pad points at one ----
+static void pie_update(void) {
+    int dx = HELD(PAD_RIGHT) - HELD(PAD_LEFT), dy = HELD(PAD_DOWN) - HELD(PAD_UP);
+    if (analog && (ABS(ls_x) > 60 || ABS(ls_y) > 60)) { dx = ls_x; dy = ls_y; }
+    if ((dx || dy) && (PRESSED(PAD_LEFT) || PRESSED(PAD_RIGHT) || PRESSED(PAD_UP) || PRESSED(PAD_DOWN) || analog)) {   // the option nearest to where the d-pad points
+        int best = pie_sel, bd = 1 << 30;
+        for (int i = 0; i < pie_n; i++) {
+            int a = (i * 4096 / pie_n) & 4095, ox = isin(a), oy = -icos(a);
+            int d = -(ox * dx + oy * dy) / (ABS(dx) + ABS(dy));
+            if (d < bd) { bd = d; best = i; }
+        }
+        pie_sel = best;
+    }
+    if (PRESSED(PAD_CROSS)) { state = ST_LIFE; sim_pie_do(pie_sel); }
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_TRIANGLE)) state = ST_LIFE;
+}
+static void pie_draw(void) {
+    life_draw();
+    int cx = 160, cy = 100, R = pie_n > 4 ? 56 : 46;
+    { const char *t = sim_pie_title(); int w = gfx_text_w(1, t) + 10; gfx_rect(cx - w / 2, cy - 6, w, 12, 13, 15, 21, 0); gfx_rect(cx - w / 2, cy + 5, w, 1, 255, 200, 40, 0); gfx_textc(cx, cy - 4, 1, t, GOLD); }
+    for (int i = 0; i < pie_n; i++) {
+        int a = (i * 4096 / pie_n) & 4095, x = cx + ((isin(a) * R) >> 12), y = cy - ((icos(a) * R * 3 / 4) >> 12);
+        int w = gfx_text_w(1, pie_opt[i]) + 14, sel = i == pie_sel;
+        gfx_rect(x - w / 2, y - 7, w, 14, sel ? 40 : 13, sel ? 70 : 15, sel ? 50 : 21, 0);
+        gfx_rect(x - w / 2, y - 7, w, 1, sel ? 255 : 80, sel ? 200 : 90, sel ? 40 : 110, 0); gfx_rect(x - w / 2, y + 6, w, 1, sel ? 255 : 50, sel ? 200 : 55, sel ? 40 : 70, 0);
+        gfx_textc(x, y - 3, 1, pie_opt[i], sel ? 255 : 210, sel ? 255 : 210, sel ? 255 : 220);
+    }
+    gfx_textc(160, 168, 1, "D-PAD PICKS   X DO IT   O NEVER MIND", GREY);
+}
+
 // ---- the wants and fears page ----
 static void wants_update(void) {
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_CROSS) || PRESSED(PAD_START)) state = ST_PAUSE;
@@ -337,20 +374,28 @@ static void wants_update(void) {
 static void wants_draw(void) {
     life_draw();
     Sim *s = &sims[player];
-    draw_panel(44, 30, 232, 150);
-    char b[40], t[32];
-    sprintf(b, "%s WANTS", s->bore.first); gfx_textc(160, 34, 2, b, GOLD);
-    sprintf(b, "ASPIRATION: %s", look_asp_name(s->bore.asp)); gfx_text(54, 50, 1, b, DIM);
+    draw_panel(30, 14, 260, 178);
+    char b[64], t[32];
+    sprintf(b, "%s WANTS", s->bore.first); gfx_textc(160, 18, 2, b, GOLD);
+    { const char *tr[3]; int n = sim_traits(s, tr); sprintf(b, "%s", look_asp_name(s->bore.asp));
+      for (int i = 0; i < n; i++) { strcat(b, i ? ", " : "  -  "); strcat(b, tr[i]); }
+      gfx_text(40, 36, 1, b, DIM); }
     int lv = wants_level(s);
-    gfx_rect(54, 60, 212, 6, 30, 32, 40, 0);
-    gfx_rect(54, 60, 212 * s->asp_pts / ASP_MAX, 6, aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2], 0);
-    for (int k = 1; k < 4; k++) { int x = 54 + 212 * (k == 1 ? 3000 : k == 2 ? 7000 : 10000) / ASP_MAX; gfx_rect(x, 59, 1, 8, 13, 15, 21, 0); }
-    sprintf(b, "%s%s", aspLvNm[lv], lv == 3 ? " - NOTHING CAN BRING THEM DOWN" : wants_desperate(s) ? " - DESPERATE" : ""); gfx_text(54, 69, 1, b, aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2]);
-    gfx_text(54, 84, 1, "WANTS", GOLD);
-    for (int i = 0; i < 4; i++) { wants_text(s, i, t); gfx_text(62, 94 + i * 10, 1, t, 230, 230, 240); sprintf(b, "%d", s->want[i].pts); gfx_text(236, 94 + i * 10, 1, b, 90, 230, 90); }
-    gfx_text(54, 138, 1, "FEARS", 255, 120, 110);
-    for (int i = 0; i < 2; i++) { fears_text(s, i, t); gfx_text(62, 148 + i * 10, 1, t, 230, 200, 200); sprintf(b, "-%d", s->fear[i].pts); gfx_text(236, 148 + i * 10, 1, b, 255, 100, 90); }
-    gfx_textc(160, 170, 1, "O BACK", GREY);
+    gfx_rect(54, 46, 212, 6, 30, 32, 40, 0);
+    gfx_rect(54, 46, 212 * s->asp_pts / ASP_MAX, 6, aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2], 0);
+    for (int k = 1; k < 4; k++) { int x = 54 + 212 * (k == 1 ? 3000 : k == 2 ? 7000 : 10000) / ASP_MAX; gfx_rect(x, 45, 1, 8, 13, 15, 21, 0); }
+    sprintf(b, "%s%s", aspLvNm[lv], lv == 3 ? " - NOTHING CAN BRING THEM DOWN" : wants_desperate(s) ? " - DESPERATE" : ""); gfx_text(54, 55, 1, b, aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2]);
+    gfx_text(40, 68, 1, "WANTS", GOLD);
+    for (int i = 0; i < 4; i++) { wants_text(s, i, t); gfx_text(48, 78 + i * 10, 1, t, 230, 230, 240); sprintf(b, "%d", s->want[i].pts); gfx_text(128, 78 + i * 10, 1, b, 90, 230, 90); }
+    gfx_text(40, 122, 1, "FEARS", 255, 120, 110);
+    for (int i = 0; i < 2; i++) { fears_text(s, i, t); gfx_text(48, 132 + i * 10, 1, t, 230, 200, 200); sprintf(b, "-%d", s->fear[i].pts); gfx_text(128, 132 + i * 10, 1, b, 255, 100, 90); }
+    gfx_rect(160, 66, 1, 90, 60, 60, 70, 0);
+    gfx_text(168, 68, 1, "MOODLETS", 200, 220, 255);
+    { int y = 78, any = 0;
+      for (int i = 0; i < 6; i++) if (s->ml[i].id) { sprintf(b, "%s", sim_moodlet_name(s->ml[i].id)); int v = s->ml[i].val;
+          gfx_text(176, y, 1, b, v >= 0 ? 150 : 255, v >= 0 ? 240 : 140, v >= 0 ? 160 : 130); sprintf(b, "%d", v); gfx_text(262, y, 1, b, v >= 0 ? 90 : 255, v >= 0 ? 230 : 100, v >= 0 ? 90 : 90); y += 10; any = 1; }
+      if (!any) gfx_text(176, 78, 1, "NOTHING MUCH", DIM); }
+    gfx_textc(160, 180, 1, "O BACK", GREY);
 }
 
 // ---- the story page: the goals of this life, Bustin' Out style ----
@@ -436,7 +481,7 @@ static void create_draw(void) {
     gfx_set_fog(0, 0);
     world_draw(4, 5, frame, 1);
     VECTOR p; setVector(&p, bx, 0, bz);
-    Gait g = { 0 }; g.phase = (frame * 90) & 4095; g.amp = 0;
+    Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (frame * 90) & 4095; g.amp = 0;
     voxel_draw(&edit, &p, create_turn & 4095, &g);
     gfx_shadow(&p, 70);
     // the card
@@ -616,7 +661,7 @@ static void title_draw(void) {
     gfx_set_fog(2000, 5000);
     world_draw(tx, ty, title_t, 1);
     VECTOR p; setVector(&p, fx, 0, fz);
-    Gait g = { 0 }; g.phase = (title_t * 120) & 4095; g.amp = 4096;
+    Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (title_t * 120) & 4095; g.amp = 4096;
     voxel_draw(&title_bore, &p, (title_t * 9) & 4095, &g);
     gfx_shadow(&p, 70);
     gfx_textc(160, 14, 3, "BORE 2", GOLD);
@@ -685,6 +730,7 @@ int main(void) {
             case ST_TRAVEL: travel_update(); travel_draw(); break;
             case ST_STORY: story_update(); story_draw(); break;
             case ST_WANTS: wants_update(); wants_draw(); break;
+            case ST_PIE: pie_update(); pie_draw(); break;
         }
         gfx_flip();
     }

@@ -279,8 +279,52 @@ static void draw_box(const IBox *bx, const TexRef *ref, int r, int ox, int oz, i
 }
 
 int getenv_noshadow;
+
+// ---- THE SKATEBOARD, modelled (the GBA's was a brick on four cubes): a thin 7-ply deck with a kicked nose and tail,
+// griptape on top, the graphic underneath, two silver trucks and four urethane wheels ----
+static void sk_quad(SVECTOR *a, SVECTOR *b, SVECTOR *c, SVECTOR *d, int r, int g, int bl, int nx, int ny, int nz) {
+    int L = gfx_light(nx, ny, nz);
+    gfx_quad_f(a, b, c, d, MIN(255, (r * L) >> 7), MIN(255, (g * L) >> 7), MIN(255, (bl * L) >> 7), 1);
+}
+static void sk_box(int x0, int x1, int y0, int y1, int z0, int z1, int r, int g, int b) {   // y0 top (smaller), z0 < z1
+    SVECTOR A, B, C, DD;
+    setVector(&A, x0, y0, z0); setVector(&B, x1, y0, z0); setVector(&C, x0, y1, z0); setVector(&DD, x1, y1, z0); sk_quad(&A, &B, &C, &DD, r, g, b, 0, 0, -ONE);
+    setVector(&A, x1, y0, z0); setVector(&B, x1, y0, z1); setVector(&C, x1, y1, z0); setVector(&DD, x1, y1, z1); sk_quad(&A, &B, &C, &DD, r, g, b, ONE, 0, 0);
+    setVector(&A, x1, y0, z1); setVector(&B, x0, y0, z1); setVector(&C, x1, y1, z1); setVector(&DD, x0, y1, z1); sk_quad(&A, &B, &C, &DD, r, g, b, 0, 0, ONE);
+    setVector(&A, x0, y0, z1); setVector(&B, x0, y0, z0); setVector(&C, x0, y1, z1); setVector(&DD, x0, y1, z0); sk_quad(&A, &B, &C, &DD, r, g, b, -ONE, 0, 0);
+    setVector(&A, x0, y0, z1); setVector(&B, x1, y0, z1); setVector(&C, x0, y0, z0); setVector(&DD, x1, y0, z0); sk_quad(&A, &B, &C, &DD, r, g, b, 0, -ONE, 0);
+}
+static void sk_slab(int w, int z0, int ya, int z1, int yb, int T) {   // one deck section from z0 (top at ya) to z1 (top at yb)
+    SVECTOR A, B, C, DD; int x0 = -w, x1 = w;
+    setVector(&A, x0, yb, z1); setVector(&B, x1, yb, z1); setVector(&C, x0, ya, z0); setVector(&DD, x1, ya, z0); sk_quad(&A, &B, &C, &DD, 46, 46, 54, 0, -ONE, 0);        // griptape
+    setVector(&A, x0, ya + T, z0); setVector(&B, x1, ya + T, z0); setVector(&C, x0, yb + T, z1); setVector(&DD, x1, yb + T, z1); sk_quad(&A, &B, &C, &DD, 240, 104, 40, 0, ONE, 0);   // the graphic
+    setVector(&A, x1, ya, z0); setVector(&B, x1, yb, z1); setVector(&C, x1, ya + T, z0); setVector(&DD, x1, yb + T, z1); sk_quad(&A, &B, &C, &DD, 222, 184, 124, ONE, 0, 0);    // the ply edge
+    setVector(&A, x0, yb, z1); setVector(&B, x0, ya, z0); setVector(&C, x0, yb + T, z1); setVector(&DD, x0, ya + T, z0); sk_quad(&A, &B, &C, &DD, 222, 184, 124, -ONE, 0, 0);
+}
+static void skate_item(int mx, int my, int r) {
+    VECTOR p; setVector(&p, mx * TILE + TILE / 2, 0, -(my * TILE + TILE / 2));
+    gfx_set_object(&p, (r & 1) * 1024);
+    { SVECTOR A, B, C, DD; setVector(&A, -60, -2, 140); setVector(&B, 60, -2, 140); setVector(&C, -60, -2, -140); setVector(&DD, 60, -2, -140); gfx_shadow_quad(&A, &B, &C, &DD); }
+    const int BW = 34, Lf = 78, L = 112, T = 6, top = -30;
+    sk_slab(BW, -Lf, top, Lf, top, T);                                     // the flat middle
+    sk_slab(BW - 4, Lf, top, L, top - 15, T);                              // the nose kicks up
+    sk_slab(BW - 4, -L, top - 15, -Lf, top, T);                            // and the tail
+    { SVECTOR A, B, C, DD;                                                 // the rounded ends
+      setVector(&A, BW - 4, top - 15, L); setVector(&B, -(BW - 4), top - 15, L); setVector(&C, BW - 4, top - 15 + T, L); setVector(&DD, -(BW - 4), top - 15 + T, L); sk_quad(&A, &B, &C, &DD, 222, 184, 124, 0, 0, ONE);
+      setVector(&A, -(BW - 4), top - 15, -L); setVector(&B, BW - 4, top - 15, -L); setVector(&C, -(BW - 4), top - 15 + T, -L); setVector(&DD, BW - 4, top - 15 + T, -L); sk_quad(&A, &B, &C, &DD, 222, 184, 124, 0, 0, -ONE); }
+    for (int e = -1; e <= 1; e += 2) {                                    // the trucks and wheels
+        int zc = e * (Lf - 22);
+        sk_box(-14, 14, top + T, top + T + 5, zc - 10, zc + 10, 150, 156, 168);     // baseplate
+        sk_box(-32, 32, top + T + 5, top + T + 11, zc - 5, zc + 5, 190, 196, 208);  // hanger
+        sk_box(-44, -32, -17, 0, zc - 9, zc + 9, 242, 232, 204);                     // wheels
+        sk_box(32, 44, -17, 0, zc - 9, zc + 9, 242, 232, 204);
+    }
+    gfx_set_identity();
+}
+
 void items_draw(char ch, int mx, int my, int rot, int along, int t) {
-    if (ch == 'P') return;                    // the SPAWN marker: where the Bore starts, nothing to see (in 3D the GBA's pad read as a figurine base)
+    if (ch == 'P') return;
+    if (ch == 'B') { skate_item(mx, my, rot); return; }                    // the SPAWN marker: where the Bore starts, nothing to see (in 3D the GBA's pad read as a figurine base)
     const ItemDef *d = def_of(ch);
     if (!d) return;
     const IBox *b = d->b; int n = d->n; int base = box_base[d - defs][0];

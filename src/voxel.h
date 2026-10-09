@@ -12,6 +12,11 @@ typedef struct {
     int sleep;      // 1: lying down
     int wave;       // frames left of a wave / talk gesture
     int squash;     // -16..16 (reaction pops)
+    // the body language (main.c fills these): the pose is worked out in voxel_draw from them
+    int mood;       // -100..100: happy Bores bounce, sad ones droop
+    int talk;       // 1: in a conversation (gestures, nods)
+    int seed;       // a per-person offset so a room of Bores never breathes in step
+    int clock;      // frames, for the idle cycle
 } Gait;
 
 void voxel_init(void);

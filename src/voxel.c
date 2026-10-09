@@ -18,7 +18,7 @@ static int quads;
 int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block;   // (debug counters, kept for the HUD readout)
 static const u8 wMask2[8] = { 10, 12, 5, 3, 8, 4, 1, 2 };   // BORE: bit k = corner (k&1 ? +x : -x, k&2 ? +z : -z) drops a full block
 
-enum { G_BODY, G_LLEG, G_RLEG, G_LARM, G_RARM, G_N };
+enum { G_BODY, G_LLEG, G_RLEG, G_LARM, G_RARM, G_HEAD, G_N };   // G_HEAD: the head and its hair, on its own neck joint (tilts, nods)
 static MATRIX gm[G_N];
 static const Bore *cur;
 static int sld(const Bore *b, int id);
@@ -405,6 +405,7 @@ static void face_sprites(const Bore *b) {
 // ---- the sprite parts BORE draws over the blocks: ears, horns, a tail, wings ----
 static void extra_parts(const Bore *b, int hx, int hy, int hz, int hs) {
     int hw = 2 * hs;
+    gfx_set_object_m(&gm[G_HEAD]);                               // ears and horns ride on the head
     int ears = b->look[LK_EARS];
     if (ears) {
         int s = ears == 1 ? 14 : 22, yc = -(hy + 2 * hs) * VOX + VOX * 5 / 4;
@@ -430,6 +431,7 @@ static void extra_parts(const Bore *b, int hx, int hy, int hz, int hs) {
             if (horns == 2) { int hh2 = ((h + 24) * b->h_k) >> 12; box(x0 + 4, x1 - 4, y0 - (hh2 - ((h * b->h_k) >> 12)), y0, z0 + 4, z1 - 4, side ? 5 : 10, 8, b->col[8], 0); }
         }
     }
+    gfx_set_object_m(&gm[G_BODY]);
     int tail = b->look[LK_TAIL], ftail = b->look[LK_FTAIL];
     if (tail || ftail) {
         int n = CLAMP((tail == 2 ? 5 : 3) + sld(b, LK_TAILLEN) / 2 + (sld(b, LK_TAILLEN) > 0), 2, 8), s = ftail ? 14 : 9;   // TAIL LENGTH
@@ -461,6 +463,7 @@ static void extra_parts(const Bore *b, int hx, int hy, int hz, int hs) {
         }
     }
     int ant = b->look[LK_ANTENNA];
+    gfx_set_object_m(&gm[G_HEAD]);
     if (ant) {   // ANTENNAE: two stalks from the top of the head, a ball on each (the bigger kind: longer, bigger balls)
         int len = (ant == 1 ? 46 : 70) + sld(b, LK_ANTLEN) * 9, spr = hs * VOX / 2 + sld(b, LK_ANTSPR) * 6;
         int yt = b->w_heady, zc = (hz - 2) * VOX + hs * VOX, xc = (hx + hs - 3) * VOX, r = ant == 1 ? 8 : 11;
@@ -497,14 +500,25 @@ static void wear_part(const Bore *b, const WearModel *m, int ax, int ay, int az,
 static void wear_draw(const Bore *b) {
     int hu = MAX(3, b->w_headh / 8), bu = VOX / 8;            // head units (the head is 16 wide), body units
     int v;
+    gfx_set_object_m(&gm[G_HEAD]);
     if ((v = b->look[LK_X_HEAD] % NX_HEAD)) wear_part(b, &wearHead[v], b->w_headx, b->w_heady + VOX / 4, b->w_headz, hu, 1);   // (sunk a little into the hair)
     if ((v = b->look[LK_X_FACE] % NX_FACE)) { gfx_set_zbias(4); wear_part(b, &wearFace[v], b->w_headx, b->w_facey, b->w_facez, hu, 1); gfx_set_zbias(0); }
+    gfx_set_object_m(&gm[G_BODY]);
     if ((v = b->look[LK_X_NECK] % NX_NECK)) wear_part(b, &wearNeck[v], b->w_tx, b->w_shy, b->w_tfz, bu, 1);
     if ((v = b->look[LK_X_BACK] % NX_BACK)) wear_part(b, &wearBack[v], b->w_tx, b->w_shy, b->w_tbz, bu, -1);
     if ((v = b->look[LK_X_WAIST] % NX_WAIST)) wear_part(b, &wearWaist[v], b->w_tx, b->w_hipy, b->w_tfz, bu, 1);
     if ((v = b->look[LK_X_HAND] % NX_HAND)) { gfx_set_object_m(&gm[G_RARM]); wear_part(b, &wearHand[v], b->w_hx, b->w_hy, b->w_hz, bu, 1); gfx_set_object_m(&gm[G_BODY]); }
 }
 
+static void joint_matrix(MATRIX *out, const MATRIX *obj, int pitch, int roll, int pivot_x, int pivot_y, int pivot_z) {   // a joint that swings (pitch, about x) and spreads (roll, about z)
+    MATRIX r; SVECTOR rot = { (short)pitch, 0, (short)roll, 0 }; VECTOR p, rp, t;
+    RotMatrix(&rot, &r);
+    setVector(&p, pivot_x, pivot_y, pivot_z);
+    ApplyMatrixLV(&r, &p, &rp);
+    setVector(&t, p.vx - rp.vx, p.vy - rp.vy, p.vz - rp.vz);
+    TransMatrix(&r, &t);
+    CompMatrixLV((MATRIX *)obj, &r, out);
+}
 static void part_matrix(MATRIX *out, const MATRIX *obj, int ang, int pivot_y, int pivot_z) {
     MATRIX r; SVECTOR rot = { (short)ang, 0, 0, 0 }; VECTOR p, rp, t;
     RotMatrix(&rot, &r);
@@ -576,6 +590,7 @@ static void shape_body(Bore *b) {
     for (int i = 0; i < b->ncell; i++) {
         int g = b->cell[i].grp, sh = b->cell[i].v >> 4;
         SVECTOR *cv = b->cell[i].c;
+        if (g == G_HEAD) { for (int k = 0; k < 8; k++) head_pt(b, &cv[k]); continue; }
         if (g == G_BODY) {
             if (b->cell[i].y >= hy || (b->cell[i].flags & 1)) {                // the head, the hair, a hat, a beard: the head's sculpt
                 for (int k = 0; k < 8; k++) head_pt(b, &cv[k]);
@@ -616,7 +631,7 @@ static void shape_body(Bore *b) {
     for (int i = 0; i < b->ncell; i++) {
         int g = b->cell[i].grp; const SVECTOR *cv = b->cell[i].c;
         for (int k = 0; k < 8; k++) {
-            if (g == G_BODY && b->cell[i].y >= hy) top = MIN(top, cv[k].vy);
+            if (g == G_HEAD) top = MIN(top, cv[k].vy);
             if (g == G_BODY && b->cell[i].y < hy && !(b->cell[i].flags & 1)) { tfz = MAX(tfz, cv[k].vz); tbz = MIN(tbz, cv[k].vz); }
             if (g == G_RARM) hand_y = MAX(hand_y, cv[k].vy);
         }
@@ -630,6 +645,12 @@ static void shape_body(Bore *b) {
     b->w_headx = b->h_cx; b->w_heady = (s16)top; b->w_headz = b->h_cz; b->w_headh = (s16)((hs * VOX * b->h_k) >> 12);
     { int fx = b->h_cx, fy = -(hy + hs) * VOX - hs * VOX / 3 + d, fz = (hz + 2 * hs - 2) * VOX; head_xf(b, &fx, &fy, &fz); b->w_facey = (s16)fy; b->w_facez = (s16)fz; }
     b->w_tx = (s16)tcx; b->w_shy = (s16)shY; b->w_hipy = (s16)hipY; b->w_tfz = (s16)tfz; b->w_tbz = (s16)tbz;
+    { int lx0 = 32767, lx1 = -32767, rx0 = 32767, rx1 = -32767, gx0 = 32767, gx1 = -32767, kx0 = 32767, kx1 = -32767;
+      for (int i = 0; i < b->ncell; i++) for (int k = 0; k < 8; k++) { int g = b->cell[i].grp, x = b->cell[i].c[k].vx;
+          if (g == G_LARM) { lx0 = MIN(lx0, x); lx1 = MAX(lx1, x); } if (g == G_RARM) { rx0 = MIN(rx0, x); rx1 = MAX(rx1, x); }
+          if (g == G_LLEG) { gx0 = MIN(gx0, x); gx1 = MAX(gx1, x); } if (g == G_RLEG) { kx0 = MIN(kx0, x); kx1 = MAX(kx1, x); } }
+      b->w_lax = (s16)(lx0 <= lx1 ? (lx0 + lx1) / 2 : -VOX * 2); b->w_rax = (s16)(rx0 <= rx1 ? (rx0 + rx1) / 2 : VOX * 2);
+      b->w_lgx = (s16)(gx0 <= gx1 ? (gx0 + gx1) / 2 : -VOX / 2); b->w_rgx = (s16)(kx0 <= kx1 ? (kx0 + kx1) / 2 : VOX / 2); }
     if (hx0 <= hx1) { b->w_hx = (s16)((hx0 + hx1) / 2); b->w_hy = (s16)hand_y; b->w_hz = (s16)((hz0 + hz1) / 2); }
     else { b->w_hx = (s16)(2 * VOX); b->w_hy = (s16)hipY; b->w_hz = 0; }
 }
@@ -639,7 +660,8 @@ void voxel_prepare(Bore *b) {
     for (int grp = 0; grp < G_N; grp++)
         for (int y = 0; y < H; y++) for (int z = 0; z < D; z++) for (int x = 0; x < W; x++) {
             u8 v = b->vox[y][z][x];
-            if (!v || group_of(v, x) != grp) continue;
+            if (!v) continue;
+            { int g_ = group_of(v, x); if (g_ == G_BODY && y >= b->legs + b->torso) g_ = G_HEAD; if (g_ != grp) continue; }
             int slot = v & 15, sh = v >> 4, hide = 0, m = 0, in = 0;
             if (sh >= 4 && sh <= 11) m = wMask2[sh - 4];
             else if (sh == 1 || sh == 2 || sh == 3) in = 1;
@@ -656,7 +678,7 @@ void voxel_prepare(Bore *b) {
                 if (cube_at(b, x, y + 1, z) && !m) hide |= 16;
                 if (cube_at(b, x, y - 1, z) || y == 0) hide |= 32;
             }
-            int is_hair = (slot == 5 && !in && grp == G_BODY);
+            int is_hair = (slot == 5 && !in && (grp == G_BODY || grp == G_HEAD));
             if (is_hair && hair_at(b, x, y + 1, z)) hide |= 16;
             SVECTOR cc[8];
             int x0 = (x - 3) * VOX, x1 = x0 + VOX, y0 = -(y + 1) * VOX, y1 = -y * VOX, z0 = (z - 2) * VOX, z1 = z0 + VOX;
@@ -684,7 +706,7 @@ void voxel_prepare(Bore *b) {
     if (b->h_lift > 0 || b->h_k < 4096) {                // the head sits smaller and higher than its blocks did: the shoulders and the chin show
         int hy = b->legs + b->torso;
         for (int i = 0; i < n; i++) {
-            if (b->cell[i].grp != G_BODY) continue;
+            if (b->cell[i].grp != G_BODY && b->cell[i].grp != G_HEAD) continue;
             if (b->cell[i].y == hy) b->cell[i].hide &= ~32;
             else if (b->cell[i].y == hy - 1 && !(b->cell[i].flags & 1)) b->cell[i].hide &= ~16;
         }
@@ -715,7 +737,34 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     int hip = b->w_hipy, shoulder = b->w_shy;
     int legL = g->sit ? -1024 : swing, legR = g->sit ? -1024 : -swing;
     int armL = g->sit ? -200 : -swing * 3 / 4, armR = g->sit ? -200 : swing * 3 / 4;
-    if (g->wave) { int w = isin((g->wave * 400) & 4095) >> 4; armR = -2400 + w; }
+    // ---- the body language: stylised, a little cute ----
+    int t = g->clock + g->seed * 37, moving = g->amp > 2000, idle = !moving && !g->sit && !g->sleep;
+    int breath = isin((t * 22) & 4095);                                   // a slow breath, ~3 s
+    int happy = g->mood > 45, sad = g->mood < -35, baby = b->stage <= AG_CHILD;
+    int rollL = -150, rollR = 150;                                        // a relaxed A-pose: arms off the sides (never stiff at attention)
+    int legRollL = 0, legRollR = 0, headTilt = 0, headNod = 0, lean = 0;
+    if (idle) {
+        rollL -= breath >> 8; rollR += breath >> 8;                       // the arms rise with the breath
+        armL += (breath >> 9) - 60; armR += (breath >> 9) - 60;           // and hang a touch forward
+        legRollL = -45; legRollR = 45;                                    // feet a little apart
+        int look = isin((t * 7) & 4095);                                  // now and then a curious head tilt
+        headTilt = look > 2800 ? (look - 2800) / 6 : look < -2800 ? (look + 2800) / 6 : 0;
+        if (happy) {                                                      // happy: a little hop every few seconds, arms up with it
+            int ph = (t * 3) & 1023;
+            if (ph < 96) { obj.t[1] -= (isin(ph * 21) * (baby ? 22 : 16)) >> 12; rollL -= 220; rollR += 220; }
+        }
+        if (sad) { rollL += 100; rollR -= 100; headNod = 260; lean = 120; armL += 60; armR += 60; }   // sad: arms in, head down, a slouch
+    }
+    if (moving) { rollL -= 60; rollR += 60; armL = armL * 5 / 4; armR = armR * 5 / 4; lean = g->amp > 3800 ? 90 : 40;      // a stride leans in
+                  headNod = -40 + (ABS(walk_sin) >> 8); }                                              // and the head bobs
+    if (g->talk && !g->wave) {                                            // in a conversation: one hand talks, the head nods along
+        int gst = isin((t * 60) & 4095);
+        armR = -700 + (gst >> 4); rollR += 120;
+        headNod = (isin((t * 90) & 4095) >> 7) - 30; headTilt += 60;
+    }
+    if (g->wave) { int w = isin((g->wave * 400) & 4095) >> 4; armR = -2400 + w; rollR = 260; }
+    if (g->sit) { rollL = -60; rollR = 60; armL = -500; armR = -500; }   // sitting: hands on the knees
+    if (lean) { MATRIX r; SVECTOR rr = { (short)lean, 0, 0, 0 }; RotMatrix(&rr, &r); CompMatrixLV(&obj, &r, &obj); }   // the lean pivots at the feet
     gm[G_BODY] = obj;
     {   // the eye in the body's space: turn the eye offset back by the yaw
         int dx = cam.eye.vx - p.vx, dy = cam.eye.vy - p.vy, dz = cam.eye.vz - p.vz;
@@ -724,10 +773,11 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
         cam_cull = !g->sleep;
     }
     { int t0 = VSync(1);
-    part_matrix(&gm[G_LLEG], &obj, legL, hip, 0);
-    part_matrix(&gm[G_RLEG], &obj, legR, hip, 0);
-    part_matrix(&gm[G_LARM], &obj, armL, shoulder, 0);
-    part_matrix(&gm[G_RARM], &obj, armR, shoulder, 0);
+    joint_matrix(&gm[G_LLEG], &obj, legL, legRollL, b->w_lgx, hip, 0);
+    joint_matrix(&gm[G_RLEG], &obj, legR, legRollR, b->w_rgx, hip, 0);
+    joint_matrix(&gm[G_LARM], &obj, armL, rollL, b->w_lax, shoulder, 0);
+    joint_matrix(&gm[G_RARM], &obj, armR, rollR, b->w_rax, shoulder, 0);
+    joint_matrix(&gm[G_HEAD], &obj, headNod, headTilt, b->h_cx, b->h_cy0 - b->h_lift, b->h_cz);   // the neck
     vox_t_face = VSync(1) - t0; }
     gfx_set_light_yaw(yaw);
 
@@ -744,12 +794,12 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     radial_table();
     lights_for_group();
 
-    int grp = -1;
+    int grp = -1, cull0 = cam_cull;
     int tcells0 = VSync(1);
     for (int i = 0; i < b->ncell; i++) {
         const u8 *c = (const u8 *)&b->cell[i];
         int x = c[0], y = c[1], z = c[2], v = c[3], hide = c[4], fl = c[6];
-        if (c[5] != grp) { grp = c[5]; gfx_set_object_m(&gm[grp]); if (grp != G_BODY) cam_cull = 0; }
+        if (c[5] != grp) { grp = c[5]; gfx_set_object_m(&gm[grp]); cam_cull = (grp == G_BODY || grp == G_HEAD) ? cull0 : 0; }
         int slot = v & 15, sh = v >> 4, m = (sh >= 4 && sh <= 11) ? wMask2[sh - 4] : 0;
         if (fl & 1) { hair_block(b, x, y, z, m, hide, b->col[slot], b->cell[i].c); continue; }
         block(b->cell[i].c, m, hide, slot, b->col[slot], kind_of(slot), (fl & 2) ? -2 : x, z);
@@ -759,6 +809,7 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
         int nw = b->h_neckw, nd = nw * 9 / 10;
         box(b->h_cx - nw, b->h_cx + nw, b->h_cy0 - b->h_lift - 3, b->h_cy0 + 3, b->h_cz - nd, b->h_cz + nd, 0, 1, b->col[1], 2);
     }
+    gfx_set_object_m(&gm[G_HEAD]);
     gfx_set_zbias(6);                                            // the face art and the bangs lie on the blocks: pull them in front
     vox_t_block = VSync(1) - tcells0;
     { int t0 = VSync(1); face_sprites(b);
