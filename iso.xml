@@ -13,11 +13,7 @@
 		<directory_tree>
 			<file name="SYSTEM.CNF" type="data" source="${PROJECT_SOURCE_DIR}/system.cnf" />
 			<file name="BORE2.EXE"  type="data" source="bore2.exe" />
-			<file name="MUSIC0.XA"  type="xa"   source="${PROJECT_SOURCE_DIR}/assets/MUSIC0.XA" />
-			<file name="MUSIC1.XA"  type="xa"   source="${PROJECT_SOURCE_DIR}/assets/MUSIC1.XA" />
-			<file name="MUSIC2.XA"  type="xa"   source="${PROJECT_SOURCE_DIR}/assets/MUSIC2.XA" />
-			<file name="MUSIC3.XA"  type="xa"   source="${PROJECT_SOURCE_DIR}/assets/MUSIC3.XA" />
-			<file name="MUSIC4.XA"  type="xa"   source="${PROJECT_SOURCE_DIR}/assets/MUSIC4.XA" />
+			<file name="SONGS.BIN"  type="data" source="${PROJECT_SOURCE_DIR}/assets/SONGS.BIN" />
 			<dummy sectors="512"/>
 		</directory_tree>
 	</track>

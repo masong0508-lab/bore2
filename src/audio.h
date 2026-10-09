@@ -1,4 +1,4 @@
-// audio: the voices (SPU) and the jukebox (XA-ADPCM streamed from the disc: every BORE song, in full).
+// audio: the voices and the jukebox (every BORE song as a sequence the sound chip plays), all on the SPU.
 #pragma once
 #include "common.h"
 

@@ -588,7 +588,7 @@ int main(void) {
     look_default(&title_bore); look_random(&title_bore);
     world_gen();
     strcpy(edit.first, "DIPPA"); strcpy(edit.last, "DIPPINN");
-    audio_jukebox_next();
+    audio_jukebox_play(0);   // THE DIPPER MAN, the title song (as on the GBA)
     t_vb = VSync(-1);
     while (1) {
         read_pad();
