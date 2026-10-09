@@ -36,28 +36,39 @@ static const char *const botStyNm[4]={"PANTS","SHORTS","SKIRT","BARE"};
 static const char *const shoeNm[6]={"AS THE BOTTOM","WHITE","BLACK","RED","GOLD","AS THE TOP"};
 static const char *const stageNm2[AG_N]={"BABY","CHILD","TEEN","ADULT","ELDER"};
 static const u8 lkCnt[LK_N]={NSHAPE,NSKIN,NEYE,NMOUTH,3,NHAIR,NSW,NSW,NSW,9,9,9,3,3,3,6,6,3,4,3,6, 6,6,5,4,NSW, 9,9,9,9,9,9,9, 4,3,7,6, 9,9,9,9,9,9,9,9,9, 5,4,4, 9,9,9, 9,9,9,9,9,9,9, 9,9,9,9,9,9,9, 9,9,9,7, 9,9,9, 9};
-_Static_assert(LK_N <= LK_COUNT, "LK_COUNT in look.h must hold every look");
+_Static_assert(LK_X_END <= LK_COUNT, "LK_COUNT in look.h must hold every look");
+#include "wear_names.inc"
 
-const char *const look_tab_name[NTAB] = { "BODY", "FACE", "HAIR", "CLOTHES", "PARTS", "ASPIRE" };
+const char *const look_tab_name[NTAB] = { "BODY", "FACE", "HAIR", "CLOTHES", "WEAR", "PARTS", "ASPIRE" };
 static const LookRow rowBody[] = {
     {"AGE", LK_AGE, ROW_AGE}, {"SHAPE", LK_SHAPE, ROW_PICK}, {"SKIN", LK_SKIN, ROW_COLOUR}, {"SKIN TONE", LK_TONE, ROW_SLIDER},
     {"HEIGHT", LK_HEIGHT, ROW_SLIDER}, {"WEIGHT", LK_WEIGHT, ROW_SLIDER}, {"TORSO", LK_TORSO, ROW_SLIDER}, {"ARMS", LK_ARMS, ROW_SLIDER},
-    {"STANCE", LK_STANCE, ROW_SLIDER}, {"BUTT", LK_BUTT, ROW_SLIDER} };
+    {"STANCE", LK_STANCE, ROW_SLIDER}, {"BUTT", LK_BUTT, ROW_SLIDER},
+    {"NECK", LK_NECK, ROW_SLIDER}, {"NECK WIDTH", LK_NECKW, ROW_SLIDER}, {"SHOULDERS", LK_SHOULW, ROW_SLIDER}, {"CHEST", LK_CHESTW, ROW_SLIDER},
+    {"BELLY", LK_BELLYW, ROW_SLIDER}, {"WAIST", LK_WAISTW, ROW_SLIDER}, {"HIPS", LK_HIPW, ROW_SLIDER}, {"LEGS", LK_LEGW, ROW_SLIDER},
+    {"THIGHS", LK_THIGHW, ROW_SLIDER}, {"CALVES", LK_CALFW, ROW_SLIDER}, {"FEET", LK_FOOTSZ, ROW_SLIDER}, {"ARM WIDTH", LK_ARMW, ROW_SLIDER},
+    {"UPPER ARMS", LK_UARMW, ROW_SLIDER}, {"FOREARMS", LK_FARMW, ROW_SLIDER}, {"HANDS", LK_HANDSZ, ROW_SLIDER} };
 static const LookRow rowFace[] = {
     {"EYES", LK_EYES, ROW_PICK}, {"EYE COLOUR", LK_EYECOL, ROW_COLOUR}, {"EYE SIZE", LK_EYESZ, ROW_SLIDER}, {"EYE SPACING", LK_EYESP, ROW_SLIDER},
     {"EYE HEIGHT", LK_EYEHT, ROW_SLIDER}, {"BROWS", LK_BROW, ROW_PICK}, {"GLASSES", LK_GLASS, ROW_PICK}, {"MOUTH", LK_MOUTH, ROW_PICK},
     {"MOUTH WIDTH", LK_MOUTHW, ROW_SLIDER}, {"MOUTH HEIGHT", LK_MOUTHHT, ROW_SLIDER}, {"NOSE", LK_NOSE, ROW_PICK}, {"CHEEKS", LK_CHEEK, ROW_PICK},
-    {"EARS", LK_EARS, ROW_PICK} };
+    {"EARS", LK_EARS, ROW_PICK}, {"EYE SHADE", LK_EYETONE, ROW_SLIDER}, {"JAW", LK_JAWW, ROW_SLIDER}, {"EAR LIFT", LK_EARLF, ROW_SLIDER}, {"EAR WIDTH", LK_EARWID, ROW_SLIDER} };
 static const LookRow rowHair[] = {
     {"STYLE", LK_HSTYLE, ROW_PICK}, {"COLOUR", LK_HCOL, ROW_COLOUR}, {"HAIR TONE", LK_HTONE, ROW_SLIDER}, {"BEARD", LK_BEARD, ROW_PICK},
     {"HAT", LK_HAT, ROW_PICK}, {"HAT COLOUR", LK_HATCOL, ROW_PICK} };
 static const LookRow rowClothes[] = {
     {"TOP", LK_TOP, ROW_COLOUR}, {"TOP TONE", LK_TTONE, ROW_SLIDER}, {"TOP STYLE", LK_TOPSTY, ROW_PICK}, {"BOTTOM", LK_BOT, ROW_COLOUR},
-    {"BOTTOM TONE", LK_BTONE, ROW_SLIDER}, {"BOTTOM STYLE", LK_BOTSTY, ROW_PICK}, {"SHOES", LK_SHOE, ROW_PICK} };
+    {"BOTTOM TONE", LK_BTONE, ROW_SLIDER}, {"BOTTOM STYLE", LK_BOTSTY, ROW_PICK}, {"SHOES", LK_SHOE, ROW_PICK},
+    {"TOP PATTERN", LK_X_TOPPAT, ROW_PICK}, {"BOTTOM PATTERN", LK_X_BOTPAT, ROW_PICK}, {"PATTERN SHADE", LK_X_PATTONE, ROW_PICK} };
+static const LookRow rowWear[] = {
+    {"HEAD", LK_X_HEAD, ROW_PICK}, {"FACE", LK_X_FACE, ROW_PICK}, {"NECK", LK_X_NECK, ROW_PICK}, {"BACK", LK_X_BACK, ROW_PICK},
+    {"HOLDING", LK_X_HAND, ROW_PICK}, {"WAIST", LK_X_WAIST, ROW_PICK}, {"COLOUR 1", LK_X_COLA, ROW_COLOUR}, {"COLOUR 2", LK_X_COLB, ROW_COLOUR} };
 static const LookRow rowParts[] = {
     {"TAIL", LK_TAIL, ROW_PICK}, {"HORNS", LK_HORNS, ROW_PICK}, {"BACK", LK_BACK, ROW_PICK}, {"HANDS", LK_CLAWS, ROW_PICK},
     {"ANTENNAE", LK_ANTENNA, ROW_PICK}, {"PATTERN", LK_PATTERN, ROW_PICK}, {"PAINT", LK_PATCOL, ROW_PICK},
-    {"ANIMAL EARS", LK_FEARS, ROW_PICK}, {"MUZZLE", LK_MUZZLE, ROW_PICK}, {"FUR TAIL", LK_FTAIL, ROW_PICK} };
+    {"ANIMAL EARS", LK_FEARS, ROW_PICK}, {"MUZZLE", LK_MUZZLE, ROW_PICK}, {"FUR TAIL", LK_FTAIL, ROW_PICK},
+    {"TAIL LENGTH", LK_TAILLEN, ROW_SLIDER}, {"HORN SIZE", LK_HORNSZ, ROW_SLIDER}, {"WING SIZE", LK_WINGSZ, ROW_SLIDER},
+    {"ANTENNA LENGTH", LK_ANTLEN, ROW_SLIDER}, {"ANTENNA SPREAD", LK_ANTSPR, ROW_SLIDER} };
 static const LookRow rowAspire[] = {
     {"ASPIRATION", LK_ASP, ROW_PERSONA}, {"LIFETIME", LK_LTW, ROW_PERSONA},
     {"NEAT", LK_TRAIT0 + 0, ROW_PERSONA}, {"OUTGOING", LK_TRAIT0 + 1, ROW_PERSONA}, {"ACTIVE", LK_TRAIT0 + 2, ROW_PERSONA},
@@ -68,7 +79,8 @@ int look_tab_rows(int tab, const LookRow **rows) {
         case 1: *rows = rowFace; return sizeof(rowFace) / sizeof(LookRow);
         case 2: *rows = rowHair; return sizeof(rowHair) / sizeof(LookRow);
         case 3: *rows = rowClothes; return sizeof(rowClothes) / sizeof(LookRow);
-        case 4: *rows = rowParts; return sizeof(rowParts) / sizeof(LookRow);
+        case 4: *rows = rowWear; return sizeof(rowWear) / sizeof(LookRow);
+        case 5: *rows = rowParts; return sizeof(rowParts) / sizeof(LookRow);
         default: *rows = rowAspire; return sizeof(rowAspire) / sizeof(LookRow);
     }
 }
@@ -92,7 +104,15 @@ u16 look_wp_avg(int i) { return wpAvg[i]; }
 void look_init(void) { wp_avg_init(); }
 
 int look_is_slider(int id) { return id < LK_N && lkSlide(id); }
-int look_count(int id) { return id < LK_N ? lkCnt[id] : 0; }
+int look_count(int id) {
+    if (id < LK_N) return lkCnt[id];
+    switch (id) {
+        case LK_X_HEAD: return NX_HEAD; case LK_X_FACE: return NX_FACE; case LK_X_NECK: return NX_NECK; case LK_X_BACK: return NX_BACK;
+        case LK_X_HAND: return NX_HAND; case LK_X_WAIST: return NX_WAIST; case LK_X_COLA: case LK_X_COLB: return NX_COL;
+        case LK_X_TOPPAT: case LK_X_BOTPAT: return NX_PAT; case LK_X_PATTONE: return 2;
+        default: return 0;
+    }
+}
 
 int look_allowed(const Bore *b, int id, int v) {
     stage = b->stage;
@@ -137,6 +157,14 @@ const char *look_option_name(int id, int v) {
         case LK_MUZZLE: return muzNm[v % 4];
         case LK_FTAIL: return ftailNm[v % 4];
         case LK_AGE: return stageNm2[v % AG_N];
+        case LK_X_HEAD: return xHeadNm[v % NX_HEAD];
+        case LK_X_FACE: return xFaceNm[v % NX_FACE];
+        case LK_X_NECK: return xNeckNm[v % NX_NECK];
+        case LK_X_BACK: return xBackNm[v % NX_BACK];
+        case LK_X_HAND: return xHandNm[v % NX_HAND];
+        case LK_X_WAIST: return xWaistNm[v % NX_WAIST];
+        case LK_X_TOPPAT: case LK_X_BOTPAT: return xPatNm[v % NX_PAT];
+        case LK_X_PATTONE: return v ? "LIGHTER" : "DARKER";
         case LK_ASP: return aspNm[v % AS_PICK];
         default: return 0;
     }
@@ -148,6 +176,7 @@ u16 look_option_colour(int id, int v) {
         case LK_TOP: return topTones[v % NSW];
         case LK_BOT: return botTones[v % NSW];
         case LK_EYECOL: return eyeTones[v % NSW];
+        case LK_X_COLA: case LK_X_COLB: return xCol[v % NX_COL];
         default: return 0;
     }
 }
@@ -188,6 +217,14 @@ void look_random(Bore *b) {
             v = 0;
         }
         b->look[id] = (u8)v;
+    }
+    {   // the wardrobe: about one accessory in three, patterns now and then
+        static const u8 ids[6] = { LK_X_HEAD, LK_X_FACE, LK_X_NECK, LK_X_BACK, LK_X_HAND, LK_X_WAIST };
+        for (int i = 0; i < 6; i++) { int cnt = look_count(ids[i]); b->look[ids[i]] = (u8)((rnd8() % 3 == 0) ? 1 + rnd8() % (cnt - 1) : 0); }
+        b->look[LK_X_COLA] = (u8)(rnd8() % NX_COL); b->look[LK_X_COLB] = (u8)(rnd8() % NX_COL);
+        b->look[LK_X_TOPPAT] = (u8)((rnd8() % 3 == 0) ? 1 + rnd8() % (NX_PAT - 1) : 0);
+        b->look[LK_X_BOTPAT] = (u8)((rnd8() % 4 == 0) ? 1 + rnd8() % (NX_PAT - 1) : 0);
+        b->look[LK_X_PATTONE] = (u8)(rnd8() & 1);
     }
     look_set_sign(b, rnd8() % 12);
     b->asp = (u8)(rnd8() % AS_PICK); b->ltw = (u8)(rnd8() % LTN);

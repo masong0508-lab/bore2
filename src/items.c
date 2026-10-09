@@ -280,6 +280,7 @@ static void draw_box(const IBox *bx, const TexRef *ref, int r, int ox, int oz, i
 
 int getenv_noshadow;
 void items_draw(char ch, int mx, int my, int rot, int along, int t) {
+    if (ch == 'P') return;                    // the SPAWN marker: where the Bore starts, nothing to see (in 3D the GBA's pad read as a figurine base)
     const ItemDef *d = def_of(ch);
     if (!d) return;
     const IBox *b = d->b; int n = d->n; int base = box_base[d - defs][0];

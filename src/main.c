@@ -389,13 +389,13 @@ static void create_draw(void) {
         }
         else if (r->kind == ROW_COLOUR) {
             int cnt = look_count(r->id);
-            for (int k = 0; k < cnt && k < 12; k++) { u16 c = look_option_colour(r->id, k); gfx_rect_c(172 + k * 11, y + 9, 9, 8, c, 0); if (k == edit.look[r->id]) gfx_rect(172 + k * 11 - 1, y + 8, 11, 1, GOLD, 0); }
+            { int sp = cnt > 12 ? 8 : 11, sw = sp - 2; for (int k = 0; k < cnt && k < 16; k++) { u16 c = look_option_colour(r->id, k); gfx_rect_c(172 + k * sp, y + 9, sw, 8, c, 0); if (k == edit.look[r->id]) gfx_rect(172 + k * sp - 1, y + 8, sp, 1, GOLD, 0); } }
         }
         else { const char *nm = look_option_name(r->id, edit.look[r->id]); if (nm) strncpy(val, nm, 23); }
         if (val[0]) gfx_text(172, y + 9, 1, val, WHITE);
         if (sel) gfx_text(164, y, 1, ">", GOLD);
     }
-    if (create_tab == 5) {
+    if (create_tab == NTAB - 1) {
         char b[32]; sprintf(b, "SIGN: %s", look_sign_name(look_sign_of(&edit))); gfx_text(172, 206, 1, b, GREY);
     }
     gfx_textc(241, 216, 1, "L1 R1 TAB  TRIANGLE DICE", GREY);

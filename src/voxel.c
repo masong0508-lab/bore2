@@ -7,8 +7,13 @@
 #include "gfx.h"
 #include "atlas.h"
 #include "hairtex.inc"
+#include "wear_models.inc"
 
 static TexRef tx_side, tx_crown, tx_tips, tx_fringe, tx_curl, skin_tex, cloth_tex;
+static TexRef pat_tex[NPAT][2];          // the clothes patterns, darker / lighter (pattern 0 = plain cloth)
+static int cur_toppat, cur_botpat;
+static inline u16 wear_pal(int i) { return wearPal[i % NX_COL]; }
+static u8 wear_gen;        // the patterns this person wears, as pat_tex indexes (-1 = plain)
 static int quads;
 int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block;   // (debug counters, kept for the HUD readout)
 static const u8 wMask2[8] = { 10, 12, 5, 3, 8, 4, 1, 2 };   // BORE: bit k = corner (k&1 ? +x : -x, k&2 ? +z : -z) drops a full block
@@ -16,6 +21,8 @@ static const u8 wMask2[8] = { 10, 12, 5, 3, 8, 4, 1, 2 };   // BORE: bit k = cor
 enum { G_BODY, G_LLEG, G_RLEG, G_LARM, G_RARM, G_N };
 static MATRIX gm[G_N];
 static const Bore *cur;
+static int sld(const Bore *b, int id);
+static void head_pt(const Bore *b, SVECTOR *p);
 static int walk_sin;
 static int hair_cx, hair_cy, hair_cz, hair_curly, hair_style;
 static int hx_, hy_, hz_, hs_;
@@ -50,6 +57,15 @@ void voxel_init(void) {
     // cloth: a weave
     for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) { int v = 118 + (((x + y) & 1) ? 10 : -6) + (tr() % 7) - 3; v >>= 3; tbuf[y * 16 + x] = RGB(v, v, v); }
     cloth_tex = atlas_add(16, 16, tbuf);
+    // the patterns: the same weave, with the pattern's pixels a shade darker or lighter
+    for (int p = 1; p < NPAT; p++) for (int t = 0; t < 2; t++) {
+        for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) {
+            int v = 118 + (((x + y) & 1) ? 10 : -6) + (tr() % 7) - 3;
+            if (patMask[p][y] >> x & 1) v = t ? v * 13 / 8 : v * 9 / 16;
+            v = CLAMP(v, 0, 255) >> 3; tbuf[y * 16 + x] = RGB(v, v, v);
+        }
+        pat_tex[p][t] = atlas_add(16, 16, tbuf);
+    }
 }
 
 // ---- colour helpers ----
@@ -74,8 +90,8 @@ static void face(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVE
     }
 }
 // the lit colours of each colour slot, by light (0..255 in steps of 4), worked out once per person per frame
-static u32 slot_lut[9][64];
-static u8  slot_lut_ok[9];
+static u32 slot_lut[24][64];               // 1..8 the person's colour slots, 9..22 the accessory colours (wear_col)
+static u8  slot_lut_ok[24];
 static const Bore *lut_bore;
 static void slot_lut_fill(int slot, u16 col, int textured) {
     for (int i = 0; i < 64; i++) { int L = i * 4 + 2; slot_lut[slot][i] = textured ? lit_tex(col, L) : lit(col, L); }
@@ -83,8 +99,8 @@ static void slot_lut_fill(int slot, u16 col, int textured) {
 }
 static inline u32 slot_col(int slot, int L) { L = CLAMP(L, 0, 255); return slot_lut[slot][L >> 2]; }
 static void face4(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d, int slot, int L0, int L1, int L2, int L3, int kind) {
-    if (kind == 2 || kind == 3) {
-        const TexRef *t = kind == 2 ? &skin_tex : &cloth_tex;
+    if (kind >= 2) {
+        const TexRef *t = kind == 2 ? &skin_tex : kind == 3 ? &cloth_tex : &pat_tex[0][0] + (kind - 4);   // 4.. = a pattern (pat_tex[p][tone])
         quads += gfx_quad_gt(a, b, c, d, t->tpage, 0, t->u, t->v, t->u + 15, t->v, t->u, t->v + 15, t->u + 15, t->v + 15,
                              slot_col(slot, L0), slot_col(slot, L1), slot_col(slot, L2), slot_col(slot, L3), 1);
     } else {
@@ -107,7 +123,12 @@ static inline int cube_at(const Bore *b, int x, int y, int z) {   // a full cube
 }
 static inline int hair_at(const Bore *b, int x, int y, int z) { int v = solid_at(b, x, y, z); return v && (v & 15) == 5; }
 
-static int kind_of(int slot) { return slot == 1 ? 2 : (slot == 6 || slot == 7) ? 3 : 0; }
+static int kind_of(int slot) {   // 0 flat, 2 skin, 3 cloth, 4+ a patterned cloth (index into pat_tex as a flat array)
+    if (slot == 1) return 2;
+    if (slot == 6) return cur_toppat >= 0 ? 4 + cur_toppat : 3;
+    if (slot == 7) return cur_botpat >= 0 ? 4 + cur_botpat : 3;
+    return 0;
+}
 
 // ---- a plain block (skin, clothes, hats, parts) ----
 // c = its 8 corners (top 4 then bottom 4, index k = (x?1:0)|(z?2:0)); m = wedge mask; hide = bit per face (0 -z, 1 +z, 2 -x, 3 +x, 4 top, 5 bottom)
@@ -306,6 +327,7 @@ static void hair_flaps(const Bore *b) {
         int Y1 = top + VOX * 11 / 16;
         SVECTOR a, bb, c, d;
         setVector(&a, X1, top - 2, Z); setVector(&bb, X0, top - 2, Z); setVector(&c, X1, Y1, Z + 2); setVector(&d, X0, Y1, Z + 2);
+        head_pt(b, &a); head_pt(b, &bb); head_pt(b, &c); head_pt(b, &d);
         { int L = hair_corner_light(hx_ + hs_, hy_ + hh, hz_ + hd); hface(&a, &bb, &c, &d, L, L, L - 10, L - 10, &tx_fringe, 0, 0, 15, 15, col, 0, 0, ONE, 0); }
     }
     if (temples) {
@@ -315,6 +337,7 @@ static void hair_flaps(const Bore *b) {
             SVECTOR a, bb, c, d;
             if (side) { setVector(&a, X, top - 2, Z0); setVector(&bb, X, top - 2, Z1); setVector(&c, X + 2, Y1, Z0); setVector(&d, X + 2, Y1, Z1); }
             else      { setVector(&a, X, top - 2, Z1); setVector(&bb, X, top - 2, Z0); setVector(&c, X - 2, Y1, Z1); setVector(&d, X - 2, Y1, Z0); }
+            head_pt(b, &a); head_pt(b, &bb); head_pt(b, &c); head_pt(b, &d);
             { int L = hair_corner_light(side ? hx_ + hw : hx_, hy_ + hh, hz_ + hs_); hface(&a, &bb, &c, &d, L, L, L - 10, L - 10, &tx_tips, 0, 0, 15, 15, col, side ? ONE : -ONE, 0, 0, -4); }
         }
     }
@@ -325,6 +348,23 @@ static int group_of(u8 v, int x) {
     if (sh == 3) return x < W / 2 ? G_LLEG : G_RLEG;
     if (sh == 1 || sh == 2) return x < W / 2 ? G_LARM : G_RARM;
     return G_BODY;
+}
+
+// ---- the head's sculpt: everything drawn on or around the head goes through this (the blocks did at build time) ----
+static void head_xf(const Bore *b, int *x, int *y, int *z) {
+    int span = MAX(1, b->h_cy0 - b->h_top);                              // the head's height (y is down: the chin's y is the bigger)
+    int t = CLAMP(((b->h_cy0 - *y) << 12) / span, 0, 4096);             // 0 the chin .. 4096 the crown
+    int jx = 4096 - ((b->h_jaw * MAX(0, 2458 - t)) >> 12);              // the jaw: narrower over the bottom 60%
+    int k = b->h_k;
+    *x = b->h_cx + (((((*x - b->h_cx) * k) >> 12) * jx) >> 12);
+    *z = b->h_cz + (((*z - b->h_cz) * k) >> 12);
+    *y = b->h_cy0 + (((*y - b->h_cy0) * k) >> 12) - b->h_lift;
+}
+static void head_pt(const Bore *b, SVECTOR *p) { int x = p->vx, y = p->vy, z = p->vz; head_xf(b, &x, &y, &z); p->vx = (s16)x; p->vy = (s16)y; p->vz = (s16)z; }
+static void head_box_xf(const Bore *b, int *x0, int *x1, int *y0, int *y1, int *z0, int *z1) {   // a box near the head: its centre moves, its size scales
+    int cx = (*x0 + *x1) / 2, cy = (*y0 + *y1) / 2, cz = (*z0 + *z1) / 2, hw = ((*x1 - *x0) * b->h_k) >> 13, hh = ((*y1 - *y0) * b->h_k) >> 13, hd = ((*z1 - *z0) * b->h_k) >> 13;
+    head_xf(b, &cx, &cy, &cz);
+    *x0 = cx - hw; *x1 = cx + hw; *y0 = cy - hh; *y1 = cy + hh; *z0 = cz - hd; *z1 = cz + hd;
 }
 
 // ---- the face art on the +z side ----
@@ -354,6 +394,7 @@ static void face_sprites(const Bore *b) {
         X0 += mx; X1 -= mx; Y0 += my; Y1 -= my;
         SVECTOR a, bb, c, d;
         setVector(&a, X1, Y0, Z); setVector(&bb, X0, Y0, Z); setVector(&c, X1, Y1, Z); setVector(&d, X0, Y1, Z);
+        head_pt(b, &a); head_pt(b, &bb); head_pt(b, &c); head_pt(b, &d);
         int u0 = t->u, u1 = t->u + t->w - 1;
         if (fl) { int tmp = u0; u0 = u1; u1 = tmp; }
         int L = gfx_light(0, 0, ONE);
@@ -370,26 +411,30 @@ static void extra_parts(const Bore *b, int hx, int hy, int hz, int hs) {
         int zc = (hz - 2) * VOX + hs * VOX;
         for (int side = 0; side < 2; side++) {
             int xa = side ? (hx + hw - 3) * VOX : (hx - 3) * VOX;
-            int x0 = side ? xa : xa - s, x1 = side ? xa + s : xa;
-            box(x0, x1, yc - s, yc + s, zc - s / 2, zc + s / 2, 0, 1, b->col[1], 2);
+            int x0 = side ? xa : xa - s, x1 = side ? xa + s : xa, y0 = yc - s, y1 = yc + s, z0 = zc - s / 2, z1 = zc + s / 2;
+            head_box_xf(b, &x0, &x1, &y0, &y1, &z0, &z1);
+            box(x0, x1, y0, y1, z0, z1, 0, 1, b->col[1], 2);
         }
     }
     int horns = b->look[LK_HORNS];
     if (horns) {
-        int s = horns == 1 ? 12 : 18, h = horns == 1 ? 16 : 40;
+        int hk = 4096 + sld(b, LK_HORNSZ) * 450;                        // HORN SIZE
+        int s = ((horns == 1 ? 12 : 18) * hk) >> 12, h = ((horns == 1 ? 16 : 40) * hk) >> 12;
         int yt = -(hy + 2 * hs) * VOX;
         int zc = (hz - 2) * VOX + hs * VOX;
         for (int side = 0; side < 2; side++) {
             int xc = side ? (hx + hw - 3) * VOX - s : (hx - 3) * VOX + s;
-            box(xc - s, xc + s, yt - h, yt, zc - s, zc + s, side ? 5 : 10, 8, b->col[8], 0);
-            if (horns == 2) box(xc - s + 4, xc + s - 4, yt - h - 24, yt - h, zc - s + 4, zc + s - 4, side ? 5 : 10, 8, b->col[8], 0);
+            int x0 = xc - s, x1 = xc + s, y0 = yt - h, y1 = yt, z0 = zc - s, z1 = zc + s;
+            head_box_xf(b, &x0, &x1, &y0, &y1, &z0, &z1);
+            box(x0, x1, y0, y1, z0, z1, side ? 5 : 10, 8, b->col[8], 0);
+            if (horns == 2) { int hh2 = ((h + 24) * b->h_k) >> 12; box(x0 + 4, x1 - 4, y0 - (hh2 - ((h * b->h_k) >> 12)), y0, z0 + 4, z1 - 4, side ? 5 : 10, 8, b->col[8], 0); }
         }
     }
     int tail = b->look[LK_TAIL], ftail = b->look[LK_FTAIL];
     if (tail || ftail) {
-        int n = tail == 2 ? 5 : 3, s = ftail ? 14 : 9;
+        int n = CLAMP((tail == 2 ? 5 : 3) + sld(b, LK_TAILLEN) / 2 + (sld(b, LK_TAILLEN) > 0), 2, 8), s = ftail ? 14 : 9;   // TAIL LENGTH
         u16 col = ftail ? b->col[5] : b->col[1];
-        int yc = -b->legs * VOX - 10, zc = -2 * VOX - s;
+        int yc = b->w_hipy - 10, zc = -2 * VOX - s;
         for (int i = 0; i < n; i++) {
             int sw = (walk_sin * (i + 1)) >> 14;
             { int sl = (ftail == 1 && i == n - 1) ? 2 : (ftail ? 5 : 1); box(-s + sw, s + sw, yc - s, yc + s, zc - s, zc + s, 0, sl, b->col[sl], ftail ? 0 : 2); }
@@ -398,16 +443,66 @@ static void extra_parts(const Bore *b, int hx, int hy, int hz, int hs) {
     }
     int back = b->look[LK_BACK];
     if (back == 2) {
-        int yt = -(b->legs + b->torso) * VOX, flap = isin(walk_sin >> 1) >> 6;
+        int yt = b->w_shy, flap = isin(walk_sin >> 1) >> 6, wk = 4096 + sld(b, LK_WINGSZ) * 500;   // WING SIZE
         for (int side = 0; side < 2; side++) {
             int sx = side ? 1 : -1;
             SVECTOR a, bb, c, d;
-            setVector(&a, sx * 30, yt - 20, -2 * VOX - 4); setVector(&bb, sx * (30 + 110), yt - 90 + flap, -2 * VOX - 30);
-            setVector(&c, sx * 30, yt + 40, -2 * VOX - 4); setVector(&d, sx * (30 + 120), yt + 10 + flap, -2 * VOX - 30);
+            setVector(&a, sx * 30, yt - 20, -2 * VOX - 4); setVector(&bb, sx * (30 + ((110 * wk) >> 12)), yt - ((90 * wk) >> 12) + flap, -2 * VOX - 30);
+            setVector(&c, sx * 30, yt + 40, -2 * VOX - 4); setVector(&d, sx * (30 + ((120 * wk) >> 12)), yt + 10 + flap, -2 * VOX - 30);
             u32 cc = lit(b->col[5], gfx_light(0, 0, -ONE));
             quads += gfx_quad_f(&a, &bb, &c, &d, cc & 255, (cc >> 8) & 255, (cc >> 16) & 255, 0);
         }
     }
+    if (back == 1) {   // SPIKES: a ridge of plates down the spine, the middle ones tallest
+        int n = b->torso * 2 + 1, y0 = b->w_shy + 10, step = (b->w_hipy - b->w_shy - 10) / MAX(1, n - 1);
+        for (int i = 0; i < n; i++) {
+            int mid = n / 2 - ABS(i - n / 2), h = 14 + mid * 8, y = y0 + i * step, z = b->w_tbz;
+            box(-5, 5, y - 8, y + 8, z - h, z, i & 1 ? 5 : 10, 8, b->col[8], 0);
+        }
+    }
+    int ant = b->look[LK_ANTENNA];
+    if (ant) {   // ANTENNAE: two stalks from the top of the head, a ball on each (the bigger kind: longer, bigger balls)
+        int len = (ant == 1 ? 46 : 70) + sld(b, LK_ANTLEN) * 9, spr = hs * VOX / 2 + sld(b, LK_ANTSPR) * 6;
+        int yt = b->w_heady, zc = (hz - 2) * VOX + hs * VOX, xc = (hx + hs - 3) * VOX, r = ant == 1 ? 8 : 11;
+        for (int side = -1; side <= 1; side += 2) {
+            int x = xc + side * spr, lean = side * len / 5, sway = walk_sin >> 10;
+            box(x - 3, x + 3, yt - len / 2, yt, zc - 3, zc + 3, 0, 3, b->col[3], 0);
+            box(x + lean / 2 - 3 + sway, x + lean / 2 + 3 + sway, yt - len, yt - len / 2, zc - 3, zc + 3, 0, 3, b->col[3], 0);
+            int bx = x + lean / 2 + sway;
+            box(bx - r, bx + r, yt - len - 2 * r, yt - len, zc - r, zc + r, 0, ant == 1 ? 4 : 8, b->col[ant == 1 ? 4 : 8], 0);
+        }
+    }
+}
+
+
+// ================================================================== WEAR (the creator's accessories: wear_models.inc)
+static u8 wear_lut_gen[24];
+static int wear_slot(const Bore *b, int c) {   // colour code -> a colour slot whose lit shades are worked out (once per person per frame)
+    int sl = 9 + c;
+    if (wear_lut_gen[sl] != wear_gen) {
+        u16 col = c == 0 ? wear_pal(b->look[LK_X_COLA]) : c == 1 ? wear_pal(b->look[LK_X_COLB]) : c == 10 ? b->col[5] : c == 11 ? b->col[1] : wearFixed[c];
+        slot_lut_fill(sl, col, 0); wear_lut_gen[sl] = wear_gen;
+    }
+    return sl;
+}
+static void wear_part(const Bore *b, const WearModel *m, int ax, int ay, int az, int u, int zdir) {
+    for (int i = 0; i < m->n; i++) {
+        const s8 *q = m->b[i];
+        int x0 = ax + q[0] * u, x1 = ax + q[1] * u, y0 = ay - q[3] * u, y1 = ay - q[2] * u, z0, z1;
+        if (zdir > 0) { z0 = az + q[4] * u; z1 = az + q[5] * u; } else { z0 = az - q[5] * u; z1 = az - q[4] * u; }
+        int sl = wear_slot(b, q[6]);
+        box(x0, x1, y0, y1, z0, z1, 0, sl, 0, 0);
+    }
+}
+static void wear_draw(const Bore *b) {
+    int hu = MAX(3, b->w_headh / 8), bu = VOX / 8;            // head units (the head is 16 wide), body units
+    int v;
+    if ((v = b->look[LK_X_HEAD] % NX_HEAD)) wear_part(b, &wearHead[v], b->w_headx, b->w_heady + VOX / 4, b->w_headz, hu, 1);   // (sunk a little into the hair)
+    if ((v = b->look[LK_X_FACE] % NX_FACE)) { gfx_set_zbias(4); wear_part(b, &wearFace[v], b->w_headx, b->w_facey, b->w_facez, hu, 1); gfx_set_zbias(0); }
+    if ((v = b->look[LK_X_NECK] % NX_NECK)) wear_part(b, &wearNeck[v], b->w_tx, b->w_shy, b->w_tfz, bu, 1);
+    if ((v = b->look[LK_X_BACK] % NX_BACK)) wear_part(b, &wearBack[v], b->w_tx, b->w_shy, b->w_tbz, bu, -1);
+    if ((v = b->look[LK_X_WAIST] % NX_WAIST)) wear_part(b, &wearWaist[v], b->w_tx, b->w_hipy, b->w_tfz, bu, 1);
+    if ((v = b->look[LK_X_HAND] % NX_HAND)) { gfx_set_object_m(&gm[G_RARM]); wear_part(b, &wearHand[v], b->w_hx, b->w_hy, b->w_hz, bu, 1); gfx_set_object_m(&gm[G_BODY]); }
 }
 
 static void part_matrix(MATRIX *out, const MATRIX *obj, int ang, int pivot_y, int pivot_z) {
@@ -422,6 +517,123 @@ static void part_matrix(MATRIX *out, const MATRIX *obj, int ang, int pivot_y, in
 
 
 // ---- the drawing cache: worked out once per look (look_build calls it) ----
+
+// ================================================================== BODY SHAPE
+// The voxel grid gives every body the same straight-sided blocks. Here the corners are bent once, when the person is
+// built: the torso tapers from the shoulders to a narrower waist, arms and legs taper towards the wrists and ankles,
+// hands are a touch smaller and feet reach forward. Then the creator's body sliders (shoulders, chest, belly, waist, hips,
+// legs, thighs, calves, feet, arm length and widths, hands, weight) push and pull the same corners.
+static int sld(const Bore *b, int id) { return (b->look[id] + 4) % 9 - 4; }   // a slider: -4..4
+static void head_box(const Bore *b, int *hx, int *hy, int *hz, int *hs) {
+    *hs = b->headsz; *hx = b->bx0 + (b->bxw - 2 * *hs) / 2; *hy = b->legs + b->torso; *hz = (b->bxd - 2 * *hs) / 2;
+    if (b->look[LK_SHAPE] == SH_HUNCH && *hz + 2 * *hs < b->bxd) (*hz)++;
+}
+static inline int scl(int v, int c, int k) { return c + (((v - c) * k) >> 12); }
+static inline int lerp12(int a, int b, int t) { return a + (((b - a) * t) >> 12); }   // t 0..4096
+
+static void shape_body(Bore *b) {
+    int hx, hy, hz, hs; head_box(b, &hx, &hy, &hz, &hs);
+    int baby = b->stage == AG_BABY, kid = b->stage <= AG_CHILD;
+    int base = baby ? 0 : kid ? 1 : 2;                   // how strongly the adult shaping applies (babies stay round and simple)
+    // ---- the proportions: longer legs, a smaller head with a jaw, lifted onto a neck ----
+    int ks = 4096 + 160 * base;                                              // the legs stretch (everything above rides up with them)
+    int hipY0 = -b->legs * VOX, hipY = (hipY0 * ks) >> 12, d = hipY - hipY0;   // d: how far up the hips moved (negative = up)
+    int shY = -hy * VOX + d, legH = MAX(1, -hipY), torH = MAX(1, b->torso * VOX);
+    b->h_cx = (s16)((hx + hs - 3) * VOX); b->h_cz = (s16)((hz + hs - 2) * VOX);
+    b->h_cy0 = (s16)shY; b->h_top = (s16)(-(hy + 2 * hs) * VOX + d);
+    b->h_k = (s16)CLAMP(4096 - 240 * base + sld(b, LK_HEADSZ) * 120, 3000, 5000);         // adults 88%, kids 94%, babies as built
+    b->h_jaw = (s16)CLAMP(220 * base - sld(b, LK_JAWW) * 110, -600, 1200);                // the chin narrower than the brow
+    b->h_lift = (s16)MAX(0, 5 * base + sld(b, LK_NECK) * 3);                               // the neck's height
+    b->h_neckw = (s16)MAX(10, VOX * 11 / 20 + sld(b, LK_NECKW) * 3);
+    if (baby) { b->h_lift = 0; b->h_jaw = 0; }
+    for (int i = 0; i < b->ncell; i++) {                  // the stretch: legs taller, the rest lifted
+        int g = b->cell[i].grp; SVECTOR *cv = b->cell[i].c;
+        for (int k = 0; k < 8; k++) {
+            if (g == G_LLEG || g == G_RLEG) cv[k].vy = (s16)((cv[k].vy * ks) >> 12);
+            else cv[k].vy = (s16)(cv[k].vy + d);
+        }
+    }
+    int mnx[G_N], mxx[G_N], mnz[G_N], mxz[G_N], mxy[G_N];
+    for (int g = 0; g < G_N; g++) { mnx[g] = mnz[g] = 32767; mxx[g] = mxz[g] = mxy[g] = -32767; }
+    for (int i = 0; i < b->ncell; i++) {
+        int g = b->cell[i].grp;
+        if (g == G_BODY && (b->cell[i].y >= hy || (b->cell[i].flags & 1))) continue;   // the torso alone (no head, no hair)
+        for (int k = 0; k < 8; k++) { const SVECTOR *c = &b->cell[i].c[k];
+            mnx[g] = MIN(mnx[g], c->vx); mxx[g] = MAX(mxx[g], c->vx); mnz[g] = MIN(mnz[g], c->vz); mxz[g] = MAX(mxz[g], c->vz); mxy[g] = MAX(mxy[g], c->vy); }
+    }
+    int tcx = (mnx[G_BODY] + mxx[G_BODY]) / 2, tcz = (mnz[G_BODY] + mxz[G_BODY]) / 2, thw = (mxx[G_BODY] - mnx[G_BODY]) / 2;
+    int wgt = sld(b, LK_WEIGHT), tor = sld(b, LK_TORSO), shw = sld(b, LK_SHOULW), chs = sld(b, LK_CHESTW), bel = sld(b, LK_BELLYW);
+    int wai = sld(b, LK_WAISTW), hip = sld(b, LK_HIPW), lgw = sld(b, LK_LEGW), thi = sld(b, LK_THIGHW), clf = sld(b, LK_CALFW), ft = sld(b, LK_FOOTSZ);
+    int arl = sld(b, LK_ARMS), arw = sld(b, LK_ARMW), uaw = sld(b, LK_UARMW), faw = sld(b, LK_FARMW), hnd = sld(b, LK_HANDSZ);
+    // the torso's width at a height t (0 the hips .. 4096 the shoulders), x 4096
+    #define TORSO_KX(t) ({ int t_ = (t), mid_ = 4096 - ABS(2 * t_ - 4096); \
+        int bs_ = t_ < 2048 ? lerp12(4096 - 100 * base, 4096 - 230 * base, t_ * 2) : lerp12(4096 - 230 * base, 4096 + 40 * base, (t_ - 2048) * 2); \
+        bs_ + wgt * 200 + tor * 160 + ((shw * 220 * t_) >> 12) + ((hip * 220 * (4096 - t_)) >> 12) + ((wai * 200 * mid_) >> 12); })
+    int kx_sh = TORSO_KX(4096), kx_hip = TORSO_KX(0);
+    int arm_shift = (thw * (kx_sh - 4096)) >> 12, leg_shift = (thw * (kx_hip - 4096)) >> 13;
+    int acx[G_N], acz[G_N];
+    for (int g = 0; g < G_N; g++) { acx[g] = (mnx[g] + mxx[g]) / 2; acz[g] = (mnz[g] + mxz[g]) / 2; }
+    for (int i = 0; i < b->ncell; i++) {
+        int g = b->cell[i].grp, sh = b->cell[i].v >> 4;
+        SVECTOR *cv = b->cell[i].c;
+        if (g == G_BODY) {
+            if (b->cell[i].y >= hy || (b->cell[i].flags & 1)) {                // the head, the hair, a hat, a beard: the head's sculpt
+                for (int k = 0; k < 8; k++) head_pt(b, &cv[k]);
+                continue;
+            }
+            for (int k = 0; k < 8; k++) {
+                int t = CLAMP(((hipY - cv[k].vy) << 12) / torH, 0, 4096), mid = 4096 - ABS(2 * t - 4096);
+                int kx = TORSO_KX(t);
+                int kzf = 4096 + 60 * base + wgt * 220 + ((chs * 260 * t) >> 12) + ((bel * 300 * mid) >> 12) + ((t * 120 * base) >> 12);   // the front: a chest
+                int kzb = 4096 + wgt * 160 - ((t * 80 * base) >> 12);
+                cv[k].vx = scl(cv[k].vx, tcx, MAX(kx, 2000));
+                cv[k].vz = cv[k].vz > tcz ? scl(cv[k].vz, tcz, MAX(kzf, 2000)) : scl(cv[k].vz, tcz, MAX(kzb, 2000));
+            }
+        } else if (g == G_LARM || g == G_RARM) {
+            int side = acx[g] > tcx ? 1 : -1, armLen = MAX(1, mxy[g] - shY);
+            for (int k = 0; k < 8; k++) {
+                int u = CLAMP(((cv[k].vy - shY) << 12) / armLen, 0, 4096);      // 0 the shoulder .. 4096 the hand
+                int kw = 4096 - ((u * 170 * base) >> 12) + wgt * 170 + arw * 240 + (((4096 - u) * uaw * 280) >> 12) + ((u * faw * 280) >> 12);
+                if (sh == 2) kw = 4096 - 150 * base + hnd * 380 + wgt * 80;     // the hand
+                cv[k].vx = scl(cv[k].vx, acx[g], MAX(kw, 1800)) + side * arm_shift;
+                cv[k].vz = scl(cv[k].vz, acz[g], MAX(kw, 1800));
+                cv[k].vy = shY + (((cv[k].vy - shY) * (4096 + arl * 260)) >> 12);   // arm length, from the shoulder
+            }
+        } else {                                                                 // a leg
+            int side = acx[g] > tcx ? 1 : -1;
+            for (int k = 0; k < 8; k++) {
+                int u = CLAMP(((cv[k].vy - hipY) << 12) / legH, 0, 4096);      // 0 the hip .. 4096 the sole
+                int kw = 4096 - ((u * 200 * base) >> 12) + wgt * 190 + lgw * 240 + (((4096 - u) * thi * 300) >> 12) + ((u * clf * 300) >> 12);
+                cv[k].vx = scl(cv[k].vx, acx[g], MAX(kw, 1800)) + side * leg_shift;
+                cv[k].vz = scl(cv[k].vz, acz[g], MAX(kw, 1800));
+                if (b->cell[i].y == 0 && cv[k].vz > acz[g]) cv[k].vz += 5 * base + ft * 4;   // the foot reaches forward
+            }
+        }
+    }
+    #undef TORSO_KX
+    // ---- where the WEAR tab's accessories attach ----
+    int top = 32767, tfz = -32767, tbz = 32767, hand_y = -32767, hx0 = 32767, hx1 = -32767, hz0 = 32767, hz1 = -32767;
+    for (int i = 0; i < b->ncell; i++) {
+        int g = b->cell[i].grp; const SVECTOR *cv = b->cell[i].c;
+        for (int k = 0; k < 8; k++) {
+            if (g == G_BODY && b->cell[i].y >= hy) top = MIN(top, cv[k].vy);
+            if (g == G_BODY && b->cell[i].y < hy && !(b->cell[i].flags & 1)) { tfz = MAX(tfz, cv[k].vz); tbz = MIN(tbz, cv[k].vz); }
+            if (g == G_RARM) hand_y = MAX(hand_y, cv[k].vy);
+        }
+    }
+    for (int i = 0; i < b->ncell; i++) if (b->cell[i].grp == G_RARM) for (int k = 4; k < 8; k++) {
+        const SVECTOR *cv = &b->cell[i].c[k];
+        if (cv->vy >= hand_y - 2) { hx0 = MIN(hx0, cv->vx); hx1 = MAX(hx1, cv->vx); hz0 = MIN(hz0, cv->vz); hz1 = MAX(hz1, cv->vz); }
+    }
+    if (top == 32767) top = b->h_top;
+    if (tfz == -32767) { tfz = VOX; tbz = -VOX; }
+    b->w_headx = b->h_cx; b->w_heady = (s16)top; b->w_headz = b->h_cz; b->w_headh = (s16)((hs * VOX * b->h_k) >> 12);
+    { int fx = b->h_cx, fy = -(hy + hs) * VOX - hs * VOX / 3 + d, fz = (hz + 2 * hs - 2) * VOX; head_xf(b, &fx, &fy, &fz); b->w_facey = (s16)fy; b->w_facez = (s16)fz; }
+    b->w_tx = (s16)tcx; b->w_shy = (s16)shY; b->w_hipy = (s16)hipY; b->w_tfz = (s16)tfz; b->w_tbz = (s16)tbz;
+    if (hx0 <= hx1) { b->w_hx = (s16)((hx0 + hx1) / 2); b->w_hy = (s16)hand_y; b->w_hz = (s16)((hz0 + hz1) / 2); }
+    else { b->w_hx = (s16)(2 * VOX); b->w_hy = (s16)hipY; b->w_hz = 0; }
+}
+
 void voxel_prepare(Bore *b) {
     int n = 0, nd = 0;
     for (int grp = 0; grp < G_N; grp++)
@@ -468,6 +680,15 @@ void voxel_prepare(Bore *b) {
                                  b->cell[n].flags = (u8)((is_hair ? 1 : 0) | (in ? 2 : 0)); memcpy(b->cell[n].c, cc, sizeof cc); n++; }
         }
     b->ncell = (u8)n;
+    shape_body(b);
+    if (b->h_lift > 0 || b->h_k < 4096) {                // the head sits smaller and higher than its blocks did: the shoulders and the chin show
+        int hy = b->legs + b->torso;
+        for (int i = 0; i < n; i++) {
+            if (b->cell[i].grp != G_BODY) continue;
+            if (b->cell[i].y == hy) b->cell[i].hide &= ~32;
+            else if (b->cell[i].y == hy - 1 && !(b->cell[i].flags & 1)) b->cell[i].hide &= ~16;
+        }
+    }
     for (int y = 0; y < H; y++) for (int z = 0; z < D; z++) for (int x = 0; x < W; x++) {
         u16 code = b->dec[y][z][x];
         if (!code) continue;
@@ -491,7 +712,7 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
         CompMatrixLV(&obj, &r, &obj);
     }
     int swing = (walk_sin * 300) >> 12;
-    int hip = -b->legs * VOX, shoulder = -(b->legs + b->torso) * VOX;
+    int hip = b->w_hipy, shoulder = b->w_shy;
     int legL = g->sit ? -1024 : swing, legR = g->sit ? -1024 : -swing;
     int armL = g->sit ? -200 : -swing * 3 / 4, armR = g->sit ? -200 : swing * 3 / 4;
     if (g->wave) { int w = isin((g->wave * 400) & 4095) >> 4; armR = -2400 + w; }
@@ -511,12 +732,14 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     gfx_set_light_yaw(yaw);
 
     // the head and the hair mass
-    hs_ = b->headsz; hx_ = b->bx0 + (b->bxw - 2 * hs_) / 2; hy_ = b->legs + b->torso; hz_ = (b->bxd - 2 * hs_) / 2;
-    if (b->look[LK_SHAPE] == SH_HUNCH && hz_ + 2 * hs_ < b->bxd) hz_++;
+    head_box(b, &hx_, &hy_, &hz_, &hs_);
     hair_cx = (hx_ + hs_ - 3) * VOX; hair_cy = -(hy_ + hs_) * VOX - VOX / 3; hair_cz = (hz_ + hs_ - 2) * VOX;
     hair_style = b->look[LK_HSTYLE];
     hair_curly = (hair_style == 5 || hair_style == 14);
     if (++hl_gen == 0) { memset(hl_stamp, 0, sizeof hl_stamp); memset(bl_stamp, 0, sizeof bl_stamp); hl_gen = 1; }
+    { int tp = b->look[LK_X_TOPPAT] % NPAT, bp = b->look[LK_X_BOTPAT] % NPAT, tone = b->look[LK_X_PATTONE] & 1;
+      cur_toppat = tp ? tp * 2 + tone : -1; cur_botpat = bp ? bp * 2 + tone : -1; }
+    wear_gen++;
     for (int sl = 1; sl < 9; sl++) slot_lut_fill(sl, b->col[sl], kind_of(sl) != 0);
     radial_table();
     lights_for_group();
@@ -532,10 +755,15 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
         block(b->cell[i].c, m, hide, slot, b->col[slot], kind_of(slot), (fl & 2) ? -2 : x, z);
     }
     gfx_set_object_m(&gm[G_BODY]);
+    if (b->h_lift > 0) {   // the neck: a skin column from the shoulders up into the head
+        int nw = b->h_neckw, nd = nw * 9 / 10;
+        box(b->h_cx - nw, b->h_cx + nw, b->h_cy0 - b->h_lift - 3, b->h_cy0 + 3, b->h_cz - nd, b->h_cz + nd, 0, 1, b->col[1], 2);
+    }
     gfx_set_zbias(6);                                            // the face art and the bangs lie on the blocks: pull them in front
     vox_t_block = VSync(1) - tcells0;
     { int t0 = VSync(1); face_sprites(b);
     if (hair_style != 3) hair_flaps(b); vox_t_hair = VSync(1) - t0; }
     gfx_set_zbias(0);
     extra_parts(b, hx_, hy_, hz_, hs_);
+    wear_draw(b);
 }

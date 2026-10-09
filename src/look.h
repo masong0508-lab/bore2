@@ -8,7 +8,10 @@
 #define AS_PICK 5   // the aspirations the creator offers (GROW UP comes with being young)
 #define LTN 4
 
-#define LK_COUNT 112
+#define LK_COUNT 120
+// BORE 2's own wardrobe (after the GBA looks): the WEAR tab's accessories, their two colours, and clothes patterns
+enum { LK_X_HEAD = LK_N, LK_X_FACE, LK_X_NECK, LK_X_BACK, LK_X_HAND, LK_X_WAIST, LK_X_COLA, LK_X_COLB, LK_X_TOPPAT, LK_X_BOTPAT, LK_X_PATTONE, LK_X_END };
+#define NX_COL 16
 #define NAME_LEN 12
 
 typedef struct {
@@ -31,6 +34,13 @@ typedef struct {
     u8   ncell;
     struct { u8 x, y, z, v, hide, grp, flags, pad; SVECTOR c[8]; } cell[W * D * H];   // c: the 8 corners (top 4, bottom 4), rounded hull and wedges folded in; flags: 1 hair, 2 limb
     u8   ndec;
+    // where the WEAR tab's accessories attach (voxel_prepare), body-space units
+    s16  w_headx, w_heady, w_headz, w_headh;    // the top centre of the head (on the hair), the head's half width
+    s16  w_facey, w_facez;                       // the eye line and the face's front
+    s16  w_tx, w_shy, w_hipy, w_tfz, w_tbz;      // torso centre x, shoulder and hip lines, torso front and back
+    s16  w_hx, w_hy, w_hz;                       // the right hand's bottom centre (in the right arm's space)
+    // the head's sculpt (voxel.c head_xf): scaled about its bottom centre, the jaw tapered, lifted onto a neck
+    s16  h_cx, h_cz, h_cy0, h_top, h_k, h_jaw, h_lift, h_neckw;
     u8   decc[8];               // the cells that carry a face sprite's top-left
 } Bore;
 
@@ -59,6 +69,6 @@ enum { ROW_PICK, ROW_COLOUR, ROW_SLIDER, ROW_AGE, ROW_PERSONA };
 #define LK_LTW 252
 #define LK_TRAIT0 240   // 240..244 the five traits
 typedef struct { const char *label; u8 id; u8 kind; } LookRow;
-#define NTAB 6
+#define NTAB 7
 extern const char *const look_tab_name[NTAB];
 int  look_tab_rows(int tab, const LookRow **rows);
