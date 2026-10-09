@@ -1,21 +1,22 @@
 name: build
-on: [push, pull_request, workflow_dispatch]
+on: [push, workflow_dispatch]
 jobs:
   lite-disc:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install PSn00bSDK
+      - name: Install the PS1 compiler and PSn00bSDK
         run: |
           sudo apt-get update && sudo apt-get install -y cmake ninja-build unzip
-          # get the Linux release zip from https://github.com/Lameguy64/PSn00bSDK/releases and unpack it to /opt/psn00bsdk
-          # (edit the URL below to the release you want)
-          curl -fsSL "$PSN00BSDK_URL" -o sdk.zip && unzip -q sdk.zip -d /opt/psn00bsdk
-        env:
-          PSN00BSDK_URL: ${{ vars.PSN00BSDK_URL }}
-      - name: Build the lite disc
+          B=https://github.com/Lameguy64/PSn00bSDK/releases/download/v0.24
+          curl -fsSL $B/gcc-mipsel-none-elf-12.3.0-Linux.zip -o gcc.zip
+          curl -fsSL $B/PSn00bSDK-0.24-Linux.zip -o sdk.zip
+          sudo mkdir -p /opt/mipsel && sudo unzip -q gcc.zip -d /opt/mipsel
+          sudo unzip -q sdk.zip -d /opt && sudo mv /opt/PSn00bSDK-0.24-Linux /opt/psn00bsdk
+          sudo chmod -R a+rx /opt/mipsel /opt/psn00bsdk
+      - name: Build the lite disc (no music)
         run: |
-          export PATH=/opt/psn00bsdk/bin:$PATH PSN00BSDK_LIBS=/opt/psn00bsdk/lib/libpsn00b
+          export PATH=/opt/mipsel/bin:/opt/psn00bsdk/bin:$PATH PSN00BSDK_LIBS=/opt/psn00bsdk/lib/libpsn00b
           cmake --preset default && cmake --build build --target iso_lite
       - uses: actions/upload-artifact@v4
-        with: { name: bore2_lite, path: "build/bore2_lite.*" }
+        with: { name: bore2_lite_disc, path: "build/bore2_lite.*" }
