@@ -67,6 +67,7 @@ void voxel_init(void) {
         pat_tex[p][t] = atlas_add(16, 16, tbuf);
         if (p == 1 || p == NPAT - 1) boot(t ? "VX pat light" : "VX pat dark");
     }
+    boot("VX end");
 }
 
 // ---- colour helpers ----
