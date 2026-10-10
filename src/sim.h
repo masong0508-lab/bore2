@@ -75,4 +75,4 @@ int  sim_find_path(Sim *s, int tx, int ty);
 // the story: what this life has done so far (the travel zones unlock from these)
 extern int story_paid;         // paychecks earned
 extern int story_talks;        // chats the player started
-extern u8  story_visit[3];     // zones set foot in
+extern u8  story_visit[4];     // zones set foot in

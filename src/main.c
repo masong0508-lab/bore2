@@ -93,7 +93,7 @@ static void menu_row(int x, int y, int w, const char *txt, int sel) {   // one S
     gfx_text(x + 14, y, 1, txt, sel ? 255 : 175, sel ? 255 : 175, sel ? 255 : 185);
 }
 // which story zones are open (the island comes with the first paycheck, the town with the SPONSORED job level)
-static int zone_unlocked(int z) { return z == 0 || (z == 1 && story_paid > 0) || (z == 2 && job_level >= 2); }
+static int zone_unlocked(int z) { return z == 0 || z == 3 || (z == 1 && story_paid > 0) || (z == 2 && job_level >= 2); }   // (the city is open from the start)
 
 static void draw_bar(int x, int y, int w, int v, int r, int g, int b) {
     gfx_rect(x, y, w, 6, 30, 30, 36, 0);
@@ -188,7 +188,7 @@ static void start_life(void) {
     strcpy(sims[1].bore.first, "MOSS"); sims[1].grump = 1;   // MOSS will not have a thing floating overhead. Do not ask.
     look_default(&b); b.stage = AG_CHILD; look_random(&b); sim_add(&b, px - 1, py + 2, 1);
     life_started = 1;
-    story_paid = 0; story_talks = 0; story_visit[0] = 1; story_visit[1] = 0; story_visit[2] = 0;
+    story_paid = 0; story_talks = 0; story_visit[0] = 1; story_visit[1] = 0; story_visit[2] = 0; story_visit[3] = 0;
     sim_note("WELCOME HOME. X USES THINGS.");
 }
 
@@ -382,16 +382,16 @@ static void travel_update(void) {
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = ST_LIFE; return; }
     if (PRESSED(PAD_CROSS)) {
         if (!zone_unlocked(travel_sel)) { audio_voice(VOICE_NAH); return; }
-        if (travel_sel != world_zone) { travel_go(travel_sel); story_visit[travel_sel] = 1; for (int i = 0; i < nsims; i++) { wants_event(&sims[i], travel_sel == 1 ? W_ISLAND : W_TOWN, 0); wants_reroll(&sims[i]); } }
+        if (travel_sel != world_zone) { travel_go(travel_sel); story_visit[travel_sel] = 1; for (int i = 0; i < nsims; i++) { if (travel_sel < 3) wants_event(&sims[i], travel_sel == 1 ? W_ISLAND : W_TOWN, 0); wants_reroll(&sims[i]); } }
         state = ST_LIFE;
     }
 }
 static void travel_draw(void) {
     life_draw();
-    draw_panel(70, 50, 180, 90);
-    gfx_textc(160, 54, 2, "WHERE TO?", GOLD);
-    static const char *const blurb[ZONE_N] = { "HOME: THE HOUSE, THE FACTORY, THE RAIL PARK", "A SAND ISLAND: A CAMP, PALMS, THE SEA", "A DESERT MAIN STREET: DINER, TRAILER, THE LAB" };
-    static const char *const lockTxt[ZONE_N] = { "", "LOCKED: EARN YOUR FIRST PAYCHECK", "LOCKED: GET SPONSORED AT WORK" };
+    draw_panel(70, 46, 180, 118);
+    gfx_textc(160, 52, 2, "WHERE TO?", GOLD);
+    static const char *const blurb[ZONE_N] = { "HOME: THE HOUSE, THE FACTORY, THE RAIL PARK", "A SAND ISLAND: A CAMP, PALMS, THE SEA", "A DESERT MAIN STREET: DINER, TRAILER, THE LAB", "THE CITY: 16 BLOCKS, HOUSES, PARK, DINER, GYM" };
+    static const char *const lockTxt[ZONE_N] = { "", "LOCKED: EARN YOUR FIRST PAYCHECK", "LOCKED: GET SPONSORED AT WORK", "" };
     for (int i = 0; i < ZONE_N; i++) {
         int sel = i == travel_sel, here = i == world_zone, open_ = zone_unlocked(i);
         if (!open_) gfx_text(86, 74 + i * 20, 1, world_zone_name(i), 110, 110, 120);

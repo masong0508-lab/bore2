@@ -14,7 +14,7 @@ extern u8   wallMap[MH][MW];         // wallpaper per tile (0..NWP-1 patterns, N
 #define FL_WATER 18
 #define FL_ROCK 19
 // the three zones: the GBA lot, the island (Castaway) and the desert town
-enum { ZONE_HOME, ZONE_ISLAND, ZONE_TOWN, ZONE_N };
+enum { ZONE_HOME, ZONE_ISLAND, ZONE_TOWN, ZONE_CITY, ZONE_N };
 extern int world_zone;
 const char *world_zone_name(int z);
 void world_switch(int z);                        // keeps the current zone's tiles, loads (or generates) the other

@@ -15,7 +15,7 @@ int  bills_due = 800;
 char last_note[32]; int last_note_t;
 int  travel_asked;
 int  story_paid, story_talks;
-u8   story_visit[3];
+u8   story_visit[4];
 
 // BORE tuning (sims.h), per logic step in 1/1024 points
 #define STEPS_MIN 15
