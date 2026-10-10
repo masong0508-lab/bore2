@@ -116,6 +116,10 @@ void gfx_flip(void) {
     alloc_reserve = 0; gfx_pk_end = db[db_active].p + PACKET_LEN - 64; gfx_ot_cur = db[db_active].ot;
     ui_head = ui_tail = 0;
     ClearOTagR(db[db_active].ot, OT_LEN);
+    {   // the frame starts by flushing the GPU's texture cache: the sprite cells were drawn into since it last saw them
+        u32 *f = (u32 *)gfx_alloc(8);
+        if (f) { f[1] = 0x01000000u; f[0] = (1u << 24) | (db[db_active].ot[OT_LEN - 1] & 0xffffff); db[db_active].ot[OT_LEN - 1] = (u32)f & 0xffffff; }
+    }
     setRGB0(&db[db_active].draw, clear_r, clear_g, clear_b);
     PutDrawEnv(&db[db_active].draw);
     PutDispEnv(&db[db_active].disp);
@@ -167,11 +171,11 @@ void gfx_set_object(const VECTOR *pos, int yaw) {
 void gfx_set_object_m(const MATRIX *world) {
     MATRIX om;
     CompMatrixLV(&cam.view, (MATRIX *)world, &om);
-    gte_SetRotMatrix(&om);
+    GTE_FENCE(); gte_SetRotMatrix(&om);
     gte_SetTransMatrix(&om);
 }
 void gfx_set_identity(void) {
-    gte_SetRotMatrix(&cam.view);
+    GTE_FENCE(); gte_SetRotMatrix(&cam.view);
     gte_SetTransMatrix(&cam.view);
     obj_yaw = 0; light_to_object();
 }
@@ -262,13 +266,13 @@ int gfx_quad_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECT
     POLY_F4 *q = (POLY_F4 *)gfx_alloc(sizeof(POLY_F4));
     if (!q) return 0;
     char *mark_ = (char *)q;
-    gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
+    GTE_FENCE(); gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
     gte_rtpt();
     if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
     if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy3(&q->x0, &q->x1, &q->x2);
-    gte_ldv0((SVECTOR *)d);
+    GTE_FENCE(); gte_ldv0((SVECTOR *)d);
     gte_rtps();
     gte_stsz(&z3);
     if (z3 < Z_NEAR) { db_next = mark_; return 0; }
@@ -287,7 +291,7 @@ int gfx_tri_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, int r, int g
     POLY_F3 *q = (POLY_F3 *)gfx_alloc(sizeof(POLY_F3));
     if (!q) return 0;
     char *mark_ = (char *)q;
-    gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
+    GTE_FENCE(); gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
     gte_rtpt();
     if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
@@ -307,13 +311,13 @@ int gfx_quad_g(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECT
     POLY_G4 *q = (POLY_G4 *)gfx_alloc(sizeof(POLY_G4));
     if (!q) return 0;
     char *mark_ = (char *)q;
-    gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
+    GTE_FENCE(); gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
     gte_rtpt();
     if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
     if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy3(&q->x0, &q->x1, &q->x2);
-    gte_ldv0((SVECTOR *)d);
+    GTE_FENCE(); gte_ldv0((SVECTOR *)d);
     gte_rtps();
     gte_stsz(&z3);
     if (z3 < Z_NEAR) { db_next = mark_; return 0; }
@@ -335,13 +339,13 @@ int gfx_quad_ft(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVEC
     POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4));
     if (!q) return 0;
     char *mark_ = (char *)q;
-    gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
+    GTE_FENCE(); gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
     gte_rtpt();
     if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
     if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy3(&q->x0, &q->x1, &q->x2);
-    gte_ldv0((SVECTOR *)d);
+    GTE_FENCE(); gte_ldv0((SVECTOR *)d);
     gte_rtps();
     gte_stsz(&z3);
     if (z3 < Z_NEAR) { db_next = mark_; return 0; }
@@ -365,13 +369,13 @@ int gfx_quad_gt(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVEC
     POLY_GT4 *q = (POLY_GT4 *)gfx_alloc(sizeof(POLY_GT4));
     if (!q) return 0;
     char *mark_ = (char *)q;
-    gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
+    GTE_FENCE(); gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
     gte_rtpt();
     if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
     if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy3(&q->x0, &q->x1, &q->x2);
-    gte_ldv0((SVECTOR *)d);
+    GTE_FENCE(); gte_ldv0((SVECTOR *)d);
     gte_rtps();
     gte_stsz(&z3);
     if (z3 < Z_NEAR) { db_next = mark_; return 0; }
@@ -403,12 +407,12 @@ void gfx_xform(const SVECTOR *v, XV *o, int n) {
     }
     int i = 0;
     for (; i + 3 <= n; i += 3) {
-        gte_ldv3c((SVECTOR *)&v[i]);
+        GTE_FENCE(); gte_ldv3c((SVECTOR *)&v[i]);
         gte_rtpt();
         gte_stsxy3(&o[i].x, &o[i + 1].x, &o[i + 2].x);
         gte_stsz3(&o[i].z, &o[i + 1].z, &o[i + 2].z);
     }
-    for (; i < n; i++) { gte_ldv0((SVECTOR *)&v[i]); gte_rtps(); gte_stsxy(&o[i].x); gte_stsz(&o[i].z); }
+    for (; i < n; i++) { GTE_FENCE(); gte_ldv0((SVECTOR *)&v[i]); gte_rtps(); gte_stsxy(&o[i].x); gte_stsz(&o[i].z); }
 }
 u32 gfx_grade_flat(u32 c) { return grade_rgb(c & 255, (c >> 8) & 255, (c >> 16) & 255); }
 u32 gfx_grade_tex(u32 c) { return gt_grade(c, 256); }
@@ -428,7 +432,7 @@ int gfx_visible(int wx, int wy, int wz, int r) {
 }
 int gfx_project(const SVECTOR *v, int *sx, int *sy, int *sz) {
     DVECTOR xy; int z;
-    gte_ldv0((SVECTOR *)v);
+    GTE_FENCE(); gte_ldv0((SVECTOR *)v);
     gte_rtps();
     gte_stsz(&z);
     gte_stsxy(&xy);
@@ -500,8 +504,8 @@ void gfx_shadow_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const
     if (!shadow_ready) shadow_init();
     POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4)); if (!q) return; char *mark_ = (char *)q;
     int otz;
-    gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c); gte_rtpt();
-    gte_stsxy3(&q->x0, &q->x1, &q->x2); gte_ldv0((SVECTOR *)d); gte_rtps(); gte_stsxy(&q->x3);
+    GTE_FENCE(); gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c); gte_rtpt();
+    gte_stsxy3(&q->x0, &q->x1, &q->x2); GTE_FENCE(); gte_ldv0((SVECTOR *)d); gte_rtps(); gte_stsxy(&q->x3);
     gte_avsz4(); gte_stotz(&otz); if (otz < Z_NEAR) { db_next = mark_; return; }
     if (quad_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2, (DVECTOR *)&q->x3)) { db_next = mark_; return; }
     setPolyFT4(q); setRGB0(q, 128, 128, 128); setSemiTrans(q, 1);
@@ -517,8 +521,8 @@ void gfx_shadow(const VECTOR *pos, int radius) {
     setVector(&a, -r, -2, r); setVector(&b, r, -2, r); setVector(&c, -r, -2, -r); setVector(&d, r, -2, -r);
     POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4)); if (!q) return; char *mark_ = (char *)q;
     int otz, p;
-    gte_ldv3(&a, &b, &c); gte_rtpt();                                        // (no back-face test: it lies flat on the floor, seen from above)
-    gte_stsxy3(&q->x0, &q->x1, &q->x2); gte_ldv0(&d); gte_rtps(); gte_stsxy(&q->x3);
+    GTE_FENCE(); gte_ldv3(&a, &b, &c); gte_rtpt();                                        // (no back-face test: it lies flat on the floor, seen from above)
+    gte_stsxy3(&q->x0, &q->x1, &q->x2); GTE_FENCE(); gte_ldv0(&d); gte_rtps(); gte_stsxy(&q->x3);
     gte_avsz4(); gte_stotz(&otz); if (otz < Z_NEAR) { db_next = mark_; return; }
     (void)p;
     setPolyFT4(q); setRGB0(q, 128, 128, 128); setSemiTrans(q, 1);
@@ -569,6 +573,9 @@ void gfx_textc(int cx, int y, int scale, const char *s, int r, int g, int b) { g
 // (the scene is queued at the flip), so the scene's sprite quads always find the fresh pixels.
 static u32 *imp_ot, *imp_keep_ot; static int imp_keep_max, imp_keep_base, imp_scaled;
 #define IMP_OT 128
+#ifndef IMP_MASK
+#define IMP_MASK 1
+#endif
 #ifndef IMP_FILL
 #define IMP_FILL 0
 #endif
@@ -583,7 +590,7 @@ int gfx_imp_begin(int cx, int cy, int cw, int ch, int ox, int oy, int zmid, int 
     hd[2] = 0xE3000000u | (u32)cx | ((u32)cy << 10);
     hd[3] = 0xE4000000u | (u32)(cx + cw - 1) | ((u32)(cy + ch - 1) << 10);
     hd[4] = 0xE5000000u | ((u32)ox & 0x7ff) | (((u32)oy & 0x7ff) << 11);
-    hd[5] = 0xE6000001u;
+    hd[5] = 0xE6000000u | IMP_MASK;
     hd[6] = 0x02000000u | IMP_FILL; hd[7] = (u32)cx | ((u32)cy << 16); hd[8] = (u32)cw | ((u32)ch << 16);
     hd[0] = (8u << 24) | (ot[IMP_OT - 1] & 0xffffff); ot[IMP_OT - 1] = (u32)hd & 0xffffff;
     // the tail (drawn last): set-mask off, flush the texture cache (the cell is a texture from here on)
@@ -595,11 +602,7 @@ int gfx_imp_begin(int cx, int cy, int cw, int ch, int ox, int oy, int zmid, int 
     if (imp_scaled) gte_SetGeomScreen((230 * hscale) >> 12);
     return 1;
 }
-int imp_dbg[8];
 void gfx_imp_end(void) {
-    { int n = 0, n127 = 0; u32 a = imp_ot[IMP_OT - 1] & 0xffffff; while (a != 0xffffff && n < 5000) { u32 w = *(u32 *)(a | 0x80000000u); if (w >> 24) n++; a = w & 0xffffff; }
-      u32 b = imp_ot[IMP_OT - 1] & 0xffffff; while (b != 0xffffff && (b | 0x80000000u) != (u32)&imp_ot[IMP_OT - 2]) { n127++; b = *(u32 *)(b | 0x80000000u) & 0xffffff; }
-      imp_dbg[0] = n; imp_dbg[1] = n127; imp_dbg[2] = gfx_zbase; }
     if (imp_scaled) gte_SetGeomScreen(230);
     gfx_ot_cur = imp_keep_ot; gfx_ot_max = imp_keep_max; gfx_zbase = imp_keep_base;
     DrawOTag(imp_ot + IMP_OT - 1);

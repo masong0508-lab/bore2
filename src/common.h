@@ -11,6 +11,9 @@
 #include <psxpad.h>
 #include <psxapi.h>
 #include <psxetc.h>
+// the SDK's GTE load macros read memory without telling the compiler: a fence first, so vertices written just before are really
+// in memory when the GTE loads them (without it GCC may move the stores after the load: wrong, layout-dependent geometry)
+#define GTE_FENCE() __asm__ volatile("" ::: "memory")
 // the HUD's formatter (fmt.c): far quicker than the C library's
 int bsprintf(char *o, const char *f, ...);
 int bsnprintf(char *o, unsigned cap, const char *f, ...);

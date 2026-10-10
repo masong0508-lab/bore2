@@ -1,4 +1,2 @@
-60 shot
 120 shot
-200 shot
 300 shot

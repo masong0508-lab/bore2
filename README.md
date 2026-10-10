@@ -36,7 +36,13 @@ The creature code: `python3 tools/port_look.py <bore-gba-main>/source/main.c src
 - `test/` scripts used to take emulator screenshots and measure FPS.
 
 ## Known gaps
-About 20 FPS in life mode (target 30), no memory-card saves, the 80x80 map's RAM use is estimated and not yet measured on a disc build, wants/fears only partly done, tested only in an emulator.
+No memory-card saves, the 80x80 map's RAM use is estimated and not yet measured on a disc build, wants/fears only partly done, tested only in an emulator.
+
+## Crowds and parties
+THROW A PARTY (pause menu, or the phone) brings up to 60 guests, who walk in, dance round you and go home after three hours.
+Every person in a crowd is the full model, like your own Bore: `src/crowd.c` keeps a compact copy of each model (~2 KB) in the
+RAM the voice clips used before they went into the sound chip, draws the few biggest on screen live in 3D, and shows the rest as
+sprites of that same model, rendered into spare video memory and redrawn round the crowd as the frame's time allows.
 
 ## The city
 BORE CITY is an 80x80 map: a 5x5 grid of 16-tile blocks, 23 homes in four kinds (HOUSE, COTTAGE, TOWNHOUSES, TWO-STOREY with a loft), two parks, the square, a diner, a gym with an arcade, an office and a skate plaza. `world_gen_city` in `src/world.c` places them from the `lots[][]` table; to add a home kind, write a `city_*` function and give it a table entry.

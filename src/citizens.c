@@ -658,7 +658,7 @@ static int party_spots(void) {             // the dance floor: free tiles round 
     int h = 0, t = 0, n = 0; bdist[BW][BW] = 0; bq[t++] = (u16)(BW * N + BW);
     while (h < t && n < PARTY_MAX) {
         int q = bq[h++], x = q % N + ox, y = q / N + oy;
-        if (bdist[y - oy][x - ox] >= 1 && ((x + y) & 1) == 0) { party_sx[n] = (u8)x; party_sy[n] = (u8)y; n++; }   // every other tile: room to dance
+        if (bdist[y - oy][x - ox] >= 2 && ((x - party_cx) & 1) == 0 && ((y - party_cy) & 1) == 0) { party_sx[n] = (u8)x; party_sy[n] = (u8)y; n++; }   // a tile apart each way: room to dance
         for (int k = 0; k < 4; k++) {
             int a = x + dx4[k], b = y + dy4[k];
             if (a < ox || b < oy || a >= ox + N || b >= oy + N || bdist[b - oy][a - ox] != 255 || !party_tile_ok(a, b)) continue;
@@ -950,7 +950,7 @@ void citizens_draw(void) {
         int tall = z ? (420 * 230) / z : 999;                          // how tall they stand on the screen, in pixels
         tier[k] = 1;
         // live: anyone too big for a sprite cell to show sharply, and the nearest couple while the frame has time
-        if (live < LIVE_MAX && crowd_has(order[k]) && (tall > 80 || (live < 2 && gfx_hb() < 330))) { tier[k] = 0; live++; }
+        if (live < LIVE_MAX && crowd_has(order[k]) && tall > 72 && gfx_hb() + live * 70 < 300) { tier[k] = 0; live++; }
     }
     for (int k = 0; k < n; k++) if (tier[k] == 0) {
         Cit *c = &cits[order[k]];
@@ -958,8 +958,9 @@ void citizens_draw(void) {
     }
     static int score[MAXDRAW];                                        // how out of date each sprite is (worked out once a frame)
     for (int k = 0; k < n; k++) score[k] = tier[k] == 1 ? crowd_sprite_score(order[k], &pp[k], cits[order[k]].yaw, &cits[order[k]].gait) : 0;
-    for (int r = 0; r < 10 && gfx_hb() < 450; r++) {                  // the sprite renders: the most out-of-date first
-        int best = -1, bs = 6;
+    for (int r = 0; r < 8; r++) {                                     // the sprite renders: the most out-of-date first, while the frame has time
+        int best = -1, bs = 6;                                          // (someone with no sprite at all gets one even when the frame is late: 3 a frame)
+        if (gfx_hb() >= 360) { bs = 99999; if (r >= 2) break; }
         for (int k = 0; k < n; k++) if (tier[k] == 1 && score[k] > bs) { bs = score[k]; best = k; }
         if (best < 0) break;
         Cit *c = &cits[order[best]];
@@ -975,9 +976,6 @@ void citizens_draw(void) {
         }
         if (c->mode != CM_KO && c->mode != CM_SLEEP) { VECTOR sp; setVector(&sp, c->x, 0, c->z); gfx_shadow(&sp, 70); }
     }
-#ifdef CELLVIEW
-    for (int k = 0; k < 52; k++) gfx_imp_sprite((k % 13) * 48, 256 + (k / 13) * 64, 48, 64, (k % 13) * 24, 60 + (k / 13) * 32, 24, 32, 2, 0);   // (debug) every sprite cell
-#endif
 }
 
 void citizens_draw_bubbles(void) {

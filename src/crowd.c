@@ -236,6 +236,7 @@ static int render(int id, const VECTOR *pos, int yaw, const Gait *g) {
     int cx = (k % NCX) * CW, cy = 256 + (k / NCX) * CH;
     const Bore *b = crowd_unpack(id); if (!b) return 0;
     if (!gfx_imp_begin(cx, cy, CW, CH, cx - sx0, cy - sy0, z >> 2, hs)) return 0;
+
     voxel_draw(b, pos, yaw, g);
     gfx_imp_end();
     Spr *s = &spr[id];

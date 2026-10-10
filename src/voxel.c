@@ -106,6 +106,7 @@ static u32 slot_col_make(int slot, int i) {
 }
 static inline u32 slot_col(int slot, int L) { int i = CLAMP(L, 0, 255) >> 2; return lut_stamp[slot][i] == lut_gen ? slot_lut[slot][i] : slot_col_make(slot, i); }
 static void face4(const XV *a, const XV *b, const XV *c, const XV *d, int slot, int L0, int L1, int L2, int L3, int kind) {
+
     if (kind >= 2) {
         const TexRef *t = kind == 2 ? &skin_tex : kind == 3 ? &cloth_tex : &pat_tex[0][0] + (kind - 4);   // 4.. = a pattern (pat_tex[p][tone])
         quads += gfx_emit_gt4(a, b, c, d, slot_col(slot, L0), slot_col(slot, L1), slot_col(slot, L2), slot_col(slot, L3),
@@ -748,7 +749,7 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     if (g->sleep) {   // lying on the back
         MATRIX r; SVECTOR rr = { -1024, 0, 0, 0 }; VECTOR t = { 0, -40, -60 };
         RotMatrix(&rr, &r); TransMatrix(&r, &t);
-        CompMatrixLV(&obj, &r, &obj);
+        { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); };
     }
     int swing = (walk_sin * 300) >> 12;
     int hip = b->w_hipy, shoulder = b->w_shy;
@@ -781,7 +782,7 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     }
     if (g->wave) { int w = isin((g->wave * 400) & 4095) >> 4; armR = -2400 + w; rollR = 260; }
     if (g->sit) { rollL = -60; rollR = 60; armL = -500; armR = -500; }   // sitting: hands on the knees
-    if (lean) { MATRIX r; SVECTOR rr = { (short)lean, 0, 0, 0 }; RotMatrix(&rr, &r); CompMatrixLV(&obj, &r, &obj); }   // the lean pivots at the feet
+    if (lean) { MATRIX r; SVECTOR rr = { (short)lean, 0, 0, 0 }; RotMatrix(&rr, &r); r.t[0] = r.t[1] = r.t[2] = 0; { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); } }   // the lean pivots at the feet (RotMatrix leaves the translation unset)
     gm[G_BODY] = obj;
     {   // the eye in the body's space: turn the eye offset back by the yaw
         int dx = cam.eye.vx - p.vx, dy = cam.eye.vy - p.vy, dz = cam.eye.vz - p.vz;
@@ -904,7 +905,7 @@ void voxel_draw_lod(const LodBore *m, const VECTOR *pos, int yaw, const Gait *g)
     p.vy -= bob;
     RotMatrix(&rot, &obj);
     TransMatrix(&obj, &p);
-    if (g->sleep) { MATRIX r; SVECTOR rr = { -1024, 0, 0, 0 }; VECTOR t = { 0, -40, -60 }; RotMatrix(&rr, &r); TransMatrix(&r, &t); CompMatrixLV(&obj, &r, &obj); }
+    if (g->sleep) { MATRIX r; SVECTOR rr = { -1024, 0, 0, 0 }; VECTOR t = { 0, -40, -60 }; RotMatrix(&rr, &r); TransMatrix(&r, &t); { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); }; }
     int swing = (ws * 300) >> 12;
     int legL = g->sit ? -1024 : swing, legR = g->sit ? -1024 : -swing;
     int armL = g->sit ? -200 : -swing * 3 / 4, armR = g->sit ? -200 : swing * 3 / 4;

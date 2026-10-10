@@ -989,9 +989,6 @@ static void title_update(void) {
     title_t++;
     if (PRESSED(PAD_START) || PRESSED(PAD_CROSS)) { state = ST_MENU; menu_sel = 0; audio_voice(VOICE_YAHOO); }
 }
-#ifdef BENCH
-int bench_res[8];
-#endif
 static void title_draw(void) {
     gfx_set_clear(10, 8, 30);
     gfx_set_ambient(96, 86);
@@ -1007,38 +1004,6 @@ static void title_draw(void) {
     VECTOR p; setVector(&p, fx, 0, fz);
     Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (title_t * 120) & 4095; g.amp = 4096;
     voxel_draw(&title_bore, &p, (title_t * 9) & 4095, &g);
-#ifdef BENCH
-    {   // (bench) what a person costs, in hblanks: build, prepare, draw (full), draw (crowd)
-        extern int bench_res[8]; static Bore bb; static int done;
-        if (title_t == 80 && !done) {
-            done = 1; look_default(&bb);
-            int t0 = VSync(1); look_random(&bb); bench_res[0] = VSync(1) - t0;
-            t0 = VSync(1); voxel_prepare(&bb); bench_res[1] = VSync(1) - t0;
-            t0 = VSync(1); look_build(&bb); bench_res[7] = VSync(1) - t0;
-            bench_res[6] = bb.ncell;
-            int mx = 0, my = 0, mz = 0, mc = 0;
-            for (int r = 0; r < 40; r++) {
-                bb.stage = (u8)(r % 5); look_random(&bb); if (bb.ncell > mc) mc = bb.ncell;
-                for (int i = 0; i < bb.ncell; i++) for (int k = 0; k < 8; k++) {
-                    const SVECTOR *c = &bb.cell[i].c[k]; int x = bb.cell[i].x, y = bb.cell[i].y, z = bb.cell[i].z;
-                    int nx = (x - 3 + (k & 1)) * VOX, ny = (k < 4) ? -(y + 1) * VOX : -y * VOX, nz = (z - 2 + ((k >> 1) & 1)) * VOX;
-                    int dx = ABS(c->vx - nx), dy = ABS(c->vy - ny), dz = ABS(c->vz - nz);
-                    if (dx > mx) mx = dx; if (dy > my) my = dy; if (dz > mz) mz = dz;
-                }
-            }
-            bench_res[2] = mx; bench_res[3] = my; bench_res[4] = mz; bench_res[5] = mc;
-        }
-        if (title_t >= 230 && title_t < 240) {
-            VECTOR q = p;
-            extern int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block, vox_n_rad;
-            vox_t_hair = vox_t_block = vox_t_face = vox_n_hair = vox_n_block = vox_n_rad = 0;
-            int t0 = VSync(1); voxel_draw(&bb, &q, 0, &g); bench_res[2] = VSync(1) - t0; bench_res[3] = voxel_quads();
-            bench_res[6] = vox_t_face * 1000000 + vox_n_hair * 10000 + vox_t_block * 100 + vox_t_hair;
-            LodBore lb; t0 = VSync(1); voxel_lod_build(&bb, &lb); bench_res[4] = VSync(1) - t0;
-            t0 = VSync(1); voxel_draw_lod(&lb, &q, 0, &g); bench_res[5] = VSync(1) - t0;
-        }
-    }
-#endif
     gfx_shadow(&p, 70);
     gfx_textc(160, 14, 3, "BORE 2", GOLD);
     gfx_textc(160, 52, 1, "DIPPINN PRODUCTIONS", GREY);
