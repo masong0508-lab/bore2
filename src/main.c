@@ -308,7 +308,9 @@ static void hud_life(void) {
     citizens_hud();
     if (frame < 900) gfx_textc(160, 160, 1, "STICK MOVES   L1 R1 ORBIT   L2 R2 ZOOM   X USES   SQUARE RUNS", GREY);
     if (show_fps) { extern int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block;
-        sprintf(b, "%d FPS %d PRIMS W%d S%d L%d", fps_val, prims_last, t_world, t_sims, t_logic); gfx_text(140, 30, 1, b, 120, 255, 120);
+        gfx_rect(2, 57, 150, 22, 0, 0, 0, 0);
+        sprintf(b, "%d FPS  %d PRIMS %dK%s", fps_val, gfx_last_prims, gfx_last_bytes >> 10, gfx_last_overflow ? " FULL!" : ""); gfx_text(6, 60, 1, b, 120, 255, 120);
+        sprintf(b, "WORLD %d BORES %d SIM %d", t_world, t_sims, t_logic); gfx_text(6, 69, 1, b, 120, 255, 120);
         vox_t_hair = vox_t_block = vox_t_face = vox_n_hair = vox_n_block = 0; }
 }
 

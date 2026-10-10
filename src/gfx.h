@@ -4,7 +4,7 @@
 
 #define OT_LEN     4096
 #define OT_SHIFT   1              // view-space z >> OT_SHIFT = OT index (z up to 8192 units)
-#define PACKET_LEN (256*1024)   // per buffer (x2 = 544 KB of the 2 MB RAM); the 80x80 maps need the rest (about 650 KB of map tables: 96x96 would need 1.1 MB and does not fit)
+#define PACKET_LEN (224*1024)   // per buffer (x2 = 448 KB, plus the OTs, of the 2 MB RAM). Keep at least 64 KB free above _end for the stack: check with nm (the 80x80 maps take about 500 KB)
 #define RESERVE_PEOPLE (72*1024)   // kept back from the world so the people always fit
 #define RESERVE_UI     (24*1024)   // kept back from the people so bubbles, text and the HUD always fit
 #define Z_NEAR     40
@@ -38,7 +38,8 @@ void gfx_set_light_yaw(int yaw);              // the yaw gfx_light rotates norma
 int  gfx_light_amb(void);
 void gfx_set_zbias(int b);
 void gfx_set_fog(int near, int far);          // things further than near darken towards far (0 = off)
-extern int gfx_prim_count;                    // 3D primitives sent this frame (reset it yourself)                    // OT slots taken off the depth of what is drawn next (decals: faces, bangs); set it back to 0 after
+extern int gfx_prim_count;                    // 3D primitives sent (reset it yourself; the Bores' cost)
+extern int gfx_last_prims, gfx_last_bytes, gfx_last_overflow;   // profiler (L3 in life mode): last frame's 3D prims, packet bytes, prims that did not fit
 
 // ---- 3D primitives in the current object space (return 1 if drawn) ----
 int gfx_quad_f (const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d, int r, int g, int b8, int cull);

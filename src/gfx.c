@@ -17,6 +17,7 @@ static char *db_next;
 static RECT screen_clip;
 static u32 *ui_head, *ui_tail;    // the 2D overlay chain, drawn after everything in call order
 static int  clear_r = 20<<3, clear_g = 26<<3, clear_b = 31<<3;   // BORE's SKY colour
+int gfx_prim_count, gfx_frame_prims, gfx_last_prims, gfx_last_bytes, gfx_overflow, gfx_last_overflow;   // profiler: prims and packet bytes of the last frame, prims that did not fit
 
 Camera cam;
 static int obj_yaw;               // yaw of the current object (for lighting)
@@ -69,6 +70,8 @@ void gfx_flip(void) {
         setaddr(ui_tail, nxt);
         setaddr(&db[db_active].ot[0], ui_head);
     }
+    gfx_last_bytes = (int)(db_next - db[db_active].p); gfx_last_prims = gfx_frame_prims; gfx_frame_prims = 0;
+    gfx_last_overflow = gfx_overflow; gfx_overflow = 0;
     DrawSync(0);
     VSync(0);
     db_active ^= 1;
@@ -86,7 +89,7 @@ void gfx_flip(void) {
 void gfx_set_reserve(int bytes) { alloc_reserve = bytes; }
 void *gfx_alloc(int bytes) {
     char *p = db_next;
-    if (p + bytes > db[db_active].p + PACKET_LEN - 64 - alloc_reserve) return 0;
+    if (p + bytes > db[db_active].p + PACKET_LEN - 64 - alloc_reserve) { gfx_overflow++; return 0; }
     db_next = p + ((bytes + 3) & ~3);
     return p;
 }
@@ -204,7 +207,7 @@ static inline int fog_scale(int otz) {   // 256 = as is
     int t = ((otz - fog_near) << 8) / (fog_far - fog_near);
     return t >= 256 ? 64 : 256 - (t * 3 >> 2);
 }
-int gfx_prim_count;                 // taken off every primitive's depth: decals sit in front of what they are stuck on
+// taken off every primitive's depth: decals sit in front of what they are stuck on
 void gfx_set_zbias(int b) { zbias = b; }
 int gfx_floor_pass;                       // set while drawing the floor: it goes to the very back (nothing is ever under it), so shadows can lie on it
 static inline int ot_index(int otz) {
@@ -237,7 +240,7 @@ int gfx_quad_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECT
     gte_stotz(&otz);
     setPolyF4(q);
     { int f = fog_scale(otz); u32 c_ = grade_rgb((r * f) >> 8, (g * f) >> 8, (b8 * f) >> 8); SET_C(q, 0, c_); }
-    addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++;
+    addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++; gfx_frame_prims++;
     return 1;
 }
 
@@ -256,7 +259,7 @@ int gfx_tri_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, int r, int g
     gte_stotz(&otz);
     setPolyF3(q);
     { int f = fog_scale(otz); u32 c_ = grade_rgb((r * f) >> 8, (g * f) >> 8, (b8 * f) >> 8); SET_C(q, 0, c_); }
-    addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++;
+    addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++; gfx_frame_prims++;
     return 1;
 }
 
@@ -282,7 +285,7 @@ int gfx_quad_g(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECT
     { u32 g0 = grade_rgb(c0 & 255, (c0 >> 8) & 255, (c0 >> 16) & 255), g1 = grade_rgb(c1 & 255, (c1 >> 8) & 255, (c1 >> 16) & 255),
           g2 = grade_rgb(c2 & 255, (c2 >> 8) & 255, (c2 >> 16) & 255), g3 = grade_rgb(c3 & 255, (c3 >> 8) & 255, (c3 >> 16) & 255);
       SET_C(q, 0, g0); SET_C(q, 1, g1); SET_C(q, 2, g2); SET_C(q, 3, g3); }
-    addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++;
+    addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++; gfx_frame_prims++;
     return 1;
 }
 
@@ -311,7 +314,7 @@ int gfx_quad_ft(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVEC
     q->tpage = tpage; q->clut = clut;
     q->u0 = u0; q->v0 = v0; q->u1 = u1; q->v1 = v1; q->u2 = u2; q->v2 = v2; q->u3 = u3; q->v3 = v3;
     if (semi) setSemiTrans(q, 1);
-    addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++;
+    addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++; gfx_frame_prims++;
     return 1;
 }
 
@@ -340,7 +343,7 @@ int gfx_quad_gt(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVEC
       SET_C(q, 0, g0); SET_C(q, 1, g1); SET_C(q, 2, g2); SET_C(q, 3, g3); }
     q->tpage = tpage; q->clut = clut;
     q->u0 = u0; q->v0 = v0; q->u1 = u1; q->v1 = v1; q->u2 = u2; q->v2 = v2; q->u3 = u3; q->v3 = v3;
-    addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++;
+    addPrim(gfx_ot() + ot_index(otz), q); gfx_prim_count++; gfx_frame_prims++;
     return 1;
 }
 

@@ -22,9 +22,9 @@
 #define NHH       64
 #define NONE      255
 
-enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME, CM_LEAVE };
+enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME, CM_LEAVE, CM_CHORE, CM_VISIT };
 enum { PE_FRIENDLY, PE_GRUFF, PE_FLIRTY, PE_SHY };
-enum { PO_TALK, PO_JOKE, PO_HUG, PO_FLIRT, PO_GIFT, PO_PROPOSE, PO_FIGHT, PO_SORRY };
+enum { PO_TALK, PO_JOKE, PO_HUG, PO_FLIRT, PO_GIFT, PO_PROPOSE, PO_FIGHT, PO_SORRY, PO_FAMILY };
 // the moodlet ids in sim.c's list
 enum { CML_GOOD_CHAT = 5, CML_EMBARRASSED = 9, CML_REJECTED = 12, CML_HUGGED = 14, CML_LAUGH = 16, CML_FLIRTY = 17 };
 
@@ -42,6 +42,7 @@ typedef struct {
     s8   off;                       // minutes early or late: no household moves as one
     u16  st;                        // steps spent held up
     u8   wx, wy, gx, gy, wv;        // the next tile of a routed walk, the goal tile it was routed to, whether it is current
+    u8   chore, chain, chx, chy, ix, iy, vh;   // a chore at home: the item letter, the one that follows it, where they stand, where the item is; a visit: the door tile and the household
 } Cit;
 typedef struct { u8 zone, home, n, fam; u8 mem[6]; } Hh;   // a household: who lives in which of the zone's homes, under which surname
 
@@ -307,6 +308,7 @@ int citizens_pie_open(char opt[8][16]) {
     if (c->mode == CM_CHASE) { OPT("SORRY!", PO_SORRY) return n; }
     if (c->mode == CM_SLEEP) { OPT("WAKE THEM UP", PO_TALK) return n; }
     OPT("TALK", PO_TALK) OPT("JOKE", PO_JOKE)
+    if (c->hh != NONE) OPT("FAMILY", PO_FAMILY)
     if (c->rel >= 25) OPT("HUG", PO_HUG)
     if (adult(c) && pl_adult() && c->rel >= 30) OPT("FLIRT", PO_FLIRT)
     OPT("GIVE $20 GIFT", PO_GIFT)
@@ -359,6 +361,20 @@ void citizens_pie_do(int i) {
         if (c->pers == PE_GRUFF && c->rel < 10 && rn(100) < 45) { say(c, "WHAT."); rel_add(c, -2); audio_voice(VOICE_DISAGREE); break; }
         rel_add(c, c->pers == PE_FRIENDLY ? 8 : 5); say(c, chat_line(c)); chat_begin(c);
         sim_moodlet(p, CML_GOOD_CHAT); audio_voice(VOICE_AGREE); break;
+    case PO_FAMILY: {   // who do they live with?
+        static char fam[32];
+        const Hh *g = c->hh == NONE ? 0 : &hh[c->hh];
+        if (!g || !accept(c, 55)) { rel_add(c, -2); say(c, "NONE OF YOUR BUSINESS"); audio_voice(VOICE_DISAGREE); break; }
+        rel_add(c, 3);
+        if (g->n <= 1) strcpy(fam, "I LIVE ALONE");
+        else {
+            const Cit *o = &cits[g->mem[(c->mem + 1) % g->n]];
+            const char *nm = o->first[0] == '.' ? "SOMEONE" : o->first;
+            if (g->n > 2) snprintf(fam, sizeof fam, "I LIVE WITH %s +%d", nm, g->n - 2);
+            else snprintf(fam, sizeof fam, "I LIVE WITH %s", nm);
+        }
+        say(c, fam); chat_begin(c); audio_voice(VOICE_AGREE);
+        break; }
     case PO_JOKE:
         story_talks++;
         if (accept(c, 45)) { rel_add(c, 9); say(c, "HAHAHA!"); chat_begin(c); sim_moodlet(p, CML_LAUGH); audio_voice(VOICE_LAUGH); }
@@ -488,6 +504,83 @@ static int scripted(Cit *c, int tx, int tz, int spd) {   // straight to a point,
     return 0;
 }
 
+
+// ---- a day at home: showers, breakfast, the sofa, the TV; and the odd visit next door ----------------------
+static int sit_item(char ch) { return ch == 'T' || ch == 'C' || ch == 'h' || ch == 'U' || ch == '%' || ch == ';'; }
+static int free_floor(const Home *hm, int x, int y) {   // a tile of the home's floor a body can stand on, off the lane inside the door
+    if (x < hm->x0 || x > hm->x1 || y < hm->y0 || y > hm->y1) return 0;
+    if (x == hm->dx && y >= hm->dy - 1) return 0;
+    return world_walkable(x, y);
+}
+static int find_item(const Home *hm, const char *letters, int *ix, int *iy, int *sx, int *sy) {   // one of those things in the home, and the tile to stand on to use it
+    int fx[16], fy[16], n = 0;
+    for (int y = hm->y0; y <= hm->y1; y++) for (int x = hm->x0; x <= hm->x1 && n < 16; x++) {
+        char ch = world_at(x, y);
+        if (ch && strchr(letters, ch)) { fx[n] = x; fy[n] = y; n++; }
+    }
+    for (int t = 0; t < n; t++) {
+        int k = (rn(n) + t) % n, x = fx[k], y = fy[k];
+        static const signed char ox[4] = { 0, -1, 1, 0 }, oy[4] = { 1, 0, 0, -1 };   // in front of it first
+        if (free_floor(hm, x, y)) { *ix = *sx = x; *iy = *sy = y; return 1; }          // flat things (toilet, shower, sofa) are stood on
+        for (int d = 0; d < 4; d++) if (free_floor(hm, x + ox[d], y + oy[d])) { *ix = x; *iy = y; *sx = x + ox[d]; *sy = y + oy[d]; return 1; }
+    }
+    return 0;
+}
+static int start_chore(Cit *c, const Home *hm, const char *letters, char chain) {
+    int ix, iy, sx, sy;
+    if (!find_item(hm, letters, &ix, &iy, &sx, &sy)) return 0;
+    c->chore = (u8)world_at(ix, iy); c->chain = (u8)chain; c->ix = (u8)ix; c->iy = (u8)iy; c->chx = (u8)sx; c->chy = (u8)sy;
+    c->mode = CM_CHORE; c->sub = 0; c->st = 0; c->wv = 0;
+    return 1;
+}
+static int pick_chore(Cit *c, const Home *hm) {   // what a person does with a free hour at home: it depends on the time of day
+    int m = clock_min + c->off; if (m < 0) m += 1440; if (m >= 1440) m -= 1440;
+    int r = rn(100); const char *L;
+    if (m < 600)        L = r < 30 ? "H," : r < 65 ? "F/" : r < 80 ? "T" : "-";
+    else if (m >= 1020) L = r < 30 ? "F/" : r < 62 ? "v" : r < 78 ? "ChU%;" : r < 88 ? "T" : r < 96 ? "H," : "[";
+    else                L = r < 22 ? "F/" : r < 42 ? "ChU%;" : r < 62 ? "v" : r < 74 ? "T" : r < 84 ? "[" : "-";
+    char chain = (L[0] == 'F' && m >= 1020 && !rn(2)) ? 'v' : 0;      // supper, then the telly
+    return start_chore(c, hm, L, chain);
+}
+static int chore_len(char ch) {
+    switch (ch) { case 'H': case ',': return 260; case 'F': case '/': return 180; case 'T': return 110; case '-': return 70;
+                  case 'v': return 520; case '[': return 380; default: return 420; }
+}
+static const char *chore_say(char ch) {
+    switch (ch) { case 'H': case ',': return "SHOWER TIME"; case 'F': case '/': return "SNACK TIME"; case 'T': return "BE RIGHT BACK";
+                  case '-': return "WASH UP"; case 'v': return "WHAT'S ON?"; case '[': return "CHECKING MAIL"; default: return "FEET UP"; }
+}
+static const char *activity(const Cit *c) {   // what the HUD says they are up to
+    switch (c->mode) {
+    case CM_SLEEP: return "ASLEEP";
+    case CM_GOHOME: return "HEADING HOME";
+    case CM_LEAVE: return "HEADING OUT";
+    case CM_VISIT: return "VISITING";
+    case CM_CHAT: return "CHATTING";
+    case CM_CHASE: return "ANGRY";
+    case CM_CHORE:
+        if (c->sub == 0) return "BUSY AT HOME";
+        switch (c->chore) { case 'H': case ',': return "IN THE SHOWER"; case 'F': case '/': return "HAVING A SNACK"; case 'T': return "IN THE LOO";
+                            case '-': return "WASHING UP"; case 'v': return "WATCHING TV"; case '[': return "ON THE COMPUTER"; default: return "RELAXING"; }
+    default: return indoors_at(c->x, c->z) ? "AT HOME" : "OUT AND ABOUT";
+    }
+}
+static int start_visit(Cit *c) {   // a neighbour in the same zone, a short walk away: go and knock
+    const Home *me = home_of(c); if (!me) return 0;
+    int cand[NHH], n = 0;
+    for (int h = 0; h < nhh; h++) {
+        if (hh[h].zone != c->zone || h == c->hh) continue;
+        const Home *o = world_home(hh[h].zone, hh[h].home); if (!o) continue;
+        if (ABS((int)o->dx - (int)me->dx) + ABS((int)o->dy - (int)me->dy) > 10) continue;
+        cand[n++] = h;
+    }
+    if (!n) return 0;
+    int h = cand[rn(n)]; const Home *o = world_home(hh[h].zone, hh[h].home);
+    c->vh = (u8)h; c->ix = o->dx; c->iy = (u8)(o->dy + 1);
+    c->mode = CM_VISIT; c->sub = 0; c->st = 0; c->wv = 0;
+    return 1;
+}
+
 static void decide(Cit *c) {   // the clock says where they should be: out, in, or in bed
     if (c->hh == NONE) return;
     int w = want(c), in = indoors_at(c->x, c->z);
@@ -495,7 +588,16 @@ static void decide(Cit *c) {   // the clock says where they should be: out, in, 
         if (w == 0 && in) { c->mode = CM_LEAVE; c->sub = 0; c->st = 0; }
         else if (w != 0 && !in) { c->mode = CM_GOHOME; c->sub = 0; c->st = 0; }
         else if (w == 2 && in) { c->mode = CM_SLEEP; c->sub = 0; c->st = 0; }
-    } else if (c->mode == CM_SLEEP && w != 2) { c->mode = CM_IDLE; c->t = (u16)rn(120); c->gait.sleep = 0; c->sub = 0; }
+    } else if (c->mode == CM_SLEEP && w != 2) {
+        c->mode = CM_IDLE; c->t = (u16)rn(120); c->gait.sleep = 0; c->sub = 0;
+        const Home *hm = home_of(c);
+        if (hm && in) start_chore(c, hm, "H,", 'F');                    // up, a shower, then breakfast
+    } else if (c->mode == CM_CHORE) {
+        if (w == 2) { c->gait.sit = 0; c->mode = CM_SLEEP; c->sub = 0; c->st = 0; }
+        else if (w == 0 && c->sub == 0 && !c->chain && in) { c->mode = CM_LEAVE; c->sub = 0; c->st = 0; }   // (a chore already begun is finished first)
+    } else if (c->mode == CM_VISIT) {
+        if (w != 0 && !in) { c->mode = CM_GOHOME; c->sub = 0; c->st = 0; }
+    }
 }
 
 // ---- the crowd: walking, talking, brawling ----------------------------------------------------------------
@@ -514,6 +616,8 @@ static void step_one(Cit *c, int i) {
     switch (c->mode) {
     case CM_IDLE:
         if (c->t) { c->t--; break; }
+        if (hm && in && want(c) == 1 && rn(100) < 70 && pick_chore(c, hm)) break;                    // a free hour at home: something to do
+        if (hm && !in && c->stage >= AG_TEEN && clock_min >= 540 && clock_min < 1260 && !rn(14) && start_visit(c)) break;   // or a knock on a neighbour's door
         c->wyaw = (u16)rn(4096); c->t = (u16)(80 + rn(220)); c->mode = CM_WALK;
         if (hm && !in) {   // out on the streets: drift back towards home when too far from it
             int a, zf, b, e; door_geo(hm, &a, &zf, &b, &e);
@@ -577,6 +681,35 @@ static void step_one(Cit *c, int i) {
         else if (c->sub == 1) { if (scripted(c, gx, zd, 3)) c->sub = 2; }
         else if (scripted(c, gx, zf, 3)) { c->mode = CM_IDLE; c->t = (u16)rn(40); }
         break; }
+    case CM_CHORE: {
+        if (!hm) { c->mode = CM_IDLE; break; }
+        if (c->sub == 0) {
+            if (nav(c, c->chx, c->chy, 3, 1)) {
+                c->sub = 1; c->t = (u16)(chore_len((char)c->chore) / 2 + rn(chore_len((char)c->chore)));
+                c->x = (s16)(c->chx * TILE + TILE / 2); c->z = (s16)(-(c->chy * TILE + TILE / 2));
+                if (c->chx != c->ix || c->chy != c->iy) c->yaw = (u16)yaw_to((c->ix - c->chx) * TILE, -(c->iy - c->chy) * TILE);   // face the thing
+                c->gait.sit = sit_item((char)c->chore) && c->chx == c->ix && c->chy == c->iy;
+                if (d2 < 5 * TILE * 5 * TILE && !c->say_t) say(c, chore_say((char)c->chore));
+            }
+        } else if (c->t) {
+            c->t--;
+            if (c->chore == 'F' || c->chore == '/' || c->chore == '-') c->gait.wave = (c->t & 31) < 6 ? 8 : c->gait.wave;   // a bit of busy hands
+        } else {
+            c->gait.sit = 0;
+            if (c->chain) { char nx[2] = { (char)c->chain, 0 }; if (start_chore(c, hm, nx, 0)) break; }
+            c->chain = 0; c->mode = CM_IDLE; c->t = (u16)(30 + rn(150));
+        }
+        break; }
+    case CM_VISIT: {   // out to a neighbour's door, a knock, a wait, and off again
+        if (c->sub == 0) { if (nav(c, c->ix, c->iy, c->stage == AG_ELDER ? 3 : 4, 0)) {
+            c->sub = 1; c->t = (u16)(200 + rn(200)); c->yaw = 0;
+            if (d2 < 7 * TILE * 7 * TILE) say(c, "KNOCK KNOCK");
+            const Hh *g = &hh[c->vh];
+            for (int k = 0; k < g->n; k++) { Cit *o = &cits[g->mem[k]]; if (o->mode == CM_IDLE || (o->mode == CM_CHORE && o->sub == 1)) { if (!o->say_t && indoors_at(o->x, o->z)) say(o, "COMING!"); break; } }
+        } }
+        else if (c->t) c->t--;
+        else { c->mode = CM_IDLE; c->t = (u16)(60 + rn(200)); if (!rn(2)) say(c, "OH WELL, LATER"); }
+        break; }
     case CM_SLEEP:
         if (!hm) { c->mode = CM_IDLE; break; }
         if (c->sub == 0) {
@@ -591,6 +724,7 @@ static void step_one(Cit *c, int i) {
     if (moved_flag) { c->gait.phase = (c->gait.phase + 130) & 4095; c->gait.amp = MIN(c->gait.amp + 400, 4096); }
     else c->gait.amp = MAX(c->gait.amp - 500, 0);
     if (c->mode != CM_SLEEP && c->mode != CM_KO) c->gait.sleep = 0;
+    if (c->mode != CM_CHORE) c->gait.sit = 0;
     if (c->gait.wave > 0) c->gait.wave--;
     if (c->gait.squash < 0) c->gait.squash++;
     c->gait.seed = i; c->gait.clock = tick;
@@ -661,6 +795,7 @@ void citizens_draw(void) {
         int vy = 0;
         if (c->mode == CM_KO) vy = -24;
         else if (c->mode == CM_SLEEP && c->sub == 1) vy = c->mem == 0 ? -items_height('S') + 40 : -24;   // in the bed, or on the floor
+        else if (c->mode == CM_CHORE && c->sub == 1 && c->gait.sit) vy = -items_height((char)c->chore) / 2 + 10;   // on the sofa, on the loo
         VECTOR p; setVector(&p, c->x, vy, c->z);
         if (c->slot) voxel_draw(&pool[c->slot - 1], &p, c->yaw, &c->gait);
         else voxel_draw_lod(&c->lod, &p, c->yaw, &c->gait);
@@ -698,16 +833,17 @@ void citizens_hud(void) {
         const Cit *c = &cits[cur];
         char t[32]; sprintf(t, "%s %s", c->first, c->last);
         int w = MAX(gfx_text_w(1, t) + 12, 120);
-        gfx_rect(78, 4, w, 26, 13, 15, 21, 0); gfx_rect(78, 4, 2, 26, 255, 200, 40, 0);
+        gfx_rect(78, 4, w, 36, 13, 15, 21, 0); gfx_rect(78, 4, 2, 36, 255, 200, 40, 0);
         gfx_text(84, 7, 1, t, 235, 235, 245);
-        sprintf(t, "%s %s", stage_nm(c->stage), c->mode == CM_SLEEP ? "ASLEEP" : rel_name(c->rel));
+        sprintf(t, "%s %s", stage_nm(c->stage), rel_name(c->rel));
         gfx_text(84, 17, 1, t, 150, 150, 160);
+        gfx_text(84, 28, 1, activity(c), 200, 200, 120);
         bar(84 + 70, 17, 40, c->rel > 0 ? c->rel : 0, 90, 220, 90);
         bar(84 + 70, 22, 40, c->rom, 255, 120, 170);
     }
     if (fight_on || pl_hp < 100) {
-        gfx_rect(78, 32, 62, 8, 13, 15, 21, 0);
-        gfx_rect(79, 33, 60 * pl_hp / 100, 6, pl_hp > 50 ? 90 : 255, pl_hp > 50 ? 220 : pl_hp > 25 ? 200 : 80, 70, 0);
+        gfx_rect(78, 44, 62, 8, 13, 15, 21, 0);
+        gfx_rect(79, 45, 60 * pl_hp / 100, 6, pl_hp > 50 ? 90 : 255, pl_hp > 50 ? 220 : pl_hp > 25 ? 200 : 80, 70, 0);
     }
     if (fight_on) gfx_textc(160, 150, 1, "X PUNCHES", 255, 150, 120);
 }

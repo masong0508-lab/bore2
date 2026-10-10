@@ -8,8 +8,23 @@
 
 // ---- the storeys above the ground (per zone, and one set for the creator's studio) ----
 typedef struct { char map[MH][MW + 1]; u8 fl[MH][MW]; u8 wp[MH][MW]; } Level;
-static Level zup[ZONE_N + 1][NUP];
-static Level *UP = zup[0];
+// Storage is a small shared pool: a storey takes a slot only once something is built on it (most zones have one loft at most),
+// which keeps 15 empty 19 KB levels out of the PS1's 2 MB.
+#define NLVPOOL 7
+static Level lvpool[NLVPOOL]; static u8 lvbusy[NLVPOOL];
+static u8 lvown[ZONE_N + 1][NUP];                   // per zone (and the studio): 1 + the pool slot of each storey, 0 = empty
+static u8 *UP = lvown[0];
+static Level *lv_get(int k) { return (k >= 0 && k < NUP && UP[k]) ? &lvpool[UP[k] - 1] : 0; }
+static Level *lv_need(int k) {                      // the storey, taking a pool slot for it if it has none (0 if the pool is full)
+    if (k < 0 || k >= NUP) return 0;
+    if (!UP[k]) {
+        int s = 0; while (s < NLVPOOL && lvbusy[s]) s++;
+        if (s == NLVPOOL) return 0;
+        Level *L = &lvpool[s]; lvbusy[s] = 1; UP[k] = (u8)(s + 1);
+        for (int y = 0; y < MH; y++) { memset(L->map[y], ' ', MW); L->map[y][MW] = 0; } memset(L->fl, 0, sizeof L->fl); memset(L->wp, 0, sizeof L->wp);
+    }
+    return &lvpool[UP[k] - 1];
+}
 int world_lvl, world_view_lvl, world_roof_show;
 int world_roof_style, world_roof_col = 0, world_roof_pitch = 1;
 static int roof_dirty = 1;
@@ -22,17 +37,19 @@ static void reg_home(int x0, int y0, int x1, int y1, int dx, int dy) {   // the 
 }
 static void town_homes(int want); static void island_homes(int want);
 static u8 lvl_used[NLEVELS];
-static void levels_clear(Level *L) {
-    for (int k = 0; k < NUP; k++) { for (int y = 0; y < MH; y++) { memset(L[k].map[y], ' ', MW); L[k].map[y][MW] = 0; } memset(L[k].fl, 0, sizeof L[k].fl); memset(L[k].wp, 0, sizeof L[k].wp); }
+static void levels_clear(u8 *own) {                 // every storey of a zone back to empty air (their pool slots freed)
+    for (int k = 0; k < NUP; k++) { if (own[k]) lvbusy[own[k] - 1] = 0; own[k] = 0; }
     roof_dirty = 1;
 }
 char world_at_l(int l, int mx, int my) {
     if (mx < 0 || my < 0 || mx >= MW || my >= MH) return l ? ' ' : 'W';
-    return l <= 0 ? lifeMap[my][mx] : l > NUP ? ' ' : UP[l - 1].map[my][mx];
+    if (l <= 0) return lifeMap[my][mx];
+    const Level *L = lv_get(l - 1); return L ? L->map[my][mx] : ' ';
 }
-char *world_cell(int l, int mx, int my) { return l <= 0 ? &lifeMap[my][mx] : &UP[l - 1].map[my][mx]; }
-u8 *world_floor_cell(int l, int mx, int my) { return l <= 0 ? &floorMap[my][mx] : &UP[l - 1].fl[my][mx]; }
-u8 *world_wall_cell(int l, int mx, int my) { return l <= 0 ? &wallMap[my][mx] : &UP[l - 1].wp[my][mx]; }
+static char dummy_c; static u8 dummy_u;           // what a write lands on when no storey slot is left (it is lost)
+char *world_cell(int l, int mx, int my) { if (l <= 0) return &lifeMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_c = ' '; return &dummy_c; } return &L->map[my][mx]; }
+u8 *world_floor_cell(int l, int mx, int my) { if (l <= 0) return &floorMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_u = 0; return &dummy_u; } return &L->fl[my][mx]; }
+u8 *world_wall_cell(int l, int mx, int my) { if (l <= 0) return &wallMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_u = 0; return &dummy_u; } return &L->wp[my][mx]; }
 static VECTOR cam_keep_eye, cam_keep_at; static int cam_pushed;
 void world_cam_push(int l) {
     if (cam_pushed || l <= 0) return;
@@ -87,7 +104,7 @@ static void soften_floors(void) {
     }
 }
 void world_init(void) {
-    for (int z = 0; z <= ZONE_N; z++) levels_clear(zup[z]);
+    for (int z = 0; z <= ZONE_N; z++) levels_clear(lvown[z]);
     soften_floors();
     for (int i = 0; i < NFLOORS; i++) {
         const Tex *t = floor_tex(i);
@@ -134,7 +151,7 @@ static void gFree(int x, int y, char c) { if (x >= 0 && y >= 0 && x < MW && y < 
 static void gUpstairs(void) {
     const int x0 = 10, y0 = 2, x1 = 17, y1 = 9, sx = 15, sy = 7;
     lifeMap[sy][sx] = '|';                                          // the stairs, rising to the north
-    Level *U = &UP[0];
+    Level *U = lv_need(0); if (!U) return;
     for (int j = y0; j <= y1; j++) for (int i = x0; i <= x1; i++) {
         U->map[j][i] = (i == x0 || i == x1 || j == y0 || j == y1) ? 'W' : '.'; U->fl[j][i] = 6; U->wp[j][i] = (u8)(NWP + 12);
     }
@@ -190,9 +207,9 @@ void world_gen(void) {
 }
 
 static char bk_map[MH][MW + 1]; static u8 bk_fl[MH][MW], bk_wp[MH][MW]; static int bk_on;
-void world_backup(void) { if (bk_on) return; memcpy(bk_map, lifeMap, sizeof bk_map); memcpy(bk_fl, floorMap, sizeof bk_fl); memcpy(bk_wp, wallMap, sizeof bk_wp); bk_on = 1; UP = zup[ZONE_N]; levels_clear(UP); }
+void world_backup(void) { if (bk_on) return; memcpy(bk_map, lifeMap, sizeof bk_map); memcpy(bk_fl, floorMap, sizeof bk_fl); memcpy(bk_wp, wallMap, sizeof bk_wp); bk_on = 1; UP = lvown[ZONE_N]; levels_clear(UP); }
 void world_restore(void) {
-    ao_dirty = 1; roof_dirty = 1; if (!bk_on) return; UP = zup[world_zone]; memcpy(lifeMap, bk_map, sizeof bk_map); memcpy(floorMap, bk_fl, sizeof bk_fl); memcpy(wallMap, bk_wp, sizeof bk_wp); bk_on = 0; }
+    ao_dirty = 1; roof_dirty = 1; if (!bk_on) return; levels_clear(lvown[ZONE_N]); UP = lvown[world_zone]; memcpy(lifeMap, bk_map, sizeof bk_map); memcpy(floorMap, bk_fl, sizeof bk_fl); memcpy(wallMap, bk_wp, sizeof bk_wp); bk_on = 0; }
 void world_gen_studio(void) {
     ao_dirty = 1;   // a 9x9 parlour: the creator's stage
     for (int y = 0; y < MH; y++) { for (int x = 0; x < MW; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = 4; wallMap[y][x] = 0; } lifeMap[y][MW] = 0; }
@@ -338,8 +355,8 @@ static void city_two(int lx, int ly, unsigned h) {   // a two-storey house: bed,
     int sx = x0 + 1, sy = y0 + 2;                                                    // the stairs rise to the north: open floor above and below them
     lifeMap[sy][sx] = '|'; lifeMap[sy - 1][sx] = '.'; lifeMap[sy + 1][sx] = '.';
     lifeMap[dy - 1][dx] = '.'; lifeMap[dy - 2][dx] = '.';                            // nothing stands inside the door
-    Level *U = &UP[0];                                                               // the loft covers the whole footprint
-    for (int j = hy; j <= hy + 7; j++) for (int i = hx; i <= hx + 8; i++) {
+    Level *U = lv_need(0);                                                           // the loft covers the whole footprint
+    if (U) for (int j = hy; j <= hy + 7; j++) for (int i = hx; i <= hx + 8; i++) {
         int edge = (i == hx || i == hx + 8 || j == hy || j == hy + 7);
         U->map[j][i] = edge ? 'W' : '.'; U->fl[j][i] = (u8)fl2; U->wp[j][i] = (u8)wp2;
     }
@@ -485,7 +502,7 @@ void world_switch(int z) {
     if (z == world_zone) return;
     ZoneSave *cur = &zones[world_zone];
     memcpy(cur->map, lifeMap, sizeof cur->map); memcpy(cur->fl, floorMap, sizeof cur->fl); memcpy(cur->wp, wallMap, sizeof cur->wp); cur->made = 1;
-    world_zone = z; UP = zup[z]; roof_dirty = 1;
+    world_zone = z; UP = lvown[z]; roof_dirty = 1;
     ZoneSave *nx = &zones[z];
     if (!nx->made) levels_clear(UP);
     if (nx->made) { memcpy(lifeMap, nx->map, sizeof nx->map); memcpy(floorMap, nx->fl, sizeof nx->fl); memcpy(wallMap, nx->wp, sizeof nx->wp); }
@@ -496,7 +513,7 @@ void world_switch(int z) {
 }
 void world_reset_all(void) {
     for (int i = 0; i < ZONE_N; i++) nhomes[i] = 0;
-    ao_dirty = 1; for (int i = 0; i < ZONE_N; i++) { zones[i].made = 0; levels_clear(zup[i]); } world_zone = ZONE_HOME; UP = zup[0]; world_gen(); }
+    ao_dirty = 1; for (int i = 0; i < ZONE_N; i++) { zones[i].made = 0; levels_clear(lvown[i]); } world_zone = ZONE_HOME; UP = lvown[0]; world_gen(); }
 char world_at(int mx, int my) { return world_at_l(world_lvl, mx, my); }
 static int is_wall(char c) { return c == 'W' || c == 'w' || c == 'E' || c == 'e' || c == 'f'; }
 int world_walkable(int mx, int my) {
@@ -923,8 +940,9 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         memcpy(k_map, lifeMap, sizeof k_map); memcpy(k_fl, floorMap, sizeof k_fl); memcpy(k_wp, wallMap, sizeof k_wp);
         int keep_ao = dbg_noao; dbg_noao = 1;
         for (int l = 1; l <= top; l++) {
-            if (!lvl_used[l]) continue;
-            memcpy(lifeMap, UP[l - 1].map, sizeof k_map); memcpy(floorMap, UP[l - 1].fl, sizeof k_fl); memcpy(wallMap, UP[l - 1].wp, sizeof k_wp);
+            const Level *Lv = lv_get(l - 1);
+            if (!lvl_used[l] || !Lv) continue;
+            memcpy(lifeMap, Lv->map, sizeof k_map); memcpy(floorMap, Lv->fl, sizeof k_fl); memcpy(wallMap, Lv->wp, sizeof k_wp);
             world_cam_push(l);
             draw_layer(fx, fy, t, cutaway && l == world_view_lvl, l);
             world_cam_pop();
