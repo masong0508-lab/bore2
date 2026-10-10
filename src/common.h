@@ -20,7 +20,8 @@ int bsnprintf(char *o, unsigned cap, const char *f, ...);
 #define sprintf bsprintf
 #define snprintf bsnprintf
 #include <inline_c.h>
-void boot(const char *stage);   // main.c: prints a start-up stage on the screen (a trace for a hang)
+void boot(const char *stage);
+void loading(const char *what, int pct);   // main.c: a loading screen with a bar, shown now (before a long job)   // main.c: prints a start-up stage on the screen (a trace for a hang)
 
 typedef uint8_t u8; typedef uint16_t u16; typedef uint32_t u32;
 typedef int8_t s8; typedef int16_t s16; typedef int32_t s32;

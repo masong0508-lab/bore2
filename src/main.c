@@ -185,6 +185,7 @@ static void feed_draw(void) {   // the notifications stack on the left, newest o
 // ---- the life ----
 static void start_life(void) {
     if (life_started) return;
+    loading("MAKING A NEW LIFE", 40);
     world_reset_all();
     sim_init();
     int px, py; world_find('P', &px, &py); if (px < 0) { px = 5; py = 12; }
@@ -398,6 +399,7 @@ static void life_draw(void) {
 
 // ---- travel between the zones ----
 static void travel_go(int z) {
+    { char b[40]; sprintf(b, "TRAVELLING TO %s", world_zone_name(z)); loading(b, 50); }
     world_switch(z);
     int px, py; world_find('P', &px, &py); if (px < 0) { px = 20; py = 20; }
     for (int i = 0; i < nsims; i++) {
@@ -1034,23 +1036,36 @@ static void menu_draw(void) {
     gfx_textc(160, 140, 1, menuBlurb[menu_sel], DIM);
 }
 
-// ---- boot trace: each start-up stage is printed and shown at once, so a black screen can never hide where the game stopped ----
-// (a stage that never gets its line is the one that hung; "RAM FREE" is what is left between the end of the program's data and the stack)
+// ---- the loading screen: a bar and what is being made, shown before any long job (start-up, a new life, travel) ----
+static void loading_draw(const char *what, int pct) {
+    pct = CLAMP(pct, 0, 100);
+    gfx_set_clear(20, 12, 8);
+    gfx_sky(0x501810u, 0xa06030u);
+    gfx_textc(160, 64, 3, "BORE 2", GOLD);
+    gfx_textc(160, 104, 1, "LOADING", WHITE);
+    gfx_textc(160, 120, 1, what, 180, 200, 255);
+    gfx_rect(58, 144, 204, 12, 10, 8, 20, 0);
+    gfx_rect(60, 146, 200 * pct / 100, 8, 255, 200, 60, 0);
+}
+void loading(const char *what, int pct) { loading_draw(what, pct); gfx_flip(); DrawSync(0); }
+
+// ---- start-up: the loading screen, plus a small trace of the stages (the last one printed is where a hang would be) ----
 extern char _end[];
 #define BOOT_KEEP 32
-#define BOOT_SHOW 15
+#define BOOT_SHOW 6
+#define BOOT_STEPS 24
 static char boot_log[BOOT_KEEP][20]; static int boot_n;
 void boot(const char *stage) {
     char *dst = boot_log[boot_n % BOOT_KEEP]; int i = 0; while (stage[i] && i < 19) { dst[i] = stage[i]; i++; } dst[i] = 0; boot_n++;
+    loading_draw(stage, boot_n * 100 / BOOT_STEPS);
     char b[32];
-    gfx_text(8, 8, 1, "BORE 2 STARTING", 255, 255, 255);
     int free_k = (int)((0x801FFFF0u - 0x10000u - (u32)_end) / 1024);   // (the last 64 KB below the stack top is left for the stack itself)
     sprintf(b, "RAM FREE %dK", free_k);
-    gfx_text(8, 22, 1, b, 255, free_k < 32 ? 60 : 220, free_k < 32 ? 60 : 80);
+    gfx_text(8, 228, 1, b, free_k < 32 ? 255 : 140, free_k < 32 ? 60 : 140, free_k < 32 ? 60 : 150);
     int first = boot_n > BOOT_SHOW ? boot_n - BOOT_SHOW : 0;
-    for (int k = first; k < boot_n; k++) gfx_text(8, 36 + (k - first) * 12, 1, boot_log[k % BOOT_KEEP], 120, 255, 120);
+    for (int k = first; k < boot_n; k++) gfx_text(8, 176 + (k - first) * 8, 1, boot_log[k % BOOT_KEEP], 110, 200, 110);
     gfx_flip();
-    DrawSync(0);   // let the GPU finish the boot frame before the next texture upload (an upload queued behind a frame in flight)
+    DrawSync(0);   // let the GPU finish the frame before the next texture upload (an upload queued behind a frame in flight)
 }
 
 int main(void) {
