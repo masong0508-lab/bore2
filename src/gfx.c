@@ -12,6 +12,7 @@ typedef struct {
 
 static DB   db[2];
 static int  db_active = 0;
+static int  alloc_reserve;        // bytes of the packet buffer gfx_alloc keeps back (gfx_set_reserve)
 static char *db_next;
 static RECT screen_clip;
 static u32 *ui_head, *ui_tail;    // the 2D overlay chain, drawn after everything in call order
@@ -82,7 +83,6 @@ void gfx_flip(void) {
     DrawOTag(db[1 - db_active].ot + (OT_LEN - 1));
 }
 
-static int alloc_reserve;
 void gfx_set_reserve(int bytes) { alloc_reserve = bytes; }
 void *gfx_alloc(int bytes) {
     char *p = db_next;
