@@ -1034,22 +1034,38 @@ static void menu_draw(void) {
     gfx_textc(160, 140, 1, menuBlurb[menu_sel], DIM);
 }
 
+// ---- boot trace: each start-up stage is printed and shown at once, so a black screen can never hide where the game stopped ----
+// (a stage that never gets its line is the one that hung; "RAM FREE" is what is left between the end of the program's data and the stack)
+extern char _end[];
+static char boot_log[14][20]; static int boot_n;
+static void boot(const char *stage) {
+    if (boot_n < 14) { int i = 0; while (stage[i] && i < 19) { boot_log[boot_n][i] = stage[i]; i++; } boot_log[boot_n][i] = 0; boot_n++; }
+    char b[32];
+    gfx_text(8, 8, 1, "BORE 2 STARTING", 255, 255, 255);
+    int free_k = (int)((0x801FFFF0u - 0x10000u - (u32)_end) / 1024);   // (the last 64 KB below the stack top is left for the stack itself)
+    sprintf(b, "RAM FREE %dK", free_k);
+    gfx_text(8, 22, 1, b, 255, free_k < 32 ? 60 : 220, free_k < 32 ? 60 : 80);
+    for (int i = 0; i < boot_n; i++) gfx_text(8, 40 + i * 12, 1, boot_log[i], 120, 255, 120);
+    gfx_flip();
+}
+
 int main(void) {
     gfx_init();
     atlas_init();
-    font_init();
-    look_init();
-    voxel_init();
-    items_init();
-    world_init();
-    audio_init();
+    font_init();        boot("GFX ATLAS FONT");   // (the boot text needs the font, so the first line comes after it)
+    look_init();        boot("LOOK");
+    voxel_init();       boot("VOXEL");
+    items_init();       boot("ITEMS");
+    world_init();       boot("WORLD TEXTURES");
+    audio_init();       boot("AUDIO + DISC");
     pad_init();                                      // (the pad is read directly in read_pad: see pad.c)
-    crowd_init();                                    // the voice clips are in the sound chip now: their RAM holds the crowd's models
+    crowd_init();       boot("CROWD");                 // the voice clips are in the sound chip now: their RAM holds the crowd's models
     look_default(&edit);
     look_default(&title_bore); look_random(&title_bore);
-    world_gen();
+    world_gen();        boot("HOME LOT");
     strcpy(edit.first, "DIPPA"); strcpy(edit.last, "DIPPINN");
     audio_jukebox_play(0);   // THE DIPPER MAN, the title song (as on the GBA)
+    boot("TITLE SONG");
     t_vb = VSync(-1);
     while (1) {
         t_frame0 = hb_now();
