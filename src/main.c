@@ -68,7 +68,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int create_tab, create_row, create_from, create_turn;
@@ -79,6 +79,7 @@ static int help_page;
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
 static char pie_opt[8][16]; static int pie_n, pie_sel;   // the pie menu
+static int panel_tab;                                      // the Bore panel's tab
 
 static void draw_panel(int x, int y, int w, int h) {
     gfx_rect(x, y, w, h, 13, 15, 21, 0);   // a solid card: the blend here is additive, so "dark glass" is impossible
@@ -98,6 +99,81 @@ static void draw_bar(int x, int y, int w, int v, int r, int g, int b) {
     gfx_rect(x, y, w, 6, 30, 30, 36, 0);
     int fw = (w - 2) * v / 100;
     gfx_rect(x + 1, y + 1, fw, 4, r, g, b, 0);
+}
+
+// ---- Sims-style widgets: motive bars, the mood meter, portraits, tabs, the notification feed, the action card ----
+static void need_rgb(int v, int *r, int *g, int *b) {   // a Sims motive bar goes green, then yellow, then red
+    if (v >= 60) { *r = 90; *g = 220; *b = 90; } else if (v >= 30) { *r = 240; *g = 210; *b = 60; } else { *r = 255; *g = 80; *b = 70; }
+}
+static void draw_motive(int x, int y, int w, int v) {   // ten notches
+    int r, g, b; need_rgb(v, &r, &g, &b);
+    gfx_rect(x, y, w, 6, 30, 30, 36, 0);
+    gfx_rect(x + 1, y + 1, (w - 2) * CLAMP(v, 0, 100) / 100, 4, r, g, b, 0);
+    for (int k = 1; k < 10; k++) gfx_rect(x + w * k / 10, y + 1, 1, 4, 30, 30, 36, 0);
+}
+static void draw_mood_meter(int x, int y, int w, int m) {   // -100..100, growing out from the middle
+    gfx_rect(x, y, w, 6, 30, 30, 36, 0);
+    int half = (w - 2) / 2, mid = x + 1 + half, len = half * ABS(m) / 100;
+    if (m >= 0) gfx_rect(mid, y + 1, len, 4, 90, 220, 90, 0); else gfx_rect(mid - len, y + 1, len, 4, 255, 80, 70, 0);
+    gfx_rect(mid, y - 1, 1, 8, 200, 200, 210, 0);
+}
+static void draw_face_k(int x, int y, int m, int k) {   // the mood face, k times bigger
+    int r = m > 15 ? 120 : m > -15 ? 230 : 255, g = m > 15 ? 230 : m > -15 ? 210 : 100, bb = m > 15 ? 90 : m > -15 ? 70 : 90;
+    gfx_rect(x + 2 * k, y, 12 * k, 16 * k, r, g, bb, 0); gfx_rect(x, y + 2 * k, 16 * k, 12 * k, r, g, bb, 0);
+    gfx_rect(x + 4 * k, y + 5 * k, 2 * k, 3 * k, INK, 0); gfx_rect(x + 10 * k, y + 5 * k, 2 * k, 3 * k, INK, 0);
+    if (m > 15) { gfx_rect(x + 4 * k, y + 10 * k, 8 * k, k, INK, 0); gfx_rect(x + 3 * k, y + 9 * k, k, k, INK, 0); gfx_rect(x + 12 * k, y + 9 * k, k, k, INK, 0); }
+    else if (m > -15) gfx_rect(x + 4 * k, y + 10 * k, 8 * k, k, INK, 0);
+    else { gfx_rect(x + 4 * k, y + 11 * k, 8 * k, k, INK, 0); gfx_rect(x + 3 * k, y + 12 * k, k, k, INK, 0); gfx_rect(x + 12 * k, y + 12 * k, k, k, INK, 0); }
+}
+static void draw_portrait(int x, int y, const Sim *s, int sel) {   // a household portrait: the mood face in a frame, gold for who you play
+    gfx_rect(x, y, 22, 22, sel ? 255 : 60, sel ? 200 : 60, sel ? 40 : 70, 0);
+    gfx_rect(x + 1, y + 1, 20, 20, 13, 15, 21, 0);
+    draw_face_k(x + 3, y + 3, s->mood, 1);
+}
+static void draw_tabs(int x, int y, int w, const char *const *nm, int n, int sel) {   // the Sims tab strip
+    int tw = w / n;
+    for (int i = 0; i < n; i++) {
+        int tx = x + i * tw, on = i == sel;
+        gfx_rect(tx, y, tw - 2, 11, on ? 28 : 13, on ? 48 : 15, on ? 62 : 21, 0);
+        if (on) gfx_rect(tx, y + 11, tw - 2, 1, GOLD, 0);
+        gfx_textc(tx + (tw - 2) / 2, y + 2, 1, nm[i], on ? 255 : 150, on ? 255 : 150, on ? 255 : 160);
+    }
+}
+static const char *act_name(int a) {
+    switch (a) {
+        case ACT_EAT: return "EATING"; case ACT_WC: return "USING THE TOILET"; case ACT_SLEEP: return "SLEEPING"; case ACT_SHOWER: return "SHOWERING";
+        case ACT_SIT: return "RELAXING"; case ACT_FUN: return "HAVING FUN"; case ACT_TALK: return "CHATTING"; case ACT_WORK: return "WORKING";
+        case ACT_WALK: return "WALKING"; case ACT_COFFEE: return "HAVING COFFEE"; case ACT_READ: return "READING"; case ACT_RUN: return "EXERCISING";
+        case ACT_PHONE: return "ON THE PHONE"; case ACT_TRAVEL: return "TRAVELLING"; case ACT_STAIRS: return "ON THE STAIRS";
+    }
+    return "";
+}
+static int act_seen, act_total;
+static void draw_action_card(const Sim *s) {   // what the Bore is doing, with its progress (the Sims 1 queue, one card)
+    if (s->action != act_seen) { act_seen = s->action; act_total = s->act_t; }
+    if (s->action == ACT_NONE || s->action == ACT_WALK) return;
+    const char *nm = act_name(s->action);
+    int w = MAX(gfx_text_w(1, nm) + 12, 84);
+    gfx_rect(4, 172, w, 14, 13, 15, 21, 0); gfx_rect(4, 172, 2, 14, GOLD, 0);
+    gfx_text(10, 174, 1, nm, 235, 235, 245);
+    if (act_total > 0 && act_total < 9999) gfx_rect(10, 183, (w - 10) * CLAMP(100 - s->act_t * 100 / act_total, 0, 100) / 100, 2, 120, 255, 160, 0);
+}
+#define NFEED 3
+static char feed[NFEED][32]; static int feed_t[NFEED], prev_note_t;
+static void feed_push(const char *t) {
+    for (int i = NFEED - 1; i > 0; i--) { strcpy(feed[i], feed[i - 1]); feed_t[i] = feed_t[i - 1]; }
+    strncpy(feed[0], t, 31); feed[0][31] = 0; feed_t[0] = 300;
+}
+static void feed_poll(void) { if (last_note_t > prev_note_t) feed_push(last_note); prev_note_t = last_note_t; }   // every sim_note lands here
+static void feed_draw(void) {   // the notifications stack on the left, newest on top, each fades on its own
+    int y = 38;
+    for (int i = 0; i < NFEED; i++) {
+        if (feed_t[i] <= 0) continue;
+        int w = gfx_text_w(1, feed[i]) + 12;
+        gfx_rect(4, y, w, 12, 13, 15, 21, 0); gfx_rect(4, y, 2, 12, GOLD, 0);
+        gfx_text(10, y + 3, 1, feed[i], 235, 235, 245);
+        feed_t[i]--; y += 14;
+    }
 }
 
 // ---- the life ----
@@ -174,6 +250,9 @@ static const int aspLvCol[4][3] = { {255,80,70}, {90,220,90}, {255,200,40}, {220
 static void hud_life(void) {
     Sim *s = &sims[player];
     char b[48];
+    for (int i = 0; i < nsims; i++) draw_portrait(4 + i * 22, 4, &sims[i], i == player);   // the household, Sims 2 style
+    gfx_text(4, 28, 1, s->bore.first, 255, 230, 120);
+    draw_action_card(s);
     // the bottom bar: needs in two columns, the Bore in the middle, the hint on the right
     gfx_rect(0, 188, 320, 52, 8, 10, 22, 1);
     gfx_rect(0, 188, 320, 1, 255, 200, 40, 0);
@@ -181,7 +260,7 @@ static void hud_life(void) {
     for (int n = 0; n < NEED_N; n++) {
         int v = sim_need_val(s, n), cx = (n < 4) ? 6 : 112, cy = 194 + (n & 3) * 11;
         gfx_text(cx, cy, 1, sim_need_name(n), v < 20 ? 255 : 190, v < 20 ? 70 : 190, v < 20 ? 70 : 200);
-        draw_bar(cx + 42, cy + 1, 54, v, col[n][0], col[n][1], col[n][2]);
+        draw_motive(cx + 42, cy + 1, 54, v);
     }
     // the Bore: name, mood
     draw_mood_face(218, 194, s->mood);
@@ -191,16 +270,20 @@ static void hud_life(void) {
     const char *mood = m > 50 ? "STOKED" : m > 15 ? "HAPPY" : m > -15 ? "FINE" : m > -50 ? "SAD" : "MISERABLE";
     sprintf(b, "%s  LVL %d %s", mood, job_level, (clock_day < 5 && clock_min >= 540 && clock_min < 1020) ? "SHIFT" : "");
     gfx_text(238, 206, 1, b, m > 15 ? 140 : m > -15 ? 220 : 255, m > 15 ? 255 : m > -15 ? 220 : 110, 130);
+    draw_mood_meter(238, 214, 76, s->mood);
     const char *hint = sim_hint();
-    if (hint[0]) { sprintf(b, "X: %s", hint); gfx_text(238, 218, 1, b, GOLD); }
-    else gfx_text(238, 218, 1, "START: MENU", DIM);
+    if (hint[0]) { sprintf(b, "X: %s", hint); gfx_text(238, 223, 1, b, GOLD); }
+    else gfx_text(238, 223, 1, "START: MENU", DIM);
     // the clock and the money, top right
     gfx_rect(226, 4, 90, 26, 8, 10, 22, 1); gfx_rect(226, 4, 90, 1, 255, 200, 40, 0);
     sprintf(b, "%s %02d:%02d", sim_day_name(clock_day), clock_min / 60, clock_min % 60);
     gfx_text(232, 7, 2, b, 255, 230, 120);
     sprintf(b, "$%ld", cash);
     gfx_text(232, 20, 1, b, 120, 255, 120);
-    if (sim_speed > 1) { sprintf(b, "X%d", sim_speed == 2 ? 3 : 15); gfx_text(296, 20, 1, b, 255, 120, 60); }
+    for (int k = 0; k < 3; k++) { int on = k < sim_speed; gfx_rect(296 + k * 6, 21, 4, 6, on ? 255 : 70, on ? 140 : 70, on ? 60 : 80, 0); }   // speed: 1, 2 or 3 pips
+    { int day_ = clock_min >= 360 && clock_min < 1200;   // a sun by day, a moon by night
+      gfx_rect(282, 20, 6, 10, day_ ? 255 : 200, day_ ? 210 : 210, day_ ? 60 : 255, 0); gfx_rect(280, 22, 10, 6, day_ ? 255 : 200, day_ ? 210 : 210, day_ ? 60 : 255, 0);
+      if (!day_) gfx_rect(285, 21, 4, 5, 13, 15, 21, 0); }
     {   // the wants: the meter beside the face, the current want under the clock
         int lv = wants_level(s);
         gfx_rect(214, 230, 20, 3, 30, 32, 40, 0); gfx_rect(214, 230, 20 * s->asp_pts / ASP_MAX, 3, aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2], 0);
@@ -209,10 +292,10 @@ static void hud_life(void) {
         gfx_rect(316 - w, 32, w, 10, 8, 10, 22, 1); gfx_text(320 - w, 33, 1, b, 200, 220, 255);
         if (wants_flash_t > 0) gfx_textc(160, 60, 2, wants_flash, wants_flash[0] == 'W' ? 120 : 255, wants_flash[0] == 'W' ? 255 : 110, 120);
     }
-    if (last_note_t > 0) { int w = gfx_text_w(2, last_note) + 16; gfx_rect(160 - w / 2, 40, w, 18, 8, 10, 22, 1); gfx_textc(160, 43, 2, last_note, 255, 240, 160); }
-    if (frame < 900) gfx_textc(160, 180, 1, "STICK MOVES   L1 R1 ORBIT   L2 R2 ZOOM   X USES   SQUARE RUNS", GREY);
+    feed_draw();
+    if (frame < 900) gfx_textc(160, 160, 1, "STICK MOVES   L1 R1 ORBIT   L2 R2 ZOOM   X USES   SQUARE RUNS", GREY);
     if (show_fps) { extern int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block;
-        sprintf(b, "%d FPS %d PRIMS W%d S%d L%d", fps_val, prims_last, t_world, t_sims, t_logic); gfx_text(4, 4, 1, b, 120, 255, 120);
+        sprintf(b, "%d FPS %d PRIMS W%d S%d L%d", fps_val, prims_last, t_world, t_sims, t_logic); gfx_text(140, 30, 1, b, 120, 255, 120);
         vox_t_hair = vox_t_block = vox_t_face = vox_n_hair = vox_n_block = 0; }
 }
 
@@ -242,6 +325,7 @@ static void life_update(int steps) {
     { extern int getenv_noshadow, dbg_noao, dbg_nograd; if (PRESSED(PAD_R3)) { static int mode; mode = (mode + 1) & 3; getenv_noshadow = mode == 1; dbg_noao = mode == 2; dbg_nograd = mode == 3; } }
     if (PRESSED(PAD_SELECT)) { sim_switch_player(); sim_note("NOW PLAYING AS THE NEXT BORE"); }
     { int t0 = VSync(1); for (int k = 0; k < steps; k++) sim_step(); t_logic = VSync(1) - t0; }
+    feed_poll();
     camera_input();
     if (PRESSED(PAD_START)) { state = ST_PAUSE; menu_sel = 0; }
     if (travel_asked) { travel_asked = 0; travel_sel = world_zone; state = ST_TRAVEL; }
@@ -311,7 +395,7 @@ static void travel_draw(void) {
 }
 
 // ---- the pause menu ----
-static const char *const pauseNm[] = { "RESUME", "WANTS AND FEARS", "THE STORY", "TRAVEL", "CREATE A BORE", "ADD A BORE", "BUILD MODE", "JUKEBOX", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
+static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "THE STORY", "TRAVEL", "CREATE A BORE", "ADD A BORE", "BUILD MODE", "JUKEBOX", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
 #define NPAUSE 11
 static void pause_update(void) {
     if (PRESSED(PAD_UP)) menu_sel = (menu_sel + NPAUSE - 1) % NPAUSE;
@@ -320,7 +404,7 @@ static void pause_update(void) {
     if (PRESSED(PAD_CROSS)) {
         switch (menu_sel) {
             case 0: state = ST_LIFE; break;
-            case 1: state = ST_WANTS; break;
+            case 1: panel_tab = 0; state = ST_PANEL; break;
             case 2: state = ST_STORY; break;
             case 3: travel_sel = world_zone; state = ST_TRAVEL; break;
             case 4: edit = sims[player].bore; create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
@@ -360,6 +444,11 @@ static void pie_update(void) {
 static void pie_draw(void) {
     life_draw();
     int cx = 160, cy = 100, R = pie_n > 4 ? 56 : 46;
+    for (int k = 0; k < 24; k++) {   // the ring, and a spoke out to the choice
+        int a0 = k * 4096 / 24, a1 = (k + 1) * 4096 / 24;
+        gfx_line(cx + ((isin(a0) * R) >> 12), cy - ((icos(a0) * R * 3 / 4) >> 12), cx + ((isin(a1) * R) >> 12), cy - ((icos(a1) * R * 3 / 4) >> 12), 70, 80, 100);
+    }
+    { int a = (pie_sel * 4096 / pie_n) & 4095; gfx_line(cx, cy, cx + ((isin(a) * R) >> 12), cy - ((icos(a) * R * 3 / 4) >> 12), GOLD); }
     { const char *t = sim_pie_title(); int w = gfx_text_w(1, t) + 10; gfx_rect(cx - w / 2, cy - 6, w, 12, 13, 15, 21, 0); gfx_rect(cx - w / 2, cy + 5, w, 1, 255, 200, 40, 0); gfx_textc(cx, cy - 4, 1, t, GOLD); }
     for (int i = 0; i < pie_n; i++) {
         int a = (i * 4096 / pie_n) & 4095, x = cx + ((isin(a) * R) >> 12), y = cy - ((icos(a) * R * 3 / 4) >> 12);
@@ -429,6 +518,97 @@ static void story_draw(void) {
     char b[40]; sprintf(b, "%d OF 6 - A NEW GOAL OPENS EACH DOOR", done);
     gfx_textc(160, 148, 1, b, DIM);
     gfx_textc(160, 162, 1, "O BACK", GREY);
+}
+
+// ---- the Bore panel: MOOD / WANTS / SKILLS / PEOPLE / JOB tabs (the Sims 2 panel) ----
+static const char *const panelTab[5] = { "MOOD", "WANTS", "SKILLS", "PEOPLE", "JOB" };
+static void panel_update(void) {
+    if (PRESSED(PAD_R1) || PRESSED(PAD_RIGHT)) panel_tab = (panel_tab + 1) % 5;
+    if (PRESSED(PAD_L1) || PRESSED(PAD_LEFT)) panel_tab = (panel_tab + 4) % 5;
+    if (PRESSED(PAD_SELECT)) sim_switch_player();
+    if (PRESSED(PAD_CIRCLE)) state = ST_PAUSE;
+    if (PRESSED(PAD_START)) state = ST_LIFE;
+}
+static void pips(int x, int y, int v, int n, int r, int g, int b) { for (int k = 0; k < n; k++) gfx_rect(x + k * 12, y, 10, 7, k < v ? r : 40, k < v ? g : 42, k < v ? b : 50, 0); }
+static void panel_draw(void) {
+    life_draw();
+    Sim *s = &sims[player];
+    char b[64], t[32];
+    draw_panel(4, 4, 312, 232);
+    draw_face_k(14, 12, s->mood, 2);
+    gfx_text(52, 12, 2, s->bore.first, WHITE);
+    gfx_text(52 + gfx_text_w(2, s->bore.first) + 4, 17, 1, s->bore.last, GREY);
+    sprintf(b, "%s  -  %s", look_stage_name(s->bore.stage), look_asp_name(s->bore.asp)); gfx_text(52, 29, 1, b, GREY);
+    int m = s->mood;
+    const char *mood = m > 50 ? "STOKED" : m > 15 ? "HAPPY" : m > -15 ? "FINE" : m > -50 ? "SAD" : "MISERABLE";
+    gfx_text(52, 40, 1, mood, m > 15 ? 140 : m > -15 ? 220 : 255, m > 15 ? 255 : m > -15 ? 220 : 110, 130);
+    draw_mood_meter(110, 41, 190, m);
+    draw_tabs(10, 56, 300, panelTab, 5, panel_tab);
+    int y0 = 78;
+    if (panel_tab == 0) {   // MOOD: every motive, and what is lifting or dragging the mood
+        gfx_text(14, y0 - 4, 1, "MOTIVES", GOLD);
+        for (int n = 0; n < NEED_N; n++) { int v = sim_need_val(s, n), y = y0 + 8 + n * 13;
+            gfx_text(14, y, 1, sim_need_name(n), v < 20 ? 255 : 200, v < 20 ? 90 : 200, v < 20 ? 90 : 210); draw_motive(66, y + 1, 84, v); }
+        gfx_rect(160, y0 - 4, 1, 120, 60, 60, 70, 0);
+        gfx_text(170, y0 - 4, 1, "MOODLETS", 200, 220, 255);
+        int y = y0 + 8, any = 0;
+        for (int i = 0; i < 6; i++) if (s->ml[i].id) { int v = s->ml[i].val;
+            gfx_text(170, y, 1, sim_moodlet_name(s->ml[i].id), v >= 0 ? 150 : 255, v >= 0 ? 240 : 140, v >= 0 ? 160 : 130);
+            sprintf(b, "%s%d", v > 0 ? "+" : "", v); gfx_text(284, y, 1, b, v >= 0 ? 90 : 255, v >= 0 ? 230 : 100, v >= 0 ? 90 : 90); y += 13; any = 1; }
+        if (!any) gfx_text(170, y, 1, "NOTHING MUCH", DIM);
+        { const char *tr[3]; int n = sim_traits(s, tr); if (n) { b[0] = 0; for (int i = 0; i < n; i++) { if (i) strcat(b, ", "); strcat(b, tr[i]); } gfx_text(14, 196, 1, b, DIM); } }
+    } else if (panel_tab == 1) {   // WANTS: the aspiration meter, four wants, two fears
+        int lv = wants_level(s);
+        gfx_text(14, y0 - 4, 1, "ASPIRATION", GOLD);
+        gfx_rect(14, y0 + 8, 292, 6, 30, 32, 40, 0);
+        gfx_rect(14, y0 + 8, 292 * s->asp_pts / ASP_MAX, 6, aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2], 0);
+        for (int k = 1; k < 4; k++) gfx_rect(14 + 292 * (k == 1 ? 3000 : k == 2 ? 7000 : 10000) / ASP_MAX, y0 + 7, 1, 8, 13, 15, 21, 0);
+        sprintf(b, "%s%s", aspLvNm[lv], lv == 3 ? " - NOTHING CAN BRING THEM DOWN" : wants_desperate(s) ? " - DESPERATE" : "");
+        gfx_text(14, y0 + 18, 1, b, aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2]);
+        gfx_text(14, y0 + 36, 1, "WANTS", GOLD);
+        for (int i = 0; i < 4; i++) { int y = y0 + 48 + i * 13; wants_text(s, i, t);
+            gfx_rect(14, y, 7, 7, 70, 70, 80, 0); gfx_rect(15, y + 1, 5, 5, 13, 15, 21, 0);
+            gfx_text(26, y, 1, t, 230, 230, 240); sprintf(b, "+%d", s->want[i].pts); gfx_text(270, y, 1, b, 90, 230, 90); }
+        gfx_text(14, y0 + 108, 1, "FEARS", 255, 120, 110);
+        for (int i = 0; i < 2; i++) { int y = y0 + 120 + i * 13; fears_text(s, i, t);
+            gfx_text(26, y, 1, t, 230, 200, 200); sprintf(b, "-%d", s->fear[i].pts); gfx_text(270, y, 1, b, 255, 100, 90); }
+    } else if (panel_tab == 2) {   // SKILLS and PERSONALITY
+        static const char *const skNm[3] = { "COOKING", "BODY", "FUN" };
+        int raw[3] = { s->skill_cook, s->skill_body, s->skill_fun };
+        gfx_text(14, y0 - 4, 1, "SKILLS", GOLD);
+        for (int i = 0; i < 3; i++) { int y = y0 + 8 + i * 13, lv = wants_skill_level(raw[i]);
+            gfx_text(14, y, 1, skNm[i], 210, 210, 220); pips(80, y, lv, 10, 255, 200, 40); sprintf(b, "LV %d", lv); gfx_text(214, y, 1, b, WHITE); }
+        gfx_text(14, y0 + 56, 1, "PERSONALITY", GOLD);
+        for (int i = 0; i < TR_N; i++) { int y = y0 + 68 + i * 13;
+            gfx_text(14, y, 1, look_trait_name(i), 210, 210, 220); pips(80, y, s->bore.tr[i], 10, 120, 180, 255); }
+    } else if (panel_tab == 3) {   // PEOPLE: how everyone else in the house feels about you (the daily relationship)
+        int row = 0;
+        for (int j = 0; j < nsims; j++) {
+            if (j == player) continue;
+            int y = y0 - 4 + row * 28, rs = s->rel[j];
+            draw_portrait(14, y, &sims[j], 0);
+            sprintf(b, "%s %s", sims[j].bore.first, sims[j].bore.last); gfx_text(42, y + 2, 1, b, WHITE);
+            draw_mood_meter(42, y + 14, 170, rs);
+            gfx_rect(42 + 1 + 84 + 42, y + 12, 1, 10, GOLD, 0);   // friend at 50
+            const char *lab = rs >= 50 ? "FRIEND" : rs >= 15 ? "PALS" : rs > -15 ? "STRANGERS" : rs > -50 ? "DISLIKED" : "ENEMY";
+            gfx_text(222, y + 14, 1, lab, rs >= 15 ? 150 : rs > -15 ? 200 : 255, rs >= 15 ? 240 : rs > -15 ? 200 : 140, rs >= 15 ? 160 : rs > -15 ? 210 : 130);
+            row++;
+        }
+        if (!row) gfx_text(14, y0, 1, "NOBODY ELSE LIVES HERE", DIM);
+        gfx_text(14, 211, 1, "CHAT, JOKE AND HUG TO GROW A FRIENDSHIP. 50 IS A FRIEND.", DIM);
+    } else {   // JOB
+        gfx_text(14, y0 - 4, 1, "THE FACTORY", GOLD);
+        sprintf(b, "LEVEL %d OF 5", job_level); gfx_text(14, y0 + 8, 1, b, WHITE);
+        sprintf(b, "A FULL SHIFT PAYS %d", 1400 + 800 * job_level); gfx_text(110, y0 + 8, 1, b, 120, 255, 120);   // PAY0 + PAY_LVL * level (sim.c)
+        gfx_text(14, y0 + 20, 1, "9 TO 5, MON TO FRI, ON THE GOLD WORK MARKER", GREY);
+        gfx_text(14, y0 + 38, 1, "TODAY'S SHIFT", 200, 220, 255); draw_motive(110, y0 + 39, 190, MIN(100, job_worked * 100 / 300));
+        gfx_text(14, y0 + 54, 1, "GOOD DAYS", 200, 220, 255); pips(110, y0 + 54, job_days_good, 3, 90, 220, 90); gfx_text(160, y0 + 54, 1, "3 IN A ROW GETS A PROMOTION", DIM);
+        gfx_text(14, y0 + 70, 1, "STRIKES", 200, 220, 255); pips(110, y0 + 70, job_strikes, 3, 255, 80, 70); gfx_text(160, y0 + 70, 1, "3 GETS YOU DEMOTED", DIM);
+        gfx_text(14, y0 + 92, 1, "MONEY", GOLD);
+        sprintf(b, "$%ld", cash); gfx_text(14, y0 + 104, 1, b, 120, 255, 120);
+        gfx_text(110, y0 + 104, 1, "BILLS: 800 EVERY MIDNIGHT", GREY);
+    }
+    gfx_textc(160, 222, 1, "L1 R1 TAB   SELECT NEXT BORE   O BACK   START PLAY", GREY);
 }
 
 // ---- the creator ----
@@ -540,6 +720,51 @@ static int floor_supported(int l, int x, int y) {   // an upper floor needs some
     for (int k = 0; k < 4; k++) { char c = world_at_l(l, x + dx[k], y + dy[k]); if (c != ' ') return 1; }
     return 0;
 }
+// ---- the catalog (Sims buy mode): the items in tabs, a scrolling list with prices ----
+static const char *const catNm[7] = { "SEATS AND BEDS", "TABLES AND STORAGE", "KITCHEN AND BATH", "FUN AND TECH", "DECOR AND PLANTS", "SKATE", "SPECIAL" };
+static const char *const catSet[6] = { "CUh;S<N%z", "tdibyK?#O", "F/:cTH,->&Y`", "vARj[!$()QImn]_{", "rlpZVqo}gus*0", "=LJXM159G" };
+static int item_cat(char ch) { for (int c = 0; c < 6; c++) if (strchr(catSet[c], ch)) return c; return 6; }
+static int cat_list(int cat, int *idx) { int n = 0; for (int i = 0; i < items_count() && n < 96; i++) if (item_cat(items_at(i)) == cat) idx[n++] = i; return n; }
+static void catalog_step(int dir) {   // L1 R1: through the tab, and on into the next tab at the end
+    int idx[96], cat = item_cat(items_at(build_item)), n = cat_list(cat, idx), p = 0;
+    for (int k = 0; k < n; k++) if (idx[k] == build_item) p = k;
+    p += dir;
+    if (p >= 0 && p < n) { build_item = idx[p]; return; }
+    int nc = cat;
+    for (int g = 0; g < 7; g++) { nc = (nc + 7 + dir) % 7; n = cat_list(nc, idx); if (n) break; }
+    if (n) build_item = idx[dir > 0 ? 0 : n - 1];
+}
+static void catalog_next_cat(void) {   // R3: jump to the next tab
+    int idx[96], cat = item_cat(items_at(build_item));
+    for (int g = 1; g <= 7; g++) { int nc = (cat + g) % 7; if (cat_list(nc, idx)) { build_item = idx[0]; return; } }
+}
+static void draw_catalog(void) {
+    int idx[96], cat = item_cat(items_at(build_item)), n = cat_list(cat, idx), p = 0;
+    char b[24];
+    for (int k = 0; k < n; k++) if (idx[k] == build_item) p = k;
+    draw_panel(196, 4, 120, 156);
+    for (int c = 0; c < 7; c++) gfx_rect(204 + c * 16, 8, 12, 3, c == cat ? 255 : 80, c == cat ? 200 : 80, c == cat ? 40 : 95, 0);
+    gfx_textc(256, 14, 1, catNm[cat], GOLD);
+    int first = CLAMP(p - 5, 0, MAX(0, n - 10));
+    for (int k = first; k < n && k < first + 10; k++) {
+        char ch = items_at(idx[k]); int y = 28 + (k - first) * 12, sel = k == p, cost = items_cost(ch);
+        if (sel) { gfx_rect(199, y - 2, 114, 11, 28, 48, 62, 0); gfx_rect(199, y - 2, 1, 11, GOLD, 0); }
+        gfx_text(204, y, 1, items_name(ch), sel ? 255 : 175, sel ? 255 : 175, sel ? 255 : 185);
+        sprintf(b, "%d", cost); gfx_text(310 - gfx_text_w(1, b), y, 1, b, cost > cash ? 255 : 120, cost > cash ? 90 : 230, cost > cash ? 90 : 120);
+    }
+    sprintf(b, "%d OF %d", p + 1, n); gfx_textc(256, 148, 1, b, DIM);
+}
+static void draw_pick_list(const char *title, int count, int sel, const char *(*nm)(int)) {   // floors and wallpapers: seven at a time, the pick in the middle
+    char b[24];
+    draw_panel(196, 4, 120, 104);
+    gfx_textc(256, 8, 1, title, GOLD);
+    for (int k = -3; k <= 3; k++) {
+        int i = (sel + k + count * 4) % count, y = 24 + (k + 3) * 11;
+        if (!k) { gfx_rect(199, y - 2, 114, 11, 28, 48, 62, 0); gfx_rect(199, y - 2, 1, 11, GOLD, 0); }
+        gfx_text(204, y, 1, nm(i), !k ? 255 : 150, !k ? 255 : 150, !k ? 255 : 160);
+    }
+    sprintf(b, "%d OF %d", sel + 1, count); gfx_textc(256, 98, 1, b, DIM);
+}
 static void build_update(void) {
     static int rep;
     int dx = 0, dy = 0;
@@ -556,7 +781,7 @@ static void build_update(void) {
     if (PRESSED(PAD_L2) && build_lvl > 0) { build_lvl--; audio_voice(VOICE_AGREE); }
     if (PRESSED(PAD_L3)) build_peek ^= 1;                                                  // see the roof
     if (analog) { cam_yaw += rs_x / 3; cam_pitch += rs_y / 4; cam_pitch = CLAMP(cam_pitch, 300, 1000); }
-    if (build_tool == 0) { if (PRESSED(PAD_L1)) build_item = (build_item + items_count() - 1) % items_count(); if (PRESSED(PAD_R1)) build_item = (build_item + 1) % items_count(); }
+    if (build_tool == 0) { if (PRESSED(PAD_L1)) catalog_step(-1); if (PRESSED(PAD_R1)) catalog_step(1); if (PRESSED(PAD_R3)) catalog_next_cat(); }
     if (build_tool == 2) { if (PRESSED(PAD_L1)) build_fl = (build_fl + NFLOORS - 1) % NFLOORS; if (PRESSED(PAD_R1)) build_fl = (build_fl + 1) % NFLOORS; }
     if (build_tool == 3) { if (PRESSED(PAD_L1)) build_wp = (build_wp + NWALLS - 1) % NWALLS; if (PRESSED(PAD_R1)) build_wp = (build_wp + 1) % NWALLS; }
     if (build_tool == 1) { if (PRESSED(PAD_L1)) build_wp = (build_wp + NWALLS - 1) % NWALLS; if (PRESSED(PAD_R1)) build_wp = (build_wp + 1) % NWALLS; }
@@ -621,18 +846,30 @@ static void build_draw(void) {
         items_draw(ch, build_x, build_y, world_item_facing(build_x, build_y), items_along(ch) ? world_along(build_x, build_y, ch) : 0, frame);
         world_cam_pop(); world_lvl = 0;
     }
-    draw_panel(4, 4, 232, 44);
-    char b[64];
-    sprintf(b, "BUILD: %s  STOREY %d/%d  AT %d,%d  $%ld", toolNm[build_tool], build_lvl + 1, NLEVELS, build_x, build_y, cash); gfx_text(8, 8, 1, b, GOLD);
-    if (build_tool == 0) sprintf(b, "%s  $%d", items_name(items_at(build_item)), items_cost(items_at(build_item)));
-    else if (build_tool == 1) sprintf(b, "WALL $50  (%s)", world_wall_name(build_wp));
-    else if (build_tool == 2) sprintf(b, "%s $10 A TILE", world_floor_name(build_fl));
-    else if (build_tool == 3) sprintf(b, "%s", world_wall_name(build_wp));
-    else sprintf(b, "%s ROOF, %s PITCH, %s", world_roof_style_name(world_roof_style), world_roof_pitch_name(world_roof_pitch), world_roof_col_name(world_roof_col));
-    gfx_text(8, 18, 1, b, WHITE);
-    if (build_tool == 4) gfx_text(8, 28, 1, "X STYLE  SQ PITCH  L1 R1 COLOUR  SEL TOOL  O DONE", GREY);
-    else gfx_text(8, 28, 1, "L1 R1 PICK  X PLACE  SQ ERASE  SEL TOOL  O DONE", GREY);
-    gfx_text(8, 38, 1, "L2 R2 STOREY DOWN / UP   L3 SEE THE ROOF   R-STICK TURN", GREY);
+    {   // the tab strip, the status card, and the catalog on the right
+        static const char *const toolTab[NTOOL] = { "BUY", "WALL", "FLOOR", "PAPER", "ROOF" };
+        char b[64];
+        draw_tabs(4, 4, 190, toolTab, NTOOL, build_tool);
+        draw_panel(4, 18, 190, 34);
+        sprintf(b, "STOREY %d/%d   AT %d,%d", build_lvl + 1, NLEVELS, build_x, build_y); gfx_text(10, 22, 1, b, GREY);
+        sprintf(b, "FUNDS $%ld", cash); gfx_text(10, 32, 1, b, 120, 255, 120);
+        if (build_tool == 0) sprintf(b, "%s  $%d", items_name(items_at(build_item)), items_cost(items_at(build_item)));
+        else if (build_tool == 1) sprintf(b, "WALL $50  (%s)", world_wall_name(build_wp));
+        else if (build_tool == 2) sprintf(b, "%s  $10 A TILE", world_floor_name(build_fl));
+        else if (build_tool == 3) sprintf(b, "%s", world_wall_name(build_wp));
+        else sprintf(b, "%s ROOF, %s PITCH", world_roof_style_name(world_roof_style), world_roof_pitch_name(world_roof_pitch));
+        gfx_text(10, 42, 1, b, WHITE);
+        if (build_tool == 0) draw_catalog();
+        else if (build_tool == 1) draw_pick_list("WALLS  $50", NWALLS, build_wp, world_wall_name);
+        else if (build_tool == 2) draw_pick_list("FLOORS  $10 A TILE", NFLOORS, build_fl, world_floor_name);
+        else if (build_tool == 3) draw_pick_list("WALLPAPERS", NWALLS, build_wp, world_wall_name);
+        else { draw_panel(196, 4, 120, 50); gfx_textc(256, 8, 1, "THE ROOF", GOLD); gfx_text(204, 22, 1, world_roof_style_name(world_roof_style), WHITE);
+               gfx_text(204, 32, 1, world_roof_pitch_name(world_roof_pitch), 200, 200, 210); gfx_text(204, 42, 1, world_roof_col_name(world_roof_col), 200, 200, 210); }
+        gfx_rect(0, 214, 320, 26, 8, 10, 22, 1); gfx_rect(0, 214, 320, 1, 255, 200, 40, 0);
+        if (build_tool == 4) gfx_textc(160, 218, 1, "X STYLE   SQ PITCH   L1 R1 COLOUR   SEL TOOL   O DONE", GREY);
+        else gfx_textc(160, 218, 1, build_tool == 0 ? "L1 R1 PICK   R3 NEXT TAB   X PLACE   SQ ERASE   SEL TOOL" : "L1 R1 PICK   X PLACE   SQ ERASE   SEL TOOL", GREY);
+        gfx_textc(160, 228, 1, "L2 R2 STOREY   L3 SEE THE ROOF   R-STICK TURN   O DONE", GREY);
+    }
 }
 
 // ---- the jukebox ----
@@ -679,8 +916,8 @@ static void juke_draw(void) {
 // ---- help ----
 static const char *const help_txt[3][12] = {
     { "HOW TO PLAY", "", "LIVE: MOVE WITH THE STICK OR D-PAD.", "X USES THE THING IN FRONT OF YOU:", "FRIDGE EATS, BED SLEEPS, SHOWER", "WASHES, SOFA LOUNGES, TV IS FUN.", "TALK TO A HOUSEMATE WITH X.", "O GETS YOU UP. SQUARE RUNS.", "TRIANGLE CHANGES THE SPEED.", "SELECT SWITCHES BORE.", "", "R1: NEXT PAGE" },
-    { "THE CAMERA", "", "FULL 3D: L1 AND R1 ORBIT,", "L2 AND R2 ZOOM, THE RIGHT STICK", "ORBITS AND TILTS.", "WALLS BETWEEN YOU AND THE CAMERA", "DROP LOW, LIKE A SIMS GAME.", "", "THE JOB: STAND ON THE GOLD WORK", "MARKER IN THE FACTORY 9 TO 5.", "BILLS: 800 EVERY MIDNIGHT.", "R1: NEXT PAGE" },
-    { "BUILD AND CREATE", "", "BUILD MODE (PAUSE MENU): PLACE", "BORE'S ITEMS, WALLS, FLOORS AND", "103 WALLPAPERS. SELECT PICKS THE", "TOOL, L1 R1 PICK, X PLACES.", "", "CREATE A BORE: EVERY BODY, FACE,", "HAIR, CLOTHES AND SPORE PART OF", "THE GBA GAME, NOW IN 3D.", "", "O: BACK" } };
+    { "THE CAMERA", "", "FULL 3D: L1 AND R1 ORBIT,", "L2 AND R2 ZOOM, THE RIGHT STICK", "ORBITS AND TILTS.", "WALLS BETWEEN YOU AND THE CAMERA", "DROP LOW, LIKE A SIMS GAME.", "PAUSE: BORE PANEL, MOOD AND PEOPLE.", "THE JOB: STAND ON THE GOLD WORK", "MARKER IN THE FACTORY 9 TO 5.", "BILLS: 800 EVERY MIDNIGHT.", "R1: NEXT PAGE" },
+    { "BUILD AND CREATE", "", "BUILD MODE (PAUSE MENU): PLACE", "BORE'S ITEMS, WALLS, FLOORS AND", "103 WALLPAPERS. SELECT PICKS THE", "TOOL, L1 R1 PICK, X PLACES.", "R3 JUMPS TO THE NEXT CATALOG TAB.", "CREATE A BORE: EVERY BODY, FACE,", "HAIR, CLOTHES AND SPORE PART OF", "THE GBA GAME, NOW IN 3D.", "", "O: BACK" } };
 static void help_update(void) {
     if (PRESSED(PAD_R1) || PRESSED(PAD_CROSS)) help_page = (help_page + 1) % 3;
     if (PRESSED(PAD_L1)) help_page = (help_page + 2) % 3;
@@ -782,6 +1019,7 @@ int main(void) {
             case ST_STORY: story_update(); story_draw(); break;
             case ST_WANTS: wants_update(); wants_draw(); break;
             case ST_PIE: pie_update(); pie_draw(); break;
+            case ST_PANEL: panel_update(); panel_draw(); break;
         }
         gfx_flip();
     }
