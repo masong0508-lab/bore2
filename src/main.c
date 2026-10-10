@@ -204,6 +204,7 @@ static void draw_marker(const Sim *s) {   // who you are playing: a bobbing gold
     setVector(&a, -12, top - 13, -2); setVector(&b, 12, top - 13, -2); setVector(&c, 0, top + 2, -2);
     gfx_tri_f(&a, &b, &c, 90, 60, 10, 0);                     // a dark edge behind, so it reads on bright rooms
 }
+#define LOD_DIST 1280   // beyond this many world units (5 tiles) from the camera's focus, people are drawn with the crowd model
 static void draw_sims(void) {
     gfx_set_reserve(RESERVE_UI);   // the people may use what the world left, but not the HUD's share
     for (int i = 0; i < nsims; i++) {
@@ -214,7 +215,11 @@ static void draw_sims(void) {
         if (s->action == ACT_SIT || s->action == ACT_WC) p.vy = -items_height(world_at(s->act_x, s->act_y)) / 2 + 10;
         s->gait.mood = s->mood; s->gait.talk = s->action == ACT_TALK; s->gait.seed = i; s->gait.clock = frame;
         p.vy -= s->lvl * WALL_FULL;
-        voxel_draw(&s->bore, &p, s->yaw, &s->gait);
+        {   // far from where you are looking: the same person at half the voxel resolution (the crowd model); close up, the full model
+            int fdx = s->x - cam.at.vx, fdz = s->z - cam.at.vz;
+            if (i != player && fdx * fdx + fdz * fdz > LOD_DIST * LOD_DIST) { LodBore lb; voxel_lod_build(&s->bore, &lb); voxel_draw_lod(&lb, &p, s->yaw, &s->gait); }
+            else voxel_draw(&s->bore, &p, s->yaw, &s->gait);
+        }
         if (s->action != ACT_SLEEP && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
     if (nsims && !sims[player].grump) draw_marker(&sims[player]);   // MOSS gets nothing. MOSS made that very clear.

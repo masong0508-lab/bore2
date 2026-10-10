@@ -818,3 +818,111 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     extra_parts(b, hx_, hy_, hz_, hs_);
     wear_draw(b);
 }
+
+
+// ================================================================== CROWD MODEL (half resolution)
+// The full 6x4x8 build is folded into 4x2x4 cells: the arm columns stay on their own (so the silhouette keeps its arms), the four
+// inner columns pair up, depth and height pair up. A cell is solid when about a third of what it covers is; its colour is the slot
+// most of it was. The cells keep their size in world units (arm columns one block wide, the rest two), so a crowd member is as tall
+// and as wide as the full model and reads as the same person: same skin, hair, top, bottom, same walk.
+void voxel_lod_build(const Bore *b, LodBore *m) {
+    static const u8 xa[4] = { 0, 1, 3, 5 }, xb[4] = { 1, 3, 5, 6 };
+    memcpy(m->col, b->col, sizeof m->col);
+    m->legrows = (u8)CLAMP((b->legs + 1) / 2, 1, 3);
+    m->headrow = (u8)CLAMP((b->legs + b->torso) / 2, 1, 3);
+    for (int cy = 0; cy < 4; cy++) for (int cz = 0; cz < 2; cz++) for (int cx = 0; cx < 4; cx++) {
+        int cnt[9] = { 0 }, n = 0, tot = 0;
+        for (int y = cy * 2; y < cy * 2 + 2; y++) for (int z = cz * 2; z < cz * 2 + 2; z++) for (int x = xa[cx]; x < xb[cx]; x++) {
+            int v = b->vox[y][z][x]; tot++;
+            if (v) { int s = v & 15; if (s < 1) s = 1; if (s > 8) s = 8; cnt[s]++; n++; }
+        }
+        int best = 0, bn = 0;
+        for (int s = 1; s <= 8; s++) if (cnt[s] >= bn && cnt[s]) { bn = cnt[s]; best = s; }
+        m->c[cy][cz][cx] = (n * 3 >= tot && best) ? (u8)best : 0;
+    }
+}
+
+static inline int lod_at(const LodBore *m, int x, int y, int z) {
+    if (x < 0 || x > 3 || y < 0 || y > 3 || z < 0 || z > 1) return 0;
+    return m->c[y][z][x];
+}
+// draw the cells of one body part (cx0..cx1 columns, cy0..cy1 rows) in the current object space
+static void lod_cells(const LodBore *m, int cx0, int cx1, int cy0, int cy1, const u32 lc[9][6], int cull) {
+    static const short xs[5] = { -3 * VOX, -2 * VOX, 0, 2 * VOX, 3 * VOX };
+    for (int cy = cy0; cy <= cy1; cy++) for (int cz = 0; cz < 2; cz++) for (int cx = cx0; cx <= cx1; cx++) {
+        int s = m->c[cy][cz][cx]; if (!s) continue;
+        int X0 = xs[cx], X1 = xs[cx + 1], Y0 = -(cy * 2 + 2) * VOX, Y1 = -(cy * 2) * VOX, Z0 = (cz - 1) * 2 * VOX, Z1 = Z0 + 2 * VOX;
+        int hb = 0;
+        if (lod_at(m, cx, cy, cz - 1)) hb |= 1;  if (lod_at(m, cx, cy, cz + 1)) hb |= 2;
+        if (lod_at(m, cx - 1, cy, cz)) hb |= 4;  if (lod_at(m, cx + 1, cy, cz)) hb |= 8;
+        if (lod_at(m, cx, cy + 1, cz)) hb |= 16; if (cy == 0 || lod_at(m, cx, cy - 1, cz)) hb |= 32;
+        if (cull) {
+            if (cam_lz > Z0) hb |= 1;  if (cam_lz < Z1) hb |= 2;
+            if (cam_lx > X0) hb |= 4;  if (cam_lx < X1) hb |= 8;
+            if (cam_ly > Y0) hb |= 16; if (cam_ly < Y1) hb |= 32;
+        }
+        if ((hb & 0x3f) == 0x3f) continue;
+        SVECTOR t[4], bt[4];
+        for (int k = 0; k < 4; k++) {
+            int X = (k & 1) ? X1 : X0, Z = (k & 2) ? Z1 : Z0;
+            setVector(&t[k], X, Y0, Z); setVector(&bt[k], X, Y1, Z);
+        }
+        #define LQ(a, b, c_, d, f) { u32 cc = lc[s][f]; quads += gfx_quad_f(a, b, c_, d, cc & 255, (cc >> 8) & 255, (cc >> 16) & 255, 1); }
+        if (!(hb & 16)) LQ(&t[2], &t[3], &t[0], &t[1], 4)
+        if (!(hb & 2))  LQ(&t[3], &t[2], &bt[3], &bt[2], 1)    // front +z
+        if (!(hb & 1))  LQ(&t[0], &t[1], &bt[0], &bt[1], 0)    // back -z
+        if (!(hb & 4))  LQ(&t[2], &t[0], &bt[2], &bt[0], 2)    // -x
+        if (!(hb & 8))  LQ(&t[1], &t[3], &bt[1], &bt[3], 3)    // +x
+        if (!(hb & 32)) LQ(&bt[3], &bt[2], &bt[1], &bt[0], 5)
+        #undef LQ
+    }
+}
+
+void voxel_draw_lod(const LodBore *m, const VECTOR *pos, int yaw, const Gait *g) {
+    quads = 0;
+    MATRIX obj; SVECTOR rot = { 0, (short)yaw, 0, 0 }; VECTOR p = *pos;
+    int ws = (isin(g->phase) * g->amp) >> 12;
+    int bob = g->amp ? (ABS(isin(g->phase * 2)) * 5 * g->amp) >> 24 : 0;
+    p.vy -= bob;
+    RotMatrix(&rot, &obj);
+    TransMatrix(&obj, &p);
+    if (g->sleep) { MATRIX r; SVECTOR rr = { -1024, 0, 0, 0 }; VECTOR t = { 0, -40, -60 }; RotMatrix(&rr, &r); TransMatrix(&r, &t); CompMatrixLV(&obj, &r, &obj); }
+    int swing = (ws * 300) >> 12;
+    int legL = g->sit ? -1024 : swing, legR = g->sit ? -1024 : -swing;
+    int armL = g->sit ? -200 : -swing * 3 / 4, armR = g->sit ? -200 : swing * 3 / 4;
+    { int dx = cam.eye.vx - p.vx, dy = cam.eye.vy - p.vy, dz = cam.eye.vz - p.vz, c = icos(yaw), sn = isin(yaw);
+      cam_lx = (dx * c - dz * sn) >> 12; cam_lz = (dz * c + dx * sn) >> 12; cam_ly = dy; }
+    int cull = !g->sleep;
+    int lr = m->legrows, hipY = -lr * 2 * VOX;
+    int armTop = -1; for (int cy = 3; cy >= 0 && armTop < 0; cy--) if (m->c[cy][0][0] || m->c[cy][1][0] || m->c[cy][0][3] || m->c[cy][1][3]) armTop = cy;
+    int shY = armTop < 0 ? hipY : -(armTop * 2 + 2) * VOX + 24;
+    MATRIX gmL[5];   // 0 body, 1 left leg, 2 right leg, 3 left arm, 4 right arm
+    gmL[0] = obj;
+    joint_matrix(&gmL[1], &obj, legL, 0, 0, hipY, 0);
+    joint_matrix(&gmL[2], &obj, legR, 0, 0, hipY, 0);
+    joint_matrix(&gmL[3], &obj, armL, 0, 0, shY, 0);
+    joint_matrix(&gmL[4], &obj, armR, 0, 0, shY, 0);
+    gfx_set_object_m(&gmL[0]);
+    gfx_set_light_yaw(yaw);
+    u32 lc[9][6];
+    { int L[6] = { gfx_light(0, 0, -ONE), gfx_light(0, 0, ONE), gfx_light(-ONE, 0, 0), gfx_light(ONE, 0, 0), gfx_light(0, -ONE, 0), gfx_light(0, ONE, 0) };
+      for (int s = 1; s <= 8; s++) for (int f = 0; f < 6; f++) lc[s][f] = lit(m->col[s], L[f]); }
+    lod_cells(m, 1, 2, lr, 3, lc, cull);                                   // torso and head (the body part above the legs)
+    // the eyes: two dark dots on the front of the lowest skin row of the head
+    for (int cy = 3; cy >= m->headrow; cy--) {
+        if (m->c[cy][1][1] == 1 && m->c[cy][1][2] == 1 && (!cull || cam_lz >= 2 * VOX)) {
+            int Y0 = -(cy * 2 + 2) * VOX, ey = Y0 + VOX * 2 * 45 / 100, eh = 12, fz = 2 * VOX + 2;
+            SVECTOR a, b, c, d; int ex[2] = { -VOX / 2 - 5, VOX / 2 - 5 };
+            for (int e = 0; e < 2; e++) {
+                setVector(&a, ex[e] + 10, ey, fz); setVector(&b, ex[e], ey, fz); setVector(&c, ex[e] + 10, ey + eh, fz); setVector(&d, ex[e], ey + eh, fz);   // seen from the front +x is on the left
+                quads += gfx_quad_f(&a, &b, &c, &d, 26, 22, 34, 1);
+            }
+            break;
+        }
+    }
+    gfx_set_object_m(&gmL[1]); lod_cells(m, 1, 1, 0, lr - 1, lc, cull);
+    gfx_set_object_m(&gmL[2]); lod_cells(m, 2, 2, 0, lr - 1, lc, cull);
+    gfx_set_object_m(&gmL[3]); lod_cells(m, 0, 0, 0, 3, lc, cull);
+    gfx_set_object_m(&gmL[4]); lod_cells(m, 3, 3, 0, 3, lc, cull);
+    gfx_set_object_m(&gmL[0]);
+}

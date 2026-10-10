@@ -19,6 +19,18 @@ typedef struct {
     int clock;      // frames, for the idle cycle
 } Gait;
 
+// The crowd model: the same person at half the voxel resolution (4 x 2 x 4 cells instead of 6 x 4 x 8), made from the full Bore
+// build and keeping its colours, hair, clothes and walk. About 50 bytes, so a whole city of them can be kept; a citizen is only
+// given a full Bore (and the full model) when they are close enough to meet. Roughly 25 quads instead of 150+.
+typedef struct {
+    u8  c[4][2][4];   // [row from the feet][z back..front][x left arm, left half, right half, right arm]: 0 empty, else colour slot 1..8
+    u16 col[9];       // the person's colour slots (the same as Bore.col)
+    u8  legrows;      // coarse rows that are legs
+    u8  headrow;      // first coarse row of the head
+} LodBore;
+void voxel_lod_build(const Bore *b, LodBore *m);
+void voxel_draw_lod(const LodBore *m, const VECTOR *pos, int yaw, const Gait *g);
+
 void voxel_init(void);
 void voxel_prepare(Bore *b);   // after buildLook: fills the drawing cache in the Bore
 void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g);
