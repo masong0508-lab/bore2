@@ -239,11 +239,16 @@ void world_gen_town(void) {   // Strange Town: a desert main street with a diner
     gPut(18, 24, 'P'); gFree(3, 22, 'a'); gFree(36, 22, 'k');
 }
 // ================================================================== BORE CITY
-// An open-world city on the 64x64 map: a 4x4 grid of 16-tile blocks. Streets (3 tiles wide, paved) run along the top and left of every
-// block, leaving a 13x13 lot for what stands there: houses (each different: size, floors, wallpaper, furniture), a park, a diner, a gym
-// and arcade, an office (the work marker), the town square with its fountain and bus stop, and a skate plaza. Everything is worked out
-// from the block's coordinates, so the city is the same every time.
+// An open-world city on the 80x80 map: a 5x5 grid of 16-tile blocks. Streets (3 tiles wide, paved) run along the top and left of every
+// block, leaving a 13x13 lot for what stands there. Homes come in four kinds: the HOUSE (the original: size, floor, wallpaper and furniture
+// vary), the COTTAGE (one small room), TOWNHOUSES (two narrow homes under one roof line, one lot) and the TWO-STOREY house (the essentials
+// downstairs, a loft with a guest bed and a desk upstairs). Around them: a park, a diner, a gym and arcade, an office (the work marker), the
+// town square with its fountain and bus stop, and a skate plaza. Everything is worked out from the block's coordinates, so the city is the
+// same every time.
+#define CITY_N (MW / 16)
+enum { L_HOUSE, L_COTTAGE, L_TOWN, L_TWO, L_PARK, L_SQUARE, L_SKATE, L_OFFICE, L_GYM, L_DINER };
 static unsigned city_h(int a, int b) { unsigned h = (unsigned)a * 374761393u + (unsigned)b * 668265263u + 12345u; h = (h ^ (h >> 13)) * 1274126177u; return h ^ (h >> 16); }
+static void city_path(int dx, int dy, int ly) { gBox(dx, dy + 1, dx, MIN(ly + 12, MH - 2), FL_PAVING); }   // the path from a door to the street
 static void city_house(int lx, int ly, unsigned h) {
     int w = 9 + (int)((h >> 3) % 3), hh = 7 + (int)((h >> 5) % 2);
     int hx = lx + (13 - w) / 2, hy = ly + 1 + (int)((h >> 7) % 2);
@@ -251,7 +256,7 @@ static void city_house(int lx, int ly, unsigned h) {
     gRoom(hx, hy, hx + w - 1, hy + hh - 1, fl, wp);
     int dx = hx + 2 + (int)((h >> 20) % (unsigned)(w - 4)), dy = hy + hh - 1;
     gPut(dx, dy, 'D');
-    gBox(dx, dy + 1, dx, MIN(ly + 12, MH - 2), FL_PAVING);                       // the path from the door to the street
+    city_path(dx, dy, ly);
     gPut(hx + 2, hy, 'E'); gPut(hx + w - 3, hy, 'E'); gPut(hx, hy + hh / 2, 'E'); gPut(hx + w - 1, hy + hh / 2, 'E');   // windows
     int ix0 = hx + 1, iy0 = hy + 1, ix1 = hx + w - 2, iy1 = hy + hh - 2;
     gFree(ix0, iy0, 'S'); gFree(ix0 + 2, iy0, 'i'); gFree(ix0 + 3, iy0, (h & 1) ? 'b' : 'd');          // the bedroom corner (the tiles by the bed stay clear)
@@ -264,6 +269,70 @@ static void city_house(int lx, int ly, unsigned h) {
     lifeMap[iy1][dx] = '.'; lifeMap[iy1 - 1][dx] = '.';                                                  // nothing stands inside the door
     gFree(dx - 2, dy + 1, 'Z'); gFree(dx + 2, dy + 1, 'Z'); gFree(dx + 3, dy + 3, 'Y');                // the front yard
     gFree(lx, ly, 'g'); gFree(lx + 12, ly, 'g'); gFree(lx + 12, ly + 9, 'Z');
+}
+static void city_cottage(int lx, int ly, unsigned h) {   // a small home: one 5x4 room, everything within reach of the bed
+    int hx = lx + 3, hy = ly + 3 + (int)((h >> 7) & 1);
+    int fl = (int)((h >> 9) % 14), wp = NWP + (int)((h >> 13) % 89);
+    gRoom(hx, hy, hx + 6, hy + 5, fl, wp);
+    int dx = hx + 3, dy = hy + 5;
+    gPut(dx, dy, 'D'); city_path(dx, dy, ly);
+    gPut(hx + 2, hy, 'E'); gPut(hx + 4, hy, 'E'); gPut(hx, hy + 2, 'E'); gPut(hx + 6, hy + 2, 'E');
+    int x0 = hx + 1, y0 = hy + 1;
+    gFree(x0, y0, 'S'); gFree(x0 + 2, y0, '-'); gFree(x0 + 3, y0, 'T'); gFree(x0 + 4, y0, 'H');                  // the bed (a free tile beside it), the bathroom along the north wall
+    gFree(x0, y0 + 1, 'F'); gFree(x0 + 2, y0 + 1, 'r'); gFree(x0, y0 + 2, 'y');                                  // the kitchen down the west wall
+    gFree(x0 + 4, y0 + 2, (h & 1) ? 'i' : 'b'); gFree(x0 + 1, y0 + 3, 'C'); gFree(x0 + 4, y0 + 3, 'v'); gFree(x0, y0 + 3, 'l');   // (the lamp fills the corner nobody could reach)
+    lifeMap[y0 + 3][x0 + 2] = '.'; lifeMap[y0 + 2][x0 + 2] = '.';                                                // nothing stands inside the door
+    gFree(dx - 2, dy + 1, 'Z'); gFree(dx + 2, dy + 1, 'Z'); gFree(lx + 1, ly + 1, 'g'); gFree(lx + 11, ly + 1, 'g'); gFree(dx + 3, dy + 3, 'Y');
+}
+static void unit_furnish(int x0, int y0, int mir, unsigned h) {   // a townhouse interior, 5 wide and 7 deep, the door in the middle of the south wall
+    #define UX(c) (x0 + (mir ? 4 - (c) : (c)))
+    gFree(UX(0), y0, 'S'); gFree(UX(1), y0, 'i'); gFree(UX(2), y0, '-'); gFree(UX(3), y0, 'H'); gFree(UX(4), y0, 'T');   // the bedroom and bathroom share the north wall
+    gFree(UX(0), y0 + 2, 'l'); gFree(UX(2), y0 + 2, 'r'); gFree(UX(4), y0 + 2, (h & 1) ? 'p' : 'b');
+    gFree(UX(0), y0 + 3, 'C'); gFree(UX(4), y0 + 3, 'v');                                                                  // the living area
+    gFree(UX(4), y0 + 4, 'F'); gFree(UX(4), y0 + 5, 'y'); gFree(UX(4), y0 + 6, 'c');                                       // the kitchen down the side wall
+    gFree(UX(0), y0 + 5, 't'); gFree(UX(0), y0 + 4, 'h'); gFree(UX(1), y0 + 5, 'h');
+    #undef UX
+}
+static void city_town(int lx, int ly, unsigned h) {   // two homes sharing the wall between them, each with its own door, floors and wallpaper
+    int hy = ly + 1;
+    for (int u = 0; u < 2; u++) {
+        unsigned hu = city_h((int)(h & 0xFFFF) + u * 31, u + 9);
+        int ax = lx + 6 * u, fl = (int)((hu >> 9) % 14), wp = NWP + (int)((hu >> 13) % 89);
+        gRoom(ax, hy, ax + 6, hy + 8, fl, wp);
+        int dx = ax + 3, dy = hy + 8;
+        gPut(dx, dy, 'D'); city_path(dx, dy, ly);
+        gPut(ax + 2, hy, 'E'); gPut(ax + 4, hy, 'E'); gPut(u ? ax + 6 : ax, hy + 4, 'E');                       // the party wall has no window
+        unit_furnish(ax + 1, hy + 1, u, hu);
+        gFree(dx - 2, dy + 1, 'Z'); gFree(dx + 2, dy + 1, 'Z');
+    }
+    gFree(lx + 3, ly, 'g'); gFree(lx + 9, ly, 'g'); gFree(lx + 6, ly + 12, 'Y');
+}
+static void city_two(int lx, int ly, unsigned h) {   // a two-storey house: bed, bath and kitchen downstairs; a loft (guest bed, desk, computer) up the stairs
+    int hx = lx + 2, hy = ly + 1;
+    int fl = (int)((h >> 9) % 14), wp = NWP + (int)((h >> 13) % 89), fl2 = (int)((h >> 17) % 14), wp2 = NWP + (int)((h >> 3) % 89);
+    gRoom(hx, hy, hx + 8, hy + 7, fl, wp);
+    int dx = hx + 4, dy = hy + 7;
+    gPut(dx, dy, 'D'); city_path(dx, dy, ly);
+    gPut(hx + 2, hy, 'E'); gPut(hx + 6, hy, 'E'); gPut(hx, hy + 3, 'E'); gPut(hx + 8, hy + 3, 'E'); gPut(hx + 2, dy, 'E'); gPut(hx + 6, dy, 'E');
+    int x0 = hx + 1, y0 = hy + 1;                                                    // the inside: 7 wide, 6 deep
+    gFree(x0, y0, 'S'); gFree(x0 + 1, y0, 'i'); gFree(x0 + 4, y0, '-'); gFree(x0 + 5, y0, 'H'); gFree(x0 + 6, y0, 'T');
+    gFree(x0 + 6, y0 + 2, 'F'); gFree(x0 + 6, y0 + 3, 'y'); gFree(x0 + 6, y0 + 4, (h & 1) ? '/' : 'c');
+    gFree(x0 + 2, y0 + 3, 'h'); gFree(x0 + 3, y0 + 3, 't'); gFree(x0 + 4, y0 + 3, 'h');
+    gFree(x0 + 1, y0 + 4, 'C'); gFree(x0 + 1, y0 + 5, 'v'); gFree(x0, y0 + 5, 'l'); if (h & 2) gFree(x0 + 2, y0 + 4, 'r');
+    int sx = x0 + 1, sy = y0 + 2;                                                    // the stairs rise to the north: open floor above and below them
+    lifeMap[sy][sx] = '|'; lifeMap[sy - 1][sx] = '.'; lifeMap[sy + 1][sx] = '.';
+    lifeMap[dy - 1][dx] = '.'; lifeMap[dy - 2][dx] = '.';                            // nothing stands inside the door
+    Level *U = &UP[0];                                                               // the loft covers the whole footprint
+    for (int j = hy; j <= hy + 7; j++) for (int i = hx; i <= hx + 8; i++) {
+        int edge = (i == hx || i == hx + 8 || j == hy || j == hy + 7);
+        U->map[j][i] = edge ? 'W' : '.'; U->fl[j][i] = (u8)fl2; U->wp[j][i] = (u8)wp2;
+    }
+    U->map[hy][hx + 2] = 'E'; U->map[hy][hx + 6] = 'E'; U->map[hy + 3][hx] = 'E'; U->map[hy + 3][hx + 8] = 'E'; U->map[hy + 7][hx + 2] = 'E'; U->map[hy + 7][hx + 6] = 'E';
+    U->map[sy][sx] = ' ';                                                            // the stairwell
+    U->map[y0][x0] = 'S'; U->map[y0][x0 + 2] = 'b'; U->map[y0][x0 + 4] = 'd'; U->map[y0][x0 + 5] = '['; U->map[y0][x0 + 6] = 'l';   // the loft: guest bed, shelf, a desk with a computer
+    U->map[y0 + 3][x0 + 3] = 'r'; U->map[y0 + 3][x0 + 5] = 'U'; U->map[y0 + 3][x0 + 6] = 'i'; U->map[y0 + 5][x0 + 6] = 'S'; U->map[y0 + 5][x0] = 'p';
+    roof_dirty = 1;
+    gFree(dx - 2, dy + 1, 'Z'); gFree(dx + 2, dy + 1, 'Z'); gFree(dx + 3, dy + 3, 'Y'); gFree(lx, ly, 'g'); gFree(lx + 12, ly, 'g'); gFree(lx + 12, ly + 9, 'Z');
 }
 static void city_park(int lx, int ly, unsigned h) {
     gBox(lx + 6, ly, lx + 6, ly + 12, FL_PAVING); gBox(lx, ly + 6, lx + 12, ly + 6, FL_PAVING);
@@ -295,7 +364,7 @@ static void city_diner(int lx, int ly) {
     gRoom(x0, y0, x1, y1, 3, NWP + 53); gPut(lx + 6, y1, 'D'); gPut(lx + 7, y1, 'D');
     gBox(lx + 6, y1 + 1, lx + 7, MIN(ly + 12, MH - 2), FL_PAVING);
     gFree(x0 + 1, y0 + 1, 'F'); gFree(x0 + 2, y0 + 1, 'y'); gFree(x0 + 3, y0 + 1, 'y'); gFree(x0 + 4, y0 + 1, 'y'); gFree(x0 + 5, y0 + 1, 'c'); gFree(x1 - 1, y0 + 1, 'T');
-    for (int k = 0; k < 3; k++) { int tx = x0 + 2 + k * 3; gFree(tx, y0 + 4, 't'); gFree(tx - 1, y0 + 4, 'h'); gFree(tx + 1, y0 + 4, 'h'); }
+    for (int k = 0; k < 2; k++) { int tx = x0 + 2 + k * 4; gFree(tx, y0 + 4, 't'); gFree(tx - 1, y0 + 4, 'h'); gFree(tx + 1, y0 + 4, 'h'); }   // two tables with an aisle between (three filled the room wall to wall and shut the kitchen in)
     gFree(x1 - 1, y1 - 1, 'q'); gFree(x0 + 1, y1 - 1, 'j'); gPut(x0 + 3, y0, 'E'); gPut(x1 - 3, y0, 'E');
     gFree(lx + 3, ly + 11, 'Z'); gFree(lx + 10, ly + 11, 'Z');
 }
@@ -314,26 +383,49 @@ static void city_office(int lx, int ly) {   // where work is: the work marker
     gFree(x1 - 1, y1 - 1, 'x'); gFree(x0 + 1, y1 - 1, 'F'); gFree(x0 + 2, y1 - 1, 'c'); gFree(x0 + 1, y0 + 1, 'b'); gFree(x1 - 1, y0 + 1, 'T');
     gFree(x0 + 5, y1 - 2, 'x'); gPut(x0 + 3, y0, 'E'); gPut(x1 - 3, y0, 'E'); gFree(lx + 3, ly + 11, 'Z');
 }
+// what stands on lot (i,j): the landmarks are fixed, the rest of the 5x5 grid is a hand-placed mix of homes so no two neighbours match
+static int city_lot(int i, int j) {
+    if (i == CITY_N / 2 && j == CITY_N / 2) return L_SQUARE;
+    if (i == CITY_N / 2 + 1 && j == CITY_N / 2 + 1) return L_SKATE;
+    if (i == CITY_N - 1 && j == CITY_N - 1) return L_OFFICE;
+    if (i == 0 && j == CITY_N - 1) return L_GYM;
+    if (i == CITY_N - 1 && j == 0) return L_DINER;
+#if MW == 80
+    static const u8 lots[5][5] = {
+        { L_HOUSE,   L_TWO,     L_TOWN,   L_COTTAGE, L_DINER  },
+        { L_COTTAGE, L_TOWN,    L_HOUSE,  L_PARK,    L_TWO    },
+        { L_TWO,     L_HOUSE,   L_SQUARE, L_TOWN,    L_COTTAGE},
+        { L_TOWN,    L_PARK,    L_COTTAGE,L_SKATE,   L_HOUSE  },
+        { L_GYM,     L_COTTAGE, L_TWO,    L_TOWN,    L_OFFICE } };
+    return lots[j][i];
+#else
+    unsigned h = city_h(i * 5 + 2, j * 3 + 7); int t = (int)(h % 10);   // other sizes: a mix worked out from the hash
+    return t == 9 ? L_PARK : t < 3 ? L_HOUSE : t < 5 ? L_COTTAGE : t < 8 ? L_TOWN : L_TWO;
+#endif
+}
 void world_gen_city(void) {
     ao_dirty = 1;
     for (int y = 0; y < MH; y++) { for (int x = 0; x < MW; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = FL_GRASS; wallMap[y][x] = 0; } lifeMap[y][MW] = 0; }
-    for (int k = 0; k < 4; k++) { gBox(16 * k, 0, 16 * k + 2, MH - 1, FL_PAVING); gBox(0, 16 * k, MW - 1, 16 * k + 2, FL_PAVING); }   // the streets
-    for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++) {
-        int lx = 16 * i + 3, ly = 16 * j + 3; unsigned h = city_h(i, j);
-        int t = (int)(h % 9);
-        if (i == 1 && j == 1) city_square(lx, ly);
-        else if (i == 2 && j == 2) city_skate(lx, ly);
-        else if (i == 3 && j == 3) city_office(lx, ly);
-        else if (i == 0 && j == 3) city_gym(lx, ly);
-        else if (i == 3 && j == 0) city_diner(lx, ly);
-        else if (t == 8) city_park(lx, ly, h >> 4);
-        else if (t == 7) city_diner(lx, ly);
-        else if (t == 6) city_gym(lx, ly);
-        else city_house(lx, ly, city_h(i * 7 + 1, j * 13 + 5));
+    for (int k = 0; k < CITY_N; k++) { gBox(16 * k, 0, 16 * k + 2, MH - 1, FL_PAVING); gBox(0, 16 * k, MW - 1, 16 * k + 2, FL_PAVING); }   // the streets
+    for (int j = 0; j < CITY_N; j++) for (int i = 0; i < CITY_N; i++) {
+        int lx = 16 * i + 3, ly = 16 * j + 3; unsigned h = city_h(i * 7 + 1, j * 13 + 5);
+        switch (city_lot(i, j)) {
+            case L_SQUARE: city_square(lx, ly); break;
+            case L_SKATE:  city_skate(lx, ly); break;
+            case L_OFFICE: city_office(lx, ly); break;
+            case L_GYM:    city_gym(lx, ly); break;
+            case L_DINER:  city_diner(lx, ly); break;
+            case L_PARK:   city_park(lx, ly, h >> 4); break;
+            case L_COTTAGE: city_cottage(lx, ly, h); break;
+            case L_TOWN:   city_town(lx, ly, h); break;
+            case L_TWO:    city_two(lx, ly, h); break;
+            default:       city_house(lx, ly, h); break;
+        }
     }
-    gPut(17, 17, 'P');                                                                  // where you arrive: the crossroads by the square
-    for (int k = 1; k < 4; k++) { gFree(16 * k + 1, 1, 'Y'); gFree(1, 16 * k + 1, 'Y'); }
+    gPut(16 * (CITY_N / 2) + 1, 16 * (CITY_N / 2) + 1, 'P');                             // where you arrive: the crossroads by the square
+    for (int k = 1; k < CITY_N; k++) { gFree(16 * k + 1, 1, 'Y'); gFree(1, 16 * k + 1, 'Y'); }
     gLine(0, 0, MW - 1, 0, 'w', 13); gLine(0, MH - 1, MW - 1, MH - 1, 'w', 13); gLine(0, 0, 0, MH - 1, 'w', 13); gLine(MW - 1, 0, MW - 1, MH - 1, 'w', 13);   // the city limits
+    roof_dirty = 1;
 }
 void world_switch(int z) {
     ao_dirty = 1;

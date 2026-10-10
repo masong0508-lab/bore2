@@ -4,7 +4,7 @@
 
 #define OT_LEN     4096
 #define OT_SHIFT   1              // view-space z >> OT_SHIFT = OT index (z up to 8192 units)
-#define PACKET_LEN (256*1024)   // per buffer (x2 = 544 KB of the 2 MB RAM); the 64x64 maps need the rest
+#define PACKET_LEN (256*1024)   // per buffer (x2 = 544 KB of the 2 MB RAM); the 80x80 maps need the rest (about 650 KB of map tables: 96x96 would need 1.1 MB and does not fit)
 #define RESERVE_PEOPLE (72*1024)   // kept back from the world so the people always fit
 #define RESERVE_UI     (24*1024)   // kept back from the people so bubbles, text and the HUD always fit
 #define Z_NEAR     40

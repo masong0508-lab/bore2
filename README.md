@@ -36,7 +36,10 @@ The creature code: `python3 tools/port_look.py <bore-gba-main>/source/main.c src
 - `test/` scripts used to take emulator screenshots and measure FPS.
 
 ## Known gaps
-About 20 FPS in life mode (target 30), no memory-card saves, wants/fears only partly done, tested only in an emulator.
+About 20 FPS in life mode (target 30), no memory-card saves, the 80x80 map's RAM use is estimated and not yet measured on a disc build, wants/fears only partly done, tested only in an emulator.
+
+## The city
+BORE CITY is an 80x80 map: a 5x5 grid of 16-tile blocks, 23 homes in four kinds (HOUSE, COTTAGE, TOWNHOUSES, TWO-STOREY with a loft), two parks, the square, a diner, a gym with an arcade, an office and a skate plaza. `world_gen_city` in `src/world.c` places them from the `lots[][]` table; to add a home kind, write a `city_*` function and give it a table entry.
 
 ## DS port (in progress)
 The game code is split so a Nintendo DS build can sit beside the PS1 one:

@@ -390,7 +390,7 @@ static void travel_draw(void) {
     life_draw();
     draw_panel(70, 46, 180, 118);
     gfx_textc(160, 52, 2, "WHERE TO?", GOLD);
-    static const char *const blurb[ZONE_N] = { "HOME: THE HOUSE, THE FACTORY, THE RAIL PARK", "A SAND ISLAND: A CAMP, PALMS, THE SEA", "A DESERT MAIN STREET: DINER, TRAILER, THE LAB", "THE CITY: 16 BLOCKS, HOUSES, PARK, DINER, GYM" };
+    static const char *const blurb[ZONE_N] = { "HOME: THE HOUSE, THE FACTORY, THE RAIL PARK", "A SAND ISLAND: A CAMP, PALMS, THE SEA", "A DESERT MAIN STREET: DINER, TRAILER, THE LAB", "THE CITY: 25 BLOCKS, 23 HOMES, PARK, DINER, GYM" };
     static const char *const lockTxt[ZONE_N] = { "", "LOCKED: EARN YOUR FIRST PAYCHECK", "LOCKED: GET SPONSORED AT WORK", "" };
     for (int i = 0; i < ZONE_N; i++) {
         int sel = i == travel_sel, here = i == world_zone, open_ = zone_unlocked(i);

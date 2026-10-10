@@ -108,6 +108,7 @@ The first three already exist in some form. The rest is the roadmap. Each one na
     the ROOF tool. THE MAN BASE now has an upstairs bedroom. *Done.*
 5. **Relationships** — daily score per pair, friend at 50, decay 2/day; chats move it, mood and
    compatible traits (NEAT/OUTGOING/ACTIVE/PLAYFUL/NICE) decide acceptance. Rejection is a fear.
+5b. **More homes** (`world.c`): the city is 80x80 with 23 homes in four kinds (house, cottage, townhouse pair, two-storey with a loft). Next: owners and goal lists per home (step 6), a for-sale sign, moving in.
 6. **A cast** — give the housemates and the townies names, homes and jobs; MOSS already exists (the one
    who refuses anything floating over their head). Bustin' Out's "move from lot to lot" becomes: each
    zone has an owner with a goal list; finish it and you may live there.

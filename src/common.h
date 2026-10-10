@@ -45,8 +45,8 @@ typedef int8_t s8; typedef int16_t s16; typedef int32_t s32;
 #define H 8
 
 // ---- the map (BORE) ----
-#define MW 64   // the map: the old 40x40 lots were one house; 64x64 holds the open-world city (a 4x4 grid of 16-tile blocks)
-#define MH 64
+#define MW 80   // the map: the old 40x40 lots were one house; 80x80 holds the open-world city (a 5x5 grid of 16-tile blocks). 96x96 would not fit: see gfx.h
+#define MH 80
 
 #define CLAMP(v,lo,hi) ((v)<(lo)?(lo):(v)>(hi)?(hi):(v))
 #define ABS(v) ((v)<0?-(v):(v))
