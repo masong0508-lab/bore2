@@ -1071,20 +1071,21 @@ void boot(const char *stage) {
 int main(void) {
     gfx_init();
     atlas_init();
-    font_init();        boot("GFX ATLAS FONT");   // (the boot text needs the font, so the first line comes after it)
-    look_init();        boot("LOOK");
-    voxel_init();       boot("VOXEL");
-    items_init();       boot("ITEMS");
-    world_init();       boot("WORLD TEXTURES");
-    audio_init();       boot("AUDIO + DISC");
+    font_init();        boot("GFX ATLAS FONT OK");   // (the boot text needs the font, so the first line comes after it)
+    // each stage is announced BEFORE it runs ("> NAME"), so the last line on screen names the stage that is running when the game stops
+    boot("> LOOK");        look_init();
+    boot("> VOXEL");       voxel_init();
+    boot("> ITEMS");       items_init();
+    boot("> WORLD TEX");   world_init();
+    boot("> AUDIO+DISC");  audio_init();
     pad_init();                                      // (the pad is read directly in read_pad: see pad.c)
-    crowd_init();       boot("CROWD");                 // the voice clips are in the sound chip now: their RAM holds the crowd's models
+    boot("> CROWD");       crowd_init();             // the voice clips are in the sound chip now: their RAM holds the crowd's models
     look_default(&edit);
     look_default(&title_bore); look_random(&title_bore);
-    world_gen();        boot("HOME LOT");
+    boot("> HOME LOT");    world_gen();
     strcpy(edit.first, "DIPPA"); strcpy(edit.last, "DIPPINN");
-    audio_jukebox_play(0);   // THE DIPPER MAN, the title song (as on the GBA)
-    boot("TITLE SONG");
+    boot("> TITLE SONG");  audio_jukebox_play(0);   // THE DIPPER MAN, the title song (as on the GBA)
+    boot("> TITLE");
     t_vb = VSync(-1);
     while (1) {
         t_frame0 = hb_now();
