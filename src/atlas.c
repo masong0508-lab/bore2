@@ -3,7 +3,7 @@
 #define PAGES 4
 #define PAGE_X 640   // pages 0 and 1 are 256 wide at x=640; page 2 is the 128-wide strip at x=896
 static struct { int x, y, rowh; u16 tpage; int base_y; } pg[PAGES];
-static int used;
+static int used; int atlas_fails;
 static u16 upload_buf[128 * 128];   // the largest texture we upload at once (wallpapers are 8x24, items up to 24x24)
 
 void atlas_init(void) {
@@ -29,7 +29,7 @@ static TexRef alloc_in(int first, int last, int w, int h) {
         used += aw * h;
         return t;
     }
-    printf("atlas full (%dx%d)\n", w, h);
+    atlas_fails++;   // (no printf here: a texture that does not fit is simply not drawn, and the console is slow)
     return t;
 }
 TexRef atlas_alloc(int w, int h) { return alloc_in(0, 1, w, h); }

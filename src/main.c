@@ -1055,9 +1055,7 @@ extern char _end[];
 #define BOOT_SHOW 6
 #define BOOT_STEPS 24
 static char boot_log[BOOT_KEEP][20]; static int boot_n;
-void boot(const char *stage) {
-    char *dst = boot_log[boot_n % BOOT_KEEP]; int i = 0; while (stage[i] && i < 19) { dst[i] = stage[i]; i++; } dst[i] = 0; boot_n++;
-    loading_draw(stage, boot_n * 100 / BOOT_STEPS);
+static void boot_frame(void) {
     char b[32];
     int free_k = (int)((0x801FFFF0u - 0x10000u - (u32)_end) / 1024);   // (the last 64 KB below the stack top is left for the stack itself)
     sprintf(b, "RAM FREE %dK", free_k);
@@ -1065,7 +1063,13 @@ void boot(const char *stage) {
     int first = boot_n > BOOT_SHOW ? boot_n - BOOT_SHOW : 0;
     for (int k = first; k < boot_n; k++) gfx_text(8, 176 + (k - first) * 8, 1, boot_log[k % BOOT_KEEP], 110, 200, 110);
     gfx_flip();
-    DrawSync(0);   // let the GPU finish the frame before the next texture upload (an upload queued behind a frame in flight)
+    DrawSync(0);   // let the GPU finish the frame before the next texture upload
+}
+void boot(const char *stage) {
+    char *dst = boot_log[boot_n % BOOT_KEEP]; int i = 0; while (stage[i] && i < 19) { dst[i] = stage[i]; i++; } dst[i] = 0; boot_n++;
+    // drawn twice: the screen shows the frame BEFORE the one just flipped, so the first flip alone would leave the stage on screen one step late
+    loading_draw(stage, boot_n * 100 / BOOT_STEPS); boot_frame();
+    loading_draw(stage, boot_n * 100 / BOOT_STEPS); boot_frame();
 }
 
 int main(void) {
