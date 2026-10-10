@@ -99,6 +99,13 @@ The first three already exist in some form. The rest is the roadmap. Each one na
     NEAT FREAK / SLOB, SOCIAL BUTTERFLY / LONER, ATHLETIC / COUCH POTATO, GOOFBALL / SERIOUS, GOOD / MEAN. *Done.*
 4d. **Body language**: relaxed A-pose, breathing, a head on its own neck (curious tilts, nods while talking, droops
     when sad), happy hops, a sad slouch, a lean into the stride. *Done.*
+4d2. **A living walk** (`sim.c` `follow_path`): the people the game steers (housemates now, the city's citizens next) no longer ride rails from tile
+    to tile. Paths are pulled straight (line of sight) so nobody walks a staircase; waypoints are passed on a curve and nudged off the tile's middle;
+    the body swings round in an arc and eases into corners; each person has their own pace (ACTIVE, mood, urgency) and ramps up from a standstill; they
+    keep to the right and bend round each other (two people head-on pass, in a one-tile lane too), wait if held up, then plan again, then give up;
+    a stroll meanders, stops to look about (at someone near, or over a shoulder), keeps roughly its heading, goes further and likes paths out of doors,
+    and sometimes heads for a seat or something to do; they change their mind when the thing they wanted is taken, chase a chat partner who moved on,
+    and plan again when a path is cut at 64 waypoints. *Done.*
 4e. **Storeys and roofs** (`world.c`): the ground plus four floors above (5 storeys) per zone. Upper floors need
     support (something below or a floor beside them), walls stand on them, STAIRS ($400) connect a storey to the
     next (GO UP / GO DOWN in the pie menu) and open a stairwell above. The Sims 2 floor view: storeys above the

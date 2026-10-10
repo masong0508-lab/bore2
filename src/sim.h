@@ -37,6 +37,16 @@ typedef struct {
     u8   act_var;               // which pie-menu option started the action (0 the plain one)
     u8   lvl;                   // the storey it stands on (0 the ground .. 4)
     struct { u8 id; s8 val; u16 t; } ml[6];   // MOODLETS (Sims 3): id, mood points, game minutes left
+    // the living walk (sim.c follow_path): a person does not ride rails from tile to tile
+    u8   dest_x, dest_y;    // where the walk is really going (a path is cut to 64 waypoints, so it is planned again from here)
+    u8   repath;            // plans used up on this walk
+    u8   wseed;             // this walk's dice: the pace, the lane, the wobble
+    u8   pause_t;           // steps left of standing still to look about
+    u8   stall;             // steps spent held up (a person, a wall)
+    u8   hurry;             // 0 stroll, 1 brisk, 2 desperate
+    u8   mind;              // 1: this walk has already been reconsidered once (a stroll is dropped for a need at most once)
+    u16  look_yaw;          // what it faces while it pauses
+    s16  spd;               // walk speed now, in 1/100 units a step (it ramps up and eases off)
 } Sim;
 
 extern Sim  sims[MAX_SIMS];

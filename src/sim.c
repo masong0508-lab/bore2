@@ -169,12 +169,30 @@ static int speed_of(const Sim *s) {
     return MAX(sp, 3);
 }
 
-// ---- path finding (BFS over the tiles) ----
+// ---- path finding: BFS over the tiles, then pulled straight (a person cuts corners, they do not walk a staircase) ----
 static u16 bfs_q[MW * MH];
 static s16 bfs_par[MH][MW];
+static u32 walk_tick;          // steps since the game began: the wobble and the dice run off it
+#define LOS_R 60               // the clearance a straight line needs (a little more than the body)
+#define LOS_STEP 96
+#define LOS_WIN 12             // how many tiles ahead a shortcut may reach
+static int footprint_r(int x, int z, int r) {
+    for (int k = 0; k < 4; k++) {
+        int px = x + ((k & 1) ? r : -r), pz = z + ((k & 2) ? r : -r);
+        if (px < 0 || pz > 0 || !world_walkable(px / TILE, (-pz) / TILE)) return 0;
+    }
+    return 1;
+}
+static int los(int x0, int z0, int x1, int z1) {   // can a body walk the straight line?
+    int dx = x1 - x0, dz = z1 - z0, d = MAX(ABS(dx), ABS(dz)), n = d / LOS_STEP + 1;
+    for (int i = 1; i <= n; i++) if (!footprint_r(x0 + dx * i / n, z0 + dz * i / n, LOS_R)) return 0;
+    return 1;
+}
 int sim_find_path(Sim *s, int tx, int ty) {
     int sx = sim_tile_x(s), sy = sim_tile_y(s);
+    s->dest_x = (u8)tx; s->dest_y = (u8)ty;
     if (sx == tx && sy == ty) { s->path_n = 0; return 1; }
+    if (sx < 0 || sy < 0 || sx >= MW || sy >= MH) return 0;
     for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) bfs_par[y][x] = -1;
     int qh = 0, qt = 0;
     bfs_q[qt++] = (u16)(sy * MW + sx); bfs_par[sy][sx] = (s16)(sy * MW + sx);
@@ -193,31 +211,150 @@ int sim_find_path(Sim *s, int tx, int ty) {
     }
     if (!found) return 0;
     // walk the parents back, then reverse into the path
-    u8 rx[256], ry[256]; int n = 0;
+    static u8 rx[640], ry[640]; int n = 0;
     int c = ty * MW + tx;
-    while (n < 255 && c != sy * MW + sx) { rx[n] = (u8)(c % MW); ry[n] = (u8)(c / MW); n++; c = bfs_par[c / MW][c % MW]; }
-    int m = MIN(n, 64);
-    for (int i = 0; i < m; i++) { s->path_x[i] = rx[n - 1 - i]; s->path_y[i] = ry[n - 1 - i]; }
+    while (c != sy * MW + sx) { if (n >= 640) return 0; rx[n] = (u8)(c % MW); ry[n] = (u8)(c / MW); n++; c = bfs_par[c / MW][c % MW]; }
+    // pull it straight: from where the body really is, reach for the furthest tile in sight, and again from there
+    int ax = s->x, az = s->z, i = 0, m = 0;
+    while (i < n && m < 64) {
+        int j = MIN(n - 1, i + LOS_WIN - 1);
+        for (; j > i; j--) { int k = n - 1 - j; if (los(ax, az, rx[k] * TILE + TILE / 2, -(ry[k] * TILE + TILE / 2))) break; }
+        int k = n - 1 - j;
+        s->path_x[m] = rx[k]; s->path_y[m] = ry[k]; m++;
+        ax = rx[k] * TILE + TILE / 2; az = -(ry[k] * TILE + TILE / 2); i = j + 1;
+    }
     s->path_n = (u8)m; s->path_i = 0;
     return 1;
 }
-static int follow_path(Sim *s) {   // 1 while walking, 0 when there
-    if (s->path_i >= s->path_n) return 0;
-    int tx = s->path_x[s->path_i] * TILE + TILE / 2, tz = -(s->path_y[s->path_i] * TILE + TILE / 2);
-    int dx = tx - s->x, dz = tz - s->z;
-    int sp = speed_of(s);
-    {   // housemates walk the same way: turn first, quarter speed while cornering
-        int want = yaw_towards(dx, dz), diff = ((want - s->yaw + 2048) & 4095) - 2048;
-        turn_to(s, want, 300 + (ABS(diff) >> 3));
-        int align = 4096 - ABS(diff) * 2; if (align < 1024) align = 1024;
-        sp = (sp * align) >> 12; if (sp < 2) sp = 2;
+static int start_walk(Sim *s, int tx, int ty, int hurry) {   // begin a walk: a path, and this walk's own character
+    if (!sim_find_path(s, tx, ty)) return 0;
+    s->repath = 0; s->stall = 0; s->pause_t = 0; s->mind = 0; s->hurry = (u8)hurry;
+    s->wseed = (u8)(look_rand() & 255);
+    if (s->spd < 250) s->spd = 250;
+    return 1;
+}
+static int on_item(int act);
+static int approach_tile(const Sim *s, int mx, int my, int *tx, int *ty);
+static int mulq(int a, int b) { return (a * b) / 4096; }   // symmetric: a small push to the left goes as far as one to the right
+
+static int walk_pace(const Sim *s) {   // percent of the stage's walking speed, for this person on this walk
+    int p = 88 + (int)s->bore.tr[TR_ACT] * 3 + s->mood / 20 + (int)(s->wseed & 15) - 8;
+    if (s->hurry == 1) p += 15; else if (s->hurry == 2) p += 30;
+    return CLAMP(p, 70, 150);
+}
+// other people on the way: bend the heading round them (everyone keeps to their right, so two people head-on pass each other) and ease off
+static int steer_round(const Sim *s, int *want, int *ease) {
+    int me = (int)(s - sims), blocked = 0;
+    int fx = isin(s->yaw), fz = -icos(s->yaw), rx = -icos(s->yaw), rz = -isin(s->yaw);
+    for (int i = 0; i < nsims; i++) {
+        const Sim *o = &sims[i];
+        if (i == me || o->lvl != s->lvl || o->dead || on_item(o->action) || o->action == ACT_SLEEP) continue;
+        int dx = o->x - s->x, dz = o->z - s->z;
+        if (ABS(dx) > 400 || ABS(dz) > 400) continue;
+        if (s->talk_to == i && ABS(dx) + ABS(dz) < TILE * 2) continue;           // going to talk to them: no dodging
+        int ahead = (dx * fx + dz * fz) >> 12, side = (dx * rx + dz * rz) >> 12;
+        if (ahead <= 0 || ahead > 400 || ABS(side) > 2 * SIM_RADIUS + 30) continue;
+        int near = 400 - ahead;                                                   // 0 far .. 400 touching
+        int bend = near;                                                          // up to ~35 degrees
+        if (side > 12) *want += bend; else *want -= bend;                        // they are on my right: swing left; else swing right
+        if (ahead < 220) { int e = 30 + ahead * 70 / 220; if (e < *ease) *ease = e; }
+        if (ahead < 120 && ABS(side) < 90) blocked = 1;
     }
-    if (ABS(dx) <= sp && ABS(dz) <= sp) { s->x = tx; s->z = tz; s->path_i++; if (s->path_i >= s->path_n) return 0; return 1; }
-    int mx = CLAMP(dx, -sp, sp), mz = CLAMP(dz, -sp, sp);
-    // the last tile may be the item itself: step straight in
-    if (s->path_i == s->path_n - 1) { s->x += mx; s->z += mz; }
-    else if (!walk(s, mx, mz)) { s->x += mx; s->z += mz; }
-    s->gait.amp = 4096; s->gait.phase = (s->gait.phase + 140) & 4095;
+    return blocked;
+}
+static int target_taken(const Sim *s) {   // the thing it was heading for is being used by someone else
+    if (s->act_x < 0 || s->talk_to >= 0) return 0;
+    for (int i = 0; i < nsims; i++) {
+        const Sim *o = &sims[i];
+        if (o != s && o->action != ACT_NONE && o->action != ACT_WALK && o->act_x == s->act_x && o->act_y == s->act_y) return 1;
+    }
+    return 0;
+}
+static void glance(Sim *s) {   // stop and look: at someone near, or just away over a shoulder
+    int me = (int)(s - sims), best = -1, bd = 6 * TILE;
+    for (int i = 0; i < nsims; i++) {
+        if (i == me || sims[i].lvl != s->lvl) continue;
+        int d = ABS(sims[i].x - s->x) + ABS(sims[i].z - s->z);
+        if (d < bd) { bd = d; best = i; }
+    }
+    if (best >= 0 && (look_rand() & 3)) s->look_yaw = (u16)yaw_towards(sims[best].x - s->x, sims[best].z - s->z);
+    else s->look_yaw = (u16)((s->yaw + ((look_rand() & 1) ? 1 : -1) * (500 + (int)(look_rand() % 1000))) & 4095);
+    s->pause_t = (u8)(45 + look_rand() % 110);
+}
+static int follow_path(Sim *s) {   // 1 while walking, 0 when there (or when the walk is given up)
+    int me = (int)(s - sims);
+    // a path is cut at 64 waypoints, and the world changes under it: plan again from here while the destination is still far
+    if (s->path_i >= s->path_n) {
+        int fdx = s->dest_x * TILE + TILE / 2 - s->x, fdz = -(s->dest_y * TILE + TILE / 2) - s->z;
+        if (s->repath < 8 && (ABS(fdx) > TILE || ABS(fdz) > TILE)) {
+            s->repath++;
+            if (!sim_find_path(s, s->dest_x, s->dest_y) || s->path_n == 0) return 0;
+        } else return 0;
+    }
+    // changes of mind: the thing it wanted is taken, or a stroll gets interrupted by something that cannot wait
+    if (!((walk_tick + me) & 15)) {
+        if (target_taken(s)) { if (!(look_rand() & 3)) sim_say(s, "HMPH"); s->path_n = 0; s->wander_t = 0; return 0; }
+        if (s->act_x < 0 && s->talk_to < 0 && !s->mind) for (int n = 0; n < N_SOCIAL; n++) if ((s->need[n] >> 10) < 22) { s->mind = 1; s->path_n = 0; s->wander_t = 0; return 0; }
+        if (s->talk_to >= 0 && s->talk_to < nsims && !((walk_tick >> 4) & 1)) {   // chasing someone who has moved on: head where they are now
+            const Sim *o = &sims[s->talk_to]; int ox = sim_tile_x(o), oy = sim_tile_y(o);
+            if ((ABS(ox - s->act_x) > 2 || ABS(oy - s->act_y) > 2) && ABS(o->x - s->x) + ABS(o->z - s->z) < TILE * 10) {
+                int ax, ay; if (approach_tile(s, ox, oy, &ax, &ay) && sim_find_path(s, ax, ay)) { s->act_x = ox; s->act_y = oy; }
+            }
+        }
+    }
+    // standing still to look about
+    if (s->pause_t) {
+        s->pause_t--; s->spd = 0;
+        turn_to(s, s->look_yaw, 70);
+        s->gait.amp = s->gait.amp > 300 ? s->gait.amp - 300 : 0;
+        return 1;
+    }
+    int last = s->path_i == s->path_n - 1;
+    if (!s->hurry && !last && s->path_n - s->path_i >= 2 && s->stall == 0 && !(look_rand() % (s->act_x < 0 ? 700 : 1500))) { glance(s); return 1; }
+    // where to: the waypoint, nudged a little off the tile's middle so no two people walk the same line (not the last one: that is where the thing is)
+    int tx = s->path_x[s->path_i] * TILE + TILE / 2, tz = -(s->path_y[s->path_i] * TILE + TILE / 2);
+    if (!last) {
+        u32 h = ((u32)s->wseed * 0x9E3779B1u) ^ ((u32)(s->path_i + 1) * 0x85EBCA6Bu) ^ (u32)me * 0x27D4EB2Fu; h ^= h >> 13; h *= 0x5BD1E995u; h ^= h >> 15;
+        int jx = (int)(h & 63) - 32, jz = (int)((h >> 6) & 63) - 32;
+        if (footprint_free(tx + jx, tz + jz)) { tx += jx; tz += jz; }
+    }
+    int dx = tx - s->x, dz = tz - s->z;
+    int dist = MAX(ABS(dx), ABS(dz));
+    // arrived at this waypoint? Middle ones are passed on a curve (80 units), the last one is reached
+    if (last ? dist <= 6 : dist <= 80) {
+        if (last) { s->x = tx; s->z = tz; }
+        s->path_i++; if (s->path_i >= s->path_n) { s->path_i = s->path_n; return s->repath < 8 && (ABS(s->dest_x * TILE + TILE / 2 - s->x) > TILE || ABS(-(s->dest_y * TILE + TILE / 2) - s->z) > TILE); }
+        return 1;
+    }
+    // steering: turn first, a lazy meander on a stroll, round other people
+    int want = yaw_towards(dx, dz);
+    if (!s->hurry) want += isin(((int)walk_tick * 7 + s->wseed * 29) & 4095) >> 6;      // +-64: an unhurried walk is never ruler-straight
+    int ease = 100, blocked = steer_round(s, &want, &ease);
+    want &= 4095;
+    int diff = ((want - s->yaw + 2048) & 4095) - 2048;
+    int align = 4096 - ABS(diff) * 2; if (align < 600) align = 600;                    // how far round it still has to swing: the wider, the slower it takes it
+    turn_to(s, want, 90 + (ABS(diff) >> 4));                                             // a body swings round in an arc, it does not snap
+    // speed: this person's pace, ramped up from a standstill, eased into corners, round people and the last tile
+    int tgt = speed_of(s) * walk_pace(s);
+    tgt = (tgt * align) >> 12;
+    tgt = tgt * ease / 100;
+    if (last && dist < 256) tgt = tgt * (40 + dist * 60 / 256) / 100;
+    if (tgt < 150) tgt = 150;
+    if (s->spd < tgt) s->spd = (s16)MIN(tgt, s->spd + 60); else s->spd = (s16)MAX(tgt, s->spd - 120);
+    int sp = s->spd / 100 + ((int)(walk_tick & 7) < (s->spd % 100) * 8 / 100 ? 1 : 0);   // the hundredths come out right over eight steps
+    if (last && sp > dist) sp = dist;
+    int moved = sp > 0 ? walk(s, mulq(isin(s->yaw), sp), -mulq(icos(s->yaw), sp)) : 0;
+    if (sp > 0 && !moved && !footprint_free(s->x, s->z)) { s->x += mulq(isin(s->yaw), sp); s->z -= mulq(icos(s->yaw), sp); moved = 1; }   // stuck inside something: step out, as before
+    // held up? wait a moment, then plan again, then give up on this walk
+    if (!moved || blocked) { if (s->stall < 250) s->stall += blocked ? 1 : 2; } else if (s->stall) s->stall--;
+    if (s->stall >= 90) {
+        s->stall = 0; s->wseed = (u8)(look_rand() & 255);
+        if (++s->repath >= 6) { s->path_n = 0; s->spd = 0; return 0; }
+        if (!sim_find_path(s, s->dest_x, s->dest_y)) { s->path_n = 0; s->spd = 0; return 0; }
+        if (!(look_rand() & 1)) sim_say(s, "EXCUSE ME");
+    }
+    s->gait.amp = CLAMP(1800 + s->spd * 3 / 2, 1800, 4096);                                // slow strolls swing less
+    s->gait.phase = (s->gait.phase + sp * 16 + 20) & 4095;                                  // the legs keep up with the ground
     return 1;
 }
 
@@ -369,6 +506,30 @@ static int approach_tile(const Sim *s, int mx, int my, int *tx, int *ty) {   // 
 static const char *const grumpNm[8] = { "NO PLUMBOBS. EVER.", "I SAID NO PLUMBOBS", "NOT OVER MY HEAD", "I CAN HEAR IT SPIN",
                                         "KEEP THE GEM AWAY", "AND NO ARROWS EITHER", "IT DRIPS SMUGNESS", "A DIAMOND? OVER ME?" };
 const char *grump_line(void) { static int k; return grumpNm[k++ & 7]; }
+static int outdoors(const Sim *s) { int x = sim_tile_x(s), y = sim_tile_y(s); return s->lvl == 0 && x >= 0 && y >= 0 && x < MW && y < MH && floorMap[y][x] >= FL_GRASS && floorMap[y][x] != FL_WATER && floorMap[y][x] <= FL_SAND; }
+// a stroll: not a dart to a random square. Out of doors it goes further, keeps roughly the way it was facing, and likes a path;
+// indoors it potters. Eight ideas, the one it likes best wins.
+static int pick_stroll(const Sim *s, int *ox, int *oy) {
+    int sx = sim_tile_x(s), sy = sim_tile_y(s), out = outdoors(s), best = -1000, bx = -1, by = -1;
+    for (int t = 0; t < 8; t++) {
+        int tx, ty;
+        if (look_rand() % 3) {   // on from where it was heading
+            int dist = 3 + (int)(look_rand() % (out ? 14 : 5));
+            tx = sx + (isin(s->yaw) * dist) / 4096 + (int)(look_rand() % 5) - 2;
+            ty = sy + (icos(s->yaw) * dist) / 4096 + (int)(look_rand() % 5) - 2;
+        } else {                 // or a change of mind
+            int r = out ? 12 : 5;
+            tx = sx + (int)(look_rand() % (2 * r + 1)) - r; ty = sy + (int)(look_rand() % (2 * r + 1)) - r;
+        }
+        if (tx <= 0 || ty <= 0 || tx >= MW - 1 || ty >= MH - 1 || !world_walkable(tx, ty) || (tx == sx && ty == sy)) continue;
+        int sc = (int)(look_rand() & 3);
+        if (s->lvl == 0) { u8 f = floorMap[ty][tx]; if (f == FL_PAVING) sc += out ? 4 : 0; else if (f == FL_GRASS) sc += out ? 2 : 0; }
+        sc -= (ABS(tx - sx) + ABS(ty - sy)) / 8;
+        if (sc > best) { best = sc; bx = tx; by = ty; }
+    }
+    if (bx < 0) return 0;
+    *ox = bx; *oy = by; return 1;
+}
 static void ai_think(Sim *s) {
     if (s->action != ACT_NONE || s->path_i < s->path_n) return;
     if (s->wander_t > 0) { s->wander_t--; return; }
@@ -380,7 +541,7 @@ static void ai_think(Sim *s) {
         if (worst == N_REST && !is_night() && wv > 15) { worst = -1; }
         char ch = worst >= 0 ? need_item(worst) : 0;
         int ix, iy, tx, ty;
-        if (ch && nearest_item(s, ch, &ix, &iy) && approach_tile(s, ix, iy, &tx, &ty) && sim_find_path(s, tx, ty)) {
+        if (ch && nearest_item(s, ch, &ix, &iy) && approach_tile(s, ix, iy, &tx, &ty) && start_walk(s, tx, ty, wv < 15 ? 2 : wv < 30 ? 1 : 0)) {
             s->act_x = ix; s->act_y = iy; s->action = ACT_WALK; s->act_t = 9999; return;
         }
     }
@@ -390,16 +551,23 @@ static void ai_think(Sim *s) {
         for (int i = 0; i < nsims; i++) { if (i == me || sims[i].action != ACT_NONE) continue; int d = ABS(sims[i].x - s->x) + ABS(sims[i].z - s->z); if (d < bd) { bd = d; best = i; } }
         if (best >= 0 && bd < TILE * 10) {
             int tx = sim_tile_x(&sims[best]), ty = sim_tile_y(&sims[best]);
-            int ax, ay; if (approach_tile(s, tx, ty, &ax, &ay) && sim_find_path(s, ax, ay)) { s->talk_to = best; s->action = ACT_WALK; s->act_x = tx; s->act_y = ty; s->act_t = 9999; return; }
+            int ax, ay; if (approach_tile(s, tx, ty, &ax, &ay) && start_walk(s, ax, ay, 0)) { s->talk_to = best; s->action = ACT_WALK; s->act_x = tx; s->act_y = ty; s->act_t = 9999; return; }
+        }
+    }
+    // a want for somewhere to be: a seat, or something to do, if one is near and it is not already content
+    if (!(look_rand() & 3)) {
+        char ch = (s->need[N_COMFY] >> 10) < 85 ? 'C' : (s->need[N_FUN] >> 10) < 85 ? 'v' : 0;
+        int ix, iy, tx, ty;
+        if (ch && nearest_item(s, ch, &ix, &iy) && ABS(ix - sim_tile_x(s)) + ABS(iy - sim_tile_y(s)) <= 14 && approach_tile(s, ix, iy, &tx, &ty) && start_walk(s, tx, ty, 0)) {
+            s->act_x = ix; s->act_y = iy; s->action = ACT_WALK; s->act_t = 9999; return;
         }
     }
     // wander
-    for (int t = 0; t < 8; t++) {
-        int tx = sim_tile_x(s) + (int)(look_rand() % 11) - 5, ty = sim_tile_y(s) + (int)(look_rand() % 11) - 5;
-        if (tx > 0 && ty > 0 && tx < MW - 1 && ty < MH - 1 && world_walkable(tx, ty) && sim_find_path(s, tx, ty)) { s->action = ACT_WALK; s->act_x = -1; s->act_t = 9999; break; }
-    }
+    { int tx, ty; if (pick_stroll(s, &tx, &ty) && start_walk(s, tx, ty, 0)) { s->action = ACT_WALK; s->act_x = -1; s->act_t = 9999; if (wv < 45) s->mind = 1; } }   // (already tried to fix the need and could not: no point dropping the stroll for it)
     if (s->grump && !(look_rand() % 3)) sim_say(s, grump_line());
-    s->wander_t = 120 + (int)(look_rand() % 300);
+    // then it stands about a while (shorter out in the open, and for the lively)
+    s->wander_t = 50 + (int)(look_rand() % (outdoors(s) ? 220 : 340)) - (int)s->bore.tr[TR_ACT] * 6;
+    if (s->wander_t < 20) s->wander_t = 20;
 }
 
 static void arrive(Sim *s) {   // an AI sim reached the end of its path
@@ -418,7 +586,8 @@ static void arrive(Sim *s) {   // an AI sim reached the end of its path
         s->talk_to = -1;
         return;
     }
-    if (s->act_x >= 0) {
+    s->spd = 0; s->pause_t = 0;
+    if (s->act_x >= 0 && ABS(s->x - (s->act_x * TILE + TILE / 2)) < TILE * 2 && ABS(s->z + (s->act_y * TILE + TILE / 2)) < TILE * 2) {   // only if it really got there
         char c = world_at(s->act_x, s->act_y); int act = action_for(c);
         if (act != ACT_NONE) begin_action(s, act, s->act_x, s->act_y);
     }
@@ -493,6 +662,7 @@ static void clock_tick(void) {
 }
 
 void sim_step(void) {
+    walk_tick++;
     clock_tick();
     for (int i = 0; i < nsims; i++) {
         Sim *s = &sims[i];
