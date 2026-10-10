@@ -39,10 +39,15 @@ void atlas_upload(const TexRef *t, const u16 *pixels) {
     if (!t->tpage) return;
     int page = 0; for (int i = 0; i < PAGES; i++) if (t->tpage == pg[i].tpage) page = i;
     int aw = (t->w + 1) & ~1;
+    // A tiny transfer (a 1x1 item texture is ONE word) must not go to the GPU as it is: some DMA paths hang on it (DuckStation does).
+    // So anything under 16 words is sent as a 32-pixel-wide strip of the same rows: the extra pixels land in the free space to the
+    // right of this texture (nothing is allocated there yet: the shelves fill left to right) and are overwritten by the next texture.
+    int pw = page < 2 ? 256 : 128, nw = aw;
+    if (aw * t->h < 32 && t->u + 32 <= pw) nw = 32;
     for (int y = 0; y < t->h; y++) {
-        for (int x = 0; x < aw; x++) upload_buf[y * aw + x] = (x < t->w) ? pixels[y * t->w + x] : 0;
+        for (int x = 0; x < nw; x++) upload_buf[y * nw + x] = (x < t->w) ? pixels[y * t->w + x] : 0;
     }
-    RECT r; setRECT(&r, (page < 2 ? PAGE_X : 896) + t->u, pg[page].base_y + t->v, aw, t->h);
+    RECT r; setRECT(&r, (page < 2 ? PAGE_X : 896) + t->u, pg[page].base_y + t->v, nw, t->h);
     LoadImage(&r, (u32 *)upload_buf);
     DrawSync(0);
 }
