@@ -4,9 +4,9 @@
 
 #define OT_LEN     4096
 #define OT_SHIFT   1              // view-space z >> OT_SHIFT = OT index (z up to 8192 units)
-#define PACKET_LEN (160*1024)   // per buffer; was 96K, which the world alone could fill, leaving the people nothing to draw with
-#define RESERVE_PEOPLE (44*1024)   // kept back from the world so the people always fit
-#define RESERVE_UI     (16*1024)   // kept back from the people so bubbles, text and the HUD always fit
+#define PACKET_LEN (320*1024)   // per buffer (x2 = 640 KB of the 2 MB RAM): room for a big open-world frame
+#define RESERVE_PEOPLE (72*1024)   // kept back from the world so the people always fit
+#define RESERVE_UI     (24*1024)   // kept back from the people so bubbles, text and the HUD always fit
 #define Z_NEAR     40
 #define OT_FLOOR   (OT_LEN - 2)   // the floor: behind everything but the sky
 #define OT_SHADOW  (OT_LEN - 3)   // shadows: just on top of the floor
