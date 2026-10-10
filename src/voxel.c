@@ -46,17 +46,17 @@ static u16 tbuf[16 * 16];
 static u32 tseed = 99;
 static int tr(void) { tseed = tseed * 1103515245u + 12345u; return (int)((tseed >> 10) & 255); }
 void voxel_init(void) {
-    tx_side   = atlas_add(16, 32, hair_side);
-    tx_crown  = atlas_add(16, 16, hair_crown);
-    tx_tips   = atlas_add(16, 16, hair_tips);
-    tx_fringe = atlas_add(16, 16, hair_fringe);
-    tx_curl   = atlas_add(16, 16, hair_curl);
+    tx_side   = atlas_add(16, 32, hair_side); boot("VX tx_side");
+    tx_crown  = atlas_add(16, 16, hair_crown); boot("VX tx_crown");
+    tx_tips   = atlas_add(16, 16, hair_tips); boot("VX tx_tips");
+    tx_fringe = atlas_add(16, 16, hair_fringe); boot("VX tx_fringe");
+    tx_curl   = atlas_add(16, 16, hair_curl); boot("VX tx_curl");
     // skin: an even tone with the faintest grain
     for (int i = 0; i < 256; i++) { int v = (124 + (tr() % 9) - 4) >> 3; tbuf[i] = RGB(v, v, v); }
-    skin_tex = atlas_add(16, 16, tbuf);
+    skin_tex = atlas_add(16, 16, tbuf); boot("VX skin");
     // cloth: a weave
     for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) { int v = 118 + (((x + y) & 1) ? 10 : -6) + (tr() % 7) - 3; v >>= 3; tbuf[y * 16 + x] = RGB(v, v, v); }
-    cloth_tex = atlas_add(16, 16, tbuf);
+    cloth_tex = atlas_add(16, 16, tbuf); boot("VX cloth");
     // the patterns: the same weave, with the pattern's pixels a shade darker or lighter
     for (int p = 1; p < NPAT; p++) for (int t = 0; t < 2; t++) {
         for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) {
@@ -65,6 +65,7 @@ void voxel_init(void) {
             v = CLAMP(v, 0, 255) >> 3; tbuf[y * 16 + x] = RGB(v, v, v);
         }
         pat_tex[p][t] = atlas_add(16, 16, tbuf);
+        if (p == 1 || p == NPAT - 1) boot(t ? "VX pat light" : "VX pat dark");
     }
 }
 

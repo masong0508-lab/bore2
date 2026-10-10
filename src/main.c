@@ -1037,16 +1037,20 @@ static void menu_draw(void) {
 // ---- boot trace: each start-up stage is printed and shown at once, so a black screen can never hide where the game stopped ----
 // (a stage that never gets its line is the one that hung; "RAM FREE" is what is left between the end of the program's data and the stack)
 extern char _end[];
-static char boot_log[14][20]; static int boot_n;
-static void boot(const char *stage) {
-    if (boot_n < 14) { int i = 0; while (stage[i] && i < 19) { boot_log[boot_n][i] = stage[i]; i++; } boot_log[boot_n][i] = 0; boot_n++; }
+#define BOOT_KEEP 32
+#define BOOT_SHOW 15
+static char boot_log[BOOT_KEEP][20]; static int boot_n;
+void boot(const char *stage) {
+    char *dst = boot_log[boot_n % BOOT_KEEP]; int i = 0; while (stage[i] && i < 19) { dst[i] = stage[i]; i++; } dst[i] = 0; boot_n++;
     char b[32];
     gfx_text(8, 8, 1, "BORE 2 STARTING", 255, 255, 255);
     int free_k = (int)((0x801FFFF0u - 0x10000u - (u32)_end) / 1024);   // (the last 64 KB below the stack top is left for the stack itself)
     sprintf(b, "RAM FREE %dK", free_k);
     gfx_text(8, 22, 1, b, 255, free_k < 32 ? 60 : 220, free_k < 32 ? 60 : 80);
-    for (int i = 0; i < boot_n; i++) gfx_text(8, 40 + i * 12, 1, boot_log[i], 120, 255, 120);
+    int first = boot_n > BOOT_SHOW ? boot_n - BOOT_SHOW : 0;
+    for (int k = first; k < boot_n; k++) gfx_text(8, 36 + (k - first) * 12, 1, boot_log[k % BOOT_KEEP], 120, 255, 120);
     gfx_flip();
+    DrawSync(0);   // let the GPU finish the boot frame before the next texture upload (an upload queued behind a frame in flight)
 }
 
 int main(void) {
