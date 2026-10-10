@@ -89,6 +89,7 @@ int look_tab_rows(int tab, const LookRow **rows) {
 static u32 rng_state = 0x1234567;
 u32 look_rand(void) { rng_state = rng_state * 1103515245u + 12345u; return rng_state >> 8; }
 static int rnd8(void) { return (int)(look_rand() & 255); }
+u32 look_seed(u32 s) { u32 old = rng_state; rng_state = s; return old; }   // reseed the dice (returns the old state, so a caller can put it back)
 
 static void wp_avg_init(void) {
     for (int i = 0; i < NWP; i++) {

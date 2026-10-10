@@ -7,6 +7,7 @@
 #include "items.h"
 #include "world.h"
 #include "sim.h"
+#include "citizens.h"
 #include "wants.h"
 #include "audio.h"
 #include "font.h"
@@ -78,7 +79,7 @@ static int life_started;
 static int help_page;
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
-static char pie_opt[8][16]; static int pie_n, pie_sel;   // the pie menu
+static char pie_opt[8][16]; static int pie_n, pie_sel, pie_cit;   // the pie menu
 static int panel_tab;                                      // the Bore panel's tab
 
 static void draw_panel(int x, int y, int w, int h) {
@@ -189,6 +190,7 @@ static void start_life(void) {
     look_default(&b); b.stage = AG_CHILD; look_random(&b); sim_add(&b, px - 1, py + 2, 1);
     life_started = 1;
     story_paid = 0; story_talks = 0; story_visit[0] = 1; story_visit[1] = 0; story_visit[2] = 0; story_visit[3] = 0;
+    citizens_init();   // a hundred civilians out in the island, the town and the city
     sim_note("WELCOME HOME. X USES THINGS.");
 }
 
@@ -222,6 +224,7 @@ static void draw_sims(void) {
         }
         if (s->action != ACT_SLEEP && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
+    citizens_draw();
     if (nsims && !sims[player].grump) draw_marker(&sims[player]);   // MOSS gets nothing. MOSS made that very clear.
     gfx_set_reserve(0);
 }
@@ -242,6 +245,7 @@ static void draw_bubbles(void) {   // thoughts and notes over heads
         gfx_text(sx - w / 2 + 4, sy - 10, 1, txt, s->note_t > 0 ? 40 : 200, 40, 40);
         gfx_rect(sx - 2, sy, 4, 3, 245, 245, 250, 0);
     }
+    citizens_draw_bubbles();
 }
 
 static void draw_mood_face(int x, int y, int m) {   // a little round face: the mood, like a Sims portrait's plumbob colour
@@ -279,6 +283,7 @@ static void hud_life(void) {
     gfx_text(238, 206, 1, b, m > 15 ? 140 : m > -15 ? 220 : 255, m > 15 ? 255 : m > -15 ? 220 : 110, 130);
     draw_mood_meter(238, 214, 76, s->mood);
     const char *hint = sim_hint();
+    { const char *ch = citizens_hint(); if (ch[0]) hint = ch; }
     if (hint[0]) { sprintf(b, "X: %s", hint); gfx_text(238, 223, 1, b, GOLD); }
     else gfx_text(238, 223, 1, "START: MENU", DIM);
     // the clock and the money, top right
@@ -300,6 +305,7 @@ static void hud_life(void) {
         if (wants_flash_t > 0) gfx_textc(160, 60, 2, wants_flash, wants_flash[0] == 'W' ? 120 : 255, wants_flash[0] == 'W' ? 255 : 110, 120);
     }
     feed_draw();
+    citizens_hud();
     if (frame < 900) gfx_textc(160, 160, 1, "STICK MOVES   L1 R1 ORBIT   L2 R2 ZOOM   X USES   SQUARE RUNS", GREY);
     if (show_fps) { extern int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block;
         sprintf(b, "%d FPS %d PRIMS W%d S%d L%d", fps_val, prims_last, t_world, t_sims, t_logic); gfx_text(140, 30, 1, b, 120, 255, 120);
@@ -323,15 +329,17 @@ static void life_update(int steps) {
     if (PRESSED(PAD_CROSS)) {   // X: busy - stop; otherwise the pie menu (one option: just do it)
         Sim *me = &sims[player];
         if (me->action != ACT_NONE && me->action != ACT_WALK) sim_player_interact();
-        else { pie_n = sim_pie_open(pie_opt);
-               if (pie_n == 1) sim_pie_do(0); else if (pie_n > 1) { pie_sel = 0; state = ST_PIE; } else audio_voice(VOICE_NAH); }
+        else if (citizens_punch()) { }   // a fight is on and someone is in reach
+        else { pie_cit = 1; pie_n = citizens_pie_open(pie_opt);   // a civilian in front of you first, then the things
+               if (!pie_n) { pie_cit = 0; pie_n = sim_pie_open(pie_opt); }
+               if (pie_n == 1) { if (pie_cit) citizens_pie_do(0); else sim_pie_do(0); } else if (pie_n > 1) { pie_sel = 0; state = ST_PIE; } else audio_voice(VOICE_NAH); }
     }
     if (PRESSED(PAD_CIRCLE)) sim_player_cancel();
     if (PRESSED(PAD_TRIANGLE)) { sim_speed = sim_speed % 3 + 1; }
     if (PRESSED(PAD_L3)) show_fps ^= 1;
     { extern int getenv_noshadow, dbg_noao, dbg_nograd; if (PRESSED(PAD_R3)) { static int mode; mode = (mode + 1) & 3; getenv_noshadow = mode == 1; dbg_noao = mode == 2; dbg_nograd = mode == 3; } }
     if (PRESSED(PAD_SELECT)) { sim_switch_player(); sim_note("NOW PLAYING AS THE NEXT BORE"); }
-    { int t0 = VSync(1); for (int k = 0; k < steps; k++) sim_step(); t_logic = VSync(1) - t0; }
+    { int t0 = VSync(1); for (int k = 0; k < steps; k++) sim_step(); citizens_update(steps); t_logic = VSync(1) - t0; }
     feed_poll();
     camera_input();
     if (PRESSED(PAD_START)) { state = ST_PAUSE; menu_sel = 0; }
@@ -373,6 +381,7 @@ static void travel_go(int z) {
         sm->x = (px + (i % 3)) * TILE + TILE / 2; sm->z = -((py + (i / 3)) * TILE + TILE / 2);
         sm->path_n = 0;
     }
+    citizens_enter(z);
     char b[40]; sprintf(b, "WELCOME TO %s", world_zone_name(z)); sim_note(b);
     audio_voice(VOICE_YAHOO);
 }
@@ -445,7 +454,7 @@ static void pie_update(void) {
         }
         pie_sel = best;
     }
-    if (PRESSED(PAD_CROSS)) { state = ST_LIFE; sim_pie_do(pie_sel); }
+    if (PRESSED(PAD_CROSS)) { state = ST_LIFE; if (pie_cit) citizens_pie_do(pie_sel); else sim_pie_do(pie_sel); }
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_TRIANGLE)) state = ST_LIFE;
 }
 static void pie_draw(void) {
@@ -456,7 +465,7 @@ static void pie_draw(void) {
         gfx_line(cx + ((isin(a0) * R) >> 12), cy - ((icos(a0) * R * 3 / 4) >> 12), cx + ((isin(a1) * R) >> 12), cy - ((icos(a1) * R * 3 / 4) >> 12), 70, 80, 100);
     }
     { int a = (pie_sel * 4096 / pie_n) & 4095; gfx_line(cx, cy, cx + ((isin(a) * R) >> 12), cy - ((icos(a) * R * 3 / 4) >> 12), GOLD); }
-    { const char *t = sim_pie_title(); int w = gfx_text_w(1, t) + 10; gfx_rect(cx - w / 2, cy - 6, w, 12, 13, 15, 21, 0); gfx_rect(cx - w / 2, cy + 5, w, 1, 255, 200, 40, 0); gfx_textc(cx, cy - 4, 1, t, GOLD); }
+    { const char *t = pie_cit ? citizens_pie_title() : sim_pie_title(); int w = gfx_text_w(1, t) + 10; gfx_rect(cx - w / 2, cy - 6, w, 12, 13, 15, 21, 0); gfx_rect(cx - w / 2, cy + 5, w, 1, 255, 200, 40, 0); gfx_textc(cx, cy - 4, 1, t, GOLD); }
     for (int i = 0; i < pie_n; i++) {
         int a = (i * 4096 / pie_n) & 4095, x = cx + ((isin(a) * R) >> 12), y = cy - ((icos(a) * R * 3 / 4) >> 12);
         int w = gfx_text_w(1, pie_opt[i]) + 14, sel = i == pie_sel;
