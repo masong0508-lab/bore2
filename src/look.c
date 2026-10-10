@@ -257,6 +257,7 @@ static void bake_face(Bore *b, int eye) {
     }
     TexRef *t = eye ? &b->tex_eye : &b->tex_mouth;
     if (!t->tpage) *t = atlas_alloc(aw, 8);
+    else if (t->w != aw) { if (aw > t->cap) *t = atlas_alloc(aw, 8); else t->w = (u8)aw; }   // a slot keeps its place when the new art fits (the crowd's face pool)
     atlas_upload(t, facebuf);
 }
 

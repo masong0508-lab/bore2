@@ -1,6 +1,8 @@
 // BORE 2 - the sequel to BORE (GBA), on the PlayStation. True 3D: the voxel people, the rooms and the items are real geometry.
 #include "common.h"
 #include "gfx.h"
+#include "pad.h"
+#include "crowd.h"
 #include "atlas.h"
 #include "look.h"
 #include "voxel.h"
@@ -19,6 +21,7 @@ static int ls_x, ls_y, rs_x, rs_y, analog;
 #define HELD(b) (!(btn & (b)))
 #define PRESSED(b) (!(btn & (b)) && (btn_prev & (b)))
 static void read_pad(void) {
+    pad_read(0, pad_buf[0]);
     PADTYPE *pad = (PADTYPE *)pad_buf[0];
     btn_prev = btn; btn = 0xffff; analog = 0; ls_x = ls_y = rs_x = rs_y = 0;
     if (pad->stat == 0 && (pad->type == 0x4 || pad->type == 0x5 || pad->type == 0x7)) {
@@ -433,8 +436,19 @@ static void travel_draw(void) {
 }
 
 // ---- the pause menu ----
-static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "THE STORY", "TRAVEL", "CREATE A BORE", "ADD A BORE", "BUILD MODE", "JUKEBOX", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
-#define NPAUSE 11
+static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "THE STORY", "TRAVEL", "CREATE A BORE", "ADD A BORE", "THROW A PARTY", "BUILD MODE", "JUKEBOX", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
+#define NPAUSE 12
+void throw_party(void) {   // (also the phone's THROW A PARTY)
+    if (citizens_party_on()) { sim_note("A PARTY IS ALREADY ON"); return; }
+    if (cash < 100) { sim_note("A PARTY COSTS $100"); audio_voice(VOICE_NAH); return; }
+    int n = citizens_party();
+    if (n <= 0) { sim_note("NO ROOM TO DANCE HERE"); audio_voice(VOICE_NAH); return; }
+    cash -= 100;
+    char b[40]; sprintf(b, "PARTY! %d GUESTS ARE COMING", n); sim_note(b);
+    audio_station_play(1);                                            // RAVE 101
+    audio_voice(VOICE_YAHOO);
+    for (int i = 0; i < nsims; i++) sim_moodlet(&sims[i], 15);        // FUN TIME
+}
 static void pause_update(void) {
     if (PRESSED(PAD_UP)) menu_sel = (menu_sel + NPAUSE - 1) % NPAUSE;
     if (PRESSED(PAD_DOWN)) menu_sel = (menu_sel + 1) % NPAUSE;
@@ -448,11 +462,12 @@ static void pause_update(void) {
             case 4: edit = sims[player].bore; create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
             case 5: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); state = ST_LIFE; } break;
-            case 6: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); state = ST_BUILD; break;
-            case 7: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
-            case 8: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 9: life_started = 0; start_life(); state = ST_LIFE; break;
-            case 10: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; break;
+            case 6: throw_party(); state = ST_LIFE; break;
+            case 7: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); state = ST_BUILD; break;
+            case 8: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
+            case 9: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
+            case 10: life_started = 0; start_life(); state = ST_LIFE; break;
+            case 11: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; break;
         }
     }
 }
@@ -974,6 +989,9 @@ static void title_update(void) {
     title_t++;
     if (PRESSED(PAD_START) || PRESSED(PAD_CROSS)) { state = ST_MENU; menu_sel = 0; audio_voice(VOICE_YAHOO); }
 }
+#ifdef BENCH
+int bench_res[8];
+#endif
 static void title_draw(void) {
     gfx_set_clear(10, 8, 30);
     gfx_set_ambient(96, 86);
@@ -989,6 +1007,38 @@ static void title_draw(void) {
     VECTOR p; setVector(&p, fx, 0, fz);
     Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (title_t * 120) & 4095; g.amp = 4096;
     voxel_draw(&title_bore, &p, (title_t * 9) & 4095, &g);
+#ifdef BENCH
+    {   // (bench) what a person costs, in hblanks: build, prepare, draw (full), draw (crowd)
+        extern int bench_res[8]; static Bore bb; static int done;
+        if (title_t == 80 && !done) {
+            done = 1; look_default(&bb);
+            int t0 = VSync(1); look_random(&bb); bench_res[0] = VSync(1) - t0;
+            t0 = VSync(1); voxel_prepare(&bb); bench_res[1] = VSync(1) - t0;
+            t0 = VSync(1); look_build(&bb); bench_res[7] = VSync(1) - t0;
+            bench_res[6] = bb.ncell;
+            int mx = 0, my = 0, mz = 0, mc = 0;
+            for (int r = 0; r < 40; r++) {
+                bb.stage = (u8)(r % 5); look_random(&bb); if (bb.ncell > mc) mc = bb.ncell;
+                for (int i = 0; i < bb.ncell; i++) for (int k = 0; k < 8; k++) {
+                    const SVECTOR *c = &bb.cell[i].c[k]; int x = bb.cell[i].x, y = bb.cell[i].y, z = bb.cell[i].z;
+                    int nx = (x - 3 + (k & 1)) * VOX, ny = (k < 4) ? -(y + 1) * VOX : -y * VOX, nz = (z - 2 + ((k >> 1) & 1)) * VOX;
+                    int dx = ABS(c->vx - nx), dy = ABS(c->vy - ny), dz = ABS(c->vz - nz);
+                    if (dx > mx) mx = dx; if (dy > my) my = dy; if (dz > mz) mz = dz;
+                }
+            }
+            bench_res[2] = mx; bench_res[3] = my; bench_res[4] = mz; bench_res[5] = mc;
+        }
+        if (title_t >= 230 && title_t < 240) {
+            VECTOR q = p;
+            extern int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block, vox_n_rad;
+            vox_t_hair = vox_t_block = vox_t_face = vox_n_hair = vox_n_block = vox_n_rad = 0;
+            int t0 = VSync(1); voxel_draw(&bb, &q, 0, &g); bench_res[2] = VSync(1) - t0; bench_res[3] = voxel_quads();
+            bench_res[6] = vox_t_face * 1000000 + vox_n_hair * 10000 + vox_t_block * 100 + vox_t_hair;
+            LodBore lb; t0 = VSync(1); voxel_lod_build(&bb, &lb); bench_res[4] = VSync(1) - t0;
+            t0 = VSync(1); voxel_draw_lod(&lb, &q, 0, &g); bench_res[5] = VSync(1) - t0;
+        }
+    }
+#endif
     gfx_shadow(&p, 70);
     gfx_textc(160, 14, 3, "BORE 2", GOLD);
     gfx_textc(160, 52, 1, "DIPPINN PRODUCTIONS", GREY);
@@ -1028,9 +1078,8 @@ int main(void) {
     items_init();
     world_init();
     audio_init();
-    InitPAD(pad_buf[0], 34, pad_buf[1], 34);
-    StartPAD();
-    ChangeClearPAD(0);
+    pad_init();                                      // (the pad is read directly in read_pad: see pad.c)
+    crowd_init();                                    // the voice clips are in the sound chip now: their RAM holds the crowd's models
     look_default(&edit);
     look_default(&title_bore); look_random(&title_bore);
     world_gen();

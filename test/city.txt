@@ -1,0 +1,14 @@
+150 start
+190 b
+420 start
+440 down
+450 down
+460 down
+470 b
+490 down
+500 down
+510 down
+520 b
+800 shot
+1000 l3
+1300 shot

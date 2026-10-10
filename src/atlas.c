@@ -23,7 +23,7 @@ static TexRef alloc_in(int first, int last, int w, int h) {
         if (w > pw) continue;
         if (pg[i].x + aw + 1 > pw) { pg[i].x = 0; pg[i].y += pg[i].rowh + 1; pg[i].rowh = 0; }
         if (pg[i].y + h + 1 > ph) continue;
-        t.tpage = pg[i].tpage; t.u = (u8)pg[i].x; t.v = (u8)pg[i].y; t.w = (u8)w; t.h = (u8)h;
+        t.tpage = pg[i].tpage; t.u = (u8)pg[i].x; t.v = (u8)pg[i].y; t.w = (u8)w; t.h = (u8)h; t.cap = (u8)w;
         pg[i].x += aw + 1;
         if (h > pg[i].rowh) pg[i].rowh = h;
         used += aw * h;

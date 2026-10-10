@@ -9,9 +9,9 @@ project(
 )
 
 psn00bsdk_add_executable(bore2 GPREL
-	src/main.c src/gfx.c src/atlas.c src/look.c src/voxel.c src/items.c src/world.c src/sim.c src/wants.c src/citizens.c src/audio.c src/font.c src/fmt.c)
+	src/main.c src/gfx.c src/atlas.c src/look.c src/voxel.c src/items.c src/world.c src/sim.c src/wants.c src/citizens.c src/audio.c src/font.c src/fmt.c src/pad.c src/crowd.c)
 target_include_directories(bore2 PRIVATE src assets)
-target_compile_options(bore2 PRIVATE -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-misleading-indentation -Wno-parentheses -O2)
+target_compile_options(bore2 PRIVATE -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-misleading-indentation -Wno-parentheses -Wno-strict-aliasing -fno-strict-aliasing -O2)
 
 # the voice clips (SPU ADPCM blob made by tools/build_audio.py)
 psn00bsdk_target_incbin(bore2 PRIVATE voices_bin assets/voices.bin)

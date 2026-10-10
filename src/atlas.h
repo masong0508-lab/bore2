@@ -3,7 +3,7 @@
 #pragma once
 #include "common.h"
 
-typedef struct { u16 tpage; u8 u, v, w, h; } TexRef;
+typedef struct { u16 tpage; u8 u, v, w, h, cap; } TexRef;   // cap: the allocated width (a slot can hold narrower art)
 
 void   atlas_init(void);
 TexRef atlas_alloc(int w, int h);

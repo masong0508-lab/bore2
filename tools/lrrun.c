@@ -20,6 +20,7 @@ static void (*p_retro_set_video_refresh)(retro_video_refresh_t);
 static void (*p_retro_set_audio_sample)(retro_audio_sample_t);
 static void (*p_retro_set_audio_sample_batch)(retro_audio_sample_batch_t);
 static void (*p_retro_set_input_poll)(retro_input_poll_t);
+static void *(*p_retro_get_memory_data)(unsigned); static size_t (*p_retro_get_memory_size)(unsigned);
 static void (*p_retro_set_input_state)(retro_input_state_t);
 static bool (*p_retro_load_game)(const struct retro_game_info *);
 static void (*p_retro_run)(void);
@@ -106,7 +107,7 @@ int main(int argc, char **argv) {
     if (!h) { fprintf(stderr, "dlopen: %s\n", dlerror()); return 1; }
 #define L(n) *(void **)(&p_##n) = dlsym(h, #n)
     L(retro_init); L(retro_deinit); L(retro_set_environment); L(retro_set_video_refresh); L(retro_set_audio_sample);
-    L(retro_set_audio_sample_batch); L(retro_set_input_poll); L(retro_set_input_state); L(retro_load_game); L(retro_run); L(retro_get_system_av_info);
+    L(retro_set_audio_sample_batch); L(retro_set_input_poll); L(retro_set_input_state); L(retro_load_game); L(retro_run); L(retro_get_system_av_info); L(retro_get_memory_data); L(retro_get_memory_size);
     int frames = atoi(argv[3]);
     strncpy(outprefix, argv[4], sizeof outprefix - 1);
     // the script: "frame button" presses (held 8 frames) and "frame shot"
@@ -142,6 +143,11 @@ int main(int argc, char **argv) {
     }
     for (int k = 0; k < 8 && want_shot; k++) { frame_no++; p_retro_run(); }   // a dupe at the end: run on until a real frame comes
     fprintf(stderr, "frames: %d drawn, %d dupes; audio %ld calls %ld frames\n", frames_seen, frames_null, audio_calls, audio_frames); if (audio_out) fclose(audio_out);
+    {   // the PS1's RAM at the end, for post-mortems (<prefix>_ram.bin). (The core may map it at address 0: a NULL is a real base.)
+        unsigned char *ram = p_retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM); size_t n = p_retro_get_memory_size(RETRO_MEMORY_SYSTEM_RAM);
+        char rp[600]; snprintf(rp, sizeof rp, "%s_ram.bin", outprefix); FILE *f = n ? fopen(rp, "wb") : 0;
+        if (f) { fwrite(ram, 1, n, f); fclose(f); }
+    }
     p_retro_deinit();
     return 0;
 }

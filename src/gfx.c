@@ -15,7 +15,7 @@ static int  db_active = 0;
 static int  alloc_reserve;        // bytes of the packet buffer gfx_alloc keeps back (gfx_set_reserve)
 char *gfx_pk_next, *gfx_pk_end;   // the packet cursor and its limit (the end, less the reserve): gfx_fast.h allocates inline
 u32 *gfx_ot_cur;                   // this frame's ordering table
-int gfx_zbias, gfx_fog_on;
+int gfx_zbias, gfx_fog_on, gfx_zbase, gfx_ot_max = OT_LEN - 1;
 #define db_next gfx_pk_next
 static RECT screen_clip;
 static u32 *ui_head, *ui_tail;    // the 2D overlay chain, drawn after everything in call order
@@ -130,7 +130,7 @@ void *gfx_alloc(int bytes) {
     db_next = p + ((bytes + 3) & ~3);
     return p;
 }
-u32 *gfx_ot(void) { return db[db_active].ot; }
+u32 *gfx_ot(void) { return gfx_ot_cur; }   // (the frame's table, or a person's while it is rendered into a sprite)
 int  gfx_prims_left(void) { return (int)(db[db_active].p + PACKET_LEN - db_next); }
 
 // ------------------------------------------------------------------ camera
@@ -249,9 +249,9 @@ void gfx_set_zbias(int b) { zbias = b; }
 int gfx_floor_pass;                       // set while drawing the floor: it goes to the very back (nothing is ever under it), so shadows can lie on it
 static inline int ot_index(int otz) {
     if (gfx_floor_pass) return OT_FLOOR;
-    int i = (otz >> OT_SHIFT) - zbias;
+    int i = (otz >> OT_SHIFT) - zbias - gfx_zbase;
     if (i < 1) i = 1;
-    if (i >= OT_LEN) i = OT_LEN - 1;
+    if (i > gfx_ot_max) i = gfx_ot_max;
     return i;
 }
 
@@ -394,6 +394,13 @@ int gfx_quad_gt(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVEC
 // GTE) into an XV, and the faces are emitted from those, with the back-face test done on the CPU from the screen positions. The colours
 // handed in are already graded (gfx_grade_*), so emitting is a handful of stores.
 void gfx_xform(const SVECTOR *v, XV *o, int n) {
+    // the GTE loads words: an SVECTOR array that sits on a 2-byte boundary (they are structs of shorts) would crash a real
+    // PlayStation with an address error. Such an array is copied to an aligned one first (callers declare theirs SVEC_ALIGN).
+    if ((u32)v & 3) {
+        static SVECTOR tmp[64] SVEC_ALIGN;
+        for (int k = 0; k < n; k += 64) { int m = MIN(64, n - k); memcpy(tmp, v + k, m * sizeof(SVECTOR)); gfx_xform(tmp, o + k, m); }
+        return;
+    }
     int i = 0;
     for (; i + 3 <= n; i += 3) {
         gte_ldv3c((SVECTOR *)&v[i]);
@@ -553,3 +560,68 @@ void gfx_text_old(int x, int y, int scale, const char *s, int r, int g, int b) {
     }
 }
 void gfx_textc(int cx, int y, int scale, const char *s, int r, int g, int b) { gfx_text(cx - gfx_text_w(scale, s) / 2, y, scale, s, r, g, b); }
+
+
+// ------------------------------------------------------------------ people as sprites (render-to-texture)
+// A person far enough off is drawn as a sprite: the full model, rendered (with the scene's own camera, so the very same pixels)
+// into a 48x64 cell of the free VRAM under the screens (x 0..623, y 256..511), then shown as one textured quad until it is
+// redrawn. Each render is a small display list of its own, queued to the GPU at once: it runs before this frame's scene
+// (the scene is queued at the flip), so the scene's sprite quads always find the fresh pixels.
+static u32 *imp_ot, *imp_keep_ot; static int imp_keep_max, imp_keep_base, imp_scaled;
+#define IMP_OT 128
+#ifndef IMP_FILL
+#define IMP_FILL 0
+#endif
+int gfx_imp_begin(int cx, int cy, int cw, int ch, int ox, int oy, int zmid, int hscale) {
+    u32 *ot = (u32 *)gfx_alloc(IMP_OT * 4); if (!ot) return 0;
+    u32 *hd = (u32 *)gfx_alloc(9 * 4); u32 *tl = (u32 *)gfx_alloc(3 * 4);
+    if (!hd || !tl) return 0;
+    ClearOTagR(ot, IMP_OT);
+    // the head (drawn first): draw mode, the cell as the drawing area, the offset that puts the person into it, set-mask on
+    // (every drawn pixel gets bit 15, so even black is not see-through), and the cell cleared to 0 (see-through)
+    hd[1] = 0xE1000000u | 0x200 | 0x400;
+    hd[2] = 0xE3000000u | (u32)cx | ((u32)cy << 10);
+    hd[3] = 0xE4000000u | (u32)(cx + cw - 1) | ((u32)(cy + ch - 1) << 10);
+    hd[4] = 0xE5000000u | ((u32)ox & 0x7ff) | (((u32)oy & 0x7ff) << 11);
+    hd[5] = 0xE6000001u;
+    hd[6] = 0x02000000u | IMP_FILL; hd[7] = (u32)cx | ((u32)cy << 16); hd[8] = (u32)cw | ((u32)ch << 16);
+    hd[0] = (8u << 24) | (ot[IMP_OT - 1] & 0xffffff); ot[IMP_OT - 1] = (u32)hd & 0xffffff;
+    // the tail (drawn last): set-mask off, flush the texture cache (the cell is a texture from here on)
+    tl[1] = 0xE6000000u; tl[2] = 0x01000000u;
+    tl[0] = (2u << 24) | (ot[0] & 0xffffff); ot[0] = (u32)tl & 0xffffff;
+    imp_keep_ot = gfx_ot_cur; imp_keep_max = gfx_ot_max; imp_keep_base = gfx_zbase;
+    gfx_ot_cur = ot; gfx_ot_max = IMP_OT - 1; gfx_zbase = (zmid >> OT_SHIFT) - IMP_OT / 2;
+    imp_ot = ot; imp_scaled = hscale != 4096;
+    if (imp_scaled) gte_SetGeomScreen((230 * hscale) >> 12);
+    return 1;
+}
+int imp_dbg[8];
+void gfx_imp_end(void) {
+    { int n = 0, n127 = 0; u32 a = imp_ot[IMP_OT - 1] & 0xffffff; while (a != 0xffffff && n < 5000) { u32 w = *(u32 *)(a | 0x80000000u); if (w >> 24) n++; a = w & 0xffffff; }
+      u32 b = imp_ot[IMP_OT - 1] & 0xffffff; while (b != 0xffffff && (b | 0x80000000u) != (u32)&imp_ot[IMP_OT - 2]) { n127++; b = *(u32 *)(b | 0x80000000u) & 0xffffff; }
+      imp_dbg[0] = n; imp_dbg[1] = n127; imp_dbg[2] = gfx_zbase; }
+    if (imp_scaled) gte_SetGeomScreen(230);
+    gfx_ot_cur = imp_keep_ot; gfx_ot_max = imp_keep_max; gfx_zbase = imp_keep_base;
+    DrawOTag(imp_ot + IMP_OT - 1);
+}
+// the sprite: cell (cx,cy) texels (tw x th) shown at screen (x,y) w x h, at depth otz; dx = a shear of the top edge (a sway)
+void gfx_imp_sprite(int cx, int cy, int tw, int th, int x, int y, int w, int h, int otz, int dx) {
+    u32 *q = (u32 *)gfx_alloc(10 * 4); if (!q) return;
+    int bx = cx & ~63, u = cx - bx, v = cy - 256;
+    u32 tp = (u32)getTPage(2, 0, bx, 256);
+    q[1] = 0x2D808080u;                                                    // textured, raw (the pixels as rendered)
+    q[2] = (u32)((x + dx) & 0xffff) | ((u32)(y & 0xffff) << 16);           q[3] = (u32)u | ((u32)v << 8);
+    q[4] = (u32)((x + w + dx) & 0xffff) | ((u32)(y & 0xffff) << 16);       q[5] = (u32)(u + tw - 1) | ((u32)v << 8) | (tp << 16);
+    q[6] = (u32)(x & 0xffff) | ((u32)((y + h) & 0xffff) << 16);           q[7] = (u32)u | ((u32)(v + th - 1) << 8);
+    q[8] = (u32)((x + w) & 0xffff) | ((u32)((y + h) & 0xffff) << 16);     q[9] = (u32)(u + tw - 1) | ((u32)(v + th - 1) << 8);
+    int i = ot_index(otz);
+    q[0] = (9u << 24) | (gfx_ot_cur[i] & 0xffffff); gfx_ot_cur[i] = (u32)q & 0xffffff;
+    gfx_frame_prims++;
+}
+// a point's screen position and depth under the camera (world space), by the GTE itself (so it matches the drawing exactly)
+int gfx_proj(int wx, int wy, int wz, int *sx, int *sy) {
+    SVECTOR v SVEC_ALIGN; setVector(&v, wx, wy, wz);
+    gte_SetRotMatrix(&cam.view); gte_SetTransMatrix(&cam.view);
+    int z; if (!gfx_project(&v, sx, sy, &z)) return 0;
+    return z;
+}

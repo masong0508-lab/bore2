@@ -47,7 +47,13 @@ extern int gfx_frame_prims, gfx_profn[8], gfx_profn_last[8];
 
 // ---- the fast path: transform shared corners once (XV), then emit faces from them; colours already graded ----
 int  gfx_visible(int wx, int wy, int wz, int r);   // a world-space sphere inside the view?
-typedef struct { short x, y; int z; } XV;     // a transformed vertex: screen x, y and view depth
+#define SVEC_ALIGN __attribute__((aligned(8)))   // SVECTOR arrays the GTE loads (lwc2 needs word alignment)
+typedef struct { short x, y; int z; } XV;
+// people as sprites (render-to-texture, see gfx.c)
+int  gfx_imp_begin(int cx, int cy, int cw, int ch, int ox, int oy, int zmid, int hscale);   // then draw the person, then:
+void gfx_imp_end(void);
+void gfx_imp_sprite(int cx, int cy, int tw, int th, int x, int y, int w, int h, int otz, int dx);
+int  gfx_proj(int wx, int wy, int wz, int *sx, int *sy);   // screen position; returns the depth (0 behind the eye)     // a transformed vertex: screen x, y and view depth
 void gfx_xform(const SVECTOR *v, XV *o, int n);
 u32  gfx_grade_flat(u32 rgb);                 // a lit colour (0xBBGGRR) as the flat/gouraud prims show it
 u32  gfx_grade_tex(u32 rgb);                  // ... as the textured prims show it (128 = the texture as it is)

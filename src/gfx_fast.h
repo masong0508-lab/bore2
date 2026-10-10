@@ -5,7 +5,7 @@
 #define GFX_FAST_H
 extern char *gfx_pk_next, *gfx_pk_end;
 extern u32 *gfx_ot_cur;
-extern int gfx_zbias, gfx_fog_on, gfx_floor_pass, gfx_frame_prims, gfx_overflow;
+extern int gfx_zbias, gfx_zbase, gfx_ot_max, gfx_fog_on, gfx_floor_pass, gfx_frame_prims, gfx_overflow;
 u32 gfx_fog_apply(u32 c, int otz);
 
 static inline int xv_outcode(int x, int y) { return (x < 0 ? 1 : x >= SCREEN_W ? 2 : 0) | (y < 0 ? 4 : y >= SCREEN_H ? 8 : 0); }
@@ -32,7 +32,7 @@ static inline u32 *xv_alloc(int words) {
 static inline void xv_link(u32 *q, int n, int otz) {
     int i;
     if (gfx_floor_pass) i = OT_FLOOR;
-    else { i = (otz >> OT_SHIFT) - gfx_zbias; if (i < 1) i = 1; else if (i >= OT_LEN) i = OT_LEN - 1; }
+    else { i = (otz >> OT_SHIFT) - gfx_zbias - gfx_zbase; if (i < 1) i = 1; else if (i > gfx_ot_max) i = gfx_ot_max; }   // (zbase, ot_max: a person rendered into its own small table)
     u32 *o = gfx_ot_cur + i;
     q[0] = ((u32)n << 24) | (*o & 0xffffff); *o = (u32)q & 0xffffff;
     gfx_frame_prims++;

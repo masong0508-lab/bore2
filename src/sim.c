@@ -775,7 +775,7 @@ static int sim_pie_open_(char opt[8][16]) {
         case ACT_RUN: OPT("JOG", 0) OPT("SPRINT", 1) break;
         case ACT_COFFEE: OPT("A CUP", 0) OPT("ESPRESSO", 1) break;
         case ACT_READ: OPT("READ", 0) OPT("STUDY", 1) break;
-        case ACT_PHONE: OPT("CALL A FRIEND", 0) OPT("ORDER PIZZA", 1) break;
+        case ACT_PHONE: OPT("CALL A FRIEND", 0) OPT("ORDER PIZZA", 1) OPT("THROW A PARTY", 2) break;
         case ACT_STAIRS: OPT("GO UP", 0) break;
         case ACT_FUN: if (c == 'R' || c == 'A' || c == 'j') {   // a radio: the stations
                           for (int k = 0; k < audio_station_count(); k++) OPT(audio_station_name(k), 10 + k)
@@ -842,6 +842,7 @@ static void sim_pie_do_(int i) {
     }
     if (act == ACT_TRAVEL) { travel_asked = 1; return; }
     if (act == ACT_PHONE && pie_code[i] == 1) { if (cash < 40) { sim_note("PIZZA IS $40"); return; } cash -= 40; }
+    if (act == ACT_PHONE && pie_code[i] == 2) { extern void throw_party(void); throw_party(); return; }
     begin_action(s, act, pie_mx, pie_my);
     s->act_var = pie_code[i];
     if (act == ACT_SLEEP && s->act_var == 1) s->act_t = 300;              // a nap: an hour or so
