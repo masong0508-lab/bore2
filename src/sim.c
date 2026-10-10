@@ -4,6 +4,7 @@
 #include "world.h"
 #include "items.h"
 #include "audio.h"
+#include "gfx.h"
 
 Sim  sims[MAX_SIMS];
 int  nsims, player;

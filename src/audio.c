@@ -105,7 +105,9 @@ static void seq_row(void) {
         if (++sq_ord >= (int)sq->nord) { sq_ord = (int)sq->loop; sq_laps++; }
     }
 }
+extern void prof_sample(void);
 static void seq_tick(void) {
+    prof_sample();
     if (!sq_on) return;
     sq_acc += MIXR * 256;
     while (sq_acc >= sq_rowlen) { sq_acc -= sq_rowlen; seq_row(); }

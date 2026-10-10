@@ -77,6 +77,8 @@ static int build_tool, build_item, build_x = 8, build_y = 8, build_fl = 1, build
 static int juke_sel, juke_scroll;
 static int life_started;
 static int help_page;
+static int hb_now(void) { return VSync(1); }   // hblanks since the last VSync(0) (the flip): 263 per vblank, 525 = one 30 FPS frame
+static int t_cpu, t_frame0, t_bub, t_hud, t_upd;
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
 static char pie_opt[8][16]; static int pie_n, pie_sel, pie_cit;   // the pie menu
@@ -212,6 +214,7 @@ static void draw_sims(void) {
     for (int i = 0; i < nsims; i++) {
         Sim *s = &sims[i];
         if (s->lvl > world_view_lvl) continue;                      // upstairs, out of the floor view
+        if (!gfx_visible(s->x, -110 - s->lvl * WALL_FULL, s->z, 150)) continue;   // off the screen
         VECTOR p; setVector(&p, s->x, 0, s->z);
         if (s->action == ACT_SLEEP) p.vy = -items_height('S') + 40;
         if (s->action == ACT_SIT || s->action == ACT_WC) p.vy = -items_height(world_at(s->act_x, s->act_y)) / 2 + 10;
@@ -219,8 +222,11 @@ static void draw_sims(void) {
         p.vy -= s->lvl * WALL_FULL;
         {   // far from where you are looking: the same person at half the voxel resolution (the crowd model); close up, the full model
             int fdx = s->x - cam.at.vx, fdz = s->z - cam.at.vz;
-            if (i != player && fdx * fdx + fdz * fdz > LOD_DIST * LOD_DIST) { LodBore lb; voxel_lod_build(&s->bore, &lb); voxel_draw_lod(&lb, &p, s->yaw, &s->gait); }
+            PROF_BEGIN();
+            int edx = s->x - cam.eye.vx, edy = -110 - s->lvl * WALL_FULL - cam.eye.vy, edz = s->z - cam.eye.vz;
+            if (i != player && (fdx * fdx + fdz * fdz > LOD_DIST * LOD_DIST || edx * edx + edy * edy + edz * edz > 2900 * 2900)) { LodBore lb; voxel_lod_build(&s->bore, &lb); voxel_draw_lod(&lb, &p, s->yaw, &s->gait); }
             else voxel_draw(&s->bore, &p, s->yaw, &s->gait);
+            PROF_END(4);
         }
         if (s->action != ACT_SLEEP && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
@@ -308,9 +314,23 @@ static void hud_life(void) {
     citizens_hud();
     if (frame < 900) gfx_textc(160, 160, 1, "STICK MOVES   L1 R1 ORBIT   L2 R2 ZOOM   X USES   SQUARE RUNS", GREY);
     if (show_fps) { extern int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block;
-        gfx_rect(2, 57, 150, 22, 0, 0, 0, 0);
+        gfx_rect(2, 57, 316, 86, 0, 0, 0, 0);
         sprintf(b, "%d FPS  %d PRIMS %dK%s", fps_val, gfx_last_prims, gfx_last_bytes >> 10, gfx_last_overflow ? " FULL!" : ""); gfx_text(6, 60, 1, b, 120, 255, 120);
-        sprintf(b, "WORLD %d BORES %d SIM %d", t_world, t_sims, t_logic); gfx_text(6, 69, 1, b, 120, 255, 120);
+        { extern int gfx_last_wait; static int mx_, mx_shown, mx_n; if (t_cpu > mx_) mx_ = t_cpu; if (++mx_n >= 60) { mx_shown = mx_; mx_ = 0; mx_n = 0; }
+          static int mw, ms, ml, mu, mbb, mh, mws, mss, mls, mus, mbs, mhs; if (t_world > mw) mw = t_world; if (t_sims > ms) ms = t_sims; if (t_logic > ml) ml = t_logic;
+          if (t_upd > mu) mu = t_upd; if (t_bub > mbb) mbb = t_bub; if (t_hud > mh) mh = t_hud;
+          if (mx_n == 0) { mws = mw; mss = ms; mls = ml; mus = mu; mbs = mbb; mhs = mh; mw = ms = ml = mu = mbb = mh = 0; }
+          sprintf(b, "MAX%d W%d B%d S%d U%d BB%d H%d", mx_shown, mws, mss, mls, mus, mbs, mhs); }
+        gfx_text(6, 69, 2, b, 120, 255, 120);
+        { extern int cit_n_full, cit_n_lod; sprintf(b, "FL%d/%d WA%d/%d IT%d/%d RF%d/%d", gfx_prof_last[0], gfx_profn_last[0], gfx_prof_last[1], gfx_profn_last[1], gfx_prof_last[2], gfx_profn_last[2], gfx_prof_last[3], gfx_profn_last[3]);
+        gfx_text(6, 88, 2, b, 255, 255, 120); sprintf(b, "SM%d/%d CF%d/%d CL%d/%d X%d", gfx_prof_last[4], gfx_profn_last[4], gfx_prof_last[5], gfx_profn_last[5], gfx_prof_last[6], gfx_profn_last[6], gfx_prof_last[7]); }
+        gfx_text(6, 106, 2, b, 255, 255, 120);
+        { extern int vox_n_rad; sprintf(b, "JNT%d PREP%d LUT%d RAD%d CELLS%d FH%d", vox_t_face, vox_n_hair, vox_n_block, vox_n_rad, vox_t_block, vox_t_hair); vox_n_rad = 0; } gfx_text(6, 124, 2, b, 255, 200, 200); if (0) gfx_text(6, 69, 2, b, 120, 255, 120);
+        { extern int prof_on, prof_total; extern int prof_top(int, u32 *); prof_on = 1;   // the sampling profiler's busiest code (addresses: nm -n bore2.elf)
+          static char pl[9][16]; static int pn;
+          if ((frame & 127) == 0) { pn = 0; for (int k = 0; k < 9; k++) { u32 ad = 0; int n = prof_top(k, &ad); if (!n) break; sprintf(pl[k], "%05X %d", (unsigned)(ad & 0xfffff), n * 1000 / (prof_total ? prof_total : 1)); pn = k + 1; } }
+          gfx_rect(0, 143, 320, 44, 0, 0, 0, 0);
+          for (int k = 0; k < pn; k++) gfx_text(4 + (k % 3) * 106, 145 + (k / 3) * 14, 1, pl[k], 255, 255, 255); }
         vox_t_hair = vox_t_block = vox_t_face = vox_n_hair = vox_n_block = 0; }
 }
 
@@ -341,7 +361,7 @@ static void life_update(int steps) {
     if (PRESSED(PAD_L3)) show_fps ^= 1;
     { extern int getenv_noshadow, dbg_noao, dbg_nograd; if (PRESSED(PAD_R3)) { static int mode; mode = (mode + 1) & 3; getenv_noshadow = mode == 1; dbg_noao = mode == 2; dbg_nograd = mode == 3; } }
     if (PRESSED(PAD_SELECT)) { sim_switch_player(); sim_note("NOW PLAYING AS THE NEXT BORE"); }
-    { int t0 = VSync(1); for (int k = 0; k < steps; k++) sim_step(); citizens_update(steps); t_logic = VSync(1) - t0; }
+    { int t0 = hb_now(); for (int k = 0; k < steps; k++) sim_step(); citizens_update(steps); t_logic = hb_now() - t0; }
     feed_poll();
     camera_input();
     if (PRESSED(PAD_START)) { state = ST_PAUSE; menu_sel = 0; }
@@ -366,11 +386,11 @@ static void life_draw(void) {
         gfx_sky((u32)tr | ((u32)tg << 8) | ((u32)tb << 16), (u32)br | ((u32)bg << 8) | ((u32)bb << 16));
     }
     gfx_prim_count = 0;
-    { int t0 = VSync(1); world_draw(sim_tile_x(s), sim_tile_y(s), frame, 1); t_world = VSync(1) - t0;
-      t0 = VSync(1); gfx_prim_count = 0; draw_sims(); t_sims = VSync(1) - t0; }
-    draw_bubbles();
+    { int t0 = hb_now(); world_draw(sim_tile_x(s), sim_tile_y(s), frame, 1); t_world = hb_now() - t0;
+      t0 = hb_now(); gfx_prim_count = 0; draw_sims(); t_sims = hb_now() - t0; }
+    { int t0 = hb_now(); draw_bubbles(); t_bub = hb_now() - t0; }
     prims_last = gfx_prim_count;
-    hud_life();
+    { int t0 = hb_now(); hud_life(); t_hud = hb_now() - t0; }
 }
 
 // ---- travel between the zones ----
@@ -1018,6 +1038,7 @@ int main(void) {
     audio_jukebox_play(0);   // THE DIPPER MAN, the title song (as on the GBA)
     t_vb = VSync(-1);
     while (1) {
+        t_frame0 = hb_now();
         read_pad();
         int now = VSync(-1), steps = now - t_vb; t_vb = now;
         steps = CLAMP(steps, 1, 4);
@@ -1028,7 +1049,7 @@ int main(void) {
             case ST_TITLE: title_update(); title_draw(); break;
             case ST_MENU: menu_update(); menu_draw(); break;
             case ST_CREATE: create_update(); create_draw(); break;
-            case ST_LIFE: life_update(steps); life_draw(); break;
+            case ST_LIFE: { int t0 = hb_now(); life_update(steps); t_upd = hb_now() - t0; } life_draw(); break;
             case ST_PAUSE: pause_update(); pause_draw(); break;
             case ST_BUILD: build_update(); build_draw(); break;
             case ST_JUKEBOX: juke_update(); juke_draw(); break;
@@ -1039,6 +1060,7 @@ int main(void) {
             case ST_PIE: pie_update(); pie_draw(); break;
             case ST_PANEL: panel_update(); panel_draw(); break;
         }
+        t_cpu = hb_now() - t_frame0;
         gfx_flip();
     }
     return 0;

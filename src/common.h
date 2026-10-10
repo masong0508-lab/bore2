@@ -11,6 +11,11 @@
 #include <psxpad.h>
 #include <psxapi.h>
 #include <psxetc.h>
+// the HUD's formatter (fmt.c): far quicker than the C library's
+int bsprintf(char *o, const char *f, ...);
+int bsnprintf(char *o, unsigned cap, const char *f, ...);
+#define sprintf bsprintf
+#define snprintf bsnprintf
 #include <inline_c.h>
 
 typedef uint8_t u8; typedef uint16_t u16; typedef uint32_t u32;

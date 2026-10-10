@@ -15,7 +15,7 @@ static int cur_toppat, cur_botpat;
 static inline u16 wear_pal(int i) { return wearPal[i % NX_COL]; }
 static u8 wear_gen;        // the patterns this person wears, as pat_tex indexes (-1 = plain)
 static int quads;
-int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block;   // (debug counters, kept for the HUD readout)
+int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block, vox_n_rad;   // (debug counters, kept for the HUD readout)
 static const u8 wMask2[8] = { 10, 12, 5, 3, 8, 4, 1, 2 };   // BORE: bit k = corner (k&1 ? +x : -x, k&2 ? +z : -z) drops a full block
 
 enum { G_BODY, G_LLEG, G_RLEG, G_LARM, G_RARM, G_HEAD, G_N };   // G_HEAD: the head and its hair, on its own neck joint (tilts, nods)
@@ -93,24 +93,30 @@ static void face(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVE
 static u32 slot_lut[24][64];               // 1..8 the person's colour slots, 9..22 the accessory colours (wear_col)
 static u8  slot_lut_ok[24];
 static const Bore *lut_bore;
-static void slot_lut_fill(int slot, u16 col, int textured) {
-    for (int i = 0; i < 64; i++) { int L = i * 4 + 2; slot_lut[slot][i] = textured ? lit_tex(col, L) : lit(col, L); }
-    slot_lut_ok[slot] = 1;
+// filled lazily: a slot's shade is worked out (lit, then graded for the fast path) the first time a face asks for it this draw
+static u8 lut_stamp[24][64], lut_gen = 1;
+static u16 lut_c15[24]; static u8 lut_tx[24];
+static void slot_lut_fill(int slot, u16 col, int textured) { lut_c15[slot] = col; lut_tx[slot] = (u8)textured; memset(lut_stamp[slot], 0, 64); slot_lut_ok[slot] = 1; }
+static void lut_next_person(void) { if (++lut_gen == 0) { memset(lut_stamp, 0, sizeof lut_stamp); lut_gen = 1; } }
+static u32 slot_col_make(int slot, int i) {
+    int L = i * 4 + 2; u16 col = lut_c15[slot];
+    u32 c = lut_tx[slot] ? gfx_grade_tex(lit_tex(col, L)) : gfx_grade_flat(lit(col, L));
+    slot_lut[slot][i] = c; lut_stamp[slot][i] = lut_gen;
+    return c;
 }
-static inline u32 slot_col(int slot, int L) { L = CLAMP(L, 0, 255); return slot_lut[slot][L >> 2]; }
-static void face4(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d, int slot, int L0, int L1, int L2, int L3, int kind) {
+static inline u32 slot_col(int slot, int L) { int i = CLAMP(L, 0, 255) >> 2; return lut_stamp[slot][i] == lut_gen ? slot_lut[slot][i] : slot_col_make(slot, i); }
+static void face4(const XV *a, const XV *b, const XV *c, const XV *d, int slot, int L0, int L1, int L2, int L3, int kind) {
     if (kind >= 2) {
         const TexRef *t = kind == 2 ? &skin_tex : kind == 3 ? &cloth_tex : &pat_tex[0][0] + (kind - 4);   // 4.. = a pattern (pat_tex[p][tone])
-        quads += gfx_quad_gt(a, b, c, d, t->tpage, 0, t->u, t->v, t->u + 15, t->v, t->u, t->v + 15, t->u + 15, t->v + 15,
-                             slot_col(slot, L0), slot_col(slot, L1), slot_col(slot, L2), slot_col(slot, L3), 1);
+        quads += gfx_emit_gt4(a, b, c, d, slot_col(slot, L0), slot_col(slot, L1), slot_col(slot, L2), slot_col(slot, L3),
+                              t->tpage, 0, t->u, t->v, t->u + 15, t->v + 15, 1);
     } else {
-        quads += gfx_quad_g(a, b, c, d, slot_col(slot, L0), slot_col(slot, L1), slot_col(slot, L2), slot_col(slot, L3), 1);
+        quads += gfx_emit_g4(a, b, c, d, slot_col(slot, L0), slot_col(slot, L1), slot_col(slot, L2), slot_col(slot, L3), 1);
     }
 }
-static void tri(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, u16 col, int nx, int ny, int nz) {
+static void tri(const XV *a, const XV *b, const XV *c, u16 col, int nx, int ny, int nz) {
     int L = gfx_light(nx, ny, nz);
-    u32 cc = lit(col, L);
-    quads += gfx_tri_f(a, b, c, cc & 255, (cc >> 8) & 255, (cc >> 16) & 255, 1);
+    quads += gfx_emit_f3(a, b, c, gfx_grade_flat(lit(col, L)), 1);
 }
 
 static inline int solid_at(const Bore *b, int x, int y, int z) {
@@ -137,9 +143,10 @@ static int Ldiag[4];           // a limb's rounded light: each vertical edge lit
 static int Lf6[6];             // the light on the six axis faces of the current group: -z +z -x +x top bottom
 static u8 Lrad[D + 1][W + 1];  // the radial (rounded body) light at each x,z grid point, this person, this frame
 static void block(const SVECTOR *c, int m, int hide, int slot, u16 col, int kind, int gx, int gz) {
-    const SVECTOR *t = c, *bt = c + 4;
-    hide |= cull_bits(t[0].vx + 4, t[3].vx - 4, t[0].vy, bt[0].vy, t[0].vz + 4, t[3].vz - 4) & (m ? 0x0f : 0x3f);
+    hide |= cull_bits(c[0].vx + 4, c[3].vx - 4, c[0].vy, c[4].vy, c[0].vz + 4, c[3].vz - 4) & (m ? 0x0f : 0x3f);
     if ((hide & 0x3f) == 0x3f) return;
+    XV xv[8]; gfx_xform(c, xv, 8);                               // the 8 corners once; the faces share them
+    const XV *t = xv, *bt = xv + 4;
     int Lr[4];
     for (int k = 0; k < 4; k++) Lr[k] = (gx >= 0) ? Lrad[gz + (k >> 1)][gx + (k & 1)] : (gx == -2) ? Ldiag[k] : -1;
     #define VL(k, Lf) (Lr[k] >= 0 ? ((Lr[k] + (Lf)) >> 1) : (Lf))
@@ -168,7 +175,7 @@ static void block(const SVECTOR *c, int m, int hide, int slot, u16 col, int kind
     #undef SIDE
     #undef FACE4
     #undef VL
-    if (!(hide & 32)) { u32 cc = slot_col(slot, Lf6[5]); quads += gfx_quad_f(&bt[3], &bt[2], &bt[1], &bt[0], cc & 255, (cc >> 8) & 255, (cc >> 16) & 255, 1); }
+    if (!(hide & 32)) quads += gfx_emit_f4(&bt[3], &bt[2], &bt[1], &bt[0], slot_col(slot, Lf6[5]), 1);
 }
 // a loose box (ears, horns, a tail): its corners made on the spot
 static void box(int x0, int x1, int y0, int y1, int z0, int z1, int m, int slot, u16 col, int kind) {
@@ -184,12 +191,18 @@ static void lights_for_group(void) {   // the six axis face lights under the cur
     Lf6[4] = gfx_light(0, -ONE, 0); Lf6[5] = gfx_light(0, ONE, 0);
     for (int k = 0; k < 4; k++) Ldiag[k] = CLAMP(gfx_light((k & 1) ? 2896 : -2896, -400, (k & 2) ? 2896 : -2896), 0, 255);
 }
+static short radN[D + 1][W + 1][2]; static u8 radN_ok;   // the normals never change: worked out once
 static void radial_table(void) {       // the rounded body light at every x,z grid point
-    for (int gz = 0; gz <= D; gz++) for (int gx = 0; gx <= W; gx++) {
-        int vx = gx * VOX - 3 * VOX, vz = gz * VOX - 2 * VOX;
-        int len = SquareRoot0(vx * vx + vz * vz); if (len < 8) len = 8;
-        Lrad[gz][gx] = (u8)CLAMP(gfx_light((vx << 12) / len, -600, (vz << 12) / len), 0, 255);
+    if (!radN_ok) {
+        for (int gz = 0; gz <= D; gz++) for (int gx = 0; gx <= W; gx++) {
+            int vx = gx * VOX - 3 * VOX, vz = gz * VOX - 2 * VOX;
+            int len = SquareRoot0(vx * vx + vz * vz); if (len < 8) len = 8;
+            radN[gz][gx][0] = (short)((vx << 12) / len); radN[gz][gx][1] = (short)((vz << 12) / len);
+        }
+        radN_ok = 1;
     }
+    for (int gz = 0; gz <= D; gz++) for (int gx = 0; gx <= W; gx++)
+        Lrad[gz][gx] = (u8)CLAMP(gfx_light(radN[gz][gx][0], -600, radN[gz][gx][1]), 0, 255);
 }
 
 // ================================================================== HAIR
@@ -274,13 +287,20 @@ static void hface(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SV
     u32 c2 = hair_col(col, (lc * 3 + Lf) >> 2, var - 6), c3 = hair_col(col, (ld * 3 + Lf) >> 2, var - 6);
     quads += gfx_quad_gt(a, b, c, d, t->tpage, 0, t->u + u0, t->v + v0, t->u + u1, t->v + v0, t->u + u0, t->v + v1, t->u + u1, t->v + v1, c0, c1, c2, c3, 1);
 }
+static void hfacex(const XV *a, const XV *b, const XV *c, const XV *d, int la, int lb, int lc, int ld, const TexRef *t,   // (the fast path: corners already transformed)
+                   int u0, int v0, int u1, int v1, u16 col, int Lf, int var) {
+    u32 c0 = gfx_grade_tex(hair_col(col, (la * 3 + Lf) >> 2, var)), c1 = gfx_grade_tex(hair_col(col, (lb * 3 + Lf) >> 2, var));
+    u32 c2 = gfx_grade_tex(hair_col(col, (lc * 3 + Lf) >> 2, var - 6)), c3 = gfx_grade_tex(hair_col(col, (ld * 3 + Lf) >> 2, var - 6));
+    quads += gfx_emit_gt4(a, b, c, d, c0, c1, c2, c3, t->tpage, 0, t->u + u0, t->v + v0, t->u + u1, t->v + v1, 1);
+}
 
 // a hair block at grid cell (x,y,z); c = its 8 corners from the cache (the rounded hull and the drops folded in)
 static void hair_block(const Bore *b, int x, int y, int z, int m, int hide, u16 col, const SVECTOR *c) {
-    const SVECTOR *t = c, *bt = c + 4;
     int x0 = (x - 3) * VOX, y0 = -(y + 1) * VOX, z0 = (z - 2) * VOX;
     hide |= cull_bits(x0 + 8, x0 + VOX - 8, y0 + 16, y0 + VOX - 8, z0 + 8, z0 + VOX - 8) & 0x2f;   // (rounded: a margin; the top always tilts a little)
     if ((hide & 0x3f) == 0x3f) return;
+    XV xv[8]; gfx_xform(c, xv, 8);
+    const XV *t = xv, *bt = xv + 4;
     int lt[4], lb[4];
     for (int k = 0; k < 4; k++) {
         lt[k] = hair_corner_light(x + (k & 1), y + 1, z + (k >> 1));
@@ -301,16 +321,13 @@ static void hair_block(const Bore *b, int x, int y, int z, int m, int hide, u16 
         if (hair_curly) { u0 = 0; u1 = 15; v0 = 0; v1 = 15; }
         int lx = ((m & 10) == 10) ? -ONE / 2 : ((m & 5) == 5) ? ONE / 2 : 0;
         int lz = ((m & 12) == 12) ? -ONE / 2 : ((m & 3) == 3) ? ONE / 2 : 0;
-        hface(&t[2], &t[3], &t[0], &t[1], lt[2], lt[3], lt[0], lt[1], tt, u0, v0, u1, v1, col, lx, -ONE, lz, var);
+        hfacex(&t[2], &t[3], &t[0], &t[1], lt[2], lt[3], lt[0], lt[1], tt, u0, v0, u1, v1, col, (lx | lz) ? gfx_light(lx, -ONE, lz) : Lf6[4], var);
     }
-    if (!(hide & 2)) hface(&t[3], &t[2], &bt[3], &bt[2], lt[3], lt[2], lb[3], lb[2], side, 0, sv0, 15, sv1, col, 0, 0, ONE, var);      // front +z
-    if (!(hide & 1)) hface(&t[0], &t[1], &bt[0], &bt[1], lt[0], lt[1], lb[0], lb[1], side, 0, sv0, 15, sv1, col, 0, 0, -ONE, var);     // back -z
-    if (!(hide & 4)) hface(&t[2], &t[0], &bt[2], &bt[0], lt[2], lt[0], lb[2], lb[0], side, 0, sv0, 15, sv1, col, -ONE, 0, 0, var);     // -x
-    if (!(hide & 8)) hface(&t[1], &t[3], &bt[1], &bt[3], lt[1], lt[3], lb[1], lb[3], side, 0, sv0, 15, sv1, col, ONE, 0, 0, var);      // +x
-    if (!(hide & 32)) {
-        u32 cc = lit(col, gfx_light(0, ONE, 0) - 20);
-        quads += gfx_quad_f(&bt[3], &bt[2], &bt[1], &bt[0], cc & 255, (cc >> 8) & 255, (cc >> 16) & 255, 1);
-    }
+    if (!(hide & 2)) hfacex(&t[3], &t[2], &bt[3], &bt[2], lt[3], lt[2], lb[3], lb[2], side, 0, sv0, 15, sv1, col, Lf6[1], var);      // front +z
+    if (!(hide & 1)) hfacex(&t[0], &t[1], &bt[0], &bt[1], lt[0], lt[1], lb[0], lb[1], side, 0, sv0, 15, sv1, col, Lf6[0], var);     // back -z
+    if (!(hide & 4)) hfacex(&t[2], &t[0], &bt[2], &bt[0], lt[2], lt[0], lb[2], lb[0], side, 0, sv0, 15, sv1, col, Lf6[2], var);     // -x
+    if (!(hide & 8)) hfacex(&t[1], &t[3], &bt[1], &bt[3], lt[1], lt[3], lb[1], lb[3], side, 0, sv0, 15, sv1, col, Lf6[3], var);      // +x
+    if (!(hide & 32)) quads += gfx_emit_f4(&bt[3], &bt[2], &bt[1], &bt[0], gfx_grade_flat(lit(col, Lf6[5] - 20)), 1);
 }
 
 // bangs over the forehead and strands down the temples, for the cuts that have them
@@ -772,15 +789,15 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
         cam_lx = (dx * c - dz * sn) >> 12; cam_lz = (dz * c + dx * sn) >> 12; cam_ly = dy;
         cam_cull = !g->sleep;
     }
-    { int t0 = VSync(1);
+    { int t0 = gfx_hb();
     joint_matrix(&gm[G_LLEG], &obj, legL, legRollL, b->w_lgx, hip, 0);
     joint_matrix(&gm[G_RLEG], &obj, legR, legRollR, b->w_rgx, hip, 0);
     joint_matrix(&gm[G_LARM], &obj, armL, rollL, b->w_lax, shoulder, 0);
     joint_matrix(&gm[G_RARM], &obj, armR, rollR, b->w_rax, shoulder, 0);
     joint_matrix(&gm[G_HEAD], &obj, headNod, headTilt, b->h_cx, b->h_cy0 - b->h_lift, b->h_cz);   // the neck
-    vox_t_face = VSync(1) - t0; }
+    vox_t_face += gfx_hb() - t0; }
     gfx_set_light_yaw(yaw);
-
+    int tprep0 = gfx_hb();
     // the head and the hair mass
     head_box(b, &hx_, &hy_, &hz_, &hs_);
     hair_cx = (hx_ + hs_ - 3) * VOX; hair_cy = -(hy_ + hs_) * VOX - VOX / 3; hair_cz = (hz_ + hs_ - 2) * VOX;
@@ -790,12 +807,13 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     { int tp = b->look[LK_X_TOPPAT] % NPAT, bp = b->look[LK_X_BOTPAT] % NPAT, tone = b->look[LK_X_PATTONE] & 1;
       cur_toppat = tp ? tp * 2 + tone : -1; cur_botpat = bp ? bp * 2 + tone : -1; }
     wear_gen++;
-    for (int sl = 1; sl < 9; sl++) slot_lut_fill(sl, b->col[sl], kind_of(sl) != 0);
-    radial_table();
+    { int q0 = gfx_hb(); lut_next_person(); for (int sl = 1; sl < 9; sl++) { lut_c15[sl] = b->col[sl]; lut_tx[sl] = kind_of(sl) != 0; } vox_n_block += gfx_hb() - q0; }
+    { int q0 = gfx_hb(); radial_table(); vox_n_rad += gfx_hb() - q0; }
     lights_for_group();
 
+    vox_n_hair += gfx_hb() - tprep0;   // (reused: the per-person set-up)
     int grp = -1, cull0 = cam_cull;
-    int tcells0 = VSync(1);
+    int tcells0 = gfx_hb();
     for (int i = 0; i < b->ncell; i++) {
         const u8 *c = (const u8 *)&b->cell[i];
         int x = c[0], y = c[1], z = c[2], v = c[3], hide = c[4], fl = c[6];
@@ -811,12 +829,12 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     }
     gfx_set_object_m(&gm[G_HEAD]);
     gfx_set_zbias(6);                                            // the face art and the bangs lie on the blocks: pull them in front
-    vox_t_block = VSync(1) - tcells0;
-    { int t0 = VSync(1); face_sprites(b);
-    if (hair_style != 3) hair_flaps(b); vox_t_hair = VSync(1) - t0; }
+    vox_t_block += gfx_hb() - tcells0;
+    { int t0 = gfx_hb(); face_sprites(b);
+    if (hair_style != 3) hair_flaps(b); vox_t_hair += gfx_hb() - t0; }
     gfx_set_zbias(0);
-    extra_parts(b, hx_, hy_, hz_, hs_);
-    wear_draw(b);
+    { PROF_BEGIN(); extra_parts(b, hx_, hy_, hz_, hs_);
+    wear_draw(b); PROF_END(7); }
 }
 
 

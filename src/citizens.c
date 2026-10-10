@@ -12,6 +12,7 @@
 #define MAXDRAW   24                // civilians drawn at all, nearest first
 #define DRAW_DIST (14 * TILE)
 #define FULL_DIST (5 * TILE)
+#define FULL_EYE  2900                // ... and closer than this to the camera (the default view looks from ~2160 away)
 #define REACH     (TILE * 3 / 2)    // how close counts as "in front of you"
 #define PUNCH_R   150
 #define CR        40                // body radius outside
@@ -42,6 +43,7 @@ typedef struct {
     s8   off;                       // minutes early or late: no household moves as one
     u16  st;                        // steps spent held up
     u8   wx, wy, gx, gy, wv;        // the next tile of a routed walk, the goal tile it was routed to, whether it is current
+    u8   path[8], plen, pi;         // the route itself, 2 bits a step (worked out once per goal, not at every tile)
     u8   chore, chain, chx, chy, ix, iy, vh;   // a chore at home: the item letter, the one that follows it, where they stand, where the item is; a visit: the door tile and the household
 } Cit;
 typedef struct { u8 zone, home, n, fam; u8 mem[6]; } Hh;   // a household: who lives in which of the zone's homes, under which surname
@@ -485,13 +487,39 @@ static int route_next(int gx, int gy, int sx, int sy, int in, int *nx, int *ny) 
     }
     return 0;
 }
+static int route_plan(Cit *c, int gx, int gy, int sx, int sy, int in) {   // one search, then the whole route (up to 32 steps) kept
+    int nx, ny;
+    if (!route_next(gx, gy, sx, sy, in, &nx, &ny)) return 0;              // (fills bdist from the goal)
+    const int N = 2 * BW + 1, ox = gx - BW, oy = gy - BW;
+    static const signed char dx4[4] = { 1, -1, 0, 0 }, dy4[4] = { 0, 0, 1, -1 };
+    int x = sx, y = sy, n = 0; memset(c->path, 0, sizeof c->path);
+    while (n < 32 && !(x == gx && y == gy)) {
+        int here = bdist[y - oy][x - ox], k;
+        for (k = 0; k < 4; k++) { int a = x + dx4[k], b = y + dy4[k];
+            if (a >= ox && b >= oy && a < ox + N && b < oy + N && bdist[b - oy][a - ox] == here - 1) break; }
+        if (k == 4) break;
+        c->path[n >> 2] |= (u8)(k << ((n & 3) * 2)); n++; x += dx4[k]; y += dy4[k];
+    }
+    if (!n) return 0;
+    c->plen = (u8)n; c->pi = 0; c->gx = (u8)gx; c->gy = (u8)gy; c->wv = 1;
+    return 1;
+}
+static int route_step(Cit *c, int sx, int sy) {   // the next waypoint along the kept route (0: it has run out)
+    static const signed char dx4[4] = { 1, -1, 0, 0 }, dy4[4] = { 0, 0, 1, -1 };
+    if (c->pi >= c->plen) return 0;
+    int k = (c->path[c->pi >> 2] >> ((c->pi & 3) * 2)) & 3; c->pi++;
+    c->wx = (u8)(sx + dx4[k]); c->wy = (u8)(sy + dy4[k]);
+    return 1;
+}
 static int nav(Cit *c, int gtx, int gty, int spd, int in) {   // walk to a tile round the furniture (or the neighbours' houses); 1 when there
     int sx = c->x / TILE, sy = (-c->z) / TILE;
     if (sx == gtx && sy == gty) return go(c, gtx * TILE + TILE / 2, -(gty * TILE + TILE / 2), spd, in);
-    if (!c->wv || c->gx != gtx || c->gy != gty || (sx == c->wx && sy == c->wy)) {
-        int nx, ny;
-        if (route_next(gtx, gty, sx, sy, in, &nx, &ny)) { c->wx = (u8)nx; c->wy = (u8)ny; c->gx = (u8)gtx; c->gy = (u8)gty; c->wv = 1; }
-        else { c->wv = 0; return go(c, gtx * TILE + TILE / 2, -(gty * TILE + TILE / 2), spd, in); }   // no route found: the straight line
+    int fresh = !c->wv || c->gx != gtx || c->gy != gty;
+    if (fresh || (sx == c->wx && sy == c->wy)) {
+        int ok = 0;
+        if (!fresh && sx == c->wx && sy == c->wy) ok = route_step(c, sx, sy);           // on to the next tile of the route
+        if (!ok && route_plan(c, gtx, gty, sx, sy, in)) ok = route_step(c, sx, sy);     // (new goal, or the route ran out: search again)
+        if (!ok) { c->wv = 0; return go(c, gtx * TILE + TILE / 2, -(gty * TILE + TILE / 2), spd, in); }   // no route found: the straight line
     }
     go(c, c->wx * TILE + TILE / 2, -(c->wy * TILE + TILE / 2), spd, in);
     return 0;
@@ -757,7 +785,9 @@ static void pool_init(void) {
     for (int k = 0; k < NPOOL; k++) { look_default(&pool[k]); pool_owner[k] = -1; }   // each owns its two face textures for good
     pool_ready = 1;
 }
+int cit_n_full, cit_n_lod;
 void citizens_draw(void) {
+    cit_n_full = cit_n_lod = 0;
     if (world_zone == ZONE_HOME) return;
     int order[MAXDRAW], od[MAXDRAW], n = 0;
     int pin = indoors_at(sims[player].x, sims[player].z);
@@ -767,6 +797,7 @@ void citizens_draw(void) {
         int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz, d = dx * dx + dz * dz;
         if (d > DRAW_DIST * DRAW_DIST) continue;
         if (!pin && d > 3 * TILE * 3 * TILE && indoors_at(c->x, c->z)) continue;   // behind walls: not worth the polygons
+        if (!gfx_visible(c->x, -110, c->z, 150)) continue;                          // off the screen: nothing to draw
         int pos = n < MAXDRAW ? n++ : MAXDRAW;
         if (pos == MAXDRAW) { if (d >= od[MAXDRAW - 1]) continue; pos = MAXDRAW - 1; }
         while (pos > 0 && od[pos - 1] > d) { order[pos] = order[pos - 1]; od[pos] = od[pos - 1]; pos--; }
@@ -774,7 +805,12 @@ void citizens_draw(void) {
     }
     // who gets the full model: the nearest few within FULL_DIST; one rebuild a frame
     int want_[NPOOL], nw = 0;
-    for (int k = 0; k < n && nw < NPOOL; k++) if (od[k] <= FULL_DIST * FULL_DIST) want_[nw++] = order[k];
+    for (int k = 0; k < n && nw < NPOOL; k++) {   // near the focus AND near the eye: zoomed out, people are small and the crowd model does
+        if (od[k] > FULL_DIST * FULL_DIST) continue;
+        const Cit *c = &cits[order[k]]; int ex = c->x - cam.eye.vx, ey = -110 - cam.eye.vy, ez = c->z - cam.eye.vz;
+        if (ex * ex + ey * ey + ez * ez > FULL_EYE * FULL_EYE) continue;
+        want_[nw++] = order[k];
+    }
     for (int k = 0; k < NPOOL; k++) {   // let go of the ones that are no longer wanted
         if (pool_owner[k] < 0) continue;
         int keep = 0; for (int j = 0; j < nw; j++) if (want_[j] == pool_owner[k]) keep = 1;
@@ -797,8 +833,9 @@ void citizens_draw(void) {
         else if (c->mode == CM_SLEEP && c->sub == 1) vy = c->mem == 0 ? -items_height('S') + 40 : -24;   // in the bed, or on the floor
         else if (c->mode == CM_CHORE && c->sub == 1 && c->gait.sit) vy = -items_height((char)c->chore) / 2 + 10;   // on the sofa, on the loo
         VECTOR p; setVector(&p, c->x, vy, c->z);
-        if (c->slot) voxel_draw(&pool[c->slot - 1], &p, c->yaw, &c->gait);
-        else voxel_draw_lod(&c->lod, &p, c->yaw, &c->gait);
+        PROF_BEGIN();
+        if (c->slot) { voxel_draw(&pool[c->slot - 1], &p, c->yaw, &c->gait); PROF_END(5); cit_n_full++; }
+        else { voxel_draw_lod(&c->lod, &p, c->yaw, &c->gait); PROF_END(6); cit_n_lod++; }
         if (c->mode != CM_KO && c->mode != CM_SLEEP) { VECTOR sp; setVector(&sp, c->x, 0, c->z); gfx_shadow(&sp, 70); }
     }
 }

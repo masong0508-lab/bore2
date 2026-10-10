@@ -13,11 +13,47 @@ typedef struct {
 static DB   db[2];
 static int  db_active = 0;
 static int  alloc_reserve;        // bytes of the packet buffer gfx_alloc keeps back (gfx_set_reserve)
-static char *db_next;
+char *gfx_pk_next, *gfx_pk_end;   // the packet cursor and its limit (the end, less the reserve): gfx_fast.h allocates inline
+u32 *gfx_ot_cur;                   // this frame's ordering table
+int gfx_zbias, gfx_fog_on;
+#define db_next gfx_pk_next
 static RECT screen_clip;
 static u32 *ui_head, *ui_tail;    // the 2D overlay chain, drawn after everything in call order
 static int  clear_r = 20<<3, clear_g = 26<<3, clear_b = 31<<3;   // BORE's SKY colour
-int gfx_prim_count, gfx_frame_prims, gfx_last_prims, gfx_last_bytes, gfx_overflow, gfx_last_overflow;   // profiler: prims and packet bytes of the last frame, prims that did not fit
+int gfx_prof[8], gfx_prof_last[8], gfx_profn[8], gfx_profn_last[8];   // profiler buckets (hblanks), filled by GFX_PROF_BEGIN/END, shown by L3
+// a fast integer square root (digit by digit, 16 steps of shifts and compares): the SDK's SquareRoot0 cost ~8000 cycles a call
+int isqrt(int v) {
+    if (v <= 0) return 0;
+    unsigned x = (unsigned)v, r = 0, bit = 1u << 30;
+    while (bit > x) bit >>= 2;
+    while (bit) { if (x >= r + bit) { x -= r + bit; r = (r >> 1) + bit; } else r >>= 1; bit >>= 2; }
+    return (int)r;
+}
+// a sampling profiler: the music timer (480 Hz) notes where the CPU was; the L3 readout lists the busiest 256-byte stretches of code
+#define PH_N 1800
+u16 prof_hist[PH_N]; int prof_on, prof_total;
+void prof_sample(void) {
+    if (!prof_on) return;
+    u32 epc; __asm__ volatile("mfc0 %0, $14" : "=r"(epc));
+    u32 off = epc - 0x80010000u;
+    if (epc >= (u32)&prof_sample && epc < (u32)&prof_sample + 0x120) return;   // (the profiler itself)
+    if (off < PH_N * 256u) { prof_hist[off >> 8]++; prof_total++; }
+}
+int prof_top(int k, u32 *addr) {   // the k-th busiest stretch: its count (and address). k = 0 works the list out (one pass)
+    static u16 top[9], topn[9];
+    if (k == 0) {
+        for (int j = 0; j < 9; j++) topn[j] = 0;
+        for (int i = 0; i < PH_N; i++) {
+            int n = prof_hist[i]; if (n <= topn[8]) continue;
+            int j = 8; while (j > 0 && topn[j - 1] < n) { topn[j] = topn[j - 1]; top[j] = top[j - 1]; j--; }
+            topn[j] = (u16)n; top[j] = (u16)i;
+        }
+    }
+    if (k > 8 || !topn[k]) return 0;
+    *addr = 0x80010000u + top[k] * 256u; return topn[k];
+}
+int gfx_hb(void) { return VSync(1); }   // hblanks since the frame's VSync(0) (63.5 us each; 525 = a 30 FPS frame)
+int gfx_last_wait, gfx_prim_count, gfx_frame_prims, gfx_last_prims, gfx_last_bytes, gfx_overflow, gfx_last_overflow;   // profiler: prims and packet bytes of the last frame, prims that did not fit
 
 Camera cam;
 static int obj_yaw;               // yaw of the current object (for lighting)
@@ -45,7 +81,7 @@ void gfx_init(void) {
     PutDrawEnv(&db[0].draw);
     ClearOTagR(db[0].ot, OT_LEN);
     ClearOTagR(db[1].ot, OT_LEN);
-    db_next = db[0].p;
+    db_next = db[0].p; gfx_pk_end = db[0].p + PACKET_LEN - 64; gfx_ot_cur = db[0].ot;
     ui_head = ui_tail = 0;
     setRECT(&screen_clip, 0, 0, SCREEN_W, SCREEN_H);
 
@@ -72,11 +108,12 @@ void gfx_flip(void) {
     }
     gfx_last_bytes = (int)(db_next - db[db_active].p); gfx_last_prims = gfx_frame_prims; gfx_frame_prims = 0;
     gfx_last_overflow = gfx_overflow; gfx_overflow = 0;
-    DrawSync(0);
+    for (int i = 0; i < 8; i++) { gfx_prof_last[i] = gfx_prof[i]; gfx_prof[i] = 0; gfx_profn_last[i] = gfx_profn[i]; gfx_profn[i] = 0; }
+    { int h0 = VSync(1); DrawSync(0); gfx_last_wait = VSync(1) - h0; }   // how long the GPU was still busy with the last frame
     VSync(0);
     db_active ^= 1;
     db_next = db[db_active].p;
-    alloc_reserve = 0;
+    alloc_reserve = 0; gfx_pk_end = db[db_active].p + PACKET_LEN - 64; gfx_ot_cur = db[db_active].ot;
     ui_head = ui_tail = 0;
     ClearOTagR(db[db_active].ot, OT_LEN);
     setRGB0(&db[db_active].draw, clear_r, clear_g, clear_b);
@@ -86,10 +123,10 @@ void gfx_flip(void) {
     DrawOTag(db[1 - db_active].ot + (OT_LEN - 1));
 }
 
-void gfx_set_reserve(int bytes) { alloc_reserve = bytes; }
+void gfx_set_reserve(int bytes) { alloc_reserve = bytes; gfx_pk_end = db[db_active].p + PACKET_LEN - 64 - bytes; }
 void *gfx_alloc(int bytes) {
     char *p = db_next;
-    if (p + bytes > db[db_active].p + PACKET_LEN - 64 - alloc_reserve) { gfx_overflow++; return 0; }
+    if (p + bytes > gfx_pk_end) { gfx_overflow++; return 0; }
     db_next = p + ((bytes + 3) & ~3);
     return p;
 }
@@ -171,9 +208,9 @@ static inline int quad_offscreen(const DVECTOR *a, const DVECTOR *b, const DVECT
 static inline int tri_offscreen(const DVECTOR *a, const DVECTOR *b, const DVECTOR *c) {
     return (outcode(a->vx, a->vy) & outcode(b->vx, b->vy) & outcode(c->vx, c->vy)) != 0;
 }
-static int zbias;
+#define zbias gfx_zbias
 static int fog_near = 0, fog_far = 0;   // depth fade: colours darken from fog_near to fog_far (0 = off)
-void gfx_set_fog(int near, int far) { fog_near = near; fog_far = far; }
+void gfx_set_fog(int near, int far) { fog_near = near; fog_far = far; gfx_fog_on = far != 0; }
 
 // ---- the colour grade: lit surfaces lean warm (sunlight), shaded ones lean cool (sky bounce) instead of plain grey darkening ----
 int gfx_grade = 1;
@@ -224,18 +261,19 @@ int gfx_quad_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECT
     int p, otz, z0, z1, z2, z3;
     POLY_F4 *q = (POLY_F4 *)gfx_alloc(sizeof(POLY_F4));
     if (!q) return 0;
+    char *mark_ = (char *)q;
     gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
     gte_rtpt();
-    if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) return 0; }
+    if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
-    if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) return 0;
+    if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy3(&q->x0, &q->x1, &q->x2);
     gte_ldv0((SVECTOR *)d);
     gte_rtps();
     gte_stsz(&z3);
-    if (z3 < Z_NEAR) return 0;
+    if (z3 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy(&q->x3);
-    if (quad_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2, (DVECTOR *)&q->x3)) return 0;
+    if (quad_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2, (DVECTOR *)&q->x3)) { db_next = mark_; return 0; }
     gte_avsz4();
     gte_stotz(&otz);
     setPolyF4(q);
@@ -248,13 +286,14 @@ int gfx_tri_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, int r, int g
     int p, otz, z0, z1, z2;
     POLY_F3 *q = (POLY_F3 *)gfx_alloc(sizeof(POLY_F3));
     if (!q) return 0;
+    char *mark_ = (char *)q;
     gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
     gte_rtpt();
-    if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) return 0; }
+    if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
-    if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) return 0;
+    if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy3(&q->x0, &q->x1, &q->x2);
-    if (tri_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2)) return 0;
+    if (tri_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2)) { db_next = mark_; return 0; }
     gte_avsz3();
     gte_stotz(&otz);
     setPolyF3(q);
@@ -267,18 +306,19 @@ int gfx_quad_g(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECT
     int p, otz, z0, z1, z2, z3;
     POLY_G4 *q = (POLY_G4 *)gfx_alloc(sizeof(POLY_G4));
     if (!q) return 0;
+    char *mark_ = (char *)q;
     gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
     gte_rtpt();
-    if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) return 0; }
+    if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
-    if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) return 0;
+    if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy3(&q->x0, &q->x1, &q->x2);
     gte_ldv0((SVECTOR *)d);
     gte_rtps();
     gte_stsz(&z3);
-    if (z3 < Z_NEAR) return 0;
+    if (z3 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy(&q->x3);
-    if (quad_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2, (DVECTOR *)&q->x3)) return 0;
+    if (quad_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2, (DVECTOR *)&q->x3)) { db_next = mark_; return 0; }
     gte_avsz4();
     gte_stotz(&otz);
     setPolyG4(q);
@@ -294,18 +334,19 @@ int gfx_quad_ft(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVEC
     int p, otz, z0, z1, z2, z3;
     POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4));
     if (!q) return 0;
+    char *mark_ = (char *)q;
     gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
     gte_rtpt();
-    if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) return 0; }
+    if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
-    if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) return 0;
+    if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy3(&q->x0, &q->x1, &q->x2);
     gte_ldv0((SVECTOR *)d);
     gte_rtps();
     gte_stsz(&z3);
-    if (z3 < Z_NEAR) return 0;
+    if (z3 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy(&q->x3);
-    if (quad_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2, (DVECTOR *)&q->x3)) return 0;
+    if (quad_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2, (DVECTOR *)&q->x3)) { db_next = mark_; return 0; }
     gte_avsz4();
     gte_stotz(&otz);
     setPolyFT4(q);
@@ -323,18 +364,19 @@ int gfx_quad_gt(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVEC
     int p, otz, z0, z1, z2, z3;
     POLY_GT4 *q = (POLY_GT4 *)gfx_alloc(sizeof(POLY_GT4));
     if (!q) return 0;
+    char *mark_ = (char *)q;
     gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
     gte_rtpt();
-    if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) return 0; }
+    if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
-    if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) return 0;
+    if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy3(&q->x0, &q->x1, &q->x2);
     gte_ldv0((SVECTOR *)d);
     gte_rtps();
     gte_stsz(&z3);
-    if (z3 < Z_NEAR) return 0;
+    if (z3 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy(&q->x3);
-    if (quad_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2, (DVECTOR *)&q->x3)) return 0;
+    if (quad_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2, (DVECTOR *)&q->x3)) { db_next = mark_; return 0; }
     gte_avsz4();
     gte_stotz(&otz);
     setPolyGT4(q);
@@ -347,6 +389,36 @@ int gfx_quad_gt(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVEC
     return 1;
 }
 
+// ------------------------------------------------------------------ the fast path: transform shared vertices once, then emit faces
+// Meshes (the Bores' blocks, the world's tiles) share corners between faces: each corner is transformed once (three at a time on the
+// GTE) into an XV, and the faces are emitted from those, with the back-face test done on the CPU from the screen positions. The colours
+// handed in are already graded (gfx_grade_*), so emitting is a handful of stores.
+void gfx_xform(const SVECTOR *v, XV *o, int n) {
+    int i = 0;
+    for (; i + 3 <= n; i += 3) {
+        gte_ldv3c((SVECTOR *)&v[i]);
+        gte_rtpt();
+        gte_stsxy3(&o[i].x, &o[i + 1].x, &o[i + 2].x);
+        gte_stsz3(&o[i].z, &o[i + 1].z, &o[i + 2].z);
+    }
+    for (; i < n; i++) { gte_ldv0((SVECTOR *)&v[i]); gte_rtps(); gte_stsxy(&o[i].x); gte_stsz(&o[i].z); }
+}
+u32 gfx_grade_flat(u32 c) { return grade_rgb(c & 255, (c >> 8) & 255, (c >> 16) & 255); }
+u32 gfx_grade_tex(u32 c) { return gt_grade(c, 256); }
+static inline u32 fog_col(u32 c, int f) { return (((c & 255) * f) >> 8) | (((((c >> 8) & 255) * f) >> 8) << 8) | (((((c >> 16) & 255) * f) >> 8) << 16); }
+u32 gfx_fog_apply(u32 c, int otz) { return fog_col(c, fog_scale(otz)); }
+#undef XV_TEST4
+
+// is a sphere (world centre, radius) inside the view? (no matrix of an object needed: for culling people and things before any work)
+int gfx_visible(int wx, int wy, int wz, int r) {
+    VECTOR d, v; setVector(&d, wx - cam.eye.vx, wy - cam.eye.vy, wz - cam.eye.vz);
+    ApplyMatrixLV(&cam.view, &d, &v);
+    if (v.vz < Z_NEAR - r) return 0;
+    int rr = r + (r >> 2);                                                 // the planes lean out: a sphere reaches a touch further
+    if (ABS(v.vx) > ((v.vz * CENTER_X) / 230) + rr) return 0;
+    if (ABS(v.vy) > ((v.vz * CENTER_Y) / 230) + rr) return 0;
+    return 1;
+}
 int gfx_project(const SVECTOR *v, int *sx, int *sy, int *sz) {
     DVECTOR xy; int z;
     gte_ldv0((SVECTOR *)v);
@@ -419,12 +491,12 @@ static void shadow_init(void) {
 }
 void gfx_shadow_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d) {   // the soft shadow over any flat quad (current object space)
     if (!shadow_ready) shadow_init();
-    POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4)); if (!q) return;
+    POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4)); if (!q) return; char *mark_ = (char *)q;
     int otz;
     gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c); gte_rtpt();
     gte_stsxy3(&q->x0, &q->x1, &q->x2); gte_ldv0((SVECTOR *)d); gte_rtps(); gte_stsxy(&q->x3);
-    gte_avsz4(); gte_stotz(&otz); if (otz < Z_NEAR) return;
-    if (quad_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2, (DVECTOR *)&q->x3)) return;
+    gte_avsz4(); gte_stotz(&otz); if (otz < Z_NEAR) { db_next = mark_; return; }
+    if (quad_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2, (DVECTOR *)&q->x3)) { db_next = mark_; return; }
     setPolyFT4(q); setRGB0(q, 128, 128, 128); setSemiTrans(q, 1);
     int u0 = shadow_tex.u, v0 = shadow_tex.v, u1 = u0 + 31, v1 = v0 + 31;
     q->u0 = u0; q->v0 = v0; q->u1 = u1; q->v1 = v0; q->u2 = u0; q->v2 = v1; q->u3 = u1; q->v3 = v1;
@@ -436,11 +508,11 @@ void gfx_shadow(const VECTOR *pos, int radius) {
     gfx_set_object(pos, 0);
     SVECTOR a, b, c, d; int r = radius + radius / 3;
     setVector(&a, -r, -2, r); setVector(&b, r, -2, r); setVector(&c, -r, -2, -r); setVector(&d, r, -2, -r);
-    POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4)); if (!q) return;
+    POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4)); if (!q) return; char *mark_ = (char *)q;
     int otz, p;
     gte_ldv3(&a, &b, &c); gte_rtpt();                                        // (no back-face test: it lies flat on the floor, seen from above)
     gte_stsxy3(&q->x0, &q->x1, &q->x2); gte_ldv0(&d); gte_rtps(); gte_stsxy(&q->x3);
-    gte_avsz4(); gte_stotz(&otz); if (otz < Z_NEAR) return;
+    gte_avsz4(); gte_stotz(&otz); if (otz < Z_NEAR) { db_next = mark_; return; }
     (void)p;
     setPolyFT4(q); setRGB0(q, 128, 128, 128); setSemiTrans(q, 1);
     int u0 = shadow_tex.u, v0 = shadow_tex.v, u1 = u0 + 31, v1 = v0 + 31;

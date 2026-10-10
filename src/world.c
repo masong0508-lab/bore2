@@ -530,6 +530,8 @@ void world_find(char ch, int *mx, int *my) {
 }
 int world_count(char ch) { int n = 0; for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if (lifeMap[y][x] == ch) n++; return n; }
 static int item_open(int x, int y) { if (x < 0 || y < 0 || x >= MW || y >= MH) return 0; char c = world_at(x, y); return c == '.' || c == 'D' || c == 'B' || c == 'P' || c == 'r'; }
+// the arrays the drawing reads: the ground's, or (while a storey above is drawn) that storey's - pointed at, never copied
+static char (*dm)[MW + 1] = lifeMap; static u8 (*dfl)[MW] = floorMap, (*dwp)[MW] = wallMap;
 int world_item_facing(int x, int y) {
     static const signed char dx[4] = { 0, 1, 0, -1 }, dy[4] = { 1, 0, -1, 0 };
     for (int d = 0; d < 4; d++) if (item_open(x + dx[d], y + dy[d]) && !item_open(x + dx[(d + 2) & 3], y + dy[(d + 2) & 3])) return d;
@@ -537,7 +539,7 @@ int world_item_facing(int x, int y) {
     return 0;
 }
 int world_along(int x, int y, char ch) {
-    int ax = (x > 0 && lifeMap[y][x - 1] == ch) + (x < MW - 1 && lifeMap[y][x + 1] == ch), ay = (y > 0 && lifeMap[y - 1][x] == ch) + (y < MH - 1 && lifeMap[y + 1][x] == ch);
+    int ax = (x > 0 && dm[y][x - 1] == ch) + (x < MW - 1 && dm[y][x + 1] == ch), ay = (y > 0 && dm[y - 1][x] == ch) + (y < MH - 1 && dm[y + 1][x] == ch);
     return !(ay > 0 && ax == 0);
 }
 int world_room_score(int mx, int my) {
@@ -567,19 +569,39 @@ static void ao_update(void) {
 }
 static inline int ao_corner(int X, int Y, int L) { int n = ao[Y][X]; return n ? L * (100 - 16 * n) / 100 : L; }
 static inline int near_wall(int mx, int my) { return ao[my][mx] | ao[my][mx + 1] | ao[my + 1][mx] | ao[my + 1][mx + 1]; }
+// ---- corner caches: a tile corner is shared by four tiles, so it is transformed once a frame (per layer) and kept here ----
+#define CW 28                                        // the window the caches cover, in tiles (the draw range is 25)
+typedef struct { XV v[CW + 1][CW + 1]; u16 st[CW + 1][CW + 1]; u16 gen; int x0, y0, y; } CornerCache;
+static CornerCache cc_roof;
+static void cc_begin(CornerCache *c, int x0, int y0, int y) {
+    c->x0 = x0; c->y0 = y0; c->y = y;
+    if (++c->gen == 0) { memset(c->st, 0, sizeof c->st); c->gen = 1; }
+}
+static XV cc_tmp[8]; static int cc_tmpi;
 static void floor_tile(int mx, int my) {
-    int fl = floorMap[my][mx] % NFLOORS;
+    int fl = dfl[my][mx] % NFLOORS;
     const TexRef *t = &fl_tex[fl];
     int x0 = mx * TILE, x1 = x0 + TILE, zN = -my * TILE, zS = zN - TILE;
     SVECTOR a, b, c, d;
     int y = (fl == FL_WATER) ? 14 + (isin((frame_t * 40 + mx * 300 + my * 500) & 4095) >> 10) : 0;   // water sits a little low and heaves
     setVector(&a, x0, y, zN); setVector(&b, x1, y, zN); setVector(&c, x0, y, zS); setVector(&d, x1, y, zS);
-    int L = gfx_light(0, -ONE, 0);
-    if ((mx + my) & 1) L = L * fl_odd[fl] / 16;
+    static int Lfr = -1, Lup; if (Lfr != frame_t) { Lfr = frame_t; Lup = gfx_light(0, -ONE, 0); }   // (the floor's light: once a frame)
+    int L = Lup;
+    if ((mx + my) & 1) L = (L * fl_odd[fl]) >> 4;
     L = CLAMP(L, 40, 200);
     int u = t->u, v = t->v;
     if (fl == FL_WATER) { u += (frame_t >> 3) & 7; v += (frame_t >> 4) & 7; }   // (the 16x16 texture holds the 8x8 pattern twice: it tiles)
-    if (!dbg_noao && !is_wall(lifeMap[my][mx]) && near_wall(mx, my)) {   // next to a wall: the corners by it darken (contact shadow)
+    if (y == 0) {   // the fast path (all but water)
+        SVECTOR sv[4] = { a, b, c, d }; XV xv[4]; gfx_xform(sv, xv, 4);
+        const XV *A = &xv[0], *B = &xv[1], *C = &xv[2], *Dd = &xv[3];
+        if (!dbg_noao && !is_wall(dm[my][mx]) && near_wall(mx, my)) {
+            int L0 = ao_corner(mx, my, L), L1 = ao_corner(mx + 1, my, L), L2 = ao_corner(mx, my + 1, L), L3 = ao_corner(mx + 1, my + 1, L);
+            gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)L0 * 0x010101u), gfx_grade_tex((u32)L1 * 0x010101u), gfx_grade_tex((u32)L2 * 0x010101u), gfx_grade_tex((u32)L3 * 0x010101u),
+                         t->tpage, 0, u, v, u + 7, v + 7, 0);
+        } else gfx_emit_ft4(A, B, C, Dd, gfx_grade_tex((u32)L * 0x010101u), t->tpage, 0, u, v, u + 7, v, u, v + 7, u + 7, v + 7, 0, 0);
+        return;
+    }
+    if (!dbg_noao && !is_wall(dm[my][mx]) && near_wall(mx, my)) {   // next to a wall: the corners by it darken (contact shadow)
         int L0 = ao_corner(mx, my, L), L1 = ao_corner(mx + 1, my, L), L2 = ao_corner(mx, my + 1, L), L3 = ao_corner(mx + 1, my + 1, L);
         gfx_quad_gt(&a, &b, &c, &d, t->tpage, 0, u, v, u + 7, v, u, v + 7, u + 7, v + 7,
                     (u32)L0 * 0x010101u, (u32)L1 * 0x010101u, (u32)L2 * 0x010101u, (u32)L3 * 0x010101u, 0);
@@ -589,19 +611,21 @@ static void floor_tile(int mx, int my) {
 }
 
 static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), all the same floor: one quad
-    int fl = floorMap[my][mx] % NFLOORS;
+    int fl = dfl[my][mx] % NFLOORS;
     const TexRef *t = &fl_tex4[fl];
     int x0 = mx * TILE, x1 = x0 + 2 * TILE, zN = -my * TILE, zS = zN - 2 * TILE;
-    SVECTOR a, b, c, d;
-    setVector(&a, x0, 0, zN); setVector(&b, x1, 0, zN); setVector(&c, x0, 0, zS); setVector(&d, x1, 0, zS);
-    int L = CLAMP(gfx_light(0, -ONE, 0), 40, 200);
+    SVECTOR sv[4]; setVector(&sv[0], x0, 0, zN); setVector(&sv[1], x1, 0, zN); setVector(&sv[2], x0, 0, zS); setVector(&sv[3], x1, 0, zS);
+    XV xv[4]; gfx_xform(sv, xv, 4);
+    const XV *A = &xv[0], *B = &xv[1], *C = &xv[2], *Dd = &xv[3];
+    static int Lfr = -1, Lup; if (Lfr != frame_t) { Lfr = frame_t; Lup = CLAMP(gfx_light(0, -ONE, 0), 40, 200); }
+    int L = Lup;
     if (!dbg_noao && (near_wall(mx, my) | near_wall(mx + 1, my) | near_wall(mx, my + 1) | near_wall(mx + 1, my + 1))) {
         int L0 = ao_corner(mx, my, L), L1 = ao_corner(mx + 2, my, L), L2 = ao_corner(mx, my + 2, L), L3 = ao_corner(mx + 2, my + 2, L);
-        gfx_quad_gt(&a, &b, &c, &d, t->tpage, 0, t->u, t->v, t->u + 31, t->v, t->u, t->v + 31, t->u + 31, t->v + 31,
-                    (u32)L0 * 0x010101u, (u32)L1 * 0x010101u, (u32)L2 * 0x010101u, (u32)L3 * 0x010101u, 0);
+        gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)L0 * 0x010101u), gfx_grade_tex((u32)L1 * 0x010101u), gfx_grade_tex((u32)L2 * 0x010101u), gfx_grade_tex((u32)L3 * 0x010101u),
+                     t->tpage, 0, t->u, t->v, t->u + 31, t->v + 31, 0);
         return;
     }
-    gfx_quad_ft(&a, &b, &c, &d, t->tpage, 0, t->u, t->v, t->u + 31, t->v, t->u, t->v + 31, t->u + 31, t->v + 31, L, 0, 0);
+    gfx_emit_ft4(A, B, C, Dd, gfx_grade_tex((u32)L * 0x010101u), t->tpage, 0, t->u, t->v, t->u + 31, t->v, t->u, t->v + 31, t->u + 31, t->v + 31, 0, 0);
 }
 
 // ---- thin walls: a wall tile is a slab 40 units thick running along the line its neighbours make, like a Sims wall ----
@@ -611,16 +635,28 @@ static int wall_or_door(int mx, int my) { char c = world_at(mx, my); return is_w
 static void wface(const TexRef *t, int ax, int az, int bx, int bz, int yTop, int yBot, int h, int u0, int u1, int nx, int nz, int cut) {
     SVECTOR a, b, c, d;
     setVector(&a, ax, yTop, az); setVector(&b, bx, yTop, bz); setVector(&c, ax, yBot, az); setVector(&d, bx, yBot, bz);
-    // the 24-row texture spans a full wall; a cut wall shows the bottom rows
-    int vb = t->v + 23, vspan = cut ? 23 * h / WALL_FULL : 23; if (vspan < 2) vspan = 2;
-    int v0 = vb - (-(yTop) * vspan) / h, v1 = vb - (-(yBot) * vspan) / h;
+    // the 24-row texture spans a full wall; a cut wall shows the bottom rows. The rows and the shading depend only on the face's
+    // heights and direction: worked out once a frame for each kind (a few) instead of with six divisions per face
+    static struct { int key, fr, dv0, dv1, Lt, Lb, L; } memo[16];
+    int key = ((yTop & 0x3ff) | ((yBot & 0x3ff) << 10) | (cut << 20) | ((nx > 0) << 21) | ((nx < 0) << 22) | ((nz > 0) << 23) | ((nz < 0) << 24)) ^ (h << 6);
+    int slot_ = (key ^ (key >> 7) ^ (key >> 13)) & 15;
+    if (memo[slot_].key != key || memo[slot_].fr != frame_t) {
+        int vspan = cut ? 23 * h / WALL_FULL : 23; if (vspan < 2) vspan = 2;
+        int L = CLAMP(gfx_light(nx, 0, nz), 40, 200);
+        int Lt = L + (L * (-yTop)) / (h * 6), Lb = L - (L * (-yBot - 0)) / (h * 3) - L * (h + yBot) / (h * 8);   // lighter up top, darker at the foot
+        memo[slot_].key = key; memo[slot_].fr = frame_t; memo[slot_].L = L;
+        memo[slot_].dv0 = (-(yTop) * vspan) / h; memo[slot_].dv1 = (-(yBot) * vspan) / h;
+        memo[slot_].Lt = CLAMP(Lt, 30, 230); memo[slot_].Lb = CLAMP(Lb, 30, 230);
+    }
+    int vb = t->v + 23;
+    int v0 = vb - memo[slot_].dv0, v1 = vb - memo[slot_].dv1;
     v0 = CLAMP(v0, t->v, vb); v1 = CLAMP(v1, t->v, vb);
-    int L = CLAMP(gfx_light(nx, 0, nz), 40, 200);
-    int Lt = L + (L * (-yTop)) / (h * 6), Lb = L - (L * (-yBot - 0)) / (h * 3) - L * (h + yBot) / (h * 8);   // lighter up top, darker at the foot
-    Lt = CLAMP(Lt, 30, 230); Lb = CLAMP(Lb, 30, 230);
+    int L = memo[slot_].L, Lt = memo[slot_].Lt, Lb = memo[slot_].Lb;
     if (dbg_nograd) { gfx_quad_ft(&a, &b, &c, &d, t->tpage, 0, t->u + u0, v0, t->u + u1, v0, t->u + u0, v1, t->u + u1, v1, L, 1, 0); return; }
-    gfx_quad_gt(&a, &b, &c, &d, t->tpage, 0, t->u + u0, v0, t->u + u1, v0, t->u + u0, v1, t->u + u1, v1,
-                (u32)Lt * 0x010101u, (u32)Lt * 0x010101u, (u32)Lb * 0x010101u, (u32)Lb * 0x010101u, 1);
+    SVECTOR sv[4] = { a, b, c, d }; XV xv[4]; gfx_xform(sv, xv, 4);
+    if (!xv_vis4(&xv[0], &xv[1], &xv[2], &xv[3], 1)) return;
+    u32 ct = gfx_grade_tex((u32)Lt * 0x010101u), cb = gfx_grade_tex((u32)Lb * 0x010101u);
+    gfx_put_gt4(&xv[0], &xv[1], &xv[2], &xv[3], ct, ct, cb, cb, (u32)t->tpage << 16, 0, t->u + u0, v0, t->u + u1, v1);
 }
 static void wtop(u16 tc, int xa, int xb, int za, int zb, int y) {   // the top of a slab: za > zb
     SVECTOR a, b, c, d; int L = gfx_light(0, -ONE, 0);
@@ -670,8 +706,8 @@ static void slab(const TexRef *t, u16 tc, int x0, int zN, int xa, int xb, int za
     }
 }
 static void wall_tile(int mx, int my, int h, int cut) {
-    char c = lifeMap[my][mx];
-    int wp = wallMap[my][mx] % NWALLS;
+    char c = dm[my][mx];
+    int wp = dwp[my][mx] % NWALLS;
     const TexRef *t = &wp_tex[wp]; u16 tc = wp_top[wp];
     int x0 = mx * TILE, x1 = x0 + TILE, zN = -my * TILE, zS = zN - TILE;
     int cx = x0 + TILE / 2, cz = zN - TILE / 2;
@@ -726,6 +762,20 @@ static void fascia(int mx, int my) {
         gfx_quad_f(&a, &b, &c, &d, MIN(255, (220 * L) >> 7), MIN(255, (212 * L) >> 7), MIN(255, (196 * L) >> 7), 1);
     }
 }
+// ---- the view-space position of tile centres, by adding steps (the camera is one matrix a frame, so the view position is linear
+// in the tile coordinates): no matrix multiply per tile for the frustum tests ----
+typedef struct { int bx, by, bz, xx, xy, xz, yx, yy, yz; } TileView;   // x16 fixed point
+static void tile_view_init(TileView *tv, int wx0, int wy, int wz0) {   // (wx0, wy, wz0) = the world point that tile (0,0) stands for
+    VECTOR d, v; setVector(&d, wx0 - cam.eye.vx, wy - cam.eye.vy, wz0 - cam.eye.vz);
+    ApplyMatrixLV(&cam.view, &d, &v);
+    tv->bx = v.vx << 4; tv->by = v.vy << 4; tv->bz = v.vz << 4;
+    const MATRIX *m = &cam.view;
+    tv->xx = (m->m[0][0] * TILE) >> 8; tv->xy = (m->m[1][0] * TILE) >> 8; tv->xz = (m->m[2][0] * TILE) >> 8;        // one tile east (+x)
+    tv->yx = -(m->m[0][2] * TILE) >> 8; tv->yy = -(m->m[1][2] * TILE) >> 8; tv->yz = -(m->m[2][2] * TILE) >> 8;     // one tile south (world -z)
+}
+static inline void tile_view(const TileView *tv, int mx, int my, int *vx, int *vy, int *vz) {
+    *vx = (tv->bx + mx * tv->xx + my * tv->yx) >> 4; *vy = (tv->by + mx * tv->xy + my * tv->yy) >> 4; *vz = (tv->bz + mx * tv->xz + my * tv->yz) >> 4;
+}
 static void draw_layer(int fx, int fy, int t, int cutaway, int lvl) {
     // the camera's forward on the ground (unit, 4096), to decide which walls stand between it and the focus
     int cdx = cam.at.vx - cam.eye.vx, cdz = cam.at.vz - cam.eye.vz;
@@ -735,35 +785,37 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl) {
     int R = 12;
     int x0 = MAX(0, fx - R) & ~1, x1 = MIN(MW - 1, fx + R), y0 = MAX(0, fy - R) & ~1, y1 = MIN(MH - 1, fy + R);
     static u8 done[MH][MW];
+    TileView tvF, tvT;
+    tile_view_init(&tvF, TILE, 0, -TILE);                           // a 2x2 floor block's centre
+    tile_view_init(&tvT, TILE / 2, -WALL_FULL / 2, -TILE / 2);      // a tile's centre, half a wall up
     // 2x2 blocks of one floor draw as a single quad
+    { PROF_BEGIN();
     for (int my = y0; my <= y1; my += 2) for (int mx = x0; mx <= x1; mx += 2) {
         int ok = (mx + 1 < MW && my + 1 < MH);
-        int f0 = floorMap[my][mx];
-        if (ok) ok = f0 != FL_WATER && floorMap[my][mx + 1] == f0 && floorMap[my + 1][mx] == f0 && floorMap[my + 1][mx + 1] == f0;
-        if (ok && lvl) ok = lifeMap[my][mx] != ' ' && lifeMap[my][mx + 1] != ' ' && lifeMap[my + 1][mx] != ' ' && lifeMap[my + 1][mx + 1] != ' ';
+        int f0 = dfl[my][mx];
+        if (ok) ok = f0 != FL_WATER && dfl[my][mx + 1] == f0 && dfl[my + 1][mx] == f0 && dfl[my + 1][mx + 1] == f0;
+        if (ok && lvl) ok = dm[my][mx] != ' ' && dm[my][mx + 1] != ' ' && dm[my + 1][mx] != ' ' && dm[my + 1][mx + 1] != ' ';
         done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 0;
         if (!ok) continue;
-        int wx = (mx + 1) * TILE, wz = -(my + 1) * TILE;
-        VECTOR d, v; setVector(&d, wx - cam.eye.vx, -cam.eye.vy, wz - cam.eye.vz);
-        ApplyMatrixLV(&cam.view, &d, &v);
-        if (v.vz < -TILE * 2) continue;
-        if (ABS(v.vx) > (v.vz * 3) / 4 + TILE * 3) continue;
-        if (ABS(v.vy) > (v.vz * 5) / 8 + TILE * 4) continue;
+        int vx, vy, vz; tile_view(&tvF, mx, my, &vx, &vy, &vz);
+        if (vz < -TILE * 2) continue;
+        if (ABS(vx) > (vz * 3) / 4 + TILE * 3) continue;
+        if (ABS(vy) > (vz * 5) / 8 + TILE * 4) continue;
         gfx_floor_pass = !lvl; floor_block(mx, my); gfx_floor_pass = 0;
         done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 1;
     }
+    PROF_END(0); }
     for (int my = y0; my <= y1; my++) for (int mx = x0; mx <= x1; mx++) {
         int wx = mx * TILE + TILE / 2, wz = -(my * TILE + TILE / 2);
-        char c = lifeMap[my][mx];
+        char c = dm[my][mx];
         if (c == ' ') continue;                                       // open air (upper storeys)
         if (done[my][mx] && c == '.' && !lvl) continue;              // floor already drawn, nothing on it
-        // frustum: the tile centre in view space (rotation only, after taking the eye off)
-        VECTOR d, v; setVector(&d, wx - cam.eye.vx, -WALL_FULL / 2 - cam.eye.vy, wz - cam.eye.vz);
-        ApplyMatrixLV(&cam.view, &d, &v);
-        if (v.vz < -TILE) continue;
-        if (ABS(v.vx) > (v.vz * 3) / 4 + TILE * 2) continue;
-        if (ABS(v.vy) > (v.vz * 5) / 8 + TILE * 3) continue;
-        if (!done[my][mx]) { gfx_floor_pass = !lvl; floor_tile(mx, my); gfx_floor_pass = 0; }
+        // frustum: the tile centre in view space
+        { int vx, vy, vz; tile_view(&tvT, mx, my, &vx, &vy, &vz);
+          if (vz < -TILE) continue;
+          if (ABS(vx) > (vz * 3) / 4 + TILE * 2) continue;
+          if (ABS(vy) > (vz * 5) / 8 + TILE * 3) continue; }
+        if (!done[my][mx]) { PROF_BEGIN(); gfx_floor_pass = !lvl; floor_tile(mx, my); gfx_floor_pass = 0; PROF_END(0); }
         if (lvl) { fascia(mx, my); if (c == '.') continue; }
         if (is_wall(c)) {
             int h = (c == 'w') ? WALL_LOW : WALL_FULL, cut = 0;
@@ -771,12 +823,12 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl) {
                 int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12);   // distance past the focus along the view
                 if (along < -TILE / 4) { h = WALL_LOW; cut = 1; }
             }
-            wall_tile(mx, my, h, cut); world_dbg_walls++;
+            { PROF_BEGIN(); wall_tile(mx, my, h, cut); world_dbg_walls++; PROF_END(1); }
         } else if (c != '.') {
             if (c == 'D') { int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12); door_tile(mx, my, (cutaway && along < -TILE / 4) ? WALL_LOW : WALL_FULL); }
             int rot = items_rotates(c) ? world_item_facing(mx, my) : 0;
             int along = items_along(c) ? world_along(mx, my, c) : 0;
-            items_draw(c, mx, my, rot, along, t);
+            { PROF_BEGIN(); items_draw(c, mx, my, rot, along, t); PROF_END(2); }
         }
     }
 }
@@ -879,6 +931,14 @@ static void roof_corner(int l, int X, int Y, SVECTOR *v, int base, int pitch) { 
     int drop = (h == 0 && world_roof_style != 2) ? (OVH * pitch) >> 8 : 0;
     setVector(v, X * TILE + ox, base - h * pitch + drop - (world_roof_style == 2 ? 10 : 0), -Y * TILE + oz);
 }
+static int rc_l, rc_base, rc_pitch;
+static const XV *cc_roof_at(int X, int Y) {          // a roof corner (eaves and all), transformed once a frame
+    CornerCache *c = &cc_roof; int i = X - c->x0, j = Y - c->y0;
+    SVECTOR s;
+    if ((unsigned)i > CW || (unsigned)j > CW) { XV *t = &cc_tmp[cc_tmpi++ & 7]; roof_corner(rc_l, X, Y, &s, rc_base, rc_pitch); gfx_xform(&s, t, 1); return t; }
+    if (c->st[j][i] != c->gen) { roof_corner(rc_l, X, Y, &s, rc_base, rc_pitch); gfx_xform(&s, &c->v[j][i], 1); c->st[j][i] = c->gen; }
+    return &c->v[j][i];
+}
 static void roofs_draw(int fx, int fy, int x0, int x1, int y0, int y1) {
     if (!roof_tex_ok) roof_tex_make();
     int focus = (fx >= 0 && fy >= 0 && fx < MW && fy < MH) ? bld[fy][fx] : 0;
@@ -888,24 +948,28 @@ static void roofs_draw(int fx, int fy, int x0, int x1, int y0, int y1) {
     for (int l = 0; l <= world_view_lvl && l < NLEVELS; l++) {
         if (!lvl_used[l]) continue;
         int base = -(l + 1) * WALL_FULL;
+        TileView tv; tile_view_init(&tv, TILE / 2, base - pitch, -TILE / 2);
+        rc_l = l; rc_base = base; rc_pitch = pitch; cc_begin(&cc_roof, x0, y0, base);
         for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
             if (!roofM[l][y][x]) continue;
             if (focus && bld[y][x] == focus && !world_roof_show) continue;   // the building you are in shows its rooms
-            VECTOR d, vv; setVector(&d, x * TILE + TILE / 2 - cam.eye.vx, base - cam.eye.vy, -(y * TILE + TILE / 2) - cam.eye.vz);
-            ApplyMatrixLV(&cam.view, &d, &vv);
-            if (vv.vz < -TILE) continue;
-            if (ABS(vv.vx) > (vv.vz * 3) / 4 + TILE * 2) continue;
-            SVECTOR A, B, C, DQ;
-            roof_corner(l, x, y, &A, base, pitch); roof_corner(l, x + 1, y, &B, base, pitch);
-            roof_corner(l, x, y + 1, &C, base, pitch); roof_corner(l, x + 1, y + 1, &DQ, base, pitch);
+            int vx, vy, vz; tile_view(&tv, x, y, &vx, &vy, &vz);
+            if (vz < -TILE) continue;
+            if (ABS(vx) > (vz * 3) / 4 + TILE * 2) continue;
+            if (ABS(vy) > (vz * 5) / 8 + TILE * 3) continue;
+            const XV *A = cc_roof_at(x, y), *B = cc_roof_at(x + 1, y), *C = cc_roof_at(x, y + 1), *DQ = cc_roof_at(x + 1, y + 1);
             int hA = roofH[l][y][x], hB = roofH[l][y][x + 1], hC = roofH[l][y + 1][x], hD = roofH[l][y + 1][x + 1];
             int dhx = ((hB + hD - hA - hC) * pitch) / 2, dhz = ((hA + hB - hC - hD) * pitch) / 2;   // the slope across the tile
-            int len = SquareRoot0(dhx * dhx + TILE * TILE + dhz * dhz); if (len < 1) len = 1;
-            int L = gfx_light((-dhx << 12) / len, (-TILE << 12) / len, (-dhz << 12) / len);
-            u32 c = (u32)MIN(255, (rc[0] * L) >> 7) | ((u32)MIN(255, (rc[1] * L) >> 7) << 8) | ((u32)MIN(255, (rc[2] * L) >> 7) << 16);
+            int key = (dhx + 2048) | ((dhz + 2048) << 12);                   // most tiles share a slope: keep the last one's light
+            static int last_key = -1, last_L, last_amb = -1; if (gfx_light_amb() != last_amb) { last_key = -1; last_amb = gfx_light_amb(); }
+            int L;
+            if (key == last_key) L = last_L;
+            else { int len = SquareRoot0(dhx * dhx + TILE * TILE + dhz * dhz); if (len < 1) len = 1;
+                   L = last_L = gfx_light((-dhx << 12) / len, (-TILE << 12) / len, (-dhz << 12) / len); last_key = key; }
+            u32 c = gfx_grade_tex((u32)MIN(255, (rc[0] * L) >> 7) | ((u32)MIN(255, (rc[1] * L) >> 7) << 8) | ((u32)MIN(255, (rc[2] * L) >> 7) << 16));
             int u0 = roof_tex.u, v0 = roof_tex.v, u1 = u0 + 15, v1 = v0 + 15;
-            if (ABS(dhz) >= ABS(dhx)) gfx_quad_gt(&A, &B, &C, &DQ, roof_tex.tpage, 0, u0, v0, u1, v0, u0, v1, u1, v1, c, c, c, c, 1);   // courses run across the slope
-            else gfx_quad_gt(&A, &B, &C, &DQ, roof_tex.tpage, 0, u0, v0, u0, v1, u1, v0, u1, v1, c, c, c, c, 1);
+            if (ABS(dhz) >= ABS(dhx)) gfx_emit_gt4(A, B, C, DQ, c, c, c, c, roof_tex.tpage, 0, u0, v0, u1, v1, 1);   // courses run across the slope
+            else gfx_emit_ft4(A, B, C, DQ, c, roof_tex.tpage, 0, u0, v0, u0, v1, u1, v0, u1, v1, 1, 0);
             // the gable ends: where the roof stands above a footprint edge, a wall closes it
             static const signed char ex[4] = { 0, 1, 0, -1 }, ey[4] = { 1, 0, -1, 0 };
             for (int k = 0; k < 4; k++) {
@@ -935,22 +999,20 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     draw_layer(fx, fy, t, cutaway, 0);
     int top = MIN(world_view_lvl, NUP), any = 0;
     for (int l = 1; l <= top; l++) any |= lvl_used[l];
-    if (any) {   // the storeys above: each is swapped into the ground's arrays and drawn with the camera dropped by its height
-        static char k_map[MH][MW + 1]; static u8 k_fl[MH][MW], k_wp[MH][MW];
-        memcpy(k_map, lifeMap, sizeof k_map); memcpy(k_fl, floorMap, sizeof k_fl); memcpy(k_wp, wallMap, sizeof k_wp);
+    if (any) {   // the storeys above: the drawing reads each storey's own arrays, with the camera dropped by its height
         int keep_ao = dbg_noao; dbg_noao = 1;
         for (int l = 1; l <= top; l++) {
-            const Level *Lv = lv_get(l - 1);
+            Level *Lv = lv_get(l - 1);
             if (!lvl_used[l] || !Lv) continue;
-            memcpy(lifeMap, Lv->map, sizeof k_map); memcpy(floorMap, Lv->fl, sizeof k_fl); memcpy(wallMap, Lv->wp, sizeof k_wp);
+            dm = Lv->map; dfl = Lv->fl; dwp = Lv->wp; world_lvl = l;
             world_cam_push(l);
             draw_layer(fx, fy, t, cutaway && l == world_view_lvl, l);
             world_cam_pop();
         }
-        memcpy(lifeMap, k_map, sizeof k_map); memcpy(floorMap, k_fl, sizeof k_fl); memcpy(wallMap, k_wp, sizeof k_wp);
+        dm = lifeMap; dfl = floorMap; dwp = wallMap; world_lvl = 0;
         dbg_noao = keep_ao;
     }
-    { int R = 12; roofs_draw(fx, fy, MAX(0, fx - R), MIN(MW - 1, fx + R), MAX(0, fy - R), MIN(MH - 1, fy + R)); }
+    { PROF_BEGIN(); int R = 12; roofs_draw(fx, fy, MAX(0, fx - R), MIN(MW - 1, fx + R), MAX(0, fy - R), MIN(MH - 1, fy + R)); PROF_END(3); }
     world_lvl = keep_lvl;
     gfx_set_reserve(0);
 }

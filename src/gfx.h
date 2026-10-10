@@ -4,8 +4,8 @@
 
 #define OT_LEN     4096
 #define OT_SHIFT   1              // view-space z >> OT_SHIFT = OT index (z up to 8192 units)
-#define PACKET_LEN (224*1024)   // per buffer (x2 = 448 KB, plus the OTs, of the 2 MB RAM). Keep at least 64 KB free above _end for the stack: check with nm (the 80x80 maps take about 500 KB)
-#define RESERVE_PEOPLE (72*1024)   // kept back from the world so the people always fit
+#define PACKET_LEN (144*1024)   // per buffer. A busy city frame zoomed out uses ~50 KB now that rejected primitives give their room back (L3 shows it). Keep 64 KB+ free above _end (nm) for the stack
+#define RESERVE_PEOPLE (48*1024)   // kept back from the world so the people always fit
 #define RESERVE_UI     (24*1024)   // kept back from the people so bubbles, text and the HUD always fit
 #define Z_NEAR     40
 #define OT_FLOOR   (OT_LEN - 2)   // the floor: behind everything but the sky
@@ -39,7 +39,18 @@ int  gfx_light_amb(void);
 void gfx_set_zbias(int b);
 void gfx_set_fog(int near, int far);          // things further than near darken towards far (0 = off)
 extern int gfx_prim_count;                    // 3D primitives sent (reset it yourself; the Bores' cost)
-extern int gfx_last_prims, gfx_last_bytes, gfx_last_overflow;   // profiler (L3 in life mode): last frame's 3D prims, packet bytes, prims that did not fit
+extern int gfx_last_prims, gfx_last_bytes, gfx_last_overflow;
+extern int gfx_prof[8], gfx_prof_last[8]; int gfx_hb(void); int isqrt(int v);   // profiler buckets: 0 floors 1 walls 2 items 3 roofs 4 sims 5 cit full 6 cit crowd 7 shadows/misc
+extern int gfx_frame_prims, gfx_profn[8], gfx_profn_last[8];
+#define PROF_BEGIN() int prof_t0_ = gfx_hb(), prof_n0_ = gfx_frame_prims
+#define PROF_END(k) (gfx_prof[k] += gfx_hb() - prof_t0_, gfx_profn[k] += gfx_frame_prims - prof_n0_)   // profiler (L3 in life mode): last frame's 3D prims, packet bytes, prims that did not fit
+
+// ---- the fast path: transform shared corners once (XV), then emit faces from them; colours already graded ----
+int  gfx_visible(int wx, int wy, int wz, int r);   // a world-space sphere inside the view?
+typedef struct { short x, y; int z; } XV;     // a transformed vertex: screen x, y and view depth
+void gfx_xform(const SVECTOR *v, XV *o, int n);
+u32  gfx_grade_flat(u32 rgb);                 // a lit colour (0xBBGGRR) as the flat/gouraud prims show it
+u32  gfx_grade_tex(u32 rgb);                  // ... as the textured prims show it (128 = the texture as it is)
 
 // ---- 3D primitives in the current object space (return 1 if drawn) ----
 int gfx_quad_f (const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d, int r, int g, int b8, int cull);
@@ -64,3 +75,4 @@ void gfx_set_clear(int r, int g, int b);
 void gfx_sky(u32 top, u32 bottom);           // a full-screen gradient behind everything (0xBBGGRR)
 void gfx_shadow(const VECTOR *pos, int radius);
 void gfx_shadow_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d);   // a soft shadow over a flat quad   // a soft dark blob on the floor under something
+#include "gfx_fast.h"

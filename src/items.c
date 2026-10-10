@@ -235,6 +235,14 @@ static void unrot(int r, int u, int v, int *a, int *b) {   // world (u,v) -> loc
     switch (r & 3) { case 0: *a = u; *b = v; break; case 1: *a = 8 - v; *b = u; break; case 2: *a = 8 - u; *b = 8 - v; break; default: *a = v; *b = 8 - u; }
 }
 static int shade_of(int nx, int ny, int nz) { int L = gfx_light(nx, ny, nz); return CLAMP(L, 40, 200); }
+// the six axis directions' shades and their graded colours, worked out once a frame (items only ever face along the axes)
+static int sh6_fr = -1, sh6[6]; static u32 sh6_top[6], sh6_bot[6], sh6_flat[6];
+static void shade6_update(int t) {
+    if (t == sh6_fr) return;
+    sh6_fr = t;
+    static const short n6[6][3] = { { 0, 0, -ONE }, { ONE, 0, 0 }, { 0, 0, ONE }, { -ONE, 0, 0 }, { 0, -ONE, 0 }, { 0, ONE, 0 } };   // S E N W top bottom
+    for (int k = 0; k < 6; k++) { sh6[k] = shade_of(n6[k][0], n6[k][1], n6[k][2]); sh6_flat[k] = gfx_grade_tex((u32)sh6[k] * 0x010101u); }
+}
 
 // a side: a top-to-bottom gradient, darker where it meets what it stands on (contact shading, like the walls). ao = the bottom's light /256
 static int box_ao = 256;
@@ -248,6 +256,13 @@ static void tex_face(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const
     gfx_quad_gt(a, b, c, d, t.tpage, 0, u0, t.v, u1, t.v, u0, t.v + t.h - 1, u1, t.v + t.h - 1, ct, ct, cb, cb, 1);
 }
 
+static void tex_facex(const XV *a, const XV *b, const XV *c, const XV *d, const TexRef *tp, int dir) {   // tex_face on the fast path (dir: S E N W)
+    if (!xv_vis4(a, b, c, d, 1)) return;
+    const TexRef *t = tp;
+    int s = sh6[dir], st = s + (s >> 4), sb = (s * box_ao) >> 8;
+    u32 ct = gfx_grade_tex((u32)st * 0x010101u), cb = gfx_grade_tex((u32)sb * 0x010101u);
+    gfx_put_gt4(a, b, c, d, ct, ct, cb, cb, (u32)t->tpage << 16, 0, t->u, t->v, t->u + t->w - 1, t->v + t->h - 1);
+}
 static void draw_box(const IBox *bx, const TexRef *ref, int r, int ox, int oz, int t) {
     int ua, va, ub, vb; rotPt(r, bx->a0, bx->b0, &ua, &va); rotPt(r, bx->a1, bx->b1, &ub, &vb);
     int u0 = MIN(ua, ub), u1 = MAX(ua, ub), v0 = MIN(va, vb), v1 = MAX(va, vb);
@@ -258,26 +273,35 @@ static void draw_box(const IBox *bx, const TexRef *ref, int r, int ox, int oz, i
     if (bx->z1 == bx->z0) y0 = y1 - 2;
     (void)t;
     { int h = bx->z1 - bx->z0; box_ao = bx->z0 == 0 ? (h > 8 ? 176 : 150) : 214; }   // on the floor: a dark foot (stronger on low things); higher up: a soft one
-    SVECTOR A, B, C, Dd;
     // world faces: 0 south (+v), 1 east (+u), 2 north (-v), 3 west (-u) show local face (wf - r)
     const TexRef *mS = &ref[(0 - r) & 3], *mE = &ref[(1 - r) & 3], *mN = &ref[(2 - r) & 3], *mW = &ref[(3 - r) & 3];
     // only the sides that face the eye (the rest could never show)
-    if (cam.eye.vz < zS) { setVector(&A, x0, y0, zS); setVector(&B, x1, y0, zS); setVector(&C, x0, y1, zS); setVector(&Dd, x1, y1, zS); tex_face(&A, &B, &C, &Dd, mS, 0, 0, -ONE, 0); }
-    if (cam.eye.vx > x1) { setVector(&A, x1, y0, zS); setVector(&B, x1, y0, zN); setVector(&C, x1, y1, zS); setVector(&Dd, x1, y1, zN); tex_face(&A, &B, &C, &Dd, mE, ONE, 0, 0, 0); }
-    if (cam.eye.vz > zN) { setVector(&A, x1, y0, zN); setVector(&B, x0, y0, zN); setVector(&C, x1, y1, zN); setVector(&Dd, x0, y1, zN); tex_face(&A, &B, &C, &Dd, mN, 0, 0, ONE, 0); }
-    if (cam.eye.vx < x0) { setVector(&A, x0, y0, zN); setVector(&B, x0, y0, zS); setVector(&C, x0, y1, zN); setVector(&Dd, x0, y1, zS); tex_face(&A, &B, &C, &Dd, mW, -ONE, 0, 0, 0); }
+    int fS = cam.eye.vz < zS && mS->tpage, fE = cam.eye.vx > x1 && mE->tpage, fN = cam.eye.vz > zN && mN->tpage, fW = cam.eye.vx < x0 && mW->tpage;
+    int fT = ref[4].tpage && cam.eye.vy < y0;
+    if (!(fS | fE | fN | fW | fT)) return;
+    // the 8 corners, transformed once (k: bit 0 = x1, bit 1 = south, bit 2 = bottom)
+    SVECTOR cv[8]; XV v[8];
+    for (int k = 0; k < 8; k++) setVector(&cv[k], (k & 1) ? x1 : x0, (k & 4) ? y1 : y0, (k & 2) ? zS : zN);
+    gfx_xform(cv, v, 8);
+    if (fS) tex_facex(&v[2], &v[3], &v[6], &v[7], mS, 0);
+    if (fE) tex_facex(&v[3], &v[1], &v[7], &v[5], mE, 1);
+    if (fN) tex_facex(&v[1], &v[0], &v[5], &v[4], mN, 2);
+    if (fW) tex_facex(&v[0], &v[2], &v[4], &v[6], mW, 3);
     // top: TL=(x0,zN) TR=(x1,zN) BL=(x0,zS) BR=(x1,zS); the texture turns with the item
-    if (ref[4].tpage && cam.eye.vy < y0) {
+    if (fT) {
         TexRef tt = ref[4];
+        if (!xv_vis4(&v[0], &v[1], &v[2], &v[3], 1)) return;
         int uv[4][2]; int cu[4] = { u0, u1, u0, u1 }, cv[4] = { v0, v0, v1, v1 };
         int aw = bx->a1 - bx->a0, bh = bx->b1 - bx->b0; if (aw < 1) aw = 1; if (bh < 1) bh = 1;
+        static const int rcp[9] = { 0, 65536, 32768, 21846, 16384, 13108, 10923, 9363, 8192 };   // 65536 / n (boxes are 1..8 units)
+        int ra = aw <= 8 ? rcp[aw] : 65536 / aw, rb = bh <= 8 ? rcp[bh] : 65536 / bh;
         for (int k = 0; k < 4; k++) {
             int la, lb; unrot(r, cu[k], cv[k], &la, &lb);
-            int fu = (la - bx->a0) * (tt.w - 1) / aw, fv = (lb - bx->b0) * (tt.h - 1) / bh;
+            int fu = ((la - bx->a0) * (tt.w - 1) * ra) >> 16, fv = ((lb - bx->b0) * (tt.h - 1) * rb) >> 16;
             uv[k][0] = tt.u + CLAMP(fu, 0, tt.w - 1); uv[k][1] = tt.v + CLAMP(fv, 0, tt.h - 1);
         }
-        setVector(&A, x0, y0, zN); setVector(&B, x1, y0, zN); setVector(&C, x0, y0, zS); setVector(&Dd, x1, y0, zS);
-        gfx_quad_ft(&A, &B, &C, &Dd, tt.tpage, 0, uv[0][0], uv[0][1], uv[1][0], uv[1][1], uv[2][0], uv[2][1], uv[3][0], uv[3][1], shade_of(0, -ONE, 0), 1, 0);
+        gfx_emit_ft4(&v[0], &v[1], &v[2], &v[3], sh6_flat[4], tt.tpage, 0,
+                     uv[0][0], uv[0][1], uv[1][0], uv[1][1], uv[2][0], uv[2][1], uv[3][0], uv[3][1], 1, 0);
     }
 }
 
@@ -340,6 +364,7 @@ static void stairs_item(int mx, int my, int r) {   // a flight of stairs filling
 
 void items_draw(char ch, int mx, int my, int rot, int along, int t) {
     if (ch == 'P') return;
+    shade6_update(t);
     if (ch == '|') { stairs_item(mx, my, rot); return; }
     if (ch == 'B') { skate_item(mx, my, rot); return; }                    // the SPAWN marker: where the Bore starts, nothing to see (in 3D the GBA's pad read as a figurine base)
     const ItemDef *d = def_of(ch);
