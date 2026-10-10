@@ -72,6 +72,7 @@ void gfx_flip(void) {
     VSync(0);
     db_active ^= 1;
     db_next = db[db_active].p;
+    alloc_reserve = 0;
     ui_head = ui_tail = 0;
     ClearOTagR(db[db_active].ot, OT_LEN);
     setRGB0(&db[db_active].draw, clear_r, clear_g, clear_b);
@@ -81,9 +82,11 @@ void gfx_flip(void) {
     DrawOTag(db[1 - db_active].ot + (OT_LEN - 1));
 }
 
+static int alloc_reserve;
+void gfx_set_reserve(int bytes) { alloc_reserve = bytes; }
 void *gfx_alloc(int bytes) {
     char *p = db_next;
-    if (p + bytes > db[db_active].p + PACKET_LEN - 64) return 0;
+    if (p + bytes > db[db_active].p + PACKET_LEN - 64 - alloc_reserve) return 0;
     db_next = p + ((bytes + 3) & ~3);
     return p;
 }

@@ -205,6 +205,7 @@ static void draw_marker(const Sim *s) {   // who you are playing: a bobbing gold
     gfx_tri_f(&a, &b, &c, 90, 60, 10, 0);                     // a dark edge behind, so it reads on bright rooms
 }
 static void draw_sims(void) {
+    gfx_set_reserve(RESERVE_UI);   // the people may use what the world left, but not the HUD's share
     for (int i = 0; i < nsims; i++) {
         Sim *s = &sims[i];
         if (s->lvl > world_view_lvl) continue;                      // upstairs, out of the floor view
@@ -217,6 +218,7 @@ static void draw_sims(void) {
         if (s->action != ACT_SLEEP && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
     if (nsims && !sims[player].grump) draw_marker(&sims[player]);   // MOSS gets nothing. MOSS made that very clear.
+    gfx_set_reserve(0);
 }
 
 static void draw_bubbles(void) {   // thoughts and notes over heads

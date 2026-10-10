@@ -666,6 +666,7 @@ static void roofs_draw(int fx, int fy, int x0, int x1, int y0, int y1) {
 
 void world_draw(int fx, int fy, int t, int cutaway) {
     gfx_set_identity(); world_dbg_walls = 0;
+    gfx_set_reserve(RESERVE_PEOPLE + RESERVE_UI);   // the world may not use up the room the people need
     frame_t = t;
     if (ao_dirty) ao_update();
     if (roof_dirty) roof_rebuild();
@@ -689,4 +690,5 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     }
     { int R = 12; roofs_draw(fx, fy, MAX(0, fx - R), MIN(MW - 1, fx + R), MAX(0, fy - R), MIN(MH - 1, fy + R)); }
     world_lvl = keep_lvl;
+    gfx_set_reserve(0);
 }
