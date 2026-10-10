@@ -13,6 +13,14 @@ static Level *UP = zup[0];
 int world_lvl, world_view_lvl, world_roof_show;
 int world_roof_style, world_roof_col = 0, world_roof_pitch = 1;
 static int roof_dirty = 1;
+static Home homes[ZONE_N][MAXHOMES]; static int nhomes[ZONE_N];
+int world_home_count(int zone) { return nhomes[zone % ZONE_N]; }
+const Home *world_home(int zone, int i) { return (i >= 0 && i < nhomes[zone % ZONE_N]) ? &homes[zone % ZONE_N][i] : 0; }
+static void reg_home(int x0, int y0, int x1, int y1, int dx, int dy) {   // the generator that is building a home tells us where it is (in the zone being made)
+    int z = world_zone % ZONE_N; if (nhomes[z] >= MAXHOMES) return;
+    Home *h = &homes[z][nhomes[z]++]; h->x0 = (u8)x0; h->y0 = (u8)y0; h->x1 = (u8)x1; h->y1 = (u8)y1; h->dx = (u8)dx; h->dy = (u8)dy;
+}
+static void town_homes(int want); static void island_homes(int want);
 static u8 lvl_used[NLEVELS];
 static void levels_clear(Level *L) {
     for (int k = 0; k < NUP; k++) { for (int y = 0; y < MH; y++) { memset(L[k].map[y], ' ', MW); L[k].map[y][MW] = 0; } memset(L[k].fl, 0, sizeof L[k].fl); memset(L[k].wp, 0, sizeof L[k].wp); }
@@ -203,6 +211,7 @@ static ZoneSave zones[ZONE_N];
 
 static void gCircle(int cx, int cy, int r, int fl) { for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) floorMap[y][x] = (u8)fl; }
 void world_gen_island(void) {
+    nhomes[ZONE_ISLAND] = 0;
     ao_dirty = 1;   // Castaway: a sand island in the sea, a camp, palms
     for (int y = 0; y < MH; y++) { for (int x = 0; x < MW; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = FL_WATER; wallMap[y][x] = 0; } lifeMap[y][MW] = 0; }
     gCircle(20, 20, 14, FL_SAND); gCircle(13, 15, 7, FL_SAND); gCircle(27, 26, 6, FL_SAND);
@@ -215,8 +224,10 @@ void world_gen_island(void) {
     for (unsigned i = 0; i < sizeof palms / sizeof palms[0]; i++) if (floorMap[palms[i][1]][palms[i][0]] != FL_WATER) gFree(palms[i][0], palms[i][1], 'g');
     gFree(26, 15, '*'); gFree(11, 19, '*'); gFree(29, 27, '*'); gFree(17, 26, '*');
     gPut(20, 24, 'P'); gFree(21, 26, 'a');
+    island_homes(3);
 }
 void world_gen_town(void) {   // Strange Town: a desert main street with a diner, a trailer, the lab and work
+    nhomes[ZONE_TOWN] = 0;
     for (int y = 0; y < MH; y++) { for (int x = 0; x < MW; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = FL_SAND; wallMap[y][x] = 0; } lifeMap[y][MW] = 0; }
     gLine(0, 0, MW - 1, 0, 'w', 13); gLine(0, MH - 1, MW - 1, MH - 1, 'w', 13); gLine(0, 0, 0, MH - 1, 'w', 13); gLine(MW - 1, 0, MW - 1, MH - 1, 'w', 13);
     gBox(1, 18, 38, 21, FL_PAVING);                                         // main street
@@ -237,6 +248,7 @@ void world_gen_town(void) {   // Strange Town: a desert main street with a diner
     gFree(7, 7, '*'); gFree(10, 6, '*'); gFree(33, 31, '*'); gFree(35, 33, '*'); gFree(31, 30, '*');
     gPut(17, 22, '+'); gFree(15, 22, 'N'); gFree(19, 22, 'I'); gFree(28, 22, 'Z'); gFree(30, 22, 'Z');
     gPut(18, 24, 'P'); gFree(3, 22, 'a'); gFree(36, 22, 'k');
+    town_homes(16);
 }
 // ================================================================== BORE CITY
 // An open-world city on the 80x80 map: a 5x5 grid of 16-tile blocks. Streets (3 tiles wide, paved) run along the top and left of every
@@ -259,6 +271,7 @@ static void city_house(int lx, int ly, unsigned h) {
     city_path(dx, dy, ly);
     gPut(hx + 2, hy, 'E'); gPut(hx + w - 3, hy, 'E'); gPut(hx, hy + hh / 2, 'E'); gPut(hx + w - 1, hy + hh / 2, 'E');   // windows
     int ix0 = hx + 1, iy0 = hy + 1, ix1 = hx + w - 2, iy1 = hy + hh - 2;
+    reg_home(ix0, iy0, ix1, iy1, dx, dy);
     gFree(ix0, iy0, 'S'); gFree(ix0 + 2, iy0, 'i'); gFree(ix0 + 3, iy0, (h & 1) ? 'b' : 'd');          // the bedroom corner (the tiles by the bed stay clear)
     gFree(ix1, iy0, 'T'); gFree(ix1 - 1, iy0, 'H'); gFree(ix1 - 2, iy0, '-');                           // the bathroom corner
     gFree(ix1, iy0 + 2, 'F'); gFree(ix1, iy0 + 3, 'y'); if (iy0 + 4 < iy1) gFree(ix1, iy0 + 4, (h & 2) ? '/' : 'c');   // the kitchen along the east wall
@@ -278,6 +291,7 @@ static void city_cottage(int lx, int ly, unsigned h) {   // a small home: one 5x
     gPut(dx, dy, 'D'); city_path(dx, dy, ly);
     gPut(hx + 2, hy, 'E'); gPut(hx + 4, hy, 'E'); gPut(hx, hy + 2, 'E'); gPut(hx + 6, hy + 2, 'E');
     int x0 = hx + 1, y0 = hy + 1;
+    reg_home(x0, y0, x0 + 4, y0 + 3, dx, dy);
     gFree(x0, y0, 'S'); gFree(x0 + 2, y0, '-'); gFree(x0 + 3, y0, 'T'); gFree(x0 + 4, y0, 'H');                  // the bed (a free tile beside it), the bathroom along the north wall
     gFree(x0, y0 + 1, 'F'); gFree(x0 + 2, y0 + 1, 'r'); gFree(x0, y0 + 2, 'y');                                  // the kitchen down the west wall
     gFree(x0 + 4, y0 + 2, (h & 1) ? 'i' : 'b'); gFree(x0 + 1, y0 + 3, 'C'); gFree(x0 + 4, y0 + 3, 'v'); gFree(x0, y0 + 3, 'l');   // (the lamp fills the corner nobody could reach)
@@ -303,6 +317,7 @@ static void city_town(int lx, int ly, unsigned h) {   // two homes sharing the w
         gPut(dx, dy, 'D'); city_path(dx, dy, ly);
         gPut(ax + 2, hy, 'E'); gPut(ax + 4, hy, 'E'); gPut(u ? ax + 6 : ax, hy + 4, 'E');                       // the party wall has no window
         unit_furnish(ax + 1, hy + 1, u, hu);
+        reg_home(ax + 1, hy + 1, ax + 5, hy + 7, dx, dy);
         gFree(dx - 2, dy + 1, 'Z'); gFree(dx + 2, dy + 1, 'Z');
     }
     gFree(lx + 3, ly, 'g'); gFree(lx + 9, ly, 'g'); gFree(lx + 6, ly + 12, 'Y');
@@ -315,6 +330,7 @@ static void city_two(int lx, int ly, unsigned h) {   // a two-storey house: bed,
     gPut(dx, dy, 'D'); city_path(dx, dy, ly);
     gPut(hx + 2, hy, 'E'); gPut(hx + 6, hy, 'E'); gPut(hx, hy + 3, 'E'); gPut(hx + 8, hy + 3, 'E'); gPut(hx + 2, dy, 'E'); gPut(hx + 6, dy, 'E');
     int x0 = hx + 1, y0 = hy + 1;                                                    // the inside: 7 wide, 6 deep
+    reg_home(x0, y0, x0 + 6, y0 + 5, dx, dy);
     gFree(x0, y0, 'S'); gFree(x0 + 1, y0, 'i'); gFree(x0 + 4, y0, '-'); gFree(x0 + 5, y0, 'H'); gFree(x0 + 6, y0, 'T');
     gFree(x0 + 6, y0 + 2, 'F'); gFree(x0 + 6, y0 + 3, 'y'); gFree(x0 + 6, y0 + 4, (h & 1) ? '/' : 'c');
     gFree(x0 + 2, y0 + 3, 'h'); gFree(x0 + 3, y0 + 3, 't'); gFree(x0 + 4, y0 + 3, 'h');
@@ -384,6 +400,42 @@ static void city_office(int lx, int ly) {   // where work is: the work marker
     gFree(x0 + 5, y1 - 2, 'x'); gPut(x0 + 3, y0, 'E'); gPut(x1 - 3, y0, 'E'); gFree(lx + 3, ly + 11, 'Z');
 }
 // what stands on lot (i,j): the landmarks are fixed, the rest of the 5x5 grid is a hand-placed mix of homes so no two neighbours match
+// ---- homes for the island and the town: the same generators, on free ground ----
+static int area_free(int x0, int y0, int x1, int y1, int sand_only) {
+    if (x0 < 2 || y0 < 2 || x1 > MW - 3 || y1 > MH - 3) return 0;
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
+        char c = lifeMap[y][x]; int f = floorMap[y][x];
+        if (c != '.' && c != 'u' && c != '*' && c != 'g') return 0;     // bare ground, or a cactus / rock / palm we may clear
+        if (f == FL_WATER || (sand_only && f != FL_SAND)) return 0;
+    }
+    return 1;
+}
+static void area_clear(int x0, int y0, int x1, int y1) { for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) lifeMap[y][x] = '.'; }
+static void town_homes(int want) {   // lots on the 14-tile grid wherever the desert is empty: a random house, cottage, townhouse pair or two-storey on each
+    for (int j = 0; j < 5 && nhomes[ZONE_TOWN] < want; j++) for (int i = 0; i < 5 && nhomes[ZONE_TOWN] < want; i++) {
+        int lx = 3 + 14 * i, ly = 3 + 14 * j;
+        if (!area_free(lx, ly, lx + 12, ly + 12, 1)) continue;
+        area_clear(lx, ly, lx + 12, ly + 12);
+        unsigned h = city_h(i * 11 + 3, j * 17 + 1); int t = (int)(h % 10);
+        if (t < 3) city_house(lx, ly, h); else if (t < 5) city_cottage(lx, ly, h); else if (t < 8) city_town(lx, ly, h); else city_two(lx, ly, h);
+    }
+}
+static int ring_clear(int x0, int y0, int x1, int y1) {   // no home wall in the one-tile ring round the box (so two homes never touch)
+    for (int y = y0 - 1; y <= y1 + 1; y++) for (int x = x0 - 1; x <= x1 + 1; x++) {
+        if (x < 0 || y < 0 || x >= MW || y >= MH) return 0;
+        char c = lifeMap[y][x]; if (c == 'W' || c == 'D' || c == 'E') return 0;
+    }
+    return 1;
+}
+static void island_homes(int want) {   // cottages (with a plank path) where the island has room, clear of the camp
+    for (int ly = 4; ly <= 32 && nhomes[ZONE_ISLAND] < want; ly += 2) for (int lx = 4; lx <= 32 && nhomes[ZONE_ISLAND] < want; lx += 2) {
+        unsigned h = city_h(lx * 7 + 1, ly * 13 + 5) & ~(1u << 7);
+        int x0 = lx + 3, y0 = ly + 3, x1 = lx + 9, y1 = ly + 9;
+        if (!area_free(x0, y0, x1, y1, 0) || !ring_clear(x0, y0, x1, y1)) continue;   // dry bare ground, no neighbour touching
+        area_clear(x0, y0, x1, y1);
+        city_cottage(lx, ly, h);
+    }
+}
 static int city_lot(int i, int j) {
     if (i == CITY_N / 2 && j == CITY_N / 2) return L_SQUARE;
     if (i == CITY_N / 2 + 1 && j == CITY_N / 2 + 1) return L_SKATE;
@@ -404,6 +456,7 @@ static int city_lot(int i, int j) {
 #endif
 }
 void world_gen_city(void) {
+    nhomes[ZONE_CITY] = 0;
     ao_dirty = 1;
     for (int y = 0; y < MH; y++) { for (int x = 0; x < MW; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = FL_GRASS; wallMap[y][x] = 0; } lifeMap[y][MW] = 0; }
     for (int k = 0; k < CITY_N; k++) { gBox(16 * k, 0, 16 * k + 2, MH - 1, FL_PAVING); gBox(0, 16 * k, MW - 1, 16 * k + 2, FL_PAVING); }   // the streets
@@ -442,6 +495,7 @@ void world_switch(int z) {
     else world_gen();
 }
 void world_reset_all(void) {
+    for (int i = 0; i < ZONE_N; i++) nhomes[i] = 0;
     ao_dirty = 1; for (int i = 0; i < ZONE_N; i++) { zones[i].made = 0; levels_clear(zup[i]); } world_zone = ZONE_HOME; UP = zup[0]; world_gen(); }
 char world_at(int mx, int my) { return world_at_l(world_lvl, mx, my); }
 static int is_wall(char c) { return c == 'W' || c == 'w' || c == 'E' || c == 'e' || c == 'f'; }

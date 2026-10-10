@@ -20,6 +20,12 @@ const char *world_zone_name(int z);
 void world_switch(int z);                        // keeps the current zone's tiles, loads (or generates) the other
 void world_reset_all(void);                      // a new life: every zone is generated afresh
 
+// the homes the generators build (houses, cottages, townhouses, two-storeys): where a household lives
+typedef struct { u8 x0, y0, x1, y1; u8 dx, dy; } Home;   // the floor inside the walls (tiles), and the door tile (on the south wall; outside is dy + 1)
+#define MAXHOMES 40
+int world_home_count(int zone);
+const Home *world_home(int zone, int i);
+
 void world_init(void);
 void world_touched(void);                        // the map changed (build mode): the floor shading is worked out again
 void world_gen(void);                            // BORE's default lot: THE MAN BASE

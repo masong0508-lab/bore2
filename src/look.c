@@ -201,6 +201,8 @@ static int isPart(int id) { return id == LK_TAIL || id == LK_HORNS || id == LK_B
 static const char *const firstNm[16] = { "DIPPA", "MISSY", "GOTTCHO", "SUNMAN", "WHISTLER", "COLA", "NOVA", "PIXEL", "JUNO", "BARRY", "TREE", "MARS", "CLOUD", "BOMB", "ACE", "DOT" };
 static const char *const lastNm[16] = { "BARRACHO", "DIPPER", "MIDNIGHT", "FLEXICODE", "SYNDICATE", "CONDENSED", "SPACE", "CITIZEN", "STAGED", "WINNER", "HOTDAMN", "EXCUSES", "MAGIC", "NURSERY", "CLOSER", "ZONE" };
 
+const char *look_last_name(int i) { return lastNm[i & 15]; }   // so a household can share a surname
+
 void look_random(Bore *b) {
     stage = b->stage;
     for (int id = 0; id < LK_N; id++) {
