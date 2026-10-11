@@ -10,6 +10,7 @@
 #include "crowd.h"
 #include "pop.h"
 #include "home.h"
+#include "island.h"
 
 Sim  sims[MAX_SIMS];
 int  nsims, player;
@@ -35,6 +36,7 @@ enum { CARE_FEED = 1, CARE_CHANGE, CARE_PLAY, CARE_CUDDLE, CARE_BED };
 static void bake_done(Sim *s); static void cake_eaten(Sim *s); static void homework_done(Sim *s); static void care_done(Sim *s);
 static void baby_to_bed(Sim *b); static int baby_need(const Sim *b);
 static int school_age(const Sim *k); static void care_start(Sim *s, int baby, int kind);
+static void gather_done(Sim *s); static void raft_sail(void);
 int  life_minutes(void) { return day_count * 1440 + clock_min; }
 
 // BORE tuning (sims.h), per logic step in 1/1024 points
@@ -416,12 +418,29 @@ static int action_for(char c) {
         case 'v': case 'R': case 'A': case 'Q': case 'q': case 'G': case 'V': return ACT_FUN;
         case 'b': case 'd': return ACT_READ; case 'c': return ACT_COFFEE; case 'm': return ACT_RUN; case 'I': return ACT_PHONE; case 'x': return ACT_WORK;
         case CH_CAKE: return ACT_EAT; case CH_GRAVE: return ACT_READ;
+        case 'g': case '3': case '6': case '*': return world_zone == ZONE_ISLAND ? ACT_GATHER : ACT_NONE;   // (on the island: wood, coconuts, stone)
+        case CH_BUSH: case CH_FISH: case CH_BOTTLE: case CH_DIG: case CH_IDOL: case CH_WRECK: case CH_SHELL: case CH_GOLD: case CH_JOURNAL: return ACT_GATHER;
         default: return ACT_NONE;
     }
 }
 static int on_item(int act) { return act == ACT_WC || act == ACT_SLEEP || act == ACT_SHOWER || act == ACT_SIT || act == ACT_RUN || act == ACT_WORK; }
 static int stands_on(int act, int mx, int my) { return on_item(act) && !(act == ACT_WORK && items_blocking(world_at(mx, my))); }   // (work at a counter: in front of it)
+static int gather_kind(char c) {   // what using it gets you, unless a pie choice says otherwise
+    switch (c) {
+        case 'g': return G_COCONUT; case '3': case '6': return G_WOOD; case '*': return G_STONE; case CH_BUSH: return G_BERRIES; case CH_FISH: return G_FISH;
+        case CH_DIG: return G_DIG; case CH_WRECK: return G_WRECK; case CH_BOTTLE: return G_BOTTLE; case CH_JOURNAL: return G_JOURNAL; case CH_IDOL: return G_IDOL;
+        case CH_SHELL: return G_SHELL; case CH_GOLD: return G_GOLD;
+    }
+    return G_NONE;
+}
+static int gather_len(int k) {
+    switch (k) { case G_WOOD: return 300; case G_STONE: return 240; case G_LEAVES: return 150; case G_BERRIES: return 120; case G_COCONUT: return 180;
+                 case G_FISH: return isl_spear ? 240 : 420; case G_DIG: return 360; case G_WRECK: return 300; case G_SHELL: return 30; default: return 200; }
+}
+static const char *const gatherHint[] = { "", "CHOP WOOD", "GATHER STONE", "GATHER LEAVES", "PICK BERRIES", "A COCONUT", "FISH", "DIG", "SEARCH IT", "READ IT", "READ IT", "LISTEN", "PICK IT UP", "TAKE IT" };
 static const char *act_hint(int act, char c) {
+    if (act == ACT_GATHER) return gatherHint[gather_kind(c) % 14];
+    if (c == CH_RAFT) return "SAIL";
     if (c == CH_CAKE) return "CAKE";
     if (c == CH_GRAVE) return "REMEMBER";
     switch (act) {
@@ -457,7 +476,12 @@ static void begin_action(Sim *s, int act, int mx, int my) {
     s->gait.sleep = (act == ACT_SLEEP);
     s->gait.amp = 0;
     if (act == ACT_SLEEP) audio_voice(VOICE_SNORE);
+    if (act == ACT_EAT && world_zone == ZONE_ISLAND && world_at(mx, my) != CH_CAKE) {   // the castaway's meal: from what they have gathered (wherever it is cooked)
+        if (isl_food <= 0) { s->action = ACT_NONE; sim_say(s, "NOTHING TO EAT"); if ((int)(s - sims) == player) sim_note("NO FOOD: PICK BERRIES, FISH"); return; }
+        isl_food--;
+    }
     if (act == ACT_EAT) audio_voice(VOICE_YEHA);
+    if (act == ACT_GATHER) { s->act_var = (u8)gather_kind(world_at(mx, my)); s->act_t = gather_len(s->act_var); }
 }
 static void chat_done(Sim *s, Sim *o) {   // a finished chat: the relationship grows (more between compatible people), the wants notice
     int me = (int)(s - sims), him = (int)(o - sims), bonus = 0;
@@ -485,6 +509,7 @@ static void end_action(Sim *s) {
         case ACT_READ: if (s->act_var == 3) { homework_done(s); break; } if (s->act_var == 5) { sim_moodlet(s, ML_MEMORIES); break; }   // (homework; at a grave)
                        wants_event(s, W_READ, 0); break;
         case ACT_CARE: care_done(s); break;
+        case ACT_GATHER: gather_done(s); break;
         case ACT_COFFEE: wants_event(s, W_COFFEE, 0); sim_moodlet(s, ML_CAFFEINE); break;
         case ACT_RUN: wants_event(s, W_RUN, 0); sim_moodlet(s, s->act_var == 2 ? ML_COACHED : ML_WORKOUT);
                       { PlaceInfo pi; if (place_at(s->act_x, s->act_y, &pi) && pi.lot == LOT_GYM) wants_event(s, W_GYM, 0); } break;
@@ -536,6 +561,9 @@ static void run_action(Sim *s) {
         case ACT_READ: s->need[N_FUN] += s->act_var == 1 ? GAIN_FUN / 4 : GAIN_FUN / 2; s->skill_fun += s->act_var == 1 ? 3 : 1; break;
         case ACT_COFFEE: s->need[N_REST] += s->act_var == 1 ? 320 : 180; s->need[N_WC] -= s->act_var == 1 ? 110 : 60; break;
         case ACT_RUN: s->need[N_FUN] += 120; s->need[N_CLEAN] -= s->act_var ? 160 : 90; s->skill_body += s->act_var == 2 ? 3 : s->act_var == 1 ? 2 : 1; s->gait.amp = 4096; s->gait.phase = (s->gait.phase + 200) & 4095; break;
+        case ACT_GATHER: if (!(s->act_t & 31)) s->gait.wave = 20;   // busy hands; chopping and hauling tire you
+                         if (s->act_var == G_WOOD || s->act_var == G_STONE || s->act_var == G_DIG) s->need[N_REST] -= 40;
+                         if (s->act_var == G_FISH) s->need[N_FUN] += 30; break;
         case ACT_CARE: if (s->talk_to < 0 || s->talk_to >= nsims) { s->act_t = 0; break; }   // looking after the baby: busy hands
                        if (!(s->act_t & 31)) s->gait.wave = 20; s->yaw = yaw_towards(sims[s->talk_to].x - s->x, sims[s->talk_to].z - s->z); break;
         case ACT_SWIM: {   // floating about on the water, turning lazily
@@ -633,6 +661,14 @@ static void ai_think(Sim *s) {
     // the lowest need
     int worst = -1, wv = 101;
     for (int n = 0; n < N_SOCIAL; n++) { int v = s->need[n] >> 10; if (v < wv) { wv = v; worst = n; } }
+    if (wv < 45 && worst == N_FOOD && world_zone == ZONE_ISLAND) {   // a castaway's meal: at a fire, if there is food in and a fire to get to; else off to forage
+        int ix, iy, tx, ty;
+        if (isl_food > 0 && nearest_item(s, 'F', &ix, &iy) && approach_tile(s, ix, iy, &tx, &ty) && start_walk(s, tx, ty, wv < 15 ? 2 : 1)) {
+            s->act_x = ix; s->act_y = iy; s->action = ACT_WALK; s->act_t = 9999; return; }
+        static const char wild[2] = { (char)CH_BUSH, 'g' };   // (berries, else a coconut: whichever it can get to)
+        for (int k = 0; k < 2; k++) if (nearest_item(s, wild[k], &ix, &iy) && approach_tile(s, ix, iy, &tx, &ty) && start_walk(s, tx, ty, wv < 15 ? 2 : 1)) {
+            s->act_x = ix; s->act_y = iy; s->action = ACT_WALK; s->act_t = 9999; return; }
+    }
     if (wv < 45) {
         if (worst == N_REST && !is_night() && wv > 15) { worst = -1; }
         char ch = worst >= 0 ? need_item(worst) : 0;
@@ -738,6 +774,57 @@ static void tick_needs(Sim *s) {
         static const char *const act[4] = { "KICKS THE BIN", "JUMPS ON THE SOFA", "SULKS LOUDLY", "WONT LEARN A THING" };
         sim_say(s, act[look_rand() & 3]);
     }
+}
+
+// ================================================================== CASTAWAY ISLAND: gathering, the secrets, the raft (island.h)
+static void gather_done(Sim *s) {
+    char t[32], *cell = &lifeMap[s->act_y][s->act_x];
+    if (s->act_x < 0 || s->act_y < 0 || s->act_x >= MW || s->act_y >= MH) return;
+    switch (s->act_var) {
+        case G_WOOD: isl_wood++; sim_say(s, "+1 WOOD"); break;
+        case G_STONE: isl_stone++; sim_say(s, "+1 STONE"); break;
+        case G_LEAVES: isl_leaves += 2; sim_say(s, "+2 LEAVES"); break;
+        case G_BERRIES: isl_food++; s->need[N_FOOD] += 10 << 10; sim_say(s, "+1 FOOD: BERRIES"); break;   // (and a few eaten as they are picked)
+        case G_COCONUT: isl_food++; s->need[N_FOOD] += 10 << 10; sim_say(s, "+1 FOOD: A COCONUT"); break;
+        case G_FISH: { int n = isl_spear ? 3 : 2; isl_food += n; sprintf(t, "+%d FOOD: FISH!", n); sim_say(s, t); wants_event(s, W_FUN, 0); break; }
+        case G_DIG: if (*cell == CH_DIG) { *cell = '.'; world_touched(); cash += 2500; sim_note("TREASURE! A CHEST OF $2500"); isl_found(SEC_TREASURE); } break;
+        case G_WRECK: if (!((isl_secrets >> SEC_WRECK) & 1)) { cash += 500; sim_note("IN THE WRECK: $500 AND A MAP"); sim_note("THE MAP SHOWS AN ISLET"); }
+                      else sim_note("NOTHING MORE IN THE WRECK");
+                      isl_found(SEC_WRECK); break;
+        case G_BOTTLE: if (*cell == CH_BOTTLE) { *cell = '.'; world_touched(); } sim_note("A NOTE: DIG BY THE BIG ROCK"); isl_found(SEC_BOTTLE); break;
+        case G_JOURNAL: sim_note("THE HERMIT: A RAFT REACHES"); sim_note("THE ISLET. THE GOLD IS THERE"); isl_found(SEC_JOURNAL); break;
+        case G_IDOL: sim_note("THE IDOL HUMS. YOU FEEL LUCKY"); sim_moodlet(s, ML_INSPIRED); isl_found(SEC_IDOL); break;
+        case G_SHELL: if (*cell == CH_SHELL) { *cell = '.'; world_touched(); isl_shells++; sprintf(t, "SEASHELL %d OF %d", isl_shells, ISL_SHELLS); sim_note(t);
+                      if (isl_shells >= ISL_SHELLS) isl_found(SEC_SHELLS); } break;
+        case G_GOLD: if (*cell == CH_GOLD) { *cell = '.'; world_touched(); cash += 10000; sim_note("THE GOLDEN IDOL! $10000"); isl_found(SEC_GOLD); } break;
+    }
+    for (int i = 0; i < NEED_N; i++) s->need[i] = CLAMP(s->need[i], 0, 100 << 10);
+}
+static int land_near(int x0, int y0, int r0, int *ox, int *oy) {   // dry ground r0 or more from (x0, y0) with nobody on it
+    for (int r = r0; r <= r0 + 3; r++) for (int dy = -r; dy <= r; dy++) for (int dx = -r; dx <= r; dx++) {
+        if (ABS(dx) != r && ABS(dy) != r) continue;
+        int x = x0 + dx, y = y0 + dy;
+        if (x < 1 || y < 1 || x >= MW - 1 || y >= MH - 1 || lifeMap[y][x] != '.' || floorMap[y][x] == FL_WATER) continue;
+        int busy = 0; for (int i = 0; i < nsims; i++) if (!sims[i].away && sim_tile_x(&sims[i]) == x && sim_tile_y(&sims[i]) == y) busy = 1;
+        if (!busy) { *ox = x; *oy = y; return 1; }
+    }
+    return 0;
+}
+static void raft_sail(void) {   // across to the islet, or back to the island: everyone comes (and a raft waits at each end)
+    const Sim *p = &sims[player]; int px = sim_tile_x(p), py = sim_tile_y(p);
+    int out = (px - isl_dock_x) * (px - isl_dock_x) + (py - isl_dock_y) * (py - isl_dock_y) < (px - isl_islet_x) * (px - isl_islet_x) + (py - isl_islet_y) * (py - isl_islet_y);   // (by the island's raft: out)
+    int tx = out ? isl_islet_x : isl_dock_x, ty = out ? isl_islet_y : isl_dock_y;
+    if (out && lifeMap[ty][tx] == '.') { lifeMap[ty][tx] = CH_RAFT; world_touched(); }
+    for (int i = 0; i < nsims; i++) {
+        Sim *o = &sims[i]; if (o->away) continue;
+        if (o->action != ACT_NONE) end_action(o);
+        o->action = ACT_NONE; o->path_n = 0; o->path_i = 0; o->lvl = 0; o->talk_to = -1; o->errand = 0;
+        int x, y; if (!land_near(tx, ty, i == player ? 1 : 2, &x, &y)) { x = tx; y = ty; }   // (you by the raft, the rest a step back from it)
+        o->x = x * TILE + TILE / 2; o->z = -(y * TILE + TILE / 2);
+    }
+    sim_note(out ? "YOU SAIL OUT TO THE ISLET" : "BACK ON THE ISLAND");
+    if (out) isl_found(SEC_ISLET);
+    audio_voice(VOICE_YAHOO);
 }
 
 // ================================================================== GROWING UP: birthdays, babies, school, old age, the family tree
@@ -1099,6 +1186,7 @@ static int front_tile(const Sim *s, int *mx, int *my) {
 static int usable_at(int tx, int ty, char c) {   // something X does something with
     if (action_for(c) != ACT_NONE) return 1;
     if (c == '8') return world_zone == ZONE_CITY;      // a FOR SALE sign
+    if (c == CH_RAFT) return 1;
     if (!c || !strchr("y7d`it", c)) return 0;         // a counter, a shelf, a desk, a mirror, a rack, a table: at a place, to buy at or to work at
     if (job_here(tx, ty, c)) return 1;
     PlaceInfo pi; if (!place_at(tx, ty, &pi)) return 0;
@@ -1108,15 +1196,20 @@ static int usable_at(int tx, int ty, char c) {   // something X does something w
 }
 static int target_of(const Sim *s, int *mx, int *my, int *who) {
     *who = -1;
-    int me = (int)(s - sims);
-    // a person in front?
-    for (int i = 0; i < nsims; i++) {
-        if (i == me || sims[i].away) continue;
+    int me = (int)(s - sims), beside = -1, ahead = -1, best = 1 << 30, ux = isin(s->yaw), uz = -icos(s->yaw);
+    for (int i = 0; i < nsims; i++) {   // (after whoever or whatever is right in front of you: a person you are facing, then one just beside you)
+        if (i == me || sims[i].away || sims[i].action == ACT_SLEEP) continue;
         int dx = sims[i].x - s->x, dz = sims[i].z - s->z;
-        if (ABS(dx) < TILE * 3 / 2 && ABS(dz) < TILE * 3 / 2 && sims[i].action != ACT_SLEEP) { *who = i; return 1; }
+        if (ABS(dx) >= TILE * 3 / 2 || ABS(dz) >= TILE * 3 / 2) continue;
+        int dot = (dx * ux + dz * uz) >> 12;
+        if (dot > TILE / 4 && dot * dot * 2 > dx * dx + dz * dz) { if (dot < best) { best = dot; ahead = i; } }   // (within 45 degrees of straight ahead: the nearest)
+        else if (beside < 0) beside = i;
     }
-    int fx, fy;
-    if (front_tile(s, &fx, &fy) && usable_at(fx, fy, world_at(fx, fy))) { *mx = fx; *my = fy; return 1; }
+    int fx, fy, ft = front_tile(s, &fx, &fy);
+    if (ft) for (int i = 0; i < nsims; i++) if (i != me && !sims[i].away && sims[i].action != ACT_SLEEP && sim_tile_x(&sims[i]) == fx && sim_tile_y(&sims[i]) == fy) { *who = i; return 1; }   // someone right in front of you (on a sofa, in a crib)
+    if (ft && usable_at(fx, fy, world_at(fx, fy))) { *mx = fx; *my = fy; return 1; }   // then the thing right in front of you
+    if (ahead >= 0) { *who = ahead; return 1; }
+    if (beside >= 0) { *who = beside; return 1; }
     int cx = sim_tile_x(s), cy = sim_tile_y(s);
     static const signed char dx[5] = { 0, 0, 1, 0, -1 }, dy[5] = { 0, 1, 0, -1, 0 };
     for (int k = 0; k < 5; k++) { int tx = cx + dx[k], ty = cy + dy[k]; if (usable_at(tx, ty, world_at(tx, ty))) { *mx = tx; *my = ty; return 1; } }
@@ -1239,6 +1332,19 @@ static int sim_pie_open_(char opt[8][16]) {
         if (bday_one() >= 0) OPT("BLOW CANDLES", 30)
         OPT("A SLICE", 31) act = ACT_NONE; }
     if (c == CH_GRAVE) { char nm[NAME_LEN]; sim_grave_name(mx, my, nm); strcpy(pie_title, nm); OPT("REMEMBER", 32) act = ACT_NONE; }
+    if (act == ACT_GATHER) {   // the island: what you can get from it
+        int k = gather_kind(c);
+        strcpy(pie_title, items_name(c));
+        OPT(gatherHint[k], 100 + k)
+        if (c == 'g' || c == '3' || c == '6') { if (k != G_WOOD) OPT("CHOP WOOD", 100 + G_WOOD) OPT("GATHER LEAVES", 100 + G_LEAVES) }
+        if (c == CH_BUSH) OPT("GATHER LEAVES", 100 + G_LEAVES)
+        act = ACT_NONE;
+    }
+    if (c == CH_RAFT) { strcpy(pie_title, "THE RAFT"); OPT("SAIL ACROSS", 39) OPT("NOT NOW", 37) act = ACT_NONE; }
+    if (c == 's' && world_zone == ZONE_ISLAND) {   // the camp's fire: a meal from what you gathered, or make something
+        if (isl_food > 0) OPT("COOK AND EAT", 1)
+        OPT("CRAFT", 38) act = ACT_NONE;
+    }
     if (act == ACT_READ && school_age(s) && !s->homework) OPT("HOMEWORK", 33)
     if (act == ACT_EAT && c != CH_CAKE && !pie_place && s->bore.stage >= AG_TEEN && bday_one() >= 0 && !cake_slices) OPT("BIRTHDAY CAKE", 34)
     if (pie_place && ((pie_pi.lot == LOT_SPA && (c == 'S' || c == '>')) || (pie_pi.lot == LOT_GALLERY && c == ')'))) act = ACT_NONE;
@@ -1399,7 +1505,7 @@ int sim_debug_grow(int what, int arg) {   // (test builds) hurry a family's life
     return 0;
 }
 #endif
-#if defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME)
+#if defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME) || defined(AUTO_ISLE) || defined(AUTO_SCENE)
 int sim_debug_goto(char c, int lot) {   // (test builds) stand the player in front of the nearest c (at a place of that kind, lot >= 0)
     Sim *s = &sims[player]; int sx = sim_tile_x(s), sy = sim_tile_y(s), best = 1 << 30, bx = -1, by = -1, tx = 0, ty = 0;
     for (int y = 1; y < MH - 1; y++) for (int x = 1; x < MW - 1; x++) {
@@ -1445,10 +1551,16 @@ static void sim_pie_do_(int i) {
         case 34: begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 8; s->act_t = 300; sim_say(s, "A CAKE FOR THE BIRTHDAY!"); return;
         case 35: adopt(s); return;
         case 36: home_buy(world_wbx + pie_mx / BM_BLK, world_wby + pie_my / BM_BLK); return;   // (main moves the family in)
-        case 37: { BInfo b; bm_block(world_wbx + pie_mx / BM_BLK, world_wby + pie_my / BM_BLK, &b); char t[40];
+        case 38: isl_craft_asked = 1; return;                                                  // (main opens the list of things to make)
+        case 39: raft_sail(); return;
+        case 37: if (world_zone != ZONE_CITY) return;
+                 { BInfo b; bm_block(world_wbx + pie_mx / BM_BLK, world_wby + pie_my / BM_BLK, &b); char t[40];
                    snprintf(t, sizeof t, "FOR SALE: %s", home_kind(b.lot)); sim_note(t); sim_note(home_blurb(b.lot)); return; }
     }
+    if (pie_code[i] >= 100) { begin_action(s, ACT_GATHER, pie_mx, pie_my); s->act_var = (u8)(pie_code[i] - 100); s->act_t = gather_len(s->act_var); return; }   // (the island)
     if (pie_code[i] >= PC_WORK) { place_do(s, pie_code[i]); return; }
+    if (pie_code[i] == 1 && world_zone == ZONE_ISLAND && world_at(pie_mx, pie_my) == 's') {   // the castaway's meal
+        begin_action(s, ACT_EAT, pie_mx, pie_my); if (s->action == ACT_EAT) { s->act_var = 1; s->act_t = 300; } return; }
     char c = world_at(pie_mx, pie_my); int act = action_for(c);
     if (c == ' ' || act == ACT_STAIRS) {   // the stairs: up from the bottom, down from the top
         static const signed char fx[4] = { 0, 1, 0, -1 }, fy[4] = { 1, 0, -1, 0 };
@@ -1469,11 +1581,12 @@ static void sim_pie_do_(int i) {
     if (act == ACT_PHONE && pie_code[i] == 1) { if (cash < 40) { sim_note("PIZZA IS $40"); return; } cash -= 40; }
     if (act == ACT_PHONE && pie_code[i] == 2) { extern void throw_party(void); throw_party(); return; }
     begin_action(s, act, pie_mx, pie_my);
+    if (s->action != act) return;                                         // (it could not: nothing to eat, on the island)
     s->act_var = pie_code[i];
     if (act == ACT_SLEEP && s->act_var == 1) s->act_t = 300;              // a nap: an hour or so
     if (act == ACT_EAT && s->act_var == 1) {                              // cooking takes a while; it is a good meal if there is good food in
         s->act_t = 420;
-        if (groceries > 0) groceries--; else { s->act_var = 3; sim_note("NO GROCERIES: A PLAIN MEAL"); }
+        if (world_zone == ZONE_ISLAND) { } else if (groceries > 0) groceries--; else { s->act_var = 3; sim_note("NO GROCERIES: A PLAIN MEAL"); }
     }
 }
 

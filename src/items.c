@@ -183,6 +183,59 @@ static const IBox bxGrave[3]={
  {2,4,6,5,2,12,{&mGrFace,&mGrSide,&mGrFace,&mGrSide,&mGrTop}},
  {5,5,6,6,2,3,{&mGrFlower,&mGrFlower,&mGrFlower,&mGrFlower,&mGrFlower}} };
 
+// ---- the island (Castaway): a bottle with a message, the treasure's mound, a tiki idol, a wreck, shells, berry bushes, a fishing post, a raft, the golden idol, the hermit's journal ----
+static const u16 pBot[5]={RGB(4,13,7),RGB(8,22,12),RGB(29,27,19),RGB(18,12,6),RGB(14,28,18)};
+MAT(mBotS,pBot,4,2,"bebb","aaaa")
+MAT(mBotT,pBot,4,2,"bccb","beeb")
+MAT(mCork,pBot,1,1,"d")
+static const IBox bxBottle[2]={ {2,3,6,5,0,2,{&mBotS,&mBotS,&mBotS,&mBotS,&mBotT}}, {6,3,7,5,0,2,{&mCork,&mCork,&mCork,&mCork,&mCork}} };
+static const u16 pDig[3]={RGB(27,23,13),RGB(22,18,10),RGB(12,6,3)};
+MAT(mDigT,pDig,6,6,"caaaac","acaaca","aaccaa","aaccaa","acaaca","caaaac")
+MAT(mDigS,pDig,1,1,"b")
+static const IBox bxDig[2]={ {1,1,7,7,0,1,{&mDigS,&mDigS,&mDigS,&mDigS,&mDigT}}, {2,2,6,6,1,2,{&mDigS,&mDigS,&mDigS,&mDigS,&mDigT}} };
+static const u16 pIdol[5]={RGB(9,9,8),RGB(15,15,13),RGB(21,21,18),RGB(7,15,5),RGB(31,24,6)};
+MAT(mIdolF,pIdol,6,10,"bbbbbb","bccccb","bebbeb","bbbbbb","bbccbb","bbccbb","bbbbbb","baaaab","bacaab","bbbbbb")
+MAT(mIdolS,pIdol,2,2,"bd","db")
+MAT(mIdolT,pIdol,2,2,"dd","db")
+static const IBox bxIdol[2]={ {2,2,6,6,0,3,{&mIdolS,&mIdolS,&mIdolS,&mIdolS,&mIdolT}}, {1,2,7,6,3,14,{&mIdolF,&mIdolS,&mIdolS,&mIdolS,&mIdolT}} };
+static const u16 pWreck[4]={RGB(8,5,3),RGB(15,10,5),RGB(21,14,8),RGB(8,14,6)};
+MAT(mWreckS,pWreck,8,4,"bcbcbcbc","abababab","a.a.ab.a","aaaaaaaa")
+MAT(mWreckT,pWreck,8,6,"abbbbbba","b.cbbc.b","bccbbccb","b.cbbd.b","bbdbbcbb","abbbbbba")
+MAT(mWMast,pWreck,1,1,"a")
+static const IBox bxWreck[2]={ {0,1,8,7,0,4,{&mWreckS,&mWreckS,&mWreckS,&mWreckS,&mWreckT}}, {3,3,4,4,4,12,{&mWMast,&mWMast,&mWMast,&mWMast,&mWMast}} };
+static const u16 pShell[3]={RGB(31,24,24),RGB(28,15,18),RGB(31,30,28)};
+MAT(mShellT,pShell,2,2,"cb","ba")
+MAT(mShellS,pShell,1,1,"b")
+static const IBox bxShell[1]={ {3,3,5,5,0,1,{&mShellS,&mShellS,&mShellS,&mShellS,&mShellT}} };
+static const u16 pBush[4]={RGB(5,12,4),RGB(8,18,6),RGB(12,24,9),RGB(28,4,6)};
+MAT(mBushS,pBush,6,5,"bcbdbc","cbcbcd","bdcbcb","cbcbdb","abaaba")
+MAT(mBushT,pBush,6,6,"bcbcdb","cdcbcb","bcbcbd","dbcbcb","bcdbcb","cbcbdc")
+static const IBox bxBush[1]={ {1,1,7,7,0,5,{&mBushS,&mBushS,&mBushS,&mBushS,&mBushT}} };
+static const u16 pNet[3]={RGB(10,7,4),RGB(18,12,6),RGB(26,24,18)};
+MAT(mPost,pNet,1,1,"b")
+MAT(mNet,pNet,2,4,"c.",".c","c.",".c")
+static const IBox bxFishing[3]={ {3,3,4,4,0,10,{&mPost,&mPost,&mPost,&mPost,&mPost}}, {3,3,7,4,9,10,{&mPost,&mPost,&mPost,&mPost,&mPost}},
+                                 {6,3,7,4,3,9,{&mNet,&mNet,&mNet,&mNet,&mNet}} };
+static const u16 pRaft[4]={RGB(10,7,4),RGB(17,12,6),RGB(22,16,8),RGB(28,28,26)};
+MAT(mRaftT,pRaft,8,6,"cccccccc","bbbbbbbb","aaaaaaaa","cccccccc","bbbbbbbb","aaaaaaaa")
+MAT(mRaftS,pRaft,8,2,"bcbcbcbc","abababab")
+MAT(mRaftMast,pRaft,1,1,"a")
+MAT(mRaftSail,pRaft,3,6,"d..","dd.","ddd","ddd","dd.","d..")
+static const IBox bxRaft[3]={ {0,1,8,7,0,2,{&mRaftS,&mRaftS,&mRaftS,&mRaftS,&mRaftT}}, {3,3,4,4,2,11,{&mRaftMast,&mRaftMast,&mRaftMast,&mRaftMast,&mRaftMast}},
+                              {4,3,7,4,4,11,{&mRaftSail,&mRaftSail,&mRaftSail,&mRaftSail,&mRaftSail}} };
+static const u16 pGold[5]={RGB(12,12,12),RGB(18,18,17),RGB(31,26,6),RGB(26,18,2),RGB(31,31,20)};
+MAT(mPlinth,pGold,1,1,"b")
+MAT(mPlinthT,pGold,1,1,"a")
+MAT(mGoldF,pGold,2,6,"cc","ed","cc","dd","cc","dc")
+MAT(mGoldT,pGold,2,2,"ec","cd")
+static const IBox bxGold[2]={ {2,2,6,6,0,4,{&mPlinth,&mPlinth,&mPlinth,&mPlinth,&mPlinthT}}, {3,3,5,5,4,11,{&mGoldF,&mGoldF,&mGoldF,&mGoldF,&mGoldT}} };
+static const u16 pJour[5]={RGB(10,7,4),RGB(16,11,6),RGB(22,16,9),RGB(24,6,6),RGB(28,26,20)};
+MAT(mStumpS,pJour,1,1,"b")
+MAT(mStumpT,pJour,4,4,"bccb","cbbc","cbbc","bccb")
+MAT(mBookT,pJour,2,2,"dd","de")
+MAT(mBookS,pJour,1,1,"e")
+static const IBox bxJournal[2]={ {2,2,6,6,0,3,{&mStumpS,&mStumpS,&mStumpS,&mStumpS,&mStumpT}}, {3,3,5,5,3,4,{&mBookS,&mBookS,&mBookS,&mBookS,&mBookT}} };
+
 typedef struct { char ch; const char *name; const IBox *b; u8 n; const IBox *bv; u8 nv; u8 flags; u16 cost; } ItemDef;
 static const ItemDef defs[] = {
     { '#', "CRATE", bxCrate, 1, 0, 0, F_HIGH, 40 },
@@ -252,6 +305,16 @@ static const ItemDef defs[] = {
     { CH_CRIB, "CRIB", bxCrib, 9, 0, 0, F_ROT, 250 },
     { CH_CAKE, "BIRTHDAY CAKE", bxCake, 8, 0, 0, 0, 40 },
     { CH_GRAVE, "GRAVESTONE", bxGrave, 3, 0, 0, F_ROT, 0 },
+    { CH_BOTTLE, "MESSAGE IN A BOTTLE", bxBottle, 2, 0, 0, F_FLAT, 0 },
+    { CH_DIG, "SANDY MOUND", bxDig, 2, 0, 0, F_FLAT, 0 },
+    { CH_IDOL, "TIKI IDOL", bxIdol, 2, 0, 0, 0, 0 },
+    { CH_WRECK, "SHIPWRECK", bxWreck, 2, 0, 0, 0, 0 },
+    { CH_SHELL, "SEASHELL", bxShell, 1, 0, 0, F_FLAT, 0 },
+    { CH_BUSH, "BERRY BUSH", bxBush, 1, 0, 0, 0, 30 },
+    { CH_FISH, "FISHING SPOT", bxFishing, 3, 0, 0, 0, 0 },
+    { CH_RAFT, "RAFT", bxRaft, 3, 0, 0, 0, 0 },
+    { CH_GOLD, "GOLDEN IDOL", bxGold, 2, 0, 0, 0, 0 },
+    { CH_JOURNAL, "OLD JOURNAL", bxJournal, 2, 0, 0, 0, 0 },
     ITEMS_MORE
 };
 #define NDEFS ((int)(sizeof(defs) / sizeof(defs[0])))

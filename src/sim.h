@@ -7,7 +7,8 @@
 #define MAX_SIMS 6
 #define NEED_N 8
 enum { N_FOOD, N_WC, N_REST, N_CLEAN, N_COMFY, N_FUN, N_SOCIAL, N_ROOM };
-enum { ACT_NONE, ACT_EAT, ACT_WC, ACT_SLEEP, ACT_SHOWER, ACT_SIT, ACT_FUN, ACT_TALK, ACT_WORK, ACT_WALK, ACT_COFFEE, ACT_READ, ACT_RUN, ACT_PHONE, ACT_TRAVEL, ACT_STAIRS, ACT_SWIM, ACT_CARE };
+enum { ACT_NONE, ACT_EAT, ACT_WC, ACT_SLEEP, ACT_SHOWER, ACT_SIT, ACT_FUN, ACT_TALK, ACT_WORK, ACT_WALK, ACT_COFFEE, ACT_READ, ACT_RUN, ACT_PHONE, ACT_TRAVEL, ACT_STAIRS, ACT_SWIM, ACT_CARE,
+       ACT_GATHER };   // (GATHER: the island's wood, stone, leaves, food, and its secrets: act_var says which, island.h G_)
 
 typedef struct {
     Bore bore;

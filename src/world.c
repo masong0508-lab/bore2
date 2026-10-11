@@ -9,6 +9,8 @@
 #include "mem8.h"
 #include "pop.h"
 #include "far.h"
+#include "nature.h"
+#include "island.h"
 
 // ---- the storeys above the ground (per zone, and one set for the creator's studio) ----
 typedef struct { char map[MH][MW + 1]; u8 fl[MH][MW]; u8 wp[MH][MW]; } Level;
@@ -49,7 +51,7 @@ int world_home_find(int zone, int bx, int by, int unit) {
     for (int i = 0; i < nhomes[zone]; i++) { const Home *h = &homes[zone][i]; if (h->bx == bx && h->by == by && h->unit == unit) return i; }
     return -1;
 }
-static void town_homes(int want); static void island_homes(int want);
+static void town_homes(int want); static void island_homes(int want); static int is_wall(char c);
 static u8 wdirty[5][5];                             // the open world's window: blocks the player has built on
 static u8 lvl_used[NLEVELS];
 static void levels_clear(u8 *own) {                 // every storey of a zone back to empty air (their pool slots freed)
@@ -123,6 +125,7 @@ static void soften_floors(void) {
     }
 }
 void world_init(void) {
+    nat_init();
     if (ram8) { Level *p = (Level *)xalloc(sizeof(Level) * NLVPOOL8); if (p) { lvpool = p; nlvpool = NLVPOOL8; } }   // 8 MB: room for every storey anywhere
     for (int z = 0; z <= ZONE_N; z++) levels_clear(lvown[z]);
     soften_floors();
@@ -146,7 +149,7 @@ void world_init(void) {
     }
     for (int i = 0; i < NWX; i++) {   // the KHLVH set is pre-shaded 12/16 for the left face: lift it back
         for (int y = 0; y < 24; y++) for (int x = 0; x < 8; x++) {
-            u16 c = wxTex[i][0][x][y];
+            u16 c = wxTex[i][x][y];
             int r = MIN(31, C_R(c) * 16 / 12), g = MIN(31, C_G(c) * 16 / 12), b = MIN(31, C_B(c) * 16 / 12);
             u16 o = RGB(r, g, b); tb[y * 8 + x] = o ? o : 0x8000;
         }
@@ -247,21 +250,129 @@ typedef struct { char map[MH][MW + 1]; u8 fl[MH][MW]; u8 wp[MH][MW]; u8 made; } 
 static ZoneSave zones[ZONE_CITY];                 // (SAN BOREAS needs no copy: its window is built from the generator)
 
 static void gCircle(int cx, int cy, int r, int fl) { for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) floorMap[y][x] = (u8)fl; }
+static u32 wsalt;                                     // (the save's seed: below)
+// ---- CASTAWAY ISLAND: a new one every life, filling the sea: a coast that wanders, beaches, meadows, jungle, rocky hills, a pond,
+// an islet out at sea that only a raft reaches, and eight secrets hidden round it (island.c) ----
+static int isl_ang(int dy, int dx) {   // the angle of (dx, dy), 4096 a turn (rough, and smooth: enough for a coastline)
+    if (!dx && !dy) return 0;
+    int ax = ABS(dx), ay = ABS(dy), a = ax >= ay ? ay * 512 / ax : 1024 - ax * 512 / ay;
+    if (dx < 0) a = 2048 - a;
+    if (dy < 0) a = 4096 - a;
+    return a & 4095;
+}
+static int isl_noise(int x, int y, u32 s) {   // 0..255: value noise on a 10-tile grid
+    int gx = x / 10, gy = y / 10, fx = x % 10, fy = y % 10;
+    int a = (int)(bm_hash(gx, gy, s) & 255), b = (int)(bm_hash(gx + 1, gy, s) & 255), c = (int)(bm_hash(gx, gy + 1, s) & 255), d = (int)(bm_hash(gx + 1, gy + 1, s) & 255);
+    int top = a * (10 - fx) + b * fx, bot = c * (10 - fx) + d * fx;
+    return (top * (10 - fy) + bot * fy) / 100;
+}
+static int isl_cx, isl_cy;                            // (the islet's middle)
+static int isl_main(int x, int y) { return (x - isl_cx) * (x - isl_cx) + (y - isl_cy) * (y - isl_cy) > 81; }   // on the main island, not out on the islet
+static int isl_by_water(int x, int y) { for (int k = 0; k < 4; k++) { int a = x + (k == 0) - (k == 1), b = y + (k == 2) - (k == 3); if (a < 0 || b < 0 || a >= MW || b >= MH || floorMap[b][a] == FL_WATER) return 1; } return 0; }
+static int isl_open(int x, int y, int r) {   // dry land with nothing on it, nothing within r tiles either (and not on a path)
+    if (x < 2 || y < 2 || x >= MW - 2 || y >= MH - 2) return 0;
+    for (int j = y - r; j <= y + r; j++) for (int i = x - r; i <= x + r; i++) {
+        if (i < 0 || j < 0 || i >= MW || j >= MH) return 0;
+        if (lifeMap[j][i] != '.') return 0;
+    }
+    return floorMap[y][x] != FL_WATER && floorMap[y][x] != FL_PAVING;
+}
+static int isl_pick(u32 s, int want_sand, int far_x, int far_y, int mind, int *ox, int *oy) {   // somewhere open: on a beach (want_sand 1) or inland (0), far enough from (far_x, far_y)
+    for (int t = 0; t < 600; t++) {
+        u32 h = bm_hash(t, (int)s, wsalt ^ 0x15u); int x = 4 + (int)(h % (MW - 8)), y = 4 + (int)((h >> 12) % (MH - 8));
+        if (!isl_open(x, y, 1) || (floorMap[y][x] == FL_SAND) != want_sand || !isl_main(x, y)) continue;
+        if ((x - far_x) * (x - far_x) + (y - far_y) * (y - far_y) < mind * mind) continue;
+        *ox = x; *oy = y; return 1;
+    }
+    return 0;
+}
 void world_gen_island(void) {
     nhomes[ZONE_ISLAND] = 0;
-    ao_dirty = 1;   // Castaway: a sand island in the sea, a camp, palms
+    ao_dirty = 1;
+    u32 S = wsalt * 2654435761u + 0x15ADu;
     for (int y = 0; y < MH; y++) { for (int x = 0; x < MW; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = FL_WATER; wallMap[y][x] = 0; } lifeMap[y][MW] = 0; }
-    gCircle(20, 20, 14, FL_SAND); gCircle(13, 15, 7, FL_SAND); gCircle(27, 26, 6, FL_SAND);
-    gCircle(20, 19, 7, FL_GRASS); gCircle(21, 20, 3, FL_SOIL);
-    gBox(19, 27, 20, 33, FL_PAVING);                                        // a jetty of planks out to the boat
-    gPut(20, 34, '@'); gPut(20, 35, '.'); floorMap[34][20] = FL_WATER;
-    gPut(20, 20, 's'); gPut(18, 18, 'z'); gPut(23, 17, '&'); gPut(16, 22, '0'); gPut(22, 22, '%'); gPut(19, 22, '%');
-    gPut(24, 20, 'N'); gPut(13, 13, 'p');
-    static const u8 palms[][2] = { {10,16},{12,10},{15,9},{27,12},{30,17},{31,23},{28,30},{23,31},{14,24},{9,21},{25,8},{33,20} };
-    for (unsigned i = 0; i < sizeof palms / sizeof palms[0]; i++) if (floorMap[palms[i][1]][palms[i][0]] != FL_WATER) gFree(palms[i][0], palms[i][1], 'g');
-    gFree(26, 15, '*'); gFree(11, 19, '*'); gFree(29, 27, '*'); gFree(17, 26, '*');
-    gPut(20, 24, 'P'); gFree(21, 26, 'a');
-    island_homes(3);
+    // the islet's corner, and the main island's coast: a radius that wanders with the angle (three waves, of random size and phase)
+    int corner = (int)(S >> 5) & 3, ix = (corner & 1) ? MW - 12 : 11, iy = (corner & 2) ? MH - 12 : 11;
+    isl_cx = ix; isl_cy = iy;
+    int amp[3], frq[3] = { 2, 3, 5 }, ph[3];
+    for (int k = 0; k < 3; k++) { u32 h = bm_hash(k, 7, S); amp[k] = (int)(h % 40u) + (k ? 16 : 32); ph[k] = (int)((h >> 10) & 4095); }
+    for (int y = 1; y < MH - 1; y++) for (int x = 1; x < MW - 1; x++) {
+        int dx = x - MW / 2, dy = y - MH / 2, a = isl_ang(dy, dx), d = 0;
+        { int q = dx * dx + dy * dy; while ((d + 1) * (d + 1) <= q) d++; }   // (the distance, whole tiles)
+        int R = 29 * 16; for (int k = 0; k < 3; k++) R += (amp[k] * isin((frq[k] * a + ph[k]) & 4095)) >> 12;
+        R = CLAMP(R, 22 * 16, 35 * 16);
+        if (d * 16 >= R) continue;
+        if ((x - ix) * (x - ix) + (y - iy) * (y - iy) < 10 * 10) continue;   // (the sea round the islet)
+        floorMap[y][x] = d * 16 >= R - 3 * 16 ? FL_SAND : FL_GRASS;
+    }
+    for (int y = 1; y < MH - 1; y++) for (int x = 1; x < MW - 1; x++)   // what the land is: meadow, jungle, rocky hills
+        if (floorMap[y][x] == FL_GRASS && isl_noise(x, y, S ^ 0xA11u) > 178) floorMap[y][x] = FL_ROCK;
+    {   // the pond, inland: fresh water, and a spring beside it
+        int px = MW / 2 + (int)(bm_hash(1, 2, S) % 17u) - 8, py = MH / 2 - 6 - (int)(bm_hash(3, 4, S) % 6u);
+        for (int y = py - 3; y <= py + 3; y++) for (int x = px - 4; x <= px + 4; x++) if ((x - px) * (x - px) * 9 + (y - py) * (y - py) * 16 <= 144 && floorMap[y][x] != FL_SAND) floorMap[y][x] = FL_WATER;
+        if (floorMap[py + 3][px] != FL_WATER) lifeMap[py + 3][px] = '0';
+    }
+    // the islet: sand round a little grass, palms, and the golden idol in the middle of it
+    for (int y = iy - 5; y <= iy + 5; y++) for (int x = ix - 5; x <= ix + 5; x++) {
+        int q = (x - ix) * (x - ix) + (y - iy) * (y - iy); if (q <= 25) floorMap[y][x] = q <= 6 ? FL_GRASS : FL_SAND; }
+    lifeMap[iy][ix] = CH_GOLD; lifeMap[iy - 2][ix - 2] = 'g'; lifeMap[iy + 2][ix + 3] = 'g'; lifeMap[iy - 3][ix + 2] = 'g';
+    {   // where a raft goes: from the island's beach nearest the islet, to the islet's beach nearest that
+        int bd = 1 << 30, dx_ = MW / 2, dy_ = MH / 2;
+        for (int y = 2; y < MH - 2; y++) for (int x = 2; x < MW - 2; x++) {
+            if (floorMap[y][x] != FL_SAND || (x - ix) * (x - ix) + (y - iy) * (y - iy) <= 36) continue;
+            int q = (x - ix) * (x - ix) + (y - iy) * (y - iy); if (q < bd) { bd = q; dx_ = x; dy_ = y; } }
+        isl_dock_x = (u8)dx_; isl_dock_y = (u8)dy_; bd = 1 << 30;
+        for (int y = iy - 5; y <= iy + 5; y++) for (int x = ix - 5; x <= ix + 5; x++) {
+            if (floorMap[y][x] != FL_SAND || lifeMap[y][x] != '.') continue;
+            int q = (x - dx_) * (x - dx_) + (y - dy_) * (y - dy_); if (q < bd) { bd = q; isl_islet_x = (u8)x; isl_islet_y = (u8)y; } }
+    }
+    // the way in: a jetty off the south shore, the boat at its end; the camp at its foot
+    int jx = MW / 2, js = MH - 2; while (js > MH / 2 && floorMap[js][jx] == FL_WATER) js--;
+    gBox(jx, js + 1, jx + 1, js + 4, FL_PAVING); gPut(jx, js + 5, '@'); gPut(jx, js + 6, '.'); floorMap[js + 5][jx] = FL_WATER;
+    gPut(jx + 1, js + 4, CH_FISH);                                          // (fishing off the end of the jetty)
+    int cx = jx, cy = js - 5; isl_fire_x = (u8)cx; isl_fire_y = (u8)cy;
+    for (int y = cy - 3; y <= cy + 4; y++) for (int x = cx - 5; x <= cx + 5; x++) if (floorMap[y][x] == FL_WATER || floorMap[y][x] == FL_ROCK) floorMap[y][x] = FL_SAND;   // (dry ground for the camp)
+    gBox(jx, cy + 2, jx, js, FL_PAVING);                                    // (a path down to the jetty)
+    gPut(cx, cy, 's'); gPut(cx - 2, cy - 1, 'z'); gPut(cx + 3, cy - 2, '&'); gPut(cx - 1, cy + 1, '%'); gPut(cx + 1, cy + 1, '%');
+    gPut(cx - 3, cy + 2, 'a'); gPut(jx + 1, cy + 3, 'P');
+    island_homes(3);                                                        // the islanders' huts
+    int sx, sy;                                                             // the secrets
+    if (isl_pick(S ^ 1, 1, cx, cy, 30, &sx, &sy)) lifeMap[sy][sx] = CH_BOTTLE;
+    if (isl_pick(S ^ 2, 0, cx, cy, 22, &sx, &sy) && lifeMap[sy][sx + 1] == '.') { lifeMap[sy][sx] = '*'; lifeMap[sy][sx + 1] = CH_DIG; }
+    {   // the tiki idol: the thickest jungle
+        int best = -1, bx = -1, by = -1;
+        for (int y = 4; y < MH - 4; y++) for (int x = 4; x < MW - 4; x++) if (floorMap[y][x] == FL_GRASS && isl_open(x, y, 1) && isl_main(x, y)) {
+            int n = isl_noise(x, y, S ^ 0x77u); if (n > best) { best = n; bx = x; by = y; } }
+        if (bx >= 0) lifeMap[by][bx] = CH_IDOL;
+    }
+    {   // the wreck: on a beach by the water, as far east or west as the island goes
+        int bx = -1, by = -1, bd = -1;
+        for (int y = 6; y < MH - 6; y++) for (int x = 2; x < MW - 2; x++) if (floorMap[y][x] == FL_SAND && isl_by_water(x, y) && isl_open(x, y, 1) && ABS(y - cy) > 8 && isl_main(x, y)) {
+            int d = ABS(x - MW / 2); if (d > bd) { bd = d; bx = x; by = y; } }
+        if (bx >= 0) lifeMap[by][bx] = CH_WRECK;
+    }
+    for (int k = 0; k < ISL_SHELLS; k++) if (isl_pick(S ^ (0x50u + k), 1, cx, cy, 6, &sx, &sy)) lifeMap[sy][sx] = CH_SHELL;
+    if (isl_pick(S ^ 3, 0, cx, cy, 24, &sx, &sy) && isl_open(sx + 1, sy, 1)) { lifeMap[sy][sx] = 'z'; lifeMap[sy][sx + 1] = CH_JOURNAL; }   // the hermit's old camp
+    for (int k = 0; k < 2; k++) {   // two more fishing spots, on beaches
+        for (int t = 0; t < 400; t++) { u32 h = bm_hash(t, 90 + k, S); int x = 3 + (int)(h % (MW - 6)), y = 3 + (int)((h >> 12) % (MH - 6));
+            if (floorMap[y][x] == FL_SAND && isl_by_water(x, y) && isl_open(x, y, 1) && isl_main(x, y) && (x - cx) * (x - cx) + (y - cy) * (y - cy) > 64) { lifeMap[y][x] = CH_FISH; break; } }
+    }
+    // the jetty is planks; the paths (the camp's, the huts') are trodden earth
+    for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if (floorMap[y][x] == FL_PAVING) floorMap[y][x] = (x >= jx && x <= jx + 1 && y > js) ? 4 : FL_SOIL;
+    // the trees, the bushes and the rocks, on the ground that is left (never touching anything built, or a path)
+    for (int y = 2; y < MH - 2; y++) for (int x = 2; x < MW - 2; x++) {
+        int f = floorMap[y][x];
+        if (f == FL_WATER || f == FL_PAVING || f == FL_SOIL || f == 4 || !isl_open(x, y, 1)) continue;
+        if (ABS(x - cx) <= 6 && y >= cy - 4 && y <= cy + 5) continue;        // (the camp)
+        if (ABS(x - isl_dock_x) <= 1 && ABS(y - isl_dock_y) <= 1) continue; // (the raft's beach)
+        int r = (int)(bm_hash(x, y, S ^ 0x7EEu) % 1000u), jungle = isl_noise(x, y, S ^ 0x77u) > 120;
+        char c = 0;
+        if (f == FL_SAND) c = r < 60 ? 'g' : 0;
+        else if (f == FL_ROCK) c = r < 110 ? '*' : r < 150 ? '6' : 0;
+        else if (jungle) c = r < 80 ? 'g' : r < 170 ? '3' : r < 215 ? CH_BUSH : 0;
+        else c = r < 30 ? '3' : r < 62 ? CH_BUSH : 0;
+        if (c) lifeMap[y][x] = c;
+    }
 }
 void world_gen_town(void) {   // Strange Town: a desert main street with a diner, a trailer, the lab and work
     nhomes[ZONE_TOWN] = 0;
@@ -785,12 +896,20 @@ static int ring_clear(int x0, int y0, int x1, int y1) {   // no home wall in the
     return 1;
 }
 static void island_homes(int want) {   // cottages (with a plank path) where the island has room, clear of the camp
-    for (int ly = 4; ly <= 32 && nhomes[ZONE_ISLAND] < want; ly += 2) for (int lx = 4; lx <= 32 && nhomes[ZONE_ISLAND] < want; lx += 2) {
+    for (int ly = 4; ly <= MH - 16 && nhomes[ZONE_ISLAND] < want; ly += 2) for (int lx = 4; lx <= MW - 16 && nhomes[ZONE_ISLAND] < want; lx += 2) {
         unsigned h = city_h(lx * 7 + 1, ly * 13 + 5) & ~(1u << 7);
         int x0 = lx + 3, y0 = ly + 3, x1 = lx + 9, y1 = ly + 9;
+        if (ABS(lx + 6 - isl_islet_x) < 16 && ABS(ly + 6 - isl_islet_y) < 16) continue;   // (not out on the islet)
         if (!area_free(x0, y0, x1, y1, 0) || !ring_clear(x0, y0, x1, y1)) continue;   // dry bare ground, no neighbour touching
         area_clear(x0, y0, x1, y1);
         city_cottage(lx, ly, h);
+        {   // an islander's hut: plank walls and floor
+            static int wp = -1; if (wp < 0) { wp = 0; for (int i = 0; i < NWALLS; i++) if (!strcmp(world_wall_name(i), "WOOD PANEL")) wp = i; }
+            for (int y = ly; y < ly + 13 && y < MH; y++) for (int x = lx; x < lx + 13 && x < MW; x++) {
+                if (is_wall(lifeMap[y][x]) || lifeMap[y][x] == 'D') wallMap[y][x] = (u8)wp;
+                else if (floorMap[y][x] < NFL) floorMap[y][x] = 4;
+            }
+        }
     }
 }
 // ---- the tall ones: blocks of flats, office towers, hotels (storeys of them, stairs up through each) ----
@@ -1241,9 +1360,10 @@ int world_room_score(int mx, int my) {
     for (int y = my - 2; y <= my + 2; y++) for (int x = mx - 2; x <= mx + 2; x++) {
         char c = world_at(x, y);
         if (c == 'F') kinds |= 1; if (c == 'T') kinds |= 2; if (c == 'S') kinds |= 4; if (c == 'H') kinds |= 8; if (c == 'C' || c == 'U' || c == 'h') kinds |= 16;
-        if (c == 'v' || c == 'R' || c == 'A') kinds |= 32; if (c == 'p' || c == 'l' || c == 'r' || c == 'q' || c == 'V') kinds |= 64;
+        if (c == 'v' || c == 'R' || c == 'A') kinds |= 32; if (c == 'p' || c == 'l' || c == 'r' || c == 'q' || c == 'V' || c == 'g' || c == '3' || c == '6' || c == CH_BUSH) kinds |= 64;
     }
     int n = 0; for (int i = 0; i < 7; i++) if (kinds >> i & 1) n++;
+    if (world_zone == ZONE_ISLAND) return MIN(100, 65 + n * 10);   // (the island: the sea air, the palms, the quiet; nobody minds the lack of a sofa)
     return MIN(100, n * 20);
 }
 
@@ -1310,6 +1430,118 @@ static void floor_tile(int mx, int my) {
         return;
     }
     gfx_quad_ft(&a, &b, &c, &d, t->tpage, 0, u, v, u + 7, v, u, v + 7, u + 7, v + 7, L, 0, 0);
+}
+
+// ---- CASTAWAY ISLAND's ground: every corner coloured from the tiles round it (sand, meadow, jungle, rock, earth, sea), the waterline
+// wet and foaming, the ground darker under the trees; over nature.c's fine grain. The sea heaves corner by corner ----
+static int nat_on;                                      // (world_draw: the island, nature drawn)
+int world_nature = 1;                                   // (the options: the island drawn as nature)
+static inline int nat_floor(int f) { return f == FL_GRASS || f == FL_SAND || f == FL_ROCK || f == FL_WATER || f == FL_SOIL; }
+static inline int nat_wet(int x, int y) { return x < 0 || y < 0 || x >= MW || y >= MH || floorMap[y][x] == FL_WATER; }
+static u8 ngr_j[10][10], ngr_d[10][10]; static u32 ngr_for = 1;   // the island's noise on its 10-tile grid (the jungle; dry meadow), as the generator's
+static int nat_noise(u8 (*g)[10], int x, int y) {   // (the generator's value noise, from its grid: no divisions)
+    int gx = (x * 205) >> 11, gy = (y * 205) >> 11, fx = x - gx * 10, fy = y - gy * 10;
+    if (gx > 8) { gx = 8; fx = 10; } if (gy > 8) { gy = 8; fy = 10; }
+    int top = g[gy][gx] * (10 - fx) + g[gy][gx + 1] * fx, bot = g[gy + 1][gx] * (10 - fx) + g[gy + 1][gx + 1] * fx;
+    return ((top * (10 - fy) + bot * fy) * 41) >> 12;
+}
+static inline int tri_wave(int a) { return 4096 - ABS(((a + 1024) & 4095) - 2048) * 4; }   // (a sine's shape, near enough, for waves: -4096..4096)
+static inline int nat_height(int X, int Y, int t) {   // a corner's height: the sea's swell, the waterline, the land
+    int wet = nat_wet(X - 1, Y - 1) + nat_wet(X, Y - 1) + nat_wet(X - 1, Y) + nat_wet(X, Y);
+    return wet == 4 ? 20 + (tri_wave(t * 40 + X * 700 + Y * 460) >> 10) : wet ? 9 : 0;
+}
+u32 world_horizon = 0xBECDD7;                   // the sky's colour at the horizon (main sets it: the haze)
+static u32 nat_haze(u32 c, int z) {   // a lit colour going into the haze with distance (the far sea and the sky meet it)
+    int f = ((z - 3000) * 205) >> 13; if (f <= 0) return c; if (f > 230) f = 230;
+    int hr = world_horizon & 255, hg = (world_horizon >> 8) & 255, hb = (world_horizon >> 16) & 255, r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255;
+    return (u32)(r + (((hr - r) * f) >> 8)) | ((u32)(g + (((hg - g) * f) >> 8)) << 8) | ((u32)(b + (((hb - b) * f) >> 8)) << 16);
+}
+static u16 nat_base(int X, int Y, int *kind) {   // a corner of the ground, as it stands: its colour (RGB555, before the light) and kind (0 land, 1 waterline, 2 shallows, 3 deep)
+    int r = 0, g = 0, b = 0, n = 0, wet = 0, shade = 0, ng = 0;
+    for (int k = 0; k < 4; k++) {
+        int x = X - 1 + (k & 1), y = Y - 1 + (k >> 1);
+        if (nat_wet(x, y)) { wet++; continue; }
+        char c = lifeMap[y][x];
+        if (c == 'g' || c == '3' || c == '6') shade += 2; else if (c == (char)CH_BUSH || c == '*') shade++;
+        switch (floorMap[y][x]) {
+            case FL_GRASS: ng++; break;
+            case FL_SAND: r += 150; g += 136; b += 100; break;
+            case FL_ROCK: r += 112; g += 104; b += 92; break;
+            case FL_SOIL: r += 120; g += 96; b += 70; break;
+            default: r += 130; g += 116; b += 92; break;
+        }
+        n++;
+    }
+    if (!n) {   // the sea: turquoise over the shallows, deep blue further out
+        static const s8 ring[8][2] = { { -2, -1 }, { -2, 0 }, { 1, -1 }, { 1, 0 }, { -1, -2 }, { 0, -2 }, { -1, 1 }, { 0, 1 } };
+        for (int k = 0; k < 8; k++) if (!nat_wet(X + ring[k][0], Y + ring[k][1])) { *kind = 2; return RGB(40 >> 3, 120 >> 3, 128 >> 3); }
+        *kind = 3; return RGB(22 >> 3, 70 >> 3, 120 >> 3);
+    }
+    if (ng) {   // grass: meadow, deepening into jungle, drying in patches
+        int gx = (X * 205) >> 11, gy = (Y * 205) >> 11, fx = X - gx * 10, fy = Y - gy * 10;
+        if (gx > 8) { gx = 8; fx = 10; } if (gy > 8) { gy = 8; fy = 10; }
+        int w00 = (10 - fx) * (10 - fy), w10 = fx * (10 - fy), w01 = (10 - fx) * fy, w11 = fx * fy;   // (both noises at once: the generator's, from their grids)
+        int nj = ((ngr_j[gy][gx] * w00 + ngr_j[gy][gx + 1] * w10 + ngr_j[gy + 1][gx] * w01 + ngr_j[gy + 1][gx + 1] * w11) * 41) >> 12;
+        int nd = ((ngr_d[gy][gx] * w00 + ngr_d[gy][gx + 1] * w10 + ngr_d[gy + 1][gx] * w01 + ngr_d[gy + 1][gx + 1] * w11) * 41) >> 12;
+        int j = CLAMP((nj - 96) * 4, 0, 255), d = (CLAMP((nd - 140) * 3, 0, 255) * (255 - j)) >> 8;
+        r += (76 - ((38 * j) >> 8) + ((40 * d) >> 8)) * ng; g += (124 - ((38 * j) >> 8) + ((4 * d) >> 8)) * ng; b += (46 - ((12 * j) >> 8) + ((8 * d) >> 8)) * ng;
+    }
+    static const u8 inv[5] = { 0, 255, 128, 85, 64 };   // (r / n, as a multiply)
+    r = (r * inv[n]) >> 8; g = (g * inv[n]) >> 8; b = (b * inv[n]) >> 8;
+    int v = 236 + (int)(((u32)(X * 73856093) ^ (u32)(Y * 19349663)) >> 27);   // (each corner a touch lighter or darker)
+    if (shade) v -= 22 * MIN(shade, 5);
+    if (ao[Y][X] && !dbg_noao) v = (v * (256 - 41 * ao[Y][X])) >> 8;
+    r = (r * v) >> 8; g = (g * v) >> 8; b = (b * v) >> 8;
+    if (wet) { r = r * 3 >> 2; g = g * 3 >> 2; b = b * 3 >> 2; }   // (wet sand at the waterline)
+    *kind = wet ? 1 : 0;
+    return RGB(MIN(r, 255) >> 3, MIN(g, 255) >> 3, MIN(b, 255) >> 3);
+}
+static u16 nc_col[32][32], nc_tag[32][32]; static int nc_stamp = -1; static u32 nc_for;   // (the corners as they stand, kept while the map is unchanged)
+static u32 nat_colour(int X, int Y, int t, int Lg, int z) {   // a corner of the ground in this frame: the sea's shimmer, the foam, the light, the haze
+    u16 *tg = &nc_tag[Y & 31][X & 31]; int want = 1 + (Y << 7) + X, kind;
+    u16 c;
+    if ((*tg & 0x3fff) == want) { c = nc_col[Y & 31][X & 31]; kind = *tg >> 14; }
+    else { c = nat_base(X, Y, &kind); nc_col[Y & 31][X & 31] = c; *tg = (u16)(want | (kind << 14)); }
+    int r = C_R(c) << 3, g = C_G(c) << 3, b = C_B(c) << 3;
+    if (kind >= 2) { int sh = 256 + (tri_wave(t * 40 + X * 700 + Y * 460) >> 7); r = (r * sh) >> 8; g = (g * sh) >> 8; b = (b * sh) >> 8; }
+    else if (kind) {   // the foam the waves leave, coming and going
+        int f = tri_wave(t * 56 + X * 900 + Y * 1300), fo = 56 + (f > 0 ? f >> 6 : 0);
+        r = (r * (256 - fo) + 168 * fo) >> 8; g = (g * (256 - fo) + 176 * fo) >> 8; b = (b * (256 - fo) + 170 * fo) >> 8;
+    }
+    r = (r * Lg) >> 7; g = (g * Lg) >> 7; b = (b * Lg) >> 7;   // (the palette is warm already: no grade)
+    return nat_haze((u32)MIN(r, 255) | ((u32)MIN(g, 255) << 8) | ((u32)MIN(b, 255) << 16), z);
+}
+static int ngx0, ngx1, ngy0, ngy1;                     // (the box the ground is drawn in, in full: the far cells do the rest)
+static void nat_ground(u8 (*done)[MW], int x0, int x1, int y0, int y1) {   // the range's natural ground, row by row: each row of corners transformed once, coloured only where seen
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) if (nat_floor(floorMap[y][x])) done[y][x] = 1;   // (past the box: the far cells' ground)
+    x0 = MAX(x0, ngx0); x1 = MIN(x1, ngx1); y0 = MAX(y0, ngy0); y1 = MIN(y1, ngy1);
+    if (x1 < x0 || y1 < y0) return;
+    u32 S = wsalt * 2654435761u + 0x15ADu;
+    if (nc_stamp != world_stamp || nc_for != S) { memset(nc_tag, 0, sizeof nc_tag); nc_stamp = world_stamp; nc_for = S; }
+    if (ngr_for != S) { for (int y = 0; y < 10; y++) for (int x = 0; x < 10; x++) { ngr_j[y][x] = (u8)(bm_hash(x, y, S ^ 0x77u) & 255); ngr_d[y][x] = (u8)(bm_hash(x, y, S ^ 0x3C1u) & 255); } ngr_for = S; }
+    static SVECTOR rs[2][32] SVEC_ALIGN; static XV rv[2][32]; static u32 rc[2][32]; static u8 rk[2][32];
+    x1 = MIN(x1, x0 + 29); int nx = x1 - x0 + 2, t = frame_t;
+    int Lg = CLAMP(gfx_light(0, -ONE, 0), 40, 200);
+    gfx_floor_pass = 1;
+    for (int Y = y0, cur = 0; Y <= y1 + 1; Y++, cur ^= 1) {
+        for (int i = 0; i < nx; i++) { setVector(&rs[cur][i], (x0 + i) * TILE, nat_height(x0 + i, Y, t), -Y * TILE); rk[cur][i] = 0; }
+        gfx_xform(rs[cur], rv[cur], nx);
+        if (Y == y0) continue;
+        int my = Y - 1, up = cur ^ 1; const XV *T = rv[up], *B = rv[cur];
+        for (int i = 0; i + 1 < nx; i++) {
+            int mx = x0 + i, f = floorMap[my][mx];
+            if (!nat_floor(f)) continue;
+            if (!xv_vis4(&T[i], &T[i + 1], &B[i], &B[i + 1], 0)) continue;
+            #define NCOL(row, k, Yc) if (!rk[row][k]) { rc[row][k] = nat_colour(x0 + (k), Yc, t, Lg, rv[row][k].z); rk[row][k] = 1; }
+            NCOL(up, i, my) NCOL(up, i + 1, my) NCOL(cur, i, Y) NCOL(cur, i + 1, Y)
+            #undef NCOL
+            const TexRef *tx = f == FL_WATER ? &nat_tex_water : f == FL_GRASS ? &nat_tex_grass : &nat_tex_ground;
+            int u, v;
+            u = tx->u + (f == FL_WATER ? ((t >> 2) & 15) : 0); v = tx->v;   // (the sea's ripples slide)
+            gfx_put_gt4(&T[i], &T[i + 1], &B[i], &B[i + 1], rc[up][i], rc[up][i + 1], rc[cur][i], rc[cur][i + 1], (u32)tx->tpage << 16, 0, u, v, u + 15, v + 15);
+        }
+    }
+    gfx_floor_pass = 0;
 }
 
 static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), all the same floor: one quad
@@ -1513,7 +1745,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
     for (int my = y0; my <= y1; my += 2) for (int mx = x0; mx <= x1; mx += 2) {
         int ok = (mx + 1 < MW && my + 1 < MH);
         int f0 = dfl[my][mx];
-        if (ok) ok = f0 != FL_WATER && dfl[my][mx + 1] == f0 && dfl[my + 1][mx] == f0 && dfl[my + 1][mx + 1] == f0;
+        if (ok) ok = f0 != FL_WATER && dfl[my][mx + 1] == f0 && dfl[my + 1][mx] == f0 && dfl[my + 1][mx + 1] == f0 && !(nat_on && !lvl && nat_floor(f0));
         if (ok && lvl) ok = dm[my][mx] != ' ' && dm[my][mx + 1] != ' ' && dm[my + 1][mx] != ' ' && dm[my + 1][mx + 1] != ' ';
         if (ok && ((bld[my][mx] && !b_see[bld[my][mx]]) || (bld[my + 1][mx + 1] && !b_see[bld[my + 1][mx + 1]]))) { done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 2; continue; }   // inside someone else's building: under its roof
         done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 0;
@@ -1525,6 +1757,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
         gfx_floor_pass = !lvl; floor_block(mx, my); gfx_floor_pass = 0;
         done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 1;
     }
+    if (nat_on && !lvl) nat_ground(done, x0, x1, y0, y1);
     PROF_END(0); }
     int lx0 = ex0, lx1 = ex1, ly0 = ey0, ly1 = ey1;
     if (lvl) { lx0 = MAX(lx0, lvl_bb[lvl][0]); ly0 = MAX(ly0, lvl_bb[lvl][1]); lx1 = MIN(lx1, lvl_bb[lvl][2]); ly1 = MIN(ly1, lvl_bb[lvl][3]); }
@@ -1551,10 +1784,10 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
           if (b && !b_see[b] && !is_wall(c) && c != 'D' && !world_roof_show) continue; }
         // frustum: the tile centre in view space (a wall tile fits a ball of 340 round it; things on a tile can stand taller)
         if (is_wall(c) || c == '.') { if (!tile_seen(&tvT, mx, my)) continue; }
-        else { int vx, vy, vz; tile_view(&tvT, mx, my, &vx, &vy, &vz);
-          if (vz < -TILE) continue;
-          if (ABS(vx) > (vz * 3) / 4 + TILE * 2) continue;
-          if (ABS(vy) > (vz * 5) / 8 + TILE * 3) continue; }
+        else { int vx, vy, vz, pm = (nat_on && !lvl && nat_plant_char(c)) ? TILE * 2 : 0; tile_view(&tvT, mx, my, &vx, &vy, &vz);   // (a plant reaches further)
+          if (vz < -TILE - pm) continue;
+          if (ABS(vx) > (vz * 3) / 4 + TILE * 2 + pm) continue;
+          if (ABS(vy) > (vz * 5) / 8 + TILE * 3 + pm) continue; }
         if (!done[my][mx]) { PROF_BEGIN(); gfx_floor_pass = !lvl; floor_tile(mx, my); gfx_floor_pass = 0; PROF_END(0); }
         if (lvl) { fascia(mx, my); if (c == '.') continue; }
         if (is_wall(c)) {
@@ -1566,6 +1799,13 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
             { PROF_BEGIN(); ws_lite = bld[my][mx] && !b_see[bld[my][mx]] && !world_roof_show; wall_tile(mx, my, h, cut); ws_lite = 0; world_dbg_walls++; PROF_END(1); }
         } else if (c != '.') {
             if (c == 'D') { int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12); door_tile(mx, my, (cutaway && along < -TILE / 4) ? WALL_LOW : WALL_FULL); }
+            if (nat_on && !lvl && nat_plant_char(c)) {
+                if (ABS(mx - fx) > 10 || ABS(my - fy) > 10) continue;   // (further off, the far cells' woods stand for them)
+                int al = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12), ac = (((wx - focx) * fdz) >> 12) - (((wz - focz) * fdx) >> 12);
+                int fade = al < TILE / 2 && al > -TILE * 4 && ABS(ac) < TILE * 3 / 2;   // (between the camera and you: see-through)
+                PROF_BEGIN(); nat_plant(c, mx, my, t, fade); PROF_END(2);
+                continue;
+            }
             int rot = items_rotates(c) ? world_item_facing(mx, my) : 0;
             int along = items_along(c) ? world_along(mx, my, c) : 0;
             { PROF_BEGIN(); items_draw(c, mx, my, rot, along, t); PROF_END(2); }
@@ -1936,8 +2176,88 @@ static void see_through(int focus) {
     }
 }
 int world_detail_r = 12;                        // the full-detail range round you, tiles (the options menu)
-u32 world_horizon = 0xBECDD7;                   // the sky's colour at the horizon (main sets it: the haze)
 int world_far_range = 34;                       // how far (tiles) the skyline reaches (more with 8 MB: everything in the window)
+// ---- the island beyond the range: 4x4-tile cells out to 40 tiles round you (its land, its woods a raised canopy, the sea past its
+// shores), going into the haze; the endless sea past them is the sky's (far_sky_sea) ----
+#define NCELL (MW / 4)
+static u16 fc_col[NCELL][NCELL]; static u8 fc_kind[NCELL][NCELL]; static int fc_stamp = -1; static u32 fc_for;
+static void nat_far_cells(void) {
+    for (int cy = 0; cy < NCELL; cy++) for (int cx = 0; cx < NCELL; cx++) {
+        int r = 0, g = 0, b = 0, wet = 0, trees = 0;
+        int j = CLAMP((nat_noise(ngr_j, cx * 4 + 2, cy * 4 + 2) - 96) * 4, 0, 255);
+        for (int k = 0; k < 16; k++) {
+            int x = cx * 4 + (k & 3), y = cy * 4 + (k >> 2), f = floorMap[y][x]; char c = lifeMap[y][x];
+            if (f == FL_WATER) { wet++; r += 22; g += 70; b += 120; continue; }
+            if (c == 'g' || c == '3' || c == '6') trees++;
+            if (is_wall(c) || c == 'D' || f < NFL) { r += 150; g += 104; b += 76; continue; }   // (a hut: its roof)
+            switch (f) {
+                case FL_SAND: r += 150; g += 136; b += 100; break;
+                case FL_ROCK: r += 112; g += 104; b += 92; break;
+                case FL_SOIL: r += 120; g += 96; b += 70; break;
+                default: r += 76 - ((38 * j) >> 8); g += 124 - ((38 * j) >> 8); b += 46 - ((12 * j) >> 8); break;
+            }
+        }
+        r >>= 4; g >>= 4; b >>= 4;
+        if (trees) { int t = MIN(trees * 40, 220); r = (r * (256 - t) + 30 * t) >> 8; g = (g * (256 - t) + 74 * t) >> 8; b = (b * (256 - t) + 30 * t) >> 8; }
+        fc_col[cy][cx] = RGB(r >> 3, g >> 3, b >> 3);
+        fc_kind[cy][cx] = (u8)((wet >= 9) | (MIN(trees, 7) << 1));
+    }
+}
+#define XYW_(v) (*(const u32 *)&(v)->x)
+static void nat_far(int px, int py) {
+    if (fc_stamp != world_stamp || fc_for != ngr_for) { nat_far_cells(); fc_stamp = world_stamp; fc_for = ngr_for; }
+    #define FN 18
+    static SVECTOR fs[2][FN + 1] SVEC_ALIGN; static XV fv[2][FN + 1]; static u32 fcl[2][FN + 1]; static u8 fk[2][FN + 1]; int rlo[2], rhi[2];
+    int c0x = (px >> 2) - FN / 2, c0y = (py >> 2) - FN / 2;
+    int fwx = cam.at.vx - cam.eye.vx, fwz = cam.at.vz - cam.eye.vz, fl = isqrt(fwx * fwx + fwz * fwz); if (fl < 1) fl = 1;
+    fwx = (fwx << 12) / fl; fwz = (fwz << 12) / fl;                       // (the way the camera looks: what lies behind it is not worked out)
+    VECTOR org; setVector(&org, c0x * 4 * TILE, 0, -c0y * 4 * TILE); gfx_set_object(&org, 0);
+    int Lg = CLAMP(gfx_light(0, -ONE, 0), 40, 200);
+    int south = cam.eye.vz < -(c0y * 4 + FN * 2) * TILE;                    // (the rows nearest the camera go in first: they are drawn last)
+    u32 *ot = gfx_ot() + OT_GROUND_FAR;
+    for (int n = 0, cur = 0; n <= FN; n++, cur ^= 1) {
+        int j = south ? FN - n : n;
+        {   // the corners of this row in front of the camera (a run: the distance ahead changes evenly along it)
+            int d = ((c0x * 4 * TILE - cam.eye.vx) * fwx + (-(c0y * 4 + j * 4) * TILE - cam.eye.vz) * fwz) >> 12, st = (4 * TILE * fwx) >> 12;
+            rlo[cur] = FN + 1; rhi[cur] = -1;
+            for (int i = 0; i <= FN; i++, d += st) if (d >= -2 * TILE) { if (rlo[cur] > FN) rlo[cur] = i; rhi[cur] = i; }
+        }
+        for (int i = rlo[cur]; i <= rhi[cur]; i++) {
+            int r = 0, g = 0, b = 0, h = 0;
+            for (int k = 0; k < 4; k++) {
+                int cx = c0x + i - 1 + (k & 1), cy = c0y + j - 1 + (k >> 1);
+                if (cx < 0 || cy < 0 || cx >= NCELL || cy >= NCELL) { r += 22; g += 70; b += 120; h += 24; continue; }
+                u16 c = fc_col[cy][cx]; int kd = fc_kind[cy][cx];
+                r += C_R(c) << 3; g += C_G(c) << 3; b += C_B(c) << 3; h += (kd & 1) ? 24 : -(kd >> 1) * 40;
+            }
+            r = MIN((r * Lg) >> 9, 255); g = MIN((g * Lg) >> 9, 255); b = MIN((b * Lg) >> 9, 255);
+            fcl[cur][i] = (u32)r | ((u32)g << 8) | ((u32)b << 16); fk[cur][i] = 0;
+            setVector(&fs[cur][i], i * 4 * TILE, h / 4, -j * 4 * TILE);
+        }
+        if (rhi[cur] >= rlo[cur]) gfx_xform(fs[cur] + rlo[cur], fv[cur] + rlo[cur], rhi[cur] - rlo[cur] + 1);
+        if (!n) continue;
+        int jr = south ? j : j - 1;                                         // (the row of cells between the two rows of corners)
+        int ilo = MAX(rlo[0], rlo[1]), ihi = MIN(rhi[0], rhi[1]) - 1;
+        for (int i = ilo; i <= ihi; i++) {
+            int tx = (c0x + i) * 4, ty = (c0y + jr) * 4;
+            if (tx >= ngx0 && tx + 3 <= ngx1 && ty >= ngy0 && ty + 3 <= ngy1) continue;   // (wholly under the full ground)
+            const XV *P = fv[cur ^ 1], *Q = fv[cur];
+            const XV *A = south ? &Q[i] : &P[i], *B = south ? &Q[i + 1] : &P[i + 1], *C = south ? &P[i] : &Q[i], *Dd = south ? &P[i + 1] : &Q[i + 1];
+            if (!xv_vis4(A, B, C, Dd, 0)) continue;
+            #define FCOL(row, k) if (!fk[row][k]) { fcl[row][k] = nat_haze(fcl[row][k], fv[row][k].z); fk[row][k] = 1; }
+            FCOL(cur, i) FCOL(cur, i + 1) FCOL(cur ^ 1, i) FCOL(cur ^ 1, i + 1)
+            #undef FCOL
+            u32 ca = south ? fcl[cur][i] : fcl[cur ^ 1][i], cb = south ? fcl[cur][i + 1] : fcl[cur ^ 1][i + 1], cc = south ? fcl[cur ^ 1][i] : fcl[cur][i], cd = south ? fcl[cur ^ 1][i + 1] : fcl[cur][i + 1];
+            u32 *q = xv_alloc(9); if (!q) break;
+            q[1] = ca | 0x38000000u; q[2] = XYW_(A); q[3] = cb; q[4] = XYW_(B); q[5] = cc; q[6] = XYW_(C); q[7] = cd; q[8] = XYW_(Dd);
+            q[0] = (8u << 24) | (*ot & 0xffffff); *ot = (u32)q & 0xffffff; gfx_frame_prims++;
+        }
+    }
+    gfx_set_identity();
+    #undef FN
+}
+#undef XYW_
+
 void world_draw(int fx, int fy, int t, int cutaway) {
     gfx_set_identity(); world_dbg_walls = 0;
     gfx_set_reserve(RESERVE_PEOPLE + RESERVE_UI);   // the world may not use up the room the people need
@@ -1949,6 +2269,8 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         if (gfx_last_cpu < 420 || ++wait >= 3) { roof_pending(1); wait = 0; }
     }
     const int R = world_detail_r;
+    nat_on = world_zone == ZONE_ISLAND && world_nature;
+    { const int G = MIN(R, 8); ngx0 = fx - G; ngx1 = fx + G; ngy0 = fy - G; ngy1 = fy + G; }   // (the island's ground in full this far round you)
     rx0 = MAX(0, fx - R) & ~1; rx1 = MIN(MW - 1, fx + R); ry0 = MAX(0, fy - R) & ~1; ry1 = MIN(MH - 1, fy + R);
     ex0 = rx0; ex1 = rx1; ey0 = ry0; ey1 = ry1;
     int focus = (fx >= 0 && fy >= 0 && fx < MW && fy < MH) ? bld[fy][fx] : 0;
@@ -1980,6 +2302,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     }
     world_hb_up = gfx_hb() - h1_; world_up_walls = gfx_prof[1] - pw0_; world_up_wprims = gfx_profn[1] - pn0_; world_up_fl = gfx_prof[0] - pf0_;
     { PROF_BEGIN(); int h0 = gfx_hb(); roofs_draw(fx, fy); world_hb_roofs = gfx_hb() - h0; PROF_END(3); }
+    if (nat_on) { PROF_BEGIN(); nat_far(fx, fy); PROF_END(7); }
     {   // the skyline: everything past the range, as boxes (windows on the nearer ones); in SAN BOREAS, on out to the horizon
         PROF_BEGIN(); gfx_set_identity();
         int use_far = world_zone == ZONE_CITY && far_begin(world_horizon);

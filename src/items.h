@@ -19,3 +19,14 @@ int  items_cost(char ch);
 #define CH_CRIB  ((char)0x81)                            // a baby sleeps in it
 #define CH_CAKE  ((char)0x82)                            // a birthday cake on its party table (baked at the fridge)
 #define CH_GRAVE ((char)0x83)                            // where an elder of the family rests
+// the island's own (Castaway): its secrets, and what a castaway lives off
+#define CH_BOTTLE  ((char)0x84)                          // a message in a bottle, washed up on a beach
+#define CH_DIG     ((char)0x85)                          // a mound of sand with an X on it: dig
+#define CH_IDOL    ((char)0x86)                          // a stone tiki head, deep in the jungle
+#define CH_WRECK   ((char)0x87)                          // a shipwreck on the shore
+#define CH_SHELL   ((char)0x88)                          // a seashell
+#define CH_BUSH    ((char)0x89)                          // a berry bush
+#define CH_FISH    ((char)0x8A)                          // a fishing spot: a post and a net
+#define CH_RAFT    ((char)0x8B)                          // a raft (made at the campfire)
+#define CH_GOLD    ((char)0x8C)                          // the golden idol on its plinth (out on the islet)
+#define CH_JOURNAL ((char)0x8D)                          // the old hermit's journal on a stump

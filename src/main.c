@@ -20,6 +20,7 @@
 #include "ui.h"
 #include "places.h"
 #include "home.h"
+#include "island.h"
 
 // ---- input ----
 static u8 pad_buf[2][34];
@@ -39,7 +40,7 @@ static void read_pad(void) {
             if (ABS(ls_x) < 20) ls_x = 0; if (ABS(ls_y) < 20) ls_y = 0; if (ABS(rs_x) < 20) rs_x = 0; if (ABS(rs_y) < 20) rs_y = 0;
         }
     }
-#if defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME)
+#if defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME) || defined(AUTO_ISLE) || defined(AUTO_SCENE)
     { extern int auto_btn; if (auto_btn) { btn &= (u16)~auto_btn; auto_btn = 0; } }   // (test builds: the tour presses a button for a frame)
 #endif
 }
@@ -81,7 +82,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int create_tab, create_row, create_from, create_turn;
@@ -90,6 +91,7 @@ static int build_open, room_on, room_ax, room_ay;   // the DOORS tool's pick; th
 enum { BT_BUY, BT_ROOM, BT_WALL, BT_DOOR, BT_FLOOR, BT_PAINT, BT_ROOF, NTOOL };   // build mode's tools
 static char build_msg[32]; static int build_msg_t;   // what build mode has to say (the life's notes are not on screen there)
 static void home_go(void);
+static int craft_sel, craft_msg_t; static char craft_msg[32];   // the CRAFT list's pick; why it could not be made (a while)
 extern char _end[];
 static int juke_sel, juke_scroll;
 static int life_started;
@@ -142,6 +144,9 @@ static const char *act_label(const Sim *s) {   // the action's name, the going-o
         case ACT_CARE: { static const char *const ck[6] = { "", "FEEDING THE BABY", "CHANGING THE BABY", "PLAYING WITH THE BABY", "CUDDLING THE BABY", "PUTTING BABY TO BED" };
                          if (s->act_var >= 1 && s->act_var <= 5) return ck[s->act_var]; break; }
         case ACT_SLEEP: if (s->act_var == 2) return "A MASSAGE"; if (s->bore.stage == AG_BABY) return "NAPPING"; break;
+        case ACT_GATHER: { static const char *const gn[14] = { "GATHERING", "CHOPPING WOOD", "GATHERING STONE", "GATHERING LEAVES", "PICKING BERRIES", "SHAKING A PALM",
+                               "FISHING", "DIGGING", "SEARCHING THE WRECK", "READING THE NOTE", "READING THE JOURNAL", "LISTENING", "PICKING UP A SHELL", "TAKING THE IDOL" };
+                           return gn[s->act_var % 14]; }
         case ACT_RUN: if (s->act_var == 2) return "TRAINING"; break;
         case ACT_COFFEE: if (s->act_var == 1) return "A HOT DRINK"; break;
     }
@@ -191,7 +196,7 @@ static void start_life(void) {
         far_new_world();
         loading("MAKING A NEW LIFE", 70);
     }
-    world_reset_all(); home_reset();
+    world_reset_all(); home_reset(); isl_reset();
     for (int i = 0; i < nsims; i++) look_release(&sims[i].bore);   // (the last household's face textures: for this one)
     sim_init();
     int px, py; world_find('P', &px, &py); if (px < 0) { px = 5; py = 12; }
@@ -404,6 +409,15 @@ static void hud_life(void) {
     }
     feed_draw();
     if (venue_t > 0) { venue_draw(); venue_t--; }
+    if (world_zone == ZONE_ISLAND) {   // the castaway's stores, and the secrets found
+        int x = 222, y = 52; static const s8 ic[4] = { IC_WOOD, IC_STONE, IC_SPROUT, IC_FOOD };
+        const int v[4] = { isl_wood, isl_stone, isl_leaves, isl_food };
+        static const u32 icc[4] = { UI_RGB(150, 100, 50), UI_RGB(120, 124, 132), UI_RGB(70, 160, 70), UI_RGB(220, 120, 40) };
+        ui_card(x, y, 94, 40);
+        for (int k = 0; k < 4; k++) { int cx = x + 4 + (k & 1) * 46, cy = y + 3 + (k >> 1) * 12;
+            ui_icon(cx, cy, ic[k], icc[k]); sprintf(b, "%d", v[k]); ui_text(cx + 15, cy + 2, 1, b, k == 3 && !isl_food ? UI_BADT : UI_INK); }
+        ui_icon(x + 4, y + 27, IC_STAR, UI_RGB(236, 170, 30)); sprintf(b, "SECRETS %d/%d", isl_secret_count(), SEC_N); ui_text(x + 19, y + 29, 1, b, UI_INK);
+    }
     cheer_poll(); cheer_draw();
     citizens_hud();
     if (frame < 900) ui_hintbar(144, "L1 R1 TURN|L2 R2 ZOOM|X USE|SQ RUN");
@@ -504,10 +518,12 @@ static void life_update(int steps) {
     if (travel_asked) { travel_asked = 0; travel_sel = home_city && home_is_here() ? 0 : world_zone + home_city; state = ST_TRAVEL; }
     if (sim_story_over) { sim_story_over = 0; state = ST_OVER; }   // the last of the family is gone
     if (home_move_asked) { home_move_asked = 0; home_go(); }          // a home just bought: they move in
+    if (isl_craft_asked) { isl_craft_asked = 0; craft_sel = 0; craft_msg_t = 0; state = ST_CRAFT; }   // the campfire: make something
 }
 
 static void life_draw(void) {
     Sim *s = &sims[player];
+    gfx_set_fog(0, 0);                                   // (the title's fog stays on the title)
     camera_apply(s->x, -200 - s->lvl * WALL_FULL, s->z);
     world_view_lvl = s->lvl; world_roof_show = 0;
     // the day-night sky and light
@@ -524,6 +540,7 @@ static void life_draw(void) {
         u32 top = (u32)tr | ((u32)tg << 8) | ((u32)tb << 16), hor = (u32)br | ((u32)bg << 8) | ((u32)bb << 16);
         { extern u32 world_horizon; extern int world_far_range; world_horizon = hor; world_far_range = (world_zone == ZONE_CITY && far_view) ? 60 : 34; }
         if (world_zone == ZONE_CITY && far_view) far_sky(top, hor);   // the sky meets the land at the real horizon
+        else if (world_zone == ZONE_ISLAND) far_sky_sea(top, hor, (u32)((40 * day) >> 8) | ((u32)((112 * day) >> 8) << 8) | ((u32)((168 * day) >> 8) << 16));   // (the endless sea)
         else gfx_sky(top, hor);
     }
     gfx_prim_count = 0;
@@ -549,6 +566,7 @@ static void travel_go(int z) {
     }
     citizens_enter(z);
     char b[40]; sprintf(b, "WELCOME TO %s", world_zone_name(z)); sim_note(b);
+    if (z == ZONE_ISLAND) { sim_note("FIND FOOD: BERRIES, FISH"); sim_note("X ON TREES AND ROCKS: GATHER"); sim_note("8 SECRETS ARE HIDDEN HERE"); }
     audio_voice(VOICE_YAHOO);
 }
 static void travel_update(void) {   // (with a home in SAN BOREAS, the first row is HOME: travel_sel 0; the zones after it)
@@ -566,7 +584,7 @@ static void travel_update(void) {   // (with a home in SAN BOREAS, the first row
     }
 }
 static void travel_draw(void) {   // where to: the four places, each on a row with its picture, the locked ones greyed with what opens them
-    static const char *const blurb[ZONE_N] = { "HOUSE, FACTORY, RAIL PARK", "A CAMP, PALMS AND THE SEA", "DINER, TRAILER AND THE LAB", "" };
+    static const char *const blurb[ZONE_N] = { "HOUSE, FACTORY, RAIL PARK", "SURVIVE, BUILD, FIND 8 SECRETS", "DINER, TRAILER AND THE LAB", "" };
     static const char *const lockTxt[ZONE_N] = { "", "EARN YOUR FIRST PAYCHECK", "GET PROMOTED TWICE", "" };
     static const s8 zic[ZONE_N] = { IC_HOUSE, IC_TREE, IC_SUN, IC_PIN };
     char b[48];
@@ -628,7 +646,75 @@ static void home_go(void) {
     for (int i = 0; i < nsims; i++) sim_moodlet(&sims[i], 15);   // (FUN TIME: a new home)
     audio_voice(VOICE_YAHOO);
 }
+static u8 mi_n, mi_x[4], mi_y[4], mb_x, mb_y;   // the island map: the secrets found that stay put (the idol, the wreck, the journal); the boat home
+static void map_island_open(void) {   // CASTAWAY ISLAND from above, a pixel a tile: the sea (paler by the shore), sand, meadow, jungle, rock, the huts
+    u16 *px = atlas_scratch();
+    for (int i = 0; i < 128 * 128; i++) px[i] = RGB(6, 14, 24) | 0x8000;
+    mi_n = 0; mb_x = MW / 2; mb_y = MH - 4;
+    for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
+        u8 f = floorMap[y][x]; char c = lifeMap[y][x]; u16 col;
+        if (f == FL_WATER) {
+            int shore = 0; for (int k = 0; k < 4; k++) { int a = x + (k == 0) - (k == 1), b = y + (k == 2) - (k == 3); if (a >= 0 && b >= 0 && a < MW && b < MH && floorMap[b][a] != FL_WATER) shore = 1; }
+            col = shore ? RGB(11, 21, 28) : RGB(6, 14, 24);
+        }
+        else if (c == 'W' || c == 'w' || c == 'E' || c == 'e' || c == 'f' || c == 'D') col = RGB(27, 25, 22);
+        else if (c == 'g' || c == '3' || c == '6' || c == (char)CH_BUSH) col = RGB(4, 12, 4);
+        else if (c == '*') col = RGB(13, 13, 12);
+        else if (f == FL_SAND) col = RGB(30, 27, 18);
+        else if (f == FL_GRASS) col = RGB(11, 21, 7);
+        else if (f == FL_ROCK) col = RGB(19, 18, 16);
+        else if (f == FL_PAVING) col = RGB(21, 15, 9);
+        else col = RGB(24, 19, 13);   // (a floor indoors)
+        px[y * 128 + x] = col | 0x8000;
+        if (c == '@') { mb_x = (u8)x; mb_y = (u8)y; }
+        if (mi_n < 4 && ((c == (char)CH_IDOL && (isl_secrets >> SEC_IDOL & 1)) || (c == (char)CH_WRECK && (isl_secrets >> SEC_WRECK & 1)) || (c == (char)CH_JOURNAL && (isl_secrets >> SEC_JOURNAL & 1)))) { mi_x[mi_n] = (u8)x; mi_y[mi_n] = (u8)y; mi_n++; }
+    }
+    atlas_vram_load(0, 256, 128, 128, px);
+    crowd_flush();
+    map_t = 0;
+}
+static void map_island_draw(void) {   // the island on a card: you, the camp, the boat home, the secrets found; the list: what is found, and a hint to the rest
+    gfx_set_clear(188, 204, 222);
+    gfx_camera_update();
+    ui_backdrop();
+    char b[32];
+    int top = ui_window(4, 4, 312, 232, world_zone_name(ZONE_ISLAND), IC_PIN);
+    sprintf(b, "SECRETS %d OF %d", isl_secret_count(), SEC_N);
+    ui_badge(306 - ui_tw(1, b) - 10, 8, b, UI_WHITE, UI_BLUE2);
+    const int MX = 9, MY = top, MS = 178;
+    ui_round(MX - 2, MY - 2, MS + 4, MS + 4, 4, UI_LINE, UI_LINE, 0);
+    gfx_sprite_c(MX, MY, MS, MS, getTPage(2, 0, 0, 256), 0, 0, MW, MH, 128, 128, 128);
+    #define MAPX(t) (MX + (t) * MS / MW + 1)
+    #define MAPY(t) (MY + (t) * MS / MH + 1)
+    for (int k = 0; k < mi_n; k++) ui_icon_disc(MAPX(mi_x[k]), MAPY(mi_y[k]), 11, IC_STAR, UI_AMBER, UI_WHITE);
+    ui_icon_disc(MAPX(mb_x), MAPY(mb_y), 13, IC_CAR, UI_BLUE2, UI_WHITE);
+    ui_icon_disc(MAPX(isl_fire_x), MAPY(isl_fire_y), 13, IC_HOUSE, UI_RGB(236, 120, 40), UI_WHITE);
+    { int x = MAPX(sim_tile_x(&sims[player])), y = MAPY(sim_tile_y(&sims[player])); ui_disc(x, y, (map_t >> 3) & 1 ? 11 : 9, UI_WHITE); ui_disc(x, y, 7, UI_GREEN); }
+    #undef MAPX
+    #undef MAPY
+    static const char *const found[SEC_N] = { "THE BOTTLE", "BURIED TREASURE", "THE TIKI IDOL", "THE SHIPWRECK", "SIX SEASHELLS", "HERMIT'S JOURNAL", "THE ISLET", "THE GOLDEN IDOL" };
+    static const char *const hint[SEC_N] = { "A FAR-OFF BEACH", "BY A BIG ROCK", "DEEP IN THE JUNGLE", "A FAR SHORE", 0, "AN OLD CAMP", "OUT AT SEA", "ON THE ISLET" };
+    ui_section(192, top, 118, "THE SECRETS");
+    for (int i = 0; i < SEC_N; i++) {
+        int y = top + 14 + i * 14, d = (isl_secrets >> i) & 1;
+        if (d) ui_icon_disc(198, y + 4, 11, IC_TICK, UI_GREEN, UI_WHITE);
+        else { ui_disc(198, y + 4, 11, UI_RGB(186, 196, 210)); ui_disc(198, y + 4, 7, UI_WHITE); }
+        const char *t = d ? found[i] : hint[i];
+        if (!d && i == SEC_SHELLS) { sprintf(b, "SEASHELLS %d OF %d", isl_shells, ISL_SHELLS); t = b; }
+        if (!d && i == SEC_TREASURE && !(isl_secrets & (1 << SEC_BOTTLE))) t = "ASK THE BOTTLE";   // (the bottle's note says where)
+        ui_text(206, y, 1, t, d ? UI_GOODT : UI_SOFT);
+    }
+    int ly = top + 20 + SEC_N * 14;
+    gfx_rect(192, ly - 5, 118, 1, 214, 222, 232, 0);
+    ui_disc(198, ly + 4, 11, UI_WHITE); ui_disc(198, ly + 4, 7, UI_GREEN); ui_text(206, ly, 1, "YOU", UI_INK);
+    ui_icon_disc(198, ly + 18, 11, IC_HOUSE, UI_RGB(236, 120, 40), UI_WHITE); ui_text(206, ly + 14, 1, "THE CAMP", UI_INK);
+    ui_icon_disc(198, ly + 32, 11, IC_CAR, UI_BLUE2, UI_WHITE); ui_text(206, ly + 28, 1, "THE BOAT HOME", UI_INK);
+    gfx_rect(10, 211, 300, 1, 200, 210, 222, 0);
+    ui_text(12, 218, 1, "THE CAMPFIRE: COOK, EAT, CRAFT", UI_SOFT);
+    ui_hints(310, 215, "O BACK", 2);
+}
 static void map_open(void) {
+    if (world_zone == ZONE_ISLAND) { map_island_open(); return; }
     u16 *px = atlas_scratch();
     static const u16 tcol[6] = { RGB(4, 9, 19), RGB(25, 23, 15), RGB(10, 18, 7), RGB(5, 12, 5), RGB(24, 20, 12), RGB(15, 15, 15) };
     for (int y = 0; y < 128; y++) for (int x = 0; x < 128; x++) px[y * 128 + x] = tcol[bm_terrain(x * 8 + 4, y * 8 + 4)] | 0x8000;
@@ -653,6 +739,7 @@ static void map_open(void) {
 static void map_update(void) {
     if (map_t < 0) map_open();
     map_t++;
+    if (world_zone == ZONE_ISLAND) { if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_CROSS)) state = ST_LIFE; return; }   // (no taxis out here)
     int n = bm_nset();
     if (PRESSED(PAD_UP)) map_sel = (map_sel + n - 1) % n;
     if (PRESSED(PAD_DOWN)) map_sel = (map_sel + 1) % n;
@@ -666,6 +753,7 @@ static void map_update(void) {
     }
 }
 static void map_draw(void) {   // the state on a card: the map on the left (the towns as dots, the picked one named), the list on the right
+    if (world_zone == ZONE_ISLAND) { map_island_draw(); return; }
     gfx_set_clear(188, 204, 222);
     gfx_camera_update();
     ui_backdrop();
@@ -916,6 +1004,123 @@ static void home_tick(void) {   // (test builds: buy a house and move in, build 
                         cam_yaw = 0; cam_pitch = 430; cam_dist = 2300; } break;
         }
         k++;
+    }
+}
+#endif
+
+// ---- CRAFT: what the castaways can make at the campfire from what they have gathered ----
+static void craft_update(void) {
+    if (PRESSED(PAD_UP)) { craft_sel = (craft_sel + ISL_NCRAFT - 1) % ISL_NCRAFT; craft_msg_t = 0; }
+    if (PRESSED(PAD_DOWN)) { craft_sel = (craft_sel + 1) % ISL_NCRAFT; craft_msg_t = 0; }
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = ST_LIFE; return; }
+    if (craft_msg_t > 0) craft_msg_t--;
+    if (PRESSED(PAD_CROSS)) {
+        const Craft *c = &isl_crafts[craft_sel];
+        int r = isl_make(craft_sel);
+        if (r > 0) { state = ST_LIFE; return; }   // (made: its note is in the feed)
+        audio_voice(VOICE_NAH); craft_msg_t = 150;
+        if (r < 0) strcpy(craft_msg, "NO ROOM FOR IT BY THE FIRE");
+        else if ((craft_sel == 3 && isl_spear) || (craft_sel == 5 && world_count(CH_RAFT))) strcpy(craft_msg, "YOU HAVE ONE ALREADY");
+        else if (isl_wood < c->wood) sprintf(craft_msg, "NEED %d MORE WOOD", c->wood - isl_wood);
+        else if (isl_stone < c->stone) sprintf(craft_msg, "NEED %d MORE STONE", c->stone - isl_stone);
+        else sprintf(craft_msg, "NEED %d MORE LEAVES", c->leaves - isl_leaves);
+    }
+}
+static void craft_draw(void) {
+    life_draw();
+    ui_dim();
+    char b[32];
+    int top = ui_window(20, 10, 280, 222, "MAKE SOMETHING", IC_HAMMER);
+    {   // what there is to make it from: four boxes, each its picture, how many, and its name
+        static const s8 ic[4] = { IC_WOOD, IC_STONE, IC_SPROUT, IC_FOOD }; static const char *const nm[4] = { "WOOD", "STONE", "LEAVES", "FOOD" };
+        const int v[4] = { isl_wood, isl_stone, isl_leaves, isl_food };
+        for (int k = 0; k < 4; k++) {
+            int x = 26 + k * 68;
+            ui_round(x, top, 64, 26, 6, UI_WHITE, UI_PANEL, 0);
+            ui_icon_disc(x + 13, top + 13, 18, ic[k], v[k] ? UI_BLUE : UI_RGB(176, 184, 196), UI_WHITE);
+            sprintf(b, "%d", v[k]); ui_text(x + 26, top + 4, 1, b, UI_INK); ui_text(x + 26, top + 14, 1, nm[k], UI_SOFT);
+        }
+    }
+    for (int i = 0; i < ISL_NCRAFT; i++) {
+        const Craft *c = &isl_crafts[i]; int y = top + 34 + i * 20, sel = i == craft_sel, ok = isl_can_make(i);
+        if (sel) { ui_round(26, y - 3, 268, 19, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(26, y, 2, 13, 38, 146, 222, 0); }
+        ui_icon_disc(40, y + 6, 16, c->icon, ok ? UI_GREEN : UI_RGB(176, 184, 196), UI_WHITE);
+        ui_text(54, y + 3, 1, c->name, ok ? (sel ? UI_BLUE2 : UI_INK) : UI_SOFT);
+        int x = 150; const int need[3] = { c->wood, c->stone, c->leaves }, have[3] = { isl_wood, isl_stone, isl_leaves }; static const s8 nic[3] = { IC_WOOD, IC_STONE, IC_SPROUT };
+        for (int k = 0; k < 3; k++) if (need[k]) { ui_icon(x, y + 1, nic[k], have[k] >= need[k] ? UI_GOODT : UI_BADT); sprintf(b, "%d", need[k]); ui_text(x + 14, y + 3, 1, b, have[k] >= need[k] ? UI_GOODT : UI_BADT); x += 36; }
+        if ((i == 3 && isl_spear) || (i == 5 && world_count(CH_RAFT))) ui_text(150, y + 3, 1, "MADE", UI_GOODT);
+    }
+    ui_round(26, top + 155, 268, 24, 6, UI_RGB(234, 240, 248), UI_RGB(224, 231, 240), 0);
+    if (craft_msg_t > 0) { ui_icon(32, top + 161, IC_LOCK, UI_BADT); ui_text(48, top + 163, 1, craft_msg, UI_BADT); }   // (why it could not be made)
+    else { ui_icon(32, top + 161, IC_HELP, UI_BLUE); ui_text(48, top + 163, 1, isl_crafts[craft_sel].blurb, UI_INK); }
+    ui_hints(160, top + 184, "X MAKE IT|O BACK", 1);
+}
+
+#ifdef AUTO_ISLE
+int auto_btn;
+static void isle_tick(void) {   // (test builds: CASTAWAY ISLAND: its map, gathering, the campfire's crafts, every secret, the raft to the islet, foraging, the story)
+    extern int sim_debug_goto(char c, int lot);
+    static int t0 = -1, k;
+    if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); story_paid = 1; clock_min = 9 * 60; travel_go(ZONE_ISLAND); story_visit[1] = 1; }
+    static const struct { s16 at; char op; s16 arg; } plan[] = {
+        { 30, 'm', 0 }, { 200, 'b', 'O' }, { 260, 'k', 0 },                                       // the island's map: no secrets yet, the hints
+        { 300, 'g', (s16)(u8)CH_BUSH }, { 330, 'b', 'X' }, { 380, 'b', 'X' },                       // berries
+        { 650, 'g', 'g' }, { 680, 'b', 'X' }, { 730, 'p', 1 }, { 750, 'b', 'X' },                 // a palm: CHOP WOOD
+        { 1100, 'g', (s16)(u8)CH_FISH }, { 1130, 'b', 'X' },                                      // fishing
+        { 1600, 'g', 's' }, { 1630, 'b', 'X' }, { 1670, 'p', 2 }, { 1690, 'b', 'X' },             // the campfire: CRAFT
+        { 1750, 'c', 4 }, { 1780, 'b', 'X' },                                                     // a SHELTER: not enough yet
+        { 1900, 'r', 0 }, { 1920, 'b', 'X' },                                                     // now there is: made, by the fire
+        { 2000, 'g', 'D' }, { 2010, 'k', 2 }, { 2250, 'k', 0 },                                   // the shelter
+        { 2300, 'g', 's' }, { 2330, 'b', 'X' }, { 2370, 'p', 2 }, { 2390, 'b', 'X' }, { 2440, 'c', 5 }, { 2470, 'b', 'X' },   // a RAFT
+        { 2600, 'g', (s16)(u8)CH_BOTTLE }, { 2630, 'b', 'X' },                                    // the secrets
+        { 2900, 'g', (s16)(u8)CH_DIG }, { 2930, 'b', 'X' },
+        { 3350, 'g', (s16)(u8)CH_IDOL }, { 3380, 'b', 'X' },
+        { 3650, 'g', (s16)(u8)CH_WRECK }, { 3680, 'b', 'X' },
+        { 4050, 'g', (s16)(u8)CH_SHELL }, { 4080, 'b', 'X' }, { 4130, 'g', (s16)(u8)CH_SHELL }, { 4160, 'b', 'X' }, { 4210, 'g', (s16)(u8)CH_SHELL }, { 4240, 'b', 'X' },
+        { 4290, 'g', (s16)(u8)CH_SHELL }, { 4320, 'b', 'X' }, { 4370, 'g', (s16)(u8)CH_SHELL }, { 4400, 'b', 'X' }, { 4450, 'g', (s16)(u8)CH_SHELL }, { 4480, 'b', 'X' },
+        { 4550, 'g', (s16)(u8)CH_JOURNAL }, { 4580, 'b', 'X' },
+        { 4850, 'm', 0 }, { 5000, 'b', 'O' },                                                     // the map again: what is found
+        { 5050, 'g', (s16)(u8)CH_RAFT }, { 5080, 'b', 'X' }, { 5120, 'p', 3 }, { 5140, 'b', 'X' },   // the raft: out to the islet
+        { 5300, 'k', 1 },
+        { 5450, 'g', (s16)(u8)CH_GOLD }, { 5480, 'b', 'X' },                                      // the golden idol
+        { 5750, 'g', (s16)(u8)CH_RAFT }, { 5780, 'b', 'X' }, { 5820, 'p', 3 }, { 5840, 'b', 'X' },   // and back
+        { 5950, 'f', 0 }, { 5960, 'k', 2 },                                                       // an empty larder: the others forage
+        { 6600, 'm', 0 }, { 6750, 'b', 'O' },
+        { 6800, 'b', 'S' }, { 6820, 'b', 'D' }, { 6840, 'b', 'D' }, { 6870, 'b', 'X' },          // THE STORY
+        { 7050, 'b', 'O' }, { 7080, 'h', 5 }, { 7250, 'b', 'O' }, { 0, 0, 0 } };                  // and the island's help page
+    static const char *const pick[4] = { "", "CHOP WOOD", "CRAFT", "SAIL ACROSS" };
+    int t = VSync(-1) - t0;
+    while (plan[k].op && t >= plan[k].at) {
+        int a = plan[k].arg;
+        switch (plan[k].op) {
+            case 'b': auto_btn = a == 'X' ? PAD_CROSS : a == 'O' ? PAD_CIRCLE : a == 'S' ? PAD_START : a == 'D' ? PAD_DOWN : a == 'U' ? PAD_UP : PAD_RIGHT; break;
+            case 'g': sim_debug_goto((char)a, -1); cam_pitch = 640; cam_dist = 1400; break;
+            case 'p': for (int i = 0; i < pie_n; i++) if (!strcmp(pie_opt[i], pick[a])) pie_sel = i; break;
+            case 'c': craft_sel = a; break;
+            case 'm': map_t = -1; state = ST_MAP; break;
+            case 'h': prev_state = ST_PAUSE; help_page = a; state = ST_HELP; break;
+            case 'k': cam_pitch = a == 2 ? 760 : a ? 520 : 640; cam_dist = a == 2 ? 3000 : a ? 2200 : 1400; break;
+            case 'r': isl_wood += 30; isl_stone += 6; isl_leaves += 20; break;
+            case 'f': isl_food = 0; for (int i = 0; i < nsims; i++) if (i != player) sims[i].need[N_FOOD] = 12 << 10; break;
+        }
+        k++;
+    }
+}
+#endif
+
+#ifdef AUTO_SCENE
+int auto_btn;
+static void scene_tick(void) {   // (test builds: CASTAWAY ISLAND's sights, each from four angles: the camp, a palm, the jungle, the pines and rocks, a bush, the pond, a hut, the islet)
+    extern int sim_debug_goto(char c, int lot);
+    static int t0 = -1, n;
+    if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); clock_min = 10 * 60; travel_go(ZONE_ISLAND); }
+    static const char where[9] = { 's', 'g', '3', '6', '*', (char)CH_BUSH, '0', 'D', (char)CH_GOLD };
+    static const s16 view[4][3] = { { 640, 1500, 2600 }, { 380, 1900, 3300 }, { 800, 3400, 600 }, { 520, 2600, 1800 } };
+    if (n < 36 && VSync(-1) - t0 >= 60 + n * 60) {
+        int stop = n >> 2, k = n & 3;
+        if (k == 0) sim_debug_goto(where[stop], -1);
+        cam_pitch = view[k][0]; cam_dist = view[k][1]; cam_yaw = view[k][2]; clock_min = 10 * 60;
+        n++;
     }
 }
 #endif
@@ -1316,27 +1521,30 @@ static void story_draw(void) {   // the goals of this life, ticked off as they a
     ui_dim();
     char b[48], isl[40];
     sprintf(isl, "SAIL TO %s", world_zone_name(ZONE_ISLAND));
-    struct { const char *txt; int done; } g[6] = {
+    enum { NG = 8 };
+    struct { const char *txt; int done; } g[NG] = {
         { "EARN A PAYCHECK (START, JOBS)", story_paid > 0 },
         { isl, story_visit[1] },
         { "GET PROMOTED TWICE", job_level >= 2 },
         { "SEE THE DESERT TOWN", story_visit[2] },
         { "MAKE FRIENDS: CHAT 5 TIMES", story_talks >= 5 },
         { "SAVE UP $20000", cash >= 20000 },
+        { "BUY A HOME (START, HOMES)", home_city },
+        { "FIND THE ISLAND'S 8 SECRETS", isl_secret_count() >= SEC_N },
     };
-    int top = ui_window(30, 24, 260, 194, "THE STORY SO FAR", IC_BOOK), done = 0;
-    for (int i = 0; i < 6; i++) {
-        int y = top + 2 + i * 22, d = g[i].done;
-        ui_round(38, y, 244, 19, 6, d ? UI_RGB(234, 249, 234) : UI_WHITE, d ? UI_RGB(212, 238, 212) : UI_PANEL, 0);
+    int top = ui_window(30, 10, 260, 220, "THE STORY SO FAR", IC_BOOK), done = 0;
+    for (int i = 0; i < NG; i++) {
+        int y = top + 2 + i * 20, d = g[i].done;
+        ui_round(38, y, 244, 18, 6, d ? UI_RGB(234, 249, 234) : UI_WHITE, d ? UI_RGB(212, 238, 212) : UI_PANEL, 0);
         if (d) ui_icon_disc(49, y + 9, 15, IC_TICK, UI_GREEN, UI_WHITE);
         else { ui_disc(49, y + 9, 15, UI_RGB(186, 196, 210)); ui_disc(49, y + 9, 11, UI_WHITE); }
-        ui_text(62, y + 6, 1, g[i].txt, d ? UI_GOODT : UI_INK);
+        ui_text(62, y + 5, 1, g[i].txt, d ? UI_GOODT : UI_INK);
         done += d;
     }
-    sprintf(b, "%d OF 6 DONE", done);
-    ui_text(40, top + 137, 1, b, UI_INK);
-    ui_bar(124, top + 137, 156, 7, done * 100 / 6, UI_GREEN);
-    ui_hints(160, top + 152, "O BACK", 1);
+    sprintf(b, "%d OF %d DONE", done, NG);
+    ui_text(40, top + 165, 1, b, UI_INK);
+    ui_bar(124, top + 165, 156, 7, done * 100 / NG, UI_GREEN);
+    ui_hints(160, top + 180, "O BACK", 1);
 }
 
 // ---- the Bore panel: MOOD / WANTS / SKILLS / PEOPLE / JOB tabs (the Sims 2 panel) ----
@@ -1647,7 +1855,7 @@ static int floor_supported(int l, int x, int y) {   // an upper floor needs some
 // ---- the catalog (Sims buy mode): the items in tabs, a scrolling list with prices ----
 static const char *const catNm[7] = { "SEATS, BEDS", "TABLES, STORAGE", "KITCHEN, BATH", "FUN AND TECH", "DECOR, PLANTS", "SKATE", "SPECIAL" };
 static const char *const catSet[6] = { "CUh;S<N%z\x81", "tdibyK?#O", "F/:cTH,->&Y`", "vARj[!$()QImn]_{", "rlpZVqo}gus*0", "=LJXM159G" };
-static int item_cat(char ch) { if (ch == CH_CAKE || ch == CH_GRAVE) return -1; for (int c = 0; c < 6; c++) if (strchr(catSet[c], ch)) return c; return 6; }
+static int item_cat(char ch) { if ((u8)ch > 0x81) return -1; /* (the cake, the gravestone and the island's own are never bought) */ for (int c = 0; c < 6; c++) if (strchr(catSet[c], ch)) return c; return 6; }
 static int cat_list(int cat, int *idx) { int n = 0; for (int i = 0; i < items_count() && n < 96; i++) if (item_cat(items_at(i)) == cat) idx[n++] = i; return n; }
 static void catalog_step(int dir) {   // L1 R1: through the tab, and on into the next tab at the end
     int idx[96], cat = item_cat(items_at(build_item)), n = cat_list(cat, idx), p = 0;
@@ -1893,7 +2101,7 @@ static void juke_draw(void) {   // the song playing on its own card, every song 
 
 // ---- help ----
 typedef struct { s8 ic; const char *t; } HelpTip;
-#define NHELP 5
+#define NHELP 6
 static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
     { "HOW TO PLAY", { { IC_PLAY, "MOVE WITH THE STICK OR THE D-PAD. SQUARE RUNS." },
         { IC_FOOD, "X USES THE THING IN FRONT OF YOU: THE FRIDGE, THE BED, THE SHOWER, THE SOFA, THE TV." },
@@ -1919,7 +2127,12 @@ static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
         { IC_CAR, "THE FAMILY MOVES IN BY TAXI. A HOUSE COMES FURNISHED FOR THEM." },
         { IC_ROOM, "BUILD MODE, ROOM: X ON ONE CORNER, X ON THE OTHER: WALLS AND A FLOOR." },
         { IC_DOOR, "DOORS, WINDOWS: X ON A WALL. L2 R2 CHANGE THE STOREY TO BUILD UP." },
-        { IC_STAR, "A FOR SALE SIGN: X ON IT TO BUY THAT HOME. TRAVEL TAKES YOU HOME." } } } };
+        { IC_STAR, "A FOR SALE SIGN: X ON IT TO BUY THAT HOME. TRAVEL TAKES YOU HOME." } } },
+    { "CASTAWAY ISLAND", { { IC_WOOD, "X ON TREES, BUSHES AND ROCKS: WOOD, LEAVES, BERRIES AND STONE." },
+        { IC_FOOD, "FISH OFF THE JETTY. COOK AND EAT AT THE CAMPFIRE. NO FOOD? FORAGE." },
+        { IC_HAMMER, "X ON THE CAMPFIRE, CRAFT: A TENT, A BENCH, A SPEAR, A SHELTER, A RAFT." },
+        { IC_STAR, "8 SECRETS ARE HIDDEN ON THE ISLAND. THE MAP KEEPS COUNT AND GIVES HINTS." },
+        { IC_CAR, "A RAFT SAILS OUT TO THE ISLET. WHAT IS OUT THERE?" } } } };
 static void help_update(void) {
     if (PRESSED(PAD_R1) || PRESSED(PAD_CROSS)) help_page = (help_page + 1) % NHELP;
     if (PRESSED(PAD_L1)) help_page = (help_page + NHELP - 1) % NHELP;
@@ -2097,6 +2310,12 @@ int main(void) {
 #ifdef AUTO_HOME
         home_tick();
 #endif
+#ifdef AUTO_ISLE
+        isle_tick();
+#endif
+#ifdef AUTO_SCENE
+        scene_tick();
+#endif
         ui_light = 0;
         switch (state) {
             case ST_TITLE: title_update(); title_draw(); break;
@@ -2122,6 +2341,7 @@ int main(void) {
             case ST_JOBS: jobs_update(); jobs_draw(); break;
             case ST_OVER: over_update(); over_draw(); break;
             case ST_HOMES: homes_update(); homes_draw(); break;
+            case ST_CRAFT: craft_update(); craft_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
         if (state == ST_LIFE) { avg_cpu16 += t_cpu - (avg_cpu16 >> 4); avg_world16 += t_world - (avg_world16 >> 4);   // (the test readouts)

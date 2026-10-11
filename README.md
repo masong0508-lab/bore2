@@ -79,6 +79,23 @@ Build mode has seven tools: BUY, ROOM (X on one corner, X on the other: walls ro
 WINDOWS (X on a wall), FLOOR, WALLPAPER and ROOF. L2 R2 change the storey (five in all): a room upstairs stands on the walls
 below it, and the stairs (BUY) open the floor above them. In SAN BOREAS you build on your own lot only.
 
+## Castaway Island
+TRAVEL takes the family to CASTAWAY ISLAND (once they have earned a paycheck): a new island every life (`world.c`), with a coast
+that wanders, beaches, meadows, jungle, rocky hills with pines, a pond, islanders' huts, and an islet out at sea. The family camps
+by the jetty, and lives off the land (`src/island.c`): X on trees, bushes and rocks gathers WOOD, LEAVES, BERRIES, COCONUTS and
+STONE; fish off the jetty and the beaches; COOK AND EAT at the campfire (every meal on the island comes out of what was gathered,
+and when there is none the others go foraging). CRAFT at the campfire makes a TENT, a LOG BENCH, an OUTHOUSE, a SPEAR (fish
+faster, catch more), a plank SHELTER, and a RAFT that sails out to the islet. Eight secrets are hidden round it: a message in a
+bottle, buried treasure, a tiki idol, a shipwreck, six seashells, a hermit's journal, the islet, and a golden idol. The map
+(START, MAP AND TAXI) shows the island, ticks off what is found and hints at the rest; finding them all is one of THE STORY's goals.
+
+The island is drawn as a place rather than as blocks (`src/nature.c`): the ground is coloured corner by corner (sand into meadow
+into jungle, wet sand and foam at the waterline, shade under the trees, a sea that goes from turquoise shallows to deep blue)
+over fine grain textures; palms have ringed, curving trunks and drooping fronds, the jungle trees ragged leafy crowns, the pines
+tiers of needles; boulders, berry bushes, a stone-ringed campfire with flickering flames, an A-frame tent, log benches, a sailing
+boat, the raft and the wreck are all modelled. Past the near ground the rest of the island is drawn coarser out to 36 tiles (its
+woods as a raised canopy), going into the haze, and the sea runs on to the horizon.
+
 ## DS port (in progress)
 The game code is split so a Nintendo DS build can sit beside the PS1 one:
 - `src/platform/compat_math.*` the PS1 SDK maths (rotations, matrices, sin, sqrt) in plain C, tested against the real values.

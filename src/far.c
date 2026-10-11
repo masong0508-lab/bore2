@@ -599,7 +599,7 @@ static void draw_trees(int rx0, int ry0, int rx1, int ry1) {
 }
 
 // ================================================================== the sky
-void far_sky(u32 top, u32 horizon) {
+void far_sky_sea(u32 top, u32 horizon, u32 sea) {   // (sea: below the horizon, the haze deepens into it; 0: haze all the way down)
     // where the horizon crosses the screen: a point far ahead at the eye's height
     int ax = cam.at.vx - cam.eye.vx, az = cam.at.vz - cam.eye.vz, l = isqrt(ax * ax + az * az); if (l < 1) l = 1;
     far_gte();
@@ -623,11 +623,24 @@ void far_sky(u32 top, u32 horizon) {
             p[1] = 0x28000000u | top; p[2] = FXY(0, 0); p[3] = FXY(SCREEN_W, 0); p[4] = FXY(0, MIN(ytop, SCREEN_H)); p[5] = FXY(SCREEN_W, MIN(ytop, SCREEN_H));
             LINKP(p, 5) } }
     }
-    if (hy < SCREEN_H) { int y0 = MAX(hy, 0); u32 *p = (u32 *)gfx_alloc(6 * 4); if (p) {   // below the horizon (the land covers it): haze
+    if (sea && hy < SCREEN_H) {   // the open sea: from the haze at the horizon, deepening over 70 px, then the deep colour
+        int yb = hy + 70, y0 = MAX(hy, 0), y1 = MIN(yb, SCREEN_H);
+        if (y1 > y0) { u32 *p = (u32 *)gfx_alloc(9 * 4); if (p) {
+            int t0 = (y0 - hy) * 256 / 70, t1 = (y1 - hy) * 256 / 70;
+            int sr = sea & 255, sg = (sea >> 8) & 255, sb = (sea >> 16) & 255;
+            u32 c0 = (u32)(br + (((sr - br) * t0) >> 8)) | ((u32)(bg + (((sg - bg) * t0) >> 8)) << 8) | ((u32)(bb + (((sb - bb) * t0) >> 8)) << 16);
+            u32 c1 = (u32)(br + (((sr - br) * t1) >> 8)) | ((u32)(bg + (((sg - bg) * t1) >> 8)) << 8) | ((u32)(bb + (((sb - bb) * t1) >> 8)) << 16);
+            p[1] = 0x38000000u | c0; p[2] = FXY(0, y0); p[3] = c0; p[4] = FXY(SCREEN_W, y0); p[5] = c1; p[6] = FXY(0, y1); p[7] = c1; p[8] = FXY(SCREEN_W, y1);
+            LINKP(p, 8) } }
+        if (yb < SCREEN_H) { u32 *p = (u32 *)gfx_alloc(6 * 4); if (p) {
+            p[1] = 0x28000000u | sea; p[2] = FXY(0, MAX(yb, 0)); p[3] = FXY(SCREEN_W, MAX(yb, 0)); p[4] = FXY(0, SCREEN_H); p[5] = FXY(SCREEN_W, SCREEN_H);
+            LINKP(p, 5) } }
+    } else if (hy < SCREEN_H) { int y0 = MAX(hy, 0); u32 *p = (u32 *)gfx_alloc(6 * 4); if (p) {   // below the horizon (the land covers it): haze
         p[1] = 0x28000000u | horizon; p[2] = FXY(0, y0); p[3] = FXY(SCREEN_W, y0); p[4] = FXY(0, SCREEN_H); p[5] = FXY(SCREEN_W, SCREEN_H);
         LINKP(p, 5) } }
     #undef LINKP
 }
+void far_sky(u32 top, u32 horizon) { far_sky_sea(top, horizon, 0); }
 
 // ================================================================== the frame
 static int far_on_frame;
