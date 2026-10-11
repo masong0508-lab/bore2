@@ -53,7 +53,7 @@ int prof_top(int k, u32 *addr) {   // the k-th busiest stretch: its count (and a
     *addr = 0x80010000u + top[k] * 256u; return topn[k];
 }
 int gfx_hb(void) { return VSync(1); }   // hblanks since the frame's VSync(0) (63.5 us each; 525 = a 30 FPS frame)
-int gfx_last_wait, gfx_prim_count, gfx_frame_prims, gfx_last_prims, gfx_last_bytes, gfx_overflow, gfx_last_overflow;   // profiler: prims and packet bytes of the last frame, prims that did not fit
+int gfx_last_cpu, gfx_last_wait, gfx_prim_count, gfx_frame_prims, gfx_last_prims, gfx_last_bytes, gfx_overflow, gfx_last_overflow;   // profiler: prims and packet bytes of the last frame, prims that did not fit
 
 Camera cam;
 static int obj_yaw;               // yaw of the current object (for lighting)
@@ -116,7 +116,7 @@ void gfx_flip(void) {
     gfx_last_bytes = (int)(db_next - db[db_active].p); gfx_last_prims = gfx_frame_prims; gfx_frame_prims = 0;
     gfx_last_overflow = gfx_overflow; gfx_overflow = 0;
     for (int i = 0; i < 8; i++) { gfx_prof_last[i] = gfx_prof[i]; gfx_prof[i] = 0; gfx_profn_last[i] = gfx_profn[i]; gfx_profn[i] = 0; }
-    { int h0 = VSync(1); DrawSync(0); gfx_last_wait = VSync(1) - h0; }   // how long the GPU was still busy with the last frame
+    { int h0 = VSync(1); gfx_last_cpu = h0; DrawSync(0); gfx_last_wait = VSync(1) - h0; }   // how long the GPU was still busy with the last frame
     VSync(0);
     db_active ^= 1;
     db_next = db[db_active].p;
@@ -212,11 +212,18 @@ static inline int outcode(int x, int y) {
     if (y < 0) r |= 4; else if (y >= SCREEN_H) r |= 8;
     return r;
 }
+int gfx_bb_on; int gfx_bb[4];          // while on, the screen box of everything projected (a sprite render measures its person)
+static inline void bb_add(int x, int y) {
+    if (x < gfx_bb[0]) gfx_bb[0] = x; if (x > gfx_bb[2]) gfx_bb[2] = x;
+    if (y < gfx_bb[1]) gfx_bb[1] = y; if (y > gfx_bb[3]) gfx_bb[3] = y;
+}
 static inline int quad_offscreen(const DVECTOR *a, const DVECTOR *b, const DVECTOR *c, const DVECTOR *d) {
+    if (gfx_bb_on) { bb_add(a->vx, a->vy); bb_add(b->vx, b->vy); bb_add(c->vx, c->vy); bb_add(d->vx, d->vy); }
     int ca = outcode(a->vx, a->vy), cb = outcode(b->vx, b->vy), cc = outcode(c->vx, c->vy), cd = outcode(d->vx, d->vy);
     return (ca & cb & cc & cd) != 0;
 }
 static inline int tri_offscreen(const DVECTOR *a, const DVECTOR *b, const DVECTOR *c) {
+    if (gfx_bb_on) { bb_add(a->vx, a->vy); bb_add(b->vx, b->vy); bb_add(c->vx, c->vy); }
     return (outcode(a->vx, a->vy) & outcode(b->vx, b->vy) & outcode(c->vx, c->vy)) != 0;
 }
 #define zbias gfx_zbias
@@ -420,6 +427,7 @@ void gfx_xform(const SVECTOR *v, XV *o, int n) {
         gte_stsz3(&o[i].z, &o[i + 1].z, &o[i + 2].z);
     }
     for (; i < n; i++) { GTE_FENCE(); gte_ldv0((SVECTOR *)&v[i]); gte_rtps(); gte_stsxy(&o[i].x); gte_stsz(&o[i].z); }
+    if (gfx_bb_on) for (i = 0; i < n; i++) if (o[i].z >= Z_NEAR) bb_add(o[i].x, o[i].y);
 }
 u32 gfx_grade_flat(u32 c) { return grade_rgb(c & 255, (c >> 8) & 255, (c >> 16) & 255); }
 u32 gfx_grade_tex(u32 c) { return gt_grade(c, 256); }
@@ -588,18 +596,20 @@ static u32 *imp_ot, *imp_keep_ot; static int imp_keep_max, imp_keep_base, imp_sc
 #endif
 int gfx_imp_begin(int cx, int cy, int cw, int ch, int ox, int oy, int zmid, int hscale) {
     u32 *ot = (u32 *)gfx_alloc(IMP_OT * 4); if (!ot) return 0;
-    u32 *hd = (u32 *)gfx_alloc(9 * 4); u32 *tl = (u32 *)gfx_alloc(3 * 4);
+    u32 *hd = (u32 *)gfx_alloc(10 * 4); u32 *tl = (u32 *)gfx_alloc(3 * 4);
     if (!hd || !tl) return 0;
     ClearOTagR(ot, IMP_OT);
-    // the head (drawn first): draw mode, the cell as the drawing area, the offset that puts the person into it, set-mask on
-    // (every drawn pixel gets bit 15, so even black is not see-through), and the cell cleared to 0 (see-through)
+    // the head (drawn first): draw mode, the cell as the drawing area, the offset that puts the person into it; the cell
+    // cleared to 0 (see-through) by a plain rectangle (a FILL would round its x to 16 and wipe a neighbour cell); then set-mask
+    // on, so every pixel of the person gets bit 15 (even black is not see-through)
     hd[1] = 0xE1000000u | 0x200 | 0x400;
     hd[2] = 0xE3000000u | (u32)cx | ((u32)cy << 10);
     hd[3] = 0xE4000000u | (u32)(cx + cw - 1) | ((u32)(cy + ch - 1) << 10);
     hd[4] = 0xE5000000u | ((u32)ox & 0x7ff) | (((u32)oy & 0x7ff) << 11);
-    hd[5] = 0xE6000000u | IMP_MASK;
-    hd[6] = 0x02000000u | IMP_FILL; hd[7] = (u32)cx | ((u32)cy << 16); hd[8] = (u32)cw | ((u32)ch << 16);
-    hd[0] = (8u << 24) | (ot[IMP_OT - 1] & 0xffffff); ot[IMP_OT - 1] = (u32)hd & 0xffffff;
+    hd[5] = 0xE6000000u;
+    hd[6] = 0x60000000u | IMP_FILL; hd[7] = (u32)((cx - ox) & 0xffff) | ((u32)((cy - oy) & 0xffff) << 16); hd[8] = (u32)cw | ((u32)ch << 16);
+    hd[9] = 0xE6000000u | IMP_MASK;
+    hd[0] = (9u << 24) | (ot[IMP_OT - 1] & 0xffffff); ot[IMP_OT - 1] = (u32)hd & 0xffffff;
     // the tail (drawn last): set-mask off, flush the texture cache (the cell is a texture from here on)
     tl[1] = 0xE6000000u; tl[2] = 0x01000000u;
     tl[0] = (2u << 24) | (ot[0] & 0xffffff); ot[0] = (u32)tl & 0xffffff;

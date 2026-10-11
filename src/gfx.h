@@ -50,6 +50,8 @@ int  gfx_visible(int wx, int wy, int wz, int r);   // a world-space sphere insid
 #define SVEC_ALIGN __attribute__((aligned(8)))   // SVECTOR arrays the GTE loads (lwc2 needs word alignment)
 typedef struct { short x, y; int z; } XV;
 // people as sprites (render-to-texture, see gfx.c)
+extern int gfx_last_cpu;   // the last frame's CPU time, in hblanks (up to the flip)
+extern int gfx_bb_on, gfx_bb[4];   // (sprite renders) the screen box of all that was projected while on: x0, y0, x1, y1
 int  gfx_imp_begin(int cx, int cy, int cw, int ch, int ox, int oy, int zmid, int hscale);   // then draw the person, then:
 void gfx_imp_end(void);
 void gfx_imp_sprite(int cx, int cy, int tw, int th, int x, int y, int w, int h, int otz, int dx);

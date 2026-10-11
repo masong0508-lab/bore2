@@ -33,18 +33,106 @@ static s16 face_owner[NFACE];
 static u8 face_of[CROWD_MAX];
 
 // ---- sprites --------------------------------------------------------------------------------------------------------
-#define CW 48
-#define CH 64
-#define NCX 13                                  // 13 x 4 cells of 48 x 64 at x 0..623, y 256..511
-#define NCELL (NCX * 4)
-typedef struct { s16 rx, ry, rw, rh; u8 tw, th; u8 cell, ok; s32 z; u16 ang, frame; } Spr;
+// Each sprite gets a cell its own size (the person at 1:1, as they stand on the screen now) in the free VRAM under the
+// screens (x 0..639, y 256..511). Cells sit on shelves (rows), a shelf as tall as its tallest cell needs; a shelf left empty
+// is free rows again. When it is all full, the people not on the screen give their cells up, then the far ones get a smaller
+// cell (shown a little scaled up) rather than none.
+#define VX1 640
+#define VY0 256
+#define VY1 512
+#define CELL_HMAX 136                           // taller than this on the screen: rendered smaller (or drawn live instead)
+#define CELL_WMAX 160                           // (a 15-bit texture page reaches 255 texels from a 64-aligned base)
+#define NSHELF 40
+typedef struct { s16 y, h; } Shelf;
+static Shelf sh[NSHELF]; static int nsh;        // in order down the VRAM, from VY0
+typedef struct {
+    s16 rx, ry, rw, rh;                         // the rendered box, from the anchor (the feet) at depth z, in screen pixels
+    s16 mx0, my0, mx1, my1;                     // the person's measured box at that render, from the anchor
+    s16 cx, cy; u8 cw, ch;                      // the cell
+    u8 tw, th;                                  // the texels used in it
+    s8 shelf; u8 ok, clip, pose, meas;
+    s32 z; u16 ang, frame, drawn;
+} Spr;
 static Spr spr[CROWD_MAX];
-static s16 cell_owner[NCELL]; static u16 cell_used[NCELL];
+
+static void cell_free(int id) { spr[id].shelf = -1; spr[id].ok = 0; }
+static int shelf_n(int k) { int n = 0; for (int i = 0; i < CROWD_MAX; i++) n += spr[i].shelf == k; return n; }
+static int shelf_gap(int k, int w) {            // the x of the first gap w wide on shelf k (-1: none)
+    s16 xs[64], ws[64]; int n = 0;
+    for (int i = 0; i < CROWD_MAX && n < 64; i++) if (spr[i].shelf == k) {
+        int j = n++; while (j > 0 && xs[j - 1] > spr[i].cx) { xs[j] = xs[j - 1]; ws[j] = ws[j - 1]; j--; }
+        xs[j] = spr[i].cx; ws[j] = spr[i].cw;
+    }
+    int x = 0;
+    for (int j = 0; j < n; j++) { if (xs[j] - x >= w) return x; x = xs[j] + ws[j]; }
+    return VX1 - x >= w ? x : -1;
+}
+static void shelf_insert(int at, int y, int h) {
+    if (nsh >= NSHELF) return;
+    for (int k = nsh; k > at; k--) sh[k] = sh[k - 1];
+    for (int i = 0; i < CROWD_MAX; i++) if (spr[i].shelf >= at) spr[i].shelf++;
+    sh[at].y = (s16)y; sh[at].h = (s16)h; nsh++;
+}
+static void shelf_remove(int at) {
+    for (int k = at; k < nsh - 1; k++) sh[k] = sh[k + 1];
+    for (int i = 0; i < CROWD_MAX; i++) if (spr[i].shelf > at) spr[i].shelf--;
+    nsh--;
+}
+static void shelves_tidy(void) {                // empty shelves next to each other become one; an empty last one goes
+    for (int k = 0; k + 1 < nsh; ) {
+        if (!shelf_n(k) && !shelf_n(k + 1)) { sh[k].h += sh[k + 1].h; shelf_remove(k + 1); } else k++;
+    }
+    while (nsh && !shelf_n(nsh - 1)) nsh--;
+}
+static int new_shelf(int h) {                   // a shelf h tall: the best-fitting empty one (cut to size), else a new one at the end
+    int best = -1;
+    for (int k = 0; k < nsh; k++) if (sh[k].h >= h && !shelf_n(k) && (best < 0 || sh[k].h < sh[best].h)) best = k;
+    if (best >= 0) {
+        if (sh[best].h - h >= 16 && nsh < NSHELF) { int y = sh[best].y + h, r = sh[best].h - h; sh[best].h = (s16)h; shelf_insert(best + 1, y, r); }
+        return best;
+    }
+    int top = nsh ? sh[nsh - 1].y + sh[nsh - 1].h : VY0;
+    if (top + h > VY1 || nsh >= NSHELF) return -1;
+    sh[nsh].y = (s16)top; sh[nsh].h = (s16)h; return nsh++;
+}
+static int place(int id, int w, int h, int k) {
+    int x = shelf_gap(k, w); if (x < 0) return 0;
+    Spr *s = &spr[id]; s->shelf = (s8)k; s->cx = (s16)x; s->cy = sh[k].y; s->cw = (u8)w; s->ch = (u8)sh[k].h;
+    return 1;
+}
+static int try_alloc(int id, int w, int h) {    // a cell for w x h (the old one, if any, stays until the new one is found)
+    int k, best = -1;
+    // a shelf just about this tall with room
+    for (k = 0; k < nsh; k++) if (sh[k].h >= h && sh[k].h <= h + MAX(8, h >> 2) && shelf_n(k) && (best < 0 || sh[k].h < sh[best].h) && shelf_gap(k, w) >= 0) best = k;
+    if (best >= 0) return place(id, w, h, best);
+    // a new shelf
+    if ((k = new_shelf((h + 7) & ~7)) >= 0 && place(id, w, h, k)) return 1;
+    // any shelf tall enough with room
+    for (k = 0; k < nsh; k++) if (sh[k].h >= h && place(id, w, h, k)) return 1;
+    return 0;
+}
+static int cell_alloc(int id, int w, int h) {
+    s8 old = spr[id].shelf; s16 ox = spr[id].cx, oy = spr[id].cy; u8 ow = spr[id].cw, oh = spr[id].ch;
+    spr[id].shelf = -1;                          // (its old cell does not count as taken while looking: it is about to be given up)
+    int ok = try_alloc(id, w, h);
+    if (!ok) {                                   // full: everyone not on the screen this frame gives their cell up, and try again
+        for (int i = 0; i < CROWD_MAX; i++) if (i != id && spr[i].shelf >= 0 && spr[i].drawn != fr) cell_free(i);
+        shelves_tidy();
+        ok = try_alloc(id, w, h);
+    }
+    if (!ok) {                                   // no luck: keep the old cell (if it had one)
+        if (old >= 0 && old < nsh && sh[old].y == oy) { spr[id].shelf = old; spr[id].cx = ox; spr[id].cy = oy; spr[id].cw = ow; spr[id].ch = oh; }
+        else spr[id].shelf = -1;
+        return 0;
+    }
+    return 1;
+}
+int crowd_cells_used(void) { int a = 0; for (int i = 0; i < CROWD_MAX; i++) if (spr[i].shelf >= 0) a += spr[i].cw * spr[i].ch; return a; }
 
 void crowd_reset(void) {
-    for (int i = 0; i < CROWD_MAX; i++) { m_off[i] = -1; face_of[i] = 255; spr[i].ok = 0; spr[i].cell = 255; }
+    for (int i = 0; i < CROWD_MAX; i++) { m_off[i] = -1; face_of[i] = 255; spr[i].ok = 0; spr[i].shelf = -1; spr[i].meas = 0; }
     for (int k = 0; k < NFACE; k++) face_owner[k] = -1;
-    for (int k = 0; k < NCELL; k++) cell_owner[k] = -1;
+    nsh = 0;
     ar_top = 0;
 }
 void crowd_init(void) {
@@ -54,15 +142,12 @@ void crowd_init(void) {
 int crowd_has(int id) { return id >= 0 && id < CROWD_MAX && m_off[id] >= 0; }
 int crowd_models(void) { int n = 0; for (int i = 0; i < CROWD_MAX; i++) n += m_off[i] >= 0; return n; }
 
-void crowd_drop_sprite(int id) {
-    if (spr[id].cell != 255) { cell_owner[spr[id].cell] = -1; spr[id].cell = 255; }
-    spr[id].ok = 0;
-}
+void crowd_drop_sprite(int id) { cell_free(id); }
 void crowd_forget(int id) {
     if (id < 0 || id >= CROWD_MAX) return;
     m_off[id] = -1;
     if (face_of[id] != 255) { face_owner[face_of[id]] = -1; face_of[id] = 255; }
-    crowd_drop_sprite(id);
+    crowd_drop_sprite(id); spr[id].meas = 0;
 }
 static void compact(void) {   // slide the models down over the holes
     u32 cur = 0;
@@ -178,7 +263,7 @@ const Bore *crowd_unpack(int id) {
 void crowd_frame(void) { fr++; if (!fr) fr = 1; crowd_renders = 0; }
 int crowd_draw_live(int id, const VECTOR *pos, int yaw, const Gait *g) {
     const Bore *b = crowd_unpack(id); if (!b) return 0;
-    crowd_drop_sprite(id);                       // (live now: the cell is free for someone else)
+    // (the sprite's cell is kept: if they step back they are a sprite again at once; if VRAM runs short it goes first)
     voxel_draw(b, pos, yaw, g);
     return 1;
 }
@@ -192,71 +277,101 @@ static int atan2_c(int y, int x) {               // 0..4095 round the circle
 static int view_angle(const VECTOR *pos, int yaw) {   // where the eye stands round the person (their facing taken off)
     return (atan2_c(cam.eye.vx - pos->vx, -(cam.eye.vz - pos->vz)) - yaw) & 4095;
 }
+static int pose_of(const Gait *g) { return g->sleep ? 2 : g->sit ? 1 : 0; }
+// the box a render must cover, from the anchor at depth z: the last measured one moved to this depth plus a margin (more
+// for someone moving their arms about), or (never measured, or since sat or lain down) a guess from the feet and the head
+static int want_box(const Spr *s, const VECTOR *pos, const Gait *g, int z, int ax, int ay, int *b) {
+    if (s->meas && s->pose == pose_of(g)) {
+        int x0 = s->mx0 * s->z / z, y0 = s->my0 * s->z / z, x1 = s->mx1 * s->z / z, y1 = s->my1 * s->z / z;
+        int h = y1 - y0, busy = g->amp > 600 || g->wave || g->talk;
+        int mx = 2 + h / (busy ? 7 : 14), my = 2 + h / 20;
+        b[0] = x0 - mx; b[1] = y0 - my; b[2] = x1 + mx; b[3] = y1 + my;
+        return 1;
+    }
+    int fx, fy, hx, hy;
+    int zf = gfx_proj(pos->vx, pos->vy + 30, pos->vz, &fx, &fy), zh = gfx_proj(pos->vx, pos->vy - (g->sleep ? 200 : 470), pos->vz, &hx, &hy);
+    if (!zf || !zh) return 0;
+    int zn = MIN(zf, zh), m = (70 * 230) / zn, hw = ((g->sleep ? 300 : 150) * 230) / zn;
+    b[0] = MIN(fx, hx) - hw - ax; b[2] = MAX(fx, hx) + hw - ax; b[1] = MIN(fy, hy) - m - ay; b[3] = MAX(fy, hy) + m / 2 - ay;
+    return 1;
+}
+int crowd_need_h(int id, const VECTOR *pos, const Gait *g) {   // how tall the person's sprite would be at 1:1 now (0: not known)
+    const Spr *s = &spr[id];
+    if (!crowd_has(id) || !s->meas || s->pose != pose_of(g)) return 0;
+    int ax, ay, z = gfx_proj(pos->vx, pos->vy, pos->vz, &ax, &ay); if (!z) return 0;
+    return (s->my1 - s->my0) * s->z / z;
+}
 int crowd_sprite_score(int id, const VECTOR *pos, int yaw, const Gait *g) {
     if (!crowd_has(id)) return 0;
-    const Spr *s = &spr[id];
+    Spr *s = &spr[id];
+    s->drawn = fr;                               // wanted this frame: its cell is not to be given to anyone else now
     if (!s->ok) return 100000;
     int sx, sy, z = gfx_proj(pos->vx, pos->vy, pos->vz, &sx, &sy); if (!z) return 0;
     int age = (u16)(fr - s->frame);
     int da = ((view_angle(pos, yaw) - s->ang + 6144) & 4095) - 2048; da = ABS(da);
     int dz = (ABS(z - s->z) * 64) / MAX(1, s->z);
     int busy = g->amp > 600 || g->wave || g->talk || g->sit;
-    return age * (busy ? 4 : 1) + da / 12 + dz + 1;
+    int shown = (s->rh * s->z) / z;                                    // how tall it shows now
+    int e = age * (busy ? 3 : 1) + da / 10 + dz + 1;
+    if (s->clip) e += 60;                                              // a bit was cut off
+    if (s->pose != pose_of(g)) e += 60;                                // sat down, got up: the old picture is wrong
+    if (shown > s->th + 4) e += (shown - s->th);                       // shown bigger than rendered: blurry
+    return e * (8 + shown / 6) / 16;                                   // the bigger on the screen, the more it shows
 }
-static int take_cell(int id) {
-    if (spr[id].cell != 255) return spr[id].cell;
-    int best = -1, age = 0;
-    for (int k = 0; k < NCELL; k++) {
-        if (cell_owner[k] < 0) { best = k; break; }
-        int a = (u16)(fr - cell_used[k]);
-        if (a > age) { age = a; best = k; }
-    }
-    if (best < 0 || (cell_owner[best] >= 0 && age < 2)) return -1;   // every cell is on screen right now
-    if (cell_owner[best] >= 0) { spr[cell_owner[best]].ok = 0; spr[cell_owner[best]].cell = 255; }
-    cell_owner[best] = (s16)id; spr[id].cell = (u8)best; spr[id].ok = 0;
-    return best;
-}
+int crowd_render_hb = 80;                     // what a render costs (a running average, in hblanks)
 static int render(int id, const VECTOR *pos, int yaw, const Gait *g) {
-    int k = take_cell(id); if (k < 0) return 0;
-    // the screen box the person fills: from the feet to over the head (a hat, antennae), arms out to the sides, and a margin
-    // for the body's depth seen from above (lying down: long and low)
-    int fx, fy, hx, hy, ax, ay;
-    int zf = gfx_proj(pos->vx, pos->vy + 30, pos->vz, &fx, &fy), zh = gfx_proj(pos->vx, pos->vy - (g->sleep ? 200 : 480), pos->vz, &hx, &hy);
-    int z = gfx_proj(pos->vx, pos->vy, pos->vz, &ax, &ay);
-    if (!zf || !zh || !z) return 0;
-    int zn = MIN(zf, zh), m = (110 * 230) / zn, hw = ((g->sleep ? 300 : 175) * 230) / zn;
-    int mnx = MIN(fx, hx) - hw, mxx = MAX(fx, hx) + hw, mny = MIN(fy, hy) - m, mxy = MAX(fy, hy) + m / 2;
-    int bw = mxx - mnx + 1, bh = mxy - mny + 1;
-    if (bw < 4 || bh < 4 || bw > 2000 || bh > 2000) return 0;
+    Spr *s = &spr[id]; int t0_ = gfx_hb();
+    int ax, ay, z = gfx_proj(pos->vx, pos->vy, pos->vz, &ax, &ay); if (!z) return 0;
+    int b[4]; if (!want_box(s, pos, g, z, ax, ay, b)) return 0;
+    int bw = b[2] - b[0] + 1, bh = b[3] - b[1] + 1;
+    if (bw < 4 || bh < 4 || bw > 1000 || bh > 1000) return 0;
+    // the scale: 1:1 if the cell can be that big; then a cell, kept if the old one is about right, else a new one (smaller
+    // and smaller if VRAM is short)
     int hs = 4096;
-    if (bw > CW) hs = (CW << 12) / bw;
-    if ((bh * hs >> 12) > CH) hs = (CH << 12) / bh;
-    int sx0 = CENTER_X + (((mnx - CENTER_X) * hs) >> 12), sy0 = CENTER_Y + (((mny - CENTER_Y) * hs) >> 12);
-    int tw = MIN(CW, ((bw * hs) >> 12) + 1), th = MIN(CH, ((bh * hs) >> 12) + 1);
-    int cx = (k % NCX) * CW, cy = 256 + (k / NCX) * CH;
-    const Bore *b = crowd_unpack(id); if (!b) return 0;
-    if (!gfx_imp_begin(cx, cy, CW, CH, cx - sx0, cy - sy0, z >> 2, hs)) return 0;
-
-    voxel_draw(b, pos, yaw, g);
+    if (bh > CELL_HMAX) hs = (CELL_HMAX << 12) / bh;
+    if (((bw * hs) >> 12) > CELL_WMAX) hs = (CELL_WMAX << 12) / bw;
+    int tw = 0, th = 0, got = 0;
+    for (int t = 0; t < 4; t++) {
+        if (t) hs = hs * 13 / 16;
+        tw = ((bw * hs) >> 12) + 1; th = ((bh * hs) >> 12) + 1;
+        if (s->shelf >= 0 && tw <= s->cw && th <= s->ch && tw + 16 >= s->cw * 3 / 4 && th * 4 >= s->ch * 3) got = 1;
+        else got = cell_alloc(id, (tw + 3) & ~3, th);
+        if (!got && t == 0 && s->shelf >= 0 && tw <= s->cw && th <= s->ch) got = 1;   // (a roomy old cell beats none)
+        if (got) break;
+    }
+    if (!got) return 0;
+    int sx0 = CENTER_X + (((ax + b[0] - CENTER_X) * hs) >> 12), sy0 = CENTER_Y + (((ay + b[1] - CENTER_Y) * hs) >> 12);
+    const Bore *mb = crowd_unpack(id); if (!mb) return 0;
+    if (!gfx_imp_begin(s->cx, s->cy, tw, th, s->cx - sx0, s->cy - sy0, z >> 2, hs)) return 0;
+    gfx_bb[0] = gfx_bb[1] = 32767; gfx_bb[2] = gfx_bb[3] = -32768; gfx_bb_on = 1;
+    voxel_draw(mb, pos, yaw, g);
+    gfx_bb_on = 0;
     gfx_imp_end();
-    Spr *s = &spr[id];
-    s->rx = (s16)(mnx - ax); s->ry = (s16)(mny - ay); s->rw = (s16)bw; s->rh = (s16)bh; s->tw = (u8)tw; s->th = (u8)th;
-    s->z = z; s->ang = (u16)view_angle(pos, yaw); s->frame = fr; s->ok = 1;
+    s->rx = (s16)b[0]; s->ry = (s16)b[1]; s->rw = (s16)bw; s->rh = (s16)bh; s->tw = (u8)tw; s->th = (u8)th;
+    s->z = z; s->ang = (u16)view_angle(pos, yaw); s->frame = fr; s->ok = 1; s->pose = (u8)pose_of(g);
+    // what the person really covered (unscaled, from the anchor): the next render's box, and whether this one cut a bit off
+    if (gfx_bb[0] <= gfx_bb[2]) {
+        int m0 = CENTER_X + (((gfx_bb[0] - CENTER_X) << 12) / hs) - ax, m2 = CENTER_X + (((gfx_bb[2] - CENTER_X) << 12) / hs) - ax;
+        int m1 = CENTER_Y + (((gfx_bb[1] - CENTER_Y) << 12) / hs) - ay, m3 = CENTER_Y + (((gfx_bb[3] - CENTER_Y) << 12) / hs) - ay;
+        s->clip = m0 < b[0] - 1 || m1 < b[1] - 1 || m2 > b[2] + 1 || m3 > b[3] + 1;
+        s->mx0 = (s16)m0; s->my0 = (s16)m1; s->mx1 = (s16)m2; s->my1 = (s16)m3; s->meas = 1;
+    }
     crowd_renders++;
+    { int c = gfx_hb() - t0_; if (c > 0 && c < 400) crowd_render_hb += (c - crowd_render_hb) / 8; }
     return 1;
 }
 int crowd_sprite(int id, const VECTOR *pos, int yaw, const Gait *g, int want_render) {
     if (!crowd_has(id)) return 0;
     if (want_render) render(id, pos, yaw, g);
     Spr *s = &spr[id];
-    if (!s->ok) return 0;
+    if (!s->ok || s->shelf < 0) return 0;
     int ax, ay, z = gfx_proj(pos->vx, pos->vy, pos->vz, &ax, &ay); if (!z) return 0;
     int kk = (s->z << 12) / z;                      // nearer or further than when it was rendered: scale with it
     int x = ax + ((s->rx * kk) >> 12), y = ay + ((s->ry * kk) >> 12), w = (s->rw * kk) >> 12, h = (s->rh * kk) >> 12;
     int dx = 0;
     if (g->amp > 600) y -= (ABS(isin(g->phase * 2)) * 3) >> 12;                 // a step's bob between renders
     if (g->wave) dx = isin((g->wave * 400) & 4095) >> 10;                       // a sway
-    gfx_imp_sprite((s->cell % NCX) * CW, 256 + (s->cell / NCX) * CH, s->tw, s->th, x, y, w, h, (z >> 2) - 6, dx);
-    cell_used[s->cell] = fr; m_used[id] = fr;
+    gfx_imp_sprite(s->cx, s->cy, s->tw, s->th, x, y, w, h, (z >> 2) - 6, dx);
+    s->drawn = fr; m_used[id] = fr;
     return 1;
 }

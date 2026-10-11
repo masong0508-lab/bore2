@@ -440,6 +440,9 @@ static void travel_draw(void) {
 // ---- the pause menu ----
 static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "THE STORY", "TRAVEL", "CREATE A BORE", "ADD A BORE", "THROW A PARTY", "BUILD MODE", "JUKEBOX", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
 #define NPAUSE 12
+#ifdef AUTO_PARTY
+int ap_frames, ap_vs, ap_cpu;
+#endif
 void throw_party(void) {   // (also the phone's THROW A PARTY)
     if (citizens_party_on()) { sim_note("A PARTY IS ALREADY ON"); return; }
     if (cash < 100) { sim_note("A PARTY COSTS $100"); audio_voice(VOICE_NAH); return; }
@@ -989,6 +992,9 @@ static Bore title_bore;
 static int title_t;
 static void title_update(void) {
     title_t++;
+#ifdef AUTO_PARTY
+    if (title_t == 30) { life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0; return; }
+#endif
     if (PRESSED(PAD_START) || PRESSED(PAD_CROSS)) { state = ST_MENU; menu_sel = 0; audio_voice(VOICE_YAHOO); }
 }
 static void title_draw(void) {
@@ -1107,7 +1113,8 @@ int main(void) {
             case ST_CREATE: create_update(); create_draw(); break;
             case ST_LIFE:
 #ifdef AUTO_PARTY
-                { static int ap; if (++ap == 120) { cash += 100; throw_party(); } }   // (test builds: a party a couple of seconds in)
+                { static int ap; if (++ap == 120) { cash += 100; throw_party(); } if (ap == 200) { extern int prof_on; prof_on = 1; }
+                  if (ap > 200) { extern int ap_frames, ap_vs, ap_cpu; ap_frames++; ap_vs += steps; ap_cpu += t_cpu; } }   // (test builds: a party a couple of seconds in)
 #endif
                 { int t0 = hb_now(); life_update(steps); t_upd = hb_now() - t0; } life_draw(); break;
             case ST_PAUSE: pause_update(); pause_draw(); break;

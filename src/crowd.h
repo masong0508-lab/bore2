@@ -3,6 +3,7 @@
 // from the grid) in the RAM the voice clips used before they went to the sound chip. From that copy a person is drawn
 //  - LIVE: unpacked and drawn in 3D, every frame (the nearest few), or
 //  - as a SPRITE: the same full model rendered into a cell of spare VRAM now and then and shown as one quad between renders.
+// Each sprite has a cell of its own size, so it shows at 1:1 (the same pixels as live) until it is re-rendered.
 // The renders go round the crowd as the frame's time allows, the ones that changed most (turned, moved, animating) first.
 #pragma once
 #include "common.h"
@@ -24,7 +25,9 @@ void crowd_frame(void);           // start of the citizens' drawing: budgets and
 int  crowd_draw_live(int id, const VECTOR *pos, int yaw, const Gait *g);   // 0 if the model is not stored
 // the sprite: draws it if valid, and (re)renders it first when asked and time allows; 0 if nothing could be drawn
 int  crowd_sprite(int id, const VECTOR *pos, int yaw, const Gait *g, int render);
-int  crowd_sprite_score(int id, const VECTOR *pos, int yaw, const Gait *g);   // how badly the sprite wants a re-render (0: fine)
+int  crowd_sprite_score(int id, const VECTOR *pos, int yaw, const Gait *g);   // how badly the sprite wants a re-render (0: fine); call for every sprite each frame, before the renders
+int  crowd_need_h(int id, const VECTOR *pos, const Gait *g);   // how tall the person's sprite would be at 1:1 now (0: not known yet)
+int  crowd_cells_used(void);       // (HUD) VRAM pixels the sprite cells hold
 void crowd_drop_sprite(int id);
 int  crowd_models(void);          // (HUD) models stored, sprites rendered this frame
-extern int crowd_renders, crowd_bytes;
+extern int crowd_renders, crowd_bytes, crowd_render_hb;

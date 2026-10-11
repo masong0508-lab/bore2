@@ -915,10 +915,10 @@ void citizens_update(int steps) {
 }
 
 // ---- drawing ----------------------------------------------------------------------------------------------
-int cit_n_full, cit_n_lod, cit_n_spr, cit_n_vis;
+int cit_n_full, cit_n_lod, cit_n_spr, cit_n_vis; static int cit_end_hb = -1;
 void citizens_draw(void) {
     cit_n_full = cit_n_lod = cit_n_spr = 0;
-    if (world_zone == ZONE_HOME && !home_guests) return;
+    if (world_zone == ZONE_HOME && !home_guests) { cit_end_hb = -1; return; }
     int order[MAXDRAW], od[MAXDRAW], n = 0;
     int pin = indoors_at(sims[player].x, sims[player].z);
     for (int i = 0; i < NCIT; i++) {   // the nearest MAXDRAW to where the camera looks, nearest first
@@ -938,7 +938,7 @@ void citizens_draw(void) {
     // crowd as the frame's time allows (the ones that turned, moved or are busy first)
     crowd_frame(); cit_n_vis = n;
     static u8 tier[MAXDRAW]; static VECTOR pp[MAXDRAW];
-    int live = 0;
+    static s16 need[MAXDRAW];
     for (int k = 0; k < n; k++) {
         Cit *c = &cits[order[k]];
         int vy = 0;
@@ -946,23 +946,41 @@ void citizens_draw(void) {
         else if (c->mode == CM_SLEEP && c->sub == 1) vy = c->mem == 0 ? -items_height('S') + 40 : -24;   // in the bed, or on the floor
         else if (c->mode == CM_CHORE && c->sub == 1 && c->gait.sit) vy = -items_height((char)c->chore) / 2 + 10;   // on the sofa, on the loo
         setVector(&pp[k], c->x, vy, c->z);
-        int sx, sy, z = gfx_proj(c->x, vy - 200, c->z, &sx, &sy);
-        int tall = z ? (420 * 230) / z : 999;                          // how tall they stand on the screen, in pixels
-        tier[k] = 1;
-        // live: anyone too big for a sprite cell to show sharply, and the nearest couple while the frame has time
-        if (live < LIVE_MAX && crowd_has(order[k]) && tall > 72 && gfx_hb() + live * 70 < 300) { tier[k] = 0; live++; }
+        int h = crowd_need_h(order[k], &pp[k], &c->gait);
+        if (!h) { int sx, sy, z = gfx_proj(c->x, vy - 200, c->z, &sx, &sy); h = z ? (300 * 230) / z : 999; }   // (not measured yet: a guess)
+        need[k] = (s16)h; tier[k] = 1;
     }
+    // live: the biggest on the screen (too big for a sprite cell at 1:1, or near enough that their sprite would go stale fast),
+    // the very biggest first, while the frame has time
+    static u8 was_live[NCIT];                                         // (a little give, so no one flips between the two)
+    for (int live = 0; live < LIVE_MAX; live++) {
+        int best = -1;
+        for (int k = 0; k < n; k++) if (tier[k] == 1 && need[k] > (was_live[order[k]] ? 100 : 112) && crowd_has(order[k]) && (best < 0 || need[k] > need[best])) best = k;
+        if (best < 0 || (live >= 2 && gfx_hb() + live * 36 > 340)) break;
+        tier[best] = 0;
+    }
+    for (int k = 0; k < n; k++) was_live[order[k]] = tier[k] == 0;
     for (int k = 0; k < n; k++) if (tier[k] == 0) {
         Cit *c = &cits[order[k]];
         PROF_BEGIN(); crowd_draw_live(order[k], &pp[k], c->yaw, &c->gait); PROF_END(5); cit_n_full++;
     }
     static int score[MAXDRAW];                                        // how out of date each sprite is (worked out once a frame)
     for (int k = 0; k < n; k++) score[k] = tier[k] == 1 ? crowd_sprite_score(order[k], &pp[k], cits[order[k]].yaw, &cits[order[k]].gait) : 0;
-    for (int r = 0; r < 8; r++) {                                     // the sprite renders: the most out-of-date first, while the frame has time
-        int best = -1, bs = 6;                                          // (someone with no sprite at all gets one even when the frame is late: 3 a frame)
-        if (gfx_hb() >= 360) { bs = 99999; if (r >= 2) break; }
+    // the sprite renders: the most out of date first, as many as fit in the time the frame has left over (it ends on a
+    // vblank either way: what is left before that is free), anyone with no sprite at all (two a frame) and now and then one
+    // even when there is no time, so nobody stays out of date for long
+    static int post = 100, skipped;                                   // the frame's time after the people (from the last frame)
+    if (cit_end_hb >= 0 && gfx_last_cpu > cit_end_hb) post = gfx_last_cpu - cit_end_hb;
+    int now = gfx_hb(), end = now + post, target = end <= 515 ? 522 : end <= 777 ? 785 : 1045;
+    int budget = (target - 30 - end) / MAX(20, crowd_render_hb), fresh = 0;   // (a margin: a frame that runs over waits a whole extra vblank)
+    if (budget <= 0 && ++skipped >= 6) budget = 1;
+    if (budget > 0) skipped = 0;
+    for (int r = 0; r < 12; r++) {
+        int best = -1, bs = 4;
         for (int k = 0; k < n; k++) if (tier[k] == 1 && score[k] > bs) { bs = score[k]; best = k; }
         if (best < 0) break;
+        if (bs >= 100000) { if (++fresh > 2) break; }
+        else if (budget-- <= 0) break;
         Cit *c = &cits[order[best]];
         PROF_BEGIN(); crowd_sprite(order[best], &pp[best], c->yaw, &c->gait, 1); PROF_END(6);
         tier[best] = 2;
@@ -976,6 +994,7 @@ void citizens_draw(void) {
         }
         if (c->mode != CM_KO && c->mode != CM_SLEEP) { VECTOR sp; setVector(&sp, c->x, 0, c->z); gfx_shadow(&sp, 70); }
     }
+    cit_end_hb = gfx_hb();
 }
 
 void citizens_draw_bubbles(void) {
