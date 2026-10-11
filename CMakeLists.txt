@@ -29,7 +29,7 @@ psn00bsdk_add_cd_image(
 add_custom_command(
 	OUTPUT  ${CMAKE_BINARY_DIR}/BORE2.chd
 	COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/mkchd.py ${CMAKE_BINARY_DIR}/bore2.cue ${CMAKE_BINARY_DIR}/BORE2.chd
-	DEPENDS iso ${CMAKE_SOURCE_DIR}/tools/mkchd.py
+	DEPENDS iso ${CMAKE_BINARY_DIR}/bore2.bin ${CMAKE_SOURCE_DIR}/tools/mkchd.py
 	COMMENT "Making BORE2.chd"
 )
 add_custom_target(chd DEPENDS ${CMAKE_BINARY_DIR}/BORE2.chd)
