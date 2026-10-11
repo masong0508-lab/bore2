@@ -1,4 +1,40 @@
 #include "atlas.h"
+#include <hwregs_c.h>
+
+// Copy pixels into VRAM with exactly the right number of words.
+// The SDK's LoadImage rounds the DMA up to whole 16-word blocks, so a texture whose size is not a multiple of 32 pixels
+// sends a few extra words. The GPU reads those as drawing commands: PCSX ignores them, but a real PlayStation and DuckStation
+// do not, and a stray "copy to VRAM" command makes the GPU wait for data forever (a black screen at boot).
+static void vram_load(const RECT *r, const void *data) {
+    DrawSync(0);
+    int words = (r->w * r->h) >> 1;
+    while (!(GPU_GP1 & (1 << 26))) { }
+    GPU_GP1 = 0x04000000;                                   // DMA off while we set up
+    GPU_GP0 = 0x01000000;                                   // flush the texture cache
+    GPU_GP0 = 0xa0000000;                                   // copy CPU -> VRAM
+    GPU_GP0 = (u16)r->x | ((u32)(u16)r->y << 16);
+    GPU_GP0 = (u16)r->w | ((u32)(u16)r->h << 16);
+    GPU_GP1 = 0x04000002;                                   // DMA request: GP0
+    const u32 *p = (const u32 *)data;
+    int big = words & ~15, tail = words & 15;
+    if (big) {
+        while ((DMA_CHCR(2) & (1 << 24)) || !(GPU_GP1 & (1 << 28))) { }
+        DMA_MADR(2) = (u32)p;
+        DMA_BCR(2) = 16 | ((big >> 4) << 16);
+        DMA_CHCR(2) = 0x01000201;
+        while (DMA_CHCR(2) & (1 << 24)) { }
+        p += big;
+    }
+    if (tail) {
+        while ((DMA_CHCR(2) & (1 << 24)) || !(GPU_GP1 & (1 << 28))) { }
+        DMA_MADR(2) = (u32)p;
+        DMA_BCR(2) = tail | (1 << 16);
+        DMA_CHCR(2) = 0x01000201;
+        while (DMA_CHCR(2) & (1 << 24)) { }
+    }
+    while (!(GPU_GP1 & (1 << 26))) { }                     // the GPU has taken it all
+    GPU_GP1 = 0x04000000;
+}
 
 #define PAGES 4
 #define PAGE_X 640   // pages 0 and 1 are 256 wide at x=640; page 2 is the 128-wide strip at x=896
@@ -43,8 +79,7 @@ void atlas_upload(const TexRef *t, const u16 *pixels) {
         for (int x = 0; x < aw; x++) upload_buf[y * aw + x] = (x < t->w) ? pixels[y * t->w + x] : 0;
     }
     RECT r; setRECT(&r, (page < 2 ? PAGE_X : 896) + t->u, pg[page].base_y + t->v, aw, t->h);
-    LoadImage(&r, (u32 *)upload_buf);
-    DrawSync(0);
+    vram_load(&r, upload_buf);
 }
 
 TexRef atlas_add(int w, int h, const u16 *pixels) {

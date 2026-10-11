@@ -64,6 +64,13 @@ static SVECTOR light_dir = { -1500, -3200, 2100, 0 };   // towards the sun (y is
 
 extern uint16_t _font_tpage, _font_clut;   // the SDK debug font, uploaded by FntLoad
 
+// vertex loads that never fault: the GTE reads words, an SVECTOR (a struct of shorts) may sit on a 2-byte boundary - a real
+// PlayStation (and DuckStation) stops on such a load with an address error. The vertices are copied to aligned ones first.
+static inline void gte_ld3_safe(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c) {
+    SVECTOR t[3] SVEC_ALIGN; t[0] = *a; t[1] = *b; t[2] = *c;
+    GTE_FENCE(); gte_ldv3(&t[0], &t[1], &t[2]);
+}
+static inline void gte_ld0_safe(const SVECTOR *a) { SVECTOR t SVEC_ALIGN = *a; GTE_FENCE(); gte_ldv0(&t); }
 // ------------------------------------------------------------------ setup
 void gfx_set_clear(int r, int g, int b) { clear_r = r; clear_g = g; clear_b = b; }
 
@@ -266,13 +273,13 @@ int gfx_quad_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECT
     POLY_F4 *q = (POLY_F4 *)gfx_alloc(sizeof(POLY_F4));
     if (!q) return 0;
     char *mark_ = (char *)q;
-    GTE_FENCE(); gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
+    gte_ld3_safe(a, b, c);
     gte_rtpt();
     if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
     if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy3(&q->x0, &q->x1, &q->x2);
-    GTE_FENCE(); gte_ldv0((SVECTOR *)d);
+    gte_ld0_safe(d);
     gte_rtps();
     gte_stsz(&z3);
     if (z3 < Z_NEAR) { db_next = mark_; return 0; }
@@ -291,7 +298,7 @@ int gfx_tri_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, int r, int g
     POLY_F3 *q = (POLY_F3 *)gfx_alloc(sizeof(POLY_F3));
     if (!q) return 0;
     char *mark_ = (char *)q;
-    GTE_FENCE(); gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
+    gte_ld3_safe(a, b, c);
     gte_rtpt();
     if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
@@ -311,13 +318,13 @@ int gfx_quad_g(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECT
     POLY_G4 *q = (POLY_G4 *)gfx_alloc(sizeof(POLY_G4));
     if (!q) return 0;
     char *mark_ = (char *)q;
-    GTE_FENCE(); gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
+    gte_ld3_safe(a, b, c);
     gte_rtpt();
     if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
     if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy3(&q->x0, &q->x1, &q->x2);
-    GTE_FENCE(); gte_ldv0((SVECTOR *)d);
+    gte_ld0_safe(d);
     gte_rtps();
     gte_stsz(&z3);
     if (z3 < Z_NEAR) { db_next = mark_; return 0; }
@@ -339,13 +346,13 @@ int gfx_quad_ft(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVEC
     POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4));
     if (!q) return 0;
     char *mark_ = (char *)q;
-    GTE_FENCE(); gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
+    gte_ld3_safe(a, b, c);
     gte_rtpt();
     if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
     if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy3(&q->x0, &q->x1, &q->x2);
-    GTE_FENCE(); gte_ldv0((SVECTOR *)d);
+    gte_ld0_safe(d);
     gte_rtps();
     gte_stsz(&z3);
     if (z3 < Z_NEAR) { db_next = mark_; return 0; }
@@ -369,13 +376,13 @@ int gfx_quad_gt(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVEC
     POLY_GT4 *q = (POLY_GT4 *)gfx_alloc(sizeof(POLY_GT4));
     if (!q) return 0;
     char *mark_ = (char *)q;
-    GTE_FENCE(); gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c);
+    gte_ld3_safe(a, b, c);
     gte_rtpt();
     if (cull) { gte_nclip(); gte_stopz(&p); if (p <= 0) { db_next = mark_; return 0; } }
     gte_stsz3(&z0, &z1, &z2);
     if (z0 < Z_NEAR || z1 < Z_NEAR || z2 < Z_NEAR) { db_next = mark_; return 0; }
     gte_stsxy3(&q->x0, &q->x1, &q->x2);
-    GTE_FENCE(); gte_ldv0((SVECTOR *)d);
+    gte_ld0_safe(d);
     gte_rtps();
     gte_stsz(&z3);
     if (z3 < Z_NEAR) { db_next = mark_; return 0; }
@@ -432,7 +439,7 @@ int gfx_visible(int wx, int wy, int wz, int r) {
 }
 int gfx_project(const SVECTOR *v, int *sx, int *sy, int *sz) {
     DVECTOR xy; int z;
-    GTE_FENCE(); gte_ldv0((SVECTOR *)v);
+    gte_ld0_safe(v);
     gte_rtps();
     gte_stsz(&z);
     gte_stsxy(&xy);
@@ -504,8 +511,8 @@ void gfx_shadow_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const
     if (!shadow_ready) shadow_init();
     POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4)); if (!q) return; char *mark_ = (char *)q;
     int otz;
-    GTE_FENCE(); gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c); gte_rtpt();
-    gte_stsxy3(&q->x0, &q->x1, &q->x2); GTE_FENCE(); gte_ldv0((SVECTOR *)d); gte_rtps(); gte_stsxy(&q->x3);
+    gte_ld3_safe(a, b, c); gte_rtpt();
+    gte_stsxy3(&q->x0, &q->x1, &q->x2); gte_ld0_safe(d); gte_rtps(); gte_stsxy(&q->x3);
     gte_avsz4(); gte_stotz(&otz); if (otz < Z_NEAR) { db_next = mark_; return; }
     if (quad_offscreen((DVECTOR *)&q->x0, (DVECTOR *)&q->x1, (DVECTOR *)&q->x2, (DVECTOR *)&q->x3)) { db_next = mark_; return; }
     setPolyFT4(q); setRGB0(q, 128, 128, 128); setSemiTrans(q, 1);
@@ -521,8 +528,8 @@ void gfx_shadow(const VECTOR *pos, int radius) {
     setVector(&a, -r, -2, r); setVector(&b, r, -2, r); setVector(&c, -r, -2, -r); setVector(&d, r, -2, -r);
     POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4)); if (!q) return; char *mark_ = (char *)q;
     int otz, p;
-    GTE_FENCE(); gte_ldv3(&a, &b, &c); gte_rtpt();                                        // (no back-face test: it lies flat on the floor, seen from above)
-    gte_stsxy3(&q->x0, &q->x1, &q->x2); GTE_FENCE(); gte_ldv0(&d); gte_rtps(); gte_stsxy(&q->x3);
+    gte_ld3_safe(&a, &b, &c); gte_rtpt();                                        // (no back-face test: it lies flat on the floor, seen from above)
+    gte_stsxy3(&q->x0, &q->x1, &q->x2); gte_ld0_safe(&d); gte_rtps(); gte_stsxy(&q->x3);
     gte_avsz4(); gte_stotz(&otz); if (otz < Z_NEAR) { db_next = mark_; return; }
     (void)p;
     setPolyFT4(q); setRGB0(q, 128, 128, 128); setSemiTrans(q, 1);

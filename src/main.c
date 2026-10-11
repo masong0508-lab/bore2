@@ -1063,7 +1063,11 @@ int main(void) {
             case ST_TITLE: title_update(); title_draw(); break;
             case ST_MENU: menu_update(); menu_draw(); break;
             case ST_CREATE: create_update(); create_draw(); break;
-            case ST_LIFE: { int t0 = hb_now(); life_update(steps); t_upd = hb_now() - t0; } life_draw(); break;
+            case ST_LIFE:
+#ifdef AUTO_PARTY
+                { static int ap; if (++ap == 120) { cash += 100; throw_party(); } }   // (test builds: a party a couple of seconds in)
+#endif
+                { int t0 = hb_now(); life_update(steps); t_upd = hb_now() - t0; } life_draw(); break;
             case ST_PAUSE: pause_update(); pause_draw(); break;
             case ST_BUILD: build_update(); build_draw(); break;
             case ST_JUKEBOX: juke_update(); juke_draw(); break;

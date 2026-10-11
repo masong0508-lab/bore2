@@ -45,7 +45,7 @@ static bool env_cb(unsigned cmd, void *data) {
         case RETRO_ENVIRONMENT_GET_VARIABLE: {
             struct retro_variable *v = (struct retro_variable *)data;
             v->value = NULL;
-            if (!strcmp(v->key, "pcsx_rearmed_bios")) v->value = "hle";
+            if (!strcmp(v->key, "pcsx_rearmed_bios")) v->value = getenv("REALBIOS") ? "auto" : "hle";   /* REALBIOS=1: a BIOS file in /tmp/lrsys (e.g. OpenBIOS as scph5501.bin) */
             if (!strcmp(v->key, "pcsx_rearmed_drc")) v->value = "disabled";
             if (!strcmp(v->key, "pcsx_rearmed_show_bios_bootlogo")) v->value = "disabled";
             if (!strcmp(v->key, "pcsx_rearmed_dithering")) v->value = "enabled";
@@ -53,6 +53,7 @@ static bool env_cb(unsigned cmd, void *data) {
             if (!strcmp(v->key, "pcsx_rearmed_nostalls")) v->value = "disabled";
             if (!strcmp(v->key, "pcsx_rearmed_icache_emulation")) v->value = "enabled";
             if (!strcmp(v->key, "pcsx_rearmed_pad1type")) v->value = "analog";
+            if (!strcmp(v->key, "pcsx_rearmed_exception_emulation")) v->value = "enabled";   /* misaligned loads fault, as on a real PlayStation / DuckStation */
             return v->value != NULL;
         }
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: *(bool *)data = false; return true;
