@@ -6,3 +6,4 @@ music_src/
 test/*.png
 test/*.ppm
 test/*.raw
+test/before/
