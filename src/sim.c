@@ -9,6 +9,7 @@
 #include "bigmap.h"
 #include "crowd.h"
 #include "pop.h"
+#include "home.h"
 
 Sim  sims[MAX_SIMS];
 int  nsims, player;
@@ -27,7 +28,7 @@ int  aging = 2, old_age = 1, sim_cheer, sim_story_over, baby_due = -1;
 static u8 baby_par[2], baby_kind;   // the coming baby's parents' uids; 1 an adopted baby, 2 an adopted child (0: born to them)
 static u8 next_uid = 1;
 static int cake_slices;             // slices left on the birthday cake (0: there is none)
-static struct { u8 x, y; char name[NAME_LEN]; } graves[4]; static int ngraves;
+static struct { u8 x, y, city; char name[NAME_LEN]; } graves[6]; static int ngraves;   // (city: x, y on the home's block, not the window)
 static const u8 stLen[4][AG_N] = { { 0, 0, 0, 0, 0 }, { 1, 3, 3, 9, 5 }, { 2, 6, 6, 18, 9 }, { 4, 12, 12, 36, 18 } };
 int sim_stage_len(int stage) { return stLen[aging & 3][stage % AG_N]; }
 enum { CARE_FEED = 1, CARE_CHANGE, CARE_PLAY, CARE_CUDDLE, CARE_BED };
@@ -753,7 +754,9 @@ const char *sim_relation(int i, int j) {   // what j is to i
 }
 const char *sim_grade(int g) { return g >= 85 ? "A" : g >= 70 ? "B" : g >= 55 ? "C" : g >= 40 ? "D" : "F"; }
 int sim_grave_name(int mx, int my, char *out) {
-    for (int i = 0; i < ngraves; i++) if (graves[i].x == mx && graves[i].y == my) { strcpy(out, graves[i].name); return 1; }
+    int city = world_zone == ZONE_CITY, wx, wy;
+    if (city) { if (!world_own_block(&wx, &wy)) { strcpy(out, "A FRIEND"); return 0; } mx -= wx * BM_BLK; my -= wy * BM_BLK; }
+    for (int i = 0; i < ngraves; i++) if (graves[i].city == city && graves[i].x == mx && graves[i].y == my) { strcpy(out, graves[i].name); return 1; }
     strcpy(out, "A FRIEND"); return 0;
 }
 static int baby_need(const Sim *b) {   // what a baby is crying for (0: nothing)
@@ -864,12 +867,15 @@ static void remove_sim(int i) {   // gone from the household: everyone after mov
     int any = 0; for (int j = 0; j < nsims; j++) if (playable(j)) any = 1;
     if (!any) sim_story_over = 1;
 }
-static int grave_spot(int *ox, int *oy) {   // out in the yard: grass, nothing on it, near the front door
-    int sx, sy; world_find('P', &sx, &sy); if (sx < 0) { sx = sim_tile_x(&sims[player]); sy = sim_tile_y(&sims[player]); }
+static int grave_spot(int *ox, int *oy) {   // out in the yard: grass, nothing on it, near the front door (in SAN BOREAS, on the family's own lot)
+    int sx, sy, x0 = 1, y0 = 1, x1 = MW - 2, y1 = MH - 2;
+    if (home_city) { int wx, wy; if (!world_own_door(&sx, &sy) || !world_own_block(&wx, &wy)) return 0;
+                     x0 = wx * BM_BLK + BM_LOT0; y0 = wy * BM_BLK + BM_LOT0; x1 = wx * BM_BLK + BM_BLK - 1; y1 = wy * BM_BLK + BM_BLK - 1; }
+    else { world_find('P', &sx, &sy); if (sx < 0) { sx = sim_tile_x(&sims[player]); sy = sim_tile_y(&sims[player]); } }
     for (int r = 2; r < 14; r++) for (int dy = -r; dy <= r; dy++) for (int dx = -r; dx <= r; dx++) {
         if (ABS(dx) != r && ABS(dy) != r) continue;
         int x = sx + dx, y = sy + dy;
-        if (x < 1 || y < 1 || x >= MW - 1 || y >= MH - 1 || lifeMap[y][x] != '.' || floorMap[y][x] < FL_GRASS || floorMap[y][x] == FL_WATER || floorMap[y][x] > FL_SAND) continue;
+        if (x < x0 || y < y0 || x > x1 || y > y1 || lifeMap[y][x] != '.' || floorMap[y][x] < FL_GRASS || floorMap[y][x] == FL_WATER || floorMap[y][x] > FL_SAND) continue;
         *ox = x; *oy = y; return 1;
     }
     return 0;
@@ -878,8 +884,10 @@ static void pass_on(int i) {   // the end of a long life: gently
     Sim *s = &sims[i]; char t[48];
     sprintf(t, "%s HAS PASSED AWAY", s->bore.first); sim_note(t);
     int gx, gy;
-    if (world_zone == ZONE_HOME && ngraves < 4 && grave_spot(&gx, &gy)) {
-        lifeMap[gy][gx] = CH_GRAVE; graves[ngraves].x = (u8)gx; graves[ngraves].y = (u8)gy; strcpy(graves[ngraves].name, s->bore.first); ngraves++; world_touched();
+    if (home_is_here() && ngraves < 6 && grave_spot(&gx, &gy)) {   // (at home: in the yard)
+        int wx = 0, wy = 0, city = home_city; if (city) world_own_block(&wx, &wy);
+        lifeMap[gy][gx] = CH_GRAVE; graves[ngraves].x = (u8)(gx - wx * BM_BLK); graves[ngraves].y = (u8)(gy - wy * BM_BLK); graves[ngraves].city = (u8)city;
+        strcpy(graves[ngraves].name, s->bore.first); ngraves++; world_touched();
         sim_note("A STONE STANDS IN THE YARD"); }
     for (int j = 0; j < nsims; j++) if (j != i) sim_moodlet(&sims[j], ML_GRIEF);
     audio_voice(VOICE_CRY);
@@ -907,7 +915,7 @@ static void born(void) {   // the baby comes home (or the adopted child)
     sim_add(&b, tx, ty, 1);
     world_lvl = keep;
     Sim *n = &sims[nsims - 1]; n->par[0] = baby_par[0]; n->par[1] = baby_par[1]; n->lvl = nr->lvl;
-    if (b.stage == AG_BABY && world_zone == ZONE_HOME && n->lvl == 0) {   // a crib comes with a baby (when the house has none)
+    if (b.stage == AG_BABY && home_is_here() && n->lvl == 0) {   // a crib comes with a baby (when the house has none)
         int have = 0, cx, cy;
         for (int y = 0; y < MH && !have; y++) for (int x = 0; x < MW; x++) if (lifeMap[y][x] == CH_CRIB) { have = 1; break; }
         if (!have && free_floor_near(0, tx, ty, &cx, &cy)) { lifeMap[cy][cx] = CH_CRIB; world_touched(); sim_note("A CRIB CAME WITH THE BABY"); }
@@ -1090,6 +1098,7 @@ static int front_tile(const Sim *s, int *mx, int *my) {
 }
 static int usable_at(int tx, int ty, char c) {   // something X does something with
     if (action_for(c) != ACT_NONE) return 1;
+    if (c == '8') return world_zone == ZONE_CITY;      // a FOR SALE sign
     if (!c || !strchr("y7d`it", c)) return 0;         // a counter, a shelf, a desk, a mirror, a rack, a table: at a place, to buy at or to work at
     if (job_here(tx, ty, c)) return 1;
     PlaceInfo pi; if (!place_at(tx, ty, &pi)) return 0;
@@ -1137,6 +1146,7 @@ static const char *sim_hint_(void) {
     int mine = job_here(mx, my, c);
     if (mine && is_work()) return "WORK";
     if (c == 'x') return mine ? "NOT WORK TIME" : "NOT YOUR JOB";
+    if (c == '8') return "FOR SALE";
     PlaceInfo pi;
     if (place_at(mx, my, &pi)) {
         if (!place_open(pi.lot, clock_min, clock_day)) return "CLOSED";
@@ -1200,6 +1210,13 @@ static int sim_pie_open_(char opt[8][16]) {
     }
     char c = world_at(mx, my); int act = action_for(c);
     if (c == ' ') { strcpy(pie_title, "STAIRS"); strcpy(opt[0], "GO DOWN"); pie_code[0] = 1; pie_n = 1; return 1; }
+    if (c == '8' && world_zone == ZONE_CITY && world_wbx >= 0) {   // a home for sale: buy it, and the family moves in
+        int bx = world_wbx + mx / BM_BLK, by = world_wby + my / BM_BLK;
+        if (!home_for_sale(bx, by)) { sim_note("SOLD"); return 0; }
+        home_address(bx, by, pie_title);
+        sprintf(opt[0], "BUY $%d", home_price(bx, by)); pie_code[0] = 36;
+        strcpy(opt[1], "WHAT IS IT?"); pie_code[1] = 37; pie_n = 2; return 2;
+    }
     pie_place = place_at(mx, my, &pie_pi);
     int mine = job_here(mx, my, c);
     if (mine && !is_work()) { if (c == 'x') { char b[40], h1[8], h2[8]; sprintf(b, "WORK IS %s TO %s", hour_name(careers[job_car].from, h1), hour_name(careers[job_car].to, h2)); sim_note(b); return 0; } mine = 0; }
@@ -1382,7 +1399,7 @@ int sim_debug_grow(int what, int arg) {   // (test builds) hurry a family's life
     return 0;
 }
 #endif
-#if defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_GROW)
+#if defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME)
 int sim_debug_goto(char c, int lot) {   // (test builds) stand the player in front of the nearest c (at a place of that kind, lot >= 0)
     Sim *s = &sims[player]; int sx = sim_tile_x(s), sy = sim_tile_y(s), best = 1 << 30, bx = -1, by = -1, tx = 0, ty = 0;
     for (int y = 1; y < MH - 1; y++) for (int x = 1; x < MW - 1; x++) {
@@ -1427,6 +1444,9 @@ static void sim_pie_do_(int i) {
         case 33: begin_action(s, ACT_READ, pie_mx, pie_my); s->act_var = 3; s->act_t = 240; return;
         case 34: begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 8; s->act_t = 300; sim_say(s, "A CAKE FOR THE BIRTHDAY!"); return;
         case 35: adopt(s); return;
+        case 36: home_buy(world_wbx + pie_mx / BM_BLK, world_wby + pie_my / BM_BLK); return;   // (main moves the family in)
+        case 37: { BInfo b; bm_block(world_wbx + pie_mx / BM_BLK, world_wby + pie_my / BM_BLK, &b); char t[40];
+                   snprintf(t, sizeof t, "FOR SALE: %s", home_kind(b.lot)); sim_note(t); sim_note(home_blurb(b.lot)); return; }
     }
     if (pie_code[i] >= PC_WORK) { place_do(s, pie_code[i]); return; }
     char c = world_at(pie_mx, pie_my); int act = action_for(c);

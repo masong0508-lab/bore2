@@ -300,9 +300,9 @@ static unsigned city_h(int a, int b) { unsigned h = (unsigned)a * 374761393u + (
 static void city_path(int dx, int dy, int ly) { gBox(dx, dy + 1, dx, MIN(ly + 12, MH - 2), FL_PAVING); }   // the path from a door to the street
 
 // ---- who lives in the home being built (from the people of SAN BOREAS; elsewhere, somebody) ----
-typedef struct { u8 adults, kids, teens, elders, couple, vacant; } Occ;
+typedef struct { u8 adults, kids, teens, elders, couple, vacant, babies; } Occ;
 static Occ occ_blk[12]; static int occ_on;            // the households of the block being made
-static const Occ occ_any = { 2, 0, 0, 0, 1, 0 };
+static const Occ occ_any = { 2, 0, 0, 0, 1, 0, 0 };
 static const Occ *occ_of(int unit) { return occ_on ? &occ_blk[unit % 12] : &occ_any; }
 
 // ---- furnishing a room for its people ----
@@ -396,6 +396,7 @@ static void furnish_at(int x0, int y0, int x1, int y1, int ix, int iy, int ox, i
     int grown = o->adults + o->elders, beds = o->couple ? 1 + MAX(0, grown - 2) : grown;
     for (int b = 0; b < beds; b++) fz_run(fz_rnd(2) ? "Si" : "S", st + rgn / 4 + b * 3);
     for (int k = 0; k < (o->kids + 1) / 2; k++) fz_run("<", st + rgn / 4 + 7 + k * 2);
+    for (int k = 0; k < o->babies; k++) fz_run("\x81", st + rgn / 4 + 11 + k * 2);   // a crib for each baby
     for (int k = 0; k < o->teens; k++) fz_run(fz_rnd(2) ? "S" : "<", st + rgn * 3 / 4 + k * 2);
     // the living room: a sofa and the telly
     if (area >= 15) { int s = fz_run(o->elders && !o->adults ? ";" : "C", st + rgn * 3 / 4); if (s >= 0) fz_run("v", s + rgn / 2); }
@@ -471,7 +472,7 @@ static void city_town(int lx, int ly, unsigned h) {   // two homes sharing the w
         gPut(ax + 2, hy, 'E'); gPut(ax + 4, hy, 'E'); gPut(u ? ax + 6 : ax, hy + 4, 'E');                       // the party wall has no window
         int k = reg_home(ax + 1, hy + 1, ax + 5, hy + 7, dx, dy);
         furnish(ax + 1, hy + 1, ax + 5, hy + 7, dx, dy, occ_of(k), hu * 2654435761u);
-        if (occ_of(k)->vacant) gFree(dx + 1, dy + 2, '8'); else gFree(dx - 2, dy + 1, 'Z');
+        gFree(dx - 2, dy + 1, 'Z');                                  // (a townhouse is not sold on its own: no sign)
     }
     gFree(lx + 3, ly, TREE); gFree(lx + 9, ly, TREE); gFree(lx + 6, ly + 12, 'Y');
 }
@@ -903,6 +904,10 @@ static void lot_hotel(int lx, int ly, unsigned h, int st) {   // a hotel: a corr
 int world_wbx = -1, world_wby = -1;                    // the window's top-left block in the open world (-1: not made yet)
 typedef struct { u16 bx, by; char map[BM_BLK][BM_BLK]; u8 fl[BM_BLK][BM_BLK], wp[BM_BLK][BM_BLK]; } EditBlk;
 static EditBlk edit_small[12]; static EditBlk *edits = edit_small; static int nedit_max = 12, nedit, edit_next;
+// the family's own lot (home.c buys it): the whole block, every storey, kept just as they build it
+typedef struct { u16 bx, by; u8 used, fresh, lv, home; u8 hx0, hy0, hx1, hy1, hdx, hdy;
+                 char map[NLEVELS][BM_BLK][BM_BLK]; u8 fl[NLEVELS][BM_BLK][BM_BLK], wp[NLEVELS][BM_BLK][BM_BLK]; } OwnBlk;
+static OwnBlk own; static Occ own_occ;                 // (fresh: bought, not yet built: the generator makes it, furnished for the family)
 static void edit_init(void) {
     if (ram8 && edits == edit_small) { EditBlk *e = (EditBlk *)xalloc(sizeof(EditBlk) * 1024); if (e) { edits = e; nedit_max = 1024; } }
     nedit = 0; edit_next = 0;
@@ -922,6 +927,67 @@ static int edit_load(int wx, int wy) {
     return 1;
 }
 static void mark_dirty(int l, int mx, int my) { if (world_zone == ZONE_CITY && l <= 0 && mx >= 0 && my >= 0 && mx < MW && my < MH) wdirty[my / BM_BLK][mx / BM_BLK] = 1; }
+static int own_at(int wx, int wy) { return own.used && world_wbx + wx == own.bx && world_wby + wy == own.by; }
+static int own_in_window(int *wx, int *wy) {
+    if (!own.used || world_zone != ZONE_CITY || world_wbx < 0) return 0;
+    int x = own.bx - world_wbx, y = own.by - world_wby;
+    if (x < 0 || y < 0 || x >= WB || y >= WB) return 0;
+    *wx = x; *wy = y; return 1;
+}
+static void own_save(int wx, int wy) {   // the window's lot into the keep (the ground and the storeys over it)
+    int ox = wx * BM_BLK, oy = wy * BM_BLK;
+    for (int y = 0; y < BM_BLK; y++) { memcpy(own.map[0][y], &lifeMap[oy + y][ox], BM_BLK); memcpy(own.fl[0][y], &floorMap[oy + y][ox], BM_BLK); memcpy(own.wp[0][y], &wallMap[oy + y][ox], BM_BLK); }
+    own.lv = 0;
+    for (int k = 0; k < NUP; k++) {
+        const Level *L = lv_get(k); int any = 0;
+        for (int y = 0; y < BM_BLK; y++) {
+            if (L) { memcpy(own.map[k + 1][y], &L->map[oy + y][ox], BM_BLK); memcpy(own.fl[k + 1][y], &L->fl[oy + y][ox], BM_BLK); memcpy(own.wp[k + 1][y], &L->wp[oy + y][ox], BM_BLK); }
+            else memset(own.map[k + 1][y], ' ', BM_BLK);
+            for (int x = 0; x < BM_BLK; x++) if (own.map[k + 1][y][x] != ' ') any = 1;
+        }
+        if (any) own.lv |= (u8)(1 << k);
+    }
+}
+static void own_load(int wx, int wy) {   // ... and back
+    int ox = wx * BM_BLK, oy = wy * BM_BLK;
+    for (int y = 0; y < BM_BLK; y++) { memcpy(&lifeMap[oy + y][ox], own.map[0][y], BM_BLK); memcpy(&floorMap[oy + y][ox], own.fl[0][y], BM_BLK); memcpy(&wallMap[oy + y][ox], own.wp[0][y], BM_BLK); }
+    for (int k = 0; k < NUP; k++) {
+        if (!(own.lv & (1 << k))) continue;
+        Level *L = lv_need(k); if (!L) continue;
+        for (int y = 0; y < BM_BLK; y++) { memcpy(&L->map[oy + y][ox], own.map[k + 1][y], BM_BLK); memcpy(&L->fl[oy + y][ox], own.fl[k + 1][y], BM_BLK); memcpy(&L->wp[oy + y][ox], own.wp[k + 1][y], BM_BLK); }
+    }
+    roof_dirty = 1;
+}
+static void homes_drop(int bx, int by) {   // a block made again: its homes are registered afresh
+    int z = ZONE_CITY, n = 0;
+    for (int i = 0; i < nhomes[z]; i++) if (homes[z][i].bx != bx || homes[z][i].by != by) homes[z][n++] = homes[z][i];
+    nhomes[z] = n;
+}
+static void gen_block(int wx, int wy);
+static void block_again(int wx, int wy) { homes_drop(world_wbx + wx, world_wby + wy); gen_block(wx, wy); ao_dirty = 1; roof_dirty = 1; world_stamp++; }
+void world_own_set(int bx, int by, const u8 *occ) {   // the family's new lot (occ: adults, kids, teens, elders, a couple, babies)
+    own.used = 1; own.fresh = 1; own.bx = (u16)bx; own.by = (u16)by; own.lv = 0; own.home = 0;
+    memset(&own_occ, 0, sizeof own_occ);
+    own_occ.adults = occ[0]; own_occ.kids = occ[1]; own_occ.teens = occ[2]; own_occ.elders = occ[3]; own_occ.couple = occ[4]; own_occ.babies = occ[5];
+    int wx, wy; if (own_in_window(&wx, &wy)) block_again(wx, wy);   // (standing there: it is made for them now)
+}
+void world_own_clear(void) {   // sold: the block is the generator's again
+    int wx, wy, in = own_in_window(&wx, &wy);
+    own.used = 0;
+    if (in) block_again(wx, wy);
+}
+int world_own_lot(int tx, int ty) {   // that tile of the window is on the family's own lot (not the street round it)
+    int wx, wy; if (!own_in_window(&wx, &wy)) return 0;
+    int lx = tx - wx * BM_BLK, ly = ty - wy * BM_BLK;
+    return lx >= BM_LOT0 && ly >= BM_LOT0 && lx < BM_BLK && ly < BM_BLK;
+}
+int world_own_door(int *tx, int *ty) {   // where to stand on getting home: by the front door (an empty lot: its middle). 0: not in the window
+    int wx, wy; if (!own_in_window(&wx, &wy)) return 0;
+    int ox = wx * BM_BLK, oy = wy * BM_BLK;
+    if (own.home) { *tx = ox + own.hdx; *ty = oy + own.hdy + 1; } else { *tx = ox + BM_LOT0 + 6; *ty = oy + BM_LOT0 + 6; }
+    return 1;
+}
+int world_own_block(int *wx, int *wy) { return own_in_window(wx, wy); }
 
 static void wild(int ox, int oy, const BInfo *b, int bx, int by) {   // the open country: trees, rocks, cacti, palms
     for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) {
@@ -953,6 +1019,12 @@ static void gen_block(int wx, int wy) {
     if (b.set != 255 && b.terrain != BT_SEA) {           // in town: a pavement along the street
         gBox(ox + 3, oy + 3, ox + BM_BLK - 1, oy + 3, FL_PAVING); gBox(ox + 3, oy + 3, ox + 3, oy + BM_BLK - 1, FL_PAVING);
     }
+    int mine = own.used && bx == own.bx && by == own.by;
+    if (mine && !own.fresh) {                            // the family's own lot: as they left it
+        own_load(wx, wy);
+        if (own.home) { blk_bx = bx; blk_by = by; blk_unit = 0; reg_home(ox + own.hx0, oy + own.hy0, ox + own.hx1, oy + own.hy1, ox + own.hdx, oy + own.hdy); blk_bx = blk_by = 0xFFFF; }
+        wdirty[wy][wx] = 0; return;
+    }
     blk_bx = bx; blk_by = by; blk_unit = 0;
     int units = bm_units(&b), st = bm_storeys(&b);
     occ_on = 1;
@@ -963,6 +1035,7 @@ static void gen_block(int wx, int wy) {
         u8 a, k, t, e, c; pop_family_kinds(f, &a, &k, &t, &e, &c);
         o->vacant = 0; o->adults = a; o->kids = k; o->teens = t; o->elders = e; o->couple = c;
     }
+    if (mine) occ_blk[0] = own_occ;                      // (just bought: furnished for the family)
     int lx = ox + BM_LOT0, ly = oy + BM_LOT0; unsigned h = b.h;
     switch (b.lot) {
         case LOT_HOUSE:   city_house(lx, ly, h); break;
@@ -1002,6 +1075,16 @@ static void gen_block(int wx, int wy) {
         gFree(ox + 3, oy + 3, '"'); gFree(ox + 10, oy + 3, '"'); gFree(ox + 3, oy + 10, '"');
         if ((h >> 24) % 3u == 0) gFree(ox + 6, oy + 3, 'Y');
     }
+    if (mine) {                                          // the family's lot, made for the first time: no sign now; kept from here on
+        for (int y = oy; y < oy + BM_BLK; y++) for (int x = ox; x < ox + BM_BLK; x++) if (lifeMap[y][x] == '8') lifeMap[y][x] = '.';
+        if (b.lot == LOT_EMPTY)                          // an empty lot: cleared for building (the junk carted off, the ground levelled; the trees round its edge stay)
+            for (int y = ly + 1; y <= ly + 11; y++) for (int x = lx + 1; x <= lx + 11; x++) {
+                lifeMap[y][x] = '.'; if (floorMap[y][x] == FL_SOIL || floorMap[y][x] == FL_ROCK) floorMap[y][x] = (u8)ground; }
+        int hi = world_home_find(ZONE_CITY, bx, by, 0);
+        if (hi >= 0) { const Home *hm = &homes[ZONE_CITY][hi]; own.home = 1;
+            own.hx0 = (u8)(hm->x0 - ox); own.hy0 = (u8)(hm->y0 - oy); own.hx1 = (u8)(hm->x1 - ox); own.hy1 = (u8)(hm->y1 - oy); own.hdx = (u8)(hm->dx - ox); own.hdy = (u8)(hm->dy - oy); }
+        own.fresh = 0; own_save(wx, wy); wdirty[wy][wx] = 0; return;
+    }
     wdirty[wy][wx] = (u8)edit_load(wx, wy);
 }
 static void row_from(u8 *a, int stride, int w, int h, int y, int ys, int dx, u8 fill) {
@@ -1023,7 +1106,8 @@ static void window_shift(int sx, int sy) {
     int T0 = gfx_hb(), T; world_stamp++;
     for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks leaving: keep what was built on
         int nx = wx - sx, ny = wy - sy;
-        if ((nx < 0 || ny < 0 || nx >= WB || ny >= WB) && wdirty[wy][wx]) edit_save(wx, wy);
+        if (nx >= 0 && ny >= 0 && nx < WB && ny < WB) continue;
+        if (own_at(wx, wy)) own_save(wx, wy); else if (wdirty[wy][wx]) edit_save(wx, wy);
     }
     int dx = sx * BM_BLK, dy = sy * BM_BLK;
     shift2d((u8 *)lifeMap, MW + 1, MW, MH, dx, dy, '.');
@@ -1060,7 +1144,12 @@ static void window_shift(int sx, int sy) {
       roof_dirty = keep_r; ao_dirty = keep_a; }                                  // (the lots' own builders flag the whole map)
     for (int y = 0; y < MH; y++) lifeMap[y][MW] = 0;
 }
+static void window_keep(void) {                  // what was built in the window, kept aside before it goes
+    if (world_zone != ZONE_CITY || world_wbx < 0) return;
+    for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) { if (own_at(wx, wy)) own_save(wx, wy); else if (wdirty[wy][wx]) edit_save(wx, wy); }
+}
 void world_open_at(int cbx, int cby) {          // the window round block (cbx, cby): a new arrival, a taxi ride
+    window_keep();
     world_stamp++;
     world_wbx = CLAMP(cbx - WB / 2, 0, BM_N - WB); world_wby = CLAMP(cby - WB / 2, 0, BM_N - WB);
     nhomes[ZONE_CITY] = 0;
@@ -1088,14 +1177,14 @@ void world_arrival(int set, int *px, int *py) {  // where a bus or a taxi drops 
     *px = (s->x - world_wbx) * BM_BLK + 8; *py = (s->y - world_wby) * BM_BLK + 1;
 }
 int world_block_info(int wx, int wy, BInfo *b) { if (world_wbx < 0) return 0; bm_block(world_wbx + wx, world_wby + wy, b); return 1; }
-void world_new_seed(u32 seed) { wsalt = seed; world_wbx = world_wby = -1; edit_init(); }
+void world_new_seed(u32 seed) { wsalt = seed; world_wbx = world_wby = -1; edit_init(); own.used = 0; }
 void world_gen_city(void) { nhomes[ZONE_CITY] = 0; world_wbx = world_wby = -1; }   // (the window is built where you arrive: world_arrival, world_open_at)
 
 void world_switch(int z) {
     ao_dirty = 1;
     if (z == world_zone) return;
     if (world_zone == ZONE_CITY) {                    // leaving SAN BOREAS: what you built is kept aside; the window (and its storeys) is let go
-        if (world_wbx >= 0) for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) if (wdirty[wy][wx]) edit_save(wx, wy);
+        window_keep();
         levels_clear(lvown[ZONE_CITY]); world_wbx = world_wby = -1; nhomes[ZONE_CITY] = 0;
     } else {
         ZoneSave *cur = &zones[world_zone];

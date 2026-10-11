@@ -68,6 +68,17 @@ Kids and teens catch the school bus at 8 on weekdays and are home at 3; homework
 yard. The family tree (partner, parent, child, sibling, grandparent) is in the panel's PEOPLE tab. The rest of SAN BOREAS grows up
 too (`src/pop.c`): its people have birthdays, babies, leave home, pass on, and new families move into the empty homes.
 
+## A home of your own
+START, HOMES lists the homes for sale near you in SAN BOREAS: houses, cottages and two-storeys nobody lives in, and empty lots,
+each with its price (dearer in a city). A FOR SALE sign in a yard sells that one too (X on it). Buy one and the family moves in by
+taxi; a house comes furnished for them, an empty lot is cleared for building. That block is theirs from then on (`src/home.c`,
+and `world.c` keeps it just as they build it, every storey), TRAVEL has HOME at the top, and the map shows where it is. Buy another
+and the old one sells for what it cost. THE MAN BASE stays yours too.
+
+Build mode has seven tools: BUY, ROOM (X on one corner, X on the other: walls round it, a floor inside), WALL, DOORS AND
+WINDOWS (X on a wall), FLOOR, WALLPAPER and ROOF. L2 R2 change the storey (five in all): a room upstairs stands on the walls
+below it, and the stairs (BUY) open the floor above them. In SAN BOREAS you build on your own lot only.
+
 ## DS port (in progress)
 The game code is split so a Nintendo DS build can sit beside the PS1 one:
 - `src/platform/compat_math.*` the PS1 SDK maths (rotations, matrices, sin, sqrt) in plain C, tested against the real values.

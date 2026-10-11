@@ -37,6 +37,12 @@ void world_new_seed(u32 seed);                   // a new life: a new world
 void world_open_at(int bx, int by);              // build the window round that block
 int  world_stream(int ptx, int pty, int *dtx, int *dty);   // keep it round the player's tile: 1 if it moved (everything shifts by -dtx, -dty tiles)
 void world_arrival(int set, int *px, int *py);   // open the window at a town and say where to stand (the street by its square)
+// the family's own lot (home.c): one block of SAN BOREAS, kept as they build it, every storey
+void world_own_set(int bx, int by, const u8 *occ);   // bought (occ: adults, kids, teens, elders, a couple, babies: it comes furnished for them)
+void world_own_clear(void);                      // sold
+int  world_own_lot(int tx, int ty);              // that tile of the window is on the lot (build mode)
+int  world_own_door(int *tx, int *ty);           // where the family stands on getting home (0: the lot is out of the window)
+int  world_own_block(int *wx, int *wy);          // the lot's block in the window (0: not in it)
 
 void world_init(void);
 void world_touched(void);                        // the map changed (build mode): the floor shading is worked out again

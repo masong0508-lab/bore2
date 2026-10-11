@@ -19,6 +19,7 @@
 #include "far.h"
 #include "ui.h"
 #include "places.h"
+#include "home.h"
 
 // ---- input ----
 static u8 pad_buf[2][34];
@@ -38,7 +39,7 @@ static void read_pad(void) {
             if (ABS(ls_x) < 20) ls_x = 0; if (ABS(ls_y) < 20) ls_y = 0; if (ABS(rs_x) < 20) rs_x = 0; if (ABS(rs_y) < 20) rs_y = 0;
         }
     }
-#if defined(AUTO_TOUR) || defined(AUTO_GROW)
+#if defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME)
     { extern int auto_btn; if (auto_btn) { btn &= (u16)~auto_btn; auto_btn = 0; } }   // (test builds: the tour presses a button for a frame)
 #endif
 }
@@ -80,11 +81,16 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int create_tab, create_row, create_from, create_turn;
 static int build_tool, build_item, build_x = 8, build_y = 8, build_fl = 1, build_wp = 1, build_lvl, build_peek;
+static int build_open, room_on, room_ax, room_ay;   // the DOORS tool's pick; the ROOM tool's first corner
+enum { BT_BUY, BT_ROOM, BT_WALL, BT_DOOR, BT_FLOOR, BT_PAINT, BT_ROOF, NTOOL };   // build mode's tools
+static char build_msg[32]; static int build_msg_t;   // what build mode has to say (the life's notes are not on screen there)
+static void home_go(void);
+extern char _end[];
 static int juke_sel, juke_scroll;
 static int life_started;
 static int help_page;
@@ -185,7 +191,7 @@ static void start_life(void) {
         far_new_world();
         loading("MAKING A NEW LIFE", 70);
     }
-    world_reset_all();
+    world_reset_all(); home_reset();
     for (int i = 0; i < nsims; i++) look_release(&sims[i].bore);   // (the last household's face textures: for this one)
     sim_init();
     int px, py; world_find('P', &px, &py); if (px < 0) { px = 5; py = 12; }
@@ -495,8 +501,9 @@ static void life_update(int steps) {
     if (!(frame & 7)) venue_watch();
     camera_input();
     if (PRESSED(PAD_START)) { state = ST_PAUSE; menu_sel = 0; }
-    if (travel_asked) { travel_asked = 0; travel_sel = world_zone; state = ST_TRAVEL; }
+    if (travel_asked) { travel_asked = 0; travel_sel = home_city && home_is_here() ? 0 : world_zone + home_city; state = ST_TRAVEL; }
     if (sim_story_over) { sim_story_over = 0; state = ST_OVER; }   // the last of the family is gone
+    if (home_move_asked) { home_move_asked = 0; home_go(); }          // a home just bought: they move in
 }
 
 static void life_draw(void) {
@@ -544,13 +551,17 @@ static void travel_go(int z) {
     char b[40]; sprintf(b, "WELCOME TO %s", world_zone_name(z)); sim_note(b);
     audio_voice(VOICE_YAHOO);
 }
-static void travel_update(void) {
-    if (PRESSED(PAD_UP)) travel_sel = (travel_sel + ZONE_N - 1) % ZONE_N;
-    if (PRESSED(PAD_DOWN)) travel_sel = (travel_sel + 1) % ZONE_N;
+static void travel_update(void) {   // (with a home in SAN BOREAS, the first row is HOME: travel_sel 0; the zones after it)
+    int nr = ZONE_N + home_city;
+    if (PRESSED(PAD_UP)) travel_sel = (travel_sel + nr - 1) % nr;
+    if (PRESSED(PAD_DOWN)) travel_sel = (travel_sel + 1) % nr;
+    if (travel_sel >= nr) travel_sel = 0;
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = ST_LIFE; return; }
     if (PRESSED(PAD_CROSS)) {
-        if (!zone_unlocked(travel_sel)) { audio_voice(VOICE_NAH); return; }
-        if (travel_sel != world_zone) { travel_go(travel_sel); story_visit[travel_sel] = 1; for (int i = 0; i < nsims; i++) { if (travel_sel < 3) wants_event(&sims[i], travel_sel == 1 ? W_ISLAND : W_TOWN, 0); wants_reroll(&sims[i]); } }
+        if (home_city && travel_sel == 0) { state = ST_LIFE; if (!home_is_here()) home_go(); return; }
+        int z = travel_sel - home_city;
+        if (!zone_unlocked(z)) { audio_voice(VOICE_NAH); return; }
+        if (z != world_zone) { travel_go(z); story_visit[z] = 1; for (int i = 0; i < nsims; i++) { if (z < 3) wants_event(&sims[i], z == 1 ? W_ISLAND : W_TOWN, 0); wants_reroll(&sims[i]); } }
         state = ST_LIFE;
     }
 }
@@ -561,9 +572,17 @@ static void travel_draw(void) {   // where to: the four places, each on a row wi
     char b[48];
     life_draw();
     ui_dim();
-    int top = ui_window(36, 24, 248, 192, "WHERE TO?", IC_CAR);
+    int top = ui_window(36, home_city ? 8 : 24, 248, home_city ? 224 : 192, "WHERE TO?", IC_CAR);
+    if (home_city) {   // home: the family's own, in SAN BOREAS
+        int y = top + 2, sel = travel_sel == 0, here = home_is_here(); char ad[24];
+        if (sel) { ui_round(42, y, 236, 31, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(42, y + 4, 2, 23, 38, 146, 222, 0); }
+        ui_icon_disc(61, y + 15, 22, IC_HOUSE, sel ? UI_GREEN : UI_RGB(90, 170, 110), UI_WHITE);
+        ui_text(78, y + 6, 1, "HOME", sel ? UI_BLUE2 : UI_INK);
+        ui_text(78, y + 18, 1, here ? "YOU ARE HERE" : home_address(home_bx, home_by, ad), here ? UI_GOODT : UI_SOFT);
+        top += 34;
+    }
     for (int i = 0; i < ZONE_N; i++) {
-        int y = top + 2 + i * 34, sel = i == travel_sel, here = i == world_zone, open_ = zone_unlocked(i);
+        int y = top + 2 + i * 34, sel = i + home_city == travel_sel, here = i == world_zone && !(home_city && i == ZONE_CITY && home_is_here()), open_ = zone_unlocked(i);
         if (sel) { ui_round(42, y, 236, 31, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(42, y + 4, 2, 23, 38, 146, 222, 0); }
         ui_icon_disc(61, y + 15, 22, open_ ? zic[i] : IC_LOCK, !open_ ? UI_RGB(176, 184, 196) : sel ? UI_BLUE : UI_RGB(110, 146, 190), UI_WHITE);
         ui_text(78, y + 6, 1, world_zone_name(i), !open_ ? UI_SOFT : sel ? UI_BLUE2 : UI_INK);
@@ -572,7 +591,7 @@ static void travel_draw(void) {   // where to: the four places, each on a row wi
         if (here) t = "YOU ARE HERE";
         ui_text(78, y + 18, 1, t, here ? UI_GOODT : open_ ? UI_SOFT : UI_BADT);
     }
-    ui_hints(160, top + 145, "X GO|O BACK", 1);
+    ui_hints(160, top + 143, "X GO|O BACK", 1);
 }
 
 // ---- the pause menu ----
@@ -598,6 +617,15 @@ static void taxi_to_block(int bx, int by, int tx, int ty, const char *where) {  
     put_household(px, py);
     citizens_enter(ZONE_CITY);
     char b[48]; snprintf(b, sizeof b, "WELCOME TO %s", where); sim_note(b);
+    audio_voice(VOICE_YAHOO);
+}
+static void home_go(void) {
+    char ad[24]; home_address(home_bx, home_by, ad);
+    int tx, ty;
+    if (!world_own_door(&tx, &ty)) { taxi_to_block(home_bx, home_by, -1, -1, ad); if (!world_own_door(&tx, &ty)) return; }
+    put_household(tx, ty);
+    char b[40]; snprintf(b, sizeof b, "HOME: %s", ad); sim_note(b); sim_note("WELCOME HOME!");
+    for (int i = 0; i < nsims; i++) sim_moodlet(&sims[i], 15);   // (FUN TIME: a new home)
     audio_voice(VOICE_YAHOO);
 }
 static void map_open(void) {
@@ -652,6 +680,10 @@ static void map_draw(void) {   // the state on a card: the map on the left (the 
         const Settle *st = bm_set(i); if (i == map_sel) continue;
         int x = MX + st->x * MS / BM_N, y = MY + st->y * MS / BM_N, d = st->kind == ST_CITY ? 7 : st->kind == ST_TOWN ? 5 : 3;
         ui_disc(x, y, d + 2, UI_RGB(40, 46, 60)); ui_disc(x, y, d, UI_WHITE);
+    }
+    if (home_city) {   // home: a house on a green disc
+        int x = MX + home_bx * MS / BM_N, y = MY + home_by * MS / BM_N;
+        ui_disc(x, y, 15, UI_WHITE); ui_icon_disc(x, y, 13, IC_HOUSE, UI_GREEN, UI_WHITE);
     }
     if (world_zone == ZONE_CITY && world_wbx >= 0) {   // you are here
         int wx = world_wbx * BM_BLK + sim_tile_x(&sims[player]), wy = world_wby * BM_BLK + sim_tile_y(&sims[player]);
@@ -777,6 +809,116 @@ static void dir_draw(void) {
     ui_hints(28, 215, "X TAXI TO THEIR HOUSE $20", 0);
     ui_hints(310, 215, "O BACK", 2);
 }
+
+// ---- HOMES: the homes for sale near you (houses, cottages, two-storeys, empty lots) and the one you have ----
+static HomeAd hm_ad[16]; static int hm_n, hm_sel, hm_scroll;
+static void homes_open(void) {
+    int cbx, cby;
+    if (world_zone == ZONE_CITY && world_wbx >= 0) { cbx = world_wbx + sim_tile_x(&sims[player]) / BM_BLK; cby = world_wby + sim_tile_y(&sims[player]) / BM_BLK; }
+    else { const Settle *cp = bm_set(bm_capital()); cbx = cp->x; cby = cp->y; }
+    hm_n = home_list(cbx, cby, hm_ad, 16); hm_sel = 0; hm_scroll = 0; state = ST_HOMES;
+}
+static void homes_update(void) {
+    if (PRESSED(PAD_CIRCLE)) { state = ST_PAUSE; return; }
+    if (PRESSED(PAD_START)) { state = ST_LIFE; return; }
+    if (!hm_n) return;
+    if (PRESSED(PAD_UP)) hm_sel = (hm_sel + hm_n - 1) % hm_n;
+    if (PRESSED(PAD_DOWN)) hm_sel = (hm_sel + 1) % hm_n;
+    const HomeAd *a = &hm_ad[hm_sel];
+    if (PRESSED(PAD_CROSS)) { if (home_buy(a->bx, a->by)) state = ST_LIFE; }   // (life_update moves the family in)
+    if (PRESSED(PAD_SQUARE)) {                                                 // go and see it first
+        if (cash < 20) { audio_voice(VOICE_NAH); return; }
+        cash -= 20; char ad[24]; home_address(a->bx, a->by, ad); taxi_to_block(a->bx, a->by, -1, -1, ad); state = ST_LIFE;
+    }
+}
+static void homes_draw(void) {
+    life_draw();
+    ui_dim();
+    char b[48], ad[24];
+    int top = ui_window(8, 6, 304, 228, "HOMES FOR SALE", IC_HOUSE);
+    if (home_city) { home_address(home_bx, home_by, ad); snprintf(b, sizeof b, "YOURS: %s", ad); } else strcpy(b, "YOURS: THE MAN BASE");
+    ui_icon(12, top - 2, IC_HOUSE, UI_GREEN); ui_text(28, top, 1, b, UI_GOODT);
+    sprintf(b, "$%ld", cash); ui_text(306 - ui_tw(1, b), top, 1, b, UI_GOODT);
+    gfx_rect(12, top + 12, 296, 1, 214, 222, 232, 0);
+    if (!hm_n) { ui_textc(160, top + 60, 1, "NOTHING FOR SALE NEAR HERE", UI_SOFT); ui_hints(160, 214, "O BACK", 1); return; }
+    int refund = home_city ? home_paid : 0, rows = 9;
+    if (hm_sel < hm_scroll) hm_scroll = hm_sel;
+    if (hm_sel >= hm_scroll + rows) hm_scroll = hm_sel - rows + 1;
+    for (int k = 0; k < rows && hm_scroll + k < hm_n; k++) {   // the list: what, where, how much (red: more than you have)
+        int i = hm_scroll + k, y = top + 18 + k * 13, sel = i == hm_sel; const HomeAd *a = &hm_ad[i];
+        if (sel) { ui_round(12, y - 2, 296, 13, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(12, y, 2, 9, 38, 146, 222, 0); }
+        ui_icon(17, y - 2, a->lot == LOT_EMPTY ? IC_SPROUT : IC_HOUSE, sel ? UI_BLUE : UI_SOFT);
+        ui_text(33, y, 1, home_address(a->bx, a->by, ad), sel ? UI_BLUE2 : UI_INK);
+        ui_text(162, y, 1, home_kind(a->lot), UI_SOFT);
+        sprintf(b, "$%d", a->price); ui_text(304 - ui_tw(1, b), y, 1, b, cash + refund >= a->price ? UI_GOODT : UI_BADT);
+    }
+    {   // the one picked: where, what you get
+        const HomeAd *a = &hm_ad[hm_sel]; const Settle *st = a->set != 255 ? bm_set(a->set) : 0;
+        int y = top + 18 + rows * 13 + 4;
+        ui_round(12, y, 296, 40, 6, UI_RGB(234, 240, 248), UI_RGB(224, 231, 240), 0);
+        ui_icon_disc(30, y + 20, 26, a->lot == LOT_EMPTY ? IC_SPROUT : IC_HOUSE, UI_BLUE, UI_WHITE);
+        snprintf(b, sizeof b, "%s IN %s", home_kind(a->lot), st ? st->name : "SAN BOREAS"); ui_text(48, y + 5, 1, b, UI_INK);
+        ui_text(48, y + 17, 1, home_blurb(a->lot), UI_SOFT);
+        if (cash + refund < a->price) ui_text(48, y + 28, 1, "NOT ENOUGH MONEY YET", UI_BADT);
+        else if (home_city) { sprintf(b, "YOUR HOME NOW SELLS FOR $%d", home_paid); ui_text(48, y + 28, 1, b, UI_SOFT); }
+        else ui_text(48, y + 28, 1, "THE MAN BASE STAYS YOURS TOO", UI_SOFT);
+    }
+    ui_hints(160, 214, "X BUY AND MOVE IN|SQ SEE IT $20|O BACK", 1);
+}
+
+#ifdef AUTO_HOME
+int auto_btn;
+static void home_tick(void) {   // (test builds: buy a house and move in, build a storey on it, go away and come back, then buy an empty lot and build there)
+    static int t0 = -1, k;
+    if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); cash = 40000; }
+    static const struct { s16 at; char op; s8 arg; } plan[] = {
+        { 60, 'b', 'S' }, { 80, 'b', 'D' }, { 90, 'b', 'D' }, { 100, 'b', 'D' }, { 110, 'b', 'D' }, { 120, 'b', 'D' }, { 130, 'b', 'D' }, { 140, 'b', 'D' }, { 160, 'b', 'X' },   // START, HOMES
+        { 300, 'h', 0 }, { 400, 'b', 'X' },                                  // an affordable house: buy it and move in
+        { 800, 'k', 1 }, { 900, 'i', 0 }, { 1100, 'k', 0 },                  // outside, then inside: furnished for them
+        { 1300, 'B', BT_ROOM }, { 1310, 'l', 1 }, { 1320, 'c', 0 }, { 1360, 'b', 'X' }, { 1400, 'c', 1 }, { 1500, 'b', 'X' },   // a storey over the house: the ROOM tool
+        { 1600, 'B', BT_DOOR }, { 1610, 'w', 0 }, { 1640, 'R', 0 }, { 1660, 'b', 'X' },   // a window in it
+        { 1750, 'z', 0 }, { 1800, 'B', BT_ROOF }, { 1900, 'b', 'O' },         // the stairs; the roof over it all
+        { 2000, 'k', 2 }, { 2300, 'k', 0 },
+        { 2380, 'v', 0 },                                                     // from the street: the new storey and its roof
+        { 2400, 'f', 0 },                                                     // off across town
+        { 2700, 't', 0 }, { 2720, 'b', 'X' },                                 // TRAVEL: HOME
+        { 3000, 'v', 0 }, { 3300, 'k', 0 },
+        { 3400, 'b', 'S' }, { 3420, 'b', 'D' }, { 3430, 'b', 'D' }, { 3440, 'b', 'D' }, { 3450, 'b', 'D' }, { 3460, 'b', 'D' }, { 3470, 'b', 'D' }, { 3480, 'b', 'D' }, { 3500, 'b', 'X' },   // HOMES again
+        { 3600, 'h', 1 }, { 3700, 'b', 'X' },                                 // an empty lot this time (the house sells)
+        { 4100, 'k', 1 }, { 4200, 'B', BT_ROOM }, { 4210, 'c', 2 }, { 4240, 'b', 'X' }, { 4280, 'c', 3 }, { 4350, 'b', 'X' },   // a room on the lot
+        { 4450, 'B', BT_DOOR }, { 4460, 'c', 4 }, { 4480, 'b', 'X' }, { 4560, 'b', 'O' }, { 4600, 'v', 1 },
+        { 4900, 'b', 'S' }, { 4920, 'b', 'D' }, { 4930, 'b', 'D' }, { 4940, 'b', 'D' }, { 4960, 'b', 'X' },   // TRAVEL: home is on the list
+        { 5100, 'b', 'O' },
+        { 5300, 'g', 0 }, { 5340, 'b', 'X' }, { 5420, 'p', 0 }, { 5440, 'b', 'X' },   // a FOR SALE sign down the road: WHAT IS IT?
+        { 5700, 'b', 'S' }, { 5720, 'b', 'D' }, { 5730, 'b', 'D' }, { 5740, 'b', 'D' }, { 5750, 'b', 'D' }, { 5770, 'b', 'X' }, { 5950, 'b', 'O' },   // the map: home is on it
+        { 0, 0, 0 } };
+    int t = VSync(-1) - t0;
+    while (plan[k].op && t >= plan[k].at) {
+        int a = plan[k].arg, wx, wy; const Home *hm = 0;
+        if (world_own_block(&wx, &wy)) { int hi = world_home_find(ZONE_CITY, home_bx, home_by, 0); if (hi >= 0) hm = world_home(ZONE_CITY, hi); }
+        switch (plan[k].op) {
+            case 'b': auto_btn = a == 'X' ? PAD_CROSS : a == 'O' ? PAD_CIRCLE : a == 'S' ? PAD_START : a == 'D' ? PAD_DOWN : a == 'R' ? PAD_R1 : a == 'U' ? PAD_UP : PAD_RIGHT; break;
+            case 'R': auto_btn = PAD_R1; break;
+            case 'h': for (int i = 0; i < hm_n; i++) if ((a ? hm_ad[i].lot == LOT_EMPTY : hm_ad[i].lot != LOT_EMPTY) && hm_ad[i].price <= cash + (home_city ? home_paid : 0)) { hm_sel = i; break; } break;
+            case 'k': cam_pitch = a == 2 ? 520 : a ? 620 : 700; cam_dist = a == 2 ? 2600 : a ? 1700 : 1300; cam_yaw = a == 2 ? 2600 + 400 : 2600; break;
+            case 'i': if (hm) { Sim *s = &sims[player]; s->x = ((hm->x0 + hm->x1) / 2) * TILE + TILE / 2; s->z = -(((hm->y0 + hm->y1) / 2) * TILE + TILE / 2); s->path_n = 0; s->action = ACT_NONE; } break;
+            case 'B': state = ST_BUILD; build_tool = a; room_on = 0; build_msg_t = 0; build_lvl = 0; if (hm) { build_x = hm->dx; build_y = hm->dy; } break;
+            case 'l': build_lvl = a; break;
+            case 'c': if (a < 2 && hm) { build_x = a ? hm->x1 + 1 : hm->x0 - 1; build_y = a ? hm->y1 + 1 : hm->y0 - 1; }
+                      else if (world_own_block(&wx, &wy)) { int ox = wx * BM_BLK + BM_LOT0, oy = wy * BM_BLK + BM_LOT0; build_x = ox + (a == 2 ? 2 : a == 3 ? 9 : 5); build_y = oy + (a == 2 ? 2 : a == 3 ? 8 : 8); } break;
+            case 'w': if (hm) { build_x = (hm->x0 + hm->x1) / 2; build_y = hm->y0 - 1; } break;
+            case 'z': if (hm) { int sx = hm->x0 + 1, sy = hm->y0 + 2; *world_cell(0, sx, sy) = '|'; *world_cell(1, sx, sy) = ' '; *world_cell(0, sx, sy - 1) = '.'; *world_cell(0, sx, sy + 1) = '.'; world_touched(); } break;
+            case 'f': taxi_to_block(home_bx + 5, home_by + 1, -1, -1, "ACROSS TOWN"); break;
+            case 't': state = ST_TRAVEL; travel_sel = 0; break;
+            case 'g': { extern int sim_debug_goto(char c, int lot); sim_debug_goto('8', -1); cam_pitch = 640; cam_dist = 1500; } break;
+            case 'p': for (int i = 0; i < pie_n; i++) if (!strcmp(pie_opt[i], "WHAT IS IT?")) pie_sel = i; break;
+            case 'v': { int tx, ty; if (world_own_door(&tx, &ty)) { Sim *s = &sims[player]; s->x = tx * TILE + TILE / 2; s->z = -((ty + (a ? 3 : 5)) * TILE + TILE / 2); s->path_n = 0; s->action = ACT_NONE; }
+                        cam_yaw = 0; cam_pitch = 430; cam_dist = 2300; } break;
+        }
+        k++;
+    }
+}
+#endif
 
 // ---- JOBS: your job (and a free ride to it), and the jobs going at real places near you ----
 static const s8 carIc[CAR_N] = { IC_HAMMER, IC_FOOD, IC_MONEY, IC_BOLT, IC_DROP, IC_BED, IC_PLAY, IC_CASE, IC_BOOK, IC_NOTE, IC_HEART, IC_CAMERA, IC_SMILE, IC_BRUSH };
@@ -1052,8 +1194,10 @@ static void opts_draw(void) {
     ui_hints(16, top + 185, "O BACK", 0);
 }
 
-static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "THE STORY", "TRAVEL", "MAP AND TAXI", "THE PEOPLE", "JOBS", "CREATE A BORE", "ADD A BORE", "THROW A PARTY", "BUILD MODE", "JUKEBOX", "OPTIONS", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
-#define NPAUSE 16
+static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "THE STORY", "TRAVEL", "MAP AND TAXI", "THE PEOPLE", "JOBS", "HOMES", "CREATE A BORE",
+                                       "ADD A BORE", "THROW A PARTY", "BUILD MODE", "JUKEBOX", "OPTIONS", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
+#define NPAUSE 17
+static void homes_open(void);
 #ifdef AUTO_PARTY
 int ap_frames, ap_vs, ap_cpu;
 #endif
@@ -1068,7 +1212,7 @@ void throw_party(void) {   // (also the phone's THROW A PARTY)
     audio_voice(VOICE_YAHOO);
     for (int i = 0; i < nsims; i++) sim_moodlet(&sims[i], 15);        // FUN TIME
 }
-#define PCOL 8                                  // the pause menu: two columns, eight down the left
+#define PCOL 9                                  // the pause menu: two columns, nine down the left
 static void pause_update(void) {
     if (PRESSED(PAD_UP)) menu_sel = (menu_sel + NPAUSE - 1) % NPAUSE;
     if (PRESSED(PAD_DOWN)) menu_sel = (menu_sel + 1) % NPAUSE;
@@ -1080,26 +1224,29 @@ static void pause_update(void) {
             case 0: state = ST_LIFE; break;
             case 1: panel_tab = 0; state = ST_PANEL; break;
             case 2: state = ST_STORY; break;
-            case 3: travel_sel = world_zone; state = ST_TRAVEL; break;
+            case 3: travel_sel = home_city && home_is_here() ? 0 : world_zone + home_city; state = ST_TRAVEL; break;
             case 4: map_t = -1; state = ST_MAP; break;   // (opened on the map's own first frame: this frame still draws the people, whose sprites share that VRAM)
             case 5: dir_open(); state = ST_DIR; break;
             case 6: jobs_open(); state = ST_JOBS; break;
-            case 7: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
+            case 7: homes_open(); break;
+            case 8: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
                     create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
-            case 8: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
+            case 9: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); state = ST_LIFE; } break;
-            case 9: throw_party(); state = ST_LIFE; break;
-            case 10: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); state = ST_BUILD; break;
-            case 11: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
-            case 12: opts_open(ST_PAUSE); break;
-            case 13: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 14: life_started = 0; start_life(); state = ST_LIFE; break;
-            case 15: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); break;
+            case 10: throw_party(); state = ST_LIFE; break;
+            case 11: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD;
+                     if (world_zone == ZONE_CITY && !world_own_lot(build_x, build_y)) { int tx, ty; if (world_own_door(&tx, &ty)) { build_x = tx; build_y = ty - 1; } }   // (in SAN BOREAS: on your own lot)
+                     break;
+            case 12: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
+            case 13: opts_open(ST_PAUSE); break;
+            case 14: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
+            case 15: life_started = 0; start_life(); state = ST_LIFE; break;
+            case 16: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); break;
         }
     }
 }
 static void pause_draw(void) {
-    static const s8 ic[NPAUSE] = { IC_PLAY, IC_PLUMBOB, IC_BOOK, IC_CAR, IC_PIN, IC_PEOPLE, IC_CASE, IC_STAR, IC_ADD, IC_PARTY, IC_HAMMER, IC_NOTE, IC_GEAR, IC_HELP, IC_SPROUT, IC_DOOR };
+    static const s8 ic[NPAUSE] = { IC_PLAY, IC_PLUMBOB, IC_BOOK, IC_CAR, IC_PIN, IC_PEOPLE, IC_CASE, IC_HOUSE, IC_STAR, IC_ADD, IC_PARTY, IC_HAMMER, IC_NOTE, IC_GEAR, IC_HELP, IC_SPROUT, IC_DOOR };
     life_draw();
     ui_dim();
     int top = ui_window(14, 10, 292, 220, "PAUSED", IC_PAUSE);
@@ -1107,7 +1254,7 @@ static void pause_draw(void) {
       gfx_text(300 - gfx_text_w(1, b), 13, 1, b, 255, 255, 255); sprintf(b, "$%ld", cash); gfx_text(300 - gfx_text_w(1, b), 22, 1, b, 210, 255, 200); }
     for (int i = 0; i < NPAUSE; i++) {
         int col = i >= PCOL, row = col ? i - PCOL : i;
-        ui_button(22 + col * 142, top + row * 24, 134, 19, pauseNm[i], ic[i], i == menu_sel);
+        ui_button(22 + col * 142, top + row * 21, 134, 19, pauseNm[i], ic[i], i == menu_sel);
     }
 }
 
@@ -1445,8 +1592,50 @@ static void create_draw(void) {
 }
 
 // ---- build mode ----
-static const char *const toolNm[5] = { "BUY", "WALL", "FLOOR", "WALLPAPER", "ROOF" };
-#define NTOOL 5
+static const char *const toolNm[NTOOL] = { "BUY", "ROOM", "WALL", "DOORS, WINDOWS", "FLOOR", "WALLPAPER", "ROOF" };
+static const char openCh[4] = { 'D', 'E', 'f', 'e' };                       // the DOORS tool: what goes into a wall
+static const char *const openNm[4] = { "DOOR", "WINDOW", "HIGH WINDOW", "TINTED WINDOW" };
+static const u16 openCost[4] = { 100, 60, 50, 70 };
+static const char *open_name(int i) { return openNm[i & 3]; }
+static void build_say(const char *t) { strncpy(build_msg, t, 31); build_msg[31] = 0; build_msg_t = 150; }
+static int is_wallish(char c) { return c == 'W' || c == 'w' || c == 'E' || c == 'e' || c == 'f' || c == 'D'; }
+static int build_ok(int x, int y) { return world_zone != ZONE_CITY || world_own_lot(x, y); }   // in SAN BOREAS: on your own lot only
+static int room_rect(int *x0, int *y0, int *x1, int *y1) {   // the ROOM tool's rectangle: from the first corner to the cursor
+    *x0 = MIN(room_ax, build_x); *x1 = MAX(room_ax, build_x); *y0 = MIN(room_ay, build_y); *y1 = MAX(room_ay, build_y);
+    return *x1 - *x0 >= 2 && *y1 - *y0 >= 2 && *x1 - *x0 < 16 && *y1 - *y0 < 16;
+}
+static int room_cost(int L, int x0, int y0, int x1, int y1) {   // new walls $50, floor $10 a tile
+    int c = 0;
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
+        char ch = world_at_l(L, x, y);
+        if (x == x0 || x == x1 || y == y0 || y == y1) { if (!is_wallish(ch)) c += 50; } else if (!(L && ch == ' ' && world_at_l(L - 1, x, y) == '|')) c += 10;
+    }
+    return c;
+}
+static void room_build(void) {   // walls round it with the wallpaper picked, the floor picked inside
+    int x0, y0, x1, y1, L = build_lvl;
+    if (!room_rect(&x0, &y0, &x1, &y1)) { build_say("A ROOM IS 3 TO 16 TILES A SIDE"); audio_voice(VOICE_NAH); return; }
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
+        if (!build_ok(x, y)) { build_say("BUILD ON YOUR OWN LOT ONLY"); audio_voice(VOICE_NAH); return; }
+        char ch = world_at_l(L, x, y), below = L ? world_at_l(L - 1, x, y) : 'W';
+        int edge = x == x0 || x == x1 || y == y0 || y == y1;
+        if (L && ch == ' ' && below == '|' && !edge) continue;                                  // (a stairwell stays open)
+        if (L && ch == ' ' && (below == ' ' || below == '|')) { build_say("NOTHING UNDER IT TO HOLD IT UP"); audio_voice(VOICE_NAH); return; }
+        if (edge && !is_wallish(ch) && ch != '.' && ch != ' ') { build_say("SOMETHING IS IN THE WAY"); audio_voice(VOICE_NAH); return; }
+        if (edge && !is_wallish(ch)) for (int i = 0; i < nsims; i++) if (sims[i].lvl == L && sim_tile_x(&sims[i]) == x && sim_tile_y(&sims[i]) == y) { build_say("SOMEONE IS STANDING THERE"); audio_voice(VOICE_NAH); return; }
+    }
+    int cost = room_cost(L, x0, y0, x1, y1);
+    if (cash < cost) { char t[32]; sprintf(t, "THAT ROOM IS $%d", cost); build_say(t); audio_voice(VOICE_NAH); return; }
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
+        char *c = world_cell(L, x, y);
+        if (x == x0 || x == x1 || y == y0 || y == y1) { if (!is_wallish(*c)) { *c = 'W'; *world_wall_cell(L, x, y) = (u8)build_wp; } }
+        else if (*c == ' ' && !(L && world_at_l(L - 1, x, y) == '|')) *c = '.';   // (not over the stairs)
+        *world_floor_cell(L, x, y) = (u8)build_fl;
+    }
+    cash -= cost; room_on = 0; world_touched(); audio_voice(VOICE_FINISHED);
+    wants_event(&sims[player], W_BUY, 0);
+    build_say("ROOM BUILT. ADD A DOOR!");
+}
 static int floor_supported(int l, int x, int y) {   // an upper floor needs something under it, or a floor beside it on its own storey
     if (l == 0) return 1;
     char below = world_at_l(l - 1, x, y);
@@ -1509,16 +1698,18 @@ static void build_update(void) {
         if (ABS(vx) >= ABS(vz)) build_x += vx > 0 ? 1 : -1; else build_y += vz > 0 ? -1 : 1;
         build_x = CLAMP(build_x, 1, MW - 2); build_y = CLAMP(build_y, 1, MH - 2);
     }
-    if (PRESSED(PAD_SELECT)) build_tool = (build_tool + 1) % NTOOL;
+    if (PRESSED(PAD_SELECT)) { build_tool = (build_tool + 1) % NTOOL; room_on = 0; }
+    if (build_msg_t > 0) build_msg_t--;
     if (PRESSED(PAD_R2) && build_lvl < NUP) { build_lvl++; audio_voice(VOICE_AGREE); }     // the storey you build on
     if (PRESSED(PAD_L2) && build_lvl > 0) { build_lvl--; audio_voice(VOICE_AGREE); }
     if (PRESSED(PAD_L3)) build_peek ^= 1;                                                  // see the roof
     if (analog) { cam_yaw += rs_x / 3; cam_pitch += rs_y / 4; cam_pitch = CLAMP(cam_pitch, 300, 1000); }
-    if (build_tool == 0) { if (PRESSED(PAD_L1)) catalog_step(-1); if (PRESSED(PAD_R1)) catalog_step(1); if (PRESSED(PAD_R3)) catalog_next_cat(); }
-    if (build_tool == 2) { if (PRESSED(PAD_L1)) build_fl = (build_fl + NFLOORS - 1) % NFLOORS; if (PRESSED(PAD_R1)) build_fl = (build_fl + 1) % NFLOORS; }
-    if (build_tool == 3) { if (PRESSED(PAD_L1)) build_wp = (build_wp + NWALLS - 1) % NWALLS; if (PRESSED(PAD_R1)) build_wp = (build_wp + 1) % NWALLS; }
-    if (build_tool == 1) { if (PRESSED(PAD_L1)) build_wp = (build_wp + NWALLS - 1) % NWALLS; if (PRESSED(PAD_R1)) build_wp = (build_wp + 1) % NWALLS; }
-    if (build_tool == 4) {   // the roof: L1 R1 colour, X style, SQUARE pitch
+    if (build_tool == BT_BUY) { if (PRESSED(PAD_L1)) catalog_step(-1); if (PRESSED(PAD_R1)) catalog_step(1); if (PRESSED(PAD_R3)) catalog_next_cat(); }
+    if (build_tool == BT_FLOOR) { if (PRESSED(PAD_L1)) build_fl = (build_fl + NFLOORS - 1) % NFLOORS; if (PRESSED(PAD_R1)) build_fl = (build_fl + 1) % NFLOORS; }
+    if (build_tool == BT_PAINT || build_tool == BT_WALL || build_tool == BT_ROOM) { if (PRESSED(PAD_L1)) build_wp = (build_wp + NWALLS - 1) % NWALLS; if (PRESSED(PAD_R1)) build_wp = (build_wp + 1) % NWALLS; }
+    if (build_tool == BT_ROOM && PRESSED(PAD_R3)) build_fl = (build_fl + 1) % NFLOORS;   // (the room's floor)
+    if (build_tool == BT_DOOR) { if (PRESSED(PAD_L1)) build_open = (build_open + 3) & 3; if (PRESSED(PAD_R1)) build_open = (build_open + 1) & 3; }
+    if (build_tool == BT_ROOF) {   // the roof: L1 R1 colour, X style, SQUARE pitch
         if (PRESSED(PAD_L1)) { world_roof_col = (world_roof_col + NROOF_COL - 1) % NROOF_COL; world_touched(); }
         if (PRESSED(PAD_R1)) { world_roof_col = (world_roof_col + 1) % NROOF_COL; world_touched(); }
         if (PRESSED(PAD_CROSS)) { world_roof_style = (world_roof_style + 1) % NROOF_STYLE; world_touched(); audio_voice(VOICE_FINISHED); }
@@ -1527,25 +1718,51 @@ static void build_update(void) {
         return;
     }
     int L = build_lvl;
+    if (build_tool == BT_ROOM) {   // the ROOM tool: X a corner, X the other corner; O lets go of the first
+        if (PRESSED(PAD_CROSS)) { if (!room_on) { if (build_ok(build_x, build_y)) { room_on = 1; room_ax = build_x; room_ay = build_y; audio_voice(VOICE_AGREE); } else { build_say(home_city ? "BUILD ON YOUR OWN LOT ONLY" : "BUY A HOME TO BUILD HERE"); audio_voice(VOICE_NAH); } }
+                                  else room_build(); }
+        if (PRESSED(PAD_CIRCLE) && room_on) { room_on = 0; return; }
+        if (PRESSED(PAD_TRIANGLE) || PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { build_lvl = 0; room_on = 0; state = ST_LIFE; }
+        return;
+    }
+    if ((PRESSED(PAD_CROSS) || PRESSED(PAD_SQUARE)) && !build_ok(build_x, build_y)) {   // in SAN BOREAS: not someone else's
+        build_say(home_city ? "BUILD ON YOUR OWN LOT ONLY" : "BUY A HOME TO BUILD HERE"); audio_voice(VOICE_NAH);
+        if (PRESSED(PAD_TRIANGLE) || PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { build_lvl = 0; state = ST_LIFE; }
+        return;
+    }
+    if (HELD(PAD_CROSS) && !build_ok(build_x, build_y)) return;
     char *cell = world_cell(L, build_x, build_y);
     int occupied = 0; for (int i = 0; i < nsims; i++) if (sims[i].lvl == L && sim_tile_x(&sims[i]) == build_x && sim_tile_y(&sims[i]) == build_y) occupied = 1;
+    if (build_tool == BT_DOOR && (PRESSED(PAD_CROSS) || PRESSED(PAD_SQUARE))) {   // into a wall, and out of it again
+        int ok = 0;
+        if (PRESSED(PAD_CROSS)) {
+            char want = openCh[build_open & 3]; int cost = openCost[build_open & 3];
+            if (!is_wallish(*cell)) build_say("PUT IT IN A WALL");
+            else if (*cell == want) ok = 1;
+            else if (cash < cost) build_say("NOT ENOUGH MONEY");
+            else { *cell = want; cash -= cost; ok = 1; }
+        } else if (*cell == 'D' || *cell == 'E' || *cell == 'e' || *cell == 'f') { *cell = 'W'; cash += 30; ok = 1; }   // (a wall again)
+        audio_voice(ok ? VOICE_FINISHED : VOICE_NAH); world_touched();
+        return;
+    }
     if (PRESSED(PAD_CROSS) && !occupied) {
         int ok = 0;
-        if (build_tool == 0) { char ch = items_at(build_item); int cost = items_cost(ch);
+        if (build_tool == BT_BUY) { char ch = items_at(build_item); int cost = items_cost(ch);
             if (*cell == '.' && cash >= cost) {
                 if (ch == '|') {   // stairs: there must be a storey above, and its tile over the stairs becomes the stairwell
-                    if (L >= NUP) { sim_note("NO STOREY ABOVE THE TOP ONE"); }
+                    if (L >= NUP) { build_say("NO STOREY ABOVE THE TOP ONE"); }
                     else { char *up = world_cell(L + 1, build_x, build_y); if (*up == '.' || *up == ' ') { *up = ' '; *cell = ch; cash -= cost; ok = 1; } }
                 } else { *cell = ch; cash -= cost; ok = 1; wants_event(&sims[player], W_BUY, 0); }
             } }
-        if (build_tool == 1) { if (*cell == '.' && cash >= 50) { *cell = 'W'; *world_wall_cell(L, build_x, build_y) = (u8)build_wp; cash -= 50; ok = 1; } }
-        if (build_tool == 2) { if (*cell == ' ' && !floor_supported(L, build_x, build_y)) sim_note("NOTHING UNDER IT TO HOLD IT UP");
+        if (build_tool == BT_WALL) { if ((*cell == '.' || (*cell == ' ' && floor_supported(L, build_x, build_y))) && cash >= 50) { *cell = 'W'; *world_wall_cell(L, build_x, build_y) = (u8)build_wp; cash -= 50; ok = 1; }
+                                     else if (*cell == ' ') build_say("NOTHING UNDER IT TO HOLD IT UP"); }
+        if (build_tool == BT_FLOOR) { if (*cell == ' ' && !floor_supported(L, build_x, build_y)) build_say("NOTHING UNDER IT TO HOLD IT UP");
                                else if (cash >= 10) { if (*cell == ' ') *cell = '.'; *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; ok = 1; } }
-        if (build_tool == 3) { if (*cell == 'W' || *cell == 'w') { *world_wall_cell(L, build_x, build_y) = (u8)build_wp; ok = 1; } }
+        if (build_tool == BT_PAINT) { if (is_wallish(*cell)) { *world_wall_cell(L, build_x, build_y) = (u8)build_wp; ok = 1; } }
         audio_voice(ok ? VOICE_FINISHED : VOICE_NAH);
     }
-    if (HELD(PAD_CROSS) && build_tool == 2 && cash >= 10 && *cell != ' ' && *world_floor_cell(L, build_x, build_y) != build_fl) { *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; }
-    if (HELD(PAD_CROSS) && build_tool == 2 && L > 0 && *cell == ' ' && cash >= 10 && floor_supported(L, build_x, build_y)) { *cell = '.'; *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; }
+    if (HELD(PAD_CROSS) && build_tool == BT_FLOOR && cash >= 10 && *cell != ' ' && *world_floor_cell(L, build_x, build_y) != build_fl) { *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; }
+    if (HELD(PAD_CROSS) && build_tool == BT_FLOOR && L > 0 && *cell == ' ' && cash >= 10 && floor_supported(L, build_x, build_y)) { *cell = '.'; *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; }
     if (PRESSED(PAD_SQUARE) && !occupied) {
         if (*cell != '.' && *cell != 'P' && *cell != ' ') { int back = items_is_item(*cell) ? items_cost(*cell) * 3 / 4 : (*cell == 'W' ? 25 : 0);
             if (*cell == '|' && L < NUP) { char *up = world_cell(L + 1, build_x, build_y); if (*up == ' ' && floor_supported(L + 1, build_x, build_y)) *up = '.'; }   // close the stairwell again
@@ -1557,54 +1774,73 @@ static void build_update(void) {
 }
 static void build_draw(void) {
     {   // looking at the roof: lift the camera above the ridge and pull back, so the whole roof is in view
-        int roofv = build_tool == 4 || build_peek, keep = cam_dist;
+        int roofv = build_tool == BT_ROOF || build_peek, keep = cam_dist;
         if (roofv) cam_dist = MAX(cam_dist, 2600);
         camera_apply(build_x * TILE + TILE / 2, -100 - build_lvl * WALL_FULL - (roofv ? WALL_FULL + 300 : 0), -(build_y * TILE + TILE / 2));
         cam_dist = keep;
     }
     gfx_set_clear(20 * 8, 26 * 8, 31 * 8);
     gfx_set_ambient(100, 84);
-    world_view_lvl = build_lvl; world_roof_show = build_tool == 4 || build_peek;
-    world_draw(build_x, build_y, frame, build_tool != 4 && !build_peek);
+    world_view_lvl = build_lvl; world_roof_show = build_tool == BT_ROOF || build_peek;
+    world_draw(build_x, build_y, frame, build_tool != BT_ROOF && !build_peek);
     draw_sims();
     // the cursor: a frame around the tile, and a ghost of the item
     gfx_set_identity();
     { int x0 = build_x * TILE, z1 = -build_y * TILE, yy = -4 - build_lvl * WALL_FULL; SVECTOR a, b, c, d;
       setVector(&a, x0, yy, z1); setVector(&b, x0 + TILE, yy, z1); setVector(&c, x0, yy, z1 - TILE); setVector(&d, x0 + TILE, yy, z1 - TILE);
-      int pulse = 160 + (isin((frame * 120) & 4095) >> 6);
-      gfx_quad_f(&a, &b, &c, &d, pulse, pulse, 40, 0); }
-    if (build_tool == 0 && world_at_l(build_lvl, build_x, build_y) == '.') {
+      int pulse = 160 + (isin((frame * 120) & 4095) >> 6), ok = build_ok(build_x, build_y);
+      gfx_quad_f(&a, &b, &c, &d, ok ? pulse : 230, ok ? pulse : 70, ok ? 40 : 60, 0); }   // (red: not your lot)
+    if (build_tool == BT_ROOM && room_on) {   // the room to be: its outline
+        int x0, y0, x1, y1, good = room_rect(&x0, &y0, &x1, &y1), yy = -6 - build_lvl * WALL_FULL;
+        for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
+            if (x != x0 && x != x1 && y != y0 && y != y1) continue;
+            SVECTOR a, b, c, d; int X = x * TILE, Z = -y * TILE;
+            setVector(&a, X + 24, yy, Z - 24); setVector(&b, X + TILE - 24, yy, Z - 24); setVector(&c, X + 24, yy, Z - TILE + 24); setVector(&d, X + TILE - 24, yy, Z - TILE + 24);
+            gfx_quad_f(&a, &b, &c, &d, good ? 90 : 230, good ? 200 : 80, good ? 255 : 70, 0);
+        }
+    }
+    if (build_tool == BT_BUY && world_at_l(build_lvl, build_x, build_y) == '.') {
         char ch = items_at(build_item);
         world_lvl = build_lvl; world_cam_push(build_lvl);
         items_draw(ch, build_x, build_y, world_item_facing(build_x, build_y), items_along(ch) ? world_along(build_x, build_y, ch) : 0, frame);
         world_cam_pop(); world_lvl = 0;
     }
     {   // the tools as round buttons, the status card, the catalog on the right, the buttons along the foot
-        static const s8 toolIc[NTOOL] = { IC_SOFA, IC_BRICK, IC_TILES, IC_BRUSH, IC_HOUSE };
+        static const s8 toolIc[NTOOL] = { IC_SOFA, IC_ROOM, IC_BRICK, IC_DOOR, IC_TILES, IC_BRUSH, IC_HOUSE };
         char b[64];
         ui_card(4, 4, 190, 52);
-        for (int i = 0; i < NTOOL; i++) { int on = i == build_tool; ui_icon_disc(17 + i * 22, 16, 19, toolIc[i], on ? UI_BLUE : UI_RGB(222, 230, 240), on ? UI_WHITE : UI_BLUE2); }
-        ui_text(126, 8, 1, toolNm[build_tool], UI_BLUE2);
-        sprintf(b, "$%ld", cash); ui_text(126, 19, 1, b, UI_GOODT);
-        sprintf(b, "STOREY %d OF %d", build_lvl + 1, NLEVELS); ui_text(10, 31, 1, b, UI_SOFT);
-        sprintf(b, "AT %d,%d", build_x, build_y); ui_text(188 - ui_tw(1, b), 31, 1, b, UI_SOFT);
-        if (build_tool == 0) sprintf(b, "%s  $%d", items_name(items_at(build_item)), items_cost(items_at(build_item)));
-        else if (build_tool == 1) sprintf(b, "WALL $50  (%s)", world_wall_name(build_wp));
-        else if (build_tool == 2) sprintf(b, "%s  $10 A TILE", world_floor_name(build_fl));
-        else if (build_tool == 3) sprintf(b, "%s", world_wall_name(build_wp));
+        for (int i = 0; i < NTOOL; i++) { int on = i == build_tool; ui_icon_disc(15 + i * 20, 15, 18, toolIc[i], on ? UI_BLUE : UI_RGB(222, 230, 240), on ? UI_WHITE : UI_BLUE2); }
+        sprintf(b, "$%ld", cash); ui_text(188 - ui_tw(1, b), 10, 1, b, UI_GOODT);
+        ui_text(10, 27, 1, toolNm[build_tool], UI_BLUE2);
+        sprintf(b, "STOREY %d OF %d", build_lvl + 1, NLEVELS); ui_text(188 - ui_tw(1, b), 27, 1, b, UI_SOFT);
+        if (build_msg_t > 0) strcpy(b, build_msg);
+        else if (!build_ok(build_x, build_y)) strcpy(b, home_city ? "NOT YOUR LOT" : "BUY A HOME TO BUILD HERE");
+        else if (build_tool == BT_BUY) sprintf(b, "%s  $%d", items_name(items_at(build_item)), items_cost(items_at(build_item)));
+        else if (build_tool == BT_ROOM) { int x0, y0, x1, y1;
+            if (room_on && room_rect(&x0, &y0, &x1, &y1)) sprintf(b, "%d X %d ROOM: $%d", x1 - x0 + 1, y1 - y0 + 1, room_cost(build_lvl, x0, y0, x1, y1));
+            else strcpy(b, room_on ? "MOVE TO THE OTHER CORNER" : "X ON A CORNER"); }
+        else if (build_tool == BT_WALL) sprintf(b, "WALL $50  (%s)", world_wall_name(build_wp));
+        else if (build_tool == BT_DOOR) sprintf(b, "%s $%d: X ON A WALL", openNm[build_open & 3], openCost[build_open & 3]);
+        else if (build_tool == BT_FLOOR) sprintf(b, "%s  $10 A TILE", world_floor_name(build_fl));
+        else if (build_tool == BT_PAINT) sprintf(b, "%s", world_wall_name(build_wp));
         else sprintf(b, "%s ROOF, %s PITCH", world_roof_style_name(world_roof_style), world_roof_pitch_name(world_roof_pitch));
-        ui_text(10, 42, 1, b, UI_INK);
-        if (build_tool == 0) draw_catalog();
-        else if (build_tool == 1) draw_pick_list("WALLS  $50", NWALLS, build_wp, world_wall_name);
-        else if (build_tool == 2) draw_pick_list("FLOORS  $10", NFLOORS, build_fl, world_floor_name);
-        else if (build_tool == 3) draw_pick_list("WALLPAPER", NWALLS, build_wp, world_wall_name);
+        ui_text(10, 40, 1, b, build_msg_t > 0 || !build_ok(build_x, build_y) ? UI_BADT : UI_INK);
+        if (build_tool == BT_BUY) draw_catalog();
+        else if (build_tool == BT_ROOM) { draw_pick_list("ROOM WALLS", NWALLS, build_wp, world_wall_name);
+            int top = ui_window_s(196, 126, 120, 30, "ROOM FLOOR (R3)"); ui_text(204, top + 2, 1, world_floor_name(build_fl), UI_INK); }
+        else if (build_tool == BT_WALL) draw_pick_list("WALLS  $50", NWALLS, build_wp, world_wall_name);
+        else if (build_tool == BT_DOOR) draw_pick_list("DOORS, WINDOWS", 4, build_open & 3, open_name);
+        else if (build_tool == BT_FLOOR) draw_pick_list("FLOORS  $10", NFLOORS, build_fl, world_floor_name);
+        else if (build_tool == BT_PAINT) draw_pick_list("WALLPAPER", NWALLS, build_wp, world_wall_name);
         else { int top = ui_window_s(196, 4, 120, 62, "THE ROOF");
                ui_text(204, top + 2, 1, world_roof_style_name(world_roof_style), UI_INK);
                ui_text(204, top + 14, 1, world_roof_pitch_name(world_roof_pitch), UI_SOFT);
                ui_text(204, top + 26, 1, world_roof_col_name(world_roof_col), UI_SOFT); }
         ui_card(4, 206, 312, 30);
-        if (build_tool == 4) { ui_hints(160, 209, "X STYLE|SQ PITCH|L1 R1 COLOUR|SEL TOOL", 1); ui_hints(160, 221, "L2 R2 STOREY|O DONE", 1); }
-        else { ui_hints(160, 209, build_tool == 0 ? "L1 R1 PICK|R3 NEXT TAB|X BUY|SQ SELL" : "L1 R1 PICK|X PLACE|SQ ERASE", 1);
+        if (build_tool == BT_ROOF) { ui_hints(160, 209, "X STYLE|SQ PITCH|L1 R1 COLOUR|SEL TOOL", 1); ui_hints(160, 221, "L2 R2 STOREY|O DONE", 1); }
+        else if (build_tool == BT_ROOM) { ui_hints(160, 209, room_on ? "X BUILD IT|O LET GO|L1 R1 WALLS|R3 FLOOR" : "X FIRST CORNER|L1 R1 WALLS|R3 FLOOR", 1);
+               ui_hints(160, 221, "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
+        else { ui_hints(160, 209, build_tool == BT_BUY ? "L1 R1 PICK|R3 NEXT TAB|X BUY|SQ SELL" : build_tool == BT_DOOR ? "L1 R1 PICK|X PUT IN|SQ TAKE OUT" : "L1 R1 PICK|X PLACE|SQ ERASE", 1);
                ui_hints(160, 221, "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
     }
 }
@@ -1657,7 +1893,7 @@ static void juke_draw(void) {   // the song playing on its own card, every song 
 
 // ---- help ----
 typedef struct { s8 ic; const char *t; } HelpTip;
-#define NHELP 4
+#define NHELP 5
 static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
     { "HOW TO PLAY", { { IC_PLAY, "MOVE WITH THE STICK OR THE D-PAD. SQUARE RUNS." },
         { IC_FOOD, "X USES THE THING IN FRONT OF YOU: THE FRIDGE, THE BED, THE SHOWER, THE SOFA, THE TV." },
@@ -1678,7 +1914,12 @@ static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
         { IC_CAKE, "A BIRTHDAY? BAKE A CAKE AT THE FRIDGE OR STOVE, THEN BLOW CANDLES." },
         { IC_HEART, "TWO GROWN-UPS WHO GET ON: X ON ONE, START A FAMILY. OR ADOPT BY PHONE." },
         { IC_BABY, "A BABY CRIES WHEN IT NEEDS YOU: FEED, CHANGE, PLAY, CUDDLE. BUY A CRIB." },
-        { IC_BOOK, "SCHOOL IS 8 AM TO 3 PM, MON - FRI. HOMEWORK AT A DESK OR SHELF." } } } };
+        { IC_BOOK, "SCHOOL IS 8 AM TO 3 PM, MON - FRI. HOMEWORK AT A DESK OR SHELF." } } },
+    { "A HOME OF YOUR OWN", { { IC_HOUSE, "START, HOMES: HOUSES AND EMPTY LOTS FOR SALE NEAR YOU. X BUYS ONE." },
+        { IC_CAR, "THE FAMILY MOVES IN BY TAXI. A HOUSE COMES FURNISHED FOR THEM." },
+        { IC_ROOM, "BUILD MODE, ROOM: X ON ONE CORNER, X ON THE OTHER: WALLS AND A FLOOR." },
+        { IC_DOOR, "DOORS, WINDOWS: X ON A WALL. L2 R2 CHANGE THE STOREY TO BUILD UP." },
+        { IC_STAR, "A FOR SALE SIGN: X ON IT TO BUY THAT HOME. TRAVEL TAKES YOU HOME." } } } };
 static void help_update(void) {
     if (PRESSED(PAD_R1) || PRESSED(PAD_CROSS)) help_page = (help_page + 1) % NHELP;
     if (PRESSED(PAD_L1)) help_page = (help_page + NHELP - 1) % NHELP;
@@ -1796,7 +2037,7 @@ static char boot_log[BOOT_KEEP][20]; static int boot_n;
 static void boot_frame(void) {
 #ifdef BOOT_TRACE
     char b[32];
-    int free_k = (int)((0x801FFFF0u - 0x10000u - (u32)_end) / 1024);   // (the last 64 KB below the stack top is left for the stack itself)
+    int free_k = (int)((0x801FFFF0u - 0x7000u - (u32)_end) / 1024);   // (24 KB under the stack top for the stack, which reaches 15 KB in the tests (stack_paint), and the SDK's 4 KB heap past _end)
     sprintf(b, "RAM FREE %dK", free_k);
     gfx_text(8, 228, 1, b, free_k < 32 ? 255 : 140, free_k < 32 ? 60 : 140, free_k < 32 ? 60 : 150);
     int first = boot_n > BOOT_SHOW ? boot_n - BOOT_SHOW : 0;
@@ -1812,7 +2053,12 @@ void boot(const char *stage) {
     loading_draw(stage, boot_n * 100 / BOOT_STEPS); boot_frame();
 }
 
+__attribute__((noinline)) static void stack_paint(void) {   // the free RAM under the stack, marked: how deep the stack ever reaches can be read off later
+    volatile u32 here; u32 *p = (u32 *)(((u32)_end + 15) & ~15u), *q = (u32 *)(((u32)&here - 512) & ~15u);
+    while (p < q) *p++ = 0x5AC0FFEEu;
+}
 int main(void) {
+    stack_paint();
     mem8_init();                                     // (8 MB of RAM? one disc for both)
     gfx_init();
     atlas_init();
@@ -1848,6 +2094,9 @@ int main(void) {
 #ifdef AUTO_GROW
         grow_tick();
 #endif
+#ifdef AUTO_HOME
+        home_tick();
+#endif
         ui_light = 0;
         switch (state) {
             case ST_TITLE: title_update(); title_draw(); break;
@@ -1872,6 +2121,7 @@ int main(void) {
             case ST_OPTS: opts_update(); opts_draw(); break;
             case ST_JOBS: jobs_update(); jobs_draw(); break;
             case ST_OVER: over_update(); over_draw(); break;
+            case ST_HOMES: homes_update(); homes_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
         if (state == ST_LIFE) { avg_cpu16 += t_cpu - (avg_cpu16 >> 4); avg_world16 += t_world - (avg_world16 >> 4);   // (the test readouts)
