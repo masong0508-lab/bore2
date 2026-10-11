@@ -15,7 +15,9 @@ static int  db_active = 0;
 static int  alloc_reserve;        // bytes of the packet buffer gfx_alloc keeps back (gfx_set_reserve)
 char *gfx_pk_next, *gfx_pk_end;   // the packet cursor and its limit (the end, less the reserve): gfx_fast.h allocates inline
 u32 *gfx_ot_cur;                   // this frame's ordering table
-int gfx_zbias, gfx_fog_on, gfx_zbase, gfx_ot_max = OT_LEN - 1;
+int gfx_zbias, gfx_fog_on, gfx_zbase, gfx_ot_max = OT_NEAR - 1;
+int gfx_min_vsyncs = 1;   // (the options menu: 2 a steady 30 FPS, 3 a steady 20)
+void gfx_set_dither(int on) { db[0].draw.dtd = db[1].draw.dtd = (u8)(on ? 1 : 0); }
 #define db_next gfx_pk_next
 static RECT screen_clip;
 static u32 *ui_head, *ui_tail;    // the 2D overlay chain, drawn after everything in call order
@@ -118,7 +120,8 @@ void gfx_flip(void) {
     gfx_last_overflow = gfx_overflow; gfx_overflow = 0;
     for (int i = 0; i < 8; i++) { gfx_prof_last[i] = gfx_prof[i]; gfx_prof[i] = 0; gfx_profn_last[i] = gfx_profn[i]; gfx_profn[i] = 0; }
     { int h0 = VSync(1); gfx_last_cpu = h0; DrawSync(0); gfx_last_wait = VSync(1) - h0; }   // how long the GPU was still busy with the last frame
-    VSync(0);
+    { static int flip_vb; while (gfx_min_vsyncs > 1 && VSync(-1) - flip_vb < gfx_min_vsyncs - 1) VSync(0);   // (a steady 30 or 20: never sooner)
+      VSync(0); flip_vb = VSync(-1); }
     db_active ^= 1;
     db_next = db[db_active].p;
     alloc_reserve = 0; gfx_pk_end = db[db_active].p + PACKET_LEN - 64; gfx_ot_cur = db[db_active].ot;
@@ -531,7 +534,9 @@ void gfx_shadow_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const
     q->tpage = shadow_tpage; q->clut = 0;
     addPrim(gfx_ot() + OT_SHADOW, q);
 }
+int gfx_noshadow;   // (the options menu: no soft shadows at all)
 void gfx_shadow(const VECTOR *pos, int radius) {
+    if (gfx_noshadow) return;
     if (!shadow_ready) shadow_init();
     gfx_set_object(pos, 0);
     SVECTOR a, b, c, d; int r = radius + radius / 3;

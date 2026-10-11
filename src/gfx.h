@@ -2,14 +2,19 @@
 #pragma once
 #include "common.h"
 
-#define OT_LEN     4096
+#define OT_NEAR    4096           // the near table: view-space z >> OT_SHIFT (z up to 8192 units)
+#define OT_LEN     (OT_NEAR + 256) // then the far world (far.c), back to front, and the ground and the sky behind it all
+#define OT_SKY        (OT_LEN - 1)
+#define OT_GROUND_FAR (OT_LEN - 2)
+#define OT_GROUND_WIN (OT_LEN - 3)
+#define OT_FAR_LAST   (OT_LEN - 4)
 #define OT_SHIFT   1              // view-space z >> OT_SHIFT = OT index (z up to 8192 units)
 #define PACKET_LEN (96*1024)    // per buffer. The busiest frames measured (a party; SAN BOREAS zoomed right out over towers) use under 58 KB
 #define RESERVE_PEOPLE (28*1024)   // kept back from the world so the people always fit (a party peaks near 35 KB with the HUD)
 #define RESERVE_UI     (12*1024)   // kept back from the people so bubbles, text and the HUD always fit
 #define Z_NEAR     40
-#define OT_FLOOR   (OT_LEN - 2)   // the floor: behind everything but the sky
-#define OT_SHADOW  (OT_LEN - 3)   // shadows: just on top of the floor
+#define OT_FLOOR   (OT_NEAR - 2)  // the floor: behind everything near (the far world and the sky are further still)
+#define OT_SHADOW  (OT_NEAR - 3)  // shadows: just on top of the floor
 extern int gfx_floor_pass;
 
 void  gfx_init(void);
@@ -80,6 +85,8 @@ void gfx_textc(int cx, int y, int scale, const char *s, int r, int g, int b);   
 void gfx_sprite(int x, int y, int w, int h, u16 tpage, u16 clut, int u, int v, int tw, int th, int shade, int semi);   // a 2D textured quad
 void gfx_sprite_blend(int x, int y, int w, int h, u16 tpage, u16 clut, int u, int v, int tw, int th, int r, int g, int b);   // semi-transparent, coloured
 void gfx_set_clear(int r, int g, int b);
+extern int gfx_noshadow, gfx_min_vsyncs;   // (options: no soft shadows; the fewest vblanks a frame takes)
+void gfx_set_dither(int on);
 void gfx_sky(u32 top, u32 bottom);           // a full-screen gradient behind everything (0xBBGGRR)
 void gfx_shadow(const VECTOR *pos, int radius);
 void gfx_shadow_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d);   // a soft shadow over a flat quad   // a soft dark blob on the floor under something

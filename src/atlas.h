@@ -15,3 +15,4 @@ extern int atlas_fails;                                     // textures that did
 u16   *atlas_scratch(void);                                   // 128x128 pixels of scratch (free between uploads: the world map is built in it)
 void   atlas_vram_load(int x, int y, int w, int h, const u16 *pixels);   // pixels straight into VRAM (w*h even)
 int    atlas_used(void);                                    // pixels used (for the debug readout)
+TexRef atlas_add_aligned(int w, int h, int a, const u16 *pixels);   // placed at u, v multiples of a (for a repeating texture window)

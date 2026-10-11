@@ -38,7 +38,8 @@ int  bm_nset(void);
 int  bm_nseg(void);                   // the highways (for the map)
 void bm_seg(int i, int *c, int *a, int *b, int *vert);
 const Settle *bm_set(int i);
-int  bm_capital(void);                // BORE CITY's index
+int  bm_capital(void);
+int  bm_set_at(int bx, int by);       // the town that block is in (255: open country)                // BORE CITY's index
 const char *bm_street(int set, int bx, int by, int unit, char *out);   // "214 MAPLE ST"
 const char *bm_place_name(int lot, u32 h, char *out);   // "BOREMART", "THE SLEEPY INN"
 const char *bm_state_name(void);      // "SAN BOREAS"

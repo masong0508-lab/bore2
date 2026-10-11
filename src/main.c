@@ -16,6 +16,7 @@
 #include "mem8.h"
 #include "bigmap.h"
 #include "pop.h"
+#include "far.h"
 
 // ---- input ----
 static u8 pad_buf[2][34];
@@ -76,7 +77,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int create_tab, create_row, create_from, create_turn;
@@ -195,9 +196,14 @@ static void start_life(void) {
     loading("MAKING A NEW LIFE", 20);
     {   // a new world: SAN BOREAS from fresh dice (the land, the towns, every building and room), and its 874 households
         u32 seed = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ ((u32)frame * 2246822519u); if (!seed) seed = 1;
+#if defined(AUTO_CITY) || defined(AUTO_PARTY)
+        seed = 0x5EED1234u;                                    // (test builds: the same world every run, so runs compare)
+#endif
         bm_new(seed); world_new_seed(seed);
         loading("PEOPLING SAN BOREAS", 45);
         u32 sb; void *sc = crowd_scratch(&sb); pop_new(seed, sc, sb);
+        loading("RAISING THE SKYLINE", 60);
+        far_new_world();
         loading("MAKING A NEW LIFE", 70);
     }
     world_reset_all();
@@ -244,7 +250,8 @@ static void draw_sims(void) {
             PROF_BEGIN();
             int edx = s->x - cam.eye.vx, edy = -110 - s->lvl * WALL_FULL - cam.eye.vy, edz = s->z - cam.eye.vz;
             // further off: the same full model as a sprite, rendered again when it has changed enough (one a frame for the household)
-            int far = i != player && (fdx * fdx + fdz * fdz > 3 * TILE * 3 * TILE || edx * edx + edy * edy + edz * edz > 2100 * 2100);
+            // (the household, not you: a sprite unless it would stand over 90 px tall, where a sprite cell would be too big)
+            int far = i != player && (fdx * fdx + fdz * fdz > 3 * TILE * 3 * TILE || edx * edx + edy * edy + edz * edz > 1100 * 1100);
             // (a render is a whole model drawn: only when the last frame left the time for one, or every 6th frame anyway)
             static int hh_fr, hh_used, hh_skip; if (hh_fr != frame) { hh_fr = frame; hh_used = 0; hh_skip++; }
             int drawn = 0;
@@ -394,15 +401,18 @@ static void life_update(int steps) {
     {   // SAN BOREAS: the map window follows you a block at a time (everything slides with it)
         int dtx, dty;
 #ifdef AUTO_CITY
-        { static int fr_; ++fr_;
+        { static int fr_, done_; fr_ += steps;   // (test builds: by the clock, 60 a second, so runs at any frame rate line up)
 #ifdef AUTO_TOWER
-          if (fr_ == 60) { const Settle *cp = bm_set(bm_capital()); taxi_to_block(cp->x + AUTO_TOWER, cp->y + 2, 8, 1, "TEST"); }
-          if (fr_ > 60) { cam_pitch = 760; cam_dist = 3600; cam_yaw = 2048 + 300; }
-          if (fr_ > 90 && fr_ < 400 && s->action == ACT_NONE) s->x += 6;
+          if (fr_ >= 120 && !(done_ & 1)) { done_ |= 1; const Settle *cp = bm_set(bm_capital()); taxi_to_block(cp->x + AUTO_TOWER, cp->y + 2, 8, 1, "TEST"); }
+          if (fr_ > 120) { cam_pitch = 760; cam_dist = 3600; cam_yaw = 2048 + 300; }
+          if (fr_ > 180 && fr_ < 800 && s->action == ACT_NONE) s->x += 3 * steps;
 #else
-          if (fr_ > 120 && s->action == ACT_NONE) s->x += 22;   // (test builds: stroll east along the street)
-          if (fr_ > 1000) { cam_pitch = 700; cam_dist = 4200; cam_yaw = 2048 + 500; }   // (then look over the roofs)
-          if (fr_ == 200) { extern int prof_on; prof_on = 1; }
+          if (fr_ > 240 && s->action == ACT_NONE) s->x += 11 * steps;   // (stroll east along the street)
+          if (fr_ > 2000) { cam_pitch = 700; cam_dist = 4200; cam_yaw = 2048 + 500; }   // (then look over the roofs)
+#ifdef AUTO_LOW
+          if (fr_ > 600) { cam_pitch = AUTO_LOW; cam_dist = 2200; cam_yaw = (cam_yaw + 3 * steps) & 4095; }   // (a low camera turning round: the horizon)
+#endif
+          if (fr_ >= 400 && !(done_ & 2)) { done_ |= 2; extern int prof_on; prof_on = 1; }
 #endif
         }
 #endif
@@ -431,7 +441,10 @@ static void life_draw(void) {
         int br = (215 * day) >> 8, bg = (205 * day) >> 8, bb = (190 * day) >> 8;
         if (world_zone == ZONE_TOWN) { tr = (110 * day) >> 8; tg = (140 * day) >> 8; tb = (200 * day) >> 8; br = (240 * day) >> 8; bg = (190 * day) >> 8; bb = (120 * day) >> 8; }
         if (world_zone == ZONE_ISLAND) { tr = (40 * day) >> 8; tg = (140 * day) >> 8; tb = (230 * day) >> 8; br = (200 * day) >> 8; bg = (230 * day) >> 8; bb = (240 * day) >> 8; }
-        gfx_sky((u32)tr | ((u32)tg << 8) | ((u32)tb << 16), (u32)br | ((u32)bg << 8) | ((u32)bb << 16));
+        u32 top = (u32)tr | ((u32)tg << 8) | ((u32)tb << 16), hor = (u32)br | ((u32)bg << 8) | ((u32)bb << 16);
+        { extern u32 world_horizon; extern int world_far_range; world_horizon = hor; world_far_range = (world_zone == ZONE_CITY && far_view) ? 60 : 34; }
+        if (world_zone == ZONE_CITY && far_view) far_sky(top, hor);   // the sky meets the land at the real horizon
+        else gfx_sky(top, hor);
     }
     gfx_prim_count = 0;
     { int t0 = hb_now(); world_draw(sim_tile_x(s), sim_tile_y(s), frame, 1); t_world = hb_now() - t0;
@@ -446,7 +459,7 @@ static void travel_go(int z) {
     { char b[40]; sprintf(b, "TRAVELLING TO %s", world_zone_name(z)); loading(b, 50); }
     world_switch(z);
     int px, py;
-    if (z == ZONE_CITY) world_arrival(bm_capital(), &px, &py);
+    if (z == ZONE_CITY) { world_arrival(bm_capital(), &px, &py); far_reset(); }
     else { world_find('P', &px, &py); if (px < 0) { px = 20; py = 20; } }
     for (int i = 0; i < nsims; i++) {
         Sim *sm = &sims[i];
@@ -501,6 +514,7 @@ static void taxi_to_block(int bx, int by, int tx, int ty, const char *where) {  
     loading("TAKING A TAXI", 60);
     if (world_zone != ZONE_CITY) world_switch(ZONE_CITY);
     world_open_at(bx, by);
+    loading("TAKING A TAXI", 85); far_reset();                  // the land round you, out to the horizon
     int px = (bx - world_wbx) * BM_BLK + (tx >= 0 ? tx : 8), py = (by - world_wby) * BM_BLK + (ty >= 0 ? ty : 1);
     put_household(px, py);
     citizens_enter(ZONE_CITY);
@@ -653,8 +667,81 @@ static void dir_draw(void) {
     gfx_text(10, 220, 1, "X: TAKE A TAXI TO THEIR HOUSE ($20)   O: BACK", DIM);
 }
 
-static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "THE STORY", "TRAVEL", "MAP AND TAXI", "THE PEOPLE", "CREATE A BORE", "ADD A BORE", "THROW A PARTY", "BUILD MODE", "JUKEBOX", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
-#define NPAUSE 14
+// ---- OPTIONS: the picture and the speed, as many knobs as a PC game, with presets; the game runs behind as you change them ----
+static void title_draw(void);
+enum { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_CROWD, O_LIVE, O_SPR, O_SHADOW, O_AO, O_WALLS, O_FPSCAP, O_DITHER, O_CAM, O_SHOWFPS, O_N };
+static const char *const optNm[O_N] = { "PRESET", "VIEW DISTANCE", "FULL DETAIL", "FAR BUILDINGS", "FAR TREES", "HAZE", "CROWD SIZE",
+    "PEOPLE IN FULL 3D", "PEOPLE SPRITES", "SHADOWS", "FLOOR SHADING", "WALL LIGHT", "FRAME RATE", "DITHERING", "CAMERA", "SHOW FPS" };
+static const char *const optV[O_N][6] = {
+    { "CUSTOM", "LOW", "MEDIUM", "HIGH", "ULTRA" }, { "50 M", "250 M", "500 M", "1 KM", "1.5 KM", "2 KM" },
+    { "10 M", "12 M", "15 M", "17 M" }, { "TALL ONLY", "ALL", "WITH WINDOWS" }, { "OFF", "100 M", "200 M", "350 M" },
+    { "OFF", "LIGHT", "THICK" }, { "16", "32", "48", "64" }, { "1", "2", "4", "6" }, { "SLOW", "NORMAL", "FAST" },
+    { "OFF", "PEOPLE", "EVERYTHING" }, { "OFF", "ON" }, { "FLAT", "SOFT" }, { "AS FAST AS IT CAN", "STEADY 30", "STEADY 20" },
+    { "OFF", "ON" }, { "HIGH (SIMS)", "LOW (SEE FAR)" }, { "OFF", "ON" } };
+static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 2, 2 };
+static const char *const optBlurb[O_N] = {
+    "LOW, MEDIUM, HIGH OR ULTRA SETS THEM ALL", "HOW FAR SAN BOREAS GOES BEFORE THE SKY", "WHERE ROOMS, WALLS AND THINGS ARE DRAWN IN FULL",
+    "THE TOWNS PAST THE MAP: TALL ONES, ALL, OR WINDOWS TOO", "TREES PAST THE NEAR DETAIL, OUT TO", "THE AIR BETWEEN YOU AND THE HORIZON",
+    "HOW MANY PEOPLE CAN BE DRAWN AT ONCE", "THE NEAREST, DRAWN AS REAL 3D (THE REST ARE SPRITES)", "HOW OFTEN THE CROWD'S SPRITES ARE REDRAWN",
+    "SOFT SHADOWS UNDER PEOPLE AND THINGS", "FLOORS DARKEN WHERE THEY MEET WALLS", "WALLS LIGHTER UP TOP, DARKER AT THE FOOT",
+    "A STEADY RATE FEELS SMOOTHER THAN A JUMPY ONE", "THE PLAYSTATION'S SMOOTHING OF COLOURS", "LOW TO SEE THE SKYLINE (THE RIGHT STICK TILTS TOO)",
+    "THE FRAME RATE IN A CORNER (L3 IN PLAY)" };
+static const u8 presets[4][O_N] = {   // LOW, MEDIUM, HIGH, ULTRA (the graphics knobs; the frame rate, dithering, camera and the counter are left be)
+    { 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0 }, { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 },
+    { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1 }, { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 } };
+#define O_PRESET_LAST O_WALLS                 // (presets set O_VIEW .. O_WALLS)
+static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 0, 1, 0, 0 };   // HIGH: a kilometre of view
+static int opt_sel, opt_back;
+static void opts_apply(void) {
+    extern int getenv_noshadow, dbg_noao, dbg_nograd, world_detail_r, cit_live_max, cit_maxdraw, cit_sprite_rate;
+    far_view = opt[O_VIEW]; far_detail = opt[O_FARB]; far_trees = opt[O_TREES]; far_haze = opt[O_HAZE];
+    static const u8 rr[4] = { 8, 10, 12, 14 }, cr[4] = { 16, 32, 48, 64 }, lv[4] = { 1, 2, 4, 6 };
+    world_detail_r = rr[opt[O_DETAIL] & 3]; cit_maxdraw = cr[opt[O_CROWD] & 3]; cit_live_max = lv[opt[O_LIVE] & 3]; cit_sprite_rate = opt[O_SPR];
+    gfx_noshadow = opt[O_SHADOW] == 0; getenv_noshadow = opt[O_SHADOW] < 2;
+    dbg_noao = !opt[O_AO]; dbg_nograd = !opt[O_WALLS];
+    gfx_min_vsyncs = opt[O_FPSCAP] == 0 ? 1 : opt[O_FPSCAP] == 1 ? 2 : 3;
+    gfx_set_dither(opt[O_DITHER]);
+    show_fps = opt[O_SHOWFPS];
+}
+static void opts_open(int back) { opt_back = back; opt_sel = 0; state = ST_OPTS; }
+static void opts_update(void) {
+    if (PRESSED(PAD_UP)) opt_sel = (opt_sel + O_N - 1) % O_N;
+    if (PRESSED(PAD_DOWN)) opt_sel = (opt_sel + 1) % O_N;
+    int d = PRESSED(PAD_RIGHT) || PRESSED(PAD_CROSS) ? 1 : PRESSED(PAD_LEFT) ? -1 : 0;
+    if (d) {
+        int i = opt_sel, n = optN[i];
+        if (i == O_PRESET) {
+            int p = opt[O_PRESET] + d; if (p < 1) p = 4; if (p > 4) p = 1;       // (CUSTOM is not picked: it is what you get by hand)
+            opt[O_PRESET] = (u8)p; for (int k = O_VIEW; k <= O_PRESET_LAST; k++) opt[k] = presets[p - 1][k - 1];
+        } else {
+            opt[i] = (u8)((opt[i] + d + n) % n);
+            if (i <= O_PRESET_LAST) opt[O_PRESET] = 0;
+            if (i == O_CAM) cam_pitch = opt[O_CAM] ? 250 : 640;
+        }
+        opts_apply(); audio_voice(VOICE_YAHOO);
+    }
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_TRIANGLE)) state = opt_back;
+}
+static void opts_draw(void) {
+    if (opt_back == ST_MENU) title_draw(); else life_draw();
+    draw_panel(6, 6, 236, 228);
+    gfx_text(14, 10, 2, "OPTIONS", GOLD);
+    { char b[40]; sprintf(b, "%d FPS%s", fps_val, ram8 ? "  8 MB" : ""); gfx_text(238 - gfx_text_w(1, b) - 4, 14, 1, b, 150, 220, 150); }
+    for (int i = 0; i < O_N; i++) {
+        int y = 30 + i * 11, sel = i == opt_sel;
+        if (sel) { gfx_rect(10, y - 2, 228, 11, 28, 48, 62, 0); gfx_rect(10, y - 2, 1, 11, 255, 200, 40, 0); }
+        gfx_text(16, y, 1, optNm[i], sel ? 255 : 175, sel ? 255 : 175, sel ? 255 : 185);
+        const char *v = optV[i][opt[i] % optN[i]];
+        gfx_text(232 - gfx_text_w(1, v), y, 1, v, sel ? 255 : 200, sel ? 220 : 190, sel ? 80 : 140);
+        if (sel) { gfx_text(124, y, 1, "<", GOLD); }
+    }
+    gfx_rect(10, 208, 228, 1, 60, 60, 70, 0);
+    gfx_text(14, 212, 1, optBlurb[opt_sel], DIM);
+    gfx_text(14, 222, 1, "LEFT RIGHT: CHANGE   O: BACK", 120, 120, 130);
+}
+
+static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "THE STORY", "TRAVEL", "MAP AND TAXI", "THE PEOPLE", "CREATE A BORE", "ADD A BORE", "THROW A PARTY", "BUILD MODE", "JUKEBOX", "OPTIONS", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
+#define NPAUSE 15
 #ifdef AUTO_PARTY
 int ap_frames, ap_vs, ap_cpu;
 #endif
@@ -687,17 +774,18 @@ static void pause_update(void) {
             case 8: throw_party(); state = ST_LIFE; break;
             case 9: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); state = ST_BUILD; break;
             case 10: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
-            case 11: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 12: life_started = 0; start_life(); state = ST_LIFE; break;
-            case 13: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_default(&title_bore); look_random(&title_bore); break;
+            case 11: opts_open(ST_PAUSE); break;
+            case 12: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
+            case 13: life_started = 0; start_life(); state = ST_LIFE; break;
+            case 14: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_default(&title_bore); look_random(&title_bore); break;
         }
     }
 }
 static void pause_draw(void) {
     life_draw();
-    draw_panel(88, 22, 144, 184);
-    gfx_textc(160, 26, 2, "PAUSED", GOLD);
-    for (int i = 0; i < NPAUSE; i++) menu_row(94, 46 + i * 11, 132, pauseNm[i], i == menu_sel);
+    draw_panel(88, 18, 144, 200);
+    gfx_textc(160, 22, 2, "PAUSED", GOLD);
+    for (int i = 0; i < NPAUSE; i++) menu_row(94, 42 + i * 11, 132, pauseNm[i], i == menu_sel);
 }
 
 // ---- the pie menu (Sims 1 & 2): the choices round a circle, the d-pad points at one ----
@@ -1238,28 +1326,29 @@ static void title_draw(void) {
     gfx_textc(160, 200, 1, "THE VOXEL LIFE, NOW IN FULL 3D", 180, 200, 255);
     if ((title_t / 20) & 1) gfx_textc(160, 222, 1, "PRESS START", WHITE);
 }
-static const char *const menuNm[] = { "STORY MODE", "CREATE A BORE", "JUKEBOX", "HOW TO PLAY" };
-static const char *const menuBlurb[] = { "HOME, THE ISLAND, THE TOWN", "SCULPT YOUR BORE", "ALL 33 SONGS", "CONTROLS AND TIPS" };
+static const char *const menuNm[] = { "STORY MODE", "CREATE A BORE", "JUKEBOX", "OPTIONS", "HOW TO PLAY" };
+static const char *const menuBlurb[] = { "HOME, THE ISLAND, THE TOWN", "SCULPT YOUR BORE", "ALL 33 SONGS", "PICTURE AND SPEED", "CONTROLS AND TIPS" };
 static void menu_update(void) {
     title_t++;
-    if (PRESSED(PAD_UP)) menu_sel = (menu_sel + 3) % 4;
-    if (PRESSED(PAD_DOWN)) menu_sel = (menu_sel + 1) % 4;
+    if (PRESSED(PAD_UP)) menu_sel = (menu_sel + 4) % 5;
+    if (PRESSED(PAD_DOWN)) menu_sel = (menu_sel + 1) % 5;
     if (PRESSED(PAD_CIRCLE)) state = ST_TITLE;
     if (PRESSED(PAD_CROSS) || PRESSED(PAD_START)) {
         switch (menu_sel) {
             case 0: life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0; break;
             case 1: prev_state = ST_MENU; create_tab = 0; create_row = 0; state = ST_CREATE; world_backup(); world_gen_studio(); break;
             case 2: prev_state = ST_MENU; state = ST_JUKEBOX; break;
-            case 3: prev_state = ST_MENU; help_page = 0; state = ST_HELP; break;
+            case 3: opts_open(ST_MENU); break;
+            case 4: prev_state = ST_MENU; help_page = 0; state = ST_HELP; break;
         }
     }
 }
 static void menu_draw(void) {
     title_draw();
-    draw_panel(94, 66, 132, 90);
-    for (int i = 0; i < 4; i++) menu_row(100, 76 + i * 14, 120, menuNm[i], i == menu_sel);
-    gfx_rect(100, 134, 120, 1, 60, 60, 70, 0);
-    gfx_textc(160, 140, 1, menuBlurb[menu_sel], DIM);
+    draw_panel(94, 62, 132, 100);
+    for (int i = 0; i < 5; i++) menu_row(100, 70 + i * 14, 120, menuNm[i], i == menu_sel);
+    gfx_rect(100, 142, 120, 1, 60, 60, 70, 0);
+    gfx_textc(160, 148, 1, menuBlurb[menu_sel], DIM);
 }
 
 // ---- the loading screen: a bar and what is being made, shown before any long job (start-up, a new life, travel) ----
@@ -1313,6 +1402,7 @@ int main(void) {
     boot("> AUDIO+DISC");  audio_init();
     pad_init();                                      // (the pad is read directly in read_pad: see pad.c)
     boot("> CROWD");       crowd_init();             // the voice clips are in the sound chip now: their RAM holds the crowd's models
+    opts_apply();                                    // (the options' starting choices: HIGH)
     look_default(&edit);
     look_default(&title_bore); look_random(&title_bore);
     boot("> HOME LOT");    world_gen();
@@ -1349,6 +1439,7 @@ int main(void) {
             case ST_PANEL: panel_update(); panel_draw(); break;
             case ST_MAP: map_update(); map_draw(); break;
             case ST_DIR: dir_update(); dir_draw(); break;
+            case ST_OPTS: opts_update(); opts_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
         if (state == ST_LIFE) { avg_cpu16 += t_cpu - (avg_cpu16 >> 4); avg_world16 += t_world - (avg_world16 >> 4);   // (the test readouts)

@@ -84,6 +84,19 @@ void atlas_upload(const TexRef *t, const u16 *pixels) {
 
 u16 *atlas_scratch(void) { return upload_buf; }   // 128x128 pixels of scratch (free between uploads)
 void atlas_vram_load(int x, int y, int w, int h, const u16 *pixels) { RECT r; setRECT(&r, x, y, w, h); vram_load(&r, pixels); }
+TexRef atlas_add_aligned(int w, int h, int a, const u16 *pixels) {   // u and v multiples of a (a texture window can repeat it)
+    TexRef t = { 0, 0, 0, 0, 0 };
+    for (int i = 0; i <= 1; i++) {
+        int x = (pg[i].x + a - 1) / a * a, y = pg[i].y;
+        if (y % a || x + w > 256) { y = (pg[i].y + pg[i].rowh + 1 + a - 1) / a * a; x = 0; if (y + h > 256) continue; pg[i].y = y; pg[i].rowh = 0; }
+        t.tpage = pg[i].tpage; t.u = (u8)x; t.v = (u8)y; t.w = (u8)w; t.h = (u8)h; t.cap = (u8)w;
+        pg[i].x = x + ((w + 1) & ~1) + 1; if (h > pg[i].rowh) pg[i].rowh = h;
+        used += ((w + 1) & ~1) * h;
+        atlas_upload(&t, pixels);
+        return t;
+    }
+    atlas_fails++; return t;
+}
 TexRef atlas_add(int w, int h, const u16 *pixels) {
     TexRef t = atlas_alloc(w, h);
     atlas_upload(&t, pixels);

@@ -8,6 +8,7 @@
 #include "bigmap.h"
 #include "mem8.h"
 #include "pop.h"
+#include "far.h"
 
 // ---- the storeys above the ground (per zone, and one set for the creator's studio) ----
 typedef struct { char map[MH][MW + 1]; u8 fl[MH][MW]; u8 wp[MH][MW]; } Level;
@@ -917,7 +918,7 @@ static u8 rq_dirty[WB][WB]; static int rq_n;                  // the blocks that
 static u8 ao[MH + 1][MW + 1];
 extern int dbg_ws[4];
 static void window_shift(int sx, int sy) {
-    int T0 = gfx_hb(), T;
+    int T0 = gfx_hb(), T; world_stamp++;
     for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks leaving: keep what was built on
         int nx = wx - sx, ny = wy - sy;
         if ((nx < 0 || ny < 0 || nx >= WB || ny >= WB) && wdirty[wy][wx]) edit_save(wx, wy);
@@ -958,6 +959,7 @@ static void window_shift(int sx, int sy) {
     for (int y = 0; y < MH; y++) lifeMap[y][MW] = 0;
 }
 void world_open_at(int cbx, int cby) {          // the window round block (cbx, cby): a new arrival, a taxi ride
+    world_stamp++;
     world_wbx = CLAMP(cbx - WB / 2, 0, BM_N - WB); world_wby = CLAMP(cby - WB / 2, 0, BM_N - WB);
     nhomes[ZONE_CITY] = 0;
     levels_clear(UP);
@@ -997,7 +999,7 @@ void world_switch(int z) {
         ZoneSave *cur = &zones[world_zone];
         memcpy(cur->map, lifeMap, sizeof cur->map); memcpy(cur->fl, floorMap, sizeof cur->fl); memcpy(cur->wp, wallMap, sizeof cur->wp); cur->made = 1;
     }
-    world_zone = z; UP = lvown[z]; roof_dirty = 1;
+    world_zone = z; UP = lvown[z]; roof_dirty = 1; world_stamp++;
     if (z == ZONE_CITY) { world_gen_city(); return; }
     ZoneSave *nx = &zones[z];
     if (!nx->made) levels_clear(UP);
@@ -1053,7 +1055,8 @@ int world_room_score(int mx, int my) {
 static int frame_t;
 // the floor's contact shading: how many walls stand round each floor corner, worked out when the map changes
 static u8 ao[MH + 1][MW + 1];
-void world_touched(void) { ao_dirty = 1; roof_dirty = 1; }
+int world_stamp;
+void world_touched(void) { ao_dirty = 1; roof_dirty = 1; world_stamp++; }
 static inline int wall0(int x, int y) { return (x < 0 || y < 0 || x >= MW || y >= MH) ? 1 : is_wall(lifeMap[y][x]); }   // (past the edge: a wall)
 static void ao_region(int X0, int Y0, int X1, int Y1) {   // the corners [X0..X1] x [Y0..Y1]: how many of the four tiles round each are walls
     X1 = MIN(X1, MW); Y1 = MIN(Y1, MH);
@@ -1736,6 +1739,8 @@ static void see_through(int focus) {
         b_see[b] = 1;
     }
 }
+int world_detail_r = 12;                        // the full-detail range round you, tiles (the options menu)
+u32 world_horizon = 0xBECDD7;                   // the sky's colour at the horizon (main sets it: the haze)
 int world_far_range = 34;                       // how far (tiles) the skyline reaches (more with 8 MB: everything in the window)
 void world_draw(int fx, int fy, int t, int cutaway) {
     gfx_set_identity(); world_dbg_walls = 0;
@@ -1747,7 +1752,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         static int wait; extern int gfx_last_cpu;
         if (gfx_last_cpu < 420 || ++wait >= 3) { roof_pending(1); wait = 0; }
     }
-    const int R = 12;
+    const int R = world_detail_r;
     rx0 = MAX(0, fx - R) & ~1; rx1 = MIN(MW - 1, fx + R); ry0 = MAX(0, fy - R) & ~1; ry1 = MIN(MH - 1, fy + R);
     ex0 = rx0; ex1 = rx1; ey0 = ry0; ey1 = ry1;
     int focus = (fx >= 0 && fy >= 0 && fx < MW && fy < MH) ? bld[fy][fx] : 0;
@@ -1779,16 +1784,24 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     }
     world_hb_up = gfx_hb() - h1_; world_up_walls = gfx_prof[1] - pw0_; world_up_wprims = gfx_profn[1] - pn0_; world_up_fl = gfx_prof[0] - pf0_;
     { PROF_BEGIN(); roofs_draw(fx, fy); PROF_END(3); }
-    {   // the skyline: everything past the range, as boxes (windows on the nearer ones)
+    {   // the skyline: everything past the range, as boxes (windows on the nearer ones); in SAN BOREAS, on out to the horizon
         PROF_BEGIN(); gfx_set_identity();
+        int use_far = world_zone == ZONE_CITY && far_begin(world_horizon);
         int far2 = world_far_range * world_far_range;
+        int etx = cam.eye.vx / TILE, ety = -cam.eye.vz / TILE;
         for (int b = 1; b <= nbld; b++) {
             if (b_x0[b] == 255) continue;
             if (b_x1[b] >= rx0 && b_x0[b] <= rx1 && b_y1[b] >= ry0 && b_y0[b] <= ry1) continue;   // in range: drawn properly
             int dx = (b_x0[b] + b_x1[b]) / 2 - fx, dy = (b_y0[b] + b_y1[b]) / 2 - fy, d2 = dx * dx + dy * dy;
             if (d2 > far2) continue;
-            far_box(b, d2 < 22 * 22);
+            if (etx >= b_x0[b] - 3 && etx <= b_x1[b] + 3 && ety >= b_y0[b] - 3 && ety <= b_y1[b] + 3) continue;   // (beside the camera: it would fill the screen)
+            if (use_far) { const u8 *rc = roofCol[b_col[b] % NROOF_COL];
+                far_box_world(b_x0[b] * TILE, -b_y0[b] * TILE, (b_x1[b] + 1) * TILE, -(b_y1[b] + 1) * TILE, b_top[b] + 1,
+                              b_wall[b] ? b_wall[b] : RGB(24, 22, 19), b_sty[b] != 2, RGB(rc[0] >> 3, rc[1] >> 3, rc[2] >> 3)); }
+            else far_box(b, d2 < 22 * 22);
         }
+        if (use_far) far_draw(rx0, ry0, rx1, ry1);   // the land, the towns and the trees, out to the horizon
+        gfx_set_identity();
         PROF_END(3);
     }
     world_lvl = keep_lvl;

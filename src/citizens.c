@@ -12,6 +12,7 @@
 #include "bigmap.h"
 
 #define LIVE_MAX  6                 // civilians drawn live in 3D at once (the nearest); everyone else is a sprite of the same model
+int cit_live_max = LIVE_MAX, cit_maxdraw = 64, cit_sprite_rate = 1;   // (the options menu: live ones, the crowd's size, sprite refresh 0 slow 1 normal 2 fast)
 #define MAXDRAW   64                // civilians drawn at all, nearest first (a party fills a screen)
 #define DRAW_DIST (14 * TILE)
 #define FULL_DIST (5 * TILE)
@@ -1069,8 +1070,9 @@ void citizens_draw(void) {
         if (d > DRAW_DIST * DRAW_DIST) continue;
         if (!pin && d > 3 * TILE * 3 * TILE && indoors_at(c->x, c->z)) continue;   // behind walls: not worth the polygons
         if (!gfx_visible(c->x, -110, c->z, 150)) continue;                          // off the screen: nothing to draw
-        int pos = n < MAXDRAW ? n++ : MAXDRAW;
-        if (pos == MAXDRAW) { if (d >= od[MAXDRAW - 1]) continue; pos = MAXDRAW - 1; }
+        int cap = MIN(cit_maxdraw, MAXDRAW);
+        int pos = n < cap ? n++ : cap;
+        if (pos == cap) { if (d >= od[cap - 1]) continue; pos = cap - 1; }
         while (pos > 0 && od[pos - 1] > d) { order[pos] = order[pos - 1]; od[pos] = od[pos - 1]; pos--; }
         order[pos] = i; od[pos] = d;
     }
@@ -1093,7 +1095,7 @@ void citizens_draw(void) {
     // live: the biggest on the screen (too big for a sprite cell at 1:1, or near enough that their sprite would go stale fast),
     // the very biggest first, while the frame has time
     static u8 was_live[NCIT];                                         // (a little give, so no one flips between the two)
-    for (int live = 0; live < LIVE_MAX; live++) {
+    for (int live = 0; live < MIN(cit_live_max, LIVE_MAX); live++) {
         int best = -1;
         for (int k = 0; k < n; k++) if (tier[k] == 1 && need[k] > (was_live[order[k]] ? 100 : 112) && crowd_has(order[k]) && (best < 0 || need[k] > need[best])) best = k;
         if (best < 0 || (live >= 2 && gfx_hb() + live * 36 > 340)) break;
@@ -1113,6 +1115,7 @@ void citizens_draw(void) {
     if (cit_end_hb >= 0 && gfx_last_cpu > cit_end_hb) post = gfx_last_cpu - cit_end_hb;
     int now = gfx_hb(), end = now + post, target = end <= 515 ? 522 : end <= 777 ? 785 : 1045;
     int budget = (target - 30 - end) / MAX(20, crowd_render_hb), fresh = 0;   // (a margin: a frame that runs over waits a whole extra vblank)
+    if (cit_sprite_rate == 0) budget = budget > 1 ? budget / 2 : budget; else if (cit_sprite_rate == 2) budget++;
     if (budget <= 0 && ++skipped >= 6) budget = 1;
     if (budget > 0) skipped = 0;
     for (int r = 0; r < 12; r++) {

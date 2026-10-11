@@ -124,6 +124,7 @@ static int set_at(int bx, int by) {
     for (int i = 0; i < nset; i++) { int dx = bx - sets[i].x, dy = by - sets[i].y, r = sets[i].r; if (dx * dx + dy * dy <= r * r) return i; }
     return 255;
 }
+int bm_set_at(int bx, int by) { return set_at(bx, by); }
 static int on_road(int bx, int by, int vert) {
     for (int i = 0; i < nseg; i++) { const Seg *s = &segs[i]; if (s->vert != vert) continue;
         if (vert ? (s->c == bx && by >= s->a && by <= s->b) : (s->c == by && bx >= s->a && bx <= s->b)) return 1; }

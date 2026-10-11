@@ -1,0 +1,6 @@
+1400 shot
+1600 shot
+1800 shot
+2000 shot
+2200 shot
+2400 shot

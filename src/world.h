@@ -31,7 +31,8 @@ const Home *world_home(int zone, int i);
 int world_home_find(int zone, int bx, int by, int unit);   // the open world: the home of that block's unit, if it is in the window (-1)
 
 // ---- SAN BOREAS (the open world, ZONE_CITY): the map is a 5x5-block window onto it, kept round the player ----
-extern int world_wbx, world_wby;                 // the window's top-left block (-1 before the world is first seen)
+extern int world_wbx, world_wby;
+extern int world_stamp;                          // changes whenever the map's tiles do (a window move, a new zone, build mode)                 // the window's top-left block (-1 before the world is first seen)
 void world_new_seed(u32 seed);                   // a new life: a new world
 void world_open_at(int bx, int by);              // build the window round that block
 int  world_stream(int ptx, int pty, int *dtx, int *dty);   // keep it round the player's tile: 1 if it moved (everything shifts by -dtx, -dty tiles)
