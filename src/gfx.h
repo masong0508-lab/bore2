@@ -78,11 +78,16 @@ int gfx_project(const SVECTOR *v, int *sx, int *sy, int *sz);   // one point of 
 // ---- 2D (drawn over everything, in call order: later calls on top) ----
 void gfx_rect(int x, int y, int w, int h, int r, int g, int b, int semi);
 void gfx_rect_c(int x, int y, int w, int h, u16 c15, int semi);
+void gfx_grad(int x, int y, int w, int h, u32 c0, u32 c1, u32 c2, u32 c3, int semi);   // a 2D box shaded corner to corner (TL TR BL BR)
+void gfx_ui_blend(int abr);                  // the 2D overlay's see-through mix from here on (0 half, 1 add, 2 subtract, 3 quarter)
 void gfx_line(int x0, int y0, int x1, int y1, int r, int g, int b);
-void gfx_text(int x, int y, int scale, const char *s, int r, int g, int b);     // the SDK font, scaled (upper case)
+extern int ui_light;   // (ui.c) text onto a white card: light colours come out dark
+void gfx_text(int x, int y, int scale, const char *s, int r, int g, int b);
+void gfx_text_raw(int x, int y, int scale, const char *s, int r, int g, int b);   // (no white-card mapping: the colour as given)     // the SDK font, scaled (upper case)
 int  gfx_text_w(int scale, const char *s);
 void gfx_textc(int cx, int y, int scale, const char *s, int r, int g, int b);   // centred on cx
 void gfx_sprite(int x, int y, int w, int h, u16 tpage, u16 clut, int u, int v, int tw, int th, int shade, int semi);   // a 2D textured quad
+void gfx_sprite_c(int x, int y, int w, int h, u16 tpage, int u, int v, int tw, int th, int r, int g, int b);   // tinted (128 = as painted)
 void gfx_sprite_blend(int x, int y, int w, int h, u16 tpage, u16 clut, int u, int v, int tw, int th, int r, int g, int b);   // semi-transparent, coloured
 void gfx_set_clear(int r, int g, int b);
 extern int gfx_noshadow, gfx_min_vsyncs;   // (options: no soft shadows; the fewest vblanks a frame takes)

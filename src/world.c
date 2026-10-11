@@ -1712,7 +1712,7 @@ static void far_box(int b, int windows) {
         setVector(&a, x1, -HT, zS); setVector(&bb, x1, -HT, zN); gfx_tri_f(&c, &bb, &a, r * 7 / 8, g * 7 / 8, bl * 7 / 8, 1); gfx_tri_f(&c, &a, &bb, r * 7 / 8, g * 7 / 8, bl * 7 / 8, 1);
     }
 }
-int dbg_ao_hb, dbg_roof_hb;
+int dbg_ao_hb, dbg_roof_hb, world_hb_roofs, world_hb_sky1;
 int world_hb_l0, world_hb_up, world_up_walls, world_up_wprims, world_up_fl;
 // the buildings that stand between the camera and you are seen into, like the one you are in: no roof, no storeys above yours,
 // the rooms shown (the walls on the camera's side are cut low as ever)
@@ -1783,7 +1783,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         dbg_noao = keep_ao;
     }
     world_hb_up = gfx_hb() - h1_; world_up_walls = gfx_prof[1] - pw0_; world_up_wprims = gfx_profn[1] - pn0_; world_up_fl = gfx_prof[0] - pf0_;
-    { PROF_BEGIN(); roofs_draw(fx, fy); PROF_END(3); }
+    { PROF_BEGIN(); int h0 = gfx_hb(); roofs_draw(fx, fy); world_hb_roofs = gfx_hb() - h0; PROF_END(3); }
     {   // the skyline: everything past the range, as boxes (windows on the nearer ones); in SAN BOREAS, on out to the horizon
         PROF_BEGIN(); gfx_set_identity();
         int use_far = world_zone == ZONE_CITY && far_begin(world_horizon);
@@ -1800,6 +1800,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
                               b_wall[b] ? b_wall[b] : RGB(24, 22, 19), b_sty[b] != 2, RGB(rc[0] >> 3, rc[1] >> 3, rc[2] >> 3)); }
             else far_box(b, d2 < 22 * 22);
         }
+        world_hb_sky1 = gfx_hb() - prof_t0_;
         if (use_far) far_draw(rx0, ry0, rx1, ry1);   // the land, the towns and the trees, out to the horizon
         gfx_set_identity();
         PROF_END(3);

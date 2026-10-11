@@ -194,10 +194,14 @@ void crowd_faces(int id, Bore *b) {
     if (id < 0 || id >= CROWD_MAX) return;
     int k = face_of[id];
     if (k == 255) {
-        for (k = 0; k < NFACE && face_owner[k] >= 0; k++) { }
-        if (k == NFACE) { int v = lru_victim(id); if (v < 0 || face_of[v] == 255) return; k = face_of[v]; crowd_forget(v); }
-        if (!fe[k].tpage) { fe[k] = atlas_alloc_page(2, 19, 8); fm[k] = atlas_alloc_page(2, 19, 8); }
-        if (!fe[k].tpage || !fm[k].tpage) return;
+        static int face_cap = NFACE;   // how many faces there is texture room for (found when the room runs out)
+        for (k = 0; k < face_cap && face_owner[k] >= 0; k++) { }
+        if (k < face_cap && (!fe[k].tpage || !fm[k].tpage)) {   // a new slot: its eyes and mouth textures
+            if (!fe[k].tpage) fe[k] = atlas_try(19, 8);
+            if (!fm[k].tpage) fm[k] = atlas_try(19, 8);
+            if (!fe[k].tpage || !fm[k].tpage) face_cap = k;      // (full: from now on the slots there are are shared out)
+        }
+        if (k >= face_cap) { int v = lru_victim(id); if (v < 0 || face_of[v] == 255) return; k = face_of[v]; crowd_forget(v); }
         face_owner[k] = (s16)id; face_of[id] = (u8)k;
     }
     b->tex_eye = fe[k]; b->tex_mouth = fm[k];

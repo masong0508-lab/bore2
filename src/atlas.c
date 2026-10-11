@@ -39,19 +39,19 @@ static void vram_load(const RECT *r, const void *data) {
 #define PAGES 4
 #define PAGE_X 640   // pages 0 and 1 are 256 wide at x=640; page 2 is the 128-wide strip at x=896
 static struct { int x, y, rowh; u16 tpage; int base_y; } pg[PAGES];
-static int used; int atlas_fails;
+static int used; int atlas_fails, atlas_fail_wh;   // (the last texture that did not fit: w, h, the first page tried)
 static u16 upload_buf[128 * 128];   // the largest texture we upload at once (wallpapers are 8x24, items up to 24x24)
 
 void atlas_init(void) {
     for (int i = 0; i < PAGES; i++) {
-        pg[i].x = 0; pg[i].y = i == 2 ? 64 : 0; pg[i].rowh = 0;    // the strip starts under the debug font at (960, 0..63)
+        pg[i].x = 0; pg[i].y = 0; pg[i].rowh = 0;                  // (the strip has its top corner too: the SDK debug font is not loaded)
         pg[i].base_y = (i & 1) ? 256 : 0;
         pg[i].tpage = getTPage(2, 0, i < 2 ? PAGE_X : 896, (i & 1) ? 256 : 0);
     }
     used = 0;
 }
 
-static TexRef alloc_in(int first, int last, int w, int h) {
+static TexRef alloc_in(int first, int last, int w, int h, int count) {
     TexRef t = { 0, 0, 0, 0, 0 };
     int aw = (w + 1) & ~1;              // even widths: the transfer is in words
     for (int i = first; i <= last; i++) {
@@ -65,11 +65,12 @@ static TexRef alloc_in(int first, int last, int w, int h) {
         used += aw * h;
         return t;
     }
-    atlas_fails++;   // (no printf here: a texture that does not fit is simply not drawn, and the console is slow)
+    if (count) { atlas_fail_wh = (w << 16) | (h << 4) | first; atlas_fails++; }   // (no printf here: a texture that does not fit is simply not drawn, and the console is slow)
     return t;
 }
-TexRef atlas_alloc(int w, int h) { return alloc_in(0, 1, w, h); }
-TexRef atlas_alloc_page(int page, int w, int h) { return alloc_in(page, page == 2 ? 3 : page, w, h); }
+TexRef atlas_alloc(int w, int h) { return alloc_in(0, 1, w, h, 1); }
+TexRef atlas_alloc_page(int page, int w, int h) { return alloc_in(page, page == 2 ? 3 : page, w, h, 1); }
+TexRef atlas_try(int w, int h) { TexRef t = alloc_in(2, 3, w, h, 0); return t.tpage ? t : alloc_in(0, 1, w, h, 0); }   // the strip, else anywhere; none (no fuss) when full
 
 void atlas_upload(const TexRef *t, const u16 *pixels) {
     if (!t->tpage) return;
@@ -86,16 +87,17 @@ u16 *atlas_scratch(void) { return upload_buf; }   // 128x128 pixels of scratch (
 void atlas_vram_load(int x, int y, int w, int h, const u16 *pixels) { RECT r; setRECT(&r, x, y, w, h); vram_load(&r, pixels); }
 TexRef atlas_add_aligned(int w, int h, int a, const u16 *pixels) {   // u and v multiples of a (a texture window can repeat it)
     TexRef t = { 0, 0, 0, 0, 0 };
-    for (int i = 0; i <= 1; i++) {
+    for (int i = 0; i < PAGES; i++) {
+        int pw = i < 2 ? 256 : 128;
         int x = (pg[i].x + a - 1) / a * a, y = pg[i].y;
-        if (y % a || x + w > 256) { y = (pg[i].y + pg[i].rowh + 1 + a - 1) / a * a; x = 0; if (y + h > 256) continue; pg[i].y = y; pg[i].rowh = 0; }
+        if (y % a || x + w > pw) { y = (pg[i].y + pg[i].rowh + 1 + a - 1) / a * a; x = 0; if (y + h > 256) continue; pg[i].y = y; pg[i].rowh = 0; }
         t.tpage = pg[i].tpage; t.u = (u8)x; t.v = (u8)y; t.w = (u8)w; t.h = (u8)h; t.cap = (u8)w;
         pg[i].x = x + ((w + 1) & ~1) + 1; if (h > pg[i].rowh) pg[i].rowh = h;
         used += ((w + 1) & ~1) * h;
         atlas_upload(&t, pixels);
         return t;
     }
-    atlas_fails++; return t;
+    atlas_fail_wh = (w << 16) | (h << 4) | 9; atlas_fails++; return t;
 }
 TexRef atlas_add(int w, int h, const u16 *pixels) {
     TexRef t = atlas_alloc(w, h);

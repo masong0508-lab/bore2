@@ -1,5 +1,6 @@
 // citizens: see citizens.h
 #include "citizens.h"
+#include "ui.h"
 #include "sim.h"
 #include "world.h"
 #include "voxel.h"
@@ -1152,10 +1153,7 @@ void citizens_draw_bubbles(void) {
         SVECTOR top; setVector(&top, 0, -H * VOX - 40, 0);
         int sx, sy, sz;
         if (!gfx_project(&top, &sx, &sy, &sz)) continue;
-        int w = gfx_text_w(1, c->say) + 8;
-        gfx_rect(sx - w / 2, sy - 12, w, 12, 245, 245, 250, 0);
-        gfx_text(sx - w / 2 + 4, sy - 10, 1, c->say, 40, 40, 40);
-        gfx_rect(sx - 2, sy, 4, 3, 245, 245, 250, 0);
+        ui_bubble(sx, sy, c->say, UI_INK);
     }
 }
 
@@ -1168,23 +1166,22 @@ void citizens_hud(void) {
     if (world_zone == ZONE_HOME && !home_guests) return;
     if (cur >= 0) {
         const Cit *c = &cits[cur];
-        char t[32]; sprintf(t, "%s %s", c->first, c->last);
-        int w = MAX(gfx_text_w(1, t) + 12, c->pid != NOPID ? 196 : 120);
-        gfx_rect(78, 4, w, 36, 13, 15, 21, 0); gfx_rect(78, 4, 2, 36, 255, 200, 40, 0);
-        gfx_text(84, 7, 1, t, 235, 235, 245);
-        if (c->pid != NOPID) sprintf(t, "%s %s %s", stage_nm(c->stage), pop_trait_name(pop_per[c->pid].trait), rel_name(c->rel));
-        else sprintf(t, "%s %s", stage_nm(c->stage), rel_name(c->rel));
-        gfx_text(84, 17, 1, t, 150, 150, 160);
-        if (c->pid != NOPID && c->mplace != NOPID && c->mode == CM_IDLE) { char jb[40]; gfx_text(84, 28, 1, pop_job_name(c->pid, jb), 200, 200, 120); }
-        else gfx_text(84, 28, 1, activity(c), 200, 200, 120);
-        bar(84 + 70, 17, 40, c->rel > 0 ? c->rel : 0, 90, 220, 90);
-        bar(84 + 70, 22, 40, c->rom, 255, 120, 170);
+        char t[40]; sprintf(t, "%s %s", c->first, c->last);   // a white card (The Sims 4's): who they are, how they are to you
+        int w = 136;
+        ui_card(82, 4, w, 42);
+        ui_icon_disc(94, 16, 16, IC_CHAT, UI_BLUE, UI_WHITE);
+        ui_text(106, 8, 1, t, UI_INK);
+        if (c->pid != NOPID) sprintf(t, "%s, %s", stage_nm(c->stage), pop_trait_name(pop_per[c->pid].trait));
+        else sprintf(t, "%s", stage_nm(c->stage));
+        ui_text(106, 18, 1, t, UI_SOFT);
+        if (c->pid != NOPID && c->mplace != NOPID && c->mode == CM_IDLE) { char jb[40]; ui_text(88, 34, 1, pop_job_name(c->pid, jb), UI_BLUE2); }
+        else ui_text(88, 34, 1, activity(c), UI_BLUE2);
+        ui_text(162, 18, 1, rel_name(c->rel), UI_RGB(40, 150, 50));
+        ui_bar(162, 27, 50, 4, c->rel > 0 ? c->rel : 0, UI_GREEN);
+        ui_bar(162, 33, 50, 4, c->rom, UI_RGB(236, 100, 160));
     }
-    if (fight_on || pl_hp < 100) {
-        gfx_rect(78, 44, 62, 8, 13, 15, 21, 0);
-        gfx_rect(79, 45, 60 * pl_hp / 100, 6, pl_hp > 50 ? 90 : 255, pl_hp > 50 ? 220 : pl_hp > 25 ? 200 : 80, 70, 0);
-    }
-    if (fight_on) gfx_textc(160, 150, 1, "X PUNCHES", 255, 150, 120);
+    if (fight_on || pl_hp < 100) { ui_card(82, 48, 70, 11); ui_bar(86, 50, 62, 7, pl_hp, pl_hp > 50 ? UI_GREEN : pl_hp > 25 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70)); }
+    if (fight_on) ui_hintbar(146, "X PUNCH");
 }
 
 #ifdef CIT_TEST

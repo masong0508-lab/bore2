@@ -9,9 +9,18 @@ project(
 )
 
 psn00bsdk_add_executable(bore2 GPREL
-	src/main.c src/gfx.c src/atlas.c src/look.c src/voxel.c src/items.c src/world.c src/sim.c src/wants.c src/citizens.c src/audio.c src/font.c src/fmt.c src/pad.c src/crowd.c src/mem8.c src/bigmap.c src/pop.c src/far.c)
+	src/main.c src/gfx.c src/atlas.c src/look.c src/voxel.c src/items.c src/world.c src/sim.c src/wants.c src/citizens.c src/audio.c src/font.c src/fmt.c src/pad.c src/crowd.c src/mem8.c src/bigmap.c src/pop.c src/far.c src/ui.c)
 target_include_directories(bore2 PRIVATE src assets)
-target_compile_options(bore2 PRIVATE -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-misleading-indentation -Wno-parentheses -Wno-strict-aliasing -fno-strict-aliasing -O2)
+if(NOT BORE_OPT)
+	set(BORE_OPT -O2)
+endif()
+target_compile_options(bore2 PRIVATE -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-misleading-indentation -Wno-parentheses -Wno-strict-aliasing -fno-strict-aliasing)
+get_target_property(BORE_SRCS bore2 SOURCES)
+foreach(f ${BORE_SRCS})
+	if(f MATCHES "\\.c$")
+		set_source_files_properties(${f} PROPERTIES COMPILE_OPTIONS "${BORE_OPT}")   # (after the SDK's own -O2, so it is the one that counts)
+	endif()
+endforeach()
 
 target_link_options(bore2 PRIVATE -Wl,--wrap=memcpy -Wl,--wrap=memmove)   # (src/mem8.c: word copies, not the SDK's byte loops)
 

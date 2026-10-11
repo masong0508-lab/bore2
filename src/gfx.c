@@ -64,7 +64,6 @@ static void light_to_object(void);
 static int light_amb = 100, light_dif = 120;
 static SVECTOR light_dir = { -1500, -3200, 2100, 0 };   // towards the sun (y is down, so negative = up), ~unit length (4096)
 
-extern uint16_t _font_tpage, _font_clut;   // the SDK debug font, uploaded by FntLoad
 
 // vertex loads that never fault: the GTE reads words, an SVECTOR (a struct of shorts) may sit on a 2-byte boundary - a real
 // PlayStation (and DuckStation) stops on such a load with an address error. The vertices are copied to aligned ones first.
@@ -98,9 +97,6 @@ void gfx_init(void) {
     gte_SetGeomOffset(CENTER_X, CENTER_Y);
     gte_SetGeomScreen(230);          // a 70 degree field of view
     gte_SetBackColor(63, 63, 63);
-
-    FntLoad(960, 0);
-    FntOpen(4, 4, SCREEN_W - 8, SCREEN_H - 8, 0, 512);
 
     setVector(&cam.eye, 0, -1200, -1800);
     setVector(&cam.at, 0, -150, 0);
@@ -476,6 +472,22 @@ void gfx_rect(int x, int y, int w, int h, int r, int g, int b, int semi) {
     ui_add(t);
 }
 void gfx_rect_c(int x, int y, int w, int h, u16 c, int semi) { gfx_rect(x, y, w, h, R8(c), G8(c), B8(c), semi); }
+void gfx_grad(int x, int y, int w, int h, u32 c0, u32 c1, u32 c2, u32 c3, int semi) {   // a 2D box shaded corner to corner (TL TR BL BR, 0xBBGGRR)
+    POLY_G4 *q = (POLY_G4 *)gfx_alloc(sizeof(POLY_G4));
+    if (!q) return;
+    setPolyG4(q);
+    setXY4(q, x, y, x + w, y, x, y + h, x + w, y + h);
+    setRGB0(q, c0 & 255, (c0 >> 8) & 255, (c0 >> 16) & 255); setRGB1(q, c1 & 255, (c1 >> 8) & 255, (c1 >> 16) & 255);
+    setRGB2(q, c2 & 255, (c2 >> 8) & 255, (c2 >> 16) & 255); setRGB3(q, c3 & 255, (c3 >> 8) & 255, (c3 >> 16) & 255);
+    if (semi) setSemiTrans(q, 1);
+    ui_add(q);
+}
+void gfx_ui_blend(int abr) {   // how the 2D overlay's see-through boxes mix from here on: 0 half and half, 1 add, 2 subtract, 3 add a quarter
+    u32 *p = (u32 *)gfx_alloc(8); if (!p) return;
+    p[1] = 0xE1000000u | ((u32)(abr & 3) << 5) | (1u << 9) | (1u << 10);
+    p[0] = 0x01000000u;
+    ui_add(p);
+}
 void gfx_line(int x0, int y0, int x1, int y1, int r, int g, int b) {
     LINE_F2 *l = (LINE_F2 *)gfx_alloc(sizeof(LINE_F2));
     if (!l) return;
@@ -553,6 +565,16 @@ void gfx_shadow(const VECTOR *pos, int radius) {
     q->tpage = shadow_tpage; q->clut = 0;
     addPrim(gfx_ot() + OT_SHADOW, q);
 }
+void gfx_sprite_c(int x, int y, int w, int h, u16 tpage, int u, int v, int tw, int th, int r, int g, int b) {   // a 2D textured quad, tinted (128 = as is)
+    POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4));
+    if (!q) return;
+    setPolyFT4(q);
+    setXY4(q, x, y, x + w, y, x, y + h, x + w, y + h);
+    q->u0 = u; q->v0 = v; q->u1 = u + tw - 1; q->v1 = v; q->u2 = u; q->v2 = v + th - 1; q->u3 = u + tw - 1; q->v3 = v + th - 1;
+    q->tpage = tpage; q->clut = 0;
+    setRGB0(q, r, g, b);
+    ui_add(q);
+}
 void gfx_sprite_blend(int x, int y, int w, int h, u16 tpage, u16 clut, int u, int v, int tw, int th, int r, int g, int b) {
     POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4));
     if (!q) return;
@@ -565,25 +587,27 @@ void gfx_sprite_blend(int x, int y, int w, int h, u16 tpage, u16 clut, int u, in
     ui_add(q);
 }
 // the BORE font: scale 1 = s, 2 = m, 3+ = l
-int gfx_text_w(int scale, const char *s) { return font_w(scale - 1, s); }
-void gfx_text(int x, int y, int scale, const char *s, int r, int g, int b) { font_text(x, y, scale - 1, s, r, g, b); }
-void gfx_text_old(int x, int y, int scale, const char *s, int r, int g, int b) {
-    for (; *s; s++, x += 8 * scale) {
-        int ch = *s;
-        if (ch >= 'a' && ch <= 'z') ch -= 32;
-        int i = ch - '!';
-        if (i < 0 || i > 94) continue;
-        POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4));
-        if (!q) return;
-        setPolyFT4(q);
-        int w = 8 * scale;
-        setXY4(q, x, y, x + w, y, x, y + w, x + w, y + w);
-        int u = (i % 16) * 8, v = (i / 16) * 8;
-        q->u0 = u; q->v0 = v; q->u1 = u + 7; q->v1 = v; q->u2 = u; q->v2 = v + 7; q->u3 = u + 7; q->v3 = v + 7;
-        q->tpage = _font_tpage; q->clut = _font_clut;
-        setRGB0(q, r >> 1, g >> 1, b >> 1);   // the glyphs are white: 128 = as is
-        ui_add(q);
+// scale 1 is the smooth interface type now (the medium font shrunk: font size 3), not the old 5-pixel one
+static inline int tscale(int scale) { return scale == 1 ? 4 : scale; }
+int gfx_text_w(int scale, const char *s) { return font_w(tscale(scale) - 1, s); }
+int ui_light;   // text is going onto a white card (ui.c): light colours come out dark (white as ink, gold as blue, the rest deeper)
+extern int font_sub;
+void gfx_text_raw(int x, int y, int scale, const char *s, int r, int g, int b) {   // light colours added to the picture, dark ones taken from it
+    int lum = (r * 77 + g * 150 + b * 29) >> 8;
+    scale = tscale(scale);
+    if (lum < 140) { font_sub = 1; font_text(x, y, scale - 1, s, 255 - r, 255 - g, 255 - b); font_sub = 0; }   // (on white: exactly this colour)
+    else font_text(x, y, scale - 1, s, r, g, b);
+}
+void gfx_text(int x, int y, int scale, const char *s, int r, int g, int b) {
+    if (ui_light) {
+        int mx = MAX(r, MAX(g, b)), mn = MIN(r, MIN(g, b));
+        if (mx >= 140) {
+            if (mx - mn < 40) { if (mx >= 225) { r = 48; g = 56; b = 72; } else if (mx >= 175) { r = 84; g = 94; b = 112; } else { r = 120; g = 130; b = 146; } }
+            else if (r >= 200 && g >= 140 && b <= 120) { r = 26; g = 112; b = 190; }                 // gold: the accent blue
+            else { r = r * 9 / 20; g = g * 9 / 20; b = b * 9 / 20; }                                 // a light colour, deepened
+        }
     }
+    gfx_text_raw(x, y, scale, s, r, g, b);
 }
 void gfx_textc(int cx, int y, int scale, const char *s, int r, int g, int b) { gfx_text(cx - gfx_text_w(scale, s) / 2, y, scale, s, r, g, b); }
 
