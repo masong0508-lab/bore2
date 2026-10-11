@@ -7,7 +7,7 @@
 #define MAX_SIMS 6
 #define NEED_N 8
 enum { N_FOOD, N_WC, N_REST, N_CLEAN, N_COMFY, N_FUN, N_SOCIAL, N_ROOM };
-enum { ACT_NONE, ACT_EAT, ACT_WC, ACT_SLEEP, ACT_SHOWER, ACT_SIT, ACT_FUN, ACT_TALK, ACT_WORK, ACT_WALK, ACT_COFFEE, ACT_READ, ACT_RUN, ACT_PHONE, ACT_TRAVEL, ACT_STAIRS, ACT_SWIM };
+enum { ACT_NONE, ACT_EAT, ACT_WC, ACT_SLEEP, ACT_SHOWER, ACT_SIT, ACT_FUN, ACT_TALK, ACT_WORK, ACT_WALK, ACT_COFFEE, ACT_READ, ACT_RUN, ACT_PHONE, ACT_TRAVEL, ACT_STAIRS, ACT_SWIM, ACT_CARE };
 
 typedef struct {
     Bore bore;
@@ -47,6 +47,15 @@ typedef struct {
     u8   mind;              // 1: this walk has already been reconsidered once (a stroll is dropped for a need at most once)
     u16  look_yaw;          // what it faces while it pauses
     s16  spd;               // walk speed now, in 1/100 units a step (it ramps up and eases off)
+    // growing up: the life stages, the family tree, school
+    u8   uid;               // who it is in the family tree (1..255)
+    u8   par[2], partner;   // the parents' and the partner's uids (0: none)
+    u8   age_days;          // days lived in this life stage
+    u8   bday;              // 1: today is their birthday (a cake makes it a party)
+    u8   away;              // 1: at school (off the lot until 3 PM)
+    u8   grade;             // school: 0..100 (85 an A)
+    u8   homework;          // 1: today's homework is done
+    u8   errand;            // (the AI) what it is walking over to do: 1..5 look after a baby
 } Sim;
 
 extern Sim  sims[MAX_SIMS];
@@ -58,6 +67,11 @@ extern int  sim_speed;               // 1 normal, 2 fast, 3 ultra
 extern int  bills_due;
 extern char last_note[32]; extern int last_note_t;
 extern int  travel_asked;    // the player used a boat or bus stop: main opens the travel menu
+extern int  aging, old_age;  // (options) growing older: 0 off, 1 short lives, 2 normal, 3 long; old age: 1 elders pass on in the end
+extern int  sim_cheer;       // a birthday just happened: that Bore's index + 1 (minus that: a baby or a child came home); main draws the confetti, then clears it
+extern char sim_end_name[NAME_LEN];   // the family's surname, when its story is over
+extern int  sim_story_over;  // the last of the family is gone
+extern int  baby_due;        // life minutes when a baby comes home (-1: none)
 
 void sim_init(void);
 void sim_add(const Bore *b, int mx, int my, int ai);
@@ -83,7 +97,11 @@ void sim_switch_player(void);
 int  sim_find_path(Sim *s, int tx, int ty);
 void sim_shift(int dtx, int dty);           // SAN BOREAS: the map window moved by that many tiles
 void sim_take_job(int car, int bx, int by, const char *place);   // the player takes a job (places.h careers)
-int  sim_front_service(void);              // a counter, a till, a machine or your work right in front: X goes to it before the people near it
+int  sim_front_service(void);               // a counter, a till, a machine or your work right in front: X goes to it before the people near it
+int  sim_stage_len(int stage);               // days in a life stage (0: forever)
+const char *sim_relation(int i, int j);      // what j is to i: "PARTNER", "PARENT", "CHILD", "SIBLING", "GRANDPARENT"... (0: nothing)
+const char *sim_grade(int g);                // "A" .. "F"
+int  sim_grave_name(int mx, int my, char *out);   // the name on the gravestone there
 extern int day_count;                       // days since this life began
 
 // the story: what this life has done so far (the travel zones unlock from these)

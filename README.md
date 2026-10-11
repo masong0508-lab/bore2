@@ -58,6 +58,16 @@ a drink or a round, a film, a haircut, a massage, a checkup, a swim, a room for 
 Jobs (START, JOBS) are at real places too: 14 careers (13 in town, and the old factory) with their own shifts, days, pay and six titles each (DISHWASHER to
 RESTAURATEUR, INTERN to CEO, ORDERLY to MEDICAL LEGEND...). Go there (the boss pays the taxi) and X on a counter, desk or machine.
 
+## Growing up
+Every Bore grows up a day at a time: BABY, CHILD, TEEN, ADULT, ELDER (OPTIONS, LIFE: off, short, normal or long lives).
+On a birthday, X on the fridge or the stove bakes a cake, and BLOW CANDLES on it makes the birthday a party (with confetti).
+Two grown-ups who get on can START A FAMILY (X on one of them); or ADOPT on the phone. A baby takes after its parents, cries
+when it needs something (FEED, CHANGE, PLAY, CUDDLE, PUT TO BED) and the grown-ups come running; a crib comes with the first one.
+Kids and teens catch the school bus at 8 on weekdays and are home at 3; homework at a desk or a bookshelf keeps the grade up
+(the SCHOOL tab in the Bore panel). At the end of the elder years they pass on (or not: OLD AGE, LIVE ON) and a stone stands in the
+yard. The family tree (partner, parent, child, sibling, grandparent) is in the panel's PEOPLE tab. The rest of SAN BOREAS grows up
+too (`src/pop.c`): its people have birthdays, babies, leave home, pass on, and new families move into the empty homes.
+
 ## DS port (in progress)
 The game code is split so a Nintendo DS build can sit beside the PS1 one:
 - `src/platform/compat_math.*` the PS1 SDK maths (rotations, matrices, sin, sqrt) in plain C, tested against the real values.

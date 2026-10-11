@@ -33,10 +33,13 @@ static const char *const sA[32] = { "BUTTER", "PICKLE", "MOON", "SUN", "FROG", "
                                     "RAIN", "PEB", "HUM", "DOZ", "NAP", "SNOOZ", "YAWN", "SLOW", "GRUM", "MOSS", "DIP", "WIG", "BIS", "POT", "KETTLE", "HONEY" };
 static const char *const sB[24] = { "WORTH", "FIELD", "SON", "MAN", "BY", "TON", "WICK", "FORD", "BOTTOM", "SMITH", "LEY", "STEIN", "BERG", "ER", "KINS", "WELL",
                                     "SLEY", "HAM", "LOCK", "BURY", "FOOT", "SHAW", "MORE", "DALE" };
-const char *pop_first(int p, char *out) {
-    const Per *q = &pop_per[p]; u32 h = q->seed * 2654435761u;
-    strcpy(out, q->stage == AG_ELDER && (h >> 28) < 10 ? oldNm[(h >> 8) & 15] : fNm[(h >> 9) & 127]);
-    return out;
+static int name_of(u32 seed) { return (int)(((seed * 2654435761u) >> 9) & 127); }
+const char *pop_first(int p, char *out) { strcpy(out, fNm[name_of(pop_per[p].seed)]); return out; }   // (from the seed alone: a name lasts a whole life)
+static u32 old_mask[4];   // which of the names are the old-fashioned ones (an elder is mostly given one)
+static int old_name(int i) {
+    if (!old_mask[0] && !old_mask[1] && !old_mask[2] && !old_mask[3])
+        for (int k = 0; k < 128; k++) for (int j = 0; j < 16; j++) if (!strcmp(fNm[k], oldNm[j])) old_mask[k >> 5] |= 1u << (k & 31);
+    return (old_mask[i >> 5] >> (i & 31)) & 1;
 }
 const char *pop_surname(int f, char *out) {
     u32 s = pop_fam[f].sur;
@@ -63,18 +66,26 @@ static int find_place(int set, int want_lot, int any_work) {   // a place of tha
         if (any_work ? is_work(l) : l == want_lot) return i; }
     return -1;
 }
-static void add_person(int f, int stage) {
-    if (pop_nper >= PER_MAX) return;
-    Per *q = &pop_per[pop_nper++]; Fam *fm = &pop_fam[f];
-    q->seed = pr(); q->fam = (u16)f; q->stage = (u8)stage; q->trait = (u8)prn(NTRAIT); q->flags = 0; q->slot = 255;
-    q->rel = 0; q->rom = 0; q->hp = 100; q->shift = (u8)pr();
-    q->job = 0xFFFF;
+static void days_of(Per *q) {   // what they do with their days at this stage of life: school, a job, retired; in a lot, or out
+    const Fam *fm = &pop_fam[q->fam]; int stage = q->stage;
+    q->job = 0xFFFF; q->flags &= (u8)~PF_HOMEBODY;
     if (stage == AG_ADULT && prn(100) < 86) { int pl = find_place(fm->set, 0, 1); if (pl >= 0) q->job = (u16)pl; }
     else if (stage == AG_ELDER && prn(100) < 15) { int pl = find_place(fm->set, 0, 1); if (pl >= 0) q->job = (u16)pl; }
     else if (stage == AG_CHILD || stage == AG_TEEN) { int pl = find_place(fm->set, LOT_SCHOOL, 0); if (pl >= 0) q->job = (u16)pl; }
     if (stage == AG_BABY || (stage == AG_ELDER && prn(100) < 50) || (stage == AG_ADULT && q->job == 0xFFFF && prn(2))) q->flags |= PF_HOMEBODY;
     if (q->trait == 8 && prn(2)) q->flags |= PF_HOMEBODY;               // a loner, mostly in
-    fm->n++;
+}
+static void set_person(Per *q, int f, int stage, int newborn) {   // somebody new: who they are from the dice, how far into this stage of life
+    q->seed = pr(); q->fam = (u16)f; q->stage = (u8)stage; q->trait = (u8)prn(NTRAIT); q->flags = 0; q->slot = 255;
+    q->rel = 0; q->rom = 0; q->hp = 100; q->shift = (u8)pr();
+    if (stage == AG_ELDER && prn(16) < 10) for (int t = 0; t < 64 && !old_name(name_of(q->seed)); t++) q->seed = pr();   // (mostly an old-fashioned name)
+    days_of(q);
+    if (!newborn) q->flags |= (u8)(MIN(63, prn(MAX(1, sim_stage_len(stage)))) << 2);   // (nobody in town is all the same age)
+}
+static void add_person(int f, int stage) {
+    if (pop_nper >= PER_MAX) return;
+    set_person(&pop_per[pop_nper++], f, stage, 0);
+    pop_fam[f].n++;
 }
 static int kid_stage(void) { return prn(100) < 40 ? AG_TEEN : AG_CHILD; }
 static void make_members(int f) {
@@ -139,7 +150,7 @@ int pop_family_at(int bx, int by, int unit) {
 }
 void pop_family_kinds(int f, u8 *adults, u8 *kids, u8 *teens, u8 *elders, u8 *couple) {
     const Fam *fm = &pop_fam[f]; *adults = *kids = *teens = *elders = 0;
-    for (int i = 0; i < fm->n; i++) { int st = pop_per[fm->first + i].stage;
+    for (int i = 0; i < fm->n; i++) { if (pop_per[fm->first + i].flags & PF_GONE) continue; int st = pop_per[fm->first + i].stage;
         if (st == AG_ADULT) (*adults)++; else if (st == AG_ELDER) (*elders)++; else if (st == AG_TEEN) (*teens)++; else (*kids)++; }
     *couple = fm->kind == HK_COUPLE || fm->kind == HK_RETIRED || fm->kind == HK_YOUNGFAM || fm->kind == HK_BIGFAM || fm->kind == HK_THREEGEN;
 }
@@ -215,7 +226,7 @@ const char *pop_job_name(int p, char *out) {
     return out;
 }
 const char *pop_doing(int p, char *out) {
-    if (pop_per[p].flags & PF_GONE) { strcpy(out, "MOVED AWAY"); return out; }
+    if (pop_per[p].flags & PF_GONE) { strcpy(out, pop_per[p].hp ? "MOVED AWAY" : "PASSED AWAY"); return out; }
     int pl, w = pop_where(p, &pl); char nm[24];
     switch (w) {
         case AT_SLEEP: strcpy(out, "ASLEEP AT HOME"); break;
@@ -246,5 +257,41 @@ void pop_tick(void) {
             if (!in || (at <= AT_HOME) != (mp < 0) || (at > AT_HOME && mp != place)) citizens_release(q->slot);
         } else if (in) { if (citizens_take(p, at, at <= AT_HOME ? -1 : place) >= 0) dbg_take_ok++; else dbg_take_fail++; }
         if (in) dbg_in++;
+    }
+}
+
+// ---- growing up, all over SAN BOREAS: once a day at midnight, the same life stages as your own household ----
+int pop_aging = 1;
+int pop_alive(int f) { const Fam *fm = &pop_fam[f]; int n = 0; for (int i = 0; i < fm->n; i++) if (!(pop_per[fm->first + i].flags & PF_GONE)) n++; return n; }
+void pop_midnight(void) {
+    if (!pop_aging || !aging || !pop_nper) return;
+    for (int p = 0; p < pop_nper; p++) {   // a day older: a birthday at the end of each stage, and at the end of a long life, goodbye
+        Per *q = &pop_per[p]; if (q->flags & PF_GONE) continue;
+        int d = (q->flags >> 2) + 1, L = sim_stage_len(q->stage);
+        if (!L) continue;
+        if (d < L || (q->stage == AG_ELDER && (!old_age || d == L))) { q->flags = (u8)((q->flags & 3) | (MIN(d, 63) << 2)); continue; }
+        if (q->slot != 255) citizens_release(q->slot);                   // (out in the world right now: back in, as they are now)
+        if (q->stage == AG_ELDER) { q->flags |= PF_GONE; q->hp = 0; continue; }   // (passed away, at home)
+        q->stage++; q->flags &= 3;
+        if (q->stage == AG_ADULT && prn(2)) {                             // grown up: half of them leave home (if there are grown-ups enough there)
+            const Fam *fm = &pop_fam[q->fam]; int ad = 0;
+            for (int i = 0; i < fm->n; i++) { const Per *o = &pop_per[fm->first + i]; if (o != q && !(o->flags & PF_GONE) && o->stage == AG_ADULT) ad++; }
+            if (ad >= 2) { q->flags |= PF_GONE; continue; }
+        }
+        if (q->stage != AG_TEEN) days_of(q);                              // school, a first job, retirement (a teen stays at the same school)
+    }
+    for (int f = 0; f < nfam; f++) {
+        Fam *fm = &pop_fam[f]; int alive = 0, adults = 0, gone = -1;
+        for (int i = 0; i < fm->n; i++) { const Per *q = &pop_per[fm->first + i];
+            if (q->flags & PF_GONE) { if (gone < 0 && q->slot == 255) gone = fm->first + i; continue; }
+            alive++; if (q->stage == AG_ADULT) adults++; }
+        if (!alive && gone >= 0 && !prn(4)) {   // an empty home: before long, a new household moves in (in the old one's places)
+            static const u8 kk[4] = { HK_SINGLE, HK_COUPLE, HK_YOUNGFAM, HK_BIGFAM };
+            fm->kind = kk[MIN(fm->n, 4) - 1]; fm->sur = (u16)pr();
+            for (int i = 0; i < fm->n; i++) { Per *q = &pop_per[fm->first + i]; if (q->slot != 255) continue;
+                set_person(q, f, i < 2 ? AG_ADULT : prn(3) ? AG_CHILD : AG_BABY, 0); }
+            continue;
+        }
+        if (adults >= 2 && gone >= 0 && fm->kind != HK_ROOMMATES && !prn(12)) set_person(&pop_per[gone], f, AG_BABY, 1);   // a baby!
     }
 }

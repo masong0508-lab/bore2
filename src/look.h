@@ -50,6 +50,9 @@ void look_default(Bore *b);                 // the starter creature (look 0 ever
 void look_random(Bore *b);                  // the Create-A-Bore dice
 void look_build(Bore *b);                   // look -> vox / dec / colours / face textures
 int  look_allowed(const Bore *b, int id, int v);
+void look_fix(Bore *b);                     // after a birthday: anything the new age may not wear changed to something it may
+void look_release(Bore *b);                 // a Bore that has gone: its face textures are kept for the next new face
+void look_own_face(Bore *b);                // a copy of a Bore gets face textures of its own (and is built again)
 int  look_count(int id);                    // options in row id (sliders: 9)
 int  look_is_slider(int id);
 const char *look_option_name(int id, int v); // 0 when the row is a colour or a slider

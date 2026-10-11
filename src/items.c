@@ -145,6 +145,44 @@ static const IBox bxLounger[2] = { {0,2,8,6,0,2,{&mLnrS,&mLnrS,&mLnrS,&mLnrS,&mL
 
 // ---- the item table: letter, name, boxes (and the along-y variant), flags ----
 enum { F_ROT = 1, F_ALONG = 2, F_FLAT = 4, F_HIGH = 8 };   // F_FLAT: walk over it; F_HIGH: stand on top (crates)
+// ---- the family's things: a crib (white bars round a little mattress), a birthday cake on a party table, a gravestone ----
+static const u16 pCrib[5]={RGB(29,29,27),RGB(19,24,30),RGB(30,22,25),RGB(22,22,20),RGB(31,31,31)};
+MAT(mCrPost,pCrib,1,1,"a")
+MAT(mCrRail,pCrib,1,1,"d")
+MAT(mCrBars,pCrib,6,7,"aaaaaa","a.a.a.","a.a.a.","a.a.a.","a.a.a.","a.a.a.","aaaaaa")
+MAT(mCrBarsS,pCrib,4,7,"aaaa","a.a.","a.a.","a.a.","a.a.","a.a.","aaaa")
+MAT(mCrMat,pCrib,6,4,"bbbbbb","bccccb","bcecbb","bbbbbb")
+static const IBox bxCrib[9]={
+ {0,1,1,2,0,12,{&mCrPost,&mCrPost,&mCrPost,&mCrPost,&mCrPost}}, {7,1,8,2,0,12,{&mCrPost,&mCrPost,&mCrPost,&mCrPost,&mCrPost}},
+ {0,6,1,7,0,12,{&mCrPost,&mCrPost,&mCrPost,&mCrPost,&mCrPost}}, {7,6,8,7,0,12,{&mCrPost,&mCrPost,&mCrPost,&mCrPost,&mCrPost}},
+ {1,2,7,6,2,4,{&mCrRail,&mCrRail,&mCrRail,&mCrRail,&mCrMat}},                                  // the mattress
+ {1,1,7,2,4,11,{&mCrBars,&mCrRail,&mCrBars,&mCrRail,&mCrRail}}, {1,6,7,7,4,11,{&mCrBars,&mCrRail,&mCrBars,&mCrRail,&mCrRail}},
+ {0,2,1,6,4,11,{&mCrRail,&mCrBarsS,&mCrRail,&mCrBarsS,&mCrRail}}, {7,2,8,6,4,11,{&mCrRail,&mCrBarsS,&mCrRail,&mCrBarsS,&mCrRail}} };
+static const u16 pCake[7]={RGB(18,11,6),RGB(30,30,30),RGB(31,19,23),RGB(31,31,29),RGB(10,18,31),RGB(31,27,8),RGB(20,12,6)};
+MAT(mCkLeg,pCake,1,1,"a")
+MAT(mCkCloth,pCake,8,8,"bbbbbbbb","bbcbbcbb","bbbbbbbb","bcbbbbcb","bbbbbbbb","bbcbbcbb","bbbbbbbb","bbbbbbbb")
+MAT(mCkClothS,pCake,1,1,"b")
+MAT(mCkSide,pCake,4,3,"dddd","cccc","gggg")
+MAT(mCkTop,pCake,4,4,"dddd","dccd","dccd","dddd")
+MAT(mCkCandle,pCake,1,2,"f","e")
+MAT(mCkFlame,pCake,1,1,"f")
+static const IBox bxCake[8]={
+ {1,1,2,2,0,6,{&mCkLeg,&mCkLeg,&mCkLeg,&mCkLeg,&mCkLeg}}, {6,1,7,2,0,6,{&mCkLeg,&mCkLeg,&mCkLeg,&mCkLeg,&mCkLeg}},
+ {1,6,2,7,0,6,{&mCkLeg,&mCkLeg,&mCkLeg,&mCkLeg,&mCkLeg}}, {6,6,7,7,0,6,{&mCkLeg,&mCkLeg,&mCkLeg,&mCkLeg,&mCkLeg}},
+ {0,0,8,8,6,7,{&mCkClothS,&mCkClothS,&mCkClothS,&mCkClothS,&mCkCloth}},                         // the table and its cloth
+ {2,2,6,6,7,10,{&mCkSide,&mCkSide,&mCkSide,&mCkSide,&mCkTop}},                                  // the cake
+ {3,3,4,4,10,12,{&mCkCandle,&mCkCandle,&mCkCandle,&mCkCandle,&mCkFlame}}, {4,4,5,5,10,12,{&mCkCandle,&mCkCandle,&mCkCandle,&mCkCandle,&mCkFlame}} };
+static const u16 pGrave[4]={RGB(17,17,18),RGB(23,23,24),RGB(10,10,11),RGB(27,9,14)};
+MAT(mGrBase,pGrave,1,1,"c")
+MAT(mGrFace,pGrave,4,10,"abba","bbbb","baab","bbbb","baab","bbbb","bbbb","baab","bbbb","bbbb")
+MAT(mGrSide,pGrave,1,1,"a")
+MAT(mGrTop,pGrave,1,1,"b")
+MAT(mGrFlower,pGrave,1,1,"d")
+static const IBox bxGrave[3]={
+ {1,3,7,6,0,2,{&mGrBase,&mGrBase,&mGrBase,&mGrBase,&mGrSide}},
+ {2,4,6,5,2,12,{&mGrFace,&mGrSide,&mGrFace,&mGrSide,&mGrTop}},
+ {5,5,6,6,2,3,{&mGrFlower,&mGrFlower,&mGrFlower,&mGrFlower,&mGrFlower}} };
+
 typedef struct { char ch; const char *name; const IBox *b; u8 n; const IBox *bv; u8 nv; u8 flags; u16 cost; } ItemDef;
 static const ItemDef defs[] = {
     { '#', "CRATE", bxCrate, 1, 0, 0, F_HIGH, 40 },
@@ -211,6 +249,9 @@ static const ItemDef defs[] = {
     { '8', "FOR SALE SIGN", bxSign, 2, 0, 0, 0, 10 },
     { '~', "POOL LOUNGER", bxLounger, 2, 0, 0, F_ROT, 90 },
     { '"', "STREET LAMP", bxStreetLamp, 2, 0, 0, 0, 120 },
+    { CH_CRIB, "CRIB", bxCrib, 9, 0, 0, F_ROT, 250 },
+    { CH_CAKE, "BIRTHDAY CAKE", bxCake, 8, 0, 0, 0, 40 },
+    { CH_GRAVE, "GRAVESTONE", bxGrave, 3, 0, 0, F_ROT, 0 },
     ITEMS_MORE
 };
 #define NDEFS ((int)(sizeof(defs) / sizeof(defs[0])))

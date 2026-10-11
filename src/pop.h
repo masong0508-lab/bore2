@@ -16,7 +16,8 @@ typedef struct { u16 bx, by; u8 unit, n; u16 first; u16 sur; u8 set, kind; } Fam
 typedef struct { u32 seed; u16 fam, job; u8 stage, trait, flags, slot; s8 rel, rom; u8 hp, shift; } Per;
 typedef struct { u16 bx, by; u8 lot, set; } Place;
 #define PF_HOMEBODY 1
-#define PF_GONE     2                 // moved in with you, or otherwise out of the world
+#define PF_GONE     2                 // moved in with you, or otherwise out of the world (hp 0: passed away)
+#define PF_DAY      4                 // flags bits 2..7: days lived in this life stage (growing up, like your own household)
 
 extern Fam pop_fam[NFAM];
 extern Per pop_per[PER_MAX];
@@ -38,3 +39,6 @@ const char *pop_doing(int p, char *out);                    // "ASLEEP AT HOME",
 int  pop_stage_of(int p);
 void pop_tick(void);                                        // once a frame in SAN BOREAS: bring people in the window to life
 int  pop_count_where(int at);                               // (directory) how many people are asleep / home / at work ...
+extern int pop_aging;                                       // (options) the rest of SAN BOREAS grows older too
+void pop_midnight(void);                                    // a day older all over SAN BOREAS: birthdays, babies, the old passing, new families
+int  pop_alive(int f);                                      // how many of a household still live there

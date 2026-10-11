@@ -130,6 +130,12 @@ int look_allowed(const Bore *b, int id, int v) {
     }
 }
 
+void look_fix(Bore *b) {   // a birthday: whatever the new age cannot wear goes back to the first thing it can
+    for (int id = 0; id < LK_COUNT; id++) {
+        if (look_allowed(b, id, b->look[id])) continue;
+        int c = look_count(id); for (int v = 0; v < c; v++) if (look_allowed(b, id, v)) { b->look[id] = (u8)v; break; }
+    }
+}
 const char *look_option_name(int id, int v) {
     switch (id) {
         case LK_SHAPE: return shapeNm[v % NSHAPE];
@@ -237,6 +243,17 @@ void look_random(Bore *b) {
 
 // ---- face art -> textures ----
 static u16 facebuf[19 * 8];
+// the face textures of the household's Bores who have gone: the next new face takes one (the atlas has no free, so nothing is lost)
+static TexRef face_free[8]; static int face_nfree;
+void look_release(Bore *b) {
+    TexRef *t[2] = { &b->tex_eye, &b->tex_mouth };
+    for (int k = 0; k < 2; k++) { if (t[k]->tpage && face_nfree < 8) face_free[face_nfree++] = *t[k]; t[k]->tpage = 0; }
+}
+void look_own_face(Bore *b) { b->tex_eye.tpage = 0; b->tex_mouth.tpage = 0; look_build(b); }
+static TexRef face_alloc(int w) {
+    for (int i = 0; i < face_nfree; i++) if (face_free[i].cap >= w) { TexRef t = face_free[i]; face_free[i] = face_free[--face_nfree]; t.w = (u8)w; return t; }
+    return atlas_alloc(w, 8);
+}
 static void bake_face(Bore *b, int eye) {
     const Spr *sp = &spr[eye ? b->sty_eye : NEYE + b->sty_mouth];
     int aw = 10 * sp->wc - 1;
@@ -256,8 +273,8 @@ static void bake_face(Bore *b, int eye) {
         facebuf[y * aw + x] = px;
     }
     TexRef *t = eye ? &b->tex_eye : &b->tex_mouth;
-    if (!t->tpage) *t = atlas_alloc(aw, 8);
-    else if (t->w != aw) { if (aw > t->cap) *t = atlas_alloc(aw, 8); else t->w = (u8)aw; }   // a slot keeps its place when the new art fits (the crowd's face pool)
+    if (!t->tpage) *t = face_alloc(aw);
+    else if (t->w != aw) { if (aw > t->cap) *t = face_alloc(aw); else t->w = (u8)aw; }   // a slot keeps its place when the new art fits (the crowd's face pool)
     atlas_upload(t, facebuf);
 }
 

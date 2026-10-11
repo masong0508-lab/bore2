@@ -6,22 +6,22 @@
 int wants_flash_t; char wants_flash[32];
 
 // ---- what each want is worth, and what it is called ----
-static const u16 wPts[W_N] = { 0, 500, 500, 500, 500, 800, 500, 800, 800, 1000, 1500, 3000, 1000, 1500, 5000, 3000, 1500, 1500, 1500, 1500, 3000, 3000, 1000, 1500, 1000, 1000, 1000, 1500 };
+static const u16 wPts[W_N] = { 0, 500, 500, 500, 500, 800, 500, 800, 800, 1000, 1500, 3000, 1000, 1500, 5000, 3000, 1500, 1500, 1500, 1500, 3000, 3000, 1000, 1500, 1000, 1000, 1000, 1500, 1000, 4000 };
 static const u16 fPts[F_N] = { 0, 1500, 1000, 3000, 1000, 2000, 1000 };
 static const char *const wNm[W_N] = { "", "EAT A MEAL", "SLEEP IN A BED", "TAKE A SHOWER", "HAVE SOME FUN", "READ A BOOK", "DRINK A COFFEE", "GO FOR A RUN",
     "MAKE A PHONE CALL", "CHAT WITH SOMEONE", "CHAT WITH", "MAKE A FRIEND", "GO TO WORK", "GET PAID", "GET PROMOTED", "HAVE $", "BUY SOMETHING",
-    "COOKING SKILL", "BODY SKILL", "FUN SKILL", "VISIT THE ISLAND", "VISIT THE TOWN", "EAT OUT", "GO FOR A SWIM", "WORK OUT AT A GYM", "GO SHOPPING", "SEE A FILM", "A NIGHT OUT" };
+    "COOKING SKILL", "BODY SKILL", "FUN SKILL", "VISIT THE ISLAND", "VISIT THE TOWN", "EAT OUT", "GO FOR A SWIM", "WORK OUT AT A GYM", "GO SHOPPING", "SEE A FILM", "A NIGHT OUT", "DO HOMEWORK", "HAVE A BABY" };
 static const char *const fNm[F_N] = { "", "PASS OUT", "WET MYSELF", "GET DEMOTED", "A BAD DAY AT WORK", "UNPAID BILLS", "BE TURNED DOWN" };
 
 // ---- who wants what: a weight per kind, per aspiration (FORTUNE KNOWLEDGE POPULARITY PLEASURE HOME GROW UP) ----
 static const u8 aspW[AS_N][W_N] = {
- //  -  eat slp shw fun rd cof run ph chat cw frnd work paid prm cash buy ck bd fn isl twn din swm gym shp flm ngt
-    { 0, 1,  1,  1,  1,  1, 1,  1,  1, 1,   1, 2,   4,   5,   5,  5,   4,  1, 1, 1, 1,  1,  1,  1,  1,  4,  1,  1 },   // FORTUNE
-    { 0, 1,  1,  1,  1,  5, 2,  2,  1, 1,   1, 1,   2,   1,   2,  1,   1,  4, 4, 4, 3,  3,  1,  1,  2,  1,  2,  0 },   // KNOWLEDGE
-    { 0, 1,  1,  2,  2,  1, 1,  1,  4, 5,   5, 5,   1,   1,   2,  1,   1,  1, 1, 2, 2,  2,  3,  3,  2,  2,  2,  5 },   // POPULARITY
-    { 0, 4,  2,  1,  5,  1, 4,  3,  1, 2,   2, 1,   0,   1,   1,  1,   2,  2, 1, 2, 3,  3,  5,  5,  1,  3,  4,  4 },   // PLEASURE
-    { 0, 3,  3,  1,  2,  1, 1,  1,  2, 2,   5, 3,   1,   2,   1,  2,   4,  3, 1, 1, 1,  1,  1,  1,  1,  3,  2,  1 },   // HOME
-    { 0, 2,  2,  1,  5,  4, 0,  3,  1, 3,   4, 3,   0,   0,   0,  0,   1,  1, 2, 3, 2,  2,  2,  4,  2,  1,  4,  0 },   // GROW UP
+ //  -  eat slp shw fun rd cof run ph chat cw frnd work paid prm cash buy ck bd fn isl twn din swm gym shp flm ngt hw baby
+    { 0, 1,  1,  1,  1,  1, 1,  1,  1, 1,   1, 2,   4,   5,   5,  5,   4,  1, 1, 1, 1,  1,  1,  1,  1,  4,  1,  1,  3, 1 },   // FORTUNE
+    { 0, 1,  1,  1,  1,  5, 2,  2,  1, 1,   1, 1,   2,   1,   2,  1,   1,  4, 4, 4, 3,  3,  1,  1,  2,  1,  2,  0,  5, 1 },   // KNOWLEDGE
+    { 0, 1,  1,  2,  2,  1, 1,  1,  4, 5,   5, 5,   1,   1,   2,  1,   1,  1, 1, 2, 2,  2,  3,  3,  2,  2,  2,  5,  2, 2 },   // POPULARITY
+    { 0, 4,  2,  1,  5,  1, 4,  3,  1, 2,   2, 1,   0,   1,   1,  1,   2,  2, 1, 2, 3,  3,  5,  5,  1,  3,  4,  4,  1, 1 },   // PLEASURE
+    { 0, 3,  3,  1,  2,  1, 1,  1,  2, 2,   5, 3,   1,   2,   1,  2,   4,  3, 1, 1, 1,  1,  1,  1,  1,  3,  2,  1,  3, 5 },   // HOME
+    { 0, 2,  2,  1,  5,  4, 0,  3,  1, 3,   4, 3,   0,   0,   0,  0,   1,  1, 2, 3, 2,  2,  2,  4,  2,  1,  4,  0,  5, 0 },   // GROW UP
 };
 static const u8 aspF[AS_N][F_N] = {
     { 0, 1, 1, 5, 4, 5, 1 }, { 0, 2, 2, 2, 2, 1, 1 }, { 0, 1, 2, 1, 1, 1, 5 }, { 0, 3, 3, 1, 1, 1, 2 }, { 0, 2, 2, 2, 2, 4, 2 }, { 0, 2, 3, 0, 0, 0, 3 } };
@@ -53,6 +53,9 @@ static void roll_want(Sim *s, int slot) {
         if (w == W_ISLAND && (story_visit[1] || world_zone == 1)) weight = 0;
         if (w == W_TOWN && (story_visit[2] || world_zone == 2)) weight = 0;
         if (w == W_PROMO && job_level >= 5) weight = 0;
+        if (w == W_HOMEWORK && (stage != AG_CHILD && stage != AG_TEEN)) weight = 0;     // (only the ones at school)
+        if (w == W_BABY && (stage != AG_ADULT || nsims >= MAX_SIMS || baby_due >= 0)) weight = 0;
+        if (stage == AG_BABY) weight = 0;                                              // (a baby wants nothing it could do itself)
         if (weight == 0 || (int)(look_rand() % 6) >= weight) continue;
         int arg = 0;
         if (w == W_CHAT_WITH) arg = other_sim(s);
@@ -93,7 +96,7 @@ void wants_reroll(Sim *s) {   // the stale half rolls again
 
 static void flash(const Sim *s, const char *what, int pts) {
     if ((int)(s - sims) != player) return;
-    sprintf(wants_flash, "%s %d", what, pts); wants_flash_t = 150;
+    sprintf(wants_flash, "%s %d", what, pts); wants_flash_t = 200;
 }
 static void gain(Sim *s, int pts) { s->asp_pts += pts; if (s->asp_pts > ASP_MAX) s->asp_pts = ASP_MAX; if (s->asp_pts < 0) s->asp_pts = 0; }
 
@@ -133,7 +136,6 @@ void wants_minute(Sim *s) {
         if (k == W_SK_BODY && wants_skill_level(s->skill_body) >= s->want[i].arg) wants_event(s, W_SK_BODY, 10);
         if (k == W_SK_FUN && wants_skill_level(s->skill_fun) >= s->want[i].arg) wants_event(s, W_SK_FUN, 10);
     }
-    if (wants_flash_t > 0 && (int)(s - sims) == player) wants_flash_t--;
 }
 int wants_level(const Sim *s) { return s->asp_pts >= 10000 ? ASP_PLATINUM : s->asp_pts >= 7000 ? ASP_GOLD : s->asp_pts >= 3000 ? ASP_GREEN : ASP_RED; }
 int wants_desperate(const Sim *s) { return s->asp_pts < 500; }

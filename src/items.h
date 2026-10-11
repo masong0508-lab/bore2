@@ -15,3 +15,7 @@ int  items_along(char ch);                               // 1: rails, ledges, be
 int  items_count(void);
 char items_at(int i);                                    // the i-th placeable letter (the build menu order)
 int  items_cost(char ch);
+// the family's own things (letters past the old ASCII ones: the map has no plain letters left)
+#define CH_CRIB  ((char)0x81)                            // a baby sleeps in it
+#define CH_CAKE  ((char)0x82)                            // a birthday cake on its party table (baked at the fridge)
+#define CH_GRAVE ((char)0x83)                            // where an elder of the family rests

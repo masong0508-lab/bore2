@@ -296,7 +296,7 @@ static void hh_drop(Cit *c) {                     // out of their household's li
 }
 static void main_free(Cit *c) {                   // back into pop.c: what they think of you goes with them
     int i = (int)(c - cits);
-    if (c->pid != NOPID) { Per *q = &pop_per[c->pid]; q->rel = c->rel; q->rom = c->rom; q->hp = c->hp; q->slot = 255; }
+    if (c->pid != NOPID) { Per *q = &pop_per[c->pid]; q->rel = c->rel; q->rom = c->rom; if (!(q->flags & PF_GONE) || q->hp) q->hp = c->hp; q->slot = 255; }   // (hp 0 and gone: passed away)
     hh_drop(c);
     if (cur == i) cur = -1;
     crowd_forget(i);
@@ -482,6 +482,7 @@ static void marry(Cit *c) {   // they move in: the civilian becomes a housemate 
     sim_add(&wed, tx, ty, 1);
     Sim *w = &sims[nsims - 1];
     w->rel[player] = 100; sims[player].rel[nsims - 1] = 100;
+    w->partner = sims[player].uid; sims[player].partner = w->uid;   // (the family tree: partners)
     w->x = p->x + 70; w->z = p->z;
     c->mode = CM_GONE; c->say_t = 0;
     if (c->pid != NOPID) { pop_per[c->pid].flags |= PF_GONE; main_free(c); }

@@ -38,7 +38,7 @@ static void read_pad(void) {
             if (ABS(ls_x) < 20) ls_x = 0; if (ABS(ls_y) < 20) ls_y = 0; if (ABS(rs_x) < 20) rs_x = 0; if (ABS(rs_y) < 20) rs_y = 0;
         }
     }
-#ifdef AUTO_TOUR
+#if defined(AUTO_TOUR) || defined(AUTO_GROW)
     { extern int auto_btn; if (auto_btn) { btn &= (u16)~auto_btn; auto_btn = 0; } }   // (test builds: the tour presses a button for a frame)
 #endif
 }
@@ -80,7 +80,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int create_tab, create_row, create_from, create_turn;
@@ -121,6 +121,7 @@ static const char *act_name(int a) {
         case ACT_SIT: return "RELAXING"; case ACT_FUN: return "HAVING FUN"; case ACT_TALK: return "CHATTING"; case ACT_WORK: return "WORKING";
         case ACT_WALK: return "WALKING"; case ACT_COFFEE: return "HAVING COFFEE"; case ACT_READ: return "READING"; case ACT_RUN: return "EXERCISING";
         case ACT_PHONE: return "ON THE PHONE"; case ACT_TRAVEL: return "TRAVELLING"; case ACT_STAIRS: return "ON THE STAIRS"; case ACT_SWIM: return "SWIMMING";
+        case ACT_CARE: return "LOOKING AFTER THE BABY";
     }
     return "";
 }
@@ -129,8 +130,12 @@ static const char *act_label(const Sim *s) {   // the action's name, the going-o
     switch (s->action) {
         case ACT_SIT: if (s->act_var == 6) return "WATCHING A FILM"; break;
         case ACT_FUN: if (s->act_var == 4) return "BROWSING"; if (s->act_var == 5) return "HAVING A DRINK"; if (s->act_var == 7) return "ADMIRING THE ART"; break;
-        case ACT_EAT: if (s->act_var == 2) return "EATING OUT"; if (s->act_var == 5) return "FINE DINING"; break;
-        case ACT_SLEEP: if (s->act_var == 2) return "A MASSAGE"; break;
+        case ACT_EAT: if (s->act_var == 2) return "EATING OUT"; if (s->act_var == 5) return "FINE DINING"; if (s->act_var == 8) return "BAKING A CAKE";
+                      if (s->act_var == 9) return "BIRTHDAY CAKE"; break;
+        case ACT_READ: if (s->act_var == 3) return "DOING HOMEWORK"; if (s->act_var == 5) return "REMEMBERING"; break;
+        case ACT_CARE: { static const char *const ck[6] = { "", "FEEDING THE BABY", "CHANGING THE BABY", "PLAYING WITH THE BABY", "CUDDLING THE BABY", "PUTTING BABY TO BED" };
+                         if (s->act_var >= 1 && s->act_var <= 5) return ck[s->act_var]; break; }
+        case ACT_SLEEP: if (s->act_var == 2) return "A MASSAGE"; if (s->bore.stage == AG_BABY) return "NAPPING"; break;
         case ACT_RUN: if (s->act_var == 2) return "TRAINING"; break;
         case ACT_COFFEE: if (s->act_var == 1) return "A HOT DRINK"; break;
     }
@@ -152,7 +157,7 @@ static void feed_push(const char *t) {
     for (int i = NFEED - 1; i > 0; i--) { strcpy(feed[i], feed[i - 1]); feed_t[i] = feed_t[i - 1]; }
     strncpy(feed[0], t, 31); feed[0][31] = 0; feed_t[0] = 300;
 }
-static void feed_poll(void) { if (last_note_t > prev_note_t) feed_push(last_note); prev_note_t = last_note_t; }   // every sim_note lands here
+static void feed_poll(void) { extern char note_q[4][32]; extern int note_qn; for (int i = 0; i < note_qn; i++) feed_push(note_q[i]); note_qn = 0; }   // every sim_note lands here
 static void feed_draw(void) {   // the notifications stack on the left, newest on top, each fades on its own
     int y = 34;
     for (int i = 0; i < NFEED; i++) {
@@ -181,13 +186,22 @@ static void start_life(void) {
         loading("MAKING A NEW LIFE", 70);
     }
     world_reset_all();
+    for (int i = 0; i < nsims; i++) look_release(&sims[i].bore);   // (the last household's face textures: for this one)
     sim_init();
     int px, py; world_find('P', &px, &py); if (px < 0) { px = 5; py = 12; }
-    sim_add(&edit, px, py, 0);
+    sim_add(&edit, px, py, 0); look_own_face(&sims[0].bore);     // (you, with faces of your own: the creator keeps its own)
     // two housemates from the dice
     Bore b; look_default(&b); b.stage = AG_ADULT; look_random(&b); sim_add(&b, px + 2, py + 1, 1);
     strcpy(sims[1].bore.first, "MOSS"); sims[1].grump = 1;   // MOSS will not have a thing floating overhead. Do not ask.
-    look_default(&b); b.stage = AG_CHILD; look_random(&b); sim_add(&b, px - 1, py + 2, 1);
+    look_default(&b); b.stage = AG_CHILD; look_random(&b); strcpy(b.last, edit.last); b.asp = AS_GROW; look_build(&b); sim_add(&b, px - 1, py + 2, 1);
+    strcpy(sims[1].bore.last, edit.last);                     // (one family, one name)
+    {   // the family tree: you and MOSS together, the child yours (or, if you made a kid, MOSS's two); a few days into their lives already
+        Sim *a = &sims[0], *m = &sims[1], *k = &sims[2];
+        if (a->bore.stage >= AG_ADULT) { a->partner = m->uid; m->partner = a->uid; k->par[0] = a->uid; k->par[1] = m->uid; }
+        else { a->par[0] = m->uid; k->par[0] = m->uid; }
+        a->age_days = (u8)(a->bore.stage >= AG_ADULT ? 3 : 1); m->age_days = 6; k->age_days = (u8)MAX(0, sim_stage_len(AG_CHILD) - 2);   // (the child's birthday comes in a couple of days)
+        a->rel[1] = m->rel[0] = 40; a->rel[2] = k->rel[0] = m->rel[2] = k->rel[1] = 30;
+    }
     life_started = 1;
     story_paid = 0; story_talks = 0; story_visit[0] = 1; story_visit[1] = 0; story_visit[2] = 0; story_visit[3] = 0;
     citizens_init();   // a hundred civilians out in the island, the town and the city
@@ -206,16 +220,21 @@ static void draw_marker(const Sim *s) {   // who you are playing: a bobbing gold
     setVector(&a, -12, top - 13, -2); setVector(&b, 12, top - 13, -2); setVector(&c, 0, top + 2, -2);
     gfx_tri_f(&a, &b, &c, 90, 60, 10, 0);                     // a dark edge behind, so it reads on bright rooms
 }
+static int lying_drop(const Bore *b) {   // a Bore lying on its back (voxel.c's sleep pose): how far its back reaches below where it is put
+    int mn = 0; for (int i = 0; i < b->ncell; i++) for (int k = 0; k < 8; k++) if (b->cell[i].c[k].vz < mn) mn = b->cell[i].c[k].vz;
+    return -mn - 40;
+}
 int dbg_hh_spr, dbg_hh_full, dbg_hh_miss;
 #define LOD_DIST 1280   // beyond this many world units (5 tiles) from the camera's focus, people are drawn with the crowd model
 static void draw_sims(void) {
     gfx_set_reserve(RESERVE_UI);   // the people may use what the world left, but not the HUD's share
     for (int i = 0; i < nsims; i++) {
         Sim *s = &sims[i];
-        if (s->lvl > world_view_lvl) continue;                      // upstairs, out of the floor view
+        if (s->lvl > world_view_lvl || s->away) continue;           // upstairs, out of the floor view; at school
         if (!gfx_visible(s->x, -110 - s->lvl * WALL_FULL, s->z, 150)) continue;   // off the screen
         VECTOR p; setVector(&p, s->x, 0, s->z);
-        if (s->action == ACT_SLEEP) p.vy = -items_height('S') + 40;
+        if (s->action == ACT_SLEEP) { char bc = world_at(s->act_x, s->act_y);   // on the bed, on the crib's mattress, or on the floor
+            p.vy = (bc == 'S' || bc == '<' || bc == 'z') ? -items_height('S') + 40 : -((bc == CH_CRIB ? 4 * IZ : 0) + lying_drop(&s->bore)); }
         if (s->action == ACT_SIT || s->action == ACT_WC || (s->action == ACT_EAT && s->gait.sit)) p.vy = -items_height(world_at(s->act_x, s->act_y)) / 2 + 10;
         if (s->action == ACT_SWIM) p.vy = 30 + (isin((frame * 60) & 4095) >> 9);   // afloat, bobbing
         s->gait.mood = s->mood; s->gait.talk = s->action == ACT_TALK; s->gait.seed = i; s->gait.clock = frame;
@@ -250,7 +269,7 @@ static void draw_bubbles(void) {   // thoughts and notes over heads
     for (int i = 0; i < nsims; i++) {
         Sim *s = &sims[i];
         if (s->think < 0 && s->note_t <= 0) continue;
-        if (s->lvl > world_view_lvl) continue;
+        if (s->lvl > world_view_lvl || s->away) continue;
         VECTOR p; setVector(&p, s->x, -s->lvl * WALL_FULL, s->z);
         gfx_set_object(&p, 0);
         SVECTOR top; setVector(&top, 0, -H * VOX - 40, 0);
@@ -286,7 +305,42 @@ static void venue_draw(void) {
 }
 static const char *const aspLvNm[4] = { "RED", "GREEN", "GOLD", "PLATINUM" };
 static const int aspLvCol[4][3] = { {255,80,70}, {90,220,90}, {255,200,40}, {220,235,255} };
+static int cheer_t, cheer_new; static char cheer_a[32], cheer_b[40];
+static struct { s16 x, y, vx, vy; u8 c, w; } conf[40];
+static u32 conf_rs = 0x9E3779B9u;
+static int conf_rn(int n) { conf_rs ^= conf_rs << 13; conf_rs ^= conf_rs >> 17; conf_rs ^= conf_rs << 5; return (int)((conf_rs >> 4) % (u32)n); }
+static void cheer_poll(void) {   // sim.c says a birthday or a newcomer happened: the card and the confetti
+    if (!sim_cheer) return;
+    int i = ABS(sim_cheer) - 1, nw = sim_cheer < 0; sim_cheer = 0;
+    if (i < 0 || i >= nsims) return;
+    const Sim *o = &sims[i]; const char *st = look_stage_name(o->bore.stage);
+    cheer_new = nw; cheer_t = 330;
+    if (nw) { sprintf(cheer_a, "WELCOME, %s!", o->bore.first); sprintf(cheer_b, o->bore.stage == AG_BABY ? "A NEW BABY IN THE FAMILY" : "A NEW CHILD IN THE FAMILY"); }
+    else { strcpy(cheer_a, "HAPPY BIRTHDAY!"); sprintf(cheer_b, "%s IS NOW %s %s", o->bore.first, (st[0] == 'A' || st[0] == 'E') ? "AN" : "A", st); }
+    conf_rs ^= (u32)frame * 2654435761u; if (!conf_rs) conf_rs = 1;
+    for (int k = 0; k < 40; k++) { conf[k].x = (s16)(conf_rn(320) << 4); conf[k].y = (s16)(-(conf_rn(140) << 4)); conf[k].vx = (s16)(conf_rn(33) - 16); conf[k].vy = (s16)(16 + conf_rn(24));
+                                   conf[k].c = (u8)conf_rn(6); conf[k].w = (u8)(2 + conf_rn(3)); }
+}
+static void cheer_draw(void) {
+    static const u8 pal[6][3] = { {255, 90, 110}, {255, 200, 50}, {90, 200, 255}, {120, 220, 100}, {200, 120, 255}, {255, 150, 60} };
+    if (cheer_t <= 0) return;
+    cheer_t--;
+    if (state != ST_LIFE) return;
+    if (!cheer_new || cheer_t > 200) for (int k = 0; k < 40; k++) {   // the confetti, tumbling down (a newcomer gets a short shower)
+        conf[k].x += conf[k].vx + (isin(((frame + k * 37) * 90) & 4095) >> 10); conf[k].y += conf[k].vy;
+        int x = conf[k].x >> 4, y = conf[k].y >> 4;
+        if (y < 0 || y > 240 || x < 0 || x > 318) continue;
+        const u8 *c = pal[conf[k].c]; int tall = ((frame + k) >> 3) & 1;   // (it flutters: flat, then edge on)
+        gfx_rect(x, y, tall ? 2 : conf[k].w, tall ? conf[k].w : 2, c[0], c[1], c[2], 0);
+    }
+    int w = MAX(ui_tw(2, cheer_a), ui_tw(1, cheer_b)) + 46, x = 160 - w / 2, y = 50;
+    ui_card(x, y, w, 31);
+    ui_icon_disc(x + 18, y + 15, 24, cheer_new ? IC_BABY : IC_CAKE, cheer_new ? UI_RGB(236, 120, 160) : UI_RGB(255, 180, 40), UI_WHITE);
+    ui_text(x + 34, y + 3, 2, cheer_a, cheer_new ? UI_RGB(200, 70, 120) : UI_RGB(200, 120, 10));
+    ui_text(x + 34, y + 19, 1, cheer_b, UI_INK);
+}
 static void hud_life(void) {
+    if (!nsims) return;
     Sim *s = &sims[player];
     char b[48];
     int m = s->mood;
@@ -294,10 +348,14 @@ static void hud_life(void) {
     u32 moodt = m > 15 ? UI_RGB(40, 140, 40) : m > -15 ? UI_RGB(170, 110, 10) : UI_RGB(200, 60, 50);   // (the same, deep enough to read on white)
     // the household, top left: round portraits, a ring in each one's mood colour, the one you play ringed blue with the plumbob
     for (int i = 0; i < nsims; i++) {
-        int x = 15 + i * 24, y = 16, me = i == player, mm = sims[i].mood;
-        u32 ring = me ? UI_BLUE : mm > 15 ? UI_GREEN : mm > -15 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70);
-        ui_disc(x, y, 23, UI_WHITE); ui_disc(x, y, 21, ring); ui_disc(x, y, 17, UI_RGB(234, 240, 248));
-        draw_face_k(x - 8, y - 8, mm, 1);
+        const Sim *o = &sims[i];
+        int x = 15 + i * 24, y = 16, me = i == player, mm = o->mood;
+        u32 ring = me ? UI_BLUE : o->away ? UI_RGB(176, 186, 200) : mm > 15 ? UI_GREEN : mm > -15 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70);
+        ui_disc(x, y, 23, UI_WHITE); ui_disc(x, y, 21, ring); ui_disc(x, y, 17, o->away ? UI_RGB(222, 228, 236) : UI_RGB(234, 240, 248));
+        if (o->away) ui_icon(x - 6, y - 6, IC_BOOK, UI_RGB(112, 126, 146));   // at school till 3
+        else draw_face_k(x - 8, y - 8, mm, 1);
+        if (o->bore.stage == AG_BABY) { ui_disc(x + 8, y + 8, 11, UI_WHITE); ui_icon_s(x + 4, y + 4, IC_BABY, 8, UI_RGB(236, 120, 160)); }   // (a baby)
+        if (o->bday && !o->away) { ui_disc(x - 8, y + 8, 12, UI_RGB(255, 200, 60)); ui_icon_s(x - 12, y + 4, IC_CAKE, 8, UI_WHITE); }   // a birthday today
         if (me) ui_icon(x - 6, y - 19 + ((frame >> 4) & 1), IC_PLUMBOB, UI_GREEN);
     }
     draw_action_card(s);
@@ -317,7 +375,7 @@ static void hud_life(void) {
     ui_text(210, 188, 2, s->bore.first, UI_INK);
     const char *mood = m > 50 ? "STOKED" : m > 15 ? "HAPPY" : m > -15 ? "FINE" : m > -50 ? "SAD" : "MISERABLE";
     ui_text(210, 203, 1, mood, moodt);
-    sprintf(b, "LVL %d", job_level);
+    if (s->bore.stage == AG_CHILD || s->bore.stage == AG_TEEN) sprintf(b, "GRADE %s", sim_grade(s->grade)); else sprintf(b, "LVL %d", job_level);   // (a kid: the school grade)
     ui_text(212 + ui_tw(1, mood) + 4, 203, 1, b, UI_SOFT);
     { int lv = wants_level(s);                                   // the aspiration meter, under the mood
       ui_bar(210, 213, 100, 5, 100 * s->asp_pts / ASP_MAX, UI_RGB(aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2])); }
@@ -336,10 +394,11 @@ static void hud_life(void) {
         char t[32]; wants_text(s, (frame / 240) & 3, t);
         int w = ui_tw(1, t) + 22;
         ui_card(316 - w, 35, w, 14); ui_icon(320 - w, 36, IC_STAR, UI_RGB(236, 170, 30)); ui_text(334 - w, 38, 1, t, UI_INK);
-        if (wants_flash_t > 0) { int fw = ui_tw(2, wants_flash) + 16; ui_card(160 - fw / 2, 86, fw, 18); ui_textc(160, 89, 2, wants_flash, wants_flash[0] == 'W' ? UI_RGB(40, 150, 50) : UI_RGB(200, 60, 50)); }
+        if (wants_flash_t > 0 && state == ST_LIFE) { int fw = ui_tw(2, wants_flash) + 16; ui_card(160 - fw / 2, 86, fw, 18); ui_textc(160, 89, 2, wants_flash, wants_flash[0] == 'W' ? UI_RGB(40, 150, 50) : UI_RGB(200, 60, 50)); wants_flash_t--; }
     }
     feed_draw();
     if (venue_t > 0) { venue_draw(); venue_t--; }
+    cheer_poll(); cheer_draw();
     citizens_hud();
     if (frame < 900) ui_hintbar(144, "L1 R1 TURN|L2 R2 ZOOM|X USE|SQ RUN");
     if (show_fps) { extern int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block;
@@ -437,6 +496,7 @@ static void life_update(int steps) {
     camera_input();
     if (PRESSED(PAD_START)) { state = ST_PAUSE; menu_sel = 0; }
     if (travel_asked) { travel_asked = 0; travel_sel = world_zone; state = ST_TRAVEL; }
+    if (sim_story_over) { sim_story_over = 0; state = ST_OVER; }   // the last of the family is gone
 }
 
 static void life_draw(void) {
@@ -464,7 +524,7 @@ static void life_draw(void) {
       t0 = hb_now(); gfx_prim_count = 0; draw_sims(); t_sims = hb_now() - t0; }
     { int t0 = hb_now(); draw_bubbles(); t_bub = hb_now() - t0; }
     prims_last = gfx_prim_count;
-    { int t0 = hb_now(); hud_life(); t_hud = hb_now() - t0; }
+    if (state != ST_OVER) { int t0 = hb_now(); hud_life(); t_hud = hb_now() - t0; }
 }
 
 // ---- travel between the zones ----
@@ -660,7 +720,7 @@ static void dir_draw(void) {
     int nf = 0; while (nf < NFAM && pop_fam[nf].n) nf++;
     if (dir_fam < 0) {
         int top = ui_window(4, 4, 312, 232, "THE PEOPLE OF SAN BOREAS", IC_PEOPLE);
-        sprintf(b, "%d HOUSEHOLDS, %d PEOPLE", nf, pop_nper); ui_text(12, top - 1, 1, b, UI_SOFT);
+        sprintf(b, "%d HOUSEHOLDS, %d PEOPLE", nf, dir_counts[0] + dir_counts[1] + dir_counts[2] + dir_counts[3] + dir_counts[4]); ui_text(12, top - 1, 1, b, UI_SOFT);
         {   // where everyone is now, as little coloured pills
             static const char *const nm[5] = { "ASLEEP", "HOME", "WORK", "SCHOOL", "OUT" };
             static const s8 ic[5] = { IC_BED, IC_HOUSE, IC_CASE, IC_BOOK, IC_CAR };
@@ -681,7 +741,7 @@ static void dir_draw(void) {
             if (on) { ui_round(8, y - 2, 304, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(8, y, 2, 8, 38, 146, 222, 0); }
             sprintf(b, "THE %sS", sur); ui_text(14, y, 1, b, on ? UI_BLUE2 : UI_INK);
             ui_text(124, y, 1, pop_kind_name(f->kind), UI_SOFT);
-            sprintf(b, "%d", f->n); ui_text(222, y, 1, b, UI_INK);
+            sprintf(b, "%d", pop_alive(i)); ui_text(222, y, 1, b, UI_INK);
             ui_text(236, y, 1, st ? st->name : "?", UI_SOFT);
         }
         const Fam *f = &pop_fam[dir_sel]; const Settle *st = bm_set(f->set);
@@ -821,30 +881,89 @@ static void tour_tick(void) {
 }
 #endif
 
+#ifdef AUTO_GROW
+int auto_btn;
+static int pie_find(const char *t) { for (int i = 0; i < pie_n; i++) if (!strcmp(pie_opt[i], t)) return i; return -1; }
+static void grow_tick(void) {   // (test builds: a family's life in two minutes: a birthday and its cake, a baby, school, old age, the screens)
+    extern int sim_debug_grow(int what, int arg), sim_debug_goto(char c, int lot);
+    static int t0 = -1, k;
+    if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); cam_dist = 1300; }
+    static const struct { s16 at; char op; s8 arg; } plan[] = {
+        { 60, 'm', 2 },                                   // the child's birthday comes at midnight
+        { 400, 'f', 'F' }, { 430, 'b', 'X' }, { 480, 'p', 0 }, { 510, 'b', 'X' },   // to the fridge: BIRTHDAY CAKE
+        { 880, 'f', (s8)0x82 }, { 910, 'b', 'X' }, { 950, 'p', 1 }, { 980, 'b', 'X' },   // the cake: BLOW CANDLES
+        { 1380, 'r', 1 }, { 1390, 'g', 1 }, { 1420, 'b', 'X' }, { 1460, 'p', 2 }, { 1490, 'b', 'X' },   // MOSS: START A FAMILY
+        { 1700, 'n', 0 },                                 // the baby comes home (asleep on the floor: there is no crib)
+        { 1760, 'g', -1 }, { 1761, 'k', 1 }, { 1830, 'b', 'X' }, { 1870, 'p', 3 }, { 1900, 'b', 'X' },   // close up: CUDDLE
+        { 2100, 'k', 0 }, { 2110, 'h', -1 },              // the baby cries; the grown-ups come
+        { 2800, 'c', -1 }, { 2810, 'g', -1 }, { 2840, 'b', 'X' }, { 2880, 'p', 4 }, { 2910, 'b', 'X' },   // a crib: PUT TO BED
+        { 3060, 'y', -1 }, { 3065, 'g', -1 }, { 3080, 'k', 2 }, { 3170, 'k', 1 }, { 3250, 'k', 0 },   // (close up, from the side and from above: the baby in its crib)
+        { 3300, 's', 0 },                                 // school, TUESDAY 8 AM
+        { 3600, 'e', 0 },                                 // home at 3
+        { 3800, 'w', 2 }, { 3830, 'b', 'S' }, { 3860, 'b', 'D' }, { 3890, 'b', 'X' }, { 3930, 'b', '<' }, { 4050, 'b', '<' }, { 4170, 'b', 'S' },   // the teen's panel: SCHOOL, PEOPLE
+        { 4250, 'w', 0 }, { 4280, 'b', 'S' }, { 4310, 'b', '>' }, { 4330, 'b', 'D' }, { 4350, 'b', 'D' }, { 4370, 'b', 'D' }, { 4390, 'b', 'D' }, { 4420, 'b', 'X' },
+        { 4450, 'b', 'R' }, { 4470, 'b', 'R' }, { 4490, 'b', 'R' }, { 4510, 'b', 'R' }, { 4640, 'b', 'O' }, { 4670, 'b', 'O' },   // OPTIONS: LIFE
+        { 4800, 'o', 1 },                                 // MOSS: the end of a long life (at midnight)
+        { 5200, 'f', (s8)0x83 }, { 5230, 'b', 'X' },     // the gravestone: REMEMBER (its only choice: no pie)
+        { 5600, 'b', 'S' }, { 5630, 'b', '>' }, { 5650, 'b', 'D' }, { 5670, 'b', 'D' }, { 5690, 'b', 'D' }, { 5710, 'b', 'D' }, { 5730, 'b', 'D' }, { 5760, 'b', 'X' },
+        { 5800, 'b', 'R' }, { 5830, 'b', 'R' }, { 5860, 'b', 'R' }, { 5990, 'b', 'O' },   // HOW TO PLAY: GROWING UP
+        { 6150, 'z', 0 }, { 6400, 'b', 'X' }, { 0, 0, 0 } };   // THE END, then X: a new life
+    static const char *const pick[5] = { "BIRTHDAY CAKE", "BLOW CANDLES", "START A FAMILY", "CUDDLE", "PUT TO BED" };
+    int t = VSync(-1) - t0;
+    while (plan[k].op && t >= plan[k].at) {
+        int a = plan[k].arg, baby = nsims - 1;
+        switch (plan[k].op) {
+            case 'm': clock_day = 0; clock_min = 1436; sim_debug_grow(1, a); break;
+            case 'f': sim_debug_goto((char)a, -1); cam_pitch = 700; break;
+            case 'b': auto_btn = a == 'X' ? PAD_CROSS : a == 'O' ? PAD_CIRCLE : a == 'S' ? PAD_START : a == 'D' ? PAD_DOWN : a == 'R' ? PAD_R1 : a == '<' ? PAD_L1 : PAD_RIGHT; break;
+            case 'p': { int i = pie_find(pick[a]); if (i >= 0) pie_sel = i; } break;
+            case 'r': sim_debug_grow(3, a); break;
+            case 'g': sim_debug_grow(2, a < 0 ? baby : a); break;
+            case 'n': sim_debug_grow(4, 0); break;
+            case 'h': sim_debug_grow(5, baby); break;
+            case 'c': sim_debug_grow(6, baby); break;
+            case 's': clock_day = 1; clock_min = 476; break;
+            case 'e': clock_min = 896; break;
+            case 'w': sim_debug_grow(8, a); break;
+            case 'o': sim_debug_grow(7, a); clock_min = 1436; break;
+            case 'z': sim_story_over = 1; break;
+            case 'y': sim_debug_grow(9, baby); break;
+            case 'k': cam_pitch = a == 2 ? 170 : a ? 420 : 700; cam_dist = a == 2 ? 700 : a ? 800 : 1300; break;
+        }
+        k++;
+    }
+}
+#endif
+
 // ---- OPTIONS: the picture and the speed, as many knobs as a PC game, with presets; the game runs behind as you change them ----
 static void title_draw(void);
-enum { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_CROWD, O_LIVE, O_SPR, O_SHADOW, O_AO, O_WALLS, O_FPSCAP, O_DITHER, O_CAM, O_SHOWFPS, O_N };
+enum { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_CROWD, O_LIVE, O_SPR, O_SHADOW, O_AO, O_WALLS, O_FPSCAP, O_DITHER, O_CAM, O_SHOWFPS,
+       O_AGING, O_OLDAGE, O_TOWNAGE, O_N };
 static const char *const optNm[O_N] = { "PRESET", "VIEW DISTANCE", "FULL DETAIL", "FAR BUILDINGS", "FAR TREES", "HAZE", "CROWD SIZE",
-    "PEOPLE IN FULL 3D", "PEOPLE SPRITES", "SHADOWS", "FLOOR SHADING", "WALL LIGHT", "FRAME RATE", "DITHERING", "CAMERA", "SHOW FPS" };
+    "PEOPLE IN FULL 3D", "PEOPLE SPRITES", "SHADOWS", "FLOOR SHADING", "WALL LIGHT", "FRAME RATE", "DITHERING", "CAMERA", "SHOW FPS",
+    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP" };
 static const char *const optV[O_N][6] = {
     { "CUSTOM", "LOW", "MEDIUM", "HIGH", "ULTRA" }, { "50 M", "250 M", "500 M", "1 KM", "1.5 KM", "2 KM" },
     { "10 M", "12 M", "15 M", "17 M" }, { "TALL ONLY", "ALL", "WITH WINDOWS" }, { "OFF", "100 M", "200 M", "350 M" },
     { "OFF", "LIGHT", "THICK" }, { "16", "32", "48", "64" }, { "1", "2", "4", "6" }, { "SLOW", "NORMAL", "FAST" },
     { "OFF", "PEOPLE", "EVERYTHING" }, { "OFF", "ON" }, { "FLAT", "SOFT" }, { "AS FAST AS IT CAN", "STEADY 30", "STEADY 20" },
-    { "OFF", "ON" }, { "HIGH (SIMS)", "LOW (SEE FAR)" }, { "OFF", "ON" } };
-static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 2, 2 };
+    { "OFF", "ON" }, { "HIGH (SIMS)", "LOW (SEE FAR)" }, { "OFF", "ON" },
+    { "NOBODY AGES", "SHORT", "NORMAL", "LONG" }, { "LIVE ON", "PASS ON" }, { "OFF", "ON" } };
+static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 2, 2, 4, 2, 2 };
 static const char *const optBlurb[O_N] = {
     "LOW, MEDIUM, HIGH OR ULTRA SETS THEM ALL", "HOW FAR SAN BOREAS GOES BEFORE THE SKY", "WHERE ROOMS, WALLS AND THINGS ARE DRAWN IN FULL",
     "THE TOWNS PAST THE MAP: TALL ONES, ALL, OR WINDOWS TOO", "TREES PAST THE NEAR DETAIL, OUT TO", "THE AIR BETWEEN YOU AND THE HORIZON",
     "HOW MANY PEOPLE CAN BE DRAWN AT ONCE", "THE NEAREST, DRAWN AS REAL 3D (THE REST ARE SPRITES)", "HOW OFTEN THE CROWD'S SPRITES ARE REDRAWN",
     "SOFT SHADOWS UNDER PEOPLE AND THINGS", "FLOORS DARKEN WHERE THEY MEET WALLS", "WALLS LIGHTER UP TOP, DARKER AT THE FOOT",
     "A STEADY RATE FEELS SMOOTHER THAN A JUMPY ONE", "THE PLAYSTATION'S SMOOTHING OF COLOURS", "LOW TO SEE THE SKYLINE (THE RIGHT STICK TILTS TOO)",
-    "THE FRAME RATE IN A CORNER (L3 IN PLAY)" };
+    "THE FRAME RATE IN A CORNER (L3 IN PLAY)",
+    "HOW FAST BORES GROW UP, FROM BABY TO ELDER", "AT THE END OF THE ELDER YEARS: GO ON, OR SAY GOODBYE",
+    "EVERYONE IN SAN BOREAS GETS OLDER AND HAS BABIES TOO" };
 static const u8 presets[4][O_N] = {   // LOW, MEDIUM, HIGH, ULTRA (the graphics knobs; the frame rate, dithering, camera and the counter are left be)
     { 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0 }, { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 },
     { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1 }, { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 } };
 #define O_PRESET_LAST O_WALLS                 // (presets set O_VIEW .. O_WALLS)
-static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 0, 1, 0, 0 };   // HIGH: a kilometre of view
+static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 0, 1, 0, 0, 2, 1, 1 };   // HIGH: a kilometre of view; NORMAL lives
 static int opt_sel, opt_back, opt_tab;
 static void opts_apply(void) {
     extern int getenv_noshadow, dbg_noao, dbg_nograd, world_detail_r, cit_live_max, cit_maxdraw, cit_sprite_rate;
@@ -856,23 +975,25 @@ static void opts_apply(void) {
     gfx_min_vsyncs = opt[O_FPSCAP] == 0 ? 1 : opt[O_FPSCAP] == 1 ? 2 : 3;
     gfx_set_dither(opt[O_DITHER]);
     show_fps = opt[O_SHOWFPS];
+    aging = opt[O_AGING]; old_age = opt[O_OLDAGE]; pop_aging = opt[O_TOWNAGE];
 }
 static void opts_open(int back) { opt_back = back; opt_sel = 0; opt_tab = 0; state = ST_OPTS; }
 // the knobs in four tabs (L1 R1), like The Sims 4's game options: sliders for amounts, switches for on and off, pills for choices
-static const char *const optTabNm[4] = { "GRAPHICS", "PEOPLE", "LIGHT", "PLAY" };
-static const s8 optTabIc[4] = { IC_EYE, IC_PEOPLE, IC_SUN, IC_BOLT };
-static const s8 optTab[4][7] = { { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, -1 }, { O_CROWD, O_LIVE, O_SPR, -1 },
-                                 { O_SHADOW, O_AO, O_WALLS, O_DITHER, -1 }, { O_FPSCAP, O_CAM, O_SHOWFPS, -1 } };
+#define NOTAB 5
+static const char *const optTabNm[NOTAB] = { "GRAPHICS", "PEOPLE", "LIGHT", "PLAY", "LIFE" };
+static const s8 optTabIc[NOTAB] = { IC_EYE, IC_PEOPLE, IC_SUN, IC_BOLT, IC_SPROUT };
+static const s8 optTab[NOTAB][7] = { { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, -1 }, { O_CROWD, O_LIVE, O_SPR, -1 },
+                                     { O_SHADOW, O_AO, O_WALLS, O_DITHER, -1 }, { O_FPSCAP, O_CAM, O_SHOWFPS, -1 }, { O_AGING, O_OLDAGE, O_TOWNAGE, -1 } };
 static int opt_kind(int i) {   // 0 a choice, 1 a slider, 2 a switch
-    if (i == O_AO || i == O_DITHER || i == O_SHOWFPS) return 2;
+    if (i == O_AO || i == O_DITHER || i == O_SHOWFPS || i == O_TOWNAGE) return 2;
     if (i == O_VIEW || i == O_DETAIL || i == O_TREES || i == O_HAZE || i == O_CROWD || i == O_LIVE || i == O_SPR) return 1;
     return 0;
 }
 static int opt_rows(int t) { int n = 0; while (n < 7 && optTab[t][n] >= 0) n++; return n; }
 static void opts_update(void) {
     int nr = opt_rows(opt_tab);
-    if (PRESSED(PAD_L1)) { opt_tab = (opt_tab + 3) & 3; opt_sel = 0; }
-    if (PRESSED(PAD_R1)) { opt_tab = (opt_tab + 1) & 3; opt_sel = 0; }
+    if (PRESSED(PAD_L1)) { opt_tab = (opt_tab + NOTAB - 1) % NOTAB; opt_sel = 0; }
+    if (PRESSED(PAD_R1)) { opt_tab = (opt_tab + 1) % NOTAB; opt_sel = 0; }
     nr = opt_rows(opt_tab);
     if (PRESSED(PAD_UP)) opt_sel = (opt_sel + nr - 1) % nr;
     if (PRESSED(PAD_DOWN)) opt_sel = (opt_sel + 1) % nr;
@@ -900,7 +1021,7 @@ static void opts_draw(void) {
     { char b[40]; sprintf(b, "%d FPS%s", fps_val, ram8 ? "  8 MB" : "");
       ui_badge(304 - ui_tw(1, b) - 10, 12, b, fps_val >= 25 ? UI_GREEN : fps_val >= 18 ? UI_RGB(236, 180, 40) : UI_RGB(228, 84, 70), UI_WHITE); }
     // the tabs down the left
-    for (int t = 0; t < 4; t++) {
+    for (int t = 0; t < NOTAB; t++) {
         int y = top + 2 + t * 24, on = t == opt_tab;
         ui_round(14, y, 78, 20, 6, on ? UI_RGB(70, 176, 238) : UI_RGB(238, 243, 249), on ? UI_BLUE2 : UI_RGB(224, 231, 240), 0);
         ui_icon_disc(25, y + 10, 15, optTabIc[t], on ? UI_WHITE : UI_BLUE, on ? UI_BLUE : UI_WHITE);
@@ -963,7 +1084,8 @@ static void pause_update(void) {
             case 4: map_t = -1; state = ST_MAP; break;   // (opened on the map's own first frame: this frame still draws the people, whose sprites share that VRAM)
             case 5: dir_open(); state = ST_DIR; break;
             case 6: jobs_open(); state = ST_JOBS; break;
-            case 7: edit = sims[player].bore; create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
+            case 7: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
+                    create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
             case 8: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); state = ST_LIFE; } break;
             case 9: throw_party(); state = ST_LIFE; break;
@@ -972,7 +1094,7 @@ static void pause_update(void) {
             case 12: opts_open(ST_PAUSE); break;
             case 13: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
             case 14: life_started = 0; start_life(); state = ST_LIFE; break;
-            case 15: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_default(&title_bore); look_random(&title_bore); break;
+            case 15: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); break;
         }
     }
 }
@@ -1021,6 +1143,22 @@ static void pie_draw(void) {
     ui_hintbar(172, "DPAD PICK|X DO IT|O NEVER MIND");
 }
 
+
+// ---- the end: the last of the family has gone ----
+static void over_update(void) {
+    if (PRESSED(PAD_CROSS)) { life_started = 0; start_life(); state = ST_LIFE; }
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); }
+}
+static void over_draw(void) {
+    life_draw();
+    ui_dim();
+    char b[48];
+    int top = ui_window(36, 56, 248, 112, "THE END", IC_HEART);
+    snprintf(b, sizeof b, "THE %s FAMILY", sim_end_name); ui_textc(160, top + 6, 2, b, UI_INK);
+    ui_textc(160, top + 26, 1, "THEIR STORY HAS COME TO AN END.", UI_SOFT);
+    sprintf(b, "%d DAYS IN SAN BOREAS", day_count + 1); ui_textc(160, top + 39, 1, b, UI_SOFT);
+    ui_hints(160, top + 62, "X A NEW LIFE|O TITLE", 1);
+}
 
 // ---- the story page: the goals of this life, Bustin' Out style ----
 static void story_update(void) {
@@ -1076,14 +1214,21 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
     ui_disc(24, top + 10, 24, moodc); ui_disc(24, top + 10, 20, UI_RGB(250, 252, 255));
     draw_face_k(16, top + 2, m, 1);
     sprintf(b, "%s - %s", look_stage_name(s->bore.stage), look_asp_name(s->bore.asp)); ui_text(42, top, 1, b, UI_SOFT);
+    {   // growing up: the next birthday
+        int L = sim_stage_len(s->bore.stage), x = 42 + ui_tw(1, b) + 8;
+        if (s->bday) ui_badge_i(x, top - 2, IC_CAKE, "BIRTHDAY TODAY!", UI_RGB(255, 186, 40), UI_WHITE);
+        else if (L && s->bore.stage < AG_ELDER) { int d = MAX(1, L - s->age_days); sprintf(t, "BIRTHDAY IN %d DAY%s", d, d > 1 ? "S" : ""); ui_text(x, top, 1, t, UI_BLUE2); }
+    }
     const char *mood = m > 50 ? "STOKED" : m > 15 ? "HAPPY" : m > -15 ? "FINE" : m > -50 ? "SAD" : "MISERABLE";
     ui_text(42, top + 11, 1, mood, moodt);
     ui_meter(120, top + 11, 186, m);
+    int kid = s->bore.stage == AG_CHILD || s->bore.stage == AG_TEEN;   // (a kid's fifth tab is SCHOOL)
     for (int i = 0; i < 5; i++) {   // the tabs: a picture and a word, the open one blue
-        int x = 10 + i * 60, on = i == panel_tab, w = 15 + ui_tw(1, panelTab[i]), x0 = x + (59 - w) / 2;
+        const char *tn = i == 4 && kid ? "SCHOOL" : panelTab[i];
+        int x = 10 + i * 60, on = i == panel_tab, w = 15 + ui_tw(1, tn), x0 = x + (59 - w) / 2;
         ui_round(x, top + 25, 59, 17, 6, on ? UI_RGB(70, 176, 238) : UI_RGB(238, 243, 249), on ? UI_BLUE2 : UI_RGB(222, 229, 238), 0);
-        ui_icon(x0, top + 27, panelIc[i], on ? UI_WHITE : UI_BLUE);
-        ui_text(x0 + 15, top + 30, 1, panelTab[i], on ? UI_WHITE : UI_INK);
+        ui_icon(x0, top + 27, i == 4 && kid ? IC_BOOK : panelIc[i], on ? UI_WHITE : UI_BLUE);
+        ui_text(x0 + 15, top + 30, 1, tn, on ? UI_WHITE : UI_INK);
     }
     int y0 = top + 50;
     if (panel_tab == 0) {   // MOOD: every motive, and what is lifting or dragging the mood
@@ -1138,7 +1283,14 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
             ui_round(10, y, 300, 23, 6, UI_WHITE, UI_PANEL, 0);
             ui_disc(23, y + 11, 21, mm > 15 ? UI_GREEN : mm > -15 ? UI_AMBER : UI_RED); ui_disc(23, y + 11, 17, UI_RGB(250, 252, 255));
             draw_face_k(15, y + 3, mm, 1);
-            sprintf(b, "%s %s", sims[j].bore.first, sims[j].bore.last); ui_text(40, y + 3, 1, b, UI_INK);
+            {   // the name, what they are to you (the family tree), and their stage of life
+                const char *rl = sim_relation(player, j), *sg = sims[j].away ? "AT SCHOOL" : look_stage_name(sims[j].bore.stage);
+                sprintf(b, "%s %s", sims[j].bore.first, sims[j].bore.last);
+                if (40 + ui_tw(1, b) + (rl ? ui_tw(1, rl) + 6 : 0) + 6 + ui_tw(1, sg) > 214) strcpy(b, sims[j].bore.first);
+                int x = 40; ui_text(x, y + 3, 1, b, UI_INK); x += ui_tw(1, b) + 6;
+                if (rl) { ui_text(x, y + 3, 1, rl, UI_BLUE2); x += ui_tw(1, rl) + 6; }
+                if (x + ui_tw(1, sg) <= 214) ui_text(x, y + 3, 1, sg, UI_SOFT);
+            }
             ui_meter(40, y + 13, 170, rs);
             gfx_rect(40 + 1 + 84 + 42, y + 12, 1, 9, 236, 176, 40, 0);   // (a friend at 50)
             const char *lab = rs >= 50 ? "FRIEND" : rs >= 15 ? "PALS" : rs > -15 ? "STRANGERS" : rs > -50 ? "DISLIKED" : "ENEMY";
@@ -1147,8 +1299,32 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
             row++;
         }
         if (!row) ui_text(14, y0, 1, "NOBODY ELSE LIVES HERE", UI_SOFT);
-        ui_icon(12, 199, IC_HEART, UI_RED);
-        ui_text(28, 201, 1, "CHAT, JOKE AND HUG TO MAKE FRIENDS. 50 IS A FRIEND.", UI_SOFT);
+        if (baby_due >= 0) { int d = MAX(1, (baby_due - life_minutes() + 1439) / 1440);   // a baby on the way
+            sprintf(b, "A BABY IS ON THE WAY: %d DAY%s TO GO", d, d > 1 ? "S" : "");
+            ui_icon(12, 199, IC_BABY, UI_RGB(236, 120, 160)); ui_text(28, 201, 1, b, UI_RGB(200, 70, 120)); }
+        else { ui_icon(12, 199, IC_HEART, UI_RED);
+            ui_text(28, 201, 1, "CHAT, JOKE AND HUG TO MAKE FRIENDS. 50 IS A FRIEND.", UI_SOFT); }
+    } else if (kid) {   // SCHOOL: the grade, today at school, the homework, the report card
+        int g = s->grade, sd = clock_day < 5 && day_count > 0;   // (no school on the day you move in)
+        u32 gc = g >= 85 ? UI_GREEN : g >= 70 ? UI_RGB(70, 176, 238) : g >= 55 ? UI_AMBER : UI_RED;
+        ui_icon_disc(30, y0 + 13, 28, IC_BOOK, UI_BLUE, UI_WHITE);
+        ui_text(52, y0 + 1, 2, s->bore.stage == AG_CHILD ? "GRADE SCHOOL" : "HIGH SCHOOL", UI_INK);
+        sprintf(b, "GRADE %s", sim_grade(g)); ui_badge(52, y0 + 16, b, gc, UI_WHITE); int bw = ui_tw(1, b) + 10;
+        ui_text(52 + bw + 8, y0 + 18, 1, g >= 85 ? "TOP OF THE CLASS" : g >= 70 ? "DOING WELL" : g >= 55 ? "GETTING BY" : g >= 40 ? "FALLING BEHIND" : "FAILING", UI_SOFT);
+        ui_text(12, y0 + 34, 1, "THE BUS AT 8 AM, HOME AT 3 PM, MON - FRI", UI_SOFT);
+        ui_section(12, y0 + 48, 294, "TODAY");
+        ui_text(12, y0 + 60, 1, "SCHOOL", UI_INK);
+        ui_text(96, y0 + 60, 1, !sd ? "NO SCHOOL TODAY" : s->away ? "AT SCHOOL NOW" : clock_min < 480 ? "THE BUS COMES AT 8" : clock_min >= 900 ? "DONE FOR THE DAY" : "SKIPPED TODAY",
+                sd && !s->away && clock_min >= 480 && clock_min < 900 ? UI_BADT : UI_INK);
+        ui_text(12, y0 + 74, 1, "HOMEWORK", UI_INK);
+        if (s->homework) ui_badge_i(96, y0 + 72, IC_TICK, "DONE", UI_GREEN, UI_WHITE);
+        else ui_text(96, y0 + 74, 1, sd ? "NOT YET: X ON A DESK OR A BOOKSHELF" : "NONE TODAY", sd ? UI_BADT : UI_SOFT);
+        ui_section(12, y0 + 88, 294, "REPORT CARD");
+        ui_bar(12, y0 + 100, 294, 9, g, gc);
+        { static const u8 cut[5] = { 0, 40, 55, 70, 85 }; static const char *const gl[5] = { "F", "D", "C", "B", "A" };
+          for (int k = 0; k < 5; k++) { int x = 12 + 294 * cut[k] / 100; if (k) gfx_rect(x, y0 + 99, 1, 11, 120, 132, 150, 0);
+              int nx = 12 + 294 * (k < 4 ? cut[k + 1] : 100) / 100; ui_textc((x + nx) / 2, y0 + 112, 1, gl[k], k == (g >= 85 ? 4 : g >= 70 ? 3 : g >= 55 ? 2 : g >= 40 ? 1 : 0) ? UI_INK : UI_SOFT); } }
+        ui_text(12, y0 + 124, 1, "HOMEWORK EVERY SCHOOL DAY KEEPS THE GRADES UP", UI_SOFT);
     } else {   // JOB: the career, the level, the pay, today's shift, the run of good days and strikes
         char t2[40]; int len = job_shift_len();
         ui_icon_disc(30, y0 + 13, 28, carIc[job_car], UI_BLUE, UI_WHITE);
@@ -1180,7 +1356,7 @@ static void create_update(void) {
     if (PRESSED(PAD_RIGHT) || PRESSED(PAD_CROSS)) dir = 1;
     if (dir) {
         const LookRow *r = &rows[create_row];
-        if (r->kind == ROW_AGE) { edit.stage = (u8)((edit.stage + AG_N + dir) % AG_N); look_build(&edit); }
+        if (r->kind == ROW_AGE) { int st = edit.stage; do st = (st + AG_N + dir) % AG_N; while (st == AG_BABY); edit.stage = (u8)st; look_fix(&edit); look_build(&edit); }   // (a baby cannot be played)
         else if (r->id == LK_ASP) edit.asp = (u8)((edit.asp + AS_PICK + dir) % AS_PICK);
         else if (r->id == LK_LTW) edit.ltw = (u8)((edit.ltw + 4 + dir) % 4);
         else if (r->id >= LK_TRAIT0 && r->id < LK_TRAIT0 + 5) { int t = r->id - LK_TRAIT0; int v = edit.tr[t] + dir; edit.tr[t] = (u8)CLAMP(v, 0, 10); }
@@ -1198,7 +1374,9 @@ static void create_update(void) {
     if (analog) create_turn += rs_x / 3;
     if (PRESSED(PAD_START) || PRESSED(PAD_SELECT)) {
         world_restore();
-        if (prev_state == ST_LIFE) { sims[player].bore = edit; state = ST_LIFE; }
+        if (prev_state == ST_LIFE) { Sim *me = &sims[player]; if (me->bore.stage != edit.stage) { me->age_days = 0; me->bday = 0; }
+            TexRef te = me->bore.tex_eye, tm = me->bore.tex_mouth; me->bore = edit; me->bore.tex_eye = te; me->bore.tex_mouth = tm; look_build(&me->bore);   // (on the Bore's own faces)
+            crowd_forget(CROWD_MAX + player); state = ST_LIFE; }
         else { life_started = 0; start_life(); state = ST_LIFE; }
         audio_voice(VOICE_YAHOO);
     }
@@ -1279,8 +1457,8 @@ static int floor_supported(int l, int x, int y) {   // an upper floor needs some
 }
 // ---- the catalog (Sims buy mode): the items in tabs, a scrolling list with prices ----
 static const char *const catNm[7] = { "SEATS, BEDS", "TABLES, STORAGE", "KITCHEN, BATH", "FUN AND TECH", "DECOR, PLANTS", "SKATE", "SPECIAL" };
-static const char *const catSet[6] = { "CUh;S<N%z", "tdibyK?#O", "F/:cTH,->&Y`", "vARj[!$()QImn]_{", "rlpZVqo}gus*0", "=LJXM159G" };
-static int item_cat(char ch) { for (int c = 0; c < 6; c++) if (strchr(catSet[c], ch)) return c; return 6; }
+static const char *const catSet[6] = { "CUh;S<N%z\x81", "tdibyK?#O", "F/:cTH,->&Y`", "vARj[!$()QImn]_{", "rlpZVqo}gus*0", "=LJXM159G" };
+static int item_cat(char ch) { if (ch == CH_CAKE || ch == CH_GRAVE) return -1; for (int c = 0; c < 6; c++) if (strchr(catSet[c], ch)) return c; return 6; }
 static int cat_list(int cat, int *idx) { int n = 0; for (int i = 0; i < items_count() && n < 96; i++) if (item_cat(items_at(i)) == cat) idx[n++] = i; return n; }
 static void catalog_step(int dir) {   // L1 R1: through the tab, and on into the next tab at the end
     int idx[96], cat = item_cat(items_at(build_item)), n = cat_list(cat, idx), p = 0;
@@ -1361,7 +1539,7 @@ static void build_update(void) {
                 } else { *cell = ch; cash -= cost; ok = 1; wants_event(&sims[player], W_BUY, 0); }
             } }
         if (build_tool == 1) { if (*cell == '.' && cash >= 50) { *cell = 'W'; *world_wall_cell(L, build_x, build_y) = (u8)build_wp; cash -= 50; ok = 1; } }
-        if (build_tool == 2) { if (*cell == ' ' && !floor_supported(L, build_x, build_y)) sim_note("A FLOOR UP HERE NEEDS SOMETHING UNDER IT");
+        if (build_tool == 2) { if (*cell == ' ' && !floor_supported(L, build_x, build_y)) sim_note("NOTHING UNDER IT TO HOLD IT UP");
                                else if (cash >= 10) { if (*cell == ' ') *cell = '.'; *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; ok = 1; } }
         if (build_tool == 3) { if (*cell == 'W' || *cell == 'w') { *world_wall_cell(L, build_x, build_y) = (u8)build_wp; ok = 1; } }
         audio_voice(ok ? VOICE_FINISHED : VOICE_NAH);
@@ -1479,7 +1657,8 @@ static void juke_draw(void) {   // the song playing on its own card, every song 
 
 // ---- help ----
 typedef struct { s8 ic; const char *t; } HelpTip;
-static const struct { const char *title; HelpTip it[5]; } help_pg[3] = {
+#define NHELP 4
+static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
     { "HOW TO PLAY", { { IC_PLAY, "MOVE WITH THE STICK OR THE D-PAD. SQUARE RUNS." },
         { IC_FOOD, "X USES THE THING IN FRONT OF YOU: THE FRIDGE, THE BED, THE SHOWER, THE SOFA, THE TV." },
         { IC_CHAT, "X ON A PERSON TO TALK. O STOPS WHAT YOU ARE DOING." },
@@ -1494,17 +1673,22 @@ static const struct { const char *title; HelpTip it[5]; } help_pg[3] = {
         { IC_BRUSH, "SELECT PICKS THE TOOL. L1 R1 PICK THE THING. X PLACES IT, SQUARE TAKES IT AWAY." },
         { IC_HOUSE, "L2 R2 CHANGE THE STOREY. L3 SHOWS THE ROOF." },
         { IC_STAR, "CREATE A BORE: EVERY BODY, FACE, HAIR, CLOTHES AND PART, IN 3D." },
-        { IC_DICE, "TRIANGLE ROLLS THE DICE FOR A RANDOM BORE." } } } };
+        { IC_DICE, "TRIANGLE ROLLS THE DICE FOR A RANDOM BORE." } } },
+    { "GROWING UP", { { IC_SPROUT, "BORES GROW UP: BABY, CHILD, TEEN, ADULT, ELDER. OPTIONS SETS HOW FAST." },
+        { IC_CAKE, "A BIRTHDAY? BAKE A CAKE AT THE FRIDGE OR STOVE, THEN BLOW CANDLES." },
+        { IC_HEART, "TWO GROWN-UPS WHO GET ON: X ON ONE, START A FAMILY. OR ADOPT BY PHONE." },
+        { IC_BABY, "A BABY CRIES WHEN IT NEEDS YOU: FEED, CHANGE, PLAY, CUDDLE. BUY A CRIB." },
+        { IC_BOOK, "SCHOOL IS 8 AM TO 3 PM, MON - FRI. HOMEWORK AT A DESK OR SHELF." } } } };
 static void help_update(void) {
-    if (PRESSED(PAD_R1) || PRESSED(PAD_CROSS)) help_page = (help_page + 1) % 3;
-    if (PRESSED(PAD_L1)) help_page = (help_page + 2) % 3;
+    if (PRESSED(PAD_R1) || PRESSED(PAD_CROSS)) help_page = (help_page + 1) % NHELP;
+    if (PRESSED(PAD_L1)) help_page = (help_page + NHELP - 1) % NHELP;
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) state = prev_state == ST_PAUSE ? ST_LIFE : ST_MENU;
 }
 static void help_draw(void) {   // three pages of tips, each with its picture
     if (prev_state == ST_PAUSE) life_draw(); else title_draw();
     ui_dim();
     int top = ui_window(14, 8, 292, 224, help_pg[help_page].title, IC_HELP), y = top + 2;
-    char b[16]; sprintf(b, "PAGE %d OF 3", help_page + 1); ui_badge(300 - ui_tw(1, b) - 10, 12, b, UI_WHITE, UI_BLUE2);
+    char b[16]; sprintf(b, "PAGE %d OF %d", help_page + 1, NHELP); ui_badge(300 - ui_tw(1, b) - 10, 12, b, UI_WHITE, UI_BLUE2);
     for (int i = 0; i < 5; i++) {
         const HelpTip *h = &help_pg[help_page].it[i];
         int nl = ui_wrap_n(236, h->t), hh = MAX(28, nl * 10 + 8);
@@ -1513,7 +1697,7 @@ static void help_draw(void) {   // three pages of tips, each with its picture
         ui_wrap(54, y + (hh - 3 - nl * 10 + 3) / 2, 236, 3, h->t, UI_INK);
         y += hh;
     }
-    for (int k = 0; k < 3; k++) ui_disc(148 + k * 12, 205, 7, k == help_page ? UI_BLUE : UI_LINE);
+    for (int k = 0; k < NHELP; k++) ui_disc(160 - (NHELP - 1) * 6 + k * 12, 205, 7, k == help_page ? UI_BLUE : UI_LINE);
     ui_hints(160, 212, "L1 R1 PAGE|O BACK", 1);
 }
 
@@ -1661,6 +1845,9 @@ int main(void) {
 #ifdef AUTO_TOUR
         tour_tick();
 #endif
+#ifdef AUTO_GROW
+        grow_tick();
+#endif
         ui_light = 0;
         switch (state) {
             case ST_TITLE: title_update(); title_draw(); break;
@@ -1684,6 +1871,7 @@ int main(void) {
             case ST_DIR: dir_update(); dir_draw(); break;
             case ST_OPTS: opts_update(); opts_draw(); break;
             case ST_JOBS: jobs_update(); jobs_draw(); break;
+            case ST_OVER: over_update(); over_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
         if (state == ST_LIFE) { avg_cpu16 += t_cpu - (avg_cpu16 >> 4); avg_world16 += t_world - (avg_world16 >> 4);   // (the test readouts)
