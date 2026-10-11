@@ -7,7 +7,7 @@
 #define MAX_SIMS 6
 #define NEED_N 8
 enum { N_FOOD, N_WC, N_REST, N_CLEAN, N_COMFY, N_FUN, N_SOCIAL, N_ROOM };
-enum { ACT_NONE, ACT_EAT, ACT_WC, ACT_SLEEP, ACT_SHOWER, ACT_SIT, ACT_FUN, ACT_TALK, ACT_WORK, ACT_WALK, ACT_COFFEE, ACT_READ, ACT_RUN, ACT_PHONE, ACT_TRAVEL, ACT_STAIRS };
+enum { ACT_NONE, ACT_EAT, ACT_WC, ACT_SLEEP, ACT_SHOWER, ACT_SIT, ACT_FUN, ACT_TALK, ACT_WORK, ACT_WALK, ACT_COFFEE, ACT_READ, ACT_RUN, ACT_PHONE, ACT_TRAVEL, ACT_STAIRS, ACT_SWIM };
 
 typedef struct {
     Bore bore;
@@ -82,6 +82,9 @@ int  sim_awake(const Sim *s);
 void sim_switch_player(void);
 int  sim_find_path(Sim *s, int tx, int ty);
 void sim_shift(int dtx, int dty);           // SAN BOREAS: the map window moved by that many tiles
+void sim_take_job(int car, int bx, int by, const char *place);   // the player takes a job (places.h careers)
+int  sim_front_service(void);              // a counter, a till, a machine or your work right in front: X goes to it before the people near it
+extern int day_count;                       // days since this life began
 
 // the story: what this life has done so far (the travel zones unlock from these)
 extern int story_paid;         // paychecks earned

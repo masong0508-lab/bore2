@@ -55,7 +55,7 @@ const char *pop_trait_name(int t) { return traitNm[t % NTRAIT]; }
 int pop_stage_of(int p) { return pop_per[p].stage; }
 
 // ---- making them ----
-static int is_work(int lot) { return lot == LOT_OFFICE || lot == LOT_TOWER || lot == LOT_HOTEL || lot == LOT_SHOP || lot == LOT_DINER || lot == LOT_GYM || lot == LOT_INN || lot == LOT_POOL || lot == LOT_SCHOOL || lot == LOT_ARCADE; }
+static int is_work(int lot) { return lot == LOT_OFFICE || lot == LOT_TOWER || lot == LOT_HOTEL || lot == LOT_SHOP || lot == LOT_DINER || lot == LOT_GYM || lot == LOT_INN || lot == LOT_POOL || lot == LOT_SCHOOL || lot == LOT_ARCADE || lot >= LOT_CAFE; }
 static int find_place(int set, int want_lot, int any_work) {   // a place of that kind in the town (-1: none)
     if (set >= 32 || !set_pn[set]) return -1;
     int n = set_pn[set], k0 = prn(n);
@@ -154,7 +154,10 @@ static int work_hours(int p, int *a, int *b) {     // today's shift at their job
         case LOT_OFFICE: case LOT_TOWER: case LOT_SCHOOL: if (d >= 5) return 0; *a = lot == LOT_SCHOOL ? 480 : 540; *b = lot == LOT_SCHOOL ? 960 : 1020; return 1;
         case LOT_ARCADE: if (d == off1) return 0; *a = 840; *b = 1380; return 1;
         case LOT_POOL: if (d == off1) return 0; *a = 600; *b = 1080; return 1;
-        case LOT_INN: case LOT_HOTEL: if (d == off1 || d == off2) return 0; *a = late ? 900 : 420; *b = late ? 1380 : 900; return 1;
+        case LOT_INN: case LOT_HOTEL: case LOT_CLINIC: if (d == off1 || d == off2) return 0; *a = late ? 900 : 420; *b = late ? 1380 : 900; return 1;
+        case LOT_BAR: if (d == off1 || d == off2) return 0; *a = 960; *b = 1440; return 1;
+        case LOT_CINEMA: if (d == off1) return 0; *a = 780; *b = 1380; return 1;
+        case LOT_LIBRARY: case LOT_GALLERY: if (d == off1 || d == off2) return 0; *a = 540; *b = 1050; return 1;
         default: if (d == off1 || d == off2) return 0; *a = late ? 840 : 360; *b = late ? 1320 : 840; if (lot == LOT_SHOP) { *a += 120; *b = MIN(*b + 60, 1320); } return 1;
     }
 }
@@ -168,9 +171,9 @@ static int leisure(int p, int slot, int *place) {   // out for a couple of hours
     for (int t = 0; t < 10; t++) {
         int i = set_p0[set] + (int)((h >> (8 + t)) % set_pn[set]); int l = pop_place[i].lot;
         if (t < 7 && ABS(pop_place[i].bx - fm->bx) + ABS(pop_place[i].by - fm->by) > 5) continue;   // somewhere in the neighbourhood, mostly
-        int ok = q->stage <= AG_TEEN ? (l == LOT_PARK || l == LOT_SKATE || l == LOT_POOL || l == LOT_ARCADE || l == LOT_SQUARE || l == LOT_DINER)
-               : q->stage == AG_ELDER ? (l == LOT_PARK || l == LOT_SQUARE || l == LOT_DINER || l == LOT_SHOP || l == LOT_INN)
-               : (l != LOT_SCHOOL && l != LOT_OFFICE);
+        int ok = q->stage <= AG_TEEN ? (l == LOT_PARK || l == LOT_SKATE || l == LOT_POOL || l == LOT_ARCADE || l == LOT_SQUARE || l == LOT_DINER || l == LOT_CAFE || l == LOT_CINEMA || l == LOT_LIBRARY)
+               : q->stage == AG_ELDER ? (l == LOT_PARK || l == LOT_SQUARE || l == LOT_DINER || l == LOT_SHOP || l == LOT_INN || l == LOT_CAFE || l == LOT_LIBRARY || l == LOT_GALLERY || l == LOT_RESTAURANT || l == LOT_CINEMA)
+               : (l != LOT_SCHOOL && l != LOT_OFFICE && l != LOT_TOWER && l != LOT_CLINIC);
         if (ok) { *place = i; return 1; }
     }
     return 0;
@@ -197,7 +200,9 @@ static const char *job_title(int lot, int late) {
     switch (lot) {
         case LOT_OFFICE: case LOT_TOWER: return late ? "MANAGER" : "OFFICE WORKER"; case LOT_HOTEL: return late ? "CONCIERGE" : "HOUSEKEEPER"; case LOT_SHOP: return "SHOP CLERK"; case LOT_DINER: return late ? "WAITER" : "COOK";
         case LOT_GYM: return "TRAINER"; case LOT_INN: return "INNKEEPER"; case LOT_POOL: return "LIFEGUARD"; case LOT_SCHOOL: return "TEACHER";
-        case LOT_ARCADE: return "ARCADE ATTENDANT"; default: return "WORKER";
+        case LOT_ARCADE: return "ARCADE ATTENDANT"; case LOT_CAFE: return "BARISTA"; case LOT_BAR: return "BARTENDER"; case LOT_CINEMA: return "USHER";
+        case LOT_SALON: return "STYLIST"; case LOT_RESTAURANT: return late ? "WAITER" : "CHEF"; case LOT_CLINIC: return late ? "DOCTOR" : "NURSE";
+        case LOT_LIBRARY: return "LIBRARIAN"; case LOT_SPA: return "THERAPIST"; case LOT_GALLERY: return "CURATOR"; default: return "WORKER";
     }
 }
 const char *pop_job_name(int p, char *out) {

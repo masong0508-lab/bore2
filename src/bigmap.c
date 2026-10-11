@@ -135,22 +135,26 @@ static int pick(u32 r, const u8 *tab) {          // tab: lot, weight, ... 0,0 (w
     for (; tab[1]; tab += 2) { if (v < tab[1]) return tab[0]; v -= tab[1]; }
     return LOT_EMPTY;
 }
-static const u8 mixCore[] = { LOT_TOWER, 12, LOT_OFFICE, 4, LOT_SHOP, 12, LOT_DINER, 7, LOT_HOTEL, 4, LOT_INN, 2, LOT_GYM, 4, LOT_ARCADE, 3, LOT_POOL, 2, LOT_PARK, 6,
-                              LOT_SQUARE, 2, LOT_SKATE, 2, LOT_EMPTY, 4, LOT_APART, 22, LOT_TOWN, 8, LOT_TWO, 6, 0, 0 };
-static const u8 mixMid[]  = { LOT_HOUSE, 20, LOT_TWO, 13, LOT_TOWN, 13, LOT_COTTAGE, 10, LOT_APART, 8, LOT_SHOP, 6, LOT_DINER, 3, LOT_OFFICE, 3, LOT_GYM, 2, LOT_POOL, 1,
-                              LOT_SCHOOL, 1, LOT_PARK, 7, LOT_EMPTY, 9, LOT_ARCADE, 1, LOT_INN, 2, LOT_TOWER, 1, 0, 0 };
-static const u8 mixOut[]  = { LOT_HOUSE, 20, LOT_COTTAGE, 22, LOT_TWO, 8, LOT_EMPTY, 24, LOT_PARK, 6, LOT_FARM, 12, LOT_SHOP, 4, LOT_DINER, 2, LOT_INN, 2, 0, 0 };
-static const u8 mixVil[]  = { LOT_HOUSE, 22, LOT_COTTAGE, 28, LOT_EMPTY, 24, LOT_FARM, 16, LOT_PARK, 4, LOT_SHOP, 3, LOT_DINER, 3, 0, 0 };
+static const u8 mixCore[] = { LOT_TOWER, 10, LOT_OFFICE, 4, LOT_SHOP, 9, LOT_DINER, 5, LOT_HOTEL, 4, LOT_INN, 2, LOT_GYM, 3, LOT_ARCADE, 2, LOT_POOL, 2, LOT_PARK, 5,
+                              LOT_SQUARE, 2, LOT_SKATE, 2, LOT_EMPTY, 2, LOT_APART, 16, LOT_TOWN, 6, LOT_TWO, 4,
+                              LOT_CAFE, 4, LOT_BAR, 4, LOT_CINEMA, 2, LOT_SALON, 2, LOT_RESTAURANT, 3, LOT_CLINIC, 2, LOT_LIBRARY, 1, LOT_SPA, 2, LOT_GALLERY, 2, 0, 0 };
+static const u8 mixMid[]  = { LOT_HOUSE, 18, LOT_TWO, 12, LOT_TOWN, 12, LOT_COTTAGE, 9, LOT_APART, 8, LOT_SHOP, 5, LOT_DINER, 3, LOT_OFFICE, 3, LOT_GYM, 2, LOT_POOL, 1,
+                              LOT_SCHOOL, 1, LOT_PARK, 6, LOT_EMPTY, 6, LOT_ARCADE, 1, LOT_INN, 2, LOT_TOWER, 1,
+                              LOT_CAFE, 3, LOT_BAR, 2, LOT_SALON, 1, LOT_RESTAURANT, 1, LOT_CLINIC, 1, LOT_CINEMA, 1, LOT_LIBRARY, 1, 0, 0 };
+static const u8 mixOut[]  = { LOT_HOUSE, 20, LOT_COTTAGE, 22, LOT_TWO, 8, LOT_EMPTY, 20, LOT_PARK, 6, LOT_FARM, 12, LOT_SHOP, 4, LOT_DINER, 2, LOT_INN, 2, LOT_CAFE, 2, LOT_BAR, 2, 0, 0 };
+static const u8 mixVil[]  = { LOT_HOUSE, 22, LOT_COTTAGE, 28, LOT_EMPTY, 21, LOT_FARM, 16, LOT_PARK, 4, LOT_SHOP, 3, LOT_DINER, 3, LOT_BAR, 3, 0, 0 };
 static int landmark(const Settle *s, int dx, int dy) {   // what every town has at its heart
     if (dx == 0 && dy == 0) return LOT_SQUARE;
     if (s->kind == ST_VILLAGE) {
-        if (dx == 1 && dy == 0) return LOT_SHOP; if (dx == -1 && dy == 0) return LOT_DINER; if (dx == 0 && dy == 1) return LOT_INN;
+        if (dx == 1 && dy == 0) return LOT_SHOP; if (dx == -1 && dy == 0) return LOT_DINER; if (dx == 0 && dy == 1) return LOT_INN; if (dx == 0 && dy == -1) return LOT_BAR;
         return -1;
     }
     static const signed char lm[][3] = { {1,0,LOT_OFFICE}, {-1,0,LOT_SHOP}, {0,1,LOT_DINER}, {0,-1,LOT_INN}, {1,1,LOT_POOL}, {-1,-1,LOT_SCHOOL},
-                                         {1,-1,LOT_GYM}, {-1,1,LOT_PARK}, {2,0,LOT_ARCADE}, {-2,0,LOT_SKATE}, {0,2,LOT_TOWER}, {0,-2,LOT_SHOP},
-                                         {2,2,LOT_HOTEL}, {-2,-2,LOT_POOL}, {3,0,LOT_SCHOOL}, {-3,0,LOT_TOWER} };
-    int n = s->kind == ST_CITY ? 16 : 9;
+                                         {1,-1,LOT_GYM}, {-1,1,LOT_PARK}, {2,0,LOT_ARCADE}, {2,-1,LOT_CAFE}, {-2,1,LOT_BAR},   // (a town: these eleven)
+                                         {-2,0,LOT_SKATE}, {0,2,LOT_TOWER}, {0,-2,LOT_SHOP}, {2,2,LOT_HOTEL}, {-2,-2,LOT_POOL}, {3,0,LOT_SCHOOL}, {-3,0,LOT_TOWER},
+                                         {1,2,LOT_RESTAURANT}, {-1,-2,LOT_CLINIC}, {2,1,LOT_CINEMA}, {-2,-1,LOT_SALON}, {1,-2,LOT_LIBRARY}, {-1,2,LOT_SPA},
+                                         {3,1,LOT_GALLERY} };
+    int n = s->kind == ST_CITY ? 25 : 11;
     for (int i = 0; i < n; i++) if (lm[i][0] == dx && lm[i][1] == dy) return lm[i][2];
     return -1;
 }
@@ -189,9 +193,10 @@ int bm_storeys(const BInfo *b) {
 int bm_units(const BInfo *b) {
     switch (b->lot) { case LOT_TOWN: return 2; case LOT_HOUSE: case LOT_COTTAGE: case LOT_TWO: return 1; case LOT_APART: return 2 * bm_storeys(b); default: return 0; }
 }
-int bm_is_place(int lot) { return lot >= LOT_SHOP && lot <= LOT_SKATE; }
+int bm_is_place(int lot) { return (lot >= LOT_SHOP && lot <= LOT_SKATE) || (lot >= LOT_CAFE && lot < LOT_N); }
 static const char *const lotNm[LOT_N] = { "OPEN COUNTRY", "HOUSE", "COTTAGE", "TOWNHOUSES", "TWO-STOREY", "FLATS", "SHOP", "DINER", "GYM", "OFFICE", "INN",
-                                          "POOL", "SCHOOL", "ARCADE", "OFFICE TOWER", "HOTEL", "PARK", "TOWN SQUARE", "SKATE PLAZA", "EMPTY LOT", "FARM" };
+                                          "POOL", "SCHOOL", "ARCADE", "OFFICE TOWER", "HOTEL", "PARK", "TOWN SQUARE", "SKATE PLAZA", "EMPTY LOT", "FARM",
+                                          "CAFE", "BAR", "CINEMA", "SALON", "RESTAURANT", "CLINIC", "LIBRARY", "SPA", "GALLERY" };
 const char *bm_lot_name(int lot) { return lotNm[lot % LOT_N]; }
 
 static const char *const stNm[24] = { "MAIN", "ELM", "OAK", "PINE", "MAPLE", "BIRCH", "CEDAR", "ASH", "WILLOW", "LAKE", "HILL", "PARK",
@@ -214,12 +219,24 @@ const char *bm_place_name(int lot, u32 h, char *out) {
     static const char *const sch[3] = { "BORE HIGH", "DIPPER ELEMENTARY", "MOSS ACADEMY" };
     static const char *const arc[3] = { "PIXEL PALACE", "GAME ZONE", "8-BIT ALLEY" };
     static const char *const park[6] = { "ELM PARK", "MOSS GARDENS", "DIPPER GREEN", "QUIET PARK", "THE COMMONS", "NAPPER'S FIELD" };
+    static const char *const cafe[6] = { "THE DAILY GRIND", "BEAN THERE", "THE DOZY BEAN", "CAFE MOSS", "PERK UP", "THE SLEEPY CUP" };
+    static const char *const bar[6] = { "THE YAWNING DOG", "LAST ORDERS", "THE NIGHT OWL", "BORE'S TAVERN", "THE LOCAL", "DIPPER'S PUB" };
+    static const char *const cin[4] = { "THE ROXY", "BORE CINEMA", "STARLIGHT", "THE BIJOU" };
+    static const char *const sal[4] = { "SNIP SNAP", "CURL UP & DYE", "THE MANE EVENT", "SHEAR BLISS" };
+    static const char *const res[6] = { "CHEZ BORE", "THE GOLDEN SPOON", "LA SNOOZA", "THE SILVER FORK", "MOSS & THYME", "DINE O'CLOCK" };
+    static const char *const cli[4] = { "BORE GENERAL", "MOSS MEDICAL", "DIPPER CLINIC", "WELLNESS CENTRE" };
+    static const char *const lib[3] = { "BORE LIBRARY", "THE READING ROOM", "MOSS LIBRARY" };
+    static const char *const spa[4] = { "SERENITY SPA", "THE STEAM ROOM", "ZEN DEN", "BLISS SPA" };
+    static const char *const gal[4] = { "THE GREY GALLERY", "MOSS MODERN", "BEIGE ART HOUSE", "DIPPER MUSEUM" };
     const char *s;
     switch (lot) {
         case LOT_SHOP: s = shop[h % 8u]; break;   case LOT_DINER: s = diner[h % 6u]; break; case LOT_GYM: s = gym[h % 4u]; break;
         case LOT_OFFICE: s = off[h % 6u]; break;  case LOT_INN: s = inn[h % 4u]; break;     case LOT_POOL: s = pool[h % 3u]; break;
         case LOT_SCHOOL: s = sch[h % 3u]; break;  case LOT_ARCADE: s = arc[h % 3u]; break;  case LOT_PARK: s = park[h % 6u]; break;
         case LOT_TOWER: s = off[(h >> 3) % 6u]; break; case LOT_HOTEL: s = inn[(h >> 2) % 4u]; break;
+        case LOT_CAFE: s = cafe[h % 6u]; break;   case LOT_BAR: s = bar[h % 6u]; break;     case LOT_CINEMA: s = cin[h % 4u]; break;
+        case LOT_SALON: s = sal[h % 4u]; break;   case LOT_RESTAURANT: s = res[h % 6u]; break; case LOT_CLINIC: s = cli[h % 4u]; break;
+        case LOT_LIBRARY: s = lib[h % 3u]; break; case LOT_SPA: s = spa[h % 4u]; break;     case LOT_GALLERY: s = gal[h % 4u]; break;
         default: s = bm_lot_name(lot); break;
     }
     strcpy(out, s);

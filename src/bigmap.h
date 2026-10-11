@@ -13,7 +13,9 @@
 enum { BT_SEA, BT_BEACH, BT_GRASS, BT_FOREST, BT_DESERT, BT_ROCKY };
 enum { LOT_WILD, LOT_HOUSE, LOT_COTTAGE, LOT_TOWN, LOT_TWO, LOT_APART,            // nothing; the homes (APART: a block of flats, 2 a storey)
        LOT_SHOP, LOT_DINER, LOT_GYM, LOT_OFFICE, LOT_INN, LOT_POOL, LOT_SCHOOL, LOT_ARCADE, LOT_TOWER, LOT_HOTEL,   // the places people go (TOWER: offices, storeys of them)
-       LOT_PARK, LOT_SQUARE, LOT_SKATE, LOT_EMPTY, LOT_FARM, LOT_N };
+       LOT_PARK, LOT_SQUARE, LOT_SKATE, LOT_EMPTY, LOT_FARM,
+       LOT_CAFE, LOT_BAR, LOT_CINEMA, LOT_SALON, LOT_RESTAURANT, LOT_CLINIC, LOT_LIBRARY, LOT_SPA, LOT_GALLERY,   // more places to go
+       LOT_N };
 enum { ST_CITY, ST_TOWN, ST_VILLAGE };
 
 typedef struct {

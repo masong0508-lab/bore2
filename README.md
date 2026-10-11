@@ -48,8 +48,15 @@ Every person in a crowd is the full model, like your own Bore: `src/crowd.c` kee
 RAM the voice clips used before they went into the sound chip, draws the few biggest on screen live in 3D, and shows the rest as
 sprites of that same model, rendered into spare video memory and redrawn round the crowd as the frame's time allows.
 
-## The city
-BORE CITY is an 80x80 map: a 5x5 grid of 16-tile blocks, 23 homes in four kinds (HOUSE, COTTAGE, TOWNHOUSES, TWO-STOREY with a loft), two parks, the square, a diner, a gym with an arcade, an office and a skate plaza. `world_gen_city` in `src/world.c` places them from the `lots[][]` table; to add a home kind, write a `city_*` function and give it a table entry.
+## The city and places to go
+SAN BOREAS is a whole state worked out from the save's seed (`src/bigmap.c`): towns, cities and villages, and on their blocks homes
+and 19 kinds of place: shops (grocery, clothes, electronics, furniture, music), diners, cafes, restaurants, bars, gyms, pools, spas,
+salons, cinemas, galleries, libraries, clinics, arcades, inns, hotels, offices, towers and schools. `src/world.c` builds each one's
+inside (`lot_*`), `src/places.c` knows their names and opening hours, and the pie menu (X) sells what each one sells: a meal, a latte,
+a drink or a round, a film, a haircut, a massage, a checkup, a swim, a room for the night, groceries for home, an outfit.
+
+Jobs (START, JOBS) are at real places too: 14 careers (13 in town, and the old factory) with their own shifts, days, pay and six titles each (DISHWASHER to
+RESTAURATEUR, INTERN to CEO, ORDERLY to MEDICAL LEGEND...). Go there (the boss pays the taxi) and X on a counter, desk or machine.
 
 ## DS port (in progress)
 The game code is split so a Nintendo DS build can sit beside the PS1 one:

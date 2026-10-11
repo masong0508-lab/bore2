@@ -18,6 +18,7 @@
 #include "pop.h"
 #include "far.h"
 #include "ui.h"
+#include "places.h"
 
 // ---- input ----
 static u8 pad_buf[2][34];
@@ -37,6 +38,9 @@ static void read_pad(void) {
             if (ABS(ls_x) < 20) ls_x = 0; if (ABS(ls_y) < 20) ls_y = 0; if (ABS(rs_x) < 20) rs_x = 0; if (ABS(rs_y) < 20) rs_y = 0;
         }
     }
+#ifdef AUTO_TOUR
+    { extern int auto_btn; if (auto_btn) { btn &= (u16)~auto_btn; auto_btn = 0; } }   // (test builds: the tour presses a button for a frame)
+#endif
 }
 
 // ---- colours ----
@@ -76,7 +80,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int create_tab, create_row, create_from, create_turn;
@@ -93,8 +97,10 @@ int dbg_shift_hb, dbg_shifts;
 static void taxi_to_block(int bx, int by, int tx, int ty, const char *where);
 static char pie_opt[8][16]; static int pie_n, pie_sel, pie_cit;   // the pie menu
 static int panel_tab;                                      // the Bore panel's tab
+static int jobs_sel, jobs_n, jobs_scroll, jobs_car[16], jobs_pl[16];   // the JOBS screen
+static void jobs_open(void);
 
-// which story zones are open (the island comes with the first paycheck, the town with the SPONSORED job level)
+// which story zones are open (the island comes with the first paycheck, the town with job level 2)
 static int zone_unlocked(int z) { return z == 0 || z == 3 || (z == 1 && story_paid > 0) || (z == 2 && job_level >= 2); }   // (the city is open from the start)
 
 // ---- Sims-style widgets: motive colours, the mood face, the notification feed, the action card ----
@@ -114,19 +120,31 @@ static const char *act_name(int a) {
         case ACT_EAT: return "EATING"; case ACT_WC: return "USING THE TOILET"; case ACT_SLEEP: return "SLEEPING"; case ACT_SHOWER: return "SHOWERING";
         case ACT_SIT: return "RELAXING"; case ACT_FUN: return "HAVING FUN"; case ACT_TALK: return "CHATTING"; case ACT_WORK: return "WORKING";
         case ACT_WALK: return "WALKING"; case ACT_COFFEE: return "HAVING COFFEE"; case ACT_READ: return "READING"; case ACT_RUN: return "EXERCISING";
-        case ACT_PHONE: return "ON THE PHONE"; case ACT_TRAVEL: return "TRAVELLING"; case ACT_STAIRS: return "ON THE STAIRS";
+        case ACT_PHONE: return "ON THE PHONE"; case ACT_TRAVEL: return "TRAVELLING"; case ACT_STAIRS: return "ON THE STAIRS"; case ACT_SWIM: return "SWIMMING";
     }
     return "";
 }
 static int act_seen, act_total;
+static const char *act_label(const Sim *s) {   // the action's name, the going-out ones in their own words
+    switch (s->action) {
+        case ACT_SIT: if (s->act_var == 6) return "WATCHING A FILM"; break;
+        case ACT_FUN: if (s->act_var == 4) return "BROWSING"; if (s->act_var == 5) return "HAVING A DRINK"; if (s->act_var == 7) return "ADMIRING THE ART"; break;
+        case ACT_EAT: if (s->act_var == 2) return "EATING OUT"; if (s->act_var == 5) return "FINE DINING"; break;
+        case ACT_SLEEP: if (s->act_var == 2) return "A MASSAGE"; break;
+        case ACT_RUN: if (s->act_var == 2) return "TRAINING"; break;
+        case ACT_COFFEE: if (s->act_var == 1) return "A HOT DRINK"; break;
+    }
+    return act_name(s->action);
+}
 static void draw_action_card(const Sim *s) {   // what the Bore is doing, with its progress (the Sims 1 queue, one card)
     if (s->action != act_seen) { act_seen = s->action; act_total = s->act_t; }
     if (s->action == ACT_NONE || s->action == ACT_WALK) return;
-    const char *nm = act_name(s->action);
+    const char *nm = act_label(s);
     int w = MAX(ui_tw(1, nm) + 14, 90);
     ui_card(4, 164, w, 17);
     ui_text(10, 167, 1, nm, UI_INK);
-    if (act_total > 0 && act_total < 9999) ui_bar(9, 175, w - 10, 4, CLAMP(100 - s->act_t * 100 / act_total, 0, 100), UI_BLUE);
+    if (s->action == ACT_WORK) ui_bar(9, 175, w - 10, 4, MIN(100, job_worked * 100 / job_shift_len()), UI_GREEN);   // (the shift so far)
+    else if (act_total > 0 && act_total < 9999) ui_bar(9, 175, w - 10, 4, CLAMP(100 - s->act_t * 100 / act_total, 0, 100), UI_BLUE);
 }
 #define NFEED 3
 static char feed[NFEED][32]; static int feed_t[NFEED], prev_note_t;
@@ -198,7 +216,8 @@ static void draw_sims(void) {
         if (!gfx_visible(s->x, -110 - s->lvl * WALL_FULL, s->z, 150)) continue;   // off the screen
         VECTOR p; setVector(&p, s->x, 0, s->z);
         if (s->action == ACT_SLEEP) p.vy = -items_height('S') + 40;
-        if (s->action == ACT_SIT || s->action == ACT_WC) p.vy = -items_height(world_at(s->act_x, s->act_y)) / 2 + 10;
+        if (s->action == ACT_SIT || s->action == ACT_WC || (s->action == ACT_EAT && s->gait.sit)) p.vy = -items_height(world_at(s->act_x, s->act_y)) / 2 + 10;
+        if (s->action == ACT_SWIM) p.vy = 30 + (isin((frame * 60) & 4095) >> 9);   // afloat, bobbing
         s->gait.mood = s->mood; s->gait.talk = s->action == ACT_TALK; s->gait.seed = i; s->gait.clock = frame;
         p.vy -= s->lvl * WALL_FULL;
         {   // far from where you are looking: the same person at half the voxel resolution (the crowd model); close up, the full model
@@ -220,7 +239,7 @@ static void draw_sims(void) {
             if (far && !drawn) dbg_hh_miss++;
             PROF_END(4);
         }
-        if (s->action != ACT_SLEEP && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
+        if (s->action != ACT_SLEEP && s->action != ACT_SWIM && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
     citizens_draw();
     if (nsims && !sims[player].grump) draw_marker(&sims[player]);   // MOSS gets nothing. MOSS made that very clear.
@@ -243,6 +262,28 @@ static void draw_bubbles(void) {   // thoughts and notes over heads
     citizens_draw_bubbles();
 }
 
+static int venue_t, venue_bx = -1, venue_by = -1; static PlaceInfo venue;
+static void venue_watch(void) {   // walking onto a place: its name and its hours, for a few seconds (The Sims 4's lot name)
+    PlaceInfo pi; const Sim *s = &sims[player];
+    int in = place_at(sim_tile_x(s), sim_tile_y(s), &pi);
+    if (in && (pi.bx != venue_bx || pi.by != venue_by)) { venue = pi; venue_t = 300; }
+    if (in) { venue_bx = pi.bx; venue_by = pi.by; } else venue_bx = venue_by = -1;
+}
+static const s8 lotIc[LOT_N] = { -1, IC_HOUSE, IC_HOUSE, IC_HOUSE, IC_HOUSE, IC_HOUSE, IC_MONEY, IC_FOOD, IC_BOLT, IC_CASE, IC_BED, IC_DROP, IC_BOOK,
+                                 IC_PLAY, IC_CASE, IC_BED, IC_TREE, IC_PEOPLE, IC_FAST, -1, IC_SPROUT,
+                                 IC_FOOD, IC_NOTE, IC_CAMERA, IC_SMILE, IC_FOOD, IC_HEART, IC_BOOK, IC_DROP, IC_BRUSH };
+static void venue_draw(void) {
+    char sub[32], h[8]; int open_ = place_open(venue.lot, clock_min, clock_day);
+    if (job_car != CAR_FACTORY && venue.bx == job_bx && venue.by == job_by) strcpy(sub, "YOUR WORKPLACE");
+    else if (!open_) sprintf(sub, "CLOSED TILL %s", hour_name(place_opens_at(venue.lot), h));
+    else if (place_opens_at(venue.lot) == 0 && place_closes_at(venue.lot) == 24) strcpy(sub, "OPEN ALL DAY");
+    else sprintf(sub, "OPEN TILL %s", hour_name(place_closes_at(venue.lot), h));
+    int tw_ = MAX(ui_tw(1, venue.name), ui_tw(1, sub)), ic = tw_ + 34 <= 140, w = tw_ + (ic ? 34 : 14), x = 316 - w, y = 52;   // (on the right, under the want)
+    ui_card(x, y, w, 27);
+    if (ic) ui_icon_disc(x + 13, y + 13, 20, lotIc[venue.lot % LOT_N], UI_BLUE, UI_WHITE);
+    ui_text(x + (ic ? 27 : 7), y + 4, 1, venue.name, UI_INK);
+    ui_text(x + (ic ? 27 : 7), y + 15, 1, sub, open_ ? UI_GOODT : UI_BADT);
+}
 static const char *const aspLvNm[4] = { "RED", "GREEN", "GOLD", "PLATINUM" };
 static const int aspLvCol[4][3] = { {255,80,70}, {90,220,90}, {255,200,40}, {220,235,255} };
 static void hud_life(void) {
@@ -281,7 +322,7 @@ static void hud_life(void) {
     { int lv = wants_level(s);                                   // the aspiration meter, under the mood
       ui_bar(210, 213, 100, 5, 100 * s->asp_pts / ASP_MAX, UI_RGB(aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2])); }
     const char *hint = sim_hint();
-    { const char *ch = citizens_hint(); if (ch[0]) hint = ch; }
+    { const char *ch = citizens_hint(); if (ch[0] && !sim_front_service() && (s->action == ACT_NONE || s->action == ACT_WALK)) hint = ch; }   // (busy: X gets up)
     if (hint[0]) { sprintf(b, "X %s", hint); ui_round(180, 222, 132, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(185, 224, 1, b, UI_WHITE); }
     else ui_text(182, 224, 1, "START: MENU", UI_SOFT);
     // the clock and the money, top right
@@ -295,9 +336,10 @@ static void hud_life(void) {
         char t[32]; wants_text(s, (frame / 240) & 3, t);
         int w = ui_tw(1, t) + 22;
         ui_card(316 - w, 35, w, 14); ui_icon(320 - w, 36, IC_STAR, UI_RGB(236, 170, 30)); ui_text(334 - w, 38, 1, t, UI_INK);
-        if (wants_flash_t > 0) { int fw = ui_tw(2, wants_flash) + 16; ui_card(160 - fw / 2, 56, fw, 18); ui_textc(160, 59, 2, wants_flash, wants_flash[0] == 'W' ? UI_RGB(40, 150, 50) : UI_RGB(200, 60, 50)); }
+        if (wants_flash_t > 0) { int fw = ui_tw(2, wants_flash) + 16; ui_card(160 - fw / 2, 86, fw, 18); ui_textc(160, 89, 2, wants_flash, wants_flash[0] == 'W' ? UI_RGB(40, 150, 50) : UI_RGB(200, 60, 50)); }
     }
     feed_draw();
+    if (venue_t > 0) { venue_draw(); venue_t--; }
     citizens_hud();
     if (frame < 900) ui_hintbar(144, "L1 R1 TURN|L2 R2 ZOOM|X USE|SQ RUN");
     if (show_fps) { extern int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block;
@@ -339,7 +381,7 @@ static void life_update(int steps) {
         Sim *me = &sims[player];
         if (me->action != ACT_NONE && me->action != ACT_WALK) sim_player_interact();
         else if (citizens_punch()) { }   // a fight is on and someone is in reach
-        else { pie_cit = 1; pie_n = citizens_pie_open(pie_opt);   // a civilian in front of you first, then the things
+        else { pie_cit = 1; pie_n = sim_front_service() ? 0 : citizens_pie_open(pie_opt);   // a civilian in front of you first, then the things (a counter right ahead wins)
                if (!pie_n) { pie_cit = 0; pie_n = sim_pie_open(pie_opt); }
                if (pie_n == 1) { if (pie_cit) citizens_pie_do(0); else sim_pie_do(0); } else if (pie_n > 1) { pie_sel = 0; state = ST_PIE; } else audio_voice(VOICE_NAH); }
     }
@@ -353,11 +395,30 @@ static void life_update(int steps) {
         int dtx, dty;
 #ifdef AUTO_CITY
         { static int fr_, done_; fr_ += steps;   // (test builds: by the clock, 60 a second, so runs at any frame rate line up)
-#ifdef AUTO_TOWER
+#if defined(AUTO_TOUR)
+          (void)0;
+#elif defined(AUTO_PLACES)
+          { extern int sim_debug_goto(char c, int lot);   // (test builds: a job at the nearest diner, a ride there, work; a swim; a meal; a shop)
+            static const struct { u16 at; s8 lot; char c; } stp[4] = { { 400, LOT_DINER, 'y' }, { AUTO_PLACES, LOT_POOL, '~' }, { AUTO_PLACES + 700, LOT_DINER, 'y' }, { AUTO_PLACES + 1300, LOT_SHOP, 'y' } };
+            if (fr_ >= 120 && !(done_ & 1)) { done_ |= 1; jobs_open(); for (int k = 0; k < jobs_n; k++) if (jobs_car[k] == CAR_FOOD) { jobs_sel = k + 1; break; }
+                const Place *p = &pop_place[jobs_pl[jobs_sel - 1]]; char nm[24]; bm_place_name(p->lot, bm_hash(p->bx, p->by, 3), nm); sim_take_job(CAR_FOOD, p->bx, p->by, nm);
+                taxi_to_block(job_bx, job_by, -1, -1, job_place); }
+            for (int k = 0; k < 4; k++) {
+                int b0 = 2 << (k * 2), b1 = b0 << 1;
+                if (fr_ >= stp[k].at && !(done_ & b0)) { done_ |= b0;      // there, or a taxi to the nearest one first
+                    if (sim_debug_goto(stp[k].c, stp[k].lot)) done_ |= b1;
+                    else { int bi = -1, bd = 1 << 30, pbx = world_wbx + sim_tile_x(s) / BM_BLK, pby = world_wby + sim_tile_y(s) / BM_BLK;
+                           for (int i = 0; i < pop_nplace; i++) if (pop_place[i].lot == stp[k].lot) { int d = ABS(pop_place[i].bx - pbx) + ABS(pop_place[i].by - pby); if (d < bd) { bd = d; bi = i; } }
+                           if (bi >= 0) taxi_to_block(pop_place[bi].bx, pop_place[bi].by, -1, -1, "TEST"); } }
+                if (fr_ >= stp[k].at + 200 && !(done_ & b1)) { done_ |= b1; sim_debug_goto(stp[k].c, stp[k].lot); }
+                if (fr_ >= stp[k].at && fr_ < stp[k].at + 30) { cam_pitch = 760; cam_dist = 1800; }
+            } }
+#elif defined(AUTO_TOWER)
           if (fr_ >= 120 && !(done_ & 1)) { done_ |= 1; const Settle *cp = bm_set(bm_capital()); taxi_to_block(cp->x + AUTO_TOWER, cp->y + 2, 8, 1, "TEST"); }
           if (fr_ > 120) { cam_pitch = 760; cam_dist = 3600; cam_yaw = 2048 + 300; }
           if (fr_ > 180 && fr_ < 800 && s->action == ACT_NONE) s->x += 3 * steps;
-#else
+#endif
+#if !defined(AUTO_TOWER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR)
           if (fr_ > 240 && s->action == ACT_NONE) s->x += 11 * steps;   // (stroll east along the street)
           if (fr_ > 2000) { cam_pitch = 700; cam_dist = 4200; cam_yaw = 2048 + 500; }   // (then look over the roofs)
 #ifdef AUTO_LOW
@@ -372,6 +433,7 @@ static void life_update(int steps) {
             { extern int dbg_shift_hb, dbg_shifts; int d = hb_now() - ts_; if (d > dbg_shift_hb) dbg_shift_hb = d; dbg_shifts++; } }
     }
     feed_poll();
+    if (!(frame & 7)) venue_watch();
     camera_input();
     if (PRESSED(PAD_START)) { state = ST_PAUSE; menu_sel = 0; }
     if (travel_asked) { travel_asked = 0; travel_sel = world_zone; state = ST_TRAVEL; }
@@ -434,7 +496,7 @@ static void travel_update(void) {
 }
 static void travel_draw(void) {   // where to: the four places, each on a row with its picture, the locked ones greyed with what opens them
     static const char *const blurb[ZONE_N] = { "HOUSE, FACTORY, RAIL PARK", "A CAMP, PALMS AND THE SEA", "DINER, TRAILER AND THE LAB", "" };
-    static const char *const lockTxt[ZONE_N] = { "", "EARN YOUR FIRST PAYCHECK", "GET SPONSORED AT WORK", "" };
+    static const char *const lockTxt[ZONE_N] = { "", "EARN YOUR FIRST PAYCHECK", "GET PROMOTED TWICE", "" };
     static const s8 zic[ZONE_N] = { IC_HOUSE, IC_TREE, IC_SUN, IC_PIN };
     char b[48];
     life_draw();
@@ -656,6 +718,109 @@ static void dir_draw(void) {
     ui_hints(310, 215, "O BACK", 2);
 }
 
+// ---- JOBS: your job (and a free ride to it), and the jobs going at real places near you ----
+static const s8 carIc[CAR_N] = { IC_HAMMER, IC_FOOD, IC_MONEY, IC_BOLT, IC_DROP, IC_BED, IC_PLAY, IC_CASE, IC_BOOK, IC_NOTE, IC_HEART, IC_CAMERA, IC_SMILE, IC_BRUSH };
+static void jobs_open(void) {
+    int rbx, rby;
+    if (world_zone == ZONE_CITY && world_wbx >= 0) { rbx = world_wbx + sim_tile_x(&sims[player]) / BM_BLK; rby = world_wby + sim_tile_y(&sims[player]) / BM_BLK; }
+    else { const Settle *cp = bm_set(bm_capital()); rbx = cp->x; rby = cp->y; }
+    jobs_n = job_openings(rbx, rby, jobs_car, jobs_pl, 16);
+    jobs_sel = 0; jobs_scroll = 0;
+}
+static void shift_text(char *out, int car) {   // "7 AM - 3 PM, MON - FRI"
+    char h1[8], h2[8], d[12]; const Career *c = &careers[car];
+    sprintf(out, "%s - %s, %s", hour_name(c->from, h1), hour_name(c->to, h2), days_name(c->days, d));
+}
+static void shift_short(char *out, int car) {  // "7AM-3PM MON-FRI"
+    char h1[8], h2[8], d[12], *p; const Career *c = &careers[car];
+    sprintf(out, "%s-%s %s", hour_name(c->from, h1), hour_name(c->to, h2), days_name(c->days, d));
+    for (p = out; *p; p++) if (p[0] == ' ' && (p[1] == 'A' || p[1] == 'P' || p[1] == '-' || (p > out && p[-1] == '-'))) memmove(p, p + 1, strlen(p));
+}
+static void jobs_update(void) {
+    int n = jobs_n + 1;   // (row 0: your own job)
+    if (PRESSED(PAD_UP)) jobs_sel = (jobs_sel + n - 1) % n;
+    if (PRESSED(PAD_DOWN)) jobs_sel = (jobs_sel + 1) % n;
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = ST_LIFE; return; }
+    if (!PRESSED(PAD_CROSS)) return;
+    if (jobs_sel == 0) {   // go to work: the boss pays the taxi
+        state = ST_LIFE;
+        if (job_car == CAR_FACTORY) { if (world_zone != ZONE_HOME) travel_go(ZONE_HOME); sim_note("THE FACTORY: THE GOLD MARKER"); }
+        else taxi_to_block(job_bx, job_by, -1, -1, job_place);
+        return;
+    }
+    int k = jobs_sel - 1;
+    if (jobs_pl[k] < 0) sim_take_job(CAR_FACTORY, -1, -1, "THE FACTORY");
+    else { const Place *p = &pop_place[jobs_pl[k]]; char nm[24]; bm_place_name(p->lot, bm_hash(p->bx, p->by, 3), nm); sim_take_job(jobs_car[k], p->bx, p->by, nm); }
+    jobs_open();
+}
+static void jobs_draw(void) {
+    life_draw();
+    ui_dim();
+    char b[64], t[40];
+    int top = ui_window(4, 4, 312, 232, "JOBS", IC_CASE);
+    sprintf(b, "$%ld", cash); ui_badge(306 - ui_tw(1, b) - 10, 8, b, UI_WHITE, UI_GOODT);
+    {   // your job, on its own card, with the button to go
+        int on = jobs_sel == 0, len = job_shift_len();
+        ui_round(10, top, 300, 55, 6, on ? UI_RGB(226, 242, 254) : UI_WHITE, on ? UI_HILITE : UI_PANEL, 0);
+        if (on) gfx_rect(10, top + 4, 2, 47, 38, 146, 222, 0);
+        ui_icon_disc(32, top + 19, 30, carIc[job_car], UI_BLUE, UI_WHITE);
+        ui_text(54, top + 3, 2, job_title(), UI_INK);
+        sprintf(b, "LEVEL %d OF 5", job_level); ui_badge(304 - ui_tw(1, b) - 10, top + 4, b, UI_BLUE, UI_WHITE);
+        sprintf(b, "%s - %s", careers[job_car].name, job_place); ui_text(54, top + 18, 1, b, UI_SOFT);
+        shift_text(t, job_car); sprintf(b, "%s   $%d A SHIFT", t, job_pay()); ui_text(54, top + 28, 1, b, UI_INK);
+        ui_text(54, top + 42, 1, "TODAY", UI_SOFT); ui_bar(90, top + 42, 108, 7, MIN(100, job_worked * 100 / len), UI_GREEN);
+        ui_button(208, top + 38, 96, 14, "GO TO WORK", IC_CAR, on);
+    }
+    ui_section(12, top + 59, 296, "JOBS GOING NEAR YOU");
+    if (jobs_sel > 0 && jobs_sel - 1 < jobs_scroll) jobs_scroll = jobs_sel - 1;
+    if (jobs_sel > 0 && jobs_sel - 1 >= jobs_scroll + 5) jobs_scroll = jobs_sel - 5;
+    for (int r = 0; r < 5 && jobs_scroll + r < jobs_n; r++) {
+        int k = jobs_scroll + r, c = jobs_car[k], y = top + 71 + r * 22, on = jobs_sel == k + 1;
+        const Career *cr = &careers[c];
+        if (on) { ui_round(10, y - 2, 300, 21, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(10, y + 1, 2, 15, 38, 146, 222, 0); }
+        ui_icon_disc(26, y + 8, 18, carIc[c], on ? UI_BLUE : UI_RGB(130, 156, 190), UI_WHITE);
+        int lv = c == job_car ? job_level : 0;
+        ui_text(40, y, 1, cr->title[lv], on ? UI_BLUE2 : UI_INK);
+        sprintf(b, "$%d A SHIFT", cr->pay0 + cr->pay_lvl * lv); ui_text(306 - ui_tw(1, b), y, 1, b, UI_GOODT);
+        shift_short(t, c); int tw2 = ui_tw(1, t);
+        if (jobs_pl[k] < 0) strcpy(b, "THE FACTORY, THE MAN BASE");
+        else { const Place *p = &pop_place[jobs_pl[k]]; char nm[24]; const Settle *st = bm_set(p->set);
+               sprintf(b, "%s, %s", bm_place_name(p->lot, bm_hash(p->bx, p->by, 3), nm), st ? st->name : "");
+               if (40 + ui_tw(1, b) + 8 > 306 - tw2) strcpy(b, nm); }   // (no room for the town: the place alone)
+        ui_text(40, y + 10, 1, b, UI_SOFT);
+        ui_text(306 - tw2, y + 10, 1, t, UI_SOFT);
+    }
+    gfx_rect(10, 212, 300, 1, 200, 210, 222, 0);
+    ui_hints(160, 217, jobs_sel ? "DPAD PICK|X TAKE THIS JOB|O BACK" : "DPAD PICK|X GO TO WORK|O BACK", 1);
+}
+
+#ifdef AUTO_TOUR
+// (test builds) a ride to each new kind of place, up to the thing to use there, the clock set to when it is open, and the buttons
+// pressed by the clock (real time, so the loading screens do not throw it): the pie menus open and their options run, as from the pad
+int auto_btn;
+static void tour_tick(void) {
+    extern int sim_debug_goto(char c, int lot);
+    static const struct { s8 lot; char c; u8 hour; char keys[4]; } tour[10] = {
+        { LOT_CAFE, 'y', 9, "XX" }, { LOT_RESTAURANT, 't', 13, "X" }, { LOT_SALON, 'y', 13, "XX" }, { LOT_CINEMA, ';', 14, "XDX" },
+        { LOT_GALLERY, ')', 14, "X" }, { LOT_SPA, 'S', 15, "X" }, { LOT_CLINIC, 'y', 15, "X" }, { LOT_LIBRARY, 'b', 16, "XX" }, { LOT_BAR, 'y', 18, "XX" },
+        { LOT_POOL, '~', 18, "XDX" } };
+    static int k = -1, phase, t0;
+    if (k < 0) { if (state != ST_LIFE || !life_started || world_zone != ZONE_CITY || frame < 200) return; k = 0; phase = 0; clock_day = 1; }
+    if (k >= 10 || (state != ST_LIFE && state != ST_PIE)) return;
+    int t = VSync(-1) - t0; const Sim *s = &sims[player];
+    if (phase == 0) {   // a taxi to the nearest one
+        int bi = -1, bd = 1 << 30, pbx = world_wbx + sim_tile_x(s) / BM_BLK, pby = world_wby + sim_tile_y(s) / BM_BLK;
+        for (int i = 0; i < pop_nplace; i++) if (pop_place[i].lot == tour[k].lot) { int d = ABS(pop_place[i].bx - pbx) + ABS(pop_place[i].by - pby); if (d < bd) { bd = d; bi = i; } }
+        if (bi >= 0) { char nm[24]; bm_place_name(tour[k].lot, bm_hash(pop_place[bi].bx, pop_place[bi].by, 3), nm); taxi_to_block(pop_place[bi].bx, pop_place[bi].by, -1, -1, nm); }
+        clock_min = tour[k].hour * 60; phase = 1; t0 = VSync(-1); return;
+    }
+    if (phase == 1) { if (t < 150) return; sim_debug_goto(tour[k].c, tour[k].lot); cam_pitch = 700; cam_dist = 1700; phase = 2; t0 = VSync(-1); return; }
+    char key = tour[k].keys[phase - 2];
+    if (key) { if (t >= 50) { auto_btn = key == 'X' ? PAD_CROSS : key == 'D' ? PAD_DOWN : PAD_CIRCLE; phase++; t0 = VSync(-1); } return; }
+    if (t >= 360) { k++; phase = 0; }
+}
+#endif
+
 // ---- OPTIONS: the picture and the speed, as many knobs as a PC game, with presets; the game runs behind as you change them ----
 static void title_draw(void);
 enum { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_CROWD, O_LIVE, O_SPR, O_SHADOW, O_AO, O_WALLS, O_FPSCAP, O_DITHER, O_CAM, O_SHOWFPS, O_N };
@@ -766,8 +931,8 @@ static void opts_draw(void) {
     ui_hints(16, top + 185, "O BACK", 0);
 }
 
-static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "THE STORY", "TRAVEL", "MAP AND TAXI", "THE PEOPLE", "CREATE A BORE", "ADD A BORE", "THROW A PARTY", "BUILD MODE", "JUKEBOX", "OPTIONS", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
-#define NPAUSE 15
+static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "THE STORY", "TRAVEL", "MAP AND TAXI", "THE PEOPLE", "JOBS", "CREATE A BORE", "ADD A BORE", "THROW A PARTY", "BUILD MODE", "JUKEBOX", "OPTIONS", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
+#define NPAUSE 16
 #ifdef AUTO_PARTY
 int ap_frames, ap_vs, ap_cpu;
 #endif
@@ -797,21 +962,22 @@ static void pause_update(void) {
             case 3: travel_sel = world_zone; state = ST_TRAVEL; break;
             case 4: map_t = -1; state = ST_MAP; break;   // (opened on the map's own first frame: this frame still draws the people, whose sprites share that VRAM)
             case 5: dir_open(); state = ST_DIR; break;
-            case 6: edit = sims[player].bore; create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
-            case 7: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
+            case 6: jobs_open(); state = ST_JOBS; break;
+            case 7: edit = sims[player].bore; create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
+            case 8: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); state = ST_LIFE; } break;
-            case 8: throw_party(); state = ST_LIFE; break;
-            case 9: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); state = ST_BUILD; break;
-            case 10: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
-            case 11: opts_open(ST_PAUSE); break;
-            case 12: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 13: life_started = 0; start_life(); state = ST_LIFE; break;
-            case 14: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_default(&title_bore); look_random(&title_bore); break;
+            case 9: throw_party(); state = ST_LIFE; break;
+            case 10: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); state = ST_BUILD; break;
+            case 11: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
+            case 12: opts_open(ST_PAUSE); break;
+            case 13: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
+            case 14: life_started = 0; start_life(); state = ST_LIFE; break;
+            case 15: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_default(&title_bore); look_random(&title_bore); break;
         }
     }
 }
 static void pause_draw(void) {
-    static const s8 ic[NPAUSE] = { IC_PLAY, IC_PLUMBOB, IC_BOOK, IC_CAR, IC_PIN, IC_PEOPLE, IC_STAR, IC_ADD, IC_PARTY, IC_HAMMER, IC_NOTE, IC_GEAR, IC_HELP, IC_SPROUT, IC_DOOR };
+    static const s8 ic[NPAUSE] = { IC_PLAY, IC_PLUMBOB, IC_BOOK, IC_CAR, IC_PIN, IC_PEOPLE, IC_CASE, IC_STAR, IC_ADD, IC_PARTY, IC_HAMMER, IC_NOTE, IC_GEAR, IC_HELP, IC_SPROUT, IC_DOOR };
     life_draw();
     ui_dim();
     int top = ui_window(14, 10, 292, 220, "PAUSED", IC_PAUSE);
@@ -866,9 +1032,9 @@ static void story_draw(void) {   // the goals of this life, ticked off as they a
     char b[48], isl[40];
     sprintf(isl, "SAIL TO %s", world_zone_name(ZONE_ISLAND));
     struct { const char *txt; int done; } g[6] = {
-        { "EARN A PAYCHECK (9 TO 5, MON-FRI)", story_paid > 0 },
+        { "EARN A PAYCHECK (START, JOBS)", story_paid > 0 },
         { isl, story_visit[1] },
-        { "GET SPONSORED AT WORK", job_level >= 2 },
+        { "GET PROMOTED TWICE", job_level >= 2 },
         { "SEE THE DESERT TOWN", story_visit[2] },
         { "MAKE FRIENDS: CHAT 5 TIMES", story_talks >= 5 },
         { "SAVE UP $20000", cash >= 20000 },
@@ -983,14 +1149,15 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
         if (!row) ui_text(14, y0, 1, "NOBODY ELSE LIVES HERE", UI_SOFT);
         ui_icon(12, 199, IC_HEART, UI_RED);
         ui_text(28, 201, 1, "CHAT, JOKE AND HUG TO MAKE FRIENDS. 50 IS A FRIEND.", UI_SOFT);
-    } else {   // JOB
-        ui_icon_disc(30, y0 + 13, 28, IC_CASE, UI_BLUE, UI_WHITE);
-        ui_text(52, y0 + 1, 2, "THE FACTORY", UI_INK);
+    } else {   // JOB: the career, the level, the pay, today's shift, the run of good days and strikes
+        char t2[40]; int len = job_shift_len();
+        ui_icon_disc(30, y0 + 13, 28, carIc[job_car], UI_BLUE, UI_WHITE);
+        ui_text(52, y0 + 1, 2, job_title(), UI_INK);
         sprintf(b, "LEVEL %d OF 5", job_level); ui_badge(52, y0 + 16, b, UI_BLUE, UI_WHITE);
-        sprintf(b, "A FULL SHIFT PAYS $%d", 1400 + 800 * job_level); ui_text(140, y0 + 18, 1, b, UI_GOODT);   // PAY0 + PAY_LVL * level (sim.c)
-        ui_text(12, y0 + 34, 1, "9 TO 5, MON TO FRI, ON THE GOLD WORK MARKER", UI_SOFT);
+        sprintf(b, "$%d A SHIFT", job_pay()); ui_text(140, y0 + 18, 1, b, UI_GOODT);
+        shift_text(t2, job_car); sprintf(b, "%s, %s", job_place, t2); ui_text(12, y0 + 34, 1, b, UI_SOFT);
         ui_section(12, y0 + 48, 294, "TODAY");
-        ui_text(12, y0 + 60, 1, "SHIFT DONE", UI_INK); ui_bar(96, y0 + 60, 210, 7, MIN(100, job_worked * 100 / 300), UI_BLUE);
+        ui_text(12, y0 + 60, 1, "SHIFT DONE", UI_INK); ui_bar(96, y0 + 60, 210, 7, MIN(100, job_worked * 100 / len), UI_GREEN);
         ui_text(12, y0 + 74, 1, "GOOD DAYS", UI_INK); ui_pips(96, y0 + 74, job_days_good, 3, UI_GREEN); ui_text(140, y0 + 74, 1, "3 IN A ROW: PROMOTED", UI_SOFT);
         ui_text(12, y0 + 88, 1, "STRIKES", UI_INK); ui_pips(96, y0 + 88, job_strikes, 3, UI_RED); ui_text(140, y0 + 88, 1, "3 STRIKES: DEMOTED", UI_SOFT);
         ui_section(12, y0 + 102, 294, "MONEY");
@@ -1320,7 +1487,7 @@ static const struct { const char *title; HelpTip it[5]; } help_pg[3] = {
         { IC_PEOPLE, "SELECT SWITCHES TO THE NEXT BORE IN THE HOUSE." } } },
     { "THE CAMERA", { { IC_CAMERA, "L1 R1 TURN THE CAMERA. L2 R2 ZOOM. THE RIGHT STICK TURNS AND TILTS IT." },
         { IC_EYE, "WALLS IN THE WAY DROP DOWN, LIKE THE SIMS." },
-        { IC_CASE, "WORK: STAND ON THE GOLD MARKER IN THE FACTORY, 9 TO 5, MONDAY TO FRIDAY." },
+        { IC_CASE, "WORK: START, THEN JOBS. PICK A JOB AT A REAL PLACE, GO THERE, AND X ON A COUNTER, DESK OR MACHINE." },
         { IC_MONEY, "BILLS ARE $800, EVERY MIDNIGHT. KEEP SOME MONEY BY." },
         { IC_PLUMBOB, "START OPENS THE MENU: THE BORE PANEL, THE MAP, BUILD MODE AND MORE." } } },
     { "BUILD AND CREATE", { { IC_HAMMER, "BUILD MODE: ITEMS, WALLS, FLOORS AND 103 WALLPAPERS." },
@@ -1491,6 +1658,9 @@ int main(void) {
         frame++;
         fps_frames++; if (now - fps_vb >= 60) { fps_val = fps_frames * 60 / (now - fps_vb); fps_frames = 0; fps_vb = now; }
         audio_update();
+#ifdef AUTO_TOUR
+        tour_tick();
+#endif
         ui_light = 0;
         switch (state) {
             case ST_TITLE: title_update(); title_draw(); break;
@@ -1513,6 +1683,7 @@ int main(void) {
             case ST_MAP: map_update(); map_draw(); break;
             case ST_DIR: dir_update(); dir_draw(); break;
             case ST_OPTS: opts_update(); opts_draw(); break;
+            case ST_JOBS: jobs_update(); jobs_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
         if (state == ST_LIFE) { avg_cpu16 += t_cpu - (avg_cpu16 >> 4); avg_world16 += t_world - (avg_world16 >> 4);   // (the test readouts)

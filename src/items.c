@@ -215,9 +215,8 @@ static const ItemDef defs[] = {
 };
 #define NDEFS ((int)(sizeof(defs) / sizeof(defs[0])))
 static const ItemDef *def_of(char ch) {
-    if (ch >= '1' && ch <= '4') ch = '1';
-    if (ch >= '5' && ch <= '8') ch = '5';
-    if (ch == '~') ch = '^';
+    if (ch == '2' || ch == '4') ch = '1';                     // a kicker turned (the skate park spells its turn in the letter;
+                                                              // '3' '6' '7' '8' and '~' are the oak, the pine, the shop shelf, the sign, the lounger)
     for (int i = 0; i < NDEFS; i++) if (defs[i].ch == ch) return &defs[i];
     return 0;
 }
@@ -419,9 +418,8 @@ void items_draw(char ch, int mx, int my, int rot, int along, int t) {
     const IBox *b = d->b; int n = d->n; int base = box_base[d - defs][0];
     if ((d->flags & F_ALONG) && !along && d->bv) { b = d->bv; n = d->nv; base = box_base[d - defs][1]; }
     int r = (d->flags & F_ROT) ? rot : 0;
-    if (ch >= '1' && ch <= '4') r = ch - '1';
-    if (ch >= '5' && ch <= '8') r = ch - '5';
-    if (ch == '~') r = (rot + 2) & 3;
+    if (ch == '1' || ch == '2' || ch == '4') r = ch - '1';
+    if (ch == '5') r = 0;
     int ox = mx * TILE, oz = my * TILE;
     if (!(d->flags & F_FLAT) && !getenv_noshadow) {   // a contact shadow under the item: the union of its boxes on the floor, a touch bigger
         int a0 = 8, b0 = 8, a1 = 0, b1 = 0;

@@ -6,22 +6,22 @@
 int wants_flash_t; char wants_flash[32];
 
 // ---- what each want is worth, and what it is called ----
-static const u16 wPts[W_N] = { 0, 500, 500, 500, 500, 800, 500, 800, 800, 1000, 1500, 3000, 1000, 1500, 5000, 3000, 1500, 1500, 1500, 1500, 3000, 3000 };
+static const u16 wPts[W_N] = { 0, 500, 500, 500, 500, 800, 500, 800, 800, 1000, 1500, 3000, 1000, 1500, 5000, 3000, 1500, 1500, 1500, 1500, 3000, 3000, 1000, 1500, 1000, 1000, 1000, 1500 };
 static const u16 fPts[F_N] = { 0, 1500, 1000, 3000, 1000, 2000, 1000 };
 static const char *const wNm[W_N] = { "", "EAT A MEAL", "SLEEP IN A BED", "TAKE A SHOWER", "HAVE SOME FUN", "READ A BOOK", "DRINK A COFFEE", "GO FOR A RUN",
     "MAKE A PHONE CALL", "CHAT WITH SOMEONE", "CHAT WITH", "MAKE A FRIEND", "GO TO WORK", "GET PAID", "GET PROMOTED", "HAVE $", "BUY SOMETHING",
-    "COOKING SKILL", "BODY SKILL", "FUN SKILL", "VISIT THE ISLAND", "VISIT THE TOWN" };
+    "COOKING SKILL", "BODY SKILL", "FUN SKILL", "VISIT THE ISLAND", "VISIT THE TOWN", "EAT OUT", "GO FOR A SWIM", "WORK OUT AT A GYM", "GO SHOPPING", "SEE A FILM", "A NIGHT OUT" };
 static const char *const fNm[F_N] = { "", "PASS OUT", "WET MYSELF", "GET DEMOTED", "A BAD DAY AT WORK", "UNPAID BILLS", "BE TURNED DOWN" };
 
 // ---- who wants what: a weight per kind, per aspiration (FORTUNE KNOWLEDGE POPULARITY PLEASURE HOME GROW UP) ----
 static const u8 aspW[AS_N][W_N] = {
- //  -  eat slp shw fun rd cof run ph chat cw frnd work paid prm cash buy ck bd fn isl twn
-    { 0, 1,  1,  1,  1,  1, 1,  1,  1, 1,   1, 2,   4,   5,   5,  5,   4,  1, 1, 1, 1,  1 },   // FORTUNE
-    { 0, 1,  1,  1,  1,  5, 2,  2,  1, 1,   1, 1,   2,   1,   2,  1,   1,  4, 4, 4, 3,  3 },   // KNOWLEDGE
-    { 0, 1,  1,  2,  2,  1, 1,  1,  4, 5,   5, 5,   1,   1,   2,  1,   1,  1, 1, 2, 2,  2 },   // POPULARITY
-    { 0, 4,  2,  1,  5,  1, 4,  3,  1, 2,   2, 1,   0,   1,   1,  1,   2,  2, 1, 2, 3,  3 },   // PLEASURE
-    { 0, 3,  3,  1,  2,  1, 1,  1,  2, 2,   5, 3,   1,   2,   1,  2,   4,  3, 1, 1, 1,  1 },   // HOME
-    { 0, 2,  2,  1,  5,  4, 0,  3,  1, 3,   4, 3,   0,   0,   0,  0,   1,  1, 2, 3, 2,  2 },   // GROW UP
+ //  -  eat slp shw fun rd cof run ph chat cw frnd work paid prm cash buy ck bd fn isl twn din swm gym shp flm ngt
+    { 0, 1,  1,  1,  1,  1, 1,  1,  1, 1,   1, 2,   4,   5,   5,  5,   4,  1, 1, 1, 1,  1,  1,  1,  1,  4,  1,  1 },   // FORTUNE
+    { 0, 1,  1,  1,  1,  5, 2,  2,  1, 1,   1, 1,   2,   1,   2,  1,   1,  4, 4, 4, 3,  3,  1,  1,  2,  1,  2,  0 },   // KNOWLEDGE
+    { 0, 1,  1,  2,  2,  1, 1,  1,  4, 5,   5, 5,   1,   1,   2,  1,   1,  1, 1, 2, 2,  2,  3,  3,  2,  2,  2,  5 },   // POPULARITY
+    { 0, 4,  2,  1,  5,  1, 4,  3,  1, 2,   2, 1,   0,   1,   1,  1,   2,  2, 1, 2, 3,  3,  5,  5,  1,  3,  4,  4 },   // PLEASURE
+    { 0, 3,  3,  1,  2,  1, 1,  1,  2, 2,   5, 3,   1,   2,   1,  2,   4,  3, 1, 1, 1,  1,  1,  1,  1,  3,  2,  1 },   // HOME
+    { 0, 2,  2,  1,  5,  4, 0,  3,  1, 3,   4, 3,   0,   0,   0,  0,   1,  1, 2, 3, 2,  2,  2,  4,  2,  1,  4,  0 },   // GROW UP
 };
 static const u8 aspF[AS_N][F_N] = {
     { 0, 1, 1, 5, 4, 5, 1 }, { 0, 2, 2, 2, 2, 1, 1 }, { 0, 1, 2, 1, 1, 1, 5 }, { 0, 3, 3, 1, 1, 1, 2 }, { 0, 2, 2, 2, 2, 4, 2 }, { 0, 2, 3, 0, 0, 0, 3 } };
@@ -47,7 +47,7 @@ static void roll_want(Sim *s, int slot) {
         if (w == W_SHOWER && s->bore.tr[TR_NEAT] >= 7) weight += 3;
         if (w == W_CHAT_WITH && s->bore.tr[TR_NICE] >= 7) weight += 2;
         // what the age can want
-        if (stage <= AG_CHILD && (w == W_WORK || w == W_PAID || w == W_PROMO || w == W_CASH || w == W_COFFEE)) weight = 0;
+        if (stage <= AG_CHILD && (w == W_WORK || w == W_PAID || w == W_PROMO || w == W_CASH || w == W_COFFEE || w == W_NIGHT)) weight = 0;
         if (stage == AG_ELDER && w == W_RUN) weight = 0;
         if (w == W_CHAT_WITH || w == W_FRIEND) { if (nsims < 2) weight = 0; }
         if (w == W_ISLAND && (story_visit[1] || world_zone == 1)) weight = 0;

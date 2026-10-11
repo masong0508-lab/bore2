@@ -312,7 +312,7 @@ static int place_tile(const Place *pl, int worker, int *tx, int *ty, int *indoor
         if (pass < 2 && in != want_in) continue;
         if (pass == 0 && worker) {                // at work: by a counter, a desk, a till, the work marker
             static const signed char dx4[4] = { 1, -1, 0, 0 }, dy4[4] = { 0, 0, 1, -1 }; int ok = 0;
-            for (int k = 0; k < 4; k++) { char ch = world_at(x + dx4[k], y + dy4[k]); if (ch && strchr("yd[xIF7!]m~", ch)) ok = 1; }
+            for (int k = 0; k < 4; k++) { char ch = world_at(x + dx4[k], y + dy4[k]); if (ch && strchr("yd[xIF7!]m~`j)", ch)) ok = 1; }
             if (!ok) continue;
         }
         *tx = x; *ty = y; *indoor = in; return 1;
@@ -1167,20 +1167,21 @@ void citizens_hud(void) {
     if (cur >= 0) {
         const Cit *c = &cits[cur];
         char t[40]; sprintf(t, "%s %s", c->first, c->last);   // a white card (The Sims 4's): who they are, how they are to you
-        int w = 136;
-        ui_card(82, 4, w, 42);
-        ui_icon_disc(94, 16, 16, IC_CHAT, UI_BLUE, UI_WHITE);
-        ui_text(106, 8, 1, t, UI_INK);
-        if (c->pid != NOPID) sprintf(t, "%s, %s", stage_nm(c->stage), pop_trait_name(pop_per[c->pid].trait));
+        ui_card(82, 4, 136, 45);                                   // (four lines: the name, who they are, how they are to you, what they do)
+        ui_icon_disc(94, 15, 16, IC_CHAT, UI_BLUE, UI_WHITE);
+        ui_text(106, 7, 1, t, UI_INK);
+        if (c->pid != NOPID) { sprintf(t, "%s, %s", stage_nm(c->stage), pop_trait_name(pop_per[c->pid].trait)); if (ui_tw(1, t) > 108) strcpy(t, pop_trait_name(pop_per[c->pid].trait)); }
         else sprintf(t, "%s", stage_nm(c->stage));
-        ui_text(106, 18, 1, t, UI_SOFT);
-        if (c->pid != NOPID && c->mplace != NOPID && c->mode == CM_IDLE) { char jb[40]; ui_text(88, 34, 1, pop_job_name(c->pid, jb), UI_BLUE2); }
-        else ui_text(88, 34, 1, activity(c), UI_BLUE2);
-        ui_text(162, 18, 1, rel_name(c->rel), UI_RGB(40, 150, 50));
-        ui_bar(162, 27, 50, 4, c->rel > 0 ? c->rel : 0, UI_GREEN);
-        ui_bar(162, 33, 50, 4, c->rom, UI_RGB(236, 100, 160));
+        ui_text(106, 16, 1, t, UI_SOFT);
+        ui_text(88, 26, 1, rel_name(c->rel), UI_RGB(40, 150, 50));
+        ui_bar(152, 26, 60, 4, c->rel > 0 ? c->rel : 0, UI_GREEN);
+        ui_bar(152, 31, 60, 4, c->rom, UI_RGB(236, 100, 160));
+        { char jb[40]; const char *d = (c->pid != NOPID && c->mplace != NOPID && c->mode == CM_IDLE) ? pop_job_name(c->pid, jb) : activity(c);
+          if (d != jb) { strncpy(jb, d, 39); jb[39] = 0; }
+          if (ui_tw(1, jb) > 126) { char *k = strchr(jb, ','); if (k) *k = 0; }
+          ui_text(88, 38, 1, jb, UI_BLUE2); }
     }
-    if (fight_on || pl_hp < 100) { ui_card(82, 48, 70, 11); ui_bar(86, 50, 62, 7, pl_hp, pl_hp > 50 ? UI_GREEN : pl_hp > 25 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70)); }
+    if (fight_on || pl_hp < 100) { ui_card(82, 51, 70, 11); ui_bar(86, 53, 62, 7, pl_hp, pl_hp > 50 ? UI_GREEN : pl_hp > 25 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70)); }
     if (fight_on) ui_hintbar(146, "X PUNCH");
 }
 

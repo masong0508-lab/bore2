@@ -158,14 +158,14 @@ void world_init(void) {
 }
 
 // ---- BORE's map builders ----
-static void gBox(int x0, int y0, int x1, int y1, int fl) { for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) floorMap[y][x] = (u8)fl; }
-static void gRoom(int x0, int y0, int x1, int y1, int fl, int wp) {
+__attribute__((noinline)) static void gBox(int x0, int y0, int x1, int y1, int fl) { for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) floorMap[y][x] = (u8)fl; }
+__attribute__((noinline)) static void gRoom(int x0, int y0, int x1, int y1, int fl, int wp) {
     for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) { floorMap[y][x] = (u8)fl;
         if (x == x0 || x == x1 || y == y0 || y == y1) { lifeMap[y][x] = 'W'; wallMap[y][x] = (u8)wp; } }
 }
-static void gLine(int x0, int y0, int x1, int y1, char c, int wp) { for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) { lifeMap[y][x] = c; wallMap[y][x] = (u8)wp; } }
+__attribute__((noinline)) static void gLine(int x0, int y0, int x1, int y1, char c, int wp) { for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) { lifeMap[y][x] = c; wallMap[y][x] = (u8)wp; } }
 static void gPut(int x, int y, char c) { lifeMap[y][x] = c; }
-static void gFree(int x, int y, char c) { if (x >= 0 && y >= 0 && x < MW && y < MH && lifeMap[y][x] == '.') lifeMap[y][x] = c; }
+__attribute__((noinline)) static void gFree(int x, int y, char c) { if (x >= 0 && y >= 0 && x < MW && y < MH && lifeMap[y][x] == '.') lifeMap[y][x] = c; }
 
 // THE MAN BASE gets an upstairs: stairs in the crate room rise to a bedroom over its north-east corner (shows off the storeys)
 static void gUpstairs(void) {
@@ -318,7 +318,7 @@ static void sRoom(int x0, int y0, int x1, int y1, int fl, int wp) {   // a room 
         if (x == x0 || x == x1 || y == y0 || y == y1) { sm[y][x] = 'W'; swp[y][x] = (u8)wp; } else sm[y][x] = '.'; }
 }
 static void sLine(int x0, int y0, int x1, int y1, char c, int wp) { for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) { sm[y][x] = c; swp[y][x] = (u8)wp; } }
-static void sFree(int x, int y, char c) { if (x >= 0 && y >= 0 && x < MW && y < MH && sm[y][x] == '.') sm[y][x] = c; }
+__attribute__((noinline)) static void sFree(int x, int y, char c) { if (x >= 0 && y >= 0 && x < MW && y < MH && sm[y][x] == '.') sm[y][x] = c; }
 static unsigned fz_h;
 static int fz_rnd(int n) { fz_h = fz_h * 1103515245u + 12345u; return (int)((fz_h >> 16) % (unsigned)n); }
 static int fz_x0, fz_y0, fz_x1, fz_y1, fz_dx, fz_dy, fz_ix, fz_iy, fz_ox, fz_oy;
@@ -643,6 +643,99 @@ static void lot_arcade(int lx, int ly, unsigned h) {
     gFree(x0 + 4, y0 + 4, '?'); gFree(x0 + 1, y1 - 1, 'C'); gFree(x1 - 2, y1 - 1, 'y'); gFree(x1 - 1, y1 - 1, 'c'); gFree(x0 + 6, y0 + 4, 'U');
     gFree(lx + 2, ly + 11, 'Y');
 }
+// ---- more places to go: a cafe, a bar, a cinema, a salon, a restaurant, a clinic, a library, a spa, an art gallery ----
+static void lot_cafe(int lx, int ly, unsigned h) {   // the counter and its machines along the back, little tables, armchairs by the window
+    int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 4 : 0, NWP + (int)((h >> 9) % 89), 1);
+    gFree(x0 + 1, y0 + 1, 'c'); gFree(x0 + 2, y0 + 1, 'c'); gFree(x0 + 3, y0 + 1, 'y'); gFree(x0 + 4, y0 + 1, 'y'); gFree(x0 + 5, y0 + 1, 'F'); gFree(x0 + 6, y0 + 1, '-');
+    for (int k = 0; k < 2; k++) { int tx = k ? x1 - 3 : x0 + 2; gFree(tx, y0 + 4, 't'); gFree(tx - 1, y0 + 4, 'h'); gFree(tx + 1, y0 + 4, 'h'); }
+    gFree(x1 - 1, y0 + 1, 'b'); gFree(x1 - 2, y0 + 1, '['); gFree(x0 + 1, y1 - 1, ';'); gFree(x0 + 2, y1 - 1, 'l'); gFree(x1 - 1, y1 - 1, ';'); gFree(x1 - 2, y1 - 1, 'p');
+    if (h & 2) gFree(x1 - 1, y0 + 3, ')');                                     // (some show a painting)
+    gFree(lx + 2, ly + 11, 'K'); gFree(lx + 10, ly + 11, 'Z');
+}
+static void lot_bar(int lx, int ly, unsigned h) {   // the counter and its stools, the back bar behind, a little stage, a booth, the jukebox
+    int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 4 : 13, NWP + (int)((h >> 9) % 89), 0);
+    gFree(x0 + 1, y0 + 1, 'F'); gFree(x0 + 5, y0 + 1, 'c');                                        // the back bar (room to stand between)
+    for (int x = x0 + 1; x <= x0 + 5; x++) { gFree(x, y0 + 2, 'y'); gFree(x, y0 + 3, 'h'); }       // the counter, the stools
+    gFree(x1 - 1, y0 + 1, '$'); gFree(x1 - 2, y0 + 1, '('); gFree(x1 - 3, y0 + 1, 'A');             // the stage
+    gBox(x1 - 3, y0 + 2, x1 - 1, y0 + 3, 3);                                                       // (and a dance floor before it)
+    gFree(x0 + 1, y1 - 1, 'C'); gFree(x0 + 2, y1 - 1, 't'); gFree(x0 + 3, y1 - 1, 'C');
+    gFree(x1 - 1, y1 - 1, 'j'); gFree(x1 - 1, y1 - 2, 'V'); gFree(x1 - 3, y1 - 1, '?');
+    gFree(lx + 2, ly + 11, 'Y'); gFree(lx + 10, ly + 11, 'O');
+}
+static void lot_cinema(int lx, int ly, unsigned h) {   // the screen across the back, two rows of seats facing it (a low wall behind each), the lobby by the door
+    int x0 = lx, y0 = ly, x1 = lx + 12, y1 = ly + 11;
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 2 : 13, NWP + (int)((h >> 9) % 89), 0);
+    for (int x = x0 + 3; x <= x1 - 3; x++) gFree(x, y0 + 1, 'v');                                  // the screen: a wall of screens
+    gFree(x0 + 2, y0 + 1, 'A'); gFree(x1 - 2, y0 + 1, 'A');
+    for (int r = 0; r < 2; r++) { int y = y0 + 3 + r * 3; for (int x = x0 + 2; x <= x1 - 2; x++) gFree(x, y, ';'); gLine(x0 + 2, y + 1, x1 - 2, y + 1, 'w', 13); }
+    gBox(x0 + 1, y0 + 9, x1 - 1, y1 - 1, 3);                                                       // the lobby
+    gFree(x0 + 1, y0 + 9, 'y'); gFree(x0 + 2, y0 + 9, 'y'); gFree(x0 + 3, y0 + 9, ':');            // tickets, popcorn
+    gFree(x1 - 1, y0 + 9, '!'); gFree(x1 - 2, y0 + 9, '!'); gFree(x1 - 1, y1 - 1, 'p');
+    gFree(lx + 2, ly + 12, 'Z'); gFree(lx + 10, ly + 12, 'Z');
+}
+static void lot_salon(int lx, int ly, unsigned h) {   // mirrors along the back with a chair at each, the basins, the front desk, the waiting chairs
+    int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 5 : 3, NWP + (int)((h >> 9) % 89), 1);
+    for (int k = 0; k < 3; k++) { int x = x0 + 1 + k * 2; gFree(x, y0 + 1, '`'); gFree(x, y0 + 2, 'h'); }
+    gFree(x0 + 7, y0 + 1, '-'); gFree(x0 + 8, y0 + 1, '-'); gFree(x1 - 1, y0 + 1, 'i');
+    gFree(x1 - 2, y1 - 2, 'y'); gFree(x1 - 1, y1 - 2, 'y');
+    gFree(x0 + 1, y1 - 1, ';'); gFree(x0 + 2, y1 - 1, ';'); gFree(x0 + 3, y1 - 1, 'p'); gFree(x0 + 1, y1 - 3, 'b'); gFree(x0 + 4, y0 + 4, 'r');
+    gFree(lx + 2, ly + 11, 'Z'); gFree(lx + 10, ly + 11, 'Z');
+}
+static void lot_restaurant(int lx, int ly, unsigned h) {   // the kitchen behind a low wall at the back, tables laid for two, the host's stand by the door
+    int x0 = lx, y0 = ly + 1, x1 = lx + 12, y1 = ly + 10;
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 4 : 1, NWP + (int)((h >> 9) % 89), 1);
+    gBox(x0 + 1, y0 + 1, x1 - 1, y0 + 2, 3);
+    gFree(x0 + 1, y0 + 1, 'F'); gFree(x0 + 2, y0 + 1, '/'); gFree(x0 + 3, y0 + 1, '/'); gFree(x0 + 4, y0 + 1, '-'); gFree(x0 + 5, y0 + 1, 'y'); gFree(x1 - 1, y0 + 1, 'F');
+    gLine(x0 + 1, y0 + 3, x1 - 4, y0 + 3, 'w', 13);                                               // the pass (open at the right end)
+    for (int r = 0; r < 2; r++) for (int c = 0; c < 2; c++) { int tx = c ? x0 + 9 : x0 + 2, ty = y0 + 5 + r * 2;
+        gFree(tx, ty, 't'); gFree(tx - 1, ty, 'h'); gFree(tx + 1, ty, 'h'); }
+    gFree(x0 + 1, y1 - 1, 'y'); gFree(x0 + 2, y1 - 1, 'p'); gFree(x1 - 1, y1 - 1, 'p'); gFree(x1 - 2, y1 - 1, 'l'); gFree(x0 + 6, y0 + 6, '}');
+    gFree(lx + 3, ly + 12, 'Z'); gFree(lx + 9, ly + 12, 'Z');
+}
+static void lot_clinic(int lx, int ly, unsigned h) {   // two exam rooms at the back, the waiting room and the reception by the door
+    int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 10, wp = NWP + (int)((h >> 9) % 89);
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 6 : 11, wp, 0);
+    gLine(x0, y0 + 4, x1, y0 + 4, 'W', wp); gLine(x0 + 5, y0, x0 + 5, y0 + 4, 'W', wp);
+    gPut(x0 + 2, y0 + 4, 'D'); gPut(x0 + 8, y0 + 4, 'D');
+    for (int r = 0; r < 2; r++) { int rx = r ? x0 + 6 : x0 + 1; gFree(rx, y0 + 1, 'S'); gFree(rx + 2, y0 + 1, '-'); gFree(rx + 3, y0 + 1, 'd'); gFree(rx + 3, y0 + 2, 'h'); gFree(rx, y0 + 3, 'p'); }
+    gFree(x1 - 1, y0 + 6, 'y'); gFree(x1 - 2, y0 + 6, 'y'); gFree(x1 - 1, y0 + 5, '[');
+    for (int y = y0 + 6; y <= y1 - 1; y++) gFree(x0 + 1, y, ';');
+    gFree(x0 + 3, y1 - 1, 'p'); gFree(x0 + 4, y0 + 7, 'r'); gFree(x0 + 1, y0 + 5, 'b');
+    gFree(lx + 2, ly + 12, 'Z'); gFree(lx + 10, ly + 12, 'Z');
+}
+static void lot_library(int lx, int ly, unsigned h) {   // the stacks, a reading table, computers, armchairs and lamps, the front desk
+    int x0 = lx, y0 = ly + 1, x1 = lx + 12, y1 = ly + 10;
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 1 : 4, NWP + (int)((h >> 9) % 89), 0);
+    for (int r = 0; r < 2; r++) for (int x = x0 + 1; x <= x0 + 5; x++) gFree(x, y0 + 1 + r * 2, 'b');
+    for (int x = x1 - 5; x <= x1 - 1; x++) gFree(x, y0 + 1, 'b');
+    gFree(x1 - 4, y0 + 4, 't'); gFree(x1 - 5, y0 + 4, 'h'); gFree(x1 - 3, y0 + 4, 'h');
+    gFree(x0 + 1, y0 + 6, '['); gFree(x0 + 2, y0 + 6, 'h'); gFree(x0 + 1, y0 + 8, '['); gFree(x0 + 2, y0 + 8, 'h');
+    gFree(x1 - 1, y1 - 1, ';'); gFree(x1 - 2, y1 - 1, 'l'); gFree(x1 - 1, y1 - 3, ';'); gFree(x0 + 4, y1 - 1, 'y'); gFree(x0 + 3, y1 - 1, 'y'); gFree(x0 + 8, y0 + 6, 'r');
+    gFree(lx + 2, ly + 12, 'N'); gFree(lx + 10, ly + 12, 'Z');
+}
+static void lot_spa(int lx, int ly, unsigned h) {   // the massage room, a sauna's showers, two hot tubs, a fountain, the front desk
+    int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 10, wp = NWP + (int)((h >> 9) % 89);
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 6 : 5, wp, 0);
+    gLine(x0 + 5, y0, x0 + 5, y0 + 4, 'W', wp); gLine(x0, y0 + 4, x0 + 5, y0 + 4, 'W', wp); gPut(x0 + 3, y0 + 4, 'D');
+    gFree(x0 + 1, y0 + 1, 'S'); gFree(x0 + 3, y0 + 1, 'S'); gFree(x0 + 1, y0 + 3, 'p'); gFree(x0 + 4, y0 + 3, 'l');
+    gFree(x0 + 6, y0 + 1, 'H'); gFree(x0 + 7, y0 + 1, 'H'); gFree(x0 + 7, y0 + 3, '>'); gFree(x1 - 1, y0 + 3, '>');
+    gFree(x0 + 1, y1 - 1, 'y'); gFree(x0 + 2, y1 - 1, 'y'); gFree(x0 + 7, y0 + 6, '}');
+    gFree(x1 - 1, y1 - 1, ';'); gFree(x1 - 2, y1 - 1, ';'); gFree(x0 + 1, y0 + 6, 'p'); gFree(x1 - 1, y0 + 5, 'p');
+    gFree(lx + 2, ly + 12, 'Z'); gFree(lx + 10, ly + 12, 'Z');
+}
+static void lot_gallery(int lx, int ly, unsigned h) {   // paintings round the walls, sculptures, a fountain, benches, the desk
+    int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 7 : 4, NWP + (int)((h >> 9) % 89), 1);
+    for (int x = x0 + 1; x <= x1 - 1; x += 2) gFree(x, y0 + 1, ')');
+    gFree(x0 + 1, y0 + 3, ')'); gFree(x0 + 1, y0 + 5, ')'); gFree(x1 - 1, y0 + 3, ')'); gFree(x1 - 1, y0 + 5, ')');
+    gFree(x0 + 3, y0 + 4, '*'); gFree(x1 - 3, y0 + 4, '*'); gFree(x0 + 5, y0 + 4, '}');
+    gFree(x0 + 3, y0 + 3, 'r'); gFree(x1 - 3, y0 + 3, 'r');
+    gFree(x1 - 2, y1 - 1, 'y'); gFree(x1 - 1, y1 - 1, 'b'); gFree(x0 + 1, y1 - 1, 'p'); gFree(x0 + 2, y1 - 1, 'N');
+    gFree(lx + 2, ly + 11, 'Z'); gFree(lx + 10, ly + 11, 'Z');
+}
 static void lot_empty(int lx, int ly, unsigned h) {   // nothing built yet: rough ground, junk, the sign
     for (int i = 0; i < 6; i++) { unsigned r = city_h((int)h + i * 3, i); int x = lx + (int)(r % 13u), y = ly + (int)((r >> 8) % 13u), w = 1 + (int)((r >> 16) % 3u);
         gBox(x, y, MIN(lx + 12, x + w), MIN(ly + 12, y + w), (r >> 20) & 1 ? FL_SOIL : FL_ROCK); }
@@ -892,6 +985,15 @@ static void gen_block(int wx, int wy) {
         case LOT_APART:   lot_apart(lx, ly, h, st); break;
         case LOT_TOWER:   lot_tower(lx, ly, h, st); break;
         case LOT_HOTEL:   lot_hotel(lx, ly, h, st); break;
+        case LOT_CAFE:    lot_cafe(lx, ly, h); break;
+        case LOT_BAR:     lot_bar(lx, ly, h); break;
+        case LOT_CINEMA:  lot_cinema(lx, ly, h); break;
+        case LOT_SALON:   lot_salon(lx, ly, h); break;
+        case LOT_RESTAURANT: lot_restaurant(lx, ly, h); break;
+        case LOT_CLINIC:  lot_clinic(lx, ly, h); break;
+        case LOT_LIBRARY: lot_library(lx, ly, h); break;
+        case LOT_SPA:     lot_spa(lx, ly, h); break;
+        case LOT_GALLERY: lot_gallery(lx, ly, h); break;
         default: break;
     }
     occ_on = 0; blk_bx = blk_by = 0xFFFF;
@@ -1032,6 +1134,11 @@ static int item_open(int x, int y) { if (x < 0 || y < 0 || x >= MW || y >= MH) r
 static char (*dm)[MW + 1] = lifeMap; static u8 (*dfl)[MW] = floorMap, (*dwp)[MW] = wallMap;
 int world_item_facing(int x, int y) {
     static const signed char dx[4] = { 0, 1, 0, -1 }, dy[4] = { 1, 0, -1, 0 };
+    char c = world_at(x, y);
+    if (c == 'h' || c == ';')                     // a seat at a table, a desk, a counter, a mirror or a computer faces it
+        for (int d = 0; d < 4; d++) { char n = world_at(x + dx[d], y + dy[d]); if (n == 't' || n == 'd' || n == 'y' || n == '`' || n == '[' || n == '?') return d; }
+    if (c == '[' || c == 'd' || c == '`')         // ... and the desk, the computer or the mirror faces its chair
+        for (int d = 0; d < 4; d++) if (world_at(x + dx[d], y + dy[d]) == 'h') return d;
     for (int d = 0; d < 4; d++) if (item_open(x + dx[d], y + dy[d]) && !item_open(x + dx[(d + 2) & 3], y + dy[(d + 2) & 3])) return d;
     for (int d = 0; d < 4; d++) if (item_open(x + dx[d], y + dy[d])) return d;
     return 0;

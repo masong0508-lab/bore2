@@ -5,6 +5,9 @@
 #include "items.h"
 #include "audio.h"
 #include "gfx.h"
+#include "places.h"
+#include "bigmap.h"
+#include "crowd.h"
 
 Sim  sims[MAX_SIMS];
 int  nsims, player;
@@ -17,6 +20,8 @@ char last_note[32]; int last_note_t;
 int  travel_asked;
 int  story_paid, story_talks;
 u8   story_visit[4];
+int  day_count;                 // days since this life began
+int  life_minutes(void) { return day_count * 1440 + clock_min; }
 
 // BORE tuning (sims.h), per logic step in 1/1024 points
 #define STEPS_MIN 15
@@ -36,17 +41,12 @@ u8   story_visit[4];
 #define GAIN_TALK 300
 #define NIGHT_FROM 1320
 #define NIGHT_TO 360
-#define WORK_FROM 540
-#define WORK_TO 1020
-#define PAY0 1400
-#define PAY_LVL 800
 #define BILLS 800
 #define SIM_RADIUS 44
 #define WALK_SPEED 9      // units per step at 100%
 static const u8 stSpd[5] = { 50, 80, 95, 100, 70 };
 static const char *const dayNm[7] = { "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN" };
 static const char *const needNm[NEED_N] = { "FOOD", "WC", "REST", "CLEAN", "COMFY", "FUN", "SOCIAL", "ROOM" };
-static const char *const jobNm[6] = { "NEWBIE", "AMATEUR", "SPONSORED", "PRO", "TEAM RIDER", "LEGEND" };
 const char *sim_day_name(int d) { return dayNm[d % 7]; }
 const char *sim_need_name(int n) { return needNm[n]; }
 int sim_need_val(const Sim *s, int n) { return s->need[n] >> 10; }
@@ -60,7 +60,9 @@ static void sim_say(Sim *s, const char *t) { strncpy(s->note, t, 23); s->note[23
 // ================================================================== MOODLETS (Sims 3) and TRAITS
 enum { ML_NONE, ML_GOOD_MEAL, ML_SNACKED, ML_RESTED, ML_FRESH, ML_GOOD_CHAT, ML_FRIEND, ML_PROMOTED, ML_PAYDAY, ML_EMBARRASSED,
        ML_PASSED_OUT, ML_WET, ML_REJECTED, ML_TEASED, ML_HUGGED, ML_FUN_TIME, ML_GOT_A_LAUGH, ML_FLIRTY, ML_WORKOUT, ML_CAFFEINE,
-       ML_HUNGRY, ML_TIRED, ML_STINKY, ML_BURSTING, ML_LONELY, ML_BORED, ML_SINGING, ML_PIZZA, ML_N };
+       ML_HUNGRY, ML_TIRED, ML_STINKY, ML_BURSTING, ML_LONELY, ML_BORED, ML_SINGING, ML_PIZZA,
+       ML_ATE_OUT, ML_SWAM, ML_OUTFIT, ML_RETAIL, ML_NEW_GAME, ML_NEW_JOB, ML_COACHED, ML_HOTEL,
+       ML_FINE_DINING, ML_FILM, ML_CUT, ML_NIGHT_OUT, ML_ROUND, ML_PAMPERED, ML_INSPIRED, ML_HEALTHY, ML_TREAT, ML_N };
 static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "", 0, 0 }, { "GOOD MEAL", 12, 240 }, { "SNACKED", 4, 90 }, { "WELL RESTED", 12, 300 }, { "FRESH", 8, 180 }, { "GOOD CHAT", 10, 180 },
     { "MADE A FRIEND", 20, 480 }, { "PROMOTED", 25, 720 }, { "PAYDAY", 15, 360 }, { "EMBARRASSED", -12, 120 },
@@ -68,6 +70,10 @@ static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "FUN TIME", 8, 120 }, { "GOT A LAUGH", 10, 120 }, { "FLIRTY", 14, 180 }, { "WORKED OUT", 10, 180 }, { "CAFFEINATED", 6, 90 },
     { "HUNGRY", -12, 0 }, { "TIRED", -10, 0 }, { "STINKY", -15, 0 }, { "BURSTING", -15, 0 }, { "LONELY", -12, 0 }, { "BORED", -8, 0 },
     { "SANG IT OUT", 9, 120 }, { "PIZZA NIGHT", 14, 240 },
+    { "ATE OUT", 14, 300 }, { "GREAT SWIM", 12, 180 }, { "NEW OUTFIT", 14, 600 }, { "RETAIL THERAPY", 8, 180 }, { "NEW GAME", 10, 300 },
+    { "NEW JOB", 15, 600 }, { "PUMPED UP", 12, 180 }, { "HOTEL LUXURY", 10, 300 },
+    { "FINE DINING", 20, 360 }, { "GREAT FILM", 14, 300 }, { "FRESH CUT", 14, 720 }, { "NIGHT OUT", 12, 240 }, { "LIFE OF THE PARTY", 20, 240 },
+    { "PAMPERED", 15, 360 }, { "INSPIRED", 10, 240 }, { "HEALTHY", 8, 1440 }, { "SWEET TREAT", 8, 120 },
 };
 const char *sim_moodlet_name(int id) { return mlDef[id % ML_N].nm; }
 static int has_trait(const Sim *s, int t, int hi) { int v = s->bore.tr[t]; return hi ? v >= 8 : v <= 2; }
@@ -122,7 +128,11 @@ static void turn_to(Sim *s, int target, int rate) {
     s->yaw = (s->yaw + d) & 4095;
 }
 
-void sim_init(void) { nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; cash = 15000; job_level = 0; job_worked = 0; last_note[0] = 0; }
+void sim_init(void) {
+    nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0;
+    job_level = 0; job_car = CAR_FACTORY; job_take(CAR_FACTORY, -1, -1, "THE FACTORY");
+    groceries = 10; room_bx = room_by = -1; room_until = 0;
+}
 
 void sim_add(const Bore *b, int mx, int my, int ai) {
     if (nsims >= MAX_SIMS) return;
@@ -363,7 +373,7 @@ static int follow_path(Sim *s) {   // 1 while walking, 0 when there (or when the
 static int action_for(char c) {
     switch (c) {
         case 'F': case 's': return ACT_EAT; case 'T': case '&': return ACT_WC; case 'S': case 'z': return ACT_SLEEP; case 'H': case '0': return ACT_SHOWER;
-        case 'C': case 'U': case 'h': case 'N': case '%': return ACT_SIT;
+        case 'C': case 'U': case 'h': case 'N': case '%': case '~': return ACT_SIT;
         case '@': case '+': return ACT_TRAVEL;
         case '|': return ACT_STAIRS;
         // the furniture pack
@@ -380,6 +390,7 @@ static int action_for(char c) {
     }
 }
 static int on_item(int act) { return act == ACT_WC || act == ACT_SLEEP || act == ACT_SHOWER || act == ACT_SIT || act == ACT_RUN || act == ACT_WORK; }
+static int stands_on(int act, int mx, int my) { return on_item(act) && !(act == ACT_WORK && items_blocking(world_at(mx, my))); }   // (work at a counter: in front of it)
 static const char *act_hint(int act, char c) {
     switch (act) {
         case ACT_TRAVEL: return c == '@' ? "SAIL" : "TAKE THE BUS";
@@ -390,7 +401,7 @@ static const char *act_hint(int act, char c) {
         case '!': return "PLAY ARCADE"; case '$': return "PLAY PIANO"; case '(': return "PLAY GUITAR"; case ')': return "PAINT";
         case '>': return "SOAK"; case '[': return "USE COMPUTER"; case 'j': return "PICK A SONG"; case 'n': return "PLAY"; case '{': return "PLAY HOUSE";
         case '}': return "MAKE A WISH"; case '`': return "PRACTICE SPEECH"; case ',': return "TAKE A BATH"; case '-': return "WASH HANDS";
-        case '/': return "COOK"; case ':': return "MICROWAVE"; case ';': return "SIT"; case '<': return "SLEEP"; case '?': return "PLAY CHESS";
+        case '/': return "COOK"; case ':': return "MICROWAVE"; case ';': return "SIT"; case '<': return "SLEEP"; case '?': return "PLAY CHESS"; case '~': return "SUNBATHE";
         case ']': return "LIFT WEIGHTS"; case '_': return "SHOOT HOOPS";
     }
     switch (act) {
@@ -402,13 +413,13 @@ static const char *act_hint(int act, char c) {
 }
 static int act_len(int act) {
     switch (act) { case ACT_EAT: return 200; case ACT_WC: return 160; case ACT_SHOWER: return 260; case ACT_FUN: return 420; case ACT_READ: return 420;
-                   case ACT_COFFEE: return 90; case ACT_RUN: return 360; case ACT_PHONE: return 300; case ACT_TALK: return 240; default: return 9999; }
+                   case ACT_COFFEE: return 90; case ACT_RUN: return 360; case ACT_PHONE: return 300; case ACT_TALK: return 240; case ACT_SWIM: return 600; default: return 9999; }
 }
 static void begin_action(Sim *s, int act, int mx, int my) {
     if (act == ACT_TALK && (int)(s - sims) == player) story_talks++;
     s->action = act; s->act_t = act_len(act); s->act_x = mx; s->act_y = my; s->act_var = 0;
     s->path_n = 0;
-    if (on_item(act)) { s->x = mx * TILE + TILE / 2; s->z = -(my * TILE + TILE / 2); s->yaw = (world_item_facing(mx, my) * 1024) & 4095; }
+    if (stands_on(act, mx, my)) { s->x = mx * TILE + TILE / 2; s->z = -(my * TILE + TILE / 2); s->yaw = (world_item_facing(mx, my) * 1024) & 4095; }
     else { s->yaw = yaw_towards(mx * TILE + TILE / 2 - s->x, -(my * TILE + TILE / 2) - s->z); }
     s->gait.sit = (act == ACT_SIT || act == ACT_WC);
     s->gait.sleep = (act == ACT_SLEEP);
@@ -426,13 +437,22 @@ static void chat_done(Sim *s, Sim *o) {   // a finished chat: the relationship g
 }
 static void end_action(Sim *s) {
     switch (s->action) {   // what just finished: the wants are watching
-        case ACT_EAT: wants_event(s, W_EAT, 0); sim_moodlet(s, s->act_var == 1 ? ML_GOOD_MEAL : ML_SNACKED); break;
-        case ACT_SLEEP: wants_event(s, W_SLEEP, 0); if (s->act_t <= 0 && s->act_var == 0) { wants_reroll(s); sim_moodlet(s, ML_RESTED); } break;   // a full sleep: new wants on waking
+        case ACT_EAT: wants_event(s, W_EAT, 0);   // (act_var: 0 a snack, 1 cooked with good food, 2 eaten out, 3 cooked plain, 4 a treat, 5 fine dining)
+                      sim_moodlet(s, s->act_var == 5 ? ML_FINE_DINING : s->act_var == 2 ? ML_ATE_OUT : s->act_var == 1 ? ML_GOOD_MEAL : s->act_var == 4 ? ML_TREAT : ML_SNACKED);
+                      if (s->act_var == 2 || s->act_var == 5) wants_event(s, W_DINER, 0); break;
+        case ACT_SLEEP: if (s->act_var == 2) { sim_moodlet(s, ML_PAMPERED); break; }   // (a massage)
+                        wants_event(s, W_SLEEP, 0); if (s->act_t <= 0 && s->act_var == 0) { wants_reroll(s); sim_moodlet(s, ML_RESTED); }   // a full sleep: new wants on waking
+                        { PlaceInfo pi; if (place_at(s->act_x, s->act_y, &pi) && (pi.lot == LOT_INN || pi.lot == LOT_HOTEL)) sim_moodlet(s, ML_HOTEL); } break;
         case ACT_SHOWER: wants_event(s, W_SHOWER, 0); sim_moodlet(s, ML_FRESH); if (s->act_var == 1) sim_moodlet(s, ML_SINGING); break;
-        case ACT_FUN: wants_event(s, W_FUN, 0); sim_moodlet(s, ML_FUN_TIME); break;
+        case ACT_FUN: wants_event(s, W_FUN, 0);   // (act_var: 4 browsing a shop, 5 a drink at a bar, 7 looking at art)
+                      sim_moodlet(s, s->act_var == 4 ? ML_RETAIL : s->act_var == 5 ? ML_NIGHT_OUT : s->act_var == 7 ? ML_INSPIRED : ML_FUN_TIME);
+                      if (s->act_var == 4) wants_event(s, W_SHOP, 0); if (s->act_var == 5) wants_event(s, W_NIGHT, 0); break;
+        case ACT_SIT: if (s->act_var == 6) { sim_moodlet(s, ML_FILM); wants_event(s, W_FILM, 0); wants_event(s, W_FUN, 0); } break;   // (a film)
         case ACT_READ: wants_event(s, W_READ, 0); break;
         case ACT_COFFEE: wants_event(s, W_COFFEE, 0); sim_moodlet(s, ML_CAFFEINE); break;
-        case ACT_RUN: wants_event(s, W_RUN, 0); sim_moodlet(s, ML_WORKOUT); break;
+        case ACT_RUN: wants_event(s, W_RUN, 0); sim_moodlet(s, s->act_var == 2 ? ML_COACHED : ML_WORKOUT);
+                      { PlaceInfo pi; if (place_at(s->act_x, s->act_y, &pi) && pi.lot == LOT_GYM) wants_event(s, W_GYM, 0); } break;
+        case ACT_SWIM: wants_event(s, W_SWIM, 0); sim_moodlet(s, ML_SWAM); break;
         case ACT_PHONE: wants_event(s, W_PHONE, 0); if (s->act_var == 1) sim_moodlet(s, ML_PIZZA); break;
         case ACT_WORK: wants_event(s, W_WORK, 0); break;
         case ACT_TALK: if (s->talk_to >= 0 && s->talk_to < nsims) chat_done(s, &sims[s->talk_to]); break;
@@ -441,7 +461,15 @@ static void end_action(Sim *s) {
         Sim *o = &sims[s->talk_to];
         if (o->action == ACT_TALK && o->talk_to == (int)(s - sims)) { o->action = ACT_NONE; o->talk_to = -1; o->gait.wave = 0; }
     }
-    if (on_item(s->action)) {   // step off the item onto open floor
+    if (s->action == ACT_SWIM) {   // out of the water: onto the nearest dry tile
+        int wx = s->act_x, wy = s->act_y, done = 0;
+        for (int r = 1; r <= 3 && !done; r++) for (int dy = -r; dy <= r && !done; dy++) for (int dx = -r; dx <= r && !done; dx++) {
+            int x = wx + dx, y = wy + dy;
+            if (x < 1 || y < 1 || x >= MW - 1 || y >= MH - 1 || floorMap[y][x] == FL_WATER || !world_walkable(x, y)) continue;
+            s->x = x * TILE + TILE / 2; s->z = -(y * TILE + TILE / 2); done = 1;
+        }
+    }
+    else if (stands_on(s->action, s->act_x, s->act_y)) {   // step off the item onto open floor
         int mx = s->act_x, my = s->act_y, d = world_item_facing(mx, my);
         static const signed char dx[4] = { 0, 1, 0, -1 }, dy[4] = { 1, 0, -1, 0 };
         if (world_walkable(mx + dx[d], my + dy[d])) { s->x = (mx + dx[d]) * TILE + TILE / 2; s->z = -((my + dy[d]) * TILE + TILE / 2); }
@@ -451,24 +479,34 @@ static void end_action(Sim *s) {
 }
 
 static int is_night(void) { return clock_min >= NIGHT_FROM || clock_min < NIGHT_TO; }
-static int is_work(void) { return clock_day < 5 && clock_min >= WORK_FROM && clock_min < WORK_TO; }
+static int is_work(void) { return job_on_shift(); }
 
 static void run_action(Sim *s) {
     int me = (int)(s - sims);
     switch (s->action) {
-        case ACT_EAT: s->need[N_FOOD] += s->act_var == 1 ? GAIN_EAT * 3 / 2 : GAIN_EAT; if (s->act_var == 1 && !(s->act_t & 7)) s->skill_cook++; break;
+        case ACT_EAT: s->need[N_FOOD] += (s->act_var == 2 || s->act_var == 5) ? GAIN_EAT * 2 : (s->act_var == 1 || s->act_var == 3) ? GAIN_EAT * 3 / 2 : GAIN_EAT;
+                      if (s->act_var == 1 && !(s->act_t & 7)) s->skill_cook++; if (s->act_var == 4) s->need[N_FUN] += 60; break;
         case ACT_WC: s->need[N_WC] += GAIN_WC; break;
-        case ACT_SLEEP: s->need[N_REST] += is_night() ? GAIN_SLEEP * 5 / 4 : GAIN_SLEEP; s->need[N_COMFY] += 40;
+        case ACT_SLEEP: if (s->act_var == 2) { s->need[N_COMFY] += GAIN_SIT; s->need[N_FUN] += GAIN_FUN / 2; s->need[N_REST] += 60; break; }   // (a massage)
+                        s->need[N_REST] += is_night() ? GAIN_SLEEP * 5 / 4 : GAIN_SLEEP; s->need[N_COMFY] += 40;
                         if ((s->need[N_REST] >> 10) >= 100 && (!is_night() || clock_min < NIGHT_FROM)) { s->act_t = 0; sim_say(s, "RESTED"); } break;
         case ACT_SHOWER: s->need[N_CLEAN] += GAIN_WASH; if (s->act_var == 1) s->need[N_FUN] += 90; break;
-        case ACT_SIT: s->need[N_COMFY] += GAIN_SIT; if ((s->need[N_COMFY] >> 10) >= 100) s->act_t = 0; break;
-        case ACT_FUN: s->need[N_FUN] += GAIN_FUN; s->need[N_COMFY] += 30; break;
+        case ACT_SIT: s->need[N_COMFY] += GAIN_SIT; if (s->act_var == 6) { s->need[N_FUN] += GAIN_FUN; break; }   // (a film: to the end)
+                      if ((s->need[N_COMFY] >> 10) >= 100) s->act_t = 0; break;
+        case ACT_FUN: s->need[N_FUN] += GAIN_FUN; s->need[N_COMFY] += 30;
+                      if (s->act_var == 5) { s->need[N_SOCIAL] += GAIN_TALK / 2; if (!(s->act_t & 63)) s->gait.wave = 20; }   // (a drink at the bar)
+                      if (s->act_var == 7 && !(s->act_t & 7)) s->skill_fun++; break;
         case ACT_READ: s->need[N_FUN] += s->act_var == 1 ? GAIN_FUN / 4 : GAIN_FUN / 2; s->skill_fun += s->act_var == 1 ? 3 : 1; break;
         case ACT_COFFEE: s->need[N_REST] += s->act_var == 1 ? 320 : 180; s->need[N_WC] -= s->act_var == 1 ? 110 : 60; break;
-        case ACT_RUN: s->need[N_FUN] += 120; s->need[N_CLEAN] -= s->act_var == 1 ? 160 : 90; s->skill_body += s->act_var == 1 ? 2 : 1; s->gait.amp = 4096; s->gait.phase = (s->gait.phase + 200) & 4095; break;
+        case ACT_RUN: s->need[N_FUN] += 120; s->need[N_CLEAN] -= s->act_var ? 160 : 90; s->skill_body += s->act_var == 2 ? 3 : s->act_var == 1 ? 2 : 1; s->gait.amp = 4096; s->gait.phase = (s->gait.phase + 200) & 4095; break;
+        case ACT_SWIM: {   // floating about on the water, turning lazily
+            int t = s->act_t;
+            s->need[N_FUN] += GAIN_FUN; s->need[N_CLEAN] += 120; s->need[N_COMFY] += 20; if (!(t & 7)) s->skill_body++;
+            s->x = s->act_x * TILE + TILE / 2 + ((isin((t * 9) & 4095) * 70) >> 12); s->z = -(s->act_y * TILE + TILE / 2) + ((icos((t * 5) & 4095) * 50) >> 12);
+            s->yaw = (t * 5) & 4095; s->gait.sleep = 1; break; }
         case ACT_PHONE: if (s->act_var == 1) s->need[N_FOOD] += 300; else s->need[N_SOCIAL] += GAIN_TALK; s->gait.wave = 2; break;
         case ACT_TALK: s->need[N_SOCIAL] += GAIN_TALK; s->need[N_FUN] += 40; if ((s->act_t & 63) == 0) s->gait.wave = 40; break;
-        case ACT_WORK: if (is_work()) { if (me == player) job_worked++; s->need[N_FUN] -= 20; } else { s->act_t = 0; } break;
+        case ACT_WORK: if (is_work()) { s->need[N_FUN] -= 20; if (!(s->act_t & 63)) s->gait.wave = 24; } else { s->act_t = 0; } break;   // (the minutes count in clock_tick)
         default: break;
     }
     for (int i = 0; i < NEED_N; i++) s->need[i] = CLAMP(s->need[i], 0, 100 << 10);
@@ -634,7 +672,7 @@ static void tick_needs(Sim *s) {
 static void clock_tick(void) {
     static int acc = 0;
     int spm = STEPS_MIN;
-    if (sims[player].action == ACT_SLEEP) spm = 1;
+    if ((sims[player].action == ACT_SLEEP && sims[player].act_var != 2) || sims[player].action == ACT_WORK) spm = 1;   // asleep or at work: the hours fly (not on a massage table)
     if (sim_speed == 2) spm /= 3; if (sim_speed == 3) spm = 1;
     if (spm < 1) spm = 1;
     if (++acc < spm) return;
@@ -642,20 +680,27 @@ static void clock_tick(void) {
     clock_min++;
     for (int i = 0; i < nsims; i++) { wants_minute(&sims[i]); moodlets_minute(&sims[i]); }
     if (clock_min == 16 * 60) for (int i = 0; i < nsims; i++) for (int j = 0; j < nsims; j++) { int r = sims[i].rel[j]; sims[i].rel[j] = (s8)(r > 0 ? r - 2 : r < 0 ? r + 2 : 0); }   // 4 PM: the day's warmth fades a little
-    if (clock_min == WORK_FROM && clock_day < 5) { sim_note("WORK: 9 TO 5 AT THE MARKER"); job_worked = 0; }
-    if (clock_min == WORK_TO && clock_day < 5) {
-        int quota = 300, pay = 0;
-        if (job_worked >= quota) { pay = PAY0 + PAY_LVL * job_level; job_days_good++; if (job_worked >= quota * 2) pay += 600; }
-        else if (job_worked >= quota / 2) { pay = (PAY0 + PAY_LVL * job_level) / 2; }
-        else { job_strikes++; }
-        if (pay) { cash += pay; story_paid++; char b[32]; sprintf(b, "PAID %d", pay); sim_note(b); wants_event(&sims[player], W_PAID, 0); sim_moodlet(&sims[player], ML_PAYDAY);
-                   if (story_paid == 1) sim_note("PAID! THE ISLAND FERRY WILL TAKE YOU NOW"); audio_voice(VOICE_YAHOO); }
-        else { sim_note("NO PAY TODAY"); wants_fear(&sims[player], F_BADDAY); }
-        if (job_days_good >= 3 && job_level < 5) { job_level++; job_days_good = 0; sim_note("PROMOTED!"); wants_event(&sims[player], W_PROMO, 0); sim_moodlet(&sims[player], ML_PROMOTED); }
-        if (job_strikes >= 3 && job_level > 0) { job_level--; job_strikes = 0; sim_note("DEMOTED"); wants_fear(&sims[player], F_DEMOTED); }
+    if (sims[player].action == ACT_WORK && is_work()) job_worked++;       // minutes worked this shift
+    {   // the shift: a reminder an hour before, the start, and the pay at the end (by the minutes worked)
+        const Career *cr = &careers[job_car]; int on = (cr->days >> clock_day) & 1, from = cr->from * 60, to = cr->to * 60;
+        char b[40], h[8];
+        if (on && clock_min == from - 60) { sprintf(b, "WORK AT %s: START, JOBS", hour_name(cr->from, h)); sim_note(b); }
+        if (on && clock_min == from) { snprintf(b, sizeof b, "WORK NOW: %s", job_place); sim_note(b); job_worked = 0; }
+        if (on && clock_min == to) {
+            int len = to - from, w = MIN(job_worked, len), full = job_pay(), pay = 0;
+            if (w >= len * 55 / 100) { pay = full * w / len; if (w >= len * 95 / 100) pay += full / 5; job_days_good++; }
+            else if (w >= len / 4) pay = full * w / len;
+            else job_strikes++;
+            if (pay) { cash += pay; story_paid++; sprintf(b, "PAID $%d", pay); sim_note(b); wants_event(&sims[player], W_PAID, 0); sim_moodlet(&sims[player], ML_PAYDAY);
+                       if (story_paid == 1) sim_note("PAID! THE ISLAND FERRY WILL TAKE YOU NOW"); audio_voice(VOICE_YAHOO); }
+            else { sim_note("NO PAY TODAY"); wants_fear(&sims[player], F_BADDAY); }
+            if (job_days_good >= 3 && job_level < 5) { job_level++; job_days_good = 0; job_strikes = 0; snprintf(b, sizeof b, "PROMOTED: %s!", job_title()); sim_note(b);
+                                                       wants_event(&sims[player], W_PROMO, 0); sim_moodlet(&sims[player], ML_PROMOTED); }
+            if (job_strikes >= 3 && job_level > 0) { job_level--; job_strikes = 0; sim_note("DEMOTED"); wants_fear(&sims[player], F_DEMOTED); }
+        }
     }
     if (clock_min >= 1440) {
-        clock_min = 0; clock_day = (clock_day + 1) % 7;
+        clock_min = 0; clock_day = (clock_day + 1) % 7; day_count++;
         cash -= BILLS;
         if (cash < 0) { cash = 0; sim_note("BROKE! BILLS UNPAID"); sims[player].mood -= 30; audio_voice(VOICE_CRY); wants_fear(&sims[player], F_BROKE); }
         else sim_note("BILLS PAID: 800");
@@ -685,7 +730,11 @@ void sim_step(void) {
 void sim_player_move(int dx, int dz, int run) {
     Sim *s = &sims[player];
     world_lvl = s->lvl;
-    if (s->action != ACT_NONE && s->action != ACT_WALK) { if (s->action == ACT_WORK || s->action == ACT_SLEEP) return; end_action(s); }
+    if (s->action != ACT_NONE && s->action != ACT_WALK) {
+        if (!dx && !dz) return;                                              // standing still: whatever it is doing goes on
+        if (s->action == ACT_WORK || s->action == ACT_SLEEP) return;         // (asleep, at work: the stick does not get you up; X or O does)
+        end_action(s);                                                       // walking off: it stops
+    }
     s->path_n = 0; s->action = ACT_NONE;
     if (!dx && !dz) { s->gait.amp = s->gait.amp > 300 ? s->gait.amp - 300 : 0; return; }
     // REAL 3D WALKING: the Bore turns toward the push first and only ever moves the way it FACES -
@@ -709,6 +758,15 @@ static int front_tile(const Sim *s, int *mx, int *my) {
     *mx = px / TILE; *my = (-pz) / TILE;
     return px >= 0 && pz <= 0;
 }
+static int usable_at(int tx, int ty, char c) {   // something X does something with
+    if (action_for(c) != ACT_NONE) return 1;
+    if (!c || !strchr("y7d`it", c)) return 0;         // a counter, a shelf, a desk, a mirror, a rack, a table: at a place, to buy at or to work at
+    if (job_here(tx, ty, c)) return 1;
+    PlaceInfo pi; if (!place_at(tx, ty, &pi)) return 0;
+    if (c == '7' || c == '`' || c == 'i') return pi.lot == LOT_SHOP;
+    if (c == 't') return pi.lot == LOT_RESTAURANT;
+    return c == 'y';                                   // (someone else's desk: nothing for a visitor)
+}
 static int target_of(const Sim *s, int *mx, int *my, int *who) {
     *who = -1;
     int me = (int)(s - sims);
@@ -719,12 +777,24 @@ static int target_of(const Sim *s, int *mx, int *my, int *who) {
         if (ABS(dx) < TILE * 3 / 2 && ABS(dz) < TILE * 3 / 2 && sims[i].action != ACT_SLEEP) { *who = i; return 1; }
     }
     int fx, fy;
-    if (front_tile(s, &fx, &fy) && action_for(world_at(fx, fy)) != ACT_NONE) { *mx = fx; *my = fy; return 1; }
+    if (front_tile(s, &fx, &fy) && usable_at(fx, fy, world_at(fx, fy))) { *mx = fx; *my = fy; return 1; }
     int cx = sim_tile_x(s), cy = sim_tile_y(s);
     static const signed char dx[5] = { 0, 0, 1, 0, -1 }, dy[5] = { 0, 1, 0, -1, 0 };
-    for (int k = 0; k < 5; k++) { int tx = cx + dx[k], ty = cy + dy[k]; if (action_for(world_at(tx, ty)) != ACT_NONE) { *mx = tx; *my = ty; return 1; } }
+    for (int k = 0; k < 5; k++) { int tx = cx + dx[k], ty = cy + dy[k]; if (usable_at(tx, ty, world_at(tx, ty))) { *mx = tx; *my = ty; return 1; } }
     if (s->lvl > 0) for (int k = 0; k < 5; k++) { int tx = cx + dx[k], ty = cy + dy[k];   // the top of a flight of stairs (open air, the stairs below)
         if (world_at_l(s->lvl, tx, ty) == ' ' && world_at_l(s->lvl - 1, tx, ty) == '|') { *mx = tx; *my = ty; return 1; } }
+    return 0;
+}
+static int staff_only(int lot, char c) {   // the kitchens, the office's desks, the clinic's rooms, the projection: not for customers
+    if (!c) return 0;
+    switch (lot) {
+        case LOT_DINER: return c == 'F' || c == '/';
+        case LOT_CAFE: case LOT_BAR: return c == 'F' || c == '-';
+        case LOT_RESTAURANT: return c == 'F' || c == '/' || c == '-';
+        case LOT_CINEMA: return c == 'v' || c == 'A';
+        case LOT_CLINIC: return c == 'S' || c == 'd' || c == '[' || c == '-';
+        case LOT_OFFICE: case LOT_TOWER: case LOT_SCHOOL: return strchr("dx[bI", c) != 0;
+    }
     return 0;
 }
 static const char *sim_hint_(void) {
@@ -734,7 +804,27 @@ static const char *sim_hint_(void) {
     if (!target_of(s, &mx, &my, &who)) return "";
     if (who >= 0) return "TALK";
     char c = world_at(mx, my);
-    if (c == 'x' && !is_work()) return "NOT WORK TIME";
+    int mine = job_here(mx, my, c);
+    if (mine && is_work()) return "WORK";
+    if (c == 'x') return mine ? "NOT WORK TIME" : "NOT YOUR JOB";
+    PlaceInfo pi;
+    if (place_at(mx, my, &pi)) {
+        if (!place_open(pi.lot, clock_min, clock_day)) return "CLOSED";
+        if (staff_only(pi.lot, c)) return "STAFF ONLY";
+        if (c == 'y' || c == 'I') switch (pi.lot) {
+            case LOT_DINER: case LOT_CAFE: return "ORDER"; case LOT_SHOP: return "SHOP"; case LOT_INN: case LOT_HOTEL: return "CHECK IN";
+            case LOT_BAR: return "A DRINK"; case LOT_CINEMA: return "POPCORN"; case LOT_SALON: return "A HAIRCUT"; case LOT_RESTAURANT: return "DINE";
+            case LOT_CLINIC: return "A CHECKUP"; case LOT_GALLERY: return "BUY ART"; default: return "STAFF ONLY"; }
+        if (c == ';' && pi.lot == LOT_CINEMA) return "A FILM";
+        if (c == 't' && pi.lot == LOT_RESTAURANT) return "DINE";
+        if (c == 'S' && pi.lot == LOT_SPA) return "A MASSAGE";
+        if (c == '>' && pi.lot == LOT_SPA) return "SOAK";
+        if (c == ')' && pi.lot == LOT_GALLERY) return "ADMIRE";
+        if (c == '!' && pi.lot == LOT_ARCADE) return "PLAY $2";
+        if (c == '7' || c == '`' || c == 'i') return pi.lot == LOT_SHOP ? "SHOP" : "";
+        if (c == 'd') return "STAFF ONLY";
+        if (c == '~' && pi.lot == LOT_POOL) return "SWIM";
+    }
     return act_hint(action_for(c), c);
 }
 // ================================================================== THE PIE MENU (Sims 1 & 2)
@@ -742,6 +832,10 @@ static const char *sim_hint_(void) {
 enum { SO_TALK, SO_JOKE, SO_HUG, SO_COMPLIMENT, SO_FLIRT, SO_TEASE, SO_N };
 static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FLIRT", "TEASE" };
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
+static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
+enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
+       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING };
+static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
 static int sim_pie_open_(char opt[8][16]) {
@@ -765,10 +859,27 @@ static int sim_pie_open_(char opt[8][16]) {
     }
     char c = world_at(mx, my); int act = action_for(c);
     if (c == ' ') { strcpy(pie_title, "STAIRS"); strcpy(opt[0], "GO DOWN"); pie_code[0] = 1; pie_n = 1; return 1; }
-    if (c == 'x' && !is_work()) { sim_note("WORK IS 9 TO 5, MON TO FRI"); return 0; }
-    strcpy(pie_title, act_hint(act, c));
+    pie_place = place_at(mx, my, &pie_pi);
+    int mine = job_here(mx, my, c);
+    if (mine && !is_work()) { if (c == 'x') { char b[40], h1[8], h2[8]; sprintf(b, "WORK IS %s TO %s", hour_name(careers[job_car].from, h1), hour_name(careers[job_car].to, h2)); sim_note(b); return 0; } mine = 0; }
+    if (c == 'x' && !mine) { sim_note("THIS IS NOT YOUR WORKPLACE"); return 0; }
+    if (pie_place && !mine) {
+        if (!place_open(pie_pi.lot, clock_min, clock_day)) { char b[40], h[8]; sprintf(b, "CLOSED. OPENS AT %s", hour_name(place_opens_at(pie_pi.lot), h)); sim_note(b); return 0; }
+        if (staff_only(pie_pi.lot, c)) { sim_note("STAFF ONLY"); return 0; }
+    }
+    strcpy(pie_title, pie_place ? pie_pi.name : act_hint(act, c));
     #define OPT(txt, v) { strcpy(opt[pie_n], txt); pie_code[pie_n++] = v; }
+    if (mine) OPT("WORK", PC_WORK)
+    if (c == 'x') act = ACT_NONE;                                          // (the marker is only for working)
+    if (pie_place && (pie_pi.lot == LOT_INN || pie_pi.lot == LOT_HOTEL) && act == ACT_SLEEP && !room_here()) {   // a bed at an inn: yours once you have paid for the room
+        if (!mine) { sim_note("RENT A ROOM AT THE FRONT DESK"); return 0; }
+        act = ACT_NONE;
+    }
+    if (pie_place && (c == 'y' || c == 'I' || c == 'x')) act = ACT_NONE;   // (the till, the desk bell: what the place does, not a phone)
+    if (pie_place && pie_pi.lot == LOT_ARCADE && c == '!') { OPT("PLAY $2", PC_PLAY) act = ACT_NONE; }
+    if (pie_place && ((pie_pi.lot == LOT_SPA && (c == 'S' || c == '>')) || (pie_pi.lot == LOT_GALLERY && c == ')'))) act = ACT_NONE;
     switch (act) {
+        case ACT_NONE: break;
         case ACT_EAT: OPT("SNACK", 0) OPT("COOK A MEAL", 1) break;
         case ACT_SLEEP: OPT("SLEEP", 0) OPT("NAP", 1) break;
         case ACT_SHOWER: OPT("SHOWER", 0) OPT("SING IN IT", 1) break;
@@ -783,7 +894,25 @@ static int sim_pie_open_(char opt[8][16]) {
                       OPT(act_hint(act, c), 0) break;
         default: OPT(act_hint(act, c), 0) break;
     }
+    if (pie_place && !mine) switch (pie_pi.lot) {   // what the place sells
+        case LOT_DINER: if (c == 'y') { OPT("A MEAL $15", PC_MEAL) OPT("A SNACK $6", PC_SNACK) OPT("A COFFEE $3", PC_COFFEE) } else if (c == 'c') OPT("A COFFEE $3", PC_COFFEE) break;
+        case LOT_SHOP: { static const char *const buy[5] = { "GROCERIES $60", "AN OUTFIT $150", "A GAME $60", 0, "A RECORD $25" };
+                         int k = place_shop_kind(pie_pi.h); if (buy[k] && pie_n < 7) OPT(buy[k], PC_BUY0 + k)
+                         if (pie_n < 8) OPT("BROWSE", PC_BROWSE) } break;
+        case LOT_GYM: if ((c == ']' || c == 'm' || c == '_') && pie_n < 8) OPT("A TRAINER $20", PC_TRAINER) break;
+        case LOT_POOL: if ((c == '~' || c == '>') && pie_n < 8) OPT("SWIM", PC_SWIM) break;
+        case LOT_INN: case LOT_HOTEL: if (c == 'y' || c == 'I') OPT(room_here() ? "MY ROOM: PAID" : "A ROOM $60", PC_ROOM) break;
+        case LOT_CAFE: if (c == 'y' || c == 'c') { OPT("A LATTE $5", PC_LATTE) if (c == 'y') OPT("A CAKE $6", PC_CAKE) } break;
+        case LOT_BAR: if (c == 'y') { OPT("A DRINK $8", PC_DRINK) OPT("A ROUND $40", PC_ROUND) } break;
+        case LOT_CINEMA: if (c == ';' && pie_n < 8) OPT("A FILM $12", PC_FILM) else if (c == 'y' || c == ':') OPT("POPCORN $4", PC_POPCORN) break;
+        case LOT_SALON: if ((c == 'y' || c == '`' || c == 'h') && pie_n < 7) { OPT("A HAIRCUT $40", PC_HAIR) OPT("A NEW LOOK $120", PC_LOOK) } break;
+        case LOT_RESTAURANT: if ((c == 'y' || c == 't' || c == 'h') && pie_n < 8) OPT("FINE DINING $40", PC_DINE) break;
+        case LOT_CLINIC: if (c == 'y') OPT("A CHECKUP $30", PC_CHECKUP) break;
+        case LOT_SPA: if (c == 'S') OPT("A MASSAGE $50", PC_MASSAGE) else if (c == '>') OPT("SOAK $15", PC_SOAK) break;
+        case LOT_GALLERY: if (c == ')') OPT("ADMIRE THE ART", PC_ADMIRE) else if (c == 'y') OPT("A PAINTING $300", PC_PAINTING) break;
+    }
     #undef OPT
+    if (!pie_n) { sim_note(pie_place ? "STAFF ONLY" : "NOTHING TO DO HERE"); return 0; }
     return pie_n;
 }
 static void social(Sim *s, Sim *o, int move) {   // a social move: the other Bore accepts or rejects it (Sims 2: mood, the relationship, personality)
@@ -820,10 +949,103 @@ static void social(Sim *s, Sim *o, int move) {   // a social move: the other Bor
     begin_action(o, ACT_TALK, sim_tile_x(s), sim_tile_y(s));
     s->talk_to = who; o->talk_to = me; o->path_n = 0;
 }
+static int pay(int n) {
+    if (cash < n) { char b[32]; sprintf(b, "THAT IS $%d", n); sim_note(b); audio_voice(VOICE_NAH); return 0; }
+    cash -= n; return 1;
+}
+static void shopped(Sim *s, const char *what, int ml) { sim_note(what); sim_moodlet(s, ml); wants_event(s, W_SHOP, 0); wants_event(s, W_BUY, 0); audio_voice(VOICE_YAHOO); }
+static void new_look(Bore *b, int tab) {   // a tab of the creator rolled again: the clothes (a shop's rails), the hair (a salon's chair)
+    const LookRow *rows; int n = look_tab_rows(tab, &rows);
+    for (int i = 0; i < n; i++) {
+        int id = rows[i].id; if (id >= LK_TRAIT0 || rows[i].kind == ROW_AGE) continue;
+        int cnt = look_count(id); if (cnt < 2) continue;
+        for (int t = 0; t < 8; t++) { int v = (int)(look_rand() % cnt); if (look_allowed(b, id, v)) { b->look[id] = (u8)v; break; } }
+    }
+    look_build(b);
+}
+static void swim(Sim *s) {   // into the nearest water
+    int bx = -1, by = -1, bd = 1 << 30;
+    for (int y = pie_my - 4; y <= pie_my + 4; y++) for (int x = pie_mx - 4; x <= pie_mx + 4; x++) {
+        if (x < 0 || y < 0 || x >= MW || y >= MH || floorMap[y][x] != FL_WATER) continue;
+        int d = (x - pie_mx) * (x - pie_mx) + (y - pie_my) * (y - pie_my); if (d < bd) { bd = d; bx = x; by = y; }
+    }
+    if (bx < 0) { sim_note("NO WATER HERE"); return; }
+    begin_action(s, ACT_SWIM, bx, by);
+    s->x = bx * TILE + TILE / 2; s->z = -(by * TILE + TILE / 2); s->gait.sleep = 1;
+    sim_say(s, "CANNONBALL!"); audio_voice(VOICE_YAHOO);
+}
+static void place_do(Sim *s, int code) {
+    switch (code) {
+        case PC_WORK: begin_action(s, ACT_WORK, pie_mx, pie_my); { char b[40]; snprintf(b, sizeof b, "AT WORK: %s", job_title()); sim_note(b); } break;
+        case PC_MEAL: if (!pay(15)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 2; s->act_t = 260; sim_say(s, "THE SPECIAL, PLEASE"); break;
+        case PC_SNACK: if (!pay(6)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 0; break;
+        case PC_COFFEE: if (!pay(3)) return; begin_action(s, ACT_COFFEE, pie_mx, pie_my); s->act_var = 1; break;
+        case PC_BUY0: if (!pay(60)) return; groceries += 7; shopped(s, "GROCERIES: 7 GOOD MEALS AT HOME", ML_RETAIL); break;
+        case PC_BUY0 + 1: if (!pay(150)) return; new_look(&s->bore, 3); crowd_forget(CROWD_MAX + player); shopped(s, "A NEW OUTFIT!", ML_OUTFIT); break;
+        case PC_BUY0 + 2: if (!pay(60)) return; s->need[N_FUN] = MIN(s->need[N_FUN] + (30 << 10), 100 << 10); shopped(s, "A NEW GAME!", ML_NEW_GAME); break;
+        case PC_BUY4: if (!pay(25)) return; s->need[N_FUN] = MIN(s->need[N_FUN] + (20 << 10), 100 << 10); shopped(s, "A NEW RECORD!", ML_RETAIL); break;
+        case PC_BROWSE: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 4; s->act_t = 240; break;
+        case PC_TRAINER: if (!pay(20)) return; begin_action(s, ACT_RUN, pie_mx, pie_my); s->act_var = 2; sim_say(s, "FEEL THE BURN"); break;
+        case PC_SWIM: swim(s); break;
+        case PC_PLAY: if (!pay(2)) return; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 0; break;
+        case PC_LATTE: if (!pay(5)) return; begin_action(s, ACT_COFFEE, pie_mx, pie_my); s->act_var = 1; break;
+        case PC_CAKE: if (!pay(6)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 4; s->act_t = 150; break;
+        case PC_DRINK: if (!pay(8)) return; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 5; s->act_t = 300; sim_say(s, "WHAT'S GOOD HERE?"); break;
+        case PC_ROUND: if (!pay(40)) return; s->need[N_SOCIAL] = MIN(s->need[N_SOCIAL] + (40 << 10), 100 << 10); sim_moodlet(s, ML_ROUND);
+                       wants_event(s, W_NIGHT, 0); sim_note("A ROUND FOR THE HOUSE!"); sim_say(s, "DRINKS ARE ON ME!"); audio_voice(VOICE_YAHOO); break;
+        case PC_FILM: if (!pay(12)) return; begin_action(s, ACT_SIT, pie_mx, pie_my); s->act_var = 6; s->act_t = 480; sim_note("THE FILM IS STARTING"); break;
+        case PC_POPCORN: if (!pay(4)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 4; s->act_t = 120; break;
+        case PC_HAIR: case PC_LOOK: if (!pay(code == PC_HAIR ? 40 : 120)) return;
+                      new_look(&s->bore, 2); if (code == PC_LOOK) new_look(&s->bore, 3); crowd_forget(CROWD_MAX + player);
+                      sim_moodlet(s, ML_CUT); sim_note(code == PC_HAIR ? "A FRESH HAIRCUT!" : "A WHOLE NEW LOOK!"); audio_voice(VOICE_YAHOO); break;
+        case PC_DINE: if (!pay(40)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 5; s->act_t = 300; sim_say(s, "THE CHEF'S SPECIAL");
+                      if (world_at(pie_mx, pie_my) == 'h') {   // at a chair: sat at the table
+                          s->x = pie_mx * TILE + TILE / 2; s->z = -(pie_my * TILE + TILE / 2); s->yaw = (world_item_facing(pie_mx, pie_my) * 1024) & 4095; s->gait.sit = 1; }
+                      break;
+        case PC_CHECKUP: if (!pay(30)) return; sim_moodlet(s, ML_HEALTHY); sim_note("THE DOCTOR SAYS: ALL CLEAR!"); audio_voice(VOICE_YAHOO); break;
+        case PC_MASSAGE: if (!pay(50)) return; begin_action(s, ACT_SLEEP, pie_mx, pie_my); s->act_var = 2; s->act_t = 300; break;
+        case PC_SOAK: if (!pay(15)) return; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 0; break;
+        case PC_ADMIRE: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 7; s->act_t = 200; break;
+        case PC_PAINTING: if (!pay(300)) return; shopped(s, "A PAINTING, JUST FOR YOU", ML_INSPIRED); break;
+        case PC_ROOM: if (room_here()) { sim_note("YOUR ROOM IS PAID TILL NOON"); return; }
+                      if (!pay(60)) return; room_bx = pie_pi.bx; room_by = pie_pi.by; room_until = (day_count + 1) * 1440 + 12 * 60;
+                      sim_note("A ROOM TILL NOON TOMORROW"); audio_voice(VOICE_YAHOO); break;
+    }
+}
+#if defined(AUTO_PLACES) || defined(AUTO_TOUR)
+int sim_debug_goto(char c, int lot) {   // (test builds) stand the player in front of the nearest c (at a place of that kind, lot >= 0)
+    Sim *s = &sims[player]; int sx = sim_tile_x(s), sy = sim_tile_y(s), best = 1 << 30, bx = -1, by = -1, tx = 0, ty = 0;
+    for (int y = 1; y < MH - 1; y++) for (int x = 1; x < MW - 1; x++) {
+        if (lifeMap[y][x] != c) continue;
+        PlaceInfo pi; if (lot >= 0 && !(place_at(x, y, &pi) && pi.lot == lot)) continue;
+        int ax, ay; if (!approach_tile(s, x, y, &ax, &ay)) continue;
+        int d = (x - sx) * (x - sx) + (y - sy) * (y - sy); if (d < best) { best = d; bx = x; by = y; tx = ax; ty = ay; }
+    }
+    if (bx < 0) return 0;
+    s->x = tx * TILE + TILE / 2; s->z = -(ty * TILE + TILE / 2); s->lvl = 0; s->action = ACT_NONE; s->path_n = 0;
+    s->yaw = yaw_towards(bx * TILE + TILE / 2 - s->x, -(by * TILE + TILE / 2) - s->z);
+    return 1;
+}
+#endif
+int sim_front_service(void) {   // right in front of you: a place's counter, shelf or machine, or something you work at (before the people behind it)
+    const Sim *s = &sims[player]; int fx, fy;
+    world_lvl = s->lvl;
+    int r = front_tile(s, &fx, &fy);
+    char c = r ? world_at(fx, fy) : 0;
+    r = c && (job_here(fx, fy, c) || (place_at(fx, fy, 0) && usable_at(fx, fy, c)));   // (at a place: whatever is right ahead)
+    world_lvl = 0;
+    return r;
+}
+void sim_take_job(int car, int bx, int by, const char *place) {
+    job_take(car, bx, by, place);
+    char b[40]; snprintf(b, sizeof b, "NEW JOB: %s", job_title()); sim_note(b);
+    sim_moodlet(&sims[player], ML_NEW_JOB); audio_voice(VOICE_YAHOO);
+}
 static void sim_pie_do_(int i) {
     Sim *s = &sims[player];
     if (i < 0 || i >= pie_n) return;
     if (pie_who >= 0) { social(s, &sims[pie_who], pie_code[i]); return; }
+    if (pie_code[i] >= PC_WORK) { place_do(s, pie_code[i]); return; }
     char c = world_at(pie_mx, pie_my); int act = action_for(c);
     if (c == ' ' || act == ACT_STAIRS) {   // the stairs: up from the bottom, down from the top
         static const signed char fx[4] = { 0, 1, 0, -1 }, fy[4] = { 1, 0, -1, 0 };
@@ -846,7 +1068,10 @@ static void sim_pie_do_(int i) {
     begin_action(s, act, pie_mx, pie_my);
     s->act_var = pie_code[i];
     if (act == ACT_SLEEP && s->act_var == 1) s->act_t = 300;              // a nap: an hour or so
-    if (act == ACT_EAT && s->act_var == 1) s->act_t = 420;                // cooking takes a while
+    if (act == ACT_EAT && s->act_var == 1) {                              // cooking takes a while; it is a good meal if there is good food in
+        s->act_t = 420;
+        if (groceries > 0) groceries--; else { s->act_var = 3; sim_note("NO GROCERIES: A PLAIN MEAL"); }
+    }
 }
 
 static int sim_player_interact_(void) {
@@ -866,7 +1091,8 @@ static int sim_player_interact_(void) {
         return 1;
     }
     char c = world_at(mx, my);
-    if (c == 'x' && !is_work()) { sim_note("WORK IS 9 TO 5, MON TO FRI"); return 0; }
+    if (c == 'x' && !(job_here(mx, my, c) && is_work())) { sim_note(job_here(mx, my, c) ? "NOT WORK TIME" : "THIS IS NOT YOUR WORKPLACE"); return 0; }
+    if (action_for(c) == ACT_NONE) return 0;
     if (c == 'R' || c == 'A') audio_jukebox_next();
     if (action_for(c) == ACT_TRAVEL) { travel_asked = 1; return 1; }
     begin_action(s, action_for(c), mx, my);
