@@ -171,8 +171,8 @@ static int speed_of(const Sim *s) {
 }
 
 // ---- path finding: BFS over the tiles, then pulled straight (a person cuts corners, they do not walk a staircase) ----
-static u16 bfs_q[MW * MH];
-static s16 bfs_par[MH][MW];
+u16 bfs_q[MW * MH];                 // (also lent to the roof rebuild in world.c: never at the same time)
+s16 bfs_par[MH][MW];
 static u32 walk_tick;          // steps since the game began: the wobble and the dice run off it
 #define LOS_R 60               // the clearance a straight line needs (a little more than the body)
 #define LOS_STEP 96
@@ -882,3 +882,22 @@ int sim_pie_open(char opt[8][16]) { world_lvl = sims[player].lvl; int r = sim_pi
 void sim_pie_do(int i) { world_lvl = sims[player].lvl; sim_pie_do_(i); world_lvl = 0; }
 
 int sim_player_interact(void) { world_lvl = sims[player].lvl; int r = sim_player_interact_(); world_lvl = 0; return r; }
+
+// SAN BOREAS's map window moved by (dtx, dty) tiles: everyone in the household moves with it (anyone left off the
+// edge of the new window is brought to the player's side, their errand dropped)
+void sim_shift(int dtx, int dty) {
+    const Sim *p = &sims[player];
+    int px = p->x - dtx * TILE, pz = p->z + dty * TILE;
+    for (int i = 0; i < nsims; i++) {
+        Sim *s = &sims[i];
+        s->x -= dtx * TILE; s->z += dty * TILE;
+        if (s->act_x >= 0) { s->act_x -= dtx; s->act_y -= dty; }
+        int bad = 0;
+        for (int k = 0; k < s->path_n; k++) { int x = s->path_x[k] - dtx, y = s->path_y[k] - dty; if (x < 0 || y < 0 || x >= MW || y >= MH) bad = 1; s->path_x[k] = (u8)x; s->path_y[k] = (u8)y; }
+        { int x = s->dest_x - dtx, y = s->dest_y - dty; if (x < 0 || y < 0 || x >= MW || y >= MH) bad = 1; s->dest_x = (u8)CLAMP(x, 0, MW - 1); s->dest_y = (u8)CLAMP(y, 0, MH - 1); }
+        if (s->act_x >= MW || s->act_y >= MH || (s->act_x < 0 && s->act_x != -1) || s->act_y < 0) bad = 1;
+        int out = s->x < TILE || -s->z < TILE || s->x >= (MW - 1) * TILE || -s->z >= (MH - 1) * TILE;
+        if (bad || out) { if (s->action != ACT_NONE) end_action(s); s->path_n = 0; s->path_i = 0; s->act_x = -1; s->action = ACT_NONE; }
+        if (out && i != player) { s->x = px + 80 * (i % 3) - 80; s->z = pz - 80 * (i / 3); s->lvl = 0; }
+    }
+}

@@ -2,6 +2,7 @@
 #include "crowd.h"
 #include "gfx.h"
 #include "atlas.h"
+#include "mem8.h"
 
 extern const u8 voices_bin[];
 extern const u32 voices_bin_size;
@@ -53,10 +54,11 @@ typedef struct {
     s8 shelf; u8 ok, clip, pose, meas;
     s32 z; u16 ang, frame, drawn;
 } Spr;
-static Spr spr[CROWD_MAX];
+#define SPR_MAX (CROWD_MAX + 8)                  // (the last 8: the household, as sprites when they are further off)
+static Spr spr[SPR_MAX];
 
 static void cell_free(int id) { spr[id].shelf = -1; spr[id].ok = 0; }
-static int shelf_n(int k) { int n = 0; for (int i = 0; i < CROWD_MAX; i++) n += spr[i].shelf == k; return n; }
+static int shelf_n(int k) { int n = 0; for (int i = 0; i < SPR_MAX; i++) n += spr[i].shelf == k; return n; }
 static int shelf_gap(int k, int w) {            // the x of the first gap w wide on shelf k (-1: none)
     s16 xs[64], ws[64]; int n = 0;
     for (int i = 0; i < CROWD_MAX && n < 64; i++) if (spr[i].shelf == k) {
@@ -70,12 +72,12 @@ static int shelf_gap(int k, int w) {            // the x of the first gap w wide
 static void shelf_insert(int at, int y, int h) {
     if (nsh >= NSHELF) return;
     for (int k = nsh; k > at; k--) sh[k] = sh[k - 1];
-    for (int i = 0; i < CROWD_MAX; i++) if (spr[i].shelf >= at) spr[i].shelf++;
+    for (int i = 0; i < SPR_MAX; i++) if (spr[i].shelf >= at) spr[i].shelf++;
     sh[at].y = (s16)y; sh[at].h = (s16)h; nsh++;
 }
 static void shelf_remove(int at) {
     for (int k = at; k < nsh - 1; k++) sh[k] = sh[k + 1];
-    for (int i = 0; i < CROWD_MAX; i++) if (spr[i].shelf > at) spr[i].shelf--;
+    for (int i = 0; i < SPR_MAX; i++) if (spr[i].shelf > at) spr[i].shelf--;
     nsh--;
 }
 static void shelves_tidy(void) {                // empty shelves next to each other become one; an empty last one goes
@@ -116,7 +118,7 @@ static int cell_alloc(int id, int w, int h) {
     spr[id].shelf = -1;                          // (its old cell does not count as taken while looking: it is about to be given up)
     int ok = try_alloc(id, w, h);
     if (!ok) {                                   // full: everyone not on the screen this frame gives their cell up, and try again
-        for (int i = 0; i < CROWD_MAX; i++) if (i != id && spr[i].shelf >= 0 && spr[i].drawn != fr) cell_free(i);
+        for (int i = 0; i < SPR_MAX; i++) if (i != id && spr[i].shelf >= 0 && spr[i].drawn != fr) cell_free(i);
         shelves_tidy();
         ok = try_alloc(id, w, h);
     }
@@ -127,16 +129,23 @@ static int cell_alloc(int id, int w, int h) {
     }
     return 1;
 }
-int crowd_cells_used(void) { int a = 0; for (int i = 0; i < CROWD_MAX; i++) if (spr[i].shelf >= 0) a += spr[i].cw * spr[i].ch; return a; }
+int crowd_cells_used(void) { int a = 0; for (int i = 0; i < SPR_MAX; i++) if (spr[i].shelf >= 0) a += spr[i].cw * spr[i].ch; return a; }
 
+void crowd_flush(void) {                        // every sprite thrown away (their VRAM was drawn over: the world map)
+    for (int i = 0; i < SPR_MAX; i++) { spr[i].ok = 0; spr[i].shelf = -1; }
+    nsh = 0;
+}
+void *crowd_scratch(u32 *bytes) { *bytes = (voices_bin_size - 4) & ~3u; return (void *)(((u32)voices_bin + 3) & ~3u); }   // (a new life only: the arena before any model is stored)
 void crowd_reset(void) {
-    for (int i = 0; i < CROWD_MAX; i++) { m_off[i] = -1; face_of[i] = 255; spr[i].ok = 0; spr[i].shelf = -1; spr[i].meas = 0; }
+    for (int i = 0; i < CROWD_MAX; i++) { m_off[i] = -1; face_of[i] = 255; }
+    for (int i = 0; i < SPR_MAX; i++) { spr[i].ok = 0; spr[i].shelf = -1; spr[i].meas = 0; }
     for (int k = 0; k < NFACE; k++) face_owner[k] = -1;
     nsh = 0;
     ar_top = 0;
 }
 void crowd_init(void) {
     ar = (u8 *)(((u32)voices_bin + 3) & ~3u); ar_size = (voices_bin_size - 4) & ~3u;
+    if (ram8) { u8 *big = (u8 *)xalloc(1024 * 1024); if (big) { ar = big; ar_size = 1024 * 1024; } }   // 8 MB: a store big enough that nobody's model is ever let go
     crowd_reset();
 }
 int crowd_has(int id) { return id >= 0 && id < CROWD_MAX && m_off[id] >= 0; }
@@ -228,6 +237,7 @@ int crowd_store(int id, const Bore *b) {
 }
 
 static Bore ub;                                  // the unpacked person (one at a time)
+Bore *crowd_temp_bore(void) { return &ub; }      // (lent out: a wedding builds the newly-wed in it)
 const Bore *crowd_unpack(int id) {
     if (!crowd_has(id)) return 0;
     const CHead *h = (const CHead *)(ar + m_off[id]);
@@ -301,8 +311,10 @@ int crowd_need_h(int id, const VECTOR *pos, const Gait *g) {   // how tall the p
     int ax, ay, z = gfx_proj(pos->vx, pos->vy, pos->vz, &ax, &ay); if (!z) return 0;
     return (s->my1 - s->my0) * s->z / z;
 }
-int crowd_sprite_score(int id, const VECTOR *pos, int yaw, const Gait *g) {
-    if (!crowd_has(id)) return 0;
+static int score_any(int id, const VECTOR *pos, int yaw, const Gait *g);
+int crowd_sprite_score(int id, const VECTOR *pos, int yaw, const Gait *g) { return crowd_has(id) ? score_any(id, pos, yaw, g) : 0; }
+int crowd_sprite_score_of(int id, const VECTOR *pos, int yaw, const Gait *g) { return (id >= CROWD_MAX && id < SPR_MAX) ? score_any(id, pos, yaw, g) : 0; }
+static int score_any(int id, const VECTOR *pos, int yaw, const Gait *g) {
     Spr *s = &spr[id];
     s->drawn = fr;                               // wanted this frame: its cell is not to be given to anyone else now
     if (!s->ok) return 100000;
@@ -318,7 +330,8 @@ int crowd_sprite_score(int id, const VECTOR *pos, int yaw, const Gait *g) {
     if (shown > s->th + 4) e += (shown - s->th);                       // shown bigger than rendered: blurry
     return e * (8 + shown / 6) / 16;                                   // the bigger on the screen, the more it shows
 }
-int crowd_render_hb = 80;                     // what a render costs (a running average, in hblanks)
+int crowd_render_hb = 80;
+static const Bore *r_bore;                       // render this Bore instead of a stored model (the household)                     // what a render costs (a running average, in hblanks)
 static int render(int id, const VECTOR *pos, int yaw, const Gait *g) {
     Spr *s = &spr[id]; int t0_ = gfx_hb();
     int ax, ay, z = gfx_proj(pos->vx, pos->vy, pos->vz, &ax, &ay); if (!z) return 0;
@@ -341,7 +354,7 @@ static int render(int id, const VECTOR *pos, int yaw, const Gait *g) {
     }
     if (!got) return 0;
     int sx0 = CENTER_X + (((ax + b[0] - CENTER_X) * hs) >> 12), sy0 = CENTER_Y + (((ay + b[1] - CENTER_Y) * hs) >> 12);
-    const Bore *mb = crowd_unpack(id); if (!mb) return 0;
+    const Bore *mb = r_bore ? r_bore : crowd_unpack(id); if (!mb) return 0;
     if (!gfx_imp_begin(s->cx, s->cy, tw, th, s->cx - sx0, s->cy - sy0, z >> 2, hs)) return 0;
     gfx_bb[0] = gfx_bb[1] = 32767; gfx_bb[2] = gfx_bb[3] = -32768; gfx_bb_on = 1;
     voxel_draw(mb, pos, yaw, g);
@@ -360,8 +373,13 @@ static int render(int id, const VECTOR *pos, int yaw, const Gait *g) {
     { int c = gfx_hb() - t0_; if (c > 0 && c < 400) crowd_render_hb += (c - crowd_render_hb) / 8; }
     return 1;
 }
-int crowd_sprite(int id, const VECTOR *pos, int yaw, const Gait *g, int want_render) {
-    if (!crowd_has(id)) return 0;
+static int sprite_any(int id, const VECTOR *pos, int yaw, const Gait *g, int want_render);
+int crowd_sprite(int id, const VECTOR *pos, int yaw, const Gait *g, int want_render) { return crowd_has(id) ? sprite_any(id, pos, yaw, g, want_render) : 0; }
+int crowd_sprite_of(int id, const Bore *b, const VECTOR *pos, int yaw, const Gait *g, int want_render) {
+    if (id < CROWD_MAX || id >= SPR_MAX) return 0;
+    r_bore = b; int r = sprite_any(id, pos, yaw, g, want_render); r_bore = 0; return r;
+}
+static int sprite_any(int id, const VECTOR *pos, int yaw, const Gait *g, int want_render) {
     if (want_render) render(id, pos, yaw, g);
     Spr *s = &spr[id];
     if (!s->ok || s->shelf < 0) return 0;
@@ -372,6 +390,6 @@ int crowd_sprite(int id, const VECTOR *pos, int yaw, const Gait *g, int want_ren
     if (g->amp > 600) y -= (ABS(isin(g->phase * 2)) * 3) >> 12;                 // a step's bob between renders
     if (g->wave) dx = isin((g->wave * 400) & 4095) >> 10;                       // a sway
     gfx_imp_sprite(s->cx, s->cy, s->tw, s->th, x, y, w, h, (z >> 2) - 6, dx);
-    s->drawn = fr; m_used[id] = fr;
+    s->drawn = fr; if (id < CROWD_MAX) m_used[id] = fr;
     return 1;
 }

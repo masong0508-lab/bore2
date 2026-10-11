@@ -82,6 +82,8 @@ void atlas_upload(const TexRef *t, const u16 *pixels) {
     vram_load(&r, upload_buf);
 }
 
+u16 *atlas_scratch(void) { return upload_buf; }   // 128x128 pixels of scratch (free between uploads)
+void atlas_vram_load(int x, int y, int w, int h, const u16 *pixels) { RECT r; setRECT(&r, x, y, w, h); vram_load(&r, pixels); }
 TexRef atlas_add(int w, int h, const u16 *pixels) {
     TexRef t = atlas_alloc(w, h);
     atlas_upload(&t, pixels);

@@ -13,6 +13,9 @@
 #include "wants.h"
 #include "audio.h"
 #include "font.h"
+#include "mem8.h"
+#include "bigmap.h"
+#include "pop.h"
 
 // ---- input ----
 static u8 pad_buf[2][34];
@@ -68,11 +71,12 @@ static void camera_input(void) {
 
 // ---- the household ----
 static Bore edit;              // the creature on the creator's table
+#define title_bore (sims[MAX_SIMS - 1].bore)   // (the title's Bore borrows the last sim slot: no life is on while the title shows)
 static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int create_tab, create_row, create_from, create_turn;
@@ -84,6 +88,8 @@ static int hb_now(void) { return VSync(1); }   // hblanks since the last VSync(0
 static int t_cpu, t_frame0, t_bub, t_hud, t_upd;
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
+int dbg_shift_hb, dbg_shifts;
+static void taxi_to_block(int bx, int by, int tx, int ty, const char *where);
 static char pie_opt[8][16]; static int pie_n, pie_sel, pie_cit;   // the pie menu
 static int panel_tab;                                      // the Bore panel's tab
 
@@ -185,7 +191,14 @@ static void feed_draw(void) {   // the notifications stack on the left, newest o
 // ---- the life ----
 static void start_life(void) {
     if (life_started) return;
-    loading("MAKING A NEW LIFE", 40);
+    loading("MAKING A NEW LIFE", 20);
+    {   // a new world: SAN BOREAS from fresh dice (the land, the towns, every building and room), and its 874 households
+        u32 seed = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ ((u32)frame * 2246822519u); if (!seed) seed = 1;
+        bm_new(seed); world_new_seed(seed);
+        loading("PEOPLING SAN BOREAS", 45);
+        u32 sb; void *sc = crowd_scratch(&sb); pop_new(seed, sc, sb);
+        loading("MAKING A NEW LIFE", 70);
+    }
     world_reset_all();
     sim_init();
     int px, py; world_find('P', &px, &py); if (px < 0) { px = 5; py = 12; }
@@ -228,8 +241,13 @@ static void draw_sims(void) {
             int fdx = s->x - cam.at.vx, fdz = s->z - cam.at.vz;
             PROF_BEGIN();
             int edx = s->x - cam.eye.vx, edy = -110 - s->lvl * WALL_FULL - cam.eye.vy, edz = s->z - cam.eye.vz;
-            if (i != player && (fdx * fdx + fdz * fdz > LOD_DIST * LOD_DIST || edx * edx + edy * edy + edz * edz > 2900 * 2900)) { LodBore lb; voxel_lod_build(&s->bore, &lb); voxel_draw_lod(&lb, &p, s->yaw, &s->gait); }
-            else voxel_draw(&s->bore, &p, s->yaw, &s->gait);
+            // further off: the same full model as a sprite, rendered again when it has changed enough (one a frame for the household)
+            int far = i != player && (fdx * fdx + fdz * fdz > 3 * TILE * 3 * TILE || edx * edx + edy * edy + edz * edz > 2100 * 2100);
+            static int hh_fr, hh_used; if (hh_fr != frame) { hh_fr = frame; hh_used = 0; }
+            int drawn = 0;
+            if (far) { int id = CROWD_MAX + i, want = !hh_used && crowd_sprite_score_of(id, &p, s->yaw, &s->gait) > 5;
+                       drawn = crowd_sprite_of(id, &s->bore, &p, s->yaw, &s->gait, want); if (want) hh_used = 1; }
+            if (!drawn) voxel_draw(&s->bore, &p, s->yaw, &s->gait);
             PROF_END(4);
         }
         if (s->action != ACT_SLEEP && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
@@ -366,6 +384,24 @@ static void life_update(int steps) {
     { extern int getenv_noshadow, dbg_noao, dbg_nograd; if (PRESSED(PAD_R3)) { static int mode; mode = (mode + 1) & 3; getenv_noshadow = mode == 1; dbg_noao = mode == 2; dbg_nograd = mode == 3; } }
     if (PRESSED(PAD_SELECT)) { sim_switch_player(); sim_note("NOW PLAYING AS THE NEXT BORE"); }
     { int t0 = hb_now(); for (int k = 0; k < steps; k++) sim_step(); citizens_update(steps); t_logic = hb_now() - t0; }
+    {   // SAN BOREAS: the map window follows you a block at a time (everything slides with it)
+        int dtx, dty;
+#ifdef AUTO_CITY
+        { static int fr_; ++fr_;
+#ifdef AUTO_TOWER
+          if (fr_ == 60) { const Settle *cp = bm_set(bm_capital()); taxi_to_block(cp->x + AUTO_TOWER, cp->y + 2, 8, 1, "TEST"); }
+          if (fr_ > 60) { cam_pitch = 760; cam_dist = 3600; cam_yaw = 2048 + 300; }
+          if (fr_ > 90 && fr_ < 400 && s->action == ACT_NONE) s->x += 6;
+#else
+          if (fr_ > 120 && s->action == ACT_NONE) s->x += 22;   // (test builds: stroll east along the street)
+          if (fr_ == 200) { extern int prof_on; prof_on = 1; }
+#endif
+        }
+#endif
+        int ts_ = hb_now();
+        if (world_stream(sim_tile_x(s), sim_tile_y(s), &dtx, &dty)) { sim_shift(dtx, dty); citizens_shift(dtx, dty); cam_fx -= dtx * TILE; cam_fz += dty * TILE;
+            { extern int dbg_shift_hb, dbg_shifts; int d = hb_now() - ts_; if (d > dbg_shift_hb) dbg_shift_hb = d; dbg_shifts++; } }
+    }
     feed_poll();
     camera_input();
     if (PRESSED(PAD_START)) { state = ST_PAUSE; menu_sel = 0; }
@@ -401,7 +437,9 @@ static void life_draw(void) {
 static void travel_go(int z) {
     { char b[40]; sprintf(b, "TRAVELLING TO %s", world_zone_name(z)); loading(b, 50); }
     world_switch(z);
-    int px, py; world_find('P', &px, &py); if (px < 0) { px = 20; py = 20; }
+    int px, py;
+    if (z == ZONE_CITY) world_arrival(bm_capital(), &px, &py);
+    else { world_find('P', &px, &py); if (px < 0) { px = 20; py = 20; } }
     for (int i = 0; i < nsims; i++) {
         Sim *sm = &sims[i];
         sim_player_cancel_sim(sm);
@@ -426,7 +464,7 @@ static void travel_draw(void) {
     life_draw();
     draw_panel(70, 46, 180, 118);
     gfx_textc(160, 52, 2, "WHERE TO?", GOLD);
-    static const char *const blurb[ZONE_N] = { "HOME: THE HOUSE, THE FACTORY, THE RAIL PARK", "A SAND ISLAND: A CAMP, PALMS, THE SEA", "A DESERT MAIN STREET: DINER, TRAILER, THE LAB", "THE CITY: 25 BLOCKS, 23 HOMES, PARK, DINER, GYM" };
+    static const char *const blurb[ZONE_N] = { "HOME: THE HOUSE, THE FACTORY, THE RAIL PARK", "A SAND ISLAND: A CAMP, PALMS, THE SEA", "A DESERT MAIN STREET: DINER, TRAILER, THE LAB", "390 KM2: 21 TOWNS, 874 HOUSEHOLDS" };
     static const char *const lockTxt[ZONE_N] = { "", "LOCKED: EARN YOUR FIRST PAYCHECK", "LOCKED: GET SPONSORED AT WORK", "" };
     for (int i = 0; i < ZONE_N; i++) {
         int sel = i == travel_sel, here = i == world_zone, open_ = zone_unlocked(i);
@@ -438,8 +476,177 @@ static void travel_draw(void) {
 }
 
 // ---- the pause menu ----
-static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "THE STORY", "TRAVEL", "CREATE A BORE", "ADD A BORE", "THROW A PARTY", "BUILD MODE", "JUKEBOX", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
-#define NPAUSE 12
+// ---- SAN BOREAS: the map (and a taxi anywhere on it) ----
+// The map is a 128x128 picture of the whole state (8x8 blocks a pixel), made from the generator when it is opened and put
+// in the VRAM the people's sprites use (they are rendered again after).
+static int map_sel, map_t;
+static void put_household(int px, int py) {     // everyone at home stands round (px, py)
+    for (int i = 0; i < nsims; i++) {
+        Sim *sm = &sims[i];
+        sim_player_cancel_sim(sm);
+        sm->x = (px + (i % 3)) * TILE + TILE / 2; sm->z = -((py + (i / 3)) * TILE + TILE / 2);
+        sm->path_n = 0; sm->lvl = 0;
+    }
+    cam_fx = sims[player].x; cam_fz = sims[player].z;
+}
+static void taxi_to_block(int bx, int by, int tx, int ty, const char *where) {   // tx, ty: the tile to stand on in that block (-1: its street)
+    loading("TAKING A TAXI", 60);
+    if (world_zone != ZONE_CITY) world_switch(ZONE_CITY);
+    world_open_at(bx, by);
+    int px = (bx - world_wbx) * BM_BLK + (tx >= 0 ? tx : 8), py = (by - world_wby) * BM_BLK + (ty >= 0 ? ty : 1);
+    put_household(px, py);
+    citizens_enter(ZONE_CITY);
+    char b[48]; snprintf(b, sizeof b, "WELCOME TO %s", where); sim_note(b);
+    audio_voice(VOICE_YAHOO);
+}
+static void map_open(void) {
+    u16 *px = atlas_scratch();
+    static const u16 tcol[6] = { RGB(4, 9, 19), RGB(25, 23, 15), RGB(10, 18, 7), RGB(5, 12, 5), RGB(24, 20, 12), RGB(15, 15, 15) };
+    for (int y = 0; y < 128; y++) for (int x = 0; x < 128; x++) px[y * 128 + x] = tcol[bm_terrain(x * 8 + 4, y * 8 + 4)] | 0x8000;
+    for (int i = 0; i < bm_nseg(); i++) {         // the highways
+        int c, a, b, v; bm_seg(i, &c, &a, &b, &v);
+        for (int k = a; k <= b; k += 4) { int x = v ? c / 8 : k / 8, y = v ? k / 8 : c / 8; px[y * 128 + x] = RGB(9, 9, 10) | 0x8000; }
+    }
+    for (int i = 0; i < bm_nset(); i++) {          // the towns
+        const Settle *st = bm_set(i); int r = MAX(1, st->r / 8);
+        u16 col = st->kind == ST_CITY ? RGB(30, 22, 12) : st->kind == ST_TOWN ? RGB(28, 25, 16) : RGB(24, 22, 18);
+        for (int y = -r; y <= r; y++) for (int x = -r; x <= r; x++) if (x * x + y * y <= r * r + 1) {
+            int X = st->x / 8 + x, Y = st->y / 8 + y; if (X >= 0 && Y >= 0 && X < 128 && Y < 128) px[Y * 128 + X] = col | 0x8000; }
+    }
+    atlas_vram_load(0, 256, 128, 128, px);
+    crowd_flush();
+    map_sel = 0; map_t = 0;
+    if (world_zone == ZONE_CITY && world_wbx >= 0) {   // start on the nearest town
+        int pbx = world_wbx + sim_tile_x(&sims[player]) / BM_BLK, pby = world_wby + sim_tile_y(&sims[player]) / BM_BLK, bd = 1 << 30;
+        for (int i = 0; i < bm_nset(); i++) { const Settle *st = bm_set(i); int d = (st->x - pbx) * (st->x - pbx) + (st->y - pby) * (st->y - pby); if (d < bd) { bd = d; map_sel = i; } }
+    }
+}
+static void map_update(void) {
+    map_t++;
+    int n = bm_nset();
+    if (PRESSED(PAD_UP)) map_sel = (map_sel + n - 1) % n;
+    if (PRESSED(PAD_DOWN)) map_sel = (map_sel + 1) % n;
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = ST_LIFE; return; }
+    if (PRESSED(PAD_CROSS)) {
+        if (cash < 20) { sim_note("A TAXI IS $20"); audio_voice(VOICE_NAH); return; }
+        cash -= 20;
+        const Settle *st = bm_set(map_sel);
+        taxi_to_block(st->x, st->y, -1, -1, st->name);
+        state = ST_LIFE;
+    }
+}
+static void map_draw(void) {
+    gfx_set_clear(6, 8, 14);
+    gfx_camera_update();
+    const int MX = 8, MY = 30, MS = 192;
+    gfx_imp_sprite(0, 256, 128, 128, MX, MY, MS, MS, 40, 0);
+    gfx_text(MX, 8, 2, bm_state_name(), GOLD);
+    gfx_text(MX + 2, 22, 1, "390 SQUARE KM. X TAKES A TAXI THERE ($20)", DIM);
+    for (int i = 0; i < bm_nset(); i++) {          // the towns' names on the map, the picked one in gold
+        const Settle *st = bm_set(i); int x = MX + st->x * MS / BM_N, y = MY + st->y * MS / BM_N;
+        if (i == map_sel) { if ((map_t >> 3) & 1) gfx_rect(x - 3, y - 3, 7, 7, 255, 200, 40, 0); }
+        else gfx_rect(x - 1, y - 1, 3, 3, st->kind == ST_CITY ? 255 : 200, 120, 80, 0);
+        if (st->kind != ST_VILLAGE || i == map_sel) gfx_text(x + 4, y - 3, 1, st->name, i == map_sel ? 255 : 230, i == map_sel ? 220 : 230, i == map_sel ? 80 : 230);
+    }
+    if (world_zone == ZONE_CITY && world_wbx >= 0 && ((map_t >> 2) & 1)) {   // you are here
+        int wx = world_wbx * BM_BLK + sim_tile_x(&sims[player]), wy = world_wby * BM_BLK + sim_tile_y(&sims[player]);
+        gfx_rect(MX + wx * MS / (BM_N * BM_BLK) - 2, MY + wy * MS / (BM_N * BM_BLK) - 2, 5, 5, 80, 255, 120, 0);
+    }
+    draw_panel(206, 8, 110, 224);
+    int n = bm_nset(), top = CLAMP(map_sel - 9, 0, MAX(0, n - 19));
+    for (int k = 0; k < 19 && top + k < n; k++) {
+        int i = top + k; const Settle *st = bm_set(i);
+        if (i == map_sel) gfx_rect(207, 13 + k * 11, 108, 11, 28, 48, 62, 0);
+        gfx_text(210, 15 + k * 11, 1, st->name, i == map_sel ? 255 : 190, i == map_sel ? 220 : 190, i == map_sel ? 80 : 200);
+    }
+    const Settle *st = bm_set(map_sel);
+    static const char *const kn[3] = { "CITY", "TOWN", "VILLAGE" };
+    char b[40]; sprintf(b, "%s, %d BLOCKS ACROSS", kn[st->kind % 3], st->r * 2 + 1);
+    gfx_text(MX, MY + MS + 6, 1, b, GREY);
+}
+
+// ---- SAN BOREAS: the people (every household, who they are, where they are right now) ----
+static int dir_sel, dir_fam = -1, dir_msel, dir_t, dir_counts[5];
+static void dir_open(void) { dir_fam = -1; dir_msel = 0; dir_t = 0; for (int i = 0; i < 5; i++) dir_counts[i] = pop_count_where(i); }
+static void dir_update(void) {
+    dir_t++;
+    int nf = 0; while (nf < NFAM && pop_fam[nf].n) nf++;
+    if (!nf) { if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) state = ST_LIFE; return; }
+    if (dir_fam < 0) {
+        if (PRESSED(PAD_UP)) dir_sel = (dir_sel + nf - 1) % nf;
+        if (PRESSED(PAD_DOWN)) dir_sel = (dir_sel + 1) % nf;
+        if (PRESSED(PAD_L1)) dir_sel = MAX(0, dir_sel - 15);
+        if (PRESSED(PAD_R1)) dir_sel = MIN(nf - 1, dir_sel + 15);
+        if (PRESSED(PAD_L2)) dir_sel = MAX(0, dir_sel - 150);
+        if (PRESSED(PAD_R2)) dir_sel = MIN(nf - 1, dir_sel + 150);
+        if (PRESSED(PAD_CROSS)) { dir_fam = dir_sel; dir_msel = 0; }
+        if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) state = ST_LIFE;
+        return;
+    }
+    const Fam *f = &pop_fam[dir_fam];
+    if (PRESSED(PAD_UP)) dir_msel = (dir_msel + f->n - 1) % f->n;
+    if (PRESSED(PAD_DOWN)) dir_msel = (dir_msel + 1) % f->n;
+    if (PRESSED(PAD_CIRCLE)) { dir_fam = -1; return; }
+    if (PRESSED(PAD_CROSS)) {                      // go and knock: a taxi to their front door
+        if (cash < 20) { sim_note("A TAXI IS $20"); audio_voice(VOICE_NAH); return; }
+        cash -= 20;
+        char sur[NAME_LEN], b[40]; pop_surname(dir_fam, sur); snprintf(b, sizeof b, "THE %sS' HOUSE", sur);
+        taxi_to_block(f->bx, f->by, 8, 1, b);
+        int h = world_home_find(ZONE_CITY, f->bx, f->by, f->unit);
+        if (h >= 0) { const Home *hm = world_home(ZONE_CITY, h); put_household(hm->dx, hm->dy + 1); }
+        state = ST_LIFE; dir_fam = -1;
+    }
+}
+static void dir_draw(void) {
+    gfx_set_clear(10, 10, 16);
+    gfx_camera_update();
+    char b[64], sur[NAME_LEN], fn[NAME_LEN], addr[32];
+    int nf = 0; while (nf < NFAM && pop_fam[nf].n) nf++;
+    if (dir_fam < 0) {
+        gfx_text(8, 6, 2, "THE PEOPLE OF SAN BOREAS", GOLD);
+        sprintf(b, "%d HOUSEHOLDS  %d PEOPLE", nf, pop_nper); gfx_text(10, 24, 1, b, GREY);
+        sprintf(b, "NOW: %d ASLEEP  %d AT HOME  %d AT WORK  %d AT SCHOOL  %d OUT", dir_counts[AT_SLEEP], dir_counts[AT_HOME], dir_counts[AT_WORK], dir_counts[AT_SCHOOL], dir_counts[AT_OUT]);
+        gfx_text(10, 34, 1, b, DIM);
+        draw_panel(6, 44, 308, 170);
+        int top = CLAMP(dir_sel - 7, 0, MAX(0, nf - 15));
+        for (int k = 0; k < 15 && top + k < nf; k++) {
+            int i = top + k; const Fam *f = &pop_fam[i];
+            pop_surname(i, sur);
+            const Settle *st = bm_set(f->set);
+            if (i == dir_sel) gfx_rect(7, 47 + k * 11, 306, 11, 28, 48, 62, 0);
+            sprintf(b, "THE %sS", sur); gfx_text(12, 49 + k * 11, 1, b, i == dir_sel ? 255 : 200, i == dir_sel ? 230 : 200, i == dir_sel ? 120 : 210);
+            gfx_text(118, 49 + k * 11, 1, pop_kind_name(f->kind), 150, 170, 200);
+            sprintf(b, "%d", f->n); gfx_text(218, 49 + k * 11, 1, b, 170, 170, 180);
+            gfx_text(232, 49 + k * 11, 1, st ? st->name : "?", 140, 140, 150);
+        }
+        const Fam *f = &pop_fam[dir_sel]; const Settle *st = bm_set(f->set);
+        bm_street(f->set, f->bx, f->by, f->unit, addr);
+        sprintf(b, "%s, %s", addr, st ? st->name : "");
+        gfx_text(10, 218, 1, b, 230, 230, 240);
+        gfx_text(10, 228, 1, "X: THE HOUSEHOLD   L1 R1 L2 R2: PAGE   O: BACK", DIM);
+        return;
+    }
+    const Fam *f = &pop_fam[dir_fam]; const Settle *st = bm_set(f->set);
+    pop_surname(dir_fam, sur);
+    sprintf(b, "THE %sS", sur); gfx_text(8, 6, 2, b, GOLD);
+    bm_street(f->set, f->bx, f->by, f->unit, addr);
+    sprintf(b, "%s - %s, %s", pop_kind_name(f->kind), addr, st ? st->name : ""); gfx_text(10, 24, 1, b, GREY);
+    draw_panel(6, 36, 308, 178);
+    for (int k = 0; k < f->n && k < 6; k++) {
+        int p = f->first + k, y = 40 + k * 29;
+        static const char *const ag[5] = { "BABY", "CHILD", "TEEN", "ADULT", "ELDER" };
+        if (k == dir_msel) gfx_rect(7, y - 1, 306, 28, 28, 48, 62, 0);
+        pop_first(p, fn);
+        sprintf(b, "%s %s", fn, sur); gfx_text(12, y + 1, 1, b, 255, 255, 255);
+        sprintf(b, "%s, %s", ag[pop_per[p].stage % 5], pop_trait_name(pop_per[p].trait)); gfx_text(150, y + 1, 1, b, 150, 190, 230);
+        char jb[48]; gfx_text(12, y + 10, 1, pop_job_name(p, jb), 190, 190, 140);
+        gfx_text(12, y + 19, 1, pop_doing(p, jb), 120, 220, 140);
+    }
+    gfx_text(10, 220, 1, "X: TAKE A TAXI TO THEIR HOUSE ($20)   O: BACK", DIM);
+}
+
+static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "THE STORY", "TRAVEL", "MAP AND TAXI", "THE PEOPLE", "CREATE A BORE", "ADD A BORE", "THROW A PARTY", "BUILD MODE", "JUKEBOX", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
+#define NPAUSE 14
 #ifdef AUTO_PARTY
 int ap_frames, ap_vs, ap_cpu;
 #endif
@@ -464,23 +671,25 @@ static void pause_update(void) {
             case 1: panel_tab = 0; state = ST_PANEL; break;
             case 2: state = ST_STORY; break;
             case 3: travel_sel = world_zone; state = ST_TRAVEL; break;
-            case 4: edit = sims[player].bore; create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
-            case 5: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
+            case 4: map_open(); state = ST_MAP; break;
+            case 5: dir_open(); state = ST_DIR; break;
+            case 6: edit = sims[player].bore; create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
+            case 7: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); state = ST_LIFE; } break;
-            case 6: throw_party(); state = ST_LIFE; break;
-            case 7: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); state = ST_BUILD; break;
-            case 8: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
-            case 9: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 10: life_started = 0; start_life(); state = ST_LIFE; break;
-            case 11: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; break;
+            case 8: throw_party(); state = ST_LIFE; break;
+            case 9: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); state = ST_BUILD; break;
+            case 10: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
+            case 11: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
+            case 12: life_started = 0; start_life(); state = ST_LIFE; break;
+            case 13: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_default(&title_bore); look_random(&title_bore); break;
         }
     }
 }
 static void pause_draw(void) {
     life_draw();
-    draw_panel(88, 24, 144, 158);
-    gfx_textc(160, 28, 2, "PAUSED", GOLD);
-    for (int i = 0; i < NPAUSE; i++) menu_row(94, 48 + i * 11, 132, pauseNm[i], i == menu_sel);
+    draw_panel(88, 22, 144, 184);
+    gfx_textc(160, 26, 2, "PAUSED", GOLD);
+    for (int i = 0; i < NPAUSE; i++) menu_row(94, 46 + i * 11, 132, pauseNm[i], i == menu_sel);
 }
 
 // ---- the pie menu (Sims 1 & 2): the choices round a circle, the d-pad points at one ----
@@ -988,12 +1197,15 @@ static void help_draw(void) {
 }
 
 // ---- title and menu ----
-static Bore title_bore;
 static int title_t;
 static void title_update(void) {
     title_t++;
-#ifdef AUTO_PARTY
-    if (title_t == 30) { life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0; return; }
+#if defined(AUTO_PARTY) || defined(AUTO_CITY)
+    if (title_t == 30) { life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
+#ifdef AUTO_CITY
+        travel_go(ZONE_CITY);
+#endif
+        return; }
 #endif
     if (PRESSED(PAD_START) || PRESSED(PAD_CROSS)) { state = ST_MENU; menu_sel = 0; audio_voice(VOICE_YAHOO); }
 }
@@ -1081,6 +1293,7 @@ void boot(const char *stage) {
 }
 
 int main(void) {
+    mem8_init();                                     // (8 MB of RAM? one disc for both)
     gfx_init();
     atlas_init();
     font_init();        boot("GFX ATLAS FONT OK");   // (the boot text needs the font, so the first line comes after it)
@@ -1126,6 +1339,8 @@ int main(void) {
             case ST_WANTS: wants_update(); wants_draw(); break;
             case ST_PIE: pie_update(); pie_draw(); break;
             case ST_PANEL: panel_update(); panel_draw(); break;
+            case ST_MAP: map_update(); map_draw(); break;
+            case ST_DIR: dir_update(); dir_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
         gfx_flip();

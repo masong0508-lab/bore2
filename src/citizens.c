@@ -8,6 +8,8 @@
 #include "audio.h"
 #include "items.h"
 #include "crowd.h"
+#include "pop.h"
+#include "bigmap.h"
 
 #define LIVE_MAX  6                 // civilians drawn live in 3D at once (the nearest); everyone else is a sprite of the same model
 #define MAXDRAW   64                // civilians drawn at all, nearest first (a party fills a screen)
@@ -21,7 +23,9 @@
 #define RING_COST 150
 #define GIFT_COST 20
 #define BUILD_PER_FRAME 1
-#define NHH       64
+#define NHH       120
+#define MAIN0     50                // the first of SAN BOREAS's slots
+#define NOPID     0xFFFF
 #define NONE      255
 
 enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME, CM_LEAVE, CM_CHORE, CM_VISIT, CM_PARTY };
@@ -47,14 +51,18 @@ typedef struct {
     u8   path[8], plen, pi;         // the route itself, 2 bits a step (worked out once per goal, not at every tile)
     u8   chore, chain, chx, chy, ix, iy, vh;   // a chore at home: the item letter, the one that follows it, where they stand, where the item is; a visit: the door tile and the household
     u8   zone0;                     // a party guest from another zone: where to go back to (255: none)
+    u16  pid, mplace;               // SAN BOREAS: who they are in pop.c (NOPID: one of the island's or the town's own), and where they were brought to life (NOPID: home)
+    u8   ax, ay, vanish;            // ... the place they hang about (a tile), and 1 when they are wanted elsewhere
 } Cit;
-typedef struct { u8 zone, home, n, fam; u8 mem[6]; } Hh;   // a household: who lives in which of the zone's homes, under which surname
+typedef struct { u8 zone, home, n, fam; u8 mem[6]; u16 pfam; } Hh;   // a household: who lives in which of the zone's homes, under which surname (pfam: its pop.c family, or NOPID)
 
 static Cit cits[NCIT];
 static Hh hh[NHH]; static int nhh; static u8 formed[ZONE_N];
 static Bore scratch; static int scratch_ready;
 static void party_leave_done(Cit *c);
 static int party_on, party_left, party_cx, party_cy, party_in, party_spx, party_spz, party_n, party_next, party_t, home_guests;
+#define PARTY_MAX 60
+static u8 party_g[PARTY_MAX], party_sx[PARTY_MAX], party_sy[PARTY_MAX];
 static int tick, pl_hp = 100, pl_cd, cur = -1, fight_on, moved_flag;
 static u32 crng = 0x9E3779B9u;
 static char pie_title[NAME_LEN + 2];
@@ -124,6 +132,7 @@ static void cit_bore(Bore *b, const Cit *c) {   // the same person, every time, 
     u32 old = look_seed(c->seed * 2654435761u + 12345u);
     look_random(b);
     look_seed(old);
+    if (c->pid != NOPID) { pop_first(c->pid, b->first); pop_surname(pop_per[c->pid].fam, b->last); return; }   // SAN BOREAS: their own names
     if (c->hh != NONE) { strncpy(b->last, look_last_name(hh[c->hh].fam), NAME_LEN - 1); b->last[NAME_LEN - 1] = 0; }   // a household shares its surname
 }
 static void build_lod(Cit *c) {
@@ -152,11 +161,16 @@ static void inside_spot(const Home *hm, int *x, int *z) {   // somewhere free on
     }
     int a, b, c2; door_geo(hm, x, &a, &b, &c2); *z = c2;
 }
-static void sleep_spot(const Cit *c, const Home *hm, int *x, int *z) {   // the first sleeper takes the bed; the rest lie down on the floor
-    int bx = -1, by = -1;
-    for (int y = hm->y0; y <= hm->y1 && bx < 0; y++) for (int xx = hm->x0; xx <= hm->x1; xx++) if (world_at(xx, y) == 'S') { bx = xx; by = y; break; }
-    if (c->mem == 0 && bx >= 0) { *x = bx * TILE + TILE / 2; *z = -(by * TILE + TILE / 2); return; }
-    int need = c->mem - (bx >= 0 ? 1 : 0), k = 0;
+static void sleep_spot(const Cit *c, const Home *hm, int *x, int *z) {   // a bed each (a double bed for a couple, two to a bunk bed); anyone left lies down on the floor
+    int k = 0, want_ = c->mem, couple = 0;
+    if (c->pid != NOPID) { u8 a, kd, t, e; pop_family_kinds(pop_per[c->pid].fam, &a, &kd, &t, &e, (u8 *)&couple); couple &= 1; if (couple && want_ > 0) want_--; }
+    for (int y = hm->y0; y <= hm->y1; y++) for (int xx = hm->x0; xx <= hm->x1; xx++) {
+        char ch = world_at(xx, y); if (ch != 'S' && ch != '<') continue;
+        int cap = ch == '<' ? 2 : 1;
+        if (want_ < k + cap) { *x = xx * TILE + TILE / 2; *z = -(y * TILE + TILE / 2); return; }
+        k += cap;
+    }
+    int need = want_ - k; k = 0;
     for (int y = hm->y0; y <= hm->y1 && y < hm->dy - 1; y++) for (int xx = hm->x0; xx <= hm->x1; xx++)
         if (world_at(xx, y) == '.' && world_walkable(xx, y)) { if (k++ == need) { *x = xx * TILE + TILE / 2; *z = -(y * TILE + TILE / 2); return; } }
     inside_spot(hm, x, z);
@@ -177,7 +191,7 @@ static void roles(int size, u8 *st) {   // who lives together
     if (size == 3 && r < 3) st[2] = AG_ADULT;                                     // three flatmates
 }
 static void form_households(int zone) {   // the first time a zone is seen: its people sort themselves into the homes the generator built
-    if (formed[zone]) return;
+    if (zone == ZONE_CITY || formed[zone]) return;   // (SAN BOREAS's households come from pop.c)
     formed[zone] = 1;
     int nh = world_home_count(zone), idx[NCIT], n = 0;
     for (int i = 0; i < NCIT; i++) if (cits[i].zone == zone) idx[n++] = i;
@@ -203,6 +217,7 @@ static void form_households(int zone) {   // the first time a zone is seen: its 
 
 // ---- the day: asleep, at home, or out ------------------------------------------------------------------
 static int want(const Cit *c) {   // 0 out and about, 1 at home awake, 2 asleep in bed
+    if (c->pid != NOPID) return pop_want(c->pid);
     int m = clock_min + c->off; if (m < 0) m += 1440; if (m >= 1440) m -= 1440;
     if (m >= 1350 || m < 400) return 2;
     if (c->homebody) return 1;
@@ -224,15 +239,18 @@ void citizens_init(void) {
     for (int i = 0; i < NCIT; i++) {
         Cit *c = &cits[i];
         c->seed = crnd();
-        c->zone = i < 10 ? ZONE_ISLAND : i < 50 ? ZONE_TOWN : ZONE_CITY;     // 10 on the island, 40 in town, 50 in the city
+        c->zone = i < 10 ? ZONE_ISLAND : i < 50 ? ZONE_TOWN : 255;          // 10 on the island, 40 in town; the rest wait for SAN BOREAS's people
+        c->pid = NOPID; c->mplace = NOPID; c->vanish = 0;
         int r = rn(100);
         c->stage = r < 8 ? AG_CHILD : r < 20 ? AG_TEEN : r < 78 ? AG_ADULT : AG_ELDER;   // (until a household is formed round them)
         c->pers = (u8)rn(4);
         c->hh = NONE; c->off = (s8)(rn(91) - 45); c->sub = 0; c->st = 0;
         c->hp = 100; c->mode = CM_IDLE; c->slot = 0; c->built = 0; c->zone0 = 255;
         strcpy(c->first, "..."); c->last[0] = 0;
+        if (i >= MAIN0) c->mode = CM_GONE;
     }
     memset(hh, 0, sizeof hh); nhh = 0; memset(formed, 0, sizeof formed);
+    for (int k = 0; k < NHH; k++) { hh[k].pfam = NOPID; hh[k].zone = 255; }
     crowd_reset();
     pl_hp = 100; pl_cd = 0; cur = -1; fight_on = 0; pie_c = -1;
 }
@@ -258,6 +276,114 @@ static void place_initial(Cit *c, int px, int pz) {   // where they are right no
     if (w == 0 && !c->x) { int a, b, d, e; door_geo(hm, &a, &b, &d, &e); c->x = (s16)a; c->z = (s16)b; }
 }
 
+// ---- SAN BOREAS: people brought to life where pop.c says they are -------------------------------------------
+static int fam_hh(int f) {                        // the household entry for a pop.c family (made when the first of them turns up)
+    for (int k = 0; k < NHH; k++) if (hh[k].pfam == f && hh[k].zone == ZONE_CITY) return k;
+    const Fam *fm = &pop_fam[f];
+    int home = world_home_find(ZONE_CITY, fm->bx, fm->by, fm->unit); if (home < 0) return -1;
+    for (int k = NHH - 1; k >= nhh; k--) if (hh[k].zone == 255) {
+        Hh *g = &hh[k]; g->zone = ZONE_CITY; g->home = (u8)home; g->n = 0; g->fam = 0; g->pfam = (u16)f; return k; }
+    return -1;
+}
+static void hh_drop(Cit *c) {                     // out of their household's list (the entry goes when the last one does)
+    if (c->hh == NONE) return;
+    Hh *g = &hh[c->hh]; int ci = (int)(c - cits);
+    for (int k = 0; k < g->n; k++) if (g->mem[k] == ci) { g->mem[k] = g->mem[g->n - 1]; g->n--; break; }
+    if (g->pfam != NOPID && !g->n) { g->zone = 255; g->pfam = NOPID; }
+    c->hh = NONE;
+}
+static void main_free(Cit *c) {                   // back into pop.c: what they think of you goes with them
+    int i = (int)(c - cits);
+    if (c->pid != NOPID) { Per *q = &pop_per[c->pid]; q->rel = c->rel; q->rom = c->rom; q->hp = c->hp; q->slot = 255; }
+    hh_drop(c);
+    if (cur == i) cur = -1;
+    crowd_forget(i);
+    c->pid = NOPID; c->mplace = NOPID; c->vanish = 0; c->zone = 255; c->mode = CM_GONE; c->built = 0; c->say_t = 0; c->zone0 = 255;
+}
+static int place_tile(const Place *pl, int worker, int *tx, int *ty, int *indoor) {   // somewhere to stand at a place in the window
+    int ox = (pl->bx - world_wbx) * BM_BLK + BM_LOT0, oy = (pl->by - world_wby) * BM_BLK + BM_LOT0;
+    int want_in = pl->lot != LOT_PARK && pl->lot != LOT_SQUARE && pl->lot != LOT_SKATE && pl->lot != LOT_POOL;
+    for (int pass = 0; pass < 3; pass++) for (int t = 0; t < 40; t++) {
+        int x = ox + rn(13), y = oy + rn(13);
+        if (x < 1 || y < 1 || x >= MW - 1 || y >= MH - 1 || !world_walkable(x, y) || floorMap[y][x] == FL_WATER) continue;
+        int in = floorMap[y][x] < FL_GRASS;
+        if (pass < 2 && in != want_in) continue;
+        if (pass == 0 && worker) {                // at work: by a counter, a desk, a till, the work marker
+            static const signed char dx4[4] = { 1, -1, 0, 0 }, dy4[4] = { 0, 0, 1, -1 }; int ok = 0;
+            for (int k = 0; k < 4; k++) { char ch = world_at(x + dx4[k], y + dy4[k]); if (ch && strchr("yd[xIF7!]m~", ch)) ok = 1; }
+            if (!ok) continue;
+        }
+        *tx = x; *ty = y; *indoor = in; return 1;
+    }
+    return 0;
+}
+int dbg_tf[6];
+int citizens_take(int pid, int at, int place) {
+    int slot = -1;
+    for (int i = MAIN0; i < NCIT; i++) if (cits[i].zone == 255 && cits[i].pid == NOPID) { slot = i; break; }
+    if (slot < 0) { dbg_tf[0]++; return -1; }
+    Per *q = &pop_per[pid]; Cit *c = &cits[slot];
+    int px = sims[player].x, pz = sims[player].z;
+    memset(&c->gait, 0, sizeof c->gait);
+    c->seed = q->seed; c->stage = q->stage; c->rel = q->rel; c->rom = q->rom; c->hp = q->hp ? q->hp : 100;
+    c->pers = q->trait == 1 ? PE_GRUFF : q->trait == 6 ? PE_FLIRTY : (q->trait == 8 || q->trait == 13) ? PE_SHY : PE_FRIENDLY;
+    c->homebody = (q->flags & PF_HOMEBODY) ? 1 : 0; c->off = pop_offset(pid);
+    c->zone = ZONE_CITY; c->zone0 = 255; c->mode = CM_IDLE; c->t = (u16)(10 + rn(150)); c->sub = 0; c->st = 0; c->wv = 0; c->say_t = 0; c->cd = 0; c->slot = 0;
+    c->pid = (u16)pid; c->vanish = 0; c->hh = NONE; c->mem = 0; c->built = 0;
+    crowd_forget(slot);
+    if (place < 0) {                               // at home: in their household, and wherever the clock puts them in it
+        int k = fam_hh(q->fam); if (k < 0) { dbg_tf[1]++; c->zone = 255; c->pid = NOPID; c->mode = CM_GONE; return -1; }
+        Hh *g = &hh[k]; if (g->n >= 6) { dbg_tf[2]++; c->zone = 255; c->pid = NOPID; c->mode = CM_GONE; return -1; }
+        c->hh = (u8)k; c->mem = (u8)(pid - pop_fam[q->fam].first); g->mem[g->n++] = (u8)slot;
+        c->mplace = NOPID; c->x = 0; c->z = 0;
+        place_initial(c, px, pz);
+        if (!c->x && !c->z) { dbg_tf[3]++; main_free(c); return -1; }
+    } else {                                       // out: at work, at school, or out having fun
+        int tx, ty, in;
+        if (!place_tile(&pop_place[place], at == AT_WORK, &tx, &ty, &in)) { dbg_tf[4]++; c->zone = 255; c->pid = NOPID; c->mode = CM_GONE; return -1; }
+        c->x = (s16)(tx * TILE + TILE / 2); c->z = (s16)(-(ty * TILE + TILE / 2)); c->yaw = (u16)rn(4096);
+        c->ax = (u8)tx; c->ay = (u8)ty; c->mplace = (u16)place;
+        if (at == AT_WORK) c->t = (u16)(200 + rn(400));
+    }
+    q->slot = (u8)slot;
+    return slot;
+}
+void citizens_release(int slot) { if (slot >= MAIN0 && slot < NCIT && cits[slot].pid != NOPID) cits[slot].vanish = 1; }
+int citizens_place_of(int slot) { return (slot >= MAIN0 && slot < NCIT && cits[slot].mplace != NOPID) ? cits[slot].mplace : -1; }
+void citizens_shift(int dtx, int dty) {
+    for (int i = 0; i < NCIT; i++) {
+        Cit *c = &cits[i];
+        if (c->zone != ZONE_CITY || c->mode == CM_GONE) continue;
+        int x = c->x - dtx * TILE, z = c->z + dty * TILE;
+        int ax = c->ax - dtx, ay = c->ay - dty;
+        if (x < TILE || -z < TILE || x >= (MW - 1) * TILE || -z >= (MH - 1) * TILE) { if (c->pid != NOPID) { main_free(c); continue; } x = CLAMP(x, TILE, (MW - 2) * TILE); z = CLAMP(z, -(MH - 2) * TILE, -TILE); }
+        c->x = (s16)x; c->z = (s16)z; c->ax = (u8)CLAMP(ax, 0, MW - 1); c->ay = (u8)CLAMP(ay, 0, MH - 1);
+        c->wv = 0;                                 // routes and errands are worked out again
+        if (c->mode == CM_CHORE || c->mode == CM_VISIT || c->mode == CM_GOHOME || c->mode == CM_LEAVE) { c->mode = CM_IDLE; c->t = 20; c->gait.sit = 0; }
+        if (c->mode == CM_SLEEP && c->sub == 0) c->sub = 0;
+    }
+    for (int k = 0; k < NHH; k++) {               // the households' homes have new numbers
+        Hh *g = &hh[k]; if (g->zone != ZONE_CITY || g->pfam == NOPID) continue;
+        const Fam *fm = &pop_fam[g->pfam];
+        int home = world_home_find(ZONE_CITY, fm->bx, fm->by, fm->unit);
+        if (home >= 0) { g->home = (u8)home; continue; }
+        for (int j = g->n - 1; j >= 0; j--) main_free(&cits[g->mem[j]]);   // their home left the window
+    }
+    if (party_on && world_zone == ZONE_CITY) {      // a party moves with the map, or ends if it fell off it
+        party_cx -= dtx; party_cy -= dty; party_spx -= dtx * TILE; party_spz += dty * TILE;
+        for (int k = 0; k < PARTY_MAX; k++) { party_sx[k] = (u8)(party_sx[k] - dtx); party_sy[k] = (u8)(party_sy[k] - dty); }
+        if (party_cx < 2 || party_cy < 2 || party_cx >= MW - 2 || party_cy >= MH - 2) party_left = 1;
+    }
+}
+static void vanish_tick(void) {                    // the ones wanted elsewhere go, once nobody can see them
+    for (int i = MAIN0; i < NCIT; i++) {
+        Cit *c = &cits[i];
+        if (!c->vanish || c->zone != ZONE_CITY || c->mode == CM_PARTY || c->mode == CM_CHAT || c->mode == CM_CHASE || i == pie_c) continue;
+        int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz;
+        if (!gfx_visible(c->x, -110, c->z, 160) || dx * dx + dz * dz > 16 * TILE * 16 * TILE) main_free(c);
+    }
+}
+
 void citizens_enter(int zone) {
     int px = sims[player].x, pz = sims[player].z;
     if (party_on || home_guests) {   // travelling ends a party: the guests go back where they came from
@@ -266,6 +392,7 @@ void citizens_enter(int zone) {
         home_guests = 0;
     }
     form_households(zone);
+    for (int i = MAIN0; i < NCIT; i++) if (cits[i].pid != NOPID) main_free(&cits[i]);   // SAN BOREAS's people are brought in again by pop.c, where they are now
     for (int i = 0; i < NCIT; i++) {
         Cit *c = &cits[i];
         c->slot = 0;
@@ -344,7 +471,8 @@ static void chat_begin(Cit *c) {
 }
 
 static void marry(Cit *c) {   // they move in: the civilian becomes a housemate with the full model
-    static Bore wed;
+    Bore *wedp = crowd_temp_bore();
+    #define wed (*wedp)
     memset(&wed, 0, sizeof wed);
     cit_bore(&wed, c);        // fresh face textures (the pool's are shared), the same person from the same seed
     const Sim *p = &sims[player];
@@ -354,8 +482,10 @@ static void marry(Cit *c) {   // they move in: the civilian becomes a housemate 
     w->rel[player] = 100; sims[player].rel[nsims - 1] = 100;
     w->x = p->x + 70; w->z = p->z;
     c->mode = CM_GONE; c->say_t = 0;
+    if (c->pid != NOPID) { pop_per[c->pid].flags |= PF_GONE; main_free(c); }
     char b[32]; sprintf(b, "MARRIED %s!", w->bore.first); sim_note(b);
     audio_voice(VOICE_WIN);
+    #undef wed
 }
 
 void citizens_pie_do(int i) {
@@ -606,7 +736,7 @@ static const char *activity(const Cit *c) {   // what the HUD says they are up t
 static int start_visit(Cit *c) {   // a neighbour in the same zone, a short walk away: go and knock
     const Home *me = home_of(c); if (!me) return 0;
     int cand[NHH], n = 0;
-    for (int h = 0; h < nhh; h++) {
+    for (int h = 0; h < NHH; h++) {
         if (hh[h].zone != c->zone || h == c->hh) continue;
         const Home *o = world_home(hh[h].zone, hh[h].home); if (!o) continue;
         if (ABS((int)o->dx - (int)me->dx) + ABS((int)o->dy - (int)me->dy) > 10) continue;
@@ -642,9 +772,7 @@ static void decide(Cit *c) {   // the clock says where they should be: out, in, 
 // ---- PARTIES: up to 60 guests, dancing round the host ----------------------------------------------------------------
 // The host (you) calls; guests arrive one after another at the door or down the street, take a spot round you, dance, chat,
 // and leave when the party is over (three hours). At home the guests come over from the other zones and go back after.
-#define PARTY_MAX 60
 #define PARTY_MIN 180                       // how long a party lasts, in game minutes
-static u8 party_g[PARTY_MAX], party_sx[PARTY_MAX], party_sy[PARTY_MAX];
 static const char *const L_PARTY[] = { "WOOO!", "GREAT PARTY!", "WHO PICKED THIS SONG?", "DANCE OFF!", "I LOVE THIS ONE", "MORE SNACKS?", "BEST NIGHT EVER", "SHOW US A MOVE", "ONE MORE SONG!", "MY FEET!" };
 static int party_tile_ok(int x, int y) {
     if (x < 1 || y < 1 || x >= MW - 1 || y >= MH - 1) return 0;
@@ -774,6 +902,11 @@ static void step_one(Cit *c, int i) {
             int hx = a - c->x, hz = zf - c->z;
             if (hx * hx + hz * hz > 9 * TILE * 9 * TILE) c->wyaw = (u16)((yaw_to(hx, hz) + rn(512) - 256) & 4095);
         }
+        if (!hm && c->mplace != NOPID) {   // at work, at school, out somewhere: they keep about the place
+            int hx = c->ax * TILE + TILE / 2 - c->x, hz = -(c->ay * TILE + TILE / 2) - c->z;
+            if (hx * hx + hz * hz > 4 * TILE * 4 * TILE) c->wyaw = (u16)((yaw_to(hx, hz) + rn(400) - 200) & 4095);
+            else if (!rn(3)) { c->mode = CM_IDLE; c->t = (u16)(60 + rn(240)); break; }   // mostly they stay put (behind the counter, at the desk)
+        }
         break;
     case CM_WALK: {
         if (!c->t) { c->mode = CM_IDLE; c->t = (u16)(30 + rn(200)); break; }
@@ -883,10 +1016,17 @@ static void step_one(Cit *c, int i) {
 
 void citizens_update(int steps) {
     if (world_zone == ZONE_HOME && !home_guests && !party_on) { cur = -1; fight_on = 0; return; }
+    if (world_zone == ZONE_CITY) { pop_tick(); vanish_tick(); }
     int built = 0;
-    for (int i = 0; i < NCIT && built < BUILD_PER_FRAME; i++) {
-        Cit *c = &cits[i];
-        if (c->zone == world_zone && !c->built && c->mode != CM_GONE) { build_lod(c); built++; }
+    {   // bodies for those who have none yet: the nearest the camera first
+        int best = -1, bd = 1 << 30;
+        for (int i = 0; i < NCIT; i++) {
+            const Cit *c = &cits[i];
+            if (c->zone != world_zone || c->built || c->mode == CM_GONE) continue;
+            int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz, d = dx * dx + dz * dz;
+            if (d < bd) { bd = d; best = i; }
+        }
+        if (best >= 0) { build_lod(&cits[best]); built++; }
     }
     if (!built) {   // someone near the camera whose stored model was let go (the store was full): build them again
         int best = -1, bd = DRAW_DIST * DRAW_DIST;
@@ -1026,12 +1166,14 @@ void citizens_hud(void) {
     if (cur >= 0) {
         const Cit *c = &cits[cur];
         char t[32]; sprintf(t, "%s %s", c->first, c->last);
-        int w = MAX(gfx_text_w(1, t) + 12, 120);
+        int w = MAX(gfx_text_w(1, t) + 12, c->pid != NOPID ? 196 : 120);
         gfx_rect(78, 4, w, 36, 13, 15, 21, 0); gfx_rect(78, 4, 2, 36, 255, 200, 40, 0);
         gfx_text(84, 7, 1, t, 235, 235, 245);
-        sprintf(t, "%s %s", stage_nm(c->stage), rel_name(c->rel));
+        if (c->pid != NOPID) sprintf(t, "%s %s %s", stage_nm(c->stage), pop_trait_name(pop_per[c->pid].trait), rel_name(c->rel));
+        else sprintf(t, "%s %s", stage_nm(c->stage), rel_name(c->rel));
         gfx_text(84, 17, 1, t, 150, 150, 160);
-        gfx_text(84, 28, 1, activity(c), 200, 200, 120);
+        if (c->pid != NOPID && c->mplace != NOPID && c->mode == CM_IDLE) { char jb[40]; gfx_text(84, 28, 1, pop_job_name(c->pid, jb), 200, 200, 120); }
+        else gfx_text(84, 28, 1, activity(c), 200, 200, 120);
         bar(84 + 70, 17, 40, c->rel > 0 ? c->rel : 0, 90, 220, 90);
         bar(84 + 70, 22, 40, c->rom, 255, 120, 170);
     }

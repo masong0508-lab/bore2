@@ -4,9 +4,9 @@
 
 #define OT_LEN     4096
 #define OT_SHIFT   1              // view-space z >> OT_SHIFT = OT index (z up to 8192 units)
-#define PACKET_LEN (144*1024)   // per buffer. A busy city frame zoomed out uses ~50 KB now that rejected primitives give their room back (L3 shows it). Keep 64 KB+ free above _end (nm) for the stack
-#define RESERVE_PEOPLE (48*1024)   // kept back from the world so the people always fit
-#define RESERVE_UI     (24*1024)   // kept back from the people so bubbles, text and the HUD always fit
+#define PACKET_LEN (96*1024)    // per buffer. The busiest frames measured (a party; SAN BOREAS zoomed right out over towers) use under 58 KB
+#define RESERVE_PEOPLE (28*1024)   // kept back from the world so the people always fit (a party peaks near 35 KB with the HUD)
+#define RESERVE_UI     (12*1024)   // kept back from the people so bubbles, text and the HUD always fit
 #define Z_NEAR     40
 #define OT_FLOOR   (OT_LEN - 2)   // the floor: behind everything but the sky
 #define OT_SHADOW  (OT_LEN - 3)   // shadows: just on top of the floor

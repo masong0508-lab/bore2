@@ -81,6 +81,7 @@ int  sim_need_val(const Sim *s, int n);    // 0..100
 int  sim_awake(const Sim *s);
 void sim_switch_player(void);
 int  sim_find_path(Sim *s, int tx, int ty);
+void sim_shift(int dtx, int dty);           // SAN BOREAS: the map window moved by that many tiles
 
 // the story: what this life has done so far (the travel zones unlock from these)
 extern int story_paid;         // paychecks earned

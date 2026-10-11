@@ -53,7 +53,7 @@ int prof_top(int k, u32 *addr) {   // the k-th busiest stretch: its count (and a
     *addr = 0x80010000u + top[k] * 256u; return topn[k];
 }
 int gfx_hb(void) { return VSync(1); }   // hblanks since the frame's VSync(0) (63.5 us each; 525 = a 30 FPS frame)
-int gfx_last_cpu, gfx_last_wait, gfx_prim_count, gfx_frame_prims, gfx_last_prims, gfx_last_bytes, gfx_overflow, gfx_last_overflow;   // profiler: prims and packet bytes of the last frame, prims that did not fit
+int gfx_peak_bytes, gfx_world_peak; int gfx_last_cpu, gfx_last_wait, gfx_prim_count, gfx_frame_prims, gfx_last_prims, gfx_last_bytes, gfx_overflow, gfx_last_overflow;   // profiler: prims and packet bytes of the last frame, prims that did not fit
 
 Camera cam;
 static int obj_yaw;               // yaw of the current object (for lighting)
@@ -114,6 +114,7 @@ void gfx_flip(void) {
         setaddr(&db[db_active].ot[0], ui_head);
     }
     gfx_last_bytes = (int)(db_next - db[db_active].p); gfx_last_prims = gfx_frame_prims; gfx_frame_prims = 0;
+    if (gfx_last_bytes > gfx_peak_bytes) gfx_peak_bytes = gfx_last_bytes;
     gfx_last_overflow = gfx_overflow; gfx_overflow = 0;
     for (int i = 0; i < 8; i++) { gfx_prof_last[i] = gfx_prof[i]; gfx_prof[i] = 0; gfx_profn_last[i] = gfx_profn[i]; gfx_profn[i] = 0; }
     { int h0 = VSync(1); gfx_last_cpu = h0; DrawSync(0); gfx_last_wait = VSync(1) - h0; }   // how long the GPU was still busy with the last frame
@@ -135,6 +136,7 @@ void gfx_flip(void) {
 }
 
 void gfx_set_reserve(int bytes) { alloc_reserve = bytes; gfx_pk_end = db[db_active].p + PACKET_LEN - 64 - bytes; }
+int gfx_bytes_used(void) { return (int)(db_next - db[db_active].p); }
 void *gfx_alloc(int bytes) {
     char *p = db_next;
     if (p + bytes > gfx_pk_end) { gfx_overflow++; return 0; }

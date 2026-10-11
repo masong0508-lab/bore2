@@ -104,6 +104,45 @@ MAT(mLogS, pLog, 8, 3, "bcbcbcbc", "abababab", "aaaaaaaa")
 MAT(mLogTop, pLog, 8, 3, "cbcbcbcb", "bcbcbcbc", "cbcbcbcb")
 static const IBox bxLogBench[1] = { {0,2,8,5,0,3,{&mLogS,&mLogS,&mLogS,&mLogS,&mLogTop}} };
 
+// ---- SAN BOREAS: trees for the mainland, a shop shelf, a FOR SALE sign, a pool lounger ----
+static const u16 pOak[6] = { RGB(9,6,3), RGB(15,10,5), RGB(5,13,4), RGB(8,18,6), RGB(12,23,8), RGB(17,27,11) };
+MAT(mOakTrunk, pOak, 2, 10, "ab", "ba", "ab", "bb", "ab", "ba", "ab", "bb", "ab", "ba")
+MAT(mOakLeaf, pOak, 8, 7, "..dede..", ".deefed.", "deeffeed", "edefedde", "deededed", ".cdddcd.", "..cccc..")
+MAT(mOakTop, pOak, 8, 8, "..defe..", ".deffed.", "deffffed", "efffefff", "effeffef", "deffffed", ".deffed.", "..defe..")
+MAT(mOakCap, pOak, 6, 3, ".deed.", "deffed", "cdeedc")
+static const IBox bxOak[3] = { {3,3,5,5,0,10,{&mOakTrunk,&mOakTrunk,&mOakTrunk,&mOakTrunk,&mOakTrunk}},
+                               {0,0,8,8,8,15,{&mOakLeaf,&mOakLeaf,&mOakLeaf,&mOakLeaf,&mOakTop}},
+                               {1,1,7,7,15,18,{&mOakCap,&mOakCap,&mOakCap,&mOakCap,&mOakTop}} };
+static const u16 pPine[6] = { RGB(8,5,3), RGB(13,9,5), RGB(3,9,5), RGB(5,13,7), RGB(7,17,9), RGB(10,21,12) };
+MAT(mPineTrunk, pPine, 2, 4, "ab", "ba", "ab", "ba")
+MAT(mPineA, pPine, 8, 5, "..deed..", ".deffed.", "ddeffedd", "cdeddedc", "cccccccc")
+MAT(mPineB, pPine, 6, 5, "..ee..", ".deed.", "deffed", "cdeedc", "cccccc")
+MAT(mPineC, pPine, 4, 4, ".ee.", "deed", "deed", "cccc")
+MAT(mPineT, pPine, 4, 4, "defe", "effe", "effd", "edde")
+static const IBox bxPine[4] = { {3,3,5,5,0,4,{&mPineTrunk,&mPineTrunk,&mPineTrunk,&mPineTrunk,&mPineTrunk}},
+                                {0,0,8,8,4,10,{&mPineA,&mPineA,&mPineA,&mPineA,&mPineT}},
+                                {1,1,7,7,10,15,{&mPineB,&mPineB,&mPineB,&mPineB,&mPineT}},
+                                {2,2,6,6,15,20,{&mPineC,&mPineC,&mPineC,&mPineC,&mPineT}} };
+static const u16 pShelf[8] = { RGB(20,20,22), RGB(12,12,14), RGB(30,6,5), RGB(6,18,30), RGB(30,26,4), RGB(8,24,8), RGB(30,30,30), RGB(28,14,22) };
+MAT(mShF, pShelf, 8, 10, "aaaaaaaa", "acdecfdh", "abbbbbbb", "aaaaaaaa", "aefcghcd", "abbbbbbb", "aaaaaaaa", "ahcdfecg", "abbbbbbb", "aaaaaaaa")
+MAT(mShS, pShelf, 1, 1, "a")
+MAT(mShT, pShelf, 2, 2, "aa", "ab")
+static const IBox bxShelfG[1] = { {0,2,8,6,0,10,{&mShF,&mShS,&mShF,&mShS,&mShT}} };
+static const u16 pSign[4] = { RGB(22,22,24), RGB(30,30,30), RGB(28,4,4), RGB(8,8,10) };
+MAT(mSignP, pSign, 1, 1, "a")
+MAT(mSignF, pSign, 6, 5, "cccccc", "cbbbbc", "cddddc", "cbbbbc", "cccccc")
+static const IBox bxSign[2] = { {3,3,4,4,0,8,{&mSignP,&mSignP,&mSignP,&mSignP,&mSignP}}, {1,3,7,4,6,11,{&mSignF,&mSignP,&mSignF,&mSignP,&mSignP}} };
+static const u16 pLnr[4] = { RGB(24,24,26), RGB(30,30,31), RGB(6,18,28), RGB(30,22,4) };
+MAT(mLnrS, pLnr, 8, 2, "aaaaaaaa", "a.a..a.a")
+MAT(mLnrT, pLnr, 8, 4, "bcbcbcbc", "cbcbcbcb", "bcbcbcbc", "cbcbcbcb")
+MAT(mLnrB, pLnr, 2, 3, "bc", "cb", "bc")
+static const u16 pLamp[4] = { RGB(9, 9, 11), RGB(15, 15, 17), RGB(31, 29, 20), RGB(26, 24, 14) };
+MAT(mLampP, pLamp, 2, 2, "ab", "ba")
+MAT(mLampH, pLamp, 4, 2, "bbbb", "cddc")
+MAT(mLampT, pLamp, 1, 1, "b")
+static const IBox bxStreetLamp[2] = { {3,3,5,5,0,22,{&mLampP,&mLampP,&mLampP,&mLampP,&mLampP}}, {2,2,6,6,22,24,{&mLampH,&mLampH,&mLampH,&mLampH,&mLampT}} };
+static const IBox bxLounger[2] = { {0,2,8,6,0,2,{&mLnrS,&mLnrS,&mLnrS,&mLnrS,&mLnrT}}, {0,2,2,6,2,5,{&mLnrB,&mLnrB,&mLnrB,&mLnrB,&mLnrT}} };
+
 // ---- the item table: letter, name, boxes (and the along-y variant), flags ----
 enum { F_ROT = 1, F_ALONG = 2, F_FLAT = 4, F_HIGH = 8 };   // F_FLAT: walk over it; F_HIGH: stand on top (crates)
 typedef struct { char ch; const char *name; const IBox *b; u8 n; const IBox *bv; u8 nv; u8 flags; u16 cost; } ItemDef;
@@ -166,6 +205,12 @@ static const ItemDef defs[] = {
     { '@', "BOAT", bxBoat, 3, 0, 0, F_ROT, 0 },
     { '+', "BUS STOP", bxBusStop, 2, 0, 0, F_ROT, 0 },
     { '%', "LOG BENCH", bxLogBench, 1, 0, 0, F_ROT, 30 },
+    { '3', "OAK TREE", bxOak, 3, 0, 0, 0, 60 },
+    { '6', "PINE TREE", bxPine, 4, 0, 0, 0, 60 },
+    { '7', "SHOP SHELF", bxShelfG, 1, 0, 0, F_ROT, 200 },
+    { '8', "FOR SALE SIGN", bxSign, 2, 0, 0, 0, 10 },
+    { '~', "POOL LOUNGER", bxLounger, 2, 0, 0, F_ROT, 90 },
+    { '"', "STREET LAMP", bxStreetLamp, 2, 0, 0, 0, 120 },
     ITEMS_MORE
 };
 #define NDEFS ((int)(sizeof(defs) / sizeof(defs[0])))

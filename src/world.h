@@ -6,13 +6,16 @@ extern char lifeMap[MH][MW + 1];     // the map letters (BORE): '.' floor, 'W' w
 extern u8   floorMap[MH][MW];        // floor style per tile
 extern u8   wallMap[MH][MW];         // wallpaper per tile (0..NWP-1 patterns, NWP.. the KHLVH set)
 #define NWALLS (14 + 89)
-#define NFLOORS 20   // BORE's 14 floors + GRASS, PAVING, SOIL, SAND, WATER, ROCK (outdoors)
+#define NFLOORS 23   // BORE's 14 floors + GRASS, PAVING, SOIL, SAND, WATER, ROCK, ASPHALT and the road lines (outdoors)
 #define FL_GRASS 14
 #define FL_PAVING 15
 #define FL_SOIL 16
 #define FL_SAND 17
 #define FL_WATER 18
 #define FL_ROCK 19
+#define FL_ASPHALT 20
+#define FL_LINE_H 21   // a road's centre line, along x
+#define FL_LINE_V 22   // ... along y
 // the three zones: the GBA lot, the island (Castaway) and the desert town
 enum { ZONE_HOME, ZONE_ISLAND, ZONE_TOWN, ZONE_CITY, ZONE_N };
 extern int world_zone;
@@ -21,10 +24,18 @@ void world_switch(int z);                        // keeps the current zone's til
 void world_reset_all(void);                      // a new life: every zone is generated afresh
 
 // the homes the generators build (houses, cottages, townhouses, two-storeys): where a household lives
-typedef struct { u8 x0, y0, x1, y1; u8 dx, dy; } Home;   // the floor inside the walls (tiles), and the door tile (on the south wall; outside is dy + 1)
-#define MAXHOMES 40
+typedef struct { u8 x0, y0, x1, y1; u8 dx, dy; u16 bx, by; u8 unit; } Home;   // the floor inside the walls (tiles), and the door tile (on the south wall; outside is dy + 1); in the open world, its block and which home of the block it is
+#define MAXHOMES 64
 int world_home_count(int zone);
 const Home *world_home(int zone, int i);
+int world_home_find(int zone, int bx, int by, int unit);   // the open world: the home of that block's unit, if it is in the window (-1)
+
+// ---- SAN BOREAS (the open world, ZONE_CITY): the map is a 5x5-block window onto it, kept round the player ----
+extern int world_wbx, world_wby;                 // the window's top-left block (-1 before the world is first seen)
+void world_new_seed(u32 seed);                   // a new life: a new world
+void world_open_at(int bx, int by);              // build the window round that block
+int  world_stream(int ptx, int pty, int *dtx, int *dty);   // keep it round the player's tile: 1 if it moved (everything shifts by -dtx, -dty tiles)
+void world_arrival(int set, int *px, int *py);   // open the window at a town and say where to stand (the street by its square)
 
 void world_init(void);
 void world_touched(void);                        // the map changed (build mode): the floor shading is worked out again

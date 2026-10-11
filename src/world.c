@@ -5,21 +5,25 @@
 #include "items.h"
 #include "tex.h"
 #include "wallart.h"
+#include "bigmap.h"
+#include "mem8.h"
+#include "pop.h"
 
 // ---- the storeys above the ground (per zone, and one set for the creator's studio) ----
 typedef struct { char map[MH][MW + 1]; u8 fl[MH][MW]; u8 wp[MH][MW]; } Level;
 // Storage is a small shared pool: a storey takes a slot only once something is built on it (most zones have one loft at most),
 // which keeps 15 empty 19 KB levels out of the PS1's 2 MB.
 #define NLVPOOL 7
-static Level lvpool[NLVPOOL]; static u8 lvbusy[NLVPOOL];
+#define NLVPOOL8 20                                 // with 8 MB: storeys for every zone at once
+static Level lvpool_small[NLVPOOL]; static Level *lvpool = lvpool_small; static int nlvpool = NLVPOOL; static u8 lvbusy[NLVPOOL8];
 static u8 lvown[ZONE_N + 1][NUP];                   // per zone (and the studio): 1 + the pool slot of each storey, 0 = empty
 static u8 *UP = lvown[0];
 static Level *lv_get(int k) { return (k >= 0 && k < NUP && UP[k]) ? &lvpool[UP[k] - 1] : 0; }
 static Level *lv_need(int k) {                      // the storey, taking a pool slot for it if it has none (0 if the pool is full)
     if (k < 0 || k >= NUP) return 0;
     if (!UP[k]) {
-        int s = 0; while (s < NLVPOOL && lvbusy[s]) s++;
-        if (s == NLVPOOL) return 0;
+        int s = 0; while (s < nlvpool && lvbusy[s]) s++;
+        if (s == nlvpool) return 0;
         Level *L = &lvpool[s]; lvbusy[s] = 1; UP[k] = (u8)(s + 1);
         for (int y = 0; y < MH; y++) { memset(L->map[y], ' ', MW); L->map[y][MW] = 0; } memset(L->fl, 0, sizeof L->fl); memset(L->wp, 0, sizeof L->wp);
     }
@@ -31,11 +35,21 @@ static int roof_dirty = 1;
 static Home homes[ZONE_N][MAXHOMES]; static int nhomes[ZONE_N];
 int world_home_count(int zone) { return nhomes[zone % ZONE_N]; }
 const Home *world_home(int zone, int i) { return (i >= 0 && i < nhomes[zone % ZONE_N]) ? &homes[zone % ZONE_N][i] : 0; }
-static void reg_home(int x0, int y0, int x1, int y1, int dx, int dy) {   // the generator that is building a home tells us where it is (in the zone being made)
-    int z = world_zone % ZONE_N; if (nhomes[z] >= MAXHOMES) return;
+static int blk_bx = 0xFFFF, blk_by = 0xFFFF, blk_unit;   // the open world's block being made (its homes are numbered 0, 1, ...)
+static int reg_home(int x0, int y0, int x1, int y1, int dx, int dy) {   // the generator that is building a home tells us where it is (in the zone being made)
+    int z = world_zone % ZONE_N, u = blk_unit++;
+    if (nhomes[z] >= MAXHOMES) return u;
     Home *h = &homes[z][nhomes[z]++]; h->x0 = (u8)x0; h->y0 = (u8)y0; h->x1 = (u8)x1; h->y1 = (u8)y1; h->dx = (u8)dx; h->dy = (u8)dy;
+    h->bx = (u16)blk_bx; h->by = (u16)blk_by; h->unit = (u8)u;
+    return u;
+}
+int world_home_find(int zone, int bx, int by, int unit) {
+    zone %= ZONE_N;
+    for (int i = 0; i < nhomes[zone]; i++) { const Home *h = &homes[zone][i]; if (h->bx == bx && h->by == by && h->unit == unit) return i; }
+    return -1;
 }
 static void town_homes(int want); static void island_homes(int want);
+static u8 wdirty[5][5];                             // the open world's window: blocks the player has built on
 static u8 lvl_used[NLEVELS];
 static void levels_clear(u8 *own) {                 // every storey of a zone back to empty air (their pool slots freed)
     for (int k = 0; k < NUP; k++) { if (own[k]) lvbusy[own[k] - 1] = 0; own[k] = 0; }
@@ -47,16 +61,17 @@ char world_at_l(int l, int mx, int my) {
     const Level *L = lv_get(l - 1); return L ? L->map[my][mx] : ' ';
 }
 static char dummy_c; static u8 dummy_u;           // what a write lands on when no storey slot is left (it is lost)
-char *world_cell(int l, int mx, int my) { if (l <= 0) return &lifeMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_c = ' '; return &dummy_c; } return &L->map[my][mx]; }
-u8 *world_floor_cell(int l, int mx, int my) { if (l <= 0) return &floorMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_u = 0; return &dummy_u; } return &L->fl[my][mx]; }
-u8 *world_wall_cell(int l, int mx, int my) { if (l <= 0) return &wallMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_u = 0; return &dummy_u; } return &L->wp[my][mx]; }
+static void mark_dirty(int l, int mx, int my);
+char *world_cell(int l, int mx, int my) { mark_dirty(l, mx, my); if (l <= 0) return &lifeMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_c = ' '; return &dummy_c; } return &L->map[my][mx]; }
+u8 *world_floor_cell(int l, int mx, int my) { mark_dirty(l, mx, my); if (l <= 0) return &floorMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_u = 0; return &dummy_u; } return &L->fl[my][mx]; }
+u8 *world_wall_cell(int l, int mx, int my) { mark_dirty(l, mx, my); if (l <= 0) return &wallMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_u = 0; return &dummy_u; } return &L->wp[my][mx]; }
 static VECTOR cam_keep_eye, cam_keep_at; static int cam_pushed;
 void world_cam_push(int l) {
     if (cam_pushed || l <= 0) return;
     cam_keep_eye = cam.eye; cam_keep_at = cam.at; cam_pushed = 1;
-    cam.eye.vy += l * WALL_FULL; cam.at.vy += l * WALL_FULL; gfx_camera_update();
+    cam.eye.vy += l * WALL_FULL; cam.at.vy += l * WALL_FULL; gfx_camera_update(); gfx_set_identity();   // (the GTE too: the storey's walls and floors are drawn straight in world space)
 }
-void world_cam_pop(void) { if (!cam_pushed) return; cam.eye = cam_keep_eye; cam.at = cam_keep_at; gfx_camera_update(); cam_pushed = 0; }
+void world_cam_pop(void) { if (!cam_pushed) return; cam.eye = cam_keep_eye; cam.at = cam_keep_at; gfx_camera_update(); gfx_set_identity(); cam_pushed = 0; }
 static const char *const roofStyleNm[NROOF_STYLE] = { "HIP", "GABLE", "FLAT" };
 static const char *const roofColNm[NROOF_COL] = { "CLAY RED", "SLATE", "CEDAR", "MOSS GREEN", "NAVY", "SANDSTONE" };
 static const u8 roofCol[NROOF_COL][3] = { { 196, 92, 64 }, { 104, 112, 128 }, { 150, 104, 66 }, { 92, 132, 84 }, { 70, 86, 140 }, { 206, 180, 128 } };
@@ -75,22 +90,25 @@ static TexRef fl_tex[NFLOORS];       // 16x16: the 8x8 pattern twice over
 static TexRef fl_tex4[NFLOORS];      // 32x32: four tiles' worth, the checker shade of the odd tiles baked in (2x2 blocks of floor draw as one quad)
 #define PN_NOISE "01000200","00020010","20001000","00100020","01000100","00200001","10002000","00010200"
 // the outdoor floors BORE 2 adds: 16x16, 4 colours, hand drawn here
-static const Tex outTex[6] = {
+static const Tex outTex[9] = {
  {"GRASS",{RGB(9,18,6),RGB(12,22,8),RGB(7,15,5),RGB(14,24,10)},{"01010210","10301001","01010100","20101031","01010210","10201001","31010100","00101010"}},
  {"PAVING",{RGB(17,16,15),RGB(20,19,18),RGB(13,12,12),RGB(22,21,19)},{"00000003","01110111","01110111","01110111","00000000","11101110","11101110","11101120"}},
  {"SOIL",{RGB(12,8,5),RGB(14,10,6),RGB(9,6,4),RGB(16,11,7)},{PN_NOISE}},
  {"SAND",{RGB(28,24,14),RGB(30,26,17),RGB(26,22,12),RGB(31,28,20)},{PN_NOISE}},
  {"WATER",{RGB(6,14,26),RGB(8,18,29),RGB(12,22,31),RGB(20,27,31)},{"00100000","01110020","00100000","00000100","20001110","00000100","01000000","11100001"}},
  {"ROCK",{RGB(15,13,12),RGB(18,16,14),RGB(12,11,10),RGB(21,19,16)},{"00010000","01000200","00000001","00020000","10000100","00000000","00100010","02000000"}},
+ {"ASPHALT",{RGB(8,8,9),RGB(10,10,11),RGB(7,7,8),RGB(12,12,13)},{"01000200","00020010","20001000","00100020","01000100","00200001","10002000","00010200"}},
+ {"ROAD LINE",{RGB(8,8,9),RGB(10,10,11),RGB(7,7,8),RGB(29,25,8)},{"01000200","00020010","20001000","03333330","03333330","00200001","10002000","00010200"}},
+ {"ROAD LINE",{RGB(8,8,9),RGB(10,10,11),RGB(7,7,8),RGB(29,25,8)},{"01033200","00030010","20033000","00133020","01033100","00230001","10032000","00013200"}},
 };
 static TexRef wp_tex[NWALLS];        // 8x24
 static u16 wp_top[NWALLS];
-static u8 fl_odd[NFLOORS] = { 14, 15, 15, 16, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15, 16, 15, 16, 16, 16, 15 };
+static u8 fl_odd[NFLOORS] = { 14, 15, 15, 16, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15, 16, 15, 16, 16, 16, 15, 16, 16, 16 };
 static u16 tb[32 * 32];
 static TexRef glass_tex;
 
 const char *world_wall_name(int wp) { return wp < NWP ? look_wp_tex(wp)->nm : wxName[(wp - NWP) % NWX]; }
-static const Tex *floor_tex(int i) { return i < NFL ? look_fl_tex(i) : &outTex[(i - NFL) % 6]; }
+static const Tex *floor_tex(int i) { return i < NFL ? look_fl_tex(i) : &outTex[(i - NFL) % 9]; }
 const char *world_floor_name(int fl) { return floor_tex(fl % NFLOORS)->nm; }
 
 static u16 fl_soft[NFLOORS][4];   // the floor colours, calmed: a GBA pattern blown up across a 3D floor shouts, so each colour leans toward the tile's average
@@ -104,6 +122,7 @@ static void soften_floors(void) {
     }
 }
 void world_init(void) {
+    if (ram8) { Level *p = (Level *)xalloc(sizeof(Level) * NLVPOOL8); if (p) { lvpool = p; nlvpool = NLVPOOL8; } }   // 8 MB: room for every storey anywhere
     for (int z = 0; z <= ZONE_N; z++) levels_clear(lvown[z]);
     soften_floors();
     for (int i = 0; i < NFLOORS; i++) {
@@ -221,10 +240,10 @@ void world_gen_studio(void) {
 }
 // ---- the zones ----
 int world_zone = ZONE_HOME;
-static const char *const zoneNm[ZONE_N] = { "THE MAN BASE", "CASTAWAY ISLAND", "STRANGE TOWN", "BORE CITY" };
+static const char *const zoneNm[ZONE_N] = { "THE MAN BASE", "CASTAWAY ISLAND", "STRANGE TOWN", "SAN BOREAS" };
 const char *world_zone_name(int z) { return zoneNm[z % ZONE_N]; }
 typedef struct { char map[MH][MW + 1]; u8 fl[MH][MW]; u8 wp[MH][MW]; u8 made; } ZoneSave;
-static ZoneSave zones[ZONE_N];
+static ZoneSave zones[ZONE_CITY];                 // (SAN BOREAS needs no copy: its window is built from the generator)
 
 static void gCircle(int cx, int cy, int r, int fl) { for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) floorMap[y][x] = (u8)fl; }
 void world_gen_island(void) {
@@ -267,62 +286,178 @@ void world_gen_town(void) {   // Strange Town: a desert main street with a diner
     gPut(18, 24, 'P'); gFree(3, 22, 'a'); gFree(36, 22, 'k');
     town_homes(16);
 }
-// ================================================================== BORE CITY
-// An open-world city on the 80x80 map: a 5x5 grid of 16-tile blocks. Streets (3 tiles wide, paved) run along the top and left of every
-// block, leaving a 13x13 lot for what stands there. Homes come in four kinds: the HOUSE (the original: size, floor, wallpaper and furniture
-// vary), the COTTAGE (one small room), TOWNHOUSES (two narrow homes under one roof line, one lot) and the TWO-STOREY house (the essentials
-// downstairs, a loft with a guest bed and a desk upstairs). Around them: a park, a diner, a gym and arcade, an office (the work marker), the
-// town square with its fountain and bus stop, and a skate plaza. Everything is worked out from the block's coordinates, so the city is the
-// same every time.
-#define CITY_N (MW / 16)
-enum { L_HOUSE, L_COTTAGE, L_TOWN, L_TWO, L_PARK, L_SQUARE, L_SKATE, L_OFFICE, L_GYM, L_DINER };
-static unsigned city_h(int a, int b) { unsigned h = (unsigned)a * 374761393u + (unsigned)b * 668265263u + 12345u; h = (h ^ (h >> 13)) * 1274126177u; return h ^ (h >> 16); }
+// ================================================================== THE BUILDINGS (SAN BOREAS, the town, the island)
+// Homes come in four kinds: the HOUSE (size, door, floors and wallpaper vary), the COTTAGE (one small room), TOWNHOUSES (two
+// narrow homes under one roof line) and the TWO-STOREY house (a loft up the stairs). Every home is furnished for whoever lives in
+// it: a couple gets one bed, roommates a bed each, kids bunk beds and a toy box, an old man an armchair, a radio and a chess
+// table; an empty home has nothing but a FOR SALE sign out front. Then the places: shops (five kinds), diners, gyms, offices,
+// inns, community pools, schools, arcades, parks, squares, skate plazas, empty lots and farms. All of it comes from the lot's
+// own dice with the save's seed mixed in: a new life is a new world.
+static u32 wsalt;                                     // the save's seed
+static char TREE = '3';                               // what grows in the yards here: oaks, pines, palms, cacti
+static unsigned city_h(int a, int b) { unsigned h = (unsigned)a * 374761393u + (unsigned)b * 668265263u + 12345u + wsalt * 2246822519u; h = (h ^ (h >> 13)) * 1274126177u; return h ^ (h >> 16); }
 static void city_path(int dx, int dy, int ly) { gBox(dx, dy + 1, dx, MIN(ly + 12, MH - 2), FL_PAVING); }   // the path from a door to the street
+
+// ---- who lives in the home being built (from the people of SAN BOREAS; elsewhere, somebody) ----
+typedef struct { u8 adults, kids, teens, elders, couple, vacant; } Occ;
+static Occ occ_blk[12]; static int occ_on;            // the households of the block being made
+static const Occ occ_any = { 2, 0, 0, 0, 1, 0 };
+static const Occ *occ_of(int unit) { return occ_on ? &occ_blk[unit % 12] : &occ_any; }
+
+// ---- furnishing a room for its people ----
+// the storey being built on: the ground (the map) or one of the storeys above (the generators write through these)
+static char (*sm)[MW + 1] = lifeMap; static u8 (*sfl)[MW] = floorMap, (*swp)[MW] = wallMap;
+static int storey(int l) {
+    if (l <= 0) { sm = lifeMap; sfl = floorMap; swp = wallMap; return 1; }
+    Level *L = lv_need(l - 1); if (!L) { storey(0); return 0; }
+    sm = L->map; sfl = L->fl; swp = L->wp; return 1;
+}
+static void sRoom(int x0, int y0, int x1, int y1, int fl, int wp) {   // a room on the storey: floor, walls round it, open floor inside
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) { sfl[y][x] = (u8)fl;
+        if (x == x0 || x == x1 || y == y0 || y == y1) { sm[y][x] = 'W'; swp[y][x] = (u8)wp; } else sm[y][x] = '.'; }
+}
+static void sLine(int x0, int y0, int x1, int y1, char c, int wp) { for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) { sm[y][x] = c; swp[y][x] = (u8)wp; } }
+static void sFree(int x, int y, char c) { if (x >= 0 && y >= 0 && x < MW && y < MH && sm[y][x] == '.') sm[y][x] = c; }
+static unsigned fz_h;
+static int fz_rnd(int n) { fz_h = fz_h * 1103515245u + 12345u; return (int)((fz_h >> 16) % (unsigned)n); }
+static int fz_x0, fz_y0, fz_x1, fz_y1, fz_dx, fz_dy, fz_ix, fz_iy, fz_ox, fz_oy;
+static u8 fz_res[8][2]; static int fz_nres;           // tiles to keep clear (stairs)
+static int fz_keep(int x, int y) {                    // the lane in from the door (the tile inside it, the next one in, the ones beside it), and anything reserved
+    if (x == fz_ix && y == fz_iy) return 1;
+    if (x == fz_ix + fz_ox && y == fz_iy + fz_oy) return 1;
+    if (fz_ox == 0 && y == fz_iy && ABS(x - fz_ix) == 1) return 1;
+    if (fz_oy == 0 && x == fz_ix && ABS(y - fz_iy) == 1) return 1;
+    for (int i = 0; i < fz_nres; i++) if (fz_res[i][0] == x && fz_res[i][1] == y) return 1;
+    return 0;
+}
+static int fz_free(int x, int y) { return x >= fz_x0 && x <= fz_x1 && y >= fz_y0 && y <= fz_y1 && sm[y][x] == '.' && !fz_keep(x, y); }
+static u8 rgx[64], rgy[64]; static int rgn;
+static void fz_ring(void) {                           // the tiles along the walls, clockwise: a run of them is always side by side
+    rgn = 0;
+    for (int x = fz_x0; x <= fz_x1; x++) { rgx[rgn] = (u8)x; rgy[rgn++] = (u8)fz_y0; }
+    for (int y = fz_y0 + 1; y <= fz_y1; y++) { rgx[rgn] = (u8)fz_x1; rgy[rgn++] = (u8)y; }
+    if (fz_y1 > fz_y0) for (int x = fz_x1 - 1; x >= fz_x0; x--) { rgx[rgn] = (u8)x; rgy[rgn++] = (u8)fz_y1; }
+    if (fz_x1 > fz_x0) for (int y = fz_y1 - 1; y > fz_y0; y--) { rgx[rgn] = (u8)fz_x0; rgy[rgn++] = (u8)y; }
+}
+static int fz_run(const char *items, int start) {     // the items side by side along a wall, from about there on
+    int k = (int)strlen(items); if (!rgn || k > rgn) return -1;
+    for (int s = 0; s < rgn; s++) {
+        int i0 = (start + s) % rgn, ok = 1;
+        for (int j = 0; j < k && ok; j++) { int i = (i0 + j) % rgn; if (!fz_free(rgx[i], rgy[i])) ok = 0; }
+        if (!ok) continue;
+        for (int j = 0; j < k; j++) { int i = (i0 + j) % rgn; sm[rgy[i]][rgx[i]] = items[j]; }
+        return i0;
+    }
+    return -1;
+}
+static int fz_walk(char c) { return c == '.' || c == 'r' || c == 'D'; }
+static void fz_reach(void) {                          // everything must be reachable: what is walled in by other things goes again
+    static u8 seen[16][16]; static u8 qx[256], qy[256];
+    for (int pass = 0; pass < 3; pass++) {
+        memset(seen, 0, sizeof seen);
+        int h = 0, t = 0, W_ = fz_x1 - fz_x0 + 1, H_ = fz_y1 - fz_y0 + 1;
+        if (W_ > 16 || H_ > 16) return;
+        int sx = fz_ix, sy = fz_iy; if (sx < fz_x0 || sx > fz_x1 || sy < fz_y0 || sy > fz_y1) return;
+        seen[sy - fz_y0][sx - fz_x0] = 1; qx[t] = (u8)sx; qy[t++] = (u8)sy;
+        while (h < t) { int x = qx[h], y = qy[h++];
+            static const signed char ox[4] = { 1, -1, 0, 0 }, oy[4] = { 0, 0, 1, -1 };
+            for (int k = 0; k < 4; k++) { int a = x + ox[k], b = y + oy[k];
+                if (a < fz_x0 || a > fz_x1 || b < fz_y0 || b > fz_y1 || seen[b - fz_y0][a - fz_x0] || !fz_walk(sm[b][a])) continue;
+                seen[b - fz_y0][a - fz_x0] = 1; qx[t] = (u8)a; qy[t++] = (u8)b; } }
+        int gone = 0;
+        for (int y = fz_y0; y <= fz_y1; y++) for (int x = fz_x0; x <= fz_x1; x++) {
+            char c = sm[y][x]; if (fz_walk(c) || c == '|') continue;
+            int ok = 0;
+            static const signed char ox[4] = { 1, -1, 0, 0 }, oy[4] = { 0, 0, 1, -1 };
+            for (int k = 0; k < 4; k++) { int a = x + ox[k], b = y + oy[k];
+                if (a >= fz_x0 && a <= fz_x1 && b >= fz_y0 && b <= fz_y1 && seen[b - fz_y0][a - fz_x0]) ok = 1; }
+            if (!ok) { sm[y][x] = '.'; gone++; }
+        }
+        if (!gone) return;
+    }
+}
+static void furnish_at(int x0, int y0, int x1, int y1, int ix, int iy, int ox, int oy, const Occ *o, unsigned h) {   // (ix,iy): the tile just inside the door; (ox,oy): the way in
+    fz_x0 = x0; fz_y0 = y0; fz_x1 = x1; fz_y1 = y1; fz_ix = ix; fz_iy = iy; fz_ox = ox; fz_oy = oy; fz_dx = ix; fz_dy = iy; fz_h = h | 1;
+    fz_ring();
+    int st = fz_rnd(MAX(1, rgn)), area = (x1 - x0 + 1) * (y1 - y0 + 1);
+    if (o->vacant) {                                  // nobody lives here: a couple of boxes the last people left behind
+        if (fz_rnd(2)) fz_run("#", st);
+        if (!fz_rnd(3)) fz_run("p", st + rgn / 2);
+        fz_nres = 0; return;
+    }
+    // the essentials: a bathroom corner, a kitchen run (a big kitchen gets a microwave or a coffee maker)
+    char bath[4] = { 'T', fz_rnd(4) ? 'H' : ',', '-', 0 }; if (area < 24) bath[2] = 0;
+    fz_run(bath, st);
+    char kit[5] = { 'F', 'y', '/', fz_rnd(2) ? ':' : 'c', 0 }; if (area < 30) kit[3] = 0; if (area < 18) kit[2] = 0;
+    if (fz_rnd(2)) { char t = kit[0]; kit[0] = kit[1]; kit[1] = t; }
+    fz_run(kit, st + rgn / 2);
+    // the beds: one for a couple, one each for anyone else grown up, bunk beds for the kids
+    int grown = o->adults + o->elders, beds = o->couple ? 1 + MAX(0, grown - 2) : grown;
+    for (int b = 0; b < beds; b++) fz_run(fz_rnd(2) ? "Si" : "S", st + rgn / 4 + b * 3);
+    for (int k = 0; k < (o->kids + 1) / 2; k++) fz_run("<", st + rgn / 4 + 7 + k * 2);
+    for (int k = 0; k < o->teens; k++) fz_run(fz_rnd(2) ? "S" : "<", st + rgn * 3 / 4 + k * 2);
+    // the living room: a sofa and the telly
+    if (area >= 15) { int s = fz_run(o->elders && !o->adults ? ";" : "C", st + rgn * 3 / 4); if (s >= 0) fz_run("v", s + rgn / 2); }
+    // who they are: the things a family like this has
+    if (o->kids) { fz_run("n", st + 5); if (!fz_rnd(2)) fz_run("{", st + 9); }
+    if (o->teens) { fz_run(fz_rnd(2) ? "U" : "A", st + 6); fz_run("[", st + 11); }
+    if (o->elders) { fz_run("R", st + 3); fz_run(fz_rnd(2) ? "b" : "?", st + 8); }
+    if (o->adults) {
+        static const char hobby[] = "b[($)qo`V";
+        int n = 1 + (area >= 35) + (area >= 48);
+        for (int i = 0; i < n; i++) { char c[2] = { hobby[fz_rnd(9)], 0 }; fz_run(c, st + 2 + i * 5); }
+    }
+    // a few nice touches
+    fz_run("p", st + rgn / 3); fz_run("l", st + rgn * 2 / 3);
+    if (area >= 30) fz_run("p", st + rgn - 2);
+    // the middle of the room: a dining table and chairs, a rug
+    if (x1 - x0 >= 4 && y1 - y0 >= 4) {
+        int cx = x0 + 2 + fz_rnd(MAX(1, x1 - x0 - 3)), cy = y0 + 2 + fz_rnd(MAX(1, y1 - y0 - 3));
+        if (fz_free(cx, cy) && fz_free(cx - 1, cy) && fz_free(cx + 1, cy) && !fz_keep(cx, cy + 1)) { sm[cy][cx] = 't'; sm[cy][cx - 1] = 'h'; sm[cy][cx + 1] = 'h'; }
+        int rx = x0 + 1 + fz_rnd(MAX(1, x1 - x0 - 1)), ry = y0 + 1 + fz_rnd(MAX(1, y1 - y0 - 1));
+        if (fz_free(rx, ry)) sm[ry][rx] = 'r';
+    }
+    fz_reach();
+    fz_nres = 0;
+}
+static void furnish(int x0, int y0, int x1, int y1, int dx, int dy, const Occ *o, unsigned h) { furnish_at(x0, y0, x1, y1, dx, y1, 0, -1, o, h); (void)dy; }   // the door in the south wall
+static void yard(int lx, int ly, int dx, int dy, int vacant, unsigned h) {   // the front yard: trees, planters, the bin, and a sign if it is for sale
+    gFree(dx - 2, dy + 1, (h & 1) ? 'Z' : 'p'); gFree(dx + 2, dy + 1, 'Z');
+    gFree(lx + (int)((h >> 3) % 3u), ly + (int)((h >> 5) % 2u), TREE); gFree(lx + 12 - (int)((h >> 7) % 3u), ly + (int)((h >> 9) % 3u), TREE);
+    if ((h >> 11) & 1) gFree(lx + 12, ly + 9, TREE);
+    if (vacant) gFree(dx + 2, dy + 2, '8'); else gFree(dx + 3, dy + 3, 'Y');
+}
+
+// ---- the homes ----
+static int reg_home(int x0, int y0, int x1, int y1, int dx, int dy);
 static void city_house(int lx, int ly, unsigned h) {
-    int w = 9 + (int)((h >> 3) % 3), hh = 7 + (int)((h >> 5) % 2);
+    int w = 9 + (int)((h >> 3) % 4), hh = 7 + (int)((h >> 5) % 3);
     int hx = lx + (13 - w) / 2, hy = ly + 1 + (int)((h >> 7) % 2);
+    if (hy + hh - 1 > ly + 10) hy = ly + 11 - hh;
     int fl = (int)((h >> 9) % 14), wp = NWP + (int)((h >> 13) % 89);
     gRoom(hx, hy, hx + w - 1, hy + hh - 1, fl, wp);
     int dx = hx + 2 + (int)((h >> 20) % (unsigned)(w - 4)), dy = hy + hh - 1;
     gPut(dx, dy, 'D');
     city_path(dx, dy, ly);
     gPut(hx + 2, hy, 'E'); gPut(hx + w - 3, hy, 'E'); gPut(hx, hy + hh / 2, 'E'); gPut(hx + w - 1, hy + hh / 2, 'E');   // windows
+    if (dx - 2 > hx) gPut(dx - 2, dy, 'E'); if (dx + 2 < hx + w - 1) gPut(dx + 2, dy, 'E');
     int ix0 = hx + 1, iy0 = hy + 1, ix1 = hx + w - 2, iy1 = hy + hh - 2;
-    reg_home(ix0, iy0, ix1, iy1, dx, dy);
-    gFree(ix0, iy0, 'S'); gFree(ix0 + 2, iy0, 'i'); gFree(ix0 + 3, iy0, (h & 1) ? 'b' : 'd');          // the bedroom corner (the tiles by the bed stay clear)
-    gFree(ix1, iy0, 'T'); gFree(ix1 - 1, iy0, 'H'); gFree(ix1 - 2, iy0, '-');                           // the bathroom corner
-    gFree(ix1, iy0 + 2, 'F'); gFree(ix1, iy0 + 3, 'y'); if (iy0 + 4 < iy1) gFree(ix1, iy0 + 4, (h & 2) ? '/' : 'c');   // the kitchen along the east wall
-    gFree(ix0, iy0 + 3, 'C'); gFree(ix0, iy1, 'l'); gFree(ix0 + 2, iy1, 'v');                           // the living corner along the west and south walls
-    gFree(ix0 + 4, iy1 - 2, 't'); gFree(ix0 + 3, iy1 - 2, 'h'); gFree(ix0 + 5, iy1 - 2, 'h');
-    if (h & 4) gFree(ix0 + 2, iy0 + 3, 'r');
-    if (h & 8) gFree(ix0 + 3, iy1, ';');
-    lifeMap[iy1][dx] = '.'; lifeMap[iy1 - 1][dx] = '.';                                                  // nothing stands inside the door
-    gFree(dx - 2, dy + 1, 'Z'); gFree(dx + 2, dy + 1, 'Z'); gFree(dx + 3, dy + 3, 'Y');                // the front yard
-    gFree(lx, ly, 'g'); gFree(lx + 12, ly, 'g'); gFree(lx + 12, ly + 9, 'Z');
+    int u = reg_home(ix0, iy0, ix1, iy1, dx, dy);
+    furnish(ix0, iy0, ix1, iy1, dx, dy, occ_of(u), h * 2654435761u);
+    yard(lx, ly, dx, dy, occ_of(u)->vacant, h >> 3);
 }
-static void city_cottage(int lx, int ly, unsigned h) {   // a small home: one 5x4 room, everything within reach of the bed
-    int hx = lx + 3, hy = ly + 3 + (int)((h >> 7) & 1);
+static void city_cottage(int lx, int ly, unsigned h) {   // a small home: one room, everything within reach of the bed
+    int w = 7 + (int)((h >> 4) & 1), hh = 6 + (int)((h >> 5) & 1);
+    int hx = lx + 3 - (int)((h >> 6) & 1), hy = ly + 3 + (int)((h >> 7) & 1);
     int fl = (int)((h >> 9) % 14), wp = NWP + (int)((h >> 13) % 89);
-    gRoom(hx, hy, hx + 6, hy + 5, fl, wp);
-    int dx = hx + 3, dy = hy + 5;
+    gRoom(hx, hy, hx + w - 1, hy + hh - 1, fl, wp);
+    int dx = hx + w / 2, dy = hy + hh - 1;
     gPut(dx, dy, 'D'); city_path(dx, dy, ly);
-    gPut(hx + 2, hy, 'E'); gPut(hx + 4, hy, 'E'); gPut(hx, hy + 2, 'E'); gPut(hx + 6, hy + 2, 'E');
-    int x0 = hx + 1, y0 = hy + 1;
-    reg_home(x0, y0, x0 + 4, y0 + 3, dx, dy);
-    gFree(x0, y0, 'S'); gFree(x0 + 2, y0, '-'); gFree(x0 + 3, y0, 'T'); gFree(x0 + 4, y0, 'H');                  // the bed (a free tile beside it), the bathroom along the north wall
-    gFree(x0, y0 + 1, 'F'); gFree(x0 + 2, y0 + 1, 'r'); gFree(x0, y0 + 2, 'y');                                  // the kitchen down the west wall
-    gFree(x0 + 4, y0 + 2, (h & 1) ? 'i' : 'b'); gFree(x0 + 1, y0 + 3, 'C'); gFree(x0 + 4, y0 + 3, 'v'); gFree(x0, y0 + 3, 'l');   // (the lamp fills the corner nobody could reach)
-    lifeMap[y0 + 3][x0 + 2] = '.'; lifeMap[y0 + 2][x0 + 2] = '.';                                                // nothing stands inside the door
-    gFree(dx - 2, dy + 1, 'Z'); gFree(dx + 2, dy + 1, 'Z'); gFree(lx + 1, ly + 1, 'g'); gFree(lx + 11, ly + 1, 'g'); gFree(dx + 3, dy + 3, 'Y');
-}
-static void unit_furnish(int x0, int y0, int mir, unsigned h) {   // a townhouse interior, 5 wide and 7 deep, the door in the middle of the south wall
-    #define UX(c) (x0 + (mir ? 4 - (c) : (c)))
-    gFree(UX(0), y0, 'S'); gFree(UX(1), y0, 'i'); gFree(UX(2), y0, '-'); gFree(UX(3), y0, 'H'); gFree(UX(4), y0, 'T');   // the bedroom and bathroom share the north wall
-    gFree(UX(0), y0 + 2, 'l'); gFree(UX(2), y0 + 2, 'r'); gFree(UX(4), y0 + 2, (h & 1) ? 'p' : 'b');
-    gFree(UX(0), y0 + 3, 'C'); gFree(UX(4), y0 + 3, 'v');                                                                  // the living area
-    gFree(UX(4), y0 + 4, 'F'); gFree(UX(4), y0 + 5, 'y'); gFree(UX(4), y0 + 6, 'c');                                       // the kitchen down the side wall
-    gFree(UX(0), y0 + 5, 't'); gFree(UX(0), y0 + 4, 'h'); gFree(UX(1), y0 + 5, 'h');
-    #undef UX
+    gPut(hx + 2, hy, 'E'); gPut(hx + w - 3, hy, 'E'); gPut(hx, hy + 2, 'E'); gPut(hx + w - 1, hy + 2, 'E');
+    int x0 = hx + 1, y0 = hy + 1, x1 = hx + w - 2, y1 = hy + hh - 2;
+    int u = reg_home(x0, y0, x1, y1, dx, dy);
+    furnish(x0, y0, x1, y1, dx, dy, occ_of(u), h * 2246822519u);
+    yard(lx, ly, dx, dy, occ_of(u)->vacant, h >> 5);
 }
 static void city_town(int lx, int ly, unsigned h) {   // two homes sharing the wall between them, each with its own door, floors and wallpaper
     int hy = ly + 1;
@@ -333,13 +468,13 @@ static void city_town(int lx, int ly, unsigned h) {   // two homes sharing the w
         int dx = ax + 3, dy = hy + 8;
         gPut(dx, dy, 'D'); city_path(dx, dy, ly);
         gPut(ax + 2, hy, 'E'); gPut(ax + 4, hy, 'E'); gPut(u ? ax + 6 : ax, hy + 4, 'E');                       // the party wall has no window
-        unit_furnish(ax + 1, hy + 1, u, hu);
-        reg_home(ax + 1, hy + 1, ax + 5, hy + 7, dx, dy);
-        gFree(dx - 2, dy + 1, 'Z'); gFree(dx + 2, dy + 1, 'Z');
+        int k = reg_home(ax + 1, hy + 1, ax + 5, hy + 7, dx, dy);
+        furnish(ax + 1, hy + 1, ax + 5, hy + 7, dx, dy, occ_of(k), hu * 2654435761u);
+        if (occ_of(k)->vacant) gFree(dx + 1, dy + 2, '8'); else gFree(dx - 2, dy + 1, 'Z');
     }
-    gFree(lx + 3, ly, 'g'); gFree(lx + 9, ly, 'g'); gFree(lx + 6, ly + 12, 'Y');
+    gFree(lx + 3, ly, TREE); gFree(lx + 9, ly, TREE); gFree(lx + 6, ly + 12, 'Y');
 }
-static void city_two(int lx, int ly, unsigned h) {   // a two-storey house: bed, bath and kitchen downstairs; a loft (guest bed, desk, computer) up the stairs
+static void city_two(int lx, int ly, unsigned h) {   // a two-storey house: the household downstairs; a loft (spare beds, a desk) up the stairs
     int hx = lx + 2, hy = ly + 1;
     int fl = (int)((h >> 9) % 14), wp = NWP + (int)((h >> 13) % 89), fl2 = (int)((h >> 17) % 14), wp2 = NWP + (int)((h >> 3) % 89);
     gRoom(hx, hy, hx + 8, hy + 7, fl, wp);
@@ -347,33 +482,43 @@ static void city_two(int lx, int ly, unsigned h) {   // a two-storey house: bed,
     gPut(dx, dy, 'D'); city_path(dx, dy, ly);
     gPut(hx + 2, hy, 'E'); gPut(hx + 6, hy, 'E'); gPut(hx, hy + 3, 'E'); gPut(hx + 8, hy + 3, 'E'); gPut(hx + 2, dy, 'E'); gPut(hx + 6, dy, 'E');
     int x0 = hx + 1, y0 = hy + 1;                                                    // the inside: 7 wide, 6 deep
-    reg_home(x0, y0, x0 + 6, y0 + 5, dx, dy);
-    gFree(x0, y0, 'S'); gFree(x0 + 1, y0, 'i'); gFree(x0 + 4, y0, '-'); gFree(x0 + 5, y0, 'H'); gFree(x0 + 6, y0, 'T');
-    gFree(x0 + 6, y0 + 2, 'F'); gFree(x0 + 6, y0 + 3, 'y'); gFree(x0 + 6, y0 + 4, (h & 1) ? '/' : 'c');
-    gFree(x0 + 2, y0 + 3, 'h'); gFree(x0 + 3, y0 + 3, 't'); gFree(x0 + 4, y0 + 3, 'h');
-    gFree(x0 + 1, y0 + 4, 'C'); gFree(x0 + 1, y0 + 5, 'v'); gFree(x0, y0 + 5, 'l'); if (h & 2) gFree(x0 + 2, y0 + 4, 'r');
-    int sx = x0 + 1, sy = y0 + 2;                                                    // the stairs rise to the north: open floor above and below them
-    lifeMap[sy][sx] = '|'; lifeMap[sy - 1][sx] = '.'; lifeMap[sy + 1][sx] = '.';
-    lifeMap[dy - 1][dx] = '.'; lifeMap[dy - 2][dx] = '.';                            // nothing stands inside the door
+    int sx = x0 + ((h >> 21) & 1 ? 5 : 1), sy = y0 + 2;                              // the stairs rise to the north: open floor above and below them
+    lifeMap[sy][sx] = '|';
+    int u = reg_home(x0, y0, x0 + 6, y0 + 5, dx, dy);
+    const Occ *o = occ_of(u);
+    fz_nres = 2; fz_res[0][0] = (u8)sx; fz_res[0][1] = (u8)(sy - 1); fz_res[1][0] = (u8)sx; fz_res[1][1] = (u8)(sy + 1);
+    Occ down = *o; if (!o->vacant && (o->kids || o->teens)) { down.kids = 0; down.teens = 0; }   // the kids sleep upstairs
+    furnish(x0, y0, x0 + 6, y0 + 5, dx, dy, &down, h * 2654435761u);
     Level *U = lv_need(0);                                                           // the loft covers the whole footprint
-    if (U) for (int j = hy; j <= hy + 7; j++) for (int i = hx; i <= hx + 8; i++) {
-        int edge = (i == hx || i == hx + 8 || j == hy || j == hy + 7);
-        U->map[j][i] = edge ? 'W' : '.'; U->fl[j][i] = (u8)fl2; U->wp[j][i] = (u8)wp2;
+    if (U) {
+        for (int j = hy; j <= hy + 7; j++) for (int i = hx; i <= hx + 8; i++) {
+            int edge = (i == hx || i == hx + 8 || j == hy || j == hy + 7);
+            U->map[j][i] = edge ? 'W' : '.'; U->fl[j][i] = (u8)fl2; U->wp[j][i] = (u8)wp2;
+        }
+        U->map[hy][hx + 2] = 'E'; U->map[hy][hx + 6] = 'E'; U->map[hy + 3][hx] = 'E'; U->map[hy + 3][hx + 8] = 'E'; U->map[hy + 7][hx + 2] = 'E'; U->map[hy + 7][hx + 6] = 'E';
+        U->map[sy][sx] = ' ';                                                        // the stairwell
+        if (!o->vacant) {                                                            // the loft: the kids' room, or a spare bed and a desk
+            int lx0 = sx > x0 + 3 ? x0 : x0 + 6, step = sx > x0 + 3 ? 1 : -1;
+            if (o->kids || o->teens) { U->map[y0][lx0] = '<'; U->map[y0][lx0 + step * 2] = o->teens ? 'S' : '<'; U->map[y0 + 5][lx0] = 'n'; U->map[y0 + 3][lx0 + step * 3] = 'r'; U->map[y0 + 5][lx0 + step * 2] = o->teens ? '[' : '{'; }
+            else { U->map[y0][lx0] = 'S'; U->map[y0][lx0 + step * 2] = 'b'; U->map[y0 + 5][lx0] = 'd'; U->map[y0 + 5][lx0 + step] = '['; U->map[y0 + 3][lx0 + step * 3] = 'r'; }
+            U->map[y0 + 5][x0 + 3] = 'p';
+        }
     }
-    U->map[hy][hx + 2] = 'E'; U->map[hy][hx + 6] = 'E'; U->map[hy + 3][hx] = 'E'; U->map[hy + 3][hx + 8] = 'E'; U->map[hy + 7][hx + 2] = 'E'; U->map[hy + 7][hx + 6] = 'E';
-    U->map[sy][sx] = ' ';                                                            // the stairwell
-    U->map[y0][x0] = 'S'; U->map[y0][x0 + 2] = 'b'; U->map[y0][x0 + 4] = 'd'; U->map[y0][x0 + 5] = '['; U->map[y0][x0 + 6] = 'l';   // the loft: guest bed, shelf, a desk with a computer
-    U->map[y0 + 3][x0 + 3] = 'r'; U->map[y0 + 3][x0 + 5] = 'U'; U->map[y0 + 3][x0 + 6] = 'i'; U->map[y0 + 5][x0 + 6] = 'S'; U->map[y0 + 5][x0] = 'p';
     roof_dirty = 1;
-    gFree(dx - 2, dy + 1, 'Z'); gFree(dx + 2, dy + 1, 'Z'); gFree(dx + 3, dy + 3, 'Y'); gFree(lx, ly, 'g'); gFree(lx + 12, ly, 'g'); gFree(lx + 12, ly + 9, 'Z');
+    yard(lx, ly, dx, dy, o->vacant, h >> 7);
 }
-static void city_park(int lx, int ly, unsigned h) {
+
+// ---- the places ----
+static void lot_park(int lx, int ly, unsigned h) {
     gBox(lx + 6, ly, lx + 6, ly + 12, FL_PAVING); gBox(lx, ly + 6, lx + 12, ly + 6, FL_PAVING);
-    gBox(lx + 2, ly + 2, lx + 4, ly + 4, FL_SOIL); gBox(lx + 8, ly + 8, lx + 10, ly + 10, FL_SOIL);
-    gPut(lx + 6, ly + 6, '}');
+    if (h & 2) { gBox(lx + 2, ly + 2, lx + 4, ly + 4, FL_WATER); gFree(lx + 5, ly + 3, 'N'); }   // a duck pond
+    else { gBox(lx + 2, ly + 2, lx + 4, ly + 4, FL_SOIL); gFree(lx + 3, ly + 3, 'p'); }
+    gBox(lx + 8, ly + 8, lx + 10, ly + 10, FL_SOIL); gFree(lx + 9, ly + 9, 'p');
+    if (h & 4) gPut(lx + 6, ly + 6, '}');
     gFree(lx + 5, ly + 5, 'N'); gFree(lx + 7, ly + 7, 'N'); gFree(lx + 5, ly + 7, 'N'); gFree(lx + 7, ly + 5, 'N');
-    gFree(lx + 1, ly + 1, 'g'); gFree(lx + 11, ly + 1, 'g'); gFree(lx + 1, ly + 11, 'g'); gFree(lx + 11, ly + 11, 'g'); gFree(lx + 3, ly + 3, 'Z'); gFree(lx + 9, ly + 9, 'Z');
+    for (int i = 0; i < 6; i++) { unsigned r = city_h((int)h + i, i * 7); int x = lx + (int)(r % 13u), y = ly + (int)((r >> 8) % 13u); if (floorMap[y][x] != FL_PAVING) gFree(x, y, TREE); }
     if (h & 1) { gFree(lx + 2, ly + 9, 'K'); gFree(lx + 10, ly + 3, 'K'); }
+    if (h & 8) gFree(lx + 10, ly + 10, '_');
     gFree(lx + 6, ly + 12, 'Y');
 }
 static void city_square(int lx, int ly) {
@@ -381,7 +526,7 @@ static void city_square(int lx, int ly) {
     gPut(lx + 6, ly + 6, '}');
     gFree(lx + 4, ly + 6, 'N'); gFree(lx + 8, ly + 6, 'N'); gFree(lx + 6, ly + 4, 'N'); gFree(lx + 6, ly + 8, 'N');
     gFree(lx + 1, ly + 1, 'Z'); gFree(lx + 11, ly + 1, 'Z'); gFree(lx + 1, ly + 11, 'Z'); gFree(lx + 11, ly + 11, 'Z');
-    gFree(lx + 3, ly + 3, 'g'); gFree(lx + 9, ly + 3, 'g'); gFree(lx + 3, ly + 9, 'g'); gFree(lx + 9, ly + 9, 'g');
+    gFree(lx + 3, ly + 3, TREE); gFree(lx + 9, ly + 3, TREE); gFree(lx + 3, ly + 9, TREE); gFree(lx + 9, ly + 9, TREE);
     gFree(lx + 12, ly + 1, '+'); gFree(lx + 1, ly + 6, 'a'); gFree(lx + 11, ly + 6, 'Y');   // the bus stop, the community flag
 }
 static void city_skate(int lx, int ly) {
@@ -392,30 +537,130 @@ static void city_skate(int lx, int ly) {
     for (int x = 7; x <= 10; x++) gFree(lx + x, ly + 11, 'J');
     gFree(lx + 1, ly + 12, 'k'); gFree(lx + 12, ly + 12, 'Y'); gFree(lx + 5, ly + 11, 'M'); gFree(lx + 6, ly + 11, 'M');
 }
-static void city_diner(int lx, int ly) {
+static int shell(int lx, int ly, int x0, int y0, int x1, int y1, int fl, int wp, int glass) {   // a place's building: walls, windows, a door to the street
+    gRoom(x0, y0, x1, y1, fl, wp);
+    int dx = (x0 + x1) / 2; gPut(dx, y1, 'D');
+    if (glass) { for (int x = x0 + 1; x < x1; x++) if (x != dx && ((x - dx) & 1)) gPut(x, y1, 'E'); }
+    else { gPut(dx - 2, y1, 'E'); gPut(dx + 2, y1, 'E'); }
+    gPut(x0 + 2, y0, 'E'); gPut(x1 - 2, y0, 'E');
+    gBox(dx, y1 + 1, dx, MIN(ly + 12, MH - 2), FL_PAVING);
+    return dx;
+}
+static void lot_shop(int lx, int ly, unsigned h) {
+    int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 9, kind = (int)(h % 5u);
+    static const u8 fls[5] = { 3, 1, 10, 6, 4 };
+    int dx = shell(lx, ly, x0, y0, x1, y1, fls[kind], NWP + (int)((h >> 9) % 89), 1);
+    int ix0 = x0 + 1, iy0 = y0 + 1, ix1 = x1 - 1, iy1 = y1 - 1;
+    gFree(ix1 - 1, iy1 - 1, 'y'); gFree(ix1, iy1 - 1, 'y'); gFree(ix1, iy1 - 2, 'I');                // the till
+    switch (kind) {
+    case 0:   // a grocery: fridges and shelves round the walls, shelves in rows
+        for (int x = ix0; x <= ix1; x++) gFree(x, iy0, (x & 1) ? 'F' : '7');
+        for (int x = ix0 + 1; x <= ix1 - 2; x++) if (x != dx && x != dx - 1) { gFree(x, iy0 + 2, '7'); gFree(x, iy0 + 4, '7'); }
+        break;
+    case 1:   // clothes: dressers, mirrors, rugs
+        for (int x = ix0; x <= ix1; x += 2) gFree(x, iy0, 'i');
+        gFree(ix0, iy0 + 2, '`'); gFree(ix0, iy0 + 4, '`'); gFree(ix0 + 3, iy0 + 3, 'r'); gFree(ix0 + 6, iy0 + 3, 'r'); gFree(ix0 + 3, iy0 + 2, 'i'); gFree(ix0 + 6, iy0 + 2, 'i');
+        break;
+    case 2:   // electronics: tellies, computers, radios
+        for (int x = ix0; x <= ix1; x++) gFree(x, iy0, "v[RAv[RAv"[x - ix0]);
+        for (int x = ix0 + 1; x <= ix1 - 2; x += 2) if (x != dx) gFree(x, iy0 + 3, 'y');
+        break;
+    case 3:   // a furniture showroom
+        gFree(ix0, iy0, 'S'); gFree(ix0 + 2, iy0, 'C'); gFree(ix0 + 4, iy0, 'o'); gFree(ix0 + 6, iy0, 'b'); gFree(ix1, iy0, 'i');
+        gFree(ix0 + 2, iy0 + 3, 't'); gFree(ix0 + 1, iy0 + 3, 'h'); gFree(ix0 + 3, iy0 + 3, 'h'); gFree(ix0 + 6, iy0 + 3, ';'); gFree(ix0, iy0 + 4, 'l'); gFree(ix0 + 5, iy0 + 4, 'r');
+        break;
+    default:  // music: pianos, guitars, a jukebox
+        gFree(ix0, iy0, '$'); gFree(ix0 + 2, iy0, '$'); for (int x = ix0 + 4; x <= ix1; x++) gFree(x, iy0, '(');
+        gFree(ix0, iy0 + 3, 'j'); gFree(ix0 + 3, iy0 + 3, 'A'); gFree(ix0 + 5, iy0 + 3, 'A');
+        break;
+    }
+    gFree(lx + 2, ly + 11, 'N'); gFree(lx + 10, ly + 11, 'Y'); gFree(lx + 1, ly + 12, 'Z');
+}
+static void city_diner(int lx, int ly, unsigned h) {
     int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
-    gRoom(x0, y0, x1, y1, 3, NWP + 53); gPut(lx + 6, y1, 'D'); gPut(lx + 7, y1, 'D');
+    gRoom(x0, y0, x1, y1, (h & 1) ? 3 : 2, NWP + (h & 2 ? 53 : (int)((h >> 9) % 89))); gPut(lx + 6, y1, 'D'); gPut(lx + 7, y1, 'D');
     gBox(lx + 6, y1 + 1, lx + 7, MIN(ly + 12, MH - 2), FL_PAVING);
-    gFree(x0 + 1, y0 + 1, 'F'); gFree(x0 + 2, y0 + 1, 'y'); gFree(x0 + 3, y0 + 1, 'y'); gFree(x0 + 4, y0 + 1, 'y'); gFree(x0 + 5, y0 + 1, 'c'); gFree(x1 - 1, y0 + 1, 'T');
-    for (int k = 0; k < 2; k++) { int tx = x0 + 2 + k * 4; gFree(tx, y0 + 4, 't'); gFree(tx - 1, y0 + 4, 'h'); gFree(tx + 1, y0 + 4, 'h'); }   // two tables with an aisle between (three filled the room wall to wall and shut the kitchen in)
-    gFree(x1 - 1, y1 - 1, 'q'); gFree(x0 + 1, y1 - 1, 'j'); gPut(x0 + 3, y0, 'E'); gPut(x1 - 3, y0, 'E');
+    gFree(x0 + 1, y0 + 1, 'F'); gFree(x0 + 2, y0 + 1, '/'); gFree(x0 + 3, y0 + 1, 'y'); gFree(x0 + 4, y0 + 1, 'y'); gFree(x0 + 5, y0 + 1, 'c'); gFree(x1 - 1, y0 + 1, 'T');
+    for (int k = 0; k < 2; k++) { int tx = x0 + 2 + k * 4; gFree(tx, y0 + 4, 't'); gFree(tx - 1, y0 + 4, 'h'); gFree(tx + 1, y0 + 4, 'h'); }
+    if (h & 4) { gFree(x1 - 2, y0 + 3, 'C'); gFree(x1 - 1, y0 + 4, 't'); }
+    gFree(x1 - 1, y1 - 1, (h & 8) ? 'q' : 'j'); gFree(x0 + 1, y1 - 1, (h & 8) ? 'j' : 'p'); gPut(x0 + 3, y0, 'E'); gPut(x1 - 3, y0, 'E');
     gFree(lx + 3, ly + 11, 'Z'); gFree(lx + 10, ly + 11, 'Z');
 }
-static void city_gym(int lx, int ly) {   // a gym with an arcade corner
+static void city_gym(int lx, int ly, unsigned h) {
     int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
     gRoom(x0, y0, x1, y1, 7, NWP + 61); gPut(lx + 6, y1, 'D'); gBox(lx + 6, y1 + 1, lx + 6, MIN(ly + 12, MH - 2), FL_PAVING);
-    gFree(x0 + 1, y0 + 1, 'm'); gFree(x0 + 3, y0 + 1, 'm'); gFree(x0 + 5, y0 + 1, 'm');
-    gFree(x0 + 1, y0 + 4, ']'); gFree(x0 + 3, y0 + 4, ']'); gFree(x0 + 1, y0 + 6, 'Q');
-    gFree(x1 - 1, y0 + 1, '!'); gFree(x1 - 1, y0 + 2, '!'); gFree(x1 - 1, y0 + 3, '!'); gFree(x1 - 3, y0 + 1, 'j'); gFree(x1 - 1, y1 - 1, 'C'); gFree(x1 - 3, y1 - 1, 'v');
+    for (int x = x0 + 1; x <= x0 + 5; x += 2) gFree(x, y0 + 1, 'm');
+    gFree(x0 + 1, y0 + 4, ']'); gFree(x0 + 3, y0 + 4, ']'); if (h & 1) gFree(x0 + 5, y0 + 4, ']'); gFree(x0 + 1, y0 + 6, 'Q');
+    gFree(x1 - 1, y0 + 1, 'H'); gFree(x1 - 2, y0 + 1, 'H'); gFree(x1 - 3, y0 + 1, 'T'); gFree(x1 - 1, y1 - 1, 'F'); gFree(x1 - 3, y1 - 1, 'R');
+    if (h & 2) gFree(x1 - 1, y0 + 4, '_');
     gPut(x0 + 3, y0, 'E'); gPut(x1 - 3, y0, 'E'); gFree(lx + 3, ly + 11, 'Y'); gFree(lx + 9, ly + 11, 'Z');
 }
-static void city_office(int lx, int ly) {   // where work is: the work marker
+static void city_office(int lx, int ly, unsigned h) {   // where work is: the work marker
     int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
-    gRoom(x0, y0, x1, y1, 10, NWP + 61); gPut(lx + 6, y1, 'D'); gBox(lx + 6, y1 + 1, lx + 6, MIN(ly + 12, MH - 2), FL_PAVING);
+    gRoom(x0, y0, x1, y1, 10, NWP + (h & 1 ? 61 : (int)((h >> 9) % 89))); gPut(lx + 6, y1, 'D'); gBox(lx + 6, y1 + 1, lx + 6, MIN(ly + 12, MH - 2), FL_PAVING);
     for (int k = 0; k < 3; k++) { int dxk = x0 + 2 + k * 3; gFree(dxk, y0 + 2, 'd'); gFree(dxk, y0 + 3, 'h'); gFree(dxk, y0 + 1, '['); }
     gFree(x1 - 1, y1 - 1, 'x'); gFree(x0 + 1, y1 - 1, 'F'); gFree(x0 + 2, y1 - 1, 'c'); gFree(x0 + 1, y0 + 1, 'b'); gFree(x1 - 1, y0 + 1, 'T');
-    gFree(x0 + 5, y1 - 2, 'x'); gPut(x0 + 3, y0, 'E'); gPut(x1 - 3, y0, 'E'); gFree(lx + 3, ly + 11, 'Z');
+    gFree(x0 + 5, y1 - 2, 'x'); gFree(x1 - 1, y0 + 3, (h & 2) ? 'q' : 'p'); gPut(x0 + 3, y0, 'E'); gPut(x1 - 3, y0, 'E'); gFree(lx + 3, ly + 11, 'Z');
 }
+static void lot_inn(int lx, int ly, unsigned h) {   // three rooms off a hall, the lobby by the door
+    int x0 = lx, y0 = ly + 1, x1 = lx + 12, y1 = ly + 11, fl = (int)((h >> 5) % 14), fl2 = (int)((h >> 9) % 14), wp = NWP + (int)((h >> 13) % 89);
+    gRoom(x0, y0, x1, y1, fl2, wp);
+    gBox(x0 + 1, y0 + 1, x1 - 1, y0 + 4, fl);
+    gLine(x0, y0 + 5, x1, y0 + 5, 'W', wp); gLine(x0 + 4, y0, x0 + 4, y0 + 5, 'W', wp); gLine(x0 + 8, y0, x0 + 8, y0 + 5, 'W', wp);
+    for (int r = 0; r < 3; r++) {
+        int rx = x0 + 1 + r * 4; gPut(rx + 1, y0 + 5, 'D'); gPut(rx + 1, y0, 'E');
+        gFree(rx, y0 + 1, 'S'); gFree(rx + 2, y0 + 1, (h >> r) & 1 ? 'i' : 'l'); gFree(rx + 2, y0 + 4, (h >> (r + 3)) & 1 ? 'p' : 'v');
+    }
+    int dx = lx + 6; gPut(dx, y1, 'D'); gPut(dx - 3, y1, 'E'); gPut(dx + 3, y1, 'E');
+    gBox(dx, y1 + 1, dx, MIN(ly + 12, MH - 2), FL_PAVING);
+    gFree(x1 - 3, y0 + 8, 'y'); gFree(x1 - 2, y0 + 8, 'y'); gFree(x1 - 1, y0 + 8, 'I');           // the front desk
+    gFree(x0 + 1, y0 + 9, 'C'); gFree(x0 + 2, y0 + 9, 'C'); gFree(x0 + 1, y0 + 7, ';'); gFree(x0 + 3, y0 + 8, 'r'); gFree(x1 - 1, y0 + 6, 'p'); gFree(x0 + 1, y0 + 6, 'l');
+    gFree(lx + 2, ly + 12, 'Z'); gFree(lx + 10, ly + 12, 'Z');
+}
+static void lot_pool(int lx, int ly, unsigned h) {   // the community pool: a deck, the water, loungers, showers, a hot tub
+    gBox(lx, ly, lx + 12, ly + 12, FL_PAVING);
+    gLine(lx, ly, lx + 12, ly, 'w', 13); gLine(lx, ly, lx, ly + 12, 'w', 13); gLine(lx + 12, ly, lx + 12, ly + 12, 'w', 13); gLine(lx, ly + 12, lx + 12, ly + 12, 'w', 13);
+    lifeMap[ly + 12][lx + 6] = '.'; lifeMap[ly + 12][lx + 5] = '.';                               // the gate
+    int pw = 6 + (int)(h & 1), ph = 4 + (int)((h >> 1) & 1);
+    gBox(lx + 3, ly + 3, lx + 2 + pw, ly + 2 + ph, FL_WATER);
+    for (int x = lx + 3; x <= lx + 2 + pw; x += 2) gFree(x, ly + 4 + ph, '~');
+    gFree(lx + 1, ly + 1, 'H'); gFree(lx + 2, ly + 1, 'H'); gFree(lx + 11, ly + 1, '>'); gFree(lx + 11, ly + 3, '~'); gFree(lx + 11, ly + 5, '~');
+    gFree(lx + 1, ly + 4, 'Z'); gFree(lx + 1, ly + 8, 'Z'); gFree(lx + 11, ly + 10, 'Y'); gFree(lx + 9, ly + 1, '#'); gFree(lx + 1, ly + 11, 'N');
+}
+static void lot_school(int lx, int ly, unsigned h) {   // a classroom, and a playground out front
+    int x0 = lx, y0 = ly + 1, x1 = lx + 12, y1 = ly + 8;
+    int dx = shell(lx, ly, x0, y0, x1, y1, (int)((h >> 5) % 14), NWP + (int)((h >> 9) % 89), 0);
+    for (int r = 0; r < 2; r++) for (int c = 0; c < 4; c++) { int x = x0 + 2 + c * 3, y = y0 + 3 + r * 2; if (x == dx) continue; gFree(x, y, 'd'); gFree(x, y + 1, 'h'); }
+    gFree(x0 + 5, y0 + 1, 'd'); gFree(x0 + 6, y0 + 1, '['); gFree(x0 + 1, y0 + 1, 'b'); gFree(x0 + 2, y0 + 1, 'b'); gFree(x1 - 1, y0 + 1, 'n'); gFree(x1 - 2, y0 + 1, 'p');
+    gFree(lx + 1, ly + 10, '_'); gFree(lx + 4, ly + 11, 'N'); gFree(lx + 9, ly + 10, 'K'); gFree(lx + 12, ly + 10, 'a'); gFree(lx + 11, ly + 12, 'Y'); gFree(lx + 2, ly + 12, TREE);
+}
+static void lot_arcade(int lx, int ly, unsigned h) {
+    int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
+    shell(lx, ly, x0, y0, x1, y1, 7, NWP + (int)((h >> 9) % 89), 0);
+    for (int x = x0 + 1; x <= x1 - 1; x++) gFree(x, y0 + 1, '!');
+    gFree(x0 + 1, y0 + 3, '!'); gFree(x0 + 1, y0 + 4, '!'); gFree(x1 - 1, y0 + 3, 'j'); gFree(x1 - 1, y0 + 5, 'V');
+    gFree(x0 + 4, y0 + 4, '?'); gFree(x0 + 1, y1 - 1, 'C'); gFree(x1 - 2, y1 - 1, 'y'); gFree(x1 - 1, y1 - 1, 'c'); gFree(x0 + 6, y0 + 4, 'U');
+    gFree(lx + 2, ly + 11, 'Y');
+}
+static void lot_empty(int lx, int ly, unsigned h) {   // nothing built yet: rough ground, junk, the sign
+    for (int i = 0; i < 6; i++) { unsigned r = city_h((int)h + i * 3, i); int x = lx + (int)(r % 13u), y = ly + (int)((r >> 8) % 13u), w = 1 + (int)((r >> 16) % 3u);
+        gBox(x, y, MIN(lx + 12, x + w), MIN(ly + 12, y + w), (r >> 20) & 1 ? FL_SOIL : FL_ROCK); }
+    gFree(lx + 6, ly + 11, '8');
+    unsigned r = h >> 3;
+    if (r & 1) { gFree(lx + 2, ly + 3, '#'); gFree(lx + 3, ly + 3, '#'); }
+    if (r & 2) { gFree(lx + 9, ly + 5, 'O'); gFree(lx + 10, ly + 6, 'O'); }
+    if (r & 4) gFree(lx + 4, ly + 8, '*');
+    if (r & 8) gFree(lx + 11, ly + 1, TREE);
+}
+static void lot_farm(int lx, int ly, unsigned h) {   // rows of crops, a barn, a fence
+    for (int y = ly + 1; y <= ly + 11; y += 2) gBox(lx + 1, y, lx + 6, y, FL_SOIL);
+    for (int y = ly + 2; y <= ly + 10; y += 2) for (int x = lx + 1; x <= lx + 6; x += 2) gFree(x, y, (h >> (x & 7)) & 1 ? 'p' : 'Z');
+    gRoom(lx + 8, ly + 1, lx + 12, ly + 6, 9, NWP + (int)((h >> 9) % 89));
+    gPut(lx + 10, ly + 6, 'D'); gFree(lx + 9, ly + 2, '#'); gFree(lx + 9, ly + 3, '#'); gFree(lx + 11, ly + 2, 'O'); gFree(lx + 11, ly + 3, 'O');
+    gLine(lx, ly + 12, lx + 12, ly + 12, 'w', 9); lifeMap[ly + 12][lx + 7] = '.';
+    gFree(lx + 9, ly + 9, 'K'); gFree(lx + 11, ly + 10, TREE);
+}
+
 // what stands on lot (i,j): the landmarks are fixed, the rest of the 5x5 grid is a hand-placed mix of homes so no two neighbours match
 // ---- homes for the island and the town: the same generators, on free ground ----
 static int area_free(int x0, int y0, int x1, int y1, int sand_only) {
@@ -453,56 +698,291 @@ static void island_homes(int want) {   // cottages (with a plank path) where the
         city_cottage(lx, ly, h);
     }
 }
-static int city_lot(int i, int j) {
-    if (i == CITY_N / 2 && j == CITY_N / 2) return L_SQUARE;
-    if (i == CITY_N / 2 + 1 && j == CITY_N / 2 + 1) return L_SKATE;
-    if (i == CITY_N - 1 && j == CITY_N - 1) return L_OFFICE;
-    if (i == 0 && j == CITY_N - 1) return L_GYM;
-    if (i == CITY_N - 1 && j == 0) return L_DINER;
-#if MW == 80
-    static const u8 lots[5][5] = {
-        { L_HOUSE,   L_TWO,     L_TOWN,   L_COTTAGE, L_DINER  },
-        { L_COTTAGE, L_TOWN,    L_HOUSE,  L_PARK,    L_TWO    },
-        { L_TWO,     L_HOUSE,   L_SQUARE, L_TOWN,    L_COTTAGE},
-        { L_TOWN,    L_PARK,    L_COTTAGE,L_SKATE,   L_HOUSE  },
-        { L_GYM,     L_COTTAGE, L_TWO,    L_TOWN,    L_OFFICE } };
-    return lots[j][i];
-#else
-    unsigned h = city_h(i * 5 + 2, j * 3 + 7); int t = (int)(h % 10);   // other sizes: a mix worked out from the hash
-    return t == 9 ? L_PARK : t < 3 ? L_HOUSE : t < 5 ? L_COTTAGE : t < 8 ? L_TOWN : L_TWO;
-#endif
+// ---- the tall ones: blocks of flats, office towers, hotels (storeys of them, stairs up through each) ----
+static void stairs_up(int l, int st, int x, const int *ys, int nys) {   // flights alternate between the spots in ys: storey l's goes up, the one from below arrives
+    if (l + 1 < st) sm[ys[l % nys]][x] = '|';
+    if (l > 0) sm[ys[(l - 1) % nys]][x] = ' ';
 }
-void world_gen_city(void) {
-    nhomes[ZONE_CITY] = 0;
-    ao_dirty = 1;
-    for (int y = 0; y < MH; y++) { for (int x = 0; x < MW; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = FL_GRASS; wallMap[y][x] = 0; } lifeMap[y][MW] = 0; }
-    for (int k = 0; k < CITY_N; k++) { gBox(16 * k, 0, 16 * k + 2, MH - 1, FL_PAVING); gBox(0, 16 * k, MW - 1, 16 * k + 2, FL_PAVING); }   // the streets
-    for (int j = 0; j < CITY_N; j++) for (int i = 0; i < CITY_N; i++) {
-        int lx = 16 * i + 3, ly = 16 * j + 3; unsigned h = city_h(i * 7 + 1, j * 13 + 5);
-        switch (city_lot(i, j)) {
-            case L_SQUARE: city_square(lx, ly); break;
-            case L_SKATE:  city_skate(lx, ly); break;
-            case L_OFFICE: city_office(lx, ly); break;
-            case L_GYM:    city_gym(lx, ly); break;
-            case L_DINER:  city_diner(lx, ly); break;
-            case L_PARK:   city_park(lx, ly, h >> 4); break;
-            case L_COTTAGE: city_cottage(lx, ly, h); break;
-            case L_TOWN:   city_town(lx, ly, h); break;
-            case L_TWO:    city_two(lx, ly, h); break;
-            default:       city_house(lx, ly, h); break;
+static void lot_apart(int lx, int ly, unsigned h, int st) {   // two flats a storey either side of a stair hall (two wide: the stairs take one side); the ground floor's open onto the street
+    int x0 = lx, x1 = lx + 12, y0 = ly + 1, y1 = ly + 10, hx = lx + 5;   // the hall: hx (the way through) and hx + 1 (the stairs)
+    int flh = (int)((h >> 3) % 14), wpo = NWP + (int)((h >> 7) % 89);
+    int ys[2] = { y0 + 3, y0 + 6 };
+    for (int l = 0; l < st; l++) {
+        if (!storey(l)) break;
+        sRoom(x0, y0, x1, y1, flh, wpo);
+        sLine(hx - 1, y0, hx - 1, y1, 'W', wpo); sLine(hx + 2, y0, hx + 2, y1, 'W', wpo);
+        for (int y = y0 + 1; y < y1; y++) { sm[y][hx] = '.'; sm[y][hx + 1] = '.'; }
+        sm[y0][lx + 2] = 'E'; sm[y0][lx + 10] = 'E'; sm[y0 + 4][x0] = 'E'; sm[y0 + 4][x1] = 'E'; sm[y0][hx] = 'E';
+        if (l) { sm[y1][lx + 2] = 'E'; sm[y1][lx + 10] = 'E'; sm[y1][hx] = 'E'; sm[y1][hx + 1] = 'E'; }
+        if (l + 1 < st) { sm[ys[l & 1]][hx + 1] = '|'; sm[ys[l & 1] - 1][hx + 1] = 'p'; }   // up: the stairs rise north (a plant blocks the top end down here)
+        if (l > 0) sm[ys[(l - 1) & 1]][hx + 1] = ' ';                                       // the stairwell from below
+        for (int side = 0; side < 2; side++) {
+            int fx0 = side ? hx + 3 : x0 + 1, fx1 = side ? x1 - 1 : hx - 2, fy0 = y0 + 1, fy1 = y1 - 1, u = l * 2 + side;
+            unsigned hu = city_h((int)(h & 0xFFFF) + l * 7 + side, l * 3 + side + 11);
+            int ffl = (int)((hu >> 9) % 14);
+            for (int y = fy0; y <= fy1; y++) for (int x = fx0; x <= fx1; x++) sfl[y][x] = (u8)ffl;
+            blk_unit = u;
+            if (l == 0) {                                  // the street door
+                int dx = side ? lx + 10 : lx + 2;
+                sm[y1][dx] = 'D'; city_path(dx, y1, ly);
+                reg_home(fx0, fy0, fx1, fy1, dx, y1);
+                furnish(fx0, fy0, fx1, fy1, dx, y1, occ_of(u), hu * 2654435761u);
+            } else {                                       // the door off the hall
+                int dy = fy1 - 1;
+                sm[dy][side ? hx + 2 : hx - 1] = 'D';
+                furnish_at(fx0, fy0, fx1, fy1, side ? fx0 : fx1, dy, side ? 1 : -1, 0, occ_of(u), hu * 2654435761u);
+            }
+        }
+        if (l == 0) { sm[y1][hx] = 'D'; city_path(hx, y1, ly); }
+    }
+    storey(0); blk_unit = 2 * st; roof_dirty = 1;
+    gFree(lx, ly + 12, TREE); gFree(lx + 12, ly + 12, TREE); gFree(lx + 4, ly + 12, 'Y'); gFree(lx + 8, ly + 11, 'Z');
+}
+static void lot_tower(int lx, int ly, unsigned h, int st) {   // an office tower: a lobby, then floor after floor of desks
+    int x0 = lx + 1, x1 = lx + 11, y0 = ly + 1, y1 = ly + 10, sx = x1 - 2;
+    int fl = (int)((h >> 3) % 14), wp = NWP + (int)((h >> 7) % 89), fl2 = (int)((h >> 11) % 14);
+    int ys[2] = { y0 + 2, y0 + 5 };
+    for (int l = 0; l < st; l++) {
+        if (!storey(l)) break;
+        sRoom(x0, y0, x1, y1, l ? fl2 : fl, wp);
+        for (int x = x0 + 1; x < x1; x++) if ((x - x0) & 1) { sm[y0][x] = 'E'; if (l) sm[y1][x] = 'E'; }   // glass all round
+        for (int y = y0 + 1; y < y1; y++) if ((y - y0) & 1) { sm[y][x0] = 'E'; sm[y][x1] = 'E'; }
+        stairs_up(l, st, sx, ys, 2);
+        fz_nres = 0;
+        if (l == 0) {                                      // the lobby: the front desk, sofas, the work markers
+            int dx = (x0 + x1) / 2; sm[y1][dx] = 'D'; sm[y1][dx - 1] = 'E'; sm[y1][dx + 1] = 'E'; city_path(dx, y1, ly);
+            sFree(x0 + 2, y0 + 3, 'y'); sFree(x0 + 3, y0 + 3, 'y'); sFree(x0 + 4, y0 + 3, 'I'); sFree(x0 + 3, y0 + 1, 'b');
+            sFree(x0 + 1, y1 - 2, 'C'); sFree(x0 + 1, y1 - 3, 'C'); sFree(x0 + 2, y1 - 1, 'p'); sFree(x1 - 1, y1 - 1, 'p');
+            sFree(x0 + 6, y0 + 2, 'x'); sFree(x0 + 6, y0 + 5, 'x'); sFree(x0 + 1, y0 + 1, 'c'); sFree(x0 + 5, y1 - 2, 'r');
+        } else {                                           // a floor of desks
+            for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) {
+                int x = x0 + 1 + c * 2 + (c > 0), y = y0 + 2 + r * 2;
+                if (x >= sx - 1 || y >= y1 - 1) continue;
+                sFree(x, y, 'd'); sFree(x, y + 1, 'h'); if ((h >> (r * 3 + c)) & 1) sFree(x + 1, y, '[');
+            }
+            sFree(x1 - 1, y1 - 1, (l & 1) ? '-' : 'F'); sFree(x0 + 1, y1 - 1, 'p'); sFree(x1 - 1, y0 + 1, (l & 1) ? 'b' : '#'); sFree(x0 + 1, y0 + 1, 'p');
         }
     }
-    gPut(16 * (CITY_N / 2) + 1, 16 * (CITY_N / 2) + 1, 'P');                             // where you arrive: the crossroads by the square
-    for (int k = 1; k < CITY_N; k++) { gFree(16 * k + 1, 1, 'Y'); gFree(1, 16 * k + 1, 'Y'); }
-    gLine(0, 0, MW - 1, 0, 'w', 13); gLine(0, MH - 1, MW - 1, MH - 1, 'w', 13); gLine(0, 0, 0, MH - 1, 'w', 13); gLine(MW - 1, 0, MW - 1, MH - 1, 'w', 13);   // the city limits
-    roof_dirty = 1;
+    storey(0); roof_dirty = 1;
+    gFree(lx + 1, ly + 12, 'Z'); gFree(lx + 11, ly + 12, 'Z'); gFree(lx + 3, ly + 12, 'N'); gFree(lx + 9, ly + 12, 'Y');
 }
+static void lot_hotel(int lx, int ly, unsigned h, int st) {   // a hotel: a corridor (two wide) through each floor, rooms either side, the lobby at the front
+    int x0 = lx, x1 = lx + 12, y0 = ly, y1 = ly + 12;
+    int fl = (int)((h >> 3) % 14), fl2 = (int)((h >> 9) % 14), wp = NWP + (int)((h >> 13) % 89);
+    int xs[2] = { x0 + 3, x0 + 9 };
+    for (int l = 0; l < st; l++) {
+        if (!storey(l)) break;
+        sRoom(x0, y0, x1, y1, fl2, wp);
+        sLine(x0, y0 + 4, x1, y0 + 4, 'W', wp); sLine(x0, y0 + 7, x1, y0 + 7, 'W', wp);
+        for (int x = x0 + 1; x < x1; x++) { sm[y0 + 5][x] = '.'; sm[y0 + 6][x] = '.'; sfl[y0 + 5][x] = (u8)fl; sfl[y0 + 6][x] = (u8)fl; }
+        for (int r = 0; r < 3; r++) { int rx = x0 + 1 + r * 4;
+            if (r) { sLine(rx - 1, y0, rx - 1, y0 + 4, 'W', wp); sLine(rx - 1, y0 + 7, rx - 1, y1, 'W', wp); }
+            sm[y0][rx + 1] = 'E'; if (l) sm[y1][rx + 1] = 'E';
+            for (int side = 0; side < 2; side++) {
+                int ry0 = side ? y0 + 8 : y0 + 1, ry1 = side ? y1 - 1 : y0 + 3;
+                if (l == 0 && side && r == 1) continue;     // the lobby
+                sm[side ? y0 + 7 : y0 + 4][rx + 1] = 'D';
+                unsigned hr = city_h((int)(h & 0xFFF) + r * 5 + side + l * 11, r);
+                int by = side ? ry1 : ry0, fy = side ? ry0 : ry1;
+                sFree(rx, by, 'S'); sFree(rx + 2, by, (hr & 1) ? 'i' : 'l'); sFree(rx + 2, fy, (hr & 2) ? 'v' : 'p');
+                if (side && (hr & 4)) { sFree(rx, fy, 'T'); }
+            }
+        }
+        if (l + 1 < st) { int x = xs[l & 1]; sm[y0 + 6][x] = '|'; sm[y0 + 6][x - 1] = 'p'; }   // up: the stairs rise west (a plant blocks the top end down here)
+        if (l > 0) sm[y0 + 6][xs[(l - 1) & 1]] = ' ';
+        if (l == 0) {                                      // the lobby, through the front door
+            int dx = x0 + 6;
+            sm[y0 + 7][dx] = 'D'; sm[y1][dx] = 'D'; sm[y1][dx - 1] = 'E'; sm[y1][dx + 1] = 'E';
+            for (int y = y0 + 8; y < y1; y++) for (int x = x0 + 5; x <= x0 + 7; x++) sfl[y][x] = (u8)fl;
+            sFree(x0 + 5, y0 + 8, 'y'); sFree(x0 + 7, y0 + 8, 'I'); sFree(x0 + 5, y1 - 1, 'p'); sFree(x0 + 7, y1 - 1, ';');
+        }
+    }
+    storey(0); roof_dirty = 1;
+}
+
+// ================================================================== SAN BOREAS: the window
+// The 80x80 map is a window of 5x5 blocks onto the open world, the player always in its middle block. Walk into the next block
+// and the window moves a block that way: everything slides over (the map, the storeys, the homes, the people), and the row of
+// blocks coming into view is built from the generator. A block you built on is kept aside when it leaves, and comes back as you
+// left it.
+#define WB 5
+int world_wbx = -1, world_wby = -1;                    // the window's top-left block in the open world (-1: not made yet)
+typedef struct { u16 bx, by; char map[BM_BLK][BM_BLK]; u8 fl[BM_BLK][BM_BLK], wp[BM_BLK][BM_BLK]; } EditBlk;
+static EditBlk edit_small[12]; static EditBlk *edits = edit_small; static int nedit_max = 12, nedit, edit_next;
+static void edit_init(void) {
+    if (ram8 && edits == edit_small) { EditBlk *e = (EditBlk *)xalloc(sizeof(EditBlk) * 1024); if (e) { edits = e; nedit_max = 1024; } }
+    nedit = 0; edit_next = 0;
+}
+static EditBlk *edit_find(int bx, int by) { for (int i = 0; i < nedit; i++) if (edits[i].bx == bx && edits[i].by == by) return &edits[i]; return 0; }
+static void edit_save(int wx, int wy) {
+    int bx = world_wbx + wx, by = world_wby + wy, ox = wx * BM_BLK, oy = wy * BM_BLK;
+    EditBlk *e = edit_find(bx, by);
+    if (!e) { if (nedit < nedit_max) e = &edits[nedit++]; else { e = &edits[edit_next]; edit_next = (edit_next + 1) % nedit_max; } }
+    e->bx = (u16)bx; e->by = (u16)by;
+    for (int y = 0; y < BM_BLK; y++) { memcpy(e->map[y], &lifeMap[oy + y][ox], BM_BLK); memcpy(e->fl[y], &floorMap[oy + y][ox], BM_BLK); memcpy(e->wp[y], &wallMap[oy + y][ox], BM_BLK); }
+}
+static int edit_load(int wx, int wy) {
+    EditBlk *e = edit_find(world_wbx + wx, world_wby + wy); if (!e) return 0;
+    int ox = wx * BM_BLK, oy = wy * BM_BLK;
+    for (int y = 0; y < BM_BLK; y++) { memcpy(&lifeMap[oy + y][ox], e->map[y], BM_BLK); memcpy(&floorMap[oy + y][ox], e->fl[y], BM_BLK); memcpy(&wallMap[oy + y][ox], e->wp[y], BM_BLK); }
+    return 1;
+}
+static void mark_dirty(int l, int mx, int my) { if (world_zone == ZONE_CITY && l <= 0 && mx >= 0 && my >= 0 && mx < MW && my < MH) wdirty[my / BM_BLK][mx / BM_BLK] = 1; }
+
+static void wild(int ox, int oy, const BInfo *b, int bx, int by) {   // the open country: trees, rocks, cacti, palms
+    for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) {
+        if (floorMap[oy + y][ox + x] == FL_PAVING || floorMap[oy + y][ox + x] == FL_WATER || lifeMap[oy + y][ox + x] != '.') continue;
+        int r = (int)(bm_hash(bx * BM_BLK + x, by * BM_BLK + y, wsalt ^ 0x77u) % 1000u); char c = 0;
+        switch (b->terrain) {
+            case BT_GRASS:  c = r < 22 ? '3' : r < 28 ? '*' : r < 30 ? '6' : 0; break;
+            case BT_FOREST: c = r < 70 ? '6' : r < 95 ? '3' : r < 100 ? '*' : 0; break;
+            case BT_DESERT: c = r < 20 ? 'u' : r < 38 ? '*' : 0; break;
+            case BT_BEACH:  c = r < 18 ? 'g' : r < 24 ? '*' : 0; break;
+            case BT_ROCKY:  c = r < 80 ? '*' : r < 95 ? '6' : 0; break;
+        }
+        if (c) lifeMap[oy + y][ox + x] = c;
+    }
+}
+static void gen_block(int wx, int wy) {
+    int bx = world_wbx + wx, by = world_wby + wy, ox = wx * BM_BLK, oy = wy * BM_BLK;
+    BInfo b; bm_block(bx, by, &b);
+    static const u8 tfl[6] = { FL_WATER, FL_SAND, FL_GRASS, FL_GRASS, FL_SAND, FL_ROCK };
+    int ground = tfl[b.terrain];
+    if (b.set != 255 && b.terrain != BT_SEA) ground = (b.terrain == BT_DESERT || b.terrain == BT_BEACH) ? FL_SAND : FL_GRASS;
+    TREE = (b.terrain == BT_FOREST || b.terrain == BT_ROCKY) ? '6' : b.terrain == BT_DESERT ? 'u' : b.terrain == BT_BEACH ? 'g' : '3';
+    for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) { lifeMap[oy + y][ox + x] = '.'; floorMap[oy + y][ox + x] = (u8)ground; wallMap[oy + y][ox + x] = 0; }
+    for (int k = 0; k < NUP; k++) { Level *L = lv_get(k); if (L) for (int y = 0; y < BM_BLK; y++) memset(&L->map[oy + y][ox], ' ', BM_BLK); }
+    if (b.road & 1) { gBox(ox, oy, ox + BM_BLK - 1, oy + 2, FL_ASPHALT); gBox(ox + 3, oy + 1, ox + BM_BLK - 1, oy + 1, FL_LINE_H); }   // the street: asphalt, a dashed line down the middle
+    if (b.road & 2) { gBox(ox, oy, ox + 2, oy + BM_BLK - 1, FL_ASPHALT); gBox(ox + 1, oy + 3, ox + 1, oy + BM_BLK - 1, FL_LINE_V); }
+    if ((b.road & 3) == 1) gBox(ox, oy + 1, ox + 2, oy + 1, FL_LINE_H);
+    if ((b.road & 3) == 2) gBox(ox + 1, oy, ox + 1, oy + 2, FL_LINE_V);
+    if (b.set != 255 && b.terrain != BT_SEA) {           // in town: a pavement along the street
+        gBox(ox + 3, oy + 3, ox + BM_BLK - 1, oy + 3, FL_PAVING); gBox(ox + 3, oy + 3, ox + 3, oy + BM_BLK - 1, FL_PAVING);
+    }
+    blk_bx = bx; blk_by = by; blk_unit = 0;
+    int units = bm_units(&b), st = bm_storeys(&b);
+    occ_on = 1;
+    for (int u = 0; u < 12; u++) {
+        Occ *o = &occ_blk[u]; memset(o, 0, sizeof *o); o->vacant = 1;
+        if (u >= units) continue;
+        int f = pop_family_at(bx, by, u); if (f < 0) continue;
+        u8 a, k, t, e, c; pop_family_kinds(f, &a, &k, &t, &e, &c);
+        o->vacant = 0; o->adults = a; o->kids = k; o->teens = t; o->elders = e; o->couple = c;
+    }
+    int lx = ox + BM_LOT0, ly = oy + BM_LOT0; unsigned h = b.h;
+    switch (b.lot) {
+        case LOT_HOUSE:   city_house(lx, ly, h); break;
+        case LOT_COTTAGE: city_cottage(lx, ly, h); break;
+        case LOT_TOWN:    city_town(lx, ly, h); break;
+        case LOT_TWO:     city_two(lx, ly, h); break;
+        case LOT_SHOP:    lot_shop(lx, ly, h); break;
+        case LOT_DINER:   city_diner(lx, ly, h); break;
+        case LOT_GYM:     city_gym(lx, ly, h); break;
+        case LOT_OFFICE:  city_office(lx, ly, h); break;
+        case LOT_INN:     lot_inn(lx, ly, h); break;
+        case LOT_POOL:    lot_pool(lx, ly, h); break;
+        case LOT_SCHOOL:  lot_school(lx, ly, h); break;
+        case LOT_ARCADE:  lot_arcade(lx, ly, h); break;
+        case LOT_PARK:    lot_park(lx, ly, h); break;
+        case LOT_SQUARE:  city_square(lx, ly); break;
+        case LOT_SKATE:   city_skate(lx, ly); break;
+        case LOT_EMPTY:   lot_empty(lx, ly, h); break;
+        case LOT_FARM:    lot_farm(lx, ly, h); break;
+        case LOT_APART:   lot_apart(lx, ly, h, st); break;
+        case LOT_TOWER:   lot_tower(lx, ly, h, st); break;
+        case LOT_HOTEL:   lot_hotel(lx, ly, h, st); break;
+        default: break;
+    }
+    occ_on = 0; blk_bx = blk_by = 0xFFFF;
+    if (b.set == 255) wild(ox, oy, &b, bx, by);
+    else if (b.terrain != BT_SEA) {                      // street lamps on the corners and half way along, a bin now and then
+        gFree(ox + 3, oy + 3, '"'); gFree(ox + 10, oy + 3, '"'); gFree(ox + 3, oy + 10, '"');
+        if ((h >> 24) % 3u == 0) gFree(ox + 6, oy + 3, 'Y');
+    }
+    wdirty[wy][wx] = (u8)edit_load(wx, wy);
+}
+static void row_from(u8 *a, int stride, int w, int h, int y, int ys, int dx, u8 fill) {
+    u8 *d = a + y * stride;
+    if (ys < 0 || ys >= h) { memset(d, fill, w); return; }
+    u8 *s = a + ys * stride;
+    if (dx >= 0) { memmove(d, s + dx, w - dx); memset(d + w - dx, fill, dx); }
+    else { memmove(d - dx, s, w + dx); memset(d, fill, -dx); }
+}
+static void shift2d(u8 *a, int stride, int w, int h, int dx, int dy, u8 fill) {   // a[y][x] = a[y + dy][x + dx]
+    if (dy >= 0) for (int y = 0; y < h; y++) row_from(a, stride, w, h, y, y + dy, dx, fill);
+    else for (int y = h - 1; y >= 0; y--) row_from(a, stride, w, h, y, y + dy, dx, fill);
+}
+static void window_shift(int sx, int sy) {
+    for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks leaving: keep what was built on
+        int nx = wx - sx, ny = wy - sy;
+        if ((nx < 0 || ny < 0 || nx >= WB || ny >= WB) && wdirty[wy][wx]) edit_save(wx, wy);
+    }
+    int dx = sx * BM_BLK, dy = sy * BM_BLK;
+    shift2d((u8 *)lifeMap, MW + 1, MW, MH, dx, dy, '.');
+    shift2d((u8 *)floorMap, MW, MW, MH, dx, dy, FL_GRASS);
+    shift2d((u8 *)wallMap, MW, MW, MH, dx, dy, 0);
+    for (int k = 0; k < NUP; k++) { Level *L = lv_get(k); if (!L) continue;
+        shift2d((u8 *)L->map, MW + 1, MW, MH, dx, dy, ' '); shift2d((u8 *)L->fl, MW, MW, MH, dx, dy, 0); shift2d((u8 *)L->wp, MW, MW, MH, dx, dy, 0); }
+    shift2d((u8 *)wdirty, WB, WB, WB, sx, sy, 0);
+    world_wbx += sx; world_wby += sy;
+    int z = ZONE_CITY, n = 0;                                                     // the homes that stay, moved over
+    for (int i = 0; i < nhomes[z]; i++) {
+        Home hm = homes[z][i];
+        if (hm.bx < world_wbx || hm.by < world_wby || hm.bx >= world_wbx + WB || hm.by >= world_wby + WB) continue;
+        hm.x0 = (u8)(hm.x0 - dx); hm.x1 = (u8)(hm.x1 - dx); hm.dx = (u8)(hm.dx - dx);
+        hm.y0 = (u8)(hm.y0 - dy); hm.y1 = (u8)(hm.y1 - dy); hm.dy = (u8)(hm.dy - dy);
+        homes[z][n++] = hm;
+    }
+    nhomes[z] = n;
+    for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks coming into view
+        int ox = wx + sx, oy = wy + sy;
+        if (ox < 0 || oy < 0 || ox >= WB || oy >= WB) gen_block(wx, wy);
+    }
+    for (int y = 0; y < MH; y++) lifeMap[y][MW] = 0;
+    ao_dirty = 1; roof_dirty = 1;
+}
+void world_open_at(int cbx, int cby) {          // the window round block (cbx, cby): a new arrival, a taxi ride
+    world_wbx = CLAMP(cbx - WB / 2, 0, BM_N - WB); world_wby = CLAMP(cby - WB / 2, 0, BM_N - WB);
+    nhomes[ZONE_CITY] = 0;
+    levels_clear(UP);
+    memset(wdirty, 0, sizeof wdirty);
+    for (int y = 0; y < MH; y++) lifeMap[y][MW] = 0;
+    for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) gen_block(wx, wy);
+    ao_dirty = 1; roof_dirty = 1;
+}
+int world_stream(int ptx, int pty, int *dtx, int *dty) {
+    *dtx = *dty = 0;
+    if (world_zone != ZONE_CITY || world_wbx < 0 || ptx < 0 || pty < 0 || ptx >= MW || pty >= MH) return 0;
+    int sx = CLAMP(ptx / BM_BLK - WB / 2, -1, 1), sy = CLAMP(pty / BM_BLK - WB / 2, -1, 1);
+    if (world_wbx + sx < 0 || world_wbx + sx > BM_N - WB) sx = 0;
+    if (world_wby + sy < 0 || world_wby + sy > BM_N - WB) sy = 0;
+    if (!sx && !sy) return 0;
+    window_shift(sx, sy);
+    *dtx = sx * BM_BLK; *dty = sy * BM_BLK;
+    return 1;
+}
+void world_arrival(int set, int *px, int *py) {  // where a bus or a taxi drops you in a town: the street by its square
+    const Settle *s = bm_set(set); if (!s) s = bm_set(0);
+    if (!s) { *px = MW / 2; *py = MH / 2; return; }
+    world_open_at(s->x, s->y);
+    *px = (s->x - world_wbx) * BM_BLK + 8; *py = (s->y - world_wby) * BM_BLK + 1;
+}
+int world_block_info(int wx, int wy, BInfo *b) { if (world_wbx < 0) return 0; bm_block(world_wbx + wx, world_wby + wy, b); return 1; }
+void world_new_seed(u32 seed) { wsalt = seed; world_wbx = world_wby = -1; edit_init(); }
+void world_gen_city(void) { nhomes[ZONE_CITY] = 0; world_wbx = world_wby = -1; }   // (the window is built where you arrive: world_arrival, world_open_at)
+
 void world_switch(int z) {
     ao_dirty = 1;
     if (z == world_zone) return;
-    ZoneSave *cur = &zones[world_zone];
-    memcpy(cur->map, lifeMap, sizeof cur->map); memcpy(cur->fl, floorMap, sizeof cur->fl); memcpy(cur->wp, wallMap, sizeof cur->wp); cur->made = 1;
+    if (world_zone == ZONE_CITY) {                    // leaving SAN BOREAS: what you built is kept aside; the window (and its storeys) is let go
+        if (world_wbx >= 0) for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) if (wdirty[wy][wx]) edit_save(wx, wy);
+        levels_clear(lvown[ZONE_CITY]); world_wbx = world_wby = -1; nhomes[ZONE_CITY] = 0;
+    } else {
+        ZoneSave *cur = &zones[world_zone];
+        memcpy(cur->map, lifeMap, sizeof cur->map); memcpy(cur->fl, floorMap, sizeof cur->fl); memcpy(cur->wp, wallMap, sizeof cur->wp); cur->made = 1;
+    }
     world_zone = z; UP = lvown[z]; roof_dirty = 1;
+    if (z == ZONE_CITY) { world_gen_city(); return; }
     ZoneSave *nx = &zones[z];
     if (!nx->made) levels_clear(UP);
     if (nx->made) { memcpy(lifeMap, nx->map, sizeof nx->map); memcpy(floorMap, nx->fl, sizeof nx->fl); memcpy(wallMap, nx->wp, sizeof nx->wp); }
@@ -513,7 +993,7 @@ void world_switch(int z) {
 }
 void world_reset_all(void) {
     for (int i = 0; i < ZONE_N; i++) nhomes[i] = 0;
-    ao_dirty = 1; for (int i = 0; i < ZONE_N; i++) { zones[i].made = 0; levels_clear(lvown[i]); } world_zone = ZONE_HOME; UP = lvown[0]; world_gen(); }
+    ao_dirty = 1; for (int i = 0; i < ZONE_N; i++) { if (i < ZONE_CITY) zones[i].made = 0; levels_clear(lvown[i]); } world_zone = ZONE_HOME; UP = lvown[0]; world_gen(); }
 char world_at(int mx, int my) { return world_at_l(world_lvl, mx, my); }
 static int is_wall(char c) { return c == 'W' || c == 'w' || c == 'E' || c == 'e' || c == 'f'; }
 int world_walkable(int mx, int my) {
@@ -671,6 +1151,7 @@ static void skirt(int ax, int az, int bx, int bz, int nx, int nz) {   // a skirt
     gfx_quad_f(&a, &b, &c, &d, (R8(bc) * L) >> 7, (G8(bc) * L) >> 7, (B8(bc) * L) >> 7, 1);
 }
 // a slab [xa..xb] x [zb..za] (za > zb) of height h: its four sides (those not flagged hidden) and its top
+static int ws_lite;                                   // another building's wall (under its roof): no skirting, no top, only the pane on the near side
 static void slab(const TexRef *t, u16 tc, int x0, int zN, int xa, int xb, int za, int zb, int h, int cut, int hideN, int hideS, int hideW, int hideE, char win) {
     int yT = -h;
     // faces that look away from the eye never show: skip them before the GTE
@@ -682,26 +1163,26 @@ static void slab(const TexRef *t, u16 tc, int x0, int zN, int xa, int xb, int za
     #define LONGFACE(ax, az, bx, bz, nx, nz, uu0, uu1) \
         if (win && h == WALL_FULL) { wface(t, ax, az, bx, bz, gy1, 0, h, uu0, uu1, nx, nz, cut); wface(t, ax, az, bx, bz, yT, gy0, h, uu0, uu1, nx, nz, cut); } \
         else wface(t, ax, az, bx, bz, yT, 0, h, uu0, uu1, nx, nz, cut); \
-        if (!cut && h == WALL_FULL) skirt(ax, az, bx, bz, nx, nz);
+        if (!cut && h == WALL_FULL && !ws_lite) skirt(ax, az, bx, bz, nx, nz);
     if (!hideN) { LONGFACE(xb, za, xa, za, 0, ONE, ua, ub - 1) }          // north side (+z), seen from the north: left = xb
     if (!hideS) { LONGFACE(xa, zb, xb, zb, 0, -ONE, ua, ub - 1) }
     if (!hideW) { LONGFACE(xa, za, xa, zb, -ONE, 0, va, vb2 - 1) }
     if (!hideE) { LONGFACE(xb, zb, xb, za, ONE, 0, va, vb2 - 1) }
     #undef LONGFACE
-    wtop(tc, xa, xb, za, zb, yT);
+    if (!ws_lite || cut) wtop(tc, xa, xb, za, zb, yT);
     if (win && h == WALL_FULL) {   // the pane, both sides of the slab
         SVECTOR a, b, c, d; int gl = win == 'e' ? 60 : 150;
         if (xb - xa > zb < za ? (xb - xa) > (za - zb) : 0) {}
         if ((xb - xa) >= (za - zb)) {   // runs along x: panes on the north and south faces
-            setVector(&a, xb, gy0, za + 1); setVector(&b, xa, gy0, za + 1); setVector(&c, xb, gy1, za + 1); setVector(&d, xa, gy1, za + 1);
-            gfx_quad_ft(&a, &b, &c, &d, glass_tex.tpage, 0, glass_tex.u, glass_tex.v, glass_tex.u + 7, glass_tex.v, glass_tex.u, glass_tex.v + 7, glass_tex.u + 7, glass_tex.v + 7, gl, 1, 1);
-            setVector(&a, xa, gy0, zb - 1); setVector(&b, xb, gy0, zb - 1); setVector(&c, xa, gy1, zb - 1); setVector(&d, xb, gy1, zb - 1);
-            gfx_quad_ft(&a, &b, &c, &d, glass_tex.tpage, 0, glass_tex.u, glass_tex.v, glass_tex.u + 7, glass_tex.v, glass_tex.u, glass_tex.v + 7, glass_tex.u + 7, glass_tex.v + 7, gl, 1, 1);
+            if (cam.eye.vz > za) { setVector(&a, xb, gy0, za + 1); setVector(&b, xa, gy0, za + 1); setVector(&c, xb, gy1, za + 1); setVector(&d, xa, gy1, za + 1);
+            gfx_quad_ft(&a, &b, &c, &d, glass_tex.tpage, 0, glass_tex.u, glass_tex.v, glass_tex.u + 7, glass_tex.v, glass_tex.u, glass_tex.v + 7, glass_tex.u + 7, glass_tex.v + 7, gl, 1, 1); }
+            if (cam.eye.vz < zb) { setVector(&a, xa, gy0, zb - 1); setVector(&b, xb, gy0, zb - 1); setVector(&c, xa, gy1, zb - 1); setVector(&d, xb, gy1, zb - 1);
+            gfx_quad_ft(&a, &b, &c, &d, glass_tex.tpage, 0, glass_tex.u, glass_tex.v, glass_tex.u + 7, glass_tex.v, glass_tex.u, glass_tex.v + 7, glass_tex.u + 7, glass_tex.v + 7, gl, 1, 1); }
         } else {
-            setVector(&a, xa - 1, gy0, za); setVector(&b, xa - 1, gy0, zb); setVector(&c, xa - 1, gy1, za); setVector(&d, xa - 1, gy1, zb);
-            gfx_quad_ft(&a, &b, &c, &d, glass_tex.tpage, 0, glass_tex.u, glass_tex.v, glass_tex.u + 7, glass_tex.v, glass_tex.u, glass_tex.v + 7, glass_tex.u + 7, glass_tex.v + 7, gl, 1, 1);
-            setVector(&a, xb + 1, gy0, zb); setVector(&b, xb + 1, gy0, za); setVector(&c, xb + 1, gy1, zb); setVector(&d, xb + 1, gy1, za);
-            gfx_quad_ft(&a, &b, &c, &d, glass_tex.tpage, 0, glass_tex.u, glass_tex.v, glass_tex.u + 7, glass_tex.v, glass_tex.u, glass_tex.v + 7, glass_tex.u + 7, glass_tex.v + 7, gl, 1, 1);
+            if (cam.eye.vx < xa) { setVector(&a, xa - 1, gy0, za); setVector(&b, xa - 1, gy0, zb); setVector(&c, xa - 1, gy1, za); setVector(&d, xa - 1, gy1, zb);
+            gfx_quad_ft(&a, &b, &c, &d, glass_tex.tpage, 0, glass_tex.u, glass_tex.v, glass_tex.u + 7, glass_tex.v, glass_tex.u, glass_tex.v + 7, glass_tex.u + 7, glass_tex.v + 7, gl, 1, 1); }
+            if (cam.eye.vx > xb) { setVector(&a, xb + 1, gy0, zb); setVector(&b, xb + 1, gy0, za); setVector(&c, xb + 1, gy1, zb); setVector(&d, xb + 1, gy1, za);
+            gfx_quad_ft(&a, &b, &c, &d, glass_tex.tpage, 0, glass_tex.u, glass_tex.v, glass_tex.u + 7, glass_tex.v, glass_tex.u, glass_tex.v + 7, glass_tex.u + 7, glass_tex.v + 7, gl, 1, 1); }
         }
     }
 }
@@ -776,25 +1257,32 @@ static void tile_view_init(TileView *tv, int wx0, int wy, int wz0) {   // (wx0, 
 static inline void tile_view(const TileView *tv, int mx, int my, int *vx, int *vy, int *vz) {
     *vx = (tv->bx + mx * tv->xx + my * tv->yx) >> 4; *vy = (tv->by + mx * tv->xy + my * tv->yy) >> 4; *vz = (tv->bz + mx * tv->xz + my * tv->yz) >> 4;
 }
-static void draw_layer(int fx, int fy, int t, int cutaway, int lvl) {
+static u8 bld[MH][MW];
+static int rx0, rx1, ry0, ry1, ex0, ex1, ey0, ey1;
+static inline int in_range(int x, int y);
+static u8 lvl_bb[NLEVELS][4];
+static int open_air(int x, int y) { return x < 0 || y < 0 || x >= MW || y >= MH || dm[y][x] == ' '; }
+// shell: a storey above the one you are on (only other buildings' outside walls show); focus: the building you are in
+static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, int focus) {
     // the camera's forward on the ground (unit, 4096), to decide which walls stand between it and the focus
     int cdx = cam.at.vx - cam.eye.vx, cdz = cam.at.vz - cam.eye.vz;
     int len = SquareRoot0(cdx * cdx + cdz * cdz); if (len < 1) len = 1;
     int fdx = (cdx << 12) / len, fdz = (cdz << 12) / len;
     int focx = fx * TILE + TILE / 2, focz = -(fy * TILE + TILE / 2);
-    int R = 12;
-    int x0 = MAX(0, fx - R) & ~1, x1 = MIN(MW - 1, fx + R), y0 = MAX(0, fy - R) & ~1, y1 = MIN(MH - 1, fy + R);
+    int x0 = rx0, x1 = rx1, y0 = ry0, y1 = ry1;
     static u8 done[MH][MW];
     TileView tvF, tvT;
     tile_view_init(&tvF, TILE, 0, -TILE);                           // a 2x2 floor block's centre
     tile_view_init(&tvT, TILE / 2, -WALL_FULL / 2, -TILE / 2);      // a tile's centre, half a wall up
     // 2x2 blocks of one floor draw as a single quad
-    { PROF_BEGIN();
+    for (int my = ey0; my <= ey1; my++) memset(&done[my][ex0], 0, ex1 - ex0 + 1);
+    if (!shell) { PROF_BEGIN();
     for (int my = y0; my <= y1; my += 2) for (int mx = x0; mx <= x1; mx += 2) {
         int ok = (mx + 1 < MW && my + 1 < MH);
         int f0 = dfl[my][mx];
         if (ok) ok = f0 != FL_WATER && dfl[my][mx + 1] == f0 && dfl[my + 1][mx] == f0 && dfl[my + 1][mx + 1] == f0;
         if (ok && lvl) ok = dm[my][mx] != ' ' && dm[my][mx + 1] != ' ' && dm[my + 1][mx] != ' ' && dm[my + 1][mx + 1] != ' ';
+        if (ok && ((bld[my][mx] && bld[my][mx] != focus) || (bld[my + 1][mx + 1] && bld[my + 1][mx + 1] != focus))) { done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 2; continue; }   // inside someone else's building: under its roof
         done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 0;
         if (!ok) continue;
         int vx, vy, vz; tile_view(&tvF, mx, my, &vx, &vy, &vz);
@@ -805,11 +1293,27 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl) {
         done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 1;
     }
     PROF_END(0); }
-    for (int my = y0; my <= y1; my++) for (int mx = x0; mx <= x1; mx++) {
+    int lx0 = ex0, lx1 = ex1, ly0 = ey0, ly1 = ey1;
+    if (lvl) { lx0 = MAX(lx0, lvl_bb[lvl][0]); ly0 = MAX(ly0, lvl_bb[lvl][1]); lx1 = MIN(lx1, lvl_bb[lvl][2]); ly1 = MIN(ly1, lvl_bb[lvl][3]); }
+    for (int my = ly0; my <= ly1; my++) for (int mx = lx0; mx <= lx1; mx++) {
         int wx = mx * TILE + TILE / 2, wz = -(my * TILE + TILE / 2);
         char c = dm[my][mx];
         if (c == ' ') continue;                                       // open air (upper storeys)
+        int inR = mx >= rx0 && mx <= rx1 && my >= ry0 && my <= ry1;
+        if (!inR && !in_range(mx, my)) continue;                     // past the range (a building cut by it is drawn whole)
+        if (shell || !inR) {                                         // a storey seen from outside, or a far part of a building: its outside walls only
+            if (shell && focus && bld[my][mx] == focus) continue;
+            if (!is_wall(c) || !(open_air(mx - 1, my) || open_air(mx + 1, my) || open_air(mx, my - 1) || open_air(mx, my + 1) || !lvl)) { if (lvl && shell) fascia(mx, my); continue; }
+            { int vx, vy, vz; tile_view(&tvT, mx, my, &vx, &vy, &vz);
+              if (vz < -TILE || ABS(vx) > (vz * 3) / 4 + TILE * 2 || ABS(vy) > (vz * 5) / 8 + TILE * 3) continue; }
+            if (!lvl) { char n4 = 0; if (mx > 0 && mx < MW - 1 && my > 0 && my < MH - 1) n4 = (dm[my][mx - 1] != '.' && dm[my][mx + 1] != '.' && dm[my - 1][mx] != '.' && dm[my + 1][mx] != '.'); if (n4) continue; }
+            { PROF_BEGIN(); ws_lite = bld[my][mx] != 0; wall_tile(mx, my, c == 'w' ? WALL_LOW : WALL_FULL, 0); ws_lite = 0; world_dbg_walls++; PROF_END(1); }
+            if (lvl) fascia(mx, my);
+            continue;
+        }
         if (done[my][mx] && c == '.' && !lvl) continue;              // floor already drawn, nothing on it
+        { int b = bld[my][mx];                                       // inside a building you are not in: its roof hides the rooms (only its walls show)
+          if (b && b != focus && !is_wall(c) && c != 'D' && !world_roof_show) continue; }
         // frustum: the tile centre in view space
         { int vx, vy, vz; tile_view(&tvT, mx, my, &vx, &vy, &vz);
           if (vz < -TILE) continue;
@@ -823,7 +1327,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl) {
                 int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12);   // distance past the focus along the view
                 if (along < -TILE / 4) { h = WALL_LOW; cut = 1; }
             }
-            { PROF_BEGIN(); wall_tile(mx, my, h, cut); world_dbg_walls++; PROF_END(1); }
+            { PROF_BEGIN(); ws_lite = bld[my][mx] && bld[my][mx] != focus && !world_roof_show; wall_tile(mx, my, h, cut); ws_lite = 0; world_dbg_walls++; PROF_END(1); }
         } else if (c != '.') {
             if (c == 'D') { int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12); door_tile(mx, my, (cutaway && along < -TILE / 4) ? WALL_LOW : WALL_FULL); }
             int rot = items_rotates(c) ? world_item_facing(mx, my) : 0;
@@ -843,13 +1347,25 @@ static u8 roofM[NLEVELS][MH][MW];                 // 1: this tile is under the r
 static u8 bld[MH][MW];                             // the building each ground tile belongs to (0: outdoors)
 static u8 roof_tex_ok; static TexRef roof_tex;
 static int enclose(char c) { return c == 'W' || c == 'E' || c == 'e' || c == 'D'; }
+// The buildings: every connected indoor area of the ground storey, its footprint (a box round it), how many storeys it has, its
+// roof (in SAN BOREAS each building has its own: style, colour and pitch from its own dice; elsewhere the build-mode choice)
+// and its wall colour (for the far skyline).
+#define NBLD 251
+static u8 b_x0[NBLD], b_y0[NBLD], b_x1[NBLD], b_y1[NBLD], b_top[NBLD], b_sty[NBLD], b_col[NBLD], b_pit[NBLD], b_str[NBLD];
+static u16 b_wall[NBLD]; static int nbld;
+extern u16 bfs_q[MW * MH]; extern s16 bfs_par[MH][MW];   // (sim.c's route-finding buffers: the roof rebuild borrows them)
+static u8 lvl_bb[NLEVELS][4];                     // each storey's built-on box (x0, y0, x1, y1)
 static void roof_rebuild(void) {
-    static u8 out[MH][MW]; static u16 q[MH * MW];
+    u8 (*out)[MW] = (u8 (*)[MW])bfs_par; u16 *q = bfs_q;
     memset(roofM, 0, sizeof roofM); memset(roofH, 0, sizeof roofH);
     for (int l = 0; l < NLEVELS; l++) {
-        int used = 0;
-        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if (world_at_l(l, x, y) != ' ') used = 1;
-        lvl_used[l] = (u8)(l == 0 || used);
+        int used = 0, bx0 = MW, by0 = MH, bx1 = -1, by1 = -1;
+        if (l == 0) { bx0 = 0; by0 = 0; bx1 = MW - 1; by1 = MH - 1; used = 1; }
+        else { const Level *L = lv_get(l - 1);
+            if (L) for (int y = 0; y < MH; y++) { const char *row = L->map[y];
+                for (int x = 0; x < MW; x++) if (row[x] != ' ') { used = 1; if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; } } }
+        lvl_used[l] = (u8)used;
+        if (used) { lvl_bb[l][0] = (u8)bx0; lvl_bb[l][1] = (u8)by0; lvl_bb[l][2] = (u8)bx1; lvl_bb[l][3] = (u8)by1; }
         if (!lvl_used[l]) continue;
         // outdoors: everything the map's edge reaches without crossing a wall, a door or a window
         memset(out, 0, sizeof out); int qh = 0, qt = 0;
@@ -863,48 +1379,66 @@ static void roof_rebuild(void) {
         for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
             if (out[y][x]) continue;
             if (l < NUP && world_at_l(l + 1, x, y) != ' ') continue;   // a storey above covers it: no roof here
-            if (l > 0 && world_at_l(l, x, y) == ' ' && !enclose(world_at_l(l, x, y))) { /* a hole inside walls (a stairwell): still roofed */ }
             roofM[l][y][x] = 1;
         }
         if (l == 0) { memset(bld, 0, sizeof bld); int id = 0;   // the buildings: connected indoor areas of the ground storey
             for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
                 if (out[y][x] || bld[y][x]) continue;
-                if (++id > 250) id = 250;
+                if (++id > NBLD - 1) id = NBLD - 1;
+                b_x0[id] = b_x1[id] = (u8)x; b_y0[id] = b_y1[id] = (u8)y; b_top[id] = 0; b_wall[id] = 0;
                 qh = qt = 0; bld[y][x] = (u8)id; q[qt++] = (u16)(y * MW + x);
                 while (qh < qt) { int c = q[qh++], cx = c % MW, cy = c / MW;
+                    if (cx < b_x0[id]) b_x0[id] = (u8)cx; if (cx > b_x1[id]) b_x1[id] = (u8)cx; if (cy < b_y0[id]) b_y0[id] = (u8)cy; if (cy > b_y1[id]) b_y1[id] = (u8)cy;
+                    if (!b_wall[id] && is_wall(lifeMap[cy][cx])) b_wall[id] = wp_top[wallMap[cy][cx] % NWALLS] | 0x8000;
                     static const signed char dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
                     for (int k = 0; k < 4; k++) { int nx = cx + dx[k], ny = cy + dy[k];
                         if (nx < 0 || ny < 0 || nx >= MW || ny >= MH || out[ny][nx] || bld[ny][nx]) continue;
-                        bld[ny][nx] = (u8)id; q[qt++] = (u16)(ny * MW + nx); } } } }
-        // the distance in from the edge, per tile
-        static u8 Dd[MH][MW];
+                        bld[ny][nx] = (u8)id; q[qt++] = (u16)(ny * MW + nx); } } }
+            nbld = id; }
+    }
+    for (int l = 1; l < NLEVELS; l++) if (lvl_used[l])          // how tall each building is
+        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) { int b = bld[y][x]; if (b && roofM[l][y][x] && l > b_top[b]) b_top[b] = (u8)l; }
+    for (int b = 1; b <= nbld; b++) {                            // each building's roof
+        if (world_zone == ZONE_CITY && world_wbx >= 0) {
+            u32 h = bm_hash(world_wbx * BM_BLK + b_x0[b], world_wby * BM_BLK + b_y0[b], wsalt ^ 0x500Fu);
+            int w = b_x1[b] - b_x0[b] + 1, d = b_y1[b] - b_y0[b] + 1;
+            b_sty[b] = (u8)(b_top[b] >= 2 || (w >= 11 && d >= 9 && (h & 3) == 0) ? 2 : (h >> 2) & 1);   // towers and big blocks: flat roofs
+            b_col[b] = (u8)((h >> 4) % NROOF_COL); b_pit[b] = (u8)(1 + ((h >> 8) & 1));
+        } else { b_sty[b] = (u8)world_roof_style; b_col[b] = (u8)world_roof_col; b_pit[b] = (u8)world_roof_pitch; }
+    }
+    b_sty[0] = (u8)world_roof_style; b_col[0] = (u8)world_roof_col; b_pit[0] = (u8)world_roof_pitch;
+    u8 (*Dd)[MW] = (u8 (*)[MW])((u8 *)bfs_par + MH * MW);
+    for (int l = 0; l < NLEVELS; l++) {
+        if (!lvl_used[l]) continue;
+        // the distance in from the edge, per tile (the roof height is capped at 3, so 4 passes are all a hip roof needs)
         for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) Dd[y][x] = 0;
-        if (world_roof_style == 0) {          // HIP: chessboard distance, so the hips run at 45 degrees
-            for (int pass = 1; pass < 40; pass++) { int any = 0;
-                for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
-                    if (!roofM[l][y][x] || Dd[y][x]) continue;
-                    int mn = 255;
-                    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int nx = x + i, ny = y + j;
-                        int v = (nx < 0 || ny < 0 || nx >= MW || ny >= MH || !roofM[l][ny][nx]) ? 0 : Dd[ny][nx] ? Dd[ny][nx] : 255; if (v < mn) mn = v; }
-                    if (mn == pass - 1) { Dd[y][x] = (u8)pass; any = 1; } }
-                if (!any) break; }
-        } else if (world_roof_style == 1) {   // GABLE: the ridge runs along each building's longer side
+        for (int pass = 1; pass <= 4; pass++) { int any = 0;
             for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
-                if (!roofM[l][y][x]) continue;
+                if (!roofM[l][y][x] || Dd[y][x] || b_sty[bld[y][x]] != 0) continue;
+                int mn = 255;
+                for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int nx = x + i, ny = y + j;
+                    int v = (nx < 0 || ny < 0 || nx >= MW || ny >= MH || !roofM[l][ny][nx]) ? 0 : Dd[ny][nx] ? Dd[ny][nx] : 255; if (v < mn) mn = v; }
+                if (mn == pass - 1) { Dd[y][x] = (u8)pass; any = 1; } }
+            if (!any) break; }
+        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
+            if (!roofM[l][y][x]) continue;
+            int st = b_sty[bld[y][x]];
+            if (st == 0) { if (!Dd[y][x]) Dd[y][x] = 4; }
+            else if (st == 1) {                                  // GABLE: the ridge runs along each building's longer side
                 int up = 0, dn = 0, lf = 0, rt = 0;
                 while (y - up - 1 >= 0 && roofM[l][y - up - 1][x]) up++;
                 while (y + dn + 1 < MH && roofM[l][y + dn + 1][x]) dn++;
                 while (x - lf - 1 >= 0 && roofM[l][y][x - lf - 1]) lf++;
                 while (x + rt + 1 < MW && roofM[l][y][x + rt + 1]) rt++;
                 int across_y = MIN(up, dn) + 1, across_x = MIN(lf, rt) + 1;
-                Dd[y][x] = (u8)((up + dn) <= (lf + rt) ? across_y : across_x);   // slope across the narrow way
-            }
+                Dd[y][x] = (u8)((up + dn) <= (lf + rt) ? across_y : across_x);
+            } else Dd[y][x] = 0;                                  // FLAT
         }
         for (int Y = 0; Y <= MH; Y++) for (int X = 0; X <= MW; X++) {
             int mn = 255;
             for (int k = 0; k < 4; k++) { int x = X - 1 + (k & 1), y = Y - 1 + (k >> 1);
                 int v = (x < 0 || y < 0 || x >= MW || y >= MH || !roofM[l][y][x]) ? 0 : Dd[y][x]; if (v < mn) mn = v; }
-            roofH[l][Y][X] = (u8)(world_roof_style == 2 ? 0 : MIN(mn, 3));   // capped: wide buildings level off
+            roofH[l][Y][X] = (u8)MIN(mn, 3);                     // capped: wide buildings level off
         }
     }
     roof_dirty = 0;
@@ -921,15 +1455,16 @@ static void roof_tex_make(void) {   // shingles: courses of overlapping tiles, e
     roof_tex = atlas_add(16, 16, px); roof_tex_ok = 1;
 }
 static inline int rmask(int l, int x, int y) { return x >= 0 && y >= 0 && x < MW && y < MH && roofM[l][y][x]; }
+static int rc_sty;
 static void roof_corner(int l, int X, int Y, SVECTOR *v, int base, int pitch) {   // a roof corner, the eaves pushed out at the footprint's edge
     int h = roofH[l][Y][X], ox = 0, oz = 0, OVH = 34;
     if (!rmask(l, X - 1, Y - 1) && !rmask(l, X - 1, Y)) ox = -OVH;
     if (!rmask(l, X, Y - 1) && !rmask(l, X, Y)) ox = OVH;
     if (!rmask(l, X - 1, Y - 1) && !rmask(l, X, Y - 1)) oz = OVH;
     if (!rmask(l, X - 1, Y) && !rmask(l, X, Y)) oz = -OVH;
-    if (world_roof_style == 2) { ox = ox / 2; oz = oz / 2; }      // a flat roof: a short lip, no slope
-    int drop = (h == 0 && world_roof_style != 2) ? (OVH * pitch) >> 8 : 0;
-    setVector(v, X * TILE + ox, base - h * pitch + drop - (world_roof_style == 2 ? 10 : 0), -Y * TILE + oz);
+    if (rc_sty == 2) { ox = ox / 2; oz = oz / 2; }               // a flat roof: a short lip, no slope
+    int drop = (h == 0 && rc_sty != 2) ? (OVH * pitch) >> 8 : 0;
+    setVector(v, X * TILE + ox, base - h * pitch + drop - (rc_sty == 2 ? 10 : 0), -Y * TILE + oz);
 }
 static int rc_l, rc_base, rc_pitch;
 static const XV *cc_roof_at(int X, int Y) {          // a roof corner (eaves and all), transformed once a frame
@@ -939,20 +1474,40 @@ static const XV *cc_roof_at(int X, int Y) {          // a roof corner (eaves and
     if (c->st[j][i] != c->gen) { roof_corner(rc_l, X, Y, &s, rc_base, rc_pitch); gfx_xform(&s, &c->v[j][i], 1); c->st[j][i] = c->gen; }
     return &c->v[j][i];
 }
-static void roofs_draw(int fx, int fy, int x0, int x1, int y0, int y1) {
+static int rx0, rx1, ry0, ry1, ex0, ex1, ey0, ey1;           // this frame's detail range, and that range grown to take in the buildings it cuts through
+static inline int in_range(int x, int y) {
+    if (x >= rx0 && x <= rx1 && y >= ry0 && y <= ry1) return 1;
+    int b = bld[y][x]; return b && b_str[b];
+}
+static void roofs_draw(int fx, int fy) {
     if (!roof_tex_ok) roof_tex_make();
     int focus = (fx >= 0 && fy >= 0 && fx < MW && fy < MH) ? bld[fy][fx] : 0;
-    int pitch = roofPitch[world_roof_pitch % NROOF_PITCH];
-    const u8 *rc = roofCol[world_roof_col % NROOF_COL];
     gfx_set_identity();
-    for (int l = 0; l <= world_view_lvl && l < NLEVELS; l++) {
+    for (int l = 0; l < NLEVELS; l++) {
         if (!lvl_used[l]) continue;
         int base = -(l + 1) * WALL_FULL;
-        TileView tv; tile_view_init(&tv, TILE / 2, base - pitch, -TILE / 2);
-        rc_l = l; rc_base = base; rc_pitch = pitch; cc_begin(&cc_roof, x0, y0, base);
-        for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
-            if (!roofM[l][y][x]) continue;
-            if (focus && bld[y][x] == focus && !world_roof_show) continue;   // the building you are in shows its rooms
+        TileView tv; tile_view_init(&tv, TILE / 2, base - 170, -TILE / 2);
+        rc_l = l; rc_base = base; cc_begin(&cc_roof, ex0, ey0, base);
+        int cur_b = -1, pitch = 170; const u8 *rc = roofCol[0];
+        for (int y = ey0; y <= ey1; y++) for (int x = ex0; x <= ex1; x++) {
+            if (!roofM[l][y][x] || !in_range(x, y)) continue;
+            int b = bld[y][x];
+            if (focus && b == focus && (!world_roof_show || l > world_view_lvl)) { if (!world_roof_show) continue; }   // the building you are in shows its rooms
+            if (b != cur_b) { cur_b = b; pitch = roofPitch[b_pit[b] % NROOF_PITCH]; rc = roofCol[b_col[b] % NROOF_COL]; rc_sty = b_sty[b]; rc_pitch = pitch; }
+            if (rc_sty == 2 && b && b_top[b] == l) {                // a flat roof: the building's whole top in one slab (drawn from its first tile)
+                if (x != b_x0[b] || y != b_y0[b]) { if (!(roofM[l][b_y0[b]][b_x0[b]])) {} else continue; }
+                else {
+                    int X0 = b_x0[b] * TILE - 17, X1 = (b_x1[b] + 1) * TILE + 17, Z0 = -b_y0[b] * TILE + 17, Z1 = -(b_y1[b] + 1) * TILE - 17, Y = base - 10;
+                    SVECTOR a, bb, cc, dd; setVector(&a, X0, Y, Z0); setVector(&bb, X1, Y, Z0); setVector(&cc, X0, Y, Z1); setVector(&dd, X1, Y, Z1);
+                    int L = CLAMP(gfx_light(0, -ONE, 0), 60, 220);
+                    gfx_quad_f(&a, &bb, &cc, &dd, (118 * L) >> 7, (116 * L) >> 7, (112 * L) >> 7, 1);
+                    setVector(&a, X0, Y - 24, Z1); setVector(&bb, X1, Y - 24, Z1); setVector(&cc, X0, Y, Z1); setVector(&dd, X1, Y, Z1); gfx_quad_f(&a, &bb, &cc, &dd, 150, 146, 140, 1);   // the parapet
+                    setVector(&a, X1, Y - 24, Z0); setVector(&bb, X0, Y - 24, Z0); setVector(&cc, X1, Y, Z0); setVector(&dd, X0, Y, Z0); gfx_quad_f(&a, &bb, &cc, &dd, 150, 146, 140, 1);
+                    setVector(&a, X0, Y - 24, Z0); setVector(&bb, X0, Y - 24, Z1); setVector(&cc, X0, Y, Z0); setVector(&dd, X0, Y, Z1); gfx_quad_f(&a, &bb, &cc, &dd, 132, 128, 124, 1);
+                    setVector(&a, X1, Y - 24, Z1); setVector(&bb, X1, Y - 24, Z0); setVector(&cc, X1, Y, Z1); setVector(&dd, X1, Y, Z0); gfx_quad_f(&a, &bb, &cc, &dd, 132, 128, 124, 1);
+                    continue;
+                }
+            }
             int vx, vy, vz; tile_view(&tv, x, y, &vx, &vy, &vz);
             if (vz < -TILE) continue;
             if (ABS(vx) > (vz * 3) / 4 + TILE * 2) continue;
@@ -979,40 +1534,97 @@ static void roofs_draw(int fx, int fy, int x0, int x1, int y0, int y1) {
                 else if (k == 2) { X1 = x + 1; Y1 = y; X2 = x; Y2 = y; } else { X1 = x; Y1 = y; X2 = x; Y2 = y + 1; }
                 int h1 = roofH[l][Y1][X1], h2 = roofH[l][Y2][X2];
                 if (!h1 && !h2) continue;
-                SVECTOR a, b, cc, dd;
-                setVector(&a, X1 * TILE, base - h1 * pitch, -Y1 * TILE); setVector(&b, X2 * TILE, base - h2 * pitch, -Y2 * TILE);
+                SVECTOR a, b2, cc, dd;
+                setVector(&a, X1 * TILE, base - h1 * pitch, -Y1 * TILE); setVector(&b2, X2 * TILE, base - h2 * pitch, -Y2 * TILE);
                 setVector(&cc, X1 * TILE, base, -Y1 * TILE); setVector(&dd, X2 * TILE, base, -Y2 * TILE);
                 int Lw = gfx_light(ex[k] * ONE, 0, -ey[k] * ONE);
-                gfx_quad_f(&a, &b, &cc, &dd, MIN(255, (226 * Lw) >> 7), MIN(255, (214 * Lw) >> 7), MIN(255, (190 * Lw) >> 7), 1);
+                gfx_quad_f(&a, &b2, &cc, &dd, MIN(255, (226 * Lw) >> 7), MIN(255, (214 * Lw) >> 7), MIN(255, (190 * Lw) >> 7), 1);
             }
         }
     }
 }
-
+// ---- the far skyline: buildings past the detail range, as boxes (a wall colour, a band of windows a storey, the roof) ----
+static void far_quad(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, int dx, int dy, int dz, u16 col, int L) {
+    SVECTOR a, b, c, d; setVector(&a, ax, ay, az); setVector(&b, bx, by, bz); setVector(&c, cx, cy, cz); setVector(&d, dx, dy, dz);
+    gfx_quad_f(&a, &b, &c, &d, MIN(255, (R8(col) * L) >> 7), MIN(255, (G8(col) * L) >> 7), MIN(255, (B8(col) * L) >> 7), 1);
+}
+static void far_box(int b, int windows) {
+    int x0 = b_x0[b] * TILE, x1 = (b_x1[b] + 1) * TILE, zN = -b_y0[b] * TILE, zS = -(b_y1[b] + 1) * TILE;
+    int st = b_top[b] + 1, HT = st * WALL_FULL, cx = (x0 + x1) / 2, cz = (zN + zS) / 2, rad = MAX(x1 - x0, zN - zS) * 3 / 4 + HT / 2;
+    if (!gfx_visible(cx, -HT / 2, cz, rad)) return;
+    u16 wc = b_wall[b] ? b_wall[b] : RGB(24, 22, 19), glass = RGB(6, 9, 14);
+    int LS = CLAMP(gfx_light(0, 0, -ONE), 40, 220), LN = CLAMP(gfx_light(0, 0, ONE), 40, 220), LW = CLAMP(gfx_light(-ONE, 0, 0), 40, 220), LE = CLAMP(gfx_light(ONE, 0, 0), 40, 220);
+    far_quad(x0, -HT, zS, x1, -HT, zS, x0, 0, zS, x1, 0, zS, wc, LS);          // south
+    far_quad(x1, -HT, zN, x0, -HT, zN, x1, 0, zN, x0, 0, zN, wc, LN);          // north
+    far_quad(x0, -HT, zN, x0, -HT, zS, x0, 0, zN, x0, 0, zS, wc, LW);          // west
+    far_quad(x1, -HT, zS, x1, -HT, zN, x1, 0, zS, x1, 0, zN, wc, LE);          // east
+    if (windows) for (int s = 0; s < st; s++) {                              // a band of windows round each storey
+        int ya = -(s * WALL_FULL + 360), yb = -(s * WALL_FULL + 170), I = 60, O = 6;
+        far_quad(x0 + I, ya, zS - O, x1 - I, ya, zS - O, x0 + I, yb, zS - O, x1 - I, yb, zS - O, glass, LS + 40);
+        far_quad(x1 - I, ya, zN + O, x0 + I, ya, zN + O, x1 - I, yb, zN + O, x0 + I, yb, zN + O, glass, LN + 40);
+        far_quad(x0 - O, ya, zN - I, x0 - O, ya, zS + I, x0 - O, yb, zN - I, x0 - O, yb, zS + I, glass, LW + 40);
+        far_quad(x1 + O, ya, zS + I, x1 + O, ya, zN - I, x1 + O, yb, zS + I, x1 + O, yb, zN - I, glass, LE + 40);
+    }
+    const u8 *rc = roofCol[b_col[b] % NROOF_COL]; u16 rcol = RGB(rc[0] >> 3, rc[1] >> 3, rc[2] >> 3);
+    if (b_sty[b] == 2) { u16 roof = RGB(16, 16, 17); far_quad(x0, -HT - 8, zN, x1, -HT - 8, zN, x0, -HT - 8, zS, x1, -HT - 8, zS, roof, CLAMP(gfx_light(0, -ONE, 0), 60, 220)); }
+    else {                                                                   // a hip roof: four slopes up to a point (or a ridge)
+        int ph = MIN(x1 - x0, zN - zS) / 2 * roofPitch[b_pit[b] % NROOF_PITCH] / TILE;
+        SVECTOR a, bb, c; int Lr = CLAMP(gfx_light(0, -ONE * 3 / 4, -ONE / 2), 50, 230);
+        int r = MIN(255, (R8(rcol) * Lr) >> 7), g = MIN(255, (G8(rcol) * Lr) >> 7), bl = MIN(255, (B8(rcol) * Lr) >> 7);
+        setVector(&c, cx, -HT - ph, cz);
+        setVector(&a, x0, -HT, zS); setVector(&bb, x1, -HT, zS); gfx_tri_f(&c, &bb, &a, r, g, bl, 1); gfx_tri_f(&c, &a, &bb, r, g, bl, 1);
+        setVector(&a, x1, -HT, zN); setVector(&bb, x0, -HT, zN); gfx_tri_f(&c, &bb, &a, r * 3 / 4, g * 3 / 4, bl * 3 / 4, 1); gfx_tri_f(&c, &a, &bb, r * 3 / 4, g * 3 / 4, bl * 3 / 4, 1);
+        setVector(&a, x0, -HT, zN); setVector(&bb, x0, -HT, zS); gfx_tri_f(&c, &bb, &a, r * 7 / 8, g * 7 / 8, bl * 7 / 8, 1); gfx_tri_f(&c, &a, &bb, r * 7 / 8, g * 7 / 8, bl * 7 / 8, 1);
+        setVector(&a, x1, -HT, zS); setVector(&bb, x1, -HT, zN); gfx_tri_f(&c, &bb, &a, r * 7 / 8, g * 7 / 8, bl * 7 / 8, 1); gfx_tri_f(&c, &a, &bb, r * 7 / 8, g * 7 / 8, bl * 7 / 8, 1);
+    }
+}
+int world_far_range = 34;                       // how far (tiles) the skyline reaches (more with 8 MB: everything in the window)
 void world_draw(int fx, int fy, int t, int cutaway) {
     gfx_set_identity(); world_dbg_walls = 0;
     gfx_set_reserve(RESERVE_PEOPLE + RESERVE_UI);   // the world may not use up the room the people need
     frame_t = t;
     if (ao_dirty) ao_update();
     if (roof_dirty) roof_rebuild();
+    const int R = 12;
+    rx0 = MAX(0, fx - R) & ~1; rx1 = MIN(MW - 1, fx + R); ry0 = MAX(0, fy - R) & ~1; ry1 = MIN(MH - 1, fy + R);
+    ex0 = rx0; ex1 = rx1; ey0 = ry0; ey1 = ry1;
+    int focus = (fx >= 0 && fy >= 0 && fx < MW && fy < MH) ? bld[fy][fx] : 0;
+    for (int b = 1; b <= nbld; b++) {               // buildings the range cuts through are drawn whole
+        int inside = b_x0[b] >= rx0 && b_x1[b] <= rx1 && b_y0[b] >= ry0 && b_y1[b] <= ry1;
+        int touch = b_x1[b] >= rx0 && b_x0[b] <= rx1 && b_y1[b] >= ry0 && b_y0[b] <= ry1;
+        b_str[b] = (u8)(touch && !inside);
+        if (b_str[b]) { ex0 = MIN(ex0, b_x0[b]); ex1 = MAX(ex1, b_x1[b]); ey0 = MIN(ey0, b_y0[b]); ey1 = MAX(ey1, b_y1[b]); }
+    }
+    ex0 &= ~1; ey0 &= ~1;
     int keep_lvl = world_lvl; world_lvl = 0;
-    draw_layer(fx, fy, t, cutaway, 0);
-    int top = MIN(world_view_lvl, NUP), any = 0;
-    for (int l = 1; l <= top; l++) any |= lvl_used[l];
-    if (any) {   // the storeys above: the drawing reads each storey's own arrays, with the camera dropped by its height
+    draw_layer(fx, fy, t, cutaway, 0, 0, focus);
+    {   // the storeys above: the drawing reads each storey's own arrays, with the camera dropped by its height. Up to the storey
+        // you are on, everything; above it, other buildings' outside walls (the one you are in stays open to the sky)
         int keep_ao = dbg_noao; dbg_noao = 1;
-        for (int l = 1; l <= top; l++) {
+        for (int l = 1; l <= NUP; l++) {
             Level *Lv = lv_get(l - 1);
             if (!lvl_used[l] || !Lv) continue;
             dm = Lv->map; dfl = Lv->fl; dwp = Lv->wp; world_lvl = l;
             world_cam_push(l);
-            draw_layer(fx, fy, t, cutaway && l == world_view_lvl, l);
+            draw_layer(fx, fy, t, cutaway && l == world_view_lvl, l, l > world_view_lvl, focus);
             world_cam_pop();
         }
         dm = lifeMap; dfl = floorMap; dwp = wallMap; world_lvl = 0;
         dbg_noao = keep_ao;
     }
-    { PROF_BEGIN(); int R = 12; roofs_draw(fx, fy, MAX(0, fx - R), MIN(MW - 1, fx + R), MAX(0, fy - R), MIN(MH - 1, fy + R)); PROF_END(3); }
+    { PROF_BEGIN(); roofs_draw(fx, fy); PROF_END(3); }
+    {   // the skyline: everything past the range, as boxes (windows on the nearer ones)
+        PROF_BEGIN(); gfx_set_identity();
+        int far2 = world_far_range * world_far_range;
+        for (int b = 1; b <= nbld; b++) {
+            if (b_x1[b] >= rx0 && b_x0[b] <= rx1 && b_y1[b] >= ry0 && b_y0[b] <= ry1) continue;   // in range: drawn properly
+            int dx = (b_x0[b] + b_x1[b]) / 2 - fx, dy = (b_y0[b] + b_y1[b]) / 2 - fy, d2 = dx * dx + dy * dy;
+            if (d2 > far2) continue;
+            far_box(b, d2 < 22 * 22);
+        }
+        PROF_END(3);
+    }
     world_lvl = keep_lvl;
     gfx_set_reserve(0);
+    { extern int gfx_world_peak, gfx_bytes_used(void); int u = gfx_bytes_used(); if (u > gfx_world_peak) gfx_world_peak = u; }
 }
