@@ -17,6 +17,8 @@ jobs:
       - name: Build the disc
         run: |
           export PATH=/opt/mipsel/bin:/opt/psn00bsdk/bin:$PATH PSN00BSDK_LIBS=/opt/psn00bsdk/lib/libpsn00b
-          cmake --preset default && cmake --build build --target iso
+          cmake --preset default && cmake --build build --target chd
       - uses: actions/upload-artifact@v4
         with: { name: bore2_disc, path: "build/bore2.*" }
+      - uses: actions/upload-artifact@v4
+        with: { name: BORE2_chd, path: "build/BORE2.chd" }

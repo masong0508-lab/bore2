@@ -4,8 +4,12 @@ The sequel to BORE (GBA), in true 3D. The voxel people (6x4x8 blocks, built by t
 (the GBA's textured boxes), the 40x40 lots, 103 wallpapers and all 33 jukebox songs are on the disc.
 
 ## Play it
-`bore2.cue` + `bore2.bin` (about 6 MB, every song included) in DuckStation, PCSX-ReARMed or on a real PlayStation (burn the cue/bin).
-Every push to GitHub builds the disc: open Actions, the newest green run, and download **bore2_disc** under Artifacts.
+**[disc/BORE2.chd](disc/BORE2.chd)**: the whole game in one file (about 4 MB, every song included). Download it and open it in
+DuckStation (File > Start File). Turn on *Settings > Console > Enable 8MB RAM* for the bigger world: the game finds the extra RAM
+by itself, and still runs on a normal 2 MB PlayStation.
+
+For a real PlayStation or PCSX-ReARMed, burn or open `bore2.cue` + `bore2.bin` from `cmake --build build --target iso`.
+Every push to GitHub builds both: open Actions, the newest green run, and download **BORE2_chd** or **bore2_disc** under Artifacts.
 
 Controls: stick / d-pad move, X uses the thing in front (fridge, bed, shower, sofa, TV, radio, the DeadSet...), talk to a
 housemate with X, O gets up, SQUARE runs, TRIANGLE game speed, SELECT switches Bore, START the menu (TRAVEL to the island
@@ -20,7 +24,7 @@ and the desert town, BUILD MODE, CREATE A BORE, JUKEBOX). Camera: L1 R1 orbit, L
        cmake --preset default
        cmake --build build --target iso
 
-3. Open `build/bore2.cue` in DuckStation.
+3. Open `build/bore2.cue` in DuckStation. (`--target chd` also makes the one-file `build/BORE2.chd`: `tools/mkchd.py`.)
 
 ## The music
 All 33 jukebox songs are SEQUENCES, not recordings: each is its note events plus small instrument samples in the PS1 sound chip's

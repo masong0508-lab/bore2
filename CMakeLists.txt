@@ -25,6 +25,15 @@ psn00bsdk_add_cd_image(
 	DEPENDS bore2 system.cnf
 )
 
+# the disc as one file: BORE2.chd (DuckStation, SwanStation and the libretro PlayStation cores open it)
+add_custom_command(
+	OUTPUT  ${CMAKE_BINARY_DIR}/BORE2.chd
+	COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/mkchd.py ${CMAKE_BINARY_DIR}/bore2.cue ${CMAKE_BINARY_DIR}/BORE2.chd
+	DEPENDS iso ${CMAKE_SOURCE_DIR}/tools/mkchd.py
+	COMMENT "Making BORE2.chd"
+)
+add_custom_target(chd DEPENDS ${CMAKE_BINARY_DIR}/BORE2.chd)
+
 # a quick disc without the music, for testing in the emulator
 psn00bsdk_add_cd_image(
 	iso_lite
