@@ -86,6 +86,7 @@ static int life_started;
 static int help_page;
 static int hb_now(void) { return VSync(1); }   // hblanks since the last VSync(0) (the flip): 263 per vblank, 525 = one 30 FPS frame
 static int t_cpu, t_frame0, t_bub, t_hud, t_upd;
+int avg_cpu16, avg_world16, avg_hh16, hist_cpu[5], avg_prof16[8];
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
 int dbg_shift_hb, dbg_shifts;
@@ -225,6 +226,7 @@ static void draw_marker(const Sim *s) {   // who you are playing: a bobbing gold
     setVector(&a, -12, top - 13, -2); setVector(&b, 12, top - 13, -2); setVector(&c, 0, top + 2, -2);
     gfx_tri_f(&a, &b, &c, 90, 60, 10, 0);                     // a dark edge behind, so it reads on bright rooms
 }
+int dbg_hh_spr, dbg_hh_full, dbg_hh_miss;
 #define LOD_DIST 1280   // beyond this many world units (5 tiles) from the camera's focus, people are drawn with the crowd model
 static void draw_sims(void) {
     gfx_set_reserve(RESERVE_UI);   // the people may use what the world left, but not the HUD's share
@@ -243,11 +245,16 @@ static void draw_sims(void) {
             int edx = s->x - cam.eye.vx, edy = -110 - s->lvl * WALL_FULL - cam.eye.vy, edz = s->z - cam.eye.vz;
             // further off: the same full model as a sprite, rendered again when it has changed enough (one a frame for the household)
             int far = i != player && (fdx * fdx + fdz * fdz > 3 * TILE * 3 * TILE || edx * edx + edy * edy + edz * edz > 2100 * 2100);
-            static int hh_fr, hh_used; if (hh_fr != frame) { hh_fr = frame; hh_used = 0; }
+            // (a render is a whole model drawn: only when the last frame left the time for one, or every 6th frame anyway)
+            static int hh_fr, hh_used, hh_skip; if (hh_fr != frame) { hh_fr = frame; hh_used = 0; hh_skip++; }
             int drawn = 0;
-            if (far) { int id = CROWD_MAX + i, want = !hh_used && crowd_sprite_score_of(id, &p, s->yaw, &s->gait) > 5;
-                       drawn = crowd_sprite_of(id, &s->bore, &p, s->yaw, &s->gait, want); if (want) hh_used = 1; }
+            if (far) { int id = CROWD_MAX + i, room = gfx_last_cpu + crowd_render_hb + 30 < 522 || (gfx_last_cpu > 540 && gfx_last_cpu + crowd_render_hb + 30 < 785);
+                       int want = !hh_used && crowd_sprite_score_of(id, &p, s->yaw, &s->gait) > 5 && (room || hh_skip >= 6);
+                       drawn = crowd_sprite_of(id, &s->bore, &p, s->yaw, &s->gait, want);
+                       if (want) { hh_used = 1; hh_skip = 0; } }
             if (!drawn) voxel_draw(&s->bore, &p, s->yaw, &s->gait);
+            if (drawn) dbg_hh_spr++; else dbg_hh_full++;
+            if (far && !drawn) dbg_hh_miss++;
             PROF_END(4);
         }
         if (s->action != ACT_SLEEP && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
@@ -394,6 +401,7 @@ static void life_update(int steps) {
           if (fr_ > 90 && fr_ < 400 && s->action == ACT_NONE) s->x += 6;
 #else
           if (fr_ > 120 && s->action == ACT_NONE) s->x += 22;   // (test builds: stroll east along the street)
+          if (fr_ > 1000) { cam_pitch = 700; cam_dist = 4200; cam_yaw = 2048 + 500; }   // (then look over the roofs)
           if (fr_ == 200) { extern int prof_on; prof_on = 1; }
 #endif
         }
@@ -1343,6 +1351,9 @@ int main(void) {
             case ST_DIR: dir_update(); dir_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
+        if (state == ST_LIFE) { avg_cpu16 += t_cpu - (avg_cpu16 >> 4); avg_world16 += t_world - (avg_world16 >> 4);   // (the test readouts)
+            avg_hh16 += gfx_prof[4] - (avg_hh16 >> 4); hist_cpu[MIN(4, t_cpu / 262)]++;
+            for (int k = 0; k < 8; k++) avg_prof16[k] += gfx_prof[k] - (avg_prof16[k] >> 4); }
         gfx_flip();
     }
     return 0;

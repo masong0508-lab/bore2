@@ -905,14 +905,19 @@ static void row_from(u8 *a, int stride, int w, int h, int y, int ys, int dx, u8 
     u8 *d = a + y * stride;
     if (ys < 0 || ys >= h) { memset(d, fill, w); return; }
     u8 *s = a + ys * stride;
-    if (dx >= 0) { memmove(d, s + dx, w - dx); memset(d + w - dx, fill, dx); }
-    else { memmove(d - dx, s, w + dx); memset(d, fill, -dx); }
+    if (dx >= 0) { wmove(d, s + dx, w - dx); memset(d + w - dx, fill, dx); }
+    else { wmove(d - dx, s, w + dx); memset(d, fill, -dx); }
 }
 static void shift2d(u8 *a, int stride, int w, int h, int dx, int dy, u8 fill) {   // a[y][x] = a[y + dy][x + dx]
     if (dy >= 0) for (int y = 0; y < h; y++) row_from(a, stride, w, h, y, y + dy, dx, fill);
     else for (int y = h - 1; y >= 0; y--) row_from(a, stride, w, h, y, y + dy, dx, fill);
 }
+static void roof_shift(int dx, int dy); static void ao_region(int X0, int Y0, int X1, int Y1);
+static u8 rq_dirty[WB][WB]; static int rq_n;                  // the blocks that have come into the window, their roofs still to work out
+static u8 ao[MH + 1][MW + 1];
+extern int dbg_ws[4];
 static void window_shift(int sx, int sy) {
+    int T0 = gfx_hb(), T;
     for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks leaving: keep what was built on
         int nx = wx - sx, ny = wy - sy;
         if ((nx < 0 || ny < 0 || nx >= WB || ny >= WB) && wdirty[wy][wx]) edit_save(wx, wy);
@@ -934,12 +939,23 @@ static void window_shift(int sx, int sy) {
         homes[z][n++] = hm;
     }
     nhomes[z] = n;
-    for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks coming into view
-        int ox = wx + sx, oy = wy + sy;
-        if (ox < 0 || oy < 0 || ox >= WB || oy >= WB) gen_block(wx, wy);
-    }
+    T = gfx_hb(); if (T - T0 > dbg_ws[0]) dbg_ws[0] = T - T0; T0 = T;
+    // what was worked out for the blocks that stay moves with them: the shading by the walls, the roofs and buildings
+    { int keep_r = roof_dirty, keep_a = ao_dirty;
+      shift2d(&ao[0][0], MW + 1, MW + 1, MH + 1, dx, dy, 0);
+      if (!keep_r) roof_shift(dx, dy);
+      T = gfx_hb(); if (T - T0 > dbg_ws[1]) dbg_ws[1] = T - T0; T0 = T;
+      shift2d(&rq_dirty[0][0], WB, WB, WB, sx, sy, 0);
+      for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks coming into view
+          int ox = wx + sx, oy = wy + sy;
+          if (ox < 0 || oy < 0 || ox >= WB || oy >= WB) { gen_block(wx, wy); rq_dirty[wy][wx] = 1; }
+      }
+      T = gfx_hb(); if (T - T0 > dbg_ws[2]) dbg_ws[2] = T - T0; T0 = T;
+      rq_n = 0; for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) rq_n += rq_dirty[wy][wx];
+      for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) if (rq_dirty[wy][wx]) ao_region(wx * BM_BLK, wy * BM_BLK, wx * BM_BLK + BM_BLK, wy * BM_BLK + BM_BLK);
+      T = gfx_hb(); if (T - T0 > dbg_ws[3]) dbg_ws[3] = T - T0; T0 = T;
+      roof_dirty = keep_r; ao_dirty = keep_a; }                                  // (the lots' own builders flag the whole map)
     for (int y = 0; y < MH; y++) lifeMap[y][MW] = 0;
-    ao_dirty = 1; roof_dirty = 1;
 }
 void world_open_at(int cbx, int cby) {          // the window round block (cbx, cby): a new arrival, a taxi ride
     world_wbx = CLAMP(cbx - WB / 2, 0, BM_N - WB); world_wby = CLAMP(cby - WB / 2, 0, BM_N - WB);
@@ -1038,12 +1054,19 @@ static int frame_t;
 // the floor's contact shading: how many walls stand round each floor corner, worked out when the map changes
 static u8 ao[MH + 1][MW + 1];
 void world_touched(void) { ao_dirty = 1; roof_dirty = 1; }
+static inline int wall0(int x, int y) { return (x < 0 || y < 0 || x >= MW || y >= MH) ? 1 : is_wall(lifeMap[y][x]); }   // (past the edge: a wall)
+static void ao_region(int X0, int Y0, int X1, int Y1) {   // the corners [X0..X1] x [Y0..Y1]: how many of the four tiles round each are walls
+    X1 = MIN(X1, MW); Y1 = MIN(Y1, MH);
+    for (int Y = Y0; Y <= Y1; Y++) for (int X = X0; X <= X1; X++) ao[Y][X] = (u8)(wall0(X - 1, Y - 1) + wall0(X, Y - 1) + wall0(X - 1, Y) + wall0(X, Y));
+}
 static void ao_update(void) {
-    for (int Y = 0; Y <= MH; Y++) for (int X = 0; X <= MW; X++) {
-        int n = 0;
-        if (is_wall(world_at(X - 1, Y - 1))) n++; if (is_wall(world_at(X, Y - 1))) n++;
-        if (is_wall(world_at(X - 1, Y))) n++;     if (is_wall(world_at(X, Y))) n++;
-        ao[Y][X] = (u8)n;
+    static u8 r0[MW + 2], r1[MW + 2];                     // two rows of wall flags (x = -1 .. MW), past the edge a wall
+    memset(r0, 1, sizeof r0);
+    for (int Y = 0; Y <= MH; Y++) {
+        if (Y < MH) { const char *row = lifeMap[Y]; r1[0] = r1[MW + 1] = 1; for (int x = 0; x < MW; x++) r1[x + 1] = (u8)is_wall(row[x]); }
+        else memset(r1, 1, sizeof r1);
+        u8 *o = ao[Y]; for (int X = 0; X <= MW; X++) o[X] = (u8)(r0[X] + r0[X + 1] + r1[X] + r1[X + 1]);
+        memcpy(r0, r1, sizeof r0);
     }
     ao_dirty = 0;
 }
@@ -1228,11 +1251,12 @@ static void door_tile(int mx, int my, int h) {
 }
 
 int world_dbg_walls;
+static inline int open_air(int x, int y) { return x < 0 || y < 0 || x >= MW || y >= MH || dm[y][x] == ' '; }
 // a floor slab's edge where an upper storey stops (open air beside it): a plaster band, so floors read as solid
 static void fascia(int mx, int my) {
     static const signed char ddx[4] = { 0, 1, 0, -1 }, ddy[4] = { 1, 0, -1, 0 };
     for (int k = 0; k < 4; k++) {
-        if (world_at(mx + ddx[k], my + ddy[k]) != ' ') continue;
+        if (!open_air(mx + ddx[k], my + ddy[k])) continue;
         int x0 = mx * TILE, x1 = x0 + TILE, zN = -my * TILE, zS = zN - TILE, T = 26;
         SVECTOR a, b, c, d;
         if (k == 0) { setVector(&a, x0, 0, zS); setVector(&b, x1, 0, zS); setVector(&c, x0, T, zS); setVector(&d, x1, T, zS); }
@@ -1257,11 +1281,21 @@ static void tile_view_init(TileView *tv, int wx0, int wy, int wz0) {   // (wx0, 
 static inline void tile_view(const TileView *tv, int mx, int my, int *vx, int *vy, int *vz) {
     *vx = (tv->bx + mx * tv->xx + my * tv->yx) >> 4; *vy = (tv->by + mx * tv->xy + my * tv->yy) >> 4; *vz = (tv->bz + mx * tv->xz + my * tv->yz) >> 4;
 }
+// does a wall tile (a ball of 340 round its centre, half a wall up) show? The view's edges lean out 0.696 (x) and 0.522 (y) a unit of depth
+static inline int tile_seen(const TileView *tv, int mx, int my) {
+    int vx, vy, vz; tile_view(tv, mx, my, &vx, &vy, &vz);
+    if (vz < Z_NEAR - 340) return 0;
+    if (ABS(vx) > ((vz * 89) >> 7) + 415) return 0;
+    if (ABS(vy) > ((vz * 67) >> 7) + 384) return 0;
+    return 1;
+}
 static u8 bld[MH][MW];
+#define NBLD 251
+static u8 b_see[NBLD];                            // (see_through: the buildings looked into this frame)
 static int rx0, rx1, ry0, ry1, ex0, ex1, ey0, ey1;
 static inline int in_range(int x, int y);
 static u8 lvl_bb[NLEVELS][4];
-static int open_air(int x, int y) { return x < 0 || y < 0 || x >= MW || y >= MH || dm[y][x] == ' '; }
+static u32 lvl_edge[NLEVELS][MH][(MW + 31) / 32];
 // shell: a storey above the one you are on (only other buildings' outside walls show); focus: the building you are in
 static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, int focus) {
     // the camera's forward on the ground (unit, 4096), to decide which walls stand between it and the focus
@@ -1282,7 +1316,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
         int f0 = dfl[my][mx];
         if (ok) ok = f0 != FL_WATER && dfl[my][mx + 1] == f0 && dfl[my + 1][mx] == f0 && dfl[my + 1][mx + 1] == f0;
         if (ok && lvl) ok = dm[my][mx] != ' ' && dm[my][mx + 1] != ' ' && dm[my + 1][mx] != ' ' && dm[my + 1][mx + 1] != ' ';
-        if (ok && ((bld[my][mx] && bld[my][mx] != focus) || (bld[my + 1][mx + 1] && bld[my + 1][mx + 1] != focus))) { done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 2; continue; }   // inside someone else's building: under its roof
+        if (ok && ((bld[my][mx] && !b_see[bld[my][mx]]) || (bld[my + 1][mx + 1] && !b_see[bld[my + 1][mx + 1]]))) { done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 2; continue; }   // inside someone else's building: under its roof
         done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 0;
         if (!ok) continue;
         int vx, vy, vz; tile_view(&tvF, mx, my, &vx, &vy, &vz);
@@ -1295,17 +1329,19 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
     PROF_END(0); }
     int lx0 = ex0, lx1 = ex1, ly0 = ey0, ly1 = ey1;
     if (lvl) { lx0 = MAX(lx0, lvl_bb[lvl][0]); ly0 = MAX(ly0, lvl_bb[lvl][1]); lx1 = MIN(lx1, lvl_bb[lvl][2]); ly1 = MIN(ly1, lvl_bb[lvl][3]); }
-    for (int my = ly0; my <= ly1; my++) for (int mx = lx0; mx <= lx1; mx++) {
+    for (int my = ly0; my <= ly1; my++) { const u32 *em = shell ? lvl_edge[lvl][my] : 0;   // (a storey seen from outside: only its edge)
+      for (int mx = lx0; mx <= lx1; mx++) {
+        if (em) { u32 w = em[mx >> 5] >> (mx & 31); if (!w) { mx |= 31; continue; } if (!(w & 1)) continue; }
         int wx = mx * TILE + TILE / 2, wz = -(my * TILE + TILE / 2);
         char c = dm[my][mx];
         if (c == ' ') continue;                                       // open air (upper storeys)
         int inR = mx >= rx0 && mx <= rx1 && my >= ry0 && my <= ry1;
         if (!inR && !in_range(mx, my)) continue;                     // past the range (a building cut by it is drawn whole)
         if (shell || !inR) {                                         // a storey seen from outside, or a far part of a building: its outside walls only
-            if (shell && focus && bld[my][mx] == focus) continue;
+            if (shell && bld[my][mx] && b_see[bld[my][mx]]) continue;
+            if (!lvl && !is_wall(c)) continue;
+            if (!tile_seen(&tvT, mx, my)) continue;
             if (!is_wall(c) || !(open_air(mx - 1, my) || open_air(mx + 1, my) || open_air(mx, my - 1) || open_air(mx, my + 1) || !lvl)) { if (lvl && shell) fascia(mx, my); continue; }
-            { int vx, vy, vz; tile_view(&tvT, mx, my, &vx, &vy, &vz);
-              if (vz < -TILE || ABS(vx) > (vz * 3) / 4 + TILE * 2 || ABS(vy) > (vz * 5) / 8 + TILE * 3) continue; }
             if (!lvl) { char n4 = 0; if (mx > 0 && mx < MW - 1 && my > 0 && my < MH - 1) n4 = (dm[my][mx - 1] != '.' && dm[my][mx + 1] != '.' && dm[my - 1][mx] != '.' && dm[my + 1][mx] != '.'); if (n4) continue; }
             { PROF_BEGIN(); ws_lite = bld[my][mx] != 0; wall_tile(mx, my, c == 'w' ? WALL_LOW : WALL_FULL, 0); ws_lite = 0; world_dbg_walls++; PROF_END(1); }
             if (lvl) fascia(mx, my);
@@ -1313,9 +1349,10 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
         }
         if (done[my][mx] && c == '.' && !lvl) continue;              // floor already drawn, nothing on it
         { int b = bld[my][mx];                                       // inside a building you are not in: its roof hides the rooms (only its walls show)
-          if (b && b != focus && !is_wall(c) && c != 'D' && !world_roof_show) continue; }
-        // frustum: the tile centre in view space
-        { int vx, vy, vz; tile_view(&tvT, mx, my, &vx, &vy, &vz);
+          if (b && !b_see[b] && !is_wall(c) && c != 'D' && !world_roof_show) continue; }
+        // frustum: the tile centre in view space (a wall tile fits a ball of 340 round it; things on a tile can stand taller)
+        if (is_wall(c) || c == '.') { if (!tile_seen(&tvT, mx, my)) continue; }
+        else { int vx, vy, vz; tile_view(&tvT, mx, my, &vx, &vy, &vz);
           if (vz < -TILE) continue;
           if (ABS(vx) > (vz * 3) / 4 + TILE * 2) continue;
           if (ABS(vy) > (vz * 5) / 8 + TILE * 3) continue; }
@@ -1327,13 +1364,14 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
                 int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12);   // distance past the focus along the view
                 if (along < -TILE / 4) { h = WALL_LOW; cut = 1; }
             }
-            { PROF_BEGIN(); ws_lite = bld[my][mx] && bld[my][mx] != focus && !world_roof_show; wall_tile(mx, my, h, cut); ws_lite = 0; world_dbg_walls++; PROF_END(1); }
+            { PROF_BEGIN(); ws_lite = bld[my][mx] && !b_see[bld[my][mx]] && !world_roof_show; wall_tile(mx, my, h, cut); ws_lite = 0; world_dbg_walls++; PROF_END(1); }
         } else if (c != '.') {
             if (c == 'D') { int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12); door_tile(mx, my, (cutaway && along < -TILE / 4) ? WALL_LOW : WALL_FULL); }
             int rot = items_rotates(c) ? world_item_facing(mx, my) : 0;
             int along = items_along(c) ? world_along(mx, my, c) : 0;
             { PROF_BEGIN(); items_draw(c, mx, my, rot, along, t); PROF_END(2); }
         }
+      }
     }
 }
 
@@ -1350,55 +1388,95 @@ static int enclose(char c) { return c == 'W' || c == 'E' || c == 'e' || c == 'D'
 // The buildings: every connected indoor area of the ground storey, its footprint (a box round it), how many storeys it has, its
 // roof (in SAN BOREAS each building has its own: style, colour and pitch from its own dice; elsewhere the build-mode choice)
 // and its wall colour (for the far skyline).
-#define NBLD 251
 static u8 b_x0[NBLD], b_y0[NBLD], b_x1[NBLD], b_y1[NBLD], b_top[NBLD], b_sty[NBLD], b_col[NBLD], b_pit[NBLD], b_str[NBLD];
 static u16 b_wall[NBLD]; static int nbld;
 extern u16 bfs_q[MW * MH]; extern s16 bfs_par[MH][MW];   // (sim.c's route-finding buffers: the roof rebuild borrows them)
 static u8 lvl_bb[NLEVELS][4];                     // each storey's built-on box (x0, y0, x1, y1)
-static void roof_rebuild(void) {
+static u32 lvl_edge[NLEVELS][MH][(MW + 31) / 32];  // each storey's tiles next to open air (a bit each)
+// Buildings sit inside their own blocks (a street runs along every block's top and left), so when the SAN BOREAS window moves,
+// what was worked out for the blocks that stay is moved with them and only the blocks coming in are worked out (a few a frame).
+static int bld_alloc(void) { for (int b = 1; b < NBLD; b++) if (b_x0[b] == 255) { if (b > nbld) nbld = b; return b; } return NBLD - 1; }
+static u8 rbox[NLEVELS][4];
+int dbg_rr_hb, dbg_rr_n, dbg_rr_blk, dbg_ws[4];
+// the roofs and buildings of the box [x0..x1] x [y0..y1] (the whole map, or a block that has just come in)
+static void roof_region(int x0, int y0, int x1, int y1) {
+    int t0 = gfx_hb(); dbg_rr_n++;
     u8 (*out)[MW] = (u8 (*)[MW])bfs_par; u16 *q = bfs_q;
-    memset(roofM, 0, sizeof roofM); memset(roofH, 0, sizeof roofH);
+    u8 (*Dd)[MW] = (u8 (*)[MW])((u8 *)bfs_par + MH * MW);
+    typedef const char (*Row)[MW + 1];
+    Row mp[NLEVELS + 1];
+    mp[0] = (Row)lifeMap;
+    for (int l = 1; l <= NLEVELS; l++) { const Level *L = l < NLEVELS ? lv_get(l - 1) : 0; mp[l] = L ? (Row)L->map : 0; }
+    int full = x0 == 0 && y0 == 0 && x1 == MW - 1 && y1 == MH - 1;
+    // what was worked out here before goes
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) { int b = bld[y][x]; if (b) { b_x0[b] = 255; bld[y][x] = 0; } }
     for (int l = 0; l < NLEVELS; l++) {
-        int used = 0, bx0 = MW, by0 = MH, bx1 = -1, by1 = -1;
-        if (l == 0) { bx0 = 0; by0 = 0; bx1 = MW - 1; by1 = MH - 1; used = 1; }
-        else { const Level *L = lv_get(l - 1);
-            if (L) for (int y = 0; y < MH; y++) { const char *row = L->map[y];
-                for (int x = 0; x < MW; x++) if (row[x] != ' ') { used = 1; if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; } } }
-        lvl_used[l] = (u8)used;
-        if (used) { lvl_bb[l][0] = (u8)bx0; lvl_bb[l][1] = (u8)by0; lvl_bb[l][2] = (u8)bx1; lvl_bb[l][3] = (u8)by1; }
-        if (!lvl_used[l]) continue;
-        // outdoors: everything the map's edge reaches without crossing a wall, a door or a window
-        memset(out, 0, sizeof out); int qh = 0, qt = 0;
-        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++)
-            if ((x == 0 || y == 0 || x == MW - 1 || y == MH - 1) && !enclose(world_at_l(l, x, y))) { out[y][x] = 1; q[qt++] = (u16)(y * MW + x); }
-        while (qh < qt) { int c = q[qh++], cx = c % MW, cy = c / MW;
-            static const signed char dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
-            for (int k = 0; k < 4; k++) { int nx = cx + dx[k], ny = cy + dy[k];
-                if (nx < 0 || ny < 0 || nx >= MW || ny >= MH || out[ny][nx] || enclose(world_at_l(l, nx, ny))) continue;
-                out[ny][nx] = 1; q[qt++] = (u16)(ny * MW + nx); } }
-        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
+        for (int y = y0; y <= y1; y++) memset(&roofM[l][y][x0], 0, x1 - x0 + 1);
+        for (int Y = y0; Y <= y1 + 1; Y++) memset(&roofH[l][Y][x0], 0, x1 - x0 + 2);
+        if (l) { if (full) memset(lvl_edge[l], 0, sizeof lvl_edge[l]);
+                 else for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) lvl_edge[l][y][x >> 5] &= ~(1u << (x & 31)); }
+    }
+    for (int l = 0; l < NLEVELS; l++) {
+        Row m = mp[l]; rbox[l][2] = 0; rbox[l][0] = 1;           // (empty)
+        if (!m) continue;
+        int bx0 = MW, by0 = MH, bx1 = -1, by1 = -1;
+        if (l == 0) { bx0 = x0; by0 = y0; bx1 = x1; by1 = y1; }
+        else for (int y = y0; y <= y1; y++) { const char *row = m[y];
+            for (int x = x0; x <= x1; x++) if (row[x] != ' ') { if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; } }
+        if (bx1 < 0) continue;                                   // nothing built on this storey here
+        if (l) {   // the storey's edge: what stands next to open air (all that shows of it from outside: its outside walls, the floor's edge)
+            for (int y = by0; y <= by1; y++) for (int x = bx0; x <= bx1; x++) {
+                if (m[y][x] == ' ') continue;
+                int air = x == 0 || y == 0 || x == MW - 1 || y == MH - 1 || m[y][x - 1] == ' ' || m[y][x + 1] == ' ' || m[y - 1][x] == ' ' || m[y + 1][x] == ' ';
+                if (air) lvl_edge[l][y][x >> 5] |= 1u << (x & 31);
+            }
+            if (!lvl_used[l]) { lvl_used[l] = 1; lvl_bb[l][0] = (u8)bx0; lvl_bb[l][1] = (u8)by0; lvl_bb[l][2] = (u8)bx1; lvl_bb[l][3] = (u8)by1; }
+            else { if (bx0 < lvl_bb[l][0]) lvl_bb[l][0] = (u8)bx0; if (by0 < lvl_bb[l][1]) lvl_bb[l][1] = (u8)by0;
+                   if (bx1 > lvl_bb[l][2]) lvl_bb[l][2] = (u8)bx1; if (by1 > lvl_bb[l][3]) lvl_bb[l][3] = (u8)by1; }
+        }
+        int X0 = MAX(x0, bx0 - 1), Y0 = MAX(y0, by0 - 1), X1 = MIN(x1, bx1 + 1), Y1 = MIN(y1, by1 + 1);
+        rbox[l][0] = (u8)X0; rbox[l][1] = (u8)Y0; rbox[l][2] = (u8)X1; rbox[l][3] = (u8)Y1;
+        // outdoors: everything the box's edge reaches without crossing a wall, a door or a window (past it a storey is all air)
+        for (int y = Y0; y <= Y1; y++) memset(&out[y][X0], 0, X1 - X0 + 1);
+        int qh = 0, qt = 0;
+        #define SEED(x, y) if (!out[y][x] && !enclose(m[y][x])) { out[y][x] = 1; q[qt++] = (u16)(((y) << 8) | (x)); }
+        for (int x = X0; x <= X1; x++) { SEED(x, Y0) SEED(x, Y1) }
+        for (int y = Y0 + 1; y < Y1; y++) { SEED(X0, y) SEED(X1, y) }
+        while (qh < qt) { int c = q[qh++], cx = c & 255, cy = c >> 8;
+            if (cx > X0) SEED(cx - 1, cy)
+            if (cx < X1) SEED(cx + 1, cy)
+            if (cy > Y0) SEED(cx, cy - 1)
+            if (cy < Y1) SEED(cx, cy + 1)
+        }
+        #undef SEED
+        Row up = l < NUP ? mp[l + 1] : 0;                        // a storey above covers it: no roof there
+        for (int y = Y0; y <= Y1; y++) for (int x = X0; x <= X1; x++) {
             if (out[y][x]) continue;
-            if (l < NUP && world_at_l(l + 1, x, y) != ' ') continue;   // a storey above covers it: no roof here
+            if (up && up[y][x] != ' ') continue;
             roofM[l][y][x] = 1;
         }
-        if (l == 0) { memset(bld, 0, sizeof bld); int id = 0;   // the buildings: connected indoor areas of the ground storey
-            for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
+        if (l == 0) {                                            // the buildings: connected indoor areas of the ground storey
+            for (int y = Y0; y <= Y1; y++) for (int x = X0; x <= X1; x++) {
                 if (out[y][x] || bld[y][x]) continue;
-                if (++id > NBLD - 1) id = NBLD - 1;
+                int id = bld_alloc();
                 b_x0[id] = b_x1[id] = (u8)x; b_y0[id] = b_y1[id] = (u8)y; b_top[id] = 0; b_wall[id] = 0;
-                qh = qt = 0; bld[y][x] = (u8)id; q[qt++] = (u16)(y * MW + x);
-                while (qh < qt) { int c = q[qh++], cx = c % MW, cy = c / MW;
+                qh = qt = 0; bld[y][x] = (u8)id; q[qt++] = (u16)((y << 8) | x);
+                while (qh < qt) { int c = q[qh++], cx = c & 255, cy = c >> 8;
                     if (cx < b_x0[id]) b_x0[id] = (u8)cx; if (cx > b_x1[id]) b_x1[id] = (u8)cx; if (cy < b_y0[id]) b_y0[id] = (u8)cy; if (cy > b_y1[id]) b_y1[id] = (u8)cy;
                     if (!b_wall[id] && is_wall(lifeMap[cy][cx])) b_wall[id] = wp_top[wallMap[cy][cx] % NWALLS] | 0x8000;
-                    static const signed char dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
-                    for (int k = 0; k < 4; k++) { int nx = cx + dx[k], ny = cy + dy[k];
-                        if (nx < 0 || ny < 0 || nx >= MW || ny >= MH || out[ny][nx] || bld[ny][nx]) continue;
-                        bld[ny][nx] = (u8)id; q[qt++] = (u16)(ny * MW + nx); } } }
-            nbld = id; }
+                    #define NB(nx, ny) if (!out[ny][nx] && !bld[ny][nx]) { bld[ny][nx] = (u8)id; q[qt++] = (u16)(((ny) << 8) | (nx)); }
+                    if (cx > X0) NB(cx - 1, cy)
+                    if (cx < X1) NB(cx + 1, cy)
+                    if (cy > Y0) NB(cx, cy - 1)
+                    if (cy < Y1) NB(cx, cy + 1)
+                    #undef NB
+                } }
+        }
     }
-    for (int l = 1; l < NLEVELS; l++) if (lvl_used[l])          // how tall each building is
-        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) { int b = bld[y][x]; if (b && roofM[l][y][x] && l > b_top[b]) b_top[b] = (u8)l; }
+    for (int l = 1; l < NLEVELS; l++) if (rbox[l][2] >= rbox[l][0])   // how tall each building is
+        for (int y = rbox[l][1]; y <= rbox[l][3]; y++) for (int x = rbox[l][0]; x <= rbox[l][2]; x++) { int b = bld[y][x]; if (b && roofM[l][y][x] && l > b_top[b]) b_top[b] = (u8)l; }
     for (int b = 1; b <= nbld; b++) {                            // each building's roof
+        if (b_x0[b] == 255) continue;
         if (world_zone == ZONE_CITY && world_wbx >= 0) {
             u32 h = bm_hash(world_wbx * BM_BLK + b_x0[b], world_wby * BM_BLK + b_y0[b], wsalt ^ 0x500Fu);
             int w = b_x1[b] - b_x0[b] + 1, d = b_y1[b] - b_y0[b] + 1;
@@ -1407,41 +1485,94 @@ static void roof_rebuild(void) {
         } else { b_sty[b] = (u8)world_roof_style; b_col[b] = (u8)world_roof_col; b_pit[b] = (u8)world_roof_pitch; }
     }
     b_sty[0] = (u8)world_roof_style; b_col[0] = (u8)world_roof_col; b_pit[0] = (u8)world_roof_pitch;
-    u8 (*Dd)[MW] = (u8 (*)[MW])((u8 *)bfs_par + MH * MW);
     for (int l = 0; l < NLEVELS; l++) {
-        if (!lvl_used[l]) continue;
-        // the distance in from the edge, per tile (the roof height is capped at 3, so 4 passes are all a hip roof needs)
-        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) Dd[y][x] = 0;
-        for (int pass = 1; pass <= 4; pass++) { int any = 0;
-            for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
-                if (!roofM[l][y][x] || Dd[y][x] || b_sty[bld[y][x]] != 0) continue;
-                int mn = 255;
-                for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int nx = x + i, ny = y + j;
-                    int v = (nx < 0 || ny < 0 || nx >= MW || ny >= MH || !roofM[l][ny][nx]) ? 0 : Dd[ny][nx] ? Dd[ny][nx] : 255; if (v < mn) mn = v; }
-                if (mn == pass - 1) { Dd[y][x] = (u8)pass; any = 1; } }
-            if (!any) break; }
-        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
-            if (!roofM[l][y][x]) continue;
+        if (rbox[l][2] < rbox[l][0]) continue;
+        int X0 = rbox[l][0], Y0 = rbox[l][1], X1 = rbox[l][2], Y1 = rbox[l][3];
+        const u8 (*M)[MW] = roofM[l];
+        // the distance in from the roof's edge (chessboard: a forward and a backward sweep), for the hip roofs
+        for (int y = Y0; y <= Y1; y++) for (int x = X0; x <= X1; x++) {
+            if (!M[y][x]) { Dd[y][x] = 0; continue; }
+            int v = x > X0 ? Dd[y][x - 1] : 0;
+            if (y > Y0) { int a = Dd[y - 1][x]; if (a < v) v = a;
+                          a = x > X0 ? Dd[y - 1][x - 1] : 0; if (a < v) v = a;
+                          a = x < X1 ? Dd[y - 1][x + 1] : 0; if (a < v) v = a; }
+            else v = 0;
+            Dd[y][x] = (u8)MIN(v + 1, 250);
+        }
+        for (int y = Y1; y >= Y0; y--) for (int x = X1; x >= X0; x--) {
+            if (!M[y][x]) continue;
+            int v = x < X1 ? Dd[y][x + 1] : 0;
+            if (y < Y1) { int a = Dd[y + 1][x]; if (a < v) v = a;
+                          a = x < X1 ? Dd[y + 1][x + 1] : 0; if (a < v) v = a;
+                          a = x > X0 ? Dd[y + 1][x - 1] : 0; if (a < v) v = a; }
+            else v = 0;
+            if (v + 1 < Dd[y][x]) Dd[y][x] = (u8)(v + 1);
+        }
+        for (int y = Y0; y <= Y1; y++) for (int x = X0; x <= X1; x++) {
+            if (!M[y][x]) continue;
             int st = b_sty[bld[y][x]];
-            if (st == 0) { if (!Dd[y][x]) Dd[y][x] = 4; }
+            if (st == 0) { if (Dd[y][x] > 4) Dd[y][x] = 4; }
             else if (st == 1) {                                  // GABLE: the ridge runs along each building's longer side
                 int up = 0, dn = 0, lf = 0, rt = 0;
-                while (y - up - 1 >= 0 && roofM[l][y - up - 1][x]) up++;
-                while (y + dn + 1 < MH && roofM[l][y + dn + 1][x]) dn++;
-                while (x - lf - 1 >= 0 && roofM[l][y][x - lf - 1]) lf++;
-                while (x + rt + 1 < MW && roofM[l][y][x + rt + 1]) rt++;
+                while (y - up - 1 >= 0 && M[y - up - 1][x]) up++;
+                while (y + dn + 1 < MH && M[y + dn + 1][x]) dn++;
+                while (x - lf - 1 >= 0 && M[y][x - lf - 1]) lf++;
+                while (x + rt + 1 < MW && M[y][x + rt + 1]) rt++;
                 int across_y = MIN(up, dn) + 1, across_x = MIN(lf, rt) + 1;
                 Dd[y][x] = (u8)((up + dn) <= (lf + rt) ? across_y : across_x);
             } else Dd[y][x] = 0;                                  // FLAT
         }
-        for (int Y = 0; Y <= MH; Y++) for (int X = 0; X <= MW; X++) {
-            int mn = 255;
-            for (int k = 0; k < 4; k++) { int x = X - 1 + (k & 1), y = Y - 1 + (k >> 1);
-                int v = (x < 0 || y < 0 || x >= MW || y >= MH || !roofM[l][y][x]) ? 0 : Dd[y][x]; if (v < mn) mn = v; }
-            roofH[l][Y][X] = (u8)MIN(mn, 3);                     // capped: wide buildings level off
+        // the corners: the lowest of the four tiles round each (capped: wide buildings level off). On the box's edge: 0
+        for (int Y = Y0 + 1; Y <= Y1; Y++) { const u8 *ra = Dd[Y - 1], *rb_ = Dd[Y]; u8 *o = roofH[l][Y];
+            for (int X = X0 + 1; X <= X1; X++) {
+                int mn = ra[X - 1]; if (ra[X] < mn) mn = ra[X]; if (rb_[X - 1] < mn) mn = rb_[X - 1]; if (rb_[X] < mn) mn = rb_[X];
+                o[X] = (u8)MIN(mn, 3);
+            } }
+    }
+    int t = gfx_hb() - t0; if (t > dbg_rr_hb) dbg_rr_hb = t; if (!full && t > dbg_rr_blk) dbg_rr_blk = t;
+}
+static void roof_rebuild(void) {
+    for (int b = 0; b < NBLD; b++) b_x0[b] = 255;
+    nbld = 0;
+    memset(bld, 0, sizeof bld);
+    for (int l = 0; l < NLEVELS; l++) lvl_used[l] = 0;
+    lvl_used[0] = 1; lvl_bb[0][0] = 0; lvl_bb[0][1] = 0; lvl_bb[0][2] = MW - 1; lvl_bb[0][3] = MH - 1;
+    roof_region(0, 0, MW - 1, MH - 1);
+    roof_dirty = 0; memset(rq_dirty, 0, sizeof rq_dirty); rq_n = 0;
+}
+// the window moved dx, dy tiles (whole blocks): the roofs, the buildings and the storeys' edges move with it
+static void roof_shift(int dx, int dy) {
+    for (int l = 0; l < NLEVELS; l++) {
+        shift2d(&roofM[l][0][0], MW, MW, MH, dx, dy, 0);
+        shift2d(&roofH[l][0][0], MW + 1, MW + 1, MH + 1, dx, dy, 0);
+        if (l) {   // the edge bits: 16 tiles to a half-word
+            u16 tmp[MH][6]; int hx = dx / 16;
+            for (int y = 0; y < MH; y++) { int ys = y + dy; const u16 *src = (const u16 *)lvl_edge[l][ys < 0 ? 0 : ys >= MH ? MH - 1 : ys];
+                for (int i = 0; i < 6; i++) { int j = i + hx; tmp[y][i] = (ys < 0 || ys >= MH || j < 0 || j >= 5) ? 0 : src[j]; } }
+            for (int y = 0; y < MH; y++) memcpy(lvl_edge[l][y], tmp[y], sizeof lvl_edge[l][y]);
+            if (lvl_used[l]) {
+                int a = lvl_bb[l][0] - dx, b = lvl_bb[l][1] - dy, c = lvl_bb[l][2] - dx, d = lvl_bb[l][3] - dy;
+                a = MAX(a, 0); b = MAX(b, 0); c = MIN(c, MW - 1); d = MIN(d, MH - 1);
+                if (c < a || d < b) lvl_used[l] = 0;
+                else { lvl_bb[l][0] = (u8)a; lvl_bb[l][1] = (u8)b; lvl_bb[l][2] = (u8)c; lvl_bb[l][3] = (u8)d; }
+            }
         }
     }
-    roof_dirty = 0;
+    shift2d(&bld[0][0], MW, MW, MH, dx, dy, 0);
+    for (int b = 1; b <= nbld; b++) {
+        if (b_x0[b] == 255) continue;
+        int a = b_x0[b] - dx, c = b_x1[b] - dx, e = b_y0[b] - dy, f = b_y1[b] - dy;
+        if (a < 0 || e < 0 || c >= MW || f >= MH) { b_x0[b] = 255; continue; }   // gone out of the window
+        b_x0[b] = (u8)a; b_x1[b] = (u8)c; b_y0[b] = (u8)e; b_y1[b] = (u8)f;
+    }
+    // (no building's tiles may point at a freed one: a building is either kept whole or gone whole, so bld's gone parts left too)
+}
+static void roof_pending(int max) {                            // work out up to max of the blocks still waiting
+    for (int wy = 0; wy < WB && max > 0; wy++) for (int wx = 0; wx < WB && max > 0; wx++) {
+        if (!rq_dirty[wy][wx]) continue;
+        rq_dirty[wy][wx] = 0; rq_n--; max--;
+        roof_region(wx * BM_BLK, wy * BM_BLK, wx * BM_BLK + BM_BLK - 1, wy * BM_BLK + BM_BLK - 1);
+    }
 }
 static void roof_tex_make(void) {   // shingles: courses of overlapping tiles, every other course offset
     static u16 px[16 * 16];
@@ -1492,7 +1623,7 @@ static void roofs_draw(int fx, int fy) {
         for (int y = ey0; y <= ey1; y++) for (int x = ex0; x <= ex1; x++) {
             if (!roofM[l][y][x] || !in_range(x, y)) continue;
             int b = bld[y][x];
-            if (focus && b == focus && (!world_roof_show || l > world_view_lvl)) { if (!world_roof_show) continue; }   // the building you are in shows its rooms
+            if (b && b_see[b] && (!world_roof_show || l > world_view_lvl)) { if (!world_roof_show) continue; }   // the building you are in (or look through) shows its rooms
             if (b != cur_b) { cur_b = b; pitch = roofPitch[b_pit[b] % NROOF_PITCH]; rc = roofCol[b_col[b] % NROOF_COL]; rc_sty = b_sty[b]; rc_pitch = pitch; }
             if (rc_sty == 2 && b && b_top[b] == l) {                // a flat roof: the building's whole top in one slab (drawn from its first tile)
                 if (x != b_x0[b] || y != b_y0[b]) { if (!(roofM[l][b_y0[b]][b_x0[b]])) {} else continue; }
@@ -1578,18 +1709,51 @@ static void far_box(int b, int windows) {
         setVector(&a, x1, -HT, zS); setVector(&bb, x1, -HT, zN); gfx_tri_f(&c, &bb, &a, r * 7 / 8, g * 7 / 8, bl * 7 / 8, 1); gfx_tri_f(&c, &a, &bb, r * 7 / 8, g * 7 / 8, bl * 7 / 8, 1);
     }
 }
+int dbg_ao_hb, dbg_roof_hb;
+int world_hb_l0, world_hb_up, world_up_walls, world_up_wprims, world_up_fl;
+// the buildings that stand between the camera and you are seen into, like the one you are in: no roof, no storeys above yours,
+// the rooms shown (the walls on the camera's side are cut low as ever)
+static int slab1(int o, int d, int lo, int hi, int *t0, int *t1) {   // the ray o + d t (t 0..4096) through lo..hi: narrows t0..t1
+    if (d == 0) return o >= lo && o <= hi;
+    int ta = ((lo - o) << 12) / d, tb = ((hi - o) << 12) / d;
+    if (ta > tb) { int t = ta; ta = tb; tb = t; }
+    if (ta > *t0) *t0 = ta; if (tb < *t1) *t1 = tb;
+    return *t0 <= *t1;
+}
+static void see_through(int focus) {
+    memset(b_see, 0, sizeof b_see);
+    if (focus) b_see[focus] = 1;
+    int ex = cam.eye.vx, ey = cam.eye.vy, ez = cam.eye.vz, dx = cam.at.vx - ex, dy = cam.at.vy - ey, dz = cam.at.vz - ez;
+    int tx0 = MIN(ex, cam.at.vx) / TILE - 1, tx1 = MAX(ex, cam.at.vx) / TILE + 1;            // the ray's box, in tiles
+    int ty0 = -MAX(ez, cam.at.vz) / TILE - 1, ty1 = -MIN(ez, cam.at.vz) / TILE + 1;
+    for (int b = 1; b <= nbld; b++) {
+        if (b_x0[b] == 255 || b == focus) continue;
+        if (b_x1[b] < tx0 || b_x0[b] > tx1 || b_y1[b] < ty0 || b_y0[b] > ty1) continue;
+        int t0 = 0, t1 = 4096 - 300;                                  // (short of your own spot)
+        if (!slab1(ex, dx, b_x0[b] * TILE - 40, (b_x1[b] + 1) * TILE + 40, &t0, &t1)) continue;
+        if (!slab1(ez, dz, -(b_y1[b] + 1) * TILE - 40, -b_y0[b] * TILE + 40, &t0, &t1)) continue;
+        if (!slab1(ey, dy, -(b_top[b] + 1) * WALL_FULL - 600, 0, &t0, &t1)) continue;
+        b_see[b] = 1;
+    }
+}
 int world_far_range = 34;                       // how far (tiles) the skyline reaches (more with 8 MB: everything in the window)
 void world_draw(int fx, int fy, int t, int cutaway) {
     gfx_set_identity(); world_dbg_walls = 0;
     gfx_set_reserve(RESERVE_PEOPLE + RESERVE_UI);   // the world may not use up the room the people need
     frame_t = t;
-    if (ao_dirty) ao_update();
-    if (roof_dirty) roof_rebuild();
+    if (ao_dirty) { int h = gfx_hb(); ao_update(); h = gfx_hb() - h; if (h > dbg_ao_hb) dbg_ao_hb = h; }
+    if (roof_dirty) { int h = gfx_hb(); roof_rebuild(); h = gfx_hb() - h; if (h > dbg_roof_hb) dbg_roof_hb = h; }
+    else if (rq_n) {                                 // the blocks that came into the window (far off): in the frames' spare time
+        static int wait; extern int gfx_last_cpu;
+        if (gfx_last_cpu < 420 || ++wait >= 3) { roof_pending(1); wait = 0; }
+    }
     const int R = 12;
     rx0 = MAX(0, fx - R) & ~1; rx1 = MIN(MW - 1, fx + R); ry0 = MAX(0, fy - R) & ~1; ry1 = MIN(MH - 1, fy + R);
     ex0 = rx0; ex1 = rx1; ey0 = ry0; ey1 = ry1;
     int focus = (fx >= 0 && fy >= 0 && fx < MW && fy < MH) ? bld[fy][fx] : 0;
+    see_through(focus);
     for (int b = 1; b <= nbld; b++) {               // buildings the range cuts through are drawn whole
+        if (b_x0[b] == 255) { b_str[b] = 0; continue; }
         int inside = b_x0[b] >= rx0 && b_x1[b] <= rx1 && b_y0[b] >= ry0 && b_y1[b] <= ry1;
         int touch = b_x1[b] >= rx0 && b_x0[b] <= rx1 && b_y1[b] >= ry0 && b_y0[b] <= ry1;
         b_str[b] = (u8)(touch && !inside);
@@ -1597,7 +1761,8 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     }
     ex0 &= ~1; ey0 &= ~1;
     int keep_lvl = world_lvl; world_lvl = 0;
-    draw_layer(fx, fy, t, cutaway, 0, 0, focus);
+    { int h0 = gfx_hb(); draw_layer(fx, fy, t, cutaway, 0, 0, focus); world_hb_l0 = gfx_hb() - h0; }
+    int h1_ = gfx_hb(); int pw0_ = gfx_prof[1], pn0_ = gfx_profn[1], pf0_ = gfx_prof[0];
     {   // the storeys above: the drawing reads each storey's own arrays, with the camera dropped by its height. Up to the storey
         // you are on, everything; above it, other buildings' outside walls (the one you are in stays open to the sky)
         int keep_ao = dbg_noao; dbg_noao = 1;
@@ -1612,11 +1777,13 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         dm = lifeMap; dfl = floorMap; dwp = wallMap; world_lvl = 0;
         dbg_noao = keep_ao;
     }
+    world_hb_up = gfx_hb() - h1_; world_up_walls = gfx_prof[1] - pw0_; world_up_wprims = gfx_profn[1] - pn0_; world_up_fl = gfx_prof[0] - pf0_;
     { PROF_BEGIN(); roofs_draw(fx, fy); PROF_END(3); }
     {   // the skyline: everything past the range, as boxes (windows on the nearer ones)
         PROF_BEGIN(); gfx_set_identity();
         int far2 = world_far_range * world_far_range;
         for (int b = 1; b <= nbld; b++) {
+            if (b_x0[b] == 255) continue;
             if (b_x1[b] >= rx0 && b_x0[b] <= rx1 && b_y1[b] >= ry0 && b_y0[b] <= ry1) continue;   // in range: drawn properly
             int dx = (b_x0[b] + b_x1[b]) / 2 - fx, dy = (b_y0[b] + b_y1[b]) / 2 - fy, d2 = dx * dx + dy * dy;
             if (d2 > far2) continue;

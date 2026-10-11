@@ -13,6 +13,8 @@ psn00bsdk_add_executable(bore2 GPREL
 target_include_directories(bore2 PRIVATE src assets)
 target_compile_options(bore2 PRIVATE -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-misleading-indentation -Wno-parentheses -Wno-strict-aliasing -fno-strict-aliasing -O2)
 
+target_link_options(bore2 PRIVATE -Wl,--wrap=memcpy -Wl,--wrap=memmove)   # (src/mem8.c: word copies, not the SDK's byte loops)
+
 # the voice clips (SPU ADPCM blob made by tools/build_audio.py)
 psn00bsdk_target_incbin(bore2 PRIVATE voices_bin assets/voices.bin)
 

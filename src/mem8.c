@@ -25,3 +25,32 @@ void *xalloc(u32 n) {
     return p;
 }
 u32 xfree_bytes(void) { return x_top ? (u32)(x_end - x_top) : 0; }
+
+__attribute__((optimize("no-tree-loop-distribute-patterns")))
+void wmove(void *dst, const void *src, u32 n) {
+    u8 *d = (u8 *)dst; const u8 *s = (const u8 *)src;
+    if (d == s || !n) return;
+    if (d < s || d >= s + n) {                                    // forwards
+        if ((((u32)d ^ (u32)s) & 3) == 0) {
+            while (n && ((u32)d & 3)) { *d++ = *s++; n--; }
+            u32 *dw = (u32 *)d; const u32 *sw = (const u32 *)s;
+            while (n >= 16) { u32 a = sw[0], b = sw[1], c = sw[2], e = sw[3]; dw[0] = a; dw[1] = b; dw[2] = c; dw[3] = e; dw += 4; sw += 4; n -= 16; }
+            while (n >= 4) { *dw++ = *sw++; n -= 4; }
+            d = (u8 *)dw; s = (const u8 *)sw;
+        }
+        while (n--) *d++ = *s++;
+    } else {                                                      // backwards (the copy overlaps, ahead of the source)
+        d += n; s += n;
+        if ((((u32)d ^ (u32)s) & 3) == 0) {
+            while (n && ((u32)d & 3)) { *--d = *--s; n--; }
+            u32 *dw = (u32 *)d; const u32 *sw = (const u32 *)s;
+            while (n >= 16) { dw -= 4; sw -= 4; u32 a = sw[0], b = sw[1], c = sw[2], e = sw[3]; dw[0] = a; dw[1] = b; dw[2] = c; dw[3] = e; n -= 16; }
+            while (n >= 4) { *--dw = *--sw; n -= 4; }
+            d = (u8 *)dw; s = (const u8 *)sw;
+        }
+        while (n--) *--d = *--s;
+    }
+}
+// every memcpy and memmove in the game (and gcc's own, for struct copies) comes here instead (the link wraps them)
+void *__wrap_memcpy(void *d, const void *s, u32 n) { wmove(d, s, n); return d; }
+void *__wrap_memmove(void *d, const void *s, u32 n) { wmove(d, s, n); return d; }
