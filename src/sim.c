@@ -753,9 +753,9 @@ static void tick_needs(Sim *s) {
     if (wants_level(s) == ASP_PLATINUM) m = 100;                            // PLATINUM: nothing can bring it down
     m = CLAMP(m, -100, 100);
     s->mood += (m - s->mood) / 64;
-    // the thought bubble: the most urgent need
+    // the thought bubble: the most urgent need you can do something about (not COMFY or ROOM: those are where you are, not what you need)
     int worst = -1, wv = 101;
-    for (int n = 0; n < NEED_N; n++) { int v = s->need[n] >> 10; if (v < wv) { wv = v; worst = n; } }
+    for (int n = 0; n < NEED_N; n++) { if (n == N_COMFY || n == N_ROOM) continue; int v = s->need[n] >> 10; if (v < wv) { wv = v; worst = n; } }
     s->think = wv < 20 ? worst : -1;
     if (s->think >= 0 && (int)(s - sims) == player && (s->think_t++ % 900) == 0) {
         audio_voice(s->think == N_FOOD ? VOICE_HUNGRY : s->think == N_WC ? VOICE_PEE : VOICE_NEED);
@@ -1038,6 +1038,23 @@ static void adopt(Sim *s) {
     sim_note(baby_kind == 1 ? "ADOPTING A BABY: HOME TOMORROW" : "ADOPTING A CHILD: HOME TOMORROW");
     audio_voice(VOICE_YAHOO);
 }
+// ---- the phone in your pocket (main.c's PHONE): a call where you stand, a pizza, adopting, playing as someone else ----
+int sim_cell(int what) {   // 0 a chat with a friend, 1 a pizza ($40), 2 adopt ($1000, a grown-up). 1: done
+    Sim *s = &sims[player];
+    if (s->bore.stage == AG_BABY) return 0;
+    if (what == 2) { if (s->bore.stage != AG_ADULT && s->bore.stage != AG_ELDER) { sim_note("ONLY A GROWN-UP CAN ADOPT"); return 0; } adopt(s); return 1; }
+    if (s->action != ACT_NONE && s->action != ACT_WALK) end_action(s);
+    if (what == 1) { if (cash < 40) { sim_note("PIZZA IS $40"); audio_voice(VOICE_NAH); return 0; } cash -= 40; sim_note("PIZZA: $40. IT IS ON ITS WAY"); }
+    s->path_n = 0; s->action = ACT_NONE;
+    begin_action(s, ACT_PHONE, sim_tile_x(s), sim_tile_y(s)); s->act_var = (u8)what;
+    if (!what) sim_note("CALLING A FRIEND");
+    return 1;
+}
+int sim_play_as(int i) {   // play as that one of the family (not a baby, not away). 1: done
+    if (i == player || i < 0 || i >= nsims || sims[i].bore.stage == AG_BABY || sims[i].away) return 0;
+    sims[player].ai = 1; player = i; sims[player].ai = 0; sims[player].path_n = 0;
+    return 1;
+}
 static int school_age(const Sim *k) { return k->bore.stage == AG_CHILD || k->bore.stage == AG_TEEN; }
 static void school_go(void) {   // 8 AM, MONDAY TO FRIDAY: the kids and the teens are off (the one you play hands over, if someone can)
     int went = 0;
@@ -1107,7 +1124,7 @@ static void clock_tick(void) {
     {   // the shift: a reminder an hour before, the start, and the pay at the end (by the minutes worked)
         const Career *cr = &careers[job_car]; int on = (cr->days >> clock_day) & 1, from = cr->from * 60, to = cr->to * 60;
         char b[40], h[8];
-        if (on && clock_min == from - 60) { sprintf(b, "WORK AT %s: START, JOBS", hour_name(cr->from, h)); sim_note(b); }
+        if (on && clock_min == from - 60) { sprintf(b, "WORK AT %s: PHONE, JOBS", hour_name(cr->from, h)); sim_note(b); }
         if (on && clock_min == from) { snprintf(b, sizeof b, "WORK NOW: %s", job_place); sim_note(b); job_worked = 0; }
         if (on && clock_min == to) {
             int len = to - from, w = MIN(job_worked, len), full = job_pay(), pay = 0;
@@ -1177,6 +1194,23 @@ void sim_player_move(int dx, int dz, int run) {
     world_lvl = 0;
 }
 
+void sim_player_tank(int fwd, int turn, int run) {   // first person: left and right turn on the spot, up walks the way it faces, down steps back
+    Sim *s = &sims[player];
+    world_lvl = s->lvl;
+    if (s->action != ACT_NONE && s->action != ACT_WALK) {
+        if (!fwd && !turn) { world_lvl = 0; return; }
+        if (s->action == ACT_WORK || s->action == ACT_SLEEP) { world_lvl = 0; return; }
+        end_action(s);
+    }
+    s->path_n = 0; s->action = ACT_NONE;
+    s->yaw = (s->yaw + turn) & 4095;
+    if (!fwd) { s->gait.amp = turn ? 1600 : (s->gait.amp > 300 ? s->gait.amp - 300 : 0); if (turn) s->gait.phase = (s->gait.phase + 90) & 4095; world_lvl = 0; return; }
+    int sp = speed_of(s); if (run && fwd > 0) sp = sp * 3 / 2;
+    sp = (sp * fwd) >> 12; if (fwd < 0) sp = sp * 2 / 3;                // (backing up: slower)
+    walk(s, (isin(s->yaw) * sp) >> 12, -((icos(s->yaw) * sp) >> 12));
+    s->gait.amp = 4096; s->gait.phase = (s->gait.phase + (fwd < 0 ? -130 : run ? 200 : 150)) & 4095;
+    world_lvl = 0;
+}
 static int front_tile(const Sim *s, int *mx, int *my) {
     int fx = (isin(s->yaw) * (TILE * 3 / 4)) >> 12, fz = -((icos(s->yaw) * (TILE * 3 / 4)) >> 12);
     int px = s->x + fx, pz = s->z + fz;
@@ -1505,7 +1539,7 @@ int sim_debug_grow(int what, int arg) {   // (test builds) hurry a family's life
     return 0;
 }
 #endif
-#if defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME) || defined(AUTO_ISLE) || defined(AUTO_SCENE)
+#if defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME) || defined(AUTO_ISLE) || defined(AUTO_SCENE) || defined(AUTO_PHONE)
 int sim_debug_goto(char c, int lot) {   // (test builds) stand the player in front of the nearest c (at a place of that kind, lot >= 0)
     Sim *s = &sims[player]; int sx = sim_tile_x(s), sy = sim_tile_y(s), best = 1 << 30, bx = -1, by = -1, tx = 0, ty = 0;
     for (int y = 1; y < MH - 1; y++) for (int x = 1; x < MW - 1; x++) {
@@ -1569,7 +1603,7 @@ static void sim_pie_do_(int i) {
         int tx = up ? pie_mx - fx[f] : pie_mx + fx[f], ty = up ? pie_my - fy[f] : pie_my + fy[f], tl = up ? lo + 1 : lo;
         world_lvl = tl; int ok = world_walkable(tx, ty); world_lvl = keep;
         if (!ok) { sim_note(up ? "BUILD A FLOOR WHERE THE STAIRS COME OUT" : "SOMETHING IS IN THE WAY DOWN THERE"); return; }
-        s->lvl = (u8)tl; s->x = tx * TILE + TILE / 2; s->z = -(ty * TILE + TILE / 2); s->yaw = up ? ((4096 - f * 1024 + 2048) & 4095) : ((4096 - f * 1024) & 4095);
+        s->lvl = (u8)tl; s->x = tx * TILE + TILE / 2; s->z = -(ty * TILE + TILE / 2); s->yaw = up ? ((f * 1024 + 2048) & 4095) : ((f * 1024) & 4095);   // (up: into the flight; down: the way it faces)
         audio_voice(VOICE_FINISHED); return;
     }
     if (pie_code[i] >= 9 && (c == 'R' || c == 'A' || c == 'j')) {   // tune in (or off), then dance to it

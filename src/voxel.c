@@ -218,36 +218,6 @@ static void radial_table(void) {       // the rounded body light at every x,z gr
 #define TK   7      // how far an exposed TOP corner of skin / clothes is pulled down per missing neighbour (a soft, pillowy top: heads, shoulders)
 #define HK2  5      // how far a hair corner is pulled down per missing neighbour
 static int is_hull(int v) { return v && (v >> 4) != 1 && (v >> 4) != 2 && (v >> 4) != 3; }
-// the top rounding of a grid point on layer y: lower it where the hull's top edge is exposed (nothing solid above any of its 4 cells)
-static int top_round(const Bore *b, int X, int y, int Z) {
-    int s = 0;
-    for (int k = 0; k < 4; k++) {
-        int cx = (k & 1) ? X : X - 1, cz = (k & 2) ? Z : Z - 1;
-        if (is_hull(solid_at(b, cx, y + 1, cz))) return 0;
-        if (is_hull(solid_at(b, cx, y, cz))) s++;
-    }
-    return s == 1 ? 2 * TK : s == 2 ? TK : 0;
-}
-static void corner_disp(const Bore *b, int X, int y, int Z, int *dx, int *dz, int *drop) {
-    int solid = 0, nonhair = 0, px = 0, mx = 0, pz = 0, mz = 0, above = 0;
-    for (int k = 0; k < 4; k++) {
-        int cx = (k & 1) ? X : X - 1, cz = (k & 2) ? Z : Z - 1;
-        int v = solid_at(b, cx, y, cz);
-        if (v && (v >> 4) != 1 && (v >> 4) != 2 && (v >> 4) != 3) {   // (the thin limb blocks stand apart: they do not shape the hull)
-            solid++;
-            if ((v & 15) != 5) nonhair++;
-            if (k & 1) px++; else mx++;
-            if (k & 2) pz++; else mz++;
-            if (hair_at(b, cx, y + 1, cz)) above++;
-        }
-    }
-    *dx = *dz = *drop = 0;
-    if (solid == 4 || solid == 0) return;
-    if (px && !mx) *dx = RK; else if (mx && !px) *dx = -RK;
-    if (pz && !mz) *dz = RK; else if (mz && !pz) *dz = -RK;
-    if (!nonhair && !above) *drop = (solid == 1) ? 3 * HK2 : (solid == 2) ? 2 * HK2 : 0;
-}
-
 // per-vertex light of the rounded hair mass: the normal points away from the hair centre. Cached per grid point per draw.
 static u8 hl_cache[H + 2][D + 2][W + 2];
 static u8 hl_stamp[H + 2][D + 2][W + 2];
@@ -674,44 +644,99 @@ static void shape_body(Bore *b) {
     else { b->w_hx = (s16)(2 * VOX); b->w_hy = (s16)hipY; b->w_hz = 0; }
 }
 
+// voxel_prepare's working copy: the blocks with a border of air (no bounds checks), and each grid point's corner shaping worked
+// out once (four blocks share a corner: it was worked out four times, and the city builds a new person most frames)
+static u8 pv[H + 2][D + 2][W + 2];
+#define PV(x, y, z) pv[(y) + 1][(z) + 1][(x) + 1]
+static s8 pc_dx[H + 1][D + 1][W + 1], pc_dz[H + 1][D + 1][W + 1], pc_dr[H + 1][D + 1][W + 1], pc_tr[H + 1][D + 1][W + 1];
+static u8 pc_ok[H + 1][D + 1][W + 1];   // 1 pc_disp known, 2 pc_top known (y from -1: index y + 1)
+static void pc_disp(int X, int y, int Z, int *dx, int *dz, int *drop) {   // the top corner at grid point (X, Z) of layer y: pulled in where
+    // the hull is exposed (the thin limb blocks stand apart: they do not shape it), and a hair corner dropped where its cut shows
+    u8 *ok = &pc_ok[y + 1][Z][X];
+    if (!(*ok & 1)) {
+        int solid = 0, nonhair = 0, px = 0, mx = 0, pz = 0, mz = 0, above = 0;
+        for (int k = 0; k < 4; k++) {
+            int cx = (k & 1) ? X : X - 1, cz = (k & 2) ? Z : Z - 1;
+            int v = PV(cx, y, cz);
+            if (v && (v >> 4) != 1 && (v >> 4) != 2 && (v >> 4) != 3) {
+                solid++;
+                if ((v & 15) != 5) nonhair++;
+                if (k & 1) px++; else mx++;
+                if (k & 2) pz++; else mz++;
+                { int a = PV(cx, y + 1, cz); if (a && (a & 15) == 5) above++; }
+            }
+        }
+        int ddx = 0, ddz = 0, ddr = 0;
+        if (solid != 4 && solid != 0) {
+            if (px && !mx) ddx = RK; else if (mx && !px) ddx = -RK;
+            if (pz && !mz) ddz = RK; else if (mz && !pz) ddz = -RK;
+            if (!nonhair && !above) ddr = (solid == 1) ? 3 * HK2 : (solid == 2) ? 2 * HK2 : 0;
+        }
+        pc_dx[y + 1][Z][X] = (s8)ddx; pc_dz[y + 1][Z][X] = (s8)ddz; pc_dr[y + 1][Z][X] = (s8)ddr; *ok |= 1;
+    }
+    *dx = pc_dx[y + 1][Z][X]; *dz = pc_dz[y + 1][Z][X]; *drop = pc_dr[y + 1][Z][X];
+}
+static int pc_top(int X, int y, int Z) {   // the top rounding of a grid point: lowered where the hull's top edge is exposed (nothing above)
+    u8 *ok = &pc_ok[y + 1][Z][X];
+    if (!(*ok & 2)) {
+        int s = 0, r;
+        for (int k = 0; k < 4; k++) {
+            int cx = (k & 1) ? X : X - 1, cz = (k & 2) ? Z : Z - 1;
+            if (is_hull(PV(cx, y + 1, cz))) { s = -1; break; }
+            if (is_hull(PV(cx, y, cz))) s++;
+        }
+        r = s == 1 ? 2 * TK : s == 2 ? TK : 0;
+        pc_tr[y + 1][Z][X] = (s8)r; *ok |= 2;
+    }
+    return pc_tr[y + 1][Z][X];
+}
 void voxel_prepare(Bore *b) {
     int n = 0, nd = 0;
-    for (int grp = 0; grp < G_N; grp++)
-        for (int y = 0; y < H; y++) for (int z = 0; z < D; z++) for (int x = 0; x < W; x++) {
-            u8 v = b->vox[y][z][x];
-            if (!v) continue;
-            { int g_ = group_of(v, x); if (g_ == G_BODY && y >= b->legs + b->torso) g_ = G_HEAD; if (g_ != grp) continue; }
+    memset(pv, 0, sizeof pv); memset(pc_ok, 0, sizeof pc_ok);
+    for (int y = 0; y < H; y++) for (int z = 0; z < D; z++) memcpy(&PV(0, y, z), b->vox[y][z], W);
+    u8 gl[H * D * W]; int ng[G_N]; memset(ng, 0, sizeof ng);   // each block's group, worked out once (the cells go in group order)
+    for (int i = 0, y = 0; y < H; y++) for (int z = 0; z < D; z++) for (int x = 0; x < W; x++, i++) {
+        u8 v = b->vox[y][z][x]; gl[i] = 255; if (!v) continue;
+        int g_ = group_of(v, x); if (g_ == G_BODY && y >= b->legs + b->torso) g_ = G_HEAD;
+        gl[i] = (u8)g_; ng[g_]++;
+    }
+    for (int grp = 0; grp < G_N; grp++) { if (!ng[grp]) continue;
+        for (int i = 0, y = 0; y < H; y++) for (int z = 0; z < D; z++) for (int x = 0; x < W; x++, i++) {
+            if (gl[i] != grp) continue;
+            u8 v = PV(x, y, z);
             int slot = v & 15, sh = v >> 4, hide = 0, m = 0, in = 0;
             if (sh >= 4 && sh <= 11) m = wMask2[sh - 4];
             else if (sh == 1 || sh == 2 || sh == 3) in = 1;
             if (in) {
-                int up = solid_at(b, x, y + 1, z), dn = solid_at(b, x, y - 1, z);
+                int up = PV(x, y + 1, z), dn = PV(x, y - 1, z);
                 if (up && (up >> 4) == sh) hide |= 16;
                 if (dn && ((dn >> 4) == sh || (dn >> 4) == 2 || (dn >> 4) == 1)) hide |= 32;
                 if (up && (up >> 4) == 0 && sh == 1) hide |= 16;
             } else {
-                if (cube_at(b, x, y, z - 1)) hide |= 1;
-                if (cube_at(b, x, y, z + 1)) hide |= 2;
-                if (cube_at(b, x - 1, y, z)) hide |= 4;
-                if (cube_at(b, x + 1, y, z)) hide |= 8;
-                if (cube_at(b, x, y + 1, z) && !m) hide |= 16;
-                if (cube_at(b, x, y - 1, z) || y == 0) hide |= 32;
+                #define CUBE(X_, Y_, Z_) ({ int c_ = PV(X_, Y_, Z_); c_ && (c_ >> 4) == 0; })
+                if (CUBE(x, y, z - 1)) hide |= 1;
+                if (CUBE(x, y, z + 1)) hide |= 2;
+                if (CUBE(x - 1, y, z)) hide |= 4;
+                if (CUBE(x + 1, y, z)) hide |= 8;
+                if (CUBE(x, y + 1, z) && !m) hide |= 16;
+                if (CUBE(x, y - 1, z) || y == 0) hide |= 32;
+                #undef CUBE
             }
             int is_hair = (slot == 5 && !in && (grp == G_BODY || grp == G_HEAD));
-            if (is_hair && hair_at(b, x, y + 1, z)) hide |= 16;
+            if (is_hair) { int a = PV(x, y + 1, z); if (a && (a & 15) == 5) hide |= 16; }
             SVECTOR cc[8];
             int x0 = (x - 3) * VOX, x1 = x0 + VOX, y0 = -(y + 1) * VOX, y1 = -y * VOX, z0 = (z - 2) * VOX, z1 = z0 + VOX;
             int inset = (sh == 1) ? 7 : (sh == 2) ? 9 : (sh == 3) ? 4 : 0;
             if (inset) { x0 += inset; x1 -= inset; z0 += inset; z1 -= inset; }
-            int below = solid_at(b, x, y - 1, z); if (below && ((below >> 4) == 1 || (below >> 4) == 2 || (below >> 4) == 3)) below = 0;
+            int below = PV(x, y - 1, z); if (below && ((below >> 4) == 1 || (below >> 4) == 2 || (below >> 4) == 3)) below = 0;
             for (int k = 0; k < 4; k++) {
                 int X = (k & 1) ? x1 : x0, Z = (k & 2) ? z1 : z0, low = (m >> k) & 1;
                 int dx = 0, dz = 0, drop = 0, bx = 0, bz = 0;
                 if (!in) {
                     int gX = (k & 1) ? x + 1 : x, gZ = (k & 2) ? z + 1 : z, d2;
-                    corner_disp(b, gX, y, gZ, &dx, &dz, &drop);
-                    if (!is_hair) drop = top_round(b, gX, y, gZ);
-                    if (below) corner_disp(b, gX, y - 1, gZ, &bx, &bz, &d2);
+                    pc_disp(gX, y, gZ, &dx, &dz, &drop);
+                    if (!is_hair) drop = pc_top(gX, y, gZ);
+                    if (below) pc_disp(gX, y - 1, gZ, &bx, &bz, &d2);
                 }
                 int ty = low ? (is_hair ? y0 + VOX * 7 / 10 : y1) : y0 + drop;   // a wedge corner: hair drops 70%, the rest the full block (the GBA's slopes)
                 setVector(&cc[k], X + dx, ty, Z + dz);
@@ -719,7 +744,7 @@ void voxel_prepare(Bore *b) {
             }
             if (n < W * D * H) { b->cell[n].x = (u8)x; b->cell[n].y = (u8)y; b->cell[n].z = (u8)z; b->cell[n].v = v; b->cell[n].hide = (u8)hide; b->cell[n].grp = (u8)grp;
                                  b->cell[n].flags = (u8)((is_hair ? 1 : 0) | (in ? 2 : 0)); memcpy(b->cell[n].c, cc, sizeof cc); n++; }
-        }
+        } }
     b->ncell = (u8)n;
     shape_body(b);
     if (b->h_lift > 0 || b->h_k < 4096) {                // the head sits smaller and higher than its blocks did: the shoulders and the chin show
@@ -739,16 +764,23 @@ void voxel_prepare(Bore *b) {
     b->ndec = (u8)nd;
 }
 
+// yaw is the game's (sim.c's): 0 faces south (-z), 1024 east (+x), and a Bore walks the way it faces, (sin, -cos). The model's
+// face is its +z, which RotMatrix turns to (sin a, cos a): so the model is turned by 2048 - yaw. (Turned by yaw itself, as it
+// was, the picture was the walk mirrored: walking toward or away from the camera it went backwards, and on a diagonal it
+// looked to be walking sideways.)
+#define MODEL_ANGLE(yaw) ((2048 - (yaw)) & 4095)
 void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
-    quads = 0; cur = b;
+    quads = 0; cur = b; yaw = MODEL_ANGLE(yaw);
     MATRIX obj; SVECTOR rot = { 0, (short)yaw, 0, 0 }; VECTOR p = *pos;
     walk_sin = (isin(g->phase) * g->amp) >> 12;                       // -4096..4096
     int bob = g->amp ? (ABS(isin(g->phase * 2)) * 5 * g->amp) >> 24 : 0;
     p.vy -= bob;
     RotMatrix(&rot, &obj);
     TransMatrix(&obj, &p);
-    if (g->sleep) {   // lying on the back
-        MATRIX r; SVECTOR rr = { -1024, 0, 0, 0 }; VECTOR t = { 0, -40, -60 };
+    if (g->sleep) {   // lying on the back (the face, +z, turned up), the head toward the back (a bed's headboard), the body along the bed
+        int top = 0; for (int i = 0; i < b->ncell; i++) for (int k = 0; k < 8; k++) if (b->cell[i].c[k].vy < top) top = b->cell[i].c[k].vy;
+        int tz = MAX(-top / 2, -top - 140);                                // (the head on the pillow, short of the wall; a little one lies in the middle)
+        MATRIX r; SVECTOR rr = { 1024, 0, 0, 0 }; VECTOR t = { 0, -40, tz };
         RotMatrix(&rr, &r); TransMatrix(&r, &t);
         { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); };
     }
@@ -783,7 +815,7 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     }
     if (g->wave) { int w = isin((g->wave * 400) & 4095) >> 4; armR = -2400 + w; rollR = 260; }
     if (g->sit) { rollL = -60; rollR = 60; armL = -500; armR = -500; }   // sitting: hands on the knees
-    if (lean) { MATRIX r; SVECTOR rr = { (short)lean, 0, 0, 0 }; RotMatrix(&rr, &r); r.t[0] = r.t[1] = r.t[2] = 0; { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); } }   // the lean pivots at the feet (RotMatrix leaves the translation unset)
+    if (lean) { MATRIX r; SVECTOR rr = { (short)-lean, 0, 0, 0 }; RotMatrix(&rr, &r); r.t[0] = r.t[1] = r.t[2] = 0; { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); } }   // the lean pivots at the feet (RotMatrix leaves the translation unset)
     gm[G_BODY] = obj;
     {   // the eye in the body's space: turn the eye offset back by the yaw
         int dx = cam.eye.vx - p.vx, dy = cam.eye.vy - p.vy, dz = cam.eye.vz - p.vz;
@@ -792,11 +824,12 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
         cam_cull = !g->sleep;
     }
     { int t0 = gfx_hb();
-    joint_matrix(&gm[G_LLEG], &obj, legL, legRollL, b->w_lgx, hip, 0);
-    joint_matrix(&gm[G_RLEG], &obj, legR, legRollR, b->w_rgx, hip, 0);
-    joint_matrix(&gm[G_LARM], &obj, armL, rollL, b->w_lax, shoulder, 0);
-    joint_matrix(&gm[G_RARM], &obj, armR, rollR, b->w_rax, shoulder, 0);
-    joint_matrix(&gm[G_HEAD], &obj, headNod, headTilt, b->h_cx, b->h_cy0 - b->h_lift, b->h_cz);   // the neck
+    // (the poses above are written with forward as -z: the model's face is +z, so every swing forward or back is turned round here)
+    joint_matrix(&gm[G_LLEG], &obj, -legL, legRollL, b->w_lgx, hip, 0);
+    joint_matrix(&gm[G_RLEG], &obj, -legR, legRollR, b->w_rgx, hip, 0);
+    joint_matrix(&gm[G_LARM], &obj, -armL, rollL, b->w_lax, shoulder, 0);
+    joint_matrix(&gm[G_RARM], &obj, -armR, rollR, b->w_rax, shoulder, 0);
+    joint_matrix(&gm[G_HEAD], &obj, -headNod, headTilt, b->h_cx, b->h_cy0 - b->h_lift, b->h_cz);   // the neck
     vox_t_face += gfx_hb() - t0; }
     gfx_set_light_yaw(yaw);
     int tprep0 = gfx_hb();
@@ -899,14 +932,14 @@ static void lod_cells(const LodBore *m, int cx0, int cx1, int cy0, int cy1, cons
 }
 
 void voxel_draw_lod(const LodBore *m, const VECTOR *pos, int yaw, const Gait *g) {
-    quads = 0;
+    quads = 0; yaw = MODEL_ANGLE(yaw);
     MATRIX obj; SVECTOR rot = { 0, (short)yaw, 0, 0 }; VECTOR p = *pos;
     int ws = (isin(g->phase) * g->amp) >> 12;
     int bob = g->amp ? (ABS(isin(g->phase * 2)) * 5 * g->amp) >> 24 : 0;
     p.vy -= bob;
     RotMatrix(&rot, &obj);
     TransMatrix(&obj, &p);
-    if (g->sleep) { MATRIX r; SVECTOR rr = { -1024, 0, 0, 0 }; VECTOR t = { 0, -40, -60 }; RotMatrix(&rr, &r); TransMatrix(&r, &t); { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); }; }
+    if (g->sleep) { MATRIX r; SVECTOR rr = { 1024, 0, 0, 0 }; VECTOR t = { 0, -40, 60 }; RotMatrix(&rr, &r); TransMatrix(&r, &t); { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); }; }
     int swing = (ws * 300) >> 12;
     int legL = g->sit ? -1024 : swing, legR = g->sit ? -1024 : -swing;
     int armL = g->sit ? -200 : -swing * 3 / 4, armR = g->sit ? -200 : swing * 3 / 4;
@@ -918,10 +951,10 @@ void voxel_draw_lod(const LodBore *m, const VECTOR *pos, int yaw, const Gait *g)
     int shY = armTop < 0 ? hipY : -(armTop * 2 + 2) * VOX + 24;
     MATRIX gmL[5];   // 0 body, 1 left leg, 2 right leg, 3 left arm, 4 right arm
     gmL[0] = obj;
-    joint_matrix(&gmL[1], &obj, legL, 0, 0, hipY, 0);
-    joint_matrix(&gmL[2], &obj, legR, 0, 0, hipY, 0);
-    joint_matrix(&gmL[3], &obj, armL, 0, 0, shY, 0);
-    joint_matrix(&gmL[4], &obj, armR, 0, 0, shY, 0);
+    joint_matrix(&gmL[1], &obj, -legL, 0, 0, hipY, 0);   // (forward is +z: see voxel_draw)
+    joint_matrix(&gmL[2], &obj, -legR, 0, 0, hipY, 0);
+    joint_matrix(&gmL[3], &obj, -armL, 0, 0, shY, 0);
+    joint_matrix(&gmL[4], &obj, -armR, 0, 0, shY, 0);
     gfx_set_object_m(&gmL[0]);
     gfx_set_light_yaw(yaw);
     u32 lc[9][6];

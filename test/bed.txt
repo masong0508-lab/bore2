@@ -1,0 +1,5 @@
+760 start
+800 b
+5470 shot
+5500 shot
+5530 shot

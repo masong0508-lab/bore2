@@ -116,6 +116,7 @@ void gfx_flip(void) {
     gfx_last_overflow = gfx_overflow; gfx_overflow = 0;
     for (int i = 0; i < 8; i++) { gfx_prof_last[i] = gfx_prof[i]; gfx_prof[i] = 0; gfx_profn_last[i] = gfx_profn[i]; gfx_profn[i] = 0; }
     { int h0 = VSync(1); gfx_last_cpu = h0; DrawSync(0); gfx_last_wait = VSync(1) - h0; }   // how long the GPU was still busy with the last frame
+    { extern void atlas_flush_deferred(void); atlas_flush_deferred(); }   // (the textures that waited for this moment)
     { static int flip_vb; while (gfx_min_vsyncs > 1 && VSync(-1) - flip_vb < gfx_min_vsyncs - 1) VSync(0);   // (a steady 30 or 20: never sooner)
       VSync(0); flip_vb = VSync(-1); }
     db_active ^= 1;

@@ -32,7 +32,7 @@ static Level *lv_need(int k) {                      // the storey, taking a pool
     }
     return &lvpool[UP[k] - 1];
 }
-int world_lvl, world_view_lvl, world_roof_show;
+int world_lvl, world_view_lvl, world_roof_show, world_fp;   // (world_fp: first person: the roof over you is your ceiling)
 int world_roof_style, world_roof_col = 0, world_roof_pitch = 1;
 static int roof_dirty = 1;
 static Home homes[ZONE_N][MAXHOMES]; static int nhomes[ZONE_N];
@@ -115,12 +115,13 @@ static const Tex *floor_tex(int i) { return i < NFL ? look_fl_tex(i) : &outTex[(
 const char *world_floor_name(int fl) { return floor_tex(fl % NFLOORS)->nm; }
 
 static u16 fl_soft[NFLOORS][4];   // the floor colours, calmed: a GBA pattern blown up across a 3D floor shouts, so each colour leans toward the tile's average
+static u16 fl_avg[NFLOORS];       // ... and the average itself (the ground far off)
 static void soften_floors(void) {
     for (int i = 0; i < NFLOORS; i++) {
         const Tex *t = floor_tex(i);
         int r = 0, g = 0, b = 0, n = 0;
         for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) { u16 c = t->c[t->p[y][x] - '0']; r += C_R(c); g += C_G(c); b += C_B(c); n++; }
-        r /= n; g /= n; b /= n;
+        r /= n; g /= n; b /= n; fl_avg[i] = RGB(r, g, b);
         for (int k = 0; k < 4; k++) { u16 c = t->c[k]; fl_soft[i][k] = RGB((C_R(c) * 9 + r * 7) / 16, (C_G(c) * 9 + g * 7) / 16, (C_B(c) * 9 + b * 7) / 16); }
     }
 }
@@ -1364,6 +1365,7 @@ int world_room_score(int mx, int my) {
     }
     int n = 0; for (int i = 0; i < 7; i++) if (kinds >> i & 1) n++;
     if (world_zone == ZONE_ISLAND) return MIN(100, 65 + n * 10);   // (the island: the sea air, the palms, the quiet; nobody minds the lack of a sofa)
+    if (world_lvl <= 0 && mx >= 0 && my >= 0 && mx < MW && my < MH && floorMap[my][mx] >= FL_GRASS) return MIN(100, 55 + n * 15);   // (out of doors: the street, a park; fine for now)
     return MIN(100, n * 20);
 }
 
@@ -1728,6 +1730,8 @@ static inline int in_range(int x, int y);
 static u8 lvl_bb[NLEVELS][4];
 static u32 lvl_edge[NLEVELS][MH][(MW + 31) / 32];
 // shell: a storey above the one you are on (only other buildings' outside walls show); focus: the building you are in
+static int cut_all;                                     // (this frame: the walls on the camera's side are cut low)
+static inline int cut_here(int mx, int my) { int b = bld[my][mx]; return !b || b_see[b]; }   // the walls cut are those of the buildings you are in or look into (and loose ones)
 static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, int focus) {
     // the camera's forward on the ground (unit, 4096), to decide which walls stand between it and the focus
     int cdx = cam.at.vx - cam.eye.vx, cdz = cam.at.vz - cam.eye.vz;
@@ -1771,6 +1775,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
         if (!inR && !in_range(mx, my)) continue;                     // past the range (a building cut by it is drawn whole)
         if (shell || !inR) {                                         // a storey seen from outside, or a far part of a building: its outside walls only
             if (shell && bld[my][mx] && b_see[bld[my][mx]]) continue;
+            if (shell && cut_all && cut_here(mx, my) && (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12) < -TILE / 4) continue;   // (over walls cut low: it would float)
             if (!lvl && !is_wall(c)) continue;
             if (!tile_seen(&tvT, mx, my)) continue;
             if (!is_wall(c) || !(open_air(mx - 1, my) || open_air(mx + 1, my) || open_air(mx, my - 1) || open_air(mx, my + 1) || !lvl)) { if (lvl && shell) fascia(mx, my); continue; }
@@ -1792,13 +1797,13 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
         if (lvl) { fascia(mx, my); if (c == '.') continue; }
         if (is_wall(c)) {
             int h = (c == 'w') ? WALL_LOW : WALL_FULL, cut = 0;
-            if (cutaway && c != 'w') {
+            if (cutaway && c != 'w' && cut_here(mx, my)) {
                 int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12);   // distance past the focus along the view
                 if (along < -TILE / 4) { h = WALL_LOW; cut = 1; }
             }
             { PROF_BEGIN(); ws_lite = bld[my][mx] && !b_see[bld[my][mx]] && !world_roof_show; wall_tile(mx, my, h, cut); ws_lite = 0; world_dbg_walls++; PROF_END(1); }
         } else if (c != '.') {
-            if (c == 'D') { int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12); door_tile(mx, my, (cutaway && along < -TILE / 4) ? WALL_LOW : WALL_FULL); }
+            if (c == 'D') { int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12); door_tile(mx, my, (cutaway && cut_here(mx, my) && along < -TILE / 4) ? WALL_LOW : WALL_FULL); }
             if (nat_on && !lvl && nat_plant_char(c)) {
                 if (ABS(mx - fx) > 10 || ABS(my - fy) > 10) continue;   // (further off, the far cells' woods stand for them)
                 int al = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12), ac = (((wx - focx) * fdz) >> 12) - (((wz - focz) * fdx) >> 12);
@@ -1820,7 +1825,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
 // its distance in from the footprint's edge (chessboard distance for a HIP roof, across the short side for a GABLE, none
 // for FLAT), capped so a big building levels off. Eaves overhang the walls; gable ends are filled with plaster walls.
 static u8 roofH[NLEVELS][MH + 1][MW + 1];        // corner heights, in pitch steps
-static u8 roofM[NLEVELS][MH][MW];                 // 1: this tile is under the roof of storey l
+static u8 roofM[NLEVELS][MH][MW] __attribute__((aligned(4)));   // 1: this tile is under the roof of storey l
 static u8 bld[MH][MW];                             // the building each ground tile belongs to (0: outdoors)
 static u8 roof_tex_ok; static TexRef roof_tex;
 static int enclose(char c) { return c == 'W' || c == 'E' || c == 'e' || c == 'D'; }
@@ -2059,10 +2064,13 @@ static void roofs_draw(int fx, int fy) {
         TileView tv; tile_view_init(&tv, TILE / 2, base - 170, -TILE / 2);
         rc_l = l; rc_base = base; cc_begin(&cc_roof, ex0, ey0, base);
         int cur_b = -1, pitch = 170; const u8 *rc = roofCol[0];
-        for (int y = ey0; y <= ey1; y++) for (int x = ex0; x <= ex1; x++) {
-            if (!roofM[l][y][x] || !in_range(x, y)) continue;
+        int lx0 = ex0, ly0 = ey0, lx1 = ex1, ly1 = ey1;                // (an upper storey's roofs lie in its built-on box, a tile round)
+        if (l) { lx0 = MAX(lx0, lvl_bb[l][0] - 1); ly0 = MAX(ly0, lvl_bb[l][1] - 1); lx1 = MIN(lx1, lvl_bb[l][2] + 1); ly1 = MIN(ly1, lvl_bb[l][3] + 1); }
+        for (int y = ly0; y <= ly1; y++) { const u8 *row = roofM[l][y]; for (int x = lx0; x <= lx1; x++) {
+            if (!(x & 3) && x + 3 <= lx1 && !*(const u32 *)(row + x)) { x += 3; continue; }   // (four open tiles at a time)
+            if (!row[x] || !in_range(x, y)) continue;
             int b = bld[y][x];
-            if (b && b_see[b] && (!world_roof_show || l > world_view_lvl)) { if (!world_roof_show) continue; }   // the building you are in (or look through) shows its rooms
+            if (b && b_see[b] && !world_fp && (!world_roof_show || l > world_view_lvl)) { if (!world_roof_show) continue; }   // the building you are in (or look through) shows its rooms (first person: its roof is the ceiling)
             if (b != cur_b) { cur_b = b; pitch = roofPitch[b_pit[b] % NROOF_PITCH]; rc = roofCol[b_col[b] % NROOF_COL]; rc_sty = b_sty[b]; rc_pitch = pitch; }
             if (rc_sty == 2 && b && b_top[b] == l) {                // a flat roof: the building's whole top in one slab (drawn from its first tile)
                 if (x != b_x0[b] || y != b_y0[b]) { if (!(roofM[l][b_y0[b]][b_x0[b]])) {} else continue; }
@@ -2070,7 +2078,7 @@ static void roofs_draw(int fx, int fy) {
                     int X0 = b_x0[b] * TILE - 17, X1 = (b_x1[b] + 1) * TILE + 17, Z0 = -b_y0[b] * TILE + 17, Z1 = -(b_y1[b] + 1) * TILE - 17, Y = base - 10;
                     SVECTOR a, bb, cc, dd; setVector(&a, X0, Y, Z0); setVector(&bb, X1, Y, Z0); setVector(&cc, X0, Y, Z1); setVector(&dd, X1, Y, Z1);
                     int L = CLAMP(gfx_light(0, -ONE, 0), 60, 220);
-                    gfx_quad_f(&a, &bb, &cc, &dd, (118 * L) >> 7, (116 * L) >> 7, (112 * L) >> 7, 1);
+                    gfx_quad_f(&a, &bb, &cc, &dd, (118 * L) >> 7, (116 * L) >> 7, (112 * L) >> 7, !world_fp);
                     setVector(&a, X0, Y - 24, Z1); setVector(&bb, X1, Y - 24, Z1); setVector(&cc, X0, Y, Z1); setVector(&dd, X1, Y, Z1); gfx_quad_f(&a, &bb, &cc, &dd, 150, 146, 140, 1);   // the parapet
                     setVector(&a, X1, Y - 24, Z0); setVector(&bb, X0, Y - 24, Z0); setVector(&cc, X1, Y, Z0); setVector(&dd, X0, Y, Z0); gfx_quad_f(&a, &bb, &cc, &dd, 150, 146, 140, 1);
                     setVector(&a, X0, Y - 24, Z0); setVector(&bb, X0, Y - 24, Z1); setVector(&cc, X0, Y, Z0); setVector(&dd, X0, Y, Z1); gfx_quad_f(&a, &bb, &cc, &dd, 132, 128, 124, 1);
@@ -2093,8 +2101,11 @@ static void roofs_draw(int fx, int fy) {
                    L = last_L = gfx_light((-dhx << 12) / len, (-TILE << 12) / len, (-dhz << 12) / len); last_key = key; }
             u32 c = gfx_grade_tex((u32)MIN(255, (rc[0] * L) >> 7) | ((u32)MIN(255, (rc[1] * L) >> 7) << 8) | ((u32)MIN(255, (rc[2] * L) >> 7) << 16));
             int u0 = roof_tex.u, v0 = roof_tex.v, u1 = u0 + 15, v1 = v0 + 15;
-            if (ABS(dhz) >= ABS(dhx)) gfx_emit_gt4(A, B, C, DQ, c, c, c, c, roof_tex.tpage, 0, u0, v0, u1, v1, 1);   // courses run across the slope
-            else gfx_emit_ft4(A, B, C, DQ, c, roof_tex.tpage, 0, u0, v0, u0, v1, u1, v0, u1, v1, 1, 0);
+            if (world_fp && b && b_see[b]) {   // first person, under your own roof: a plain plaster ceiling, not shingles
+                int lc = CLAMP(gfx_light_amb() * 2, 80, 190);
+                gfx_emit_f4(A, B, C, DQ, (u32)lc | ((u32)(lc - 4) << 8) | ((u32)(lc - 12) << 16), 0);
+            } else if (ABS(dhz) >= ABS(dhx)) gfx_emit_gt4(A, B, C, DQ, c, c, c, c, roof_tex.tpage, 0, u0, v0, u1, v1, !world_fp);   // courses run across the slope (first person: seen from under it too)
+            else gfx_emit_ft4(A, B, C, DQ, c, roof_tex.tpage, 0, u0, v0, u0, v1, u1, v0, u1, v1, !world_fp, 0);
             // the gable ends: where the roof stands above a footprint edge, a wall closes it
             static const signed char ex[4] = { 0, 1, 0, -1 }, ey[4] = { 1, 0, -1, 0 };
             for (int k = 0; k < 4; k++) {
@@ -2110,7 +2121,7 @@ static void roofs_draw(int fx, int fy) {
                 int Lw = gfx_light(ex[k] * ONE, 0, -ey[k] * ONE);
                 gfx_quad_f(&a, &b2, &cc, &dd, MIN(255, (226 * Lw) >> 7), MIN(255, (214 * Lw) >> 7), MIN(255, (190 * Lw) >> 7), 1);
             }
-        }
+        } }
     }
 }
 // ---- the far skyline: buildings past the detail range, as boxes (a wall colour, a band of windows a storey, the roof) ----
@@ -2159,9 +2170,16 @@ static int slab1(int o, int d, int lo, int hi, int *t0, int *t1) {   // the ray 
     if (ta > *t0) *t0 = ta; if (tb < *t1) *t1 = tb;
     return *t0 <= *t1;
 }
-static void see_through(int focus) {
+static void see_through(int focus, int fx, int fy) {
     memset(b_see, 0, sizeof b_see);
     if (focus) b_see[focus] = 1;
+    if (world_fp) {                                                   // first person: nothing stands between the eye and you; the
+        for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {   // buildings round you (in a doorway too) open up inside
+            int x = fx + dx, y = fy + dy;
+            if (x >= 0 && y >= 0 && x < MW && y < MH && bld[y][x]) b_see[bld[y][x]] = 1;
+        }
+        return;
+    }
     int ex = cam.eye.vx, ey = cam.eye.vy, ez = cam.eye.vz, dx = cam.at.vx - ex, dy = cam.at.vy - ey, dz = cam.at.vz - ez;
     int tx0 = MIN(ex, cam.at.vx) / TILE - 1, tx1 = MAX(ex, cam.at.vx) / TILE + 1;            // the ray's box, in tiles
     int ty0 = -MAX(ez, cam.at.vz) / TILE - 1, ty1 = -MIN(ez, cam.at.vz) / TILE + 1;
@@ -2182,8 +2200,23 @@ int world_far_range = 34;                       // how far (tiles) the skyline r
 #define NCELL (MW / 4)
 static u16 fc_col[NCELL][NCELL]; static u8 fc_kind[NCELL][NCELL]; static int fc_stamp = -1; static u32 fc_for;
 static void nat_far_cells(void) {
+    int isl = world_zone == ZONE_ISLAND;
     for (int cy = 0; cy < NCELL; cy++) for (int cx = 0; cx < NCELL; cx++) {
         int r = 0, g = 0, b = 0, wet = 0, trees = 0;
+        if (!isl) {   // the floors' own colours (a building's ground under its box: its wall colour)
+            for (int k = 0; k < 16; k++) {
+                int x = cx * 4 + (k & 3), y = cy * 4 + (k >> 2), f = floorMap[y][x] % NFLOORS; char c = lifeMap[y][x];
+                if (f == FL_WATER) wet++;
+                if (c == 'g' || c == '3' || c == '6' || c == 'u') trees++;
+                u16 col = (is_wall(c) || c == 'D') ? wp_top[wallMap[y][x] % NWALLS] : fl_avg[f];
+                r += C_R(col) << 3; g += C_G(col) << 3; b += C_B(col) << 3;
+            }
+            r >>= 4; g >>= 4; b >>= 4;
+            if (trees) { int t = MIN(trees * 30, 200); r = (r * (256 - t) + 34 * t) >> 8; g = (g * (256 - t) + 70 * t) >> 8; b = (b * (256 - t) + 30 * t) >> 8; }
+            fc_col[cy][cx] = RGB(r >> 3, g >> 3, b >> 3);
+            fc_kind[cy][cx] = (u8)((wet >= 9) | (MIN(trees, 7) << 1));
+            continue;
+        }
         int j = CLAMP((nat_noise(ngr_j, cx * 4 + 2, cy * 4 + 2) - 96) * 4, 0, 255);
         for (int k = 0; k < 16; k++) {
             int x = cx * 4 + (k & 3), y = cy * 4 + (k >> 2), f = floorMap[y][x]; char c = lifeMap[y][x];
@@ -2205,42 +2238,46 @@ static void nat_far_cells(void) {
 }
 #define XYW_(v) (*(const u32 *)&(v)->x)
 static void nat_far(int px, int py) {
-    if (fc_stamp != world_stamp || fc_for != ngr_for) { nat_far_cells(); fc_stamp = world_stamp; fc_for = ngr_for; }
+    static int fc_zone = -1;
+    if (fc_stamp != world_stamp || fc_for != ngr_for || fc_zone != world_zone) { nat_far_cells(); fc_stamp = world_stamp; fc_for = ngr_for; fc_zone = world_zone; }
+    u16 outc = world_zone == ZONE_ISLAND ? RGB(22 >> 3, 70 >> 3, 120 >> 3) : fl_avg[world_zone == ZONE_TOWN ? FL_SAND : FL_GRASS];   // past the map: the sea, or the land going on
+    int out_r = C_R(outc) << 3, out_g = C_G(outc) << 3, out_b = C_B(outc) << 3, out_h = world_zone == ZONE_ISLAND ? 24 : 0;
     #define FN 18
+    const int S = world_zone == ZONE_ISLAND ? 1 : 2, NN = S == 1 ? FN : 12;   // (off the island the land is plain: cells twice the size, out as far, for a third of the work)
     static SVECTOR fs[2][FN + 1] SVEC_ALIGN; static XV fv[2][FN + 1]; static u32 fcl[2][FN + 1]; static u8 fk[2][FN + 1]; int rlo[2], rhi[2];
-    int c0x = (px >> 2) - FN / 2, c0y = (py >> 2) - FN / 2;
+    int c0x = ((px >> 2) - NN * S / 2) & ~(S - 1), c0y = ((py >> 2) - NN * S / 2) & ~(S - 1);
     int fwx = cam.at.vx - cam.eye.vx, fwz = cam.at.vz - cam.eye.vz, fl = isqrt(fwx * fwx + fwz * fwz); if (fl < 1) fl = 1;
     fwx = (fwx << 12) / fl; fwz = (fwz << 12) / fl;                       // (the way the camera looks: what lies behind it is not worked out)
     VECTOR org; setVector(&org, c0x * 4 * TILE, 0, -c0y * 4 * TILE); gfx_set_object(&org, 0);
     int Lg = CLAMP(gfx_light(0, -ONE, 0), 40, 200);
-    int south = cam.eye.vz < -(c0y * 4 + FN * 2) * TILE;                    // (the rows nearest the camera go in first: they are drawn last)
+    int south = cam.eye.vz < -(c0y * 4 + NN * S * 2) * TILE;                    // (the rows nearest the camera go in first: they are drawn last)
     u32 *ot = gfx_ot() + OT_GROUND_FAR;
-    for (int n = 0, cur = 0; n <= FN; n++, cur ^= 1) {
-        int j = south ? FN - n : n;
+    for (int n = 0, cur = 0; n <= NN; n++, cur ^= 1) {
+        int j = south ? NN - n : n;
         {   // the corners of this row in front of the camera (a run: the distance ahead changes evenly along it)
-            int d = ((c0x * 4 * TILE - cam.eye.vx) * fwx + (-(c0y * 4 + j * 4) * TILE - cam.eye.vz) * fwz) >> 12, st = (4 * TILE * fwx) >> 12;
-            rlo[cur] = FN + 1; rhi[cur] = -1;
-            for (int i = 0; i <= FN; i++, d += st) if (d >= -2 * TILE) { if (rlo[cur] > FN) rlo[cur] = i; rhi[cur] = i; }
+            int d = ((c0x * 4 * TILE - cam.eye.vx) * fwx + (-(c0y + j * S) * 4 * TILE - cam.eye.vz) * fwz) >> 12, st = (S * 4 * TILE * fwx) >> 12;
+            rlo[cur] = NN + 1; rhi[cur] = -1;
+            for (int i = 0; i <= NN; i++, d += st) if (d >= -2 * TILE * S) { if (rlo[cur] > NN) rlo[cur] = i; rhi[cur] = i; }
         }
         for (int i = rlo[cur]; i <= rhi[cur]; i++) {
             int r = 0, g = 0, b = 0, h = 0;
             for (int k = 0; k < 4; k++) {
-                int cx = c0x + i - 1 + (k & 1), cy = c0y + j - 1 + (k >> 1);
-                if (cx < 0 || cy < 0 || cx >= NCELL || cy >= NCELL) { r += 22; g += 70; b += 120; h += 24; continue; }
+                int cx = c0x + i * S - 1 + (k & 1), cy = c0y + j * S - 1 + (k >> 1);
+                if (cx < 0 || cy < 0 || cx >= NCELL || cy >= NCELL) { r += out_r; g += out_g; b += out_b; h += out_h; continue; }
                 u16 c = fc_col[cy][cx]; int kd = fc_kind[cy][cx];
                 r += C_R(c) << 3; g += C_G(c) << 3; b += C_B(c) << 3; h += (kd & 1) ? 24 : -(kd >> 1) * 40;
             }
             r = MIN((r * Lg) >> 9, 255); g = MIN((g * Lg) >> 9, 255); b = MIN((b * Lg) >> 9, 255);
             fcl[cur][i] = (u32)r | ((u32)g << 8) | ((u32)b << 16); fk[cur][i] = 0;
-            setVector(&fs[cur][i], i * 4 * TILE, h / 4, -j * 4 * TILE);
+            setVector(&fs[cur][i], i * S * 4 * TILE, h / 4, -j * S * 4 * TILE);
         }
         if (rhi[cur] >= rlo[cur]) gfx_xform(fs[cur] + rlo[cur], fv[cur] + rlo[cur], rhi[cur] - rlo[cur] + 1);
         if (!n) continue;
         int jr = south ? j : j - 1;                                         // (the row of cells between the two rows of corners)
         int ilo = MAX(rlo[0], rlo[1]), ihi = MIN(rhi[0], rhi[1]) - 1;
         for (int i = ilo; i <= ihi; i++) {
-            int tx = (c0x + i) * 4, ty = (c0y + jr) * 4;
-            if (tx >= ngx0 && tx + 3 <= ngx1 && ty >= ngy0 && ty + 3 <= ngy1) continue;   // (wholly under the full ground)
+            int tx = (c0x + i * S) * 4, ty = (c0y + jr * S) * 4;
+            if (tx >= ngx0 && tx + 4 * S - 1 <= ngx1 && ty >= ngy0 && ty + 4 * S - 1 <= ngy1) continue;   // (wholly under the full ground)
             const XV *P = fv[cur ^ 1], *Q = fv[cur];
             const XV *A = south ? &Q[i] : &P[i], *B = south ? &Q[i + 1] : &P[i + 1], *C = south ? &P[i] : &Q[i], *Dd = south ? &P[i + 1] : &Q[i + 1];
             if (!xv_vis4(A, B, C, Dd, 0)) continue;
@@ -2271,10 +2308,11 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     const int R = world_detail_r;
     nat_on = world_zone == ZONE_ISLAND && world_nature;
     { const int G = MIN(R, 8); ngx0 = fx - G; ngx1 = fx + G; ngy0 = fy - G; ngy1 = fy + G; }   // (the island's ground in full this far round you)
+    if (!nat_on) { ngx0 = rx0; ngx1 = rx1; ngy0 = ry0; ngy1 = ry1; }   // (elsewhere: the floors the range draws)
     rx0 = MAX(0, fx - R) & ~1; rx1 = MIN(MW - 1, fx + R); ry0 = MAX(0, fy - R) & ~1; ry1 = MIN(MH - 1, fy + R);
     ex0 = rx0; ex1 = rx1; ey0 = ry0; ey1 = ry1;
     int focus = (fx >= 0 && fy >= 0 && fx < MW && fy < MH) ? bld[fy][fx] : 0;
-    see_through(focus);
+    see_through(focus, fx, fy);
     for (int b = 1; b <= nbld; b++) {               // buildings the range cuts through are drawn whole
         if (b_x0[b] == 255) { b_str[b] = 0; continue; }
         int inside = b_x0[b] >= rx0 && b_x1[b] <= rx1 && b_y0[b] >= ry0 && b_y1[b] <= ry1;
@@ -2284,7 +2322,8 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     }
     ex0 &= ~1; ey0 &= ~1;
     int keep_lvl = world_lvl; world_lvl = 0;
-    { int h0 = gfx_hb(); draw_layer(fx, fy, t, cutaway, 0, 0, focus); world_hb_l0 = gfx_hb() - h0; }
+    cut_all = cutaway;
+    { int h0 = gfx_hb(); draw_layer(fx, fy, t, cutaway && world_view_lvl == 0, 0, 0, focus); world_hb_l0 = gfx_hb() - h0; }
     int h1_ = gfx_hb(); int pw0_ = gfx_prof[1], pn0_ = gfx_profn[1], pf0_ = gfx_prof[0];
     {   // the storeys above: the drawing reads each storey's own arrays, with the camera dropped by its height. Up to the storey
         // you are on, everything; above it, other buildings' outside walls (the one you are in stays open to the sky)
@@ -2302,7 +2341,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     }
     world_hb_up = gfx_hb() - h1_; world_up_walls = gfx_prof[1] - pw0_; world_up_wprims = gfx_profn[1] - pn0_; world_up_fl = gfx_prof[0] - pf0_;
     { PROF_BEGIN(); int h0 = gfx_hb(); roofs_draw(fx, fy); world_hb_roofs = gfx_hb() - h0; PROF_END(3); }
-    if (nat_on) { PROF_BEGIN(); nat_far(fx, fy); PROF_END(7); }
+    if (nat_on || world_zone == ZONE_HOME || world_zone == ZONE_TOWN) { PROF_BEGIN(); nat_far(fx, fy); PROF_END(7); }   // (the ground past the range, out to the map's edge and on)
     {   // the skyline: everything past the range, as boxes (windows on the nearer ones); in SAN BOREAS, on out to the horizon
         PROF_BEGIN(); gfx_set_identity();
         int use_far = world_zone == ZONE_CITY && far_begin(world_horizon);

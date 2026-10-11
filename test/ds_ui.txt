@@ -1,0 +1,8 @@
+910 start
+950 b
+1500 shot
+1700 select
+1800 shot
+1850 select
+1900 start
+2000 shot

@@ -72,14 +72,27 @@ TexRef atlas_alloc(int w, int h) { return alloc_in(0, 1, w, h, 1); }
 TexRef atlas_alloc_page(int page, int w, int h) { return alloc_in(page, page == 2 ? 3 : page, w, h, 1); }
 TexRef atlas_try(int w, int h) { TexRef t = alloc_in(2, 3, w, h, 0); return t.tpage ? t : alloc_in(0, 1, w, h, 0); }   // the strip, else anywhere; none (no fuss) when full
 
+// Uploads in the middle of a frame wait for the GPU to finish the last one first (vram_load's DrawSync): a whole frame's drawing
+// lost. While atlas_defer is on, small ones are kept here instead and sent when the frame flips (the GPU is idle then anyway).
+#define DQ_N 8
+#define DQ_PX 256
+static u16 dq_px[DQ_N][DQ_PX] __attribute__((aligned(4))); static RECT dq_r[DQ_N]; static int dq_n;
+int atlas_defer;
+void atlas_flush_deferred(void) {   // (gfx_flip, once the GPU is done with the last frame)
+    for (int i = 0; i < dq_n; i++) vram_load(&dq_r[i], dq_px[i]);
+    dq_n = 0;
+}
 void atlas_upload(const TexRef *t, const u16 *pixels) {
     if (!t->tpage) return;
     int page = 0; for (int i = 0; i < PAGES; i++) if (t->tpage == pg[i].tpage) page = i;
     int aw = (t->w + 1) & ~1;
+    u16 *dst = upload_buf;
+    if (atlas_defer && aw * t->h <= DQ_PX) { if (dq_n >= DQ_N) atlas_flush_deferred(); dst = dq_px[dq_n]; }
     for (int y = 0; y < t->h; y++) {
-        for (int x = 0; x < aw; x++) upload_buf[y * aw + x] = (x < t->w) ? pixels[y * t->w + x] : 0;
+        for (int x = 0; x < aw; x++) dst[y * aw + x] = (x < t->w) ? pixels[y * t->w + x] : 0;
     }
     RECT r; setRECT(&r, (page < 2 ? PAGE_X : 896) + t->u, pg[page].base_y + t->v, aw, t->h);
+    if (dst != upload_buf) { dq_r[dq_n++] = r; return; }
     vram_load(&r, upload_buf);
 }
 

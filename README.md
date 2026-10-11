@@ -12,8 +12,14 @@ For a real PlayStation or PCSX-ReARMed, burn or open `bore2.cue` + `bore2.bin` f
 Every push to GitHub builds both: open Actions, the newest green run, and download **BORE2_chd** or **bore2_disc** under Artifacts.
 
 Controls: stick / d-pad move, X uses the thing in front (fridge, bed, shower, sofa, TV, radio, the DeadSet...), talk to a
-housemate with X, O gets up, SQUARE runs, TRIANGLE game speed, SELECT switches Bore, START the menu (TRAVEL to the island
-and the desert town, BUILD MODE, CREATE A BORE, JUKEBOX). Camera: L1 R1 orbit, L2 R2 zoom, the right stick orbits and tilts.
+housemate with X, O gets up, SQUARE runs, TRIANGLE game speed. SELECT opens your PHONE: CALL, PIZZA, PARTY, MAP, TRAVEL (the
+island and the desert town), JOBS, HOMES, PEOPLE, FAMILY (play as another Bore), ADOPT, MUSIC and GOALS. START is the short
+menu: the BORE PANEL, BUILD MODE, CREATE A BORE, OPTIONS, HOW TO PLAY.
+
+Camera: L1 R1 orbit, L2 R2 zoom, the right stick orbits and tilts; L1 + R1 together swing it round behind you. L2 + R2
+together switch between three cameras: THE SIMS (it orbits you), BEHIND YOU (it follows round as you walk) and FIRST PERSON
+(through your Bore's eyes: up walks, left and right turn, L2 R2 look down and up; your own roof is the ceiling). OPTIONS,
+CAMERA also sets how high it looks down from, how fast it turns and whether zooming in tilts it down.
 
 ## Build it
 1. Install PSn00bSDK (https://github.com/Lameguy64/PSn00bSDK/releases) so `mipsel-none-elf-gcc` and `cmake` work.
@@ -43,7 +49,7 @@ The creature code: `python3 tools/port_look.py <bore-gba-main>/source/main.c src
 No memory-card saves, the 80x80 map's RAM use is estimated and not yet measured on a disc build, wants/fears only partly done, tested only in an emulator.
 
 ## Crowds and parties
-THROW A PARTY (pause menu, or the phone) brings up to 60 guests, who walk in, dance round you and go home after three hours.
+THROW A PARTY (the phone) brings up to 60 guests, who walk in, dance round you and go home after three hours.
 Every person in a crowd is the full model, like your own Bore: `src/crowd.c` keeps a compact copy of each model (~2 KB) in the
 RAM the voice clips used before they went into the sound chip, draws the few biggest on screen live in 3D, and shows the rest as
 sprites of that same model, rendered into spare video memory and redrawn round the crowd as the frame's time allows.
@@ -55,7 +61,7 @@ salons, cinemas, galleries, libraries, clinics, arcades, inns, hotels, offices, 
 inside (`lot_*`), `src/places.c` knows their names and opening hours, and the pie menu (X) sells what each one sells: a meal, a latte,
 a drink or a round, a film, a haircut, a massage, a checkup, a swim, a room for the night, groceries for home, an outfit.
 
-Jobs (START, JOBS) are at real places too: 14 careers (13 in town, and the old factory) with their own shifts, days, pay and six titles each (DISHWASHER to
+Jobs (PHONE, JOBS) are at real places too: 14 careers (13 in town, and the old factory) with their own shifts, days, pay and six titles each (DISHWASHER to
 RESTAURATEUR, INTERN to CEO, ORDERLY to MEDICAL LEGEND...). Go there (the boss pays the taxi) and X on a counter, desk or machine.
 
 ## Growing up
@@ -69,7 +75,7 @@ yard. The family tree (partner, parent, child, sibling, grandparent) is in the p
 too (`src/pop.c`): its people have birthdays, babies, leave home, pass on, and new families move into the empty homes.
 
 ## A home of your own
-START, HOMES lists the homes for sale near you in SAN BOREAS: houses, cottages and two-storeys nobody lives in, and empty lots,
+PHONE, HOMES lists the homes for sale near you in SAN BOREAS: houses, cottages and two-storeys nobody lives in, and empty lots,
 each with its price (dearer in a city). A FOR SALE sign in a yard sells that one too (X on it). Buy one and the family moves in by
 taxi; a house comes furnished for them, an empty lot is cleared for building. That block is theirs from then on (`src/home.c`,
 and `world.c` keeps it just as they build it, every storey), TRAVEL has HOME at the top, and the map shows where it is. Buy another
@@ -87,7 +93,7 @@ STONE; fish off the jetty and the beaches; COOK AND EAT at the campfire (every m
 and when there is none the others go foraging). CRAFT at the campfire makes a TENT, a LOG BENCH, an OUTHOUSE, a SPEAR (fish
 faster, catch more), a plank SHELTER, and a RAFT that sails out to the islet. Eight secrets are hidden round it: a message in a
 bottle, buried treasure, a tiki idol, a shipwreck, six seashells, a hermit's journal, the islet, and a golden idol. The map
-(START, MAP AND TAXI) shows the island, ticks off what is found and hints at the rest; finding them all is one of THE STORY's goals.
+(PHONE, MAP) shows the island, ticks off what is found and hints at the rest; finding them all is one of THE STORY's goals.
 
 The island is drawn as a place rather than as blocks (`src/nature.c`): the ground is coloured corner by corner (sand into meadow
 into jungle, wet sand and foam at the waterline, shade under the trees, a sea that goes from turquoise shallows to deep blue)

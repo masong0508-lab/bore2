@@ -1029,7 +1029,7 @@ void citizens_update(int steps) {
             int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz, d = dx * dx + dz * dz;
             if (d < bd) { bd = d; best = i; }
         }
-        if (best >= 0) { build_lod(&cits[best]); built++; }
+        if (best >= 0) { atlas_defer = 1; build_lod(&cits[best]); atlas_defer = 0; built++; }   // (its face goes to VRAM at the flip)
     }
     if (!built) {   // someone near the camera whose stored model was let go (the store was full): build them again
         int best = -1, bd = DRAW_DIST * DRAW_DIST;
@@ -1039,16 +1039,21 @@ void citizens_update(int steps) {
             int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz, d = dx * dx + dz * dz;
             if (d < bd) { bd = d; best = i; }
         }
-        if (best >= 0) build_lod(&cits[best]);
+        if (best >= 0) { atlas_defer = 1; build_lod(&cits[best]); atlas_defer = 0; }
     }
     for (int k = 0; k < steps; k++) {
         tick++;
         party_tick();
         { static int last_min = -1; if (clock_min != last_min) { if (last_min >= 0) party_minute(); last_min = clock_min; } }
         if (pl_cd > 0) pl_cd--;
+        const Sim *me = &sims[player];
         for (int i = 0; i < NCIT; i++) {
             Cit *c = &cits[i];
             if (c->zone != world_zone || c->mode == CM_GONE) continue;
+            if ((tick + i) & 1) {   // far off (past the full detail, out of the way of anything you do): every other step is enough
+                int dx = (me->x - c->x) >> 4, dz = (me->z - c->z) >> 4;
+                if (dx * dx + dz * dz > (14 * TILE / 16) * (14 * TILE / 16) && c->mode != CM_CHASE && c->mode != CM_PARTY && c->mode != CM_CHAT) continue;
+            }
             step_one(c, i);
         }
         if (!fight_on && pl_hp < 100 && !(tick & 63)) pl_hp++;   // you heal about a point a second
@@ -1163,26 +1168,28 @@ static void bar(int x, int y, int w, int v, int r, int g, int b) {
     gfx_rect(x, y, w, 4, 30, 30, 36, 0);
     gfx_rect(x + 1, y + 1, (w - 2) * CLAMP(v, 0, 100) / 100, 2, r, g, b, 0);
 }
+int citizens_card_on(void) { return !(world_zone == ZONE_HOME && !home_guests) && cur >= 0; }   // (main: the notes go under it)
 void citizens_hud(void) {
     if (world_zone == ZONE_HOME && !home_guests) return;
+    const int X = 4, Y = 37;                                       // (on the left, under the household: the notes go under it)
     if (cur >= 0) {
         const Cit *c = &cits[cur];
         char t[40]; sprintf(t, "%s %s", c->first, c->last);   // a white card (The Sims 4's): who they are, how they are to you
-        ui_card(82, 4, 136, 45);                                   // (four lines: the name, who they are, how they are to you, what they do)
-        ui_icon_disc(94, 15, 16, IC_CHAT, UI_BLUE, UI_WHITE);
-        ui_text(106, 7, 1, t, UI_INK);
+        ui_card(X, Y, 136, 45);                                    // (four lines: the name, who they are, how they are to you, what they do)
+        ui_icon_disc(X + 12, Y + 11, 16, IC_CHAT, UI_BLUE, UI_WHITE);
+        ui_text(X + 24, Y + 3, 1, t, UI_INK);
         if (c->pid != NOPID) { sprintf(t, "%s, %s", stage_nm(c->stage), pop_trait_name(pop_per[c->pid].trait)); if (ui_tw(1, t) > 108) strcpy(t, pop_trait_name(pop_per[c->pid].trait)); }
         else sprintf(t, "%s", stage_nm(c->stage));
-        ui_text(106, 16, 1, t, UI_SOFT);
-        ui_text(88, 26, 1, rel_name(c->rel), UI_RGB(40, 150, 50));
-        ui_bar(152, 26, 60, 4, c->rel > 0 ? c->rel : 0, UI_GREEN);
-        ui_bar(152, 31, 60, 4, c->rom, UI_RGB(236, 100, 160));
+        ui_text(X + 24, Y + 12, 1, t, UI_SOFT);
+        ui_text(X + 6, Y + 22, 1, rel_name(c->rel), UI_RGB(40, 150, 50));
+        ui_bar(X + 70, Y + 22, 60, 4, c->rel > 0 ? c->rel : 0, UI_GREEN);
+        ui_bar(X + 70, Y + 27, 60, 4, c->rom, UI_RGB(236, 100, 160));
         { char jb[40]; const char *d = (c->pid != NOPID && c->mplace != NOPID && c->mode == CM_IDLE) ? pop_job_name(c->pid, jb) : activity(c);
           if (d != jb) { strncpy(jb, d, 39); jb[39] = 0; }
           if (ui_tw(1, jb) > 126) { char *k = strchr(jb, ','); if (k) *k = 0; }
-          ui_text(88, 38, 1, jb, UI_BLUE2); }
+          ui_text(X + 6, Y + 34, 1, jb, UI_BLUE2); }
     }
-    if (fight_on || pl_hp < 100) { ui_card(82, 51, 70, 11); ui_bar(86, 53, 62, 7, pl_hp, pl_hp > 50 ? UI_GREEN : pl_hp > 25 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70)); }
+    if (fight_on || pl_hp < 100) { int hy = cur >= 0 ? Y + 47 : Y; ui_card(X, hy, 70, 11); ui_bar(X + 4, hy + 2, 62, 7, pl_hp, pl_hp > 50 ? UI_GREEN : pl_hp > 25 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70)); }
     if (fight_on) ui_hintbar(146, "X PUNCH");
 }
 

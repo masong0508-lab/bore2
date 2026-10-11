@@ -301,9 +301,10 @@ static int far_setup(void) {
         max_ground = (int)(((long long)h << 12) / ta);
         max_bld = (int)(((long long)(h + 3200) << 12) / ta);
         max_ground = MIN(max_ground, far); max_bld = MIN(max_bld, far);
-    } else { max_ground = far; max_bld = far; }
+        max_tree = (int)(((long long)(h + 640) << 12) / ta);       // (a tree card stands about 600 high)
+    } else { max_ground = far; max_bld = far; max_tree = far; }
     static const int tree_m[4] = { 0, 100, 200, 350 };
-    max_tree = MIN(M2U(tree_m[CLAMP(far_trees, 0, 3)]), max_bld);
+    max_tree = MIN(MIN(M2U(tree_m[CLAMP(far_trees, 0, 3)]), max_bld), max_tree);
     // the cone on the ground: wide enough for the screen's corners when looking down (a generous 50 degrees each side)
     cone_c = 2633; cone_s = 3138;
     Ls = CLAMP(gfx_light(0, 0, -ONE), 40, 220); Ln = CLAMP(gfx_light(0, 0, ONE), 40, 220); Lw = CLAMP(gfx_light(-ONE, 0, 0), 40, 220);

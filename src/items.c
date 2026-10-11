@@ -318,11 +318,15 @@ static const ItemDef defs[] = {
     ITEMS_MORE
 };
 #define NDEFS ((int)(sizeof(defs) / sizeof(defs[0])))
+_Static_assert(sizeof(defs) / sizeof(defs[0]) < 255, "def_ix holds a def + 1 in a byte");
+static u8 def_ix[256], def_ix_ok;                             // a letter's def + 1 (0: not a thing), filled the first time it is asked
 static const ItemDef *def_of(char ch) {
-    if (ch == '2' || ch == '4') ch = '1';                     // a kicker turned (the skate park spells its turn in the letter;
-                                                              // '3' '6' '7' '8' and '~' are the oak, the pine, the shop shelf, the sign, the lounger)
-    for (int i = 0; i < NDEFS; i++) if (defs[i].ch == ch) return &defs[i];
-    return 0;
+    if (!def_ix_ok) { def_ix_ok = 1;                                       // (once: the walkers and the drawing ask this thousands of times a frame)
+        for (int i = NDEFS - 1; i >= 0; i--) def_ix[(u8)defs[i].ch] = (u8)(i + 1);
+        def_ix['2'] = def_ix['4'] = def_ix['1']; def_ix[0] = 0;              // a kicker turned (the skate park spells its turn in the letter;
+    }                                                         // '3' '6' '7' '8' and '~' are the oak, the pine, the shop shelf, the sign, the lounger)
+    int k = def_ix[(u8)ch];
+    return k ? &defs[k - 1] : 0;
 }
 int items_count(void) { return NDEFS; }
 char items_at(int i) { return defs[i].ch; }

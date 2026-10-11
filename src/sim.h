@@ -95,6 +95,9 @@ const char *sim_need_name(int n);
 int  sim_need_val(const Sim *s, int n);    // 0..100
 int  sim_awake(const Sim *s);
 void sim_switch_player(void);
+void sim_player_tank(int fwd, int turn, int run);   // first person: walk (4096 forward, negative back) and turn by turn
+int  sim_cell(int what);               // the phone in your pocket: 0 call a friend, 1 order a pizza, 2 adopt. 1: done
+int  sim_play_as(int i);               // play as that one of the family. 1: done
 int  sim_find_path(Sim *s, int tx, int ty);
 void sim_shift(int dtx, int dty);           // SAN BOREAS: the map window moved by that many tiles
 void sim_take_job(int car, int bx, int by, const char *place);   // the player takes a job (places.h careers)

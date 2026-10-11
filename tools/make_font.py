@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """BORE's own smooth font (source/fontdata.h, 9 coverage steps) -> PS1 textures.
 Coverage 8 = an opaque white texel; 1..7 = a semi-transparent (STP) grey, drawn additively, so the edges stay smooth.
+The sheets are written packed (coverage, two texels a byte); font.c opens them out into VRAM at boot.
 Sizes: s (cap 5), m (cap 10) for the UI, l (cap 24) for the title's letters only.
 usage: make_font.py <fontdata.h> <out fonttex.inc>"""
 import re, sys
@@ -30,19 +31,13 @@ for size, keep in (('s', None), ('m', None), ('l', 'BORE2')):
                 if a: sheet[(x + q, y + r)] = a
         x += w + 1; rowh = max(rowh, fh)
     H = y + rowh + 1
-    px = []
-    for r in range(H):
-        for c in range(SHEET_W):
-            a = sheet.get((c, r), 0)
-            if a == 0: px.append(0)
-            elif a >= 8: px.append(0x7fff)
-            else:
-                v = a * 31 // 8
-                px.append(0x8000 | v | (v << 5) | (v << 10))
+    px = [min(8, sheet.get((c, r), 0)) for r in range(H) for c in range(SHEET_W)]   # coverage 0..8 (font.c opens it out)
     out.append('#define FONT_%s_H %d\n#define FONT_%s_LINE %d\n#define FONT_%s_SPACE %d\n#define FONT_%s_TOP %d' % (size.upper(), H, size.upper(), fh, size.upper(), fsp, size.upper(), ftop))
+    if size == 's': out.append('// (the small sheet is not drawn by anything any more: left out to keep its RAM)'); print(size, 'skipped'); continue
     out.append('static const u8 font_%s_glyph[%d][4] = { %s };' % (size, len(glyphs), ', '.join('{%d,%d,%d,%d}' % g for g in glyphs)))
-    out.append('static const u16 font_%s_px[%d * %d] = {' % (size, SHEET_W, H))
-    for r in range(H): out.append('    ' + ','.join('0x%04x' % v for v in px[r * SHEET_W:(r + 1) * SHEET_W]) + ',')
+    by = [px[i] | (px[i + 1] << 4) for i in range(0, len(px), 2)]
+    out.append('static const u8 font_%s_a[%d * %d / 2] = {   // coverage 0..8, two texels a byte (low nibble first)' % (size, SHEET_W, H))
+    for r in range(H): out.append('    ' + ','.join('%d' % v for v in by[r * SHEET_W // 2:(r + 1) * SHEET_W // 2]) + ',')
     out.append('};')
     print(size, 'sheet', SHEET_W, 'x', H)
 with open(sys.argv[2], 'w') as w:

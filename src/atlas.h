@@ -10,6 +10,8 @@ TexRef atlas_alloc(int w, int h);
 TexRef atlas_alloc_page(int page, int w, int h);   // on one page (2 = the 128-wide strip, kept for the font)
 TexRef atlas_try(int w, int h);                            // a small texture wherever it fits, or none (not a failure: the caller copes)
 void   atlas_upload(const TexRef *t, const u16 *pixels);   // w*h pixels, row major (0x0000 = transparent)
+extern int atlas_defer;                                     // 1: small uploads wait for the frame's flip (no stall on the GPU mid-frame)
+void   atlas_flush_deferred(void);                           // (gfx_flip: send them)
 TexRef atlas_add(int w, int h, const u16 *pixels);
 TexRef atlas_solid(u16 c15);                                // a 2x2 solid texture
 extern int atlas_fails;                                     // textures that did not fit

@@ -40,8 +40,11 @@ static void read_pad(void) {
             if (ABS(ls_x) < 20) ls_x = 0; if (ABS(ls_y) < 20) ls_y = 0; if (ABS(rs_x) < 20) rs_x = 0; if (ABS(rs_y) < 20) rs_y = 0;
         }
     }
-#if defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME) || defined(AUTO_ISLE) || defined(AUTO_SCENE)
+#if defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME) || defined(AUTO_ISLE) || defined(AUTO_SCENE) || defined(AUTO_PHONE)
     { extern int auto_btn; if (auto_btn) { btn &= (u16)~auto_btn; auto_btn = 0; } }   // (test builds: the tour presses a button for a frame)
+#endif
+#ifdef AUTO_PHONE
+    { extern int auto_hold; btn &= (u16)~auto_hold; }   // (... or holds some down)
 #endif
 }
 
@@ -54,6 +57,9 @@ static void read_pad(void) {
 static int cam_yaw = 2600, cam_pitch = 640, cam_dist = 1500;   // yaw 0 = looking north from the south
 static int cam_fx, cam_fy, cam_fz;                            // the focus (smoothed)
 static int cam_mode = 0;                                       // 0 follow, 1 high, 2 low chase, 3 free
+static int cam_view;                                           // CAMERA: 0 THE SIMS (it orbits you), 1 BEHIND (it swings round behind you), 2 FIRST PERSON
+static int fp_pitch;                                           // first person: looking up (+) or down (-)
+static int cam_turn_rate = 40, cam_zoom_tilt = 1;
 static void camera_apply(int fx, int fy, int fz) {
     cam_fx += (fx - cam_fx) / 6; cam_fy += (fy - cam_fy) / 6; cam_fz += (fz - cam_fz) / 6;
     cam_pitch = CLAMP(cam_pitch, 150, 1000);
@@ -66,14 +72,22 @@ static void camera_apply(int fx, int fy, int fz) {
     cam.eye.vy = cam_fy - up;
     gfx_camera_update();
 }
-static void camera_input(void) {
-    if (HELD(PAD_L1)) cam_yaw -= 40;
-    if (HELD(PAD_R1)) cam_yaw += 40;
-    if (HELD(PAD_L2)) cam_dist += 30;
-    if (HELD(PAD_R2)) cam_dist -= 30;
-    if (analog) { cam_yaw += rs_x / 3; cam_pitch += rs_y / 4; }
+static void camera_input(int steps) {
+    if (cam_view == 2) {   // first person: L2 R2 look down and up (L1 R1 and the d-pad turn: life_update)
+        if (HELD(PAD_L2)) fp_pitch -= 24 * steps;
+        if (HELD(PAD_R2)) fp_pitch += 24 * steps;
+        if (analog) fp_pitch -= rs_y * steps / 6;
+        fp_pitch = CLAMP(fp_pitch, -700, 600);
+        return;
+    }
+    if (HELD(PAD_L1)) cam_yaw -= cam_turn_rate * steps;
+    if (HELD(PAD_R1)) cam_yaw += cam_turn_rate * steps;
+    if (HELD(PAD_L2)) { cam_dist += 30 * steps; if (cam_zoom_tilt) cam_pitch += 9 * steps; }    // out: up and away
+    if (HELD(PAD_R2)) { cam_dist -= 30 * steps; if (cam_zoom_tilt) cam_pitch -= 9 * steps; }    // in: down to their level
+    if (analog) { cam_yaw += rs_x * steps / 3; cam_pitch += rs_y * steps / 4; }
     cam_yaw &= 4095;
 }
+static const char *const camViewNm[3] = { "THE SIMS CAMERA", "CAMERA BEHIND YOU", "FIRST PERSON" };
 
 // ---- the household ----
 static Bore edit;              // the creature on the creator's table
@@ -82,9 +96,13 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
+static int sub_back = ST_LIFE;
+enum { PH_CALL, PH_PIZZA, PH_PARTY, PH_MAP, PH_TRAVEL, PH_JOBS, PH_HOMES, PH_PEOPLE, PH_FAMILY, PH_ADOPT, PH_MUSIC, PH_GOALS, PH_N };   // the phone's apps
+static int ph_sel; void phone_open(void);              // (the phone: below)                       // where O goes back to from the phone's screens (the phone itself)
+#define BACK_TO() (PRESSED(PAD_START) ? ST_LIFE : sub_back)
 static int create_tab, create_row, create_from, create_turn;
 static int build_tool, build_item, build_x = 8, build_y = 8, build_fl = 1, build_wp = 1, build_lvl, build_peek;
 static int build_open, room_on, room_ax, room_ay;   // the DOORS tool's pick; the ROOM tool's first corner
@@ -157,26 +175,30 @@ static void draw_action_card(const Sim *s) {   // what the Bore is doing, with i
     if (s->action == ACT_NONE || s->action == ACT_WALK) return;
     const char *nm = act_label(s);
     int w = MAX(ui_tw(1, nm) + 14, 90);
-    ui_card(4, 164, w, 17);
-    ui_text(10, 167, 1, nm, UI_INK);
-    if (s->action == ACT_WORK) ui_bar(9, 175, w - 10, 4, MIN(100, job_worked * 100 / job_shift_len()), UI_GREEN);   // (the shift so far)
-    else if (act_total > 0 && act_total < 9999) ui_bar(9, 175, w - 10, 4, CLAMP(100 - s->act_t * 100 / act_total, 0, 100), UI_BLUE);
+    ui_card(4, 158, w, 17);
+    ui_text(10, 161, 1, nm, UI_INK);
+    if (s->action == ACT_WORK) ui_bar(9, 169, w - 10, 4, MIN(100, job_worked * 100 / job_shift_len()), UI_GREEN);   // (the shift so far)
+    else if (act_total > 0 && act_total < 9999) ui_bar(9, 169, w - 10, 4, CLAMP(100 - s->act_t * 100 / act_total, 0, 100), UI_BLUE);
 }
 #define NFEED 3
-static char feed[NFEED][32]; static int feed_t[NFEED], prev_note_t;
+#define FEED_VB 330                                     // a note shows this long (vblanks: five and a half seconds, whatever the frame rate)
+static char feed[NFEED][32]; static int feed_t[NFEED], prev_note_t;   // feed_t: when it came (VSync count), 0 none
 static void feed_push(const char *t) {
+    for (int i = 0; i < NFEED; i++) if (feed_t[i] && !strncmp(feed[i], t, 31)) { feed_t[i] = VSync(-1) | 1; return; }   // (the same again: just kept up)
     for (int i = NFEED - 1; i > 0; i--) { strcpy(feed[i], feed[i - 1]); feed_t[i] = feed_t[i - 1]; }
-    strncpy(feed[0], t, 31); feed[0][31] = 0; feed_t[0] = 300;
+    strncpy(feed[0], t, 31); feed[0][31] = 0; feed_t[0] = VSync(-1) | 1;
 }
 static void feed_poll(void) { extern char note_q[4][32]; extern int note_qn; for (int i = 0; i < note_qn; i++) feed_push(note_q[i]); note_qn = 0; }   // every sim_note lands here
-static void feed_draw(void) {   // the notifications stack on the left, newest on top, each fades on its own
-    int y = 34;
+static void feed_draw(int y) {   // the notifications stack on the left, newest on top; each slides away after a few seconds
+    int now = VSync(-1);
     for (int i = 0; i < NFEED; i++) {
-        if (feed_t[i] <= 0) continue;
-        int w = ui_tw(1, feed[i]) + 14;
-        ui_card(4, y, w, 13); gfx_rect(5, y + 2, 2, 9, 38, 146, 222, 0);
-        ui_text(10, y + 3, 1, feed[i], UI_INK);
-        feed_t[i]--; y += 16;
+        if (!feed_t[i]) continue;
+        int age = now - feed_t[i];
+        if (age > FEED_VB || age < 0) { feed_t[i] = 0; continue; }
+        int w = ui_tw(1, feed[i]) + 14, x = 4 - (age > FEED_VB - 24 ? (age - (FEED_VB - 24)) * (w + 8) / 24 : 0);   // (out to the left at the end)
+        ui_card(x, y, w, 13); gfx_rect(x + 1, y + 2, 2, 9, 38, 146, 222, 0);
+        ui_text(x + 6, y + 3, 1, feed[i], UI_INK);
+        y += 16;
     }
 }
 
@@ -296,7 +318,7 @@ static int venue_t, venue_bx = -1, venue_by = -1; static PlaceInfo venue;
 static void venue_watch(void) {   // walking onto a place: its name and its hours, for a few seconds (The Sims 4's lot name)
     PlaceInfo pi; const Sim *s = &sims[player];
     int in = place_at(sim_tile_x(s), sim_tile_y(s), &pi);
-    if (in && (pi.bx != venue_bx || pi.by != venue_by)) { venue = pi; venue_t = 300; }
+    if (in && (pi.bx != venue_bx || pi.by != venue_by)) { venue = pi; venue_t = VSync(-1) | 1; }   // (shown four seconds, whatever the frame rate)
     if (in) { venue_bx = pi.bx; venue_by = pi.by; } else venue_bx = venue_by = -1;
 }
 static const s8 lotIc[LOT_N] = { -1, IC_HOUSE, IC_HOUSE, IC_HOUSE, IC_HOUSE, IC_HOUSE, IC_MONEY, IC_FOOD, IC_BOLT, IC_CASE, IC_BED, IC_DROP, IC_BOOK,
@@ -308,7 +330,7 @@ static void venue_draw(void) {
     else if (!open_) sprintf(sub, "CLOSED TILL %s", hour_name(place_opens_at(venue.lot), h));
     else if (place_opens_at(venue.lot) == 0 && place_closes_at(venue.lot) == 24) strcpy(sub, "OPEN ALL DAY");
     else sprintf(sub, "OPEN TILL %s", hour_name(place_closes_at(venue.lot), h));
-    int tw_ = MAX(ui_tw(1, venue.name), ui_tw(1, sub)), ic = tw_ + 34 <= 140, w = tw_ + (ic ? 34 : 14), x = 316 - w, y = 52;   // (on the right, under the want)
+    int tw_ = MAX(ui_tw(1, venue.name), ui_tw(1, sub)), ic = tw_ + 34 <= 140, w = tw_ + (ic ? 34 : 14), x = 316 - w, y = 57;   // (on the right, under the want)
     ui_card(x, y, w, 27);
     if (ic) ui_icon_disc(x + 13, y + 13, 20, lotIc[venue.lot % LOT_N], UI_BLUE, UI_WHITE);
     ui_text(x + (ic ? 27 : 7), y + 4, 1, venue.name, UI_INK);
@@ -360,57 +382,57 @@ static void hud_life(void) {
     // the household, top left: round portraits, a ring in each one's mood colour, the one you play ringed blue with the plumbob
     for (int i = 0; i < nsims; i++) {
         const Sim *o = &sims[i];
-        int x = 15 + i * 24, y = 16, me = i == player, mm = o->mood;
+        int x = 17 + i * 24, y = 21, me = i == player, mm = o->mood;
         u32 ring = me ? UI_BLUE : o->away ? UI_RGB(176, 186, 200) : mm > 15 ? UI_GREEN : mm > -15 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70);
         ui_disc(x, y, 23, UI_WHITE); ui_disc(x, y, 21, ring); ui_disc(x, y, 17, o->away ? UI_RGB(222, 228, 236) : UI_RGB(234, 240, 248));
         if (o->away) ui_icon(x - 6, y - 6, IC_BOOK, UI_RGB(112, 126, 146));   // at school till 3
         else draw_face_k(x - 8, y - 8, mm, 1);
         if (o->bore.stage == AG_BABY) { ui_disc(x + 8, y + 8, 11, UI_WHITE); ui_icon_s(x + 4, y + 4, IC_BABY, 8, UI_RGB(236, 120, 160)); }   // (a baby)
         if (o->bday && !o->away) { ui_disc(x - 8, y + 8, 12, UI_RGB(255, 200, 60)); ui_icon_s(x - 12, y + 4, IC_CAKE, 8, UI_WHITE); }   // a birthday today
-        if (me) ui_icon(x - 6, y - 19 + ((frame >> 4) & 1), IC_PLUMBOB, UI_GREEN);
+        if (me && o->bore.stage != AG_BABY) { ui_disc(x + 8, y + 8, 11, UI_WHITE); ui_icon_s(x + 4, y + 4, IC_PLUMBOB, 8, UI_GREEN); }
     }
     draw_action_card(s);
     // the needs, bottom left: a white card, an icon and a bar for each (green, then yellow, then red)
     static const s8 nic[NEED_N] = { IC_FOOD, IC_DROP, IC_BED, IC_BUBBLES, IC_SOFA, IC_SMILE, IC_CHAT, IC_HOUSE };
-    ui_card(4, 184, 166, 52);
+    ui_card(4, 178, 166, 52);
     for (int n = 0; n < NEED_N; n++) {
-        int v = sim_need_val(s, n), cx = 10 + (n >> 2) * 80, cy = 189 + (n & 3) * 11;
+        int v = sim_need_val(s, n), cx = 10 + (n >> 2) * 80, cy = 183 + (n & 3) * 11;
         int r, g, bb; need_rgb(v, &r, &g, &bb);
         ui_icon(cx, cy - 1, nic[n], v < 20 ? UI_RGB(220, 60, 50) : UI_SOFT);
         ui_bar(cx + 14, cy + 1, 60, 7, v, UI_RGB(r, g, bb));
     }
     // the Bore, bottom right: the mood on a big round badge, the name, how they feel, what X would do
-    ui_card(174, 184, 142, 52);
-    ui_disc(192, 202, 28, moodc); ui_disc(192, 202, 24, UI_RGB(250, 252, 255));
-    draw_face_k(184, 194, m, 1);
-    ui_text(210, 188, 2, s->bore.first, UI_INK);
+    ui_card(174, 178, 142, 52);
+    ui_disc(192, 196, 28, moodc); ui_disc(192, 196, 24, UI_RGB(250, 252, 255));
+    draw_face_k(184, 188, m, 1);
+    ui_text(210, 182, 2, s->bore.first, UI_INK);
     const char *mood = m > 50 ? "STOKED" : m > 15 ? "HAPPY" : m > -15 ? "FINE" : m > -50 ? "SAD" : "MISERABLE";
-    ui_text(210, 203, 1, mood, moodt);
+    ui_text(210, 197, 1, mood, moodt);
     if (s->bore.stage == AG_CHILD || s->bore.stage == AG_TEEN) sprintf(b, "GRADE %s", sim_grade(s->grade)); else sprintf(b, "LVL %d", job_level);   // (a kid: the school grade)
-    ui_text(212 + ui_tw(1, mood) + 4, 203, 1, b, UI_SOFT);
+    ui_text(212 + ui_tw(1, mood) + 4, 197, 1, b, UI_SOFT);
     { int lv = wants_level(s);                                   // the aspiration meter, under the mood
-      ui_bar(210, 213, 100, 5, 100 * s->asp_pts / ASP_MAX, UI_RGB(aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2])); }
+      ui_bar(210, 207, 100, 5, 100 * s->asp_pts / ASP_MAX, UI_RGB(aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2])); }
     const char *hint = sim_hint();
     { const char *ch = citizens_hint(); if (ch[0] && !sim_front_service() && (s->action == ACT_NONE || s->action == ACT_WALK)) hint = ch; }   // (busy: X gets up)
-    if (hint[0]) { sprintf(b, "X %s", hint); ui_round(180, 222, 132, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(185, 224, 1, b, UI_WHITE); }
-    else ui_text(182, 224, 1, "START: MENU", UI_SOFT);
+    if (hint[0]) { sprintf(b, "X %s", hint); ui_round(180, 215, 132, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(185, 217, 1, b, UI_WHITE); }
+    else ui_hints(246, 214, "SEL PHONE", 1);
     // the clock and the money, top right
-    ui_card(220, 4, 96, 28);
+    ui_card(220, 9, 96, 28);
     sprintf(b, "%s %02d:%02d", sim_day_name(clock_day), clock_min / 60, clock_min % 60);
-    ui_text(226, 7, 2, b, UI_INK);
-    sprintf(b, "$%ld", cash); ui_text(226, 21, 1, b, UI_RGB(40, 150, 50));
-    { int ic = sim_speed <= 1 ? IC_PLAY : IC_FAST; ui_icon_disc(305, 24, 12, ic, sim_speed >= 3 ? UI_RGB(236, 150, 40) : UI_BLUE, UI_WHITE); }
-    { int day_ = clock_min >= 360 && clock_min < 1200; ui_icon(286, 19, IC_SUN, day_ ? UI_RGB(236, 170, 30) : UI_RGB(120, 140, 200)); }
+    ui_text(226, 12, 2, b, UI_INK);
+    sprintf(b, "$%ld", cash); ui_text(226, 26, 1, b, UI_RGB(40, 150, 50));
+    { int ic = sim_speed <= 1 ? IC_PLAY : IC_FAST; ui_icon_disc(305, 29, 12, ic, sim_speed >= 3 ? UI_RGB(236, 150, 40) : UI_BLUE, UI_WHITE); }
+    { int day_ = clock_min >= 360 && clock_min < 1200; ui_icon(286, 24, IC_SUN, day_ ? UI_RGB(236, 170, 30) : UI_RGB(120, 140, 200)); }
     {   // the want, under the clock
         char t[32]; wants_text(s, (frame / 240) & 3, t);
         int w = ui_tw(1, t) + 22;
-        ui_card(316 - w, 35, w, 14); ui_icon(320 - w, 36, IC_STAR, UI_RGB(236, 170, 30)); ui_text(334 - w, 38, 1, t, UI_INK);
+        ui_card(316 - w, 40, w, 14); ui_icon(320 - w, 41, IC_STAR, UI_RGB(236, 170, 30)); ui_text(334 - w, 43, 1, t, UI_INK);
         if (wants_flash_t > 0 && state == ST_LIFE) { int fw = ui_tw(2, wants_flash) + 16; ui_card(160 - fw / 2, 86, fw, 18); ui_textc(160, 89, 2, wants_flash, wants_flash[0] == 'W' ? UI_RGB(40, 150, 50) : UI_RGB(200, 60, 50)); wants_flash_t--; }
     }
-    feed_draw();
-    if (venue_t > 0) { venue_draw(); venue_t--; }
+    { extern int citizens_card_on(void); feed_draw(citizens_card_on() ? 86 : 38); }   // (under the person card when it shows)
+    if (venue_t && VSync(-1) - venue_t < 240) venue_draw(); else venue_t = 0;
     if (world_zone == ZONE_ISLAND) {   // the castaway's stores, and the secrets found
-        int x = 222, y = 52; static const s8 ic[4] = { IC_WOOD, IC_STONE, IC_SPROUT, IC_FOOD };
+        int x = 222, y = 57; static const s8 ic[4] = { IC_WOOD, IC_STONE, IC_SPROUT, IC_FOOD };
         const int v[4] = { isl_wood, isl_stone, isl_leaves, isl_food };
         static const u32 icc[4] = { UI_RGB(150, 100, 50), UI_RGB(120, 124, 132), UI_RGB(70, 160, 70), UI_RGB(220, 120, 40) };
         ui_card(x, y, 94, 40);
@@ -420,7 +442,8 @@ static void hud_life(void) {
     }
     cheer_poll(); cheer_draw();
     citizens_hud();
-    if (frame < 900) ui_hintbar(144, "L1 R1 TURN|L2 R2 ZOOM|X USE|SQ RUN");
+    { static int hint_vb = -1; if (hint_vb < 0) hint_vb = VSync(-1);   // (the controls, for the first few seconds of play only)
+      if (VSync(-1) - hint_vb < 480) ui_hintbar(150, "L1 R1 TURN|L2 R2 ZOOM|X USE|SQ RUN"); }
     if (show_fps) { extern int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block;
         gfx_rect(2, 57, 316, 86, 0, 0, 0, 0);
         sprintf(b, "%d FPS  %d PRIMS %dK%s", fps_val, gfx_last_prims, gfx_last_bytes >> 10, gfx_last_overflow ? " FULL!" : ""); gfx_text(6, 60, 1, b, 120, 255, 120);
@@ -451,11 +474,23 @@ static void life_update(int steps) {
         if (HELD(PAD_LEFT)) mx = -4096; if (HELD(PAD_RIGHT)) mx = 4096;
         if (HELD(PAD_UP)) mz = 4096; if (HELD(PAD_DOWN)) mz = -4096;
     }
-    if (mx || mz) {   // turn the push by the camera yaw: "up" = away from the camera
+    if (cam_view == 2) {   // first person: up and down walk, left and right (and L1 R1) turn
+        int turn = (mx * 50) >> 12; if (HELD(PAD_L1)) turn -= 60; if (HELD(PAD_R1)) turn += 60;
+        if (!mz && !turn) sim_player_tank(0, 0, 0);
+        else for (int k = 0; k < steps; k++) sim_player_tank(mz, turn, HELD(PAD_SQUARE));
+    } else if (mx || mz) {   // turn the push by the camera yaw: "up" = away from the camera
         int c = icos(cam_yaw), sn = isin(cam_yaw);
         int wx = (mx * c + mz * sn) >> 12, wz = (mz * c - mx * sn) >> 12;
         for (int k = 0; k < steps; k++) sim_player_move(wx, wz, HELD(PAD_SQUARE));
     } else sim_player_move(0, 0, 0);
+    if ((PRESSED(PAD_L2) && HELD(PAD_R2)) || (PRESSED(PAD_R2) && HELD(PAD_L2))) {   // L2 + R2 together: the next camera
+        extern void cam_view_set(int v); cam_view_set((cam_view + 1) % 3);
+    }
+    if (cam_view != 2 && ((PRESSED(PAD_L1) && HELD(PAD_R1)) || (PRESSED(PAD_R1) && HELD(PAD_L1)))) cam_yaw = (2048 - s->yaw) & 4095;   // L1 + R1: round behind you
+    if (cam_view == 1 && s->gait.amp > 2000 && s->action == ACT_NONE) {   // BEHIND: the camera swings round behind as you walk
+        int d = (((2048 - s->yaw) - cam_yaw + 2048) & 4095) - 2048;
+        cam_yaw = (cam_yaw + d * MIN(steps, 4) / 12) & 4095;
+    }
     if (PRESSED(PAD_CROSS)) {   // X: busy - stop; otherwise the pie menu (one option: just do it)
         Sim *me = &sims[player];
         if (me->action != ACT_NONE && me->action != ACT_WALK) sim_player_interact();
@@ -468,7 +503,7 @@ static void life_update(int steps) {
     if (PRESSED(PAD_TRIANGLE)) { sim_speed = sim_speed % 3 + 1; }
     if (PRESSED(PAD_L3)) show_fps ^= 1;
     { extern int getenv_noshadow, dbg_noao, dbg_nograd; if (PRESSED(PAD_R3)) { static int mode; mode = (mode + 1) & 3; getenv_noshadow = mode == 1; dbg_noao = mode == 2; dbg_nograd = mode == 3; } }
-    if (PRESSED(PAD_SELECT)) { sim_switch_player(); sim_note("NOW PLAYING AS THE NEXT BORE"); }
+    if (PRESSED(PAD_SELECT)) { extern void phone_open(void); phone_open(); }   // the phone in your pocket
     { int t0 = hb_now(); for (int k = 0; k < steps; k++) sim_step(); citizens_update(steps); t_logic = hb_now() - t0; }
     {   // SAN BOREAS: the map window follows you a block at a time (everything slides with it)
         int dtx, dty;
@@ -497,7 +532,14 @@ static void life_update(int steps) {
           if (fr_ > 120) { cam_pitch = 760; cam_dist = 3600; cam_yaw = 2048 + 300; }
           if (fr_ > 180 && fr_ < 800 && s->action == ACT_NONE) s->x += 3 * steps;
 #endif
-#if !defined(AUTO_TOWER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR)
+#if defined(AUTO_FLOAT)
+          {   // (test builds: ULTRA, a walk round a square of blocks with a high camera turning: the storeys must stand on their buildings)
+            static const u8 pre[] = { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 }; extern void float_opts(const u8 *p, int n); if (fr_ < 4) float_opts(pre, sizeof pre);
+            if (fr_ >= 60 && !(done_ & 4)) { done_ |= 4; const Settle *cp = bm_set(bm_capital()); taxi_to_block(cp->x + 1, cp->y + 1, 6, 6, "TEST"); }
+            if (fr_ > 120 && s->action == ACT_NONE) { int ph = ((fr_ - 120) / 700) & 3; int v = 9 * steps; if (ph == 0) s->x += v; else if (ph == 1) s->z -= v; else if (ph == 2) s->x -= v; else s->z += v; }
+            cam_pitch = 470; cam_dist = 3200; cam_yaw = (fr_ * 3) & 4095;
+          }
+#elif !defined(AUTO_TOWER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR)
           if (fr_ > 240 && s->action == ACT_NONE) s->x += 11 * steps;   // (stroll east along the street)
           if (fr_ > 2000) { cam_pitch = 700; cam_dist = 4200; cam_yaw = 2048 + 500; }   // (then look over the roofs)
 #ifdef AUTO_LOW
@@ -513,7 +555,7 @@ static void life_update(int steps) {
     }
     feed_poll();
     if (!(frame & 7)) venue_watch();
-    camera_input();
+    camera_input(steps);
     if (PRESSED(PAD_START)) { state = ST_PAUSE; menu_sel = 0; }
     if (travel_asked) { travel_asked = 0; travel_sel = home_city && home_is_here() ? 0 : world_zone + home_city; state = ST_TRAVEL; }
     if (sim_story_over) { sim_story_over = 0; state = ST_OVER; }   // the last of the family is gone
@@ -526,6 +568,18 @@ static void life_draw(void) {
     gfx_set_fog(0, 0);                                   // (the title's fog stays on the title)
     camera_apply(s->x, -200 - s->lvl * WALL_FULL, s->z);
     world_view_lvl = s->lvl; world_roof_show = 0;
+    { extern int world_fp; world_fp = cam_view == 2; }
+    if (cam_view == 2) {   // FIRST PERSON: the eye in the Bore's head, looking the way it faces (fp_pitch up or down)
+        int fx = isin(s->yaw), fz = -icos(s->yaw), eh = H * VOX - 60;   // (the face is (sin, -cos): sim.c's yaw)
+        if (s->bore.stage == AG_CHILD) eh = eh * 3 / 4; else if (s->bore.stage == AG_BABY) eh /= 2;
+        cam.eye.vx = s->x - (fx * 40 >> 12); cam.eye.vz = s->z - (fz * 40 >> 12); cam.eye.vy = -eh - s->lvl * WALL_FULL - (s->gait.amp > 2000 ? (ABS(isin(s->gait.phase * 2)) >> 9) : 0);   // (a step's bob)
+        int cp = icos(fp_pitch), sp = isin(fp_pitch);
+        cam.at.vx = cam.eye.vx + ((fx * cp >> 12) * 600 >> 12); cam.at.vz = cam.eye.vz + ((fz * cp >> 12) * 600 >> 12); cam.at.vy = cam.eye.vy - (sp * 600 >> 12);
+        gfx_camera_update();
+        cam_fx = s->x; cam_fy = -200 - s->lvl * WALL_FULL; cam_fz = s->z;   // (the third-person camera picks up from here)
+        cam_yaw = (2048 - s->yaw) & 4095;
+        world_view_lvl = MIN(NUP, s->lvl + 1);                             // (the storey above: its floor is the ceiling)
+    }
     // the day-night sky and light
     int t = clock_min;
     int day = (t > 360 && t < 1200) ? 255 : (t >= 1200 && t < 1320) ? 255 - (t - 1200) * 2 : (t >= 300 && t <= 360) ? (t - 300) * 4 : 20;
@@ -541,10 +595,12 @@ static void life_draw(void) {
         { extern u32 world_horizon; extern int world_far_range; world_horizon = hor; world_far_range = (world_zone == ZONE_CITY && far_view) ? 60 : 34; }
         if (world_zone == ZONE_CITY && far_view) far_sky(top, hor);   // the sky meets the land at the real horizon
         else if (world_zone == ZONE_ISLAND) far_sky_sea(top, hor, (u32)((40 * day) >> 8) | ((u32)((112 * day) >> 8) << 8) | ((u32)((168 * day) >> 8) << 16));   // (the endless sea)
+        else if (world_zone == ZONE_HOME) far_sky_sea(top, hor, (u32)((64 * day) >> 8) | ((u32)((120 * day) >> 8) << 8) | ((u32)((52 * day) >> 8) << 16));     // (the fields going on)
+        else if (world_zone == ZONE_TOWN) far_sky_sea(top, hor, (u32)((196 * day) >> 8) | ((u32)((160 * day) >> 8) << 8) | ((u32)((108 * day) >> 8) << 16));  // (the desert going on)
         else gfx_sky(top, hor);
     }
     gfx_prim_count = 0;
-    { int t0 = hb_now(); world_draw(sim_tile_x(s), sim_tile_y(s), frame, 1); t_world = hb_now() - t0;
+    { int t0 = hb_now(); world_draw(sim_tile_x(s), sim_tile_y(s), frame, cam_view != 2); t_world = hb_now() - t0;   // (first person: no walls cut away)
       t0 = hb_now(); gfx_prim_count = 0; draw_sims(); t_sims = hb_now() - t0; }
     { int t0 = hb_now(); draw_bubbles(); t_bub = hb_now() - t0; }
     prims_last = gfx_prim_count;
@@ -574,7 +630,7 @@ static void travel_update(void) {   // (with a home in SAN BOREAS, the first row
     if (PRESSED(PAD_UP)) travel_sel = (travel_sel + nr - 1) % nr;
     if (PRESSED(PAD_DOWN)) travel_sel = (travel_sel + 1) % nr;
     if (travel_sel >= nr) travel_sel = 0;
-    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = ST_LIFE; return; }
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = BACK_TO(); return; }
     if (PRESSED(PAD_CROSS)) {
         if (home_city && travel_sel == 0) { state = ST_LIFE; if (!home_is_here()) home_go(); return; }
         int z = travel_sel - home_city;
@@ -739,11 +795,11 @@ static void map_open(void) {
 static void map_update(void) {
     if (map_t < 0) map_open();
     map_t++;
-    if (world_zone == ZONE_ISLAND) { if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_CROSS)) state = ST_LIFE; return; }   // (no taxis out here)
+    if (world_zone == ZONE_ISLAND) { if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_CROSS)) state = PRESSED(PAD_CIRCLE) ? sub_back : ST_LIFE; return; }   // (no taxis out here)
     int n = bm_nset();
     if (PRESSED(PAD_UP)) map_sel = (map_sel + n - 1) % n;
     if (PRESSED(PAD_DOWN)) map_sel = (map_sel + 1) % n;
-    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = ST_LIFE; return; }
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = BACK_TO(); return; }
     if (PRESSED(PAD_CROSS)) {
         if (cash < 20) { sim_note("A TAXI IS $20"); audio_voice(VOICE_NAH); return; }
         cash -= 20;
@@ -907,8 +963,7 @@ static void homes_open(void) {
     hm_n = home_list(cbx, cby, hm_ad, 16); hm_sel = 0; hm_scroll = 0; state = ST_HOMES;
 }
 static void homes_update(void) {
-    if (PRESSED(PAD_CIRCLE)) { state = ST_PAUSE; return; }
-    if (PRESSED(PAD_START)) { state = ST_LIFE; return; }
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = BACK_TO(); return; }
     if (!hm_n) return;
     if (PRESSED(PAD_UP)) hm_sel = (hm_sel + hm_n - 1) % hm_n;
     if (PRESSED(PAD_DOWN)) hm_sel = (hm_sel + 1) % hm_n;
@@ -960,7 +1015,7 @@ static void home_tick(void) {   // (test builds: buy a house and move in, build 
     static int t0 = -1, k;
     if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); cash = 40000; }
     static const struct { s16 at; char op; s8 arg; } plan[] = {
-        { 60, 'b', 'S' }, { 80, 'b', 'D' }, { 90, 'b', 'D' }, { 100, 'b', 'D' }, { 110, 'b', 'D' }, { 120, 'b', 'D' }, { 130, 'b', 'D' }, { 140, 'b', 'D' }, { 160, 'b', 'X' },   // START, HOMES
+        { 60, 'Q', PH_HOMES }, { 160, 'b', 'X' },                            // the phone: HOMES
         { 300, 'h', 0 }, { 400, 'b', 'X' },                                  // an affordable house: buy it and move in
         { 800, 'k', 1 }, { 900, 'i', 0 }, { 1100, 'k', 0 },                  // outside, then inside: furnished for them
         { 1300, 'B', BT_ROOM }, { 1310, 'l', 1 }, { 1320, 'c', 0 }, { 1360, 'b', 'X' }, { 1400, 'c', 1 }, { 1500, 'b', 'X' },   // a storey over the house: the ROOM tool
@@ -971,14 +1026,14 @@ static void home_tick(void) {   // (test builds: buy a house and move in, build 
         { 2400, 'f', 0 },                                                     // off across town
         { 2700, 't', 0 }, { 2720, 'b', 'X' },                                 // TRAVEL: HOME
         { 3000, 'v', 0 }, { 3300, 'k', 0 },
-        { 3400, 'b', 'S' }, { 3420, 'b', 'D' }, { 3430, 'b', 'D' }, { 3440, 'b', 'D' }, { 3450, 'b', 'D' }, { 3460, 'b', 'D' }, { 3470, 'b', 'D' }, { 3480, 'b', 'D' }, { 3500, 'b', 'X' },   // HOMES again
+        { 3400, 'Q', PH_HOMES }, { 3500, 'b', 'X' },                          // HOMES again
         { 3600, 'h', 1 }, { 3700, 'b', 'X' },                                 // an empty lot this time (the house sells)
         { 4100, 'k', 1 }, { 4200, 'B', BT_ROOM }, { 4210, 'c', 2 }, { 4240, 'b', 'X' }, { 4280, 'c', 3 }, { 4350, 'b', 'X' },   // a room on the lot
         { 4450, 'B', BT_DOOR }, { 4460, 'c', 4 }, { 4480, 'b', 'X' }, { 4560, 'b', 'O' }, { 4600, 'v', 1 },
-        { 4900, 'b', 'S' }, { 4920, 'b', 'D' }, { 4930, 'b', 'D' }, { 4940, 'b', 'D' }, { 4960, 'b', 'X' },   // TRAVEL: home is on the list
+        { 4900, 'Q', PH_TRAVEL }, { 4960, 'b', 'X' },                         // TRAVEL: home is on the list
         { 5100, 'b', 'O' },
         { 5300, 'g', 0 }, { 5340, 'b', 'X' }, { 5420, 'p', 0 }, { 5440, 'b', 'X' },   // a FOR SALE sign down the road: WHAT IS IT?
-        { 5700, 'b', 'S' }, { 5720, 'b', 'D' }, { 5730, 'b', 'D' }, { 5740, 'b', 'D' }, { 5750, 'b', 'D' }, { 5770, 'b', 'X' }, { 5950, 'b', 'O' },   // the map: home is on it
+        { 5700, 'Q', PH_MAP }, { 5770, 'b', 'X' }, { 5950, 'b', 'O' },       // the map: home is on it
         { 0, 0, 0 } };
     int t = VSync(-1) - t0;
     while (plan[k].op && t >= plan[k].at) {
@@ -987,6 +1042,7 @@ static void home_tick(void) {   // (test builds: buy a house and move in, build 
         switch (plan[k].op) {
             case 'b': auto_btn = a == 'X' ? PAD_CROSS : a == 'O' ? PAD_CIRCLE : a == 'S' ? PAD_START : a == 'D' ? PAD_DOWN : a == 'R' ? PAD_R1 : a == 'U' ? PAD_UP : PAD_RIGHT; break;
             case 'R': auto_btn = PAD_R1; break;
+            case 'Q': phone_open(); ph_sel = a; break;
             case 'h': for (int i = 0; i < hm_n; i++) if ((a ? hm_ad[i].lot == LOT_EMPTY : hm_ad[i].lot != LOT_EMPTY) && hm_ad[i].price <= cash + (home_city ? home_paid : 0)) { hm_sel = i; break; } break;
             case 'k': cam_pitch = a == 2 ? 520 : a ? 620 : 700; cam_dist = a == 2 ? 2600 : a ? 1700 : 1300; cam_yaw = a == 2 ? 2600 + 400 : 2600; break;
             case 'i': if (hm) { Sim *s = &sims[player]; s->x = ((hm->x0 + hm->x1) / 2) * TILE + TILE / 2; s->z = -(((hm->y0 + hm->y1) / 2) * TILE + TILE / 2); s->path_n = 0; s->action = ACT_NONE; } break;
@@ -1086,7 +1142,7 @@ static void isle_tick(void) {   // (test builds: CASTAWAY ISLAND: its map, gathe
         { 5750, 'g', (s16)(u8)CH_RAFT }, { 5780, 'b', 'X' }, { 5820, 'p', 3 }, { 5840, 'b', 'X' },   // and back
         { 5950, 'f', 0 }, { 5960, 'k', 2 },                                                       // an empty larder: the others forage
         { 6600, 'm', 0 }, { 6750, 'b', 'O' },
-        { 6800, 'b', 'S' }, { 6820, 'b', 'D' }, { 6840, 'b', 'D' }, { 6870, 'b', 'X' },          // THE STORY
+        { 6800, 'Q', PH_GOALS }, { 6870, 'b', 'X' },                                            // the phone: GOALS
         { 7050, 'b', 'O' }, { 7080, 'h', 5 }, { 7250, 'b', 'O' }, { 0, 0, 0 } };                  // and the island's help page
     static const char *const pick[4] = { "", "CHOP WOOD", "CRAFT", "SAIL ACROSS" };
     int t = VSync(-1) - t0;
@@ -1097,11 +1153,59 @@ static void isle_tick(void) {   // (test builds: CASTAWAY ISLAND: its map, gathe
             case 'g': sim_debug_goto((char)a, -1); cam_pitch = 640; cam_dist = 1400; break;
             case 'p': for (int i = 0; i < pie_n; i++) if (!strcmp(pie_opt[i], pick[a])) pie_sel = i; break;
             case 'c': craft_sel = a; break;
+            case 'Q': phone_open(); ph_sel = a; break;
             case 'm': map_t = -1; state = ST_MAP; break;
             case 'h': prev_state = ST_PAUSE; help_page = a; state = ST_HELP; break;
             case 'k': cam_pitch = a == 2 ? 760 : a ? 520 : 640; cam_dist = a == 2 ? 3000 : a ? 2200 : 1400; break;
             case 'r': isl_wood += 30; isl_stone += 6; isl_leaves += 20; break;
             case 'f': isl_food = 0; for (int i = 0; i < nsims; i++) if (i != player) sims[i].need[N_FOOD] = 12 << 10; break;
+        }
+        k++;
+    }
+}
+#endif
+
+#ifdef AUTO_PHONE
+int auto_btn, auto_hold;
+static void phone_tick(void) {   // (test builds: the HUD, the phone and its apps, a call, the pause menu, THE MAN BASE and the desert town to the horizon)
+    static int t0 = -1, k;
+    if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); }
+    static const struct { s16 at; char op; s16 arg; } plan[] = {
+        { 10, 'c', 0 }, { 40, 'H', 2 }, { 240, 'H', 1 }, { 440, 'H', 4 }, { 640, 'H', 3 }, { 840, 'H', 5 }, { 1040, 'H', 6 }, { 1240, 'H', 0 },   // the walk: toward the camera, away, right, left, diagonals
+        { 1310, 'k', 0 },
+        { 1500, 'b', 'E' }, { 1560, 'b', 'R' }, { 1600, 'b', 'R' }, { 1640, 'b', 'D' }, { 1680, 'b', 'D' }, { 1720, 'b', 'X' },   // the phone; FAMILY
+        { 1780, 'b', 'D' }, { 1840, 'b', 'O' }, { 1880, 'b', 'L' }, { 1920, 'b', 'U' }, { 1980, 'b', 'O' },
+        { 2060, 'b', 'E' }, { 2100, 'b', 'X' },                                                      // CALL: on the phone where you stand
+        { 2400, 'b', 'O' }, { 2430, 'b', 'O' }, { 2460, 'b', 'S' }, { 2550, 'b', 'O' },            // back to the phone, closed; the pause menu
+        { 2600, 'k', 1 }, { 2800, 'k', 2 },                                                        // THE MAN BASE: fields to the horizon
+        { 3000, 't', ZONE_TOWN }, { 3020, 'k', 1 }, { 3200, 'k', 2 },                              // the desert town
+        { 3400, 't', ZONE_CITY }, { 3440, 'k', 0 },
+        { 3600, 'b', 'E' }, { 3630, 'b', 'R' }, { 3660, 'b', 'R' }, { 3690, 'b', 'R' }, { 3720, 'b', 'X' }, { 3900, 'b', 'O' }, { 4000, 'b', 'O' },   // the phone: MAP
+        { 4100, 'b', 'E' }, { 4130, 'b', 'R' }, { 4160, 'b', 'X' },                              // PIZZA
+        { 4400, 't', ZONE_HOME }, { 4500, 'g', 'S' }, { 4530, 'b', 'X' }, { 4560, 'b', 'X' }, { 4590, 'b', 'X' }, { 4620, 'K', 0 }, { 4700, 'K', 1 },   // to bed: it lies in it the right way round
+        { 4800, 'b', 'O' }, { 4850, 'g', 'C' }, { 4880, 'b', 'X' }, { 4910, 'b', 'X' }, { 4950, 'K', 0 }, { 5050, 'K', 1 },       // a seat
+        { 5150, 'b', 'O' }, { 5200, 'g', 'T' }, { 5230, 'b', 'X' }, { 5260, 'b', 'X' }, { 5300, 'K', 0 }, { 5400, 'K', 1 },   // the toilet
+        { 5500, 'b', 'O' }, { 5550, 'P', 0 }, { 5650, 'P', 1 }, { 5750, 'P', 2 }, { 5850, 'P', 3 }, { 5950, 'P', 4 }, { 6050, 'P', 5 },
+        { 6150, 'P', 0 }, { 6170, 'V', 2 }, { 6200, 'H', 1 }, { 6500, 'H', 4 }, { 6600, 'H', 1 }, { 6850, 'H', 0 }, { 6880, 'F', -400 }, { 6960, 'F', 300 },   // FIRST PERSON: walk through the house, look down, up
+        { 7000, 't', ZONE_CITY }, { 7040, 'V', 2 }, { 7100, 'H', 1 }, { 7500, 'H', 0 }, { 7550, 'V', 1 }, { 7600, 'H', 4 }, { 7800, 'H', 1 }, { 8100, 'H', 0 }, { 8200, 'V', 0 }, { 0, 0, 0 } };   // the city, then the camera BEHIND YOU   // poses, from the side: standing, sitting, lying, from above, talking, waving
+    int t = VSync(-1) - t0;
+    while (plan[k].op && t >= plan[k].at) {
+        int a = plan[k].arg;
+        switch (plan[k].op) {
+            case 'b': auto_btn = a == 'X' ? PAD_CROSS : a == 'O' ? PAD_CIRCLE : a == 'S' ? PAD_START : a == 'D' ? PAD_DOWN : a == 'U' ? PAD_UP : a == 'L' ? PAD_LEFT : a == 'E' ? PAD_SELECT : PAD_RIGHT; break;
+            case 'k': cam_pitch = a == 2 ? 300 : a ? 520 : 640; cam_dist = a == 2 ? 3600 : a ? 3200 : 1500; cam_yaw = a == 2 ? 1400 : 2600; break;
+            case 't': story_paid = 1; job_level = 2; travel_go(a); break;
+            case 'c': cam_yaw = 0; cam_pitch = 420; cam_dist = 1300; break;
+            case 'g': { extern int sim_debug_goto(char c, int lot); sim_debug_goto((char)a, -1); } break;
+            case 'K': cam_pitch = 600; cam_dist = 1100; cam_yaw = a ? 1024 : 0; break;
+            case 'P': { Sim *me = &sims[player];
+                        if (!a) { me->x = 55 * TILE + TILE / 2; me->z = -(55 * TILE + TILE / 2); me->lvl = 0; me->path_n = 0; }
+                        me->action = (a == 2 || a == 3) ? ACT_SLEEP : a == 1 ? ACT_SIT : a == 4 ? ACT_TALK : ACT_NONE; me->act_t = 9999; me->yaw = 1024;
+                        me->gait.sit = a == 1; me->gait.sleep = a == 2 || a == 3; me->gait.amp = 0; me->gait.talk = a == 4; me->gait.wave = a == 5 ? 20 : 0;
+                        cam_pitch = a == 3 ? 900 : 200; cam_dist = 800; cam_yaw = 0; } break;
+            case 'V': { extern void cam_view_set(int v); cam_view_set(a); } break;
+            case 'F': fp_pitch = a; break;
+            case 'H': { extern int auto_hold; static const u16 hm[7] = { 0, PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_UP | PAD_RIGHT, PAD_DOWN | PAD_LEFT }; auto_hold = hm[a]; cam_yaw = 0; } break;
         }
         k++;
     }
@@ -1147,7 +1251,7 @@ static void jobs_update(void) {
     int n = jobs_n + 1;   // (row 0: your own job)
     if (PRESSED(PAD_UP)) jobs_sel = (jobs_sel + n - 1) % n;
     if (PRESSED(PAD_DOWN)) jobs_sel = (jobs_sel + 1) % n;
-    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = ST_LIFE; return; }
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = BACK_TO(); return; }
     if (!PRESSED(PAD_CROSS)) return;
     if (jobs_sel == 0) {   // go to work: the boss pays the taxi
         state = ST_LIFE;
@@ -1243,16 +1347,16 @@ static void grow_tick(void) {   // (test builds: a family's life in two minutes:
         { 1700, 'n', 0 },                                 // the baby comes home (asleep on the floor: there is no crib)
         { 1760, 'g', -1 }, { 1761, 'k', 1 }, { 1830, 'b', 'X' }, { 1870, 'p', 3 }, { 1900, 'b', 'X' },   // close up: CUDDLE
         { 2100, 'k', 0 }, { 2110, 'h', -1 },              // the baby cries; the grown-ups come
-        { 2800, 'c', -1 }, { 2810, 'g', -1 }, { 2840, 'b', 'X' }, { 2880, 'p', 4 }, { 2910, 'b', 'X' },   // a crib: PUT TO BED
+        { 2800, 'c', -1 }, { 2810, 'g', -1 }, { 2840, 'b', 'X' }, { 2880, 'p', 4 }, { 2910, 'b', 'X' }, { 2935, 'b', 'O' },   // a crib: PUT TO BED
         { 3060, 'y', -1 }, { 3065, 'g', -1 }, { 3080, 'k', 2 }, { 3170, 'k', 1 }, { 3250, 'k', 0 },   // (close up, from the side and from above: the baby in its crib)
         { 3300, 's', 0 },                                 // school, TUESDAY 8 AM
         { 3600, 'e', 0 },                                 // home at 3
         { 3800, 'w', 2 }, { 3830, 'b', 'S' }, { 3860, 'b', 'D' }, { 3890, 'b', 'X' }, { 3930, 'b', '<' }, { 4050, 'b', '<' }, { 4170, 'b', 'S' },   // the teen's panel: SCHOOL, PEOPLE
-        { 4250, 'w', 0 }, { 4280, 'b', 'S' }, { 4310, 'b', '>' }, { 4330, 'b', 'D' }, { 4350, 'b', 'D' }, { 4370, 'b', 'D' }, { 4390, 'b', 'D' }, { 4420, 'b', 'X' },
+        { 4250, 'w', 0 }, { 4280, 'b', 'S' }, { 4310, 'b', 'D' }, { 4330, 'b', 'D' }, { 4350, 'b', 'D' }, { 4370, 'b', 'D' }, { 4390, 'b', 'D' }, { 4420, 'b', 'X' },
         { 4450, 'b', 'R' }, { 4470, 'b', 'R' }, { 4490, 'b', 'R' }, { 4510, 'b', 'R' }, { 4640, 'b', 'O' }, { 4670, 'b', 'O' },   // OPTIONS: LIFE
         { 4800, 'o', 1 },                                 // MOSS: the end of a long life (at midnight)
         { 5200, 'f', (s8)0x83 }, { 5230, 'b', 'X' },     // the gravestone: REMEMBER (its only choice: no pie)
-        { 5600, 'b', 'S' }, { 5630, 'b', '>' }, { 5650, 'b', 'D' }, { 5670, 'b', 'D' }, { 5690, 'b', 'D' }, { 5710, 'b', 'D' }, { 5730, 'b', 'D' }, { 5760, 'b', 'X' },
+        { 5600, 'b', 'S' }, { 5630, 'b', 'D' }, { 5650, 'b', 'D' }, { 5670, 'b', 'D' }, { 5690, 'b', 'D' }, { 5710, 'b', 'D' }, { 5730, 'b', 'D' }, { 5760, 'b', 'X' },
         { 5800, 'b', 'R' }, { 5830, 'b', 'R' }, { 5860, 'b', 'R' }, { 5990, 'b', 'O' },   // HOW TO PLAY: GROWING UP
         { 6150, 'z', 0 }, { 6400, 'b', 'X' }, { 0, 0, 0 } };   // THE END, then X: a new life
     static const char *const pick[5] = { "BIRTHDAY CAKE", "BLOW CANDLES", "START A FAMILY", "CUDDLE", "PUT TO BED" };
@@ -1285,33 +1389,39 @@ static void grow_tick(void) {   // (test builds: a family's life in two minutes:
 // ---- OPTIONS: the picture and the speed, as many knobs as a PC game, with presets; the game runs behind as you change them ----
 static void title_draw(void);
 enum { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_CROWD, O_LIVE, O_SPR, O_SHADOW, O_AO, O_WALLS, O_FPSCAP, O_DITHER, O_CAM, O_SHOWFPS,
-       O_AGING, O_OLDAGE, O_TOWNAGE, O_N };
+       O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_N };
 static const char *const optNm[O_N] = { "PRESET", "VIEW DISTANCE", "FULL DETAIL", "FAR BUILDINGS", "FAR TREES", "HAZE", "CROWD SIZE",
     "PEOPLE IN FULL 3D", "PEOPLE SPRITES", "SHADOWS", "FLOOR SHADING", "WALL LIGHT", "FRAME RATE", "DITHERING", "CAMERA", "SHOW FPS",
-    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP" };
+    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS" };
 static const char *const optV[O_N][6] = {
     { "CUSTOM", "LOW", "MEDIUM", "HIGH", "ULTRA" }, { "50 M", "250 M", "500 M", "1 KM", "1.5 KM", "2 KM" },
     { "10 M", "12 M", "15 M", "17 M" }, { "TALL ONLY", "ALL", "WITH WINDOWS" }, { "OFF", "100 M", "200 M", "350 M" },
     { "OFF", "LIGHT", "THICK" }, { "16", "32", "48", "64" }, { "1", "2", "4", "6" }, { "SLOW", "NORMAL", "FAST" },
     { "OFF", "PEOPLE", "EVERYTHING" }, { "OFF", "ON" }, { "FLAT", "SOFT" }, { "AS FAST AS IT CAN", "STEADY 30", "STEADY 20" },
-    { "OFF", "ON" }, { "HIGH (SIMS)", "LOW (SEE FAR)" }, { "OFF", "ON" },
-    { "NOBODY AGES", "SHORT", "NORMAL", "LONG" }, { "LIVE ON", "PASS ON" }, { "OFF", "ON" } };
-static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 2, 2, 4, 2, 2 };
+    { "OFF", "ON" }, { "THE SIMS", "BEHIND YOU", "FIRST PERSON" }, { "OFF", "ON" },
+    { "NOBODY AGES", "SHORT", "NORMAL", "LONG" }, { "LIVE ON", "PASS ON" }, { "OFF", "ON" },
+    { "LOW", "MEDIUM", "HIGH", "OVERHEAD" }, { "SLOW", "NORMAL", "FAST" }, { "OFF", "ON" } };
+static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2 };
 static const char *const optBlurb[O_N] = {
     "LOW, MEDIUM, HIGH OR ULTRA SETS THEM ALL", "HOW FAR SAN BOREAS GOES BEFORE THE SKY", "WHERE ROOMS, WALLS AND THINGS ARE DRAWN IN FULL",
     "THE TOWNS PAST THE MAP: TALL ONES, ALL, OR WINDOWS TOO", "TREES PAST THE NEAR DETAIL, OUT TO", "THE AIR BETWEEN YOU AND THE HORIZON",
     "HOW MANY PEOPLE CAN BE DRAWN AT ONCE", "THE NEAREST, DRAWN AS REAL 3D (THE REST ARE SPRITES)", "HOW OFTEN THE CROWD'S SPRITES ARE REDRAWN",
     "SOFT SHADOWS UNDER PEOPLE AND THINGS", "FLOORS DARKEN WHERE THEY MEET WALLS", "WALLS LIGHTER UP TOP, DARKER AT THE FOOT",
-    "A STEADY RATE FEELS SMOOTHER THAN A JUMPY ONE", "THE PLAYSTATION'S SMOOTHING OF COLOURS", "LOW TO SEE THE SKYLINE (THE RIGHT STICK TILTS TOO)",
+    "A STEADY RATE FEELS SMOOTHER THAN A JUMPY ONE", "THE PLAYSTATION'S SMOOTHING OF COLOURS", "L2 + R2 TOGETHER SWITCH IT. FIRST PERSON: UP WALKS, L2 R2 LOOK",
     "THE FRAME RATE IN A CORNER (L3 IN PLAY)",
     "HOW FAST BORES GROW UP, FROM BABY TO ELDER", "AT THE END OF THE ELDER YEARS: GO ON, OR SAY GOODBYE",
-    "EVERYONE IN SAN BOREAS GETS OLDER AND HAS BABIES TOO" };
+    "EVERYONE IN SAN BOREAS GETS OLDER AND HAS BABIES TOO",
+    "HOW HIGH THE CAMERA LOOKS DOWN FROM (LOW SEES THE SKYLINE)", "HOW FAST L1 AND R1 TURN THE CAMERA", "ZOOMING IN WITH R2 LOWERS THE CAMERA TOO" };
 static const u8 presets[4][O_N] = {   // LOW, MEDIUM, HIGH, ULTRA (the graphics knobs; the frame rate, dithering, camera and the counter are left be)
     { 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0 }, { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 },
     { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1 }, { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 } };
 #define O_PRESET_LAST O_WALLS                 // (presets set O_VIEW .. O_WALLS)
-static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 0, 1, 0, 0, 2, 1, 1 };   // HIGH: a kilometre of view; NORMAL lives
+static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 0, 1, 0, 0, 2, 1, 1, 2, 1, 1 };   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
 static int opt_sel, opt_back, opt_tab;
+static void opts_apply(void);
+#ifdef AUTO_FLOAT
+void float_opts(const u8 *p, int n) { for (int i = 0; i < n && i < O_N; i++) opt[i] = p[i]; opts_apply(); }
+#endif
 static void opts_apply(void) {
     extern int getenv_noshadow, dbg_noao, dbg_nograd, world_detail_r, cit_live_max, cit_maxdraw, cit_sprite_rate;
     far_view = opt[O_VIEW]; far_detail = opt[O_FARB]; far_trees = opt[O_TREES]; far_haze = opt[O_HAZE];
@@ -1323,16 +1433,23 @@ static void opts_apply(void) {
     gfx_set_dither(opt[O_DITHER]);
     show_fps = opt[O_SHOWFPS];
     aging = opt[O_AGING]; old_age = opt[O_OLDAGE]; pop_aging = opt[O_TOWNAGE];
+    cam_view = opt[O_CAM] % 3; cam_turn_rate = opt[O_CAMSPD] == 0 ? 24 : opt[O_CAMSPD] == 1 ? 40 : 64; cam_zoom_tilt = opt[O_ZOOMTILT];
+}
+void cam_view_set(int v) {   // (L2 + R2 in play, and the options)
+    cam_view = v; opt[O_CAM] = (u8)v; fp_pitch = 0;
+    char b[32]; sprintf(b, "CAMERA: %s", camViewNm[v]); sim_note(b); audio_voice(VOICE_FINISHED);
 }
 static void opts_open(int back) { opt_back = back; opt_sel = 0; opt_tab = 0; state = ST_OPTS; }
 // the knobs in four tabs (L1 R1), like The Sims 4's game options: sliders for amounts, switches for on and off, pills for choices
-#define NOTAB 5
-static const char *const optTabNm[NOTAB] = { "GRAPHICS", "PEOPLE", "LIGHT", "PLAY", "LIFE" };
-static const s8 optTabIc[NOTAB] = { IC_EYE, IC_PEOPLE, IC_SUN, IC_BOLT, IC_SPROUT };
+#define NOTAB 6
+static const char *const optTabNm[NOTAB] = { "GRAPHICS", "PEOPLE", "LIGHT", "CAMERA", "PLAY", "LIFE" };
+static const s8 optTabIc[NOTAB] = { IC_EYE, IC_PEOPLE, IC_SUN, IC_CAMERA, IC_BOLT, IC_SPROUT };
 static const s8 optTab[NOTAB][7] = { { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, -1 }, { O_CROWD, O_LIVE, O_SPR, -1 },
-                                     { O_SHADOW, O_AO, O_WALLS, O_DITHER, -1 }, { O_FPSCAP, O_CAM, O_SHOWFPS, -1 }, { O_AGING, O_OLDAGE, O_TOWNAGE, -1 } };
+                                     { O_SHADOW, O_AO, O_WALLS, O_DITHER, -1 }, { O_CAM, O_CAMH, O_CAMSPD, O_ZOOMTILT, -1 },
+                                     { O_FPSCAP, O_SHOWFPS, -1 }, { O_AGING, O_OLDAGE, O_TOWNAGE, -1 } };
 static int opt_kind(int i) {   // 0 a choice, 1 a slider, 2 a switch
-    if (i == O_AO || i == O_DITHER || i == O_SHOWFPS || i == O_TOWNAGE) return 2;
+    if (i == O_AO || i == O_DITHER || i == O_SHOWFPS || i == O_TOWNAGE || i == O_ZOOMTILT) return 2;
+    if (i == O_CAMH || i == O_CAMSPD) return 1;
     if (i == O_VIEW || i == O_DETAIL || i == O_TREES || i == O_HAZE || i == O_CROWD || i == O_LIVE || i == O_SPR) return 1;
     return 0;
 }
@@ -1350,12 +1467,13 @@ static void opts_update(void) {
         int i = optTab[opt_tab][opt_sel], n = optN[i];
         if (i == O_PRESET) {
             int p = opt[O_PRESET] + d; if (p < 1) p = 4; if (p > 4) p = 1;       // (CUSTOM is not picked: it is what you get by hand)
-            opt[O_PRESET] = (u8)p; for (int k = O_VIEW; k <= O_PRESET_LAST; k++) opt[k] = presets[p - 1][k - 1];
+            opt[O_PRESET] = (u8)p; for (int k = O_VIEW; k <= O_PRESET_LAST; k++) opt[k] = presets[p - 1][k];   // (each row starts with the preset itself, like opt)
         } else {
             if (opt_kind(i) == 1) opt[i] = (u8)CLAMP(opt[i] + d, 0, n - 1);     // (a slider stops at its ends)
             else opt[i] = (u8)((opt[i] + d + n) % n);
             if (i <= O_PRESET_LAST) opt[O_PRESET] = 0;
-            if (i == O_CAM) cam_pitch = opt[O_CAM] ? 250 : 640;
+            if (i == O_CAMH) { static const s16 ph[4] = { 330, 520, 680, 940 }; cam_pitch = ph[opt[O_CAMH] & 3]; }
+            if (i == O_CAM) fp_pitch = 0;
         }
         opts_apply(); audio_voice(VOICE_YAHOO);
     }
@@ -1399,9 +1517,8 @@ static void opts_draw(void) {
     ui_hints(16, top + 185, "O BACK", 0);
 }
 
-static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "THE STORY", "TRAVEL", "MAP AND TAXI", "THE PEOPLE", "JOBS", "HOMES", "CREATE A BORE",
-                                       "ADD A BORE", "THROW A PARTY", "BUILD MODE", "JUKEBOX", "OPTIONS", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
-#define NPAUSE 17
+static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
+#define NPAUSE 9   // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
 static void homes_open(void);
 #ifdef AUTO_PARTY
 int ap_frames, ap_vs, ap_cpu;
@@ -1417,49 +1534,132 @@ void throw_party(void) {   // (also the phone's THROW A PARTY)
     audio_voice(VOICE_YAHOO);
     for (int i = 0; i < nsims; i++) sim_moodlet(&sims[i], 15);        // FUN TIME
 }
-#define PCOL 9                                  // the pause menu: two columns, nine down the left
 static void pause_update(void) {
     if (PRESSED(PAD_UP)) menu_sel = (menu_sel + NPAUSE - 1) % NPAUSE;
     if (PRESSED(PAD_DOWN)) menu_sel = (menu_sel + 1) % NPAUSE;
-    if (PRESSED(PAD_RIGHT) && menu_sel < PCOL) menu_sel = MIN(menu_sel + PCOL, NPAUSE - 1);
-    if (PRESSED(PAD_LEFT) && menu_sel >= PCOL) menu_sel -= PCOL;
     if (PRESSED(PAD_START) || PRESSED(PAD_CIRCLE)) { state = ST_LIFE; return; }
+    if (PRESSED(PAD_SELECT)) { extern void phone_open(void); phone_open(); return; }
     if (PRESSED(PAD_CROSS)) {
+        sub_back = ST_PAUSE;
         switch (menu_sel) {
             case 0: state = ST_LIFE; break;
             case 1: panel_tab = 0; state = ST_PANEL; break;
-            case 2: state = ST_STORY; break;
-            case 3: travel_sel = home_city && home_is_here() ? 0 : world_zone + home_city; state = ST_TRAVEL; break;
-            case 4: map_t = -1; state = ST_MAP; break;   // (opened on the map's own first frame: this frame still draws the people, whose sprites share that VRAM)
-            case 5: dir_open(); state = ST_DIR; break;
-            case 6: jobs_open(); state = ST_JOBS; break;
-            case 7: homes_open(); break;
-            case 8: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
+            case 3: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
                     create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
-            case 9: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
+            case 4: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); state = ST_LIFE; } break;
-            case 10: throw_party(); state = ST_LIFE; break;
-            case 11: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD;
+            case 2: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD;
                      if (world_zone == ZONE_CITY && !world_own_lot(build_x, build_y)) { int tx, ty; if (world_own_door(&tx, &ty)) { build_x = tx; build_y = ty - 1; } }   // (in SAN BOREAS: on your own lot)
                      break;
-            case 12: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
-            case 13: opts_open(ST_PAUSE); break;
-            case 14: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 15: life_started = 0; start_life(); state = ST_LIFE; break;
-            case 16: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); break;
+            case 5: opts_open(ST_PAUSE); break;
+            case 6: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
+            case 7: life_started = 0; start_life(); state = ST_LIFE; break;
+            case 8: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); break;
         }
     }
 }
-static void pause_draw(void) {
-    static const s8 ic[NPAUSE] = { IC_PLAY, IC_PLUMBOB, IC_BOOK, IC_CAR, IC_PIN, IC_PEOPLE, IC_CASE, IC_HOUSE, IC_STAR, IC_ADD, IC_PARTY, IC_HAMMER, IC_NOTE, IC_GEAR, IC_HELP, IC_SPROUT, IC_DOOR };
+static void pause_draw(void) {   // one short column: the game itself (the rest of life is on the phone)
+    static const s8 ic[NPAUSE] = { IC_PLAY, IC_PLUMBOB, IC_HAMMER, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_SPROUT, IC_DOOR };
     life_draw();
     ui_dim();
-    int top = ui_window(14, 10, 292, 220, "PAUSED", IC_PAUSE);
-    { char b[48]; sprintf(b, "%s %02d:%02d", sim_day_name(clock_day), clock_min / 60, clock_min % 60);   // the household's day, on the header
-      gfx_text(300 - gfx_text_w(1, b), 13, 1, b, 255, 255, 255); sprintf(b, "$%ld", cash); gfx_text(300 - gfx_text_w(1, b), 22, 1, b, 210, 255, 200); }
-    for (int i = 0; i < NPAUSE; i++) {
-        int col = i >= PCOL, row = col ? i - PCOL : i;
-        ui_button(22 + col * 142, top + row * 21, 134, 19, pauseNm[i], ic[i], i == menu_sel);
+    int top = ui_window(70, 12, 180, 214, "PAUSED", IC_PAUSE);
+    for (int i = 0; i < NPAUSE; i++) ui_button(78, top + i * 19, 164, 17, pauseNm[i], ic[i], i == menu_sel);
+    ui_hints(160, top + NPAUSE * 19 + 3, "SEL PHONE|O BACK", 1);
+}
+
+// ---- THE PHONE (SELECT): The Sims' cell phone. Twelve apps on a grid; the family's list for playing as someone else ----
+static const char *const phNm[PH_N] = { "CALL", "PIZZA", "PARTY", "MAP", "TRAVEL", "JOBS", "HOMES", "PEOPLE", "FAMILY", "ADOPT", "MUSIC", "GOALS" };
+static const char *const phBlurb[PH_N] = { "CHAT WITH A FRIEND, RIGHT WHERE YOU ARE", "$40. A HOT MEAL, NO COOKING", "$100. GUESTS COME OVER TO DANCE",
+    "SAN BOREAS, AND A TAXI ANYWHERE IN IT", "THE ISLAND, THE DESERT TOWN, HOME", "FIND WORK, OR GET A RIDE TO WORK", "HOUSES AND LOTS FOR SALE NEAR YOU",
+    "EVERYONE IN SAN BOREAS, AND WHERE THEY ARE", "PLAY AS SOMEONE ELSE IN THE FAMILY", "$1000. A BABY OR A CHILD, HOME TOMORROW", "ALL 33 SONGS ON THE JUKEBOX", "THE STORY SO FAR: YOUR GOALS" };
+static const s8 phIc[PH_N] = { IC_CHAT, IC_FOOD, IC_PARTY, IC_PIN, IC_CAR, IC_CASE, IC_HOUSE, IC_PEOPLE, IC_PLUMBOB, IC_BABY, IC_NOTE, IC_BOOK };
+static const u32 phCol[PH_N] = { UI_RGB(76, 196, 92), UI_RGB(240, 140, 50), UI_RGB(236, 90, 150), UI_RGB(40, 170, 170), UI_RGB(38, 146, 222), UI_RGB(110, 100, 200),
+    UI_RGB(70, 170, 110), UI_RGB(150, 90, 210), UI_RGB(84, 196, 72), UI_RGB(240, 110, 130), UI_RGB(228, 70, 70), UI_RGB(220, 160, 30) };
+static int ph_sel, ph_fam, ph_fsel, ph_t;
+void phone_open(void) { state = ST_PHONE; ph_fam = 0; ph_t = 0; if (ph_sel < 0 || ph_sel >= PH_N) ph_sel = 0; audio_voice(VOICE_FINISHED); }
+static void phone_update(void) {
+    ph_t++;
+    if (ph_fam) {   // the family: X plays as them
+        if (PRESSED(PAD_UP)) ph_fsel = (ph_fsel + nsims - 1) % nsims;
+        if (PRESSED(PAD_DOWN)) ph_fsel = (ph_fsel + 1) % nsims;
+        if (PRESSED(PAD_CIRCLE)) { ph_fam = 0; return; }
+        if (PRESSED(PAD_START) || PRESSED(PAD_SELECT)) { state = ST_LIFE; return; }
+        if (PRESSED(PAD_CROSS)) {
+            const Sim *o = &sims[ph_fsel]; char b[40];
+            if (ph_fsel == player) { state = ST_LIFE; return; }
+            if (o->bore.stage == AG_BABY) { sim_note("A BABY CANNOT BE PLAYED"); audio_voice(VOICE_NAH); return; }
+            if (o->away) { sprintf(b, "%s IS AT SCHOOL", o->bore.first); sim_note(b); audio_voice(VOICE_NAH); return; }
+            if (sim_play_as(ph_fsel)) { sprintf(b, "NOW PLAYING AS %s", sims[player].bore.first); sim_note(b); audio_voice(VOICE_YAHOO); }
+            state = ST_LIFE;
+        }
+        return;
+    }
+    if (PRESSED(PAD_LEFT)) ph_sel = (ph_sel + PH_N - 1) % PH_N;
+    if (PRESSED(PAD_RIGHT)) ph_sel = (ph_sel + 1) % PH_N;
+    if (PRESSED(PAD_UP)) ph_sel = (ph_sel + PH_N - 3) % PH_N;
+    if (PRESSED(PAD_DOWN)) ph_sel = (ph_sel + 3) % PH_N;
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_SELECT)) { state = ST_LIFE; return; }
+    if (!PRESSED(PAD_CROSS)) return;
+    sub_back = ST_PHONE;
+    switch (ph_sel) {
+        case PH_CALL: case PH_PIZZA: state = ST_LIFE; if (!sim_cell(ph_sel == PH_PIZZA)) audio_voice(VOICE_NAH); break;
+        case PH_PARTY: state = ST_LIFE; throw_party(); break;
+        case PH_MAP: map_t = -1; state = ST_MAP; break;   // (opened on the map's own first frame: this frame still draws the people, whose sprites share that VRAM)
+        case PH_TRAVEL: travel_sel = home_city && home_is_here() ? 0 : world_zone + home_city; state = ST_TRAVEL; break;
+        case PH_JOBS: jobs_open(); state = ST_JOBS; break;
+        case PH_HOMES: homes_open(); break;
+        case PH_PEOPLE: dir_open(); state = ST_DIR; break;
+        case PH_FAMILY: ph_fam = 1; ph_fsel = player; break;
+        case PH_ADOPT: state = ST_LIFE; sim_cell(2); break;
+        case PH_MUSIC: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
+        case PH_GOALS: state = ST_STORY; break;
+    }
+}
+static void phone_draw(void) {
+    life_draw();
+    ui_dim();
+    char b[40];
+    const int PX = 164, PY = 10, PW = 148, PH_ = 218;              // the phone, standing up on the right
+    int lift = ph_t < 8 ? (8 - ph_t) * 6 : 0;                        // (it slides up out of the pocket)
+    int py = PY + lift;
+    ui_shadow(PX, py, PW, PH_, 16);
+    ui_round(PX, py, PW, PH_, 16, UI_RGB(44, 50, 64), UI_RGB(22, 25, 34), 0);       // the body
+    ui_round(PX + 58, py + 5, 32, 4, 2, UI_RGB(12, 14, 20), UI_RGB(12, 14, 20), 0);  // the speaker
+    const int SX = PX + 6, SW = PW - 12; int sy = py + 13, sh = PH_ - 30;
+    ui_round(SX, sy, SW, sh, 9, UI_RGB(120, 196, 246), UI_RGB(58, 120, 206), 0);     // the screen: a blue sky of a wallpaper
+    sprintf(b, "%02d:%02d", clock_min / 60, clock_min % 60); gfx_text_raw(SX + 7, sy + 5, 1, b, 255, 255, 255);
+    sprintf(b, "$%ld", cash); gfx_text_raw(SX + SW - 7 - gfx_text_w(1, b), sy + 5, 1, b, 220, 255, 220);
+    ui_round(PX + 54, py + PH_ - 11, 40, 4, 2, UI_RGB(200, 206, 216), UI_RGB(170, 176, 188), 0);   // the home bar
+    if (ph_fam) {   // the family list
+        gfx_text_raw(SX + 8, sy + 19, 2, "FAMILY", 255, 255, 255);
+        for (int i = 0; i < nsims; i++) {
+            const Sim *o = &sims[i]; int y = sy + 38 + i * 26, sel = i == ph_fsel;
+            ui_round(SX + 4, y, SW - 8, 23, 7, sel ? UI_WHITE : UI_RGB(232, 240, 250), sel ? UI_HILITE : UI_RGB(214, 226, 242), 0);
+            if (sel) gfx_rect(SX + 4, y + 4, 2, 15, 38, 146, 222, 0);
+            int mm = o->mood; u32 ring = i == player ? UI_BLUE : mm > 15 ? UI_GREEN : mm > -15 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70);
+            ui_disc(SX + 17, y + 11, 19, ring); ui_disc(SX + 17, y + 11, 15, UI_RGB(244, 248, 252)); draw_face_k(SX + 9, y + 3, mm, 1);
+            ui_text(SX + 30, y + 3, 1, o->bore.first, UI_INK);
+            ui_text(SX + 30, y + 13, 1, i == player ? "PLAYING NOW" : o->away ? "AT SCHOOL" : look_stage_name(o->bore.stage), i == player ? UI_BLUE2 : UI_SOFT);
+        }
+    } else {        // the apps: three across, four down
+        for (int i = 0; i < PH_N; i++) {
+            int cx = SX + 22 + (i % 3) * 46, cy = sy + 32 + (i / 3) * 42, sel = i == ph_sel;
+            if (sel) ui_round(cx - 21, cy - 15, 42, 40, 9, UI_RGB(255, 255, 255), UI_RGB(220, 236, 252), 0);
+            ui_icon_disc(cx, cy, 24, phIc[i], phCol[i], UI_WHITE);
+            if (sel) ui_textc(cx, cy + 15, 1, phNm[i], UI_INK);
+            else { gfx_text_raw(cx - gfx_text_w(1, phNm[i]) / 2 + 1, cy + 16, 1, phNm[i], 20, 50, 110); gfx_text_raw(cx - gfx_text_w(1, phNm[i]) / 2, cy + 15, 1, phNm[i], 255, 255, 255); }
+        }
+    }
+    {   // what the app does, and the buttons, on a card on the left
+        const char *t = ph_fam ? "FAMILY" : phNm[ph_sel], *bl = ph_fam ? "X PLAYS AS THEM. A BABY CANNOT BE PLAYED, AND THE KIDS ARE AT SCHOOL TILL 3." : phBlurb[ph_sel];
+        if (!ph_fam && ph_sel == PH_MAP && world_zone == ZONE_ISLAND) bl = "THE ISLAND, AND THE SECRETS FOUND ON IT";
+        int nl = ui_wrap_n(132, bl), ch = 34 + nl * 10;
+        int cy = 196 - ch;
+        ui_card(8, cy, 148, ch + 30);
+        ui_icon_disc(20, cy + 12, 18, ph_fam ? IC_PLUMBOB : phIc[ph_sel], ph_fam ? UI_GREEN : phCol[ph_sel], UI_WHITE);
+        ui_text(34, cy + 6, 2, t, UI_INK);
+        ui_wrap(14, cy + 24, 132, 3, bl, UI_SOFT);
+        ui_hints(82, cy + ch + 12, ph_fam ? "X PLAY|O BACK" : "X OPEN|O CLOSE", 1);
     }
 }
 
@@ -1514,7 +1714,7 @@ static void over_draw(void) {
 
 // ---- the story page: the goals of this life, Bustin' Out style ----
 static void story_update(void) {
-    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_CROSS) || PRESSED(PAD_START)) state = ST_PAUSE;
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_CROSS) || PRESSED(PAD_START)) state = BACK_TO();
 }
 static void story_draw(void) {   // the goals of this life, ticked off as they are done
     life_draw();
@@ -1523,13 +1723,13 @@ static void story_draw(void) {   // the goals of this life, ticked off as they a
     sprintf(isl, "SAIL TO %s", world_zone_name(ZONE_ISLAND));
     enum { NG = 8 };
     struct { const char *txt; int done; } g[NG] = {
-        { "EARN A PAYCHECK (START, JOBS)", story_paid > 0 },
+        { "EARN A PAYCHECK (PHONE, JOBS)", story_paid > 0 },
         { isl, story_visit[1] },
         { "GET PROMOTED TWICE", job_level >= 2 },
         { "SEE THE DESERT TOWN", story_visit[2] },
         { "MAKE FRIENDS: CHAT 5 TIMES", story_talks >= 5 },
         { "SAVE UP $20000", cash >= 20000 },
-        { "BUY A HOME (START, HOMES)", home_city },
+        { "BUY A HOME (PHONE, HOMES)", home_city },
         { "FIND THE ISLAND'S 8 SECRETS", isl_secret_count() >= SEC_N },
     };
     int top = ui_window(30, 10, 260, 220, "THE STORY SO FAR", IC_BOOK), done = 0;
@@ -1757,7 +1957,7 @@ static void create_draw(void) {
     world_draw(4, 5, frame, 1);
     VECTOR p; setVector(&p, bx, 0, bz);
     Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (frame * 90) & 4095; g.amp = 0;
-    voxel_draw(&edit, &p, create_turn & 4095, &g);
+    voxel_draw(&edit, &p, (2048 - create_turn) & 4095, &g);   // (the face to the camera at create_turn 0)
     gfx_shadow(&p, 70);
     // the card: the tab on a blue header, its rows, the buttons at the foot
     static const s8 createIc[NTAB] = { IC_PEOPLE, IC_SMILE, IC_BRUSH, IC_SHIRT, IC_STAR, IC_SPROUT, IC_PLUMBOB };
@@ -1786,8 +1986,8 @@ static void create_draw(void) {
         if (val[0]) ui_text(176, y + 10, 1, val, sel ? UI_BLUE2 : UI_SOFT);
     }
     for (int t = 0; t < NTAB; t++) ui_disc(220 + t * 9, 204, 6, t == create_tab ? UI_BLUE : UI_LINE);   // which tab of the seven
-    ui_hints(241, 210, "L1 R1 TAB|TRI DICE", 1);
-    ui_hints(241, 222, prev_state == ST_LIFE ? "START DONE|O BACK" : "START LIVE|O BACK", 1);
+    ui_hints(241, 205, "L1 R1 TAB|TRI DICE", 1);
+    ui_hints(241, 217, prev_state == ST_LIFE ? "START DONE|O BACK" : "START LIVE|O BACK", 1);
     // the Bore's name card, and the title
     char nm[32]; sprintf(nm, "%s %s", edit.first, edit.last);
     int big = ui_tw(2, nm) <= 140, w = MAX(big ? ui_tw(2, nm) : ui_tw(1, nm), 100) + 14;
@@ -2045,11 +2245,11 @@ static void build_draw(void) {
                ui_text(204, top + 14, 1, world_roof_pitch_name(world_roof_pitch), UI_SOFT);
                ui_text(204, top + 26, 1, world_roof_col_name(world_roof_col), UI_SOFT); }
         ui_card(4, 206, 312, 30);
-        if (build_tool == BT_ROOF) { ui_hints(160, 209, "X STYLE|SQ PITCH|L1 R1 COLOUR|SEL TOOL", 1); ui_hints(160, 221, "L2 R2 STOREY|O DONE", 1); }
-        else if (build_tool == BT_ROOM) { ui_hints(160, 209, room_on ? "X BUILD IT|O LET GO|L1 R1 WALLS|R3 FLOOR" : "X FIRST CORNER|L1 R1 WALLS|R3 FLOOR", 1);
-               ui_hints(160, 221, "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
-        else { ui_hints(160, 209, build_tool == BT_BUY ? "L1 R1 PICK|R3 NEXT TAB|X BUY|SQ SELL" : build_tool == BT_DOOR ? "L1 R1 PICK|X PUT IN|SQ TAKE OUT" : "L1 R1 PICK|X PLACE|SQ ERASE", 1);
-               ui_hints(160, 221, "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
+        if (build_tool == BT_ROOF) { ui_hints(160, 204, "X STYLE|SQ PITCH|L1 R1 COLOUR|SEL TOOL", 1); ui_hints(160, 216, "L2 R2 STOREY|O DONE", 1); }
+        else if (build_tool == BT_ROOM) { ui_hints(160, 204, room_on ? "X BUILD IT|O LET GO|L1 R1 WALLS|R3 FLOOR" : "X FIRST CORNER|L1 R1 WALLS|R3 FLOOR", 1);
+               ui_hints(160, 216, "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
+        else { ui_hints(160, 204, build_tool == BT_BUY ? "L1 R1 PICK|R3 NEXT TAB|X BUY|SQ SELL" : build_tool == BT_DOOR ? "L1 R1 PICK|X PUT IN|SQ TAKE OUT" : "L1 R1 PICK|X PLACE|SQ ERASE", 1);
+               ui_hints(160, 216, "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
     }
 }
 
@@ -2064,7 +2264,7 @@ static void juke_update(void) {
         if (PRESSED(PAD_R1)) audio_jukebox_next();
         if (PRESSED(PAD_SQUARE)) audio_jukebox_toggle_shuffle();
     }
-    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) state = prev_state == ST_LIFE ? ST_LIFE : ST_MENU;
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) state = prev_state == ST_LIFE ? BACK_TO() : ST_MENU;
 }
 static void juke_draw(void) {   // the song playing on its own card, every song in a list under it
     if (prev_state == ST_LIFE) life_draw(); else title_draw();
@@ -2107,12 +2307,12 @@ static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
         { IC_FOOD, "X USES THE THING IN FRONT OF YOU: THE FRIDGE, THE BED, THE SHOWER, THE SOFA, THE TV." },
         { IC_CHAT, "X ON A PERSON TO TALK. O STOPS WHAT YOU ARE DOING." },
         { IC_FAST, "TRIANGLE CHANGES HOW FAST TIME GOES." },
-        { IC_PEOPLE, "SELECT SWITCHES TO THE NEXT BORE IN THE HOUSE." } } },
-    { "THE CAMERA", { { IC_CAMERA, "L1 R1 TURN THE CAMERA. L2 R2 ZOOM. THE RIGHT STICK TURNS AND TILTS IT." },
-        { IC_EYE, "WALLS IN THE WAY DROP DOWN, LIKE THE SIMS." },
-        { IC_CASE, "WORK: START, THEN JOBS. PICK A JOB AT A REAL PLACE, GO THERE, AND X ON A COUNTER, DESK OR MACHINE." },
-        { IC_MONEY, "BILLS ARE $800, EVERY MIDNIGHT. KEEP SOME MONEY BY." },
-        { IC_PLUMBOB, "START OPENS THE MENU: THE BORE PANEL, THE MAP, BUILD MODE AND MORE." } } },
+        { IC_PEOPLE, "SELECT OPENS YOUR PHONE: CALL, PIZZA, PARTY, MAP AND MORE." } } },
+    { "THE CAMERA", { { IC_CAMERA, "L1 R1 TURN THE CAMERA. L2 R2 ZOOM. L1 + R1 TOGETHER: SWING ROUND BEHIND YOU." },
+        { IC_EYE, "L2 + R2 TOGETHER: SIMS CAMERA, BEHIND YOU, OR FIRST PERSON." },
+        { IC_PLAY, "FIRST PERSON: UP WALKS, LEFT AND RIGHT TURN, L2 R2 LOOK DOWN AND UP." },
+        { IC_CASE, "WORK: PHONE, JOBS. BILLS ARE $800, EVERY MIDNIGHT." },
+        { IC_PLUMBOB, "START: THE BORE PANEL, BUILD MODE AND OPTIONS (CAMERA HEIGHT AND TURN SPEED)." } } },
     { "BUILD AND CREATE", { { IC_HAMMER, "BUILD MODE: ITEMS, WALLS, FLOORS AND 103 WALLPAPERS." },
         { IC_BRUSH, "SELECT PICKS THE TOOL. L1 R1 PICK THE THING. X PLACES IT, SQUARE TAKES IT AWAY." },
         { IC_HOUSE, "L2 R2 CHANGE THE STOREY. L3 SHOWS THE ROOF." },
@@ -2123,7 +2323,7 @@ static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
         { IC_HEART, "TWO GROWN-UPS WHO GET ON: X ON ONE, START A FAMILY. OR ADOPT BY PHONE." },
         { IC_BABY, "A BABY CRIES WHEN IT NEEDS YOU: FEED, CHANGE, PLAY, CUDDLE. BUY A CRIB." },
         { IC_BOOK, "SCHOOL IS 8 AM TO 3 PM, MON - FRI. HOMEWORK AT A DESK OR SHELF." } } },
-    { "A HOME OF YOUR OWN", { { IC_HOUSE, "START, HOMES: HOUSES AND EMPTY LOTS FOR SALE NEAR YOU. X BUYS ONE." },
+    { "A HOME OF YOUR OWN", { { IC_HOUSE, "PHONE, HOMES: HOUSES AND EMPTY LOTS FOR SALE NEAR YOU. X BUYS ONE." },
         { IC_CAR, "THE FAMILY MOVES IN BY TAXI. A HOUSE COMES FURNISHED FOR THEM." },
         { IC_ROOM, "BUILD MODE, ROOM: X ON ONE CORNER, X ON THE OTHER: WALLS AND A FLOOR." },
         { IC_DOOR, "DOORS, WINDOWS: X ON A WALL. L2 R2 CHANGE THE STOREY TO BUILD UP." },
@@ -2221,7 +2421,7 @@ static void menu_draw(void) {
 
 // ---- the loading screen: a bar and what is being made, shown before any long job (start-up, a new life, travel) ----
 static void loading_draw(const char *what, int pct) {   // The Sims 4's way: a big plumbob, the name, a white card with the bar, and a tip
-    static const char *const tips[] = { "BILLS COME AT MIDNIGHT: KEEP $800 BY.", "START, THEN MAP: A TAXI ANYWHERE FOR $20.",
+    static const char *const tips[] = { "BILLS COME AT MIDNIGHT: KEEP $800 BY.", "PHONE, THEN MAP: A TAXI ANYWHERE FOR $20.",
         "L2 ZOOMS OUT: SAN BOREAS GOES ON FOR KILOMETRES.", "A STEADY 30 (OPTIONS) FEELS SMOOTHER.", "MOSS DOES NOT WANT A PLUMBOB. DO NOT ASK.",
         "CHAT 5 TIMES TO MAKE A FRIEND.", "BUILD MODE HAS 103 WALLPAPERS." };
     pct = CLAMP(pct, 0, 100);
@@ -2316,6 +2516,9 @@ int main(void) {
 #ifdef AUTO_SCENE
         scene_tick();
 #endif
+#ifdef AUTO_PHONE
+        phone_tick();
+#endif
         ui_light = 0;
         switch (state) {
             case ST_TITLE: title_update(); title_draw(); break;
@@ -2342,6 +2545,7 @@ int main(void) {
             case ST_OVER: over_update(); over_draw(); break;
             case ST_HOMES: homes_update(); homes_draw(); break;
             case ST_CRAFT: craft_update(); craft_draw(); break;
+            case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
         if (state == ST_LIFE) { avg_cpu16 += t_cpu - (avg_cpu16 >> 4); avg_world16 += t_world - (avg_world16 >> 4);   // (the test readouts)

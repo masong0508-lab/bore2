@@ -1,4 +1,4 @@
-// font.c - BORE's own smooth proportional font (fontdata.h on the GBA), as textures: s for dense HUD rows, m for menus, l for the title.
+// font.c - BORE's own smooth proportional font (fontdata.h on the GBA), as textures: m for big menu type, l for the title, u (the medium shrunk smooth) for the HUD and menus.
 #include "font.h"
 #include "atlas.h"
 #include "gfx.h"
@@ -7,21 +7,29 @@
 
 static TexRef sheet[4];
 static s8 idx_of[128];
-static const u8 (*glyph[4])[4] = { font_s_glyph, font_m_glyph, font_l_glyph, font_u_glyph };
-static const int line_h[4] = { FONT_S_LINE, FONT_M_LINE, FONT_L_LINE, FONT_U_LINE };
-static const int space_w[4] = { FONT_S_SPACE, FONT_M_SPACE, FONT_L_SPACE, FONT_U_SPACE };
-static const int top_rows[4] = { FONT_S_TOP, FONT_M_TOP, FONT_L_TOP, FONT_U_TOP };
+// (size 0, the old small sheet, nothing draws any more: it is the ui type, so a stray 0 still prints)
+static const u8 (*glyph[4])[4] = { font_u_glyph, font_m_glyph, font_l_glyph, font_u_glyph };
+static const int line_h[4] = { FONT_U_LINE, FONT_M_LINE, FONT_L_LINE, FONT_U_LINE };
+static const int space_w[4] = { FONT_U_SPACE, FONT_M_SPACE, FONT_L_SPACE, FONT_U_SPACE };
+static const int top_rows[4] = { FONT_U_TOP, FONT_M_TOP, FONT_L_TOP, FONT_U_TOP };
 
+static u16 grey(int v) { return v ? (u16)(0x8000 | v | (v << 5) | (v << 10)) : 0; }
 void font_init(void) {
     // every inked texel marked to blend (the STP bit): so the type can be added (light on dark) or taken away (dark ink on a
-    // white card) all over, not only at its soft edges (an unmarked texel is drawn as it is, whatever the blend)
-    static const u16 *const src[3] = { font_s_px, font_m_px, font_l_px }; static const int hh[3] = { FONT_S_H, FONT_M_H, FONT_L_H };
-    for (int i = 0; i < 3; i++) {
+    // white card) all over, not only at its soft edges (an unmarked texel is drawn as it is, whatever the blend). The sheets are
+    // kept packed (coverage in nibbles, the ui type a grey a byte) and opened out here, through the atlas's scratch, once.
+    static const u8 *const src[2] = { font_m_a, font_l_a }; static const int hh[2] = { FONT_M_H, FONT_L_H };
+    for (int i = 0; i < 2; i++) {
         u16 *buf = atlas_scratch();
-        for (int k = 0; k < FONT_SHEET_W * hh[i]; k++) buf[k] = src[i][k] ? (u16)(src[i][k] | 0x8000) : 0;
-        sheet[i] = atlas_alloc_page(2, FONT_SHEET_W, hh[i]); atlas_upload(&sheet[i], buf);
+        for (int k = 0; k < FONT_SHEET_W * hh[i]; k++) {
+            int a = (src[i][k >> 1] >> ((k & 1) << 2)) & 15;
+            buf[k] = a >= 8 ? 0xffff : grey(a * 31 / 8);
+        }
+        sheet[i + 1] = atlas_alloc_page(2, FONT_SHEET_W, hh[i]); atlas_upload(&sheet[i + 1], buf);
     }
-    sheet[3] = atlas_alloc_page(2, FONT_SHEET_W, FONT_U_H); atlas_upload(&sheet[3], font_u_px);
+    { u16 *buf = atlas_scratch(); for (int k = 0; k < FONT_SHEET_W * FONT_U_H; k++) buf[k] = grey(font_u_a[k]);
+      sheet[3] = atlas_alloc_page(2, FONT_SHEET_W, FONT_U_H); atlas_upload(&sheet[3], buf); }
+    sheet[0] = sheet[3];
     for (int i = 0; i < 128; i++) idx_of[i] = -1;
     for (int i = 0; FONT_CHARS[i]; i++) { int c = (u8)FONT_CHARS[i]; if (c < 128 && idx_of[c] < 0) idx_of[c] = (s8)i; }
     // the additive blend for the soft edges: abr 1 in the tpage
@@ -48,5 +56,5 @@ void font_text(int x, int y, int size, const char *s, int r, int g, int b) {
         x += gl[3];
     }
 }
-void font_debug(void) { gfx_sprite(0, 60, 128, FONT_M_H, sheet[1].tpage & ~(1 << 5), 0, sheet[1].u, sheet[1].v, 128, FONT_M_H, 128, 0); gfx_sprite(140, 60, 128, FONT_S_H, sheet[0].tpage & ~(1 << 5), 0, sheet[0].u, sheet[0].v, 128, FONT_S_H, 128, 0); }
+void font_debug(void) { gfx_sprite(0, 60, 128, FONT_M_H, sheet[1].tpage & ~(1 << 5), 0, sheet[1].u, sheet[1].v, 128, FONT_M_H, 128, 0); gfx_sprite(140, 60, 128, FONT_U_H, sheet[3].tpage & ~(1 << 5), 0, sheet[3].u, sheet[3].v, 128, FONT_U_H, 128, 0); }
 void font_textc(int cx, int y, int size, const char *s, int r, int g, int b) { font_text(cx - font_w(size, s) / 2, y, size, s, r, g, b); }

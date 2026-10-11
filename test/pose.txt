@@ -1,0 +1,14 @@
+760 start
+800 b
+6450 shot
+6500 shot
+6550 shot
+6600 shot
+6650 shot
+6700 shot
+6750 shot
+6800 shot
+6850 shot
+6900 shot
+6950 shot
+7000 shot
