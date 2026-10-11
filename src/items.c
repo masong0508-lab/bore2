@@ -224,7 +224,9 @@ static void cache_boxes(const IBox *b, int n, int *base) {
 }
 void items_init(void) {
     nmat = 0; nbox = 0;
-    for (int i = 0; i < NDEFS; i++) { cache_boxes(defs[i].b, defs[i].n, &box_base[i][0]); if (defs[i].bv) cache_boxes(defs[i].bv, defs[i].nv, &box_base[i][1]); else box_base[i][1] = -1; }
+    for (int i = 0; i < NDEFS; i++) {
+        cache_boxes(defs[i].b, defs[i].n, &box_base[i][0]); if (defs[i].bv) cache_boxes(defs[i].bv, defs[i].nv, &box_base[i][1]); else box_base[i][1] = -1;
+    }
 }
 
 // ---- drawing ----

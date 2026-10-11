@@ -185,6 +185,7 @@ static void feed_draw(void) {   // the notifications stack on the left, newest o
 // ---- the life ----
 static void start_life(void) {
     if (life_started) return;
+    loading("MAKING A NEW LIFE", 40);
     world_reset_all();
     sim_init();
     int px, py; world_find('P', &px, &py); if (px < 0) { px = 5; py = 12; }
@@ -398,6 +399,7 @@ static void life_draw(void) {
 
 // ---- travel between the zones ----
 static void travel_go(int z) {
+    { char b[40]; sprintf(b, "TRAVELLING TO %s", world_zone_name(z)); loading(b, 50); }
     world_switch(z);
     int px, py; world_find('P', &px, &py); if (px < 0) { px = 20; py = 20; }
     for (int i = 0; i < nsims; i++) {
@@ -1034,22 +1036,62 @@ static void menu_draw(void) {
     gfx_textc(160, 140, 1, menuBlurb[menu_sel], DIM);
 }
 
+// ---- the loading screen: a bar and what is being made, shown before any long job (start-up, a new life, travel) ----
+static void loading_draw(const char *what, int pct) {
+    pct = CLAMP(pct, 0, 100);
+    gfx_set_clear(20, 12, 8);
+    gfx_sky(0x501810u, 0xa06030u);
+    gfx_textc(160, 64, 3, "BORE 2", GOLD);
+    gfx_textc(160, 104, 1, "LOADING", WHITE);
+    gfx_textc(160, 120, 1, what, 180, 200, 255);
+    gfx_rect(58, 144, 204, 12, 10, 8, 20, 0);
+    gfx_rect(60, 146, 200 * pct / 100, 8, 255, 200, 60, 0);
+}
+void loading(const char *what, int pct) { loading_draw(what, pct); gfx_flip(); DrawSync(0); }
+
+// ---- start-up: the loading screen, plus a small trace of the stages (the last one printed is where a hang would be) ----
+extern char _end[];
+#define BOOT_KEEP 32
+#define BOOT_SHOW 6
+#define BOOT_STEPS 10
+static char boot_log[BOOT_KEEP][20]; static int boot_n;
+static void boot_frame(void) {
+#ifdef BOOT_TRACE
+    char b[32];
+    int free_k = (int)((0x801FFFF0u - 0x10000u - (u32)_end) / 1024);   // (the last 64 KB below the stack top is left for the stack itself)
+    sprintf(b, "RAM FREE %dK", free_k);
+    gfx_text(8, 228, 1, b, free_k < 32 ? 255 : 140, free_k < 32 ? 60 : 140, free_k < 32 ? 60 : 150);
+    int first = boot_n > BOOT_SHOW ? boot_n - BOOT_SHOW : 0;
+    for (int k = first; k < boot_n; k++) gfx_text(8, 176 + (k - first) * 8, 1, boot_log[k % BOOT_KEEP], 110, 200, 110);
+#endif
+    gfx_flip();
+    DrawSync(0);   // let the GPU finish the frame before the next texture upload
+}
+void boot(const char *stage) {
+    char *dst = boot_log[boot_n % BOOT_KEEP]; int i = 0; while (stage[i] && i < 19) { dst[i] = stage[i]; i++; } dst[i] = 0; boot_n++;
+    // drawn twice: the screen shows the frame BEFORE the one just flipped, so the first flip alone would leave the stage on screen one step late
+    loading_draw(stage, boot_n * 100 / BOOT_STEPS); boot_frame();
+    loading_draw(stage, boot_n * 100 / BOOT_STEPS); boot_frame();
+}
+
 int main(void) {
     gfx_init();
     atlas_init();
-    font_init();
-    look_init();
-    voxel_init();
-    items_init();
-    world_init();
-    audio_init();
+    font_init();        boot("GFX ATLAS FONT OK");   // (the boot text needs the font, so the first line comes after it)
+    // each stage is announced BEFORE it runs ("> NAME"), so the last line on screen names the stage that is running when the game stops
+    boot("> LOOK");        look_init();
+    boot("> VOXEL");       voxel_init();
+    boot("> ITEMS");       items_init();
+    boot("> WORLD TEX");   world_init();
+    boot("> AUDIO+DISC");  audio_init();
     pad_init();                                      // (the pad is read directly in read_pad: see pad.c)
-    crowd_init();                                    // the voice clips are in the sound chip now: their RAM holds the crowd's models
+    boot("> CROWD");       crowd_init();             // the voice clips are in the sound chip now: their RAM holds the crowd's models
     look_default(&edit);
     look_default(&title_bore); look_random(&title_bore);
-    world_gen();
+    boot("> HOME LOT");    world_gen();
     strcpy(edit.first, "DIPPA"); strcpy(edit.last, "DIPPINN");
-    audio_jukebox_play(0);   // THE DIPPER MAN, the title song (as on the GBA)
+    boot("> TITLE SONG");  audio_jukebox_play(0);   // THE DIPPER MAN, the title song (as on the GBA)
+    boot("> TITLE");
     t_vb = VSync(-1);
     while (1) {
         t_frame0 = hb_now();
