@@ -538,10 +538,10 @@ static const s16 rpBQp[13] = { 6, 6, 8, 10, 14, 18, 23, 29, 35, 42, 49, 56, 64 }
 static const s16 rpHQp[13] = { 576, 501, 427, 356, 288, 225, 169, 119, 77, 44, 20, 20, 20 };
 static int rp_nb[3][16], rp_nu[3][16], rp_ok;   // each strip's slope normal (in the ramp's own b / up), worked out once
 static int rp_isq(int n) { int x = n, y = (x + 1) >> 1; while (y < x) { x = y; y = (x + n / x) >> 1; } return x; }
-static void rp_pt(SVECTOR *o, int r, int ox, int oz, int A, int B, int H) {
+static void rp_pt(SVECTOR *o, int r, int ox, int oz, int A, int B, int Hh) {
     int u, v;
     switch (r & 3) { case 0: u = A; v = B; break; case 1: u = B; v = 64 - A; break; case 2: u = 64 - A; v = 64 - B; break; default: u = 64 - B; v = A; }
-    setVector(o, ox + u * 4, -H, -(oz + v * 4));
+    setVector(o, ox + u * 4, -Hh, -(oz + v * 4));
 }
 static void rp_quad(int r, int ox, int oz, const int p[4][3], int cr, int cg, int cb, int na, int nb, int nup) {   // corners TL TR BL BR seen from outside; (na, nb, nup): the normal in the ramp's frame, /4096
     SVECTOR q[4];
@@ -552,7 +552,7 @@ static void rp_quad(int r, int ox, int oz, const int p[4][3], int cr, int cg, in
 }
 static void ramp_draw(char ch, int mx, int my, int r) {
     int k = ch == '5' ? 2 : ch == '9' ? 1 : 0;
-    const s16 *B = k == 2 ? rpBQp : k == 1 ? rpBLa : rpBKi, *H = k == 2 ? rpHQp : k == 1 ? rpHLa : rpHKi;
+    const s16 *B = k == 2 ? rpBQp : k == 1 ? rpBLa : rpBKi, *HT = k == 2 ? rpHQp : k == 1 ? rpHLa : rpHKi;
     int n = k == 2 ? 12 : 10, ox = mx * TILE, oz = my * TILE;
     if (!rp_ok) { rp_ok = 1;
         for (int q = 0; q < 3; q++) { const s16 *b = q == 2 ? rpBQp : q == 1 ? rpBLa : rpBKi, *h = q == 2 ? rpHQp : q == 1 ? rpHLa : rpHKi; int m = q == 2 ? 12 : 10;
@@ -561,7 +561,7 @@ static void ramp_draw(char ch, int mx, int my, int r) {
     static const u8 top[3][2][3] = { { { 222, 158, 94 }, { 204, 142, 82 } }, { { 100, 164, 236 }, { 84, 146, 218 } }, { { 198, 138, 78 }, { 182, 124, 68 } } };
     static const u8 side[3][3] = { { 150, 104, 58 }, { 58, 100, 178 }, { 140, 96, 54 } };
     for (int i = 0; i < n; i++) {
-        int b0 = B[i], b1 = B[i + 1], h0 = H[i], h1 = H[i + 1];
+        int b0 = B[i], b1 = B[i + 1], h0 = HT[i], h1 = HT[i + 1];
         const u8 *tc = top[k][i & 1], *sc = side[k];
         int t[4][3] = { { 0, b0, h0 }, { 64, b0, h0 }, { 0, b1, h1 }, { 64, b1, h1 } };
         rp_quad(r, ox, oz, t, tc[0], tc[1], tc[2], 0, rp_nb[k][i], rp_nu[k][i]);                                   // the slope
@@ -570,9 +570,9 @@ static void ramp_draw(char ch, int mx, int my, int r) {
         int w[4][3] = { { 0, b0, h0 }, { 0, b1, h1 }, { 0, b0, 0 }, { 0, b1, 0 } };
         rp_quad(r, ox, oz, w, sc[0], sc[1], sc[2], -4096, 0, 0);                                                   // the west cheek
     }
-    int bk[4][3] = { { 64, 0, H[0] }, { 0, 0, H[0] }, { 64, 0, 0 }, { 0, 0, 0 } };
+    int bk[4][3] = { { 64, 0, HT[0] }, { 0, 0, HT[0] }, { 64, 0, 0 }, { 0, 0, 0 } };
     rp_quad(r, ox, oz, bk, side[k][0] * 4 / 5, side[k][1] * 4 / 5, side[k][2] * 4 / 5, 0, -4096, 0);              // the back
-    if (k == 2) { int cp[4][3] = { { 0, 0, H[0] }, { 64, 0, H[0] }, { 0, B[0], H[0] }, { 64, B[0], H[0] } };
+    if (k == 2) { int cp[4][3] = { { 0, 0, HT[0] }, { 64, 0, HT[0] }, { 0, B[0], HT[0] }, { 64, B[0], HT[0] } };
                   rp_quad(r, ox, oz, cp, 206, 212, 224, 0, 0, 4096); }                                              // the pipe's metal coping
 }
 
