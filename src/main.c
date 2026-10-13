@@ -78,6 +78,8 @@ static void camera_input(int steps) {
         if (HELD(PAD_R2)) fp_pitch += 24 * steps;
         if (analog) fp_pitch -= rs_y * steps / 6;
         fp_pitch = CLAMP(fp_pitch, -700, 600);
+        if (!HELD(PAD_L2) && !HELD(PAD_R2) && !(analog && ABS(rs_y) > 8) && fp_pitch && sims[player].gait.amp > 2000) {   // walking on, not looking: the head levels out again
+            int d = MIN(ABS(fp_pitch), 14 * steps); fp_pitch += fp_pitch > 0 ? -d : d; }
         return;
     }
     if (HELD(PAD_L1)) cam_yaw -= cam_turn_rate * steps;
@@ -418,6 +420,10 @@ static void hud_life(void) {
     { const char *ch = citizens_hint(); if (ch[0] && !sim_front_service() && (s->action == ACT_NONE || s->action == ACT_WALK)) hint = ch; }   // (busy: X gets up)
     if (hint[0]) { sprintf(b, "X %s", hint); ui_round(180, 215, 132, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(185, 217, 1, b, UI_WHITE); }
     else ui_hints(246, 214, "SEL PHONE", 1);
+    if (cam_view == 2 && (s->action == ACT_NONE || s->action == ACT_WALK)) {   // FIRST PERSON: a dot in the middle of the view; with something to use in front, it grows and says what X does
+        if (hint[0]) { int w = ui_tw(1, hint) + 14; ui_disc(160, 120, 9, UI_WHITE); ui_disc(160, 120, 7, UI_BLUE);
+                       ui_round(160 - w / 2, 131, w, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(160 - w / 2 + 5, 133, 1, "X", UI_WHITE); ui_text(160 - w / 2 + 14, 133, 1, hint, UI_WHITE); }
+        else { ui_disc(160, 120, 5, UI_RGB(40, 40, 40)); ui_disc(160, 120, 3, UI_WHITE); } }
     // the clock and the money, top right
     ui_card(220, 9, 96, 28);
     sprintf(b, "%s %02d:%02d", sim_day_name(clock_day), clock_min / 60, clock_min % 60);
@@ -478,6 +484,8 @@ static void life_update(int steps) {
     }
     if (cam_view == 2) {   // first person: up and down walk, left and right (and L1 R1) turn
         int turn = -((mx * 50) >> 12); if (HELD(PAD_L1)) turn += 60; if (HELD(PAD_R1)) turn -= 60;   // (yaw grows to the LEFT of a south-facing eye: right is a negative turn)
+        { static int fp_turn; fp_turn += (turn - fp_turn) / 3; if (!turn && ABS(fp_turn) < 6) fp_turn = 0; turn = fp_turn;   // (a turn eases in and out, not a jerk)
+          if ((PRESSED(PAD_L1) && HELD(PAD_R1)) || (PRESSED(PAD_R1) && HELD(PAD_L1))) { s->yaw = (s->yaw + 2048) & 4095; fp_turn = turn = 0; } }   // L1 + R1 together: about face
         if (!mz && !turn) sim_player_tank(0, 0, 0);
         else for (int k = 0; k < steps; k++) sim_player_tank(mz, turn, HELD(PAD_SQUARE));
     } else if (mx || mz) {   // turn the push by the camera yaw: "up" = away from the camera
@@ -574,7 +582,8 @@ static void life_draw(void) {
     if (cam_view == 2) {   // FIRST PERSON: the eye in the Bore's head, looking the way it faces (fp_pitch up or down)
         int fx = isin(s->yaw), fz = -icos(s->yaw), eh = H * VOX - 60;   // (the face is (sin, -cos): sim.c's yaw)
         if (s->bore.stage == AG_CHILD) eh = eh * 3 / 4; else if (s->bore.stage == AG_BABY) eh /= 2;
-        cam.eye.vx = s->x - (fx * 40 >> 12); cam.eye.vz = s->z - (fz * 40 >> 12); cam.eye.vy = -eh - s->lvl * WALL_FULL - (s->gait.amp > 2000 ? (ABS(isin(s->gait.phase * 2)) >> 9) : 0);   // (a step's bob)
+        cam.eye.vx = s->x - (fx * 40 >> 12); cam.eye.vz = s->z - (fz * 40 >> 12); cam.eye.vy = -eh - s->lvl * WALL_FULL - (s->gait.amp > 2000 ? (ABS(isin(s->gait.phase * 2)) >> (HELD(PAD_SQUARE) ? 8 : 9)) : 0);   // (a step's bob, bigger running)
+        if (s->gait.amp > 2000) { int sw = (isin(s->gait.phase) * (HELD(PAD_SQUARE) ? 26 : 16)) >> 12; cam.eye.vx += (fz * sw) >> 12; cam.eye.vz -= (fx * sw) >> 12; }   // (and a sway side to side, one way per foot)
         int cp = icos(fp_pitch), sp = isin(fp_pitch);
         cam.at.vx = cam.eye.vx + ((fx * cp >> 12) * 600 >> 12); cam.at.vz = cam.eye.vz + ((fz * cp >> 12) * 600 >> 12); cam.at.vy = cam.eye.vy - (sp * 600 >> 12);
         gfx_camera_update();
@@ -2312,7 +2321,7 @@ static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
         { IC_PEOPLE, "SELECT OPENS YOUR PHONE: CALL, PIZZA, PARTY, MAP AND MORE." } } },
     { "THE CAMERA", { { IC_CAMERA, "L1 R1 TURN THE CAMERA. L2 R2 ZOOM. L1 + R1 TOGETHER: SWING ROUND BEHIND YOU." },
         { IC_EYE, "L2 + R2 TOGETHER: SIMS CAMERA, BEHIND YOU, OR FIRST PERSON." },
-        { IC_PLAY, "FIRST PERSON: UP WALKS, LEFT AND RIGHT TURN, L2 R2 LOOK DOWN AND UP." },
+        { IC_PLAY, "FIRST PERSON: UP WALKS, LEFT AND RIGHT TURN, L2 R2 LOOK. L1 + R1 TURN ROUND. THE DOT SHOWS WHAT X DOES." },
         { IC_CASE, "WORK: PHONE, JOBS. BILLS ARE $800, EVERY MIDNIGHT." },
         { IC_PLUMBOB, "START: THE BORE PANEL, BUILD MODE AND OPTIONS (CAMERA HEIGHT AND TURN SPEED)." } } },
     { "BUILD AND CREATE", { { IC_HAMMER, "BUILD MODE: ITEMS, WALLS, FLOORS AND 103 WALLPAPERS." },
