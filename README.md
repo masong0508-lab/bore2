@@ -84,6 +84,10 @@ and the old one sells for what it cost. THE MAN BASE stays yours too.
 Build mode has seven tools: BUY, ROOM (X on one corner, X on the other: walls round it, a floor inside), WALL, DOORS AND
 WINDOWS (X on a wall), FLOOR, WALLPAPER and ROOF. L2 R2 change the storey (five in all): a room upstairs stands on the walls
 below it, and the stairs (BUY) open the floor above them. In SAN BOREAS you build on your own lot only.
+The cursor is a tile with corner brackets: green when X will work, orange when it would take away what is there (SQUARE sells
+it back for three quarters), red when it cannot (not your lot, no money, someone standing there). A BUILD MODE banner slides in
+as you enter, the last buy or sale shows beside your money, and BUY has a card with the pick's price and sell-back value. Hold X
+and move to draw a run of walls or wallpaper (or floor); hold SQUARE and move to take a run of walls away.
 
 ## Castaway Island
 TRAVEL takes the family to CASTAWAY ISLAND (once they have earned a paycheck): a new island every life (`world.c`), with a coast

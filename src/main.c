@@ -2106,8 +2106,34 @@ static void draw_pick_list(const char *title, int count, int sel, const char *(*
     }
     sprintf(b, "%d OF %d", sel + 1, count); ui_textc(256, top + 87, 1, b, UI_SOFT);
 }
+static int build_intro, build_last_frame = -99; static long build_last_cash, build_delta; static int build_delta_t;   // the BUILD MODE banner; the running +$ / -$
+static int build_tile_state(void) {   // what X would do on the tile under the cursor: 0 not allowed (red), 1 go ahead (green), 2 take away or replace (orange)
+    if (!build_ok(build_x, build_y)) return 0;
+    int L = build_lvl; char c = world_at_l(L, build_x, build_y);
+    for (int i = 0; i < nsims; i++) if (sims[i].lvl == L && sim_tile_x(&sims[i]) == build_x && sim_tile_y(&sims[i]) == build_y && build_tool != BT_PAINT && build_tool != BT_DOOR && build_tool != BT_ROOM) return 0;
+    switch (build_tool) {
+    case BT_BUY:   if (c == '.') return cash >= items_cost(items_at(build_item)) ? 1 : 0;
+                   return (c != ' ' && c != 'P' && items_is_item(c)) ? 2 : 0;
+    case BT_WALL:  if (c == '.' || (c == ' ' && floor_supported(L, build_x, build_y))) return cash >= 50 ? 1 : 0;
+                   return is_wallish(c) ? 2 : 0;
+    case BT_FLOOR: if (c == ' ' && !floor_supported(L, build_x, build_y)) return 0;
+                   return cash >= 10 ? 1 : 0;
+    case BT_PAINT: case BT_DOOR: return is_wallish(c) ? 1 : 0;
+    default: return 1;
+    }
+}
+static void build_bar(int xmin, int zmax, int w, int h, int yy, int r, int g, int b) {   // a flat strip on the floor: x from xmin, z from zmax back
+    SVECTOR a, bb, c, d;
+    setVector(&a, xmin, yy, zmax); setVector(&bb, xmin + w, yy, zmax); setVector(&c, xmin, yy, zmax - h); setVector(&d, xmin + w, yy, zmax - h);
+    gfx_quad_f(&a, &bb, &c, &d, r, g, b, 0);
+}
 static void build_update(void) {
     static int rep;
+    if (frame - build_last_frame > 4) { build_intro = 90; build_last_cash = cash; build_delta = 0; build_delta_t = 0; }   // (just came in)
+    build_last_frame = frame;
+    if (cash != build_last_cash) { build_delta += cash - build_last_cash; build_last_cash = cash; build_delta_t = 80; }   // what the last buy or sale came to
+    if (build_delta_t > 0 && --build_delta_t == 0) build_delta = 0;
+    if (build_intro > 0) build_intro--;
     int dx = 0, dy = 0;
     int l = HELD(PAD_LEFT) || ls_x < -40, r = HELD(PAD_RIGHT) || ls_x > 40, u = HELD(PAD_UP) || ls_y < -40, d = HELD(PAD_DOWN) || ls_y > 40;
     if (l || r || u || d) { if (rep == 0 || rep > 12) { if (l) dx = -1; if (r) dx = 1; if (u) dy = -1; if (d) dy = 1; if (rep > 12) rep = 9; } rep++; } else rep = 0;
@@ -2182,13 +2208,18 @@ static void build_update(void) {
     }
     if (HELD(PAD_CROSS) && build_tool == BT_FLOOR && cash >= 10 && *cell != ' ' && *world_floor_cell(L, build_x, build_y) != build_fl) { *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; }
     if (HELD(PAD_CROSS) && build_tool == BT_FLOOR && L > 0 && *cell == ' ' && cash >= 10 && floor_supported(L, build_x, build_y)) { *cell = '.'; *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; }
+    if (!occupied && HELD(PAD_CROSS) && !PRESSED(PAD_CROSS)) {   // hold X and walk the cursor: a run of walls, a run of wallpaper (as in The Sims)
+        if (build_tool == BT_WALL && (*cell == '.' || (*cell == ' ' && floor_supported(L, build_x, build_y))) && cash >= 50) { *cell = 'W'; *world_wall_cell(L, build_x, build_y) = (u8)build_wp; cash -= 50; }
+        if (build_tool == BT_PAINT && is_wallish(*cell)) *world_wall_cell(L, build_x, build_y) = (u8)build_wp;
+    }
+    if (!occupied && build_tool == BT_WALL && HELD(PAD_SQUARE) && !PRESSED(PAD_SQUARE) && *cell == 'W') { *cell = '.'; cash += 25; }   // hold SQUARE: a run of walls away
     if (PRESSED(PAD_SQUARE) && !occupied) {
         if (*cell != '.' && *cell != 'P' && *cell != ' ') { int back = items_is_item(*cell) ? items_cost(*cell) * 3 / 4 : (*cell == 'W' ? 25 : 0);
             if (*cell == '|' && L < NUP) { char *up = world_cell(L + 1, build_x, build_y); if (*up == ' ' && floor_supported(L + 1, build_x, build_y)) *up = '.'; }   // close the stairwell again
             *cell = '.'; cash += back; }
         else if (*cell == '.' && L > 0) { *cell = ' '; cash += 5; }                       // take the floor itself away (upper storeys)
     }
-    if (PRESSED(PAD_CROSS) || PRESSED(PAD_SQUARE) || HELD(PAD_CROSS)) world_touched();
+    if (PRESSED(PAD_CROSS) || PRESSED(PAD_SQUARE) || HELD(PAD_CROSS) || (build_tool == BT_WALL && HELD(PAD_SQUARE))) world_touched();
     if (PRESSED(PAD_TRIANGLE) || PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { build_lvl = 0; state = ST_LIFE; }
 }
 static void build_draw(void) {
@@ -2207,8 +2238,17 @@ static void build_draw(void) {
     gfx_set_identity();
     { int x0 = build_x * TILE, z1 = -build_y * TILE, yy = -4 - build_lvl * WALL_FULL; SVECTOR a, b, c, d;
       setVector(&a, x0, yy, z1); setVector(&b, x0 + TILE, yy, z1); setVector(&c, x0, yy, z1 - TILE); setVector(&d, x0 + TILE, yy, z1 - TILE);
-      int pulse = 160 + (isin((frame * 120) & 4095) >> 6), ok = build_ok(build_x, build_y);
-      gfx_quad_f(&a, &b, &c, &d, ok ? pulse : 230, ok ? pulse : 70, ok ? 40 : 60, 0); }   // (red: not your lot)
+      int pulse = 150 + (isin((frame * 120) & 4095) >> 6), st = build_tile_state();   // green: go ahead. orange: it would take away what is there. red: not allowed (not your lot, no money, in the way)
+      if (build_tool == BT_ROOF) st = 1;
+      int cr = st == 0 ? 230 : st == 2 ? pulse + 30 : 50, cg = st == 0 ? 70 : st == 2 ? 150 : pulse, cb = st == 0 ? 60 : st == 2 ? 40 : 80;
+      gfx_quad_f(&a, &b, &c, &d, cr / 2 + 20, cg / 2 + 20, cb / 2 + 20, 0);   // (the tile, tinted)
+      { int L_ = TILE / 4, T_ = 10, X0 = x0, X1 = x0 + TILE, Zh = z1, Zl = z1 - TILE, y2 = yy - 3;   // four corner brackets round it, breathing a little
+        int e = (isin((frame * 120) & 4095) >> 9);   // (in and out: -8..8)
+        build_bar(X0 - e, Zh + e, L_, T_, y2, cr, cg, cb);          build_bar(X0 - e, Zh + e, T_, L_, y2, cr, cg, cb);
+        build_bar(X1 - L_ + e, Zh + e, L_, T_, y2, cr, cg, cb);     build_bar(X1 - T_ + e, Zh + e, T_, L_, y2, cr, cg, cb);
+        build_bar(X0 - e, Zl + T_ - e, L_, T_, y2, cr, cg, cb);     build_bar(X0 - e, Zl + L_ - e, T_, L_, y2, cr, cg, cb);
+        build_bar(X1 - L_ + e, Zl + T_ - e, L_, T_, y2, cr, cg, cb); build_bar(X1 - T_ + e, Zl + L_ - e, T_, L_, y2, cr, cg, cb);
+        } }
     if (build_tool == BT_ROOM && room_on) {   // the room to be: its outline
         int x0, y0, x1, y1, good = room_rect(&x0, &y0, &x1, &y1), yy = -6 - build_lvl * WALL_FULL;
         for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
@@ -2230,10 +2270,13 @@ static void build_draw(void) {
         ui_card(4, 4, 190, 52);
         for (int i = 0; i < NTOOL; i++) { int on = i == build_tool; ui_icon_disc(15 + i * 20, 15, 18, toolIc[i], on ? UI_BLUE : UI_RGB(222, 230, 240), on ? UI_WHITE : UI_BLUE2); }
         sprintf(b, "$%ld", cash); ui_text(188 - ui_tw(1, b), 10, 1, b, UI_GOODT);
+        if (build_delta_t > 0 && build_delta) { char d_[20]; sprintf(d_, build_delta < 0 ? "-$%ld" : "+$%ld", build_delta < 0 ? -build_delta : build_delta);   // the last buy or sale, beside the money
+            ui_text(188 - ui_tw(1, b) - 6 - ui_tw(1, d_), 10, 1, d_, build_delta < 0 ? UI_BADT : UI_GOODT); }
         ui_text(10, 27, 1, toolNm[build_tool], UI_BLUE2);
         sprintf(b, "STOREY %d OF %d", build_lvl + 1, NLEVELS); ui_text(188 - ui_tw(1, b), 27, 1, b, UI_SOFT);
         if (build_msg_t > 0) strcpy(b, build_msg);
         else if (!build_ok(build_x, build_y)) strcpy(b, home_city ? "NOT YOUR LOT" : "BUY A HOME TO BUILD HERE");
+        else if (build_tool == BT_BUY && build_tile_state() == 2) { char hc = world_at_l(build_lvl, build_x, build_y); sprintf(b, "%s: SQUARE SELLS $%d", items_name(hc), items_cost(hc) * 3 / 4); }   // (an item under the cursor)
         else if (build_tool == BT_BUY) sprintf(b, "%s  $%d", items_name(items_at(build_item)), items_cost(items_at(build_item)));
         else if (build_tool == BT_ROOM) { int x0, y0, x1, y1;
             if (room_on && room_rect(&x0, &y0, &x1, &y1)) sprintf(b, "%d X %d ROOM: $%d", x1 - x0 + 1, y1 - y0 + 1, room_cost(build_lvl, x0, y0, x1, y1));
@@ -2244,7 +2287,13 @@ static void build_draw(void) {
         else if (build_tool == BT_PAINT) sprintf(b, "%s", world_wall_name(build_wp));
         else sprintf(b, "%s ROOF, %s PITCH", world_roof_style_name(world_roof_style), world_roof_pitch_name(world_roof_pitch));
         ui_text(10, 40, 1, b, build_msg_t > 0 || !build_ok(build_x, build_y) ? UI_BADT : UI_INK);
-        if (build_tool == BT_BUY) draw_catalog();
+        if (build_tool == BT_BUY) { draw_catalog();
+            char ic_ = items_at(build_item), t_[40]; int cst = items_cost(ic_);   // the pick on its own card: its price, what it sells back for, and whether you can afford it
+            ui_card(196, 174, 120, 28);
+            ui_text(203, 178, 1, items_name(ic_), UI_INK);
+            sprintf(t_, "$%d", cst); ui_text(203, 190, 1, t_, cst > cash ? UI_BADT : UI_GOODT);
+            if (cst > cash) ui_text(311 - ui_tw(1, "CAN'T AFFORD"), 190, 1, "CAN'T AFFORD", UI_BADT);
+            else { sprintf(t_, "SELLS $%d", cst * 3 / 4); ui_text(311 - ui_tw(1, t_), 190, 1, t_, UI_SOFT); } }
         else if (build_tool == BT_ROOM) { draw_pick_list("ROOM WALLS", NWALLS, build_wp, world_wall_name);
             int top = ui_window_s(196, 126, 120, 30, "ROOM FLOOR (R3)"); ui_text(204, top + 2, 1, world_floor_name(build_fl), UI_INK); }
         else if (build_tool == BT_WALL) draw_pick_list("WALLS  $50", NWALLS, build_wp, world_wall_name);
@@ -2259,8 +2308,11 @@ static void build_draw(void) {
         if (build_tool == BT_ROOF) { ui_hints(160, 204, "X STYLE|SQ PITCH|L1 R1 COLOUR|SEL TOOL", 1); ui_hints(160, 216, "L2 R2 STOREY|O DONE", 1); }
         else if (build_tool == BT_ROOM) { ui_hints(160, 204, room_on ? "X BUILD IT|O LET GO|L1 R1 WALLS|R3 FLOOR" : "X FIRST CORNER|L1 R1 WALLS|R3 FLOOR", 1);
                ui_hints(160, 216, "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
-        else { ui_hints(160, 204, build_tool == BT_BUY ? "L1 R1 PICK|R3 NEXT TAB|X BUY|SQ SELL" : build_tool == BT_DOOR ? "L1 R1 PICK|X PUT IN|SQ TAKE OUT" : "L1 R1 PICK|X PLACE|SQ ERASE", 1);
+        else { ui_hints(160, 204, build_tool == BT_BUY ? "L1 R1 PICK|R3 NEXT TAB|X BUY|SQ SELL" : build_tool == BT_DOOR ? "L1 R1 PICK|X PUT IN|SQ TAKE OUT" : build_tool == BT_WALL ? "L1 R1 PICK|X PLACE, HOLD TO DRAW|SQ ERASE" : build_tool == BT_PAINT ? "L1 R1 PICK|X PAINT, HOLD TO DRAW" : "L1 R1 PICK|X PLACE|SQ ERASE", 1);
                ui_hints(160, 216, "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
+        if (build_intro > 0) { int sl = build_intro > 80 ? (build_intro - 80) * 14 : build_intro < 12 ? (12 - build_intro) * 14 : 0;   // BUILD MODE: slides in, stays, slides out
+            ui_shadow(30, 92 - sl, 136, 30, 8); ui_round(30, 92 - sl, 136, 30, 8, UI_RGB(70, 176, 238), UI_BLUE2, 0);
+            ui_textc(98, 97 - sl, 2, "BUILD MODE", UI_WHITE); ui_textc(98, 112 - sl, 1, "O WHEN YOU ARE DONE", UI_WHITE); }
     }
 }
 
