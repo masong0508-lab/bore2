@@ -7,6 +7,7 @@ enum { VOICE_NEED, VOICE_AGREE, VOICE_ANGRY, VOICE_CRY, VOICE_DISAGREE, VOICE_FI
 
 void audio_init(void);
 void audio_voice(int v);
+void audio_music_level(int l);            // the music's volume: 0 off, 1 low, 2 medium, 3 full
 void audio_update(void);                  // once a frame: the jukebox moves on when a song ends
 
 // jukebox

@@ -71,7 +71,9 @@ static const u32 *sq_patoff, *sq_smpoff;
 static int sq_ord, sq_row;
 static u32 sq_acc, sq_rowlen;          // the row clock: +MIXR*256 per tick; a row is (rowN*256 + rfr) * TICK_HZ
 static volatile int sq_laps;
-static int music_vol = 320;            // 256 = the GBA level (a touch louder: the SPU has the headroom)
+static int music_vol = 320;
+void audio_music_level(int l) { static const short lv[4] = { 0, 110, 210, 320 }; music_vol = lv[l & 3]; }   // OFF, LOW, MEDIUM, FULL (from the next note on)
+static int music_vol_unused;            // 256 = the GBA level (a touch louder: the SPU has the headroom)
 
 static void seq_row(void) {
     const u8 *e = sq_ev + sq_patoff[sq_order[sq_ord]];
