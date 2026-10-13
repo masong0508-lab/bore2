@@ -363,7 +363,7 @@ static TexRef mat_ref(const Mat *m) {
     return t;
 }
 // every box face's texture, resolved once: ref_of(def, variant, box, face)
-#define MAXBOX 640
+#define MAXBOX 768
 static TexRef box_ref[MAXBOX][5];
 static int box_base[NDEFS][2];     // first box index of each def's main / along-y boxes
 static int nbox;

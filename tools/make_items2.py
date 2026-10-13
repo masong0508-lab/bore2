@@ -26,6 +26,7 @@ OVEN = special('m_oven', ['white', 'black', (10, 6, 4), 'silver'], ["aaaaaaaa", 
 CHESS = special('m_chess', ['cream', 'dark'], ["abababab", "babababa", "abababab", "babababa", "abababab", "babababa", "abababab", "babababa"])
 MIRROR = special('m_mirror', [(22, 27, 31), (27, 30, 31), (17, 22, 27)], ["aabbaaaa", "abbaaaaa", "bbaaaaac", "baaaaacc", "aaaaacca", "aaaacaaa", "aaacaaaa", "aacaaaaa"])
 GLOW = special('m_glow', ['yellow', 'orange', 'red'], ["aabbaabb", "abbaabba", "bbccbbcc", "aabbaabb"])
+PAL.update({'felt': (4, 17, 8), 'leaf': (5, 17, 5), 'sand': (27, 23, 13), 'dirt': (12, 8, 4)})
 for c in PAL: solid(c)
 def S(c): return 'm_' + c
 
@@ -64,6 +65,60 @@ ITEMS = [   # letter, name, cost, flags, boxes
                                 (1, 1, 7, 7, 0, 2, S('water')), (3, 3, 5, 5, 0, 8, S('stone')), (2, 2, 6, 6, 8, 9, S('stone')), (3, 3, 5, 5, 9, 10, S('water'))]),
 ]
 
+DART = special('m_dart', ['red', 'black', 'white', 'green'], ["abcdcbab", "babcbabc", "cbabababc"[:8], "dcbabcbd", "dcbabcbd", "cbabababc"[:8], "babcbabc", "abcdcbab"])
+FLOWERS = special('m_flowers', ['leaf', 'pink', 'yellow', 'red'], ["abababab", "bacabaab", "abababcb", "bdabaaba", "ababbaba", "cbabdbab", "abababab", "babaabab"])
+CLOCKF = special('m_clockf', ['gold', 'white', 'black'], ["aaaaaa", "abbbba", "abcbba", "abbcba", "abbbba", "aaaaaa"])
+def solids(c): return S(c)
+def corners(h0, h1, m, t=1):   # four corner posts
+    return [(0, 0, t, t, h0, h1, m), (8 - t, 0, 8, t, h0, h1, m), (0, 8 - t, t, 8, h0, h1, m), (8 - t, 8 - t, 8, 8, h0, h1, m)]
+def mk(code, name, cost, flags, boxes): ITEMS.append((code, name, cost, flags, boxes))
+mk(0x90, 'LOVESEAT', 380, 'F_ROT', [(0,2,8,7,0,3,S('blue')),(0,1,8,3,3,9,S('blue')),(0,2,1,7,3,6,S('navy')),(7,2,8,7,3,6,S('navy'))])
+mk(0x91, 'RECLINER', 450, 'F_ROT', [(1,2,7,7,0,3,S('red')),(1,1,7,3,3,10,S('red')),(0,2,1,7,0,6,S('dark')),(7,2,8,7,0,6,S('dark'))])
+mk(0x92, 'BAR STOOL', 70, '0', [(3,3,5,5,0,6,S('silver')),(2,2,6,6,6,8,S('red'))])
+mk(0x93, 'FOUR POSTER BED', 1000, 'F_ROT', [(0,0,8,8,0,3,S('wood')),(1,1,7,7,3,5,S('white')),(1,1,7,3,5,6,S('pink'))] + corners(3,16,S('dark')))
+mk(0x94, 'HAMMOCK', 200, 'F_ROT', [(0,3,1,5,0,12,S('wood')),(7,3,8,5,0,12,S('wood')),(1,2,7,6,4,6,S('cream'))])
+mk(0x95, 'COFFEE TABLE', 150, '0', [(1,2,7,6,3,4,S('oak')),(1,2,2,3,0,3,S('dark')),(6,2,7,3,0,3,S('dark')),(1,5,2,6,0,3,S('dark')),(6,5,7,6,0,3,S('dark'))])
+mk(0x96, 'NIGHTSTAND', 120, 'F_ROT', [(1,2,7,7,0,6,S('wood')),(3,3,5,5,6,7,S('gold')),(2,2,6,6,7,10,S('cream'))])
+mk(0x97, 'WARDROBE', 500, 'F_ROT', [(0,2,8,7,0,20,S('dark')),(3,7,4,8,8,12,S('gold')),(4,7,5,8,8,12,S('gold'))])
+mk(0x98, 'FILING CABINET', 160, 'F_ROT', [(2,2,6,7,0,12,S('grey')),(3,7,5,8,3,4,S('silver')),(3,7,5,8,7,8,S('silver'))])
+mk(0x99, 'STORAGE CHEST', 180, 'F_ROT', [(1,2,7,6,0,5,S('wood')),(1,2,7,6,5,6,S('gold')),(3,6,5,7,3,5,S('gold'))])
+mk(0x9A, 'KITCHEN ISLAND', 400, 'F_ROT', [(0,1,8,7,0,7,S('oak')),(0,1,8,7,7,8,S('white'))])
+mk(0x9B, 'WORKBENCH', 280, 'F_ROT', [(0,2,8,6,5,6,S('oak')),(0,2,1,6,0,5,S('dark')),(7,2,8,6,0,5,S('dark')),(2,2,5,5,6,8,S('red'))])
+mk(0x9C, 'DISHWASHER', 450, 'F_ROT', [(1,1,7,7,0,7,S('silver')),(1,6,7,7,5,6,S('black'))])
+mk(0x9D, 'WASHING MACHINE', 400, 'F_ROT', [(1,1,7,7,0,12,S('white')),(2,7,6,8,3,8,S('blue'))])
+mk(0x9E, 'BBQ GRILL', 350, '0', [(1,2,7,6,6,9,S('black')),(2,3,3,4,0,6,S('grey')),(5,3,6,4,0,6,S('grey')),(2,2,6,6,9,10,S('red'))])
+mk(0x9F, 'WATER COOLER', 120, '0', [(2,2,6,6,0,10,S('white')),(3,3,5,5,10,15,S('water'))])
+mk(0xA0, 'DRUM KIT', 600, 'F_ROT', [(1,2,7,6,0,3,S('red')),(0,1,2,3,3,8,S('gold')),(6,1,8,3,3,8,S('gold')),(3,3,5,5,3,6,S('silver'))])
+mk(0xA1, 'POOL TABLE', 900, '0', [(0,0,8,8,0,6,S('dark')),(1,1,7,7,6,7,S('felt'))])
+mk(0xA2, 'TELESCOPE', 500, '0', [(3,3,5,5,0,6,S('grey')),(2,2,6,6,6,8,S('silver')),(3,3,5,6,8,12,S('navy'))])
+mk(0xA3, 'SYNTH', 500, 'F_ROT', [(0,2,8,5,0,5,S('black')),(1,5,7,6,5,6,[KEYS,S('black'),S('black'),S('black'),KEYS])])
+mk(0xA4, 'FOOSBALL', 450, '0', [(0,1,8,7,0,6,S('green')),(0,3,8,4,6,8,S('silver')),(0,5,8,6,6,8,S('silver'))])
+mk(0xA5, 'DARTBOARD', 90, 'F_ROT', [(1,1,7,2,6,14,[DART,S('black'),S('black'),S('black'),S('black')])])
+mk(0xA6, 'SLOT MACHINE', 800, 'F_ROT', [(2,2,6,6,0,14,S('red')),(2,2,6,6,14,16,S('gold')),(3,6,5,7,6,11,[GLOW,S('gold'),S('gold'),S('gold'),S('gold')])])
+mk(0xA7, 'RECORD PLAYER', 300, 'F_ROT', [(0,2,8,6,0,5,S('oak')),(1,3,7,5,5,6,S('black')),(2,3,3,4,6,8,S('silver'))])
+mk(0xA8, 'MASSAGE CHAIR', 700, 'F_ROT', [(1,2,7,7,0,4,S('leather')),(1,1,7,3,4,12,S('leather')),(0,2,1,7,3,6,S('black')),(7,2,8,7,3,6,S('black'))])
+mk(0xA9, 'PUNCHING BAG', 250, '0', [(3,3,5,5,0,2,S('grey')),(2,2,6,6,2,14,S('red'))])
+mk(0xAA, 'GRANDFATHER CLOCK', 600, 'F_ROT', [(2,3,6,6,0,22,S('dark')),(3,6,5,7,14,18,[CLOCKF,S('gold'),S('gold'),S('gold'),S('gold')])])
+mk(0xAB, 'STATUE', 700, '0', [(2,2,6,6,0,4,S('stone')),(3,3,5,5,4,14,S('stone')),(3,3,5,5,14,18,S('white'))])
+mk(0xAC, 'VASE', 60, '0', [(3,3,5,5,0,5,S('blue')),(2,2,6,6,2,4,S('blue')),(3,3,5,5,5,8,S('pink'))])
+mk(0xAD, 'CHRISTMAS TREE', 120, '0', [(3,3,5,5,0,3,S('dark')),(1,1,7,7,3,8,S('green')),(2,2,6,6,8,13,S('green')),(3,3,5,5,13,16,S('green')),(3,3,5,5,16,17,S('gold'))])
+mk(0xAE, 'FRAMED ART', 150, 'F_ROT', [(1,1,7,2,4,14,[PAINT,S('gold'),S('gold'),S('gold'),S('gold')])])
+mk(0xAF, 'GLOBE', 90, '0', [(3,3,5,5,0,3,S('wood')),(2,2,6,6,3,8,S('blue'))])
+mk(0xB0, 'CANDELABRA', 130, '0', [(3,3,5,5,0,8,S('gold')),(1,3,7,5,8,9,S('gold')),(1,3,2,5,9,11,S('cream')),(3,3,5,5,9,12,S('cream')),(6,3,7,5,9,11,S('cream'))])
+mk(0xB1, 'SUIT OF ARMOR', 400, 'F_ROT', [(2,3,6,6,0,6,S('silver')),(2,3,6,6,6,14,S('grey')),(3,3,5,5,14,17,S('silver'))])
+mk(0xB2, 'FLOWER BED', 50, '0', [(0,1,8,7,0,3,[S('brick')]*4+[FLOWERS]),(1,2,7,6,3,4,[S('leaf')]*4+[FLOWERS])])
+mk(0xB3, 'HEDGE', 40, 'F_ALONG', [(0,2,8,6,0,10,S('leaf'))])
+mk(0xB4, 'PICKET FENCE', 40, 'F_ALONG', [(0,3,8,4,2,9,S('white')),(0,3,1,4,0,11,S('white')),(7,3,8,4,0,11,S('white'))])
+mk(0xB5, 'MAILBOX', 40, 'F_ROT', [(3,3,4,4,0,10,S('dark')),(2,2,6,5,10,13,S('blue')),(6,3,7,4,10,14,S('red'))])
+mk(0xB6, 'BIRDBATH', 120, '0', [(3,3,5,5,0,8,S('stone')),(1,1,7,7,8,10,S('stone')),(2,2,6,6,10,11,S('water'))])
+mk(0xB7, 'GARDEN GNOME', 50, '0', [(3,3,5,5,0,5,S('blue')),(3,3,5,5,5,8,S('pink')),(3,3,5,5,8,11,S('red'))])
+mk(0xB8, 'TRAMPOLINE', 400, '0', [(0,0,8,8,3,4,S('black')),(1,1,7,7,4,5,S('blue')),(0,0,1,1,0,3,S('silver')),(7,0,8,1,0,3,S('silver')),(0,7,1,8,0,3,S('silver')),(7,7,8,8,0,3,S('silver'))])
+mk(0xB9, 'SWING SET', 500, 'F_ROT', [(0,3,1,5,0,18,S('wood')),(7,3,8,5,0,18,S('wood')),(0,3,8,5,17,18,S('wood')),(2,3,3,4,5,17,S('silver')),(5,3,6,4,5,17,S('silver')),(2,3,6,4,4,5,S('red'))])
+mk(0xBA, 'SANDBOX', 180, '0', [(0,0,8,8,0,2,S('wood')),(1,1,7,7,2,3,S('sand'))])
+mk(0xBB, 'DOG HOUSE', 200, 'F_ROT', [(1,1,7,7,0,6,S('red')),(0,1,8,7,6,9,S('dark')),(3,7,5,8,0,4,S('black'))])
+mk(0xBC, 'FIRE PIT', 150, '0', [(0,0,8,1,0,2,S('stone')),(0,7,8,8,0,2,S('stone')),(0,1,1,7,0,2,S('stone')),(7,1,8,7,0,2,S('stone')),(3,3,5,5,0,5,[GLOW]*5)])
+mk(0xBD, 'BEACH UMBRELLA', 100, '0', [(3,3,5,5,0,16,S('white')),(0,0,8,8,16,18,S('red')),(1,1,7,7,18,19,S('red'))])
+
 def emit():
     out = ['// GENERATED by tools/make_items2.py: the furniture pack (included by items.c)\n']
     for nm, (cols, w, h, rows) in MATS.items():
@@ -77,7 +132,15 @@ def emit():
             ms = m if isinstance(m, list) else [m] * 5
             bx.append('{%d,%d,%d,%d,%d,%d,{%s}}' % (a0, b0, a1, b1, z0, z1, ','.join('&' + x for x in ms)))
         out.append('static const IBox bxMore%d[%d]={%s};\n' % (i, len(bx), ','.join(bx)))
-        defs.append("    { '%s', \"%s\", bxMore%d, %d, 0, 0, %s, %d },   \\\n" % (ch.replace("'", "\\'"), name, i, len(bx), flags, cost))
+        chs = ('(char)0x%02X' % ch) if isinstance(ch, int) else "'%s'" % ch.replace("'", "\\'")
+        bvn, nvv = '0', 0
+        if flags == 'F_ALONG':
+            bv = []
+            for (a0, b0, a1, b1, z0, z1, m) in boxes:
+                ms = m if isinstance(m, list) else [m] * 5
+                bv.append('{%d,%d,%d,%d,%d,%d,{%s}}' % (b0, a0, b1, a1, z0, z1, ','.join('&' + x for x in ms)))
+            out.append('static const IBox bxMoreV%d[%d]={%s};\n' % (i, len(bv), ','.join(bv))); bvn, nvv = 'bxMoreV%d' % i, len(bv)
+        defs.append("    { %s, \"%s\", bxMore%d, %d, %s, %d, %s, %d },   \\\n" % (chs, name, i, len(bx), bvn, nvv, flags, cost))
     out.append('#define ITEMS_MORE \\\n' + ''.join(defs) + '\n')
     p = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src', 'items_more.inc')
     open(p, 'w').write(''.join(out))

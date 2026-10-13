@@ -63,6 +63,20 @@ static const u16 p_m_leather[2]={RGB(14,7,4),RGB(12,5,2)};
 MAT(m_leather,p_m_leather,2,2,"ab","ba")
 static const u16 p_m_mint[2]={RGB(16,28,22),RGB(14,26,20)};
 MAT(m_mint,p_m_mint,2,2,"ab","ba")
+static const u16 p_m_felt[2]={RGB(4,17,8),RGB(2,15,6)};
+MAT(m_felt,p_m_felt,2,2,"ab","ba")
+static const u16 p_m_leaf[2]={RGB(5,17,5),RGB(3,15,3)};
+MAT(m_leaf,p_m_leaf,2,2,"ab","ba")
+static const u16 p_m_sand[2]={RGB(27,23,13),RGB(25,21,11)};
+MAT(m_sand,p_m_sand,2,2,"ab","ba")
+static const u16 p_m_dirt[2]={RGB(12,8,4),RGB(10,6,2)};
+MAT(m_dirt,p_m_dirt,2,2,"ab","ba")
+static const u16 p_m_dart[4]={RGB(26,5,5),RGB(4,4,6),RGB(29,29,28),RGB(5,20,7)};
+MAT(m_dart,p_m_dart,8,8,"abcdcbab","babcbabc","cbababab","dcbabcbd","dcbabcbd","cbababab","babcbabc","abcdcbab")
+static const u16 p_m_flowers[4]={RGB(5,17,5),RGB(30,15,21),RGB(31,28,8),RGB(26,5,5)};
+MAT(m_flowers,p_m_flowers,8,8,"abababab","bacabaab","abababcb","bdabaaba","ababbaba","cbabdbab","abababab","babaabab")
+static const u16 p_m_clockf[3]={RGB(30,23,6),RGB(29,29,28),RGB(4,4,6)};
+MAT(m_clockf,p_m_clockf,6,6,"aaaaaa","abbbba","abcbba","abbcba","abbbba","aaaaaa")
 static const IBox bxMore0[4]={{2,1,6,5,0,14,{&m_black,&m_black,&m_black,&m_black,&m_black}},{2,1,6,5,14,16,{&m_arcade,&m_black,&m_black,&m_black,&m_black}},{3,5,5,6,8,12,{&m_screen,&m_black,&m_black,&m_black,&m_black}},{2,5,6,7,5,6,{&m_purple,&m_purple,&m_purple,&m_purple,&m_purple}}};
 static const IBox bxMore1[3]={{0,2,8,6,0,8,{&m_black,&m_black,&m_black,&m_black,&m_black}},{0,2,8,4,8,11,{&m_black,&m_black,&m_black,&m_black,&m_black}},{1,6,7,7,5,6,{&m_keys,&m_black,&m_black,&m_black,&m_keys}}};
 static const IBox bxMore2[4]={{3,3,5,5,0,1,{&m_black,&m_black,&m_black,&m_black,&m_black}},{2,4,6,5,1,6,{&m_orange,&m_orange,&m_orange,&m_orange,&m_orange}},{3,4,5,5,6,13,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{3,4,5,5,13,15,{&m_black,&m_black,&m_black,&m_black,&m_black}}};
@@ -83,6 +97,54 @@ static const IBox bxMore16[3]={{2,2,6,6,0,11,{&m_red,&m_red,&m_red,&m_red,&m_red
 static const IBox bxMore17[4]={{1,2,7,6,0,4,{&m_teal,&m_teal,&m_teal,&m_teal,&m_teal}},{1,2,7,6,4,5,{&m_yellow,&m_yellow,&m_yellow,&m_yellow,&m_yellow}},{2,3,3,4,5,6,{&m_red,&m_red,&m_red,&m_red,&m_red}},{5,3,6,5,5,7,{&m_pink,&m_pink,&m_pink,&m_pink,&m_pink}}};
 static const IBox bxMore18[4]={{1,2,7,6,0,7,{&m_pink,&m_pink,&m_pink,&m_pink,&m_pink}},{1,2,7,6,7,9,{&m_red,&m_red,&m_red,&m_red,&m_red}},{2,3,6,5,9,10,{&m_red,&m_red,&m_red,&m_red,&m_red}},{3,6,5,7,0,3,{&m_white,&m_white,&m_white,&m_white,&m_white}}};
 static const IBox bxMore19[8]={{0,0,8,1,0,3,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{0,7,8,8,0,3,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{0,1,1,7,0,3,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{7,1,8,7,0,3,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{1,1,7,7,0,2,{&m_water,&m_water,&m_water,&m_water,&m_water}},{3,3,5,5,0,8,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{2,2,6,6,8,9,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{3,3,5,5,9,10,{&m_water,&m_water,&m_water,&m_water,&m_water}}};
+static const IBox bxMore20[4]={{0,2,8,7,0,3,{&m_blue,&m_blue,&m_blue,&m_blue,&m_blue}},{0,1,8,3,3,9,{&m_blue,&m_blue,&m_blue,&m_blue,&m_blue}},{0,2,1,7,3,6,{&m_navy,&m_navy,&m_navy,&m_navy,&m_navy}},{7,2,8,7,3,6,{&m_navy,&m_navy,&m_navy,&m_navy,&m_navy}}};
+static const IBox bxMore21[4]={{1,2,7,7,0,3,{&m_red,&m_red,&m_red,&m_red,&m_red}},{1,1,7,3,3,10,{&m_red,&m_red,&m_red,&m_red,&m_red}},{0,2,1,7,0,6,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{7,2,8,7,0,6,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}}};
+static const IBox bxMore22[2]={{3,3,5,5,0,6,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}},{2,2,6,6,6,8,{&m_red,&m_red,&m_red,&m_red,&m_red}}};
+static const IBox bxMore23[7]={{0,0,8,8,0,3,{&m_wood,&m_wood,&m_wood,&m_wood,&m_wood}},{1,1,7,7,3,5,{&m_white,&m_white,&m_white,&m_white,&m_white}},{1,1,7,3,5,6,{&m_pink,&m_pink,&m_pink,&m_pink,&m_pink}},{0,0,1,1,3,16,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{7,0,8,1,3,16,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{0,7,1,8,3,16,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{7,7,8,8,3,16,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}}};
+static const IBox bxMore24[3]={{0,3,1,5,0,12,{&m_wood,&m_wood,&m_wood,&m_wood,&m_wood}},{7,3,8,5,0,12,{&m_wood,&m_wood,&m_wood,&m_wood,&m_wood}},{1,2,7,6,4,6,{&m_cream,&m_cream,&m_cream,&m_cream,&m_cream}}};
+static const IBox bxMore25[5]={{1,2,7,6,3,4,{&m_oak,&m_oak,&m_oak,&m_oak,&m_oak}},{1,2,2,3,0,3,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{6,2,7,3,0,3,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{1,5,2,6,0,3,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{6,5,7,6,0,3,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}}};
+static const IBox bxMore26[3]={{1,2,7,7,0,6,{&m_wood,&m_wood,&m_wood,&m_wood,&m_wood}},{3,3,5,5,6,7,{&m_gold,&m_gold,&m_gold,&m_gold,&m_gold}},{2,2,6,6,7,10,{&m_cream,&m_cream,&m_cream,&m_cream,&m_cream}}};
+static const IBox bxMore27[3]={{0,2,8,7,0,20,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{3,7,4,8,8,12,{&m_gold,&m_gold,&m_gold,&m_gold,&m_gold}},{4,7,5,8,8,12,{&m_gold,&m_gold,&m_gold,&m_gold,&m_gold}}};
+static const IBox bxMore28[3]={{2,2,6,7,0,12,{&m_grey,&m_grey,&m_grey,&m_grey,&m_grey}},{3,7,5,8,3,4,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}},{3,7,5,8,7,8,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}}};
+static const IBox bxMore29[3]={{1,2,7,6,0,5,{&m_wood,&m_wood,&m_wood,&m_wood,&m_wood}},{1,2,7,6,5,6,{&m_gold,&m_gold,&m_gold,&m_gold,&m_gold}},{3,6,5,7,3,5,{&m_gold,&m_gold,&m_gold,&m_gold,&m_gold}}};
+static const IBox bxMore30[2]={{0,1,8,7,0,7,{&m_oak,&m_oak,&m_oak,&m_oak,&m_oak}},{0,1,8,7,7,8,{&m_white,&m_white,&m_white,&m_white,&m_white}}};
+static const IBox bxMore31[4]={{0,2,8,6,5,6,{&m_oak,&m_oak,&m_oak,&m_oak,&m_oak}},{0,2,1,6,0,5,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{7,2,8,6,0,5,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{2,2,5,5,6,8,{&m_red,&m_red,&m_red,&m_red,&m_red}}};
+static const IBox bxMore32[2]={{1,1,7,7,0,7,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}},{1,6,7,7,5,6,{&m_black,&m_black,&m_black,&m_black,&m_black}}};
+static const IBox bxMore33[2]={{1,1,7,7,0,12,{&m_white,&m_white,&m_white,&m_white,&m_white}},{2,7,6,8,3,8,{&m_blue,&m_blue,&m_blue,&m_blue,&m_blue}}};
+static const IBox bxMore34[4]={{1,2,7,6,6,9,{&m_black,&m_black,&m_black,&m_black,&m_black}},{2,3,3,4,0,6,{&m_grey,&m_grey,&m_grey,&m_grey,&m_grey}},{5,3,6,4,0,6,{&m_grey,&m_grey,&m_grey,&m_grey,&m_grey}},{2,2,6,6,9,10,{&m_red,&m_red,&m_red,&m_red,&m_red}}};
+static const IBox bxMore35[2]={{2,2,6,6,0,10,{&m_white,&m_white,&m_white,&m_white,&m_white}},{3,3,5,5,10,15,{&m_water,&m_water,&m_water,&m_water,&m_water}}};
+static const IBox bxMore36[4]={{1,2,7,6,0,3,{&m_red,&m_red,&m_red,&m_red,&m_red}},{0,1,2,3,3,8,{&m_gold,&m_gold,&m_gold,&m_gold,&m_gold}},{6,1,8,3,3,8,{&m_gold,&m_gold,&m_gold,&m_gold,&m_gold}},{3,3,5,5,3,6,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}}};
+static const IBox bxMore37[2]={{0,0,8,8,0,6,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{1,1,7,7,6,7,{&m_felt,&m_felt,&m_felt,&m_felt,&m_felt}}};
+static const IBox bxMore38[3]={{3,3,5,5,0,6,{&m_grey,&m_grey,&m_grey,&m_grey,&m_grey}},{2,2,6,6,6,8,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}},{3,3,5,6,8,12,{&m_navy,&m_navy,&m_navy,&m_navy,&m_navy}}};
+static const IBox bxMore39[2]={{0,2,8,5,0,5,{&m_black,&m_black,&m_black,&m_black,&m_black}},{1,5,7,6,5,6,{&m_keys,&m_black,&m_black,&m_black,&m_keys}}};
+static const IBox bxMore40[3]={{0,1,8,7,0,6,{&m_green,&m_green,&m_green,&m_green,&m_green}},{0,3,8,4,6,8,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}},{0,5,8,6,6,8,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}}};
+static const IBox bxMore41[1]={{1,1,7,2,6,14,{&m_dart,&m_black,&m_black,&m_black,&m_black}}};
+static const IBox bxMore42[3]={{2,2,6,6,0,14,{&m_red,&m_red,&m_red,&m_red,&m_red}},{2,2,6,6,14,16,{&m_gold,&m_gold,&m_gold,&m_gold,&m_gold}},{3,6,5,7,6,11,{&m_glow,&m_gold,&m_gold,&m_gold,&m_gold}}};
+static const IBox bxMore43[3]={{0,2,8,6,0,5,{&m_oak,&m_oak,&m_oak,&m_oak,&m_oak}},{1,3,7,5,5,6,{&m_black,&m_black,&m_black,&m_black,&m_black}},{2,3,3,4,6,8,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}}};
+static const IBox bxMore44[4]={{1,2,7,7,0,4,{&m_leather,&m_leather,&m_leather,&m_leather,&m_leather}},{1,1,7,3,4,12,{&m_leather,&m_leather,&m_leather,&m_leather,&m_leather}},{0,2,1,7,3,6,{&m_black,&m_black,&m_black,&m_black,&m_black}},{7,2,8,7,3,6,{&m_black,&m_black,&m_black,&m_black,&m_black}}};
+static const IBox bxMore45[2]={{3,3,5,5,0,2,{&m_grey,&m_grey,&m_grey,&m_grey,&m_grey}},{2,2,6,6,2,14,{&m_red,&m_red,&m_red,&m_red,&m_red}}};
+static const IBox bxMore46[2]={{2,3,6,6,0,22,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{3,6,5,7,14,18,{&m_clockf,&m_gold,&m_gold,&m_gold,&m_gold}}};
+static const IBox bxMore47[3]={{2,2,6,6,0,4,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{3,3,5,5,4,14,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{3,3,5,5,14,18,{&m_white,&m_white,&m_white,&m_white,&m_white}}};
+static const IBox bxMore48[3]={{3,3,5,5,0,5,{&m_blue,&m_blue,&m_blue,&m_blue,&m_blue}},{2,2,6,6,2,4,{&m_blue,&m_blue,&m_blue,&m_blue,&m_blue}},{3,3,5,5,5,8,{&m_pink,&m_pink,&m_pink,&m_pink,&m_pink}}};
+static const IBox bxMore49[5]={{3,3,5,5,0,3,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{1,1,7,7,3,8,{&m_green,&m_green,&m_green,&m_green,&m_green}},{2,2,6,6,8,13,{&m_green,&m_green,&m_green,&m_green,&m_green}},{3,3,5,5,13,16,{&m_green,&m_green,&m_green,&m_green,&m_green}},{3,3,5,5,16,17,{&m_gold,&m_gold,&m_gold,&m_gold,&m_gold}}};
+static const IBox bxMore50[1]={{1,1,7,2,4,14,{&m_paint,&m_gold,&m_gold,&m_gold,&m_gold}}};
+static const IBox bxMore51[2]={{3,3,5,5,0,3,{&m_wood,&m_wood,&m_wood,&m_wood,&m_wood}},{2,2,6,6,3,8,{&m_blue,&m_blue,&m_blue,&m_blue,&m_blue}}};
+static const IBox bxMore52[5]={{3,3,5,5,0,8,{&m_gold,&m_gold,&m_gold,&m_gold,&m_gold}},{1,3,7,5,8,9,{&m_gold,&m_gold,&m_gold,&m_gold,&m_gold}},{1,3,2,5,9,11,{&m_cream,&m_cream,&m_cream,&m_cream,&m_cream}},{3,3,5,5,9,12,{&m_cream,&m_cream,&m_cream,&m_cream,&m_cream}},{6,3,7,5,9,11,{&m_cream,&m_cream,&m_cream,&m_cream,&m_cream}}};
+static const IBox bxMore53[3]={{2,3,6,6,0,6,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}},{2,3,6,6,6,14,{&m_grey,&m_grey,&m_grey,&m_grey,&m_grey}},{3,3,5,5,14,17,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}}};
+static const IBox bxMore54[2]={{0,1,8,7,0,3,{&m_brick,&m_brick,&m_brick,&m_brick,&m_flowers}},{1,2,7,6,3,4,{&m_leaf,&m_leaf,&m_leaf,&m_leaf,&m_flowers}}};
+static const IBox bxMore55[1]={{0,2,8,6,0,10,{&m_leaf,&m_leaf,&m_leaf,&m_leaf,&m_leaf}}};
+static const IBox bxMoreV55[1]={{2,0,6,8,0,10,{&m_leaf,&m_leaf,&m_leaf,&m_leaf,&m_leaf}}};
+static const IBox bxMore56[3]={{0,3,8,4,2,9,{&m_white,&m_white,&m_white,&m_white,&m_white}},{0,3,1,4,0,11,{&m_white,&m_white,&m_white,&m_white,&m_white}},{7,3,8,4,0,11,{&m_white,&m_white,&m_white,&m_white,&m_white}}};
+static const IBox bxMoreV56[3]={{3,0,4,8,2,9,{&m_white,&m_white,&m_white,&m_white,&m_white}},{3,0,4,1,0,11,{&m_white,&m_white,&m_white,&m_white,&m_white}},{3,7,4,8,0,11,{&m_white,&m_white,&m_white,&m_white,&m_white}}};
+static const IBox bxMore57[3]={{3,3,4,4,0,10,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{2,2,6,5,10,13,{&m_blue,&m_blue,&m_blue,&m_blue,&m_blue}},{6,3,7,4,10,14,{&m_red,&m_red,&m_red,&m_red,&m_red}}};
+static const IBox bxMore58[3]={{3,3,5,5,0,8,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{1,1,7,7,8,10,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{2,2,6,6,10,11,{&m_water,&m_water,&m_water,&m_water,&m_water}}};
+static const IBox bxMore59[3]={{3,3,5,5,0,5,{&m_blue,&m_blue,&m_blue,&m_blue,&m_blue}},{3,3,5,5,5,8,{&m_pink,&m_pink,&m_pink,&m_pink,&m_pink}},{3,3,5,5,8,11,{&m_red,&m_red,&m_red,&m_red,&m_red}}};
+static const IBox bxMore60[6]={{0,0,8,8,3,4,{&m_black,&m_black,&m_black,&m_black,&m_black}},{1,1,7,7,4,5,{&m_blue,&m_blue,&m_blue,&m_blue,&m_blue}},{0,0,1,1,0,3,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}},{7,0,8,1,0,3,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}},{0,7,1,8,0,3,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}},{7,7,8,8,0,3,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}}};
+static const IBox bxMore61[6]={{0,3,1,5,0,18,{&m_wood,&m_wood,&m_wood,&m_wood,&m_wood}},{7,3,8,5,0,18,{&m_wood,&m_wood,&m_wood,&m_wood,&m_wood}},{0,3,8,5,17,18,{&m_wood,&m_wood,&m_wood,&m_wood,&m_wood}},{2,3,3,4,5,17,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}},{5,3,6,4,5,17,{&m_silver,&m_silver,&m_silver,&m_silver,&m_silver}},{2,3,6,4,4,5,{&m_red,&m_red,&m_red,&m_red,&m_red}}};
+static const IBox bxMore62[2]={{0,0,8,8,0,2,{&m_wood,&m_wood,&m_wood,&m_wood,&m_wood}},{1,1,7,7,2,3,{&m_sand,&m_sand,&m_sand,&m_sand,&m_sand}}};
+static const IBox bxMore63[3]={{1,1,7,7,0,6,{&m_red,&m_red,&m_red,&m_red,&m_red}},{0,1,8,7,6,9,{&m_dark,&m_dark,&m_dark,&m_dark,&m_dark}},{3,7,5,8,0,4,{&m_black,&m_black,&m_black,&m_black,&m_black}}};
+static const IBox bxMore64[5]={{0,0,8,1,0,2,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{0,7,8,8,0,2,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{0,1,1,7,0,2,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{7,1,8,7,0,2,{&m_stone,&m_stone,&m_stone,&m_stone,&m_stone}},{3,3,5,5,0,5,{&m_glow,&m_glow,&m_glow,&m_glow,&m_glow}}};
+static const IBox bxMore65[3]={{3,3,5,5,0,16,{&m_white,&m_white,&m_white,&m_white,&m_white}},{0,0,8,8,16,18,{&m_red,&m_red,&m_red,&m_red,&m_red}},{1,1,7,7,18,19,{&m_red,&m_red,&m_red,&m_red,&m_red}}};
 #define ITEMS_MORE \
     { '!', "ARCADE CABINET", bxMore0, 4, 0, 0, F_ROT, 700 },   \
     { '$', "PIANO", bxMore1, 3, 0, 0, F_ROT, 1200 },   \
@@ -104,4 +166,50 @@ static const IBox bxMore19[8]={{0,0,8,1,0,3,{&m_stone,&m_stone,&m_stone,&m_stone
     { 'n', "TOY BOX", bxMore17, 4, 0, 0, F_ROT, 120 },   \
     { '{', "DOLLHOUSE", bxMore18, 4, 0, 0, F_ROT, 350 },   \
     { '}', "FOUNTAIN", bxMore19, 8, 0, 0, 0, 1800 },   \
+    { (char)0x90, "LOVESEAT", bxMore20, 4, 0, 0, F_ROT, 380 },   \
+    { (char)0x91, "RECLINER", bxMore21, 4, 0, 0, F_ROT, 450 },   \
+    { (char)0x92, "BAR STOOL", bxMore22, 2, 0, 0, 0, 70 },   \
+    { (char)0x93, "FOUR POSTER BED", bxMore23, 7, 0, 0, F_ROT, 1000 },   \
+    { (char)0x94, "HAMMOCK", bxMore24, 3, 0, 0, F_ROT, 200 },   \
+    { (char)0x95, "COFFEE TABLE", bxMore25, 5, 0, 0, 0, 150 },   \
+    { (char)0x96, "NIGHTSTAND", bxMore26, 3, 0, 0, F_ROT, 120 },   \
+    { (char)0x97, "WARDROBE", bxMore27, 3, 0, 0, F_ROT, 500 },   \
+    { (char)0x98, "FILING CABINET", bxMore28, 3, 0, 0, F_ROT, 160 },   \
+    { (char)0x99, "STORAGE CHEST", bxMore29, 3, 0, 0, F_ROT, 180 },   \
+    { (char)0x9A, "KITCHEN ISLAND", bxMore30, 2, 0, 0, F_ROT, 400 },   \
+    { (char)0x9B, "WORKBENCH", bxMore31, 4, 0, 0, F_ROT, 280 },   \
+    { (char)0x9C, "DISHWASHER", bxMore32, 2, 0, 0, F_ROT, 450 },   \
+    { (char)0x9D, "WASHING MACHINE", bxMore33, 2, 0, 0, F_ROT, 400 },   \
+    { (char)0x9E, "BBQ GRILL", bxMore34, 4, 0, 0, 0, 350 },   \
+    { (char)0x9F, "WATER COOLER", bxMore35, 2, 0, 0, 0, 120 },   \
+    { (char)0xA0, "DRUM KIT", bxMore36, 4, 0, 0, F_ROT, 600 },   \
+    { (char)0xA1, "POOL TABLE", bxMore37, 2, 0, 0, 0, 900 },   \
+    { (char)0xA2, "TELESCOPE", bxMore38, 3, 0, 0, 0, 500 },   \
+    { (char)0xA3, "SYNTH", bxMore39, 2, 0, 0, F_ROT, 500 },   \
+    { (char)0xA4, "FOOSBALL", bxMore40, 3, 0, 0, 0, 450 },   \
+    { (char)0xA5, "DARTBOARD", bxMore41, 1, 0, 0, F_ROT, 90 },   \
+    { (char)0xA6, "SLOT MACHINE", bxMore42, 3, 0, 0, F_ROT, 800 },   \
+    { (char)0xA7, "RECORD PLAYER", bxMore43, 3, 0, 0, F_ROT, 300 },   \
+    { (char)0xA8, "MASSAGE CHAIR", bxMore44, 4, 0, 0, F_ROT, 700 },   \
+    { (char)0xA9, "PUNCHING BAG", bxMore45, 2, 0, 0, 0, 250 },   \
+    { (char)0xAA, "GRANDFATHER CLOCK", bxMore46, 2, 0, 0, F_ROT, 600 },   \
+    { (char)0xAB, "STATUE", bxMore47, 3, 0, 0, 0, 700 },   \
+    { (char)0xAC, "VASE", bxMore48, 3, 0, 0, 0, 60 },   \
+    { (char)0xAD, "CHRISTMAS TREE", bxMore49, 5, 0, 0, 0, 120 },   \
+    { (char)0xAE, "FRAMED ART", bxMore50, 1, 0, 0, F_ROT, 150 },   \
+    { (char)0xAF, "GLOBE", bxMore51, 2, 0, 0, 0, 90 },   \
+    { (char)0xB0, "CANDELABRA", bxMore52, 5, 0, 0, 0, 130 },   \
+    { (char)0xB1, "SUIT OF ARMOR", bxMore53, 3, 0, 0, F_ROT, 400 },   \
+    { (char)0xB2, "FLOWER BED", bxMore54, 2, 0, 0, 0, 50 },   \
+    { (char)0xB3, "HEDGE", bxMore55, 1, bxMoreV55, 1, F_ALONG, 40 },   \
+    { (char)0xB4, "PICKET FENCE", bxMore56, 3, bxMoreV56, 3, F_ALONG, 40 },   \
+    { (char)0xB5, "MAILBOX", bxMore57, 3, 0, 0, F_ROT, 40 },   \
+    { (char)0xB6, "BIRDBATH", bxMore58, 3, 0, 0, 0, 120 },   \
+    { (char)0xB7, "GARDEN GNOME", bxMore59, 3, 0, 0, 0, 50 },   \
+    { (char)0xB8, "TRAMPOLINE", bxMore60, 6, 0, 0, 0, 400 },   \
+    { (char)0xB9, "SWING SET", bxMore61, 6, 0, 0, F_ROT, 500 },   \
+    { (char)0xBA, "SANDBOX", bxMore62, 2, 0, 0, 0, 180 },   \
+    { (char)0xBB, "DOG HOUSE", bxMore63, 3, 0, 0, F_ROT, 200 },   \
+    { (char)0xBC, "FIRE PIT", bxMore64, 5, 0, 0, 0, 150 },   \
+    { (char)0xBD, "BEACH UMBRELLA", bxMore65, 3, 0, 0, 0, 100 },   \
 

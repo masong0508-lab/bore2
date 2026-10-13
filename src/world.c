@@ -1344,6 +1344,10 @@ static char (*dm)[MW + 1] = lifeMap; static u8 (*dfl)[MW] = floorMap, (*dwp)[MW]
 int world_item_facing(int x, int y) {
     static const signed char dx[4] = { 0, 1, 0, -1 }, dy[4] = { 1, 0, -1, 0 };
     char c = world_at(x, y);
+    if (items_rotates(c) && x >= 0 && y >= 0 && x < MW && y < MH) {   // a turn the player chose in build mode: bit 7 of the item's (otherwise unused) wall cell, bits 0-1 the facing
+        u8 w; if (world_lvl <= 0) w = wallMap[y][x]; else { const Level *Lv = lv_get(world_lvl - 1); w = Lv ? Lv->wp[y][x] : 0; }
+        if (w & 0x80) return w & 3;
+    }
     if (c == 'h' || c == ';')                     // a seat at a table, a desk, a counter, a mirror or a computer faces it
         for (int d = 0; d < 4; d++) { char n = world_at(x + dx[d], y + dy[d]); if (n == 't' || n == 'd' || n == 'y' || n == '`' || n == '[' || n == '?') return d; }
     if (c == '[' || c == 'd' || c == '`')         // ... and the desk, the computer or the mirror faces its chair

@@ -677,7 +677,7 @@ static int scripted(Cit *c, int tx, int tz, int spd) {   // straight to a point,
 
 
 // ---- a day at home: showers, breakfast, the sofa, the TV; and the odd visit next door ----------------------
-static int sit_item(char ch) { return ch == 'T' || ch == 'C' || ch == 'h' || ch == 'U' || ch == '%' || ch == ';'; }
+static int sit_item(char ch) { return ch == 'T' || ch == 'C' || ch == 'h' || ch == 'U' || ch == '%' || ch == ';' || ch == (char)0x90 || ch == (char)0x91 || ch == (char)0x92 || ch == (char)0xA8; }
 static int free_floor(const Home *hm, int x, int y) {   // a tile of the home's floor a body can stand on, off the lane inside the door
     if (x < hm->x0 || x > hm->x1 || y < hm->y0 || y > hm->y1) return 0;
     if (x == hm->dx && y >= hm->dy - 1) return 0;

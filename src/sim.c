@@ -423,6 +423,12 @@ static int action_for(char c) {
         case ']': case '_': return ACT_RUN;
         case 'v': case 'R': case 'A': case 'Q': case 'q': case 'G': case 'V': return ACT_FUN;
         case 'b': case 'd': return ACT_READ; case 'c': return ACT_COFFEE; case 'm': return ACT_RUN; case 'I': return ACT_PHONE; case 'x': return ACT_WORK;
+        case (char)0x90: case (char)0x91: case (char)0x92: case (char)0xA8: case (char)0xBC: return ACT_SIT;   // (the second furniture pack)
+        case (char)0x93: case (char)0x94: return ACT_SLEEP;
+        case (char)0x9A: case (char)0x9E: return ACT_EAT;
+        case (char)0x9F: return ACT_COFFEE;
+        case (char)0xA9: case (char)0xB8: return ACT_RUN;
+        case (char)0xA0: case (char)0xA1: case (char)0xA2: case (char)0xA3: case (char)0xA4: case (char)0xA5: case (char)0xA6: case (char)0xA7: case (char)0xB9: case (char)0xBA: return ACT_FUN;
         case CH_CAKE: return ACT_EAT; case CH_GRAVE: return ACT_READ;
         case 'g': case '3': case '6': case '*': return world_zone == ZONE_ISLAND ? ACT_GATHER : ACT_NONE;   // (on the island: wood, coconuts, stone)
         case CH_BUSH: case CH_FISH: case CH_BOTTLE: case CH_DIG: case CH_IDOL: case CH_WRECK: case CH_SHELL: case CH_GOLD: case CH_JOURNAL: return ACT_GATHER;
@@ -460,6 +466,10 @@ static const char *act_hint(int act, char c) {
         case '}': return "MAKE A WISH"; case '`': return "PRACTICE SPEECH"; case ',': return "TAKE A BATH"; case '-': return "WASH HANDS";
         case '/': return "COOK"; case ':': return "MICROWAVE"; case ';': return "SIT"; case '<': return "SLEEP"; case '?': return "PLAY CHESS"; case '~': return "SUNBATHE";
         case ']': return "LIFT WEIGHTS"; case '_': return "SHOOT HOOPS";
+        case (char)0xA0: return "PLAY DRUMS"; case (char)0xA1: return "SHOOT POOL"; case (char)0xA2: return "STARGAZE"; case (char)0xA3: return "PLAY SYNTH";
+        case (char)0xA4: return "PLAY FOOSBALL"; case (char)0xA5: return "THROW DARTS"; case (char)0xA6: return "PULL THE LEVER"; case (char)0xA7: return "SPIN A RECORD";
+        case (char)0xA8: return "RELAX"; case (char)0xA9: return "PUNCH THE BAG"; case (char)0xB8: return "BOUNCE"; case (char)0xB9: return "SWING";
+        case (char)0xBA: return "PLAY IN SAND"; case (char)0xBC: return "WARM UP"; case (char)0x9A: return "SNACK"; case (char)0x9E: return "GRILL"; case (char)0x9F: return "A DRINK";
     }
     switch (act) {
         case ACT_EAT: return c == 's' ? "COOK AND EAT" : "EAT"; case ACT_WC: return c == '&' ? "USE OUTHOUSE" : "USE TOILET"; case ACT_SLEEP: return "SLEEP"; case ACT_SHOWER: return "SHOWER";
