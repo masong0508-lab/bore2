@@ -265,11 +265,17 @@ static void draw_sims(void) {
     gfx_set_reserve(RESERVE_UI);   // the people may use what the world left, but not the HUD's share
     for (int i = 0; i < nsims; i++) {
         Sim *s = &sims[i];
+        { Gait *g_ = &s->gait; int tg_ = g_->sleep ? 4096 : 0; g_->lie += CLAMP(tg_ - g_->lie, -170, 170); }   // lying down and getting up take about a second: lie follows where sleep is heading (voxel.c works the pose out from it)
         if (s->lvl > world_view_lvl || s->away) continue;           // upstairs, out of the floor view; at school
         if (!gfx_visible(s->x, -110 - s->lvl * WALL_FULL, s->z, 150)) continue;   // off the screen
         VECTOR p; setVector(&p, s->x, 0, s->z);
-        if (s->action == ACT_SLEEP) { char bc = world_at(s->act_x, s->act_y);   // on the bed, on the crib's mattress, or on the floor
-            p.vy = (bc == 'S' || bc == '<' || bc == 'z') ? -items_height('S') + 40 : -((bc == CH_CRIB ? 4 * IZ : 0) + lying_drop(&s->bore)); }
+        if (s->gait.lie > 0) {   // lying (or just getting up): on the bed, the bunk, the crib's mattress, or on the floor; the height eases in with the pose
+            char bc = world_at(s->act_x, s->act_y); int sm = voxel_lie_ease(s->gait.lie), bed = bc == 'S' ? 1 : bc == '<' ? 2 : 0, to;
+            if (bed) to = -(bc == 'S' ? 6 * IZ : 4 * IZ);                                  // the back rests right on the pillow's top (the bunk's mattress)
+            else if (bc == 'z') to = -items_height('S') + 40;                              // (the tent: as ever)
+            else to = -((bc == CH_CRIB ? 4 * IZ : 0) + lying_drop(&s->bore));
+            p.vy = (to * sm) >> 12; s->gait.bed = bed;
+        } else s->gait.bed = 0;
         if (s->action == ACT_SIT || s->action == ACT_WC || (s->action == ACT_EAT && s->gait.sit)) p.vy = -items_height(world_at(s->act_x, s->act_y)) / 2 + 10;
         if (s->action == ACT_SWIM) p.vy = 30 + (isin((frame * 60) & 4095) >> 9);   // afloat, bobbing
         if (i == player && on_board) p.vy -= 46 + board_lift;   // standing on the deck
@@ -289,7 +295,7 @@ static void draw_sims(void) {
                        int want = !hh_used && crowd_sprite_score_of(id, &p, s->yaw, &s->gait) > 5 && (room || hh_skip >= 6);
                        drawn = crowd_sprite_of(id, &s->bore, &p, s->yaw, &s->gait, want);
                        if (want) { hh_used = 1; hh_skip = 0; } }
-            if (!drawn) voxel_draw(&s->bore, &p, s->yaw, &s->gait);
+            if (!drawn) { voxel_draw(&s->bore, &p, s->yaw, &s->gait); voxel_draw_covers(&s->bore, &p, s->yaw, &s->gait); }
             if (drawn) dbg_hh_spr++; else dbg_hh_full++;
             if (far && !drawn) dbg_hh_miss++;
             PROF_END(4);

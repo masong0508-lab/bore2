@@ -48,6 +48,12 @@ The creature code: `python3 tools/port_look.py <bore-gba-main>/source/main.c src
 ## Known gaps
 No memory-card saves, the 80x80 map's RAM use is estimated and not yet measured on a disc build, wants/fears only partly done, tested only in an emulator.
 
+## Sleeping
+Lying down is an animation, not a swap: the Bore sits back and tips over a second (the legs stay hanging as the body goes down), and
+getting up plays it backwards (`gait.lie` in `voxel.c`, eased by `main.c`). In a bed the back rests on the pillow's top, the head
+turned a little on it, the legs hang over the foot, a quilt and a folded-down sheet cover the body (`voxel_draw_covers`), and the
+chest rises and falls. Bores are bigger than the bed art, hence the dangling feet.
+
 ## Crowds and parties
 THROW A PARTY (the phone) brings up to 60 guests, who walk in, dance round you and go home after three hours.
 Every person in a crowd is the full model, like your own Bore: `src/crowd.c` keeps a compact copy of each model (~2 KB) in the

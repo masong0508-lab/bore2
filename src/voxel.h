@@ -9,7 +9,9 @@ typedef struct {
     int phase;      // walk cycle 0..4095
     int amp;        // swing amount 0..4096
     int sit;        // 1: sitting (legs forward)
-    int sleep;      // 1: lying down
+    int sleep;      // 1: lying down (or heading that way)
+    int lie;        // 0..4096: how far a lie-down (or a get-up) has got; main.c eases it toward 4096 while sleep is 1, back to 0 when it is not
+    int bed;        // lying on: 1 the bed (a pillow under the head, a blanket over), 2 another bed, 0 the floor, a crib or the water
     int wave;       // frames left of a wave / talk gesture
     int squash;     // -16..16 (reaction pops)
     // the body language (main.c fills these): the pose is worked out in voxel_draw from them
@@ -34,4 +36,6 @@ void voxel_draw_lod(const LodBore *m, const VECTOR *pos, int yaw, const Gait *g)
 void voxel_init(void);
 void voxel_prepare(Bore *b);   // after buildLook: fills the drawing cache in the Bore
 void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g);
+void voxel_draw_covers(const Bore *b, const VECTOR *pos, int yaw, const Gait *g);   // the blanket pulled over someone lying in a bed (after voxel_draw)
+int  voxel_lie_ease(int lie);                                                         // lie 0..4096 as a smooth 0..4096 (slow, quick, slow)
 int  voxel_quads(void);     // quads drawn by the last call (debug)

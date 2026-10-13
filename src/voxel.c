@@ -769,6 +769,12 @@ void voxel_prepare(Bore *b) {
 // was, the picture was the walk mirrored: walking toward or away from the camera it went backwards, and on a diagonal it
 // looked to be walking sideways.)
 #define MODEL_ANGLE(yaw) ((2048 - (yaw)) & 4095)
+int voxel_lie_ease(int lie) { lie = CLAMP(lie, 0, 4096); return (((lie * lie) >> 12) * (12288 - 2 * lie)) >> 12; }   // smoothstep
+static void lie_dims(const Bore *b, int *top, int *mn, int *mx) {   // the model's reach: highest point (vy), the back (vz min) and the front (vz max)
+    int t = 0, lo = 0, hi = 0;
+    for (int i = 0; i < b->ncell; i++) for (int k = 0; k < 8; k++) { const SVECTOR *c = &b->cell[i].c[k]; if (c->vy < t) t = c->vy; if (c->vz < lo) lo = c->vz; if (c->vz > hi) hi = c->vz; }
+    *top = t; *mn = lo; *mx = hi;
+}
 void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     quads = 0; cur = b; yaw = MODEL_ANGLE(yaw);
     MATRIX obj; SVECTOR rot = { 0, (short)yaw, 0, 0 }; VECTOR p = *pos;
@@ -777,10 +783,14 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     p.vy -= bob;
     RotMatrix(&rot, &obj);
     TransMatrix(&obj, &p);
-    if (g->sleep) {   // lying on the back (the face, +z, turned up), the head toward the back (a bed's headboard), the body along the bed
-        int top = 0; for (int i = 0; i < b->ncell; i++) for (int k = 0; k < 8; k++) if (b->cell[i].c[k].vy < top) top = b->cell[i].c[k].vy;
-        int tz = MAX(-top / 2, -top - 140);                                // (the head on the pillow, short of the wall; a little one lies in the middle)
-        MATRIX r; SVECTOR rr = { 1024, 0, 0, 0 }; VECTOR t = { 0, -40, tz };
+    int lie = g->lie; if (g->sleep && !lie) lie = 4096;                   // (a caller that never eases it: all the way down)
+    int sm = voxel_lie_ease(lie), theta = (1024 * sm) >> 12, lyb = g->bed;
+    if (lie > 0) {   // lying on the back (the face, +z, turned up), the head toward the back (a bed's headboard), the body along the bed; the angle and the shift grow with lie, so it tips back rather than snaps
+        int top, mn, mx; lie_dims(b, &top, &mn, &mx);
+        int tz, ty;
+        if (lyb) { tz = -100 - top; ty = mn; }                             // on a bed: the head on the pillow, the back resting right on top (main.c lifts it to the pillow), the hips at the foot edge
+        else { tz = MAX(-top / 2, -top - 140); ty = -40; }                 // (the floor: the head short of the wall; a little one lies in the middle)
+        MATRIX r; SVECTOR rr = { (short)theta, 0, 0, 0 }; VECTOR t = { 0, (ty * sm) >> 12, (tz * sm) >> 12 };
         RotMatrix(&rr, &r); TransMatrix(&r, &t);
         { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); };
     }
@@ -789,7 +799,7 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     int legL = g->sit ? -1024 : swing, legR = g->sit ? -1024 : -swing;
     int armL = g->sit ? -200 : -swing * 3 / 4, armR = g->sit ? -200 : swing * 3 / 4;
     // ---- the body language: stylised, a little cute ----
-    int t = g->clock + g->seed * 37, moving = g->amp > 2000, idle = !moving && !g->sit && !g->sleep;
+    int t = g->clock + g->seed * 37, moving = g->amp > 2000, idle = !moving && !g->sit && !lie;
     int breath = isin((t * 22) & 4095);                                   // a slow breath, ~3 s
     int happy = g->mood > 45, sad = g->mood < -35, baby = b->stage <= AG_CHILD;
     int rollL = -150, rollR = 150;                                        // a relaxed A-pose: arms off the sides (never stiff at attention)
@@ -815,13 +825,21 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     }
     if (g->wave) { int w = isin((g->wave * 400) & 4095) >> 4; armR = -2400 + w; rollR = 260; }
     if (g->sit) { rollL = -60; rollR = 60; armL = -500; armR = -500; }   // sitting: hands on the knees
+    if (lie) {   // lying: the walk fades out; on a bed the legs hang down over the foot (they stay upright in the world as the body tips back) and sway a little; the arms come in to the sides; a slow breath
+        int keep = 4096 - sm, br = isin((t * 16) & 4095);
+        legL = (legL * keep) >> 12; legR = (legR * keep) >> 12; armL = (armL * keep) >> 12; armR = (armR * keep) >> 12;
+        if (lyb) { legL += theta + (((isin((t * 13) & 4095) >> 6) * sm) >> 12); legR += theta + (((isin((t * 13 + 900) & 4095) >> 6) * sm) >> 12); }
+        rollL = (rollL * keep + 20 * sm) >> 12; rollR = (rollR * keep - 20 * sm) >> 12;
+        headTilt = (headTilt * keep + 70 * sm) >> 12; headNod = (headNod * keep) >> 12;                // (the head turned a little on the pillow)
+        obj.t[1] -= ((br * sm) >> 12) >> 10;                                                             // the chest rises and falls
+    }
     if (lean) { MATRIX r; SVECTOR rr = { (short)-lean, 0, 0, 0 }; RotMatrix(&rr, &r); r.t[0] = r.t[1] = r.t[2] = 0; { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); } }   // the lean pivots at the feet (RotMatrix leaves the translation unset)
     gm[G_BODY] = obj;
     {   // the eye in the body's space: turn the eye offset back by the yaw
         int dx = cam.eye.vx - p.vx, dy = cam.eye.vy - p.vy, dz = cam.eye.vz - p.vz;
         int c = icos(yaw), sn = isin(yaw);
         cam_lx = (dx * c - dz * sn) >> 12; cam_lz = (dz * c + dx * sn) >> 12; cam_ly = dy;
-        cam_cull = !g->sleep;
+        cam_cull = !lie;
     }
     { int t0 = gfx_hb();
     // (the poses above are written with forward as -z: the model's face is +z, so every swing forward or back is turned round here)
@@ -872,6 +890,41 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     wear_draw(b); PROF_END(7); }
 }
 
+
+// The blanket over someone lying in a bed: two layers like a quilt (wide and low, narrow and tall) from the shoulders to the foot
+// edge, with the white sheet folded down at the top, so the body reads as tucked in rather than lying through the bed. It rises
+// from the mattress as the lie-down finishes and sinks again as they get up. Drawn in the body's own frame (yaw only), where the
+// lying body's length runs along z (head toward -z) and up is -y; y = 0 is the surface the back rests on (the pillow's top).
+void voxel_draw_covers(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
+    if (g->bed != 1 || g->lie < 2900) return;
+    int k = CLAMP((g->lie - 2900) * 4096 / 1196, 0, 4096); k = (k * k) >> 12;
+    int top, mn, mx; lie_dims(b, &top, &mn, &mx);
+    int tz = -100 - top, depth = mx - mn;
+    int zS = -28, zE = MIN(124, tz - b->legs * VOX + 20);                 // (from the pillow's edge to where the hips reach the foot of the bed)
+    if (zE - zS < 40) return;
+    int y1 = 24;                                                           // the mattress: a pillow's thickness under the back's rest
+    int hFull1 = -(depth * 11 / 20), hFull2 = -(depth + 14);              // the wide low layer; the narrow one over the body
+    int yA = y1 + (((hFull1 - y1) * k) >> 12), yB = y1 + (((hFull2 - y1) * k) >> 12);
+    MATRIX obj; SVECTOR rot = { 0, (short)MODEL_ANGLE(yaw), 0, 0 }; VECTOR p = *pos;
+    RotMatrix(&rot, &obj); TransMatrix(&obj, &p);
+    gfx_set_object_m(&obj);
+    gfx_set_light_yaw(MODEL_ANGLE(yaw));
+    int L[6] = { gfx_light(0, 0, -ONE), gfx_light(0, 0, ONE), gfx_light(-ONE, 0, 0), gfx_light(ONE, 0, 0), gfx_light(0, -ONE, 0), gfx_light(0, ONE, 0) };
+    #define CB(X0, X1, Y0, Y1, Z0, Z1, C15) { \
+        u16 cc_ = (C15); SVECTOR t_[4], bt_[4]; \
+        for (int q = 0; q < 4; q++) { int X = (q & 1) ? (X1) : (X0), Z = (q & 2) ? (Z1) : (Z0); setVector(&t_[q], X, Y0, Z); setVector(&bt_[q], X, Y1, Z); } \
+        u32 c_; \
+        c_ = lit(cc_, L[4]); quads += gfx_quad_f(&t_[2], &t_[3], &t_[0], &t_[1], c_ & 255, (c_ >> 8) & 255, (c_ >> 16) & 255, 1); \
+        c_ = lit(cc_, L[1]); quads += gfx_quad_f(&t_[3], &t_[2], &bt_[3], &bt_[2], c_ & 255, (c_ >> 8) & 255, (c_ >> 16) & 255, 1); \
+        c_ = lit(cc_, L[0]); quads += gfx_quad_f(&t_[0], &t_[1], &bt_[0], &bt_[1], c_ & 255, (c_ >> 8) & 255, (c_ >> 16) & 255, 1); \
+        c_ = lit(cc_, L[2]); quads += gfx_quad_f(&t_[2], &t_[0], &bt_[2], &bt_[0], c_ & 255, (c_ >> 8) & 255, (c_ >> 16) & 255, 1); \
+        c_ = lit(cc_, L[3]); quads += gfx_quad_f(&t_[1], &t_[3], &bt_[1], &bt_[3], c_ & 255, (c_ >> 8) & 255, (c_ >> 16) & 255, 1); }
+    CB(-118, 118, yA, y1, zS, zE, RGB(8, 12, 26))                          // the wide low layer: the blanket lying over the mattress
+    CB(-98, 98, yB, yA, zS + 6, zE - 10, RGB(14, 18, 29))                  // the lighter quilt over the body
+    CB(-102, 102, yB - 4, yB + 2, zS + 2, zS + 28, RGB(30, 30, 28))        // the sheet folded down at the top
+    #undef CB
+    gfx_set_object_m(&obj);
+}
 
 // ================================================================== CROWD MODEL (half resolution)
 // The full 6x4x8 build is folded into 4x2x4 cells: the arm columns stay on their own (so the silhouette keeps its arms), the four
@@ -939,13 +992,16 @@ void voxel_draw_lod(const LodBore *m, const VECTOR *pos, int yaw, const Gait *g)
     p.vy -= bob;
     RotMatrix(&rot, &obj);
     TransMatrix(&obj, &p);
-    if (g->sleep) { MATRIX r; SVECTOR rr = { 1024, 0, 0, 0 }; VECTOR t = { 0, -40, 60 }; RotMatrix(&rr, &r); TransMatrix(&r, &t); { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); }; }
+    int lie = g->lie; if (g->sleep && !lie) lie = 4096;
+    int sm = voxel_lie_ease(lie), theta = (1024 * sm) >> 12;
+    if (lie > 0) { MATRIX r; SVECTOR rr = { (short)theta, 0, 0, 0 }; VECTOR t = { 0, ((g->bed ? -96 : -40) * sm) >> 12, ((g->bed ? 284 : 60) * sm) >> 12 }; RotMatrix(&rr, &r); TransMatrix(&r, &t); { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); }; }   // (the crowd model: the same pose, from the average height)
     int swing = (ws * 300) >> 12;
     int legL = g->sit ? -1024 : swing, legR = g->sit ? -1024 : -swing;
     int armL = g->sit ? -200 : -swing * 3 / 4, armR = g->sit ? -200 : swing * 3 / 4;
+    if (lie) { int keep = 4096 - sm; legL = (legL * keep) >> 12; legR = (legR * keep) >> 12; armL = (armL * keep) >> 12; armR = (armR * keep) >> 12; if (g->bed) { legL += theta; legR += theta; } }
     { int dx = cam.eye.vx - p.vx, dy = cam.eye.vy - p.vy, dz = cam.eye.vz - p.vz, c = icos(yaw), sn = isin(yaw);
       cam_lx = (dx * c - dz * sn) >> 12; cam_lz = (dz * c + dx * sn) >> 12; cam_ly = dy; }
-    int cull = !g->sleep;
+    int cull = !lie;
     int lr = m->legrows, hipY = -lr * 2 * VOX;
     int armTop = -1; for (int cy = 3; cy >= 0 && armTop < 0; cy--) if (m->c[cy][0][0] || m->c[cy][1][0] || m->c[cy][0][3] || m->c[cy][1][3]) armTop = cy;
     int shY = armTop < 0 ? hipY : -(armTop * 2 + 2) * VOX + 24;

@@ -12,7 +12,7 @@ static const IBox bxBed[4]={
  {0,0,8,1,0,10,{&mBeWood,&mBeWood,&mBeWood,&mBeWood,&mBeWood}},                 // headboard
  {0,1,8,8,0,3,{&mBeWood,&mBeWood,&mBeWood,&mBeWood,&mBeWood}},                  // frame
  {1,1,7,8,3,5,{&mBeSide,&mBeSide,&mBeSide,&mBeSide,&mBeBlan}},                  // mattress + blanket
- {2,1,6,3,5,7,{&mBePilS,&mBePilS,&mBePilS,&mBePilS,&mBePil}} };                 // pillow
+ {2,1,6,3,5,6,{&mBePilS,&mBePilS,&mBePilS,&mBePilS,&mBePil}} };                 // pillow (a sleeper's head rests on top of it: voxel.c)
 
 // ---- shower: tray, tiled back wall, shower head, glass door in front (see-through inside the frame) ----
 static const u16 pShw[5]={RGB(24,25,28),RGB(26,30,31),RGB(15,22,27),RGB(30,31,31),RGB(9,9,13)};
