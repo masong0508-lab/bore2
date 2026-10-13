@@ -237,6 +237,9 @@ static void start_life(void) {
         a->age_days = (u8)(a->bore.stage >= AG_ADULT ? 3 : 1); m->age_days = 6; k->age_days = (u8)MAX(0, sim_stage_len(AG_CHILD) - 2);   // (the child's birthday comes in a couple of days)
         a->rel[1] = m->rel[0] = 40; a->rel[2] = k->rel[0] = m->rel[2] = k->rel[1] = 30;
     }
+#if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW)
+    home_start();   // the family begins in SAN BOREAS (its 874 households), in a house by the capital's square: life_update moves them in
+#endif
     life_started = 1;
     story_paid = 0; story_talks = 0; story_visit[0] = 1; story_visit[1] = 0; story_visit[2] = 0; story_visit[3] = 0;
     citizens_init();   // a hundred civilians out in the island, the town and the city
@@ -389,7 +392,7 @@ static void hud_life(void) {
     int m = s->mood;
     u32 moodc = m > 15 ? UI_GREEN : m > -15 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70);
     u32 moodt = m > 15 ? UI_RGB(40, 140, 40) : m > -15 ? UI_RGB(170, 110, 10) : UI_RGB(200, 60, 50);   // (the same, deep enough to read on white)
-    // the household, top left: round portraits, a ring in each one's mood colour, the one you play ringed blue with the plumbob
+    // the household, top left: round portraits, a ring in each one's mood colour, the one you play ringed blue with the gold arrow
     for (int i = 0; i < nsims; i++) {
         const Sim *o = &sims[i];
         int x = 17 + i * 24, y = 21, me = i == player, mm = o->mood;
@@ -399,7 +402,7 @@ static void hud_life(void) {
         else draw_face_k(x - 8, y - 8, mm, 1);
         if (o->bore.stage == AG_BABY) { ui_disc(x + 8, y + 8, 11, UI_WHITE); ui_icon_s(x + 4, y + 4, IC_BABY, 8, UI_RGB(236, 120, 160)); }   // (a baby)
         if (o->bday && !o->away) { ui_disc(x - 8, y + 8, 12, UI_RGB(255, 200, 60)); ui_icon_s(x - 12, y + 4, IC_CAKE, 8, UI_WHITE); }   // a birthday today
-        if (me && o->bore.stage != AG_BABY) { ui_disc(x + 8, y + 8, 11, UI_WHITE); ui_icon_s(x + 4, y + 4, IC_PLUMBOB, 8, UI_GREEN); }
+        if (me && o->bore.stage != AG_BABY) { ui_disc(x + 8, y + 8, 11, UI_WHITE); ui_icon_s(x + 4, y + 4, IC_ARROW, 8, UI_RGB(236, 176, 40)); }
     }
     draw_action_card(s);
     // the needs, bottom left: a white card, an icon and a bar for each (green, then yellow, then red)
@@ -955,7 +958,7 @@ static void dir_draw(void) {
         int p = f->first + k, y = top + 12 + k * 28, on = k == dir_msel;
         static const char *const ag[5] = { "BABY", "CHILD", "TEEN", "ADULT", "ELDER" };
         if (on) { ui_round(8, y - 3, 304, 27, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(8, y, 2, 20, 38, 146, 222, 0); }
-        ui_icon_disc(22, y + 9, 18, IC_PLUMBOB, on ? UI_BLUE : UI_RGB(150, 166, 186), UI_WHITE);
+        ui_icon_disc(22, y + 9, 18, IC_ARROW, on ? UI_BLUE : UI_RGB(150, 166, 186), UI_WHITE);
         pop_first(p, fn);
         sprintf(b, "%s %s", fn, sur); ui_text(36, y, 1, b, on ? UI_BLUE2 : UI_INK);
         sprintf(b, "%s, %s", ag[pop_per[p].stage % 5], pop_trait_name(pop_per[p].trait)); ui_text(310 - ui_tw(1, b), y, 1, b, UI_SOFT);
@@ -1576,7 +1579,7 @@ static void pause_update(void) {
     }
 }
 static void pause_draw(void) {   // one short column: the game itself (the rest of life is on the phone)
-    static const s8 ic[NPAUSE] = { IC_PLAY, IC_PLUMBOB, IC_HAMMER, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_SPROUT, IC_DOOR };
+    static const s8 ic[NPAUSE] = { IC_PLAY, IC_ARROW, IC_HAMMER, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_SPROUT, IC_DOOR };
     life_draw();
     ui_dim();
     int top = ui_window(70, 12, 180, 214, "PAUSED", IC_PAUSE);
@@ -1589,7 +1592,7 @@ static const char *const phNm[PH_N] = { "CALL", "PIZZA", "PARTY", "MAP", "TRAVEL
 static const char *const phBlurb[PH_N] = { "CHAT WITH A FRIEND, RIGHT WHERE YOU ARE", "$40. A HOT MEAL, NO COOKING", "$100. GUESTS COME OVER TO DANCE",
     "SAN BOREAS, AND A TAXI ANYWHERE IN IT", "THE ISLAND, THE DESERT TOWN, HOME", "FIND WORK, OR GET A RIDE TO WORK", "HOUSES AND LOTS FOR SALE NEAR YOU",
     "EVERYONE IN SAN BOREAS, AND WHERE THEY ARE", "PLAY AS SOMEONE ELSE IN THE FAMILY", "$1000. A BABY OR A CHILD, HOME TOMORROW", "ALL 33 SONGS ON THE JUKEBOX", "THE STORY SO FAR: YOUR GOALS" };
-static const s8 phIc[PH_N] = { IC_CHAT, IC_FOOD, IC_PARTY, IC_PIN, IC_CAR, IC_CASE, IC_HOUSE, IC_PEOPLE, IC_PLUMBOB, IC_BABY, IC_NOTE, IC_BOOK };
+static const s8 phIc[PH_N] = { IC_CHAT, IC_FOOD, IC_PARTY, IC_PIN, IC_CAR, IC_CASE, IC_HOUSE, IC_PEOPLE, IC_ARROW, IC_BABY, IC_NOTE, IC_BOOK };
 static const u32 phCol[PH_N] = { UI_RGB(76, 196, 92), UI_RGB(240, 140, 50), UI_RGB(236, 90, 150), UI_RGB(40, 170, 170), UI_RGB(38, 146, 222), UI_RGB(110, 100, 200),
     UI_RGB(70, 170, 110), UI_RGB(150, 90, 210), UI_RGB(84, 196, 72), UI_RGB(240, 110, 130), UI_RGB(228, 70, 70), UI_RGB(220, 160, 30) };
 static int ph_sel, ph_fam, ph_fsel, ph_t;
@@ -1673,7 +1676,7 @@ static void phone_draw(void) {
         int nl = ui_wrap_n(132, bl), ch = 34 + nl * 10;
         int cy = 196 - ch;
         ui_card(8, cy, 148, ch + 30);
-        ui_icon_disc(20, cy + 12, 18, ph_fam ? IC_PLUMBOB : phIc[ph_sel], ph_fam ? UI_GREEN : phCol[ph_sel], UI_WHITE);
+        ui_icon_disc(20, cy + 12, 18, ph_fam ? IC_ARROW : phIc[ph_sel], ph_fam ? UI_RGB(236, 176, 40) : phCol[ph_sel], UI_WHITE);
         ui_text(34, cy + 6, 2, t, UI_INK);
         ui_wrap(14, cy + 24, 132, 3, bl, UI_SOFT);
         ui_hints(82, cy + ch + 12, ph_fam ? "X PLAY|O BACK" : "X OPEN|O CLOSE", 1);
@@ -1700,7 +1703,7 @@ static void pie_draw(void) {
     life_draw();
     int cx = 160, cy = 100, R = pie_n > 4 ? 60 : 50;
     { const char *t = pie_cit ? citizens_pie_title() : sim_pie_title();   // the centre: who or what it is, on a round badge
-      ui_shadow(cx - 9, cy - 9, 18, 18, 6); ui_icon_disc(cx, cy, 20, pie_cit ? IC_CHAT : IC_PLUMBOB, UI_BLUE, UI_WHITE);
+      ui_shadow(cx - 9, cy - 9, 18, 18, 6); ui_icon_disc(cx, cy, 20, pie_cit ? IC_CHAT : IC_ARROW, UI_BLUE, UI_WHITE);
       int w = ui_tw(1, t) + 12; ui_round(cx - w / 2, cy + 12, w, 13, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_textc(cx, cy + 15, 1, t, UI_WHITE); }
     for (int i = 0; i < pie_n; i++) {
         int a = (i * 4096 / pie_n) & 4095, x = cx + ((isin(a) * R) >> 12), y = cy - ((icos(a) * R * 3 / 4) >> 12);
@@ -1780,7 +1783,7 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
     Sim *s = &sims[player];
     char b[64], t[32];
     sprintf(b, "%s %s", s->bore.first, s->bore.last);
-    int top = ui_window(4, 4, 312, 232, b, IC_PLUMBOB);
+    int top = ui_window(4, 4, 312, 232, b, IC_ARROW);
     int m = s->mood;
     u32 moodc = m > 15 ? UI_GREEN : m > -15 ? UI_AMBER : UI_RED, moodt = m > 15 ? UI_GOODT : m > -15 ? UI_GOLDT : UI_BADT;
     ui_disc(24, top + 10, 24, moodc); ui_disc(24, top + 10, 20, UI_RGB(250, 252, 255));
@@ -1977,7 +1980,7 @@ static void create_draw(void) {
     voxel_draw(&edit, &p, (2048 - create_turn) & 4095, &g);   // (the face to the camera at create_turn 0)
     gfx_shadow(&p, 70);
     // the card: the tab on a blue header, its rows, the buttons at the foot
-    static const s8 createIc[NTAB] = { IC_PEOPLE, IC_SMILE, IC_BRUSH, IC_SHIRT, IC_STAR, IC_SPROUT, IC_PLUMBOB };
+    static const s8 createIc[NTAB] = { IC_PEOPLE, IC_SMILE, IC_BRUSH, IC_SHIRT, IC_STAR, IC_SPROUT, IC_ARROW };
     int top = ui_window(166, 4, 150, 232, look_tab_name[create_tab], createIc[create_tab]);
     int first = MAX(0, create_row - 7), shown = MIN(n, first + 9);
     for (int i = first; i < shown; i++) {
@@ -2381,7 +2384,7 @@ static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
         { IC_EYE, "L2 + R2 TOGETHER: SIMS CAMERA, BEHIND YOU, OR FIRST PERSON." },
         { IC_PLAY, "FIRST PERSON: UP WALKS, LEFT AND RIGHT TURN, L2 R2 LOOK. L1 + R1 TURN ROUND. THE DOT SHOWS WHAT X DOES." },
         { IC_CASE, "WORK: PHONE, JOBS. BILLS ARE $800, EVERY MIDNIGHT." },
-        { IC_PLUMBOB, "START: THE BORE PANEL, BUILD MODE AND OPTIONS (CAMERA HEIGHT AND TURN SPEED)." } } },
+        { IC_ARROW, "START: THE BORE PANEL, BUILD MODE AND OPTIONS (CAMERA HEIGHT AND TURN SPEED)." } } },
     { "BUILD AND CREATE", { { IC_HAMMER, "BUILD MODE: ITEMS, WALLS, FLOORS AND 103 WALLPAPERS." },
         { IC_BRUSH, "SELECT PICKS THE TOOL. L1 R1 PICK THE THING. X PLACES IT, SQUARE TAKES IT AWAY." },
         { IC_HOUSE, "L2 R2 CHANGE THE STOREY. L3 SHOWS THE ROOF." },
@@ -2489,15 +2492,15 @@ static void menu_draw(void) {
 }
 
 // ---- the loading screen: a bar and what is being made, shown before any long job (start-up, a new life, travel) ----
-static void loading_draw(const char *what, int pct) {   // The Sims 4's way: a big plumbob, the name, a white card with the bar, and a tip
+static void loading_draw(const char *what, int pct) {   // The Sims 4's way: a big gold arrow, the name, a white card with the bar, and a tip
     static const char *const tips[] = { "BILLS COME AT MIDNIGHT: KEEP $800 BY.", "PHONE, THEN MAP: A TAXI ANYWHERE FOR $20.",
         "L2 ZOOMS OUT: SAN BOREAS GOES ON FOR KILOMETRES.", "A STEADY 30 (OPTIONS) FEELS SMOOTHER.", "MOSS DOES NOT WANT A PLUMBOB. DO NOT ASK.",
         "CHAT 5 TIMES TO MAKE A FRIEND.", "BUILD MODE HAS 103 WALLPAPERS." };
     pct = CLAMP(pct, 0, 100);
     gfx_set_clear(60, 120, 190);
     gfx_grad(0, 0, SCREEN_W, SCREEN_H, UI_RGB(130, 196, 244), UI_RGB(130, 196, 244), UI_RGB(34, 96, 170), UI_RGB(34, 96, 170), 0);
-    ui_icon_s(144, 22, IC_PLUMBOB, 36, UI_RGB(40, 120, 30));   // (a darker copy under it, for depth)
-    ui_icon_s(142, 20, IC_PLUMBOB, 36, UI_GREEN);
+    ui_icon_s(144, 22, IC_ARROW, 36, UI_RGB(120, 84, 10));   // (a darker copy under it, for depth)
+    ui_icon_s(142, 20, IC_ARROW, 36, UI_RGB(255, 204, 48));
     { int w = gfx_text_w(3, "BORE 2"); gfx_text_raw(162 - w / 2, 66, 3, "BORE 2", 40, 60, 110); gfx_text_raw(160 - w / 2, 64, 3, "BORE 2", 255, 255, 255); }
     ui_card(60, 124, 200, 40);
     ui_text(70, 131, 1, what, UI_INK);

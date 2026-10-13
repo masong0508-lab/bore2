@@ -54,6 +54,27 @@ int home_is_here(void) {
     const Sim *p = &sims[player];
     return sim_tile_x(p) / BM_BLK == wx && sim_tile_y(p) / BM_BLK == wy;
 }
+static void move_in(int bx, int by, int price) {   // the lot is theirs: furnished for whoever is in the household
+    home_city = 1; home_bx = bx; home_by = by; home_paid = price;
+    u8 occ[6] = { 0, 0, 0, 0, 0, 0 };
+    for (int i = 0; i < nsims; i++) { int st = sims[i].bore.stage;
+        if (st == AG_BABY) occ[5]++; else if (st == AG_CHILD) occ[1]++; else if (st == AG_TEEN) occ[2]++; else if (st == AG_ELDER) occ[3]++; else occ[0]++;
+        if (sims[i].partner) occ[4] = 1; }
+    if (!occ[0] && !occ[3]) occ[0] = 1;
+    world_own_set(bx, by, occ);
+}
+int home_start(void) {   // a new life begins in SAN BOREAS, in a lived-in sort of house nearest the capital's square: a gift, so it sells back for nothing
+    int cap = bm_capital(), nset = bm_nset();
+    for (int k = 0; k <= nset; k++) {                                  // the capital first, then every town in turn if it has nothing to give
+        int si = k == 0 ? cap : k - 1; if (si < 0 || si >= nset) continue;
+        const Settle *s = bm_set(si); if (!s) continue;
+        HomeAd ad[40]; int n = home_list(s->x, s->y, ad, 40), pick = -1;
+        for (int i = 0; i < n && pick < 0; i++) if (ad[i].lot == LOT_HOUSE || ad[i].lot == LOT_TWO) pick = i;       // (a house or a two-storey: nearest first)
+        for (int i = 0; i < n && pick < 0; i++) if (ad[i].lot == LOT_COTTAGE) pick = i;
+        if (pick >= 0) { move_in(ad[pick].bx, ad[pick].by, 0); home_move_asked = 1; return 1; }
+    }
+    return 0;                                                          // (nothing free anywhere: THE MAN BASE, as before)
+}
 int home_buy(int bx, int by) {
     char t[40], a[24];
     if (!home_for_sale(bx, by)) { sim_note("THAT HOME IS NOT FOR SALE"); return 0; }
@@ -61,14 +82,7 @@ int home_buy(int bx, int by) {
     if (cash + refund < price) { sprintf(t, "NOT ENOUGH MONEY: IT IS $%d", price); sim_note(t); audio_voice(VOICE_NAH); return 0; }
     if (home_city) { cash += refund; sprintf(t, "OLD HOME SOLD FOR $%d", refund); sim_note(t); world_own_clear(); }
     cash -= price;
-    BInfo b; bm_block(bx, by, &b);
-    home_city = 1; home_bx = bx; home_by = by; home_paid = price;
-    u8 occ[6] = { 0, 0, 0, 0, 0, 0 };                                // who is moving in: it is furnished for them
-    for (int i = 0; i < nsims; i++) { int st = sims[i].bore.stage;
-        if (st == AG_BABY) occ[5]++; else if (st == AG_CHILD) occ[1]++; else if (st == AG_TEEN) occ[2]++; else if (st == AG_ELDER) occ[3]++; else occ[0]++;
-        if (sims[i].partner) occ[4] = 1; }
-    if (!occ[0] && !occ[3]) occ[0] = 1;
-    world_own_set(bx, by, occ);
+    move_in(bx, by, price);                                          // who is moving in: it is furnished for them
     snprintf(t, sizeof t, "BOUGHT %s!", home_address(bx, by, a)); sim_note(t);
     audio_voice(VOICE_WIN);
     home_move_asked = 1;

@@ -11,6 +11,9 @@ by itself, and still runs on a normal 2 MB PlayStation.
 For a real PlayStation or PCSX-ReARMed, burn or open `bore2.cue` + `bore2.bin` from `cmake --build build --target iso`.
 Every push to GitHub builds both: open Actions, the newest green run, and download **BORE2_chd** or **bore2_disc** under Artifacts.
 
+A new life begins in SAN BOREAS itself: the family is given a house (or a two-storey, or a cottage) nearest the capital's square, among
+its 874 households, furnished for them, and it sells back for nothing (THE MAN BASE is still on the TRAVEL list).
+
 Controls: stick / d-pad move, X uses the thing in front (fridge, bed, shower, sofa, TV, radio, the DeadSet...), talk to a
 housemate with X, O gets up, SQUARE runs, O rides a skateboard (buy one at a clothes shop, or pick one up off the floor with X), TRIANGLE game speed. SELECT opens your PHONE: CALL, PIZZA, PARTY, MAP, TRAVEL (the
 island and the desert town), JOBS, HOMES, PEOPLE, FAMILY (play as another Bore), ADOPT, MUSIC and GOALS. START is the short

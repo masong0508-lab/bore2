@@ -8,7 +8,7 @@
 #define UI_SOFT   UI_RGB(80, 92, 112)      // quieter text
 #define UI_BLUE   UI_RGB(38, 146, 222)     // the accent
 #define UI_BLUE2  UI_RGB(26, 112, 190)
-#define UI_GREEN  UI_RGB(84, 196, 72)      // the plumbob
+#define UI_GREEN  UI_RGB(84, 196, 72)      // good, go
 #define UI_WHITE  UI_RGB(255, 255, 255)
 #define UI_CARD   UI_RGB(240, 244, 249)
 #define UI_CARD2  UI_RGB(214, 223, 235)
@@ -21,7 +21,7 @@
 #define UI_BADT   UI_RGB(204, 58, 48)      // red, the same
 #define UI_GOLDT  UI_RGB(170, 116, 8)      // gold, the same
 
-enum { IC_PLAY, IC_PLUMBOB, IC_BOOK, IC_CAR, IC_PIN, IC_PEOPLE, IC_STAR, IC_ADD, IC_PARTY, IC_HAMMER, IC_NOTE, IC_GEAR, IC_HELP,
+enum { IC_PLAY, IC_ARROW, IC_BOOK, IC_CAR, IC_PIN, IC_PEOPLE, IC_STAR, IC_ADD, IC_PARTY, IC_HAMMER, IC_NOTE, IC_GEAR, IC_HELP,
        IC_SPROUT, IC_DOOR, IC_EYE, IC_TREE, IC_SUN, IC_BOLT, IC_CAMERA, IC_FOOD, IC_DROP, IC_BED, IC_BUBBLES, IC_SOFA, IC_SMILE,
        IC_CHAT, IC_HOUSE, IC_PAUSE, IC_FAST, IC_MONEY, IC_TICK, IC_LOCK, IC_HEART, IC_CASE, IC_BRICK, IC_TILES, IC_BRUSH, IC_DICE,
        IC_SHIRT, IC_BX, IC_BO, IC_BT, IC_BS, IC_BABY, IC_CAKE, IC_ROOM, IC_WOOD, IC_STONE, IC_N };   // (IC_BX .. IC_BS: the pad's cross, circle, triangle and square)

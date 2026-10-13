@@ -18,3 +18,4 @@ const char *home_kind(int lot);        // "COTTAGE", "EMPTY LOT"
 const char *home_blurb(int lot);       // what you get
 int  home_is_here(void);               // the one you play is at home right now
 void home_reset(void);                 // a new life: THE MAN BASE again
+int  home_start(void);                 // a new life, once the household exists: give it a house in SAN BOREAS's capital (1: done; main moves it in)
