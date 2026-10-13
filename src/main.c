@@ -57,6 +57,7 @@ static void read_pad(void) {
 static int cam_yaw = 2600, cam_pitch = 640, cam_dist = 1500;   // yaw 0 = looking north from the south
 static int cam_fx, cam_fy, cam_fz;                            // the focus (smoothed)
 static int cam_mode = 0;                                       // 0 follow, 1 high, 2 low chase, 3 free
+static int wall_view;                                          // WALL VIEW (options): 0 AUTO (cut away, but not in first person), 1 CUT AWAY, 2 FULL WALLS
 static int cam_view;                                           // CAMERA: 0 THE SIMS (it orbits you), 1 BEHIND (it swings round behind you), 2 FIRST PERSON
 static int fp_pitch;                                           // first person: looking up (+) or down (-)
 static int cam_turn_rate = 40, cam_zoom_tilt = 1;
@@ -304,7 +305,7 @@ static void draw_sims(void) {
                        int want = !hh_used && crowd_sprite_score_of(id, &p, s->yaw, &s->gait) > 5 && (room || hh_skip >= 6);
                        drawn = crowd_sprite_of(id, &s->bore, &p, s->yaw, &s->gait, want);
                        if (want) { hh_used = 1; hh_skip = 0; } }
-            if (!drawn) { voxel_draw(&s->bore, &p, s->yaw, &s->gait); voxel_draw_covers(&s->bore, &p, s->yaw, &s->gait); }
+            if (!drawn) { if (!(i == player && cam_view == 2)) voxel_draw(&s->bore, &p, s->yaw, &s->gait); voxel_draw_covers(&s->bore, &p, s->yaw, &s->gait); }   // (first person: the eye is inside your own head, so your body is not drawn)
             if (drawn) dbg_hh_spr++; else dbg_hh_full++;
             if (far && !drawn) dbg_hh_miss++;
             PROF_END(4);
@@ -626,7 +627,7 @@ static void life_draw(void) {
         else gfx_sky(top, hor);
     }
     gfx_prim_count = 0;
-    { int t0 = hb_now(); world_draw(sim_tile_x(s), sim_tile_y(s), frame, cam_view != 2); t_world = hb_now() - t0;   // (first person: no walls cut away)
+    { int t0 = hb_now(); world_draw(sim_tile_x(s), sim_tile_y(s), frame, wall_view == 1 || (wall_view == 0 && cam_view != 2)); t_world = hb_now() - t0;   // (WALL VIEW: AUTO cuts the walls between you and the camera, but not in first person; CUT AWAY always; FULL WALLS never)
       t0 = hb_now(); gfx_prim_count = 0; draw_sims(); t_sims = hb_now() - t0; }
     { int t0 = hb_now(); draw_bubbles(); t_bub = hb_now() - t0; }
     prims_last = gfx_prim_count;
@@ -1415,10 +1416,10 @@ static void grow_tick(void) {   // (test builds: a family's life in two minutes:
 // ---- OPTIONS: the picture and the speed, as many knobs as a PC game, with presets; the game runs behind as you change them ----
 static void title_draw(void);
 enum { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_CROWD, O_LIVE, O_SPR, O_SHADOW, O_AO, O_WALLS, O_FPSCAP, O_DITHER, O_CAM, O_SHOWFPS,
-       O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_N };
+       O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_CUTAWAY, O_N };
 static const char *const optNm[O_N] = { "PRESET", "VIEW DISTANCE", "FULL DETAIL", "FAR BUILDINGS", "FAR TREES", "HAZE", "CROWD SIZE",
     "PEOPLE IN FULL 3D", "PEOPLE SPRITES", "SHADOWS", "FLOOR SHADING", "WALL LIGHT", "FRAME RATE", "DITHERING", "CAMERA", "SHOW FPS",
-    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC" };
+    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC", "WALL VIEW" };
 static const char *const optV[O_N][6] = {
     { "CUSTOM", "LOW", "MEDIUM", "HIGH", "ULTRA" }, { "50 M", "250 M", "500 M", "1 KM", "1.5 KM", "2 KM" },
     { "10 M", "12 M", "15 M", "17 M" }, { "TALL ONLY", "ALL", "WITH WINDOWS" }, { "OFF", "100 M", "200 M", "350 M" },
@@ -1426,8 +1427,9 @@ static const char *const optV[O_N][6] = {
     { "OFF", "PEOPLE", "EVERYTHING" }, { "OFF", "ON" }, { "FLAT", "SOFT" }, { "AS FAST AS IT CAN", "STEADY 30", "STEADY 20" },
     { "OFF", "ON" }, { "THE SIMS", "BEHIND YOU", "FIRST PERSON" }, { "OFF", "ON" },
     { "NOBODY AGES", "SHORT", "NORMAL", "LONG" }, { "LIVE ON", "PASS ON" }, { "OFF", "ON" },
-    { "LOW", "MEDIUM", "HIGH", "OVERHEAD" }, { "SLOW", "NORMAL", "FAST" }, { "OFF", "ON" }, { "OFF", "LOW", "MEDIUM", "FULL" } };
-static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4 };
+    { "LOW", "MEDIUM", "HIGH", "OVERHEAD" }, { "SLOW", "NORMAL", "FAST" }, { "OFF", "ON" }, { "OFF", "LOW", "MEDIUM", "FULL" },
+    { "AUTO", "CUT AWAY", "FULL WALLS" } };
+static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3 };
 static const char *const optBlurb[O_N] = {
     "LOW, MEDIUM, HIGH OR ULTRA SETS THEM ALL", "HOW FAR SAN BOREAS GOES BEFORE THE SKY", "WHERE ROOMS, WALLS AND THINGS ARE DRAWN IN FULL",
     "THE TOWNS PAST THE MAP: TALL ONES, ALL, OR WINDOWS TOO", "TREES PAST THE NEAR DETAIL, OUT TO", "THE AIR BETWEEN YOU AND THE HORIZON",
@@ -1437,12 +1439,13 @@ static const char *const optBlurb[O_N] = {
     "THE FRAME RATE IN A CORNER (L3 IN PLAY)",
     "HOW FAST BORES GROW UP, FROM BABY TO ELDER", "AT THE END OF THE ELDER YEARS: GO ON, OR SAY GOODBYE",
     "EVERYONE IN SAN BOREAS GETS OLDER AND HAS BABIES TOO",
-    "HOW HIGH THE CAMERA LOOKS DOWN FROM (LOW SEES THE SKYLINE)", "HOW FAST L1 AND R1 TURN THE CAMERA", "ZOOMING IN WITH R2 LOWERS THE CAMERA TOO", "HOW LOUD THE SONGS AND THE RADIO PLAY" };
+    "HOW HIGH THE CAMERA LOOKS DOWN FROM (LOW SEES THE SKYLINE)", "HOW FAST L1 AND R1 TURN THE CAMERA", "ZOOMING IN WITH R2 LOWERS THE CAMERA TOO", "HOW LOUD THE SONGS AND THE RADIO PLAY",
+    "WALLS BETWEEN YOU AND THE CAMERA: AUTO, CUT LOW OR FULL" };
 static const u8 presets[4][O_N] = {   // LOW, MEDIUM, HIGH, ULTRA (the graphics knobs; the frame rate, dithering, camera and the counter are left be)
     { 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0 }, { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 },
     { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1 }, { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 } };
 #define O_PRESET_LAST O_WALLS                 // (presets set O_VIEW .. O_WALLS)
-static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 0, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3 };   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
+static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 0, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0 };   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
 static int opt_sel, opt_back, opt_tab;
 static void opts_apply(void);
 #ifdef AUTO_FLOAT
@@ -1459,7 +1462,7 @@ static void opts_apply(void) {
     gfx_set_dither(opt[O_DITHER]);
     show_fps = opt[O_SHOWFPS]; audio_music_level(opt[O_MUSIC]);
     aging = opt[O_AGING]; old_age = opt[O_OLDAGE]; pop_aging = opt[O_TOWNAGE];
-    cam_view = opt[O_CAM] % 3; cam_turn_rate = opt[O_CAMSPD] == 0 ? 24 : opt[O_CAMSPD] == 1 ? 40 : 64; cam_zoom_tilt = opt[O_ZOOMTILT];
+    cam_view = opt[O_CAM] % 3; cam_turn_rate = opt[O_CAMSPD] == 0 ? 24 : opt[O_CAMSPD] == 1 ? 40 : 64; cam_zoom_tilt = opt[O_ZOOMTILT]; wall_view = opt[O_CUTAWAY] % 3;
 }
 void cam_view_set(int v) {   // (L2 + R2 in play, and the options)
     cam_view = v; opt[O_CAM] = (u8)v; fp_pitch = 0;
@@ -1471,7 +1474,7 @@ static void opts_open(int back) { opt_back = back; opt_sel = 0; opt_tab = 0; sta
 static const char *const optTabNm[NOTAB] = { "GRAPHICS", "PEOPLE", "LIGHT", "CAMERA", "PLAY", "LIFE" };
 static const s8 optTabIc[NOTAB] = { IC_EYE, IC_PEOPLE, IC_SUN, IC_CAMERA, IC_BOLT, IC_SPROUT };
 static const s8 optTab[NOTAB][7] = { { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, -1 }, { O_CROWD, O_LIVE, O_SPR, -1 },
-                                     { O_SHADOW, O_AO, O_WALLS, O_DITHER, -1 }, { O_CAM, O_CAMH, O_CAMSPD, O_ZOOMTILT, -1 },
+                                     { O_SHADOW, O_AO, O_WALLS, O_DITHER, -1 }, { O_CAM, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_CUTAWAY, -1 },
                                      { O_FPSCAP, O_SHOWFPS, O_MUSIC, -1 }, { O_AGING, O_OLDAGE, O_TOWNAGE, -1 } };
 static int opt_kind(int i) {   // 0 a choice, 1 a slider, 2 a switch
     if (i == O_AO || i == O_DITHER || i == O_SHOWFPS || i == O_TOWNAGE || i == O_ZOOMTILT) return 2;

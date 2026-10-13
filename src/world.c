@@ -1406,6 +1406,117 @@ static void cc_begin(CornerCache *c, int x0, int y0, int y) {
     if (++c->gen == 0) { memset(c->st, 0, sizeof c->st); c->gen = 1; }
 }
 static XV cc_tmp[8]; static int cc_tmpi;
+
+// ---- the near plane. A quad with a corner behind the eye used to be thrown away whole, so a floor under you or a wall beside you simply
+// vanished (and a close one that reached past the GPU's 1023x511 polygon size, or the GTE's +-1024 screen, came out bent or missing). Now such
+// a quad is cut along a plane just in front of the eye and drawn from what is in front of it. In first person a quad near the eye is also
+// split into pieces, so no piece is huge on the screen and the PlayStation's flat texture warp stays small. View space, whole numbers. ----
+#define NC_Z 56                         // the cutting plane's depth (the GPU's own drop is Z_NEAR, 40)
+#define NC_NEAR_FP 520                  // first person: a quad whose nearest corner is closer than this goes this way too
+#define NC_DEPTH 5                      // a quad is split at most this many times
+#define NXY(v) ((u32)(u16)(v)->x | ((u32)(u16)(v)->y << 16))
+typedef struct { int x, y, z, u, v, r, g, b; } NV;     // a corner: view-space position, texel, colour
+static NV nq_c[4]; static int nq_tex, nq_cull; static u32 nq_tp, nq_cl;
+static inline int nc_need4(const XV *a, const XV *b, const XV *c, const XV *d) {   // 1: this quad goes the careful way
+    int z = MIN(MIN(a->z, b->z), MIN(c->z, d->z));
+    return z < Z_NEAR || (world_fp && z < NC_NEAR_FP);
+}
+static void nc_lerp(NV *o, const NV *p, const NV *q, int t) {
+    o->x = p->x + (((q->x - p->x) * t) >> 12); o->y = p->y + (((q->y - p->y) * t) >> 12); o->z = p->z + (((q->z - p->z) * t) >> 12);
+    o->u = p->u + (((q->u - p->u) * t) >> 12); o->v = p->v + (((q->v - p->v) * t) >> 12);
+    o->r = p->r + (((q->r - p->r) * t) >> 12); o->g = p->g + (((q->g - p->g) * t) >> 12); o->b = p->b + (((q->b - p->b) * t) >> 12);
+}
+static void nc_at(NV *o, int s, int t) { NV top, bot; nc_lerp(&top, &nq_c[0], &nq_c[1], s); nc_lerp(&bot, &nq_c[2], &nq_c[3], s); nc_lerp(o, &top, &bot, t); }
+static int nc_clip(const NV *in, NV *out) {          // the polygon (4 corners round) cut to the front of the plane: 0 to 5 corners
+    int n = 0;
+    for (int i = 0; i < 4; i++) {
+        const NV *p = &in[i], *q = &in[(i + 1) & 3];
+        int pin = p->z >= NC_Z, qin = q->z >= NC_Z;
+        if (pin) out[n++] = *p;
+        if (pin != qin) { nc_lerp(&out[n], p, q, ((NC_Z - p->z) << 12) / (q->z - p->z)); out[n].z = NC_Z; n++; }
+    }
+    return n;
+}
+static inline u32 nc_rgb(const NV *n) { return (u32)CLAMP(n->r, 0, 255) | ((u32)CLAMP(n->g, 0, 255) << 8) | ((u32)CLAMP(n->b, 0, 255) << 16); }
+static inline u32 nc_uv(const NV *n) { return (u32)CLAMP(n->u, 0, 255) | ((u32)CLAMP(n->v, 0, 255) << 8); }
+// one primitive: a, b, c, d in the order the GPU strips them (a b / c d), the corners' view-space data alongside
+static void nc_put(const XV *a, const XV *b, const XV *c, const XV *d, const NV *na, const NV *nb, const NV *nc, const NV *nd) {
+    if (nq_cull && (b->x - a->x) * (d->y - a->y) - (d->x - a->x) * (b->y - a->y) <= 0) return;   // facing away
+    u32 c0 = nc_rgb(na), c1 = nc_rgb(nb), c2 = nc_rgb(nc), c3 = nc_rgb(nd);
+    int otz = (a->z + b->z + c->z + d->z) >> 4;
+    if (gfx_fog_on) { c0 = gfx_fog_apply(c0, otz); c1 = gfx_fog_apply(c1, otz); c2 = gfx_fog_apply(c2, otz); c3 = gfx_fog_apply(c3, otz); }
+    if (nq_tex) {
+        u32 *q = xv_alloc(13); if (!q) return;
+        q[1] = c0 | 0x3c000000u; q[2] = NXY(a); q[3] = nc_uv(na) | nq_cl;
+        q[4] = c1;               q[5] = NXY(b); q[6] = nc_uv(nb) | nq_tp;
+        q[7] = c2;               q[8] = NXY(c); q[9] = nc_uv(nc);
+        q[10] = c3;              q[11] = NXY(d); q[12] = nc_uv(nd);
+        xv_link(q, 12, otz);
+    } else {
+        u32 *q = xv_alloc(9); if (!q) return;
+        q[1] = c0 | 0x38000000u; q[2] = NXY(a); q[3] = c1; q[4] = NXY(b); q[5] = c2; q[6] = NXY(c); q[7] = c3; q[8] = NXY(d);
+        xv_link(q, 8, otz);
+    }
+}
+static void nc_piece(int s0, int s1, int t0, int t1, int depth) {   // the part s0..s1 x t0..t1 (of 4096) of the quad
+    NV p[4], o[5];
+    nc_at(&p[0], s0, t0); nc_at(&p[1], s1, t0); nc_at(&p[2], s1, t1); nc_at(&p[3], s0, t1);   // (round the piece: a, b, d, c)
+    if (p[0].z < NC_Z && p[1].z < NC_Z && p[2].z < NC_Z && p[3].z < NC_Z) return;             // all behind the plane
+    int n = nc_clip(p, o);
+    if (n < 3) return;
+    int sx[5], sy[5], x0 = 1 << 20, x1 = -(1 << 20), y0 = 1 << 20, y1 = -(1 << 20), zlo = 1 << 30, zhi = 0;
+    for (int i = 0; i < n; i++) {
+        sx[i] = CENTER_X + (o[i].x * 230) / o[i].z; sy[i] = CENTER_Y + (o[i].y * 230) / o[i].z;   // (the GTE's projection: H = 230)
+        if (sx[i] < x0) x0 = sx[i]; if (sx[i] > x1) x1 = sx[i]; if (sy[i] < y0) y0 = sy[i]; if (sy[i] > y1) y1 = sy[i];
+        if (o[i].z < zlo) zlo = o[i].z; if (o[i].z > zhi) zhi = o[i].z;
+    }
+    if (x1 < 0 || x0 >= SCREEN_W || y1 < 0 || y0 >= SCREEN_H) return;                         // off the screen
+    int sw = x1 - x0, sh = y1 - y0;
+    int big = sw > 560 || sh > 330;                                                            // too big for the GPU (and its +-1024 corners) to be sure of
+    int warp = nq_tex && world_fp && zhi > 2 * zlo && zlo < NC_NEAR_FP && (sw > 80 || sh > 64);   // a textured piece running away from the eye: it would swim
+    if ((big || warp) && depth < NC_DEPTH) {
+        int ls = MAX(ABS(p[1].x - p[0].x) + ABS(p[1].y - p[0].y) + ABS(p[1].z - p[0].z), ABS(p[2].x - p[3].x) + ABS(p[2].y - p[3].y) + ABS(p[2].z - p[3].z));
+        int lt = MAX(ABS(p[3].x - p[0].x) + ABS(p[3].y - p[0].y) + ABS(p[3].z - p[0].z), ABS(p[2].x - p[1].x) + ABS(p[2].y - p[1].y) + ABS(p[2].z - p[1].z));
+        if (ls >= lt) { int m = (s0 + s1) >> 1; nc_piece(s0, m, t0, t1, depth + 1); nc_piece(m, s1, t0, t1, depth + 1); }
+        else { int m = (t0 + t1) >> 1; nc_piece(s0, s1, t0, m, depth + 1); nc_piece(s0, s1, m, t1, depth + 1); }
+        return;
+    }
+    if (sw > 700 || sh > 340) return;                                                          // (split as far as it goes and still too big: leave it)
+    XV v[5];
+    for (int i = 0; i < n; i++) { v[i].x = (short)sx[i]; v[i].y = (short)sy[i]; v[i].z = o[i].z; }
+    if (n == 3) nc_put(&v[0], &v[1], &v[2], &v[2], &o[0], &o[1], &o[2], &o[2]);
+    else {
+        nc_put(&v[0], &v[1], &v[3], &v[2], &o[0], &o[1], &o[3], &o[2]);
+        if (n == 5) nc_put(&v[0], &v[3], &v[4], &v[4], &o[0], &o[3], &o[4], &o[4]);
+    }
+}
+// a quad given as its corners a b / c d (world space), a colour and a texel for each, cut and drawn by the above
+static void nc_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d, const u32 *col, int tex, u16 tpage, u16 clut, const u32 *uv, int cull) {
+    const SVECTOR *sv[4] = { a, b, c, d };
+    const MATRIX *m = &cam.view;
+    for (int i = 0; i < 4; i++) {
+        int x = sv[i]->vx, y = sv[i]->vy, z = sv[i]->vz; NV *n = &nq_c[i];
+        n->x = ((m->m[0][0] * x + m->m[0][1] * y + m->m[0][2] * z) >> 12) + m->t[0];
+        n->y = ((m->m[1][0] * x + m->m[1][1] * y + m->m[1][2] * z) >> 12) + m->t[1];
+        n->z = ((m->m[2][0] * x + m->m[2][1] * y + m->m[2][2] * z) >> 12) + m->t[2];
+        n->u = (int)(uv[i] & 255); n->v = (int)((uv[i] >> 8) & 255);
+        n->r = (int)(col[i] & 255); n->g = (int)((col[i] >> 8) & 255); n->b = (int)((col[i] >> 16) & 255);
+    }
+    nq_tex = tex; nq_cull = cull; nq_tp = (u32)tpage << 16; nq_cl = (u32)clut << 16;
+    if (nq_c[0].z < NC_Z && nq_c[1].z < NC_Z && nq_c[2].z < NC_Z && nq_c[3].z < NC_Z) return;
+    nc_piece(0, 4096, 0, 4096, 0);
+}
+// a flat quad (what gfx_quad_f drew), near-plane safe
+static void wquad_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d, int r, int g, int b8, int cull) {
+    SVECTOR sv[4] SVEC_ALIGN; sv[0] = *a; sv[1] = *b; sv[2] = *c; sv[3] = *d;
+    XV xv[4]; gfx_xform(sv, xv, 4);
+    u32 col = gfx_grade_flat((u32)CLAMP(r, 0, 255) | ((u32)CLAMP(g, 0, 255) << 8) | ((u32)CLAMP(b8, 0, 255) << 16));
+    if (nc_need4(&xv[0], &xv[1], &xv[2], &xv[3])) {
+        const u32 cc[4] = { col, col, col, col }, uv0[4] = { 0, 0, 0, 0 };
+        nc_quad(&sv[0], &sv[1], &sv[2], &sv[3], cc, 0, 0, 0, uv0, cull); return;
+    }
+    gfx_emit_f4(&xv[0], &xv[1], &xv[2], &xv[3], col, cull);
+}
 static void floor_tile(int mx, int my) {
     int fl = dfl[my][mx] % NFLOORS;
     const TexRef *t = &fl_tex[fl];
@@ -1422,6 +1533,15 @@ static void floor_tile(int mx, int my) {
     if (y == 0) {   // the fast path (all but water)
         SVECTOR sv[4] = { a, b, c, d }; XV xv[4]; gfx_xform(sv, xv, 4);
         const XV *A = &xv[0], *B = &xv[1], *C = &xv[2], *Dd = &xv[3];
+        if (nc_need4(A, B, C, Dd)) {   // (the eye is close: cut at the near plane, split in first person)
+            u32 cc[4], uv4[4] = { (u32)u | ((u32)v << 8), (u32)(u + 7) | ((u32)v << 8), (u32)u | ((u32)(v + 7) << 8), (u32)(u + 7) | ((u32)(v + 7) << 8) };
+            if (!dbg_noao && !is_wall(dm[my][mx]) && near_wall(mx, my)) {
+                cc[0] = gfx_grade_tex((u32)ao_corner(mx, my, L) * 0x010101u); cc[1] = gfx_grade_tex((u32)ao_corner(mx + 1, my, L) * 0x010101u);
+                cc[2] = gfx_grade_tex((u32)ao_corner(mx, my + 1, L) * 0x010101u); cc[3] = gfx_grade_tex((u32)ao_corner(mx + 1, my + 1, L) * 0x010101u);
+            } else cc[0] = cc[1] = cc[2] = cc[3] = gfx_grade_tex((u32)L * 0x010101u);
+            nc_quad(&sv[0], &sv[1], &sv[2], &sv[3], cc, 1, t->tpage, 0, uv4, 0);
+            return;
+        }
         if (!dbg_noao && !is_wall(dm[my][mx]) && near_wall(mx, my)) {
             int L0 = ao_corner(mx, my, L), L1 = ao_corner(mx + 1, my, L), L2 = ao_corner(mx, my + 1, L), L3 = ao_corner(mx + 1, my + 1, L);
             gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)L0 * 0x010101u), gfx_grade_tex((u32)L1 * 0x010101u), gfx_grade_tex((u32)L2 * 0x010101u), gfx_grade_tex((u32)L3 * 0x010101u),
@@ -1559,6 +1679,16 @@ static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), 
     const XV *A = &xv[0], *B = &xv[1], *C = &xv[2], *Dd = &xv[3];
     static int Lfr = -1, Lup; if (Lfr != frame_t) { Lfr = frame_t; Lup = CLAMP(gfx_light(0, -ONE, 0), 40, 200); }
     int L = Lup;
+    if (nc_need4(A, B, C, Dd)) {   // (the eye is close: cut at the near plane, split in first person)
+        u32 cc[4], uv4[4] = { (u32)t->u | ((u32)t->v << 8), (u32)(t->u + 31) | ((u32)t->v << 8), (u32)t->u | ((u32)(t->v + 31) << 8), (u32)(t->u + 31) | ((u32)(t->v + 31) << 8) };
+        if (!dbg_noao && (near_wall(mx, my) | near_wall(mx + 1, my) | near_wall(mx, my + 1) | near_wall(mx + 1, my + 1))) {
+            cc[0] = gfx_grade_tex((u32)ao_corner(mx, my, L) * 0x010101u); cc[1] = gfx_grade_tex((u32)ao_corner(mx + 2, my, L) * 0x010101u);
+            cc[2] = gfx_grade_tex((u32)ao_corner(mx, my + 2, L) * 0x010101u); cc[3] = gfx_grade_tex((u32)ao_corner(mx + 2, my + 2, L) * 0x010101u);
+        } else cc[0] = cc[1] = cc[2] = cc[3] = gfx_grade_tex((u32)L * 0x010101u);
+        SVECTOR s4[4] SVEC_ALIGN; s4[0] = sv[0]; s4[1] = sv[1]; s4[2] = sv[2]; s4[3] = sv[3];
+        nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 1, t->tpage, 0, uv4, 0);
+        return;
+    }
     if (!dbg_noao && (near_wall(mx, my) | near_wall(mx + 1, my) | near_wall(mx, my + 1) | near_wall(mx + 1, my + 1))) {
         int L0 = ao_corner(mx, my, L), L1 = ao_corner(mx + 2, my, L), L2 = ao_corner(mx, my + 2, L), L3 = ao_corner(mx + 2, my + 2, L);
         gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)L0 * 0x010101u), gfx_grade_tex((u32)L1 * 0x010101u), gfx_grade_tex((u32)L2 * 0x010101u), gfx_grade_tex((u32)L3 * 0x010101u),
@@ -1592,8 +1722,15 @@ static void wface(const TexRef *t, int ax, int az, int bx, int bz, int yTop, int
     int v0 = vb - memo[slot_].dv0, v1 = vb - memo[slot_].dv1;
     v0 = CLAMP(v0, t->v, vb); v1 = CLAMP(v1, t->v, vb);
     int L = memo[slot_].L, Lt = memo[slot_].Lt, Lb = memo[slot_].Lb;
+    SVECTOR sv[4] SVEC_ALIGN; sv[0] = a; sv[1] = b; sv[2] = c; sv[3] = d; XV xv[4]; gfx_xform(sv, xv, 4);
+    if (nc_need4(&xv[0], &xv[1], &xv[2], &xv[3])) {   // (the eye is close: cut at the near plane, split in first person)
+        u32 ct_ = dbg_nograd ? gfx_grade_tex((u32)L * 0x010101u) : gfx_grade_tex((u32)Lt * 0x010101u), cb_ = dbg_nograd ? ct_ : gfx_grade_tex((u32)Lb * 0x010101u);
+        const u32 cc[4] = { ct_, ct_, cb_, cb_ };
+        const u32 uv4[4] = { (u32)(t->u + u0) | ((u32)v0 << 8), (u32)(t->u + u1) | ((u32)v0 << 8), (u32)(t->u + u0) | ((u32)v1 << 8), (u32)(t->u + u1) | ((u32)v1 << 8) };
+        nc_quad(&sv[0], &sv[1], &sv[2], &sv[3], cc, 1, t->tpage, 0, uv4, 1);
+        return;
+    }
     if (dbg_nograd) { gfx_quad_ft(&a, &b, &c, &d, t->tpage, 0, t->u + u0, v0, t->u + u1, v0, t->u + u0, v1, t->u + u1, v1, L, 1, 0); return; }
-    SVECTOR sv[4] = { a, b, c, d }; XV xv[4]; gfx_xform(sv, xv, 4);
     if (!xv_vis4(&xv[0], &xv[1], &xv[2], &xv[3], 1)) return;
     u32 ct = gfx_grade_tex((u32)Lt * 0x010101u), cb = gfx_grade_tex((u32)Lb * 0x010101u);
     gfx_put_gt4(&xv[0], &xv[1], &xv[2], &xv[3], ct, ct, cb, cb, (u32)t->tpage << 16, 0, t->u + u0, v0, t->u + u1, v1);
@@ -1602,13 +1739,13 @@ static void wtop(u16 tc, int xa, int xb, int za, int zb, int y) {   // the top o
     SVECTOR a, b, c, d; int L = gfx_light(0, -ONE, 0);
     setVector(&a, xa, y, za); setVector(&b, xb, y, za); setVector(&c, xa, y, zb); setVector(&d, xb, y, zb);
     int r = (R8(tc) * L) >> 7, g = (G8(tc) * L) >> 7, bl = (B8(tc) * L) >> 7;
-    gfx_quad_f(&a, &b, &c, &d, MIN(r, 255), MIN(g, 255), MIN(bl, 255), 1);
+    wquad_f(&a, &b, &c, &d, MIN(r, 255), MIN(g, 255), MIN(bl, 255), 1);
 }
 static void skirt(int ax, int az, int bx, int bz, int nx, int nz) {   // a skirting board along a face's foot
     SVECTOR a, b, c, d; u16 bc = RGB(26, 25, 23); int L = CLAMP(gfx_light(nx, 0, nz), 40, 200);
     int ox = nx ? (nx > 0 ? 3 : -3) : 0, oz = nz ? (nz > 0 ? 3 : -3) : 0;
     setVector(&a, ax + ox, -22, az + oz); setVector(&b, bx + ox, -22, bz + oz); setVector(&c, ax + ox, 0, az + oz); setVector(&d, bx + ox, 0, bz + oz);
-    gfx_quad_f(&a, &b, &c, &d, (R8(bc) * L) >> 7, (G8(bc) * L) >> 7, (B8(bc) * L) >> 7, 1);
+    wquad_f(&a, &b, &c, &d, (R8(bc) * L) >> 7, (G8(bc) * L) >> 7, (B8(bc) * L) >> 7, 1);
 }
 // a slab [xa..xb] x [zb..za] (za > zb) of height h: its four sides (those not flagged hidden) and its top
 static int ws_lite;                                   // another building's wall (under its roof): no skirting, no top, only the pane on the near side
@@ -1676,11 +1813,11 @@ static void door_tile(int mx, int my, int h) {
     int r = (R8(fc) * L) >> 7, g = (G8(fc) * L) >> 7, b = (B8(fc) * L) >> 7;
     SVECTOR a, bb, c, d;
     #define BOX(xa, xb, ya, yb, za, zb) { \
-        setVector(&a, xb, ya, za); setVector(&bb, xa, ya, za); setVector(&c, xb, yb, za); setVector(&d, xa, yb, za); gfx_quad_f(&a, &bb, &c, &d, r, g, b, 1); \
-        setVector(&a, xa, ya, zb); setVector(&bb, xb, ya, zb); setVector(&c, xa, yb, zb); setVector(&d, xb, yb, zb); gfx_quad_f(&a, &bb, &c, &d, r, g, b, 1); \
-        setVector(&a, xa, ya, za); setVector(&bb, xa, ya, zb); setVector(&c, xa, yb, za); setVector(&d, xa, yb, zb); gfx_quad_f(&a, &bb, &c, &d, r * 3 / 4, g * 3 / 4, b * 3 / 4, 1); \
-        setVector(&a, xb, ya, zb); setVector(&bb, xb, ya, za); setVector(&c, xb, yb, zb); setVector(&d, xb, yb, za); gfx_quad_f(&a, &bb, &c, &d, r * 3 / 4, g * 3 / 4, b * 3 / 4, 1); \
-        setVector(&a, xa, ya, za); setVector(&bb, xb, ya, za); setVector(&c, xa, ya, zb); setVector(&d, xb, ya, zb); gfx_quad_f(&a, &bb, &c, &d, r * 5 / 4, g * 5 / 4, b * 5 / 4, 1); }
+        setVector(&a, xb, ya, za); setVector(&bb, xa, ya, za); setVector(&c, xb, yb, za); setVector(&d, xa, yb, za); wquad_f(&a, &bb, &c, &d, r, g, b, 1); \
+        setVector(&a, xa, ya, zb); setVector(&bb, xb, ya, zb); setVector(&c, xa, yb, zb); setVector(&d, xb, yb, zb); wquad_f(&a, &bb, &c, &d, r, g, b, 1); \
+        setVector(&a, xa, ya, za); setVector(&bb, xa, ya, zb); setVector(&c, xa, yb, za); setVector(&d, xa, yb, zb); wquad_f(&a, &bb, &c, &d, r * 3 / 4, g * 3 / 4, b * 3 / 4, 1); \
+        setVector(&a, xb, ya, zb); setVector(&bb, xb, ya, za); setVector(&c, xb, yb, zb); setVector(&d, xb, yb, za); wquad_f(&a, &bb, &c, &d, r * 3 / 4, g * 3 / 4, b * 3 / 4, 1); \
+        setVector(&a, xa, ya, za); setVector(&bb, xb, ya, za); setVector(&c, xa, ya, zb); setVector(&d, xb, ya, zb); wquad_f(&a, &bb, &c, &d, r * 5 / 4, g * 5 / 4, b * 5 / 4, 1); }
     int P = 14;
     if (alongX) { BOX(x0, x0 + P, -h, 0, cz + WT, cz - WT) BOX(x1 - P, x1, -h, 0, cz + WT, cz - WT) BOX(x0, x1, -h, -h + 56, cz + WT, cz - WT) }
     else        { BOX(cx - WT, cx + WT, -h, 0, zN, zN - P) BOX(cx - WT, cx + WT, -h, 0, zS + P, zS) BOX(cx - WT, cx + WT, -h, -h + 56, zN, zS) }
@@ -1701,7 +1838,7 @@ static void fascia(int mx, int my) {
         else if (k == 2) { setVector(&a, x1, 0, zN); setVector(&b, x0, 0, zN); setVector(&c, x1, T, zN); setVector(&d, x0, T, zN); }
         else { setVector(&a, x0, 0, zN); setVector(&b, x0, 0, zS); setVector(&c, x0, T, zN); setVector(&d, x0, T, zS); }
         int L = gfx_light(ddx[k] * ONE, 0, -ddy[k] * ONE);
-        gfx_quad_f(&a, &b, &c, &d, MIN(255, (220 * L) >> 7), MIN(255, (212 * L) >> 7), MIN(255, (196 * L) >> 7), 1);
+        wquad_f(&a, &b, &c, &d, MIN(255, (220 * L) >> 7), MIN(255, (212 * L) >> 7), MIN(255, (196 * L) >> 7), 1);
     }
 }
 // ---- the view-space position of tile centres, by adding steps (the camera is one matrix a frame, so the view position is linear
@@ -2082,11 +2219,11 @@ static void roofs_draw(int fx, int fy) {
                     int X0 = b_x0[b] * TILE - 17, X1 = (b_x1[b] + 1) * TILE + 17, Z0 = -b_y0[b] * TILE + 17, Z1 = -(b_y1[b] + 1) * TILE - 17, Y = base - 10;
                     SVECTOR a, bb, cc, dd; setVector(&a, X0, Y, Z0); setVector(&bb, X1, Y, Z0); setVector(&cc, X0, Y, Z1); setVector(&dd, X1, Y, Z1);
                     int L = CLAMP(gfx_light(0, -ONE, 0), 60, 220);
-                    gfx_quad_f(&a, &bb, &cc, &dd, (118 * L) >> 7, (116 * L) >> 7, (112 * L) >> 7, !world_fp);
-                    setVector(&a, X0, Y - 24, Z1); setVector(&bb, X1, Y - 24, Z1); setVector(&cc, X0, Y, Z1); setVector(&dd, X1, Y, Z1); gfx_quad_f(&a, &bb, &cc, &dd, 150, 146, 140, 1);   // the parapet
-                    setVector(&a, X1, Y - 24, Z0); setVector(&bb, X0, Y - 24, Z0); setVector(&cc, X1, Y, Z0); setVector(&dd, X0, Y, Z0); gfx_quad_f(&a, &bb, &cc, &dd, 150, 146, 140, 1);
-                    setVector(&a, X0, Y - 24, Z0); setVector(&bb, X0, Y - 24, Z1); setVector(&cc, X0, Y, Z0); setVector(&dd, X0, Y, Z1); gfx_quad_f(&a, &bb, &cc, &dd, 132, 128, 124, 1);
-                    setVector(&a, X1, Y - 24, Z1); setVector(&bb, X1, Y - 24, Z0); setVector(&cc, X1, Y, Z1); setVector(&dd, X1, Y, Z0); gfx_quad_f(&a, &bb, &cc, &dd, 132, 128, 124, 1);
+                    wquad_f(&a, &bb, &cc, &dd, (118 * L) >> 7, (116 * L) >> 7, (112 * L) >> 7, !world_fp);
+                    setVector(&a, X0, Y - 24, Z1); setVector(&bb, X1, Y - 24, Z1); setVector(&cc, X0, Y, Z1); setVector(&dd, X1, Y, Z1); wquad_f(&a, &bb, &cc, &dd, 150, 146, 140, 1);   // the parapet
+                    setVector(&a, X1, Y - 24, Z0); setVector(&bb, X0, Y - 24, Z0); setVector(&cc, X1, Y, Z0); setVector(&dd, X0, Y, Z0); wquad_f(&a, &bb, &cc, &dd, 150, 146, 140, 1);
+                    setVector(&a, X0, Y - 24, Z0); setVector(&bb, X0, Y - 24, Z1); setVector(&cc, X0, Y, Z0); setVector(&dd, X0, Y, Z1); wquad_f(&a, &bb, &cc, &dd, 132, 128, 124, 1);
+                    setVector(&a, X1, Y - 24, Z1); setVector(&bb, X1, Y - 24, Z0); setVector(&cc, X1, Y, Z1); setVector(&dd, X1, Y, Z0); wquad_f(&a, &bb, &cc, &dd, 132, 128, 124, 1);
                     continue;
                 }
             }
@@ -2107,7 +2244,12 @@ static void roofs_draw(int fx, int fy) {
             int u0 = roof_tex.u, v0 = roof_tex.v, u1 = u0 + 15, v1 = v0 + 15;
             if (world_fp && b && b_see[b]) {   // first person, under your own roof: a plain plaster ceiling, not shingles
                 int lc = CLAMP(gfx_light_amb() * 2, 80, 190);
-                gfx_emit_f4(A, B, C, DQ, (u32)lc | ((u32)(lc - 4) << 8) | ((u32)(lc - 12) << 16), 0);
+                u32 pc = (u32)lc | ((u32)(lc - 4) << 8) | ((u32)(lc - 12) << 16);
+                if (nc_need4(A, B, C, DQ)) {   // (overhead and close: cut at the near plane, so the ceiling never has holes)
+                    SVECTOR s4[4] SVEC_ALIGN; roof_corner(l, x, y, &s4[0], base, pitch); roof_corner(l, x + 1, y, &s4[1], base, pitch); roof_corner(l, x, y + 1, &s4[2], base, pitch); roof_corner(l, x + 1, y + 1, &s4[3], base, pitch);
+                    const u32 cc[4] = { pc, pc, pc, pc }, uv0[4] = { 0, 0, 0, 0 };
+                    nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 0, 0, 0, uv0, 0);
+                } else gfx_emit_f4(A, B, C, DQ, pc, 0);
             } else if (ABS(dhz) >= ABS(dhx)) gfx_emit_gt4(A, B, C, DQ, c, c, c, c, roof_tex.tpage, 0, u0, v0, u1, v1, !world_fp);   // courses run across the slope (first person: seen from under it too)
             else gfx_emit_ft4(A, B, C, DQ, c, roof_tex.tpage, 0, u0, v0, u0, v1, u1, v0, u1, v1, !world_fp, 0);
             // the gable ends: where the roof stands above a footprint edge, a wall closes it

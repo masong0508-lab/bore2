@@ -22,7 +22,9 @@ menu: the BORE PANEL, BUILD MODE, CREATE A BORE, OPTIONS, HOW TO PLAY.
 Camera: L1 R1 orbit, L2 R2 zoom, the right stick orbits and tilts; L1 + R1 together swing it round behind you. L2 + R2
 together switch between three cameras: THE SIMS (it orbits you), BEHIND YOU (it follows round as you walk) and FIRST PERSON
 (through your Bore's eyes: up walks, left and right turn, L2 R2 look down and up, L1 + R1 together turn right round; the head levels out as you walk and sways a little, more when you run; a dot in the middle shows what X will do; your own roof is the ceiling). OPTIONS,
-CAMERA also sets how high it looks down from, how fast it turns and whether zooming in tilts it down.
+CAMERA also sets how high it looks down from, how fast it turns, whether zooming in tilts it down and the WALL VIEW: AUTO (the walls between you and
+the camera are cut low, but not in first person), CUT AWAY (always) or FULL WALLS (never). In first person nothing near you is dropped: a floor, wall or
+ceiling that reaches behind the eye is cut at a near plane and drawn from what is in front, and close ones are split so they do not swim.
 
 ## Build it
 1. Install PSn00bSDK (https://github.com/Lameguy64/PSn00bSDK/releases) so `mipsel-none-elf-gcc` and `cmake` work.
