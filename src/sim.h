@@ -64,6 +64,8 @@ extern int  nsims, player;
 extern int  clock_min, clock_day;    // game time: minutes 0..1439, MON..SUN
 extern long cash;
 extern int  job_level, job_worked, job_days_good, job_strikes;
+extern int  has_board, on_board, board_lift;   // (board_lift: how high above the floor the rider is, on a ramp or in the air)
+//     // a skateboard owned / being ridden (O toggles)
 extern int  sim_speed;               // 1 normal, 2 fast, 3 ultra
 extern int  bills_due;
 extern char last_note[32]; extern int last_note_t;

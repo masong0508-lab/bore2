@@ -284,7 +284,7 @@ static const ItemDef defs[] = {
     { 'k', "SKATE FLAG", bxFlagS, 2, 0, 0, F_FLAT, 0 },
     { 'x', "WORK MARKER", bxWork, 1, 0, 0, F_FLAT, 0 },
     { 'P', "SPAWN", bxSpawn, 1, 0, 0, F_FLAT, 0 },
-    { 'B', "BOARD", bxBoard, 5, 0, 0, F_FLAT, 0 },
+    { 'B', "SKATEBOARD", bxBoard, 5, 0, 0, F_FLAT, 120 },
     { '|', "STAIRS", bxBoard, 1, 0, 0, F_ROT, 400 },
     { 'g', "PALM TREE", bxPalm, 3, 0, 0, 0, 150 },
     { 'u', "CACTUS", bxCactus, 3, 0, 0, 0, 40 },
@@ -463,7 +463,10 @@ int getenv_noshadow;
 
 // ---- THE SKATEBOARD, modelled (the GBA's was a brick on four cubes): a thin 7-ply deck with a kicked nose and tail,
 // griptape on top, the graphic underneath, two silver trucks and four urethane wheels ----
+static void skate_model(void);
+static int sk_k = 16;   // scale /16 (a ridden board is bigger than the one on the floor)
 static void sk_quad(SVECTOR *a, SVECTOR *b, SVECTOR *c, SVECTOR *d, int r, int g, int bl, int nx, int ny, int nz) {
+    if (sk_k != 16) { SVECTOR *q[4] = { a, b, c, d }; for (int i = 0; i < 4; i++) { q[i]->vx = (s16)(q[i]->vx * sk_k >> 4); q[i]->vy = (s16)(q[i]->vy * sk_k >> 4); q[i]->vz = (s16)(q[i]->vz * sk_k >> 4); } }
     int L = gfx_light(nx, ny, nz);
     gfx_quad_f(a, b, c, d, MIN(255, (r * L) >> 7), MIN(255, (g * L) >> 7), MIN(255, (bl * L) >> 7), 1);
 }
@@ -486,6 +489,15 @@ static void skate_item(int mx, int my, int r) {
     VECTOR p; setVector(&p, mx * TILE + TILE / 2, 0, -(my * TILE + TILE / 2));
     gfx_set_object(&p, (r & 1) * 1024);
     { SVECTOR A, B, C, DD; setVector(&A, -60, -2, 140); setVector(&B, 60, -2, 140); setVector(&C, -60, -2, -140); setVector(&DD, 60, -2, -140); gfx_shadow_quad(&A, &B, &C, &DD); }
+    skate_model();
+    gfx_set_identity();
+}
+void items_draw_board(int x, int z, int yaw, int y) {
+    VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, yaw & 4095);
+    sk_k = 26; skate_model(); sk_k = 16;
+    gfx_set_identity();
+}
+static void skate_model(void) {
     const int BW = 34, Lf = 78, L = 112, T = 6, top = -30;
     sk_slab(BW, -Lf, top, Lf, top, T);                                     // the flat middle
     sk_slab(BW - 4, Lf, top, L, top - 15, T);                              // the nose kicks up
@@ -500,7 +512,6 @@ static void skate_item(int mx, int my, int r) {
         sk_box(-44, -32, -17, 0, zc - 9, zc + 9, 242, 232, 204);                     // wheels
         sk_box(32, 44, -17, 0, zc - 9, zc + 9, 242, 232, 204);
     }
-    gfx_set_identity();
 }
 
 static void stairs_item(int mx, int my, int r) {   // a flight of stairs filling one tile: eight steps up a whole storey, rising away from the open side
@@ -514,6 +525,67 @@ static void stairs_item(int mx, int my, int r) {   // a flight of stairs filling
     sk_box(-118, -104, -WALL_FULL - 30, 0, -TILE / 2, TILE / 2, 120, 84, 56);            // the side stringers
     sk_box(104, 118, -WALL_FULL - 30, 0, -TILE / 2, TILE / 2, 120, 84, 56);
     gfx_set_identity();
+}
+
+
+// ---- RAMPS, drawn as smooth slopes (the item tables keep their stacked slabs for the footprint, the shadow and the height; what you SEE is these) ----
+// A ramp is a profile (height H in world units at depth B, 0..64 = the tile's 8 item units, B = 0 the tall lip), swept across A = 0..64, in strips.
+static const s16 rpBKi[11] = { 0, 6, 13, 19, 26, 32, 38, 45, 51, 58, 64 };
+static const s16 rpHKi[11] = { 288, 263, 234, 210, 181, 156, 131, 102, 78, 49, 24 };
+static const s16 rpBLa[11] = { 0, 6, 13, 19, 26, 32, 38, 45, 51, 58, 64 };
+static const s16 rpHLa[11] = { 432, 365, 294, 237, 178, 133, 93, 55, 29, 20, 20 };
+static const s16 rpBQp[13] = { 6, 6, 8, 10, 14, 18, 23, 29, 35, 42, 49, 56, 64 };
+static const s16 rpHQp[13] = { 576, 501, 427, 356, 288, 225, 169, 119, 77, 44, 20, 20, 20 };
+static int rp_nb[3][16], rp_nu[3][16], rp_ok;   // each strip's slope normal (in the ramp's own b / up), worked out once
+static int rp_isq(int n) { int x = n, y = (x + 1) >> 1; while (y < x) { x = y; y = (x + n / x) >> 1; } return x; }
+static void rp_pt(SVECTOR *o, int r, int ox, int oz, int A, int B, int H) {
+    int u, v;
+    switch (r & 3) { case 0: u = A; v = B; break; case 1: u = B; v = 64 - A; break; case 2: u = 64 - A; v = 64 - B; break; default: u = 64 - B; v = A; }
+    setVector(o, ox + u * 4, -H, -(oz + v * 4));
+}
+static void rp_quad(int r, int ox, int oz, const int p[4][3], int cr, int cg, int cb, int na, int nb, int nup) {   // corners TL TR BL BR seen from outside; (na, nb, nup): the normal in the ramp's frame, /4096
+    SVECTOR q[4];
+    for (int k = 0; k < 4; k++) rp_pt(&q[k], r, ox, oz, p[k][0], p[k][1], p[k][2]);
+    int nu, nv; switch (r & 3) { case 0: nu = na; nv = nb; break; case 1: nu = nb; nv = -na; break; case 2: nu = -na; nv = -nb; break; default: nu = -nb; nv = na; }
+    int L = gfx_light(nu, -nup, -nv);
+    gfx_quad_f(&q[0], &q[1], &q[2], &q[3], MIN(255, (cr * L) >> 7), MIN(255, (cg * L) >> 7), MIN(255, (cb * L) >> 7), 1);
+}
+static void ramp_draw(char ch, int mx, int my, int r) {
+    int k = ch == '5' ? 2 : ch == '9' ? 1 : 0;
+    const s16 *B = k == 2 ? rpBQp : k == 1 ? rpBLa : rpBKi, *H = k == 2 ? rpHQp : k == 1 ? rpHLa : rpHKi;
+    int n = k == 2 ? 12 : 10, ox = mx * TILE, oz = my * TILE;
+    if (!rp_ok) { rp_ok = 1;
+        for (int q = 0; q < 3; q++) { const s16 *b = q == 2 ? rpBQp : q == 1 ? rpBLa : rpBKi, *h = q == 2 ? rpHQp : q == 1 ? rpHLa : rpHKi; int m = q == 2 ? 12 : 10;
+            for (int i = 0; i < m; i++) { int dB = (b[i + 1] - b[i]) * 4, dH = h[i + 1] - h[i], len = rp_isq(dB * dB + dH * dH); if (len < 1) len = 1;
+                rp_nb[q][i] = (-dH * 4096) / len; rp_nu[q][i] = (dB * 4096) / len; } } }
+    static const u8 top[3][2][3] = { { { 222, 158, 94 }, { 204, 142, 82 } }, { { 100, 164, 236 }, { 84, 146, 218 } }, { { 198, 138, 78 }, { 182, 124, 68 } } };
+    static const u8 side[3][3] = { { 150, 104, 58 }, { 58, 100, 178 }, { 140, 96, 54 } };
+    for (int i = 0; i < n; i++) {
+        int b0 = B[i], b1 = B[i + 1], h0 = H[i], h1 = H[i + 1];
+        const u8 *tc = top[k][i & 1], *sc = side[k];
+        int t[4][3] = { { 0, b0, h0 }, { 64, b0, h0 }, { 0, b1, h1 }, { 64, b1, h1 } };
+        rp_quad(r, ox, oz, t, tc[0], tc[1], tc[2], 0, rp_nb[k][i], rp_nu[k][i]);                                   // the slope
+        int e[4][3] = { { 64, b1, h1 }, { 64, b0, h0 }, { 64, b1, 0 }, { 64, b0, 0 } };
+        rp_quad(r, ox, oz, e, sc[0], sc[1], sc[2], 4096, 0, 0);                                                    // the east cheek
+        int w[4][3] = { { 0, b0, h0 }, { 0, b1, h1 }, { 0, b0, 0 }, { 0, b1, 0 } };
+        rp_quad(r, ox, oz, w, sc[0], sc[1], sc[2], -4096, 0, 0);                                                   // the west cheek
+    }
+    int bk[4][3] = { { 64, 0, H[0] }, { 0, 0, H[0] }, { 64, 0, 0 }, { 0, 0, 0 } };
+    rp_quad(r, ox, oz, bk, side[k][0] * 4 / 5, side[k][1] * 4 / 5, side[k][2] * 4 / 5, 0, -4096, 0);              // the back
+    if (k == 2) { int cp[4][3] = { { 0, 0, H[0] }, { 64, 0, H[0] }, { 0, B[0], H[0] }, { 64, B[0], H[0] } };
+                  rp_quad(r, ox, oz, cp, 206, 212, 224, 0, 0, 4096); }                                              // the pipe's metal coping
+}
+
+int items_ramp_h(char ch, int facing, int lx, int lv) {   // the ramp's surface height (world units) at (lx, lv) in its tile (0..255, lv south), the same shape ramp_draw draws
+    int k = ch == '5' ? 2 : ch == '9' ? 1 : 0, r = items_rotates(ch) ? facing : 0;
+    if (ch == '1' || ch == '2' || ch == '4') r = ch - '1'; if (ch == '5') r = 0;
+    int u = CLAMP(lx >> 2, 0, 64), v = CLAMP(lv >> 2, 0, 64), A, B;
+    switch (r & 3) { case 0: A = u; B = v; break; case 1: A = 64 - v; B = u; break; case 2: A = 64 - u; B = 64 - v; break; default: A = v; B = 64 - u; }
+    (void)A;
+    const s16 *b = k == 2 ? rpBQp : k == 1 ? rpBLa : rpBKi, *h = k == 2 ? rpHQp : k == 1 ? rpHLa : rpHKi; int n = k == 2 ? 12 : 10;
+    if (B <= b[0]) return h[0];
+    for (int i = 0; i < n; i++) if (B <= b[i + 1]) { int span = b[i + 1] - b[i]; return span > 0 ? h[i] + (h[i + 1] - h[i]) * (B - b[i]) / span : h[i + 1]; }
+    return h[n];
 }
 
 void items_draw(char ch, int mx, int my, int rot, int along, int t) {
@@ -542,5 +614,6 @@ void items_draw(char ch, int mx, int my, int rot, int along, int t) {
             gfx_shadow_quad(&A, &B, &C, &Dd);
         }
     }
+    if (ch == '1' || ch == '2' || ch == '4' || ch == '5' || ch == '9') { ramp_draw(ch, mx, my, r); return; }   // (the ramps: smooth slopes, not stacked slabs)
     for (int i = 0; i < n; i++) draw_box(&b[i], box_ref[base + i], r, ox, oz, t);
 }

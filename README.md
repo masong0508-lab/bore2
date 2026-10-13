@@ -12,7 +12,7 @@ For a real PlayStation or PCSX-ReARMed, burn or open `bore2.cue` + `bore2.bin` f
 Every push to GitHub builds both: open Actions, the newest green run, and download **BORE2_chd** or **bore2_disc** under Artifacts.
 
 Controls: stick / d-pad move, X uses the thing in front (fridge, bed, shower, sofa, TV, radio, the DeadSet...), talk to a
-housemate with X, O gets up, SQUARE runs, TRIANGLE game speed. SELECT opens your PHONE: CALL, PIZZA, PARTY, MAP, TRAVEL (the
+housemate with X, O gets up, SQUARE runs, O rides a skateboard (buy one at a clothes shop, or pick one up off the floor with X), TRIANGLE game speed. SELECT opens your PHONE: CALL, PIZZA, PARTY, MAP, TRAVEL (the
 island and the desert town), JOBS, HOMES, PEOPLE, FAMILY (play as another Bore), ADOPT, MUSIC and GOALS. START is the short
 menu: the BORE PANEL, BUILD MODE, CREATE A BORE, OPTIONS, HOW TO PLAY.
 

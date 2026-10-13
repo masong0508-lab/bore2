@@ -270,6 +270,7 @@ static void draw_sims(void) {
             p.vy = (bc == 'S' || bc == '<' || bc == 'z') ? -items_height('S') + 40 : -((bc == CH_CRIB ? 4 * IZ : 0) + lying_drop(&s->bore)); }
         if (s->action == ACT_SIT || s->action == ACT_WC || (s->action == ACT_EAT && s->gait.sit)) p.vy = -items_height(world_at(s->act_x, s->act_y)) / 2 + 10;
         if (s->action == ACT_SWIM) p.vy = 30 + (isin((frame * 60) & 4095) >> 9);   // afloat, bobbing
+        if (i == player && on_board) p.vy -= 46 + board_lift;   // standing on the deck
         s->gait.mood = s->mood; s->gait.talk = s->action == ACT_TALK; s->gait.seed = i; s->gait.clock = frame;
         p.vy -= s->lvl * WALL_FULL;
         {   // far from where you are looking: the same person at half the voxel resolution (the crowd model); close up, the full model
@@ -291,6 +292,7 @@ static void draw_sims(void) {
             if (far && !drawn) dbg_hh_miss++;
             PROF_END(4);
         }
+        if (i == player && on_board) items_draw_board(s->x, s->z, s->yaw, -board_lift - s->lvl * WALL_FULL);
         if (s->action != ACT_SLEEP && s->action != ACT_SWIM && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
     citizens_draw();
@@ -475,7 +477,7 @@ static void life_update(int steps) {
         if (HELD(PAD_UP)) mz = 4096; if (HELD(PAD_DOWN)) mz = -4096;
     }
     if (cam_view == 2) {   // first person: up and down walk, left and right (and L1 R1) turn
-        int turn = (mx * 50) >> 12; if (HELD(PAD_L1)) turn -= 60; if (HELD(PAD_R1)) turn += 60;
+        int turn = -((mx * 50) >> 12); if (HELD(PAD_L1)) turn += 60; if (HELD(PAD_R1)) turn -= 60;   // (yaw grows to the LEFT of a south-facing eye: right is a negative turn)
         if (!mz && !turn) sim_player_tank(0, 0, 0);
         else for (int k = 0; k < steps; k++) sim_player_tank(mz, turn, HELD(PAD_SQUARE));
     } else if (mx || mz) {   // turn the push by the camera yaw: "up" = away from the camera
@@ -2054,7 +2056,7 @@ static int floor_supported(int l, int x, int y) {   // an upper floor needs some
 }
 // ---- the catalog (Sims buy mode): the items in tabs, a scrolling list with prices ----
 static const char *const catNm[7] = { "SEATS, BEDS", "TABLES, STORAGE", "KITCHEN, BATH", "FUN AND TECH", "DECOR, PLANTS", "SKATE", "SPECIAL" };
-static const char *const catSet[6] = { "CUh;S<N%z\x81", "tdibyK?#O", "F/:cTH,->&Y`", "vARj[!$()QImn]_{", "rlpZVqo}gus*0", "=LJXM159G" };
+static const char *const catSet[6] = { "CUh;S<N%z\x81", "tdibyK?#O", "F/:cTH,->&Y`", "vARj[!$()QImn]_{", "rlpZVqo}gus*0", "=LJXM159GB" };
 static int item_cat(char ch) { if ((u8)ch > 0x81) return -1; /* (the cake, the gravestone and the island's own are never bought) */ for (int c = 0; c < 6; c++) if (strchr(catSet[c], ch)) return c; return 6; }
 static int cat_list(int cat, int *idx) { int n = 0; for (int i = 0; i < items_count() && n < 96; i++) if (item_cat(items_at(i)) == cat) idx[n++] = i; return n; }
 static void catalog_step(int dir) {   // L1 R1: through the tab, and on into the next tab at the end

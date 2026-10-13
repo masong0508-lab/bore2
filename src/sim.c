@@ -190,19 +190,25 @@ void sim_switch_player(void) {
 }
 
 // ---- walking with collision (the lot's tiles) ----
+int has_board, on_board, board_lift; static int board_v, board_vy, board_air, board_prev;   // the skateboard: owned, ridden, how high the rider is, and the coasting / air state
+static int ramp_pass;   // set while the rider's own step is tried: a board can roll onto a ramp
+static int is_ramp(char c) { return c == '1' || c == '2' || c == '4' || c == '5' || c == '9'; }
+static int ramp_g(int px, int pz, char c, int mx, int my) { return items_ramp_h(c, world_item_facing(mx, my), px - mx * TILE, (-pz) - my * TILE); }
 static int footprint_free(int x, int z) {
     for (int k = 0; k < 4; k++) {
         int px = x + ((k & 1) ? SIM_RADIUS : -SIM_RADIUS), pz = z + ((k & 2) ? SIM_RADIUS : -SIM_RADIUS);
         int mx = px / TILE, my = (-pz) / TILE;
         if (px < 0 || pz > 0) return 0;
+        if (ramp_pass && is_ramp(world_at(mx, my)) && ramp_g(px, pz, world_at(mx, my), mx, my) <= board_lift + 90) continue;   // (from the low side, or in the air above it)
         if (!world_walkable(mx, my)) return 0;
     }
     return 1;
 }
 static int walk(Sim *s, int dx, int dz) {   // returns 1 if it moved at all
-    int moved = 0;
+    int moved = 0; ramp_pass = on_board && s == &sims[player];
     if (dx && footprint_free(s->x + dx, s->z)) { s->x += dx; moved = 1; }
     if (dz && footprint_free(s->x, s->z + dz)) { s->z += dz; moved = 1; }
+    ramp_pass = 0;
     return moved;
 }
 static int speed_of(const Sim *s) {
@@ -468,6 +474,7 @@ static int act_len(int act) {
 }
 static void begin_action(Sim *s, int act, int mx, int my) {
     if (act == ACT_TALK && (int)(s - sims) == player) story_talks++;
+    if ((int)(s - sims) == player) { on_board = 0; board_lift = 0; board_air = 0; }
     s->action = act; s->act_t = act_len(act); s->act_x = mx; s->act_y = my; s->act_var = 0;
     s->path_n = 0;
     if (stands_on(act, mx, my)) { s->x = mx * TILE + TILE / 2; s->z = -(my * TILE + TILE / 2); s->yaw = (world_item_facing(mx, my) * 1024) & 4095; }
@@ -1168,7 +1175,20 @@ void sim_step(void) {
     if (last_note_t > 0) last_note_t--;
 }
 
-// ---- the player ----
+// ---- the board on ramps: it follows a ramp's surface, leaves the lip with the speed it climbed at, and lands again ----
+static void board_phys(Sim *s) {
+    int mx = s->x / TILE, my = (-s->z) / TILE; char c = world_at(mx, my);
+    int g = is_ramp(c) ? ramp_g(s->x, s->z, c, mx, my) : 0;
+    if (board_air) {
+        board_vy -= 1; board_lift += board_vy;
+        if (board_lift <= g) { board_lift = g; board_air = 0; board_vy = 0; }
+    } else if (board_lift - g > 30) {                       // rolled off a lip: up and away at the climb's rate
+        board_air = 1; board_vy = CLAMP((board_lift - board_prev) * 2, 0, 44);
+        board_prev = board_lift; board_lift += board_vy;
+        return;
+    } else { board_prev = board_lift; board_lift = g; }
+    if (board_lift < 0) board_lift = 0;
+}
 void sim_player_move(int dx, int dz, int run) {
     Sim *s = &sims[player];
     world_lvl = s->lvl;
@@ -1178,17 +1198,22 @@ void sim_player_move(int dx, int dz, int run) {
         end_action(s);                                                       // walking off: it stops
     }
     s->path_n = 0; s->action = ACT_NONE;
-    if (!dx && !dz) { s->gait.amp = s->gait.amp > 300 ? s->gait.amp - 300 : 0; return; }
+    if (!dx && !dz) {
+        if (on_board && board_v > 0) { walk(s, (isin(s->yaw) * board_v) >> 12, -((icos(s->yaw) * board_v) >> 12)); board_v = board_v > 2 ? board_v - 2 : 0; s->gait.amp = 300; }   // coasting
+        else s->gait.amp = s->gait.amp > 300 ? s->gait.amp - 300 : 0;
+        if (on_board) board_phys(s);
+        world_lvl = 0; return; }
     // REAL 3D WALKING: the Bore turns toward the push first and only ever moves the way it FACES -
     // far from the push direction it pivots on the spot, so it never slides sideways like a 2D sprite.
     int want = yaw_towards(dx, dz);
     int diff = ((want - s->yaw + 2048) & 4095) - 2048;                       // how far round it still has to turn
-    turn_to(s, want, 260 + (ABS(diff) >> 3));                                // the wider the turn, the faster it swings
+    turn_to(s, want, on_board ? 120 + (ABS(diff) >> 4) : 260 + (ABS(diff) >> 3));   // (a board carves wider)                                // the wider the turn, the faster it swings
     int mag = SquareRoot0(dx * dx + dz * dz); if (mag > 4096) mag = 4096;    // stick tilt = walk speed
     int align = 4096 - ABS(diff) * 2; if (align < 0) align = 0;              // 4096 facing it .. 0 facing away
-    int sp0 = speed_of(s); if (run) sp0 = sp0 * 3 / 2;
+    int sp0 = speed_of(s); if (run) sp0 = sp0 * 3 / 2; if (on_board) sp0 = sp0 * 2;
     int sp = ((sp0 * mag) >> 12) * align >> 12;
     if (sp) walk(s, (isin(s->yaw) * sp) >> 12, -((icos(s->yaw) * sp) >> 12));
+    if (on_board) { board_v = MAX(board_v, sp); s->gait.amp = 300; board_phys(s); world_lvl = 0; return; }   // riding: the legs stay still
     s->gait.amp = MAX(1600, (mag * align) >> 12);                            // pivoting: small steps; under way: the full swing
     s->gait.phase = (s->gait.phase + (((run ? 200 : 150) * MAX(mag, 2048)) >> 12)) & 4095;
     world_lvl = 0;
@@ -1221,6 +1246,7 @@ static int usable_at(int tx, int ty, char c) {   // something X does something w
     if (action_for(c) != ACT_NONE) return 1;
     if (c == '8') return world_zone == ZONE_CITY;      // a FOR SALE sign
     if (c == CH_RAFT) return 1;
+    if (c == 'B') return !has_board;                   // a skateboard on the floor: pick it up
     if (!c || !strchr("y7d`it", c)) return 0;         // a counter, a shelf, a desk, a mirror, a rack, a table: at a place, to buy at or to work at
     if (job_here(tx, ty, c)) return 1;
     PlaceInfo pi; if (!place_at(tx, ty, &pi)) return 0;
@@ -1274,6 +1300,7 @@ static const char *sim_hint_(void) {
     if (mine && is_work()) return "WORK";
     if (c == 'x') return mine ? "NOT WORK TIME" : "NOT YOUR JOB";
     if (c == '8') return "FOR SALE";
+    if (c == 'B') return "PICK UP";
     PlaceInfo pi;
     if (place_at(mx, my, &pi)) {
         if (!place_open(pi.lot, clock_min, clock_day)) return "CLOSED";
@@ -1301,7 +1328,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING };
+       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD };
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1344,6 +1371,7 @@ static int sim_pie_open_(char opt[8][16]) {
         sprintf(opt[0], "BUY $%d", home_price(bx, by)); pie_code[0] = 36;
         strcpy(opt[1], "WHAT IS IT?"); pie_code[1] = 37; pie_n = 2; return 2;
     }
+    if (c == 'B') { strcpy(pie_title, "SKATEBOARD"); strcpy(opt[0], "PICK UP"); pie_code[0] = PC_PICKBOARD; pie_n = 1; return 1; }
     pie_place = place_at(mx, my, &pie_pi);
     int mine = job_here(mx, my, c);
     if (mine && !is_work()) { if (c == 'x') { char b[40], h1[8], h2[8]; sprintf(b, "WORK IS %s TO %s", hour_name(careers[job_car].from, h1), hour_name(careers[job_car].to, h2)); sim_note(b); return 0; } mine = 0; }
@@ -1402,6 +1430,7 @@ static int sim_pie_open_(char opt[8][16]) {
         case LOT_DINER: if (c == 'y') { OPT("A MEAL $15", PC_MEAL) OPT("A SNACK $6", PC_SNACK) OPT("A COFFEE $3", PC_COFFEE) } else if (c == 'c') OPT("A COFFEE $3", PC_COFFEE) break;
         case LOT_SHOP: { static const char *const buy[5] = { "GROCERIES $60", "AN OUTFIT $150", "A GAME $60", 0, "A RECORD $25" };
                          int k = place_shop_kind(pie_pi.h); if (buy[k] && pie_n < 7) OPT(buy[k], PC_BUY0 + k)
+                         if (k == 1 && !has_board && pie_n < 7) OPT("SKATEBOARD $120", PC_BOARD)
                          if (pie_n < 8) OPT("BROWSE", PC_BROWSE) } break;
         case LOT_GYM: if ((c == ']' || c == 'm' || c == '_') && pie_n < 8) OPT("A TRAINER $20", PC_TRAINER) break;
         case LOT_POOL: if ((c == '~' || c == '>') && pie_n < 8) OPT("SWIM", PC_SWIM) break;
@@ -1488,6 +1517,8 @@ static void place_do(Sim *s, int code) {
         case PC_BUY0 + 1: if (!pay(150)) return; new_look(&s->bore, 3); crowd_forget(CROWD_MAX + player); shopped(s, "A NEW OUTFIT!", ML_OUTFIT); break;
         case PC_BUY0 + 2: if (!pay(60)) return; s->need[N_FUN] = MIN(s->need[N_FUN] + (30 << 10), 100 << 10); shopped(s, "A NEW GAME!", ML_NEW_GAME); break;
         case PC_BUY4: if (!pay(25)) return; s->need[N_FUN] = MIN(s->need[N_FUN] + (20 << 10), 100 << 10); shopped(s, "A NEW RECORD!", ML_RETAIL); break;
+        case PC_BOARD: if (!pay(120)) return; has_board = 1; shopped(s, "A SKATEBOARD! O TO RIDE", ML_RETAIL); break;
+        case PC_PICKBOARD: has_board = 1; *world_cell(s->lvl, pie_mx, pie_my) = '.'; world_touched(); sim_note("A SKATEBOARD! O TO RIDE"); audio_voice(VOICE_YAHOO); break;
         case PC_BROWSE: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 4; s->act_t = 240; break;
         case PC_TRAINER: if (!pay(20)) return; begin_action(s, ACT_RUN, pie_mx, pie_my); s->act_var = 2; sim_say(s, "FEEL THE BURN"); break;
         case PC_SWIM: swim(s); break;
@@ -1648,7 +1679,7 @@ static int sim_player_interact_(void) {
     begin_action(s, action_for(c), mx, my);
     return 1;
 }
-void sim_player_cancel(void) { Sim *s = &sims[player]; if (s->action != ACT_NONE) end_action(s); }
+void sim_player_cancel(void) { Sim *s = &sims[player]; if (s->action != ACT_NONE) end_action(s); else if (has_board) { on_board ^= 1; board_v = 0; board_lift = 0; board_air = 0; board_vy = 0; sim_note(on_board ? "ON THE BOARD" : "OFF THE BOARD"); } }
 void sim_player_cancel_sim(Sim *s) { if (s->action != ACT_NONE) end_action(s); }
 
 const char * sim_hint(void) { world_lvl = sims[player].lvl; const char * r = sim_hint_(); world_lvl = 0; return r; }
