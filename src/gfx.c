@@ -68,10 +68,16 @@ static SVECTOR light_dir = { -1500, -3200, 2100, 0 };   // towards the sun (y is
 // vertex loads that never fault: the GTE reads words, an SVECTOR (a struct of shorts) may sit on a 2-byte boundary - a real
 // PlayStation (and DuckStation) stops on such a load with an address error. The vertices are copied to aligned ones first.
 static inline void gte_ld3_safe(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c) {
+    if ((((u32)a | (u32)b | (u32)c) & 3) == 0) {   // all word-aligned (nearly always): load straight from the caller's vertices, no copy
+        GTE_FENCE(); gte_ldv3((SVECTOR *)a, (SVECTOR *)b, (SVECTOR *)c); return;
+    }
     SVECTOR t[3] SVEC_ALIGN; t[0] = *a; t[1] = *b; t[2] = *c;
     GTE_FENCE(); gte_ldv3(&t[0], &t[1], &t[2]);
 }
-static inline void gte_ld0_safe(const SVECTOR *a) { SVECTOR t SVEC_ALIGN = *a; GTE_FENCE(); gte_ldv0(&t); }
+static inline void gte_ld0_safe(const SVECTOR *a) {
+    if (((u32)a & 3) == 0) { GTE_FENCE(); gte_ldv0((SVECTOR *)a); return; }
+    SVECTOR t SVEC_ALIGN = *a; GTE_FENCE(); gte_ldv0(&t);
+}
 // ------------------------------------------------------------------ setup
 void gfx_set_clear(int r, int g, int b) { clear_r = r; clear_g = g; clear_b = b; }
 
