@@ -12,6 +12,7 @@ int  items_blocking(char ch);                            // 1: a wall of a thing
 int  items_is_item(char ch);                             // 1: a placeable item letter
 const char *items_name(char ch);
 int  items_height(char ch);                              // the top of the item in world units (for standing on crates etc.)
+int  items_hit(char ch, int rot, int along, int cu, int cv, int r);   // does a body (a square of half-width r) at (cu, cv) in the item's tile, world units from its corner, touch one of its solid boxes? -1: no footprint data (ramps, stairs): the whole tile
 int  items_rotates(char ch);                             // 1: it faces away from the wall
 int  items_along(char ch);                               // 1: rails, ledges, benches, barriers link up along a line
 int  items_count(void);

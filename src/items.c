@@ -588,6 +588,21 @@ int items_ramp_h(char ch, int facing, int lx, int lv) {   // the ramp's surface 
     return h[n];
 }
 
+int items_hit(char ch, int rot, int along, int cu, int cv, int r) {
+    const ItemDef *d = def_of(ch); if (!d) return -1;
+    if (ch == '1' || ch == '2' || ch == '4' || ch == '5' || ch == '9' || ch == '|') return -1;
+    const IBox *b = d->b; int n = d->n, rr = (d->flags & F_ROT) ? rot : 0;
+    if ((d->flags & F_ALONG) && !along && d->bv) { b = d->bv; n = d->nv; }
+    r -= 6;   // a little give, so a body can brush past an edge
+    for (int i = 0; i < n; i++) {
+        if (b[i].z0 >= 12) continue;   // (above head height: it hangs over, it does not block)
+        int ua, va, ub, vb; rotPt(rr, b[i].a0, b[i].b0, &ua, &va); rotPt(rr, b[i].a1, b[i].b1, &ub, &vb);
+        int u0 = MIN(ua, ub) * IUNIT, u1 = MAX(ua, ub) * IUNIT, v0 = MIN(va, vb) * IUNIT, v1 = MAX(va, vb) * IUNIT;
+        if (cu + r > u0 && cu - r < u1 && cv + r > v0 && cv - r < v1) return 1;
+    }
+    return 0;
+}
+
 void items_draw(char ch, int mx, int my, int rot, int along, int t) {
     if (ch == 'P') return;
     shade6_update(t);

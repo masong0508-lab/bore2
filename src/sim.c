@@ -200,7 +200,12 @@ static int footprint_free(int x, int z) {
         int mx = px / TILE, my = (-pz) / TILE;
         if (px < 0 || pz > 0) return 0;
         if (ramp_pass && is_ramp(world_at(mx, my)) && ramp_g(px, pz, world_at(mx, my), mx, my) <= board_lift + 90) continue;   // (from the low side, or in the air above it)
-        if (!world_walkable(mx, my)) return 0;
+        if (!world_walkable(mx, my)) {
+            char ic = world_at(mx, my);   // a thing in the way blocks only where it really stands, not the whole tile (a fridge leaves a margin, a fence a gap)
+            if (!items_is_item(ic) || !items_blocking(ic)) return 0;
+            int h = items_hit(ic, world_item_facing(mx, my), items_along(ic) ? world_along(mx, my, ic) : 0, x - mx * TILE, -z - my * TILE, SIM_RADIUS);
+            if (h != 0) return 0;
+        }
     }
     return 1;
 }

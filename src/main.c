@@ -110,6 +110,11 @@ static int build_tool, build_item, build_x = 8, build_y = 8, build_fl = 1, build
 static int build_open, room_on, room_ax, room_ay;   // the DOORS tool's pick; the ROOM tool's first corner
 enum { BT_BUY, BT_ROOM, BT_WALL, BT_DOOR, BT_FLOOR, BT_PAINT, BT_ROOF, NTOOL };   // build mode's tools
 static int build_rot = -1, build_msg_ok, build_crot = -1, build_cx, build_cy, build_cl; static char build_carry;   // the turn picked for the next item (-1: automatic); the item being moved and where it came from
+static int room_open;   // the ROOM tool: 0 no door, 1 a door, 2 a door and windows (SQUARE)
+static const char *const roomOpenNm[3] = { "NO DOOR", "A DOOR", "DOOR + WINDOWS" };
+static struct { int on, L, x0, y0, x1, y1, spent; char m[256]; u8 f[256], w[256]; } room_undo;   // the last room built, to take back (TRIANGLE)
+extern u16 bfs_q[];
+static u8 fill_seen[MW * MH / 8 + 1];
 static char build_msg[32]; static int build_msg_t;   // what build mode has to say (the life's notes are not on screen there)
 static void home_go(void);
 static int craft_sel, craft_msg_t; static char craft_msg[32];   // the CRAFT list's pick; why it could not be made (a while)
@@ -2040,8 +2045,18 @@ static int room_rect(int *x0, int *y0, int *x1, int *y1) {   // the ROOM tool's 
     *x0 = MIN(room_ax, build_x); *x1 = MAX(room_ax, build_x); *y0 = MIN(room_ay, build_y); *y1 = MAX(room_ay, build_y);
     return *x1 - *x0 >= 2 && *y1 - *y0 >= 2 && *x1 - *x0 < 16 && *y1 - *y0 < 16;
 }
-static int room_cost(int L, int x0, int y0, int x1, int y1) {   // new walls $50, floor $10 a tile
+static int room_opens(int L, int x0, int y0, int x1, int y1, int *ox, int *oy, char *oc) {   // where the ROOM tool puts its door and windows
+    int n = 0; if (!room_open) return 0;
+#define ADDOPEN(X, Y, C) do { char e_ = world_at_l(L, X, Y); if (n < 16 && (e_ == '.' || e_ == ' ')) { ox[n] = (X); oy[n] = (Y); oc[n] = (C); n++; } } while (0)
+    int mid = (x0 + x1) / 2, midy = (y0 + y1) / 2;
+    if (!L) ADDOPEN(mid, y1, 'D');   // (the front wall; upstairs there is no outside door)
+    if (room_open > 1) { for (int x = x0 + 2; x <= x1 - 2; x += 3) if (x != mid || L) ADDOPEN(x, y0, 'E'); ADDOPEN(x0, midy, 'E'); ADDOPEN(x1, midy, 'E'); }
+#undef ADDOPEN
+    return n;
+}
+static int room_cost(int L, int x0, int y0, int x1, int y1) {   // new walls $50, floor $10 a tile, and the door and windows
     int c = 0;
+    { int ox[16], oy[16], n; char oc[16]; n = room_opens(L, x0, y0, x1, y1, ox, oy, oc); for (int i = 0; i < n; i++) c += oc[i] == 'D' ? openCost[0] : openCost[1]; }
     for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
         char ch = world_at_l(L, x, y);
         if (x == x0 || x == x1 || y == y0 || y == y1) { if (!is_wallish(ch)) c += 50; } else if (!(L && ch == ' ' && world_at_l(L - 1, x, y) == '|')) c += 10;
@@ -2062,15 +2077,64 @@ static void room_build(void) {   // walls round it with the wallpaper picked, th
     }
     int cost = room_cost(L, x0, y0, x1, y1);
     if (cash < cost) { char t[32]; sprintf(t, "THAT ROOM IS $%d", cost); build_say(t); audio_voice(VOICE_NAH); return; }
+    int ox[16], oy[16], no; char oc[16]; no = room_opens(L, x0, y0, x1, y1, ox, oy, oc);   // (before anything changes)
+    room_undo.on = 1; room_undo.L = L; room_undo.x0 = x0; room_undo.y0 = y0; room_undo.x1 = x1; room_undo.y1 = y1; room_undo.spent = cost;
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) { int k = (y - y0) * 16 + (x - x0); room_undo.m[k] = world_at_l(L, x, y); room_undo.f[k] = *world_floor_cell(L, x, y); room_undo.w[k] = *world_wall_cell(L, x, y); }
     for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
         char *c = world_cell(L, x, y);
         if (x == x0 || x == x1 || y == y0 || y == y1) { if (!is_wallish(*c)) { *c = 'W'; *world_wall_cell(L, x, y) = (u8)build_wp; } }
         else if (*c == ' ' && !(L && world_at_l(L - 1, x, y) == '|')) *c = '.';   // (not over the stairs)
         *world_floor_cell(L, x, y) = (u8)build_fl;
     }
+    for (int i = 0; i < no; i++) { *world_cell(L, ox[i], oy[i]) = oc[i]; *world_wall_cell(L, ox[i], oy[i]) = (u8)build_wp; }
     cash -= cost; room_on = 0; world_touched(); audio_voice(VOICE_FINISHED);
     wants_event(&sims[player], W_BUY, 0);
-    build_say("ROOM BUILT. ADD A DOOR!");
+    if (no) build_say_ok("ROOM BUILT. TRIANGLE UNDOES"); else build_say("ROOM BUILT. ADD A DOOR!");
+}
+static void room_undo_do(void) {   // take the last room back, and its cost
+    if (!room_undo.on) { build_say("NOTHING TO UNDO"); audio_voice(VOICE_NAH); return; }
+    for (int y = room_undo.y0; y <= room_undo.y1; y++) for (int x = room_undo.x0; x <= room_undo.x1; x++) {
+        int k = (y - room_undo.y0) * 16 + (x - room_undo.x0);
+        *world_cell(room_undo.L, x, y) = room_undo.m[k]; *world_floor_cell(room_undo.L, x, y) = room_undo.f[k]; *world_wall_cell(room_undo.L, x, y) = room_undo.w[k];
+    }
+    cash += room_undo.spent; room_undo.on = 0; world_touched(); audio_voice(VOICE_FINISHED); build_say_ok("ROOM UNDONE");
+}
+static int region_fill(int L, int sx, int sy) {   // the closed room round a tile, left in bfs_q: its tile count, or -1 when it is not closed (over 600 tiles, or out to the map's edge)
+    char c0 = world_at_l(L, sx, sy); if (is_wallish(c0) || c0 == ' ') return -1;
+    static const signed char dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
+    memset(fill_seen, 0, sizeof fill_seen);
+    int qh = 0, qt = 0, id0 = sy * MW + sx; bfs_q[qt++] = (u16)id0; fill_seen[id0 >> 3] |= 1 << (id0 & 7);
+    while (qh < qt) {
+        int c = bfs_q[qh++], x = c % MW, y = c / MW;
+        if (x <= 1 || y <= 1 || x >= MW - 2 || y >= MH - 2) return -1;
+        for (int d = 0; d < 4; d++) {
+            int nx = x + dx[d], ny = y + dy[d], id = ny * MW + nx; char ch = world_at_l(L, nx, ny);
+            if (is_wallish(ch) || ch == ' ' || (fill_seen[id >> 3] >> (id & 7) & 1)) continue;
+            fill_seen[id >> 3] |= 1 << (id & 7);
+            if (qt >= 600) return -1;
+            bfs_q[qt++] = (u16)id;
+        }
+    }
+    return qt;
+}
+static void room_fill_tool(void) {   // TRIANGLE with the FLOOR tool: lay the floor over the whole room; with WALLPAPER: paper all its walls
+    int L = build_lvl, n = region_fill(L, build_x, build_y);
+    if (n < 0) { build_say("NOT A CLOSED ROOM"); audio_voice(VOICE_NAH); return; }
+    if (build_tool == BT_FLOOR) {
+        int cost = 0; for (int i = 0; i < n; i++) { int x = bfs_q[i] % MW, y = bfs_q[i] / MW; if (build_ok(x, y) && *world_floor_cell(L, x, y) != build_fl) cost += 10; }
+        if (!cost) { build_say("ALREADY LIKE THAT"); audio_voice(VOICE_NAH); return; }
+        if (cash < cost) { char t[32]; sprintf(t, "THE FLOOR IS $%d", cost); build_say(t); audio_voice(VOICE_NAH); return; }
+        for (int i = 0; i < n; i++) { int x = bfs_q[i] % MW, y = bfs_q[i] / MW; if (build_ok(x, y)) *world_floor_cell(L, x, y) = (u8)build_fl; }
+        cash -= cost; { char t[32]; sprintf(t, "FLOORED  -$%d", cost); build_say_ok(t); }
+    } else {
+        static const signed char dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
+        int k = 0;
+        for (int i = 0; i < n; i++) { int x = bfs_q[i] % MW, y = bfs_q[i] / MW;
+            for (int d = 0; d < 4; d++) { int nx = x + dx[d], ny = y + dy[d]; if (build_ok(nx, ny) && is_wallish(world_at_l(L, nx, ny))) { u8 *w = world_wall_cell(L, nx, ny); if (*w != (u8)build_wp) { *w = (u8)build_wp; k++; } } } }
+        if (!k) { build_say("ALREADY PAPERED"); audio_voice(VOICE_NAH); return; }
+        build_say_ok("ROOM PAPERED");
+    }
+    world_touched(); audio_voice(VOICE_FINISHED);
 }
 static int floor_supported(int l, int x, int y) {   // an upper floor needs something under it, or a floor beside it on its own storey
     if (l == 0) return 1;
@@ -2159,7 +2223,7 @@ static void build_bar(int xmin, int zmax, int w, int h, int yy, int r, int g, in
 }
 static void build_update(void) {
     static int rep;
-    if (frame - build_last_frame > 4) { build_intro = 90; build_last_cash = cash; build_delta = 0; build_delta_t = 0; }   // (just came in)
+    if (frame - build_last_frame > 4) { room_undo.on = 0; build_intro = 90; build_last_cash = cash; build_delta = 0; build_delta_t = 0; }   // (just came in)
     build_last_frame = frame;
     if (cash != build_last_cash) { build_delta += cash - build_last_cash; build_last_cash = cash; build_delta_t = 80; }   // what the last buy or sale came to
     if (build_delta_t > 0 && --build_delta_t == 0) build_delta = 0;
@@ -2175,7 +2239,7 @@ static void build_update(void) {
     }
     if (build_carry && (PRESSED(PAD_CIRCLE) || PRESSED(PAD_SQUARE))) { carry_return(); build_say_ok("PUT BACK"); audio_voice(VOICE_AGREE); return; }
     if (build_carry && (PRESSED(PAD_START) || PRESSED(PAD_SELECT))) carry_return();
-    if (PRESSED(PAD_SELECT)) { build_tool = (build_tool + 1) % NTOOL; room_on = 0; }
+    if (PRESSED(PAD_SELECT)) { build_tool = (build_tool + 1) % NTOOL; room_on = 0; room_undo.on = 0; }
     if (build_msg_t > 0) build_msg_t--;
     if (PRESSED(PAD_R2) && build_lvl < NUP) { build_lvl++; audio_voice(VOICE_AGREE); }     // the storey you build on
     if (PRESSED(PAD_L2) && build_lvl > 0) { build_lvl--; audio_voice(VOICE_AGREE); }
@@ -2204,11 +2268,14 @@ static void build_update(void) {
         return;
     }
     int L = build_lvl;
+    if ((build_tool == BT_FLOOR || build_tool == BT_PAINT) && PRESSED(PAD_TRIANGLE)) { if (build_ok(build_x, build_y)) room_fill_tool(); else { build_say(home_city ? "NOT YOUR LOT" : "BUY A HOME TO BUILD HERE"); audio_voice(VOICE_NAH); } return; }
     if (build_tool == BT_ROOM) {   // the ROOM tool: X a corner, X the other corner; O lets go of the first
         if (PRESSED(PAD_CROSS)) { if (!room_on) { if (build_ok(build_x, build_y)) { room_on = 1; room_ax = build_x; room_ay = build_y; audio_voice(VOICE_AGREE); } else { build_say(home_city ? "BUILD ON YOUR OWN LOT ONLY" : "BUY A HOME TO BUILD HERE"); audio_voice(VOICE_NAH); } }
                                   else room_build(); }
         if (PRESSED(PAD_CIRCLE) && room_on) { room_on = 0; return; }
-        if (PRESSED(PAD_TRIANGLE) || PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { build_lvl = 0; room_on = 0; state = ST_LIFE; }
+        if (PRESSED(PAD_SQUARE)) { room_open = (room_open + 1) % 3; build_say_ok(roomOpenNm[room_open]); audio_voice(VOICE_AGREE); }
+        if (PRESSED(PAD_TRIANGLE)) room_undo_do();
+        if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { build_lvl = 0; room_on = 0; state = ST_LIFE; }
         return;
     }
     if ((PRESSED(PAD_CROSS) || PRESSED(PAD_SQUARE)) && !build_ok(build_x, build_y)) {   // in SAN BOREAS: not someone else's
@@ -2277,7 +2344,7 @@ static void build_update(void) {
         else if (*cell == '.' && L > 0) { *cell = ' '; cash += 5; }                       // take the floor itself away (upper storeys)
     }
     if (PRESSED(PAD_CROSS) || PRESSED(PAD_SQUARE) || HELD(PAD_CROSS) || (build_tool == BT_WALL && HELD(PAD_SQUARE))) world_touched();
-    if ((build_tool != BT_BUY && PRESSED(PAD_TRIANGLE)) || PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { build_lvl = 0; state = ST_LIFE; }
+    if ((build_tool != BT_BUY && build_tool != BT_FLOOR && build_tool != BT_PAINT && PRESSED(PAD_TRIANGLE)) || PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { build_lvl = 0; state = ST_LIFE; }
 }
 static void build_draw(void) {
     {   // looking at the roof: lift the camera above the ridge and pull back, so the whole roof is in view
@@ -2338,7 +2405,7 @@ static void build_draw(void) {
         else if (build_tool == BT_BUY) sprintf(b, "%s  $%d", items_name(items_at(build_item)), items_cost(items_at(build_item)));
         else if (build_tool == BT_ROOM) { int x0, y0, x1, y1;
             if (room_on && room_rect(&x0, &y0, &x1, &y1)) sprintf(b, "%d X %d ROOM: $%d", x1 - x0 + 1, y1 - y0 + 1, room_cost(build_lvl, x0, y0, x1, y1));
-            else strcpy(b, room_on ? "MOVE TO THE OTHER CORNER" : "X ON A CORNER"); }
+            else sprintf(b, room_on ? "OTHER CORNER (%s)" : "X ON A CORNER (%s)", roomOpenNm[room_open]); }
         else if (build_tool == BT_WALL) sprintf(b, "WALL $50  (%s)", world_wall_name(build_wp));
         else if (build_tool == BT_DOOR) sprintf(b, "%s $%d: X ON A WALL", openNm[build_open & 3], openCost[build_open & 3]);
         else if (build_tool == BT_FLOOR) sprintf(b, "%s  $10 A TILE", world_floor_name(build_fl));
@@ -2365,8 +2432,8 @@ static void build_draw(void) {
         ui_card(4, 206, 312, 30);
         if (build_tool == BT_ROOF) { ui_hints(160, 204, "X STYLE|SQ PITCH|L1 R1 COLOUR|SEL TOOL", 1); ui_hints(160, 216, "L2 R2 STOREY|O DONE", 1); }
         else if (build_tool == BT_ROOM) { ui_hints(160, 204, room_on ? "X BUILD IT|O LET GO|L1 R1 WALLS|R3 FLOOR" : "X FIRST CORNER|L1 R1 WALLS|R3 FLOOR", 1);
-               ui_hints(160, 216, "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
-        else { ui_hints(160, 204, build_tool == BT_BUY ? "L1 R1 PICK|R3 TAB|X BUY OR MOVE|SQ SELL" : build_tool == BT_DOOR ? "L1 R1 PICK|X PUT IN|SQ TAKE OUT" : build_tool == BT_WALL ? "L1 R1 PICK|X PLACE, HOLD TO DRAW|SQ ERASE" : build_tool == BT_PAINT ? "L1 R1 PICK|X PAINT, HOLD TO DRAW" : "L1 R1 PICK|X PLACE|SQ ERASE", 1);
+               ui_hints(160, 216, "SQ DOOR|TRI UNDO|SEL TOOL|L2 R2 STOREY|O DONE", 1); }
+        else { ui_hints(160, 204, build_tool == BT_BUY ? "L1 R1 PICK|R3 TAB|X BUY OR MOVE|SQ SELL" : build_tool == BT_DOOR ? "L1 R1 PICK|X PUT IN|SQ TAKE OUT" : build_tool == BT_WALL ? "L1 R1 PICK|X PLACE, HOLD TO DRAW|SQ ERASE" : build_tool == BT_PAINT ? "L1 R1 PICK|X PAINT|TRI PAPER ROOM" : build_tool == BT_FLOOR ? "L1 R1 PICK|X PLACE|TRI FILL ROOM|SQ ERASE" : "L1 R1 PICK|X PLACE|SQ ERASE", 1);
                ui_hints(160, 216, build_tool == BT_BUY ? "TRI TURN|SEL TOOL|L2 R2 STOREY|O DONE" : "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
         if (build_intro > 0) { int sl = build_intro > 80 ? (build_intro - 80) * 14 : build_intro < 12 ? (12 - build_intro) * 14 : 0;   // BUILD MODE: slides in, stays, slides out
             ui_shadow(30, 92 - sl, 136, 30, 8); ui_round(30, 92 - sl, 136, 30, 8, UI_RGB(70, 176, 238), UI_BLUE2, 0);
