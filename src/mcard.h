@@ -16,5 +16,6 @@ int  mcard_rok(void);                            // 1: every sector so far came 
 int  mcard_wbegin(const char *name, int blocks); // 1: room for it
 void mcard_wput(const void *in, int n);
 int  mcard_wpatch(int sector, const u8 *sec);    // rewrite one sector of the open file
+int  mcard_delete(const char *name);            // 1: gone (or was never there)
 int  mcard_wend(void);                           // 1: written
 void mcard_title_sector(u8 *sec, const char *title, int blocks, const u16 *pal);

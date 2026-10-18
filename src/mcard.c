@@ -144,6 +144,17 @@ int mcard_wend(void) {   // the last sector, then the directory (a save cut shor
     if (sfresh) for (int b = 1; b <= NBLK; b++) if (!mcard_write(b, dir[b])) { mcard_last_err = MC_WRITE; return 0; }   // (an old file kept its blocks: the directory is as it was)
     return 1;
 }
+int mcard_delete(const char *name) {   // a file gone (its blocks free again): 1 done, or there was no such file
+    mcard_dir_keep = 0; mcard_last_err = 0;
+    if (!dir_load()) { if (!mcard_last_err) mcard_last_err = MC_NOCARD; return 0; }
+    int b = dir_find(name); if (!b) return 1;
+    u8 bl[NBLK]; int n = chain(b, bl);
+    for (int k = 0; k < n; k++) {
+        u8 *e = dir[bl[k]]; e[0] = (u8)(k == 0 ? 0xA1 : k == n - 1 ? 0xA3 : 0xA2); dir_fix(e);   // (the card manager's "deleted" marks)
+        if (!mcard_write(bl[k], e)) { mcard_last_err = MC_WRITE; return 0; }
+    }
+    return 1;
+}
 // the first sector of a file: "SC", the icon frames, the number of blocks, the title in the card manager's Shift-JIS, the icon's
 // 16 colours; the second: the icon, 16 x 16 pixels of 4 bits
 void mcard_title_sector(u8 *sec, const char *title, int blocks, const u16 *pal) {

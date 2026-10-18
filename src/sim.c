@@ -1586,7 +1586,7 @@ int sim_debug_grow(int what, int arg) {   // (test builds) hurry a family's life
     return 0;
 }
 #endif
-#if defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME) || defined(AUTO_ISLE) || defined(AUTO_SCENE) || defined(AUTO_PHONE)
+#if defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME) || defined(AUTO_ISLE) || defined(AUTO_SCENE) || defined(AUTO_PHONE) || defined(AUTO_SAVE)
 int sim_debug_goto(char c, int lot) {   // (test builds) stand the player in front of the nearest c (at a place of that kind, lot >= 0)
     Sim *s = &sims[player]; int sx = sim_tile_x(s), sy = sim_tile_y(s), best = 1 << 30, bx = -1, by = -1, tx = 0, ty = 0;
     for (int y = 1; y < MH - 1; y++) for (int x = 1; x < MW - 1; x++) {

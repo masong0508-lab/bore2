@@ -128,6 +128,7 @@ static int help_page;
 static int hb_now(void) { return VSync(1); }   // hblanks since the last VSync(0) (the flip): 263 per vblank, 525 = one 30 FPS frame
 static int t_cpu, t_frame0, t_bub, t_hud, t_upd;
 static int det_opt = 12;                                      // the FULL DETAIL option's range (the range in use dips under it when frames run long)
+int dbg_slow[16][8], dbg_slow_n;
 int avg_cpu16, avg_world16, avg_hh16, hist_cpu[5], avg_prof16[8];
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
@@ -1592,10 +1593,11 @@ static int load_game(int slot) {   // 1: the saved life is up and running
     return 1;
 }
 // the slot list: three lives on the card (SAVE GAME picks where, CONTINUE picks which)
+static int slot_ask;   // 1: X again replaces the save in that slot, 2: SQUARE again deletes it
 static int slot_save, slot_sel, slot_back, slot_have[SAVE_SLOTS], slot_card; static SaveInfo slot_in[SAVE_SLOTS];
 static void slots_open(int saving, int back) {
     loading("LOOKING AT THE MEMORY CARD", 50);
-    slot_save = saving; slot_back = back; slot_sel = 0; save_msg = 0;
+    slot_save = saving; slot_back = back; slot_sel = 0; save_msg = 0; slot_ask = 0;
     mcard_dir_keep = 0; slot_have[0] = save_info(0, &slot_in[0]);   // (the card's directory read once for all three)
     mcard_dir_keep = 1; for (int i = 1; i < SAVE_SLOTS; i++) slot_have[i] = save_info(i, &slot_in[i]);
     mcard_dir_keep = 0;
@@ -1604,12 +1606,22 @@ static void slots_open(int saving, int back) {
     state = ST_SLOTS;
 }
 static void slots_update(void) {
-    if (PRESSED(PAD_UP)) slot_sel = (slot_sel + SAVE_SLOTS - 1) % SAVE_SLOTS;
-    if (PRESSED(PAD_DOWN)) slot_sel = (slot_sel + 1) % SAVE_SLOTS;
-    if (PRESSED(PAD_CIRCLE)) { state = slot_back; return; }
+    if (PRESSED(PAD_UP)) { slot_sel = (slot_sel + SAVE_SLOTS - 1) % SAVE_SLOTS; slot_ask = 0; save_msg = 0; }
+    if (PRESSED(PAD_DOWN)) { slot_sel = (slot_sel + 1) % SAVE_SLOTS; slot_ask = 0; save_msg = 0; }
+    if (PRESSED(PAD_CIRCLE)) { if (slot_ask) { slot_ask = 0; return; } state = slot_back; return; }
+    if (PRESSED(PAD_SQUARE) && slot_card && slot_have[slot_sel]) {   // delete: SQUARE, then SQUARE again
+        if (slot_ask != 2) { slot_ask = 2; audio_voice(VOICE_NAH); return; }
+        slot_ask = 0; loading("DELETING THE SAVE", 50);
+        if (save_delete(slot_sel)) { slot_have[slot_sel] = 0; save_msg = "SAVE DELETED"; } else save_msg = save_error();
+        return;
+    }
     if (!PRESSED(PAD_CROSS)) return;
     if (!slot_card) { save_msg = "NO MEMORY CARD IN SLOT 1"; audio_voice(VOICE_NAH); slot_card = mcard_present(); return; }
-    if (slot_save) { save_game(slot_sel); state = ST_LIFE; return; }
+    if (slot_save) {
+        if (slot_have[slot_sel] && slot_ask != 1) { slot_ask = 1; return; }   // (a slot in use: X again to replace it)
+        slot_ask = 0; save_game(slot_sel); state = ST_LIFE; return;
+    }
+    slot_ask = 0;
     if (!slot_have[slot_sel]) { save_msg = "THAT SLOT IS EMPTY"; audio_voice(VOICE_NAH); return; }
     if (load_game(slot_sel)) state = ST_LIFE;
     else { audio_voice(VOICE_NAH); state = ST_SLOTS; if (!life_started) slot_back = ST_MENU; }
@@ -1624,10 +1636,26 @@ static void slots_draw(void) {
         else { sprintf(t, "%d. EMPTY", i + 1); strcpy(u, slot_save ? "SAVE A NEW LIFE HERE" : "NOTHING SAVED HERE"); }
         ui_text(56, y + 3, 1, t, UI_INK); ui_text(56, y + 14, 1, u, UI_SOFT);
     }
-    const char *m = save_msg ? save_msg : !slot_card ? "NO MEMORY CARD IN SLOT 1" : slot_save && slot_have[slot_sel] ? "SAVING HERE REPLACES IT" : "";
-    ui_textc(160, top + 98, 1, m, save_msg || !slot_card ? UI_BADT : UI_SOFT);
-    ui_hints(160, top + 112, slot_save ? "X SAVE|O BACK" : "X LOAD|O BACK", 1);
+    const char *m = slot_ask == 1 ? "REPLACE THIS SAVE? X AGAIN TO REPLACE" : slot_ask == 2 ? "DELETE THIS SAVE? SQUARE AGAIN" : save_msg ? save_msg : !slot_card ? "NO MEMORY CARD IN SLOT 1" : "";
+    ui_textc(160, top + 98, 1, m, slot_ask || (save_msg && strcmp(save_msg, "SAVE DELETED")) || !slot_card ? UI_BADT : UI_SOFT);
+    ui_hints(160, top + 112, slot_ask ? (slot_ask == 1 ? "X REPLACE|O NO" : "SQ DELETE|O NO") : slot_have[slot_sel] ? (slot_save ? "X SAVE|SQ DELETE|O BACK" : "X LOAD|SQ DELETE|O BACK") : (slot_save ? "X SAVE|O BACK" : "X LOAD|O BACK"), 1);
 }
+#ifdef AUTO_SAVE
+int dbg_sv[16];   // (test builds) before / after a save and a load: the zone, the tent, the bench, the hut's walls, the player's action, food; then the long-life save's size
+static void save_tick(void) {
+    extern int sim_debug_goto(char c, int lot); extern u32 save_last_bytes;
+    static int t0 = -1, k;
+    if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); clock_min = 22 * 60; travel_go(ZONE_ISLAND); }
+    int t = VSync(-1) - t0;
+    if (k == 0 && t >= 60) { k++; isl_wood = isl_stone = isl_leaves = 40; isl_food = 7; isl_make(4); isl_make(0); isl_make(1); }
+    if (k == 1 && t >= 120) { k++; sims[player].need[N_REST] = 10 << 10; dbg_sv[14] = sim_debug_goto('z', -1); dbg_sv[15] = sim_player_interact(); }
+    if (k == 2 && t >= 300) { k++; dbg_sv[0] = world_zone; dbg_sv[1] = world_count('z'); dbg_sv[2] = world_count('%'); dbg_sv[3] = world_count('W'); dbg_sv[4] = sims[player].action; dbg_sv[5] = isl_food;
+                              save_game(0); }
+    if (k == 3 && t >= 400) { k++; if (load_game(0)) state = ST_LIFE; }
+    if (k == 4 && t >= 460) { k++; dbg_sv[8] = world_zone; dbg_sv[9] = world_count('z'); dbg_sv[10] = world_count('%'); dbg_sv[11] = world_count('W'); dbg_sv[12] = sims[player].action; dbg_sv[13] = isl_food; dbg_sv[6] = (int)save_last_bytes; }
+    if (k == 5 && t >= 700) { k++; aging = 2; pop_aging = 1; for (int d = 0; d < 400; d++) pop_midnight(); save_game(1); dbg_sv[7] = (int)save_last_bytes; }
+}
+#endif
 static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "SAVE GAME", "NEW LIFE", "QUIT TO TITLE" };
 #define NPAUSE 10  // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
 static void homes_open(void);
@@ -2797,6 +2825,9 @@ int main(void) {
 #ifdef AUTO_PHONE
         phone_tick();
 #endif
+#ifdef AUTO_SAVE
+        save_tick();
+#endif
         ui_light = 0;
         switch (state) {
             case ST_TITLE: title_update(); title_draw(); break;
@@ -2829,10 +2860,14 @@ int main(void) {
         t_cpu = hb_now() - t_frame0;
         if (state == ST_LIFE) {   // a frame that ran past two screen refreshes: the full-detail range draws in a tile (back out once things are quiet)
             extern int world_detail_r; static int slow_n, fast_n;
-            if (t_cpu > 520) { fast_n = 0; if (++slow_n >= 2 && world_detail_r > det_opt - 3) { world_detail_r--; slow_n = 0; } } else slow_n = 0;
-            if (t_cpu < 440) { if (++fast_n >= 120 && world_detail_r < det_opt) { world_detail_r++; fast_n = 0; } } else if (t_cpu > 480) fast_n = 0;
+            if (t_cpu > 500) { fast_n = 0; if (++slow_n >= 1 && world_detail_r > det_opt - 4) { world_detail_r--; slow_n = 0; } } else slow_n = 0;
+            if (t_cpu < 420) { if (++fast_n >= 120 && world_detail_r < det_opt) { world_detail_r++; fast_n = 0; } } else if (t_cpu > 470) fast_n = 0;
             if (world_detail_r > det_opt) world_detail_r = det_opt;
         }
+#ifdef AUTO_CITY
+        { extern int dbg_slow[16][8], dbg_slow_n; if (state == ST_LIFE && t_cpu > 525) { int *d = dbg_slow[dbg_slow_n++ & 15];   // (test builds: what the slow frames spent their time on)
+            d[0] = t_cpu; d[1] = t_upd; d[2] = t_logic; d[3] = t_world; d[4] = t_sims; d[5] = t_hud + t_bub; d[6] = gfx_prof[3]; d[7] = frame; } }
+#endif
         if (state == ST_LIFE) { avg_cpu16 += t_cpu - (avg_cpu16 >> 4); avg_world16 += t_world - (avg_world16 >> 4);   // (the test readouts)
             avg_hh16 += gfx_prof[4] - (avg_hh16 >> 4); hist_cpu[MIN(4, t_cpu / 262)]++;
             for (int k = 0; k < 8; k++) avg_prof16[k] += gfx_prof[k] - (avg_prof16[k] >> 4); }

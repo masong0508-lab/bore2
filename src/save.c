@@ -63,9 +63,10 @@ static const u8 magic[8] = { 'B', 'O', 'R', 'E', '2', 'S', 'V', VERSION };
 
 static SaveInfo info_out;
 void save_set_info(const SaveInfo *i) { info_out = *i; }
+u32 save_last_bytes;   // (the size of the last save, for the tests)
 int save_write(int slot, void (*body)(void)) {
     bad_msg = 0; pick(slot);
-    counting = 1; count = 0; body(); counting = 0;   // (how big it is: its blocks)
+    counting = 1; count = 0; body(); counting = 0; save_last_bytes = count;   // (how big it is: its blocks)
     int nb = (int)((count + 384 + 8191) / 8192);
     if (!mcard_wbegin(NAME, nb)) return 0;
     u8 sec[128]; u16 pal[16];
@@ -89,6 +90,7 @@ int save_info(int slot, SaveInfo *out) {   // 1: a save of this version is in th
     memcpy(out, head + 16, sizeof *out); out->name[NAME_LEN - 1] = 0;
     return 1;
 }
+int save_delete(int slot) { pick(slot); bad_msg = 0; return mcard_delete(NAME); }
 int save_read(int slot, void (*body)(void)) {
     bad_msg = 0; ld_bad = 0; pick(slot);
     if (!mcard_rbegin(NAME)) return 0;

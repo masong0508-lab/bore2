@@ -2580,8 +2580,9 @@ __attribute__((optimize("Os"))) void world_save(int with_home) {   // with_home:
         sv_n(&own_occ, sizeof own_occ);
         if (!own.fresh) { sv_rle(own.map, sizeof own.map); sv_rle(own.fl, sizeof own.fl); sv_rle(own.wp, sizeof own.wp); }
     }
-    sv_u16(nedit); sv_u16(edit_next);
-    for (int i = 0; i < nedit; i++) { sv_u16(edits[i].bx); sv_u16(edits[i].by); sv_rle(edits[i].map, sizeof edits[i].map); sv_rle(edits[i].fl, sizeof edits[i].fl); sv_rle(edits[i].wp, sizeof edits[i].wp); }
+    int e0 = MAX(0, nedit - 48);   // (the 48 blocks built on last, at most: an 8 MB machine keeps more in play than a card should hold)
+    sv_u16(nedit - e0); sv_u16(e0 ? 0 : edit_next);
+    for (int i = e0; i < nedit; i++) { sv_u16(edits[i].bx); sv_u16(edits[i].by); sv_rle(edits[i].map, sizeof edits[i].map); sv_rle(edits[i].fl, sizeof edits[i].fl); sv_rle(edits[i].wp, sizeof edits[i].wp); }
 }
 __attribute__((optimize("Os"))) void world_load(void) {   // (after world_new_seed and world_reset_all: THE MAN BASE is the live zone)
     world_zone_saved = ld_u8(); int wbx = (s16)ld_u16(), wby = (s16)ld_u16();

@@ -1,0 +1,6 @@
+910 start
+950 b
+1800 shot
+2050 shot
+2300 shot
+2600 shot
