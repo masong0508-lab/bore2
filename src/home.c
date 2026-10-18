@@ -5,6 +5,7 @@
 #include "sim.h"
 #include "world.h"
 #include "audio.h"
+#include "wants.h"
 
 int home_city, home_bx = -1, home_by = -1, home_paid, home_move_asked;
 
@@ -86,5 +87,6 @@ int home_buy(int bx, int by) {
     snprintf(t, sizeof t, "BOUGHT %s!", home_address(bx, by, a)); sim_note(t);
     audio_voice(VOICE_WIN);
     home_move_asked = 1;
+    for (int i = 0; i < nsims; i++) wants_event(&sims[i], W_HOME, 0);
     return 1;
 }

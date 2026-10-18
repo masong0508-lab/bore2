@@ -4,6 +4,7 @@
 
 enum { MC_OK, MC_NOCARD, MC_UNFORMATTED, MC_NOFILE, MC_READ, MC_WRITE, MC_FULL, MC_TOOBIG };
 extern int mcard_last_err;                       // why the last call said 0
+extern int mcard_dir_keep;                       // 1: reuse the directory read last (several files looked at in a row)
 
 int  mcard_read(int sector, u8 *out);            // one 128-byte sector: 1 read
 int  mcard_write(int sector, const u8 *in);      // one 128-byte sector: 1 written

@@ -2,13 +2,14 @@
 #include "save.h"
 #include "mcard.h"
 
-#define NAME "BASLUS-00000BORE2"
-#define SAVE_BLOCKS 2
-#define VERSION 1
+static char NAME[20] = "BASLUS-00000BORE2-1";
+static void pick(int slot) { NAME[18] = (char)('1' + CLAMP(slot, 0, SAVE_SLOTS - 1)); }
+#define VERSION 2
 static u32 count;                                 // payload bytes so far
 static int ld_bad;
 
-void sv_n(const void *p, int n) { mcard_wput(p, n); count += (u32)n; }
+static int counting;                              // 1: a dry run, to know how many blocks the save needs
+void sv_n(const void *p, int n) { if (!counting) mcard_wput(p, n); count += (u32)n; }
 void sv_u8(int v) { u8 b = (u8)v; sv_n(&b, 1); }
 void sv_u16(int v) { u8 b[2] = { (u8)v, (u8)(v >> 8) }; sv_n(b, 2); }
 void sv_u32(u32 v) { u8 b[4] = { (u8)v, (u8)(v >> 8), (u8)(v >> 16), (u8)(v >> 24) }; sv_n(b, 4); }
@@ -60,14 +61,18 @@ static void icon(u8 *sec, u16 *pal) {   // a little green voxel cube: 16 x 16, 4
 }
 static const u8 magic[8] = { 'B', 'O', 'R', 'E', '2', 'S', 'V', VERSION };
 
-int save_write(void (*body)(void)) {
-    bad_msg = 0;
-    if (!mcard_wbegin(NAME, SAVE_BLOCKS)) return 0;
+static SaveInfo info_out;
+void save_set_info(const SaveInfo *i) { info_out = *i; }
+int save_write(int slot, void (*body)(void)) {
+    bad_msg = 0; pick(slot);
+    counting = 1; count = 0; body(); counting = 0;   // (how big it is: its blocks)
+    int nb = (int)((count + 384 + 8191) / 8192);
+    if (!mcard_wbegin(NAME, nb)) return 0;
     u8 sec[128]; u16 pal[16];
     icon(sec, pal);
-    u8 title[128]; mcard_title_sector(title, "BORE 2", SAVE_BLOCKS, pal);
+    u8 title[128]; char tt[32]; snprintf(tt, sizeof tt, "BORE 2 %s DAY %d", info_out.name, info_out.day + 1); mcard_title_sector(title, tt, nb, pal);
     mcard_wput(title, 128); mcard_wput(sec, 128);
-    u8 head[128]; memset(head, 0, 128); memcpy(head, magic, 8);   // (not valid yet: the byte at 8 is set once all of it is on the card)
+    u8 head[128]; memset(head, 0, 128); memcpy(head, magic, 8); memcpy(head + 16, &info_out, sizeof info_out);   // (not valid yet: the byte at 8 is set once all of it is on the card)
     mcard_wput(head, 128);
     count = 0;
     body();
@@ -76,13 +81,16 @@ int save_write(void (*body)(void)) {
     if (!mcard_wpatch(2, head)) { mcard_last_err = MC_WRITE; return 0; }
     return 1;
 }
-int save_exists(void) {
+int save_info(int slot, SaveInfo *out) {   // 1: a save of this version is in that slot (out: who, how far)
+    pick(slot); bad_msg = 0;
     if (!mcard_rbegin(NAME)) return 0;
     u8 skip[256], head[128]; mcard_rget(skip, 256); mcard_rget(head, 128);
-    return mcard_rok() && !memcmp(head, magic, 8) && head[8] == 1;
+    if (!mcard_rok() || memcmp(head, magic, 8) || head[8] != 1) return 0;
+    memcpy(out, head + 16, sizeof *out); out->name[NAME_LEN - 1] = 0;
+    return 1;
 }
-int save_read(void (*body)(void)) {
-    bad_msg = 0; ld_bad = 0;
+int save_read(int slot, void (*body)(void)) {
+    bad_msg = 0; ld_bad = 0; pick(slot);
     if (!mcard_rbegin(NAME)) return 0;
     u8 skip[256], head[128]; mcard_rget(skip, 256); mcard_rget(head, 128);
     if (!mcard_rok()) return 0;

@@ -999,7 +999,7 @@ static void pass_on(int i) {   // the end of a long life: gently
         lifeMap[gy][gx] = CH_GRAVE; graves[ngraves].x = (u8)(gx - wx * BM_BLK); graves[ngraves].y = (u8)(gy - wy * BM_BLK); graves[ngraves].city = (u8)city;
         strcpy(graves[ngraves].name, s->bore.first); ngraves++; world_touched();
         sim_note("A STONE STANDS IN THE YARD"); }
-    for (int j = 0; j < nsims; j++) if (j != i) sim_moodlet(&sims[j], ML_GRIEF);
+    for (int j = 0; j < nsims; j++) if (j != i) { sim_moodlet(&sims[j], ML_GRIEF); wants_fear(&sims[j], F_DEATH); }
     audio_voice(VOICE_CRY);
     remove_sim(i);
 }
@@ -1695,7 +1695,7 @@ static int sim_player_interact_(void) {
     begin_action(s, action_for(c), mx, my);
     return 1;
 }
-void sim_player_cancel(void) { Sim *s = &sims[player]; if (s->action != ACT_NONE) end_action(s); else if (has_board) { on_board ^= 1; board_v = 0; board_lift = 0; board_air = 0; board_vy = 0; sim_note(on_board ? "ON THE BOARD" : "OFF THE BOARD"); } }
+void sim_player_cancel(void) { Sim *s = &sims[player]; if (s->action != ACT_NONE) end_action(s); else if (has_board) { on_board ^= 1; board_v = 0; board_lift = 0; board_air = 0; board_vy = 0; sim_note(on_board ? "ON THE BOARD" : "OFF THE BOARD"); if (on_board) wants_event(s, W_SKATE, 0); } }
 void sim_player_cancel_sim(Sim *s) { if (s->action != ACT_NONE) end_action(s); }
 
 const char * sim_hint(void) { world_lvl = sims[player].lvl; const char * r = sim_hint_(); world_lvl = 0; return r; }
@@ -1747,6 +1747,8 @@ __attribute__((optimize("Os"))) void sim_save(void) {
         sv_u16(s->asp_pts); sv_n(s->rel, MAX_SIMS); sv_u8(s->lvl);
         for (int k = 0; k < 6; k++) { sv_u8(s->ml[k].id); sv_u8(s->ml[k].val); sv_u16(s->ml[k].t); }
         sv_u8(s->uid); sv_n(s->par, 2); sv_u8(s->partner); sv_u8(s->age_days); sv_u8(s->bday); sv_u8(s->away); sv_u8(s->grade); sv_u8(s->homework);
+        { int act = s->action; if (act == ACT_WALK || act == ACT_TRAVEL || act == ACT_STAIRS || act == ACT_TALK || act == ACT_CARE || act == ACT_RUN) act = ACT_NONE;   // (what they were doing, if it stays put: asleep, eating, at work...)
+          sv_u8(act); sv_u16(MIN(s->act_t, 65535)); sv_u8(s->act_x); sv_u8(s->act_y); sv_u8(s->act_var); }
     }
 }
 __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after sim_init; the faces are built here)
@@ -1773,6 +1775,10 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
         s->asp_pts = ld_u16(); ld_n(s->rel, MAX_SIMS); s->lvl = (u8)ld_u8();
         for (int k = 0; k < 6; k++) { s->ml[k].id = (u8)ld_u8(); s->ml[k].val = (s8)ld_u8(); s->ml[k].t = (u16)ld_u16(); }
         s->uid = (u8)ld_u8(); ld_n(s->par, 2); s->partner = (u8)ld_u8(); s->age_days = (u8)ld_u8(); s->bday = (u8)ld_u8(); s->away = (u8)ld_u8(); s->grade = (u8)ld_u8(); s->homework = (u8)ld_u8();
+        s->action = ld_u8(); s->act_t = ld_u16(); s->act_x = (s8)ld_u8(); s->act_y = (s8)ld_u8(); s->act_var = (u8)ld_u8();
+        if (s->action >= ACT_GATHER + 1) s->action = ACT_NONE;
+        s->gait.sit = (s->action == ACT_SIT || s->action == ACT_WC); s->gait.sleep = (s->action == ACT_SLEEP);
     }
     player = CLAMP(pl, 0, MAX(0, nsims - 1));
 }
+void sim_proud(Sim *s) { sim_moodlet(s, ML_PROUD); }

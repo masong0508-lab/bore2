@@ -2,29 +2,30 @@
 #include "wants.h"
 #include "audio.h"
 #include "world.h"
+#include "island.h"
 
 int wants_flash_t; char wants_flash[32];
 
 // ---- what each want is worth, and what it is called ----
-static const u16 wPts[W_N] = { 0, 500, 500, 500, 500, 800, 500, 800, 800, 1000, 1500, 3000, 1000, 1500, 5000, 3000, 1500, 1500, 1500, 1500, 3000, 3000, 1000, 1500, 1000, 1000, 1000, 1500, 1000, 4000 };
-static const u16 fPts[F_N] = { 0, 1500, 1000, 3000, 1000, 2000, 1000 };
+static const u16 wPts[W_N] = { 0, 500, 500, 500, 500, 800, 500, 800, 800, 1000, 1500, 3000, 1000, 1500, 5000, 3000, 1500, 1500, 1500, 1500, 3000, 3000, 1000, 1500, 1000, 1000, 1000, 1500, 1000, 4000, 1500, 5000, 800, 2000 };
+static const u16 fPts[F_N] = { 0, 1500, 1000, 3000, 1000, 2000, 1000, 3000 };
 static const char *const wNm[W_N] = { "", "EAT A MEAL", "SLEEP IN A BED", "TAKE A SHOWER", "HAVE SOME FUN", "READ A BOOK", "DRINK A COFFEE", "GO FOR A RUN",
     "MAKE A PHONE CALL", "CHAT WITH SOMEONE", "CHAT WITH", "MAKE A FRIEND", "GO TO WORK", "GET PAID", "GET PROMOTED", "HAVE $", "BUY SOMETHING",
-    "COOKING SKILL", "BODY SKILL", "FUN SKILL", "VISIT THE ISLAND", "VISIT THE TOWN", "EAT OUT", "GO FOR A SWIM", "WORK OUT AT A GYM", "GO SHOPPING", "SEE A FILM", "A NIGHT OUT", "DO HOMEWORK", "HAVE A BABY" };
-static const char *const fNm[F_N] = { "", "PASS OUT", "WET MYSELF", "GET DEMOTED", "A BAD DAY AT WORK", "UNPAID BILLS", "BE TURNED DOWN" };
+    "COOKING SKILL", "BODY SKILL", "FUN SKILL", "VISIT THE ISLAND", "VISIT THE TOWN", "EAT OUT", "GO FOR A SWIM", "WORK OUT AT A GYM", "GO SHOPPING", "SEE A FILM", "A NIGHT OUT", "DO HOMEWORK", "HAVE A BABY", "THROW A PARTY", "BUY A HOME", "RIDE A BOARD", "FIND A SECRET" };
+static const char *const fNm[F_N] = { "", "PASS OUT", "WET MYSELF", "GET DEMOTED", "A BAD DAY AT WORK", "UNPAID BILLS", "BE TURNED DOWN", "LOSE SOMEONE" };
 
 // ---- who wants what: a weight per kind, per aspiration (FORTUNE KNOWLEDGE POPULARITY PLEASURE HOME GROW UP) ----
 static const u8 aspW[AS_N][W_N] = {
- //  -  eat slp shw fun rd cof run ph chat cw frnd work paid prm cash buy ck bd fn isl twn din swm gym shp flm ngt hw baby
-    { 0, 1,  1,  1,  1,  1, 1,  1,  1, 1,   1, 2,   4,   5,   5,  5,   4,  1, 1, 1, 1,  1,  1,  1,  1,  4,  1,  1,  3, 1 },   // FORTUNE
-    { 0, 1,  1,  1,  1,  5, 2,  2,  1, 1,   1, 1,   2,   1,   2,  1,   1,  4, 4, 4, 3,  3,  1,  1,  2,  1,  2,  0,  5, 1 },   // KNOWLEDGE
-    { 0, 1,  1,  2,  2,  1, 1,  1,  4, 5,   5, 5,   1,   1,   2,  1,   1,  1, 1, 2, 2,  2,  3,  3,  2,  2,  2,  5,  2, 2 },   // POPULARITY
-    { 0, 4,  2,  1,  5,  1, 4,  3,  1, 2,   2, 1,   0,   1,   1,  1,   2,  2, 1, 2, 3,  3,  5,  5,  1,  3,  4,  4,  1, 1 },   // PLEASURE
-    { 0, 3,  3,  1,  2,  1, 1,  1,  2, 2,   5, 3,   1,   2,   1,  2,   4,  3, 1, 1, 1,  1,  1,  1,  1,  3,  2,  1,  3, 5 },   // HOME
-    { 0, 2,  2,  1,  5,  4, 0,  3,  1, 3,   4, 3,   0,   0,   0,  0,   1,  1, 2, 3, 2,  2,  2,  4,  2,  1,  4,  0,  5, 0 },   // GROW UP
+ //  -  eat slp shw fun rd cof run ph chat cw frnd work paid prm cash buy ck bd fn isl twn din swm gym shp flm ngt hw baby pty hom skt sec
+    { 0, 1,  1,  1,  1,  1, 1,  1,  1, 1,   1, 2,   4,   5,   5,  5,   4,  1, 1, 1, 1,  1,  1,  1,  1,  4,  1,  1,  3, 1, 1, 4, 1, 3 },   // FORTUNE
+    { 0, 1,  1,  1,  1,  5, 2,  2,  1, 1,   1, 1,   2,   1,   2,  1,   1,  4, 4, 4, 3,  3,  1,  1,  2,  1,  2,  0,  5, 1, 0, 1, 1, 5 },   // KNOWLEDGE
+    { 0, 1,  1,  2,  2,  1, 1,  1,  4, 5,   5, 5,   1,   1,   2,  1,   1,  1, 1, 2, 2,  2,  3,  3,  2,  2,  2,  5,  2, 2, 5, 1, 2, 1 },   // POPULARITY
+    { 0, 4,  2,  1,  5,  1, 4,  3,  1, 2,   2, 1,   0,   1,   1,  1,   2,  2, 1, 2, 3,  3,  5,  5,  1,  3,  4,  4,  1, 1, 4, 1, 4, 2 },   // PLEASURE
+    { 0, 3,  3,  1,  2,  1, 1,  1,  2, 2,   5, 3,   1,   2,   1,  2,   4,  3, 1, 1, 1,  1,  1,  1,  1,  3,  2,  1,  3, 5, 2, 5, 0, 1 },   // HOME
+    { 0, 2,  2,  1,  5,  4, 0,  3,  1, 3,   4, 3,   0,   0,   0,  0,   1,  1, 2, 3, 2,  2,  2,  4,  2,  1,  4,  0,  5, 0, 2, 0, 5, 4 },   // GROW UP
 };
 static const u8 aspF[AS_N][F_N] = {
-    { 0, 1, 1, 5, 4, 5, 1 }, { 0, 2, 2, 2, 2, 1, 1 }, { 0, 1, 2, 1, 1, 1, 5 }, { 0, 3, 3, 1, 1, 1, 2 }, { 0, 2, 2, 2, 2, 4, 2 }, { 0, 2, 3, 0, 0, 0, 3 } };
+    { 0, 1, 1, 5, 4, 5, 1, 1 }, { 0, 2, 2, 2, 2, 1, 1, 1 }, { 0, 1, 2, 1, 1, 1, 5, 2 }, { 0, 3, 3, 1, 1, 1, 2, 1 }, { 0, 2, 2, 2, 2, 4, 2, 5 }, { 0, 2, 3, 0, 0, 0, 3, 3 } };
 
 int wants_skill_level(int raw) { int l = raw / 400; return l > 10 ? 10 : l; }
 static int other_sim(const Sim *s) {
@@ -55,6 +56,10 @@ static void roll_want(Sim *s, int slot) {
         if (w == W_PROMO && job_level >= 5) weight = 0;
         if (w == W_HOMEWORK && (stage != AG_CHILD && stage != AG_TEEN)) weight = 0;     // (only the ones at school)
         if (w == W_BABY && (stage != AG_ADULT || nsims >= MAX_SIMS || baby_due >= 0)) weight = 0;
+        if (w == W_PARTY && stage <= AG_CHILD) weight = 0;
+        if (w == W_HOME && stage != AG_ADULT && stage != AG_ELDER) weight = 0;
+        if (w == W_SKATE && stage == AG_ELDER) weight = 0;
+        if (w == W_SECRET && isl_secret_count() >= SEC_N) weight = 0;
         if (stage == AG_BABY) weight = 0;                                              // (a baby wants nothing it could do itself)
         if (weight == 0 || (int)(look_rand() % 6) >= weight) continue;
         int arg = 0;
@@ -98,7 +103,12 @@ static void flash(const Sim *s, const char *what, int pts) {
     if ((int)(s - sims) != player) return;
     sprintf(wants_flash, "%s %d", what, pts); wants_flash_t = 200;
 }
-static void gain(Sim *s, int pts) { s->asp_pts += pts; if (s->asp_pts > ASP_MAX) s->asp_pts = ASP_MAX; if (s->asp_pts < 0) s->asp_pts = 0; }
+static void gain(Sim *s, int pts) {
+    if (pts > 0 && s->asp_pts < 10000 && s->asp_pts + pts >= 10000) {   // reaching PLATINUM: a proud moment
+        sim_proud(s);
+        if ((int)(s - sims) == player) sim_note("PLATINUM! NOTHING CAN BRING YOU DOWN");
+    }
+    s->asp_pts += pts; if (s->asp_pts > ASP_MAX) s->asp_pts = ASP_MAX; if (s->asp_pts < 0) s->asp_pts = 0; }
 
 void wants_event(Sim *s, int kind, int arg) {
     for (int i = 0; i < 4; i++) {

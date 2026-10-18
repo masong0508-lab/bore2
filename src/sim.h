@@ -86,6 +86,7 @@ const char *sim_pie_title(void);           // whose / what menu it is
 int  sim_traits(const Sim *s, const char *out[3]);   // Sims 3 traits read off the personality: how many (up to 3)
 const char *sim_moodlet_name(int id);
 void sim_moodlet(Sim *s, int id);          // give a moodlet (re-giving refreshes it)
+void sim_proud(Sim *s);                    // the PROUD moodlet (the wants meter reaching platinum)
 int  sim_player_interact(void);            // X: use the thing in front, talk to the person in front. Returns 1 if something started
 void sim_player_cancel(void);              // B: get up
 void sim_player_cancel_sim(Sim *s);

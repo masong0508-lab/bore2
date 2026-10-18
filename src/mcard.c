@@ -62,7 +62,9 @@ int mcard_present(void) { u8 s[128]; return mcard_read(0, s) && s[0] == 'M' && s
 // ---- the directory: sector n (1..15) of block 0 describes block n ----
 static u8 dir[NBLK + 1][128];
 static int dir_ok;
+int mcard_dir_keep;                     // 1: the directory read last is still good (a run of reads with no write between)
 static int dir_load(void) {
+    if (mcard_dir_keep && dir_ok) return 1;
     dir_ok = 0;
     for (int i = 0; i <= NBLK; i++) if (!mcard_read(i, dir[i])) return 0;
     if (dir[0][0] != 'M' || dir[0][1] != 'C') { mcard_last_err = MC_UNFORMATTED; return 0; }
@@ -101,6 +103,7 @@ void mcard_rget(void *out, int n) {
 }
 int mcard_rok(void) { return !sbad; }
 int mcard_wbegin(const char *name, int nb) {   // open a file to write, nb blocks: 1 ok
+    mcard_dir_keep = 0;
     sbad = 0; sfill = 0; sdone = 0; mcard_last_err = 0;
     if (nb < 1 || nb > NBLK) { mcard_last_err = MC_TOOBIG; return 0; }
     if (!dir_load()) { if (!mcard_last_err) mcard_last_err = MC_NOCARD; return 0; }

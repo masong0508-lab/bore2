@@ -101,7 +101,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int sub_back = ST_LIFE;
@@ -127,6 +127,7 @@ static int life_started;
 static int help_page;
 static int hb_now(void) { return VSync(1); }   // hblanks since the last VSync(0) (the flip): 263 per vblank, 525 = one 30 FPS frame
 static int t_cpu, t_frame0, t_bub, t_hud, t_upd;
+static int det_opt = 12;                                      // the FULL DETAIL option's range (the range in use dips under it when frames run long)
 int avg_cpu16, avg_world16, avg_hh16, hist_cpu[5], avg_prof16[8];
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
@@ -1457,7 +1458,7 @@ static void opts_apply(void) {
     extern int getenv_noshadow, dbg_noao, dbg_nograd, world_detail_r, cit_live_max, cit_maxdraw, cit_sprite_rate;
     far_view = opt[O_VIEW]; far_detail = opt[O_FARB]; far_trees = opt[O_TREES]; far_haze = opt[O_HAZE];
     static const u8 rr[4] = { 8, 10, 12, 14 }, cr[4] = { 16, 32, 48, 64 }, lv[4] = { 1, 2, 4, 6 };
-    world_detail_r = rr[opt[O_DETAIL] & 3]; cit_maxdraw = cr[opt[O_CROWD] & 3]; cit_live_max = lv[opt[O_LIVE] & 3]; cit_sprite_rate = opt[O_SPR];
+    world_detail_r = det_opt = rr[opt[O_DETAIL] & 3]; cit_maxdraw = cr[opt[O_CROWD] & 3]; cit_live_max = lv[opt[O_LIVE] & 3]; cit_sprite_rate = opt[O_SPR];
     gfx_noshadow = opt[O_SHADOW] == 0; getenv_noshadow = opt[O_SHADOW] < 2;
     dbg_noao = !opt[O_AO]; dbg_nograd = !opt[O_WALLS];
     gfx_min_vsyncs = opt[O_FPSCAP] == 0 ? 1 : opt[O_FPSCAP] == 1 ? 2 : 3;
@@ -1549,7 +1550,6 @@ static void opts_draw(void) {
 }
 
 // ---- the memory card: SAVE GAME in the pause menu, CONTINUE on the title ----
-static int card_state = -1;                                  // the title's CONTINUE: -1 not looked yet, 0 no save, 1 a save
 static const char *save_msg;                                 // why the last load failed (the title shows it)
 static void save_body(void) {
     sv_u32(world_seed());
@@ -1570,15 +1570,18 @@ static void load_body(void) {
     home_city = ld_u8(); home_bx = (s16)ld_u16(); home_by = (s16)ld_u16(); home_paid = (int)ld_u32();
     sim_load(&edit); world_load(); pop_load(); isl_load();
 }
-static void save_game(void) {
+static int save_game(int slot) {
     loading("SAVING YOUR GAME", 50);
-    if (save_write(save_body)) { card_state = 1; sim_note("GAME SAVED"); audio_voice(VOICE_WIN); }
-    else { sim_note(save_error()); audio_voice(VOICE_NAH); }
+    SaveInfo in; memset(&in, 0, sizeof in);
+    strncpy(in.name, sims[player].bore.last, NAME_LEN - 1); in.day = (u16)day_count; in.nsims = (u8)nsims; in.zone = (u8)world_zone; in.cash = (s32)cash;
+    save_set_info(&in);
+    if (save_write(slot, save_body)) { char t[32]; sprintf(t, "GAME SAVED IN SLOT %d", slot + 1); sim_note(t); audio_voice(VOICE_WIN); return 1; }
+    sim_note(save_error()); audio_voice(VOICE_NAH); return 0;
 }
-static int load_game(void) {   // 1: the saved life is up and running
+static int load_game(int slot) {   // 1: the saved life is up and running
     loading("LOADING YOUR GAME", 10);
     life_started = 0;
-    if (!save_read(load_body)) { save_msg = save_error(); card_state = -1; return 0; }
+    if (!save_read(slot, load_body)) { save_msg = save_error(); return 0; }
     world_place();
     citizens_init();
     if (world_zone != ZONE_HOME) citizens_enter(world_zone);
@@ -1587,6 +1590,43 @@ static int load_game(void) {   // 1: the saved life is up and running
     cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; frame = 0;
     sim_note("WELCOME BACK");
     return 1;
+}
+// the slot list: three lives on the card (SAVE GAME picks where, CONTINUE picks which)
+static int slot_save, slot_sel, slot_back, slot_have[SAVE_SLOTS], slot_card; static SaveInfo slot_in[SAVE_SLOTS];
+static void slots_open(int saving, int back) {
+    loading("LOOKING AT THE MEMORY CARD", 50);
+    slot_save = saving; slot_back = back; slot_sel = 0; save_msg = 0;
+    mcard_dir_keep = 0; slot_have[0] = save_info(0, &slot_in[0]);   // (the card's directory read once for all three)
+    mcard_dir_keep = 1; for (int i = 1; i < SAVE_SLOTS; i++) slot_have[i] = save_info(i, &slot_in[i]);
+    mcard_dir_keep = 0;
+    slot_card = mcard_present();
+    if (!saving) for (int i = 0; i < SAVE_SLOTS; i++) if (slot_have[i]) { slot_sel = i; break; }
+    state = ST_SLOTS;
+}
+static void slots_update(void) {
+    if (PRESSED(PAD_UP)) slot_sel = (slot_sel + SAVE_SLOTS - 1) % SAVE_SLOTS;
+    if (PRESSED(PAD_DOWN)) slot_sel = (slot_sel + 1) % SAVE_SLOTS;
+    if (PRESSED(PAD_CIRCLE)) { state = slot_back; return; }
+    if (!PRESSED(PAD_CROSS)) return;
+    if (!slot_card) { save_msg = "NO MEMORY CARD IN SLOT 1"; audio_voice(VOICE_NAH); slot_card = mcard_present(); return; }
+    if (slot_save) { save_game(slot_sel); state = ST_LIFE; return; }
+    if (!slot_have[slot_sel]) { save_msg = "THAT SLOT IS EMPTY"; audio_voice(VOICE_NAH); return; }
+    if (load_game(slot_sel)) state = ST_LIFE;
+    else { audio_voice(VOICE_NAH); state = ST_SLOTS; if (!life_started) slot_back = ST_MENU; }
+}
+static void slots_draw(void) {
+    if (slot_back == ST_MENU) title_draw(); else { life_draw(); ui_dim(); }
+    int top = ui_window(40, 40, 240, 152, slot_save ? "SAVE GAME" : "CONTINUE", IC_BOOK);
+    for (int i = 0; i < SAVE_SLOTS; i++) {
+        int y = top + 4 + i * 30; char t[40], u[40];
+        ui_round(48, y, 224, 26, 4, i == slot_sel ? UI_HILITE : UI_PANEL, i == slot_sel ? UI_HILITE : UI_PANEL, 0);
+        if (slot_have[i]) { sprintf(t, "%d. THE %s FAMILY", i + 1, slot_in[i].name); sprintf(u, "DAY %d   %d BORES   $%d", slot_in[i].day + 1, slot_in[i].nsims, (int)slot_in[i].cash); }
+        else { sprintf(t, "%d. EMPTY", i + 1); strcpy(u, slot_save ? "SAVE A NEW LIFE HERE" : "NOTHING SAVED HERE"); }
+        ui_text(56, y + 3, 1, t, UI_INK); ui_text(56, y + 14, 1, u, UI_SOFT);
+    }
+    const char *m = save_msg ? save_msg : !slot_card ? "NO MEMORY CARD IN SLOT 1" : slot_save && slot_have[slot_sel] ? "SAVING HERE REPLACES IT" : "";
+    ui_textc(160, top + 98, 1, m, save_msg || !slot_card ? UI_BADT : UI_SOFT);
+    ui_hints(160, top + 112, slot_save ? "X SAVE|O BACK" : "X LOAD|O BACK", 1);
 }
 static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "SAVE GAME", "NEW LIFE", "QUIT TO TITLE" };
 #define NPAUSE 10  // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
@@ -1603,7 +1643,7 @@ void throw_party(void) {   // (also the phone's THROW A PARTY)
     char b[40]; sprintf(b, "PARTY! %d GUESTS ARE COMING", n); sim_note(b);
     audio_station_play(1);                                            // RAVE 101
     audio_voice(VOICE_YAHOO);
-    for (int i = 0; i < nsims; i++) sim_moodlet(&sims[i], 15);        // FUN TIME
+    for (int i = 0; i < nsims; i++) { sim_moodlet(&sims[i], 15); wants_event(&sims[i], W_PARTY, 0); }   // FUN TIME
 }
 static void pause_update(void) {
     if (PRESSED(PAD_UP)) menu_sel = (menu_sel + NPAUSE - 1) % NPAUSE;
@@ -1624,9 +1664,9 @@ static void pause_update(void) {
                      break;
             case 5: opts_open(ST_PAUSE); break;
             case 6: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 7: save_game(); state = ST_LIFE; break;
+            case 7: slots_open(1, ST_PAUSE); break;
             case 8: life_started = 0; start_life(); state = ST_LIFE; break;
-            case 9: audio_jukebox_stop(); card_state = -1; life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); break;
+            case 9: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); break;
         }
     }
 }
@@ -2546,7 +2586,7 @@ static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
         { IC_EYE, "L2 + R2 TOGETHER: SIMS CAMERA, BEHIND YOU, OR FIRST PERSON." },
         { IC_PLAY, "FIRST PERSON: UP WALKS, LEFT AND RIGHT TURN, L2 R2 LOOK. L1 + R1 TURN ROUND. THE DOT SHOWS WHAT X DOES." },
         { IC_CASE, "WORK: PHONE, JOBS. BILLS ARE $800, EVERY MIDNIGHT." },
-        { IC_ARROW, "START: THE BORE PANEL, BUILD MODE AND OPTIONS (CAMERA HEIGHT AND TURN SPEED)." } } },
+        { IC_ARROW, "START: THE BORE PANEL, BUILD MODE, OPTIONS AND SAVE GAME (3 SLOTS ON THE MEMORY CARD)." } } },
     { "BUILD AND CREATE", { { IC_HAMMER, "BUILD MODE: ITEMS, WALLS, FLOORS AND 103 WALLPAPERS." },
         { IC_BRUSH, "SELECT PICKS THE TOOL. L1 R1 PICK THE THING. X PLACES IT, SQUARE TAKES IT AWAY." },
         { IC_HOUSE, "L2 R2 CHANGE THE STOREY. L3 SHOWS THE ROOF." },
@@ -2633,18 +2673,13 @@ static const char *const menuBlurb[] = { "A NEW LIFE: HOME, THE ISLAND, THE TOWN
 #define NMENU 6
 static void menu_update(void) {
     title_t++;
-    if (card_state < 0) card_state = save_exists() ? 1 : 0;   // (once, the first time the menu is up: a look at the card)
     if (PRESSED(PAD_UP)) menu_sel = (menu_sel + NMENU - 1) % NMENU;
     if (PRESSED(PAD_DOWN)) menu_sel = (menu_sel + 1) % NMENU;
-    if (PRESSED(PAD_CIRCLE)) { state = ST_TITLE; card_state = -1; }
+    if (PRESSED(PAD_CIRCLE)) state = ST_TITLE;
     if (PRESSED(PAD_CROSS) || PRESSED(PAD_START)) {
         switch (menu_sel) {
             case 0: life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0; break;
-            case 1:
-                if (card_state != 1) { card_state = -1; save_msg = mcard_present() ? "NO SAVE ON THE CARD" : "NO MEMORY CARD IN SLOT 1"; audio_voice(VOICE_NAH); }
-                else if (load_game()) state = ST_LIFE;
-                else audio_voice(VOICE_NAH);
-                break;
+            case 1: slots_open(0, ST_MENU); break;
             case 2: prev_state = ST_MENU; create_tab = 0; create_row = 0; state = ST_CREATE; world_backup(); world_gen_studio(); break;
             case 3: prev_state = ST_MENU; state = ST_JUKEBOX; break;
             case 4: opts_open(ST_MENU); break;
@@ -2658,8 +2693,8 @@ static void menu_draw(void) {
     ui_card(92, 56, 136, 146);
     for (int i = 0; i < NMENU; i++) ui_button(98, 62 + i * 20, 124, 17, menuNm[i], ic[i], i == menu_sel);
     const char *t = menuBlurb[menu_sel];
-    if (menu_sel == 1) t = save_msg ? save_msg : card_state == 1 ? "YOUR SAVED LIFE ON THE CARD" : "SAVE FROM THE START MENU";
-    ui_textc(160, 186, 1, t, menu_sel == 1 && save_msg ? UI_BADT : UI_SOFT);
+    if (menu_sel == 1) t = "A LIFE SAVED ON THE MEMORY CARD";
+    ui_textc(160, 186, 1, t, UI_SOFT);
 }
 
 // ---- the loading screen: a bar and what is being made, shown before any long job (start-up, a new life, travel) ----
@@ -2788,9 +2823,16 @@ int main(void) {
             case ST_OVER: over_update(); over_draw(); break;
             case ST_HOMES: homes_update(); homes_draw(); break;
             case ST_CRAFT: craft_update(); craft_draw(); break;
+            case ST_SLOTS: slots_update(); if (state == ST_SLOTS) slots_draw(); else if (state == ST_LIFE) life_draw(); else if (state == ST_MENU) menu_draw(); else pause_draw(); break;
             case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
+        if (state == ST_LIFE) {   // a frame that ran past two screen refreshes: the full-detail range draws in a tile (back out once things are quiet)
+            extern int world_detail_r; static int slow_n, fast_n;
+            if (t_cpu > 520) { fast_n = 0; if (++slow_n >= 2 && world_detail_r > det_opt - 3) { world_detail_r--; slow_n = 0; } } else slow_n = 0;
+            if (t_cpu < 440) { if (++fast_n >= 120 && world_detail_r < det_opt) { world_detail_r++; fast_n = 0; } } else if (t_cpu > 480) fast_n = 0;
+            if (world_detail_r > det_opt) world_detail_r = det_opt;
+        }
         if (state == ST_LIFE) { avg_cpu16 += t_cpu - (avg_cpu16 >> 4); avg_world16 += t_world - (avg_world16 >> 4);   // (the test readouts)
             avg_hh16 += gfx_prof[4] - (avg_hh16 >> 4); hist_cpu[MIN(4, t_cpu / 262)]++;
             for (int k = 0; k < 8; k++) avg_prof16[k] += gfx_prof[k] - (avg_prof16[k] >> 4); }

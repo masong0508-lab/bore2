@@ -6,6 +6,7 @@
 #include "audio.h"
 #include "ui.h"
 #include "save.h"
+#include "wants.h"
 
 int isl_wood, isl_stone, isl_leaves, isl_food, isl_spear, isl_shells, isl_craft_asked;
 u16 isl_secrets;
@@ -19,6 +20,7 @@ const char *isl_secret_name(int sec) { return secNm[sec % SEC_N]; }
 void isl_found(int sec) {
     if ((isl_secrets >> sec) & 1) return;
     isl_secrets |= (u16)(1 << sec);
+    for (int i = 0; i < nsims; i++) wants_event(&sims[i], W_SECRET, 0);
     char t[40]; snprintf(t, sizeof t, "SECRET FOUND! %d OF %d", isl_secret_count(), SEC_N); sim_note(t);
     audio_voice(VOICE_WIN);
     if (isl_secret_count() == SEC_N) sim_note("EVERY SECRET OF THE ISLAND!");

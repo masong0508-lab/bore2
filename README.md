@@ -51,10 +51,16 @@ The creature code: `python3 tools/port_look.py <bore-gba-main>/source/main.c src
 - `test/` scripts used to take emulator screenshots and measure FPS.
 
 ## Known gaps
-The island's and the desert town's built things are not kept by a save (they come back as they were made), what people are doing in the middle of an action is not kept (everyone stands up idle), the card driver is tested only in an emulator (no real card yet), wants/fears only partly done, tested only in an emulator.
+Someone walking or chatting when you save stands idle after loading (sleeping, eating, working and the like carry on), the card driver is tested only in an emulator (no real card yet), tested only in an emulator.
 
 ## Saving
-START, then SAVE GAME writes the life to the memory card in slot 1: one file, 1 block (2 at most), made by `src/mcard.c` (the card, over the serial port like the pad) and `src/save.c` (the packing). It holds the family (looks, needs, wants, relationships, skills), the clock, money, job, the home lot and every building you made, the open world's seed and the changes since (who grew up, moved, passed on), the island's stores and secrets, and the options. The world itself is made again from its seed. CONTINUE on the title loads it. One save slot; saving again replaces it.
+START, then SAVE GAME, then pick one of 3 slots. CONTINUE on the title shows the 3 slots (the family, the day, the Bores, the money) and loads one. Each save is one file on the memory card in slot 1, usually 1 or 2 blocks (it takes only what it needs). `src/mcard.c` talks to the card over the serial port like the pad; `src/save.c` packs the game. A save holds the family (looks, needs, wants, relationships, skills, what each one is doing), the clock, money, job, the home lot and every building you made, the island's camp and the town as you left them, the open world's seed and the changes since (who grew up, moved, passed on), the island's stores and secrets, and the options. The world itself is made again from its seed.
+
+## Wants and fears
+Each Bore has 4 wants and 2 fears from their aspiration, age and personality. Doing a want pays aspiration points; a fear coming true takes them. Wants include throwing a party, buying a home, riding a skateboard, finding an island secret, visiting the island or the town, skills, money and friends. Fears include losing someone in the family. Reaching PLATINUM gives a PROUD moodlet.
+
+## Speed
+In SAN BOREAS, when frames run long the full-detail range pulls in a few tiles (buildings past it are drawn as simple boxes) and goes back out when things are quiet, so the city holds 30 frames a second more often. Far-off roofs are drawn as bigger pieces.
 
 ## Buying and building
 BUILD MODE (START, BUILD MODE), BUY tool: the catalog has eight tabs (SEATS, TABLES, KITCHEN, FUN AND TECH, DECOR, GARDEN, SKATE, SPECIAL),
