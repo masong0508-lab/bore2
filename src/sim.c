@@ -12,6 +12,7 @@
 #include "home.h"
 #include "island.h"
 #include "save.h"
+#include "story.h"
 
 Sim  sims[MAX_SIMS];
 int  nsims, player;
@@ -193,6 +194,7 @@ void sim_switch_player(void) {
 // ---- walking with collision (the lot's tiles) ----
 int has_board, on_board, board_lift; static int board_v, board_vy, board_air, board_prev;   // the skateboard: owned, ridden, how high the rider is, and the coasting / air state
 static int ramp_pass;   // set while the rider's own step is tried: a board can roll onto a ramp
+static int board_airt, board_combo; static u32 board_land;   // (tricks: steps in the air, the combo, when the last one landed)
 static int is_ramp(char c) { return c == '1' || c == '2' || c == '4' || c == '5' || c == '9'; }
 static int ramp_g(int px, int pz, char c, int mx, int my) { return items_ramp_h(c, world_item_facing(mx, my), px - mx * TILE, (-pz) - my * TILE); }
 static int footprint_free(int x, int z) {
@@ -525,7 +527,8 @@ static void end_action(Sim *s) {
                         wants_event(s, W_SLEEP, 0); if (s->act_t <= 0 && s->act_var == 0) { wants_reroll(s); sim_moodlet(s, ML_RESTED); }   // a full sleep: new wants on waking
                         { PlaceInfo pi; if (place_at(s->act_x, s->act_y, &pi) && (pi.lot == LOT_INN || pi.lot == LOT_HOTEL)) sim_moodlet(s, ML_HOTEL); } break;
         case ACT_SHOWER: wants_event(s, W_SHOWER, 0); sim_moodlet(s, ML_FRESH); if (s->act_var == 1) sim_moodlet(s, ML_SINGING); break;
-        case ACT_FUN: wants_event(s, W_FUN, 0);   // (act_var: 4 browsing a shop, 5 a drink at a bar, 7 looking at art)
+        case ACT_FUN: wants_event(s, W_FUN, 0);
+                      if (s == &sims[player]) { char c_ = world_at(s->act_x, s->act_y); if (c_ == 'v') story_event(E_TV, 0); else if (c_ == 'R' || c_ == 'A' || c_ == 'j') story_event(E_RADIO, 0); }   // (act_var: 4 browsing a shop, 5 a drink at a bar, 7 looking at art)
                       sim_moodlet(s, s->act_var == 4 ? ML_RETAIL : s->act_var == 5 ? ML_NIGHT_OUT : s->act_var == 7 ? ML_INSPIRED : ML_FUN_TIME);
                       if (s->act_var == 4) wants_event(s, W_SHOP, 0); if (s->act_var == 5) wants_event(s, W_NIGHT, 0); break;
         case ACT_SIT: if (s->act_var == 6) { sim_moodlet(s, ML_FILM); wants_event(s, W_FILM, 0); wants_event(s, W_FUN, 0); } break;   // (a film)
@@ -537,7 +540,7 @@ static void end_action(Sim *s) {
         case ACT_RUN: wants_event(s, W_RUN, 0); sim_moodlet(s, s->act_var == 2 ? ML_COACHED : ML_WORKOUT);
                       { PlaceInfo pi; if (place_at(s->act_x, s->act_y, &pi) && pi.lot == LOT_GYM) wants_event(s, W_GYM, 0); } break;
         case ACT_SWIM: wants_event(s, W_SWIM, 0); sim_moodlet(s, ML_SWAM); break;
-        case ACT_PHONE: wants_event(s, W_PHONE, 0); if (s->act_var == 1) sim_moodlet(s, ML_PIZZA); break;
+        case ACT_PHONE: wants_event(s, W_PHONE, 0); if (s->act_var == 1) { sim_moodlet(s, ML_PIZZA); if (s == &sims[player]) story_event(E_PIZZA, 0); } break;
         case ACT_WORK: wants_event(s, W_WORK, 0); break;
         case ACT_TALK: if (s->talk_to >= 0 && s->talk_to < nsims) chat_done(s, &sims[s->talk_to]); break;
     }
@@ -901,6 +904,8 @@ static void care_done(Sim *s) {
     }
     for (int i = 0; i < NEED_N; i++) { b->need[i] = CLAMP(b->need[i], 0, 100 << 10); s->need[i] = CLAMP(s->need[i], 0, 100 << 10); }
     if (s->uid && (b->par[0] == s->uid || b->par[1] == s->uid)) sim_moodlet(s, ML_PROUD);
+    { int me = (int)(s - sims); s->rel[bi] = (s8)MIN(100, s->rel[bi] + 6); b->rel[me] = (s8)MIN(100, b->rel[me] + 6); }   // (looking after a baby: it knows you)
+    if (s == &sims[player]) story_event(E_CARE, b->uid);
 }
 static void homework_done(Sim *s) {
     if (s->homework) return;
@@ -1052,6 +1057,18 @@ static void start_family(Sim *s, Sim *o) {   // two grown-ups who get on: a baby
     begin_action(s, ACT_TALK, sim_tile_x(o), sim_tile_y(o)); begin_action(o, ACT_TALK, sim_tile_x(s), sim_tile_y(s));
     s->talk_to = who; o->talk_to = me; o->path_n = 0; o->gait.wave = 40;
 }
+static void go_steady(Sim *s, Sim *o) {   // two who are sweet on each other make it official (the family tree: partners)
+    int who = (int)(o - sims), me = (int)(s - sims);
+    if ((int)(look_rand() % 100) >= 40 + s->rel[who] / 2 + o->mood / 4) { sim_say(o, "LET'S NOT RUSH IT"); s->rel[who] -= 3; wants_fear(s, F_REJECT); audio_voice(VOICE_DISAGREE); return; }
+    s->partner = o->uid; o->partner = s->uid;
+    sim_say(o, "YES! US, OFFICIALLY"); sim_moodlet(s, ML_LOVE); sim_moodlet(o, ML_LOVE); audio_voice(VOICE_FLIRT);
+    char t[40]; snprintf(t, sizeof t, "GOING STEADY WITH %s", o->bore.first); sim_note(t);
+    if (me == player) story_event(E_STEADY, o->uid);
+    if (o->action != ACT_NONE && o->action != ACT_WALK) end_action(o);
+    begin_action(s, ACT_TALK, sim_tile_x(o), sim_tile_y(o)); begin_action(o, ACT_TALK, sim_tile_x(s), sim_tile_y(s));
+    s->talk_to = who; o->talk_to = me; o->path_n = 0; o->gait.wave = 40;
+}
+void sim_baby_coming(int p0, int p1, int minutes) { baby_par[0] = (u8)p0; baby_par[1] = (u8)p1; baby_kind = 0; baby_due = life_minutes() + minutes; sim_note("A BABY COMES HOME TOMORROW"); }
 static void adopt(Sim *s) {
     if (baby_due >= 0) { sim_note("A BABY IS ALREADY ON THE WAY"); return; }
     if (nsims >= MAX_SIMS) { sim_note("THE HOUSE IS FULL (6 BORES)"); return; }
@@ -1196,8 +1213,14 @@ static void board_phys(Sim *s) {
     int mx = s->x / TILE, my = (-s->z) / TILE; char c = world_at(mx, my);
     int g = is_ramp(c) ? ramp_g(s->x, s->z, c, mx, my) : 0;
     if (board_air) {
-        board_vy -= 1; board_lift += board_vy;
-        if (board_lift <= g) { board_lift = g; board_air = 0; board_vy = 0; }
+        board_vy -= 1; board_lift += board_vy; board_airt++;
+        if (board_lift <= g) { board_lift = g; board_air = 0; board_vy = 0;
+            if (board_airt >= 8 && s == &sims[player]) {   // a trick landed (a combo: one after another, a few seconds apart at most)
+                board_combo = walk_tick - board_land < 240 ? board_combo + 1 : 1; board_land = walk_tick;
+                char t[24]; if (board_airt >= 34) sprintf(t, "BIG AIR!"); else if (board_combo > 1) sprintf(t, "COMBO X%d!", board_combo); else sprintf(t, "TRICK!");
+                sim_say(s, t); story_event(E_TRICK, board_combo); if (board_airt >= 34) story_event(E_BIGAIR, 0);
+            }
+            board_airt = 0; }
     } else if (board_lift - g > 30) {                       // rolled off a lip: up and away at the climb's rate
         board_air = 1; board_vy = CLAMP((board_lift - board_prev) * 2, 0, 44);
         board_prev = board_lift; board_lift += board_vy;
@@ -1375,6 +1398,8 @@ static int sim_pie_open_(char opt[8][16]) {
         }
         if (s->bore.stage == AG_ADULT && o->bore.stage == AG_ADULT && s->rel[who] >= 50 && baby_due < 0 && nsims < MAX_SIMS && pie_n < 8)
             SOPT("START A FAMILY", 15)
+        if (adults && s->partner != o->uid && pie_n < 8 && (story_is_partner(o->uid) ? story_loved() : s->rel[who] >= 70))
+            SOPT("GO STEADY", 16)
         #undef SOPT
         return pie_n;
     }
@@ -1484,6 +1509,7 @@ static void social(Sim *s, Sim *o, int move) {   // a social move: the other Bor
     int g = gain_[move]; if (has_trait(s, TR_NICE, 1) && g > 0) g += 3;
     int r = s->rel[who] + g; s->rel[who] = (s8)CLAMP(r, -100, 100);
     r = o->rel[me] + g; o->rel[me] = (s8)CLAMP(r, -100, 100);
+    if (me == player) story_event(move == SO_JOKE ? E_JOKE : move == SO_HUG ? E_HUG : move == SO_FLIRT ? E_FLIRT : E_TALK, o->uid);
     switch (move) {
         case SO_TALK: sim_say(o, "OH TOTALLY"); audio_voice(VOICE_AGREE); break;
         case SO_JOKE: sim_say(o, "HAHAHA!"); audio_voice(VOICE_LAUGH); sim_moodlet(o, ML_GOT_A_LAUGH); sim_moodlet(s, ML_GOT_A_LAUGH); break;
@@ -1622,6 +1648,7 @@ static void sim_pie_do_(int i) {
         int code = pie_code[i];
         if (code > 20 && code <= 20 + CARE_BED) { care_start(s, pie_who, code - 20); return; }
         if (code == 15) { start_family(s, &sims[pie_who]); return; }
+        if (code == 16) { go_steady(s, &sims[pie_who]); return; }
         social(s, &sims[pie_who], code); return;
     }
     switch (pie_code[i]) {   // the family's own

@@ -1,5 +1,6 @@
 // wants.c - wants, fears and the aspiration meter. See wants.h and DESIGN.md.
 #include "wants.h"
+#include "story.h"
 #include "audio.h"
 #include "world.h"
 #include "island.h"
@@ -111,6 +112,7 @@ static void gain(Sim *s, int pts) {
     s->asp_pts += pts; if (s->asp_pts > ASP_MAX) s->asp_pts = ASP_MAX; if (s->asp_pts < 0) s->asp_pts = 0; }
 
 void wants_event(Sim *s, int kind, int arg) {
+    if (s == &sims[player]) story_event(kind, arg);   // (the story missions watch what you do too)
     for (int i = 0; i < 4; i++) {
         int k = s->want[i].kind; if (k != kind) continue;
         if (k == W_CHAT_WITH && s->want[i].arg != arg) continue;
@@ -119,6 +121,7 @@ void wants_event(Sim *s, int kind, int arg) {
         if ((k == W_SK_COOK || k == W_SK_BODY || k == W_SK_FUN) && arg < s->want[i].arg) continue;
         int pts = s->want[i].pts;
         gain(s, pts); flash(s, "WANT DONE", pts);
+        if (s == &sims[player]) story_event(E_WANT, 0);
         if ((int)(s - sims) == player) audio_voice(VOICE_YAHOO);
         s->want[i].kind = 0; roll_want(s, i);
         if (k == W_CHAT) for (int j = 0; j < 4; j++) if (s->want[j].kind == W_CHAT) { s->want[j].kind = 0; roll_want(s, j); }   // (one chat is enough)

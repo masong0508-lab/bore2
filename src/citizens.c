@@ -1,5 +1,6 @@
 // citizens: see citizens.h
 #include "citizens.h"
+#include "story.h"
 #include "ui.h"
 #include "sim.h"
 #include "world.h"
@@ -507,7 +508,7 @@ void citizens_pie_do(int i) {
     case PO_TALK:
         story_talks++;
         if (c->pers == PE_GRUFF && c->rel < 10 && rn(100) < 45) { say(c, "WHAT."); rel_add(c, -2); audio_voice(VOICE_DISAGREE); break; }
-        rel_add(c, c->pers == PE_FRIENDLY ? 8 : 5); say(c, chat_line(c)); chat_begin(c);
+        rel_add(c, c->pers == PE_FRIENDLY ? 8 : 5); say(c, chat_line(c)); chat_begin(c); story_event(E_CITCHAT, 0);
         sim_moodlet(p, CML_GOOD_CHAT); audio_voice(VOICE_AGREE); break;
     case PO_FAMILY: {   // who do they live with?
         static char fam[32];
@@ -525,11 +526,11 @@ void citizens_pie_do(int i) {
         break; }
     case PO_JOKE:
         story_talks++;
-        if (accept(c, 45)) { rel_add(c, 9); say(c, "HAHAHA!"); chat_begin(c); sim_moodlet(p, CML_LAUGH); audio_voice(VOICE_LAUGH); }
+        if (accept(c, 45)) { rel_add(c, 9); say(c, "HAHAHA!"); chat_begin(c); story_event(E_JOKE, 0); story_event(E_CITCHAT, 0); sim_moodlet(p, CML_LAUGH); audio_voice(VOICE_LAUGH); }
         else { rel_add(c, -4); say(c, "NOT FUNNY."); sim_moodlet(p, CML_REJECTED); audio_voice(VOICE_DISAGREE); }
         break;
     case PO_HUG:
-        if (accept(c, 40)) { rel_add(c, 8); rom_add(c, 3); say(c, "AWW"); chat_begin(c); sim_moodlet(p, CML_HUGGED); audio_voice(VOICE_AGREE); }
+        if (accept(c, 40)) { rel_add(c, 8); rom_add(c, 3); say(c, "AWW"); chat_begin(c); story_event(E_HUG, 0); story_event(E_CITCHAT, 0); sim_moodlet(p, CML_HUGGED); audio_voice(VOICE_AGREE); }
         else { rel_add(c, -6); say(c, "PERSONAL SPACE!"); sim_moodlet(p, CML_REJECTED); audio_voice(VOICE_DISAGREE); }
         break;
     case PO_FLIRT: {
@@ -549,7 +550,7 @@ void citizens_pie_do(int i) {
         break;
     case PO_FIGHT:
         c->mode = CM_CHASE; c->hp = (u8)(c->stage == AG_ELDER ? 35 : 55 + rn(35)); c->cd = 30; c->t = 0;
-        rel_add(c, -10); rom_add(c, -20); say(c, "BRING IT!"); fight_on = 1; audio_voice(VOICE_ANGRY); break;
+        rel_add(c, -10); rom_add(c, -20); say(c, "BRING IT!"); fight_on = 1; audio_voice(VOICE_ANGRY); story_event(E_FIGHT, 0); break;
     case PO_SORRY:
         if (rn(100) < 55) { c->mode = CM_IDLE; c->t = 60; say(c, "...FINE."); }
         else { say(c, "TOO LATE!"); audio_voice(VOICE_DISAGREE); }
@@ -557,6 +558,13 @@ void citizens_pie_do(int i) {
     }
 }
 
+int citizens_friends(void) {   // (stories) the people out there who are your friends (50 and up): the ones about now, and the rest of SAN BOREAS
+    int n = 0;
+    for (int i = 0; i < NCIT; i++) { const Cit *c = &cits[i]; if (c->rel < 50) continue;
+        if (c->pid != NOPID ? pop_per[c->pid].slot == i : (i < MAIN0 && c->mode != CM_GONE)) n++; }   // (a city one alive now: its live feelings, not the saved ones)
+    for (int p = 0; p < pop_nper; p++) { const Per *q = &pop_per[p]; if (q->rel >= 50 && q->slot == 255 && !(q->flags & PF_GONE)) n++; }
+    return n;
+}
 // ---- fighting ---------------------------------------------------------------------------------------------
 int citizens_punch(void) {
     int i = hostile_in_reach(); if (i < 0) return 0;

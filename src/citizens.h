@@ -20,6 +20,7 @@ const char *citizens_pie_title(void);
 void        citizens_pie_do(int i);
 int         citizens_party(void);         // throw a party round you: guests come (returns how many; 0 none, -1 one is on)
 int         citizens_party_on(void);
+int         citizens_friends(void);       // (stories) how many people out there are your friends
 // SAN BOREAS: its people come and go as the map window moves (pop.c decides who should be here)
 int  citizens_take(int pid, int at, int place);  // bring person pid to life: at home (place -1) or at a place (its index); the slot, or -1
 void citizens_release(int slot);                 // they are wanted elsewhere: gone as soon as nobody is looking

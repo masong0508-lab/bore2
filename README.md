@@ -15,6 +15,14 @@ STORY MODE opens PICK A WORLD: RANDOM WORLD (fresh dice), three set worlds (MAPL
 time, the capital named for the world), CREATE A WORLD (SQUARE rolls a new map, L1 R1 step through them, the map shows each one), CASTAWAY ISLAND (the family begins
 stranded on the island), and MISSIONS, PACKS (RAGS TO RICHES: $1,000 and no home; the expansion packs say COMING SOON). TRIANGLE
 switches TOWNS between ROOMY (parks, green gaps, towns far apart) and PACKED (built up, towns close together, as before).
+MISSIONS, PACKS > STORY MISSIONS is the GBA game's story mode: ten stories (ROOMMATES, NEWLYWEDS, SINGLE PARENT, SKATE LIFE, HOUSEFULL,
+BEST FRIENDS, RAGS TO RICHES, CAREER CLIMBER, NEW IN TOWN, SECOND CHANCE), each with its own lead you play and its own people, five
+chapters and THE END. A chapter is a scene with up to three tasks, done in any order: places in SAN BOREAS (a skate plaza, a bar, a
+park, a town square, STRANGE TOWN), things to do (a pizza, a joke, tricks off the ramps, a paycheck, a promotion), people to win round
+(a friend, love, GO STEADY on the pie menu, a best friend), money to save, a baby that comes home. A card opens each chapter and
+closes it (it pays $500 to $1500); the phone's GOALS is the story journal (X takes a taxi to where the chapter sends you, TRIANGLE
+shows THE STORY SO FAR); the HUD shows the next task. TV SHOW & TELL (Missy's story) is held back for its own voiced, filmed version.
+`src/story.c` has the stories; saves keep them (save version 5).
 SELECT names your capital city (a letter keyboard: X types, SQUARE deletes, START keeps it). In play, the phone's MAP renames any
 town: pick it and press TRIANGLE. Saves keep the names. In CREATE A BORE, SQUARE names your Bore (first and last name).
 

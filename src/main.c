@@ -23,6 +23,7 @@
 #include "island.h"
 #include "save.h"
 #include "mcard.h"
+#include "story.h"
 
 // ---- input ----
 static u8 pad_buf[2][34];
@@ -101,7 +102,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int sub_back = ST_LIFE;
@@ -124,12 +125,14 @@ static void travel_go(int z);
 static void name_open(char *buf, int cap, const char *title, void (*done)(void));
 static void wo_name_for(u32 seed);   // (THE WORLDS: a set world's capital is named for it)
 static void worlds_open(void);
+static void worlds_go(u32 seed, int mode);
 static void worlds_draw(void);
 static void create_draw(void);
 static void nhood_open(int first);   // THE NEIGHBORHOOD: 48 lots to pick a home from (first: a new life, before they have one)
 static int nh_pending;                // a new life has begun: the neighborhood opens on its first frame
 static u32 life_seed;                 // the world the next new life is made in (0: fresh dice)
 static char life_cap[18];             // ... and its capital's name, if the player gave it one
+static int life_story, sp_sel = 1, sc_t, goals_old;   // the story the next new life is in (0: none); the STORY MISSIONS pick; the card's clock; GOALS showing THE STORY SO FAR
 static int life_mode, mode_pending;   // 0 SAN BOREAS, 1 CASTAWAY (they begin on the island), 2 RAGS TO RICHES ($1,000 to start)
 static int craft_sel, craft_msg_t; static char craft_msg[32];   // the CRAFT list's pick; why it could not be made (a while)
 extern char _end[];
@@ -151,7 +154,7 @@ static int jobs_sel, jobs_n, jobs_scroll, jobs_car[16], jobs_pl[16];   // the JO
 static void jobs_open(void);
 
 // which story zones are open (the island comes with the first paycheck, the town with job level 2)
-static int zone_unlocked(int z) { return z == 0 || z == 3 || (z == 1 && story_paid > 0) || (z == 2 && job_level >= 2); }   // (the city is open from the start)
+static int zone_unlocked(int z) { return z == 0 || z == 3 || (z == 1 && story_paid > 0) || (z == 2 && (job_level >= 2 || story_town_open())); }   // (the city is open from the start)
 
 // ---- Sims-style widgets: motive colours, the mood face, the notification feed, the action card ----
 static void need_rgb(int v, int *r, int *g, int *b) {   // a Sims motive bar goes green, then yellow, then red
@@ -248,6 +251,7 @@ static void start_life(void) {
     for (int i = 0; i < nsims; i++) look_release(&sims[i].bore);   // (the last household's face textures: for this one)
     sim_init();
     int px, py; world_find('P', &px, &py); if (px < 0) { px = 5; py = 12; }
+    if (life_story) story_household(life_story, px, py); else {   // a story: its own people (you play its lead)
     sim_add(&edit, px, py, 0); look_own_face(&sims[0].bore);     // (you, with faces of your own: the creator keeps its own)
     // two housemates from the dice
     Bore b; look_default(&b); b.stage = AG_ADULT; look_random(&b); sim_add(&b, px + 2, py + 1, 1);
@@ -261,6 +265,7 @@ static void start_life(void) {
         a->age_days = (u8)(a->bore.stage >= AG_ADULT ? 3 : 1); m->age_days = 6; k->age_days = (u8)MAX(0, sim_stage_len(AG_CHILD) - 2);   // (the child's birthday comes in a couple of days)
         a->rel[1] = m->rel[0] = 40; a->rel[2] = k->rel[0] = m->rel[2] = k->rel[1] = 30;
     }
+    story_reset(); }
 #if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM)
     nh_pending = life_mode == 0; cash = life_mode == 2 ? 1000 : 20000; mode_pending = life_mode; life_mode = 0;   // the family picks its home on THE NEIGHBORHOOD screen (The Sims: $20,000 to start), and life_update moves them in
 #endif
@@ -268,6 +273,7 @@ static void start_life(void) {
     story_paid = 0; story_talks = 0; story_visit[0] = 1; story_visit[1] = 0; story_visit[2] = 0; story_visit[3] = 0;
     citizens_init();   // a hundred civilians out in the island, the town and the city
     sim_note("WELCOME HOME. X USES THINGS.");
+    if (life_story) { story_begin(); life_story = 0; }
 }
 
 static void draw_marker(const Sim *s) {   // who you are playing: a bobbing gold arrow. (It used to be a green diamond. MOSS won.)
@@ -470,6 +476,8 @@ static void hud_life(void) {
         ui_card(316 - w, 40, w, 14); ui_icon(320 - w, 41, IC_STAR, UI_RGB(236, 170, 30)); ui_text(334 - w, 43, 1, t, UI_INK);
         if (wants_flash_t > 0 && state == ST_LIFE) { int fw = ui_tw(2, wants_flash) + 16; ui_card(160 - fw / 2, 86, fw, 18); ui_textc(160, 89, 2, wants_flash, wants_flash[0] == 'W' ? UI_RGB(40, 150, 50) : UI_RGB(200, 60, 50)); wants_flash_t--; }
     }
+    if (story_id && story_ch < 5 && world_zone != ZONE_ISLAND) {   // the story: this chapter's next task, under the want
+        char t[48]; if (story_hud(t)) { int w = ui_tw(1, t) + 22; ui_card(316 - w, 56, w, 14); ui_icon(320 - w, 57, IC_BOOK, UI_BLUE2); ui_text(334 - w, 59, 1, t, UI_INK); } }
     { extern int citizens_card_on(void); feed_draw(citizens_card_on() ? 86 : 38); }   // (under the person card when it shows)
     if (venue_t && VSync(-1) - venue_t < 240) venue_draw(); else venue_t = 0;
     if (world_zone == ZONE_ISLAND) {   // the castaway's stores, and the secrets found
@@ -509,7 +517,8 @@ static void hud_life(void) {
 static void life_update(int steps) {
     if (nh_pending) { nh_pending = 0; nhood_open(1); return; }
     if (mode_pending == 1) { mode_pending = 0; travel_go(ZONE_ISLAND); story_visit[1] = 1; sim_note("STRANDED! THE BOAT HOME IS ON THE BEACH"); return; }
-    if (mode_pending == 2) { mode_pending = 0; sim_note("RAGS TO RICHES: $1,000 TO YOUR NAME"); sim_note("GOAL: A HOME OF YOUR OWN"); }
+    if (mode_pending == 2) { mode_pending = 0; if (!story_id) { sim_note("RAGS TO RICHES: $1,000 TO YOUR NAME"); sim_note("GOAL: A HOME OF YOUR OWN"); } }
+    if (story_card()) { sc_t = 0; state = ST_SCARD; audio_voice(VOICE_FINISHED); return; }   // a chapter begins, or one is done
     Sim *s = &sims[player];
     // movement: the stick relative to the camera
     int mx = 0, mz = 0;
@@ -599,6 +608,7 @@ static void life_update(int steps) {
         if (world_stream(sim_tile_x(s), sim_tile_y(s), &dtx, &dty)) { sim_shift(dtx, dty); citizens_shift(dtx, dty); cam_fx -= dtx * TILE; cam_fz += dty * TILE;
             { extern int dbg_shift_hb, dbg_shifts; int d = hb_now() - ts_; if (d > dbg_shift_hb) dbg_shift_hb = d; dbg_shifts++; } }
     }
+    story_tick(steps);
     feed_poll();
     if (!(frame & 7)) venue_watch();
     camera_input(steps);
@@ -1733,6 +1743,7 @@ static void save_body(void) {
     sv_n(opt, O_N);
     sv_u8(home_city); sv_u16(home_bx); sv_u16(home_by); sv_u32((u32)home_paid);
     sim_save(); world_save(!home_city); pop_save(); isl_save();
+    story_save();
 }
 static void load_body(void) {
     u32 seed = ld_u32();
@@ -1749,6 +1760,7 @@ static void load_body(void) {
     sim_init();
     home_city = ld_u8(); home_bx = (s16)ld_u16(); home_by = (s16)ld_u16(); home_paid = (int)ld_u32();
     sim_load(&edit); world_load(); pop_load(); isl_load();
+    if (save_ver >= 5) story_load(); else story_reset();
 }
 static int save_game(int slot) {
     loading("SAVING YOUR GAME", 50);
@@ -1839,9 +1851,9 @@ static void save_tick(void) {
     if (k == 0 && t >= 60) { k++; isl_wood = isl_stone = isl_leaves = 40; isl_food = 7; isl_make(4); isl_make(0); isl_make(1); }
     if (k == 1 && t >= 120) { k++; sims[player].need[N_REST] = 10 << 10; dbg_sv[14] = sim_debug_goto('z', -1); dbg_sv[15] = sim_player_interact(); }
     if (k == 2 && t >= 300) { k++; dbg_sv[0] = world_zone; dbg_sv[1] = world_count('z'); dbg_sv[2] = world_count('%'); dbg_sv[3] = world_count('W'); dbg_sv[4] = sims[player].action; dbg_sv[5] = isl_food;
-                              save_game(0); }
+                              story_id = STY_SKATE; story_ch = 2; save_game(0); story_reset(); }   // (and a story: it must come back)
     if (k == 3 && t >= 400) { k++; if (load_game(0)) state = ST_LIFE; }
-    if (k == 4 && t >= 460) { k++; dbg_sv[8] = world_zone; dbg_sv[9] = world_count('z'); dbg_sv[10] = world_count('%'); dbg_sv[11] = world_count('W'); dbg_sv[12] = sims[player].action; dbg_sv[13] = isl_food; dbg_sv[6] = (int)save_last_bytes; }
+    if (k == 4 && t >= 460) { k++; dbg_sv[8] = world_zone; dbg_sv[9] = world_count('z'); dbg_sv[10] = world_count('%'); dbg_sv[11] = world_count('W'); dbg_sv[12] = sims[player].action; dbg_sv[13] = isl_food; dbg_sv[6] = (int)save_last_bytes; dbg_sv[14] = story_id * 10 + story_ch; }
     { static int played; if (k == 5 && t >= 600 && !played) { extern int audio_dbg_song(void); played = 1; audio_jukebox_play(7); dbg_cells[2] = audio_dbg_song(); } }   // (the biggest song: it must still fit)
     { static int sp; extern int audio_dbg_stream(int k); extern int dbg_st[8];   // (a streamed song: it must keep coming off the disc)
       if (k == 6 && !sp) { sp = 1; audio_jukebox_play(33); dbg_st[0] = t; }
@@ -2047,12 +2059,48 @@ static void over_draw(void) {
 }
 
 // ---- the story page: the goals of this life, Bustin' Out style ----
+static void story_taxi(void) {   // where the story's chapter sends you, by taxi ($20; STRANGE TOWN by the travel way, home for free)
+    int lot = 0, k = story_place(&lot);
+    if (k == 3) { if (home_city) home_go(); else if (world_zone != ZONE_HOME) travel_go(ZONE_HOME); state = ST_LIFE; return; }
+    if (k == 2) { if (world_zone != ZONE_TOWN) { travel_go(ZONE_TOWN); story_visit[2] = 1; for (int i = 0; i < nsims; i++) wants_event(&sims[i], W_TOWN, 0); } state = ST_LIFE; return; }
+    if (k != 1) return;
+    if (cash < 20) { sim_note("A TAXI IS $20"); audio_voice(VOICE_NAH); return; }
+    const Sim *s = &sims[player];
+    int bx0 = world_zone == ZONE_CITY ? world_wbx + sim_tile_x(s) / BM_BLK : home_city ? home_bx : bm_set(bm_capital())->x;
+    int by0 = world_zone == ZONE_CITY ? world_wby + sim_tile_y(s) / BM_BLK : home_city ? home_by : bm_set(bm_capital())->y;
+    int bi = -1, bd = 1 << 30;
+    for (int i = 0; i < pop_nplace; i++) if (pop_place[i].lot == lot) { int d = ABS(pop_place[i].bx - bx0) + ABS(pop_place[i].by - by0); if (d < bd) { bd = d; bi = i; } }
+    if (bi < 0) { sim_note("NO SUCH PLACE IN SAN BOREAS"); audio_voice(VOICE_NAH); return; }
+    cash -= 20; state = ST_LIFE;
+    char nm[24]; const Place *p = &pop_place[bi]; bm_place_name(p->lot, bm_hash(p->bx, p->by, 3), nm);
+    taxi_to_block(p->bx, p->by, -1, -1, nm);
+}
+static void spick_update(void) {   // STORY MISSIONS: one story's card at a time
+    sc_t++;
+    if (PRESSED(PAD_LEFT) || PRESSED(PAD_L1) || PRESSED(PAD_UP)) sp_sel = (sp_sel + STY_N - 3) % (STY_N - 1) + 1;
+    if (PRESSED(PAD_RIGHT) || PRESSED(PAD_R1) || PRESSED(PAD_DOWN)) sp_sel = sp_sel % (STY_N - 1) + 1;
+    if (PRESSED(PAD_CIRCLE)) { state = ST_WORLDS; return; }
+    if (PRESSED(PAD_CROSS)) {
+        if (sp_sel > STY_PLAYABLE) { audio_voice(VOICE_NAH); return; }
+        life_story = sp_sel; worlds_go(0, sp_sel == STY_RAGS ? 2 : 0);   // (RAGS TO RICHES: $1,000 and no home)
+    }
+}
+static void scard_update(void) {
+    sc_t++;
+    if (sc_t < 20) return;   // (a moment to read it)
+    if (PRESSED(PAD_TRIANGLE)) { int l; while (story_card()) story_card_shown(); if (story_place(&l)) story_taxi(); state = ST_LIFE; return; }
+    if (PRESSED(PAD_CROSS) || PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { story_card_shown(); sc_t = 0; if (!story_card()) state = ST_LIFE; }
+}
+static void scard_draw(void) { life_draw(); ui_dim(); story_card_draw(story_card(), sc_t); }
 static void story_update(void) {
+    if (story_id && PRESSED(PAD_TRIANGLE)) { goals_old ^= 1; return; }
+    if (story_id && !goals_old && PRESSED(PAD_CROSS)) { int l; if (story_place(&l)) { story_taxi(); return; } }
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_CROSS) || PRESSED(PAD_START)) state = BACK_TO();
 }
 static void story_draw(void) {   // the goals of this life, ticked off as they are done
     life_draw();
     ui_dim();
+    if (story_id && !goals_old) { story_journal_draw(frame); return; }   // (a story: its journal)
     char b[48], isl[40];
     sprintf(isl, "SAIL TO %s", world_zone_name(ZONE_ISLAND));
     enum { NG = 8 };
@@ -2078,7 +2126,7 @@ static void story_draw(void) {   // the goals of this life, ticked off as they a
     sprintf(b, "%d OF %d DONE", done, NG);
     ui_text(40, top + 165, 1, b, UI_INK);
     ui_bar(124, top + 165, 156, 7, done * 100 / NG, UI_GREEN);
-    ui_hints(160, top + 180, "O BACK", 1);
+    ui_hints(160, top + 180, story_id ? "TRI THE STORY|O BACK" : "O BACK", 1);
 }
 
 // ---- the Bore panel: MOOD / WANTS / SKILLS / PEOPLE / JOB tabs (the Sims 2 panel) ----
@@ -2987,15 +3035,15 @@ static void worlds_go(u32 seed, int mode) {
     cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 }
 #define WO_NMORE 4
-static const char *const moreNm[WO_NMORE] = { "RAGS TO RICHES", "AFTER DARK", "CAMPUS LIFE", "PETS AND STRAYS" };
-static const char *const moreBlurb[WO_NMORE] = { "MISSION: $1,000 AND NO HOME. MAKE IT.", "EXPANSION: NIGHTCLUBS, DATES. COMING SOON", "EXPANSION: COLLEGE DORMS. COMING SOON", "EXPANSION: CATS AND DOGS. COMING SOON" };
+static const char *const moreNm[WO_NMORE] = { "STORY MISSIONS", "AFTER DARK", "CAMPUS LIFE", "PETS AND STRAYS" };
+static const char *const moreBlurb[WO_NMORE] = { "TEN STORIES, FIVE CHAPTERS EACH. PICK ONE.", "EXPANSION: NIGHTCLUBS, DATES. COMING SOON", "EXPANSION: COLLEGE DORMS. COMING SOON", "EXPANSION: CATS AND DOGS. COMING SOON" };
 static void worlds_update(void) {
     wo_t++;
     if (wo_more) {                                   // MISSIONS AND EXPANSIONS
         if (PRESSED(PAD_UP)) wo_msel = (wo_msel + WO_NMORE - 1) % WO_NMORE;
         if (PRESSED(PAD_DOWN)) wo_msel = (wo_msel + 1) % WO_NMORE;
         if (PRESSED(PAD_CIRCLE)) { wo_more = 0; return; }
-        if (PRESSED(PAD_CROSS)) { if (wo_msel == 0) worlds_go(0, 2); else audio_voice(VOICE_NAH); }
+        if (PRESSED(PAD_CROSS)) { if (wo_msel == 0) { sc_t = 0; state = ST_SPICK; } else audio_voice(VOICE_NAH); }
         return;
     }
     if (PRESSED(PAD_UP)) wo_sel = (wo_sel + WO_N - 1) % WO_N;
@@ -3012,7 +3060,7 @@ static void worlds_update(void) {
     u32 sd = wo_seed_of(wo_sel); if (sd) paint_world(sd);
     if (PRESSED(PAD_CROSS)) {
         if (wo_sel == WO_MORE) { wo_more = 1; return; }
-        worlds_go(wo_seed_of(wo_sel), wo_sel == WO_CASTAWAY ? 1 : 0);
+        life_story = 0; worlds_go(wo_seed_of(wo_sel), wo_sel == WO_CASTAWAY ? 1 : 0);
     }
 }
 static void worlds_draw(void) {
@@ -3021,9 +3069,9 @@ static void worlds_draw(void) {
     char b[48];
     int top = ui_window(6, 6, 308, 228, wo_more ? "MISSIONS AND EXPANSIONS" : "PICK A WORLD", wo_more ? IC_STAR : IC_PIN);
     if (wo_more) {
-        for (int i = 0; i < WO_NMORE; i++) ui_button(14, top + 4 + i * 22, 292, 18, moreNm[i], i == 0 ? IC_MONEY : IC_LOCK, i == wo_msel);
+        for (int i = 0; i < WO_NMORE; i++) ui_button(14, top + 4 + i * 22, 292, 18, moreNm[i], i == 0 ? IC_BOOK : IC_LOCK, i == wo_msel);
         ui_textc(160, top + 100, 1, moreBlurb[wo_msel], wo_msel ? UI_SOFT : UI_INK);
-        ui_hints(160, 214, wo_msel == 0 ? "X PLAY|O BACK" : "O BACK", 1);
+        ui_hints(160, 214, wo_msel == 0 ? "X PICK A STORY|O BACK" : "O BACK", 1);
         return;
     }
     static const s8 ic[WO_N] = { IC_DICE, IC_PIN, IC_PIN, IC_PIN, IC_BRUSH, IC_SUN, IC_STAR };
@@ -3223,6 +3271,8 @@ int main(void) {
             case ST_NHOOD: nhood_update(); if (state == ST_NHOOD) nhood_draw(); else if (state == ST_HOMES) homes_draw(); else life_draw(); break;
             case ST_SLOTS: slots_update(); if (state == ST_SLOTS) slots_draw(); else if (state == ST_LIFE) life_draw(); else if (state == ST_MENU) menu_draw(); else pause_draw(); break;
             case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
+            case ST_SPICK: spick_update(); if (state == ST_SPICK) { title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
+            case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
         if (state == ST_LIFE) {   // a frame that ran past two screen refreshes: the full-detail range draws in a tile (back out once things are quiet)
