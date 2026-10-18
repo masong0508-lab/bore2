@@ -1,5 +1,7 @@
 // bigmap: see bigmap.h
 #include "bigmap.h"
+int bm_packed, bm_gen = 3;
+static int packed(void) { return bm_packed || bm_gen < 3; }   // (PACKED towns: the option, or a world from before it)
 
 static u32 wseed = 0x5A1B0E2Au;
 #define NSET_MAX 24
@@ -78,7 +80,7 @@ static int place_set(int kind, int r, int cx, int cy, int spread) {
         int x = cx + (int)(rr() % (u32)(2 * spread + 1)) - spread, y = cy + (int)(rr() % (u32)(2 * spread + 1)) - spread;
         if (x < 40 || y < 40 || x > BM_N - 40 || y > BM_N - 40) continue;
         int far = 1;
-        for (int i = 0; i < nset; i++) { int dx = x - sets[i].x, dy = y - sets[i].y, need = r + sets[i].r + 10;
+        for (int i = 0; i < nset; i++) { int dx = x - sets[i].x, dy = y - sets[i].y, need = r + sets[i].r + (packed() ? 10 : 26);   // (open country between towns, not one town into the next)
             if (dx * dx + dy * dy < need * need) { far = 0; break; } }
         if (!far || !land_ok(x, y, r)) continue;
         Settle *s = &sets[nset]; s->x = (u16)x; s->y = (u16)y; s->r = (u8)r; s->kind = (u8)kind;
@@ -135,14 +137,24 @@ static int pick(u32 r, const u8 *tab) {          // tab: lot, weight, ... 0,0 (w
     for (; tab[1]; tab += 2) { if (v < tab[1]) return tab[0]; v -= tab[1]; }
     return LOT_EMPTY;
 }
-static const u8 mixCore[] = { LOT_TOWER, 10, LOT_OFFICE, 4, LOT_SHOP, 9, LOT_DINER, 5, LOT_HOTEL, 4, LOT_INN, 2, LOT_GYM, 3, LOT_ARCADE, 2, LOT_POOL, 2, LOT_PARK, 5,
-                              LOT_SQUARE, 2, LOT_SKATE, 2, LOT_EMPTY, 2, LOT_APART, 16, LOT_TOWN, 6, LOT_TWO, 4,
+static const u8 mixCore[] = { LOT_TOWER, 10, LOT_OFFICE, 4, LOT_SHOP, 9, LOT_DINER, 5, LOT_HOTEL, 4, LOT_INN, 2, LOT_GYM, 3, LOT_ARCADE, 2, LOT_POOL, 2, LOT_PARK, 7,
+                              LOT_SQUARE, 3, LOT_SKATE, 2, LOT_EMPTY, 2, LOT_APART, 13, LOT_TOWN, 6, LOT_TWO, 4,
                               LOT_CAFE, 4, LOT_BAR, 4, LOT_CINEMA, 2, LOT_SALON, 2, LOT_RESTAURANT, 3, LOT_CLINIC, 2, LOT_LIBRARY, 1, LOT_SPA, 2, LOT_GALLERY, 2, 0, 0 };
-static const u8 mixMid[]  = { LOT_HOUSE, 18, LOT_TWO, 12, LOT_TOWN, 12, LOT_COTTAGE, 9, LOT_APART, 8, LOT_SHOP, 5, LOT_DINER, 3, LOT_OFFICE, 3, LOT_GYM, 2, LOT_POOL, 1,
+// (from the middle ring out, room to breathe: parks, and blocks left green, wider apart the further out)
+static const u8 mixMid[]  = { LOT_HOUSE, 17, LOT_TWO, 10, LOT_TOWN, 9, LOT_COTTAGE, 9, LOT_APART, 6, LOT_SHOP, 5, LOT_DINER, 3, LOT_OFFICE, 3, LOT_GYM, 2, LOT_POOL, 1,
+                              LOT_SCHOOL, 1, LOT_PARK, 10, LOT_EMPTY, 6, LOT_ARCADE, 1, LOT_INN, 2, LOT_TOWER, 1, LOT_WILD, 4,
+                              LOT_CAFE, 3, LOT_BAR, 2, LOT_SALON, 1, LOT_RESTAURANT, 1, LOT_CLINIC, 1, LOT_CINEMA, 1, LOT_LIBRARY, 1, 0, 0 };
+static const u8 mixOut[]  = { LOT_HOUSE, 18, LOT_COTTAGE, 18, LOT_TWO, 6, LOT_EMPTY, 16, LOT_PARK, 8, LOT_FARM, 10, LOT_WILD, 14, LOT_SHOP, 3, LOT_DINER, 2, LOT_INN, 1, LOT_CAFE, 2, LOT_BAR, 2, 0, 0 };
+// PACKED (the TOWNS option, and every world made before the roomy towns): a home or a shop on nearly every block
+static const u8 mixMidP[] = { LOT_HOUSE, 18, LOT_TWO, 12, LOT_TOWN, 12, LOT_COTTAGE, 9, LOT_APART, 8, LOT_SHOP, 5, LOT_DINER, 3, LOT_OFFICE, 3, LOT_GYM, 2, LOT_POOL, 1,
                               LOT_SCHOOL, 1, LOT_PARK, 6, LOT_EMPTY, 6, LOT_ARCADE, 1, LOT_INN, 2, LOT_TOWER, 1,
                               LOT_CAFE, 3, LOT_BAR, 2, LOT_SALON, 1, LOT_RESTAURANT, 1, LOT_CLINIC, 1, LOT_CINEMA, 1, LOT_LIBRARY, 1, 0, 0 };
-static const u8 mixOut[]  = { LOT_HOUSE, 20, LOT_COTTAGE, 22, LOT_TWO, 8, LOT_EMPTY, 20, LOT_PARK, 6, LOT_FARM, 12, LOT_SHOP, 4, LOT_DINER, 2, LOT_INN, 2, LOT_CAFE, 2, LOT_BAR, 2, 0, 0 };
-static const u8 mixVil[]  = { LOT_HOUSE, 22, LOT_COTTAGE, 28, LOT_EMPTY, 21, LOT_FARM, 16, LOT_PARK, 4, LOT_SHOP, 3, LOT_DINER, 3, LOT_BAR, 3, 0, 0 };
+static const u8 mixOutP[] = { LOT_HOUSE, 20, LOT_COTTAGE, 22, LOT_TWO, 8, LOT_EMPTY, 20, LOT_PARK, 6, LOT_FARM, 12, LOT_SHOP, 4, LOT_DINER, 2, LOT_INN, 2, LOT_CAFE, 2, LOT_BAR, 2, 0, 0 };
+static const u8 mixVilP[] = { LOT_HOUSE, 22, LOT_COTTAGE, 28, LOT_EMPTY, 21, LOT_FARM, 16, LOT_PARK, 4, LOT_SHOP, 3, LOT_DINER, 3, LOT_BAR, 3, 0, 0 };
+static const u8 mixCoreP[] = { LOT_TOWER, 10, LOT_OFFICE, 4, LOT_SHOP, 9, LOT_DINER, 5, LOT_HOTEL, 4, LOT_INN, 2, LOT_GYM, 3, LOT_ARCADE, 2, LOT_POOL, 2, LOT_PARK, 5,
+                              LOT_SQUARE, 2, LOT_SKATE, 2, LOT_EMPTY, 2, LOT_APART, 16, LOT_TOWN, 6, LOT_TWO, 4,
+                              LOT_CAFE, 4, LOT_BAR, 4, LOT_CINEMA, 2, LOT_SALON, 2, LOT_RESTAURANT, 3, LOT_CLINIC, 2, LOT_LIBRARY, 1, LOT_SPA, 2, LOT_GALLERY, 2, 0, 0 };
+static const u8 mixVil[]  = { LOT_HOUSE, 18, LOT_COTTAGE, 22, LOT_EMPTY, 18, LOT_FARM, 16, LOT_PARK, 5, LOT_WILD, 12, LOT_SHOP, 3, LOT_DINER, 3, LOT_BAR, 3, 0, 0 };
 static int landmark(const Settle *s, int dx, int dy) {   // what every town has at its heart
     if (dx == 0 && dy == 0) return LOT_SQUARE;
     if (s->kind == ST_VILLAGE) {
@@ -174,7 +186,8 @@ void bm_block(int bx, int by, BInfo *b) {
         int dx = bx - s->x, dy = by - s->y, q = (dx * dx + dy * dy) * 256 / (s->r * s->r);
         int lm = landmark(s, dx, dy);
         if (lm >= 0) { b->lot = (u8)lm; return; }
-        const u8 *mix = s->kind == ST_VILLAGE ? mixVil : (s->kind == ST_CITY && q < 64) ? mixCore : q < 170 ? mixMid : mixOut;
+        int pk = packed();
+        const u8 *mix = s->kind == ST_VILLAGE ? (pk ? mixVilP : mixVil) : (s->kind == ST_CITY && q < 64) ? (pk ? mixCoreP : mixCore) : q < 170 ? (pk ? mixMidP : mixMid) : (pk ? mixOutP : mixOut);
         b->lot = (u8)pick(b->h >> 4, mix);
         if (b->terrain == BT_BEACH && b->lot == LOT_FARM) b->lot = LOT_PARK;
         return;

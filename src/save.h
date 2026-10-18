@@ -19,4 +19,5 @@ int  save_info(int slot, SaveInfo *out);          // 1: a save of this version i
 int  save_write(int slot, void (*body)(void));    // 1: saved
 int  save_delete(int slot);                       // 1: that slot is empty now
 int  save_read(int slot, void (*body)(void));     // 1: read (the body ran)
+extern int save_ver;                              // the version of the save being read
 const char *save_error(void);                     // what went wrong, in a few plain words

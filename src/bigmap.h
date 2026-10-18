@@ -28,6 +28,8 @@ typedef struct {
 
 typedef struct { u16 x, y; u8 r, kind; char name[18]; } Settle;
 
+extern int bm_packed;                 // the TOWNS option: 0 ROOMY (parks and green gaps, towns far apart), 1 PACKED (built up, towns close)
+extern int bm_gen;                    // how worlds are made: 3 now (2: as before the roomy towns, for older saves)
 void bm_new(u32 seed);                // a new world
 u32  bm_seed(void);
 void bm_block(int bx, int by, BInfo *b);

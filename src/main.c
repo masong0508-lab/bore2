@@ -101,7 +101,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int sub_back = ST_LIFE;
@@ -120,6 +120,11 @@ extern u16 bfs_q[];
 static u8 fill_seen[MW * MH / 8 + 1];
 static char build_msg[32]; static int build_msg_t;   // what build mode has to say (the life's notes are not on screen there)
 static void home_go(void);
+static void travel_go(int z);
+static void nhood_open(int first);   // THE NEIGHBORHOOD: 48 lots to pick a home from (first: a new life, before they have one)
+static int nh_pending;                // a new life has begun: the neighborhood opens on its first frame
+static u32 life_seed;                 // the world the next new life is made in (0: fresh dice)
+static int life_mode, mode_pending;   // 0 SAN BOREAS, 1 CASTAWAY (they begin on the island), 2 RAGS TO RICHES ($1,000 to start)
 static int craft_sel, craft_msg_t; static char craft_msg[32];   // the CRAFT list's pick; why it could not be made (a while)
 extern char _end[];
 static int juke_sel, juke_scroll;
@@ -221,10 +226,11 @@ static void start_life(void) {
     loading("MAKING A NEW LIFE", 20);
     {   // a new world: SAN BOREAS from fresh dice (the land, the towns, every building and room), and its 874 households
         u32 seed = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ ((u32)frame * 2246822519u); if (!seed) seed = 1;
+        if (life_seed) { seed = life_seed; life_seed = 0; }   // (a preset world, or one made on the CREATE A WORLD screen)
 #if defined(AUTO_CITY) || defined(AUTO_PARTY)
         seed = 0x5EED1234u;                                    // (test builds: the same world every run, so runs compare)
 #endif
-        bm_new(seed); world_new_seed(seed);
+        bm_gen = 3; bm_new(seed); world_new_seed(seed);
         loading("PEOPLING SAN BOREAS", 45);
         u32 sb; void *sc = crowd_scratch(&sb); pop_new(seed, sc, sb);
         loading("RAISING THE SKYLINE", 60);
@@ -249,7 +255,7 @@ static void start_life(void) {
         a->rel[1] = m->rel[0] = 40; a->rel[2] = k->rel[0] = m->rel[2] = k->rel[1] = 30;
     }
 #if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW)
-    home_start();   // the family begins in SAN BOREAS (its 874 households), in a house by the capital's square: life_update moves them in
+    nh_pending = life_mode == 0; cash = life_mode == 2 ? 1000 : 20000; mode_pending = life_mode; life_mode = 0;   // the family picks its home on THE NEIGHBORHOOD screen (The Sims: $20,000 to start), and life_update moves them in
 #endif
     life_started = 1;
     story_paid = 0; story_talks = 0; story_visit[0] = 1; story_visit[1] = 0; story_visit[2] = 0; story_visit[3] = 0;
@@ -494,6 +500,9 @@ static void hud_life(void) {
 }
 
 static void life_update(int steps) {
+    if (nh_pending) { nh_pending = 0; nhood_open(1); return; }
+    if (mode_pending == 1) { mode_pending = 0; travel_go(ZONE_ISLAND); story_visit[1] = 1; sim_note("STRANDED! THE BOAT HOME IS ON THE BEACH"); return; }
+    if (mode_pending == 2) { mode_pending = 0; sim_note("RAGS TO RICHES: $1,000 TO YOUR NAME"); sim_note("GOAL: A HOME OF YOUR OWN"); }
     Sim *s = &sims[player];
     // movement: the stick relative to the camera
     int mx = 0, mz = 0;
@@ -1095,6 +1104,161 @@ static void home_tick(void) {   // (test builds: buy a house and move in, build 
 }
 #endif
 
+
+// ---- THE NEIGHBORHOOD (The Sims' neighborhood screen): the blocks round a town from above, and 48 lots picked at random from what
+// is for sale there, furnished homes and empty lots to build on. The d-pad hops from lot to lot; X buys one and the family moves in ----
+#define NH_MAX 48
+static int nh_b = 25, nh_p = 5;                     // the view: 25 x 25 blocks, 5 pixels a block (32 x 32 at 4, when there is less for sale)
+#define NH_B nh_b
+#define NH_P nh_p
+static u16 nh_bx[NH_MAX], nh_by[NH_MAX]; static u8 nh_lot[NH_MAX]; static int nh_price[NH_MAX];
+static int nh_n, nh_sel, nh_first, nh_t, nh_x0, nh_y0, nh_set;
+static void nhood_pick_in(int cbx, int cby);
+static void nhood_pick(int cbx, int cby) {         // 48 lots from what is for sale round there (a wider view if the town is short of them)
+    nh_b = 25; nh_p = 5; nhood_pick_in(cbx, cby);
+    if (nh_n < NH_MAX) { nh_b = 32; nh_p = 4; nhood_pick_in(cbx, cby); }
+}
+static void nhood_pick_in(int cbx, int cby) {      // ... about a third empty, the rest furnished
+    nh_x0 = CLAMP(cbx - NH_B / 2, 0, BM_N - NH_B); nh_y0 = CLAMP(cby - NH_B / 2, 0, BM_N - NH_B);
+    const int want_e = NH_MAX / 3, want_h = NH_MAX - want_e;
+    int ne = 0, nh = 0, seen_e = 0, seen_h = 0;   // two reservoirs (a fair draw, with no list of every lot kept)
+    static u16 eb[NH_MAX][2], hb[NH_MAX][2];
+    for (int by = nh_y0; by < nh_y0 + NH_B; by++) for (int bx = nh_x0; bx < nh_x0 + NH_B; bx++) {
+        if (!home_for_sale(bx, by)) continue;
+        BInfo b; bm_block(bx, by, &b);
+        if (b.lot == LOT_EMPTY) { seen_e++; if (ne < NH_MAX) { eb[ne][0] = (u16)bx; eb[ne][1] = (u16)by; ne++; } else { int j = (int)(look_rand() % (u32)seen_e); if (j < NH_MAX) { eb[j][0] = (u16)bx; eb[j][1] = (u16)by; } } }
+        else { seen_h++; if (nh < NH_MAX) { hb[nh][0] = (u16)bx; hb[nh][1] = (u16)by; nh++; } else { int j = (int)(look_rand() % (u32)seen_h); if (j < NH_MAX) { hb[j][0] = (u16)bx; hb[j][1] = (u16)by; } } }
+    }
+    int te = MIN(ne, want_e), th = MIN(nh, want_h);
+    if (te < want_e) th = MIN(nh, NH_MAX - te); else if (th < want_h) te = MIN(ne, NH_MAX - th);
+    for (int i = 0; i < ne; i++) { int j = i + (int)(look_rand() % (u32)(ne - i)); u16 a = eb[i][0], b = eb[i][1]; eb[i][0] = eb[j][0]; eb[i][1] = eb[j][1]; eb[j][0] = a; eb[j][1] = b; }   // (a shuffle: which of the sample)
+    for (int i = 0; i < nh; i++) { int j = i + (int)(look_rand() % (u32)(nh - i)); u16 a = hb[i][0], b = hb[i][1]; hb[i][0] = hb[j][0]; hb[i][1] = hb[j][1]; hb[j][0] = a; hb[j][1] = b; }
+    nh_n = 0;
+    for (int i = 0; i < te; i++) { nh_bx[nh_n] = eb[i][0]; nh_by[nh_n] = eb[i][1]; nh_n++; }
+    for (int i = 0; i < th; i++) { nh_bx[nh_n] = hb[i][0]; nh_by[nh_n] = hb[i][1]; nh_n++; }
+    for (int i = 1; i < nh_n; i++) {               // in reading order (top row first), so L1 and R1 step through them in order
+        u16 x = nh_bx[i], y = nh_by[i]; int j = i;
+        while (j > 0 && (nh_by[j - 1] > y || (nh_by[j - 1] == y && nh_bx[j - 1] > x))) { nh_bx[j] = nh_bx[j - 1]; nh_by[j] = nh_by[j - 1]; j--; }
+        nh_bx[j] = x; nh_by[j] = y;
+    }
+    for (int i = 0; i < nh_n; i++) { BInfo b; bm_block(nh_bx[i], nh_by[i], &b); nh_lot[i] = b.lot; nh_price[i] = home_price(nh_bx[i], nh_by[i]); }
+    nh_sel = 0;
+    int bd = 1 << 30;                              // start on the lot nearest the middle
+    for (int i = 0; i < nh_n; i++) { int dx = nh_bx[i] - cbx, dy = nh_by[i] - cby, d = dx * dx + dy * dy + (nh_price[i] > cash + (home_city ? home_paid : 0) ? 1 << 20 : 0); if (d < bd) { bd = d; nh_sel = i; } }   // (one you can afford, if there is one)
+}
+static void nhood_paint(void) {                    // the blocks from above, 5 pixels each: the land, the streets, what stands on every lot
+    u16 *px = atlas_scratch();
+    static const u16 tcol[6] = { RGB(6, 13, 23), RGB(27, 25, 17), RGB(11, 20, 8), RGB(6, 14, 6), RGB(25, 21, 13), RGB(16, 16, 15) };
+    for (int by = 0; by < NH_B; by++) for (int bx = 0; bx < NH_B; bx++) {
+        BInfo b; bm_block(nh_x0 + bx, nh_y0 + by, &b);
+        u16 c = tcol[b.terrain % 6];
+        int l = b.lot;
+        if (b.terrain == BT_SEA) l = LOT_WILD;
+        if (l == LOT_HOUSE || l == LOT_COTTAGE || l == LOT_TWO || l == LOT_TOWN || l == LOT_APART) c = RGB(22, 11, 9);
+        else if (l == LOT_PARK || l == LOT_SKATE) c = RGB(9, 22, 9);
+        else if (l == LOT_SQUARE) c = RGB(24, 23, 20);
+        else if (l == LOT_EMPTY) c = RGB(22, 19, 11);
+        else if (l == LOT_FARM) c = RGB(20, 22, 8);
+        else if (l != LOT_WILD && bm_is_place(l)) c = RGB(13, 16, 22);
+        for (int y = 0; y < NH_P; y++) for (int x = 0; x < NH_P; x++) {
+            u16 v = c;
+            if (b.terrain != BT_SEA && ((y == 0 && (b.road & 1)) || (x == 0 && (b.road & 2)) || (x == 0 && y == 0 && (b.road & 4)))) v = RGB(10, 10, 11);   // the streets
+            else if (l != LOT_WILD && l != LOT_PARK && l != LOT_EMPTY && b.terrain != BT_SEA && x >= 2 && x <= 3 && y >= 2 && y <= 3) v = (u16)((c & 0x7bde) >> 1);   // (a roof's middle: darker)
+            px[(by * NH_P + y) * 128 + bx * NH_P + x] = v | 0x8000;
+        }
+    }
+    atlas_vram_load(0, 256, 128, 128, px);
+    crowd_flush();
+}
+static void nhood_open(int first) {
+    int cbx, cby;
+    if (!first && world_zone == ZONE_CITY && world_wbx >= 0) { cbx = world_wbx + sim_tile_x(&sims[player]) / BM_BLK; cby = world_wby + sim_tile_y(&sims[player]) / BM_BLK; }
+    else { const Settle *cp = bm_set(bm_capital()); cbx = cp->x; cby = cp->y; }
+    nh_set = bm_set_at(cbx, cby); if (nh_set == 255) nh_set = bm_capital();
+    nhood_pick(cbx, cby);
+    nh_first = first; nh_t = -1; state = ST_NHOOD;
+}
+static void nhood_hop(int dx, int dy) {            // the nearest lot that way (the d-pad)
+    int best = -1, bs = 1 << 30;
+    for (int i = 0; i < nh_n; i++) {
+        if (i == nh_sel) continue;
+        int ex = nh_bx[i] - nh_bx[nh_sel], ey = nh_by[i] - nh_by[nh_sel];
+        int along = ex * dx + ey * dy, side = ABS(ex * dy - ey * dx);
+        if (along <= 0 || side > along * 2) continue;
+        int sc = along * along + side * side * 3;
+        if (sc < bs) { bs = sc; best = i; }
+    }
+    if (best >= 0) { nh_sel = best; audio_voice(VOICE_FINISHED); }
+}
+static void nhood_update(void) {
+    if (nh_t < 0) nhood_paint();
+    nh_t++;
+    if (PRESSED(PAD_CIRCLE) && !nh_first) { state = BACK_TO(); return; }
+    if (!nh_n) { if (PRESSED(PAD_CROSS) || PRESSED(PAD_TRIANGLE) || PRESSED(PAD_CIRCLE)) state = ST_LIFE; return; }
+    if (PRESSED(PAD_LEFT)) nhood_hop(-1, 0);
+    if (PRESSED(PAD_RIGHT)) nhood_hop(1, 0);
+    if (PRESSED(PAD_UP)) nhood_hop(0, -1);
+    if (PRESSED(PAD_DOWN)) nhood_hop(0, 1);
+    if (PRESSED(PAD_L1)) nh_sel = (nh_sel + nh_n - 1) % nh_n;
+    if (PRESSED(PAD_R1)) nh_sel = (nh_sel + 1) % nh_n;
+    if (nh_first && PRESSED(PAD_TRIANGLE)) { sim_note("THE MAN BASE IT IS"); state = ST_LIFE; return; }   // (stay in the old place)
+    if (!nh_first && PRESSED(PAD_SQUARE)) {        // go and see it first
+        if (cash < 20) { audio_voice(VOICE_NAH); return; }
+        cash -= 20; char ad[24]; home_address(nh_bx[nh_sel], nh_by[nh_sel], ad); taxi_to_block(nh_bx[nh_sel], nh_by[nh_sel], -1, -1, ad); state = ST_LIFE; return;
+    }
+    if (!nh_first && PRESSED(PAD_SELECT)) { homes_open(); return; }   // (the plain list)
+    if (PRESSED(PAD_CROSS)) {
+        if (!home_for_sale(nh_bx[nh_sel], nh_by[nh_sel])) { sim_note("THAT ONE IS SOLD"); audio_voice(VOICE_NAH); return; }
+        if (home_buy(nh_bx[nh_sel], nh_by[nh_sel])) state = ST_LIFE;   // (life_update moves the family in)
+    }
+}
+static void nhood_draw(void) {
+    gfx_set_clear(188, 204, 222);
+    gfx_camera_update();
+    ui_backdrop();
+    char b[48], ad[24];
+    const Settle *ns = bm_set(nh_set);
+    snprintf(b, sizeof b, "THE NEIGHBORHOOD: %s", ns ? ns->name : "SAN BOREAS");
+    int top = ui_window(4, 4, 312, 232, b, IC_HOUSE);
+    const int MX = 10, MY = top + 1, MS = 182;
+    ui_round(MX - 2, MY - 2, MS + 4, MS + 4, 4, UI_LINE, UI_LINE, 0);
+    if (nh_t >= 0) gfx_sprite_c(MX, MY, MS, MS, getTPage(2, 0, 0, 256), 0, 0, NH_B * NH_P, NH_B * NH_P, 128, 128, 128);
+    for (int pass = 0; pass < 2; pass++) for (int i = 0; i < nh_n; i++) {   // every lot a dot: green a furnished home, gold an empty lot (the picked one last, on top)
+        if ((i == nh_sel) != pass) continue;
+        int x = MX + ((nh_bx[i] - nh_x0) * NH_P + 3) * MS / (NH_B * NH_P), y = MY + ((nh_by[i] - nh_y0) * NH_P + 3) * MS / (NH_B * NH_P);
+        int empty = nh_lot[i] == LOT_EMPTY, sold = !home_for_sale(nh_bx[i], nh_by[i]);
+        u32 c = sold ? UI_RGB(150, 150, 150) : empty ? UI_RGB(236, 176, 40) : UI_RGB(60, 190, 90);
+        if (i == nh_sel) { ui_disc(x, y, (nh_t >> 3) & 1 ? 17 : 15, UI_WHITE); ui_icon_disc(x, y, 13, empty ? IC_SPROUT : IC_HOUSE, UI_BLUE, UI_WHITE); }
+        else { ui_disc(x, y, 8, UI_WHITE); ui_disc(x, y, 6, c); }
+    }
+    if (home_city && home_bx >= nh_x0 && home_by >= nh_y0 && home_bx < nh_x0 + NH_B && home_by < nh_y0 + NH_B) {   // yours
+        int x = MX + ((home_bx - nh_x0) * NH_P + 3) * MS / (NH_B * NH_P), y = MY + ((home_by - nh_y0) * NH_P + 3) * MS / (NH_B * NH_P);
+        ui_disc(x, y, 13, UI_WHITE); ui_icon_disc(x, y, 11, IC_HOUSE, UI_GREEN, UI_WHITE);
+    }
+    const int PX = 198, PW = 110;                   // the picked lot, on the right
+    if (!nh_n) { ui_text(PX, top + 10, 1, "NOTHING FOR SALE", UI_SOFT); ui_hints(310, 215, nh_first ? "X STAY AT THE MAN BASE" : "O BACK", 2); return; }
+    int i = nh_sel, empty = nh_lot[i] == LOT_EMPTY, refund = home_city ? home_paid : 0;
+    sprintf(b, "LOT %d OF %d", i + 1, nh_n); ui_text(PX, top + 1, 1, b, UI_SOFT);
+    ui_round(PX - 2, top + 13, PW + 4, 50, 6, UI_RGB(234, 240, 248), UI_RGB(224, 231, 240), 0);
+    ui_icon_disc(PX + 12, top + 27, 22, empty ? IC_SPROUT : IC_HOUSE, empty ? UI_RGB(220, 150, 30) : UI_GREEN, UI_WHITE);
+    ui_text(PX + 26, top + 18, 1, home_kind(nh_lot[i]), UI_INK);
+    ui_text(PX + 26, top + 29, 1, empty ? "BUILD YOUR OWN" : "FURNISHED", empty ? UI_GOLDT : UI_GOODT);
+    home_address(nh_bx[i], nh_by[i], ad); ui_text(PX + 2, top + 44, 1, ad, UI_BLUE2);
+    { BInfo bi; bm_block(nh_bx[i], nh_by[i], &bi); const Settle *st = bi.set != 255 ? bm_set(bi.set) : 0; ui_text(PX + 2, top + 54, 1, st ? st->name : "OPEN COUNTRY", UI_SOFT); }
+    int can = cash + refund >= nh_price[i], sold = !home_for_sale(nh_bx[i], nh_by[i]);
+    sprintf(b, "$%d", nh_price[i]); ui_text(PX, top + 70, 2, b, sold ? UI_SOFT : can ? UI_GOODT : UI_BADT);
+    ui_text(PX, top + 88, 1, sold ? "SOLD" : can ? "YOU CAN AFFORD IT" : "NOT ENOUGH MONEY", sold || !can ? UI_BADT : UI_SOFT);
+    sprintf(b, "FAMILY FUNDS $%ld", cash); ui_text(PX, top + 100, 1, b, UI_INK);
+    if (home_city && !nh_first) { sprintf(b, "YOURS SELLS: $%d", home_paid); ui_text(PX, top + 111, 1, b, UI_SOFT); }
+    {   // the key
+        int ky = top + 128;
+        ui_disc(PX + 4, ky + 3, 7, UI_RGB(60, 190, 90)); ui_text(PX + 12, ky, 1, "HOME", UI_INK);
+        ui_disc(PX + 54, ky + 3, 7, UI_RGB(236, 176, 40)); ui_text(PX + 62, ky, 1, "EMPTY", UI_INK);
+    }
+    gfx_rect(10, 211, 300, 1, 200, 210, 222, 0);
+    ui_hints(160, 215, nh_first ? "DPAD PICK|X MOVE IN|TRI THE MAN BASE" : "DPAD PICK|X BUY|SQ SEE $20|SEL LIST|O BACK", 1);
+}
+
 // ---- CRAFT: what the castaways can make at the campfire from what they have gathered ----
 static void craft_update(void) {
     if (PRESSED(PAD_UP)) { craft_sel = (craft_sel + ISL_NCRAFT - 1) % ISL_NCRAFT; craft_msg_t = 0; }
@@ -1553,13 +1717,14 @@ static void opts_draw(void) {
 // ---- the memory card: SAVE GAME in the pause menu, CONTINUE on the title ----
 static const char *save_msg;                                 // why the last load failed (the title shows it)
 static void save_body(void) {
-    sv_u32(world_seed());
+    sv_u32(world_seed()); sv_u8(bm_packed);
     sv_n(opt, O_N);
     sv_u8(home_city); sv_u16(home_bx); sv_u16(home_by); sv_u32((u32)home_paid);
     sim_save(); world_save(!home_city); pop_save(); isl_save();
 }
 static void load_body(void) {
     u32 seed = ld_u32();
+    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = 3; } else { bm_packed = 1; bm_gen = 2; }   // (a save from before the TOWNS option: its world as it was made)
     ld_n(opt, O_N); opts_apply();
     loading("LOADING YOUR GAME", 30);
     bm_new(seed); world_new_seed(seed);
@@ -1747,7 +1912,7 @@ static void phone_update(void) {
         case PH_MAP: map_t = -1; state = ST_MAP; break;   // (opened on the map's own first frame: this frame still draws the people, whose sprites share that VRAM)
         case PH_TRAVEL: travel_sel = home_city && home_is_here() ? 0 : world_zone + home_city; state = ST_TRAVEL; break;
         case PH_JOBS: jobs_open(); state = ST_JOBS; break;
-        case PH_HOMES: homes_open(); break;
+        case PH_HOMES: nhood_open(0); break;
         case PH_PEOPLE: dir_open(); state = ST_DIR; break;
         case PH_FAMILY: ph_fam = 1; ph_fsel = player; break;
         case PH_ADOPT: state = ST_LIFE; sim_cell(2); break;
@@ -2696,6 +2861,101 @@ static void title_draw(void) {
         if ((title_t / 20) & 1) ui_hints(160, 214, "START PLAY", 1);
     }
 }
+// ---- THE WORLDS (STORY MODE): which SAN BOREAS to live in. Fresh dice, one of the presets, one you roll yourself on CREATE A
+// WORLD (the map shows each as you go), or a mode: CASTAWAY ISLAND, or the missions and expansions ----
+enum { WO_RANDOM, WO_PRE1, WO_PRE2, WO_PRE3, WO_CREATE, WO_CASTAWAY, WO_MORE, WO_N };
+static const u32 wo_preset[3] = { 0x0B0E2001u, 0x51A7E5EDu, 0x7A11C0DEu };
+static const char *const wo_cap[3] = { "MAPLE SHORES", "SUNNY HOLLOW", "PINE BAY" };   // the set worlds' names
+static int wo_sel, wo_t, wo_more, wo_msel, wo_packed; static u32 wo_seed, wo_painted, wo_custom = 0x00C0FFEEu;
+static void paint_world(u32 seed) {                 // SAN BOREAS from above for that seed (the land, the highways, the towns), into the map's picture
+    if (seed == wo_painted) return;
+    bm_new(seed);
+    u16 *px = atlas_scratch();
+    static const u16 tcol[6] = { RGB(4, 9, 19), RGB(25, 23, 15), RGB(10, 18, 7), RGB(5, 12, 5), RGB(24, 20, 12), RGB(15, 15, 15) };
+    for (int y = 0; y < 128; y++) for (int x = 0; x < 128; x++) px[y * 128 + x] = tcol[bm_terrain(x * 8 + 4, y * 8 + 4)] | 0x8000;
+    for (int i = 0; i < bm_nseg(); i++) { int c, a, b, v; bm_seg(i, &c, &a, &b, &v);
+        for (int k = a; k <= b; k += 4) { int x = v ? c / 8 : k / 8, y = v ? k / 8 : c / 8; px[y * 128 + x] = RGB(9, 9, 10) | 0x8000; } }
+    for (int i = 0; i < bm_nset(); i++) { const Settle *st = bm_set(i); int r = MAX(1, st->r / 8);
+        u16 col = st->kind == ST_CITY ? RGB(30, 22, 12) : st->kind == ST_TOWN ? RGB(28, 25, 16) : RGB(24, 22, 18);
+        for (int y = -r; y <= r; y++) for (int x = -r; x <= r; x++) if (x * x + y * y <= r * r + 1) {
+            int X = st->x / 8 + x, Y = st->y / 8 + y; if (X >= 0 && Y >= 0 && X < 128 && Y < 128) px[Y * 128 + X] = col | 0x8000; } }
+    atlas_vram_load(0, 256, 128, 128, px);
+    crowd_flush();
+    wo_painted = seed;
+}
+static u32 wo_seed_of(int k) { return k >= WO_PRE1 && k <= WO_PRE3 ? wo_preset[k - WO_PRE1] : k == WO_CREATE ? wo_custom : 0; }
+static void worlds_open(void) {
+    wo_painted = 0; wo_sel = 0; wo_t = 0; wo_more = 0; wo_msel = 0; state = ST_WORLDS;
+}
+static void worlds_go(u32 seed, int mode) {
+    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 3; bm_packed = wo_packed; start_life();
+    cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
+}
+#define WO_NMORE 4
+static const char *const moreNm[WO_NMORE] = { "RAGS TO RICHES", "AFTER DARK", "CAMPUS LIFE", "PETS AND STRAYS" };
+static const char *const moreBlurb[WO_NMORE] = { "MISSION: $1,000 AND NO HOME. MAKE IT.", "EXPANSION: NIGHTCLUBS, DATES. COMING SOON", "EXPANSION: COLLEGE DORMS. COMING SOON", "EXPANSION: CATS AND DOGS. COMING SOON" };
+static void worlds_update(void) {
+    wo_t++;
+    if (wo_more) {                                   // MISSIONS AND EXPANSIONS
+        if (PRESSED(PAD_UP)) wo_msel = (wo_msel + WO_NMORE - 1) % WO_NMORE;
+        if (PRESSED(PAD_DOWN)) wo_msel = (wo_msel + 1) % WO_NMORE;
+        if (PRESSED(PAD_CIRCLE)) { wo_more = 0; return; }
+        if (PRESSED(PAD_CROSS)) { if (wo_msel == 0) worlds_go(0, 2); else audio_voice(VOICE_NAH); }
+        return;
+    }
+    if (PRESSED(PAD_UP)) wo_sel = (wo_sel + WO_N - 1) % WO_N;
+    if (PRESSED(PAD_DOWN)) wo_sel = (wo_sel + 1) % WO_N;
+    if (PRESSED(PAD_CIRCLE)) { state = ST_MENU; return; }
+    if (PRESSED(PAD_TRIANGLE)) { wo_packed ^= 1; wo_painted = 0; audio_voice(VOICE_FINISHED); }   // TOWNS: ROOMY or PACKED
+    bm_gen = 3; bm_packed = wo_packed;
+    if (wo_sel == WO_CREATE) {                       // CREATE A WORLD: roll it, or step through, until you like the look of it
+        if (PRESSED(PAD_SQUARE)) { wo_custom = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ (u32)wo_t; if (!wo_custom) wo_custom = 1; audio_voice(VOICE_FINISHED); }
+        if (PRESSED(PAD_L1)) wo_custom--;
+        if (PRESSED(PAD_R1)) wo_custom++;
+    }
+    u32 sd = wo_seed_of(wo_sel); if (sd) paint_world(sd);
+    if (PRESSED(PAD_CROSS)) {
+        if (wo_sel == WO_MORE) { wo_more = 1; return; }
+        worlds_go(wo_seed_of(wo_sel), wo_sel == WO_CASTAWAY ? 1 : 0);
+    }
+}
+static void worlds_draw(void) {
+    title_draw();
+    ui_dim();
+    char b[48];
+    int top = ui_window(6, 6, 308, 228, wo_more ? "MISSIONS AND EXPANSIONS" : "PICK A WORLD", wo_more ? IC_STAR : IC_PIN);
+    if (wo_more) {
+        for (int i = 0; i < WO_NMORE; i++) ui_button(14, top + 4 + i * 22, 292, 18, moreNm[i], i == 0 ? IC_MONEY : IC_LOCK, i == wo_msel);
+        ui_textc(160, top + 100, 1, moreBlurb[wo_msel], wo_msel ? UI_SOFT : UI_INK);
+        ui_hints(160, 214, wo_msel == 0 ? "X PLAY|O BACK" : "O BACK", 1);
+        return;
+    }
+    static const s8 ic[WO_N] = { IC_DICE, IC_PIN, IC_PIN, IC_PIN, IC_BRUSH, IC_SUN, IC_STAR };
+    for (int i = 0; i < WO_N; i++) {
+        const char *nm = i == WO_RANDOM ? "RANDOM WORLD" : i == WO_CREATE ? "CREATE A WORLD" : i == WO_CASTAWAY ? "CASTAWAY ISLAND" : i == WO_MORE ? "MISSIONS, PACKS" : wo_cap[i - WO_PRE1];
+        ui_button(12, top + 2 + i * 21, 124, 18, nm, ic[i], i == wo_sel);
+    }
+    const int MX = 152, MY = top + 2, MS = 150;
+    u32 sd = wo_seed_of(wo_sel);
+    ui_round(MX - 2, MY - 2, MS + 4, MS + 4, 4, UI_LINE, UI_LINE, 0);
+    if (sd && wo_painted == sd) {
+        gfx_sprite_c(MX, MY, MS, MS, getTPage(2, 0, 0, 256), 0, 0, 128, 128, 128, 128, 128);
+        for (int i = 0; i < bm_nset(); i++) { const Settle *st = bm_set(i); int x = MX + st->x * MS / BM_N, y = MY + st->y * MS / BM_N, d = st->kind == ST_CITY ? 6 : st->kind == ST_TOWN ? 4 : 3;
+            ui_disc(x, y, d + 2, UI_RGB(40, 46, 60)); ui_disc(x, y, d, i == bm_capital() ? UI_RGB(255, 204, 48) : UI_WHITE); }
+    } else {
+        ui_round(MX, MY, MS, MS, 4, UI_RGB(70, 120, 180), UI_RGB(40, 80, 140), 0);
+        ui_icon_disc(MX + MS / 2, MY + MS / 2 - 8, 40, wo_sel == WO_CASTAWAY ? IC_SUN : wo_sel == WO_MORE ? IC_STAR : IC_DICE, UI_WHITE, UI_BLUE2);
+        ui_textc(MX + MS / 2, MY + MS / 2 + 20, 1, wo_sel == WO_RANDOM ? "A NEW MAP EVERY TIME" : wo_sel == WO_CASTAWAY ? "A NEW ISLAND EVERY TIME" : "", UI_WHITE);
+    }
+    const char *bl = wo_sel == WO_RANDOM ? "FRESH DICE: TOWNS, ROADS AND 874 FAMILIES" : wo_sel == WO_CREATE ? "SQ ROLLS A NEW MAP. L1 R1 STEP THROUGH" :
+                     wo_sel == WO_CASTAWAY ? "BEGIN STRANDED ON THE ISLAND" : wo_sel == WO_MORE ? "A MISSION, AND PACKS ON THE WAY" : "A SET WORLD: THE SAME MAP EVERY TIME";
+    ui_text(12, top + 158, 1, bl, UI_SOFT);
+    if (sd) { const Settle *c = wo_painted == sd ? bm_set(bm_capital()) : 0; sprintf(b, "%d TOWNS, CAPITAL %s", bm_nset(), c ? c->name : "?"); ui_text(12, top + 170, 1, b, UI_INK); }
+    if (wo_sel == WO_CREATE) { sprintf(b, "MAP NO. %08X", (unsigned)wo_custom); ui_text(310 - ui_tw(1, b), top + 170, 1, b, UI_BLUE2); }
+    ui_badge(306 - ui_tw(1, wo_packed ? "TOWNS: PACKED" : "TOWNS: ROOMY") - 10, 8, wo_packed ? "TOWNS: PACKED" : "TOWNS: ROOMY", UI_WHITE, UI_BLUE2);
+    ui_hints(160, 214, wo_sel == WO_CREATE ? "X PLAY|SQ ROLL|L1 R1 STEP|TRI TOWNS|O BACK" : "X PLAY|TRI TOWNS|O BACK", 1);
+}
+
 static const char *const menuNm[] = { "STORY MODE", "CONTINUE", "CREATE A BORE", "JUKEBOX", "OPTIONS", "HOW TO PLAY" };
 static const char *const menuBlurb[] = { "A NEW LIFE: HOME, THE ISLAND, THE TOWN", "", "SCULPT YOUR BORE", "ALL 33 SONGS", "PICTURE AND SPEED", "CONTROLS AND TIPS" };
 #define NMENU 6
@@ -2706,7 +2966,11 @@ static void menu_update(void) {
     if (PRESSED(PAD_CIRCLE)) state = ST_TITLE;
     if (PRESSED(PAD_CROSS) || PRESSED(PAD_START)) {
         switch (menu_sel) {
-            case 0: life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0; break;
+            case 0:
+#if defined(AUTO_CITY) || defined(AUTO_PARTY) || defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_SCENE) || defined(AUTO_PHONE) || defined(AUTO_ISLE) || defined(AUTO_HOME) || defined(AUTO_GROW) || defined(AUTO_SAVE) || defined(AUTO_TOWER) || defined(AUTO_FLOAT)
+                worlds_go(0, 0); break;   // (test builds: straight into a life, as before)
+#endif
+                worlds_open(); break;
             case 1: slots_open(0, ST_MENU); break;
             case 2: prev_state = ST_MENU; create_tab = 0; create_row = 0; state = ST_CREATE; world_backup(); world_gen_studio(); break;
             case 3: prev_state = ST_MENU; state = ST_JUKEBOX; break;
@@ -2854,6 +3118,8 @@ int main(void) {
             case ST_OVER: over_update(); over_draw(); break;
             case ST_HOMES: homes_update(); homes_draw(); break;
             case ST_CRAFT: craft_update(); craft_draw(); break;
+            case ST_WORLDS: worlds_update(); if (state == ST_WORLDS) worlds_draw(); else if (state == ST_MENU) menu_draw(); else life_draw(); break;
+            case ST_NHOOD: nhood_update(); if (state == ST_NHOOD) nhood_draw(); else if (state == ST_HOMES) homes_draw(); else life_draw(); break;
             case ST_SLOTS: slots_update(); if (state == ST_SLOTS) slots_draw(); else if (state == ST_LIFE) life_draw(); else if (state == ST_MENU) menu_draw(); else pause_draw(); break;
             case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
         }

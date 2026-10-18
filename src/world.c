@@ -1113,7 +1113,7 @@ int world_own_block(int *wx, int *wy) { return own_in_window(wx, wy); }
 
 static void wild(int ox, int oy, const BInfo *b, int bx, int by) {   // the open country: trees, rocks, cacti, palms
     for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) {
-        if (floorMap[oy + y][ox + x] == FL_PAVING || floorMap[oy + y][ox + x] == FL_WATER || lifeMap[oy + y][ox + x] != '.') continue;
+        { u8 f = floorMap[oy + y][ox + x]; if (f == FL_PAVING || f == FL_WATER || f >= FL_ASPHALT || lifeMap[oy + y][ox + x] != '.') continue; }
         int r = (int)(bm_hash(bx * BM_BLK + x, by * BM_BLK + y, wsalt ^ 0x77u) % 1000u); char c = 0;
         switch (b->terrain) {
             case BT_GRASS:  c = r < 22 ? '3' : r < 28 ? '*' : r < 30 ? '6' : 0; break;
@@ -1192,8 +1192,8 @@ static void gen_block(int wx, int wy) {
         default: break;
     }
     occ_on = 0; blk_bx = blk_by = 0xFFFF;
-    if (b.set == 255) wild(ox, oy, &b, bx, by);
-    else if (b.terrain != BT_SEA) {                      // street lamps on the corners and half way along, a bin now and then
+    if (b.set == 255 || b.lot == LOT_WILD) wild(ox, oy, &b, bx, by);   // (open country, and the green gaps left in a town)
+    if (b.set != 255 && b.terrain != BT_SEA) {                      // street lamps on the corners and half way along, a bin now and then
         gFree(ox + 3, oy + 3, '"'); gFree(ox + 10, oy + 3, '"'); gFree(ox + 3, oy + 10, '"');
         if ((h >> 24) % 3u == 0) gFree(ox + 6, oy + 3, 'Y');
     }

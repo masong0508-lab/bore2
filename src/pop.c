@@ -136,6 +136,12 @@ void pop_new(u32 seed, void *scratch, u32 scratch_bytes) {
     }
     // which homes are lived in: a shuffle, the first 874 (the rest stand empty)
     for (int i = nu - 1; i > 0; i--) { int j = prn(i + 1); Unit t = U[i]; U[i] = U[j]; U[j] = t; }
+    {   // (a third of the capital's houses go to the back of the line: there are homes for sale for a new family to pick from)
+        int i = 0, j = nu - 1;
+        while (i < j) { const Unit *u = &U[i];
+            int defer = bm_gen >= 3 && u->set == bm_capital() && (u->lot == LOT_HOUSE || u->lot == LOT_COTTAGE || u->lot == LOT_TWO) && bm_hash(u->bx, u->by, seed ^ 0x5A1Eu) % 100u < 35;
+            if (defer) { Unit t = U[i]; U[i] = U[j]; U[j] = t; j--; } else i++; }
+    }
     int nf = MIN(nu, NFAM);
     for (int gap = nf / 2; gap > 0; gap /= 2) for (int i = gap; i < nf; i++) {   // in block order, so a home's household is found by a search
         Unit t = U[i]; int j = i; while (j >= gap && unit_key(&U[j - gap]) > unit_key(&t)) { U[j] = U[j - gap]; j -= gap; } U[j] = t; }

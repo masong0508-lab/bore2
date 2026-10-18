@@ -11,8 +11,15 @@ by itself, and still runs on a normal 2 MB PlayStation.
 For a real PlayStation or PCSX-ReARMed, burn or open `bore2.cue` + `bore2.bin` from `cmake --build build --target iso`.
 Every push to GitHub builds both: open Actions, the newest green run, and download **BORE2_chd** or **bore2_disc** under Artifacts.
 
-A new life begins in SAN BOREAS itself: the family is given a house (or a two-storey, or a cottage) nearest the capital's square, among
-its 874 households, furnished for them, and it sells back for nothing (THE MAN BASE is still on the TRAVEL list).
+STORY MODE opens PICK A WORLD: RANDOM WORLD (fresh dice), three set worlds (MAPLE SHORES, SUNNY HOLLOW, PINE BAY: the same map every
+time), CREATE A WORLD (SQUARE rolls a new map, L1 R1 step through them, the map shows each one), CASTAWAY ISLAND (the family begins
+stranded on the island), and MISSIONS, PACKS (RAGS TO RICHES: $1,000 and no home; the expansion packs say COMING SOON). TRIANGLE
+switches TOWNS between ROOMY (parks, green gaps, towns far apart) and PACKED (built up, towns close together, as before).
+
+Then THE NEIGHBORHOOD (like the PC games' neighborhood screen): the capital's blocks from above, with 48 lots picked at random from
+what is for sale, about a third empty lots to build on and the rest furnished homes. The d-pad hops from lot to lot (L1 R1 go in
+order), the card shows the address, the kind, the price and your $20,000; X buys it and the family moves in, TRIANGLE stays at
+THE MAN BASE. The phone's HOMES app opens the same screen round where you are (SQUARE goes to see a lot, SELECT shows the list).
 
 Controls: stick / d-pad move, X uses the thing in front (fridge, bed, shower, sofa, TV, radio, the DeadSet...), talk to a
 housemate with X, O gets up, SQUARE runs, O rides a skateboard (buy one at a clothes shop, or pick one up off the floor with X), TRIANGLE game speed. SELECT opens your PHONE: CALL, PIZZA, PARTY, MAP, TRAVEL (the

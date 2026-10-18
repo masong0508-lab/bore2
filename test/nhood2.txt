@@ -1,0 +1,13 @@
+910 start
+950 b
+1010 b
+1900 shot
+1920 right
+1960 shot
+1980 down
+2020 shot
+2040 r1
+2080 shot
+2100 b
+2900 shot
+3100 shot
