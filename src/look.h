@@ -10,8 +10,9 @@
 
 #define LK_COUNT 120
 // BORE 2's own wardrobe (after the GBA looks): the WEAR tab's accessories, their two colours, and clothes patterns
-enum { LK_X_HEAD = LK_N, LK_X_FACE, LK_X_NECK, LK_X_BACK, LK_X_HAND, LK_X_WAIST, LK_X_COLA, LK_X_COLB, LK_X_TOPPAT, LK_X_BOTPAT, LK_X_PATTONE, LK_X_END };
-#define NX_COL 16
+enum { LK_X_HEAD = LK_N, LK_X_FACE, LK_X_NECK, LK_X_BACK, LK_X_HAND, LK_X_WAIST, LK_X_COLA, LK_X_COLB, LK_X_TOPPAT, LK_X_BOTPAT, LK_X_PATTONE,
+       LK_X_EARS, LK_X_WRIST, LK_X_SHOULDER, LK_X_FEET, LK_X_THEME, LK_X_END };   // (the last four came with the big wardrobe: appended, so saves keep their places)
+#define NX_COL 32
 #define NAME_LEN 12
 
 #define NCELL_MAX 96   // solid blocks a Bore keeps (the build box holds 192, but 3,000 rolled Bores, the biggest dressed up, never passed 58)
@@ -51,7 +52,8 @@ void look_default(Bore *b);                 // the starter creature (look 0 ever
 void look_random(Bore *b);                  // the Create-A-Bore dice
 void look_build(Bore *b);                   // look -> vox / dec / colours / face textures
 int  look_allowed(const Bore *b, int id, int v);
-void look_fix(Bore *b);                     // after a birthday: anything the new age may not wear changed to something it may
+void look_fix(Bore *b);
+void look_theme(Bore *b, int t);            // dress them in a ready-made outfit (the WEAR tab's OUTFIT: 0 takes everything off)                     // after a birthday: anything the new age may not wear changed to something it may
 void look_release(Bore *b);                 // a Bore that has gone: its face textures are kept for the next new face
 void look_own_face(Bore *b);                // a copy of a Bore gets face textures of its own (and is built again)
 int  look_count(int id);                    // options in row id (sliders: 9)

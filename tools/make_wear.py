@@ -11,7 +11,7 @@ Anchors:  HEAD   the top centre of the head, on the hair          FACE  the fron
           HAND   the bottom of the right hand (moves with the arm)   WAIST the front of the torso, on the hip line
 Colours: A and B are the two the player picks (COLOUR 1 and 2); the rest are fixed."""
 import os
-A, B, GOLD, BLACK, WHITE, SILVER, RED, GREEN, YELLOW, BROWN, HAIR, SKIN, PINK, ORANGE = range(14)
+A, B, GOLD, BLACK, WHITE, SILVER, RED, GREEN, YELLOW, BROWN, HAIR, SKIN, PINK, ORANGE, BLUE, PURPLE, GREY, TAN, CYAN = range(19)
 
 def mirror(*boxes):   # a box and its mirror image across x = 0
     out = []
@@ -124,8 +124,260 @@ WAIST = [
 COLOURS = [('RED', (29, 4, 4)), ('ORANGE', (31, 15, 2)), ('YELLOW', (31, 27, 4)), ('LIME', (16, 29, 4)), ('GREEN', (3, 20, 6)), ('TEAL', (3, 22, 20)),
            ('SKY', (10, 22, 31)), ('BLUE', (4, 9, 28)), ('NAVY', (3, 4, 14)), ('PURPLE', (17, 5, 26)), ('PINK', (31, 13, 22)), ('WHITE', (30, 30, 29)),
            ('SILVER', (21, 22, 24)), ('BLACK', (4, 4, 5)), ('BROWN', (15, 8, 3)), ('GOLD', (30, 23, 6))]
-FIXED = [None, None, (30, 23, 6), (4, 4, 5), (30, 30, 29), (21, 22, 24), (28, 4, 4), (4, 21, 6), (31, 28, 6), (15, 8, 3), None, None, (31, 15, 22), (31, 15, 2)]
+FIXED = [None, None, (30, 23, 6), (4, 4, 5), (30, 30, 29), (21, 22, 24), (28, 4, 4), (4, 21, 6), (31, 28, 6), (15, 8, 3), None, None, (31, 15, 22), (31, 15, 2), (5, 12, 29), (18, 6, 26), (13, 13, 14), (25, 19, 12), (8, 26, 29)]
 PATTERNS = ['NONE', 'STRIPES', 'WIDE STRIPES', 'PINSTRIPES', 'CHECKS', 'PLAID', 'DOTS', 'ZIGZAG', 'DIAMONDS', 'STARS', 'HEARTS', 'CAMO', 'TIE-DYE', 'DENIM', 'LEOPARD']
+
+# ---- THE BIG WARDROBE (more of everything, and four new places to wear things: ears, wrists, a shoulder, feet) ----
+def brim(r, c, y=0):   # a flat round-ish brim
+    return [(-r, r, y, y + 1, -r + 2, r - 2, c), (-r + 2, r - 2, y, y + 1, -r, r, c)]
+HEAD += [
+    ('FEDORA', brim(11, A) + [(-7, 7, 1, 7, -6, 6, A), (-6, 6, 7, 8, -4, 4, A), (-7, 7, 1, 3, -6, 6, B)]),
+    ('BASEBALL CAP', [(-8, 8, 0, 4, -8, 8, A), (-6, 6, 4, 5, -6, 6, A), (-7, 7, 0, 1, 8, 15, B), (-1, 1, 5, 6, -1, 1, B)]),
+    ('BACKWARDS CAP', [(-8, 8, 0, 4, -8, 8, A), (-6, 6, 4, 5, -6, 6, A), (-7, 7, 0, 1, -15, -8, B), (-3, 3, 1, 3, 8, 9, B)]),
+    ('BUCKET HAT', [(-11, 11, -1, 1, -11, 11, A), (-8, 8, 1, 6, -8, 8, A), (-7, 7, 6, 7, -7, 7, A), (-8, 8, 1, 2, -8, 8, B)]),
+    ('POM BEANIE', [(-9, 9, -2, 5, -9, 9, A), (-9, 9, -2, 0, -9, 9, B), (-6, 6, 5, 7, -6, 6, A), (-3, 3, 7, 11, -3, 3, B)]),
+    ('USHANKA', [(-10, 10, -1, 6, -10, 10, BROWN), (-11, 11, -1, 2, -11, 11, WHITE)] + mirror((9, 12, -9, 0, -5, 5, WHITE))),
+    ('BOWLER', brim(10, BLACK) + [(-7, 7, 1, 6, -7, 7, BLACK), (-5, 5, 6, 8, -5, 5, BLACK), (-7, 7, 1, 2, -7, 7, A)]),
+    ('TURBAN', [(-10, 10, -2, 5, -10, 10, A), (-8, 8, 5, 8, -8, 8, A), (-2, 2, 2, 6, 9, 11, GOLD), (-1, 1, 6, 8, 9, 10, B)]),
+    ('FLOWER CROWN', ring(-9, 9, -9, 9, 0, 2, 2, GREEN) + [(-8, -5, 1, 4, 7, 10, A), (-1, 2, 1, 4, 8, 11, B), (5, 8, 1, 4, 7, 10, A), (-10, -7, 1, 4, -2, 1, B), (7, 10, 1, 4, -2, 1, A)]),
+    ('ASTRONAUT HELMET', [(-12, 12, -18, 4, -12, 12, WHITE), (-10, 10, 4, 6, -10, 10, WHITE), (-9, 9, -12, -2, 12, 13, CYAN), (-12, 12, -19, -17, -12, 12, SILVER)]),
+    ('KNIGHT HELMET', [(-10, 10, -16, 4, -10, 10, SILVER), (-8, 8, -8, -6, 10, 11, BLACK), (-1, 1, -15, -8, 10, 11, BLACK), (-2, 2, 4, 10, -6, 6, A)]),
+    ('FOOTBALL HELMET', [(-10, 10, -14, 4, -10, 10, A), (-8, 8, 4, 6, -8, 8, A), (-1, 1, -2, 6, -10, 10, B), (-7, 7, -12, -11, 10, 13, SILVER), (-1, 1, -14, -11, 10, 13, SILVER)]),
+    ('WITCH HAT', brim(13, BLACK) + tiers([(7, 4), (5, 4), (4, 4), (2, 4)], BLACK, 1) + [(-1, 3, 17, 20, 1, 4, BLACK), (-7, 7, 1, 3, -7, 7, A)]),
+    ('SANTA HAT', [(-9, 9, -2, 2, -9, 9, WHITE)] + tiers([(8, 4), (6, 3), (4, 3)], RED, 2) + [(1, 4, 9, 11, 2, 9, RED), (1, 5, 6, 10, 9, 13, WHITE)]),
+    ('ELF HAT', [(-9, 9, -1, 2, -9, 9, RED)] + tiers([(8, 3), (6, 3), (4, 3), (2, 3)], GREEN, 2) + [(-1, 1, 14, 16, -9, -5, GREEN), (-2, 2, 15, 18, -11, -8, YELLOW)]),
+    ('JESTER HAT', [(-9, 9, 0, 3, -9, 9, A)] + mirror((7, 10, 2, 7, -3, 3, A), (10, 14, 6, 10, -3, 3, B), (13, 16, 9, 12, -2, 2, YELLOW))),
+    ('LAUREL WREATH', ring(-9, 9, -9, 9, -1, 1, 2, GREEN) + mirror((8, 10, 1, 3, 4, 8, GREEN), (8, 10, 1, 3, -6, -2, GREEN))),
+    ('DEVIL HORNS', [(-9, 9, 0, 1, -1, 1, RED)] + mirror((4, 7, 1, 4, -1, 1, RED), (5, 7, 4, 7, -1, 1, RED), (6, 7, 7, 9, -1, 1, RED))),
+    ('UNICORN HORN', [(-9, 9, 0, 1, -1, 1, A)] + tiers([(2, 3), (1, 4), (0, 0)][:2], GOLD, 1, 0, 6) + [(0, 1, 8, 11, 5, 7, GOLD)]),
+    ('MUSHROOM CAP', [(-13, 13, 0, 4, -13, 13, RED), (-10, 10, 4, 7, -10, 10, RED), (-6, 6, 7, 8, -6, 6, RED), (-8, -5, 7, 8, 2, 5, WHITE), (3, 6, 7, 8, -6, -3, WHITE), (9, 12, 3, 4, 3, 6, WHITE), (-12, -9, 3, 4, -5, -2, WHITE)]),
+    ('CHICKEN HAT', [(-9, 9, -2, 6, -9, 9, WHITE), (-3, 3, 6, 9, -2, 4, RED), (-2, 2, 2, 4, 9, 13, YELLOW), (-5, -3, 3, 5, 8, 10, BLACK), (3, 5, 3, 5, 8, 10, BLACK)]),
+    ('FROG HAT', [(-10, 10, -2, 5, -10, 10, GREEN)] + mirror((3, 8, 5, 9, 3, 8, GREEN), (4, 7, 6, 8, 8, 9, WHITE), (5, 6, 6, 7, 9, 10, BLACK))),
+    ('SHARK HAT', [(-10, 10, -2, 6, -10, 10, GREY), (-1, 1, 6, 14, -6, 2, GREY), (-8, 8, -3, -1, 9, 11, WHITE), (-8, 8, -1, 0, 10, 11, RED)]),
+    ('TRAFFIC CONE', tiers([(8, 3), (6, 4), (4, 4), (2, 4)], ORANGE) + [(-7, 7, 4, 6, -7, 7, WHITE), (-4, 4, 10, 11, -4, 4, WHITE)]),
+    ('COOKING POT', [(-9, 9, -2, 6, -9, 9, SILVER), (-10, 10, -2, -1, -10, 10, GREY)] + mirror((9, 13, 3, 5, -1, 1, BLACK))),
+    ('NEWSBOY CAP', [(-10, 10, 0, 4, -9, 10, A), (-8, 8, 4, 5, -7, 8, A), (-7, 7, 0, 1, 9, 13, A), (-1, 1, 5, 6, 0, 2, B)]),
+    ('CAPTAIN HAT', [(-9, 9, 0, 4, -9, 9, WHITE), (-11, 11, 4, 6, -11, 11, WHITE), (-9, 9, 0, 2, -9, 9, BLACK), (-7, 7, 0, 1, 9, 13, BLACK), (-2, 2, 2, 4, 9, 10, GOLD)]),
+    ('POLICE CAP', [(-9, 9, 0, 4, -9, 9, BLUE), (-10, 10, 4, 6, -10, 10, BLUE), (-9, 9, 0, 1, -9, 9, BLACK), (-7, 7, 0, 1, 9, 13, BLACK), (-2, 2, 2, 5, 9, 10, SILVER)]),
+    ('NURSE CAP', [(-6, 6, 0, 5, -2, 4, WHITE), (-1, 1, 1, 4, 4, 5, RED), (-2, 2, 2, 3, 4, 5, RED)]),
+    ('SAFARI HAT', brim(12, TAN) + [(-8, 8, 1, 7, -8, 8, TAN), (-6, 6, 7, 8, -6, 6, TAN), (-8, 8, 1, 2, -8, 8, BROWN)]),
+    ('STRAW HAT', brim(14, YELLOW) + [(-7, 7, 1, 6, -7, 7, YELLOW), (-7, 7, 1, 2, -7, 7, A)]),
+    ('SUN VISOR', [(-9, 9, -2, 0, -9, 9, A), (-8, 8, -2, -1, 9, 16, A)]),
+    ('SWEATBAND', ring(-9, 9, -9, 9, -4, -1, 1, A) + [(-9, 9, -3, -2, 8, 9, B)]),
+    ('BANDANA CAP', [(-9, 9, -3, 3, -9, 9, A), (-2, 2, -3, 1, -11, -9, A), (-4, 4, 1, 2, -6, 6, B)]),
+    ('EARMUFFS', [(-9, 9, 0, 2, -1, 1, SILVER)] + mirror((8, 12, -12, -5, -4, 4, A))),
+    ('DEELY BOPPERS', [(-9, 9, 0, 1, -1, 1, BLACK)] + mirror((4, 5, 1, 10, -1, 0, BLACK), (3, 6, 10, 13, -2, 1, A))),
+    ('TOP KNOT BOW', [(-2, 2, 0, 3, -2, 2, HAIR), (-3, 3, 3, 6, -3, 3, HAIR), (-7, 7, 2, 4, -1, 1, A)]),
+    ('BIRD NEST', [(-8, 8, 0, 3, -8, 8, BROWN), (-6, 6, 3, 4, -6, 6, BROWN), (-3, -1, 3, 5, -1, 1, CYAN), (1, 3, 3, 5, -1, 1, CYAN), (-2, 2, 4, 8, 2, 5, YELLOW)]),
+    ('ROBOT ANTENNA', [(-4, 4, 0, 2, -4, 4, SILVER), (-1, 1, 2, 12, -1, 1, SILVER), (-2, 2, 12, 15, -2, 2, RED)]),
+    ('THINKING CAP', [(-8, 8, 0, 4, -8, 8, A), (-1, 1, 4, 9, -1, 1, YELLOW), (-3, 3, 9, 13, -3, 3, YELLOW)]),
+    ('HALF HELMET', [(-9, 9, 0, 5, -9, 9, A), (-10, 10, 0, 1, -10, 10, BLACK), (-1, 1, 5, 6, -8, 8, B)]),
+]
+FACE += [
+    ('AVIATORS', [(-7, -1, -2, 2, 0, 1, GOLD), (1, 7, -2, 2, 0, 1, GOLD), (-6, -2, -2, 1, 1, 2, A), (2, 6, -2, 1, 1, 2, A), (-1, 1, 1, 2, 0, 1, GOLD)]),
+    ('HEART SHADES', [(-7, -1, -2, 2, 0, 1, A), (1, 7, -2, 2, 0, 1, A), (-6, -5, 2, 3, 0, 1, A), (-3, -2, 2, 3, 0, 1, A), (2, 3, 2, 3, 0, 1, A), (5, 6, 2, 3, 0, 1, A), (-1, 1, 0, 1, 0, 1, B)]),
+    ('STAR SHADES', [(-7, -1, -1, 2, 0, 1, A), (1, 7, -1, 2, 0, 1, A), (-5, -3, -3, 4, 0, 1, A), (3, 5, -3, 4, 0, 1, A), (-1, 1, 0, 1, 0, 1, B)]),
+    ('CAT-EYE GLASSES', [(-7, -1, -2, 2, 0, 1, BLACK), (1, 7, -2, 2, 0, 1, BLACK), (-8, -6, 2, 4, 0, 1, A), (6, 8, 2, 4, 0, 1, A), (-1, 1, 0, 1, 0, 1, BLACK)]),
+    ('NERD GLASSES', [(-7, -1, -3, 2, 0, 1, BLACK), (1, 7, -3, 2, 0, 1, BLACK), (-1, 1, -1, 0, 0, 2, WHITE), (-6, -2, -2, 1, 1, 2, CYAN), (2, 6, -2, 1, 1, 2, CYAN)]),
+    ('SCUBA MASK', [(-7, 7, -3, 4, 0, 3, BLACK), (-6, 6, -2, 3, 3, 4, CYAN), (5, 7, -9, -3, 3, 5, A), (6, 7, -3, 8, 4, 5, A)]),
+    ('SNORKEL', [(6, 8, -8, 10, 1, 3, A), (2, 6, -8, -6, 0, 3, A)]),
+    ('HOCKEY MASK', [(-7, 7, -10, 5, 0, 2, WHITE), (-5, -2, 0, 2, 2, 3, BLACK), (2, 5, 0, 2, 2, 3, BLACK), (-3, -2, -6, -4, 2, 3, RED), (2, 3, -6, -4, 2, 3, RED)]),
+    ('SUPERHERO MASK', [(-8, 8, -2, 3, 0, 1, A), (-6, -2, -1, 2, 1, 2, WHITE), (2, 6, -1, 2, 1, 2, WHITE), (8, 10, 1, 2, -3, 1, A)]),
+    ('MASQUERADE MASK', [(-8, 8, -2, 3, 0, 1, A), (-6, -2, -1, 2, 1, 2, BLACK), (2, 6, -1, 2, 1, 2, BLACK), (6, 9, 3, 7, 0, 1, B), (8, 10, 6, 10, 0, 1, B)]),
+    ('BANDIT MASK', [(-8, 8, -2, 2, 0, 1, BLACK), (-5, -3, -1, 1, 1, 2, WHITE), (3, 5, -1, 1, 1, 2, WHITE)]),
+    ('GOATEE', [(-2, 2, -10, -7, 0, 1, HAIR), (-1, 1, -12, -10, 0, 1, HAIR)]),
+    ('HANDLEBAR MUSTACHE', [(-4, 4, -6, -5, 0, 2, HAIR)] + mirror((4, 7, -6, -5, 0, 2, HAIR), (7, 8, -5, -3, 0, 2, HAIR))),
+    ('FULL BEARD', [(-7, 7, -11, -5, 0, 2, HAIR), (-5, 5, -13, -11, 0, 2, HAIR), (-4, 4, -6, -5, 2, 3, HAIR)]),
+    ('NOSE GLASSES', [(-7, -1, -1, 2, 0, 1, BLACK), (1, 7, -1, 2, 0, 1, BLACK), (-2, 2, -6, -1, 0, 3, PINK), (-4, 4, -7, -6, 0, 2, HAIR)]),
+    ('TOOTHPICK', [(2, 3, -7, -6, 0, 5, TAN)]),
+    ('A ROSE', [(-1, 6, -7, -6, 0, 2, GREEN), (5, 8, -8, -5, 0, 3, RED)]),
+    ('WHISKERS', mirror((3, 9, -4, -3, 0, 1, BLACK), (3, 9, -6, -5, 0, 1, BLACK))),
+    ('BANDAGE', [(2, 6, 3, 5, 0, 1, TAN), (3, 5, 2, 6, 0, 1, TAN)]),
+    ('FACE PAINT', [(-7, -4, -3, -2, 0, 1, A), (-7, -4, -5, -4, 0, 1, A), (4, 7, -3, -2, 0, 1, A), (4, 7, -5, -4, 0, 1, A), (-1, 1, 3, 6, 0, 1, B)]),
+    ('CLOWN MAKEUP', [(-6, -3, 2, 3, 0, 1, BLUE), (3, 6, 2, 3, 0, 1, BLUE), (-4, 4, -8, -7, 0, 1, RED), (-5, -4, -7, -6, 0, 1, RED), (4, 5, -7, -6, 0, 1, RED), (-2, 2, -5, -2, 0, 3, RED)]),
+    ('GAS MASK', [(-6, 6, -8, 3, 0, 2, GREY), (-5, -2, -1, 2, 2, 3, CYAN), (2, 5, -1, 2, 2, 3, CYAN), (-2, 2, -9, -5, 2, 6, BLACK)]),
+    ('WELDING VISOR', [(-8, 8, -9, 5, 0, 2, GREY), (-6, 6, -1, 2, 2, 3, BLACK)]),
+]
+NECK += [
+    ('CHOKER', [(-6, 6, -2, 0, 0, 1, A), (-1, 1, -3, -2, 0, 1, B)]),
+    ('SPIKED COLLAR', [(-9, 9, -2, 0, -17, 1, BLACK)] + [(x, x + 1, -2, 0, 1, 3, SILVER) for x in (-7, -4, -1, 2, 5)]),
+    ('BOLO TIE', [(-1, 1, -12, 0, 0, 1, BLACK), (-2, 2, -5, -2, 0, 2, A), (-1, 1, -14, -12, 0, 1, SILVER)]),
+    ('ASCOT', [(-4, 4, -5, 0, 0, 2, A), (-2, 2, -8, -5, 1, 2, A)]),
+    ('DOG TAGS', [(-1, 1, -8, 0, 0, 1, SILVER), (-2, 2, -11, -8, 0, 1, SILVER), (1, 3, -12, -9, 1, 2, SILVER)]),
+    ('WHISTLE', [(-1, 1, -10, 0, 0, 1, A), (-2, 2, -13, -10, 0, 3, SILVER)]),
+    ('CAMERA', [(-6, 6, -7, 0, 0, 1, BLACK), (-4, 4, -13, -7, 0, 4, BLACK), (-2, 2, -12, -8, 4, 6, GREY), (-1, 1, -11, -9, 6, 7, CYAN)]),
+    ('NECK HEADPHONES', [(-9, 9, -3, -1, -17, 1, BLACK)] + mirror((6, 9, -6, -1, 1, 4, A))),
+    ('FEATHER BOA', [(-10, 10, -4, 1, -18, 2, A), (-9, -6, -16, -4, 2, 4, A), (6, 9, -16, -4, 2, 4, A)]),
+    ('RUFF COLLAR', [(-11, 11, -3, 2, -19, 3, WHITE), (-10, 10, -2, 1, 3, 4, WHITE)]),
+    ('ID BADGE', [(-1, 1, -9, 0, 0, 1, A), (-3, 3, -14, -9, 0, 1, WHITE), (-2, 2, -12, -10, 1, 2, B)]),
+    ('STETHOSCOPE', [(-7, 7, -2, 0, -17, 1, BLACK), (-5, -4, -10, -2, 0, 1, BLACK), (-6, -3, -12, -10, 0, 2, SILVER)]),
+    ('LONG SCARF', [(-9, 9, -3, 1, -17, 1, A), (3, 7, -24, -3, 1, 2, A), (-7, -3, -18, -3, 1, 2, A), (3, 7, -20, -19, 2, 3, B), (-7, -3, -15, -14, 2, 3, B)]),
+    ('SHELL NECKLACE', [(-6, 6, -5, -4, 0, 1, WHITE)] + [(x, x + 2, -7, -5, 0, 2, TAN) for x in (-5, -1, 3)] + mirror((6, 7, -4, 0, 0, 1, WHITE))),
+    ('CRYSTAL PENDANT', [(-1, 1, -8, 0, 0, 1, SILVER), (-2, 2, -11, -8, 0, 2, CYAN), (-1, 1, -13, -11, 0, 2, CYAN)]),
+    ('ANCHOR PENDANT', [(-1, 1, -8, 0, 0, 1, GOLD), (-1, 1, -14, -8, 0, 1, GOLD), (-3, 3, -14, -13, 0, 1, GOLD), (-3, -2, -13, -12, 0, 1, GOLD), (2, 3, -13, -12, 0, 1, GOLD)]),
+    ('RIBBON', [(-1, 1, -3, 0, 0, 2, A), (-4, -1, -8, -3, 0, 1, A), (1, 4, -8, -3, 0, 1, A)]),
+    ('SHARK TOOTH', [(-1, 1, -8, 0, 0, 1, BLACK), (-2, 2, -10, -8, 0, 1, WHITE), (-1, 1, -12, -10, 0, 1, WHITE)]),
+    ('LIFE RING', ring(-11, 11, -18, 4, -14, -10, 4, RED) + [(-11, -7, -14, -10, -4, 0, WHITE), (7, 11, -14, -10, -4, 0, WHITE)]),
+]
+BACK += [
+    ('QUIVER', [(-3, 3, -18, 0, 0, 5, BROWN)] + [(x, x + 1, 0, 6, 2, 3, A) for x in (-2, 0, 2)] + [(-12, 8, -14, -13, -1, 0, BROWN)]),
+    ('SWORD', [(-1, 1, -26, 2, 0, 2, SILVER), (-4, 4, 2, 3, 0, 2, GOLD), (-1, 1, 3, 8, 0, 2, BROWN)]),
+    ('SHIELD', [(-8, 8, -18, 0, 0, 2, A), (-6, 6, -20, -18, 0, 2, A), (-1, 1, -18, 0, 2, 3, B), (-8, 8, -10, -8, 2, 3, B)]),
+    ('KATANA', [(-1, 1, -24, 4, 0, 1, BLACK), (-2, 2, 4, 5, 0, 2, GOLD), (-1, 1, 5, 11, 0, 2, A)]),
+    ('BAT WINGS', mirror((2, 18, -10, 4, 1, 2, BLACK), (10, 20, -16, -10, 1, 2, BLACK), (16, 20, 4, 8, 1, 2, BLACK))),
+    ('DRAGON WINGS', mirror((2, 16, -12, 6, 1, 3, A), (12, 24, -6, 10, 1, 3, A), (18, 26, 8, 14, 1, 3, A), (4, 14, -18, -12, 1, 3, B))),
+    ('BUTTERFLY WINGS', mirror((2, 16, -6, 10, 1, 2, A), (2, 12, -18, -6, 1, 2, B), (8, 12, 2, 6, 2, 3, BLACK))),
+    ('PARACHUTE PACK', [(-8, 8, -18, 0, 0, 5, GREEN), (-6, 6, -10, -8, 5, 6, BLACK)] + mirror((6, 8, -2, 2, -16, 0, BLACK))),
+    ('SNOWBOARD', [(-5, 5, -30, 4, 1, 2, A), (-4, 4, -10, -6, 2, 4, BLACK), (-4, 4, -22, -18, 2, 4, BLACK)]),
+    ('SURFBOARD', [(-5, 5, -34, 8, 1, 2, A), (-3, 3, 8, 12, 1, 2, A), (-1, 1, -34, 8, 2, 3, B)]),
+    ('LAPTOP BAG', [(-8, 8, -16, -4, 0, 4, BLACK), (-6, 6, -6, -5, 4, 5, A), (6, 8, -4, 2, 0, 1, BLACK)]),
+    ('DRUM', [(-7, 7, -18, -4, 0, 8, RED), (-7, 7, -19, -18, 0, 8, WHITE), (-7, 7, -4, -3, 0, 8, WHITE)]),
+    ('CELLO CASE', [(-6, 6, -32, -12, 0, 5, BLACK), (-4, 4, -12, 4, 0, 5, BLACK), (-2, 2, 4, 6, 1, 4, A)]),
+    ('ROCKET PACK', [(-4, 4, -20, 2, 0, 7, A), (-2, 2, 2, 6, 2, 5, RED), (-6, -4, -20, -12, 2, 5, B), (4, 6, -20, -12, 2, 5, B), (-3, 3, -24, -20, 2, 5, ORANGE)]),
+    ('CAT IN A BAG', [(-6, 6, -14, -2, 0, 6, A), (-4, 4, -2, 3, 1, 5, ORANGE), (-4, -2, 3, 5, 2, 4, ORANGE), (2, 4, 3, 5, 2, 4, ORANGE), (-2, -1, 0, 1, 5, 6, BLACK), (1, 2, 0, 1, 5, 6, BLACK)]),
+    ('FLAG', [(-1, 1, -20, 16, 0, 1, SILVER), (1, 14, 6, 16, 0, 1, A), (1, 14, 10, 12, 0, 1, B)]),
+    ('KITE', [(-1, 1, -20, 0, 0, 1, WHITE), (-6, 6, 4, 16, 0, 1, A), (-3, 3, 0, 4, 0, 1, A), (-3, 3, 16, 20, 0, 1, A), (-1, 1, 4, 16, 1, 2, B)]),
+    ('TREASURE CHEST', [(-7, 7, -16, -4, 0, 8, BROWN), (-7, 7, -6, -5, 0, 8, GOLD), (-1, 1, -10, -6, 8, 9, GOLD)]),
+    ('ROBOT ARMS', mirror((8, 10, -10, 0, 0, 2, SILVER), (10, 18, -10, -8, 0, 2, SILVER), (18, 20, -14, -8, 0, 2, SILVER), (17, 21, -16, -14, -1, 3, A))),
+    ('MONKEY', [(-5, 5, -12, -2, 0, 5, BROWN), (-4, 4, -2, 4, 0, 5, BROWN), (-3, 3, -1, 2, 5, 6, TAN), (-6, -4, 1, 3, 1, 3, TAN), (4, 6, 1, 3, 1, 3, TAN)] + mirror((5, 8, -8, -6, 2, 8, BROWN))),
+    ('BALLOON BUNCH', [(-1, 1, -6, 30, 0, 1, WHITE), (-6, 0, 30, 37, -2, 3, A), (0, 6, 32, 39, -2, 3, B), (-3, 3, 37, 44, -2, 3, RED)]),
+]
+HAND += [
+    ('SWORD', [(-1, 1, -2, 2, 1, 3, BROWN), (-3, 3, 2, 3, 0, 4, GOLD), (-1, 1, 3, 24, 1, 3, SILVER)]),
+    ('SHIELD', [(-1, 1, -8, 6, -6, 8, A), (1, 2, -6, 4, -4, 6, B), (1, 3, -2, 0, 0, 2, GOLD)]),
+    ('WRENCH', [(-1, 1, -4, 10, 1, 3, SILVER), (-3, 3, 10, 14, 1, 3, SILVER), (-1, 1, 12, 14, 1, 3, BLACK)]),
+    ('HAMMER', [(-1, 1, -4, 10, 1, 3, BROWN), (-4, 4, 10, 14, 0, 4, SILVER)]),
+    ('PAINTBRUSH', [(-1, 1, -4, 8, 1, 2, BROWN), (-1, 1, 8, 10, 1, 2, SILVER), (-1, 1, 10, 13, 0, 3, A)]),
+    ('SPATULA', [(-1, 1, -4, 8, 1, 2, BLACK), (-3, 3, 8, 13, 1, 2, SILVER)]),
+    ('FRYING PAN', [(-1, 1, -4, 4, 1, 3, BLACK), (-6, 6, 4, 5, -4, 8, BLACK), (-5, 5, 5, 6, -3, 7, GREY), (-2, 2, 6, 7, 0, 3, YELLOW)]),
+    ('BURGER', [(-4, 4, -1, 1, 0, 7, TAN), (-4, 4, 1, 2, 0, 7, BROWN), (-4, 4, 2, 3, 0, 7, GREEN), (-4, 4, 3, 5, 0, 7, TAN)]),
+    ('PIZZA SLICE', [(-1, 1, -2, 0, 1, 7, TAN), (-1, 1, 0, 1, 1, 6, YELLOW), (-1, 1, 1, 3, 2, 5, YELLOW), (-1, 1, 3, 5, 3, 4, YELLOW), (-1, 2, 1, 2, 3, 4, RED)]),
+    ('HOT DOG', [(-1, 1, -1, 1, -2, 9, TAN), (-1, 1, 1, 2, -3, 10, RED), (-1, 1, 2, 3, -1, 8, YELLOW)]),
+    ('DONUT', [(-1, 1, -3, 5, 0, 1, TAN), (-1, 1, -3, 5, 7, 8, TAN), (-1, 1, -3, -2, 1, 7, TAN), (-1, 1, 4, 5, 1, 7, TAN), (1, 2, -2, 4, 1, 7, A)]),
+    ('JUICE BOX', [(-2, 2, -3, 4, 1, 5, A), (1, 2, 4, 7, 1, 2, WHITE)]),
+    ('SODA CAN', [(-2, 2, -3, 4, 1, 5, A), (-2, 2, 0, 1, 1, 5, WHITE), (-1, 1, 4, 5, 2, 4, SILVER)]),
+    ('SMOOTHIE', [(-2, 2, -3, 5, 1, 5, A), (-2, 2, 5, 6, 1, 5, WHITE), (0, 1, 6, 10, 2, 3, B)]),
+    ('POPCORN', [(-3, 3, -3, 4, 0, 6, WHITE), (-3, -1, -3, 4, 0, 6, RED), (1, 3, -3, 4, 0, 6, RED), (-3, 3, 4, 6, 0, 6, YELLOW)]),
+    ('COTTON CANDY', [(0, 1, -4, 6, 1, 2, WHITE), (-4, 4, 6, 13, -3, 5, PINK), (-3, 3, 13, 15, -2, 4, PINK)]),
+    ('WATERING CAN', [(-3, 3, -6, 2, 0, 7, GREEN), (-1, 1, 2, 4, 1, 6, GREEN), (-1, 1, -2, 0, 7, 12, GREEN), (-2, 2, 0, 2, 11, 13, SILVER)]),
+    ('FISHING ROD', [(0, 1, -4, 4, 1, 2, BROWN), (0, 1, 4, 30, 1, 2, BLACK), (0, 1, 18, 30, 2, 3, WHITE), (-2, 2, 0, 2, 2, 4, SILVER)]),
+    ('TENNIS RACKET', [(-1, 1, -4, 6, 1, 2, A)] + ring(-5, 5, -2, 4, 6, 18, 1, A)[:0] + [(-5, 5, 6, 7, 1, 2, A), (-5, 5, 17, 18, 1, 2, A), (-5, -4, 6, 18, 1, 2, A), (4, 5, 6, 18, 1, 2, A), (-4, 4, 7, 17, 1, 2, WHITE)]),
+    ('BASEBALL BAT', [(-1, 1, -4, 4, 1, 3, BLACK), (-1, 1, 4, 14, 1, 3, TAN), (-2, 2, 14, 22, 0, 4, TAN)]),
+    ('HOCKEY STICK', [(-1, 1, -4, 18, 1, 2, BLACK), (-1, 1, -8, -4, 1, 8, BLACK)]),
+    ('GOLF CLUB', [(0, 1, -4, 20, 1, 2, SILVER), (-1, 2, -7, -4, 1, 5, SILVER)]),
+    ('BASKETBALL', [(-4, 4, -3, 5, 0, 8, ORANGE), (-4, 4, 0, 1, 8, 9, BLACK), (-1, 0, -3, 5, 8, 9, BLACK)]),
+    ('FOOTBALL', [(-2, 2, -2, 4, 0, 9, BROWN), (-1, 1, 0, 2, 9, 10, BROWN), (-1, 1, 0, 2, -1, 0, BROWN), (2, 3, 0, 2, 3, 6, WHITE)]),
+    ('UKULELE', [(-3, 3, -6, 2, 0, 3, A), (-1, 1, 2, 14, 1, 2, BROWN), (-2, 2, 14, 16, 1, 2, BLACK), (-1, 1, -3, -1, 3, 4, BLACK)]),
+    ('MARACAS', [(-1, 1, -4, 3, 1, 2, BROWN), (-3, 3, 3, 9, -1, 4, A), (-1, 1, 5, 6, 4, 5, B)]),
+    ('TRUMPET', [(-1, 1, -2, 2, 1, 3, GOLD), (-1, 1, 1, 2, 3, 12, GOLD), (-3, 3, -1, 4, 12, 13, GOLD), (0, 1, 2, 4, 5, 8, GOLD)]),
+    ('VIOLIN', [(-3, 3, -4, 4, 0, 3, BROWN), (-1, 1, 4, 12, 1, 2, BLACK), (-2, 2, 12, 14, 1, 2, BROWN), (4, 5, -6, 10, 2, 3, TAN)]),
+    ('MEGAPHONE', [(-1, 1, -3, 1, 1, 3, BLACK), (-2, 2, 0, 3, 2, 6, A), (-4, 4, -1, 5, 6, 8, A), (-5, 5, -2, 6, 8, 9, WHITE)]),
+    ('FLASHLIGHT', [(-1, 1, -3, 1, 0, 9, BLACK), (-2, 2, -1, 2, 9, 11, SILVER), (-1, 1, -1, 1, 11, 12, YELLOW)]),
+    ('TORCH', [(-1, 1, -4, 10, 1, 3, BROWN), (-2, 2, 10, 13, 0, 4, ORANGE), (-1, 1, 13, 16, 1, 3, YELLOW)]),
+    ('CAMERA', [(-4, 4, -2, 4, 1, 5, BLACK), (-2, 2, -1, 3, 5, 8, GREY), (-1, 1, 0, 2, 8, 9, CYAN), (2, 4, 4, 5, 1, 3, SILVER)]),
+    ('BRIEFCASE', [(-1, 1, -12, -2, -5, 7, BROWN), (-1, 1, -2, -1, -1, 3, BLACK), (-2, 2, -8, -7, 0, 2, GOLD)]),
+    ('SHOPPING BAG', [(-1, 1, -14, -2, -4, 6, A), (-1, 1, -2, 1, -2, 4, B), (1, 2, -10, -6, -2, 4, WHITE)]),
+    ('HANDBAG', [(-1, 1, -10, -3, -3, 5, A), (-1, 1, -3, 1, -1, 3, GOLD), (1, 2, -7, -6, 0, 2, GOLD)]),
+    ('PICKET SIGN', [(0, 1, -4, 16, 1, 2, BROWN), (-1, 1, 12, 22, -6, 8, WHITE), (1, 2, 15, 19, -4, 6, A)]),
+    ('RUBBER DUCK', [(-3, 3, -2, 2, 0, 6, YELLOW), (-2, 2, 2, 5, 2, 6, YELLOW), (-1, 1, 3, 4, 6, 8, ORANGE)]),
+    ('KITTEN', [(-3, 3, -3, 2, 0, 7, ORANGE), (-3, 3, 2, 6, 3, 7, ORANGE), (-3, -2, 6, 8, 4, 6, ORANGE), (2, 3, 6, 8, 4, 6, ORANGE), (-2, -1, 3, 4, 7, 8, BLACK), (1, 2, 3, 4, 7, 8, BLACK), (0, 1, -2, 6, -2, 0, ORANGE)]),
+    ('PUPPY', [(-3, 3, -3, 2, 0, 8, TAN), (-3, 3, 2, 6, 4, 9, TAN), (-4, -3, 1, 5, 5, 8, BROWN), (3, 4, 1, 5, 5, 8, BROWN), (-1, 1, 3, 4, 9, 10, BLACK)]),
+    ('MAGNIFIER', [(-1, 1, -4, 4, 1, 2, BLACK), (-4, 4, 4, 5, 1, 2, GOLD), (-4, 4, 11, 12, 1, 2, GOLD), (-4, -3, 5, 11, 1, 2, GOLD), (3, 4, 5, 11, 1, 2, GOLD), (-3, 3, 5, 11, 1, 2, CYAN)]),
+    ('CRYSTAL BALL', [(-3, 3, -2, 0, 0, 6, GOLD), (-4, 4, 0, 7, -1, 7, PURPLE), (-2, 2, 4, 6, 6, 8, WHITE)]),
+    ('SCROLL', [(-1, 1, -6, 6, 0, 2, TAN), (-2, 2, 6, 7, -1, 3, BROWN), (-2, 2, -7, -6, -1, 3, BROWN)]),
+    ('MAP', [(-1, 1, -4, 8, -4, 8, TAN), (1, 2, 0, 4, 0, 4, RED), (1, 2, 4, 6, 4, 6, GREEN)]),
+    ('BUBBLE WAND', [(0, 1, -4, 8, 1, 2, A), (-3, 3, 8, 9, 0, 3, A), (-3, 3, 13, 14, 0, 3, A), (-3, -2, 9, 13, 0, 3, A), (2, 3, 9, 13, 0, 3, A), (-1, 2, 15, 18, 1, 4, CYAN)]),
+    ('SPARKLER', [(0, 1, -4, 10, 1, 2, GREY), (-2, 3, 10, 14, -1, 4, YELLOW), (-1, 2, 14, 16, 0, 3, WHITE)]),
+    ('BROOM', [(0, 1, -10, 14, 1, 2, BROWN), (-3, 4, -16, -10, -1, 4, YELLOW)]),
+    ('PILLOW', [(-1, 1, -8, 2, -6, 8, A), (1, 2, -6, 0, -4, 6, B)]),
+    ('LOLLY POP', [(0, 1, -4, 8, 1, 2, WHITE), (-4, 4, 8, 16, -1, 4, A), (-2, 2, 10, 14, 4, 5, B)]),
+    ('BOWLING BALL', [(-4, 4, -6, 2, 0, 8, A), (-2, -1, 0, 1, 8, 9, BLACK), (1, 2, 0, 1, 8, 9, BLACK), (-1, 1, -2, -1, 8, 9, BLACK)]),
+    ('LIGHTSABER', [(-1, 1, -4, 4, 1, 3, SILVER), (-1, 1, 4, 30, 1, 3, A)]),
+]
+WAIST += [
+    ('HOLSTER', [(-9, 9, 0, 2, -17, 1, BROWN), (6, 9, -10, 0, 1, 4, BROWN), (7, 8, -2, 3, 2, 3, BLACK)]),
+    ('SASH', [(-9, 9, -1, 2, -17, 1, A), (4, 8, -10, -1, 1, 2, A), (5, 7, -12, -10, 1, 2, B)]),
+    ('CHAMPION BELT', [(-9, 9, -1, 3, -17, 1, BLACK), (-5, 5, -3, 5, 1, 2, GOLD), (-2, 2, -1, 3, 2, 3, RED)]),
+    ('KILT', [(-10, 10, -14, 1, -18, 2, A), (-10, 10, -6, -5, -18, 2, B), (-10, 10, -11, -10, -18, 2, B), (-2, 2, -8, -2, 2, 4, WHITE)]),
+    ('SWIM RING', ring(-13, 13, -22, 5, -2, 3, 4, A) + [(-13, -9, -2, 3, -10, -4, WHITE), (9, 13, -2, 3, -10, -4, WHITE)]),
+    ('KEY RING', [(-9, 9, 0, 2, -17, 1, BLACK), (5, 7, -4, 0, 1, 2, SILVER), (4, 6, -7, -4, 1, 2, GOLD), (6, 8, -6, -3, 2, 3, SILVER)]),
+    ('POUCH', [(-9, 9, 0, 2, -17, 1, BROWN), (4, 9, -7, 0, 1, 4, BROWN), (5, 8, -1, 0, 4, 5, GOLD)]),
+    ('UTILITY BELT', [(-9, 9, -1, 2, -17, 1, YELLOW)] + [(x, x + 3, -4, 1, 1, 3, YELLOW) for x in (-8, -3, 2, 6)] + [(-1, 1, -1, 2, 1, 2, GOLD)]),
+    ('BIG BUCKLE', [(-9, 9, 0, 2, -17, 1, BROWN), (-4, 4, -2, 4, 1, 2, SILVER), (-2, 2, 0, 2, 2, 3, A)]),
+    ('SARONG', [(-10, 10, -16, 1, -18, 2, A), (-8, 8, -16, -2, 2, 3, B)]),
+    ('HIP SCARF', [(-10, 10, -4, 1, -18, 2, A)] + [(x, x + 2, -6, -4, 1, 2, GOLD) for x in (-9, -5, -1, 3, 7)]),
+    ('CHAIN BELT', [(-9, 9, 0, 1, -17, 1, SILVER), (4, 6, -8, 0, 1, 2, SILVER), (-6, -4, -6, 0, 1, 2, SILVER)]),
+    ('LASSO', [(-9, 9, 0, 2, -17, 1, BROWN)] + ring(5, 12, -2, 5, -8, -2, 1, TAN)),
+]
+EARS = [   # (head units: the anchor is on the side of the head at the ear, x out from it; the other ear gets the mirror image)
+    ('NONE', []),
+    ('STUDS', [(0, 1, -1, 1, -1, 1, GOLD)]),
+    ('SILVER STUDS', [(0, 1, -1, 1, -1, 1, SILVER)]),
+    ('BIG HOOPS', [(0, 1, -2, -1, -1, 1, GOLD), (0, 1, -8, -2, -4, -3, GOLD), (0, 1, -8, -2, 3, 4, GOLD), (0, 1, -9, -8, -3, 3, GOLD)]),
+    ('SMALL HOOPS', [(0, 1, -2, -1, -1, 1, SILVER), (0, 1, -5, -2, -2, -1, SILVER), (0, 1, -5, -2, 1, 2, SILVER), (0, 1, -6, -5, -1, 1, SILVER)]),
+    ('DANGLY GEMS', [(0, 1, -2, 0, -1, 1, GOLD), (0, 1, -5, -2, -1, 0, GOLD), (0, 2, -8, -5, -1, 1, A)]),
+    ('FEATHERS', [(0, 1, -2, 0, -1, 1, BROWN), (0, 1, -11, -2, -1, 1, A), (0, 1, -9, -3, 1, 2, B)]),
+    ('PEARL DROPS', [(0, 1, -2, 0, -1, 1, GOLD), (0, 2, -5, -2, -1, 1, WHITE)]),
+    ('STAR EARRINGS', [(0, 1, -2, 0, -1, 1, GOLD), (0, 1, -6, -3, -1, 1, GOLD), (0, 1, -5, -4, -2, 2, GOLD)]),
+    ('HEART EARRINGS', [(0, 1, -2, 0, -1, 1, GOLD), (0, 1, -5, -3, -2, 2, RED), (0, 1, -6, -5, -1, 1, RED)]),
+    ('CHERRIES', [(0, 1, -3, 0, 0, 1, GREEN), (0, 2, -6, -3, -2, 0, RED), (0, 2, -6, -3, 1, 3, RED)]),
+    ('EAR CUFF', [(0, 1, 0, 4, -2, 2, SILVER), (0, 1, 3, 4, -3, 3, SILVER)]),
+    ('GAUGES', [(0, 1, -2, 1, -2, 2, BLACK), (0, 2, -1, 0, -1, 1, A)]),
+    ('EARBUDS', [(0, 2, -1, 1, -1, 1, WHITE), (0, 1, -6, -1, 0, 1, WHITE)]),
+    ('PENCIL', [(0, 2, 1, 3, -6, 6, YELLOW), (0, 2, 1, 3, 6, 8, PINK)]),
+]
+WRIST = [   # (body units: the anchor is the wrist; both arms get it)
+    ('NONE', []),
+    ('WATCH', [(-3, 3, -1, 1, -3, 3, BLACK), (-2, 2, -1, 1, 3, 4, A)]),
+    ('GOLD WATCH', [(-3, 3, -1, 1, -3, 3, GOLD), (-2, 2, -1, 1, 3, 4, WHITE)]),
+    ('SMART WATCH', [(-3, 3, -1, 1, -3, 3, BLACK), (-2, 2, -2, 2, 3, 4, CYAN)]),
+    ('BANGLES', [(-3, 3, 0, 1, -3, 3, GOLD), (-3, 3, -2, -1, -3, 3, SILVER), (-3, 3, 2, 3, -3, 3, A)]),
+    ('SWEATBANDS', [(-3, 3, -2, 2, -3, 3, A), (-3, 3, -1, 1, -3, 3, B)]),
+    ('FRIENDSHIP BRACELET', [(-3, 3, 0, 1, -3, 3, A), (-1, 1, -1, 0, 3, 4, B)]),
+    ('SPIKED CUFFS', [(-3, 3, -2, 2, -3, 3, BLACK), (-1, 1, -1, 1, 3, 5, SILVER), (3, 5, -1, 1, -1, 1, SILVER)]),
+    ('CHARM BRACELET', [(-3, 3, 0, 1, -3, 3, SILVER), (-1, 0, -2, 0, 3, 4, A), (1, 2, -2, 0, 3, 4, B)]),
+    ('BOXING GLOVES', [(-4, 4, -6, 2, -4, 5, RED), (-4, 4, 0, 2, -4, 4, WHITE)]),
+    ('GARDEN GLOVES', [(-3, 3, -5, 2, -3, 4, GREEN), (-3, 3, 0, 2, -3, 3, YELLOW)]),
+    ('CORSAGE', [(-3, 3, 0, 1, -3, 3, WHITE), (-2, 2, -1, 2, 3, 5, A)]),
+    ('LEATHER STRAP', [(-3, 3, -1, 2, -3, 3, BROWN), (-1, 1, 0, 1, 3, 4, SILVER)]),
+    ('LUCKY BEADS', [(-3, 3, 0, 1, -3, 3, A), (-1, 1, -1, 2, 3, 4, B)]),
+]
+SHOULDER = [   # (body units: the anchor is the top of the right shoulder)
+    ('NONE', []),
+    ('PARROT', [(-2, 2, 0, 6, -3, 3, RED), (-2, 2, 6, 9, -1, 4, RED), (-1, 1, 7, 8, 4, 6, YELLOW), (-2, 2, -4, 0, -5, -3, BLUE), (-3, -2, 2, 6, -2, 2, GREEN), (2, 3, 2, 6, -2, 2, GREEN)]),
+    ('OWL', [(-3, 3, 0, 8, -3, 3, BROWN), (-2, -1, 5, 7, 3, 4, YELLOW), (1, 2, 5, 7, 3, 4, YELLOW), (-1, 1, 4, 5, 3, 5, ORANGE), (-3, -2, 8, 10, -1, 1, BROWN), (2, 3, 8, 10, -1, 1, BROWN)]),
+    ('KITTEN', [(-3, 3, 0, 5, -5, 3, ORANGE), (-3, 3, 4, 8, 1, 6, ORANGE), (-3, -2, 8, 10, 3, 5, ORANGE), (2, 3, 8, 10, 3, 5, ORANGE), (-2, -1, 6, 7, 6, 7, BLACK), (1, 2, 6, 7, 6, 7, BLACK), (-1, 1, 2, 3, -9, -5, ORANGE)]),
+    ('ROBOT BUDDY', [(-3, 3, 0, 6, -3, 3, SILVER), (-2, -1, 3, 5, 3, 4, CYAN), (1, 2, 3, 5, 3, 4, CYAN), (-1, 1, 6, 9, -1, 1, SILVER), (-1, 1, 9, 10, -1, 1, RED)]),
+    ('HAMSTER', [(-2, 2, 0, 4, -3, 3, TAN), (-2, 2, 1, 3, 3, 4, WHITE), (-2, -1, 3, 4, 3, 4, BLACK), (1, 2, 3, 4, 3, 4, BLACK), (-2, -1, 4, 5, 0, 2, PINK), (1, 2, 4, 5, 0, 2, PINK)]),
+    ('DRAGON', [(-2, 2, 0, 5, -5, 3, GREEN), (-2, 2, 3, 7, 3, 7, GREEN), (-1, 1, 5, 6, 7, 9, ORANGE), (2, 6, 3, 6, -3, 1, B), (-6, -2, 3, 6, -3, 1, B), (-1, 1, 1, 2, -9, -5, GREEN)]),
+    ('SHOULDER PADS', [(-5, 5, -2, 3, -6, 6, A), (-4, 4, 3, 4, -5, 5, B)]),
+    ('EPAULETTE', [(-4, 4, -1, 1, -4, 4, GOLD)] + [(x, x + 1, -4, -1, 3, 4, GOLD) for x in (-3, -1, 1, 3)]),
+    ('BAG STRAP', [(-2, 2, -1, 1, -9, 9, A)]),
+    ('PET ROCK', [(-3, 3, 0, 4, -3, 3, GREY), (-2, -1, 2, 3, 3, 4, BLACK), (1, 2, 2, 3, 3, 4, BLACK)]),
+    ('GHOST', [(-3, 3, 0, 9, -3, 3, WHITE), (-2, -1, 5, 7, 3, 4, BLACK), (1, 2, 5, 7, 3, 4, BLACK), (-1, 1, 3, 4, 3, 4, BLACK)]),
+    ('BAT', [(-1, 1, 0, 4, -1, 2, BLACK), (-6, -1, 2, 4, -1, 1, BLACK), (1, 6, 2, 4, -1, 1, BLACK), (-1, 1, 4, 5, -1, 2, BLACK)]),
+    ('SNAKE', [(-2, 2, 0, 2, -8, 8, GREEN), (-2, 2, 1, 4, 8, 11, GREEN), (-1, 1, 2, 3, 11, 13, RED)]),
+]
+FEET = [   # (body units: the anchor is under the middle of the foot, z forward along it; both feet)
+    ('NONE', []),
+    ('ROLLER SKATES', [(-3, 3, 0, 3, -5, 6, A), (-2, -1, -3, 0, -4, -2, WHITE), (1, 2, -3, 0, -4, -2, WHITE), (-2, -1, -3, 0, 3, 5, WHITE), (1, 2, -3, 0, 3, 5, WHITE), (-1, 1, -2, 0, 6, 7, RED)]),
+    ('ICE SKATES', [(-3, 3, 0, 3, -5, 6, WHITE), (-1, 1, -3, 0, -5, 7, SILVER)]),
+    ('FLIPPERS', [(-3, 3, 0, 1, -4, 14, A), (-4, 4, 0, 1, 10, 14, A)]),
+    ('CLOWN SHOES', [(-4, 4, 0, 3, -5, 14, RED), (-4, 4, 3, 4, 6, 14, RED), (-2, 2, 4, 5, 9, 12, YELLOW)]),
+    ('BUNNY SLIPPERS', [(-3, 3, 0, 3, -5, 7, PINK), (-3, -2, 3, 8, 3, 4, PINK), (2, 3, 3, 8, 3, 4, PINK), (-1, 1, 1, 2, 7, 8, RED)]),
+    ('COWBOY BOOTS', [(-3, 3, 0, 8, -5, 6, BROWN), (-3, 3, -1, 0, -5, -2, BLACK), (-3, 3, 6, 7, -3, 3, TAN)]),
+    ('ROCKET BOOTS', [(-3, 3, 0, 4, -5, 6, SILVER), (-2, 2, -2, 0, -4, 0, ORANGE), (-1, 1, -4, -2, -3, -1, YELLOW)]),
+    ('HIGH TOPS', [(-3, 3, 0, 6, -5, 6, A), (-3, 3, 0, 1, -5, 6, WHITE), (-1, 1, 2, 5, 6, 7, B)]),
+    ('RAIN BOOTS', [(-3, 3, 0, 9, -5, 6, A), (-3, 3, 0, 1, -5, 6, BLACK)]),
+    ('SANDALS', [(-3, 3, 0, 1, -5, 7, TAN), (-3, 3, 1, 2, 2, 3, BROWN)]),
+    ('SKI BOOTS', [(-4, 4, 0, 8, -6, 7, A), (-1, 1, -1, 0, -10, 16, SILVER)]),
+    ('SPRING SHOES', [(-3, 3, 0, 3, -5, 6, A), (-2, 2, -3, -2, -2, 2, SILVER), (-1, 1, -5, -3, -1, 1, SILVER), (-2, 2, -6, -5, -2, 2, SILVER)]),
+    ('LEG WARMERS', [(-4, 4, 3, 10, -4, 4, A), (-4, 4, 5, 6, -4, 4, B), (-4, 4, 8, 9, -4, 4, B)]),
+]
+COLOURS += [('CRIMSON', (20, 2, 5)), ('CORAL', (31, 16, 13)), ('PEACH', (31, 22, 16)), ('CREAM', (31, 29, 21)), ('MINT', (17, 30, 21)), ('OLIVE', (14, 16, 4)),
+            ('FOREST', (5, 12, 5)), ('AQUA', (8, 29, 28)), ('DENIM', (9, 14, 22)), ('LILAC', (24, 18, 30)), ('MAGENTA', (27, 4, 22)), ('PLUM', (12, 3, 12)),
+            ('CHARCOAL', (8, 8, 9)), ('TAN', (25, 19, 12)), ('ROSE GOLD', (28, 18, 16)), ('NEON', (20, 31, 6))]
+PATTERNS += ['GINGHAM', 'ARGYLE', 'CHEVRON', 'WAVES', 'SCALES', 'HOUNDSTOOTH', 'POLKA BIG', 'GALAXY', 'FLAMES', 'FLOWERS', 'LIGHTNING', 'BRICKS', 'ZEBRA', 'TIGER', 'GRID']
 
 def pattern(name):
     """a 16x16 mask: 1 where the pattern shows (the shade the player picks), 0 the plain cloth"""
@@ -155,12 +407,29 @@ def pattern(name):
                 for (sx, sy) in ((3, 3), (11, 5), (6, 11), (13, 13), (1, 9)):
                     d = math.hypot((x - sx + 8) % 16 - 8, (y - sy + 8) % 16 - 8)
                     if 1.2 < d < 2.4: v = 1
+            elif name == 'GINGHAM': v = (x % 6 < 3) != (y % 6 < 3) or (x % 6 < 3 and y % 6 < 3)
+            elif name == 'ARGYLE': v = abs((x % 8) - 3.5) + abs((y % 12) / 1.5 - 3.5) < 3 or (x + y) % 8 == 0 or (x - y) % 8 == 0
+            elif name == 'CHEVRON': v = (y + abs((x % 8) - 4)) % 6 < 2
+            elif name == 'WAVES': v = abs(y % 6 - 3 - 1.5 * math.sin(x * 0.8)) < 1
+            elif name == 'SCALES': v = abs(math.hypot((x + (y // 4 % 2) * 2) % 4 - 2, y % 4) - 2.2) < 0.7
+            elif name == 'HOUNDSTOOTH': v = ((x // 2 + y // 2) % 4 < 2) if ((x // 4 + y // 4) % 2) else ((x // 2) % 2 == 0)
+            elif name == 'POLKA BIG': v = ((x % 16) - 7.5) ** 2 + ((y % 16) - 7.5) ** 2 < 20 or ((x + 8) % 16 - 7.5) ** 2 + ((y + 8) % 16 - 7.5) ** 2 < 20
+            elif name == 'GALAXY': v = (x * 37 + y * 91) % 23 == 0 or (x * 13 + y * 7) % 31 == 0 or math.sin(x * 0.4 + y * 0.25) > 0.85
+            elif name == 'FLAMES': v = y > 9 + 3 * math.sin(x * 1.1) + 2 * math.sin(x * 2.3)
+            elif name == 'FLOWERS':
+                cx, cy = x % 8 - 3.5, y % 8 - 3.5; r = math.hypot(cx, cy); a = math.atan2(cy, cx)
+                v = r < 1.2 or (r < 3.2 and math.cos(5 * a) > 0.4)
+            elif name == 'LIGHTNING': v = abs(x - (8 + ((y % 8) - 4 if y % 8 < 4 else 4 - (y % 8 - 4)) * 1.5)) < 1.2
+            elif name == 'BRICKS': v = y % 4 == 0 or (x + (y // 4 % 2) * 4) % 8 == 0
+            elif name == 'ZEBRA': v = math.sin(x * 0.7 + 2.5 * math.sin(y * 0.4)) > 0.3
+            elif name == 'TIGER': v = math.sin(y * 0.9 + 1.8 * math.sin(x * 0.35)) > 0.55 and (x * 3 + y) % 7 != 0
+            elif name == 'GRID': v = x % 5 == 0 or y % 5 == 0
             m[y][x] = 1 if v else 0
     return m
 
 def emit():
     here = os.path.dirname(os.path.abspath(__file__)); src = os.path.join(here, '..', 'src')
-    cats = [('Head', HEAD), ('Face', FACE), ('Neck', NECK), ('Back', BACK), ('Hand', HAND), ('Waist', WAIST)]
+    cats = [('Head', HEAD), ('Face', FACE), ('Neck', NECK), ('Back', BACK), ('Hand', HAND), ('Waist', WAIST), ('Ears', EARS), ('Wrist', WRIST), ('Shoulder', SHOULDER), ('Feet', FEET)]
     with open(os.path.join(src, 'wear_names.inc'), 'w') as f:
         f.write('// GENERATED by tools/make_wear.py: the WEAR tab (names, colours) and the clothes patterns\n')
         for nm, cat in cats:
@@ -179,7 +448,8 @@ def emit():
                     f.write('static const s8 w%s%d[%d][7] = {%s};\n' % (nm, i, len(boxes), ','.join('{%s}' % ','.join(str(v) for v in bx) for bx in boxes)))
             f.write('static const WearModel wear%s[%d] = {%s};\n' % (nm, len(cat), ','.join(('{w%s%d,%d}' % (nm, i, len(b))) if b else '{0,0}' for i, (_, b) in enumerate(cat))))
         f.write('static const u16 wearPal[%d] = {%s};   // the COLOUR 1 / COLOUR 2 choices\n' % (len(COLOURS), ','.join('RGB(%d,%d,%d)' % c for _, c in COLOURS)))
-        f.write('static const u16 wearFixed[14] = {%s};   // the fixed colours (A, B, HAIR and SKIN are looked up per person)\n' % ','.join('RGB(%d,%d,%d)' % c if c else '0' for c in FIXED))
+        f.write('static const u16 wearFixed[19] = {%s};   // the fixed colours (A, B, HAIR and SKIN are looked up per person)\n' % ','.join('RGB(%d,%d,%d)' % c if c else '0' for c in FIXED))
+        f.write('#define NX_COL_ALL %d\n' % len(COLOURS))
         f.write('#define NPAT %d\nstatic const u16 patMask[NPAT][16] = {\n' % len(PATTERNS))
         for p in PATTERNS:
             m = pattern(p) if p != 'NONE' else [[0] * 16 for _ in range(16)]

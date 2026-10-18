@@ -27,6 +27,12 @@ the next task. TV SHOW & TELL (Missy's story) is held back for its own voiced, f
 SELECT names your capital city (a letter keyboard: X types, SQUARE deletes, START keeps it). In play, the phone's MAP renames any
 town: pick it and press TRIANGLE. Saves keep the names. In CREATE A BORE, SQUARE names your Bore (first and last name).
 
+CREATE A BORE's WEAR tab is the big wardrobe: about 300 things to put on in ten places (64 hats, 36 face things, 29 for the
+neck, 31 on the back, 64 to hold, 21 at the waist, and new EARS, WRISTS, SHOULDER and FEET: earrings, watches and bracelets,
+a parrot or a little dragon on the shoulder, boots, skates and flippers). 32 colours and 29 patterns (stripes to galaxy and
+flames). OUTFIT at the top dresses your Bore all at once in one of 36 ready-made looks (PIRATE, ASTRONAUT, WIZARD, CHEF,
+SKATER, BEACH DAY, ROYALTY, SPOOKY...); change any piece after. `tools/make_wear.py` makes the wardrobe (`src/wear_*.inc`).
+
 Then THE NEIGHBORHOOD (like the PC games' neighborhood screen): the capital's blocks from above, with 48 lots picked at random from
 what is for sale, about a third empty lots to build on and the rest furnished homes. The d-pad hops from lot to lot (L1 R1 go in
 order), the card shows the address, the kind, the price and your $20,000; X buys it and the family moves in, TRIANGLE stays at

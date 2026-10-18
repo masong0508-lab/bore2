@@ -38,6 +38,59 @@ static const char *const stageNm2[AG_N]={"BABY","CHILD","TEEN","ADULT","ELDER"};
 static const u8 lkCnt[LK_N]={NSHAPE,NSKIN,NEYE,NMOUTH,3,NHAIR,NSW,NSW,NSW,9,9,9,3,3,3,6,6,3,4,3,6, 6,6,5,4,NSW, 9,9,9,9,9,9,9, 4,3,7,6, 9,9,9,9,9,9,9,9,9, 5,4,4, 9,9,9, 9,9,9,9,9,9,9, 9,9,9,9,9,9,9, 9,9,9,7, 9,9,9, 9};
 _Static_assert(LK_X_END <= LK_COUNT, "LK_COUNT in look.h must hold every look");
 #include "wear_names.inc"
+// OUTFITS: ready-made looks from the wardrobe (head, face, neck, back, hand, waist, ears, wrists, shoulder, feet; colour 1 and 2; the top's pattern), by name
+typedef struct { const char *nm; const char *w[10]; u8 ca, cb, pat; } Theme;
+static const Theme themes[] = {
+    { "PICK ONE", { 0 }, 0, 0, 0 },
+    { "NOTHING ON", { 0 }, 0, 0, 0 },
+    { "PIRATE", { "PIRATE HAT", "EYE PATCH", 0, 0, "SWORD", "SASH", "BIG HOOPS", 0, "PARROT", "COWBOY BOOTS" }, 0, 13, 1 },
+    { "ASTRONAUT", { "ASTRONAUT HELMET", 0, 0, "JETPACK", 0, "UTILITY BELT", 0, "SMART WATCH", 0, "ROCKET BOOTS" }, 11, 7, 0 },
+    { "CHEF", { "CHEF HAT", "MUSTACHE", 0, 0, "SPATULA", "APRON", 0, 0, 0, 0 }, 11, 0, 4 },
+    { "SKATER", { "BACKWARDS CAP", 0, 0, "SKATEBOARD", 0, 0, "STUDS", "SWEATBANDS", 0, "HIGH TOPS" }, 0, 13, 0 },
+    { "ROCKER", { 0, "FUNKY SHADES", "SPIKED COLLAR", "GUITAR", 0, "CHAIN BELT", "GAUGES", "SPIKED CUFFS", 0, 0 }, 13, 0, 0 },
+    { "WIZARD", { "WIZARD HAT", 0, 0, "CAPE", "MAGIC WAND", 0, 0, 0, "OWL", 0 }, 9, 2, 9 },
+    { "KNIGHT", { "KNIGHT HELMET", 0, 0, "SHIELD", "SWORD", "BELT", 0, "LEATHER STRAP", 0, 0 }, 0, 15, 0 },
+    { "COWBOY", { "COWBOY HAT", 0, "BANDANA", 0, 0, "LASSO", 0, "LEATHER STRAP", 0, "COWBOY BOOTS" }, 14, 0, 5 },
+    { "DIVER", { 0, "SCUBA MASK", 0, "SCUBA TANK", 0, 0, 0, "SMART WATCH", 0, "FLIPPERS" }, 2, 13, 0 },
+    { "FAIRY", { "FLOWER CROWN", 0, 0, "FAIRY WINGS", "MAGIC WAND", "TUTU", "PEARL DROPS", "CHARM BRACELET", 0, 0 }, 10, 6, 0 },
+    { "CLOWN", { "JESTER HAT", "CLOWN NOSE", "RUFF COLLAR", 0, "BALLOON", 0, 0, 0, 0, "CLOWN SHOES" }, 0, 2, 6 },
+    { "SUPERHERO", { 0, "SUPERHERO MASK", 0, "CAPE", 0, "CHAMPION BELT", 0, "SWEATBANDS", 0, "RAIN BOOTS" }, 0, 7, 0 },
+    { "DETECTIVE", { "FEDORA", "PIPE", "TIE", 0, "MAGNIFIER", 0, 0, "GOLD WATCH", 0, 0 }, 14, 13, 3 },
+    { "SAILOR", { "SAILOR CAP", 0, "BANDANA", 0, "FISHING ROD", 0, 0, 0, "PARROT", 0 }, 7, 0, 1 },
+    { "ATHLETE", { "SWEATBAND", 0, "WHISTLE", 0, "BASKETBALL", 0, 0, "SWEATBANDS", 0, "HIGH TOPS" }, 0, 11, 2 },
+    { "VIKING", { "VIKING HELMET", "FULL BEARD", 0, "SHIELD", "HAMMER", "BELT", 0, "LEATHER STRAP", 0, 0 }, 14, 0, 5 },
+    { "BEACH DAY", { "STRAW HAT", "AVIATORS", "FLOWER LEI", "SURFBOARD", "SMOOTHIE", "GRASS SKIRT", 0, "FRIENDSHIP BRACELET", 0, "SANDALS" }, 5, 1, 0 },
+    { "SNOW DAY", { "POM BEANIE", "SKI GOGGLES", "LONG SCARF", "SNOWBOARD", "COFFEE", 0, 0, 0, 0, "SKI BOOTS" }, 0, 11, 5 },
+    { "PARTY ANIMAL", { "PARTY HAT", "FUNKY SHADES", "FEATHER BOA", "BALLOON BUNCH", "COTTON CANDY", 0, "STAR EARRINGS", "BANGLES", 0, 0 }, 10, 2, 9 },
+    { "SPOOKY", { "WITCH HAT", 0, 0, "BAT WINGS", "LANTERN", 0, 0, 0, "GHOST", 0 }, 9, 1, 0 },
+    { "SANTA", { "SANTA HAT", "FULL BEARD", 0, 0, 0, "BIG BUCKLE", 0, 0, 0, "COWBOY BOOTS" }, 0, 13, 0 },
+    { "EXPLORER", { "SAFARI HAT", 0, "CAMERA", "BACKPACK", "MAP", "POUCH", 0, "WATCH", "PARROT", 0 }, 14, 4, 0 },
+    { "ROYALTY", { "CROWN", "MONOCLE", "PEARLS", "CAPE", "TROPHY", 0, "PEARL DROPS", "GOLD WATCH", 0, 0 }, 9, 15, 8 },
+    { "GAMER", { "HEADPHONES", "VR VISOR", 0, "LAPTOP BAG", "GAME PAD", 0, 0, "SMART WATCH", "ROBOT BUDDY", 0 }, 13, 6, 0 },
+    { "ROCK STAR", { 0, "STAR SHADES", "GOLD CHAIN", 0, "MICROPHONE", "CHAIN BELT", "BIG HOOPS", "BANGLES", 0, "HIGH TOPS" }, 13, 15, 14 },
+    { "GARDENER", { "STRAW HAT", 0, 0, 0, "WATERING CAN", "TOOL BELT", 0, "GARDEN GLOVES", 0, "RAIN BOOTS" }, 4, 2, 5 },
+    { "BUILDER", { "HARD HAT", 0, 0, 0, "HAMMER", "TOOL BELT", 0, 0, 0, "COWBOY BOOTS" }, 1, 14, 5 },
+    { "DOCTOR", { 0, "FACE MASK", "STETHOSCOPE", 0, 0, 0, 0, "WATCH", 0, 0 }, 11, 5, 0 },
+    { "POLICE", { "POLICE CAP", "AVIATORS", "WHISTLE", 0, "FLASHLIGHT", "UTILITY BELT", 0, "WATCH", 0, 0 }, 7, 13, 0 },
+    { "SCHOLAR", { "GRAD CAP", "NERD GLASSES", "TIE", "BACKPACK", "BOOK", 0, 0, "WATCH", 0, 0 }, 8, 0, 5 },
+    { "HIPSTER", { "BERET", "CAT-EYE GLASSES", "LONG SCARF", 0, "COFFEE", 0, "EAR CUFF", "FRIENDSHIP BRACELET", 0, 0 }, 23, 22, 15 },
+    { "SAMURAI", { "HEAD WRAP", 0, 0, "KATANA", 0, "KARATE BELT", 0, 0, 0, "SANDALS" }, 0, 13, 0 },
+    { "DJ", { "BACKWARDS CAP", "FUNKY SHADES", "NECK HEADPHONES", 0, "MEGAPHONE", 0, "STUDS", "BANGLES", 0, "HIGH TOPS" }, 26, 13, 7 },
+    { "BAKER", { "CHEF HAT", 0, 0, 0, "DONUT", "APRON", 0, 0, 0, 0 }, 10, 3, 20 },
+    { "CAMPER", { "BUCKET HAT", 0, 0, "BEDROLL", "LANTERN", "POUCH", 0, "WATCH", 0, "RAIN BOOTS" }, 4, 14, 15 },
+    { "MAGICIAN", { "TOP HAT", "MASQUERADE MASK", "BOW TIE", "CAPE", "MAGIC WAND", 0, 0, 0, 0, 0 }, 13, 0, 0 },
+};
+#define NTHEME ((int)(sizeof themes / sizeof themes[0]))
+static int wear_find(const char *const *names, int n, const char *want) { if (!want) return 0; for (int i = 0; i < n; i++) if (!strcmp(names[i], want)) return i; return 0; }
+void look_theme(Bore *b, int t) {   // a ready-made outfit: every place on the body set at once (an empty place takes off what was there)
+    if (t <= 0 || t >= NTHEME) return;
+    const Theme *th = &themes[t];
+    static const u8 ids[10] = { LK_X_HEAD, LK_X_FACE, LK_X_NECK, LK_X_BACK, LK_X_HAND, LK_X_WAIST, LK_X_EARS, LK_X_WRIST, LK_X_SHOULDER, LK_X_FEET };
+    const char *const *nm[10] = { xHeadNm, xFaceNm, xNeckNm, xBackNm, xHandNm, xWaistNm, xEarsNm, xWristNm, xShoulderNm, xFeetNm };
+    const int cnt[10] = { NX_HEAD, NX_FACE, NX_NECK, NX_BACK, NX_HAND, NX_WAIST, NX_EARS, NX_WRIST, NX_SHOULDER, NX_FEET };
+    for (int i = 0; i < 10; i++) b->look[ids[i]] = (u8)wear_find(nm[i], cnt[i], th->w[i]);
+    if (t >= 2) { b->look[LK_X_COLA] = th->ca % NX_COL; b->look[LK_X_COLB] = th->cb % NX_COL; b->look[LK_X_TOPPAT] = th->pat % NX_PAT; }
+}
 
 const char *const look_tab_name[NTAB] = { "BODY", "FACE", "HAIR", "CLOTHES", "WEAR", "PARTS", "ASPIRE" };
 static const LookRow rowBody[] = {
@@ -61,8 +114,9 @@ static const LookRow rowClothes[] = {
     {"BOTTOM TONE", LK_BTONE, ROW_SLIDER}, {"BOTTOM STYLE", LK_BOTSTY, ROW_PICK}, {"SHOES", LK_SHOE, ROW_PICK},
     {"TOP PATTERN", LK_X_TOPPAT, ROW_PICK}, {"BOTTOM PATTERN", LK_X_BOTPAT, ROW_PICK}, {"PATTERN SHADE", LK_X_PATTONE, ROW_PICK} };
 static const LookRow rowWear[] = {
-    {"HEAD", LK_X_HEAD, ROW_PICK}, {"FACE", LK_X_FACE, ROW_PICK}, {"NECK", LK_X_NECK, ROW_PICK}, {"BACK", LK_X_BACK, ROW_PICK},
-    {"HOLDING", LK_X_HAND, ROW_PICK}, {"WAIST", LK_X_WAIST, ROW_PICK}, {"COLOUR 1", LK_X_COLA, ROW_COLOUR}, {"COLOUR 2", LK_X_COLB, ROW_COLOUR} };
+    {"OUTFIT", LK_X_THEME, ROW_PICK}, {"HEAD", LK_X_HEAD, ROW_PICK}, {"FACE", LK_X_FACE, ROW_PICK}, {"NECK", LK_X_NECK, ROW_PICK}, {"BACK", LK_X_BACK, ROW_PICK},
+    {"HOLDING", LK_X_HAND, ROW_PICK}, {"WAIST", LK_X_WAIST, ROW_PICK}, {"EARS", LK_X_EARS, ROW_PICK}, {"WRISTS", LK_X_WRIST, ROW_PICK},
+    {"SHOULDER", LK_X_SHOULDER, ROW_PICK}, {"FEET", LK_X_FEET, ROW_PICK}, {"COLOUR 1", LK_X_COLA, ROW_COLOUR}, {"COLOUR 2", LK_X_COLB, ROW_COLOUR} };
 static const LookRow rowParts[] = {
     {"TAIL", LK_TAIL, ROW_PICK}, {"HORNS", LK_HORNS, ROW_PICK}, {"BACK", LK_BACK, ROW_PICK}, {"HANDS", LK_CLAWS, ROW_PICK},
     {"ANTENNAE", LK_ANTENNA, ROW_PICK}, {"PATTERN", LK_PATTERN, ROW_PICK}, {"PAINT", LK_PATCOL, ROW_PICK},
@@ -110,6 +164,8 @@ int look_count(int id) {
     switch (id) {
         case LK_X_HEAD: return NX_HEAD; case LK_X_FACE: return NX_FACE; case LK_X_NECK: return NX_NECK; case LK_X_BACK: return NX_BACK;
         case LK_X_HAND: return NX_HAND; case LK_X_WAIST: return NX_WAIST; case LK_X_COLA: case LK_X_COLB: return NX_COL;
+        case LK_X_THEME: return NTHEME;
+        case LK_X_EARS: return NX_EARS; case LK_X_WRIST: return NX_WRIST; case LK_X_SHOULDER: return NX_SHOULDER; case LK_X_FEET: return NX_FEET;
         case LK_X_TOPPAT: case LK_X_BOTPAT: return NX_PAT; case LK_X_PATTONE: return 2;
         default: return 0;
     }
@@ -170,6 +226,11 @@ const char *look_option_name(int id, int v) {
         case LK_X_BACK: return xBackNm[v % NX_BACK];
         case LK_X_HAND: return xHandNm[v % NX_HAND];
         case LK_X_WAIST: return xWaistNm[v % NX_WAIST];
+        case LK_X_THEME: return themes[v % NTHEME].nm;
+        case LK_X_EARS: return xEarsNm[v % NX_EARS];
+        case LK_X_WRIST: return xWristNm[v % NX_WRIST];
+        case LK_X_SHOULDER: return xShoulderNm[v % NX_SHOULDER];
+        case LK_X_FEET: return xFeetNm[v % NX_FEET];
         case LK_X_TOPPAT: case LK_X_BOTPAT: return xPatNm[v % NX_PAT];
         case LK_X_PATTONE: return v ? "LIGHTER" : "DARKER";
         case LK_ASP: return aspNm[v % AS_PICK];
@@ -238,6 +299,10 @@ void look_random(Bore *b) {
     look_set_sign(b, rnd8() % 12);
     b->asp = (u8)(rnd8() % AS_PICK); b->ltw = (u8)(rnd8() % LTN);
     strcpy(b->first, firstNm[rnd8() & 15]); strcpy(b->last, lastNm[rnd8() & 15]);
+    {   // (the big wardrobe's new places: now and then earrings, a wrist thing, a shoulder pet, something on the feet)
+        static const u8 ids[4] = { LK_X_EARS, LK_X_WRIST, LK_X_SHOULDER, LK_X_FEET }; static const u8 odds[4] = { 3, 4, 9, 8 };
+        for (int i = 0; i < 4; i++) { int cnt = look_count(ids[i]); b->look[ids[i]] = (u8)((rnd8() % odds[i] == 0) ? 1 + rnd8() % (cnt - 1) : 0); }
+    }
     look_build(b);
 }
 

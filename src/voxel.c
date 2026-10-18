@@ -91,12 +91,12 @@ static void face(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVE
     }
 }
 // the lit colours of each colour slot, by light (0..255 in steps of 4), worked out once per person per frame
-static u32 slot_lut[24][64];               // 1..8 the person's colour slots, 9..22 the accessory colours (wear_col)
-static u8  slot_lut_ok[24];
+static u32 slot_lut[32][64];               // 1..8 the person's colour slots, 9..22 the accessory colours (wear_col)
+static u8  slot_lut_ok[32];
 static const Bore *lut_bore;
 // filled lazily: a slot's shade is worked out (lit, then graded for the fast path) the first time a face asks for it this draw
-static u8 lut_stamp[24][64], lut_gen = 1;
-static u16 lut_c15[24]; static u8 lut_tx[24];
+static u8 lut_stamp[32][64], lut_gen = 1;
+static u16 lut_c15[32]; static u8 lut_tx[32];
 static void slot_lut_fill(int slot, u16 col, int textured) { lut_c15[slot] = col; lut_tx[slot] = (u8)textured; memset(lut_stamp[slot], 0, 64); slot_lut_ok[slot] = 1; }
 static void lut_next_person(void) { if (++lut_gen == 0) { memset(lut_stamp, 0, sizeof lut_stamp); lut_gen = 1; } }
 static u32 slot_col_make(int slot, int i) {
@@ -468,7 +468,7 @@ static void extra_parts(const Bore *b, int hx, int hy, int hz, int hs) {
 
 
 // ================================================================== WEAR (the creator's accessories: wear_models.inc)
-static u8 wear_lut_gen[24];
+static u8 wear_lut_gen[32];
 static int wear_slot(const Bore *b, int c) {   // colour code -> a colour slot whose lit shades are worked out (once per person per frame)
     int sl = 9 + c;
     if (wear_lut_gen[sl] != wear_gen) {
@@ -477,15 +477,16 @@ static int wear_slot(const Bore *b, int c) {   // colour code -> a colour slot w
     }
     return sl;
 }
-static void wear_part(const Bore *b, const WearModel *m, int ax, int ay, int az, int u, int zdir) {
+static void wear_part_m(const Bore *b, const WearModel *m, int ax, int ay, int az, int u, int zdir, int mir) {   // (mir: the mirror image across x, for the left ear, wrist, foot)
     for (int i = 0; i < m->n; i++) {
         const s8 *q = m->b[i];
-        int x0 = ax + q[0] * u, x1 = ax + q[1] * u, y0 = ay - q[3] * u, y1 = ay - q[2] * u, z0, z1;
+        int x0 = mir ? ax - q[1] * u : ax + q[0] * u, x1 = mir ? ax - q[0] * u : ax + q[1] * u, y0 = ay - q[3] * u, y1 = ay - q[2] * u, z0, z1;
         if (zdir > 0) { z0 = az + q[4] * u; z1 = az + q[5] * u; } else { z0 = az - q[5] * u; z1 = az - q[4] * u; }
         int sl = wear_slot(b, q[6]);
         box(x0, x1, y0, y1, z0, z1, 0, sl, 0, 0);
     }
 }
+static void wear_part(const Bore *b, const WearModel *m, int ax, int ay, int az, int u, int zdir) { wear_part_m(b, m, ax, ay, az, u, zdir, 0); }
 static void wear_draw(const Bore *b) {
     int hu = MAX(3, b->w_headh / 8), bu = VOX / 8;            // head units (the head is 16 wide), body units
     int v;
@@ -496,7 +497,27 @@ static void wear_draw(const Bore *b) {
     if ((v = b->look[LK_X_NECK] % NX_NECK)) wear_part(b, &wearNeck[v], b->w_tx, b->w_shy, b->w_tfz, bu, 1);
     if ((v = b->look[LK_X_BACK] % NX_BACK)) wear_part(b, &wearBack[v], b->w_tx, b->w_shy, b->w_tbz, bu, -1);
     if ((v = b->look[LK_X_WAIST] % NX_WAIST)) wear_part(b, &wearWaist[v], b->w_tx, b->w_hipy, b->w_tfz, bu, 1);
+    if ((v = b->look[LK_X_SHOULDER] % NX_SHOULDER)) wear_part(b, &wearShoulder[v], b->w_rax, b->w_shy - bu, (b->w_tfz + b->w_tbz) / 2, bu, 1);   // (on top of the right shoulder)
     if ((v = b->look[LK_X_HAND] % NX_HAND)) { gfx_set_object_m(&gm[G_RARM]); wear_part(b, &wearHand[v], b->w_hx, b->w_hy, b->w_hz, bu, 1); gfx_set_object_m(&gm[G_BODY]); }
+    if ((v = b->look[LK_X_WRIST] % NX_WRIST)) {   // both wrists: a little above the bottom of each hand
+        int wy = b->w_hy - 4 * bu;
+        gfx_set_object_m(&gm[G_RARM]); wear_part(b, &wearWrist[v], b->w_hx, wy, b->w_hz, bu, 1);
+        gfx_set_object_m(&gm[G_LARM]); wear_part_m(b, &wearWrist[v], 2 * b->w_tx - b->w_hx, wy, b->w_hz, bu, 1, 1);
+        gfx_set_object_m(&gm[G_BODY]);
+    }
+    if ((v = b->look[LK_X_FEET] % NX_FEET)) {   // both feet: under the middle of each
+        int fz = (b->w_tfz + b->w_tbz) / 2 + bu;
+        gfx_set_object_m(&gm[G_RLEG]); wear_part(b, &wearFeet[v], b->w_rgx, 0, fz, bu, 1);
+        gfx_set_object_m(&gm[G_LLEG]); wear_part_m(b, &wearFeet[v], b->w_lgx, 0, fz, bu, 1, 1);
+        gfx_set_object_m(&gm[G_BODY]);
+    }
+    if ((v = b->look[LK_X_EARS] % NX_EARS)) {   // both ears: on the sides of the head, just under the eye line
+        int ey = b->w_facey - b->w_headh / 2, ez = b->w_facez - b->w_headh;   // (the ear: level with the eyes, half way back)
+        gfx_set_object_m(&gm[G_HEAD]);
+        wear_part(b, &wearEars[v], b->w_headx + b->w_headh, ey, ez, hu, 1);
+        wear_part_m(b, &wearEars[v], b->w_headx - b->w_headh, ey, ez, hu, 1, 1);
+        gfx_set_object_m(&gm[G_BODY]);
+    }
 }
 
 static void joint_matrix(MATRIX *out, const MATRIX *obj, int pitch, int roll, int pivot_x, int pivot_y, int pivot_z) {   // a joint that swings (pitch, about x) and spreads (roll, about z)

@@ -2469,6 +2469,16 @@ static void create_named(void) {   // "FIRST LAST" back into the creator's Bore
 }
 static char create_nm[24];
 static void create_update(void) {
+#ifdef AUTO_WEAR
+    {   // (test builds: every outfit in turn, a little over half a second each, turning slowly)
+        static int t0 = -1, last = -1;
+        if (t0 < 0) t0 = VSync(-1);
+        int k_ = (VSync(-1) - t0) / 40;
+        if (k_ != last) { last = k_; int t = 2 + k_ % (look_count(LK_X_THEME) - 2);
+            edit.look[LK_X_THEME] = (u8)t; look_theme(&edit, t); look_build(&edit); create_tab = 4; create_row = 0; create_turn = (k_ & 1) ? 2400 : 400; }
+        return;
+    }
+#endif
     const LookRow *rows; int n = look_tab_rows(create_tab, &rows);
     if (PRESSED(PAD_L1)) { create_tab = (create_tab + NTAB - 1) % NTAB; create_row = 0; }
     if (PRESSED(PAD_R1)) { create_tab = (create_tab + 1) % NTAB; create_row = 0; }
@@ -2487,6 +2497,7 @@ static void create_update(void) {
             int cnt = look_count(r->id), v = edit.look[r->id];
             for (int k = 0; k < cnt; k++) { v = (v + cnt + dir) % cnt; if (look_allowed(&edit, r->id, v)) break; }
             edit.look[r->id] = (u8)v;
+            if (r->id == LK_X_THEME) look_theme(&edit, v);   // (an outfit: dressed all at once)
             look_build(&edit);
         }
         audio_voice(VOICE_AGREE);
@@ -3092,6 +3103,9 @@ static void title_update(void) {
     title_t++;
 #ifdef AUTO_STORY
     if (title_t == 30) { life_story = AUTO_STORY; worlds_go(0x5EED1234u, 0); return; }
+#endif
+#ifdef AUTO_WEAR
+    if (title_t == 30) { world_backup(); prev_state = ST_MENU; create_tab = 4; create_row = 0; state = ST_CREATE; world_gen_studio(); return; }
 #endif
 #if defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM)
     if (title_t == 30) { life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
