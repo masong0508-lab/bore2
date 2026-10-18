@@ -103,6 +103,7 @@ int  sim_cell(int what);               // the phone in your pocket: 0 call a fri
 void sim_baby_coming(int p0, int p1, int minutes);   // (stories) a baby for those two (uids) comes home in that many minutes
 int  sim_play_as(int i);               // play as that one of the family. 1: done
 int  sim_find_path(Sim *s, int tx, int ty);
+int  sim_walk(Sim *s, int dx, int dz);       // a step with collisions (on a board: over ramps and decks)
 void sim_shift(int dtx, int dty);           // SAN BOREAS: the map window moved by that many tiles
 void sim_take_job(int car, int bx, int by, const char *place);   // the player takes a job (places.h careers)
 int  sim_front_service(void);               // a counter, a till, a machine or your work right in front: X goes to it before the people near it

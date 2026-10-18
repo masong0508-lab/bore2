@@ -656,13 +656,17 @@ static void city_square(int lx, int ly) {
     gFree(lx + 3, ly + 3, TREE); gFree(lx + 9, ly + 3, TREE); gFree(lx + 3, ly + 9, TREE); gFree(lx + 9, ly + 9, TREE);
     gFree(lx + 12, ly + 1, '+'); gFree(lx + 1, ly + 6, 'a'); gFree(lx + 11, ly + 6, 'Y');   // the bus stop, the community flag
 }
-static void city_skate(int lx, int ly) {
-    gBox(lx, ly, lx + 12, ly + 12, 7);
-    gLine(lx + 1, ly + 2, lx + 5, ly + 2, '=', 0); gLine(lx + 7, ly + 5, lx + 11, ly + 5, '=', 0); gLine(lx + 1, ly + 9, lx + 5, ly + 9, '=', 0);
-    gFree(lx + 8, ly + 1, 'L'); gFree(lx + 9, ly + 1, 'L'); gFree(lx + 10, ly + 1, 'L'); gFree(lx + 2, ly + 5, 'X'); gFree(lx + 3, ly + 5, 'X');
-    gFree(lx + 2, ly + 6, '9'); gFree(lx + 3, ly + 6, '9'); gFree(lx + 8, ly + 9, '5'); gFree(lx + 9, ly + 9, '5'); gFree(lx + 11, ly + 8, '1');
-    for (int x = 7; x <= 10; x++) gFree(lx + x, ly + 11, 'J');
-    gFree(lx + 1, ly + 12, 'k'); gFree(lx + 12, ly + 12, 'Y'); gFree(lx + 5, ly + 11, 'M'); gFree(lx + 6, ly + 11, 'M');
+static void gFace(int x, int y, char c, int dir) { if (x >= 0 && y >= 0 && x < MW && y < MH && lifeMap[y][x] == '.') { lifeMap[y][x] = c; wallMap[y][x] = (u8)(0x80 | dir); } }   // an item turned (0 north 1 west 2 south 3 east: a ramp's lip)
+static void city_skate(int lx, int ly) {   // the SKATE PLAZA, life size: quarter pipes round three sides (two tiles deep: 1.65 m), a funbox with a kicker either side,
+    gBox(lx, ly, lx + 12, ly + 12, 7);     // a rail, a ledge, a manual pad and a launch ramp; the west side is open to the street
+    for (int x = 1; x <= 10; x++) { gFace(lx + x, ly, '5', 0); gFace(lx + x, ly + 1, '5', 0); gFace(lx + x, ly + 12, '5', 2); gFace(lx + x, ly + 11, '5', 2); }
+    for (int y = 2; y <= 10; y++) { gFace(lx + 12, ly + y, '5', 3); gFace(lx + 11, ly + y, '5', 3); }
+    for (int y = 5; y <= 6; y++) { gFree(lx + 4, ly + y, '4'); for (int x = 5; x <= 7; x++) gFree(lx + x, ly + y, 'X'); gFree(lx + 8, ly + y, '2'); }   // the funbox: up on the west, down on the east
+    for (int x = 3; x <= 8; x++) gFree(lx + x, ly + 3, '=');
+    for (int x = 3; x <= 8; x++) gFree(lx + x, ly + 9, 'L');
+    for (int y = 5; y <= 6; y++) { gFree(lx + 1, ly + y, 'M'); gFree(lx + 2, ly + y, 'M'); }
+    gFace(lx + 1, ly + 8, '9', 3); gFace(lx + 2, ly + 8, '9', 3);
+    gFree(lx + 12, ly, 'Y'); gFree(lx + 12, ly + 12, 'Y'); gFree(lx, ly, 'k'); gFree(lx + 11, ly, 'Y');
 }
 static int shell(int lx, int ly, int x0, int y0, int x1, int y1, int fl, int wp, int glass) {   // a place's building: walls, windows, a door to the street
     gRoom(x0, y0, x1, y1, fl, wp);

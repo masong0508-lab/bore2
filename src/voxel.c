@@ -825,6 +825,20 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     }
     if (g->wave) { int w = isin((g->wave * 400) & 4095) >> 4; armR = -2400 + w; rollR = 260; }
     if (g->sit) { rollL = -60; rollR = 60; armL = -500; armR = -500; }   // sitting: hands on the knees
+    if (g->skate && !lie) {   // on a board, side on: feet wide along it (the legs splay to take a crouch: there are no knees), the arms out for balance
+        int cr = g->crouch;
+        legRollL = -150 - ((cr * 230) >> 12); legRollR = -legRollL; legL = legR = 0;                // the lower, the wider (the hips drop between the feet)
+        if (g->spread) { legRollL -= 120; legRollR += 120; legL = -260; legR = -260; }              // a flip: the feet kicked off it
+        if (g->push) { legRollR += (g->push * 380) >> 12; legR = (g->push * 520) >> 12; }           // a push: the back foot swings down and back
+        rollL = -900 + ((cr * 300) >> 12); rollR = -rollL;                                          // arms out to the sides, lower when crouched
+        armL = -260 - ((cr * 260) >> 12); armR = armL - 60;
+        { int sw = isin((t * 34) & 4095) >> 6; rollL += sw; rollR += sw; }                          // a little balance sway
+        headNod = 90 + ((cr * 90) >> 12); headTilt = 0;                                             // the head down a little, watching the board
+        lean = 30 + ((cr * 70) >> 12);
+        if (g->grab) { int w = g->grab == 2 ? -420 : g->grab == 3 ? 420 : 0; armR = -300; rollR = 60 + w; armL = -500; rollL = -1650; lean += 140; headNod += 160; legRollL -= 80; legRollR += 80; }   // a hand down to the board (pulled up to it), the other up and out
+        lean += g->pitch;
+        obj.t[1] += (cr * 18) >> 12;                                                                // the hips drop as the legs splay (the board stays put)
+    }
     if (lie) {   // lying: the walk fades out; on a bed the legs hang down over the foot (they stay upright in the world as the body tips back) and sway a little; the arms come in to the sides; a slow breath
         int keep = 4096 - sm, br = isin((t * 16) & 4095);
         legL = (legL * keep) >> 12; legR = (legR * keep) >> 12; armL = (armL * keep) >> 12; armR = (armR * keep) >> 12;
@@ -833,6 +847,7 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
         headTilt = (headTilt * keep + 70 * sm) >> 12; headNod = (headNod * keep) >> 12;                // (the head turned a little on the pillow)
         obj.t[1] -= ((br * sm) >> 12) >> 10;                                                             // the chest rises and falls
     }
+    if (g->skate && g->roll && !lie) { MATRIX r; SVECTOR rr = { 0, 0, (short)g->roll, 0 }; RotMatrix(&rr, &r); r.t[0] = r.t[1] = r.t[2] = 0; { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); } }
     if (lean) { MATRIX r; SVECTOR rr = { (short)-lean, 0, 0, 0 }; RotMatrix(&rr, &r); r.t[0] = r.t[1] = r.t[2] = 0; { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); } }   // the lean pivots at the feet (RotMatrix leaves the translation unset)
     gm[G_BODY] = obj;
     {   // the eye in the body's space: turn the eye offset back by the yaw

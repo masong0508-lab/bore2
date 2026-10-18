@@ -24,6 +24,7 @@
 #include "save.h"
 #include "mcard.h"
 #include "story.h"
+#include "skate.h"
 
 // ---- input ----
 static u8 pad_buf[2][34];
@@ -65,7 +66,7 @@ static int cam_view;                                           // CAMERA: 0 THE 
 static int fp_pitch;                                           // first person: looking up (+) or down (-)
 static int cam_turn_rate = 40, cam_zoom_tilt = 1;
 static void camera_apply(int fx, int fy, int fz) {
-    cam_fx += (fx - cam_fx) / 6; cam_fy += (fy - cam_fy) / 6; cam_fz += (fz - cam_fz) / 6;
+    { int k_ = on_board ? 3 : 6; cam_fx += (fx - cam_fx) / k_; cam_fy += (fy - cam_fy) / k_; cam_fz += (fz - cam_fz) / k_; }   // (a rider: kept up with)
     cam_pitch = CLAMP(cam_pitch, 150, 1000);
     cam_dist = CLAMP(cam_dist, 600, 3600);
     int cp = icos(cam_pitch), sp = isin(cam_pitch);
@@ -86,8 +87,8 @@ static void camera_input(int steps) {
             int d = MIN(ABS(fp_pitch), 14 * steps); fp_pitch += fp_pitch > 0 ? -d : d; }
         return;
     }
-    if (HELD(PAD_L1)) cam_yaw -= cam_turn_rate * steps;
-    if (HELD(PAD_R1)) cam_yaw += cam_turn_rate * steps;
+    if (HELD(PAD_L1) && !skate_air()) cam_yaw -= cam_turn_rate * steps;   // (in the air on a board, L1 R1 spin you)
+    if (HELD(PAD_R1) && !skate_air()) cam_yaw += cam_turn_rate * steps;
     if (HELD(PAD_L2)) { cam_dist += 30 * steps; if (cam_zoom_tilt) cam_pitch += 9 * steps; }    // out: up and away
     if (HELD(PAD_R2)) { cam_dist -= 30 * steps; if (cam_zoom_tilt) cam_pitch -= 9 * steps; }    // in: down to their level
     if (analog) { cam_yaw += rs_x * steps / 3; cam_pitch += rs_y * steps / 4; }
@@ -312,7 +313,8 @@ static void draw_sims(void) {
         } else s->gait.bed = 0;
         if (s->action == ACT_SIT || s->action == ACT_WC || (s->action == ACT_EAT && s->gait.sit)) p.vy = -items_height(world_at(s->act_x, s->act_y)) / 2 + 10;
         if (s->action == ACT_SWIM) p.vy = 30 + (isin((frame * 60) & 4095) >> 9);   // afloat, bobbing
-        if (i == player && on_board) p.vy -= 46 + board_lift;   // standing on the deck
+        if (i == player && on_board && !skate_bailing()) p.vy -= 24 + board_lift;   // standing on the deck
+        if (i == player && on_board) skate_pose(&s->gait); else s->gait.skate = 0;
         s->gait.mood = s->mood; s->gait.talk = s->action == ACT_TALK; s->gait.seed = i; s->gait.clock = frame;
         p.vy -= s->lvl * WALL_FULL;
         {   // far from where you are looking: the same person at half the voxel resolution (the crowd model); close up, the full model
@@ -329,12 +331,12 @@ static void draw_sims(void) {
                        int want = !hh_used && crowd_sprite_score_of(id, &p, s->yaw, &s->gait) > 5 && (room || hh_skip >= 6);
                        drawn = crowd_sprite_of(id, &s->bore, &p, s->yaw, &s->gait, want);
                        if (want) { hh_used = 1; hh_skip = 0; } }
-            if (!drawn) { if (!(i == player && cam_view == 2)) voxel_draw(&s->bore, &p, s->yaw, &s->gait); voxel_draw_covers(&s->bore, &p, s->yaw, &s->gait); }   // (first person: the eye is inside your own head, so your body is not drawn)
+            if (!drawn) { if (!(i == player && cam_view == 2)) voxel_draw(&s->bore, &p, i == player && on_board && !skate_bailing() ? skate_body_yaw(s->yaw) : s->yaw, &s->gait); voxel_draw_covers(&s->bore, &p, s->yaw, &s->gait); }   // (first person: the eye is inside your own head, so your body is not drawn)
             if (drawn) dbg_hh_spr++; else dbg_hh_full++;
             if (far && !drawn) dbg_hh_miss++;
             PROF_END(4);
         }
-        if (i == player && on_board) items_draw_board(s->x, s->z, s->yaw, -board_lift - s->lvl * WALL_FULL);
+        if (i == player && on_board) { int ro, pi, sp; skate_board(&ro, &pi, &sp); items_draw_board(s->x, s->z, s->yaw, -board_lift - skate_board_up() - s->lvl * WALL_FULL, ro, pi, sp); }
         if (s->action != ACT_SLEEP && s->action != ACT_SWIM && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
     citizens_draw();
@@ -456,8 +458,8 @@ static void hud_life(void) {
     ui_text(212 + ui_tw(1, mood) + 4, 197, 1, b, UI_SOFT);
     { int lv = wants_level(s);                                   // the aspiration meter, under the mood
       ui_bar(210, 207, 100, 5, 100 * s->asp_pts / ASP_MAX, UI_RGB(aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2])); }
-    const char *hint = sim_hint();
-    { const char *ch = citizens_hint(); if (ch[0] && !sim_front_service() && (s->action == ACT_NONE || s->action == ACT_WALK)) hint = ch; }   // (busy: X gets up)
+    const char *hint = on_board ? skate_hint() : sim_hint();
+    { const char *ch = on_board ? "" : citizens_hint(); if (ch[0] && !sim_front_service() && (s->action == ACT_NONE || s->action == ACT_WALK)) hint = ch; }   // (busy: X gets up)
     if (hint[0]) { sprintf(b, "X %s", hint); ui_round(180, 215, 132, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(185, 217, 1, b, UI_WHITE); }
     else ui_hints(246, 214, "SEL PHONE", 1);
     if (cam_view == 2 && (s->action == ACT_NONE || s->action == ACT_WALK)) {   // FIRST PERSON: a dot in the middle of the view; with something to use in front, it grows and says what X does
@@ -490,6 +492,7 @@ static void hud_life(void) {
             ui_icon(cx, cy, ic[k], icc[k]); sprintf(b, "%d", v[k]); ui_text(cx + 15, cy + 2, 1, b, k == 3 && !isl_food ? UI_BADT : UI_INK); }
         ui_icon(x + 4, y + 27, IC_STAR, UI_RGB(236, 170, 30)); sprintf(b, "SECRETS %d/%d", isl_secret_count(), SEC_N); ui_text(x + 19, y + 29, 1, b, UI_INK);
     }
+    skate_hud();
     cheer_poll(); cheer_draw();
     citizens_hud();
     { static int hint_vb = -1; if (hint_vb < 0) hint_vb = VSync(-1);   // (the controls, for the first few seconds of play only)
@@ -528,25 +531,44 @@ static void life_update(int steps) {
         if (HELD(PAD_LEFT)) mx = -4096; if (HELD(PAD_RIGHT)) mx = 4096;
         if (HELD(PAD_UP)) mz = 4096; if (HELD(PAD_DOWN)) mz = -4096;
     }
+#ifdef AUTO_SKATE
+    extern int tst_on, tst_wx, tst_wz;
+    if (tst_on) { for (int k = 0; k < steps; k++) sim_player_move(tst_wx, tst_wz, 0); goto moved_; }   // (test builds: the stick, in world space)
+#endif
     if (cam_view == 2) {   // first person: up and down walk, left and right (and L1 R1) turn
         int turn = -((mx * 50) >> 12); if (HELD(PAD_L1)) turn += 60; if (HELD(PAD_R1)) turn -= 60;   // (yaw grows to the LEFT of a south-facing eye: right is a negative turn)
         { static int fp_turn; fp_turn += (turn - fp_turn) / 3; if (!turn && ABS(fp_turn) < 6) fp_turn = 0; turn = fp_turn;   // (a turn eases in and out, not a jerk)
           if ((PRESSED(PAD_L1) && HELD(PAD_R1)) || (PRESSED(PAD_R1) && HELD(PAD_L1))) { s->yaw = (s->yaw + 2048) & 4095; fp_turn = turn = 0; } }   // L1 + R1 together: about face
-        if (!mz && !turn) sim_player_tank(0, 0, 0);
+        if (!mz && !turn) { int n_ = on_board ? steps : 1; for (int k = 0; k < n_; k++) sim_player_tank(0, 0, 0); }
         else for (int k = 0; k < steps; k++) sim_player_tank(mz, turn, HELD(PAD_SQUARE));
     } else if (mx || mz) {   // turn the push by the camera yaw: "up" = away from the camera
         int c = icos(cam_yaw), sn = isin(cam_yaw);
         int wx = (mx * c + mz * sn) >> 12, wz = (mz * c - mx * sn) >> 12;
         for (int k = 0; k < steps; k++) sim_player_move(wx, wz, HELD(PAD_SQUARE));
-    } else sim_player_move(0, 0, 0);
+    } else { int n_ = on_board ? steps : 1; for (int k = 0; k < n_; k++) sim_player_move(0, 0, 0); }   // (a board rolls on every step)
+#ifdef AUTO_SKATE
+    moved_: ;
+#endif
     if ((PRESSED(PAD_L2) && HELD(PAD_R2)) || (PRESSED(PAD_R2) && HELD(PAD_L2))) {   // L2 + R2 together: the next camera
         extern void cam_view_set(int v); cam_view_set((cam_view + 1) % 3);
     }
     if (cam_view != 2 && ((PRESSED(PAD_L1) && HELD(PAD_R1)) || (PRESSED(PAD_R1) && HELD(PAD_L1)))) cam_yaw = (2048 - s->yaw) & 4095;   // L1 + R1: round behind you
+    if (on_board && cam_view == 0 && skate_speed() > 6 && !skate_air()) {   // riding: the camera follows round behind the way you are rolling (a skate game's chase camera)
+        int d = (((2048 - skate_dir()) - cam_yaw + 2048) & 4095) - 2048;
+        cam_yaw = (cam_yaw + d * MIN(steps, 4) / 24) & 4095;
+    }
     if (cam_view == 1 && s->gait.amp > 2000 && s->action == ACT_NONE) {   // BEHIND: the camera swings round behind as you walk
         int d = (((2048 - s->yaw) - cam_yaw + 2048) & 4095) - 2048;
         cam_yaw = (cam_yaw + d * MIN(steps, 4) / 12) & 4095;
     }
+    if (on_board) {   // riding: the buttons are the board's (skate.c)
+        int h = (HELD(PAD_CROSS) ? SKB_X : 0) | (HELD(PAD_SQUARE) ? SKB_SQ : 0) | (HELD(PAD_CIRCLE) ? SKB_O : 0) | (HELD(PAD_TRIANGLE) ? SKB_TRI : 0) | (HELD(PAD_L1) ? SKB_L1 : 0) | (HELD(PAD_R1) ? SKB_R1 : 0);
+        int p_ = (PRESSED(PAD_CROSS) ? SKB_X : 0) | (PRESSED(PAD_SQUARE) ? SKB_SQ : 0) | (PRESSED(PAD_CIRCLE) ? SKB_O : 0) | (PRESSED(PAD_TRIANGLE) ? SKB_TRI : 0) | (PRESSED(PAD_L1) ? SKB_L1 : 0) | (PRESSED(PAD_R1) ? SKB_R1 : 0);
+#ifdef AUTO_SKATE
+        { extern int tst_held, tst_pr; h |= tst_held; p_ |= tst_pr; tst_pr = 0; }
+#endif
+        skate_input(h, p_);
+    } else
     if (PRESSED(PAD_CROSS)) {   // X: busy - stop; otherwise the pie menu (one option: just do it)
         Sim *me = &sims[player];
         if (me->action != ACT_NONE && me->action != ACT_WALK) sim_player_interact();
@@ -555,8 +577,8 @@ static void life_update(int steps) {
                if (!pie_n) { pie_cit = 0; pie_n = sim_pie_open(pie_opt); }
                if (pie_n == 1) { if (pie_cit) citizens_pie_do(0); else sim_pie_do(0); } else if (pie_n > 1) { pie_sel = 0; state = ST_PIE; } else audio_voice(VOICE_NAH); }
     }
-    if (PRESSED(PAD_CIRCLE)) sim_player_cancel();
-    if (PRESSED(PAD_TRIANGLE)) { sim_speed = sim_speed % 3 + 1; }
+    if (PRESSED(PAD_CIRCLE) && !on_board) sim_player_cancel();
+    if (PRESSED(PAD_TRIANGLE) && !on_board) { sim_speed = sim_speed % 3 + 1; }
     if (PRESSED(PAD_L3)) show_fps ^= 1;
     { extern int getenv_noshadow, dbg_noao, dbg_nograd; if (PRESSED(PAD_R3)) { static int mode; mode = (mode + 1) & 3; getenv_noshadow = mode == 1; dbg_noao = mode == 2; dbg_nograd = mode == 3; } }
     if (PRESSED(PAD_SELECT)) { extern void phone_open(void); phone_open(); }   // the phone in your pocket
@@ -623,7 +645,7 @@ static void life_update(int steps) {
 static void life_draw(void) {
     Sim *s = &sims[player];
     gfx_set_fog(0, 0);                                   // (the title's fog stays on the title)
-    camera_apply(s->x, -200 - s->lvl * WALL_FULL, s->z);
+    camera_apply(s->x, -200 - s->lvl * WALL_FULL - (on_board ? board_lift : 0), s->z);   // (up with a rider in the air)
     world_view_lvl = s->lvl; world_roof_show = 0;
     { extern int world_fp; world_fp = cam_view == 2; }
     if (cam_view == 2) {   // FIRST PERSON: the eye in the Bore's head, looking the way it faces (fp_pitch up or down)
@@ -1838,7 +1860,7 @@ static void stream_tick(void) {   // (test builds: a streamed song from the firs
 }
 #endif
 #ifdef AUTO_STORY
-int dbg_story[24];   // (test builds) SKATE LIFE by itself: a taxi to the skate plaza, then the board at a ramp from each side
+int dbg_story[40]; int tst_trace; int tst_on, tst_wx, tst_wz, tst_held, tst_pr;   // (test builds) SKATE LIFE by itself: a taxi to the skate plaza, then the board at a ramp from each side
 static void story_test_tick(void) {
     extern int dbg_air_max, dbg_tricks, story_dbg(int k); extern int on_board;
     static int t0 = -1, k, rx = -1, ry, att;
@@ -1849,6 +1871,53 @@ static void story_test_tick(void) {
 #endif
     if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); }
     int t = VSync(-1) - t0; Sim *s = &sims[player];
+#ifdef AUTO_SKATE
+    {   // (the skate plaza from four sides, close: how the ramps, the rails and the boxes look; then AUTO_SKATE's own runs)
+        static int g, lx, ly, pbx, pby;
+        if (g == 0 && t >= 60) { g = 1; story_taxi(); }
+        if (g >= 2) { lx = (pbx - world_wbx) * BM_BLK + BM_LOT0; ly = (pby - world_wby) * BM_BLK + BM_LOT0; }   // (the plaza where it is now: the window moves as you ride)
+        if (g == 1 && t >= 200) { g = 2; pbx = world_wbx + sim_tile_x(s) / BM_BLK; pby = world_wby + sim_tile_y(s) / BM_BLK; lx = (pbx - world_wbx) * BM_BLK + BM_LOT0; ly = (pby - world_wby) * BM_BLK + BM_LOT0;
+            sim_player_cancel_sim(s); s->x = (lx + 6) * TILE + TILE / 2; s->z = -((ly + 6) * TILE + TILE / 2); }
+        if (g == 2) { int v = (t - 200) / 120; if (v > 1) { g = 3; } else { cam_yaw = (v & 3) * 1024 + 300; cam_pitch = 520; cam_dist = 2600; } }
+#ifdef AUTO_POSE
+        if (g == 3) {   // (the poses, held still, from the side and from the front)
+            extern void skate_dbg_pose(int n); extern int tst_on; tst_on = 1; { extern int tst_wx, tst_wz; tst_wx = tst_wz = 0; }
+            static int ph = -1; int p_ = (t - 440) / 80;
+            if (p_ >= 20) { skate_dbg_pose(-1); return; }
+            if (p_ != ph) { ph = p_; if (!on_board) { has_board = 1; sim_player_cancel(); }
+                s->x = (lx + 3) * TILE + TILE / 2; s->z = -((ly + 7) * TILE + TILE / 2); s->yaw = 1024; skate_on(s); skate_dbg_pose(p_ % 10); { static const char *const nm[10] = { "RIDING", "WOUND UP", "TUCK", "INDY", "NOSEGRAB", "MANUAL", "GRIND", "PUSH", "KICKFLIP", "IMPOSSIBLE" }; sim_note(nm[p_ % 10]); }
+                if (p_ % 10 == 2 || p_ % 10 == 3 || p_ % 10 == 4 || p_ % 10 == 8 || p_ % 10 == 9) board_lift = 120; }
+            cam_yaw = p_ < 10 ? 1024 + 300 : 3072 - 300; cam_pitch = 240; cam_dist = 700;
+            return;
+        }
+#endif
+        if (g == 3) {   // the runs: each puts you somewhere in the plaza on the board, then a script of stick and buttons
+            extern int tst_on, tst_wx, tst_wz, tst_held, tst_pr, skate_dbgv[12]; static int run = -1, rt;
+            static const struct { s8 x, y; s16 yaw; } at[6] = { { 0, 10, 1024 }, { 0, 5, 1024 }, { 0, 8, 1024 }, { 1, 3, 1024 }, { 1, 7, 1024 }, { 1, 10, 1024 } };
+            int r_ = (t - 440) / 300; if (r_ > 5) { tst_on = 0; dbg_story[19] = t; return; }
+            if (r_ != run) { run = r_; rt = 0; tst_on = 1; tst_held = 0;
+                if (lx < 0 || ly < 0 || lx + 13 > MW || ly + 13 > MH) { taxi_to_block(pbx, pby, 6, 10, "TEST"); lx = (pbx - world_wbx) * BM_BLK + BM_LOT0; ly = (pby - world_wby) * BM_BLK + BM_LOT0; }
+                if (!on_board) { has_board = 1; sim_player_cancel(); }
+                sim_player_cancel_sim(s); s->x = (lx + at[run].x) * TILE + TILE / 2; s->z = -((ly + at[run].y) * TILE + TILE / 2); s->yaw = at[run].yaw; skate_on(s); { extern void skate_dbg_speed(int v); skate_dbg_speed(22); }
+                { extern int skate_ev[], skate_nev; if (skate_nev < 128) { int *e_ = &skate_ev[skate_nev++ * 4]; e_[0] = 100 + run; e_[1] = s->x; e_[2] = s->z; e_[3] = lx; } }
+                cam_yaw = (2048 - at[run].yaw + 4096 + 700) & 4095; cam_pitch = 380; cam_dist = 900; }
+            rt++; tst_trace = run == 0;
+            int yw = at[run].yaw; tst_wx = (isin(yw) * 4096) >> 12; tst_wz = -((icos(yw) * 4096) >> 12);
+            tst_held = 0;
+            switch (run) {
+                case 0: if (rt > 8 && rt < 18) tst_held = SKB_X; if (rt == 21) tst_pr = SKB_SQ; break;   // an ollie and a kickflip, then up the quarter pipe with a 180
+                case 1: break;                                                                                                       // over the manual pad, the kicker, onto the funbox
+                case 2: break;                                                                                                       // north: the launch ramp, then the quarter pipe (vert)
+                case 3: if (rt == 5) tst_pr = SKB_TRI; break;                                                                       // a grind along the rail
+                case 4: if (rt == 8) tst_pr = SKB_SQ; break;                                                                        // a manual
+                case 5: if (rt > 4 && rt < 14) tst_held = SKB_X; if (rt == 17) tst_pr = SKB_O; if (rt > 17 && rt < 34) tst_held = SKB_O; break;   // a grab
+            }
+            { int *o = &dbg_story[run * 6]; o[0] = skate_dbgv[0]; o[1] = skate_dbgv[9]; o[2] = skate_dbgv[10]; o[3] = skate_dbgv[11]; o[4] = skate_dbgv[8] & 255; o[5] = skate_dbgv[1]; }
+            dbg_story[36] = skate_dbgv[7]; dbg_story[37] = skate_dbgv[2]; dbg_story[38] = (int)skate_score; dbg_story[39] = skate_dbgv[3];
+        }
+        return;
+    }
+#endif
 #ifdef AUTO_GUEST
     {   // (BEST FRIENDS chapter 4: a party at home, then a taxi to a town square)
         extern void story_dbg_ch(int ch); static int g;

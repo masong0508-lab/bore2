@@ -13,6 +13,7 @@
 #include "island.h"
 #include "save.h"
 #include "story.h"
+#include "skate.h"
 
 Sim  sims[MAX_SIMS];
 int  nsims, player;
@@ -192,17 +193,19 @@ void sim_switch_player(void) {
 }
 
 // ---- walking with collision (the lot's tiles) ----
-int has_board, on_board, board_lift; static int board_v, board_vy, board_air, board_prev;   // the skateboard: owned, ridden, how high the rider is, and the coasting / air state
+int has_board, on_board, board_lift;   // the skateboard: owned, ridden, how high the rider is (skate.c rides it)
 static int ramp_pass;   // set while the rider's own step is tried: a board can roll onto a ramp
-static int board_airt, board_combo; static u32 board_land; int dbg_air_max, dbg_tricks;   // (tricks: steps in the air, the combo, when the last one landed)
+int dbg_air_max, dbg_tricks;
+static int skate_deck(char c) { return c == 'X' || c == 'M' || c == 'L' || c == 'N' || c == 'Z'; }
 static int is_ramp(char c) { return c == '1' || c == '2' || c == '4' || c == '5' || c == '9'; }
-static int ramp_g(int px, int pz, char c, int mx, int my) { return items_ramp_h(c, world_item_facing(mx, my), px - mx * TILE, (-pz) - my * TILE); }
+static int ramp_g(int px, int pz, char c, int mx, int my) { (void)c; return items_ramp_at(mx, my, px - mx * TILE, (-pz) - my * TILE); }
 static int footprint_free(int x, int z) {
     for (int k = 0; k < 4; k++) {
         int px = x + ((k & 1) ? SIM_RADIUS : -SIM_RADIUS), pz = z + ((k & 2) ? SIM_RADIUS : -SIM_RADIUS);
         int mx = px / TILE, my = (-pz) / TILE;
         if (px < 0 || pz > 0) return 0;
-        if (ramp_pass && is_ramp(world_at(mx, my)) && ramp_g(px, pz, world_at(mx, my), mx, my) <= board_lift + 90) continue;   // (from the low side, or in the air above it)
+        if (ramp_pass && is_ramp(world_at(mx, my)) && ramp_g(px, pz, world_at(mx, my), mx, my) <= board_lift + 240) continue;   // (a steep transition rises fast ahead of the board)   // (from the low side, or in the air above it)
+        if (ramp_pass && skate_deck(world_at(mx, my)) && items_height(world_at(mx, my)) <= board_lift + 24) continue;   // (up on a funbox, a ledge, a manual pad)
         if (!world_walkable(mx, my)) {
             char ic = world_at(mx, my);   // a thing in the way blocks only where it really stands, not the whole tile (a fridge leaves a margin, a fence a gap)
             if (!items_is_item(ic) || !items_blocking(ic)) return 0;
@@ -492,7 +495,7 @@ static int act_len(int act) {
 }
 static void begin_action(Sim *s, int act, int mx, int my) {
     if (act == ACT_TALK && (int)(s - sims) == player) story_talks++;
-    if ((int)(s - sims) == player) { on_board = 0; board_lift = 0; board_air = 0; }
+    if ((int)(s - sims) == player && on_board) skate_off(s);
     s->action = act; s->act_t = act_len(act); s->act_x = mx; s->act_y = my; s->act_var = 0;
     s->path_n = 0;
     if (stands_on(act, mx, my)) { s->x = mx * TILE + TILE / 2; s->z = -(my * TILE + TILE / 2); s->yaw = (world_item_facing(mx, my) * 1024) & 4095; }
@@ -1208,27 +1211,7 @@ void sim_step(void) {
     if (last_note_t > 0) last_note_t--;
 }
 
-// ---- the board on ramps: it follows a ramp's surface, leaves the lip with the speed it climbed at, and lands again ----
-static void board_phys(Sim *s) {
-    int mx = s->x / TILE, my = (-s->z) / TILE; char c = world_at(mx, my);
-    int g = is_ramp(c) ? ramp_g(s->x, s->z, c, mx, my) : 0;
-    if (board_air) {
-        board_vy -= 1; board_lift += board_vy; board_airt++;
-        if (board_lift <= g) { board_lift = g; board_air = 0; board_vy = 0;
-            if (board_airt > dbg_air_max) dbg_air_max = board_airt;
-            if (board_airt >= 8 && s == &sims[player]) { dbg_tricks++;   // a trick landed (a combo: one after another, a few seconds apart at most)
-                board_combo = walk_tick - board_land < 420 ? board_combo + 1 : 1; board_land = walk_tick;
-                char t[24]; if (board_airt >= 34) sprintf(t, "BIG AIR!"); else if (board_combo > 1) sprintf(t, "COMBO X%d!", board_combo); else sprintf(t, "TRICK!");
-                sim_say(s, t); story_event(E_TRICK, board_combo); if (board_airt >= 34) story_event(E_BIGAIR, 0);
-            }
-            board_airt = 0; }
-    } else if (board_lift - g > 30) {                       // rolled off a lip: up and away at the climb's rate
-        board_air = 1; board_vy = CLAMP((board_lift - board_prev) * 2, 0, 44);
-        board_prev = board_lift; board_lift += board_vy;
-        return;
-    } else { board_prev = board_lift; board_lift = g; }
-    if (board_lift < 0) board_lift = 0;
-}
+int sim_walk(Sim *s, int dx, int dz) { return walk(s, dx, dz); }   // (skate.c: a step with the board's way over ramps and decks)
 void sim_player_move(int dx, int dz, int run) {
     Sim *s = &sims[player];
     world_lvl = s->lvl;
@@ -1238,22 +1221,20 @@ void sim_player_move(int dx, int dz, int run) {
         end_action(s);                                                       // walking off: it stops
     }
     s->path_n = 0; s->action = ACT_NONE;
+    if (on_board) { skate_step(s, dx, dz); world_lvl = 0; return; }   // riding (skate.c)
     if (!dx && !dz) {
-        if (on_board && board_v > 0) { walk(s, (isin(s->yaw) * board_v) >> 12, -((icos(s->yaw) * board_v) >> 12)); board_v = board_v > 2 ? board_v - 2 : 0; s->gait.amp = 300; }   // coasting
-        else s->gait.amp = s->gait.amp > 300 ? s->gait.amp - 300 : 0;
-        if (on_board) board_phys(s);
+        s->gait.amp = s->gait.amp > 300 ? s->gait.amp - 300 : 0;
         world_lvl = 0; return; }
     // REAL 3D WALKING: the Bore turns toward the push first and only ever moves the way it FACES -
     // far from the push direction it pivots on the spot, so it never slides sideways like a 2D sprite.
     int want = yaw_towards(dx, dz);
     int diff = ((want - s->yaw + 2048) & 4095) - 2048;                       // how far round it still has to turn
-    turn_to(s, want, on_board ? 120 + (ABS(diff) >> 4) : 260 + (ABS(diff) >> 3));   // (a board carves wider)                                // the wider the turn, the faster it swings
+    turn_to(s, want, 260 + (ABS(diff) >> 3));                                // the wider the turn, the faster it swings
     int mag = SquareRoot0(dx * dx + dz * dz); if (mag > 4096) mag = 4096;    // stick tilt = walk speed
     int align = 4096 - ABS(diff) * 2; if (align < 0) align = 0;              // 4096 facing it .. 0 facing away
-    int sp0 = speed_of(s); if (run) sp0 = sp0 * 3 / 2; if (on_board) sp0 = sp0 * 2;
+    int sp0 = speed_of(s); if (run) sp0 = sp0 * 3 / 2;
     int sp = ((sp0 * mag) >> 12) * align >> 12;
     if (sp) walk(s, (isin(s->yaw) * sp) >> 12, -((icos(s->yaw) * sp) >> 12));
-    if (on_board) { board_v = MAX(board_v, sp); s->gait.amp = 300; board_phys(s); world_lvl = 0; return; }   // riding: the legs stay still
     s->gait.amp = MAX(1600, (mag * align) >> 12);                            // pivoting: small steps; under way: the full swing
     s->gait.phase = (s->gait.phase + (((run ? 200 : 150) * MAX(mag, 2048)) >> 12)) & 4095;
     world_lvl = 0;
@@ -1268,6 +1249,7 @@ void sim_player_tank(int fwd, int turn, int run) {   // first person: left and r
         end_action(s);
     }
     s->path_n = 0; s->action = ACT_NONE;
+    if (on_board) { int w = (s->yaw + turn * 6) & 4095; skate_step(s, fwd > 0 ? (isin(w) * fwd) >> 12 : turn ? (isin(w) * 1200) >> 12 : 0, fwd > 0 ? -((icos(w) * fwd) >> 12) : turn ? -((icos(w) * 1200) >> 12) : 0); world_lvl = 0; return; }   // (first person on a board: up pushes, left and right carve)
     s->yaw = (s->yaw + turn) & 4095;
     if (!fwd) { s->gait.amp = turn ? 1600 : (s->gait.amp > 300 ? s->gait.amp - 300 : 0); if (turn) s->gait.phase = (s->gait.phase + 90) & 4095; world_lvl = 0; return; }
     int sp = speed_of(s); if (run && fwd > 0) sp = sp * 3 / 2;
@@ -1723,7 +1705,7 @@ static int sim_player_interact_(void) {
     begin_action(s, action_for(c), mx, my);
     return 1;
 }
-void sim_player_cancel(void) { Sim *s = &sims[player]; if (s->action != ACT_NONE) end_action(s); else if (has_board) { on_board ^= 1; board_v = 0; board_lift = 0; board_air = 0; board_vy = 0; sim_note(on_board ? "ON THE BOARD" : "OFF THE BOARD"); if (on_board) wants_event(s, W_SKATE, 0); } }
+void sim_player_cancel(void) { Sim *s = &sims[player]; if (s->action != ACT_NONE) end_action(s); else if (has_board) { if (on_board) skate_off(s); else { on_board = 1; skate_on(s); wants_event(s, W_SKATE, 0); } sim_note(on_board ? "ON THE BOARD" : "OFF THE BOARD"); } }
 void sim_player_cancel_sim(Sim *s) { if (s->action != ACT_NONE) end_action(s); }
 
 const char * sim_hint(void) { world_lvl = sims[player].lvl; const char * r = sim_hint_(); world_lvl = 0; return r; }
@@ -1785,7 +1767,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     job_level = ld_u8(); job_worked = ld_u16(); job_days_good = ld_u16(); job_strikes = ld_u8(); job_car = ld_u8();
     job_bx = (s16)ld_u16(); job_by = (s16)ld_u16(); ld_str(job_place, 23);
     groceries = ld_u16(); room_bx = (s16)ld_u16(); room_by = (s16)ld_u16(); room_until = (int)ld_u32();
-    has_board = ld_u8(); on_board = 0; board_lift = 0; bills_due = ld_u16(); baby_due = (int)ld_u32(); ld_n(baby_par, 2); baby_kind = (u8)ld_u8(); next_uid = (u8)ld_u8(); cake_slices = ld_u8();
+    has_board = ld_u8(); on_board = 0; board_lift = 0; skate_reset(); bills_due = ld_u16(); baby_due = (int)ld_u32(); ld_n(baby_par, 2); baby_kind = (u8)ld_u8(); next_uid = (u8)ld_u8(); cake_slices = ld_u8();
     sim_story_over = ld_u8(); ld_str(sim_end_name, NAME_LEN - 1);
     { int g = ld_u8(); ngraves = MIN(g, 6); } for (int i = 0; i < ngraves; i++) { graves[i].x = (u8)ld_u8(); graves[i].y = (u8)ld_u8(); graves[i].city = (u8)ld_u8(); ld_str(graves[i].name, NAME_LEN - 1); }
     story_paid = ld_u16(); story_talks = ld_u16(); ld_n(story_visit, 4);

@@ -19,6 +19,12 @@ typedef struct {
     int talk;       // 1: in a conversation (gestures, nods)
     int seed;       // a per-person offset so a room of Bores never breathes in step
     int clock;      // frames, for the idle cycle
+    int skate;      // 1: riding a board (side on, knees in, arms out for balance)
+    int crouch;     // 0..4096: how low (an ollie wound up, a grab)
+    int grab;       // a grab: 1 a hand to the board's middle, 2 the nose, 3 the tail
+    int roll, pitch; // a lean along the board (a manual) and across it (a grind's balance, a carve)
+    int push;       // 0..4096: the back foot's kick (pushing)
+    int spread;     // 1: the feet held off a flipping board
 } Gait;
 
 // The crowd model: the same person at half the voxel resolution (4 x 2 x 4 cells instead of 6 x 4 x 8), made from the full Bore

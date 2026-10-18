@@ -44,6 +44,22 @@ CAMERA also sets how high it looks down from, how fast it turns, whether zooming
 the camera are cut low, but not in first person), CUT AWAY (always) or FULL WALLS (never). In first person nothing near you is dropped: a floor, wall or
 ceiling that reaches behind the eye is cut at a near plane and drawn from what is in front, and close ones are split so they do not swim.
 
+## Skating
+On the board (O gets on it), it plays like a Tony Hawk game (`src/skate.c`). The stick pushes and carves (pulling back drags a foot).
+X held winds up an ollie and pops it on letting go (held longer, higher). In the air: SQUARE flips (with the stick: kickflip, heelflip,
+impossible, pop shove-it; again for a double), CIRCLE grabs (indy, melon, nosegrab, tailgrab, stalefish: held, it scores more), L1 R1
+spin. TRIANGLE grinds a rail, a ledge, a bench or a quarter pipe's coping (the stick picks 50-50, nosegrind, 5-0 or crooked; side on it
+is a boardslide). SQUARE on the ground is a manual. Grinds and manuals have a balance meter: the stick across (a grind) or forward and
+back (a manual) holds it. Every trick goes into the combo, points times tricks, banked when you land clean and roll away; land a flip
+unfinished or sideways and you bail. Speed is real: climbing costs it, dropping gives it, and a quarter pipe throws you straight up
+into vert air and catches you on the way down (riding back fakie).
+
+Everything in the skate park is life size now (a person is 1.8 m): rails and ledges 45 cm, a funbox 45 cm, a manual pad 20 cm, a
+board 85 cm. Ramps laid one behind another are one ramp (`items.c`, items_ramp_at): a kicker 0.5 m on one tile, 0.8 m on two;
+a launch 0.7 m, 1.4 m; a quarter pipe a real curve with a steel coping, 0.8 m, 1.65 m on two tiles, 2.5 m on three. The SKATE
+PLAZA has quarter pipes round three sides, a funbox with kickers, a rail, a ledge, a manual pad and a launch ramp. A few other things
+were set to their real heights too (chairs, the TV, street lamps, bus stops, flags, trees).
+
 ## Build it
 1. Install PSn00bSDK (https://github.com/Lameguy64/PSn00bSDK/releases) so `mipsel-none-elf-gcc` and `cmake` work.
 2. In a terminal:

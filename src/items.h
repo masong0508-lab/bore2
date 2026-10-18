@@ -6,8 +6,11 @@ void items_init(void);                                   // uploads every materi
 // draw the item letter ch standing on tile (mx,my). rot = facing 0..3 (0 = south, towards the camera at the default view),
 // along = 1 when a rail / ledge / bench runs along x. t = the frame counter (lava lamp, aquarium, fire animate)
 void items_draw(char ch, int mx, int my, int rot, int along, int t);
-int  items_ramp_h(char ch, int facing, int lx, int lv);   // a ramp's surface height at a spot in its tile (0 if ch is not a ramp)
-void items_draw_board(int x, int z, int yaw, int y);    // the skateboard under a rider's feet at world (x, z), turned by yaw
+int  items_ramp_h(char ch, int facing, int lx, int lv);   // (old: 0)
+int  items_ramp_at(int mx, int my, int lx, int lv);       // a ramp's surface height at (lx, lv) of tile (mx, my), the run it is part of counted (0: no ramp)
+int  items_ramp_lip(int mx, int my, int *dir);            // this tile holds a run's lip: 1 (2 a quarter pipe's), *dir its way (0 N 1 W 2 S 3 E)
+int  items_ramp_rot(char c, int facing);
+void items_draw_board(int x, int z, int yaw, int y, int roll, int pitch, int spin);   // the ridden board (turned by a flip)
 int  items_blocking(char ch);                            // 1: a wall of a thing you cannot walk through
 int  items_is_item(char ch);                             // 1: a placeable item letter
 const char *items_name(char ch);
