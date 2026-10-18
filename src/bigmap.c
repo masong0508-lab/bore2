@@ -1,6 +1,6 @@
 // bigmap: see bigmap.h
 #include "bigmap.h"
-int bm_packed, bm_gen = 3;
+int bm_packed, bm_gen = 3; char bm_cap_name[18];
 static int packed(void) { return bm_packed || bm_gen < 3; }   // (PACKED towns: the option, or a world from before it)
 
 static u32 wseed = 0x5A1B0E2Au;
@@ -84,7 +84,7 @@ static int place_set(int kind, int r, int cx, int cy, int spread) {
             if (dx * dx + dy * dy < need * need) { far = 0; break; } }
         if (!far || !land_ok(x, y, r)) continue;
         Settle *s = &sets[nset]; s->x = (u16)x; s->y = (u16)y; s->r = (u8)r; s->kind = (u8)kind;
-        if (nset == 0) strcpy(s->name, "BORE CITY"); else make_name(s->name, kind);
+        if (nset == 0) strcpy(s->name, bm_cap_name[0] ? bm_cap_name : "BORE CITY"); else make_name(s->name, kind);
         return nset++;
     }
     return -1;

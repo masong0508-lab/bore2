@@ -16,7 +16,7 @@ extern const u32 voices_bin_size;
 #define CLIP_N     8
 #define MIXR       18157               // the rate the GBA converter's timing is counted in
 #define TICK_HZ    480                 // the sequencer's timer
-#define SEQ_MAX    (100 * 1024)        // the biggest song's sequence block (worthless_clouds: 94 KB)
+#define SEQ_MAX    (47 * 2048)         // the biggest song's sequence block (worthless_clouds: 47 sectors, 94 KB)
 
 // ---- sound memory ----
 #define ALLOC_START 0x1010
@@ -280,3 +280,5 @@ void audio_init(void) {
     InterruptCallback(IRQ_TIMER2, &seq_tick);
     ExitCriticalSection();
 }
+
+int audio_dbg_song(void) { return cur_song * 10 + sq_on; }   // (test builds: which song is playing, and whether the sequencer runs)

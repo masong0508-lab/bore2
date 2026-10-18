@@ -9,7 +9,7 @@
 #define OT_GROUND_WIN (OT_LEN - 3)
 #define OT_FAR_LAST   (OT_LEN - 4)
 #define OT_SHIFT   1              // view-space z >> OT_SHIFT = OT index (z up to 8192 units)
-#define PACKET_LEN (96*1024)    // per buffer. The busiest frames measured (a party; SAN BOREAS zoomed right out over towers) use under 58 KB
+#define PACKET_LEN (88*1024)    // per buffer. The busiest frames measured (a party; SAN BOREAS zoomed right out over towers) use under 58 KB
 #define RESERVE_PEOPLE (28*1024)   // kept back from the world so the people always fit (a party peaks near 35 KB with the HUD)
 #define RESERVE_UI     (12*1024)   // kept back from the people so bubbles, text and the HUD always fit
 #define Z_NEAR     40

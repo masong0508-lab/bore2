@@ -12,7 +12,7 @@ For a real PlayStation or PCSX-ReARMed, burn or open `bore2.cue` + `bore2.bin` f
 Every push to GitHub builds both: open Actions, the newest green run, and download **BORE2_chd** or **bore2_disc** under Artifacts.
 
 STORY MODE opens PICK A WORLD: RANDOM WORLD (fresh dice), three set worlds (MAPLE SHORES, SUNNY HOLLOW, PINE BAY: the same map every
-time), CREATE A WORLD (SQUARE rolls a new map, L1 R1 step through them, the map shows each one), CASTAWAY ISLAND (the family begins
+time, the capital named for the world), CREATE A WORLD (SQUARE rolls a new map, L1 R1 step through them, the map shows each one), CASTAWAY ISLAND (the family begins
 stranded on the island), and MISSIONS, PACKS (RAGS TO RICHES: $1,000 and no home; the expansion packs say COMING SOON). TRIANGLE
 switches TOWNS between ROOMY (parks, green gaps, towns far apart) and PACKED (built up, towns close together, as before).
 
@@ -65,6 +65,11 @@ START, then SAVE GAME, then pick one of 3 slots. CONTINUE on the title shows the
 
 ## Wants and fears
 Each Bore has 4 wants and 2 fears from their aspiration, age and personality. Doing a want pays aspiration points; a fear coming true takes them. Wants include throwing a party, buying a home, riding a skateboard, finding an island secret, visiting the island or the town, skills, money and friends. Fears include losing someone in the family. Reaching PLATINUM gives a PROUD moodlet.
+
+## Memory
+The game fits the PS1's 2 MB with about 140 KB to spare. A Bore keeps room for 96 solid blocks (the most any rolled Bore used was 58),
+the creator's studio parks the live lot in a free storey slot instead of a copy of its own, a townsperson is built in the same
+scratch Bore the crowd unpacks into, the song buffer is exactly the biggest song (94 KB), and each packet buffer is 88 KB.
 
 ## Speed
 In SAN BOREAS, as soon as a frame runs long the full-detail range pulls in a tile (up to 4) (buildings past it are drawn as simple boxes) and goes back out when things are quiet, so the city holds 30 frames a second more often. Far-off roofs are drawn as bigger pieces.

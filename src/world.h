@@ -49,7 +49,7 @@ void world_init(void);
 void world_touched(void);                        // the map changed (build mode): the floor shading is worked out again
 void world_gen(void);                            // BORE's default lot: THE MAN BASE
 void world_gen_studio(void);                     // the creator's little room (a dresser with a mirror, a lamp, a rug)
-void world_backup(void);                         // keep the live lot aside while the studio is shown ...
+int  world_backup(void);                         // keep the live lot aside while the studio is shown (0: no room just now) ...
 void world_restore(void);                        // ... and bring it back
 void world_draw(int fx, int fy, int t, int cutaway);   // fx,fy = the tile the camera cares about (walls in front of it are cut low)
 int  world_walkable(int mx, int my);

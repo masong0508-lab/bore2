@@ -742,7 +742,7 @@ void voxel_prepare(Bore *b) {
                 setVector(&cc[k], X + dx, ty, Z + dz);
                 setVector(&cc[4 + k], X + bx, y1, Z + bz);
             }
-            if (n < W * D * H) { b->cell[n].x = (u8)x; b->cell[n].y = (u8)y; b->cell[n].z = (u8)z; b->cell[n].v = v; b->cell[n].hide = (u8)hide; b->cell[n].grp = (u8)grp;
+            if (n < NCELL_MAX) { b->cell[n].x = (u8)x; b->cell[n].y = (u8)y; b->cell[n].z = (u8)z; b->cell[n].v = v; b->cell[n].hide = (u8)hide; b->cell[n].grp = (u8)grp;
                                  b->cell[n].flags = (u8)((is_hair ? 1 : 0) | (in ? 2 : 0)); memcpy(b->cell[n].c, cc, sizeof cc); n++; }
         } }
     b->ncell = (u8)n;

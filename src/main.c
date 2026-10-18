@@ -121,6 +121,7 @@ static u8 fill_seen[MW * MH / 8 + 1];
 static char build_msg[32]; static int build_msg_t;   // what build mode has to say (the life's notes are not on screen there)
 static void home_go(void);
 static void travel_go(int z);
+static void wo_name_for(u32 seed);   // (THE WORLDS: a set world's capital is named for it)
 static void nhood_open(int first);   // THE NEIGHBORHOOD: 48 lots to pick a home from (first: a new life, before they have one)
 static int nh_pending;                // a new life has begun: the neighborhood opens on its first frame
 static u32 life_seed;                 // the world the next new life is made in (0: fresh dice)
@@ -226,7 +227,7 @@ static void start_life(void) {
     loading("MAKING A NEW LIFE", 20);
     {   // a new world: SAN BOREAS from fresh dice (the land, the towns, every building and room), and its 874 households
         u32 seed = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ ((u32)frame * 2246822519u); if (!seed) seed = 1;
-        if (life_seed) { seed = life_seed; life_seed = 0; }   // (a preset world, or one made on the CREATE A WORLD screen)
+        if (life_seed) { seed = life_seed; life_seed = 0; } else bm_cap_name[0] = 0;   // (fresh dice: BORE CITY again)   // (a preset world, or one made on the CREATE A WORLD screen)
 #if defined(AUTO_CITY) || defined(AUTO_PARTY)
         seed = 0x5EED1234u;                                    // (test builds: the same world every run, so runs compare)
 #endif
@@ -254,7 +255,7 @@ static void start_life(void) {
         a->age_days = (u8)(a->bore.stage >= AG_ADULT ? 3 : 1); m->age_days = 6; k->age_days = (u8)MAX(0, sim_stage_len(AG_CHILD) - 2);   // (the child's birthday comes in a couple of days)
         a->rel[1] = m->rel[0] = 40; a->rel[2] = k->rel[0] = m->rel[2] = k->rel[1] = 30;
     }
-#if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW)
+#if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT)
     nh_pending = life_mode == 0; cash = life_mode == 2 ? 1000 : 20000; mode_pending = life_mode; life_mode = 0;   // the family picks its home on THE NEIGHBORHOOD screen (The Sims: $20,000 to start), and life_update moves them in
 #endif
     life_started = 1;
@@ -1724,7 +1725,7 @@ static void save_body(void) {
 }
 static void load_body(void) {
     u32 seed = ld_u32();
-    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = 3; } else { bm_packed = 1; bm_gen = 2; }   // (a save from before the TOWNS option: its world as it was made)
+    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
     ld_n(opt, O_N); opts_apply();
     loading("LOADING YOUR GAME", 30);
     bm_new(seed); world_new_seed(seed);
@@ -1806,11 +1807,16 @@ static void slots_draw(void) {
     ui_hints(160, top + 112, slot_ask ? (slot_ask == 1 ? "X REPLACE|O NO" : "SQ DELETE|O NO") : slot_have[slot_sel] ? (slot_save ? "X SAVE|SQ DELETE|O BACK" : "X LOAD|SQ DELETE|O BACK") : (slot_save ? "X SAVE|O BACK" : "X LOAD|O BACK"), 1);
 }
 #ifdef AUTO_SAVE
-int dbg_sv[16];   // (test builds) before / after a save and a load: the zone, the tent, the bench, the hut's walls, the player's action, food; then the long-life save's size
+int dbg_sv[16], dbg_cells[4];   // (test builds) before / after a save and a load: the zone, the tent, the bench, the hut's walls, the player's action, food; then the long-life save's size
 static void save_tick(void) {
     extern int sim_debug_goto(char c, int lot); extern u32 save_last_bytes;
     static int t0 = -1, k;
-    if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); clock_min = 22 * 60; travel_go(ZONE_ISLAND); }
+    if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); clock_min = 22 * 60;
+        { extern int dbg_cells[4]; Bore *b = crowd_temp_bore();   // (how many cells a Bore needs: the most, and the most that show)
+          for (int r = 0; r < 200; r++) { memset(b, 0, sizeof *b); look_default(b); b->stage = (u8)(r % 5); look_random(b); if (r & 1) for (int q = 0; q < LK_COUNT; q++) if (look_allowed(b, q, b->look[q] + 3)) b->look[q] += 3; look_build(b);
+            int vis = 0; for (int i = 0; i < b->ncell; i++) if ((b->cell[i].hide & 63) != 63) vis++;
+            if (b->ncell > dbg_cells[0]) dbg_cells[0] = b->ncell; if (vis > dbg_cells[1]) dbg_cells[1] = vis; dbg_cells[2] += b->ncell; dbg_cells[3] += vis; } }
+        travel_go(ZONE_ISLAND); }
     int t = VSync(-1) - t0;
     if (k == 0 && t >= 60) { k++; isl_wood = isl_stone = isl_leaves = 40; isl_food = 7; isl_make(4); isl_make(0); isl_make(1); }
     if (k == 1 && t >= 120) { k++; sims[player].need[N_REST] = 10 << 10; dbg_sv[14] = sim_debug_goto('z', -1); dbg_sv[15] = sim_player_interact(); }
@@ -1818,6 +1824,7 @@ static void save_tick(void) {
                               save_game(0); }
     if (k == 3 && t >= 400) { k++; if (load_game(0)) state = ST_LIFE; }
     if (k == 4 && t >= 460) { k++; dbg_sv[8] = world_zone; dbg_sv[9] = world_count('z'); dbg_sv[10] = world_count('%'); dbg_sv[11] = world_count('W'); dbg_sv[12] = sims[player].action; dbg_sv[13] = isl_food; dbg_sv[6] = (int)save_last_bytes; }
+    { static int played; if (k == 5 && t >= 600 && !played) { extern int audio_dbg_song(void); played = 1; audio_jukebox_play(7); dbg_cells[2] = audio_dbg_song(); } }   // (the biggest song: it must still fit)
     if (k == 5 && t >= 700) { k++; aging = 2; pop_aging = 1; for (int d = 0; d < 400; d++) pop_midnight(); save_game(1); dbg_sv[7] = (int)save_last_bytes; }
 }
 #endif
@@ -1849,7 +1856,8 @@ static void pause_update(void) {
             case 0: state = ST_LIFE; break;
             case 1: panel_tab = 0; state = ST_PANEL; break;
             case 3: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
-                    create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_backup(); world_gen_studio(); break;
+                    if (!world_backup()) { sim_note("NO ROOM FOR THE STUDIO NOW"); state = ST_LIFE; break; }
+                    create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_gen_studio(); break;
             case 4: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); state = ST_LIFE; } break;
             case 2: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD;
@@ -2869,7 +2877,7 @@ static const char *const wo_cap[3] = { "MAPLE SHORES", "SUNNY HOLLOW", "PINE BAY
 static int wo_sel, wo_t, wo_more, wo_msel, wo_packed; static u32 wo_seed, wo_painted, wo_custom = 0x00C0FFEEu;
 static void paint_world(u32 seed) {                 // SAN BOREAS from above for that seed (the land, the highways, the towns), into the map's picture
     if (seed == wo_painted) return;
-    bm_new(seed);
+    wo_name_for(seed); bm_new(seed);
     u16 *px = atlas_scratch();
     static const u16 tcol[6] = { RGB(4, 9, 19), RGB(25, 23, 15), RGB(10, 18, 7), RGB(5, 12, 5), RGB(24, 20, 12), RGB(15, 15, 15) };
     for (int y = 0; y < 128; y++) for (int x = 0; x < 128; x++) px[y * 128 + x] = tcol[bm_terrain(x * 8 + 4, y * 8 + 4)] | 0x8000;
@@ -2883,12 +2891,16 @@ static void paint_world(u32 seed) {                 // SAN BOREAS from above for
     crowd_flush();
     wo_painted = seed;
 }
+static void wo_name_for(u32 seed) {   // a set world's capital carries the world's name (any other: BORE CITY)
+    bm_cap_name[0] = 0;
+    for (int k = 0; k < 3; k++) if (seed && seed == wo_preset[k]) strcpy(bm_cap_name, wo_cap[k]);
+}
 static u32 wo_seed_of(int k) { return k >= WO_PRE1 && k <= WO_PRE3 ? wo_preset[k - WO_PRE1] : k == WO_CREATE ? wo_custom : 0; }
 static void worlds_open(void) {
     wo_painted = 0; wo_sel = 0; wo_t = 0; wo_more = 0; wo_msel = 0; state = ST_WORLDS;
 }
 static void worlds_go(u32 seed, int mode) {
-    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 3; bm_packed = wo_packed; start_life();
+    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 3; bm_packed = wo_packed; wo_name_for(seed); start_life();
     cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 }
 #define WO_NMORE 4
@@ -2972,7 +2984,7 @@ static void menu_update(void) {
 #endif
                 worlds_open(); break;
             case 1: slots_open(0, ST_MENU); break;
-            case 2: prev_state = ST_MENU; create_tab = 0; create_row = 0; state = ST_CREATE; world_backup(); world_gen_studio(); break;
+            case 2: if (!world_backup()) { audio_voice(VOICE_NAH); break; } prev_state = ST_MENU; create_tab = 0; create_row = 0; state = ST_CREATE; world_gen_studio(); break;
             case 3: prev_state = ST_MENU; state = ST_JUKEBOX; break;
             case 4: opts_open(ST_MENU); break;
             case 5: prev_state = ST_MENU; help_page = 0; state = ST_HELP; break;

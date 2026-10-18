@@ -232,10 +232,21 @@ void world_gen(void) {
     levels_clear(UP); gUpstairs();
 }
 
-static char bk_map[MH][MW + 1]; static u8 bk_fl[MH][MW], bk_wp[MH][MW]; static int bk_on;
-void world_backup(void) { if (bk_on) return; memcpy(bk_map, lifeMap, sizeof bk_map); memcpy(bk_fl, floorMap, sizeof bk_fl); memcpy(bk_wp, wallMap, sizeof bk_wp); bk_on = 1; UP = lvown[ZONE_N]; levels_clear(UP); }
+static int bk_on, bk_slot;   // the live lot, kept in a free storey slot while the creator's studio is shown (a storey is the same size as a lot)
+int world_backup(void) {
+    if (bk_on) return 1;
+    int s = 0; while (s < nlvpool && lvbusy[s]) s++;
+    if (s == nlvpool) return 0;                                  // (every slot holds a storey: no studio now)
+    Level *L = &lvpool[s]; lvbusy[s] = 1; bk_slot = s;
+    memcpy(L->map, lifeMap, sizeof L->map); memcpy(L->fl, floorMap, sizeof L->fl); memcpy(L->wp, wallMap, sizeof L->wp);
+    bk_on = 1; UP = lvown[ZONE_N]; levels_clear(UP);
+    return 1;
+}
 void world_restore(void) {
-    ao_dirty = 1; roof_dirty = 1; if (!bk_on) return; levels_clear(lvown[ZONE_N]); UP = lvown[world_zone]; memcpy(lifeMap, bk_map, sizeof bk_map); memcpy(floorMap, bk_fl, sizeof bk_fl); memcpy(wallMap, bk_wp, sizeof bk_wp); bk_on = 0; }
+    ao_dirty = 1; roof_dirty = 1; if (!bk_on) return; levels_clear(lvown[ZONE_N]); UP = lvown[world_zone];
+    const Level *L = &lvpool[bk_slot];
+    memcpy(lifeMap, L->map, sizeof L->map); memcpy(floorMap, L->fl, sizeof L->fl); memcpy(wallMap, L->wp, sizeof L->wp);
+    lvbusy[bk_slot] = 0; bk_on = 0; }
 void world_gen_studio(void) {
     ao_dirty = 1;   // a 9x9 parlour: the creator's stage
     for (int y = 0; y < MH; y++) { for (int x = 0; x < MW; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = 4; wallMap[y][x] = 0; } lifeMap[y][MW] = 0; }

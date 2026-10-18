@@ -14,6 +14,7 @@ enum { LK_X_HEAD = LK_N, LK_X_FACE, LK_X_NECK, LK_X_BACK, LK_X_HAND, LK_X_WAIST,
 #define NX_COL 16
 #define NAME_LEN 12
 
+#define NCELL_MAX 96   // solid blocks a Bore keeps (the build box holds 192, but 3,000 rolled Bores, the biggest dressed up, never passed 58)
 typedef struct {
     // what the creator chose
     u8   look[LK_COUNT];
@@ -32,7 +33,7 @@ typedef struct {
     u8   baked;
     // the drawing cache (voxel_prepare): the solid cells, grouped by body part, with their hidden faces worked out once
     u8   ncell;
-    struct { u8 x, y, z, v, hide, grp, flags, pad; SVECTOR c[8]; } cell[W * D * H];   // c: the 8 corners (top 4, bottom 4), rounded hull and wedges folded in; flags: 1 hair, 2 limb
+    struct { u8 x, y, z, v, hide, grp, flags, pad; SVECTOR c[8]; } cell[NCELL_MAX];   // c: the 8 corners (top 4, bottom 4), rounded hull and wedges folded in; flags: 1 hair, 2 limb
     u8   ndec;
     // where the WEAR tab's accessories attach (voxel_prepare), body-space units
     s16  w_headx, w_heady, w_headz, w_headh;    // the top centre of the head (on the hair), the head's half width

@@ -60,7 +60,7 @@ typedef struct { u8 zone, home, n, fam; u8 mem[6]; u16 pfam; } Hh;   // a househ
 
 static Cit cits[NCIT];
 static Hh hh[NHH]; static int nhh; static u8 formed[ZONE_N];
-static Bore scratch; static int scratch_ready;
+// (a citizen is built in crowd.c's unpacking Bore: it is only ever needed between one unpack and the drawing that follows)
 static void party_leave_done(Cit *c);
 static int party_on, party_left, party_cx, party_cy, party_in, party_spx, party_spz, party_n, party_next, party_t, home_guests;
 #define PARTY_MAX 60
@@ -138,7 +138,9 @@ static void cit_bore(Bore *b, const Cit *c) {   // the same person, every time, 
     if (c->hh != NONE) { strncpy(b->last, look_last_name(hh[c->hh].fam), NAME_LEN - 1); b->last[NAME_LEN - 1] = 0; }   // a household shares its surname
 }
 static void build_lod(Cit *c) {
-    if (!scratch_ready) { look_default(&scratch); scratch_ready = 1; }
+    Bore *sp = crowd_temp_bore();
+    #define scratch (*sp)
+    memset(sp, 0, sizeof *sp);
     int id = (int)(c - cits);
     crowd_faces(id, &scratch);                                         // the person's own face slot: look_build bakes the eyes and mouth into it
     cit_bore(&scratch, c);
@@ -147,6 +149,7 @@ static void build_lod(Cit *c) {
     strncpy(c->last, scratch.last, NAME_LEN - 1); c->last[NAME_LEN - 1] = 0;
     voxel_lod_build(&scratch, &c->lod);
     c->built = 1;
+    #undef scratch
 }
 
 // ---- homes and households -----------------------------------------------------------------------------
