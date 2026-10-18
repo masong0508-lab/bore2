@@ -88,7 +88,8 @@ static void seq_row(void) {
     while (n--) {
         u32 w = e[0] | ((u32)e[1] << 8) | ((u32)e[2] << 16); e += 3;
         u32 t = sq_vt[(w & 255) | ((w >> 22) << 8)];
-        int ch = t & 15, in = (t >> 4) & 31, bus = (t >> 9) & 7, nt = (w >> 8) & 127, vol = (w >> 15) & 127;
+        int ch = t & 15, in = (t >> 4) & 31, bus = (t >> 9) & 7, nt = (w >> 8) & 127, vol = (w >> 15) & 127, rel = t >> 12;
+        if (nt == 127) { SPU_KEY_OFF1 = (u16)(1u << ch); continue; }   // a key off (the songs made from renders: tools/build_midi_songs.py): the note fades on its release
         if (bus > 6) bus = 3;
         u32 so = sq_smpoff[in];
         if (so == 0xffffffff || nt >= 96) continue;
@@ -98,7 +99,8 @@ static void seq_row(void) {
         SPU_CH_FREQ(ch) = sq_pitch[in * 96 + nt];
         SPU_CH_ADDR(ch) = getSPUAddr(song_base + (int)so);
         SPU_CH_ADSR1(ch) = 0x00ff;                       // instant attack, full sustain: the sample plays as it is (one-shot)
-        SPU_CH_ADSR2(ch) = 0x0005;                       // a short release, for when a note is cut
+        { static const u16 relTab[4] = { 0x0005, 0x000C, 0x000D, 0x000E };   // the release when a note is cut: short (the tracker songs), or 0.2, 0.4, 0.7 s (a held sound let go)
+          SPU_CH_ADSR2(ch) = relTab[rel & 3]; }
         on |= 1u << ch;
     }
     if (on) SPU_KEY_ON1 = (u16)on;
@@ -293,10 +295,10 @@ void audio_jukebox_play(int i) {
 }
 // ---- RADIO STATIONS: the songs grouped by feel; a radio, stereo or jukebox tunes one in ----
 static const char *const stNm[4] = { "BORE FM", "RAVE 101", "CHILL WAVE", "SPACE RADIO" };
-static const char *const stKey[4] = { "DIPPER|EXCUSES|CORA|BARRACHO|FLEXICODE|WINNER",
-                                      "HOT DAMN|COCAINE|CYNICAL|EMERGENCY|AIM AND|CONDENSED",
+static const char *const stKey[4] = { "DIPPER|EXCUSES|CORA|BARRACHO|FLEXICODE|WINNER|CIGARETTE",
+                                      "HOT DAMN|COCAINE|CYNICAL|EMERGENCY|AIM AND|CONDENSED|OHIO|OVER MY VOICE",
                                       "TREE|CLOUDS|SUNMAN|WHISTLER|CLOSER|HERE TODAY",
-                                      "SPACE|MARS|BOMB|MAGIC|NURSERY|STAGED|AMIGA" };
+                                      "SPACE|MARS|BOMB|MAGIC|NURSERY|STAGED|AMIGA|QUICKBULLET" };
 static int station = -1;
 static int in_station(int st, int i) {   // does song i's name hold one of the station's words
     const char *k = stKey[st], *n = songs[i].name;

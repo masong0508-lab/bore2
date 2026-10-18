@@ -15,6 +15,7 @@ os.makedirs(OUT, exist_ok=True)
 XAENC = 'xaenc'
 MIXR = 18157          # the GBA mixer rate every step in xm2gba is relative to
 SECTOR = 2048
+SPU_BUDGET = 300 * 1024   # sound memory a song's samples may take (after the voice clips, before the reverb)
 
 # ---- the GBA converter, loaded as a module (its outputs are only returned, never written here) ----
 os.chdir(SRC)
@@ -54,21 +55,26 @@ def carr(text, name):
     return [v.strip() for v in m.group(2).replace('\n', '').split(',') if v.strip()]
 
 adpcm_cache = {}
-def to_adpcm(name, s8, hires=None):
-    if name in adpcm_cache: return adpcm_cache[name]
+def to_adpcm(name, s8, hires=None, rate=1.0):   # rate < 1: the sample kept at a lower rate (a song too big for sound memory), its pitches follow
+    key = (name, rate)
+    if key in adpcm_cache: return adpcm_cache[key]
     if hires is not None:   # the full-precision sample: the GBA's fade-out, then cut to the same length
         h = np.array(hires, dtype=float); fade = min(48, len(h) // 4)
         if fade: h[-fade:] *= np.linspace(1, 0, fade)
         h = h[:len(s8)]
-        pcm = np.clip(np.round(h * 32767), -32768, 32767).astype('<i2').tobytes()
     else:
-        pcm = (np.frombuffer(s8, dtype=np.int8).astype(np.int16) * 256).astype('<i2').tobytes()
+        h = np.frombuffer(s8, dtype=np.int8).astype(float) / 128.0
+    if rate < 1.0:
+        from scipy import signal as _sg
+        up, dn = {0.5: (1, 2), 0.75: (3, 4), 0.375: (3, 8), 0.25: (1, 4)}[rate]
+        h = _sg.resample_poly(h, up, dn)
+    pcm = np.clip(np.round(h * 32767), -32768, 32767).astype('<i2').tobytes()
     tmp = os.path.join(OUT, '_s.adpcm')
     r = subprocess.run([XAENC, 'spu', '0', tmp], input=pcm, capture_output=True)
     if r.returncode: sys.exit('xaenc failed: ' + r.stderr.decode())
     d = open(tmp, 'rb').read(); os.remove(tmp)
     d += bytes((-len(d)) % 16)
-    adpcm_cache[name] = d
+    adpcm_cache[key] = d
     return d
 
 def pad(b, n): return b + bytes((-len(b)) % n)
@@ -94,13 +100,23 @@ for sid, path in X.song_list():
     eo, en = lab[P + 'ev']; ev = bytes(X.BLOB[eo:eo + en])
     ninst = len(anc)
     # ---- the samples, in the sound chip's format ----
-    smp = bytearray(); smpoff = []
-    for k in range(ninst):
-        nm = dnames[k]
-        if nm == '0' or not lens[k]: smpoff.append(0xFFFFFFFF); continue
-        o, n = lab[nm]
-        d = to_adpcm('%s:%d' % (sid, k), bytes(X.BLOB[o:o + lens[k]]), HIRES.get((sid, k)))   # (len excludes the GBA's interpolation guard sample)
-        smpoff.append(len(smp)); smp += d
+    # (a song whose samples do not fit the sound memory left for music: its biggest samples are kept at a lower rate, a step at a time)
+    rate = [1.0] * ninst
+    def build_smp():
+        smp = bytearray(); smpoff = []; sizes = [0] * ninst
+        for k in range(ninst):
+            nm = dnames[k]
+            if nm == '0' or not lens[k]: smpoff.append(0xFFFFFFFF); continue
+            o, n = lab[nm]
+            d = to_adpcm('%s:%d' % (sid, k), bytes(X.BLOB[o:o + lens[k]]), HIRES.get((sid, k)), rate[k])   # (len excludes the GBA's interpolation guard sample)
+            smpoff.append(len(smp)); smp += d; sizes[k] = len(d)
+        return smp, smpoff, sizes
+    smp, smpoff, sizes = build_smp()
+    steps = {1.0: 0.75, 0.75: 0.5, 0.5: 0.375, 0.375: 0.25}
+    while len(smp) > SPU_BUDGET:
+        k = max((i for i in range(ninst) if rate[i] in steps), key=lambda i: sizes[i], default=-1)
+        if k < 0: break
+        rate[k] = steps[rate[k]]; smp, smpoff, sizes = build_smp()
     # ---- every note's pitch: the GBA step (16.16 at 18157 Hz) -> SPU pitch (4.12 at 44100 Hz) ----
     fixups = {(fx[i], fx[i + 1]): (fx[i + 2] - 256 if fx[i + 2] > 127 else fx[i + 2]) for i in range(0, len(fx) - 1, 3)}
     pitch = []
@@ -108,7 +124,7 @@ for sid, path in X.song_list():
         for nt in range(96):
             if not anc[k]: pitch.append(0); continue
             st = X.step_formula(anc[k], nt) + fixups.get((k, nt), 0)
-            pitch.append(max(1, min(0x3FFF, int(round(st * MIXR / 705600)))))
+            pitch.append(max(1, min(0x3FFF, int(round(st * MIXR / 705600 * rate[k])))))
     rowsec = (rowN + rfr / 256) / MIXR
     seconds = int(round(sum(rows[o] for o in order) * rowsec))
     # ---- the song's sequence block ----

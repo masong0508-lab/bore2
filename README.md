@@ -47,18 +47,19 @@ ceiling that reaches behind the eye is cut at a near plane and drawn from what i
 3. Open `build/bore2.cue` in DuckStation. (`--target chd` also makes the one-file `build/BORE2.chd`: `tools/mkchd.py`.)
 
 ## The music
-All 33 jukebox songs are SEQUENCES, not recordings: each is its note events plus small instrument samples in the PS1 sound chip's
-own format, in one file, `assets/SONGS.BIN` (3.6 MB). `src/audio.c` loads one song's samples into sound memory and a 480 Hz timer
-interrupt keys the notes on, so the sound chip does the playing. `tools/build_music.py <bore-gba-main> assets` rebuilds it with the
-GBA game's own converter (`tools/xm2gba.py`), so the songs play the same notes, volumes and pans as on the GBA.
+All 52 jukebox songs are SEQUENCES, not recordings: each is its note events plus small instrument samples in the PS1 sound chip's
+own format, in one file, `assets/SONGS.BIN` (5.6 MB; a song's notes are a few KB). `src/audio.c` loads one song's samples into sound
+memory and a 480 Hz timer interrupt keys the notes on, so the sound chip does the playing. `tools/build_music.py <bore-gba-main> assets`
+rebuilds the tracker songs with the GBA game's own converter (`tools/xm2gba.py`), so they play the same notes, volumes and pans as on
+the GBA; a song whose samples are too big for sound memory (about 300 KB each) has its biggest samples made smaller until it fits.
+New from the latest GBA build: MISTER QUICKBULLET, OVER MY VOICE, OHIO HOE, CYNICALLER MADNESS and 12 Dipper Man demos.
 The creature code: `python3 tools/port_look.py <bore-gba-main>/source/main.c src/look_port.inc`.
 
-The newest songs, the HERE TODAY family (HERE TODAY GONE TOMORROW by Singhs; HERE TODAY (MISSY'S SONG), its FULL VERSION and the
-ORIGINAL by Missy Jeanne), are recordings with no notes to sequence, so they are STREAMED off the disc: `tools/build_streams.py` renders
-each one fresh with the GBA game's own generator scripts at 32 kHz stereo (the GBA plays them at 18 kHz mono), gives the mono ones a
-light stereo remix (a short room on each side), and adds them to SONGS.BIN as chunks of the sound chip's ADPCM. `src/audio.c` plays
-them on two voices from two buffers in sound memory, refilled from RAM on the sound chip's interrupt and from the disc a few sectors
-a frame. They are in the jukebox and the radio (CHILL WAVE).
+The HERE TODAY family (HERE TODAY GONE TOMORROW by Singhs; HERE TODAY (MISSY'S SONG), its FULL VERSION and the ORIGINAL by Missy
+Jeanne) has no tracker file: the GBA game renders them from Python scripts. `tools/build_midi_songs.py <bore-gba-main> assets
+id|NAME|ARTIST|script|fx|gain ...` runs those scripts, catches every note they play, makes each instrument one small looped sample, and
+writes the notes as a sequence like the others (with note offs and stereo pans), so they are small too. They are in the jukebox and the
+radio (CHILL WAVE). (`audio.c` can also stream sound off the disc, kept for later; `tools/build_streams.py` makes those streams.)
 
 ## Folders
 - `src/` the game (C). `look_port.inc` is the GBA creature code ported by `tools/port_look.py`.
