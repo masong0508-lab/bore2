@@ -176,14 +176,97 @@ static int cd_read(u32 sector, int count, void *buf) {
     return CdReadSync(0, 0) >= 0;
 }
 
+
+// ---- THE STREAMER: a recorded song (no notes to sequence) played straight off the disc (tools/build_streams.py) ----
+// On the disc: chunks of 4 KB of left then 4 KB of right ADPCM; every 4 KB ends with the end + repeat flags. Two buffers of one chunk sit
+// in sound memory (where a sequenced song's samples would go); voices 0 and 1 play one while the other is filled. The SPU raises its IRQ
+// as a voice starts on a buffer: the handler points both voices' loop address at the other buffer and fills it from a FIFO in RAM (the
+// sequence buffer, idle while a stream plays); the main loop keeps the FIFO topped up from the disc (audio_update, a few sectors a time).
+#define ST_IL    4096                                  // bytes per channel per chunk
+#define ST_CH    (2 * ST_IL)                           // a chunk: left then right (4 sectors)
+#define ST_NF    (SEQ_MAX / ST_CH)                     // chunks the FIFO holds (11: about 2.5 s at 32 kHz)
+static volatile int st_on, st_db, st_n, st_tail, st_done, st_under;
+static int st_head, st_reading, st_read, st_total, st_sector, st_rate;
+static void *st_old_irq, *st_old_dma;
+static void st_irq(void) {
+    SPU_CTRL &= ~(1 << 6);                              // (the only way to acknowledge it: off now, on again once the buffer is filled)
+    if (!st_on) return;
+    if (!st_n) {                                        // the FIFO is empty
+        if (st_read >= st_total && !st_reading) { st_done = 1; SPU_KEY_OFF1 = 3; return; }   // the end of the song
+        st_under++; SPU_CTRL |= 1 << 6; return;         // (the disc is behind: the last buffer plays again)
+    }
+    st_db ^= 1;
+    const u8 *ptr = (const u8 *)seqbuf + st_tail * ST_CH;
+    st_tail = (st_tail + 1) % ST_NF; st_n--;
+    int addr = song_base + st_db * ST_CH;
+    SpuSetTransferStartAddr(addr);
+    SPU_IRQ_ADDR = getSPUAddr(addr);                    // (the IRQ again when a voice starts on this buffer)
+    SPU_CH_LOOP_ADDR(0) = getSPUAddr(addr); SPU_CH_LOOP_ADDR(1) = getSPUAddr(addr + ST_IL);
+    SpuWrite((const u32 *)ptr, ST_CH);
+}
+static void st_dma(void) { if (st_on) SPU_CTRL |= 1 << 6; }
+static void st_feed(void) {                            // (main loop) the disc into the FIFO: a read of up to 4 chunks at a time
+    if (!st_on) return;
+    if (st_reading) {
+        int r = CdReadSync(1, 0);
+        if (r > 0) return;
+        if (r == 0) { EnterCriticalSection(); st_head = (st_head + st_reading) % ST_NF; st_n += st_reading; ExitCriticalSection(); st_read += st_reading; }
+        st_reading = 0;                                 // (an error: the same chunks are asked for again)
+    }
+    int free_ = ST_NF - st_n, k = MIN(MIN(free_, ST_NF - st_head), MIN(4, st_total - st_read));
+    if (k <= 0) return;
+    CdlLOC loc; CdIntToPos(CdPosToInt(&songs_loc) + st_sector + st_read * (ST_CH / 2048), &loc);
+    if (!CdControl(CdlSetloc, &loc, 0)) return;
+    if (CdRead(k * (ST_CH / 2048), (u32 *)((u8 *)seqbuf + st_head * ST_CH), CdlModeSpeed)) st_reading = k;
+}
+static void st_stop(void) {
+    if (!st_on) return;
+    EnterCriticalSection();
+    st_on = 0; SPU_CTRL &= ~(1 << 6);
+    InterruptCallback(IRQ_SPU, st_old_irq); DMACallback(DMA_SPU, st_old_dma);
+    ExitCriticalSection();
+    SpuIsTransferCompleted(SPU_TRANSFER_WAIT);
+    SPU_KEY_OFF1 = 3; SPU_CH_VOL_L(0) = SPU_CH_VOL_R(0) = SPU_CH_VOL_L(1) = SPU_CH_VOL_R(1) = 0;
+    SPU_CH_ADDR(0) = SPU_CH_ADDR(1) = getSPUAddr(0x1000);   // (the dummy block: a stopped voice still reads, and must not trip the IRQ)
+    if (st_reading) { CdReadSync(0, 0); st_reading = 0; }
+}
+static int st_start(int i) {                           // (after music_silence) 1: playing
+    st_sector = (int)sidx[i].sector; st_total = (int)sidx[i].smp_bytes; st_rate = songs[i].rate ? songs[i].rate : 32000;
+    st_head = st_tail = st_n = st_read = st_reading = 0; st_db = 1; st_done = 0; st_under = 0;
+    for (int ch = 0; ch < MUS_CH; ch++) SPU_CH_ADDR(ch) = getSPUAddr(0x1000);
+    int first = MIN(ST_NF, st_total);                  // the FIFO full before the first note
+    if (!cd_read((u32)st_sector, first * (ST_CH / 2048), seqbuf)) return 0;
+    st_head = first % ST_NF; st_n = first; st_read = first;
+    SpuSetTransferMode(SPU_TRANSFER_BY_DMA);
+    EnterCriticalSection();
+    st_old_irq = InterruptCallback(IRQ_SPU, &st_irq); st_old_dma = DMACallback(DMA_SPU, &st_dma);
+    st_on = 1;
+    ExitCriticalSection();
+    st_irq(); SpuIsTransferCompleted(SPU_TRANSFER_WAIT);   // the first chunk into a buffer
+    SPU_CTRL &= ~(1 << 6);                              // (no IRQ as the voices start on it: the second chunk is sent by hand below)
+    int addr = song_base + st_db * ST_CH, v = 0x3fff * music_vol / 320;
+    SPU_KEY_OFF1 = 3;
+    for (int c = 0; c < 2; c++) {
+        SPU_CH_ADDR(c) = getSPUAddr(addr + c * ST_IL); SPU_CH_FREQ(c) = getSPUSampleRate(st_rate);
+        SPU_CH_ADSR1(c) = 0x00ff; SPU_CH_ADSR2(c) = 0x0000;
+        SPU_CH_VOL_L(c) = c ? 0 : v; SPU_CH_VOL_R(c) = c ? v : 0;
+    }
+    SPU_REVERB_ON1 = 0;                                 // (the recording has its own room)
+    SPU_KEY_ON1 = 3;
+    st_irq();                                           // the second chunk into the other buffer; the IRQ armed on it
+    return 1;
+}
 void audio_jukebox_stop(void) {
+    st_stop();
     music_silence();
     cur_song = -1;
 }
 void audio_jukebox_play(int i) {
     if (!cd_ok || i < 0 || i >= NSONGS) return;
+    st_stop();
     music_silence();
     cur_song = -1;
+    if (songs[i].stream) { if (st_start(i)) { play_frames = 0; cur_song = i; } return; }
     if (song_base + (int)sidx[i].smp_bytes > REV_ADDR) return;     // (never into the reverb's work area)
     // the samples: through the sequence buffer, a chunk at a time, into sound memory after the voices
     int left = (int)sidx[i].smp_sectors, sec = (int)(sidx[i].sector + sidx[i].seq_sectors), addr = song_base;
@@ -212,7 +295,7 @@ void audio_jukebox_play(int i) {
 static const char *const stNm[4] = { "BORE FM", "RAVE 101", "CHILL WAVE", "SPACE RADIO" };
 static const char *const stKey[4] = { "DIPPER|EXCUSES|CORA|BARRACHO|FLEXICODE|WINNER",
                                       "HOT DAMN|COCAINE|CYNICAL|EMERGENCY|AIM AND|CONDENSED",
-                                      "TREE|CLOUDS|SUNMAN|WHISTLER|CLOSER",
+                                      "TREE|CLOUDS|SUNMAN|WHISTLER|CLOSER|HERE TODAY",
                                       "SPACE|MARS|BOMB|MAGIC|NURSERY|STAGED|AMIGA" };
 static int station = -1;
 static int in_station(int st, int i) {   // does song i's name hold one of the station's words
@@ -241,6 +324,7 @@ void audio_jukebox_next(void) {
 void audio_update(void) {
     if (cur_song < 0) return;
     play_frames++;
+    if (songs[cur_song].stream) { st_feed(); if (st_done) audio_jukebox_next(); return; }
     if (sq_laps > 0 && cur_song != 0) audio_jukebox_next();       // a song moves on when it has played once (THE DIPPER MAN, the title song, loops)
 }
 
@@ -281,4 +365,5 @@ void audio_init(void) {
     ExitCriticalSection();
 }
 
-int audio_dbg_song(void) { return cur_song * 10 + sq_on; }   // (test builds: which song is playing, and whether the sequencer runs)
+int audio_dbg_song(void) { return cur_song * 10 + sq_on; }
+int audio_dbg_stream(int k) { return k == 0 ? st_on : k == 1 ? st_read : k == 2 ? st_under : k == 3 ? st_n : st_done; }   // (test builds)   // (test builds: which song is playing, and whether the sequencer runs)

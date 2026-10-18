@@ -53,6 +53,13 @@ interrupt keys the notes on, so the sound chip does the playing. `tools/build_mu
 GBA game's own converter (`tools/xm2gba.py`), so the songs play the same notes, volumes and pans as on the GBA.
 The creature code: `python3 tools/port_look.py <bore-gba-main>/source/main.c src/look_port.inc`.
 
+The newest songs, the HERE TODAY family (HERE TODAY GONE TOMORROW by Singhs; HERE TODAY (MISSY'S SONG), its FULL VERSION and the
+ORIGINAL by Missy Jeanne), are recordings with no notes to sequence, so they are STREAMED off the disc: `tools/build_streams.py` renders
+each one fresh with the GBA game's own generator scripts at 32 kHz stereo (the GBA plays them at 18 kHz mono), gives the mono ones a
+light stereo remix (a short room on each side), and adds them to SONGS.BIN as chunks of the sound chip's ADPCM. `src/audio.c` plays
+them on two voices from two buffers in sound memory, refilled from RAM on the sound chip's interrupt and from the disc a few sectors
+a frame. They are in the jukebox and the radio (CHILL WAVE).
+
 ## Folders
 - `src/` the game (C). `look_port.inc` is the GBA creature code ported by `tools/port_look.py`.
 - `assets/` voices, the songs (`SONGS.BIN`), the song list.

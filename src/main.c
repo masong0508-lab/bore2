@@ -261,7 +261,7 @@ static void start_life(void) {
         a->age_days = (u8)(a->bore.stage >= AG_ADULT ? 3 : 1); m->age_days = 6; k->age_days = (u8)MAX(0, sim_stage_len(AG_CHILD) - 2);   // (the child's birthday comes in a couple of days)
         a->rel[1] = m->rel[0] = 40; a->rel[2] = k->rel[0] = m->rel[2] = k->rel[1] = 30;
     }
-#if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT)
+#if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM)
     nh_pending = life_mode == 0; cash = life_mode == 2 ? 1000 : 20000; mode_pending = life_mode; life_mode = 0;   // the family picks its home on THE NEIGHBORHOOD screen (The Sims: $20,000 to start), and life_update moves them in
 #endif
     life_started = 1;
@@ -1819,8 +1819,13 @@ static void slots_draw(void) {
     ui_textc(160, top + 98, 1, m, slot_ask || (save_msg && strcmp(save_msg, "SAVE DELETED")) || !slot_card ? UI_BADT : UI_SOFT);
     ui_hints(160, top + 112, slot_ask ? (slot_ask == 1 ? "X REPLACE|O NO" : "SQ DELETE|O NO") : slot_have[slot_sel] ? (slot_save ? "X SAVE|SQ DELETE|O BACK" : "X LOAD|SQ DELETE|O BACK") : (slot_save ? "X SAVE|O BACK" : "X LOAD|O BACK"), 1);
 }
+#ifdef AUTO_STREAM
+static void stream_tick(void) {   // (test builds: a streamed song from the first second of a life, for an audio capture)
+    static int t0 = -1; if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); audio_jukebox_play(AUTO_STREAM); }
+}
+#endif
 #ifdef AUTO_SAVE
-int dbg_sv[16], dbg_cells[4];   // (test builds) before / after a save and a load: the zone, the tent, the bench, the hut's walls, the player's action, food; then the long-life save's size
+int dbg_sv[16], dbg_cells[4], dbg_st[8];   // (test builds) before / after a save and a load: the zone, the tent, the bench, the hut's walls, the player's action, food; then the long-life save's size
 static void save_tick(void) {
     extern int sim_debug_goto(char c, int lot); extern u32 save_last_bytes;
     static int t0 = -1, k;
@@ -1838,6 +1843,9 @@ static void save_tick(void) {
     if (k == 3 && t >= 400) { k++; if (load_game(0)) state = ST_LIFE; }
     if (k == 4 && t >= 460) { k++; dbg_sv[8] = world_zone; dbg_sv[9] = world_count('z'); dbg_sv[10] = world_count('%'); dbg_sv[11] = world_count('W'); dbg_sv[12] = sims[player].action; dbg_sv[13] = isl_food; dbg_sv[6] = (int)save_last_bytes; }
     { static int played; if (k == 5 && t >= 600 && !played) { extern int audio_dbg_song(void); played = 1; audio_jukebox_play(7); dbg_cells[2] = audio_dbg_song(); } }   // (the biggest song: it must still fit)
+    { static int sp; extern int audio_dbg_stream(int k); extern int dbg_st[8];   // (a streamed song: it must keep coming off the disc)
+      if (k == 6 && !sp) { sp = 1; audio_jukebox_play(33); dbg_st[0] = t; }
+      if (sp) { dbg_st[1] = audio_dbg_stream(0); dbg_st[2] = audio_dbg_stream(1); dbg_st[3] = audio_dbg_stream(2); dbg_st[4] = audio_dbg_stream(3); dbg_st[5] = t; dbg_st[6] = audio_jukebox_current(); } }
     if (k == 5 && t >= 700) { k++; aging = 2; pop_aging = 1; for (int d = 0; d < 400; d++) pop_midnight(); save_game(1); dbg_sv[7] = (int)save_last_bytes; }
 }
 #endif
@@ -2907,7 +2915,7 @@ static void help_draw(void) {   // three pages of tips, each with its picture
 static int title_t;
 static void title_update(void) {
     title_t++;
-#if defined(AUTO_PARTY) || defined(AUTO_CITY)
+#if defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM)
     if (title_t == 30) { life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 #ifdef AUTO_CITY
         travel_go(ZONE_CITY);
@@ -3056,7 +3064,7 @@ static void menu_update(void) {
     if (PRESSED(PAD_CROSS) || PRESSED(PAD_START)) {
         switch (menu_sel) {
             case 0:
-#if defined(AUTO_CITY) || defined(AUTO_PARTY) || defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_SCENE) || defined(AUTO_PHONE) || defined(AUTO_ISLE) || defined(AUTO_HOME) || defined(AUTO_GROW) || defined(AUTO_SAVE) || defined(AUTO_TOWER) || defined(AUTO_FLOAT)
+#if defined(AUTO_CITY) || defined(AUTO_PARTY) || defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_SCENE) || defined(AUTO_PHONE) || defined(AUTO_ISLE) || defined(AUTO_HOME) || defined(AUTO_GROW) || defined(AUTO_SAVE) || defined(AUTO_TOWER) || defined(AUTO_FLOAT) || defined(AUTO_STREAM)
                 worlds_go(0, 0); break;   // (test builds: straight into a life, as before)
 #endif
                 worlds_open(); break;
@@ -3180,6 +3188,9 @@ int main(void) {
 #endif
 #ifdef AUTO_SAVE
         save_tick();
+#endif
+#ifdef AUTO_STREAM
+        stream_tick();
 #endif
         ui_light = 0;
         switch (state) {
