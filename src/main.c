@@ -101,7 +101,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int sub_back = ST_LIFE;
@@ -121,10 +121,15 @@ static u8 fill_seen[MW * MH / 8 + 1];
 static char build_msg[32]; static int build_msg_t;   // what build mode has to say (the life's notes are not on screen there)
 static void home_go(void);
 static void travel_go(int z);
+static void name_open(char *buf, int cap, const char *title, void (*done)(void));
 static void wo_name_for(u32 seed);   // (THE WORLDS: a set world's capital is named for it)
+static void worlds_open(void);
+static void worlds_draw(void);
+static void create_draw(void);
 static void nhood_open(int first);   // THE NEIGHBORHOOD: 48 lots to pick a home from (first: a new life, before they have one)
 static int nh_pending;                // a new life has begun: the neighborhood opens on its first frame
 static u32 life_seed;                 // the world the next new life is made in (0: fresh dice)
+static char life_cap[18];             // ... and its capital's name, if the player gave it one
 static int life_mode, mode_pending;   // 0 SAN BOREAS, 1 CASTAWAY (they begin on the island), 2 RAGS TO RICHES ($1,000 to start)
 static int craft_sel, craft_msg_t; static char craft_msg[32];   // the CRAFT list's pick; why it could not be made (a while)
 extern char _end[];
@@ -227,7 +232,8 @@ static void start_life(void) {
     loading("MAKING A NEW LIFE", 20);
     {   // a new world: SAN BOREAS from fresh dice (the land, the towns, every building and room), and its 874 households
         u32 seed = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ ((u32)frame * 2246822519u); if (!seed) seed = 1;
-        if (life_seed) { seed = life_seed; life_seed = 0; } else bm_cap_name[0] = 0;   // (fresh dice: BORE CITY again)   // (a preset world, or one made on the CREATE A WORLD screen)
+        if (life_seed) { seed = life_seed; life_seed = 0; } else bm_cap_name[0] = 0;   // (fresh dice: BORE CITY again)
+        bm_rename_clear(); if (life_cap[0]) { bm_rename(0, life_cap); life_cap[0] = 0; }   // (a capital named on PICK A WORLD)   // (a preset world, or one made on the CREATE A WORLD screen)
 #if defined(AUTO_CITY) || defined(AUTO_PARTY)
         seed = 0x5EED1234u;                                    // (test builds: the same world every run, so runs compare)
 #endif
@@ -833,6 +839,8 @@ static void map_open(void) {
         for (int i = 0; i < bm_nset(); i++) { const Settle *st = bm_set(i); int d = (st->x - pbx) * (st->x - pbx) + (st->y - pby) * (st->y - pby); if (d < bd) { bd = d; map_sel = i; } }
     }
 }
+static char map_nm[18];
+static void map_renamed(void) { bm_rename(map_sel, map_nm); char b[40]; snprintf(b, sizeof b, "NOW CALLED %s", map_nm); sim_note(b); }
 static void map_update(void) {
     if (map_t < 0) map_open();
     map_t++;
@@ -841,6 +849,7 @@ static void map_update(void) {
     if (PRESSED(PAD_UP)) map_sel = (map_sel + n - 1) % n;
     if (PRESSED(PAD_DOWN)) map_sel = (map_sel + 1) % n;
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = BACK_TO(); return; }
+    if (PRESSED(PAD_TRIANGLE)) { strcpy(map_nm, bm_set(map_sel)->name); name_open(map_nm, 17, "RENAME THIS TOWN", map_renamed); return; }
     if (PRESSED(PAD_CROSS)) {
         if (cash < 20) { sim_note("A TAXI IS $20"); audio_voice(VOICE_NAH); return; }
         cash -= 20;
@@ -894,7 +903,7 @@ static void map_draw(void) {   // the state on a card: the map on the left (the 
     sprintf(b, "%s, %d BLOCKS ACROSS", kn[st->kind % 3], st->r * 2 + 1);
     gfx_rect(10, 211, 300, 1, 200, 210, 222, 0);
     ui_text(12, 218, 1, b, UI_SOFT);
-    ui_hints(310, 215, "X TAXI|O BACK", 2);
+    ui_hints(310, 215, "X TAXI|TRI RENAME|O BACK", 2);
 }
 
 // ---- SAN BOREAS: the people (every household, who they are, where they are right now) ----
@@ -1719,6 +1728,8 @@ static void opts_draw(void) {
 static const char *save_msg;                                 // why the last load failed (the title shows it)
 static void save_body(void) {
     sv_u32(world_seed()); sv_u8(bm_packed);
+    { int n = 0; for (int i = 0; i < BM_NSET_MAX; i++) if (bm_renamed(i)[0]) n++;   // (the towns renamed)
+      sv_u8(n); for (int i = 0; i < BM_NSET_MAX; i++) if (bm_renamed(i)[0]) { sv_u8(i); sv_str(bm_renamed(i), 17); } }
     sv_n(opt, O_N);
     sv_u8(home_city); sv_u16(home_bx); sv_u16(home_by); sv_u32((u32)home_paid);
     sim_save(); world_save(!home_city); pop_save(); isl_save();
@@ -1726,6 +1737,8 @@ static void save_body(void) {
 static void load_body(void) {
     u32 seed = ld_u32();
     if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
+    bm_rename_clear();
+    if (save_ver >= 4) { int n = ld_u8(); for (int k = 0; k < n; k++) { int i = ld_u8(); char nm[18]; ld_str(nm, 17); bm_rename(i, nm); } }
     ld_n(opt, O_N); opts_apply();
     loading("LOADING YOUR GAME", 30);
     bm_new(seed); world_new_seed(seed);
@@ -2213,6 +2226,65 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
 }
 
 // ---- the creator ----
+// ---- the name keyboard (a letter grid, like the PC games' name boxes on a pad): the Bore's name, the capital's name ----
+static char *nk_buf; static int nk_cap, nk_back, nk_r, nk_c, nk_t; static const char *nk_title; static void (*nk_done)(void);
+static char nk_text[24];
+static const char nk_keys[4][11] = { "ABCDEFGHIJ", "KLMNOPQRST", "UVWXYZ0123", "456789 -'." };
+static void name_open(char *buf, int cap, const char *title, void (*done)(void)) {   // edit buf (at most cap letters); done runs when it is kept
+    nk_buf = buf; nk_cap = MIN(cap, 23); nk_title = title; nk_done = done; nk_back = state; nk_r = 0; nk_c = 0; nk_t = 0;
+    strncpy(nk_text, buf, nk_cap); nk_text[nk_cap] = 0;
+    state = ST_NAME;
+}
+static void name_update(void) {
+    nk_t++;
+    int len = (int)strlen(nk_text);
+    if (PRESSED(PAD_UP)) nk_r = (nk_r + 4) % 5;
+    if (PRESSED(PAD_DOWN)) nk_r = (nk_r + 1) % 5;
+    if (PRESSED(PAD_LEFT)) nk_c = (nk_c + 9) % 10;
+    if (PRESSED(PAD_RIGHT)) nk_c = (nk_c + 1) % 10;
+    if (PRESSED(PAD_CIRCLE)) { state = nk_back; return; }                         // (left as it was)
+    if (PRESSED(PAD_SQUARE) && len) { nk_text[len - 1] = 0; return; }
+    int done = PRESSED(PAD_START);
+    if (PRESSED(PAD_CROSS)) {
+        if (nk_r < 4) { if (len < nk_cap) { nk_text[len] = nk_keys[nk_r][nk_c]; nk_text[len + 1] = 0; } }
+        else if (nk_c < 4) { if (len) nk_text[len - 1] = 0; }                     // DELETE
+        else done = 1;                                                            // DONE
+    }
+    if (done) {
+        while (nk_text[0] == ' ') memmove(nk_text, nk_text + 1, strlen(nk_text));
+        len = (int)strlen(nk_text); while (len && nk_text[len - 1] == ' ') nk_text[--len] = 0;
+        if (!len) { audio_voice(VOICE_NAH); return; }                           // (a name, at least a letter)
+        strcpy(nk_buf, nk_text); state = nk_back; audio_voice(VOICE_AGREE);
+        if (nk_done) nk_done();
+    }
+}
+static void name_draw(void) {
+    gfx_set_clear(188, 204, 222);
+    gfx_camera_update();
+    ui_backdrop();
+    int top = ui_window(20, 26, 280, 186, nk_title, IC_BRUSH);
+    ui_round(30, top + 2, 260, 20, 6, UI_WHITE, UI_PANEL, 0);
+    char b[32]; snprintf(b, sizeof b, "%s%s", nk_text, (nk_t >> 4) & 1 ? "_" : " ");
+    ui_text(38, top + 8, 1, b, UI_INK);
+    sprintf(b, "%d/%d", (int)strlen(nk_text), nk_cap); ui_text(282 - ui_tw(1, b), top + 8, 1, b, UI_SOFT);
+    for (int r = 0; r < 4; r++) for (int c = 0; c < 10; c++) {
+        int x = 34 + c * 25, y = top + 30 + r * 22, on = r == nk_r && c == nk_c;
+        ui_round(x, y, 22, 19, 4, on ? UI_BLUE : UI_PANEL, on ? UI_BLUE2 : UI_HILITE, 0);
+        char k[2] = { nk_keys[r][c], 0 }; if (k[0] == ' ') { k[0] = '_'; }
+        ui_textc(x + 11, y + 6, 1, k, on ? UI_WHITE : UI_INK);
+    }
+    { int y = top + 30 + 4 * 22; int on = nk_r == 4;
+      ui_button(34, y, 97, 18, "DELETE", IC_BX + 3, on && nk_c < 4);
+      ui_button(140, y, 144, 18, "DONE", IC_TICK, on && nk_c >= 4); }
+    ui_hints(160, top + 152, "X TYPE|SQ DELETE|START DONE|O CANCEL", 1);
+}
+static void create_named(void) {   // "FIRST LAST" back into the creator's Bore
+    char t[24]; strcpy(t, nk_text);
+    char *sp = strchr(t, ' ');
+    if (sp) { *sp = 0; strncpy(edit.last, sp + 1, NAME_LEN - 1); edit.last[NAME_LEN - 1] = 0; }
+    strncpy(edit.first, t, NAME_LEN - 1); edit.first[NAME_LEN - 1] = 0;
+}
+static char create_nm[24];
 static void create_update(void) {
     const LookRow *rows; int n = look_tab_rows(create_tab, &rows);
     if (PRESSED(PAD_L1)) { create_tab = (create_tab + NTAB - 1) % NTAB; create_row = 0; }
@@ -2237,6 +2309,7 @@ static void create_update(void) {
         audio_voice(VOICE_AGREE);
     }
     if (PRESSED(PAD_TRIANGLE)) { look_random(&edit); audio_voice(VOICE_LAUGH); }
+    if (PRESSED(PAD_SQUARE)) { snprintf(create_nm, sizeof create_nm, "%s %s", edit.first, edit.last); name_open(create_nm, 23, "NAME YOUR BORE: FIRST AND LAST", create_named); return; }
     if (HELD(PAD_L2)) create_turn -= 40;
     if (HELD(PAD_R2)) create_turn += 40;
     if (analog) create_turn += rs_x / 3;
@@ -2245,7 +2318,7 @@ static void create_update(void) {
         if (prev_state == ST_LIFE) { Sim *me = &sims[player]; if (me->bore.stage != edit.stage) { me->age_days = 0; me->bday = 0; }
             TexRef te = me->bore.tex_eye, tm = me->bore.tex_mouth; me->bore = edit; me->bore.tex_eye = te; me->bore.tex_mouth = tm; look_build(&me->bore);   // (on the Bore's own faces)
             crowd_forget(CROWD_MAX + player); state = ST_LIFE; }
-        else { life_started = 0; start_life(); state = ST_LIFE; }
+        else { worlds_open(); }   // (a new Bore from the title: on to PICK A WORLD)
         audio_voice(VOICE_YAHOO);
     }
     if (PRESSED(PAD_CIRCLE)) { world_restore(); state = prev_state == ST_LIFE ? ST_LIFE : ST_MENU; }
@@ -2300,7 +2373,7 @@ static void create_draw(void) {
     }
     for (int t = 0; t < NTAB; t++) ui_disc(220 + t * 9, 204, 6, t == create_tab ? UI_BLUE : UI_LINE);   // which tab of the seven
     ui_hints(241, 205, "L1 R1 TAB|TRI DICE", 1);
-    ui_hints(241, 217, prev_state == ST_LIFE ? "START DONE|O BACK" : "START LIVE|O BACK", 1);
+    ui_hints(241, 217, prev_state == ST_LIFE ? "SQ NAME|START DONE" : "SQ NAME|START LIVE", 1);
     // the Bore's name card, and the title
     char nm[32]; sprintf(nm, "%s %s", edit.first, edit.last);
     int big = ui_tw(2, nm) <= 140, w = MAX(big ? ui_tw(2, nm) : ui_tw(1, nm), 100) + 14;
@@ -2874,10 +2947,11 @@ static void title_draw(void) {
 enum { WO_RANDOM, WO_PRE1, WO_PRE2, WO_PRE3, WO_CREATE, WO_CASTAWAY, WO_MORE, WO_N };
 static const u32 wo_preset[3] = { 0x0B0E2001u, 0x51A7E5EDu, 0x7A11C0DEu };
 static const char *const wo_cap[3] = { "MAPLE SHORES", "SUNNY HOLLOW", "PINE BAY" };   // the set worlds' names
-static int wo_sel, wo_t, wo_more, wo_msel, wo_packed; static u32 wo_seed, wo_painted, wo_custom = 0x00C0FFEEu;
+static int wo_sel, wo_t, wo_more, wo_msel, wo_packed; static char wo_name[18];   // (wo_name: the capital named by the player, "" as made)
+static u32 wo_seed, wo_painted, wo_custom = 0x00C0FFEEu;
 static void paint_world(u32 seed) {                 // SAN BOREAS from above for that seed (the land, the highways, the towns), into the map's picture
     if (seed == wo_painted) return;
-    wo_name_for(seed); bm_new(seed);
+    wo_name_for(seed); bm_rename_clear(); if (wo_name[0]) bm_rename(0, wo_name); bm_new(seed);
     u16 *px = atlas_scratch();
     static const u16 tcol[6] = { RGB(4, 9, 19), RGB(25, 23, 15), RGB(10, 18, 7), RGB(5, 12, 5), RGB(24, 20, 12), RGB(15, 15, 15) };
     for (int y = 0; y < 128; y++) for (int x = 0; x < 128; x++) px[y * 128 + x] = tcol[bm_terrain(x * 8 + 4, y * 8 + 4)] | 0x8000;
@@ -2896,11 +2970,12 @@ static void wo_name_for(u32 seed) {   // a set world's capital carries the world
     for (int k = 0; k < 3; k++) if (seed && seed == wo_preset[k]) strcpy(bm_cap_name, wo_cap[k]);
 }
 static u32 wo_seed_of(int k) { return k >= WO_PRE1 && k <= WO_PRE3 ? wo_preset[k - WO_PRE1] : k == WO_CREATE ? wo_custom : 0; }
+static void worlds_named(void) { wo_painted = 0; }   // (the map is drawn again, the new name on it)
 static void worlds_open(void) {
     wo_painted = 0; wo_sel = 0; wo_t = 0; wo_more = 0; wo_msel = 0; state = ST_WORLDS;
 }
 static void worlds_go(u32 seed, int mode) {
-    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 3; bm_packed = wo_packed; wo_name_for(seed); start_life();
+    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 3; bm_packed = wo_packed; wo_name_for(seed); strcpy(life_cap, wo_name); start_life();
     cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 }
 #define WO_NMORE 4
@@ -2919,6 +2994,7 @@ static void worlds_update(void) {
     if (PRESSED(PAD_DOWN)) wo_sel = (wo_sel + 1) % WO_N;
     if (PRESSED(PAD_CIRCLE)) { state = ST_MENU; return; }
     if (PRESSED(PAD_TRIANGLE)) { wo_packed ^= 1; wo_painted = 0; audio_voice(VOICE_FINISHED); }   // TOWNS: ROOMY or PACKED
+    if (PRESSED(PAD_SELECT) && wo_sel != WO_MORE) { name_open(wo_name, 17, "NAME YOUR CAPITAL CITY", worlds_named); return; }
     bm_gen = 3; bm_packed = wo_packed;
     if (wo_sel == WO_CREATE) {                       // CREATE A WORLD: roll it, or step through, until you like the look of it
         if (PRESSED(PAD_SQUARE)) { wo_custom = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ (u32)wo_t; if (!wo_custom) wo_custom = 1; audio_voice(VOICE_FINISHED); }
@@ -2963,9 +3039,10 @@ static void worlds_draw(void) {
                      wo_sel == WO_CASTAWAY ? "BEGIN STRANDED ON THE ISLAND" : wo_sel == WO_MORE ? "A MISSION, AND PACKS ON THE WAY" : "A SET WORLD: THE SAME MAP EVERY TIME";
     ui_text(12, top + 158, 1, bl, UI_SOFT);
     if (sd) { const Settle *c = wo_painted == sd ? bm_set(bm_capital()) : 0; sprintf(b, "%d TOWNS, CAPITAL %s", bm_nset(), c ? c->name : "?"); ui_text(12, top + 170, 1, b, UI_INK); }
+    else if (wo_name[0] && wo_sel != WO_MORE) { snprintf(b, sizeof b, "CAPITAL: %s", wo_name); ui_text(12, top + 170, 1, b, UI_INK); }
     if (wo_sel == WO_CREATE) { sprintf(b, "MAP NO. %08X", (unsigned)wo_custom); ui_text(310 - ui_tw(1, b), top + 170, 1, b, UI_BLUE2); }
     ui_badge(306 - ui_tw(1, wo_packed ? "TOWNS: PACKED" : "TOWNS: ROOMY") - 10, 8, wo_packed ? "TOWNS: PACKED" : "TOWNS: ROOMY", UI_WHITE, UI_BLUE2);
-    ui_hints(160, 214, wo_sel == WO_CREATE ? "X PLAY|SQ ROLL|L1 R1 STEP|TRI TOWNS|O BACK" : "X PLAY|TRI TOWNS|O BACK", 1);
+    ui_hints(160, 214, wo_sel == WO_CREATE ? "X PLAY|SQ ROLL|L1 R1|TRI TOWNS|SEL NAME|O BACK" : "X PLAY|TRI TOWNS|SEL NAME CITY|O BACK", 1);
 }
 
 static const char *const menuNm[] = { "STORY MODE", "CONTINUE", "CREATE A BORE", "JUKEBOX", "OPTIONS", "HOW TO PLAY" };
@@ -3130,6 +3207,7 @@ int main(void) {
             case ST_OVER: over_update(); over_draw(); break;
             case ST_HOMES: homes_update(); homes_draw(); break;
             case ST_CRAFT: craft_update(); craft_draw(); break;
+            case ST_NAME: name_update(); if (state == ST_NAME) name_draw(); else if (state == ST_CREATE) create_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_MAP) map_draw(); else life_draw(); break;
             case ST_WORLDS: worlds_update(); if (state == ST_WORLDS) worlds_draw(); else if (state == ST_MENU) menu_draw(); else life_draw(); break;
             case ST_NHOOD: nhood_update(); if (state == ST_NHOOD) nhood_draw(); else if (state == ST_HOMES) homes_draw(); else life_draw(); break;
             case ST_SLOTS: slots_update(); if (state == ST_SLOTS) slots_draw(); else if (state == ST_LIFE) life_draw(); else if (state == ST_MENU) menu_draw(); else pause_draw(); break;

@@ -4,7 +4,7 @@
 
 static char NAME[20] = "BASLUS-00000BORE2-1";
 static void pick(int slot) { NAME[18] = (char)('1' + CLAMP(slot, 0, SAVE_SLOTS - 1)); }
-#define VERSION 3
+#define VERSION 4
 int save_ver;                                     // the version of the save last read (2: before the TOWNS option)
 static u32 count;                                 // payload bytes so far
 static int ld_bad;
@@ -87,7 +87,7 @@ int save_info(int slot, SaveInfo *out) {   // 1: a save of this version is in th
     pick(slot); bad_msg = 0;
     if (!mcard_rbegin(NAME)) return 0;
     u8 skip[256], head[128]; mcard_rget(skip, 256); mcard_rget(head, 128);
-    if (!mcard_rok() || memcmp(head, magic, 7) || (head[7] != VERSION && head[7] != 2) || head[8] != 1) return 0;
+    if (!mcard_rok() || memcmp(head, magic, 7) || (head[7] < 2 || head[7] > VERSION) || head[8] != 1) return 0;
     memcpy(out, head + 16, sizeof *out); out->name[NAME_LEN - 1] = 0;
     return 1;
 }
@@ -98,7 +98,7 @@ int save_read(int slot, void (*body)(void)) {
     u8 skip[256], head[128]; mcard_rget(skip, 256); mcard_rget(head, 128);
     if (!mcard_rok()) return 0;
     if (memcmp(head, magic, 7) || head[8] != 1) { bad_msg = "THAT SAVE IS NOT FINISHED"; return 0; }
-    if (head[7] != VERSION && head[7] != 2) { bad_msg = "THAT SAVE IS FROM ANOTHER VERSION"; return 0; }
+    if (head[7] < 2 || head[7] > VERSION) { bad_msg = "THAT SAVE IS FROM ANOTHER VERSION"; return 0; }
     save_ver = head[7];
     body();
     if (!mcard_rok() || ld_bad) { if (!bad_msg && !ld_bad) bad_msg = 0; if (ld_bad) bad_msg = "THE SAVE IS DAMAGED"; return 0; }

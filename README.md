@@ -15,6 +15,8 @@ STORY MODE opens PICK A WORLD: RANDOM WORLD (fresh dice), three set worlds (MAPL
 time, the capital named for the world), CREATE A WORLD (SQUARE rolls a new map, L1 R1 step through them, the map shows each one), CASTAWAY ISLAND (the family begins
 stranded on the island), and MISSIONS, PACKS (RAGS TO RICHES: $1,000 and no home; the expansion packs say COMING SOON). TRIANGLE
 switches TOWNS between ROOMY (parks, green gaps, towns far apart) and PACKED (built up, towns close together, as before).
+SELECT names your capital city (a letter keyboard: X types, SQUARE deletes, START keeps it). In play, the phone's MAP renames any
+town: pick it and press TRIANGLE. Saves keep the names. In CREATE A BORE, SQUARE names your Bore (first and last name).
 
 Then THE NEIGHBORHOOD (like the PC games' neighborhood screen): the capital's blocks from above, with 48 lots picked at random from
 what is for sale, about a third empty lots to build on and the rest furnished homes. The d-pad hops from lot to lot (L1 R1 go in

@@ -1,0 +1,10 @@
+910 start
+950 down
+970 down
+990 b
+1080 y
+1120 b
+1140 right
+1160 b
+1180 start
+1260 shot

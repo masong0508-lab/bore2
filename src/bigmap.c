@@ -6,6 +6,7 @@ static int packed(void) { return bm_packed || bm_gen < 3; }   // (PACKED towns: 
 static u32 wseed = 0x5A1B0E2Au;
 #define NSET_MAX 24
 static Settle sets[NSET_MAX]; static int nset;
+static char ren[NSET_MAX][18];                     // towns the player renamed ("": as made); kept across bm_new, so a save can set them first
 typedef struct { u16 c, a, b; u8 vert; } Seg;    // a highway along block edges: row (or column) c, from a to b
 #define NSEG 72
 static Seg segs[NSEG]; static int nseg;
@@ -114,7 +115,11 @@ void bm_new(u32 seed) {
         in[bj] = 1; link(bi, bj);
     }
     for (int e = 0; e < 4 && nset > 3; e++) { int i = (int)(rr() % (u32)nset), j = (int)(rr() % (u32)nset); if (i != j) link(i, j); }
+    for (int i = 0; i < nset; i++) if (ren[i][0]) strcpy(sets[i].name, ren[i]);
 }
+void bm_rename_clear(void) { memset(ren, 0, sizeof ren); }
+void bm_rename(int i, const char *nm) { if (i < 0 || i >= NSET_MAX) return; strncpy(ren[i], nm, 17); ren[i][17] = 0; if (i < nset && ren[i][0]) strcpy(sets[i].name, ren[i]); }
+const char *bm_renamed(int i) { return i >= 0 && i < NSET_MAX ? ren[i] : ""; }
 int bm_nset(void) { return nset; }
 int bm_nseg(void) { return nseg; }
 void bm_seg(int i, int *c, int *a, int *b, int *vert) { const Seg *g = &segs[i]; *c = g->c; *a = g->a; *b = g->b; *vert = g->vert; }
