@@ -34,6 +34,7 @@ int world_home_find(int zone, int bx, int by, int unit);   // the open world: th
 extern int world_wbx, world_wby;
 extern int world_stamp;                          // changes whenever the map's tiles do (a window move, a new zone, build mode)                 // the window's top-left block (-1 before the world is first seen)
 void world_new_seed(u32 seed);                   // a new life: a new world
+u32  world_seed(void);                           // this world's seed (the memory card)
 void world_open_at(int bx, int by);              // build the window round that block
 int  world_stream(int ptx, int pty, int *dtx, int *dty);   // keep it round the player's tile: 1 if it moved (everything shifts by -dtx, -dty tiles)
 void world_arrival(int set, int *px, int *py);   // open the window at a town and say where to stand (the street by its square)
@@ -81,3 +82,8 @@ u8  *world_floor_cell(int l, int mx, int my);
 u8  *world_wall_cell(int l, int mx, int my);
 void world_cam_push(int l);                      // draw what follows as if it stood on storey l (the camera drops by l storeys)
 void world_cam_pop(void);
+
+// the memory card (save.c)
+void world_save(int with_home);                  // the lots, the window (with_home: THE MAN BASE is the family's home, so its tiles are kept too)
+void world_load(void);                           // (after world_new_seed and world_reset_all)
+void world_place(void);                          // ... then go to where the save was

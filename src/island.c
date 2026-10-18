@@ -5,6 +5,7 @@
 #include "sim.h"
 #include "audio.h"
 #include "ui.h"
+#include "save.h"
 
 int isl_wood, isl_stone, isl_leaves, isl_food, isl_spear, isl_shells, isl_craft_asked;
 u16 isl_secrets;
@@ -97,3 +98,6 @@ int isl_make(int i) {
     audio_voice(VOICE_FINISHED);
     return 1;
 }
+
+void isl_save(void) { sv_u16(isl_wood); sv_u16(isl_stone); sv_u16(isl_leaves); sv_u16(isl_food); sv_u8(isl_spear); sv_u16(isl_shells); sv_u16(isl_secrets); }
+void isl_load(void) { isl_wood = ld_u16(); isl_stone = ld_u16(); isl_leaves = ld_u16(); isl_food = ld_u16(); isl_spear = ld_u8(); isl_shells = ld_u16(); isl_secrets = (u16)ld_u16(); }

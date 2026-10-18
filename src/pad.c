@@ -7,17 +7,24 @@
 #include "pad.h"
 
 static void spin(int n) { for (volatile int i = 0; i < n; i++) { } }
-static int xfer(int byte, int want_ack) {          // send a byte, return the reply (-1: no reply / no /ACK)
+int sio_xfer(int byte, int want_ack, int wait) {   // send a byte, return the reply (-1: no reply / no /ACK within wait spins)
     SIO_DATA(0) = (u8)byte;
     int t = 0;
-    while (!(SIO_STAT(0) & 0x0002)) if (++t > 3000) return -1;   // the reply comes back as the byte goes out
+    while (!(SIO_STAT(0) & 0x0002)) if (++t > wait) return -1;   // the reply comes back as the byte goes out
     int r = SIO_DATA(0);
     if (want_ack) {                                  // a device that wants more pulses /ACK: with the /ACK interrupt enabled, that sets STAT bit 9
-        t = 0; while (!(SIO_STAT(0) & 0x0200)) if (++t > 3000) return -1;
+        t = 0; while (!(SIO_STAT(0) & 0x0200)) if (++t > wait) return -1;
     }
     SIO_CTRL(0) |= 0x0010;                           // acknowledge it (the CPU never sees the interrupt: IRQ 7 stays masked)
     return r & 255;
 }
+static int xfer(int byte, int want_ack) { return sio_xfer(byte, want_ack, 3000); }
+void sio_select(int port) {                          // /CS down on that port (the pad and the memory card share it: the first byte says which)
+    SIO_CTRL(0) = 0x1003 | (port << 13);             // TX on, select the port, /ACK raises STAT bit 9
+    spin(60);                                        // (/CS low ~20 us before the first byte)
+    while (SIO_STAT(0) & 0x0002) (void)SIO_DATA(0);  // flush
+}
+void sio_deselect(void) { SIO_CTRL(0) = 0; }
 void pad_init(void) {
     SIO_CTRL(0) = 0x0040;                            // reset the port
     SIO_BAUD(0) = 0x0088;                            // 250 kHz
@@ -26,9 +33,7 @@ void pad_init(void) {
 }
 int pad_read(int port, u8 *out) {                    // out: the BIOS layout (stat, id, buttons, sticks); 0 = nothing there
     memset(out, 0, 8); out[0] = 0xff;
-    SIO_CTRL(0) = 0x1003 | (port << 13);             // TX on, select the port, /ACK raises STAT bit 9
-    spin(60);                                        // (/CS low ~20 us before the first byte)
-    while (SIO_STAT(0) & 0x0002) (void)SIO_DATA(0);  // flush
+    sio_select(port);
     int ok = xfer(0x01, 1) >= 0;                     // address the controller
     int id = ok ? xfer(0x42, 1) : -1;                // read: the reply is its type
     int n = 0;

@@ -1,5 +1,6 @@
 // pop: see pop.h
 #include "pop.h"
+#include "save.h"
 #include "bigmap.h"
 #include "look.h"
 #include "sim.h"
@@ -66,9 +67,11 @@ static int find_place(int set, int want_lot, int any_work) {   // a place of tha
         if (any_work ? is_work(l) : l == want_lot) return i; }
     return -1;
 }
+static u8 regen_p[(PER_MAX + 7) / 8], chg_p[(PER_MAX + 7) / 8], regen_f[(NFAM + 7) / 8]; static int gen_done;   // (for the save: who was made anew since the world began, whose days changed, which households were replaced)
+static void mark(u8 *a, int i) { a[i >> 3] |= (u8)(1 << (i & 7)); }
 static void days_of(Per *q) {   // what they do with their days at this stage of life: school, a job, retired; in a lot, or out
     const Fam *fm = &pop_fam[q->fam]; int stage = q->stage;
-    q->job = 0xFFFF; q->flags &= (u8)~PF_HOMEBODY;
+    q->job = 0xFFFF; q->flags &= (u8)~PF_HOMEBODY; if (gen_done) mark(chg_p, (int)(q - pop_per));
     if (stage == AG_ADULT && prn(100) < 86) { int pl = find_place(fm->set, 0, 1); if (pl >= 0) q->job = (u16)pl; }
     else if (stage == AG_ELDER && prn(100) < 15) { int pl = find_place(fm->set, 0, 1); if (pl >= 0) q->job = (u16)pl; }
     else if (stage == AG_CHILD || stage == AG_TEEN) { int pl = find_place(fm->set, LOT_SCHOOL, 0); if (pl >= 0) q->job = (u16)pl; }
@@ -76,6 +79,7 @@ static void days_of(Per *q) {   // what they do with their days at this stage of
     if (q->trait == 8 && prn(2)) q->flags |= PF_HOMEBODY;               // a loner, mostly in
 }
 static void set_person(Per *q, int f, int stage, int newborn) {   // somebody new: who they are from the dice, how far into this stage of life
+    if (gen_done) mark(regen_p, (int)(q - pop_per));
     q->seed = pr(); q->fam = (u16)f; q->stage = (u8)stage; q->trait = (u8)prn(NTRAIT); q->flags = 0; q->slot = 255;
     q->rel = 0; q->rom = 0; q->hp = 100; q->shift = (u8)pr();
     if (stage == AG_ELDER && prn(16) < 10) for (int t = 0; t < 64 && !old_name(name_of(q->seed)); t++) q->seed = pr();   // (mostly an old-fashioned name)
@@ -115,7 +119,7 @@ typedef struct { u16 bx, by; u8 unit, set, lot, pad; } Unit;
 static int unit_key(const Unit *u) { return u->by * 2048 * 4 + u->bx * 4 + u->unit; }
 void pop_new(u32 seed, void *scratch, u32 scratch_bytes) {
     prs = seed ^ 0xC0FFEE11u; if (!prs) prs = 1;
-    pop_nper = 0; pop_nplace = 0; nfam = 0;
+    pop_nper = 0; pop_nplace = 0; nfam = 0; gen_done = 0; memset(regen_p, 0, sizeof regen_p); memset(chg_p, 0, sizeof chg_p); memset(regen_f, 0, sizeof regen_f);
     memset(set_pn, 0, sizeof set_pn);
     Unit *U = (Unit *)scratch; int maxu = (int)(scratch_bytes / sizeof(Unit)), nu = 0;
     // every home and every place in every town
@@ -140,7 +144,7 @@ void pop_new(u32 seed, void *scratch, u32 scratch_bytes) {
         fm->kind = (u8)kind_for(U[f].lot); fm->sur = (u16)pr();
         make_members(f);
     }
-    nfam = nf;
+    nfam = nf; gen_done = 1;
 }
 int pop_family_at(int bx, int by, int unit) {
     int key = by * 2048 * 4 + bx * 4 + unit, lo = 0, hi = nfam - 1;
@@ -287,11 +291,36 @@ void pop_midnight(void) {
             alive++; if (q->stage == AG_ADULT) adults++; }
         if (!alive && gone >= 0 && !prn(4)) {   // an empty home: before long, a new household moves in (in the old one's places)
             static const u8 kk[4] = { HK_SINGLE, HK_COUPLE, HK_YOUNGFAM, HK_BIGFAM };
-            fm->kind = kk[MIN(fm->n, 4) - 1]; fm->sur = (u16)pr();
+            fm->kind = kk[MIN(fm->n, 4) - 1]; fm->sur = (u16)pr(); mark(regen_f, f);
             for (int i = 0; i < fm->n; i++) { Per *q = &pop_per[fm->first + i]; if (q->slot != 255) continue;
                 set_person(q, f, i < 2 ? AG_ADULT : prn(3) ? AG_CHILD : AG_BABY, 0); }
             continue;
         }
         if (adults >= 2 && gone >= 0 && fm->kind != HK_ROOMMATES && !prn(12)) set_person(&pop_per[gone], f, AG_BABY, 1);   // a baby!
     }
+}
+
+// ---- the memory card (save.c): the world is made again from its seed, so only what changed since is kept ----
+extern u16 bfs_q[];   // (sim.c: scratch, free here)
+static int bit(const u8 *a, int i) { return (a[i >> 3] >> (i & 7)) & 1; }
+static void plane(int off, int n) { u8 *t = (u8 *)bfs_q; for (int i = 0; i < n; i++) t[i] = ((const u8 *)&pop_per[i])[off]; sv_rle(t, n); }
+static void unplane(int off, int n) { u8 *t = (u8 *)bfs_q; ld_rle(t, n); for (int i = 0; i < n; i++) ((u8 *)&pop_per[i])[off] = t[i]; }
+__attribute__((optimize("Os"))) void pop_save(void) {
+    int n = pop_nper;
+    sv_u32(prs); sv_u16(n);
+    plane((int)__builtin_offsetof(Per, stage), n); plane((int)__builtin_offsetof(Per, flags), n);
+    plane((int)__builtin_offsetof(Per, rel), n); plane((int)__builtin_offsetof(Per, rom), n); plane((int)__builtin_offsetof(Per, hp), n);
+    sv_rle(regen_p, (n + 7) / 8); sv_rle(chg_p, (n + 7) / 8); sv_rle(regen_f, (nfam + 7) / 8);
+    for (int i = 0; i < n; i++) if (bit(regen_p, i)) { sv_u32(pop_per[i].seed); sv_u8(pop_per[i].trait); sv_u8(pop_per[i].shift); }
+    for (int i = 0; i < n; i++) if (bit(regen_p, i) || bit(chg_p, i)) sv_u16(pop_per[i].job);
+    for (int f = 0; f < nfam; f++) if (bit(regen_f, f)) { sv_u8(pop_fam[f].kind); sv_u16(pop_fam[f].sur); }
+}
+__attribute__((optimize("Os"))) void pop_load(void) {   // (after pop_new from the same seed)
+    prs = ld_u32(); int n = ld_u16(); if (n != pop_nper) n = MIN(n, pop_nper);
+    unplane((int)__builtin_offsetof(Per, stage), n); unplane((int)__builtin_offsetof(Per, flags), n);
+    unplane((int)__builtin_offsetof(Per, rel), n); unplane((int)__builtin_offsetof(Per, rom), n); unplane((int)__builtin_offsetof(Per, hp), n);
+    ld_rle(regen_p, (n + 7) / 8); ld_rle(chg_p, (n + 7) / 8); ld_rle(regen_f, (nfam + 7) / 8);
+    for (int i = 0; i < n; i++) if (bit(regen_p, i)) { pop_per[i].seed = ld_u32(); pop_per[i].trait = (u8)ld_u8(); pop_per[i].shift = (u8)ld_u8(); }
+    for (int i = 0; i < n; i++) if (bit(regen_p, i) || bit(chg_p, i)) pop_per[i].job = (u16)ld_u16();
+    for (int f = 0; f < nfam; f++) if (bit(regen_f, f)) { pop_fam[f].kind = (u8)ld_u8(); pop_fam[f].sur = (u16)ld_u16(); }
 }

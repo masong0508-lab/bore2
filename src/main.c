@@ -21,6 +21,8 @@
 #include "places.h"
 #include "home.h"
 #include "island.h"
+#include "save.h"
+#include "mcard.h"
 
 // ---- input ----
 static u8 pad_buf[2][34];
@@ -1546,8 +1548,48 @@ static void opts_draw(void) {
     ui_hints(16, top + 185, "O BACK", 0);
 }
 
-static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "NEW LIFE", "QUIT TO TITLE" };
-#define NPAUSE 9   // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
+// ---- the memory card: SAVE GAME in the pause menu, CONTINUE on the title ----
+static int card_state = -1;                                  // the title's CONTINUE: -1 not looked yet, 0 no save, 1 a save
+static const char *save_msg;                                 // why the last load failed (the title shows it)
+static void save_body(void) {
+    sv_u32(world_seed());
+    sv_n(opt, O_N);
+    sv_u8(home_city); sv_u16(home_bx); sv_u16(home_by); sv_u32((u32)home_paid);
+    sim_save(); world_save(!home_city); pop_save(); isl_save();
+}
+static void load_body(void) {
+    u32 seed = ld_u32();
+    ld_n(opt, O_N); opts_apply();
+    loading("LOADING YOUR GAME", 30);
+    bm_new(seed); world_new_seed(seed);
+    { u32 sb; void *sc = crowd_scratch(&sb); pop_new(seed, sc, sb); }
+    far_new_world();
+    world_reset_all(); home_reset(); isl_reset();
+    for (int i = 0; i < nsims; i++) look_release(&sims[i].bore);
+    sim_init();
+    home_city = ld_u8(); home_bx = (s16)ld_u16(); home_by = (s16)ld_u16(); home_paid = (int)ld_u32();
+    sim_load(&edit); world_load(); pop_load(); isl_load();
+}
+static void save_game(void) {
+    loading("SAVING YOUR GAME", 50);
+    if (save_write(save_body)) { card_state = 1; sim_note("GAME SAVED"); audio_voice(VOICE_WIN); }
+    else { sim_note(save_error()); audio_voice(VOICE_NAH); }
+}
+static int load_game(void) {   // 1: the saved life is up and running
+    loading("LOADING YOUR GAME", 10);
+    life_started = 0;
+    if (!save_read(load_body)) { save_msg = save_error(); card_state = -1; return 0; }
+    world_place();
+    citizens_init();
+    if (world_zone != ZONE_HOME) citizens_enter(world_zone);
+    if (world_zone == ZONE_CITY) far_reset();
+    life_started = 1; save_msg = 0;
+    cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; frame = 0;
+    sim_note("WELCOME BACK");
+    return 1;
+}
+static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "SAVE GAME", "NEW LIFE", "QUIT TO TITLE" };
+#define NPAUSE 10  // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
 static void homes_open(void);
 #ifdef AUTO_PARTY
 int ap_frames, ap_vs, ap_cpu;
@@ -1582,18 +1624,19 @@ static void pause_update(void) {
                      break;
             case 5: opts_open(ST_PAUSE); break;
             case 6: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 7: life_started = 0; start_life(); state = ST_LIFE; break;
-            case 8: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); break;
+            case 7: save_game(); state = ST_LIFE; break;
+            case 8: life_started = 0; start_life(); state = ST_LIFE; break;
+            case 9: audio_jukebox_stop(); card_state = -1; life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); break;
         }
     }
 }
 static void pause_draw(void) {   // one short column: the game itself (the rest of life is on the phone)
-    static const s8 ic[NPAUSE] = { IC_PLAY, IC_ARROW, IC_HAMMER, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_SPROUT, IC_DOOR };
+    static const s8 ic[NPAUSE] = { IC_PLAY, IC_ARROW, IC_HAMMER, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_BOOK, IC_SPROUT, IC_DOOR };
     life_draw();
     ui_dim();
-    int top = ui_window(70, 12, 180, 214, "PAUSED", IC_PAUSE);
-    for (int i = 0; i < NPAUSE; i++) ui_button(78, top + i * 19, 164, 17, pauseNm[i], ic[i], i == menu_sel);
-    ui_hints(160, top + NPAUSE * 19 + 3, "SEL PHONE|O BACK", 1);
+    int top = ui_window(70, 4, 180, 228, "PAUSED", IC_PAUSE);
+    for (int i = 0; i < NPAUSE; i++) ui_button(78, top + i * 18, 164, 16, pauseNm[i], ic[i], i == menu_sel);
+    ui_hints(160, top + NPAUSE * 18 + 3, "SEL PHONE|O BACK", 1);
 }
 
 // ---- THE PHONE (SELECT): The Sims' cell phone. Twelve apps on a grid; the family's list for playing as someone else ----
@@ -2585,29 +2628,38 @@ static void title_draw(void) {
         if ((title_t / 20) & 1) ui_hints(160, 214, "START PLAY", 1);
     }
 }
-static const char *const menuNm[] = { "STORY MODE", "CREATE A BORE", "JUKEBOX", "OPTIONS", "HOW TO PLAY" };
-static const char *const menuBlurb[] = { "HOME, THE ISLAND, THE TOWN", "SCULPT YOUR BORE", "ALL 33 SONGS", "PICTURE AND SPEED", "CONTROLS AND TIPS" };
+static const char *const menuNm[] = { "STORY MODE", "CONTINUE", "CREATE A BORE", "JUKEBOX", "OPTIONS", "HOW TO PLAY" };
+static const char *const menuBlurb[] = { "A NEW LIFE: HOME, THE ISLAND, THE TOWN", "", "SCULPT YOUR BORE", "ALL 33 SONGS", "PICTURE AND SPEED", "CONTROLS AND TIPS" };
+#define NMENU 6
 static void menu_update(void) {
     title_t++;
-    if (PRESSED(PAD_UP)) menu_sel = (menu_sel + 4) % 5;
-    if (PRESSED(PAD_DOWN)) menu_sel = (menu_sel + 1) % 5;
-    if (PRESSED(PAD_CIRCLE)) state = ST_TITLE;
+    if (card_state < 0) card_state = save_exists() ? 1 : 0;   // (once, the first time the menu is up: a look at the card)
+    if (PRESSED(PAD_UP)) menu_sel = (menu_sel + NMENU - 1) % NMENU;
+    if (PRESSED(PAD_DOWN)) menu_sel = (menu_sel + 1) % NMENU;
+    if (PRESSED(PAD_CIRCLE)) { state = ST_TITLE; card_state = -1; }
     if (PRESSED(PAD_CROSS) || PRESSED(PAD_START)) {
         switch (menu_sel) {
             case 0: life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0; break;
-            case 1: prev_state = ST_MENU; create_tab = 0; create_row = 0; state = ST_CREATE; world_backup(); world_gen_studio(); break;
-            case 2: prev_state = ST_MENU; state = ST_JUKEBOX; break;
-            case 3: opts_open(ST_MENU); break;
-            case 4: prev_state = ST_MENU; help_page = 0; state = ST_HELP; break;
+            case 1:
+                if (card_state != 1) { card_state = -1; save_msg = mcard_present() ? "NO SAVE ON THE CARD" : "NO MEMORY CARD IN SLOT 1"; audio_voice(VOICE_NAH); }
+                else if (load_game()) state = ST_LIFE;
+                else audio_voice(VOICE_NAH);
+                break;
+            case 2: prev_state = ST_MENU; create_tab = 0; create_row = 0; state = ST_CREATE; world_backup(); world_gen_studio(); break;
+            case 3: prev_state = ST_MENU; state = ST_JUKEBOX; break;
+            case 4: opts_open(ST_MENU); break;
+            case 5: prev_state = ST_MENU; help_page = 0; state = ST_HELP; break;
         }
     }
 }
 static void menu_draw(void) {
     title_draw();
-    static const s8 ic[5] = { IC_PLAY, IC_STAR, IC_NOTE, IC_GEAR, IC_HELP };
-    ui_card(92, 64, 136, 126);
-    for (int i = 0; i < 5; i++) ui_button(98, 70 + i * 20, 124, 17, menuNm[i], ic[i], i == menu_sel);
-    ui_textc(160, 175, 1, menuBlurb[menu_sel], UI_SOFT);
+    static const s8 ic[NMENU] = { IC_PLAY, IC_BOOK, IC_STAR, IC_NOTE, IC_GEAR, IC_HELP };
+    ui_card(92, 56, 136, 146);
+    for (int i = 0; i < NMENU; i++) ui_button(98, 62 + i * 20, 124, 17, menuNm[i], ic[i], i == menu_sel);
+    const char *t = menuBlurb[menu_sel];
+    if (menu_sel == 1) t = save_msg ? save_msg : card_state == 1 ? "YOUR SAVED LIFE ON THE CARD" : "SAVE FROM THE START MENU";
+    ui_textc(160, 186, 1, t, menu_sel == 1 && save_msg ? UI_BADT : UI_SOFT);
 }
 
 // ---- the loading screen: a bar and what is being made, shown before any long job (start-up, a new life, travel) ----

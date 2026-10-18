@@ -23,3 +23,5 @@ typedef struct { const char *name; u8 wood, stone, leaves; s8 icon; const char *
 extern const Craft isl_crafts[ISL_NCRAFT];
 int  isl_can_make(int i);              // there is enough for it (and it is not made already)
 int  isl_make(int i);                  // make it, by the campfire: 1 made, 0 not enough (or made already), -1 no room for it
+void isl_save(void);                   // the memory card (save.h)
+void isl_load(void);

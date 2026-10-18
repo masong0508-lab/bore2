@@ -11,6 +11,7 @@
 #include "pop.h"
 #include "home.h"
 #include "island.h"
+#include "save.h"
 
 Sim  sims[MAX_SIMS];
 int  nsims, player;
@@ -1722,4 +1723,56 @@ void sim_shift(int dtx, int dty) {
         if (bad || out) { if (s->action != ACT_NONE) end_action(s); s->path_n = 0; s->path_i = 0; s->act_x = -1; s->action = ACT_NONE; }
         if (out && i != player) { s->x = px + 80 * (i % 3) - 80; s->z = pz - 80 * (i / 3); s->lvl = 0; }
     }
+}
+
+// ---- the memory card (save.c): the family, the clock, the money, the job; the rest of a Sim starts over (standing, idle) ----
+__attribute__((optimize("Os"))) void sim_save(void) {
+    sv_u8(nsims); sv_u8(player);
+    sv_u16(clock_min); sv_u8(clock_day); sv_u32((u32)day_count); sv_u32((u32)cash);
+    sv_u8(job_level); sv_u16(job_worked); sv_u16(job_days_good); sv_u8(job_strikes); sv_u8(job_car);
+    sv_u16(job_bx); sv_u16(job_by); sv_str(job_place, 23);
+    sv_u16(groceries); sv_u16(room_bx); sv_u16(room_by); sv_u32((u32)room_until);
+    sv_u8(has_board); sv_u16(bills_due); sv_u32((u32)baby_due); sv_n(baby_par, 2); sv_u8(baby_kind); sv_u8(next_uid); sv_u8(cake_slices);
+    sv_u8(sim_story_over); sv_str(sim_end_name, NAME_LEN - 1);
+    sv_u8(ngraves); for (int i = 0; i < ngraves; i++) { sv_u8(graves[i].x); sv_u8(graves[i].y); sv_u8(graves[i].city); sv_str(graves[i].name, NAME_LEN - 1); }
+    sv_u16(story_paid); sv_u16(story_talks); sv_n(story_visit, 4);
+    for (int i = 0; i < nsims; i++) {
+        const Sim *s = &sims[i]; const Bore *b = &s->bore;
+        sv_n(b->look, LK_COUNT); sv_u8(b->stage); sv_u8(b->asp); sv_u8(b->ltw); sv_n(b->tr, TR_N); sv_str(b->first, NAME_LEN - 1); sv_str(b->last, NAME_LEN - 1);
+        sv_u32((u32)s->x); sv_u32((u32)s->z); sv_u16(s->yaw);
+        for (int k = 0; k < NEED_N; k++) sv_u32((u32)s->need[k]);
+        sv_u8(s->mood + 100); sv_u8(s->ai); sv_u16(s->skill_cook); sv_u16(s->skill_body); sv_u16(s->skill_fun); sv_u8(s->dead); sv_u8(s->grump);
+        for (int k = 0; k < 4; k++) { sv_u8(s->want[k].kind); sv_u8(s->want[k].arg); sv_u16(s->want[k].pts); sv_u16(s->want[k].age); }
+        for (int k = 0; k < 2; k++) { sv_u8(s->fear[k].kind); sv_u8(s->fear[k].arg); sv_u16(s->fear[k].pts); sv_u16(s->fear[k].age); }
+        sv_u16(s->asp_pts); sv_n(s->rel, MAX_SIMS); sv_u8(s->lvl);
+        for (int k = 0; k < 6; k++) { sv_u8(s->ml[k].id); sv_u8(s->ml[k].val); sv_u16(s->ml[k].t); }
+        sv_u8(s->uid); sv_n(s->par, 2); sv_u8(s->partner); sv_u8(s->age_days); sv_u8(s->bday); sv_u8(s->away); sv_u8(s->grade); sv_u8(s->homework);
+    }
+}
+__attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after sim_init; the faces are built here)
+    int n = ld_u8(), pl = ld_u8();
+    clock_min = ld_u16(); clock_day = ld_u8(); day_count = (int)ld_u32(); cash = (long)(s32)ld_u32();
+    job_level = ld_u8(); job_worked = ld_u16(); job_days_good = ld_u16(); job_strikes = ld_u8(); job_car = ld_u8();
+    job_bx = (s16)ld_u16(); job_by = (s16)ld_u16(); ld_str(job_place, 23);
+    groceries = ld_u16(); room_bx = (s16)ld_u16(); room_by = (s16)ld_u16(); room_until = (int)ld_u32();
+    has_board = ld_u8(); on_board = 0; board_lift = 0; bills_due = ld_u16(); baby_due = (int)ld_u32(); ld_n(baby_par, 2); baby_kind = (u8)ld_u8(); next_uid = (u8)ld_u8(); cake_slices = ld_u8();
+    sim_story_over = ld_u8(); ld_str(sim_end_name, NAME_LEN - 1);
+    { int g = ld_u8(); ngraves = MIN(g, 6); } for (int i = 0; i < ngraves; i++) { graves[i].x = (u8)ld_u8(); graves[i].y = (u8)ld_u8(); graves[i].city = (u8)ld_u8(); ld_str(graves[i].name, NAME_LEN - 1); }
+    story_paid = ld_u16(); story_talks = ld_u16(); ld_n(story_visit, 4);
+    for (int i = 0; i < n && i < MAX_SIMS; i++) {
+        sim_add(blank, 0, 0, 1);   // (a blank Bore: the Bore is large, so it is filled in place)
+        Sim *s = &sims[nsims - 1]; Bore *b = &s->bore;
+        ld_n(b->look, LK_COUNT); b->stage = (u8)ld_u8(); b->asp = (u8)ld_u8(); b->ltw = (u8)ld_u8(); ld_n(b->tr, TR_N); ld_str(b->first, NAME_LEN - 1); ld_str(b->last, NAME_LEN - 1);
+        b->tex_eye.tpage = 0; b->tex_mouth.tpage = 0; b->baked = 0;
+        look_build(b);
+        s->x = (int)ld_u32(); s->z = (int)ld_u32(); s->yaw = ld_u16();
+        for (int k = 0; k < NEED_N; k++) s->need[k] = (int)ld_u32();
+        s->mood = ld_u8() - 100; s->ai = ld_u8(); s->skill_cook = ld_u16(); s->skill_body = ld_u16(); s->skill_fun = ld_u16(); s->dead = ld_u8(); s->grump = (u8)ld_u8();
+        for (int k = 0; k < 4; k++) { s->want[k].kind = (u8)ld_u8(); s->want[k].arg = (u8)ld_u8(); s->want[k].pts = (u16)ld_u16(); s->want[k].age = (u16)ld_u16(); }
+        for (int k = 0; k < 2; k++) { s->fear[k].kind = (u8)ld_u8(); s->fear[k].arg = (u8)ld_u8(); s->fear[k].pts = (u16)ld_u16(); s->fear[k].age = (u16)ld_u16(); }
+        s->asp_pts = ld_u16(); ld_n(s->rel, MAX_SIMS); s->lvl = (u8)ld_u8();
+        for (int k = 0; k < 6; k++) { s->ml[k].id = (u8)ld_u8(); s->ml[k].val = (s8)ld_u8(); s->ml[k].t = (u16)ld_u16(); }
+        s->uid = (u8)ld_u8(); ld_n(s->par, 2); s->partner = (u8)ld_u8(); s->age_days = (u8)ld_u8(); s->bday = (u8)ld_u8(); s->away = (u8)ld_u8(); s->grade = (u8)ld_u8(); s->homework = (u8)ld_u8();
+    }
+    player = CLAMP(pl, 0, MAX(0, nsims - 1));
 }

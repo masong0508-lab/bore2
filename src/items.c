@@ -362,16 +362,20 @@ static TexRef mat_ref(const Mat *m) {
     if (nmat < MAXMAT) { mat_key[nmat] = m; mat_tex[nmat] = t; nmat++; }
     return t;
 }
-// every box face's texture, resolved once: ref_of(def, variant, box, face)
+// every box face's texture, resolved once: box_ref[box][face] is its material + 1 in mat_tex (0: no face there)
 #define MAXBOX 768
-static TexRef box_ref[MAXBOX][5];
-static int box_base[NDEFS][2];     // first box index of each def's main / along-y boxes
+static u16 box_ref[MAXBOX][5];
+static s16 box_base[NDEFS][2];     // first box index of each def's main / along-y boxes
 static int nbox;
-static void cache_boxes(const IBox *b, int n, int *base) {
-    *base = nbox;
+static const TexRef no_tex = { 0, 0, 0, 0, 0 };
+static inline const TexRef *box_tex(const u16 *ri, int f) { return ri[f] ? &mat_tex[ri[f] - 1] : &no_tex; }
+static void cache_boxes(const IBox *b, int n, s16 *base) {
+    *base = (s16)nbox;
     for (int i = 0; i < n && nbox < MAXBOX; i++, nbox++) for (int f = 0; f < 5; f++) {
-        TexRef none = { 0, 0, 0, 0, 0 };
-        box_ref[nbox][f] = b[i].m[f] ? mat_ref(b[i].m[f]) : none;
+        box_ref[nbox][f] = 0;
+        if (!b[i].m[f]) continue;
+        mat_ref(b[i].m[f]);
+        for (int k = 0; k < nmat; k++) if (mat_key[k] == b[i].m[f]) { box_ref[nbox][f] = (u16)(k + 1); break; }
     }
 }
 void items_init(void) {
@@ -417,7 +421,7 @@ static void tex_facex(const XV *a, const XV *b, const XV *c, const XV *d, const 
     u32 ct = gfx_grade_tex((u32)st * 0x010101u), cb = gfx_grade_tex((u32)sb * 0x010101u);
     gfx_put_gt4(a, b, c, d, ct, ct, cb, cb, (u32)t->tpage << 16, 0, t->u, t->v, t->u + t->w - 1, t->v + t->h - 1);
 }
-static void draw_box(const IBox *bx, const TexRef *ref, int r, int ox, int oz, int t) {
+static void draw_box(const IBox *bx, const u16 *ref, int r, int ox, int oz, int t) {
     int ua, va, ub, vb; rotPt(r, bx->a0, bx->b0, &ua, &va); rotPt(r, bx->a1, bx->b1, &ub, &vb);
     int u0 = MIN(ua, ub), u1 = MAX(ua, ub), v0 = MIN(va, vb), v1 = MAX(va, vb);
     if (u1 == u0 || v1 == v0) return;
@@ -428,10 +432,10 @@ static void draw_box(const IBox *bx, const TexRef *ref, int r, int ox, int oz, i
     (void)t;
     { int h = bx->z1 - bx->z0; box_ao = bx->z0 == 0 ? (h > 8 ? 176 : 150) : 214; }   // on the floor: a dark foot (stronger on low things); higher up: a soft one
     // world faces: 0 south (+v), 1 east (+u), 2 north (-v), 3 west (-u) show local face (wf - r)
-    const TexRef *mS = &ref[(0 - r) & 3], *mE = &ref[(1 - r) & 3], *mN = &ref[(2 - r) & 3], *mW = &ref[(3 - r) & 3];
+    const TexRef *mS = box_tex(ref, (0 - r) & 3), *mE = box_tex(ref, (1 - r) & 3), *mN = box_tex(ref, (2 - r) & 3), *mW = box_tex(ref, (3 - r) & 3);
     // only the sides that face the eye (the rest could never show)
     int fS = cam.eye.vz < zS && mS->tpage, fE = cam.eye.vx > x1 && mE->tpage, fN = cam.eye.vz > zN && mN->tpage, fW = cam.eye.vx < x0 && mW->tpage;
-    int fT = ref[4].tpage && cam.eye.vy < y0;
+    int fT = ref[4] && cam.eye.vy < y0;
     if (!(fS | fE | fN | fW | fT)) return;
     // the 8 corners, transformed once (k: bit 0 = x1, bit 1 = south, bit 2 = bottom)
     SVECTOR cv[8]; XV v[8];
@@ -443,7 +447,7 @@ static void draw_box(const IBox *bx, const TexRef *ref, int r, int ox, int oz, i
     if (fW) tex_facex(&v[0], &v[2], &v[4], &v[6], mW, 3);
     // top: TL=(x0,zN) TR=(x1,zN) BL=(x0,zS) BR=(x1,zS); the texture turns with the item
     if (fT) {
-        TexRef tt = ref[4];
+        TexRef tt = *box_tex(ref, 4);
         if (!xv_vis4(&v[0], &v[1], &v[2], &v[3], 1)) return;
         int uv[4][2]; int cu[4] = { u0, u1, u0, u1 }, cv[4] = { v0, v0, v1, v1 };
         int aw = bx->a1 - bx->a0, bh = bx->b1 - bx->b0; if (aw < 1) aw = 1; if (bh < 1) bh = 1;

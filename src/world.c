@@ -11,6 +11,7 @@
 #include "far.h"
 #include "nature.h"
 #include "island.h"
+#include "save.h"
 
 // ---- the storeys above the ground (per zone, and one set for the creator's studio) ----
 typedef struct { char map[MH][MW + 1]; u8 fl[MH][MW]; u8 wp[MH][MW]; } Level;
@@ -52,6 +53,7 @@ int world_home_find(int zone, int bx, int by, int unit) {
     return -1;
 }
 static void town_homes(int want); static void island_homes(int want); static int is_wall(char c);
+static int world_zone_saved, world_wbx_saved, world_wby_saved;   // (world_load: where the save was; world_place goes there)
 static u8 wdirty[5][5];                             // the open world's window: blocks the player has built on
 static u8 lvl_used[NLEVELS];
 static void levels_clear(u8 *own) {                 // every storey of a zone back to empty air (their pool slots freed)
@@ -1965,8 +1967,14 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
 // Every enclosed building gets a roof over its top storey, worked out from its footprint: the height at each grid corner is
 // its distance in from the footprint's edge (chessboard distance for a HIP roof, across the short side for a GABLE, none
 // for FLAT), capped so a big building levels off. Eaves overhang the walls; gable ends are filled with plaster walls.
-static u8 roofH[NLEVELS][MH + 1][MW + 1];        // corner heights, in pitch steps
-static u8 roofM[NLEVELS][MH][MW] __attribute__((aligned(4)));   // 1: this tile is under the roof of storey l
+// (packed: a corner's height is 0..3, a tile is under a roof or not; 5 storeys of each as bytes were 65 KB)
+#define RHW ((MW + 2) / 2)
+static u8 roofH[NLEVELS][MH + 1][RHW];           // corner heights, in pitch steps: a nibble each (the low nibble is the even X)
+static u32 roofM[NLEVELS][MH][(MW + 31) / 32];   // 1: this tile is under the roof of storey l (a bit each, as lvl_edge)
+static inline int rh_get(int l, int X, int Y) { return (roofH[l][Y][X >> 1] >> ((X & 1) << 2)) & 15; }
+static inline void rh_set(int l, int X, int Y, int h) { u8 *p = &roofH[l][Y][X >> 1]; int s = (X & 1) << 2; *p = (u8)((*p & ~(15 << s)) | (h << s)); }
+static inline int rm_get(int l, int x, int y) { return (roofM[l][y][x >> 5] >> (x & 31)) & 1; }
+static inline void rm_set(int l, int x, int y) { roofM[l][y][x >> 5] |= 1u << (x & 31); }
 static u8 bld[MH][MW];                             // the building each ground tile belongs to (0: outdoors)
 static u8 roof_tex_ok; static TexRef roof_tex;
 static int enclose(char c) { return c == 'W' || c == 'E' || c == 'e' || c == 'D'; }
@@ -1996,8 +2004,9 @@ static void roof_region(int x0, int y0, int x1, int y1) {
     // what was worked out here before goes
     for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) { int b = bld[y][x]; if (b) { b_x0[b] = 255; bld[y][x] = 0; } }
     for (int l = 0; l < NLEVELS; l++) {
-        for (int y = y0; y <= y1; y++) memset(&roofM[l][y][x0], 0, x1 - x0 + 1);
-        for (int Y = y0; Y <= y1 + 1; Y++) memset(&roofH[l][Y][x0], 0, x1 - x0 + 2);
+        if (full) { memset(roofM[l], 0, sizeof roofM[l]); memset(roofH[l], 0, sizeof roofH[l]); }
+        else { for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) roofM[l][y][x >> 5] &= ~(1u << (x & 31));
+               for (int Y = y0; Y <= y1 + 1; Y++) for (int X = x0; X <= x1 + 1; X++) rh_set(l, X, Y, 0); }
         if (l) { if (full) memset(lvl_edge[l], 0, sizeof lvl_edge[l]);
                  else for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) lvl_edge[l][y][x >> 5] &= ~(1u << (x & 31)); }
     }
@@ -2038,7 +2047,7 @@ static void roof_region(int x0, int y0, int x1, int y1) {
         for (int y = Y0; y <= Y1; y++) for (int x = X0; x <= X1; x++) {
             if (out[y][x]) continue;
             if (up && up[y][x] != ' ') continue;
-            roofM[l][y][x] = 1;
+            rm_set(l, x, y);
         }
         if (l == 0) {                                            // the buildings: connected indoor areas of the ground storey
             for (int y = Y0; y <= Y1; y++) for (int x = X0; x <= X1; x++) {
@@ -2059,7 +2068,7 @@ static void roof_region(int x0, int y0, int x1, int y1) {
         }
     }
     for (int l = 1; l < NLEVELS; l++) if (rbox[l][2] >= rbox[l][0])   // how tall each building is
-        for (int y = rbox[l][1]; y <= rbox[l][3]; y++) for (int x = rbox[l][0]; x <= rbox[l][2]; x++) { int b = bld[y][x]; if (b && roofM[l][y][x] && l > b_top[b]) b_top[b] = (u8)l; }
+        for (int y = rbox[l][1]; y <= rbox[l][3]; y++) for (int x = rbox[l][0]; x <= rbox[l][2]; x++) { int b = bld[y][x]; if (b && rm_get(l, x, y) && l > b_top[b]) b_top[b] = (u8)l; }
     for (int b = 1; b <= nbld; b++) {                            // each building's roof
         if (b_x0[b] == 255) continue;
         if (world_zone == ZONE_CITY && world_wbx >= 0) {
@@ -2073,10 +2082,10 @@ static void roof_region(int x0, int y0, int x1, int y1) {
     for (int l = 0; l < NLEVELS; l++) {
         if (rbox[l][2] < rbox[l][0]) continue;
         int X0 = rbox[l][0], Y0 = rbox[l][1], X1 = rbox[l][2], Y1 = rbox[l][3];
-        const u8 (*M)[MW] = roofM[l];
+        #define M_(y, x) rm_get(l, x, y)
         // the distance in from the roof's edge (chessboard: a forward and a backward sweep), for the hip roofs
         for (int y = Y0; y <= Y1; y++) for (int x = X0; x <= X1; x++) {
-            if (!M[y][x]) { Dd[y][x] = 0; continue; }
+            if (!M_(y, x)) { Dd[y][x] = 0; continue; }
             int v = x > X0 ? Dd[y][x - 1] : 0;
             if (y > Y0) { int a = Dd[y - 1][x]; if (a < v) v = a;
                           a = x > X0 ? Dd[y - 1][x - 1] : 0; if (a < v) v = a;
@@ -2085,7 +2094,7 @@ static void roof_region(int x0, int y0, int x1, int y1) {
             Dd[y][x] = (u8)MIN(v + 1, 250);
         }
         for (int y = Y1; y >= Y0; y--) for (int x = X1; x >= X0; x--) {
-            if (!M[y][x]) continue;
+            if (!M_(y, x)) continue;
             int v = x < X1 ? Dd[y][x + 1] : 0;
             if (y < Y1) { int a = Dd[y + 1][x]; if (a < v) v = a;
                           a = x < X1 ? Dd[y + 1][x + 1] : 0; if (a < v) v = a;
@@ -2094,25 +2103,26 @@ static void roof_region(int x0, int y0, int x1, int y1) {
             if (v + 1 < Dd[y][x]) Dd[y][x] = (u8)(v + 1);
         }
         for (int y = Y0; y <= Y1; y++) for (int x = X0; x <= X1; x++) {
-            if (!M[y][x]) continue;
+            if (!M_(y, x)) continue;
             int st = b_sty[bld[y][x]];
             if (st == 0) { if (Dd[y][x] > 4) Dd[y][x] = 4; }
             else if (st == 1) {                                  // GABLE: the ridge runs along each building's longer side
                 int up = 0, dn = 0, lf = 0, rt = 0;
-                while (y - up - 1 >= 0 && M[y - up - 1][x]) up++;
-                while (y + dn + 1 < MH && M[y + dn + 1][x]) dn++;
-                while (x - lf - 1 >= 0 && M[y][x - lf - 1]) lf++;
-                while (x + rt + 1 < MW && M[y][x + rt + 1]) rt++;
+                while (y - up - 1 >= 0 && M_(y - up - 1, x)) up++;
+                while (y + dn + 1 < MH && M_(y + dn + 1, x)) dn++;
+                while (x - lf - 1 >= 0 && M_(y, x - lf - 1)) lf++;
+                while (x + rt + 1 < MW && M_(y, x + rt + 1)) rt++;
                 int across_y = MIN(up, dn) + 1, across_x = MIN(lf, rt) + 1;
                 Dd[y][x] = (u8)((up + dn) <= (lf + rt) ? across_y : across_x);
             } else Dd[y][x] = 0;                                  // FLAT
         }
         // the corners: the lowest of the four tiles round each (capped: wide buildings level off). On the box's edge: 0
-        for (int Y = Y0 + 1; Y <= Y1; Y++) { const u8 *ra = Dd[Y - 1], *rb_ = Dd[Y]; u8 *o = roofH[l][Y];
+        for (int Y = Y0 + 1; Y <= Y1; Y++) { const u8 *ra = Dd[Y - 1], *rb_ = Dd[Y];
             for (int X = X0 + 1; X <= X1; X++) {
                 int mn = ra[X - 1]; if (ra[X] < mn) mn = ra[X]; if (rb_[X - 1] < mn) mn = rb_[X - 1]; if (rb_[X] < mn) mn = rb_[X];
-                o[X] = (u8)MIN(mn, 3);
+                rh_set(l, X, Y, MIN(mn, 3));
             } }
+        #undef M_
     }
     int t = gfx_hb() - t0; if (t > dbg_rr_hb) dbg_rr_hb = t; if (!full && t > dbg_rr_blk) dbg_rr_blk = t;
 }
@@ -2128,9 +2138,14 @@ static void roof_rebuild(void) {
 // the window moved dx, dy tiles (whole blocks): the roofs, the buildings and the storeys' edges move with it
 static void roof_shift(int dx, int dy) {
     for (int l = 0; l < NLEVELS; l++) {
-        shift2d(&roofM[l][0][0], MW, MW, MH, dx, dy, 0);
-        shift2d(&roofH[l][0][0], MW + 1, MW + 1, MH + 1, dx, dy, 0);
-        if (l) {   // the edge bits: 16 tiles to a half-word
+        shift2d(&roofH[l][0][0], RHW, RHW, MH + 1, dx / 2, dy, 0);   // (whole blocks of 16 tiles: 8 bytes of nibbles)
+        {   // the roof bits (and a storey's edge bits): 16 tiles to a half-word
+            u16 tmp[MH][6]; int hx = dx / 16;
+            for (int y = 0; y < MH; y++) { int ys = y + dy; const u16 *src = (const u16 *)roofM[l][ys < 0 ? 0 : ys >= MH ? MH - 1 : ys];
+                for (int i = 0; i < 6; i++) { int j = i + hx; tmp[y][i] = (ys < 0 || ys >= MH || j < 0 || j >= 5) ? 0 : src[j]; } }
+            for (int y = 0; y < MH; y++) memcpy(roofM[l][y], tmp[y], sizeof roofM[l][y]);
+        }
+        if (l) {
             u16 tmp[MH][6]; int hx = dx / 16;
             for (int y = 0; y < MH; y++) { int ys = y + dy; const u16 *src = (const u16 *)lvl_edge[l][ys < 0 ? 0 : ys >= MH ? MH - 1 : ys];
                 for (int i = 0; i < 6; i++) { int j = i + hx; tmp[y][i] = (ys < 0 || ys >= MH || j < 0 || j >= 5) ? 0 : src[j]; } }
@@ -2170,10 +2185,10 @@ static void roof_tex_make(void) {   // shingles: courses of overlapping tiles, e
     }
     roof_tex = atlas_add(16, 16, px); roof_tex_ok = 1;
 }
-static inline int rmask(int l, int x, int y) { return x >= 0 && y >= 0 && x < MW && y < MH && roofM[l][y][x]; }
+static inline int rmask(int l, int x, int y) { return x >= 0 && y >= 0 && x < MW && y < MH && rm_get(l, x, y); }
 static int rc_sty;
 static void roof_corner(int l, int X, int Y, SVECTOR *v, int base, int pitch) {   // a roof corner, the eaves pushed out at the footprint's edge
-    int h = roofH[l][Y][X], ox = 0, oz = 0, OVH = 34;
+    int h = rh_get(l, X, Y), ox = 0, oz = 0, OVH = 34;
     if (!rmask(l, X - 1, Y - 1) && !rmask(l, X - 1, Y)) ox = -OVH;
     if (!rmask(l, X, Y - 1) && !rmask(l, X, Y)) ox = OVH;
     if (!rmask(l, X - 1, Y - 1) && !rmask(l, X, Y - 1)) oz = OVH;
@@ -2207,14 +2222,14 @@ static void roofs_draw(int fx, int fy) {
         int cur_b = -1, pitch = 170; const u8 *rc = roofCol[0];
         int lx0 = ex0, ly0 = ey0, lx1 = ex1, ly1 = ey1;                // (an upper storey's roofs lie in its built-on box, a tile round)
         if (l) { lx0 = MAX(lx0, lvl_bb[l][0] - 1); ly0 = MAX(ly0, lvl_bb[l][1] - 1); lx1 = MIN(lx1, lvl_bb[l][2] + 1); ly1 = MIN(ly1, lvl_bb[l][3] + 1); }
-        for (int y = ly0; y <= ly1; y++) { const u8 *row = roofM[l][y]; for (int x = lx0; x <= lx1; x++) {
-            if (!(x & 3) && x + 3 <= lx1 && !*(const u32 *)(row + x)) { x += 3; continue; }   // (four open tiles at a time)
-            if (!row[x] || !in_range(x, y)) continue;
+        for (int y = ly0; y <= ly1; y++) { const u32 *row = roofM[l][y]; for (int x = lx0; x <= lx1; x++) {
+            { u32 w = row[x >> 5] >> (x & 31); if (!w) { x |= 31; continue; } if (!(w & 1)) continue; }   // (32 tiles of open air at a time)
+            if (!in_range(x, y)) continue;
             int b = bld[y][x];
             if (b && b_see[b] && !world_fp && (!world_roof_show || l > world_view_lvl)) { if (!world_roof_show) continue; }   // the building you are in (or look through) shows its rooms (first person: its roof is the ceiling)
             if (b != cur_b) { cur_b = b; pitch = roofPitch[b_pit[b] % NROOF_PITCH]; rc = roofCol[b_col[b] % NROOF_COL]; rc_sty = b_sty[b]; rc_pitch = pitch; }
             if (rc_sty == 2 && b && b_top[b] == l) {                // a flat roof: the building's whole top in one slab (drawn from its first tile)
-                if (x != b_x0[b] || y != b_y0[b]) { if (!(roofM[l][b_y0[b]][b_x0[b]])) {} else continue; }
+                if (x != b_x0[b] || y != b_y0[b]) { if (!rm_get(l, b_x0[b], b_y0[b])) {} else continue; }
                 else {
                     int X0 = b_x0[b] * TILE - 17, X1 = (b_x1[b] + 1) * TILE + 17, Z0 = -b_y0[b] * TILE + 17, Z1 = -(b_y1[b] + 1) * TILE - 17, Y = base - 10;
                     SVECTOR a, bb, cc, dd; setVector(&a, X0, Y, Z0); setVector(&bb, X1, Y, Z0); setVector(&cc, X0, Y, Z1); setVector(&dd, X1, Y, Z1);
@@ -2232,7 +2247,7 @@ static void roofs_draw(int fx, int fy) {
             if (ABS(vx) > (vz * 3) / 4 + TILE * 2) continue;
             if (ABS(vy) > (vz * 5) / 8 + TILE * 3) continue;
             const XV *A = cc_roof_at(x, y), *B = cc_roof_at(x + 1, y), *C = cc_roof_at(x, y + 1), *DQ = cc_roof_at(x + 1, y + 1);
-            int hA = roofH[l][y][x], hB = roofH[l][y][x + 1], hC = roofH[l][y + 1][x], hD = roofH[l][y + 1][x + 1];
+            int hA = rh_get(l, x, y), hB = rh_get(l, x + 1, y), hC = rh_get(l, x, y + 1), hD = rh_get(l, x + 1, y + 1);
             int dhx = ((hB + hD - hA - hC) * pitch) / 2, dhz = ((hA + hB - hC - hD) * pitch) / 2;   // the slope across the tile
             int key = (dhx + 2048) | ((dhz + 2048) << 12);                   // most tiles share a slope: keep the last one's light
             static int last_key = -1, last_L, last_amb = -1; if (gfx_light_amb() != last_amb) { last_key = -1; last_amb = gfx_light_amb(); }
@@ -2259,7 +2274,7 @@ static void roofs_draw(int fx, int fy) {
                 int X1, Y1, X2, Y2;   // the edge's two corners, in the order that faces outward
                 if (k == 0) { X1 = x; Y1 = y + 1; X2 = x + 1; Y2 = y + 1; } else if (k == 1) { X1 = x + 1; Y1 = y + 1; X2 = x + 1; Y2 = y; }
                 else if (k == 2) { X1 = x + 1; Y1 = y; X2 = x; Y2 = y; } else { X1 = x; Y1 = y; X2 = x; Y2 = y + 1; }
-                int h1 = roofH[l][Y1][X1], h2 = roofH[l][Y2][X2];
+                int h1 = rh_get(l, X1, Y1), h2 = rh_get(l, X2, Y2);
                 if (!h1 && !h2) continue;
                 SVECTOR a, b2, cc, dd;
                 setVector(&a, X1 * TILE, base - h1 * pitch, -Y1 * TILE); setVector(&b2, X2 * TILE, base - h2 * pitch, -Y2 * TILE);
@@ -2513,3 +2528,58 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     gfx_set_reserve(0);
     { extern int gfx_world_peak, gfx_bytes_used(void); int u = gfx_bytes_used(); if (u > gfx_world_peak) gfx_world_peak = u; }
 }
+
+// ---- the memory card (save.c): the home lot's tiles, the family's own lot, the blocks built on, and where the window is ----
+static void sv_level(const char (*map)[MW + 1], const u8 (*fl)[MW], const u8 (*wp)[MW]) { sv_rle(map, MH * (MW + 1)); sv_rle(fl, MH * MW); sv_rle(wp, MH * MW); }
+static void ld_level(char (*map)[MW + 1], u8 (*fl)[MW], u8 (*wp)[MW]) { ld_rle(map, MH * (MW + 1)); ld_rle(fl, MH * MW); ld_rle(wp, MH * MW); }
+__attribute__((optimize("Os"))) void world_save(int with_home) {   // with_home: THE MAN BASE is the family's home (its tiles are kept)
+    window_keep();
+    sv_u8(world_zone); sv_u16(world_wbx); sv_u16(world_wby);
+    sv_u8(with_home);
+    if (with_home) {
+        if (world_zone == ZONE_HOME) sv_level(lifeMap, floorMap, wallMap); else sv_level(zones[ZONE_HOME].map, zones[ZONE_HOME].fl, zones[ZONE_HOME].wp);
+        int mask = 0; for (int k = 0; k < NUP; k++) if (lvown[ZONE_HOME][k]) mask |= 1 << k;
+        sv_u8(mask);
+        for (int k = 0; k < NUP; k++) if (mask & (1 << k)) { const Level *L = &lvpool[lvown[ZONE_HOME][k] - 1]; sv_level(L->map, L->fl, L->wp); }
+    }
+    sv_u8(own.used);
+    if (own.used) {
+        sv_u16(own.bx); sv_u16(own.by); sv_u8(own.fresh); sv_u8(own.lv); sv_u8(own.home);
+        sv_u8(own.hx0); sv_u8(own.hy0); sv_u8(own.hx1); sv_u8(own.hy1); sv_u8(own.hdx); sv_u8(own.hdy);
+        sv_n(&own_occ, sizeof own_occ);
+        if (!own.fresh) { sv_rle(own.map, sizeof own.map); sv_rle(own.fl, sizeof own.fl); sv_rle(own.wp, sizeof own.wp); }
+    }
+    sv_u16(nedit); sv_u16(edit_next);
+    for (int i = 0; i < nedit; i++) { sv_u16(edits[i].bx); sv_u16(edits[i].by); sv_rle(edits[i].map, sizeof edits[i].map); sv_rle(edits[i].fl, sizeof edits[i].fl); sv_rle(edits[i].wp, sizeof edits[i].wp); }
+}
+__attribute__((optimize("Os"))) void world_load(void) {   // (after world_new_seed and world_reset_all: THE MAN BASE is the live zone)
+    world_zone_saved = ld_u8(); int wbx = (s16)ld_u16(), wby = (s16)ld_u16();
+    world_wbx_saved = wbx; world_wby_saved = wby;
+    if (ld_u8()) {
+        ld_level(lifeMap, floorMap, wallMap);
+        int mask = ld_u8();
+        for (int k = 0; k < NUP; k++) if (mask & (1 << k)) { Level *L = lv_need(k); if (!L) { ld_fail(); break; } ld_level(L->map, L->fl, L->wp); }
+        ao_dirty = 1; roof_dirty = 1; world_stamp++;
+    }
+    own.used = ld_u8();
+    if (own.used) {
+        own.bx = (u16)ld_u16(); own.by = (u16)ld_u16(); own.fresh = (u8)ld_u8(); own.lv = (u8)ld_u8(); own.home = (u8)ld_u8();
+        own.hx0 = (u8)ld_u8(); own.hy0 = (u8)ld_u8(); own.hx1 = (u8)ld_u8(); own.hy1 = (u8)ld_u8(); own.hdx = (u8)ld_u8(); own.hdy = (u8)ld_u8();
+        ld_n(&own_occ, sizeof own_occ);
+        if (!own.fresh) { ld_rle(own.map, sizeof own.map); ld_rle(own.fl, sizeof own.fl); ld_rle(own.wp, sizeof own.wp); }
+    }
+    int n = ld_u16(); edit_next = ld_u16(); nedit = 0;
+    for (int i = 0; i < n; i++) {
+        EditBlk t; int keep = i < nedit_max; EditBlk *e = keep ? &edits[i] : &t;   // (t: a block too many for this machine's list is read and dropped)
+        e->bx = (u16)ld_u16(); e->by = (u16)ld_u16(); ld_rle(e->map, sizeof e->map); ld_rle(e->fl, sizeof e->fl); ld_rle(e->wp, sizeof e->wp);
+        if (keep) nedit++;
+    }
+    if (edit_next >= nedit_max) edit_next = 0;
+}
+void world_place(void) {   // where the save was: the zone, and the window of SAN BOREAS round the family
+    int z = world_zone_saved;
+    if (z == ZONE_HOME) return;
+    world_switch(z);
+    if (z == ZONE_CITY) world_open_at(world_wbx_saved + WB / 2, world_wby_saved + WB / 2);
+}
+u32 world_seed(void) { return wsalt; }

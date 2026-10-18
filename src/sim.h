@@ -109,6 +109,8 @@ const char *sim_relation(int i, int j);      // what j is to i: "PARTNER", "PARE
 const char *sim_grade(int g);                // "A" .. "F"
 int  sim_grave_name(int mx, int my, char *out);   // the name on the gravestone there
 extern int day_count;                       // days since this life began
+void sim_save(void);                        // the memory card: the family, the clock, the money, the job (save.h)
+void sim_load(const Bore *blank);          // (after sim_init)
 
 // the story: what this life has done so far (the travel zones unlock from these)
 extern int story_paid;         // paychecks earned

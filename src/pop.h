@@ -42,3 +42,5 @@ int  pop_count_where(int at);                               // (directory) how m
 extern int pop_aging;                                       // (options) the rest of SAN BOREAS grows older too
 void pop_midnight(void);                                    // a day older all over SAN BOREAS: birthdays, babies, the old passing, new families
 int  pop_alive(int f);                                      // how many of a household still live there
+void pop_save(void);                                        // the memory card: what changed since the world began (save.h)
+void pop_load(void);                                        // (after pop_new from the same seed)

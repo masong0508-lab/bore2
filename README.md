@@ -51,7 +51,10 @@ The creature code: `python3 tools/port_look.py <bore-gba-main>/source/main.c src
 - `test/` scripts used to take emulator screenshots and measure FPS.
 
 ## Known gaps
-No memory-card saves, the 80x80 map's RAM use is estimated and not yet measured on a disc build, wants/fears only partly done, tested only in an emulator.
+The island's and the desert town's built things are not kept by a save (they come back as they were made), what people are doing in the middle of an action is not kept (everyone stands up idle), the card driver is tested only in an emulator (no real card yet), wants/fears only partly done, tested only in an emulator.
+
+## Saving
+START, then SAVE GAME writes the life to the memory card in slot 1: one file, 1 block (2 at most), made by `src/mcard.c` (the card, over the serial port like the pad) and `src/save.c` (the packing). It holds the family (looks, needs, wants, relationships, skills), the clock, money, job, the home lot and every building you made, the open world's seed and the changes since (who grew up, moved, passed on), the island's stores and secrets, and the options. The world itself is made again from its seed. CONTINUE on the title loads it. One save slot; saving again replaces it.
 
 ## Buying and building
 BUILD MODE (START, BUILD MODE), BUY tool: the catalog has eight tabs (SEATS, TABLES, KITCHEN, FUN AND TECH, DECOR, GARDEN, SKATE, SPECIAL),
