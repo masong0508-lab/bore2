@@ -1774,7 +1774,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     for (int i = 0; i < n && i < MAX_SIMS; i++) {
         sim_add(blank, 0, 0, 1);   // (a blank Bore: the Bore is large, so it is filled in place)
         Sim *s = &sims[nsims - 1]; Bore *b = &s->bore;
-        ld_n(b->look, LK_COUNT); b->stage = (u8)ld_u8(); b->asp = (u8)ld_u8(); b->ltw = (u8)ld_u8(); ld_n(b->tr, TR_N); ld_str(b->first, NAME_LEN - 1); ld_str(b->last, NAME_LEN - 1);
+        memset(b->look, 0, LK_COUNT); ld_n(b->look, save_ver >= 6 ? LK_COUNT : 120); b->stage = (u8)ld_u8(); b->asp = (u8)ld_u8(); b->ltw = (u8)ld_u8(); ld_n(b->tr, TR_N); ld_str(b->first, NAME_LEN - 1); ld_str(b->last, NAME_LEN - 1);
         b->tex_eye.tpage = 0; b->tex_mouth.tpage = 0; b->baked = 0;
         look_build(b);
         s->x = (int)ld_u32(); s->z = (int)ld_u32(); s->yaw = ld_u16();

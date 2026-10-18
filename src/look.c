@@ -12,21 +12,17 @@ static int slideEffS(int v);
 static u8 xo_dummy;
 
 #include "look_port.inc"
+#include "face_more.inc"
 
 static int slideEffS(int v) { return slidePos(v) - 4; }
 
 // ---- names the creator shows ----
 static const char *const shapeNm[NSHAPE]={"AVERAGE","BROAD","BIG HEAD","STUBBY","SLIM","ATHLETIC","TALL","CHUBBY","PEAR","LANKY","STOCKY","HUNCHED","POTBELLY","MUSCLE","PETITE","BARREL","DIGITIGRADE","V-SHAPE","CURVY","RUNNER","SOFT","POWER","LONG LEGS","PUDGY","TODDLER","SPROUT","SPORTY","BELL","STURDY","SPIDER"};
-static const char *const eyeNm[NEYE]={"SLEEPY","ROUND","HAPPY","WIDE","ANGRY","CUTE","CAT","DOT","LASHES"};
-static const char *const mouthNm[NMOUTH]={"FLAT","SMILE","OH","GRIN","SMIRK","FROWN","TONGUE","FANGS","KITTY"};
-static const char *const browNm[6]={"NONE","THIN","THICK","ANGRY","WORRIED","UNIBROW"};
-static const char *const noseNm[6]={"NONE","BUTTON","POINTY","WIDE","PIG","ANIMAL"};
 static const char *const fearNm[5]={"NONE","CAT","FOX","BUNNY","BEAR"};
 static const char *const muzNm[4]={"NONE","SNOUT","MUZZLE","BEAK"};
 static const char *const ftailNm[4]={"NONE","FOX","CAT","BUNNY"};
-static const char *const cheekNm[5]={"NONE","BLUSH","FRECKLES","WHISKERS","SCAR"};
-static const char *const glassNm[4]={"NONE","ROUND","SQUARE","SHADES"};
-static const char *const earNm[3]={"NONE","SMALL","BIG"};
+#define NEAR_ALL 9
+static const char *const earNm[NEAR_ALL]={"NONE","SMALL","BIG","ELF","LONG ELF","TINY","STICK-OUT","DROOPY","HUGE"};
 static const char *const hairNm[NHAIR]={"CROP","BOWL","LONG","BALD","SPIKY","AFRO","FLAT TOP","SIDE TAIL","BUN","BOB","PONYTAIL","PIGTAILS","MOHAWK","PIXIE","CURLS"};
 static const char *const hatNm[6]={"NONE","CAP","BEANIE","BAND","FEZ","HELMET"};
 static const char *const hatColNm[6]={"AS THE TOP","AS THE BOTTOM","WHITE","BLACK","RED","GOLD"};
@@ -36,6 +32,13 @@ static const char *const botStyNm[4]={"PANTS","SHORTS","SKIRT","BARE"};
 static const char *const shoeNm[6]={"AS THE BOTTOM","WHITE","BLACK","RED","GOLD","AS THE TOP"};
 static const char *const stageNm2[AG_N]={"BABY","CHILD","TEEN","ADULT","ELDER"};
 static const u8 lkCnt[LK_N]={NSHAPE,NSKIN,NEYE,NMOUTH,3,NHAIR,NSW,NSW,NSW,9,9,9,3,3,3,6,6,3,4,3,6, 6,6,5,4,NSW, 9,9,9,9,9,9,9, 4,3,7,6, 9,9,9,9,9,9,9,9,9, 5,4,4, 9,9,9, 9,9,9,9,9,9,9, 9,9,9,9,9,9,9, 9,9,9,7, 9,9,9, 9};
+static int lk_cnt(int id) {   // the GBA counts, with the bigger FACE tab's
+    switch (id) {
+        case LK_EYES: return NEYE_ALL; case LK_MOUTH: return NMOUTH_ALL; case LK_EARS: return NEAR_ALL; case LK_BROW: return NBROW_ALL;
+        case LK_NOSE: return NNOSE_ALL; case LK_CHEEK: return NCHEEK_ALL; case LK_GLASS: return NGLASS_ALL;
+        default: return lkCnt[id];
+    }
+}
 _Static_assert(LK_X_END <= LK_COUNT, "LK_COUNT in look.h must hold every look");
 #include "wear_names.inc"
 // OUTFITS: ready-made looks from the wardrobe (head, face, neck, back, hand, waist, ears, wrists, shoulder, feet; colour 1 and 2; the top's pattern), by name
@@ -105,7 +108,7 @@ static const LookRow rowFace[] = {
     {"EYES", LK_EYES, ROW_PICK}, {"EYE COLOUR", LK_EYECOL, ROW_COLOUR}, {"EYE SIZE", LK_EYESZ, ROW_SLIDER}, {"EYE SPACING", LK_EYESP, ROW_SLIDER},
     {"EYE HEIGHT", LK_EYEHT, ROW_SLIDER}, {"BROWS", LK_BROW, ROW_PICK}, {"GLASSES", LK_GLASS, ROW_PICK}, {"MOUTH", LK_MOUTH, ROW_PICK},
     {"MOUTH WIDTH", LK_MOUTHW, ROW_SLIDER}, {"MOUTH HEIGHT", LK_MOUTHHT, ROW_SLIDER}, {"NOSE", LK_NOSE, ROW_PICK}, {"CHEEKS", LK_CHEEK, ROW_PICK},
-    {"EARS", LK_EARS, ROW_PICK}, {"EYE SHADE", LK_EYETONE, ROW_SLIDER}, {"JAW", LK_JAWW, ROW_SLIDER}, {"EAR LIFT", LK_EARLF, ROW_SLIDER}, {"EAR WIDTH", LK_EARWID, ROW_SLIDER} };
+    {"EARS", LK_EARS, ROW_PICK}, {"MAKE-UP", LK_X_MAKEUP, ROW_PICK}, {"LIPS", LK_X_LIPS, ROW_PICK}, {"MORE MARKS", LK_X_MARKS, ROW_PICK}, {"EYE SHADE", LK_EYETONE, ROW_SLIDER}, {"JAW", LK_JAWW, ROW_SLIDER}, {"EAR LIFT", LK_EARLF, ROW_SLIDER}, {"EAR WIDTH", LK_EARWID, ROW_SLIDER} };
 static const LookRow rowHair[] = {
     {"STYLE", LK_HSTYLE, ROW_PICK}, {"COLOUR", LK_HCOL, ROW_COLOUR}, {"HAIR TONE", LK_HTONE, ROW_SLIDER}, {"BEARD", LK_BEARD, ROW_PICK},
     {"HAT", LK_HAT, ROW_PICK}, {"HAT COLOUR", LK_HATCOL, ROW_PICK} };
@@ -160,11 +163,12 @@ void look_init(void) { wp_avg_init(); }
 
 int look_is_slider(int id) { return id < LK_N && lkSlide(id); }
 int look_count(int id) {
-    if (id < LK_N) return lkCnt[id];
+    if (id < LK_N) return lk_cnt(id);
     switch (id) {
         case LK_X_HEAD: return NX_HEAD; case LK_X_FACE: return NX_FACE; case LK_X_NECK: return NX_NECK; case LK_X_BACK: return NX_BACK;
         case LK_X_HAND: return NX_HAND; case LK_X_WAIST: return NX_WAIST; case LK_X_COLA: case LK_X_COLB: return NX_COL;
         case LK_X_THEME: return NTHEME;
+        case LK_X_MAKEUP: return NMAKEUP; case LK_X_LIPS: return NLIPS; case LK_X_MARKS: return NCHEEK_ALL;
         case LK_X_EARS: return NX_EARS; case LK_X_WRIST: return NX_WRIST; case LK_X_SHOULDER: return NX_SHOULDER; case LK_X_FEET: return NX_FEET;
         case LK_X_TOPPAT: case LK_X_BOTPAT: return NX_PAT; case LK_X_PATTONE: return 2;
         default: return 0;
@@ -175,7 +179,7 @@ int look_allowed(const Bore *b, int id, int v) {
     stage = b->stage;
     switch (id) {
         case LK_SHAPE: return shapeMask() >> v & 1;
-        case LK_EARS:  return stMaskEars[stage] >> v & 1;
+        case LK_EARS:  return v < 3 ? stMaskEars[stage] >> v & 1 : stMaskEars[stage] >> 2 & 1;   // (the new ears: whoever may have big ones)
         case LK_HSTYLE: return stMaskHair[stage] >> v & 1;
         case LK_SKIN: return v < NSKIN;
         case LK_HCOL: case LK_TOP: case LK_BOT: return v < stSwatches[stage];
@@ -195,9 +199,9 @@ void look_fix(Bore *b) {   // a birthday: whatever the new age cannot wear goes 
 const char *look_option_name(int id, int v) {
     switch (id) {
         case LK_SHAPE: return shapeNm[v % NSHAPE];
-        case LK_EYES: return eyeNm[v % NEYE];
-        case LK_MOUTH: return mouthNm[v % NMOUTH];
-        case LK_EARS: return earNm[v % 3];
+        case LK_EYES: return eyeNmAll[v % NEYE_ALL];
+        case LK_MOUTH: return mouthNmAll[v % NMOUTH_ALL];
+        case LK_EARS: return earNm[v % NEAR_ALL];
         case LK_HSTYLE: return hairNm[v % NHAIR];
         case LK_TAIL: return tailNm[v % 3];
         case LK_HORNS: return hornNm[v % 3];
@@ -208,10 +212,12 @@ const char *look_option_name(int id, int v) {
         case LK_TOPSTY: return topStyNm[v % 5];
         case LK_BOTSTY: return botStyNm[v % 4];
         case LK_SHOE: return shoeNm[v % 6];
-        case LK_BROW: return browNm[v % 6];
-        case LK_NOSE: return noseNm[v % 6];
-        case LK_CHEEK: return cheekNm[v % 5];
-        case LK_GLASS: return glassNm[v % 4];
+        case LK_BROW: return browNmAll[v % NBROW_ALL];
+        case LK_NOSE: return noseNmAll[v % NNOSE_ALL];
+        case LK_CHEEK: case LK_X_MARKS: return cheekNmAll[v % NCHEEK_ALL];
+        case LK_GLASS: return glassNmAll[v % NGLASS_ALL];
+        case LK_X_MAKEUP: return makeupNm[v % NMAKEUP];
+        case LK_X_LIPS: return lipsNm[v % NLIPS];
         case LK_CLAWS: return clawNm[v % 4];
         case LK_ANTENNA: return antNm[v % 3];
         case LK_PATTERN: return patNm[v % 7];
@@ -276,7 +282,8 @@ void look_random(Bore *b) {
         if (lkSlide(id)) { b->look[id] = (u8)slideVal(rnd8() % 5 + rnd8() % 5); continue; }
         int v = 0;
         for (int t = 0; t < 20; t++) {
-            v = rnd8() % lkCnt[id];
+            v = rnd8() % lk_cnt(id);
+            if (id == LK_EARS && v >= 3 && (rnd8() & 3)) v = 1 + (rnd8() & 1);   // (elf ears and the like now and then)
             if (isPart(id) && (rnd8() & 1)) v = 0;
             if ((id == LK_PATTERN || id == LK_FEARS || id == LK_MUZZLE || id == LK_FTAIL) && (rnd8() % 3)) v = 0;
             if ((id == LK_HAT || id == LK_BEARD || id == LK_GLASS || id == LK_CHEEK) && (rnd8() & 1)) v = 0;
@@ -295,6 +302,9 @@ void look_random(Bore *b) {
         b->look[LK_X_TOPPAT] = (u8)((rnd8() % 3 == 0) ? 1 + rnd8() % (NX_PAT - 1) : 0);
         b->look[LK_X_BOTPAT] = (u8)((rnd8() % 4 == 0) ? 1 + rnd8() % (NX_PAT - 1) : 0);
         b->look[LK_X_PATTONE] = (u8)(rnd8() & 1);
+        b->look[LK_X_MAKEUP] = (u8)((rnd8() % 5 == 0) ? 1 + rnd8() % (NMAKEUP - 1) : 0);
+        b->look[LK_X_LIPS] = (u8)((rnd8() % 5 == 0) ? 1 + rnd8() % (NLIPS - 1) : 0);
+        b->look[LK_X_MARKS] = (u8)((rnd8() % 6 == 0) ? 1 + rnd8() % (NCHEEK_ALL - 1) : 0);
     }
     look_set_sign(b, rnd8() % 12);
     b->asp = (u8)(rnd8() % AS_PICK); b->ltw = (u8)(rnd8() % LTN);
@@ -319,22 +329,47 @@ static TexRef face_alloc(int w) {
     for (int i = 0; i < face_nfree; i++) if (face_free[i].cap >= w) { TexRef t = face_free[i]; face_free[i] = face_free[--face_nfree]; t.w = (u8)w; return t; }
     return atlas_alloc(w, 8);
 }
+static const u16 lipTones[NLIPS] = { 0, RGB(24,3,5), RGB(30,12,20), RGB(31,14,10), RGB(18,3,11), RGB(16,5,22), RGB(3,3,4), RGB(28,22,6), RGB(6,10,26), RGB(24,15,12), RGB(13,7,4) };
+static const u16 shadowTones[NMAKEUP] = { 0, 0, 0, 0, RGB(8,16,30), RGB(19,9,26), RGB(29,23,8), RGB(30,14,22), RGB(8,22,10), RGB(9,8,10), RGB(26,22,30) };
 static void bake_face(Bore *b, int eye) {
-    const Spr *sp = &spr[eye ? b->sty_eye : NEYE + b->sty_mouth];
-    int aw = 10 * sp->wc - 1;
-    int br = look[LK_BROW], gl = look[LK_GLASS], no = look[LK_NOSE], ch = look[LK_CHEEK];
-    static const char key[] = "kwrsibghl";
+    const char *const *art = eye ? eyeArtAll[b->sty_eye % NEYE_ALL] : mouthArtAll[b->sty_mouth % NMOUTH_ALL];
+    int aw = eye ? 9 : 19;
+    const Bore *lb = b;
+    int br = lb->look[LK_BROW] % NBROW_ALL, gl = lb->look[LK_GLASS] % NGLASS_ALL, no = lb->look[LK_NOSE] % NNOSE_ALL, ch = lb->look[LK_CHEEK] % NCHEEK_ALL;
+    int mk = lb->look[LK_X_MAKEUP] % NMAKEUP, lp = lb->look[LK_X_LIPS] % NLIPS, mr = lb->look[LK_X_MARKS] % NCHEEK_ALL;
+    static const char key[] = FACE_KEYS;
+    char g[8][20];
     for (int y = 0; y < 8; y++) for (int x = 0; x < aw; x++) {
-        char c = sp->art[y][x];
+        char c = art[y][x];
         if (eye) {
-            if (br && y < 2) { char t = brArt[br - 1][y][x]; if (t != '.') c = t; }
-            if (gl) { char t = glArt[gl - 1][y][x]; if (t != '.') c = t; }
+            if (br && y < 2) { char t = browArtAll[br][y][x]; if (t != '.') c = t; }
         } else if (c == '.') {
-            if (no && y < 2) c = noArt[no - 1][y][x];
-            if (c == '.' && ch && y < 4) c = chArt[ch - 1][y][x];
+            if (no && y < 2) c = noseArtAll[no][y][x];
+            if (c == '.' && ch && y < 4) c = cheekArtAll[ch][y][x];
+            if (c == '.' && mr && y < 4) c = cheekArtAll[mr][y][x];
+        } else if (lp && c == 'k') c = 'p';   // LIPS: the mouth's lines in the lip colour
+        g[y][x] = c;
+    }
+    if (eye && mk) {   // MAKE-UP, fitted to whichever eye: shadow on the lid above it, a line along its top, lashes, a wing at the outer corner
+        int top = -1, x0 = 9, x1 = -1;
+        for (int y = 0; y < 8 && top < 0; y++) for (int x = 0; x < 9; x++) if (art[y][x] != '.') { top = y; if (x < x0) x0 = x; if (x > x1) x1 = x; }
+        if (top >= 0) {
+            int lr = top - 1;
+            if (mk == 1 || mk == 2) { if (lr >= 0) for (int x = x0; x <= x1; x++) if (g[lr][x] == '.') g[lr][x] = 'k';
+                                      if (mk == 2) { if (x0 > 0 && top >= 0) g[top][x0 - 1] = 'k'; if (x0 > 1 && lr >= 0) g[lr][x0 - 2] = 'k'; if (x0 > 0 && lr >= 0) g[lr][x0 - 1] = 'k'; } }
+            else if (mk == 3) { for (int x = x0; x <= x1; x += 2) { if (lr >= 0 && g[lr][x] == '.') g[lr][x] = 'k'; } if (lr >= 1 && x0 > 0) g[lr - 1][x0 - 1] = 'k'; if (x0 > 0) g[top][x0 - 1] = 'k'; }
+            else for (int y = MAX(0, top - 2); y < top; y++) for (int x = MAX(0, x0 - 1); x <= MIN(8, x1 + 1); x++)
+                if (g[y][x] == '.') g[y][x] = (mk == 10 && ((x + y) & 1)) ? 'y' : 'e';
         }
+    }
+    if (eye && gl) for (int y = 0; y < 8; y++) for (int x = 0; x < 9; x++) { char t = glassArtAll[gl][y][x]; if (t != '.') g[y][x] = t; }
+    u16 pal[17]; memcpy(pal, b->facepal, sizeof pal);
+    if (lp) pal[10] = lipTones[lp];
+    if (mk >= 4) pal[13] = shadowTones[mk];
+    for (int y = 0; y < 8; y++) for (int x = 0; x < aw; x++) {
+        char c = g[y][x];
         u16 px = 0;
-        if (c != '.') { int k = 0; while (key[k] && key[k] != c) k++; if (!key[k]) k = 0; px = b->facepal[k]; if (!px) px = 0x8000; }
+        if (c != '.') { int k = 0; while (key[k] && key[k] != c) k++; if (!key[k]) k = 0; px = pal[k]; if (!px) px = 0x8000; }
         facebuf[y * aw + x] = px;
     }
     TexRef *t = eye ? &b->tex_eye : &b->tex_mouth;
@@ -347,14 +382,20 @@ void look_build(Bore *b) {
     memcpy(look, b->look, LK_N);
     stage = b->stage;
     custom = 0;
+    int eyes = look[LK_EYES] % NEYE_ALL, mouth = look[LK_MOUTH] % NMOUTH_ALL, ears = look[LK_EARS] % NEAR_ALL;   // (the GBA builder knows its own nine and three: the rest go round it)
+    if (eyes >= NEYE) look[LK_EYES] = 0;
+    if (mouth >= NMOUTH) look[LK_MOUTH] = 0;
+    if (ears >= 3) look[LK_EARS] = 2;
     fixLook();
     buildLook();
+    look[LK_EYES] = (u8)eyes; look[LK_MOUTH] = (u8)mouth;
+    if (ears >= 3) look[LK_EARS] = look[LK_EARS] == 2 ? (u8)ears : look[LK_EARS];
     setColors();
     memcpy(b->look, look, LK_N);          // fixLook may have pulled a choice into what the stage allows
     memcpy(b->vox, vox, sizeof vox);
     memcpy(b->dec, dec, sizeof dec);
     for (int i = 0; i < 9; i++) b->col[i] = base[i];
-    b->sty_eye = (u8)sty[0]; b->sty_mouth = (u8)sty[1];
+    b->sty_eye = (u8)eyes; b->sty_mouth = (u8)mouth;
     { int L, T, hs; bodyPlan(&L, &T, &hs); b->legs = (u8)L; b->torso = (u8)T; b->headsz = (u8)hs; }
     b->bx0 = (u8)BX0; b->bxw = (u8)BXW; b->bxh = (u8)BXH; b->bxd = (u8)BXD;
     // the face palette (k dark, w white, r red, s lid shadow, i iris, b blush, g glasses frame, h brows, l dark lenses), as setColors builds it
@@ -362,6 +403,8 @@ void look_build(Bore *b) {
     b->facepal[0] = base[3]; b->facepal[1] = base[2]; b->facepal[2] = base[4]; b->facepal[3] = shade(base[1], 11);
     b->facepal[4] = toneBy(eyeTones[look[LK_EYECOL] % NSW], slideEffS(look[LK_EYETONE])); b->facepal[5] = bl; b->facepal[6] = RGB(6, 6, 8);
     b->facepal[7] = shade(base[5], 10); b->facepal[8] = RGB(4, 5, 9);
+    b->facepal[9] = RGB(30, 24, 6); b->facepal[10] = RGB(24, 3, 5); b->facepal[11] = RGB(6, 14, 30); b->facepal[12] = shade(base[1], 6);   // y gold, p lips, c paint, n a mole
+    b->facepal[13] = RGB(9, 8, 10); b->facepal[14] = RGB(14, 24, 31); b->facepal[15] = RGB(22, 23, 25); b->facepal[16] = RGB(28, 22, 15);   // e shadow, t a tear, m metal, a a plaster
     bake_face(b, 1);
     bake_face(b, 0);
     voxel_prepare(b);

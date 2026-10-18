@@ -23,9 +23,15 @@ park, a town square, STRANGE TOWN), things to do (a pizza, a joke, tricks off th
 closes it (it pays $500 to $1500); the phone's GOALS is the story journal (X takes a taxi to where the chapter sends you, TRIANGLE
 shows THE STORY SO FAR; with no story on, SQUARE there picks one for the life you are living, and its people move in); the HUD shows
 the next task. TV SHOW & TELL (Missy's story) is held back for its own voiced, filmed version.
-`src/story.c` has the stories; saves keep them (save version 5).
+`src/story.c` has the stories; saves keep them (since save version 5).
 SELECT names your capital city (a letter keyboard: X types, SQUARE deletes, START keeps it). In play, the phone's MAP renames any
 town: pick it and press TRIANGLE. Saves keep the names. In CREATE A BORE, SQUARE names your Bore (first and last name).
+
+CREATE A BORE's FACE tab has 41 eyes (star, heart, dizzy, sparkly, robot, snake, crying...), 39 mouths (teeth, laugh, braces,
+vampire, kiss, yell...), 19 brows, 20 noses, 23 cheek marks (freckles, hearts, war paint, stitches, a mole...) and MORE MARKS to
+add a second, 17 glasses, 9 ears (elf, long elf, droopy, huge...), MAKE-UP (liner, lashes, eye shadow in six colours, glitter)
+and LIPS (ten colours). `tools/make_face.py` makes the art (`src/face_more.inc`). Saves are version 6 (they hold the new looks;
+older saves still load).
 
 CREATE A BORE's WEAR tab is the big wardrobe: about 300 things to put on in ten places (64 hats, 36 face things, 29 for the
 neck, 31 on the back, 64 to hold, 21 at the waist, and new EARS, WRISTS, SHOULDER and FEET: earrings, watches and bracelets,

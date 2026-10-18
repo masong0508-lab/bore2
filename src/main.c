@@ -2469,6 +2469,18 @@ static void create_named(void) {   // "FIRST LAST" back into the creator's Bore
 }
 static char create_nm[24];
 static void create_update(void) {
+#ifdef AUTO_FACE
+    {   // (test builds: every face part in turn, a third of a second each, face on)
+        static int t0 = -1, last = -1, cat = AUTO_FACE, item = 0; static const u8 ids[9] = { LK_EYES, LK_MOUTH, LK_BROW, LK_NOSE, LK_CHEEK, LK_GLASS, LK_X_MAKEUP, LK_X_LIPS, LK_EARS };
+        if (t0 < 0) t0 = VSync(-1);
+        int k_ = (VSync(-1) - t0) / 20;
+        if (k_ != last && cat < 9) { last = k_;
+            if (++item >= look_count(ids[cat])) { edit.look[ids[cat]] = ids[cat] == LK_EYES ? 1 : 0; cat++; item = 1; }
+            if (cat < 9) { edit.look[ids[cat]] = (u8)item; if (ids[cat] == LK_X_MAKEUP) edit.look[LK_EYES] = 1; look_build(&edit); create_tab = 1; create_row = 0;
+                create_turn = ids[cat] == LK_EARS ? ((k_ & 1) ? 150 : 0) : 0; } }
+        return;
+    }
+#endif
 #ifdef AUTO_WEAR
     {   // (test builds: every outfit in turn, a little over half a second each, turning slowly)
         static int t0 = -1, last = -1;
@@ -3104,7 +3116,7 @@ static void title_update(void) {
 #ifdef AUTO_STORY
     if (title_t == 30) { life_story = AUTO_STORY; worlds_go(0x5EED1234u, 0); return; }
 #endif
-#ifdef AUTO_WEAR
+#if defined(AUTO_WEAR) || defined(AUTO_FACE)
     if (title_t == 30) { world_backup(); prev_state = ST_MENU; create_tab = 4; create_row = 0; state = ST_CREATE; world_gen_studio(); return; }
 #endif
 #if defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM)

@@ -8,10 +8,11 @@
 #define AS_PICK 5   // the aspirations the creator offers (GROW UP comes with being young)
 #define LTN 4
 
-#define LK_COUNT 120
+#define LK_COUNT 128
 // BORE 2's own wardrobe (after the GBA looks): the WEAR tab's accessories, their two colours, and clothes patterns
 enum { LK_X_HEAD = LK_N, LK_X_FACE, LK_X_NECK, LK_X_BACK, LK_X_HAND, LK_X_WAIST, LK_X_COLA, LK_X_COLB, LK_X_TOPPAT, LK_X_BOTPAT, LK_X_PATTONE,
-       LK_X_EARS, LK_X_WRIST, LK_X_SHOULDER, LK_X_FEET, LK_X_THEME, LK_X_END };   // (the last four came with the big wardrobe: appended, so saves keep their places)
+       LK_X_EARS, LK_X_WRIST, LK_X_SHOULDER, LK_X_FEET, LK_X_THEME,
+       LK_X_MAKEUP, LK_X_LIPS, LK_X_MARKS, LK_X_END };   // (the bigger FACE tab: eye make-up, lip colour, a second set of cheek marks)   // (the last four came with the big wardrobe: appended, so saves keep their places)
 #define NX_COL 32
 #define NAME_LEN 12
 
@@ -26,7 +27,7 @@ typedef struct {
     u8   vox[H][D][W];          // low nibble: colour slot 1..8, high nibble: shape (0 cube, 1 arm, 2 hand, 3 leg, 4..11 wedge)
     u16  dec[H][D][W];          // face sprite codes on the +Z face
     u16  col[9];                // colour slots: 1 skin 2 white 3 black 4 red 5 hair 6 top 7 bottom 8 gold
-    u16  facepal[9];            // face art colours: k w r s i b g h l
+    u16  facepal[17];           // face art colours: k w r s i b g h l y p c n e t m a (FACE_KEYS)
     u8   sty_eye, sty_mouth;    // the eye / mouth style the dec codes refer to
     u8   legs, torso, headsz;   // bodyPlan: rows of legs, rows of torso, head scale
     u8   bx0, bxw, bxh, bxd;    // the build box this stage uses

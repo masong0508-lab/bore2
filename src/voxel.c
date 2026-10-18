@@ -397,13 +397,28 @@ static void extra_parts(const Bore *b, int hx, int hy, int hz, int hs) {
     gfx_set_object_m(&gm[G_HEAD]);                               // ears and horns ride on the head
     int ears = b->look[LK_EARS];
     if (ears) {
-        int s = ears == 1 ? 14 : 22, yc = -(hy + 2 * hs) * VOX + VOX * 5 / 4;
+        // per kind: the ear's half size, how far it reaches out (x 0..), up and down, and a second piece (a point, a lobe): its size, out, up
+        static const s8 ek[9][7] = { {0}, {14,14,14,14, 0,0,0}, {22,22,22,22, 0,0,0},
+            {14,14,14,14, 7,16,22},     // ELF: a point up and out
+            {12,12,12,12, 6,24,40},     // LONG ELF
+            {9,9,9,9, 0,0,0},           // TINY
+            {14,26,12,12, 0,0,0},       // STICK-OUT: wide, flat
+            {14,14,12,14, 9,4,-26},     // DROOPY: a long lobe hanging
+            {30,30,32,32, 0,0,0} };     // HUGE
+        const s8 *e = ek[ears % 9];
+        int yc = -(hy + 2 * hs) * VOX + VOX * 5 / 4;
         int zc = (hz - 2) * VOX + hs * VOX;
         for (int side = 0; side < 2; side++) {
-            int xa = side ? (hx + hw - 3) * VOX : (hx - 3) * VOX;
-            int x0 = side ? xa : xa - s, x1 = side ? xa + s : xa, y0 = yc - s, y1 = yc + s, z0 = zc - s / 2, z1 = zc + s / 2;
+            int xa = side ? (hx + hw - 3) * VOX : (hx - 3) * VOX, sx = side ? 1 : -1;
+            int out = e[1], x0 = side ? xa : xa - out, x1 = side ? xa + out : xa, y0 = yc - e[2], y1 = yc + e[3], z0 = zc - e[0] / 2, z1 = zc + e[0] / 2;
             head_box_xf(b, &x0, &x1, &y0, &y1, &z0, &z1);
             box(x0, x1, y0, y1, z0, z1, 0, 1, b->col[1], 2);
+            if (e[4]) {   // the point or the lobe
+                int px = xa + sx * e[5], py = yc - e[6], q = e[4];
+                int a0 = px - q, a1 = px + q, c0 = py - q - (e[6] > 0 ? q : 0), c1 = py + q + (e[6] < 0 ? q : 0), d0 = zc - q / 2, d1 = zc + q / 2;
+                head_box_xf(b, &a0, &a1, &c0, &c1, &d0, &d1);
+                box(a0, a1, c0, c1, d0, d1, 0, 1, b->col[1], 2);
+            }
         }
     }
     int horns = b->look[LK_HORNS];
