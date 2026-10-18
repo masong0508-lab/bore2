@@ -126,13 +126,14 @@ static void name_open(char *buf, int cap, const char *title, void (*done)(void))
 static void wo_name_for(u32 seed);   // (THE WORLDS: a set world's capital is named for it)
 static void worlds_open(void);
 static void worlds_go(u32 seed, int mode);
+static void story_taxi(void);
 static void worlds_draw(void);
 static void create_draw(void);
 static void nhood_open(int first);   // THE NEIGHBORHOOD: 48 lots to pick a home from (first: a new life, before they have one)
 static int nh_pending;                // a new life has begun: the neighborhood opens on its first frame
 static u32 life_seed;                 // the world the next new life is made in (0: fresh dice)
 static char life_cap[18];             // ... and its capital's name, if the player gave it one
-static int life_story, sp_sel = 1, sc_t, goals_old;   // the story the next new life is in (0: none); the STORY MISSIONS pick; the card's clock; GOALS showing THE STORY SO FAR
+static int life_story, sp_sel = 1, sc_t, goals_old, sp_join;   // the story the next new life is in (0: none); the STORY MISSIONS pick; the card's clock; GOALS showing THE STORY SO FAR
 static int life_mode, mode_pending;   // 0 SAN BOREAS, 1 CASTAWAY (they begin on the island), 2 RAGS TO RICHES ($1,000 to start)
 static int craft_sel, craft_msg_t; static char craft_msg[32];   // the CRAFT list's pick; why it could not be made (a while)
 extern char _end[];
@@ -266,7 +267,7 @@ static void start_life(void) {
         a->rel[1] = m->rel[0] = 40; a->rel[2] = k->rel[0] = m->rel[2] = k->rel[1] = 30;
     }
     story_reset(); }
-#if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM)
+#if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY)
     nh_pending = life_mode == 0; cash = life_mode == 2 ? 1000 : 20000; mode_pending = life_mode; life_mode = 0;   // the family picks its home on THE NEIGHBORHOOD screen (The Sims: $20,000 to start), and life_update moves them in
 #endif
     life_started = 1;
@@ -373,7 +374,7 @@ static void venue_draw(void) {
     else if (!open_) sprintf(sub, "CLOSED TILL %s", hour_name(place_opens_at(venue.lot), h));
     else if (place_opens_at(venue.lot) == 0 && place_closes_at(venue.lot) == 24) strcpy(sub, "OPEN ALL DAY");
     else sprintf(sub, "OPEN TILL %s", hour_name(place_closes_at(venue.lot), h));
-    int tw_ = MAX(ui_tw(1, venue.name), ui_tw(1, sub)), ic = tw_ + 34 <= 140, w = tw_ + (ic ? 34 : 14), x = 316 - w, y = 57;   // (on the right, under the want)
+    int tw_ = MAX(ui_tw(1, venue.name), ui_tw(1, sub)), ic = tw_ + 34 <= 140, w = tw_ + (ic ? 34 : 14), x = 316 - w, y = story_id && story_ch < 5 && world_zone != ZONE_ISLAND ? 73 : 57;   // (on the right, under the want and the story)
     ui_card(x, y, w, 27);
     if (ic) ui_icon_disc(x + 13, y + 13, 20, lotIc[venue.lot % LOT_N], UI_BLUE, UI_WHITE);
     ui_text(x + (ic ? 27 : 7), y + 4, 1, venue.name, UI_INK);
@@ -1836,6 +1837,61 @@ static void stream_tick(void) {   // (test builds: a streamed song from the firs
     static int t0 = -1; if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); audio_jukebox_play(AUTO_STREAM); }
 }
 #endif
+#ifdef AUTO_STORY
+int dbg_story[24];   // (test builds) SKATE LIFE by itself: a taxi to the skate plaza, then the board at a ramp from each side
+static void story_test_tick(void) {
+    extern int dbg_air_max, dbg_tricks, story_dbg(int k); extern int on_board;
+    static int t0 = -1, k, rx = -1, ry, att;
+#ifndef STORY_SKIP
+    if (state == ST_SCARD) { story_card_shown(); state = ST_LIFE; }
+#else
+    { static int ct; if (state == ST_SCARD) { if (++ct == 150) { ct = 0; story_card_shown(); if (!story_card()) state = ST_LIFE; } } }
+#endif
+    if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); }
+    int t = VSync(-1) - t0; Sim *s = &sims[player];
+#ifdef AUTO_GUEST
+    {   // (BEST FRIENDS chapter 4: a party at home, then a taxi to a town square)
+        extern void story_dbg_ch(int ch); static int g;
+        if (g == 0 && t >= 100) { g = 1; story_dbg_ch(3); }
+        if (g == 1 && t >= 200) { g = 2; throw_party(); dbg_story[0] = story_dbg(0); }
+        if (g == 2 && t >= 400) { g = 3; dbg_story[1] = story_dbg(0); story_taxi(); }
+        if (g == 3 && t >= 700) { g = 4; dbg_story[2] = story_dbg(0); }
+        dbg_story[14] = story_ch; dbg_story[15] = story_dbg(0); dbg_story[19] = t; return;
+    }
+#endif
+#ifdef AUTO_SOCIAL
+    {   // (SECOND CHANCE: chats with VAL in a loop, skipping the chapter that needs a fight; the places by taxi)
+        extern void story_dbg_ch(int ch); static int nx = 120, nt = 600, ns;
+        if (story_ch == 1) story_dbg_ch(2);
+        if (t >= nt) { nt = t + 700; int l; if (story_place(&l)) story_taxi(); }
+        if (t >= nx && nsims > 1 && state == ST_LIFE) { nx = t + 90; Sim *o = &sims[1];
+            sim_player_cancel_sim(s); sim_player_cancel_sim(o); o->x = s->x + TILE; o->z = s->z; o->path_n = 0; s->yaw = 1024; o->yaw = 3072;
+            char opt[8][16]; int n = sim_pie_open(opt), pick = -1;
+            { static const char *const want[4] = { "GO STEADY", "FLIRT", "HUG", "JOKE" }; int r = ns++ % 3;
+              for (int i = 0; i < n; i++) if (!strcmp(opt[i], want[0])) pick = i;
+              for (int k2 = 0; k2 < 3 && pick < 0; k2++) for (int i = 0; i < n; i++) if (!strcmp(opt[i], want[1 + (r + k2) % 3])) pick = i; }
+            if (pick >= 0) sim_pie_do(pick);
+            dbg_story[6] = n; dbg_story[7] = pick; dbg_story[8] = s->rel[1]; dbg_story[9] = story_dbg(5); dbg_story[10] = s->partner == o->uid; dbg_story[11]++; }
+        dbg_story[14] = story_ch; dbg_story[15] = story_dbg(0); dbg_story[19] = t; return;
+    }
+#endif
+    if (k == 0 && t >= 60) { k++; story_taxi(); dbg_story[0] = world_zone; }
+    if (k == 1 && t >= 200) { k++; int px = sim_tile_x(s), py = sim_tile_y(s), bd = 999;
+        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) { char c = world_at(x, y); if (c == '9' || c == '5' || c == '1') { int d = ABS(x - px) + ABS(y - py); if (d < bd) { bd = d; rx = x; ry = y; } } }
+        dbg_story[1] = rx; dbg_story[2] = ry; dbg_story[3] = bd; dbg_story[4] = story_dbg(0); }
+    if (k == 2 && rx >= 0 && t >= 240 + att * 200 && att < 8) {   // a run at the ramp from one side
+        static const s8 dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 }; int d = att & 3, dist = att < 4 ? 4 : 6;
+        { int px = sim_tile_x(s), py = sim_tile_y(s), bd = 999; for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) { char c = world_at(x, y); if (c == '9' || c == '5' || c == '1') { int dd = ABS(x - px) + ABS(y - py); if (dd < bd) { bd = dd; rx = x; ry = y; } } } }
+        int sx = rx - dx[d] * dist, sy = ry - dy[d] * dist;
+        dbg_story[20 + (att & 3)] = world_walkable(sx, sy) * 1000 + world_at(sx, sy);
+        if (world_walkable(sx, sy)) { sim_player_cancel_sim(s); s->x = sx * TILE + TILE / 2; s->z = -(sy * TILE + TILE / 2); s->yaw = 0; if (!on_board) sim_player_cancel(); }
+        att++;
+    }
+    if (k == 2 && att > 0 && att <= 8) { static const s8 dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 }; int d = (att - 1) & 3; sim_player_move(dx[d] * 4096, -dy[d] * 4096, 1);
+        dbg_story[5 + ((att - 1) & 7)] = dbg_air_max * 100 + dbg_tricks; }
+    dbg_story[14] = story_ch; dbg_story[15] = story_dbg(0); dbg_story[16] = story_dbg(1); dbg_story[17] = story_dbg(2) * 100 + story_dbg(4); dbg_story[18] = on_board; dbg_story[19] = t;
+}
+#endif
 #ifdef AUTO_SAVE
 int dbg_sv[16], dbg_cells[4], dbg_st[8];   // (test builds) before / after a save and a load: the zone, the tent, the bench, the hut's walls, the player's action, food; then the long-life save's size
 static void save_tick(void) {
@@ -2079,9 +2135,10 @@ static void spick_update(void) {   // STORY MISSIONS: one story's card at a time
     sc_t++;
     if (PRESSED(PAD_LEFT) || PRESSED(PAD_L1) || PRESSED(PAD_UP)) sp_sel = (sp_sel + STY_N - 3) % (STY_N - 1) + 1;
     if (PRESSED(PAD_RIGHT) || PRESSED(PAD_R1) || PRESSED(PAD_DOWN)) sp_sel = sp_sel % (STY_N - 1) + 1;
-    if (PRESSED(PAD_CIRCLE)) { state = ST_WORLDS; return; }
+    if (PRESSED(PAD_CIRCLE)) { state = sp_join ? ST_STORY : ST_WORLDS; return; }
     if (PRESSED(PAD_CROSS)) {
         if (sp_sel > STY_PLAYABLE) { audio_voice(VOICE_NAH); return; }
+        if (sp_join) { if (story_join(sp_sel)) { goals_old = 0; state = ST_LIFE; } else audio_voice(VOICE_NAH); return; }   // (from GOALS: this life)
         life_story = sp_sel; worlds_go(0, sp_sel == STY_RAGS ? 2 : 0);   // (RAGS TO RICHES: $1,000 and no home)
     }
 }
@@ -2095,6 +2152,7 @@ static void scard_draw(void) { life_draw(); ui_dim(); story_card_draw(story_card
 static void story_update(void) {
     if (story_id && PRESSED(PAD_TRIANGLE)) { goals_old ^= 1; return; }
     if (story_id && !goals_old && PRESSED(PAD_CROSS)) { int l; if (story_place(&l)) { story_taxi(); return; } }
+    if (!story_id && PRESSED(PAD_SQUARE)) { sp_join = 1; sc_t = 0; state = ST_SPICK; return; }   // a story for this life
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_CROSS) || PRESSED(PAD_START)) state = BACK_TO();
 }
 static void story_draw(void) {   // the goals of this life, ticked off as they are done
@@ -2126,7 +2184,7 @@ static void story_draw(void) {   // the goals of this life, ticked off as they a
     sprintf(b, "%d OF %d DONE", done, NG);
     ui_text(40, top + 165, 1, b, UI_INK);
     ui_bar(124, top + 165, 156, 7, done * 100 / NG, UI_GREEN);
-    ui_hints(160, top + 180, story_id ? "TRI THE STORY|O BACK" : "O BACK", 1);
+    ui_hints(160, top + 180, story_id ? "TRI THE STORY|O BACK" : "SQ PICK A STORY|O BACK", 1);
 }
 
 // ---- the Bore panel: MOOD / WANTS / SKILLS / PEOPLE / JOB tabs (the Sims 2 panel) ----
@@ -2963,6 +3021,9 @@ static void help_draw(void) {   // three pages of tips, each with its picture
 static int title_t;
 static void title_update(void) {
     title_t++;
+#ifdef AUTO_STORY
+    if (title_t == 30) { life_story = AUTO_STORY; worlds_go(0x5EED1234u, 0); return; }
+#endif
 #if defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM)
     if (title_t == 30) { life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 #ifdef AUTO_CITY
@@ -3043,7 +3104,7 @@ static void worlds_update(void) {
         if (PRESSED(PAD_UP)) wo_msel = (wo_msel + WO_NMORE - 1) % WO_NMORE;
         if (PRESSED(PAD_DOWN)) wo_msel = (wo_msel + 1) % WO_NMORE;
         if (PRESSED(PAD_CIRCLE)) { wo_more = 0; return; }
-        if (PRESSED(PAD_CROSS)) { if (wo_msel == 0) { sc_t = 0; state = ST_SPICK; } else audio_voice(VOICE_NAH); }
+        if (PRESSED(PAD_CROSS)) { if (wo_msel == 0) { sc_t = 0; sp_join = 0; state = ST_SPICK; } else audio_voice(VOICE_NAH); }
         return;
     }
     if (PRESSED(PAD_UP)) wo_sel = (wo_sel + WO_N - 1) % WO_N;
@@ -3240,6 +3301,9 @@ int main(void) {
 #ifdef AUTO_STREAM
         stream_tick();
 #endif
+#ifdef AUTO_STORY
+        story_test_tick();
+#endif
         ui_light = 0;
         switch (state) {
             case ST_TITLE: title_update(); title_draw(); break;
@@ -3256,7 +3320,7 @@ int main(void) {
             case ST_JUKEBOX: juke_update(); juke_draw(); break;
             case ST_HELP: help_update(); help_draw(); break;
             case ST_TRAVEL: travel_update(); travel_draw(); break;
-            case ST_STORY: story_update(); story_draw(); break;
+            case ST_STORY: story_update(); if (state == ST_STORY) story_draw(); else if (state == ST_SPICK) { life_draw(); } else life_draw(); break;
             case ST_PIE: pie_update(); pie_draw(); break;
             case ST_PANEL: panel_update(); panel_draw(); break;
             case ST_MAP: map_update(); map_draw(); break;
@@ -3271,7 +3335,7 @@ int main(void) {
             case ST_NHOOD: nhood_update(); if (state == ST_NHOOD) nhood_draw(); else if (state == ST_HOMES) homes_draw(); else life_draw(); break;
             case ST_SLOTS: slots_update(); if (state == ST_SLOTS) slots_draw(); else if (state == ST_LIFE) life_draw(); else if (state == ST_MENU) menu_draw(); else pause_draw(); break;
             case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
-            case ST_SPICK: spick_update(); if (state == ST_SPICK) { title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
+            case ST_SPICK: spick_update(); if (state == ST_SPICK) { if (sp_join) life_draw(); else title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t, sp_join); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
             case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;

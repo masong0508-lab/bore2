@@ -16,6 +16,7 @@ extern int story_id, story_ch;    // the story being lived (0: none) and its cha
 void story_reset(void);                         // no story (a new life, an old save)
 void story_household(int id, int px, int py);   // a new life in a story: its lead (who you play) and its people move in round (px, py)
 void story_begin(void);                         // ... once the household is in: the story starts (the first chapter's card)
+int  story_join(int id);                        // a story for the life being lived: its people move in (1: started)
 void story_event(int ev, int arg);              // something the one you play did (arg: a sim's uid, a combo's length...)
 void story_tick(int steps);                     // the life loop
 int  story_card(void);                          // a card waiting to be shown: 1 a chapter begins, 2 a chapter is done (0 none)
@@ -31,5 +32,5 @@ void story_load(void);
 // the screens (drawn over the life by main.c)
 void story_card_draw(int kind, int t);          // the chapter card
 void story_journal_draw(int t);                 // the phone's GOALS with a story on
-void story_pick_draw(int sel, int t);           // PICK A WORLD > MISSIONS > STORY MISSIONS: one story's card
+void story_pick_draw(int sel, int t, int join);           // PICK A WORLD > MISSIONS > STORY MISSIONS: one story's card
 const char *story_name(int id);

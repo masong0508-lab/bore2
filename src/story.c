@@ -47,7 +47,7 @@ static const SStory stories[STY_N] = {
       { "DATE NIGHT", { "ELI MISSES GOING OUT. A TAXI", "TO A BAR, AND A DRINK FOR TWO." }, { AT(LOT_BAR, "GO TO A BAR"), EV(W_NIGHT, 1, "HAVE A DRINK") } },
       { "A CHILD COMES HOME", { "THE NURSERY IS READY.", "SOMEONE SMALL IS ON THE WAY." }, { { 0 } }, 1 },
       { "FAMILY DAY", { "A DAY AT THE PARK, THEN BE", "THERE FOR YOUR LITTLE ONE." }, { AT(LOT_PARK, "GO TO A PARK"), KD(K_KIDFRIEND, 0, "BECOME YOUR KID'S FRIEND") } },
-      { "MOVING UP", { "A BIGGER FAMILY NEEDS A", "BIGGER PAYCHECK." }, { EV(W_PROMO, 1, "GET A PROMOTION"), KD(K_MONEY, 25000, "SAVE $25000") } } } },
+      { "MOVING UP", { "A BIGGER FAMILY NEEDS A", "BIGGER PAYCHECK." }, { EV(W_PROMO, 1, "GET A PROMOTION"), KD(K_MONEY, 12000, "SAVE $12000") } } } },
   { "SINGLE PARENT", "FAMILY", { "MARA AND HER GIRL JUNIE,", "ON THEIR OWN. MAKE THE", "MONEY WORK, LET PEOPLE IN." }, "YOU MADE IT WORK", { 240, 136, 56 },
     { "MARA", "BRENNAN", { 4,1,2,2,1,1,4,5,1, 0,0,0 }, AG_ADULT, AS_HOME, 2, 0 },
     { { "JUNIE", 0, { 0,1,1,2,2,1,4,5,5, 0,0,0 }, AG_CHILD, AS_GROW, 2, 40 } }, 1,
@@ -62,7 +62,7 @@ static const SStory stories[STY_N] = {
       { "THE SKATE PLAZA", { "THE LOCALS ARE WATCHING.", "SHOW THEM WHAT YOU GOT." }, { KD(K_COMBO, 3, "LAND A 3 TRICK COMBO"), KD(K_FRIENDS, 1, "MAKE A FRIEND"), EV(E_TRICK, 25, "LAND 25 TRICKS") } },
       { "BIG AIR", { "THE BIG RAMP IS CALLING.", "GO HIGHER THAN EVER." }, { EV(E_BIGAIR, 1, "LAND A BIG AIR"), KD(K_COMBO, 4, "LAND A 4 TRICK COMBO") } },
       { "GOING PRO", { "A SPONSOR WANTS A STEADY", "WORKER. GET A JOB, MOVE UP." }, { EV(W_PAID, 1, "EARN A PAYCHECK"), EV(W_PROMO, 1, "GET A PROMOTION") } },
-      { "THE WHOLE TOWN WATCHING", { "THE WHOLE TOWN KNOWS YOUR", "NAME. PROVE IT ONE LAST TIME." }, { EV(E_TRICK, 60, "LAND 60 TRICKS"), KD(K_COMBO, 6, "LAND A 6 TRICK COMBO") } } } },
+      { "THE WHOLE TOWN WATCHING", { "THE WHOLE TOWN KNOWS YOUR", "NAME. PROVE IT ONE LAST TIME." }, { EV(E_TRICK, 60, "LAND 60 TRICKS"), KD(K_COMBO, 5, "LAND A 5 TRICK COMBO") } } } },
   { "HOUSEFULL", "FRIENDSHIP AND HOME", { "BRAM SHARES WITH IVAN. FIX", "UP THE PLACE, FILL IT WITH", "FRIENDS FROM STRANGE TOWN." }, "A HOUSE FULL OF LIFE", { 96, 170, 70 },
     { "BRAM", "OKAFOR", { 3,2,3,1,1,3,1,2,4, 0,0,0 }, AG_ADULT, AS_PLEAS, 9, 0 },
     { { "IVAN", "BELOV", { 6,0,4,2,1,3,0,2,6, 0,0,0 }, AG_ADULT, AS_KNOW, 5, 20 } }, 1,
@@ -70,7 +70,7 @@ static const SStory stories[STY_N] = {
       { "MAKE IT NICE", { "THE PLACE IS A MESS. BUILD", "AND BUY TILL IT FEELS HOME." }, { EV(W_BUY, 1, "BUY SOMETHING NEW"), KD(K_ROOM, 0, "MAKE A ROOM LOOK GREAT") } },
       { "OPEN HOUSE", { "THROW THE DOORS OPEN.", "HAVE THE NEIGHBORS OVER." }, { KD(K_GUEST, 0, "HAVE A NEIGHBOR OVER"), KD(K_FRIENDS, 3, "MAKE 3 FRIENDS") } },
       { "THE STRANGE TOWN CROWD", { "THE FUN PEOPLE HANG OUT IN", "STRANGE TOWN. BRING ONE HOME." }, { { K_TOWN, 0, 0, "GO TO STRANGE TOWN" }, KD(K_HOUSE, 3, "FILL THE HOUSE WITH 3 BORES") } },
-      { "FOUR WALLS ONE FRIDGE", { "A FULL HOUSE.", "KEEP THE BILLS PAID." }, { EV(W_PROMO, 1, "GET A PROMOTION"), KD(K_MONEY, 15000, "SAVE $15000") } } } },
+      { "FOUR WALLS ONE FRIDGE", { "A FULL HOUSE.", "KEEP THE BILLS PAID." }, { EV(W_PROMO, 1, "GET A PROMOTION"), KD(K_MONEY, 10000, "SAVE $10000") } } } },
   { "BEST FRIENDS", "FRIENDSHIP", { "SAM, KIKI AND RUSS. NIGHTS", "AT THE BAR, THE TOWN SQUARE", "AND ONE TRUE BEST FRIEND." }, "FRIENDS FOR LIFE", { 150, 100, 220 },
     { "SAM", "LINDQVIST", { 1,4,3,1,2,4,5,5,2, 0,0,0 }, AG_ADULT, AS_KNOW, 8, 0 },
     { { "KIKI", "TANAKA", { 1,3,5,3,2,6,2,5,1, 0,0,0 }, AG_ADULT, AS_POP, 7, 20 }, { "RUSS", "OKONKWO", { 3,6,0,0,1,1,3,1,7, 0,0,0 }, AG_ADULT, AS_HOME, 4, 20 } }, 2,
@@ -81,10 +81,10 @@ static const SStory stories[STY_N] = {
       { "DREAMS AND SAVINGS", { "DREAMS COME TRUE WITH", "FRIENDS AROUND." }, { EV(E_WANT, 5, "FULFIL 5 WANTS"), KD(K_MONEY, 5000, "SAVE $5000") } } } },
   { "RAGS TO RICHES", "MONEY AND CAREER", { "PENNY HAS NOTHING. A SHADY", "DEAL, A BUST, THEN THE", "STRAIGHT ROAD UP." }, "RICH AT LAST", { 60, 150, 90 },
     { "PENNY", "QUINN", { 0,2,1,2,2,1,3,2,5, 0,0,0 }, AG_ADULT, AS_FORTUNE, 9, 0 }, { { 0 } }, 0,
-    { { "NOTHING BUT A BED", { "NO HOME OF HER OWN, $1000.", "GET TO WORK." }, { EV(W_PAID, 1, "EARN A PAYCHECK"), KD(K_MONEY, 3000, "SAVE $3000") } },
+    { { "NOTHING BUT A BED", { "NO HOME OF HER OWN, $1000.", "GET TO WORK." }, { EV(W_PAID, 1, "EARN A PAYCHECK"), KD(K_MONEY, 2000, "SAVE $2000") } },
       { "EASY MONEY", { "A GUY AT A BAR HAS A JOB", "FOR YOU. NO QUESTIONS." }, { AT(LOT_BAR, "GO TO A BAR"), EV(W_NIGHT, 1, "HAVE A DRINK WITH HIM") } },
       { "BUSTED", { "IT WAS A SETUP. THE COPS", "TAKE YOUR CASH. START OVER." }, { KD(K_FINE, 0, "GET BUSTED"), EV(W_GYM, 1, "WORK OUT AT A GYM"), EV(W_PAID, 1, "EARN A PAYCHECK") } },
-      { "CLEAN SLATE", { "ON PROBATION. KEEP YOUR HEAD", "DOWN AND YOUR NOSE CLEAN." }, { EV(W_READ, 1, "READ A BOOK"), KD(K_MONEY, 6000, "SAVE $6000") } },
+      { "CLEAN SLATE", { "ON PROBATION. KEEP YOUR HEAD", "DOWN AND YOUR NOSE CLEAN." }, { EV(W_READ, 1, "READ A BOOK"), KD(K_MONEY, 5000, "SAVE $5000") } },
       { "GOING STRAIGHT", { "A REAL JOB AND A REAL HOME.", "THIS TIME IT PAYS." }, { EV(W_PROMO, 1, "GET A PROMOTION"), KD(K_HOMEOWN, 0, "BUY A HOME OF YOUR OWN") } } } },
   { "CAREER CLIMBER", "CAREER AND SKILL", { "WES HAS A DESK AND A PLAN.", "THE BAR, A STRANGE TOWN", "DEAL, THE CORNER OFFICE." }, "TOP OF THE LADDER", { 50, 110, 200 },
     { "WES", "HARLOW", { 5,6,2,0,1,2,0,1,1, 0,0,0 }, AG_ADULT, AS_FORTUNE, 0, 0 }, { { 0 } }, 0,
@@ -159,24 +159,31 @@ static void make_bore(Bore *b, const SPerson *p, const char *last) {
     strncpy(b->last, p->last ? p->last : last, NAME_LEN - 1); b->last[NAME_LEN - 1] = 0;
     look_fix(b); look_build(b);
 }
+static void cast_in(int id, int me, int px, int py) {   // the story's people move in round (px, py), and how they feel about you (sims[me])
+    const SStory *s = &stories[id]; Bore b; int j0 = -1;
+    for (int k = 0; k < s->ncast && nsims < MAX_SIMS; k++) {
+        make_bore(&b, &s->cast[k], sims[me].bore.last); sim_add(&b, px + 2 - k * 3, py + 1 + k, 1);
+        int j = nsims - 1; Sim *o = &sims[j], *m = &sims[me];
+        m->rel[j] = o->rel[me] = s->cast[k].rel; o->age_days = 3;
+        if (k == 0) { j0 = j; if (o->bore.stage < AG_TEEN) { st_kid = o->uid; o->par[0] = m->uid; } else st_part = o->uid; }   // (SINGLE PARENT: your girl)
+        if (k == 1 && j0 >= 0) { sims[j0].rel[j] = o->rel[j0] = 20; }   // (BEST FRIENDS: the two of them know each other a little)
+    }
+    if (id == STY_WED && j0 >= 0) { Sim *a = &sims[me], *o = &sims[j0]; a->partner = o->uid; o->partner = a->uid; st_rom = 80; }   // just married
+    if (id == STY_SKATE || id == STY_ROOM) has_board = 1;   // a board of your own (O gets on it)
+}
 void story_household(int id, int px, int py) {   // (sim_init has run: nobody is home yet)
     story_reset(); story_id = id;
     const SStory *s = &stories[id]; Bore b;
-    make_bore(&b, &s->lead, s->lead.last); sim_add(&b, px, py, 0); look_own_face(&sims[0].bore);
-    for (int k = 0; k < s->ncast; k++) {
-        make_bore(&b, &s->cast[k], s->lead.last); sim_add(&b, px + 2 - k * 3, py + 1 + k, 1);
-        Sim *me = &sims[0], *o = &sims[nsims - 1]; int j = nsims - 1;
-        me->rel[j] = o->rel[0] = s->cast[k].rel;
-        o->age_days = 3;
-        if (k == 0) {
-            if (o->bore.stage < AG_TEEN) { st_kid = o->uid; o->par[0] = me->uid; }   // SINGLE PARENT: your girl
-            else st_part = o->uid;
-        }
-        if (k == 1) { Sim *a = &sims[1]; a->rel[j] = o->rel[1] = 20; }   // (BEST FRIENDS: the two of them know each other a little)
-    }
-    sims[0].age_days = 3;
-    if (id == STY_WED) { Sim *a = &sims[0], *o = &sims[1]; a->partner = o->uid; o->partner = a->uid; st_rom = 80; }   // just married
-    if (id == STY_SKATE || id == STY_ROOM) has_board = 1;   // a board of your own (O gets on it)
+    make_bore(&b, &s->lead, s->lead.last); sim_add(&b, px, py, 0); look_own_face(&sims[0].bore); sims[0].age_days = 3;
+    cast_in(id, 0, px, py);
+}
+int story_join(int id) {   // a story for the life you are living now: its people move in with you (you stay who you are)
+    if (id < 1 || id > STY_PLAYABLE) return 0;
+    if (nsims + stories[id].ncast > MAX_SIMS) { sim_note("TOO MANY AT HOME FOR THAT STORY"); return 0; }
+    if (sims[player].bore.stage < AG_TEEN) { sim_note("A GROWN-UP STARTS A STORY"); return 0; }
+    story_reset(); story_id = id;
+    cast_in(id, player, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]));
+    story_begin(); return 1;
 }
 static void chapter_begin(void) {
     st_done = 0; st_cnt[0] = st_cnt[1] = st_cnt[2] = 0; st_guest = 0; st_combo = 0; st_kidwait = 0; st_card = 1;
@@ -253,6 +260,7 @@ void story_tick(int steps) {
     if (!story_id || story_ch >= 5) return;
     st_sec += steps; if (st_sec < 30) return; st_sec = 0;
 #ifdef STORY_SKIP
+    if (chap()->kid) { if (st_kidwait && baby_due > life_minutes()) baby_due = life_minutes(); } else
     { static int sk; if (++sk >= 24) { sk = 0; chapter_done(); return; } }   // (test builds: a chapter every 12 seconds)
 #endif
     const SChap *c = chap(); int n = ntask(c);
@@ -277,6 +285,8 @@ void story_tick(int steps) {
     if (n && st_done == (1 << n) - 1) chapter_done();
 }
 int story_card(void) { return st_card; }
+void story_dbg_ch(int ch) { story_ch = ch; chapter_begin(); }   // (test builds)
+int story_dbg(int k) { return k == 0 ? st_done : k == 1 ? st_combo : k == 2 ? st_cnt[0] : k == 3 ? st_cnt[1] : k == 4 ? st_cnt[2] : st_rom; }   // (test builds)
 void story_card_shown(void) { st_card = st_card == 2 && story_ch < 5 ? 1 : 0; }   // (CHAPTER COMPLETE, then the new chapter's own card)
 int story_place(int *lot) {
     const SChap *c = chap(); int n = ntask(c);
@@ -383,13 +393,13 @@ void story_card_draw(int kind, int t) {
     band(story_id, CX + 1, CY + 1, CW - 2, 46);
     story_tile(story_id, CX + 8, CY + 6, 36, t);
     gfx_text_raw(CX + 52, CY + 8, 2, s->name, 255, 255, 255); gfx_text_raw(CX + 52, CY + 26, 1, s->tag, 255, 255, 255);
-    sprintf(b, done ? "CHAPTER %d COMPLETE" : end ? "THE END" : "CHAPTER %d OF 5", shown + 1);
-    ui_badge(CX + CW - ui_tw(1, b) - 18, CY + 26, b, UI_WHITE, done ? UI_GOODT : scol(story_id, 6));
-    int y = CY + 54;
-    if (done) {
-        ui_textc(160, y, 2, stories[story_id].ch[shown].title, UI_INK);
-        sprintf(b, "+$%d", reward(shown)); ui_icon_disc(160 - ui_tw(2, b) / 2 - 10, y + 25, 15, IC_MONEY, UI_GREEN, UI_WHITE); ui_text(160 - ui_tw(2, b) / 2 + 2, y + 19, 2, b, UI_GOODT);
-        y += 40;
+    if (!done) { sprintf(b, end ? "THE END" : "CHAPTER %d OF 5", shown + 1); ui_badge(CX + CW - ui_tw(1, b) - 18, CY + 26, b, UI_WHITE, scol(story_id, 6)); }
+    int y = CY + 52;
+    if (done) {   // what was done, and what it paid
+        sprintf(b, "CHAPTER %d COMPLETE   +$%d", shown + 1, reward(shown)); int w = ui_tw(1, b) + 16;
+        ui_icon_disc(160 - w / 2 + 5, y + 4, 13, IC_TICK, UI_GREEN, UI_WHITE); ui_text(160 - w / 2 + 14, y + 1, 1, b, UI_GOODT);
+        ui_textc(160, y + 12, 2, stories[story_id].ch[shown].title, UI_INK);
+        y += 36;
     }
     gfx_rect(CX + 10, y, CW - 20, 1, 196, 206, 220, 0); y += 5;
     if (end) {
@@ -440,7 +450,7 @@ void story_journal_draw(int t) {
     tasks_draw(16, y, 288, 14);
     int lot; ui_hints(160, 218, story_place(&lot) ? "X TAXI THERE $20|TRI THE STORY SO FAR|O BACK" : "TRI THE STORY SO FAR|O BACK", 1);
 }
-void story_pick_draw(int sel, int t) {
+void story_pick_draw(int sel, int t, int join) {
     const SStory *s = &stories[sel]; char b[48];
     int top = ui_window(6, 6, 308, 228, "STORY MISSIONS", IC_BOOK), lock = sel > STY_PLAYABLE;
     story_tile(sel, 14, top + 2, 64, t);
@@ -449,7 +459,9 @@ void story_pick_draw(int sel, int t) {
     for (int i = 0; i < 3; i++) ui_text(86, top + 36 + i * 10, 1, s->blurb[i], UI_INK);
     if (lock) { ui_text(14, top + 74, 1, "MISSY'S STORY IS ON ITS WAY: VOICED AND FILMED.", UI_BADT); ui_text(14, top + 84, 1, "COMING SOON.", UI_SOFT); }
     else {
-        if (s->ncast == 2) snprintf(b, sizeof b, "YOU ARE %s. WITH %s AND %s", s->lead.first, s->cast[0].first, s->cast[1].first);
+        if (join) { if (s->ncast == 2) snprintf(b, sizeof b, "%s AND %s MOVE IN WITH YOU", s->cast[0].first, s->cast[1].first);
+                    else if (s->ncast) snprintf(b, sizeof b, "%s MOVES IN WITH YOU", s->cast[0].first); else strcpy(b, "JUST YOU AND THIS LIFE"); }
+        else if (s->ncast == 2) snprintf(b, sizeof b, "YOU ARE %s. WITH %s AND %s", s->lead.first, s->cast[0].first, s->cast[1].first);
         else if (s->ncast) snprintf(b, sizeof b, "YOU ARE %s. WITH %s", s->lead.first, s->cast[0].first);
         else snprintf(b, sizeof b, "YOU ARE %s. ON YOUR OWN", s->lead.first);
         ui_text(14, top + 74, 1, b, UI_BLUE2);
@@ -469,5 +481,5 @@ void story_pick_draw(int sel, int t) {
     }
     y += 6 * 13 + 4;
     for (int i = 1; i < STY_N; i++) { int x = 160 - (STY_N - 1) * 7 + (i - 1) * 14; ui_disc(x + 4, y + 3, i == sel ? 9 : 6, i == sel ? scol(i, 8) : UI_RGB(196, 206, 220)); }
-    ui_hints(160, 218, lock ? "LEFT RIGHT STORY|O BACK" : "LEFT RIGHT STORY|X START|O BACK", 1);
+    ui_hints(160, 218, lock ? "LEFT RIGHT STORY|O BACK" : join ? "LEFT RIGHT STORY|X THIS LIFE|O BACK" : "LEFT RIGHT STORY|X START|O BACK", 1);
 }

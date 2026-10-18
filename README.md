@@ -21,7 +21,8 @@ chapters and THE END. A chapter is a scene with up to three tasks, done in any o
 park, a town square, STRANGE TOWN), things to do (a pizza, a joke, tricks off the ramps, a paycheck, a promotion), people to win round
 (a friend, love, GO STEADY on the pie menu, a best friend), money to save, a baby that comes home. A card opens each chapter and
 closes it (it pays $500 to $1500); the phone's GOALS is the story journal (X takes a taxi to where the chapter sends you, TRIANGLE
-shows THE STORY SO FAR); the HUD shows the next task. TV SHOW & TELL (Missy's story) is held back for its own voiced, filmed version.
+shows THE STORY SO FAR; with no story on, SQUARE there picks one for the life you are living, and its people move in); the HUD shows
+the next task. TV SHOW & TELL (Missy's story) is held back for its own voiced, filmed version.
 `src/story.c` has the stories; saves keep them (save version 5).
 SELECT names your capital city (a letter keyboard: X types, SQUARE deletes, START keeps it). In play, the phone's MAP renames any
 town: pick it and press TRIANGLE. Saves keep the names. In CREATE A BORE, SQUARE names your Bore (first and last name).

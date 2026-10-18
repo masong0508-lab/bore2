@@ -194,7 +194,7 @@ void sim_switch_player(void) {
 // ---- walking with collision (the lot's tiles) ----
 int has_board, on_board, board_lift; static int board_v, board_vy, board_air, board_prev;   // the skateboard: owned, ridden, how high the rider is, and the coasting / air state
 static int ramp_pass;   // set while the rider's own step is tried: a board can roll onto a ramp
-static int board_airt, board_combo; static u32 board_land;   // (tricks: steps in the air, the combo, when the last one landed)
+static int board_airt, board_combo; static u32 board_land; int dbg_air_max, dbg_tricks;   // (tricks: steps in the air, the combo, when the last one landed)
 static int is_ramp(char c) { return c == '1' || c == '2' || c == '4' || c == '5' || c == '9'; }
 static int ramp_g(int px, int pz, char c, int mx, int my) { return items_ramp_h(c, world_item_facing(mx, my), px - mx * TILE, (-pz) - my * TILE); }
 static int footprint_free(int x, int z) {
@@ -1215,8 +1215,9 @@ static void board_phys(Sim *s) {
     if (board_air) {
         board_vy -= 1; board_lift += board_vy; board_airt++;
         if (board_lift <= g) { board_lift = g; board_air = 0; board_vy = 0;
-            if (board_airt >= 8 && s == &sims[player]) {   // a trick landed (a combo: one after another, a few seconds apart at most)
-                board_combo = walk_tick - board_land < 240 ? board_combo + 1 : 1; board_land = walk_tick;
+            if (board_airt > dbg_air_max) dbg_air_max = board_airt;
+            if (board_airt >= 8 && s == &sims[player]) { dbg_tricks++;   // a trick landed (a combo: one after another, a few seconds apart at most)
+                board_combo = walk_tick - board_land < 420 ? board_combo + 1 : 1; board_land = walk_tick;
                 char t[24]; if (board_airt >= 34) sprintf(t, "BIG AIR!"); else if (board_combo > 1) sprintf(t, "COMBO X%d!", board_combo); else sprintf(t, "TRICK!");
                 sim_say(s, t); story_event(E_TRICK, board_combo); if (board_airt >= 34) story_event(E_BIGAIR, 0);
             }
