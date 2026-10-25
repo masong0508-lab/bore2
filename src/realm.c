@@ -11,14 +11,19 @@
 #include "audio.h"
 #include "save.h"
 #include "font.h"
+#include "crowd.h"
+#include "atlas.h"
+#include "citizens.h"
 #include "realm/kingdom.h"
 #include "realm/kingsim.h"
 #include "realm/kinglog.h"
 #include "realm/kinghand.h"
 
 #define CELL 96
-#define VIEW 11
-static KRealm R; static KBld Bl[KS_MAXB]; static u8 cells[128 * 128]; static KSim S; static KHand hand;
+#define VIEW 9
+static KRealm R; static KBld Bl[KS_MAXB]; static u8 *cells;   // (the land, up to 255 x 255: in the city crowd's arena, which sleeps while you are in the realm)
+static KSim S; static KHand hand;
+static void nub_make(void);
 static int blob_len;   // the realm as saved bytes, kept with the life while you are not in it: they live in the simulation's
 // distance-map cache (S.dist and S.queue), which is only a cache while the realm runs and is free when it does not (the GBA did the same)
 #define blob ((u8 *)S.dist)
@@ -122,8 +127,17 @@ static void found(int tier) {   // a brand new realm (kingplay.h kpSettle): a st
     ksGift(&S, G_WOOD, 6);   // (a founding kit: enough for the first hut)
     live = 1; mis = 0; spawn(); gyaw = 2048;
     say("THE NUBBINS LOOK UP AT YOU. GATHER WOOD: WALK TO A TREE, PRESS X");
+#ifdef AUTO_TOWERS
+    { int n = 0; for (int y = 4; y < d - 4 && n < 160; y += 3) for (int x = 4; x < d - 4 && n < 160; x += 3) {   // (test builds: a city of towers, ten thousand Nubbins)
+        int dx = x - c, dy = y - c; if (dx * dx + dy * dy > 30 * 30 || (ABS(dx) < 6 && ABS(dy) < 6)) continue;
+        for (int j = 0; j < 2; j++) for (int k = 0; k < 2; k++) { int q = (y + j) * d + x + k; if (!(cells[q] & KC_BLD)) cells[q] = KT_GRASS; }
+        if (ksPlace(&S, KB_TOWER, x, y, 1) >= 0) { Bl[R.nB - 1].work = 64; n++; } if ((x & 3) == 1) { ksRoadSet(&S, x + 2, y, 1); } }
+      ksCensus(&S); }
+#endif
 }
 void realm_open(void) {
+    { u32 n; cells = (u8 *)crowd_scratch(&n); }   // (the crowd's models are let go: they are made again when you are back)
+    nub_make();
     khInit(&hand); spd = 0; panel = 0; menu = 0; pick = 0; msgT = 0; fr = 0; cyaw = cyaw_t = 0; found_sel = 1;
     if (!live) live = unpack();
     if (live) { spawn(); say("BACK IN THE REALM"); }
@@ -135,15 +149,15 @@ static int cursor_cell(int *cx, int *cy) {   // the cell in front of the giant's
 }
 
 // ---- update ----
-static const u8 pickModes[] = { KHM_HAND, KHM_ROAD, KHM_HUT, KHM_HOUSE, KHM_WOODCUT, KHM_QUARRY, KHM_SAWMILL, KHM_MASON, KHM_STORE, KHM_SHEEP, KHM_CRYMINE, KHM_WEAVER, KHM_CUTTER, KHM_WELL, KHM_TAVERN, KHM_CASTLE, KHM_MOVE, KHM_NUBBIN, KHM_DEMO };
+static const u8 pickModes[] = { KHM_HAND, KHM_ROAD, KHM_HUT, KHM_HOUSE, KHM_WOODCUT, KHM_QUARRY, KHM_SAWMILL, KHM_MASON, KHM_STORE, KHM_SHEEP, KHM_CRYMINE, KHM_WEAVER, KHM_CUTTER, KHM_WELL, KHM_TAVERN, KHM_ROW, KHM_TOWER, KHM_CASTLE, KHM_MOVE, KHM_NUBBIN, KHM_DEMO };
 #define NPICK ((int)sizeof pickModes)
 int realm_update(int held, int pressed, int steps) {
     fr += steps; if (msgT) msgT = MAX(0, msgT - steps);
     if (!live) {   // FOUND A REALM: pick its size
-        if (pressed & PAD_UP) found_sel = (found_sel + 2) % 3;
-        if (pressed & PAD_DOWN) found_sel = (found_sel + 1) % 3;
+        if (pressed & PAD_UP) found_sel = (found_sel + 3) % 4;
+        if (pressed & PAD_DOWN) found_sel = (found_sel + 1) % 4;
         if (pressed & PAD_CROSS) { found(found_sel); audio_voice(VOICE_YAHOO); }
-        if (pressed & PAD_CIRCLE) return 0;
+        if (pressed & PAD_CIRCLE) { crowd_reset(); citizens_rebuild(); return 0; }
         return 1;
     }
     if (menu) {   // START: the realm's menu
@@ -153,7 +167,7 @@ int realm_update(int held, int pressed, int steps) {
         if (pressed & PAD_CROSS) {
             if (msel == 0) menu = 0;
             else if (msel == 1) { spd = (spd + 1) % 3; }
-            else { pack(); live = 0; sim_note("THE REALM WAITS FOR YOU (SAVE YOUR LIFE TO KEEP IT)"); return 0; }
+            else { pack(); live = 0; crowd_reset(); citizens_rebuild(); sim_note("THE REALM WAITS FOR YOU (SAVE YOUR LIFE TO KEEP IT)"); return 0; }
         }
         return 1;
     }
@@ -189,7 +203,7 @@ int realm_update(int held, int pressed, int steps) {
     if (pressed & PAD_CROSS) {
         int cx, cy; if (cursor_cell(&cx, &cy)) {
             int bx = cx, by = cy;
-            if (hand.mode >= KHM_HUT && hand.mode <= KHM_TAVERN) { bx = cx - 1 + ((isin(gyaw) > 0) ? 1 : 0); by = cy - 1 + ((icos(gyaw) < 0) ? 1 : 0); }   // (a 2 x 2 site: the corner nearest the giant)
+            if (hand.mode >= KHM_HUT && hand.mode <= KHM_TOWER) { bx = cx - 1 + ((isin(gyaw) > 0) ? 1 : 0); by = cy - 1 + ((icos(gyaw) < 0) ? 1 : 0); }   // (a 2 x 2 site: the corner nearest the giant)
             int r = khAct(&hand, &S, bx, by);
             say(khMsg[r < KHR_N ? r : 0]);
             audio_voice(r == KHR_SITE || r == KHR_GIVE || r == KHR_GOT || r == KHR_ROAD ? VOICE_AGREE : r == KHR_SPOT || r == KHR_REFUSE || r == KHR_NOGATHER || r == KHR_NOTHING ? VOICE_NAH : VOICE_FINISHED);
@@ -228,71 +242,155 @@ static void roof(int x0, int z0, int x1, int z1, int y, int h, u32 c) {   // a p
     gfx_tri_f(&t, &cc, &a, (int)(k & 255), (int)((k >> 8) & 255), (int)((k >> 16) & 255), 0);
     gfx_tri_f(&t, &b, &d, (int)(k & 255), (int)((k >> 8) & 255), (int)((k >> 16) & 255), 0);
 }
-static void tree(int wx, int wz, u32 h) {
-    int s = 30 + (int)(h & 15), ht = 120 + (int)((h >> 4) & 63);
-    box(wx - 7, -40, wz - 7, wx + 7, 0, wz + 7, UI_RGB(110, 70, 36));
-    u32 g = (h & 0x100) ? UI_RGB(40, 120, 50) : UI_RGB(30, 104, 60);
-    roof(wx - s, wz - s, wx + s, wz + s, -36, ht / 2, g);
-    roof(wx - s * 2 / 3, wz - s * 2 / 3, wx + s * 2 / 3, wz + s * 2 / 3, -36 - ht / 3, ht / 2, shade(g, 290));
+// ---- the models (near the giant in full; further off simpler) ----
+static void wedge(int x0, int x1, int y, int z0, int z1, int ridge, int h, u32 c) {   // a gable roof along x: two slopes and two ends
+    int zm = (z0 + z1) / 2; (void)ridge;
+    SVECTOR a = { (short)x0, (short)y, (short)z0 }, b = { (short)x1, (short)y, (short)z0 }, cc = { (short)x0, (short)y, (short)z1 }, d = { (short)x1, (short)y, (short)z1 };
+    SVECTOR r0 = { (short)x0, (short)(y - h), (short)zm }, r1 = { (short)x1, (short)(y - h), (short)zm };
+    u32 l = shade(c, 270), m = shade(c, 190), k = shade(c, 150);
+    gfx_quad_g(&r0, &r1, &a, &b, l, l, l, l, 0);   // the south slope
+    gfx_quad_g(&r1, &r0, &d, &cc, m, m, m, m, 0);  // the north slope
+    gfx_tri_f(&r0, &a, &cc, (int)(k & 255), (int)((k >> 8) & 255), (int)((k >> 16) & 255), 0);
+    gfx_tri_f(&r1, &d, &b, (int)(k & 255), (int)((k >> 8) & 255), (int)((k >> 16) & 255), 0);
 }
-static void nubbin(int wx, int wz, u32 col, int bob) {   // a Nubbin: a body and a head
-    int y = -((bob & 4095) > 2048 ? 4 : 0);
-    box(wx - 6, y - 22, wz - 5, wx + 6, y, wz + 5, col);
-    box(wx - 5, y - 33, wz - 5, wx + 5, y - 23, wz + 5, UI_RGB(240, 196, 150));
+static void window(int x, int y, int z, int lit) { box(x - 7, y - 9, z - 2, x + 7, y + 9, z, lit ? UI_RGB(250, 220, 120) : UI_RGB(90, 130, 170)); }
+static void tree(int wx, int wz, u32 h, int near) {   // a pine (tiers of cones) or a broadleaf (a round crown of boxes), by the cell's dice
+    int s = 26 + (int)(h & 15), ht = 120 + (int)((h >> 4) & 63), pine = (h >> 9) & 1;
+    u32 g = (h & 0x100) ? UI_RGB(46, 128, 52) : UI_RGB(32, 108, 62);
+    if (!near) { roof(wx - s, wz - s, wx + s, wz + s, -20, ht * 3 / 4, g); return; }
+    box(wx - 6, -46, wz - 6, wx + 6, 0, wz + 6, UI_RGB(112, 72, 38));
+    if (pine) { u32 pg = shade(g, 210);
+        roof(wx - s - 6, wz - s - 6, wx + s + 6, wz + s + 6, -30, ht / 2, pg);
+        roof(wx - s, wz - s, wx + s, wz + s, -30 - ht / 4, ht / 2, shade(pg, 270));
+        roof(wx - s * 3 / 5, wz - s * 3 / 5, wx + s * 3 / 5, wz + s * 3 / 5, -30 - ht / 2, ht / 2, shade(pg, 320)); }
+    else { int c = 40 + (int)((h >> 12) & 63);
+        box(wx - s, -c - s * 3 / 2, wz - s, wx + s, -c, wz + s, g);
+        box(wx - s * 3 / 4 + 10, -c - s * 2 - 8, wz - s * 3 / 4, wx + s * 3 / 4 + 10, -c - s, wz + s * 3 / 4, shade(g, 280));
+        box(wx - s - 12, -c - s, wz - s / 2, wx - s + 8, -c - 8, wz + s / 2, shade(g, 220));
+        if (h & 0x40) box(wx + s - 6, -c - s, wz - 3, wx + s, -c - s + 6, wz + 3, UI_RGB(220, 40, 40)); }   // (an apple)
 }
+static void rock(int wx, int wz, u32 h, int near, int crys) {   // a boulder of two or three chunks, a crystal cluster on some
+    int s = 24 + (int)(h & 15), t = 28 + (int)((h >> 4) & 31), ox = (int)((h >> 8) & 15) - 8;
+    u32 g = (h & 0x200) ? UI_RGB(138, 136, 132) : UI_RGB(124, 128, 136);
+    box(wx - s + ox, -t, wz - s, wx + s + ox, 0, wz + s, g);
+    if (!near) return;
+    box(wx - s * 2 / 3 + ox + 10, -t - s / 2, wz - s / 2, wx + s / 3 + ox + 10, -t + 2, wz + s / 2, shade(g, 280));
+    box(wx + s + ox - 4, -t / 2, wz - s / 2 + 6, wx + s + ox + s / 2, 0, wz + s / 2 + 6, shade(g, 200));
+    if (crys) for (int k = 0; k < 3; k++) { int cx = wx + (k - 1) * 14 + ox, cz = wz + (k & 1) * 10, ch = 70 + k * 24;
+        SVECTOR a = { (short)(cx - 9), (short)-t, (short)cz }, b = { (short)(cx + 9), (short)-t, (short)cz }, c2 = { (short)cx, (short)-t, (short)(cz + 9) }, tp = { (short)(cx + 2), (short)(-t - ch), (short)(cz + 3) };
+        int sh = (isin((fr * 60 + k * 1300) & 4095) >> 7);
+        gfx_tri_f(&a, &b, &tp, 110 + sh, 230, 255, 0); gfx_tri_f(&b, &c2, &tp, 80, 190 + sh, 245, 0); gfx_tri_f(&c2, &a, &tp, 150, 240, 255, 0); }
+}
+// the Nubbins as SPRITES: a little 8 x 14 figure in four shirts, two steps of a walk (64 x 14), sorted with the 3D at its feet's depth
+static TexRef nub_tex; static int nub_ok, nub_drawn;
+static void nub_make(void) {
+    if (nub_ok) return; nub_ok = 1;
+    nub_tex = atlas_try(64, 14); if (!nub_tex.w) return;
+    static u16 px[64 * 14]; memset(px, 0, sizeof px);
+    static const u16 shirt[4] = { RGB(28, 8, 8), RGB(6, 14, 28), RGB(8, 22, 8), RGB(28, 22, 6) };
+    static const char *const art[14] = { "..hhhh..", ".hhhhhh.", ".hssssh.", ".sksksk.", ".ssssss.", "..ssss..", ".cccccc.", "scccccs.", "scccccs.", ".cccccc.", ".pp..pp.", ".pp..pp.", ".pp..pp.", ".bb..bb." };
+    for (int f = 0; f < 8; f++) for (int y = 0; y < 14; y++) for (int x = 0; x < 8; x++) {
+        char c = art[y][x]; if (y >= 10 && (f & 1)) { int l = x < 4; if (y >= 12) c = (l ? (x == 0 || x == 1) : 0) ? '.' : c; if (y == 10 + 1 && l) c = x == 2 ? 'p' : c; }   // (the other step: the left leg forward)
+        u16 v = c == 'h' ? RGB(6, 4, 2) : c == 's' ? RGB(30, 23, 17) : c == 'k' ? RGB(2, 2, 3) : c == 'c' ? shirt[f >> 1] : c == 'p' ? RGB(8, 8, 14) : c == 'b' ? RGB(5, 3, 2) : 0;
+        px[y * 64 + f * 8 + x] = v ? (u16)(v | 0x8000) : 0; }
+    atlas_upload(&nub_tex, px);
+}
+static void nub_sprite(int wx, int wz, int kind, int walk) {   // one Nubbin standing at (wx, wz)
+    if (!nub_tex.w || nub_drawn >= 520) return;
+    int sx, sy, z = gfx_proj(wx, 0, wz, &sx, &sy); if (z <= 0) return;
+    int h = 38 * 230 / z; if (h < 3) return; int w = h * 8 / 14 + 1;
+    int f = ((kind & 3) << 1) | (walk & 1), L = 128;
+    gfx_ot_sprite(sx - w / 2, sy - h, w, h, nub_tex.tpage, nub_tex.u + f * 8, nub_tex.v, 8, 14, z, L, L, L);
+    nub_drawn++;
+}
+static void nubbin(int wx, int wz, u32 col, int bob) { (void)col; nub_sprite(wx, wz, (int)(col >> 3) & 3, (bob >> 11) & 1); }
 static const u32 goodCol[8] = { UI_RGB(150, 100, 50), UI_RGB(150, 150, 156), UI_RGB(245, 245, 240), UI_RGB(120, 230, 250), UI_RGB(214, 170, 100), UI_RGB(196, 196, 206), UI_RGB(200, 60, 80), UI_RGB(170, 250, 255) };
+static void house_body(int x0, int z0, int x1, int z1, int wh, u32 wall, u32 rf, int timber, int lit) {   // walls, a gable roof, a door, windows, a chimney
+    box(x0, -wh, z1, x1, 0, z0, wall);
+    if (timber) { u32 tc = UI_RGB(96, 60, 32); box(x0 - 1, -wh, z0 - 1, x0 + 5, 0, z0 + 1, tc); box(x1 - 5, -wh, z0 - 1, x1 + 1, 0, z0 + 1, tc); box(x0, -wh / 2 - 3, z0 - 1, x1, -wh / 2 + 3, z0 + 1, tc); }
+    wedge(x0 - 8, x1 + 8, -wh, z0 + 10, z1 - 10, 0, wh * 2 / 3 + 20, rf);
+    int cx = (x0 + x1) / 2;
+    box(cx - 11, -40, z0 - 3, cx + 11, 0, z0, UI_RGB(80, 50, 28));   // the door
+    window(x0 + 24, -wh / 2 - 12, z0, lit); window(x1 - 24, -wh / 2 - 12, z0, lit);
+    box(x1 - 34, -wh - wh * 2 / 3 - 10, (z0 + z1) / 2 - 8, x1 - 20, -wh - 10, (z0 + z1) / 2 + 8, UI_RGB(150, 90, 70));   // the chimney
+}
 static void building(const KBld *b, int i) {
     int x0 = b->x * CELL + 8, z0 = -(b->y * CELL + 8), x1 = (b->x + 2) * CELL - 8, z1 = -((b->y + 2) * CELL - 8), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    // (z0 is the south edge, the higher z: the doors face south)
+    { int t = x0; (void)t; } int zs = z0 - 10, zn = z1 + 10;
     const KsType *T = ksT(b->type);
-    if (b->type == KB_CASTLE) {   // the castle by its stage: a slab, the walls, the towers, the crown
-        int st = R.castle; u32 sc = UI_RGB(186, 184, 176);
-        box(x0, -12, z1, x1, 0, z0, sc);
-        if (st >= 2) { box(x0, -110, z1, x0 + 20, -12, z0, sc); box(x1 - 20, -110, z1, x1, -12, z0, sc); box(x0, -110, z0 - 20, x1, -12, z0, sc); box(x0, -110, z1, x1, -12, z1 + 20, sc); }
-        if (st >= 3) { for (int k = 0; k < 4; k++) { int tx = k & 1 ? x1 - 22 : x0 + 22, tz = k & 2 ? z1 + 22 : z0 - 22; box(tx - 22, -190, tz - 22, tx + 22, -12, tz + 22, shade(sc, 240)); roof(tx - 26, tz - 26, tx + 26, tz + 26, -190, 60, UI_RGB(60, 70, 160)); } }
-        if (st >= 4) { box(cx - 34, -230, cz - 34, cx + 34, -12, cz + 34, UI_RGB(220, 214, 200)); roof(cx - 40, cz - 40, cx + 40, cz + 40, -230, 90, UI_RGB(200, 40, 50)); box(cx - 3, -380, cz - 3, cx + 3, -318, cz + 3, UI_RGB(230, 190, 40)); }
+    int lit = (int)((fr / 600 + i) & 1);
+    if (b->type == KB_CASTLE) {   // the castle by its stage: a slab, the walls, the towers, the keep and its crown
+        int st = R.castle; u32 sc = UI_RGB(190, 186, 176), sd = UI_RGB(160, 156, 148);
+        box(x0, -12, z1, x1, 0, z0, sd);
+        if (st >= 2) { box(x0, -110, z1, x0 + 20, -12, z0, sc); box(x1 - 20, -110, z1, x1, -12, z0, sc); box(x0, -110, z0 - 20, cx - 22, -12, z0, sc); box(cx + 22, -110, z0 - 20, x1, -12, z0, sc); box(x0, -110, z1, x1, -12, z1 + 20, sc);
+                       box(cx - 22, -110, z0 - 20, cx + 22, -70, z0, sc); box(cx - 18, -66, z0 - 2, cx + 18, -12, z0, UI_RGB(70, 46, 26));   // the gate
+                       for (int k = 0; k < 6; k++) { int bx = x0 + 10 + k * (x1 - x0 - 20) / 5; box(bx - 6, -126, z0 - 20, bx + 6, -110, z0, sc); box(bx - 6, -126, z1, bx + 6, -110, z1 + 20, sc); } }   // battlements
+        if (st >= 3) for (int k = 0; k < 4; k++) { int tx = k & 1 ? x1 - 22 : x0 + 22, tz = k & 2 ? z1 + 22 : z0 - 22; box(tx - 22, -190, tz - 22, tx + 22, -12, tz + 22, shade(sc, 240)); roof(tx - 28, tz - 28, tx + 28, tz + 28, -190, 70, UI_RGB(60, 70, 170)); window(tx, -150, tz + 22, 1); }
+        if (st >= 4) { box(cx - 36, -250, cz - 36, cx + 36, -12, cz + 36, UI_RGB(224, 218, 204)); roof(cx - 42, cz - 42, cx + 42, cz + 42, -250, 100, UI_RGB(200, 40, 50)); window(cx, -200, cz + 36, 1);
+                       int fl = (fr * 40) & 4095; box(cx - 2, -420, cz - 2, cx + 2, -350, cz + 2, UI_RGB(110, 70, 36)); box(cx + 2, -420 + (isin(fl) >> 10), cz - 1, cx + 40, -396 + (isin(fl) >> 10), cz + 1, UI_RGB(230, 190, 40)); }
         if (st < 4) { int fl = (fr * 40) & 4095; box(cx - 2, -60, cz - 2, cx + 2, 0, cz + 2, UI_RGB(110, 70, 36)); box(cx + 2, -60 + (isin(fl) >> 10), cz - 1, cx + 30, -44 + (isin(fl) >> 10), cz + 1, UI_RGB(220, 40, 50)); }
         int g = 0, n = 0; ksCost(&S, b, &g, &n); if (st < 4) { int k = ksIn(b); for (int j = 0; j < k && j < 8; j++) box(x1 - 30 - (j & 3) * 14, -12 - (j >> 2) * 12 - 12, z1 + 8, x1 - 18 - (j & 3) * 14, -12 - (j >> 2) * 12, z1 + 20, goodCol[g & 7]); }
         return;
     }
-    if (!b->lvl) {   // a site: pegs at the corners, a string between them, the delivered goods in a pile
-        u32 pc = UI_RGB(230, 210, 150);
-        for (int k = 0; k < 4; k++) { int px = k & 1 ? x1 : x0, pz = k & 2 ? z1 : z0; box(px - 4, -40, pz - 4, px + 4, 0, pz + 4, pc); }
+    if (!b->lvl) {   // a site: scaffold poles at the corners, rails between, the delivered goods in a pile, a Nubbin with a plan
+        u32 pc = UI_RGB(200, 170, 110);
+        for (int k = 0; k < 4; k++) { int px = k & 1 ? x1 : x0, pz = k & 2 ? z1 : z0; box(px - 4, -70, pz - 4, px + 4, 0, pz + 4, pc); }
+        box(x0, -64, z0 - 3, x1, -58, z0, pc); box(x0, -64, z1, x1, -58, z1 + 3, pc);
         quad(x0, z1, x1, z0, -1, UI_RGB(150, 120, 80), UI_RGB(140, 110, 72));
         int g = 0, n = 0; ksCost(&S, b, &g, &n); int k = ksIn(b);
         for (int j = 0; j < k; j++) box(cx - 30 + (j % 4) * 16, -14 - (j / 4) * 14, cz - 6, cx - 18 + (j % 4) * 16, -(j / 4) * 14, cz + 6, goodCol[g & 7]);
+        nub_sprite(cx + 50, zs - 6, 3, (fr >> 4) & 1);
         return;
     }
-    static const u32 wallC[KS_NTYPES] = { UI_RGB(190, 150, 100), UI_RGB(230, 220, 196), UI_RGB(150, 104, 60), UI_RGB(150, 150, 150), UI_RGB(176, 126, 76), UI_RGB(170, 168, 160), UI_RGB(196, 160, 110),
-                                          UI_RGB(220, 210, 170), UI_RGB(110, 120, 140), UI_RGB(210, 180, 200), UI_RGB(150, 200, 220), UI_RGB(186, 184, 176), UI_RGB(150, 150, 160), UI_RGB(170, 110, 70) };
-    static const u32 roofC[KS_NTYPES] = { UI_RGB(200, 170, 70), UI_RGB(170, 60, 50), UI_RGB(90, 120, 60), UI_RGB(90, 90, 100), UI_RGB(120, 80, 50), UI_RGB(100, 100, 120), UI_RGB(60, 90, 160),
-                                          UI_RGB(200, 170, 70), UI_RGB(60, 60, 90), UI_RGB(160, 70, 140), UI_RGB(70, 150, 190), UI_RGB(60, 70, 160), UI_RGB(80, 120, 200), UI_RGB(150, 50, 40) };
-    int wh = b->type == KB_HOUSE ? 110 : b->type == KB_STORE ? 100 : b->type == KB_WELL ? 26 : 70;
-    if (b->type == KB_SHEEP) {   // a fenced meadow with sheep in it
-        u32 fc = UI_RGB(160, 120, 70);
-        box(x0, -26, z0 - 4, x1, -20, z0, fc); box(x0, -26, z1, x1, -20, z1 + 4, fc); box(x0, -26, z1, x0 + 4, -20, z0, fc); box(x1 - 4, -26, z1, x1, -20, z0, fc);
-        for (int k = 0; k < 3; k++) { int sx = x0 + 40 + k * 44 + (isin((fr * 10 + k * 1400) & 4095) >> 9), sz = cz + (k - 1) * 30; box(sx - 14, -22, sz - 9, sx + 14, -4, sz + 9, UI_RGB(246, 246, 240)); box(sx + 12, -24, sz - 5, sx + 20, -14, sz + 5, UI_RGB(40, 40, 40)); }
-    } else if (b->type == KB_WELL) {
-        box(cx - 30, -26, cz - 30, cx + 30, 0, cz + 30, wallC[b->type]); quad(cx - 22, cz + 22, cx + 22, cz - 22, -27, UI_RGB(40, 90, 200), UI_RGB(60, 120, 220));
-        box(cx - 30, -90, cz - 3, cx - 24, -26, cz + 3, UI_RGB(110, 70, 36)); box(cx + 24, -90, cz - 3, cx + 30, -26, cz + 3, UI_RGB(110, 70, 36)); roof(cx - 38, cz - 30, cx + 38, cz + 30, -90, 30, roofC[b->type]);
-    } else {
-        box(x0 + 10, -wh, z1 + 10, x1 - 10, 0, z0 - 10, wallC[b->type]);
-        roof(x0, z1, x1, z0, -wh, b->type == KB_HUT ? 70 : 54, roofC[b->type]);
-        box(cx - 12, -40, z0 - 12, cx + 12, -2, z0 - 9, UI_RGB(70, 46, 26));   // the door (south)
-        if (b->type == KB_WOODCUT || b->type == KB_SAWMILL) for (int k = 0; k < 3; k++) box(x1 - 6, -12 - k * 12, z1 + 10 + k * 8, x1 + 26, -k * 12, z1 + 20 + k * 8, UI_RGB(140, 90, 50));
-        if (b->type == KB_QUARRY || b->type == KB_MASON) box(x0 - 20, -24, z0 - 40, x0 + 10, 0, z0 - 10, UI_RGB(140, 140, 146));
-        if (b->type == KB_CRYMINE || b->type == KB_CUTTER) { SVECTOR a = { (short)(x0 - 10), 0, (short)(z0 - 20) }, c2 = { (short)(x0 + 10), 0, (short)(z0 - 20) }, t = { (short)x0, -60, (short)(z0 - 24) }; gfx_tri_f(&a, &c2, &t, 120, 230, 250, 0); }
-        if (b->type == KB_TAVERN) box(cx + 20, -70, z0 - 14, cx + 40, -50, z0 - 10, UI_RGB(230, 190, 40));   // its sign
+    switch (b->type) {
+    case KB_HUT: house_body(x0 + 24, zs - 14, x1 - 24, zn + 14, 54, UI_RGB(186, 146, 96), UI_RGB(206, 176, 76), 0, lit); break;   // (a thatched roof)
+    case KB_HOUSE: house_body(x0 + 10, zs, x1 - 10, zn, 96, UI_RGB(234, 224, 200), UI_RGB(176, 64, 52), 1, lit); break;
+    case KB_ROW: for (int k = 0; k < 3; k++) { int a = x0 + k * (x1 - x0) / 3, bb = a + (x1 - x0) / 3 - 4; static const u32 rc[3] = { UI_RGB(200, 120, 90), UI_RGB(220, 200, 160), UI_RGB(160, 170, 190) };
+                   house_body(a + 2, zs, bb, zn, 110, rc[k], UI_RGB(90, 80, 90), 0, lit ^ k); } break;
+    case KB_TOWER: { int th = 380; box(x0 + 14, -th, zn, x1 - 14, 0, zs, UI_RGB(206, 200, 188));
+                   for (int f = 0; f < 6; f++) { int y = -40 - f * 58; for (int k = 0; k < 4; k++) window(x0 + 36 + k * 36, y, zs, ((f + k + i + fr / 300) % 3) == 0); box(x0 + 12, y - 30, zs - 2, x1 - 12, y - 26, zs + 2, UI_RGB(170, 160, 150)); }
+                   roof(x0 + 6, zn - 8, x1 - 6, zs + 8, -th, 80, UI_RGB(60, 90, 160)); box(cx - 14, -44, zs - 3, cx + 14, 0, zs, UI_RGB(80, 50, 28)); } break;
+    case KB_STORE: house_body(x0 + 8, zs, x1 - 8, zn, 100, UI_RGB(196, 160, 110), UI_RGB(60, 90, 160), 1, 0);
+                   for (int k = 0; k < 4; k++) box(x0 - 10 + k * 26, -24 - (k & 1) * 22, zs - 30, x0 + 12 + k * 26, -(k & 1) * 22, zs - 8, UI_RGB(170, 120, 60)); break;   // crates at the door
+    case KB_WOODCUT: house_body(x0 + 20, zs, cx + 10, zn, 70, UI_RGB(150, 104, 60), UI_RGB(90, 120, 60), 0, lit);
+                   for (int k = 0; k < 3; k++) box(cx + 30, -16 - k * 16, zn + 10 + k * 4, x1, -k * 16, zn + 26 + k * 4, UI_RGB(140, 90, 50));   // the log pile
+                   box(cx + 40, -24, zs - 30, cx + 64, 0, zs - 6, UI_RGB(150, 110, 70)); box(cx + 50, -50, zs - 20, cx + 54, -24, zs - 16, UI_RGB(170, 170, 180)); break;   // a stump and its axe
+    case KB_SAWMILL: house_body(x0 + 10, zs, x1 - 10, zn, 80, UI_RGB(176, 126, 76), UI_RGB(120, 80, 50), 1, lit);
+                   { int a = (fr * 200) & 4095; for (int k = 0; k < 4; k++) { int an = a + k * 1024; box(x1 - 4, -60 + (icos(an) * 34 >> 12) - 6, cz + (isin(an) * 34 >> 12) - 6, x1 + 4, -60 + (icos(an) * 34 >> 12) + 6, cz + (isin(an) * 34 >> 12) + 6, UI_RGB(110, 80, 50)); } } break;   // the water wheel
+    case KB_QUARRY: quad(x0 + 10, zn, x1 - 10, zs, -1, UI_RGB(120, 116, 110), UI_RGB(100, 96, 92));
+                   for (int k = 0; k < 3; k++) box(x0 + 20 + k * 40, -20 - k * 8, zn + 20, x0 + 50 + k * 40, 0, zn + 50, UI_RGB(150, 150, 154));
+                   box(cx - 3, -110, cz - 3, cx + 3, 0, cz + 3, UI_RGB(110, 70, 36)); box(cx - 40, -110, cz - 3, cx + 3, -104, cz + 3, UI_RGB(110, 70, 36)); box(cx - 42, -104, cz - 2, cx - 38, -50, cz + 2, UI_RGB(60, 60, 60)); break;   // a crane
+    case KB_MASON: house_body(x0 + 14, zs, x1 - 14, zn, 76, UI_RGB(170, 168, 160), UI_RGB(100, 100, 120), 0, lit); box(x0 - 6, -20, zs - 30, x0 + 30, 0, zs - 8, UI_RGB(196, 196, 206)); break;
+    case KB_SHEEP: { u32 fc = UI_RGB(170, 128, 76);
+        for (int k = 0; k < 5; k++) { int px = x0 + k * (x1 - x0) / 4; box(px - 3, -34, zs - 3, px + 3, 0, zs + 3, fc); box(px - 3, -34, zn - 3, px + 3, 0, zn + 3, fc); }
+        box(x0, -28, zs - 2, x1, -24, zs + 2, fc); box(x0, -28, zn - 2, x1, -24, zn + 2, fc); box(x0 - 2, -28, zn, x0 + 2, -24, zs, fc); box(x1 - 2, -28, zn, x1 + 2, -24, zs, fc);
+        for (int k = 0; k < 4; k++) { int sx = x0 + 34 + k * 38 + (isin((fr * 10 + k * 1400) & 4095) >> 9), sz = cz + ((k & 1) ? 26 : -26);
+            box(sx - 15, -26, sz - 10, sx + 15, -8, sz + 10, UI_RGB(248, 248, 242)); box(sx + 13, -28, sz - 6, sx + 23, -16, sz + 6, UI_RGB(40, 40, 40)); box(sx - 10, -8, sz - 6, sx - 6, 0, sz + 6, UI_RGB(40, 40, 40)); box(sx + 6, -8, sz - 6, sx + 10, 0, sz + 6, UI_RGB(40, 40, 40)); } } break;
+    case KB_CRYMINE: { box(x0 + 20, -60, zn, x1 - 20, 0, cz, UI_RGB(110, 110, 118)); box(cx - 24, -50, cz - 4, cx + 24, 0, cz, UI_RGB(20, 18, 24));   // the mine mouth
+        box(cx - 28, -56, cz - 6, cx - 22, 0, cz, UI_RGB(110, 70, 36)); box(cx + 22, -56, cz - 6, cx + 28, 0, cz, UI_RGB(110, 70, 36)); box(cx - 28, -60, cz - 6, cx + 28, -52, cz, UI_RGB(110, 70, 36));
+        box(cx - 6, -3, cz, cx + 6, 0, zs, UI_RGB(70, 60, 50)); box(cx - 14, -22, zs - 40, cx + 14, -4, zs - 20, UI_RGB(90, 80, 70)); box(cx - 10, -30, zs - 36, cx + 10, -22, zs - 24, UI_RGB(120, 230, 250)); } break;   // rails and a cart of crystal
+    case KB_WEAVER: house_body(x0 + 12, zs, x1 - 12, zn, 80, UI_RGB(214, 186, 206), UI_RGB(160, 70, 140), 1, lit);
+                   for (int k = 0; k < 3; k++) box(x0 + 4 + k * 22, -70, zs - 24, x0 + 20 + k * 22, -20, zs - 22, k == 1 ? UI_RGB(200, 60, 80) : UI_RGB(80, 120, 200)); break;   // cloth on a line
+    case KB_CUTTER: house_body(x0 + 12, zs, x1 - 12, zn, 80, UI_RGB(160, 206, 224), UI_RGB(70, 150, 190), 0, lit); { SVECTOR a = { (short)(x1 - 40), -110, (short)cz }, c2 = { (short)(x1 - 20), -110, (short)cz }, t = { (short)(x1 - 30), -150, (short)cz }; gfx_tri_f(&a, &c2, &t, 170, 250, 255, 0); } break;
+    case KB_WELL: { box(cx - 30, -28, cz - 30, cx + 30, 0, cz + 30, UI_RGB(150, 150, 160)); quad(cx - 22, cz + 22, cx + 22, cz - 22, -29, UI_RGB(40, 90, 200), UI_RGB(60, 120, 220));
+        box(cx - 30, -96, cz - 3, cx - 24, -28, cz + 3, UI_RGB(110, 70, 36)); box(cx + 24, -96, cz - 3, cx + 30, -28, cz + 3, UI_RGB(110, 70, 36)); box(cx - 30, -80, cz - 2, cx + 30, -76, cz + 2, UI_RGB(110, 70, 36));
+        box(cx - 6, -70, cz - 6, cx + 6, -58, cz + 6, UI_RGB(140, 100, 60)); wedge(cx - 40, cx + 40, -96, cz + 34, cz - 34, 0, 34, UI_RGB(150, 60, 40)); } break;
+    case KB_TAVERN: house_body(x0 + 8, zs, x1 - 8, zn, 100, UI_RGB(170, 110, 70), UI_RGB(130, 46, 36), 1, 1);
+                   box(cx + 30, -84, zs - 30, cx + 34, -60, zs - 4, UI_RGB(60, 40, 20)); box(cx + 20, -60, zs - 34, cx + 44, -40, zs - 30, UI_RGB(230, 190, 40));   // its sign
+                   box(x0 + 10, -24, zs - 40, x0 + 40, -20, zs - 20, UI_RGB(140, 90, 50)); box(x0 + 22, -20, zs - 34, x0 + 28, 0, zs - 26, UI_RGB(110, 70, 36)); break;   // a table outside
     }
-    // the folk: residents round a home, a worker at a staffed workplace
-    if (T->kind == KK_HOME) for (int k = 0; k < b->work && k < 3; k++) { int a = (fr * 6 + k * 1365 + i * 700) & 4095; nubbin(cx + (isin(a) * 120 >> 12), cz + (icos(a) * 120 >> 12), UI_RGB(70 + k * 50, 120, 200 - k * 40), fr * 300 + k * 900); }
-    if ((T->kind == KK_GATHER || T->kind == KK_PROC) && b->work) nubbin(cx + 40, z0 - 30, UI_RGB(200, 120, 60), fr * 200);
+    // the folk: residents round a home (a crowd at the big ones), a worker at a staffed workplace
+    if (T->kind == KK_HOME) { int n = b->work < 6 ? b->work : 6 + (b->work - 6) / 5;
+        for (int k = 0; k < n; k++) { int a = (fr * (5 + (k & 3)) + k * 977 + i * 700) & 4095, r = 120 + (k % 3) * 26; nub_sprite(cx + (isin(a) * r >> 12), cz + (icos(a) * r >> 12), (k + i) & 3, (fr / 8 + k) & 1); } }
+    if ((T->kind == KK_GATHER || T->kind == KK_PROC) && b->work) nub_sprite(cx + 44, zs - 30, i & 3, (fr / 10) & 1);
     if ((T->kind == KK_GATHER || T->kind == KK_PROC) && ksOut(b)) for (int j = 0; j < ksOut(b) && j < 6; j++) box(x1 + 4, -12 - j * 10, cz - 6, x1 + 18, -2 - j * 10, cz + 6, goodCol[T->outG & 7]);
 }
 static void land_draw(void) {
     int d = S.dim, ccx = gx / CELL, ccy = -gz / CELL;
-    gfx_set_identity();
+    nub_drawn = 0;
+    gfx_set_identity(); gfx_set_reserve(RESERVE_PEOPLE);   // (the land may not take the giant's and the HUD's share)
     int x0 = MAX(0, ccx - VIEW), x1 = MIN(d - 1, ccx + VIEW), y0 = MAX(0, ccy - VIEW), y1 = MIN(d - 1, ccy + VIEW);
-    // the sea beyond the land's edge, as big quads
     gfx_floor_pass = 1;
     for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
         int c = cells[y * d + x], v = c & 7; u32 h = hsh(x, y);
@@ -300,37 +398,45 @@ static void land_draw(void) {
         u32 col;
         switch (v) {
             case KT_WATER: { int w = isin((fr * 50 + x * 700 + y * 1100) & 4095) >> 8; col = UI_RGB(30 + w, 90 + w, 190 + w); break; }
-            case KT_MEADOW: col = UI_RGB(120, 186, 70); break;
-            case KT_ROAD: col = UI_RGB(196, 160, 110); break;
+            case KT_MEADOW: col = UI_RGB(126, 190, 72); break;
+            case KT_ROAD: col = UI_RGB(200, 166, 116); break;
             case KT_BRIDGE: col = (x + y) & 1 ? UI_RGB(150, 100, 56) : UI_RGB(130, 86, 48); break;
-            case KT_ROCK: case KT_CRYSTAL: col = UI_RGB(120, 140, 90); break;
-            default: col = UI_RGB(86, 160, 64);
+            case KT_ROCK: case KT_CRYSTAL: col = UI_RGB(118, 132, 96); break;
+            case KT_FOREST: col = UI_RGB(70, 140, 56); break;
+            default: col = UI_RGB(88, 162, 66);
         }
-        if (c & KC_BLD) col = UI_RGB(150, 160, 110);
-        quad(wx, wz, wx + CELL, wz - CELL, v == KT_WATER ? 10 : 0, shade(col, k), shade(col, k - 18));
+        if (c & KC_BLD) col = UI_RGB(150, 156, 112);
+        if (v != KT_WATER) {   // a shore: the grass beside water goes sandy
+            int sea = (x > 0 && (cells[y * d + x - 1] & 7) == KT_WATER) || (x < d - 1 && (cells[y * d + x + 1] & 7) == KT_WATER) || (y > 0 && (cells[(y - 1) * d + x] & 7) == KT_WATER) || (y < d - 1 && (cells[(y + 1) * d + x] & 7) == KT_WATER);
+            if (sea && v != KT_ROAD && v != KT_BRIDGE && !(c & KC_BLD)) col = UI_RGB(226, 206, 150); }
+        quad(wx, wz, wx + CELL, wz - CELL, v == KT_WATER ? 14 : 0, shade(col, k), shade(col, k - 18));
     }
     gfx_floor_pass = 0;
+    for (int i = 0; i < R.nB; i++) { const KBld *b = &Bl[i]; if (b->x + 2 < x0 || b->x > x1 || b->y + 2 < y0 || b->y > y1) continue; building(b, i); }
     for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
         int c = cells[y * d + x], v = c & 7; if (c & KC_BLD) continue;
         int wx = x * CELL + CELL / 2, wz = -(y * CELL + CELL / 2); u32 h = hsh(x, y);
-        int ox = (int)(h % 31) - 15, oz = (int)((h >> 8) % 31) - 15;
-        if (v == KT_FOREST) { tree(wx + ox, wz + oz, h); if (h & 0x10000) tree(wx - ox - 10, wz - oz + 14, h >> 3); }
-        else if (v == KT_ROCK || v == KT_CRYSTAL) { int s = 26 + (int)(h & 15); box(wx - s + ox / 2, -(30 + (int)((h >> 4) & 31)), wz - s, wx + s + ox / 2, 0, wz + s, UI_RGB(136, 136, 140));
-            if (v == KT_CRYSTAL) { SVECTOR a = { (short)(wx - 12), -20, (short)wz }, b = { (short)(wx + 12), -20, (short)wz }, t = { (short)wx, -110, (short)(wz + 6) }; gfx_tri_f(&a, &b, &t, 110, 230, 255, 0); gfx_tri_f(&b, &a, &t, 80, 190, 240, 0); } }
-        else if (v == KT_MEADOW && (h & 3) == 0) { box(wx + ox - 3, -8, wz + oz - 3, wx + ox + 3, 0, wz + oz + 3, (h & 4) ? UI_RGB(250, 230, 60) : UI_RGB(250, 120, 160)); }
-        else if (v == KT_BRIDGE) { box(wx - CELL / 2, -10, wz - CELL / 2, wx - CELL / 2 + 6, 0, wz + CELL / 2, UI_RGB(110, 70, 36)); box(wx + CELL / 2 - 6, -10, wz - CELL / 2, wx + CELL / 2, 0, wz + CELL / 2, UI_RGB(110, 70, 36)); }
+        int ox = (int)(h % 31) - 15, oz = (int)((h >> 8) % 31) - 15, nr = ABS(x - ccx) <= 4 && ABS(y - ccy) <= 4;
+        if (v == KT_FOREST) { tree(wx + ox, wz + oz, h, nr); if (nr && (h & 0x10000)) tree(wx - ox - 10, wz - oz + 14, h >> 3, 1); }
+        else if (v == KT_ROCK || v == KT_CRYSTAL) rock(wx, wz, h, nr, v == KT_CRYSTAL);
+        else if (v == KT_MEADOW && nr && (h & 3) == 0) { box(wx + ox - 3, -8, wz + oz - 3, wx + ox + 3, 0, wz + oz + 3, (h & 4) ? UI_RGB(250, 230, 60) : UI_RGB(250, 120, 160)); box(wx - ox - 3, -6, wz - oz - 3, wx - ox + 3, 0, wz - oz + 3, UI_RGB(250, 250, 250)); }
+        else if (v == KT_GRASS && nr && (h & 7) == 0) box(wx + ox - 8, -10, wz + oz - 8, wx + ox + 8, 0, wz + oz + 8, UI_RGB(60, 140, 50));   // a bush
+        else if (v == KT_BRIDGE) { box(wx - CELL / 2, -14, wz - CELL / 2, wx - CELL / 2 + 6, 0, wz + CELL / 2, UI_RGB(110, 70, 36)); box(wx + CELL / 2 - 6, -14, wz - CELL / 2, wx + CELL / 2, 0, wz + CELL / 2, UI_RGB(110, 70, 36)); }
+        else if (v == KT_ROAD && S.pop > 40) {   // the streets: the bigger the realm, the busier (up to 4 a cell; ten thousand Nubbins make a crowd)
+            int n = S.pop >= 4000 ? 4 : S.pop >= 1000 ? 3 : S.pop >= 200 ? 2 : (h & 1);
+            for (int k = 0; k < n; k++) { int a = (fr * 3 + (int)(h >> (k * 4)) * 64) & 4095, px = wx + (isin(a) * 36 >> 12) + (k - 2) * 8, pz = wz + (icos(a + k * 900) * 36 >> 12); nub_sprite(px, pz, (int)(h >> (k + 3)) & 3, (fr / 7 + k) & 1); } }
     }
-    for (int i = 0; i < R.nB; i++) { const KBld *b = &Bl[i]; if (b->x + 2 < x0 || b->x > x1 || b->y + 2 < y0 || b->y > y1) continue; building(b, i); }
-    for (int w = 0; w < KS_MAXW; w++) { const KsWk *k = &S.wk[w]; if (!k->st || k->cell == 0xFFFF) continue;   // the carriers on the roads
+    for (int w = 0; w < KS_MAXW; w++) { const KsWk *k = &S.wk[w]; if (!k->st || k->cell == 0xFFFF) continue;   // the carriers on the roads, each with its good on its head
         int x = k->cell % d, y = k->cell / d; if (x < x0 || x > x1 || y < y0 || y > y1) continue;
         int wx = x * CELL + CELL / 2 + (int)(w % 5) * 6 - 12, wz = -(y * CELL + CELL / 2) + (int)(w % 3) * 8 - 8;
-        nubbin(wx, wz, goodCol[k->good & 7], fr * 400 + w * 333);
-        box(wx - 6, -46, wz - 6, wx + 6, -34, wz + 6, goodCol[k->good & 7]); }   // (the good, on its head)
+        nub_sprite(wx, wz, w & 3, (fr / 6 + w) & 1);
+        box(wx - 6, -50, wz - 6, wx + 6, -38, wz + 6, goodCol[k->good & 7]); }
+    gfx_set_reserve(0);
 }
 static void cursor_draw(void) {
     int cx, cy; if (!cursor_cell(&cx, &cy)) return;
     int bx = cx, by = cy, w = 1;
-    if (hand.mode >= KHM_HUT && hand.mode <= KHM_TAVERN) { bx = cx - 1 + ((isin(gyaw) > 0) ? 1 : 0); by = cy - 1 + ((icos(gyaw) < 0) ? 1 : 0); w = 2; }
+    if (hand.mode >= KHM_HUT && hand.mode <= KHM_TOWER) { bx = cx - 1 + ((isin(gyaw) > 0) ? 1 : 0); by = cy - 1 + ((icos(gyaw) < 0) ? 1 : 0); w = 2; }
     int ok = w == 2 ? ksSpotOk(&S, hand.mode - KHM_HUT, bx, by) : 1, p = 140 + (isin((fr * 120) & 4095) >> 6);
     gfx_set_identity();
     u32 c = ok ? UI_RGB(p / 2, p, p / 2) : UI_RGB(p, p / 4, p / 4);
@@ -349,10 +455,10 @@ void realm_draw(void) {
         gfx_set_fog(0, 0);
         ui_backdrop();
         int top = ui_window(40, 20, 240, 200, "FOUND A REALM", IC_STAR);
-        static const char *const nm[3] = { "HAMLET  (48 x 48)", "REALM  (96 x 96)", "KINGDOM  (128 x 128)" };
-        static const char *const tx[3] = { "A LITTLE ISLAND. QUICK TO FILL", "ROOM FOR A TOWN AND A CASTLE", "A BIG LAND. A LONG REIGN" };
-        ui_wrapc(160, top, 220, 3, "YOU WILL WAKE UP A GIANT ON AN ISLAND. THE LITTLE FOLK, THE NUBBINS, NEED YOU. HOW BIG A LAND?", UI_SOFT);
-        for (int i = 0; i < 3; i++) { int y = top + 44 + i * 36, s = i == found_sel;
+        static const char *const nm[4] = { "HAMLET  (48 x 48)", "REALM  (96 x 96)", "KINGDOM  (128 x 128)", "EMPIRE  (255 x 255)" };
+        static const char *const tx[4] = { "A LITTLE ISLAND. QUICK TO FILL", "ROOM FOR A TOWN AND A CASTLE", "A BIG LAND. A LONG REIGN", "ROOM FOR TEN THOUSAND NUBBINS" };
+        ui_wrapc(50, top - 2, 220, 3, "YOU WILL WAKE UP A GIANT ON AN ISLAND. THE LITTLE FOLK, THE NUBBINS, NEED YOU. HOW BIG A LAND?", UI_SOFT);
+        for (int i = 0; i < 4; i++) { int y = top + 40 + i * 34, s = i == found_sel;
             if (s) ui_round(48, y - 2, 224, 32, 6, UI_RGB(226, 242, 254), UI_HILITE, 0);
             ui_text(58, y + 2, 1, nm[i], s ? UI_BLUE2 : UI_INK); ui_text(58, y + 15, 1, tx[i], UI_SOFT); }
         ui_hintbar(214, "DPAD PICK|X FOUND IT|O NOT NOW");
@@ -392,8 +498,8 @@ void realm_draw(void) {
         { char b[32]; snprintf(b, sizeof b, "PAYS $%d", m->pay * 100); ui_text(40, top + 108, 1, b, UI_GOLDT); }
     }
     if (panel == 2 && mis >= NMIS) { int top = ui_window(30, 60, 260, 60, "ALL MISSIONS DONE", IC_STAR); ui_wrap(40, top, 240, 2, "THE REALM IS YOURS TO KEEP. IT NEVER ENDS.", UI_SOFT); }
-    if (msgT && msg) { int w = MIN(300, ui_tw(1, msg) + 20); ui_round(160 - w / 2, 172, w, 18, 8, UI_RGB(30, 40, 70), UI_RGB(18, 24, 48), 0); ui_textfit(170 - w / 2, 175, w - 20, msg, UI_WHITE); }
-    if (!pick && !menu) ui_hintbar(216, "X DO IT|SQ BUILD|TRI GOODS/GOAL|L1 R1 TURN|START MENU");
+    if (msgT && msg) { int w = MIN(300, ui_tw(1, msg) + 20), two = ui_tw(1, msg) > 280; ui_round(160 - w / 2, two ? 164 : 174, w, two ? 30 : 18, 8, UI_RGB(30, 40, 70), UI_RGB(18, 24, 48), 0); ui_wrapc(160 - w / 2 + 8, two ? 167 : 177, w - 16, 2, msg, UI_WHITE); }
+    if (!pick && !menu) ui_hintbar(216, "X DO IT|SQ BUILD|TRI INFO|START MENU");
     if (pick) {
         int top = ui_window(16, 20, 288, 196, "WHAT X DOES", IC_HAMMER);
         for (int i = 0; i < NPICK; i++) { int col = i / 7, row = i % 7, x = 24 + col * 94, y = top + row * 20, s = i == psel;

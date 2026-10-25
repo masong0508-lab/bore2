@@ -59,6 +59,7 @@ extern int gfx_last_cpu;   // the last frame's CPU time, in hblanks (up to the f
 extern int gfx_bb_on, gfx_bb[4];   // (sprite renders) the screen box of all that was projected while on: x0, y0, x1, y1
 int  gfx_imp_begin(int cx, int cy, int cw, int ch, int ox, int oy, int zmid, int hscale);   // then draw the person, then:
 void gfx_imp_end(void);
+void gfx_ot_sprite(int x, int y, int w, int h, u16 tpage, int u, int v, int tw, int th, int z, int r, int g, int b);   // a tinted sprite at view depth z, sorted with the 3D
 void gfx_imp_sprite(int cx, int cy, int tw, int th, int x, int y, int w, int h, int otz, int dx);
 int  gfx_proj(int wx, int wy, int wz, int *sx, int *sy);   // screen position; returns the depth (0 behind the eye)     // a transformed vertex: screen x, y and view depth
 void gfx_xform(const SVECTOR *v, XV *o, int n);

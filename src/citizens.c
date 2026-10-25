@@ -1342,3 +1342,4 @@ void citizens_debug(int zone, int *in, int *out, int *asleep, int *transit, int 
     }
 }
 #endif
+void citizens_rebuild(void) { for (int i = 0; i < NCIT; i++) cits[i].built = 0; }   // (the crowd's arena was lent out: every model is made again, nearest first)

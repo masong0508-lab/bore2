@@ -25,7 +25,7 @@
 #define KG_FMT1     1
 #define KG_NOPOS    255        // gx, gy: no saved position for the giant
 #define KG_GENVER   1
-#define KG_TIERS    3
+#define KG_TIERS    4          // (BORE 2: a fourth, THE EMPIRE, 256 x 256)
 #define KG_MAXB     250        // buildings a realm may hold
 #define KG_GOODS    8          // wood, stone, wool, crystal, then planks, cut stone, cloth, polished crystal
 #define KG_GIANTS   5          // the four giants and your own Bore
@@ -48,7 +48,7 @@ enum { KGE_OK=0, KGE_BIG=-1, KGE_ARG=-2, KGE_FMT=-3, KGE_SUM=-4, KGE_RANGE=-5, K
 typedef struct { u8 tier, giant, castle, genVer, flags; u32 seed, day, rng; u16 goods[KG_GOODS]; u16 nB; u8 gx, gy; } KRealm;   // gx, gy: the giant's cell (step 4j), KG_NOPOS for none
 typedef struct { u8 type, x, y, lvl, work; u16 stock; } KBld;
 
-static inline int kgDim(int tier){ return tier==0?48:tier==1?96:tier==2?128:0; }
+static inline int kgDim(int tier){ return tier==0?48:tier==1?96:tier==2?128:tier==3?255:0; }   // (255: a cell's x and y are a byte each)
 static inline int kgCells(int tier){ int d=kgDim(tier); return d*d; }
 
 // ---- the made land ----

@@ -8,6 +8,7 @@
 
 void citizens_init(void);                 // a new life: roll the hundred (bodies are built as each zone is first seen)
 void citizens_enter(int zone);            // after arriving in a zone: put its people out on the streets
+void citizens_rebuild(void);              // every model made again (the crowd arena was lent to KINGDOM MODE)
 void citizens_update(int steps);          // once a frame from the life loop
 void citizens_draw(void);                 // inside draw_sims
 void citizens_draw_bubbles(void);         // speech over heads

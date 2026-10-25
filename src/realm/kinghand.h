@@ -4,14 +4,14 @@
 // NOTE (step 4c): main.c #defines W, D and H. No single capital letters as names here.
 #ifndef KINGHAND_H
 #define KINGHAND_H
-enum { KHM_HAND, KHM_ROAD, KHM_HUT, KHM_HOUSE, KHM_WOODCUT, KHM_QUARRY, KHM_SAWMILL, KHM_MASON, KHM_STORE, KHM_SHEEP, KHM_CRYMINE, KHM_WEAVER, KHM_CUTTER, KHM_CASTLE, KHM_WELL, KHM_TAVERN, KHM_DEMO, KHM_MOVE, KHM_NUBBIN, KHM_N };   // KHM_HUT + building type = the building's mode; KHM_HAND (the first) gathers by hand and carries goods (step 4h); MOVE lifts and puts down buildings; NUBBIN lifts and puts down Nubbins
+enum { KHM_HAND, KHM_ROAD, KHM_HUT, KHM_HOUSE, KHM_WOODCUT, KHM_QUARRY, KHM_SAWMILL, KHM_MASON, KHM_STORE, KHM_SHEEP, KHM_CRYMINE, KHM_WEAVER, KHM_CUTTER, KHM_CASTLE, KHM_WELL, KHM_TAVERN, KHM_ROW, KHM_TOWER, KHM_DEMO, KHM_MOVE, KHM_NUBBIN, KHM_N };   // KHM_HUT + building type = the building's mode; KHM_HAND (the first) gathers by hand and carries goods (step 4h); MOVE lifts and puts down buildings; NUBBIN lifts and puts down Nubbins
 enum { KHR_NONE, KHR_ROAD, KHR_UNROAD, KHR_SITE, KHR_RAZED, KHR_GOT, KHR_NOTHING, KHR_SPOT, KHR_FULL, KHR_ARG, KHR_NOGATHER,
              KHR_TAKE, KHR_GIVE, KHR_BACK, KHR_NOLOAD, KHR_NOWANT, KHR_REFUSE, KHR_ENOUGH, KHR_BUSY,                       // step 4h, goods: load taken, delivered, put back; nothing to carry; no one asks; not wanted here; has enough; hands full
              KHR_LIFT, KHR_SET,                                                                                              // a building lifted, put down (the map changed, redraw it: khRedraw)
              KHR_HEAD, KHR_SETTLE, KHR_NOBODY, KHR_HOMEFULL, KHR_STAFFED, KHR_LASTHAND, KHR_NOTYET, KHR_NOWORK, KHR_KEEP, KHR_NOCUT, KHR_N };   // Nubbins: picked up, put down, none here, home full, already staffed, nobody left to carry, not built yet, no work for him there
 // (KHR_ROAD to KHR_RAZED, KHR_LIFT and KHR_SET: the map changed, redraw it. See khRedraw.)   // what an A press did
 typedef struct { int mode; } KHand;
-static const char* const khName[KHM_N]={ "HAND", "ROAD", "HUT", "HOUSE", "WOODCUTTER", "QUARRY", "SAWMILL", "MASON", "STOREHOUSE", "SHEEP PEN", "MINE", "WEAVER", "CUTTER", "CASTLE", "WELL", "TAVERN", "DEMOLISH", "MOVE", "NUBBIN" };
+static const char* const khName[KHM_N]={ "HAND", "ROAD", "HUT", "HOUSE", "WOODCUTTER", "QUARRY", "SAWMILL", "MASON", "STOREHOUSE", "SHEEP PEN", "MINE", "WEAVER", "CUTTER", "CASTLE", "WELL", "TAVERN", "ROW HOUSES", "TOWER", "DEMOLISH", "MOVE", "NUBBIN" };
 static const char* const khMsg[KHR_N]={ "", "ROAD LAID", "ROAD LIFTED", "SITE PLACED", "DEMOLISHED", "GATHERED", "NOTHING HERE", "CANNOT BUILD HERE", "NO ROOM FOR MORE", "OUT OF THE REALM", "NOTHING TO GATHER",
     "LOAD TAKEN", "LOAD DELIVERED", "LOAD PUT BACK", "NOTHING TO CARRY HERE", "NOBODY HERE WANTS GOODS", "NOT WANTED HERE", "ALREADY HAS ENOUGH", "YOUR HANDS ARE FULL",
     "BUILDING LIFTED", "BUILDING PUT DOWN",

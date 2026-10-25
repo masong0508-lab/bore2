@@ -541,6 +541,9 @@ static void life_update(int steps) {
     { static int done; extern int sim_debug_grave(void); if (!done && frame > 60 && home_is_here()) done = sim_debug_grave(); ghost_mode = 2; }
 #endif
     ghost_tick(steps, frame);
+#ifdef AUTO_REALM
+    { static int ar; if (++ar == 40) { realm_open(); state = ST_REALM; return; } }   // (test builds: straight into KINGDOM MODE)
+#endif
 #ifdef AUTO_FIGHT
     { static int af; if (++af == 40) sim_want_arcade = AUTO_FIGHT; }   // (test builds: straight to a cabinet)
 #endif

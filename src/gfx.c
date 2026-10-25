@@ -688,3 +688,16 @@ int gfx_proj(int wx, int wy, int wz, int *sx, int *sy) {
     int z; if (!gfx_project(&v, sx, sy, &z)) return 0;
     return z;
 }
+// a small textured sprite sorted into the 3D at view depth z (a Nubbin in a crowd): tinted (128 = as painted), 0 pixels see-through
+void gfx_ot_sprite(int x, int y, int w, int h, u16 tpage, int u, int v, int tw, int th, int z, int r, int g, int b) {
+    if (x + w < 0 || y + h < 0 || x >= SCREEN_W || y >= SCREEN_H || z < Z_NEAR) return;
+    u32 *q = (u32 *)gfx_alloc(10 * 4); if (!q) return;
+    q[1] = 0x2C000000u | ((u32)(b & 255) << 16) | ((u32)(g & 255) << 8) | (u32)(r & 255);
+    q[2] = (u32)(x & 0xffff) | ((u32)(y & 0xffff) << 16);             q[3] = (u32)u | ((u32)v << 8);
+    q[4] = (u32)((x + w) & 0xffff) | ((u32)(y & 0xffff) << 16);       q[5] = (u32)(u + tw - 1) | ((u32)v << 8) | ((u32)tpage << 16);
+    q[6] = (u32)(x & 0xffff) | ((u32)((y + h) & 0xffff) << 16);       q[7] = (u32)u | ((u32)(v + th - 1) << 8);
+    q[8] = (u32)((x + w) & 0xffff) | ((u32)((y + h) & 0xffff) << 16); q[9] = (u32)(u + tw - 1) | ((u32)(v + th - 1) << 8);
+    int i = ot_index(z);
+    q[0] = (9u << 24) | (gfx_ot_cur[i] & 0xffffff); gfx_ot_cur[i] = (u32)q & 0xffffff;
+    gfx_frame_prims++;
+}

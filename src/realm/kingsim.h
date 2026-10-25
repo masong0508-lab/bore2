@@ -13,15 +13,15 @@
 //    ksLedger checks it against what does exist (stockpile + buildings + carriers).
 //  - b->stock in a saved building: low byte = goods delivered to it (a blueprint's cost, a processor's input), high byte = goods it holds to send out.
 // Needs: nothing but kingdom.h. Every function is static inline.
-#define KS_MAXB    64       // buildings the simulation runs (the save format allows 250; a bigger realm than this is refused on load: KSE_CAP). 40 until the big realms: 64 holds a town of 48 houses and the crowds of THE LAND BOREFORE TIME's last missions
+#define KS_MAXB    250   // (BORE 2: a city of towers; 255 stays the 'none' of a u8 building number)       // buildings the simulation runs (the save format allows 250; a bigger realm than this is refused on load: KSE_CAP). 40 until the big realms: 64 holds a town of 48 houses and the crowds of THE LAND BOREFORE TIME's last missions
 #ifndef KS_MAXN
-#define KS_MAXN    512      // road cells (a build may change it with -DKS_MAXN=...: the road list, the queue and every distance map shrink or grow with it)
+#define KS_MAXN    1024  // (BORE 2: the empire's roads)      // road cells (a build may change it with -DKS_MAXN=...: the road list, the queue and every distance map shrink or grow with it)
 #endif
 #ifndef KS_MAPS
 #define KS_MAPS    12       // distance maps kept at once (kinglog.h). Each is KS_MAXN bytes. 8 starved a 30 building realm in the test; 10 was enough for 40 buildings, 12 is for 64
 #endif
 #define KS_MAXW    40       // carriers
-#define KS_POPCAP  400      // the most a realm can hold: 50 houses of 8 (64 buildings leave room for them and the castle, the storehouses and the workplaces); the homes are the real limit; kingfx.h draws all of them (crowds) at any count
+#define KS_POPCAP  10000 // (BORE 2: ten thousand, in towers)      // the most a realm can hold: 50 houses of 8 (64 buildings leave room for them and the castle, the storehouses and the workplaces); the homes are the real limit; kingfx.h draws all of them (crowds) at any count
 #define KS_PARTY   4        // the founding party
 #define KS_BUF     8        // goods a building holds
 #define KS_DAYT    600      // frames in a realm day
@@ -29,7 +29,7 @@
 #define KS_GR      6        // a gatherer's reach: this many cells each way from the middle of its 2 x 2
 #define KS_CR      8        // (step 5g) a finished well or tavern helps the producers whose 2 x 2 is within this many cells (each way) of its own 2 x 2
 #define KS_REGROW  12       // tries a day a working woodcutter makes to plant a tree on bare grass in its reach
-enum { KB_HUT, KB_HOUSE, KB_WOODCUT, KB_QUARRY, KB_SAWMILL, KB_MASON, KB_STORE, KB_SHEEP, KB_CRYMINE, KB_WEAVER, KB_CUTTER, KB_CASTLE, KB_WELL, KB_TAVERN, KS_NTYPES };   // (step 5a: the wool chain and the crystal chain; step 5g: the well and the tavern, numbers 12 and 13, after the castle so that no saved building changes its number)
+enum { KB_HUT, KB_HOUSE, KB_WOODCUT, KB_QUARRY, KB_SAWMILL, KB_MASON, KB_STORE, KB_SHEEP, KB_CRYMINE, KB_WEAVER, KB_CUTTER, KB_CASTLE, KB_WELL, KB_TAVERN, KB_ROW, KB_TOWER, KS_NTYPES };   // (BORE 2: ROW HOUSES for 24, a TOWER for 64)   // (step 5a: the wool chain and the crystal chain; step 5g: the well and the tavern, numbers 12 and 13, after the castle so that no saved building changes its number)
 enum { KK_HOME, KK_GATHER, KK_PROC, KK_STORE, KK_CASTLE, KK_COMFORT };
 enum { G_WOOD, G_STONE, G_WOOL, G_CRYSTAL, G_PLANKS, G_CUT, G_CLOTH, G_POLISH };
 enum { KSE_OK=0, KSE_ARG=-1, KSE_CAP=-2, KSE_SPOT=-3, KSE_ROAD=-4, KSE_POOR=-5 };   // (KSE_POOR, step 5d: not enough cut stone for a bridge)
@@ -50,6 +50,8 @@ static const KsType KS_T[KS_NTYPES]={
  { KK_CASTLE, G_PLANKS, 6, 0, 0, 0,       0,       0,         0   },   // castle (step 5b): the cost here is only the first lot of stage 1; the real costs are KS_CL, by stage
  { KK_COMFORT,G_STONE,  4, 0, 0, 0,       0,       0,         0   },   // well (step 5g) [ASSUMED]: no worker, no goods in or out; every working producer in KS_CR cells makes its goods 1/8 faster
  { KK_COMFORT,G_PLANKS, 6, 0, 0, 0,       0,       0,         0   },   // tavern (step 5g) [ASSUMED]: the same, and a producer with both a well and a tavern in reach is 2/8 faster
+ { KK_HOME,   G_PLANKS, 8, 0, 24,0,       0,       0,         0   },   // row houses (BORE 2)
+ { KK_HOME,   G_CUT,    8, 0, 64,0,       0,       0,         0   },   // a tower (BORE 2): sixty-four Nubbins up the stairs
 };
 static inline const KsType*ksT(int type){ return &KS_T[type<KS_NTYPES?type:0]; }
 
@@ -253,7 +255,7 @@ static inline void ksGather(KSim*S,int i){
 static inline void ksDay(KSim*S){
     KRealm*R=S->R; if(R->day<0xFFFFFFFFu) R->day++;
     ksCensus(S); int pop=S->pop;
-    for(int i=0;i<R->nB&&pop<KS_POPCAP;i++){ KBld*b=&S->B[i]; const KsType*T=ksT(b->type); if(b->lvl&&T->kind==KK_HOME&&b->work<T->house){ b->work++; pop++; } }
+    for(int i=0;i<R->nB&&pop<KS_POPCAP;i++){ KBld*b=&S->B[i]; const KsType*T=ksT(b->type); if(b->lvl&&T->kind==KK_HOME&&b->work<T->house){ int n=1+T->house/16; if(n>T->house-b->work) n=T->house-b->work; b->work=(u8)(b->work+n); pop+=n; } }   // (BORE 2: a big home fills faster)
     int emp=0, lim=pop-1-pop/4; if(lim<0) lim=0;
     for(int i=0;i<R->nB;i++){ const KBld*b=&S->B[i]; const KsType*T=ksT(b->type); if(b->lvl&&(T->kind==KK_GATHER||T->kind==KK_PROC)) emp+=b->work; }
     for(int kind=KK_PROC;kind>=KK_GATHER;kind--) for(int i=R->nB-1;i>=0&&emp>lim;i--){ KBld*b=&S->B[i]; const KsType*T=ksT(b->type); if(b->lvl&&T->kind==kind&&b->work){ b->work=0; emp--; } }   // fewer Nubbins than jobs: processors lose theirs first, then the last gatherers
