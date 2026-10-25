@@ -135,7 +135,7 @@ static void cit_bore(Bore *b, const Cit *c) {   // the same person, every time, 
     u32 old = look_seed(c->seed * 2654435761u + 12345u);
     look_random(b);
     look_seed(old);
-    if (c->pid != NOPID) { pop_first(c->pid, b->first); pop_surname(pop_per[c->pid].fam, b->last); return; }   // SAN BOREAS: their own names
+    if (c->pid != NOPID) { pop_first(c->pid, b->first); pop_surname(pop_fam_of(c->pid), b->last); return; }   // SAN BOREAS: their own names
     if (c->hh != NONE) { strncpy(b->last, look_last_name(hh[c->hh].fam), NAME_LEN - 1); b->last[NAME_LEN - 1] = 0; }   // a household shares its surname
 }
 static void build_lod(Cit *c) {
@@ -169,7 +169,7 @@ static void inside_spot(const Home *hm, int *x, int *z) {   // somewhere free on
 }
 static void sleep_spot(const Cit *c, const Home *hm, int *x, int *z) {   // a bed each (a double bed for a couple, two to a bunk bed); anyone left lies down on the floor
     int k = 0, want_ = c->mem, couple = 0;
-    if (c->pid != NOPID) { u8 a, kd, t, e; pop_family_kinds(pop_per[c->pid].fam, &a, &kd, &t, &e, (u8 *)&couple); couple &= 1; if (couple && want_ > 0) want_--; }
+    if (c->pid != NOPID) { u8 a, kd, t, e; pop_family_kinds(pop_fam_of(c->pid), &a, &kd, &t, &e, (u8 *)&couple); couple &= 1; if (couple && want_ > 0) want_--; }
     for (int y = hm->y0; y <= hm->y1; y++) for (int xx = hm->x0; xx <= hm->x1; xx++) {
         char ch = world_at(xx, y); if (ch != 'S' && ch != '<') continue;
         int cap = ch == '<' ? 2 : 1;
@@ -338,9 +338,9 @@ int citizens_take(int pid, int at, int place) {
     c->pid = (u16)pid; c->vanish = 0; c->hh = NONE; c->mem = 0; c->built = 0;
     crowd_forget(slot);
     if (place < 0) {                               // at home: in their household, and wherever the clock puts them in it
-        int k = fam_hh(q->fam); if (k < 0) { dbg_tf[1]++; c->zone = 255; c->pid = NOPID; c->mode = CM_GONE; return -1; }
+        int k = fam_hh(pop_fam_of(pid)); if (k < 0) { dbg_tf[1]++; c->zone = 255; c->pid = NOPID; c->mode = CM_GONE; return -1; }
         Hh *g = &hh[k]; if (g->n >= 6) { dbg_tf[2]++; c->zone = 255; c->pid = NOPID; c->mode = CM_GONE; return -1; }
-        c->hh = (u8)k; c->mem = (u8)(pid - pop_fam[q->fam].first); g->mem[g->n++] = (u8)slot;
+        c->hh = (u8)k; c->mem = (u8)(pid - pop_fam[pop_fam_of(pid)].first); g->mem[g->n++] = (u8)slot;
         c->mplace = NOPID; c->x = 0; c->z = 0;
         place_initial(c, px, pz);
         if (!c->x && !c->z) { dbg_tf[3]++; main_free(c); return -1; }

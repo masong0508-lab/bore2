@@ -14,7 +14,7 @@ enum { HK_SINGLE, HK_OLDTIMER, HK_COUPLE, HK_RETIRED, HK_ROOMMATES, HK_YOUNGFAM,
 enum { AT_SLEEP, AT_HOME, AT_WORK, AT_SCHOOL, AT_OUT };
 
 typedef struct { u16 bx, by; u8 unit, n; u16 first; u16 sur; u8 set, kind; } Fam;
-typedef struct { u32 seed; u16 fam, job; u8 stage, trait, flags, slot; s8 rel, rom; u8 hp, shift; } Per;
+typedef struct { u32 seed; u16 job; u8 stage : 3, trait : 5; u8 flags, slot; s8 rel, rom; u8 hp; } Per;   // 12 bytes (the household: pop_fam_of, by where they sit in the list; the work shift: from the seed)
 typedef struct { u16 bx, by; u8 lot, set; } Place;
 #define PF_HOMEBODY 1
 #define PF_GONE     2                 // moved in with you, or otherwise out of the world (hp 0: passed away)
@@ -26,6 +26,7 @@ extern int pop_nper, pop_nplace;
 extern Place pop_place[];
 
 extern int pop_people, pop_famsize;   // CREATE A WORLD: how many homes are lived in (0 FEW .. 3 NORMAL, as always, .. 5 PACKED: twice as many) and household size (0 SMALL, 1 MIXED, 2 BIG, 3 HUGE)
+int  pop_fam_of(int p);                                     // the household person p belongs to
 void pop_new(u32 seed, void *scratch, u32 scratch_bytes);   // a new life: everyone, from the seed (after bm_new)
 int  pop_family_at(int bx, int by, int unit);               // who lives in that home (-1: nobody)
 void pop_family_kinds(int f, u8 *adults, u8 *kids, u8 *teens, u8 *elders, u8 *couple);

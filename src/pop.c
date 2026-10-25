@@ -69,8 +69,15 @@ static int find_place(int set, int want_lot, int any_work) {   // a place of tha
 }
 static u8 regen_p[(PER_MAX + 7) / 8], chg_p[(PER_MAX + 7) / 8], regen_f[(NFAM + 7) / 8]; static int gen_done;   // (for the save: who was made anew since the world began, whose days changed, which households were replaced)
 static void mark(u8 *a, int i) { a[i >> 3] |= (u8)(1 << (i & 7)); }
-static void days_of(Per *q) {   // what they do with their days at this stage of life: school, a job, retired; in a lot, or out
-    const Fam *fm = &pop_fam[q->fam]; int stage = q->stage;
+static int nfam_of;   // (the households made so far: while the world is made, the last one is still filling)
+int pop_fam_of(int p) {   // a household's people sit together in pop_per, in household order: the last household starting at or before p
+    int lo = 0, hi = (gen_done ? nfam : nfam_of) - 1;
+    while (lo < hi) { int m = (lo + hi + 1) / 2; if (pop_fam[m].first <= p) lo = m; else hi = m - 1; }
+    return lo;
+}
+static inline int shift_of(const Per *q) { return (int)((q->seed * 2654435761u) >> 24); }   // the work shift: late or early, and the days off
+static void days_of(Per *q, int f) {   // what they do with their days at this stage of life: school, a job, retired; in a lot, or out
+    const Fam *fm = &pop_fam[f]; int stage = q->stage;
     q->job = 0xFFFF; q->flags &= (u8)~PF_HOMEBODY; if (gen_done) mark(chg_p, (int)(q - pop_per));
     if (stage == AG_ADULT && prn(100) < 86) { int pl = find_place(fm->set, 0, 1); if (pl >= 0) q->job = (u16)pl; }
     else if (stage == AG_ELDER && prn(100) < 15) { int pl = find_place(fm->set, 0, 1); if (pl >= 0) q->job = (u16)pl; }
@@ -80,10 +87,10 @@ static void days_of(Per *q) {   // what they do with their days at this stage of
 }
 static void set_person(Per *q, int f, int stage, int newborn) {   // somebody new: who they are from the dice, how far into this stage of life
     if (gen_done) mark(regen_p, (int)(q - pop_per));
-    q->seed = pr(); q->fam = (u16)f; q->stage = (u8)stage; q->trait = (u8)prn(NTRAIT); q->flags = 0; q->slot = 255;
-    q->rel = 0; q->rom = 0; q->hp = 100; q->shift = (u8)pr();
+    q->seed = pr(); q->stage = (u8)stage; q->trait = (u8)prn(NTRAIT); q->flags = 0; q->slot = 255;
+    q->rel = 0; q->rom = 0; q->hp = 100; (void)pr();   // (the dice for the old shift byte: the world comes out the same)
     if (stage == AG_ELDER && prn(16) < 10) for (int t = 0; t < 64 && !old_name(name_of(q->seed)); t++) q->seed = pr();   // (mostly an old-fashioned name)
-    days_of(q);
+    days_of(q, f);
     if (!newborn) q->flags |= (u8)(MIN(63, prn(MAX(1, sim_stage_len(stage)))) << 2);   // (nobody in town is all the same age)
 }
 static void add_person(int f, int stage) {
@@ -93,7 +100,7 @@ static void add_person(int f, int stage) {
 }
 static int kid_stage(void) { return prn(100) < 40 ? AG_TEEN : AG_CHILD; }
 static void make_members(int f) {
-    Fam *fm = &pop_fam[f]; fm->first = (u16)pop_nper; fm->n = 0;
+    Fam *fm = &pop_fam[f]; fm->first = (u16)pop_nper; fm->n = 0; nfam_of = f + 1;
     switch (fm->kind) {
         case HK_SINGLE: add_person(f, AG_ADULT); break;
         case HK_OLDTIMER: add_person(f, AG_ELDER); break;
@@ -173,8 +180,8 @@ void pop_family_kinds(int f, u8 *adults, u8 *kids, u8 *teens, u8 *elders, u8 *co
 s8 pop_offset(int p) { return (s8)((int)((pop_per[p].seed >> 20) % 61u) - 30); }
 static int work_hours(int p, int *a, int *b) {     // today's shift at their job (0: a day off)
     const Per *q = &pop_per[p]; if (q->job == 0xFFFF) return 0;
-    int lot = pop_place[q->job].lot, late = q->shift & 1, d = clock_day;
-    int off1 = (q->shift >> 1) % 7u, off2 = (off1 + 1 + ((q->shift >> 4) & 1)) % 7;
+    int lot = pop_place[q->job].lot, late = shift_of(q) & 1, d = clock_day;
+    int sh = shift_of(q), off1 = (sh >> 1) % 7u, off2 = (off1 + 1 + ((sh >> 4) & 1)) % 7;
     switch (lot) {
         case LOT_OFFICE: case LOT_TOWER: case LOT_SCHOOL: if (d >= 5) return 0; *a = lot == LOT_SCHOOL ? 480 : 540; *b = lot == LOT_SCHOOL ? 960 : 1020; return 1;
         case LOT_ARCADE: if (d == off1) return 0; *a = 840; *b = 1380; return 1;
@@ -187,7 +194,7 @@ static int work_hours(int p, int *a, int *b) {     // today's shift at their job
     }
 }
 static int leisure(int p, int slot, int *place) {   // out for a couple of hours: somewhere fun in their town (-1: they stay in)
-    const Per *q = &pop_per[p]; const Fam *fm = &pop_fam[q->fam];
+    const Per *q = &pop_per[p]; const Fam *fm = &pop_fam[pop_fam_of(p)];
     u32 h = bm_hash((int)q->seed & 0x7FFF, clock_day * 16 + slot, q->seed);
     int chance = q->stage == AG_ELDER ? 30 : q->stage == AG_ADULT ? 40 : 60;
     if (q->trait == 9) chance += 25; if (q->trait == 2 || q->trait == 8) chance -= 15;   // outgoing / lazy, loner
@@ -236,7 +243,7 @@ const char *pop_job_name(int p, char *out) {
     if (q->stage <= AG_TEEN) { if (q->job != 0xFFFF) { const Place *pl = &pop_place[q->job]; sprintf(out, "STUDENT, %s", bm_place_name(pl->lot, bm_hash(pl->bx, pl->by, 3), nm)); } else strcpy(out, "STUDENT"); return out; }
     if (q->job == 0xFFFF) { strcpy(out, q->stage == AG_ELDER ? "RETIRED" : (q->seed & 1) ? "BETWEEN JOBS" : "STAYS AT HOME"); return out; }
     const Place *pl = &pop_place[q->job];
-    sprintf(out, "%s, %s", job_title(pl->lot, q->shift & 1), bm_place_name(pl->lot, bm_hash(pl->bx, pl->by, 3), nm));
+    sprintf(out, "%s, %s", job_title(pl->lot, shift_of(q) & 1), bm_place_name(pl->lot, bm_hash(pl->bx, pl->by, 3), nm));
     return out;
 }
 const char *pop_doing(int p, char *out) {
@@ -262,7 +269,7 @@ void pop_tick(void) {
         Per *q = &pop_per[p];
         if (q->flags & PF_GONE) continue;
         int place, at = pop_where(p, &place), bx, by;
-        const Fam *fm = &pop_fam[q->fam];
+        const Fam *fm = &pop_fam[pop_fam_of(p)];
         if (at <= AT_HOME) { bx = fm->bx; by = fm->by; } else { bx = pop_place[place].bx; by = pop_place[place].by; }
         int in = bx >= world_wbx && bx < world_wbx + 5 && by >= world_wby && by < world_wby + 5;
         if (in && at <= AT_HOME && world_home_find(ZONE_CITY, bx, by, fm->unit) < 0) in = 0;
@@ -288,11 +295,11 @@ void pop_midnight(void) {
         if (q->stage == AG_ELDER) { q->flags |= PF_GONE; q->hp = 0; continue; }   // (passed away, at home)
         q->stage++; q->flags &= 3;
         if (q->stage == AG_ADULT && prn(2)) {                             // grown up: half of them leave home (if there are grown-ups enough there)
-            const Fam *fm = &pop_fam[q->fam]; int ad = 0;
+            const Fam *fm = &pop_fam[pop_fam_of(p)]; int ad = 0;
             for (int i = 0; i < fm->n; i++) { const Per *o = &pop_per[fm->first + i]; if (o != q && !(o->flags & PF_GONE) && o->stage == AG_ADULT) ad++; }
             if (ad >= 2) { q->flags |= PF_GONE; continue; }
         }
-        if (q->stage != AG_TEEN) days_of(q);                              // school, a first job, retirement (a teen stays at the same school)
+        if (q->stage != AG_TEEN) days_of(q, pop_fam_of(p));                              // school, a first job, retirement (a teen stays at the same school)
     }
     for (int f = 0; f < nfam; f++) {
         Fam *fm = &pop_fam[f]; int alive = 0, adults = 0, gone = -1;
@@ -313,24 +320,25 @@ void pop_midnight(void) {
 // ---- the memory card (save.c): the world is made again from its seed, so only what changed since is kept ----
 extern u16 bfs_q[];   // (sim.c: scratch, free here)
 static int bit(const u8 *a, int i) { return (a[i >> 3] >> (i & 7)) & 1; }
-static void plane(int off, int n) { u8 *t = (u8 *)bfs_q; for (int i = 0; i < n; i++) t[i] = ((const u8 *)&pop_per[i])[off]; sv_rle(t, n); }
-static void unplane(int off, int n) { u8 *t = (u8 *)bfs_q; ld_rle(t, n); for (int i = 0; i < n; i++) ((u8 *)&pop_per[i])[off] = t[i]; }
+enum { PL_STAGE, PL_FLAGS, PL_REL, PL_ROM, PL_HP };   // (the save keeps each of these as a row of bytes, one a person)
+static int pl_get(const Per *q, int k) { return k == PL_STAGE ? q->stage : k == PL_FLAGS ? q->flags : k == PL_REL ? (u8)q->rel : k == PL_ROM ? (u8)q->rom : q->hp; }
+static void pl_set(Per *q, int k, int v) { if (k == PL_STAGE) q->stage = (u8)(v % 5); else if (k == PL_FLAGS) q->flags = (u8)v; else if (k == PL_REL) q->rel = (s8)v; else if (k == PL_ROM) q->rom = (s8)v; else q->hp = (u8)v; }
+static void plane(int k, int n) { u8 *t = (u8 *)bfs_q; for (int i = 0; i < n; i++) t[i] = (u8)pl_get(&pop_per[i], k); sv_rle(t, n); }
+static void unplane(int k, int n) { u8 *t = (u8 *)bfs_q; ld_rle(t, n); for (int i = 0; i < n; i++) pl_set(&pop_per[i], k, t[i]); }
 __attribute__((optimize("Os"))) void pop_save(void) {
     int n = pop_nper;
     sv_u32(prs); sv_u16(n);
-    plane((int)__builtin_offsetof(Per, stage), n); plane((int)__builtin_offsetof(Per, flags), n);
-    plane((int)__builtin_offsetof(Per, rel), n); plane((int)__builtin_offsetof(Per, rom), n); plane((int)__builtin_offsetof(Per, hp), n);
+    plane(PL_STAGE, n); plane(PL_FLAGS, n); plane(PL_REL, n); plane(PL_ROM, n); plane(PL_HP, n);
     sv_rle(regen_p, (n + 7) / 8); sv_rle(chg_p, (n + 7) / 8); sv_rle(regen_f, (nfam + 7) / 8);
-    for (int i = 0; i < n; i++) if (bit(regen_p, i)) { sv_u32(pop_per[i].seed); sv_u8(pop_per[i].trait); sv_u8(pop_per[i].shift); }
+    for (int i = 0; i < n; i++) if (bit(regen_p, i)) { sv_u32(pop_per[i].seed); sv_u8(pop_per[i].trait); sv_u8(shift_of(&pop_per[i])); }
     for (int i = 0; i < n; i++) if (bit(regen_p, i) || bit(chg_p, i)) sv_u16(pop_per[i].job);
     for (int f = 0; f < nfam; f++) if (bit(regen_f, f)) { sv_u8(pop_fam[f].kind); sv_u16(pop_fam[f].sur); }
 }
 __attribute__((optimize("Os"))) void pop_load(void) {   // (after pop_new from the same seed)
     prs = ld_u32(); int n = ld_u16(); if (n != pop_nper) n = MIN(n, pop_nper);
-    unplane((int)__builtin_offsetof(Per, stage), n); unplane((int)__builtin_offsetof(Per, flags), n);
-    unplane((int)__builtin_offsetof(Per, rel), n); unplane((int)__builtin_offsetof(Per, rom), n); unplane((int)__builtin_offsetof(Per, hp), n);
+    unplane(PL_STAGE, n); unplane(PL_FLAGS, n); unplane(PL_REL, n); unplane(PL_ROM, n); unplane(PL_HP, n);
     ld_rle(regen_p, (n + 7) / 8); ld_rle(chg_p, (n + 7) / 8); ld_rle(regen_f, (nfam + 7) / 8);
-    for (int i = 0; i < n; i++) if (bit(regen_p, i)) { pop_per[i].seed = ld_u32(); pop_per[i].trait = (u8)ld_u8(); pop_per[i].shift = (u8)ld_u8(); }
+    for (int i = 0; i < n; i++) if (bit(regen_p, i)) { pop_per[i].seed = ld_u32(); pop_per[i].trait = (u8)(ld_u8() & 31); (void)ld_u8(); }   // (the shift byte: worked out from the seed now)
     for (int i = 0; i < n; i++) if (bit(regen_p, i) || bit(chg_p, i)) pop_per[i].job = (u16)ld_u16();
     for (int f = 0; f < nfam; f++) if (bit(regen_f, f)) { pop_fam[f].kind = (u8)ld_u8(); pop_fam[f].sur = (u16)ld_u16(); }
 }
