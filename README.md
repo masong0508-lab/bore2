@@ -27,6 +27,12 @@ the next task. TV SHOW & TELL (Missy's story) is held back for its own voiced, f
 SELECT names your capital city (a letter keyboard: X types, SQUARE deletes, START keeps it). In play, the phone's MAP renames any
 town: pick it and press TRIANGLE. Saves keep the names. In CREATE A BORE, SQUARE names your Bore (first and last name).
 
+PHONES: a new life starts with an old FLIP PHONE (calls, texts, pizza, a party, taxis to the island and the town, the family).
+ELECTRONICS SHOPS in SAN BOREAS (BYTE BARN, GADGET GARAGE, BLEEP & BLOOP, ZAP ELECTRONICS) sell a SMARTPHONE ($350: the map,
+jobs, homes, the people, goals, photos) and the BORE PHONE MAX ($900: every app, the music and games), and two handhelds, the
+BOREBOY ($120) and the BOREBOY ADVANCE ($220), played from the phone's GAMES for fun. Locked apps show a padlock and say what
+unlocks them. Each phone has its own look (grey, black, gold). Saves keep what you own (version 10; older lives keep every app).
+
 CREATE A BORE's FACE tab has 41 eyes (star, heart, dizzy, sparkly, robot, snake, crying...), 39 mouths (teeth, laugh, braces,
 vampire, kiss, yell...), 19 brows, 20 noses, 23 cheek marks (freckles, hearts, war paint, stitches, a mole...) and MORE MARKS to
 add a second, 17 glasses, 9 ears (elf, long elf, droopy, huge...), MAKE-UP (liner, lashes, eye shadow in six colours, glitter)

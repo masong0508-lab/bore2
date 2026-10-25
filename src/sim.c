@@ -158,7 +158,10 @@ static void turn_to(Sim *s, int target, int rate) {
 void sim_init(void) {
     nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
     job_level = 0; job_car = CAR_FACTORY; job_take(CAR_FACTORY, -1, -1, "THE FACTORY");
-    groceries = 10; room_bx = room_by = -1; room_until = 0;
+    groceries = 10; room_bx = room_by = -1; room_until = 0; phone_tier = 1; handheld = 0;
+#ifdef AUTO_PHONE_TIER
+    phone_tier = AUTO_PHONE_TIER; handheld = AUTO_PHONE_TIER == 2;   // (test builds: start with that phone)
+#endif
     baby_due = -1; next_uid = 1; cake_slices = 0; ngraves = 0; sim_story_over = 0; sim_cheer = 0;
 }
 
@@ -193,6 +196,7 @@ void sim_switch_player(void) {
 }
 
 // ---- walking with collision (the lot's tiles) ----
+int phone_tier = 1, handheld;   // (a new life: an old flip phone in the pocket; better ones from an electronics shop)
 int has_board, on_board, board_lift;   // the skateboard: owned, ridden, how high the rider is (skate.c rides it)
 static int ramp_pass;   // set while the rider's own step is tried: a board can roll onto a ramp
 int dbg_air_max, dbg_tricks;
@@ -600,7 +604,7 @@ static void run_action(Sim *s) {
             s->need[N_FUN] += GAIN_FUN; s->need[N_CLEAN] += 120; s->need[N_COMFY] += 20; if (!(t & 7)) s->skill_body++;
             s->x = s->act_x * TILE + TILE / 2 + ((isin((t * 9) & 4095) * 70) >> 12); s->z = -(s->act_y * TILE + TILE / 2) + ((icos((t * 5) & 4095) * 50) >> 12);
             s->yaw = (t * 5) & 4095; s->gait.sleep = 1; break; }
-        case ACT_PHONE: if (s->act_var == 1) s->need[N_FOOD] += 300; else s->need[N_SOCIAL] += GAIN_TALK; s->gait.wave = 2; break;
+        case ACT_PHONE: if (s->act_var == 1) s->need[N_FOOD] += 300; else if (s->act_var == 5) s->need[N_FUN] += (handheld & 2) ? 90 : 70; else s->need[N_SOCIAL] += GAIN_TALK; if (s->act_var != 5) s->gait.wave = 2; break;
         case ACT_TALK: s->need[N_SOCIAL] += GAIN_TALK; s->need[N_FUN] += 40; if ((s->act_t & 63) == 0) s->gait.wave = 40; break;
         case ACT_WORK: if (is_work()) { s->need[N_FUN] -= 20; if (!(s->act_t & 63)) s->gait.wave = 24; } else { s->act_t = 0; } break;   // (the minutes count in clock_tick)
         default: break;
@@ -1082,15 +1086,22 @@ static void adopt(Sim *s) {
     audio_voice(VOICE_YAHOO);
 }
 // ---- the phone in your pocket (main.c's PHONE): a call where you stand, a pizza, adopting, playing as someone else ----
-int sim_cell(int what) {   // 0 a chat with a friend, 1 a pizza ($40), 2 adopt ($1000, a grown-up). 1: done
+int sim_cell(int what) {   // 0 a chat with a friend, 1 a pizza ($40), 2 adopt ($1000, a grown-up), 3 a text, 4 a photo, 5 a game on the handheld. 1: done
     Sim *s = &sims[player];
     if (s->bore.stage == AG_BABY) return 0;
     if (what == 2) { if (s->bore.stage != AG_ADULT && s->bore.stage != AG_ELDER) { sim_note("ONLY A GROWN-UP CAN ADOPT"); return 0; } adopt(s); return 1; }
     if (s->action != ACT_NONE && s->action != ACT_WALK) end_action(s);
     if (what == 1) { if (cash < 40) { sim_note("PIZZA IS $40"); audio_voice(VOICE_NAH); return 0; } cash -= 40; sim_note("PIZZA: $40. IT IS ON ITS WAY"); }
+    if (what == 4) {   // a photo: no standing about, a smile and a click
+        static const char *const pic[4] = { "SNAP! A SELFIE FOR THE ALBUM", "SNAP! THAT ONE IS A KEEPER", "SNAP! EYES SHUT. AGAIN?", "SNAP! LOOKING GOOD" };
+        sim_note(pic[(clock_min + day_count) & 3]); s->need[N_FUN] = MIN(s->need[N_FUN] + (8 << 10), 100 << 10); s->gait.wave = 2; audio_voice(VOICE_YAHOO); return 1;
+    }
     s->path_n = 0; s->action = ACT_NONE;
     begin_action(s, ACT_PHONE, sim_tile_x(s), sim_tile_y(s)); s->act_var = (u8)what;
     if (!what) sim_note("CALLING A FRIEND");
+    if (what == 3) { static const char *const tx[4] = { "TEXTING A FRIEND: \"SUP?\"", "TEXTING A FRIEND: \"MISS YOU!\"", "TEXTING A FRIEND: \"LOL\"", "TEXTING A FRIEND: \"COFFEE?\"" };
+                     sim_note(tx[(clock_min + day_count) & 3]); s->act_t = 120; }
+    if (what == 5) { sim_note(handheld & 2 ? "ON THE BOREBOY ADVANCE: ONE MORE LEVEL" : handheld ? "ON THE BOREBOY: ONE MORE LEVEL" : "A QUICK GAME ON THE PHONE"); s->act_t = 360; }
     return 1;
 }
 int sim_play_as(int i) {   // play as that one of the family (not a baby, not away). 1: done
@@ -1350,7 +1361,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD };
+       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2 };
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1453,7 +1464,13 @@ static int sim_pie_open_(char opt[8][16]) {
     if (pie_place && !mine) switch (pie_pi.lot) {   // what the place sells
         case LOT_DINER: if (c == 'y') { OPT("A MEAL $15", PC_MEAL) OPT("A SNACK $6", PC_SNACK) OPT("A COFFEE $3", PC_COFFEE) } else if (c == 'c') OPT("A COFFEE $3", PC_COFFEE) break;
         case LOT_SHOP: { static const char *const buy[5] = { "GROCERIES $60", "AN OUTFIT $150", "A GAME $60", 0, "A RECORD $25" };
-                         int k = place_shop_kind(pie_pi.h); if (buy[k] && pie_n < 7) OPT(buy[k], PC_BUY0 + k)
+                         int k = place_shop_kind(bm_hash(pie_pi.bx, pie_pi.by, 3)); if (buy[k] && pie_n < 7) OPT(buy[k], PC_BUY0 + k)
+                         if (k == 3) {   // an electronics shop: phones and handhelds
+                             if (phone_tier < 1) OPT("FLIP PHONE $60", PC_PHONE1)
+                             if (phone_tier < 2) OPT("SMARTPHONE $350", PC_PHONE2)
+                             if (phone_tier < 3 && pie_n < 7) OPT("BORE PHONE MAX $900", PC_PHONE3)
+                             if (!(handheld & 1) && pie_n < 7) OPT("BOREBOY $120", PC_HAND1)
+                             if (!(handheld & 2) && pie_n < 7) OPT("BOREBOY ADVANCE $220", PC_HAND2) }
                          if (k == 1 && !has_board && pie_n < 7) OPT("SKATEBOARD $120", PC_BOARD)
                          if (pie_n < 8) OPT("BROWSE", PC_BROWSE) } break;
         case LOT_GYM: if ((c == ']' || c == 'm' || c == '_') && pie_n < 8) OPT("A TRAINER $20", PC_TRAINER) break;
@@ -1543,6 +1560,11 @@ static void place_do(Sim *s, int code) {
         case PC_BUY0 + 2: if (!pay(60)) return; s->need[N_FUN] = MIN(s->need[N_FUN] + (30 << 10), 100 << 10); shopped(s, "A NEW GAME!", ML_NEW_GAME); break;
         case PC_BUY4: if (!pay(25)) return; s->need[N_FUN] = MIN(s->need[N_FUN] + (20 << 10), 100 << 10); shopped(s, "A NEW RECORD!", ML_RETAIL); break;
         case PC_BOARD: if (!pay(120)) return; has_board = 1; shopped(s, "A SKATEBOARD! O TO RIDE", ML_RETAIL); break;
+        case PC_PHONE1: if (!pay(60)) return; phone_tier = 1; shopped(s, "A FLIP PHONE: CALLS, TEXTS, TAXIS", ML_RETAIL); break;
+        case PC_PHONE2: if (!pay(350)) return; phone_tier = 2; shopped(s, "A SMARTPHONE! MAPS, JOBS, PHOTOS AND MORE", ML_RETAIL); break;
+        case PC_PHONE3: if (!pay(900)) return; phone_tier = 3; shopped(s, "THE BORE PHONE MAX! EVERY APP THERE IS", ML_RETAIL); break;
+        case PC_HAND1: if (!pay(120)) return; handheld |= 1; shopped(s, "A BOREBOY! PLAY IT FROM THE PHONE'S GAMES", ML_NEW_GAME); break;
+        case PC_HAND2: if (!pay(220)) return; handheld |= 2; shopped(s, "A BOREBOY ADVANCE! THE GAMES LOOK GREAT", ML_NEW_GAME); break;
         case PC_PICKBOARD: has_board = 1; *world_cell(s->lvl, pie_mx, pie_my) = '.'; world_touched(); sim_note("A SKATEBOARD! O TO RIDE"); audio_voice(VOICE_YAHOO); break;
         case PC_BROWSE: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 4; s->act_t = 240; break;
         case PC_TRAINER: if (!pay(20)) return; begin_action(s, ACT_RUN, pie_mx, pie_my); s->act_var = 2; sim_say(s, "FEEL THE BURN"); break;
@@ -1746,6 +1768,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
     sv_u8(sim_story_over); sv_str(sim_end_name, NAME_LEN - 1);
     sv_u8(ngraves); for (int i = 0; i < ngraves; i++) { sv_u8(graves[i].x); sv_u8(graves[i].y); sv_u8(graves[i].city); sv_str(graves[i].name, NAME_LEN - 1); }
     sv_u16(story_paid); sv_u16(story_talks); sv_n(story_visit, 4);
+    sv_u8(phone_tier); sv_u8(handheld);   // (version 10)
     for (int i = 0; i < nsims; i++) {
         const Sim *s = &sims[i]; const Bore *b = &s->bore;
         sv_n(b->look, LK_COUNT); sv_u8(b->stage); sv_u8(b->asp); sv_u8(b->ltw); sv_n(b->tr, TR_N); sv_str(b->first, NAME_LEN - 1); sv_str(b->last, NAME_LEN - 1);
@@ -1771,6 +1794,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     sim_story_over = ld_u8(); ld_str(sim_end_name, NAME_LEN - 1);
     { int g = ld_u8(); ngraves = MIN(g, 6); } for (int i = 0; i < ngraves; i++) { graves[i].x = (u8)ld_u8(); graves[i].y = (u8)ld_u8(); graves[i].city = (u8)ld_u8(); ld_str(graves[i].name, NAME_LEN - 1); }
     story_paid = ld_u16(); story_talks = ld_u16(); ld_n(story_visit, 4);
+    if (save_ver >= 10) { phone_tier = ld_u8() & 3; handheld = ld_u8() & 3; } else { phone_tier = 3; handheld = 0; }   // (an older life keeps every app it had)
     for (int i = 0; i < n && i < MAX_SIMS; i++) {
         sim_add(blank, 0, 0, 1);   // (a blank Bore: the Bore is large, so it is filled in place)
         Sim *s = &sims[nsims - 1]; Bore *b = &s->bore;

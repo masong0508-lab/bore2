@@ -82,7 +82,7 @@ const char *place_hours(int lot, char *out) {
     if (d != 0x7F) sprintf(out, "%s %s - %s", days_name(d, dd), h1, h2); else sprintf(out, "OPEN %s - %s", h1, h2);
     return out;
 }
-int place_shop_kind(u32 h) { return (int)(h % 5u); }
+int place_shop_kind(u32 h) { return (int)((h >> 8) % 5u); }   // h: bm_hash(bx, by, 3), the name's dice (0 food, 1 clothes, 2 games, 3 electronics, 4 records)
 
 // ---- the job ----
 int job_shift_len(void) { const Career *c = &careers[job_car]; return (c->to - c->from) * 60; }

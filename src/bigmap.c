@@ -250,7 +250,8 @@ const char *bm_street(int set, int bx, int by, int unit, char *out) {
     return out;
 }
 const char *bm_place_name(int lot, u32 h, char *out) {
-    static const char *const shop[8] = { "BOREMART", "QUICK BUY", "DIPPA'S DELI", "MOSS MARKET", "THE CORNER SHOP", "SNOOZ & SONS", "YAWN-MART", "BIG BUY" };
+    static const char *const shop[5][4] = { { "BOREMART", "MOSS MARKET", "YAWN-MART", "DIPPA'S DELI" }, { "SNOOZ & SONS", "THREADBARE", "DRESSED TO SNOOZE", "THE CLOTHES LINE" },
+        { "GAME BARN", "PLAY PIT", "QUICK BUY", "LEVEL UP" }, { "BYTE BARN", "GADGET GARAGE", "BLEEP & BLOOP", "ZAP ELECTRONICS" }, { "SPIN CITY", "THE CORNER SHOP", "GROOVE BIN", "BIG BUY" } };   // (by kind: places.c)
     static const char *const diner[6] = { "THE DIPPER DINER", "GREASY SPOON", "ROUTE 9 DINER", "MOM'S KITCHEN", "THE NOODLE BAR", "PANCAKE PALACE" };
     static const char *const gym[4] = { "IRON BORE GYM", "FLEX ZONE", "PUMP HOUSE", "SWEAT SHOP" };
     static const char *const off[6] = { "BORECORP", "DULLTECH", "GREYBOX LTD", "SNOOZE INSURANCE", "PAPER & CO", "BEIGE BANK" };
@@ -270,7 +271,7 @@ const char *bm_place_name(int lot, u32 h, char *out) {
     static const char *const gal[4] = { "THE GREY GALLERY", "MOSS MODERN", "BEIGE ART HOUSE", "DIPPER MUSEUM" };
     const char *s;
     switch (lot) {
-        case LOT_SHOP: s = shop[h % 8u]; break;   case LOT_DINER: s = diner[h % 6u]; break; case LOT_GYM: s = gym[h % 4u]; break;
+        case LOT_SHOP: s = shop[(h >> 8) % 5u][h % 4u]; break;   case LOT_DINER: s = diner[h % 6u]; break; case LOT_GYM: s = gym[h % 4u]; break;
         case LOT_OFFICE: s = off[h % 6u]; break;  case LOT_INN: s = inn[h % 4u]; break;     case LOT_POOL: s = pool[h % 3u]; break;
         case LOT_SCHOOL: s = sch[h % 3u]; break;  case LOT_ARCADE: s = arc[h % 3u]; break;  case LOT_PARK: s = park[h % 6u]; break;
         case LOT_TOWER: s = off[(h >> 3) % 6u]; break; case LOT_HOTEL: s = inn[(h >> 2) % 4u]; break;

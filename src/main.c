@@ -107,7 +107,7 @@ enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int sub_back = ST_LIFE;
-enum { PH_CALL, PH_PIZZA, PH_PARTY, PH_MAP, PH_TRAVEL, PH_JOBS, PH_HOMES, PH_PEOPLE, PH_FAMILY, PH_ADOPT, PH_MUSIC, PH_GOALS, PH_N };   // the phone's apps
+enum { PH_CALL, PH_PIZZA, PH_PARTY, PH_MAP, PH_TRAVEL, PH_JOBS, PH_HOMES, PH_PEOPLE, PH_FAMILY, PH_ADOPT, PH_MUSIC, PH_GOALS, PH_TEXT, PH_PHOTO, PH_GAMES, PH_N };   // the phone's apps
 static int ph_sel; void phone_open(void);              // (the phone: below)                       // where O goes back to from the phone's screens (the phone itself)
 #define BACK_TO() (PRESSED(PAD_START) ? ST_LIFE : sub_back)
 static int create_tab, create_row, create_from, create_turn;
@@ -2052,15 +2052,23 @@ static void pause_draw(void) {   // one short column: the game itself (the rest 
 }
 
 // ---- THE PHONE (SELECT): The Sims' cell phone. Twelve apps on a grid; the family's list for playing as someone else ----
-static const char *const phNm[PH_N] = { "CALL", "PIZZA", "PARTY", "MAP", "TRAVEL", "JOBS", "HOMES", "PEOPLE", "FAMILY", "ADOPT", "MUSIC", "GOALS" };
+static const char *const phNm[PH_N] = { "CALL", "PIZZA", "PARTY", "MAP", "TRAVEL", "JOBS", "HOMES", "PEOPLE", "FAMILY", "ADOPT", "MUSIC", "GOALS", "TEXT", "PHOTO", "GAMES" };
 static const char *const phBlurb[PH_N] = { "CHAT WITH A FRIEND, RIGHT WHERE YOU ARE", "$40. A HOT MEAL, NO COOKING", "$100. GUESTS COME OVER TO DANCE",
     "SAN BOREAS, AND A TAXI ANYWHERE IN IT", "THE ISLAND, THE DESERT TOWN, HOME", "FIND WORK, OR GET A RIDE TO WORK", "HOUSES AND LOTS FOR SALE NEAR YOU",
-    "EVERYONE IN SAN BOREAS, AND WHERE THEY ARE", "PLAY AS SOMEONE ELSE IN THE FAMILY", "$1000. A BABY OR A CHILD, HOME TOMORROW", "ALL 33 SONGS ON THE JUKEBOX", "THE STORY SO FAR: YOUR GOALS" };
-static const s8 phIc[PH_N] = { IC_CHAT, IC_FOOD, IC_PARTY, IC_PIN, IC_CAR, IC_CASE, IC_HOUSE, IC_PEOPLE, IC_ARROW, IC_BABY, IC_NOTE, IC_BOOK };
+    "EVERYONE IN SAN BOREAS, AND WHERE THEY ARE", "PLAY AS SOMEONE ELSE IN THE FAMILY", "$1000. A BABY OR A CHILD, HOME TOMORROW", "EVERY SONG THERE IS, WHEREVER YOU ARE", "THE STORY SO FAR: YOUR GOALS",
+    "A QUICK HELLO TO A FRIEND. QUICKER THAN A CALL", "A SELFIE. SMILE!", "A GAME ON THE HANDHELD, OR ON THE PHONE ITSELF" };
+static const s8 phIc[PH_N] = { IC_CHAT, IC_FOOD, IC_PARTY, IC_PIN, IC_CAR, IC_CASE, IC_HOUSE, IC_PEOPLE, IC_ARROW, IC_BABY, IC_NOTE, IC_BOOK, IC_BUBBLES, IC_CAMERA, IC_STAR };
 static const u32 phCol[PH_N] = { UI_RGB(76, 196, 92), UI_RGB(240, 140, 50), UI_RGB(236, 90, 150), UI_RGB(40, 170, 170), UI_RGB(38, 146, 222), UI_RGB(110, 100, 200),
-    UI_RGB(70, 170, 110), UI_RGB(150, 90, 210), UI_RGB(84, 196, 72), UI_RGB(240, 110, 130), UI_RGB(228, 70, 70), UI_RGB(220, 160, 30) };
+    UI_RGB(70, 170, 110), UI_RGB(150, 90, 210), UI_RGB(84, 196, 72), UI_RGB(240, 110, 130), UI_RGB(228, 70, 70), UI_RGB(220, 160, 30),
+    UI_RGB(60, 180, 230), UI_RGB(90, 96, 120), UI_RGB(200, 70, 200) };
 static int ph_sel, ph_fam, ph_fsel, ph_t;
-void phone_open(void) { state = ST_PHONE; ph_fam = 0; ph_t = 0; if (ph_sel < 0 || ph_sel >= PH_N) ph_sel = 0; audio_voice(VOICE_FINISHED); }
+// what each app needs: 1 any phone (even the old flip), 2 a smartphone, 3 the BORE PHONE MAX (GAMES: a handheld will do as well)
+static const u8 phNeed[PH_N] = { 1, 1, 1, 2, 1, 2, 2, 2, 1, 1, 3, 2, 1, 2, 3 };
+static const char *const phoneNm[4] = { "NO PHONE", "FLIP PHONE", "SMARTPHONE", "BORE PHONE MAX" };
+static int ph_has(int i) { return phone_tier >= phNeed[i] || (i == PH_GAMES && handheld && phone_tier >= 1); }
+void phone_open(void) {
+    if (!phone_tier) { sim_note("NO PHONE! ELECTRONICS SHOPS SELL THEM"); audio_voice(VOICE_NAH); return; }
+    state = ST_PHONE; ph_fam = 0; ph_t = 0; if (ph_sel < 0 || ph_sel >= PH_N) ph_sel = 0; audio_voice(VOICE_FINISHED); }
 static void phone_update(void) {
     ph_t++;
     if (ph_fam) {   // the family: X plays as them
@@ -2081,9 +2089,10 @@ static void phone_update(void) {
     if (PRESSED(PAD_LEFT)) ph_sel = (ph_sel + PH_N - 1) % PH_N;
     if (PRESSED(PAD_RIGHT)) ph_sel = (ph_sel + 1) % PH_N;
     if (PRESSED(PAD_UP)) ph_sel = (ph_sel + PH_N - 3) % PH_N;
-    if (PRESSED(PAD_DOWN)) ph_sel = (ph_sel + 3) % PH_N;
+    if (PRESSED(PAD_DOWN)) ph_sel = (ph_sel + 3) % PH_N;   // (three across, five down)
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_SELECT)) { state = ST_LIFE; return; }
     if (!PRESSED(PAD_CROSS)) return;
+    if (!ph_has(ph_sel)) { sim_note(ph_sel == PH_GAMES ? "GAMES: BUY A BOREBOY, OR THE BORE PHONE MAX" : phNeed[ph_sel] >= 3 ? "THAT NEEDS THE BORE PHONE MAX" : "THAT NEEDS A SMARTPHONE"); audio_voice(VOICE_NAH); return; }
     sub_back = ST_PHONE;
     switch (ph_sel) {
         case PH_CALL: case PH_PIZZA: state = ST_LIFE; if (!sim_cell(ph_sel == PH_PIZZA)) audio_voice(VOICE_NAH); break;
@@ -2097,6 +2106,9 @@ static void phone_update(void) {
         case PH_ADOPT: state = ST_LIFE; sim_cell(2); break;
         case PH_MUSIC: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
         case PH_GOALS: state = ST_STORY; break;
+        case PH_TEXT: state = ST_LIFE; if (!sim_cell(3)) audio_voice(VOICE_NAH); break;
+        case PH_PHOTO: state = ST_LIFE; sim_cell(4); break;
+        case PH_GAMES: state = ST_LIFE; if (!sim_cell(5)) audio_voice(VOICE_NAH); break;
     }
 }
 static void phone_draw(void) {
@@ -2107,10 +2119,12 @@ static void phone_draw(void) {
     int lift = ph_t < 8 ? (8 - ph_t) * 6 : 0;                        // (it slides up out of the pocket)
     int py = PY + lift;
     ui_shadow(PX, py, PW, PH_, 16);
-    ui_round(PX, py, PW, PH_, 16, UI_RGB(44, 50, 64), UI_RGB(22, 25, 34), 0);       // the body
+    static const u32 bodyT[4] = { 0, UI_RGB(96, 100, 110), UI_RGB(44, 50, 64), UI_RGB(170, 140, 70) }, bodyB[4] = { 0, UI_RGB(52, 56, 64), UI_RGB(22, 25, 34), UI_RGB(96, 70, 30) };
+    ui_round(PX, py, PW, PH_, 16, bodyT[phone_tier & 3], bodyB[phone_tier & 3], 0);       // the body: a grey flip, a black smartphone, a gold MAX
     ui_round(PX + 58, py + 5, 32, 4, 2, UI_RGB(12, 14, 20), UI_RGB(12, 14, 20), 0);  // the speaker
     const int SX = PX + 6, SW = PW - 12; int sy = py + 13, sh = PH_ - 30;
-    ui_round(SX, sy, SW, sh, 9, UI_RGB(120, 196, 246), UI_RGB(58, 120, 206), 0);     // the screen: a blue sky of a wallpaper
+    static const u32 scrT[4] = { 0, UI_RGB(150, 190, 150), UI_RGB(120, 196, 246), UI_RGB(250, 170, 120) }, scrB[4] = { 0, UI_RGB(70, 110, 80), UI_RGB(58, 120, 206), UI_RGB(170, 70, 150) };
+    ui_round(SX, sy, SW, sh, 9, scrT[phone_tier & 3], scrB[phone_tier & 3], 0);     // the screen's wallpaper: a green flip display, a blue sky, a sunset
     sprintf(b, "%02d:%02d", clock_min / 60, clock_min % 60); gfx_text_raw(SX + 7, sy + 5, 1, b, 255, 255, 255);
     sprintf(b, "$%ld", cash); gfx_text_raw(SX + SW - 7 - gfx_text_w(1, b), sy + 5, 1, b, 220, 255, 220);
     ui_round(PX + 54, py + PH_ - 11, 40, 4, 2, UI_RGB(200, 206, 216), UI_RGB(170, 176, 188), 0);   // the home bar
@@ -2127,22 +2141,25 @@ static void phone_draw(void) {
         }
     } else {        // the apps: three across, four down
         for (int i = 0; i < PH_N; i++) {
-            int cx = SX + 22 + (i % 3) * 46, cy = sy + 32 + (i / 3) * 42, sel = i == ph_sel;
-            if (sel) ui_round(cx - 21, cy - 15, 42, 40, 9, UI_RGB(255, 255, 255), UI_RGB(220, 236, 252), 0);
-            ui_icon_disc(cx, cy, 24, phIc[i], phCol[i], UI_WHITE);
-            if (sel) ui_textc(cx, cy + 15, 1, phNm[i], UI_INK);
-            else { gfx_text_raw(cx - gfx_text_w(1, phNm[i]) / 2 + 1, cy + 16, 1, phNm[i], 20, 50, 110); gfx_text_raw(cx - gfx_text_w(1, phNm[i]) / 2, cy + 15, 1, phNm[i], 255, 255, 255); }
+            int cx = SX + 22 + (i % 3) * 46, cy = sy + 30 + (i / 3) * 34, sel = i == ph_sel, has = ph_has(i);
+            if (sel) ui_round(cx - 21, cy - 13, 42, 33, 8, UI_RGB(255, 255, 255), UI_RGB(220, 236, 252), 0);
+            ui_icon_disc(cx, cy, 22, has ? phIc[i] : IC_LOCK, has ? phCol[i] : UI_RGB(120, 126, 140), UI_WHITE);
+            if (sel) ui_textc(cx, cy + 12, 1, phNm[i], UI_INK);
+            else { gfx_text_raw(cx - gfx_text_w(1, phNm[i]) / 2 + 1, cy + 13, 1, phNm[i], 20, 50, 110); gfx_text_raw(cx - gfx_text_w(1, phNm[i]) / 2, cy + 12, 1, phNm[i], has ? 255 : 170, has ? 255 : 176, has ? 255 : 190); }
         }
     }
     {   // what the app does, and the buttons, on a card on the left
         const char *t = ph_fam ? "FAMILY" : phNm[ph_sel], *bl = ph_fam ? "X PLAYS AS THEM. A BABY CANNOT BE PLAYED, AND THE KIDS ARE AT SCHOOL TILL 3." : phBlurb[ph_sel];
         if (!ph_fam && ph_sel == PH_MAP && world_zone == ZONE_ISLAND) bl = "THE ISLAND, AND THE SECRETS FOUND ON IT";
+        if (!ph_fam && !ph_has(ph_sel)) bl = ph_sel == PH_GAMES ? "LOCKED. A BOREBOY OR THE BORE PHONE MAX PLAYS GAMES: ELECTRONICS SHOPS SELL BOTH"
+                                       : phNeed[ph_sel] >= 3 ? "LOCKED. GET THE BORE PHONE MAX ($900) AT AN ELECTRONICS SHOP" : "LOCKED. GET A SMARTPHONE ($350) AT AN ELECTRONICS SHOP";
         int nl = ui_wrap_n(132, bl), ch = 34 + nl * 10;
         int cy = 196 - ch;
         ui_card(8, cy, 148, ch + 30);
+        ui_badge_i(8, cy - 16, IC_CHAT, phoneNm[phone_tier & 3], UI_WHITE, UI_INK);   // (which phone this is)
         ui_icon_disc(20, cy + 12, 18, ph_fam ? IC_ARROW : phIc[ph_sel], ph_fam ? UI_RGB(236, 176, 40) : phCol[ph_sel], UI_WHITE);
         ui_text(34, cy + 6, 2, t, UI_INK);
-        ui_wrap(14, cy + 24, 132, 3, bl, UI_SOFT);
+        ui_wrap(14, cy + 24, 132, 4, bl, UI_SOFT);
         ui_hints(82, cy + ch + 12, ph_fam ? "X PLAY|O BACK" : "X OPEN|O CLOSE", 1);
     }
 }
