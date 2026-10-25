@@ -1971,13 +1971,16 @@ static void story_test_tick(void) {
     dbg_story[14] = story_ch; dbg_story[15] = story_dbg(0); dbg_story[16] = story_dbg(1); dbg_story[17] = story_dbg(2) * 100 + story_dbg(4); dbg_story[18] = on_board; dbg_story[19] = t;
 }
 #endif
+#if defined(AUTO_SAVE) || defined(AUTO_CELLS)
+int dbg_cells[6];
+#endif
 #ifdef AUTO_SAVE
-int dbg_sv[16], dbg_cells[4], dbg_st[8];   // (test builds) before / after a save and a load: the zone, the tent, the bench, the hut's walls, the player's action, food; then the long-life save's size
+int dbg_sv[16], dbg_st[8];   // (test builds) before / after a save and a load: the zone, the tent, the bench, the hut's walls, the player's action, food; then the long-life save's size
 static void save_tick(void) {
     extern int sim_debug_goto(char c, int lot); extern u32 save_last_bytes;
     static int t0 = -1, k;
     if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); clock_min = 22 * 60;
-        { extern int dbg_cells[4]; Bore *b = crowd_temp_bore();   // (how many cells a Bore needs: the most, and the most that show)
+        { Bore *b = crowd_temp_bore();   // (how many cells a Bore needs: the most, and the most that show)
           for (int r = 0; r < 200; r++) { memset(b, 0, sizeof *b); look_default(b); b->stage = (u8)(r % 5); look_random(b); if (r & 1) for (int q = 0; q < LK_COUNT; q++) if (look_allowed(b, q, b->look[q] + 3)) b->look[q] += 3; look_build(b);
             int vis = 0; for (int i = 0; i < b->ncell; i++) if ((b->cell[i].hide & 63) != 63) vis++;
             if (b->ncell > dbg_cells[0]) dbg_cells[0] = b->ncell; if (vis > dbg_cells[1]) dbg_cells[1] = vis; dbg_cells[2] += b->ncell; dbg_cells[3] += vis; } }
@@ -3123,6 +3126,17 @@ static void help_draw(void) {   // three pages of tips, each with its picture
 static int title_t;
 static void title_update(void) {
     title_t++;
+#ifdef AUTO_CELLS
+    if (title_t == 30) {   // (test builds: how many cells a Bore needs, over thousands of Bores: rolled, every shape with every hair, dressed up)
+        extern int dbg_cells[6]; Bore *b = crowd_temp_bore();
+        for (int r = 0; r < 6000; r++) { memset(b, 0, sizeof *b); look_default(b); b->stage = (u8)(1 + r % 4); look_random(b);
+            if (r & 1) { b->look[LK_SHAPE] = (u8)((r >> 1) % look_count(LK_SHAPE)); b->look[LK_HSTYLE] = (u8)((r >> 1) / look_count(LK_SHAPE) % look_count(LK_HSTYLE)); }
+            if ((r & 3) == 3) for (int q = 0; q < LK_N; q++) if (look_is_slider(q)) b->look[q] = (u8)(r & 4 ? 8 : 0);
+            look_build(b);
+            if (b->ncell > dbg_cells[0]) { dbg_cells[0] = b->ncell; dbg_cells[4] = r; dbg_cells[5] = b->look[LK_SHAPE] * 100 + b->look[LK_HSTYLE]; }
+            dbg_cells[2] += b->ncell; dbg_cells[3]++; }
+    }
+#endif
 #ifdef AUTO_STORY
     if (title_t == 30) { life_story = AUTO_STORY; worlds_go(0x5EED1234u, 0); return; }
 #endif

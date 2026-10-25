@@ -82,6 +82,9 @@ static inline void gte_ld0_safe(const SVECTOR *a) {
 void gfx_set_clear(int r, int g, int b) { clear_r = r; clear_g = g; clear_b = b; }
 
 void gfx_init(void) {
+#ifdef PROF_ON
+    prof_on = 1;   // (test builds: the sampling profiler from the start)
+#endif
     ResetGraph(0);
     SetDefDispEnv(&db[0].disp, 0, 0, SCREEN_W, SCREEN_H);
     SetDefDrawEnv(&db[0].draw, SCREEN_W, 0, SCREEN_W, SCREEN_H);

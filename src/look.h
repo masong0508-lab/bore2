@@ -16,7 +16,7 @@ enum { LK_X_HEAD = LK_N, LK_X_FACE, LK_X_NECK, LK_X_BACK, LK_X_HAND, LK_X_WAIST,
 #define NX_COL 32
 #define NAME_LEN 12
 
-#define NCELL_MAX 96   // solid blocks a Bore keeps (the build box holds 192, but 3,000 rolled Bores, the biggest dressed up, never passed 58)
+#define NCELL_MAX 72   // solid blocks a Bore keeps (the build box holds 192, but 6,000 Bores - rolled, every shape with every hair, every slider at its ends - never passed 60)
 typedef struct {
     // what the creator chose
     u8   look[LK_COUNT];
