@@ -26,7 +26,7 @@
 #define KG_NOPOS    255        // gx, gy: no saved position for the giant
 #define KG_GENVER   1
 #define KG_TIERS    4          // (BORE 2: a fourth, THE EMPIRE, 256 x 256)
-#define KG_MAXB     250        // buildings a realm may hold
+#define KG_MAXB     400        // buildings a realm may hold (BORE 2: 400, of them 256 homes)
 #define KG_GOODS    8          // wood, stone, wool, crystal, then planks, cut stone, cloth, polished crystal
 #define KG_GIANTS   5          // the four giants and your own Bore
 #define KG_CASTLE   4          // castle stages (0 none yet, 4 = crowned)

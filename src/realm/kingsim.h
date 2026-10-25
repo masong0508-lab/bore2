@@ -13,7 +13,8 @@
 //    ksLedger checks it against what does exist (stockpile + buildings + carriers).
 //  - b->stock in a saved building: low byte = goods delivered to it (a blueprint's cost, a processor's input), high byte = goods it holds to send out.
 // Needs: nothing but kingdom.h. Every function is static inline.
-#define KS_MAXB    250   // (BORE 2: a city of towers; 255 stays the 'none' of a u8 building number)       // buildings the simulation runs (the save format allows 250; a bigger realm than this is refused on load: KSE_CAP). 40 until the big realms: 64 holds a town of 48 houses and the crowds of THE LAND BOREFORE TIME's last missions
+#define KS_MAXB    400   // (BORE 2: 256 homes, room besides for the workshops, the storehouses, the wells and the castle)
+#define KS_MAXHOME 256   // (BORE 2: homes a realm may hold: 256 towers of 64 house ten thousand)       // buildings the simulation runs (the save format allows 250; a bigger realm than this is refused on load: KSE_CAP). 40 until the big realms: 64 holds a town of 48 houses and the crowds of THE LAND BOREFORE TIME's last missions
 #ifndef KS_MAXN
 #define KS_MAXN    1024  // (BORE 2: the empire's roads)      // road cells (a build may change it with -DKS_MAXN=...: the road list, the queue and every distance map shrink or grow with it)
 #endif
@@ -55,7 +56,7 @@ static const KsType KS_T[KS_NTYPES]={
 };
 static inline const KsType*ksT(int type){ return &KS_T[type<KS_NTYPES?type:0]; }
 
-typedef struct { u16 cell; u8 st, src, dst, good, md; u16 stall; } KsWk;   // a carrier (kinglog.h): st 0 free, 1 walking with a good
+typedef struct { u16 cell, src, dst; u8 st, good, md; u16 stall; } KsWk;   // (BORE 2: building numbers past 255)   // a carrier (kinglog.h): st 0 free, 1 walking with a good
 enum { KHD_NONE, KHD_GOODS, KHD_BLD, KHD_NUB };   // (step 4h) what the giant carries: nothing, goods, a lifted building, a Nubbin
 typedef struct { u8 k, g, n, bt, bl, bw; } KHold;   // the giant's hold, ONE thing at a time. goods: g the good, n how many. building: bt type, bl level, bw workers or residents. Nubbin: bt 1 a resident, 0 a worker. Never saved (kpSave sends it home first)
 typedef struct {
@@ -66,7 +67,7 @@ typedef struct {
     u16 nodeCell[KS_MAXN];                     // the road cells, sorted: a road cell's number is its place in this list
     u16 timer[KS_MAXB]; u8 inRes[KS_MAXB];     // per building: the production clock; carriers on their way to it
     u8 cmf[KS_MAXB];                           // (step 5g) per building: 0..2 kinds of comfort (a well, a tavern) in reach; made by ksCensus, never saved
-    u8 mapB[KS_MAPS], mapReady[KS_MAPS], mapRef[KS_MAPS]; u32 mapUse[KS_MAPS];   // kinglog.h: a distance map is for one building
+    u16 mapB[KS_MAPS]; u8 mapReady[KS_MAPS], mapRef[KS_MAPS]; u32 mapUse[KS_MAPS];   // kinglog.h: a distance map is for one building
     KsWk wk[KS_MAXW];
     u32 opMatch, opWalk, opBfs, opSearch, opProd;   // work counters (the PC test turns them into cycles)
     KHold hd;                                       // (step 4h) what the giant carries: goods in it are still the realm's goods, so ksHeld counts them
@@ -170,7 +171,7 @@ static inline void ksDrop(KSim*S,KsWk*k,int giveBack){   // a carrier stops: its
     k->st=0;
 }
 static inline void ksRecall(KSim*S){ for(int w=0;w<KS_MAXW;w++) if(S->wk[w].st) ksDrop(S,&S->wk[w],1);   // every carrier home with its good, every map let go (before a save, a demolition)
-    for(int m=0;m<KS_MAPS;m++){ S->mapB[m]=0xFF; S->mapReady[m]=0; S->mapRef[m]=0; S->mapUse[m]=0; }
+    for(int m=0;m<KS_MAPS;m++){ S->mapB[m]=0xFFFF; S->mapReady[m]=0; S->mapRef[m]=0; S->mapUse[m]=0; }
     __builtin_memset(S->inRes,0,sizeof S->inRes); S->bfsSlot=-1; }
 static inline int ksRoadSet(KSim*S,int x,int y,int on){
     int d=S->dim; if(x<2||y<2||x>=d-2||y>=d-2) return KSE_ARG;
@@ -196,6 +197,7 @@ static inline int ksSpotOk(const KSim*S,int type,int x,int y){
 }
 static inline int ksPlace(KSim*S,int type,int x,int y,int built){   // returns the building's number or a KSE_ error
     KRealm*R=S->R; if(R->nB>=KS_MAXB) return KSE_CAP; if(!ksSpotOk(S,type,x,y)) return KSE_SPOT;
+    if(ksT(type)->kind==KK_HOME){ int h=0; for(int i=0;i<R->nB;i++) h+=ksT(S->B[i].type)->kind==KK_HOME; if(h>=KS_MAXHOME) return KSE_CAP; }   // (BORE 2: 256 homes at most)
     if(type==KB_CASTLE){ if(R->castle>=KG_CASTLE) return KSE_SPOT; for(int i=0;i<R->nB;i++) if(S->B[i].type==KB_CASTLE) return KSE_SPOT; built=0; }   // (one castle to a realm, and none after the crown)
     KBld*b=&S->B[R->nB]; __builtin_memset(b,0,sizeof *b); b->type=(u8)type; b->x=(u8)x; b->y=(u8)y; b->lvl=(u8)(built?1:0);
     for(int j=0;j<2;j++) for(int k=0;k<2;k++) S->cells[(y+j)*S->dim+x+k]|=KC_BLD;
@@ -217,7 +219,7 @@ static inline int ksInit(KSim*S,KRealm*R,KBld*B,u8*cells){
     for(int i=0;i<R->nB;i++){ const KBld*b=&B[i]; if(b->type>=KS_NTYPES||b->x<2||b->y<2||b->x+2>d-2||b->y+2>d-2) return KSE_ARG; }
     { int nc=0; for(int i=0;i<R->nB;i++) nc+=B[i].type==KB_CASTLE; if(nc>1) return KSE_ARG; }   // (one castle only)
     __builtin_memset(S,0,sizeof *S); S->R=R; S->B=B; S->cells=cells; S->dim=d; S->bfsSlot=-1;
-    for(int m=0;m<KS_MAPS;m++) S->mapB[m]=0xFF;
+    for(int m=0;m<KS_MAPS;m++) S->mapB[m]=0xFFFF;
     for(int c=0;c<d*d;c++){ int v=cells[c]&7; cells[c]=(u8)v; if(v>=KT_N){ cells[c]=(u8)kgCell(R->seed,R->tier,c%d,c/d); } }   // a damaged cell value is made again from the land
     for(int i=0;i<R->nB;i++) for(int j=0;j<2;j++) for(int k=0;k<2;k++){ int c=(B[i].y+j)*d+B[i].x+k;   // a building on a road or on another building: refused
         if(cells[c]&KC_BLD) return KSE_ARG;

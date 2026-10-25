@@ -28,6 +28,7 @@ static int blob_len;   // the realm as saved bytes, kept with the life while you
 // distance-map cache (S.dist and S.queue), which is only a cache while the realm runs and is free when it does not (the GBA did the same)
 #define blob ((u8 *)S.dist)
 #define BLOB_CAP ((int)(sizeof S.dist + sizeof S.queue))
+int dbg_realm[4];
 static int live, mis, mis_paid_all;                 // the realm is running; the mission you are on
 static int gx, gz, gyaw, gmove, gphase, cyaw, cyaw_t, spd, fr, msgT, panel, menu, msel, pick, psel, found_sel;
 static const char *msg; static char msgB[64];
@@ -128,8 +129,8 @@ static void found(int tier) {   // a brand new realm (kingplay.h kpSettle): a st
     live = 1; mis = 0; spawn(); gyaw = 2048;
     say("THE NUBBINS LOOK UP AT YOU. GATHER WOOD: WALK TO A TREE, PRESS X");
 #ifdef AUTO_TOWERS
-    { int n = 0; for (int y = 4; y < d - 4 && n < 160; y += 3) for (int x = 4; x < d - 4 && n < 160; x += 3) {   // (test builds: a city of towers, ten thousand Nubbins)
-        int dx = x - c, dy = y - c; if (dx * dx + dy * dy > 30 * 30 || (ABS(dx) < 6 && ABS(dy) < 6)) continue;
+    { int n = 0; for (int y = 4; y < d - 4 && n < 300; y += 3) for (int x = 4; x < d - 4 && n < 300; x += 3) {   // (test builds: a city of towers, ten thousand Nubbins)
+        int dx = x - c, dy = y - c; if (dx * dx + dy * dy > 60 * 60 || (ABS(dx) < 6 && ABS(dy) < 6)) continue;
         for (int j = 0; j < 2; j++) for (int k = 0; k < 2; k++) { int q = (y + j) * d + x + k; if (!(cells[q] & KC_BLD)) cells[q] = KT_GRASS; }
         if (ksPlace(&S, KB_TOWER, x, y, 1) >= 0) { Bl[R.nB - 1].work = 64; n++; } if ((x & 3) == 1) { ksRoadSet(&S, x + 2, y, 1); } }
       ksCensus(&S); }
@@ -213,6 +214,7 @@ int realm_update(int held, int pressed, int steps) {
     for (int k = 0; k < steps * rate[spd]; k++) ksStep(&S);
     if (S.ev) { static const char *const cst[5] = { "", "THE CASTLE'S FOUNDATION IS LAID!", "THE CASTLE'S WALLS ARE UP!", "THE TOWERS RISE!", "LONG LIVE THE MONARCH: THE REALM IS CROWNED!" }; say(cst[MIN(S.ev, 4)]); S.ev = 0; audio_voice(VOICE_YAHOO); }
     if (!(fr & 31)) mission_check();
+    { int h = 0; for (int i = 0; i < R.nB; i++) h += ksT(Bl[i].type)->kind == KK_HOME; dbg_realm[0] = R.nB; dbg_realm[1] = h; dbg_realm[2] = S.pop; dbg_realm[3] = ksLedger(&S); }
     return 1;
 }
 

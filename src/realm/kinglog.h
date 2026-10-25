@@ -24,15 +24,15 @@
 
 static inline int ksMapFor(KSim*S,int b){   // the map slot of a building (made if there is room), or -1
     for(int m=0;m<KS_MAPS;m++) if(S->mapB[m]==b){ S->mapUse[m]=S->t; return m; }
-    int v=-1; for(int m=0;m<KS_MAPS;m++){ if(S->mapB[m]==0xFF){ v=m; break; }
+    int v=-1; for(int m=0;m<KS_MAPS;m++){ if(S->mapB[m]==0xFFFF){ v=m; break; }
         if(!S->mapRef[m]&&(S->mapReady[m]||ksAge(S,S->mapUse[m])>KS_MAPWAIT)&&(v<0||ksAge(S,S->mapUse[m])>ksAge(S,S->mapUse[v]))) v=m; }
     if(v<0) return -1;
     if(S->bfsSlot==v) S->bfsSlot=-1;
-    S->mapB[v]=(u8)b; S->mapReady[v]=0; S->mapUse[v]=S->t; return v;
+    S->mapB[v]=(u16)b; S->mapReady[v]=0; S->mapUse[v]=S->t; return v;
 }
 static inline void ksBfs(KSim*S){   // one slice of one map
     if(S->bfsSlot<0){ int k=-1;
-        for(int m=0;m<KS_MAPS;m++) if(S->mapB[m]!=0xFF&&!S->mapReady[m]&&(k<0||S->mapRef[m]>S->mapRef[k])) k=m;
+        for(int m=0;m<KS_MAPS;m++) if(S->mapB[m]!=0xFFFF&&!S->mapReady[m]&&(k<0||S->mapRef[m]>S->mapRef[k])) k=m;
         if(k<0) return;
         __builtin_memset(S->dist[k],255,KS_MAXN); S->bfsHead=S->bfsTail=0; S->bfsSlot=k;
         int adj[8], n=ksAdj(S,&S->B[S->mapB[k]],adj);
@@ -56,7 +56,7 @@ static inline int ksStart(KSim*S,int src,int pool,int dst,int slot,int g,int cel
     int free=-1, act=0; for(int w=0;w<KS_MAXW;w++){ if(S->wk[w].st) act++; else if(free<0) free=w; }
     if(free<0||act>=S->nWt) return 0;
     if(pool){ if(!S->R->goods[g]) return 0; S->R->goods[g]--; } else { KBld*b=&S->B[src]; if(ksOut(b)<1) return 0; ksSetOut(b,ksOut(b)-1); }
-    KsWk*k=&S->wk[free]; k->cell=(u16)cell; k->st=1; k->src=(u8)src; k->dst=(u8)dst; k->good=(u8)g; k->md=(u8)slot; k->stall=0;
+    KsWk*k=&S->wk[free]; k->cell=(u16)cell; k->st=1; k->src=(u16)src; k->dst=(u16)dst; k->good=(u8)g; k->md=(u8)slot; k->stall=0;
     S->mapRef[slot]++; S->inRes[dst]++; S->opMatch+=4; return 1;
 }
 static inline int ksWant(const KSim*S,int i,int*g){   // how many more of which good a building asks for
@@ -102,7 +102,7 @@ static inline void ksWalk(KSim*S){
         if((S->t+(u32)w)%KS_WALK) continue;
         int m=k->md, n=ksNode(S,k->cell);
         if(n<0){ ksSnap(S,k); if(k->cell==0xFFFF){ ksInc(&S->aborts); ksDrop(S,k,1); } else k->stall++; continue; }
-        if(!S->mapReady[m]||S->mapB[m]==0xFF){ k->stall+=KS_WALK; continue; }
+        if(!S->mapReady[m]||S->mapB[m]==0xFFFF){ k->stall+=KS_WALK; continue; }
         int dv=S->dist[m][n];
         if(dv==255){ k->stall+=KS_WALK; if(k->stall>=KS_CUT){ ksInc(&S->aborts); ksDrop(S,k,1); } continue; }
         if(dv==0){   // at the door: hand it over
