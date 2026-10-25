@@ -103,7 +103,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int sub_back = ST_LIFE;
@@ -124,6 +124,12 @@ static char build_msg[32]; static int build_msg_t;   // what build mode has to s
 static void home_go(void);
 static void travel_go(int z);
 static void name_open(char *buf, int cap, const char *title, void (*done)(void));
+// ---- ARE YOU SURE: before anything that cannot be undone (a new life, quitting, moving house). NO is picked to start with ----
+static const char *cf_title; static char cf_body[160]; static void (*cf_yes)(void); static int cf_back, cf_sel, cf_t;
+static void confirm_open(const char *title, const char *body, void (*yes)(void)) {
+    cf_title = title; strncpy(cf_body, body, sizeof cf_body - 1); cf_body[sizeof cf_body - 1] = 0; cf_yes = yes; cf_back = state; cf_sel = 1; cf_t = 0; state = ST_CONFIRM;
+}
+static void life_draw(void);
 static void wo_name_for(u32 seed);   // (THE WORLDS: a set world's capital is named for it)
 static void worlds_open(void);
 static void worlds_go(u32 seed, int mode);
@@ -1237,6 +1243,8 @@ static void nhood_hop(int dx, int dy) {            // the nearest lot that way (
     }
     if (best >= 0) { nh_sel = best; audio_voice(VOICE_FINISHED); }
 }
+static int nh_buy_sel;
+static void nhood_buy_yes(void) { if (home_buy(nh_bx[nh_buy_sel], nh_by[nh_buy_sel])) state = ST_LIFE; }
 static void nhood_update(void) {
     if (nh_t < 0) nhood_paint();
     nh_t++;
@@ -1256,6 +1264,14 @@ static void nhood_update(void) {
     if (!nh_first && PRESSED(PAD_SELECT)) { homes_open(); return; }   // (the plain list)
     if (PRESSED(PAD_CROSS)) {
         if (!home_for_sale(nh_bx[nh_sel], nh_by[nh_sel])) { sim_note("TOO LATE, THAT ONE IS SOLD"); audio_voice(VOICE_NAH); return; }
+        if (home_city && !nh_first) {   // you have a home already: what moving costs, and what stays behind, first
+            if (nh_bx[nh_sel] == home_bx && nh_by[nh_sel] == home_by) { sim_note("THAT ONE IS YOUR HOME ALREADY"); return; }
+            char ad[24], old[24]; home_address(nh_bx[nh_sel], nh_by[nh_sel], ad); home_address(home_bx, home_by, old);
+            int net = nh_price[nh_sel] - home_paid; char b[160];
+            if (cash + home_paid < nh_price[nh_sel]) { sprintf(b, "NOT ENOUGH MONEY: IT IS $%d, AND YOURS SELLS FOR $%d", nh_price[nh_sel], home_paid); sim_note(b); audio_voice(VOICE_NAH); return; }
+            snprintf(b, sizeof b, "MOVE TO %s? %s SELLS FOR $%d. ANYTHING YOU BUILT OR BOUGHT THERE STAYS WITH THE HOUSE. %s $%d.", ad, old, home_paid, net >= 0 ? "AFTER THE SALE YOU PAY" : "AFTER THE SALE YOU GET", net >= 0 ? net : -net);
+            nh_buy_sel = nh_sel; confirm_open("MOVE HOUSE?", b, nhood_buy_yes); return;
+        }
         if (home_buy(nh_bx[nh_sel], nh_by[nh_sel])) state = ST_LIFE;   // (life_update moves the family in)
     }
 }
@@ -2016,6 +2032,8 @@ void throw_party(void) {   // (also the phone's THROW A PARTY)
     audio_voice(VOICE_YAHOO);
     for (int i = 0; i < nsims; i++) { sim_moodlet(&sims[i], 15); wants_event(&sims[i], W_PARTY, 0); }   // FUN TIME
 }
+static void pause_new_life(void) { life_started = 0; start_life(); state = ST_LIFE; }
+static void pause_quit(void) { audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); }
 static void pause_update(void) {
     if (PRESSED(PAD_UP)) menu_sel = (menu_sel + NPAUSE - 1) % NPAUSE;
     if (PRESSED(PAD_DOWN)) menu_sel = (menu_sel + 1) % NPAUSE;
@@ -2037,8 +2055,8 @@ static void pause_update(void) {
             case 5: opts_open(ST_PAUSE); break;
             case 6: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
             case 7: slots_open(1, ST_PAUSE); break;
-            case 8: life_started = 0; start_life(); state = ST_LIFE; break;
-            case 9: audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); break;
+            case 8: confirm_open("A NEW LIFE?", "THIS LIFE ENDS HERE, AND A NEW ONE BEGINS IN A NEW WORLD. ANYTHING NOT SAVED IS LOST. SAVE FIRST FROM THE PAUSE MENU IF YOU WANT TO COME BACK TO IT.", pause_new_life); break;
+            case 9: confirm_open("QUIT TO THE TITLE?", "ANYTHING NOT SAVED SINCE YOUR LAST SAVE IS LOST.", pause_quit); break;
         }
     }
 }
@@ -2443,6 +2461,21 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
 static char *nk_buf; static int nk_cap, nk_back, nk_r, nk_c, nk_t; static const char *nk_title; static void (*nk_done)(void);
 static char nk_text[24];
 static const char nk_keys[4][11] = { "ABCDEFGHIJ", "KLMNOPQRST", "UVWXYZ0123", "456789 -'." };
+static void confirm_update(void) {
+    cf_t++;
+    if (PRESSED(PAD_LEFT) || PRESSED(PAD_RIGHT) || PRESSED(PAD_UP) || PRESSED(PAD_DOWN)) cf_sel ^= 1;
+    if (PRESSED(PAD_CIRCLE)) { state = cf_back; return; }
+    if (PRESSED(PAD_CROSS)) { state = cf_back; if (cf_sel == 0 && cf_yes) { audio_voice(VOICE_AGREE); cf_yes(); } }
+}
+static void confirm_draw(void) {
+    if (cf_back == ST_NHOOD) { gfx_set_clear(188, 204, 222); gfx_camera_update(); ui_backdrop(); } else { life_draw(); ui_dim(); }
+    int nl = ui_wrap_n(236, cf_body), h = 58 + nl * 10;
+    int top = ui_window(30, 120 - h / 2 - 10, 260, h + 20, cf_title, IC_HELP);
+    ui_wrap(42, top + 4, 236, 6, cf_body, UI_INK);
+    int by = top + 10 + nl * 10;
+    ui_button(42, by, 112, 18, "YES", IC_TICK, cf_sel == 0);
+    ui_button(166, by, 112, 18, "NO, GO BACK", IC_BX + 1, cf_sel == 1);
+}
 static void name_open(char *buf, int cap, const char *title, void (*done)(void)) {   // edit buf (at most cap letters); done runs when it is kept
     nk_buf = buf; nk_cap = MIN(cap, 23); nk_title = title; nk_done = done; nk_back = state; nk_r = 0; nk_c = 0; nk_t = 0;
     strncpy(nk_text, buf, nk_cap); nk_text[nk_cap] = 0;
@@ -3600,6 +3633,7 @@ int main(void) {
             case ST_OVER: over_update(); over_draw(); break;
             case ST_HOMES: homes_update(); homes_draw(); break;
             case ST_CRAFT: craft_update(); craft_draw(); break;
+            case ST_CONFIRM: confirm_update(); if (state == ST_CONFIRM) confirm_draw(); else life_draw(); break;
             case ST_NAME: name_update(); if (state == ST_NAME) name_draw(); else if (state == ST_CREATE) create_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_MAP) map_draw(); else life_draw(); break;
             case ST_WORLDS: worlds_update(); if (state == ST_WORLDS) worlds_draw(); else if (state == ST_MENU) menu_draw(); else life_draw(); break;
             case ST_NHOOD: nhood_update(); if (state == ST_NHOOD) nhood_draw(); else if (state == ST_HOMES) homes_draw(); else life_draw(); break;
