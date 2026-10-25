@@ -21,7 +21,7 @@
 
 #define CELL 96
 #define VIEW 9
-static KRealm R; static KBld Bl[KS_MAXB]; static u8 *cells;   // (the land, up to 255 x 255: in the city crowd's arena, which sleeps while you are in the realm)
+static KRealm R; static KBld *Bl; static u8 *cells;   // (the buildings and   // (the land, up to 255 x 255: in the city crowd's arena, which sleeps while you are in the realm)
 static KSim S; static KHand hand;
 static void nub_make(void);
 static int blob_len;   // the realm as saved bytes, kept with the life while you are not in it: they live in the simulation's
@@ -137,7 +137,7 @@ static void found(int tier) {   // a brand new realm (kingplay.h kpSettle): a st
 #endif
 }
 void realm_open(void) {
-    { u32 n; cells = (u8 *)crowd_scratch(&n); }   // (the crowd's models are let go: they are made again when you are back)
+    { u32 n; cells = (u8 *)crowd_scratch(&n); Bl = (KBld *)(cells + 65536); }   // (the crowd's models are let go: they are made again when you are back)
     nub_make();
     khInit(&hand); spd = 0; panel = 0; menu = 0; pick = 0; msgT = 0; fr = 0; cyaw = cyaw_t = 0; found_sel = 1;
     if (!live) live = unpack();

@@ -110,6 +110,7 @@ static void finish(void) {   // a game over: the tickets, a little fun, a little
 int arcade_update(int hd, int pr, int steps) {
     if (game == AG_FIGHTER) {
         if (fight_update(hd, pr, steps)) return 1;
+        fight_close();
         { Sim *s = &sims[player]; extern int fight_last_wins; int w = fight_last_wins; tix = w * 6 + (fight_champ ? 0 : 0);
           arcade_tix = MIN(9999, arcade_tix + tix); need_add(s, N_FUN, 30 + w * 5); need_add(s, N_REST, -6); s->skill_body += 10 + w * 8;
           char b[48]; snprintf(b, sizeof b, w ? "BORTUA FIGHTER: %d WON, +%d TICKETS" : "BORTUA FIGHTER: BEATEN. NEXT TIME!", w, tix); sim_note(b); }

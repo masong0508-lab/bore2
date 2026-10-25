@@ -40,7 +40,9 @@ static void vram_load(const RECT *r, const void *data) {
 #define PAGE_X 640   // pages 0 and 1 are 256 wide at x=640; page 2 is the 128-wide strip at x=896
 static struct { int x, y, rowh; u16 tpage; int base_y; } pg[PAGES];
 static int used; int atlas_fails, atlas_fail_wh;   // (the last texture that did not fit: w, h, the first page tried)
-static u16 upload_buf[128 * 128];   // the largest texture we upload at once (wallpapers are 8x24, items up to 24x24)
+u16 bfs_q[128 * 128];   // the largest texture we upload at once (wallpapers are 8x24, items up to 24x24); between uploads it is also
+#define upload_buf bfs_q   // sim.c's route-finding queue, the roof rebuild's, the build mode's room fill and the save's scratch (none of them
+                         // runs while an upload is under way, and none keeps anything in it after it returns)
 
 void atlas_init(void) {
     for (int i = 0; i < PAGES; i++) {

@@ -12,4 +12,5 @@
 void fight_open(int credits);              // into the arcade cabinet (from the life: paid already)
 int  fight_update(int held, int pressed, int steps);   // 1 while it runs; 0 when you walk away from the cabinet
 void fight_draw(void);
+void fight_close(void);                    // after fight_update says 0
 extern int fight_wins, fight_champ, fight_best;   // matches won, beat BORAL, the furthest stage reached (saved with the life)

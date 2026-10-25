@@ -19,7 +19,7 @@
 #define KS_MAXN    1024  // (BORE 2: the empire's roads)      // road cells (a build may change it with -DKS_MAXN=...: the road list, the queue and every distance map shrink or grow with it)
 #endif
 #ifndef KS_MAPS
-#define KS_MAPS    12       // distance maps kept at once (kinglog.h). Each is KS_MAXN bytes. 8 starved a 30 building realm in the test; 10 was enough for 40 buildings, 12 is for 64
+#define KS_MAPS    10       // distance maps kept at once (kinglog.h). Each is KS_MAXN bytes. 8 starved a 30 building realm in the test; 10 was enough for 40 buildings, 12 is for 64
 #endif
 #define KS_MAXW    40       // carriers
 #define KS_POPCAP  10000 // (BORE 2: ten thousand, in towers)      // the most a realm can hold: 50 houses of 8 (64 buildings leave room for them and the castle, the storehouses and the workplaces); the homes are the real limit; kingfx.h draws all of them (crowds) at any count

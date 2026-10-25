@@ -240,7 +240,7 @@ static int speed_of(const Sim *s) {
 }
 
 // ---- path finding: BFS over the tiles, then pulled straight (a person cuts corners, they do not walk a staircase) ----
-u16 bfs_q[MW * MH];                 // (also lent to the roof rebuild in world.c: never at the same time)
+extern u16 bfs_q[];                 // (atlas.c's upload buffer, lent: also to the roof rebuild in world.c, never at the same time)
 s16 bfs_par[MH][MW];
 static u32 walk_tick;          // steps since the game began: the wobble and the dice run off it
 #define LOS_R 60               // the clearance a straight line needs (a little more than the body)

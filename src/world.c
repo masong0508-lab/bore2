@@ -1957,7 +1957,8 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
     int fdx = (cdx << 12) / len, fdz = (cdz << 12) / len;
     int focx = fx * TILE + TILE / 2, focz = -(fy * TILE + TILE / 2);
     int x0 = rx0, x1 = rx1, y0 = ry0, y1 = ry1;
-    static u8 done[MH][MW];
+    extern s16 bfs_par[MH][MW]; u8 (*done)[MW] = (u8 (*)[MW])bfs_par;   // (scratch for this draw: the route finder's parents, lent. The roofs that also borrow it
+                                                                         // are rebuilt at the top of world_draw, before any layer is drawn, and a route is only looked for in the update)
     TileView tvF, tvT;
     tile_view_init(&tvF, TILE, 0, -TILE);                           // a 2x2 floor block's centre
     tile_view_init(&tvT, TILE / 2, -WALL_FULL / 2, -TILE / 2);      // a tile's centre, half a wall up
@@ -2058,7 +2059,7 @@ static int enclose(char c) { return c == 'W' || c == 'E' || c == 'e' || c == 'D'
 // and its wall colour (for the far skyline).
 static u8 b_x0[NBLD], b_y0[NBLD], b_x1[NBLD], b_y1[NBLD], b_top[NBLD], b_sty[NBLD], b_col[NBLD], b_pit[NBLD], b_str[NBLD];
 static u16 b_wall[NBLD]; static int nbld;
-extern u16 bfs_q[MW * MH]; extern s16 bfs_par[MH][MW];   // (sim.c's route-finding buffers: the roof rebuild borrows them)
+extern u16 bfs_q[]; extern s16 bfs_par[MH][MW];   // (sim.c's route-finding buffers: the roof rebuild borrows them)
 static u8 lvl_bb[NLEVELS][4];                     // each storey's built-on box (x0, y0, x1, y1)
 static u32 lvl_edge[NLEVELS][MH][(MW + 31) / 32];  // each storey's tiles next to open air (a bit each)
 // Buildings sit inside their own blocks (a street runs along every block's top and left), so when the SAN BOREAS window moves,

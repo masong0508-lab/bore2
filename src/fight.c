@@ -1,6 +1,6 @@
 // fight.c - BORTUA FIGHTER in 3D: see fight.h.
 // The fight runs in MILLIMETRES on a round ring (x and z on the ground, y up; a fighter's yaw is 0..255, 0 looking along +z), in fixed
-// 60 Hz steps; a frame runs as many steps as vblanks went by, so a slow frame costs picture, never speed. The world is drawn at
+// 60 Hz steps; a fframe runs as many steps as vblanks went by, so a slow fframe costs picture, never speed. The world is drawn at
 // 7/32 of a millimetre to the unit (a 1.75 m Bore is the 384 units tall of every Bore), with the fight's +z as the world's -z.
 #include "fight.h"
 #include "gfx.h"
@@ -11,8 +11,10 @@
 #include "audio.h"
 #include "wants.h"
 #include "font.h"
+#include "crowd.h"
+#include "citizens.h"
 
-static int frame;   // (the fight's own clock, for the sea and the torches)
+static int fframe;   // (the fight's own clock, for the sea and the torches)
 int fight_wins, fight_champ, fight_best, fight_last_wins;   // (last: matches won since the coin went in)
 
 // ---- small maths (angles 0..255, sines x256) ----
@@ -264,7 +266,8 @@ static const Who ladder[9] = {
     { "SARAH BORYANT",  71, RGB(28,6,6),   RGB(4,4,6),    RGB(31,26,10), 105, 18, 6, "I KICK FIRST. I ASK NEVER" },
     { "JACKY BORYANT",  83, RGB(4,4,6),    RGB(28,6,6),   RGB(31,26,10), 110, 17, 7, "MY SISTER WARNED YOU" },
     { "BORAL",          97, 0, 0, 0,                                     135, 18, 9, "..." } };   // (chrome all over)
-static Bore them; static int them_built = -1;
+static Bore *them_p; static int them_built = -1;   // the opponent: built in the town crowd's arena, which sleeps while you are at the cabinet
+#define them (*them_p)
 static int you_i;                   // which of the household you fight as
 static const char *const styleNm[4] = { "BALANCED", "POWER", "SPEED", "TECHNIQUE" };
 static const char *const styleTx[4] = { "A BIT OF EVERYTHING", "HITS HARD, MOVES SLOW", "QUICK FEET, LIGHT HANDS", "THE AI GUARDS LESS (AND SO DO YOU)" };
@@ -307,6 +310,7 @@ static void round_begin(void) {
 }
 static void match_begin(void) { F[0].wins = F[1].wins = 0; round_n = 1; build_them(stage); set_stats(); round_begin(); }
 void fight_open(int cr) {
+    { u32 n; them_p = (Bore *)(((u32)crowd_scratch(&n) + 7) & ~7u); } them_built = -1;
     credits = cr; fight_last_wins = 0; stage = 0; style = 0; you_i = player; pick_row = 0; cam_mode = CAM_SIDE;
     fs = FS_PICK; ft = 0;
     build_them(0); set_stats();
@@ -444,14 +448,14 @@ static void ring_draw(void) {
         int x0 = gx * 520, z0 = gz * 520, x1 = x0 + 520, z1 = z0 + 520;
         if (ABS(x0 + 260) < 600 && ABS(z0 + 260) < 600) continue;   // (under the ring)
         SVECTOR a = { (short)x0, 260, (short)z0 }, b = { (short)x1, 260, (short)z0 }, c = { (short)x0, 260, (short)z1 }, d = { (short)x1, 260, (short)z1 };
-        int k = (isin((frame * 40 + gx * 900 + gz * 1300) & 4095) >> 9) + 16;
+        int k = (isin((fframe * 40 + gx * 900 + gz * 1300) & 4095) >> 9) + 16;
         u32 c0 = UI_RGB(20 + k, 40 + k, 90 + k), c1 = UI_RGB(30 + k, 50 + k, 104 + k);
         gfx_quad_g(&a, &b, &c, &d, ((gx + gz) & 1) ? c0 : c1, c1, c0, ((gx + gz) & 1) ? c1 : c0, 0);
     }
     gfx_floor_pass = 0;
     // four torches round the edge, flickering
     for (int k = 0; k < 4; k++) {
-        int a = k * 1024 + 512, x = isin(a) * (R2 + 40) >> 12, z = icos(a) * (R2 + 40) >> 12, fl = (isin((frame * 300 + k * 1000) & 4095) >> 10);
+        int a = k * 1024 + 512, x = isin(a) * (R2 + 40) >> 12, z = icos(a) * (R2 + 40) >> 12, fl = (isin((fframe * 300 + k * 1000) & 4095) >> 10);
         { int ex = cam.eye.vx - x, ez = cam.eye.vz - z; if (ex * ex + ez * ez < 420 * 420) continue; }   // (not right in front of the lens)
         SVECTOR p0 = { (short)(x - 8), -150, (short)z }, p1 = { (short)(x + 8), -150, (short)z }, p2 = { (short)(x - 8), 0, (short)z }, p3 = { (short)(x + 8), 0, (short)z };
         gfx_quad_f(&p0, &p1, &p2, &p3, 60, 40, 30, 0);
@@ -462,7 +466,7 @@ static void ring_draw(void) {
 static void fighter_draw(int i) {
     Fz *f = &F[i]; const Bore *b = i ? &them : you();
     VPose p; pose_of(f, &p);
-    Gait g; memset(&g, 0, sizeof g); g.pose = &p; g.clock = frame; g.seed = i; g.mood = 0;
+    Gait g; memset(&g, 0, sizeof g); g.pose = &p; g.clock = fframe; g.seed = i; g.mood = 0;
     if (f->st == BS_KO || f->st == BS_THROWN) {   // down: on the back (the K.O.), or turning over through a throw
         g.pose = 0; g.sleep = 1; g.lie = f->st == BS_KO ? MAX(f->lie, 600) : 2400;
     }
@@ -503,7 +507,7 @@ static void big(const char *s, int y, int r, int g, int b) {   // a word over th
 }
 static void msg(int y, const char *s) { int w = ui_tw(1, s) + 20; ui_round(160 - w / 2, y, w, 18, 8, UI_CARD, UI_CARD2, 0); ui_textc(160, y + 3, 1, s, UI_INK); }
 void fight_draw(void) {
-    frame++;
+    fframe++;
     gfx_set_clear(40, 30, 60); gfx_set_fog(0, 0);
     gfx_sky(0x703050u, 0x4890f0u);                     // the sunset: violet above, orange at the sea's edge
     gfx_set_ambient(84, 104);
@@ -558,4 +562,8 @@ void fight_draw(void) {
         break;
     case FS_OVER: ui_dim(); break;
     }
+}
+void fight_close(void) {   // away from the cabinet: the opponent let go, the crowd's arena back to the town (its people are made again)
+    if (them_built >= 0) { look_release(&them); them_built = -1; }
+    crowd_reset(); citizens_rebuild();
 }
