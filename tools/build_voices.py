@@ -18,12 +18,15 @@ def run(cmd, **kw):
 VOICES = [('NEED', 'hey_i_need_something_h.wav'), ('AGREE', 'agree.wav'), ('ANGRY', 'angered.wav'), ('CRY', 'cry.wav'), ('DISAGREE', 'disagree.wav'),
           ('FINISHED', 'finished.wav'), ('FLIRT', 'flirt.wav'), ('HUNGRY', 'im_hungryrururyry.wav'), ('JOKE', 'joke_good.wav'), ('LAUGH', 'laughing.wav'),
           ('NAH', 'nah.wav'), ('PEE', 'need_to_pee.wav'), ('SHRIEK', 'shriek.wav'), ('SNORE', 'snoore.wav'), ('YAHOO', 'yahoo.wav'), ('YEHA', 'yeha.wav'),
-          ('GROAN', 'cry_after_bad_event.wav'), ('WIN', 'win the fight.wav')]
+          ('GROAN', 'cry_after_bad_event.wav'), ('WIN', 'win the fight.wav'),
+          ('MOVE_ASK', 'move_in_welcome_asker.wav', 8000), ('MOVE_YES', 'move_in_welcome_asked.wav', 8000), ('MOVE_NO', 'move_in_rejecting.wav', 8000)]   # (the newer ones at 8 kHz: sound memory must still hold the biggest song)
 RATE = 11025   # (was 8000: the clips sound clearer, and still leave the sound memory the biggest song needs)
 blobs = []
-for name, wav in VOICES:
+rates = []
+for v in VOICES:
+    name, wav = v[0], v[1]; vr = v[2] if len(v) > 2 else RATE; rates.append(vr)
     pcm = os.path.join(OUT, 'v_' + name + '.pcm'); adp = os.path.join(OUT, 'v_' + name + '.adpcm')
-    run(['ffmpeg', '-v', 'error', '-y', '-i', os.path.join(SRC, 'tools/voices_src', wav), '-f', 's16le', '-ac', '1', '-ar', str(RATE), '-af', 'volume=1.4', pcm])
+    run(['ffmpeg', '-v', 'error', '-y', '-i', os.path.join(SRC, 'tools/voices_src', wav), '-f', 's16le', '-ac', '1', '-ar', str(vr), '-af', 'volume=1.4', pcm])
     with open(pcm, 'rb') as f:
         run([XAENC, 'spu', '0', adp], stdin=f)
     os.remove(pcm)
@@ -33,9 +36,9 @@ hdr_size = (hdr_size + 15) & ~15
 off = hdr_size
 table = struct.pack('<I', len(blobs))
 body = bytearray()
-for b in blobs:
+for b, vr in zip(blobs, rates):
     pad = (16 - len(b) % 16) % 16
-    table += struct.pack('<III', off, len(b), RATE)
+    table += struct.pack('<III', off, len(b), vr)
     body += b + bytes(pad)
     off += len(b) + pad
 table += bytes(hdr_size - len(table))

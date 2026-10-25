@@ -4,8 +4,8 @@
 #include "atlas.h"
 #include "mem8.h"
 
-extern const u8 voices_bin[];
-extern const u32 voices_bin_size;
+#define ARENA_BYTES 192704   // (the people's models; it used to be the voice clips' memory, which are on the disc now)
+static u8 arena_mem[ARENA_BYTES] __attribute__((aligned(4)));
 
 // ---- the compact model ----------------------------------------------------------------------------------------------
 #define NW 26                                   // the s16 fields of a Bore from w_headx to w_rgx (they sit together)
@@ -135,7 +135,7 @@ void crowd_flush(void) {                        // every sprite thrown away (the
     for (int i = 0; i < SPR_MAX; i++) { spr[i].ok = 0; spr[i].shelf = -1; }
     nsh = 0;
 }
-void *crowd_scratch(u32 *bytes) { *bytes = (voices_bin_size - 4) & ~3u; return (void *)(((u32)voices_bin + 3) & ~3u); }   // (a new life only: the arena before any model is stored)
+void *crowd_scratch(u32 *bytes) { *bytes = ARENA_BYTES; return arena_mem; }   // (a new life only: the arena before any model is stored)
 void crowd_reset(void) {
     for (int i = 0; i < CROWD_MAX; i++) { m_off[i] = -1; face_of[i] = 255; }
     for (int i = 0; i < SPR_MAX; i++) { spr[i].ok = 0; spr[i].shelf = -1; spr[i].meas = 0; }
@@ -144,7 +144,7 @@ void crowd_reset(void) {
     ar_top = 0;
 }
 void crowd_init(void) {
-    ar = (u8 *)(((u32)voices_bin + 3) & ~3u); ar_size = (voices_bin_size - 4) & ~3u;
+    ar = arena_mem; ar_size = ARENA_BYTES;
     if (ram8) { u8 *big = (u8 *)xalloc(1024 * 1024); if (big) { ar = big; ar_size = 1024 * 1024; } }   // 8 MB: a store big enough that nobody's model is ever let go
     crowd_reset();
 }

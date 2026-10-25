@@ -33,7 +33,7 @@ int cit_live_max = LIVE_MAX, cit_maxdraw = 64, cit_sprite_rate = 1;   // (the op
 
 enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME, CM_LEAVE, CM_CHORE, CM_VISIT, CM_PARTY };
 enum { PE_FRIENDLY, PE_GRUFF, PE_FLIRTY, PE_SHY };
-enum { PO_TALK, PO_JOKE, PO_HUG, PO_FLIRT, PO_GIFT, PO_PROPOSE, PO_FIGHT, PO_SORRY, PO_FAMILY };
+enum { PO_TALK, PO_JOKE, PO_HUG, PO_FLIRT, PO_GIFT, PO_PROPOSE, PO_FIGHT, PO_SORRY, PO_FAMILY, PO_MOVEIN };
 // the moodlet ids in sim.c's list
 enum { CML_GOOD_CHAT = 5, CML_EMBARRASSED = 9, CML_REJECTED = 12, CML_HUGGED = 14, CML_LAUGH = 16, CML_FLIRTY = 17 };
 
@@ -458,6 +458,7 @@ COLD int citizens_pie_open(char opt[8][16]) {
     if (adult(c) && pl_adult() && c->rel >= 30) OPT("FLIRT", PO_FLIRT)
     OPT("GIVE $20 GIFT", PO_GIFT)
     if (adult(c) && pl_adult() && c->rom >= 60 && c->rel >= 60) OPT("PROPOSE $150", PO_PROPOSE)
+    if (adult(c) && pl_adult() && c->rel >= 60 && c->rom < 60) OPT("ASK TO MOVE IN", PO_MOVEIN)   // (a good friend: borrowed from BORE on the GBA)
     if (adult(c) && pl_adult()) OPT("FIGHT", PO_FIGHT)
     #undef OPT
     return n;
@@ -476,7 +477,7 @@ static void chat_begin(Cit *c) {
     c->yaw = (u16)yaw_to(sims[player].x - c->x, sims[player].z - c->z);
 }
 
-static void marry(Cit *c) {   // they move in: the civilian becomes a housemate with the full model
+static void marry_as(Cit *c, int wedding) {   // they move in: the civilian becomes a housemate with the full model (a wedding: as your partner)
     Bore *wedp = crowd_temp_bore();
     #define wed (*wedp)
     memset(&wed, 0, sizeof wed);
@@ -485,15 +486,16 @@ static void marry(Cit *c) {   // they move in: the civilian becomes a housemate 
     int tx = p->x / TILE, ty = (-p->z) / TILE;
     sim_add(&wed, tx, ty, 1);
     Sim *w = &sims[nsims - 1];
-    w->rel[player] = 100; sims[player].rel[nsims - 1] = 100;
-    w->partner = sims[player].uid; sims[player].partner = w->uid;   // (the family tree: partners)
+    w->rel[player] = wedding ? 100 : (s8)MAX(60, c->rel); sims[player].rel[nsims - 1] = w->rel[player];
+    if (wedding) { w->partner = sims[player].uid; sims[player].partner = w->uid; }   // (the family tree: partners)
     w->x = p->x + 70; w->z = p->z;
     c->mode = CM_GONE; c->say_t = 0;
     if (c->pid != NOPID) { pop_per[c->pid].flags |= PF_GONE; main_free(c); }
-    char b[32]; sprintf(b, "MARRIED %s!", w->bore.first); sim_note(b);
-    audio_voice(VOICE_WIN);
+    char b[40]; if (wedding) sprintf(b, "MARRIED %s!", w->bore.first); else sprintf(b, "%s MOVED IN WITH YOU!", w->bore.first); sim_note(b);
+    audio_voice(wedding ? VOICE_WIN : VOICE_MOVE_YES);
     #undef wed
 }
+static void marry(Cit *c) { marry_as(c, 1); }
 
 COLD void citizens_pie_do(int i) {
     if (pie_c < 0 || i < 0) return;
@@ -551,6 +553,12 @@ COLD void citizens_pie_do(int i) {
     case PO_FIGHT:
         c->mode = CM_CHASE; c->hp = (u8)(c->stage == AG_ELDER ? 35 : 55 + rn(35)); c->cd = 30; c->t = 0;
         rel_add(c, -10); rom_add(c, -20); say(c, "BRING IT!"); fight_on = 1; audio_voice(VOICE_ANGRY); story_event(E_FIGHT, 0); break;
+    case PO_MOVEIN:   // a friend moves in with you: they say yes when they like you enough (and there is room)
+        audio_voice(VOICE_MOVE_ASK);
+        if (nsims >= MAX_SIMS) { say(c, "YOUR PLACE IS FULL!"); sim_note("THE HOUSE IS TOO FULL FOR ONE MORE"); break; }
+        if (rn(100) < 30 + c->rel / 2 + (c->pers == PE_FRIENDLY ? 15 : c->pers == PE_GRUFF ? -20 : 0)) { say(c, "I'D LOVE TO!"); marry_as(c, 0); }
+        else { rel_add(c, -4); say(c, "I LIKE MY OWN PLACE..."); sim_moodlet(p, CML_REJECTED); audio_voice(VOICE_MOVE_NO); }
+        break;
     case PO_SORRY:
         if (rn(100) < 55) { c->mode = CM_IDLE; c->t = 60; say(c, "...FINE."); }
         else { say(c, "TOO LATE!"); audio_voice(VOICE_DISAGREE); }

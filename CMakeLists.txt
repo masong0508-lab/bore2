@@ -31,7 +31,7 @@ endforeach()
 target_link_options(bore2 PRIVATE -Wl,--wrap=memcpy -Wl,--wrap=memmove)   # (src/mem8.c: word copies, not the SDK's byte loops)
 
 # the voice clips (SPU ADPCM blob made by tools/build_audio.py)
-psn00bsdk_target_incbin(bore2 PRIVATE voices_bin assets/voices.bin)
+# (the voice clips are VOICES.BIN on the disc: audio.c sends them to sound memory at start-up, so they take no main memory)
 
 psn00bsdk_add_cd_image(
 	iso

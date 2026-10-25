@@ -2048,7 +2048,7 @@ static void pause_update(void) {
                     if (!world_backup()) { sim_note("NO ROOM FOR THE STUDIO JUST NOW. TRY AT HOME"); state = ST_LIFE; break; }
                     create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_gen_studio(); break;
             case 4: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
-                      sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); state = ST_LIFE; } break;
+                      sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); audio_voice(VOICE_MOVE_YES); state = ST_LIFE; } break;
             case 2: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD;
                      if (world_zone == ZONE_CITY && !world_own_lot(build_x, build_y)) { int tx, ty; if (world_own_door(&tx, &ty)) { build_x = tx; build_y = ty - 1; } }   // (in SAN BOREAS: on your own lot)
                      break;
