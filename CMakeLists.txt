@@ -9,7 +9,7 @@ project(
 )
 
 psn00bsdk_add_executable(bore2 GPREL
-	src/main.c src/gfx.c src/atlas.c src/look.c src/voxel.c src/items.c src/world.c src/sim.c src/wants.c src/citizens.c src/audio.c src/font.c src/fmt.c src/pad.c src/mcard.c src/save.c src/crowd.c src/mem8.c src/bigmap.c src/pop.c src/far.c src/ui.c src/places.c src/home.c src/island.c src/nature.c src/story.c src/skate.c src/ghost.c src/fight.c src/arcade.c)
+	src/main.c src/gfx.c src/atlas.c src/look.c src/voxel.c src/items.c src/world.c src/sim.c src/wants.c src/citizens.c src/audio.c src/font.c src/fmt.c src/pad.c src/mcard.c src/save.c src/crowd.c src/mem8.c src/bigmap.c src/pop.c src/far.c src/ui.c src/places.c src/home.c src/island.c src/nature.c src/story.c src/skate.c src/ghost.c src/fight.c src/arcade.c src/realm.c)
 target_include_directories(bore2 PRIVATE src assets)
 if(NOT BORE_OPT)
 	set(BORE_OPT -O2)
@@ -17,7 +17,7 @@ endif()
 target_compile_options(bore2 PRIVATE -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-misleading-indentation -Wno-parentheses -Wno-strict-aliasing -fno-strict-aliasing)
 get_target_property(BORE_SRCS bore2 SOURCES)
 # the life's rules and the menus run a few times a frame at most: built small (-Os), which leaves more of the 2 MB for the world
-set(BORE_SMALL src/main.c src/pop.c src/wants.c src/places.c src/look.c src/audio.c src/home.c src/island.c src/nature.c src/save.c src/mcard.c src/sim.c src/story.c src/ui.c src/bigmap.c src/skate.c src/fmt.c src/font.c ${BORE_SMALL_EXTRA})
+set(BORE_SMALL src/main.c src/pop.c src/wants.c src/places.c src/look.c src/audio.c src/home.c src/island.c src/nature.c src/save.c src/mcard.c src/sim.c src/story.c src/ui.c src/bigmap.c src/skate.c src/fmt.c src/font.c src/realm.c src/arcade.c src/fight.c ${BORE_SMALL_EXTRA})
 foreach(f ${BORE_SRCS})
 	if(f MATCHES "\\.c$")
 		if(f IN_LIST BORE_SMALL)

@@ -18,6 +18,7 @@
 #include "pop.h"
 #include "ghost.h"
 #include "arcade.h"
+#include "realm.h"
 #include "far.h"
 #include "ui.h"
 #include "places.h"
@@ -105,7 +106,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int sub_back = ST_LIFE;
@@ -2064,8 +2065,8 @@ static void save_tick(void) {
     if (k == 5 && t >= 700) { k++; aging = 2; pop_aging = 1; for (int d = 0; d < 400; d++) pop_midnight(); save_game(1); dbg_sv[7] = (int)save_last_bytes; }
 }
 #endif
-static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "SAVE GAME", "NEW LIFE", "QUIT TO TITLE" };
-#define NPAUSE 10  // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
+static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "KINGDOM MODE", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "SAVE GAME", "NEW LIFE", "QUIT TO TITLE" };
+#define NPAUSE 11  // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
 static void homes_open(void);
 #ifdef AUTO_PARTY
 int ap_frames, ap_vs, ap_cpu;
@@ -2093,29 +2094,30 @@ static void pause_update(void) {
         switch (menu_sel) {
             case 0: state = ST_LIFE; break;
             case 1: panel_tab = 0; state = ST_PANEL; break;
-            case 3: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
+            case 4: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
                     if (!world_backup()) { sim_note("NO ROOM FOR THE STUDIO JUST NOW. TRY AT HOME"); state = ST_LIFE; break; }
                     create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_gen_studio(); break;
-            case 4: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
+            case 5: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); audio_voice(VOICE_MOVE_YES); state = ST_LIFE; } break;
+            case 3: realm_open(); state = ST_REALM; break;
             case 2: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD;
                      if (world_zone == ZONE_CITY && !world_own_lot(build_x, build_y)) { int tx, ty; if (world_own_door(&tx, &ty)) { build_x = tx; build_y = ty - 1; } }   // (in SAN BOREAS: on your own lot)
                      break;
-            case 5: opts_open(ST_PAUSE); break;
-            case 6: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 7: slots_open(1, ST_PAUSE); break;
-            case 8: confirm_open("A NEW LIFE?", "THIS LIFE ENDS HERE, AND A NEW ONE BEGINS IN A NEW WORLD. ANYTHING NOT SAVED IS LOST. SAVE FIRST FROM THE PAUSE MENU IF YOU WANT TO COME BACK TO IT.", pause_new_life); break;
-            case 9: confirm_open("QUIT TO THE TITLE?", "ANYTHING NOT SAVED SINCE YOUR LAST SAVE IS LOST.", pause_quit); break;
+            case 6: opts_open(ST_PAUSE); break;
+            case 7: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
+            case 8: slots_open(1, ST_PAUSE); break;
+            case 9: confirm_open("A NEW LIFE?", "THIS LIFE ENDS HERE, AND A NEW ONE BEGINS IN A NEW WORLD. ANYTHING NOT SAVED IS LOST. SAVE FIRST FROM THE PAUSE MENU IF YOU WANT TO COME BACK TO IT.", pause_new_life); break;
+            case 10: confirm_open("QUIT TO THE TITLE?", "ANYTHING NOT SAVED SINCE YOUR LAST SAVE IS LOST.", pause_quit); break;
         }
     }
 }
 static void pause_draw(void) {   // one short column: the game itself (the rest of life is on the phone)
-    static const s8 ic[NPAUSE] = { IC_PLAY, IC_ARROW, IC_HAMMER, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_BOOK, IC_SPROUT, IC_DOOR };
+    static const s8 ic[NPAUSE] = { IC_PLAY, IC_ARROW, IC_HAMMER, IC_SPROUT, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_BOOK, IC_SPROUT, IC_DOOR };
     life_draw();
     ui_dim();
     int top = ui_window(70, 4, 180, 228, "PAUSED", IC_PAUSE);
-    for (int i = 0; i < NPAUSE; i++) ui_button(78, top + i * 18, 164, 16, pauseNm[i], ic[i], i == menu_sel);
-    ui_hints(160, top + NPAUSE * 18 + 3, "SEL PHONE|O BACK", 1);
+    for (int i = 0; i < NPAUSE; i++) ui_button(78, top + i * 17, 164, 15, pauseNm[i], ic[i], i == menu_sel);
+    ui_hints(160, top + NPAUSE * 17 + 3, "SEL PHONE|O BACK", 1);
 }
 
 // ---- THE PHONE (SELECT): The Sims' cell phone. Twelve apps on a grid; the family's list for playing as someone else ----
@@ -3706,6 +3708,7 @@ int main(void) {
             case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
             case ST_SPICK: spick_update(); if (state == ST_SPICK) { if (sp_join) life_draw(); else title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t, sp_join); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
             case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
+            case ST_REALM: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (realm_update(hd_, pr_, steps)) realm_draw(); else { state = ST_LIFE; life_draw(); } break; }
             case ST_ARCADE: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (arcade_update(hd_, pr_, steps)) arcade_draw(); else { state = ST_LIFE; life_draw(); } break; }
             case ST_WMAKE: wm_update(); if (state == ST_WMAKE) wm_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_NAME) name_draw(); else life_draw(); break;
         }
