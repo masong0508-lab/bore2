@@ -44,7 +44,8 @@ void ui_slider(int x, int y, int w, int v, int n, int sel);    // step v of n
 void ui_bar(int x, int y, int w, int h, int pct, u32 c);       // a pill-shaped bar, filled to pct
 void ui_badge(int x, int y, const char *s, u32 bg, u32 ink);   // a little pill of text
 int  ui_wrap(int x, int y, int w, int lines, const char *s, u32 c);   // words broken onto lines that fit
-int  ui_wrap_n(int w, const char *s);                          // how many lines that would take
+int  ui_wrap_n(int w, const char *s);
+int  ui_wrapc(int x, int y, int w, int lines, const char *s, u32 c);   // ... each line centred in w                          // how many lines that would take
 void ui_dim(void);                                             // darken the scene behind a menu
 void ui_backdrop(void);                                        // the soft blue behind a full-screen window
 void ui_icon_s(int x, int y, int icon, int size, u32 c);       // an icon drawn size x size (24, 36: big and chunky)

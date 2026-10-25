@@ -64,3 +64,4 @@ typedef int8_t s8; typedef int16_t s16; typedef int32_t s32;
 #define MAX(a,b) ((a)>(b)?(a):(b))
 
 static inline int fx_mul(int a, int b) { return (int)(((long long)a * b) >> 12); }   // 20.12 x 20.12
+#define COLD __attribute__((optimize("Os")))   // (code that runs now and then, not every frame: built small)

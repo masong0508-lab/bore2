@@ -1082,7 +1082,7 @@ static void edit_init(void) {
     nedit = 0; edit_next = 0;
 }
 static EditBlk *edit_find(int bx, int by) { for (int i = 0; i < nedit; i++) if (edits[i].bx == bx && edits[i].by == by) return &edits[i]; return 0; }
-static void edit_save(int wx, int wy) {
+COLD static void edit_save(int wx, int wy) {
     int bx = world_wbx + wx, by = world_wby + wy, ox = wx * BM_BLK, oy = wy * BM_BLK;
     EditBlk *e = edit_find(bx, by);
     if (!e) { if (nedit < nedit_max) e = &edits[nedit++]; else { e = &edits[edit_next]; edit_next = (edit_next + 1) % nedit_max; } }
@@ -1133,8 +1133,8 @@ static void homes_drop(int bx, int by) {   // a block made again: its homes are 
     nhomes[z] = n;
 }
 static void gen_block(int wx, int wy);
-static void block_again(int wx, int wy) { homes_drop(world_wbx + wx, world_wby + wy); gen_block(wx, wy); ao_dirty = 1; roof_dirty = 1; world_stamp++; }
-void world_own_set(int bx, int by, const u8 *occ) {   // the family's new lot (occ: adults, kids, teens, elders, a couple, babies)
+COLD static void block_again(int wx, int wy) { homes_drop(world_wbx + wx, world_wby + wy); gen_block(wx, wy); ao_dirty = 1; roof_dirty = 1; world_stamp++; }
+COLD void world_own_set(int bx, int by, const u8 *occ) {   // the family's new lot (occ: adults, kids, teens, elders, a couple, babies)
     own.used = 1; own.fresh = 1; own.bx = (u16)bx; own.by = (u16)by; own.lv = 0; own.home = 0;
     memset(&own_occ, 0, sizeof own_occ);
     own_occ.adults = occ[0]; own_occ.kids = occ[1]; own_occ.teens = occ[2]; own_occ.elders = occ[3]; own_occ.couple = occ[4]; own_occ.babies = occ[5];
@@ -1172,7 +1172,7 @@ static void wild(int ox, int oy, const BInfo *b, int bx, int by) {   // the open
         if (c) lifeMap[oy + y][ox + x] = c;
     }
 }
-static void gen_block(int wx, int wy) {
+COLD static void gen_block(int wx, int wy) {
     int bx = world_wbx + wx, by = world_wby + wy, ox = wx * BM_BLK, oy = wy * BM_BLK;
     BInfo b; bm_block(bx, by, &b);
     static const u8 tfl[6] = { FL_WATER, FL_SAND, FL_GRASS, FL_GRASS, FL_SAND, FL_ROCK };
@@ -1263,7 +1263,7 @@ static void row_from(u8 *a, int stride, int w, int h, int y, int ys, int dx, u8 
     if (dx >= 0) { wmove(d, s + dx, w - dx); memset(d + w - dx, fill, dx); }
     else { wmove(d - dx, s, w + dx); memset(d, fill, -dx); }
 }
-static void shift2d(u8 *a, int stride, int w, int h, int dx, int dy, u8 fill) {   // a[y][x] = a[y + dy][x + dx]
+COLD static void shift2d(u8 *a, int stride, int w, int h, int dx, int dy, u8 fill) {   // a[y][x] = a[y + dy][x + dx]
     if (dy >= 0) for (int y = 0; y < h; y++) row_from(a, stride, w, h, y, y + dy, dx, fill);
     else for (int y = h - 1; y >= 0; y--) row_from(a, stride, w, h, y, y + dy, dx, fill);
 }
@@ -1317,7 +1317,7 @@ static void window_keep(void) {                  // what was built in the window
     if (world_zone != ZONE_CITY || world_wbx < 0) return;
     for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) { if (own_at(wx, wy)) own_save(wx, wy); else if (wdirty[wy][wx]) edit_save(wx, wy); }
 }
-void world_open_at(int cbx, int cby) {          // the window round block (cbx, cby): a new arrival, a taxi ride
+COLD void world_open_at(int cbx, int cby) {          // the window round block (cbx, cby): a new arrival, a taxi ride
     window_keep();
     world_stamp++;
     world_wbx = CLAMP(cbx - WB / 2, 0, BM_N - WB); world_wby = CLAMP(cby - WB / 2, 0, BM_N - WB);
@@ -1349,7 +1349,7 @@ int world_block_info(int wx, int wy, BInfo *b) { if (world_wbx < 0) return 0; bm
 void world_new_seed(u32 seed) { wsalt = seed; world_wbx = world_wby = -1; edit_init(); own.used = 0; }
 void world_gen_city(void) { nhomes[ZONE_CITY] = 0; world_wbx = world_wby = -1; }   // (the window is built where you arrive: world_arrival, world_open_at)
 
-void world_switch(int z) {
+COLD void world_switch(int z) {
     ao_dirty = 1;
     if (z == world_zone) return;
     if (world_zone == ZONE_CITY) {                    // leaving SAN BOREAS: what you built is kept aside; the window (and its storeys) is let go
@@ -2601,7 +2601,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
 // ---- the memory card (save.c): the home lot's tiles, the family's own lot, the blocks built on, and where the window is ----
 static void sv_level(const char (*map)[MW + 1], const u8 (*fl)[MW], const u8 (*wp)[MW]) { sv_rle(map, MH * (MW + 1)); sv_rle(fl, MH * MW); sv_rle(wp, MH * MW); }
 static void ld_level(char (*map)[MW + 1], u8 (*fl)[MW], u8 (*wp)[MW]) { ld_rle(map, MH * (MW + 1)); ld_rle(fl, MH * MW); ld_rle(wp, MH * MW); }
-static void sv_zone(int z) {   // a zone's tiles and storeys, live or kept aside
+COLD static void sv_zone(int z) {   // a zone's tiles and storeys, live or kept aside
     if (world_zone == z) sv_level(lifeMap, floorMap, wallMap); else sv_level(zones[z].map, zones[z].fl, zones[z].wp);
     int mask = 0; for (int k = 0; k < NUP; k++) if (lvown[z][k]) mask |= 1 << k;
     sv_u8(mask);

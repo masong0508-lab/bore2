@@ -3228,7 +3228,7 @@ static const char *const wmCapNm[6] = { "TINY", "SMALL", "NORMAL", "BIG", "HUGE"
 static const char *const wmPeopleNm[6] = { "FEW", "SOME", "MANY", "NORMAL", "CROWDED", "PACKED" };
 static const char *const wmFamNm[4] = { "SMALL", "MIXED", "BIG", "HUGE" };
 static const char *const wmI3[3][3] = { { "SMALL", "MEDIUM", "BIG" }, { "SMOOTH", "WAVY", "WILD" }, { "LESS", "SOME", "MORE" } };
-static const char *const wmBlurb[WM_N] = { "HOW THE LIFE BEGINS: A HOME, STRANDED, OR BROKE", "THE SHAPE OF SAN BOREAS", "HOW MUCH OF IT THE SEA COVERS",
+static const char *const wmBlurb[WM_N] = { "A HOME, STRANDED, OR BROKE", "THE SHAPE OF SAN BOREAS", "HOW MUCH OF IT THE SEA COVERS",
     "SAND AND SCRUB TO THICK FOREST", "HOW MUCH ROCKY HIGH GROUND", "HOW BIG BORE CITY IS", "BIG CITIES BESIDES THE CAPITAL", "MIDDLE-SIZED TOWNS", "LITTLE VILLAGES AND HAMLETS",
     "HOW MANY HOMES HAVE PEOPLE IN THEM", "SMALL: SINGLES, COUPLES. BIG: FAMILIES", "ROOMY: GREEN GAPS. PACKED: BUILT UP",
     "THE CASTAWAY'S ISLAND", "A ROUND SHORE, OR BAYS AND HEADLANDS", "HOW THICK THE TREES GROW", "ROCKY GROUND ON THE ISLAND",
@@ -3432,11 +3432,11 @@ static void menu_update(void) {
 static void menu_draw(void) {
     title_draw();
     static const s8 ic[NMENU] = { IC_PLAY, IC_BOOK, IC_STAR, IC_NOTE, IC_GEAR, IC_HELP };
-    ui_card(92, 56, 136, 146);
+    ui_card(92, 56, 136, 154);
     for (int i = 0; i < NMENU; i++) ui_button(98, 62 + i * 20, 124, 17, menuNm[i], ic[i], i == menu_sel);
     const char *t = menuBlurb[menu_sel];
     if (menu_sel == 1) t = "A LIFE SAVED ON THE MEMORY CARD";
-    ui_textc(160, 186, 1, t, UI_SOFT);
+    ui_wrapc(96, 184, 128, 2, t, UI_SOFT);   // (on the card, two lines at most)
 }
 
 // ---- the loading screen: a bar and what is being made, shown before any long job (start-up, a new life, travel) ----

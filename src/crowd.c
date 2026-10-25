@@ -59,7 +59,7 @@ static Spr spr[SPR_MAX];
 
 static void cell_free(int id) { spr[id].shelf = -1; spr[id].ok = 0; }
 static int shelf_n(int k) { int n = 0; for (int i = 0; i < SPR_MAX; i++) n += spr[i].shelf == k; return n; }
-static int shelf_gap(int k, int w) {            // the x of the first gap w wide on shelf k (-1: none)
+COLD static int shelf_gap(int k, int w) {            // the x of the first gap w wide on shelf k (-1: none)
     s16 xs[64], ws[64]; int n = 0;
     for (int i = 0; i < CROWD_MAX && n < 64; i++) if (spr[i].shelf == k) {
         int j = n++; while (j > 0 && xs[j - 1] > spr[i].cx) { xs[j] = xs[j - 1]; ws[j] = ws[j - 1]; j--; }
@@ -102,7 +102,7 @@ static int place(int id, int w, int h, int k) {
     Spr *s = &spr[id]; s->shelf = (s8)k; s->cx = (s16)x; s->cy = sh[k].y; s->cw = (u8)w; s->ch = (u8)sh[k].h;
     return 1;
 }
-static int try_alloc(int id, int w, int h) {    // a cell for w x h (the old one, if any, stays until the new one is found)
+COLD static int try_alloc(int id, int w, int h) {    // a cell for w x h (the old one, if any, stays until the new one is found)
     int k, best = -1;
     // a shelf just about this tall with room
     for (k = 0; k < nsh; k++) if (sh[k].h >= h && sh[k].h <= h + MAX(8, h >> 2) && shelf_n(k) && (best < 0 || sh[k].h < sh[best].h) && shelf_gap(k, w) >= 0) best = k;
@@ -190,7 +190,7 @@ static s32 alloc(u32 n, int keep) {
     return -1;
 }
 
-void crowd_faces(int id, Bore *b) {
+COLD void crowd_faces(int id, Bore *b) {
     if (id < 0 || id >= CROWD_MAX) return;
     int k = face_of[id];
     if (k == 255) {
@@ -207,7 +207,7 @@ void crowd_faces(int id, Bore *b) {
     b->tex_eye = fe[k]; b->tex_mouth = fm[k];
 }
 
-int crowd_store(int id, const Bore *b) {
+COLD int crowd_store(int id, const Bore *b) {
     if (id < 0 || id >= CROWD_MAX || face_of[id] == 255) return 0;
     u32 n = (sizeof(CHead) + b->ncell * sizeof(CCell) + 3) & ~3u;
     if (m_off[id] >= 0 && ((CHead *)(ar + m_off[id]))->bytes != n) { s32 keepface = face_of[id]; m_off[id] = -1; face_of[id] = (u8)keepface; }
@@ -242,7 +242,7 @@ int crowd_store(int id, const Bore *b) {
 
 static Bore ub;                                  // the unpacked person (one at a time)
 Bore *crowd_temp_bore(void) { return &ub; }      // (lent out: a wedding builds the newly-wed in it)
-const Bore *crowd_unpack(int id) {
+COLD const Bore *crowd_unpack(int id) {
     if (!crowd_has(id)) return 0;
     const CHead *h = (const CHead *)(ar + m_off[id]);
     ub.ncell = h->ncell; ub.ndec = h->ndec;
@@ -383,7 +383,7 @@ int crowd_sprite_of(int id, const Bore *b, const VECTOR *pos, int yaw, const Gai
     if (id < CROWD_MAX || id >= SPR_MAX) return 0;
     r_bore = b; int r = sprite_any(id, pos, yaw, g, want_render); r_bore = 0; return r;
 }
-static int sprite_any(int id, const VECTOR *pos, int yaw, const Gait *g, int want_render) {
+COLD static int sprite_any(int id, const VECTOR *pos, int yaw, const Gait *g, int want_render) {
     if (want_render) render(id, pos, yaw, g);
     Spr *s = &spr[id];
     if (!s->ok || s->shelf < 0) return 0;

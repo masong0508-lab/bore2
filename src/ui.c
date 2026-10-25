@@ -88,12 +88,47 @@ static u32 mix(u32 a, u32 b, int t, int n) {   // a .. b at t of n
 // size 1 is the interface's own smooth type (font size 3: the medium font shrunk, not the old 5-pixel one); 2 the medium
 static inline int fsz(int size) { return size; }   // (gfx maps 1 to the smooth type itself)
 int  ui_tw(int size, const char *s) { return gfx_text_w(fsz(size), s); }
-void ui_text(int x, int y, int size, const char *s, u32 c) { gfx_text_raw(x, y, fsz(size), s, cr(c), cg(c), cb(c)); }
-void ui_textc(int cx, int y, int size, const char *s, u32 c) { gfx_text_raw(cx - ui_tw(size, s) / 2, y, fsz(size), s, cr(c), cg(c), cb(c)); }
+// ---- where text may go: the light panels drawn this frame (cards, windows, pale boxes). Dark ink only reads on one of them, so
+// dark text that lands on the bare scene gets a pale pill of its own behind it, and text that runs out of its panel is noted
+// (test builds: UI_LINT keeps a list, so the layouts can be fixed) ----
+extern int gfx_frame_no;
+static struct { s16 x, y, w, h; } pan[64]; static int npan, pan_frame = -1;
+static void pan_add(int x, int y, int w, int h) {
+    if (pan_frame != gfx_frame_no) { npan = 0; pan_frame = gfx_frame_no; }
+    if (npan < 64) { pan[npan].x = (s16)x; pan[npan].y = (s16)y; pan[npan].w = (s16)w; pan[npan].h = (s16)h; npan++; }
+}
+static int lum(u32 c) { return (cr(c) * 3 + cg(c) * 6 + cb(c)) / 10; }
+#ifdef UI_LINT
+char ui_lint[24][28]; int ui_lint_kind[24], ui_lint_n;   // (test builds) text that left its panel: 1 on the bare scene, 2 past a panel's edge, 3 cut short by a wrap
+void ui_lint_note(int kind, const char *s) {
+    for (int i = 0; i < ui_lint_n; i++) if (!strncmp(ui_lint[i], s, 27)) return;
+    if (ui_lint_n < 24) { strncpy(ui_lint[ui_lint_n], s, 27); ui_lint[ui_lint_n][27] = 0; ui_lint_kind[ui_lint_n++] = kind; }
+}
+#else
+#define ui_lint_note(k, s) ((void)0)
+#endif
+static void text_place(int x, int y, int size, const char *s, u32 c) {
+    if (lum(c) < 120 && size <= 1) {   // dark ink: on a panel, or given one
+        int w = ui_tw(size, s), h = 8, in = 0, start = 0;
+        if (pan_frame == gfx_frame_no) for (int i = 0; i < npan; i++) {
+            int px = pan[i].x, py = pan[i].y;
+            if (x >= px - 1 && y >= py - 1 && x < px + pan[i].w && y < py + pan[i].h) { start = 1;
+                if (x + w <= px + pan[i].w + 1 && y + h <= py + pan[i].h + 2) { in = 1; break; } }
+        }
+        if (!in) {
+            ui_lint_note(start ? 2 : 1, s);
+            if (!start) { ui_round(x - 4, y - 2, w + 8, 12, 4, UI_CARD, UI_CARD2, 0); }   // (the bare scene: a pill to read it on)
+        }
+    }
+    gfx_text_raw(x, y, fsz(size), s, cr(c), cg(c), cb(c));
+}
+void ui_text(int x, int y, int size, const char *s, u32 c) { text_place(x, y, size, s, c); }
+void ui_textc(int cx, int y, int size, const char *s, u32 c) { text_place(cx - ui_tw(size, s) / 2, y, size, s, c); }
 
 static const u8 rin4[4] = { 2, 1, 0, 0 }, rin6[6] = { 4, 2, 1, 1, 0, 0 };
 void ui_round(int x, int y, int w, int h, int r, u32 top, u32 bot, int semi) {
     const u8 *in = r >= 6 ? rin6 : rin4; int rr = r >= 6 ? 6 : r >= 4 ? 4 : 0;
+    if (!semi && w >= 12 && h >= 10 && lum(top) >= 170 && lum(bot) >= 150) pan_add(x, y, w, h);   // (a pale box: dark text may sit on it)
     if (!rr || h < 2 * rr + 1 || w < 2 * rr + 1) { gfx_grad(x, y, w, h, top, top, bot, bot, semi); return; }
     for (int i = 0; i < rr; i++) {
         if (!in[i] && i + 1 < rr && !in[i + 1]) {   // the rest of the corner rows are full width: one box down to the gradient
@@ -189,7 +224,7 @@ void ui_badge(int x, int y, const char *s, u32 bg, u32 ink) {
     ui_round(x, y, w, 12, 4, mix(bg, UI_WHITE, 1, 4), bg, 0);
     ui_text(x + 5, y + 2, 1, s, ink);
 }
-static int wrap_do(int x, int y, int w, int lines, const char *s, u32 c, int draw) {   // the words, broken onto lines that fit w; the lines used
+static int wrap_do(int x, int y, int w, int lines, const char *s, u32 c, int draw) {   // (draw 2: each line centred on x + w / 2)   // the words, broken onto lines that fit w; the lines used
     char line[96]; int n = 0;
     while (*s && n < lines) {
         int len = 0, fit = 0;
@@ -200,7 +235,12 @@ static int wrap_do(int x, int y, int w, int lines, const char *s, u32 c, int dra
             fit = e; len = e; if (s[len] == ' ') len++; else break;
         }
         if (!fit) fit = len;
-        if (draw) { memcpy(line, s, fit); line[fit] = 0; ui_text(x, y + n * 10, 1, line, c); }
+        if (draw) { memcpy(line, s, fit); line[fit] = 0;
+            const char *rest = s + fit; while (*rest == ' ') rest++;
+            if (n == lines - 1 && *rest) {   // the last line, and words left over: end it with ... (never cut off silently)
+                ui_lint_note(3, s);
+                int L = fit; strcpy(line + L, "..."); while (L > 0 && ui_tw(1, line) > w) { L--; while (L > 0 && line[L - 1] == ' ') L--; strcpy(line + L, "..."); } }
+            if (draw == 2) ui_textc(x + w / 2, y + n * 10, 1, line, c); else ui_text(x, y + n * 10, 1, line, c); }
         s += fit; while (*s == ' ') s++;
         n++;
     }
@@ -208,6 +248,7 @@ static int wrap_do(int x, int y, int w, int lines, const char *s, u32 c, int dra
 }
 int ui_wrap(int x, int y, int w, int lines, const char *s, u32 c) { return wrap_do(x, y, w, lines, s, c, 1); }
 int ui_wrap_n(int w, const char *s) { return wrap_do(0, 0, w, 9, s, 0, 0); }
+int ui_wrapc(int x, int y, int w, int lines, const char *s, u32 c) { return wrap_do(x, y, w, lines, s, c, 2); }
 void ui_dim(void) {
     gfx_ui_blend(2);
     gfx_rect(0, 0, SCREEN_W, SCREEN_H, 70, 70, 76, 1);             // the scene, a good deal darker
@@ -215,6 +256,7 @@ void ui_dim(void) {
 }
 
 void ui_backdrop(void) {
+    pan_add(0, 0, SCREEN_W, SCREEN_H);
     gfx_grad(0, 0, SCREEN_W, SCREEN_H, UI_RGB(210, 224, 240), UI_RGB(210, 224, 240), UI_RGB(170, 190, 214), UI_RGB(170, 190, 214), 0);
 }
 int ui_badge_i(int x, int y, int icon, const char *s, u32 bg, u32 ink) {

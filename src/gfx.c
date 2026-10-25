@@ -113,7 +113,9 @@ void gfx_init(void) {
     light_to_object();
 }
 
+int gfx_frame_no;   // (frames flipped: the interface's panels are counted afresh each frame)
 void gfx_flip(void) {
+    gfx_frame_no++;
     // hook the 2D chain into OT index 0 (drawn last)
     if (ui_head) {
         u32 nxt = db[db_active].ot[0] & 0xffffff;

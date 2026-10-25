@@ -400,7 +400,7 @@ static void life_size(void) {
             }
         }
 }
-void items_init(void) {
+COLD void items_init(void) {
     nmat = 0; nbox = 0;
     if (!nlifeBox) life_size();
     for (int i = 0; i < NDEFS; i++) {

@@ -120,7 +120,7 @@ static const char *const L_KID[]     = { "I LIKE FROGS", "TAG! YOU'RE IT", "ARE 
 static const char *const L_ELD[]     = { "BACK IN MY DAY", "THESE KNEES...", "KIDS TODAY, HONESTLY", "SPEAK UP, DEAR", "I REMEMBER THE SEA", "HAVE A BISCUIT" };
 static const char *const L_HOME[]    = { "MAKE YOURSELF AT HOME", "MIND THE RUG", "WE LIVE HERE, YOU KNOW", "THE KETTLE'S ON", "NICE OF YOU TO DROP BY" };
 #define NL(a) ((int)(sizeof(a) / sizeof((a)[0])))
-static const char *chat_line(const Cit *c) {
+COLD static const char *chat_line(const Cit *c) {
     if (indoors_at(c->x, c->z) && !(crnd() & 1) && c->pers != PE_GRUFF) return L_HOME[rn(NL(L_HOME))];   // in their own house
     if (c->stage <= AG_TEEN) return L_KID[rn(NL(L_KID))];
     if (c->pers == PE_GRUFF) return L_GRUFF[rn(NL(L_GRUFF))];
@@ -129,7 +129,7 @@ static const char *chat_line(const Cit *c) {
 }
 
 // ---- bodies ----------------------------------------------------------------------------------------
-static void cit_bore(Bore *b, const Cit *c) {   // the same person, every time, from the seed (b may already own its face textures)
+COLD static void cit_bore(Bore *b, const Cit *c) {   // the same person, every time, from the seed (b may already own its face textures)
     memset(b->look, 0, sizeof b->look);
     b->stage = c->stage;
     u32 old = look_seed(c->seed * 2654435761u + 12345u);
@@ -159,7 +159,7 @@ static void door_geo(const Home *hm, int *x, int *zf, int *zd, int *zi) {   // t
     *x = hm->dx * TILE + TILE / 2;
     *zf = -((hm->dy + 1) * TILE + TILE / 2); *zd = -(hm->dy * TILE + TILE / 2); *zi = -((hm->dy - 1) * TILE + TILE / 2);
 }
-static void inside_spot(const Home *hm, int *x, int *z) {   // somewhere free on the floor
+COLD static void inside_spot(const Home *hm, int *x, int *z) {   // somewhere free on the floor
     for (int t = 0; t < 40; t++) {
         int tx = hm->x0 + rn(hm->x1 - hm->x0 + 1), ty = hm->y0 + rn(hm->y1 - hm->y0 + 1);
         if (ty >= hm->dy - 1 && tx == hm->dx) continue;       // keep the lane inside the door open
@@ -167,7 +167,7 @@ static void inside_spot(const Home *hm, int *x, int *z) {   // somewhere free on
     }
     int a, b, c2; door_geo(hm, x, &a, &b, &c2); *z = c2;
 }
-static void sleep_spot(const Cit *c, const Home *hm, int *x, int *z) {   // a bed each (a double bed for a couple, two to a bunk bed); anyone left lies down on the floor
+COLD static void sleep_spot(const Cit *c, const Home *hm, int *x, int *z) {   // a bed each (a double bed for a couple, two to a bunk bed); anyone left lies down on the floor
     int k = 0, want_ = c->mem, couple = 0;
     if (c->pid != NOPID) { u8 a, kd, t, e; pop_family_kinds(pop_fam_of(c->pid), &a, &kd, &t, &e, (u8 *)&couple); couple &= 1; if (couple && want_ > 0) want_--; }
     for (int y = hm->y0; y <= hm->y1; y++) for (int xx = hm->x0; xx <= hm->x1; xx++) {
@@ -196,7 +196,7 @@ static void roles(int size, u8 *st) {   // who lives together
     while (k < size) st[k++] = rn(3) ? (rn(2) ? AG_CHILD : AG_TEEN) : AG_ADULT;   // the kids (and a lodger now and then)
     if (size == 3 && r < 3) st[2] = AG_ADULT;                                     // three flatmates
 }
-static void form_households(int zone) {   // the first time a zone is seen: its people sort themselves into the homes the generator built
+COLD static void form_households(int zone) {   // the first time a zone is seen: its people sort themselves into the homes the generator built
     if (zone == ZONE_CITY || formed[zone]) return;   // (SAN BOREAS's households come from pop.c)
     formed[zone] = 1;
     int nh = world_home_count(zone), idx[NCIT], n = 0;
@@ -238,7 +238,7 @@ static int want(const Cit *c) {   // 0 out and about, 1 at home awake, 2 asleep 
 }
 
 // ---- the hundred ------------------------------------------------------------------------------------
-void citizens_init(void) {
+COLD void citizens_init(void) {
     crng ^= (u32)look_rand() * 2246822519u;
     if (!crng) crng = 0x9E3779B9u;
     memset(cits, 0, sizeof cits);
@@ -261,7 +261,7 @@ void citizens_init(void) {
     pl_hp = 100; pl_cd = 0; cur = -1; fight_on = 0; pie_c = -1;
 }
 
-static void place_street(Cit *c, int px, int pz, int cx, int cz, int radius) {   // somewhere out on the streets near (cx,cz) tiles
+COLD static void place_street(Cit *c, int px, int pz, int cx, int cz, int radius) {   // somewhere out on the streets near (cx,cz) tiles
     for (int tries = 0; tries < 300; tries++) {
         int mx = cx + rn(2 * radius + 1) - radius, my = cz + rn(2 * radius + 1) - radius;
         if (mx < 2 || my < 2 || mx >= MW - 2 || my >= MH - 2) continue;
@@ -271,7 +271,7 @@ static void place_street(Cit *c, int px, int pz, int cx, int cz, int radius) {  
         c->x = (s16)x; c->z = (s16)z; return;
     }
 }
-static void place_initial(Cit *c, int px, int pz) {   // where they are right now, by the clock
+COLD static void place_initial(Cit *c, int px, int pz) {   // where they are right now, by the clock
     const Home *hm = home_of(c);
     c->yaw = (u16)rn(4096); c->mode = CM_IDLE; c->t = (u16)(10 + rn(200)); c->say_t = 0; c->sub = 0; c->st = 0; c->gait.sleep = 0;
     if (!hm) { place_street(c, px, pz, MW / 2, MH / 2, MW / 2 - 3); return; }
@@ -324,7 +324,7 @@ static int place_tile(const Place *pl, int worker, int *tx, int *ty, int *indoor
     return 0;
 }
 int dbg_tf[6];
-int citizens_take(int pid, int at, int place) {
+COLD int citizens_take(int pid, int at, int place) {
     int slot = -1;
     for (int i = MAIN0; i < NCIT; i++) if (cits[i].zone == 255 && cits[i].pid == NOPID) { slot = i; break; }
     if (slot < 0) { dbg_tf[0]++; return -1; }
@@ -356,7 +356,7 @@ int citizens_take(int pid, int at, int place) {
 }
 void citizens_release(int slot) { if (slot >= MAIN0 && slot < NCIT && cits[slot].pid != NOPID) cits[slot].vanish = 1; }
 int citizens_place_of(int slot) { return (slot >= MAIN0 && slot < NCIT && cits[slot].mplace != NOPID) ? cits[slot].mplace : -1; }
-void citizens_shift(int dtx, int dty) {
+COLD void citizens_shift(int dtx, int dty) {
     for (int i = 0; i < NCIT; i++) {
         Cit *c = &cits[i];
         if (c->zone != ZONE_CITY || c->mode == CM_GONE) continue;
@@ -390,7 +390,7 @@ static void vanish_tick(void) {                    // the ones wanted elsewhere 
     }
 }
 
-void citizens_enter(int zone) {
+COLD void citizens_enter(int zone) {
     int px = sims[player].x, pz = sims[player].z;
     if (party_on || home_guests) {   // travelling ends a party: the guests go back where they came from
         party_on = 0;
@@ -444,7 +444,7 @@ const char *citizens_hint(void) {
 
 // ---- the pie menu -------------------------------------------------------------------------------------
 const char *citizens_pie_title(void) { return pie_title; }
-int citizens_pie_open(char opt[8][16]) {
+COLD int citizens_pie_open(char opt[8][16]) {
     int i = find_target(); if (i < 0) return 0;
     Cit *c = &cits[i]; pie_c = i;
     strcpy(pie_title, c->first);
@@ -495,7 +495,7 @@ static void marry(Cit *c) {   // they move in: the civilian becomes a housemate 
     #undef wed
 }
 
-void citizens_pie_do(int i) {
+COLD void citizens_pie_do(int i) {
     if (pie_c < 0 || i < 0) return;
     Cit *c = &cits[pie_c];
     if (c->mode == CM_GONE || c->mode == CM_KO) return;
@@ -558,7 +558,7 @@ void citizens_pie_do(int i) {
     }
 }
 
-int citizens_friends(void) {   // (stories) the people out there who are your friends (50 and up): the ones about now, and the rest of SAN BOREAS
+COLD int citizens_friends(void) {   // (stories) the people out there who are your friends (50 and up): the ones about now, and the rest of SAN BOREAS
     int n = 0;
     for (int i = 0; i < NCIT; i++) { const Cit *c = &cits[i]; if (c->rel < 50) continue;
         if (c->pid != NOPID ? pop_per[c->pid].slot == i : (i < MAIN0 && c->mode != CM_GONE)) n++; }   // (a city one alive now: its live feelings, not the saved ones)
@@ -566,7 +566,7 @@ int citizens_friends(void) {   // (stories) the people out there who are your fr
     return n;
 }
 // ---- fighting ---------------------------------------------------------------------------------------------
-int citizens_punch(void) {
+COLD int citizens_punch(void) {
     int i = hostile_in_reach(); if (i < 0) return 0;
     Cit *c = &cits[i]; Sim *p = &sims[player];
     if (pl_cd > 0) return 1;
@@ -708,7 +708,7 @@ static int find_item(const Home *hm, const char *letters, int *ix, int *iy, int 
     }
     return 0;
 }
-static int start_chore(Cit *c, const Home *hm, const char *letters, char chain) {
+COLD static int start_chore(Cit *c, const Home *hm, const char *letters, char chain) {
     int ix, iy, sx, sy;
     if (!find_item(hm, letters, &ix, &iy, &sx, &sy)) return 0;
     c->chore = (u8)world_at(ix, iy); c->chain = (u8)chain; c->ix = (u8)ix; c->iy = (u8)iy; c->chx = (u8)sx; c->chy = (u8)sy;
@@ -827,7 +827,7 @@ static void party_entry(void) {            // where guests come in: inside the n
         }
     }
 }
-int citizens_party(void) {
+COLD int citizens_party(void) {
     if (party_on) return -1;
     const Sim *p = &sims[player];
     party_cx = p->x / TILE; party_cy = (-p->z) / TILE; party_in = indoors_at(p->x, p->z);
@@ -1180,7 +1180,7 @@ static void bar(int x, int y, int w, int v, int r, int g, int b) {
     gfx_rect(x + 1, y + 1, (w - 2) * CLAMP(v, 0, 100) / 100, 2, r, g, b, 0);
 }
 int citizens_card_on(void) { return !(world_zone == ZONE_HOME && !home_guests) && cur >= 0; }   // (main: the notes go under it)
-void citizens_hud(void) {
+COLD void citizens_hud(void) {
     if (world_zone == ZONE_HOME && !home_guests) return;
     const int X = 4, Y = 37;                                       // (on the left, under the household: the notes go under it)
     if (cur >= 0) {
