@@ -584,7 +584,7 @@ COLD int citizens_punch(void) {
     p->gait.wave = 14;
     int dx = c->x - p->x, dz = c->z - p->z;
     p->yaw = yaw_to(dx, dz);
-    int dmg = 9 + rn(8);
+    int dmg = 9 + rn(8) + dojo_belt(p) * 2;   // (the dojo belt: a black belt hits a good deal harder)
     c->hp = (u8)MAX((int)c->hp - dmg, 0);
     c->gait.squash = -12;
     { int d = MAX(ABS(dx) + ABS(dz), 1), kx = dx * 40 / d, kz = dz * 40 / d, in = indoors_at(c->x, c->z);   // a shove back

@@ -66,6 +66,8 @@ extern long cash;
 extern int  job_level, job_worked, job_days_good, job_strikes;
 extern int  phone_tier, handheld;
 extern int  sim_want_jobs, job_none;
+int  dojo_session(void);                      // the dojo class on now (0..2), -1 none
+int  dojo_belt(const Sim *s);                // WHITE 0 .. BLACK 5 (the body skill)
 int  sim_grave_count(void);
 int  sim_grave_spot(int i, int *mx, int *my);   // a departed Bore's gravestone, where it is in the map now (0: not in this place)
 void sim_grave_named(int i, char *out);

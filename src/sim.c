@@ -1398,7 +1398,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET };
+       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT };
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1513,7 +1513,11 @@ static int sim_pie_open_(char opt[8][16]) {
                              if (!(handheld & 2) && pie_n < 7) OPT("BOREBOY ADVANCE $220", PC_HAND2) }
                          if (k == 1 && !has_board && pie_n < 7) OPT("SKATEBOARD $120", PC_BOARD)
                          if (pie_n < 8) OPT("BROWSE", PC_BROWSE) } break;
-        case LOT_GYM: if ((c == ']' || c == 'm' || c == '_') && pie_n < 8) OPT("A TRAINER $20", PC_TRAINER) break;
+        case LOT_GYM: if ((c == ']' || c == 'm' || c == '_') && pie_n < 8) OPT("A TRAINER $20", PC_TRAINER)
+                      if ((c == ']' || c == 'm' || c == '_') && s->bore.stage >= AG_CHILD) {   // THE DOJO CLASS (borrowed from BORE on the GBA)
+                          if (dojo_session() >= 0 && pie_n < 8) OPT("ATTEND CLASS $10", PC_CLASS)
+                          if (pie_n < 8) OPT("DRILL THE BAG", PC_BAG)
+                          if (pie_n < 8) OPT("MY BELT", PC_BELT) } break;
         case LOT_POOL: if ((c == '~' || c == '>') && pie_n < 8) OPT("SWIM", PC_SWIM) break;
         case LOT_INN: case LOT_HOTEL: if (c == 'y' || c == 'I') OPT(room_here() ? "MY ROOM: PAID" : "A ROOM $60", PC_ROOM) break;
         case LOT_CAFE: if (c == 'y' || c == 'c') { OPT("A LATTE $5", PC_LATTE) if (c == 'y') OPT("A CAKE $6", PC_CAKE) } break;
@@ -1589,6 +1593,15 @@ static void swim(Sim *s) {   // into the nearest water
     s->x = bx * TILE + TILE / 2; s->z = -(by * TILE + TILE / 2); s->gait.sleep = 1;
     sim_say(s, "CANNONBALL!"); audio_voice(VOICE_YAHOO);
 }
+// ---- THE DOJO CLASS (borrowed from BORE on the GBA, dojo.h): at the gym, classes at 9 AM, 1 PM and 6 PM (two hours each), each
+// weekday its own lesson; a class trains the body, more for a regular (days in a row). The belt is the body skill: WHITE .. BLACK,
+// and a higher belt hits harder in a fight (citizens.c) ----
+static const u8 dj_start[3] = { 9, 13, 18 };
+int dojo_session(void) { for (int i = 0; i < 3; i++) if (clock_min >= dj_start[i] * 60 && clock_min < (dj_start[i] + 2) * 60) return i; return -1; }
+int dojo_belt(const Sim *s) { int l = wants_skill_level(s->skill_body) / 2; return l > 5 ? 5 : l; }
+static const char *const dj_belt[6] = { "WHITE", "YELLOW", "GREEN", "BLUE", "BROWN", "BLACK" };
+static const char *const dj_day[7] = { "STANCE AND GUARD", "THE COMBO", "KICKS", "THE FIREBALL", "THE UPPERCUT", "THE SPIN KICK", "MEDITATION" };
+static int dj_last = -1, dj_streak, dj_key = -1;
 static void place_do(Sim *s, int code) {
     switch (code) {
         case PC_WORK: if (job_none) { sim_note("YOU DO NOT WORK HERE (YET): PHONE, JOBS"); return; } begin_action(s, ACT_WORK, pie_mx, pie_my); { char b[40]; snprintf(b, sizeof b, "AT WORK: %s", job_title()); sim_note(b); } break;
@@ -1607,7 +1620,26 @@ static void place_do(Sim *s, int code) {
         case PC_HAND2: if (!pay(220)) return; handheld |= 2; shopped(s, "A BOREBOY ADVANCE! THE GAMES LOOK GREAT", ML_NEW_GAME); break;
         case PC_PICKBOARD: has_board = 1; *world_cell(s->lvl, pie_mx, pie_my) = '.'; world_touched(); sim_note("A SKATEBOARD! O TO RIDE"); audio_voice(VOICE_YAHOO); break;
         case PC_BROWSE: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 4; s->act_t = 240; break;
-        case PC_JOBBOARD: sim_want_jobs = 2; break;   // (main opens JOBS: every opening, not just the paper's three)
+        case PC_JOBBOARD: sim_want_jobs = 2; break;
+        case PC_CLASS: {
+            int ses = dojo_session(), key = day_count * 3 + ses; char b[48];
+            if (ses < 0) { sim_note("CLASSES: 9 AM, 1 PM AND 6 PM"); return; }
+            if (key == dj_key) { sim_note("YOU ARE IN THIS CLASS ALREADY"); return; }
+            if ((s->need[N_REST] >> 10) < 20) { sim_note("TOO TIRED FOR CLASS"); audio_voice(VOICE_NAH); return; }
+            if (!pay(10)) return;
+            dj_streak = dj_last == day_count - 1 ? MIN(dj_streak + 1, 7) : dj_last == day_count ? dj_streak : 1; dj_last = day_count; dj_key = key;
+            int was = dojo_belt(s);
+            begin_action(s, ACT_RUN, pie_mx, pie_my); s->act_var = 2; s->act_t = 600;
+            s->skill_body += 80 + 20 * dj_streak; s->need[N_REST] = MAX(0, s->need[N_REST] - (12 << 10));
+            snprintf(b, sizeof b, "TODAY'S LESSON: %s", dj_day[clock_day % 7]); sim_note(b);
+            if (dj_streak > 1) { snprintf(b, sizeof b, "A REGULAR: %d DAYS IN A ROW", dj_streak); sim_note(b); }
+            if (dojo_belt(s) > was) { snprintf(b, sizeof b, "A NEW BELT: %s!", dj_belt[dojo_belt(s)]); sim_note(b); audio_voice(VOICE_WIN); }
+            sim_say(s, "HAI!"); break; }
+        case PC_BAG: if ((s->need[N_REST] >> 10) < 10) { sim_note("TOO TIRED"); return; }
+                     begin_action(s, ACT_RUN, pie_mx, pie_my); s->act_var = 1; s->act_t = 240; s->skill_body += 15; sim_say(s, "HUP! HUP!"); break;
+        case PC_BELT: { char b[48]; int bl = dojo_belt(s), raw = s->skill_body, next = (bl + 1) * 800;
+                        if (bl >= 5) snprintf(b, sizeof b, "%s BELT. THE TOP!", dj_belt[bl]); else snprintf(b, sizeof b, "%s BELT: %d%% TO %s", dj_belt[bl], (raw - bl * 800) * 100 / 800, dj_belt[bl + 1]);
+                        sim_note(b); { int ses = dojo_session(); const char *nx = ses >= 0 ? "A CLASS IS ON NOW" : clock_min < 9 * 60 ? "NEXT CLASS 9 AM" : clock_min < 13 * 60 ? "NEXT CLASS 1 PM" : clock_min < 18 * 60 ? "NEXT CLASS 6 PM" : "NEXT CLASS 9 AM TOMORROW"; sim_note(nx); } (void)next; break; }   // (main opens JOBS: every opening, not just the paper's three)
         case PC_WEB: case PC_COOKNET: case PC_CHATNET: case PC_GIG: {   // a few of each a day: not a free skill farm
             static u16 day_; static u8 used_[4]; int k = code - PC_GIG; if (day_ != (u16)(day_count + 1)) { day_ = (u16)(day_count + 1); memset(used_, 0, 4); }
             if (used_[k] >= (k == 0 ? 2 : 3)) { sim_note("ENOUGH OF THAT FOR TODAY"); audio_voice(VOICE_NAH); return; }
