@@ -24,6 +24,7 @@ extern Per pop_per[PER_MAX];
 extern int pop_nper, pop_nplace;
 extern Place pop_place[];
 
+extern int pop_people, pop_famsize;   // CREATE A WORLD: how many homes are lived in (0 FEW .. 3 FULL, as always) and household size (0 SMALL, 1 MIXED, 2 BIG)
 void pop_new(u32 seed, void *scratch, u32 scratch_bytes);   // a new life: everyone, from the seed (after bm_new)
 int  pop_family_at(int bx, int by, int unit);               // who lives in that home (-1: nobody)
 void pop_family_kinds(int f, u8 *adults, u8 *kids, u8 *teens, u8 *elders, u8 *couple);

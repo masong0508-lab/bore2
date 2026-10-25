@@ -106,12 +106,14 @@ static void make_members(int f) {
         default: add_person(f, AG_ELDER); add_person(f, AG_ADULT); add_person(f, AG_ADULT); { int n = 1 + prn(2); for (int i = 0; i < n; i++) add_person(f, AG_CHILD); } break;
     }
 }
+int pop_people = 3, pop_famsize = 1;
 static int kind_for(int lot) {                     // who lives in a home like that
     static const u8 small[] = { HK_SINGLE, 30, HK_OLDTIMER, 22, HK_COUPLE, 26, HK_RETIRED, 14, HK_ROOMMATES, 8, 0, 0 };
     static const u8 town[] = { HK_SINGLE, 22, HK_OLDTIMER, 8, HK_COUPLE, 22, HK_ROOMMATES, 18, HK_SINGLEPARENT, 16, HK_YOUNGFAM, 14, 0, 0 };
     static const u8 big[] = { HK_SINGLE, 8, HK_OLDTIMER, 6, HK_COUPLE, 14, HK_RETIRED, 8, HK_ROOMMATES, 12, HK_YOUNGFAM, 20, HK_BIGFAM, 12, HK_SINGLEPARENT, 10, HK_THREEGEN, 10, 0, 0 };
     const u8 *t = lot == LOT_COTTAGE ? small : (lot == LOT_TOWN || lot == LOT_APART) ? town : big;
     int v = prn(100);
+    if (pop_famsize == 0) v = v * 55 / 100; else if (pop_famsize == 2) v = 45 + v * 55 / 100;   // (SMALL: singles and couples first in each list; BIG: the families at its end)
     for (; t[1]; t += 2) { if (v < t[1]) return t[0]; v -= t[1]; }
     return HK_COUPLE;
 }
@@ -142,7 +144,9 @@ void pop_new(u32 seed, void *scratch, u32 scratch_bytes) {
             int defer = bm_gen >= 3 && u->set == bm_capital() && (u->lot == LOT_HOUSE || u->lot == LOT_COTTAGE || u->lot == LOT_TWO) && bm_hash(u->bx, u->by, seed ^ 0x5A1Eu) % 100u < 35;
             if (defer) { Unit t = U[i]; U[i] = U[j]; U[j] = t; j--; } else i++; }
     }
-    int nf = MIN(nu, NFAM);
+    static const u8 lived[4] = { 35, 60, 80, 100 };   // PEOPLE: the share of homes lived in
+    int nf = MIN(nu, NFAM * lived[pop_people % 4] / 100);
+    memset(pop_fam, 0, sizeof pop_fam);
     for (int gap = nf / 2; gap > 0; gap /= 2) for (int i = gap; i < nf; i++) {   // in block order, so a home's household is found by a search
         Unit t = U[i]; int j = i; while (j >= gap && unit_key(&U[j - gap]) > unit_key(&t)) { U[j] = U[j - gap]; j -= gap; } U[j] = t; }
     for (int f = 0; f < nf; f++) {

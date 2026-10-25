@@ -32,13 +32,17 @@ extern int bm_packed;                 // the TOWNS option: 0 ROOMY (parks and gr
 extern char bm_cap_name[18];          // the capital's name (empty: BORE CITY): a set world names its own
 // CREATE A WORLD's dials (MAINLAND and 2 for the rest: SAN BOREAS as it always was)
 enum { BL_MAINLAND, BL_ISLANDS, BL_BIGISLE, BL_CONTINENT, BL_LAKES, BL_N };
-extern int bm_land, bm_sea, bm_clim, bm_hills, bm_towns;   // LAND (BL_), SEA 0..4 (low..high), CLIMATE 0..4 (desert..jungle), HILLS 0..4 (flat..mountains), TOWNS 0..3 (few..lots)
+extern int bm_land, bm_sea, bm_clim, bm_hills;   // LAND (BL_), SEA 0..4 (low..high), CLIMATE 0..4 (desert..jungle), HILLS 0..4 (flat..mountains)
+extern int bm_ncity, bm_ntown, bm_nvil, bm_capsz;  // how many cities (besides the capital), towns, villages (2 6 12); the capital's size 0..2 (1 as always)
+#define BM_MAXCITY 4
+#define BM_MAXTOWN 10
+#define BM_MAXVIL 16
 void bm_dials_default(void);
 extern int bm_gen;                    // how worlds are made: 3 now (2: as before the roomy towns, for older saves)
 void bm_rename_clear(void);           // towns renamed by the player: none (a new life)
 void bm_rename(int i, const char *nm); // town i (0 the capital) is called that from now on (set before bm_new: it takes then)
 const char *bm_renamed(int i);        // its new name ("": not renamed)
-#define BM_NSET_MAX 24
+#define BM_NSET_MAX 31
 void bm_new(u32 seed);                // a new world
 u32  bm_seed(void);
 void bm_block(int bx, int by, BInfo *b);

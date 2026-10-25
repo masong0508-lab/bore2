@@ -1,12 +1,12 @@
 // bigmap: see bigmap.h
 #include "bigmap.h"
 int bm_packed, bm_gen = 3; char bm_cap_name[18];
-int bm_land = BL_MAINLAND, bm_sea = 2, bm_clim = 2, bm_hills = 2, bm_towns = 2;
-void bm_dials_default(void) { bm_land = BL_MAINLAND; bm_sea = 2; bm_clim = 2; bm_hills = 2; bm_towns = 2; }
+int bm_land = BL_MAINLAND, bm_sea = 2, bm_clim = 2, bm_hills = 2, bm_ncity = 2, bm_ntown = 6, bm_nvil = 12, bm_capsz = 1;
+void bm_dials_default(void) { bm_land = BL_MAINLAND; bm_sea = 2; bm_clim = 2; bm_hills = 2; bm_ncity = 2; bm_ntown = 6; bm_nvil = 12; bm_capsz = 1; }
 static int packed(void) { return bm_packed || bm_gen < 3; }   // (PACKED towns: the option, or a world from before it)
 
 static u32 wseed = 0x5A1B0E2Au;
-#define NSET_MAX 24
+#define NSET_MAX 31
 static Settle sets[NSET_MAX]; static int nset;
 static char ren[NSET_MAX][18];                     // towns the player renamed ("": as made); kept across bm_new, so a save can set them first
 typedef struct { u16 c, a, b; u8 vert; } Seg;    // a highway along block edges: row (or column) c, from a to b
@@ -118,15 +118,14 @@ static void link(int i, int j) {                  // a highway: along i's row to
 }
 void bm_new(u32 seed) {
     wseed = seed ? seed : 1; rs = wseed ^ 0xA5A5A5A5u; nset = 0; nseg = 0;
-    place_set(ST_CITY, 11, BM_N / 2, BM_N / 2, 110);                        // BORE CITY, near the middle
+    static const u8 capr[3] = { 8, 11, 14 };
+    place_set(ST_CITY, capr[bm_capsz % 3], BM_N / 2, BM_N / 2, 110);       // BORE CITY, near the middle (CAPITAL SIZE)
     if (!nset) place_set(ST_CITY, 9, BM_N / 2, BM_N / 2, 300);              // (a watery world: wherever there is room)
     if (!nset) place_set(ST_CITY, 6, BM_N / 2, BM_N / 2, 440);
     if (!nset) { Settle *c = &sets[0]; c->x = c->y = BM_N / 2; c->r = 6; c->kind = ST_CITY; strcpy(c->name, bm_cap_name[0] ? bm_cap_name : "BORE CITY"); nset = 1; }
-    static const u8 nc[4] = { 0, 1, 2, 3 }, nt[4] = { 2, 4, 6, 8 }, nv[4] = { 4, 8, 12, 12 };   // TOWNS: FEW, SOME, NORMAL (as it always was), LOTS
-    int tw = bm_towns % 4;
-    for (int i = 0; i < nc[tw]; i++) place_set(ST_CITY, 9, BM_N / 2, BM_N / 2, 360);
-    for (int i = 0; i < nt[tw]; i++) place_set(ST_TOWN, 5 + (int)(rr() % 2), BM_N / 2, BM_N / 2, 400);
-    for (int i = 0; i < nv[tw]; i++) place_set(ST_VILLAGE, 3 + (int)(rr() % 2), BM_N / 2, BM_N / 2, 420);
+    for (int i = 0; i < MIN(bm_ncity, BM_MAXCITY); i++) place_set(ST_CITY, 9, BM_N / 2, BM_N / 2, 360);   // (CITIES, TOWNS, VILLAGES: as many as asked, room allowing)
+    for (int i = 0; i < MIN(bm_ntown, BM_MAXTOWN); i++) place_set(ST_TOWN, 5 + (int)(rr() % 2), BM_N / 2, BM_N / 2, 400);
+    for (int i = 0; i < MIN(bm_nvil, BM_MAXVIL); i++) place_set(ST_VILLAGE, 3 + (int)(rr() % 2), BM_N / 2, BM_N / 2, 420);
     // the highways: the shortest network that reaches every town (Prim), and a few more for loops
     u8 in[NSET_MAX] = { 0 }; in[0] = 1;
     for (int k = 1; k < nset; k++) {
