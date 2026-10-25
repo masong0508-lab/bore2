@@ -410,3 +410,4 @@ void look_build(Bore *b) {
     voxel_prepare(b);
     b->baked = 1;
 }
+int look_theme_named(const char *nm) { for (int i = 1; i < NTHEME; i++) if (!strcmp(themes[i].nm, nm)) return i; return 0; }

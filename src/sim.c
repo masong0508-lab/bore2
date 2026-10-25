@@ -1251,6 +1251,7 @@ void sim_step(void) {
         world_lvl = s->lvl;
         tick_needs(s);
         if (s->note_t > 0) s->note_t--;
+        if (i != player && (s->rage || s->gait.sleep == 1 && s->action == ACT_NONE && s->rage_ko)) continue;   // (after you, or knocked down: citizens.c moves them)
         if (s->gait.wave > 0 && s->action != ACT_TALK && s->action != ACT_PHONE) s->gait.wave--;
         if (s->action == ACT_WALK) { if (!follow_path(s)) arrive(s); }
         else if (s->action != ACT_NONE) run_action(s);

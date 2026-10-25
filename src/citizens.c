@@ -31,7 +31,7 @@ int cit_live_max = LIVE_MAX, cit_maxdraw = 64, cit_sprite_rate = 1;   // (the op
 #define NOPID     0xFFFF
 #define NONE      255
 
-enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME, CM_LEAVE, CM_CHORE, CM_VISIT, CM_PARTY };
+enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME, CM_LEAVE, CM_CHORE, CM_VISIT, CM_PARTY, CM_STOP };   // (STOP: a peacemaker, come to break the fight up)
 enum { PE_FRIENDLY, PE_GRUFF, PE_FLIRTY, PE_SHY };
 enum { PO_TALK, PO_JOKE, PO_HUG, PO_FLIRT, PO_GIFT, PO_PROPOSE, PO_FIGHT, PO_SORRY, PO_FAMILY, PO_MOVEIN };
 // the moodlet ids in sim.c's list
@@ -56,6 +56,7 @@ typedef struct {
     u8   zone0;                     // a party guest from another zone: where to go back to (255: none)
     u16  pid, mplace;               // SAN BOREAS: who they are in pop.c (NOPID: one of the island's or the town's own), and where they were brought to life (NOPID: home)
     u8   ax, ay, vanish;            // ... the place they hang about (a tile), and 1 when they are wanted elsewhere
+    u8   cop;                       // 1: a police officer, called to a fight (in uniform)
 } Cit;
 typedef struct { u8 zone, home, n, fam; u8 mem[6]; u16 pfam; } Hh;   // a household: who lives in which of the zone's homes, under which surname (pfam: its pop.c family, or NOPID)
 
@@ -63,6 +64,8 @@ static Cit cits[NCIT];
 static Hh hh[NHH]; static int nhh; static u8 formed[ZONE_N];
 // (a citizen is built in crowd.c's unpacking Bore: it is only ever needed between one unpack and the drawing that follows)
 static void party_leave_done(Cit *c);
+static void crowd_react(int start); static void heat_add(int v); static int fam_in_reach(void); static int fam_punch(void); static void fam_calm(void); static void fam_step(void); static int heat;
+extern int aggro_pct, rage_pct, aggro_who, rage_who, peace_on;
 static int party_on, party_left, party_cx, party_cy, party_in, party_spx, party_spz, party_n, party_next, party_t, home_guests;
 #define PARTY_MAX 60
 static u8 party_g[PARTY_MAX], party_sx[PARTY_MAX], party_sy[PARTY_MAX];
@@ -137,6 +140,7 @@ COLD static void cit_bore(Bore *b, const Cit *c) {   // the same person, every t
     u32 old = look_seed(c->seed * 2654435761u + 12345u);
     look_random(b);
     look_seed(old);
+    if (c->cop) { static int pt; if (!pt) pt = look_theme_named("POLICE"); look_theme(b, pt); b->col[6] = RGB(4, 8, 20); b->col[7] = RGB(3, 5, 14); }   // (the uniform)
     if (c->pid != NOPID) { pop_first(c->pid, b->first); pop_surname(pop_fam_of(c->pid), b->last); return; }   // SAN BOREAS: their own names
     if (c->hh != NONE) { strncpy(b->last, look_last_name(hh[c->hh].fam), NAME_LEN - 1); b->last[NAME_LEN - 1] = 0; }   // a household shares its surname
 }
@@ -261,6 +265,9 @@ COLD void citizens_init(void) {
     for (int k = 0; k < NHH; k++) { hh[k].pfam = NOPID; hh[k].zone = 255; }
     crowd_reset();
     pl_hp = 100; pl_cd = 0; cur = -1; fight_on = 0; pie_c = -1;
+#ifdef AUTO_RAGE
+    rage_pct = 100; rage_who = 0; aggro_pct = 100;   // (test builds: everyone goes for you)
+#endif
 }
 
 COLD static void place_street(Cit *c, int px, int pz, int cx, int cz, int radius) {   // somewhere out on the streets near (cx,cz) tiles
@@ -439,7 +446,7 @@ static int hostile_in_reach(void) {
 }
 static const char *rel_name(int r) { return r < -40 ? "ENEMY" : r < -10 ? "UNFRIENDLY" : r < 20 ? "STRANGER" : r < 50 ? "PAL" : r < 75 ? "FRIEND" : "CLOSE"; }
 const char *citizens_hint(void) {
-    if (hostile_in_reach() >= 0) return "PUNCH";
+    if (hostile_in_reach() >= 0 || fam_in_reach() >= 0) return "PUNCH";
     if (cur < 0) return "";
     return cits[cur].mode == CM_SLEEP ? "WAKE" : "TALK";
 }
@@ -554,7 +561,7 @@ COLD void citizens_pie_do(int i) {
         break;
     case PO_FIGHT:
         c->mode = CM_CHASE; c->hp = (u8)(c->stage == AG_ELDER ? 35 : 55 + rn(35)); c->cd = 30; c->t = 0;
-        rel_add(c, -10); rom_add(c, -20); say(c, "BRING IT!"); fight_on = 1; audio_voice(VOICE_ANGRY); story_event(E_FIGHT, 0); break;
+        rel_add(c, -10); rom_add(c, -20); say(c, "BRING IT!"); fight_on = 1; heat_add(12); crowd_react(1); audio_voice(VOICE_ANGRY); story_event(E_FIGHT, 0); break;
     case PO_MOVEIN:   // a friend moves in with you: they say yes when they like you enough (and there is room)
         audio_voice(VOICE_MOVE_ASK);
         if (nsims >= MAX_SIMS) { say(c, "YOUR PLACE IS FULL!"); sim_note("THE HOUSE IS TOO FULL FOR ONE MORE"); break; }
@@ -576,8 +583,99 @@ COLD int citizens_friends(void) {   // (stories) the people out there who are yo
     return n;
 }
 // ---- fighting ---------------------------------------------------------------------------------------------
+// THE HEAT of a fight (0..100) rises with every blow and every K.O. and cools when it is over. Each half second the people who can
+// see it make up their minds: some JOIN IN (by AGGRESSION, the cheat slider: at 100% everyone in sight piles on the moment a fight
+// starts), some come to STOP YOU (the peacemakers: hit someone in front of them and they may turn on you), and a hot fight calls
+// the POLICE. RAGE (the other slider) needs no fight at all: at 100% anyone who sees you goes for you. WHO says who may join in
+// or lunge: civilians, the police, your own family, or a mix.
+int dbg_rage[4];
+int aggro_pct = 40, rage_pct, aggro_who = 7, rage_who = 1, peace_on = 1;   // (main.c's options set these)
+static void heat_add(int v) { heat = MIN(100, heat + v); }
+static const u8 whoBits[6] = { 7, 1, 2, 4, 3, 6 };   // EVERYONE, CIVILIANS, POLICE, FAMILY, CIVILIANS + POLICE, FAMILY + POLICE
+static int fam_hp[MAX_SIMS], fam_cd[MAX_SIMS], fam_ko[MAX_SIMS];
+static void fam_calm(void) { for (int i = 0; i < nsims; i++) sims[i].rage = 0; }
+static int fam_in_reach(void) {
+    const Sim *p = &sims[player];
+    for (int i = 0; i < nsims; i++) { const Sim *s = &sims[i]; if (i == player || !s->rage || s->lvl != p->lvl) continue;
+        if (ABS(s->x - p->x) <= PUNCH_R && ABS(s->z - p->z) <= PUNCH_R) return i; }
+    return -1;
+}
+static void fam_go(int i) {   // one of the family turns on you
+    Sim *s = &sims[i]; if (s->rage || fam_ko[i] || s->bore.stage < AG_TEEN || s->away || s->lvl != sims[player].lvl) return;
+    s->rage = 1; fam_hp[i] = 70; fam_cd[i] = 40; s->action = ACT_NONE; s->path_n = 0;
+    static const char *const fl[4] = { "YOU'RE GROUNDED!", "NOT IN THIS FAMILY!", "I'VE HAD IT WITH YOU!", "COME HERE!" };
+    sim_say_to(s, fl[rn(4)]); audio_voice(VOICE_ANGRY);
+}
+static int fam_punch(void) {
+    int i = fam_in_reach(); if (i < 0) return 0;
+    Sim *p = &sims[player], *s = &sims[i];
+    if (pl_cd > 0) return 1;
+    pl_cd = 18; p->gait.wave = 14; p->yaw = yaw_to(s->x - p->x, s->z - p->z);
+    fam_hp[i] -= 9 + rn(8) + dojo_belt(p) * 2; s->gait.squash = -12; heat_add(5); audio_voice(VOICE_SHRIEK);
+    if (fam_hp[i] <= 0) { s->rage = 0; s->rage_ko = 1; fam_ko[i] = 600; s->gait.sleep = 1; s->gait.amp = 0; sim_say_to(s, "I'M TELLING MOM..."); audio_voice(VOICE_CRY); }
+    else sim_say_to(s, rn(2) ? "OW!" : "HOW COULD YOU!");
+    return 1;
+}
+static void fam_step(void) {   // the family members who are after you (sim.c leaves them be while they are)
+    Sim *p = &sims[player];
+    for (int i = 0; i < nsims; i++) {
+        Sim *s = &sims[i]; if (i == player) continue;
+        if (fam_ko[i]) { if (--fam_ko[i] == 0) { s->gait.sleep = 0; s->rage_ko = 0; sim_say_to(s, "...FINE. I FORGIVE YOU."); } else s->gait.sleep = 1; continue; }
+        if (!s->rage) continue;
+        int dx = p->x - s->x, dz = p->z - s->z, d2 = dx * dx + dz * dz, in = indoors_at(s->x, s->z);
+        if (d2 > 9 * TILE * 9 * TILE || s->lvl != p->lvl) { s->rage = 0; sim_say_to(s, "HMPH."); continue; }
+        s->yaw = yaw_to(dx, dz);
+        if (d2 > 95 * 95) { int mx = (isin(s->yaw) * 6) >> 12, mz = -((icos(s->yaw) * 6) >> 12);
+            if (body_free(s->x + mx, s->z + mz, in)) { s->x += mx; s->z += mz; } else if (body_free(s->x + mx, s->z, in)) s->x += mx; else if (body_free(s->x, s->z + mz, in)) s->z += mz;
+            s->gait.amp = 4096; s->gait.phase = (s->gait.phase + 220) & 4095; }
+        else { s->gait.amp = 0; if (fam_cd[i] > 0) fam_cd[i]--; else {
+            pl_hp -= 3 + rn(5); fam_cd[i] = 45; s->gait.wave = 14; p->gait.squash = -10; audio_voice(VOICE_GROAN);
+            if (pl_hp <= 0) { pl_hp = 60; fam_calm(); heat = 0; for (int k = 0; k < NCIT; k++) if (cits[k].mode == CM_CHASE || cits[k].mode == CM_STOP) { cits[k].mode = CM_IDLE; cits[k].t = 120; }
+                sim_note("KNOCKED OUT BY FAMILY. AWKWARD."); sim_say_to(s, "AND STAY OUT OF MY ROOM!"); audio_voice(VOICE_CRY); } } }
+    }
+}
+static void join_in(Cit *c) {
+    static const char *const jl[5] = { "FIGHT! FIGHT!", "GET THEM!", "LEAVE THEM ALONE!", "MY TURN!", "YOU WANT SOME TOO?" };
+    c->mode = CM_CHASE; c->hp = (u8)(c->cop ? 120 : c->stage == AG_ELDER ? 35 : 55 + rn(35)); c->cd = 20 + rn(30); c->t = 0;
+    say(c, c->cop ? (rn(2) ? "POLICE! FREEZE!" : "DROP IT, BORE!") : jl[rn(5)]); rel_add(c, -8);
+}
+static void call_cop(void) {   // the police: an officer arrives from up the street
+    Sim *p = &sims[player]; int best = -1, bd = 0;
+    for (int i = 0; i < NCIT; i++) { Cit *c = &cits[i];
+        if (c->zone != world_zone || c->cop || !adult(c) || (c->mode != CM_IDLE && c->mode != CM_WALK)) continue;
+        int d = ABS(c->x - p->x) + ABS(c->z - p->z); if (d > bd && d < 14 * TILE) { bd = d; best = i; } }
+    if (best < 0) return;
+    Cit *c = &cits[best]; c->cop = 1; c->built = 0;   // (dressed again: the uniform)
+    join_in(c); sim_note("SOMEONE CALLED THE POLICE!"); audio_voice(VOICE_SHRIEK);
+}
+static void crowd_react(int start) {   // the people who can see you make up their minds (start: a fight has just begun)
+    Sim *p = &sims[player];
+    if (!fight_on && !start) { if (heat > 0) heat--; }
+    int ab = whoBits[aggro_who % 6], rb = whoBits[rage_who % 6], cops = 0;
+    for (int i = 0; i < NCIT; i++) if (cits[i].zone == world_zone && cits[i].cop && cits[i].mode == CM_CHASE) cops++;
+    for (int i = 0; i < NCIT; i++) {
+        Cit *c = &cits[i];
+        if (c->zone != world_zone || c->stage < AG_TEEN || (c->mode != CM_IDLE && c->mode != CM_WALK && c->mode != CM_CHAT && c->mode != CM_CHORE && c->mode != CM_PARTY && c->mode != CM_VISIT)) continue;
+        int dx = c->x - p->x, dz = c->z - p->z, d2 = dx * dx + dz * dz;
+        if (d2 > 8 * TILE * 8 * TILE) continue;
+        int kind = c->cop ? 2 : 1;
+        if (rage_pct && (rb & kind) && d2 < 6 * TILE * 6 * TILE && rn(100) < (rage_pct >= 100 ? 100 : rage_pct / 3)) { join_in(c); if (!c->cop) say(c, "YOU! YES, YOU!"); heat_add(4); continue; }
+        if (!fight_on && !start) continue;
+        int ch = aggro_pct >= 100 ? 100 : heat * aggro_pct / 150;
+        if ((ab & kind) && rn(100) < ch) { join_in(c); heat_add(3); continue; }
+        if (peace_on && !c->cop && heat < 80 && rn(100) < 6 + (start ? 10 : 0)) { c->mode = CM_STOP; c->t = 400; say(c, "HEY! STOP THAT!"); }
+    }
+    if (fight_on || start) {   // a hot fight brings the police; a cool one may be talked down
+        if ((ab & 2) && heat >= 35 && cops < 1 + heat / 35 && rn(100) < 20 + aggro_pct / 2) call_cop();
+        if (ab & 4) for (int i = 0; i < nsims; i++) if (i != player && (aggro_pct >= 100 || rn(100) < heat * aggro_pct / 250)) fam_go(i);
+        if (heat < 40) { int peace = 0; for (int i = 0; i < NCIT; i++) if (cits[i].zone == world_zone && cits[i].mode == CM_STOP) peace++;
+            if (peace && rn(100) < 10 * peace) for (int i = 0; i < NCIT; i++) { Cit *c = &cits[i]; if (c->zone == world_zone && c->mode == CM_CHASE && !c->cop) { c->mode = CM_IDLE; c->t = 90; say(c, "FINE. WHATEVER."); break; } } }
+    }
+    if (rage_pct && (rb & 2) && cops == 0 && rn(1000) < rage_pct) call_cop();
+    if (rage_pct && (rb & 4)) for (int i = 0; i < nsims; i++) if (i != player && rn(100) < (rage_pct >= 100 ? 100 : rage_pct / 6)) fam_go(i);
+}
 COLD int citizens_punch(void) {
-    int i = hostile_in_reach(); if (i < 0) return 0;
+    int i = hostile_in_reach(); if (i < 0) return fam_punch();
     Cit *c = &cits[i]; Sim *p = &sims[player];
     if (pl_cd > 0) return 1;
     pl_cd = 18;
@@ -590,11 +688,14 @@ COLD int citizens_punch(void) {
     { int d = MAX(ABS(dx) + ABS(dz), 1), kx = dx * 40 / d, kz = dz * 40 / d, in = indoors_at(c->x, c->z);   // a shove back
       if (body_free(c->x + kx, c->z + kz, in)) { c->x += (s16)kx; c->z += (s16)kz; } }
     audio_voice(VOICE_SHRIEK);
+    heat_add(6);
+    for (int k = 0; k < NCIT; k++) { Cit *q = &cits[k]; if (q->mode != CM_STOP || q->zone != world_zone) continue;   // (you hit someone right in front of a peacemaker)
+        int ex = q->x - p->x, ez = q->z - p->z; if (ex * ex + ez * ez < 3 * TILE * 3 * TILE && rn(100) < 30 + heat / 2) { q->mode = CM_CHASE; q->hp = (u8)(55 + rn(35)); q->cd = 30; say(q, "THAT'S IT!"); heat_add(10); } }
     if (c->hp == 0) {
         c->mode = CM_KO; c->t = 900; c->gait.sleep = 1; c->gait.amp = 0;
         int loot = 5 + rn(21); cash += loot;
         char b[32]; sprintf(b, "KO! +$%d", loot); sim_note(b);
-        rel_add(c, -30); say(c, "OOF..."); audio_voice(VOICE_WIN);
+        rel_add(c, -30); say(c, "OOF..."); audio_voice(VOICE_WIN); heat_add(15);
         if (hostile_in_reach() < 0) fight_on = 0;
     } else say(c, rn(2) ? "OW!" : "MY NOSE!");
     return 1;
@@ -957,16 +1058,26 @@ static void step_one(Cit *c, int i) {
             else if (body_free(c->x + mx, c->z, in)) { c->x += (s16)mx; moved_flag = 1; }
             else if (body_free(c->x, c->z + mz, in)) { c->z += (s16)mz; moved_flag = 1; }
         } else if (!c->cd) {
-            int dmg = (c->stage == AG_ELDER ? 2 : 3) + rn(5);
+            int dmg = (c->stage == AG_ELDER ? 2 : 3) + rn(5) + (c->cop ? 3 : 0);
             pl_hp -= dmg; c->cd = 45; c->gait.wave = 14; p->gait.squash = -10;
             audio_voice(VOICE_GROAN);
             if (pl_hp <= 0) {
                 int lost = MIN((int)cash, 60); cash -= lost; pl_hp = 60;
                 char b[32]; sprintf(b, "KNOCKED OUT. LOST $%d", lost); sim_note(b);
-                for (int k = 0; k < NCIT; k++) if (cits[k].mode == CM_CHASE) { cits[k].mode = CM_IDLE; cits[k].t = 120; }
-                fight_on = 0; say(c, "STAY DOWN."); audio_voice(VOICE_CRY);
+                for (int k = 0; k < NCIT; k++) if (cits[k].mode == CM_CHASE || cits[k].mode == CM_STOP) { cits[k].mode = CM_IDLE; cits[k].t = 120; }
+                fam_calm(); heat = 0;
+                if (c->cop) { int fine = MIN((int)cash, 100); cash -= fine; sprintf(b, "ARRESTED! FINED $%d", fine); sim_note(b); }
+                fight_on = 0; say(c, c->cop ? "YOU HAVE THE RIGHT TO STAY BORED." : "STAY DOWN."); audio_voice(VOICE_CRY);
             }
         }
+        break; }
+    case CM_STOP: {   // a peacemaker: up close, hands out, talking you down
+        if (c->t) c->t--;
+        if (!c->t || !fight_on) { c->mode = CM_IDLE; c->t = 60; say(c, fight_on ? "I GIVE UP ON YOU" : "THANK GOODNESS"); break; }
+        turn(c, yaw_to(dx, dz), 180);
+        if (d2 > 140 * 140) { int spd = in ? 4 : 6, mx = (isin(c->yaw) * spd) >> 12, mz = -((icos(c->yaw) * spd) >> 12);
+            if (body_free(c->x + mx, c->z + mz, in)) { c->x += (s16)mx; c->z += (s16)mz; moved_flag = 1; } }
+        else { c->gait.wave = 10; if (!c->say_t) { static const char *const st[4] = { "STOP IT!", "BREAK IT UP!", "THAT'S ENOUGH!", "CALM DOWN!" }; say(c, st[rn(4)]); } }
         break; }
     case CM_KO:
         c->gait.sleep = 1;
@@ -1078,9 +1189,13 @@ void citizens_update(int steps) {
             step_one(c, i);
         }
         if (!fight_on && pl_hp < 100 && !(tick & 63)) pl_hp++;   // you heal about a point a second
+        fam_step();
+        if (!(tick & 31)) crowd_react(0);
     }
     cur = find_target();
     fight_on = 0; for (int i = 0; i < NCIT; i++) if (cits[i].zone == world_zone && cits[i].mode == CM_CHASE) fight_on = 1;
+    for (int i = 0; i < nsims; i++) if (sims[i].rage) fight_on = 1;
+    { int ch = 0, co = 0; for (int i = 0; i < NCIT; i++) if (cits[i].zone == world_zone && cits[i].mode == CM_CHASE) { ch++; co += cits[i].cop; } dbg_rage[0] = ch; dbg_rage[1] = co; dbg_rage[2] = pl_hp; dbg_rage[3] = heat; }
 }
 
 // ---- drawing ----------------------------------------------------------------------------------------------

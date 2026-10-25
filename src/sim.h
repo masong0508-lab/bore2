@@ -30,6 +30,7 @@ typedef struct {
     int  hurt_t;
     int  skill_cook, skill_body, skill_fun;
     int  dead;
+    u8   rage, rage_ko;      // after you in a fight (citizens.c); knocked down by you
     u8   grump;                 // the housemate who will NOT have a thing floating over their head
     // wants & fears (wants.c)
     struct { u8 kind, arg; u16 pts, age; } want[4], fear[2];

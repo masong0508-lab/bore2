@@ -56,6 +56,7 @@ void look_random(Bore *b);                  // the Create-A-Bore dice
 void look_build(Bore *b);                   // look -> vox / dec / colours / face textures
 int  look_allowed(const Bore *b, int id, int v);
 void look_fix(Bore *b);
+int  look_theme_named(const char *nm);    // an outfit by its name (0: none)
 void look_theme(Bore *b, int t);            // dress them in a ready-made outfit (the WEAR tab's OUTFIT: 0 takes everything off)                     // after a birthday: anything the new age may not wear changed to something it may
 void look_release(Bore *b);                 // a Bore that has gone: its face textures are kept for the next new face
 void look_own_face(Bore *b);                // a copy of a Bore gets face textures of its own (and is built again)
