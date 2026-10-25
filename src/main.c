@@ -19,6 +19,8 @@
 #include "ghost.h"
 #include "arcade.h"
 #include "realm.h"
+#include "ovl.h"
+static const OvlHead *ovl;   // the overlay that is in (KINGDOM.OVL, ARCADE.OVL)
 #include "far.h"
 #include "ui.h"
 #include "places.h"
@@ -542,12 +544,12 @@ static void life_update(int steps) {
 #endif
     ghost_tick(steps, frame);
 #ifdef AUTO_REALM
-    { static int ar; if (++ar == 40) { realm_open(); state = ST_REALM; return; } }   // (test builds: straight into KINGDOM MODE)
+    { static int ar; if (++ar == 40 && (ovl = ovl_load("KINGDOM.OVL"))) { ovl->open(0); state = ST_REALM; return; } }   // (test builds: straight into KINGDOM MODE)
 #endif
 #ifdef AUTO_FIGHT
     { static int af; if (++af == 40) sim_want_arcade = AUTO_FIGHT; }   // (test builds: straight to a cabinet)
 #endif
-    if (sim_want_arcade) { arcade_open(sim_want_arcade - 1); sim_want_arcade = 0; state = ST_ARCADE; return; }   // (an arcade cabinet, the prize counter)
+    if (sim_want_arcade) { int g_ = sim_want_arcade - 1; sim_want_arcade = 0; if ((ovl = ovl_load("ARCADE.OVL"))) { ovl->open(g_); state = ST_ARCADE; } else cash += arcade_price(g_); return; }   // (an arcade cabinet, the prize counter)
     if (sim_want_jobs) { sim_want_jobs = 0; jobs_board = 1; jobs_open(); sub_back = ST_LIFE; state = ST_JOBS; return; }   // (the computer's JOB BOARD)
     if (story_card()) { sc_t = 0; state = ST_SCARD; audio_voice(VOICE_FINISHED); return; }   // a chapter begins, or one is done
     Sim *s = &sims[player];
@@ -2102,7 +2104,7 @@ static void pause_update(void) {
                     create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_gen_studio(); break;
             case 5: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); audio_voice(VOICE_MOVE_YES); state = ST_LIFE; } break;
-            case 3: realm_open(); state = ST_REALM; break;
+            case 3: if ((ovl = ovl_load("KINGDOM.OVL"))) { ovl->open(0); state = ST_REALM; } else state = ST_LIFE; break;
             case 2: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD;
                      if (world_zone == ZONE_CITY && !world_own_lot(build_x, build_y)) { int tx, ty; if (world_own_door(&tx, &ty)) { build_x = tx; build_y = ty - 1; } }   // (in SAN BOREAS: on your own lot)
                      break;
@@ -3711,8 +3713,7 @@ int main(void) {
             case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
             case ST_SPICK: spick_update(); if (state == ST_SPICK) { if (sp_join) life_draw(); else title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t, sp_join); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
             case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
-            case ST_REALM: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (realm_update(hd_, pr_, steps)) realm_draw(); else { state = ST_LIFE; life_draw(); } break; }
-            case ST_ARCADE: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (arcade_update(hd_, pr_, steps)) arcade_draw(); else { state = ST_LIFE; life_draw(); } break; }
+            case ST_REALM: case ST_ARCADE: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_WMAKE: wm_update(); if (state == ST_WMAKE) wm_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_NAME) name_draw(); else life_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;

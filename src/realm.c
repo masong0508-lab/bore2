@@ -22,14 +22,20 @@
 #define CELL 96
 #define VIEW 9
 static KRealm R; static KBld *Bl; static u8 *cells;   // (the buildings and   // (the land, up to 255 x 255: in the city crowd's arena, which sleeps while you are in the realm)
-static KSim S; static KHand hand;
+extern KSim realm_S; extern int realm_blob_len, realm_mis, realm_live;   // (realm_res.c: kept while the overlay is not loaded)
+#define S realm_S
+#define blob_len realm_blob_len
+#define mis realm_mis
+#define live realm_live
+static KHand hand;
 static void nub_make(void);
-static int blob_len;   // the realm as saved bytes, kept with the life while you are not in it: they live in the simulation's
+// the realm as saved bytes, kept with the life while you are not in it: they live in the simulation's
 // distance-map cache (S.dist and S.queue), which is only a cache while the realm runs and is free when it does not (the GBA did the same)
 #define blob ((u8 *)S.dist)
 #define BLOB_CAP ((int)(sizeof S.dist + sizeof S.queue))
 int dbg_realm[4];
-static int live, mis, mis_paid_all;                 // the realm is running; the mission you are on
+static int mis_paid_all;                 // the realm is running; the mission you are on
+static int cdist = 1250, walkT;   // the camera's distance (L2 R2 zoom), how long the giant has walked (a run after a while)
 static int gx, gz, gyaw, gmove, gphase, cyaw, cyaw_t, spd, fr, msgT, panel, menu, msel, pick, psel, found_sel;
 static const char *msg; static char msgB[64];
 
@@ -96,13 +102,6 @@ static int unpack(void) {
     kgDecode(blob, blob_len, &R, Bl, cells, 1);
     if (ksInit(&S, &R, Bl, cells) != KSE_OK) return 0;
     return 1;
-}
-void realm_reset(void) { blob_len = 0; live = 0; mis = 0; }
-void realm_save(void) { pack(); sv_u8((u8)mis); sv_u16((u16)blob_len); sv_n(blob, blob_len); }
-void realm_load(int ver) {
-    live = 0; mis = 0; blob_len = 0;
-    if (ver < 15) return;
-    mis = ld_u8(); int n = ld_u16(); if (n > BLOB_CAP) n = 0; ld_n(blob, n); blob_len = n;
 }
 static void giant_to(int cx, int cy) { gx = cx * CELL + CELL / 2; gz = -(cy * CELL + CELL / 2); }
 static int walk_ok(int wx, int wz) {
@@ -185,17 +184,19 @@ int realm_update(int held, int pressed, int steps) {
     if (pressed & PAD_SQUARE) { pick = 1; for (int i = 0; i < NPICK; i++) if (pickModes[i] == hand.mode) psel = i; return 1; }
     if (pressed & PAD_TRIANGLE) panel = (panel + 1) % 3;
     if (pressed & PAD_SELECT) { spd = (spd + 1) % 3; snprintf(msgB, sizeof msgB, "TIME RUNS X%d", spd == 0 ? 1 : spd == 1 ? 4 : 16); say(msgB); }
-    if (pressed & PAD_L1) cyaw_t -= 512;
-    if (pressed & PAD_R1) cyaw_t += 512;
+    if (held & PAD_L1) cyaw_t -= 40 * steps;   // turn (hold)
+    if (held & PAD_R1) cyaw_t += 40 * steps;
     { int dd = cyaw_t - cyaw; cyaw += CLAMP(dd, -64 * steps, 64 * steps); }
+    if (held & PAD_L2) cdist = MAX(650, cdist - 24 * steps);    // zoom in
+    if (held & PAD_R2) cdist = MIN(2400, cdist + 24 * steps);   // zoom out
     // the giant walks (the pad as the camera sees it)
     int ux = (held & PAD_RIGHT ? 1 : 0) - (held & PAD_LEFT ? 1 : 0), uy = (held & PAD_UP ? 1 : 0) - (held & PAD_DOWN ? 1 : 0);
-    gmove = ux || uy;
+    gmove = ux || uy; if (!gmove) walkT = 0;
     if (gmove) {
         static const s16 dirY[3][3] = { { 3584, 3072, 2560 }, { 0, 0, 2048 }, { 512, 1024, 1536 } };   // [ux + 1][uy + 1]: up 0, right 1024, down 2048, left 3072
         int want = (dirY[ux + 1][1 - uy] + cyaw) & 4095, dy = ((want - gyaw + 2048) & 4095) - 2048;
         gyaw = (gyaw + CLAMP(dy, -300 * steps, 300 * steps)) & 4095;
-        int sp = (held & (PAD_R2 | PAD_L2)) ? 30 : 18;
+        walkT += steps; int sp = walkT > 50 ? 30 : 18;   // (a stride, then a run)
         for (int k = 0; k < steps; k++) {
             int mx = isin(want) * sp >> 12, mz = -(icos(want) * sp >> 12);
             if (walk_ok(gx + mx, gz + mz)) { gx += mx; gz += mz; } else if (walk_ok(gx + mx, gz)) gx += mx; else if (walk_ok(gx, gz + mz)) gz += mz;
@@ -220,11 +221,22 @@ int realm_update(int held, int pressed, int steps) {
 
 // ---- the picture ----
 static u32 hsh(int x, int y) { u32 h = (u32)x * 73856093u ^ (u32)y * 19349663u; h ^= h >> 13; h *= 0x5bd1e995u; return h ^ (h >> 15); }
-static void quad(int x0, int z0, int x1, int z1, int y, u32 c0, u32 c1) {   // a flat quad on the ground (x, z in world units)
+#define HZ_R 200
+#define HZ_G 224
+#define HZ_B 240
+static int hzf;
+static int haze_of(int wx, int wz);
+static u32 hz(u32 c, int f) { if (f <= 0) return c; int r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255; return UI_RGB(r + ((HZ_R - r) * f >> 8), g + ((HZ_G - g) * f >> 8), b + ((HZ_B - b) * f >> 8)); }
+static void quad(int x0, int z0, int x1, int z1, int y, u32 c0, u32 c1) {   // a flat quad on the ground (x, z in world units), each corner hazed by its distance
     SVECTOR a = { (short)x0, (short)y, (short)z0 }, b = { (short)x1, (short)y, (short)z0 }, c = { (short)x0, (short)y, (short)z1 }, d = { (short)x1, (short)y, (short)z1 };
-    gfx_quad_g(&a, &b, &c, &d, c0, c1, c1, c0, 0);
+    gfx_quad_g(&a, &b, &c, &d, hz(c0, haze_of(x0, z0)), hz(c1, haze_of(x1, z0)), hz(c1, haze_of(x0, z1)), hz(c0, haze_of(x1, z1)), 0);
 }
-static u32 shade(u32 c, int k) { int r = (c & 255) * k >> 8, g = ((c >> 8) & 255) * k >> 8, b = ((c >> 16) & 255) * k >> 8; return UI_RGB(MIN(r, 255), MIN(g, 255), MIN(b, 255)); }
+// THE HAZE: things further from the giant fade toward the sky's colour at the horizon, so the land runs off into the distance
+// instead of stopping at the edge of what is drawn in full (hzf: 0 clear .. 256 all haze, set per thing by haze_at)
+static u32 shade(u32 c, int k) {
+    int r = MIN(255, (c & 255) * k >> 8), g = MIN(255, ((c >> 8) & 255) * k >> 8), b = MIN(255, ((c >> 16) & 255) * k >> 8);
+    if (hzf) { r += (HZ_R - r) * hzf >> 8; g += (HZ_G - g) * hzf >> 8; b += (HZ_B - b) * hzf >> 8; }
+    return UI_RGB(r, g, b); }
 static void box(int x0, int y0, int z0, int x1, int y1, int z1, u32 c) {   // y0 the top (up is -y), y1 the bottom; the faces that face the camera
     SVECTOR t0 = { (short)x0, (short)y0, (short)z0 }, t1 = { (short)x1, (short)y0, (short)z0 }, t2 = { (short)x0, (short)y0, (short)z1 }, t3 = { (short)x1, (short)y0, (short)z1 };
     SVECTOR b0 = { (short)x0, (short)y1, (short)z0 }, b1 = { (short)x1, (short)y1, (short)z0 }, b2 = { (short)x0, (short)y1, (short)z1 }, b3 = { (short)x1, (short)y1, (short)z1 };
@@ -388,6 +400,38 @@ static void building(const KBld *b, int i) {
     if ((T->kind == KK_GATHER || T->kind == KK_PROC) && b->work) nub_sprite(cx + 44, zs - 30, i & 3, (fr / 10) & 1);
     if ((T->kind == KK_GATHER || T->kind == KK_PROC) && ksOut(b)) for (int j = 0; j < ksOut(b) && j < 6; j++) box(x1 + 4, -12 - j * 10, cz - 6, x1 + 18, -2 - j * 10, cz + 6, goodCol[T->outG & 7]);
 }
+static int haze_of(int wx, int wz) {   // 0 near the giant .. 236 far off (a faint silhouette stays)
+    int dx = (wx - gx) >> 4, dz = (wz - gz) >> 4, d = isqrt(dx * dx + dz * dz) << 4;
+    return CLAMP((d - 4 * CELL) * 256 / (16 * CELL), 0, 236);
+}
+#define FAR 27
+static void far_draw(int ccx, int ccy) {   // past the full detail: the land in blocks of 3 x 3 cells, its woods, rocks and roofs as low hazy shapes, then the sea
+    int d = S.dim;
+    gfx_floor_pass = 1;
+    for (int by = -FAR; by < FAR; by += 3) for (int bx = -FAR; bx < FAR; bx += 3) {
+        if (bx >= -VIEW - 2 && bx + 3 <= VIEW + 2 && by >= -VIEW - 2 && by + 3 <= VIEW + 2) continue;   // (drawn in full)
+        int x = ccx + bx, y = ccy + by, wx = x * CELL, wz = -(y * CELL);
+        if (bx * bx + by * by > FAR * FAR) continue;
+        u32 col; int v = KT_WATER, c = 0;
+        if (x >= 0 && y >= 0 && x + 1 < d && y + 1 < d) { c = cells[(y + 1) * d + x + 1]; v = c & 7; }
+        col = v == KT_WATER ? UI_RGB(40, 100, 196) : v == KT_FOREST ? UI_RGB(52, 120, 54) : v == KT_ROCK || v == KT_CRYSTAL ? UI_RGB(120, 126, 116) : v == KT_MEADOW ? UI_RGB(120, 184, 70) : v == KT_ROAD ? UI_RGB(190, 160, 116) : UI_RGB(86, 158, 64);
+        if (c & KC_BLD) col = UI_RGB(160, 150, 120);
+        quad(wx, wz, wx + 3 * CELL, wz - 3 * CELL, v == KT_WATER ? 14 : 0, col, shade(col, 236));
+    }
+    gfx_floor_pass = 0;
+    for (int by = -FAR; by < FAR; by += 3) for (int bx = -FAR; bx < FAR; bx += 3) {   // the silhouettes
+        if (bx >= -VIEW - 2 && bx + 3 <= VIEW + 2 && by >= -VIEW - 2 && by + 3 <= VIEW + 2) continue;
+        if (bx * bx + by * by > FAR * FAR) continue;
+        int x = ccx + bx, y = ccy + by; if (x < 0 || y < 0 || x + 1 >= d || y + 1 >= d) continue;
+        int c = cells[(y + 1) * d + x + 1], v = c & 7, wx = x * CELL + CELL * 3 / 2, wz = -(y * CELL + CELL * 3 / 2);
+        hzf = haze_of(wx, wz);
+        if (c & KC_BLD) { int t = -1; for (int i = 0; i < R.nB; i++) if (x + 1 >= Bl[i].x && x + 1 < Bl[i].x + 2 && y + 1 >= Bl[i].y && y + 1 < Bl[i].y + 2) { t = Bl[i].type; break; }
+            int h = t == KB_TOWER ? 380 : t == KB_CASTLE ? 260 : 100; box(wx - 80, -h, wz - 80, wx + 80, 0, wz + 80, UI_RGB(206, 196, 180)); roof(wx - 88, wz - 88, wx + 88, wz + 88, -h, 60, UI_RGB(70, 90, 160)); }
+        else if (v == KT_FOREST) roof(wx - 130, wz - 130, wx + 130, wz + 130, 0, 150, UI_RGB(40, 110, 50));
+        else if (v == KT_ROCK || v == KT_CRYSTAL) box(wx - 90, -60, wz - 90, wx + 90, 0, wz + 90, UI_RGB(130, 130, 134));
+    }
+    hzf = 0;
+}
 static void land_draw(void) {
     int d = S.dim, ccx = gx / CELL, ccy = -gz / CELL;
     nub_drawn = 0;
@@ -414,11 +458,13 @@ static void land_draw(void) {
         quad(wx, wz, wx + CELL, wz - CELL, v == KT_WATER ? 14 : 0, shade(col, k), shade(col, k - 18));
     }
     gfx_floor_pass = 0;
-    for (int i = 0; i < R.nB; i++) { const KBld *b = &Bl[i]; if (b->x + 2 < x0 || b->x > x1 || b->y + 2 < y0 || b->y > y1) continue; building(b, i); }
+    for (int i = 0; i < R.nB; i++) { const KBld *b = &Bl[i]; if (b->x + 2 < x0 || b->x > x1 || b->y + 2 < y0 || b->y > y1) continue; hzf = haze_of((b->x + 1) * CELL, -(b->y + 1) * CELL); building(b, i); }
+    hzf = 0;
     for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
         int c = cells[y * d + x], v = c & 7; if (c & KC_BLD) continue;
         int wx = x * CELL + CELL / 2, wz = -(y * CELL + CELL / 2); u32 h = hsh(x, y);
         int ox = (int)(h % 31) - 15, oz = (int)((h >> 8) % 31) - 15, nr = ABS(x - ccx) <= 4 && ABS(y - ccy) <= 4;
+        hzf = haze_of(wx, wz);
         if (v == KT_FOREST) { tree(wx + ox, wz + oz, h, nr); if (nr && (h & 0x10000)) tree(wx - ox - 10, wz - oz + 14, h >> 3, 1); }
         else if (v == KT_ROCK || v == KT_CRYSTAL) rock(wx, wz, h, nr, v == KT_CRYSTAL);
         else if (v == KT_MEADOW && nr && (h & 3) == 0) { box(wx + ox - 3, -8, wz + oz - 3, wx + ox + 3, 0, wz + oz + 3, (h & 4) ? UI_RGB(250, 230, 60) : UI_RGB(250, 120, 160)); box(wx - ox - 3, -6, wz - oz - 3, wx - ox + 3, 0, wz - oz + 3, UI_RGB(250, 250, 250)); }
@@ -433,6 +479,8 @@ static void land_draw(void) {
         int wx = x * CELL + CELL / 2 + (int)(w % 5) * 6 - 12, wz = -(y * CELL + CELL / 2) + (int)(w % 3) * 8 - 8;
         nub_sprite(wx, wz, w & 3, (fr / 6 + w) & 1);
         box(wx - 6, -50, wz - 6, wx + 6, -38, wz + 6, goodCol[k->good & 7]); }
+    hzf = 0;
+    far_draw(ccx, ccy);
     gfx_set_reserve(0);
 }
 static void cursor_draw(void) {
@@ -467,13 +515,13 @@ void realm_draw(void) {
         return;
     }
     // the camera: behind and above the giant, turned with L1 R1
-    int fx = gx, fz = gz, pitch = 640, dist = 1250, yaw = (2048 - cyaw) & 4095;
+    int fx = gx, fz = gz, dist = cdist, pitch = 420 + (cdist - 650) * 300 / 1750, yaw = (2048 - cyaw) & 4095;   // (closer is lower, further looks down)
     cam.at.vx = fx; cam.at.vy = -170; cam.at.vz = fz;
     cam.eye.vx = fx - ((isin(yaw) * ((dist * icos(pitch)) >> 12)) >> 12);
     cam.eye.vz = fz - ((icos(yaw) * ((dist * icos(pitch)) >> 12)) >> 12);
     cam.eye.vy = -170 - ((dist * isin(pitch)) >> 12);
     gfx_camera_update();
-    gfx_set_fog(1300, 2100);
+    gfx_set_fog(0, 0);   // (the realm's own haze instead: see shade)
     land_draw();
     cursor_draw();
     {   // the giant: your own Bore
@@ -501,7 +549,7 @@ void realm_draw(void) {
     }
     if (panel == 2 && mis >= NMIS) { int top = ui_window(30, 60, 260, 60, "ALL MISSIONS DONE", IC_STAR); ui_wrap(40, top, 240, 2, "THE REALM IS YOURS TO KEEP. IT NEVER ENDS.", UI_SOFT); }
     if (msgT && msg) { int w = MIN(300, ui_tw(1, msg) + 20), two = ui_tw(1, msg) > 280; ui_round(160 - w / 2, two ? 164 : 174, w, two ? 30 : 18, 8, UI_RGB(30, 40, 70), UI_RGB(18, 24, 48), 0); ui_wrapc(160 - w / 2 + 8, two ? 167 : 177, w - 16, 2, msg, UI_WHITE); }
-    if (!pick && !menu) ui_hintbar(216, "X DO IT|SQ BUILD|TRI INFO|START MENU");
+    if (!pick && !menu) ui_hintbar(216, "X DO|SQ BUILD|L1 R1 TURN|L2 R2 ZOOM");
     if (pick) {
         int top = ui_window(16, 20, 288, 196, "WHAT X DOES", IC_HAMMER);
         for (int i = 0; i < NPICK; i++) { int col = i / 7, row = i % 7, x = 24 + col * 94, y = top + row * 20, s = i == psel;
@@ -516,3 +564,8 @@ void realm_draw(void) {
         for (int i = 0; i < 3; i++) ui_button(88, top + i * 22, 144, 18, it[i], i == 2 ? IC_DOOR : IC_PLAY, i == msel);
     }
 }
+
+// the overlay's head: what BORE2.EXE calls (ovl.h)
+#include "ovl.h"
+static void open_(int a) { (void)a; realm_open(); }
+__attribute__((section(".ovl_head"), used)) const OvlHead ovl_head = { OVL_MAGIC, open_, realm_update, realm_draw };

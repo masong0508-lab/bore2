@@ -54,7 +54,7 @@ void audio_voice(int v) {
 // ---- the song file (SONGS.BIN): a one-sector index, then per song its sequence sectors and its sample sectors ----
 static u32 seqbuf[SEQ_MAX / 4];
 static CdlLOC songs_loc;
-static int cd_ok;
+static int cd_ok, cd_up;   // (cd_up: the drive answered at start-up)
 static struct { u32 sector, seq_sectors, smp_sectors, smp_bytes; } sidx[NSONGS];
 
 // ---- the sequencer (all of this is read inside the timer interrupt) ----
@@ -165,6 +165,15 @@ void audio_jukebox_toggle_shuffle(void) { shuffle ^= 1; }
 int audio_jukebox_shuffle(void) { return shuffle; }
 int audio_cd_ok(void) { return cd_ok; }
 
+int audio_cd_load(const char *name, void *dst, int room) {   // a whole file from the disc into RAM (an overlay); 0 if it is not there or does not fit
+    if (!cd_up) return 0;
+    char path[24]; snprintf(path, sizeof path, "\\%s;1", name);
+    CdlFILE f; if (!CdSearchFile(&f, path)) return 0;
+    int secs = (int)((f.size + 2047) / 2048); if (secs * 2048 > room) return 0;
+    if (!CdControl(CdlSetloc, &f.pos, 0)) return 0;
+    if (!CdRead(secs, (u32 *)dst, CdlModeSpeed)) return 0;
+    return CdReadSync(0, 0) >= 0;
+}
 static int cd_read(u32 sector, int count, void *buf) {
     CdlLOC loc;
     CdIntToPos(CdPosToInt(&songs_loc) + (int)sector, &loc);
@@ -335,6 +344,7 @@ void audio_init(void) {
     cd_ok = 0;
     song_base = spu_next;
     if (CdInit()) {
+        cd_up = 1;
         // the voice clips: VOICES.BIN (u32 count, then {u32 offset, u32 size, u32 rate} per clip, then the ADPCM data) straight into
         // sound memory as it is, through the sequence buffer a piece at a time; each clip plays from where it landed
         CdlFILE vf;

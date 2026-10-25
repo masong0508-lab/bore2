@@ -15,7 +15,7 @@
 #include "citizens.h"
 
 static int fframe;   // (the fight's own clock, for the sea and the torches)
-int fight_wins, fight_champ, fight_best, fight_last_wins;   // (last: matches won since the coin went in)
+int fight_last_wins, fight_matches;   // (since the coin went in)   // (last: matches won since the coin went in)
 
 // ---- small maths (angles 0..255, sines x256) ----
 static inline int fsin(int a) { return isin((a & 255) << 4) >> 4; }
@@ -308,10 +308,10 @@ static void round_begin(void) {
     static char rb[16]; if (round_n >= 3) banner = "FINAL ROUND"; else { snprintf(rb, sizeof rb, "ROUND %d", round_n); banner = rb; }
     audio_voice(VOICE_YEHA);
 }
-static void match_begin(void) { F[0].wins = F[1].wins = 0; round_n = 1; build_them(stage); set_stats(); round_begin(); }
+static void match_begin(void) { fight_matches++; F[0].wins = F[1].wins = 0; round_n = 1; build_them(stage); set_stats(); round_begin(); }
 void fight_open(int cr) {
     { u32 n; them_p = (Bore *)(((u32)crowd_scratch(&n) + 7) & ~7u); } them_built = -1;
-    credits = cr; fight_last_wins = 0; stage = 0; style = 0; you_i = player; pick_row = 0; cam_mode = CAM_SIDE;
+    credits = cr; fight_last_wins = 0; fight_matches = 0; stage = 0; style = 0; you_i = player; pick_row = 0; cam_mode = CAM_SIDE;
     fs = FS_PICK; ft = 0;
     build_them(0); set_stats();
     freset(&F[0], -900, 0, 64); freset(&F[1], 900, 0, 192); cam_follow(1);
@@ -456,7 +456,7 @@ static void ring_draw(void) {
     // four torches round the edge, flickering
     for (int k = 0; k < 4; k++) {
         int a = k * 1024 + 512, x = isin(a) * (R2 + 40) >> 12, z = icos(a) * (R2 + 40) >> 12, fl = (isin((fframe * 300 + k * 1000) & 4095) >> 10);
-        { int ex = cam.eye.vx - x, ez = cam.eye.vz - z; if (ex * ex + ez * ez < 420 * 420) continue; }   // (not right in front of the lens)
+        { int ex = cam.eye.vx - x, ez = cam.eye.vz - z; if (ex * ex + ez * ez < 760 * 760) continue; }   // (not right in front of the lens)
         SVECTOR p0 = { (short)(x - 8), -150, (short)z }, p1 = { (short)(x + 8), -150, (short)z }, p2 = { (short)(x - 8), 0, (short)z }, p3 = { (short)(x + 8), 0, (short)z };
         gfx_quad_f(&p0, &p1, &p2, &p3, 60, 40, 30, 0);
         SVECTOR f0 = { (short)(x - 14), -150, (short)z }, f1 = { (short)(x + 14), -150, (short)z }, f2 = { (short)x, (short)(-196 - fl * 4), (short)z };

@@ -10,4 +10,5 @@ int  arcade_price(int g);
 void arcade_open(int g);                     // paid already (AG_PRIZES: the prize counter)
 int  arcade_update(int held, int pressed, int steps);   // 1 while it runs
 void arcade_draw(void);
-extern int arcade_tix;                       // tickets in your pocket (saved with the life)
+extern int arcade_tix;
+extern const char *const arcade_gname[]; extern const u8 arcade_gprice[];                       // tickets in your pocket (saved with the life)

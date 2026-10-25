@@ -8,14 +8,10 @@
 #include "audio.h"
 #include "wants.h"
 
-int arcade_tix;
-static const char *const gName[AG_NGAME] = { "BORTUA FIGHTER", "BORE BREAKER", "SNACK CATCH", "WHACK-A-BORE", "HIGH STRIKER" };
+#define gName arcade_gname
 static const char *const gHow1[AG_NGAME] = { "", "LEFT RIGHT MOVE THE PADDLE", "LEFT RIGHT MOVE THE BASKET", "THE D-PAD PICKS A HOLE", "X STOPS THE METER" };
 static const char *const gHow2[AG_NGAME] = { "", "X SERVES. CLEAR THE WALL", "CATCH SNACKS, DODGE ROCKS", "X WHACKS THE BORE", "FIVE SWINGS: RING THE BELL" };
-static const u8 gPrice[AG_NGAME] = { 2, 2, 1, 1, 1 };
-int arcade_game_at(int x, int y) { return (x * 3 + y * 2) % AG_NGAME; }
-const char *arcade_game_name(int g) { return g >= 0 && g < AG_NGAME ? gName[g] : "THE PRIZES"; }
-int arcade_price(int g) { return g >= 0 && g < AG_NGAME ? gPrice[g] : 0; }
+#define gPrice arcade_gprice
 
 static u32 arng = 0x9E3779B9u;
 static int r8(void) { arng = arng * 1103515245u + 12345u; return (int)((arng >> 16) & 255); }
@@ -111,9 +107,9 @@ int arcade_update(int hd, int pr, int steps) {
     if (game == AG_FIGHTER) {
         if (fight_update(hd, pr, steps)) return 1;
         fight_close();
-        { Sim *s = &sims[player]; extern int fight_last_wins; int w = fight_last_wins; tix = w * 6 + (fight_champ ? 0 : 0);
+        { Sim *s = &sims[player]; extern int fight_last_wins, fight_matches; if (fight_matches) { int w = fight_last_wins; tix = w * 6 + (fight_champ ? 0 : 0);
           arcade_tix = MIN(9999, arcade_tix + tix); need_add(s, N_FUN, 30 + w * 5); need_add(s, N_REST, -6); s->skill_body += 10 + w * 8;
-          char b[48]; snprintf(b, sizeof b, w ? "BORTUA FIGHTER: %d WON, +%d TICKETS" : "BORTUA FIGHTER: BEATEN. NEXT TIME!", w, tix); sim_note(b); }
+          char b[48]; snprintf(b, sizeof b, w ? "BORTUA FIGHTER: %d WON, +%d TICKETS" : "BORTUA FIGHTER: BEATEN. NEXT TIME!", w, tix); sim_note(b); } }
         return 0;
     }
     if (game == AG_PRIZES) {
@@ -211,3 +207,7 @@ void arcade_draw(void) {
     }
     scan(); tix_line();
 }
+
+// the overlay's head (ovl.h)
+#include "ovl.h"
+__attribute__((section(".ovl_head"), used)) const OvlHead ovl_head = { OVL_MAGIC, arcade_open, arcade_update, arcade_draw };

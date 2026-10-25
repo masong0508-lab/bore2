@@ -15,6 +15,8 @@
 			<file name="BORE2.EXE"  type="data" source="bore2.exe" />
 			<file name="SONGS.BIN"  type="data" source="${PROJECT_SOURCE_DIR}/assets/SONGS.BIN" />
 			<file name="VOICES.BIN" type="data" source="${PROJECT_SOURCE_DIR}/assets/voices.bin" />
+			<file name="KINGDOM.OVL" type="data" source="KINGDOM.OVL" />
+			<file name="ARCADE.OVL" type="data" source="ARCADE.OVL" />
 			<dummy sectors="512"/>
 		</directory_tree>
 	</track>

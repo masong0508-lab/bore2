@@ -6,6 +6,7 @@ enum { VOICE_NEED, VOICE_AGREE, VOICE_ANGRY, VOICE_CRY, VOICE_DISAGREE, VOICE_FI
        VOICE_LAUGH, VOICE_NAH, VOICE_PEE, VOICE_SHRIEK, VOICE_SNORE, VOICE_YAHOO, VOICE_YEHA, VOICE_GROAN, VOICE_WIN, VOICE_MOVE_ASK, VOICE_MOVE_YES, VOICE_MOVE_NO, VOICE_SCARE_M1, VOICE_SCARE_M2, VOICE_SCARE_F1, VOICE_SCARE_F2, VOICE_N };
 
 void audio_init(void);
+int  audio_cd_load(const char *name, void *dst, int room);   // a file off the disc into RAM (0: not there, or too big)
 void audio_voice(int v);
 void audio_music_level(int l);            // the music's volume: 0 off, 1 low, 2 medium, 3 full
 void audio_update(void);                  // once a frame: the jukebox moves on when a song ends
