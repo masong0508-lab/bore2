@@ -237,7 +237,7 @@ void skate_step(Sim *s, int wx, int wz) {
             if (k.st == ST_MANUAL) { k.st = ST_GROUND; k.landt = 22; }
             else if (k.v > 5 * FX) { k.st = ST_MANUAL; k.bal = rnd(400) - 200; k.balv = 0; add_trick(TK_MANUAL, tkPts[TK_MANUAL]); k.landt = 0; }
         }
-        if ((pr & SKB_O) && k.st == ST_GROUND) { skate_off(s); sim_note("OFF THE BOARD"); return; }
+        if ((pr & SKB_O) && k.st == ST_GROUND) { skate_off(s); sim_note("OFF THE BOARD AND ON YOUR FEET"); return; }
         // steering, pushing, braking
         int rate = 84 - k.v / (FX * 1); if (rate < 34) rate = 34; if (k.st == ST_MANUAL) rate /= 2;
         k.pushing = 0;

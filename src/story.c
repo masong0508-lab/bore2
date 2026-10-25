@@ -179,8 +179,8 @@ void story_household(int id, int px, int py) {   // (sim_init has run: nobody is
 }
 int story_join(int id) {   // a story for the life you are living now: its people move in with you (you stay who you are)
     if (id < 1 || id > STY_PLAYABLE) return 0;
-    if (nsims + stories[id].ncast > MAX_SIMS) { sim_note("TOO MANY AT HOME FOR THAT STORY"); return 0; }
-    if (sims[player].bore.stage < AG_TEEN) { sim_note("A GROWN-UP STARTS A STORY"); return 0; }
+    if (nsims + stories[id].ncast > MAX_SIMS) { sim_note("TOO MANY AT HOME FOR THAT STORY. NO ROOM"); return 0; }
+    if (sims[player].bore.stage < AG_TEEN) { sim_note("ONLY A GROWN-UP CAN START A STORY"); return 0; }
     story_reset(); story_id = id;
     cast_in(id, player, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]));
     story_begin(); return 1;

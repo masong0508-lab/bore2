@@ -1176,17 +1176,17 @@ static void clock_tick(void) {
             else job_strikes++;
             if (pay) { cash += pay; story_paid++; sprintf(b, "PAID $%d", pay); sim_note(b); wants_event(&sims[player], W_PAID, 0); sim_moodlet(&sims[player], ML_PAYDAY);
                        if (story_paid == 1) sim_note("THE ISLAND FERRY IS OPEN NOW!"); audio_voice(VOICE_YAHOO); }
-            else { sim_note("NO PAY TODAY"); wants_fear(&sims[player], F_BADDAY); }
+            else { sim_note("NO PAY TODAY, SORRY"); wants_fear(&sims[player], F_BADDAY); }
             if (job_days_good >= 3 && job_level < 5) { job_level++; job_days_good = 0; job_strikes = 0; snprintf(b, sizeof b, "PROMOTED: %s!", job_title()); sim_note(b);
                                                        wants_event(&sims[player], W_PROMO, 0); sim_moodlet(&sims[player], ML_PROMOTED); }
-            if (job_strikes >= 3 && job_level > 0) { job_level--; job_strikes = 0; sim_note("DEMOTED"); wants_fear(&sims[player], F_DEMOTED); }
+            if (job_strikes >= 3 && job_level > 0) { job_level--; job_strikes = 0; sim_note("OUCH. YOU GOT DEMOTED"); wants_fear(&sims[player], F_DEMOTED); }
         }
     }
     if (clock_min >= 1440) {
         clock_min = 0; clock_day = (clock_day + 1) % 7; day_count++;
         midnight_ages(); pop_midnight();                                    // (your household, and everyone else)
         cash -= BILLS;
-        if (cash < 0) { cash = 0; sim_note("BROKE! BILLS UNPAID"); sims[player].mood -= 30; audio_voice(VOICE_CRY); wants_fear(&sims[player], F_BROKE); }
+        if (cash < 0) { cash = 0; sim_note("BROKE! THE BILLS WENT UNPAID"); sims[player].mood -= 30; audio_voice(VOICE_CRY); wants_fear(&sims[player], F_BROKE); }
         else sim_note("BILLS PAID: 800");
     }
 }
@@ -1326,11 +1326,11 @@ static const char *sim_hint_(void) {
     PlaceInfo pi;
     if (place_at(mx, my, &pi)) {
         if (!place_open(pi.lot, clock_min, clock_day)) return "CLOSED";
-        if (staff_only(pi.lot, c)) return "STAFF ONLY";
+        if (staff_only(pi.lot, c)) return "SORRY, STAFF ONLY BACK THERE";
         if (c == 'y' || c == 'I') switch (pi.lot) {
             case LOT_DINER: case LOT_CAFE: return "ORDER"; case LOT_SHOP: return "SHOP"; case LOT_INN: case LOT_HOTEL: return "CHECK IN";
             case LOT_BAR: return "A DRINK"; case LOT_CINEMA: return "POPCORN"; case LOT_SALON: return "A HAIRCUT"; case LOT_RESTAURANT: return "DINE";
-            case LOT_CLINIC: return "A CHECKUP"; case LOT_GALLERY: return "BUY ART"; default: return "STAFF ONLY"; }
+            case LOT_CLINIC: return "A CHECKUP"; case LOT_GALLERY: return "BUY ART"; default: return "SORRY, STAFF ONLY BACK THERE"; }
         if (c == ';' && pi.lot == LOT_CINEMA) return "A FILM";
         if (c == 't' && pi.lot == LOT_RESTAURANT) return "DINE";
         if (c == 'S' && pi.lot == LOT_SPA) return "A MASSAGE";
@@ -1338,7 +1338,7 @@ static const char *sim_hint_(void) {
         if (c == ')' && pi.lot == LOT_GALLERY) return "ADMIRE";
         if (c == '!' && pi.lot == LOT_ARCADE) return "PLAY $2";
         if (c == '7' || c == '`' || c == 'i') return pi.lot == LOT_SHOP ? "SHOP" : "";
-        if (c == 'd') return "STAFF ONLY";
+        if (c == 'd') return "SORRY, STAFF ONLY BACK THERE";
         if (c == '~' && pi.lot == LOT_POOL) return "SWIM";
     }
     return act_hint(action_for(c), c);
@@ -1390,7 +1390,7 @@ static int sim_pie_open_(char opt[8][16]) {
     if (c == ' ') { strcpy(pie_title, "STAIRS"); strcpy(opt[0], "GO DOWN"); pie_code[0] = 1; pie_n = 1; return 1; }
     if (c == '8' && world_zone == ZONE_CITY && world_wbx >= 0) {   // a home for sale: buy it, and the family moves in
         int bx = world_wbx + mx / BM_BLK, by = world_wby + my / BM_BLK;
-        if (!home_for_sale(bx, by)) { sim_note("SOLD"); return 0; }
+        if (!home_for_sale(bx, by)) { sim_note("SOLD!"); return 0; }
         home_address(bx, by, pie_title);
         sprintf(opt[0], "BUY $%d", home_price(bx, by)); pie_code[0] = 36;
         strcpy(opt[1], "WHAT IS IT?"); pie_code[1] = 37; pie_n = 2; return 2;
@@ -1399,10 +1399,10 @@ static int sim_pie_open_(char opt[8][16]) {
     pie_place = place_at(mx, my, &pie_pi);
     int mine = job_here(mx, my, c);
     if (mine && !is_work()) { if (c == 'x') { char b[40], h1[8], h2[8]; sprintf(b, "WORK IS %s TO %s", hour_name(careers[job_car].from, h1), hour_name(careers[job_car].to, h2)); sim_note(b); return 0; } mine = 0; }
-    if (c == 'x' && !mine) { sim_note("THIS IS NOT YOUR WORKPLACE"); return 0; }
+    if (c == 'x' && !mine) { sim_note("YOU DO NOT WORK HERE"); return 0; }
     if (pie_place && !mine) {
         if (!place_open(pie_pi.lot, clock_min, clock_day)) { char b[40], h[8]; sprintf(b, "CLOSED. OPENS AT %s", hour_name(place_opens_at(pie_pi.lot), h)); sim_note(b); return 0; }
-        if (staff_only(pie_pi.lot, c)) { sim_note("STAFF ONLY"); return 0; }
+        if (staff_only(pie_pi.lot, c)) { sim_note("SORRY, STAFF ONLY BACK THERE"); return 0; }
     }
     strcpy(pie_title, pie_place ? pie_pi.name : act_hint(act, c));
     #define OPT(txt, v) { strcpy(opt[pie_n], txt); pie_code[pie_n++] = v; }
@@ -1469,7 +1469,7 @@ static int sim_pie_open_(char opt[8][16]) {
         case LOT_GALLERY: if (c == ')') OPT("ADMIRE THE ART", PC_ADMIRE) else if (c == 'y') OPT("A PAINTING $300", PC_PAINTING) break;
     }
     #undef OPT
-    if (!pie_n) { sim_note(pie_place ? "STAFF ONLY" : "NOTHING TO DO HERE"); return 0; }
+    if (!pie_n) { sim_note(pie_place ? "SORRY, STAFF ONLY BACK THERE" : "NOTHING TO DO HERE"); return 0; }
     return pie_n;
 }
 static void social(Sim *s, Sim *o, int move) {   // a social move: the other Bore accepts or rejects it (Sims 2: mood, the relationship, personality)
@@ -1527,7 +1527,7 @@ static void swim(Sim *s) {   // into the nearest water
         if (x < 0 || y < 0 || x >= MW || y >= MH || floorMap[y][x] != FL_WATER) continue;
         int d = (x - pie_mx) * (x - pie_mx) + (y - pie_my) * (y - pie_my); if (d < bd) { bd = d; bx = x; by = y; }
     }
-    if (bx < 0) { sim_note("NO WATER HERE"); return; }
+    if (bx < 0) { sim_note("THERE IS NO WATER HERE"); return; }
     begin_action(s, ACT_SWIM, bx, by);
     s->x = bx * TILE + TILE / 2; s->z = -(by * TILE + TILE / 2); s->gait.sleep = 1;
     sim_say(s, "CANNONBALL!"); audio_voice(VOICE_YAHOO);
@@ -1677,7 +1677,7 @@ static void sim_pie_do_(int i) {
     if (act == ACT_SLEEP && s->act_var == 1) s->act_t = 300;              // a nap: an hour or so
     if (act == ACT_EAT && s->act_var == 1) {                              // cooking takes a while; it is a good meal if there is good food in
         s->act_t = 420;
-        if (world_zone == ZONE_ISLAND) { } else if (groceries > 0) groceries--; else { s->act_var = 3; sim_note("NO GROCERIES: A PLAIN MEAL"); }
+        if (world_zone == ZONE_ISLAND) { } else if (groceries > 0) groceries--; else { s->act_var = 3; sim_note("NO GROCERIES, SO A PLAIN MEAL"); }
     }
 }
 
@@ -1698,14 +1698,14 @@ static int sim_player_interact_(void) {
         return 1;
     }
     char c = world_at(mx, my);
-    if (c == 'x' && !(job_here(mx, my, c) && is_work())) { sim_note(job_here(mx, my, c) ? "NOT WORK TIME" : "THIS IS NOT YOUR WORKPLACE"); return 0; }
+    if (c == 'x' && !(job_here(mx, my, c) && is_work())) { sim_note(job_here(mx, my, c) ? "NOT WORK TIME" : "YOU DO NOT WORK HERE"); return 0; }
     if (action_for(c) == ACT_NONE) return 0;
     if (c == 'R' || c == 'A') audio_jukebox_next();
     if (action_for(c) == ACT_TRAVEL) { travel_asked = 1; return 1; }
     begin_action(s, action_for(c), mx, my);
     return 1;
 }
-void sim_player_cancel(void) { Sim *s = &sims[player]; if (s->action != ACT_NONE) end_action(s); else if (has_board) { if (on_board) skate_off(s); else { on_board = 1; skate_on(s); wants_event(s, W_SKATE, 0); } sim_note(on_board ? "ON THE BOARD" : "OFF THE BOARD"); } }
+void sim_player_cancel(void) { Sim *s = &sims[player]; if (s->action != ACT_NONE) end_action(s); else if (has_board) { if (on_board) skate_off(s); else { on_board = 1; skate_on(s); wants_event(s, W_SKATE, 0); } sim_note(on_board ? "ON THE BOARD" : "OFF THE BOARD AND ON YOUR FEET"); } }
 void sim_player_cancel_sim(Sim *s) { if (s->action != ACT_NONE) end_action(s); }
 
 const char * sim_hint(void) { world_lvl = sims[player].lvl; const char * r = sim_hint_(); world_lvl = 0; return r; }

@@ -170,15 +170,20 @@ void ui_icon_disc(int cx, int cy, int d, int icon, u32 disc, u32 ink) {
     ui_disc(cx, cy, d, disc);
     if (icon >= 0) ui_icon(cx - 6, cy - 6, icon, ink);
 }
+// each kind of screen has its own colour across the top (main.c picks it): so the menus are not all one blue
+int ui_accent;
+static const u32 acc_top[8] = { UI_RGB(70, 176, 238), UI_RGB(56, 190, 170), UI_RGB(110, 196, 80), UI_RGB(244, 160, 60), UI_RGB(170, 120, 230), UI_RGB(240, 110, 160), UI_RGB(236, 190, 60), UI_RGB(120, 140, 170) };
+static const u32 acc_bot[8] = { UI_BLUE2, UI_RGB(20, 130, 120), UI_RGB(50, 140, 40), UI_RGB(206, 106, 20), UI_RGB(110, 60, 180), UI_RGB(196, 50, 110), UI_RGB(186, 130, 10), UI_RGB(70, 86, 116) };
 int ui_window(int x, int y, int w, int h, const char *title, int icon) {
+    u32 at = acc_top[ui_accent & 7], ab = acc_bot[ui_accent & 7];
     ui_card(x, y, w, h);
     // the header: a blue band across the top, round at its upper corners
-    ui_round(x + 1, y + 1, w - 2, 18, 6, UI_RGB(70, 176, 238), UI_BLUE2, 0);
-    gfx_rect(x + 1, y + 13, w - 2, 6, cr(UI_BLUE2), cg(UI_BLUE2), cb(UI_BLUE2), 0);   // (square below: it meets the card)
+    ui_round(x + 1, y + 1, w - 2, 18, 6, at, ab, 0);
+    gfx_rect(x + 1, y + 13, w - 2, 6, cr(ab), cg(ab), cb(ab), 0);   // (square below: it meets the card)
     gfx_rect(x + 1, y + 19, w - 2, 1, 255, 255, 255, 0);
     int tx = x + 8;
-    if (icon >= 0) { ui_icon_disc(x + 12, y + 10, 15, icon, UI_WHITE, UI_BLUE); tx = x + 24; }
-    if (title) { gfx_text_raw(tx + 1, y + 6, 2, title, 16, 70, 130); gfx_text_raw(tx, y + 5, 2, title, 255, 255, 255); }
+    if (icon >= 0) { ui_icon_disc(x + 12, y + 10, 15, icon, UI_WHITE, ab); tx = x + 24; }
+    if (title) { gfx_text_raw(tx + 1, y + 6, 2, title, cr(ab) / 2, cg(ab) / 2, cb(ab) / 2); gfx_text_raw(tx, y + 5, 2, title, 255, 255, 255); }
     return y + 24;
 }
 void ui_row(int x, int y, int w, int h, const char *label, int icon, int sel) {
@@ -315,8 +320,9 @@ void ui_hintbar(int y, const char *spec) {
 }
 int ui_window_s(int x, int y, int w, int h, const char *title) {
     ui_card(x, y, w, h);
-    ui_round(x + 1, y + 1, w - 2, 15, 6, UI_RGB(70, 176, 238), UI_BLUE2, 0);
-    gfx_rect(x + 1, y + 10, w - 2, 6, cr(UI_BLUE2), cg(UI_BLUE2), cb(UI_BLUE2), 0);
+    { u32 at = acc_top[ui_accent & 7], ab = acc_bot[ui_accent & 7];
+    ui_round(x + 1, y + 1, w - 2, 15, 6, at, ab, 0);
+    gfx_rect(x + 1, y + 10, w - 2, 6, cr(ab), cg(ab), cb(ab), 0); }
     gfx_rect(x + 1, y + 16, w - 2, 1, 255, 255, 255, 0);
     if (title) ui_textc(x + w / 2, y + 5, 1, title, UI_WHITE);
     return y + 20;

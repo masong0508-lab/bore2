@@ -78,7 +78,7 @@ int home_start(void) {   // a new life begins in SAN BOREAS, in a lived-in sort 
 }
 int home_buy(int bx, int by) {
     char t[40], a[24];
-    if (!home_for_sale(bx, by)) { sim_note("THAT HOME IS NOT FOR SALE"); return 0; }
+    if (!home_for_sale(bx, by)) { sim_note("SORRY, THAT HOME IS NOT FOR SALE"); return 0; }
     int price = home_price(bx, by), refund = home_city ? home_paid : 0;
     if (cash + refund < price) { sprintf(t, "NOT ENOUGH MONEY: IT IS $%d", price); sim_note(t); audio_voice(VOICE_NAH); return 0; }
     if (home_city) { cash += refund; sprintf(t, "OLD HOME SOLD FOR $%d", refund); sim_note(t); world_own_clear(); }

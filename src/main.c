@@ -888,7 +888,7 @@ static void map_update(void) {
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = BACK_TO(); return; }
     if (PRESSED(PAD_TRIANGLE)) { strcpy(map_nm, bm_set(map_sel)->name); name_open(map_nm, 17, "RENAME THIS TOWN", map_renamed); return; }
     if (PRESSED(PAD_CROSS)) {
-        if (cash < 20) { sim_note("A TAXI IS $20"); audio_voice(VOICE_NAH); return; }
+        if (cash < 20) { sim_note("A TAXI RIDE COSTS $20"); audio_voice(VOICE_NAH); return; }
         cash -= 20;
         const Settle *st = bm_set(map_sel);
         taxi_to_block(st->x, st->y, -1, -1, st->name);
@@ -966,7 +966,7 @@ static void dir_update(void) {
     if (PRESSED(PAD_DOWN)) dir_msel = (dir_msel + 1) % f->n;
     if (PRESSED(PAD_CIRCLE)) { dir_fam = -1; return; }
     if (PRESSED(PAD_CROSS)) {                      // go and knock: a taxi to their front door
-        if (cash < 20) { sim_note("A TAXI IS $20"); audio_voice(VOICE_NAH); return; }
+        if (cash < 20) { sim_note("A TAXI RIDE COSTS $20"); audio_voice(VOICE_NAH); return; }
         cash -= 20;
         char sur[NAME_LEN], b[40]; pop_surname(dir_fam, sur); snprintf(b, sizeof b, "THE %sS' HOUSE", sur);
         taxi_to_block(f->bx, f->by, 8, 1, b);
@@ -1248,14 +1248,14 @@ static void nhood_update(void) {
     if (PRESSED(PAD_DOWN)) nhood_hop(0, 1);
     if (PRESSED(PAD_L1)) nh_sel = (nh_sel + nh_n - 1) % nh_n;
     if (PRESSED(PAD_R1)) nh_sel = (nh_sel + 1) % nh_n;
-    if (nh_first && PRESSED(PAD_TRIANGLE)) { sim_note("THE MAN BASE IT IS"); state = ST_LIFE; return; }   // (stay in the old place)
+    if (nh_first && PRESSED(PAD_TRIANGLE)) { sim_note("THE MAN BASE IT IS. HOME SWEET HOME"); state = ST_LIFE; return; }   // (stay in the old place)
     if (!nh_first && PRESSED(PAD_SQUARE)) {        // go and see it first
         if (cash < 20) { audio_voice(VOICE_NAH); return; }
         cash -= 20; char ad[24]; home_address(nh_bx[nh_sel], nh_by[nh_sel], ad); taxi_to_block(nh_bx[nh_sel], nh_by[nh_sel], -1, -1, ad); state = ST_LIFE; return;
     }
     if (!nh_first && PRESSED(PAD_SELECT)) { homes_open(); return; }   // (the plain list)
     if (PRESSED(PAD_CROSS)) {
-        if (!home_for_sale(nh_bx[nh_sel], nh_by[nh_sel])) { sim_note("THAT ONE IS SOLD"); audio_voice(VOICE_NAH); return; }
+        if (!home_for_sale(nh_bx[nh_sel], nh_by[nh_sel])) { sim_note("TOO LATE, THAT ONE IS SOLD"); audio_voice(VOICE_NAH); return; }
         if (home_buy(nh_bx[nh_sel], nh_by[nh_sel])) state = ST_LIFE;   // (life_update moves the family in)
     }
 }
@@ -1283,7 +1283,7 @@ static void nhood_draw(void) {
         ui_disc(x, y, 13, UI_WHITE); ui_icon_disc(x, y, 11, IC_HOUSE, UI_GREEN, UI_WHITE);
     }
     const int PX = 198, PW = 110;                   // the picked lot, on the right
-    if (!nh_n) { ui_text(PX, top + 10, 1, "NOTHING FOR SALE", UI_SOFT); ui_hints(310, 215, nh_first ? "X STAY AT THE MAN BASE" : "O BACK", 2); return; }
+    if (!nh_n) { ui_text(PX, top + 10, 1, "NO HOMES FOR SALE ROUND HERE RIGHT NOW", UI_SOFT); ui_hints(310, 215, nh_first ? "X STAY AT THE MAN BASE" : "O BACK", 2); return; }
     int i = nh_sel, empty = nh_lot[i] == LOT_EMPTY, refund = home_city ? home_paid : 0;
     sprintf(b, "LOT %d OF %d", i + 1, nh_n); ui_text(PX, top + 1, 1, b, UI_SOFT);
     ui_round(PX - 2, top + 13, PW + 4, 50, 6, UI_RGB(234, 240, 248), UI_RGB(224, 231, 240), 0);
@@ -1294,7 +1294,7 @@ static void nhood_draw(void) {
     { BInfo bi; bm_block(nh_bx[i], nh_by[i], &bi); const Settle *st = bi.set != 255 ? bm_set(bi.set) : 0; ui_text(PX + 2, top + 54, 1, st ? st->name : "OPEN COUNTRY", UI_SOFT); }
     int can = cash + refund >= nh_price[i], sold = !home_for_sale(nh_bx[i], nh_by[i]);
     sprintf(b, "$%d", nh_price[i]); ui_text(PX, top + 70, 2, b, sold ? UI_SOFT : can ? UI_GOODT : UI_BADT);
-    ui_text(PX, top + 88, 1, sold ? "SOLD" : can ? "YOU CAN AFFORD IT" : "NOT ENOUGH MONEY", sold || !can ? UI_BADT : UI_SOFT);
+    ui_text(PX, top + 88, 1, sold ? "SOLD!" : can ? "YOU CAN AFFORD IT" : "NOT ENOUGH MONEY", sold || !can ? UI_BADT : UI_SOFT);
     sprintf(b, "FAMILY FUNDS $%ld", cash); ui_text(PX, top + 100, 1, b, UI_INK);
     if (home_city && !nh_first) { sprintf(b, "YOURS SELLS: $%d", home_paid); ui_text(PX, top + 111, 1, b, UI_SOFT); }
     {   // the key
@@ -1846,7 +1846,7 @@ static void slots_update(void) {
         slot_ask = 0; save_game(slot_sel); state = ST_LIFE; return;
     }
     slot_ask = 0;
-    if (!slot_have[slot_sel]) { save_msg = "THAT SLOT IS EMPTY"; audio_voice(VOICE_NAH); return; }
+    if (!slot_have[slot_sel]) { save_msg = "NOTHING SAVED IN THAT SLOT YET"; audio_voice(VOICE_NAH); return; }
     if (load_game(slot_sel)) state = ST_LIFE;
     else { audio_voice(VOICE_NAH); state = ST_SLOTS; if (!life_started) slot_back = ST_MENU; }
 }
@@ -1857,7 +1857,7 @@ static void slots_draw(void) {
         int y = top + 4 + i * 30; char t[40], u[40];
         ui_round(48, y, 224, 26, 4, i == slot_sel ? UI_HILITE : UI_PANEL, i == slot_sel ? UI_HILITE : UI_PANEL, 0);
         if (slot_have[i]) { sprintf(t, "%d. THE %s FAMILY", i + 1, slot_in[i].name); sprintf(u, "DAY %d   %d BORES   $%d", slot_in[i].day + 1, slot_in[i].nsims, (int)slot_in[i].cash); }
-        else { sprintf(t, "%d. EMPTY", i + 1); strcpy(u, slot_save ? "SAVE A NEW LIFE HERE" : "NOTHING SAVED HERE"); }
+        else { sprintf(t, "%d. EMPTY", i + 1); strcpy(u, slot_save ? "FREE: YOUR LIFE CAN GO HERE" : "FREE: NO LIFE SAVED HERE YET"); }
         ui_text(56, y + 3, 1, t, UI_INK); ui_text(56, y + 14, 1, u, UI_SOFT);
     }
     const char *m = slot_ask == 1 ? "REPLACE THIS SAVE? X AGAIN TO REPLACE" : slot_ask == 2 ? "DELETE THIS SAVE? SQUARE AGAIN" : save_msg ? save_msg : !slot_card ? "NO MEMORY CARD IN SLOT 1" : "";
@@ -2006,10 +2006,10 @@ static void homes_open(void);
 int ap_frames, ap_vs, ap_cpu;
 #endif
 void throw_party(void) {   // (also the phone's THROW A PARTY)
-    if (citizens_party_on()) { sim_note("A PARTY IS ALREADY ON"); return; }
-    if (cash < 100) { sim_note("A PARTY COSTS $100"); audio_voice(VOICE_NAH); return; }
+    if (citizens_party_on()) { sim_note("THE PARTY IS ALREADY GOING!"); return; }
+    if (cash < 100) { sim_note("YOU NEED $100 TO THROW A PARTY"); audio_voice(VOICE_NAH); return; }
     int n = citizens_party();
-    if (n <= 0) { sim_note("NO ROOM TO DANCE HERE"); audio_voice(VOICE_NAH); return; }
+    if (n <= 0) { sim_note("NOT ENOUGH ROOM TO DANCE HERE"); audio_voice(VOICE_NAH); return; }
     cash -= 100;
     char b[40]; sprintf(b, "PARTY! %d GUESTS ARE COMING", n); sim_note(b);
     audio_station_play(1);                                            // RAVE 101
@@ -2027,7 +2027,7 @@ static void pause_update(void) {
             case 0: state = ST_LIFE; break;
             case 1: panel_tab = 0; state = ST_PANEL; break;
             case 3: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
-                    if (!world_backup()) { sim_note("NO ROOM FOR THE STUDIO NOW"); state = ST_LIFE; break; }
+                    if (!world_backup()) { sim_note("NO ROOM FOR THE STUDIO JUST NOW. TRY AT HOME"); state = ST_LIFE; break; }
                     create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_gen_studio(); break;
             case 4: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); state = ST_LIFE; } break;
@@ -2071,7 +2071,7 @@ static void phone_update(void) {
         if (PRESSED(PAD_CROSS)) {
             const Sim *o = &sims[ph_fsel]; char b[40];
             if (ph_fsel == player) { state = ST_LIFE; return; }
-            if (o->bore.stage == AG_BABY) { sim_note("A BABY CANNOT BE PLAYED"); audio_voice(VOICE_NAH); return; }
+            if (o->bore.stage == AG_BABY) { sim_note("BABIES JUST SLEEP AND EAT. PICK SOMEONE OLDER"); audio_voice(VOICE_NAH); return; }
             if (o->away) { sprintf(b, "%s IS AT SCHOOL", o->bore.first); sim_note(b); audio_voice(VOICE_NAH); return; }
             if (sim_play_as(ph_fsel)) { sprintf(b, "NOW PLAYING AS %s", sims[player].bore.first); sim_note(b); audio_voice(VOICE_YAHOO); }
             state = ST_LIFE;
@@ -2202,13 +2202,13 @@ static void story_taxi(void) {   // where the story's chapter sends you, by taxi
     if (k == 3) { if (home_city) home_go(); else if (world_zone != ZONE_HOME) travel_go(ZONE_HOME); state = ST_LIFE; return; }
     if (k == 2) { if (world_zone != ZONE_TOWN) { travel_go(ZONE_TOWN); story_visit[2] = 1; for (int i = 0; i < nsims; i++) wants_event(&sims[i], W_TOWN, 0); } state = ST_LIFE; return; }
     if (k != 1) return;
-    if (cash < 20) { sim_note("A TAXI IS $20"); audio_voice(VOICE_NAH); return; }
+    if (cash < 20) { sim_note("A TAXI RIDE COSTS $20"); audio_voice(VOICE_NAH); return; }
     const Sim *s = &sims[player];
     int bx0 = world_zone == ZONE_CITY ? world_wbx + sim_tile_x(s) / BM_BLK : home_city ? home_bx : bm_set(bm_capital())->x;
     int by0 = world_zone == ZONE_CITY ? world_wby + sim_tile_y(s) / BM_BLK : home_city ? home_by : bm_set(bm_capital())->y;
     int bi = -1, bd = 1 << 30;
     for (int i = 0; i < pop_nplace; i++) if (pop_place[i].lot == lot) { int d = ABS(pop_place[i].bx - bx0) + ABS(pop_place[i].by - by0); if (d < bd) { bd = d; bi = i; } }
-    if (bi < 0) { sim_note("NO SUCH PLACE IN SAN BOREAS"); audio_voice(VOICE_NAH); return; }
+    if (bi < 0) { sim_note("SAN BOREAS HAS NO PLACE LIKE THAT"); audio_voice(VOICE_NAH); return; }
     cash -= 20; state = ST_LIFE;
     char nm[24]; const Place *p = &pop_place[bi]; bm_place_name(p->lot, bm_hash(p->bx, p->by, 3), nm);
     taxi_to_block(p->bx, p->by, -1, -1, nm);
@@ -2322,7 +2322,7 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
             ui_text(168, y, 1, sim_moodlet_name(s->ml[i].id), UI_INK);
             sprintf(b, "%s%d", v > 0 ? "+" : "", v); ui_text(300 - ui_tw(1, b), y, 1, b, v >= 0 ? UI_GOODT : UI_BADT);
             y += 15; any = 1; }
-        if (!any) ui_text(168, y, 1, "NOTHING MUCH", UI_SOFT);
+        if (!any) ui_text(168, y, 1, "FEELING PRETTY ORDINARY", UI_SOFT);
         { const char *tr[3]; int n = sim_traits(s, tr), x = 12;
           if (n) { ui_text(x, 200, 1, "TRAITS", UI_SOFT); x += ui_tw(1, "TRAITS") + 6;
                    for (int i = 0; i < n; i++) { ui_badge(x, 198, tr[i], UI_RGB(206, 226, 248), UI_BLUE2); x += ui_tw(1, tr[i]) + 14; } } }
@@ -3337,7 +3337,7 @@ static void wm_draw(void) {
 
 #define WO_NMORE 4
 static const char *const moreNm[WO_NMORE] = { "STORY MISSIONS", "AFTER DARK", "CAMPUS LIFE", "PETS AND STRAYS" };
-static const char *const moreBlurb[WO_NMORE] = { "TEN STORIES, FIVE CHAPTERS EACH. PICK ONE.", "EXPANSION: NIGHTCLUBS, DATES. COMING SOON", "EXPANSION: COLLEGE DORMS. COMING SOON", "EXPANSION: CATS AND DOGS. COMING SOON" };
+static const char *const moreBlurb[WO_NMORE] = { "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "NIGHTCLUBS AND BIG DATES. NOT OUT YET!", "DORMS, EXAMS AND ALL-NIGHTERS. NOT OUT YET!", "CATS, DOGS AND STRAYS. NOT OUT YET!" };
 static void worlds_update(void) {
     wo_t++;
     if (wo_more) {                                   // MISSIONS AND EXPANSIONS
@@ -3407,7 +3407,7 @@ static void worlds_draw(void) {
 }
 
 static const char *const menuNm[] = { "STORY MODE", "CONTINUE", "CREATE A BORE", "JUKEBOX", "OPTIONS", "HOW TO PLAY" };
-static const char *const menuBlurb[] = { "A NEW LIFE: HOME, THE ISLAND, THE TOWN", "", "SCULPT YOUR BORE", "ALL 33 SONGS", "PICTURE AND SPEED", "CONTROLS AND TIPS" };
+static const char *const menuBlurb[] = { "START A BRAND NEW LIFE IN SAN BOREAS", "", "DREAM UP SOMEBODY NEW, HEAD TO TOE", "PUT ON A SONG. ALL 52 OF THEM", "SOUND, CAMERA, PICTURE AND SPEED", "HOW EVERYTHING WORKS, WITH PICTURES" };
 #define NMENU 6
 static void menu_update(void) {
     title_t++;
@@ -3435,15 +3435,17 @@ static void menu_draw(void) {
     ui_card(92, 56, 136, 154);
     for (int i = 0; i < NMENU; i++) ui_button(98, 62 + i * 20, 124, 17, menuNm[i], ic[i], i == menu_sel);
     const char *t = menuBlurb[menu_sel];
-    if (menu_sel == 1) t = "A LIFE SAVED ON THE MEMORY CARD";
+    if (menu_sel == 1) t = "PICK UP RIGHT WHERE YOU LEFT OFF";
     ui_wrapc(96, 184, 128, 2, t, UI_SOFT);   // (on the card, two lines at most)
 }
 
 // ---- the loading screen: a bar and what is being made, shown before any long job (start-up, a new life, travel) ----
 static void loading_draw(const char *what, int pct) {   // The Sims 4's way: a big gold arrow, the name, a white card with the bar, and a tip
-    static const char *const tips[] = { "BILLS COME AT MIDNIGHT: KEEP $800 BY.", "PHONE, THEN MAP: A TAXI ANYWHERE FOR $20.",
-        "L2 ZOOMS OUT: SAN BOREAS GOES ON FOR KILOMETRES.", "A STEADY 30 (OPTIONS) FEELS SMOOTHER.", "MOSS DOES NOT WANT A PLUMBOB. DO NOT ASK.",
-        "CHAT 5 TIMES TO MAKE A FRIEND.", "BUILD MODE HAS 103 WALLPAPERS." };
+    static const char *const tips[] = { "BILLS ARRIVE AT MIDNIGHT. KEEP $800 HANDY!", "NEED A RIDE? PHONE, THEN MAP: ANY TAXI $20.",
+        "HOLD L2 TO ZOOM OUT. THE CITY GOES ON AND ON.", "TRY A STEADY 30 IN OPTIONS: IT FEELS SMOOTHER.", "MOSS DOES NOT WANT A PLUMBOB. DO NOT ASK.",
+        "CHAT WITH SOMEONE 5 TIMES AND YOU ARE FRIENDS.", "BUILD MODE HAS 103 WALLPAPERS. GO WILD.", "A SHOWER A DAY KEEPS THE NEIGHBOURS FRIENDLY.",
+        "TIRED? A NAP ON THE SOFA HELPS A LITTLE.", "THE ISLAND HIDES 8 SECRETS. HAVE YOU FOUND THEM?", "SKATE TIP: HOLD TRIANGLE TO GRIND A LEDGE.",
+        "FRIENDS COME TO PARTIES. SO DO THEIR FRIENDS.", "THE RADIO HAS FOUR STATIONS. FIND YOUR FAVOURITE.", "CREATE A WORLD: TRY ISLANDS WITH LOTS OF VILLAGES." };
     pct = CLAMP(pct, 0, 100);
     gfx_set_clear(60, 120, 190);
     gfx_grad(0, 0, SCREEN_W, SCREEN_H, UI_RGB(130, 196, 244), UI_RGB(130, 196, 244), UI_RGB(34, 96, 170), UI_RGB(34, 96, 170), 0);
@@ -3454,7 +3456,7 @@ static void loading_draw(const char *what, int pct) {   // The Sims 4's way: a b
     ui_text(70, 131, 1, what, UI_INK);
     { char b[8]; sprintf(b, "%d%%", pct); ui_text(250 - ui_tw(1, b), 131, 1, b, UI_SOFT); }
     ui_bar(70, 146, 180, 9, pct, UI_BLUE);
-    { static int tip = -1, tip_t; int now = VSync(-1); if (tip < 0 || now - tip_t > 300) { tip = (tip + 1 + (now & 3)) % 7; tip_t = now; }
+    { static int tip = -1, tip_t; int now = VSync(-1); if (tip < 0 || now - tip_t > 300) { tip = (tip + 1 + (now & 3)) % (int)(sizeof tips / sizeof *tips); tip_t = now; }
       const char *t = tips[tip]; int w = ui_tw(1, t) + 40;
       ui_round(160 - w / 2, 180, w, 15, 6, UI_RGB(24, 70, 130), UI_RGB(24, 70, 130), 0);
       ui_text(160 - w / 2 + 6, 184, 1, "TIP", UI_RGB(255, 210, 90)); ui_text(160 - w / 2 + 30, 184, 1, t, UI_WHITE); }
@@ -3549,6 +3551,13 @@ int main(void) {
         story_test_tick();
 #endif
         ui_light = 0;
+        {   // each screen its own colour across the top
+            static const u8 acc[] = { [ST_TITLE] = 0, [ST_MENU] = 0, [ST_CREATE] = 5, [ST_LIFE] = 0, [ST_PAUSE] = 7, [ST_BUILD] = 3, [ST_JUKEBOX] = 4, [ST_HELP] = 1,
+                [ST_TRAVEL] = 1, [ST_STORY] = 6, [ST_WANTS] = 6, [ST_PIE] = 0, [ST_PANEL] = 2, [ST_MAP] = 1, [ST_DIR] = 2, [ST_OPTS] = 7, [ST_JOBS] = 3,
+                [ST_OVER] = 7, [ST_HOMES] = 3, [ST_CRAFT] = 3, [ST_PHONE] = 0, [ST_SLOTS] = 7, [ST_NHOOD] = 1, [ST_WORLDS] = 1, [ST_NAME] = 5, [ST_SPICK] = 6,
+                [ST_SCARD] = 6, [ST_WMAKE] = 2 };
+            ui_accent = state < (int)sizeof acc ? acc[state] : 0;
+        }
         switch (state) {
             case ST_TITLE: title_update(); title_draw(); break;
             case ST_MENU: menu_update(); menu_draw(); break;

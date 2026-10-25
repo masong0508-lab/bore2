@@ -33,6 +33,7 @@ void ui_textc(int cx, int y, int size, const char *s, u32 c);
 void ui_round(int x, int y, int w, int h, int r, u32 top, u32 bot, int semi);   // a rounded box, shaded top to bottom
 void ui_shadow(int x, int y, int w, int h, int r);             // its soft shadow (call first)
 void ui_card(int x, int y, int w, int h);                      // a white card with its shadow
+extern int ui_accent;                                          // the colour across the top of a window: 0 blue, 1 teal, 2 green, 3 orange, 4 purple, 5 pink, 6 gold, 7 slate
 int  ui_window(int x, int y, int w, int h, const char *title, int icon);   // a card with a blue header; returns the content's top y
 void ui_icon(int x, int y, int icon, u32 c);                   // a 12x12 icon in a colour
 void ui_disc(int cx, int cy, int d, u32 c);                    // a filled circle, d across

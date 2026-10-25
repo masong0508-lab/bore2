@@ -542,7 +542,7 @@ COLD void citizens_pie_do(int i) {
         if (cash < GIFT_COST) { sim_note("A GIFT IS $20"); audio_voice(VOICE_NAH); break; }
         cash -= GIFT_COST; rel_add(c, 10); say(c, "FOR ME? THANKS!"); chat_begin(c); audio_voice(VOICE_YAHOO); break;
     case PO_PROPOSE:
-        if (nsims >= MAX_SIMS) { sim_note("NO ROOM AT HOME"); audio_voice(VOICE_NAH); break; }
+        if (nsims >= MAX_SIMS) { sim_note("THE HOUSE IS TOO FULL FOR ONE MORE"); audio_voice(VOICE_NAH); break; }
         if (cash < RING_COST) { sim_note("A RING IS $150"); audio_voice(VOICE_NAH); break; }
         {   int ch = 55 + c->rel / 4 + c->rom / 4 + (c->pers == PE_FLIRTY ? 10 : c->pers == PE_SHY ? -15 : 0);
             if (rn(100) < ch) { cash -= RING_COST; marry(c); }
