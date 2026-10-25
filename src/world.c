@@ -127,6 +127,8 @@ static void soften_floors(void) {
         for (int k = 0; k < 4; k++) { u16 c = t->c[k]; fl_soft[i][k] = RGB((C_R(c) * 9 + r * 7) / 16, (C_G(c) * 9 + g * 7) / 16, (C_B(c) * 9 + b * 7) / 16); }
     }
 }
+#pragma GCC push_options
+#pragma GCC optimize ("Os")   // (making the lots, rooms and the island: once a block, built small to leave memory for the world)
 void world_init(void) {
     nat_init();
     if (ram8) { Level *p = (Level *)xalloc(sizeof(Level) * NLVPOOL8); if (p) { lvpool = p; nlvpool = NLVPOOL8; } }   // 8 MB: room for every storey anywhere
@@ -1074,6 +1076,7 @@ static EditBlk edit_small[12]; static EditBlk *edits = edit_small; static int ne
 typedef struct { u16 bx, by; u8 used, fresh, lv, home; u8 hx0, hy0, hx1, hy1, hdx, hdy;
                  char map[NLEVELS][BM_BLK][BM_BLK]; u8 fl[NLEVELS][BM_BLK][BM_BLK], wp[NLEVELS][BM_BLK][BM_BLK]; } OwnBlk;
 static OwnBlk own; static Occ own_occ;                 // (fresh: bought, not yet built: the generator makes it, furnished for the family)
+#pragma GCC pop_options
 static void edit_init(void) {
     if (ram8 && edits == edit_small) { EditBlk *e = (EditBlk *)xalloc(sizeof(EditBlk) * 1024); if (e) { edits = e; nedit_max = 1024; } }
     nedit = 0; edit_next = 0;
