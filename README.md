@@ -89,6 +89,9 @@ own format, in one file, `assets/SONGS.BIN` (5.6 MB; a song's notes are a few KB
 memory and a 480 Hz timer interrupt keys the notes on, so the sound chip does the playing. `tools/build_music.py <bore-gba-main> assets`
 rebuilds the tracker songs with the GBA game's own converter (`tools/xm2gba.py`), so they play the same notes, volumes and pans as on
 the GBA; a song whose samples are too big for sound memory (about 300 KB each) has its biggest samples made smaller until it fits.
+The notes are packed (`tools/pack_songs.py assets/SONGS.BIN`, after any rebuild): laid out in play order and LZSS-packed, they are
+unpacked a row at a time as the song plays (`src/seqdec.h`), so the biggest song's notes take 34 KB of RAM, not 94 KB.
+`test/seqcheck.c` (built with the PC's gcc) checks a packed SONGS.BIN plays every note of the old one, over two laps of every song.
 New from the latest GBA build: MISTER QUICKBULLET, OVER MY VOICE, OHIO HOE, CYNICALLER MADNESS and 12 Dipper Man demos.
 The creature code: `python3 tools/port_look.py <bore-gba-main>/source/main.c src/look_port.inc`.
 
