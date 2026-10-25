@@ -1283,20 +1283,20 @@ static void nhood_draw(void) {
         ui_disc(x, y, 13, UI_WHITE); ui_icon_disc(x, y, 11, IC_HOUSE, UI_GREEN, UI_WHITE);
     }
     const int PX = 198, PW = 110;                   // the picked lot, on the right
-    if (!nh_n) { ui_text(PX, top + 10, 1, "NO HOMES FOR SALE ROUND HERE RIGHT NOW", UI_SOFT); ui_hints(310, 215, nh_first ? "X STAY AT THE MAN BASE" : "O BACK", 2); return; }
+    if (!nh_n) { ui_wrap(PX, top + 10, PW, 4, "NO HOMES FOR SALE ROUND HERE RIGHT NOW", UI_SOFT); ui_hints(310, 215, nh_first ? "X STAY AT THE MAN BASE" : "O BACK", 2); return; }
     int i = nh_sel, empty = nh_lot[i] == LOT_EMPTY, refund = home_city ? home_paid : 0;
     sprintf(b, "LOT %d OF %d", i + 1, nh_n); ui_text(PX, top + 1, 1, b, UI_SOFT);
     ui_round(PX - 2, top + 13, PW + 4, 50, 6, UI_RGB(234, 240, 248), UI_RGB(224, 231, 240), 0);
     ui_icon_disc(PX + 12, top + 27, 22, empty ? IC_SPROUT : IC_HOUSE, empty ? UI_RGB(220, 150, 30) : UI_GREEN, UI_WHITE);
-    ui_text(PX + 26, top + 18, 1, home_kind(nh_lot[i]), UI_INK);
-    ui_text(PX + 26, top + 29, 1, empty ? "BUILD YOUR OWN" : "FURNISHED", empty ? UI_GOLDT : UI_GOODT);
-    home_address(nh_bx[i], nh_by[i], ad); ui_text(PX + 2, top + 44, 1, ad, UI_BLUE2);
-    { BInfo bi; bm_block(nh_bx[i], nh_by[i], &bi); const Settle *st = bi.set != 255 ? bm_set(bi.set) : 0; ui_text(PX + 2, top + 54, 1, st ? st->name : "OPEN COUNTRY", UI_SOFT); }
+    ui_textfit(PX + 26, top + 18, PW - 26, home_kind(nh_lot[i]), UI_INK);
+    ui_textfit(PX + 26, top + 29, PW - 26, empty ? "BUILD ON IT" : "FURNISHED", empty ? UI_GOLDT : UI_GOODT);
+    home_address(nh_bx[i], nh_by[i], ad); ui_textfit(PX + 2, top + 44, PW - 2, ad, UI_BLUE2);
+    { BInfo bi; bm_block(nh_bx[i], nh_by[i], &bi); const Settle *st = bi.set != 255 ? bm_set(bi.set) : 0; ui_textfit(PX + 2, top + 54, PW - 2, st ? st->name : "OPEN COUNTRY", UI_SOFT); }
     int can = cash + refund >= nh_price[i], sold = !home_for_sale(nh_bx[i], nh_by[i]);
     sprintf(b, "$%d", nh_price[i]); ui_text(PX, top + 70, 2, b, sold ? UI_SOFT : can ? UI_GOODT : UI_BADT);
     ui_text(PX, top + 88, 1, sold ? "SOLD!" : can ? "YOU CAN AFFORD IT" : "NOT ENOUGH MONEY", sold || !can ? UI_BADT : UI_SOFT);
-    sprintf(b, "FAMILY FUNDS $%ld", cash); ui_text(PX, top + 100, 1, b, UI_INK);
-    if (home_city && !nh_first) { sprintf(b, "YOURS SELLS: $%d", home_paid); ui_text(PX, top + 111, 1, b, UI_SOFT); }
+    sprintf(b, "YOU HAVE $%ld", cash); ui_textfit(PX, top + 100, PW, b, UI_INK);
+    if (home_city && !nh_first) { sprintf(b, "YOURS: $%d", home_paid); ui_textfit(PX, top + 111, PW, b, UI_SOFT); }
     {   // the key
         int ky = top + 128;
         ui_disc(PX + 4, ky + 3, 7, UI_RGB(60, 190, 90)); ui_text(PX + 12, ky, 1, "HOME", UI_INK);

@@ -46,6 +46,7 @@ void ui_bar(int x, int y, int w, int h, int pct, u32 c);       // a pill-shaped 
 void ui_badge(int x, int y, const char *s, u32 bg, u32 ink);   // a little pill of text
 int  ui_wrap(int x, int y, int w, int lines, const char *s, u32 c);   // words broken onto lines that fit
 int  ui_wrap_n(int w, const char *s);
+void ui_textfit(int x, int y, int w, const char *s, u32 c);   // one line at most w wide (else it ends ...)
 int  ui_wrapc(int x, int y, int w, int lines, const char *s, u32 c);   // ... each line centred in w                          // how many lines that would take
 void ui_dim(void);                                             // darken the scene behind a menu
 void ui_backdrop(void);                                        // the soft blue behind a full-screen window

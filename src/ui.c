@@ -109,12 +109,13 @@ void ui_lint_note(int kind, const char *s) {
 #endif
 static void text_place(int x, int y, int size, const char *s, u32 c) {
     if (lum(c) < 120 && size <= 1) {   // dark ink: on a panel, or given one
-        int w = ui_tw(size, s), h = 8, in = 0, start = 0;
-        if (pan_frame == gfx_frame_no) for (int i = 0; i < npan; i++) {
+        int w = ui_tw(size, s), h = 8, in = 0, start = 0, best = -1, ba = 1 << 30;
+        if (pan_frame == gfx_frame_no) for (int i = 0; i < npan; i++) {   // the smallest panel the text starts in: it should end in it too
             int px = pan[i].x, py = pan[i].y;
-            if (x >= px - 1 && y >= py - 1 && x < px + pan[i].w && y < py + pan[i].h) { start = 1;
-                if (x + w <= px + pan[i].w + 1 && y + h <= py + pan[i].h + 2) { in = 1; break; } }
+            if (x >= px - 1 && y >= py - 1 && x < px + pan[i].w && y < py + pan[i].h) { start = 1; int ar = pan[i].w * pan[i].h; if (ar < ba) { ba = ar; best = i; } }
         }
+        if (best >= 0) { int px = pan[best].x, py = pan[best].y; in = x + w <= px + pan[best].w + 1 && y + h <= py + pan[best].h + 2;
+            if (!in) for (int i = 0; i < npan; i++) if (x >= pan[i].x - 1 && y >= pan[i].y - 1 && x + w <= pan[i].x + pan[i].w + 1 && y + h <= pan[i].y + pan[i].h + 2) { ui_lint_note(2, s); in = 1; break; } }
         if (!in) {
             ui_lint_note(start ? 2 : 1, s);
             if (!start) { ui_round(x - 4, y - 2, w + 8, 12, 4, UI_CARD, UI_CARD2, 0); }   // (the bare scene: a pill to read it on)
@@ -123,6 +124,13 @@ static void text_place(int x, int y, int size, const char *s, u32 c) {
     gfx_text_raw(x, y, fsz(size), s, cr(c), cg(c), cb(c));
 }
 void ui_text(int x, int y, int size, const char *s, u32 c) { text_place(x, y, size, s, c); }
+void ui_textfit(int x, int y, int w, const char *s, u32 c) {   // one line in at most w pixels: too long, it ends with ...
+    if (ui_tw(1, s) <= w) { text_place(x, y, 1, s, c); return; }
+    ui_lint_note(2, s);
+    char b[64]; int n = (int)strlen(s); if (n > 60) n = 60;
+    do { n--; while (n > 0 && s[n - 1] == ' ') n--; memcpy(b, s, n); strcpy(b + n, "..."); } while (n > 0 && ui_tw(1, b) > w);
+    text_place(x, y, 1, b, c);
+}
 void ui_textc(int cx, int y, int size, const char *s, u32 c) { text_place(cx - ui_tw(size, s) / 2, y, size, s, c); }
 
 static const u8 rin4[4] = { 2, 1, 0, 0 }, rin6[6] = { 4, 2, 1, 1, 0, 0 };
