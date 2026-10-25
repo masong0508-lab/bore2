@@ -875,6 +875,22 @@ const char *sim_relation(int i, int j) {   // what j is to i
     return 0;
 }
 const char *sim_grade(int g) { return g >= 85 ? "A" : g >= 70 ? "B" : g >= 55 ? "C" : g >= 40 ? "D" : "F"; }
+int sim_grave_count(void) { return ngraves; }
+int sim_grave_spot(int i, int *mx, int *my) {   // grave i in the map as it is now (0: not here)
+    if (i < 0 || i >= ngraves) return 0;
+    if (graves[i].city) { int wx, wy; if (world_zone != ZONE_CITY || !world_own_block(&wx, &wy)) return 0; *mx = graves[i].x + wx * BM_BLK; *my = graves[i].y + wy * BM_BLK; return 1; }
+    if (world_zone != ZONE_HOME) return 0;
+    *mx = graves[i].x; *my = graves[i].y; return 1;
+}
+#ifdef AUTO_GHOST
+int sim_debug_grave(void) {   // (test builds) a gravestone two tiles from you, on your own lot
+    int wx = 0, wy = 0; if (home_city && !world_own_block(&wx, &wy)) return 0; if (ngraves >= 6) return 1;
+    Sim *s = &sims[player]; graves[ngraves].x = (u8)(sim_tile_x(s) + 2 - wx * BM_BLK); graves[ngraves].y = (u8)(sim_tile_y(s) - wy * BM_BLK); graves[ngraves].city = (u8)home_city;
+    strcpy(graves[ngraves].name, "GRANDPA"); ngraves++; return 1;
+}
+#endif
+void sim_grave_named(int i, char *out) { strcpy(out, i >= 0 && i < ngraves ? graves[i].name : "A FRIEND"); }
+void sim_say_to(Sim *s, const char *t) { sim_say(s, t); }
 int sim_grave_name(int mx, int my, char *out) {
     int city = world_zone == ZONE_CITY, wx, wy;
     if (city) { if (!world_own_block(&wx, &wy)) { strcpy(out, "A FRIEND"); return 0; } mx -= wx * BM_BLK; my -= wy * BM_BLK; }

@@ -19,8 +19,10 @@ VOICES = [('NEED', 'hey_i_need_something_h.wav'), ('AGREE', 'agree.wav'), ('ANGR
           ('FINISHED', 'finished.wav'), ('FLIRT', 'flirt.wav'), ('HUNGRY', 'im_hungryrururyry.wav'), ('JOKE', 'joke_good.wav'), ('LAUGH', 'laughing.wav'),
           ('NAH', 'nah.wav'), ('PEE', 'need_to_pee.wav'), ('SHRIEK', 'shriek.wav'), ('SNORE', 'snoore.wav'), ('YAHOO', 'yahoo.wav'), ('YEHA', 'yeha.wav'),
           ('GROAN', 'cry_after_bad_event.wav'), ('WIN', 'win the fight.wav'),
-          ('MOVE_ASK', 'move_in_welcome_asker.wav', 8000), ('MOVE_YES', 'move_in_welcome_asked.wav', 8000), ('MOVE_NO', 'move_in_rejecting.wav', 8000)]   # (the newer ones at 8 kHz: sound memory must still hold the biggest song)
-RATE = 11025   # (was 8000: the clips sound clearer, and still leave the sound memory the biggest song needs)
+          ('MOVE_ASK', 'move_in_welcome_asker.wav', 8000), ('MOVE_YES', 'move_in_welcome_asked.wav', 8000), ('MOVE_NO', 'move_in_rejecting.wav', 8000),
+          ('SCARE_M1', 'ghost_scared_male_3.wav', 6000), ('SCARE_M2', 'ghost_scared_male_1.wav', 6000),
+          ('SCARE_F1', 'ghost_scared_female_2.wav', 6000), ('SCARE_F2', 'ghost_scared_female_3.wav', 6000)]   # (the newer ones at 8 kHz: sound memory must still hold the biggest song)
+RATE = int(os.environ.get('VOICE_RATE', '9500'))   # (9.5 kHz: room in sound memory for the ghost screams beside the biggest song; (was 8000: the clips sound clearer, and still leave the sound memory the biggest song needs)
 blobs = []
 rates = []
 for v in VOICES:

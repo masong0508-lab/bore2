@@ -16,6 +16,7 @@
 #include "mem8.h"
 #include "bigmap.h"
 #include "pop.h"
+#include "ghost.h"
 #include "far.h"
 #include "ui.h"
 #include "places.h"
@@ -534,6 +535,10 @@ static void life_update(int steps) {
     if (nh_pending) { nh_pending = 0; nhood_open(1); return; }
     if (mode_pending == 1) { mode_pending = 0; travel_go(ZONE_ISLAND); story_visit[1] = 1; sim_note("STRANDED! THE BOAT HOME IS ON THE BEACH"); return; }
     if (mode_pending == 2) { mode_pending = 0; if (!story_id) { sim_note("RAGS TO RICHES: $1,000 TO YOUR NAME"); sim_note("GOAL: A HOME OF YOUR OWN"); } }
+#ifdef AUTO_GHOST
+    { static int done; extern int sim_debug_grave(void); if (!done && frame > 60 && home_is_here()) done = sim_debug_grave(); ghost_mode = 2; }
+#endif
+    ghost_tick(steps, frame);
     if (sim_want_jobs) { sim_want_jobs = 0; jobs_board = 1; jobs_open(); sub_back = ST_LIFE; state = ST_JOBS; return; }   // (the computer's JOB BOARD)
     if (story_card()) { sc_t = 0; state = ST_SCARD; audio_voice(VOICE_FINISHED); return; }   // a chapter begins, or one is done
     Sim *s = &sims[player];
@@ -544,7 +549,7 @@ static void life_update(int steps) {
         if (touched || !alone_opt || on_board || s->bore.stage == AG_BABY) {
             if (alone) { alone = 0; s->ai = 0; if (s->action == ACT_WALK) { s->action = ACT_NONE; s->path_n = 0; } }
             quiet = 0;
-        } else if ((quiet += steps) >= wait && !alone) { alone = 1; s->ai = 1; sim_note("YOUR BORE IS DOING ITS OWN THING. ANY BUTTON TAKES OVER"); }
+        } else if ((quiet += steps) >= wait && !alone) { alone = 1; s->ai = 1; sim_note("ON ITS OWN NOW: ANY BUTTON TAKES OVER"); }
         if (alone) { s->ai = 1; goto moved_alone; }
     }
     // movement: the stick relative to the camera
@@ -705,7 +710,7 @@ static void life_draw(void) {
     }
     gfx_prim_count = 0;
     { int t0 = hb_now(); world_draw(sim_tile_x(s), sim_tile_y(s), frame, wall_view == 1 || (wall_view == 0 && cam_view != 2)); t_world = hb_now() - t0;   // (WALL VIEW: AUTO cuts the walls between you and the camera, but not in first person; CUT AWAY always; FULL WALLS never)
-      t0 = hb_now(); gfx_prim_count = 0; draw_sims(); t_sims = hb_now() - t0; }
+      t0 = hb_now(); gfx_prim_count = 0; draw_sims(); ghost_draw(cam_yaw, frame); t_sims = hb_now() - t0; }
     { int t0 = hb_now(); draw_bubbles(); t_bub = hb_now() - t0; }
     prims_last = gfx_prim_count;
     if (state != ST_OVER) { int t0 = hb_now(); hud_life(); t_hud = hb_now() - t0; }
@@ -1673,10 +1678,10 @@ static void grow_tick(void) {   // (test builds: a family's life in two minutes:
 // ---- OPTIONS: the picture and the speed, as many knobs as a PC game, with presets; the game runs behind as you change them ----
 static void title_draw(void);
 enum { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_CROWD, O_LIVE, O_SPR, O_SHADOW, O_AO, O_WALLS, O_FPSCAP, O_DITHER, O_CAM, O_SHOWFPS,
-       O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_CUTAWAY, O_ALONE, O_N };
+       O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_CUTAWAY, O_ALONE, O_GHOSTS, O_N };
 static const char *const optNm[O_N] = { "PRESET", "VIEW DISTANCE", "FULL DETAIL", "FAR BUILDINGS", "FAR TREES", "HAZE", "CROWD SIZE",
     "PEOPLE IN FULL 3D", "PEOPLE SPRITES", "SHADOWS", "FLOOR SHADING", "WALL LIGHT", "FRAME RATE", "DITHERING", "CAMERA", "SHOW FPS",
-    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC", "WALL VIEW", "YOUR BORE ALONE" };
+    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC", "WALL VIEW", "YOUR BORE ALONE", "GHOSTS" };
 static const char *const optV[O_N][6] = {
     { "CUSTOM", "LOW", "MEDIUM", "HIGH", "ULTRA" }, { "50 M", "250 M", "500 M", "1 KM", "1.5 KM", "2 KM" },
     { "10 M", "12 M", "15 M", "17 M" }, { "TALL ONLY", "ALL", "WITH WINDOWS" }, { "OFF", "100 M", "200 M", "350 M" },
@@ -1685,8 +1690,8 @@ static const char *const optV[O_N][6] = {
     { "OFF", "ON" }, { "THE SIMS", "BEHIND YOU", "FIRST PERSON" }, { "OFF", "ON" },
     { "NOBODY AGES", "SHORT", "NORMAL", "LONG" }, { "LIVE ON", "PASS ON" }, { "OFF", "ON" },
     { "LOW", "MEDIUM", "HIGH", "OVERHEAD" }, { "SLOW", "NORMAL", "FAST" }, { "OFF", "ON" }, { "OFF", "LOW", "MEDIUM", "FULL" },
-    { "AUTO", "CUT AWAY", "FULL WALLS" }, { "OFF", "LOW", "HIGH" } };
-static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3 };
+    { "AUTO", "CUT AWAY", "FULL WALLS" }, { "OFF", "LOW", "HIGH" }, { "OFF", "ON", "HAUNTED" } };
+static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3, 3 };
 static const char *const optBlurb[O_N] = {
     "LOW, MEDIUM, HIGH OR ULTRA SETS THEM ALL", "HOW FAR SAN BOREAS GOES BEFORE THE SKY", "WHERE ROOMS, WALLS AND THINGS ARE DRAWN IN FULL",
     "THE TOWNS PAST THE MAP: TALL ONES, ALL, OR WINDOWS TOO", "TREES PAST THE NEAR DETAIL, OUT TO", "THE AIR BETWEEN YOU AND THE HORIZON",
@@ -1698,12 +1703,13 @@ static const char *const optBlurb[O_N] = {
     "EVERYONE IN SAN BOREAS GETS OLDER AND HAS BABIES TOO",
     "HOW HIGH THE CAMERA LOOKS DOWN FROM (LOW SEES THE SKYLINE)", "HOW FAST L1 AND R1 TURN THE CAMERA", "ZOOMING IN WITH R2 LOWERS THE CAMERA TOO", "HOW LOUD THE SONGS AND THE RADIO PLAY",
     "WALLS BETWEEN YOU AND THE CAMERA: AUTO, CUT LOW OR FULL",
-    "PUT THE PAD DOWN AND YOUR BORE LOOKS AFTER ITSELF (LOW: AFTER 25 S, HIGH: 10 S)" };
+    "PUT THE PAD DOWN AND YOUR BORE LOOKS AFTER ITSELF (LOW: AFTER 25 S, HIGH: 10 S)",
+    "THE FAMILY'S DEPARTED RISE FROM THEIR GRAVES AT NIGHT (HAUNTED: DAY AND NIGHT)" };
 static const u8 presets[4][O_N] = {   // LOW, MEDIUM, HIGH, ULTRA (the graphics knobs; the frame rate, dithering, camera and the counter are left be)
     { 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0 }, { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 },
     { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1 }, { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 } };
 #define O_PRESET_LAST O_WALLS                 // (presets set O_VIEW .. O_WALLS)
-static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 0, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1 };   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
+static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 0, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1, 1 };   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
 static int opt_sel, opt_back, opt_tab;
 static void opts_apply(void);
 #ifdef AUTO_FLOAT
@@ -1718,7 +1724,7 @@ static void opts_apply(void) {
     dbg_noao = !opt[O_AO]; dbg_nograd = !opt[O_WALLS];
     gfx_min_vsyncs = opt[O_FPSCAP] == 0 ? 1 : opt[O_FPSCAP] == 1 ? 2 : 3;
     gfx_set_dither(opt[O_DITHER]);
-    alone_opt = opt[O_ALONE];
+    alone_opt = opt[O_ALONE]; ghost_mode = opt[O_GHOSTS];
     show_fps = opt[O_SHOWFPS]; audio_music_level(opt[O_MUSIC]);
     aging = opt[O_AGING]; old_age = opt[O_OLDAGE]; pop_aging = opt[O_TOWNAGE];
     cam_view = opt[O_CAM] % 3; cam_turn_rate = opt[O_CAMSPD] == 0 ? 24 : opt[O_CAMSPD] == 1 ? 40 : 64; cam_zoom_tilt = opt[O_ZOOMTILT]; wall_view = opt[O_CUTAWAY] % 3;
@@ -1734,7 +1740,7 @@ static const char *const optTabNm[NOTAB] = { "GRAPHICS", "PEOPLE", "LIGHT", "CAM
 static const s8 optTabIc[NOTAB] = { IC_EYE, IC_PEOPLE, IC_SUN, IC_CAMERA, IC_BOLT, IC_SPROUT };
 static const s8 optTab[NOTAB][7] = { { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, -1 }, { O_CROWD, O_LIVE, O_SPR, -1 },
                                      { O_SHADOW, O_AO, O_WALLS, O_DITHER, -1 }, { O_CAM, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_CUTAWAY, -1 },
-                                     { O_FPSCAP, O_SHOWFPS, O_MUSIC, -1 }, { O_AGING, O_OLDAGE, O_TOWNAGE, O_ALONE, -1 } };
+                                     { O_FPSCAP, O_SHOWFPS, O_MUSIC, -1 }, { O_AGING, O_OLDAGE, O_TOWNAGE, O_ALONE, O_GHOSTS, -1 } };
 static int opt_kind(int i) {   // 0 a choice, 1 a slider, 2 a switch
     if (i == O_AO || i == O_DITHER || i == O_SHOWFPS || i == O_TOWNAGE || i == O_ZOOMTILT) return 2;
     if (i == O_CAMH || i == O_CAMSPD || i == O_MUSIC) return 1;
@@ -1827,7 +1833,7 @@ static void load_body(void) {
         isl_size = ld_u8() % 3; isl_wild = ld_u8() % 3; isl_jungle = ld_u8() % 3; isl_rocks = ld_u8() % 3; }
     bm_rename_clear();
     if (save_ver >= 4) { int n = ld_u8(); for (int k = 0; k < n; k++) { int i = ld_u8(); char nm[18]; ld_str(nm, 17); bm_rename(i, nm); } }
-    ld_n(opt, save_ver >= 11 ? O_N : O_N - 1); if (save_ver < 11) opt[O_ALONE] = 1; opts_apply();   // (YOUR BORE ALONE came with version 11)
+    ld_n(opt, save_ver >= 14 ? O_N : save_ver >= 11 ? O_N - 1 : O_N - 2); if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1; opts_apply();   // (YOUR BORE ALONE came with version 11)
     loading("LOADING YOUR GAME", 30);
     bm_new(seed); world_new_seed(seed);
     { u32 sb; void *sc = crowd_scratch(&sb); pop_new(seed, sc, sb); }
@@ -3597,7 +3603,7 @@ int main(void) {
     boot("> LOOK");        look_init();
     boot("> VOXEL");       voxel_init();
     boot("> ITEMS");       items_init();
-    boot("> WORLD TEX");   world_init();
+    boot("> WORLD TEX");   world_init(); ghost_init();
     boot("> AUDIO+DISC");  audio_init();
     pad_init();                                      // (the pad is read directly in read_pad: see pad.c)
     boot("> CROWD");       crowd_init();             // the voice clips are in the sound chip now: their RAM holds the crowd's models

@@ -66,6 +66,10 @@ extern long cash;
 extern int  job_level, job_worked, job_days_good, job_strikes;
 extern int  phone_tier, handheld;
 extern int  sim_want_jobs, job_none;
+int  sim_grave_count(void);
+int  sim_grave_spot(int i, int *mx, int *my);   // a departed Bore's gravestone, where it is in the map now (0: not in this place)
+void sim_grave_named(int i, char *out);
+void sim_say_to(Sim *s, const char *t);      // a word over their head
 int  sim_move_out(int i, char *where);   // a grown-up of the household moves to a home of their own in town (1: gone)   // the phone you own (0 none, 1 FLIP, 2 SMARTPHONE, 3 BORE PHONE MAX) and the handhelds (1 BOREBOY, 2 BOREBOY ADVANCE)
 extern int  has_board, on_board, board_lift;   // (board_lift: how high above the floor the rider is, on a ramp or in the air)
 //     // a skateboard owned / being ridden (O toggles)
