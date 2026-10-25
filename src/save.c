@@ -4,7 +4,7 @@
 
 static char NAME[20] = "BASLUS-00000BORE2-1";
 static void pick(int slot) { NAME[18] = (char)('1' + CLAMP(slot, 0, SAVE_SLOTS - 1)); }
-#define VERSION 8
+#define VERSION 9
 int save_ver;                                     // the version of the save last read (2: before the TOWNS option)
 static u32 count;                                 // payload bytes so far
 static int ld_bad;

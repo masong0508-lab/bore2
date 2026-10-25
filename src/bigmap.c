@@ -1,16 +1,16 @@
 // bigmap: see bigmap.h
 #include "bigmap.h"
 int bm_packed, bm_gen = 3; char bm_cap_name[18];
-int bm_land = BL_MAINLAND, bm_sea = 2, bm_clim = 2, bm_hills = 2, bm_ncity = 2, bm_ntown = 6, bm_nvil = 12, bm_capsz = 1;
-void bm_dials_default(void) { bm_land = BL_MAINLAND; bm_sea = 2; bm_clim = 2; bm_hills = 2; bm_ncity = 2; bm_ntown = 6; bm_nvil = 12; bm_capsz = 1; }
+int bm_land = BL_MAINLAND, bm_sea = 2, bm_clim = 2, bm_hills = 2, bm_ncity = 2, bm_ntown = 6, bm_nvil = 12, bm_capsz = 2;
+void bm_dials_default(void) { bm_land = BL_MAINLAND; bm_sea = 2; bm_clim = 2; bm_hills = 2; bm_ncity = 2; bm_ntown = 6; bm_nvil = 12; bm_capsz = 2; }
 static int packed(void) { return bm_packed || bm_gen < 3; }   // (PACKED towns: the option, or a world from before it)
 
 static u32 wseed = 0x5A1B0E2Au;
-#define NSET_MAX 31
+#define NSET_MAX 62
 static Settle sets[NSET_MAX]; static int nset;
 static char ren[NSET_MAX][18];                     // towns the player renamed ("": as made); kept across bm_new, so a save can set them first
 typedef struct { u16 c, a, b; u8 vert; } Seg;    // a highway along block edges: row (or column) c, from a to b
-#define NSEG 72
+#define NSEG 140
 static Seg segs[NSEG]; static int nseg;
 
 u32 bm_hash(int a, int b, u32 s) {
@@ -118,8 +118,8 @@ static void link(int i, int j) {                  // a highway: along i's row to
 }
 void bm_new(u32 seed) {
     wseed = seed ? seed : 1; rs = wseed ^ 0xA5A5A5A5u; nset = 0; nseg = 0;
-    static const u8 capr[3] = { 8, 11, 14 };
-    place_set(ST_CITY, capr[bm_capsz % 3], BM_N / 2, BM_N / 2, 110);       // BORE CITY, near the middle (CAPITAL SIZE)
+    static const u8 capr[6] = { 6, 8, 11, 14, 18, 22 };
+    place_set(ST_CITY, capr[bm_capsz % 6], BM_N / 2, BM_N / 2, 110);       // BORE CITY, near the middle (CAPITAL SIZE)
     if (!nset) place_set(ST_CITY, 9, BM_N / 2, BM_N / 2, 300);              // (a watery world: wherever there is room)
     if (!nset) place_set(ST_CITY, 6, BM_N / 2, BM_N / 2, 440);
     if (!nset) { Settle *c = &sets[0]; c->x = c->y = BM_N / 2; c->r = 6; c->kind = ST_CITY; strcpy(c->name, bm_cap_name[0] ? bm_cap_name : "BORE CITY"); nset = 1; }

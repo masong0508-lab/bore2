@@ -179,10 +179,10 @@ static void cell_rgb(int t, int *r, int *g, int *b) {
 typedef struct { u16 bx, by; u8 lot, sto, col, pad; } FB;
 #define FB_MAX 2800
 static FB fb[FB_MAX]; static int nfb;
-static u16 fb_lo[32], fb_hi[32];             // each town's run in fb
+static u16 fb_lo[64], fb_hi[64];             // each town's run in fb
 #define FBC_MAX 900
 static u16 fbc_cx[FBC_MAX], fbc_cy[FBC_MAX], fbc_lo[FBC_MAX], fbc_hi[FBC_MAX]; static int nfbc;   // the runs by cell (4x4 blocks)
-static u16 fbs_lo[32], fbs_hi[32];           // each town's cells
+static u16 fbs_lo[64], fbs_hi[64];           // each town's cells
 static const u8 has_bld[LOT_N] = { 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
 // each lot's building, block-relative tiles (x0, y0, x1, y1) and roof (0 flat, 1 pitched)
 static const u8 foot[LOT_N][5] = {
@@ -198,7 +198,7 @@ static const u8 roofc[4][3] = { { 150, 60, 50 }, { 70, 80, 110 }, { 90, 70, 60 }
 void far_new_world(void) {
     nfb = 0; nfbc = 0;
     int ns = bm_nset();
-    for (int i = 0; i < ns && i < 32; i++) {
+    for (int i = 0; i < ns && i < 64; i++) {
         const Settle *s = bm_set(i);
         fb_lo[i] = (u16)nfb;
         for (int by = s->y - s->r; by <= s->y + s->r; by++) for (int bx = s->x - s->r; bx <= s->x + s->r; bx++) {
@@ -488,7 +488,7 @@ void far_box_world(int x0, int z0, int x1, int z1, int sto, u16 wall15, int pitc
     far_box(x0, z0, x1, z1, sto, wc, pitched && sto <= 2, rc, sto >= 2);
 }
 static void draw_buildings(void) {
-    int ns = bm_nset(); if (ns > 32) ns = 32;
+    int ns = bm_nset(); if (ns > 64) ns = 64;
     int far2 = max_bld;
     for (int i = 0; i < ns; i++) {
         const Settle *s = bm_set(i);

@@ -7,8 +7,9 @@
 #pragma once
 #include "common.h"
 
-#define NFAM    874
-#define PER_MAX 2600
+#define NFAM    1748              // (874 as SAN BOREAS always was: the PEOPLE dial's NORMAL; up to twice that)
+#define NFAM_NORMAL 874
+#define PER_MAX 3700
 enum { HK_SINGLE, HK_OLDTIMER, HK_COUPLE, HK_RETIRED, HK_ROOMMATES, HK_YOUNGFAM, HK_BIGFAM, HK_SINGLEPARENT, HK_THREEGEN, HK_N };
 enum { AT_SLEEP, AT_HOME, AT_WORK, AT_SCHOOL, AT_OUT };
 
@@ -24,7 +25,7 @@ extern Per pop_per[PER_MAX];
 extern int pop_nper, pop_nplace;
 extern Place pop_place[];
 
-extern int pop_people, pop_famsize;   // CREATE A WORLD: how many homes are lived in (0 FEW .. 3 FULL, as always) and household size (0 SMALL, 1 MIXED, 2 BIG)
+extern int pop_people, pop_famsize;   // CREATE A WORLD: how many homes are lived in (0 FEW .. 3 NORMAL, as always, .. 5 PACKED: twice as many) and household size (0 SMALL, 1 MIXED, 2 BIG, 3 HUGE)
 void pop_new(u32 seed, void *scratch, u32 scratch_bytes);   // a new life: everyone, from the seed (after bm_new)
 int  pop_family_at(int bx, int by, int unit);               // who lives in that home (-1: nobody)
 void pop_family_kinds(int f, u8 *adults, u8 *kids, u8 *teens, u8 *elders, u8 *couple);

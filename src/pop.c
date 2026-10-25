@@ -9,11 +9,11 @@
 
 Fam pop_fam[NFAM];
 Per pop_per[PER_MAX];
-#define PLACE_MAX 1400
+#define PLACE_MAX 1800
 Place pop_place[PLACE_MAX];
 int pop_nper, pop_nplace;
 static int nfam;
-static u16 set_p0[32], set_pn[32];                 // each town's places: first, count (pop_place is in town order)
+static u16 set_p0[64], set_pn[64];                 // each town's places: first, count (pop_place is in town order)
 
 static u32 prs;
 static u32 pr(void) { prs ^= prs << 13; prs ^= prs >> 17; prs ^= prs << 5; return prs; }
@@ -61,7 +61,7 @@ int pop_stage_of(int p) { return pop_per[p].stage; }
 // ---- making them ----
 static int is_work(int lot) { return lot == LOT_OFFICE || lot == LOT_TOWER || lot == LOT_HOTEL || lot == LOT_SHOP || lot == LOT_DINER || lot == LOT_GYM || lot == LOT_INN || lot == LOT_POOL || lot == LOT_SCHOOL || lot == LOT_ARCADE || lot >= LOT_CAFE; }
 static int find_place(int set, int want_lot, int any_work) {   // a place of that kind in the town (-1: none)
-    if (set >= 32 || !set_pn[set]) return -1;
+    if (set >= 64 || !set_pn[set]) return -1;
     int n = set_pn[set], k0 = prn(n);
     for (int k = 0; k < n; k++) { int i = set_p0[set] + (k0 + k) % n; int l = pop_place[i].lot;
         if (any_work ? is_work(l) : l == want_lot) return i; }
@@ -113,7 +113,7 @@ static int kind_for(int lot) {                     // who lives in a home like t
     static const u8 big[] = { HK_SINGLE, 8, HK_OLDTIMER, 6, HK_COUPLE, 14, HK_RETIRED, 8, HK_ROOMMATES, 12, HK_YOUNGFAM, 20, HK_BIGFAM, 12, HK_SINGLEPARENT, 10, HK_THREEGEN, 10, 0, 0 };
     const u8 *t = lot == LOT_COTTAGE ? small : (lot == LOT_TOWN || lot == LOT_APART) ? town : big;
     int v = prn(100);
-    if (pop_famsize == 0) v = v * 55 / 100; else if (pop_famsize == 2) v = 45 + v * 55 / 100;   // (SMALL: singles and couples first in each list; BIG: the families at its end)
+    if (pop_famsize == 0) v = v * 55 / 100; else if (pop_famsize == 2) v = 45 + v * 55 / 100; else if (pop_famsize == 3) v = 72 + v * 28 / 100;   // (SMALL: singles and couples first in each list; BIG: the families at its end)
     for (; t[1]; t += 2) { if (v < t[1]) return t[0]; v -= t[1]; }
     return HK_COUPLE;
 }
@@ -125,7 +125,7 @@ void pop_new(u32 seed, void *scratch, u32 scratch_bytes) {
     memset(set_pn, 0, sizeof set_pn);
     Unit *U = (Unit *)scratch; int maxu = (int)(scratch_bytes / sizeof(Unit)), nu = 0;
     // every home and every place in every town
-    for (int si = 0; si < bm_nset() && si < 32; si++) {
+    for (int si = 0; si < bm_nset() && si < 64; si++) {
         const Settle *s = bm_set(si);
         set_p0[si] = (u16)pop_nplace;
         for (int by = s->y - s->r; by <= s->y + s->r; by++) for (int bx = s->x - s->r; bx <= s->x + s->r; bx++) {
@@ -144,8 +144,8 @@ void pop_new(u32 seed, void *scratch, u32 scratch_bytes) {
             int defer = bm_gen >= 3 && u->set == bm_capital() && (u->lot == LOT_HOUSE || u->lot == LOT_COTTAGE || u->lot == LOT_TWO) && bm_hash(u->bx, u->by, seed ^ 0x5A1Eu) % 100u < 35;
             if (defer) { Unit t = U[i]; U[i] = U[j]; U[j] = t; j--; } else i++; }
     }
-    static const u8 lived[4] = { 35, 60, 80, 100 };   // PEOPLE: the share of homes lived in
-    int nf = MIN(nu, NFAM * lived[pop_people % 4] / 100);
+    static const u8 lived[6] = { 35, 60, 80, 100, 150, 200 };   // PEOPLE: households, a share of the usual 874
+    int nf = MIN(nu, MIN(NFAM, NFAM_NORMAL * lived[pop_people % 6] / 100));
     memset(pop_fam, 0, sizeof pop_fam);
     for (int gap = nf / 2; gap > 0; gap /= 2) for (int i = gap; i < nf; i++) {   // in block order, so a home's household is found by a search
         Unit t = U[i]; int j = i; while (j >= gap && unit_key(&U[j - gap]) > unit_key(&t)) { U[j] = U[j - gap]; j -= gap; } U[j] = t; }
@@ -192,7 +192,7 @@ static int leisure(int p, int slot, int *place) {   // out for a couple of hours
     int chance = q->stage == AG_ELDER ? 30 : q->stage == AG_ADULT ? 40 : 60;
     if (q->trait == 9) chance += 25; if (q->trait == 2 || q->trait == 8) chance -= 15;   // outgoing / lazy, loner
     if ((int)(h % 100u) >= chance) return 0;
-    int set = fm->set; if (set >= 32 || !set_pn[set]) return 0;
+    int set = fm->set; if (set >= 64 || !set_pn[set]) return 0;
     for (int t = 0; t < 10; t++) {
         int i = set_p0[set] + (int)((h >> (8 + t)) % set_pn[set]); int l = pop_place[i].lot;
         if (t < 7 && ABS(pop_place[i].bx - fm->bx) + ABS(pop_place[i].by - fm->by) > 5) continue;   // somewhere in the neighbourhood, mostly

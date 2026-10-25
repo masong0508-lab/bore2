@@ -1778,7 +1778,7 @@ static void load_body(void) {
     if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
     bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1;
     if (save_ver >= 7) { bm_land = ld_u8() % BL_N; bm_sea = ld_u8() % 5; bm_clim = ld_u8() % 5; bm_hills = ld_u8() % 5;
-        if (save_ver >= 8) { bm_ncity = ld_u8() % (BM_MAXCITY + 1); bm_ntown = ld_u8() % (BM_MAXTOWN + 1); bm_nvil = ld_u8() % (BM_MAXVIL + 1); bm_capsz = ld_u8() % 3; pop_people = ld_u8() % 4; pop_famsize = ld_u8() % 3; }
+        if (save_ver >= 8) { bm_ncity = ld_u8() % (BM_MAXCITY + 1); bm_ntown = ld_u8() % (BM_MAXTOWN + 1); bm_nvil = ld_u8() % (BM_MAXVIL + 1); bm_capsz = ld_u8() % 6; pop_people = ld_u8() % 6; pop_famsize = ld_u8() % 4; if (save_ver < 9) bm_capsz = bm_capsz == 0 ? 1 : bm_capsz == 1 ? 2 : 4; }   // (version 8: capital SMALL NORMAL HUGE)
         else { static const u8 c7[4] = { 0, 1, 2, 3 }, t7[4] = { 2, 4, 6, 8 }, v7[4] = { 4, 8, 12, 12 }; int t = ld_u8() % 4; bm_ncity = c7[t]; bm_ntown = t7[t]; bm_nvil = v7[t]; }   // (version 7: one TOWNS dial)
         isl_size = ld_u8() % 3; isl_wild = ld_u8() % 3; isl_jungle = ld_u8() % 3; isl_rocks = ld_u8() % 3; }
     bm_rename_clear();
@@ -3203,16 +3203,16 @@ static void worlds_go(u32 seed, int mode) {
 // ---- CREATE A WORLD: make your own. What kind of life, then dials for the land (or the castaway's island), the map as you turn them ----
 enum { WM_START, WM_LAND, WM_SEA, WM_CLIM, WM_HILLS, WM_CAPSZ, WM_CITIES, WM_TOWNS, WM_VILS, WM_PEOPLE, WM_FAMS, WM_STYLE, WM_ISIZE, WM_ICOAST, WM_IJUNGLE, WM_IROCKS, WM_NAME, WM_SEED, WM_PLAY, WM_N };
 static int wm_sel, wm_t, wm_start, wm_used, wm_isle_view;   // wm_start: 0 SAN BOREAS, 1 CASTAWAY ISLAND, 2 RAGS TO RICHES
-static int wm_land, wm_sea = 2, wm_clim = 2, wm_hills = 2, wm_capsz = 1, wm_cities = 2, wm_towns = 6, wm_vils = 12, wm_people = 3, wm_fams = 1, wm_isize = 1, wm_icoast = 1, wm_ijungle = 1, wm_irocks = 1;
+static int wm_land, wm_sea = 2, wm_clim = 2, wm_hills = 2, wm_capsz = 2, wm_cities = 2, wm_towns = 6, wm_vils = 12, wm_people = 3, wm_fams = 1, wm_isize = 1, wm_icoast = 1, wm_ijungle = 1, wm_irocks = 1;
 static const char *const wmLbl[WM_N] = { "LIFE", "LAND", "SEA", "CLIMATE", "HILLS", "CAPITAL SIZE", "CITIES", "TOWNS", "VILLAGES", "PEOPLE", "HOUSEHOLDS", "TOWN STYLE", "ISLAND SIZE", "COAST", "JUNGLE", "ISLAND HILLS", "CAPITAL", "MAP NO.", "PLAY THIS WORLD" };
 static const char *const wmStartNm[3] = { "SAN BOREAS", "CASTAWAY", "RAGS TO RICHES" };
 static const char *const wmLandNm[BL_N] = { "MAINLAND", "ISLANDS", "ONE BIG ISLAND", "CONTINENT", "LAKES" };
 static const char *const wmSeaNm[5] = { "VERY LOW", "LOW", "NORMAL", "HIGH", "VERY HIGH" };
 static const char *const wmClimNm[5] = { "DESERT", "DRY", "MIXED", "GREEN", "JUNGLE" };
 static const char *const wmHillNm[5] = { "FLAT", "GENTLE", "NORMAL", "HILLY", "MOUNTAINS" };
-static const char *const wmCapNm[3] = { "SMALL", "NORMAL", "HUGE" };
-static const char *const wmPeopleNm[4] = { "FEW", "SOME", "MANY", "FULL" };
-static const char *const wmFamNm[3] = { "SMALL", "MIXED", "BIG" };
+static const char *const wmCapNm[6] = { "TINY", "SMALL", "NORMAL", "BIG", "HUGE", "GIANT" };
+static const char *const wmPeopleNm[6] = { "FEW", "SOME", "MANY", "NORMAL", "CROWDED", "PACKED" };
+static const char *const wmFamNm[4] = { "SMALL", "MIXED", "BIG", "HUGE" };
 static const char *const wmI3[3][3] = { { "SMALL", "MEDIUM", "BIG" }, { "SMOOTH", "WAVY", "WILD" }, { "LESS", "SOME", "MORE" } };
 static const char *const wmBlurb[WM_N] = { "HOW THE LIFE BEGINS: A HOME, STRANDED, OR BROKE", "THE SHAPE OF SAN BOREAS", "HOW MUCH OF IT THE SEA COVERS",
     "SAND AND SCRUB TO THICK FOREST", "HOW MUCH ROCKY HIGH GROUND", "HOW BIG BORE CITY IS", "BIG CITIES BESIDES THE CAPITAL", "MIDDLE-SIZED TOWNS", "LITTLE VILLAGES AND HAMLETS",
@@ -3223,9 +3223,9 @@ static int wm_shown(int r) { return wm_start == 1 || (r < WM_ISIZE || r > WM_IRO
 static int *wm_dial(int r, int *n) {
     switch (r) {
         case WM_START: *n = 3; return &wm_start; case WM_LAND: *n = BL_N; return &wm_land; case WM_SEA: *n = 5; return &wm_sea;
-        case WM_CLIM: *n = 5; return &wm_clim; case WM_HILLS: *n = 5; return &wm_hills; case WM_CAPSZ: *n = 3; return &wm_capsz; case WM_CITIES: *n = BM_MAXCITY + 1; return &wm_cities;
+        case WM_CLIM: *n = 5; return &wm_clim; case WM_HILLS: *n = 5; return &wm_hills; case WM_CAPSZ: *n = 6; return &wm_capsz; case WM_CITIES: *n = BM_MAXCITY + 1; return &wm_cities;
         case WM_TOWNS: *n = BM_MAXTOWN + 1; return &wm_towns; case WM_VILS: *n = BM_MAXVIL + 1; return &wm_vils;
-        case WM_PEOPLE: *n = 4; return &wm_people; case WM_FAMS: *n = 3; return &wm_fams;
+        case WM_PEOPLE: *n = 6; return &wm_people; case WM_FAMS: *n = 4; return &wm_fams;
         case WM_STYLE: *n = 2; return &wo_packed; case WM_ISIZE: *n = 3; return &wm_isize; case WM_ICOAST: *n = 3; return &wm_icoast;
         case WM_IJUNGLE: *n = 3; return &wm_ijungle; case WM_IROCKS: *n = 3; return &wm_irocks;
         default: *n = 0; return 0;
@@ -3248,13 +3248,13 @@ static void wm_paint(void) {
 }
 static void wm_surprise(void) {   // SQUARE: every dial at random, and new dice
     u32 r = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ (u32)wm_t;
-    wm_land = (int)(r % BL_N); wm_sea = 1 + (int)((r >> 4) % 3); wm_clim = (int)((r >> 7) % 5); wm_hills = (int)((r >> 10) % 5); wm_cities = (int)((r >> 13) % 5); wm_towns = (int)((r >> 24) % 11); wm_vils = (int)((r >> 27) % 17); wm_capsz = (int)((r >> 5) % 3); wm_people = 1 + (int)((r >> 25) % 3); wm_fams = (int)((r >> 29) % 3);
+    wm_land = (int)(r % BL_N); wm_sea = 1 + (int)((r >> 4) % 3); wm_clim = (int)((r >> 7) % 5); wm_hills = (int)((r >> 10) % 5); wm_cities = (int)((r >> 13) % (BM_MAXCITY + 1)); wm_towns = (int)((r >> 24) % (BM_MAXTOWN + 1)); wm_vils = (int)((r >> 27) % (BM_MAXVIL + 1)); wm_capsz = (int)((r >> 5) % 6); wm_people = 1 + (int)((r >> 25) % 5); wm_fams = (int)((r >> 29) % 4);
     wo_packed = (int)((r >> 15) & 1); wm_isize = (int)((r >> 16) % 3); wm_icoast = (int)((r >> 18) % 3); wm_ijungle = (int)((r >> 20) % 3); wm_irocks = (int)((r >> 22) % 3);
     wo_custom = r * 40503u + 1; wo_painted = 0; wm_painted_isle = 0; audio_voice(VOICE_FINISHED);
 }
 static void wm_named(void) { wo_painted = 0; }
 static void wm_check_dials(void) {   // a dial turned: the map is drawn again
-    static u32 k0; u32 k = (u32)(bm_land | bm_sea << 3 | bm_clim << 6 | bm_hills << 9 | bm_packed << 12 | bm_capsz << 13 | bm_ncity << 15 | bm_ntown << 18 | bm_nvil << 22);
+    static u32 k0; u32 k = (u32)(bm_land | bm_sea << 3 | bm_clim << 6 | bm_hills << 9 | bm_packed << 12 | bm_capsz << 13 | bm_ncity << 16 | bm_ntown << 20 | bm_nvil << 25 | (u32)bm_capsz << 13);
     if (k != k0) { k0 = k; wo_painted = 0; }
 }
 static void wm_update(void) {
@@ -3313,7 +3313,7 @@ static void wm_draw(void) {
     if (!wm_isle_view && wo_painted) {
         for (int i = 0; i < bm_nset(); i++) { const Settle *st = bm_set(i); int x = MX + st->x * MS / BM_N, yy = MY + st->y * MS / BM_N, dd = st->kind == ST_CITY ? 6 : st->kind == ST_TOWN ? 4 : 3;
             ui_disc(x, yy, dd + 2, UI_RGB(40, 46, 60)); ui_disc(x, yy, dd, i == bm_capital() ? UI_RGB(255, 204, 48) : UI_WHITE); }
-        const Settle *c = bm_set(bm_capital()); { int nf = 0; while (nf < NFAM && pop_fam[nf].n) nf++; (void)c; sprintf(b, "%d PLACES, %d HOMES", bm_nset(), wm_people == 3 ? 874 : 874 * (wm_people == 0 ? 35 : wm_people == 1 ? 60 : 80) / 100); }
+        const Settle *c = bm_set(bm_capital()); { int nf = 0; while (nf < NFAM && pop_fam[nf].n) nf++; (void)c; static const u8 lv[6] = { 35, 60, 80, 100, 150, 200 }; sprintf(b, "%d PLACES, %d HOMES", bm_nset(), NFAM_NORMAL * lv[wm_people % 6] / 100); }
     } else strcpy(b, "THEY BEGIN STRANDED HERE");
     ui_badge(MX + 4, MY + 4, wm_isle_view ? "THE ISLAND" : "SAN BOREAS", UI_WHITE, UI_BLUE2);
     ui_text(MX, MY + MS + 5, 1, b, UI_INK);
