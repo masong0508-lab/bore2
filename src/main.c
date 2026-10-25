@@ -163,6 +163,7 @@ static void taxi_to_block(int bx, int by, int tx, int ty, const char *where);
 static char pie_opt[8][16]; static int pie_n, pie_sel, pie_cit;   // the pie menu
 static int panel_tab;                                      // the Bore panel's tab
 static int jobs_sel, jobs_n, jobs_scroll, jobs_car[16], jobs_pl[16];   // the JOBS screen
+static int jobs_board;   // 1: the JOB BOARD (the computer, or a smartphone): every opening; 0: the morning paper's three
 static void jobs_open(void);
 
 // which story zones are open (the island comes with the first paycheck, the town with job level 2)
@@ -533,6 +534,7 @@ static void life_update(int steps) {
     if (nh_pending) { nh_pending = 0; nhood_open(1); return; }
     if (mode_pending == 1) { mode_pending = 0; travel_go(ZONE_ISLAND); story_visit[1] = 1; sim_note("STRANDED! THE BOAT HOME IS ON THE BEACH"); return; }
     if (mode_pending == 2) { mode_pending = 0; if (!story_id) { sim_note("RAGS TO RICHES: $1,000 TO YOUR NAME"); sim_note("GOAL: A HOME OF YOUR OWN"); } }
+    if (sim_want_jobs) { sim_want_jobs = 0; jobs_board = 1; jobs_open(); sub_back = ST_LIFE; state = ST_JOBS; return; }   // (the computer's JOB BOARD)
     if (story_card()) { sc_t = 0; state = ST_SCARD; audio_voice(VOICE_FINISHED); return; }   // a chapter begins, or one is done
     Sim *s = &sims[player];
     {   // YOUR BORE ALONE (borrowed from BORE on the GBA): the pad left alone a while, your Bore looks after itself like the rest of the
@@ -1506,6 +1508,12 @@ static void jobs_open(void) {
     if (world_zone == ZONE_CITY && world_wbx >= 0) { rbx = world_wbx + sim_tile_x(&sims[player]) / BM_BLK; rby = world_wby + sim_tile_y(&sims[player]) / BM_BLK; }
     else { const Settle *cp = bm_set(bm_capital()); rbx = cp->x; rby = cp->y; }
     jobs_n = job_openings(rbx, rby, jobs_car, jobs_pl, 16);
+    if (!jobs_board && phone_tier < 2 && jobs_n > 3) {   // TODAY'S CLASSIFIEDS: three of them, a different three each day (the JOB BOARD has them all)
+        int a = (int)((day_count * 7 + day_count / 5) % jobs_n); s8 c[3]; s16 p[3];
+        for (int k = 0; k < 3; k++) { int i = (a + k * jobs_n / 3) % jobs_n; c[k] = (s8)jobs_car[i]; p[k] = (s16)jobs_pl[i]; }
+        for (int k = 0; k < 3; k++) { jobs_car[k] = c[k]; jobs_pl[k] = p[k]; }
+        jobs_n = 3;
+    }
     jobs_sel = 0; jobs_scroll = 0;
 }
 static void shift_text(char *out, int car) {   // "7 AM - 3 PM, MON - FRI"
@@ -1538,7 +1546,7 @@ static void jobs_draw(void) {
     life_draw();
     ui_dim();
     char b[64], t[40];
-    int top = ui_window(4, 4, 312, 232, "JOBS", IC_CASE);
+    int top = ui_window(4, 4, 312, 232, jobs_board || phone_tier >= 2 ? "THE JOB BOARD" : "TODAY'S CLASSIFIEDS", IC_CASE);
     sprintf(b, "$%ld", cash); ui_badge(306 - ui_tw(1, b) - 10, 8, b, UI_WHITE, UI_GOODT);
     {   // your job, on its own card, with the button to go
         int on = jobs_sel == 0, len = job_shift_len();
@@ -1552,7 +1560,7 @@ static void jobs_draw(void) {
         ui_text(54, top + 42, 1, "TODAY", UI_SOFT); ui_bar(90, top + 42, 108, 7, MIN(100, job_worked * 100 / len), UI_GREEN);
         ui_button(208, top + 38, 96, 14, "GO TO WORK", IC_CAR, on);
     }
-    ui_section(12, top + 59, 296, "JOBS GOING NEAR YOU");
+    ui_section(12, top + 59, 296, jobs_board || phone_tier >= 2 ? "EVERY JOB GOING NEAR YOU" : "IN TODAY'S PAPER. A SMARTPHONE SHOWS THEM ALL");
     if (jobs_sel > 0 && jobs_sel - 1 < jobs_scroll) jobs_scroll = jobs_sel - 1;
     if (jobs_sel > 0 && jobs_sel - 1 >= jobs_scroll + 5) jobs_scroll = jobs_sel - 5;
     for (int r = 0; r < 5 && jobs_scroll + r < jobs_n; r++) {
@@ -2095,7 +2103,7 @@ static const u32 phCol[PH_N] = { UI_RGB(76, 196, 92), UI_RGB(240, 140, 50), UI_R
     UI_RGB(60, 180, 230), UI_RGB(90, 96, 120), UI_RGB(200, 70, 200) };
 static int ph_sel, ph_fam, ph_fsel, ph_t;
 // what each app needs: 1 any phone (even the old flip), 2 a smartphone, 3 the BORE PHONE MAX (GAMES: a handheld will do as well)
-static const u8 phNeed[PH_N] = { 1, 1, 1, 2, 1, 2, 2, 2, 1, 1, 3, 2, 1, 2, 3 };
+static const u8 phNeed[PH_N] = { 1, 1, 1, 2, 1, 1, 2, 2, 1, 1, 3, 2, 1, 2, 3 };   // (JOBS on any phone: the flip reads the paper's classifieds, a smartphone the whole job board)
 static const char *const phoneNm[4] = { "NO PHONE", "FLIP PHONE", "SMARTPHONE", "BORE PHONE MAX" };
 static int ph_has(int i) { return phone_tier >= phNeed[i] || (i == PH_GAMES && handheld && phone_tier >= 1); }
 void phone_open(void) {
@@ -2131,7 +2139,7 @@ static void phone_update(void) {
         case PH_PARTY: state = ST_LIFE; throw_party(); break;
         case PH_MAP: map_t = -1; state = ST_MAP; break;   // (opened on the map's own first frame: this frame still draws the people, whose sprites share that VRAM)
         case PH_TRAVEL: travel_sel = home_city && home_is_here() ? 0 : world_zone + home_city; state = ST_TRAVEL; break;
-        case PH_JOBS: jobs_open(); state = ST_JOBS; break;
+        case PH_JOBS: jobs_board = 0; jobs_open(); state = ST_JOBS; break;
         case PH_HOMES: nhood_open(0); break;
         case PH_PEOPLE: dir_open(); state = ST_DIR; break;
         case PH_FAMILY: ph_fam = 1; ph_fsel = player; break;

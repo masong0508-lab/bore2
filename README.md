@@ -33,6 +33,12 @@ jobs, homes, the people, goals, photos) and the BORE PHONE MAX ($900: every app,
 BOREBOY ($120) and the BOREBOY ADVANCE ($220), played from the phone's GAMES for fun. Locked apps show a padlock and say what
 unlocks them. Each phone has its own look (grey, black, gold). Saves keep what you own (version 10; older lives keep every app).
 
+From BORE on the GBA: YOUR BORE ALONE (OPTIONS, LIFE: OFF, LOW, HIGH): put the pad down and after 25 s (or 10 s) your Bore looks
+after itself like the rest of the household; any button gives it back. THE JOB HUNT: the paper comes at 6 AM (a headline, and three
+jobs in TODAY'S CLASSIFIEDS, a different three each day, on the phone's JOBS); a smartphone or the COMPUTER at home shows the whole
+JOB BOARD. The COMPUTER also has a game, the web, a cooking class, chatting online and a paid FREELANCE GIG (a few of each a day).
+ASK TO MOVE IN: a good friend may come and live with you, with the GBA game's voices for the asking, the yes and the no.
+
 CREATE A BORE's FACE tab has 41 eyes (star, heart, dizzy, sparkly, robot, snake, crying...), 39 mouths (teeth, laugh, braces,
 vampire, kiss, yell...), 19 brows, 20 noses, 23 cheek marks (freckles, hearts, war paint, stitches, a mole...) and MORE MARKS to
 add a second, 17 glasses, 9 ears (elf, long elf, droopy, huge...), MAKE-UP (liner, lashes, eye shadow in six colours, glitter)

@@ -196,7 +196,8 @@ void sim_switch_player(void) {
 }
 
 // ---- walking with collision (the lot's tiles) ----
-int phone_tier = 1, handheld;   // (a new life: an old flip phone in the pocket; better ones from an electronics shop)
+int phone_tier = 1, handheld;
+int sim_want_jobs;   // the computer's JOB BOARD was picked: main opens JOBS with every opening   // (a new life: an old flip phone in the pocket; better ones from an electronics shop)
 int has_board, on_board, board_lift;   // the skateboard: owned, ridden, how high the rider is (skate.c rides it)
 static int ramp_pass;   // set while the rider's own step is tried: a board can roll onto a ramp
 int dbg_air_max, dbg_tricks;
@@ -1170,6 +1171,12 @@ static void clock_tick(void) {
     if (clock_min == 16 * 60) for (int i = 0; i < nsims; i++) for (int j = 0; j < nsims; j++) { int r = sims[i].rel[j]; sims[i].rel[j] = (s8)(r > 0 ? r - 2 : r < 0 ? r + 2 : 0); }   // 4 PM: the day's warmth fades a little
     if (sims[player].action == ACT_WORK && is_work()) job_worked++;       // minutes worked this shift
     if (clock_day < 5 && day_count > 0) {   // school: the bus at 8, home at 3 (not on the day you move in)
+        if (clock_min == 360) {   // 6 AM: the morning paper (borrowed from BORE on the GBA): the headline, and three jobs in the classifieds
+            static const char *const news[12] = { "SKATE PLAZA PACKED ALL WEEKEND", "LOCAL BORE LANDS A KICKFLIP", "PIZZA PRICES UP AGAIN", "MYSTERY LIGHTS OVER THE POOL",
+                "COUNCIL BANS FUN. FUN OBJECTS", "RAMP BUILDER WINS AWARD", "LOST CAT FOUND IN A TREE", "NEW PHONE OUT. QUEUES ROUND THE BLOCK",
+                "NEW CAFE HAS A LONG LINE", "HOT WEEK AHEAD, SAYS EXPERT", "SLOW NEWS DAY. NOTHING HAPPENS", "NEIGHBOURS COMPLAIN ABOUT NOISE" };
+            char b[48]; snprintf(b, sizeof b, "THE PAPER: %s", news[day_count % 12]); sim_note(b); sim_note("3 NEW JOBS IN THE CLASSIFIEDS: PHONE, JOBS");
+        }
         if (clock_min == 465) { for (int i = 0; i < nsims; i++) if (school_age(&sims[i])) { sim_note("THE SCHOOL BUS COMES AT 8"); break; } }
         if (clock_min == 480) school_go();
         if (clock_min == 900) school_back();
@@ -1361,7 +1368,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2 };
+       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET };
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1455,7 +1462,10 @@ static int sim_pie_open_(char opt[8][16]) {
         case ACT_READ: OPT("READ", 0) OPT("STUDY", 1) break;
         case ACT_PHONE: OPT("CALL A FRIEND", 0) OPT("ORDER PIZZA", 1) OPT("THROW A PARTY", 2) if (s->bore.stage == AG_ADULT || s->bore.stage == AG_ELDER) OPT("ADOPT $1000", 35) break;
         case ACT_STAIRS: OPT("GO UP", 0) break;
-        case ACT_FUN: if (c == 'R' || c == 'A' || c == 'j') {   // a radio: the stations
+        case ACT_FUN: if (c == '[') {   // the COMPUTER (borrowed from BORE on the GBA): the job board, a paid gig, the web
+                          OPT("PLAY A GAME", 0) OPT("JOB BOARD", PC_JOBBOARD) OPT("SURF THE WEB", PC_WEB) OPT("COOKING CLASS ONLINE", PC_COOKNET) OPT("CHAT ONLINE", PC_CHATNET)
+                          if (s->bore.stage >= AG_TEEN) OPT("FREELANCE GIG", PC_GIG) break; }
+                      if (c == 'R' || c == 'A' || c == 'j') {   // a radio: the stations
                           for (int k = 0; k < audio_station_count(); k++) OPT(audio_station_name(k), 10 + k)
                           OPT("TURN IT OFF", 9) break; }
                       OPT(act_hint(act, c), 0) break;
@@ -1567,6 +1577,17 @@ static void place_do(Sim *s, int code) {
         case PC_HAND2: if (!pay(220)) return; handheld |= 2; shopped(s, "A BOREBOY ADVANCE! THE GAMES LOOK GREAT", ML_NEW_GAME); break;
         case PC_PICKBOARD: has_board = 1; *world_cell(s->lvl, pie_mx, pie_my) = '.'; world_touched(); sim_note("A SKATEBOARD! O TO RIDE"); audio_voice(VOICE_YAHOO); break;
         case PC_BROWSE: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 4; s->act_t = 240; break;
+        case PC_JOBBOARD: sim_want_jobs = 2; break;   // (main opens JOBS: every opening, not just the paper's three)
+        case PC_WEB: case PC_COOKNET: case PC_CHATNET: case PC_GIG: {   // a few of each a day: not a free skill farm
+            static u16 day_; static u8 used_[4]; int k = code - PC_GIG; if (day_ != (u16)(day_count + 1)) { day_ = (u16)(day_count + 1); memset(used_, 0, 4); }
+            if (used_[k] >= (k == 0 ? 2 : 3)) { sim_note("ENOUGH OF THAT FOR TODAY"); audio_voice(VOICE_NAH); return; }
+            if (k == 0 && (s->need[N_REST] >> 10) < 25) { sim_note("TOO TIRED FOR A GIG"); audio_voice(VOICE_NAH); return; }
+            used_[k]++; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = k == 0 ? 420 : 240;
+            if (k == 0) { int pay = 35 + (s->skill_cook + s->skill_fun) / 40; cash += pay; s->need[N_REST] = MAX(0, s->need[N_REST] - (15 << 10)); char b[32]; sprintf(b, "FREELANCE GIG: +$%d", pay); sim_note(b); audio_voice(VOICE_FINISHED); }
+            else if (k == 1) sim_note((day_count + clock_min) & 3 ? "SURFED THE WEB" : "YOU FELL DOWN A WIKI HOLE");
+            else if (k == 2) { s->skill_cook += 40; sim_note("A COOKING CLASS ONLINE: COOKING UP"); }
+            else { s->need[N_SOCIAL] = MIN(100 << 10, s->need[N_SOCIAL] + (12 << 10)); sim_note("CHATTED ONLINE: FEELING LESS ALONE"); }
+            break; }
         case PC_TRAINER: if (!pay(20)) return; begin_action(s, ACT_RUN, pie_mx, pie_my); s->act_var = 2; sim_say(s, "FEEL THE BURN"); break;
         case PC_SWIM: swim(s); break;
         case PC_PLAY: if (!pay(2)) return; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 0; break;
