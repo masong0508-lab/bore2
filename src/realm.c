@@ -196,7 +196,7 @@ int realm_update(int held, int pressed, int steps) {
         static const s16 dirY[3][3] = { { 3584, 3072, 2560 }, { 0, 0, 2048 }, { 512, 1024, 1536 } };   // [ux + 1][uy + 1]: up 0, right 1024, down 2048, left 3072
         int want = (dirY[ux + 1][1 - uy] + cyaw) & 4095, dy = ((want - gyaw + 2048) & 4095) - 2048;
         gyaw = (gyaw + CLAMP(dy, -300 * steps, 300 * steps)) & 4095;
-        walkT += steps; int sp = walkT > 50 ? 30 : 18;   // (a stride, then a run)
+        walkT += steps; int sp = (held & PAD_CIRCLE) ? 30 : 18;   // (O held: a run)
         for (int k = 0; k < steps; k++) {
             int mx = isin(want) * sp >> 12, mz = -(icos(want) * sp >> 12);
             if (walk_ok(gx + mx, gz + mz)) { gx += mx; gz += mz; } else if (walk_ok(gx + mx, gz)) gx += mx; else if (walk_ok(gx, gz + mz)) gz += mz;
@@ -549,7 +549,7 @@ void realm_draw(void) {
     }
     if (panel == 2 && mis >= NMIS) { int top = ui_window(30, 60, 260, 60, "ALL MISSIONS DONE", IC_STAR); ui_wrap(40, top, 240, 2, "THE REALM IS YOURS TO KEEP. IT NEVER ENDS.", UI_SOFT); }
     if (msgT && msg) { int w = MIN(300, ui_tw(1, msg) + 20), two = ui_tw(1, msg) > 280; ui_round(160 - w / 2, two ? 164 : 174, w, two ? 30 : 18, 8, UI_RGB(30, 40, 70), UI_RGB(18, 24, 48), 0); ui_wrapc(160 - w / 2 + 8, two ? 167 : 177, w - 16, 2, msg, UI_WHITE); }
-    if (!pick && !menu) ui_hintbar(216, "X DO|SQ BUILD|L1 R1 TURN|L2 R2 ZOOM");
+    if (!pick && !menu) ui_hintbar(216, "X DO|O RUN|SQ BUILD|L1 R1 TURN|L2 R2 ZOOM");
     if (pick) {
         int top = ui_window(16, 20, 288, 196, "WHAT X DOES", IC_HAMMER);
         for (int i = 0; i < NPICK; i++) { int col = i / 7, row = i % 7, x = 24 + col * 94, y = top + row * 20, s = i == psel;
