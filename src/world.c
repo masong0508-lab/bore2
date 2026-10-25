@@ -262,8 +262,37 @@ void world_gen_studio(void) {
 int world_zone = ZONE_HOME;
 static const char *const zoneNm[ZONE_N] = { "THE MAN BASE", "CASTAWAY ISLAND", "STRANGE TOWN", "SAN BOREAS" };
 const char *world_zone_name(int z) { return zoneNm[z % ZONE_N]; }
-typedef struct { char map[MH][MW + 1]; u8 fl[MH][MW]; u8 wp[MH][MW]; u8 made; } ZoneSave;
-static ZoneSave zones[ZONE_CITY];                 // (SAN BOREAS needs no copy: its window is built from the generator)
+// ---- the places you are away from (THE MAN BASE, the island, the town), kept packed: the very bytes the save writes for them ----
+// (SAN BOREAS needs no copy: its window is built from the generator.) A place that will not pack into what is left goes, as it is,
+// into a free storey slot instead.
+#define ZPACK (28 * 1024)
+static u8 zpack[ZPACK]; static u16 zp_off[ZONE_CITY], zp_len[ZONE_CITY]; static u8 zp_made[ZONE_CITY]; static s8 zp_slot[ZONE_CITY] = { -1, -1, -1 };
+int world_zone_lost;   // a place that could not be kept (no room at all): main says so
+static int zp_used(void) { int u = 0; for (int i = 0; i < ZONE_CITY; i++) if (zp_slot[i] < 0) u += zp_len[i]; return u; }
+static void zone_drop(int z) {
+    if (zp_slot[z] >= 0) { lvbusy[zp_slot[z]] = 0; zp_slot[z] = -1; }
+    else if (zp_len[z]) {
+        int o = zp_off[z], n = zp_len[z]; memmove(zpack + o, zpack + o + n, (size_t)(zp_used() - o - n));
+        for (int i = 0; i < ZONE_CITY; i++) if (i != z && zp_slot[i] < 0 && zp_len[i] && zp_off[i] > o) zp_off[i] = (u16)(zp_off[i] - n);
+    }
+    zp_len[z] = 0; zp_made[z] = 0;
+}
+static void zone_keep(int z) {   // the live tiles into the keep
+    zone_drop(z);
+    int u = zp_used(), a = rle_pack(lifeMap, MH * (MW + 1), zpack + u, ZPACK - u), b = -1, c = -1;
+    if (a >= 0) b = rle_pack(floorMap, MH * MW, zpack + u + a, ZPACK - u - a);
+    if (b >= 0) c = rle_pack(wallMap, MH * MW, zpack + u + a + b, ZPACK - u - a - b);
+    if (c >= 0) { zp_off[z] = (u16)u; zp_len[z] = (u16)(a + b + c); zp_made[z] = 1; return; }
+    int sl = 0; while (sl < nlvpool && lvbusy[sl]) sl++;
+    if (sl == nlvpool) { world_zone_lost = 1; return; }
+    Level *L = &lvpool[sl]; lvbusy[sl] = 1; zp_slot[z] = (s8)sl; zp_made[z] = 1;
+    memcpy(L->map, lifeMap, sizeof L->map); memcpy(L->fl, floorMap, sizeof L->fl); memcpy(L->wp, wallMap, sizeof L->wp);
+}
+static void zone_restore(int z) {
+    if (zp_slot[z] >= 0) { const Level *L = &lvpool[zp_slot[z]]; memcpy(lifeMap, L->map, sizeof L->map); memcpy(floorMap, L->fl, sizeof L->fl); memcpy(wallMap, L->wp, sizeof L->wp); return; }
+    const u8 *in = zpack + zp_off[z];
+    in += rle_unpack(in, lifeMap, MH * (MW + 1)); in += rle_unpack(in, floorMap, MH * MW); rle_unpack(in, wallMap, MH * MW);
+}
 
 static void gCircle(int cx, int cy, int r, int fl) { for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) floorMap[y][x] = (u8)fl; }
 static u32 wsalt;                                     // (the save's seed: below)
@@ -1356,14 +1385,13 @@ COLD void world_switch(int z) {
         window_keep();
         levels_clear(lvown[ZONE_CITY]); world_wbx = world_wby = -1; nhomes[ZONE_CITY] = 0;
     } else {
-        ZoneSave *cur = &zones[world_zone];
-        memcpy(cur->map, lifeMap, sizeof cur->map); memcpy(cur->fl, floorMap, sizeof cur->fl); memcpy(cur->wp, wallMap, sizeof cur->wp); cur->made = 1;
+        zone_keep(world_zone);
     }
     world_zone = z; UP = lvown[z]; roof_dirty = 1; world_stamp++;
     if (z == ZONE_CITY) { world_gen_city(); return; }
-    ZoneSave *nx = &zones[z];
-    if (!nx->made) levels_clear(UP);
-    if (nx->made) { memcpy(lifeMap, nx->map, sizeof nx->map); memcpy(floorMap, nx->fl, sizeof nx->fl); memcpy(wallMap, nx->wp, sizeof nx->wp); }
+    int made = zp_made[z];
+    if (!made) levels_clear(UP);
+    if (made) { zone_restore(z); zone_drop(z); }   // (back: the live tiles are the place now, its keep let go)
     else if (z == ZONE_ISLAND) world_gen_island();
     else if (z == ZONE_TOWN) world_gen_town();
     else if (z == ZONE_CITY) world_gen_city();
@@ -1371,7 +1399,7 @@ COLD void world_switch(int z) {
 }
 void world_reset_all(void) {
     for (int i = 0; i < ZONE_N; i++) nhomes[i] = 0;
-    ao_dirty = 1; for (int i = 0; i < ZONE_N; i++) { if (i < ZONE_CITY) zones[i].made = 0; levels_clear(lvown[i]); } world_zone = ZONE_HOME; UP = lvown[0]; world_gen(); }
+    ao_dirty = 1; for (int i = 0; i < ZONE_N; i++) { if (i < ZONE_CITY) zone_drop(i); levels_clear(lvown[i]); } world_zone = ZONE_HOME; UP = lvown[0]; world_gen(); }
 char world_at(int mx, int my) { return world_at_l(world_lvl, mx, my); }
 static int is_wall(char c) { return c == 'W' || c == 'w' || c == 'E' || c == 'e' || c == 'f'; }
 int world_walkable(int mx, int my) {
@@ -2602,7 +2630,9 @@ void world_draw(int fx, int fy, int t, int cutaway) {
 static void sv_level(const char (*map)[MW + 1], const u8 (*fl)[MW], const u8 (*wp)[MW]) { sv_rle(map, MH * (MW + 1)); sv_rle(fl, MH * MW); sv_rle(wp, MH * MW); }
 static void ld_level(char (*map)[MW + 1], u8 (*fl)[MW], u8 (*wp)[MW]) { ld_rle(map, MH * (MW + 1)); ld_rle(fl, MH * MW); ld_rle(wp, MH * MW); }
 COLD static void sv_zone(int z) {   // a zone's tiles and storeys, live or kept aside
-    if (world_zone == z) sv_level(lifeMap, floorMap, wallMap); else sv_level(zones[z].map, zones[z].fl, zones[z].wp);
+    if (world_zone == z) sv_level(lifeMap, floorMap, wallMap);
+    else if (zp_slot[z] >= 0) { const Level *L = &lvpool[zp_slot[z]]; sv_level(L->map, L->fl, L->wp); }
+    else sv_n(zpack + zp_off[z], zp_len[z]);   // (kept packed the way the save packs it)
     int mask = 0; for (int k = 0; k < NUP; k++) if (lvown[z][k]) mask |= 1 << k;
     sv_u8(mask);
     for (int k = 0; k < NUP; k++) if (mask & (1 << k)) { const Level *L = &lvpool[lvown[z][k] - 1]; sv_level(L->map, L->fl, L->wp); }
@@ -2619,7 +2649,7 @@ __attribute__((optimize("Os"))) void world_save(int with_home) {   // with_home:
     sv_u8(world_zone); sv_u16(world_wbx); sv_u16(world_wby);
     sv_u8(with_home);
     if (with_home) sv_zone(ZONE_HOME);
-    for (int z = ZONE_ISLAND; z <= ZONE_TOWN; z++) { int made = world_zone == z || zones[z].made; sv_u8(made); if (made) sv_zone(z); }   // (the island's camp, the town: as you left them)
+    for (int z = ZONE_ISLAND; z <= ZONE_TOWN; z++) { int made = world_zone == z || zp_made[z]; sv_u8(made); if (made) sv_zone(z); }   // (the island's camp, the town: as you left them)
     sv_u8(own.used);
     if (own.used) {
         sv_u16(own.bx); sv_u16(own.by); sv_u8(own.fresh); sv_u8(own.lv); sv_u8(own.home);

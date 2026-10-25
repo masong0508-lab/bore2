@@ -41,6 +41,28 @@ void ld_rle(void *p, int n) {
     }
 }
 
+// the same PackBits, into memory (a place kept aside while you are away: its bytes are what the save writes for it, as they are)
+int rle_pack(const void *p, int n, u8 *out, int cap) {   // the packed length, -1 if it does not fit in cap
+    const u8 *s = (const u8 *)p; int i = 0, o = 0;
+    while (i < n) {
+        int run = 1; while (i + run < n && s[i + run] == s[i] && run < 130) run++;
+        if (run >= 3) { if (o + 2 > cap) return -1; out[o++] = (u8)(128 + run - 3); out[o++] = s[i]; i += run; continue; }
+        int j = i, lit = 0;
+        while (j < n && lit < 128) { if (j + 2 < n && s[j] == s[j + 1] && s[j] == s[j + 2]) break; j++; lit++; }
+        if (o + 1 + lit > cap) return -1;
+        out[o++] = (u8)(lit - 1); memcpy(out + o, s + i, lit); o += lit; i += lit;
+    }
+    return o;
+}
+int rle_unpack(const u8 *in, void *p, int n) {   // the packed bytes read
+    u8 *d = (u8 *)p; int i = 0, k = 0;
+    while (i < n) {
+        int c = in[k++];
+        if (c >= 128) { int r = MIN(c - 128 + 3, n - i); memset(d + i, in[k++], r); i += r; }
+        else { int r = MIN(c + 1, n - i); memcpy(d + i, in + k, r); k += c + 1; i += r; }
+    }
+    return k;
+}
 void ld_fail(void) { ld_bad = 1; }
 static const char *const err_text[] = { "", "NO MEMORY CARD IN SLOT 1", "THE CARD IS NOT FORMATTED", "NO SAVE ON THE CARD", "THE CARD COULD NOT BE READ",
                                         "THE CARD COULD NOT BE WRITTEN", "THE CARD IS FULL", "THE SAVE IS TOO BIG" };

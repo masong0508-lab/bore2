@@ -10,7 +10,9 @@ int  ld_u8(void);   int  ld_u16(void);   u32 ld_u32(void);    void ld_n(void *p,
 void ld_rle(void *p, int n);
 void sv_str(const char *s, int cap);              // a text of at most cap bytes
 void ld_str(char *s, int cap);
-void ld_fail(void);                               // the save cannot be used (it says so when the read is done)
+void ld_fail(void);
+int  rle_pack(const void *p, int n, u8 *out, int cap);   // sv_rle's packing, into memory: the length (-1: no room)
+int  rle_unpack(const u8 *in, void *p, int n);           // ... and back: the packed bytes used                               // the save cannot be used (it says so when the read is done)
 
 #define SAVE_SLOTS 3
 typedef struct { char name[NAME_LEN]; u16 day; u8 nsims, zone; s32 cash; } SaveInfo;   // what the slot list shows
