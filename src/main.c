@@ -103,7 +103,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int sub_back = ST_LIFE;
@@ -129,6 +129,10 @@ static void worlds_open(void);
 static void worlds_go(u32 seed, int mode);
 static void story_taxi(void);
 static void worlds_draw(void);
+static void wm_open(void);
+static void wm_apply(void);
+static void wm_check_dials(void);
+static int wm_used;
 static void create_draw(void);
 static void nhood_open(int first);   // THE NEIGHBORHOOD: 48 lots to pick a home from (first: a new life, before they have one)
 static int nh_pending;                // a new life has begun: the neighborhood opens on its first frame
@@ -1761,6 +1765,7 @@ static void opts_draw(void) {
 static const char *save_msg;                                 // why the last load failed (the title shows it)
 static void save_body(void) {
     sv_u32(world_seed()); sv_u8(bm_packed);
+    sv_u8(bm_land); sv_u8(bm_sea); sv_u8(bm_clim); sv_u8(bm_hills); sv_u8(bm_towns); sv_u8(isl_size); sv_u8(isl_wild); sv_u8(isl_jungle); sv_u8(isl_rocks);   // (CREATE A WORLD's dials: version 7)
     { int n = 0; for (int i = 0; i < BM_NSET_MAX; i++) if (bm_renamed(i)[0]) n++;   // (the towns renamed)
       sv_u8(n); for (int i = 0; i < BM_NSET_MAX; i++) if (bm_renamed(i)[0]) { sv_u8(i); sv_str(bm_renamed(i), 17); } }
     sv_n(opt, O_N);
@@ -1771,6 +1776,8 @@ static void save_body(void) {
 static void load_body(void) {
     u32 seed = ld_u32();
     if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
+    bm_dials_default(); isl_dials_default();
+    if (save_ver >= 7) { bm_land = ld_u8() % BL_N; bm_sea = ld_u8() % 5; bm_clim = ld_u8() % 5; bm_hills = ld_u8() % 5; bm_towns = ld_u8() % 4; isl_size = ld_u8() % 3; isl_wild = ld_u8() % 3; isl_jungle = ld_u8() % 3; isl_rocks = ld_u8() % 3; }
     bm_rename_clear();
     if (save_ver >= 4) { int n = ld_u8(); for (int k = 0; k < n; k++) { int i = ld_u8(); char nm[18]; ld_str(nm, 17); bm_rename(i, nm); } }
     ld_n(opt, O_N); opts_apply();
@@ -3190,6 +3197,119 @@ static void worlds_go(u32 seed, int mode) {
     life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 3; bm_packed = wo_packed; wo_name_for(seed); strcpy(life_cap, wo_name); start_life();
     cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 }
+// ---- CREATE A WORLD: make your own. What kind of life, then dials for the land (or the castaway's island), the map as you turn them ----
+enum { WM_START, WM_LAND, WM_SEA, WM_CLIM, WM_HILLS, WM_TOWNS, WM_STYLE, WM_ISIZE, WM_ICOAST, WM_IJUNGLE, WM_IROCKS, WM_NAME, WM_SEED, WM_PLAY, WM_N };
+static int wm_sel, wm_t, wm_start, wm_used, wm_isle_view;   // wm_start: 0 SAN BOREAS, 1 CASTAWAY ISLAND, 2 RAGS TO RICHES
+static int wm_land, wm_sea = 2, wm_clim = 2, wm_hills = 2, wm_towns = 2, wm_isize = 1, wm_icoast = 1, wm_ijungle = 1, wm_irocks = 1;
+static const char *const wmLbl[WM_N] = { "LIFE", "LAND", "SEA", "CLIMATE", "HILLS", "TOWNS", "TOWN STYLE", "ISLAND SIZE", "COAST", "JUNGLE", "ISLAND HILLS", "CAPITAL", "MAP NO.", "PLAY THIS WORLD" };
+static const char *const wmStartNm[3] = { "SAN BOREAS", "CASTAWAY", "RAGS TO RICHES" };
+static const char *const wmLandNm[BL_N] = { "MAINLAND", "ISLANDS", "ONE BIG ISLAND", "CONTINENT", "LAKES" };
+static const char *const wmSeaNm[5] = { "VERY LOW", "LOW", "NORMAL", "HIGH", "VERY HIGH" };
+static const char *const wmClimNm[5] = { "DESERT", "DRY", "MIXED", "GREEN", "JUNGLE" };
+static const char *const wmHillNm[5] = { "FLAT", "GENTLE", "NORMAL", "HILLY", "MOUNTAINS" };
+static const char *const wmTownNm[4] = { "FEW", "SOME", "NORMAL", "LOTS" };
+static const char *const wmI3[3][3] = { { "SMALL", "MEDIUM", "BIG" }, { "SMOOTH", "WAVY", "WILD" }, { "LESS", "SOME", "MORE" } };
+static const char *const wmBlurb[WM_N] = { "HOW THE LIFE BEGINS: A HOME, STRANDED, OR BROKE", "THE SHAPE OF SAN BOREAS", "HOW MUCH OF IT THE SEA COVERS",
+    "SAND AND SCRUB TO THICK FOREST", "HOW MUCH ROCKY HIGH GROUND", "HOW MANY CITIES, TOWNS AND VILLAGES", "ROOMY: GREEN GAPS. PACKED: BUILT UP",
+    "THE CASTAWAY'S ISLAND", "A ROUND SHORE, OR BAYS AND HEADLANDS", "HOW THICK THE TREES GROW", "ROCKY GROUND ON THE ISLAND",
+    "X TO NAME THE CAPITAL CITY", "THE DICE: L R STEP, X NEW DICE", "START A LIFE HERE" };
+static int wm_shown(int r) { return wm_start == 1 || (r < WM_ISIZE || r > WM_IROCKS); }   // (the island's dials: for a castaway)
+static int *wm_dial(int r, int *n) {
+    switch (r) {
+        case WM_START: *n = 3; return &wm_start; case WM_LAND: *n = BL_N; return &wm_land; case WM_SEA: *n = 5; return &wm_sea;
+        case WM_CLIM: *n = 5; return &wm_clim; case WM_HILLS: *n = 5; return &wm_hills; case WM_TOWNS: *n = 4; return &wm_towns;
+        case WM_STYLE: *n = 2; return &wo_packed; case WM_ISIZE: *n = 3; return &wm_isize; case WM_ICOAST: *n = 3; return &wm_icoast;
+        case WM_IJUNGLE: *n = 3; return &wm_ijungle; case WM_IROCKS: *n = 3; return &wm_irocks;
+        default: *n = 0; return 0;
+    }
+}
+static void wm_apply(void) {   // the dials into the world makers
+    bm_land = wm_land; bm_sea = wm_sea; bm_clim = wm_clim; bm_hills = wm_hills; bm_towns = wm_towns; bm_packed = wo_packed;
+    isl_size = wm_isize; isl_wild = wm_icoast; isl_jungle = wm_ijungle; isl_rocks = wm_irocks;
+}
+static void wm_open(void) { wm_sel = WM_LAND; wm_t = 0; wm_used = 1; wm_apply(); wo_painted = 0; state = ST_WMAKE; audio_voice(VOICE_FINISHED); }
+static u32 wm_painted_isle;
+static void wm_paint(void) {
+    wm_apply(); wm_check_dials();
+    int isle = wm_start == 1 && wm_sel >= WM_ISIZE && wm_sel <= WM_IROCKS;
+    if (isle) {
+        u32 key = wo_custom ^ (u32)(wm_isize | wm_icoast << 2 | wm_ijungle << 4 | wm_irocks << 6) * 0x9E3779B1u;
+        if (!wm_isle_view || wm_painted_isle != key) { u16 *px = atlas_scratch(); world_isl_preview(wo_custom, px); atlas_vram_load(0, 256, 128, 128, px); wm_painted_isle = key; wo_painted = 0; }
+        wm_isle_view = 1;
+    } else { if (wm_isle_view) { wm_isle_view = 0; wo_painted = 0; } paint_world(wo_custom); wm_painted_isle = 0; }
+}
+static void wm_surprise(void) {   // SQUARE: every dial at random, and new dice
+    u32 r = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ (u32)wm_t;
+    wm_land = (int)(r % BL_N); wm_sea = 1 + (int)((r >> 4) % 3); wm_clim = (int)((r >> 7) % 5); wm_hills = (int)((r >> 10) % 5); wm_towns = (int)((r >> 13) % 4);
+    wo_packed = (int)((r >> 15) & 1); wm_isize = (int)((r >> 16) % 3); wm_icoast = (int)((r >> 18) % 3); wm_ijungle = (int)((r >> 20) % 3); wm_irocks = (int)((r >> 22) % 3);
+    wo_custom = r * 40503u + 1; wo_painted = 0; wm_painted_isle = 0; audio_voice(VOICE_FINISHED);
+}
+static void wm_named(void) { wo_painted = 0; }
+static void wm_check_dials(void) {   // a dial turned: the map is drawn again
+    static u32 k0; u32 k = (u32)(bm_land | bm_sea << 3 | bm_clim << 6 | bm_hills << 9 | bm_towns << 12 | bm_packed << 14);
+    if (k != k0) { k0 = k; wo_painted = 0; }
+}
+static void wm_update(void) {
+    wm_t++;
+    int d = 0;
+    if (PRESSED(PAD_UP)) do wm_sel = (wm_sel + WM_N - 1) % WM_N; while (!wm_shown(wm_sel));
+    if (PRESSED(PAD_DOWN)) do wm_sel = (wm_sel + 1) % WM_N; while (!wm_shown(wm_sel));
+    if (PRESSED(PAD_LEFT)) d = -1;
+    if (PRESSED(PAD_RIGHT)) d = 1;
+    if (PRESSED(PAD_CIRCLE)) { wo_painted = 0; wm_isle_view = 0; state = ST_WORLDS; return; }
+    if (PRESSED(PAD_SQUARE)) wm_surprise();
+    if (PRESSED(PAD_L1)) { wo_custom--; wo_painted = 0; }
+    if (PRESSED(PAD_R1)) { wo_custom++; wo_painted = 0; }
+    int n, *v = wm_dial(wm_sel, &n);
+    if (v && d) { *v = (*v + n + d) % n; wo_painted = 0; audio_voice(VOICE_AGREE); }
+    if (v && PRESSED(PAD_CROSS)) { *v = (*v + 1) % n; wo_painted = 0; audio_voice(VOICE_AGREE); }
+    if (wm_sel == WM_SEED && d) { wo_custom += (u32)d; wo_painted = 0; }
+    if (wm_sel == WM_SEED && PRESSED(PAD_CROSS)) { wo_custom = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u); if (!wo_custom) wo_custom = 1; wo_painted = 0; audio_voice(VOICE_FINISHED); }
+    if (PRESSED(PAD_SELECT) || (wm_sel == WM_NAME && PRESSED(PAD_CROSS))) { name_open(wo_name, 17, "NAME YOUR CAPITAL CITY", wm_named); return; }
+    if (wm_start != 1 && wm_sel >= WM_ISIZE && wm_sel <= WM_IROCKS) wm_sel = WM_NAME;
+    wm_paint();
+    if (PRESSED(PAD_START) || (wm_sel == WM_PLAY && PRESSED(PAD_CROSS))) { wm_apply(); life_story = 0; worlds_go(wo_custom, wm_start); }
+}
+static void wm_draw(void) {
+    title_draw();
+    ui_dim();
+    char b[48];
+    int top = ui_window(6, 6, 308, 228, "CREATE A WORLD", IC_BRUSH);
+    int y = top + 1;
+    for (int r = 0; r < WM_N; r++) {
+        if (!wm_shown(r)) continue;
+        int on = r == wm_sel, n;
+        if (r == WM_PLAY) { ui_button(10, y + 2, 138, 15, wmLbl[r], IC_PLAY, on); y += 17; continue; }
+        if (on) ui_round(10, y, 138, 12, 4, UI_BLUE, UI_BLUE2, 0);
+        else if (r == WM_LAND || r == WM_ISIZE || r == WM_NAME) ui_round(10, y - 1, 138, 1, 0, UI_LINE, UI_LINE, 0);   // (a rule between the groups)
+        ui_text(14, y + 2, 1, wmLbl[r], on ? UI_WHITE : UI_SOFT);
+        const char *val = "";
+        int *v = wm_dial(r, &n);
+        if (r == WM_START) val = wmStartNm[wm_start]; else if (r == WM_LAND) val = wmLandNm[wm_land]; else if (r == WM_SEA) val = wmSeaNm[wm_sea];
+        else if (r == WM_CLIM) val = wmClimNm[wm_clim]; else if (r == WM_HILLS) val = wmHillNm[wm_hills]; else if (r == WM_TOWNS) val = wmTownNm[wm_towns];
+        else if (r == WM_STYLE) val = wo_packed ? "PACKED" : "ROOMY"; else if (r >= WM_ISIZE && r <= WM_IROCKS) val = wmI3[r == WM_ISIZE ? 0 : r == WM_ICOAST ? 1 : 2][*v];
+        else if (r == WM_NAME) val = wo_name[0] ? wo_name : "BORE CITY";
+        else if (r == WM_SEED) { sprintf(b, "%08X", (unsigned)wo_custom); val = b; }
+        int vx = 144 - ui_tw(1, val);
+        ui_text(vx, y + 2, 1, val, on ? UI_WHITE : UI_BLUE2);
+        if (on && (v || r == WM_SEED)) { ui_text(vx - 8, y + 2, 1, "<", UI_WHITE); }
+        y += wm_start == 1 ? 12 : 14;
+    }
+    // the map: SAN BOREAS, or the castaway's island while its dials are picked
+    const int MX = 156, MY = top + 2, MS = 150;
+    ui_round(MX - 2, MY - 2, MS + 4, MS + 4, 4, UI_LINE, UI_LINE, 0);
+    gfx_sprite_c(MX, MY, MS, MS, getTPage(2, 0, 0, 256), 0, 0, 128, 128, 128, 128, 128);
+    if (!wm_isle_view && wo_painted) {
+        for (int i = 0; i < bm_nset(); i++) { const Settle *st = bm_set(i); int x = MX + st->x * MS / BM_N, yy = MY + st->y * MS / BM_N, dd = st->kind == ST_CITY ? 6 : st->kind == ST_TOWN ? 4 : 3;
+            ui_disc(x, yy, dd + 2, UI_RGB(40, 46, 60)); ui_disc(x, yy, dd, i == bm_capital() ? UI_RGB(255, 204, 48) : UI_WHITE); }
+        const Settle *c = bm_set(bm_capital()); sprintf(b, "%d TOWNS. CAPITAL %s", bm_nset(), c ? c->name : "?");
+    } else strcpy(b, "THEY BEGIN STRANDED HERE");
+    ui_badge(MX + 4, MY + 4, wm_isle_view ? "THE ISLAND" : "SAN BOREAS", UI_WHITE, UI_BLUE2);
+    ui_text(MX, MY + MS + 6, 1, b, UI_INK);
+    ui_wrap(MX, MY + MS + 18, MS, 2, wmBlurb[wm_sel], UI_SOFT);
+    ui_hints(160, 214, "LR CHANGE|SQ SURPRISE ME|START PLAY|O BACK", 1);
+}
+
 #define WO_NMORE 4
 static const char *const moreNm[WO_NMORE] = { "STORY MISSIONS", "AFTER DARK", "CAMPUS LIFE", "PETS AND STRAYS" };
 static const char *const moreBlurb[WO_NMORE] = { "TEN STORIES, FIVE CHAPTERS EACH. PICK ONE.", "EXPANSION: NIGHTCLUBS, DATES. COMING SOON", "EXPANSION: COLLEGE DORMS. COMING SOON", "EXPANSION: CATS AND DOGS. COMING SOON" };
@@ -3213,9 +3333,13 @@ static void worlds_update(void) {
         if (PRESSED(PAD_L1)) wo_custom--;
         if (PRESSED(PAD_R1)) wo_custom++;
     }
+    if (wo_sel == WO_CREATE && wm_used) wm_apply(); else { bm_dials_default(); isl_dials_default(); }   // (the made world's map with its dials; a set world with its own)
+    wm_check_dials();
     u32 sd = wo_seed_of(wo_sel); if (sd) paint_world(sd);
     if (PRESSED(PAD_CROSS)) {
         if (wo_sel == WO_MORE) { wo_more = 1; return; }
+        if (wo_sel == WO_CREATE) { wm_open(); return; }
+        bm_dials_default(); isl_dials_default();
         life_story = 0; worlds_go(wo_seed_of(wo_sel), wo_sel == WO_CASTAWAY ? 1 : 0);
     }
 }
@@ -3247,14 +3371,14 @@ static void worlds_draw(void) {
         ui_icon_disc(MX + MS / 2, MY + MS / 2 - 8, 40, wo_sel == WO_CASTAWAY ? IC_SUN : wo_sel == WO_MORE ? IC_STAR : IC_DICE, UI_WHITE, UI_BLUE2);
         ui_textc(MX + MS / 2, MY + MS / 2 + 20, 1, wo_sel == WO_RANDOM ? "A NEW MAP EVERY TIME" : wo_sel == WO_CASTAWAY ? "A NEW ISLAND EVERY TIME" : "", UI_WHITE);
     }
-    const char *bl = wo_sel == WO_RANDOM ? "FRESH DICE: TOWNS, ROADS AND 874 FAMILIES" : wo_sel == WO_CREATE ? "SQ ROLLS A NEW MAP. L1 R1 STEP THROUGH" :
+    const char *bl = wo_sel == WO_RANDOM ? "FRESH DICE: TOWNS, ROADS AND 874 FAMILIES" : wo_sel == WO_CREATE ? "X MAKES YOUR OWN: LAND, SEA, CLIMATE, ISLANDS..." :
                      wo_sel == WO_CASTAWAY ? "BEGIN STRANDED ON THE ISLAND" : wo_sel == WO_MORE ? "A MISSION, AND PACKS ON THE WAY" : "A SET WORLD: THE SAME MAP EVERY TIME";
     ui_text(12, top + 158, 1, bl, UI_SOFT);
     if (sd) { const Settle *c = wo_painted == sd ? bm_set(bm_capital()) : 0; sprintf(b, "%d TOWNS, CAPITAL %s", bm_nset(), c ? c->name : "?"); ui_text(12, top + 170, 1, b, UI_INK); }
     else if (wo_name[0] && wo_sel != WO_MORE) { snprintf(b, sizeof b, "CAPITAL: %s", wo_name); ui_text(12, top + 170, 1, b, UI_INK); }
     if (wo_sel == WO_CREATE) { sprintf(b, "MAP NO. %08X", (unsigned)wo_custom); ui_text(310 - ui_tw(1, b), top + 170, 1, b, UI_BLUE2); }
     ui_badge(306 - ui_tw(1, wo_packed ? "TOWNS: PACKED" : "TOWNS: ROOMY") - 10, 8, wo_packed ? "TOWNS: PACKED" : "TOWNS: ROOMY", UI_WHITE, UI_BLUE2);
-    ui_hints(160, 214, wo_sel == WO_CREATE ? "X PLAY|SQ ROLL|L1 R1|TRI TOWNS|SEL NAME|O BACK" : "X PLAY|TRI TOWNS|SEL NAME CITY|O BACK", 1);
+    ui_hints(160, 214, wo_sel == WO_CREATE ? "X MAKE IT|SQ ROLL|L1 R1|SEL NAME|O BACK" : "X PLAY|TRI TOWNS|SEL NAME CITY|O BACK", 1);
 }
 
 static const char *const menuNm[] = { "STORY MODE", "CONTINUE", "CREATE A BORE", "JUKEBOX", "OPTIONS", "HOW TO PLAY" };
@@ -3432,6 +3556,7 @@ int main(void) {
             case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
             case ST_SPICK: spick_update(); if (state == ST_SPICK) { if (sp_join) life_draw(); else title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t, sp_join); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
             case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
+            case ST_WMAKE: wm_update(); if (state == ST_WMAKE) wm_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_NAME) name_draw(); else life_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
         if (state == ST_LIFE) {   // a frame that ran past two screen refreshes: the full-detail range draws in a tile (back out once things are quiet)

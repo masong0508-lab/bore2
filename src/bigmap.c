@@ -1,6 +1,8 @@
 // bigmap: see bigmap.h
 #include "bigmap.h"
 int bm_packed, bm_gen = 3; char bm_cap_name[18];
+int bm_land = BL_MAINLAND, bm_sea = 2, bm_clim = 2, bm_hills = 2, bm_towns = 2;
+void bm_dials_default(void) { bm_land = BL_MAINLAND; bm_sea = 2; bm_clim = 2; bm_hills = 2; bm_towns = 2; }
 static int packed(void) { return bm_packed || bm_gen < 3; }   // (PACKED towns: the option, or a world from before it)
 
 static u32 wseed = 0x5A1B0E2Au;
@@ -31,20 +33,36 @@ static int vn(int x, int y, int sh, u32 salt) {
 }
 static int elev(int bx, int by) {
     u32 s = wseed;
-    int e = (vn(bx, by, 7, s) * 8 + vn(bx, by, 6, s + 1) * 4 + vn(bx, by, 5, s + 2) * 2 + vn(bx, by, 4, s + 3)) / 15;
-    int dx = ABS(bx - BM_N / 2), dy = ABS(by - BM_N / 2), d = MAX(dx, dy);
-    if (d > 420) e -= (d - 420) * 170 / 92;                  // the land falls into the sea toward the edge of the map
-    int dc = (dx + dy) / 2; if (dc < 256) e += (256 - dc) / 8;   // and rises a little toward the middle
-    return e;
+    int dx = ABS(bx - BM_N / 2), dy = ABS(by - BM_N / 2), d = MAX(dx, dy), dc = (dx + dy) / 2;
+    int e;
+    if (bm_land == BL_ISLANDS) {                              // ISLANDS: smaller hills of land, more sea between, one big enough for the capital
+        e = (vn(bx, by, 7, s) * 3 + vn(bx, by, 6, s + 1) * 6 + vn(bx, by, 5, s + 2) * 4 + vn(bx, by, 4, s + 3) * 2) / 15 - 20;
+        if (d > 440) e -= (d - 440) * 170 / 72;
+        if (dc < 80) e += (80 - dc) * 2 / 3;
+    } else {
+        e = (vn(bx, by, 7, s) * 8 + vn(bx, by, 6, s + 1) * 4 + vn(bx, by, 5, s + 2) * 2 + vn(bx, by, 4, s + 3)) / 15;
+        if (bm_land == BL_BIGISLE) {                          // ONE BIG ISLAND: the sea all round, closer in
+            int r = (d + dc) / 2; if (r > 250) e -= (r - 250) * 170 / 110;
+            if (dc < 256) e += (256 - dc) / 6;
+        } else {
+            int edge = bm_land == BL_CONTINENT ? 490 : 420;   // (CONTINENT: land nearly to the map's edge)
+            if (d > edge) e -= (d - edge) * 170 / (BM_N / 2 - edge);   // the land falls into the sea toward the edge of the map
+            if (dc < 256) e += (256 - dc) / 8;                // and rises a little toward the middle
+            if (bm_land == BL_CONTINENT) e += 6;
+            if (bm_land == BL_LAKES) { int l = vn(bx, by, 5, s + 7); if (l > 170 && dc > 40) e -= (l - 170) * 2; }   // LAKES: inland water all over
+        }
+    }
+    return e - (bm_sea - 2) * 8;                              // SEA: the water higher or lower
 }
 int bm_terrain(int bx, int by) {
     if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return BT_SEA;
     int e = elev(bx, by);
     if (e < 104) return BT_SEA;
     if (e < 110) return BT_BEACH;
-    if (e > 186) return BT_ROCKY;
+    static const u8 rock[5] = { 240, 206, 186, 172, 158 };   // HILLS: FLAT .. MOUNTAINS
+    if (e > rock[bm_hills % 5]) return BT_ROCKY;
     u32 s = wseed + 11;
-    int m = (vn(bx, by, 6, s) * 2 + vn(bx, by, 4, s + 1)) / 3;
+    int m = (vn(bx, by, 6, s) * 2 + vn(bx, by, 4, s + 1)) / 3 + (bm_clim - 2) * 30;   // CLIMATE: DESERT .. JUNGLE
     if (m < 96) return BT_DESERT;
     if (m > 162) return BT_FOREST;
     return BT_GRASS;
@@ -101,9 +119,14 @@ static void link(int i, int j) {                  // a highway: along i's row to
 void bm_new(u32 seed) {
     wseed = seed ? seed : 1; rs = wseed ^ 0xA5A5A5A5u; nset = 0; nseg = 0;
     place_set(ST_CITY, 11, BM_N / 2, BM_N / 2, 110);                        // BORE CITY, near the middle
-    for (int i = 0; i < 2; i++) place_set(ST_CITY, 9, BM_N / 2, BM_N / 2, 360);
-    for (int i = 0; i < 6; i++) place_set(ST_TOWN, 5 + (int)(rr() % 2), BM_N / 2, BM_N / 2, 400);
-    for (int i = 0; i < 12; i++) place_set(ST_VILLAGE, 3 + (int)(rr() % 2), BM_N / 2, BM_N / 2, 420);
+    if (!nset) place_set(ST_CITY, 9, BM_N / 2, BM_N / 2, 300);              // (a watery world: wherever there is room)
+    if (!nset) place_set(ST_CITY, 6, BM_N / 2, BM_N / 2, 440);
+    if (!nset) { Settle *c = &sets[0]; c->x = c->y = BM_N / 2; c->r = 6; c->kind = ST_CITY; strcpy(c->name, bm_cap_name[0] ? bm_cap_name : "BORE CITY"); nset = 1; }
+    static const u8 nc[4] = { 0, 1, 2, 3 }, nt[4] = { 2, 4, 6, 8 }, nv[4] = { 4, 8, 12, 12 };   // TOWNS: FEW, SOME, NORMAL (as it always was), LOTS
+    int tw = bm_towns % 4;
+    for (int i = 0; i < nc[tw]; i++) place_set(ST_CITY, 9, BM_N / 2, BM_N / 2, 360);
+    for (int i = 0; i < nt[tw]; i++) place_set(ST_TOWN, 5 + (int)(rr() % 2), BM_N / 2, BM_N / 2, 400);
+    for (int i = 0; i < nv[tw]; i++) place_set(ST_VILLAGE, 3 + (int)(rr() % 2), BM_N / 2, BM_N / 2, 420);
     // the highways: the shortest network that reaches every town (Prim), and a few more for loops
     u8 in[NSET_MAX] = { 0 }; in[0] = 1;
     for (int k = 1; k < nset; k++) {

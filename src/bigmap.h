@@ -30,6 +30,10 @@ typedef struct { u16 x, y; u8 r, kind; char name[18]; } Settle;
 
 extern int bm_packed;                 // the TOWNS option: 0 ROOMY (parks and green gaps, towns far apart), 1 PACKED (built up, towns close)
 extern char bm_cap_name[18];          // the capital's name (empty: BORE CITY): a set world names its own
+// CREATE A WORLD's dials (MAINLAND and 2 for the rest: SAN BOREAS as it always was)
+enum { BL_MAINLAND, BL_ISLANDS, BL_BIGISLE, BL_CONTINENT, BL_LAKES, BL_N };
+extern int bm_land, bm_sea, bm_clim, bm_hills, bm_towns;   // LAND (BL_), SEA 0..4 (low..high), CLIMATE 0..4 (desert..jungle), HILLS 0..4 (flat..mountains), TOWNS 0..3 (few..lots)
+void bm_dials_default(void);
 extern int bm_gen;                    // how worlds are made: 3 now (2: as before the roomy towns, for older saves)
 void bm_rename_clear(void);           // towns renamed by the player: none (a new life)
 void bm_rename(int i, const char *nm); // town i (0 the capital) is called that from now on (set before bm_new: it takes then)

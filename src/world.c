@@ -300,6 +300,39 @@ static int isl_pick(u32 s, int want_sand, int far_x, int far_y, int mind, int *o
     }
     return 0;
 }
+// CREATE A WORLD's island dials (1 1 1 1: the island as it always was)
+int isl_size = 1, isl_wild = 1, isl_jungle = 1, isl_rocks = 1;
+void isl_dials_default(void) { isl_size = isl_wild = isl_jungle = isl_rocks = 1; }
+static int isl_amp[3], isl_ph[3];
+static void isl_coast_init(u32 S) {
+    static const u8 wk[3] = { 6, 12, 20 };   // COAST: SMOOTH, WAVY, WILD (twelfths of the waves)
+    for (int k = 0; k < 3; k++) { u32 h = bm_hash(k, 7, S); isl_amp[k] = ((int)(h % 40u) + (k ? 16 : 32)) * wk[isl_wild % 3] / 12; isl_ph[k] = (int)((h >> 10) & 4095); }
+}
+static int isl_land(int x, int y) {   // 0 sea, 1 sand, 2 inland (the main island's coast only)
+    static const u8 r0[3] = { 22, 29, 34 }, rmin[3] = { 16, 22, 27 }, rmax[3] = { 27, 35, 38 };   // SIZE: SMALL, MEDIUM, BIG
+    static const u8 frq[3] = { 2, 3, 5 };
+    int z = isl_size % 3, dx = x - MW / 2, dy = y - MH / 2, a = isl_ang(dy, dx), d = 0;
+    { int q = dx * dx + dy * dy; while ((d + 1) * (d + 1) <= q) d++; }
+    int R = r0[z] * 16; for (int k = 0; k < 3; k++) R += (isl_amp[k] * isin((frq[k] * a + isl_ph[k]) & 4095)) >> 12;
+    R = CLAMP(R, rmin[z] * 16, rmax[z] * 16);
+    if (d * 16 >= R) return 0;
+    return d * 16 >= R - 3 * 16 ? 1 : 2;
+}
+static const u8 isl_rock_at[3] = { 205, 178, 150 }, isl_jung_at[3] = { 160, 120, 80 };   // HILLS and JUNGLE: LESS, SOME, MORE
+void world_isl_preview(u32 seed, u16 *px) {   // the castaway's island for that seed, from above, 128 x 128 (CREATE A WORLD's map)
+    u32 S = seed * 2654435761u + 0x15ADu;
+    isl_coast_init(S);
+    int corner = (int)(S >> 5) & 3, ix = (corner & 1) ? MW - 12 : 11, iy = (corner & 2) ? MH - 12 : 11;
+    for (int Y = 0; Y < 128; Y++) for (int X = 0; X < 128; X++) {
+        int x = X * MW / 128, y = Y * MH / 128, q = (x - ix) * (x - ix) + (y - iy) * (y - iy);
+        int l = (x < 1 || y < 1 || x >= MW - 1 || y >= MH - 1 || q < 100) ? 0 : isl_land(x, y);
+        if (q <= 25) l = q <= 6 ? 2 : 1;
+        u16 c = RGB(4, 12, 22);
+        if (l == 1) c = RGB(27, 25, 17);
+        else if (l == 2) c = isl_noise(x, y, S ^ 0xA11u) > isl_rock_at[isl_rocks % 3] ? RGB(16, 16, 15) : isl_noise(x, y, S ^ 0x77u) > isl_jung_at[isl_jungle % 3] ? RGB(4, 13, 5) : RGB(11, 20, 8);
+        px[Y * 128 + X] = c | 0x8000;
+    }
+}
 void world_gen_island(void) {
     nhomes[ZONE_ISLAND] = 0;
     ao_dirty = 1;
@@ -308,19 +341,15 @@ void world_gen_island(void) {
     // the islet's corner, and the main island's coast: a radius that wanders with the angle (three waves, of random size and phase)
     int corner = (int)(S >> 5) & 3, ix = (corner & 1) ? MW - 12 : 11, iy = (corner & 2) ? MH - 12 : 11;
     isl_cx = ix; isl_cy = iy;
-    int amp[3], frq[3] = { 2, 3, 5 }, ph[3];
-    for (int k = 0; k < 3; k++) { u32 h = bm_hash(k, 7, S); amp[k] = (int)(h % 40u) + (k ? 16 : 32); ph[k] = (int)((h >> 10) & 4095); }
+    isl_coast_init(S);
     for (int y = 1; y < MH - 1; y++) for (int x = 1; x < MW - 1; x++) {
-        int dx = x - MW / 2, dy = y - MH / 2, a = isl_ang(dy, dx), d = 0;
-        { int q = dx * dx + dy * dy; while ((d + 1) * (d + 1) <= q) d++; }   // (the distance, whole tiles)
-        int R = 29 * 16; for (int k = 0; k < 3; k++) R += (amp[k] * isin((frq[k] * a + ph[k]) & 4095)) >> 12;
-        R = CLAMP(R, 22 * 16, 35 * 16);
-        if (d * 16 >= R) continue;
+        int l = isl_land(x, y);
+        if (!l) continue;
         if ((x - ix) * (x - ix) + (y - iy) * (y - iy) < 10 * 10) continue;   // (the sea round the islet)
-        floorMap[y][x] = d * 16 >= R - 3 * 16 ? FL_SAND : FL_GRASS;
+        floorMap[y][x] = l == 1 ? FL_SAND : FL_GRASS;
     }
     for (int y = 1; y < MH - 1; y++) for (int x = 1; x < MW - 1; x++)   // what the land is: meadow, jungle, rocky hills
-        if (floorMap[y][x] == FL_GRASS && isl_noise(x, y, S ^ 0xA11u) > 178) floorMap[y][x] = FL_ROCK;
+        if (floorMap[y][x] == FL_GRASS && isl_noise(x, y, S ^ 0xA11u) > isl_rock_at[isl_rocks % 3]) floorMap[y][x] = FL_ROCK;
     {   // the pond, inland: fresh water, and a spring beside it
         int px = MW / 2 + (int)(bm_hash(1, 2, S) % 17u) - 8, py = MH / 2 - 6 - (int)(bm_hash(3, 4, S) % 6u);
         for (int y = py - 3; y <= py + 3; y++) for (int x = px - 4; x <= px + 4; x++) if ((x - px) * (x - px) * 9 + (y - py) * (y - py) * 16 <= 144 && floorMap[y][x] != FL_SAND) floorMap[y][x] = FL_WATER;
@@ -379,7 +408,7 @@ void world_gen_island(void) {
         if (f == FL_WATER || f == FL_PAVING || f == FL_SOIL || f == 4 || !isl_open(x, y, 1)) continue;
         if (ABS(x - cx) <= 6 && y >= cy - 4 && y <= cy + 5) continue;        // (the camp)
         if (ABS(x - isl_dock_x) <= 1 && ABS(y - isl_dock_y) <= 1) continue; // (the raft's beach)
-        int r = (int)(bm_hash(x, y, S ^ 0x7EEu) % 1000u), jungle = isl_noise(x, y, S ^ 0x77u) > 120;
+        int r = (int)(bm_hash(x, y, S ^ 0x7EEu) % 1000u), jungle = isl_noise(x, y, S ^ 0x77u) > isl_jung_at[isl_jungle % 3];
         char c = 0;
         if (f == FL_SAND) c = r < 60 ? 'g' : 0;
         else if (f == FL_ROCK) c = r < 110 ? '*' : r < 150 ? '6' : 0;

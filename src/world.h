@@ -33,6 +33,9 @@ int world_home_find(int zone, int bx, int by, int unit);   // the open world: th
 // ---- SAN BOREAS (the open world, ZONE_CITY): the map is a 5x5-block window onto it, kept round the player ----
 extern int world_wbx, world_wby;
 extern int world_stamp;                          // changes whenever the map's tiles do (a window move, a new zone, build mode)                 // the window's top-left block (-1 before the world is first seen)
+extern int isl_size, isl_wild, isl_jungle, isl_rocks;   // CREATE A WORLD's island: SIZE, COAST, JUNGLE, HILLS (0..2 each; 1 as it always was)
+void isl_dials_default(void);
+void world_isl_preview(u32 seed, u16 *px);            // that seed's island from above, 128 x 128 pixels
 void world_new_seed(u32 seed);                   // a new life: a new world
 u32  world_seed(void);                           // this world's seed (the memory card)
 void world_open_at(int bx, int by);              // build the window round that block
