@@ -1531,6 +1531,7 @@ static void jobs_update(void) {
     if (PRESSED(PAD_DOWN)) jobs_sel = (jobs_sel + 1) % n;
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = BACK_TO(); return; }
     if (!PRESSED(PAD_CROSS)) return;
+    if (jobs_sel == 0 && job_none) { sim_note("NO JOB YET: PICK ONE FROM THE LIST"); audio_voice(VOICE_NAH); return; }
     if (jobs_sel == 0) {   // go to work: the boss pays the taxi
         state = ST_LIFE;
         if (job_car == CAR_FACTORY) { if (world_zone != ZONE_HOME) travel_go(ZONE_HOME); sim_note("THE FACTORY: THE GOLD MARKER"); }
@@ -1552,6 +1553,11 @@ static void jobs_draw(void) {
         int on = jobs_sel == 0, len = job_shift_len();
         ui_round(10, top, 300, 55, 6, on ? UI_RGB(226, 242, 254) : UI_WHITE, on ? UI_HILITE : UI_PANEL, 0);
         if (on) gfx_rect(10, top + 4, 2, 47, 38, 146, 222, 0);
+        if (job_none) {   // no job yet: what to do about it
+            ui_icon_disc(32, top + 19, 30, IC_CASE, UI_RGB(150, 156, 170), UI_WHITE);
+            ui_text(54, top + 3, 2, "NO JOB YET", UI_INK);
+            ui_wrap(54, top + 20, 248, 3, "NO PAY, BUT NO BILLS EITHER. PICK ONE BELOW AND X TAKES IT. NEW ONES EVERY MORNING.", UI_SOFT);
+        } else {
         ui_icon_disc(32, top + 19, 30, carIc[job_car], UI_BLUE, UI_WHITE);
         ui_text(54, top + 3, 2, job_title(), UI_INK);
         sprintf(b, "LEVEL %d OF 5", job_level); ui_badge(304 - ui_tw(1, b) - 10, top + 4, b, UI_BLUE, UI_WHITE);
@@ -1559,7 +1565,7 @@ static void jobs_draw(void) {
         shift_text(t, job_car); sprintf(b, "%s   $%d A SHIFT", t, job_pay()); ui_text(54, top + 28, 1, b, UI_INK);
         ui_text(54, top + 42, 1, "TODAY", UI_SOFT); ui_bar(90, top + 42, 108, 7, MIN(100, job_worked * 100 / len), UI_GREEN);
         ui_button(208, top + 38, 96, 14, "GO TO WORK", IC_CAR, on);
-    }
+        } }
     ui_section(12, top + 59, 296, jobs_board || phone_tier >= 2 ? "EVERY JOB GOING NEAR YOU" : "IN TODAY'S PAPER. A SMARTPHONE SHOWS THEM ALL");
     if (jobs_sel > 0 && jobs_sel - 1 < jobs_scroll) jobs_scroll = jobs_sel - 1;
     if (jobs_sel > 0 && jobs_sel - 1 >= jobs_scroll + 5) jobs_scroll = jobs_sel - 5;
@@ -1580,7 +1586,7 @@ static void jobs_draw(void) {
         ui_text(306 - tw2, y + 10, 1, t, UI_SOFT);
     }
     gfx_rect(10, 212, 300, 1, 200, 210, 222, 0);
-    ui_hints(160, 217, jobs_sel ? "DPAD PICK|X TAKE THIS JOB|O BACK" : "DPAD PICK|X GO TO WORK|O BACK", 1);
+    ui_hints(160, 217, jobs_sel ? "DPAD PICK|X TAKE THIS JOB|O BACK" : job_none ? "DPAD PICK A JOB|O BACK" : "DPAD PICK|X GO TO WORK|O BACK", 1);
 }
 
 #ifdef AUTO_TOUR
@@ -2461,6 +2467,9 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
         ui_text(12, y0 + 124, 1, "HOMEWORK EVERY SCHOOL DAY KEEPS THE GRADES UP", UI_SOFT);
     } else {   // JOB: the career, the level, the pay, today's shift, the run of good days and strikes
         char t2[40]; int len = job_shift_len();
+        if (job_none) { ui_icon_disc(30, y0 + 13, 28, IC_CASE, UI_RGB(150, 156, 170), UI_WHITE); ui_text(52, y0 + 1, 2, "LOOKING FOR WORK", UI_INK);
+                        ui_wrap(12, y0 + 34, 296, 3, "NO JOB YET. THE PHONE'S JOBS HAS TODAY'S CLASSIFIEDS, AND A SMARTPHONE OR THE COMPUTER HAS THEM ALL.", UI_SOFT); }
+        else {
         ui_icon_disc(30, y0 + 13, 28, carIc[job_car], UI_BLUE, UI_WHITE);
         ui_text(52, y0 + 1, 2, job_title(), UI_INK);
         sprintf(b, "LEVEL %d OF 5", job_level); ui_badge(52, y0 + 16, b, UI_BLUE, UI_WHITE);
@@ -2473,6 +2482,7 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
         ui_section(12, y0 + 102, 294, "MONEY");
         sprintf(b, "$%ld", cash); ui_text(12, y0 + 114, 2, b, UI_GOODT);
         ui_text(110, y0 + 117, 1, "BILLS: $800 EVERY MIDNIGHT", UI_SOFT);
+        }
     }
     gfx_rect(10, 212, 300, 1, 200, 210, 222, 0);
     ui_hints(160, 217, "L1 R1 TAB|SEL NEXT BORE|O BACK", 1);

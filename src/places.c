@@ -86,7 +86,7 @@ int place_shop_kind(u32 h) { return (int)((h >> 8) % 5u); }   // h: bm_hash(bx, 
 
 // ---- the job ----
 int job_shift_len(void) { const Career *c = &careers[job_car]; return (c->to - c->from) * 60; }
-int job_on_shift(void) { const Career *c = &careers[job_car]; return ((c->days >> clock_day) & 1) && clock_min >= c->from * 60 && clock_min < c->to * 60; }
+int job_on_shift(void) { const Career *c = &careers[job_car]; extern int job_none; if (job_none) return 0; return ((c->days >> clock_day) & 1) && clock_min >= c->from * 60 && clock_min < c->to * 60; }
 int job_pay(void) { const Career *c = &careers[job_car]; return c->pay0 + c->pay_lvl * job_level; }
 const char *job_title(void) { return careers[job_car].title[CLAMP(job_level, 0, 5)]; }
 int job_here(int tx, int ty, char c) {

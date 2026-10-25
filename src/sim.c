@@ -22,6 +22,7 @@ long cash = 15000;
 int  job_level = 0, job_worked = 0, job_days_good = 0, job_strikes = 0;
 int  sim_speed = 1;
 int  bills_due = 800;
+int  job_none;   // no job yet (a new life starts so, as on the GBA): no shifts, no pay, and no bills until you are hired
 char last_note[32]; int last_note_t;
 int  travel_asked;
 int  story_paid, story_talks;
@@ -157,7 +158,7 @@ static void turn_to(Sim *s, int target, int rate) {
 
 void sim_init(void) {
     nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
-    job_level = 0; job_car = CAR_FACTORY; job_take(CAR_FACTORY, -1, -1, "THE FACTORY");
+    job_level = 0; job_car = CAR_FACTORY; job_take(CAR_FACTORY, -1, -1, "THE FACTORY"); job_none = 1;
     groceries = 10; room_bx = room_by = -1; room_until = 0; phone_tier = 1; handheld = 0;
 #ifdef AUTO_PHONE_TIER
     phone_tier = AUTO_PHONE_TIER; handheld = AUTO_PHONE_TIER == 2;   // (test builds: start with that phone)
@@ -1183,7 +1184,7 @@ static void clock_tick(void) {
     }
     if (baby_due >= 0 && life_minutes() >= baby_due) born();
     {   // the shift: a reminder an hour before, the start, and the pay at the end (by the minutes worked)
-        const Career *cr = &careers[job_car]; int on = (cr->days >> clock_day) & 1, from = cr->from * 60, to = cr->to * 60;
+        const Career *cr = &careers[job_car]; int on = !job_none && ((cr->days >> clock_day) & 1), from = cr->from * 60, to = cr->to * 60;
         char b[40], h[8];
         if (on && clock_min == from - 60) { sprintf(b, "WORK AT %s: PHONE, JOBS", hour_name(cr->from, h)); sim_note(b); }
         if (on && clock_min == from) { snprintf(b, sizeof b, "WORK NOW: %s", job_place); sim_note(b); job_worked = 0; }
@@ -1203,8 +1204,10 @@ static void clock_tick(void) {
     if (clock_min >= 1440) {
         clock_min = 0; clock_day = (clock_day + 1) % 7; day_count++;
         midnight_ages(); pop_midnight();                                    // (your household, and everyone else)
-        cash -= BILLS;
-        if (cash < 0) { cash = 0; sim_note("BROKE! THE BILLS WENT UNPAID"); sims[player].mood -= 30; audio_voice(VOICE_CRY); wants_fear(&sims[player], F_BROKE); }
+        if (job_none) sim_note(day_count & 1 ? "NO JOB, NO BILLS. THE PAPER HAS JOBS AT 6" : "STILL LOOKING FOR WORK? PHONE, JOBS");
+        else cash -= BILLS;
+        if (job_none) { }
+        else if (cash < 0) { cash = 0; sim_note("BROKE! THE BILLS WENT UNPAID"); sims[player].mood -= 30; audio_voice(VOICE_CRY); wants_fear(&sims[player], F_BROKE); }
         else sim_note("BILLS PAID: 800");
     }
 }
@@ -1561,7 +1564,7 @@ static void swim(Sim *s) {   // into the nearest water
 }
 static void place_do(Sim *s, int code) {
     switch (code) {
-        case PC_WORK: begin_action(s, ACT_WORK, pie_mx, pie_my); { char b[40]; snprintf(b, sizeof b, "AT WORK: %s", job_title()); sim_note(b); } break;
+        case PC_WORK: if (job_none) { sim_note("YOU DO NOT WORK HERE (YET): PHONE, JOBS"); return; } begin_action(s, ACT_WORK, pie_mx, pie_my); { char b[40]; snprintf(b, sizeof b, "AT WORK: %s", job_title()); sim_note(b); } break;
         case PC_MEAL: if (!pay(15)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 2; s->act_t = 260; sim_say(s, "THE SPECIAL, PLEASE"); break;
         case PC_SNACK: if (!pay(6)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 0; break;
         case PC_COFFEE: if (!pay(3)) return; begin_action(s, ACT_COFFEE, pie_mx, pie_my); s->act_var = 1; break;
@@ -1663,6 +1666,8 @@ int sim_front_service(void) {   // right in front of you: a place's counter, she
     return r;
 }
 void sim_take_job(int car, int bx, int by, const char *place) {
+    if (job_none) job_level = 0;
+    job_none = 0;
     job_take(car, bx, by, place);
     char b[40]; snprintf(b, sizeof b, "NEW JOB: %s", job_title()); sim_note(b);
     sim_moodlet(&sims[player], ML_NEW_JOB); audio_voice(VOICE_YAHOO);
@@ -1790,6 +1795,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
     sv_u8(ngraves); for (int i = 0; i < ngraves; i++) { sv_u8(graves[i].x); sv_u8(graves[i].y); sv_u8(graves[i].city); sv_str(graves[i].name, NAME_LEN - 1); }
     sv_u16(story_paid); sv_u16(story_talks); sv_n(story_visit, 4);
     sv_u8(phone_tier); sv_u8(handheld);   // (version 10)
+    sv_u8(job_none);   // (version 12)
     for (int i = 0; i < nsims; i++) {
         const Sim *s = &sims[i]; const Bore *b = &s->bore;
         sv_n(b->look, LK_COUNT); sv_u8(b->stage); sv_u8(b->asp); sv_u8(b->ltw); sv_n(b->tr, TR_N); sv_str(b->first, NAME_LEN - 1); sv_str(b->last, NAME_LEN - 1);
@@ -1816,6 +1822,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     { int g = ld_u8(); ngraves = MIN(g, 6); } for (int i = 0; i < ngraves; i++) { graves[i].x = (u8)ld_u8(); graves[i].y = (u8)ld_u8(); graves[i].city = (u8)ld_u8(); ld_str(graves[i].name, NAME_LEN - 1); }
     story_paid = ld_u16(); story_talks = ld_u16(); ld_n(story_visit, 4);
     if (save_ver >= 10) { phone_tier = ld_u8() & 3; handheld = ld_u8() & 3; } else { phone_tier = 3; handheld = 0; }   // (an older life keeps every app it had)
+    job_none = save_ver >= 12 ? ld_u8() & 1 : 0;   // (an older life keeps its job)
     for (int i = 0; i < n && i < MAX_SIMS; i++) {
         sim_add(blank, 0, 0, 1);   // (a blank Bore: the Bore is large, so it is filled in place)
         Sim *s = &sims[nsims - 1]; Bore *b = &s->bore;
