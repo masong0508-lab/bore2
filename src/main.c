@@ -2107,7 +2107,12 @@ static const s8 phIc[PH_N] = { IC_CHAT, IC_FOOD, IC_PARTY, IC_PIN, IC_CAR, IC_CA
 static const u32 phCol[PH_N] = { UI_RGB(76, 196, 92), UI_RGB(240, 140, 50), UI_RGB(236, 90, 150), UI_RGB(40, 170, 170), UI_RGB(38, 146, 222), UI_RGB(110, 100, 200),
     UI_RGB(70, 170, 110), UI_RGB(150, 90, 210), UI_RGB(84, 196, 72), UI_RGB(240, 110, 130), UI_RGB(228, 70, 70), UI_RGB(220, 160, 30),
     UI_RGB(60, 180, 230), UI_RGB(90, 96, 120), UI_RGB(200, 70, 200) };
-static int ph_sel, ph_fam, ph_fsel, ph_t;
+static int ph_sel, ph_fam, ph_fsel, ph_t, ph_moveout;
+static void phone_move_out_yes(void) {
+    char ad[24], b[48], nm[NAME_LEN]; strcpy(nm, sims[ph_moveout].bore.first);
+    if (sim_move_out(ph_moveout, ad)) { snprintf(b, sizeof b, "%s MOVED TO %s", nm, ad); sim_note(b); audio_voice(VOICE_MOVE_YES); ph_fsel = player; }
+    else { sim_note("NO HOME FREE FOR THEM RIGHT NOW"); audio_voice(VOICE_MOVE_NO); }
+}
 // what each app needs: 1 any phone (even the old flip), 2 a smartphone, 3 the BORE PHONE MAX (GAMES: a handheld will do as well)
 static const u8 phNeed[PH_N] = { 1, 1, 1, 2, 1, 1, 2, 2, 1, 1, 3, 2, 1, 2, 3 };   // (JOBS on any phone: the flip reads the paper's classifieds, a smartphone the whole job board)
 static const char *const phoneNm[4] = { "NO PHONE", "FLIP PHONE", "SMARTPHONE", "BORE PHONE MAX" };
@@ -2122,6 +2127,13 @@ static void phone_update(void) {
         if (PRESSED(PAD_DOWN)) ph_fsel = (ph_fsel + 1) % nsims;
         if (PRESSED(PAD_CIRCLE)) { ph_fam = 0; return; }
         if (PRESSED(PAD_START) || PRESSED(PAD_SELECT)) { state = ST_LIFE; return; }
+        if (PRESSED(PAD_SQUARE)) {   // MOVE OUT: a grown-up of the family to a home of their own in town (they stay someone you know)
+            const Sim *o = &sims[ph_fsel]; char b[160];
+            if (ph_fsel == player) { sim_note("PLAY AS SOMEONE ELSE FIRST, THEN MOVE THIS ONE OUT"); audio_voice(VOICE_NAH); return; }
+            if (o->bore.stage != AG_ADULT && o->bore.stage != AG_ELDER) { sim_note("ONLY A GROWN-UP CAN MOVE OUT"); audio_voice(VOICE_NAH); return; }
+            snprintf(b, sizeof b, "%s MOVES TO A HOME OF THEIR OWN IN SAN BOREAS. THEY STAY A FRIEND: YOU CAN VISIT, OR ASK THEM TO MOVE BACK IN.", o->bore.first);
+            ph_moveout = ph_fsel; confirm_open("MOVE OUT?", b, phone_move_out_yes); return;
+        }
         if (PRESSED(PAD_CROSS)) {
             const Sim *o = &sims[ph_fsel]; char b[40];
             if (ph_fsel == player) { state = ST_LIFE; return; }
@@ -2195,7 +2207,7 @@ static void phone_draw(void) {
         }
     }
     {   // what the app does, and the buttons, on a card on the left
-        const char *t = ph_fam ? "FAMILY" : phNm[ph_sel], *bl = ph_fam ? "X PLAYS AS THEM. A BABY CANNOT BE PLAYED, AND THE KIDS ARE AT SCHOOL TILL 3." : phBlurb[ph_sel];
+        const char *t = ph_fam ? "FAMILY" : phNm[ph_sel], *bl = ph_fam ? "X PLAYS AS THEM. SQUARE: A GROWN-UP MOVES OUT TO A HOME OF THEIR OWN." : phBlurb[ph_sel];
         if (!ph_fam && ph_sel == PH_MAP && world_zone == ZONE_ISLAND) bl = "THE ISLAND, AND THE SECRETS FOUND ON IT";
         if (!ph_fam && !ph_has(ph_sel)) bl = ph_sel == PH_GAMES ? "LOCKED. A BOREBOY OR THE BORE PHONE MAX PLAYS GAMES: ELECTRONICS SHOPS SELL BOTH"
                                        : phNeed[ph_sel] >= 3 ? "LOCKED. GET THE BORE PHONE MAX ($900) AT AN ELECTRONICS SHOP" : "LOCKED. GET A SMARTPHONE ($350) AT AN ELECTRONICS SHOP";
@@ -2206,7 +2218,7 @@ static void phone_draw(void) {
         ui_icon_disc(20, cy + 12, 18, ph_fam ? IC_ARROW : phIc[ph_sel], ph_fam ? UI_RGB(236, 176, 40) : phCol[ph_sel], UI_WHITE);
         ui_text(34, cy + 6, 2, t, UI_INK);
         ui_wrap(14, cy + 24, 132, 4, bl, UI_SOFT);
-        ui_hints(82, cy + ch + 12, ph_fam ? "X PLAY|O BACK" : "X OPEN|O CLOSE", 1);
+        ui_hints(82, cy + ch + 12, ph_fam ? "X PLAY|SQ MOVE OUT" : "X OPEN|O CLOSE", 1);
     }
 }
 

@@ -132,6 +132,8 @@ COLD static const char *chat_line(const Cit *c) {
 COLD static void cit_bore(Bore *b, const Cit *c) {   // the same person, every time, from the seed (b may already own its face textures)
     memset(b->look, 0, sizeof b->look);
     b->stage = c->stage;
+    if (c->pid != NOPID) { const u8 *lk = pop_custom_look(c->pid, b->first, b->last);   // one of yours who moved out: their own looks and names
+        if (lk) { memcpy(b->look, lk, LK_COUNT); b->stage = c->stage; look_fix(b); look_build(b); return; } }
     u32 old = look_seed(c->seed * 2654435761u + 12345u);
     look_random(b);
     look_seed(old);

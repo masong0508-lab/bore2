@@ -991,6 +991,17 @@ static void remove_sim(int i) {   // gone from the household: everyone after mov
     int any = 0; for (int j = 0; j < nsims; j++) if (playable(j)) any = 1;
     if (!any) sim_story_over = 1;
 }
+int sim_move_out(int i, char *where) {   // household member i goes to live in a home of their own in SAN BOREAS (1: gone; where: their address)
+    if (i < 0 || i >= nsims || i == player) return 0;
+    Sim *o = &sims[i]; int st = o->bore.stage; if (st != AG_ADULT && st != AG_ELDER) return 0;
+    int nbx = home_city ? home_bx : bm_set(bm_capital())->x, nby = home_city ? home_by : bm_set(bm_capital())->y;
+    int pid = pop_move_out(&o->bore, nbx, nby, home_city ? home_bx : -1, home_city ? home_by : -1, MAX(50, o->rel[player]));
+    if (pid < 0) return 0;
+    const Fam *fm = &pop_fam[pop_fam_of(pid)]; home_address(fm->bx, fm->by, where);
+    for (int j = 0; j < nsims; j++) if (sims[j].partner == o->uid) sims[j].partner = 0;
+    remove_sim(i);
+    return 1;
+}
 static int grave_spot(int *ox, int *oy) {   // out in the yard: grass, nothing on it, near the front door (in SAN BOREAS, on the family's own lot)
     int sx, sy, x0 = 1, y0 = 1, x1 = MW - 2, y1 = MH - 2;
     if (home_city) { int wx, wy; if (!world_own_door(&sx, &sy) || !world_own_block(&wx, &wy)) return 0;

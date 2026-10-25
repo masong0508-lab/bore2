@@ -6,6 +6,7 @@
 // The ones whose whereabouts fall inside the map window around you are brought to life as citizens (citizens.c).
 #pragma once
 #include "common.h"
+#include "look.h"
 
 #define NFAM    1748              // (874 as SAN BOREAS always was: the PEOPLE dial's NORMAL; up to twice that)
 #define NFAM_NORMAL 874
@@ -26,7 +27,11 @@ extern int pop_nper, pop_nplace;
 extern Place pop_place[];
 
 extern int pop_people, pop_famsize;   // CREATE A WORLD: how many homes are lived in (0 FEW .. 3 NORMAL, as always, .. 5 PACKED: twice as many) and household size (0 SMALL, 1 MIXED, 2 BIG, 3 HUGE)
-int  pop_fam_of(int p);                                     // the household person p belongs to
+int  pop_fam_of(int p);
+int  pop_move_out(const Bore *b, int near_bx, int near_by, int avoid_bx, int avoid_by, int rel);   // a Bore of yours to a home of their own in town: their pid (-1 none)
+const u8 *pop_custom_look(int pid, char *first, char *last);   // a moved-out Bore's own looks and names (0: an ordinary townie)
+void pop_custom_save(void);
+void pop_custom_load(void);                                     // the household person p belongs to
 void pop_new(u32 seed, void *scratch, u32 scratch_bytes);   // a new life: everyone, from the seed (after bm_new)
 int  pop_family_at(int bx, int by, int unit);               // who lives in that home (-1: nobody)
 void pop_family_kinds(int f, u8 *adults, u8 *kids, u8 *teens, u8 *elders, u8 *couple);

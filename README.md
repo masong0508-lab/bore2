@@ -37,6 +37,9 @@ From BORE on the GBA: YOUR BORE ALONE (OPTIONS, LIFE: OFF, LOW, HIGH): put the p
 after itself like the rest of the household; any button gives it back. THE JOB HUNT: the paper comes at 6 AM (a headline, and three
 jobs in TODAY'S CLASSIFIEDS, a different three each day, on the phone's JOBS); a smartphone or the COMPUTER at home shows the whole
 JOB BOARD. The COMPUTER also has a game, the web, a cooking class, chatting online and a paid FREELANCE GIG (a few of each a day).
+A NEW LIFE starts without a job (no shifts, no pay, and no bills until you are hired). MOVE OUT (the phone's FAMILY, SQUARE):
+a grown-up of the household goes to live in a home of their own in SAN BOREAS, with their own looks and name, and stays a friend
+(you can ask them to move back in). ARE YOU SURE? comes before a new life, quitting, moving house and moving out.
 ASK TO MOVE IN: a good friend may come and live with you, with the GBA game's voices for the asking, the yes and the no.
 
 CREATE A BORE's FACE tab has 41 eyes (star, heart, dizzy, sparkly, robot, snake, crying...), 39 mouths (teeth, laugh, braces,

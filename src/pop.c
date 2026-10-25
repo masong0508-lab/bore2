@@ -13,6 +13,7 @@ Per pop_per[PER_MAX];
 Place pop_place[PLACE_MAX];
 int pop_nper, pop_nplace;
 static int nfam;
+static int ncust;   // (MOVED OUT, at the end)
 static u16 set_p0[64], set_pn[64];                 // each town's places: first, count (pop_place is in town order)
 
 static u32 prs;
@@ -161,7 +162,7 @@ void pop_new(u32 seed, void *scratch, u32 scratch_bytes) {
         fm->kind = (u8)kind_for(U[f].lot); fm->sur = (u16)pr();
         make_members(f);
     }
-    nfam = nf; gen_done = 1;
+    nfam = nf; gen_done = 1; ncust = 0;
 }
 int pop_family_at(int bx, int by, int unit) {
     int key = by * 2048 * 4 + bx * 4 + unit, lo = 0, hi = nfam - 1;
@@ -333,6 +334,7 @@ __attribute__((optimize("Os"))) void pop_save(void) {
     for (int i = 0; i < n; i++) if (bit(regen_p, i)) { sv_u32(pop_per[i].seed); sv_u8(pop_per[i].trait); sv_u8(shift_of(&pop_per[i])); }
     for (int i = 0; i < n; i++) if (bit(regen_p, i) || bit(chg_p, i)) sv_u16(pop_per[i].job);
     for (int f = 0; f < nfam; f++) if (bit(regen_f, f)) { sv_u8(pop_fam[f].kind); sv_u16(pop_fam[f].sur); }
+    pop_custom_save();   // (version 13: the Bores who moved out)
 }
 __attribute__((optimize("Os"))) void pop_load(void) {   // (after pop_new from the same seed)
     prs = ld_u32(); int n = ld_u16(); if (n != pop_nper) n = MIN(n, pop_nper);
@@ -341,4 +343,42 @@ __attribute__((optimize("Os"))) void pop_load(void) {   // (after pop_new from t
     for (int i = 0; i < n; i++) if (bit(regen_p, i)) { pop_per[i].seed = ld_u32(); pop_per[i].trait = (u8)(ld_u8() & 31); (void)ld_u8(); }   // (the shift byte: worked out from the seed now)
     for (int i = 0; i < n; i++) if (bit(regen_p, i) || bit(chg_p, i)) pop_per[i].job = (u16)ld_u16();
     for (int f = 0; f < nfam; f++) if (bit(regen_f, f)) { pop_fam[f].kind = (u8)ld_u8(); pop_fam[f].sur = (u16)ld_u16(); }
+    pop_custom_load();
+}
+
+// ---- MOVED OUT (borrowed from BORE on the GBA): one of your household goes to live in a home of their own in SAN BOREAS. The
+// household that lived there moves away; your Bore takes the first place in it, and keeps their own looks and names here
+// (the town's people are otherwise made from their seed). Up to 8 are kept; the save keeps them (version 13). ----
+#define NCUSTOM 8
+typedef struct { u16 pid; char first[NAME_LEN], last[NAME_LEN]; u8 look[LK_COUNT]; } PopCustom;
+static PopCustom cust[NCUSTOM];
+const u8 *pop_custom_look(int pid, char *first, char *last) {
+    for (int i = 0; i < ncust; i++) if (cust[i].pid == pid) { if (first) strcpy(first, cust[i].first); if (last) strcpy(last, cust[i].last); return cust[i].look; }
+    return 0;
+}
+int pop_move_out(const Bore *b, int near_bx, int near_by, int avoid_bx, int avoid_by, int rel) {   // the pid they are now (-1: no home)
+    int best = -1, bd = 1 << 30;
+    for (int f = 0; f < nfam; f++) {
+        const Fam *fm = &pop_fam[f]; if (!fm->n) continue;
+        if (fm->bx == avoid_bx && fm->by == avoid_by) continue;
+        int busy = 0; for (int i = 0; i < fm->n; i++) { const Per *q = &pop_per[fm->first + i]; if (q->slot != 255 || pop_custom_look(fm->first + i, 0, 0)) busy = 1; }
+        if (busy) continue;
+        int d = ABS(fm->bx - near_bx) + ABS(fm->by - near_by); if (d < 2) continue;   // (not next door: a place of their own)
+        if (d < bd) { bd = d; best = f; }
+    }
+    if (best < 0) return -1;
+    Fam *fm = &pop_fam[best];
+    for (int i = 1; i < fm->n; i++) { Per *q = &pop_per[fm->first + i]; q->flags |= PF_GONE; q->hp = 100; mark(chg_p, fm->first + i); }   // (the household that lived there moves away)
+    Per *q = &pop_per[fm->first];
+    set_person(q, best, b->stage, 0); q->rel = (s8)CLAMP(rel, -100, 100); q->flags &= 3;
+    fm->kind = HK_SINGLE; mark(regen_f, best);
+    int k = ncust < NCUSTOM ? ncust++ : 0;
+    if (k == 0 && ncust == NCUSTOM) { memmove(&cust[0], &cust[1], sizeof cust[0] * (NCUSTOM - 1)); k = NCUSTOM - 1; }   // (full: the first to move out is forgotten)
+    cust[k].pid = (u16)(fm->first); strcpy(cust[k].first, b->first); strcpy(cust[k].last, b->last); memcpy(cust[k].look, b->look, LK_COUNT);
+    return fm->first;
+}
+void pop_custom_save(void) { sv_u8(ncust); for (int i = 0; i < ncust; i++) { sv_u16(cust[i].pid); sv_str(cust[i].first, NAME_LEN - 1); sv_str(cust[i].last, NAME_LEN - 1); sv_rle(cust[i].look, LK_COUNT); } }
+void pop_custom_load(void) {
+    ncust = 0; if (save_ver < 13) return;
+    int n = ld_u8(); for (int i = 0; i < n; i++) { PopCustom t; t.pid = (u16)ld_u16(); ld_str(t.first, NAME_LEN - 1); ld_str(t.last, NAME_LEN - 1); ld_rle(t.look, LK_COUNT); if (ncust < NCUSTOM) cust[ncust++] = t; }
 }
