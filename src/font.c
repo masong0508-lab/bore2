@@ -17,7 +17,7 @@ static u16 grey(int v) { return v ? (u16)(0x8000 | v | (v << 5) | (v << 10)) : 0
 void font_init(void) {
     // every inked texel marked to blend (the STP bit): so the type can be added (light on dark) or taken away (dark ink on a
     // white card) all over, not only at its soft edges (an unmarked texel is drawn as it is, whatever the blend). The sheets are
-    // kept packed (coverage in nibbles, the ui type a grey a byte) and opened out here, through the atlas's scratch, once.
+    // kept packed (coverage in nibbles, the ui type 16 greys in nibbles) and opened out here, through the atlas's scratch, once.
     static const u8 *const src[2] = { font_m_a, font_l_a }; static const int hh[2] = { FONT_M_H, FONT_L_H };
     for (int i = 0; i < 2; i++) {
         u16 *buf = atlas_scratch();
@@ -27,7 +27,7 @@ void font_init(void) {
         }
         sheet[i + 1] = atlas_alloc_page(2, FONT_SHEET_W, hh[i]); atlas_upload(&sheet[i + 1], buf);
     }
-    { u16 *buf = atlas_scratch(); for (int k = 0; k < FONT_SHEET_W * FONT_U_H; k++) buf[k] = grey(font_u_a[k]);
+    { u16 *buf = atlas_scratch(); for (int k = 0; k < FONT_SHEET_W * FONT_U_H; k++) { int g = (font_u_a[k >> 1] >> ((k & 1) << 2)) & 15; buf[k] = grey(g * 31 / 15); }
       sheet[3] = atlas_alloc_page(2, FONT_SHEET_W, FONT_U_H); atlas_upload(&sheet[3], buf); }
     sheet[0] = sheet[3];
     for (int i = 0; i < 128; i++) idx_of[i] = -1;

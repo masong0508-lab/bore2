@@ -154,7 +154,7 @@ void world_init(void) {
     }
     for (int i = 0; i < NWX; i++) {   // the KHLVH set is pre-shaded 12/16 for the left face: lift it back
         for (int y = 0; y < 24; y++) for (int x = 0; x < 8; x++) {
-            u16 c = wxTex[i][x][y];
+            u16 c = wxPal[wxPalOff[i] + wxIdx[i][x][y]];
             int r = MIN(31, C_R(c) * 16 / 12), g = MIN(31, C_G(c) * 16 / 12), b = MIN(31, C_B(c) * 16 / 12);
             u16 o = RGB(r, g, b); tb[y * 8 + x] = o ? o : 0x8000;
         }
