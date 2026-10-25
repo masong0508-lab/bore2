@@ -5,7 +5,12 @@
 #include "common.h"
 #include "look.h"
 
+// A whole-body pose set by hand (the fighter, bortua.c): every joint, 4096 = a full turn. Arms and legs: negative swings forward/up
+// (arm, leg) and spreads out to the side (aroll: left negative, right positive); elbow negative folds the forearm forward and up,
+// knee positive folds the shin back. lean tips the body forward, twist turns the upper body, nod and tilt the head, drop sinks the hips.
+typedef struct { s16 arm[2], aroll[2], elbow[2], leg[2], lroll[2], knee[2], lean, twist, nod, tilt, drop, pad; } VPose;
 typedef struct {
+    const VPose *pose;  // set: this pose instead of the body language
     int phase;      // walk cycle 0..4095
     int amp;        // swing amount 0..4096
     int sit;        // 1: sitting (legs forward)

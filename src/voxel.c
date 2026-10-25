@@ -18,7 +18,7 @@ static int quads;
 int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block, vox_n_rad;   // (debug counters, kept for the HUD readout)
 static const u8 wMask2[8] = { 10, 12, 5, 3, 8, 4, 1, 2 };   // BORE: bit k = corner (k&1 ? +x : -x, k&2 ? +z : -z) drops a full block
 
-enum { G_BODY, G_LLEG, G_RLEG, G_LARM, G_RARM, G_HEAD, G_N };   // G_HEAD: the head and its hair, on its own neck joint (tilts, nods)
+enum { G_BODY, G_LLEG, G_RLEG, G_LARM, G_RARM, G_HEAD, G_LFORE, G_RFORE, G_LSHIN, G_RSHIN, G_N };   // (the FORE arms and SHINs hang off the elbows and knees: voxel_prepare splits each limb in two)   // G_HEAD: the head and its hair, on its own neck joint (tilts, nods)
 static MATRIX gm[G_N];
 static const Bore *cur;
 static int sld(const Bore *b, int id);
@@ -513,17 +513,17 @@ static void wear_draw(const Bore *b) {
     if ((v = b->look[LK_X_BACK] % NX_BACK)) wear_part(b, &wearBack[v], b->w_tx, b->w_shy, b->w_tbz, bu, -1);
     if ((v = b->look[LK_X_WAIST] % NX_WAIST)) wear_part(b, &wearWaist[v], b->w_tx, b->w_hipy, b->w_tfz, bu, 1);
     if ((v = b->look[LK_X_SHOULDER] % NX_SHOULDER)) wear_part(b, &wearShoulder[v], b->w_rax, b->w_shy - bu, (b->w_tfz + b->w_tbz) / 2, bu, 1);   // (on top of the right shoulder)
-    if ((v = b->look[LK_X_HAND] % NX_HAND)) { gfx_set_object_m(&gm[G_RARM]); wear_part(b, &wearHand[v], b->w_hx, b->w_hy, b->w_hz, bu, 1); gfx_set_object_m(&gm[G_BODY]); }
+    if ((v = b->look[LK_X_HAND] % NX_HAND)) { gfx_set_object_m(&gm[G_RFORE]); wear_part(b, &wearHand[v], b->w_hx, b->w_hy, b->w_hz, bu, 1); gfx_set_object_m(&gm[G_BODY]); }
     if ((v = b->look[LK_X_WRIST] % NX_WRIST)) {   // both wrists: a little above the bottom of each hand
         int wy = b->w_hy - 4 * bu;
-        gfx_set_object_m(&gm[G_RARM]); wear_part(b, &wearWrist[v], b->w_hx, wy, b->w_hz, bu, 1);
-        gfx_set_object_m(&gm[G_LARM]); wear_part_m(b, &wearWrist[v], 2 * b->w_tx - b->w_hx, wy, b->w_hz, bu, 1, 1);
+        gfx_set_object_m(&gm[G_RFORE]); wear_part(b, &wearWrist[v], b->w_hx, wy, b->w_hz, bu, 1);
+        gfx_set_object_m(&gm[G_LFORE]); wear_part_m(b, &wearWrist[v], 2 * b->w_tx - b->w_hx, wy, b->w_hz, bu, 1, 1);
         gfx_set_object_m(&gm[G_BODY]);
     }
     if ((v = b->look[LK_X_FEET] % NX_FEET)) {   // both feet: under the middle of each
         int fz = (b->w_tfz + b->w_tbz) / 2 + bu;
-        gfx_set_object_m(&gm[G_RLEG]); wear_part(b, &wearFeet[v], b->w_rgx, 0, fz, bu, 1);
-        gfx_set_object_m(&gm[G_LLEG]); wear_part_m(b, &wearFeet[v], b->w_lgx, 0, fz, bu, 1, 1);
+        gfx_set_object_m(&gm[G_RSHIN]); wear_part(b, &wearFeet[v], b->w_rgx, 0, fz, bu, 1);
+        gfx_set_object_m(&gm[G_LSHIN]); wear_part_m(b, &wearFeet[v], b->w_lgx, 0, fz, bu, 1, 1);
         gfx_set_object_m(&gm[G_BODY]);
     }
     if ((v = b->look[LK_X_EARS] % NX_EARS)) {   // both ears: on the sides of the head, just under the eye line
@@ -680,6 +680,28 @@ static void shape_body(Bore *b) {
     else { b->w_hx = (s16)(2 * VOX); b->w_hy = (s16)hipY; b->w_hz = 0; }
 }
 
+// ---- ELBOWS AND KNEES: each arm and leg is cut in two at its middle row, the lower half (the forearm and the hand, the shin and the
+// foot) on a joint of its own; the faces at the cut are opened up so a bent joint shows two closed blocks, not a hole ----
+static void split_limbs(Bore *b) {
+    static const u8 par[4] = { G_LARM, G_RARM, G_LLEG, G_RLEG }, kid[4] = { G_LFORE, G_RFORE, G_LSHIN, G_RSHIN };
+    s16 *piv[4] = { b->j_el[0], b->j_el[1], b->j_kn[0], b->j_kn[1] };
+    for (int l = 0; l < 4; l++) {
+        int y0 = 99, y1 = -1;
+        for (int i = 0; i < b->ncell; i++) if (b->cell[i].grp == par[l]) { int y = b->cell[i].y; y0 = MIN(y0, y); y1 = MAX(y1, y); }
+        piv[l][0] = piv[l][1] = piv[l][2] = 0; b->j_ok &= (u8)~(1 << l);
+        if (y1 <= y0) continue;                                         // (one row: nothing to bend)
+        int cut = y0 + (y1 - y0 + 2) / 2, sx = 0, sy = 0, sz = 0, nc = 0;   // rows below the cut hang off the joint (3 rows: the lower 2)
+        for (int i = 0; i < b->ncell; i++) {
+            if (b->cell[i].grp != par[l]) continue;
+            if (b->cell[i].y < cut) {
+                b->cell[i].grp = kid[l];
+                if (b->cell[i].y == cut - 1) { b->cell[i].hide &= ~16; for (int k = 0; k < 4; k++) { sx += b->cell[i].c[k].vx; sy += b->cell[i].c[k].vy; sz += b->cell[i].c[k].vz; nc++; } }
+            } else if (b->cell[i].y == cut) b->cell[i].hide &= ~32;
+        }
+        if (nc) { piv[l][0] = (s16)(sx / nc); piv[l][1] = (s16)(sy / nc); piv[l][2] = (s16)(sz / nc); b->j_ok |= (u8)(1 << l); }
+    }
+}
+
 // voxel_prepare's working copy: the blocks with a border of air (no bounds checks), and each grid point's corner shaping worked
 // out once (four blocks share a corner: it was worked out four times, and the city builds a new person most frames)
 static u8 pv[H + 2][D + 2][W + 2];
@@ -783,6 +805,7 @@ void voxel_prepare(Bore *b) {
         } }
     b->ncell = (u8)n;
     shape_body(b);
+    split_limbs(b);
     if (b->h_lift > 0 || b->h_k < 4096) {                // the head sits smaller and higher than its blocks did: the shoulders and the chin show
         int hy = b->legs + b->torso;
         for (int i = 0; i < n; i++) {
@@ -883,6 +906,26 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
         headTilt = (headTilt * keep + 70 * sm) >> 12; headNod = (headNod * keep) >> 12;                // (the head turned a little on the pillow)
         obj.t[1] -= ((br * sm) >> 12) >> 10;                                                             // the chest rises and falls
     }
+    // ---- the elbows and the knees: a little bend at rest, the knee folding as the leg swings through a step, the shins down off a seat ----
+    int elL = -260, elR = -260, knL = 60, knR = 60, twist = 0;
+    if (moving) { elL = -420 - (ABS(armL) >> 1); elR = -420 - (ABS(armR) >> 1); knL = 120 + MAX(0, -legL) * 3 / 2 + (ABS(legL) >> 2); knR = 120 + MAX(0, -legR) * 3 / 2 + (ABS(legR) >> 2); }
+    if (g->talk && !g->wave) elR = -900;
+    if (g->wave) elR = -500;
+    if (g->sit) { knL = knR = 1024; elL = elR = -500; }
+    if (g->skate && !lie) { knL = knR = 0; elL = elR = -200; }   // (on a board the legs splay instead: the board sits where the feet were)
+    if (lie) { int keep = 4096 - sm; knL = (knL * keep) >> 12; knR = (knR * keep) >> 12; elL = (elL * keep) >> 12; elR = (elR * keep) >> 12; }
+    if (g->pose && !lie) {   // a hand-set pose (the fighter): every joint as given
+        const VPose *q = g->pose;
+        armL = q->arm[0]; armR = q->arm[1]; rollL = q->aroll[0]; rollR = q->aroll[1]; elL = q->elbow[0]; elR = q->elbow[1];
+        legL = q->leg[0]; legR = q->leg[1]; legRollL = q->lroll[0]; legRollR = q->lroll[1]; knL = q->knee[0]; knR = q->knee[1];
+        lean = q->lean; twist = q->twist; headNod = q->nod; headTilt = q->tilt; obj.t[1] += q->drop;
+        if (b->j_ok & 12) {   // the hips sink as the knees bend, so the lower foot stays on the ground
+            int lo = 0;
+            for (int s = 0; s < 2; s++) { int ky = b->j_kn[s][1], Lt = ky - hip, Ls = -ky, lg = s ? legR : legL, kn = s ? knR : knL, lr = s ? legRollR : legRollL;
+                int fy = ((Lt * icos(lg) >> 12) + (Ls * icos(lg + kn) >> 12)) * icos(lr) >> 12; lo = MAX(lo, fy); }
+            obj.t[1] += -hip - lo;
+        }
+    }
     if (g->skate && g->roll && !lie) { MATRIX r; SVECTOR rr = { 0, 0, (short)g->roll, 0 }; RotMatrix(&rr, &r); r.t[0] = r.t[1] = r.t[2] = 0; { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); } }
     if (lean) { MATRIX r; SVECTOR rr = { (short)-lean, 0, 0, 0 }; RotMatrix(&rr, &r); r.t[0] = r.t[1] = r.t[2] = 0; { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); } }   // the lean pivots at the feet (RotMatrix leaves the translation unset)
     gm[G_BODY] = obj;
@@ -898,7 +941,21 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     joint_matrix(&gm[G_RLEG], &obj, -legR, legRollR, b->w_rgx, hip, 0);
     joint_matrix(&gm[G_LARM], &obj, -armL, rollL, b->w_lax, shoulder, 0);
     joint_matrix(&gm[G_RARM], &obj, -armR, rollR, b->w_rax, shoulder, 0);
+    if (twist) {   // the upper body turns on the hips (the legs stay planted): the arms and the head ride with it
+        MATRIX up; MATRIX r; SVECTOR rr = { 0, (short)twist, 0, 0 }; VECTOR pv0 = { b->w_tx, hip, 0 }, rp, tt;
+        RotMatrix(&rr, &r); ApplyMatrixLV(&r, &pv0, &rp); setVector(&tt, pv0.vx - rp.vx, pv0.vy - rp.vy, pv0.vz - rp.vz); TransMatrix(&r, &tt);
+        CompMatrixLV(&obj, &r, &up);
+        joint_matrix(&gm[G_LARM], &up, -armL, rollL, b->w_lax, shoulder, 0);
+        joint_matrix(&gm[G_RARM], &up, -armR, rollR, b->w_rax, shoulder, 0);
+        joint_matrix(&gm[G_HEAD], &up, -headNod, headTilt, b->h_cx, b->h_cy0 - b->h_lift, b->h_cz);
+        gm[G_BODY] = up;   // (the torso turns too; the legs were set from the hips before it)
+    } else
     joint_matrix(&gm[G_HEAD], &obj, -headNod, headTilt, b->h_cx, b->h_cy0 - b->h_lift, b->h_cz);   // the neck
+    // the lower arms and legs hang off the elbows and knees (the joints' own matrices compose onto the limb's)
+    if (b->j_ok & 1) joint_matrix(&gm[G_LFORE], &gm[G_LARM], -elL, 0, b->j_el[0][0], b->j_el[0][1], b->j_el[0][2]); else gm[G_LFORE] = gm[G_LARM];
+    if (b->j_ok & 2) joint_matrix(&gm[G_RFORE], &gm[G_RARM], -elR, 0, b->j_el[1][0], b->j_el[1][1], b->j_el[1][2]); else gm[G_RFORE] = gm[G_RARM];
+    if (b->j_ok & 4) joint_matrix(&gm[G_LSHIN], &gm[G_LLEG], -knL, 0, b->j_kn[0][0], b->j_kn[0][1], b->j_kn[0][2]); else gm[G_LSHIN] = gm[G_LLEG];
+    if (b->j_ok & 8) joint_matrix(&gm[G_RSHIN], &gm[G_RLEG], -knR, 0, b->j_kn[1][0], b->j_kn[1][1], b->j_kn[1][2]); else gm[G_RSHIN] = gm[G_RLEG];
     vox_t_face += gfx_hb() - t0; }
     gfx_set_light_yaw(yaw);
     int tprep0 = gfx_hb();

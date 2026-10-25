@@ -7,3 +7,5 @@ int  font_w(int size, const char *s);
 void font_text(int x, int y, int size, const char *s, int r, int g, int b);
 void font_textc(int cx, int y, int size, const char *s, int r, int g, int b);
 void font_debug(void);
+int  font_w_zoom(int zoom, const char *s);
+void font_text_zoom(int x, int y, int zoom, const char *s, int r, int g, int b);   // the medium type, zoom times as big

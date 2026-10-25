@@ -65,7 +65,7 @@ extern int  clock_min, clock_day;    // game time: minutes 0..1439, MON..SUN
 extern long cash;
 extern int  job_level, job_worked, job_days_good, job_strikes;
 extern int  phone_tier, handheld;
-extern int  sim_want_jobs, job_none;
+extern int  sim_want_jobs, job_none, sim_want_arcade;
 int  dojo_session(void);                      // the dojo class on now (0..2), -1 none
 int  dojo_belt(const Sim *s);                // WHITE 0 .. BLACK 5 (the body skill)
 int  sim_grave_count(void);

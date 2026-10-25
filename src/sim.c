@@ -1,6 +1,8 @@
 // sim.c - the household and the life: BORE's needs, clock, bills and job, with free 3D movement and a path finder for the others.
 #include "sim.h"
 #include "wants.h"
+#include "arcade.h"
+#include "fight.h"
 #include "world.h"
 #include "items.h"
 #include "audio.h"
@@ -198,6 +200,7 @@ void sim_switch_player(void) {
 
 // ---- walking with collision (the lot's tiles) ----
 int phone_tier = 1, handheld;
+int sim_want_arcade;   // an arcade cabinet (game + 1) or the prize counter: main opens it
 int sim_want_jobs;   // the computer's JOB BOARD was picked: main opens JOBS with every opening   // (a new life: an old flip phone in the pocket; better ones from an electronics shop)
 int has_board, on_board, board_lift;   // the skateboard: owned, ridden, how high the rider is (skate.c rides it)
 static int ramp_pass;   // set while the rider's own step is tried: a board can roll onto a ramp
@@ -1384,7 +1387,7 @@ static const char *sim_hint_(void) {
         if (c == 'S' && pi.lot == LOT_SPA) return "A MASSAGE";
         if (c == '>' && pi.lot == LOT_SPA) return "SOAK";
         if (c == ')' && pi.lot == LOT_GALLERY) return "ADMIRE";
-        if (c == '!' && pi.lot == LOT_ARCADE) return "PLAY $2";
+        if (c == '!' && pi.lot == LOT_ARCADE) { static char hb_[28]; snprintf(hb_, sizeof hb_, "PLAY %s", arcade_game_name(arcade_game_at(mx, my))); return hb_; }
         if (c == '7' || c == '`' || c == 'i') return pi.lot == LOT_SHOP ? "SHOP" : "";
         if (c == 'd') return "SORRY, STAFF ONLY BACK THERE";
         if (c == '~' && pi.lot == LOT_POOL) return "SWIM";
@@ -1398,7 +1401,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT };
+       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES };
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1461,7 +1464,8 @@ static int sim_pie_open_(char opt[8][16]) {
         act = ACT_NONE;
     }
     if (pie_place && (c == 'y' || c == 'I' || c == 'x')) act = ACT_NONE;   // (the till, the desk bell: what the place does, not a phone)
-    if (pie_place && pie_pi.lot == LOT_ARCADE && c == '!') { OPT("PLAY $2", PC_PLAY) act = ACT_NONE; }
+    if (pie_place && pie_pi.lot == LOT_ARCADE && c == '!') { char b_[28]; int g_ = arcade_game_at(mx, my); snprintf(b_, sizeof b_, "PLAY %s $%d", arcade_game_name(g_), arcade_price(g_)); OPT(b_, PC_PLAY) act = ACT_NONE; }
+    if (pie_place && pie_pi.lot == LOT_ARCADE && c == 'y') { char b_[28]; snprintf(b_, sizeof b_, "PRIZES (%d TICKETS)", arcade_tix); OPT(b_, PC_PRIZES) }
     if (c == CH_CAKE) {   // the birthday cake: the candles (if there is a birthday), then slices
         if (bday_one() >= 0) OPT("BLOW CANDLES", 30)
         OPT("A SLICE", 31) act = ACT_NONE; }
@@ -1652,7 +1656,8 @@ static void place_do(Sim *s, int code) {
             break; }
         case PC_TRAINER: if (!pay(20)) return; begin_action(s, ACT_RUN, pie_mx, pie_my); s->act_var = 2; sim_say(s, "FEEL THE BURN"); break;
         case PC_SWIM: swim(s); break;
-        case PC_PLAY: if (!pay(2)) return; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 0; break;
+        case PC_PLAY: { int g_ = arcade_game_at(pie_mx, pie_my); if (!pay(arcade_price(g_))) return; sim_want_arcade = g_ + 1; break; }
+        case PC_PRIZES: sim_want_arcade = AG_PRIZES + 1; break;
         case PC_LATTE: if (!pay(5)) return; begin_action(s, ACT_COFFEE, pie_mx, pie_my); s->act_var = 1; break;
         case PC_CAKE: if (!pay(6)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 4; s->act_t = 150; break;
         case PC_DRINK: if (!pay(8)) return; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 5; s->act_t = 300; sim_say(s, "WHAT'S GOOD HERE?"); break;
@@ -1855,6 +1860,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
     sv_u16(story_paid); sv_u16(story_talks); sv_n(story_visit, 4);
     sv_u8(phone_tier); sv_u8(handheld);   // (version 10)
     sv_u8(job_none);   // (version 12)
+    sv_u16((u16)arcade_tix); sv_u16((u16)fight_wins); sv_u8((u8)fight_champ); sv_u8((u8)fight_best);   // (version 15)
     for (int i = 0; i < nsims; i++) {
         const Sim *s = &sims[i]; const Bore *b = &s->bore;
         sv_n(b->look, LK_COUNT); sv_u8(b->stage); sv_u8(b->asp); sv_u8(b->ltw); sv_n(b->tr, TR_N); sv_str(b->first, NAME_LEN - 1); sv_str(b->last, NAME_LEN - 1);
@@ -1882,6 +1888,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     story_paid = ld_u16(); story_talks = ld_u16(); ld_n(story_visit, 4);
     if (save_ver >= 10) { phone_tier = ld_u8() & 3; handheld = ld_u8() & 3; } else { phone_tier = 3; handheld = 0; }   // (an older life keeps every app it had)
     job_none = save_ver >= 12 ? ld_u8() & 1 : 0;   // (an older life keeps its job)
+    if (save_ver >= 15) { arcade_tix = ld_u16(); fight_wins = ld_u16(); fight_champ = ld_u8() & 1; fight_best = ld_u8(); } else arcade_tix = fight_wins = fight_champ = fight_best = 0;
     for (int i = 0; i < n && i < MAX_SIMS; i++) {
         sim_add(blank, 0, 0, 1);   // (a blank Bore: the Bore is large, so it is filled in place)
         Sim *s = &sims[nsims - 1]; Bore *b = &s->bore;

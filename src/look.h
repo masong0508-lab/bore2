@@ -46,6 +46,8 @@ typedef struct {
     s16  h_cx, h_cz, h_cy0, h_top, h_k, h_jaw, h_lift, h_neckw;
     s16  w_lax, w_rax, w_lgx, w_rgx;             // the shoulder and hip joints' x (arm and leg centres), for the A-pose and the stance
     u8   decc[8];               // the cells that carry a face sprite's top-left
+    s16  j_el[2][3], j_kn[2][3];  // the elbows and knees (left, right): the joints the forearms and shins hang from (voxel.c split_limbs)
+    u8   j_ok;                  // bits: 1 2 the elbows, 4 8 the knees are there to bend
 } __attribute__((aligned(8))) Bore;   // (aligned: the GTE loads the corners as words; an array of Bores must keep every one on a word boundary)
 
 void look_init(void);

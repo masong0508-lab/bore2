@@ -58,3 +58,17 @@ void font_text(int x, int y, int size, const char *s, int r, int g, int b) {
 }
 void font_debug(void) { gfx_sprite(0, 60, 128, FONT_M_H, sheet[1].tpage & ~(1 << 5), 0, sheet[1].u, sheet[1].v, 128, FONT_M_H, 128, 0); gfx_sprite(140, 60, 128, FONT_U_H, sheet[3].tpage & ~(1 << 5), 0, sheet[3].u, sheet[3].v, 128, FONT_U_H, 128, 0); }
 void font_textc(int cx, int y, int size, const char *s, int r, int g, int b) { font_text(cx - font_w(size, s) / 2, y, size, s, r, g, b); }
+// the medium type blown up zoom times (big arcade words: "K.O.", "ROUND 1"); x is the left edge, y the capitals' top
+int font_w_zoom(int zoom, const char *s) { return font_w(1, s) * zoom; }
+void font_text_zoom(int x, int y, int zoom, const char *s, int r, int g, int b) {
+    const int size = 1; TexRef tt = sheet[size]; int lh = line_h[size], top = top_rows[size];
+    if (font_sub) tt.tpage = (u16)((tt.tpage & ~(3 << 5)) | (2 << 5));
+    y -= top * zoom;
+    for (; *s; s++) {
+        int c = (u8)*s; int i = c < 128 ? idx_of[c] : -1;
+        if (i < 0) { x += space_w[size] * zoom; continue; }
+        const u8 *gl = glyph[size][i]; int w = gl[2];
+        if (w) gfx_sprite_blend(x, y, w * zoom, lh * zoom, tt.tpage, 0, tt.u + gl[0], tt.v + gl[1], w, lh, r >> 1, g >> 1, b >> 1);
+        x += gl[3] * zoom;
+    }
+}

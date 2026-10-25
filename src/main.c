@@ -17,6 +17,7 @@
 #include "bigmap.h"
 #include "pop.h"
 #include "ghost.h"
+#include "arcade.h"
 #include "far.h"
 #include "ui.h"
 #include "places.h"
@@ -104,7 +105,7 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE };
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int sub_back = ST_LIFE;
@@ -539,6 +540,10 @@ static void life_update(int steps) {
     { static int done; extern int sim_debug_grave(void); if (!done && frame > 60 && home_is_here()) done = sim_debug_grave(); ghost_mode = 2; }
 #endif
     ghost_tick(steps, frame);
+#ifdef AUTO_FIGHT
+    { static int af; if (++af == 40) sim_want_arcade = AUTO_FIGHT; }   // (test builds: straight to a cabinet)
+#endif
+    if (sim_want_arcade) { arcade_open(sim_want_arcade - 1); sim_want_arcade = 0; state = ST_ARCADE; return; }   // (an arcade cabinet, the prize counter)
     if (sim_want_jobs) { sim_want_jobs = 0; jobs_board = 1; jobs_open(); sub_back = ST_LIFE; state = ST_JOBS; return; }   // (the computer's JOB BOARD)
     if (story_card()) { sc_t = 0; state = ST_SCARD; audio_voice(VOICE_FINISHED); return; }   // a chapter begins, or one is done
     Sim *s = &sims[player];
@@ -3691,6 +3696,7 @@ int main(void) {
             case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
             case ST_SPICK: spick_update(); if (state == ST_SPICK) { if (sp_join) life_draw(); else title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t, sp_join); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
             case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
+            case ST_ARCADE: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (arcade_update(hd_, pr_, steps)) arcade_draw(); else { state = ST_LIFE; life_draw(); } break; }
             case ST_WMAKE: wm_update(); if (state == ST_WMAKE) wm_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_NAME) name_draw(); else life_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
