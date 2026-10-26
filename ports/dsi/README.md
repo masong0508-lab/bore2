@@ -71,3 +71,9 @@ Sims path-find round walls (BFS per cell; doors are open, solid furniture blocks
 
 ## D15
 Doors are solid wooden leaves with panels and handles, shut until a sim is at them (then swung open). Streets are 3 cells wide with pavements and yellow lane dashes (the "pellets" were fence posts standing in the road: fence moved onto the plot edge). Path is a raised slab to the pavement. Floors are merged into big rectangles (edge anti-aliasing was showing grass through the seams as green dashes).
+
+## D17 - open streets and the 2000-bore cap
+- LIVE is now a 3x3 patch of lot slots: your lot in the middle, the 8 lots next door round it, with pavements, 3-cell roads, lane dashes, grass and sea. Tap or walk out the door, down the street and into the next lot with no map screen; the next lot becomes the middle one and gets its home (a lot you built on is remembered, last 6).
+- Neighbour houses are solid, sea is solid, the plot's back fence has a gap at the path. Pathfinding runs over the whole patch.
+- Population cap: DS_POP_MAX 2000 bores and DS_FAM_MAX 640 households (PS1: 3700 / 874..1748). pop_build() fills homes from the capital outwards (then the next town) until a cap is hit; homes past the cap have no bores. The map screen shows "N homes M bores" for the block and the total x/2000; neighbour lots show their residents.
+- Not yet: every lot you walk into becomes a playable home (shops/parks too); residents are not yet people you can talk to when walking by.
