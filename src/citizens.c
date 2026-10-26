@@ -1242,7 +1242,7 @@ static void step_one(Cit *c, int i) {
                 char b[32]; sprintf(b, "KNOCKED OUT. LOST $%d", lost); sim_note(b);
                 for (int k = 0; k < NCIT; k++) if (cits[k].mode == CM_CHASE || cits[k].mode == CM_STOP) { cits[k].mode = CM_IDLE; cits[k].t = 120; }
                 fam_calm(); heat = 0;
-                if (c->cop) { int fine = MIN((int)cash, 100); cash -= fine; sprintf(b, "ARRESTED! FINED $%d", fine); sim_note(b); }
+                if (c->cop) { sim_note("ARRESTED!"); sim_want_prison = 3 + rap_sheet; }
                 fight_on = 0; say(c, c->cop ? "YOU HAVE THE RIGHT TO STAY BORED." : "STAY DOWN."); audio_voice(VOICE_CRY);
             }
         }
