@@ -67,10 +67,10 @@ static int on_strip(int x, int z) { return x > RW_X0 && x < RW_X1 && ABS(z) < RW
 // the town: a lattice of lots on the big island
 #define TS 360
 static int bld(int i, int j, int *x, int *z, int *h, int *pop) {   // lot (i, j), -7..7: its place, height and people; 0 if there is nothing there
-    if (i < -7 || i > 7 || j < -7 || j > 7) return 0; u32 k = hs(i + 31, j + 17); *x = i * TS; *z = j * TS;
+    if (i < -10 || i > 10 || j < -10 || j > 10) return 0; u32 k = hs(i + 31, j + 17); *x = i * TS; *z = j * TS;
     if ((int)(k % 100) > 58 || gh(*x, *z) < 30 || (ABS(i) < 1 && ABS(j) < 1 && 0)) return 0; *h = 100 + (int)((k >> 8) % 260); *pop = (int)((k >> 16) % 4); return 1; }
 static int bit(int i, int j) { return (i + 7) * 15 + (j + 7); }
-static int is_dead(int i, int j) { int b = bit(i, j); return dead[b >> 5] >> (b & 31) & 1; }
+static int is_dead(int i, int j) { if (i < -7 || i > 7 || j < -7 || j > 7) return 0; int b = bit(i, j); return dead[b >> 5] >> (b & 31) & 1; }
 // ----- the craft you own -----
 static int owned(void) { return pk_data[24] | pk_data[25] << 8; }
 static int stol(int c) { int s = pk_data[40] | pk_data[41] << 8; return (c == 3 && (s >> 5 & 1)) || (c == 9 && (s >> 6 & 1)) || (c == 11 && (s >> 7 & 1)) || (c == 12 && (s >> 8 & 1)) || (c == 15 && (s >> 9 & 1)); }
@@ -275,6 +275,12 @@ static void world_draw(int fx, int fy, int fz, int fyaw) {
         gfx_quad_g(&a, &b, &c, &d, ca, cb, cc, cd, 0);
     }
     int bn = mode == M_BOAT ? 5 : 6; int i0 = fx / TS - bn, j0 = fz / TS - bn;   // the town's buildings in range
+    if (mode != M_BOAT || 1) for (int j = fz / TS - 10; j <= fz / TS + 10; j++) for (int i = fx / TS - 10; i <= fx / TS + 10; i++) {   // the far town: a roof and one wall each, only what is in view
+        if (i >= i0 && i <= i0 + 2 * bn && j >= j0 && j <= j0 + 2 * bn) continue; int bx, bz, bh, pop; if (!bld(i, j, &bx, &bz, &bh, &pop) || is_dead(i, j)) continue;
+        int g = MAX(0, gh(bx, bz)); if (!gfx_visible(bx, -g - bh / 2, bz, bh + 80)) continue; u32 c = UI_RGB(150 + (i * 37 & 63), 140 + (j * 53 & 63), 130 + ((i + j) * 29 & 63)), t = shade(c, 300), w = shade(c, 200);
+        SVECTOR a0 = { (short)(bx - 55), (short)(-g - bh), (short)(bz - 55) }, a1 = { (short)(bx + 55), (short)(-g - bh), (short)(bz - 55) }, a2 = { (short)(bx - 55), (short)(-g - bh), (short)(bz + 55) }, a3 = { (short)(bx + 55), (short)(-g - bh), (short)(bz + 55) };
+        SVECTOR b0 = { a0.vx, (short)-g, a0.vz }, b1 = { a1.vx, (short)-g, a1.vz }, b2 = { a2.vx, (short)-g, a2.vz };
+        gfx_quad_g(&a2, &a3, &a0, &a1, t, t, t, t, 0); gfx_quad_g(&a0, &a1, &b0, &b1, w, w, w, w, 0); gfx_quad_g(&a2, &a0, &b2, &b0, w, w, w, w, 0); }
     for (int j = j0; j <= j0 + 2 * bn; j++) for (int i = i0; i <= i0 + 2 * bn; i++) { int bx, bz, bh, pop; if (!bld(i, j, &bx, &bz, &bh, &pop)) continue; int g = MAX(0, gh(bx, bz));
         if (is_dead(i, j)) { box(bx - 50, -g - 14, bz - 50, bx + 50, -g, bz + 50, UI_RGB(60, 50, 46)); continue; }
         box(bx - 55, -g - bh, bz - 55, bx + 55, -g, bz + 55, UI_RGB(150 + (i * 37 & 63), 140 + (j * 53 & 63), 130 + ((i + j) * 29 & 63))); }
