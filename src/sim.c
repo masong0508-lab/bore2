@@ -198,7 +198,7 @@ static void turn_to(Sim *s, int target, int rate) {
 
 void sim_init(void) {
     gotchi_reset(); dj_xp = 0; dj_heat = 0; band_reset(); realm_reset();   // (a new life: no realm yet; a loaded one brings its own)
-    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; rap_sheet = 0; space_done = 0; memset(space_tech, 0, 3); col_lvl = col_major = col_on = col_cls = col_gpa = col_study = 0; memset(col_g, 0, 3); astro_xp = 0; memset(crime_n, 0, sizeof crime_n); crime_evid = crime_def = 0; dog_default(&pet_dog); nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
+    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; rap_sheet = 0; space_done = 0; memset(space_tech, 0, 3); col_lvl = col_major = col_on = col_cls = col_gpa = col_study = 0; memset(col_g, 0, 3); astro_xp = 0; art_n = novel = 0; art_q = royalty = 0; for (int t = 0; t < VEH_N; t++) veh_cond[t] = 100; memset(crime_n, 0, sizeof crime_n); crime_evid = crime_def = 0; dog_default(&pet_dog); nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
     job_level = 0; job_car = CAR_FACTORY; job_take(CAR_FACTORY, -1, -1, "THE FACTORY"); job_none = 1;
     groceries = 10; room_bx = room_by = -1; room_until = 0; phone_tier = 1; handheld = 0;
 #ifdef AUTO_PHONE_TIER
@@ -242,7 +242,7 @@ int phone_tier = 1, handheld;
 int sim_want_arcade;   // an arcade cabinet (game + 1) or the prize counter: main opens it
 int sim_want_jobs;   // the computer's JOB BOARD was picked: main opens JOBS with every opening   // (a new life: an old flip phone in the pocket; better ones from an electronics shop)
 // ---- VEHICLES ----
-int veh_own, veh_on, veh_sel, veh_fuel[VEH_N], veh_wph; static int veh_odo, veh_lowfuel;
+int veh_own, veh_on, veh_sel, veh_fuel[VEH_N], veh_wph; static int veh_odo, veh_lowfuel, veh_wacc; u8 veh_cond[VEH_N] = { 100, 100, 100, 100, 100, 100 };   // (condition: wears with use, fixed by a mechanic or by you)
 static const struct { const char *nm; short price, speed, tank, seat; } VT[VEH_N] = {   // tank: tiles of range (0: pedals); seat: how high the driver sits
     { "BIKE", 150, 3, 0, 0 }, { "SCOOTER", 600, 4, 500, 0 }, { "SEDAN", 3200, 7, 1500, 30 }, { "VAN", 4800, 6, 1800, 30 }, { "SPORTS CAR", 9500, 10, 1000, 24 }, { "PICKUP", 5600, 6, 2000, 30 } };
 int veh_seat(int t) { return VT[t % VEH_N].seat * 7 / 4; }
@@ -579,6 +579,7 @@ static void chat_done(Sim *s, Sim *o) {   // a finished chat: the relationship g
 static void end_action(Sim *s) {
     switch (s->action) {   // what just finished: the wants are watching
         case ACT_EAT: if (s->act_var == 8) { bake_done(s); break; }   // (act_var: 0 a snack, 1 cooked with good food, 2 eaten out, 3 cooked plain, 4 a treat, 5 fine dining,
+                      if ((s->act_var == 1 || s->act_var == 3) && (int)(look_rand() % 100) < SKL(s->skill_creat) * 9) { sim_moodlet(s, ML_INSPIRED); s->skill_creat += 20; if ((int)(s - sims) == player) sim_note("A CREATIVE DISH!"); }   // (CREATIVITY in the kitchen)
                       wants_event(s, W_EAT, 0);                   //  8 baking the birthday cake, 9 a slice of it)
                       if (s->act_var == 9) { sim_moodlet(s, ML_CAKE); cake_eaten(s); break; }
                       sim_moodlet(s, s->act_var == 5 ? ML_FINE_DINING : s->act_var == 2 ? ML_ATE_OUT : s->act_var == 1 ? ML_GOOD_MEAL : s->act_var == 4 ? ML_TREAT : ML_SNACKED);
@@ -1141,7 +1142,7 @@ static void born(void) {   // the baby comes home (or the adopted child)
 }
 static void start_family(Sim *s, Sim *o) {   // two grown-ups who get on: a baby on the way
     int who = (int)(o - sims), me = (int)(s - sims);
-    int chance = 30 + s->rel[who] + o->mood / 4;
+    int chance = 30 + s->rel[who] + o->mood / 4 + SKL(s->skill_char) * 2;
     if ((int)(look_rand() % 100) >= chance) { sim_say(o, "NOT YET..."); s->rel[who] -= 3; wants_fear(s, F_REJECT); audio_voice(VOICE_DISAGREE); return; }
     s->partner = o->uid; o->partner = s->uid;
     baby_par[0] = s->uid; baby_par[1] = o->uid; baby_kind = 0;
@@ -1156,7 +1157,7 @@ static void start_family(Sim *s, Sim *o) {   // two grown-ups who get on: a baby
 }
 static void go_steady(Sim *s, Sim *o) {   // two who are sweet on each other make it official (the family tree: partners)
     int who = (int)(o - sims), me = (int)(s - sims);
-    if ((int)(look_rand() % 100) >= 40 + s->rel[who] / 2 + o->mood / 4) { sim_say(o, "LET'S NOT RUSH IT"); s->rel[who] -= 3; wants_fear(s, F_REJECT); audio_voice(VOICE_DISAGREE); return; }
+    if ((int)(look_rand() % 100) >= 40 + s->rel[who] / 2 + o->mood / 4 + SKL(s->skill_char) * 2) { sim_say(o, "LET'S NOT RUSH IT"); s->rel[who] -= 3; wants_fear(s, F_REJECT); audio_voice(VOICE_DISAGREE); return; }
     s->partner = o->uid; o->partner = s->uid;
     sim_say(o, "YES! US, OFFICIALLY"); sim_moodlet(s, ML_LOVE); sim_moodlet(o, ML_LOVE); audio_voice(VOICE_FLIRT);
     char t[40]; snprintf(t, sizeof t, "GOING STEADY WITH %s", o->bore.first); sim_note(t);
@@ -1279,13 +1280,13 @@ static void clock_tick(void) {
         if (on && clock_min == from) { snprintf(b, sizeof b, "WORK NOW: %s", job_place); sim_note(b); job_worked = 0; }
         if (on && clock_min == to) {
             int len = to - from, w = MIN(job_worked, len), full = job_pay(), pay = 0;
-            if (w >= len * 55 / 100) { pay = full * w / len; if (w >= len * 95 / 100) pay += full / 5; job_days_good++; }
+            if (w >= len * 55 / 100) { pay = full * w / len; if (w >= len * 95 / 100) pay += full / 5; job_days_good++; pay = pay * (100 + SKL(sims[player].skill_char) * 2) / 100; }   // (a charmer gets the better deal)
             else if (w >= len / 4) pay = full * w / len;
             else job_strikes++;
             if (pay) { cash += pay; story_paid++; sprintf(b, "PAID $%d", pay); sim_note(b); wants_event(&sims[player], W_PAID, 0); sim_moodlet(&sims[player], ML_PAYDAY);
                        if (story_paid == 1) sim_note("THE ISLAND FERRY IS OPEN NOW!"); audio_voice(VOICE_YAHOO); }
             else { sim_note("NO PAY TODAY, SORRY"); wants_fear(&sims[player], F_BADDAY); }
-            if (job_days_good >= 3 && job_level < 5) { job_level++; job_days_good = 0; job_strikes = 0; snprintf(b, sizeof b, "PROMOTED: %s!", job_title()); sim_note(b);
+            if (job_days_good >= (SKL(sims[player].skill_char) >= 5 ? 2 : 3) && job_level < 5) { job_level++; job_days_good = 0; job_strikes = 0; snprintf(b, sizeof b, "PROMOTED: %s!", job_title()); sim_note(b);
                                                        wants_event(&sims[player], W_PROMO, 0); sim_moodlet(&sims[player], ML_PROMOTED); }
             if (job_strikes >= 3 && job_level > 0) { job_level--; job_strikes = 0; sim_note("OUCH. YOU GOT DEMOTED"); wants_fear(&sims[player], F_DEMOTED); }
         }
@@ -1294,7 +1295,8 @@ static void clock_tick(void) {
         clock_min = 0; clock_day = (clock_day + 1) % 7; day_count++;
         if (day_count % 10 == 0) { char sb_[40]; sprintf(sb_, "%s HAS COME!", sim_season_name(sim_season())); sim_note(sb_); }
         else if (day_count % 10 == 9) { char sb_[40]; sprintf(sb_, "TODAY: THE %s! 10 AM", sim_festival_name(sim_season())); sim_note(sb_); }
-        midnight_ages(); pop_midnight(); crime_midnight();                                    // (your household, and everyone else)
+        midnight_ages(); pop_midnight(); crime_midnight();
+        if (royalty) { char rb_[32]; cash += royalty; sprintf(rb_, "ROYALTIES: +$%d", royalty); sim_note(rb_); }                                    // (your household, and everyone else)
         if (job_none) sim_note(day_count & 1 ? "NO JOB, NO BILLS. THE PAPER HAS JOBS AT 6" : "STILL LOOKING FOR WORK? PHONE, JOBS");
         else cash -= BILLS;
         if (job_none) { }
@@ -1303,6 +1305,7 @@ static void clock_tick(void) {
     }
 }
 
+u8 art_n, novel; u16 art_q, royalty;   // CREATIVITY: paintings waiting to be sold (and their total quality), the novel in progress (0..100), the daily royalties
 u8 col_lvl, col_major, col_on, col_cls, col_gpa, col_study, col_g[3]; u16 astro_xp;   // COLLEGE: degrees (0 none .. 3 doctor), the major, enrolled, lectures, GPA, study points, the GPA of each degree; the stargazing xp
 static const char *const majNm[3] = { "SCIENCE", "ARTS", "BUSINESS" }, *const lvlNm[3] = { "BACHELOR", "MASTER", "DOCTOR" };
 static const int tuition[3] = { 400, 900, 1600 };
@@ -1374,14 +1377,18 @@ static void veh_drive(Sim *s, int dx, int dz) {   // a step in a vehicle: it tur
         if (veh_back) diff = 0; else turn_to(s, want, 150 + (ABS(diff) >> 4));
         int mag = SquareRoot0(dx * dx + dz * dz); if (mag > 4096) mag = 4096;
         int align = 4096 - ABS(diff) * 2; if (align < 0) align = 0;
-        int mult = VT[t].speed; if (VT[t].tank && veh_fuel[t] <= 0) mult = 1;
+        int mult = VT[t].speed; if (VT[t].tank && veh_fuel[t] <= 0) mult = 1; else if (veh_cond[t] <= 0) mult = 1; else if (veh_cond[t] < 25) mult = MAX(1, mult / 2);
         int sp = (((speed_of(s) * mult * mag) >> 12) * align) >> 12; if (veh_back) sp /= 2;
         int x0 = s->x, z0 = s->z;
         if (sp) walk(s, (isin(s->yaw) * (veh_back ? -sp : sp)) >> 12, -((icos(s->yaw) * (veh_back ? -sp : sp)) >> 12));
         int moved = ABS(s->x - x0) + ABS(s->z - z0);
         veh_wph = (veh_wph + moved * 18) & 4095;
         veh_odo += moved;
-        while (veh_odo >= 64) { veh_odo -= 64; if (VT[t].tank && veh_fuel[t] > 0) veh_fuel[t]--; }
+        while (veh_odo >= 64) { veh_odo -= 64;
+            if (VT[t].tank && veh_fuel[t] > 0 && (veh_cond[t] < 40 || (int)(look_rand() % 100) >= SKL(s->skill_mech) * 3)) veh_fuel[t]--;   // (a tinkerer sips the fuel)
+            if (++veh_wacc >= 24 + SKL(s->skill_mech) * 6) { veh_wacc = 0; if (veh_cond[t] > 0) { veh_cond[t]--;
+                if (veh_cond[t] == 24) { sim_note("THE ENGINE RATTLES. FIX IT SOON"); audio_voice(VOICE_GROAN); }
+                else if (veh_cond[t] == 0) { sim_note("BREAKDOWN! FIX IT AT A PUMP"); audio_voice(VOICE_GROAN); } } } }
         if (VT[t].tank) {
             int pct = veh_fuel[t] * 100 / (VT[t].tank * 4);
             if (veh_fuel[t] <= 0 && veh_lowfuel < 2) { veh_lowfuel = 2; sim_note("OUT OF FUEL! FIND A GAS STATION"); audio_voice(VOICE_GROAN); }
@@ -1401,7 +1408,7 @@ static void veh_drive(Sim *s, int dx, int dz) {   // a step in a vehicle: it tur
 const char *veh_hud(void) {
     static char b[32]; if (!veh_on) return "";
     int t = veh_on - 1;
-    if (VT[t].tank) snprintf(b, sizeof b, "%s  FUEL %d%%", VT[t].nm, veh_fuel[t] * 100 / (VT[t].tank * 4)); else snprintf(b, sizeof b, "%s", VT[t].nm);
+    if (VT[t].tank) snprintf(b, sizeof b, "%s  FUEL %d%% CAR %d%%", VT[t].nm, veh_fuel[t] * 100 / (VT[t].tank * 4), veh_cond[t]); else snprintf(b, sizeof b, "%s", VT[t].nm);
     return b;
 }
 static int veh_mount(Sim *s, int t) {   // 1: you are on it
@@ -1483,7 +1490,7 @@ static int front_tile(const Sim *s, int *mx, int *my) {
 }
 static int usable_at(int tx, int ty, char c) {   // something X does something with
     if (action_for(c) != ACT_NONE) return 1;
-    if ((u8)c >= 0xBE && (u8)c <= 0xD9) return 1;      // (the BOREAGOTCHI! pack's things)
+    if ((u8)c >= 0xBE && (u8)c <= 0xDA) return 1;      // (the BOREAGOTCHI! pack's things)
     if (c == '8') return world_zone == ZONE_CITY;      // a FOR SALE sign
     if (c == CH_RAFT) return 1;
     if (c == 'B') return !has_board;                   // a skateboard on the floor: pick it up
@@ -1569,7 +1576,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
+       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_PAINT, PC_SELLART, PC_WRITE, PC_DIYFIX, PC_MECHFIX, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1650,6 +1657,7 @@ static int sim_pie_open_(char opt[8][16]) {
         case 0xD3: case 0xD4: case 0xD5: case 0xD6: case 0xD7: { static const char *const sn[5] = { "STARGAZE: SMALL SCOPE", "STARGAZE: HOBBY SCOPE", "STARGAZE: RESEARCH SCOPE", "STARGAZE: OBSERVATORY", "STARGAZE: RADIO ARRAY" }; OPT(sn[(u8)c - 0xD3], PC_SCOPE0 + ((u8)c - 0xD3)) act = ACT_NONE; break; }
         case 0xD8: OPT("ADMIRE THE ROCKET", PC_ADMIRE) act = ACT_NONE; break;
         case 0xD9: OPT("MISSION CONTROL", PC_SPACE) OPT("MY RECORD", PC_REC) act = ACT_NONE; break;
+        case 0xDA: OPT("PAINT A PICTURE", PC_PAINT) act = ACT_NONE; break;
     }
     if (c == CH_CAKE) {   // the birthday cake: the candles (if there is a birthday), then slices
         if (bday_one() >= 0) OPT("BLOW CANDLES", 30)
@@ -1683,7 +1691,7 @@ static int sim_pie_open_(char opt[8][16]) {
         case ACT_TRAVEL: if (c == '+' && world_zone == ZONE_CITY) { OPT("BUS TO A TOWN", PC_BUS) OPT("TO THE COUNTRY, ISLAND", 0) OPT("DAY PASS $10", PC_PASS1) OPT("WEEK PASS $30", PC_PASS7) OPT("MONTH PASS $90", PC_PASS30) } else OPT(act_hint(act, c), 0) break;
         case ACT_STAIRS: OPT("GO UP", 0) break;
         case ACT_FUN: if (c == '[') {   // the COMPUTER (borrowed from BORE on the GBA): the job board, a paid gig, the web
-                          OPT("PLAY A GAME", 0) OPT("JOB BOARD", PC_JOBBOARD) OPT("SURF THE WEB", PC_WEB)OPT("COOKING CLASS ONLINE", PC_COOKNET) OPT("CHAT ONLINE", PC_CHATNET)
+                          OPT("PLAY A GAME", 0) OPT("JOB BOARD", PC_JOBBOARD) OPT("SURF THE WEB", PC_WEB) OPT("WRITE A NOVEL", PC_WRITE)OPT("COOKING CLASS ONLINE", PC_COOKNET) OPT("CHAT ONLINE", PC_CHATNET)
                           if (s->bore.stage >= AG_TEEN) OPT("FREELANCE GIG", PC_GIG) break; }
                       if (c == 'R' || c == 'A' || c == 'j') {   // a radio: the stations
                           for (int k = 0; k < audio_station_count(); k++) OPT(audio_station_name(k), 10 + k)
@@ -1727,11 +1735,12 @@ static int sim_pie_open_(char opt[8][16]) {
         case LOT_RESTAURANT: if ((c == 'y' || c == 't' || c == 'h') && pie_n < 8) OPT("FINE DINING $40", PC_DINE) break;
         case LOT_CLINIC: if (c == 'y') OPT("A CHECKUP $30", PC_CHECKUP) break;
         case LOT_SPA: if (c == 'S') OPT("A MASSAGE $50", PC_MASSAGE) else if (c == '>') OPT("SOAK $15", PC_SOAK) break;
-        case LOT_GALLERY: if (c == ')') OPT("ADMIRE THE ART", PC_ADMIRE) else if (c == 'y') OPT("A PAINTING $300", PC_PAINTING) break;
+        case LOT_GALLERY: if (c == ')') OPT("ADMIRE THE ART", PC_ADMIRE) else if (c == 'y') { OPT("A PAINTING $300", PC_PAINTING) if (art_n > 0) OPT("SELL YOUR ART", PC_SELLART) } break;
         case LOT_GAS: case LOT_CONV:
             if (c == '\x82') {                                   // a pump: fill the tank of what you drive (or of the last thing you did)
                 int t = veh_on ? veh_on - 1 : veh_sel; char b_[16];
-                if (((veh_own >> t) & 1) && VT[t].tank) { int q = VT[t].tank * 4 - veh_fuel[t]; if (q <= 0) OPT("TANK IS FULL", 0) else { snprintf(b_, sizeof b_, "FILL UP $%d", MAX(2, (q * 2 + 399) / 400)); OPT(b_, PC_FUEL) } }
+                if (((veh_own >> t) & 1) && VT[t].tank) { int q = VT[t].tank * 4 - veh_fuel[t]; if (q <= 0) OPT("TANK IS FULL", 0) else { snprintf(b_, sizeof b_, "FILL UP $%d", MAX(2, (q * 2 + 399) / 400)); OPT(b_, PC_FUEL) }
+                    if (veh_cond[t] < 100) { OPT("FIX IT YOURSELF", PC_DIYFIX) snprintf(b_, sizeof b_, "MECHANIC $%d", (100 - veh_cond[t]) * VT[t].price / 250 + 5); OPT(b_, PC_MECHFIX) } }
                 else OPT("WHAT IS IT?", 37)
             } else if (c == 'y' || c == 'I') {
                 OPT("A SNACK $4", PC_CSNACK) OPT("A DRINK $3", PC_CDRINK)
@@ -1779,6 +1788,7 @@ static void social(Sim *s, Sim *o, int move) {   // a social move: the other Bor
     s->talk_to = who; o->talk_to = me; o->path_n = 0;
 }
 static int pay(int n) {
+    { int d = SKL(sims[player].skill_char) * 2; if (d && n > 5) n = n * (100 - d) / 100; }   // (CHARISMA: a charmer haggles: up to 20% off)
     if (cash < n) { char b[32]; sprintf(b, "THAT IS $%d", n); sim_note(b); audio_voice(VOICE_NAH); return 0; }
     cash -= n; return 1;
 }
@@ -1878,11 +1888,17 @@ static void place_do(Sim *s, int code) {
         case PC_FUEL: { int t = veh_on ? veh_on - 1 : veh_sel; int q = VT[t].tank * 4 - veh_fuel[t], cost = MAX(2, (q * 2 + 399) / 400);
                         if (q <= 0) { sim_note("THE TANK IS FULL"); break; }
                         if (!pay(cost)) return; veh_fuel[t] = VT[t].tank * 4; veh_lowfuel = 0; shopped(s, "FILLED UP", ML_RETAIL); } break;
+        case PC_DIYFIX: { int t = veh_on ? veh_on - 1 : veh_sel, lv = SKL(s->skill_mech), miss = 100 - veh_cond[t], parts = miss * VT[t].price / 600 * (100 - lv * 7) / 100 + 2;
+            if (miss <= 0) { sim_note("IT RUNS FINE"); break; }
+            if (!pay(parts)) return; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 300; s->act_var = 7;
+            if ((int)(look_rand() % 100) < 38 - lv * 4) { sim_note("YOU MAKE IT WORSE. OOPS"); veh_cond[t] = (u8)MAX(0, veh_cond[t] - 8); s->skill_mech += 25; ; }
+            else { int g = 25 + lv * 7; veh_cond[t] = (u8)MIN(100, veh_cond[t] + g); s->skill_mech += 70; s->skill_logic += 8; sim_note("FIXED IT YOURSELF!"); if (lv >= 3) sim_moodlet(s, ML_PROUD); } break; }
+        case PC_MECHFIX: { int t = veh_on ? veh_on - 1 : veh_sel; if (!pay((100 - veh_cond[t]) * VT[t].price / 250 + 5)) return; veh_cond[t] = 100; s->skill_mech += 10; shopped(s, "FIXED UP", ML_RETAIL); break; }
         case PC_CSNACK: if (!pay(4)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 0; break;
         case PC_CDRINK: if (!pay(3)) return; begin_action(s, ACT_COFFEE, pie_mx, pie_my); s->act_var = 1; break;
         case PC_VEH0: case PC_VEH0 + 1: case PC_VEH0 + 2: case PC_VEH0 + 3: case PC_VEH0 + 4: case PC_VEH0 + 5: {
             int t = code - PC_VEH0; if (t < 0 || t >= VEH_N || ((veh_own >> t) & 1)) break;
-            if (!pay(VT[t].price)) return; veh_own |= 1 << t; veh_fuel[t] = VT[t].tank * 4; veh_sel = t;
+            if (!pay(VT[t].price)) return; veh_own |= 1 << t; veh_fuel[t] = VT[t].tank * 4; veh_cond[t] = 100; veh_sel = t;
             { char b[40]; snprintf(b, sizeof b, "A NEW %s! O TO RIDE", VT[t].nm); shopped(s, b, ML_RETAIL); } } break;
         case PC_LATTE: if (!pay(5)) return; begin_action(s, ACT_COFFEE, pie_mx, pie_my); s->act_var = 1; break;
         case PC_CAKE: if (!pay(6)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 4; s->act_t = 150; break;
@@ -1902,8 +1918,26 @@ static void place_do(Sim *s, int code) {
         case PC_MASSAGE: if (!pay(50)) return; begin_action(s, ACT_SLEEP, pie_mx, pie_my); s->act_var = 2; s->act_t = 300; break;
         case PC_SOAK: if (!pay(15)) return; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 0; break;
         case PC_PRAC0: case PC_PRAC0 + 1: case PC_PRAC0 + 2: case PC_PRAC0 + 3: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = (u8)(8 + (code - PC_PRAC0)); s->act_t = 300; sim_say(s, "FROM THE TOP!"); break;
-        case PC_STEAL: { int v = 40 + (int)(look_rand() % 80); if ((int)(look_rand() % 100) < 45) { cash += v; char b_[40]; sprintf(b_, "SHOPLIFTED $%d WORTH. RUN!", v); sim_note(b_); sim_say(s, "NOBODY SAW"); sim_crime(CR_THEFT, 8); }   // (unseen: but a camera may have)
+        case PC_STEAL: { int v = 40 + (int)(look_rand() % 80); if ((int)(look_rand() % 100) < 45 + SKL(sims[player].skill_logic) * 3) { cash += v; char b_[40]; sprintf(b_, "SHOPLIFTED $%d WORTH. RUN!", v); sim_note(b_); sim_say(s, "NOBODY SAW"); sim_crime(CR_THEFT, 8); }   // (unseen: but a camera may have)
                        else { sim_say(s, "OH NO"); sim_note("CAUGHT SHOPLIFTING!"); sim_crime(CR_THEFT, 40); sim_arrest(1); } } break;
+        case PC_PAINT: { char b_[48]; int lv = SKL(s->skill_creat);
+            if (art_n >= 9) { sim_note("NO ROOM FOR MORE: SELL SOME AT A GALLERY"); audio_voice(VOICE_NAH); return; }
+            if ((s->need[N_REST] >> 10) < 15) { sim_note("TOO TIRED TO PAINT"); audio_voice(VOICE_NAH); return; }
+            begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 7; s->act_t = 360; s->need[N_REST] = MAX(0, s->need[N_REST] - (6 << 10));
+            { int q = 18 + lv * 8 + (int)(look_rand() % 26); art_n++; art_q = (u16)(art_q + q); s->skill_creat += 45;
+              snprintf(b_, sizeof b_, q > 80 ? "A FINE PAINTING! QUALITY %d" : "YOU PAINT A PICTURE: QUALITY %d", q); sim_note(b_);
+              if ((int)(look_rand() % 100) < 20 + lv * 6) { sim_moodlet(s, ML_INSPIRED); sim_note("YOU FEEL INSPIRED"); } } break; }
+        case PC_SELLART: { char b_[48]; if (art_n <= 0) { sim_note("NO PAINTINGS TO SELL"); return; }
+            int avg = art_q / art_n, price = 20 + avg * 3, lv = SKL(s->skill_creat); price += price * SKL(s->skill_char) * 3 / 100;
+            if (lv >= 7 && (int)(look_rand() % 100) < 10) { price += 1500; sim_note("A COLLECTOR CALLS IT A MASTERPIECE!"); sim_moodlet(s, ML_PROUD); }
+            cash += price; art_n--; art_q = (u16)(art_q > avg ? art_q - avg : 0); s->skill_char += 8; snprintf(b_, sizeof b_, "SOLD A PAINTING: +$%d", price); sim_note(b_); audio_voice(VOICE_YAHOO); break; }
+        case PC_WRITE: { char b_[48]; int lv = SKL(s->skill_creat);
+            if ((s->need[N_REST] >> 10) < 20) { sim_note("TOO TIRED TO WRITE"); audio_voice(VOICE_NAH); return; }
+            begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 300; s->need[N_REST] = MAX(0, s->need[N_REST] - (8 << 10)); s->skill_creat += 25; s->skill_logic += 6;
+            novel = (u8)MIN(100, novel + 6 + lv * 2 + SKL(s->skill_logic) / 2);
+            if (novel >= 100) { int adv = 300 + lv * 200 + (int)(look_rand() % 300) + SKL(s->skill_char) * 40; cash += adv; novel = 0; royalty = (u16)MIN(300, royalty + 4 + lv * 3);
+                snprintf(b_, sizeof b_, "NOVEL PUBLISHED! +$%d", adv); sim_note(b_); sim_note("AND ROYALTIES EVERY DAY"); sim_moodlet(s, ML_PROUD); audio_voice(VOICE_WIN); }
+            else { snprintf(b_, sizeof b_, "THE NOVEL: %d%% WRITTEN", novel); sim_note(b_); } break; }
         case PC_SPACE: if (space_cert() < 1) { sim_note("NOT CERTIFIED: GREAT MARKS OR A DEGREE FIRST"); audio_voice(VOICE_NAH); return; } sim_want_space = 1; break;
         case PC_ENR0: case PC_ENR0 + 1: case PC_ENR0 + 2: case PC_ENR0 + 3: { char b_[48]; int nl = col_lvl;
             if (code == PC_ENR0 + 3) { if (col_lvl < 1 || col_lvl > 2) return; } else { if (col_lvl > 0) { sim_note("YOU ALREADY HAVE A DEGREE"); return; } col_major = (u8)(code - PC_ENR0); }
@@ -2147,7 +2181,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
     sv_u8(phone_tier); sv_u8(handheld);   // (version 10)
     sv_u8(job_none);   // (version 12)
     sv_u16((u16)arcade_tix); sv_u16((u16)fight_wins); sv_u8((u8)fight_champ); sv_u8((u8)fight_best);   // (version 15)
-    gotchi_save(); sv_u16(dj_xp); sv_u8(dj_heat); band_save(); sv_u8(pet_kind); sv_u8(pet_col); sv_u8(pet_hun); sv_u16(bus_pass); sv_n(pet_dog.look, DL_N); sv_n(pet_dog.tr, DOG_TR); sv_str(pet_dog.name, DOG_NAME - 1); sv_u8(rap_sheet); sv_n(crime_n, CR_N); sv_u8(crime_evid); sv_n(space_tech, 3); sv_u16(space_done); sv_u8(col_lvl); sv_u8(col_major); sv_u8(col_on); sv_u8(col_cls); sv_u8(col_gpa); sv_u8(col_study); sv_n(col_g, 3); sv_u16(astro_xp);   // (version 21; the band: version 25)
+    gotchi_save(); sv_u16(dj_xp); sv_u8(dj_heat); band_save(); sv_u8(pet_kind); sv_u8(pet_col); sv_u8(pet_hun); sv_u16(bus_pass); sv_n(pet_dog.look, DL_N); sv_n(pet_dog.tr, DOG_TR); sv_str(pet_dog.name, DOG_NAME - 1); sv_u8(rap_sheet); sv_n(crime_n, CR_N); sv_u8(crime_evid); sv_n(space_tech, 3); sv_u16(space_done); sv_u8(col_lvl); sv_u8(col_major); sv_u8(col_on); sv_u8(col_cls); sv_u8(col_gpa); sv_u8(col_study); sv_n(col_g, 3); sv_u16(astro_xp); for (int t = 0; t < VEH_N; t++) sv_u8(veh_cond[t]); sv_u8(art_n); sv_u8(novel); sv_u16(art_q); sv_u16(royalty);   // (version 21; the band: version 25)
     sv_u8(veh_own); sv_u8(veh_sel); for (int t = 0; t < VEH_N; t++) sv_u16((u16)veh_fuel[t]); traffic_save();   // (version 18: the vehicles)
     realm_save();   // (version 15: KINGDOM MODE's realm)
     for (int i = 0; i < nsims; i++) {
@@ -2180,7 +2214,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     job_none = save_ver >= 12 ? ld_u8() & 1 : 0;   // (an older life keeps its job)
     if (save_ver >= 15) { arcade_tix = ld_u16(); fight_wins = ld_u16(); fight_champ = ld_u8() & 1; fight_best = ld_u8(); } else arcade_tix = fight_wins = fight_champ = fight_best = 0;
     gotchi_load(save_ver); if (save_ver >= 23) { dj_xp = ld_u16(); dj_heat = ld_u8(); } else { dj_xp = 0; dj_heat = 0; } band_load(save_ver); if (save_ver >= 27) { pet_kind = ld_u8() & 3; pet_col = ld_u8() % 6; pet_hun = ld_u8(); bus_pass = ld_u16(); if (save_ver >= 28) { ld_n(pet_dog.look, DL_N); ld_n(pet_dog.tr, DOG_TR); ld_str(pet_dog.name, DOG_NAME - 1); } else dog_random(&pet_dog, 1); if (save_ver >= 29) { rap_sheet = ld_u8(); ld_n(crime_n, CR_N); crime_evid = ld_u8(); if (save_ver >= 30) { ld_n(space_tech, 3); space_done = ld_u16(); } else { space_done = 0; memset(space_tech, 0, 3); }
-            if (save_ver >= 31) { col_lvl = ld_u8() & 3; col_major = ld_u8() % 3; col_on = ld_u8() & 1; col_cls = ld_u8(); col_gpa = ld_u8(); col_study = ld_u8(); ld_n(col_g, 3); astro_xp = ld_u16(); } else { col_lvl = col_major = col_on = col_cls = col_gpa = col_study = 0; memset(col_g, 0, 3); astro_xp = 0; } } else { rap_sheet = 0; memset(crime_n, 0, sizeof crime_n); crime_evid = 0; } } else { pet_kind = 0; pet_hun = 100; bus_pass = 0; } pet_zone = -1;
+            if (save_ver >= 31) { col_lvl = ld_u8() & 3; col_major = ld_u8() % 3; col_on = ld_u8() & 1; col_cls = ld_u8(); col_gpa = ld_u8(); col_study = ld_u8(); ld_n(col_g, 3); astro_xp = ld_u16(); for (int t = 0; t < VEH_N; t++) veh_cond[t] = 100; if (save_ver >= 33) { for (int t = 0; t < VEH_N; t++) veh_cond[t] = ld_u8(); art_n = ld_u8(); novel = ld_u8(); art_q = ld_u16(); royalty = ld_u16(); } else { art_n = novel = 0; art_q = royalty = 0; } } else { col_lvl = col_major = col_on = col_cls = col_gpa = col_study = 0; memset(col_g, 0, 3); astro_xp = 0; } } else { rap_sheet = 0; memset(crime_n, 0, sizeof crime_n); crime_evid = 0; } } else { pet_kind = 0; pet_hun = 100; bus_pass = 0; } pet_zone = -1;
     veh_on = 0; veh_odo = 0; veh_lowfuel = 0;
     if (save_ver >= 18) { veh_own = ld_u8() & ((1 << VEH_N) - 1); veh_sel = ld_u8() % VEH_N; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = ld_u16(); } else { veh_own = 0; veh_sel = 0; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = 0; }
     traffic_load(save_ver);

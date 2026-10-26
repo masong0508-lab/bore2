@@ -112,9 +112,10 @@ static void gig_end(void) {
     int aud = MIN((int)VEN[ven].cap, 5 + band.fans / 4 + band.fame * 3);
     gpay = VEN[ven].pay * gstars / 3; if (band.fame >= 400 && gpay) gpay += gpay / 4;   // (a rocket company pays a little extra once you are known)
     { int mg = 0; for (int i = 0; i < BAND_MAX; i++) if (band.m[i].kind && (band.m[i].role[0] == RL_MANAGER || band.m[i].role[1] == RL_MANAGER)) mg = 1; if (mg) gpay += gpay / 5; }
+    gpay += gpay * SKL(sims[player].skill_char) / 40;       // (a charismatic front person: the crowd pays up)
     if (band.pad && gpay) gpay += gpay / 10;                  // (the bus carries the gear: less hassle)
     if (tour) { gpay += gpay / 2; }                            // (on tour: the road pays well)
-    gfame = gstars ? gstars * (ven + 1) : -(ven + 1); gfans = gstars * aud / 20; if (tour) gfans *= 2;
+    gfame = gstars ? gstars * (ven + 1) : -(ven + 1); gfans = gstars * aud / 20; if (tour) gfans *= 2; gfans += gfans * SKL(sims[player].skill_creat) / 15;   // (songwriting: the fans come back)
     cash += gpay; { int f = (int)band.fame + gfame; band.fame = (u16)(f < 0 ? 0 : f > 9999 ? 9999 : f); int fn = band.fans + gfans; band.fans = (u16)(fn > 60000 ? 60000 : fn); }
     if (band.gigs < 250) band.gigs++;
     if (gstars >= 4) audio_voice(VOICE_YAHOO);

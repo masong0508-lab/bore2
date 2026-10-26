@@ -1236,6 +1236,7 @@ static void step_one(Cit *c, int i) {
             else if (body_free(c->x + mx, c->z, in)) { c->x += (s16)mx; moved_flag = 1; }
             else if (body_free(c->x, c->z + mz, in)) { c->z += (s16)mz; moved_flag = 1; }
         } else if (c->cop && !c->cd && rn(100) < (heat < 50 ? 60 : 30)) {   // the police try to cuff you first; the cooler you are, the likelier
+            if (rn(100) < (int)(SKL(sims[player].skill_char)) * 5 && crime_total() < 3) { sim_note("YOU TALK YOUR WAY OUT OF IT"); say(c, "...JUST A WARNING."); fam_calm(); fight_on = 0; heat = heat / 2; c->mode = CM_IDLE; c->t = 200; for (int k = 0; k < NCIT; k++) if (cits[k].mode == CM_CHASE || cits[k].mode == CM_STOP) { cits[k].mode = CM_IDLE; cits[k].t = 120; } break; }   // (CHARISMA)
             int how_ = crime_total() && heat < 50 ? 1 : 0; sim_note("UNDER ARREST!"); say(c, "YOU ARE UNDER ARREST."); fam_calm(); fight_on = 0; heat = 0; c->mode = CM_IDLE; c->t = 120;
             for (int k = 0; k < NCIT; k++) if (cits[k].mode == CM_CHASE || cits[k].mode == CM_STOP) { cits[k].mode = CM_IDLE; cits[k].t = 120; }
             sim_arrest(how_); audio_voice(VOICE_CRY);

@@ -6,6 +6,7 @@ static const IBox bxSpc3[4]={{0,0,8,8,0,6,{&q_white,&q_white,&q_white,&q_white,&
 static const IBox bxSpc4[4]={{3,3,5,5,0,10,{&q_grey,&q_grey,&q_grey,&q_grey,&q_grey}},{0,0,8,8,10,12,{&q_white,&q_white,&q_white,&q_white,&q_white}},{1,1,7,7,12,13,{&q_white,&q_white,&q_white,&q_white,&q_white}},{3,3,5,5,13,16,{&q_red,&q_red,&q_red,&q_red,&q_red}}};
 static const IBox bxSpc5[5]={{0,0,8,8,0,2,{&q_red,&q_red,&q_red,&q_red,&q_red}},{2,2,6,6,2,26,{&q_white,&q_white,&q_white,&q_white,&q_white}},{2,2,6,6,10,12,{&q_red,&q_red,&q_red,&q_red,&q_red}},{2,2,6,3,18,20,{&q_glass,&q_glass,&q_glass,&q_glass,&q_glass}},{3,3,5,5,26,30,{&q_red,&q_red,&q_red,&q_red,&q_red}}};
 static const IBox bxSpc6[5]={{0,1,8,6,0,5,{&q_dark,&q_dark,&q_dark,&q_dark,&q_dark}},{0,1,3,2,5,9,{&q_glass,&q_glass,&q_glass,&q_glass,&q_glass}},{3,1,6,2,5,9,{&q_blue,&q_blue,&q_blue,&q_blue,&q_blue}},{6,1,8,2,5,9,{&q_glass,&q_glass,&q_glass,&q_glass,&q_glass}},{1,3,7,5,5,6,{&q_grey,&q_grey,&q_grey,&q_grey,&q_grey}}};
+static const IBox bxSpc7[6]={{1,1,2,2,0,12,{&q_wood,&q_wood,&q_wood,&q_wood,&q_wood}},{6,1,7,2,0,12,{&q_wood,&q_wood,&q_wood,&q_wood,&q_wood}},{3,5,4,6,0,9,{&q_wood,&q_wood,&q_wood,&q_wood,&q_wood}},{1,2,7,3,5,12,{&q_white,&q_white,&q_white,&q_white,&q_white}},{2,2,4,3,7,9,{&q_red,&q_red,&q_red,&q_red,&q_red}},{4,2,6,3,8,10,{&q_blue,&q_blue,&q_blue,&q_blue,&q_blue}}};
 #define ITEMS_SPACE \
     { (char)0xD3, "SMALL TELESCOPE", bxSpc0, 3, 0, 0, F_ROT, 150 },   \
     { (char)0xD4, "HOBBY TELESCOPE", bxSpc1, 5, 0, 0, F_ROT, 700 },   \
@@ -14,4 +15,5 @@ static const IBox bxSpc6[5]={{0,1,8,6,0,5,{&q_dark,&q_dark,&q_dark,&q_dark,&q_da
     { (char)0xD7, "RADIO DISH ARRAY", bxSpc4, 4, 0, 0, F_ROT, 30000 },   \
     { (char)0xD8, "LAUNCH ROCKET", bxSpc5, 5, 0, 0, F_ROT, 5000 },   \
     { (char)0xD9, "MISSION CONSOLE", bxSpc6, 5, 0, 0, F_ROT, 800 },   \
+    { (char)0xDA, "EASEL", bxSpc7, 6, 0, 0, F_ROT, 120 },   \
 

@@ -20,10 +20,12 @@ static const char *const AHINT[A_N] = { "BODY SKILL UP. RESPECT UP.", "A FEW DOL
 static const char *const RNM[6] = { "APPEAL  $2500", "PLEAD FOR CLEMENCY", "ORDER THE LAST MEAL", "DIG FOR YOUR LIFE", "WRITE A LAST LETTER", "RUN FOR THE FENCE!" };
 static const char *const RHINT[6] = { "A LAWYER FIGHTS THE VERDICT.", "THE GOVERNOR MAY LISTEN.", "A GOOD MEAL. NOTHING MORE.", "THE PLAN GROWS. SO DOES HEAT.", "THEY WILL READ IT FOR YEARS.", "NOW OR NEVER." };
 // the lawyers: the state's free one (overworked), a cheap one (sometimes late), a private one, a shark, a dream team, and, rarely, a crooked one who fixes juries
-static const char *const LNM[6] = { "STATE APPOINTED  FREE", "CHEAP LAWYER  $150", "PRIVATE LAWYER  $600", "THE SHARK  $2500", "DREAM TEAM  $9000", "SLICK SAL  $4000 ?" };
-static const char *const LDESC[6] = { "FREE. OVERWORKED. MAY NOT EVEN READ YOUR FILE.", "CHEAP. SOMETIMES LATE. SOMETIMES DRUNK.", "BETTER ODDS. COSTS REAL MONEY.", "THE JURY FEARS THEM. SO DO THE DEBTS.", "A WHOLE FIRM. WINS NEARLY EVERYTHING.", "WINKS A LOT. KNOWS THE JURORS. NOT LEGAL." };
-static const int LQ[6] = { 1, 2, 3, 5, 8, 6 }, LCOST[6] = { 0, 150, 600, 2500, 9000, 4000 };
+static const char *const LNM[7] = { "STATE APPOINTED  FREE", "CHEAP LAWYER  $150", "PRIVATE LAWYER  $600", "THE SHARK  $2500", "DREAM TEAM  $9000", "SLICK SAL  $4000 ?", "DEFEND YOURSELF  FREE" };
+static const char *const LDESC[7] = { "FREE. OVERWORKED. MAY NOT EVEN READ YOUR FILE.", "CHEAP. SOMETIMES LATE. SOMETIMES DRUNK.", "BETTER ODDS. COSTS REAL MONEY.", "THE JURY FEARS THEM. SO DO THE DEBTS.", "A WHOLE FIRM. WINS NEARLY EVERYTHING.", "WINKS A LOT. KNOWS THE JURORS. NOT LEGAL.", "YOUR LOGIC AND CHARM IN COURT. RISKY, BUT FREE." };
+static const int LQ0[7] = { 1, 2, 3, 5, 8, 6, 1 }, LCOST[7] = { 0, 150, 600, 2500, 9000, 4000, 0 };
+#define LQ(i) ((i) == 6 ? 1 + (SKL(sims[player].skill_logic) + SKL(sims[player].skill_char)) / 3 : LQ0[i])   // (yourself: logic and charm)
 static int nl, corrupt;
+#define LID(i) ((i) < 5 ? (i) : (i) == 5 ? 6 : 5)   // (the list: five lawyers, yourself, then Sal if he turns up)
 static const char *const PNM[3] = { "PLEAD NOT GUILTY", "PLEAD GUILTY (A DEAL)", "BRIBE THE JUDGE  $1500" };
 static const char *const SLOT[3] = { "MORNING", "AFTERNOON", "EVENING" };
 static int phase, lawyer, plea, tstep, tT, verdict, framed, glt, cpts, evid0, def0, appeals, execd, cs, hasrow, sentence0, sentence, day, slot, sel, health, respect, heat, behav, plan, earned, solitary, anim, over, outcome, logn, tdays;
@@ -51,7 +53,7 @@ void prison_open(int arg) {
 #ifdef FORCE_CORRUPT
     corrupt = 1;
 #endif
-    nl = 5 + corrupt; plea = 0; tstep = 0; tT = 0; verdict = 0; appeals = 2; execd = 0; hasrow = 0;
+    nl = 6 + corrupt; plea = 0; tstep = 0; tT = 0; verdict = 0; appeals = 2; execd = 0; hasrow = 0;
     glt = crime_total() > 0; framed = !glt; cpts = crime_points(); evid0 = crime_evid; def0 = crime_def;
     if (framed) { crime_n[CR_ASSAULT] = 0; cpts = 5 + rnd(6); evid0 = 10 + rap_sheet * 6; strcpy(chg[0], "CHARGE: SUSPICIOUS BEHAVIOUR"); chg[1][0] = chg[2][0] = 0; }   // no crime on the books: a charge is found anyway
     else { int l = 0; for (int i = 0; i < CR_N && l < 3; i++) if (crime_n[i]) { sprintf(chg[l], "%s X%d", crime_nm[i], crime_n[i]); l++; } for (; l < 3; l++) chg[l][0] = 0; }
@@ -80,7 +82,7 @@ static void act(int a) {
     if (solitary > 0) { solitary--; say("SOLITARY. YOU STARE AT THE WALL."); health = clampv(health + 5); next_slot(); return; }
     if (a >= R_APPEAL) { switch (a) {
         case R_APPEAL: if (cash < 2500) { say("YOU CANNOT AFFORD A LAWYER."); return; } cash -= 2500; if (appeals > 0) appeals--;
-            if (rnd(100) < 22 + LQ[lawyer] * 9 + (framed ? 30 : 0) - evid0 / 4 + (def0 ? 8 : 0)) { say("APPEAL GRANTED! LIFE INSTEAD."); phase = P_CELL; sentence = 20; day = 0; slot = 0; sel = 0; execd = 0; build_menu(); return; } say("THE APPEAL IS DENIED."); break;
+            if (rnd(100) < 22 + LQ(lawyer) * 9 + (framed ? 30 : 0) - evid0 / 4 + (def0 ? 8 : 0)) { say("APPEAL GRANTED! LIFE INSTEAD."); phase = P_CELL; sentence = 20; day = 0; slot = 0; sel = 0; execd = 0; build_menu(); return; } say("THE APPEAL IS DENIED."); break;
         case R_CLEM: if (rnd(100) < 3 + behav / 9 + (framed ? 12 : 0)) { say("THE GOVERNOR COMMUTES YOUR SENTENCE!"); phase = P_CELL; sentence = 25; day = 0; slot = 0; sel = 0; execd = 0; build_menu(); return; } say("THE GOVERNOR DOES NOT ANSWER."); break;
         case R_MEAL: sims[player].mood = MIN(100, sims[player].mood + 25); health = clampv(health + 10); say("A GREAT MEAL. YOU ALMOST SMILE."); break;
         case R_DIG: plan = clampv(plan + 14); heat = clampv(heat + 10); say("THE HOLE GROWS BEHIND THE POSTER."); if (heat > 70 && rnd(100) < 35) { say("A GUARD FINDS IT!"); plan /= 2; } break;
@@ -90,7 +92,7 @@ static void act(int a) {
     switch (a) {
     case A_BRIBE: if (cash < 300) { say("YOU CANNOT AFFORD IT."); return; } cash -= 300; if (rnd(100) < 60) { heat = clampv(heat - 35); behav = clampv(behav + 3); say("THE GUARD LOOKS AWAY. HEAT DOWN."); } else { behav = clampv(behav - 12); heat = clampv(heat + 10); say("THE GUARD TAKES IT AND TELLS."); } break;
     case A_APPEALC: if (cash < 1500) { say("YOU CANNOT AFFORD IT."); return; } cash -= 1500; appeals--;
-        if (rnd(100) < 20 + LQ[lawyer] * 8 + (framed ? 30 : 0) + (def0 ? 8 : 0) - evid0 / 5) { finish(6); return; } say("THE JUDGE REFUSES THE APPEAL."); break;
+        if (rnd(100) < 20 + LQ(lawyer) * 8 + (framed ? 30 : 0) + (def0 ? 8 : 0) - evid0 / 5) { finish(6); return; } say("THE JUDGE REFUSES THE APPEAL."); break;
     case A_WORK: sims[player].skill_body += 40; respect = clampv(respect + 3); health = clampv(health - 3); say("YOU PUMP IRON. THE YARD NOTICES."); break;
     case A_JOB: earned += 25; behav = clampv(behav + 5); heat = clampv(heat - 3); say("A SHIFT IN THE LAUNDRY: +$25."); break;
     case A_LIB: sims[player].skill_fun += 30; behav = clampv(behav + 3); say("QUIET HOURS IN THE LIBRARY."); break;
@@ -111,14 +113,14 @@ static void act(int a) {
 // ---- the court: charges, a lawyer, a plea, a trial, the verdict -----------------------------------------------------------------------------------
 static char tl[5][40]; static const char *vtxt;
 static void verdict_go(void) {   // the jury: what the other side has, what yours says, and the mood of twelve strangers
-    int fix = 0, bad = 0; if (lawyer == 0 && rnd(100) < 30) bad = 8; if (lawyer == 1 && rnd(100) < 25) bad = 10;   // (asleep, or late)
+    int fix = 0, bad = 0; if (lawyer == 6) { sims[player].skill_logic += 40; sims[player].skill_char += 40; } if (lawyer == 0 && rnd(100) < 30) bad = 8; if (lawyer == 1 && rnd(100) < 25) bad = 10;   // (asleep, or late)
     if (lawyer == 5) { int r = rnd(100); if (r < 70) fix = 60; else if (r < 88) { fix = -1; } }   // (the jury fixed: or caught at it)
-    int pros = glt ? 22 + evid0 / 2 + cpts / 2 : 12 + rap_sheet * 8, def = LQ[lawyer] * 9 + def0 * 9 + (arrest_how == 1 ? 8 : 0) - bad + (fix > 0 ? fix : 0), jury = rnd(45) - 22, score = pros + rap_sheet * 3 - def + jury;
+    int pros = glt ? 22 + evid0 / 2 + cpts / 2 : 12 + rap_sheet * 8, def = LQ(lawyer) * 9 + def0 * 9 + (arrest_how == 1 ? 8 : 0) - bad + (fix > 0 ? fix : 0), jury = rnd(45) - 22, score = pros + rap_sheet * 3 - def + jury;
     int guilty = plea == 1 || score > 18; if (fix < 0 && plea != 1) { guilty = 1; cpts += 15; }
     sentence0 = (cpts + (framed ? 8 : 0)) / 5 + rap_sheet; if (sentence0 < 1) sentence0 = 1; if (plea == 1) sentence0 = MAX(1, sentence0 * 55 / 100); if (sentence0 > 30) sentence0 = 30;
     verdict = 0;
     if (guilty) { verdict = 1; rap_sheet = MIN(9, rap_sheet + 1);
-        int capital = plea != 1 && (cpts >= 40 || (rap_sheet >= 3 && cpts >= 25)) && rnd(100) < 30 + rap_sheet * 8 - LQ[lawyer] * 5 - (arrest_how == 1 ? 8 : 0);
+        int capital = plea != 1 && (cpts >= 40 || (rap_sheet >= 3 && cpts >= 25)) && rnd(100) < 30 + rap_sheet * 8 - LQ(lawyer) * 5 - (arrest_how == 1 ? 8 : 0);
         if (capital) verdict = 2; }
     if (fix < 0 && plea != 1) strcpy(tl[3], "JURY TAMPERING! SAL IS CAUGHT. YOU TOO.");
     else if (fix > 0 && plea != 1) strcpy(tl[3], "THE JURY SMILES AT YOUR LAWYER. ODD.");
@@ -145,7 +147,7 @@ static int court_update(int pr) {
     if (phase == P_LAWYER || phase == P_PLEA) { int n = phase == P_LAWYER ? nl : 3;
         if (pr & PAD_UP) sel = (sel + n - 1) % n; if (pr & PAD_DOWN) sel = (sel + 1) % n;
         if (pr & PAD_CROSS) {
-            if (phase == P_LAWYER) { if (cash < LCOST[sel]) { say("NOT ENOUGH CASH."); return 1; } cash -= LCOST[sel]; lawyer = sel; if (sel == 5) say("SAL: LEAVE THE JURY TO ME."); phase = P_PLEA; sel = 0; }
+            if (phase == P_LAWYER) { if (cash < LCOST[LID(sel)]) { say("NOT ENOUGH CASH."); return 1; } cash -= LCOST[LID(sel)]; lawyer = LID(sel); if (lawyer == 5) say("SAL: LEAVE THE JURY TO ME."); phase = P_PLEA; sel = 0; }
             else { plea = sel;
                 if (sel == 2) { if (cash < 1500) { say("NOT ENOUGH CASH."); return 1; } cash -= 1500; if (rnd(100) < 40) { tstep = 9; strcpy(tl[4], "THE JUDGE DISMISSES THE CASE!"); vtxt = "DISMISSED"; verdict = 0; phase = P_VERDICT; plea = 0; return 1; }
                     say("THE JUDGE REPORTS YOU!"); sim_crime(CR_RESIST, 0); cpts += 10; plea = 0; }
@@ -178,8 +180,8 @@ static void court_draw(void) {
         ui_text(40, top + 2, 1, phase == P_LAWYER ? "CHOOSE A LAWYER" : "HOW DO YOU PLEAD?", UI_BLUE2);
         { int cnt = phase == P_LAWYER ? nl : 3, rh = phase == P_LAWYER ? 11 : 14;
           for (int i = 0; i < cnt; i++) { int y = top + 16 + i * rh; if (i == sel) ui_round(36, y - 2, 248, rh, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
-            ui_text(44, y, 1, phase == P_LAWYER ? LNM[i] : PNM[i], i == sel ? UI_BLUE2 : UI_INK); } }
-        ui_wrap(40, top + 86, 240, 2, phase == P_LAWYER ? LDESC[sel] :
+            ui_text(44, y, 1, phase == P_LAWYER ? LNM[LID(i)] : PNM[i], i == sel ? UI_BLUE2 : UI_INK); } }
+        ui_wrap(40, top + 86, 240, 2, phase == P_LAWYER ? LDESC[LID(sel)] :
             (sel == 0 ? "FIGHT IT. EVIDENCE, JURY AND LAWYER DECIDE." : sel == 1 ? "A SHORTER SENTENCE. NO DEATH PENALTY. NO TRIAL." : "40% IT WORKS. IF NOT, MORE TROUBLE."), UI_SOFT);
         sprintf(b, "CASH $%d", (int)cash); ui_text(280 - ui_tw(1, b), top + 2, 1, b, UI_GOODT);
         ui_text(40, top + 106, 1, logl[0], UI_RED); ui_hints(280, top + 108, "UP DOWN PICK|X DECIDE", 2); return; }

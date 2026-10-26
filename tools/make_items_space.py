@@ -18,6 +18,7 @@ items = [
  ('RADIO DISH ARRAY', 'F_ROT', 30000, [B(3,3,5,5,0,10,'grey'), B(0,0,8,8,10,12,'white'), B(1,1,7,7,12,13,'white'), B(3,3,5,5,13,16,'red')]),
  ('LAUNCH ROCKET', 'F_ROT', 5000, [B(0,0,8,8,0,2,'red'), B(2,2,6,6,2,26,'white'), B(2,2,6,6,10,12,'red'), B(2,2,6,3,18,20,'glass'), B(3,3,5,5,26,30,'red')]),
  ('MISSION CONSOLE', 'F_ROT', 800, [B(0,1,8,6,0,5,'dark'), B(0,1,3,2,5,9,'glass'), B(3,1,6,2,5,9,'blue'), B(6,1,8,2,5,9,'glass'), B(1,3,7,5,5,6,'grey')]),
+ ('EASEL', 'F_ROT', 120, [B(1,1,2,2,0,12,'wood'), B(6,1,7,2,0,12,'wood'), B(3,5,4,6,0,9,'wood'), B(1,2,7,3,5,12,'white'), B(2,2,4,3,7,9,'red'), B(4,2,6,3,8,10,'blue')]),
 ]
 defs = []
 for i, (nm, fl, cost, bx) in enumerate(items):

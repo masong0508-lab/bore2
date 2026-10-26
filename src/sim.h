@@ -29,6 +29,7 @@ typedef struct {
     char note[24]; int note_t;   // a floating note over the head
     int  hurt_t;
     int  skill_cook, skill_body, skill_fun;
+#define SKL(raw) (((raw) / 400) > 10 ? 10 : ((raw) / 400))   // a skill counter -> its level 0..10
     int  skill_logic, skill_char, skill_creat, skill_mech;   // LOGIC (reading, study, lectures, the stars), CHARISMA (chats), CREATIVITY (art, music), MECHANICAL (rockets, repairs)
     int  skill_band[5];     // SUPERSTAR: voice, guitar/bass, keys, drums/percussion, dancing (counters like the others: 400 a level, 0..10)
     int  dead;
@@ -80,6 +81,7 @@ void sim_say_to(Sim *s, const char *t);      // a word over their head
 int  sim_move_out(int i, char *where);   // a grown-up of the household moves to a home of their own in town (1: gone)   // the phone you own (0 none, 1 FLIP, 2 SMARTPHONE, 3 BORE PHONE MAX) and the handhelds (1 BOREBOY, 2 BOREBOY ADVANCE)
 // VEHICLES: bought at gas stations, ridden outdoors (O cycles the board and what you own), fuelled at the pumps
 enum { VEH_BIKE, VEH_SCOOTER, VEH_SEDAN, VEH_VAN, VEH_SPORTS, VEH_PICKUP, VEH_N };
+extern unsigned char veh_cond[VEH_N], art_n, novel; extern unsigned short art_q, royalty;
 extern int  veh_own, veh_on, veh_sel, veh_fuel[VEH_N], veh_wph;   // owned (a bit each), ridden (0 none, else type + 1), the last one, tanks (quarter tiles), the wheels' turn
 int  veh_seat(int t); int veh_colour(int t); const char *veh_hud(void);   // how high the driver sits; the paint; "SEDAN  FUEL 73%" for the screen
 int  sim_ride_after_board(void);     // stepped off the board: on to a vehicle you own (1) or onto your feet (0)
