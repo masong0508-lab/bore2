@@ -104,6 +104,7 @@ const char *sim_pie_title(void);           // whose / what menu it is
 int  sim_traits(const Sim *s, const char *out[3]);   // Sims 3 traits read off the personality: how many (up to 3)
 const char *sim_moodlet_name(int id);
 void sim_gotchi_mood(int simi, int kind);   // (gotchi.c) a moodlet from the BOREAGOTCHI toy
+extern int sim_want_bus, bus_pass, pet_kind, pet_col, pet_hun, pet_x, pet_z, pet_yaw, pet_ph, pet_zone;   // the bus pass (good while day_count < bus_pass) and the pet
 extern int sim_want_super, sim_want_party, sim_want_dj, dj_xp, dj_heat;   // (the DJ booth) its hidden skill, the set's heat
 void sim_dj_hit(int tip);
 extern int sim_want_party_unused;   // (the PARTY pack) 1: open the guest list

@@ -1458,6 +1458,11 @@ COLD static void gen_block(int wx, int wy) {
     if (b.set != 255 && b.terrain != BT_SEA) {           // in town: a pavement along the street
         gBox(ox + BM_LOT0, oy + BM_LOT0, ox + BM_BLK - 1, oy + BM_LOT0, FL_PAVING); gBox(ox + BM_LOT0, oy + BM_LOT0, ox + BM_LOT0, oy + BM_BLK - 1, FL_PAVING);
     }
+    if (b.set != 255 && b.terrain != BT_SEA && !mg) {   // bus stops along the pavement: the bigger the place, the more of them (a city has two on every street side, a town one on most, a village one here and there)
+        int k = bm_set(b.set)->kind, nr = k == ST_CITY ? 2 : k == ST_TOWN ? ((b.h & 3) != 0) : (((b.h >> 2) % 3) == 0), nc = k == ST_CITY ? 2 : k == ST_TOWN ? ((b.h & 12) != 0) : (((b.h >> 4) % 4) == 0);
+        if (rd & 1) for (int i = 0; i < nr; i++) gFace(ox + 7 + i * 6 + (int)((b.h >> (6 + i * 3)) % 3), oy + BM_LOT0, '+', 0);   // (the pole on the street side)
+        if (rd & 2) for (int i = 0; i < nc; i++) gFace(ox + BM_LOT0, oy + 7 + i * 6 + (int)((b.h >> (12 + i * 3)) % 3), '+', 1);
+    }
     if (mg && mpart) mega_zone(ox, oy, mpart, mkind, b.h);
     int mine = own.used && bx == own.bx && by == own.by;
     if (mine && !own.fresh) {                            // the family's own lot: as they left it

@@ -95,11 +95,12 @@ static int land_ok(int x, int y, int r) {        // most of the circle is land
 }
 static int place_set(int kind, int r, int cx, int cy, int spread) {
     if (nset >= NSET_MAX) return -1;
+    if (bm_gen >= 4) r = packed() ? MAX(3, r * 4 / 5) : MIN(60, r * 6 /5);   // (PACKED: compact and built up; ROOMY: sprawling towns with room between)
     for (int t = 0; t < 600; t++) {
         int x = cx + (int)(rr() % (u32)(2 * spread + 1)) - spread, y = cy + (int)(rr() % (u32)(2 * spread + 1)) - spread;
         if (x < 40 || y < 40 || x > BM_N - 40 || y > BM_N - 40) continue;
         int far = 1;
-        for (int i = 0; i < nset; i++) { int dx = x - sets[i].x, dy = y - sets[i].y, need = r + sets[i].r + (packed() ? 10 : 26);   // (open country between towns, not one town into the next)
+        for (int i = 0; i < nset; i++) { int dx = x - sets[i].x, dy = y - sets[i].y, need = r + sets[i].r + (packed() ? 3 : 44);   // (open country between towns, not one town into the next)
             if (dx * dx + dy * dy < need * need) { far = 0; break; } }
         if (!far || !land_ok(x, y, r)) continue;
         Settle *s = &sets[nset]; s->x = (u16)x; s->y = (u16)y; s->r = (u8)r; s->kind = (u8)kind;
@@ -219,6 +220,11 @@ static void bm_block0(int bx, int by, BInfo *b) {
         int pk = packed();
         const u8 *mix = s->kind == ST_VILLAGE ? (pk ? mixVilP : mixVil) : (s->kind == ST_CITY && q < 64) ? (pk ? mixCoreP : mixCore) : q < 170 ? (pk ? mixMidP : mixMid) : (pk ? mixOutP : mixOut);
         b->lot = (u8)pick(b->h >> 4, mix);
+        if (bm_gen >= 4) {   // PACKED fills its gaps with homes; ROOMY leaves green ones
+            unsigned g2 = (b->h >> 8) % 100u;
+            if (pk && (b->lot == LOT_PARK || b->lot == LOT_EMPTY || b->lot == LOT_WILD || b->lot == LOT_FARM) && g2 < 70) b->lot = (u8)(q < 170 ? (g2 < 35 ? LOT_APART : LOT_TOWN) : LOT_HOUSE);
+            else if (!pk && b->lot != LOT_TOWER && b->lot != LOT_OFFICE && g2 < 22) b->lot = (u8)(g2 < 14 ? LOT_PARK : LOT_EMPTY);
+        }
         if (bm_gen >= 4) {                                 // (worlds from now on) gas stations and corner stores on some empty lots and shop lots
             unsigned g = (b->h >> 20) % 100u;
             if (b->lot == LOT_EMPTY && g < 42) b->lot = (u8)(g < 24 ? LOT_GAS : LOT_CONV);
@@ -265,13 +271,13 @@ static int mega_kind(int gx, int gy, int si) {   // -1: not a group; else MK_ (a
     cgx = gx; cgy = gy; csi = si; ck = -1;
     const Settle *s = &sets[si]; if (s->kind == ST_VILLAGE) return ck;
     u32 h = bm_hash(gx, gy, wseed ^ 0x3E6Au);
-    if ((int)(h % 100u) >= (s->kind == ST_CITY ? 17 : 10)) return ck;
+    if ((int)(h % 100u) >= (s->kind == ST_CITY ? (packed() ? 11 : 26) : (packed() ? 6 : 16))) return ck;
     for (int k = 0; k < 4; k++) {
         int x = gx + (k & 1), y = gy + (k >> 1); BInfo t; bm_block0(x, y, &t);
         if (t.set != si || t.terrain == BT_SEA || landmark(s, x - s->x, y - s->y) >= 0 || river_at(x, y, si)) return ck;
     }
     int k = (int)((h >> 8) % 100u);
-    ck = s->kind == ST_CITY ? (k < 28 ? MK_PARK : k < 52 ? MK_MALL : k < 76 ? MK_PLAZA : MK_CAMPUS) : (k < 50 ? MK_PARK : MK_MALL);
+    ck = s->kind == ST_CITY ? (packed() ? (k < 8 ? MK_PARK : k < 40 ? MK_MALL : k < 68 ? MK_PLAZA : MK_CAMPUS) : (k < 50 ? MK_PARK : k < 66 ? MK_MALL : k < 82 ? MK_PLAZA : MK_CAMPUS)) : (k < 50 ? MK_PARK : MK_MALL);
     return ck;
 }
 void bm_block(int bx, int by, BInfo *b) {

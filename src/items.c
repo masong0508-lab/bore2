@@ -751,10 +751,51 @@ int items_hit(char ch, int rot, int along, int cu, int cv, int r) {
 }
 
 static int is_ramp_c(char c);
+// ---- the pet (a dog or a cat, about knee high) and the city bus ----
+static const u8 petCol[6][3] = { { 150, 100, 60 }, { 52, 48, 54 }, { 238, 234, 226 }, { 226, 140, 50 }, { 142, 142, 152 }, { 206, 172, 120 } };
+void items_draw_pet(int x, int z, int yaw, int y, int kind, int ci, int phase) {
+    int r = petCol[ci % 6][0], g = petCol[ci % 6][1], b = petCol[ci % 6][2], dk = 40;
+    VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, yaw & 4095); sk_k = 16;
+    int sw = (isin(phase & 4095) * 14) >> 12, wag = (isin((phase * 2) & 4095) * 10) >> 12;   // the legs swing; the tail wags
+    if (kind == 1) {   // a dog: a long body, a head with a snout and floppy ears, four legs, a wagging tail
+        sk_box(-24, 24, -74, -34, -50, 50, r, g, b);
+        sk_box(-22, 22, -100, -58, 40, 84, r, g, b); sk_box(-14, 14, -84, -62, 84, 104, r * 9 / 10, g * 9 / 10, b * 9 / 10); sk_box(-6, 6, -88, -80, 100, 108, dk, dk, dk);
+        sk_box(-30, -22, -104, -70, 46, 62, r * 7 / 10, g * 7 / 10, b * 7 / 10); sk_box(22, 30, -104, -70, 46, 62, r * 7 / 10, g * 7 / 10, b * 7 / 10);
+        sk_box(-16, -8, -96, -90, 80, 84, 20, 20, 24); sk_box(8, 16, -96, -90, 80, 84, 20, 20, 24);
+        sk_box(-20, -8, -34, 0, 24 + sw, 40 + sw, r * 8 / 10, g * 8 / 10, b * 8 / 10); sk_box(8, 20, -34, 0, 24 - sw, 40 - sw, r * 8 / 10, g * 8 / 10, b * 8 / 10);
+        sk_box(-20, -8, -34, 0, -40 - sw, -24 - sw, r * 8 / 10, g * 8 / 10, b * 8 / 10); sk_box(8, 20, -34, 0, -40 + sw, -24 + sw, r * 8 / 10, g * 8 / 10, b * 8 / 10);
+        sk_box(-4 + wag, 4 + wag, -92, -64, -66, -48, r, g, b);
+    } else {           // a cat: smaller, slim, pointed ears, a long upright tail
+        sk_box(-18, 18, -58, -30, -40, 40, r, g, b);
+        sk_box(-16, 16, -82, -50, 32, 64, r, g, b); sk_box(-14, -6, -94, -82, 36, 46, r, g, b); sk_box(6, 14, -94, -82, 36, 46, r, g, b);
+        sk_box(-12, -6, -72, -66, 62, 66, 140, 220, 120); sk_box(6, 12, -72, -66, 62, 66, 140, 220, 120); sk_box(-3, 3, -62, -58, 62, 68, 230, 150, 160);
+        sk_box(-14, -6, -30, 0, 20 + sw, 32 + sw, r * 8 / 10, g * 8 / 10, b * 8 / 10); sk_box(6, 14, -30, 0, 20 - sw, 32 - sw, r * 8 / 10, g * 8 / 10, b * 8 / 10);
+        sk_box(-14, -6, -30, 0, -32 - sw, -20 - sw, r * 8 / 10, g * 8 / 10, b * 8 / 10); sk_box(6, 14, -30, 0, -32 + sw, -20 + sw, r * 8 / 10, g * 8 / 10, b * 8 / 10);
+        sk_box(-3 + wag, 3 + wag, -96, -50, -50, -42, r, g, b); sk_box(-3 + wag, 3 + wag, -100, -90, -50, -42, r * 6 / 10, g * 6 / 10, b * 6 / 10);
+    }
+    gfx_set_identity();
+}
+void items_draw_bus(int x, int z, int yaw, int y) {   // the city bus: long, tall, blue and white, a row of windows, four wheels
+    VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, yaw & 4095); sk_k = 16;
+    int gl0 = 130, gl1 = 176, gl2 = 214;
+    veh_wheel(-114, -280, 36, 0); veh_wheel(114, -280, 36, 0); veh_wheel(-114, 260, 36, 0); veh_wheel(114, 260, 36, 0);
+    sk_box(-110, 110, -140, -40, -440, 440, 236, 238, 244);                                  // the body, white
+    sk_box(-111, 111, -70, -52, -440, 440, 40, 110, 200);                                    // a blue stripe
+    sk_box(-112, 112, -126, -88, -400, 380, gl0, gl1, gl2);                                  // the windows
+    for (int k = -4; k <= 4; k++) sk_box(-113, 113, -126, -88, k * 90 - 5, k * 90 + 5, 236, 238, 244);   // (the pillars between)
+    sk_box(-106, 106, -150, -140, -430, 430, 40, 110, 200);                                  // the roof
+    sk_box(-100, 100, -130, -70, 440, 448, gl0, gl1, gl2);                                   // the windscreen
+    sk_box(-70, 70, -138, -126, 440, 448, 255, 200, 60); sk_box(-96, -60, -56, -40, 440, 448, 255, 240, 160); sk_box(60, 96, -56, -40, 440, 448, 255, 240, 160);
+    sk_box(-96, -60, -56, -40, -448, -440, 220, 40, 40); sk_box(60, 96, -56, -40, -448, -440, 220, 40, 40);
+    gfx_set_identity();
+}
+int bus_here(int mx, int my) { extern int clock_min; return ((clock_min + mx * 7 + my * 13) % 20) < 4; }   // a bus stands at every stop for four minutes of each twenty
 void items_draw(char ch, int mx, int my, int rot, int along, int t) {
     if (ch == 'P') return;
     shade6_update(t);
     if (ch == '|') { stairs_item(mx, my, rot); return; }
+    if (ch == '+' && bus_here(mx, my)) {   // the bus is in: pulled up beside the stop
+        int u, v; rotPt(rot, 4, -4, &u, &v); items_draw_bus(mx * TILE + u * IUNIT, -(my * TILE + v * IUNIT), (1024 + rot * 1024) & 4095, 0); }
     if (ch == 'B') { skate_item(mx, my, rot); return; }                    // the SPAWN marker: where the Bore starts, nothing to see (in 3D the GBA's pad read as a figurine base)
     const ItemDef *d = def_of(ch);
     if (!d) return;

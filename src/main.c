@@ -141,6 +141,7 @@ static void confirm_open(const char *title, const char *body, void (*yes)(void))
     cf_title = title; strncpy(cf_body, body, sizeof cf_body - 1); cf_body[sizeof cf_body - 1] = 0; cf_yes = yes; cf_back = state; cf_sel = 1; cf_t = 0; state = ST_CONFIRM;
 }
 static void life_draw(void);
+static int map_bus, map_t;   // the map is the bus map (a stop on the street): $ a ride, and the wait, instead of the $20 taxi
 static void wo_name_for(u32 seed);   // (THE WORLDS: a set world's capital is named for it)
 static void worlds_open(void);
 static void worlds_go(u32 seed, int mode);
@@ -600,6 +601,7 @@ static void life_update(int steps) {
 #ifdef AUTO_FIGHT
     { static int af; if (++af == 40) sim_want_arcade = AUTO_FIGHT; }   // (test builds: straight to a cabinet)
 #endif
+    if (sim_want_bus) { sim_want_bus = 0; map_bus = 1; map_t = -1; state = ST_MAP; return; }   // (a bus stop: the bus map)
     if (sim_want_super) { sim_want_super = 0; if ((ovl = ovl_load("SUPER.OVL"))) { ovl->open(0); state = ST_SUPER; } return; }   // (SUPERSTAR: the band)
     if (sim_want_dj) { sim_want_dj = 0; if ((ovl = ovl_load("DJ.OVL"))) { ovl->open(0); state = ST_DJ; } return; }   // (the DJ booth: a file of its own on the disc)
     if (sim_want_party) { sim_want_party = 0; if ((ovl = ovl_load("PARTY.OVL"))) { ovl->open(0); state = ST_PARTY; } return; }   // (the PARTY pack: the guest list, a file of its own on the disc)
@@ -746,6 +748,12 @@ static void life_draw(void) {
 #ifdef AUTO_DAY
     { static int once; if (++once == 30) { day_count = AUTO_DAY; clock_min = 12 * 60; } }
 #endif
+#ifdef AUTO_PETBUS
+    { static int once2; if (++once2 == 40) { Sim *pl = &sims[player]; int px = sim_tile_x(pl), py = sim_tile_y(pl), put = 0; pet_kind = AUTO_PETBUS; pet_col = 3; bus_pass = day_count + 4;
+        for (int r = 2; r < 9 && !put; r++) for (int dy = -r; dy <= r && !put; dy++) for (int dx = -r; dx <= r && !put; dx++) { if (ABS(dx) != r && ABS(dy) != r) continue; int x = px + dx, y = py + dy;
+            if (x > 0 && y > 0 && x < MW && y < MH && lifeMap[y][x] == '.') { lifeMap[y][x] = '+'; wallMap[y][x] = 0x80 | (AUTO_PETBUS & 3); clock_min = 12 * 60 + (20 - (12 * 60 + x * 7 + y * 13) % 20) % 20; put = 1; } }
+        world_touched(); } }
+#endif
     Sim *s = &sims[player];
     gfx_set_fog(0, 0);                                   // (the title's fog stays on the title)
     camera_apply(s->x, -200 - s->lvl * WALL_FULL - (on_board ? board_lift : 0), s->z);   // (up with a rider in the air)
@@ -792,7 +800,7 @@ static void life_draw(void) {
     gfx_prim_count = 0;
     world_doors_reset(); for (int i = 0; i < nsims; i++) world_door_mark(sim_tile_x(&sims[i]), sim_tile_y(&sims[i])); citizens_door_marks();
     { int t0 = hb_now(); world_draw(sim_tile_x(s), sim_tile_y(s), frame, wall_view == 1 || (wall_view == 0 && cam_view != 2)); t_world = hb_now() - t0;   // (WALL VIEW: AUTO cuts the walls between you and the camera, but not in first person; CUT AWAY always; FULL WALLS never)
-      t0 = hb_now(); gfx_prim_count = 0; draw_sims(); ghost_draw(cam_yaw, frame); t_sims = hb_now() - t0; }
+      t0 = hb_now(); gfx_prim_count = 0; draw_sims(); if (pet_kind && pet_zone == world_zone) items_draw_pet(pet_x, pet_z, pet_yaw, -sims[player].lvl * WALL_FULL, pet_kind, pet_col, pet_ph); ghost_draw(cam_yaw, frame); t_sims = hb_now() - t0; }
     { int t0 = hb_now(); draw_bubbles(); t_bub = hb_now() - t0; }
     prims_last = gfx_prim_count;
     if (state != ST_OVER) { int t0 = hb_now(); hud_life(); t_hud = hb_now() - t0; }
@@ -863,7 +871,7 @@ static void travel_draw(void) {   // where to: the four places, each on a row wi
 // ---- SAN BOREAS: the map (and a taxi anywhere on it) ----
 // The map is a 128x128 picture of the whole state (8x8 blocks a pixel), made from the generator when it is opened and put
 // in the VRAM the people's sprites use (they are rendered again after).
-static int map_sel, map_t;
+static int map_sel;
 static void put_household(int px, int py) {     // everyone at home stands round (px, py)
     for (int i = 0; i < nsims; i++) {
         Sim *sm = &sims[i];
@@ -960,6 +968,11 @@ static void map_island_draw(void) {   // the island on a card: you, the camp, th
     ui_text(12, 218, 1, "THE CAMPFIRE: COOK, EAT, CRAFT", UI_SOFT);
     ui_hints(310, 215, "O BACK", 2);
 }
+static int bus_pass_ok(void) { return day_count < bus_pass; }
+static void bus_trip(const Settle *st, int *fare, int *mins) {   // the ride to a town: by distance. The wait for the bus (one every 20 minutes) is on top
+    int pbx = world_wbx + sim_tile_x(&sims[player]) / BM_BLK, pby = world_wby + sim_tile_y(&sims[player]) / BM_BLK, d = ABS(st->x - pbx) + ABS(st->y - pby);
+    *fare = bus_pass_ok() ? 0 : MIN(15, 3 + d / 40); *mins = 15 + MIN(150, d / 3) + ((clock_min % 20) < 4 ? 0 : 20 - clock_min % 20);
+}
 static void map_open(void) {
     if (world_zone == ZONE_ISLAND) { map_island_open(); return; }
     u16 *px = atlas_scratch();
@@ -992,8 +1005,15 @@ static void map_update(void) {
     int n = bm_nset();
     if (PRESSED(PAD_UP)) map_sel = (map_sel + n - 1) % n;
     if (PRESSED(PAD_DOWN)) map_sel = (map_sel + 1) % n;
-    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = BACK_TO(); return; }
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { map_bus = 0; state = BACK_TO(); return; }
     if (PRESSED(PAD_TRIANGLE)) { strcpy(map_nm, bm_set(map_sel)->name); name_open(map_nm, 17, "RENAME THIS TOWN", map_renamed); return; }
+    if (PRESSED(PAD_CROSS) && map_bus) {   // the bus: cheaper, slower; a pass rides free
+        int fa, mi; const Settle *bs = bm_set(map_sel); bus_trip(bs, &fa, &mi);
+        if (cash < fa) { char nb[40]; sprintf(nb, "THE FARE IS $%d", fa); sim_note(nb); audio_voice(VOICE_NAH); return; }
+        cash -= fa; clock_min += mi; map_bus = 0;
+        { char nb[48]; if (fa) sprintf(nb, "BUS TO %s: $%d, %d MIN", bs->name, fa, mi); else sprintf(nb, "BUS TO %s: PASS, %d MIN", bs->name, mi); sim_note(nb); }
+        taxi_to_block(bs->x, bs->y, -1, -1, bs->name); state = ST_LIFE; return;
+    }
     if (PRESSED(PAD_CROSS)) {
         if (cash < 20) { sim_note("A TAXI RIDE COSTS $20"); audio_voice(VOICE_NAH); return; }
         cash -= 20;
@@ -1009,7 +1029,11 @@ static void map_draw(void) {   // the state on a card: the map on the left (the 
     ui_backdrop();
     char b[48];
     int top = ui_window(4, 4, 312, 232, bm_state_name(), IC_PIN);
-    ui_badge(306 - ui_tw(1, "TAXI $20") - 10, 8, "TAXI $20", UI_WHITE, UI_BLUE2);
+    if (map_bus) { char bb[40]; int fa, mi; bus_trip(bm_set(map_sel), &fa, &mi);
+        if (fa) sprintf(bb, "BUS $%d, %d MIN", fa, mi); else sprintf(bb, "PASS, %d MIN", mi);
+        ui_badge(306 - ui_tw(1, bb) - 10, 8, bb, UI_GREEN, UI_WHITE);
+        if (bus_pass_ok()) { sprintf(bb, "PASS: %d DAYS LEFT", bus_pass - day_count); ui_badge(10, 8, bb, UI_AMBER, UI_WHITE); } }
+    else ui_badge(306 - ui_tw(1, "TAXI $20") - 10, 8, "TAXI $20", UI_WHITE, UI_BLUE2);
     const int MX = 9, MY = top, MS = 178;
     ui_round(MX - 2, MY - 2, MS + 4, MS + 4, 4, UI_LINE, UI_LINE, 0);
     gfx_sprite_c(MX, MY, MS, MS, getTPage(2, 0, 0, 256), 0, 0, 128, 128, 128, 128, 128);   // the picture (on the card: drawn with the 2D, not the scene)
@@ -1047,7 +1071,7 @@ static void map_draw(void) {   // the state on a card: the map on the left (the 
     sprintf(b, "%s, %d BLOCKS ACROSS", kn[st->kind % 3], st->r * 2 + 1);
     gfx_rect(10, 211, 300, 1, 200, 210, 222, 0);
     ui_text(12, 218, 1, b, UI_SOFT);
-    ui_hints(310, 215, "X TAXI|TRI RENAME|O BACK", 2);
+    ui_hints(310, 215, map_bus ? "X RIDE THE BUS|TRI RENAME|O BACK" : "X TAXI|TRI RENAME|O BACK", 2);
 }
 
 // ---- SAN BOREAS: the people (every household, who they are, where they are right now) ----

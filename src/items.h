@@ -11,6 +11,9 @@ int  items_ramp_at(int mx, int my, int lx, int lv);       // a ramp's surface he
 int  items_ramp_lip(int mx, int my, int *dir);            // this tile holds a run's lip: 1 (2 a quarter pipe's), *dir its way (0 N 1 W 2 S 3 E)
 int  items_ramp_rot(char c, int facing);
 void items_draw_vehicle(int x, int z, int yaw, int y, int type, int colour, int wheel_phase);   // a vehicle under the driver (VEH_ types: sim.h)
+void items_draw_pet(int x, int z, int yaw, int y, int kind, int colour, int phase);   // a dog (1) or a cat (2); the feet move with phase
+void items_draw_bus(int x, int z, int yaw, int y);
+int  bus_here(int mx, int my);                           // 1 while a bus is standing at the stop on that tile
 void items_draw_board(int x, int z, int yaw, int y, int roll, int pitch, int spin);   // the ridden board (turned by a flip)
 int  items_blocking(char ch);                            // 1: a wall of a thing you cannot walk through
 int  items_is_item(char ch);                             // 1: a placeable item letter
