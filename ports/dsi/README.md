@@ -84,3 +84,6 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 - Family items: Crib, Toy Box, Books, Rocker, plus per-stage item limits (shown in the shop).
 - Citizens walk the pavements by the clock, cars drive the roads; tap a citizen to talk; befriend and Invite Home. Births and the 2000-bore cap are counted together.
 - Fence posts replaced with a hedge line; polygon-budget cuts (lawn, dashes, level of detail).
+
+## D19 - Yard category
+- New Yard tab: Fence (turn it to run either way), Lamp Post, Hedge, Flowers. Place them anywhere on the plot; up to 96 items per lot (was 48), remembered per lot.

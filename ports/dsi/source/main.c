@@ -208,15 +208,16 @@ static void draw_lot(const BInfo *b, int yaw) {
 #define GN 13                  // the buildable plot: 13 x 13 cells, each 2 units
 enum { M_MAP, M_LIVE, M_BUY, M_BUILD, M_CAS, M_TITLE };
 typedef struct { const char *name; int price; u8 h; u16 col; u8 kind; } Item;   // kind: 0 box, 1 flat (rug), 2 plant
-static const Item ITEMS[6][4] = {
+static const Item ITEMS[7][4] = {
     { {"Chair", 80, 2, C15(24, 16, 8), 0}, {"Armchair", 450, 2, C15(10, 14, 24), 0}, {"Sofa", 900, 2, C15(24, 8, 8), 0}, {"Bench", 150, 1, C15(20, 14, 8), 0} },
     { {"Dining", 300, 2, C15(22, 15, 8), 0}, {"Desk", 220, 2, C15(18, 18, 20), 0}, {"Coffee", 120, 1, C15(16, 10, 6), 0}, {"Counter", 260, 3, C15(26, 26, 24), 0} },
     { {"TV", 600, 3, C15(3, 3, 4), 0}, {"Computer", 900, 2, C15(20, 20, 22), 0}, {"Stereo", 350, 2, C15(6, 6, 8), 0}, {"Fridge", 700, 5, C15(28, 28, 30), 0} },
     { {"Lamp", 60, 4, C15(31, 28, 14), 0}, {"Rug", 100, 0, C15(22, 8, 12), 1}, {"Plant", 40, 3, C15(5, 18, 6), 2}, {"Statue", 500, 4, C15(24, 24, 22), 0} },
     { {"Bed", 800, 2, C15(20, 24, 31), 0}, {"Bathtub", 650, 2, C15(28, 30, 31), 0}, {"Toilet", 250, 2, C15(30, 30, 30), 0}, {"Sink", 200, 3, C15(26, 28, 30), 0} },
-    { {"Crib", 400, 3, C15(28, 24, 16), 0}, {"Toy Box", 150, 2, C15(31, 20, 6), 0}, {"Books", 250, 4, C15(18, 12, 6), 0}, {"Rocker", 300, 2, C15(22, 14, 10), 0} } };
-static const u8 ITMASK[24] = { 62, 62, 62, 62, 62, 60, 62, 56, 62, 60, 62, 62, 63, 63, 63, 63, 62, 62, 62, 62, 3, 7, 60, 48 };   // which life stages may use each item (bit 0 baby .. bit 5 elder)
-static const char *const CATN[6] = { "Seats", "Tables", "Tech", "Deco", "Rooms", "Family" };
+    { {"Crib", 400, 3, C15(28, 24, 16), 0}, {"Toy Box", 150, 2, C15(31, 20, 6), 0}, {"Books", 250, 4, C15(18, 12, 6), 0}, {"Rocker", 300, 2, C15(22, 14, 10), 0} },
+    { {"Fence", 40, 2, C15(28, 26, 20), 0}, {"Lamp Post", 120, 6, C15(6, 6, 8), 0}, {"Hedge", 60, 2, C15(6, 18, 6), 0}, {"Flowers", 30, 0, C15(28, 10, 14), 1} } };
+static const u8 ITMASK[28] = { 62, 62, 62, 62, 62, 60, 62, 56, 62, 60, 62, 62, 63, 63, 63, 63, 62, 62, 62, 62, 3, 7, 60, 48, 63, 63, 63, 63 };   // which life stages may use each item (bit 0 baby .. bit 5 elder)
+static const char *const CATN[7] = { "Seat", "Table", "Tech", "Deco", "Room", "Kids", "Yard" };
 static const u16 FLOORC[5] = { C15(22, 16, 9), C15(26, 26, 24), C15(10, 16, 24), C15(14, 22, 12), C15(8, 8, 10) };
 static const u16 WALLC[5] = { C15(30, 28, 22), C15(28, 20, 16), C15(20, 24, 30), C15(30, 30, 30), C15(13, 8, 5) };   // 5 = a door
 static int mark_x = -1, mark_y, mark_t;
@@ -228,7 +229,7 @@ static int camx, camz, door_cx, door_cy;
 static int gframes, cam_on, cam_pan, cam_free, live_pitch = 4300, cam_deff = 9000, bb_yaw = 3000, bb_pitch = 3900, bb_dist = 12500, cam_lx, cam_ly, cam_drag;
 static void sim3d(int i, int yaw);
 typedef struct { u8 x, y, c, i, rot; } Obj;
-static Obj objs[48]; static int nobj, funds = 20000;
+static Obj objs[96]; static int nobj, funds = 20000;
 static u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1];     // floors (0 none, else 1..5), walls on the cell edges (0 none, else 1..4)
 static int mode = M_MAP, cat, pick = -1, pcx = 6, pcy = 6, prot, tool, pal, lot_bx = -1, lot_by = -1, cam = 3000, pitch = 3200, msg_t;
 static const char *msg = "";
@@ -299,7 +300,7 @@ static void lot_reset(void) {
         for (int n = 0; n < 6; n++) { m->need[n] = 90 - (n * 17 + i * 11) % 60; m->acc[n] = 0; } m->rel = 0; for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0; if (i) { m->skin = (u8)(i * 2); m->hair = (u8)(i); m->hcol = (u8)(i * 2); m->shirt = (u8)(i + 2); m->hair = (u8)(6 + i * 2); m->beard = (u8)(i == 1 ? 3 : 0); m->fc = (u8)i; } }
 }
 
-typedef struct { int bx, by, nobj, pcx, pcy, dcx, dcy; u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1]; Obj objs[48]; } LotSave;
+typedef struct { int bx, by, nobj, pcx, pcy, dcx, dcy; u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1]; Obj objs[96]; } LotSave;
 static LotSave lsv[6]; static int lsv_n, lsv_next;
 static void lot_save(void) { if (lot_bx < 0) return; int k = -1; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) k = i; if (k < 0) { if (lsv_n < 6) k = lsv_n++; else { k = lsv_next; lsv_next = (lsv_next + 1) % 6; } }
     LotSave *q = &lsv[k]; q->bx = lot_bx; q->by = lot_by; q->nobj = nobj; q->pcx = pcx; q->pcy = pcy; q->dcx = door_cx; q->dcy = door_cy; memcpy(q->flr, flr, sizeof flr); memcpy(q->hwl, hwl, sizeof hwl); memcpy(q->vwl, vwl, sizeof vwl); memcpy(q->objs, objs, sizeof objs); }
@@ -341,7 +342,7 @@ static void draw_ui(void) {
     if (msg_t > 0) text(70, 182, 1, C15(31, 20, 12), msg);
     { const char *cc[7] = { "<", ">", "^", "v", "+", "-", "Rst" }; for (int k = 0; k < 7; k++) { int cx = 164 + (k < 4 ? k * 22 : (k - 4) * 29), cy = k < 4 ? 164 : 178; rect(cx, cy, k < 4 ? 20 : 27, 12, C15(2, 4, 12)); rect(cx + 1, cy + 1, k < 4 ? 18 : 25, 10, C15(8, 16, 28)); text(cx + 4, cy + 2, 1, C15(31, 31, 31), cc[k]); } }
     if (mode == M_BUY && pick < 0) {
-        for (int i = 0; i < 6; i++) button(2 + i * 42, 20, 40, 14, CATN[i], C15(24, 14, 8), cat == i);
+        for (int i = 0; i < 7; i++) button(2 + i * 36, 20, 34, 14, CATN[i], C15(24, 14, 8), cat == i);
         for (int i = 0; i < 4; i++) { const Item *it = &ITEMS[cat][i]; int x = 4 + (i & 1) * 125, y = 42 + (i >> 1) * 64;
             rect(x, y, 120, 58, drag == 1 && drag_item == i ? C15(31, 31, 20) : C15(2, 2, 4)); rect(x + 2, y + 2, 116, 54, C15(10, 12, 18)); rect(x + 8, y + 8, 34, 34, it->col); rect(x + 12, y + 12, 26, 26, shade(it->col, 6));
             text(x + 48, y + 12, 1, C15(31, 31, 31), it->name); sprintf(t, "%d", it->price); text(x + 48, y + 28, 1, funds >= it->price ? C15(31, 31, 18) : C15(31, 10, 10), t);
@@ -384,7 +385,7 @@ static void ui_down(int tx, int ty) {
     last_tx = tx; last_ty = ty; drag = 0; drag_card = 0;
     for (int i = 0; i < 4; i++) if (hit(i * 64, 0, 62, 16, tx, ty)) { set_mode(i); pick = -1; return; }
     if (mode == M_BUY && pick < 0) {
-        for (int i = 0; i < 6; i++) if (hit(2 + i * 42, 20, 40, 14, tx, ty)) cat = i;
+        for (int i = 0; i < 7; i++) if (hit(2 + i * 36, 20, 34, 14, tx, ty)) cat = i;
         for (int i = 0; i < 4; i++) if (hit(4 + (i & 1) * 125, 42 + (i >> 1) * 64, 120, 58, tx, ty)) { if (funds >= ITEMS[cat][i].price) { drag = 1; drag_item = i; dsx = tx; dsy = ty; } else say("Not enough funds"); }
     } else if (mode == M_BUY) {
         int c = lot_touch(tx, ty);
@@ -418,7 +419,7 @@ static void ui_up(void) {
     drag = 0; drag_card = 0; move_obj = -1;
 }
 static int ob_x, ob_z, ob_s, ob_rot, ob_hs = 100;
-static const u8 HSC[24] = { 140, 140, 140, 140, 200, 200, 200, 200, 200, 200, 180, 200, 200, 100, 170, 200, 150, 200, 170, 200, 150, 100, 200, 150 };   // the cell being drawn: its corner, its size / 8, its rotation
+static const u8 HSC[28] = { 140, 140, 140, 140, 200, 200, 200, 200, 200, 200, 180, 200, 200, 100, 170, 200, 150, 200, 170, 200, 150, 100, 200, 150, 100, 200, 90, 100 };   // the cell being drawn: its corner, its size / 8, its rotation
 static void ob(int lx0, int lz0, int lx1, int lz1, int h0, int h1, u16 c) {   // a part in cell units (0..8, front = +z), heights in quarter-tiles
     int ax, az, bx2, bz;
     switch (ob_rot & 3) { case 1: ax = lz0; az = 80 - lx0; bx2 = lz1; bz = 80 - lx1; break; case 2: ax = 80 - lx0; az = 80 - lz0; bx2 = 80 - lx1; bz = 80 - lz1; break; case 3: ax = 80 - lz0; az = lx0; bx2 = 80 - lz1; bz = lx1; break; default: ax = lx0; az = lz0; bx2 = lx1; bz = lz1; }
@@ -428,7 +429,7 @@ static void ob(int lx0, int lz0, int lx1, int lz1, int h0, int h1, u16 c) {   //
 #define LC(r, g, b) C15(r, g, b)
 static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every item is a little model built from several boxes (coordinates 0..80 across the cell, heights in tenths of a quarter-tile)
     (void)ghost; int id = (int)(it - &ITEMS[0][0]); u16 c = it->col, d = shade(c, 6), l = shade(c, 10), wd = LC(16, 10, 5), dk = LC(3, 3, 4);
-    ob_x = tl(x * 2) + T / 6; ob_z = tl(y * 2) + T / 6; ob_s = (2 * T - T / 3) / 8; ob_rot = rot; ob_hs = id >= 0 && id < 24 ? HSC[id] : 100;
+    ob_x = tl(x * 2) + T / 6; ob_z = tl(y * 2) + T / 6; ob_s = (2 * T - T / 3) / 8; ob_rot = rot; ob_hs = id >= 0 && id < 28 ? HSC[id] : 100;
     if (!o_det || (mode == M_LIVE && (abs(ob_x - camx) + abs(ob_z - camz) > 3800))) { if (it->kind == 1) ob(0, 0, 80, 80, 0, 3, c); else ob(8, 8, 72, 72, 0, it->h * 10 + 6, c); return; }
     if (it->kind == 1) { ob(0, 0, 80, 80, 0, 2, d); ob(6, 6, 74, 74, 0, 4, c); ob(14, 14, 66, 66, 0, 5, l); return; }   // rug: border and centre
     if (o_shd) { u16 sh = LC(6, 5, 4); ob_x -= 6; ob_z -= 4; ob(0, 0, 80, 80, -3, 0, sh); ob_x += 6; ob_z += 4; }   // a soft dark shadow on the floor
@@ -455,6 +456,10 @@ static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every
     case 21: ob(10, 20, 70, 70, 0, 14, c); ob(8, 18, 72, 72, 14, 17, l); ob(20, 30, 34, 44, 17, 27, LC(31, 8, 8)); ob(40, 40, 54, 54, 17, 25, LC(8, 16, 31)); ob(44, 24, 58, 38, 17, 22, LC(8, 26, 8)); break;   // a toy box with blocks
     case 22: ob(6, 44, 74, 76, 0, 58, c); for (int r = 0; r < 3; r++) for (int k = 0; k < 5; k++) ob(10 + k * 12, 66, 20 + k * 12, 76, 6 + r * 17, 19 + r * 17, (r + k) & 1 ? LC(28, 8, 8) : (r + k) % 3 == 0 ? LC(8, 14, 28) : LC(10, 24, 10)); break;   // a bookshelf
     case 23: ob(12, 10, 68, 18, 0, 3, wd); ob(12, 62, 68, 70, 0, 3, wd); ob(18, 20, 62, 60, 8, 14, c); ob(18, 56, 62, 66, 14, 44, c); ob(14, 20, 22, 60, 14, 26, d); ob(58, 20, 66, 60, 14, 26, d); break;   // a rocking chair
+    case 24: for (int k = 0; k < 4; k++) ob(k * 24, 34, k * 24 + 8, 46, 0, 26, c); ob(0, 36, 80, 44, 8, 12, d); ob(0, 36, 80, 44, 17, 21, d); break;   // a picket fence along the cell: posts and two rails (turn it to run the other way)
+    case 25: ob(34, 34, 46, 46, 0, 4, d); ob(38, 38, 42, 42, 4, 72, c); ob(30, 30, 50, 50, 72, 80, LC(31, 28, 14)); break;   // a lamp post
+    case 26: ob(0, 20, 80, 60, 0, 22, c); ob(4, 24, 76, 56, 22, 26, l); break;   // a hedge
+    case 27: ob(0, 0, 80, 80, 0, 2, LC(8, 18, 6)); for (int k = 0; k < 5; k++) ob(8 + (k % 3) * 24, 8 + (k / 3) * 36 + (k & 1) * 6, 20 + (k % 3) * 24, 20 + (k / 3) * 36 + (k & 1) * 6, 2, 8, k & 1 ? c : LC(31, 28, 8)); break;   // a flower bed
     case 19: ob(32, 24, 48, 48, 0, 20, d); ob(10, 14, 70, 56, 20, 26, c); ob(18, 20, 62, 50, 26, 27, LC(8, 20, 30)); ob(36, 8, 44, 16, 26, 38, LC(20, 20, 22)); break;   // sink on a pedestal
     default: ob(4, 4, 76, 76, 0, it->h * 10, c); break; }
 }
@@ -604,13 +609,14 @@ static void draw_build(int yaw) {
 
 // ============ the Sims-style game: LIVE (status on the top screen, the lot and its icons on the bottom, touch to play) ============
 typedef struct { const char *lab; u8 need; u8 amt; u8 dur; } Act;
-static const Act ACT[6][4] = {
+static const Act ACT[7][4] = {
     { {"Sit", 2, 25, 90}, {"Relax", 2, 35, 120}, {"Nap", 2, 60, 150}, {"Sit", 2, 20, 90} },
     { {"Sit", 1, 10, 60}, {"Look", 1, 5, 40}, {"Look", 1, 5, 40}, {"Cook", 0, 35, 120} },
     { {"Watch TV", 1, 60, 150}, {"Play", 1, 50, 150}, {"Listen", 1, 35, 120}, {"Eat", 0, 70, 120} },
     { {"Look", 1, 3, 30}, {"Look", 1, 3, 30}, {"Water", 1, 10, 60}, {"Admire", 1, 15, 60} },
     { {"Sleep", 2, 90, 240}, {"Bathe", 5, 90, 180}, {"Use", 4, 95, 100}, {"Wash", 5, 30, 80} },
-    { {"Sleep", 2, 80, 200}, {"Play", 1, 60, 120}, {"Read", 1, 40, 120}, {"Rock", 2, 40, 150} } };
+    { {"Sleep", 2, 80, 200}, {"Play", 1, 60, 120}, {"Read", 1, 40, 120}, {"Rock", 2, 40, 150} },
+    { {"Look", 1, 3, 30}, {"Look", 1, 3, 30}, {"Look", 1, 3, 30}, {"Smell", 1, 10, 60} } };
 static const char *const NEEDN[6] = { "Hunger", "Fun", "Energy", "Social", "Bladder", "Hygiene" };
 static int menu_open, popup, popup_i, speed = 1, yaw_t = 4096, live_yaw = 4096, live_dist = 12000, camx, camz, cas_tab, cas_done, cas_stage, cas_page;
 static const u16 BG_L = C15(18, 25, 31), PAN = C15(8, 16, 28), PANB = C15(2, 7, 20), PANH = C15(5, 12, 26), TXT = C15(31, 31, 31);
