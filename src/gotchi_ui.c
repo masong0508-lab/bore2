@@ -142,9 +142,10 @@ static void draw_title(int x, int y, const char *s) { ui_text(x, y, 1, s, UI_INK
 static int box_list(int *idx) { int n = 0; for (int i = 0; i < nsims && n < GT_MAX; i++) idx[n++] = i; return n; }
 static void open_basket(int simi) { Toy *t = gotchi_toy(simi); if (!t) { say("NO BOREAGOTCHI YET. ELECTRONICS SHOPS SELL THEM"); return; } ti = (int)(t - gtoy); view = V_BASKET; bi = t->sel < GB_N ? t->sel : 0; msgT = 0; }
 static const u8 *art; static int art_page = -1;
+static u8 *art_buf;   // (room for one picture's sectors: the art is read a page at a time, so it needs no more than that)
 static void guide_open(int back) {
     u32 n; u8 *base = (u8 *)crowd_scratch(&n) + OVL_AT; int room = (int)n - OVL_AT - 53248;
-    art = 0; art_page = -1; if (room >= 8 * 72 * 54 * 2 && audio_cd_load("GOTCHI.ART", base + 53248, room)) art = base + 53248;
+    art = 0; art_page = -1; art_buf = 0; if (room >= 5 * 2048 && ovl_installed("GOTCHI.ART")) { art_buf = base + 53248; art = art_buf; }
     guidepage = 0; guideback = back; view = V_GUIDE;
 }
 void gotchi_open(int arg) {
@@ -449,7 +450,9 @@ static const GPage gp[NGP] = {
 };
 static void art_show(int i) {
     if (!art || i < 0 || i >= NIMG || art_page == i) return;
-    u16 *px = atlas_scratch(); const u16 *src = (const u16 *)(art + (u32)i * IW * IH * 2);
+    u32 off = (u32)i * IW * IH * 2, sec = off / 2048, cnt = (off % 2048 + IW * IH * 2 + 2047) / 2048;
+    if (!audio_cd_part("GOTCHI.ART", sec, (int)cnt, art_buf)) { art = 0; return; }
+    u16 *px = atlas_scratch(); const u16 *src = (const u16 *)(art_buf + off % 2048);
     for (int y = 0; y < IH; y++) for (int x = 0; x < 128; x++) px[y * 128 + x] = x < IW ? src[y * IW + x] : 0;
     atlas_vram_load(0, 256, 128, 128, px); art_page = i;
 }
