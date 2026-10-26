@@ -601,7 +601,9 @@ static void life_update(int steps) {
 #ifdef AUTO_FIGHT
     { static int af; if (++af == 40) sim_want_arcade = AUTO_FIGHT; }   // (test builds: straight to a cabinet)
 #endif
-    if (sim_want_dog) { sim_want_dog = 0; if ((ovl = ovl_load("DOG.OVL"))) { ovl->open(0); state = ST_DOG; } return; }   // (CREATE A DOG: its own file on the disc)
+    if (dog_want_name) { dog_want_name = 0; name_open(dog_edit.name, 12, "NAME YOUR DOG", 0); return; }   // (the dog maker's typing screen; then it comes back)
+    if (dog_resume && !sim_want_dog) { dog_resume = 0; sim_want_dog = 3; }
+    if (sim_want_dog) { int rs = sim_want_dog == 3; sim_want_dog = 0; if ((ovl = ovl_load("DOG.OVL"))) { ovl->open(rs); state = ST_DOG; } return; }   // (CREATE A DOG: its own file on the disc)
     if (sim_want_bus) { sim_want_bus = 0; map_bus = 1; map_t = -1; state = ST_MAP; return; }   // (a bus stop: the bus map)
     if (sim_want_super) { sim_want_super = 0; if ((ovl = ovl_load("SUPER.OVL"))) { ovl->open(0); state = ST_SUPER; } return; }   // (SUPERSTAR: the band)
     if (sim_want_dj) { sim_want_dj = 0; if ((ovl = ovl_load("DJ.OVL"))) { ovl->open(0); state = ST_DJ; } return; }   // (the DJ booth: a file of its own on the disc)

@@ -2,7 +2,7 @@
 #include "dog.h"
 #include <string.h>
 
-DogLook pet_dog;
+DogLook pet_dog, dog_edit; int dog_want_name, dog_resume, dog_tab, dog_row;
 const char *const dog_breed_name[DOG_NBREED] = { "LABRADOR", "CORGI", "GREYHOUND", "BULLDOG", "HUSKY", "DACHSHUND", "POODLE", "TERRIER", "SHEPHERD", "PUG", "SPANIEL", "MUTT" };
 const char *const dog_pal_name[DOG_NPAL] = { "BLACK", "DARK BROWN", "BROWN", "TAN", "CREAM", "WHITE", "GREY", "CHARCOAL", "SILVER", "GINGER", "RED", "GOLD", "YELLOW", "GREEN", "TEAL", "BLUE", "NAVY", "PURPLE", "PINK", "HOT PINK", "LIME", "SKY", "MAROON", "MINT" };
 static const u8 pal[DOG_NPAL][3] = { { 30, 28, 32 }, { 80, 50, 30 }, { 150, 100, 60 }, { 206, 172, 120 }, { 238, 225, 190 }, { 242, 242, 238 }, { 140, 140, 148 }, { 80, 80, 88 }, { 190, 196, 208 }, { 226, 140, 50 }, { 190, 50, 40 }, { 230, 190, 50 },

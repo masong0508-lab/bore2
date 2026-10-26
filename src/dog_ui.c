@@ -53,8 +53,9 @@ static void keep(void) {
     sim_note("YOUR NEW DOG FOLLOWS YOU HOME"); audio_voice(VOICE_YAHOO);
 }
 void dog_open(int arg) {
-    if (pet_kind == 1) ed = pet_dog; else dog_default(&ed);
-    tab = 0; row = 0; turn = 0; anim = 0; msg = 0; msgT = 0; nameix = 0;
+    if (arg == 1) { ed = dog_edit; tab = dog_tab; row = dog_row; }   // (back from the typing screen)
+    else if (pet_kind == 1) ed = pet_dog; else dog_default(&ed);
+    if (arg != 1) { tab = 0; row = 0; } turn = 0; anim = 0; msg = 0; msgT = 0; nameix = 0;
     for (int i = 0; i < 32; i++) if (!strcmp(NAMES[i], ed.name)) nameix = i;
 }
 static int tr_total(void) { int t = 0; for (int i = 0; i < DOG_TR; i++) t += ed.tr[i]; return t; }
@@ -78,6 +79,7 @@ int dog_update(int hd, int pr, int steps) {
     if (pr & PAD_SQUARE) { dog_random(&ed, (u32)anim * 7919u + (u32)turn); for (int i = 0; i < 32; i++) if (!strcmp(NAMES[i], ed.name)) nameix = i; audio_voice(VOICE_FINISHED); }
     if (pr & PAD_TRIANGLE) { dog_default(&ed); nameix = 0; }
     if ((pr & PAD_CROSS) && rows[row].kind == K_DONE) { keep(); return 0; }
+    if ((pr & PAD_CROSS) && rows[row].kind == K_NAME) { dog_edit = ed; dog_tab = tab; dog_row = row; dog_want_name = 1; dog_resume = 1; return 0; }   // the typing screen (main.c), then back here
     if (pr & PAD_START) { keep(); return 0; }
     if (pr & PAD_CIRCLE) return 0;
     return 1;
@@ -109,6 +111,6 @@ void dog_draw(void) {
     }
     if (tab == 4) { sprintf(b, "TRAIT POINTS %d / 30", tr_total()); ui_text(176, top + 7 * 19 + 2, 1, b, UI_SOFT); }
     if (msg) { int w = ui_tw(1, msg) + 16; ui_round(160 - w / 2, 190, w, 16, 6, UI_WHITE, UI_PANEL, 0); ui_textc(160, 195, 1, msg, UI_INK); }
-    ui_hints(6, 190, "L2 R2 TURN", 0); ui_hints(6, 204, "SQ RANDOM|TRI RESET", 0); ui_hints(6, 218, "L1 R1 TAB|START KEEP|O LEAVE", 0);
+    ui_hints(6, 190, "L2 R2 TURN", 0); ui_hints(6, 204, "SQ RANDOM|TRI RESET", 0); ui_hints(6, 218, tab == 4 ? "L1 R1 TAB|X TYPE NAME|START KEEP|O LEAVE" : "L1 R1 TAB|START KEEP|O LEAVE", 0);
 }
 __attribute__((section(".ovl_head"), used)) const OvlHead ovl_head = { OVL_MAGIC, dog_open, dog_update, dog_draw };
