@@ -1406,7 +1406,7 @@ void citizens_draw(void) {
     // the nearest few (by the eye) are drawn live in 3D; the rest are sprites of the very same model, re-rendered round the
     // crowd as the frame's time allows (the ones that turned, moved or are busy first)
     crowd_frame(); cit_n_vis = n;
-    static u8 tier[MAXDRAW]; static VECTOR pp[MAXDRAW];
+    static u8 tier[MAXDRAW]; static VECTOR pp[MAXDRAW]; const int mcap = crowd_capacity();
     static s16 need[MAXDRAW];
     for (int k = 0; k < n; k++) {
         Cit *c = &cits[order[k]];
@@ -1415,6 +1415,7 @@ void citizens_draw(void) {
         else if (c->mode == CM_SLEEP && c->sub == 1) vy = c->mem == 0 ? -items_height('S') + 40 : -24;   // in the bed, or on the floor
         else if (c->mode == CM_CHORE && c->sub == 1 && c->gait.sit) vy = -items_height((char)c->chore) / 2 + 10;   // on the sofa, on the loo
         setVector(&pp[k], c->x, vy - world_gh(c->x, c->z), c->z);   // (on the hills: up the slope they stand on)
+        if (k >= mcap && !(k < mcap + 2 && crowd_has(order[k]))) { need[k] = 0; tier[k] = 3; continue; }   // (more people than models fit: the nearest keep theirs, the far ones are drawn plain)
         int h = crowd_need_h(order[k], &pp[k], &c->gait);
         if (!h) { int sx, sy, z = gfx_proj(c->x, vy - 200, c->z, &sx, &sy); h = z ? (300 * 230) / z : 999; }   // (not measured yet: a guess)
         need[k] = (s16)h; tier[k] = 1;
@@ -1457,6 +1458,7 @@ void citizens_draw(void) {
     }
     for (int k = 0; k < n; k++) {
         Cit *c = &cits[order[k]];
+        if (tier[k] == 3) { PROF_BEGIN(); voxel_draw_lod(&c->lod, &pp[k], c->yaw, &c->gait); cit_n_lod++; PROF_END(6); }
         if (tier[k] == 1) {
             PROF_BEGIN();
             if (!crowd_sprite(order[k], &pp[k], c->yaw, &c->gait, 0)) { voxel_draw_lod(&c->lod, &pp[k], c->yaw, &c->gait); cit_n_lod++; } else cit_n_spr++;   // (no model yet)

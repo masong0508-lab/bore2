@@ -149,6 +149,11 @@ void crowd_init(void) {
     crowd_reset();
 }
 int crowd_has(int id) { return id >= 0 && id < CROWD_MAX && m_off[id] >= 0; }
+int crowd_models(void);
+int crowd_capacity(void) {   // how many people's models the arena holds at once (past that, the nearest are kept and the rest are drawn plain: nobody is made and let go every frame)
+    int n = crowd_models(), avg = n >= 4 ? (int)(ar_top / (u32)n) : 5800; avg = CLAMP(avg, 4000, 9000);
+    return (int)(ar_size * 85u / 100u) / avg;
+}
 int crowd_models(void) { int n = 0; for (int i = 0; i < CROWD_MAX; i++) n += m_off[i] >= 0; return n; }
 
 void crowd_drop_sprite(int id) { cell_free(id); }

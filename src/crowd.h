@@ -37,3 +37,5 @@ int  crowd_cells_used(void);       // (HUD) VRAM pixels the sprite cells hold
 void crowd_drop_sprite(int id);
 int  crowd_models(void);          // (HUD) models stored, sprites rendered this frame
 extern int crowd_renders, crowd_bytes, crowd_render_hb;
+
+int crowd_capacity(void);
