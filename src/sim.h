@@ -100,6 +100,11 @@ void sim_pie_do(int i);                    // the option picked
 const char *sim_pie_title(void);           // whose / what menu it is
 int  sim_traits(const Sim *s, const char *out[3]);   // Sims 3 traits read off the personality: how many (up to 3)
 const char *sim_moodlet_name(int id);
+void sim_gotchi_mood(int simi, int kind);   // (gotchi.c) a moodlet from the BOREAGOTCHI toy
+void sim_gotchi_fun(int simi, int amt);
+int  sim_gotchi_stat(int simi, int what);     // 0 mood, 1 food 0..100, 2 rest
+void sim_gotchi_food(int simi, int amt);
+void sim_gotchi_absorb(int simi);             // the toy has you: needs drain while you stare at it
 void sim_moodlet(Sim *s, int id);          // give a moodlet (re-giving refreshes it)
 void sim_proud(Sim *s);                    // the PROUD moodlet (the wants meter reaching platinum)
 int  sim_player_interact(void);            // X: use the thing in front, talk to the person in front. Returns 1 if something started

@@ -9,7 +9,7 @@ project(
 )
 
 psn00bsdk_add_executable(bore2 GPREL
-	src/main.c src/gfx.c src/atlas.c src/look.c src/voxel.c src/items.c src/world.c src/sim.c src/wants.c src/citizens.c src/audio.c src/font.c src/fmt.c src/pad.c src/mcard.c src/save.c src/crowd.c src/mem8.c src/bigmap.c src/pop.c src/far.c src/ui.c src/places.c src/home.c src/island.c src/nature.c src/story.c src/skate.c src/traffic.c src/ghost.c src/ovl.c src/realm_res.c src/arcade_res.c ${CMAKE_BINARY_DIR}/ovl_keep.c)
+	src/main.c src/gfx.c src/atlas.c src/look.c src/voxel.c src/items.c src/world.c src/sim.c src/wants.c src/citizens.c src/audio.c src/font.c src/fmt.c src/pad.c src/mcard.c src/save.c src/crowd.c src/mem8.c src/bigmap.c src/pop.c src/far.c src/ui.c src/places.c src/home.c src/island.c src/nature.c src/story.c src/skate.c src/traffic.c src/gotchi.c src/ghost.c src/ovl.c src/realm_res.c src/arcade_res.c ${CMAKE_BINARY_DIR}/ovl_keep.c)
 target_include_directories(bore2 PRIVATE src assets)
 if(NOT BORE_OPT)
 	set(BORE_OPT -O2)
@@ -17,7 +17,7 @@ endif()
 target_compile_options(bore2 PRIVATE -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-misleading-indentation -Wno-parentheses -Wno-strict-aliasing -fno-strict-aliasing)
 get_target_property(BORE_SRCS bore2 SOURCES)
 # the life's rules and the menus run a few times a frame at most: built small (-Os), which leaves more of the 2 MB for the world
-set(BORE_SMALL src/main.c src/pop.c src/wants.c src/places.c src/look.c src/audio.c src/home.c src/island.c src/nature.c src/save.c src/mcard.c src/sim.c src/story.c src/ui.c src/bigmap.c src/skate.c src/fmt.c src/font.c src/ovl.c src/realm_res.c src/arcade_res.c ${BORE_SMALL_EXTRA})
+set(BORE_SMALL src/main.c src/pop.c src/wants.c src/places.c src/look.c src/audio.c src/home.c src/island.c src/nature.c src/save.c src/mcard.c src/sim.c src/story.c src/ui.c src/bigmap.c src/skate.c src/gotchi.c src/fmt.c src/font.c src/ovl.c src/realm_res.c src/arcade_res.c ${BORE_SMALL_EXTRA})
 foreach(f ${BORE_SRCS})
 	if(f MATCHES "\\.c$")
 		if(f IN_LIST BORE_SMALL)
@@ -32,9 +32,11 @@ target_link_options(bore2 PRIVATE -Wl,--wrap=memcpy -Wl,--wrap=memmove)   # (src
 
 # THE OVERLAYS (src/ovl.h): KINGDOM MODE and the arcade are files on the disc, read into the crowd's arena when you walk into them.
 # Their code is built on its own (no gp: it is not linked with the game), then linked against bore2.elf's symbols at the arena's address.
-foreach(o kingdom arcade)
+foreach(o kingdom arcade gotchi)
 	if(o STREQUAL kingdom)
 		add_library(ovl_${o} OBJECT src/realm.c)
+	elseif(o STREQUAL gotchi)
+		add_library(ovl_${o} OBJECT src/gotchi_ui.c)
 	else()
 		add_library(ovl_${o} OBJECT src/arcade.c src/fight.c)
 	endif()
@@ -44,11 +46,11 @@ endforeach()
 # what the overlays use from the game: a table of it, so the game's linker keeps it
 add_custom_command(
 	OUTPUT  ${CMAKE_BINARY_DIR}/ovl_keep.c
-	COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/ovl.py keep ${CMAKE_BINARY_DIR}/ovl_keep.c ${TOOLCHAIN_NM} $<TARGET_OBJECTS:ovl_kingdom> $<TARGET_OBJECTS:ovl_arcade>
-	DEPENDS ovl_kingdom ovl_arcade $<TARGET_OBJECTS:ovl_kingdom> $<TARGET_OBJECTS:ovl_arcade> ${CMAKE_SOURCE_DIR}/tools/ovl.py
+	COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/ovl.py keep ${CMAKE_BINARY_DIR}/ovl_keep.c ${TOOLCHAIN_NM} $<TARGET_OBJECTS:ovl_kingdom> $<TARGET_OBJECTS:ovl_arcade> $<TARGET_OBJECTS:ovl_gotchi>
+	DEPENDS ovl_kingdom ovl_arcade ovl_gotchi $<TARGET_OBJECTS:ovl_kingdom> $<TARGET_OBJECTS:ovl_arcade> $<TARGET_OBJECTS:ovl_gotchi> ${CMAKE_SOURCE_DIR}/tools/ovl.py
 	COMMAND_EXPAND_LISTS
 )
-foreach(o kingdom arcade)
+foreach(o kingdom arcade gotchi)
 	string(TOUPPER ${o} O)
 	add_custom_command(
 		OUTPUT  ${CMAKE_BINARY_DIR}/${O}.OVL
@@ -57,7 +59,8 @@ foreach(o kingdom arcade)
 		COMMAND_EXPAND_LISTS
 	)
 endforeach()
-add_custom_target(overlays DEPENDS ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL)
+configure_file(${CMAKE_SOURCE_DIR}/assets/GOTCHI.ART ${CMAKE_BINARY_DIR}/GOTCHI.ART COPYONLY)
+add_custom_target(overlays DEPENDS ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART)
 
 # the voice clips (SPU ADPCM blob made by tools/build_audio.py)
 # (the voice clips are VOICES.BIN on the disc: audio.c sends them to sound memory at start-up, so they take no main memory)
@@ -66,7 +69,7 @@ psn00bsdk_add_cd_image(
 	iso
 	bore2
 	iso.xml
-	DEPENDS bore2 system.cnf overlays ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL
+	DEPENDS bore2 system.cnf overlays ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
 )
 
 # the disc as one file: BORE2.chd (DuckStation, SwanStation and the libretro PlayStation cores open it)
@@ -83,5 +86,5 @@ psn00bsdk_add_cd_image(
 	iso_lite
 	bore2_lite
 	iso_lite.xml
-	DEPENDS bore2 system.cnf overlays ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL
+	DEPENDS bore2 system.cnf overlays ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
 )

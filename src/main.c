@@ -18,6 +18,7 @@
 #include "pop.h"
 #include "ghost.h"
 #include "arcade.h"
+#include "gotchi.h"
 #include "realm.h"
 #include "ovl.h"
 static const OvlHead *ovl;   // the overlay that is in (KINGDOM.OVL, ARCADE.OVL)
@@ -109,7 +110,10 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI };
+#ifdef AUTO_GOTCHI
+static void opts_dbg(int tab, int sel, int back);
+#endif
 static int state = ST_TITLE, prev_state = ST_TITLE;
 static int menu_sel;
 static int sub_back = ST_LIFE;
@@ -285,7 +289,7 @@ static void start_life(void) {
         a->rel[1] = m->rel[0] = 40; a->rel[2] = k->rel[0] = m->rel[2] = k->rel[1] = 30;
     }
     story_reset(); }
-#if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY)
+#if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY) && !defined(AUTO_GOTCHI)
     nh_pending = life_mode == 0; cash = life_mode == 2 ? 1000 : 20000; mode_pending = life_mode; life_mode = 0;   // the family picks its home on THE NEIGHBORHOOD screen (The Sims: $20,000 to start), and life_update moves them in
 #endif
     life_started = 1;
@@ -551,9 +555,24 @@ static void life_update(int steps) {
 #ifdef AUTO_REALM
     { static int ar; if (++ar == 40 && (ovl = ovl_load("KINGDOM.OVL"))) { ovl->open(0); state = ST_REALM; return; } }   // (test builds: straight into KINGDOM MODE)
 #endif
+#ifdef AUTO_GOTCHI
+    { static int ag; if (++ag == 40) {
+        for (int k = 0; k < nsims && k < 3; k++) { gotchi_buy(k); Toy *t = gotchi_toy(k); static const u8 st[8] = { 4, 4, 3, 4, 2, 1, 0, 4 }, fm[8] = { 0, 3, 1, 2, 0, 0, 0, 1 };
+            for (int i = 0; i < (k == 0 ? 8 : k == 1 ? 5 : 2); i++) { gotchi_egg(t, i); Blob *b = &t->b[i]; b->sp = (u8)((i * 2 + k * 3 + (AUTO_GOTCHI & 1)) % 16); b->stage = st[i]; b->form = fm[i]; b->hun = 3; b->hap = 4; b->bond = (u8)(i * 14); b->age = 16; b->poop = (u8)(i == 1 && k == 0); if (i == 2) b->hun = 0;
+                if (st[i] == 4) gotchi_dex_see(b->sp, b->form); } }
+        for (int k = 0; k < 40; k += 3) gotchi_dex_see(k / 4, k & 3);
+        if (AUTO_GOTCHI < 20) sim_want_gotchi = (AUTO_GOTCHI >> 1) + 1;
+        else {   // (the guide's pictures: the toy's things about the house, the catalog, the options)
+            int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), put = 0; static const u8 ch[9] = { 0xBE, 0xBF, 0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6 };
+            for (int r = 1; r < 8 && put < 9; r++) for (int dy = -r; dy <= r && put < 9; dy++) for (int dx = -r; dx <= r && put < 9; dx++) { if (ABS(dx) != r && ABS(dy) != r) continue; int x = px + dx, y = py + dy; if (x > 0 && y > 0 && x < MW && y < MH && lifeMap[y][x] == '.' && ((x + y) & 1) == 0) lifeMap[y][x] = (char)ch[put++]; }
+            world_touched(); sim_gotchi_mood(player, 2); sim_gotchi_mood(player, 1); sim_note("A BOREAGOTCHI HATCHED!");
+            if (AUTO_GOTCHI == 22) { int i; for (i = 0; i < items_count(); i++) if ((u8)items_at(i) == 0xBE) break; build_item = i; build_x = px; build_y = py; build_tool = 0; room_on = 0; build_msg_t = 0; state = ST_BUILD; }
+            if (AUTO_GOTCHI == 24) opts_dbg(5, 5, ST_LIFE); } } }
+#endif
 #ifdef AUTO_FIGHT
     { static int af; if (++af == 40) sim_want_arcade = AUTO_FIGHT; }   // (test builds: straight to a cabinet)
 #endif
+    if (sim_want_gotchi) { int g_ = sim_want_gotchi - 1; sim_want_gotchi = 0; if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(g_); state = ST_GOTCHI; } return; }   // (the BOREAGOTCHI! pack: a file of its own on the disc)
     if (sim_want_arcade) { int g_ = sim_want_arcade - 1; sim_want_arcade = 0; if ((ovl = ovl_load("ARCADE.OVL"))) { ovl->open(g_); state = ST_ARCADE; } else cash += arcade_price(g_); return; }   // (an arcade cabinet, the prize counter)
     if (sim_want_jobs) { sim_want_jobs = 0; jobs_board = 1; jobs_open(); sub_back = ST_LIFE; state = ST_JOBS; return; }   // (the computer's JOB BOARD)
     if (story_card()) { sc_t = 0; state = ST_SCARD; audio_voice(VOICE_FINISHED); return; }   // a chapter begins, or one is done
@@ -1700,10 +1719,10 @@ static void grow_tick(void) {   // (test builds: a family's life in two minutes:
 // ---- OPTIONS: the picture and the speed, as many knobs as a PC game, with presets; the game runs behind as you change them ----
 static void title_draw(void);
 enum { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_CROWD, O_LIVE, O_SPR, O_SHADOW, O_AO, O_WALLS, O_FPSCAP, O_DITHER, O_CAM, O_SHOWFPS,
-       O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_CUTAWAY, O_ALONE, O_GHOSTS, O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_WIDE, O_TRAF, O_N };
+       O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_CUTAWAY, O_ALONE, O_GHOSTS, O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_WIDE, O_TRAF, O_GOTCHI, O_N };
 static const char *const optNm[O_N] = { "PRESET", "VIEW DISTANCE", "FULL DETAIL", "FAR BUILDINGS", "FAR TREES", "HAZE", "CROWD SIZE",
     "PEOPLE IN FULL 3D", "PEOPLE SPRITES", "SHADOWS", "FLOOR SHADING", "WALL LIGHT", "FRAME RATE", "DITHERING", "CAMERA", "SHOW FPS",
-    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC", "WALL VIEW", "YOUR BORE ALONE", "GHOSTS", "AGGRESSION", "WHO JOINS FIGHTS", "RAGE", "WHO LUNGES AT YOU", "PEACEMAKERS", "SCREEN SHAPE", "TRAFFIC CHEAT" };
+    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC", "WALL VIEW", "YOUR BORE ALONE", "GHOSTS", "AGGRESSION", "WHO JOINS FIGHTS", "RAGE", "WHO LUNGES AT YOU", "PEACEMAKERS", "SCREEN SHAPE", "TRAFFIC CHEAT", "BOREAGOTCHI TIME" };
 static const char *const optV[O_N][6] = {
     { "CUSTOM", "LOW", "MEDIUM", "HIGH", "ULTRA" }, { "50 M", "250 M", "500 M", "1 KM", "1.5 KM", "2 KM" },
     { "10 M", "12 M", "15 M", "17 M" }, { "TALL ONLY", "ALL", "WITH WINDOWS" }, { "OFF", "100 M", "200 M", "350 M" },
@@ -1714,8 +1733,8 @@ static const char *const optV[O_N][6] = {
     { "LOW", "MEDIUM", "HIGH", "OVERHEAD" }, { "SLOW", "NORMAL", "FAST" }, { "OFF", "ON" }, { "OFF", "LOW", "MEDIUM", "FULL" },
     { "AUTO", "CUT AWAY", "FULL WALLS" }, { "OFF", "LOW", "HIGH" }, { "OFF", "ON", "HAUNTED" },
     { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" },
-    { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" }, { "OFF", "ON" }, { "4:3 NORMAL", "16:9 WIDE" }, { "OFF", "+10 CARS", "+30 CARS", "+60 CARS", "LUDICROUS" } };
-static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3, 3, 6, 6, 6, 6, 2, 2, 5 };
+    { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" }, { "OFF", "ON" }, { "4:3 NORMAL", "16:9 WIDE" }, { "OFF", "+10 CARS", "+30 CARS", "+60 CARS", "LUDICROUS" }, { "GAME CLOCK", "LIVE IN HAND", "OFF: THEY WAIT" } };
+static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3, 3, 6, 6, 6, 6, 2, 2, 5, 3 };
 static const char *const optBlurb[O_N] = {
     "LOW, MEDIUM, HIGH OR ULTRA SETS THEM ALL", "HOW FAR SAN BOREAS GOES BEFORE THE SKY", "WHERE ROOMS, WALLS AND THINGS ARE DRAWN IN FULL",
     "THE TOWNS PAST THE MAP: TALL ONES, ALL, OR WINDOWS TOO", "TREES PAST THE NEAR DETAIL, OUT TO", "THE AIR BETWEEN YOU AND THE HORIZON",
@@ -1734,7 +1753,9 @@ static const char *const optBlurb[O_N] = {
     "NO FIGHT NEEDED: PEOPLE GO FOR YOU ON SIGHT. AT 100% EVERYONE DOES",
     "WHO GOES FOR YOU ON SIGHT, WHEN RAGE IS ON",
     "BYSTANDERS TRY TO BREAK UP YOUR FIGHTS (HIT ONE AND THEY JOIN IN)",
-    "16:9: DRAWN SQUEEZED SO A WIDE SCREEN OR EMULATOR (16:9 DISPLAY) SHOWS MORE ON THE SIDES, NOT A STRETCHED PICTURE" };
+    "16:9: DRAWN SQUEEZED SO A WIDE SCREEN OR EMULATOR (16:9 DISPLAY) SHOWS MORE ON THE SIDES, NOT A STRETCHED PICTURE",
+    "ADD CARS TO THE STREETS",
+    "PET TIME: WITH THE GAME CLOCK, LIVE (RUNS WHILE YOU PLAY THE TOY: YOU MAY FORGET TO EAT!) OR OFF" };
 static const u8 presets[4][O_N] = {   // LOW, MEDIUM, HIGH, ULTRA (the graphics knobs; the frame rate, dithering, camera and the counter are left be)
     { 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0 }, { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 },
     { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1 }, { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 } };
@@ -1756,7 +1777,7 @@ static void opts_apply(void) {
     gfx_set_dither(opt[O_DITHER]);
     alone_opt = opt[O_ALONE]; ghost_mode = opt[O_GHOSTS];
     { extern int aggro_pct, rage_pct, aggro_who, rage_who, peace_on; aggro_pct = opt[O_AGGRO] * 20; rage_pct = opt[O_RAGE] * 20; aggro_who = opt[O_AGWHO]; rage_who = opt[O_RAGEWHO]; peace_on = opt[O_PEACE]; }
-    gfx_wide = opt[O_WIDE]; traffic_cheat = opt[O_TRAF] % 5;
+    gfx_wide = opt[O_WIDE]; traffic_cheat = opt[O_TRAF] % 5; { extern int gotchi_time; gotchi_time = opt[O_GOTCHI] % 3; }
 #ifdef WIDE_TEST
     gfx_wide = 1;
 #endif
@@ -1768,6 +1789,9 @@ void cam_view_set(int v) {   // (L2 + R2 in play, and the options)
     cam_view = v; opt[O_CAM] = (u8)v; fp_pitch = 0;
     char b[32]; sprintf(b, "CAMERA: %s", camViewNm[v]); sim_note(b); audio_voice(VOICE_FINISHED);
 }
+#ifdef AUTO_GOTCHI
+static void opts_dbg(int tab, int sel, int back) { opt_back = back; opt_tab = tab; opt_sel = sel; state = ST_OPTS; }
+#endif
 static void opts_open(int back) { opt_back = back; opt_sel = 0; opt_tab = 0; state = ST_OPTS; }
 // the knobs in four tabs (L1 R1), like The Sims 4's game options: sliders for amounts, switches for on and off, pills for choices
 #define NOTAB 7
@@ -1775,7 +1799,7 @@ static const char *const optTabNm[NOTAB] = { "GRAPHICS", "PEOPLE", "LIGHT", "CAM
 static const s8 optTabIc[NOTAB] = { IC_EYE, IC_PEOPLE, IC_SUN, IC_CAMERA, IC_BOLT, IC_SPROUT, IC_STAR };
 static const s8 optTab[NOTAB][7] = { { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_WIDE }, { O_CROWD, O_LIVE, O_SPR, -1 },
                                      { O_SHADOW, O_AO, O_WALLS, O_DITHER, -1 }, { O_CAM, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_CUTAWAY, -1 },
-                                     { O_FPSCAP, O_SHOWFPS, O_MUSIC, -1 }, { O_AGING, O_OLDAGE, O_TOWNAGE, O_ALONE, O_GHOSTS, -1 }, { O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_TRAF, -1 } };
+                                     { O_FPSCAP, O_SHOWFPS, O_MUSIC, -1 }, { O_AGING, O_OLDAGE, O_TOWNAGE, O_ALONE, O_GHOSTS, O_GOTCHI, -1 }, { O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_TRAF, -1 } };
 static int opt_kind(int i) {   // 0 a choice, 1 a slider, 2 a switch
     if (i == O_AO || i == O_DITHER || i == O_SHOWFPS || i == O_TOWNAGE || i == O_ZOOMTILT || i == O_PEACE) return 2;
     if (i == O_AGGRO || i == O_RAGE) return 1;
@@ -1870,7 +1894,7 @@ static void load_body(void) {
         isl_size = ld_u8() % 3; isl_wild = ld_u8() % 3; isl_jungle = ld_u8() % 3; isl_rocks = ld_u8() % 3; }
     bm_rename_clear();
     if (save_ver >= 4) { int n = ld_u8(); for (int k = 0; k < n; k++) { int i = ld_u8(); char nm[18]; ld_str(nm, 17); bm_rename(i, nm); } }
-    { int o_n = save_ver >= 19 ? O_N : O_N - 1; ld_n(opt, save_ver >= 16 ? o_n : save_ver >= 15 ? o_n - 1 : save_ver >= 14 ? o_n - 6 : save_ver >= 11 ? o_n - 7 : o_n - 8); } if (save_ver < 19) opt[O_TRAF] = 0; if (save_ver < 16) opt[O_WIDE] = 0; if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1;
+    { int o_n = save_ver >= 21 ? O_N : save_ver >= 19 ? O_N - 1 : O_N - 2; ld_n(opt, save_ver >= 16 ? o_n : save_ver >= 15 ? o_n - 1 : save_ver >= 14 ? o_n - 6 : save_ver >= 11 ? o_n - 7 : o_n - 8); } if (save_ver < 19) opt[O_TRAF] = 0; if (save_ver < 21) opt[O_GOTCHI] = 0; if (save_ver < 16) opt[O_WIDE] = 0; if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1;
     if (save_ver < 15) { opt[O_AGGRO] = 2; opt[O_AGWHO] = 0; opt[O_RAGE] = 0; opt[O_RAGEWHO] = 1; opt[O_PEACE] = 1; } opts_apply();   // (YOUR BORE ALONE came with version 11)
     loading("LOADING YOUR GAME", 30);
     bm_new(seed); world_new_seed(seed);
@@ -2087,8 +2111,8 @@ static void save_tick(void) {
     if (k == 5 && t >= 700) { k++; aging = 2; pop_aging = 1; for (int d = 0; d < 400; d++) pop_midnight(); save_game(1); dbg_sv[7] = (int)save_last_bytes; }
 }
 #endif
-static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "KINGDOM MODE", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "SAVE GAME", "NEW LIFE", "QUIT TO TITLE" };
-#define NPAUSE 11  // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
+static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "KINGDOM MODE", "BOREAGOTCHI", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "SAVE GAME", "NEW LIFE", "QUIT TO TITLE" };
+#define NPAUSE 12  // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
 static void homes_open(void);
 #ifdef AUTO_PARTY
 int ap_frames, ap_vs, ap_cpu;
@@ -2106,6 +2130,10 @@ void throw_party(void) {   // (also the phone's THROW A PARTY)
 }
 static void pause_new_life(void) { life_started = 0; start_life(); state = ST_LIFE; }
 static void pause_quit(void) { audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); }
+void gotchi_pause_open(void) {
+    if (!gotchi_any()) { sim_note("NO BOREAGOTCHI YET: $5000 AT ELECTRONICS SHOPS. HERE IS THE GUIDE"); sim_want_gotchi = 4; state = ST_LIFE; return; }
+    sim_want_gotchi = 1; state = ST_LIFE;
+}
 static void pause_update(void) {
     if (PRESSED(PAD_UP)) menu_sel = (menu_sel + NPAUSE - 1) % NPAUSE;
     if (PRESSED(PAD_DOWN)) menu_sel = (menu_sel + 1) % NPAUSE;
@@ -2116,30 +2144,31 @@ static void pause_update(void) {
         switch (menu_sel) {
             case 0: state = ST_LIFE; break;
             case 1: panel_tab = 0; state = ST_PANEL; break;
-            case 4: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
+            case 4: { extern void gotchi_pause_open(void); gotchi_pause_open(); } break;
+            case 5: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
                     if (!world_backup()) { sim_note("NO ROOM FOR THE STUDIO JUST NOW. TRY AT HOME"); state = ST_LIFE; break; }
                     create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_gen_studio(); break;
-            case 5: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
+            case 6: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); audio_voice(VOICE_MOVE_YES); state = ST_LIFE; } break;
             case 3: if ((ovl = ovl_load("KINGDOM.OVL"))) { ovl->open(0); state = ST_REALM; } else state = ST_LIFE; break;
             case 2: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD;
                      if (world_zone == ZONE_CITY && !world_own_lot(build_x, build_y)) { int tx, ty; if (world_own_door(&tx, &ty)) { build_x = tx; build_y = ty - 1; } }   // (in SAN BOREAS: on your own lot)
                      break;
-            case 6: opts_open(ST_PAUSE); break;
-            case 7: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 8: slots_open(1, ST_PAUSE); break;
-            case 9: confirm_open("A NEW LIFE?", "THIS LIFE ENDS HERE, AND A NEW ONE BEGINS IN A NEW WORLD. ANYTHING NOT SAVED IS LOST. SAVE FIRST FROM THE PAUSE MENU IF YOU WANT TO COME BACK TO IT.", pause_new_life); break;
-            case 10: confirm_open("QUIT TO THE TITLE?", "ANYTHING NOT SAVED SINCE YOUR LAST SAVE IS LOST.", pause_quit); break;
+            case 7: opts_open(ST_PAUSE); break;
+            case 8: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
+            case 9: slots_open(1, ST_PAUSE); break;
+            case 10: confirm_open("A NEW LIFE?", "THIS LIFE ENDS HERE, AND A NEW ONE BEGINS IN A NEW WORLD. ANYTHING NOT SAVED IS LOST. SAVE FIRST FROM THE PAUSE MENU IF YOU WANT TO COME BACK TO IT.", pause_new_life); break;
+            case 11: confirm_open("QUIT TO THE TITLE?", "ANYTHING NOT SAVED SINCE YOUR LAST SAVE IS LOST.", pause_quit); break;
         }
     }
 }
 static void pause_draw(void) {   // one short column: the game itself (the rest of life is on the phone)
-    static const s8 ic[NPAUSE] = { IC_PLAY, IC_ARROW, IC_HAMMER, IC_SPROUT, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_BOOK, IC_SPROUT, IC_DOOR };
+    static const s8 ic[NPAUSE] = { IC_PLAY, IC_ARROW, IC_HAMMER, IC_SPROUT, IC_HEART, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_BOOK, IC_SPROUT, IC_DOOR };
     life_draw();
     ui_dim();
     int top = ui_window(70, 4, 180, 228, "PAUSED", IC_PAUSE);
-    for (int i = 0; i < NPAUSE; i++) ui_button(78, top + i * 17, 164, 15, pauseNm[i], ic[i], i == menu_sel);
-    ui_hints(160, top + NPAUSE * 17 + 3, "SEL PHONE|O BACK", 1);
+    for (int i = 0; i < NPAUSE; i++) ui_button(78, top + i * 16, 164, 14, pauseNm[i], ic[i], i == menu_sel);
+    ui_hints(160, top + NPAUSE * 16 + 3, "SEL PHONE|O BACK", 1);
 }
 
 // ---- THE PHONE (SELECT): The Sims' cell phone. Twelve apps on a grid; the family's list for playing as someone else ----
@@ -2864,8 +2893,8 @@ static int floor_supported(int l, int x, int y) {   // an upper floor needs some
     return 0;
 }
 // ---- the catalog (Sims buy mode): the items in tabs, a scrolling list with prices ----
-#define NCAT 8
-static const char *const catNm[NCAT] = { "SEATS, BEDS", "TABLES, STORAGE", "KITCHEN, BATH", "FUN AND TECH", "DECOR, PLANTS", "GARDEN, OUTDOOR", "SKATE", "SPECIAL" };
+#define NCAT 9
+static const char *const catNm[NCAT] = { "SEATS, BEDS", "TABLES, STORAGE", "KITCHEN, BATH", "FUN AND TECH", "DECOR, PLANTS", "GARDEN, OUTDOOR", "SKATE", "BOREAGOTCHI", "SPECIAL" };
 static const char *const catSet[NCAT - 1] = {
     "CUh;S<N%z\x81" "\220\221\222\223\250" ,
     "tdibyK?#O" "\225\226\227\230\231\232\233" ,
@@ -2873,7 +2902,8 @@ static const char *const catSet[NCAT - 1] = {
     "vARj[!$()QImn]_{" "\240\241\242\243\244\245\246\247\251" ,
     "rlpZVqo}" "\252\253\254\255\256\257\260\261" ,
     "gus*036~\"" "\224\236\262\263\264\265\266\267\270\271\272\273\274\275" ,
-    "=LJXM159GB" };
+    "=LJXM159GB",
+    "\276\277\300\301\302\303\304\305\306" };
 static int item_cat(char ch) { if ((u8)ch > 0x81 && (u8)ch < 0x90) return -1; /* (the cake, the gravestone and the island's own are never bought) */ for (int c = 0; c < NCAT - 1; c++) if (strchr(catSet[c], ch)) return c; return NCAT - 1; }
 static int cat_list(int cat, int *idx) {   // the tab's items, cheapest first
     int n = 0; for (int i = 0; i < items_count() && n < 96; i++) if (item_cat(items_at(i)) == cat) idx[n++] = i;
@@ -3252,7 +3282,7 @@ static void help_draw(void) {   // three pages of tips, each with its picture
     char b[16]; sprintf(b, "PAGE %d OF %d", help_page + 1, NHELP); ui_badge(300 - ui_tw(1, b) - 10, 12, b, UI_WHITE, UI_BLUE2);
     for (int i = 0; i < 5; i++) {
         const HelpTip *h = &help_pg[help_page].it[i];
-        int nl = ui_wrap_n(236, h->t), hh = MAX(28, nl * 10 + 8);
+        int nl = ui_wrap_n(236, h->t), hh = MAX(27, nl * 10 + 6);
         ui_round(20, y, 280, hh - 3, 6, UI_WHITE, UI_PANEL, 0);
         ui_icon_disc(36, y + (hh - 3) / 2, 22, h->ic, UI_BLUE, UI_WHITE);
         ui_wrap(54, y + (hh - 3 - nl * 10 + 3) / 2, 236, 3, h->t, UI_INK);
@@ -3277,13 +3307,16 @@ static void title_update(void) {
             dbg_cells[2] += b->ncell; dbg_cells[3]++; }
     }
 #endif
+#ifdef AUTO_HELP
+    if (title_t == 30) { prev_state = ST_MENU; help_page = AUTO_HELP; state = ST_HELP; return; }
+#endif
 #ifdef AUTO_STORY
     if (title_t == 30) { life_story = AUTO_STORY; worlds_go(0x5EED1234u, 0); return; }
 #endif
 #if defined(AUTO_WEAR) || defined(AUTO_FACE)
     if (title_t == 30) { world_backup(); prev_state = ST_MENU; create_tab = 4; create_row = 0; state = ST_CREATE; world_gen_studio(); return; }
 #endif
-#if defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM)
+#if defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM) || defined(AUTO_GOTCHI)
     if (title_t == 30) { life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 #ifdef AUTO_CITY
         travel_go(ZONE_CITY);
@@ -3323,6 +3356,7 @@ static void title_draw(void) {
 enum { WO_RANDOM, WO_PRE1, WO_PRE2, WO_PRE3, WO_CREATE, WO_CASTAWAY, WO_MORE, WO_N };
 static const u32 wo_preset[3] = { 0x0B0E2001u, 0x51A7E5EDu, 0x7A11C0DEu };
 static const char *const wo_cap[3] = { "MAPLE SHORES", "SUNNY HOLLOW", "PINE BAY" };   // the set worlds' names
+static int gotchi_shelf;   // the BOREAGOTCHI! guide opened from the expansion shelf (not in a life)
 static int wo_sel, wo_t, wo_more, wo_msel, wo_packed; static char wo_name[18];   // (wo_name: the capital named by the player, "" as made)
 static u32 wo_seed, wo_painted, wo_custom = 0x00C0FFEEu;
 static void paint_world(u32 seed) {                 // SAN BOREAS from above for that seed (the land, the highways, the towns), into the map's picture
@@ -3486,7 +3520,7 @@ static const char *const moreNm[WO_NMORE] = { "STORY MISSIONS", "BORE-OUT MAN!",
 static const char *const moreCard[WO_NMORE] = { "STORY|MISSIONS", "BORE-OUT|MAN!", "BOREZIES!", "WORLD|WAR BORE", "BORTUA|FIGHTER", "BORE-|AGOTCHI!", "BORE-|PILOGUE", "THE LAND|BOREFORE|TIME",
     "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "SPOOKY|HOLLOW", "FARM|LIFE", "SKY|HIGH", "SPEED|CITY", "BIG|SCREEN", "SEA-|SIDE", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE" };
 static const char *const moreBlurb[WO_NMORE] = { "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. NOT PORTED YET!", "THE TOWN GOES UNDEAD. NOT PORTED YET!", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. NOT PORTED YET!",
-    "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!", "A PIXEL PET ON A KEYCHAIN. NOT PORTED YET!", "GROWN-UPS ONLY: RETIRE AND LEAVE A LEGACY. NOT PORTED YET!", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
+    "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!", "RAISE EIGHT PIXEL PETS PER TOY. X: THE GUIDE!", "GROWN-UPS ONLY: RETIRE AND LEAVE A LEGACY. NOT PORTED YET!", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
     "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
     "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!" };
 static void worlds_update(void) {
@@ -3497,7 +3531,7 @@ static void worlds_update(void) {
         if (PRESSED(PAD_RIGHT)) { int n = wo_msel + 2; wo_msel = n < WO_NMORE ? n : (wo_msel & 1); }
         if (PRESSED(PAD_LEFT)) { int n = wo_msel - 2; wo_msel = n >= 0 ? n : ((WO_NMORE - 1) & ~1) | (wo_msel & 1); if (wo_msel >= WO_NMORE) wo_msel = WO_NMORE - 1; }
         if (PRESSED(PAD_CIRCLE)) { wo_more = 0; return; }
-        if (PRESSED(PAD_CROSS)) { if (wo_msel == 0) { sc_t = 0; sp_join = 0; state = ST_SPICK; } else audio_voice(VOICE_NAH); }
+        if (PRESSED(PAD_CROSS)) { if (wo_msel == 0) { sc_t = 0; sp_join = 0; state = ST_SPICK; } else if (wo_msel == 5) { if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(3); gotchi_shelf = 1; state = ST_GOTCHI; } else audio_voice(VOICE_NAH); } else audio_voice(VOICE_NAH); }
         return;
     }
     if (PRESSED(PAD_UP)) wo_sel = (wo_sel + WO_N - 1) % WO_N;
@@ -3540,8 +3574,8 @@ static void worlds_draw(void) {
         if (c0 > 0) ui_text(6, top + 76, 1, "<", UI_INK);
         if (c0 + 5 < (WO_NMORE + 1) / 2) ui_text(308 - 6, top + 76, 1, ">", UI_INK);
         ui_textc(160, top + 160, 1, moreNm[wo_msel], UI_BLUE2);
-        ui_textc(160, top + 172, 1, moreBlurb[wo_msel], (wo_msel == 0 || wo_msel == 4 || wo_msel == 7) ? UI_INK : UI_SOFT);
-        ui_hints(160, 214, wo_msel == 0 ? "X PICK A STORY|ARROWS MOVE|O BACK" : "ARROWS MOVE|O BACK", 1);
+        ui_textc(160, top + 172, 1, moreBlurb[wo_msel], (wo_msel == 0 || wo_msel == 4 || wo_msel == 5 || wo_msel == 7) ? UI_INK : UI_SOFT);
+        ui_hints(160, 214, wo_msel == 0 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 5 ? "X THE GUIDE|ARROWS MOVE|O BACK" : "ARROWS MOVE|O BACK", 1);
         return;
     }
     static const s8 ic[WO_N] = { IC_DICE, IC_PIN, IC_PIN, IC_PIN, IC_BRUSH, IC_SUN, IC_STAR };
@@ -3676,7 +3710,7 @@ int main(void) {
     look_default(&edit);
     look_default(&title_bore); look_random(&title_bore);
     boot("> HOME LOT");    world_gen();
-    strcpy(edit.first, "DIPPA"); strcpy(edit.last, "DIPPINN");
+    strcpy(edit.first, "DIXIE"); strcpy(edit.last, "DIPPINN");
     boot("> TITLE SONG");  audio_jukebox_play(0);   // THE DIPPER MAN, the title song (as on the GBA)
     boot("> TITLE");
     t_vb = VSync(-1);
@@ -3756,6 +3790,7 @@ int main(void) {
             case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
             case ST_SPICK: spick_update(); if (state == ST_SPICK) { if (sp_join) life_draw(); else title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t, sp_join); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
             case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
+            case ST_GOTCHI: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; if (gotchi_shelf) { gotchi_shelf = 0; crowd_reset(); wo_painted = 0; state = ST_WORLDS; } else { ovl_leave(); state = ST_LIFE; life_draw(); } } break; }
             case ST_REALM: case ST_ARCADE: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_WMAKE: wm_update(); if (state == ST_WMAKE) wm_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_NAME) name_draw(); else life_draw(); break;
         }

@@ -1,0 +1,11 @@
+1500 shot
+1550 right
+1600 b
+1700 shot
+1750 b
+1800 shot
+1830 right
+1840 right
+1850 b
+1900 shot
+2000 shot

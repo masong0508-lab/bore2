@@ -17,6 +17,8 @@
 			<file name="VOICES.BIN" type="data" source="${PROJECT_SOURCE_DIR}/assets/voices.bin" />
 			<file name="KINGDOM.OVL" type="data" source="KINGDOM.OVL" />
 			<file name="ARCADE.OVL" type="data" source="ARCADE.OVL" />
+			<file name="GOTCHI.OVL" type="data" source="GOTCHI.OVL" />
+			<file name="GOTCHI.ART" type="data" source="GOTCHI.ART" />
 			<dummy sectors="512"/>
 		</directory_tree>
 	</track>

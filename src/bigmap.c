@@ -314,7 +314,7 @@ const char *bm_street(int set, int bx, int by, int unit, char *out) {
     return out;
 }
 const char *bm_place_name(int lot, u32 h, char *out) {
-    static const char *const shop[5][4] = { { "BOREMART", "MOSS MARKET", "YAWN-MART", "DIPPA'S DELI" }, { "SNOOZ & SONS", "THREADBARE", "DRESSED TO SNOOZE", "THE CLOTHES LINE" },
+    static const char *const shop[5][4] = { { "BOREMART", "MOSS MARKET", "YAWN-MART", "DIXIE'S DELI" }, { "SNOOZ & SONS", "THREADBARE", "DRESSED TO SNOOZE", "THE CLOTHES LINE" },
         { "GAME BARN", "PLAY PIT", "QUICK BUY", "LEVEL UP" }, { "BYTE BARN", "GADGET GARAGE", "BLEEP & BLOOP", "ZAP ELECTRONICS" }, { "SPIN CITY", "THE CORNER SHOP", "GROOVE BIN", "BIG BUY" } };   // (by kind: places.c)
     static const char *const diner[6] = { "THE DIPPER DINER", "GREASY SPOON", "ROUTE 9 DINER", "MOM'S KITCHEN", "THE NOODLE BAR", "PANCAKE PALACE" };
     static const char *const gym[4] = { "IRON BORE GYM", "FLEX ZONE", "PUMP HOUSE", "SWEAT SHOP" };

@@ -23,7 +23,7 @@ static int prn(int n) { return (int)((pr() >> 4) % (u32)n); }
 // ---- names ----
 static const char *const fNm[128] = {
     "ADA", "ALF", "AMOS", "ANYA", "ARLO", "BEA", "BEN", "BETTY", "BIFF", "BO", "BRAM", "CASS", "CHET", "CLEO", "COLA", "DALE",
-    "DARLA", "DEX", "DIPPA", "DOT", "EARL", "EDNA", "EFFIE", "ELLA", "ENZO", "ETTA", "EZRA", "FAY", "FINN", "FLO", "GIL", "GUS",
+    "DARLA", "DEX", "DIXIE", "DOT", "EARL", "EDNA", "EFFIE", "ELLA", "ENZO", "ETTA", "EZRA", "FAY", "FINN", "FLO", "GIL", "GUS",
     "HAL", "HANK", "HAZEL", "IDA", "IGGY", "IKE", "IVY", "JADE", "JAX", "JUNE", "JUNO", "KAI", "KIT", "LARS", "LEO", "LOU",
     "LUNA", "MABEL", "MAE", "MARS", "MAX", "MILO", "MOE", "MOSS", "NED", "NELL", "NOVA", "OLLIE", "OPAL", "OTIS", "OZ", "PAM",
     "PEARL", "PIXEL", "POPPY", "QUINN", "RAY", "REX", "RHODA", "ROSA", "ROY", "RUBY", "RUFUS", "SAL", "SID", "SKY", "STAN", "SUE",
