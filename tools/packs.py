@@ -28,7 +28,7 @@ PACKS = {
     "SPACE":   ("SPACE AGE", [("SPACE.OVL", 16)]),
     "PARADISE": ("ISLAND PARADISE", [("PARADISE.OVL", 16)]),
     "FARM":     ("FARM LIFE", [("FARM.OVL", 16)]),
-    "SKYSEA":   ("SKY AND SEA", [("SKYSEA.OVL", 24)]),
+    "SKYSEA":   ("SKY AND SEA", [("SKYSEA.OVL", 28)]),
 }
 MAX_SLOT = 40                    # sectors: the overlay arena's room is a little over 80 KB
 

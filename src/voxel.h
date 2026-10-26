@@ -48,6 +48,7 @@ void voxel_draw_lod(const LodBore *m, const VECTOR *pos, int yaw, const Gait *g)
 void voxel_init(void);
 void voxel_corners(const Bore *b, int i, SVECTOR *out);   // cell i's 8 corners, whole
 void voxel_prepare(Bore *b);   // after buildLook: fills the drawing cache in the Bore
+extern int voxel_scale;   // the size of the person drawn next: 4096 = as is
 void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g);
 void voxel_draw_covers(const Bore *b, const VECTOR *pos, int yaw, const Gait *g);   // the blanket pulled over someone lying in a bed (after voxel_draw)
 int  voxel_lie_ease(int lie);                                                         // lie 0..4096 as a smooth 0..4096 (slow, quick, slow)

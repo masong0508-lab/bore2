@@ -271,10 +271,33 @@ void look_default(Bore *b) {
 }
 
 static int isPart(int id) { return id == LK_TAIL || id == LK_HORNS || id == LK_BACK || id == LK_CLAWS || id == LK_ANTENNA; }
-static const char *const firstNm[16] = { "DIXIE", "MISSY", "GOTTCHO", "SUNMAN", "WHISTLER", "COLA", "NOVA", "PIXEL", "JUNO", "BARRY", "TREE", "MARS", "CLOUD", "BOMB", "ACE", "DOT" };
 static const char *const lastNm[16] = { "BARRACHO", "DIPPER", "MIDNIGHT", "FLEXICODE", "SYNDICATE", "CONDENSED", "SPACE", "CITIZEN", "STAGED", "WINNER", "HOTDAMN", "EXCUSES", "MAGIC", "NURSERY", "CLOSER", "ZONE" };
 
-const char *look_last_name(int i) { return lastNm[i & 15]; }   // so a household can share a surname
+static const char *const poolNm[48] = { "ABBY", "BEN", "CORA", "DEX", "ELLIE", "FINN", "GUS", "HANK", "IVY", "JACK", "KIT", "LEO", "MILO", "NELL", "OWEN", "PIPPA", "QUINN", "ROSA", "SAM", "TESS", "UMA", "VIC", "WILLA", "ZOE",
+    "BUDDY", "CHIP", "DAISY", "EMMET", "FIONA", "GINO", "HOLLY", "IGGY", "JOLENE", "KIRBY", "LOLA", "MAEVE", "NED", "OLLIE", "PENNY", "RUDY" };
+static const char *const ons[32] = { "B", "BR", "C", "CH", "D", "DR", "F", "FL", "G", "GR", "H", "J", "K", "L", "M", "N", "P", "PR", "R", "S", "SH", "SK", "T", "TR", "V", "W", "Z", "BL", "CL", "FR", "ST", "SP" };
+static const char *const vow[12] = { "A", "E", "I", "O", "U", "AI", "EE", "OO", "IA", "OU", "EA", "AY" };
+static const char *const cod[16] = { "", "", "N", "L", "R", "M", "X", "T", "K", "S", "LA", "NA", "RY", "BO", "MO", "DY" };
+static const char *const nA[64] = { "BUTTER", "PICKLE", "MOON", "SUN", "FROG", "BROOK", "STONE", "HILL", "GOLD", "SILVER", "WOOD", "ASH", "BEAN", "CORN", "MUD", "SNOW", "RAIN", "PEB", "HUM", "DOZ", "NAP", "SNOOZ", "YAWN", "SLOW",
+    "GRUM", "MOSS", "DIP", "WIG", "BIS", "POT", "KETTLE", "HONEY", "BRAM", "FERN", "OAK", "CLAY", "COPPER", "DUSK", "EMBER", "FLINT", "GRAY", "HAZEL", "IRON", "JAY", "KNOT", "LARK", "MAPLE", "NIGHT", "OTTER", "PLUM", "QUILL", "ROOK", "SAGE", "THORN", "UMBER", "VALE", "WREN", "YEW", "BRISK", "CRUMB", "DRIFT", "FOX", "GLOOM", "HOLLOW" };
+static const char *const nB[48] = { "WORTH", "FIELD", "SON", "MAN", "BY", "TON", "WICK", "FORD", "BOTTOM", "SMITH", "LEY", "STEIN", "BERG", "ER", "KINS", "WELL", "SLEY", "HAM", "LOCK", "BURY", "FOOT", "SHAW", "MORE", "DALE",
+    "WOOD", "BROOK", "CROFT", "GATE", "HURST", "LAND", "MERE", "NESS", "PORT", "RIDGE", "STONE", "THWAITE", "VILLE", "WARD", "WOLD", "YARD", "BEE", "COTT", "DEN", "FALL", "HOLT", "LOW", "MOOR", "TREE" };
+static u32 nh(u32 v) { v ^= v >> 15; v *= 0x2c1b3c6du; v ^= v >> 12; v *= 0x297a2d39u; return v ^ (v >> 15); }
+void look_first_gen(u32 v, char *out) {   // a first name from a number: a real-ish pool name now and then, else built from sounds (some thousands of them)
+    v = nh(v); if ((v & 7) < 3) { strcpy(out, poolNm[(v >> 4) % 48u]); return; }
+    int two = (v >> 4) & 1; v >>= 5;
+    strcpy(out, ons[v & 31]); strcat(out, vow[(v >> 5) % 12u]); v >>= 9;
+    if (two) { strcat(out, ons[v & 31]); strcat(out, vow[(v >> 5) % 12u]); v >>= 9; }
+    strcat(out, cod[v & 15]);
+    if (strlen(out) > NAME_LEN - 1) out[NAME_LEN - 1] = 0;
+}
+void look_last_gen(u32 v, char *out) {   // a surname from a number: the old BORE names, or two halves (3000 pairs)
+    v = nh(v + 77); if ((v & 15) == 0) { strcpy(out, lastNm[(v >> 4) & 15]); return; }
+    const char *a = nA[(v >> 4) & 63], *b = nB[(v >> 10) % 48u];
+    if (strlen(a) + strlen(b) > NAME_LEN - 1) b = "S";
+    strcpy(out, a); strcat(out, b);
+}
+const char *look_last_name(int i) { static char t[NAME_LEN + 2]; look_last_gen((u32)i, t); return t; }   // so a household can share a surname
 
 void look_random(Bore *b) {
     stage = b->stage;
@@ -308,7 +331,7 @@ void look_random(Bore *b) {
     }
     look_set_sign(b, rnd8() % 12);
     b->asp = (u8)(rnd8() % AS_PICK); b->ltw = (u8)(rnd8() % LTN);
-    strcpy(b->first, firstNm[rnd8() & 15]); strcpy(b->last, lastNm[rnd8() & 15]);
+    look_first_gen((u32)rnd8() | (u32)rnd8() << 8 | (u32)rnd8() << 16, b->first); look_last_gen((u32)rnd8() | (u32)rnd8() << 8 | (u32)rnd8() << 16, b->last);
     {   // (the big wardrobe's new places: now and then earrings, a wrist thing, a shoulder pet, something on the feet)
         static const u8 ids[4] = { LK_X_EARS, LK_X_WRIST, LK_X_SHOULDER, LK_X_FEET }; static const u8 odds[4] = { 3, 4, 9, 8 };
         for (int i = 0; i < 4; i++) { int cnt = look_count(ids[i]); b->look[ids[i]] = (u8)((rnd8() % odds[i] == 0) ? 1 + rnd8() % (cnt - 1) : 0); }

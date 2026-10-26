@@ -73,6 +73,7 @@ int  look_sign_of(const Bore *b);
 void look_set_sign(Bore *b, int s);
 u32  look_rand(void);
 u32  look_seed(u32 s);
+void look_first_gen(u32 v, char *out); void look_last_gen(u32 v, char *out);   // names from a number: thousands of firsts and surnames
 const char *look_last_name(int i);          // one of the 16 surnames                      // reseed the dice, returns the old state
 
 // the creator's rows: tab, label, look id (or LK_AGE for the stage row), kind

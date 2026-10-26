@@ -607,8 +607,15 @@ static void life_update(int steps) {
     { static int as_; if (++as_ == 40) {   // (test builds: a band of the family, skilled by AUTO_SUPER, straight into the band screens)
         extern void band_test_setup(int lv); band_test_setup(AUTO_SUPER); sim_want_super = 1; } }
 #endif
+#ifndef AUTO_RWAIT
+#define AUTO_RWAIT 40
+#endif
 #ifdef AUTO_RESORT
-    { static int ar; if (++ar == 40) { cash = 90000; pk_data[0] = 0x0b; sim_want_resort = AUTO_RESORT; } }
+    { static int ar; ar++;
+#ifdef AUTO_ZONE
+      if (ar == 20) travel_go(AUTO_ZONE);
+#endif
+      if (ar == AUTO_RWAIT) { cash = 90000; pk_data[0] = 0x0b; pk_data[39] |= 4; sim_want_resort = AUTO_RESORT; } }
 #endif
 #ifdef AUTO_DJ
     { static int ad; if (++ad == 40) { dj_xp = AUTO_DJ; sim_want_dj = 1; } }   // (test builds: straight to the DJ booth, at that skill)

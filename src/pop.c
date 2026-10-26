@@ -31,26 +31,16 @@ static const char *const fNm[128] = {
     "ZELDA", "ZIGGY", "BARRY", "CLOUD", "ACE", "BOMB", "MISSY", "JUNIPER", "GOTTCHO", "WHISTLER", "SUNMAN", "BUSTER", "DOLLY", "FERN", "GRETA", "HUGO",
     "IRMA", "JASPER", "KENNY", "LOIS", "MERV", "NORMA", "OSCAR", "PERCY", "RITA", "SYLVIA", "TED", "VELMA", "WILBUR", "YURI", "ZORA", "AGNES" };
 static const char *const oldNm[16] = { "AGNES", "MABEL", "EDNA", "EARL", "WALT", "IRMA", "MERV", "NORMA", "PERCY", "WILBUR", "VELMA", "SYLVIA", "HAZEL", "OTIS", "ETTA", "GRETA" };
-static const char *const sA[32] = { "BUTTER", "PICKLE", "MOON", "SUN", "FROG", "BROOK", "STONE", "HILL", "GOLD", "SILVER", "WOOD", "ASH", "BEAN", "CORN", "MUD", "SNOW",
-                                    "RAIN", "PEB", "HUM", "DOZ", "NAP", "SNOOZ", "YAWN", "SLOW", "GRUM", "MOSS", "DIP", "WIG", "BIS", "POT", "KETTLE", "HONEY" };
-static const char *const sB[24] = { "WORTH", "FIELD", "SON", "MAN", "BY", "TON", "WICK", "FORD", "BOTTOM", "SMITH", "LEY", "STEIN", "BERG", "ER", "KINS", "WELL",
-                                    "SLEY", "HAM", "LOCK", "BURY", "FOOT", "SHAW", "MORE", "DALE" };
 static int name_of(u32 seed) { return (int)(((seed * 2654435761u) >> 9) & 127); }
-const char *pop_first(int p, char *out) { strcpy(out, fNm[name_of(pop_per[p].seed)]); return out; }   // (from the seed alone: a name lasts a whole life)
+static int old_name(int i);
+const char *pop_first(int p, char *out) { int i = name_of(pop_per[p].seed); if (!old_name(i) && (pop_per[p].seed >> 20 & 1)) look_first_gen(pop_per[p].seed, out); else strcpy(out, fNm[i]); return out; }   // (from the seed alone: a name lasts a whole life)
 static u32 old_mask[4];   // which of the names are the old-fashioned ones (an elder is mostly given one)
 static int old_name(int i) {
     if (!old_mask[0] && !old_mask[1] && !old_mask[2] && !old_mask[3])
         for (int k = 0; k < 128; k++) for (int j = 0; j < 16; j++) if (!strcmp(fNm[k], oldNm[j])) old_mask[k >> 5] |= 1u << (k & 31);
     return (old_mask[i >> 5] >> (i & 31)) & 1;
 }
-const char *pop_surname(int f, char *out) {
-    u32 s = pop_fam[f].sur;
-    if ((s & 15) == 0) { strcpy(out, look_last_name((int)(s >> 4))); return out; }   // now and then one of the old BORE names
-    const char *a = sA[(s >> 4) & 31], *b = sB[(s >> 9) % 24u];
-    if (strlen(a) + strlen(b) > NAME_LEN - 1) b = "S";
-    strcpy(out, a); strcat(out, b);
-    return out;
-}
+const char *pop_surname(int f, char *out) { look_last_gen(pop_fam[f].sur, out); return out; }   // (from the family's number alone: thousands of different surnames)
 static const char *const kindNm[HK_N] = { "SINGLE", "OLD TIMER", "COUPLE", "RETIRED COUPLE", "ROOMMATES", "YOUNG FAMILY", "BIG FAMILY", "SINGLE PARENT", "THREE GENERATIONS" };
 const char *pop_kind_name(int k) { return kindNm[k % HK_N]; }
 #define NTRAIT 16

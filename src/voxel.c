@@ -849,6 +849,7 @@ static void lie_dims(const Bore *b, int *top, int *mn, int *mx) {   // the model
     for (int i = 0; i < b->ncell; i++) { SVECTOR cw[8]; voxel_corners(b, i, cw); for (int k = 0; k < 8; k++) { const SVECTOR *c = &cw[k]; if (c->vy < t) t = c->vy; if (c->vz < lo) lo = c->vz; if (c->vz > hi) hi = c->vz; } }
     *top = t; *mn = lo; *mx = hi;
 }
+int voxel_scale = 4096;   // 4096 = life size (SKY AND SEA draws a smaller one)
 void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     quads = 0; cur = b; yaw = MODEL_ANGLE(yaw);
     MATRIX obj; SVECTOR rot = { 0, (short)yaw, 0, 0 }; VECTOR p = *pos;
@@ -856,6 +857,7 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     int bob = g->amp ? (ABS(isin(g->phase * 2)) * 5 * g->amp) >> 24 : 0;
     p.vy -= bob;
     RotMatrix(&rot, &obj);
+    if (voxel_scale != 4096) for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) obj.m[i][j] = (short)(obj.m[i][j] * voxel_scale >> 12);   // (a pilot in a boat: a small person)
     TransMatrix(&obj, &p);
     int lie = g->lie; if (g->sleep && !lie) lie = 4096;                   // (a caller that never eases it: all the way down)
     int sm = voxel_lie_ease(lie), theta = (1024 * sm) >> 12, lyb = g->bed;
