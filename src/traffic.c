@@ -36,9 +36,12 @@ static int taken(int ax, int ay, const Car *me) {   // a tile someone is on or h
     for (int i = 0; i < NCAR; i++) { const Car *c = &car[i]; if (!c->on || c == me) continue;
         if (c->tx == ax && c->ty == ay) return 1; if (c->p && c->tx + DX[(int)c->d] == ax && c->ty + DY[(int)c->d] == ay) return 1; }
     { int px = ptx() + bx_(), py = pty() + by_(); if (ABS(px - ax) + ABS(py - ay) <= 1) return 1; }
+    for (int i = 0; i < nsims; i++) { const Sim *s = &sims[i]; if (i == player || s->away || s->lvl) continue; if (ABS(s->x / TILE + bx_() - ax) + ABS((-s->z) / TILE + by_() - ay) == 0) return 1; }   // (people on foot)
     for (int t = 0; t < VEH_N; t++) if (park[t].on && ABS(park[t].x / TILE - ax) + ABS(park[t].y / TILE - ay) == 0) return 1;
     return 0;
 }
+static int honk_t;
+void traffic_honk(void) { honk_t = 60; }   // cars near you give way for a moment
 void traffic_clear(void) { for (int i = 0; i < NCAR; i++) car[i].on = 0; }
 static void spawn(void) {
     int px = ptx(), py = pty();
@@ -60,6 +63,7 @@ static void step_car(Car *c) {
     int dd = ABS(lx - ptx()) + ABS(ly - pty());
     if (dd > 46) { c->on = 0; return; }
     int want = c->d * 1024, df = ((want - c->yaw + 2048) & 4095) - 2048; c->yaw = (c->yaw + (df > 140 ? 140 : df < -140 ? -140 : df)) & 4095;   // (the turn eases round)
+    if (c->p == 0 && honk_t > 0 && dd < 9) return;   // (a horn: they hold still a moment)
     if (c->p == 0) {   // at a tile centre: pick the way
         if (c->wait == 0) {
             int ok[3], n = 0, w[3] = { 6, 2, 2 }, ds[3] = { c->d, (c->d + 3) & 3, (c->d + 1) & 3 };
@@ -76,7 +80,7 @@ static void step_car(Car *c) {
 }
 void traffic_update(int steps) {
     if (world_zone != ZONE_CITY || world_wbx < 0) return;
-    int want = target(), n = 0;
+    int want = target(), n = 0; if (honk_t > 0) honk_t -= steps;
     for (int i = 0; i < NCAR; i++) if (car[i].on) n++;
     for (int s = 0; s < steps; s++) {
         for (int i = 0; i < NCAR; i++) if (car[i].on) step_car(&car[i]);

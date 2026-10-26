@@ -579,10 +579,10 @@ static void life_update(int steps) {
     extern int tst_on, tst_wx, tst_wz;
     if (tst_on) { for (int k = 0; k < steps; k++) sim_player_move(tst_wx, tst_wz, 0); goto moved_; }   // (test builds: the stick, in world space)
 #endif
-    if (cam_view == 2) {   // first person: up and down walk, left and right (and L1 R1) turn
-        int turn = -((mx * 50) >> 12); if (HELD(PAD_L1)) turn += 60; if (HELD(PAD_R1)) turn -= 60;   // (yaw grows to the LEFT of a south-facing eye: right is a negative turn)
-        { static int fp_turn; fp_turn += (turn - fp_turn) / 3; if (!turn && ABS(fp_turn) < 6) fp_turn = 0; turn = fp_turn;   // (a turn eases in and out, not a jerk)
-          if ((PRESSED(PAD_L1) && HELD(PAD_R1)) || (PRESSED(PAD_R1) && HELD(PAD_L1))) { s->yaw = (s->yaw + 2048) & 4095; fp_turn = turn = 0; } }   // L1 + R1 together: about face
+    if (cam_view == 2 || veh_on) {   // first person: up and down walk (and at the wheel: up is gas, down reverses, left and right steer), left and right (and L1 R1) turn
+        int turn = -((mx * 50) >> 12); if (cam_view == 2) { if (HELD(PAD_L1)) turn += 60; if (HELD(PAD_R1)) turn -= 60; }   // (yaw grows to the LEFT of a south-facing eye: right is a negative turn)
+        { static int fp_turn; if (veh_on && cam_view != 2) turn = turn * 2 / 3; fp_turn += (turn - fp_turn) / 3; if (!turn && ABS(fp_turn) < 6) fp_turn = 0; turn = fp_turn;   // (a turn eases in and out, not a jerk)
+          if (cam_view == 2 && ((PRESSED(PAD_L1) && HELD(PAD_R1)) || (PRESSED(PAD_R1) && HELD(PAD_L1)))) { s->yaw = (s->yaw + 2048) & 4095; fp_turn = turn = 0; } }   // L1 + R1 together: about face
         if (!mz && !turn) { int n_ = on_board ? steps : 1; for (int k = 0; k < n_; k++) sim_player_tank(0, 0, 0); }
         else for (int k = 0; k < steps; k++) sim_player_tank(mz, turn, HELD(PAD_SQUARE));
     } else if (mx || mz) {   // turn the push by the camera yaw: "up" = away from the camera
@@ -602,6 +602,11 @@ static void life_update(int steps) {
         int d = (((2048 - skate_dir()) - cam_yaw + 2048) & 4095) - 2048;
         cam_yaw = (cam_yaw + d * MIN(steps, 4) / 24) & 4095;
     }
+    if (veh_on && cam_view != 2 && !HELD(PAD_L1) && !HELD(PAD_R1) && !(analog && (rs_x || rs_y))) {   // at the wheel: the camera swings round behind the car
+        int d = (((2048 - s->yaw) - cam_yaw + 2048) & 4095) - 2048;
+        cam_yaw = (cam_yaw + d * MIN(steps, 4) / 20) & 4095;
+    }
+    if (veh_on && PRESSED(PAD_TRIANGLE)) { sim_note("BEEP BEEP!"); audio_voice(VOICE_FINISHED); traffic_honk(); }
     if (cam_view == 1 && s->gait.amp > 2000 && s->action == ACT_NONE) {   // BEHIND: the camera swings round behind as you walk
         int d = (((2048 - s->yaw) - cam_yaw + 2048) & 4095) - 2048;
         cam_yaw = (cam_yaw + d * MIN(steps, 4) / 12) & 4095;
@@ -623,7 +628,7 @@ static void life_update(int steps) {
                if (pie_n == 1) { if (pie_cit) citizens_pie_do(0); else sim_pie_do(0); } else if (pie_n > 1) { pie_sel = 0; state = ST_PIE; } else audio_voice(VOICE_NAH); }
     }
     if (PRESSED(PAD_CIRCLE) && !on_board) sim_player_cancel();
-    if (PRESSED(PAD_TRIANGLE) && !on_board) { sim_speed = sim_speed % 3 + 1; }
+    if (PRESSED(PAD_TRIANGLE) && !on_board && !veh_on) { sim_speed = sim_speed % 3 + 1; }
     if (PRESSED(PAD_L3)) show_fps ^= 1;
     { extern int getenv_noshadow, dbg_noao, dbg_nograd; if (PRESSED(PAD_R3)) { static int mode; mode = (mode + 1) & 3; getenv_noshadow = mode == 1; dbg_noao = mode == 2; dbg_nograd = mode == 3; } }
     if (PRESSED(PAD_SELECT)) { extern void phone_open(void); phone_open(); }   // the phone in your pocket

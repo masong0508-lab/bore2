@@ -1274,18 +1274,19 @@ void sim_step(void) {
 
 int sim_walk(Sim *s, int dx, int dz) { return walk(s, dx, dz); }   // (skate.c: a step with the board's way over ramps and decks)
 static void veh_dismount(Sim *s, const char *why) { if (veh_on) traffic_park(veh_on - 1, s->x, s->z, s->yaw); veh_on = 0; s->gait.sit = 0; s->gait.amp = 0; s->gait.run = 0; if (why) sim_note(why); }
+static int veh_back;   // backing up (down on the pad): no turning round, half speed
 static void veh_drive(Sim *s, int dx, int dz) {   // a step in a vehicle: it turns like a car (slowly) and goes at its speed, burning fuel by the distance
     world_lvl = s->lvl;
     int t = veh_on - 1; s->path_n = 0; s->action = ACT_NONE; s->gait.sit = VT[t].seat > 0; s->gait.amp = 0; s->gait.run = 0;
     if (dx || dz) {
         int want = yaw_towards(dx, dz), diff = ((want - s->yaw + 2048) & 4095) - 2048;
-        turn_to(s, want, 150 + (ABS(diff) >> 4));
+        if (veh_back) diff = 0; else turn_to(s, want, 150 + (ABS(diff) >> 4));
         int mag = SquareRoot0(dx * dx + dz * dz); if (mag > 4096) mag = 4096;
         int align = 4096 - ABS(diff) * 2; if (align < 0) align = 0;
         int mult = VT[t].speed; if (VT[t].tank && veh_fuel[t] <= 0) mult = 1;
-        int sp = (((speed_of(s) * mult * mag) >> 12) * align) >> 12;
+        int sp = (((speed_of(s) * mult * mag) >> 12) * align) >> 12; if (veh_back) sp /= 2;
         int x0 = s->x, z0 = s->z;
-        if (sp) walk(s, (isin(s->yaw) * sp) >> 12, -((icos(s->yaw) * sp) >> 12));
+        if (sp) walk(s, (isin(s->yaw) * (veh_back ? -sp : sp)) >> 12, -((icos(s->yaw) * (veh_back ? -sp : sp)) >> 12));
         int moved = ABS(s->x - x0) + ABS(s->z - z0);
         veh_wph = (veh_wph + moved * 18) & 4095;
         veh_odo += moved;
@@ -1373,7 +1374,7 @@ void sim_player_tank(int fwd, int turn, int run) {   // first person: left and r
         end_action(s);
     }
     s->path_n = 0; s->action = ACT_NONE;
-    if (veh_on) { int w = (s->yaw + turn * 7) & 4095; veh_drive(s, fwd > 0 ? (isin(w) * fwd) >> 12 : turn ? (isin(w) * 900) >> 12 : 0, fwd > 0 ? -((icos(w) * fwd) >> 12) : turn ? -((icos(w) * 900) >> 12) : 0); return; }   // (first person: up drives, left and right steer)
+    if (veh_on) { int w = (s->yaw + turn * 7) & 4095; if (fwd < 0) { veh_back = 1; veh_drive(s, (isin(s->yaw) * -fwd) >> 12, -((icos(s->yaw) * -fwd) >> 12)); veh_back = 0; s->yaw = (s->yaw + turn / 2) & 4095; return; } veh_drive(s, fwd > 0 ? (isin(w) * fwd) >> 12 : turn ? (isin(w) * 900) >> 12 : 0, fwd > 0 ? -((icos(w) * fwd) >> 12) : turn ? -((icos(w) * 900) >> 12) : 0); return; }   // (first person: up drives, left and right steer)
     if (on_board) { int w = (s->yaw + turn * 6) & 4095; skate_step(s, fwd > 0 ? (isin(w) * fwd) >> 12 : turn ? (isin(w) * 1200) >> 12 : 0, fwd > 0 ? -((icos(w) * fwd) >> 12) : turn ? -((icos(w) * 1200) >> 12) : 0); world_lvl = 0; return; }   // (first person on a board: up pushes, left and right carve)
     s->yaw = (s->yaw + turn) & 4095;
     if (!fwd) { s->gait.amp = turn ? 1600 : (s->gait.amp > 300 ? s->gait.amp - 300 : 0); if (turn) s->gait.phase = (s->gait.phase + 90) & 4095; world_lvl = 0; return; }
