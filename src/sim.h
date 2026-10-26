@@ -104,6 +104,7 @@ const char *sim_pie_title(void);           // whose / what menu it is
 int  sim_traits(const Sim *s, const char *out[3]);   // Sims 3 traits read off the personality: how many (up to 3)
 const char *sim_moodlet_name(int id);
 void sim_gotchi_mood(int simi, int kind);   // (gotchi.c) a moodlet from the BOREAGOTCHI toy
+extern int sim_want_space, space_done; extern u8 space_tech[3];   // the space program: parts (hull, engine, guidance), missions done
 extern int sim_want_prison, rap_sheet; void sim_skip_days(int n);   // HARD TIME
 enum { CR_ASSAULT, CR_THEFT, CR_RESIST, CR_JAILBREAK, CR_N };   // the crimes on your record, waiting for a court
 extern u8 crime_n[CR_N]; extern const char *const crime_nm[CR_N]; extern const u8 crime_sev[CR_N]; extern int crime_evid, crime_def, arrest_how, sim_want_end;
