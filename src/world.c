@@ -562,48 +562,87 @@ static void fz_reach(void) {                          // everything must be reac
         if (!gone) return;
     }
 }
+static int fz_Wl, fz_Dd, fz_ld, fz_px, fz_py;                    // the room as seen from its door: l across (fz_ld at the door), d deep
+static int fz_lx(int l, int d) { return fz_ix + fz_ox * d + fz_px * (l - fz_ld); }
+static int fz_ly(int l, int d) { return fz_iy + fz_oy * d + fz_py * (l - fz_ld); }
+static int fz_pfree(int l, int d) { return l >= 0 && l < fz_Wl && d >= 0 && d < fz_Dd && fz_free(fz_lx(l, d), fz_ly(l, d)); }
+static void fz_pput(int l, int d, char c) { if (fz_pfree(l, d)) sm[fz_ly(l, d)][fz_lx(l, d)] = c; }
+static u8 fz_pl[4][24], fz_pd[4][24]; static int fz_np[4], fz_pc[4];   // four paths of tiles along the walls (beds, kitchen, living, telly) and where each has got to
+static void fz_padd(int p, int l, int d) { if (fz_np[p] < 24 && l >= 0 && l < fz_Wl && d >= 0 && d < fz_Dd) { fz_pl[p][fz_np[p]] = (u8)l; fz_pd[p][fz_np[p]++] = (u8)d; } }
+static int fz_pp(int p, char c) {                    // the next free tile on the path takes the item (-1: the wall is full)
+    if (!fz_pc[p] && !fz_np[p]) return -1;
+    for (; fz_pc[p] < fz_np[p]; fz_pc[p]++) { int l = fz_pl[p][fz_pc[p]], d = fz_pd[p][fz_pc[p]]; if (fz_pfree(l, d)) { fz_pput(l, d, c); fz_pc[p]++; return 0; } }
+    return -1;
+}
 static void furnish_at(int x0, int y0, int x1, int y1, int ix, int iy, int ox, int oy, const Occ *o, unsigned h) {   // (ix,iy): the tile just inside the door; (ox,oy): the way in
     fz_x0 = x0; fz_y0 = y0; fz_x1 = x1; fz_y1 = y1; fz_ix = ix; fz_iy = iy; fz_ox = ox; fz_oy = oy; fz_dx = ix; fz_dy = iy; fz_h = h | 1;
-    fz_ring();
-    int st = fz_rnd(MAX(1, rgn)), area = (x1 - x0 + 1) * (y1 - y0 + 1);
+    fz_ring(); fz_pc[0] = fz_pc[1] = fz_pc[2] = fz_pc[3] = 0;
+    int st = fz_rnd(MAX(1, rgn));
     if (o->vacant) {                                  // nobody lives here: a couple of boxes the last people left behind
         if (fz_rnd(2)) fz_run("#", st);
         if (!fz_rnd(3)) fz_run("p", st + rgn / 2);
         fz_nres = 0; return;
     }
-    // the essentials: a bathroom corner, a kitchen run (a big kitchen gets a microwave or a coffee maker)
-    char bath[4] = { 'T', fz_rnd(4) ? 'H' : ',', '-', 0 }; if (area < 24) bath[2] = 0;
-    fz_run(bath, st);
-    char kit[5] = { 'F', 'y', '/', fz_rnd(2) ? ':' : 'c', 0 }; if (area < 30) kit[3] = 0; if (area < 18) kit[2] = 0;
-    if (fz_rnd(2)) { char t = kit[0]; kit[0] = kit[1]; kit[1] = t; }
-    fz_run(kit, st + rgn / 2);
-    // the beds: one for a couple, one each for anyone else grown up, bunk beds for the kids
+    // ---- A LAYOUT, not a scatter: the room is read from the door in (l across, d deep) and given its zones ----
+    //   the back wall: the bedroom at one end, the bathroom (toilet, shower, sink) in the other corner; the kitchen runs down the bathroom's
+    //   side wall (the plumbing is all on one side); the bedroom's side wall carries on with the beds and then the sofa; the telly stands
+    //   across from the sofa, a rug between; the dining table in the middle by the kitchen; a study corner and the odd hobby along the front.
+    fz_px = -oy; fz_py = ox;
+    { int c0 = fz_px * x0 + fz_py * y0, c1 = fz_px * x1 + fz_py * y1, cmin = MIN(c0, c1), cmax = MAX(c0, c1);
+      int d0 = ox * x0 + oy * y0, d1 = ox * x1 + oy * y1, di = ox * ix + oy * iy;
+      fz_Wl = cmax - cmin + 1; fz_ld = fz_px * ix + fz_py * iy - cmin; fz_Dd = MAX(d0, d1) - di + 1; }
+    const int RW = fz_Wl, RD = fz_Dd, back = RD - 1, mid = RD / 2;
+    int bathEnd = fz_rnd(2) ? RW - 1 : 0, bedEnd = RW - 1 - bathEnd, sg = bedEnd == 0 ? 1 : -1;      // sg: from the bedroom end toward the bathroom end
+    int area = RW * RD;
+    // the bathroom: the far corner, then the kitchen's side wall carries the sink on
+    { char bath[4] = { '-', 'T', fz_rnd(4) ? 'H' : ',', 0 }; if (area < 24) bath[2] = 0; if (area < 14) bath[1] = 0;
+      int k = (int)strlen(bath), ok = 0;
+      for (int tries = 0; tries < 2 && !ok; tries++) {   // (the other corner if this one is in the way)
+          int be = tries ? bedEnd : bathEnd, dir = be == 0 ? 1 : -1; ok = 1;
+          for (int j = 0; j < k && ok; j++) { int l = be + dir * j; if (!fz_pfree(l, back)) ok = 0; }
+          if (ok) { for (int j = 0; j < k; j++) fz_pput(be + dir * j, back, bath[j]); if (tries) { bathEnd = be; bedEnd = RW - 1 - be; sg = -dir; } }
+      } }
+    // the paths the groups follow: a list of tiles along walls
+    fz_np[0] = fz_np[1] = fz_np[2] = fz_np[3] = 0;
+    for (int j = 0; j < RW - 3; j++) fz_padd(0, bedEnd + sg * j, back);                       // beds: along the back wall from their end ...
+    for (int d = back - 1; d >= (RD + 1) / 2 && d >= 2; d--) fz_padd(0, bedEnd, d);          // ... then down the side wall to the middle
+    for (int d = back - 1; d >= (RD + 1) / 2 && d >= 2; d--) fz_padd(1, bathEnd, d);         // the kitchen: down the bathroom's side wall
+    for (int d = mid - 1; d >= 1; d--) fz_padd(2, bedEnd, d);                                // the living end of the bedroom's wall
+    for (int d = mid - 1; d >= 1; d--) fz_padd(3, bathEnd, d);                               // and the opposite wall: the telly
+    // the bedroom
     int grown = o->adults + o->elders, beds = o->couple ? 1 + MAX(0, grown - 2) : grown;
-    for (int b = 0; b < beds; b++) fz_run(fz_rnd(2) ? "Si" : "S", st + rgn / 4 + b * 3);
-    for (int k = 0; k < (o->kids + 1) / 2; k++) fz_run("<", st + rgn / 4 + 7 + k * 2);
-    for (int k = 0; k < o->babies; k++) fz_run("\x81", st + rgn / 4 + 11 + k * 2);   // a crib for each baby
-    for (int k = 0; k < o->teens; k++) fz_run(fz_rnd(2) ? "S" : "<", st + rgn * 3 / 4 + k * 2);
-    // the living room: a sofa and the telly
-    if (area >= 15) { int s = fz_run(o->elders && !o->adults ? ";" : "C", st + rgn * 3 / 4); if (s >= 0) fz_run("v", s + rgn / 2); }
-    // who they are: the things a family like this has
-    if (o->kids) { fz_run("n", st + 5); if (!fz_rnd(2)) fz_run("{", st + 9); }
-    if (o->teens) { fz_run(fz_rnd(2) ? "U" : "A", st + 6); fz_run("[", st + 11); }
-    if (o->elders) { fz_run("R", st + 3); fz_run(fz_rnd(2) ? "b" : "?", st + 8); }
+    if (beds <= 0 && !o->kids && !o->teens && !o->babies) beds = 1;
+    for (int b = 0; b < beds; b++) { fz_pp(0, fz_rnd(2) ? 'S' : 'S'); if (!b) fz_pp(0, 'i'); }
+    for (int k = 0; k < (o->kids + 1) / 2; k++) fz_pp(0, '<');
+    for (int k = 0; k < o->babies; k++) fz_pp(0, '\x81');
+    for (int k = 0; k < o->teens; k++) fz_pp(0, fz_rnd(2) ? 'S' : '<');
+    if (o->kids) { fz_pp(0, 'n'); if (!fz_rnd(2)) fz_pp(0, '{'); }
+    // the kitchen (a big one gets a microwave or a coffee maker)
+    { char kit[6] = { 'F', 'y', '/', fz_rnd(2) ? ':' : 'c', 'y', 0 }; if (area < 30) kit[3] = 0; if (area < 18) kit[2] = 0; if (area < 12) kit[1] = 0;
+      for (int j = 0; kit[j]; j++) fz_pp(1, kit[j]); }
+    // the living end: the sofa (an armchair for the old), the telly across, a rug between, a lamp
+    int lvr = o->elders && !o->adults ? ';' : 'C';
+    int sofa = area >= 15 ? fz_pp(2, (char)lvr) : -1;
+    if (sofa >= 0) { fz_pp(3, 'v'); fz_pp(2, 'l'); }
+    if (o->elders) { fz_pp(3, 'R'); if (fz_rnd(2)) fz_pp(2, ';'); }
+    if (o->teens) { fz_pp(3, fz_rnd(2) ? 'U' : 'A'); fz_pp(2, 'U'); }
+    // the dining table: in the middle of the room, by the kitchen, chairs on both sides
+    if (RW >= 6 && RD >= 5) {
+        int tl = bathEnd == 0 ? 2 : RW - 3, td = MAX(2, RD - 3);
+        if (fz_pfree(tl, td) && fz_pfree(tl - 1, td) && fz_pfree(tl + 1, td)) { fz_pput(tl, td, 't'); fz_pput(tl - 1, td, 'h'); fz_pput(tl + 1, td, 'h'); }
+        int rl = bedEnd == 0 ? 2 : RW - 3, rd = MAX(1, mid - 1);
+        if (fz_pfree(rl, rd)) fz_pput(rl, rd, 'r');
+    }
+    // the study corner and the hobbies: the free tiles on the back wall, then the front wall by the door
+    if (o->adults || o->teens) { for (int j = 0; j < RW; j++) if (fz_pfree(j, back) && (fz_pfree(j + 1, back) || fz_pfree(j - 1, back))) { fz_pput(j, back, 'd'); if (fz_pfree(j, back - 1)) fz_pput(j, back - 1, '['); else fz_pfree(j + sg, back) ? fz_pput(j + sg, back, 'b') : 0; break; } }
     if (o->adults) {
-        static const char hobby[] = "b[($)qo`V";
+        static const char hobby[] = "b(`$)qoV?";
         int n = 1 + (area >= 35) + (area >= 48);
-        for (int i = 0; i < n; i++) { char c[2] = { hobby[fz_rnd(9)], 0 }; fz_run(c, st + 2 + i * 5); }
+        for (int i = 0; i < n; i++) { char c = hobby[fz_rnd(9)];
+            for (int j = 0; j < RW; j++) { int l = (j * 3 + i * 2 + 1) % RW; if (fz_pfree(l, 0) && fz_pfree(l, 1) && l != fz_ld) { fz_pput(l, 0, c); break; } } }
     }
-    // a few nice touches
-    fz_run("p", st + rgn / 3); fz_run("l", st + rgn * 2 / 3);
-    if (area >= 30) fz_run("p", st + rgn - 2);
-    // the middle of the room: a dining table and chairs, a rug
-    if (x1 - x0 >= 4 && y1 - y0 >= 4) {
-        int cx = x0 + 2 + fz_rnd(MAX(1, x1 - x0 - 3)), cy = y0 + 2 + fz_rnd(MAX(1, y1 - y0 - 3));
-        if (fz_free(cx, cy) && fz_free(cx - 1, cy) && fz_free(cx + 1, cy) && !fz_keep(cx, cy + 1)) { sm[cy][cx] = 't'; sm[cy][cx - 1] = 'h'; sm[cy][cx + 1] = 'h'; }
-        int rx = x0 + 1 + fz_rnd(MAX(1, x1 - x0 - 1)), ry = y0 + 1 + fz_rnd(MAX(1, y1 - y0 - 1));
-        if (fz_free(rx, ry)) sm[ry][rx] = 'r';
-    }
+    // the touches: plants in the front corners and by the sofa
+    fz_pput(0, 0, 'p'); fz_pput(RW - 1, 0, 'p'); if (area >= 30) fz_pput(bedEnd, 0, 'p');
     fz_reach();
     fz_nres = 0;
 }
