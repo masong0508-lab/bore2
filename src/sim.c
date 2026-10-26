@@ -11,6 +11,7 @@
 #include "places.h"
 #include "bigmap.h"
 #include "crowd.h"
+#include "traffic.h"
 #include "pop.h"
 #include "home.h"
 #include "island.h"
@@ -1272,7 +1273,7 @@ void sim_step(void) {
 }
 
 int sim_walk(Sim *s, int dx, int dz) { return walk(s, dx, dz); }   // (skate.c: a step with the board's way over ramps and decks)
-static void veh_dismount(Sim *s, const char *why) { veh_on = 0; s->gait.sit = 0; s->gait.amp = 0; s->gait.run = 0; if (why) sim_note(why); }
+static void veh_dismount(Sim *s, const char *why) { if (veh_on) traffic_park(veh_on - 1, s->x, s->z, s->yaw); veh_on = 0; s->gait.sit = 0; s->gait.amp = 0; s->gait.run = 0; if (why) sim_note(why); }
 static void veh_drive(Sim *s, int dx, int dz) {   // a step in a vehicle: it turns like a car (slowly) and goes at its speed, burning fuel by the distance
     world_lvl = s->lvl;
     int t = veh_on - 1; s->path_n = 0; s->action = ACT_NONE; s->gait.sit = VT[t].seat > 0; s->gait.amp = 0; s->gait.run = 0;
@@ -1316,6 +1317,7 @@ static int veh_mount(Sim *s, int t) {   // 1: you are on it
 #ifndef AUTO_VEH
     { int tx = sim_tile_x(s), ty = sim_tile_y(s); if (s->lvl || tx < 0 || ty < 0 || tx >= MW || ty >= MH || floorMap[ty][tx] < FL_GRASS) { sim_note("OUTSIDE ONLY: NO DRIVING INDOORS"); return 0; } }
 #endif
+    if (!traffic_park_near(t, s->x, s->z) && traffic_parked(t)) { char b[40]; snprintf(b, sizeof b, "YOUR %s IS PARKED ELSEWHERE", VT[t].nm); sim_note(b); return 0; }
     veh_on = t + 1; veh_sel = t; veh_lowfuel = 0; s->gait.sit = VT[t].seat > 0; s->gait.amp = 0;
     { char b[40]; snprintf(b, sizeof b, "ON THE %s. O TO GET OFF", VT[t].nm); sim_note(b); }
     audio_voice(VOICE_YEHA); return 1;
@@ -1959,7 +1961,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
     sv_u8(phone_tier); sv_u8(handheld);   // (version 10)
     sv_u8(job_none);   // (version 12)
     sv_u16((u16)arcade_tix); sv_u16((u16)fight_wins); sv_u8((u8)fight_champ); sv_u8((u8)fight_best);   // (version 15)
-    sv_u8(veh_own); sv_u8(veh_sel); for (int t = 0; t < VEH_N; t++) sv_u16((u16)veh_fuel[t]);   // (version 18: the vehicles)
+    sv_u8(veh_own); sv_u8(veh_sel); for (int t = 0; t < VEH_N; t++) sv_u16((u16)veh_fuel[t]); traffic_save();   // (version 18: the vehicles)
     realm_save();   // (version 15: KINGDOM MODE's realm)
     for (int i = 0; i < nsims; i++) {
         const Sim *s = &sims[i]; const Bore *b = &s->bore;
@@ -1991,6 +1993,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     if (save_ver >= 15) { arcade_tix = ld_u16(); fight_wins = ld_u16(); fight_champ = ld_u8() & 1; fight_best = ld_u8(); } else arcade_tix = fight_wins = fight_champ = fight_best = 0;
     veh_on = 0; veh_odo = 0; veh_lowfuel = 0;
     if (save_ver >= 18) { veh_own = ld_u8() & ((1 << VEH_N) - 1); veh_sel = ld_u8() % VEH_N; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = ld_u16(); } else { veh_own = 0; veh_sel = 0; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = 0; }
+    traffic_load(save_ver);
     realm_load(save_ver);
     for (int i = 0; i < n && i < MAX_SIMS; i++) {
         sim_add(blank, 0, 0, 1);   // (a blank Bore: the Bore is large, so it is filled in place)

@@ -23,7 +23,7 @@ enum { LOT_WILD, LOT_HOUSE, LOT_COTTAGE, LOT_TOWN, LOT_TWO, LOT_APART,          
 #define BR_MEGA 8
 #define BR_PART(r) (((r) >> 4) & 3)
 #define BR_KIND(r) (((r) >> 6) & 3)
-enum { MK_PARK, MK_MALL, MK_PLAZA };
+enum { MK_PARK, MK_MALL, MK_PLAZA, MK_CAMPUS };   // (CAMPUS: a business park of offices, hotels and shops round a paved court)
 enum { ST_CITY, ST_TOWN, ST_VILLAGE };
 
 typedef struct {

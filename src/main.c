@@ -30,6 +30,7 @@ static const OvlHead *ovl;   // the overlay that is in (KINGDOM.OVL, ARCADE.OVL)
 #include "mcard.h"
 #include "story.h"
 #include "skate.h"
+#include "traffic.h"
 
 // ---- input ----
 static u8 pad_buf[2][34];
@@ -357,6 +358,7 @@ static void draw_sims(void) {
         if (i == player && on_board) { int ro, pi, sp; skate_board(&ro, &pi, &sp); items_draw_board(s->x, s->z, s->yaw, -board_lift - skate_board_up() - s->lvl * WALL_FULL, ro, pi, sp); }
         if (s->action != ACT_SLEEP && s->action != ACT_SWIM && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
+    traffic_draw();
     citizens_draw();
     if (nsims && !sims[player].grump) draw_marker(&sims[player]);   // MOSS gets nothing. MOSS made that very clear.
     gfx_set_reserve(0);
@@ -625,7 +627,7 @@ static void life_update(int steps) {
     if (PRESSED(PAD_L3)) show_fps ^= 1;
     { extern int getenv_noshadow, dbg_noao, dbg_nograd; if (PRESSED(PAD_R3)) { static int mode; mode = (mode + 1) & 3; getenv_noshadow = mode == 1; dbg_noao = mode == 2; dbg_nograd = mode == 3; } }
     if (PRESSED(PAD_SELECT)) { extern void phone_open(void); phone_open(); }   // the phone in your pocket
-    { int t0 = hb_now(); for (int k = 0; k < steps; k++) sim_step(); citizens_update(steps); t_logic = hb_now() - t0; }
+    { int t0 = hb_now(); for (int k = 0; k < steps; k++) sim_step(); citizens_update(steps); traffic_update(steps); t_logic = hb_now() - t0; }
     {   // SAN BOREAS: the map window follows you a block at a time (everything slides with it)
         int dtx, dty;
 #ifdef AUTO_CITY
@@ -1693,10 +1695,10 @@ static void grow_tick(void) {   // (test builds: a family's life in two minutes:
 // ---- OPTIONS: the picture and the speed, as many knobs as a PC game, with presets; the game runs behind as you change them ----
 static void title_draw(void);
 enum { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_CROWD, O_LIVE, O_SPR, O_SHADOW, O_AO, O_WALLS, O_FPSCAP, O_DITHER, O_CAM, O_SHOWFPS,
-       O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_CUTAWAY, O_ALONE, O_GHOSTS, O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_WIDE, O_N };
+       O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_CUTAWAY, O_ALONE, O_GHOSTS, O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_WIDE, O_TRAF, O_N };
 static const char *const optNm[O_N] = { "PRESET", "VIEW DISTANCE", "FULL DETAIL", "FAR BUILDINGS", "FAR TREES", "HAZE", "CROWD SIZE",
     "PEOPLE IN FULL 3D", "PEOPLE SPRITES", "SHADOWS", "FLOOR SHADING", "WALL LIGHT", "FRAME RATE", "DITHERING", "CAMERA", "SHOW FPS",
-    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC", "WALL VIEW", "YOUR BORE ALONE", "GHOSTS", "AGGRESSION", "WHO JOINS FIGHTS", "RAGE", "WHO LUNGES AT YOU", "PEACEMAKERS", "SCREEN SHAPE" };
+    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC", "WALL VIEW", "YOUR BORE ALONE", "GHOSTS", "AGGRESSION", "WHO JOINS FIGHTS", "RAGE", "WHO LUNGES AT YOU", "PEACEMAKERS", "SCREEN SHAPE", "TRAFFIC CHEAT" };
 static const char *const optV[O_N][6] = {
     { "CUSTOM", "LOW", "MEDIUM", "HIGH", "ULTRA" }, { "50 M", "250 M", "500 M", "1 KM", "1.5 KM", "2 KM" },
     { "10 M", "12 M", "15 M", "17 M" }, { "TALL ONLY", "ALL", "WITH WINDOWS" }, { "OFF", "100 M", "200 M", "350 M" },
@@ -1707,8 +1709,8 @@ static const char *const optV[O_N][6] = {
     { "LOW", "MEDIUM", "HIGH", "OVERHEAD" }, { "SLOW", "NORMAL", "FAST" }, { "OFF", "ON" }, { "OFF", "LOW", "MEDIUM", "FULL" },
     { "AUTO", "CUT AWAY", "FULL WALLS" }, { "OFF", "LOW", "HIGH" }, { "OFF", "ON", "HAUNTED" },
     { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" },
-    { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" }, { "OFF", "ON" }, { "4:3 NORMAL", "16:9 WIDE" } };
-static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3, 3, 6, 6, 6, 6, 2, 2 };
+    { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" }, { "OFF", "ON" }, { "4:3 NORMAL", "16:9 WIDE" }, { "OFF", "+10 CARS", "+30 CARS", "+60 CARS", "LUDICROUS" } };
+static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3, 3, 6, 6, 6, 6, 2, 2, 5 };
 static const char *const optBlurb[O_N] = {
     "LOW, MEDIUM, HIGH OR ULTRA SETS THEM ALL", "HOW FAR SAN BOREAS GOES BEFORE THE SKY", "WHERE ROOMS, WALLS AND THINGS ARE DRAWN IN FULL",
     "THE TOWNS PAST THE MAP: TALL ONES, ALL, OR WINDOWS TOO", "TREES PAST THE NEAR DETAIL, OUT TO", "THE AIR BETWEEN YOU AND THE HORIZON",
@@ -1749,7 +1751,7 @@ static void opts_apply(void) {
     gfx_set_dither(opt[O_DITHER]);
     alone_opt = opt[O_ALONE]; ghost_mode = opt[O_GHOSTS];
     { extern int aggro_pct, rage_pct, aggro_who, rage_who, peace_on; aggro_pct = opt[O_AGGRO] * 20; rage_pct = opt[O_RAGE] * 20; aggro_who = opt[O_AGWHO]; rage_who = opt[O_RAGEWHO]; peace_on = opt[O_PEACE]; }
-    gfx_wide = opt[O_WIDE];
+    gfx_wide = opt[O_WIDE]; traffic_cheat = opt[O_TRAF] % 5;
 #ifdef WIDE_TEST
     gfx_wide = 1;
 #endif
@@ -1768,7 +1770,7 @@ static const char *const optTabNm[NOTAB] = { "GRAPHICS", "PEOPLE", "LIGHT", "CAM
 static const s8 optTabIc[NOTAB] = { IC_EYE, IC_PEOPLE, IC_SUN, IC_CAMERA, IC_BOLT, IC_SPROUT, IC_STAR };
 static const s8 optTab[NOTAB][7] = { { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_WIDE }, { O_CROWD, O_LIVE, O_SPR, -1 },
                                      { O_SHADOW, O_AO, O_WALLS, O_DITHER, -1 }, { O_CAM, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_CUTAWAY, -1 },
-                                     { O_FPSCAP, O_SHOWFPS, O_MUSIC, -1 }, { O_AGING, O_OLDAGE, O_TOWNAGE, O_ALONE, O_GHOSTS, -1 }, { O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, -1 } };
+                                     { O_FPSCAP, O_SHOWFPS, O_MUSIC, -1 }, { O_AGING, O_OLDAGE, O_TOWNAGE, O_ALONE, O_GHOSTS, -1 }, { O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_TRAF, -1 } };
 static int opt_kind(int i) {   // 0 a choice, 1 a slider, 2 a switch
     if (i == O_AO || i == O_DITHER || i == O_SHOWFPS || i == O_TOWNAGE || i == O_ZOOMTILT || i == O_PEACE) return 2;
     if (i == O_AGGRO || i == O_RAGE) return 1;
@@ -1844,7 +1846,7 @@ static void opts_draw(void) {
 static const char *save_msg;                                 // why the last load failed (the title shows it)
 static void save_body(void) {
     sv_u32(world_seed()); sv_u8(bm_packed);
-    sv_u8(bm_land); sv_u8(bm_sea); sv_u8(bm_clim); sv_u8(bm_hills); sv_u8(bm_ncity); sv_u8(bm_ntown); sv_u8(bm_nvil); sv_u8(bm_capsz); sv_u8(pop_people); sv_u8(pop_famsize); sv_u8(isl_size); sv_u8(isl_wild); sv_u8(isl_jungle); sv_u8(isl_rocks);   // (CREATE A WORLD's dials: version 7)
+    sv_u8(traffic_level); sv_u8(bm_land); sv_u8(bm_sea); sv_u8(bm_clim); sv_u8(bm_hills); sv_u8(bm_ncity); sv_u8(bm_ntown); sv_u8(bm_nvil); sv_u8(bm_capsz); sv_u8(pop_people); sv_u8(pop_famsize); sv_u8(isl_size); sv_u8(isl_wild); sv_u8(isl_jungle); sv_u8(isl_rocks);   // (CREATE A WORLD's dials: version 7)
     { int n = 0; for (int i = 0; i < BM_NSET_MAX; i++) if (bm_renamed(i)[0]) n++;   // (the towns renamed)
       sv_u8(n); for (int i = 0; i < BM_NSET_MAX; i++) if (bm_renamed(i)[0]) { sv_u8(i); sv_str(bm_renamed(i), 17); } }
     sv_n(opt, O_N);
@@ -1855,14 +1857,15 @@ static void save_body(void) {
 static void load_body(void) {
     u32 seed = ld_u32();
     if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 17 ? 4 : 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
-    bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1;
+    bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2;
+    traffic_level = 2; if (save_ver >= 19) traffic_level = ld_u8() % 5;
     if (save_ver >= 7) { bm_land = ld_u8() % BL_N; bm_sea = ld_u8() % 5; bm_clim = ld_u8() % 5; bm_hills = ld_u8() % 5;
         if (save_ver >= 8) { bm_ncity = ld_u8() % (BM_MAXCITY + 1); bm_ntown = ld_u8() % (BM_MAXTOWN + 1); bm_nvil = ld_u8() % (BM_MAXVIL + 1); bm_capsz = ld_u8() % 6; pop_people = ld_u8() % 6; pop_famsize = ld_u8() % 4; if (save_ver < 9) bm_capsz = bm_capsz == 0 ? 1 : bm_capsz == 1 ? 2 : 4; }   // (version 8: capital SMALL NORMAL HUGE)
         else { static const u8 c7[4] = { 0, 1, 2, 3 }, t7[4] = { 2, 4, 6, 8 }, v7[4] = { 4, 8, 12, 12 }; int t = ld_u8() % 4; bm_ncity = c7[t]; bm_ntown = t7[t]; bm_nvil = v7[t]; }   // (version 7: one TOWNS dial)
         isl_size = ld_u8() % 3; isl_wild = ld_u8() % 3; isl_jungle = ld_u8() % 3; isl_rocks = ld_u8() % 3; }
     bm_rename_clear();
     if (save_ver >= 4) { int n = ld_u8(); for (int k = 0; k < n; k++) { int i = ld_u8(); char nm[18]; ld_str(nm, 17); bm_rename(i, nm); } }
-    ld_n(opt, save_ver >= 16 ? O_N : save_ver >= 15 ? O_N - 1 : save_ver >= 14 ? O_N - 6 : save_ver >= 11 ? O_N - 7 : O_N - 8); if (save_ver < 16) opt[O_WIDE] = 0; if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1;
+    { int o_n = save_ver >= 19 ? O_N : O_N - 1; ld_n(opt, save_ver >= 16 ? o_n : save_ver >= 15 ? o_n - 1 : save_ver >= 14 ? o_n - 6 : save_ver >= 11 ? o_n - 7 : o_n - 8); } if (save_ver < 19) opt[O_TRAF] = 0; if (save_ver < 16) opt[O_WIDE] = 0; if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1;
     if (save_ver < 15) { opt[O_AGGRO] = 2; opt[O_AGWHO] = 0; opt[O_RAGE] = 0; opt[O_RAGEWHO] = 1; opt[O_PEACE] = 1; } opts_apply();   // (YOUR BORE ALONE came with version 11)
     loading("LOADING YOUR GAME", 30);
     bm_new(seed); world_new_seed(seed);
@@ -3347,10 +3350,10 @@ static void worlds_go(u32 seed, int mode) {
     cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 }
 // ---- CREATE A WORLD: make your own. What kind of life, then dials for the land (or the castaway's island), the map as you turn them ----
-enum { WM_START, WM_LAND, WM_SEA, WM_CLIM, WM_HILLS, WM_CAPSZ, WM_CITIES, WM_TOWNS, WM_VILS, WM_PEOPLE, WM_FAMS, WM_STYLE, WM_ISIZE, WM_ICOAST, WM_IJUNGLE, WM_IROCKS, WM_NAME, WM_SEED, WM_PLAY, WM_N };
+enum { WM_START, WM_LAND, WM_SEA, WM_CLIM, WM_HILLS, WM_CAPSZ, WM_CITIES, WM_TOWNS, WM_VILS, WM_PEOPLE, WM_FAMS, WM_TRAFFIC, WM_STYLE, WM_ISIZE, WM_ICOAST, WM_IJUNGLE, WM_IROCKS, WM_NAME, WM_SEED, WM_PLAY, WM_N };
 static int wm_sel, wm_t, wm_start, wm_used, wm_isle_view;   // wm_start: 0 SAN BOREAS, 1 CASTAWAY ISLAND, 2 RAGS TO RICHES
-static int wm_land, wm_sea = 2, wm_clim = 2, wm_hills = 2, wm_capsz = 2, wm_cities = 2, wm_towns = 6, wm_vils = 12, wm_people = 3, wm_fams = 1, wm_isize = 1, wm_icoast = 1, wm_ijungle = 1, wm_irocks = 1;
-static const char *const wmLbl[WM_N] = { "LIFE", "LAND", "SEA", "CLIMATE", "HILLS", "CAPITAL SIZE", "CITIES", "TOWNS", "VILLAGES", "PEOPLE", "HOUSEHOLDS", "TOWN STYLE", "ISLAND SIZE", "COAST", "JUNGLE", "ISLAND HILLS", "CAPITAL", "MAP NO.", "PLAY THIS WORLD" };
+static int wm_land, wm_sea = 2, wm_clim = 2, wm_hills = 2, wm_capsz = 2, wm_cities = 2, wm_towns = 6, wm_vils = 12, wm_people = 3, wm_fams = 1, wm_traffic = 2, wm_isize = 1, wm_icoast = 1, wm_ijungle = 1, wm_irocks = 1;
+static const char *const wmLbl[WM_N] = { "LIFE", "LAND", "SEA", "CLIMATE", "HILLS", "CAPITAL SIZE", "CITIES", "TOWNS", "VILLAGES", "PEOPLE", "HOUSEHOLDS", "TRAFFIC", "TOWN STYLE", "ISLAND SIZE", "COAST", "JUNGLE", "ISLAND HILLS", "CAPITAL", "MAP NO.", "PLAY THIS WORLD" };
 static const char *const wmStartNm[3] = { "SAN BOREAS", "CASTAWAY", "RAGS TO RICHES" };
 static const char *const wmLandNm[BL_N] = { "MAINLAND", "ISLANDS", "ONE BIG ISLAND", "CONTINENT", "LAKES" };
 static const char *const wmSeaNm[5] = { "VERY LOW", "LOW", "NORMAL", "HIGH", "VERY HIGH" };
@@ -3358,11 +3361,12 @@ static const char *const wmClimNm[5] = { "DESERT", "DRY", "MIXED", "GREEN", "JUN
 static const char *const wmHillNm[5] = { "FLAT", "GENTLE", "NORMAL", "HILLY", "MOUNTAINS" };
 static const char *const wmCapNm[6] = { "TINY", "SMALL", "NORMAL", "BIG", "HUGE", "GIANT" };
 static const char *const wmPeopleNm[6] = { "FEW", "SOME", "MANY", "NORMAL", "CROWDED", "PACKED" };
+static const char *const wmTrafNm[5] = { "NONE", "LOW", "NORMAL", "BUSY", "JAMMED" };
 static const char *const wmFamNm[4] = { "SMALL", "MIXED", "BIG", "HUGE" };
 static const char *const wmI3[3][3] = { { "SMALL", "MEDIUM", "BIG" }, { "SMOOTH", "WAVY", "WILD" }, { "LESS", "SOME", "MORE" } };
 static const char *const wmBlurb[WM_N] = { "A HOME, STRANDED, OR BROKE", "THE SHAPE OF SAN BOREAS", "HOW MUCH OF IT THE SEA COVERS",
     "SAND AND SCRUB TO THICK FOREST", "HOW MUCH ROCKY HIGH GROUND", "HOW BIG BORE CITY IS", "BIG CITIES BESIDES THE CAPITAL", "MIDDLE-SIZED TOWNS", "LITTLE VILLAGES AND HAMLETS",
-    "HOW MANY HOMES HAVE PEOPLE IN THEM", "SMALL: SINGLES, COUPLES. BIG: FAMILIES", "ROOMY: GREEN GAPS. PACKED: BUILT UP",
+    "HOW MANY HOMES HAVE PEOPLE IN THEM", "SMALL: SINGLES, COUPLES. BIG: FAMILIES", "CARS ON THE STREETS. MORE IN OPTIONS: CHEATS", "ROOMY: GREEN GAPS. PACKED: BUILT UP",
     "THE CASTAWAY'S ISLAND", "A ROUND SHORE, OR BAYS AND HEADLANDS", "HOW THICK THE TREES GROW", "ROCKY GROUND ON THE ISLAND",
     "X TO NAME THE CAPITAL CITY", "THE DICE: L R STEP, X NEW DICE", "START A LIFE HERE" };
 static int wm_shown(int r) { return wm_start == 1 || (r < WM_ISIZE || r > WM_IROCKS); }   // (the island's dials: for a castaway)
@@ -3371,14 +3375,14 @@ static int *wm_dial(int r, int *n) {
         case WM_START: *n = 3; return &wm_start; case WM_LAND: *n = BL_N; return &wm_land; case WM_SEA: *n = 5; return &wm_sea;
         case WM_CLIM: *n = 5; return &wm_clim; case WM_HILLS: *n = 5; return &wm_hills; case WM_CAPSZ: *n = 6; return &wm_capsz; case WM_CITIES: *n = BM_MAXCITY + 1; return &wm_cities;
         case WM_TOWNS: *n = BM_MAXTOWN + 1; return &wm_towns; case WM_VILS: *n = BM_MAXVIL + 1; return &wm_vils;
-        case WM_PEOPLE: *n = 6; return &wm_people; case WM_FAMS: *n = 4; return &wm_fams;
+        case WM_PEOPLE: *n = 6; return &wm_people; case WM_FAMS: *n = 4; return &wm_fams; case WM_TRAFFIC: *n = 5; return &wm_traffic;
         case WM_STYLE: *n = 2; return &wo_packed; case WM_ISIZE: *n = 3; return &wm_isize; case WM_ICOAST: *n = 3; return &wm_icoast;
         case WM_IJUNGLE: *n = 3; return &wm_ijungle; case WM_IROCKS: *n = 3; return &wm_irocks;
         default: *n = 0; return 0;
     }
 }
 static void wm_apply(void) {   // the dials into the world makers
-    bm_land = wm_land; bm_sea = wm_sea; bm_clim = wm_clim; bm_hills = wm_hills; bm_capsz = wm_capsz; bm_ncity = wm_cities; bm_ntown = wm_towns; bm_nvil = wm_vils; pop_people = wm_people; pop_famsize = wm_fams; bm_packed = wo_packed;
+    bm_land = wm_land; bm_sea = wm_sea; bm_clim = wm_clim; bm_hills = wm_hills; bm_capsz = wm_capsz; bm_ncity = wm_cities; bm_ntown = wm_towns; bm_nvil = wm_vils; pop_people = wm_people; pop_famsize = wm_fams; traffic_level = wm_traffic; bm_packed = wo_packed;
     isl_size = wm_isize; isl_wild = wm_icoast; isl_jungle = wm_ijungle; isl_rocks = wm_irocks;
 }
 static void wm_open(void) { wm_sel = WM_LAND; wm_t = 0; wm_used = 1; wm_apply(); wo_painted = 0; state = ST_WMAKE; audio_voice(VOICE_FINISHED); }
@@ -3443,7 +3447,7 @@ static void wm_draw(void) {
         int *v = wm_dial(r, &n);
         if (r == WM_START) val = wmStartNm[wm_start]; else if (r == WM_LAND) val = wmLandNm[wm_land]; else if (r == WM_SEA) val = wmSeaNm[wm_sea];
         else if (r == WM_CLIM) val = wmClimNm[wm_clim]; else if (r == WM_HILLS) val = wmHillNm[wm_hills]; else if (r == WM_CAPSZ) val = wmCapNm[wm_capsz];
-        else if (r == WM_CITIES || r == WM_TOWNS || r == WM_VILS) { sprintf(b, "%d", *v); val = b; } else if (r == WM_PEOPLE) val = wmPeopleNm[wm_people]; else if (r == WM_FAMS) val = wmFamNm[wm_fams];
+        else if (r == WM_CITIES || r == WM_TOWNS || r == WM_VILS) { sprintf(b, "%d", *v); val = b; } else if (r == WM_PEOPLE) val = wmPeopleNm[wm_people]; else if (r == WM_FAMS) val = wmFamNm[wm_fams]; else if (r == WM_TRAFFIC) val = wmTrafNm[wm_traffic];
         else if (r == WM_STYLE) val = wo_packed ? "PACKED" : "ROOMY"; else if (r >= WM_ISIZE && r <= WM_IROCKS) val = wmI3[r == WM_ISIZE ? 0 : r == WM_ICOAST ? 1 : 2][*v];
         else if (r == WM_NAME) val = wo_name[0] ? wo_name : "BORE CITY";
         else if (r == WM_SEED) { sprintf(b, "%08X", (unsigned)wo_custom); val = b; }
@@ -3490,13 +3494,13 @@ static void worlds_update(void) {
         if (PRESSED(PAD_L1)) wo_custom--;
         if (PRESSED(PAD_R1)) wo_custom++;
     }
-    if (wo_sel == WO_CREATE && wm_used) wm_apply(); else { bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; }   // (the made world's map with its dials; a set world with its own)
+    if (wo_sel == WO_CREATE && wm_used) wm_apply(); else { bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2; }  traffic_load(0);   // (the made world's map with its dials; a set world with its own)
     wm_check_dials();
     u32 sd = wo_seed_of(wo_sel); if (sd) paint_world(sd);
     if (PRESSED(PAD_CROSS)) {
         if (wo_sel == WO_MORE) { wo_more = 1; return; }
         if (wo_sel == WO_CREATE) { wm_open(); return; }
-        bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1;
+        bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2; traffic_load(0);
         life_story = 0; worlds_go(wo_seed_of(wo_sel), wo_sel == WO_CASTAWAY ? 1 : 0);
     }
 }

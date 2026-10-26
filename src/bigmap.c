@@ -256,6 +256,7 @@ static int river_at(int bx, int by, int si) {   // 0: no, 1: runs west-east, 2: 
     return 0;
 }
 static const u8 mallMix[]  = { LOT_SHOP, 28, LOT_CAFE, 14, LOT_RESTAURANT, 10, LOT_SALON, 10, LOT_CINEMA, 12, LOT_ARCADE, 10, LOT_GYM, 6, LOT_GALLERY, 5, LOT_SPA, 5, 0, 0 };
+static const u8 campusMix[] = { LOT_OFFICE, 30, LOT_TOWER, 18, LOT_SHOP, 14, LOT_HOTEL, 10, LOT_CAFE, 10, LOT_RESTAURANT, 8, LOT_GYM, 5, LOT_BAR, 5, 0, 0 };
 static const u8 plazaMix[] = { LOT_TOWER, 34, LOT_OFFICE, 20, LOT_HOTEL, 16, LOT_RESTAURANT, 10, LOT_CAFE, 8, LOT_BAR, 6, LOT_GALLERY, 6, 0, 0 };
 static int mega_kind(int gx, int gy, int si) {   // -1: not a group; else MK_ (a group is the 2x2 blocks from an even block)
     static int cgx = -1, cgy = -1, csi = -1, ck;
@@ -270,7 +271,7 @@ static int mega_kind(int gx, int gy, int si) {   // -1: not a group; else MK_ (a
         if (t.set != si || t.terrain == BT_SEA || landmark(s, x - s->x, y - s->y) >= 0 || river_at(x, y, si)) return ck;
     }
     int k = (int)((h >> 8) % 100u);
-    ck = s->kind == ST_CITY ? (k < 34 ? MK_PARK : k < 64 ? MK_MALL : MK_PLAZA) : (k < 50 ? MK_PARK : MK_MALL);
+    ck = s->kind == ST_CITY ? (k < 28 ? MK_PARK : k < 52 ? MK_MALL : k < 76 ? MK_PLAZA : MK_CAMPUS) : (k < 50 ? MK_PARK : MK_MALL);
     return ck;
 }
 void bm_block(int bx, int by, BInfo *b) {
@@ -283,7 +284,7 @@ void bm_block(int bx, int by, BInfo *b) {
     if (k < 0) return;
     int part = (bx & 1) | ((by & 1) << 1);
     b->road = (u8)((b->road & 7) | BR_MEGA | (part << 4) | (k << 6));
-    b->lot = (u8)(k == MK_PARK ? LOT_PARK : pick(b->h >> 4, k == MK_MALL ? mallMix : plazaMix));
+    b->lot = (u8)(k == MK_PARK ? LOT_PARK : pick(b->h >> 4, k == MK_MALL ? mallMix : k == MK_CAMPUS ? campusMix : plazaMix));
     if (k == MK_MALL && part == 0) b->lot = LOT_SHOP;
 }
 int bm_storeys(const BInfo *b) {
