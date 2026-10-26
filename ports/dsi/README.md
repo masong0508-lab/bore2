@@ -56,3 +56,6 @@ Max x2/x3 cheat no longer clamps: minimum values go negative (inverted geometry 
 
 ## D10
 In-game items are now small multi-part models (20 items: chair, sofa, bed, fridge, tv, bathtub...) with soft shadows. See docs/DSI_ROADMAP.md.
+
+## D11
+Real DS hardware lighting (key + fill light, per-face normals) on the Create-a-Sim head, the lot and the furniture; generated starter house (bedroom, bathroom, living room, kitchen/dining, doors, front door, mirrored/size variants from the lot seed); Options screen (title > Opt): anti-alias, outlines, shadows, lighting, item detail, ground check, 30/60 fps, brightness, sky, camera distance, map spin, game speed, turbo CPU.

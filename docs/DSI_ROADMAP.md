@@ -1,6 +1,6 @@
 # BORE 2 DSi: roadmap
 
-Where we are (D10): dual-screen Sims-DS style flow. Title (Household Occupants / Start-Load), Create-a-Sim (12 hairstyles,
+Where we are (D11: lighting, generated houses, Options screen): dual-screen Sims-DS style flow. Title (Household Occupants / Start-Load), Create-a-Sim (12 hairstyles,
 beards, faces, stylus pad, RGB paint, 26 sliders face and body, Height, Max x1/x2/x3 cheat), Map with a drag neighborhood
 editor, LIVE (needs, actions, wandering sims), drag Buy/Build, 20 modelled furniture items.
 Not done: saving, most PS1 systems, sound, real-hardware testing.
@@ -50,3 +50,10 @@ Hills/mountains and decor visible from the air, crash fixes, proportion pass, ne
 ## Order I'd do next
 1. Item actions + use-spots for the 20 modelled items.  2. Save/load.  3. In-lot face detail + limb animation.
 4. Room tool and door/window.  5. Jobs + money loop.  6. Wants/fears.  7. Lot types (shop, diner).  8. Mini-games.
+
+## Graphics / video / performance options (planned beyond D11)
+Done: AA, outlines, shadows, lighting, item detail, checker, 30/60 fps, brightness, sky, camera, spin, speed, turbo.
+To add: fog/haze distance, draw-distance for lots, toon shading, per-item LOD, poly-count/fps meter, screen swap (live on top/bottom), left-handed UI, text size, high-contrast UI, colour filters (day/night auto tint), sound/music volume, save slots, autosave interval, difficulty/needs decay rate, cheat menu (slider multiplier already in CAS), language.
+
+## House generation (planned beyond D11)
+Done: one layout family (2 back rooms + open front, mirrored, 4 sizes). To add: 2-storey houses, L-shapes, garage, yard fences/trees, room-type-aware furnishing per lot kind (shop, diner, gym...), windows models, roof, per-lot persistence.
