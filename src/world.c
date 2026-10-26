@@ -552,7 +552,7 @@ static void fz_reach(void) {                          // everything must be reac
                 seen[b - fz_y0][a - fz_x0] = 1; qx[t] = (u8)a; qy[t++] = (u8)b; } }
         int gone = 0;
         for (int y = fz_y0; y <= fz_y1; y++) for (int x = fz_x0; x <= fz_x1; x++) {
-            char c = sm[y][x]; if (fz_walk(c) || c == '|' || c == 'W' || c == 'E') continue;
+            char c = sm[y][x]; if (fz_walk(c) || c == '|' || c == 'W' || c == 'E' || c == ' ') continue;
             int ok = 0;
             static const signed char ox[4] = { 1, -1, 0, 0 }, oy[4] = { 0, 0, 1, -1 };
             for (int k = 0; k < 4; k++) { int a = x + ox[k], b = y + oy[k];
@@ -686,6 +686,7 @@ static void furnish_at(int x0, int y0, int x1, int y1, int ix, int iy, int ox, i
 // A BIG HOME is built as rooms: a front room (living, kitchen, dining; split in two in a mansion), and behind a wall with a door to each
 // of the back rooms (the bedrooms, the bathroom, a study, a games room). The plan comes from the dice: how wide each room is, which door
 // goes where, what each room is for, and what is in it.
+static int fz_upx = -1, fz_upy, fz_holex = -1, fz_holey, fz_upper;   // a staircase up from this storey (a plant by it), a stairwell hole in its floor from the one below, and whether it is an upper floor
 static void furnish_plan(int X0, int Y0, int X1, int Y1, int dx, const Occ *o, unsigned h, int grand) {
     int Wt = X1 - X0 + 1, Dt = Y1 - Y0 + 1;
     if (o->vacant || Wt < 7 || Dt < 7) { furnish_at(X0, Y0, X1, Y1, dx, Y1, 0, -1, o, h); return; }
@@ -723,7 +724,12 @@ static void furnish_plan(int X0, int Y0, int X1, int Y1, int dx, const Occ *o, u
     for (int i = 0; i < k; i++) { static const signed char rs[4][2] = { { 0, 1 }, { -1, 1 }, { 1, 1 }, { 0, 2 } };   // (the way from each door stays open, with room to step round)
         for (int j = 0; j < 4; j++) { fz_res[fz_nres][0] = (u8)(ddx[i] + rs[j][0]); fz_res[fz_nres++][1] = (u8)(wy + rs[j][1]); } }
     Beds none; memset(&none, 0, sizeof none);
-    fz_frame(fx0, fy0, fx1, Y1, dx, Y1, 0, -1, fz_h * 3u); fz_layout(R_KIT | R_LIV | (grand ? R_GRAND : 0), &none, o);
+    { static const signed char rs2[5][2] = { { 0, 0 }, { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } };   // the stairs keep a clear square round them
+      for (int j = 0; j < 5; j++) { if (fz_upx >= 0) { fz_res[fz_nres][0] = (u8)(fz_upx + rs2[j][0]); fz_res[fz_nres++][1] = (u8)(fz_upy + rs2[j][1]); }
+                                    if (fz_holex >= 0) { fz_res[fz_nres][0] = (u8)(fz_holex + rs2[j][0]); fz_res[fz_nres++][1] = (u8)(fz_holey + rs2[j][1]); } } }
+    fz_frame(fx0, fy0, fx1, Y1, dx, Y1, 0, -1, fz_h * 3u); fz_layout(fz_upper ? (R_LIV | R_PLAY | R_GRAND) : (R_KIT | R_LIV | (grand ? R_GRAND : 0)), &none, o);
+    if (fz_upx >= 0) { sm[fz_upy][fz_upx] = '|'; sm[fz_upy - 1][fz_upx] = 'p'; }
+    if (fz_holex >= 0) sm[fz_holey][fz_holex] = ' ';
     fz_x0 = X0; fz_y0 = Y0; fz_x1 = X1; fz_y1 = Y1; fz_ix = dx; fz_iy = Y1; fz_ox = 0; fz_oy = -1;
     fz_reach();
     fz_nres = 0;
@@ -755,7 +761,23 @@ static void city_house(int lx, int ly, unsigned h) {
       if (dx - 2 > hx) gPut(dx - 2, dy, 'E'); if (dx + 2 < hx + w - 1) gPut(dx + 2, dy, 'E'); }
     int ix0 = hx + 1, iy0 = hy + 1, ix1 = hx + w - 2, iy1 = hy + hh - 2;
     int u = reg_home(ix0, iy0, ix1, iy1, dx, dy);
+    int ns = (grand && bm_gen >= 4) ? (sz == 0 ? 3 : sz < 12 ? 2 : 1) : 1;                  // a mansion has an upstairs (the estate two): stairs up from the front room
+    int wy_ = iy0 + (iy1 - iy0 + 1 >= 11 ? 5 : (iy1 - iy0 + 1 >= 9 ? 4 : 3)), sty = wy_ + 2, stA = ix0 + 1, stB = ix1 - 1;
+    if (ns > 1) { fz_upx = stA; fz_upy = sty; fz_holex = -1; }
     furnish_plan(ix0, iy0, ix1, iy1, dx, occ_of(u), h * 2654435761u, grand);
+    fz_upx = fz_holex = -1;
+    for (int l = 1; l < ns; l++) {                                                          // the upper floors: the same walls and windows, a suite, a study or a games room, a lounge
+        if (!storey(l)) break;
+        sRoom(hx, hy, hx + w - 1, hy + hh - 1, (int)(city_h((int)h + l, 5) % 14), wp);
+        for (int x = hx + 2; x < hx + w - 2; x += 3) { sm[hy][x] = 'E'; sm[hy + hh - 1][x] = 'E'; }
+        for (int y = hy + 2; y < hy + hh - 2; y += 3) { sm[y][hx] = 'E'; sm[y][hx + w - 1] = 'E'; }
+        fz_holex = (l & 1) ? stA : stB; fz_holey = sty;
+        if (l + 1 < ns) { fz_upx = (l & 1) ? stB : stA; fz_upy = sty; } else fz_upx = -1;
+        fz_upper = 1;
+        furnish_plan(ix0, iy0, ix1, iy1, hx + w / 2, &occ_any, (h + (unsigned)l * 977u) * 2654435761u, 1);
+        fz_upper = 0; fz_upx = fz_holex = -1;
+    }
+    storey(0); roof_dirty = 1;
     yard(lx, ly, dx, dy, occ_of(u)->vacant, h >> 3);
     if (grand) { gFree(dx - 3, dy + 2, '}'); gFree(dx + 3, dy + 2, '}'); gFree(hx + 1, dy + 1, 'Z'); gFree(hx + w - 2, dy + 1, 'Z'); gFree(dx - 4, dy + 1, TREE); gFree(dx + 4, dy + 1, TREE); }
 }
@@ -1402,6 +1424,9 @@ COLD static void gen_block(int wx, int wy) {
     }
     if (mine) occ_blk[0] = own_occ;                      // (just bought: furnished for the family)
     int lx = ox + BM_LOT0, ly = oy + BM_LOT0; unsigned h = b.h;
+#ifdef AUTO_TOWERS
+    if (b.lot != LOT_WILD && b.lot != LOT_SQUARE && b.lot != LOT_PARK && b.lot != LOT_RIVER) { b.lot = (by & 1) ? LOT_TOWER : LOT_HOTEL; st = 6; }   // (test builds: every lot a six-storey tower or hotel)
+#endif
 #ifdef AUTO_HOUSES
     if (b.lot != LOT_WILD && b.lot != LOT_SQUARE && b.lot != LOT_PARK && b.lot != LOT_RIVER) b.lot = LOT_HOUSE;   // (test builds: every lot a house)
 #endif
@@ -2051,6 +2076,11 @@ static void wall_tile(int mx, int my, int h, int cut) {
         slab(t, tc, x0, zN, cx - WT, cx + WT, za, zb, h, cut, wN, wS, 0, 0, runX ? 0 : win);
     }
 }
+// ---- DOORS: a real door in every doorway. It stands shut (a painted leaf with a brass knob) and slides open while anybody is at it ----
+static u16 dpp[160][2]; static int ndpp;               // the tiles people stand on this frame (the player, the family, the crowd): the doors beside them open
+void world_doors_reset(void) { ndpp = 0; }
+void world_door_mark(int tx, int ty) { if (ndpp < 160) { dpp[ndpp][0] = (u16)tx; dpp[ndpp][1] = (u16)ty; ndpp++; } }
+static int door_busy(int mx, int my) { for (int i = 0; i < ndpp; i++) if (ABS((int)dpp[i][0] - mx) <= 1 && ABS((int)dpp[i][1] - my) <= 1) return 1; return 0; }
 // a doorway: the wall line passes through the tile with an opening; posts at the sides and a lintel over the top
 static void door_tile(int mx, int my, int h) {
     int x0 = mx * TILE, x1 = x0 + TILE, zN = -my * TILE, zS = zN - TILE, cx = x0 + TILE / 2, cz = zN - TILE / 2;
@@ -2069,7 +2099,51 @@ static void door_tile(int mx, int my, int h) {
     int P = 14;
     if (alongX) { BOX(x0, x0 + P, -h, 0, cz + WT, cz - WT) BOX(x1 - P, x1, -h, 0, cz + WT, cz - WT) BOX(x0, x1, -h, -h + 56, cz + WT, cz - WT) }
     else        { BOX(cx - WT, cx + WT, -h, 0, zN, zN - P) BOX(cx - WT, cx + WT, -h, 0, zS + P, zS) BOX(cx - WT, cx + WT, -h, -h + 56, zN, zS) }
+    if (h > 90) {                                                        // the leaf: shut, or slid back into the wall beside its post
+        static const u8 pal[6][3] = { { 150, 98, 58 }, { 112, 72, 46 }, { 74, 112, 150 }, { 150, 62, 56 }, { 226, 222, 210 }, { 70, 120, 84 } };
+        unsigned hd = (unsigned)mx * 73856093u ^ (unsigned)my * 19349663u; const u8 *pc = pal[(hd >> 7) % 6u];
+        int dr = (pc[0] * L) >> 7, dg = (pc[1] * L) >> 7, db = (pc[2] * L) >> 7; if (dr > 255) dr = 255; if (dg > 255) dg = 255; if (db > 255) db = 255;
+        int open = door_busy(mx, my), ya = -h + 58, T = 7;
+        int sr = r, sg = g, sb = b; r = dr; g = dg; b = db;              // (the box macro paints with r g b)
+        if (alongX) {
+            int xa = open ? x0 + P : x0 + P, xb = open ? x0 + P + 44 : x1 - P;
+            BOX(xa, xb, ya, 0, cz + T, cz - T)
+            if (!open) { r = 235; g = 190; b = 70; BOX(x1 - P - 34, x1 - P - 20, ya / 2 + 24, ya / 2 + 38, cz + T + 6, cz - T - 6) }
+        } else {
+            int za = open ? zN - P : zN - P, zb = open ? zN - P - 44 : zS + P;
+            BOX(cx - T, cx + T, ya, 0, za, zb)
+            if (!open) { r = 235; g = 190; b = 70; BOX(cx - T - 6, cx + T + 6, ya / 2 + 24, ya / 2 + 38, zS + P + 20, zS + P + 34) }
+        }
+        r = sr; g = sg; b = sb;
+    }
     #undef BOX
+}
+
+// ---- RUGS: runs of rug tiles are one rug (a field, a border, a fringe), not a row of stuck-on mats ----
+static void rug_tile(int mx, int my) {
+    int ox = mx, oy = my;
+    while (ox > 0 && world_at(ox - 1, oy) == 'r') ox--;
+    while (oy > 0 && world_at(ox, oy - 1) == 'r') oy--;                  // the rug's top-left tile: its colours come from there
+    unsigned hd = (unsigned)ox * 2654435761u ^ (unsigned)oy * 40503u; hd ^= hd >> 13;
+    static const u8 pal[6][2][3] = { { { 150, 48, 52 }, { 214, 176, 96 } }, { { 56, 84, 138 }, { 226, 220, 200 } }, { { 70, 112, 78 }, { 200, 170, 110 } },
+                                      { { 120, 74, 120 }, { 232, 206, 150 } }, { { 196, 160, 98 }, { 96, 60, 44 } }, { { 70, 70, 82 }, { 190, 190, 200 } } };
+    const u8 *f = pal[(hd >> 4) % 6u][0], *bd = pal[(hd >> 4) % 6u][1];
+    int L = CLAMP(gfx_light(0, 0, -ONE), 60, 200);
+    int x0 = mx * TILE, x1 = x0 + TILE, zN = -my * TILE, zS = zN - TILE, B = 28, Y = -3;
+    int nW = world_at(mx - 1, my) == 'r', nE = world_at(mx + 1, my) == 'r', nN = world_at(mx, my - 1) == 'r', nS = world_at(mx, my + 1) == 'r';
+    SVECTOR a, bb, c, d;
+    #define RQ(xa, xb, za, zb, col) { setVector(&a, xa, Y, za); setVector(&bb, xb, Y, za); setVector(&c, xa, Y, zb); setVector(&d, xb, Y, zb); \
+        wquad_f(&a, &bb, &c, &d, MIN(255, ((col)[0] * L) >> 7), MIN(255, ((col)[1] * L) >> 7), MIN(255, ((col)[2] * L) >> 7), 1); }
+    int ax0 = nW ? x0 : x0 + 10, ax1 = nE ? x1 : x1 - 10, az0 = nN ? zN : zN - 10, az1 = nS ? zS : zS + 10;   // (the rug stops short of the tile's edge: a hand's width of floor all round)
+    int fx0 = nW ? ax0 : ax0 + B, fx1 = nE ? ax1 : ax1 - B, fz0 = nN ? az0 : az0 - B, fz1 = nS ? az1 : az1 + B;   // the field inside the border (the quads never overlap: no depth fights)
+    RQ(fx0, fx1, fz0, fz1, f)
+    if (!nN) RQ(ax0, ax1, az0, fz0, bd)                                  // the border: a strip along each free edge
+    if (!nS) RQ(ax0, ax1, fz1, az1, bd)
+    if (!nW) RQ(ax0, fx0, fz0, fz1, bd)
+    if (!nE) RQ(fx1, ax1, fz0, fz1, bd)
+    if (!nN) { static const u8 fr[3] = { 236, 228, 210 }; for (int k = 0; k < 5; k++) { int xa = ax0 + 8 + k * ((ax1 - ax0 - 16) / 5); RQ(xa, xa + 10, zN - 1, az0 + 1, fr) } }   // a fringe along the ends
+    if (!nS) { static const u8 fr[3] = { 236, 228, 210 }; for (int k = 0; k < 5; k++) { int xa = ax0 + 8 + k * ((ax1 - ax0 - 16) / 5); RQ(xa, xa + 10, az1 - 1, zS + 1, fr) } }
+    #undef RQ
 }
 
 int world_dbg_walls;
@@ -2193,7 +2267,8 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
             }
             { PROF_BEGIN(); ws_lite = bld[my][mx] && !b_see[bld[my][mx]] && !world_roof_show; wall_tile(mx, my, h, cut); ws_lite = 0; world_dbg_walls++; PROF_END(1); }
         } else if (c != '.') {
-            if (c == 'D') { int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12); door_tile(mx, my, (cutaway && cut_here(mx, my) && along < -TILE / 4) ? WALL_LOW : WALL_FULL); }
+            if (c == 'D') { int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12); door_tile(mx, my, (cutaway && cut_here(mx, my) && along < -TILE / 4) ? WALL_LOW : WALL_FULL); continue; }   // (the doorway is its door: no mat on the floor)
+            if (c == 'r') { rug_tile(mx, my); continue; }
             if (nat_on && !lvl && nat_plant_char(c)) {
                 if (ABS(mx - fx) > 10 || ABS(my - fy) > 10) continue;   // (further off, the far cells' woods stand for them)
                 int al = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12), ac = (((wx - focx) * fdz) >> 12) - (((wz - focz) * fdx) >> 12);

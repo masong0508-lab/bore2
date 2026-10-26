@@ -19,6 +19,7 @@ const char *citizens_hint(void);          // what X would do ("" if no citizen i
 int         citizens_pie_open(char opt[8][16]);   // the pie menu for the citizen in front (0 = none)
 const char *citizens_pie_title(void);
 int         citizens_pie_do(int i);              // 1: it opened a sub-menu (ask citizens_pie_more for its choices)
+void        citizens_door_marks(void);           // (doors) every person the crowd has out, for the doors to open for
 int         citizens_pie_more(char opt[8][16]);
 int         citizens_party(void);         // throw a party round you: guests come (returns how many; 0 none, -1 one is on)
 int         citizens_party_on(void);

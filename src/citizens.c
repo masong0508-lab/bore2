@@ -508,6 +508,7 @@ COLD int citizens_pie_open(char opt[8][16]) {
     strcpy(pie_title, c->first);
     return pie_build(c, opt);
 }
+void citizens_door_marks(void) { for (int i = 0; i < NCIT; i++) { const Cit *c = &cits[i]; if (c->zone != world_zone || c->mode == CM_GONE || c->mode == CM_KO) continue; world_door_mark(c->x / TILE, (-c->z) / TILE); } }
 COLD int citizens_pie_more(char opt[8][16]) { return pie_c < 0 ? 0 : pie_build(&cits[pie_c], opt); }   // a sub-menu: the pie again, with the new choices
 
 static int accept(const Cit *c, int base) {   // the dice: their mood towards you, their nature

@@ -720,6 +720,7 @@ static void life_draw(void) {
         else gfx_sky(top, hor);
     }
     gfx_prim_count = 0;
+    world_doors_reset(); for (int i = 0; i < nsims; i++) world_door_mark(sim_tile_x(&sims[i]), sim_tile_y(&sims[i])); citizens_door_marks();
     { int t0 = hb_now(); world_draw(sim_tile_x(s), sim_tile_y(s), frame, wall_view == 1 || (wall_view == 0 && cam_view != 2)); t_world = hb_now() - t0;   // (WALL VIEW: AUTO cuts the walls between you and the camera, but not in first person; CUT AWAY always; FULL WALLS never)
       t0 = hb_now(); gfx_prim_count = 0; draw_sims(); ghost_draw(cam_yaw, frame); t_sims = hb_now() - t0; }
     { int t0 = hb_now(); draw_bubbles(); t_bub = hb_now() - t0; }

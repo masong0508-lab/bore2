@@ -282,9 +282,9 @@ void bm_block(int bx, int by, BInfo *b) {
 }
 int bm_storeys(const BInfo *b) {
     if (b->lot == LOT_TWO) return 2;
-    if (b->lot == LOT_APART) return b->set != 255 && sets[b->set].kind == ST_CITY && (b->h >> 27) < 20 ? 3 + (int)((b->h >> 12) % 3u) : 2 + (int)((b->h >> 12) & 1);
-    if (b->lot == LOT_TOWER) return 3 + (int)((b->h >> 12) % 3u);
-    if (b->lot == LOT_HOTEL) return 3 + (int)((b->h >> 12) & 1);
+    if (b->lot == LOT_APART) return b->set != 255 && sets[b->set].kind == ST_CITY && (b->h >> 27) < 20 ? 3 + (int)((b->h >> 12) % (bm_gen >= 4 ? 4u : 3u)) : 2 + (int)((b->h >> 12) & 1);
+    if (b->lot == LOT_TOWER) return bm_gen >= 4 ? 3 + (int)((b->h >> 12) % (b->set != 255 && sets[b->set].kind == ST_CITY ? 4u : 3u)) : 3 + (int)((b->h >> 12) % 3u);   // (a city's go up to six)
+    if (b->lot == LOT_HOTEL) return bm_gen >= 4 ? 3 + (int)((b->h >> 12) % 3u) : 3 + (int)((b->h >> 12) & 1);
     return 1;
 }
 int bm_units(const BInfo *b) {

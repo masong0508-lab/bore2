@@ -56,6 +56,8 @@ int  world_backup(void);                         // keep the live lot aside whil
 void world_restore(void);                        // ... and bring it back
 void world_draw(int fx, int fy, int t, int cutaway);   // fx,fy = the tile the camera cares about (walls in front of it are cut low)
 int  world_walkable(int mx, int my);
+void world_doors_reset(void);                    // doors: forget who stood where last frame ...
+void world_door_mark(int tx, int ty);            // ... and say who stands where now (a door beside them slides open)
 int  world_floor_y(int mx, int my);              // the height you stand at (crates, funboxes)
 char world_at(int mx, int my);
 int  world_item_facing(int mx, int my);          // 0 S, 1 E, 2 N, 3 W: away from the wall, towards open floor
@@ -66,8 +68,8 @@ const char *world_floor_name(int fl);
 int  world_room_score(int mx, int my);           // how nice the place you stand in is (0..100): furniture nearby
 int  world_count(char ch);
 
-// ---- storeys and roofs: the ground plus four floors above (5 in all), and a roof over every enclosed building ----
-#define NUP 4
+// ---- storeys and roofs: the ground plus five floors above (6 in all), and a roof over every enclosed building ----
+#define NUP 5
 #define NLEVELS (NUP + 1)
 extern int world_lvl;                            // the storey world_at / world_walkable read (the Bore being moved, the build cursor)
 extern int world_view_lvl;                       // storeys above this are not drawn (the Sims 2 floor view)
