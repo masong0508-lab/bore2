@@ -121,6 +121,7 @@ const char *sim_hint(void);                // what X would do right now
 void sim_note(const char *s);
 int  sim_tile_x(const Sim *s); int sim_tile_y(const Sim *s);
 const char *sim_day_name(int d);
+int sim_weather(void);                     // 0 clear 1 rain 2 hail 3 snow: a few hours some days, by the season
 int sim_outdoors(const Sim *s);            // standing out of doors
 int sim_season(void);                      // 0 SPRING 1 SUMMER 2 AUTUMN 3 WINTER: ten days each
 const char *sim_season_name(int s);

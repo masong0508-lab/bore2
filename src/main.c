@@ -499,7 +499,12 @@ static void hud_life(void) {
     sprintf(b, "$%ld", cash); ui_text(226, 26, 1, b, UI_RGB(40, 150, 50));
     { static const u32 SC[4] = { UI_RGB(236, 120, 170), UI_RGB(236, 170, 30), UI_RGB(214, 110, 30), UI_RGB(80, 150, 220) };   // the season, and its festival on the last day
       int se = sim_season(), fe = sim_festival(); { const char *sn = fe ? sim_festival_name(se) : sim_season_name(se); ui_badge(160 - (ui_tw(1, sn) + 10) / 2, 7, sn, fe ? UI_AMBER : SC[se], UI_WHITE); }
-      if (world_zone != ZONE_ISLAND && sim_outdoors(s)) {   // petals, leaves and snow drift down outdoors; confetti at the festival
+      { int wx = world_zone == ZONE_ISLAND ? 0 : sim_weather();   // the weather: rain in streaks, hail in white pellets, snow in thick flakes (out of doors, and lighter through a window)
+        int ou = sim_outdoors(s);
+        if (wx == 1) for (int i = 0; i < (ou ? 90 : 30); i++) { int x = (i * 37 + frame * 3) % 340 - 10, y = (i * 53 + frame * (14 + i % 5)) % 240 - 8; gfx_rect_c(x, y, 1, 9, RGB(14, 20, 31), 1); gfx_rect_c(x + 1, y, 1, 7, RGB(20, 26, 31), 1); }
+        if (wx == 2) for (int i = 0; i < (ou ? 45 : 15); i++) { int x = (i * 61 + frame * 4) % 330 - 5, y = (i * 47 + frame * (16 + i % 4)) % 236 - 6; ui_disc(x, y, 6, UI_RGB(240, 248, 255)); ui_disc(x, y, 4, UI_WHITE); }
+        if (wx == 3) for (int i = 0; i < (ou ? 110 : 40); i++) { int sp = 1 + i % 3, x = (i * 43 + isin((frame * 7 + i * 300) & 4095) / 90 + 320 * 4 + frame / 2) % 330 - 5, y = (i * 29 + frame * sp * 2 / 3) % 236 - 6; ui_disc(x, y, 4 + (i & 1) * 2, UI_WHITE); } }
+      if (world_zone != ZONE_ISLAND && sim_outdoors(s) && !sim_weather()) {   // petals, leaves and snow drift down outdoors; confetti at the festival
           static const u32 PC[4] = { UI_RGB(255, 190, 210), UI_RGB(255, 255, 255), UI_RGB(230, 130, 40), UI_RGB(250, 250, 255) };
           int n = fe ? 24 : se == 1 ? 0 : 18;
           for (int i = 0; i < n; i++) { int sp = 1 + (i % 3), x = (i * 53 + frame * (fe ? 0 : 1) / 2 * (i & 1 ? 1 : -1) + isin((frame * 9 + i * 400) & 4095) / 140 + 320 * 4) % 320, y = (i * 41 + frame * sp / 2) % 230 - 4;
@@ -758,6 +763,7 @@ static void life_draw(void) {
         cam_yaw = (2048 - s->yaw) & 4095;
         world_view_lvl = MIN(NUP, s->lvl + 1);                             // (the storey above: its floor is the ceiling)
     }
+    if (world_zone == ZONE_CITY || world_zone == ZONE_HOME || world_zone == ZONE_TOWN) { int wx = sim_weather(); world_season_skin(sim_season(), sim_season() == 3 ? 2 : wx == 1 || wx == 2 ? 1 : 0); { extern int far_season, far_wet; far_season = sim_season(); far_wet = wx == 1 || wx == 2; } }
     // the day-night sky and light
     int t = clock_min;
     int day = (t > 360 && t < 1200) ? 255 : (t >= 1200 && t < 1320) ? 255 - (t - 1200) * 2 : (t >= 300 && t <= 360) ? (t - 300) * 4 : 20;
@@ -772,6 +778,9 @@ static void life_draw(void) {
         if (world_zone == ZONE_CITY || world_zone == ZONE_HOME) {   // the season tints the sky
             static const u8 ST[4][6] = { { 130, 160, 235, 240, 215, 220 }, { 60, 130, 240, 250, 225, 170 }, { 120, 110, 170, 240, 160, 90 }, { 150, 160, 190, 225, 230, 245 } };
             const u8 *q = ST[sim_season()]; tr = (tr + ((q[0] * day) >> 8)) / 2; tg = (tg + ((q[1] * day) >> 8)) / 2; tb = (tb + ((q[2] * day) >> 8)) / 2; br = (br + ((q[3] * day) >> 8)) / 2; bg = (bg + ((q[4] * day) >> 8)) / 2; bb = (bb + ((q[5] * day) >> 8)) / 2; }
+        { int wx = world_zone == ZONE_ISLAND ? 0 : sim_weather(); if (wx) { int k = wx == 3 ? 10 : 12;   // weather greys the sky and dims the day
+              tr = (tr * (16 - k) + ((wx == 3 ? 170 : 90) * day >> 8) * k) / 16; tg = (tg * (16 - k) + ((wx == 3 ? 176 : 98) * day >> 8) * k) / 16; tb = (tb * (16 - k) + ((wx == 3 ? 190 : 112) * day >> 8) * k) / 16;
+              br = (br * (16 - k) + ((wx == 3 ? 200 : 120) * day >> 8) * k) / 16; bg = (bg * (16 - k) + ((wx == 3 ? 205 : 126) * day >> 8) * k) / 16; bb = (bb * (16 - k) + ((wx == 3 ? 214 : 138) * day >> 8) * k) / 16; } }
         u32 top = (u32)tr | ((u32)tg << 8) | ((u32)tb << 16), hor = (u32)br | ((u32)bg << 8) | ((u32)bb << 16);
         { extern u32 world_horizon; extern int world_far_range; world_horizon = hor; world_far_range = (world_zone == ZONE_CITY && far_view) ? 60 : 34; }
         if (world_zone == ZONE_CITY && far_view) far_sky(top, hor);   // the sky meets the land at the real horizon

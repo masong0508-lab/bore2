@@ -76,6 +76,12 @@ static const char *const dayNm[7] = { "MON", "TUE", "WED", "THU", "FRI", "SAT", 
 static const char *const needNm[NEED_N] = { "FOOD", "WC", "REST", "CLEAN", "COMFY", "FUN", "SOCIAL", "ROOM" };
 const char *sim_day_name(int d) { return dayNm[d % 7]; }
 int sim_outdoors(const Sim *s) { int mx = s->x / TILE, my = (-s->z) / TILE; return s->x >= 0 && s->z <= 0 && mx < MW && my < MH && floorMap[my][mx] >= FL_GRASS; }
+int sim_weather(void) {
+    u32 h = (u32)day_count * 2654435761u; h ^= h >> 15; h *= 2246822519u; h ^= h >> 13;
+    int se = sim_season(), roll = (int)(h % 100), start = 5 + (int)((h >> 8) % 12), len = 3 + (int)((h >> 16) % 6), hr = clock_min / 60;
+    int w = se == 3 ? (roll < 60 ? 3 : 0) : se == 1 ? (roll < 12 ? 1 : roll < 20 ? 2 : 0) : (roll < 45 ? 1 : (se == 0 && roll < 50) ? 2 : 0);
+    return (w && hr >= start && hr < start + len) ? w : 0;
+}
 int sim_season(void) { return (day_count / 10) & 3; }
 const char *sim_season_name(int s) { static const char *const n[4] = { "SPRING", "SUMMER", "AUTUMN", "WINTER" }; return n[s & 3]; }
 int sim_festival(void) { return day_count % 10 == 9 && clock_min >= 600 && clock_min < 1320; }
@@ -1287,6 +1293,7 @@ static void clock_tick(void) {
 void sim_step(void) {
     walk_tick++;
     clock_tick();
+    { static int lastwx; int wx = sim_weather(); if (wx != lastwx) { lastwx = wx; sim_note(wx == 1 ? "IT IS RAINING. TAKE COVER!" : wx == 2 ? "HAIL! GET INSIDE!" : wx == 3 ? "HEAVY SNOW IS FALLING" : "THE WEATHER HAS CLEARED"); } }
     for (int i = 0; i < nsims; i++) {
         Sim *s = &sims[i];
         if (s->away) continue;                                        // (at school: back at 3)
@@ -1294,6 +1301,7 @@ void sim_step(void) {
         tick_needs(s);
         if (!(walk_tick & 3) && sim_festival() && world_zone == ZONE_CITY && sim_outdoors(s)) {   // the festival: music, stalls and a crowd
             s->need[N_FUN] = MIN(s->need[N_FUN] + GAIN_FUN / 2, 100 << 10); s->need[N_SOCIAL] = MIN(s->need[N_SOCIAL] + GAIN_TALK / 3, 100 << 10); }
+        if (!(walk_tick & 7) && world_zone != ZONE_ISLAND && sim_outdoors(s)) { int wx = sim_weather(); if (wx) s->need[N_COMFY] = MAX(0, s->need[N_COMFY] - (wx == 2 ? 120 : 60)); }   // (out in the weather: soaked, pelted, frozen)
         if (s->note_t > 0) s->note_t--;
         if (i != player && (s->rage || s->gait.sleep == 1 && s->action == ACT_NONE && s->rage_ko)) continue;   // (after you, or knocked down: citizens.c moves them)
         if (s->gait.wave > 0 && s->action != ACT_TALK && s->action != ACT_PHONE) s->gait.wave--;

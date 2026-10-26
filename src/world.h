@@ -20,6 +20,8 @@ extern u8   wallMap[MH][MW];         // wallpaper per tile (0..NWP-1 patterns, N
 enum { ZONE_HOME, ZONE_ISLAND, ZONE_TOWN, ZONE_CITY, ZONE_N };
 extern int world_zone;
 const char *world_zone_name(int z);
+void world_season_skin(int season, int wet);     // the outdoor floors dressed for the season (0..3) and for the weather: wet 1 rain / hail, 2 snow lying
+
 void world_switch(int z);                        // keeps the current zone's tiles, loads (or generates) the other
 void world_reset_all(void);                      // a new life: every zone is generated afresh
 

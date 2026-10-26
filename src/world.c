@@ -127,6 +127,36 @@ static void soften_floors(void) {
         for (int k = 0; k < 4; k++) { u16 c = t->c[k]; fl_soft[i][k] = RGB((C_R(c) * 9 + r * 7) / 16, (C_G(c) * 9 + g * 7) / 16, (C_B(c) * 9 + b * 7) / 16); }
     }
 }
+static int skin_key = -1;
+static u16 skin_c(int i, u16 c, int season, int wet) {   // one floor colour as the season and weather make it
+    int r = C_R(c), g = C_G(c), b = C_B(c), tr = r, tg = g, tb = b, f = 0;   // (f: how far toward the target, of 16)
+    int snow = season == 3;
+    if (i == FL_GRASS) { if (season == 0) { tr = 9; tg = 27; tb = 8; f = 8; } else if (season == 2) { tr = 24; tg = 15; tb = 6; f = 11; } else if (snow) { tr = 29; tg = 30; tb = 31; f = 15; } }
+    else if (i == FL_WATER) { if (snow) { tr = 22; tg = 28; tb = 31; f = 9; } }
+    else if (i == FL_LINE_H || i == FL_LINE_V) { if (snow) { tr = 28; tg = 29; tb = 31; f = 9; } }
+    else if (i >= FL_PAVING && i <= FL_ASPHALT && i != FL_WATER) { if (snow) { tr = 28; tg = 29; tb = 31; f = i == FL_ASPHALT ? 14 : 12; } }
+    r += (tr - r) * f / 16; g += (tg - g) * f / 16; b += (tb - b) * f / 16;
+    if (wet == 1 && i >= FL_GRASS && i != FL_WATER) { r = r * 11 / 16; g = g * 12 / 16; b = b * 13 / 16; }   // rain-dark
+    return RGB(r, g, b);
+}
+void world_season_skin(int season, int wet) {
+    int key = season * 4 + wet; if (key == skin_key) return; skin_key = key;
+    for (int i = FL_GRASS; i < NFLOORS; i++) {
+        const Tex *t = floor_tex(i); u16 sc[4]; int r = 0, g = 0, b = 0;
+        for (int k = 0; k < 4; k++) sc[k] = skin_c(i, fl_soft[i][k], season, wet);
+        for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) { u16 c = sc[t->p[y & 7][x & 7] - '0']; tb[y * 16 + x] = c ? c : 0x8000; }
+        atlas_upload(&fl_tex[i], tb);
+        for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
+            u16 c = sc[t->p[y & 7][x & 7] - '0'];
+            int odd = ((x >> 3) + (y >> 3)) & 1, k = odd ? fl_odd[i] : 16;
+            u16 o = RGB(C_R(c) * k / 16, C_G(c) * k / 16, C_B(c) * k / 16);
+            tb[y * 32 + x] = o ? o : 0x8000;
+        }
+        atlas_upload(&fl_tex4[i], tb);
+        for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) { u16 c = sc[t->p[y][x] - '0']; r += C_R(c); g += C_G(c); b += C_B(c); }
+        fl_avg[i] = RGB(r / 64, g / 64, b / 64);
+    }
+}
 #pragma GCC push_options
 #pragma GCC optimize ("Os")   // (making the lots, rooms and the island: once a block, built small to leave memory for the world)
 void world_init(void) {

@@ -167,12 +167,22 @@ void far_reset(void) {
     pbx = world_wbx + 2; pby = world_wby + 2;
     fc_x0 = -100000; cells_follow(FC * FC);
 }
+int far_season, far_wet;   // the season (0..3) and the weather's wet (1): main sets them
+static void season_rgb(int kind, int *r, int *g, int *b) {   // kind: 0 grass, 1 forest, 2 hard ground (paving, road, rock, sand, soil), 3 water, 4 a town
+    int tr = *r, tg = *g, tb = *b, f = 0;
+    if (far_season == 3) { tr = 232; tg = 236; tb = 246; f = kind == 3 ? 8 : kind == 4 ? 7 : kind == 2 ? 13 : 15; }
+    else if (far_season == 0 && kind <= 1) { tr = 84; tg = 214; tb = 66; f = kind ? 4 : 8; }
+    else if (far_season == 2 && kind <= 1) { tr = 200; tg = 112; tb = 40; f = kind ? 10 : 11; }
+    *r += (tr - *r) * f / 16; *g += (tg - *g) * f / 16; *b += (tb - *b) * f / 16;
+    if (far_wet == 1 && kind != 3) { *r = *r * 11 / 16; *g = *g * 12 / 16; *b = *b * 13 / 16; }
+}
 static const u8 tcol[6][3] = { { 46, 92, 150 }, { 212, 198, 150 }, { 96, 148, 72 }, { 50, 104, 56 }, { 206, 178, 120 }, { 136, 130, 120 } };
 static void cell_rgb(int t, int *r, int *g, int *b) {
     if (t == 0xFF) t = BT_GRASS;
-    if (t & 8) { *r = 142; *g = 138; *b = 128; return; }       // a town: roofs and streets
+    if (t & 8) { *r = 142; *g = 138; *b = 128; season_rgb(4, r, g, b); return; }       // a town: roofs and streets
     t &= 7; if (t > 5) t = BT_GRASS;
     *r = tcol[t][0]; *g = tcol[t][1]; *b = tcol[t][2];
+    season_rgb(t == BT_SEA ? 3 : t == BT_FOREST ? 1 : t == BT_GRASS ? 0 : 2, r, g, b);
 }
 
 // ================================================================== every town's buildings (worked out once a world)
@@ -335,7 +345,14 @@ static void row_run(int y, int x0, int x1, u32 key) {
 }
 static void row_end(void) { memcpy(open_, cur_, ncur * sizeof cur_[0]); nopen = ncur; }
 static u8 wvis[MH / 4][MW / 4];                  // window cells the view takes in (the land pass; the trees use it too)
+static u32 floor_key0(int fl);
 static u32 floor_key(int fl) {
+    u32 k = floor_key0(fl); if (fl < FL_GRASS || (!far_season && !far_wet)) return k;
+    int r = k & 255, g = (k >> 8) & 255, b = (k >> 16) & 255;   // (the colour is r, g, b in the key as set below: R low, B high)
+    season_rgb(fl == FL_GRASS ? 0 : fl == FL_WATER ? 3 : 2, &r, &g, &b);
+    return (u32)r | ((u32)g << 8) | ((u32)b << 16);
+}
+static u32 floor_key0(int fl) {
     switch (fl) {
         case FL_GRASS: return 0x488400 | 96;  case FL_PAVING: return 0x9EA800 | 172; case FL_SOIL: return 0x3E5C00 | 120;
         case FL_SAND: return 0x96C600 | 212;  case FL_WATER: return 0x965C00 | 46;   case FL_ROCK: return 0x788200 | 136;
