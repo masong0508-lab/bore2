@@ -413,7 +413,7 @@ static const struct { char ch; u8 px; } lifeSize[] = {
     { '=', 4 }, { 'L', 4 }, { 'N', 8 }, { 'J', 7 }, { 'X', 4 }, { 'O', 8 }, { 'Y', 8 }, { 'Z', 5 }, { 'K', 7 }, { 'M', 2 },   // the skate park: a rail 45 cm, a funbox 45 cm, a manual pad 20 cm
     { 'h', 9 }, { 'v', 12 }, { 'V', 6 }, { 'H', 18 },                                                                       // a chair 1 m, a TV on its stand 1.35 m, a lava lamp, a shower 2 m
     { '+', 22 }, { '"', 40 }, { 'k', 28 }, { 'a', 28 }, { 'g', 40 }, { '3', 36 }, { '6', 40 }, { 'u', 14 }, { 'z', 11 },
-    { '%', 4 }, { '>', 8 }, { '_', 28 }, { (char)0xB5, 11 }, { (char)0xE0, 11 }, { (char)0xB8, 8 }, { (char)0xB9, 24 } };   // a park bench 90 cm (it stood 45), a hot tub 90, a hoop 3 m, a mailbox 1.2 m, a trampoline 90, a swing set 2.6 m   // a bus stop 2.5 m, a street lamp 4.5 m, the flags, the trees 4 to 4.5 m
+    { '%', 4 }, { '}', 20 }, { '>', 8 }, { '_', 28 }, { (char)0xB5, 11 }, { (char)0xE0, 11 }, { (char)0xB8, 8 }, { (char)0xB9, 24 } };   // a park bench 90 cm (it stood 45), a hot tub 90, a hoop 3 m, a mailbox 1.2 m, a trampoline 90, a swing set 2.6 m   // a bus stop 2.5 m, a street lamp 4.5 m, the flags, the trees 4 to 4.5 m
 static IBox lifeBox[192]; static int nlifeBox;
 static void life_size(void) {
     for (unsigned k = 0; k < sizeof lifeSize / sizeof lifeSize[0]; k++)

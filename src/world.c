@@ -1510,7 +1510,7 @@ COLD static void mega_zone(int ox, int oy, int part, int kind, unsigned h) {   /
     if (part & 2) for (int x = ox + ((part & 1) ? 2 : S + 1); x < ox + BM_BLK; x += 4) { gFree(x, oy, kind == MK_PARK ? TREE : 'Z'); gFree(x, oy + E, kind == MK_PARK ? TREE : 'Z'); gFree(x + 2, oy + C, 'N'); gFree(x + 2, oy + E, '"'); }
     if (part == 3) {                                    // the middle of the four: a pond in a park, a fountain in a plaza, with the benches round it
         if (kind == MK_PARK) { gBox(ox, oy, ox + E, oy + E, FL_WATER); gFree(ox + C, oy + C, 'N'); }
-        else { gPut(ox + C, oy + C, '}'); gFree(ox, oy, 'N'); gFree(ox + E, oy, 'N'); gFree(ox, oy + E, 'N'); gFree(ox + E, oy + E, 'N'); }
+        else { gBox(ox + C - 2, oy + C - 2, ox + C + 2, oy + C + 2, FL_ROCK); gBox(ox + C - 1, oy + C - 1, ox + C + 1, oy + C + 1, FL_WATER); gPut(ox + C, oy + C, '}'); gFree(ox, oy, 'N'); gFree(ox + E, oy, 'N'); gFree(ox, oy + E, 'N'); gFree(ox + E, oy + E, 'N'); }
     }
     (void)h;
 }
