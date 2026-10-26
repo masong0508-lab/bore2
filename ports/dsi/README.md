@@ -77,3 +77,10 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 - Neighbour houses are solid, sea is solid, the plot's back fence has a gap at the path. Pathfinding runs over the whole patch.
 - Population cap: DS_POP_MAX 2000 bores and DS_FAM_MAX 640 households (PS1: 3700 / 874..1748). pop_build() fills homes from the capital outwards (then the next town) until a cap is hit; homes past the cap have no bores. The map screen shows "N homes M bores" for the block and the total x/2000; neighbour lots show their residents.
 - Not yet: every lot you walk into becomes a playable home (shops/parks too); residents are not yet people you can talk to when walking by.
+
+## D18 - life stages, family items, interactions, a living city
+- Life stages Baby/Toddler/Child/Teen/Adult/Elder (a year per game day); sims change size and look with age; the household holds up to 6 (tap a portrait to play that sim; babies cannot be played).
+- Interactions by stage and relationship (Chat, Play, Hug, Joke, Tease, Argue, Flirt, Kiss, Try for Baby, Feed, Teach, Tuck In, Advice, Invite Home); romance never crosses the teen/adult line; 6 talks per pair and 4 per citizen per day.
+- Family items: Crib, Toy Box, Books, Rocker, plus per-stage item limits (shown in the shop).
+- Citizens walk the pavements by the clock, cars drive the roads; tap a citizen to talk; befriend and Invite Home. Births and the 2000-bore cap are counted together.
+- Fence posts replaced with a hedge line; polygon-budget cuts (lawn, dashes, level of detail).
