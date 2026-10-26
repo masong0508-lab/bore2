@@ -59,3 +59,6 @@ In-game items are now small multi-part models (20 items: chair, sofa, bed, fridg
 
 ## D11
 Real DS hardware lighting (key + fill light, per-face normals) on the Create-a-Sim head, the lot and the furniture; generated starter house (bedroom, bathroom, living room, kitchen/dining, doors, front door, mirrored/size variants from the lot seed); Options screen (title > Opt): anti-alias, outlines, shadows, lighting, item detail, ground check, 30/60 fps, brightness, sky, camera distance, map spin, game speed, turbo CPU.
+
+## D12
+Better Sim models in the lot (shoes, belt, collar, sleeves, hands, ears, eyes, brows, nose, mouth, hair fringes; they turn to face where they walk and swing arms and legs). Layered trees, house doors/windows/chimney, grass all round the lot, fence, path. Camera: LIVE has D-pad turn/tilt, L/R snap, X/Y zoom, SELECT follow/free, and a stylus Cam panel (drag to orbit/tilt, Pan mode, zoom, follow/free, reset). BUY/BUILD have camera buttons (turn, tilt, zoom, reset) on the bottom screen plus L/R, X/Y.
