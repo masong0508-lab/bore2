@@ -23,7 +23,7 @@
 #include <string.h>
 
 #define NB 10
-#define NA 6
+#define NA 8
 #define NCR (NB + NA)
 // name, top speed (units/frame x16), accel, turn, hull, fuel, burn, hold, price, daily income, kind (0 paddle 1 motor 2 sail 3 work 4 hover)
 typedef struct { const char *nm; s16 vmax, acc, turn, hull, fuel, burn, hold; int price; s16 inc; u8 kind; } Boat;
@@ -38,10 +38,11 @@ typedef struct { const char *nm; s16 vmax, stall, pitch, bank, hull, fuel; int p
 static const Air AT[NA] = {
     { "GLIDER",      110, 28, 22, 40,  60,  0,  7000,  250, 0 }, { "BIPLANE",     170, 40, 28, 46,  80, 220, 14000,  480, 0 },
     { "SEAPLANE",    190, 46, 24, 38, 110, 320, 24000,  800, 1 }, { "HELICOPTER", 150,  0, 30, 42, 120, 260, 38000, 1100, 2 },
-    { "HOT AIR BALLOON",24, 0, 10, 10, 70, 200, 11000,  300, 6 }, { "JET",         400, 90, 34, 56, 150, 500, 90000, 3000, 0 } };
-static const char *const CNM[NCR] = { "ROWBOAT", "JET SKI", "FISHING SKIFF", "SPEEDBOAT", "SAILBOAT", "TRAWLER", "TUGBOAT", "FERRY", "HOVERCRAFT", "SUPER YACHT", "GLIDER", "BIPLANE", "SEAPLANE", "HELICOPTER", "HOT AIR BALLOON", "JET" };
+    { "HOT AIR BALLOON",24, 0, 10, 10, 70, 200, 11000,  300, 6 }, { "JET",         400, 90, 34, 56, 150, 500, 90000, 3000, 0 },
+    { "AIRLINER",    330, 70, 18, 28, 400, 900, 180000, 6000, 0 }, { "CARGO PLANE", 260, 62, 16, 26, 450, 1000, 140000, 5200, 0 } };
+static const char *const CNM[NCR] = { "ROWBOAT", "JET SKI", "FISHING SKIFF", "SPEEDBOAT", "SAILBOAT", "TRAWLER", "TUGBOAT", "FERRY", "HOVERCRAFT", "SUPER YACHT", "GLIDER", "BIPLANE", "SEAPLANE", "HELICOPTER", "HOT AIR BALLOON", "JET", "AIRLINER", "CARGO PLANE" };
 static const char *const CHINT[NCR] = { "OARS ONLY. FISH ALL DAY.", "FAST AND LIGHT. WAVES TOSS IT.", "SMALL HOLD. FISHES THE REEF.", "FAST. THIRSTY. RACES.", "FREE WIND. NEEDS A CROSSWIND.", "BIG HOLD. SLOW. FISHES BIG.", "PUSHES ANYTHING. TURNS ON A COIN.", "A BIG HOLD OF PASSENGERS.", "SKIMS WATER AND SAND.", "LUXURY AND SPEED.",
-    "NO ENGINE. FIND THE LIFT.", "OPEN COCKPIT. FORGIVING.", "LAND ON THE WAVES.", "HOVERS. LANDS ANYWHERE.", "UP, DOWN, AND DRIFT.", "FAST. HARD TO LAND." };
+    "NO ENGINE. FIND THE LIFT.", "OPEN COCKPIT. FORGIVING.", "LAND ON THE WAVES.", "HOVERS. LANDS ANYWHERE.", "UP, DOWN, AND DRIFT.", "FAST. HARD TO LAND.", "FLIES PASSENGERS. LONG RUNS, WIDE TURNS.", "HAULS A HEAVY LOAD. STURDY." };
 enum { M_MENU, M_BOAT, M_AIR, M_CHUTE, M_WRECK, M_END };
 static int mode, tab, sel, anim; static char line[56], line2[56];
 static unsigned rs = 5;
@@ -127,7 +128,7 @@ static void blast(int x, int z, int rad, int *nb, int *ppl) {   // everything bu
         if (!bldg(tx * 64 + 32, -(ty * 64 + 32), &top)) continue; int p = demolish(tx, ty); if (p) { (*nb)++; *ppl += p; } }
 }
 // ----- the craft you own -----
-static int owned(void) { return pk_data[24] | pk_data[25] << 8; }
+static int owned(void) { return pk_data[24] | pk_data[25] << 8 | pk_data[30] << 16; }
 static int stol(int c) { int s = pk_data[40] | pk_data[41] << 8; return (c == 3 && (s >> 5 & 1)) || (c == 9 && (s >> 6 & 1)) || (c == 11 && (s >> 7 & 1)) || (c == 12 && (s >> 8 & 1)) || (c == 15 && (s >> 9 & 1)); }
 static int has(int c) { return (owned() >> c & 1) || stol(c) || dbg(); }
 static int last(void) { return pk_data[26] | pk_data[27] << 8; }
@@ -304,7 +305,7 @@ static void act(void) {
     if (sel == NCR + 1) { pk_data[39] ^= 1; strcpy(line, real() ? "CRASH MODE: REAL. THE TOWN PAYS." : "CRASH MODE: ARCADE. BOUNCE BACK."); return; }
     if (has(sel)) { if (sel < NB) spawn_boat(sel); else spawn_air(sel); return; }
     if (cash < price(sel) && !dbg()) { strcpy(line, "NOT ENOUGH CASH."); audio_voice(VOICE_NAH); return; }
-    settle(); if (!dbg()) cash -= price(sel); pk_data[24 + (sel >> 3)] |= (u8)(1 << (sel & 7)); sprintf(line, "BOUGHT: %s. X TO TAKE IT OUT.", CNM[sel]); audio_voice(VOICE_FINISHED);
+    settle(); if (!dbg()) cash -= price(sel); pk_data[sel < 16 ? 24 + (sel >> 3) : 30] |= (u8)(1 << (sel & 7)); sprintf(line, "BOUGHT: %s. X TO TAKE IT OUT.", CNM[sel]); audio_voice(VOICE_FINISHED);
 }
 static void burn(int steps) {   // the fires burn on and spread; the blasts age
     for (int i = 0; i < nrub; i++) rub[i].age += steps;
@@ -399,6 +400,13 @@ static void craft_draw(int c, int x, int y, int z, int yw, int pt, int rl, int o
         box(-3, -20, 50, 3, -14, 56, UI_RGB(240, 140, 60)); blade(0, -14, 58, 26, anim * 800, 4, DK); box(-1, -40, 70, 1, -36, 90, DK); box(-70, -26, 36, 70, -22, 52, YL); box(-70, -26, 36, -66, -14, 52, YL); box(66, -26, 36, 70, -14, 52, YL); box(-50, -8, -10, 50, -6, 4, UI_RGB(60, 120, 200)); box(-60, -18, -120, 60, -14, -100, YL); seat[1] = -18; seat[2] = -4; break;
     case 4: box(-14, -26, -14, 14, -4, 14, WD); for (int k = 0; k < 4; k++) { int xx = k & 1 ? 12 : -12, zz = k & 2 ? 12 : -12; box(xx - 1, -80, zz - 1, xx + 1, -26, zz + 1, DK); }
         box(-12, -10, -12, 12, -2, 12, UI_RGB(100, 70, 40)); tbox(-52, -150, -52, 52, -80, 52, 4096, RD); tbox(-44, -210, -44, 44, -150, 44, 3200, YL); tbox(-27, -250, -27, 27, -210, 27, 2400, RD); tbox(-60, -112, -60, 60, -80, 60, 4096, BL); box(-5, -84, -5, 5, -78, 5, UI_RGB(255, 140, 40)); seat[1] = -4; seat[2] = 1; break;
+    case 6: tbox(-26, -40, -300, 26, 14, 220, 900, WH); tbox(-24, -36, 220, 24, 8, 330, 500, WH); box(-26, -4, -300, 26, 6, 220, UI_RGB(60, 90, 160)); box(-14, -50, 200, 14, -34, 236, GLASS);
+        flat(-26, -10, -26, 40, -330, 20, -330, 130, -2, UI_RGB(200, 204, 214)); flat(26, -10, 26, 40, 330, 20, 330, 130, -2, UI_RGB(200, 204, 214));
+        box(-150, -6, -20, -118, 14, 60, UI_RGB(130, 136, 150)); box(118, -6, -20, 150, 14, 60, UI_RGB(130, 136, 150)); box(-2, -150, -280, 2, -30, -220, UI_RGB(60, 90, 160)); flat(-2, -130, -2, -280, -120, -300, -120, -250, -140, WH); flat(2, -130, 2, -280, 120, -300, 120, -250, -140, WH);
+        for (int k = 0; k < 8; k++) { box(-27, -30, -250 + k * 55, -26, -20, -236 + k * 55, GLASS); box(26, -30, -250 + k * 55, 27, -20, -236 + k * 55, GLASS); } seat[1] = -30; seat[2] = 210; break;
+    case 7: tbox(-30, -52, -260, 30, 18, 230, 800, UI_RGB(170, 176, 150)); tbox(-26, -48, 230, 26, 6, 320, 500, UI_RGB(170, 176, 150)); box(-24, -62, 190, 24, -46, 232, GLASS); box(-28, 6, -250, 28, 20, 200, DK);
+        flat(-30, -50, -30, 20, -300, 0, -300, 90, -48, UI_RGB(150, 156, 130)); flat(30, -50, 30, 20, 300, 0, 300, 90, -48, UI_RGB(150, 156, 130)); box(-110, -40, -30, -90, -12, 50, DK); box(90, -40, -30, 110, -12, 50, DK);
+        box(-2, -170, -250, 2, -50, -200, UI_RGB(150, 156, 130)); flat(-2, -165, -2, -260, -110, -285, -110, -235, -166, UI_RGB(150, 156, 130)); flat(2, -165, 2, -260, 110, -285, 110, -235, -166, UI_RGB(150, 156, 130)); seat[1] = -44; seat[2] = 205; break;
     default: tbox(-9, -14, -60, 9, 8, 90, 1500, UI_RGB(170, 180, 196)); tbox(-8, -12, -120, 8, 6, -60, 900, UI_RGB(170, 180, 196)); tbox(-6, -16, 90, 6, 4, 150, 500, UI_RGB(40, 40, 50)); box(-9, -22, 20, 9, -14, 60, GLASS);
         flat(-8, -4, -8, 50, -90, -60, -90, -30, -2, UI_RGB(140, 150, 170)); flat(8, -4, 8, 50, 90, -60, 90, -30, -2, UI_RGB(140, 150, 170)); flat(-8, -118, -8, -90, -60, -130, -60, -112, -8, UI_RGB(140, 150, 170)); flat(8, -118, 8, -90, 60, -130, 60, -112, -8, UI_RGB(140, 150, 170));
         box(-1, -44, -120, 1, -12, -86, RD); box(-16, 0, 30, -8, 10, 70, DK); box(8, 0, 30, 16, 10, 70, DK); box(-8, 2, -118, -2, 14, -108, UI_RGB(255, 150, 60)); box(2, 2, -118, 8, 14, -108, UI_RGB(255, 150, 60)); seat[1] = -22; seat[2] = 40; break;
@@ -457,7 +465,7 @@ static void sky_light(void) {
 }
 static void scene(void) {
     int fx = mode == M_CHUTE ? cx : mode == M_WRECK ? wrx : px, fy = mode == M_CHUTE ? cy_ : mode == M_WRECK ? wry : py, fz = mode == M_CHUTE ? cz_ : mode == M_WRECK ? wrz : pz;
-    int cyw = mode == M_WRECK ? (anim * 9) & 4095 : yaw, dist = mode == M_BOAT ? 2400 : mode == M_AIR ? 2900 : mode == M_CHUTE ? 2000 : 3200, up = mode == M_BOAT ? 900 : mode == M_AIR ? 800 : 1100;
+    int cyw = mode == M_WRECK ? (anim * 9) & 4095 : yaw, dist = mode == M_BOAT ? 2400 : mode == M_AIR ? (cur >= NB + 6 ? 6200 : 2900) : mode == M_CHUTE ? 2000 : 3200, up = mode == M_BOAT ? 900 : mode == M_AIR ? (cur >= NB + 6 ? 1900 : 800) : 1100;
     int X = rel_x(fx), Z = rel_z(fz), Y = fy * SC;
     cam.at.vx = X; cam.at.vy = -(Y + 200); cam.at.vz = Z;
     cam.eye.vx = X - ((isin(cyw) * dist) >> 12); cam.eye.vz = Z - ((icos(cyw) * dist) >> 12); cam.eye.vy = -(Y + up);
@@ -466,7 +474,7 @@ static void scene(void) {
     { int ftx = CLAMP(X >> 8, 0, MW - 1), fty = CLAMP((-Z) >> 8, 0, MH - 1); world_draw(ftx, fty, anim, 0); }
     gfx_set_identity(); gfx_set_fog(0, 0);
     markers(); effects();
-    if (mode == M_BOAT || mode == M_AIR) { craft_draw(cur, px, py, pz, yaw, mode == M_AIR ? pitch : 0, roll, 0); pilot_draw(px, py, pz, yaw, mode == M_AIR ? pitch : 0, (cur < NB && (cur == 5 || cur == 6 || cur == 7 || cur == 9 || cur == 4)) || cur == NB + 4); }
+    if (mode == M_BOAT || mode == M_AIR) { craft_draw(cur, px, py, pz, yaw, mode == M_AIR ? pitch : 0, roll, 0); if (cur < NB + 6) pilot_draw(px, py, pz, yaw, mode == M_AIR ? pitch : 0, (cur < NB && (cur == 5 || cur == 6 || cur == 7 || cur == 9 || cur == 4)) || cur == NB + 4); }
     else if (mode == M_WRECK) { craft_draw(cur, wrx, MAX(0, gh(wrx, wrz)) + 4, wrz, yaw, 420, 900, 0); gfx_set_identity(); flames(rel_x(wrx), MAX(0, gh(wrx, wrz)) * SC + 60, rel_z(wrz), 6, 260, 3); }
     else { if (!crashed) craft_draw(cur, ax, ay, az, ayaw, apitch, aroll, 0); faller_draw(); }
 }

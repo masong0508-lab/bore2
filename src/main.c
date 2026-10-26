@@ -4167,8 +4167,8 @@ static void worlds_draw(void) {
         { int st = wo_msel == 9 ? (sim_seasons_on ? 1 : 3) : !EX_PLAYABLE(wo_msel) ? 4 : pk_have[wo_msel];
           ui_round(10, top + 152, 300, 42, 5, UI_PANEL, UI_LINE, 0);
           ui_textc(160, top + 156, 1, moreNm[wo_msel], UI_BLUE2);
-          { char bb[96]; snprintf(bb, sizeof bb, "%s%s", st == 4 ? "COMING SOON! " : "", st == 2 ? "NOT ON THIS DISC. PATCH IT ON WITH ITS BORE2 PACK .PPF" : moreBlurb[wo_msel]);
-            ui_wrapc(16, top + 167, 288, 2, bb, EX_PLAYABLE(wo_msel) && st != 2 ? UI_INK : UI_SOFT); } }
+          { char bb[128]; snprintf(bb, sizeof bb, "%s%s", st == 4 ? "COMING SOON! " : "", st == 2 ? "NOT ON THIS DISC. PATCH IT ON WITH ITS BORE2 PACK .PPF" : moreBlurb[wo_msel]);
+            ui_wrapc(16, top + 166, 288, 3, bb, EX_PLAYABLE(wo_msel) && st != 2 ? UI_INK : UI_SOFT); } }
         ui_hints(160, 218, wo_msel == 0 ? "X OPEN THE CREATOR|ARROWS MOVE|O BACK" : wo_msel == 1 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 6 ? "X THE GUIDE|ARROWS MOVE|O BACK" : wo_msel == 9 ? "X ON OR OFF|ARROWS MOVE|O BACK" : "ARROWS MOVE|O BACK", 1);
         return;
     }
