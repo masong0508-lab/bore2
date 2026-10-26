@@ -816,6 +816,31 @@ static void yard(int lx, int ly, int dx, int dy, int vacant, unsigned h) {   // 
     }
 }
 
+static void backyard(int lx, int ly, int hx, int hy, int w, int dy, unsigned h) {   // behind the home (the lot's north): a pool, a garden, a patio or a lawn, and a fence round the lot
+    int rows = hy - ly; unsigned g = h >> 11; int kind = (int)(g % 6u);
+    if (rows >= 3) {
+        int by = ly + 1, x0 = lx + 1 + (int)((g >> 4) % 3u);
+        if (kind == 0 && rows >= 5) {                       // a swimming pool: water in a ring of pool tile, loungers and plants beside it
+            int pw = 5 + (int)((g >> 6) & 1), ph = rows >= 6 ? 4 : 3;
+            for (int y = by - 1; y <= by + ph; y++) for (int x = x0 - 1; x <= x0 + pw; x++) { if (y < ly || y >= hy - 1 || x < lx + 1 || x > lx + 11) continue; floorMap[y][x] = (u8)((y == by - 1 || y == by + ph || x == x0 - 1 || x == x0 + pw) ? FL_PATIO : FL_WATER); }
+            gFree(x0 + pw + 1, by, 'Z'); gFree(lx + 1, ly, TREE); gFree(lx + 11, ly, TREE);
+        } else if (kind == 1) {                             // a flower and vegetable garden
+            for (int y = by; y < hy - 1; y++) for (int x = lx + 1; x <= lx + 11; x++) { unsigned r = (g >> ((x + y) & 15)) & 7u; if (r == 0) gFree(x, y, 'p'); else if (r == 1) gFree(x, y, 'Z'); else if (r == 2) gFree(x, y, '*'); }
+            gFree(lx + 2, ly, TREE); gFree(lx + 10, ly, TREE);
+        } else if (kind == 2) {                             // a patio with a barbecue
+            for (int y = by; y <= MIN(by + 1, hy - 2); y++) for (int x = x0; x <= x0 + 4; x++) floorMap[y][x] = FL_PATIO;
+            gFree(x0 + 1, by, (char)0xEA); gFree(lx + 11, ly, TREE); gFree(lx + 1, ly + 1, TREE);
+        } else {                                            // a lawn and trees
+            gFree(lx + 1 + (int)(g % 3u), ly + (int)((g >> 3) % 2u), TREE); gFree(lx + 8 + (int)((g >> 5) % 3u), ly + (int)((g >> 7) % 2u), TREE);
+            if ((g >> 9) & 1) gFree(lx + 5, ly + 1, 'Z');
+        }
+    }
+    if ((g >> 12) % 5u < 3) {                               // a picket fence round the back and the sides (the front's own fence is in yard())
+        for (int x = lx; x <= lx + 12; x++) gFree(x, ly, (char)0xDF);
+        for (int y = ly + 1; y <= MIN(dy + 2, ly + 11); y++) { gFree(lx, y, (char)0xDF); gFree(lx + 12, y, (char)0xDF); }
+    }
+    (void)hx; (void)w;
+}
 // ---- the homes ----
 static int reg_home(int x0, int y0, int x1, int y1, int dx, int dy);
 static int pick_wp(unsigned h) { return ((h >> 16) % 5u) == 0 ? NWP + NWX + (int)((h >> 20) % NWPNEW) : NWP + (int)((h >> 13) % 89); }   // (one home in five: brick, siding, stucco, shingle, beadboard or stone)
@@ -854,11 +879,13 @@ static void city_house(int lx, int ly, unsigned h) {
     }
     storey(0); roof_dirty = 1;
     yard(lx, ly, dx, dy, occ_of(u)->vacant, h >> 3);
+    if (!grand) backyard(lx, ly, hx, hy, w, dy, h * 2246822519u);
     if (grand) { gFree(dx - 3, dy + 2, '}'); gFree(dx + 3, dy + 2, '}'); gFree(hx + 1, dy + 1, 'Z'); gFree(hx + w - 2, dy + 1, 'Z'); gFree(dx - 4, dy + 1, TREE); gFree(dx + 4, dy + 1, TREE); }
 }
 static void city_cottage(int lx, int ly, unsigned h) {   // a small home: one room, everything within reach of the bed
     int w = 7 + (int)((h >> 4) & 1), hh = 6 + (int)((h >> 5) & 1);
     int hx = lx + 3 - (int)((h >> 6) & 1), hy = ly + 3 + (int)((h >> 7) & 1);
+    if ((h >> 8) & 1) hy = ly + 11 - hh;                                       // (half of them stand at the front of the lot: a big backyard behind)
     int fl = (int)((h >> 9) % 14), wp = pick_wp(h);
     gRoom(hx, hy, hx + w - 1, hy + hh - 1, fl, wp);
     int dx = hx + w / 2, dy = hy + hh - 1;
@@ -868,6 +895,7 @@ static void city_cottage(int lx, int ly, unsigned h) {   // a small home: one ro
     int u = reg_home(x0, y0, x1, y1, dx, dy);
     furnish(x0, y0, x1, y1, dx, dy, occ_of(u), h * 2246822519u);
     yard(lx, ly, dx, dy, occ_of(u)->vacant, h >> 5);
+    backyard(lx, ly, hx, hy, w, dy, h * 2654435761u);
 }
 static void city_town(int lx, int ly, unsigned h) {   // two homes sharing the wall between them, each with its own door, floors and wallpaper
     int hy = ly + 1;

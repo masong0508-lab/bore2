@@ -3795,14 +3795,15 @@ static void dio_fill(void) {
         DCell *k = &dio_c[r][c]; k->t = b.terrain; k->l = b.lot; k->r = b.road; k->s = b.set; k->h = (u8)MIN(255, bm_hill(dio_ox + c, dio_oy + r) / 18 + (b.terrain == BT_SEA ? 0 : 1)); k->v = (u8)(b.h >> 8);
     }
     for (int r = 0; r <= DD; r++) for (int c = 0; c <= DW; c++) {
-        int n = 0, sum = 0, cr = 0, cg = 0, cb = 0;
+        int n = 0, sum = 0, cr = 0, cg = 0, cb = 0, riv = 0;
         for (int k = 0; k < 4; k++) { int cc = CLAMP(c - 1 + (k & 1), 0, DW - 1), rr = CLAMP(r - 1 + (k >> 1), 0, DD - 1); const DCell *q = &dio_c[rr][cc];
-            int t = q->t % 6, v = (q->v & 15) - 8; sum += q->h; n++;
+            int t = q->t % 6, v = (q->v & 15) - 8; sum += q->h + (t == BT_ROCKY ? (q->v & 7) * 3 : 0); n++; if (q->l == LOT_RIVER) riv++;
             int br = dTc[t][0], bg = dTc[t][1], bb = dTc[t][2];
             if (t == BT_ROCKY && q->h > 110) { br = 226; bg = 230; bb = 236; }   // snow on the peaks
             if (t == BT_SEA) v = (q->v & 7) - 3;
             cr += br + v; cg += bg + v; cb += bb + v; }
-        dio_hv[r][c] = (short)(sum * HS / n); dio_vc[r][c] = (u16)((CLAMP(cr / 4, 0, 255) >> 3) | ((CLAMP(cg / 4, 0, 255) >> 3) << 5) | ((CLAMP(cb / 4, 0, 255) >> 3) << 10));
+        if (riv) { cr = (cr + 4 * 130) / 2; cg = (cg + 4 * 112) / 2; cb = (cb + 4 * 74) / 2; }   // (a river's banks: mud, and the land dips to the water)
+        dio_hv[r][c] = (short)(sum * HS / n - (riv ? 9 : 0)); dio_vc[r][c] = (u16)((CLAMP(cr / 4, 0, 255) >> 3) | ((CLAMP(cg / 4, 0, 255) >> 3) << 5) | ((CLAMP(cb / 4, 0, 255) >> 3) << 10));
     }
     for (int r = 0; r <= DD; r++) for (int c = 0; c <= DW; c++) {   // light from the north-west: a slope facing it is bright, one turned away dark
         int hw = dio_hv[r][MAX(0, c - 1)], he = dio_hv[r][MIN(DW, c + 1)], hn = dio_hv[MAX(0, r - 1)][c], hs = dio_hv[MIN(DD, r + 1)][c];
@@ -3915,6 +3916,13 @@ static void dio_draw(int curx, int cury, int brush, int tick) {   // the model; 
         SVECTOR a, b, cc, d; int x0 = c * DC, x1 = x0 + DC;
         setVector(&a, x0, -dio_hv[r][c], Z_(r, 0)); setVector(&b, x1, -dio_hv[r][c + 1], Z_(r, 0)); setVector(&cc, x0, -dio_hv[r + 1][c], Z_(r, DC)); setVector(&d, x1, -dio_hv[r + 1][c + 1], Z_(r, DC));
         gfx_quad_g(&a, &b, &cc, &d, DVC(r, c), DVC(r, c + 1), DVC(r + 1, c), DVC(r + 1, c + 1), 0);
+    }
+    {   // the skirt: the land is a slab of earth, not a sheet in the air (soil colours, darker and darker as it goes down)
+        #define SKQ(xa, za, ya, xb, zb, yb) { SVECTOR a_, b_, c_, d_; setVector(&a_, xa, ya, za); setVector(&b_, xb, yb, zb); setVector(&c_, xa, (ya) + 110, za); setVector(&d_, xb, (yb) + 110, zb); \
+            gfx_quad_g(&a_, &b_, &c_, &d_, 0x3a5f86, 0x3a5f86, 0x14202e, 0x14202e, 0); }
+        for (int c = 0; c < DW; c++) { SKQ(c * DC, Z_(0, 0), -dio_hv[0][c], (c + 1) * DC, Z_(0, 0), -dio_hv[0][c + 1]); SKQ(c * DC, Z_(DD - 1, DC), -dio_hv[DD][c], (c + 1) * DC, Z_(DD - 1, DC), -dio_hv[DD][c + 1]); }
+        for (int r = 0; r < DD; r++) { SKQ(0, Z_(r, 0), -dio_hv[r][0], 0, Z_(r, DC), -dio_hv[r + 1][0]); SKQ(DW * DC, Z_(r, 0), -dio_hv[r][DW], DW * DC, Z_(r, DC), -dio_hv[r + 1][DW]); }
+        #undef SKQ
     }
     for (int r = 0; r < DD; r++) for (int c = 0; c < DW; c++) {
         const DCell *k = &dio_c[r][c]; int t = k->t % 6, l = k->l, x0 = c * DC, v = k->v;
