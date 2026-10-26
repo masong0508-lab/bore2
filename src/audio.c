@@ -52,7 +52,8 @@ void audio_voice(int v) {
 }
 
 // ---- the song file (SONGS.BIN): a one-sector index, then per song its sequence sectors and its sample sectors ----
-static u32 seqbuf[SEQ_MAX / 4];
+static u32 seqbuf[(SEQ_MAX + 4096) / 4];   // (the sequence block, or two for the DJ; at its end the decks' unpacking windows)
+#define SEQ_RING(d) ((u8 *)seqbuf + 36864 + (d) * 4096)
 static CdlLOC songs_loc;
 static int cd_ok, cd_up;   // (cd_up: the drive answered at start-up)
 static struct { u32 sector, seq_sectors, smp_sectors, smp_bytes; } sidx[NSONGS];
@@ -181,7 +182,7 @@ static void reverb_set(int fx) {
 static int deck_setup(Deck *d, const u8 *b, int base, int dj) {   // a song's sequence block (BSQ2: packed by tools/pack_songs.py) ready on a deck
     const SeqHeader *sq = (const SeqHeader *)b;
     if (sq->magic != 0x32515342) return 0;
-    d->on = 0; d->pending = 0; d->sq = sq;
+    d->on = 0; d->pending = 0; d->sq = sq; d->dec.ring = SEQ_RING(d == &dk[1]);
     d->order = b + sq->o_order; d->rows = (const u16 *)(b + sq->o_rows); d->patoff = (const u32 *)(b + sq->o_patoff);
     d->vt = (const u16 *)(b + sq->o_vt); d->pitch = (const u16 *)(b + sq->o_pitch); d->smpoff = (const u32 *)(b + sq->o_smpoff);
     d->bus = b + sq->o_bus; d->ev = b + sq->o_ev;
@@ -327,7 +328,7 @@ void audio_jukebox_play(int i) {
         addr += n * 2048; sec += n; left -= n;
     }
     // the sequence
-    if ((int)sidx[i].seq_sectors * 2048 > SEQ_MAX || !cd_read(sidx[i].sector, (int)sidx[i].seq_sectors, seqbuf)) return;
+    if ((int)sidx[i].seq_sectors * 2048 > 36864 || !cd_read(sidx[i].sector, (int)sidx[i].seq_sectors, seqbuf)) return;
     if (!deck_setup(&dk[0], (const u8 *)seqbuf, song_base, 0)) return;
     play_frames = 0; cur_song = i;
     reverb_set(songs[i].fx);
@@ -402,7 +403,7 @@ static void dj_pump(void) {
         ld.phase = 2;
     }
     if (ld.phase == 2) {
-        ld.n = ld.left > 4 ? 4 : ld.left;
+        ld.n = ld.left > 2 ? 2 : ld.left;
         CdlLOC loc; CdIntToPos(CdPosToInt(&songs_loc) + ld.sec, &loc);
         if (!CdControl(CdlSetloc, &loc, 0) || !CdRead(ld.n, (u32 *)DJ_STAGE, CdlModeSpeed)) { ld.busy = 0; dj_st[d] = 0; return; }
         ld.phase = 3;
