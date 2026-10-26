@@ -570,6 +570,15 @@ static void head_box(const Bore *b, int *hx, int *hy, int *hz, int *hs) {
 static inline int scl(int v, int c, int k) { return c + (((v - c) * k) >> 12); }
 static inline int lerp12(int a, int b, int t) { return a + (((b - a) * t) >> 12); }   // t 0..4096
 
+static SVECTOR WC[NCELL_MAX][8] __attribute__((aligned(8)));   // the corners while a person is being worked out (kept whole; packed into the Bore's cells at the end)
+int vox_clamped;   // (debug: corner offsets that did not fit an s8)
+static inline void nominal(const Bore *b, int i, int k, int *nx, int *ny, int *nz) {
+    *nx = (b->cell[i].x - 3 + (k & 1)) * VOX; *ny = (k < 4) ? -(b->cell[i].y + 1) * VOX : -b->cell[i].y * VOX; *nz = (b->cell[i].z - 2 + ((k >> 1) & 1)) * VOX;
+}
+void voxel_corners(const Bore *b, int i, SVECTOR *out) {
+    const s8 *d = b->cell[i].d;
+    for (int k = 0; k < 8; k++, d += 3) { int nx, ny, nz; nominal(b, i, k, &nx, &ny, &nz); out[k].vx = (s16)(nx + d[0]); out[k].vy = (s16)(ny + d[1]); out[k].vz = (s16)(nz + d[2]); out[k].pad = 0; }
+}
 static void shape_body(Bore *b) {
     int hx, hy, hz, hs; head_box(b, &hx, &hy, &hz, &hs);
     int baby = b->stage == AG_BABY, kid = b->stage <= AG_CHILD;
@@ -586,7 +595,7 @@ static void shape_body(Bore *b) {
     b->h_neckw = (s16)MAX(10, VOX * 11 / 20 + sld(b, LK_NECKW) * 3);
     if (baby) { b->h_lift = 0; b->h_jaw = 0; }
     for (int i = 0; i < b->ncell; i++) {                  // the stretch: legs taller, the rest lifted
-        int g = b->cell[i].grp; SVECTOR *cv = b->cell[i].c;
+        int g = b->cell[i].grp; SVECTOR *cv = WC[i];
         for (int k = 0; k < 8; k++) {
             if (g == G_LLEG || g == G_RLEG) cv[k].vy = (s16)((cv[k].vy * ks) >> 12);
             else cv[k].vy = (s16)(cv[k].vy + d);
@@ -597,7 +606,7 @@ static void shape_body(Bore *b) {
     for (int i = 0; i < b->ncell; i++) {
         int g = b->cell[i].grp;
         if (g == G_BODY && (b->cell[i].y >= hy || (b->cell[i].flags & 1))) continue;   // the torso alone (no head, no hair)
-        for (int k = 0; k < 8; k++) { const SVECTOR *c = &b->cell[i].c[k];
+        for (int k = 0; k < 8; k++) { const SVECTOR *c = &WC[i][k];
             mnx[g] = MIN(mnx[g], c->vx); mxx[g] = MAX(mxx[g], c->vx); mnz[g] = MIN(mnz[g], c->vz); mxz[g] = MAX(mxz[g], c->vz); mxy[g] = MAX(mxy[g], c->vy); }
     }
     int tcx = (mnx[G_BODY] + mxx[G_BODY]) / 2, tcz = (mnz[G_BODY] + mxz[G_BODY]) / 2, thw = (mxx[G_BODY] - mnx[G_BODY]) / 2;
@@ -614,7 +623,7 @@ static void shape_body(Bore *b) {
     for (int g = 0; g < G_N; g++) { acx[g] = (mnx[g] + mxx[g]) / 2; acz[g] = (mnz[g] + mxz[g]) / 2; }
     for (int i = 0; i < b->ncell; i++) {
         int g = b->cell[i].grp, sh = b->cell[i].v >> 4;
-        SVECTOR *cv = b->cell[i].c;
+        SVECTOR *cv = WC[i];
         if (g == G_HEAD) { for (int k = 0; k < 8; k++) head_pt(b, &cv[k]); continue; }
         if (g == G_BODY) {
             if (b->cell[i].y >= hy || (b->cell[i].flags & 1)) {                // the head, the hair, a hat, a beard: the head's sculpt
@@ -654,7 +663,7 @@ static void shape_body(Bore *b) {
     // ---- where the WEAR tab's accessories attach ----
     int top = 32767, tfz = -32767, tbz = 32767, hand_y = -32767, hx0 = 32767, hx1 = -32767, hz0 = 32767, hz1 = -32767;
     for (int i = 0; i < b->ncell; i++) {
-        int g = b->cell[i].grp; const SVECTOR *cv = b->cell[i].c;
+        int g = b->cell[i].grp; const SVECTOR *cv = WC[i];
         for (int k = 0; k < 8; k++) {
             if (g == G_HEAD) top = MIN(top, cv[k].vy);
             if (g == G_BODY && b->cell[i].y < hy && !(b->cell[i].flags & 1)) { tfz = MAX(tfz, cv[k].vz); tbz = MIN(tbz, cv[k].vz); }
@@ -662,7 +671,7 @@ static void shape_body(Bore *b) {
         }
     }
     for (int i = 0; i < b->ncell; i++) if (b->cell[i].grp == G_RARM) for (int k = 4; k < 8; k++) {
-        const SVECTOR *cv = &b->cell[i].c[k];
+        const SVECTOR *cv = &WC[i][k];
         if (cv->vy >= hand_y - 2) { hx0 = MIN(hx0, cv->vx); hx1 = MAX(hx1, cv->vx); hz0 = MIN(hz0, cv->vz); hz1 = MAX(hz1, cv->vz); }
     }
     if (top == 32767) top = b->h_top;
@@ -671,7 +680,7 @@ static void shape_body(Bore *b) {
     { int fx = b->h_cx, fy = -(hy + hs) * VOX - hs * VOX / 3 + d, fz = (hz + 2 * hs - 2) * VOX; head_xf(b, &fx, &fy, &fz); b->w_facey = (s16)fy; b->w_facez = (s16)fz; }
     b->w_tx = (s16)tcx; b->w_shy = (s16)shY; b->w_hipy = (s16)hipY; b->w_tfz = (s16)tfz; b->w_tbz = (s16)tbz;
     { int lx0 = 32767, lx1 = -32767, rx0 = 32767, rx1 = -32767, gx0 = 32767, gx1 = -32767, kx0 = 32767, kx1 = -32767;
-      for (int i = 0; i < b->ncell; i++) for (int k = 0; k < 8; k++) { int g = b->cell[i].grp, x = b->cell[i].c[k].vx;
+      for (int i = 0; i < b->ncell; i++) for (int k = 0; k < 8; k++) { int g = b->cell[i].grp, x = WC[i][k].vx;
           if (g == G_LARM) { lx0 = MIN(lx0, x); lx1 = MAX(lx1, x); } if (g == G_RARM) { rx0 = MIN(rx0, x); rx1 = MAX(rx1, x); }
           if (g == G_LLEG) { gx0 = MIN(gx0, x); gx1 = MAX(gx1, x); } if (g == G_RLEG) { kx0 = MIN(kx0, x); kx1 = MAX(kx1, x); } }
       b->w_lax = (s16)(lx0 <= lx1 ? (lx0 + lx1) / 2 : -VOX * 2); b->w_rax = (s16)(rx0 <= rx1 ? (rx0 + rx1) / 2 : VOX * 2);
@@ -695,7 +704,7 @@ static void split_limbs(Bore *b) {
             if (b->cell[i].grp != par[l]) continue;
             if (b->cell[i].y < cut) {
                 b->cell[i].grp = kid[l];
-                if (b->cell[i].y == cut - 1) { b->cell[i].hide &= ~16; for (int k = 0; k < 4; k++) { sx += b->cell[i].c[k].vx; sy += b->cell[i].c[k].vy; sz += b->cell[i].c[k].vz; nc++; } }
+                if (b->cell[i].y == cut - 1) { b->cell[i].hide &= ~16; for (int k = 0; k < 4; k++) { sx += WC[i][k].vx; sy += WC[i][k].vy; sz += WC[i][k].vz; nc++; } }
             } else if (b->cell[i].y == cut) b->cell[i].hide &= ~32;
         }
         if (nc) { piv[l][0] = (s16)(sx / nc); piv[l][1] = (s16)(sy / nc); piv[l][2] = (s16)(sz / nc); b->j_ok |= (u8)(1 << l); }
@@ -801,7 +810,7 @@ void voxel_prepare(Bore *b) {
                 setVector(&cc[4 + k], X + bx, y1, Z + bz);
             }
             if (n < NCELL_MAX) { b->cell[n].x = (u8)x; b->cell[n].y = (u8)y; b->cell[n].z = (u8)z; b->cell[n].v = v; b->cell[n].hide = (u8)hide; b->cell[n].grp = (u8)grp;
-                                 b->cell[n].flags = (u8)((is_hair ? 1 : 0) | (in ? 2 : 0)); memcpy(b->cell[n].c, cc, sizeof cc); n++; }
+                                 b->cell[n].flags = (u8)((is_hair ? 1 : 0) | (in ? 2 : 0)); memcpy(WC[n], cc, sizeof cc); n++; }
         } }
     b->ncell = (u8)n;
     shape_body(b);
@@ -821,6 +830,12 @@ void voxel_prepare(Bore *b) {
         if (nd < 8) b->decc[nd++] = (u8)(x + z * W + y * W * D);
     }
     b->ndec = (u8)nd;
+    for (int i = 0; i < n; i++) for (int k = 0; k < 8; k++) {
+        int nx, ny, nz; nominal(b, i, k, &nx, &ny, &nz);
+        int dx = WC[i][k].vx - nx, dy = WC[i][k].vy - ny, dz = WC[i][k].vz - nz;
+        if (dx < -128 || dx > 127 || dy < -128 || dy > 127 || dz < -128 || dz > 127) vox_clamped++;
+        b->cell[i].d[k * 3] = (s8)CLAMP(dx, -128, 127); b->cell[i].d[k * 3 + 1] = (s8)CLAMP(dy, -128, 127); b->cell[i].d[k * 3 + 2] = (s8)CLAMP(dz, -128, 127);
+    }
 }
 
 // yaw is the game's (sim.c's): 0 faces south (-z), 1024 east (+x), and a Bore walks the way it faces, (sin, -cos). The model's
@@ -831,7 +846,7 @@ void voxel_prepare(Bore *b) {
 int voxel_lie_ease(int lie) { lie = CLAMP(lie, 0, 4096); return (((lie * lie) >> 12) * (12288 - 2 * lie)) >> 12; }   // smoothstep
 static void lie_dims(const Bore *b, int *top, int *mn, int *mx) {   // the model's reach: highest point (vy), the back (vz min) and the front (vz max)
     int t = 0, lo = 0, hi = 0;
-    for (int i = 0; i < b->ncell; i++) for (int k = 0; k < 8; k++) { const SVECTOR *c = &b->cell[i].c[k]; if (c->vy < t) t = c->vy; if (c->vz < lo) lo = c->vz; if (c->vz > hi) hi = c->vz; }
+    for (int i = 0; i < b->ncell; i++) { SVECTOR cw[8]; voxel_corners(b, i, cw); for (int k = 0; k < 8; k++) { const SVECTOR *c = &cw[k]; if (c->vy < t) t = c->vy; if (c->vz < lo) lo = c->vz; if (c->vz > hi) hi = c->vz; } }
     *top = t; *mn = lo; *mx = hi;
 }
 void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
@@ -999,11 +1014,12 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     int tcells0 = gfx_hb();
     for (int i = 0; i < b->ncell; i++) {
         const u8 *c = (const u8 *)&b->cell[i];
+        SVECTOR cw[8] __attribute__((aligned(8))); voxel_corners(b, i, cw);
         int x = c[0], y = c[1], z = c[2], v = c[3], hide = c[4], fl = c[6];
         if (c[5] != grp) { grp = c[5]; gfx_set_object_m(&gm[grp]); cam_cull = (grp == G_BODY || grp == G_HEAD) ? cull0 : 0; }
         int slot = v & 15, sh = v >> 4, m = (sh >= 4 && sh <= 11) ? wMask2[sh - 4] : 0;
-        if (fl & 1) { hair_block(b, x, y, z, m, hide, b->col[slot], b->cell[i].c); continue; }
-        block(b->cell[i].c, m, hide, slot, b->col[slot], kind_of(slot), (fl & 2) ? -2 : x, z);
+        if (fl & 1) { hair_block(b, x, y, z, m, hide, b->col[slot], cw); continue; }
+        block(cw, m, hide, slot, b->col[slot], kind_of(slot), (fl & 2) ? -2 : x, z);
     }
     gfx_set_object_m(&gm[G_BODY]);
     if (b->h_lift > 0) {   // the neck: a skin column from the shoulders up into the head

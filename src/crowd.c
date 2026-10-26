@@ -228,13 +228,7 @@ COLD int crowd_store(int id, const Bore *b) {
         int x = b->cell[i].x, y = b->cell[i].y, z = b->cell[i].z;
         cc[i].xyz = (u8)(x | (y << 3) | (z << 6)); cc[i].v = b->cell[i].v;
         cc[i].hf = (u8)((b->cell[i].hide & 63) | (b->cell[i].flags << 6)); cc[i].grp = b->cell[i].grp;
-        for (int k = 0; k < 8; k++) {
-            const SVECTOR *c = &b->cell[i].c[k];
-            int nx = (x - 3 + (k & 1)) * VOX, ny = (k < 4) ? -(y + 1) * VOX : -y * VOX, nz = (z - 2 + ((k >> 1) & 1)) * VOX;
-            cc[i].d[k * 3 + 0] = (s8)CLAMP(c->vx - nx, -128, 127);
-            cc[i].d[k * 3 + 1] = (s8)CLAMP(c->vy - ny, -128, 127);
-            cc[i].d[k * 3 + 2] = (s8)CLAMP(c->vz - nz, -128, 127);
-        }
+        memcpy(cc[i].d, b->cell[i].d, 24);
     }
     m_used[id] = fr; crowd_bytes = (int)ar_top;
     return 1;
@@ -261,13 +255,7 @@ COLD const Bore *crowd_unpack(int id) {
         int x = cc[i].xyz & 7, y = (cc[i].xyz >> 3) & 7, z = cc[i].xyz >> 6;
         ub.cell[i].x = (u8)x; ub.cell[i].y = (u8)y; ub.cell[i].z = (u8)z; ub.cell[i].v = cc[i].v;
         ub.cell[i].hide = cc[i].hf & 63; ub.cell[i].flags = cc[i].hf >> 6; ub.cell[i].grp = cc[i].grp;
-        int x0 = (x - 3) * VOX, z0 = (z - 2) * VOX, yt = -(y + 1) * VOX, yb = -y * VOX;
-        const s8 *d = cc[i].d; SVECTOR *c = ub.cell[i].c;
-        for (int k = 0; k < 8; k++, d += 3) {
-            c[k].vx = (s16)(x0 + ((k & 1) ? VOX : 0) + d[0]);
-            c[k].vy = (s16)((k < 4 ? yt : yb) + d[1]);
-            c[k].vz = (s16)(z0 + ((k & 2) ? VOX : 0) + d[2]);
-        }
+        memcpy(ub.cell[i].d, cc[i].d, 24);
     }
     m_used[id] = fr;
     return &ub;

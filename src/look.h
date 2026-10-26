@@ -35,7 +35,7 @@ typedef struct {
     u8   baked;
     // the drawing cache (voxel_prepare): the solid cells, grouped by body part, with their hidden faces worked out once
     u8   ncell;
-    struct { u8 x, y, z, v, hide, grp, flags, pad; SVECTOR c[8]; } cell[NCELL_MAX];   // c: the 8 corners (top 4, bottom 4), rounded hull and wedges folded in; flags: 1 hair, 2 limb
+    struct { u8 x, y, z, v, hide, grp, flags, pad; s8 d[24]; } cell[NCELL_MAX];   // d: the 8 corners (top 4, bottom 4), rounded hull and wedges folded in, as s8 offsets from the plain block's corners (voxel_corners gives them back whole); flags: 1 hair, 2 limb
     u8   ndec;
     // where the WEAR tab's accessories attach (voxel_prepare), body-space units
     s16  w_headx, w_heady, w_headz, w_headh;    // the top centre of the head (on the hair), the head's half width

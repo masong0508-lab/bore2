@@ -313,7 +313,7 @@ static void draw_marker(const Sim *s) {   // who you are playing: a bobbing gold
     gfx_tri_f(&a, &b, &c, 90, 60, 10, 0);                     // a dark edge behind, so it reads on bright rooms
 }
 static int lying_drop(const Bore *b) {   // a Bore lying on its back (voxel.c's sleep pose): how far its back reaches below where it is put
-    int mn = 0; for (int i = 0; i < b->ncell; i++) for (int k = 0; k < 8; k++) if (b->cell[i].c[k].vz < mn) mn = b->cell[i].c[k].vz;
+    int mn = 0; for (int i = 0; i < b->ncell; i++) { SVECTOR cw[8]; voxel_corners(b, i, cw); for (int k = 0; k < 8; k++) if (cw[k].vz < mn) mn = cw[k].vz; }
     return -mn - 40;
 }
 int dbg_hh_spr, dbg_hh_full, dbg_hh_miss;
