@@ -21,6 +21,7 @@
 #include "skate.h"
 
 Sim  sims[MAX_SIMS];
+int  sim_want_party;
 int  nsims, player;
 int  clock_min = 8 * 60, clock_day = 0;
 long cash = 15000;
@@ -93,7 +94,7 @@ enum { ML_NONE, ML_GOOD_MEAL, ML_SNACKED, ML_RESTED, ML_FRESH, ML_GOOD_CHAT, ML_
        ML_HUNGRY, ML_TIRED, ML_STINKY, ML_BURSTING, ML_LONELY, ML_BORED, ML_SINGING, ML_PIZZA,
        ML_ATE_OUT, ML_SWAM, ML_OUTFIT, ML_RETAIL, ML_NEW_GAME, ML_NEW_JOB, ML_COACHED, ML_HOTEL,
        ML_FINE_DINING, ML_FILM, ML_CUT, ML_NIGHT_OUT, ML_ROUND, ML_PAMPERED, ML_INSPIRED, ML_HEALTHY, ML_TREAT,
-       ML_BIRTHDAY, ML_NEW_BABY, ML_LOVE, ML_PROUD, ML_GRIEF, ML_MEMORIES, ML_CAKE, ML_GRADES, ML_HOMEWORK, ML_SCHOOL, ML_BLOB_BUDDY, ML_BLOB_HATCH, ML_BLOB_PROUD, ML_BLOB_WORRY, ML_BLOB_MISS, ML_BLOB_HOOKED, ML_BLOB_SHARED, ML_N };
+       ML_BIRTHDAY, ML_NEW_BABY, ML_LOVE, ML_PROUD, ML_GRIEF, ML_MEMORIES, ML_CAKE, ML_GRADES, ML_HOMEWORK, ML_SCHOOL, ML_BLOB_BUDDY, ML_BLOB_HATCH, ML_BLOB_PROUD, ML_BLOB_WORRY, ML_BLOB_MISS, ML_BLOB_HOOKED, ML_BLOB_SHARED, ML_PARTY_OK, ML_PARTY_GREAT, ML_PARTY_LEGEND, ML_N };
 static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "", 0, 0 }, { "GOOD MEAL", 12, 240 }, { "SNACKED", 4, 90 }, { "WELL RESTED", 12, 300 }, { "FRESH", 8, 180 }, { "GOOD CHAT", 10, 180 },
     { "MADE A FRIEND", 20, 480 }, { "PROMOTED", 25, 720 }, { "PAYDAY", 15, 360 }, { "EMBARRASSED", -12, 120 },
@@ -107,7 +108,7 @@ static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "PAMPERED", 15, 360 }, { "INSPIRED", 10, 240 }, { "HEALTHY", 8, 1440 }, { "SWEET TREAT", 8, 120 },
     { "GREAT BIRTHDAY", 20, 720 }, { "NEW BABY", 20, 1440 }, { "IN LOVE", 15, 720 }, { "PROUD PARENT", 8, 240 }, { "GRIEF", -15, 1440 },
     { "FOND MEMORIES", 8, 240 }, { "BIRTHDAY CAKE", 8, 180 }, { "GOOD GRADES", 10, 720 }, { "HOMEWORK DONE", 6, 240 }, { "LONG DAY AT SCHOOL", -5, 180 },
-    { "BLOB BUDDY", 10, 240 }, { "IT HATCHED!", 16, 480 }, { "PROUD BLOB PARENT", 14, 720 }, { "WORRIED ABOUT MY BLOB", -8, 120 }, { "MISSING MY BLOB", -15, 720 }, { "HOOKED ON THE TOY", -8, 240 }, { "SHARED MY LUNCH", 8, 240 },
+    { "BLOB BUDDY", 10, 240 }, { "IT HATCHED!", 16, 480 }, { "PROUD BLOB PARENT", 14, 720 }, { "WORRIED ABOUT MY BLOB", -8, 120 }, { "MISSING MY BLOB", -15, 720 }, { "HOOKED ON THE TOY", -8, 240 }, { "SHARED MY LUNCH", 8, 240 }, { "NICE PARTY", 10, 480 }, { "GREAT PARTY", 18, 720 }, { "LEGENDARY PARTY", 30, 1440 },
 };
 const char *sim_moodlet_name(int id) { return mlDef[id % ML_N].nm; }
 static int has_trait(const Sim *s, int t, int hi) { int v = s->bore.tr[t]; return hi ? v >= 8 : v <= 2; }
@@ -126,6 +127,12 @@ void sim_gotchi_absorb(int i) {   // staring at the toy: the owner forgets to ea
     s->need[N_FOOD] = MAX(0, s->need[N_FOOD] - (3 << 10)); s->need[N_REST] = MAX(0, s->need[N_REST] - (1 << 10)); s->need[N_SOCIAL] = MAX(0, s->need[N_SOCIAL] - (2 << 10)); s->need[N_CLEAN] = MAX(0, s->need[N_CLEAN] - (1 << 10));
     static int n; static const char *const fun[5] = { "YOUR TUMMY GROWLS. THE PET LOOKS WORRIED", "WHEN DID YOU LAST EAT? THE PET WONDERS TOO", "YOUR HOUSEMATES ARE WAVING AT YOU", "YOU HAVEN'T BLINKED IN A WHILE", "THE FRIDGE IS RIGHT THERE. JUST SAYING" };
     if ((s->need[N_FOOD] >> 10) < 25) { sim_moodlet(s, ML_BLOB_HOOKED); if (!(++n & 3)) sim_note(fun[(n >> 2) % 5]); }
+}
+void sim_party_over(int score, int guests) {   // the last guest leaves: how it went, for everyone who lives here
+    for (int i = 0; i < nsims; i++) { Sim *s = &sims[i]; if (s->away) continue;
+        if (score >= 1) sim_moodlet(s, score >= 8 ? ML_PARTY_LEGEND : score >= 4 ? ML_PARTY_GREAT : ML_PARTY_OK);
+        s->need[N_SOCIAL] = MIN(s->need[N_SOCIAL] + ((10 + MIN(guests, 30) + score * 3) << 10), 100 << 10);
+        s->need[N_FUN] = MIN(s->need[N_FUN] + ((10 + score * 4) << 10), 100 << 10); }
 }
 void sim_gotchi_fun(int i, int amt) { if (i >= 0 && i < nsims) sims[i].need[N_FUN] = MIN(sims[i].need[N_FUN] + (amt << 10), 100 << 10); }
 void sim_moodlet(Sim *s, int id) {
@@ -469,7 +476,7 @@ static int action_for(char c) {
         case (char)0x9A: case (char)0x9E: return ACT_EAT;
         case (char)0x9F: return ACT_COFFEE;
         case (char)0xA9: case (char)0xB8: return ACT_RUN;
-        case (char)0xC1: case (char)0xC2: return ACT_FUN;   // (the BOREAGOTCHI! pack: a plush and a ball)
+        case (char)0xC1: case (char)0xC2: case (char)0xC7: case (char)0xCA: case (char)0xCB: case (char)0xCC: case (char)0xCD: case (char)0xCE: return ACT_FUN; case (char)0xC8: return ACT_EAT; case (char)0xC9: return ACT_COFFEE;   // (the BOREAGOTCHI! pack: a plush and a ball)
         case (char)0xA0: case (char)0xA1: case (char)0xA2: case (char)0xA3: case (char)0xA4: case (char)0xA5: case (char)0xA6: case (char)0xA7: case (char)0xB9: case (char)0xBA: return ACT_FUN;
         case CH_CAKE: return ACT_EAT; case CH_GRAVE: return ACT_READ;
         case 'g': case '3': case '6': case '*': return world_zone == ZONE_ISLAND ? ACT_GATHER : ACT_NONE;   // (on the island: wood, coconuts, stone)
@@ -503,7 +510,7 @@ static const char *act_hint(int act, char c) {
         default: break;
     }
     switch (c) {   // the furniture pack's own words
-        case (char)0xC1: return "CUDDLE THE PLUSH"; case (char)0xC2: return "PLAY WITH THE BALL";
+        case (char)0xC7: return "DANCE UNDER THE LIGHTS"; case (char)0xC8: return "GRAB A BITE"; case (char)0xC9: return "SIP THE PUNCH"; case (char)0xCA: return "DANCE TO THE BASS"; case (char)0xCB: return "POP A BALLOON"; case (char)0xCC: return "SPIN SOME TRACKS"; case (char)0xCD: return "SING KARAOKE"; case (char)0xCE: return "POSE FOR PHOTOS"; case (char)0xC1: return "CUDDLE THE PLUSH"; case (char)0xC2: return "PLAY WITH THE BALL";
         case '!': return "PLAY ARCADE"; case '$': return "PLAY PIANO"; case '(': return "PLAY GUITAR"; case ')': return "PAINT";
         case '>': return "SOAK"; case '[': return "USE COMPUTER"; case 'j': return "PICK A SONG"; case 'n': return "PLAY"; case '{': return "PLAY HOUSE";
         case '}': return "MAKE A WISH"; case '`': return "PRACTICE SPEECH"; case ',': return "TAKE A BATH"; case '-': return "WASH HANDS";
@@ -1079,7 +1086,7 @@ static void genes(Bore *b, const Bore *m, const Bore *f) {   // a little of each
 }
 static void born(void) {   // the baby comes home (or the adopted child)
     baby_due = -1;
-    if (nsims >= MAX_SIMS) { sim_note("NO ROOM: 6 BORES IS THE MOST"); return; }
+    if (nsims >= MAX_SIMS) { sim_note("NO ROOM: 8 BORES IS THE MOST"); return; }
     Sim *ma = by_uid(baby_par[0]), *pa = by_uid(baby_par[1]);
     Bore b; look_default(&b); b.stage = baby_kind == 2 ? AG_CHILD : AG_BABY; look_random(&b);
     if (!baby_kind) genes(&b, ma ? &ma->bore : 0, pa ? &pa->bore : 0);
@@ -1133,7 +1140,7 @@ static void go_steady(Sim *s, Sim *o) {   // two who are sweet on each other mak
 void sim_baby_coming(int p0, int p1, int minutes) { baby_par[0] = (u8)p0; baby_par[1] = (u8)p1; baby_kind = 0; baby_due = life_minutes() + minutes; sim_note("A BABY COMES HOME TOMORROW"); }
 static void adopt(Sim *s) {
     if (baby_due >= 0) { sim_note("A BABY IS ALREADY ON THE WAY"); return; }
-    if (nsims >= MAX_SIMS) { sim_note("THE HOUSE IS FULL (6 BORES)"); return; }
+    if (nsims >= MAX_SIMS) { sim_note("THE HOUSE IS FULL (8 BORES)"); return; }
     if (cash < 1000) { sim_note("ADOPTING IS $1000"); audio_voice(VOICE_NAH); return; }
     cash -= 1000;
     baby_kind = (u8)(1 + (look_rand() & 1)); baby_par[0] = s->uid; baby_par[1] = s->partner; baby_due = life_minutes() + 1440;
@@ -1407,7 +1414,7 @@ static int front_tile(const Sim *s, int *mx, int *my) {
 }
 static int usable_at(int tx, int ty, char c) {   // something X does something with
     if (action_for(c) != ACT_NONE) return 1;
-    if ((u8)c >= 0xBE && (u8)c <= 0xC6) return 1;      // (the BOREAGOTCHI! pack's things)
+    if ((u8)c >= 0xBE && (u8)c <= 0xCE) return 1;      // (the BOREAGOTCHI! pack's things)
     if (c == '8') return world_zone == ZONE_CITY;      // a FOR SALE sign
     if (c == CH_RAFT) return 1;
     if (c == 'B') return !has_board;                   // a skateboard on the floor: pick it up
@@ -1493,7 +1500,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
+       PC_PARTY, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1562,6 +1569,7 @@ static int sim_pie_open_(char opt[8][16]) {
         case 0xBE: OPT("OPEN THE BASKET", PC_GOT_OPEN) OPT("THE TOY BOX", PC_GOT_BOX) act = ACT_NONE; break;
         case 0xBF: OPT("THE TOY BOX", PC_GOT_BOX) OPT("OPEN THE BASKET", PC_GOT_OPEN) act = ACT_NONE; break;
         case 0xC0: OPT("VIEW THE BLOBDEX", PC_GOT_DEX) OPT("THE TOY BOX", PC_GOT_BOX) act = ACT_NONE; break;
+        case 0xCC: OPT("SEND INVITES", PC_PARTY) break;
         case 0xC3: OPT("TUCK THEM IN", PC_GOT_TUCK) act = ACT_NONE; break;
         case 0xC4: OPT("FEED THEM ALL $5", PC_GOT_FEED) act = ACT_NONE; break;
         case 0xC5: OPT("LIGHTS FOR THEM", PC_GOT_LIGHT) act = ACT_NONE; break;
@@ -1736,6 +1744,7 @@ static void place_do(Sim *s, int code) {
                          gotchi_buy(player); shopped(s, "A BOREAGOTCHI! IT CAME WITH AN EGG", ML_NEW_GAME); sim_want_gotchi = 2; break;
         case PC_GOT_OPEN: if (!gotchi_toy(player)) { sim_note("YOU NEED A BOREAGOTCHI: ELECTRONICS SHOPS, $5000"); return; } sim_want_gotchi = 2; break;
         case PC_GOT_BOX: sim_want_gotchi = 1; break;
+        case PC_PARTY: { extern void throw_party(void); throw_party(); } break;
         case PC_GOT_DEX: sim_want_gotchi = 3; break;
         case PC_GOT_FEED: if (!gotchi_toy(player)) { sim_note("YOU NEED A BOREAGOTCHI FIRST"); return; } if (!pay(5)) return; sim_note(gotchi_house(player, 0)); break;
         case PC_GOT_LIGHT: sim_note(gotchi_toy(player) ? gotchi_house(player, 1) : "YOU NEED A BOREAGOTCHI FIRST"); break;
@@ -2043,7 +2052,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
         s->mood = ld_u8() - 100; s->ai = ld_u8(); s->skill_cook = ld_u16(); s->skill_body = ld_u16(); s->skill_fun = ld_u16(); s->dead = ld_u8(); s->grump = (u8)ld_u8();
         for (int k = 0; k < 4; k++) { s->want[k].kind = (u8)ld_u8(); s->want[k].arg = (u8)ld_u8(); s->want[k].pts = (u16)ld_u16(); s->want[k].age = (u16)ld_u16(); }
         for (int k = 0; k < 2; k++) { s->fear[k].kind = (u8)ld_u8(); s->fear[k].arg = (u8)ld_u8(); s->fear[k].pts = (u16)ld_u16(); s->fear[k].age = (u16)ld_u16(); }
-        s->asp_pts = ld_u16(); ld_n(s->rel, MAX_SIMS); s->lvl = (u8)ld_u8();
+        s->asp_pts = ld_u16(); ld_n(s->rel, save_ver >= 22 ? MAX_SIMS : 6); s->lvl = (u8)ld_u8();
         for (int k = 0; k < 6; k++) { s->ml[k].id = (u8)ld_u8(); s->ml[k].val = (s8)ld_u8(); s->ml[k].t = (u16)ld_u16(); }
         s->uid = (u8)ld_u8(); ld_n(s->par, 2); s->partner = (u8)ld_u8(); s->age_days = (u8)ld_u8(); s->bday = (u8)ld_u8(); s->away = (u8)ld_u8(); s->grade = (u8)ld_u8(); s->homework = (u8)ld_u8();
         s->action = ld_u8(); s->act_t = ld_u16(); s->act_x = (s8)ld_u8(); s->act_y = (s8)ld_u8(); s->act_var = (u8)ld_u8();

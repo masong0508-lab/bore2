@@ -110,7 +110,8 @@ static int frame;
 static int t_vb;
 
 // ---- states ----
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI };
+static void party_begin(void);
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY };
 #ifdef AUTO_GOTCHI
 static void opts_dbg(int tab, int sel, int back);
 #endif
@@ -562,6 +563,14 @@ static void life_update(int steps) {
                 if (st[i] == 4) gotchi_dex_see(b->sp, b->form); } }
         for (int k = 0; k < 40; k += 3) gotchi_dex_see(k / 4, k & 3);
         if (AUTO_GOTCHI < 20) sim_want_gotchi = (AUTO_GOTCHI >> 1) + 1;
+        else if (AUTO_GOTCHI >= 26) {   // (the party pack: its things about the house, a guest list, a party going)
+            int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), put = 0; static const u8 ch[8] = { 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE };
+            for (int r = 3; r < 9 && put < 8; r++) for (int dy = -r; dy <= r && put < 8; dy++) for (int dx = -r; dx <= r && put < 8; dx++) { if (ABS(dx) != r && ABS(dy) != r) continue; int x = px + dx, y = py + dy; if (x > 0 && y > 0 && x < MW && y < MH && lifeMap[y][x] == '.' && ((x + y) % 3) == 0 && (x & 1)) lifeMap[y][x] = (char)ch[put++]; }
+            world_touched(); for (int i = 0; i < 90; i++) { pop_per[i * 7].rel = (s8)(20 + i % 50); }
+            if (AUTO_GOTCHI == 26) sim_want_party = 1;
+            if (AUTO_GOTCHI == 28) { party_open = 1; cash += 500; party_begin(); }
+            if (AUTO_GOTCHI == 30) { int i; for (i = 0; i < items_count(); i++) if ((u8)items_at(i) == 0xC7) break; build_item = i; build_x = px; build_y = py; build_tool = 0; room_on = 0; build_msg_t = 0; state = ST_BUILD; }
+        }
         else {   // (the guide's pictures: the toy's things about the house, the catalog, the options)
             int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), put = 0; static const u8 ch[9] = { 0xBE, 0xBF, 0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6 };
             for (int r = 1; r < 8 && put < 9; r++) for (int dy = -r; dy <= r && put < 9; dy++) for (int dx = -r; dx <= r && put < 9; dx++) { if (ABS(dx) != r && ABS(dy) != r) continue; int x = px + dx, y = py + dy; if (x > 0 && y > 0 && x < MW && y < MH && lifeMap[y][x] == '.' && ((x + y) & 1) == 0) lifeMap[y][x] = (char)ch[put++]; }
@@ -572,6 +581,7 @@ static void life_update(int steps) {
 #ifdef AUTO_FIGHT
     { static int af; if (++af == 40) sim_want_arcade = AUTO_FIGHT; }   // (test builds: straight to a cabinet)
 #endif
+    if (sim_want_party) { sim_want_party = 0; if ((ovl = ovl_load("PARTY.OVL"))) { ovl->open(0); state = ST_PARTY; } return; }   // (the PARTY pack: the guest list, a file of its own on the disc)
     if (sim_want_gotchi) { int g_ = sim_want_gotchi - 1; sim_want_gotchi = 0; if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(g_); state = ST_GOTCHI; } return; }   // (the BOREAGOTCHI! pack: a file of its own on the disc)
     if (sim_want_arcade) { int g_ = sim_want_arcade - 1; sim_want_arcade = 0; if ((ovl = ovl_load("ARCADE.OVL"))) { ovl->open(g_); state = ST_ARCADE; } else cash += arcade_price(g_); return; }   // (an arcade cabinet, the prize counter)
     if (sim_want_jobs) { sim_want_jobs = 0; jobs_board = 1; jobs_open(); sub_back = ST_LIFE; state = ST_JOBS; return; }   // (the computer's JOB BOARD)
@@ -2117,17 +2127,31 @@ static void homes_open(void);
 #ifdef AUTO_PARTY
 int ap_frames, ap_vs, ap_cpu;
 #endif
-void throw_party(void) {   // (also the phone's THROW A PARTY)
+void throw_party(void) {   // (also the phone's THROW A PARTY, and the DJ booth's SEND INVITES): the guest list first
     if (citizens_party_on()) { sim_note("THE PARTY IS ALREADY GOING!"); return; }
     if (cash < 100) { sim_note("YOU NEED $100 TO THROW A PARTY"); audio_voice(VOICE_NAH); return; }
+#ifdef AUTO_PARTY
+    { extern void party_begin_t(void); party_open = 1; party_begin_t(); return; }
+#endif
+    sim_want_party = 1;
+}
+#ifdef AUTO_PARTY
+void party_begin_t(void);
+#endif
+static void party_begin(void) {   // the list is made (PARTY.OVL): the party starts
+    long cost = party_open ? 200 : 100;
+    if (cash < cost) { sim_note("NOT ENOUGH CASH FOR THAT PARTY"); audio_voice(VOICE_NAH); return; }
     int n = citizens_party();
-    if (n <= 0) { sim_note("NOT ENOUGH ROOM TO DANCE HERE"); audio_voice(VOICE_NAH); return; }
-    cash -= 100;
+    if (n <= 0) { sim_note(n < 0 ? "THE PARTY IS ALREADY GOING!" : "NOBODY CAN COME, OR NO ROOM TO DANCE HERE"); audio_voice(VOICE_NAH); return; }
+    cash -= cost;
     char b[40]; sprintf(b, "PARTY! %d GUESTS ARE COMING", n); sim_note(b);
     audio_station_play(1);                                            // RAVE 101
     audio_voice(VOICE_YAHOO);
     for (int i = 0; i < nsims; i++) { sim_moodlet(&sims[i], 15); wants_event(&sims[i], W_PARTY, 0); }   // FUN TIME
 }
+#ifdef AUTO_PARTY
+void party_begin_t(void) { party_begin(); }
+#endif
 static void pause_new_life(void) { life_started = 0; start_life(); state = ST_LIFE; }
 static void pause_quit(void) { audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); }
 void gotchi_pause_open(void) {
@@ -2893,8 +2917,8 @@ static int floor_supported(int l, int x, int y) {   // an upper floor needs some
     return 0;
 }
 // ---- the catalog (Sims buy mode): the items in tabs, a scrolling list with prices ----
-#define NCAT 9
-static const char *const catNm[NCAT] = { "SEATS, BEDS", "TABLES, STORAGE", "KITCHEN, BATH", "FUN AND TECH", "DECOR, PLANTS", "GARDEN, OUTDOOR", "SKATE", "BOREAGOTCHI", "SPECIAL" };
+#define NCAT 10
+static const char *const catNm[NCAT] = { "SEATS, BEDS", "TABLES, STORAGE", "KITCHEN, BATH", "FUN AND TECH", "DECOR, PLANTS", "GARDEN, OUTDOOR", "SKATE", "BOREAGOTCHI", "PARTY", "SPECIAL" };
 static const char *const catSet[NCAT - 1] = {
     "CUh;S<N%z\x81" "\220\221\222\223\250" ,
     "tdibyK?#O" "\225\226\227\230\231\232\233" ,
@@ -2903,7 +2927,8 @@ static const char *const catSet[NCAT - 1] = {
     "rlpZVqo}" "\252\253\254\255\256\257\260\261" ,
     "gus*036~\"" "\224\236\262\263\264\265\266\267\270\271\272\273\274\275" ,
     "=LJXM159GB",
-    "\276\277\300\301\302\303\304\305\306" };
+    "\276\277\300\301\302\303\304\305\306",
+    "\307\310\311\312\313\314\315\316" };
 static int item_cat(char ch) { if ((u8)ch > 0x81 && (u8)ch < 0x90) return -1; /* (the cake, the gravestone and the island's own are never bought) */ for (int c = 0; c < NCAT - 1; c++) if (strchr(catSet[c], ch)) return c; return NCAT - 1; }
 static int cat_list(int cat, int *idx) {   // the tab's items, cheapest first
     int n = 0; for (int i = 0; i < items_count() && n < 96; i++) if (item_cat(items_at(i)) == cat) idx[n++] = i;
@@ -3790,6 +3815,7 @@ int main(void) {
             case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
             case ST_SPICK: spick_update(); if (state == ST_SPICK) { if (sp_join) life_draw(); else title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t, sp_join); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
             case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
+            case ST_PARTY: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); if (party_go) { party_go = 0; party_begin(); } } break; }
             case ST_GOTCHI: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; if (gotchi_shelf) { gotchi_shelf = 0; crowd_reset(); wo_painted = 0; state = ST_WORLDS; } else { ovl_leave(); state = ST_LIFE; life_draw(); } } break; }
             case ST_REALM: case ST_ARCADE: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_WMAKE: wm_update(); if (state == ST_WMAKE) wm_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_NAME) name_draw(); else life_draw(); break;

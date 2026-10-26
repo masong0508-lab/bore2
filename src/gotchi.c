@@ -186,7 +186,7 @@ void gotchi_save(void) {
 void gotchi_load(int ver) {
     gotchi_reset(); if (ver < 21) return;
     dex[0] = ld_u32(); dex[1] = ld_u32();
-    for (int k = 0; k < GT_MAX; k++) { Toy *t = &gtoy[k]; t->own = (u8)ld_u8(); t->uid = (u8)ld_u8(); t->sel = (u8)ld_u8(); t->xp = (u16)ld_u16(); t->hatched = (u16)ld_u16(); t->wins = (u16)ld_u16(); t->cared = (u16)ld_u16();
+    for (int k = 0; k < (ver >= 22 ? GT_MAX : 6); k++) { Toy *t = &gtoy[k]; t->own = (u8)ld_u8(); t->uid = (u8)ld_u8(); t->sel = (u8)ld_u8(); t->xp = (u16)ld_u16(); t->hatched = (u16)ld_u16(); t->wins = (u16)ld_u16(); t->cared = (u16)ld_u16();
         for (int i = 0; i < GB_N; i++) ld_n(&t->b[i], sizeof(Blob)); }
 }
 const char *gotchi_house(int simi, int what) {

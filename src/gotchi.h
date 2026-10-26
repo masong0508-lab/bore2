@@ -4,7 +4,7 @@
 #pragma once
 #include "common.h"
 
-#define GT_MAX 6
+#define GT_MAX 8
 #define GB_N 8
 #define GSP_N 16
 #define GOTCHI_PRICE 5000

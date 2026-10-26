@@ -6,6 +6,7 @@
 #include "items_data.inc"   // defines Mat, IBox, IObj and the MAT macro, straight from the GBA game
 #include "items_more.inc"   // BORE 2's furniture pack (tools/make_items2.py)
 #include "items_gotchi.inc"   // the BOREAGOTCHI! pack's objects (tools/make_items_gotchi.py)
+#include "items_party.inc"    // the PARTY pack (tools/make_items_party.py)
 
 // ---- the sound pack, the phone and the DeadSet: boxes made for BORE 2 (the GBA drew them as pixel art) ----
 static const u16 pRad[5] = { RGB(6,6,8), RGB(20,20,22), RGB(28,28,30), RGB(30,24,4), RGB(12,12,14) };
@@ -327,6 +328,7 @@ static ItemDef defs[] = {   // (not const: items_init sets some of them to life 
     { CH_JOURNAL, "OLD JOURNAL", bxJournal, 2, 0, 0, 0, 0 },
     ITEMS_MORE
     ITEMS_GOTCHI
+    ITEMS_PARTY
 };
 #define NDEFS ((int)(sizeof(defs) / sizeof(defs[0])))
 _Static_assert(sizeof(defs) / sizeof(defs[0]) < 255, "def_ix holds a def + 1 in a byte");

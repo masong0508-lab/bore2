@@ -4,7 +4,7 @@
 #include "look.h"
 #include "voxel.h"
 
-#define MAX_SIMS 6
+#define MAX_SIMS 8
 #define NEED_N 8
 enum { N_FOOD, N_WC, N_REST, N_CLEAN, N_COMFY, N_FUN, N_SOCIAL, N_ROOM };
 enum { ACT_NONE, ACT_EAT, ACT_WC, ACT_SLEEP, ACT_SHOWER, ACT_SIT, ACT_FUN, ACT_TALK, ACT_WORK, ACT_WALK, ACT_COFFEE, ACT_READ, ACT_RUN, ACT_PHONE, ACT_TRAVEL, ACT_STAIRS, ACT_SWIM, ACT_CARE,
@@ -101,6 +101,8 @@ const char *sim_pie_title(void);           // whose / what menu it is
 int  sim_traits(const Sim *s, const char *out[3]);   // Sims 3 traits read off the personality: how many (up to 3)
 const char *sim_moodlet_name(int id);
 void sim_gotchi_mood(int simi, int kind);   // (gotchi.c) a moodlet from the BOREAGOTCHI toy
+extern int sim_want_party;   // (the PARTY pack) 1: open the guest list
+void sim_party_over(int score, int guests);   // (the party pack) how it went
 void sim_gotchi_fun(int simi, int amt);
 int  sim_gotchi_stat(int simi, int what);     // 0 mood, 1 food 0..100, 2 rest
 void sim_gotchi_food(int simi, int amt);

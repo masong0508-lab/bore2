@@ -18,6 +18,7 @@
 			<file name="KINGDOM.OVL" type="data" source="KINGDOM.OVL" />
 			<file name="ARCADE.OVL" type="data" source="ARCADE.OVL" />
 			<file name="GOTCHI.OVL" type="data" source="GOTCHI.OVL" />
+			<file name="PARTY.OVL" type="data" source="PARTY.OVL" />
 			<file name="GOTCHI.ART" type="data" source="GOTCHI.ART" />
 			<dummy sectors="512"/>
 		</directory_tree>

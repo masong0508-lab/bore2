@@ -1038,23 +1038,85 @@ static void party_entry(void) {            // where guests come in: inside the n
         }
     }
 }
-COLD int citizens_party(void) {
+// ---- THE GUEST LIST: who you know, by household (the screen is PARTY.OVL; the lists live here) ----
+PGroup pg_grp[PG_GROUPS]; PGuest pg_mem[PG_MEMS]; int pg_ng, pg_nm, party_open, party_go, party_score_now;
+static int party_ginv[PARTY_MAX];          // which of this party's guests were asked by name (the ones whose opinion of you moves)
+static int party_nguests, party_score, party_ninv;
+static int pg_known_c(const Cit *c) { return c->rel != 0 || c->rom != 0; }
+static int pg_known_p(int p) { const Per *q = &pop_per[p]; if (q->slot != 255 && q->slot < NCIT) return pg_known_c(&cits[q->slot]); return q->rel != 0 || q->rom != 0; }
+COLD void citizens_names(u16 ref, char *out) {       // "FIRST LAST"
+    if (ref & 0x8000) { strcpy(out, cits[ref & 0x7FFF].first); return; }
+    pop_first(ref, out);
+}
+COLD void citizens_gname(int g, char *out) {          // a household's name
+    const PGroup *k = &pg_grp[g];
+    if (k->fam & 0x8000) { const Cit *c = &cits[pg_mem[k->first].ref & 0x7FFF]; sprintf(out, "%s HOME", c->last[0] ? c->last : c->first); }
+    else { char b[NAME_LEN + 2]; pop_surname(k->fam, b); sprintf(out, "%s HOUSEHOLD", b); }
+}
+COLD void citizens_known(void) {                      // build the lists: every household with someone you know in it
+    pg_ng = pg_nm = 0;
+    for (int f = 0; f < NFAM && pg_ng < PG_GROUPS; f++) {
+        const Fam *fm = &pop_fam[f]; int any = 0, live = 0;
+        for (int j = 0; j < fm->n; j++) { int p = fm->first + j; if (pop_per[p].flags & PF_GONE) continue; live++; if (pg_known_p(p)) any = 1; }
+        if (!any || pg_nm + live > PG_MEMS) continue;
+        PGroup *g = &pg_grp[pg_ng++]; g->fam = (u16)f; g->first = (u16)pg_nm; g->n = 0;
+        for (int j = 0; j < fm->n; j++) { int p = fm->first + j; if (pop_per[p].flags & PF_GONE) continue; PGuest *m = &pg_mem[pg_nm++]; m->ref = (u16)p; m->on = 0; m->known = (u8)pg_known_p(p); g->n++; }
+    }
+    for (int h = 0; h < nhh && pg_ng < PG_GROUPS; h++) {   // the island's and the town's own people, by household
+        const Hh *hp = &hh[h]; if (hp->zone == 255 || hp->pfam != NOPID) continue;
+        int any = 0, live = 0; for (int j = 0; j < hp->n; j++) { const Cit *c = &cits[hp->mem[j]]; if (c->mode == CM_GONE || c->pid != NOPID) continue; live++; if (pg_known_c(c)) any = 1; }
+        if (!any || pg_nm + live > PG_MEMS) continue;
+        PGroup *g = &pg_grp[pg_ng++]; g->fam = (u16)(0x8000 | h); g->first = (u16)pg_nm; g->n = 0;
+        for (int j = 0; j < hp->n; j++) { const Cit *c = &cits[hp->mem[j]]; if (c->mode == CM_GONE || c->pid != NOPID) continue; PGuest *m = &pg_mem[pg_nm++]; m->ref = (u16)(0x8000 | hp->mem[j]); m->on = 0; m->known = (u8)pg_known_c(c); g->n++; }
+    }
+}
+static int party_item_score(void) {                  // the party things round the host: each kind counts up to three
+    int cnt[8] = { 0 };
+    for (int y = MAX(1, party_cy - 12); y <= MIN(MH - 2, party_cy + 12); y++) for (int x = MAX(1, party_cx - 12); x <= MIN(MW - 2, party_cx + 12); x++) {
+        int ch = (u8)world_at(x, y); if (ch >= 0xC7 && ch <= 0xCE && cnt[ch - 0xC7] < 3) cnt[ch - 0xC7]++; }
+    int sc = 0; for (int k = 0; k < 8; k++) sc += cnt[k]; return sc;
+}
+int citizens_party_score_here(void) { const Sim *p = &sims[player]; party_cx = p->x / TILE; party_cy = (-p->z) / TILE; return party_item_score(); }
+static int slot_for(u16 ref) {                      // a guest's body: their own live one, or one made for the night (SAN BOREAS's people)
+    if (ref & 0x8000) { int i = ref & 0x7FFF; Cit *c = &cits[i]; return (c->mode == CM_GONE || c->mode == CM_KO || c->mode == CM_PARTY || c->zone == 255) ? -1 : i; }
+    Per *q = &pop_per[ref]; if (q->flags & PF_GONE) return -1;
+    if (q->slot != 255 && q->slot < NCIT) { Cit *c = &cits[q->slot]; return c->mode == CM_PARTY ? -1 : q->slot; }
+    int slot = -1; for (int i = MAIN0; i < NCIT; i++) if (cits[i].zone == 255 && cits[i].pid == NOPID) { slot = i; break; }
+    if (slot < 0) return -1;
+    Cit *c = &cits[slot]; memset(&c->gait, 0, sizeof c->gait);
+    c->seed = q->seed; c->stage = q->stage; c->rel = q->rel; c->rom = q->rom; c->hp = q->hp ? q->hp : 100;
+    c->pers = q->trait == 1 ? PE_GRUFF : q->trait == 6 ? PE_FLIRTY : (q->trait == 8 || q->trait == 13) ? PE_SHY : PE_FRIENDLY;
+    c->homebody = 0; c->off = 0; c->zone = ZONE_CITY; c->zone0 = 255; c->mode = CM_IDLE; c->t = 10; c->sub = 0; c->st = 0; c->wv = 0; c->say_t = 0; c->cd = 0; c->slot = 0;
+    c->pid = ref; c->vanish = 0; c->hh = NONE; c->mem = 0; c->built = 0; c->mplace = NOPID; c->x = 0; c->z = 0;
+    crowd_forget(slot); q->slot = (u8)slot; return slot;
+}
+COLD int citizens_party(void) {      // the list is pg_mem[].on (and party_open: strangers fill the rest)
     if (party_on) return -1;
     const Sim *p = &sims[player];
     party_cx = p->x / TILE; party_cy = (-p->z) / TILE; party_in = indoors_at(p->x, p->z);
     int spots = party_spots();
     if (spots < 4) return 0;
     party_entry();
-    party_n = 0;                            // the guests: people of this zone first (awake or not: it's a party), then the other zones'
-    for (int pass = 0; pass < 2; pass++) for (int i = 0; i < NCIT && party_n < MIN(spots, PARTY_MAX); i++) {
+    party_n = 0; party_ninv = 0; int cap = MIN(spots, PARTY_MAX);
+    for (int k = 0; k < pg_nm && party_n < cap; k++) {          // the ones you asked, by name
+        if (!pg_mem[k].on) continue;
+        int sl = slot_for(pg_mem[k].ref); if (sl < 0) continue;
+        int dup = 0; for (int j = 0; j < party_n; j++) if (party_g[j] == sl) dup = 1; if (dup) continue;
+        if (cits[sl].stage == AG_CHILD && clock_min >= 1260) continue;
+        party_ginv[party_n] = 1; party_g[party_n++] = (u8)sl; party_ninv++;
+    }
+    if (party_open) for (int pass = 0; pass < 2; pass++) for (int i = 0; i < NCIT && party_n < cap; i++) {   // an open house: whoever is about
         Cit *c = &cits[i];
         if (c->mode == CM_GONE || c->mode == CM_KO || c->mode == CM_PARTY) continue;
         if ((pass == 0) != (c->zone == world_zone)) continue;
-        if (c->stage == AG_CHILD && clock_min >= 1260) continue;            // (no small kids after 9)
-        party_g[party_n++] = (u8)i;
+        if (c->stage == AG_CHILD && clock_min >= 1260) continue;
+        int dup = 0; for (int j = 0; j < party_n; j++) if (party_g[j] == i) dup = 1; if (dup) continue;
+        party_ginv[party_n] = 0; party_g[party_n++] = (u8)i;
     }
-    for (int k = party_n - 1; k > 0; k--) { int j = rn(k + 1); u8 t = party_g[k]; party_g[k] = party_g[j]; party_g[j] = t; }
-    party_next = 0; party_t = 0; party_on = 1; party_left = PARTY_MIN;
+    if (!party_n) return 0;
+    for (int k = party_n - 1; k > 0; k--) { int j = rn(k + 1); u8 t = party_g[k]; party_g[k] = party_g[j]; party_g[j] = t; int ti = party_ginv[k]; party_ginv[k] = party_ginv[j]; party_ginv[j] = ti; }
+    party_score = party_item_score(); party_score_now = party_score; party_nguests = party_n;
+    party_next = 0; party_t = 0; party_on = 1; party_left = PARTY_MIN + MIN(party_score, 12) * 20;
     return party_n;
 }
 int citizens_party_on(void) { return party_on; }
@@ -1066,6 +1128,7 @@ static void party_arrive(Cit *c, int k) {  // a guest walks in
     c->t = (u16)(600 + rn(600));
 }
 static void party_leave_done(Cit *c) {     // home time
+    if (c->pid != NOPID) { if (c->zone0 != 255 && c->zone == ZONE_HOME && home_guests > 0) home_guests--; c->zone0 = 255; main_free(c); return; }   // (one of SAN BOREAS's, made for the night: back into pop.c)
     c->mode = CM_IDLE; c->t = (u16)rn(60); c->sub = 0; c->wv = 0;
     if (c->zone0 != 255) { if (c->zone == ZONE_HOME && home_guests > 0) home_guests--; c->zone = c->zone0; c->zone0 = 255; c->x = 0; c->z = 0; crowd_drop_sprite((int)(c - cits)); }
 }
@@ -1080,6 +1143,14 @@ static void party_minute(void) {           // once a game minute: the clock runs
     if (!party_on) return;
     if (--party_left > 0) return;
     party_on = 0;                          // over: everyone heads off
+    { int gifts = 0, friends = 0;
+      for (int k = 0; k < party_n; k++) { Cit *c = &cits[party_g[k]]; if (c->mode != CM_PARTY) continue;
+          if (party_ginv[k]) { c->rel = (s8)MIN(100, c->rel + 3 + party_score / 2); friends++; if (party_score >= 4 && c->rom > 0) c->rom = (s8)MIN(100, c->rom + 2); }
+          else c->rel = (s8)MIN(100, c->rel + 1);
+          gifts += 1 + party_score / 3; }
+      if (party_score >= 2) { gifts = MIN(gifts, 400); cash += gifts; }
+      sim_party_over(party_score, party_n);
+      { char b[48]; sprintf(b, party_score >= 8 ? "LEGENDARY PARTY! $%d IN GIFTS" : party_score >= 4 ? "GREAT PARTY! $%d IN GIFTS" : party_score >= 2 ? "NICE PARTY. $%d IN GIFTS" : "A QUIET ONE. THEY HAD FUN%.0d", gifts); sim_note(b); } (void)friends; }
     for (int i = 0; i < NCIT; i++) { Cit *c = &cits[i]; if (c->mode == CM_PARTY) { c->sub = 2; c->wv = 0; c->st = 0; } }
 }
 static void party_step(Cit *c, int i) {
