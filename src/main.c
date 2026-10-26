@@ -328,10 +328,10 @@ static void draw_sims(void) {
         if (!gfx_visible(s->x, -110 - s->lvl * WALL_FULL, s->z, 150)) continue;   // off the screen
         VECTOR p; setVector(&p, s->x, 0, s->z);
         if (s->gait.lie > 0) {   // lying (or just getting up): on the bed, the bunk, the crib's mattress, or on the floor; the height eases in with the pose
-            char bc = world_at(s->act_x, s->act_y); int sm = voxel_lie_ease(s->gait.lie), bed = bc == 'S' ? 1 : bc == '<' ? 2 : 0, to;
-            if (bed) to = -(bc == 'S' ? 6 * IZ : 4 * IZ);                                  // the back rests right on the pillow's top (the bunk's mattress)
+            char bc = world_at(s->act_x, s->act_y); int sm = voxel_lie_ease(s->gait.lie), bed = (bc == 'S' || bc == CH_BED4 || bc == CH_BEDF) ? 1 : (bc == '<' || bc == CH_BEDT) ? 2 : 0, to;
+            if (bed) to = -(bed == 1 ? 6 * IZ : 4 * IZ);                                  // the back rests right on the pillow's top (the bunk's mattress)
             else if (bc == 'z') to = -items_height('S') + 40;                              // (the tent: as ever)
-            else to = -((bc == CH_CRIB ? 4 * IZ : 0) + lying_drop(&s->bore));
+            else to = -(((bc == CH_CRIB || bc == CH_BASS || bc == CH_CRAD) ? 4 * IZ : 0) + lying_drop(&s->bore));
             p.vy = (to * sm) >> 12; s->gait.bed = bed;
         } else s->gait.bed = 0;
         if (s->action == ACT_SIT || s->action == ACT_WC || (s->action == ACT_EAT && s->gait.sit)) p.vy = -items_height(world_at(s->act_x, s->act_y)) / 2 + 10;

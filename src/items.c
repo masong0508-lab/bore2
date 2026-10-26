@@ -12,6 +12,7 @@
 #include "items_home.inc"     // the garden, pool and beach things (tools/make_items_home.py)
 #include "items_farm.inc"     // FARM LIFE: crop bed, coop, cow, stand (tools/make_items_farm.py)
 #include "items_space.inc"    // the telescopes, rocket and console (tools/make_items_space.py)
+#include "items_bed.inc"      // the beds, cribs and nursery things (tools/make_items_q.py)
 
 // ---- the sound pack, the phone and the DeadSet: boxes made for BORE 2 (the GBA drew them as pixel art) ----
 static const u16 pRad[5] = { RGB(6,6,8), RGB(20,20,22), RGB(28,28,30), RGB(30,24,4), RGB(12,12,14) };
@@ -270,7 +271,7 @@ static ItemDef defs[] = {   // (not const: items_init sets some of them to life 
     { '1', "KICKER", bxKicker, 8, 0, 0, F_ROT, 300 },
     { '5', "Q PIPE", bxQuarterPipe, 8, 0, 0, F_ROT, 500 },
     { '9', "LAUNCH", bxLaunch, 8, 0, 0, F_ROT, 400 },
-    { 'S', "BED", bxBed, 4, 0, 0, F_ROT, 700 },
+    { 'S', "BED", bxB0, 11, 0, 0, F_ROT, 700 },
     { 'H', "SHOWER", bxShower, 4, 0, 0, F_ROT, 450 },
     { 'C', "SOFA", bxSofa, 4, 0, 0, F_ROT, 500 },
     { 'D', "DOOR", bxDoor, 1, 0, 0, F_FLAT, 100 },
@@ -338,6 +339,7 @@ static ItemDef defs[] = {   // (not const: items_init sets some of them to life 
     ITEMS_SPACE
     ITEMS_FARM
     ITEMS_HOME
+    ITEMS_BED
 };
 #define NDEFS ((int)(sizeof(defs) / sizeof(defs[0])))
 _Static_assert(sizeof(defs) / sizeof(defs[0]) < 255, "def_ix holds a def + 1 in a byte");
@@ -365,7 +367,7 @@ int items_height(char ch) {
 }
 
 // ---- the material cache: every Mat becomes one texture in the atlas ----
-#define MAXMAT 640
+#define MAXMAT 900
 static const Mat *mat_key[MAXMAT];
 static TexRef mat_tex[MAXMAT];
 static int nmat;
@@ -380,12 +382,12 @@ static TexRef mat_ref(const Mat *m) {
         if (ch != '.' && c == 0) c = 0x8000;
         mbuf[y * w + x] = c;
     }
-    TexRef t = atlas_add(w, h, mbuf);
+    TexRef t = atlas_add_spill(w, h, mbuf);
     if (nmat < MAXMAT) { mat_key[nmat] = m; mat_tex[nmat] = t; nmat++; }
     return t;
 }
 // every box face's texture, resolved once: box_ref[box][face] is its material + 1 in mat_tex (0: no face there)
-#define MAXBOX 832
+#define MAXBOX 1000
 static u16 box_ref[MAXBOX][5];
 static s16 box_base[NDEFS][2];     // first box index of each def's main / along-y boxes
 static int nbox;

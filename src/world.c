@@ -165,6 +165,7 @@ void world_season_skin(int season, int wet) {
         for (int k = 0; k < 4; k++) sc[k] = skin_c(i, fl_soft[i][k], season, wet);
         { int sz = i == FL_WATER ? 16 : 8; for (int y = 0; y < sz; y++) for (int x = 0; x < sz; x++) { u16 c = sc[t->p[y & 7][x & 7] - '0']; tb[y * sz + x] = c ? c : 0x8000; } }
         atlas_upload(&fl_tex[i], tb);
+        if (!fl_tex4[i].tpage) { for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) { u16 c = sc[t->p[y][x] - '0']; r += C_R(c); g += C_G(c); b += C_B(c); } fl_avg[i] = RGB(r / 64, g / 64, b / 64); continue; }
         for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
             u16 c = sc[t->p[y & 7][x & 7] - '0'];
             int odd = ((x >> 3) + (y >> 3)) & 1, k = odd ? fl_odd[i] : 16;
@@ -188,6 +189,7 @@ void world_init(void) {
         int sz = i == FL_WATER ? 16 : 8;   // (only the water scrolls, so only it needs the pattern twice over)
         for (int y = 0; y < sz; y++) for (int x = 0; x < sz; x++) { u16 c = fl_soft[i][t->p[y & 7][x & 7] - '0']; tb[y * sz + x] = c ? c : 0x8000; }
         fl_tex[i] = atlas_add(sz, sz, tb);
+        if (FL_NO4(i)) { fl_tex4[i].tpage = 0; continue; }   // (the one-tile-wide road markings never draw as a 2x2 block)
         for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
             u16 c = fl_soft[i][t->p[y & 7][x & 7] - '0'];
             int odd = ((x >> 3) + (y >> 3)) & 1, k = odd ? fl_odd[i] : 16;
@@ -2371,7 +2373,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
     for (int my = y0; my <= y1; my += 2) for (int mx = x0; mx <= x1; mx += 2) {
         int ok = (mx + 1 < MW && my + 1 < MH);
         int f0 = dfl[my][mx];
-        if (ok) ok = f0 != FL_WATER && dfl[my][mx + 1] == f0 && dfl[my + 1][mx] == f0 && dfl[my + 1][mx + 1] == f0 && !(nat_on && !lvl && nat_floor(f0));
+        if (ok) ok = f0 != FL_WATER && !FL_NO4(f0) && dfl[my][mx + 1] == f0 && dfl[my + 1][mx] == f0 && dfl[my + 1][mx + 1] == f0 && !(nat_on && !lvl && nat_floor(f0));
         if (ok && lvl) ok = dm[my][mx] != ' ' && dm[my][mx + 1] != ' ' && dm[my + 1][mx] != ' ' && dm[my + 1][mx + 1] != ' ';
         if (ok && ((bld[my][mx] && !b_see[bld[my][mx]]) || (bld[my + 1][mx + 1] && !b_see[bld[my + 1][mx + 1]]))) { done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 2; continue; }   // inside someone else's building: under its roof
         done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 0;

@@ -138,6 +138,12 @@ TexRef atlas_add_aligned(int w, int h, int a, const u16 *pixels) {   // u and v 
     }
     atlas_fail_wh = (w << 16) | (h << 4) | 9; atlas_fails++; return t;
 }
+TexRef atlas_add_spill(int w, int h, const u16 *pixels) {   // small art that goes in what is left of the strip first (items: loaded after the font and icons took theirs), so the big pages stay free for the rest
+    TexRef t = alloc_in(2, 3, w, h, 0);
+    if (!t.tpage) t = alloc_in(0, 1, w, h, 1);
+    atlas_upload(&t, pixels);
+    return t;
+}
 TexRef atlas_add(int w, int h, const u16 *pixels) {
     TexRef t = atlas_alloc(w, h);
     atlas_upload(&t, pixels);

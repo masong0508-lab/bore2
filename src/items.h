@@ -30,6 +30,11 @@ int  items_cost(char ch);
 // BORE 2's second furniture pack lives at 0x90..0xBD (tools/make_items2.py); 0x8E..0x8F are kept free
 // the family's own things (letters past the old ASCII ones: the map has no plain letters left)
 #define CH_CRIB  ((char)0x81)                            // a baby sleeps in it
+#define CH_BED4  ((char)0xEB)                            // a four-poster bed
+#define CH_BEDF  ((char)0xEC)                            // a family bed (a couple, or a parent and a little one)
+#define CH_BEDT  ((char)0xED)                            // a toddler bed
+#define CH_BASS  ((char)0xEE)                            // a bassinet (a baby sleeps in it, like the crib)
+#define CH_CRAD  ((char)0xEF)                            // a cradle
 #define CH_CAKE  ((char)0x82)                            // a birthday cake on its party table (baked at the fridge)
 #define CH_GRAVE ((char)0x83)                            // where an elder of the family rests
 // the island's own (Castaway): its secrets, and what a castaway lives off

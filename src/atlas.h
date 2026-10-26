@@ -7,6 +7,7 @@ typedef struct { u16 tpage; u8 u, v, w, h, cap; } TexRef;   // cap: the allocate
 
 void   atlas_init(void);
 TexRef atlas_alloc(int w, int h);
+TexRef atlas_add_spill(int w, int h, const u16 *pixels);   // like atlas_add, spilling into the strip when the pages are full
 TexRef atlas_alloc_page(int page, int w, int h);   // on one page (2 = the 128-wide strip, kept for the font)
 TexRef atlas_try(int w, int h);                            // a small texture wherever it fits, or none (not a failure: the caller copes)
 void   atlas_upload(const TexRef *t, const u16 *pixels);   // w*h pixels, row major (0x0000 = transparent)

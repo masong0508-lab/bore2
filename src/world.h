@@ -26,6 +26,7 @@ extern u8   wallMap[MH][MW];         // wallpaper per tile (0..NWP-1 patterns, N
 #define FL_EDGE_S 30
 #define FL_EDGE_W 31
 #define FL_EDGE_E 32
+#define FL_NO4(f) (((f) >= FL_LINE_H && (f) <= FL_LINE_V) || (f) >= FL_ZEB_A)   // floors with no 2x2-block texture
 #define FL_IS_ROAD(f) ((f) == FL_ASPHALT || (f) == FL_LINE_H || (f) == FL_LINE_V || (f) >= FL_ZEB_A)
 // the three zones: the GBA lot, the island (Castaway) and the desert town
 enum { ZONE_HOME, ZONE_ISLAND, ZONE_TOWN, ZONE_CITY, ZONE_N };

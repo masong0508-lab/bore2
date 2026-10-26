@@ -485,7 +485,7 @@ static int action_for(char c) {
         case ',': case '-': return ACT_SHOWER;
         case '/': case ':': return ACT_EAT;
         case ';': return ACT_SIT;
-        case '<': return ACT_SLEEP;
+        case '<': case CH_BED4: case CH_BEDF: case CH_BEDT: return ACT_SLEEP;
         case '?': return ACT_READ;
         case ']': case '_': return ACT_RUN;
         case 'v': case 'R': case 'A': case 'Q': case 'q': case 'G': case 'V': return ACT_FUN;
@@ -680,7 +680,7 @@ static int nearest_item(const Sim *s, char ch, int *ox, int *oy) {
     for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) {
         char c = lifeMap[y][x];
         int ok = (c == ch) || (ch == 'C' && (c == 'U' || c == 'h' || c == '%')) || (ch == 'v' && (c == 'R' || c == 'A' || c == 'b' || c == 'q' || c == 's'))
-              || (ch == 'F' && c == 's') || (ch == 'T' && c == '&') || (ch == 'S' && c == 'z') || (ch == 'H' && c == '0');
+              || (ch == 'F' && c == 's') || (ch == 'T' && c == '&') || (ch == 'S' && (c == 'z' || c == CH_BED4 || c == CH_BEDF || c == CH_BEDT)) || (ch == CH_CRIB && (c == CH_BASS || c == CH_CRAD)) || (ch == 'H' && c == '0');
         if (!ok) continue;
         // taken by someone else?
         int busy = 0; for (int i = 0; i < nsims; i++) if (&sims[i] != s && sims[i].action != ACT_NONE && sims[i].act_x == x && sims[i].act_y == y) busy = 1;
@@ -1158,7 +1158,7 @@ static void born(void) {   // the baby comes home (or the adopted child)
     if (baby_kind >= 3 && baby_kind < 5) { n->skill_fun += baby_kind == 4 ? 800 : 300; n->mood = MIN(100, n->mood + 20); }
     if (b.stage == AG_BABY && home_is_here() && n->lvl == 0) {   // a crib comes with a baby (when the house has none)
         int have = 0, cx, cy;
-        for (int y = 0; y < MH && !have; y++) for (int x = 0; x < MW; x++) if (lifeMap[y][x] == CH_CRIB) { have = 1; break; }
+        for (int y = 0; y < MH && !have; y++) for (int x = 0; x < MW; x++) if (lifeMap[y][x] == CH_CRIB || lifeMap[y][x] == CH_BASS || lifeMap[y][x] == CH_CRAD) { have = 1; break; }
         if (!have && free_floor_near(0, tx, ty, &cx, &cy)) { lifeMap[cy][cx] = CH_CRIB; world_touched(); sim_note("A CRIB CAME WITH THE BABY"); }
     }
     char t[48];
