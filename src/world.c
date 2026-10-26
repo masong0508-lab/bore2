@@ -3105,6 +3105,9 @@ void world_draw(int fx, int fy, int t, int cutaway) {
             int dx = (b_x0[b] + b_x1[b]) / 2 - fx, dy = (b_y0[b] + b_y1[b]) / 2 - fy, d2 = dx * dx + dy * dy;
             if (d2 > far2) continue;
             if (etx >= b_x0[b] - 3 && etx <= b_x1[b] + 3 && ety >= b_y0[b] - 3 && ety <= b_y1[b] + 3) continue;   // (beside the camera: it would fill the screen)
+            { int hh = (b_top[b] + 1) * WALL_FULL, cx = (b_x0[b] + b_x1[b] + 1) * TILE / 2, cz = -(b_y0[b] + b_y1[b] + 1) * TILE / 2;   // (out of the view altogether: not even transformed)
+              int rr = (MAX(b_x1[b] - b_x0[b], b_y1[b] - b_y0[b]) + 1) * TILE * 3 / 4 + hh / 2;
+              if (!gfx_visible(cx, -hh / 2, cz, rr)) continue; }
             if (use_far) { const u8 *rc = roofCol[b_col[b] % NROOF_COL];
                 far_box_world(b_x0[b] * TILE, -b_y0[b] * TILE, (b_x1[b] + 1) * TILE, -(b_y1[b] + 1) * TILE, b_top[b] + 1,
                               b_wall[b] ? b_wall[b] : RGB(24, 22, 19), b_sty[b] != 2, RGB(rc[0] >> 3, rc[1] >> 3, rc[2] >> 3)); }
