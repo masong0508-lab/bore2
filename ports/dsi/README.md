@@ -44,3 +44,6 @@ Back to the flat-coloured chunky look (no gradients). Six tabs: Hair (12 styles,
 
 ## D6
 Sims 3 DS style title (Household Occupants / Start-Load profile), stylus Edit pad + RGB Paint in Create-a-Sim, drag-based Buy/Build, drag-paint neighborhood editor.
+
+## D7
+Create-a-Sim: 26 shape sliders (face + body: jaw, chin, ears, eye size, lips, neck, shoulders, torso, arms, belly, hips, legs), 8-feature drag pad, full-body view, nicer tabs. Fixed top screen not clearing after title.
