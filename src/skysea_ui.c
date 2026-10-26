@@ -121,11 +121,11 @@ static void crash_plane(int x, int z, int unmanned) {
     else { cash = MAX(0, cash - 500); end_trip("THE PLANE CRASHED!", "ARCADE MODE: REPAIRS COST $500."); }
     audio_voice(VOICE_CRY);
 }
-static void bail(void) {   // out of the plane
+static void bail(int jump) {   // out of the plane
     if (!(mode == M_AIR)) return; int a = cur - NB; int alt = py - MAX(0, gh(px, pz));
-    if (AT[a].fl & 4) { say("A BALLOON LOWERS ITSELF. NO NEED."); return; }
-    ax = px; ay = py; az = pz; ayaw = yaw; aspd = spd; apitch = pitch; aroll = roll; cx = px; cy_ = py; cz_ = pz; cdrop = 0; mode = M_CHUTE; chute_on = alt > 120; cvy = 0;
-    say(chute_on ? "CHUTE OPEN! STEER WITH THE PAD." : "TOO LOW FOR A CHUTE!"); audio_voice(VOICE_YAHOO);
+    if ((AT[a].fl & 4) && !jump) { say("A BALLOON LOWERS ITSELF. NO NEED."); return; }
+    ax = px; ay = py; az = pz; ayaw = yaw; aspd = spd; apitch = pitch; aroll = roll; cx = px; cy_ = py; cz_ = pz; cdrop = 0; mode = M_CHUTE; chute_on = !jump && alt > 120; cvy = jump ? 14 : 0; if (jump) { aspd = 0; }
+    say(jump ? "YOU JUMP! R1 OPENS THE CHUTE." : chute_on ? "CHUTE OPEN! R1 CLOSES IT." : "TOO LOW FOR A CHUTE!"); audio_voice(VOICE_YAHOO);
 }
 // ----- physics -----
 static void boat_step(int hd) {
@@ -193,33 +193,36 @@ static void air_step(int hd) {
     int g = MAX(0, gh(px, pz)), over_sea = gh(px, pz) <= 0;
     { int i = (px + TS / 2) / TS - (px < -TS / 2), j = (pz + TS / 2) / TS - (pz < -TS / 2), bx, bz, bh, pop; if (bld(i, j, &bx, &bz, &bh, &pop) && !is_dead(i, j) && ABS(px - bx) < 70 && ABS(pz - bz) < 70 && py < g + bh) { crash_plane(px, pz, 0); return; } }
     if (py <= g + 4 && !crashed) {   // the ground
-        int vs = -vy, strip = on_strip(px, pz), floats = (a->fl & 1) && over_sea, ok = (spd < st * 3 / 2 || hel) && vs < (hel ? 18 : 14) && ABS(roll) < 260 && ABS(pitch) < 360 && (strip || floats || hel || cur == NB);
+        int vs = -vy, strip = on_strip(px, pz), floats = (a->fl & 1) && over_sea, ok = (spd < st * 3 / 2 || hel) && vs < (hel ? 18 : 14) && ABS(roll) < 260 && ABS(pitch) < 360 && (strip || floats || hel || cur == NB || (vs < 9 && spd < st));
         if (ok) { py = g + 4; if (over_sea) py = 4; vy = 0; roll = 0; pitch = 0; spd = spd * 14 / 15; if (!landed) { landed = 1; int pay = 150 + (14 - MIN(14, vs)) * 25 + (strip ? 150 : 0); if (spd < 4 * 16) { } cash += pay; pk_data[28]++; sims[player].skill_mech += 25; sprintf(line, "SAFE LANDING! +$%d", pay); ctr = 240; audio_voice(VOICE_WIN); } }
         else crash_plane(px, pz, 0);
     } else landed = 0;
     if (landed && spd < 16 && thr < 10 && cur != NB) { /* parked */ }
 }
+static int hd_r1;
 static void chute_step(int hd) {
     int alt = cy_ - MAX(0, gh(cx, cz_));
-    if (chute_on) { cvy = -5; if (hd & PAD_LEFT) cx -= 3; if (hd & PAD_RIGHT) cx += 3; if (hd & PAD_UP) cz_ += 3; if (hd & PAD_DOWN) cz_ -= 3; cx += isin(windd) >> 11; cz_ += icos(windd) >> 11; } else cvy = MAX(cvy - 2, -60);
+    if (hd_r1 && cy_ - MAX(0, gh(cx, cz_)) > 40) { chute_on = !chute_on; }
+    if (chute_on) { cvy = -5; if (hd & PAD_LEFT) cx -= 3; if (hd & PAD_RIGHT) cx += 3; if (hd & PAD_UP) cz_ += 3; if (hd & PAD_DOWN) cz_ -= 3; cx += isin(windd) >> 11; cz_ += icos(windd) >> 11; } else { cvy = MAX(cvy - 2, -60); if (hd & PAD_LEFT) cx -= 2; if (hd & PAD_RIGHT) cx += 2; if (hd & PAD_UP) cz_ += 2; if (hd & PAD_DOWN) cz_ -= 2; }
     cy_ += cvy / 3; cdrop++;
     // the empty plane flies on
     { const Air *a = &AT[cur - NB]; (void)a; ax += (isin(ayaw) * aspd >> 12) / 16 * icos(apitch & 4095) >> 12; az += (icos(ayaw) * aspd >> 12) / 16 * icos(apitch & 4095) >> 12; ay += (aspd * isin(apitch & 4095) >> 12) / 64 - 3; apitch = apitch - 2; }
     if (!crashed) { int g = MAX(0, gh(ax, az)); int i = (ax + TS / 2) / TS - (ax < -TS / 2), j = (az + TS / 2) / TS - (az < -TS / 2), bx, bz, bh, pop; if (ay <= g + 4 || (bld(i, j, &bx, &bz, &bh, &pop) && !is_dead(i, j) && ay < g + bh && ABS(ax - bx) < 70 && ABS(az - bz) < 70)) { crashed = 1; if (real()) { blow(ax, az, 520); } else strcpy(line2, "THE EMPTY PLANE CRASHED. NOBODY HURT."); } }
     if (cy_ <= MAX(0, gh(cx, cz_)) + 4) {
         int sea = gh(cx, cz_) <= 0; mode = M_END; sunk = 0;
-        if (!chute_on) { strcpy(line, "NO CHUTE. TOO LOW."); if (real()) { cash = MAX(0, cash - 2000); clock_min = MIN(1439, clock_min + 240); sims[player].mood = MAX(-100, sims[player].mood - 50); strcpy(line2, "YOU SURVIVED, JUST. HOSPITAL: -$2000."); } else strcpy(line2, "ARCADE MODE: YOU BOUNCE AND WALK AWAY."); crashed = 1; audio_voice(VOICE_CRY); }
+        if (!chute_on) { strcpy(line, sea ? "SPLASH! YOU SWIM TO SHORE." : "NO CHUTE."); if (sea || !(pk_data[39] & 2)) { strcpy(line2, "FALL DAMAGE IS OFF OR THE WATER CAUGHT YOU."); } else if (real()) { cash = MAX(0, cash - 2000); clock_min = MIN(1439, clock_min + 240); sims[player].mood = MAX(-100, sims[player].mood - 50); strcpy(line2, "YOU SURVIVED, JUST. HOSPITAL: -$2000."); } else { cash = MAX(0, cash - 300); strcpy(line2, "ARCADE MODE: A BROKEN LEG. -$300."); } crashed = 1; audio_voice(VOICE_CRY); }
         else { strcpy(line, sea ? "SPLASH! A BOAT FISHES YOU OUT." : "A SOFT LANDING. THE PARACHUTE WORKED."); if (!crashed) strcpy(line2, "THE PLANE LANDED ITSELF SOMEHOW."); if (crashed) { sprintf(line2, "THE PLANE CRASHED. %s", pk_data[37] ? "THE TOWN IS NOT HAPPY." : "NO ONE ELSE WAS HURT."); sim_crime(CR_ASSAULT, 10); } cash = MAX(0, cash - 400); audio_voice(VOICE_WIN); }
         clock_min = MIN(1439, clock_min + 60); crashed = 0; return; }
     (void)alt;
 }
 // ----- menus -----
-static int nrows(void) { return NCR + 2; }
+static int nrows(void) { return NCR + 3; }
 void skysea_open(int a) { (void)a; mode = M_MENU; tab = 0; sel = 0; anim = 0; line[0] = line2[0] = 0; rs = (unsigned)(cash * 5 + day_count * 13 + 3); windd = (day_count * 531) & 4095; ctr = 0;
     if (!owned() && !last()) { pk_data[26] = (u8)day_count; pk_data[27] = (u8)(day_count >> 8); } }
 static void act(void) {
     line[0] = 0;
     if (sel == NCR) { int d = MIN(30, MAX(0, day_count - last())); if (!owned()) { strcpy(line, "BUY A CRAFT FIRST."); return; } if (!d) { strcpy(line, "NOTHING NEW TODAY."); return; } int pay = rate() * d; settle(); sprintf(line, "%d DAYS OF GUESTS: +$%d", d, pay); audio_voice(VOICE_WIN); return; }
+    if (sel == NCR + 2) { pk_data[39] ^= 2; strcpy(line, pk_data[39] & 2 ? "FALL DAMAGE: ON" : "FALL DAMAGE: OFF"); return; }
     if (sel == NCR + 1) { pk_data[39] ^= 1; strcpy(line, real() ? "CRASH MODE: REAL. THE TOWN PAYS." : "CRASH MODE: ARCADE. BOUNCE BACK."); return; }
     if (has(sel)) { if (sel < NB) spawn_boat(sel); else spawn_air(sel); return; }
     if (cash < price(sel)) { strcpy(line, "NOT ENOUGH CASH."); audio_voice(VOICE_NAH); return; }
@@ -234,6 +237,7 @@ int skysea_update(int hd, int pr, int steps) {
         if ((pr & PAD_SQUARE) && sel < NCR && (owned() >> sel & 1)) { int t = tune(sel), c = price(sel) / 4 * (t + 1); if (t >= 3) strcpy(line, "FULLY TUNED."); else if (cash < c) strcpy(line, "NOT ENOUGH CASH TO TUNE."); else { cash -= c; set_tune(sel, t + 1); sprintf(line, "TUNED UP: LEVEL %d", t + 1); audio_voice(VOICE_FINISHED); } }
         return 1; }
     if (mode == M_END) { if (pr & (PAD_CROSS | PAD_CIRCLE)) { police_check(); mode = M_MENU; } return 1; }
+    hd_r1 = pr & PAD_R1;
     for (int s = 0; s < steps && s < 4; s++) {
         anim++;
         if (mode == M_BOAT) { boat_step(hd); if (sunk) { cash = MAX(0, cash - 600); end_trip("THE BOAT SANK!", "A TUG TOWS YOU HOME. -$600."); return 1; } }
@@ -242,7 +246,7 @@ int skysea_update(int hd, int pr, int steps) {
     }
     if (ctr > 0) ctr -= steps;
     if (mode == M_BOAT) { if (pr & PAD_TRIANGLE) dock_act(); if (pr & PAD_CIRCLE) { if (near_dock() >= 0 && ABS(spd) < 60) { hot ? police_check() : (void)0; mode = M_MENU; } else say("PARK AT A HARBOUR TO GET OFF."); } }
-    if (mode == M_AIR) { if (pr & PAD_TRIANGLE) bail(); if (pr & PAD_CIRCLE) { if (landed && spd < 30) { police_check(); mode = M_MENU; } else say("LAND FIRST. OR PRESS TRIANGLE TO BAIL OUT."); } }
+    if (mode == M_AIR) { if (pr & PAD_TRIANGLE) bail(0); if (pr & PAD_R1) bail(1); if (pr & PAD_CIRCLE) { if (landed && spd < 30) { police_check(); mode = M_MENU; } else say("LAND FIRST. OR PRESS TRIANGLE TO BAIL OUT."); } }
     return 1;
 }
 // ----- the picture -----
@@ -317,7 +321,7 @@ void skysea_draw(void) {
         if (mode == M_BOAT && jtype) { int dx = jx - px, dz = jz - pz; sprintf(b, jtype == 2 ? "FISH %d/%d  %s" : "JOB  %dM  %ds", jtype == 2 ? fish : isq(dx * dx + dz * dz) / 10, jtype == 2 ? BT[cur].hold : jt / 60, jtype == 2 ? (fcast ? "..." : "STOP IN THE RING") : ""); ui_text(10, 52, 1, b, UI_WHITE); }
         if (mode == M_BOAT && near_dock() >= 0 && ABS(spd) < 60) ui_text(160, 200, 1, "TRIANGLE: HARBOUR  O: GET OFF", UI_WHITE);
         if (ctr > 0) ui_textc(160, 180, 1, line, UI_WHITE);
-        ui_hints(160, 226, mode == M_BOAT ? "X GAS|SQ BRAKE|PAD STEER" : mode == M_AIR ? "X THRUST|SQ LESS|TRI BAIL OUT" : "PAD STEER", 1);
+        ui_hints(160, 226, mode == M_BOAT ? "X GAS|SQ BRAKE|PAD STEER" : mode == M_AIR ? "X THRUST|SQ LESS|TRI CHUTE|R1 JUMP" : "PAD STEER", 1);
         return; }
     gfx_set_clear(110, 190, 240);
     ui_round(0, 0, 320, 240, 0, UI_RGB(140, 210, 255), UI_RGB(60, 150, 210), 0); ui_round(0, 150, 320, 90, 0, UI_RGB(30, 130, 190), UI_RGB(20, 90, 150), 0);
@@ -329,6 +333,7 @@ void skysea_draw(void) {
     for (int k = 0; k < 7 && first + k < n; k++) {
         int i = first + k, y = y0 + k * 15, on = i == sel; if (on) ui_round(14, y - 2, 292, 15, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
         if (i == NCR) { int d = MIN(30, MAX(0, day_count - last())); sprintf(b, "COLLECT  %d DAYS = $%d", d, rate() * d); ui_text(20, y + 1, 1, b, on ? UI_BLUE2 : UI_GOODT); continue; }
+        if (i == NCR + 2) { ui_text(20, y + 1, 1, pk_data[39] & 2 ? "FALL DAMAGE: ON" : "FALL DAMAGE: OFF", on ? UI_BLUE2 : UI_INK); continue; }
         if (i == NCR + 1) { ui_text(20, y + 1, 1, real() ? "CRASH MODE: REAL (THE TOWN PAYS)" : "CRASH MODE: ARCADE (BOUNCE BACK)", on ? UI_BLUE2 : UI_INK); continue; }
         int h = has(i); sprintf(b, "%s%s", CNM[i], stol(i) ? " (HOT)" : ""); ui_text(20, y + 1, 1, b, h ? (on ? UI_BLUE2 : UI_GOODT) : on ? UI_BLUE2 : UI_INK);
         if (h) { sprintf(b, "DRIVE T%d", tune(i)); ui_text(300 - ui_tw(1, b), y + 1, 1, b, UI_GOODT); } else { sprintf(b, "$%d", price(i)); ui_text(300 - ui_tw(1, b), y + 1, 1, b, cash >= price(i) ? UI_INK : UI_BADT); }
