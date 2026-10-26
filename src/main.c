@@ -564,12 +564,12 @@ static void life_update(int steps) {
         for (int k = 0; k < 40; k += 3) gotchi_dex_see(k / 4, k & 3);
         if (AUTO_GOTCHI < 20) sim_want_gotchi = (AUTO_GOTCHI >> 1) + 1;
         else if (AUTO_GOTCHI >= 26) {   // (the party pack: its things about the house, a guest list, a party going)
-            int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), put = 0; static const u8 ch[8] = { 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE };
+            int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), put = 0; static const u8 ch[8] = { AUTO_GOTCHI >= 32 ? 0xCF : 0xC7, AUTO_GOTCHI >= 32 ? 0xD0 : 0xC8, AUTO_GOTCHI >= 32 ? 0xD1 : 0xC9, AUTO_GOTCHI >= 32 ? 0xD2 : 0xCA, 0xCB, 0xCC, 0xCD, 0xCE };
             for (int r = 3; r < 9 && put < 8; r++) for (int dy = -r; dy <= r && put < 8; dy++) for (int dx = -r; dx <= r && put < 8; dx++) { if (ABS(dx) != r && ABS(dy) != r) continue; int x = px + dx, y = py + dy; if (x > 0 && y > 0 && x < MW && y < MH && lifeMap[y][x] == '.' && ((x + y) % 3) == 0 && (x & 1)) lifeMap[y][x] = (char)ch[put++]; }
             world_touched(); for (int i = 0; i < 90; i++) { pop_per[i * 7].rel = (s8)(20 + i % 50); }
             if (AUTO_GOTCHI == 26) sim_want_party = 1;
             if (AUTO_GOTCHI == 28) { party_open = 1; cash += 500; party_begin(); }
-            if (AUTO_GOTCHI == 30) { int i; for (i = 0; i < items_count(); i++) if ((u8)items_at(i) == 0xC7) break; build_item = i; build_x = px; build_y = py; build_tool = 0; room_on = 0; build_msg_t = 0; state = ST_BUILD; }
+            if (AUTO_GOTCHI == 30 || AUTO_GOTCHI == 33) { int i; for (i = 0; i < items_count(); i++) if ((u8)items_at(i) == (AUTO_GOTCHI == 33 ? 0xCF : 0xC7)) break; build_item = i; build_x = px; build_y = py; build_tool = 0; room_on = 0; build_msg_t = 0; state = ST_BUILD; }
         }
         else {   // (the guide's pictures: the toy's things about the house, the catalog, the options)
             int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), put = 0; static const u8 ch[9] = { 0xBE, 0xBF, 0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6 };

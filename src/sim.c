@@ -628,7 +628,8 @@ static void run_action(Sim *s) {
                       if ((s->need[N_COMFY] >> 10) >= 100) s->act_t = 0; break;
         case ACT_FUN: s->need[N_FUN] += GAIN_FUN; s->need[N_COMFY] += 30;
                       if (s->act_var == 5) { s->need[N_SOCIAL] += GAIN_TALK / 2; if (!(s->act_t & 63)) s->gait.wave = 20; }   // (a drink at the bar)
-                      if (s->act_var == 7 && !(s->act_t & 7)) s->skill_fun++; break;
+                      if (s->act_var == 7 && !(s->act_t & 7)) s->skill_fun++;
+                      if (s->act_var >= 8 && s->act_var < 8 + 4) { if (!(s->act_t & 7)) { int k = s->act_var - 8; s->skill_band[k] = MIN(4400, s->skill_band[k] + 4); } s->need[N_FUN] += GAIN_FUN / 2; if (!(s->act_t & 31)) s->gait.wave = 20; } break;
         case ACT_READ: s->need[N_FUN] += s->act_var == 1 ? GAIN_FUN / 4 : GAIN_FUN / 2; s->skill_fun += s->act_var == 1 ? 3 : 1; break;
         case ACT_COFFEE: s->need[N_REST] += s->act_var == 1 ? 320 : 180; s->need[N_WC] -= s->act_var == 1 ? 110 : 60; break;
         case ACT_RUN: s->need[N_FUN] += 120; s->need[N_CLEAN] -= s->act_var ? 160 : 90; s->skill_body += s->act_var == 2 ? 3 : s->act_var == 1 ? 2 : 1; s->gait.amp = 4096; s->gait.run = 1; s->gait.phase = (s->gait.phase + 200) & 4095; break;
@@ -1417,7 +1418,7 @@ static int front_tile(const Sim *s, int *mx, int *my) {
 }
 static int usable_at(int tx, int ty, char c) {   // something X does something with
     if (action_for(c) != ACT_NONE) return 1;
-    if ((u8)c >= 0xBE && (u8)c <= 0xCE) return 1;      // (the BOREAGOTCHI! pack's things)
+    if ((u8)c >= 0xBE && (u8)c <= 0xD2) return 1;      // (the BOREAGOTCHI! pack's things)
     if (c == '8') return world_zone == ZONE_CITY;      // a FOR SALE sign
     if (c == CH_RAFT) return 1;
     if (c == 'B') return !has_board;                   // a skateboard on the floor: pick it up
@@ -1503,7 +1504,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
+       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1577,6 +1578,10 @@ static int sim_pie_open_(char opt[8][16]) {
         case 0xC4: OPT("FEED THEM ALL $5", PC_GOT_FEED) act = ACT_NONE; break;
         case 0xC5: OPT("LIGHTS FOR THEM", PC_GOT_LIGHT) act = ACT_NONE; break;
         case 0xC6: OPT("ADMIRE", PC_ADMIRE) act = ACT_NONE; break;
+        case 0xCF: OPT("PRACTICE DRUMS", PC_PRAC0 + BS_DRUM) act = ACT_NONE; break;   // (SUPERSTAR: the practice instruments)
+        case 0xD0: OPT("PRACTICE GUITAR", PC_PRAC0 + BS_GTR) act = ACT_NONE; break;
+        case 0xD1: OPT("PRACTICE KEYS", PC_PRAC0 + BS_KEYS) act = ACT_NONE; break;
+        case 0xD2: OPT("SING AND PRACTICE", PC_PRAC0 + BS_VOICE) act = ACT_NONE; break;
     }
     if (c == CH_CAKE) {   // the birthday cake: the candles (if there is a birthday), then slices
         if (bday_one() >= 0) OPT("BLOW CANDLES", 30)
@@ -1818,6 +1823,7 @@ static void place_do(Sim *s, int code) {
         case PC_CHECKUP: if (!pay(30)) return; sim_moodlet(s, ML_HEALTHY); sim_note("THE DOCTOR SAYS: ALL CLEAR!"); audio_voice(VOICE_YAHOO); break;
         case PC_MASSAGE: if (!pay(50)) return; begin_action(s, ACT_SLEEP, pie_mx, pie_my); s->act_var = 2; s->act_t = 300; break;
         case PC_SOAK: if (!pay(15)) return; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 0; break;
+        case PC_PRAC0: case PC_PRAC0 + 1: case PC_PRAC0 + 2: case PC_PRAC0 + 3: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = (u8)(8 + (code - PC_PRAC0)); s->act_t = 300; sim_say(s, "FROM THE TOP!"); break;
         case PC_ADMIRE: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 7; s->act_t = 200; break;
         case PC_PAINTING: if (!pay(300)) return; shopped(s, "A PAINTING, JUST FOR YOU", ML_INSPIRED); break;
         case PC_ROOM: if (room_here()) { sim_note("YOUR ROOM IS PAID TILL NOON"); return; }
