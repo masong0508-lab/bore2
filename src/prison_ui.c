@@ -155,7 +155,7 @@ static int court_update(int pr) {
     if (phase == P_VERDICT) { if (pr & PAD_CROSS) {
         if (verdict == 0) { finish(4); phase = P_CELL; over = 1; }
         else if (verdict == 2) { phase = P_ROW; execd = 7; day = 0; slot = 0; sel = 0; sentence = 99; health = 100; plan = 0; behav = 55; over = 0; heat = 10; say("DEATH ROW. SEVEN DAYS."); build_menu(); }
-        else { phase = P_CELL; sentence = sentence0; day = 0; slot = 0; sel = 0; over = 0; char b[40]; sprintf(b, "SENTENCE: %d DAYS", sentence); say(b); say("THE DOOR SLAMS. WELCOME TO HARD TIME."); build_menu(); } }
+        else { phase = P_CELL; sentence = sentence0; day = 0; slot = 0; sel = 0; over = 0; char b[40]; sprintf(b, "SENTENCE: %d DAYS", sentence); say(b); say("THE DOOR SLAMS."); build_menu(); } }
         return 1; }
     return 1;
 }
@@ -215,7 +215,7 @@ void prison_draw(void) {
     char b[48];
     ui_round(6, 172, 150, 42, 6, UI_RGB(30, 30, 36), UI_RGB(14, 14, 18), 0);
     ui_wrap(11, 175, 140, 3, logl[0], UI_WHITE);
-    int top = ui_window(160, 4, 156, 232, phase == P_ROW ? "DEATH ROW" : "HARD TIME", IC_LOCK);
+    int top = ui_window(160, 4, 156, 232, phase == P_ROW ? "DEATH ROW" : "THE CELL", IC_LOCK);
     if (phase == P_ROW) sprintf(b, "%d DAYS LEFT", execd); else if (sentence <= 0) sprintf(b, "FREE"); else sprintf(b, "DAY %d OF %d", MIN(day + 1, sentence), sentence); ui_text(166, top, 1, b, UI_INK); ui_text(300 - ui_tw(1, SLOT[slot]), top, 1, SLOT[slot], UI_BLUE2);
     bar(166, top + 12, "HEALTH", health, health > 50 ? UI_GREEN : health > 25 ? UI_AMBER : UI_RED);
     bar(166, top + 23, "RESPECT", respect, UI_BLUE); bar(166, top + 34, "HEAT", heat, heat > 70 ? UI_RED : UI_AMBER);
