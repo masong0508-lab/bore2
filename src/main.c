@@ -1885,7 +1885,11 @@ static void opts_apply(void) {
 #ifdef WIDE_TEST
     gfx_wide = 1;
 #endif
-    show_fps = opt[O_SHOWFPS]; audio_music_level(opt[O_MUSIC]);
+    show_fps = opt[O_SHOWFPS];
+#ifdef AUTO_FPS
+    show_fps = 1;
+#endif
+    audio_music_level(opt[O_MUSIC]);
     aging = opt[O_AGING]; old_age = opt[O_OLDAGE]; pop_aging = opt[O_TOWNAGE];
     cam_view = opt[O_CAM] % 3; cam_turn_rate = opt[O_CAMSPD] == 0 ? 24 : opt[O_CAMSPD] == 1 ? 40 : 64; cam_zoom_tilt = opt[O_ZOOMTILT]; wall_view = opt[O_CUTAWAY] % 3;
 }
