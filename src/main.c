@@ -359,7 +359,7 @@ static void draw_sims(void) {
             int edx = s->x - cam.eye.vx, edy = -110 - s->lvl * WALL_FULL - cam.eye.vy, edz = s->z - cam.eye.vz;
             // further off: the same full model as a sprite, rendered again when it has changed enough (one a frame for the household)
             // (the household, not you: a sprite unless it would stand over 90 px tall, where a sprite cell would be too big)
-            int far = i != player && (fdx * fdx + fdz * fdz > 3 * TILE * 3 * TILE || edx * edx + edy * edy + edz * edz > 1100 * 1100);
+            int far = i != player && (fdx * fdx + fdz * fdz > 2 * TILE * 2 * TILE || edx * edx + edy * edy + edz * edz > 800 * 800);
             // (a render is a whole model drawn: only when the last frame left the time for one, or every 6th frame anyway)
             static int hh_fr, hh_used, hh_skip; if (hh_fr != frame) { hh_fr = frame; hh_used = 0; hh_skip++; }
             int drawn = 0;
