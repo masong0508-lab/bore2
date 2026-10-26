@@ -68,3 +68,6 @@ Thin walls (skirting board + wall + pale cap, merged into runs to save polygons)
 
 ## D14
 Sims path-find round walls (BFS per cell; doors are open, solid furniture blocks; "Cannot get there" if sealed in). Proportions: walls ~2.1 m, furniture heights scaled to the sims, narrower FOV (40 deg) and lower camera pitch, so less squashed; walls toward the camera drop to half height (cutaway).
+
+## D15
+Doors are solid wooden leaves with panels and handles, shut until a sim is at them (then swung open). Streets are 3 cells wide with pavements and yellow lane dashes (the "pellets" were fence posts standing in the road: fence moved onto the plot edge). Path is a raised slab to the pavement. Floors are merged into big rectangles (edge anti-aliasing was showing grass through the seams as green dashes).

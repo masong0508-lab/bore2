@@ -200,7 +200,7 @@ static void set_mode(int m);
 static int cas_mult = 1;
 static void eff_pm(const u8 *pm, int *p) { for (int q = 0; q < PMN; q++) { int v = 50 + (pm[q] - 50) * cas_mult; p[q] = v; } }
 static u32 lot_seed = 1;
-static int camx, camz;
+static int camx, camz, door_cx, door_cy;
 static int gframes, cam_on, cam_pan, cam_free, live_pitch = 4300, cam_deff = 9000, bb_yaw = 3000, bb_pitch = 3900, bb_dist = 12500, cam_lx, cam_ly, cam_drag;
 static void sim3d(int i, int yaw);
 typedef struct { u8 x, y, c, i, rot; } Obj;
@@ -243,7 +243,7 @@ static void gen_house(void) {   // a roomy starter home from the lot's seed: bed
     PUT(x0, ym + 2, 2, 0, 1); PUT(x0 + 3, ym + 2, 0, 2, 3); PUT(x0 + 2, ym + 2, 1, 2, 0); PUT(x0 + 2, y1 - 1, 0, 1, 2); PUT(x0, y1 - 1, 3, 2, 0); PUT(x0, ym, 3, 0, 0); PUT(x0 + 5, y1 - 1, 3, 1, 0);   // tv, sofa, coffee table, armchair, plant, lamp, rug
     PUT(xk, ym, 2, 3, 0); PUT(xk + 1, ym, 1, 3, 0); PUT(xk + 2, ym, 1, 3, 0); PUT(xk + 2, ym + 3, 1, 0, 0); PUT(xk + 1, ym + 3, 0, 0, 1); PUT(xk + 3, ym + 3, 0, 0, 3);   // fridge, counters, dining table and two chairs
     PUT(x0 + 5, y0 + 3, 2, 2, 1);                                           // a stereo
-    pcx = MC(xd); pcy = y1 + 1; { static const int sp[3] = { 1, 4, 5 }; for (int k = 0; k < 3; k++) { spawn_x[k] = MC(x0 + sp[k]); spawn_y[k] = y1 - 3; } }
+    pcx = MC(xd); pcy = y1 + 1; door_cx = MC(xd); door_cy = y1; { static const int sp[3] = { 1, 4, 5 }; for (int k = 0; k < 3; k++) { spawn_x[k] = MC(x0 + sp[k]); spawn_y[k] = y1 - 3; } }
     #undef PUT
     #undef FL
 }
@@ -394,18 +394,23 @@ static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every
     case 19: ob(32, 24, 48, 48, 0, 20, d); ob(10, 14, 70, 56, 20, 26, c); ob(18, 20, 62, 50, 26, 27, LC(8, 20, 30)); ob(36, 8, 44, 16, 26, 38, LC(20, 20, 22)); break;   // sink on a pedestal
     default: ob(4, 4, 76, 76, 0, it->h * 10, c); break; }
 }
+static int door_open;
 static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, int wh) {   // one wall piece (or a door) on a cell edge; vert: it runs along z
     u16 c = WALLC[v - 1], cap = shade(c, 10), base = shade(c, 6), frame = C15(11, 7, 4); int th = T / 16, ps = T / 6;
-    if (v == 5) {   // a door: two posts, a lintel, and the leaf swung open
-        u16 lf = C15(17, 11, 6); int lin = T * 7 / 2, lh2 = wh < lin ? wh : lin;
+    if (v == 5) {   // a door: frame, lintel, and a solid leaf that is shut, or swung open while a sim is at it
+        u16 lf = C15(17, 11, 6), gold = C15(30, 26, 8); int lin = T * 7 / 2, lh2 = wh < lin ? wh : lin, hi = door_open;
         if (!vert) {
             block(x0, z0, x0 + ps, z1, -40, -wh, frame, shade(frame, 10)); block(x1 - ps, z0, x1, z1, -40, -wh, frame, shade(frame, 10));
             if (wh > lin + T / 2) block(x0 + ps, z0, x1 - ps, z1, -lin, -wh, c, cap); block(x0 + ps, z0 + 2, x1 - ps, z1 - 2, -40, -45, shade(frame, 7), shade(frame, 9));
-            block(x0 + ps, z0 - T * 9 / 10, x0 + ps + th, z0, -40, -lh2, lf, shade(lf, 10)); block(x0 + ps + th, z0 - T / 8, x0 + ps + th + 18, z0 - T / 8 + 18, -T * 3 / 4, -T * 3 / 4 - 18, C15(30, 26, 8), C15(31, 28, 10));
+            if (!hi) { block(x0 + ps, z0 + 4, x1 - ps, z1 - 4, -40, -lh2, lf, shade(lf, 10)); block(x0 + ps + 40, z0 - 4, x1 - ps - 40, z0, -T / 3, -lh2 + T / 3, shade(lf, 7), shade(lf, 8)); block(x0 + ps + 40, z1, x1 - ps - 40, z1 + 4, -T / 3, -lh2 + T / 3, shade(lf, 7), shade(lf, 8));
+                block(x1 - ps - 70, z1, x1 - ps - 40, z1 + 16, -T * 3 / 2, -T * 3 / 2 - 34, gold, gold); block(x1 - ps - 70, z0 - 16, x1 - ps - 40, z0, -T * 3 / 2, -T * 3 / 2 - 34, gold, gold); }
+            else { block(x0 + ps, z0 - T * 9 / 10, x0 + ps + th, z0, -40, -lh2, lf, shade(lf, 10)); block(x0 + ps + th, z0 - T * 3 / 4, x0 + ps + th + 16, z0 - T * 3 / 4 + 30, -T * 3 / 2, -T * 3 / 2 - 34, gold, gold); }
         } else {
             block(x0, z0, x1, z0 + ps, -40, -wh, frame, shade(frame, 10)); block(x0, z1 - ps, x1, z1, -40, -wh, frame, shade(frame, 10));
             if (wh > lin + T / 2) block(x0, z0 + ps, x1, z1 - ps, -lin, -wh, c, cap); block(x0 + 2, z0 + ps, x1 - 2, z1 - ps, -40, -45, shade(frame, 7), shade(frame, 9));
-            block(x0 - T * 9 / 10, z0 + ps, x0, z0 + ps + th, -40, -lh2, lf, shade(lf, 10));
+            if (!hi) { block(x0 + 4, z0 + ps, x1 - 4, z1 - ps, -40, -lh2, lf, shade(lf, 10)); block(x0 - 4, z0 + ps + 40, x0, z1 - ps - 40, -T / 3, -lh2 + T / 3, shade(lf, 7), shade(lf, 8)); block(x1, z0 + ps + 40, x1 + 4, z1 - ps - 40, -T / 3, -lh2 + T / 3, shade(lf, 7), shade(lf, 8));
+                block(x1, z1 - ps - 70, x1 + 16, z1 - ps - 40, -T * 3 / 2, -T * 3 / 2 - 34, gold, gold); block(x0 - 16, z1 - ps - 70, x0, z1 - ps - 40, -T * 3 / 2, -T * 3 / 2 - 34, gold, gold); }
+            else { block(x0 - T * 9 / 10, z0 + ps, x0, z0 + ps + th, -40, -lh2, lf, shade(lf, 10)); }
         }
         return; }
     block(x0 - 3, z0 - 3, x1 + 3, z1 + 3, -40, -40 - T / 7, base, shade(base, 9));                       // skirting board
@@ -414,16 +419,25 @@ static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, int wh) { 
 }
 static void draw_build(int yaw) {
     for (int z = 0; z < GN; z++) for (int x = 0; x < GN; x++) ground(tl(x * 2), tl(z * 2), tl(x * 2 + 2), tl(z * 2 + 2), 0, (((x + z) & 1) && o_chk) ? C15(9, 18, 7) : C15(11, 20, 8));
-    ground(tl(-2), tl(-2), tl(GN * 2 + 2), tl(0), 0, C15(8, 8, 9)); ground(tl(-2), tl(GN * 2), tl(GN * 2 + 2), tl(GN * 2 + 2), 0, C15(8, 8, 9));
-    ground(tl(-14), tl(-8), tl(GN * 2 + 14), tl(GN * 2 + 12), 90, C15(7, 16, 6));   // grass all round, so the lot does not float
+    ground(tl(-14), tl(-9), tl(40), tl(-2), 0, C15(7, 7, 9)); ground(tl(-14), tl(28), tl(40), tl(35), 0, C15(7, 7, 9));   // two proper streets, three cells wide
+    block(tl(-14), tl(-2), tl(40), tl(0), 0, -14, C15(20, 20, 20), C15(24, 24, 24)); block(tl(-14), tl(26), tl(40), tl(28), 0, -14, C15(20, 20, 20), C15(24, 24, 24));   // pavements
+    for (int x = -13; x < 40; x += 4) { block(tl(x), tl(-6) - 14, tl(x) + T * 2, tl(-6) + 14, 0, -6, C15(28, 26, 8), C15(28, 26, 8)); block(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, 0, -6, C15(28, 26, 8), C15(28, 26, 8)); }   // lane dashes
+    ground(tl(-14), tl(-9), tl(40), tl(35), 90, C15(7, 16, 6));   // grass all round, so the lot does not float
     for (int i = 0; i < 5; i++) { tree(tl(-6 + (i * 7) % 5 * 1), tl(2 + i * 5), T * 2); tree(tl(GN * 2 + 3 - (i * 5) % 4), tl(1 + i * 5), T * 2); }
-    for (int x = 0; x < GN * 2; x += 2) { block(tl(x), tl(GN * 2 + 1), tl(x) + T / 5, tl(GN * 2 + 1) + T / 5, 0, -T / 2, C15(28, 26, 20), C15(28, 26, 20)); }   // a picket fence at the back
-    ground(tl(11), tl(GN * 2 - 4), tl(13), tl(GN * 2), -30, C15(18, 18, 18));   // a path from the street
-    for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) if (flr[y][x]) ground(tl(x * 2), tl(y * 2), tl(x * 2 + 2), tl(y * 2 + 2), -40, FLOORC[flr[y][x] - 1]);
+    for (int x = 0; x < GN * 2; x += 2) { block(tl(x), tl(26) - T / 4, tl(x) + T / 5, tl(26) - T / 4 + T / 5, 0, -T / 2, C15(28, 26, 20), C15(28, 26, 20)); }   // a picket fence along the back of the plot, off the street
+    block(tl(door_cx * 2) + T / 2, tl(door_cy * 2 + 1), tl(door_cx * 2 + 2) - T / 2, tl(26), 0, -26, C15(19, 18, 16), C15(23, 22, 20));   // a path from the front door to the pavement
+    { static u8 dn[GN][GN]; memset(dn, 0, sizeof dn);   // floors as the biggest same-type rectangles: no seams for the edge anti-aliasing to show the grass through
+      for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) { int t = flr[y][x]; if (!t || dn[y][x]) continue; int w = 1, d = 1;
+        while (x + w < GN && flr[y][x + w] == t && !dn[y][x + w]) w++;
+        for (;;) { if (y + d >= GN) break; int ok = 1; for (int k = 0; k < w; k++) if (flr[y + d][x + k] != t || dn[y + d][x + k]) ok = 0; if (!ok) break; d++; }
+        for (int j = 0; j < d; j++) for (int k = 0; k < w; k++) dn[y + j][x + k] = 1;
+        ground(tl(x * 2) - 4, tl(y * 2) - 4, tl((x + w) * 2) + 4, tl((y + d) * 2) + 4, -40, FLOORC[t - 1]); } }
     int th = T / 16, whf = T * 21 / 5, whl = T * 2; float cs = cosLerp(yaw) / 4096.0f, sn = sinLerp(yaw) / 4096.0f; int tx0 = mode == M_LIVE ? camx : 0, tz0 = mode == M_LIVE ? camz : 0;   // thin walls (a skirting board, the wall, a pale cap) and proper doors
     for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) { int v = hwl[y][x]; if (!v) continue; int e = x + 1; if (v != 5) while (e < GN && hwl[y][e] == v) e++;   // runs of the same wall are one piece (the polygon budget)
+        if (v == 5) { door_open = 0; for (int q = 0; q < 3; q++) if (abs(sims[q].x - x * 16) < 26 && abs(sims[q].y - (y * 16 - 8)) < 26) door_open = 1; }
         { int mx = (tl(x * 2) + tl(e * 2)) / 2, mz = tl(y * 2); int near = (int)((mx - tx0) * -sn + (mz - tz0) * cs) > 2000; wall_seg(tl(x * 2) - th - 4, tl(y * 2) - th, tl(e * 2) + th + 4, tl(y * 2) + th, v, 0, near ? whl : whf); } x = e - 1; }
     for (int x = 0; x <= GN; x++) for (int y = 0; y < GN; y++) { int v = vwl[y][x]; if (!v) continue; int e = y + 1; if (v != 5) while (e < GN && vwl[e][x] == v) e++;
+        if (v == 5) { door_open = 0; for (int q = 0; q < 3; q++) if (abs(sims[q].x - (x * 16 - 8)) < 26 && abs(sims[q].y - y * 16) < 26) door_open = 1; }
         { int mx = tl(x * 2), mz = (tl(y * 2) + tl(e * 2)) / 2; int near = (int)((mx - tx0) * -sn + (mz - tz0) * cs) > 2000; wall_seg(tl(x * 2) - th, tl(y * 2) - th - 12, tl(x * 2) + th, tl(e * 2) + th + 12, v, 1, near ? whl : whf); } y = e - 1; }
     for (int i = 0; i < nobj; i++) obj3d(objs[i].x, objs[i].y, &ITEMS[objs[i].c][objs[i].i], objs[i].rot, 0);
     for (int i = 0; i < 3; i++) sim3d(i, yaw);
