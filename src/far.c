@@ -671,6 +671,23 @@ void far_sky_sea(u32 top, u32 horizon, u32 sea) {   // (sea: below the horizon, 
         if (yb < SCREEN_H) { u32 *p = (u32 *)gfx_alloc(6 * 4); if (p) {
             p[1] = 0x28000000u | sea; p[2] = FXY(0, MAX(yb, 0)); p[3] = FXY(SCREEN_W, MAX(yb, 0)); p[4] = FXY(0, SCREEN_H); p[5] = FXY(SCREEN_W, SCREEN_H);
             LINKP(p, 5) } }
+        {   // waves: bands of lighter and darker water at geometric distances (they bunch up towards the horizon), drifting with the swell
+            static int swell; swell++;
+            int h = -cam.eye.vy; if (h < 60) h = 60; if (h > 4000) h = 4000;
+            int sr = sea & 255, sg = (sea >> 8) & 255, sb = (sea >> 16) & 255;
+            int ph = (swell * 3) & 255;                                   // 0..255 = one band step
+            int yprev = SCREEN_H + 40;
+            for (int k = 0; k < 14; k++) {
+                int D = (700 << (k >> 1)) + (((700 << (k >> 1)) * ((k & 1) * 128 + ph)) >> 9);   // (two bands to each doubling of distance)
+                int y = hy + (230 * h) / D;
+                if (y >= yprev) continue;
+                if (!(k & 1)) { int y0 = MAX(y, hy + 1), y1 = MIN(yprev, SCREEN_H);   // the lit bands
+                    if (y1 > y0 && y0 < SCREEN_H) { int d = 22 - k; if (d < 6) d = 6;
+                        u32 c = (u32)MIN(255, sr + d) | ((u32)MIN(255, sg + d + 6) << 8) | ((u32)MIN(255, sb + d + 8) << 16);
+                        u32 *q = (u32 *)gfx_alloc(6 * 4); if (q) { q[1] = 0x28000000u | c; q[2] = FXY(0, y0); q[3] = FXY(SCREEN_W, y0); q[4] = FXY(0, y1); q[5] = FXY(SCREEN_W, y1); LINKP(q, 5) } } }
+                yprev = y;
+            }
+        }
     } else if (hy < SCREEN_H) { int y0 = MAX(hy, 0); u32 *p = (u32 *)gfx_alloc(6 * 4); if (p) {   // below the horizon (the land covers it): haze
         p[1] = 0x28000000u | horizon; p[2] = FXY(0, y0); p[3] = FXY(SCREEN_W, y0); p[4] = FXY(0, SCREEN_H); p[5] = FXY(SCREEN_W, SCREEN_H);
         LINKP(p, 5) } }
