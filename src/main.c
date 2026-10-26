@@ -761,7 +761,7 @@ static void life_draw(void) {
       if (o6 == 100) { for (int i = 0; i < bm_nset(); i++) { const Settle *st = bm_set(i); if (st->kind == ST_SPACEPORT) { sim_note(st->name); taxi_to_block(st->x, st->y, -1, -1, st->name); break; } } }
       if (o6 == 255) { char nb[32]; int c9 = 0, cd = 0, cp = 0; for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) { c9 += (u8)lifeMap[y][x] == 0xD9; cd += (u8)lifeMap[y][x] == 0xD8; cp += (u8)lifeMap[y][x] == 'd'; } sprintf(nb, "D9 %d D8 %d d %d Z%d", c9, cd, cp, world_zone); sim_note(nb); }
       if (o6 == 260) { clock_min = AUTO_SPORT == 3 ? 22 * 60 : 10 * 60; clock_day = 1; if (AUTO_SPORT == 4) { col_lvl = 3; col_major = 0; col_g[0] = col_g[1] = col_g[2] = 95; cash = 90000; }
-                       sim_note(sim_debug_goto(AUTO_SPORT == 2 ? 'd' : AUTO_SPORT == 3 ? (char)0xD4 : AUTO_SPORT == 5 ? (char)0xD8 : AUTO_SPORT == 6 ? (char)0xDB : (char)0xD9, AUTO_SPORT == 2 ? LOT_SCHOOL : AUTO_SPORT == 3 ? LOT_OBS : AUTO_SPORT == 6 ? LOT_FARM : -1) ? "GOTO OK" : "GOTO FAIL"); } if (o6 > 260) { cam_pitch = 640; cam_dist = 1500; } }
+                       sim_note(sim_debug_goto(AUTO_SPORT == 2 ? 'd' : AUTO_SPORT == 3 ? (char)0xD4 : AUTO_SPORT == 5 ? (char)0xD8 : AUTO_SPORT == 6 ? (char)0xDB : AUTO_SPORT == 7 ? (char)0xE5 : (char)0xD9, AUTO_SPORT == 2 ? LOT_SCHOOL : AUTO_SPORT == 3 ? LOT_OBS : AUTO_SPORT == 6 ? LOT_FARM : AUTO_SPORT == 7 ? LOT_POOL : -1) ? "GOTO OK" : "GOTO FAIL"); } if (o6 > 260) { cam_pitch = 640; cam_dist = 1500; } }
 #endif
 #ifdef AUTO_SPACE
     { static int o5; if (++o5 == 40) { sim_want_space = 1; space_tech[0] = 2; space_tech[1] = 1; space_tech[2] = 2; } }

@@ -106,7 +106,7 @@ enum { ML_NONE, ML_GOOD_MEAL, ML_SNACKED, ML_RESTED, ML_FRESH, ML_GOOD_CHAT, ML_
        ML_HUNGRY, ML_TIRED, ML_STINKY, ML_BURSTING, ML_LONELY, ML_BORED, ML_SINGING, ML_PIZZA,
        ML_ATE_OUT, ML_SWAM, ML_OUTFIT, ML_RETAIL, ML_NEW_GAME, ML_NEW_JOB, ML_COACHED, ML_HOTEL,
        ML_FINE_DINING, ML_FILM, ML_CUT, ML_NIGHT_OUT, ML_ROUND, ML_PAMPERED, ML_INSPIRED, ML_HEALTHY, ML_TREAT,
-       ML_BIRTHDAY, ML_NEW_BABY, ML_LOVE, ML_PROUD, ML_GRIEF, ML_MEMORIES, ML_CAKE, ML_GRADES, ML_HOMEWORK, ML_SCHOOL, ML_BLOB_BUDDY, ML_BLOB_HATCH, ML_BLOB_PROUD, ML_BLOB_WORRY, ML_BLOB_MISS, ML_BLOB_HOOKED, ML_BLOB_SHARED, ML_PARTY_OK, ML_PARTY_GREAT, ML_PARTY_LEGEND, ML_DJ_HIT, ML_EYES, ML_ABDUCT, ML_TANTRUM, ML_MILESTONE, ML_BLOOM, ML_DORMANT, ML_N };
+       ML_BIRTHDAY, ML_NEW_BABY, ML_LOVE, ML_PROUD, ML_GRIEF, ML_MEMORIES, ML_CAKE, ML_GRADES, ML_HOMEWORK, ML_SCHOOL, ML_BLOB_BUDDY, ML_BLOB_HATCH, ML_BLOB_PROUD, ML_BLOB_WORRY, ML_BLOB_MISS, ML_BLOB_HOOKED, ML_BLOB_SHARED, ML_PARTY_OK, ML_PARTY_GREAT, ML_PARTY_LEGEND, ML_DJ_HIT, ML_EYES, ML_ABDUCT, ML_TANTRUM, ML_MILESTONE, ML_BLOOM, ML_DORMANT, ML_SUNBURN, ML_TAN, ML_N };
 static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "", 0, 0 }, { "GOOD MEAL", 12, 240 }, { "SNACKED", 4, 90 }, { "WELL RESTED", 12, 300 }, { "FRESH", 8, 180 }, { "GOOD CHAT", 10, 180 },
     { "MADE A FRIEND", 20, 480 }, { "PROMOTED", 25, 720 }, { "PAYDAY", 15, 360 }, { "EMBARRASSED", -12, 120 },
@@ -121,7 +121,7 @@ static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "GREAT BIRTHDAY", 20, 720 }, { "NEW BABY", 20, 1440 }, { "IN LOVE", 15, 720 }, { "PROUD PARENT", 8, 240 }, { "GRIEF", -15, 1440 },
     { "FOND MEMORIES", 8, 240 }, { "BIRTHDAY CAKE", 8, 180 }, { "GOOD GRADES", 10, 720 }, { "HOMEWORK DONE", 6, 240 }, { "LONG DAY AT SCHOOL", -5, 180 },
     { "BLOB BUDDY", 10, 240 }, { "IT HATCHED!", 16, 480 }, { "PROUD BLOB PARENT", 14, 720 }, { "WORRIED ABOUT MY BLOB", -8, 120 }, { "MISSING MY BLOB", -15, 720 }, { "HOOKED ON THE TOY", -8, 240 }, { "SHARED MY LUNCH", 8, 240 }, { "NICE PARTY", 10, 480 }, { "GREAT PARTY", 18, 720 }, { "LEGENDARY PARTY", 30, 1440 }, { "CROWD PLEASER", 12, 360 }, { "EYES BURNED", -25, 720 }, { "ABDUCTED!", -8, 600 },
-    { "TODDLER TANTRUM", -10, 180 }, { "A BIG MILESTONE", 14, 720 }, { "IN BLOOM", 12, 1440 }, { "DORMANT", -8, 1440 },
+    { "TODDLER TANTRUM", -10, 180 }, { "A BIG MILESTONE", 14, 720 }, { "IN BLOOM", 12, 1440 }, { "DORMANT", -8, 1440 }, { "SUNBURNT", -12, 720 }, { "SUN KISSED", 8, 480 },
 };
 const char *sim_moodlet_name(int id) { return mlDef[id % ML_N].nm; }
 static int has_trait(const Sim *s, int t, int hi) { int v = s->bore.tr[t]; return hi ? v >= 8 : v <= 2; }
@@ -1577,7 +1577,7 @@ static int front_tile(const Sim *s, int *mx, int *my) {
 }
 static int usable_at(int tx, int ty, char c) {   // something X does something with
     if (action_for(c) != ACT_NONE) return 1;
-    if ((u8)c >= 0xBE && (u8)c <= 0xDE) return 1;      // (the BOREAGOTCHI! pack's things)
+    if ((u8)c >= 0xBE && (u8)c <= 0xEA && (u8)c != 0xDF && (u8)c != 0xE1) return 1;      // (the BOREAGOTCHI! pack's things)
     if (c == '8') return world_zone == ZONE_CITY;      // a FOR SALE sign
     if (c == CH_RAFT) return 1;
     if (c == 'B') return !has_board;                   // a skateboard on the floor: pick it up
@@ -1663,7 +1663,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_PAINT, PC_SELLART, PC_WRITE, PC_DIYFIX, PC_MECHFIX, PC_FPLANT0, PC_FPLANT_END = PC_FPLANT0 + 3, PC_FWATER, PC_FHARV, PC_FHEN, PC_FCOW, PC_FFEEDH, PC_FFEEDC, PC_FEGGS, PC_FMILK, PC_FSELL, PC_FEAT, PC_FSPRAY, PC_FFERT, PC_FORDER, PC_FUP, PC_FFAIR, PC_FDRINK, PC_FTALK, PC_FCURE, PC_FROOT, PC_FSPROUT, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
+       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_PAINT, PC_SELLART, PC_WRITE, PC_DIYFIX, PC_MECHFIX, PC_FPLANT0, PC_FPLANT_END = PC_FPLANT0 + 3, PC_FWATER, PC_FHARV, PC_FHEN, PC_FCOW, PC_FFEEDH, PC_FFEEDC, PC_FEGGS, PC_FMILK, PC_FSELL, PC_FEAT, PC_FSPRAY, PC_FFERT, PC_FORDER, PC_FUP, PC_FFAIR, PC_FDRINK, PC_FTALK, PC_FCURE, PC_FROOT, PC_FSPROUT, PC_MAIL, PC_SUN, PC_DIVE, PC_LAPS, PC_GRILL, PC_BIRDS, PC_SMELL, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1768,6 +1768,15 @@ static int sim_pie_open_(char opt[8][24]) {
             act = ACT_NONE; break; }
         case 0xDC: { char b_[24]; if (fm_pe) { snprintf(b_, sizeof b_, "COLLECT %d EGGS", fm_pe); OPT(b_, PC_FEGGS) } if (fm_hens < 6) OPT("BUY A HEN $40", PC_FHEN) if (fm_hens && !(fm_fed & 1)) OPT("FEED THE HENS $2", PC_FFEEDH) act = ACT_NONE; break; }
         case 0xDD: { char b_[24]; if (fm_pm) { snprintf(b_, sizeof b_, "MILK THE COWS (%d)", fm_pm); OPT(b_, PC_FMILK) } if (fm_cows < 3) OPT("BUY A COW $250", PC_FCOW) if (fm_cows && !(fm_fed & 2)) OPT("FEED THE COWS $5", PC_FFEEDC) act = ACT_NONE; break; }
+        case 0xE0: OPT("CHECK THE MAIL", PC_MAIL) act = ACT_NONE; break;
+        case 0xE2: OPT("SMELL THE FLOWERS", PC_SMELL) act = ACT_NONE; break;
+        case 0xE3: OPT("ADMIRE THE GNOME", PC_ADMIRE) act = ACT_NONE; break;
+        case 0xE4: OPT("WATCH THE BIRDS", PC_BIRDS) act = ACT_NONE; break;
+        case 0xE5: OPT("DIVE IN", PC_DIVE) OPT("SWIM", PC_SWIM) act = ACT_NONE; break;
+        case 0xE6: OPT("SWIM", PC_SWIM) OPT("SWIM LAPS", PC_LAPS) act = ACT_NONE; break;
+        case 0xE7: OPT("WATCH THE POOL", PC_BIRDS) act = ACT_NONE; break;
+        case 0xE8: case 0xE9: OPT("SUNBATHE", PC_SUN) act = ACT_NONE; break;
+        case 0xEA: OPT("GRILL OUT $8", PC_GRILL) act = ACT_NONE; break;
         case 0xDE: { static const char *const on[6] = { "WHEAT", "CORN", "TOMATOES", "PUMPKINS", "EGGS", "MILK" }, *const upn[4] = { "SPRINKLER $400", "SCARECROW $120", "GREENHOUSE $900", "TRACTOR $1500" };
             char b_[28]; int tot = fm_stock[0] + fm_stock[1] + fm_stock[2] + fm_stock[3] + fm_egg + fm_milk, have[6] = { fm_stock[0], fm_stock[1], fm_stock[2], fm_stock[3], fm_egg, fm_milk };
             if (tot) { snprintf(b_, sizeof b_, "SELL PRODUCE (%d)", tot); OPT(b_, PC_FSELL) }
@@ -2050,6 +2059,21 @@ static void place_do(Sim *s, int code) {
             if (!fm_stock[3] || fm_fair) { sim_note("YOU HAVE ALREADY ENTERED"); return; } fm_stock[3]--; fm_fair = 1;
             pz = sc >= 85 ? 500 : sc >= 60 ? 200 : 40; cash += pz; s->skill_farm += 40; snprintf(b_, sizeof b_, sc >= 85 ? "BEST IN SHOW! +$%d" : sc >= 60 ? "SECOND PRIZE! +$%d" : "A RIBBON FOR TRYING +$%d", pz); sim_note(b_);
             if (sc >= 85) { sim_moodlet(s, ML_PROUD); audio_voice(VOICE_WIN); } break; }
+        case PC_MAIL: { static int mail_day = -1; char b_[40]; if (mail_day == day_count) { sim_note("NO NEW MAIL TODAY"); return; } mail_day = day_count; int r = (int)(look_rand() % 100u);
+            if (r < 40) sim_note("JUNK MAIL. INTO THE BIN"); else if (r < 65) { sim_note("A LETTER FROM A FRIEND!"); sim_moodlet(s, ML_GOOD_CHAT); s->need[N_SOCIAL] = MIN(100 << 10, s->need[N_SOCIAL] + (20 << 10)); }
+            else if (r < 85) { int v = 20 + (int)(look_rand() % 40u); cash += v; snprintf(b_, sizeof b_, "A CARD WITH $%d INSIDE!", v); sim_note(b_); sim_moodlet(s, ML_PAYDAY); }
+            else { int v = 15 + (int)(look_rand() % 80u); cash += v; snprintf(b_, sizeof b_, "A REFUND CHECK: +$%d", v); sim_note(b_); }
+            break; }
+        case PC_SMELL: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 120; s->act_var = 7; sim_moodlet(s, ML_FRESH); s->need[N_FUN] = MIN(100 << 10, s->need[N_FUN] + (10 << 10)); sim_note("LOVELY. SMELLS LIKE SPRING"); break;
+        case PC_BIRDS: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 240; s->act_var = 7; s->need[N_FUN] = MIN(100 << 10, s->need[N_FUN] + (18 << 10)); s->need[N_COMFY] = MIN(100 << 10, s->need[N_COMFY] + (8 << 10)); s->skill_logic += 6; break;
+        case PC_SUN: { int hr = clock_min / 60, hot = hr >= 11 && hr <= 16 && sim_weather() == 0;
+            begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 500; s->act_var = 7; s->need[N_COMFY] = MIN(100 << 10, s->need[N_COMFY] + (25 << 10)); s->need[N_FUN] = MIN(100 << 10, s->need[N_FUN] + (12 << 10));
+            if (hot && (int)(look_rand() % 100u) < 22) { sim_moodlet(s, ML_SUNBURN); sim_note("OW. YOU GOT SUNBURNT"); } else if (hr >= 8 && hr <= 18) sim_moodlet(s, ML_TAN); break; }
+        case PC_DIVE: { swim(s); if (s->action != ACT_SWIM) break;
+            if ((int)(look_rand() % 100u) < 28 - SKL(s->skill_body) * 2) { sim_note("BELLY FLOP! OUCH"); sim_moodlet(s, ML_EMBARRASSED); s->skill_body += 10; }
+            else { sim_note("WHAT A DIVE!"); sim_moodlet(s, ML_PROUD); s->need[N_FUN] = MIN(100 << 10, s->need[N_FUN] + (22 << 10)); s->skill_body += 30; } break; }
+        case PC_LAPS: { swim(s); if (s->action != ACT_SWIM) break; s->skill_body += 60; s->need[N_REST] = MAX(0, s->need[N_REST] - (6 << 10)); sim_note("LAPS: A GOOD WORKOUT"); break; }
+        case PC_GRILL: { if (!pay(8)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 1; s->skill_cook += 30; sim_moodlet(s, ML_GOOD_MEAL); sim_note("BURGERS ON THE GRILL!"); break; }
         case PC_FROOT: if (s->plant != 2) break; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 600; s->act_var = 7;
             s->need[N_FOOD] = MIN(100 << 10, s->need[N_FOOD] + (50 << 10)); s->need[N_COMFY] = MIN(100 << 10, s->need[N_COMFY] + (30 << 10)); s->need[N_REST] = MIN(100 << 10, s->need[N_REST] + (25 << 10)); s->skill_farm += 25; sim_moodlet(s, ML_HEALTHY); sim_note("ROOTED IN THE SOIL: PEACE"); break;
         case PC_FSPROUT: if (s->plant != 2 || s->bore.stage != AG_ADULT || baby_due >= 0 || nsims >= MAX_SIMS || fm_fert < 2) { sim_note("IT NEEDS 2 FERTILIZER AND ROOM"); return; }
