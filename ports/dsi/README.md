@@ -53,3 +53,6 @@ Height slider; "Max x1/x2/x3" cheat chip multiplies every slider for extreme sca
 
 ## D9
 Max x2/x3 cheat no longer clamps: minimum values go negative (inverted geometry glitches).
+
+## D10
+In-game items are now small multi-part models (20 items: chair, sofa, bed, fridge, tv, bathtub...) with soft shadows. See docs/DSI_ROADMAP.md.

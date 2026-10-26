@@ -322,13 +322,40 @@ static void ui_up(void) {
     else if (drag == 2) { if (lot_touch(last_tx, last_ty) >= 0) place_here(); else if (drag_card) { pick = -1; ui_ver++; } }
     drag = 0; drag_card = 0; move_obj = -1;
 }
-static void obj3d(int x, int y, const Item *it, int rot, int ghost) {
-    int x0 = tl(x * 2) + T / 3, x1 = tl(x * 2 + 2) - T / 3, z0 = tl(y * 2) + T / 3, z1 = tl(y * 2 + 2) - T / 3, hh = it->h * T / 2 + 20; (void)ghost;
-    if (it->kind == 1) { ground(x0 - T / 4, z0 - T / 4, x1 + T / 4, z1 + T / 4, -50, it->col); return; }
-    if (it->kind == 2) { tree((x0 + x1) / 2, (z0 + z1) / 2, T * 3 / 2); return; }
-    block(x0, z0, x1, z1, -40, -hh, it->col, shade(it->col, 10));
-    int fx = rot == 1 ? x1 : rot == 3 ? x0 : (x0 + x1) / 2, fz = rot == 0 ? z1 : rot == 2 ? z0 : (z0 + z1) / 2;   // a dark dot on the front
-    ground(fx - T / 8, fz - T / 8, fx + T / 8, fz + T / 8, -hh - 8, C15(3, 3, 4));
+static int ob_x, ob_z, ob_s, ob_rot;   // the cell being drawn: its corner, its size / 8, its rotation
+static void ob(int lx0, int lz0, int lx1, int lz1, int h0, int h1, u16 c) {   // a part in cell units (0..8, front = +z), heights in quarter-tiles
+    int ax, az, bx2, bz;
+    switch (ob_rot & 3) { case 1: ax = lz0; az = 80 - lx0; bx2 = lz1; bz = 80 - lx1; break; case 2: ax = 80 - lx0; az = 80 - lz0; bx2 = 80 - lx1; bz = 80 - lz1; break; case 3: ax = 80 - lz0; az = lx0; bx2 = 80 - lz1; bz = lx1; break; default: ax = lx0; az = lz0; bx2 = lx1; bz = lz1; }
+    int X0 = ob_x + (ax < bx2 ? ax : bx2) * ob_s / 10, X1 = ob_x + (ax < bx2 ? bx2 : ax) * ob_s / 10, Z0 = ob_z + (az < bz ? az : bz) * ob_s / 10, Z1 = ob_z + (az < bz ? bz : az) * ob_s / 10;
+    int hq = T / 4; block(X0, Z0, X1, Z1, -40 - h0 * hq / 10, -40 - h1 * hq / 10, c, shade(c, 10));
+}
+#define LC(r, g, b) C15(r, g, b)
+static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every item is a little model built from several boxes (coordinates 0..80 across the cell, heights in tenths of a quarter-tile)
+    (void)ghost; int id = (int)(it - &ITEMS[0][0]); u16 c = it->col, d = shade(c, 6), l = shade(c, 10), wd = LC(16, 10, 5), dk = LC(3, 3, 4);
+    ob_x = tl(x * 2) + T / 6; ob_z = tl(y * 2) + T / 6; ob_s = (2 * T - T / 3) / 8; ob_rot = rot;
+    if (it->kind == 1) { ob(0, 0, 80, 80, 0, 2, d); ob(6, 6, 74, 74, 0, 4, c); ob(14, 14, 66, 66, 0, 5, l); return; }   // rug: border and centre
+    { u16 sh = LC(6, 5, 4); ob_x -= 6; ob_z -= 4; ob(0, 0, 80, 80, -3, 0, sh); ob_x += 6; ob_z += 4; }   // a soft dark shadow on the floor
+    switch (id) {
+    case 0: for (int k = 0; k < 4; k++) ob(k % 2 ? 62 : 8, k / 2 ? 62 : 8, k % 2 ? 72 : 18, k / 2 ? 72 : 18, 0, 20, d); ob(6, 6, 74, 74, 20, 26, c); ob(6, 6, 74, 18, 26, 62, l); break;   // chair
+    case 1: ob(0, 0, 80, 80, 0, 12, d); ob(8, 20, 72, 80, 12, 24, l); ob(0, 0, 80, 20, 12, 50, c); ob(0, 20, 12, 80, 12, 36, c); ob(68, 20, 80, 80, 12, 36, c); break;   // armchair
+    case 2: ob(0, 4, 80, 80, 0, 12, d); ob(4, 4, 76, 24, 12, 48, c); ob(4, 24, 40, 76, 12, 26, l); ob(40, 24, 76, 76, 12, 26, l); ob(0, 24, 10, 80, 12, 38, c); ob(70, 24, 80, 80, 12, 38, c); break;   // sofa
+    case 3: ob(0, 20, 80, 60, 20, 26, wd); ob(2, 22, 10, 30, 0, 20, d); ob(70, 22, 78, 30, 0, 20, d); ob(2, 50, 10, 58, 0, 20, d); ob(70, 50, 78, 58, 0, 20, d); break;   // bench
+    case 4: ob(4, 4, 76, 76, 28, 34, c); for (int k = 0; k < 4; k++) ob(k % 2 ? 62 : 10, k / 2 ? 62 : 10, k % 2 ? 70 : 18, k / 2 ? 70 : 18, 0, 28, d); ob(30, 30, 50, 50, 34, 38, LC(30, 30, 29)); ob(34, 34, 46, 46, 38, 40, LC(31, 22, 8)); break;   // dining table with a plate
+    case 5: ob(0, 8, 80, 72, 26, 32, c); ob(0, 8, 18, 72, 0, 26, d); ob(62, 8, 80, 72, 0, 26, d); ob(2, 10, 16, 40, 10, 18, dk); ob(46, 14, 66, 30, 32, 34, LC(28, 28, 22)); break;   // desk with drawers and paper
+    case 6: ob(6, 14, 74, 66, 12, 17, c); for (int k = 0; k < 4; k++) ob(k % 2 ? 62 : 8, k / 2 ? 56 : 18, k % 2 ? 72 : 18, k / 2 ? 64 : 26, 0, 12, d); ob(30, 30, 50, 46, 17, 24, LC(8, 22, 10)); break;   // coffee table and a plant bowl
+    case 7: ob(0, 8, 80, 72, 0, 28, d); ob(0, 4, 80, 76, 28, 33, l); ob(8, 72, 36, 74, 6, 24, c); ob(44, 72, 72, 74, 6, 24, c); ob(16, 4, 28, 16, 33, 40, LC(20, 20, 22)); break;   // kitchen counter
+    case 8: ob(4, 30, 76, 54, 0, 14, wd); ob(8, 30, 72, 52, 14, 50, dk); ob(10, 52, 70, 54, 16, 48, LC(8, 16, 24)); ob(24, 54, 56, 56, 6, 10, LC(10, 10, 12)); break;   // tv on a stand
+    case 9: ob(4, 4, 76, 40, 0, 20, d); ob(6, 4, 74, 40, 20, 24, c); ob(20, 6, 60, 12, 24, 52, dk); ob(22, 12, 58, 14, 26, 50, LC(6, 16, 28)); ob(16, 48, 64, 70, 20, 23, LC(14, 14, 16)); break;   // computer: desk, monitor, keyboard
+    case 10: ob(4, 14, 76, 66, 0, 22, c); ob(10, 66, 36, 68, 4, 20, LC(10, 10, 12)); ob(44, 66, 70, 68, 4, 20, LC(10, 10, 12)); ob(14, 70, 32, 72, 8, 16, LC(16, 20, 28)); ob(50, 70, 66, 72, 8, 16, LC(16, 20, 28)); ob(8, 14, 72, 22, 22, 25, l); break;   // stereo with two speakers
+    case 11: ob(8, 8, 72, 72, 0, 70, c); ob(8, 72, 72, 74, 0, 28, shade(c, 7)); ob(8, 72, 72, 74, 30, 66, shade(c, 8)); ob(60, 74, 64, 76, 34, 56, dk); ob(60, 74, 64, 76, 8, 24, dk); ob(8, 8, 72, 72, 70, 72, l); break;   // fridge with two doors and handles
+    case 12: ob(24, 24, 56, 56, 0, 3, d); ob(36, 36, 44, 44, 3, 36, LC(18, 16, 8)); ob(16, 16, 64, 64, 36, 56, c); ob(22, 22, 58, 58, 56, 58, LC(31, 31, 24)); break;   // lamp
+    case 14: ob(24, 24, 56, 56, 0, 16, LC(16, 9, 5)); ob(18, 18, 62, 62, 16, 36, c); ob(26, 26, 54, 54, 36, 48, l); ob(34, 34, 46, 46, 48, 54, shade(c, 12)); break;   // plant
+    case 15: ob(10, 10, 70, 70, 0, 14, LC(20, 20, 19)); ob(14, 14, 66, 66, 14, 18, LC(24, 24, 22)); ob(28, 28, 52, 52, 18, 46, c); ob(24, 28, 28, 36, 30, 40, c); ob(52, 28, 56, 36, 30, 40, c); ob(30, 30, 50, 50, 46, 58, l); break;   // statue on a pedestal
+    case 16: ob(0, 0, 80, 80, 0, 10, wd); ob(2, 14, 78, 78, 10, 20, c); ob(8, 6, 72, 30, 20, 26, LC(31, 31, 31)); ob(0, 0, 80, 6, 0, 40, wd); break;   // bed with headboard and pillow
+    case 17: ob(0, 4, 80, 76, 0, 22, c); ob(8, 12, 72, 68, 22, 24, LC(8, 20, 30)); ob(34, 0, 46, 6, 22, 34, LC(20, 20, 22)); break;   // bathtub with water
+    case 18: ob(26, 34, 54, 76, 0, 14, c); ob(24, 32, 56, 78, 14, 17, l); ob(26, 6, 54, 30, 0, 32, c); ob(30, 8, 50, 12, 32, 36, LC(20, 20, 22)); break;   // toilet
+    case 19: ob(32, 24, 48, 48, 0, 20, d); ob(10, 14, 70, 56, 20, 26, c); ob(18, 20, 62, 50, 26, 27, LC(8, 20, 30)); ob(36, 8, 44, 16, 26, 38, LC(20, 20, 22)); break;   // sink on a pedestal
+    default: ob(4, 4, 76, 76, 0, it->h * 10, c); break; }
 }
 static void draw_build(int yaw) {
     for (int z = 0; z < GN; z++) for (int x = 0; x < GN; x++) ground(tl(x * 2), tl(z * 2), tl(x * 2 + 2), tl(z * 2 + 2), 0, ((x + z) & 1) ? C15(9, 18, 7) : C15(11, 20, 8));
