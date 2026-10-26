@@ -3,7 +3,7 @@
 // Top screen: that lot in 3D. L/R change town, A/B zoom, START re-rolls the world.
 // Fixed point only; the world is bigmap.c, shared with the PS1 build (nothing of it is stored).
 #define PMN 28
-static int o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, lit_on, lit_sgn = -1;
+static int o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, lit_on, lit_sgn = -1;
 #include <nds.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -826,20 +826,20 @@ static void sim_die(int k) { st_died++;   // an elder passes away: a statue mark
     if (ctl == k) ctl = 0; else if (ctl > k) ctl--; if (stage_of(sims[ctl].age) == 0) for (int i = 0; i < nsim; i++) if (stage_of(sims[i].age) > 0) { ctl = i; break; }
     cur_sim = ctl; memset(ilim, 0, sizeof ilim); ui_ver++; }
 
-static int *const OPV[17]; static const u8 OPM[17];
+static int *const OPV[18]; static const u8 OPM[18];
 // ---- saving: the cartridge's save chip. Squeezed to fit any 8 KB EEPROM: two copies (A/B, 4 KB each) so a power cut mid-save never loses the older one. The lot you are on always goes first; older lots are dropped if there is no room.
 static int SAV_STRIDE = 4096;   // one copy's room: half the chip (4 KB on an 8 KB chip, 32 KB on a 64 KB chip)
 #define SAV_MAGIC 0x53325242u   // "BR2S"
 typedef struct { u32 magic, seq, crc, clen, rawlen; } SavHdr;
-typedef struct { int seed, minutes, funds, nsim, ctl, cur_sim, cur_set, lot_bx, lot_by; u8 opt[16]; int nlots, days, born, died; } SavCore;
+typedef struct { int seed, minutes, funds, nsim, ctl, cur_sim, cur_set, lot_bx, lot_by; u8 opt[20]; int nlots, days, born, died; } SavCore;
 typedef struct { s16 bx, by, pcx, pcy, dcx, dcy; u16 nobj; } SavLot;
-#define SAV_MAX 32768
+#define SAV_MAX 65536
 static u8 sav_sh[2][SAV_MAX], sav_raw[LSV_N * 2800 + 4096], sav_buf[SAV_MAX]; static int sav_type = -2, sav_have = -1, sav_seq;
 static u32 crc32b(const u8 *p, int n) { u32 c = 0xFFFFFFFFu; while (n--) { c ^= *p++; for (int k = 0; k < 8; k++) c = (c >> 1) ^ (0xEDB88320u & (0u - (c & 1))); } return ~c; }
 static int rle(const u8 *p, int n, u8 *o, int mx) { int w = 0; for (int i = 0; i < n;) { if (w + 2 > mx) return -1; if (p[i]) { o[w++] = p[i++]; } else { int r = 0; while (i < n && !p[i] && r < 255) { i++; r++; } o[w++] = 0; o[w++] = (u8)r; } } return w; }
 static int unrle(const u8 *p, int n, u8 *o, int mx) { int w = 0; for (int i = 0; i < n;) { if (p[i]) { if (w >= mx) return -1; o[w++] = p[i++]; } else { if (i + 1 >= n) return -1; int r = p[i + 1]; if (w + r > mx) return -1; while (r--) o[w++] = 0; i += 2; } } return w; }
 static int sav_ok(void) { if (sav_type == -2) { sysSetCardOwner(true); int t = cardEepromGetType(); sav_type = (t == 2 || t == 3) ? t : -1; } return sav_type > 0; }
-static int sav_valid(int k) { SavHdr h; memcpy(&h, sav_sh[k], sizeof h); return h.magic == SAV_MAGIC && h.clen > 0 && h.clen <= (u32)SAV_STRIDE - sizeof h && h.rawlen <= sizeof sav_raw && crc32b(sav_sh[k] + sizeof h, h.clen) == h.crc; }
+static int sav_valid(int k) { SavHdr h; memcpy(&h, sav_sh[k], sizeof h); return h.magic == SAV_MAGIC && h.clen > 0 && h.clen <= (u32)(k == 0 ? 2 * SAV_STRIDE : SAV_STRIDE) - sizeof h && h.rawlen <= sizeof sav_raw && crc32b(sav_sh[k] + sizeof h, h.clen) == h.crc; }
 static void sav_size(void) {   // is it an 8 KB or a 64 KB chip? A 8 KB chip repeats itself at 8192, so write one byte there and see whether address 0 changes (then put both back)
     static int done; if (done) return; done = 1; SAV_STRIDE = 4096; if (sav_type == 3) { SAV_STRIDE = 32768; return; }
     u8 a, b, t; cardReadEeprom(0, &a, 1, sav_type); cardReadEeprom(8192, &b, 1, sav_type); t = (u8)(a ^ 0x5A);
@@ -848,18 +848,18 @@ static void sav_size(void) {   // is it an 8 KB or a 64 KB chip? A 8 KB chip rep
 }
 static void sav_probe(void) {   // read both copies, find the newest good one
     sav_have = -1; sav_seq = 0; if (!sav_ok()) return; sav_size();
-    for (int k = 0; k < (sav_type == 3 ? 1 : 2); k++) { cardReadEeprom((u32)(k * SAV_STRIDE), sav_sh[k], (u32)SAV_STRIDE, sav_type); if (sav_valid(k)) { SavHdr h; memcpy(&h, sav_sh[k], sizeof h); if (sav_have < 0 || (int)h.seq > sav_seq) { sav_have = k; sav_seq = (int)h.seq; } } }
+    for (int k = 0; k < (sav_type == 3 ? 1 : 2); k++) { cardReadEeprom((u32)(k * SAV_STRIDE), sav_sh[k], (u32)(k == 0 ? 2 * SAV_STRIDE : SAV_STRIDE), sav_type); if (sav_valid(k)) { SavHdr h; memcpy(&h, sav_sh[k], sizeof h); if (sav_have < 0 || (int)h.seq > sav_seq) { sav_have = k; sav_seq = (int)h.seq; } } }
     st_days = st_born = st_died = 0;
     if (sav_have >= 0) { SavHdr h; memcpy(&h, sav_sh[sav_have], sizeof h); if (unrle(sav_sh[sav_have] + sizeof h, (int)h.clen, sav_raw, (int)sizeof sav_raw) == (int)h.rawlen && h.rawlen >= sizeof(SavCore)) { SavCore c; memcpy(&c, sav_raw, sizeof c); st_days = c.days; st_born = c.born; st_died = c.died; } }
 }
-static int sav_pack(void) {   // returns the packed size in sav_buf (header included), or 0 if even the basics do not fit
+static int sav_pack(int big) {   // returns the packed size in sav_buf (header included), or 0 if even the basics do not fit
     if (lot_bx >= 0) lot_save();
     SavCore c; memset(&c, 0, sizeof c); c.seed = seed; c.minutes = minutes; c.funds = funds; c.nsim = nsim; c.ctl = ctl; c.cur_sim = cur_sim; c.cur_set = cur_set; c.lot_bx = lot_bx; c.lot_by = lot_by; c.days = st_days; c.born = st_born; c.died = st_died;
-    for (int i = 0; i < 16; i++) c.opt[i] = (u8)*OPV[i];
+    for (int i = 0; i < 17; i++) c.opt[i] = (u8)*OPV[i];
     int n = 0; u8 *r = sav_raw; memset(r, 0, sizeof sav_raw);
     #define PUT(p, l) do { memcpy(r + n, (p), (size_t)(l)); n += (l); } while (0)
     PUT(&c, (int)sizeof c); PUT(sname, (int)sizeof sname); PUT(sims, (int)sizeof sims); PUT(crt, (int)sizeof crt);
-    int budget = SAV_STRIDE - (int)sizeof(SavHdr), base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
+    int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr), base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
     int order[LSV_N], no = 0; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) order[no++] = i; for (int i = 0; i < lsv_n; i++) if (!(lsv[i].bx == lot_bx && lsv[i].by == lot_by)) order[no++] = i;
     for (int q = 0; q < no; q++) { const LotSave *L = &lsv[order[q]]; int m = n; SavLot h = { (s16)L->bx, (s16)L->by, (s16)L->pcx, (s16)L->pcy, (s16)L->dcx, (s16)L->dcy, (u16)L->nobj };
         if (m + (int)sizeof h + 533 + L->nobj * 5 > (int)sizeof sav_raw) break;
@@ -871,8 +871,9 @@ static int sav_pack(void) {   // returns the packed size in sav_buf (header incl
 }
 static int sav_write(void) {
     if (!sav_ok()) return 0;
-    int n = sav_pack(); if (!n) return 0; int k = sav_type == 3 ? 0 : (sav_have == 0 ? 1 : 0), hs = (int)sizeof(SavHdr);
-    if (sav_type == 3) { cardEepromSectorErase(0); memset(sav_sh[0], 0xFF, (size_t)SAV_STRIDE); }
+    int big = o_smax || sav_type == 3, oldbig = 0; if (sav_have == 0) { SavHdr o; memcpy(&o, sav_sh[0], sizeof o); oldbig = o.clen > (u32)SAV_STRIDE - sizeof o; }
+    int n = sav_pack(big); if (!n) return 0; int k = (big || oldbig || sav_type == 3) ? 0 : (sav_have == 0 ? 1 : 0), hs = (int)sizeof(SavHdr);   // a big copy fills the whole chip, so it (and the write after it) lives in copy A
+    if (sav_type == 3) { cardEepromSectorErase(0); memset(sav_sh[0], 0xFF, (size_t)SAV_STRIDE * 2); }
     for (int o = hs; o < n; o += 64) { int l = n - o < 64 ? n - o : 64; if (memcmp(sav_buf + o, sav_sh[k] + o, (size_t)l)) cardWriteEeprom((u32)(k * SAV_STRIDE + o), sav_buf + o, (u32)l, sav_type); }
     cardWriteEeprom((u32)(k * SAV_STRIDE), sav_buf, (u32)hs, sav_type);   // the header goes last: until it lands the old copy is still the good one
     memcpy(sav_sh[k], sav_buf, (size_t)n);
@@ -892,7 +893,7 @@ static int sav_apply(void) {   // 1 = loaded
         if (n + sl.nobj * 5 > rl) return 0; memset(L->objs, 0, sizeof L->objs); memcpy(L->objs, sav_raw + n, (size_t)sl.nobj * 5); n += sl.nobj * 5; tn_l++; }
     seed = c.seed; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
     st_days = c.days; st_born = c.born; st_died = c.died; minutes = c.minutes; funds = c.funds; nsim = c.nsim; ctl = c.ctl; cur_sim = c.cur_sim >= 0 && c.cur_sim < nsim ? c.cur_sim : ctl;
-    for (int i = 0; i < 16; i++) if (c.opt[i] < OPM[i]) *OPV[i] = c.opt[i];
+    for (int i = 0; i < 17; i++) if (c.opt[i] < OPM[i]) *OPV[i] = c.opt[i];
     o_dirty = 1; memcpy(sname, tn, sizeof sname); memcpy(sims, ts, sizeof sims); memcpy(crt, tc, sizeof crt); for (int i = 0; i < tn_l; i++) lsv[i] = tl[i]; lsv_n = tn_l; lsv_next = 0;
     for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; m->act = -1; m->act_left = 0; m->soc = -1; m->tgt = 0; m->tx = m->wx = m->x; m->ty = m->wy = m->y; }
     memset(ilim, 0, sizeof ilim); memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; pick = -1; lot_bx = -1; lot_by = -1; nb_ok = 0;
@@ -1253,15 +1254,15 @@ static void plumb_icon(int x, int y, int sz, u16 c) {
     for (int k = 0; k < 8; k++) { int dx = k < 4 ? (k & 1 ? 1 : -1) * (sz / 2 - 2) : 0, dy = k >= 4 ? ((k & 1) ? 1 : -1) * (sz / 2 - 2) : 0; rect(cx + dx - 1, cy + dy - 1, 3, 3, c); }
     rect(cx - sz / 2 + 2, cy, sz - 4, 1, c); rect(cx, cy - sz / 2 + 2, 1, sz - 4, c);
 }
-static const char *const OPN[17] = { "Anti-alias", "Outlines", "Shadows", "Lighting", "Item detail", "Ground check", "Frame rate", "Brightness", "Sky", "Camera", "Map spin", "Game speed", "Turbo CPU", "Sim style", "Poly meter", "Fog", "Reset all" };
-static int *const OPV[17] = { &o_aa, &o_out, &o_shd, &o_lit, &o_det, &o_chk, &o_fps30, &o_bri, &o_sky, &o_cam, &o_spin, &o_spd, &o_turbo, &o_sty, &o_pm, &o_fog, 0 };
-static const u8 OPM[17] = { 2, 2, 2, 2, 2, 2, 2, 9, 4, 3, 4, 3, 2, 3, 2, 2, 1 };
+static const char *const OPN[18] = { "Anti-alias", "Outlines", "Shadows", "Lighting", "Item detail", "Ground check", "Frame rate", "Brightness", "Sky", "Camera", "Map spin", "Game speed", "Turbo CPU", "Sim style", "Poly meter", "Fog", "Save space", "Reset all" };
+static int *const OPV[18] = { &o_aa, &o_out, &o_shd, &o_lit, &o_det, &o_chk, &o_fps30, &o_bri, &o_sky, &o_cam, &o_spin, &o_spd, &o_turbo, &o_sty, &o_pm, &o_fog, &o_smax, 0 };
+static const u8 OPM[18] = { 2, 2, 2, 2, 2, 2, 2, 9, 4, 3, 4, 3, 2, 3, 2, 2, 2, 1 };
 static const char *opt_val(int i, char *b) {
     int v = OPV[i] ? *OPV[i] : 0;
     switch (i) { case 6: return v ? "30 fps" : "60 fps"; case 8: { static const char *n[4] = { "Day", "Sunset", "Night", "Mint" }; return n[v]; }
         case 9: { static const char *n[3] = { "Close", "Normal", "Far" }; return n[v]; } case 10: { static const char *n[4] = { "Off", "Slow", "Normal", "Fast" }; return n[v]; }
         case 11: { static const char *n[3] = { "1x", "2x", "3x" }; return n[v]; } case 7: b[0] = v < 4 ? '-' : '+'; b[1] = (char)('0' + (v < 4 ? 4 - v : v - 4)); b[2] = 0; return b;
-        case 16: return "tap"; case 13: { static const char *n[3] = { "Classic", "Sims 3", "Chunky" }; return n[v]; } case 4: return v ? "Detailed" : "Simple"; default: return v ? "On" : "Off"; }
+        case 17: return "tap"; case 16: return v ? "Max" : "Safe"; case 13: { static const char *n[3] = { "Classic", "Sims 3", "Chunky" }; return n[v]; } case 4: return v ? "Detailed" : "Simple"; default: return v ? "On" : "Off"; }
 }
 static void apply_opts(void) {
     if (o_aa) glEnable(GL_ANTIALIAS); else glDisable(GL_ANTIALIAS);
@@ -1274,16 +1275,16 @@ static void apply_opts(void) {
 }
 static void draw_opt(void) {   // the Options screen (bottom): tap a row to change it (right half forwards, left half back)
     scr = scr_sub; backdrop(); panel(6, 4, 244, 156, o_page == 0 ? "Options 1/3" : o_page == 1 ? "Options 2/3" : "Options 3/3");
-    for (int k = 0; k < 7; k++) { int i = o_page * 7 + k; if (i >= 17) break; int y = 24 + k * 19; char b[4];
+    for (int k = 0; k < 7; k++) { int i = o_page * 7 + k; if (i >= 18) break; int y = 24 + k * 19; char b[4];
         rect(10, y, 236, 17, C15(5, 12, 26)); rect(10, y, 236, 1, C15(10, 18, 30)); text(16, y + 5, 1, TXT, OPN[i]);
-        rect(150, y + 2, 92, 13, i == 16 ? C15(24, 10, 10) : OPV[i] && *OPV[i] ? C15(8, 26, 8) : C15(10, 14, 22)); { const char *v = opt_val(i, b); text(196 - tw(1, v) / 2, y + 5, 1, TXT, v); } }
+        rect(150, y + 2, 92, 13, i == 17 ? C15(24, 10, 10) : OPV[i] && *OPV[i] ? C15(8, 26, 8) : C15(10, 14, 22)); { const char *v = opt_val(i, b); text(196 - tw(1, v) / 2, y + 5, 1, TXT, v); } }
     chip(10, 166, 60, 22, "Page >", 0); chip(186, 166, 60, 22, "Back", 0);
 }
 static void opt_touch(int tx, int ty) {
     if (hit(10, 166, 60, 22, tx, ty)) { o_page = (o_page + 1) % 3; return; }
     if (hit(186, 166, 60, 22, tx, ty)) { opt_on = 0; return; }
-    for (int k = 0; k < 7; k++) { int i = o_page * 7 + k; if (i >= 17 || !hit(10, 24 + k * 19, 236, 17, tx, ty)) continue;
-        if (i == 16) { o_sty = 0; o_pm = 0; o_fog = 0; o_aa = 1; o_out = 0; o_shd = 1; o_det = 1; o_fps30 = 0; o_bri = 4; o_sky = 0; o_chk = 1; o_spin = 2; o_turbo = 0; o_cam = 1; o_spd = 0; o_lit = 1; }
+    for (int k = 0; k < 7; k++) { int i = o_page * 7 + k; if (i >= 18 || !hit(10, 24 + k * 19, 236, 17, tx, ty)) continue;
+        if (i == 17) { o_sty = 0; o_pm = 0; o_fog = 0; o_aa = 1; o_out = 0; o_shd = 1; o_det = 1; o_fps30 = 0; o_bri = 4; o_sky = 0; o_chk = 1; o_spin = 2; o_turbo = 0; o_cam = 1; o_spd = 0; o_lit = 1; }
         else *OPV[i] = tx < 150 ? (*OPV[i] + OPM[i] - 1) % OPM[i] : (*OPV[i] + 1) % OPM[i];
         o_dirty = 1; }
 }

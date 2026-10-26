@@ -113,3 +113,8 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 - The game detects an 8 KB or 64 KB save chip. 64 KB holds about 10x more (8 KB chips keep the newest lots first, as before).
 - Lifetime stats saved: days played, births, losses (shown on the title).
 - 64 KB path is untested in the emulator (it only offers 8 KB); the 8 KB path is tested.
+
+## D24 - Save space option
+- Options page 3: "Save space": Safe (default, 2 copies, power-cut proof) or Max (one copy uses the whole chip, about 2x more lots on 8 KB chips, 64 KB chips fit nearly all 48 lots).
+- Save format changed in D24: older D22/D23 saves will not load.
+- Why not bigger than 8 KB on Android: emulators fix the save size from their own game list; an unknown game gets 8 KB, and a bigger .sav file is ignored. So the game works inside that and uses 64 KB only if the chip really is 64 KB.
