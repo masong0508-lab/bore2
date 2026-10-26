@@ -3749,7 +3749,7 @@ static const u8 neLots[] = { LOT_WILD, LOT_HOUSE, LOT_COTTAGE, LOT_TOWN, LOT_TWO
 #define NE_NL ((int)sizeof neLots)
 // ---- the diorama: a patch of the map as a 3D model: rolling land with shores, roads, trees, houses with roofs and yards (the neighborhood editor, the moving-in screen) ----
 #define DC 160                 // a block's width in the model
-#define HS 3                   // height units per point of elevation
+#define HS 1                   // (the model's heights are the game's, in 18ths)
 #define DW 16                  // blocks across the model, and deep
 #define DD 13
 typedef struct { u8 t, l, r, s, h, v; } DCell;   // h: elevation points (0 the sea); v: a block's own dice
@@ -3761,14 +3761,14 @@ static const u8 dTc[6][3] = { { 46, 110, 198 }, { 234, 216, 158 }, { 104, 170, 7
 static void dio_fill(void) {
     for (int r = 0; r < DD; r++) for (int c = 0; c < DW; c++) {
         BInfo b; bm_block(dio_ox + c, dio_oy + r, &b);
-        DCell *k = &dio_c[r][c]; k->t = b.terrain; k->l = b.lot; k->r = b.road; k->s = b.set; k->h = (u8)MIN(255, bm_height(dio_ox + c, dio_oy + r)); k->v = (u8)(b.h >> 8);
+        DCell *k = &dio_c[r][c]; k->t = b.terrain; k->l = b.lot; k->r = b.road; k->s = b.set; k->h = (u8)MIN(255, bm_hill(dio_ox + c, dio_oy + r) / 18 + (b.terrain == BT_SEA ? 0 : 1)); k->v = (u8)(b.h >> 8);
     }
     for (int r = 0; r <= DD; r++) for (int c = 0; c <= DW; c++) {
         int n = 0, sum = 0, cr = 0, cg = 0, cb = 0;
         for (int k = 0; k < 4; k++) { int cc = CLAMP(c - 1 + (k & 1), 0, DW - 1), rr = CLAMP(r - 1 + (k >> 1), 0, DD - 1); const DCell *q = &dio_c[rr][cc];
             int t = q->t % 6, v = (q->v & 15) - 8; sum += q->h; n++;
             int br = dTc[t][0], bg = dTc[t][1], bb = dTc[t][2];
-            if (t == BT_ROCKY && q->h > 100) { br = 226; bg = 230; bb = 236; }   // snow on the peaks
+            if (t == BT_ROCKY && q->h > 110) { br = 226; bg = 230; bb = 236; }   // snow on the peaks
             if (t == BT_SEA) v = (q->v & 7) - 3;
             cr += br + v; cg += bg + v; cb += bb + v; }
         dio_hv[r][c] = (short)(sum * HS / n); dio_vc[r][c] = (u16)((CLAMP(cr / 4, 0, 255) >> 3) | ((CLAMP(cg / 4, 0, 255) >> 3) << 5) | ((CLAMP(cb / 4, 0, 255) >> 3) << 10));
