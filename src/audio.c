@@ -255,6 +255,14 @@ int audio_cd_load(const char *name, void *dst, int room) {   // a whole file fro
     if (!CdRead(secs, (u32 *)dst, CdlModeSpeed)) return 0;
     return CdReadSync(0, 0) >= 0;
 }
+int audio_cd_peek(const char *name, void *dst) {   // the first 2048 bytes of a file on the disc (is a pack really there?); 0 if it cannot be read
+    if (!cd_up) return 0;
+    char path[24]; snprintf(path, sizeof path, "\\%s;1", name);
+    CdlFILE f; if (!CdSearchFile(&f, path)) return 0;
+    if (!CdControl(CdlSetloc, &f.pos, 0)) return 0;
+    if (!CdRead(1, (u32 *)dst, CdlModeSpeed)) return 0;
+    return CdReadSync(0, 0) >= 0;
+}
 static int cd_read(u32 sector, int count, void *buf) {
     CdlLOC loc;
     CdIntToPos(CdPosToInt(&songs_loc) + (int)sector, &loc);

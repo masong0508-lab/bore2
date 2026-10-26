@@ -3490,6 +3490,7 @@ enum { WO_RANDOM, WO_PRE1, WO_PRE2, WO_PRE3, WO_CREATE, WO_CASTAWAY, WO_MORE, WO
 static const u32 wo_preset[3] = { 0x0B0E2001u, 0x51A7E5EDu, 0x7A11C0DEu };
 static const char *const wo_cap[3] = { "MAPLE SHORES", "SUNNY HOLLOW", "PINE BAY" };   // the set worlds' names
 static int gotchi_shelf;   // the BOREAGOTCHI! guide opened from the expansion shelf (not in a life)
+static u8 pk_have[24]; static int pk_i;
 static int wo_sel, wo_t, wo_more, wo_msel, wo_packed; static char wo_name[18];   // (wo_name: the capital named by the player, "" as made)
 static u32 wo_seed, wo_painted, wo_custom = 0x00C0FFEEu;
 static void paint_world(u32 seed) {                 // SAN BOREAS from above for that seed (the land, the highways, the towns), into the map's picture
@@ -3515,7 +3516,7 @@ static void wo_name_for(u32 seed) {   // a set world's capital carries the world
 static u32 wo_seed_of(int k) { return k >= WO_PRE1 && k <= WO_PRE3 ? wo_preset[k - WO_PRE1] : k == WO_CREATE ? wo_custom : 0; }
 static void worlds_named(void) { wo_painted = 0; }   // (the map is drawn again, the new name on it)
 static void worlds_open(int more) {   // 0: NEIGHBORHOODS, 1: the EXPANSIONS shelf
-    wo_painted = 0; wo_sel = 0; wo_t = 0; wo_more = more; wo_msel = 0; wo_tab = 0; nh_sel = 0; bm_ovr_clear(); state = ST_WORLDS;
+    pk_i = 0; wo_painted = 0; wo_sel = 0; wo_t = 0; wo_more = more; wo_msel = 0; wo_tab = 0; nh_sel = 0; bm_ovr_clear(); state = ST_WORLDS;
 #ifdef AUTO_PACKS
     wo_more = 1; wo_msel = AUTO_PACKS;
 #endif
@@ -3661,17 +3662,20 @@ static void wm_draw(void) {
     ui_hints(160, 214, wm_mode == 2 ? "LR CHANGE|SQ SURPRISE ME|START OR O BACK TO THE EDITOR" : "LR CHANGE|SQ SURPRISE ME|START PLAY|O BACK", 1);
 }
 
-#define WO_NMORE 22
+#define WO_NMORE 24
 // the island creator, the base game's missions, the six older packs and THE LAND BOREFORE TIME (the GBA game's seven), then thirteen packs still to come
 static const char *const moreNm[WO_NMORE] = { "ISLAND CREATOR", "STORY MISSIONS", "BORE-OUT MAN!", "BOREZIES!", "WORLD WAR BORE", "BORTUA FIGHTER", "BOREAGOTCHI!", "BOREPILOGUE", "THE LAND BOREFORE TIME",
-    "SEASONS", "ISLAND PARADISE", "SUPERSTAR", "CRIME AND LAW", "FARM LIFE", "SKY HIGH", "SPEED CITY", "BIG SCREEN", "SEASIDE", "MAGIC AND MYTH", "FAMILY FUN", "WILD WEST", "SPACE AGE" };
+    "SEASONS", "ISLAND PARADISE", "SUPERSTAR", "CRIME AND LAW", "FARM LIFE", "SKY HIGH", "SPEED CITY", "BIG SCREEN", "SEASIDE", "MAGIC AND MYTH", "FAMILY FUN", "WILD WEST", "SPACE AGE", "CREATE A DOG", "DJ BOOTH" };
 static const char *const moreCard[WO_NMORE] = { "ISLAND|CREATOR", "STORY|MISSIONS", "BORE-OUT|MAN!", "BOREZIES!", "WORLD|WAR BORE", "BORTUA|FIGHTER", "BORE-|AGOTCHI!", "BORE-|PILOGUE", "THE LAND|BOREFORE|TIME",
-    "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "CRIME|AND LAW", "FARM|LIFE", "SKY|HIGH", "SPEED|CITY", "BIG|SCREEN", "SEA-|SIDE", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE" };
+    "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "CRIME|AND LAW", "FARM|LIFE", "SKY|HIGH", "SPEED|CITY", "BIG|SCREEN", "SEA-|SIDE", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE", "CREATE|A DOG", "DJ|BOOTH" };
 static const char *const moreBlurb[WO_NMORE] = { "STRANDED! VERY SMALL TO VERY BIG. COAST, JUNGLE, HILLS", "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. NOT PORTED YET!", "THE TOWN GOES UNDEAD. NOT PORTED YET!", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. NOT PORTED YET!",
     "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!", "RAISE EIGHT PIXEL PETS PER TOY. X: THE GUIDE!", "GROWN-UPS ONLY: RETIRE AND LEAVE A LEGACY. NOT PORTED YET!", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
     "THE YEAR TURNS. X TURNS THE PACK ON OR OFF.", "PLACEHOLDER PACK. NOT MADE YET!", "FORM A BAND AND PLAY GIGS! PAUSE, SUPERSTAR BAND", "BREAK THE LAW AND FIND OUT.", "CROPS, PESTS, FAIRS, ANIMALS. WATER TOO MUCH AND...", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
-    "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP." };
-#define EX_PLAYABLE(i) ((i) == 0 || (i) == 1 || (i) == 5 || (i) == 6 || (i) == 8 || (i) == 9 || (i) == 11)
+    "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP.", "RAISE A DOG FROM A PUP. THE PET SHOP SELLS ONE.", "SPIN DECKS AT THE BOOTH. HOME AND CLUBS." };
+#define EX_PLAYABLE(i) ((i) == 0 || (i) == 1 || (i) == 5 || (i) == 6 || (i) == 8 || (i) == 9 || (i) == 11 || (i) == 12 || (i) == 19 || (i) == 21 || (i) == 22 || (i) == 23)
+// the packs that are patches (tools/packs.py): the file each card needs on the disc (0: part of the base game, or not made yet)
+static const char *const packFile[WO_NMORE] = { 0, 0, 0, 0, 0, "ARCADE.OVL", "GOTCHI.OVL", 0, "KINGDOM.OVL", 0, 0, "SUPER.OVL", "PRISON.OVL", 0, 0, 0, 0, 0, 0, "PARTY.OVL", 0, "SPACE.OVL", "DOG.OVL", "DJ.OVL" };
+// 0: not looked at yet, 1: on the disc, 2: not installed (a stub, or no file)
 // ---- PICK A MODE: the three ways in ----
 static int md_sel, md_t;
 static void mode_open(void) { md_sel = 0; md_t = 0; state = ST_MODE; }
@@ -4071,6 +4075,7 @@ static void ne_draw(void) {
 // ---- NEIGHBORHOODS (and the EXPANSIONS shelf): the set worlds, the ones you made, and the packs ----
 static void worlds_update(void) {
     wo_t++;
+    if (wo_more && pk_i < WO_NMORE) { if (packFile[pk_i]) pk_have[pk_i] = ovl_installed(packFile[pk_i]) ? 1 : 2; pk_i++; }   // (one card's file a frame: the disc is asked a little at a time)
     if (wo_more) {                                   // MISSIONS AND EXPANSIONS
         // (two rows of tall cards, a column to a pair: item i sits in column i/2, row i%2)
         if (PRESSED(PAD_UP) || PRESSED(PAD_DOWN)) { int n = wo_msel ^ 1; if (n < WO_NMORE) wo_msel = n; }
@@ -4080,7 +4085,7 @@ static void worlds_update(void) {
         if (PRESSED(PAD_CROSS)) {
             if (wo_msel == 0) { wo_more = 0; wm_open_mode(1); }
             else if (wo_msel == 1) { sc_t = 0; sp_join = 0; state = ST_SPICK; }
-            else if (wo_msel == 6) { if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(3); gotchi_shelf = 1; state = ST_GOTCHI; } else audio_voice(VOICE_NAH); }
+            else if (wo_msel == 6) { if (pk_have[6] == 2) audio_voice(VOICE_NAH); else if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(3); gotchi_shelf = 1; state = ST_GOTCHI; } else audio_voice(VOICE_NAH); }
             else if (wo_msel == 9) { sim_seasons_on ^= 1; audio_voice(VOICE_AGREE); }   // (the SEASONS pack: on, the year turns; off, summer all year)
             else if (wo_msel == 11) audio_voice(VOICE_FINISHED); else audio_voice(VOICE_NAH);
         }
@@ -4125,7 +4130,7 @@ static void worlds_draw(void) {
     char b[48];
     int top = ui_window(6, 6, 308, 228, wo_more ? "EXPANSIONS" : "NEIGHBORHOODS", wo_more ? IC_STAR : IC_PIN);
     if (wo_more) {
-        static const s8 mic[WO_NMORE] = { IC_SUN, IC_BOOK, IC_STAR, IC_PEOPLE, IC_HAMMER, IC_BX, IC_SMILE, IC_HEART, IC_TREE, IC_SUN, IC_TREE, IC_NOTE, IC_EYE, IC_SPROUT, IC_BOLT, IC_CAR, IC_CAMERA, IC_DROP, IC_STAR, IC_PARTY, IC_HAMMER, IC_BOLT };
+        static const s8 mic[WO_NMORE] = { IC_SUN, IC_BOOK, IC_STAR, IC_PEOPLE, IC_HAMMER, IC_BX, IC_SMILE, IC_HEART, IC_TREE, IC_SUN, IC_TREE, IC_NOTE, IC_EYE, IC_SPROUT, IC_BOLT, IC_CAR, IC_CAMERA, IC_DROP, IC_STAR, IC_PARTY, IC_HAMMER, IC_BOLT, IC_HEART, IC_NOTE };
         int c0 = CLAMP(wo_msel / 2 - 2, 0, (WO_NMORE + 1) / 2 - 5);   // (five columns show, and slide along)
         for (int i = 0; i < WO_NMORE; i++) {
             int col = i / 2 - c0; if (col < 0 || col > 4) continue;
@@ -4134,12 +4139,14 @@ static void worlds_draw(void) {
             ui_icon_disc(x + 28, y + 24, 30, mic[i], EX_PLAYABLE(i) ? UI_BLUE2 : UI_SOFT, UI_WHITE);
             { char t[24]; strncpy(t, moreCard[i], 23); t[23] = 0; char *ln[3]; int nl = 0; ln[nl++] = t; for (char *q = t; *q && nl < 3; q++) if (*q == '|') { *q = 0; ln[nl++] = q + 1; }
               int ty = y + 46; if (nl == 1) ty += 6; for (int k = 0; k < nl; k++) ui_textc(x + 28, ty + k * 10, 1, ln[k], UI_INK); }
+            if (pk_have[i] == 2) ui_badge(x + 6, y + 66, "NOT ADDED", UI_BADT, UI_WHITE);
+            else if (pk_have[i] == 1) ui_badge(x + 14, y + 66, "ADDED", UI_RGB(60, 170, 80), UI_WHITE);
             if (i == 9) ui_badge(x + 14, y + 66, sim_seasons_on ? "ON" : "OFF", sim_seasons_on ? UI_RGB(60, 170, 80) : UI_BADT, UI_WHITE);
         }
         if (c0 > 0) ui_text(6, top + 76, 1, "<", UI_INK);
         if (c0 + 5 < (WO_NMORE + 1) / 2) ui_text(308 - 6, top + 76, 1, ">", UI_INK);
         ui_textc(160, top + 160, 1, moreNm[wo_msel], UI_BLUE2);
-        ui_textc(160, top + 172, 1, moreBlurb[wo_msel], EX_PLAYABLE(wo_msel) ? UI_INK : UI_SOFT);
+        ui_textc(160, top + 172, 1, pk_have[wo_msel] == 2 ? "NOT ADDED: PATCH IT ON WITH ITS BORE2 PACK .PPF" : moreBlurb[wo_msel], EX_PLAYABLE(wo_msel) && pk_have[wo_msel] != 2 ? UI_INK : UI_SOFT);
         ui_hints(160, 214, wo_msel == 0 ? "X OPEN THE CREATOR|ARROWS MOVE|O BACK" : wo_msel == 1 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 6 ? "X THE GUIDE|ARROWS MOVE|O BACK" : wo_msel == 9 ? "X ON OR OFF|ARROWS MOVE|O BACK" : "ARROWS MOVE|O BACK", 1);
         return;
     }

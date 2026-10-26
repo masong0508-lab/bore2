@@ -1462,13 +1462,17 @@ static void wild(int ox, int oy, const BInfo *b, int bx, int by) {   // the open
         { u8 f = floorMap[oy + y][ox + x]; if (f == FL_PAVING || f == FL_WATER || f >= FL_ASPHALT || lifeMap[oy + y][ox + x] != '.') continue; }
         int r = (int)(bm_hash(bx * BM_BLK + x, by * BM_BLK + y, wsalt ^ 0x77u) % 1000u); char c = 0;
         switch (b->terrain) {
-            case BT_GRASS:  c = r < 22 ? '3' : r < 28 ? '*' : r < 30 ? '6' : 0; break;
+            case BT_GRASS:  c = r < 22 ? '3' : r < 40 ? '*' : r < 44 ? (char)0xE2 : r < 46 ? '6' : 0; break;
             case BT_FOREST: c = r < 70 ? '6' : r < 95 ? '3' : r < 100 ? '*' : 0; break;
             case BT_DESERT: c = r < 20 ? 'u' : r < 38 ? '*' : 0; break;
             case BT_BEACH:  c = r < 18 ? 'g' : r < 24 ? '*' : r < 27 ? (char)0xE8 : r < 29 ? (char)0xE9 : r < 30 ? (char)0xE7 : 0; break;
             case BT_ROCKY:  c = r < 80 ? '*' : r < 95 ? '6' : 0; break;
         }
         if (c) lifeMap[oy + y][ox + x] = c;
+        else if (b->terrain == BT_GRASS || b->terrain == BT_FOREST) {   // bare earth in patches, so open ground is never one flat green
+            u32 q = bm_hash((bx * BM_BLK + x) >> 1, (by * BM_BLK + y) >> 1, wsalt ^ 0x5017u) % 1000u;
+            if (floorMap[oy + y][ox + x] == FL_GRASS && q < 28) floorMap[oy + y][ox + x] = FL_SOIL;
+        }
     }
 }
 // ---- a river across a town, and the big shared places (a park, a mall, a downtown plaza: four blocks made one) ----
@@ -1993,6 +1997,10 @@ int world_gh(int x, int z) {   // the ground under a point (world units): 0 wher
     int a = world_gh_c(tx, ty), b = world_gh_c(tx + 1, ty), c = world_gh_c(tx, ty + 1), d = world_gh_c(tx + 1, ty + 1);
     return ((a * (256 - fx) + b * fx) * (256 - fy) + (c * (256 - fx) + d * fx) * fy) >> 16;
 }
+static inline int gvar(int x, int y) {   // the outdoor floors' patchiness: stains, wear, sun-bleached bits (per corner, so neighbours agree)
+    int a = (int)(((u32)x * 73856093u ^ (u32)y * 19349663u) >> 28), b = (int)(((u32)(x >> 2) * 2654435761u ^ (u32)(y >> 2) * 40503u + 91) >> 27), c = (int)(((u32)(x >> 4) * 83492791u ^ (u32)(y >> 4) * 668265263u) >> 28);
+    return 214 + a + b + c;   // about 230..292 (256 is plain)
+}
 static void floor_tile(int mx, int my) {
     int fl = dfl[my][mx] % NFLOORS;
     const TexRef *t = &fl_tex[fl];
@@ -2024,6 +2032,9 @@ static void floor_tile(int mx, int my) {
             int L0 = ao_corner(mx, my, L), L1 = ao_corner(mx + 1, my, L), L2 = ao_corner(mx, my + 1, L), L3 = ao_corner(mx + 1, my + 1, L);
             gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)L0 * 0x010101u), gfx_grade_tex((u32)L1 * 0x010101u), gfx_grade_tex((u32)L2 * 0x010101u), gfx_grade_tex((u32)L3 * 0x010101u),
                          t->tpage, 0, u, v, u + 7, v + 7, 0);
+        } else if (fl == FL_GRASS) {   // (grass: a tint that wanders corner to corner, so a lawn is never one flat green)
+            int Lc[4]; for (int k = 0; k < 4; k++) Lc[k] = CLAMP(L * gvar(mx + (k & 1), my + (k >> 1)) >> 8, 20, 250);
+            gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)Lc[0] * 0x010101u), gfx_grade_tex((u32)Lc[1] * 0x010101u), gfx_grade_tex((u32)Lc[2] * 0x010101u), gfx_grade_tex((u32)Lc[3] * 0x010101u), t->tpage, 0, u, v, u + 7, v + 7, 0);
         } else gfx_emit_ft4(A, B, C, Dd, gfx_grade_tex((u32)L * 0x010101u), t->tpage, 0, u, v, u + 7, v, u, v + 7, u + 7, v + 7, 0, 0);
         return;
     }
@@ -2150,10 +2161,6 @@ static void nat_ground(u8 (*done)[MW], int x0, int x1, int y0, int y1) {   // th
     gfx_floor_pass = 0;
 }
 
-static inline int gvar(int x, int y) {   // the outdoor floors' patchiness: stains, wear, sun-bleached bits (per corner, so neighbours agree)
-    int a = (int)(((u32)x * 73856093u ^ (u32)y * 19349663u) >> 28), b = (int)(((u32)(x >> 2) * 2654435761u ^ (u32)(y >> 2) * 40503u + 91) >> 27), c = (int)(((u32)(x >> 4) * 83492791u ^ (u32)(y >> 4) * 668265263u) >> 28);
-    return 214 + a + b + c;   // about 230..292 (256 is plain)
-}
 static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), all the same floor: one quad
     int fl = dfl[my][mx] % NFLOORS;
     const TexRef *t = &fl_tex4[fl];
@@ -2171,7 +2178,7 @@ static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), 
             cc[0] = gfx_grade_tex((u32)ao_corner(mx, my, L) * 0x010101u); cc[1] = gfx_grade_tex((u32)ao_corner(mx + 2, my, L) * 0x010101u);
             cc[2] = gfx_grade_tex((u32)ao_corner(mx, my + 2, L) * 0x010101u); cc[3] = gfx_grade_tex((u32)ao_corner(mx + 2, my + 2, L) * 0x010101u);
         } else cc[0] = cc[1] = cc[2] = cc[3] = gfx_grade_tex((u32)L * 0x010101u);
-        if (fl >= FL_PAVING && fl != FL_WATER && fl != FL_ROCK && !FL_IS_ROAD(fl)) for (int k = 0; k < 4; k++) { int Lc = CLAMP(L * gvar(mx + 2 * (k & 1), my + 2 * (k >> 1)) >> 8, 20, 250); cc[k] = gfx_grade_tex((u32)Lc * 0x010101u); }
+        if ((fl >= FL_PAVING || fl == FL_GRASS) && fl != FL_WATER && fl != FL_ROCK && !FL_IS_ROAD(fl)) for (int k = 0; k < 4; k++) { int Lc = CLAMP(L * gvar(mx + 2 * (k & 1), my + 2 * (k >> 1)) >> 8, 20, 250); cc[k] = gfx_grade_tex((u32)Lc * 0x010101u); }
         SVECTOR s4[4] SVEC_ALIGN; s4[0] = sv[0]; s4[1] = sv[1]; s4[2] = sv[2]; s4[3] = sv[3];
         nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 1, t->tpage, 0, uv4, 0);
         return;
@@ -2182,7 +2189,7 @@ static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), 
                      t->tpage, 0, t->u, t->v, t->u + 31, t->v + 31, 0);
         return;
     }
-    if (fl >= FL_PAVING && fl != FL_WATER && fl != FL_ROCK && !FL_IS_ROAD(fl)) {   // (the streets and paving: a tint that wanders from corner to corner)
+    if ((fl >= FL_PAVING || fl == FL_GRASS) && fl != FL_WATER && fl != FL_ROCK && !FL_IS_ROAD(fl)) {   // (the streets and paving: a tint that wanders from corner to corner)
         int Lc[4]; for (int k = 0; k < 4; k++) Lc[k] = CLAMP(L * gvar(mx + 2 * (k & 1), my + 2 * (k >> 1)) >> 8, 20, 250);
         gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)Lc[0] * 0x010101u), gfx_grade_tex((u32)Lc[1] * 0x010101u), gfx_grade_tex((u32)Lc[2] * 0x010101u), gfx_grade_tex((u32)Lc[3] * 0x010101u), t->tpage, 0, t->u, t->v, t->u + 31, t->v + 31, 0);
         return;
