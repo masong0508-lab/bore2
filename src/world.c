@@ -91,7 +91,7 @@ static int ao_dirty = 1;
 int dbg_noao, dbg_nograd;   // the floor shading needs working out again (world_touched)
 u8 floorMap[MH][MW], wallMap[MH][MW];
 
-static TexRef fl_tex[NFLOORS];       // 16x16: the 8x8 pattern twice over
+static TexRef fl_tex[NFLOORS];       // 8x8 (the water: 16x16, the pattern twice over, so it can scroll)
 static TexRef fl_tex4[NFLOORS];      // 32x32: four tiles' worth, the checker shade of the odd tiles baked in (2x2 blocks of floor draw as one quad)
 #define PN_NOISE "01000200","00020010","20001000","00100020","01000100","00200001","10002000","00010200"
 // the outdoor floors BORE 2 adds: 16x16, 4 colours, hand drawn here
@@ -157,7 +157,7 @@ void world_season_skin(int season, int wet) {
     for (int i = FL_GRASS; i < NFLOORS; i++) {
         const Tex *t = floor_tex(i); u16 sc[4]; int r = 0, g = 0, b = 0;
         for (int k = 0; k < 4; k++) sc[k] = skin_c(i, fl_soft[i][k], season, wet);
-        for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) { u16 c = sc[t->p[y & 7][x & 7] - '0']; tb[y * 16 + x] = c ? c : 0x8000; }
+        { int sz = i == FL_WATER ? 16 : 8; for (int y = 0; y < sz; y++) for (int x = 0; x < sz; x++) { u16 c = sc[t->p[y & 7][x & 7] - '0']; tb[y * sz + x] = c ? c : 0x8000; } }
         atlas_upload(&fl_tex[i], tb);
         for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
             u16 c = sc[t->p[y & 7][x & 7] - '0'];
@@ -179,8 +179,9 @@ void world_init(void) {
     soften_floors();
     for (int i = 0; i < NFLOORS; i++) {
         const Tex *t = floor_tex(i);
-        for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) { u16 c = fl_soft[i][t->p[y & 7][x & 7] - '0']; tb[y * 16 + x] = c ? c : 0x8000; }
-        fl_tex[i] = atlas_add(16, 16, tb);
+        int sz = i == FL_WATER ? 16 : 8;   // (only the water scrolls, so only it needs the pattern twice over)
+        for (int y = 0; y < sz; y++) for (int x = 0; x < sz; x++) { u16 c = fl_soft[i][t->p[y & 7][x & 7] - '0']; tb[y * sz + x] = c ? c : 0x8000; }
+        fl_tex[i] = atlas_add(sz, sz, tb);
         for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
             u16 c = fl_soft[i][t->p[y & 7][x & 7] - '0'];
             int odd = ((x >> 3) + (y >> 3)) & 1, k = odd ? fl_odd[i] : 16;

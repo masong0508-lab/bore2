@@ -39,6 +39,9 @@ static void vram_load(const RECT *r, const void *data) {
 #define PAGES 4
 #define PAGE_X 640   // pages 0 and 1 are 256 wide at x=640; page 2 is the 128-wide strip at x=896
 static struct { int x, y, rowh; u16 tpage; int base_y; } pg[PAGES];
+#define MAXSH 64
+static struct { u16 y, h, x; } shl[PAGES][MAXSH]; static u8 nsh[PAGES];
+
 static int used; int atlas_fails, atlas_fail_wh;   // (the last texture that did not fit: w, h, the first page tried)
 u16 bfs_q[128 * 128];   // the largest texture we upload at once (wallpapers are 8x24, items up to 24x24); between uploads it is also
 #define upload_buf bfs_q   // sim.c's route-finding queue, the roof rebuild's, the build mode's room fill and the save's scratch (none of them
@@ -46,25 +49,44 @@ u16 bfs_q[128 * 128];   // the largest texture we upload at once (wallpapers are
 
 void atlas_init(void) {
     for (int i = 0; i < PAGES; i++) {
-        pg[i].x = 0; pg[i].y = 0; pg[i].rowh = 0;                  // (the strip has its top corner too: the SDK debug font is not loaded)
+        pg[i].x = 0; pg[i].y = 0; pg[i].rowh = 0; nsh[i] = 0;                  // (the strip has its top corner too: the SDK debug font is not loaded)
         pg[i].base_y = (i & 1) ? 256 : 0;
         pg[i].tpage = getTPage(2, 0, i < 2 ? PAGE_X : 896, (i & 1) ? 256 : 0);
     }
     used = 0;
 }
 
+// Shelves: each page is a stack of rows (a shelf is one row of one height). A new texture goes into the shelf whose height wastes least
+// (any page asked for), and only opens a new shelf when none has room: tiny textures no longer sit alone on tall rows.
 static TexRef alloc_in(int first, int last, int w, int h, int count) {
     TexRef t = { 0, 0, 0, 0, 0 };
     int aw = (w + 1) & ~1;              // even widths: the transfer is in words
+    int bp = -1, bs = -1, bw = 9999;
+    for (int i = first; i <= last; i++) {
+        int pw = i < 2 ? 256 : 128;
+        if (w > pw) continue;
+        for (int k = 0; k < nsh[i]; k++) {
+            int sw = shl[i][k].h - h;
+            if (sw >= 0 && sw < bw && shl[i][k].x + aw <= pw) { bw = sw; bp = i; bs = k; }
+        }
+    }
+    if (bp >= 0 && bw <= h + 2) {       // a snug shelf (not a 2-high texture on a 32-high row)
+        t.tpage = pg[bp].tpage; t.u = (u8)shl[bp][bs].x; t.v = (u8)shl[bp][bs].y; t.w = (u8)w; t.h = (u8)h; t.cap = (u8)w;
+        shl[bp][bs].x += aw + 1; used += aw * h;
+        return t;
+    }
     for (int i = first; i <= last; i++) {
         int pw = i < 2 ? 256 : 128, ph = 256;
-        if (w > pw) continue;
-        if (pg[i].x + aw + 1 > pw) { pg[i].x = 0; pg[i].y += pg[i].rowh + 1; pg[i].rowh = 0; }
-        if (pg[i].y + h + 1 > ph) continue;
-        t.tpage = pg[i].tpage; t.u = (u8)pg[i].x; t.v = (u8)pg[i].y; t.w = (u8)w; t.h = (u8)h; t.cap = (u8)w;
-        pg[i].x += aw + 1;
-        if (h > pg[i].rowh) pg[i].rowh = h;
-        used += aw * h;
+        if (w > pw || nsh[i] >= MAXSH || pg[i].y + h + 1 > ph) continue;
+        int k = nsh[i]++;
+        shl[i][k].y = (u16)pg[i].y; shl[i][k].h = (u16)h; shl[i][k].x = (u16)(aw + 1);
+        t.tpage = pg[i].tpage; t.u = 0; t.v = (u8)pg[i].y; t.w = (u8)w; t.h = (u8)h; t.cap = (u8)w;
+        pg[i].y += h + 1; used += aw * h;
+        return t;
+    }
+    if (bp >= 0) {                      // no room for a new shelf: the loose fit is better than nothing
+        t.tpage = pg[bp].tpage; t.u = (u8)shl[bp][bs].x; t.v = (u8)shl[bp][bs].y; t.w = (u8)w; t.h = (u8)h; t.cap = (u8)w;
+        shl[bp][bs].x += aw + 1; used += aw * h;
         return t;
     }
     if (count) { atlas_fail_wh = (w << 16) | (h << 4) | first; atlas_fails++; }   // (no printf here: a texture that does not fit is simply not drawn, and the console is slow)
@@ -104,10 +126,12 @@ TexRef atlas_add_aligned(int w, int h, int a, const u16 *pixels) {   // u and v 
     TexRef t = { 0, 0, 0, 0, 0 };
     for (int i = 0; i < PAGES; i++) {
         int pw = i < 2 ? 256 : 128;
-        int x = (pg[i].x + a - 1) / a * a, y = pg[i].y;
-        if (y % a || x + w > pw) { y = (pg[i].y + pg[i].rowh + 1 + a - 1) / a * a; x = 0; if (y + h > 256) continue; pg[i].y = y; pg[i].rowh = 0; }
-        t.tpage = pg[i].tpage; t.u = (u8)x; t.v = (u8)y; t.w = (u8)w; t.h = (u8)h; t.cap = (u8)w;
-        pg[i].x = x + ((w + 1) & ~1) + 1; if (h > pg[i].rowh) pg[i].rowh = h;
+        int y = (pg[i].y + a - 1) / a * a;
+        if (w > pw || y + h > 256 || nsh[i] >= MAXSH) continue;
+        int k = nsh[i]++;
+        shl[i][k].y = (u16)y; shl[i][k].h = (u16)h; shl[i][k].x = (u16)(((w + 1) & ~1) + 1);
+        pg[i].y = y + h + 1;
+        t.tpage = pg[i].tpage; t.u = 0; t.v = (u8)y; t.w = (u8)w; t.h = (u8)h; t.cap = (u8)w;
         used += ((w + 1) & ~1) * h;
         atlas_upload(&t, pixels);
         return t;

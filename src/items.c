@@ -258,7 +258,7 @@ static ItemDef defs[] = {   // (not const: items_init sets some of them to life 
     { 'T', "TOILET", bxToilet, 3, 0, 0, F_ROT, 300 },
     { '=', "RAIL", bxRailU, 3, bxRailV, 3, F_ALONG, 80 },
     { 'L', "LEDGE", bxLedgeU, 1, bxLedgeV, 1, F_ALONG, 60 },
-    { 'N', "BENCH", bxBenchU, 3, bxBenchV, 3, F_ALONG, 120 },
+    { 'N', "BENCH", bxH12, 6, bxHV12, 6, F_ALONG, 120 },
     { 'J', "JERSEY", bxJerseyU, 3, bxJerseyV, 3, F_ALONG, 60 },
     { 'X', "FUNBOX", bxFunbox, 1, 0, 0, F_HIGH, 200 },
     { 'O', "BARREL", bxBarrel, 1, 0, 0, 0, 30 },
@@ -385,7 +385,7 @@ static TexRef mat_ref(const Mat *m) {
     return t;
 }
 // every box face's texture, resolved once: box_ref[box][face] is its material + 1 in mat_tex (0: no face there)
-#define MAXBOX 768
+#define MAXBOX 832
 static u16 box_ref[MAXBOX][5];
 static s16 box_base[NDEFS][2];     // first box index of each def's main / along-y boxes
 static int nbox;
