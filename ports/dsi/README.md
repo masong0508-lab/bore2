@@ -90,3 +90,11 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 
 ## D20 - 400 items per lot
 - Up to 400 items per lot (was 96). Sims are drawn first, then items; far items are skipped when the DS polygon budget (about 1500 quads) runs out, so a crowded yard never makes sims or the player's view disappear.
+
+## D21 - fences on edges, elder death, real shops and parks, options
+- Build > Wall tool: a 6th palette colour draws a FENCE on cell edges (drag like walls). Fences block walking; doors still open.
+- Elders (80+) can pass away; a statue marks the spot, the household closes up (never the last adult).
+- Non-home lots are real places: parks, squares, farms and wild land are open yards with benches, lamp posts, flowers, hedges; shops, diners, schools, clinics and the rest are one open hall with fitting furniture.
+- Options 3 pages: Sim style (Classic / Sims 3 / Chunky body proportions), Poly meter (quads used of ~1500), Fog.
+- Cushions on the sofa and armchair.
+- NOT done: saving. The build has no SD file system (libfat/DLDI cannot be built or tested in this toolchain).
