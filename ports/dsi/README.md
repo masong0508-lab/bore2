@@ -107,3 +107,9 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 - Saved: sims, funds, time, relationships, options, and the lots you built (current lot first; oldest lots are dropped only if the chip is full).
 - Needs a save chip: the ROM header is now a normal cart header (gamecode BR2D). If your flashcart/emulator gives no save, the title says "No save chip found".
 - Emulator test: tools/dsemu/run.cpp keeps a save file when BORE_SAV=file is set.
+
+## D23 - Bigger saves
+- Remembers and saves up to 48 lots (was 6).
+- The game detects an 8 KB or 64 KB save chip. 64 KB holds about 10x more (8 KB chips keep the newest lots first, as before).
+- Lifetime stats saved: days played, births, losses (shown on the title).
+- 64 KB path is untested in the emulator (it only offers 8 KB); the 8 KB path is tested.
