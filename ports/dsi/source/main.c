@@ -229,7 +229,7 @@ static int camx, camz, door_cx, door_cy;
 static int gframes, cam_on, cam_pan, cam_free, live_pitch = 4300, cam_deff = 9000, bb_yaw = 3000, bb_pitch = 3900, bb_dist = 12500, cam_lx, cam_ly, cam_drag;
 static void sim3d(int i, int yaw);
 typedef struct { u8 x, y, c, i, rot; } Obj;
-static Obj objs[96]; static int nobj, funds = 20000;
+static Obj objs[400]; static int nobj, funds = 20000;
 static u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1];     // floors (0 none, else 1..5), walls on the cell edges (0 none, else 1..4)
 static int mode = M_MAP, cat, pick = -1, pcx = 6, pcy = 6, prot, tool, pal, lot_bx = -1, lot_by = -1, cam = 3000, pitch = 3200, msg_t;
 static const char *msg = "";
@@ -300,7 +300,7 @@ static void lot_reset(void) {
         for (int n = 0; n < 6; n++) { m->need[n] = 90 - (n * 17 + i * 11) % 60; m->acc[n] = 0; } m->rel = 0; for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0; if (i) { m->skin = (u8)(i * 2); m->hair = (u8)(i); m->hcol = (u8)(i * 2); m->shirt = (u8)(i + 2); m->hair = (u8)(6 + i * 2); m->beard = (u8)(i == 1 ? 3 : 0); m->fc = (u8)i; } }
 }
 
-typedef struct { int bx, by, nobj, pcx, pcy, dcx, dcy; u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1]; Obj objs[96]; } LotSave;
+typedef struct { int bx, by, nobj, pcx, pcy, dcx, dcy; u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1]; Obj objs[400]; } LotSave;
 static LotSave lsv[6]; static int lsv_n, lsv_next;
 static void lot_save(void) { if (lot_bx < 0) return; int k = -1; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) k = i; if (k < 0) { if (lsv_n < 6) k = lsv_n++; else { k = lsv_next; lsv_next = (lsv_next + 1) % 6; } }
     LotSave *q = &lsv[k]; q->bx = lot_bx; q->by = lot_by; q->nobj = nobj; q->pcx = pcx; q->pcy = pcy; q->dcx = door_cx; q->dcy = door_cy; memcpy(q->flr, flr, sizeof flr); memcpy(q->hwl, hwl, sizeof hwl); memcpy(q->vwl, vwl, sizeof vwl); memcpy(q->objs, objs, sizeof objs); }
@@ -372,7 +372,7 @@ static u8 *edge_at(int tx, int ty) {   // the wall slot nearest the stylus
 }
 static void place_here(void) {
     if (obj_at(pcx, pcy) >= 0) { say("Something is there"); return; }
-    if (nobj >= 48) { say("Lot is full"); return; }
+    if (nobj >= 400) { say("Lot is full"); return; }
     if (funds < ITEMS[cat][pick].price) { say("Not enough funds"); pick = -1; return; }
     funds -= ITEMS[cat][pick].price; objs[nobj].x = (u8)pcx; objs[nobj].y = (u8)pcy; objs[nobj].c = (u8)cat; objs[nobj].i = (u8)pick; objs[nobj].rot = (u8)prot; nobj++; say("Bought"); ui_ver++;
 }
@@ -597,8 +597,10 @@ static void draw_build(int yaw) {
         int through0 = x > 0 && x < GN && hwl[y][x - 1] && hwl[y][x], through1 = x > 0 && x < GN && e <= GN && hwl[e][x - 1] && hwl[e][x];
         int mx = tl(x * 2), mz = (tl(y * 2) + tl(e * 2)) / 2; int near = (int)((mx - tx0) * -sn + (mz - tz0) * cs) > 2000;
         wall_seg(tl(x * 2) - th, tl(y * 2) - (through0 ? -6 : th + 12), tl(x * 2) + th, tl(e * 2) + (through1 ? -6 : th + 12), v, 1, near ? whl : whf); y = e - 1; }
-    int p0 = polys; for (int i = 0; i < nobj; i++) obj3d(objs[i].x, objs[i].y, &ITEMS[objs[i].c][objs[i].i], objs[i].rot, 0);
-    int p1 = polys; for (int i = 0; i < nsim; i++) sim3d(i, yaw);
+    for (int i = 0; i < nsim; i++) sim3d(i, yaw);   // sims first: they always get their polygons
+    for (int i = 0; i < nobj; i++) {   // then the items, nearest the camera first in budget terms: far ones are skipped when the DS runs out of polygons
+        if (mode == M_LIVE) { int ox2 = tl(objs[i].x * 2) - camx, oz2 = tl(objs[i].y * 2) - camz; if (abs(ox2) + abs(oz2) > 9000 && polys > 1800) continue; if (polys > 2900) continue; }
+        obj3d(objs[i].x, objs[i].y, &ITEMS[objs[i].c][objs[i].i], objs[i].rot, 0); }
     if (mode == M_LIVE) { draw_city(); draw_far_all(yaw); }
     if (mode == M_LIVE && mark_t > 0) { ground(tl(mark_x * 2), tl(mark_y * 2), tl(mark_x * 2 + 2), tl(mark_y * 2 + 2), -60, C15(31, 31, 12)); mark_t--; }
     if (mode == M_BUY || mode == M_BUILD) {   // the cursor

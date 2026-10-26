@@ -87,3 +87,6 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 
 ## D19 - Yard category
 - New Yard tab: Fence (turn it to run either way), Lamp Post, Hedge, Flowers. Place them anywhere on the plot; up to 96 items per lot (was 48), remembered per lot.
+
+## D20 - 400 items per lot
+- Up to 400 items per lot (was 96). Sims are drawn first, then items; far items are skipped when the DS polygon budget (about 1500 quads) runs out, so a crowded yard never makes sims or the player's view disappear.
