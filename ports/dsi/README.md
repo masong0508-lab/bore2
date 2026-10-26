@@ -38,3 +38,6 @@ Known: the bottom-screen HUD overlay (map button, icons, menus) may not show yet
 
 ## D4: fixes and polish
 Bottom-screen HUD layer fixed (VRAM bank D mapping); tap picking checked (a tap marks the cell it hit); nicer proportional text (libnds 8x8 font with shadow, title case); refined blocky heads and sims (bevelled, gradient-lit boxes, eyes with iris/pupil/highlight, brows, nose, lips, ears, layered hair); Create-a-Sim camera framed.
+
+## D5: Create-a-Sim styles
+Back to the flat-coloured chunky look (no gradients). Six tabs: Hair (12 styles, 2 pages), Color, Face (classic, round, long, big eyes, sleepy, freckles), Beard (none, stubble, mustache, goatee, beard, long), Skin, Shirt. Portraits and the 3D head and in-lot sims all follow the choices.

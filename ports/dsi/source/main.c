@@ -155,13 +155,15 @@ static Obj objs[48]; static int nobj, funds = 20000;
 static u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1];     // floors (0 none, else 1..5), walls on the cell edges (0 none, else 1..4)
 static int mode = M_MAP, cat, pick = -1, pcx = 6, pcy = 6, prot, tool, pal, lot_bx = -1, lot_by = -1, cam = 3000, pitch = 3200, msg_t;
 static const char *msg = "";
-typedef struct { int x, y, tx, ty, need[6], acc[6], act, act_left, act_amt, act_obj, face, rel, dirn; u8 skin, hair, hcol, shirt; } Sim;   // x, y in 1/16 cells; needs 0..100: hunger, fun, energy, social, bladder, hygiene
+typedef struct { int x, y, tx, ty, need[6], acc[6], act, act_left, act_amt, act_obj, face, rel, dirn; u8 skin, hair, hcol, shirt, beard, fc; } Sim;   // x, y in 1/16 cells; needs 0..100: hunger, fun, energy, social, bladder, hygiene
 static Sim sims[3]; static int cur_sim, minutes = 11 * 60 + 40;
 static const char *const SNAME[3] = { "Ashley Newbie", "Ronald Bacon", "Kit Farlow" };
 static const u16 SKINC[6] = { C15(30, 24, 20), C15(27, 20, 15), C15(22, 15, 10), C15(16, 10, 6), C15(11, 7, 4), C15(29, 22, 17) };
 static const u16 HAIRC[6] = { C15(3, 3, 4), C15(14, 8, 4), C15(26, 20, 8), C15(24, 8, 4), C15(24, 24, 24), C15(10, 14, 28) };
 static const u16 SHIRTC[6] = { C15(26, 26, 26), C15(24, 8, 8), C15(8, 14, 26), C15(8, 22, 10), C15(28, 22, 8), C15(16, 8, 22) };
-static const char *const HAIRN[6] = { "Short", "Bob", "Spikes", "Long", "Braids", "Bald" };
+static const char *const HAIRN[12] = { "Short", "Bob", "Spikes", "Long", "Braids", "Bald", "Buzz", "Mohawk", "Afro", "Ponytail", "Fringe", "Pigtails" };
+static const char *const BEARDN[6] = { "None", "Stubble", "Mustache", "Goatee", "Beard", "Long" };
+static const char *const FACEN[6] = { "Classic", "Round", "Long", "Big Eyes", "Sleepy", "Freckles" };
 static void say(const char *m) { msg = m; msg_t = 90; }
 static int obj_at(int x, int y) { for (int i = 0; i < nobj; i++) if (objs[i].x == x && objs[i].y == y) return i; return -1; }
 static void lot_reset(void) {
@@ -172,7 +174,7 @@ static void lot_reset(void) {
     static const u8 st2[][5] = { {4, 5, 4, 0, 0}, {6, 5, 2, 0, 2}, {8, 5, 2, 3, 0}, {4, 8, 0, 2, 1}, {9, 8, 4, 2, 0}, {9, 6, 4, 1, 0} };
     (void)st; for (int i = 0; i < 6; i++) { objs[nobj].x = st2[i][0]; objs[nobj].y = st2[i][1]; objs[nobj].c = st2[i][2]; objs[nobj].i = st2[i][3]; objs[nobj].rot = st2[i][4]; nobj++; }
     for (int i = 0; i < 3; i++) { Sim *m = &sims[i]; m->x = (6 + i) * 16; m->y = 11 * 16; m->tx = m->x; m->ty = m->y; m->act = -1; m->act_left = 0;
-        for (int n = 0; n < 6; n++) { m->need[n] = 90 - (n * 17 + i * 11) % 60; m->acc[n] = 0; } m->rel = 0; if (i) { m->skin = (u8)(i * 2); m->hair = (u8)(i); m->hcol = (u8)(i * 2); m->shirt = (u8)(i + 2); } }
+        for (int n = 0; n < 6; n++) { m->need[n] = 90 - (n * 17 + i * 11) % 60; m->acc[n] = 0; } m->rel = 0; if (i) { m->skin = (u8)(i * 2); m->hair = (u8)(i); m->hcol = (u8)(i * 2); m->shirt = (u8)(i + 2); m->hair = (u8)(6 + i * 2); m->beard = (u8)(i == 1 ? 3 : 0); m->fc = (u8)i; } }
 }
 static void bar(int x, int y, int w, int v, u16 c) { rect(x, y, w, 6, C15(4, 4, 6)); rect(x + 1, y + 1, (w - 2) * v / 100, 4, c); }
 static void button(int x, int y, int w, int h, const char *t, u16 c, int on) {
@@ -290,7 +292,7 @@ static const Act ACT[5][4] = {
     { {"Look", 1, 3, 30}, {"Look", 1, 3, 30}, {"Water", 1, 10, 60}, {"Admire", 1, 15, 60} },
     { {"Sleep", 2, 90, 240}, {"Bathe", 5, 90, 180}, {"Use", 4, 95, 100}, {"Wash", 5, 30, 80} } };
 static const char *const NEEDN[6] = { "Hunger", "Fun", "Energy", "Social", "Bladder", "Hygiene" };
-static int menu_open, popup, popup_i, speed = 1, yaw_t = 4096, live_yaw = 4096, live_dist = 7000, camx, camz, cas_tab, cas_done, cas_stage;
+static int menu_open, popup, popup_i, speed = 1, yaw_t = 4096, live_yaw = 4096, live_dist = 7000, camx, camz, cas_tab, cas_done, cas_stage, cas_page;
 static const u16 BG_L = C15(18, 25, 31), PAN = C15(8, 16, 28), PANB = C15(2, 7, 20), PANH = C15(5, 12, 26), TXT = C15(31, 31, 31);
 
 static void panel(int x, int y, int w, int h, const char *title) {
@@ -306,19 +308,40 @@ static void ellf(int cx, int cy, int rx, int ry, u16 c) {   // a filled oval
     if (rx < 1 || ry < 1) return;
     for (int y = -ry; y <= ry; y++) { int hw = isq(rx * rx * (ry * ry - y * y) / (ry * ry)); rect(cx - hw, cy + y, 2 * hw + 1, 1, c); }
 }
-static void face(int x, int y, int sz, const Sim *m) {   // a head and shoulders portrait, sz pixels square
-    rect(x, y, sz, sz, C15(22, 22, 24)); int u = sz / 8;
-    rect(x + u, y + sz - 2 * u, sz - 2 * u, 2 * u, SHIRTC[m->shirt]);
-    rect(x + 2 * u, y + 2 * u, 4 * u, 5 * u, SKINC[m->skin]);
-    u16 hc = HAIRC[m->hcol];
-    switch (m->hair) {
-        case 0: rect(x + 2 * u, y + u, 4 * u, u + u / 2, hc); rect(x + u + u / 2, y + 2 * u, u, 2 * u, hc); break;
-        case 1: rect(x + u + u / 2, y + u, 5 * u, 2 * u, hc); break;
-        case 2: for (int k = 0; k < 4; k++) rect(x + 2 * u + k * u, y + u / 2, u / 2 + 1, 2 * u, hc); rect(x + 2 * u, y + 2 * u, 4 * u, u / 2, hc); break;
-        case 3: rect(x + u + u / 2, y + u, 5 * u, 2 * u, hc); rect(x + u + u / 2, y + 3 * u, u, 4 * u, hc); rect(x + 6 * u + u / 2, y + 3 * u, u, 4 * u, hc); break;
-        case 4: rect(x + 2 * u, y + u + u / 2, 4 * u, u, hc); for (int k = 0; k < 4; k++) rect(x + 2 * u + k * u, y + 2 * u, u / 2 + 1, 3 * u, hc); break;
-        default: break; }
-    rect(x + 3 * u, y + 4 * u, u / 2 + 1, u / 2 + 1, C15(2, 2, 3)); rect(x + 5 * u, y + 4 * u, u / 2 + 1, u / 2 + 1, C15(2, 2, 3)); rect(x + 3 * u + u / 2, y + 6 * u, 2 * u, u / 2 + 1, C15(20, 6, 6));
+static void face(int x, int y, int sz, const Sim *m) {   // a head and shoulders portrait: flat colours, small crisp details
+    int u = sz / 16; if (u < 1) u = 1; int cx = x + sz / 2;
+    u16 sk = SKINC[m->skin], hc = HAIRC[m->hcol], sh = SHIRTC[m->shirt], skd = shade(sk, 6);
+    rect(x, y, sz, sz, C15(22, 22, 24));
+    rect(x + u, y + 13 * u, 14 * u, sz - 13 * u, sh); rect(x + u, y + 13 * u, 14 * u, u, shade(sh, 6));          // shoulders
+    rect(cx - 2 * u, y + 11 * u, 4 * u, 3 * u, skd);                                                            // neck
+    int hw = (m->fc == 1 ? 5 : 4) * u, ht = (m->fc == 2 ? 10 : 9) * u, hx = cx - hw, hy = y + 2 * u + (m->fc == 2 ? 0 : u);
+    int st = m->hair;
+    if (st == 8) rect(cx - 7 * u, hy - 2 * u, 14 * u, 9 * u, shade(hc, 7));                                     // afro, behind
+    if (st == 3 || st == 1 || st == 11) rect(hx - u, hy + u, 2 * hw + 2 * u, ht - u * (st == 1 ? 3 : 0) + (st == 3 ? 4 * u : 0), shade(hc, 7));
+    if (st == 9) rect(cx - u, hy + 2 * u, 2 * u, 9 * u, shade(hc, 7));
+    rect(hx, hy, 2 * hw, ht, sk); rect(hx, hy + ht - u, 2 * hw, u, skd); rect(hx - u, hy + 3 * u, u, 2 * u, skd); rect(hx + 2 * hw, hy + 3 * u, u, 2 * u, skd);   // head and ears
+    if (m->hair != 5) {
+        if (st == 7) { rect(cx - u, hy - 2 * u, 2 * u, 4 * u, hc); rect(hx, hy, 2 * hw, u, shade(hc, 8)); }
+        else if (st == 6) rect(hx, hy, 2 * hw, u + u / 2, hc);
+        else { rect(hx - (st == 8 ? u : 0), hy - u, 2 * hw + (st == 8 ? 2 * u : 0), 3 * u, hc); rect(hx, hy + 2 * u, u, 3 * u, hc); rect(hx + 2 * hw - u, hy + 2 * u, u, 3 * u, hc); }
+        if (st == 2) for (int k = 0; k < 5; k++) rect(hx + k * (2 * hw - u) / 4, hy - 3 * u, u, 2 * u, hc);
+        if (st == 4) { for (int k = 0; k < 5; k++) rect(hx + k * (2 * hw - u) / 4, hy - 2 * u, u, 2 * u, shade(hc, 7)); rect(hx - u, hy + 3 * u, u, 6 * u, hc); rect(hx + 2 * hw, hy + 3 * u, u, 6 * u, hc); }
+        if (st == 10) rect(hx, hy + 2 * u, 2 * hw, u, hc);
+        if (st == 11) { rect(hx - 3 * u, hy + 3 * u, 3 * u, 7 * u, hc); rect(hx + 2 * hw, hy + 3 * u, 3 * u, 7 * u, hc); }
+        if (st == 3) { rect(hx - u, hy + 3 * u, 2 * u, 9 * u, hc); rect(hx + 2 * hw - u, hy + 3 * u, 2 * u, 9 * u, hc); } }
+    int ey = hy + (m->fc == 2 ? 4 : 3) * u + u; int er = m->fc == 3 ? 2 : 1;
+    rect(cx - 3 * u, ey, 2 * u, u * er, C15(31, 31, 31)); rect(cx + u, ey, 2 * u, u * er, C15(31, 31, 31));
+    rect(cx - 2 * u, ey, u, u * er, C15(5, 3, 2)); rect(cx + u + u / 2, ey, u, u * er, C15(5, 3, 2));
+    if (m->fc == 4) { rect(cx - 3 * u, ey, 2 * u, u / 2 + 1, skd); rect(cx + u, ey, 2 * u, u / 2 + 1, skd); }
+    rect(cx - 3 * u, ey - u, 2 * u, 1, shade(hc, 6)); rect(cx + u, ey - u, 2 * u, 1, shade(hc, 6));
+    rect(cx - u / 2, ey + 2 * u, u, 2 * u, skd);
+    if (m->fc == 5) for (int k = 0; k < 3; k++) { px(cx - 3 * u + k * u, ey + 3 * u, shade(sk, 5)); px(cx + u + k * u, ey + 3 * u, shade(sk, 5)); }
+    int my = ey + 5 * u;
+    if (m->beard == 1) rect(hx, my - u, 2 * hw, hy + ht - my + u, lit(sk, 11));
+    if (m->beard >= 4) rect(hx, my - 2 * u, 2 * hw, hy + ht - my + 2 * u + (m->beard == 5 ? 3 * u : 0), shade(hc, 8));
+    if (m->beard == 2 || m->beard == 3) rect(cx - 3 * u, my - u, 6 * u, u, shade(hc, 8));
+    if (m->beard == 3) rect(cx - u, my + u, 2 * u, 2 * u, shade(hc, 8));
+    rect(cx - u * 3 / 2, my, 3 * u, u, C15(22, 7, 8));
 }
 static int mood(const Sim *m) { int s = 0; for (int n = 0; n < 6; n++) s += m->need[n]; return s / 6; }
 static u16 need_col(int v) { return v > 55 ? C15(8, 26, 8) : v > 28 ? C15(28, 24, 6) : C15(30, 8, 6); }
@@ -492,69 +515,101 @@ static void gbox(int x0, int u0, int z0, int x1, int u1, int z1, u16 c, int ti, 
     gq(tx0, u1, tz1, tx1, u1, tz1, tx1, u1, tz0, tx0, u1, tz0, c, 16, 16);   // top
 }
 static void flat(int x0, int u0, int x1, int u1, int z, u16 c, int k) { gq(x0, u0, z, x1, u0, z, x1, u1, z, x0, u1, z, c, k, k); }   // a quad on the front
+// flat-coloured chunky models (u is up): bx a box, fq a quad on the front
+static void bx(int x0, int u0, int z0, int x1, int u1, int z1, u16 c) { block(x0, z0, x1, z1, -u0, -u1, c, shade(c, 10)); }
+static void fq(int x0, int u0, int x1, int u1, int z, u16 c) { qd(x0, -u0, z, x1, -u0, z, x1, -u1, z, x0, -u1, z, c); }
+static void hair3d(int st, u16 hc, int hw, int ht) {   // the head is x +-hw, z +-hw, u 0..ht
+    int hz = hw, top = ht;
+    if (st == 5) return;
+    if (st == 7) { bx(-100, top - 30, -hz - 40, 100, top + 650, hz + 40, hc); bx(-hw - 30, top - 80, -hz - 30, hw + 30, top + 10, hz + 30, shade(hc, 6)); return; }
+    if (st == 6) { bx(-hw - 30, top - 120, -hz - 30, hw + 30, top + 60, hz + 30, hc); return; }
+    if (st == 8) { bx(-hw - 260, top - 500, -hz - 240, hw + 260, top + 650, hz + 220, hc); bx(-hw - 120, top + 650, -hz - 120, hw + 120, top + 800, hz + 100, hc); return; }
+    bx(-hw - 60, top - 80, -hz - 60, hw + 60, top + 380, hz + 50, hc);                              // the cap
+    bx(-hw - 60, top - 600, -hz - 60, hw + 60, top - 70, -hz + 260, hc);                            // the back
+    bx(-hw - 70, top - 560, -hz, -hw + 10, top - 70, hz - 500, hc); bx(hw - 10, top - 560, -hz, hw + 70, top - 70, hz - 500, hc);   // sideburns
+    if (st == 1) { bx(-hw - 80, top - 1000, -hz - 70, hw + 80, top - 590, hz - 300, hc); }
+    if (st == 3) { bx(-hw - 70, -400, -hz - 70, hw + 70, top - 580, -hz + 280, hc); bx(-hw - 100, -300, -300, -hw, top - 600, hz - 300, hc); bx(hw, -300, -300, hw + 100, top - 600, hz - 300, hc); }
+    if (st == 2) for (int k = 0; k < 7; k++) for (int q = 0; q < 2; q++) bx(-hw + 30 + k * (2 * hw - 200) / 6, top + 370, -hz + 100 + q * (2 * hz - 300), -hw + 130 + k * (2 * hw - 200) / 6, top + 760 - ((k + q) & 1) * 170, -hz + 220 + q * (2 * hz - 300), hc);
+    if (st == 4) { for (int k = 0; k < 5; k++) bx(-hw + 20 + k * (2 * hw - 140) / 4, top + 370, -hz + 40, -hw + 130 + k * (2 * hw - 140) / 4, top + 700, hz - 40, shade(hc, 7));
+                   for (int sd = -1; sd <= 1; sd += 2) for (int p = 0; p < 3; p++) bx(sd * (hw + 60) - 40 + (sd > 0 ? 0 : 0), top - 650 - p * 330, 120, sd * (hw + 60) + 40, top - 330 - p * 330, 220, lit(hc, 12 - p)); }
+    if (st == 9) { bx(-90, top - 300, -hz - 200, 90, top + 100, -hz, hc); bx(-80, top - 1200, -hz - 280, 80, top - 250, -hz - 100, hc); }
+    if (st == 10) bx(-hw - 60, top - 330, hz - 120, hw + 60, top + 200, hz + 90, hc);
+    if (st == 11) for (int sd = -1; sd <= 1; sd += 2) { bx(sd * (hw + 360) - 140, top - 400, -140, sd * (hw + 360) + 140, top + 20, 140, hc); bx(sd * (hw + 360) - 90, top - 1100, -90, sd * (hw + 360) + 90, top - 390, 90, hc); }
+}
+static void beard3d(int bd, u16 hc, u16 sk, int hw, int hz) {
+    if (bd == 1) fq(-hw + 60, 60, hw - 60, 560, hz + 4, lit(sk, 10));
+    if (bd >= 4) { bx(-hw - 20, bd == 5 ? -650 : -60, -hz + 40, hw + 20, 520, hz + 70, hc); }
+    if (bd == 2 || bd == 3) fq(-260, 540, 260, 650, hz + 8, hc);
+    if (bd == 3) bx(-170, 20, hz - 80, 170, 480, hz + 70, hc);
+}
 static void sim3d(int i, int yaw) {
     const Sim *m = &sims[i]; (void)yaw;
     int x = m->x * 2 * T / 16 - GN * T + T, z = m->y * 2 * T / 16 - GN * T + T;
     gox = x; goy = 0; goz = z; gcs = cosLerp(m->dirn); gsn = sinLerp(m->dirn);
-    u16 sk = SKINC[m->skin], hc = HAIRC[m->hcol], sh = SHIRTC[m->shirt], pants = C15(6, 7, 12);
-    gbox(-110, 0, -70, -10, 330, 80, pants, 0, 0); gbox(10, 0, -70, 110, 330, 80, pants, 0, 0);          // legs
-    gbox(-140, 330, -90, 140, 640, 90, sh, 20, 0);                                                      // body
-    gbox(-190, 380, -50, -140, 620, 50, sk, 0, 0); gbox(140, 380, -50, 190, 620, 50, sk, 0, 0);         // arms
-    gbox(-110, 640, -100, 110, 860, 100, sk, 10, 12);                                                   // head
-    if (m->hair != 5) { gbox(-125, 790, -112, 125, 900, 112, hc, 18, 0); gbox(-125, 700, -112, 125, 800, -50, hc, 0, 0);
-        if (m->hair == 3) gbox(-125, 560, -118, 125, 800, -60, hc, 0, 0);
-        if (m->hair == 2) for (int k = -1; k <= 1; k++) gbox(k * 80 - 30, 890, -30, k * 80 + 30, 990, 30, hc, 12, 0); }
-    flat(-70, 760, -30, 800, 101, C15(31, 31, 31), 15); flat(30, 760, 70, 800, 101, C15(31, 31, 31), 15); flat(-58, 764, -42, 794, 102, C15(2, 1, 3), 14); flat(42, 764, 58, 794, 102, C15(2, 1, 3), 14);
-    flat(-30, 690, 30, 708, 101, C15(22, 7, 8), 14);
-    if (i == cur_sim) { int py = 1010; gbox(-40, py, -40, 40, py + 130, 40, C15(6, 30, 6), 28, 0); gbox(-40, py - 100, -40, 40, py, 40, C15(5, 24, 5), 0, 28); }   // the plumbob
+    // little models need a transform: we emit through block()/qd(), which do not rotate, so the sims here are drawn facing the camera's axes
+    u16 sk = SKINC[m->skin], hc = HAIRC[m->hcol], sh = SHIRTC[m->shirt];
+    int hw = 100, ht = 200, base = 630;
     gox = goy = goz = 0; gcs = 4096; gsn = 0;
+    #define OFS(v) (v)
+    bx(x - 100, 0, z - 60, x - 10, 320, z + 70, C15(6, 7, 12)); bx(x + 10, 0, z - 60, x + 100, 320, z + 70, C15(6, 7, 12));
+    bx(x - 135, 320, z - 85, x + 135, 630, z + 85, sh); bx(x - 185, 360, z - 50, x - 135, 610, z + 50, sk); bx(x + 135, 360, z - 50, x + 185, 610, z + 50, sk);
+    bx(x - hw, base, z - hw, x + hw, base + ht, z + hw, sk);
+    { u16 hcc = hc; int st = m->hair; if (st != 5) { bx(x - hw - 25, base + ht - 70, z - hw - 25, x + hw + 25, base + ht + 60, z + hw + 25, hcc); bx(x - hw - 25, base + ht - 150, z - hw - 25, x + hw + 25, base + ht - 60, z - 20, hcc);
+        if (st == 3 || st == 1 || st == 11 || st == 9) bx(x - hw - 25, base + ht - 330, z - hw - 25, x + hw + 25, base + ht - 150, z - 20, hcc);
+        if (st == 8) bx(x - hw - 90, base + ht - 100, z - hw - 90, x + hw + 90, base + ht + 190, z + hw + 70, hcc);
+        if (st == 2) for (int k = -1; k <= 1; k++) bx(x + k * 70 - 25, base + ht + 60, z - 25, x + k * 70 + 25, base + ht + 170, z + 25, hcc);
+        if (st == 7) bx(x - 25, base + ht + 60, z - hw, x + 25, base + ht + 210, z + hw, hcc); } }
+    fq(x - 70, base + 100, x - 25, base + 150, z + hw + 2, C15(31, 31, 31)); fq(x + 25, base + 100, x + 70, base + 150, z + hw + 2, C15(31, 31, 31));
+    fq(x - 52, base + 104, x - 32, base + 146, z + hw + 3, C15(3, 2, 2)); fq(x + 32, base + 104, x + 52, base + 146, z + hw + 3, C15(3, 2, 2));
+    fq(x - 30, base + 30, x + 30, base + 50, z + hw + 2, C15(22, 7, 8));
+    if (m->beard) { fq(x - hw + 10, base + 0, x + hw - 10, base + 70, z + hw + 3, m->beard == 1 ? lit(sk, 10) : hc); }
+    if (i == cur_sim) { int py = base + ht + 190; bx(x - 40, py, z - 40, x + 40, py + 120, z + 40, C15(6, 30, 6)); bx(x - 30, py - 90, z - 30, x + 30, py, z + 30, C15(5, 22, 5)); }
 }
 // ---- Create-a-Sim: the head on the top screen, the choices on the bottom ----
 static void draw_head(int yaw) {
-    (void)yaw; gox = goy = goz = 0; gcs = 4096; gsn = 0;
-    const Sim *m = &sims[0]; u16 sk = SKINC[m->skin], hc = HAIRC[m->hcol], sh = SHIRTC[m->shirt];
-    gbox(-1250, -560, -480, 1250, 120, 480, sh, 260, 0);                                // shoulders and chest
-    flat(-170, -30, 170, 130, 482, lit(sk, 12), 11);                                    // the neckline
-    gbox(-290, 100, -280, 290, 560, 280, lit(sk, 13), 0, 0);                            // neck
-    gbox(-590, 520, -620, 590, 1000, 640, sk, 0, 150);                                  // jaw (narrower at the chin)
-    gbox(-710, 1000, -690, 710, 1900, 700, sk, 110, 0);                                 // cranium
-    gbox(-790, 1120, -90, -700, 1480, 150, lit(sk, 13), 0, 0); gbox(700, 1120, -90, 790, 1480, 150, lit(sk, 13), 0, 0);   // ears
-    for (int sd = -1; sd <= 1; sd += 2) {   // eyes: white, iris, pupil, highlight, lid and brow
-        int c = sd * 290;
-        flat(c - 150, 1330, c + 150, 1480, 702, C15(31, 31, 31), 16); flat(c - 80, 1310, c + 80, 1480, 704, C15(9, 6, 3), 13);
-        flat(c - 38, 1340, c + 38, 1440, 706, C15(1, 1, 2), 16); flat(c - 55, 1415, c - 15, 1455, 708, C15(31, 31, 31), 18);
-        flat(c - 165, 1480, c + 165, 1525, 703, lit(hc, 8), 12);                                                       // lid line
-        flat(c - 170 - sd * 20, 1590 + sd * 20, c + 170 - sd * 20, 1665 - sd * 10, 703, lit(hc, 11), 14);                 // brow
-        flat(c - 160, 1090, c + 160, 1210, 702, lit(sk, 17), 15); }                                                    // cheek light
-    gbox(-95, 1040, 690, 95, 1330, 800, lit(sk, 14), 40, 0);                                                           // nose
-    flat(-55, 1070, 55, 1095, 802, C15(6, 3, 3), 11);
-    flat(-210, 905, 210, 962, 704, C15(21, 7, 8), 13); flat(-190, 850, 190, 905, 704, C15(26, 11, 11), 15); flat(-210, 898, 210, 910, 706, C15(5, 1, 2), 12);   // lips
-    switch (m->hair) {
-        case 0: gbox(-780, 1500, -770, 780, 2020, 760, hc, 150, 0); gbox(-780, 1180, -770, 780, 1520, -480, hc, 0, 0); gbox(-790, 1180, -700, -700, 1560, 160, hc, 0, 0); gbox(700, 1180, -700, 790, 1560, 160, hc, 0, 0); break;
-        case 1: gbox(-790, 1500, -780, 790, 2000, 770, hc, 140, 0); gbox(-800, 800, -790, 800, 1520, -400, hc, 0, 0); gbox(-810, 880, -790, -700, 1640, 330, hc, 0, 0); gbox(700, 880, -790, 810, 1640, 330, hc, 0, 0); break;
-        case 2: gbox(-770, 1500, -760, 770, 1760, 750, hc, 100, 0); for (int k = 0; k < 7; k++) for (int q = 0; q < 2; q++) gbox(-640 + k * 213, 1740, -420 + q * 560, -440 + k * 213, 2300 - ((k + q) & 1) * 180, -240 + q * 560, hc, 64, 0); break;
-        case 3: gbox(-790, 1500, -780, 790, 2000, 770, hc, 140, 0); gbox(-810, -380, -800, 810, 1520, -400, hc, 0, 0); gbox(-830, 300, -420, -700, 1640, 330, hc, 0, 0); gbox(700, 300, -420, 830, 1640, 330, hc, 0, 0); break;
-        case 4: gbox(-770, 1500, -760, 770, 1800, 740, hc, 110, 0); for (int k = 0; k < 9; k++) { int a = 9500 + k * 1700, bx = (int)(cosLerp(a) * 800 / 4096), bz = (int)(sinLerp(a) * 780 / 4096); if (bz > 350) continue;
-                for (int p = 0; p < 4; p++) gbox(bx - 60 + p * 4, 1450 - p * 270 - 270, bz - 60, bx + 60 - p * 4, 1450 - p * 270, bz + 60, lit(hc, 12 - p), 6, 0); } break;
-        default: break; }
+    (void)yaw; const Sim *m = &sims[0]; u16 sk = SKINC[m->skin], hc = HAIRC[m->hcol], sh = SHIRTC[m->shirt];
+    int hw = m->fc == 1 ? 780 : 700, ht = m->fc == 2 ? 1700 : 1500, hz = 700;
+    bx(-1150, -1000, -520, 1150, -300, 520, sh);                                  // shoulders
+    bx(-300, -330, -300, 300, 20, 300, shade(sk, 7));                             // neck
+    bx(-hw, 0, -hz, hw, ht, hz, sk);                                              // head
+    bx(-hw - 100, ht * 4 / 10, -90, -hw, ht * 7 / 10, 160, shade(sk, 7)); bx(hw, ht * 4 / 10, -90, hw + 100, ht * 7 / 10, 160, shade(sk, 7));   // ears
+    int eu = ht * 6 / 10, er = m->fc == 3 ? 100 : 70, zb = m->beard >= 4 ? 80 : 0;   // eyes
+    for (int sd = -1; sd <= 1; sd += 2) { int c = sd * 280;
+        fq(c - 150, eu - er, c + 150, eu + er, hz + 2, C15(31, 31, 31)); fq(c - 55, eu - er, c + 55, eu + er, hz + 4, C15(9, 6, 3)); fq(c - 28, eu - er + 15, c + 28, eu + er - 15, hz + 6, C15(2, 1, 2));
+        fq(c - 40, eu + er - 45, c - 8, eu + er - 12, hz + 8, C15(31, 31, 31));
+        if (m->fc == 4) fq(c - 150, eu, c + 150, eu + er, hz + 8, shade(sk, 7));                                     // sleepy lids
+        fq(c - 170, eu + er + 90, c + 170, eu + er + 160, hz + 3, shade(hc, 7));                                      // brow
+        if (m->fc == 5) for (int k = 0; k < 5; k++) fq(c - 130 + k * 55, eu - 250 - (k & 1) * 50, c - 100 + k * 55, eu - 220 - (k & 1) * 50, hz + 3, shade(sk, 5)); }
+    bx(-90, eu - 380, hz - 20, 90, eu - 60, hz + 110, shade(sk, 8));              // nose
+    beard3d(m->beard, shade(hc, 9), sk, hw, hz);
+    fq(-200, ht * 2 / 10, 200, ht * 2 / 10 + 70, hz + 3 + zb, C15(21, 7, 8)); fq(-180, ht * 2 / 10 - 50, 180, ht * 2 / 10, hz + 3 + zb, C15(26, 11, 11)); fq(-200, ht * 2 / 10 + 10, 200, ht * 2 / 10 + 25, hz + 5 + zb, C15(5, 1, 2));
+    hair3d(m->hair, hc, hw, ht);
 }
-static void draw_cas(void) {   // the bottom screen: icon tabs down the left, a 3 x 2 grid of choices, PLAY
+static const int CAS_N[6] = { 12, 6, 6, 6, 6, 6 };
+static void draw_cas(void) {   // the bottom screen: icon tabs down the left, a 3 x 2 grid of choices (paged), PLAY
     scr = scr_sub; backdrop();
-    const char *tn[4] = { "Hair", "Color", "Skin", "Shirt" };
+    const char *tn[6] = { "Hair", "Color", "Face", "Beard", "Skin", "Shirt" };
     panel(0, 4, 56, 184, 0);
-    for (int i = 0; i < 4; i++) { rect(6, 12 + i * 40, 44, 34, cas_tab == i ? C15(8, 26, 8) : C15(4, 10, 24)); rect(8, 14 + i * 40, 40, 30, cas_tab == i ? C15(10, 30, 10) : C15(6, 14, 28)); text(12, 26 + i * 40, 1, TXT, tn[i]); }
-    static const char *ttl[4] = { "Hair Styles", "Hair Color", "Skin Tone", "Shirt" };
+    for (int i = 0; i < 6; i++) { rect(5, 9 + i * 30, 46, 26, cas_tab == i ? C15(8, 26, 8) : C15(4, 10, 24)); rect(7, 11 + i * 30, 42, 22, cas_tab == i ? C15(10, 30, 10) : C15(6, 14, 28)); text(11, 18 + i * 30, 1, TXT, tn[i]); }
+    static const char *ttl[6] = { "Hair Styles", "Hair Color", "Face", "Facial Hair", "Skin Tone", "Shirt" };
     panel(62, 4, 190, 142, ttl[cas_tab]);
+    if (CAS_N[cas_tab] > 6) { rect(206, 6, 20, 12, C15(8, 26, 8)); text(212, 9, 1, TXT, "<"); rect(228, 6, 20, 12, C15(8, 26, 8)); text(234, 9, 1, TXT, ">"); }
     Sim tmp = sims[0];
-    for (int k = 0; k < 6; k++) { int x = 68 + (k % 3) * 60, y = 26 + (k / 3) * 56; int on = (cas_tab == 0 ? tmp.hair : cas_tab == 1 ? tmp.hcol : cas_tab == 2 ? tmp.skin : tmp.shirt) == k;
-        rect(x, y, 54, 50, on ? C15(10, 28, 8) : C15(28, 31, 31)); rect(x + 2, y + 2, 50, 46, C15(20, 26, 31));
-        Sim v = tmp; if (cas_tab == 0) v.hair = (u8)k; else if (cas_tab == 1) v.hcol = (u8)k; else if (cas_tab == 2) v.skin = (u8)k; else v.shirt = (u8)k;
-        face(x + 9, y + 3, 36, &v); if (cas_tab == 0) text(x + 6, y + 42, 1, PANB, HAIRN[k]); }
-    rect(62, 152, 190, 34, PANB); rect(64, 154, 186, 30, C15(8, 22, 8)); text(120, 164, 2, TXT, "Play");
+    for (int k = 0; k < 6; k++) { int idx = k + (CAS_N[cas_tab] > 6 ? cas_page * 6 : 0); if (idx >= CAS_N[cas_tab]) continue;
+        int x = 68 + (k % 3) * 60, y = 24 + (k / 3) * 58;
+        int on = (cas_tab == 0 ? tmp.hair : cas_tab == 1 ? tmp.hcol : cas_tab == 2 ? tmp.fc : cas_tab == 3 ? tmp.beard : cas_tab == 4 ? tmp.skin : tmp.shirt) == idx;
+        rect(x, y, 54, 54, on ? C15(10, 28, 8) : C15(28, 31, 31)); rect(x + 2, y + 2, 50, 50, C15(20, 26, 31));
+        Sim v = tmp; if (cas_tab == 0) v.hair = (u8)idx; else if (cas_tab == 1) v.hcol = (u8)idx; else if (cas_tab == 2) v.fc = (u8)idx; else if (cas_tab == 3) v.beard = (u8)idx; else if (cas_tab == 4) v.skin = (u8)idx; else v.shirt = (u8)idx;
+        face(x + 9, y + 2, 36, &v);
+        const char *nm = cas_tab == 0 ? HAIRN[idx] : cas_tab == 2 ? FACEN[idx] : cas_tab == 3 ? BEARDN[idx] : 0;
+        if (nm) text(x + 27 - tw(1, nm) / 2, y + 42, 1, PANB, nm); }
+    rect(62, 152, 190, 34, PANB); rect(64, 154, 186, 30, C15(8, 22, 8)); text(128, 164, 2, TXT, "Play");
 }
 static void cas_touch(int tx, int ty) {
-    for (int i = 0; i < 4; i++) if (hit(6, 12 + i * 40, 44, 34, tx, ty)) cas_tab = i;
-    for (int k = 0; k < 6; k++) if (hit(68 + (k % 3) * 60, 26 + (k / 3) * 56, 54, 50, tx, ty)) { Sim *m = &sims[0]; if (cas_tab == 0) m->hair = (u8)k; else if (cas_tab == 1) m->hcol = (u8)k; else if (cas_tab == 2) m->skin = (u8)k; else m->shirt = (u8)k; }
+    for (int i = 0; i < 6; i++) if (hit(5, 9 + i * 30, 46, 26, tx, ty)) { cas_tab = i; cas_page = 0; }
+    if (CAS_N[cas_tab] > 6) { if (hit(206, 6, 20, 12, tx, ty)) cas_page = 0; if (hit(228, 6, 20, 12, tx, ty)) cas_page = 1; }
+    for (int k = 0; k < 6; k++) if (hit(68 + (k % 3) * 60, 24 + (k / 3) * 58, 54, 54, tx, ty)) { int idx = k + (CAS_N[cas_tab] > 6 ? cas_page * 6 : 0); if (idx >= CAS_N[cas_tab]) continue; Sim *m = &sims[0];
+        if (cas_tab == 0) m->hair = (u8)idx; else if (cas_tab == 1) m->hcol = (u8)idx; else if (cas_tab == 2) m->fc = (u8)idx; else if (cas_tab == 3) m->beard = (u8)idx; else if (cas_tab == 4) m->skin = (u8)idx; else m->shirt = (u8)idx; }
     if (hit(62, 152, 190, 34, tx, ty)) cas_done = 1;
 }
 static void set_mode(int m) {
@@ -600,7 +655,7 @@ int main(void) {
             if (down & KEY_TOUCH) cas_touch(tp.px, tp.py);
             if (forced || (down & KEY_TOUCH)) draw_cas();
             if (cas_done) { cas_done = 0; set_mode(M_MAP); dirty = 1; }
-            yaw = sinLerp(frames * 70) / 2; pitch = 0; dist = 4300;
+            yaw = sinLerp(frames * 70) / 2; pitch = 0; dist = 4700;
         } else if (mode == M_MAP) {
             if (down & (KEY_L | KEY_R)) { cur_set = (cur_set + ((down & KEY_R) ? 1 : bm_nset() - 1)) % bm_nset(); s = bm_set(cur_set); sel_x = s->x; sel_y = s->y; dirty = 1; }
             if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; bm_new((u32)seed); cur_set = bm_capital(); s = bm_set(cur_set); sel_x = s->x; sel_y = s->y; dirty = 1; }
@@ -610,7 +665,7 @@ int main(void) {
             int enter = down & KEY_A;
             if (down & KEY_TOUCH) { if (tp.py < MH * 8 && tp.px < MW * 8) { int nx = s->x - MW / 2 + tp.px / 8, ny = s->y - MH / 2 + tp.py / 8; if (nx == sel_x && ny == sel_y) enter = 1; else { sel_x = nx; sel_y = ny; dirty = 1; } } }
             else if ((held & KEY_TOUCH) && tp.py < MH * 8 && tp.px < MW * 8) { int nx = s->x - MW / 2 + tp.px / 8, ny = s->y - MH / 2 + tp.py / 8; if (nx != sel_x || ny != sel_y) { sel_x = nx; sel_y = ny; dirty = 1; } }
-            if (enter) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot build at sea"); else { if (lot_bx != sel_x || lot_by != sel_y) { Sim keep = sims[0]; lot_reset(); sims[0].skin = keep.skin; sims[0].hair = keep.hair; sims[0].hcol = keep.hcol; sims[0].shirt = keep.shirt; lot_bx = sel_x; lot_by = sel_y; } cur_sim = 0; set_mode(M_LIVE); forced = 1; lastsig = ~lastsig; } }
+            if (enter) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot build at sea"); else { if (lot_bx != sel_x || lot_by != sel_y) { Sim keep = sims[0]; lot_reset(); sims[0].skin = keep.skin; sims[0].hair = keep.hair; sims[0].hcol = keep.hcol; sims[0].shirt = keep.shirt; sims[0].beard = keep.beard; sims[0].fc = keep.fc; lot_bx = sel_x; lot_by = sel_y; } cur_sim = 0; set_mode(M_LIVE); forced = 1; lastsig = ~lastsig; } }
             if (forced) dirty = 1;
             if (dirty) { scr = scr_sub; draw_map(); dirty = 0; }
             if (msg_t > 0) text(4, 150, 1, C15(31, 20, 12), msg);
@@ -650,7 +705,7 @@ int main(void) {
         glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluPerspectivef32(degreesToAngle(50), 256 * 4096 / 192, 4096 / 8, 4096 * 40);
         glMatrixMode(GL_POSITION); glLoadIdentity();
         glTranslatef32(0, 0, -dist); glRotateXi(pitch); glRotateYi(yaw);
-        if (mode == M_LIVE) glTranslatef32(-camx, 0, -camz); else if (mode == M_CAS) glTranslatef32(0, -1000, 0);
+        if (mode == M_LIVE) glTranslatef32(-camx, 0, -camz); else if (mode == M_CAS) glTranslatef32(0, -650, 0);
         glPolyFmt(POLY_ALPHA(31) | POLY_CULL_NONE | POLY_ID(1));
         glBegin(GL_QUADS);
         if (mode == M_CAS) draw_head(yaw);
