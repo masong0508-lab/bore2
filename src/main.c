@@ -111,7 +111,7 @@ static int t_vb;
 
 // ---- states ----
 static void party_begin(void);
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ, ST_SUPER, ST_DOG, ST_PRISON, ST_SPACE };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ, ST_SUPER, ST_DOG, ST_PRISON, ST_SPACE, ST_MODE, ST_NHED };
 #ifdef AUTO_GOTCHI
 static void opts_dbg(int tab, int sel, int back);
 #endif
@@ -143,7 +143,17 @@ static void confirm_open(const char *title, const char *body, void (*yes)(void))
 static void life_draw(void);
 static int map_bus, map_t;   // the map is the bus map (a stop on the street): $ a ride, and the wait, instead of the $20 taxi
 static void wo_name_for(u32 seed);   // (THE WORLDS: a set world's capital is named for it)
-static void worlds_open(void);
+static void worlds_open(int more);
+static void mode_open(void);
+static void ne_from_settings(void);
+static void ne_draw(void);
+static void dio_look(int bx, int by, int snap);
+static void dio_draw(int curx, int cury, int brush, int tick);
+static void dio_post(int bx, int by, int r, int g, int b, int tall);
+static void ovr_save(void);
+static void ovr_load(void);
+static char nh_name[18];
+static int wo_tab;
 static void worlds_go(u32 seed, int mode);
 static void story_taxi(void);
 static void worlds_draw(void);
@@ -162,6 +172,8 @@ static int craft_sel, craft_msg_t; static char craft_msg[32];   // the CRAFT lis
 extern char _end[];
 static int juke_sel, juke_scroll;
 static int life_started;
+static const int wmFundsV[6] = { 1000, 5000, 20000, 50000, 100000, 500000 };
+static int go_funds = 2;   // the cash a new life starts with (an index into wmFundsV)
 static int help_page;
 static int hb_now(void) { return VSync(1); }   // hblanks since the last VSync(0) (the flip): 263 per vblank, 525 = one 30 FPS frame
 static int t_cpu, t_frame0, t_bub, t_hud, t_upd;
@@ -260,12 +272,12 @@ static void start_life(void) {
     loading("MAKING A NEW LIFE", 20);
     {   // a new world: SAN BOREAS from fresh dice (the land, the towns, every building and room), and its 874 households
         u32 seed = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ ((u32)frame * 2246822519u); if (!seed) seed = 1;
-        if (life_seed) { seed = life_seed; life_seed = 0; } else bm_cap_name[0] = 0;   // (fresh dice: BORE CITY again)
+        if (life_seed) { seed = life_seed; life_seed = 0; } else { bm_cap_name[0] = 0; bm_ovr_clear(); sim_season_lock = 0; go_funds = 2; }   // (fresh dice: BORE CITY again)
         bm_rename_clear(); if (life_cap[0]) { bm_rename(0, life_cap); life_cap[0] = 0; }   // (a capital named on PICK A WORLD)   // (a preset world, or one made on the CREATE A WORLD screen)
 #if defined(AUTO_CITY) || defined(AUTO_PARTY)
         seed = 0x5EED1234u;                                    // (test builds: the same world every run, so runs compare)
 #endif
-        bm_gen = 5; bm_new(seed); world_new_seed(seed);
+        bm_gen = 6; bm_new(seed); world_new_seed(seed);
         loading("PEOPLING SAN BOREAS", 45);
         u32 sb; void *sc = crowd_scratch(&sb); pop_new(seed, sc, sb);
         loading("RAISING THE SKYLINE", 60);
@@ -292,7 +304,7 @@ static void start_life(void) {
     }
     story_reset(); }
 #if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_SUPER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY) && !defined(AUTO_GOTCHI) && !defined(AUTO_DJ) && !defined(AUTO_DJ)
-    nh_pending = life_mode == 0; cash = life_mode == 2 ? 1000 : 20000; mode_pending = life_mode; life_mode = 0;   // the family picks its home on THE NEIGHBORHOOD screen (The Sims: $20,000 to start), and life_update moves them in
+    nh_pending = life_mode == 0; cash = life_mode == 2 ? 1000 : wmFundsV[go_funds % 6]; mode_pending = life_mode; life_mode = 0;   // the family picks its home on THE NEIGHBORHOOD screen (The Sims: $20,000 to start), and life_update moves them in
 #endif
     life_started = 1;
     story_paid = 0; story_talks = 0; story_visit[0] = 1; story_visit[1] = 0; story_visit[2] = 0; story_visit[3] = 0;
@@ -1422,31 +1434,26 @@ static void nhood_update(void) {
         if (home_buy(nh_bx[nh_sel], nh_by[nh_sel])) state = ST_LIFE;   // (life_update moves the family in)
     }
 }
-static void nhood_draw(void) {
-    gfx_set_clear(188, 204, 222);
-    gfx_camera_update();
-    ui_backdrop();
+static void nhood_draw(void) {   // the neighborhood as a 3D model on the left (a post on every lot), the picked lot's card on the right
     char b[48], ad[24];
     const Settle *ns = bm_set(nh_set);
-    snprintf(b, sizeof b, "THE NEIGHBORHOOD: %s", ns ? ns->name : "SAN BOREAS");
-    int top = ui_window(4, 4, 312, 232, b, IC_HOUSE);
-    const int MX = 10, MY = top + 1, MS = 182;
-    ui_round(MX - 2, MY - 2, MS + 4, MS + 4, 4, UI_LINE, UI_LINE, 0);
-    if (nh_t >= 0) gfx_sprite_c(MX, MY, MS, MS, getTPage(2, 0, 0, 256), 0, 0, NH_B * NH_P, NH_B * NH_P, 128, 128, 128);
-    for (int pass = 0; pass < 2; pass++) for (int i = 0; i < nh_n; i++) {   // every lot a dot: green a furnished home, gold an empty lot (the picked one last, on top)
-        if ((i == nh_sel) != pass) continue;
-        int x = MX + ((nh_bx[i] - nh_x0) * NH_P + 3) * MS / (NH_B * NH_P), y = MY + ((nh_by[i] - nh_y0) * NH_P + 3) * MS / (NH_B * NH_P);
-        int empty = nh_lot[i] == LOT_EMPTY, sold = !home_for_sale(nh_bx[i], nh_by[i]);
-        u32 c = sold ? UI_RGB(150, 150, 150) : empty ? UI_RGB(236, 176, 40) : UI_RGB(60, 190, 90);
-        if (i == nh_sel) { ui_disc(x, y, (nh_t >> 3) & 1 ? 17 : 15, UI_WHITE); ui_icon_disc(x, y, 13, empty ? IC_SPROUT : IC_HOUSE, UI_BLUE, UI_WHITE); }
-        else { ui_disc(x, y, 8, UI_WHITE); ui_disc(x, y, 6, c); }
-    }
-    if (home_city && home_bx >= nh_x0 && home_by >= nh_y0 && home_bx < nh_x0 + NH_B && home_by < nh_y0 + NH_B) {   // yours
-        int x = MX + ((home_bx - nh_x0) * NH_P + 3) * MS / (NH_B * NH_P), y = MY + ((home_by - nh_y0) * NH_P + 3) * MS / (NH_B * NH_P);
-        ui_disc(x, y, 13, UI_WHITE); ui_icon_disc(x, y, 11, IC_HOUSE, UI_GREEN, UI_WHITE);
-    }
+    if (nh_n) {
+        dio_look(nh_bx[nh_sel] + 3, nh_by[nh_sel], nh_t <= 1);
+        gfx_sky(0xEBBE8C, 0xF0E6D7);
+        dio_draw(0, 0, 0, nh_t);
+        for (int pass = 0; pass < 2; pass++) for (int i = 0; i < nh_n; i++) {   // every lot a post: green a furnished home, gold an empty lot, grey sold (the picked one last, tall and flashing)
+            if ((i == nh_sel) != pass) continue;
+            int empty = nh_lot[i] == LOT_EMPTY, sold = !home_for_sale(nh_bx[i], nh_by[i]);
+            if (i == nh_sel) { int f = (nh_t >> 3) & 1; dio_post(nh_bx[i], nh_by[i], 255, f ? 255 : 120, f ? 255 : 60, 190); }
+            else dio_post(nh_bx[i], nh_by[i], sold ? 150 : empty ? 236 : 60, sold ? 150 : empty ? 176 : 190, sold ? 150 : empty ? 40 : 90, 80);
+        }
+        if (home_city) dio_post(home_bx, home_by, 70, 140, 255, 130);   // yours
+    } else { gfx_set_clear(188, 204, 222); gfx_camera_update(); ui_backdrop(); }
+    gfx_rect(0, 206, 320, 34, 14, 18, 28, 0);
+    ui_badge(8, 8, "THE NEIGHBORHOOD", UI_WHITE, UI_BLUE2);
+    int top = ui_window(194, 4, 122, 200, ns ? ns->name : "SAN BOREAS", IC_HOUSE);
     const int PX = 198, PW = 110;                   // the picked lot, on the right
-    if (!nh_n) { ui_wrap(PX, top + 10, PW, 4, "NO HOMES FOR SALE ROUND HERE RIGHT NOW", UI_SOFT); ui_hints(310, 215, nh_first ? "X STAY AT THE MAN BASE" : "O BACK", 2); return; }
+    if (!nh_n) { ui_wrap(PX, top + 10, PW, 4, "NO HOMES FOR SALE ROUND HERE RIGHT NOW", UI_SOFT); ui_hints(160, 212, nh_first ? "X STAY AT THE MAN BASE" : "O BACK", 1); return; }
     int i = nh_sel, empty = nh_lot[i] == LOT_EMPTY, refund = home_city ? home_paid : 0;
     sprintf(b, "LOT %d OF %d", i + 1, nh_n); ui_text(PX, top + 1, 1, b, UI_SOFT);
     ui_round(PX - 2, top + 13, PW + 4, 50, 6, UI_RGB(234, 240, 248), UI_RGB(224, 231, 240), 0);
@@ -1465,8 +1472,7 @@ static void nhood_draw(void) {
         ui_disc(PX + 4, ky + 3, 7, UI_RGB(60, 190, 90)); ui_text(PX + 12, ky, 1, "HOME", UI_INK);
         ui_disc(PX + 54, ky + 3, 7, UI_RGB(236, 176, 40)); ui_text(PX + 62, ky, 1, "EMPTY", UI_INK);
     }
-    gfx_rect(10, 211, 300, 1, 200, 210, 222, 0);
-    ui_hints(160, 215, nh_first ? "DPAD PICK|X MOVE IN|TRI THE MAN BASE" : "DPAD PICK|X BUY|SQ SEE $20|SEL LIST|O BACK", 1);
+    ui_hints(160, 212, nh_first ? "DPAD PICK|X MOVE IN|TRI THE MAN BASE" : "DPAD PICK|X BUY|SQ SEE $20|SEL LIST|O BACK", 1);
 }
 
 // ---- CRAFT: what the castaways can make at the campfire from what they have gathered ----
@@ -1965,6 +1971,7 @@ static void save_body(void) {
     sv_u8(traffic_level); sv_u8(bm_land); sv_u8(bm_sea); sv_u8(bm_clim); sv_u8(bm_hills); sv_u8(bm_ncity); sv_u8(bm_ntown); sv_u8(bm_nvil); sv_u8(bm_capsz); sv_u8(pop_people); sv_u8(pop_famsize); sv_u8(isl_size); sv_u8(isl_wild); sv_u8(isl_jungle); sv_u8(isl_rocks);   // (CREATE A WORLD's dials: version 7)
     { int n = 0; for (int i = 0; i < BM_NSET_MAX; i++) if (bm_renamed(i)[0]) n++;   // (the towns renamed)
       sv_u8(n); for (int i = 0; i < BM_NSET_MAX; i++) if (bm_renamed(i)[0]) { sv_u8(i); sv_str(bm_renamed(i), 17); } }
+    sv_u8(sim_season_lock); sv_u8(sim_seasons_on); ovr_save();   // (version 37: the neighborhood editor's changes, and the held season)
     sv_n(opt, O_N);
     sv_u8(home_city); sv_u16(home_bx); sv_u16(home_by); sv_u32((u32)home_paid);
     sim_save(); world_save(!home_city); pop_save(); isl_save();
@@ -1972,15 +1979,17 @@ static void save_body(void) {
 }
 static void load_body(void) {
     u32 seed = ld_u32();
-    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 31 ? 5 : save_ver >= 17 ? 4 : 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
+    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 38 ? 6 : save_ver >= 31 ? 5 : save_ver >= 17 ? 4 : 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
     bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2;
     traffic_level = 2; if (save_ver >= 19) traffic_level = ld_u8() % 5;
     if (save_ver >= 7) { bm_land = ld_u8() % BL_N; bm_sea = ld_u8() % 5; bm_clim = ld_u8() % 5; bm_hills = ld_u8() % 5;
         if (save_ver >= 8) { bm_ncity = ld_u8() % (BM_MAXCITY + 1); bm_ntown = ld_u8() % (BM_MAXTOWN + 1); bm_nvil = ld_u8() % (BM_MAXVIL + 1); bm_capsz = ld_u8() % 6; pop_people = ld_u8() % 6; pop_famsize = ld_u8() % 4; if (save_ver < 9) bm_capsz = bm_capsz == 0 ? 1 : bm_capsz == 1 ? 2 : 4; }   // (version 8: capital SMALL NORMAL HUGE)
         else { static const u8 c7[4] = { 0, 1, 2, 3 }, t7[4] = { 2, 4, 6, 8 }, v7[4] = { 4, 8, 12, 12 }; int t = ld_u8() % 4; bm_ncity = c7[t]; bm_ntown = t7[t]; bm_nvil = v7[t]; }   // (version 7: one TOWNS dial)
-        isl_size = ld_u8() % 3; isl_wild = ld_u8() % 3; isl_jungle = ld_u8() % 3; isl_rocks = ld_u8() % 3; }
+        isl_size = ld_u8() % (save_ver >= 37 ? 5 : 3); if (save_ver < 37) isl_size++; isl_wild = ld_u8() % 3; isl_jungle = ld_u8() % 3; isl_rocks = ld_u8() % 3; }
     bm_rename_clear();
     if (save_ver >= 4) { int n = ld_u8(); for (int k = 0; k < n; k++) { int i = ld_u8(); char nm[18]; ld_str(nm, 17); bm_rename(i, nm); } }
+    sim_season_lock = 0; sim_seasons_on = 1; bm_ovr_clear();
+    if (save_ver >= 37) { sim_season_lock = ld_u8() % 5; sim_seasons_on = ld_u8() & 1; ovr_load(); }
     { int o_n = save_ver >= 21 ? O_N : save_ver >= 19 ? O_N - 1 : O_N - 2; ld_n(opt, save_ver >= 16 ? o_n : save_ver >= 15 ? o_n - 1 : save_ver >= 14 ? o_n - 6 : save_ver >= 11 ? o_n - 7 : o_n - 8); } if (save_ver < 19) opt[O_TRAF] = 0; if (save_ver < 21) opt[O_GOTCHI] = 0; if (save_ver < 16) opt[O_WIDE] = 0; if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1;
     if (save_ver < 15) { opt[O_AGGRO] = 2; opt[O_AGWHO] = 0; opt[O_RAGE] = 0; opt[O_RAGEWHO] = 1; opt[O_PEACE] = 1; } opts_apply();   // (YOUR BORE ALONE came with version 11)
     loading("LOADING YOUR GAME", 30);
@@ -2691,7 +2700,7 @@ static void confirm_update(void) {
     if (PRESSED(PAD_CROSS)) { state = cf_back; if (cf_sel == 0 && cf_yes) { audio_voice(VOICE_AGREE); cf_yes(); } }
 }
 static void confirm_draw(void) {
-    if (cf_back == ST_NHOOD) { gfx_set_clear(188, 204, 222); gfx_camera_update(); ui_backdrop(); } else { life_draw(); ui_dim(); }
+    if (cf_back == ST_NHOOD) { gfx_set_clear(188, 204, 222); gfx_camera_update(); ui_backdrop(); } else if (cf_back == ST_NHED) { ne_draw(); ui_dim(); } else { life_draw(); ui_dim(); }
     int nl = ui_wrap_n(236, cf_body), h = 58 + nl * 10;
     int top = ui_window(30, 120 - h / 2 - 10, 260, h + 20, cf_title, IC_HELP);
     ui_wrap(42, top + 4, 236, 6, cf_body, UI_INK);
@@ -2810,7 +2819,7 @@ static void create_update(void) {
         if (prev_state == ST_LIFE) { Sim *me = &sims[player]; if (me->bore.stage != edit.stage) { me->age_days = 0; me->bday = 0; }
             TexRef te = me->bore.tex_eye, tm = me->bore.tex_mouth; me->bore = edit; me->bore.tex_eye = te; me->bore.tex_mouth = tm; look_build(&me->bore);   // (on the Bore's own faces)
             crowd_forget(CROWD_MAX + player); state = ST_LIFE; }
-        else { worlds_open(); }   // (a new Bore from the title: on to PICK A WORLD)
+        else { mode_open(); }   // (a new Bore from the title: on to PICK A MODE)
         audio_voice(VOICE_YAHOO);
     }
     if (PRESSED(PAD_CIRCLE)) { world_restore(); state = prev_state == ST_LIFE ? ST_LIFE : ST_MENU; }
@@ -3505,21 +3514,21 @@ static void wo_name_for(u32 seed) {   // a set world's capital carries the world
 }
 static u32 wo_seed_of(int k) { return k >= WO_PRE1 && k <= WO_PRE3 ? wo_preset[k - WO_PRE1] : k == WO_CREATE ? wo_custom : 0; }
 static void worlds_named(void) { wo_painted = 0; }   // (the map is drawn again, the new name on it)
-static void worlds_open(void) {
-    wo_painted = 0; wo_sel = 0; wo_t = 0; wo_more = 0; wo_msel = 0; state = ST_WORLDS;
+static void worlds_open(int more) {   // 0: NEIGHBORHOODS, 1: the EXPANSIONS shelf
+    wo_painted = 0; wo_sel = 0; wo_t = 0; wo_more = more; wo_msel = 0; wo_tab = 0; nh_sel = 0; bm_ovr_clear(); state = ST_WORLDS;
 #ifdef AUTO_PACKS
     wo_more = 1; wo_msel = AUTO_PACKS;
 #endif
 }
 static void worlds_go(u32 seed, int mode) {
-    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 5; bm_packed = wo_packed; wo_name_for(seed); strcpy(life_cap, wo_name); start_life();
+    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 6; bm_packed = wo_packed; wo_name_for(seed); strcpy(life_cap, wo_name); start_life();
     cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 }
 // ---- CREATE A WORLD: make your own. What kind of life, then dials for the land (or the castaway's island), the map as you turn them ----
-enum { WM_START, WM_LAND, WM_SEA, WM_CLIM, WM_HILLS, WM_CAPSZ, WM_CITIES, WM_TOWNS, WM_VILS, WM_PEOPLE, WM_FAMS, WM_TRAFFIC, WM_STYLE, WM_ISIZE, WM_ICOAST, WM_IJUNGLE, WM_IROCKS, WM_NAME, WM_SEED, WM_PLAY, WM_N };
+enum { WM_START, WM_LAND, WM_SEA, WM_CLIM, WM_HILLS, WM_CAPSZ, WM_CITIES, WM_TOWNS, WM_VILS, WM_PEOPLE, WM_FAMS, WM_TRAFFIC, WM_STYLE, WM_SEASON, WM_FUNDS, WM_ISIZE, WM_ICOAST, WM_IJUNGLE, WM_IROCKS, WM_NAME, WM_SEED, WM_PLAY, WM_N };
 static int wm_sel, wm_t, wm_start, wm_used, wm_isle_view;   // wm_start: 0 SAN BOREAS, 1 CASTAWAY ISLAND, 2 RAGS TO RICHES
-static int wm_land, wm_sea = 2, wm_clim = 2, wm_hills = 2, wm_capsz = 2, wm_cities = 2, wm_towns = 6, wm_vils = 12, wm_people = 3, wm_fams = 1, wm_traffic = 2, wm_isize = 1, wm_icoast = 1, wm_ijungle = 1, wm_irocks = 1;
-static const char *const wmLbl[WM_N] = { "LIFE", "LAND", "SEA", "CLIMATE", "HILLS", "CAPITAL SIZE", "CITIES", "TOWNS", "VILLAGES", "PEOPLE", "HOUSEHOLDS", "TRAFFIC", "TOWN STYLE", "ISLAND SIZE", "COAST", "JUNGLE", "ISLAND HILLS", "CAPITAL", "MAP NO.", "PLAY THIS WORLD" };
+static int wm_land, wm_sea = 2, wm_clim = 2, wm_hills = 2, wm_capsz = 2, wm_cities = 2, wm_towns = 6, wm_vils = 12, wm_people = 3, wm_fams = 1, wm_traffic = 2, wm_isize = 2, wm_icoast = 1, wm_ijungle = 1, wm_irocks = 1, wm_season, wm_funds = 2, wm_mode;   // wm_mode: 0 CREATE A WORLD, 1 the ISLAND CREATOR, 2 a neighborhood's town settings (from the editor)
+static const char *const wmLbl[WM_N] = { "LIFE", "LAND", "SEA", "CLIMATE", "HILLS", "CAPITAL SIZE", "CITIES", "TOWNS", "VILLAGES", "PEOPLE", "HOUSEHOLDS", "TRAFFIC", "TOWN STYLE", "SEASON", "STARTING CASH", "ISLAND SIZE", "COAST", "JUNGLE", "ISLAND HILLS", "CAPITAL", "MAP NO.", "PLAY THIS WORLD" };
 static const char *const wmStartNm[3] = { "SAN BOREAS", "CASTAWAY", "RAGS TO RICHES" };
 static const char *const wmLandNm[BL_N] = { "MAINLAND", "ISLANDS", "ONE BIG ISLAND", "CONTINENT", "LAKES" };
 static const char *const wmSeaNm[5] = { "VERY LOW", "LOW", "NORMAL", "HIGH", "VERY HIGH" };
@@ -3529,20 +3538,26 @@ static const char *const wmCapNm[6] = { "TINY", "SMALL", "NORMAL", "BIG", "HUGE"
 static const char *const wmPeopleNm[6] = { "FEW", "SOME", "MANY", "NORMAL", "CROWDED", "PACKED" };
 static const char *const wmTrafNm[5] = { "NONE", "LOW", "NORMAL", "BUSY", "JAMMED" };
 static const char *const wmFamNm[4] = { "SMALL", "MIXED", "BIG", "HUGE" };
-static const char *const wmI3[3][3] = { { "SMALL", "MEDIUM", "BIG" }, { "SMOOTH", "WAVY", "WILD" }, { "LESS", "SOME", "MORE" } };
+static const char *const wmI3[3][5] = { { "VERY SMALL", "SMALL", "MEDIUM", "BIG", "VERY BIG" }, { "SMOOTH", "WAVY", "WILD" }, { "LESS", "SOME", "MORE" } };
+static const char *const wmSeasonNm[5] = { "CHANGING", "SPRING", "SUMMER", "AUTUMN", "WINTER" };
 static const char *const wmBlurb[WM_N] = { "A HOME, STRANDED, OR BROKE", "THE SHAPE OF SAN BOREAS", "HOW MUCH OF IT THE SEA COVERS",
     "SAND AND SCRUB TO THICK FOREST", "HOW MUCH ROCKY HIGH GROUND", "HOW BIG BORE CITY IS", "BIG CITIES BESIDES THE CAPITAL", "MIDDLE-SIZED TOWNS", "LITTLE VILLAGES AND HAMLETS",
-    "HOW MANY HOMES HAVE PEOPLE IN THEM", "SMALL: SINGLES, COUPLES. BIG: FAMILIES", "CARS ON THE STREETS. MORE IN OPTIONS: CHEATS", "ROOMY: GREEN GAPS. PACKED: BUILT UP",
+    "HOW MANY HOMES HAVE PEOPLE IN THEM", "SMALL: SINGLES, COUPLES. BIG: FAMILIES", "CARS ON THE STREETS. MORE IN OPTIONS: CHEATS", "ROOMY: GREEN GAPS. PACKED: BUILT UP", "HOLD THE YEAR ON ONE SEASON, OR LET IT TURN", "THE CASH THE FAMILY BEGINS WITH",
     "THE CASTAWAY'S ISLAND", "A ROUND SHORE, OR BAYS AND HEADLANDS", "HOW THICK THE TREES GROW", "ROCKY GROUND ON THE ISLAND",
     "X TO NAME THE CAPITAL CITY", "THE DICE: L R STEP, X NEW DICE", "START A LIFE HERE" };
-static int wm_shown(int r) { return wm_start == 1 || (r < WM_ISIZE || r > WM_IROCKS); }   // (the island's dials: for a castaway)
+static int wm_shown(int r) {
+    if (wm_mode == 1) return (r >= WM_ISIZE && r <= WM_IROCKS) || r == WM_SEASON || r == WM_SEED || r == WM_PLAY;   // the island creator: the island's dials
+    if (r >= WM_ISIZE && r <= WM_IROCKS) return 0;
+    if (wm_mode == 2 && r == WM_START) return 0;
+    return 1;
+}
 static int *wm_dial(int r, int *n) {
     switch (r) {
         case WM_START: *n = 3; return &wm_start; case WM_LAND: *n = BL_N; return &wm_land; case WM_SEA: *n = 5; return &wm_sea;
         case WM_CLIM: *n = 5; return &wm_clim; case WM_HILLS: *n = 5; return &wm_hills; case WM_CAPSZ: *n = 6; return &wm_capsz; case WM_CITIES: *n = BM_MAXCITY + 1; return &wm_cities;
         case WM_TOWNS: *n = BM_MAXTOWN + 1; return &wm_towns; case WM_VILS: *n = BM_MAXVIL + 1; return &wm_vils;
         case WM_PEOPLE: *n = 6; return &wm_people; case WM_FAMS: *n = 4; return &wm_fams; case WM_TRAFFIC: *n = 5; return &wm_traffic;
-        case WM_STYLE: *n = 2; return &wo_packed; case WM_ISIZE: *n = 3; return &wm_isize; case WM_ICOAST: *n = 3; return &wm_icoast;
+        case WM_STYLE: *n = 2; return &wo_packed; case WM_SEASON: *n = 5; return &wm_season; case WM_FUNDS: *n = 6; return &wm_funds; case WM_ISIZE: *n = 5; return &wm_isize; case WM_ICOAST: *n = 3; return &wm_icoast;
         case WM_IJUNGLE: *n = 3; return &wm_ijungle; case WM_IROCKS: *n = 3; return &wm_irocks;
         default: *n = 0; return 0;
     }
@@ -3551,11 +3566,14 @@ static void wm_apply(void) {   // the dials into the world makers
     bm_land = wm_land; bm_sea = wm_sea; bm_clim = wm_clim; bm_hills = wm_hills; bm_capsz = wm_capsz; bm_ncity = wm_cities; bm_ntown = wm_towns; bm_nvil = wm_vils; pop_people = wm_people; pop_famsize = wm_fams; traffic_level = wm_traffic; bm_packed = wo_packed;
     isl_size = wm_isize; isl_wild = wm_icoast; isl_jungle = wm_ijungle; isl_rocks = wm_irocks;
 }
-static void wm_open(void) { wm_sel = WM_LAND; wm_t = 0; wm_used = 1; wm_apply(); wo_painted = 0; state = ST_WMAKE; audio_voice(VOICE_FINISHED); }
 static u32 wm_painted_isle;
+static void wm_open_mode(int m) {
+    wm_mode = m; wm_sel = m == 1 ? WM_ISIZE : WM_LAND; if (m == 1) wm_start = 1; else if (wm_start == 1) wm_start = 0;
+    wm_t = 0; wm_used = 1; wm_apply(); wo_painted = 0; wm_isle_view = 0; wm_painted_isle = 0; state = ST_WMAKE; audio_voice(VOICE_FINISHED);
+}
 static void wm_paint(void) {
     wm_apply(); wm_check_dials();
-    int isle = wm_start == 1 && wm_sel >= WM_ISIZE && wm_sel <= WM_IROCKS;
+    int isle = wm_mode == 1;
     if (isle) {
         u32 key = wo_custom ^ (u32)(wm_isize | wm_icoast << 2 | wm_ijungle << 4 | wm_irocks << 6) * 0x9E3779B1u;
         if (!wm_isle_view || wm_painted_isle != key) { u16 *px = atlas_scratch(); world_isl_preview(wo_custom, px); atlas_vram_load(0, 256, 128, 128, px); wm_painted_isle = key; wo_painted = 0; }
@@ -3565,7 +3583,7 @@ static void wm_paint(void) {
 static void wm_surprise(void) {   // SQUARE: every dial at random, and new dice
     u32 r = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ (u32)wm_t;
     wm_land = (int)(r % BL_N); wm_sea = 1 + (int)((r >> 4) % 3); wm_clim = (int)((r >> 7) % 5); wm_hills = (int)((r >> 10) % 5); wm_cities = (int)((r >> 13) % (BM_MAXCITY + 1)); wm_towns = (int)((r >> 24) % (BM_MAXTOWN + 1)); wm_vils = (int)((r >> 27) % (BM_MAXVIL + 1)); wm_capsz = (int)((r >> 5) % 6); wm_people = 1 + (int)((r >> 25) % 5); wm_fams = (int)((r >> 29) % 4);
-    wo_packed = (int)((r >> 15) & 1); wm_isize = (int)((r >> 16) % 3); wm_icoast = (int)((r >> 18) % 3); wm_ijungle = (int)((r >> 20) % 3); wm_irocks = (int)((r >> 22) % 3);
+    wo_packed = (int)((r >> 15) & 1); wm_isize = (int)((r >> 16) % 5); wm_icoast = (int)((r >> 18) % 3); wm_ijungle = (int)((r >> 20) % 3); wm_irocks = (int)((r >> 22) % 3);
     wo_custom = r * 40503u + 1; wo_painted = 0; wm_painted_isle = 0; audio_voice(VOICE_FINISHED);
 }
 static void wm_named(void) { wo_painted = 0; }
@@ -3580,32 +3598,37 @@ static void wm_update(void) {
     if (PRESSED(PAD_DOWN)) do wm_sel = (wm_sel + 1) % WM_N; while (!wm_shown(wm_sel));
     if (PRESSED(PAD_LEFT)) d = -1;
     if (PRESSED(PAD_RIGHT)) d = 1;
-    if (PRESSED(PAD_CIRCLE)) { wo_painted = 0; wm_isle_view = 0; state = ST_WORLDS; return; }
+    if (PRESSED(PAD_CIRCLE)) { wo_painted = 0; wm_isle_view = 0; state = wm_mode == 2 ? ST_NHED : ST_MODE; if (wm_mode == 2) ne_from_settings(); return; }
     if (PRESSED(PAD_SQUARE)) wm_surprise();
     if (PRESSED(PAD_L1)) { wo_custom--; wo_painted = 0; }
     if (PRESSED(PAD_R1)) { wo_custom++; wo_painted = 0; }
     int n, *v = wm_dial(wm_sel, &n);
     if (v && d) { *v = (*v + n + d) % n; wo_painted = 0; audio_voice(VOICE_AGREE); }
     if (v && PRESSED(PAD_CROSS)) { *v = (*v + 1) % n; wo_painted = 0; audio_voice(VOICE_AGREE); }
+    if (wm_mode != 1 && wm_start == 1) wm_start = d < 0 ? 0 : 2;   // (the castaway lives on the ISLAND CREATOR)
     if (wm_sel == WM_SEED && d) { wo_custom += (u32)d; wo_painted = 0; }
     if (wm_sel == WM_SEED && PRESSED(PAD_CROSS)) { wo_custom = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u); if (!wo_custom) wo_custom = 1; wo_painted = 0; audio_voice(VOICE_FINISHED); }
-    if (PRESSED(PAD_SELECT) || (wm_sel == WM_NAME && PRESSED(PAD_CROSS))) { name_open(wo_name, 17, "NAME YOUR CAPITAL CITY", wm_named); return; }
-    if (wm_start != 1 && wm_sel >= WM_ISIZE && wm_sel <= WM_IROCKS) wm_sel = WM_NAME;
+    if (wm_mode != 1 && (PRESSED(PAD_SELECT) || (wm_sel == WM_NAME && PRESSED(PAD_CROSS)))) { if (wm_mode == 2) name_open(nh_name, 17, "NAME THIS NEIGHBORHOOD", wm_named); else name_open(wo_name, 17, "NAME YOUR CAPITAL CITY", wm_named); return; }
+    if (!wm_shown(wm_sel)) wm_sel = wm_mode == 1 ? WM_PLAY : WM_NAME;
     wm_paint();
-    if (PRESSED(PAD_START) || (wm_sel == WM_PLAY && PRESSED(PAD_CROSS))) { wm_apply(); life_story = 0; worlds_go(wo_custom, wm_start); }
+    if (PRESSED(PAD_START) || (wm_sel == WM_PLAY && PRESSED(PAD_CROSS))) {
+        wm_apply();
+        if (wm_mode == 2) { wo_painted = 0; state = ST_NHED; ne_from_settings(); return; }
+        life_story = 0; bm_ovr_clear(); sim_season_lock = wm_season; go_funds = wm_funds; worlds_go(wo_custom, wm_mode == 1 ? 1 : wm_start);
+    }
 }
 static void wm_draw(void) {
     title_draw();
     ui_dim();
     char b[48];
-    int top = ui_window(6, 6, 308, 228, "CREATE A WORLD", IC_BRUSH);
+    int top = ui_window(6, 6, 308, 228, wm_mode == 1 ? "ISLAND CREATOR" : wm_mode == 2 ? "TOWN SETTINGS" : "CREATE A WORLD", wm_mode == 1 ? IC_SUN : IC_BRUSH);
     int y = top + 1;
     int list[WM_N], nl = 0, at = 0; for (int r = 0; r < WM_N; r++) if (wm_shown(r)) { if (r == wm_sel) at = nl; list[nl++] = r; }
     const int VIS = 13; int first = CLAMP(at - VIS / 2, 0, MAX(0, nl - VIS));   // (a long list scrolls with the cursor)
     for (int li = first; li < MIN(nl, first + VIS); li++) {
         int r = list[li];
         int on = r == wm_sel, n;
-        if (r == WM_PLAY) { ui_button(10, y + 1, 138, 15, wmLbl[r], IC_PLAY, on); y += 17; continue; }
+        if (r == WM_PLAY) { ui_button(10, y + 1, 138, 15, wm_mode == 2 ? "BACK TO THE EDITOR" : wm_mode == 1 ? "BEGIN STRANDED" : wmLbl[r], IC_PLAY, on); y += 17; continue; }
         if (on) ui_round(10, y, 138, 12, 4, UI_BLUE, UI_BLUE2, 0);
         else if (r == WM_LAND || r == WM_ISIZE || r == WM_NAME) ui_round(10, y - 1, 138, 1, 0, UI_LINE, UI_LINE, 0);   // (a rule between the groups)
         ui_text(14, y + 2, 1, wmLbl[r], on ? UI_WHITE : UI_SOFT);
@@ -3615,7 +3638,8 @@ static void wm_draw(void) {
         else if (r == WM_CLIM) val = wmClimNm[wm_clim]; else if (r == WM_HILLS) val = wmHillNm[wm_hills]; else if (r == WM_CAPSZ) val = wmCapNm[wm_capsz];
         else if (r == WM_CITIES || r == WM_TOWNS || r == WM_VILS) { sprintf(b, "%d", *v); val = b; } else if (r == WM_PEOPLE) val = wmPeopleNm[wm_people]; else if (r == WM_FAMS) val = wmFamNm[wm_fams]; else if (r == WM_TRAFFIC) val = wmTrafNm[wm_traffic];
         else if (r == WM_STYLE) val = wo_packed ? "PACKED" : "ROOMY"; else if (r >= WM_ISIZE && r <= WM_IROCKS) val = wmI3[r == WM_ISIZE ? 0 : r == WM_ICOAST ? 1 : 2][*v];
-        else if (r == WM_NAME) val = wo_name[0] ? wo_name : "BORE CITY";
+        else if (r == WM_SEASON) val = wmSeasonNm[wm_season]; else if (r == WM_FUNDS) { sprintf(b, "$%d", wmFundsV[wm_funds]); val = b; }
+        else if (r == WM_NAME) val = wm_mode == 2 ? nh_name : wo_name[0] ? wo_name : "BORE CITY";
         else if (r == WM_SEED) { sprintf(b, "%08X", (unsigned)wo_custom); val = b; }
         int vx = 144 - ui_tw(1, val);
         ui_text(vx, y + 2, 1, val, on ? UI_WHITE : UI_BLUE2);
@@ -3634,19 +3658,417 @@ static void wm_draw(void) {
     ui_badge(MX + 4, MY + 4, wm_isle_view ? "THE ISLAND" : "SAN BOREAS", UI_WHITE, UI_BLUE2);
     ui_text(MX, MY + MS + 5, 1, b, UI_INK);
     ui_wrap(MX, MY + MS + 16, MS + 6, 2, wmBlurb[wm_sel], UI_SOFT);
-    ui_hints(160, 214, "LR CHANGE|SQ SURPRISE ME|START PLAY|O BACK", 1);
+    ui_hints(160, 214, wm_mode == 2 ? "LR CHANGE|SQ SURPRISE ME|START OR O BACK TO THE EDITOR" : "LR CHANGE|SQ SURPRISE ME|START PLAY|O BACK", 1);
 }
 
-#define WO_NMORE 21
-// the base game's missions, the six older packs and THE LAND BOREFORE TIME (the GBA game's seven), then thirteen packs still to come
-static const char *const moreNm[WO_NMORE] = { "STORY MISSIONS", "BORE-OUT MAN!", "BOREZIES!", "WORLD WAR BORE", "BORTUA FIGHTER", "BOREAGOTCHI!", "BOREPILOGUE", "THE LAND BOREFORE TIME",
+#define WO_NMORE 22
+// the island creator, the base game's missions, the six older packs and THE LAND BOREFORE TIME (the GBA game's seven), then thirteen packs still to come
+static const char *const moreNm[WO_NMORE] = { "ISLAND CREATOR", "STORY MISSIONS", "BORE-OUT MAN!", "BOREZIES!", "WORLD WAR BORE", "BORTUA FIGHTER", "BOREAGOTCHI!", "BOREPILOGUE", "THE LAND BOREFORE TIME",
     "SEASONS", "ISLAND PARADISE", "SUPERSTAR", "CRIME AND LAW", "FARM LIFE", "SKY HIGH", "SPEED CITY", "BIG SCREEN", "SEASIDE", "MAGIC AND MYTH", "FAMILY FUN", "WILD WEST", "SPACE AGE" };
-static const char *const moreCard[WO_NMORE] = { "STORY|MISSIONS", "BORE-OUT|MAN!", "BOREZIES!", "WORLD|WAR BORE", "BORTUA|FIGHTER", "BORE-|AGOTCHI!", "BORE-|PILOGUE", "THE LAND|BOREFORE|TIME",
+static const char *const moreCard[WO_NMORE] = { "ISLAND|CREATOR", "STORY|MISSIONS", "BORE-OUT|MAN!", "BOREZIES!", "WORLD|WAR BORE", "BORTUA|FIGHTER", "BORE-|AGOTCHI!", "BORE-|PILOGUE", "THE LAND|BOREFORE|TIME",
     "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "CRIME|AND LAW", "FARM|LIFE", "SKY|HIGH", "SPEED|CITY", "BIG|SCREEN", "SEA-|SIDE", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE" };
-static const char *const moreBlurb[WO_NMORE] = { "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. NOT PORTED YET!", "THE TOWN GOES UNDEAD. NOT PORTED YET!", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. NOT PORTED YET!",
+static const char *const moreBlurb[WO_NMORE] = { "STRANDED! VERY SMALL TO VERY BIG. COAST, JUNGLE, HILLS", "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. NOT PORTED YET!", "THE TOWN GOES UNDEAD. NOT PORTED YET!", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. NOT PORTED YET!",
     "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!", "RAISE EIGHT PIXEL PETS PER TOY. X: THE GUIDE!", "GROWN-UPS ONLY: RETIRE AND LEAVE A LEGACY. NOT PORTED YET!", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
-    "THE YEAR TURNS. PLAY ON AND SEE.", "PLACEHOLDER PACK. NOT MADE YET!", "FORM A BAND AND PLAY GIGS! PAUSE, SUPERSTAR BAND", "BREAK THE LAW AND FIND OUT.", "CROPS, PESTS, FAIRS, ANIMALS. WATER TOO MUCH AND...", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
+    "THE YEAR TURNS. X TURNS THE PACK ON OR OFF.", "PLACEHOLDER PACK. NOT MADE YET!", "FORM A BAND AND PLAY GIGS! PAUSE, SUPERSTAR BAND", "BREAK THE LAW AND FIND OUT.", "CROPS, PESTS, FAIRS, ANIMALS. WATER TOO MUCH AND...", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
     "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP." };
+#define EX_PLAYABLE(i) ((i) == 0 || (i) == 1 || (i) == 5 || (i) == 6 || (i) == 8 || (i) == 9 || (i) == 11)
+// ---- PICK A MODE: the three ways in ----
+static int md_sel, md_t;
+static void mode_open(void) { md_sel = 0; md_t = 0; state = ST_MODE; }
+static void mode_update(void) {
+    md_t++;
+    if (PRESSED(PAD_UP)) md_sel = (md_sel + 2) % 3;
+    if (PRESSED(PAD_DOWN)) md_sel = (md_sel + 1) % 3;
+    if (PRESSED(PAD_CIRCLE)) { state = ST_MENU; return; }
+    if (PRESSED(PAD_CROSS) || PRESSED(PAD_START)) {
+        if (md_sel == 0) worlds_open(0); else if (md_sel == 1) wm_open_mode(0); else worlds_open(1);
+    }
+}
+static void mode_draw(void) {
+    title_draw(); ui_dim();
+    int top = ui_window(6, 6, 308, 228, "PICK A MODE", IC_STAR);
+    static const char *const nm[3] = { "NEIGHBORHOODS", "CREATE A WORLD", "EXPANSIONS" };
+    static const s8 ic[3] = { IC_PIN, IC_BRUSH, IC_STAR };
+    static const char *const bl[3] = { "LIVE IN ONE OF THE SET WORLDS, OR IN A NEIGHBORHOOD OF YOUR OWN FROM THE EDITOR: ROADS, BUILDINGS, TERRAIN, SEASONS", "DIAL IN THE LAND, SEA, CLIMATE, HILLS, TOWNS, PEOPLE, SEASON AND CASH, THEN WATCH THE MAP CHANGE", "THE ISLAND CREATOR, THE MISSIONS, AND THE EXPANSION PACKS TO TURN ON" };
+    for (int i = 0; i < 3; i++) ui_button(12, top + 8 + i * 40, 132, 32, nm[i], ic[i], i == md_sel);
+    ui_card(152, top + 4, 152, 150);
+    ui_icon_disc(228, top + 40, 56, ic[md_sel], UI_BLUE2, UI_WHITE);
+    ui_textc(228, top + 76, 1, nm[md_sel], UI_BLUE2);
+    ui_wrap(160, top + 92, 136, 6, bl[md_sel], UI_INK);
+    ui_hints(160, 214, "X OPEN|UP DOWN|O BACK", 1);
+}
+// ---- the neighborhoods you make: three on the card (BASLUS-00000BORE2-4 to 6), their dials and every change to the land ----
+static int nh_sel, nh_have[3], nh_ask, nh_slot, nh_card; static char nh_names[3][18]; static const char *nh_msg; static u32 nh_seed;
+static void ovr_save(void) {
+    sv_u16(bm_ovr_n()); int it = 0, bx, by, f; u8 v[5];
+    while (bm_ovr_next(&it, &bx, &by, &f, v)) { sv_u32((u32)(bx | by << 10 | f << 20)); for (int k = 0; k < 5; k++) if (f & (1 << k)) sv_u8(v[k]); }
+}
+static void ovr_load(void) {
+    bm_ovr_clear(); int n = ld_u16(); if (n > 1300) { ld_fail(); return; }
+    for (int i = 0; i < n; i++) { u32 e = ld_u32(); int bx = (int)(e & 1023), by = (int)((e >> 10) & 1023), f = (int)((e >> 20) & 31);
+        for (int k = 0; k < 5; k++) if (f & (1 << k)) { int v = ld_u8(); bm_ovr_set(bx, by, 1 << k, v); } }
+}
+static void nh_save_body(void) {
+    sv_str(nh_name, 17); sv_u32(nh_seed);
+    u8 d[16] = { (u8)wm_land, (u8)wm_sea, (u8)wm_clim, (u8)wm_hills, (u8)wm_capsz, (u8)wm_cities, (u8)wm_towns, (u8)wm_vils, (u8)wm_people, (u8)wm_fams, (u8)wm_traffic, (u8)wo_packed, (u8)wm_season, (u8)wm_funds, 0, 0 };
+    sv_n(d, 16); ovr_save();
+}
+static void nh_load_body(void) {
+    ld_str(nh_name, 17); nh_seed = ld_u32(); u8 d[16]; ld_n(d, 16);
+    wm_land = d[0] % BL_N; wm_sea = d[1] % 5; wm_clim = d[2] % 5; wm_hills = d[3] % 5; wm_capsz = d[4] % 6; wm_cities = d[5] % (BM_MAXCITY + 1); wm_towns = d[6] % (BM_MAXTOWN + 1); wm_vils = d[7] % (BM_MAXVIL + 1);
+    wm_people = d[8] % 6; wm_fams = d[9] % 4; wm_traffic = d[10] % 5; wo_packed = d[11] & 1; wm_season = d[12] % 5; wm_funds = d[13] % 6;
+    ovr_load();
+}
+static int nh_peek_i;
+static void nh_peek_body(void) { ld_str(nh_names[nh_peek_i], 17); }
+static void nh_scan(void) {
+    loading("LOOKING AT THE MEMORY CARD", 50);
+    nh_card = mcard_present(); nh_msg = 0; nh_ask = 0;
+    SaveInfo si; mcard_dir_keep = 0;
+    for (int i = 0; i < 3; i++) { nh_have[i] = nh_card && save_info(3 + i, &si); mcard_dir_keep = 1; nh_names[i][0] = 0; if (nh_have[i]) { nh_peek_i = i; if (!save_read(3 + i, nh_peek_body)) nh_have[i] = 0; } }
+    mcard_dir_keep = 0;
+}
+static int nh_save(void) {
+    loading("SAVING YOUR NEIGHBORHOOD", 50);
+    SaveInfo in; memset(&in, 0, sizeof in); strncpy(in.name, nh_name, NAME_LEN - 1); save_set_info(&in);
+    return save_write(3 + nh_slot, nh_save_body);
+}
+static void nh_play(void) {   // live in the neighborhood being edited (or just opened): its dials, seasons, cash, and every change
+    wm_apply(); strncpy(wo_name, nh_name, 17); wo_name[17] = 0; life_story = 0; sim_season_lock = wm_season; go_funds = wm_funds;
+    worlds_go(nh_seed, 0);
+}
+// ---- THE NEIGHBORHOOD EDITOR: the map from above, a block to a square. Paint the ground, raise and lower the land, lay roads, claim land
+// for the town, place buildings (an EMPTY LOT is yours to build in your life), and set the town's season, cash and dials ----
+enum { NT_GROUND, NT_RAISE, NT_LOWER, NT_ROAD, NT_BUILD, NT_CLAIM, NT_WILD, NT_UNDO, NT_N };
+static const char *const neTool[NT_N] = { "GROUND", "RAISE", "LOWER", "ROADS", "BUILD", "CLAIM", "WILD", "UNDO" };
+static const char *const neHelp[NT_N] = { "", "TERRAFORM UP: SEA, SAND, GRASS, ROCK", "TERRAFORM DOWN: ROCK, GRASS, SAND, SEA", "", "", "MAKE THE LAND PART OF THE TOWN",
+    "GIVE THE LAND BACK TO THE WILD", "PUT THE BLOCK BACK AS THE DICE MADE IT" };
+static const char *const neGnd[6] = { "SEA", "SAND", "GRASS", "FOREST", "DESERT", "ROCK" };
+static const u8 neLots[] = { LOT_WILD, LOT_HOUSE, LOT_COTTAGE, LOT_TOWN, LOT_TWO, LOT_APART, LOT_SHOP, LOT_DINER, LOT_GYM, LOT_OFFICE, LOT_INN, LOT_POOL, LOT_SCHOOL, LOT_ARCADE, LOT_TOWER, LOT_HOTEL,
+                             LOT_PARK, LOT_SQUARE, LOT_SKATE, LOT_EMPTY, LOT_FARM, LOT_CAFE, LOT_BAR, LOT_CINEMA, LOT_SALON, LOT_RESTAURANT, LOT_CLINIC, LOT_LIBRARY, LOT_SPA, LOT_GALLERY, LOT_GAS, LOT_CONV };
+#define NE_NL ((int)sizeof neLots)
+// ---- the diorama: a patch of the map as a 3D model: rolling land with shores, roads, trees, houses with roofs and yards (the neighborhood editor, the moving-in screen) ----
+#define DC 160                 // a block's width in the model
+#define HS 3                   // height units per point of elevation
+#define DW 16                  // blocks across the model, and deep
+#define DD 13
+typedef struct { u8 t, l, r, s, h, v; } DCell;   // h: elevation points (0 the sea); v: a block's own dice
+static DCell dio_c[DD][DW];
+static short dio_hv[DD + 1][DW + 1];   // the ground's height at every corner of a block (units): the corner's four blocks averaged
+static u16 dio_vc[DD + 1][DW + 1];     // ... and its colour, lit from the north-west
+static int dio_ox, dio_oy, dio_dirty = 1, dio_ax, dio_ay, dio_pitch = 520, dio_dist = 1500, dio_yaw;   // the window's north-west block; the camera's focus (blocks / 256)
+static const u8 dTc[6][3] = { { 46, 110, 198 }, { 234, 216, 158 }, { 104, 170, 72 }, { 70, 130, 58 }, { 214, 176, 104 }, { 140, 132, 122 } };
+static void dio_fill(void) {
+    for (int r = 0; r < DD; r++) for (int c = 0; c < DW; c++) {
+        BInfo b; bm_block(dio_ox + c, dio_oy + r, &b);
+        DCell *k = &dio_c[r][c]; k->t = b.terrain; k->l = b.lot; k->r = b.road; k->s = b.set; k->h = (u8)MIN(255, bm_height(dio_ox + c, dio_oy + r)); k->v = (u8)(b.h >> 8);
+    }
+    for (int r = 0; r <= DD; r++) for (int c = 0; c <= DW; c++) {
+        int n = 0, sum = 0, cr = 0, cg = 0, cb = 0;
+        for (int k = 0; k < 4; k++) { int cc = CLAMP(c - 1 + (k & 1), 0, DW - 1), rr = CLAMP(r - 1 + (k >> 1), 0, DD - 1); const DCell *q = &dio_c[rr][cc];
+            int t = q->t % 6, v = (q->v & 15) - 8; sum += q->h; n++;
+            int br = dTc[t][0], bg = dTc[t][1], bb = dTc[t][2];
+            if (t == BT_ROCKY && q->h > 100) { br = 226; bg = 230; bb = 236; }   // snow on the peaks
+            if (t == BT_SEA) v = (q->v & 7) - 3;
+            cr += br + v; cg += bg + v; cb += bb + v; }
+        dio_hv[r][c] = (short)(sum * HS / n); dio_vc[r][c] = (u16)((CLAMP(cr / 4, 0, 255) >> 3) | ((CLAMP(cg / 4, 0, 255) >> 3) << 5) | ((CLAMP(cb / 4, 0, 255) >> 3) << 10));
+    }
+    for (int r = 0; r <= DD; r++) for (int c = 0; c <= DW; c++) {   // light from the north-west: a slope facing it is bright, one turned away dark
+        int hw = dio_hv[r][MAX(0, c - 1)], he = dio_hv[r][MIN(DW, c + 1)], hn = dio_hv[MAX(0, r - 1)][c], hs = dio_hv[MIN(DD, r + 1)][c];
+        int sh = CLAMP(160 + ((he - hw) * 5 + (hs - hn) * 3) / 3, 100, 232);
+        u32 col = dio_vc[r][c]; int R = (int)((col & 31) << 3) * sh / 160, G = (int)(((col >> 5) & 31) << 3) * sh / 160, B = (int)(((col >> 10) & 31) << 3) * sh / 160;
+        dio_vc[r][c] = (u16)((MIN(255, R) >> 3) | ((MIN(255, G) >> 3) << 5) | ((MIN(255, B) >> 3) << 10));
+    }
+    dio_dirty = 0;
+}
+static void dio_look(int bx, int by, int snap) {   // aim at that block; the window follows when it nears an edge
+    if (snap || bx - dio_ox < 5 || bx - dio_ox > DW - 6 || by - dio_oy < 4 || by - dio_oy > DD - 3) { dio_ox = bx - DW / 2; dio_oy = by - 8; dio_dirty = 1; }
+    if (snap) { dio_ax = bx * 256 + 128; dio_ay = by * 256 + 128; }
+    else { dio_ax += (bx * 256 + 128 - dio_ax) / 4; dio_ay += (by * 256 + 128 - dio_ay) / 4; }
+}
+#define DVC(r, c) ((u32)((dio_vc[r][c] & 31) << 3) | ((u32)(((dio_vc[r][c] >> 5) & 31) << 3) << 8) | ((u32)(((dio_vc[r][c] >> 10) & 31) << 3) << 16))
+static int dio_fh;   // the focus's ground height
+static void dio_cam(void) {
+    int fx = (dio_ax - dio_ox * 256) * DC / 256, fz = -((dio_ay - dio_oy * 256) * DC / 256), cp = icos(dio_pitch), sp = isin(dio_pitch);
+    int horiz = (dio_dist * cp) >> 12, up = (dio_dist * sp) >> 12;
+    int cc = CLAMP((dio_ax - dio_ox * 256) / 256, 0, DW - 1), rr = CLAMP((dio_ay - dio_oy * 256) / 256, 0, DD - 1);
+    dio_fh += ((dio_hv[rr][cc] + dio_hv[rr + 1][cc + 1]) / 2 - dio_fh) / 4;
+    cam.at.vx = fx; cam.at.vy = -dio_fh; cam.at.vz = fz;
+    cam.eye.vx = fx - ((isin(dio_yaw) * horiz) >> 12); cam.eye.vz = fz - ((icos(dio_yaw) * horiz) >> 12); cam.eye.vy = -dio_fh - up;
+    gfx_camera_update();
+}
+static int dio_zx;
+static __attribute__((noinline)) void dq(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, int dx, int dy, int dz, int r, int g, int b) {
+    SVECTOR a, bb, c, d; setVector(&a, ax, ay, az); setVector(&bb, bx, by, bz); setVector(&c, cx, cy, cz); setVector(&d, dx, dy, dz);
+    gfx_set_zbias((ay == by && by == cy && cy == dy ? 2 : 4) + dio_zx);   // (flat things on the ground sort over it; standing things over those)
+    gfx_quad_f(&a, &bb, &c, &d, CLAMP(r, 0, 255), CLAMP(g, 0, 255), CLAMP(b, 0, 255), 0);
+}
+static __attribute__((noinline)) void dtri(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, int r, int g, int b) {
+    SVECTOR a, bb, c; setVector(&a, ax, ay, az); setVector(&bb, bx, by, bz); setVector(&c, cx, cy, cz);
+    gfx_set_zbias(4 + dio_zx);
+    gfx_tri_f(&a, &bb, &c, CLAMP(r, 0, 255), CLAMP(g, 0, 255), CLAMP(b, 0, 255), 0);
+}
+#define Z_(r, f) (-((r) * DC + (f)))   // the model's z for block row r, f units south of its north edge
+static int d_h(int c, int r, int fx, int fz) {   // the ground's height at (fx, fz) inside block (c, r)
+    int top = dio_hv[r][c] + (dio_hv[r][c + 1] - dio_hv[r][c]) * fx / DC, bot = dio_hv[r + 1][c] + (dio_hv[r + 1][c + 1] - dio_hv[r + 1][c]) * fx / DC;
+    return top + (bot - top) * fz / DC;
+}
+static __attribute__((noinline)) void d_box(int x0, int x1, int zn, int zs, int y0, int y1, int side_c, const u8 *body, const u8 *roof) {   // a block-shaped building: flat roof, south and (east or west) wall
+    dq(x0, y1, zn, x1, y1, zn, x0, y1, zs, x1, y1, zs, roof[0], roof[1], roof[2]);
+    dq(x0, y1, zs, x1, y1, zs, x0, y0, zs, x1, y0, zs, body[0] * 220 >> 8, body[1] * 220 >> 8, body[2] * 220 >> 8);
+    if (side_c) dq(x1, y1, zn, x1, y1, zs, x1, y0, zn, x1, y0, zs, body[0] * 170 >> 8, body[1] * 170 >> 8, body[2] * 170 >> 8);
+    else dq(x0, y1, zn, x0, y1, zs, x0, y0, zn, x0, y0, zs, body[0] * 150 >> 8, body[1] * 150 >> 8, body[2] * 150 >> 8);
+}
+static __attribute__((noinline)) void d_tree(int x, int y, int z, int h, int rad, int shade, int lean) {   // a cone of leaves (three faces)
+    int r1 = rad * 7 / 8, r2 = rad / 2, gr = 60 + shade, gg = 124 + shade, gb = 52 + shade / 2; (void)lean;
+    int ax = x, az = z, ay = y - h;
+    int p0x = x, p0z = z + rad, p1x = x - r1, p1z = z - r2, p2x = x + r1, p2z = z - r2;
+    dtri(ax, ay, az, p0x, y, p0z, p1x, y, p1z, gr * 5 / 4, gg * 5 / 4, gb * 5 / 4);
+    dtri(ax, ay, az, p2x, y, p2z, p0x, y, p0z, gr, gg, gb);
+    dtri(ax, ay, az, p1x, y, p1z, p2x, y, p2z, gr * 3 / 4, gg * 3 / 4, gb * 3 / 4);
+}
+static void dio_bld_look(int l, int *bh, const u8 **body, const u8 **roof, int *kind) {   // kind: 0 a house (gabled), 1 a tall block (windows), 2 a shop/civic (flat)
+    static const u8 home[3] = { 238, 206, 160 }, shop[3] = { 214, 220, 240 }, shopR[3] = { 90, 110, 190 }, tow[3] = { 168, 184, 210 }, towR[3] = { 98, 106, 130 }, civ[3] = { 236, 228, 212 }, civR[3] = { 150, 124, 170 }, apt[3] = { 214, 170, 140 }, aptR[3] = { 120, 100, 96 };
+    *body = shop; *roof = shopR; *bh = 40; *kind = 2;
+    switch (l) {
+        case LOT_HOUSE: *kind = 0; *bh = 32; *body = home; break; case LOT_COTTAGE: *kind = 0; *bh = 26; *body = home; break;
+        case LOT_TOWN: *kind = 0; *bh = 34; *body = home; break; case LOT_TWO: *kind = 0; *bh = 48; *body = home; break;
+        case LOT_APART: *kind = 1; *bh = 90; *body = apt; *roof = aptR; break;
+        case LOT_TOWER: *kind = 1; *bh = 150; *body = tow; *roof = towR; break; case LOT_OFFICE: *kind = 1; *bh = 78; *body = tow; *roof = towR; break; case LOT_HOTEL: *kind = 1; *bh = 118; *body = tow; *roof = towR; break;
+        case LOT_SCHOOL: case LOT_LIBRARY: case LOT_GALLERY: case LOT_CLINIC: case LOT_CINEMA: *body = civ; *roof = civR; *bh = 48; break;
+        default: break;
+    }
+}
+static __attribute__((noinline)) void d_house(int c, int r, int x0, int hy, int v, int near, int right) {   // a gabled house on its lawn; hy: the ground under it
+    static const u8 wall[6][3] = { { 240, 226, 186 }, { 196, 214, 232 }, { 238, 208, 128 }, { 244, 244, 238 }, { 232, 186, 178 }, { 184, 196, 178 } };
+    static const u8 rf[5][3] = { { 168, 74, 58 }, { 84, 84, 92 }, { 70, 110, 80 }, { 78, 96, 140 }, { 122, 82, 56 } };
+    const u8 *wc = wall[v % 6], *rc = rf[(v >> 3) % 5];
+    int zn = Z_(r, 46), zs = Z_(r, 100), hx0 = x0 + 52, hx1 = x0 + 118, wh = 30, rh = 26, zc = (zn + zs) / 2, y0 = -hy;
+    dq(x0 + 40, y0 - 1, Z_(r, 40), x0 + DC - 8, y0 - 1, Z_(r, 40), x0 + 40, y0 - 1, Z_(r, 116), x0 + DC - 8, y0 - 1, Z_(r, 116), 118, 184, 84);   // the lawn
+    if (near) dq(hx0 + 8, y0 - 2, Z_(r, 40), hx0 + 26, y0 - 2, Z_(r, 40), hx0 + 8, y0 - 2, zn, hx0 + 26, y0 - 2, zn, 182, 180, 172);               // the drive, up to the street
+    dq(hx0, y0 - wh, zs, hx1, y0 - wh, zs, hx0, y0, zs, hx1, y0, zs, wc[0] * 230 >> 8, wc[1] * 230 >> 8, wc[2] * 230 >> 8);                      // the front wall
+    if (right) { dq(hx1, y0 - wh, zn, hx1, y0 - wh, zs, hx1, y0, zn, hx1, y0, zs, wc[0] * 180 >> 8, wc[1] * 180 >> 8, wc[2] * 180 >> 8); if (near) dtri(hx1, y0 - wh, zn, hx1, y0 - wh, zs, hx1, y0 - wh - rh, zc, wc[0] * 190 >> 8, wc[1] * 190 >> 8, wc[2] * 190 >> 8); }
+    else { dq(hx0, y0 - wh, zn, hx0, y0 - wh, zs, hx0, y0, zn, hx0, y0, zs, wc[0] * 150 >> 8, wc[1] * 150 >> 8, wc[2] * 150 >> 8); if (near) dtri(hx0, y0 - wh, zn, hx0, y0 - wh, zs, hx0, y0 - wh - rh, zc, wc[0] * 160 >> 8, wc[1] * 160 >> 8, wc[2] * 160 >> 8); }
+    dq(hx0 - 6, y0 - wh, zs - 6, hx1 + 6, y0 - wh, zs - 6, hx0 - 6, y0 - wh - rh, zc, hx1 + 6, y0 - wh - rh, zc, rc[0] * 205 >> 8, rc[1] * 205 >> 8, rc[2] * 205 >> 8);   // the roof's two slopes
+    dq(hx0 - 6, y0 - wh - rh, zc, hx1 + 6, y0 - wh - rh, zc, hx0 - 6, y0 - wh, zn + 6, hx1 + 6, y0 - wh, zn + 6, rc[0] * 250 >> 8, rc[1] * 250 >> 8, rc[2] * 250 >> 8);
+    if (near) {
+        dq(hx0 + 8, y0 - 20, zs, hx0 + 20, y0 - 20, zs, hx0 + 8, y0 - 8, zs, hx0 + 20, y0 - 8, zs, 150, 196, 236);                              // two windows and the door
+        dq(hx1 - 20, y0 - 20, zs, hx1 - 8, y0 - 20, zs, hx1 - 20, y0 - 8, zs, hx1 - 8, y0 - 8, zs, 150, 196, 236);
+        dq(hx0 + 28, y0 - 18, zs, hx0 + 38, y0 - 18, zs, hx0 + 28, y0, zs, hx0 + 38, y0, zs, 122, 82, 52);
+        int cx = hx0 + 14 + (v & 15); dq(cx, y0 - wh - rh - 4, zc + 5, cx + 10, y0 - wh - rh - 4, zc + 5, cx, y0 - wh - rh - 4, zc - 5, cx + 10, y0 - wh - rh - 4, zc - 5, 150, 90, 78);   // a chimney
+    }
+}
+static __attribute__((noinline)) void d_road(int c, int r, int bits) {
+    static const u8 asp[3] = { 72, 72, 80 }, paveC[3] = { 196, 194, 186 };
+    int x0 = c * DC, x1 = x0 + DC, RW = 34;
+    if (bits & 1) {   // the street along the block's north edge
+        int h0 = dio_hv[r][c], h1 = dio_hv[r][c + 1], g0 = d_h(c, r, 0, RW), g1 = d_h(c, r, DC, RW), p0 = d_h(c, r, 0, RW + 8), p1 = d_h(c, r, DC, RW + 8);
+        dq(x0, -h0 - 2, Z_(r, 0), x1, -h1 - 2, Z_(r, 0), x0, -g0 - 2, Z_(r, RW), x1, -g1 - 2, Z_(r, RW), asp[0], asp[1], asp[2]);
+        dq(x0, -g0 - 2, Z_(r, RW), x1, -g1 - 2, Z_(r, RW), x0, -p0 - 2, Z_(r, RW + 8), x1, -p1 - 2, Z_(r, RW + 8), paveC[0], paveC[1], paveC[2]);
+        int m0 = d_h(c, r, 0, RW / 2), m1 = d_h(c, r, DC, RW / 2); dq(x0, -m0 - 3, Z_(r, RW / 2 - 1), x1, -m1 - 3, Z_(r, RW / 2 - 1), x0, -m0 - 3, Z_(r, RW / 2 + 1), x1, -m1 - 3, Z_(r, RW / 2 + 1), 226, 200, 70);
+    }
+    if (bits & 2) {   // ... and along its west edge
+        int h0 = dio_hv[r][c], h1 = dio_hv[r + 1][c], g0 = d_h(c, r, RW, 0), g1 = d_h(c, r, RW, DC), p0 = d_h(c, r, RW + 8, 0), p1 = d_h(c, r, RW + 8, DC);
+        dq(x0, -h0 - 2, Z_(r, 0), x0 + RW, -g0 - 2, Z_(r, 0), x0, -h1 - 2, Z_(r, DC), x0 + RW, -g1 - 2, Z_(r, DC), asp[0], asp[1], asp[2]);
+        dq(x0 + RW, -g0 - 2, Z_(r, 0), x0 + RW + 8, -p0 - 2, Z_(r, 0), x0 + RW, -g1 - 2, Z_(r, DC), x0 + RW + 8, -p1 - 2, Z_(r, DC), paveC[0], paveC[1], paveC[2]);
+        int m0 = d_h(c, r, RW / 2, 0), m1 = d_h(c, r, RW / 2, DC); dq(x0 + RW / 2 - 1, -m0 - 3, Z_(r, 0), x0 + RW / 2 + 1, -m0 - 3, Z_(r, 0), x0 + RW / 2 - 1, -m1 - 3, Z_(r, DC), x0 + RW / 2 + 1, -m1 - 3, Z_(r, DC), 226, 200, 70);
+    }
+}
+static void dio_draw(int curx, int cury, int brush, int tick) {   // the model; a cursor over brush x brush blocks at (curx, cury) (brush 0: none)
+    if (dio_dirty) dio_fill();
+    dio_cam();
+    gfx_set_identity();
+    int fc = CLAMP((dio_ax - dio_ox * 256) / 256, 0, DW - 1), fr = CLAMP((dio_ay - dio_oy * 256) / 256, 0, DD - 1);
+    gfx_set_zbias(0); dio_zx = 0;
+    for (int r = 0; r < DD; r++) for (int c = 0; c < DW; c++) {   // the land: a gouraud quad a block, from the heights at its four corners
+        SVECTOR a, b, cc, d; int x0 = c * DC, x1 = x0 + DC;
+        setVector(&a, x0, -dio_hv[r][c], Z_(r, 0)); setVector(&b, x1, -dio_hv[r][c + 1], Z_(r, 0)); setVector(&cc, x0, -dio_hv[r + 1][c], Z_(r, DC)); setVector(&d, x1, -dio_hv[r + 1][c + 1], Z_(r, DC));
+        gfx_quad_g(&a, &b, &cc, &d, DVC(r, c), DVC(r, c + 1), DVC(r + 1, c), DVC(r + 1, c + 1), 0);
+    }
+    for (int r = 0; r < DD; r++) for (int c = 0; c < DW; c++) {
+        const DCell *k = &dio_c[r][c]; int t = k->t % 6, l = k->l, x0 = c * DC, v = k->v;
+        if (t == BT_SEA) continue;
+        int dist = MAX(ABS(c - fc), ABS(r - fr)), near = dist <= 5, full = gfx_prims_left() > 7000;
+        int hy = d_h(c, r, DC / 2, DC / 2);
+        if (k->r & 3) d_road(c, r, k->r & 3);
+        if (l == LOT_WILD || l == LOT_RIVER) {
+            if (l == LOT_RIVER) { dq(x0, -dio_hv[r][c] - 3, Z_(r, 0), x0 + DC, -dio_hv[r][c + 1] - 3, Z_(r, 0), x0, -dio_hv[r + 1][c] - 3, Z_(r, DC), x0 + DC, -dio_hv[r + 1][c + 1] - 3, Z_(r, DC), 70, 130, 222); continue; }
+            if (!full || dist > 9) continue;
+            int nt = t == BT_FOREST ? 4 : t == BT_GRASS ? ((v & 3) == 0) + ((v & 12) == 0) : t == BT_ROCKY ? (v % 3 == 0) : 0;
+            for (int i = 0; i < nt; i++) { int fx = 24 + (((v >> 1) * (i + 3) * 37) & 63) + i * 14, fz = 30 + (((v >> 2) * (i + 5) * 53) & 63) + (i & 1) * 20; if (fx > DC - 18) fx = DC - 18; if (fz > DC - 18) fz = DC - 18;
+                if ((k->r & 1) && fz < 44) fz += 40; if ((k->r & 2) && fx < 44) fx += 40; d_tree(x0 + fx, -d_h(c, r, fx, fz), Z_(r, fz), t == BT_ROCKY ? 40 : 66 + (v & 15), t == BT_ROCKY ? 18 : 24, (v & 7) * 3 - 8, 0); }
+            continue;
+        }
+        if (l == LOT_PARK || l == LOT_SQUARE || l == LOT_SKATE) {
+            static const u8 pk[3] = { 96, 172, 84 }, sq[3] = { 206, 202, 188 }, sk[3] = { 120, 120, 128 };
+            const u8 *pc = l == LOT_PARK ? pk : l == LOT_SQUARE ? sq : sk;
+            dq(x0 + 40, -hy - 1, Z_(r, 40), x0 + DC - 8, -hy - 1, Z_(r, 40), x0 + 40, -hy - 1, Z_(r, DC - 8), x0 + DC - 8, -hy - 1, Z_(r, DC - 8), pc[0], pc[1], pc[2]);
+            if (l == LOT_PARK) { dq(x0 + 70, -hy - 2, Z_(r, 70), x0 + 110, -hy - 2, Z_(r, 70), x0 + 70, -hy - 2, Z_(r, 100), x0 + 110, -hy - 2, Z_(r, 100), 70, 140, 222);   // a pond
+                if (full) for (int i = 0; i < 4; i++) { int fx = 50 + i * 26, fz = 52 + ((i * 41 + v) & 63); d_tree(x0 + fx, -hy, Z_(r, fz), 70, 24, i * 4 - 6, 0); } }
+            continue;
+        }
+        if (l == LOT_EMPTY) { dq(x0 + 40, -hy - 1, Z_(r, 40), x0 + DC - 8, -hy - 1, Z_(r, 40), x0 + 40, -hy - 1, Z_(r, DC - 8), x0 + DC - 8, -hy - 1, Z_(r, DC - 8), 168, 140, 96);
+                       dq(x0 + 70, -hy - 22, Z_(r, 70), x0 + 76, -hy - 22, Z_(r, 70), x0 + 70, -hy, Z_(r, 70), x0 + 76, -hy, Z_(r, 70), 250, 226, 60); continue; }
+        if (l == LOT_FARM) { for (int i = 0; i < 4; i++) dq(x0 + 40, -hy - 1, Z_(r, 40 + i * 28), x0 + DC - 8, -hy - 1, Z_(r, 40 + i * 28), x0 + 40, -hy - 1, Z_(r, 62 + i * 28), x0 + DC - 8, -hy - 1, Z_(r, 62 + i * 28), i & 1 ? 196 : 150, i & 1 ? 164 : 190, i & 1 ? 84 : 80); continue; }
+        int bh, kind; const u8 *body, *roof; dio_bld_look(l, &bh, &body, &roof, &kind);
+        if (kind == 0) { d_house(c, r, x0, hy, v, near && full, c < DW / 2); if (full && near) { d_tree(x0 + 30, -d_h(c, r, 30, 120), Z_(r, 120), 54, 20, 0, 0); d_tree(x0 + DC - 14, -d_h(c, r, DC - 14, 60), Z_(r, 60), 60, 22, 6, 0); } continue; }
+        { int bx0 = x0 + 46, bx1 = x0 + DC - 16, zn = Z_(r, 46), zs = Z_(r, DC - 18), y0 = -hy, y1 = -hy - bh * 14 / 10;
+          dq(x0 + 40, y0 - 1, Z_(r, 40), x0 + DC - 8, y0 - 1, Z_(r, 40), x0 + 40, y0 - 1, Z_(r, DC - 8), x0 + DC - 8, y0 - 1, Z_(r, DC - 8), 150, 150, 156);   // its paving
+          d_box(bx0, bx1, zn, zs, y0, y1, c < DW / 2, body, roof);
+          if (kind == 1 && near) { int ns = (bh * 14 / 10) / 22; for (int i = 0; i < ns; i++) { int wy = y0 - 8 - i * 22; dq(bx0 + 4, wy - 9, zs, bx1 - 4, wy - 9, zs, bx0 + 4, wy, zs, bx1 - 4, wy, zs, 70, 100, 150); } }
+          else if (kind == 2) { static const u8 aw[3] = { 214, 70, 60 }; dq(bx0 + 4, y0 - 26, zs - 8, bx1 - 4, y0 - 26, zs - 8, bx0 + 4, y0 - 18, zs, bx1 - 4, y0 - 18, zs, aw[0], aw[1], aw[2]); } }
+    }
+    dio_zx = 1;
+    if (brush > 0 && curx >= dio_ox && cury >= dio_oy && curx < dio_ox + DW && cury < dio_oy + DD) {   // the cursor: a glowing patch of ground and four posts
+        int n = brush, hh = n / 2, c = curx - dio_ox, r = cury - dio_oy, p = 200 + (isin((tick * 140) & 4095) >> 6);
+        int gx0 = (c - hh) * DC, gx1 = (c + hh + 1) * DC; (void)gx0; (void)gx1;
+        for (int j = -hh; j <= hh; j++) for (int i = -hh; i <= hh; i++) {   // (laid on the ground, block by block, so it follows the land)
+            int cc = c + i, rr = r + j; if (cc < 0 || rr < 0 || cc >= DW || rr >= DD) continue; int x0 = cc * DC;
+            dq(x0, -dio_hv[rr][cc] - 6, Z_(rr, 0), x0 + DC, -dio_hv[rr][cc + 1] - 6, Z_(rr, 0), x0, -dio_hv[rr + 1][cc] - 6, Z_(rr, DC), x0 + DC, -dio_hv[rr + 1][cc + 1] - 6, Z_(rr, DC), MIN(255, p + 40), p, 60);
+        }
+        for (int k = 0; k < 4; k++) { int cc = CLAMP(c + (k & 1 ? hh : -hh), 0, DW - 1), rr = CLAMP(r + (k & 2 ? hh : -hh), 0, DD - 1), px = cc * DC + (k & 1 ? DC - 10 : 0), pz = Z_(rr, k & 2 ? DC - 10 : 0), py = -dio_hv[rr][cc] - 6;
+            dq(px, py - 130, pz, px + 10, py - 130, pz, px, py, pz, px + 10, py, pz, 255, 232, 70); dq(px + 10, py - 130, pz, px + 10, py - 130, pz - 10, px + 10, py, pz, px + 10, py, pz - 10, 200, 180, 50); }
+    }
+    gfx_set_zbias(0); dio_zx = 0;
+}
+static void dio_post(int bx, int by, int r, int g, int b, int tall) {   // a marker post on a block (the moving-in screen's lots)
+    int c = bx - dio_ox, rr = by - dio_oy; if (c < 0 || rr < 0 || c >= DW || rr >= DD) return;
+    int x0 = c * DC + 56, zn = Z_(rr, 56), yy = -d_h(c, rr, 80, 80) - 4;
+    dq(x0, yy - tall, zn, x0 + 36, yy - tall, zn, x0, yy - tall, zn - 36, x0 + 36, yy - tall, zn - 36, r, g, b);
+    dq(x0, yy - tall, zn - 36, x0 + 36, yy - tall, zn - 36, x0, yy, zn - 36, x0 + 36, yy, zn - 36, r * 210 >> 8, g * 210 >> 8, b * 210 >> 8);
+    dq(x0 + 36, yy - tall, zn, x0 + 36, yy - tall, zn - 36, x0 + 36, yy, zn, x0 + 36, yy, zn - 36, r * 160 >> 8, g * 160 >> 8, b * 160 >> 8);
+    gfx_set_zbias(0);
+}
+#define ne_dirty dio_dirty
+static int ne_tool, ne_g = BT_GRASS, ne_r, ne_b = 1, ne_brush = 1, ne_cx, ne_cy, ne_vx, ne_vy, ne_dirty, ne_changed, ne_menu, ne_msel, ne_t, ne_rep, ne_jump, ne_msgt, ne_capx, ne_capy;
+static const char *ne_msg; static int ne_st[5];   // the town's numbers (48 x 48 blocks round the capital): homes, places, parks, roads, land
+static const char *ne_lot_name(int lot) { return lot == LOT_WILD ? "OPEN COUNTRY" : lot == LOT_EMPTY ? "EMPTY LOT: YOU BUILD" : bm_lot_name(lot); }
+static int ne_in(int bx, int by) { return ABS(bx - ne_capx) < 24 && ABS(by - ne_capy) < 24; }
+static void ne_stat(const BInfo *b, int sg) {
+    ne_st[0] += sg * bm_units(b); if (bm_is_place(b->lot)) ne_st[1] += sg; if (b->lot == LOT_PARK || b->lot == LOT_SQUARE || b->lot == LOT_SKATE) ne_st[2] += sg;
+    if (b->road & 3) ne_st[3] += sg; if (b->terrain != BT_SEA) ne_st[4] += sg;
+}
+static void ne_rebuild(void) {   // the base map from the dials (the changes stay on it) and the town's numbers
+    wm_apply(); bm_gen = 6; bm_packed = wo_packed; bm_rename_clear(); bm_rename(0, nh_name); bm_new(nh_seed);
+    const Settle *c = bm_set(0); ne_capx = c ? c->x : BM_N / 2; ne_capy = c ? c->y : BM_N / 2;
+    memset(ne_st, 0, sizeof ne_st);
+    for (int y = -23; y <= 23; y++) for (int x = -23; x <= 23; x++) { BInfo b; bm_block(ne_capx + x, ne_capy + y, &b); ne_stat(&b, 1); }
+    ne_dirty = 1; wo_painted = 0;
+}
+static void ne_center(void) { dio_look(ne_cx, ne_cy, 1); }
+static void ne_scroll(void) { }
+static void ne_open(int fresh) {
+    loading("MAKING THE MAP", 30); ne_rebuild();
+    if (fresh) { ne_cx = ne_capx; ne_cy = ne_capy; ne_tool = 0; ne_jump = 0; ne_brush = 1; ne_g = BT_GRASS; ne_b = 1; ne_r = 0; }
+    ne_center(); ne_menu = 0; ne_msel = 0; ne_msgt = 0; ne_t = 0; ne_changed = fresh ? 0 : ne_changed; state = ST_NHED;
+}
+static void ne_from_settings(void) { nh_seed = wo_custom; ne_open(0); ne_changed = 1; }
+static void nh_new(int slot) {
+    nh_slot = slot; strcpy(nh_name, "MY TOWN");
+    nh_seed = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u); if (!nh_seed) nh_seed = 1;
+    wm_land = 0; wm_sea = 2; wm_clim = 2; wm_hills = 2; wm_capsz = 2; wm_cities = 2; wm_towns = 6; wm_vils = 12; wm_people = 3; wm_fams = 1; wm_traffic = 2; wo_packed = 0; wm_season = 0; wm_funds = 2;
+    bm_ovr_clear(); ne_open(1);
+}
+static void ne_leave(void) { bm_ovr_clear(); wo_tab = 1; wo_more = 0; wo_painted = 0; nh_scan(); state = ST_WORLDS; }
+static int ne_near(int bx, int by) { int bi = 0, bd = 1 << 30; for (int i = 0; i < bm_nset(); i++) { const Settle *s = bm_set(i); int dx = bx - s->x, dy = by - s->y, d = dx * dx + dy * dy; if (d < bd) { bd = d; bi = i; } } return bi; }
+static int ne_cell(int bx, int by) {   // the tool on one block: 0 if the table of changes is full
+    BInfo b0, b1; bm_block(bx, by, &b0); int in = ne_in(bx, by), ok = 1, t = b0.terrain; if (in) ne_stat(&b0, -1);
+    switch (ne_tool) {
+        case NT_GROUND: ok = bm_ovr_set(bx, by, BO_GROUND, ne_g); break;
+        case NT_RAISE: case NT_LOWER: { int dl = CLAMP(bm_ovr_delta(bx, by) + (ne_tool == NT_RAISE ? 2 : -2), -8, 7);   // terraform: the land itself goes up or down (the ground type follows from its height)
+            bm_ovr_unset(bx, by, BO_GROUND); ok = bm_ovr_set(bx, by, BO_ELEV, dl & 15); } break;
+        case NT_ROAD: ok = bm_ovr_set(bx, by, BO_ROAD, ne_r ? 0 : 3); break;
+        case NT_BUILD: { int lot = neLots[ne_b];
+            if (b0.set == 255 && lot != LOT_WILD) { ok &= bm_ovr_set(bx, by, BO_TERR, ne_near(bx, by)); ok &= bm_ovr_set(bx, by, BO_ROAD, 3); }
+            ok &= bm_ovr_set(bx, by, BO_LOT, lot); } break;
+        case NT_CLAIM: if (b0.set == 255) { ok &= bm_ovr_set(bx, by, BO_TERR, ne_near(bx, by)); ok &= bm_ovr_set(bx, by, BO_LOT, LOT_EMPTY); } break;
+        case NT_WILD: ok &= bm_ovr_set(bx, by, BO_TERR, 255); ok &= bm_ovr_set(bx, by, BO_ROAD, 0); ok &= bm_ovr_set(bx, by, BO_LOT, LOT_WILD); break;
+        case NT_UNDO: ok = bm_ovr_set(bx, by, BO_NONE, 0); break;
+    }
+    bm_block(bx, by, &b1); if (in) ne_stat(&b1, 1);
+    return ok;
+}
+static void ne_use(void) {
+    int n = ne_brush, ok = 1;
+    for (int y = -(n / 2); y <= n / 2; y++) for (int x = -(n / 2); x <= n / 2; x++) { int bx = ne_cx + x, by = ne_cy + y; if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) continue; ok &= ne_cell(bx, by); }
+    if (!ok) { ne_msg = "TOO MANY CHANGES. UNDO SOME FIRST"; ne_msgt = 100; audio_voice(VOICE_NAH); }
+    ne_dirty = 1; ne_changed = 1;
+}
+static void ne_pal(int d) {
+    if (ne_tool == NT_GROUND) ne_g = (ne_g + 6 + d) % 6; else if (ne_tool == NT_BUILD) ne_b = (ne_b + NE_NL + d) % NE_NL; else if (ne_tool == NT_ROAD) ne_r ^= 1;
+}
+static void ne_move(int dx, int dy) {
+    ne_cx = CLAMP(ne_cx + dx, 0, BM_N - 1); ne_cy = CLAMP(ne_cy + dy, 0, BM_N - 1); ne_scroll();
+    if (HELD(PAD_CROSS)) ne_use();   // (X held: paint as you go)
+}
+static void ne_menu_do(int k) {
+    if (k == 0) {
+        if (!nh_card) nh_card = mcard_present();
+        if (!nh_card) { ne_msg = "NO MEMORY CARD IN SLOT 1"; ne_msgt = 120; audio_voice(VOICE_NAH); }
+        else if (nh_save()) { ne_msg = "NEIGHBORHOOD SAVED"; ne_msgt = 120; ne_changed = 0; audio_voice(VOICE_WIN); }
+        else { ne_msg = save_error(); ne_msgt = 150; audio_voice(VOICE_NAH); }
+        ne_menu = 0;
+    } else if (k == 1) { ne_menu = 0; nh_play(); }
+    else if (k == 2) { ne_menu = 0; wo_custom = nh_seed; wm_open_mode(2); }
+    else if (k == 3) ne_menu = 0;
+    else { ne_menu = 0; if (ne_changed) confirm_open("LEAVE THE EDITOR?", "CHANGES YOU HAVE NOT SAVED WILL BE LOST.", ne_leave); else ne_leave(); }
+}
+static void ne_update(void) {
+    ne_t++; if (ne_msgt) ne_msgt--;
+    if (ne_menu) {
+        if (PRESSED(PAD_UP)) ne_msel = (ne_msel + 4) % 5;
+        if (PRESSED(PAD_DOWN)) ne_msel = (ne_msel + 1) % 5;
+        if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) ne_menu = 0;
+        else if (PRESSED(PAD_CROSS)) ne_menu_do(ne_msel);
+        return;
+    }
+    int dx = 0, dy = 0, any = HELD(PAD_UP) || HELD(PAD_DOWN) || HELD(PAD_LEFT) || HELD(PAD_RIGHT), st = HELD(PAD_SELECT) ? 8 : 1;
+    if (any) {
+        int pr = PRESSED(PAD_UP) || PRESSED(PAD_DOWN) || PRESSED(PAD_LEFT) || PRESSED(PAD_RIGHT);
+        if (pr) ne_rep = 0; else ne_rep++;
+        if (pr || (ne_rep > 10 && !(ne_rep & 1))) { if (HELD(PAD_UP)) dy = -st; if (HELD(PAD_DOWN)) dy = st; if (HELD(PAD_LEFT)) dx = -st; if (HELD(PAD_RIGHT)) dx = st; }
+    } else ne_rep = 0;
+    if (dx || dy) ne_move(dx, dy);
+    if (PRESSED(PAD_L1)) { ne_tool = (ne_tool + NT_N - 1) % NT_N; audio_voice(VOICE_AGREE); }
+    if (PRESSED(PAD_R1)) { ne_tool = (ne_tool + 1) % NT_N; audio_voice(VOICE_AGREE); }
+    if (PRESSED(PAD_L2)) ne_pal(-1);
+    if (PRESSED(PAD_R2)) ne_pal(1);
+    if (PRESSED(PAD_SQUARE)) ne_brush = ne_brush == 1 ? 3 : ne_brush == 3 ? 5 : 1;
+    if (PRESSED(PAD_TRIANGLE) && bm_nset()) { ne_jump = (ne_jump + 1) % bm_nset(); const Settle *s = bm_set(ne_jump); ne_cx = s->x; ne_cy = s->y; ne_center(); }
+    if (PRESSED(PAD_CROSS)) ne_use();
+    if (PRESSED(PAD_START) || PRESSED(PAD_CIRCLE)) { ne_menu = 1; ne_msel = 0; }
+}
+static void ne_draw(void) {
+    static const u8 tc[6][3] = { { 44, 104, 196 }, { 236, 218, 156 }, { 100, 172, 78 }, { 52, 124, 58 }, { 214, 178, 102 }, { 146, 142, 136 } };
+    dio_look(ne_cx, ne_cy, 0);
+    gfx_sky(0xEBBE8C, 0xF0E6D7);
+    dio_draw(ne_cx, ne_cy, ne_brush, ne_t);
+    { int x = 4;   // the tools
+      for (int i = 0; i < NT_N; i++) { int w = ui_tw(1, neTool[i]) + 8, on = i == ne_tool; ui_round(x, 3, w, 12, 3, on ? UI_BLUE : UI_PANEL, on ? UI_BLUE2 : UI_PANEL, 0); ui_text(x + 4, 5, 1, neTool[i], on ? UI_WHITE : UI_SOFT); x += w + 3; } }
+    char b[64];
+    gfx_rect(0, 175, 320, 52, 14, 18, 28, 0);
+    ui_round(4, 177, 312, 13, 3, UI_PANEL, UI_PANEL, 0);
+    if (ne_msgt) ui_text(9, 180, 1, ne_msg, UI_BADT);
+    else if (ne_tool == NT_GROUND) { const u8 *c = tc[ne_g]; gfx_rect(9, 179, 9, 9, c[0], c[1], c[2], 0); sprintf(b, "<  %s  >   L2 R2", neGnd[ne_g]); ui_text(23, 180, 1, b, UI_INK); }
+    else if (ne_tool == NT_BUILD) { sprintf(b, "<  %s  >   L2 R2", ne_lot_name(neLots[ne_b])); ui_text(9, 180, 1, b, UI_INK); }
+    else if (ne_tool == NT_ROAD) ui_text(9, 180, 1, ne_r ? "<  TAKE UP ROAD  >   L2 R2" : "<  LAY ROAD  >   L2 R2", UI_INK);
+    else ui_text(9, 180, 1, neHelp[ne_tool], UI_INK);
+    { BInfo c; bm_block(ne_cx, ne_cy, &c);
+      const Settle *s = c.set != 255 ? bm_set(c.set) : 0;
+      sprintf(b, "%d,%d  %s  %s", ne_cx, ne_cy, neGnd[c.terrain % 6], s ? s->name : "OPEN COUNTRY"); gfx_text(4, 191, 1, b, 220, 226, 240);
+      sprintf(b, "%s%s", c.lot == LOT_WILD ? "" : ne_lot_name(c.lot), (c.road & 3) ? (c.lot == LOT_WILD ? "STREET" : "  +STREET") : ""); gfx_text(316 - gfx_text_w(1, b), 191, 1, b, 255, 214, 120); }
+    sprintf(b, "HOMES %d  PEOPLE %d  PLACES %d  PARKS %d", ne_st[0], ne_st[0] * 3, ne_st[1], ne_st[2]); gfx_text(4, 200, 1, b, 160, 230, 170);
+    sprintf(b, "ROADS %d  LAND %d%%  EDITS %d  SEASON %s", ne_st[3], ne_st[4] * 100 / 2209, bm_ovr_n(), wm_season ? sim_season_name(wm_season - 1) : "TURNS"); gfx_text(4, 209, 1, b, 160, 230, 170);
+    ui_hints(160, 212, "X USE|SQ BRUSH|L1 R1 TOOL|TRI TOWN|START MENU", 1);
+    if (ne_menu) {
+        ui_dim();
+        int top = ui_window(70, 36, 180, 150, "NEIGHBORHOOD", IC_PIN);
+        static const char *const mn[5] = { "SAVE IT", "PLAY HERE", "TOWN SETTINGS", "KEEP EDITING", "LEAVE" };
+        static const s8 mi[5] = { IC_BOOK, IC_PLAY, IC_GEAR, IC_BRUSH, IC_HELP };
+        for (int i = 0; i < 5; i++) ui_button(78, top + 2 + i * 22, 164, 19, mn[i], mi[i], i == ne_msel);
+    }
+}
+// ---- NEIGHBORHOODS (and the EXPANSIONS shelf): the set worlds, the ones you made, and the packs ----
 static void worlds_update(void) {
     wo_t++;
     if (wo_more) {                                   // MISSIONS AND EXPANSIONS
@@ -3654,79 +4076,115 @@ static void worlds_update(void) {
         if (PRESSED(PAD_UP) || PRESSED(PAD_DOWN)) { int n = wo_msel ^ 1; if (n < WO_NMORE) wo_msel = n; }
         if (PRESSED(PAD_RIGHT)) { int n = wo_msel + 2; wo_msel = n < WO_NMORE ? n : (wo_msel & 1); }
         if (PRESSED(PAD_LEFT)) { int n = wo_msel - 2; wo_msel = n >= 0 ? n : ((WO_NMORE - 1) & ~1) | (wo_msel & 1); if (wo_msel >= WO_NMORE) wo_msel = WO_NMORE - 1; }
-        if (PRESSED(PAD_CIRCLE)) { wo_more = 0; return; }
-        if (PRESSED(PAD_CROSS)) { if (wo_msel == 0) { sc_t = 0; sp_join = 0; state = ST_SPICK; } else if (wo_msel == 5) { if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(3); gotchi_shelf = 1; state = ST_GOTCHI; } else audio_voice(VOICE_NAH); } else if (wo_msel == 10) audio_voice(VOICE_FINISHED); else audio_voice(VOICE_NAH); }
+        if (PRESSED(PAD_CIRCLE)) { wo_more = 0; state = ST_MODE; return; }
+        if (PRESSED(PAD_CROSS)) {
+            if (wo_msel == 0) { wo_more = 0; wm_open_mode(1); }
+            else if (wo_msel == 1) { sc_t = 0; sp_join = 0; state = ST_SPICK; }
+            else if (wo_msel == 6) { if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(3); gotchi_shelf = 1; state = ST_GOTCHI; } else audio_voice(VOICE_NAH); }
+            else if (wo_msel == 9) { sim_seasons_on ^= 1; audio_voice(VOICE_AGREE); }   // (the SEASONS pack: on, the year turns; off, summer all year)
+            else if (wo_msel == 11) audio_voice(VOICE_FINISHED); else audio_voice(VOICE_NAH);
+        }
         return;
     }
-    if (PRESSED(PAD_UP)) wo_sel = (wo_sel + WO_N - 1) % WO_N;
-    if (PRESSED(PAD_DOWN)) wo_sel = (wo_sel + 1) % WO_N;
-    if (PRESSED(PAD_CIRCLE)) { state = ST_MENU; return; }
-    if (PRESSED(PAD_TRIANGLE)) { wo_packed ^= 1; wo_painted = 0; audio_voice(VOICE_FINISHED); }   // TOWNS: ROOMY or PACKED
-    if (PRESSED(PAD_SELECT) && wo_sel != WO_MORE) { name_open(wo_name, 17, "NAME YOUR CAPITAL CITY", worlds_named); return; }
-    bm_gen = 5; bm_packed = wo_packed;
-    if (wo_sel == WO_CREATE) {                       // CREATE A WORLD: roll it, or step through, until you like the look of it
-        if (PRESSED(PAD_SQUARE)) { wo_custom = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ (u32)wo_t; if (!wo_custom) wo_custom = 1; audio_voice(VOICE_FINISHED); }
-        if (PRESSED(PAD_L1)) wo_custom--;
-        if (PRESSED(PAD_R1)) wo_custom++;
+    if (PRESSED(PAD_CIRCLE)) { state = ST_MODE; return; }
+    if (PRESSED(PAD_L1) || PRESSED(PAD_R1)) { wo_tab ^= 1; nh_ask = 0; nh_msg = 0; wo_painted = 0; if (wo_tab) nh_scan(); else bm_ovr_clear(); audio_voice(VOICE_AGREE); }
+    if (wo_tab) {                                    // YOUR OWN: three places on the card
+        if (PRESSED(PAD_UP)) { nh_sel = (nh_sel + 2) % 3; nh_ask = 0; }
+        if (PRESSED(PAD_DOWN)) { nh_sel = (nh_sel + 1) % 3; nh_ask = 0; }
+        if (PRESSED(PAD_TRIANGLE) && nh_have[nh_sel]) {   // delete: TRIANGLE, then TRIANGLE again
+            if (nh_ask != 2) { nh_ask = 2; audio_voice(VOICE_NAH); return; }
+            nh_ask = 0; loading("DELETING", 50); if (save_delete(3 + nh_sel)) { nh_have[nh_sel] = 0; nh_msg = "DELETED"; } else nh_msg = save_error();
+            return;
+        }
+        if (PRESSED(PAD_CROSS) || PRESSED(PAD_SQUARE)) {
+            nh_ask = 0; nh_msg = 0;
+            if (!nh_have[nh_sel]) { if (PRESSED(PAD_CROSS)) nh_new(nh_sel); return; }
+            loading("OPENING THE NEIGHBORHOOD", 40);
+            if (!save_read(3 + nh_sel, nh_load_body)) { nh_msg = save_error(); audio_voice(VOICE_NAH); return; }
+            nh_slot = nh_sel;
+            if (PRESSED(PAD_SQUARE)) ne_open(1); else nh_play();
+        }
+        return;
     }
-    if (wo_sel == WO_CREATE && wm_used) wm_apply(); else { bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2; }  traffic_load(0);   // (the made world's map with its dials; a set world with its own)
-    wm_check_dials();
+    if (PRESSED(PAD_UP)) wo_sel = (wo_sel + 3) % 4;
+    if (PRESSED(PAD_DOWN)) wo_sel = (wo_sel + 1) % 4;
+    if (PRESSED(PAD_TRIANGLE)) { wo_packed ^= 1; wo_painted = 0; audio_voice(VOICE_FINISHED); }   // TOWNS: ROOMY or PACKED
+    if (PRESSED(PAD_SELECT)) { name_open(wo_name, 17, "NAME YOUR CAPITAL CITY", worlds_named); return; }
+    bm_gen = 6; bm_packed = wo_packed;
+    bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2; traffic_load(0);   // (a set world with its own dials)
+    bm_ovr_clear();
     u32 sd = wo_seed_of(wo_sel); if (sd) paint_world(sd);
     if (PRESSED(PAD_CROSS)) {
-        if (wo_sel == WO_MORE) { wo_more = 1; return; }
-        if (wo_sel == WO_CREATE) { wm_open(); return; }
         bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2; traffic_load(0);
-        life_story = 0; worlds_go(wo_seed_of(wo_sel), wo_sel == WO_CASTAWAY ? 1 : 0);
+        sim_season_lock = 0; go_funds = 2; life_story = 0; worlds_go(wo_seed_of(wo_sel), 0);
     }
 }
 static void worlds_draw(void) {
     title_draw();
     ui_dim();
     char b[48];
-    int top = ui_window(6, 6, 308, 228, wo_more ? "MISSIONS AND EXPANSIONS" : "PICK A WORLD", wo_more ? IC_STAR : IC_PIN);
+    int top = ui_window(6, 6, 308, 228, wo_more ? "EXPANSIONS" : "NEIGHBORHOODS", wo_more ? IC_STAR : IC_PIN);
     if (wo_more) {
-        static const s8 mic[WO_NMORE] = { IC_BOOK, IC_STAR, IC_PEOPLE, IC_HAMMER, IC_BX, IC_SMILE, IC_HEART, IC_TREE, IC_SUN, IC_TREE, IC_NOTE, IC_EYE, IC_SPROUT, IC_BOLT, IC_CAR, IC_CAMERA, IC_DROP, IC_STAR, IC_PARTY, IC_HAMMER, IC_BOLT };
+        static const s8 mic[WO_NMORE] = { IC_SUN, IC_BOOK, IC_STAR, IC_PEOPLE, IC_HAMMER, IC_BX, IC_SMILE, IC_HEART, IC_TREE, IC_SUN, IC_TREE, IC_NOTE, IC_EYE, IC_SPROUT, IC_BOLT, IC_CAR, IC_CAMERA, IC_DROP, IC_STAR, IC_PARTY, IC_HAMMER, IC_BOLT };
         int c0 = CLAMP(wo_msel / 2 - 2, 0, (WO_NMORE + 1) / 2 - 5);   // (five columns show, and slide along)
         for (int i = 0; i < WO_NMORE; i++) {
             int col = i / 2 - c0; if (col < 0 || col > 4) continue;
             int x = 14 + col * 59, y = top + 2 + (i & 1) * 80, on = i == wo_msel;
             ui_round(x, y, 56, 76, 5, on ? UI_RGB(255, 236, 150) : UI_WHITE, on ? UI_RGB(255, 204, 70) : UI_RGB(214, 222, 236), 0);
-            ui_icon_disc(x + 28, y + 24, 30, mic[i], (i == 0 || i == 4 || i == 7) ? UI_BLUE2 : UI_SOFT, UI_WHITE);
+            ui_icon_disc(x + 28, y + 24, 30, mic[i], EX_PLAYABLE(i) ? UI_BLUE2 : UI_SOFT, UI_WHITE);
             { char t[24]; strncpy(t, moreCard[i], 23); t[23] = 0; char *ln[3]; int nl = 0; ln[nl++] = t; for (char *q = t; *q && nl < 3; q++) if (*q == '|') { *q = 0; ln[nl++] = q + 1; }
-              int ty = y + 46 - (nl == 1 ? 0 : 0); if (nl == 1) ty += 6; for (int k = 0; k < nl; k++) ui_textc(x + 28, ty + k * 10, 1, ln[k], UI_INK); }
+              int ty = y + 46; if (nl == 1) ty += 6; for (int k = 0; k < nl; k++) ui_textc(x + 28, ty + k * 10, 1, ln[k], UI_INK); }
+            if (i == 9) ui_badge(x + 14, y + 66, sim_seasons_on ? "ON" : "OFF", sim_seasons_on ? UI_RGB(60, 170, 80) : UI_BADT, UI_WHITE);
         }
         if (c0 > 0) ui_text(6, top + 76, 1, "<", UI_INK);
         if (c0 + 5 < (WO_NMORE + 1) / 2) ui_text(308 - 6, top + 76, 1, ">", UI_INK);
         ui_textc(160, top + 160, 1, moreNm[wo_msel], UI_BLUE2);
-        ui_textc(160, top + 172, 1, moreBlurb[wo_msel], (wo_msel == 0 || wo_msel == 4 || wo_msel == 5 || wo_msel == 7) ? UI_INK : UI_SOFT);
-        ui_hints(160, 214, wo_msel == 0 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 5 ? "X THE GUIDE|ARROWS MOVE|O BACK" : "ARROWS MOVE|O BACK", 1);
+        ui_textc(160, top + 172, 1, moreBlurb[wo_msel], EX_PLAYABLE(wo_msel) ? UI_INK : UI_SOFT);
+        ui_hints(160, 214, wo_msel == 0 ? "X OPEN THE CREATOR|ARROWS MOVE|O BACK" : wo_msel == 1 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 6 ? "X THE GUIDE|ARROWS MOVE|O BACK" : wo_msel == 9 ? "X ON OR OFF|ARROWS MOVE|O BACK" : "ARROWS MOVE|O BACK", 1);
         return;
     }
-    static const s8 ic[WO_N] = { IC_DICE, IC_PIN, IC_PIN, IC_PIN, IC_BRUSH, IC_SUN, IC_STAR };
-    for (int i = 0; i < WO_N; i++) {
-        const char *nm = i == WO_RANDOM ? "RANDOM WORLD" : i == WO_CREATE ? "CREATE A WORLD" : i == WO_CASTAWAY ? "CASTAWAY ISLAND" : i == WO_MORE ? "MISSIONS, PACKS" : wo_cap[i - WO_PRE1];
-        ui_button(12, top + 2 + i * 21, 124, 18, nm, ic[i], i == wo_sel);
-    }
-    const int MX = 152, MY = top + 2, MS = 150;
-    u32 sd = wo_seed_of(wo_sel);
+    // the tabs
+    { static const char *const tn[2] = { "SET WORLDS", "YOUR OWN" }; int x = 12;
+      for (int i = 0; i < 2; i++) { int w = ui_tw(1, tn[i]) + 14, on = i == wo_tab; ui_round(x, top + 1, w, 14, 4, on ? UI_BLUE : UI_PANEL, on ? UI_BLUE2 : UI_PANEL, 0); ui_text(x + 7, top + 4, 1, tn[i], on ? UI_WHITE : UI_SOFT); x += w + 4; }
+      ui_text(x + 4, top + 4, 1, "L1 R1", UI_SOFT); }
+    const int MX = 152, MY = top + 20, MS = 140;
     ui_round(MX - 2, MY - 2, MS + 4, MS + 4, 4, UI_LINE, UI_LINE, 0);
+    if (wo_tab) {
+        for (int i = 0; i < 3; i++) {
+            char t[28]; if (nh_have[i]) sprintf(t, "%d. %s", i + 1, nh_names[i][0] ? nh_names[i] : "MY TOWN"); else sprintf(t, "%d. EMPTY", i + 1);
+            ui_button(12, top + 20 + i * 24, 124, 20, t, nh_have[i] ? IC_PIN : IC_STAR, i == nh_sel);
+        }
+        ui_round(MX, MY, MS, MS, 4, UI_RGB(70, 120, 180), UI_RGB(40, 80, 140), 0);
+        ui_icon_disc(MX + MS / 2, MY + 44, 44, nh_have[nh_sel] ? IC_PIN : IC_BRUSH, UI_WHITE, UI_BLUE2);
+        ui_textc(MX + MS / 2, MY + 76, 1, nh_have[nh_sel] ? (nh_names[nh_sel][0] ? nh_names[nh_sel] : "MY TOWN") : "A BLANK PLACE", UI_WHITE);
+        ui_wrap(MX + 8, MY + 90, MS - 16, 4, nh_have[nh_sel] ? "X: LIVE HERE. SQUARE: OPEN THE EDITOR" : "X: MAKE A NEIGHBORHOOD. PAINT, TERRAFORM, ROAD, BUILD", UI_WHITE);
+        const char *m = nh_ask == 2 ? "DELETE THIS NEIGHBORHOOD? TRIANGLE AGAIN" : nh_msg ? nh_msg : !nh_card ? "NO MEMORY CARD: YOU CAN MAKE ONE, BUT NOT KEEP IT" : "";
+        ui_text(12, top + 96, 1, m, nh_ask || nh_msg || !nh_card ? UI_BADT : UI_SOFT);
+        ui_text(12, top + 112, 1, "MADE IN THE EDITOR:", UI_SOFT);
+        ui_wrap(12, top + 124, 126, 5, "ROADS, BUILDINGS, TERRAIN, TOWN LAND, SEASON, CASH", UI_INK);
+        ui_hints(160, 214, nh_have[nh_sel] ? "X PLAY|SQ EDIT|TRI DELETE|L1 R1 TAB|O BACK" : "X MAKE ONE|L1 R1 TAB|O BACK", 1);
+        return;
+    }
+    static const s8 ic[4] = { IC_DICE, IC_PIN, IC_PIN, IC_PIN };
+    for (int i = 0; i < 4; i++) {
+        const char *nm = i == WO_RANDOM ? "RANDOM WORLD" : wo_cap[i - WO_PRE1];
+        ui_button(12, top + 20 + i * 24, 124, 20, nm, ic[i], i == wo_sel);
+    }
+    u32 sd = wo_seed_of(wo_sel);
     if (sd && wo_painted == sd) {
         gfx_sprite_c(MX, MY, MS, MS, getTPage(2, 0, 0, 256), 0, 0, 128, 128, 128, 128, 128);
         for (int i = 0; i < bm_nset(); i++) { const Settle *st = bm_set(i); int x = MX + st->x * MS / BM_N, y = MY + st->y * MS / BM_N, d = st->kind == ST_CITY ? 6 : st->kind == ST_TOWN ? 4 : 3;
             ui_disc(x, y, d + 2, UI_RGB(40, 46, 60)); ui_disc(x, y, d, i == bm_capital() ? UI_RGB(255, 204, 48) : UI_WHITE); }
     } else {
         ui_round(MX, MY, MS, MS, 4, UI_RGB(70, 120, 180), UI_RGB(40, 80, 140), 0);
-        ui_icon_disc(MX + MS / 2, MY + MS / 2 - 8, 40, wo_sel == WO_CASTAWAY ? IC_SUN : wo_sel == WO_MORE ? IC_STAR : IC_DICE, UI_WHITE, UI_BLUE2);
-        ui_textc(MX + MS / 2, MY + MS / 2 + 20, 1, wo_sel == WO_RANDOM ? "A NEW MAP EVERY TIME" : wo_sel == WO_CASTAWAY ? "A NEW ISLAND EVERY TIME" : "", UI_WHITE);
+        ui_icon_disc(MX + MS / 2, MY + MS / 2 - 8, 40, IC_DICE, UI_WHITE, UI_BLUE2);
+        ui_textc(MX + MS / 2, MY + MS / 2 + 20, 1, "A NEW MAP EVERY TIME", UI_WHITE);
     }
-    const char *bl = wo_sel == WO_RANDOM ? "FRESH DICE: TOWNS, ROADS AND 874 FAMILIES" : wo_sel == WO_CREATE ? "X MAKES YOUR OWN: LAND, SEA, CLIMATE, ISLANDS..." :
-                     wo_sel == WO_CASTAWAY ? "BEGIN STRANDED ON THE ISLAND" : wo_sel == WO_MORE ? "A MISSION, AND PACKS ON THE WAY" : "A SET WORLD: THE SAME MAP EVERY TIME";
-    ui_text(12, top + 158, 1, bl, UI_SOFT);
-    if (sd) { const Settle *c = wo_painted == sd ? bm_set(bm_capital()) : 0; sprintf(b, "%d TOWNS, CAPITAL %s", bm_nset(), c ? c->name : "?"); ui_text(12, top + 170, 1, b, UI_INK); }
-    else if (wo_name[0] && wo_sel != WO_MORE) { snprintf(b, sizeof b, "CAPITAL: %s", wo_name); ui_text(12, top + 170, 1, b, UI_INK); }
-    if (wo_sel == WO_CREATE) { sprintf(b, "MAP NO. %08X", (unsigned)wo_custom); ui_text(310 - ui_tw(1, b), top + 170, 1, b, UI_BLUE2); }
+    ui_text(12, top + 124, 1, wo_sel == WO_RANDOM ? "FRESH DICE: TOWNS, ROADS" : "A SET WORLD: THE SAME MAP EVERY TIME", UI_SOFT);
+    if (sd) { const Settle *c = wo_painted == sd ? bm_set(bm_capital()) : 0; sprintf(b, "%d TOWNS, CAPITAL %s", bm_nset(), c ? c->name : "?"); ui_text(12, top + 138, 1, b, UI_INK); }
+    else if (wo_name[0]) { snprintf(b, sizeof b, "CAPITAL: %s", wo_name); ui_text(12, top + 138, 1, b, UI_INK); }
     ui_badge(306 - ui_tw(1, wo_packed ? "TOWNS: PACKED" : "TOWNS: ROOMY") - 10, 8, wo_packed ? "TOWNS: PACKED" : "TOWNS: ROOMY", UI_WHITE, UI_BLUE2);
-    ui_hints(160, 214, wo_sel == WO_CREATE ? "X MAKE IT|SQ ROLL|L1 R1|SEL NAME|O BACK" : "X PLAY|TRI TOWNS|SEL NAME CITY|O BACK", 1);
+    ui_hints(160, 214, "X PLAY|TRI TOWNS|SEL NAME CITY|L1 R1 TAB|O BACK", 1);
 }
 
 static const char *const menuNm[] = { "STORY MODE", "CONTINUE", "CREATE A BORE", "JUKEBOX", "OPTIONS", "HOW TO PLAY" };
@@ -3743,7 +4201,7 @@ static void menu_update(void) {
 #if defined(AUTO_CITY) || defined(AUTO_PARTY) || defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_SCENE) || defined(AUTO_PHONE) || defined(AUTO_ISLE) || defined(AUTO_HOME) || defined(AUTO_GROW) || defined(AUTO_SAVE) || defined(AUTO_TOWER) || defined(AUTO_FLOAT) || defined(AUTO_STREAM)
                 worlds_go(0, 0); break;   // (test builds: straight into a life, as before)
 #endif
-                worlds_open(); break;
+                mode_open(); break;
             case 1: slots_open(0, ST_MENU); break;
             case 2: if (!world_backup()) { audio_voice(VOICE_NAH); break; } prev_state = ST_MENU; create_tab = 0; create_row = 0; state = ST_CREATE; world_gen_studio(); break;
             case 3: prev_state = ST_MENU; state = ST_JUKEBOX; break;
@@ -3873,12 +4331,15 @@ int main(void) {
 #ifdef AUTO_STORY
         story_test_tick();
 #endif
+#ifdef AUTO_NHED
+        { static int t_; t_++; if (t_ == 50) { if (AUTO_NHED == 1) nh_new(0); else if (AUTO_NHED == 2) wm_open_mode(0); else if (AUTO_NHED == 3) wm_open_mode(1); else if (AUTO_NHED == 4) worlds_open(1); else if (AUTO_NHED == 5) { worlds_open(0); wo_tab = 1; nh_scan(); } else if (AUTO_NHED == 7) { bm_ovr_clear(); life_story = 0; worlds_go(0, 0); } else if (AUTO_NHED == 6) { nh_new(0); wo_custom = nh_seed; wm_open_mode(2); } } }   // (test builds: straight into the editor, or one of the new screens)
+#endif
         ui_light = 0;
         {   // each screen its own colour across the top
             static const u8 acc[] = { [ST_TITLE] = 0, [ST_MENU] = 0, [ST_CREATE] = 5, [ST_LIFE] = 0, [ST_PAUSE] = 7, [ST_BUILD] = 3, [ST_JUKEBOX] = 4, [ST_HELP] = 1,
                 [ST_TRAVEL] = 1, [ST_STORY] = 6, [ST_WANTS] = 6, [ST_PIE] = 0, [ST_PANEL] = 2, [ST_MAP] = 1, [ST_DIR] = 2, [ST_OPTS] = 7, [ST_JOBS] = 3,
                 [ST_OVER] = 7, [ST_HOMES] = 3, [ST_CRAFT] = 3, [ST_PHONE] = 0, [ST_SLOTS] = 7, [ST_NHOOD] = 1, [ST_WORLDS] = 1, [ST_NAME] = 5, [ST_SPICK] = 6,
-                [ST_SCARD] = 6, [ST_WMAKE] = 2 };
+                [ST_SCARD] = 6, [ST_WMAKE] = 2, [ST_MODE] = 1, [ST_NHED] = 2 };
             ui_accent = state < (int)sizeof acc ? acc[state] : 0;
         }
         switch (state) {
@@ -3906,9 +4367,11 @@ int main(void) {
             case ST_OVER: over_update(); over_draw(); break;
             case ST_HOMES: homes_update(); homes_draw(); break;
             case ST_CRAFT: craft_update(); craft_draw(); break;
-            case ST_CONFIRM: confirm_update(); if (state == ST_CONFIRM) confirm_draw(); else life_draw(); break;
-            case ST_NAME: name_update(); if (state == ST_NAME) name_draw(); else if (state == ST_CREATE) create_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_MAP) map_draw(); else life_draw(); break;
-            case ST_WORLDS: worlds_update(); if (state == ST_WORLDS) worlds_draw(); else if (state == ST_MENU) menu_draw(); else life_draw(); break;
+            case ST_CONFIRM: confirm_update(); if (state == ST_CONFIRM) confirm_draw(); else if (state == ST_NHED) ne_draw(); else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
+            case ST_NAME: name_update(); if (state == ST_NAME) name_draw(); else if (state == ST_CREATE) create_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_WMAKE) wm_draw(); else if (state == ST_NHED) ne_draw(); else if (state == ST_MAP) map_draw(); else life_draw(); break;
+            case ST_WORLDS: worlds_update(); if (state == ST_WORLDS) worlds_draw(); else if (state == ST_MENU) menu_draw(); else if (state == ST_MODE) mode_draw(); else if (state == ST_WMAKE) wm_draw(); else if (state == ST_NHED) ne_draw(); else life_draw(); break;
+            case ST_MODE: mode_update(); if (state == ST_MODE) mode_draw(); else if (state == ST_MENU) menu_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_WMAKE) wm_draw(); else life_draw(); break;
+            case ST_NHED: ne_update(); if (state == ST_NHED) ne_draw(); else if (state == ST_WMAKE) wm_draw(); else if (state == ST_CONFIRM) confirm_draw(); else life_draw(); break;
             case ST_NHOOD: nhood_update(); if (state == ST_NHOOD) nhood_draw(); else if (state == ST_HOMES) homes_draw(); else life_draw(); break;
             case ST_SLOTS: slots_update(); if (state == ST_SLOTS) slots_draw(); else if (state == ST_LIFE) life_draw(); else if (state == ST_MENU) menu_draw(); else pause_draw(); break;
             case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
@@ -3922,7 +4385,7 @@ int main(void) {
             case ST_PARTY: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); if (party_go) { party_go = 0; party_begin(); } } break; }
             case ST_GOTCHI: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; if (gotchi_shelf) { gotchi_shelf = 0; crowd_reset(); wo_painted = 0; state = ST_WORLDS; } else { ovl_leave(); state = ST_LIFE; life_draw(); } } break; }
             case ST_REALM: case ST_ARCADE: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
-            case ST_WMAKE: wm_update(); if (state == ST_WMAKE) wm_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_NAME) name_draw(); else life_draw(); break;
+            case ST_WMAKE: wm_update(); if (state == ST_WMAKE) wm_draw(); else if (state == ST_MODE) mode_draw(); else if (state == ST_NHED) ne_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_NAME) name_draw(); else life_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
         if (state == ST_LIFE) {   // a frame that ran past two screen refreshes: the full-detail range draws in a tile (back out once things are quiet)

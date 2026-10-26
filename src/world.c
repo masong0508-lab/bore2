@@ -391,17 +391,17 @@ static int isl_pick(u32 s, int want_sand, int far_x, int far_y, int mind, int *o
     return 0;
 }
 // CREATE A WORLD's island dials (1 1 1 1: the island as it always was)
-int isl_size = 1, isl_wild = 1, isl_jungle = 1, isl_rocks = 1;
-void isl_dials_default(void) { isl_size = isl_wild = isl_jungle = isl_rocks = 1; }
+int isl_size = 2, isl_wild = 1, isl_jungle = 1, isl_rocks = 1;
+void isl_dials_default(void) { isl_size = 2; isl_wild = isl_jungle = isl_rocks = 1; }
 static int isl_amp[3], isl_ph[3];
 static void isl_coast_init(u32 S) {
     static const u8 wk[3] = { 6, 12, 20 };   // COAST: SMOOTH, WAVY, WILD (twelfths of the waves)
     for (int k = 0; k < 3; k++) { u32 h = bm_hash(k, 7, S); isl_amp[k] = ((int)(h % 40u) + (k ? 16 : 32)) * wk[isl_wild % 3] / 12; isl_ph[k] = (int)((h >> 10) & 4095); }
 }
 static int isl_land(int x, int y) {   // 0 sea, 1 sand, 2 inland (the main island's coast only)
-    static const u8 r0[3] = { 22, 29, 34 }, rmin[3] = { 16, 22, 27 }, rmax[3] = { 27, 35, 38 };   // SIZE: SMALL, MEDIUM, BIG
+    static const u8 r0[5] = { 15, 22, 29, 34, 37 }, rmin[5] = { 12, 16, 22, 27, 32 }, rmax[5] = { 19, 27, 35, 38, 39 };   // SIZE: VERY SMALL .. VERY BIG
     static const u8 frq[3] = { 2, 3, 5 };
-    int z = isl_size % 3, dx = x - MW / 2, dy = y - MH / 2, a = isl_ang(dy, dx), d = 0;
+    int z = isl_size % 5, dx = x - MW / 2, dy = y - MH / 2, a = isl_ang(dy, dx), d = 0;
     { int q = dx * dx + dy * dy; while ((d + 1) * (d + 1) <= q) d++; }
     int R = r0[z] * 16; for (int k = 0; k < 3; k++) R += (isl_amp[k] * isin((frq[k] * a + isl_ph[k]) & 4095)) >> 12;
     R = CLAMP(R, rmin[z] * 16, rmax[z] * 16);
@@ -1613,6 +1613,16 @@ COLD static void gen_block(int wx, int wy) {
     }
     occ_on = 0; blk_bx = blk_by = 0xFFFF;
     if (b.set == 255 || b.lot == LOT_WILD) wild(ox, oy, &b, bx, by);   // (open country, and the green gaps left in a town)
+    if (b.set != 255 && b.terrain != BT_SEA && bm_gen >= 6 && !mine && (b.lot == LOT_HOUSE || b.lot == LOT_COTTAGE || b.lot == LOT_TOWN || b.lot == LOT_TWO || b.lot == LOT_APART || b.lot == LOT_SCHOOL || b.lot == LOT_LIBRARY || b.lot == LOT_CLINIC || b.lot == LOT_GALLERY)) {
+        for (int y = oy + BM_LOT0 + 1; y < oy + BM_BLK; y++) for (int x = ox + BM_LOT0 + 1; x < ox + BM_BLK; x++) {   // landscaping: trees along the pavement and one here and there in the yards, never against a wall (so doors and paths stay clear)
+            if (floorMap[y][x] != FL_GRASS || lifeMap[y][x] != '.') continue;
+            int busy = 0; for (int j = -1; j <= 1 && !busy; j++) for (int i = -1; i <= 1; i++) { char c = lifeMap[y + j][x + i]; if (c != '.' && c != '3' && c != '6') { busy = 1; break; } if (floorMap[y + j][x + i] == FL_PAVING && (j || i) && (x != ox + BM_LOT0 + 1 && y != oy + BM_LOT0 + 1)) { busy = 1; break; } }
+            if (busy) continue;
+            int edge = x == ox + BM_LOT0 + 1 || y == oy + BM_LOT0 + 1;
+            unsigned r = bm_hash(x, y, wsalt ^ 0x1A4Du) % 1000u;
+            if (edge ? (r < 140 && ((x + y) & 1) == 0) : r < 36) lifeMap[y][x] = r % 5 == 0 ? '6' : '3';
+        }
+    }
     if (b.set != 255 && b.terrain != BT_SEA) {                      // street lamps on the corners and half way along, a bin now and then
         gFree(ox + 3, oy + 3, '"'); gFree(ox + 10, oy + 3, '"'); gFree(ox + 3, oy + 10, '"');
         if ((h >> 24) % 3u == 0) gFree(ox + 6, oy + 3, 'Y');

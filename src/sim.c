@@ -82,7 +82,8 @@ int sim_weather(void) {
     int w = se == 3 ? (roll < 60 ? 3 : 0) : se == 1 ? (roll < 12 ? 1 : roll < 20 ? 2 : 0) : (roll < 45 ? 1 : (se == 0 && roll < 50) ? 2 : 0);
     return (w && hr >= start && hr < start + len) ? w : 0;
 }
-int sim_season(void) { return (day_count / 10) & 3; }
+int sim_season_lock, sim_seasons_on = 1;   // the editor / CREATE A WORLD: 0 the year turns, 1..4 held on spring .. winter; the SEASONS pack off: summer all year
+int sim_season(void) { return sim_season_lock ? sim_season_lock - 1 : !sim_seasons_on ? 1 : (day_count / 10) & 3; }
 const char *sim_season_name(int s) { static const char *const n[4] = { "SPRING", "SUMMER", "AUTUMN", "WINTER" }; return n[s & 3]; }
 int sim_festival(void) { return day_count % 10 == 9 && clock_min >= 600 && clock_min < 1320; }
 const char *sim_festival_name(int s) { static const char *const n[4] = { "FLOWER FAIR", "SUMMER CARNIVAL", "HARVEST FEAST", "WINTER LIGHTS" }; return n[s & 3]; }

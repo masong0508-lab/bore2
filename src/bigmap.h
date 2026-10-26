@@ -52,6 +52,15 @@ void bm_rename_clear(void);           // towns renamed by the player: none (a ne
 void bm_rename(int i, const char *nm); // town i (0 the capital) is called that from now on (set before bm_new: it takes then)
 const char *bm_renamed(int i);        // its new name ("": not renamed)
 #define BM_NSET_MAX 62
+// the neighbourhood editor's changes (kept across bm_new; bm_ovr_clear for a new life)
+enum { BO_NONE = 0, BO_GROUND = 1, BO_LOT = 2, BO_ROAD = 4, BO_TERR = 8, BO_ELEV = 16 };
+void bm_ovr_clear(void);
+int  bm_ovr_set(int bx, int by, int what, int val);   // 0: the table is full
+void bm_ovr_unset(int bx, int by, int what);
+int  bm_ovr_delta(int bx, int by);   // the land raised (+) or lowered (-) there, in steps
+int  bm_height(int bx, int by);      // the ground there for the 3D model: 0 sea level, up in elevation points (hills)
+int  bm_ovr_n(void);
+int  bm_ovr_next(int *it, int *bx, int *by, int *f, u8 *v);   // *it starts at 0; v: ground, building, road, territory, height change
 void bm_new(u32 seed);                // a new world
 u32  bm_seed(void);
 void bm_block(int bx, int by, BInfo *b);

@@ -6,6 +6,48 @@ void bm_dials_default(void) { bm_land = BL_MAINLAND; bm_sea = 2; bm_clim = 2; bm
 static int packed(void) { return bm_packed || bm_gen < 3; }   // (PACKED towns: the option, or a world from before it)
 
 static u32 wseed = 0x5A1B0E2Au;
+// ---- the neighbourhood editor's changes: blocks whose ground, roads, territory or building the player set (a small hash table) ----
+#define OV_SLOTS 768
+typedef struct { u32 a; u16 b; } __attribute__((packed, aligned(2))) OvE;   // a: block (20 bits), what (5), ground (3), road (2); b: building (6), territory (6, 63 = none), height change (4, signed)
+static OvE ov[OV_SLOTS];
+static int ov_n, ov_live;
+#define OV_KEY(e) ((e)->a & 0xFFFFFu)
+#define OV_F(e) (((e)->a >> 20) & 31u)
+#define OV_T(e) (((e)->a >> 25) & 7u)
+#define OV_R(e) (((e)->a >> 28) & 3u)
+#define OV_D(e) ((int)(((e)->b >> 12) & 15u) - ((((e)->b >> 12) & 8u) ? 16 : 0))
+#define OV_L(e) ((e)->b & 63u)
+#define OV_S(e) (((e)->b >> 6) & 63u)
+void bm_ovr_clear(void) { memset(ov, 0, sizeof ov); ov_n = 0; }
+static int ov_find(int bx, int by, int make) {   // the slot of that block (the key is the block + 1; a free slot has key 0)
+    u32 k = (u32)(by << 10 | bx) + 1, i = ((k * 2654435761u) >> 12) % OV_SLOTS;
+    for (int n = 0; n < OV_SLOTS; n++, i = (i + 1) % OV_SLOTS) {
+        if (OV_KEY(&ov[i]) == k) return (int)i;
+        if (!OV_KEY(&ov[i])) { if (!make || ov_n >= OV_SLOTS * 7 / 10) return -1; ov[i].a = k; ov[i].b = 63 << 6; ov_n++; return (int)i; }
+    }
+    return -1;
+}
+int bm_ovr_set(int bx, int by, int what, int val) {   // what: BO_ (BO_NONE: undo every change). 0: the table is full
+    if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return 0;
+    int i = ov_find(bx, by, what != BO_NONE); if (i < 0) return what == BO_NONE;
+    OvE *e = &ov[i];
+    if (what == BO_NONE) { e->a &= 0xFFFFFu; return 1; }
+    e->a |= (u32)what << 20;
+    if (what == BO_GROUND) e->a = (e->a & ~(7u << 25)) | ((u32)(val & 7) << 25);
+    else if (what == BO_ELEV) e->b = (u16)((e->b & ~(15u << 12)) | ((u32)(val & 15) << 12));
+    else if (what == BO_ROAD) e->a = (e->a & ~(3u << 28)) | ((u32)(val & 3) << 28);
+    else if (what == BO_LOT) e->b = (u16)((e->b & ~63u) | (u32)(val & 63));
+    else e->b = (u16)((e->b & ~(63u << 6)) | ((u32)(val == 255 ? 63 : val & 63) << 6));
+    return 1;
+}
+void bm_ovr_unset(int bx, int by, int what) { int i = ov_find(bx, by, 0); if (i >= 0) ov[i].a &= ~((u32)what << 20); }   // take one kind of change back off a block
+int bm_ovr_delta(int bx, int by) { int i = ov_find(bx, by, 0); return i >= 0 && (OV_F(&ov[i]) & BO_ELEV) ? OV_D(&ov[i]) : 0; }
+int bm_ovr_n(void) { int n = 0; for (int i = 0; i < OV_SLOTS; i++) if (OV_KEY(&ov[i]) && OV_F(&ov[i])) n++; return n; }
+int bm_ovr_next(int *it, int *bx, int *by, int *f, u8 *v) {   // walk the changes: 1 while there is one
+    for (; *it < OV_SLOTS; (*it)++) { const OvE *e = &ov[*it]; if (!OV_KEY(e) || !OV_F(e)) continue;
+        *bx = (int)((OV_KEY(e) - 1) & 1023); *by = (int)((OV_KEY(e) - 1) >> 10); *f = (int)OV_F(e); v[0] = (u8)OV_T(e); v[1] = (u8)OV_L(e); v[2] = (u8)OV_R(e); v[3] = (u8)(OV_S(e) == 63 ? 255 : OV_S(e)); v[4] = (u8)(OV_D(e) & 15); (*it)++; return 1; }
+    return 0;
+}
 #define NSET_MAX 62
 static Settle sets[NSET_MAX]; static int nset;
 static char ren[NSET_MAX][18];                     // towns the player renamed ("": as made); kept across bm_new, so a save can set them first
@@ -52,10 +94,12 @@ static int elev(int bx, int by) {
             if (bm_land == BL_LAKES) { int l = vn(bx, by, 5, s + 7); if (l > 170 && dc > 40) e -= (l - 170) * 2; }   // LAKES: inland water all over
         }
     }
+    if (ov_live && ov_n) e += bm_ovr_delta(bx, by) * 6;       // the neighbourhood editor: raised or lowered land
     return e - (bm_sea - 2) * 8;                              // SEA: the water higher or lower
 }
 int bm_terrain(int bx, int by) {
     if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return BT_SEA;
+    if (ov_live && ov_n) { int i = ov_find(bx, by, 0); if (i >= 0 && (OV_F(&ov[i]) & BO_GROUND) && !(OV_F(&ov[i]) & BO_ELEV)) return (int)OV_T(&ov[i]); }
     int e = elev(bx, by);
     if (e < 104) return BT_SEA;
     if (e < 110) return BT_BEACH;
@@ -68,6 +112,14 @@ int bm_terrain(int bx, int by) {
     return BT_GRASS;
 }
 
+int bm_height(int bx, int by) {   // the ground for the 3D model: the sea is 0, the land climbs from the beach to the peaks
+    int t = bm_terrain(bx, by); if (t == BT_SEA) return 0;
+    int e = elev(bx, by) - 104;
+    static const u8 rock[5] = { 240, 206, 186, 172, 158 };
+    if (t == BT_BEACH) return CLAMP(e, 1, 5);
+    if (t == BT_ROCKY) return MAX(e, rock[bm_hills % 5] - 104 + 2);
+    return CLAMP(e, 7, 120);
+}
 // ---- the towns and cities ----
 static u32 rs;
 static u32 rr(void) { rs = rs * 1103515245u + 12345u; return rs >> 8; }
@@ -133,6 +185,7 @@ static void place_space(void) {   // the spaceport: the open country furthest fr
     Settle *s = &sets[nset]; s->x = (u16)bx; s->y = (u16)by; s->r = 5; s->kind = ST_SPACEPORT; sprintf(s->name, "CAPE %s", nmA[rr() % 16]); nset++;
 }
 void bm_new(u32 seed) {
+    ov_live = 0;
     wseed = seed ? seed : 1; rs = wseed ^ 0xA5A5A5A5u; nset = 0; nseg = 0;
     static const u8 capr[6] = { 6, 8, 11, 14, 18, 22 };
     place_set(ST_CITY, capr[bm_capsz % 6], BM_N / 2, BM_N / 2, 110);       // BORE CITY, near the middle (CAPITAL SIZE)
@@ -156,6 +209,7 @@ void bm_new(u32 seed) {
     for (int e = 0; e < 4 && nset > 3; e++) { int i = (int)(rr() % (u32)nset), j = (int)(rr() % (u32)nset); if (i != j) link(i, j); }
     for (int i = 0; i < nset; i++) if (ren[i][0]) strcpy(sets[i].name, ren[i]);
     rivers_make();
+    ov_live = 1;
 }
 void bm_rename_clear(void) { memset(ren, 0, sizeof ren); }
 void bm_rename(int i, const char *nm) { if (i < 0 || i >= NSET_MAX) return; strncpy(ren[i], nm, 17); ren[i][17] = 0; if (i < nset && ren[i][0]) strcpy(sets[i].name, ren[i]); }
@@ -235,6 +289,13 @@ static void bm_block0(int bx, int by, BInfo *b) {
         int dx = bx - s->x, dy = by - s->y, q = (dx * dx + dy * dy) * 256 / (s->r * s->r);
         int lm = landmark(s, dx, dy);
         if (lm >= 0) { b->lot = (u8)lm; return; }
+        if (bm_gen >= 6 && q >= 90) {   // out from the centre the streets thin out: an avenue every fourth line, the rest by a throw of the dice per line, and some of those stop short (a cul-de-sac, a lane)
+            int pct = q < 170 ? 62 : 42;
+            int n = !(by % 4) || (int)(bm_hash(7, by, wseed ^ 0xA11Au) % 100u) < pct, w = !(bx % 4) || (int)(bm_hash(bx, 7, wseed ^ 0xB22Bu) % 100u) < pct;
+            if (n && (by % 4) && (int)(bm_hash(bx, by, wseed ^ 0xC0DEu) % 100u) < 20) n = 0;
+            if (w && (bx % 4) && (int)(bm_hash(by, bx, wseed ^ 0xD00Du) % 100u) < 20) w = 0;
+            b->road = (u8)((b->road & ~3) | n | (w << 1));
+        }
         int pk = packed();
         const u8 *mix = s->kind >= ST_VILLAGE ? (pk ? mixVilP : mixVil) : (s->kind == ST_CITY && q < 64) ? (pk ? mixCoreP : mixCore) : q < 170 ? (pk ? mixMidP : mixMid) : (pk ? mixOutP : mixOut);
         b->lot = (u8)pick(b->h >> 4, mix);
@@ -298,7 +359,18 @@ static int mega_kind(int gx, int gy, int si) {   // -1: not a group; else MK_ (a
     ck = s->kind == ST_CITY ? (packed() ? (k < 8 ? MK_PARK : k < 40 ? MK_MALL : k < 68 ? MK_PLAZA : MK_CAMPUS) : (k < 50 ? MK_PARK : k < 66 ? MK_MALL : k < 82 ? MK_PLAZA : MK_CAMPUS)) : (k < 50 ? MK_PARK : MK_MALL);
     return ck;
 }
+static void bm_block1(int bx, int by, BInfo *b);
 void bm_block(int bx, int by, BInfo *b) {
+    bm_block1(bx, by, b);
+    if (!ov_live || !ov_n) return;
+    int i = ov_find(bx, by, 0); if (i < 0 || !OV_F(&ov[i])) return;
+    const OvE *e = &ov[i]; int f = (int)OV_F(e), st = (int)(OV_S(e) == 63 ? 255 : OV_S(e));
+    if (f & BO_TERR) { b->set = (u8)st; if (st != 255) b->road |= 3; else { b->road &= (u8)~3; b->lot = LOT_WILD; b->road &= (u8)~BR_MEGA; } }
+    if (f & BO_LOT) { b->lot = (u8)OV_L(e); b->road &= (u8)~(BR_MEGA | 0x70 | 0xC0); }
+    if (f & BO_ROAD) b->road = (u8)((b->road & ~3) | (int)OV_R(e));
+    if (b->terrain == BT_SEA) { b->lot = LOT_WILD; b->set = 255; b->road &= 3; }
+}
+static void bm_block1(int bx, int by, BInfo *b) {
     bm_block0(bx, by, b);
     if (b->terrain == BT_SEA || bm_gen < 4) return;   // (rivers and mega places: worlds made from this version on)
     int rv = river_at(bx, by, b->set);
