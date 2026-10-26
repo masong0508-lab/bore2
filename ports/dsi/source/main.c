@@ -21,24 +21,19 @@ static void rect(int x, int y, int w, int h, u16 c) {
     if (x < 0) { w += x; x = 0; } if (y < 0) { h += y; y = 0; } if (x + w > 256) w = 256 - x; if (y + h > 192) h = 192 - y; if (w <= 0 || h <= 0) return;
     for (int j = 0; j < h; j++) { u16 *p = scr + (y + j) * 256 + x; for (int i = 0; i < w; i++) p[i] = c; }
 }
-static const char *const FONT[] = {   // 3 x 5 glyphs, five rows of three bits each: A-Z, 0-9, then : - . / ,
-    "010101111101101", "110101110101110", "011100100100011", "110101101101110", "111100110100111", "111100110100100", "011100101101011",
-    "101101111101101", "111010010010111", "001001001101010", "101101110101101", "100100100100111", "101111111101101", "110101101101101",
-    "010101101101010", "110101110100100", "010101101111011", "110101110101101", "011100010001110", "111010010010010", "101101101101111",
-    "101101101101010", "101101111111101", "101101010101101", "101101010010010", "111001010100111",
-    "111101101101111", "010110010010111", "110001010100111", "110001010001110", "101101111001001", "111100110001110", "011100111101111",
-    "111001010010010", "111101111101111", "111101111001110",
-    "000010000010000", "000000111000000", "000000000000010", "001001010100100", "000000000010100" };
-static int glyph(char c) {
-    if (c >= 'a' && c <= 'z') c -= 32;
-    if (c >= 'A' && c <= 'Z') return c - 'A';
-    if (c >= '0' && c <= '9') return 26 + c - '0';
-    switch (c) { case ':': return 36; case '-': return 37; case '.': return 38; case '/': return 39; case ',': return 40; }
-    return -1;
+#include "font8.h"
+static int tw(int s, const char *t) {   // the width of a string in pixels
+    int w = 0; for (; *t; t++) { int c = (unsigned char)*t; if (c < 32 || c > 126) continue; int m = 0; for (int r = 0; r < 8; r++) { int v = FONT8[c - 32][r]; for (int x = 7; x >= 0; x--) if (v >> (7 - x) & 1) { if (x + 1 > m) m = x + 1; } } w += (c == 32 ? 4 : m + 1) + (s >= 2); }
+    return w;
 }
-static void text(int x, int y, int s, u16 c, const char *t) {
-    for (; *t; t++, x += 4 * s) { int g = glyph(*t); if (g < 0) continue;
-        for (int r = 0; r < 5; r++) for (int q = 0; q < 3; q++) if (FONT[g][r * 3 + q] == '1') rect(x + q * s, y + r * s, s, s, c); }
+static void text(int x, int y, int s, u16 c, const char *t) {   // s 1: normal, s 2: bold; a soft shadow under it
+    int dark = ((c & 31) + ((c >> 5) & 31) + ((c >> 10) & 31)) > 45; u16 sh = C15(0, 2, 8);
+    for (; *t; t++) { int ch = (unsigned char)*t; if (ch < 32 || ch > 126) continue; int m = 0;
+        for (int r = 0; r < 8; r++) { int v = FONT8[ch - 32][r]; for (int q = 0; q < 8; q++) if (v >> (7 - q) & 1) { if (q + 1 > m) m = q + 1; } }
+        for (int r = 0; r < 8; r++) { int v = FONT8[ch - 32][r]; for (int q = 0; q < 8; q++) if (v >> (7 - q) & 1) {
+            if (dark) { px(x + q + 1, y + r - 1, sh); if (s >= 2) px(x + q + 2, y + r - 1, sh); }
+            px(x + q, y + r - 2, c); if (s >= 2) px(x + q + 1, y + r - 2, c); } }
+        x += (ch == 32 ? 4 : m + 1) + (s >= 2); }
 }
 
 // ---------- the map ----------
@@ -144,14 +139,15 @@ static void draw_lot(const BInfo *b, int yaw) {
 enum { M_MAP, M_LIVE, M_BUY, M_BUILD, M_CAS };
 typedef struct { const char *name; int price; u8 h; u16 col; u8 kind; } Item;   // kind: 0 box, 1 flat (rug), 2 plant
 static const Item ITEMS[5][4] = {
-    { {"CHAIR", 80, 2, C15(24, 16, 8), 0}, {"ARMCHAIR", 450, 2, C15(10, 14, 24), 0}, {"SOFA", 900, 2, C15(24, 8, 8), 0}, {"BENCH", 150, 1, C15(20, 14, 8), 0} },
-    { {"DINING", 300, 2, C15(22, 15, 8), 0}, {"DESK", 220, 2, C15(18, 18, 20), 0}, {"COFFEE", 120, 1, C15(16, 10, 6), 0}, {"COUNTER", 260, 3, C15(26, 26, 24), 0} },
-    { {"TV", 600, 3, C15(3, 3, 4), 0}, {"COMPUTER", 900, 2, C15(20, 20, 22), 0}, {"STEREO", 350, 2, C15(6, 6, 8), 0}, {"FRIDGE", 700, 5, C15(28, 28, 30), 0} },
-    { {"LAMP", 60, 4, C15(31, 28, 14), 0}, {"RUG", 100, 0, C15(22, 8, 12), 1}, {"PLANT", 40, 3, C15(5, 18, 6), 2}, {"STATUE", 500, 4, C15(24, 24, 22), 0} },
-    { {"BED", 800, 2, C15(20, 24, 31), 0}, {"BATHTUB", 650, 2, C15(28, 30, 31), 0}, {"TOILET", 250, 2, C15(30, 30, 30), 0}, {"SINK", 200, 3, C15(26, 28, 30), 0} } };
-static const char *const CATN[5] = { "SEATS", "TABLES", "TECH", "DECO", "ROOMS" };
+    { {"Chair", 80, 2, C15(24, 16, 8), 0}, {"Armchair", 450, 2, C15(10, 14, 24), 0}, {"Sofa", 900, 2, C15(24, 8, 8), 0}, {"Bench", 150, 1, C15(20, 14, 8), 0} },
+    { {"Dining", 300, 2, C15(22, 15, 8), 0}, {"Desk", 220, 2, C15(18, 18, 20), 0}, {"Coffee", 120, 1, C15(16, 10, 6), 0}, {"Counter", 260, 3, C15(26, 26, 24), 0} },
+    { {"TV", 600, 3, C15(3, 3, 4), 0}, {"Computer", 900, 2, C15(20, 20, 22), 0}, {"Stereo", 350, 2, C15(6, 6, 8), 0}, {"Fridge", 700, 5, C15(28, 28, 30), 0} },
+    { {"Lamp", 60, 4, C15(31, 28, 14), 0}, {"Rug", 100, 0, C15(22, 8, 12), 1}, {"Plant", 40, 3, C15(5, 18, 6), 2}, {"Statue", 500, 4, C15(24, 24, 22), 0} },
+    { {"Bed", 800, 2, C15(20, 24, 31), 0}, {"Bathtub", 650, 2, C15(28, 30, 31), 0}, {"Toilet", 250, 2, C15(30, 30, 30), 0}, {"Sink", 200, 3, C15(26, 28, 30), 0} } };
+static const char *const CATN[5] = { "Seats", "Tables", "Tech", "Deco", "Rooms" };
 static const u16 FLOORC[5] = { C15(22, 16, 9), C15(26, 26, 24), C15(10, 16, 24), C15(14, 22, 12), C15(8, 8, 10) };
 static const u16 WALLC[4] = { C15(30, 28, 22), C15(28, 20, 16), C15(20, 24, 30), C15(30, 30, 30) };
+static int mark_x = -1, mark_y, mark_t;
 static void set_mode(int m);
 static void sim3d(int i, int yaw);
 typedef struct { u8 x, y, c, i, rot; } Obj;
@@ -159,13 +155,13 @@ static Obj objs[48]; static int nobj, funds = 20000;
 static u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1];     // floors (0 none, else 1..5), walls on the cell edges (0 none, else 1..4)
 static int mode = M_MAP, cat, pick = -1, pcx = 6, pcy = 6, prot, tool, pal, lot_bx = -1, lot_by = -1, cam = 3000, pitch = 3200, msg_t;
 static const char *msg = "";
-typedef struct { int x, y, tx, ty, need[6], acc[6], act, act_left, act_amt, act_obj, face, rel; u8 skin, hair, hcol, shirt; } Sim;   // x, y in 1/16 cells; needs 0..100: hunger, fun, energy, social, bladder, hygiene
+typedef struct { int x, y, tx, ty, need[6], acc[6], act, act_left, act_amt, act_obj, face, rel, dirn; u8 skin, hair, hcol, shirt; } Sim;   // x, y in 1/16 cells; needs 0..100: hunger, fun, energy, social, bladder, hygiene
 static Sim sims[3]; static int cur_sim, minutes = 11 * 60 + 40;
-static const char *const SNAME[3] = { "ASHLEY NEWBIE", "RONALD BACON", "KIT FARLOW" };
+static const char *const SNAME[3] = { "Ashley Newbie", "Ronald Bacon", "Kit Farlow" };
 static const u16 SKINC[6] = { C15(30, 24, 20), C15(27, 20, 15), C15(22, 15, 10), C15(16, 10, 6), C15(11, 7, 4), C15(29, 22, 17) };
 static const u16 HAIRC[6] = { C15(3, 3, 4), C15(14, 8, 4), C15(26, 20, 8), C15(24, 8, 4), C15(24, 24, 24), C15(10, 14, 28) };
 static const u16 SHIRTC[6] = { C15(26, 26, 26), C15(24, 8, 8), C15(8, 14, 26), C15(8, 22, 10), C15(28, 22, 8), C15(16, 8, 22) };
-static const char *const HAIRN[6] = { "FLAT TOP", "ROUND", "SPIKES", "LONG", "BRAIDS", "BALD" };
+static const char *const HAIRN[6] = { "Short", "Bob", "Spikes", "Long", "Braids", "Bald" };
 static void say(const char *m) { msg = m; msg_t = 90; }
 static int obj_at(int x, int y) { for (int i = 0; i < nobj; i++) if (objs[i].x == x && objs[i].y == y) return i; return -1; }
 static void lot_reset(void) {
@@ -197,10 +193,10 @@ static void plan(int ghost) {
 }
 static void draw_ui(void) {
     rect(0, 0, 256, 192, C15(5, 6, 9));
-    const char *tn[4] = { "MAP", "LIVE", "BUY", "BUILD" };
+    const char *tn[4] = { "Map", "Live", "Buy", "Build" };
     for (int i = 0; i < 4; i++) button(i * 64, 0, 62, 16, tn[i], C15(8, 14, 24), mode == i);
     char t[40];
-    sprintf(t, "FUNDS %d", funds); text(4, 182, 1, C15(31, 31, 20), t);
+    sprintf(t, "Funds %d", funds); text(4, 182, 1, C15(31, 31, 20), t);
     sprintf(t, "%d:%02d", (minutes / 60) % 24, minutes % 60); text(224, 182, 1, C15(24, 28, 31), t);
     if (msg_t > 0) text(70, 182, 1, C15(31, 20, 12), msg);
     if (mode == M_LIVE) {
@@ -212,15 +208,15 @@ static void draw_ui(void) {
     } else if (mode == M_BUY) {
         plan(1); const Item *it = &ITEMS[cat][pick];
         text(166, 26, 1, C15(31, 31, 31), it->name); sprintf(t, "%d", it->price); text(166, 38, 1, C15(31, 31, 18), t);
-        button(164, 60, 88, 22, "PLACE (A)", C15(10, 22, 10), 1); button(164, 90, 88, 22, "TURN (R)", C15(10, 14, 24), 0); button(164, 120, 88, 22, "BACK (B)", C15(24, 10, 10), 0);
-        text(164, 150, 1, C15(20, 24, 28), "TAP THE PLAN"); text(164, 160, 1, C15(20, 24, 28), "OR USE D-PAD");
+        button(164, 60, 88, 22, "Place (A)", C15(10, 22, 10), 1); button(164, 90, 88, 22, "Turn (R)", C15(10, 14, 24), 0); button(164, 120, 88, 22, "Back (B)", C15(24, 10, 10), 0);
+        text(164, 150, 1, C15(20, 24, 28), "Tap the plan"); text(164, 160, 1, C15(20, 24, 28), "or use the D-pad");
     } else if (mode == M_BUILD) {
         plan(1);
-        const char *tl2[4] = { "FLOOR", "WALL", "ERASE", "SELL" };
+        const char *tl2[4] = { "Floor", "Wall", "Erase", "Sell" };
         for (int i = 0; i < 4; i++) button(164, 22 + i * 20, 88, 17, tl2[i], C15(24, 14, 8), tool == i);
         int n = tool == 0 ? 5 : tool == 1 ? 4 : 0;
         for (int i = 0; i < n; i++) { rect(164 + i * 17, 108, 15, 15, pal == i + 1 ? 0xFFFF : C15(2, 2, 4)); rect(166 + i * 17, 110, 11, 11, tool == 0 ? FLOORC[i] : WALLC[i]); }
-        text(164, 130, 1, C15(20, 24, 28), tool == 1 ? "TAP NEAR A CELL EDGE" : tool == 3 ? "TAP FURNITURE" : "TAP CELLS");
+        text(164, 130, 1, C15(20, 24, 28), tool == 1 ? "Tap near a cell edge" : tool == 3 ? "Tap furniture" : "Tap cells");
     }
 }
 static int lot_touch(int tx, int ty) {   // a stylus tap on the plan: the cell (or -1)
@@ -233,7 +229,7 @@ static void ui_touch(int tx, int ty) {
         return; }
     if (mode == M_BUY && pick < 0) {
         for (int i = 0; i < 5; i++) if (hit(2 + i * 51, 20, 49, 14, tx, ty)) cat = i;
-        for (int i = 0; i < 4; i++) if (hit(4 + (i & 1) * 125, 42 + (i >> 1) * 64, 120, 58, tx, ty)) { if (funds >= ITEMS[cat][i].price) { pick = i; prot = 0; } else say("NOT ENOUGH FUNDS"); }
+        for (int i = 0; i < 4; i++) if (hit(4 + (i & 1) * 125, 42 + (i >> 1) * 64, 120, 58, tx, ty)) { if (funds >= ITEMS[cat][i].price) { pick = i; prot = 0; } else say("Not enough funds"); }
     } else if (mode == M_BUY) {
         int c = lot_touch(tx, ty);
         if (c >= 0) { int nx = c % GN, ny = c / GN; if (nx == pcx && ny == pcy) goto place; pcx = nx; pcy = ny; return; }
@@ -248,7 +244,7 @@ static void ui_touch(int tx, int ty) {
         if (c >= 0) { int x = c % GN, y = c / GN; pcx = x; pcy = y;
             if (tool == 0) flr[y][x] = (u8)pal;
             else if (tool == 2) { flr[y][x] = 0; }
-            else if (tool == 3) { int o = obj_at(x, y); if (o >= 0) { funds += ITEMS[objs[o].c][objs[o].i].price / 2; objs[o] = objs[--nobj]; say("SOLD"); } }
+            else if (tool == 3) { int o = obj_at(x, y); if (o >= 0) { funds += ITEMS[objs[o].c][objs[o].i].price / 2; objs[o] = objs[--nobj]; say("Sold"); } }
             else if (tool == 1 || tool == 2) {}
             if (tool == 1) { int fx = (tx - PX) % 12, fy = (ty - PY) % 12, d[4] = { fy, 11 - fy, fx, 11 - fx }, b = 0; for (int k = 1; k < 4; k++) if (d[k] < d[b]) b = k;
                 u8 *e = b == 0 ? &hwl[y][x] : b == 1 ? &hwl[y + 1][x] : b == 2 ? &vwl[y][x] : &vwl[y][x + 1]; *e = *e ? 0 : (u8)pal; }
@@ -256,10 +252,10 @@ static void ui_touch(int tx, int ty) {
     }
     return;
 place:
-    if (obj_at(pcx, pcy) >= 0) { say("SOMETHING IS THERE"); return; }
-    if (nobj >= 48) { say("LOT IS FULL"); return; }
-    if (funds < ITEMS[cat][pick].price) { say("NOT ENOUGH FUNDS"); pick = -1; return; }
-    funds -= ITEMS[cat][pick].price; objs[nobj].x = (u8)pcx; objs[nobj].y = (u8)pcy; objs[nobj].c = (u8)cat; objs[nobj].i = (u8)pick; objs[nobj].rot = (u8)prot; nobj++; say("BOUGHT"); 
+    if (obj_at(pcx, pcy) >= 0) { say("Something is there"); return; }
+    if (nobj >= 48) { say("Lot is full"); return; }
+    if (funds < ITEMS[cat][pick].price) { say("Not enough funds"); pick = -1; return; }
+    funds -= ITEMS[cat][pick].price; objs[nobj].x = (u8)pcx; objs[nobj].y = (u8)pcy; objs[nobj].c = (u8)cat; objs[nobj].i = (u8)pick; objs[nobj].rot = (u8)prot; nobj++; say("Bought"); 
 }
 static void obj3d(int x, int y, const Item *it, int rot, int ghost) {
     int x0 = tl(x * 2) + T / 3, x1 = tl(x * 2 + 2) - T / 3, z0 = tl(y * 2) + T / 3, z1 = tl(y * 2 + 2) - T / 3, hh = it->h * T / 2 + 20; (void)ghost;
@@ -278,6 +274,7 @@ static void draw_build(int yaw) {
     for (int y = 0; y < GN; y++) for (int x = 0; x <= GN; x++) if (vwl[y][x]) block(tl(x * 2) - T / 8, tl(y * 2), tl(x * 2) + T / 8, tl(y * 2 + 2), -40, -wh, WALLC[vwl[y][x] - 1], WALLC[vwl[y][x] - 1]);
     for (int i = 0; i < nobj; i++) obj3d(objs[i].x, objs[i].y, &ITEMS[objs[i].c][objs[i].i], objs[i].rot, 0);
     for (int i = 0; i < 3; i++) sim3d(i, yaw);
+    if (mode == M_LIVE && mark_t > 0) { ground(tl(mark_x * 2), tl(mark_y * 2), tl(mark_x * 2 + 2), tl(mark_y * 2 + 2), -60, C15(31, 31, 12)); mark_t--; }
     if (mode == M_BUY || mode == M_BUILD) {   // the cursor
         ground(tl(pcx * 2), tl(pcy * 2), tl(pcx * 2 + 2), tl(pcy * 2 + 2), -80, C15(31, 31, 31));
         if (mode == M_BUY && pick >= 0) obj3d(pcx, pcy, &ITEMS[cat][pick], prot, 1);
@@ -287,13 +284,13 @@ static void draw_build(int yaw) {
 // ============ the Sims-style game: LIVE (status on the top screen, the lot and its icons on the bottom, touch to play) ============
 typedef struct { const char *lab; u8 need; u8 amt; u8 dur; } Act;
 static const Act ACT[5][4] = {
-    { {"SIT", 2, 25, 90}, {"RELAX", 2, 35, 120}, {"NAP", 2, 60, 150}, {"SIT", 2, 20, 90} },
-    { {"SIT", 1, 10, 60}, {"LOOK", 1, 5, 40}, {"LOOK", 1, 5, 40}, {"COOK", 0, 35, 120} },
-    { {"WATCH TV", 1, 60, 150}, {"PLAY", 1, 50, 150}, {"LISTEN", 1, 35, 120}, {"EAT", 0, 70, 120} },
-    { {"LOOK", 1, 3, 30}, {"LOOK", 1, 3, 30}, {"WATER", 1, 10, 60}, {"ADMIRE", 1, 15, 60} },
-    { {"SLEEP", 2, 90, 240}, {"BATHE", 5, 90, 180}, {"USE", 4, 95, 100}, {"WASH", 5, 30, 80} } };
-static const char *const NEEDN[6] = { "HUNGER", "FUN", "ENERGY", "SOCIAL", "BLADDER", "HYGIENE" };
-static int menu_open, popup, popup_i, speed = 1, yaw_t = 4096, live_yaw = 4096, live_dist = 8500, camx, camz, cas_tab, cas_done, cas_stage;
+    { {"Sit", 2, 25, 90}, {"Relax", 2, 35, 120}, {"Nap", 2, 60, 150}, {"Sit", 2, 20, 90} },
+    { {"Sit", 1, 10, 60}, {"Look", 1, 5, 40}, {"Look", 1, 5, 40}, {"Cook", 0, 35, 120} },
+    { {"Watch TV", 1, 60, 150}, {"Play", 1, 50, 150}, {"Listen", 1, 35, 120}, {"Eat", 0, 70, 120} },
+    { {"Look", 1, 3, 30}, {"Look", 1, 3, 30}, {"Water", 1, 10, 60}, {"Admire", 1, 15, 60} },
+    { {"Sleep", 2, 90, 240}, {"Bathe", 5, 90, 180}, {"Use", 4, 95, 100}, {"Wash", 5, 30, 80} } };
+static const char *const NEEDN[6] = { "Hunger", "Fun", "Energy", "Social", "Bladder", "Hygiene" };
+static int menu_open, popup, popup_i, speed = 1, yaw_t = 4096, live_yaw = 4096, live_dist = 7000, camx, camz, cas_tab, cas_done, cas_stage;
 static const u16 BG_L = C15(18, 25, 31), PAN = C15(8, 16, 28), PANB = C15(2, 7, 20), PANH = C15(5, 12, 26), TXT = C15(31, 31, 31);
 
 static void panel(int x, int y, int w, int h, const char *title) {
@@ -303,6 +300,11 @@ static void panel(int x, int y, int w, int h, const char *title) {
 static void backdrop(void) {
     rect(0, 0, 256, 192, BG_L);
     for (int y = 0; y < 192; y += 16) for (int x = (y / 16 & 1) * 16; x < 256; x += 32) rect(x + 6, y + 6, 4, 4, C15(22, 28, 31));
+}
+int isq(int v); u16 lit(u16 c, int k);
+static void ellf(int cx, int cy, int rx, int ry, u16 c) {   // a filled oval
+    if (rx < 1 || ry < 1) return;
+    for (int y = -ry; y <= ry; y++) { int hw = isq(rx * rx * (ry * ry - y * y) / (ry * ry)); rect(cx - hw, cy + y, 2 * hw + 1, 1, c); }
 }
 static void face(int x, int y, int sz, const Sim *m) {   // a head and shoulders portrait, sz pixels square
     rect(x, y, sz, sz, C15(22, 22, 24)); int u = sz / 8;
@@ -320,25 +322,25 @@ static void face(int x, int y, int sz, const Sim *m) {   // a head and shoulders
 }
 static int mood(const Sim *m) { int s = 0; for (int n = 0; n < 6; n++) s += m->need[n]; return s / 6; }
 static u16 need_col(int v) { return v > 55 ? C15(8, 26, 8) : v > 28 ? C15(28, 24, 6) : C15(30, 8, 6); }
-static const char *DAYN[7] = { "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN" };
-static const char *relname(int r) { return r < 3 ? "ACQUAINTANCE" : r < 6 ? "FRIEND" : "BEST FRIEND"; }
+static const char *DAYN[7] = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+static const char *relname(int r) { return r < 3 ? "Acquaintance" : r < 6 ? "Friend" : "Best Friend"; }
 static void draw_top_status(void) {   // the top screen while you live: the sim's mood, the time and money, and the needs (or the bio of another sim)
     scr = scr_sub; backdrop(); const Sim *m = &sims[cur_sim];
     char t[48];
     if (cur_sim == 0) {
         face(8, 8, 56, m);
         panel(70, 6, 180, 60, SNAME[0]);
-        text(78, 28, 1, TXT, "MOOD"); rect(112, 26, 70, 9, C15(24, 28, 31)); rect(113, 27, 68 * mood(m) / 100, 7, need_col(mood(m)));
+        text(78, 28, 1, TXT, "Mood"); rect(112, 26, 70, 9, C15(24, 28, 31)); rect(113, 27, 68 * mood(m) / 100, 7, need_col(mood(m)));
         int mn = minutes % 1440, h12 = (mn / 60) % 12 ? (mn / 60) % 12 : 12;
         sprintf(t, "%s %d:%02d %s", DAYN[(minutes / 1440) % 7], h12, mn % 60, mn / 60 >= 12 ? "PM" : "AM"); text(78, 42, 1, TXT, t);
-        sprintf(t, "FUNDS %d", funds); text(78, 54, 1, C15(31, 31, 20), t);
-        panel(6, 72, 244, 114, "NEEDS");
+        sprintf(t, "Funds %d", funds); text(78, 54, 1, C15(31, 31, 20), t);
+        panel(6, 72, 244, 114, "Needs");
         static const int order[6] = { 0, 1, 2, 3, 4, 5 };
         for (int k = 0; k < 6; k++) { int n = order[k], cx = 14 + (k & 1) * 120, cy = 94 + (k >> 1) * 30;
             rect(cx, cy, 14, 14, C15(18, 24, 31)); text(cx + 4, cy + 4, 1, PANB, "-"); rect(cx + 3, cy + 3, 8, 8, need_col(m->need[n]));
             text(cx + 18, cy, 1, TXT, NEEDN[n]); rect(cx + 18, cy + 7, 84, 8, C15(2, 6, 14)); rect(cx + 19, cy + 8, 82 * m->need[n] / 100, 6, need_col(m->need[n])); }
     } else {
-        char tt[40]; sprintf(tt, "SIM BIO - %s", SNAME[cur_sim]); panel(6, 6, 244, 180, tt);
+        char tt[40]; sprintf(tt, "Sim Bio - %s", SNAME[cur_sim]); panel(6, 6, 244, 180, tt);
         face(16, 30, 64, m);
         for (int k = 0; k < 4; k++) { rect(94 + k * 38, 30, 32, 32, C15(18, 24, 31)); text(106 + k * 38, 40, 2, PANB, "?"); }
         panel(94, 70, 148, 60, 0);
@@ -354,11 +356,11 @@ static void draw_hud(void) {
     rect(0, 158, 34, 34, PANB); face(2, 160, 30, &sims[0]);
     rect(36, 168, 24, 22, PANB); rect(37, 169, 22, 20, PAN); text(42, 176, 1, TXT, speed == 1 ? ">" : speed == 2 ? ">>" : ">>>");
     rect(104, 178, 48, 14, PANB); rect(105, 179, 46, 13, PAN); for (int i = 0; i < 3; i++) rect(118 + i * 8, 184, 4, 4, TXT);
-    if (menu_open) { const char *mn[3] = { "BUY", "BUILD", "MAP" }; for (int i = 0; i < 3; i++) { rect(66 + i * 46, 150, 44, 24, PANB); rect(67 + i * 46, 151, 42, 22, PANH); text(72 + i * 46, 158, 1, TXT, mn[i]); } }
+    if (menu_open) { const char *mn[3] = { "Buy", "Build", "Map" }; for (int i = 0; i < 3; i++) { rect(66 + i * 46, 150, 44, 24, PANB); rect(67 + i * 46, 151, 42, 22, PANH); text(72 + i * 46, 158, 1, TXT, mn[i]); } }
     if (popup) {
-        const char *nm, *lab; if (popup == 1) { const Obj *o = &objs[popup_i]; nm = ITEMS[o->c][o->i].name; lab = ACT[o->c][o->i].lab; } else { nm = SNAME[popup_i]; lab = "CHAT"; }
+        const char *nm, *lab; if (popup == 1) { const Obj *o = &objs[popup_i]; nm = ITEMS[o->c][o->i].name; lab = ACT[o->c][o->i].lab; } else { nm = SNAME[popup_i]; lab = "Chat"; }
         rect(56, 100, 144, 56, PANB); rect(57, 101, 142, 54, PAN); text(64, 106, 2, TXT, nm);
-        rect(64, 126, 62, 24, C15(8, 20, 8)); text(70, 135, 1, TXT, lab); rect(132, 126, 62, 24, C15(24, 8, 8)); text(138, 135, 1, TXT, "CANCEL");
+        rect(64, 126, 62, 24, C15(8, 20, 8)); text(70, 135, 1, TXT, lab); rect(132, 126, 62, 24, C15(24, 8, 8)); text(138, 135, 1, TXT, "Cancel");
     }
     if (msg_t > 0) { rect(70, 40, 116, 14, PANB); text(76, 45, 1, TXT, msg); }
 }
@@ -382,9 +384,9 @@ static void sims_step(int frames) {
     for (int i = 0; i < 3; i++) { Sim *m = &sims[i];
         if (m->act_left > 0) {
             for (int n = 0; n < 6; n++) if (n == (m->act >= 100 ? m->act - 100 : m->act)) { m->acc[n] += m->act_amt; while (m->acc[n] >= m->face) { m->acc[n] -= m->face; if (m->need[n] < 100) m->need[n]++; } }
-            m->act_left--; if (m->act_left == 0) { m->act = -1; if (i == 0) say("DONE"); }
+            m->act_left--; if (m->act_left == 0) { m->act = -1; if (i == 0) say("Done"); }
         } else if (m->x != m->tx || m->y != m->ty) {
-            if (m->x < m->tx) m->x++; else if (m->x > m->tx) m->x--; else if (m->y < m->ty) m->y++; else m->y--;
+            if (m->x < m->tx) { m->x++; m->dirn = 8192; } else if (m->x > m->tx) { m->x--; m->dirn = 24576; } else if (m->y < m->ty) { m->y++; m->dirn = 0; } else { m->y--; m->dirn = 16384; }
             if (m->x == m->tx && m->y == m->ty && m->act >= 0) {
                 m->act_left = m->face;
                 if (m->act >= 100) { Sim *o = &sims[m->act_obj]; o->act_left = m->face; o->act = 3 + 100; o->act_amt = 0; m->act = 3; if (m->rel + 0 >= 0) o->rel++; }
@@ -395,48 +397,160 @@ static void sims_step(int frames) {
     }
     if ((frames % 8) == 0) minutes++;
 }
+// ---- smooth shaded 3D: ellipsoids with a colour on every vertex, so a head is round and lit instead of a box ----
+static int gox, goy, goz, gcs = 4096, gsn, gres_r = 8, gres_s = 12;   // the model's place and facing (yaw), and how finely to cut a ball
+int isq(int v) { if (v <= 0) return 0; int r = v, q = (r + 1) / 2; while (q < r) { r = q; q = (r + v / r) / 2; } return r; }
+u16 lit(u16 c, int k) {   // k/16 of the colour (above 16 is brighter)
+    int r = (c & 31) * k / 16, g = ((c >> 5) & 31) * k / 16, b = ((c >> 10) & 31) * k / 16;
+    return (u16)(RGB15(r > 31 ? 31 : r, g > 31 ? 31 : g, b > 31 ? 31 : b) | BIT(15));
+}
+static inline void gv(int x, int u, int z) { glVertex3v16(gox + ((x * gcs + z * gsn) >> 12), goy + u, goz + ((z * gcs - x * gsn) >> 12)); }
+static int shade_n(int nx, int ny, int nz) {   // light from the front, top and left: 0..16+
+    int k = (nx * -1434 + ny * 2253 + nz * 3072) >> 12;   // -4096..4096
+    return 8 + (k > 0 ? k * 9 / 4096 : k * 5 / 4096);
+}
+// an ellipsoid (centre cx,cu,cz; radii; phi p0..p1 from -8192 (bottom) to 8192 (top); around a0..a1: 0 is +x, 8192 is the front +z); taper narrows the lower half
+static void ell3(int cx, int cu, int cz, int rx, int ru, int rz, u16 col, int p0, int p1, int a0, int a1, int taper) {
+    int R = gres_r, S = gres_s;
+    for (int i = 0; i < R; i++) for (int j = 0; j < S; j++) {
+        int pp[2] = { p0 + (p1 - p0) * i / R, p0 + (p1 - p0) * (i + 1) / R }, aa[2] = { a0 + (a1 - a0) * j / S, a0 + (a1 - a0) * (j + 1) / S };
+        int vx[4], vu[4], vz[4], vk[4];
+        for (int k = 0; k < 4; k++) {
+            int p = pp[(k == 2 || k == 3) ? 1 : 0], a = aa[(k == 1 || k == 2) ? 1 : 0];
+            int cph = cosLerp(p), sph = sinLerp(p), ca = cosLerp(a), sa = sinLerp(a);
+            int f = 4096 - (sph < 0 ? taper * (-sph) / 4096 : 0);
+            int nx = (cph * ca) >> 12, nz = (cph * sa) >> 12;
+            vx[k] = cx + (((rx * nx) >> 12) * f >> 12); vz[k] = cz + (((rz * nz) >> 12) * f >> 12); vu[k] = cu + ((ru * sph) >> 12); vk[k] = shade_n(nx, sph, nz);
+        }
+        for (int k = 0; k < 4; k++) { glColor(lit(col, vk[k] < 2 ? 2 : vk[k])); gv(vx[k], vu[k], vz[k]); }
+        polys += 2;
+    }
+}
+static void disc(int cx, int cu, int cz, int rx, int ru, u16 col, int k) {   // a flat oval facing front (+z), drawn as a fan of quads
+    for (int i = 0; i < 6; i++) {
+        int a0 = i * 32768 / 6, a1 = (i + 1) * 32768 / 6;
+        glColor(lit(col, k)); gv(cx, cu, cz);
+        gv(cx + ((rx * cosLerp(a0)) >> 12), cu + ((ru * sinLerp(a0)) >> 12), cz);
+        gv(cx + ((rx * cosLerp(a1)) >> 12), cu + ((ru * sinLerp(a1)) >> 12), cz);
+        gv(cx + ((rx * cosLerp(a1)) >> 12), cu + ((ru * sinLerp(a1)) >> 12), cz); polys++;
+    }
+}
+static int head_z(int cu, int ru, int rz, int rx, int x, int u) {   // the head's front surface at (x, u)
+    int a = x * 1024 / rx, b = (u - cu) * 1024 / ru, v = 1024 * 1024 - a * a - b * b; if (v < 0) v = 0; return rz * isq(v) / 1024;
+}
+static void hair_do(const Sim *m, int cu, int rx, int ru, int rz, u16 hc) {   // the hair, by style
+    int st = m->hair; if (st == 5) return;
+    ell3(0, cu, 0, rx * 107 / 100, ru * 107 / 100, rz * 107 / 100, hc, 3200, 8192, 0, 32768, 0);               // the cap
+    if (st == 0) ell3(0, cu, 0, rx * 108 / 100, ru * 108 / 100, rz * 108 / 100, hc, -800, 3300, 13400, 35900, 0);
+    if (st == 1) ell3(0, cu, 0, rx * 112 / 100, ru * 108 / 100, rz * 112 / 100, hc, -5200, 3300, 12400, 36900, 0);
+    if (st == 2) for (int k = 0; k < 9; k++) {   // spikes: cones round the crown
+        int a = k * 32768 / 9, p = 5200 + (k & 1) * 1400, ca = cosLerp(a), sa = sinLerp(a), cp = cosLerp(p), sp = sinLerp(p);
+        int bx = rx * cp / 4096 * ca / 4096, bz = rz * cp / 4096 * sa / 4096, bu = cu + ru * sp / 4096, tx = bx * 13 / 10, tz = bz * 13 / 10, tu = bu + 520;
+        for (int q = 0; q < 4; q++) { int a0 = q * 8192, a1 = (q + 1) * 8192; int x0 = bx + 130 * cosLerp(a0) / 4096, z0 = bz + 130 * sinLerp(a0) / 4096, x1 = bx + 130 * cosLerp(a1) / 4096, z1 = bz + 130 * sinLerp(a1) / 4096;
+            glColor(lit(hc, 10 + q * 2)); gv(x0, bu, z0); gv(x1, bu, z1); gv(tx, tu, tz); gv(tx, tu, tz); polys++; } }
+    if (st == 3) {   // long: a curtain behind and down to the shoulders
+        ell3(0, cu, 0, rx * 112 / 100, ru * 108 / 100, rz * 112 / 100, hc, -3800, 3300, 11400, 37900, 0);
+        for (int j = 0; j < 12; j++) { int a0 = 13400 + j * (35900 - 13400) / 12, a1 = 13400 + (j + 1) * (35900 - 13400) / 12;
+            int rr = rx * 112 / 100, rz2 = rz * 112 / 100, lo = cu - ru * 100 / 100 - 600;
+            int x0 = rr * cosLerp(a0) / 4096, z0 = rz2 * sinLerp(a0) / 4096, x1 = rr * cosLerp(a1) / 4096, z1 = rz2 * sinLerp(a1) / 4096;
+            glColor(lit(hc, 7 + (j & 1))); gv(x0, cu - ru * 30 / 100, z0); gv(x1, cu - ru * 30 / 100, z1); gv(x1 * 12 / 10, lo, z1 * 12 / 10); gv(x0 * 12 / 10, lo, z0 * 12 / 10); polys += 2; } }
+    if (st == 4) {   // braids: strings of beads hanging round the head
+        int sr = gres_r, ss = gres_s; gres_r = 4; gres_s = 6;
+        for (int k = 0; k < 9; k++) { int a = 11000 + k * (40000 - 11000) / 9, ca = cosLerp(a), sa = sinLerp(a);
+            for (int b = 0; b < 6; b++) { int bx = rx * 106 / 100 * ca / 4096, bz = rz * 106 / 100 * sa / 4096; ell3(bx * (100 + b * 3) / 100, cu - ru * 15 / 100 - b * 190, bz * (100 + b * 3) / 100, 95 - b * 7, 120, 95 - b * 7, lit(hc, 11 - b / 2), -8192, 8192, 0, 32768, 0); } }
+        gres_r = sr; gres_s = ss; }
+}
+static void draw_person_model(const Sim *m, int sc, int hat) {   // the sim, as a rounded model, at the current place and facing. sc: size in 1/16 of the portrait size
+    (void)hat; u16 sk = SKINC[m->skin], hc = HAIRC[m->hcol], sh = SHIRTC[m->shirt];
+    int rx = 760, ru = 900, rz = 800, cu = 1250; (void)sc;
+    ell3(0, -250, 0, 1300, 560, 640, sh, -8192, 8192, 0, 32768, 0);          // shoulders and chest
+    ell3(0, 120, 0, 300, 480, 300, lit(sk, 13), -8192, 8192, 0, 32768, 0);    // neck
+    ell3(0, cu, 0, rx, ru, rz, sk, -8192, 8192, 0, 32768, 760);              // head
+    ell3(-rx * 97 / 100, cu - 20, -60, 90, 200, 130, lit(sk, 13), -8192, 8192, 0, 32768, 0); ell3(rx * 97 / 100, cu - 20, -60, 90, 200, 130, lit(sk, 13), -8192, 8192, 0, 32768, 0);   // ears
+    hair_do(m, cu, rx, ru, rz, hc);
+    int zf, ey = cu + 150;
+    for (int sd = -1; sd <= 1; sd += 2) {   // eyes
+        int ex = sd * 290; zf = head_z(cu, ru, rz, rx, ex, ey) + 14;
+        disc(ex, ey, zf, 175, 120, C15(31, 31, 31), 15); disc(ex, ey - 6, zf + 4, 92, 92, m->hcol == 5 ? C15(8, 14, 28) : C15(9, 6, 3), 13); disc(ex, ey - 6, zf + 8, 46, 46, C15(1, 1, 2), 16);
+        disc(ex - 30, ey + 28, zf + 12, 22, 22, C15(31, 31, 31), 16);
+        disc(ex, ey + 128, zf + 6, 190, 30, lit(hc, 9), 14); disc(ex, ey + 300, zf - 2, 210, 36, lit(hc, 11), 14); }   // lid line and brow
+    zf = head_z(cu, ru, rz, rx, 0, cu - 280) + 30; ell3(0, cu - 260, zf - 20, 100, 170, 120, lit(sk, 14), -8192, 8192, 8192 - 9000, 8192 + 9000, 0);   // nose
+    zf = head_z(cu, ru, rz, rx, 0, cu - 520) + 10;
+    disc(0, cu - 560, zf, 200, 62, C15(22, 7, 8), 14); disc(0, cu - 500, zf + 2, 205, 46, C15(26, 10, 10), 15); disc(0, cu - 528, zf + 4, 170, 10, C15(6, 1, 2), 12);   // lips and the line between
+}
+// ---- a refined blocky look: boxes with bevelled tops, a light from the front-top and a gradient on every face (still chunky, just richer) ----
+static void gq(int x0, int u0, int z0, int x1, int u1, int z1, int x2, int u2, int z2, int x3, int u3, int z3, u16 c, int k0, int k1) {   // k0 at the first two corners, k1 at the last two
+    glColor(lit(c, k0)); glVertex3v16(x0, u0, z0); glVertex3v16(x1, u1, z1); glColor(lit(c, k1)); glVertex3v16(x2, u2, z2); glVertex3v16(x3, u3, z3); polys += 2;
+}
+// a box from (x0,u0,z0) to (x1,u1,z1) (u is up); ti insets the top face (a bevel/taper), bi the bottom
+static void gbox(int x0, int u0, int z0, int x1, int u1, int z1, u16 c, int ti, int bi) {
+    int bx0 = x0 + bi, bx1 = x1 - bi, bz0 = z0 + bi, bz1 = z1 - bi, tx0 = x0 + ti, tx1 = x1 - ti, tz0 = z0 + ti, tz1 = z1 - ti;
+    gq(bx0, u0, bz1, bx1, u0, bz1, tx1, u1, tz1, tx0, u1, tz1, c, 11, 14);   // front
+    gq(bx1, u0, bz0, bx0, u0, bz0, tx0, u1, tz0, tx1, u1, tz0, c, 7, 9);     // back
+    gq(bx1, u0, bz1, bx1, u0, bz0, tx1, u1, tz0, tx1, u1, tz1, c, 7, 10);    // right
+    gq(bx0, u0, bz0, bx0, u0, bz1, tx0, u1, tz1, tx0, u1, tz0, c, 9, 12);    // left (the light side)
+    gq(tx0, u1, tz1, tx1, u1, tz1, tx1, u1, tz0, tx0, u1, tz0, c, 16, 16);   // top
+}
+static void flat(int x0, int u0, int x1, int u1, int z, u16 c, int k) { gq(x0, u0, z, x1, u0, z, x1, u1, z, x0, u1, z, c, k, k); }   // a quad on the front
 static void sim3d(int i, int yaw) {
-    const Sim *m = &sims[i];
+    const Sim *m = &sims[i]; (void)yaw;
     int x = m->x * 2 * T / 16 - GN * T + T, z = m->y * 2 * T / 16 - GN * T + T;
-    int hx = (T / 3 * cosLerp(yaw)) >> 12, hz = (T / 3 * sinLerp(yaw)) >> 12, gx = hx * 3 / 4, gz = hz * 3 / 4;
-    int y0 = -40, y1 = y0 - T * 7 / 10, y2 = y1 - T * 6 / 10, y3 = y2 - T * 6 / 10;
-    qd(x - hx, y0, z - hz, x + hx, y0, z + hz, x + hx, y1, z + hz, x - hx, y1, z - hz, C15(4, 4, 8));                 // legs
-    qd(x - hx, y1, z - hz, x + hx, y1, z + hz, x + hx, y2, z + hz, x - hx, y2, z - hz, SHIRTC[m->shirt]);             // shirt
-    qd(x - gx, y2, z - gz, x + gx, y2, z + gz, x + gx, y3, z + gz, x - gx, y3, z - gz, SKINC[m->skin]);               // head
-    if (m->hair != 5) qd(x - gx, y3 - T / 5, z - gz, x + gx, y3 - T / 5, z + gz, x + gx, y3, z + gz, x - gx, y3, z - gz, HAIRC[m->hcol]);   // hair
-    if (i == cur_sim) { int py = y3 - T * 7 / 10, d = T / 5; qd(x, py - d, z, x + d * 2 / 3 * hx / (T / 3 + 1), py, z + d * 2 / 3 * hz / (T / 3 + 1), x, py + d, z, x - d * 2 / 3 * hx / (T / 3 + 1), py, z - d * 2 / 3 * hz / (T / 3 + 1), C15(6, 28, 6)); }   // the plumbob
+    gox = x; goy = 0; goz = z; gcs = cosLerp(m->dirn); gsn = sinLerp(m->dirn);
+    u16 sk = SKINC[m->skin], hc = HAIRC[m->hcol], sh = SHIRTC[m->shirt], pants = C15(6, 7, 12);
+    gbox(-110, 0, -70, -10, 330, 80, pants, 0, 0); gbox(10, 0, -70, 110, 330, 80, pants, 0, 0);          // legs
+    gbox(-140, 330, -90, 140, 640, 90, sh, 20, 0);                                                      // body
+    gbox(-190, 380, -50, -140, 620, 50, sk, 0, 0); gbox(140, 380, -50, 190, 620, 50, sk, 0, 0);         // arms
+    gbox(-110, 640, -100, 110, 860, 100, sk, 10, 12);                                                   // head
+    if (m->hair != 5) { gbox(-125, 790, -112, 125, 900, 112, hc, 18, 0); gbox(-125, 700, -112, 125, 800, -50, hc, 0, 0);
+        if (m->hair == 3) gbox(-125, 560, -118, 125, 800, -60, hc, 0, 0);
+        if (m->hair == 2) for (int k = -1; k <= 1; k++) gbox(k * 80 - 30, 890, -30, k * 80 + 30, 990, 30, hc, 12, 0); }
+    flat(-70, 760, -30, 800, 101, C15(31, 31, 31), 15); flat(30, 760, 70, 800, 101, C15(31, 31, 31), 15); flat(-58, 764, -42, 794, 102, C15(2, 1, 3), 14); flat(42, 764, 58, 794, 102, C15(2, 1, 3), 14);
+    flat(-30, 690, 30, 708, 101, C15(22, 7, 8), 14);
+    if (i == cur_sim) { int py = 1010; gbox(-40, py, -40, 40, py + 130, 40, C15(6, 30, 6), 28, 0); gbox(-40, py - 100, -40, 40, py, 40, C15(5, 24, 5), 0, 28); }   // the plumbob
+    gox = goy = goz = 0; gcs = 4096; gsn = 0;
 }
 // ---- Create-a-Sim: the head on the top screen, the choices on the bottom ----
 static void draw_head(int yaw) {
+    (void)yaw; gox = goy = goz = 0; gcs = 4096; gsn = 0;
     const Sim *m = &sims[0]; u16 sk = SKINC[m->skin], hc = HAIRC[m->hcol], sh = SHIRTC[m->shirt];
-    block(-1100, -520, 1100, 520, 300, 1900, sh, shade(sh, 6));     // shoulders
-    block(-300, -300, 300, 300, 0, 320, shade(sk, 7), sk);         // neck
-    block(-700, -700, 700, 700, 0, -1500, sk, shade(sk, 7));       // head
-    qd(-420, -880, 702, -140, -880, 702, -140, -1040, 702, -420, -1040, 702, C15(30, 30, 30)); qd(140, -880, 702, 420, -880, 702, 420, -1040, 702, 140, -1040, 702, C15(30, 30, 30));   // eyes
-    qd(-330, -890, 704, -210, -890, 704, -210, -1030, 704, -330, -1030, 704, C15(8, 4, 3)); qd(210, -890, 704, 330, -890, 704, 330, -1030, 704, 210, -1030, 704, C15(8, 4, 3));
-    qd(-50, -600, 702, 50, -600, 702, 80, -820, 702, -80, -820, 702, shade(sk, 6));   // nose
-    qd(-260, -330, 702, 260, -330, 702, 260, -420, 702, -260, -420, 702, C15(24, 6, 8));   // mouth
+    gbox(-1250, -560, -480, 1250, 120, 480, sh, 260, 0);                                // shoulders and chest
+    flat(-170, -30, 170, 130, 482, lit(sk, 12), 11);                                    // the neckline
+    gbox(-290, 100, -280, 290, 560, 280, lit(sk, 13), 0, 0);                            // neck
+    gbox(-590, 520, -620, 590, 1000, 640, sk, 0, 150);                                  // jaw (narrower at the chin)
+    gbox(-710, 1000, -690, 710, 1900, 700, sk, 110, 0);                                 // cranium
+    gbox(-790, 1120, -90, -700, 1480, 150, lit(sk, 13), 0, 0); gbox(700, 1120, -90, 790, 1480, 150, lit(sk, 13), 0, 0);   // ears
+    for (int sd = -1; sd <= 1; sd += 2) {   // eyes: white, iris, pupil, highlight, lid and brow
+        int c = sd * 290;
+        flat(c - 150, 1330, c + 150, 1480, 702, C15(31, 31, 31), 16); flat(c - 80, 1310, c + 80, 1480, 704, C15(9, 6, 3), 13);
+        flat(c - 38, 1340, c + 38, 1440, 706, C15(1, 1, 2), 16); flat(c - 55, 1415, c - 15, 1455, 708, C15(31, 31, 31), 18);
+        flat(c - 165, 1480, c + 165, 1525, 703, lit(hc, 8), 12);                                                       // lid line
+        flat(c - 170 - sd * 20, 1590 + sd * 20, c + 170 - sd * 20, 1665 - sd * 10, 703, lit(hc, 11), 14);                 // brow
+        flat(c - 160, 1090, c + 160, 1210, 702, lit(sk, 17), 15); }                                                    // cheek light
+    gbox(-95, 1040, 690, 95, 1330, 800, lit(sk, 14), 40, 0);                                                           // nose
+    flat(-55, 1070, 55, 1095, 802, C15(6, 3, 3), 11);
+    flat(-210, 905, 210, 962, 704, C15(21, 7, 8), 13); flat(-190, 850, 190, 905, 704, C15(26, 11, 11), 15); flat(-210, 898, 210, 910, 706, C15(5, 1, 2), 12);   // lips
     switch (m->hair) {
-        case 0: block(-760, -760, 760, 600, -1460, -1950, hc, hc); break;
-        case 1: block(-780, -780, 780, 700, -1400, -1850, hc, hc); block(-780, -780, 780, -300, -300, -1850, hc, hc); break;
-        case 2: for (int k = 0; k < 4; k++) block(-640 + k * 400, -300, -400 + k * 400, 300, -1460, -2250 + (k & 1) * 150, hc, hc); break;
-        case 3: block(-780, -780, 780, 700, -1400, -1850, hc, hc); block(-800, -800, 800, -380, 900, -1850, hc, hc); block(-820, -380, -700, 400, 700, -1500, hc, hc); block(700, -380, 820, 400, 700, -1500, hc, hc); break;
-        case 4: block(-740, -740, 740, 400, -1460, -1700, hc, hc); for (int k = 0; k < 7; k++) block(-760 + k * 230, 600, -680 + k * 230, 700, -1600, -2150, hc, hc); block(-800, -200, -700, 300, -200, 500, hc, hc); block(700, -200, 800, 300, -200, 500, hc, hc); break;
+        case 0: gbox(-780, 1500, -770, 780, 2020, 760, hc, 150, 0); gbox(-780, 1180, -770, 780, 1520, -480, hc, 0, 0); gbox(-790, 1180, -700, -700, 1560, 160, hc, 0, 0); gbox(700, 1180, -700, 790, 1560, 160, hc, 0, 0); break;
+        case 1: gbox(-790, 1500, -780, 790, 2000, 770, hc, 140, 0); gbox(-800, 800, -790, 800, 1520, -400, hc, 0, 0); gbox(-810, 880, -790, -700, 1640, 330, hc, 0, 0); gbox(700, 880, -790, 810, 1640, 330, hc, 0, 0); break;
+        case 2: gbox(-770, 1500, -760, 770, 1760, 750, hc, 100, 0); for (int k = 0; k < 7; k++) for (int q = 0; q < 2; q++) gbox(-640 + k * 213, 1740, -420 + q * 560, -440 + k * 213, 2300 - ((k + q) & 1) * 180, -240 + q * 560, hc, 64, 0); break;
+        case 3: gbox(-790, 1500, -780, 790, 2000, 770, hc, 140, 0); gbox(-810, -380, -800, 810, 1520, -400, hc, 0, 0); gbox(-830, 300, -420, -700, 1640, 330, hc, 0, 0); gbox(700, 300, -420, 830, 1640, 330, hc, 0, 0); break;
+        case 4: gbox(-770, 1500, -760, 770, 1800, 740, hc, 110, 0); for (int k = 0; k < 9; k++) { int a = 9500 + k * 1700, bx = (int)(cosLerp(a) * 800 / 4096), bz = (int)(sinLerp(a) * 780 / 4096); if (bz > 350) continue;
+                for (int p = 0; p < 4; p++) gbox(bx - 60 + p * 4, 1450 - p * 270 - 270, bz - 60, bx + 60 - p * 4, 1450 - p * 270, bz + 60, lit(hc, 12 - p), 6, 0); } break;
         default: break; }
 }
 static void draw_cas(void) {   // the bottom screen: icon tabs down the left, a 3 x 2 grid of choices, PLAY
     scr = scr_sub; backdrop();
-    const char *tn[4] = { "HAIR", "COLOR", "SKIN", "SHIRT" };
+    const char *tn[4] = { "Hair", "Color", "Skin", "Shirt" };
     panel(0, 4, 56, 184, 0);
     for (int i = 0; i < 4; i++) { rect(6, 12 + i * 40, 44, 34, cas_tab == i ? C15(8, 26, 8) : C15(4, 10, 24)); rect(8, 14 + i * 40, 40, 30, cas_tab == i ? C15(10, 30, 10) : C15(6, 14, 28)); text(12, 26 + i * 40, 1, TXT, tn[i]); }
-    static const char *ttl[4] = { "HAIR STYLES", "HAIR COLOR", "SKIN TONE", "SHIRT" };
+    static const char *ttl[4] = { "Hair Styles", "Hair Color", "Skin Tone", "Shirt" };
     panel(62, 4, 190, 142, ttl[cas_tab]);
     Sim tmp = sims[0];
     for (int k = 0; k < 6; k++) { int x = 68 + (k % 3) * 60, y = 26 + (k / 3) * 56; int on = (cas_tab == 0 ? tmp.hair : cas_tab == 1 ? tmp.hcol : cas_tab == 2 ? tmp.skin : tmp.shirt) == k;
         rect(x, y, 54, 50, on ? C15(10, 28, 8) : C15(28, 31, 31)); rect(x + 2, y + 2, 50, 46, C15(20, 26, 31));
         Sim v = tmp; if (cas_tab == 0) v.hair = (u8)k; else if (cas_tab == 1) v.hcol = (u8)k; else if (cas_tab == 2) v.skin = (u8)k; else v.shirt = (u8)k;
         face(x + 9, y + 3, 36, &v); if (cas_tab == 0) text(x + 6, y + 42, 1, PANB, HAIRN[k]); }
-    rect(62, 152, 190, 34, PANB); rect(64, 154, 186, 30, C15(8, 22, 8)); text(120, 164, 2, TXT, "PLAY");
+    rect(62, 152, 190, 34, PANB); rect(64, 154, 186, 30, C15(8, 22, 8)); text(120, 164, 2, TXT, "Play");
 }
 static void cas_touch(int tx, int ty) {
     for (int i = 0; i < 4; i++) if (hit(6, 12 + i * 40, 44, 34, tx, ty)) cas_tab = i;
@@ -460,6 +574,7 @@ static void live_touch(int tx, int ty) {
     if (hit(36, 168, 24, 22, tx, ty)) { speed = speed == 1 ? 2 : speed == 2 ? 3 : 1; return; }
     if (hit(0, 158, 34, 34, tx, ty)) { cur_sim = 0; return; }
     int cx, cy; if (!pick_cell(tx, ty, &cx, &cy)) return;
+    mark_x = cx; mark_y = cy; mark_t = 40;
     for (int i = 0; i < 3; i++) { int sx = (sims[i].x + 8) / 16, sy = (sims[i].y + 8) / 16; if (sx == cx && sy == cy) { cur_sim = i; if (i) { popup = 2; popup_i = i; } return; } }
     int o = obj_at(cx, cy); if (o >= 0) { popup = 1; popup_i = o; return; }
     if (cx >= 0 && cy >= 0 && cx < GN && cy < GN) { cur_sim = 0; sims[0].tx = cx * 16; sims[0].ty = cy * 16; sims[0].act = -1; sims[0].act_left = 0; }
@@ -469,7 +584,7 @@ int main(void) {
     powerOn(POWER_ALL_2D | POWER_3D_CORE | POWER_MATRIX); irqInit(); irqEnable(IRQ_VBLANK);
     videoSetMode(MODE_5_3D | DISPLAY_BG3_ACTIVE);
     videoSetModeSub(MODE_5_2D | DISPLAY_BG3_ACTIVE);
-    vramSetBankA(VRAM_A_TEXTURE); vramSetBankB(VRAM_B_TEXTURE); vramSetBankC(VRAM_C_SUB_BG); vramSetBankD(VRAM_D_MAIN_BG);
+    vramSetBankA(VRAM_A_TEXTURE); vramSetBankB(VRAM_B_TEXTURE); vramSetBankC(VRAM_C_SUB_BG); vramSetBankD(VRAM_D_MAIN_BG_0x06000000);
     int bg = bgInitSub(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0); scr_sub = scr = bgGetGfxPtr(bg);
     int bgm = bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0); hud = bgGetGfxPtr(bgm); bgSetPriority(bgm, 0);
     glInit(); glEnable(GL_ANTIALIAS); glClearColor(14, 20, 31, 31); glClearPolyID(63); glClearDepth(0x7FFF); glViewport(0, 0, 255, 191); REG_BG0CNT = BG_PRIORITY(1);
@@ -485,7 +600,7 @@ int main(void) {
             if (down & KEY_TOUCH) cas_touch(tp.px, tp.py);
             if (forced || (down & KEY_TOUCH)) draw_cas();
             if (cas_done) { cas_done = 0; set_mode(M_MAP); dirty = 1; }
-            yaw = sinLerp(frames * 90) >> 1; pitch = 0; dist = 5400;
+            yaw = sinLerp(frames * 70) / 2; pitch = 0; dist = 4300;
         } else if (mode == M_MAP) {
             if (down & (KEY_L | KEY_R)) { cur_set = (cur_set + ((down & KEY_R) ? 1 : bm_nset() - 1)) % bm_nset(); s = bm_set(cur_set); sel_x = s->x; sel_y = s->y; dirty = 1; }
             if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; bm_new((u32)seed); cur_set = bm_capital(); s = bm_set(cur_set); sel_x = s->x; sel_y = s->y; dirty = 1; }
@@ -495,7 +610,7 @@ int main(void) {
             int enter = down & KEY_A;
             if (down & KEY_TOUCH) { if (tp.py < MH * 8 && tp.px < MW * 8) { int nx = s->x - MW / 2 + tp.px / 8, ny = s->y - MH / 2 + tp.py / 8; if (nx == sel_x && ny == sel_y) enter = 1; else { sel_x = nx; sel_y = ny; dirty = 1; } } }
             else if ((held & KEY_TOUCH) && tp.py < MH * 8 && tp.px < MW * 8) { int nx = s->x - MW / 2 + tp.px / 8, ny = s->y - MH / 2 + tp.py / 8; if (nx != sel_x || ny != sel_y) { sel_x = nx; sel_y = ny; dirty = 1; } }
-            if (enter) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("CANNOT BUILD AT SEA"); else { if (lot_bx != sel_x || lot_by != sel_y) { Sim keep = sims[0]; lot_reset(); sims[0].skin = keep.skin; sims[0].hair = keep.hair; sims[0].hcol = keep.hcol; sims[0].shirt = keep.shirt; lot_bx = sel_x; lot_by = sel_y; } cur_sim = 0; set_mode(M_LIVE); forced = 1; lastsig = ~lastsig; } }
+            if (enter) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot build at sea"); else { if (lot_bx != sel_x || lot_by != sel_y) { Sim keep = sims[0]; lot_reset(); sims[0].skin = keep.skin; sims[0].hair = keep.hair; sims[0].hcol = keep.hcol; sims[0].shirt = keep.shirt; lot_bx = sel_x; lot_by = sel_y; } cur_sim = 0; set_mode(M_LIVE); forced = 1; lastsig = ~lastsig; } }
             if (forced) dirty = 1;
             if (dirty) { scr = scr_sub; draw_map(); dirty = 0; }
             if (msg_t > 0) text(4, 150, 1, C15(31, 20, 12), msg);
@@ -535,7 +650,7 @@ int main(void) {
         glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluPerspectivef32(degreesToAngle(50), 256 * 4096 / 192, 4096 / 8, 4096 * 40);
         glMatrixMode(GL_POSITION); glLoadIdentity();
         glTranslatef32(0, 0, -dist); glRotateXi(pitch); glRotateYi(yaw);
-        if (mode == M_LIVE) glTranslatef32(-camx, 0, -camz); else if (mode == M_CAS) glTranslatef32(0, -600, 0);
+        if (mode == M_LIVE) glTranslatef32(-camx, 0, -camz); else if (mode == M_CAS) glTranslatef32(0, -1000, 0);
         glPolyFmt(POLY_ALPHA(31) | POLY_CULL_NONE | POLY_ID(1));
         glBegin(GL_QUADS);
         if (mode == M_CAS) draw_head(yaw);

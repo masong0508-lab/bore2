@@ -35,3 +35,6 @@ X/Y zoom, L/R turn the view in LIVE. Lot contents are not saved yet.
 ## D3 status: Sims 3 DS style flow (not fully tested)
 Create-a-Sim first (head on top, hair/colour/skin/shirt grid on the bottom, PLAY). Then the map, then LIVE: top screen = sim status (mood, time, funds, six needs; tap another sim for its bio), bottom screen = the 3D lot with HUD icons, tap floor to walk, tap furniture/sim for an action menu. "..." tab opens BUY / BUILD / MAP.
 Known: the bottom-screen HUD overlay (map button, icons, menus) may not show yet (main-engine BG3 layer); needs a check. Tap picking sign conventions are untested.
+
+## D4: fixes and polish
+Bottom-screen HUD layer fixed (VRAM bank D mapping); tap picking checked (a tap marks the cell it hit); nicer proportional text (libnds 8x8 font with shadow, title case); refined blocky heads and sims (bevelled, gradient-lit boxes, eyes with iris/pupil/highlight, brows, nose, lips, ears, layered hair); Create-a-Sim camera framed.
