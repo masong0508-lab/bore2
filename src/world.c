@@ -102,7 +102,7 @@ static const Tex outTex[9] = {
  {"SAND",{RGB(28,24,14),RGB(30,26,17),RGB(26,22,12),RGB(31,28,20)},{PN_NOISE}},
  {"WATER",{RGB(6,14,26),RGB(8,18,29),RGB(12,22,31),RGB(20,27,31)},{"00100000","01110020","00100000","00000100","20001110","00000100","01000000","11100001"}},
  {"ROCK",{RGB(15,13,12),RGB(18,16,14),RGB(12,11,10),RGB(21,19,16)},{"00010000","01000200","00000001","00020000","10000100","00000000","00100010","02000000"}},
- {"ASPHALT",{RGB(8,8,9),RGB(10,10,11),RGB(7,7,8),RGB(12,12,13)},{"01000200","00020010","20001000","00100020","01000100","00200001","10002000","00010200"}},
+ {"ASPHALT",{RGB(8,8,9),RGB(10,10,11),RGB(6,6,7),RGB(14,14,15)},{"01030201","00120310","21001032","03102001","01020130","30210012","10032010","02013021"}},
  {"ROAD LINE",{RGB(8,8,9),RGB(10,10,11),RGB(7,7,8),RGB(29,25,8)},{"01000200","00020010","20001000","03333330","03333330","00200001","10002000","00010200"}},
  {"ROAD LINE",{RGB(8,8,9),RGB(10,10,11),RGB(7,7,8),RGB(29,25,8)},{"01033200","00030010","20033000","00133020","01033100","00230001","10032000","00013200"}},
 };
@@ -1910,7 +1910,7 @@ static u16 nat_base(int X, int Y, int *kind) {   // a corner of the ground, as i
     }
     static const u8 inv[5] = { 0, 255, 128, 85, 64 };   // (r / n, as a multiply)
     r = (r * inv[n]) >> 8; g = (g * inv[n]) >> 8; b = (b * inv[n]) >> 8;
-    int v = 236 + (int)(((u32)(X * 73856093) ^ (u32)(Y * 19349663)) >> 27);   // (each corner a touch lighter or darker)
+    int v = 228 + (int)(((u32)(X * 73856093) ^ (u32)(Y * 19349663)) >> 27) + (int)(((u32)((X >> 1) * 83492791) ^ (u32)((Y >> 1) * 2971215073u)) >> 27) - (int)(((u32)((X >> 3) * 19349663) ^ (u32)((Y >> 3) * 73856093 + 77)) >> 28);   // (each corner a touch lighter or darker, in patches of three sizes)
     if (shade) v -= 22 * MIN(shade, 5);
     if (ao[Y][X] && !dbg_noao) v = (v * (256 - 41 * ao[Y][X])) >> 8;
     r = (r * v) >> 8; g = (g * v) >> 8; b = (b * v) >> 8;
@@ -1960,12 +1960,18 @@ static void nat_ground(u8 (*done)[MW], int x0, int x1, int y0, int y1) {   // th
             const TexRef *tx = f == FL_WATER ? &nat_tex_water : f == FL_GRASS ? &nat_tex_grass : &nat_tex_ground;
             int u, v;
             u = tx->u + (f == FL_WATER ? ((t >> 2) & 15) : 0); v = tx->v;   // (the sea's ripples slide)
-            gfx_put_gt4(&T[i], &T[i + 1], &B[i], &B[i + 1], rc[up][i], rc[up][i + 1], rc[cur][i], rc[cur][i + 1], (u32)tx->tpage << 16, 0, u, v, u + 15, v + 15);
+            { int u1 = u + 15, v1 = v + 15;
+              if (f != FL_WATER) { u32 hh = ((u32)mx * 73856093u ^ (u32)my * 19349663u) >> 13; if (hh & 1) { int q = u; u = u1; u1 = q; } if (hh & 2) { int q = v; v = v1; v1 = q; } }   // (each tile mirrored a different way: the pattern no longer repeats in a grid)
+              gfx_put_gt4(&T[i], &T[i + 1], &B[i], &B[i + 1], rc[up][i], rc[up][i + 1], rc[cur][i], rc[cur][i + 1], (u32)tx->tpage << 16, 0, u, v, u1, v1); }
         }
     }
     gfx_floor_pass = 0;
 }
 
+static inline int gvar(int x, int y) {   // the outdoor floors' patchiness: stains, wear, sun-bleached bits (per corner, so neighbours agree)
+    int a = (int)(((u32)x * 73856093u ^ (u32)y * 19349663u) >> 28), b = (int)(((u32)(x >> 2) * 2654435761u ^ (u32)(y >> 2) * 40503u + 91) >> 27), c = (int)(((u32)(x >> 4) * 83492791u ^ (u32)(y >> 4) * 668265263u) >> 28);
+    return 214 + a + b + c;   // about 230..292 (256 is plain)
+}
 static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), all the same floor: one quad
     int fl = dfl[my][mx] % NFLOORS;
     const TexRef *t = &fl_tex4[fl];
@@ -1981,6 +1987,7 @@ static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), 
             cc[0] = gfx_grade_tex((u32)ao_corner(mx, my, L) * 0x010101u); cc[1] = gfx_grade_tex((u32)ao_corner(mx + 2, my, L) * 0x010101u);
             cc[2] = gfx_grade_tex((u32)ao_corner(mx, my + 2, L) * 0x010101u); cc[3] = gfx_grade_tex((u32)ao_corner(mx + 2, my + 2, L) * 0x010101u);
         } else cc[0] = cc[1] = cc[2] = cc[3] = gfx_grade_tex((u32)L * 0x010101u);
+        if (fl >= FL_PAVING && fl != FL_WATER && fl != FL_ROCK) for (int k = 0; k < 4; k++) { int Lc = CLAMP(L * gvar(mx + 2 * (k & 1), my + 2 * (k >> 1)) >> 8, 20, 250); cc[k] = gfx_grade_tex((u32)Lc * 0x010101u); }
         SVECTOR s4[4] SVEC_ALIGN; s4[0] = sv[0]; s4[1] = sv[1]; s4[2] = sv[2]; s4[3] = sv[3];
         nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 1, t->tpage, 0, uv4, 0);
         return;
@@ -1989,6 +1996,11 @@ static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), 
         int L0 = ao_corner(mx, my, L), L1 = ao_corner(mx + 2, my, L), L2 = ao_corner(mx, my + 2, L), L3 = ao_corner(mx + 2, my + 2, L);
         gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)L0 * 0x010101u), gfx_grade_tex((u32)L1 * 0x010101u), gfx_grade_tex((u32)L2 * 0x010101u), gfx_grade_tex((u32)L3 * 0x010101u),
                      t->tpage, 0, t->u, t->v, t->u + 31, t->v + 31, 0);
+        return;
+    }
+    if (fl >= FL_PAVING && fl != FL_WATER && fl != FL_ROCK) {   // (the streets and paving: a tint that wanders from corner to corner)
+        int Lc[4]; for (int k = 0; k < 4; k++) Lc[k] = CLAMP(L * gvar(mx + 2 * (k & 1), my + 2 * (k >> 1)) >> 8, 20, 250);
+        gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)Lc[0] * 0x010101u), gfx_grade_tex((u32)Lc[1] * 0x010101u), gfx_grade_tex((u32)Lc[2] * 0x010101u), gfx_grade_tex((u32)Lc[3] * 0x010101u), t->tpage, 0, t->u, t->v, t->u + 31, t->v + 31, 0);
         return;
     }
     gfx_emit_ft4(A, B, C, Dd, gfx_grade_tex((u32)L * 0x010101u), t->tpage, 0, t->u, t->v, t->u + 31, t->v, t->u, t->v + 31, t->u + 31, t->v + 31, 0, 0);

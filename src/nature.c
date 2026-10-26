@@ -70,7 +70,7 @@ void nat_init(void) {
     nat_tex_ground = strip_add(16, 16, px);
     // the grass: the same, with blades
     for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) px[y * 16 + x] = grey5(16 + (tnoise(x, y, 8, 404, 16) - 128) / 64 - ((nh((u32)(x * 17 + y * 5), 505) & 3) == 0));
-    for (int i = 0; i < 30; i++) {
+    for (int i = 0; i < 52; i++) {
         u32 r = nh((u32)i, 606); int bx = (int)(r & 15), by = (int)((r >> 5) & 15), len = 2 + (int)((r >> 10) & 1);
         for (int k = 0; k <= len; k++) px[((by - k) & 15) * 16 + bx] = grey5(k == 0 ? 12 : k == len ? 20 : 17 + (int)((r >> 12) & 1));
         if ((r >> 13) & 1) px[((by - len) & 15) * 16 + ((bx + 1) & 15)] = grey5(19);
