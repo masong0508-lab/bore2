@@ -1963,15 +1963,47 @@ static void wquad_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const 
     }
     gfx_emit_f4(&xv[0], &xv[1], &xv[2], &xv[3], col, cull);
 }
+// ---- the hills: the ground's height (units up) at a tile corner, from the land's block heights; towns are level ----
+static int gh_bx = -99999, gh_by, gh_h[4], gh_t[4];
+int world_hills_on(void) { return world_zone == ZONE_CITY && world_wbx >= 0 && world_lvl == 0; }
+int world_gh_c(int X, int Y) {   // a tile corner of the window (0 where nothing rises). A town's lots stand on level pads, the streets slope between them; wild land rolls smoothly
+    if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
+    int ax = world_wbx * BM_BLK + X, ay = world_wby * BM_BLK + Y; if (ax < 0) ax = 0; if (ay < 0) ay = 0;
+    int bx = ax / BM_BLK, by = ay / BM_BLK, lx = ax - bx * BM_BLK, ly = ay - by * BM_BLK;
+    if (bx != gh_bx || by != gh_by) {   // the block, its west, north and north-west neighbours (the street strip blends their pads)
+        gh_bx = bx; gh_by = by;
+        gh_h[0] = bm_hill_t(bx - 1, by - 1, &gh_t[0]); gh_h[1] = bm_hill_t(bx, by - 1, &gh_t[1]); gh_h[2] = bm_hill_t(bx - 1, by, &gh_t[2]); gh_h[3] = bm_hill_t(bx, by, &gh_t[3]);
+    }
+    if (gh_t[3]) {   // in a town block: the lot (tiles 5 on) is a level pad; the street strip along its north and west edges slopes down to the neighbours' pads
+        int u = lx < BM_LOT0 ? lx : BM_LOT0, v = ly < BM_LOT0 ? ly : BM_LOT0;
+        int top = gh_h[0] * (BM_LOT0 - u) + gh_h[1] * u, bot = gh_h[2] * (BM_LOT0 - u) + gh_h[3] * u;
+        return (top * (BM_LOT0 - v) + bot * v) / (BM_LOT0 * BM_LOT0);
+    }
+    // wild land: the corner's own square between four block middles (a block middle is its tile 9)
+    int px = lx - BM_BLK / 2, py = ly - BM_BLK / 2, ex = px < 0 ? 0 : 1, ey = py < 0 ? 0 : 1;   // (which side of its block's middle: the other middle is in the next block over)
+    int fx = px < 0 ? px + BM_BLK : px, fy = py < 0 ? py + BM_BLK : py;
+    int h00 = bm_hill(bx - 1 + ex, by - 1 + ey), h10 = bm_hill(bx + ex, by - 1 + ey), h01 = bm_hill(bx - 1 + ex, by + ey), h11 = bm_hill(bx + ex, by + ey);
+    int top = h00 * (BM_BLK - fx) + h10 * fx, bot = h01 * (BM_BLK - fx) + h11 * fx;
+    return (top * (BM_BLK - fy) + bot * fy) / (BM_BLK * BM_BLK);
+}
+void world_gh_reset(void) { gh_bx = -99999; }
+int world_gh(int x, int z) {   // the ground under a point (world units): 0 where it is level
+    if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
+    int tx = x >> 8, ty = (-z) >> 8, fx = x & 255, fy = (-z) & 255;
+    int a = world_gh_c(tx, ty), b = world_gh_c(tx + 1, ty), c = world_gh_c(tx, ty + 1), d = world_gh_c(tx + 1, ty + 1);
+    return ((a * (256 - fx) + b * fx) * (256 - fy) + (c * (256 - fx) + d * fx) * fy) >> 16;
+}
 static void floor_tile(int mx, int my) {
     int fl = dfl[my][mx] % NFLOORS;
     const TexRef *t = &fl_tex[fl];
     int x0 = mx * TILE, x1 = x0 + TILE, zN = -my * TILE, zS = zN - TILE;
     SVECTOR a, b, c, d;
     int y = (fl == FL_WATER) ? 14 + (isin((frame_t * 40 + mx * 300 + my * 500) & 4095) >> 10) : 0;   // water sits a little low and heaves
-    setVector(&a, x0, y, zN); setVector(&b, x1, y, zN); setVector(&c, x0, y, zS); setVector(&d, x1, y, zS);
+    int hA = 0, hB = 0, hC = 0, hD = 0, slope = 0;
+    if (world_hills_on()) { hA = world_gh_c(mx, my); hB = world_gh_c(mx + 1, my); hC = world_gh_c(mx, my + 1); hD = world_gh_c(mx + 1, my + 1); slope = (hB + hD - hA - hC) / 2 + (hC + hD - hA - hB) / 2; }
+    setVector(&a, x0, y - hA, zN); setVector(&b, x1, y - hB, zN); setVector(&c, x0, y - hC, zS); setVector(&d, x1, y - hD, zS);
     static int Lfr = -1, Lup; if (Lfr != frame_t) { Lfr = frame_t; Lup = gfx_light(0, -ONE, 0); }   // (the floor's light: once a frame)
-    int L = Lup;
+    int L = Lup + slope * 5 / 16;
     if ((mx + my) & 1) L = (L * fl_odd[fl]) >> 4;
     L = CLAMP(L, 40, 200);
     int u = t->u, v = t->v;
@@ -2126,11 +2158,13 @@ static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), 
     int fl = dfl[my][mx] % NFLOORS;
     const TexRef *t = &fl_tex4[fl];
     int x0 = mx * TILE, x1 = x0 + 2 * TILE, zN = -my * TILE, zS = zN - 2 * TILE;
-    SVECTOR sv[4]; setVector(&sv[0], x0, 0, zN); setVector(&sv[1], x1, 0, zN); setVector(&sv[2], x0, 0, zS); setVector(&sv[3], x1, 0, zS);
+    int hA = 0, hB = 0, hC = 0, hD = 0, slope = 0;
+    if (world_hills_on()) { hA = world_gh_c(mx, my); hB = world_gh_c(mx + 2, my); hC = world_gh_c(mx, my + 2); hD = world_gh_c(mx + 2, my + 2); slope = ((hB + hD - hA - hC) + (hC + hD - hA - hB)) / 4; }
+    SVECTOR sv[4]; setVector(&sv[0], x0, -hA, zN); setVector(&sv[1], x1, -hB, zN); setVector(&sv[2], x0, -hC, zS); setVector(&sv[3], x1, -hD, zS);
     XV xv[4]; gfx_xform(sv, xv, 4);
     const XV *A = &xv[0], *B = &xv[1], *C = &xv[2], *Dd = &xv[3];
     static int Lfr = -1, Lup; if (Lfr != frame_t) { Lfr = frame_t; Lup = CLAMP(gfx_light(0, -ONE, 0), 40, 200); }
-    int L = Lup;
+    int L = CLAMP(Lup + slope * 5 / 16, 40, 215);
     if (nc_need4(A, B, C, Dd)) {   // (the eye is close: cut at the near plane, split in first person)
         u32 cc[4], uv4[4] = { (u32)t->u | ((u32)t->v << 8), (u32)(t->u + 31) | ((u32)t->v << 8), (u32)t->u | ((u32)(t->v + 31) << 8), (u32)(t->u + 31) | ((u32)(t->v + 31) << 8) };
         if (!dbg_noao && (near_wall(mx, my) | near_wall(mx + 1, my) | near_wall(mx, my + 1) | near_wall(mx + 1, my + 1))) {
@@ -2380,6 +2414,7 @@ static u32 lvl_edge[NLEVELS][MH][(MW + 31) / 32];
 // shell: a storey above the one you are on (only other buildings' outside walls show); focus: the building you are in
 static int cut_all;                                     // (this frame: the walls on the camera's side are cut low)
 static inline int cut_here(int mx, int my) { int b = bld[my][mx]; return !b || b_see[b]; }   // the walls cut are those of the buildings you are in or look into (and loose ones)
+static inline void lift_to(int L) { if (gfx_lift != L) { gfx_lift = L; gfx_set_identity(); } }   // (the hills: walls and floors are set down on the pad under them)
 static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, int focus) {
     // the camera's forward on the ground (unit, 4096), to decide which walls stand between it and the focus
     int cdx = cam.at.vx - cam.eye.vx, cdz = cam.at.vz - cam.eye.vz;
@@ -2389,6 +2424,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
     int x0 = rx0, x1 = rx1, y0 = ry0, y1 = ry1;
     extern s16 bfs_par[MH][MW]; u8 (*done)[MW] = (u8 (*)[MW])bfs_par;   // (scratch for this draw: the route finder's parents, lent. The roofs that also borrow it
                                                                          // are rebuilt at the top of world_draw, before any layer is drawn, and a route is only looked for in the update)
+    const int hm = world_zone == ZONE_CITY && world_wbx >= 0 ? 1500 : 0;                      // (on the hills a tile stands up to this far above where the flat would put it)
     TileView tvF, tvT;
     tile_view_init(&tvF, TILE, 0, -TILE);                           // a 2x2 floor block's centre
     tile_view_init(&tvT, TILE / 2, -WALL_FULL / 2, -TILE / 2);      // a tile's centre, half a wall up
@@ -2406,11 +2442,11 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
         int vx, vy, vz; tile_view(&tvF, mx, my, &vx, &vy, &vz);
         if (vz < -TILE * 2) continue;
         if (ABS(vx) > (vz * 3) / 4 + TILE * 3) continue;
-        if (ABS(vy) > (vz * 5) / 8 + TILE * 4) continue;
-        gfx_floor_pass = !lvl; floor_block(mx, my); gfx_floor_pass = 0;
+        if (ABS(vy) > (vz * 5) / 8 + TILE * 4 + hm) continue;
+        lift_to(lvl && hm ? world_gh_c(mx, my) : 0); gfx_floor_pass = !lvl; floor_block(mx, my); gfx_floor_pass = 0;
         done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 1;
     }
-    if (nat_on && !lvl) nat_ground(done, x0, x1, y0, y1);
+    if (nat_on && !lvl) { lift_to(0); nat_ground(done, x0, x1, y0, y1); }
     PROF_END(0); }
     int lx0 = ex0, lx1 = ex1, ly0 = ey0, ly1 = ey1;
     if (lvl) { lx0 = MAX(lx0, lvl_bb[lvl][0]); ly0 = MAX(ly0, lvl_bb[lvl][1]); lx1 = MIN(lx1, lvl_bb[lvl][2]); ly1 = MIN(ly1, lvl_bb[lvl][3]); }
@@ -2427,6 +2463,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
             if (shell && cut_all && cut_here(mx, my) && (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12) < -TILE / 4) continue;   // (over walls cut low: it would float)
             if (!lvl && !is_wall(c)) continue;
             if (!tile_seen(&tvT, mx, my)) continue;
+            lift_to(hm ? world_gh_c(mx, my) : 0);
             if (!is_wall(c) || !(open_air(mx - 1, my) || open_air(mx + 1, my) || open_air(mx, my - 1) || open_air(mx, my + 1) || !lvl)) { if (lvl && shell) fascia(mx, my); continue; }
             if (!lvl) { char n4 = 0; if (mx > 0 && mx < MW - 1 && my > 0 && my < MH - 1) n4 = (dm[my][mx - 1] != '.' && dm[my][mx + 1] != '.' && dm[my - 1][mx] != '.' && dm[my + 1][mx] != '.'); if (n4) continue; }
             { PROF_BEGIN(); ws_lite = bld[my][mx] != 0; wall_tile(mx, my, c == 'w' ? WALL_LOW : WALL_FULL, 0); ws_lite = 0; world_dbg_walls++; PROF_END(1); }
@@ -2441,10 +2478,11 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
         else { int vx, vy, vz, pm = (nat_on && !lvl && nat_plant_char(c)) ? TILE * 2 : 0; tile_view(&tvT, mx, my, &vx, &vy, &vz);   // (a plant reaches further)
           if (vz < -TILE - pm) continue;
           if (ABS(vx) > (vz * 3) / 4 + TILE * 2 + pm) continue;
-          if (ABS(vy) > (vz * 5) / 8 + TILE * 3 + pm) continue; }
-        if (!done[my][mx]) { PROF_BEGIN(); gfx_floor_pass = !lvl; floor_tile(mx, my); gfx_floor_pass = 0; PROF_END(0); }
-        if (lvl) { fascia(mx, my); if (c == '.') continue; }
+          if (ABS(vy) > (vz * 5) / 8 + TILE * 3 + pm + hm) continue; }
+        if (!done[my][mx]) { PROF_BEGIN(); lift_to(lvl && hm ? world_gh_c(mx, my) : 0); gfx_floor_pass = !lvl; floor_tile(mx, my); gfx_floor_pass = 0; PROF_END(0); }
+        if (lvl) { lift_to(hm ? world_gh_c(mx, my) : 0); fascia(mx, my); if (c == '.') continue; }
         if (is_wall(c)) {
+            lift_to(hm ? world_gh_c(mx, my) : 0);
             int h = (c == 'w') ? WALL_LOW : WALL_FULL, cut = 0;
             if (cutaway && c != 'w' && cut_here(mx, my)) {
                 int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12);   // distance past the focus along the view
@@ -2452,8 +2490,9 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
             }
             { PROF_BEGIN(); ws_lite = bld[my][mx] && !b_see[bld[my][mx]] && !world_roof_show; wall_tile(mx, my, h, cut); ws_lite = 0; world_dbg_walls++; PROF_END(1); }
         } else if (c != '.') {
-            if (c == 'D') { int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12); door_tile(mx, my, (cutaway && cut_here(mx, my) && along < -TILE / 4) ? WALL_LOW : WALL_FULL); continue; }   // (the doorway is its door: no mat on the floor)
-            if (c == 'r') { rug_tile(mx, my); continue; }
+            if (c == 'D') { lift_to(hm ? world_gh_c(mx, my) : 0); int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12); door_tile(mx, my, (cutaway && cut_here(mx, my) && along < -TILE / 4) ? WALL_LOW : WALL_FULL); continue; }   // (the doorway is its door: no mat on the floor)
+            if (c == 'r') { lift_to(hm ? world_gh_c(mx, my) : 0); rug_tile(mx, my); continue; }
+            lift_to(0);
             if (nat_on && !lvl && nat_plant_char(c)) {
                 if (ABS(mx - fx) > 10 || ABS(my - fy) > 10) continue;   // (further off, the far cells' woods stand for them)
                 int al = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12), ac = (((wx - focx) * fdz) >> 12) - (((wz - focz) * fdx) >> 12);
@@ -2467,6 +2506,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
         }
       }
     }
+    lift_to(0);
 }
 
 
@@ -2778,6 +2818,7 @@ static void roofs_draw(int fx, int fy) {
             int b = bld[y][x];
             if (b && b_see[b] && !world_fp && (!world_roof_show || l > world_view_lvl)) { if (!world_roof_show) continue; }   // the building you are in (or look through) shows its rooms (first person: its roof is the ceiling)
             if (b != cur_b) { cur_b = b; pitch = roofPitch[b_pit[b] % NROOF_PITCH]; rc = roofCol[b_col[b] % NROOF_COL]; rc_sty = b_sty[b]; rc_pitch = pitch; }
+            lift_to(b && world_zone == ZONE_CITY && world_wbx >= 0 ? world_gh_c(b_x0[b], b_y0[b]) : 0);
             if (rc_sty == 2 && b && b_top[b] == l) {                // a flat roof: the building's whole top in one slab (drawn from its first tile)
                 if (x != b_x0[b] || y != b_y0[b]) { if (!rm_get(l, b_x0[b], b_y0[b])) {} else continue; }
                 else {
@@ -2825,6 +2866,7 @@ static void roofs_draw(int fx, int fy) {
             else gables(l, x, y, base, pitch);
         } }
     }
+    lift_to(0);
 }
 // ---- the far skyline: buildings past the detail range, as boxes (a wall colour, a band of windows a storey, the roof) ----
 static void far_quad(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, int dx, int dy, int dz, u16 col, int L) {
@@ -2998,6 +3040,7 @@ static void nat_far(int px, int py) {
 #undef XYW_
 
 void world_draw(int fx, int fy, int t, int cutaway) {
+    gfx_lift_fn = world_gh;
     gfx_set_identity(); world_dbg_walls = 0;
     gfx_set_reserve(RESERVE_PEOPLE + RESERVE_UI);   // the world may not use up the room the people need
     frame_t = t;

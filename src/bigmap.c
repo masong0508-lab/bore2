@@ -18,7 +18,8 @@ static int ov_n, ov_live;
 #define OV_D(e) ((int)(((e)->b >> 12) & 15u) - ((((e)->b >> 12) & 8u) ? 16 : 0))
 #define OV_L(e) ((e)->b & 63u)
 #define OV_S(e) (((e)->b >> 6) & 63u)
-void bm_ovr_clear(void) { memset(ov, 0, sizeof ov); ov_n = 0; }
+void bm_hill_reset(void);
+void bm_ovr_clear(void) { memset(ov, 0, sizeof ov); ov_n = 0; bm_hill_reset(); }
 static int ov_find(int bx, int by, int make) {   // the slot of that block (the key is the block + 1; a free slot has key 0)
     u32 k = (u32)(by << 10 | bx) + 1, i = ((k * 2654435761u) >> 12) % OV_SLOTS;
     for (int n = 0; n < OV_SLOTS; n++, i = (i + 1) % OV_SLOTS) {
@@ -28,6 +29,7 @@ static int ov_find(int bx, int by, int make) {   // the slot of that block (the 
     return -1;
 }
 int bm_ovr_set(int bx, int by, int what, int val) {   // what: BO_ (BO_NONE: undo every change). 0: the table is full
+    bm_hill_reset();
     if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return 0;
     int i = ov_find(bx, by, what != BO_NONE); if (i < 0) return what == BO_NONE;
     OvE *e = &ov[i];
@@ -40,7 +42,7 @@ int bm_ovr_set(int bx, int by, int what, int val) {   // what: BO_ (BO_NONE: und
     else e->b = (u16)((e->b & ~(63u << 6)) | ((u32)(val == 255 ? 63 : val & 63) << 6));
     return 1;
 }
-void bm_ovr_unset(int bx, int by, int what) { int i = ov_find(bx, by, 0); if (i >= 0) ov[i].a &= ~((u32)what << 20); }   // take one kind of change back off a block
+void bm_ovr_unset(int bx, int by, int what) { bm_hill_reset(); int i = ov_find(bx, by, 0); if (i >= 0) ov[i].a &= ~((u32)what << 20); }   // take one kind of change back off a block
 int bm_ovr_delta(int bx, int by) { int i = ov_find(bx, by, 0); return i >= 0 && (OV_F(&ov[i]) & BO_ELEV) ? OV_D(&ov[i]) : 0; }
 int bm_ovr_n(void) { int n = 0; for (int i = 0; i < OV_SLOTS; i++) if (OV_KEY(&ov[i]) && OV_F(&ov[i])) n++; return n; }
 int bm_ovr_next(int *it, int *bx, int *by, int *f, u8 *v) {   // walk the changes: 1 while there is one
@@ -50,6 +52,25 @@ int bm_ovr_next(int *it, int *bx, int *by, int *f, u8 *v) {   // walk the change
 }
 #define NSET_MAX 62
 static Settle sets[NSET_MAX]; static int nset;
+// ---- the hills you walk on: the height of a block's middle in world units, from the same land as the 3D model (0 at the sea, the beach and in and round towns, which are built level) ----
+typedef struct { s16 x, y, h; u8 town; } HillC;
+static HillC hcache[64];
+void bm_hill_reset(void) { memset(hcache, 0xFF, sizeof hcache); }
+static int hill_raw(int bx, int by) {
+    if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return 0;
+    if (bm_terrain(bx, by) == BT_SEA) return 0;
+    int base = bm_height(bx, by) - 9; if (base <= 0) return 0;
+    static const u8 K[5] = { 0, 6, 11, 16, 22 };   // HILLS: FLAT .. MOUNTAINS: how steep the land climbs
+    return MIN(base * K[bm_hills % 5], 3600);
+}
+int bm_hill_t(int bx, int by, int *town) {   // a block's height (units) at its middle: a town's lot is levelled to it, wild land rolls through it
+    HillC *c = &hcache[(bx * 7 + by * 13) & 63];
+    if (c->x != bx || c->y != by) { c->x = (s16)bx; c->y = (s16)by; c->h = (s16)hill_raw(bx, by); c->town = (u8)(bx >= 0 && by >= 0 && bx < BM_N && by < BM_N && bm_set_at(bx, by) != 255 && c->h > 0); }
+    if (town) *town = c->town;
+    return c->h;
+}
+int bm_hill(int bx, int by) { return bm_hill_t(bx, by, 0); }
+
 static char ren[NSET_MAX][18];                     // towns the player renamed ("": as made); kept across bm_new, so a save can set them first
 typedef struct { u16 c, a, b; u8 vert; } Seg;    // a highway along block edges: row (or column) c, from a to b
 #define NSEG 140
@@ -185,7 +206,7 @@ static void place_space(void) {   // the spaceport: the open country furthest fr
     Settle *s = &sets[nset]; s->x = (u16)bx; s->y = (u16)by; s->r = 5; s->kind = ST_SPACEPORT; sprintf(s->name, "CAPE %s", nmA[rr() % 16]); nset++;
 }
 void bm_new(u32 seed) {
-    ov_live = 0;
+    ov_live = 0; bm_hill_reset();
     wseed = seed ? seed : 1; rs = wseed ^ 0xA5A5A5A5u; nset = 0; nseg = 0;
     static const u8 capr[6] = { 6, 8, 11, 14, 18, 22 };
     place_set(ST_CITY, capr[bm_capsz % 6], BM_N / 2, BM_N / 2, 110);       // BORE CITY, near the middle (CAPITAL SIZE)
@@ -209,7 +230,7 @@ void bm_new(u32 seed) {
     for (int e = 0; e < 4 && nset > 3; e++) { int i = (int)(rr() % (u32)nset), j = (int)(rr() % (u32)nset); if (i != j) link(i, j); }
     for (int i = 0; i < nset; i++) if (ren[i][0]) strcpy(sets[i].name, ren[i]);
     rivers_make();
-    ov_live = 1;
+    ov_live = 1; bm_hill_reset();
 }
 void bm_rename_clear(void) { memset(ren, 0, sizeof ren); }
 void bm_rename(int i, const char *nm) { if (i < 0 || i >= NSET_MAX) return; strncpy(ren[i], nm, 17); ren[i][17] = 0; if (i < nset && ren[i][0]) strcpy(sets[i].name, ren[i]); }

@@ -181,9 +181,12 @@ static void look_at(const VECTOR *eye, const VECTOR *at, MATRIX *m) {
 }
 void gfx_camera_update(void) { look_at(&cam.eye, &cam.at, &cam.view); }
 
+int (*gfx_lift_fn)(int x, int z);   // (the world's: how high the ground is under a point)
+int gfx_lift;   // everything set up from here is raised this many units (the hills: a thing stands on the slope under it)
 void gfx_set_object(const VECTOR *pos, int yaw) {
     MATRIX om; SVECTOR rot = { 0, (short)yaw, 0, 0 };
     RotMatrix(&rot, &om);
+    if (gfx_lift || gfx_lift_fn) { VECTOR p = *pos; p.vy -= gfx_lift + (gfx_lift_fn ? gfx_lift_fn(pos->vx, pos->vz) : 0); TransMatrix(&om, &p); } else
     TransMatrix(&om, (VECTOR *)pos);
     CompMatrixLV(&cam.view, &om, &om);
     gte_SetRotMatrix(&om);
@@ -198,6 +201,7 @@ void gfx_set_object_m(const MATRIX *world) {
 }
 void gfx_set_identity(void) {
     GTE_FENCE(); gte_SetRotMatrix(&cam.view);
+    if (gfx_lift) { MATRIX v = cam.view; for (int i = 0; i < 3; i++) v.t[i] -= (gfx_lift * v.m[i][1]) >> 12; gte_SetTransMatrix(&v); } else
     gte_SetTransMatrix(&cam.view);
     obj_yaw = 0; light_to_object();
 }

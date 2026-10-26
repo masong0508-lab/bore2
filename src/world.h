@@ -86,6 +86,10 @@ int  world_count(char ch);
 // ---- storeys and roofs: the ground plus five floors above (6 in all), and a roof over every enclosed building ----
 #define NUP 5
 #define NLEVELS (NUP + 1)
+int world_gh(int x, int z);                      // the hills: the ground under a world point (units up; 0 on the flat)
+int world_gh_c(int X, int Y);                    // ... at a tile corner
+int world_hills_on(void);
+void world_gh_reset(void);
 extern int world_lvl;                            // the storey world_at / world_walkable read (the Bore being moved, the build cursor)
 extern int world_view_lvl;                       // storeys above this are not drawn (the Sims 2 floor view)
 extern int world_roof_show;                      // 1: the roof over the focused building shows too (build mode's roof tool)

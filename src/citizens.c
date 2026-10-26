@@ -1414,7 +1414,7 @@ void citizens_draw(void) {
         if (c->mode == CM_KO) vy = -24;
         else if (c->mode == CM_SLEEP && c->sub == 1) vy = c->mem == 0 ? -items_height('S') + 40 : -24;   // in the bed, or on the floor
         else if (c->mode == CM_CHORE && c->sub == 1 && c->gait.sit) vy = -items_height((char)c->chore) / 2 + 10;   // on the sofa, on the loo
-        setVector(&pp[k], c->x, vy, c->z);
+        setVector(&pp[k], c->x, vy - world_gh(c->x, c->z), c->z);   // (on the hills: up the slope they stand on)
         int h = crowd_need_h(order[k], &pp[k], &c->gait);
         if (!h) { int sx, sy, z = gfx_proj(c->x, vy - 200, c->z, &sx, &sy); h = z ? (300 * 230) / z : 999; }   // (not measured yet: a guess)
         need[k] = (s16)h; tier[k] = 1;

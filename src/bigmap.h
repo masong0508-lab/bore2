@@ -58,6 +58,8 @@ void bm_ovr_clear(void);
 int  bm_ovr_set(int bx, int by, int what, int val);   // 0: the table is full
 void bm_ovr_unset(int bx, int by, int what);
 int  bm_ovr_delta(int bx, int by);   // the land raised (+) or lowered (-) there, in steps
+int  bm_hill(int bx, int by);
+int  bm_hill_t(int bx, int by, int *town);   // ... and whether the block is built on (its lot is a level pad)        // the ground a block's middle stands at, in world units (the hills you walk on)
 int  bm_height(int bx, int by);      // the ground there for the 3D model: 0 sea level, up in elevation points (hills)
 int  bm_ovr_n(void);
 int  bm_ovr_next(int *it, int *bx, int *by, int *f, u8 *v);   // *it starts at 0; v: ground, building, road, territory, height change

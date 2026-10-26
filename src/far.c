@@ -92,22 +92,23 @@ static void emit_clipped(const FV *v, const u32 *col, int n, int slot) {
     }
 }
 // a flat piece of ground (x0..x1, z0..z1 local units, z0 > z1), its corners hazed by their distance
-static void ground_quad(int x0, int x1, int z0, int z1, int r, int g, int b, int slot) {
-    FV v[4];
+static void ground_quad(int x0, int x1, int z0, int z1, int r, int g, int b, int slot, const int *hh) {   // hh: the ground's height at the four corners (the hills), or 0
+    FV v[4]; int h0 = hh ? hh[0] : 0, h1 = hh ? hh[1] : 0, h2 = hh ? hh[2] : 0, h3 = hh ? hh[3] : 0;
     {   // the four corners (a ring), three at a time; good enough as they come unless one is near the eye or far off the screen
         short X0 = sc16(x0 - feye.vx), X1 = sc16(x1 - feye.vx), Z0 = sc16(z0 - feye.vz), Z1 = sc16(z1 - feye.vz), Y = sc16(-feye.vy);
-        SVECTOR sv[4] SVEC_ALIGN = { { X0, Y, Z0, 0 }, { X1, Y, Z0, 0 }, { X1, Y, Z1, 0 }, { X0, Y, Z1, 0 } };
+        SVECTOR sv[4] SVEC_ALIGN = { { X0, (short)(Y - (h0 >> 4)), Z0, 0 }, { X1, (short)(Y - (h1 >> 4)), Z0, 0 }, { X1, (short)(Y - (h2 >> 4)), Z1, 0 }, { X0, (short)(Y - (h3 >> 4)), Z1, 0 } };
         XV o[4]; gfx_xform(sv, o, 4);
         int good = 1;
         for (int i = 0; i < 4; i++) { if (o[i].z < ZN * 2 || o[i].x < CENTER_X - 680 || o[i].x > CENTER_X + 680 || o[i].y < CENTER_Y - 680 || o[i].y > CENTER_Y + 680) good = 0;
                                       v[i].sx = o[i].x; v[i].sy = o[i].y; v[i].z = o[i].z << 4; }
-        if (!good) { fxf(x0, 0, z0, &v[0]); fxf(x1, 0, z0, &v[1]); fxf(x1, 0, z1, &v[2]); fxf(x0, 0, z1, &v[3]); }
+        if (!good) { fxf(x0, -h0, z0, &v[0]); fxf(x1, -h1, z0, &v[1]); fxf(x1, -h2, z1, &v[2]); fxf(x0, -h3, z1, &v[3]); }
         else for (int i = 0; i < 4; i++) { v[i].vz = ZN * 8; v[i].vx = v[i].vy = 0; }   // (in: no clipping)
     }
     int in = 0, behind = 0;
     for (int i = 0; i < 4; i++) { in += fv_in(&v[i]); behind += v[i].vz < ZN; }
     if (behind == 4) return;
-    u32 c[4]; for (int i = 0; i < 4; i++) c[i] = hazed(r, g, b, haze_f(v[i].z));
+    int sl = hh ? CLAMP(((h1 + h2 - h0 - h3) + (h3 + h2 - h0 - h1)) * 5 / ((x1 - x0 > 0 ? x1 - x0 : x0 - x1) / 8 + 1) , -70, 70) : 0;   // (the slope's light, from the north-west: the nearer to the sun a slope faces, the brighter)
+    u32 c[4]; for (int i = 0; i < 4; i++) c[i] = hazed(CLAMP(r + (r * sl >> 8), 0, 255), CLAMP(g + (g * sl >> 8), 0, 255), CLAMP(b + (b * sl >> 8), 0, 255), haze_f(v[i].z));
     far_nquad++;
     if (in < 4) { far_nclip++; emit_clipped(v, c, 4, slot); return; }
     int ox = (v[0].sx < 0) & (v[1].sx < 0) & (v[2].sx < 0) & (v[3].sx < 0);
@@ -361,6 +362,7 @@ static u32 floor_key0(int fl) {
     }
 }
 static void draw_land(int rx0, int ry0, int rx1, int ry1) {
+    const int hills = world_zone == ZONE_CITY && world_wbx >= 0;
     far_hb_win0 = gfx_hb();
     // 1. the window round you, past the detail: its own floor, in cells of 4 x 4 tiles
     rows_begin();
@@ -383,7 +385,11 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
         row_end();
     }
     for (int i = 0; i < nrect; i++) { const Rect *r = &rects[i];
-        ground_quad(r->x0 * 4 * TILE, r->x1 * 4 * TILE, -(r->y0 * 4 * TILE), -(r->y1 * 4 * TILE), r->key & 255, (r->key >> 16) & 255, (r->key >> 8) & 255, OT_GROUND_WIN); }
+        if (hills) { for (int cy = r->y0; cy < r->y1; cy++) for (int cx = r->x0; cx < r->x1; cx++) {   // (hills: a quad a cell, each corner at the height of the land there)
+                int hh[4] = { world_gh_c(cx * 4, cy * 4), world_gh_c(cx * 4 + 4, cy * 4), world_gh_c(cx * 4 + 4, cy * 4 + 4), world_gh_c(cx * 4, cy * 4 + 4) };
+                ground_quad(cx * 4 * TILE, (cx + 1) * 4 * TILE, -(cy * 4 * TILE), -((cy + 1) * 4 * TILE), r->key & 255, (r->key >> 16) & 255, (r->key >> 8) & 255, OT_GROUND_WIN, hh); } }
+        else
+        ground_quad(r->x0 * 4 * TILE, r->x1 * 4 * TILE, -(r->y0 * 4 * TILE), -(r->y1 * 4 * TILE), r->key & 255, (r->key >> 16) & 255, (r->key >> 8) & 255, OT_GROUND_WIN, 0); }
     far_hb_win = gfx_hb();
     // 2. past the window: the land's cells (77 m)
     int reach = max_ground / (CELL_T * TILE) + 1;
@@ -418,7 +424,13 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
     for (int i = 0; i < nrect; i++) { const Rect *r = &rects[i]; int R, G, B; cell_rgb((int)r->key, &R, &G, &B);
         int x0 = ((gx0 + r->x0) * 2 * CELL_T - fwx0) * TILE, x1 = ((gx0 + r->x1) * 2 * CELL_T - fwx0) * TILE;
         int z0 = -(((gy0 + r->y0) * 2 * CELL_T - fwy0) * TILE), z1 = -(((gy0 + r->y1) * 2 * CELL_T - fwy0) * TILE);
-        ground_quad(x0, x1, z0, z1, R, G, B, OT_GROUND_FAR); }
+        if (hills) { int gs = 2 * CELL_T * TILE, nx = (x1 - x0) / gs, nz = (z0 - z1) / gs;   // (hills: a quad a group of cells)
+            for (int j = 0; j < nz; j++) for (int i = 0; i < nx; i++) {
+                int ax = x0 + i * gs, bz = z0 - j * gs;
+                int hh[4] = { world_gh(ax, bz), world_gh(ax + gs, bz), world_gh(ax + gs, bz - gs), world_gh(ax, bz - gs) };
+                ground_quad(ax, ax + gs, bz, bz - gs, R, G, B, OT_GROUND_FAR, hh); } }
+        else
+        ground_quad(x0, x1, z0, z1, R, G, B, OT_GROUND_FAR, 0); }
 }
 
 // ================================================================== the buildings past the map
@@ -440,8 +452,9 @@ static void face_win(const XV *a, const XV *b, const XV *c, const XV *d, u32 col
 }
 static inline int xv_good(const XV *v) { return v->z >= ZN && v->x > -1000 && v->x < 1320 && v->y > -1000 && v->y < 1240; }
 // a building as a box: x0 < x1, z0 > z1 (north, south), sto storeys; its walls' colour, a pitched roof (or flat) and its colour
+static int far_lift;   // the hills: how high the ground is under the building being drawn
 static void far_card(int x0, int z0, int x1, int z1, int top, const u8 *wc) {   // far off: one face, the one most turned to you
-    int ex = feye.vx, ey = feye.vy, ez = feye.vz, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    int ex = feye.vx, ey = feye.vy + far_lift, ez = feye.vz, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     int ax, az, bx, bz, L;
     if (ABS(ex - cx) * (z0 - z1) > ABS(ez - cz) * (x1 - x0)) {   // an east or west face
         if (ex > cx) { ax = x1; az = z1; bx = x1; bz = z0; L = Le; } else { ax = x0; az = z0; bx = x0; bz = z1; L = Lw; }
@@ -457,7 +470,7 @@ static void far_card(int x0, int z0, int x1, int z1, int top, const u8 *wc) {   
 }
 static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int pitched, const u8 *rc, int windows) {
     int top = -(sto * WALL_FULL + (pitched ? 0 : 40));
-    int ex = feye.vx, ey = feye.vy, ez = feye.vz;
+    int ex = feye.vx, ey = feye.vy + far_lift, ez = feye.vz;
     { int dx = ABS((x0 + x1) / 2 - ex), dz = ABS((z0 + z1) / 2 - ez);
       if (MAX(dx, dz) > M2U(150)) { far_card(x0, z0, x1, z1, top, wc); return; } }   // (far off: one face does)
     short X0 = sc16(x0 - ex), X1 = sc16(x1 - ex), Z0 = sc16(z0 - ez), Z1 = sc16(z1 - ez), Y0 = sc16(-ey), Y1 = sc16(top - ey);
@@ -498,12 +511,16 @@ static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int p
 }
 static void far_building(const FB *f, int x0, int z0, int x1, int z1) {
     int pitched = foot[f->lot][4] && f->sto <= 2;
+    far_lift = world_gh((x0 + x1) / 2, (z0 + z1) / 2);
     far_box(x0, z0, x1, z1, f->sto, wallc[f->col % 10], pitched, roofc[f->pad & 3], f->lot != LOT_HOUSE && f->lot != LOT_COTTAGE);
+    far_lift = 0;
 }
 // the map's own buildings past the detail (world.c's skyline), drawn the same way
 void far_box_world(int x0, int z0, int x1, int z1, int sto, u16 wall15, int pitched, u16 roof15) {
     u8 wc[3] = { (u8)R8(wall15), (u8)G8(wall15), (u8)B8(wall15) }, rc[3] = { (u8)R8(roof15), (u8)G8(roof15), (u8)B8(roof15) };
+    far_lift = world_gh((x0 + x1) / 2, (z0 + z1) / 2);
     far_box(x0, z0, x1, z1, sto, wc, pitched && sto <= 2, rc, sto >= 2);
+    far_lift = 0;
 }
 static void draw_buildings(void) {
     int ns = bm_nset(); if (ns > 64) ns = 64;
@@ -554,7 +571,7 @@ static void window_trees(void) {
 static const short tree_w[4] = { 300, 300, 300, 150 }, tree_h[4] = { 470, 500, 470, 260 };
 static int light_tree;                                         // the trees' shade (128 = as painted)
 static void tree_card(int x, int z, int k, int big) {
-    FV b; fxf(x, 0, z, &b);
+    FV b; fxf(x, -world_gh(x, z), z, &b);
     if (b.vz < ZN * 4 || !fv_in(&b)) return;
     int zw = b.z; if (zw < 64) return;
     int s16_ = (230 << 14) / zw;                                 // pixels a unit (1/16384)

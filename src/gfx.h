@@ -34,6 +34,8 @@ extern Camera cam;
 void gfx_camera_update(void);                 // after changing eye / at
 void gfx_set_object(const VECTOR *pos, int yaw);   // object space = rotate(yaw about Y) then translate(pos); sets the GTE
 void gfx_set_object_m(const MATRIX *world);        // any world matrix
+extern int (*gfx_lift_fn)(int x, int z);           // (set by the world: every object is set down on the ground under it)
+extern int gfx_lift;                               // (the hills: raise what is drawn next, in units; 0 on the flat)
 void gfx_set_identity(void);                       // object space = world space
 
 // ---- lighting (one sun) ----

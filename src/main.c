@@ -337,7 +337,7 @@ static void draw_sims(void) {
         Sim *s = &sims[i];
         { Gait *g_ = &s->gait; int tg_ = g_->sleep ? 4096 : 0; g_->lie += CLAMP(tg_ - g_->lie, -170, 170); }   // lying down and getting up take about a second: lie follows where sleep is heading (voxel.c works the pose out from it)
         if (s->lvl > world_view_lvl || s->away) continue;           // upstairs, out of the floor view; at school
-        if (!gfx_visible(s->x, -110 - s->lvl * WALL_FULL, s->z, 150)) continue;   // off the screen
+        if (!gfx_visible(s->x, -110 - s->lvl * WALL_FULL - (s->lvl ? 0 : world_gh(s->x, s->z)), s->z, 150)) continue;   // off the screen
         VECTOR p; setVector(&p, s->x, 0, s->z);
         if (s->gait.lie > 0) {   // lying (or just getting up): on the bed, the bunk, the crib's mattress, or on the floor; the height eases in with the pose
             char bc = world_at(s->act_x, s->act_y); int sm = voxel_lie_ease(s->gait.lie), bed = (bc == 'S' || bc == CH_BED4 || bc == CH_BEDF || bc == CH_BEDL) ? 1 : (bc == '<' || bc == CH_BEDT) ? 2 : 0, to;
@@ -352,7 +352,7 @@ static void draw_sims(void) {
         if (i == player && veh_on) p.vy -= veh_seat(veh_on - 1) + 10;               // up on the seat
         if (i == player && on_board) skate_pose(&s->gait); else s->gait.skate = 0;
         s->gait.mood = s->mood; s->gait.talk = s->action == ACT_TALK; s->gait.seed = i; s->gait.clock = frame;
-        p.vy -= s->lvl * WALL_FULL;
+        p.vy -= s->lvl * WALL_FULL + (s->lvl ? 0 : world_gh(s->x, s->z));
         {   // far from where you are looking: the same person at half the voxel resolution (the crowd model); close up, the full model
             int fdx = s->x - cam.at.vx, fdz = s->z - cam.at.vz;
             PROF_BEGIN();
@@ -789,7 +789,7 @@ static void life_draw(void) {
 #endif
     Sim *s = &sims[player];
     gfx_set_fog(0, 0);                                   // (the title's fog stays on the title)
-    camera_apply(s->x, -200 - s->lvl * WALL_FULL - (on_board ? board_lift : 0), s->z);   // (up with a rider in the air)
+    camera_apply(s->x, -200 - s->lvl * WALL_FULL - (on_board ? board_lift : 0) - (s->lvl ? 0 : world_gh(s->x, s->z)), s->z);   // (up with a rider in the air)
     world_view_lvl = s->lvl; world_roof_show = 0;
     { extern int world_fp; world_fp = cam_view == 2; }
     if (cam_view == 2) {   // FIRST PERSON: the eye in the Bore's head, looking the way it faces (fp_pitch up or down)
@@ -4331,8 +4331,14 @@ int main(void) {
 #ifdef AUTO_STORY
         story_test_tick();
 #endif
+#ifdef AUTO_HILL
+        { static int h_; h_++; if (h_ > 700) { cam_dist = 3600; cam_pitch = 300; } if (h_ == 700 && world_zone == ZONE_CITY && world_wbx >= 0) {   // (test builds: stand on the highest land near the capital)
+            int bb = -1, ax = 0, ay = 0;
+            for (int i = 0; i < bm_nset(); i++) { const Settle *c0 = bm_set(i); int h = bm_hill(c0->x, c0->y); if (h > bb && c0->kind != ST_SPACEPORT) { bb = h; ax = c0->x; ay = c0->y; } }
+            world_open_at(ax, ay); Sim *s = &sims[player]; s->lvl = 0; s->x = ((ax - world_wbx) * BM_BLK + 9) * TILE + TILE / 2 + AUTO_HILL * 700; s->z = -(((ay - world_wby) * BM_BLK + 9) * TILE + TILE / 2); } }
+#endif
 #ifdef AUTO_NHED
-        { static int t_; t_++; if (t_ == 50) { if (AUTO_NHED == 1) nh_new(0); else if (AUTO_NHED == 2) wm_open_mode(0); else if (AUTO_NHED == 3) wm_open_mode(1); else if (AUTO_NHED == 4) worlds_open(1); else if (AUTO_NHED == 5) { worlds_open(0); wo_tab = 1; nh_scan(); } else if (AUTO_NHED == 7) { bm_ovr_clear(); life_story = 0; worlds_go(0, 0); } else if (AUTO_NHED == 6) { nh_new(0); wo_custom = nh_seed; wm_open_mode(2); } } }   // (test builds: straight into the editor, or one of the new screens)
+        { static int t_; t_++; if (t_ == 50) { if (AUTO_NHED == 1) nh_new(0); else if (AUTO_NHED == 2) wm_open_mode(0); else if (AUTO_NHED == 3) wm_open_mode(1); else if (AUTO_NHED == 4) worlds_open(1); else if (AUTO_NHED == 5) { worlds_open(0); wo_tab = 1; nh_scan(); } else if (AUTO_NHED == 7) { wm_hills = 4; wm_land = 0; wm_apply(); bm_ovr_clear(); life_story = 0; worlds_go(0, 0); } else if (AUTO_NHED == 6) { nh_new(0); wo_custom = nh_seed; wm_open_mode(2); } } }   // (test builds: straight into the editor, or one of the new screens)
 #endif
         ui_light = 0;
         {   // each screen its own colour across the top
