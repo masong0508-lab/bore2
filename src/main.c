@@ -367,6 +367,10 @@ static void draw_sims(void) {
                        int want = !hh_used && crowd_sprite_score_of(id, &p, s->yaw, &s->gait) > 5 && (room || hh_skip >= 6);
                        drawn = crowd_sprite_of(id, &s->bore, &p, s->yaw, &s->gait, want);
                        if (want) { hh_used = 1; hh_skip = 0; } }
+            if (!drawn && cam_view != 2 && i < 16 && (i == player ? cam_dist > 2200 && !veh_on : edx * edx + edy * edy + edz * edz > 800 * 800)) {   // (zoomed out, or a housemate a little way off: the crowd model, a sixth of the quads)
+                static LodBore hl[16]; static int hl_fr[16];
+                if (!hl_fr[i] || frame - hl_fr[i] > 120 || frame < hl_fr[i]) { voxel_lod_build(&s->bore, &hl[i]); hl_fr[i] = frame ? frame : 1; }
+                voxel_draw_lod(&hl[i], &p, i == player && on_board && !skate_bailing() ? skate_body_yaw(s->yaw) : s->yaw, &s->gait); drawn = 2; }
             if (!drawn) { if (!(i == player && cam_view == 2)) voxel_draw(&s->bore, &p, i == player && on_board && !skate_bailing() ? skate_body_yaw(s->yaw) : s->yaw, &s->gait); voxel_draw_covers(&s->bore, &p, s->yaw, &s->gait); }   // (first person: the eye is inside your own head, so your body is not drawn)
             if (drawn) dbg_hh_spr++; else dbg_hh_full++;
             if (far && !drawn) dbg_hh_miss++;
