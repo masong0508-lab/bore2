@@ -122,6 +122,7 @@ int main(int argc, char** argv) {
     nds.RunFrame();
     for (int sf : shots) if (sf == i) { std::string nm = argv[3]; size_t d = nm.rfind(".ppm"); nm = nm.substr(0, d) + "_" + std::to_string(i) + ".ppm"; dump(nds, nm.c_str()); }
   }
+  if (getenv("DBG")) fprintf(stderr, "dispcnt %08x bg0cnt %04x bg3cnt %04x vramD@0 %04x %04x bg(10,10)=%04x vramcnt D %02x\n", nds.ARM9Read32(0x04000000), nds.ARM9Read16(0x04000008), nds.ARM9Read16(0x0400000E), nds.ARM9Read16(0x06000000+(10*256+10)*2), nds.ARM9Read16(0x06000000+(4*256+4)*2), nds.ARM9Read16(0x06000000+(170*256+100)*2), nds.ARM9Read8(0x04000243));
   dump(nds, argv[3]);
   return 0;
 }

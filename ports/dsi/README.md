@@ -31,3 +31,7 @@ From the map, press A or tap the picked lot again to play it. Top screen: the li
 - BUY: catalogue with 5 tabs and item cards (price, funds). Tap an item, then tap the plan (or D-pad) and tap again / A to place; the 3D lot shows the ghost at the cursor.
 - BUILD: plan view with FLOOR, WALL (tap near a cell edge), ERASE and SELL tools and colour palettes.
 X/Y zoom, L/R turn the view in LIVE. Lot contents are not saved yet.
+
+## D3 status: Sims 3 DS style flow (not fully tested)
+Create-a-Sim first (head on top, hair/colour/skin/shirt grid on the bottom, PLAY). Then the map, then LIVE: top screen = sim status (mood, time, funds, six needs; tap another sim for its bio), bottom screen = the 3D lot with HUD icons, tap floor to walk, tap furniture/sim for an action menu. "..." tab opens BUY / BUILD / MAP.
+Known: the bottom-screen HUD overlay (map button, icons, menus) may not show yet (main-engine BG3 layer); needs a check. Tap picking sign conventions are untested.
