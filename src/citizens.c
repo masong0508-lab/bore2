@@ -1306,7 +1306,7 @@ void citizens_draw_bubbles(void) {
         SVECTOR top; setVector(&top, 0, -H * VOX - 40, 0);
         int sx, sy, sz;
         if (!gfx_project(&top, &sx, &sy, &sz)) continue;
-        ui_bubble(sx, sy, c->say, UI_INK);
+        ui_bubble(gfx_ui_pre(sx), sy, c->say, UI_INK);
     }
 }
 

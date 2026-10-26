@@ -91,6 +91,7 @@ void gfx_sprite(int x, int y, int w, int h, u16 tpage, u16 clut, int u, int v, i
 void gfx_sprite_c(int x, int y, int w, int h, u16 tpage, int u, int v, int tw, int th, int r, int g, int b);   // tinted (128 = as painted)
 void gfx_sprite_blend(int x, int y, int w, int h, u16 tpage, u16 clut, int u, int v, int tw, int th, int r, int g, int b);   // semi-transparent, coloured
 void gfx_set_clear(int r, int g, int b);
+int gfx_ui_pre(int x);   // a 3D screen x, made ready for the 2D overlay (WIDESCREEN squeezes the overlay)
 extern int gfx_wide;   // 1: WIDESCREEN (16:9): the 3D picture is drawn squeezed 3:4 across, for a screen that stretches it back
 extern int gfx_noshadow, gfx_min_vsyncs;   // (options: no soft shadows; the fewest vblanks a frame takes)
 void gfx_set_dither(int on);

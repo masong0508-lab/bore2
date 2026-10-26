@@ -493,7 +493,7 @@ static void hud(void) {
 }
 static void sparks(void) {
     for (int k = 0; k < 4; k++) { if (spark[k].t <= 0) continue;
-        int sx, sy; if (!gfx_proj(MX(spark[k].wx), -MM(spark[k].wy), -MX(spark[k].wz), &sx, &sy)) continue;
+        int sx, sy; if (!gfx_proj(MX(spark[k].wx), -MM(spark[k].wy), -MX(spark[k].wz), &sx, &sy)) continue; sx = gfx_ui_pre(sx);
         int r = (14 - spark[k].t) * 2 + 4;
         for (int j = 0; j < 8; j++) { int a = j * 512 + spark[k].t * 60, x2 = sx + (isin(a) * r >> 12), y2 = sy + (icos(a) * r >> 12);
             if (spark[k].blk) gfx_line(sx, sy, x2, y2, 120, 200, 255); else gfx_line(sx, sy, x2, y2, 255, 220 - j * 10, 60); }

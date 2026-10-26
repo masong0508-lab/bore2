@@ -471,6 +471,12 @@ int gfx_project(const SVECTOR *v, int *sx, int *sy, int *sz) {
 }
 
 // ------------------------------------------------------------------ 2D overlay
+// WIDESCREEN: the 2D interface is laid out for 320 across, and the screen stretches 320 to 16:9, so every 2D x is pulled in 3:4 about the middle
+// (the picture it ends up as is the same shape as on a 4:3 screen, with the 3D world showing to the sides of it). A box that fills the whole
+// screen keeps filling it. ux_pre is the opposite: a screen position from the 3D world, made ready for ui_x.
+static inline int ui_x(int x) { return gfx_wide ? 160 + (x - 160) * 3 / 4 : x; }
+int gfx_ui_pre(int x) { return gfx_wide ? 160 + (x - 160) * 4 / 3 : x; }
+static inline int ui_full(int x, int w) { return x <= 0 && x + w >= SCREEN_W; }
 static void ui_add(void *prim) {
     setaddr(prim, 0xffffff);
     if (ui_tail) setaddr(ui_tail, prim); else ui_head = (u32 *)prim;
@@ -480,6 +486,7 @@ void gfx_rect(int x, int y, int w, int h, int r, int g, int b, int semi) {
     TILE *t = (TILE *)gfx_alloc(sizeof(TILE));
     if (!t) return;
     setTile(t);
+    if (gfx_wide && !ui_full(x, w)) { int x1 = ui_x(x + w); x = ui_x(x); w = x1 - x; }
     setXY0(t, x, y); setWH(t, w, h);
     setRGB0(t, r, g, b);
     if (semi) setSemiTrans(t, 1);
@@ -490,6 +497,7 @@ void gfx_grad(int x, int y, int w, int h, u32 c0, u32 c1, u32 c2, u32 c3, int se
     POLY_G4 *q = (POLY_G4 *)gfx_alloc(sizeof(POLY_G4));
     if (!q) return;
     setPolyG4(q);
+    if (gfx_wide && !ui_full(x, w)) { int x1 = ui_x(x + w); x = ui_x(x); w = x1 - x; }
     setXY4(q, x, y, x + w, y, x, y + h, x + w, y + h);
     setRGB0(q, c0 & 255, (c0 >> 8) & 255, (c0 >> 16) & 255); setRGB1(q, c1 & 255, (c1 >> 8) & 255, (c1 >> 16) & 255);
     setRGB2(q, c2 & 255, (c2 >> 8) & 255, (c2 >> 16) & 255); setRGB3(q, c3 & 255, (c3 >> 8) & 255, (c3 >> 16) & 255);
@@ -506,7 +514,7 @@ void gfx_line(int x0, int y0, int x1, int y1, int r, int g, int b) {
     LINE_F2 *l = (LINE_F2 *)gfx_alloc(sizeof(LINE_F2));
     if (!l) return;
     setLineF2(l);
-    setXY2(l, x0, y0, x1, y1);
+    setXY2(l, ui_x(x0), y0, ui_x(x1), y1);
     setRGB0(l, r, g, b);
     ui_add(l);
 }
@@ -583,6 +591,7 @@ void gfx_sprite_c(int x, int y, int w, int h, u16 tpage, int u, int v, int tw, i
     POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4));
     if (!q) return;
     setPolyFT4(q);
+    if (gfx_wide && !ui_full(x, w)) { int x1 = ui_x(x + w); x = ui_x(x); w = x1 - x; }
     setXY4(q, x, y, x + w, y, x, y + h, x + w, y + h);
     q->u0 = u; q->v0 = v; q->u1 = u + tw - 1; q->v1 = v; q->u2 = u; q->v2 = v + th - 1; q->u3 = u + tw - 1; q->v3 = v + th - 1;
     q->tpage = tpage; q->clut = 0;
@@ -593,6 +602,7 @@ void gfx_sprite_blend(int x, int y, int w, int h, u16 tpage, u16 clut, int u, in
     POLY_FT4 *q = (POLY_FT4 *)gfx_alloc(sizeof(POLY_FT4));
     if (!q) return;
     setPolyFT4(q);
+    if (gfx_wide && !ui_full(x, w)) { int x1 = ui_x(x + w); x = ui_x(x); w = x1 - x; }
     setXY4(q, x, y, x + w, y, x, y + h, x + w, y + h);
     q->u0 = u; q->v0 = v; q->u1 = u + tw - 1; q->v1 = v; q->u2 = u; q->v2 = v + th - 1; q->u3 = u + tw - 1; q->v3 = v + th - 1;
     q->tpage = tpage; q->clut = clut;

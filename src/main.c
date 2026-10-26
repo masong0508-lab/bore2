@@ -371,7 +371,7 @@ static void draw_bubbles(void) {   // thoughts and notes over heads
         int sx, sy, sz;
         if (!gfx_project(&top, &sx, &sy, &sz)) continue;
         const char *txt = s->note_t > 0 ? s->note : sim_need_name(s->think);
-        ui_bubble(sx, sy, txt, s->note_t > 0 ? UI_INK : UI_BADT);
+        ui_bubble(gfx_ui_pre(sx), sy, txt, s->note_t > 0 ? UI_INK : UI_BADT);
     }
     citizens_draw_bubbles();
 }
