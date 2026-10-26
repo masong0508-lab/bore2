@@ -140,6 +140,7 @@ void sim_gotchi_absorb(int i) {   // staring at the toy: the owner forgets to ea
     static int n; static const char *const fun[5] = { "YOUR TUMMY GROWLS. THE PET LOOKS WORRIED", "WHEN DID YOU LAST EAT? THE PET WONDERS TOO", "YOUR HOUSEMATES ARE WAVING AT YOU", "YOU HAVEN'T BLINKED IN A WHILE", "THE FRIDGE IS RIGHT THERE. JUST SAYING" };
     if ((s->need[N_FOOD] >> 10) < 25) { sim_moodlet(s, ML_BLOB_HOOKED); if (!(++n & 3)) sim_note(fun[(n >> 2) % 5]); }
 }
+static void crime_midnight(void);
 int dj_xp, dj_heat, sim_want_dj, sim_want_super, sim_want_bus, sim_want_dog, bus_pass, sim_want_prison, rap_sheet;   // sim_want_prison: a sentence in days (HARD TIME); rap_sheet: past arrests   // bus_pass: the pass is good while day_count < bus_pass
 int pet_kind, pet_col, pet_hun = 100, pet_x, pet_z, pet_yaw, pet_ph, pet_zone = -1;   // the pet (0 none, 1 dog, 2 cat): where it is, how hungry
 void sim_dj_hit(int tip) { cash += tip; if (nsims) sim_moodlet(&sims[player], ML_DJ_HIT); }
@@ -196,7 +197,7 @@ static void turn_to(Sim *s, int target, int rate) {
 
 void sim_init(void) {
     gotchi_reset(); dj_xp = 0; dj_heat = 0; band_reset(); realm_reset();   // (a new life: no realm yet; a loaded one brings its own)
-    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; rap_sheet = 0; dog_default(&pet_dog); nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
+    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; rap_sheet = 0; memset(crime_n, 0, sizeof crime_n); crime_evid = crime_def = 0; dog_default(&pet_dog); nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
     job_level = 0; job_car = CAR_FACTORY; job_take(CAR_FACTORY, -1, -1, "THE FACTORY"); job_none = 1;
     groceries = 10; room_bx = room_by = -1; room_until = 0; phone_tier = 1; handheld = 0;
 #ifdef AUTO_PHONE_TIER
@@ -1282,7 +1283,7 @@ static void clock_tick(void) {
         clock_min = 0; clock_day = (clock_day + 1) % 7; day_count++;
         if (day_count % 10 == 0) { char sb_[40]; sprintf(sb_, "%s HAS COME!", sim_season_name(sim_season())); sim_note(sb_); }
         else if (day_count % 10 == 9) { char sb_[40]; sprintf(sb_, "TODAY: THE %s! 10 AM", sim_festival_name(sim_season())); sim_note(sb_); }
-        midnight_ages(); pop_midnight();                                    // (your household, and everyone else)
+        midnight_ages(); pop_midnight(); crime_midnight();                                    // (your household, and everyone else)
         if (job_none) sim_note(day_count & 1 ? "NO JOB, NO BILLS. THE PAPER HAS JOBS AT 6" : "STILL LOOKING FOR WORK? PHONE, JOBS");
         else cash -= BILLS;
         if (job_none) { }
@@ -1291,7 +1292,18 @@ static void clock_tick(void) {
     }
 }
 
-void sim_skip_days(int n) { for (int i = 0; i < n; i++) { clock_min = 1440; clock_tick(); } clock_min = 8 * 60; }   // (HARD TIME: the days served go by)
+u8 crime_n[CR_N]; int crime_evid, crime_def, arrest_how, sim_want_end, crime_skip;
+const char *const crime_nm[CR_N] = { "ASSAULT", "THEFT", "RESISTING ARREST", "JAILBREAK" }; const u8 crime_sev[CR_N] = { 8, 6, 10, 30 };
+int crime_total(void) { int t = 0; for (int i = 0; i < CR_N; i++) t += crime_n[i]; return t; }
+int crime_points(void) { int t = 0; for (int i = 0; i < CR_N; i++) t += crime_n[i] * crime_sev[i]; return t; }
+void sim_crime(int k, int ev) { if (crime_n[k] < 9) crime_n[k]++; crime_evid = MIN(100, crime_evid + ev); }
+void sim_arrest(int how) { arrest_how = how; sim_want_prison = 1; }   // (how: 0 caught fighting, 1 gave up, 2 a warrant, 3 a tip-off)
+static void crime_midnight(void) {   // the detectives: what you got away with can catch up; and a name on the record draws the wrong attention
+    if (crime_skip) return; if (crime_evid > 0) crime_evid -= 2;
+    if (crime_total() && (int)(look_rand() % 100) < crime_evid / 2) { sim_note("POLICE AT THE DOOR: A WARRANT!"); sim_arrest(2); return; }
+    if (rap_sheet >= 1 && !crime_total() && (int)(look_rand() % 100) < rap_sheet * 2) { sim_note("A TIP-OFF! THE POLICE ARE HERE"); sim_arrest(3); }
+}
+void sim_skip_days(int n) { crime_skip = 1; for (int i = 0; i < n; i++) { clock_min = 1440; clock_tick(); } clock_min = 8 * 60; crime_skip = 0; }   // (HARD TIME: the days served go by)
 static void pet_tick(void) {   // the pet follows you about, gets hungry, and cheers you up while it is fed
     if (!pet_kind || !nsims) return;
     Sim *p = &sims[player]; int dx = p->x - pet_x, dz = p->z - pet_z;
@@ -1861,8 +1873,8 @@ static void place_do(Sim *s, int code) {
         case PC_MASSAGE: if (!pay(50)) return; begin_action(s, ACT_SLEEP, pie_mx, pie_my); s->act_var = 2; s->act_t = 300; break;
         case PC_SOAK: if (!pay(15)) return; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 0; break;
         case PC_PRAC0: case PC_PRAC0 + 1: case PC_PRAC0 + 2: case PC_PRAC0 + 3: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = (u8)(8 + (code - PC_PRAC0)); s->act_t = 300; sim_say(s, "FROM THE TOP!"); break;
-        case PC_STEAL: if ((int)(look_rand() % 100) < 45) { int v = 40 + (int)(look_rand() % 80); cash += v; char b_[40]; sprintf(b_, "SHOPLIFTED $%d WORTH. RUN!", v); sim_note(b_); sim_say(s, "NOBODY SAW"); }
-                       else { sim_say(s, "OH NO"); sim_note("CAUGHT SHOPLIFTING!"); sim_want_prison = 2 + rap_sheet; } break;
+        case PC_STEAL: { int v = 40 + (int)(look_rand() % 80); if ((int)(look_rand() % 100) < 45) { cash += v; char b_[40]; sprintf(b_, "SHOPLIFTED $%d WORTH. RUN!", v); sim_note(b_); sim_say(s, "NOBODY SAW"); sim_crime(CR_THEFT, 8); }   // (unseen: but a camera may have)
+                       else { sim_say(s, "OH NO"); sim_note("CAUGHT SHOPLIFTING!"); sim_crime(CR_THEFT, 40); sim_arrest(1); } } break;
         case PC_BUS: sim_want_bus = 1; break;
         case PC_PASS1: case PC_PASS7: case PC_PASS30: { int n = code == PC_PASS1 ? 1 : code == PC_PASS7 ? 7 : 30, pr = code == PC_PASS1 ? 10 : code == PC_PASS7 ? 30 : 90;
             if (!pay(pr)) return; bus_pass = MAX(bus_pass, day_count) + n; char b_[40]; sprintf(b_, "BUS PASS: %d DAYS LEFT", bus_pass - day_count); sim_note(b_); audio_voice(VOICE_FINISHED); } break;
@@ -2061,7 +2073,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
     sv_u8(phone_tier); sv_u8(handheld);   // (version 10)
     sv_u8(job_none);   // (version 12)
     sv_u16((u16)arcade_tix); sv_u16((u16)fight_wins); sv_u8((u8)fight_champ); sv_u8((u8)fight_best);   // (version 15)
-    gotchi_save(); sv_u16(dj_xp); sv_u8(dj_heat); band_save(); sv_u8(pet_kind); sv_u8(pet_col); sv_u8(pet_hun); sv_u16(bus_pass); sv_n(pet_dog.look, DL_N); sv_n(pet_dog.tr, DOG_TR); sv_str(pet_dog.name, DOG_NAME - 1);   // (version 21; the band: version 25)
+    gotchi_save(); sv_u16(dj_xp); sv_u8(dj_heat); band_save(); sv_u8(pet_kind); sv_u8(pet_col); sv_u8(pet_hun); sv_u16(bus_pass); sv_n(pet_dog.look, DL_N); sv_n(pet_dog.tr, DOG_TR); sv_str(pet_dog.name, DOG_NAME - 1); sv_u8(rap_sheet); sv_n(crime_n, CR_N); sv_u8(crime_evid);   // (version 21; the band: version 25)
     sv_u8(veh_own); sv_u8(veh_sel); for (int t = 0; t < VEH_N; t++) sv_u16((u16)veh_fuel[t]); traffic_save();   // (version 18: the vehicles)
     realm_save();   // (version 15: KINGDOM MODE's realm)
     for (int i = 0; i < nsims; i++) {
@@ -2092,7 +2104,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     if (save_ver >= 10) { phone_tier = ld_u8() & 3; handheld = ld_u8() & 3; } else { phone_tier = 3; handheld = 0; }   // (an older life keeps every app it had)
     job_none = save_ver >= 12 ? ld_u8() & 1 : 0;   // (an older life keeps its job)
     if (save_ver >= 15) { arcade_tix = ld_u16(); fight_wins = ld_u16(); fight_champ = ld_u8() & 1; fight_best = ld_u8(); } else arcade_tix = fight_wins = fight_champ = fight_best = 0;
-    gotchi_load(save_ver); if (save_ver >= 23) { dj_xp = ld_u16(); dj_heat = ld_u8(); } else { dj_xp = 0; dj_heat = 0; } band_load(save_ver); if (save_ver >= 27) { pet_kind = ld_u8() & 3; pet_col = ld_u8() % 6; pet_hun = ld_u8(); bus_pass = ld_u16(); if (save_ver >= 28) { ld_n(pet_dog.look, DL_N); ld_n(pet_dog.tr, DOG_TR); ld_str(pet_dog.name, DOG_NAME - 1); } else dog_random(&pet_dog, 1); } else { pet_kind = 0; pet_hun = 100; bus_pass = 0; } pet_zone = -1;
+    gotchi_load(save_ver); if (save_ver >= 23) { dj_xp = ld_u16(); dj_heat = ld_u8(); } else { dj_xp = 0; dj_heat = 0; } band_load(save_ver); if (save_ver >= 27) { pet_kind = ld_u8() & 3; pet_col = ld_u8() % 6; pet_hun = ld_u8(); bus_pass = ld_u16(); if (save_ver >= 28) { ld_n(pet_dog.look, DL_N); ld_n(pet_dog.tr, DOG_TR); ld_str(pet_dog.name, DOG_NAME - 1); } else dog_random(&pet_dog, 1); if (save_ver >= 29) { rap_sheet = ld_u8(); ld_n(crime_n, CR_N); crime_evid = ld_u8(); } else { rap_sheet = 0; memset(crime_n, 0, sizeof crime_n); crime_evid = 0; } } else { pet_kind = 0; pet_hun = 100; bus_pass = 0; } pet_zone = -1;
     veh_on = 0; veh_odo = 0; veh_lowfuel = 0;
     if (save_ver >= 18) { veh_own = ld_u8() & ((1 << VEH_N) - 1); veh_sel = ld_u8() % VEH_N; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = ld_u16(); } else { veh_own = 0; veh_sel = 0; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = 0; }
     traffic_load(save_ver);

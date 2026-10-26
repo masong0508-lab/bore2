@@ -749,6 +749,7 @@ static void call_cop(void) {   // the police: an officer arrives from up the str
 }
 static void crowd_react(int start) {   // the people who can see you make up their minds (start: a fight has just begun)
     Sim *p = &sims[player];
+    if (crime_total() && crime_evid >= 30 && rn(1000) < crime_evid / 3 + (int)crime_total()) call_cop();   // (a witness phones in what you did)
     if (!fight_on && !start) { if (heat > 0) heat--; }
     int ab = whoBits[aggro_who % 6], rb = whoBits[rage_who % 6], cops = 0;
     for (int i = 0; i < NCIT; i++) if (cits[i].zone == world_zone && cits[i].cop && cits[i].mode == CM_CHASE) cops++;
@@ -787,6 +788,7 @@ COLD int citizens_punch(void) {
     { int d = MAX(ABS(dx) + ABS(dz), 1), kx = dx * 40 / d, kz = dz * 40 / d, in = indoors_at(c->x, c->z);   // a shove back
       if (body_free(c->x + kx, c->z + kz, in)) { c->x += (s16)kx; c->z += (s16)kz; } }
     audio_voice(VOICE_SHRIEK);
+    if (c->mode == CM_CHASE && !c->cop) { crime_def++; if (crime_def > 9) crime_def = 9; } else { sim_crime(c->cop ? CR_RESIST : CR_ASSAULT, 12); }   // (hitting someone who is hitting you is self-defence)
     heat_add(6);
     for (int k = 0; k < NCIT; k++) { Cit *q = &cits[k]; if (q->mode != CM_STOP || q->zone != world_zone) continue;   // (you hit someone right in front of a peacemaker)
         int ex = q->x - p->x, ez = q->z - p->z; if (ex * ex + ez * ez < 3 * TILE * 3 * TILE && rn(100) < 30 + heat / 2) { q->mode = CM_CHASE; q->hp = (u8)(55 + rn(35)); q->cd = 30; say(q, "THAT'S IT!"); heat_add(10); } }
@@ -1225,7 +1227,7 @@ static void step_one(Cit *c, int i) {
         turn(c, yaw_to(dx, dz), 200);
         break;
     case CM_CHASE: {
-        if (d2 > 7 * TILE * 7 * TILE) { c->mode = CM_IDLE; c->t = 60; say(c, "FORGET IT"); break; }
+        if (d2 > (c->cop ? 12 : 7) * TILE * (c->cop ? 12 : 7) * TILE) { c->mode = CM_IDLE; c->t = 60; say(c, "FORGET IT"); break; }
         turn(c, yaw_to(dx, dz), 180);
         if (d2 > 90 * 90) {
             int spd = in ? 4 : 7;
@@ -1233,6 +1235,10 @@ static void step_one(Cit *c, int i) {
             if (body_free(c->x + mx, c->z + mz, in)) { c->x += (s16)mx; c->z += (s16)mz; moved_flag = 1; }
             else if (body_free(c->x + mx, c->z, in)) { c->x += (s16)mx; moved_flag = 1; }
             else if (body_free(c->x, c->z + mz, in)) { c->z += (s16)mz; moved_flag = 1; }
+        } else if (c->cop && !c->cd && rn(100) < (heat < 50 ? 60 : 30)) {   // the police try to cuff you first; the cooler you are, the likelier
+            int how_ = crime_total() && heat < 50 ? 1 : 0; sim_note("UNDER ARREST!"); say(c, "YOU ARE UNDER ARREST."); fam_calm(); fight_on = 0; heat = 0; c->mode = CM_IDLE; c->t = 120;
+            for (int k = 0; k < NCIT; k++) if (cits[k].mode == CM_CHASE || cits[k].mode == CM_STOP) { cits[k].mode = CM_IDLE; cits[k].t = 120; }
+            sim_arrest(how_); audio_voice(VOICE_CRY);
         } else if (!c->cd) {
             int dmg = (c->stage == AG_ELDER ? 2 : 3) + rn(5) + (c->cop ? 3 : 0);
             pl_hp -= dmg; c->cd = 45; c->gait.wave = 14; p->gait.squash = -10;
@@ -1242,7 +1248,7 @@ static void step_one(Cit *c, int i) {
                 char b[32]; sprintf(b, "KNOCKED OUT. LOST $%d", lost); sim_note(b);
                 for (int k = 0; k < NCIT; k++) if (cits[k].mode == CM_CHASE || cits[k].mode == CM_STOP) { cits[k].mode = CM_IDLE; cits[k].t = 120; }
                 fam_calm(); heat = 0;
-                if (c->cop) { sim_note("ARRESTED!"); sim_want_prison = 3 + rap_sheet; }
+                if (c->cop) { sim_note("ARRESTED!"); sim_crime(CR_RESIST, 15); sim_arrest(0); }
                 fight_on = 0; say(c, c->cop ? "YOU HAVE THE RIGHT TO STAY BORED." : "STAY DOWN."); audio_voice(VOICE_CRY);
             }
         }

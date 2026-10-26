@@ -756,7 +756,7 @@ static void life_draw(void) {
     { static int o3; if (++o3 == 40) sim_want_dog = 1; }
 #endif
 #ifdef AUTO_PRISON
-    { static int o4; if (++o4 == 40) sim_want_prison = 3; }
+    { static int o4; if (++o4 == 40) { sim_crime(CR_ASSAULT, 60); sim_crime(CR_ASSAULT, 20); sim_crime(CR_ASSAULT, 20); sim_crime(CR_RESIST, 10); sim_crime(CR_RESIST, 10); rap_sheet = 4; sim_arrest(0); } }
 #endif
 #ifdef AUTO_PETBUS
     { static int once2; if (++once2 == 40) { Sim *pl = &sims[player]; int px = sim_tile_x(pl), py = sim_tile_y(pl), put = 0; pet_kind = AUTO_PETBUS; pet_col = 3; bus_pass = day_count + 4;
@@ -3884,7 +3884,7 @@ int main(void) {
             case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
             case ST_SUPER: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; audio_jukebox_stop(); ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_DOG: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
-            case ST_PRISON: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
+            case ST_PRISON: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; if (sim_want_end) { sim_want_end = 0; pause_new_life(); } life_draw(); } break; }
             case ST_DJ: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_PARTY: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); if (party_go) { party_go = 0; party_begin(); } } break; }
             case ST_GOTCHI: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; if (gotchi_shelf) { gotchi_shelf = 0; crowd_reset(); wo_painted = 0; state = ST_WORLDS; } else { ovl_leave(); state = ST_LIFE; life_draw(); } } break; }
