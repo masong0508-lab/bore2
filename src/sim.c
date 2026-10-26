@@ -106,7 +106,7 @@ enum { ML_NONE, ML_GOOD_MEAL, ML_SNACKED, ML_RESTED, ML_FRESH, ML_GOOD_CHAT, ML_
        ML_HUNGRY, ML_TIRED, ML_STINKY, ML_BURSTING, ML_LONELY, ML_BORED, ML_SINGING, ML_PIZZA,
        ML_ATE_OUT, ML_SWAM, ML_OUTFIT, ML_RETAIL, ML_NEW_GAME, ML_NEW_JOB, ML_COACHED, ML_HOTEL,
        ML_FINE_DINING, ML_FILM, ML_CUT, ML_NIGHT_OUT, ML_ROUND, ML_PAMPERED, ML_INSPIRED, ML_HEALTHY, ML_TREAT,
-       ML_BIRTHDAY, ML_NEW_BABY, ML_LOVE, ML_PROUD, ML_GRIEF, ML_MEMORIES, ML_CAKE, ML_GRADES, ML_HOMEWORK, ML_SCHOOL, ML_BLOB_BUDDY, ML_BLOB_HATCH, ML_BLOB_PROUD, ML_BLOB_WORRY, ML_BLOB_MISS, ML_BLOB_HOOKED, ML_BLOB_SHARED, ML_PARTY_OK, ML_PARTY_GREAT, ML_PARTY_LEGEND, ML_DJ_HIT, ML_N };
+       ML_BIRTHDAY, ML_NEW_BABY, ML_LOVE, ML_PROUD, ML_GRIEF, ML_MEMORIES, ML_CAKE, ML_GRADES, ML_HOMEWORK, ML_SCHOOL, ML_BLOB_BUDDY, ML_BLOB_HATCH, ML_BLOB_PROUD, ML_BLOB_WORRY, ML_BLOB_MISS, ML_BLOB_HOOKED, ML_BLOB_SHARED, ML_PARTY_OK, ML_PARTY_GREAT, ML_PARTY_LEGEND, ML_DJ_HIT, ML_EYES, ML_N };
 static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "", 0, 0 }, { "GOOD MEAL", 12, 240 }, { "SNACKED", 4, 90 }, { "WELL RESTED", 12, 300 }, { "FRESH", 8, 180 }, { "GOOD CHAT", 10, 180 },
     { "MADE A FRIEND", 20, 480 }, { "PROMOTED", 25, 720 }, { "PAYDAY", 15, 360 }, { "EMBARRASSED", -12, 120 },
@@ -120,7 +120,7 @@ static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "PAMPERED", 15, 360 }, { "INSPIRED", 10, 240 }, { "HEALTHY", 8, 1440 }, { "SWEET TREAT", 8, 120 },
     { "GREAT BIRTHDAY", 20, 720 }, { "NEW BABY", 20, 1440 }, { "IN LOVE", 15, 720 }, { "PROUD PARENT", 8, 240 }, { "GRIEF", -15, 1440 },
     { "FOND MEMORIES", 8, 240 }, { "BIRTHDAY CAKE", 8, 180 }, { "GOOD GRADES", 10, 720 }, { "HOMEWORK DONE", 6, 240 }, { "LONG DAY AT SCHOOL", -5, 180 },
-    { "BLOB BUDDY", 10, 240 }, { "IT HATCHED!", 16, 480 }, { "PROUD BLOB PARENT", 14, 720 }, { "WORRIED ABOUT MY BLOB", -8, 120 }, { "MISSING MY BLOB", -15, 720 }, { "HOOKED ON THE TOY", -8, 240 }, { "SHARED MY LUNCH", 8, 240 }, { "NICE PARTY", 10, 480 }, { "GREAT PARTY", 18, 720 }, { "LEGENDARY PARTY", 30, 1440 }, { "CROWD PLEASER", 12, 360 },
+    { "BLOB BUDDY", 10, 240 }, { "IT HATCHED!", 16, 480 }, { "PROUD BLOB PARENT", 14, 720 }, { "WORRIED ABOUT MY BLOB", -8, 120 }, { "MISSING MY BLOB", -15, 720 }, { "HOOKED ON THE TOY", -8, 240 }, { "SHARED MY LUNCH", 8, 240 }, { "NICE PARTY", 10, 480 }, { "GREAT PARTY", 18, 720 }, { "LEGENDARY PARTY", 30, 1440 }, { "CROWD PLEASER", 12, 360 }, { "EYES BURNED", -25, 720 },
 };
 const char *sim_moodlet_name(int id) { return mlDef[id % ML_N].nm; }
 static int has_trait(const Sim *s, int t, int hi) { int v = s->bore.tr[t]; return hi ? v >= 8 : v <= 2; }
@@ -1919,12 +1919,15 @@ static void place_do(Sim *s, int code) {
             static const struct { u8 L; const char *nm; u16 pay; } fd[10] = { {1,"MOON CRATERS",0}, {1,"SATURN'S RINGS",20}, {2,"A COMET",150}, {2,"A METEOR SHOWER",60}, {3,"A NEW ASTEROID",400}, {3,"A DISTANT NEBULA",300},
                                                                               {4,"A SUPERNOVA",1500}, {4,"A NEW EXOPLANET",2500}, {5,"A BLACK HOLE'S GLOW",6000}, {5,"A REPEATING SIGNAL",12000} };
             if (L >= 3 && space_cert() < L - 2) { snprintf(b_, sizeof b_, "NEEDS: %s", space_cert_name(L - 2)); sim_note(b_); audio_voice(VOICE_NAH); return; }
-            if (hr >= 5 && hr < 19) { sim_note("THE STARS COME OUT AT 7 PM"); audio_voice(VOICE_NAH); return; }
-            if (sim_weather()) { sim_note("CLOUDED OUT TONIGHT"); audio_voice(VOICE_NAH); return; }
+            int day = hr >= 6 && hr < 19;   // (daytime is allowed: slow, and the sun is in the sky)
+            if (sim_weather()) { sim_note("CLOUDED OUT"); audio_voice(VOICE_NAH); return; }
             if ((s->need[N_REST] >> 10) < 15) { sim_note("TOO TIRED TO STARGAZE"); audio_voice(VOICE_NAH); return; }
             begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 420; s->need[N_REST] = MAX(0, s->need[N_REST] - (8 << 10)); s->act_var = 0;
-            if ((int)(look_rand() % 100) >= 30 + L * 8) { astro_xp = (u16)MIN(60000, astro_xp + 2); sim_note("A QUIET NIGHT. BEAUTIFUL STARS"); break; }
-            { int ok[10], n = 0; for (int i = 0; i < 10; i++) if (fd[i].L <= L) ok[n++] = i; int a = (int)(look_rand() % (u32)n), b2 = (int)(look_rand() % (u32)n); int k = ok[MAX(a, b2)];
+            if (day && (int)(look_rand() % 100) < 3 + L * 2) {   // a slip of the scope: straight into the sun
+                sim_moodlet(s, ML_EYES); s->mood = MAX(-100, s->mood - 15); sim_note("OW! YOU LOOKED AT THE SUN!"); sim_note("YOUR EYES ARE BURNED"); sim_say(s, "MY EYES!"); audio_voice(VOICE_SHRIEK); break; }
+            if ((int)(look_rand() % 100) >= (day ? 6 + L * 2 : 30 + L * 8)) { astro_xp = (u16)MIN(60000, astro_xp + (day ? 1 : 2)); sim_note(day ? "THE SKY IS BRIGHT. NOT MUCH TO SEE" : "A QUIET NIGHT. BEAUTIFUL STARS"); break; }
+            if (0) { astro_xp = (u16)MIN(60000, astro_xp + 2); sim_note("A QUIET NIGHT. BEAUTIFUL STARS"); break; }
+            { int ok[10], n = 0; for (int i = 0; i < 10; i++) if (fd[i].L <= (day ? 1 : L)) ok[n++] = i; int a = (int)(look_rand() % (u32)n), b2 = (int)(look_rand() % (u32)n); int k = ok[MAX(a, b2)];
               cash += fd[k].pay; astro_xp = (u16)MIN(60000, astro_xp + fd[k].L * 6); s->mood = MIN(100, s->mood + 12 + fd[k].L * 6);
               snprintf(b_, sizeof b_, fd[k].pay ? "FOUND %s! +$%d" : "YOU SEE %s", fd[k].nm, fd[k].pay); sim_note(b_); if (fd[k].L >= 4) audio_voice(VOICE_WIN); } break; }
         case PC_BUS: sim_want_bus = 1; break;
