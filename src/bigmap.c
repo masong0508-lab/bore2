@@ -61,7 +61,8 @@ static int hill_raw(int bx, int by) {
     if (bm_terrain(bx, by) == BT_SEA) return 0;
     int base = bm_height(bx, by) - 9; if (base <= 0) return 0;
     static const u8 K[5] = { 0, 6, 11, 16, 22 };   // HILLS: FLAT .. MOUNTAINS: how steep the land climbs
-    return MIN(base * K[bm_hills % 5], 3600);
+    int v = base * K[bm_hills % 5]; if (bm_hills >= 3 && bm_terrain(bx, by) == BT_ROCKY) v += v / 2;   // (mountains: the rock climbs in cliffs)
+    return MIN(v, 4800);
 }
 int bm_hill_t(int bx, int by, int *town) {   // a block's height (units) at its middle: a town's lot is levelled to it, wild land rolls through it
     HillC *c = &hcache[(bx * 7 + by * 13) & 63];

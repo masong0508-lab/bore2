@@ -188,7 +188,7 @@ static void cell_rgb(int t, int *r, int *g, int *b) {
 
 // ================================================================== every town's buildings (worked out once a world)
 typedef struct { u16 bx, by; u8 lot, sto, col, pad; } FB;
-#define FB_MAX 2800
+#define FB_MAX 2400
 static FB fb[FB_MAX]; static int nfb;
 static u16 fb_lo[64], fb_hi[64];             // each town's run in fb
 #define FBC_MAX 900

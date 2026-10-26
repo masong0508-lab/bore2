@@ -272,8 +272,17 @@ static int footprint_free(int x, int z) {
     }
     return 1;
 }
+int sim_climb_gear;   // 1: the gear to climb steep ground (nothing gives it yet: the expansion packs will)
+static int steep_up(const Sim *s, int dx, int dz) {   // the hills: a rise of more than about 1 in 2.3 ahead is a cliff to a walker (a rider or a climber with gear goes up steeper)
+    if (world_zone != ZONE_CITY || s->lvl || (dx | dz) == 0) return 0;
+    int m = MAX(ABS(dx), ABS(dz)), n = MIN(ABS(dx), ABS(dz)), sx = dx * 64 / m, sz = dz * 64 / m;
+    int rise = world_gh(s->x + sx, s->z + sz) - world_gh(s->x - sx, s->z - sz); if (rise <= 0) return 0;
+    int run = 128 + n * 53 / m, lim = (sim_climb_gear || (s == &sims[player] && (veh_on || on_board))) ? 100 : 43;
+    return rise * 100 > run * lim;
+}
 static int walk(Sim *s, int dx, int dz) {   // returns 1 if it moved at all
     int moved = 0; ramp_pass = on_board && s == &sims[player];
+    if (steep_up(s, dx, dz)) { static int nt; if (s == &sims[player] && !(nt++ & 63)) sim_note("TOO STEEP TO CLIMB"); dx = dz = 0; }
     if (dx && footprint_free(s->x + dx, s->z)) { s->x += dx; moved = 1; }
     if (dz && footprint_free(s->x, s->z + dz)) { s->z += dz; moved = 1; }
     ramp_pass = 0;

@@ -4,7 +4,7 @@
 #include "atlas.h"
 #include "mem8.h"
 
-#define ARENA_BYTES 180672   // (the people's models; it used to be the voice clips' memory, which are on the disc now)
+#define ARENA_BYTES 156096   // (the people's models; it used to be the voice clips' memory, which are on the disc now)
 static u8 arena_mem[ARENA_BYTES] __attribute__((aligned(4)));
 
 // ---- the compact model ----------------------------------------------------------------------------------------------
