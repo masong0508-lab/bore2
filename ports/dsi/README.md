@@ -97,4 +97,13 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 - Non-home lots are real places: parks, squares, farms and wild land are open yards with benches, lamp posts, flowers, hedges; shops, diners, schools, clinics and the rest are one open hall with fitting furniture.
 - Options 3 pages: Sim style (Classic / Sims 3 / Chunky body proportions), Poly meter (quads used of ~1500), Fog.
 - Cushions on the sofa and armchair.
-- NOT done: saving. The build has no SD file system (libfat/DLDI cannot be built or tested in this toolchain).
+
+
+## D22 - Saving
+- Saves to the cartridge save chip (EEPROM, fits any 8 KB chip). No SD card needed.
+- Menu > Save saves now. It also autosaves every game day and when you go back to the title.
+- Title: OK loads the saved game ("Saved game found" shows). Del erases it.
+- Two copies (A/B), the newest good one loads, so a power cut while saving never loses your game. Each copy has a checksum.
+- Saved: sims, funds, time, relationships, options, and the lots you built (current lot first; oldest lots are dropped only if the chip is full).
+- Needs a save chip: the ROM header is now a normal cart header (gamecode BR2D). If your flashcart/emulator gives no save, the title says "No save chip found".
+- Emulator test: tools/dsemu/run.cpp keeps a save file when BORE_SAV=file is set.

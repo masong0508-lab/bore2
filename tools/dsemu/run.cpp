@@ -102,7 +102,9 @@ int main(int argc, char** argv) {
   std::ifstream in(argv[1], std::ios::binary); std::vector<u8> rom((std::istreambuf_iterator<char>(in)), {});
   NDSArgs args; args.JIT = std::nullopt;
   NDS& nds = *new NDS(std::move(args));
-  auto cart = NDSCart::ParseROM(rom.data(), rom.size());
+  std::optional<melonDS::NDSCart::NDSCartArgs> cargs; const char* savp = getenv("BORE_SAV");   // BORE_SAV=file: a 8 KB EEPROM save kept in that file between runs (for testing the game's saving)
+  if (savp) { melonDS::NDSCart::NDSCartArgs a; a.SRAMLength = 8192; a.SRAM = std::make_unique<u8[]>(8192); memset(a.SRAM.get(), 0xFF, 8192); std::ifstream sf(savp, std::ios::binary); if (sf) sf.read((char*)a.SRAM.get(), 8192); cargs = std::move(a); }
+  auto cart = NDSCart::ParseROM(rom.data(), rom.size(), nullptr, std::move(cargs));
   if (!cart) { fprintf(stderr, "bad rom\n"); return 2; }
   nds.SetNDSCart(std::move(cart));
   nds.Reset(); nds.SetupDirectBoot(argv[1]); nds.Start();
@@ -123,6 +125,7 @@ int main(int argc, char** argv) {
     for (int sf : shots) if (sf == i) { std::string nm = argv[3]; size_t d = nm.rfind(".ppm"); nm = nm.substr(0, d) + "_" + std::to_string(i) + ".ppm"; dump(nds, nm.c_str()); }
   }
   if (getenv("DBG")) fprintf(stderr, "dispcnt %08x bg0cnt %04x bg3cnt %04x vramD@0 %04x %04x bg(10,10)=%04x vramcnt D %02x\n", nds.ARM9Read32(0x04000000), nds.ARM9Read16(0x04000008), nds.ARM9Read16(0x0400000E), nds.ARM9Read16(0x06000000+(10*256+10)*2), nds.ARM9Read16(0x06000000+(4*256+4)*2), nds.ARM9Read16(0x06000000+(170*256+100)*2), nds.ARM9Read8(0x04000243));
+  if (savp && nds.GetNDSCart() && nds.GetNDSCart()->GetSaveMemory()) { std::ofstream of(savp, std::ios::binary); of.write((const char*)nds.GetNDSCart()->GetSaveMemory(), nds.GetNDSCart()->GetSaveMemoryLength()); }
   dump(nds, argv[3]);
   return 0;
 }
