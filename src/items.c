@@ -160,7 +160,7 @@ MAT(mPmTop,pPump,1,1,"b")
 static const IBox bxPump[2]={ {2,2,6,6,0,17,{&mPmFront,&mPmSide,&mPmFront,&mPmSide,&mPmTop}}, {1,1,7,7,17,20,{&mPmCap,&mPmCap,&mPmCap,&mPmCap,&mPmTop}} };
 
 // ---- the item table: letter, name, boxes (and the along-y variant), flags ----
-enum { F_ROT = 1, F_ALONG = 2, F_FLAT = 4, F_HIGH = 8 };   // F_FLAT: walk over it; F_HIGH: stand on top (crates)
+enum { F_ROT = 1, F_ALONG = 2, F_FLAT = 4, F_HIGH = 8, F_L2 = 16, F_W2 = 32 };   // F_L2 / F_W2: the thing is two tiles long (from its tile, away from the wall) / two wide   // F_FLAT: walk over it; F_HIGH: stand on top (crates)
 // ---- the family's things: a crib (white bars round a little mattress), a birthday cake on a party table, a gravestone ----
 static const u16 pCrib[5]={RGB(29,29,27),RGB(19,24,30),RGB(30,22,25),RGB(22,22,20),RGB(31,31,31)};
 MAT(mCrPost,pCrib,1,1,"a")
@@ -271,7 +271,7 @@ static ItemDef defs[] = {   // (not const: items_init sets some of them to life 
     { '1', "KICKER", bxKicker, 8, 0, 0, F_ROT, 300 },
     { '5', "Q PIPE", bxQuarterPipe, 8, 0, 0, F_ROT, 500 },
     { '9', "LAUNCH", bxLaunch, 8, 0, 0, F_ROT, 400 },
-    { 'S', "BED", bxB0, 11, 0, 0, F_ROT, 700 },
+    { 'S', "BED", bxB0, 12, 0, 0, F_ROT, 700 },
     { 'H', "SHOWER", bxShower, 4, 0, 0, F_ROT, 450 },
     { 'C', "SOFA", bxSofa, 4, 0, 0, F_ROT, 500 },
     { 'D', "DOOR", bxDoor, 1, 0, 0, F_FLAT, 100 },
@@ -358,6 +358,11 @@ int items_cost(char ch) { const ItemDef *d = def_of(ch); return d ? d->cost : 0;
 int items_is_item(char ch) { return def_of(ch) != 0; }
 int items_blocking(char ch) { const ItemDef *d = def_of(ch); return d && !(d->flags & F_FLAT); }
 int items_rotates(char ch) { const ItemDef *d = def_of(ch); return d && (d->flags & F_ROT); }
+int items_foot(char ch, int *w, int *l) {   // the tiles a thing covers (w across, l along its facing); 1 when it covers more than its own tile
+    const ItemDef *d = def_of(ch); *w = *l = 1; if (!d) return 0;
+    if (d->flags & F_W2) *w = 2; if (d->flags & F_L2) *l = 2;
+    return *w * *l > 1;
+}
 int items_along(char ch) { const ItemDef *d = def_of(ch); return d && (d->flags & F_ALONG); }
 const char *items_name(char ch) { const ItemDef *d = def_of(ch); return d ? d->name : "?"; }
 int items_height(char ch) {

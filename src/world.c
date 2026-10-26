@@ -1746,11 +1746,26 @@ void world_reset_all(void) {
     ao_dirty = 1; for (int i = 0; i < ZONE_N; i++) { if (i < ZONE_CITY) zone_drop(i); levels_clear(lvown[i]); } world_zone = ZONE_HOME; UP = lvown[0]; world_gen(); }
 char world_at(int mx, int my) { return world_at_l(world_lvl, mx, my); }
 static int is_wall(char c) { return c == 'W' || c == 'w' || c == 'E' || c == 'e' || c == 'f'; }
+int world_covered(int mx, int my) {   // a tile under the far end of a long thing (a bed) from a neighbour's tile: the neighbour's tile owns it
+    for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
+        if (!(dx | dy)) continue;
+        int x = mx + dx, y = my + dy; if (x < 0 || y < 0 || x >= MW || y >= MH) continue;
+        int fw, fl; if (!items_foot(world_at(x, y), &fw, &fl)) continue;
+        int r = world_item_facing(x, y) & 3;
+        for (int da = 0; da < fw; da++) for (int db = 0; db < fl; db++) {
+            if (!(da | db)) continue;
+            int tx = r == 0 ? da : r == 1 ? db : r == 2 ? -da : -db, ty = r == 0 ? db : r == 1 ? -da : r == 2 ? -db : da;
+            if (tx == -dx && ty == -dy) return 1;
+        }
+    }
+    return 0;
+}
 int world_walkable(int mx, int my) {
     char c = world_at(mx, my);
     if (is_wall(c) || c == ' ') return 0;                       // (' ': open air on an upper storey)
     if (world_lvl == 0 && mx >= 0 && my >= 0 && mx < MW && my < MH && floorMap[my][mx] == FL_WATER) return 0;
-    if (c == '.' || c == 'D' || c == 'P' || c == 'B') return 1;
+    if (c == '.') return !world_covered(mx, my);
+    if (c == 'D' || c == 'P' || c == 'B') return 1;
     return !items_blocking(c);
 }
 int world_floor_y(int mx, int my) { (void)mx; (void)my; return 0; }

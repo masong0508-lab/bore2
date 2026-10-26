@@ -622,34 +622,36 @@ def shelf_front(c):
     cv=Cv(8,6,sh(c,0.5)); cv.hl(0,0,8,sh(c,1.2)); cv.hl(3,0,8,c); cv.rect(1,1,4,3,C(26,28,31)); cv.rect(4,1,7,3,PINK); cv.rect(1,4,7,6,C(30,29,22)); cv.hl(5,1,7,sh(C(30,29,22),0.8)); return mat(cv)
 def changepad(): cv=Cv(8,8,C(14,22,29)); cv.box(0,0,8,8,C(14,22,29)); cv.rect(2,2,6,6,sh(C(14,22,29),1.15)); return mat(cv)
 def foot_(c): return solid(c)
-# a bed: head at b=0, foot at b=7, mattress top at z=mt (5), pillows to mt+1
-def bed(frame,q,qs,pil=WHITE,hs=0,posts=False,double=False,foot=True,mt=5):
-    hb=headboard(frame,hs); tn=turned(frame,12); fb=footboard(frame); fin=finial()
-    wt=solid(frame); b=[Bx(0,0,8,1,0,11 if not posts else 12,[hb,solid(sh(frame,0.8)),solid(sh(frame,0.8)),solid(sh(frame,0.8))],solid(sh(frame,1.15)))]
-    b+= [Bx(0,0,1,1,11,12,[fin]*4,fin) if not posts else Bx(0,0,1,1,12,13,[fin]*4,fin), Bx(7,0,8,1,11,12,[fin]*4,fin) if not posts else Bx(7,0,8,1,12,13,[fin]*4,fin)]
-    b+= [Bx(0,7,1,8,0,4,[tn]*4,solid(sh(frame,1.15))), Bx(7,7,8,8,0,4,[tn]*4,solid(sh(frame,1.15))),
-         Bx(0,1,1,7,2,4,[t_post(frame,2,3)]*4,solid(sh(frame,1.1))), Bx(7,1,8,7,2,4,[t_post(frame,2,3)]*4,solid(sh(frame,1.1)))]
-    if foot: b+=[Bx(0,7,8,8,2,mt+1,[fb,t_post(frame,2,4),footboard(sh(frame,0.8)),t_post(frame,2,4)],solid(sh(frame,1.1)))]
-    b+= [Bx(1,1,7,7,1,2,[solid(DARK)]*4,solid(DARK)), Bx(1,1,7,7,2,mt,[drape(qs),drape(qs),drape(qs),drape(qs)],q)]
-    if double: b+=[Bx(1,1,4,3,mt,mt+1,[pillow_side(pil)]*4,pillow_top(pil)), Bx(4,1,7,3,mt,mt+1,[pillow_side(pil)]*4,pillow_top(pil))]
-    else: b+=[Bx(2,1,6,3,mt,mt+1,[pillow_side(pil)]*4,pillow_top(pil))]
+# a bed: head at b=0, foot at b=L, W wide (8 per tile), mattress top at z=mt (5), pillows to mt+1; the sleeper lies at the first tile's centre
+def bed(frame,q,qs,pil=WHITE,hs=0,W=8,L=16,foot=True,mt=5,hh=11):
+    hb=headboard(frame,hs); tn=turned(frame,12); fb=footboard(frame); fin=finial(); dk=sh(frame,0.8)
+    b=[Bx(0,0,W,1,0,hh,[hb,solid(dk),solid(dk),solid(dk)],solid(sh(frame,1.15))), Bx(0,0,1,1,hh,hh+1,[fin]*4,fin), Bx(W-1,0,W,1,hh,hh+1,[fin]*4,fin)]
+    b+=[Bx(0,L-1,1,L,0,4,[tn]*4,solid(sh(frame,1.15))), Bx(W-1,L-1,W,L,0,4,[tn]*4,solid(sh(frame,1.15))),
+        Bx(0,1,1,L-1,2,4,[t_post(frame,2,3)]*4,solid(sh(frame,1.1))), Bx(W-1,1,W,L-1,2,4,[t_post(frame,2,3)]*4,solid(sh(frame,1.1)))]
+    if foot: b+=[Bx(0,L-1,W,L,2,mt+1,[fb,t_post(frame,2,4),footboard(sh(frame,0.8)),t_post(frame,2,4)],solid(sh(frame,1.1)))]
+    b+=[Bx(1,1,W-1,L-1,1,2,[solid(DARK)]*4,solid(DARK)), Bx(1,1,W-1,L-1,2,mt,[drape(qs),drape(qs),drape(qs),drape(qs)],q),
+        Bx(2,1,6,3,mt,mt+1,[pillow_side(pil)]*4,pillow_top(pil))]
+    if W>8: b+=[Bx(10,1,14,3,mt,mt+1,[pillow_side(pil)]*4,pillow_top(pil))]
+    b+=[Bx(1,L-5,W-1,L-1,mt,mt+1,[drape(sh(qs,1.2),8,1)]*4,quilt(sh(qs,1.2),sh(qs,0.9),WHITE,0))]   # the folded cover at the foot
     return b
-bedS=bed(MAPLE,quilt(C(8,14,27),C(14,20,30),WHITE,0),C(8,14,27),WHITE,0)
+bedS=bed(MAPLE,quilt(C(8,14,27),C(14,20,30),WHITE,0),C(8,14,27),WHITE,0,8,8)           # (the one-tile bed the houses are built with)
+bedL=bed(MAPLE,quilt(C(8,14,27),C(14,20,30),WHITE,0),C(8,14,27),WHITE,0,8,15)          # a single bed, two tiles long
+bedF=bed(C(20,14,7),quilt(C(24,8,8),C(30,27,20),C(18,6,6),1),C(24,8,8),WHITE,1,16,15)  # a family bed: two wide, two long
 # four-poster: tall posts and a rim of beams (open, so the sleeper shows), curtains in the corners
-pt=t_post(DEEPW,2,20); cb=t_post(DEEPW,8,2); cbs=t_post(DEEPW,2,2)
-bed4=[Bx(0,0,8,1,0,12,[headboard(DEEPW,2),solid(sh(DEEPW,0.8)),solid(sh(DEEPW,0.8)),solid(sh(DEEPW,0.8))],solid(sh(DEEPW,1.15))),
-      Bx(0,0,1,1,12,20,[pt]*4,finial()), Bx(7,0,8,1,12,20,[pt]*4,finial()), Bx(0,7,1,8,0,20,[pt]*4,finial()), Bx(7,7,8,8,0,20,[pt]*4,finial()),
-      Bx(0,1,1,7,19,20,[cbs]*4,solid(sh(DEEPW,1.1))), Bx(7,1,8,7,19,20,[cbs]*4,solid(sh(DEEPW,1.1))), Bx(1,7,7,8,19,20,[cb]*4,solid(sh(DEEPW,1.1))), Bx(1,0,7,1,19,20,[cb]*4,solid(sh(DEEPW,1.1))),
-      Bx(0,1,1,7,2,4,[t_post(DEEPW,2,3)]*4,solid(sh(DEEPW,1.1))), Bx(7,1,8,7,2,4,[t_post(DEEPW,2,3)]*4,solid(sh(DEEPW,1.1))), Bx(0,7,8,8,2,5,[footboard(DEEPW),t_post(DEEPW,2,3),footboard(sh(DEEPW,0.8)),t_post(DEEPW,2,3)],solid(sh(DEEPW,1.1))),
-      Bx(1,1,7,7,1,2,[solid(DARK)]*4,solid(DARK)), Bx(1,1,7,7,2,5,[drape(CRIMSON,8,3,GOLD)]*4,quilt(CRIMSON,sh(CRIMSON,1.3),GOLD,2)),
-      Bx(1,1,4,3,5,6,[pillow_side(CREAM)]*4,pillow_top(CREAM)), Bx(4,1,7,3,5,6,[pillow_side(CREAM)]*4,pillow_top(CREAM)),
-      Bx(0,1,1,2,13,19,[drape(sh(CRIMSON,1.1),2,6)]*4,solid(CRIMSON)), Bx(7,1,8,2,13,19,[drape(sh(CRIMSON,1.1),2,6)]*4,solid(CRIMSON))]
-bedF=bed(C(20,14,7),quilt(C(24,8,8),C(30,27,20),C(18,6,6),1),C(24,8,8),WHITE,1,False,True)
+W4,L4=16,15
+pt=t_post(DEEPW,2,20); cb=t_post(DEEPW,8,2); cbs=t_post(DEEPW,2,2); cbr=C(21,4,7)
+bed4=[Bx(0,0,W4,1,0,12,[headboard(DEEPW,2),solid(sh(DEEPW,0.8)),solid(sh(DEEPW,0.8)),solid(sh(DEEPW,0.8))],solid(sh(DEEPW,1.15))),
+      Bx(0,0,1,1,12,20,[pt]*4,finial()), Bx(W4-1,0,W4,1,12,20,[pt]*4,finial()), Bx(0,L4-1,1,L4,0,20,[pt]*4,finial()), Bx(W4-1,L4-1,W4,L4,0,20,[pt]*4,finial()),
+      Bx(0,1,1,L4-1,19,20,[cbs]*4,solid(sh(DEEPW,1.1))), Bx(W4-1,1,W4,L4-1,19,20,[cbs]*4,solid(sh(DEEPW,1.1))), Bx(1,L4-1,W4-1,L4,19,20,[cb]*4,solid(sh(DEEPW,1.1))), Bx(1,0,W4-1,1,19,20,[cb]*4,solid(sh(DEEPW,1.1))),
+      Bx(0,1,1,L4-1,2,4,[t_post(DEEPW,2,3)]*4,solid(sh(DEEPW,1.1))), Bx(W4-1,1,W4,L4-1,2,4,[t_post(DEEPW,2,3)]*4,solid(sh(DEEPW,1.1))), Bx(0,L4-1,W4,L4,2,5,[footboard(DEEPW),t_post(DEEPW,2,3),footboard(sh(DEEPW,0.8)),t_post(DEEPW,2,3)],solid(sh(DEEPW,1.1))),
+      Bx(1,1,W4-1,L4-1,1,2,[solid(DARK)]*4,solid(DARK)), Bx(1,1,W4-1,L4-1,2,5,[drape(CRIMSON,8,3,GOLD)]*4,quilt(CRIMSON,sh(CRIMSON,1.3),GOLD,2)),
+      Bx(2,1,6,3,5,6,[pillow_side(CREAM)]*4,pillow_top(CREAM)), Bx(10,1,14,3,5,6,[pillow_side(CREAM)]*4,pillow_top(CREAM)),
+      Bx(0,1,1,2,13,19,[drape(sh(CRIMSON,1.1),2,6)]*4,solid(CRIMSON)), Bx(W4-1,1,W4,2,13,19,[drape(sh(CRIMSON,1.1),2,6)]*4,solid(CRIMSON))]
 bedT=[Bx(0,0,8,1,0,8,[headboard(MINT,0),solid(sh(MINT,0.8)),solid(sh(MINT,0.8)),solid(sh(MINT,0.8))],solid(sh(MINT,1.15))),
-      Bx(0,7,8,8,0,5,[footboard(MINT),t_post(MINT,2,3),footboard(sh(MINT,0.8)),t_post(MINT,2,3)],solid(sh(MINT,1.1))),
-      Bx(0,1,1,7,3,6,[bars(MINT,8,3)]*4,solid(sh(MINT,1.1))) , Bx(7,1,8,7,3,6,[bars(MINT,8,3)]*4,solid(sh(MINT,1.1))),
-      Bx(0,1,1,7,0,3,[t_post(MINT,2,3)]*4,solid(MINT)), Bx(7,1,8,7,0,3,[t_post(MINT,2,3)]*4,solid(MINT)),
-      Bx(1,1,7,7,1,3,[drape(NAVY,8,2)]*4,quilt(NAVY,C(10,14,28),YEL,3)), Bx(2,1,6,3,3,4,[pillow_side(WHITE)]*4,pillow_top(WHITE))]
+      Bx(0,11,8,12,0,5,[footboard(MINT),t_post(MINT,2,3),footboard(sh(MINT,0.8)),t_post(MINT,2,3)],solid(sh(MINT,1.1))),
+      Bx(0,1,1,11,3,6,[bars(MINT,8,3)]*4,solid(sh(MINT,1.1))), Bx(7,1,8,11,3,6,[bars(MINT,8,3)]*4,solid(sh(MINT,1.1))),
+      Bx(0,1,1,11,0,3,[t_post(MINT,2,3)]*4,solid(MINT)), Bx(7,1,8,11,0,3,[t_post(MINT,2,3)]*4,solid(MINT)),
+      Bx(1,1,7,11,1,3,[drape(NAVY,8,2)]*4,quilt(NAVY,C(10,14,28),YEL,3)), Bx(2,1,6,3,3,4,[pillow_side(WHITE)]*4,pillow_top(WHITE))]
 # bassinet: a wicker basket on a stand (see-through weave: the baby shows), a hood at the head
 wk=C(26,21,12); wo=wicker_open(wk,8,4); wo2=wicker_open(wk,6,4)
 bass=[Bx(1,1,2,2,0,2,[t_post(DWOOD,2,2)]*4,solid(DWOOD)), Bx(6,1,7,2,0,2,[t_post(DWOOD,2,2)]*4,solid(DWOOD)), Bx(1,6,2,7,0,2,[t_post(DWOOD,2,2)]*4,solid(DWOOD)), Bx(6,6,7,7,0,2,[t_post(DWOOD,2,2)]*4,solid(DWOOD)),
@@ -680,8 +682,8 @@ playpen=[Bx(0,0,8,8,0,1,[solid(sh(BLUE,0.8))]*4,play_pad()), Bx(0,0,8,1,1,7,[msh
          Bx(2,3,3,4,1,2,[block(RED)]*4,block(RED)), Bx(4,4,6,6,1,3,[block(YEL)]*4,block(YEL))]
 changing=[Bx(0,1,8,7,0,8,[shelf_front(MAPLE),t_metal(6,8,MAPLE),solid(sh(MAPLE,0.7)),t_metal(6,8,MAPLE)],solid(sh(MAPLE,1.1))), Bx(1,2,7,6,8,9,[changepad()]*4,changepad()),
           Bx(0,1,1,7,9,11,[t_post(MAPLE,2,2)]*4,solid(MAPLE)), Bx(7,1,8,7,9,11,[t_post(MAPLE,2,2)]*4,solid(MAPLE)), Bx(1,1,7,2,9,11,[t_post(MAPLE,6,2)]*4,solid(MAPLE)), Bx(1,3,3,5,9,10,[block(PINK)]*4,block(PINK))]
-bedl=[('BED','F_ROT',700,bedS,None,'skip'),('FOUR POSTER BED','F_ROT',2200,bed4),('FAMILY BED','F_ROT',1500,bedF),('TODDLER BED','F_ROT',450,bedT),('BASSINET','F_ROT',200,bass),('CRADLE','F_ROT',260,crad),
-      ('NIGHTSTAND','F_ROT',80,nightst),('TOY CHEST','F_ROT',90,toychest),('ROCKING HORSE','F_ROT',140,rocker),('WARDROBE','F_ROT',320,wardrobe),('PLAYPEN','F_ROT',180,playpen),('CHANGING TABLE','F_ROT',160,changing)]
+bedl=[('BED','F_ROT',700,bedS,None,'skip'),('FOUR POSTER BED','F_ROT|F_L2|F_W2',2200,bed4),('FAMILY BED','F_ROT|F_L2|F_W2',1500,bedF),('TODDLER BED','F_ROT|F_L2',450,bedT),('BASSINET','F_ROT',200,bass),('CRADLE','F_ROT',260,crad),
+      ('NIGHTSTAND','F_ROT',80,nightst),('TOY CHEST','F_ROT',90,toychest),('ROCKING HORSE','F_ROT',140,rocker),('WARDROBE','F_ROT',320,wardrobe),('PLAYPEN','F_ROT',180,playpen),('CHANGING TABLE','F_ROT',160,changing),('SINGLE BED','F_ROT|F_L2',600,bedL)]
 nb_bed=write('../src/items_bed.inc','// GENERATED by tools/make_items_q.py: the beds, cribs, bedroom and nursery things (included by items.c)',bedl,'B',0xEA,'ITEMS_BED')
 
 print('boxes',nb_home,nb_farm,nb_space,'mats',len(mats),'px',sum(m[2]*m[3] for m in mats.values()))

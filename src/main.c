@@ -328,7 +328,7 @@ static void draw_sims(void) {
         if (!gfx_visible(s->x, -110 - s->lvl * WALL_FULL, s->z, 150)) continue;   // off the screen
         VECTOR p; setVector(&p, s->x, 0, s->z);
         if (s->gait.lie > 0) {   // lying (or just getting up): on the bed, the bunk, the crib's mattress, or on the floor; the height eases in with the pose
-            char bc = world_at(s->act_x, s->act_y); int sm = voxel_lie_ease(s->gait.lie), bed = (bc == 'S' || bc == CH_BED4 || bc == CH_BEDF) ? 1 : (bc == '<' || bc == CH_BEDT) ? 2 : 0, to;
+            char bc = world_at(s->act_x, s->act_y); int sm = voxel_lie_ease(s->gait.lie), bed = (bc == 'S' || bc == CH_BED4 || bc == CH_BEDF || bc == CH_BEDL) ? 1 : (bc == '<' || bc == CH_BEDT) ? 2 : 0, to;
             if (bed) to = -(bed == 1 ? 6 * IZ : 4 * IZ);                                  // the back rests right on the pillow's top (the bunk's mattress)
             else if (bc == 'z') to = -items_height('S') + 40;                              // (the tent: as ever)
             else to = -(((bc == CH_CRIB || bc == CH_BASS || bc == CH_CRAD) ? 4 * IZ : 0) + lying_drop(&s->bore));
@@ -2893,6 +2893,22 @@ static void carry_return(void) {   // an item being moved goes back where it cam
 }
 static int is_wallish(char c) { return c == 'W' || c == 'w' || c == 'E' || c == 'e' || c == 'f' || c == 'D'; }
 static int build_ok(int x, int y) { return world_zone != ZONE_CITY || world_own_lot(x, y); }   // in SAN BOREAS: on your own lot only
+
+static int foot_ok(char ch, int L, int x, int y, int rr) {   // a long thing (a bed) needs its far tiles free floor, nothing else lying over them
+    int w, l; if (!items_foot(ch, &w, &l)) return 1;
+    int keep = world_lvl; world_lvl = L;
+    char *cell = world_cell(L, x, y), old = *cell; u8 *wc = world_wall_cell(L, x, y), oldw = *wc;
+    *cell = ch; if (items_rotates(ch)) *wc = rr >= 0 ? (u8)(0x80 | rr) : (u8)(oldw & 0x7F);
+    int r = world_item_facing(x, y) & 3;
+    *cell = '.'; int ok = 1;
+    for (int da = 0; da < w && ok; da++) for (int db = 0; db < l && ok; db++) {
+        if (!(da | db)) continue;
+        int tx = x + (r == 0 ? da : r == 1 ? db : r == 2 ? -da : -db), ty = y + (r == 0 ? db : r == 1 ? -da : r == 2 ? -db : da);
+        if (tx < 0 || ty < 0 || tx >= MW || ty >= MH || *world_cell(L, tx, ty) != '.' || world_covered(tx, ty)) ok = 0;
+    }
+    *cell = old; *wc = oldw; world_lvl = keep; return ok;
+}
+static int is_covered(int L, int x, int y) { int keep = world_lvl, c; world_lvl = L; c = world_covered(x, y); world_lvl = keep; return c; }
 static int room_rect(int *x0, int *y0, int *x1, int *y1) {   // the ROOM tool's rectangle: from the first corner to the cursor
     *x0 = MIN(room_ax, build_x); *x1 = MAX(room_ax, build_x); *y0 = MIN(room_ay, build_y); *y1 = MAX(room_ay, build_y);
     return *x1 - *x0 >= 2 && *y1 - *y0 >= 2 && *x1 - *x0 < 16 && *y1 - *y0 < 16;
@@ -3104,7 +3120,8 @@ static void build_update(void) {
         char under = world_at_l(build_lvl, build_x, build_y);
         if (!build_carry && under != '.' && items_is_item(under) && items_rotates(under) && build_ok(build_x, build_y)) {
             int keep = world_lvl; world_lvl = build_lvl; int f = world_item_facing(build_x, build_y); world_lvl = keep;
-            *world_wall_cell(build_lvl, build_x, build_y) = (u8)(0x80 | ((f + 1) & 3)); world_touched(); audio_voice(VOICE_AGREE);
+            if (!foot_ok(under, build_lvl, build_x, build_y, (f + 1) & 3)) build_say("NOT ENOUGH ROOM TO TURN IT");
+            else { *world_wall_cell(build_lvl, build_x, build_y) = (u8)(0x80 | ((f + 1) & 3)); world_touched(); audio_voice(VOICE_AGREE); }
         } else if (build_carry) { build_crot = build_crot >= 3 ? -1 : build_crot + 1; audio_voice(VOICE_AGREE); }
         else { build_rot = build_rot >= 3 ? -1 : build_rot + 1; build_say_ok(build_rot < 0 ? "TURN: AUTOMATIC" : build_rot == 0 ? "TURN: SOUTH" : build_rot == 1 ? "TURN: EAST" : build_rot == 2 ? "TURN: NORTH" : "TURN: WEST"); audio_voice(VOICE_AGREE); }
         return;
@@ -3157,6 +3174,8 @@ static void build_update(void) {
         if (build_tool == BT_BUY) { char ch = build_carry ? build_carry : items_at(build_item); int cost = build_carry ? 0 : items_cost(ch), rr = build_carry ? build_crot : build_rot;
             if (*cell == '.') {
                 if (cash < cost) build_say("NOT ENOUGH MONEY");
+                else if (is_covered(L, build_x, build_y)) build_say("THE BED IS IN THE WAY");
+                else if (!foot_ok(ch, L, build_x, build_y, rr)) build_say("NOT ENOUGH ROOM");
                 else if (ch == '|') {   // stairs: there must be a storey above, and its tile over the stairs becomes the stairwell
                     if (L >= NUP) { build_say("NO STOREY ABOVE THE TOP ONE"); }
                     else { char *up = world_cell(L + 1, build_x, build_y); if (*up == '.' || *up == ' ') { *up = ' '; *cell = ch; cash -= cost; ok = 1; } }
@@ -3172,7 +3191,7 @@ static void build_update(void) {
                 *cell = '.'; if (items_rotates(pc)) *world_wall_cell(L, build_x, build_y) = 0;
                 ok = 1; build_say_ok("X PLACES IT, O PUTS IT BACK");
             } }
-        if (build_tool == BT_WALL) { if ((*cell == '.' || (*cell == ' ' && floor_supported(L, build_x, build_y))) && cash >= 50) { *cell = 'W'; *world_wall_cell(L, build_x, build_y) = (u8)build_wp; cash -= 50; ok = 1; }
+        if (build_tool == BT_WALL) { if (*cell == '.' && is_covered(L, build_x, build_y)) build_say("SOMETHING LONG LIES THERE"); else if ((*cell == '.' || (*cell == ' ' && floor_supported(L, build_x, build_y))) && cash >= 50) { *cell = 'W'; *world_wall_cell(L, build_x, build_y) = (u8)build_wp; cash -= 50; ok = 1; }
                                      else if (*cell == ' ') build_say("NOTHING UNDER IT TO HOLD IT UP"); }
         if (build_tool == BT_FLOOR) { if (*cell == ' ' && !floor_supported(L, build_x, build_y)) build_say("NOTHING UNDER IT TO HOLD IT UP");
                                else if (cash >= 10) { if (*cell == ' ') *cell = '.'; *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; ok = 1; } }
@@ -3182,11 +3201,11 @@ static void build_update(void) {
     if (HELD(PAD_CROSS) && build_tool == BT_FLOOR && cash >= 10 && *cell != ' ' && *world_floor_cell(L, build_x, build_y) != build_fl) { *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; }
     if (HELD(PAD_CROSS) && build_tool == BT_FLOOR && L > 0 && *cell == ' ' && cash >= 10 && floor_supported(L, build_x, build_y)) { *cell = '.'; *world_floor_cell(L, build_x, build_y) = (u8)build_fl; cash -= 10; }
     if (!occupied && HELD(PAD_CROSS) && !PRESSED(PAD_CROSS)) {   // hold X and walk the cursor: a run of walls, a run of wallpaper (as in The Sims)
-        if (build_tool == BT_WALL && (*cell == '.' || (*cell == ' ' && floor_supported(L, build_x, build_y))) && cash >= 50) { *cell = 'W'; *world_wall_cell(L, build_x, build_y) = (u8)build_wp; cash -= 50; }
+        if (build_tool == BT_WALL && (*cell == '.' || (*cell == ' ' && floor_supported(L, build_x, build_y))) && !is_covered(L, build_x, build_y) && cash >= 50) { *cell = 'W'; *world_wall_cell(L, build_x, build_y) = (u8)build_wp; cash -= 50; }
         if (build_tool == BT_PAINT && is_wallish(*cell)) *world_wall_cell(L, build_x, build_y) = (u8)build_wp;
         if (build_tool == BT_BUY && !build_carry && *cell == '.') {   // hold X and walk: a row of hedge, fence or other cheap things
             char dc = items_at(build_item); int dcost = items_cost(dc);
-            if (dc != '|' && (items_along(dc) || dcost <= 120) && cash >= dcost) { *cell = dc; if (items_rotates(dc)) *world_wall_cell(L, build_x, build_y) = build_rot >= 0 ? (u8)(0x80 | build_rot) : 0; cash -= dcost; }
+            int dw_, dl_; if (dc != '|' && !items_foot(dc, &dw_, &dl_) && !is_covered(L, build_x, build_y) && (items_along(dc) || dcost <= 120) && cash >= dcost) { *cell = dc; if (items_rotates(dc)) *world_wall_cell(L, build_x, build_y) = build_rot >= 0 ? (u8)(0x80 | build_rot) : 0; cash -= dcost; }
         }
     }
     if (!occupied && build_tool == BT_WALL && HELD(PAD_SQUARE) && !PRESSED(PAD_SQUARE) && *cell == 'W') { *cell = '.'; cash += 25; }   // hold SQUARE: a run of walls away

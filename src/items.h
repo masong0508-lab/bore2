@@ -23,6 +23,7 @@ const char *items_name(char ch);
 int  items_height(char ch);                              // the top of the item in world units (for standing on crates etc.)
 int  items_hit(char ch, int rot, int along, int cu, int cv, int r);   // does a body (a square of half-width r) at (cu, cv) in the item's tile, world units from its corner, touch one of its solid boxes? -1: no footprint data (ramps, stairs): the whole tile
 int  items_rotates(char ch);                             // 1: it faces away from the wall
+int  items_foot(char ch, int *w, int *l);               // the tiles it covers: w across, l along its facing (returns 1 if more than one tile)
 int  items_along(char ch);                               // 1: rails, ledges, benches, barriers link up along a line
 int  items_count(void);
 char items_at(int i);                                    // the i-th placeable letter (the build menu order)
@@ -35,6 +36,7 @@ int  items_cost(char ch);
 #define CH_BEDT  ((char)0xED)                            // a toddler bed
 #define CH_BASS  ((char)0xEE)                            // a bassinet (a baby sleeps in it, like the crib)
 #define CH_CRAD  ((char)0xEF)                            // a cradle
+#define CH_BEDL  ((char)0xF6)                            // a single bed, two tiles long
 #define CH_CAKE  ((char)0x82)                            // a birthday cake on its party table (baked at the fridge)
 #define CH_GRAVE ((char)0x83)                            // where an elder of the family rests
 // the island's own (Castaway): its secrets, and what a castaway lives off

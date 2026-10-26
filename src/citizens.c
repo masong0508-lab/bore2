@@ -179,8 +179,8 @@ COLD static void sleep_spot(const Cit *c, const Home *hm, int *x, int *z) {   //
     int k = 0, want_ = c->mem, couple = 0;
     if (c->pid != NOPID) { u8 a, kd, t, e; pop_family_kinds(pop_fam_of(c->pid), &a, &kd, &t, &e, (u8 *)&couple); couple &= 1; if (couple && want_ > 0) want_--; }
     for (int y = hm->y0; y <= hm->y1; y++) for (int xx = hm->x0; xx <= hm->x1; xx++) {
-        char ch = world_at(xx, y); if (ch != 'S' && ch != '<' && ch != CH_BED4 && ch != CH_BEDF && ch != CH_BEDT) continue;
-        int cap = (ch == '<' || ch == CH_BEDF) ? 2 : 1;
+        char ch = world_at(xx, y); if (ch != 'S' && ch != '<' && ch != CH_BED4 && ch != CH_BEDF && ch != CH_BEDT && ch != CH_BEDL) continue;
+        int cap = ch == '<' ? 2 : 1;
         if (want_ < k + cap) { *x = xx * TILE + TILE / 2; *z = -(y * TILE + TILE / 2); return; }
         k += cap;
     }

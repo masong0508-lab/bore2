@@ -74,6 +74,7 @@ void world_doors_reset(void);                    // doors: forget who stood wher
 void world_door_mark(int tx, int ty);            // ... and say who stands where now (a door beside them slides open)
 int  world_floor_y(int mx, int my);              // the height you stand at (crates, funboxes)
 char world_at(int mx, int my);
+int  world_covered(int mx, int my);              // 1: the far end of a long thing (a bed) from a neighbouring tile lies here
 int  world_item_facing(int mx, int my);          // 0 S, 1 E, 2 N, 3 W: away from the wall, towards open floor
 int  world_along(int mx, int my, char ch);
 void world_find(char ch, int *mx, int *my);      // the first tile holding ch (-1 if none)

@@ -9,8 +9,6 @@ static const u16 p_n_3c6fb6b7[5]={RGB(30,21,11),RGB(24,17,9),RGB(26,19,10),RGB(2
 MAT(n_3c6fb6b7,p_n_3c6fb6b7,8,4,"aaaaaaaa","bccccccb","bddddddb","eeeeeeee")
 static const u16 p_n_0853a14e[3]={RGB(31,31,8),RGB(30,24,6),RGB(21,17,4)};
 MAT(n_0853a14e,p_n_0853a14e,2,2,"ab","bc")
-static const u16 p_n_435dc5f6[2]={RGB(24,17,9),RGB(22,16,8)};
-MAT(n_435dc5f6,p_n_435dc5f6,2,2,"ab","ba")
 static const u16 p_n_77dbe4db[2]={RGB(19,14,7),RGB(18,13,7)};
 MAT(n_77dbe4db,p_n_77dbe4db,2,2,"ab","ba")
 static const u16 p_n_3fe9dc3a[2]={RGB(28,20,10),RGB(26,19,9)};
@@ -29,6 +27,36 @@ static const u16 p_n_d06124b8[2]={RGB(31,31,31),RGB(24,24,23)};
 MAT(n_d06124b8,p_n_d06124b8,4,2,"aaaa","bbbb")
 static const u16 p_n_17b17fb0[5]={RGB(30,30,29),RGB(31,31,31),RGB(24,24,23),RGB(26,26,25),RGB(23,23,22)};
 MAT(n_17b17fb0,p_n_17b17fb0,4,4,"abbc","addc","addc","eeec")
+static const u16 p_n_06152340[1]={RGB(7,11,20)};
+MAT(n_06152340,p_n_06152340,8,1,"aaaaaaaa")
+static const u16 p_n_0c5dbca5[3]={RGB(7,12,22),RGB(7,13,24),RGB(10,17,31)};
+MAT(n_0c5dbca5,p_n_0c5dbca5,8,8,"aaaaaaaa","abbbbbba","acccccca","acccccca","acccccca","abbbbbba","acccccca","aaaaaaaa")
+static const u16 p_n_b5518893[4]={RGB(17,6,6),RGB(18,6,6),RGB(30,27,20),RGB(24,8,8)};
+MAT(n_b5518893,p_n_b5518893,8,8,"aaaaaaaa","abcbdbca","acddccda","abdbcbda","adccddca","abcbdbca","acddccda","aaaaaaaa")
+static const u16 p_n_6b77d563[7]={RGB(25,18,9),RGB(24,17,8),RGB(20,14,7),RGB(14,10,5),RGB(22,15,8),RGB(23,16,8),RGB(13,9,5)};
+MAT(n_6b77d563,p_n_6b77d563,8,12,"aaaaaaaa","bccccccd","beeeeeed","bddddddd","bfdfdfdd","bfdfdfdd","bfdfdfdd","bfdfdfdd","bfdfdfdd","bfdfdfdd","bfdfdfdd","gggggggg")
+static const u16 p_n_431c842b[3]={RGB(25,18,9),RGB(14,10,5),RGB(11,8,4)};
+MAT(n_431c842b,p_n_431c842b,2,12,"ab","ab","cc","ab","ab","ab","cc","ab","ab","ab","cc","ab")
+static const u16 p_n_189abb03[5]={RGB(25,18,9),RGB(20,14,7),RGB(22,15,8),RGB(18,12,6),RGB(13,9,5)};
+MAT(n_189abb03,p_n_189abb03,8,4,"aaaaaaaa","bccccccb","bddddddb","eeeeeeee")
+static const u16 p_n_8b3b4cbc[2]={RGB(16,11,6),RGB(15,10,6)};
+MAT(n_8b3b4cbc,p_n_8b3b4cbc,2,2,"ab","ba")
+static const u16 p_n_0e249fce[2]={RGB(23,16,8),RGB(21,15,7)};
+MAT(n_0e249fce,p_n_0e249fce,2,2,"ab","ba")
+static const u16 p_n_88b16868[3]={RGB(23,16,8),RGB(14,10,5),RGB(17,12,6)};
+MAT(n_88b16868,p_n_88b16868,2,3,"ab","ac","ab")
+static const u16 p_n_24e1aab5[2]={RGB(22,15,8),RGB(20,14,7)};
+MAT(n_24e1aab5,p_n_24e1aab5,2,2,"ab","ba")
+static const u16 p_n_df09912c[3]={RGB(23,16,8),RGB(14,10,5),RGB(17,12,6)};
+MAT(n_df09912c,p_n_df09912c,2,4,"ab","ac","ab","ab")
+static const u16 p_n_9bc10d1d[5]={RGB(20,14,8),RGB(16,11,6),RGB(18,12,7),RGB(14,10,5),RGB(10,7,4)};
+MAT(n_9bc10d1d,p_n_9bc10d1d,8,4,"aaaaaaaa","bccccccb","bddddddb","eeeeeeee")
+static const u16 p_n_b5cec7ff[4]={RGB(21,7,7),RGB(30,10,10),RGB(24,8,8),RGB(16,5,5)};
+MAT(n_b5cec7ff,p_n_b5cec7ff,8,3,"abababab","acacacac","dddddddd")
+static const u16 p_n_00c8d3ae[1]={RGB(19,7,7)};
+MAT(n_00c8d3ae,p_n_00c8d3ae,8,1,"aaaaaaaa")
+static const u16 p_n_8b00f802[3]={RGB(20,7,7),RGB(22,7,7),RGB(29,10,10)};
+MAT(n_8b00f802,p_n_8b00f802,8,8,"aaaaaaaa","abbbbbba","acccccca","acccccca","acccccca","abbbbbba","acccccca","aaaaaaaa")
 static const u16 p_n_5b046bc8[3]={RGB(16,9,5),RGB(10,6,3),RGB(12,7,3)};
 MAT(n_5b046bc8,p_n_5b046bc8,2,20,"ab","ac","ab","ab","ac","ab","ab","ac","ab","ab","ac","ab","ab","ac","ab","ab","ac","ab","ab","ac")
 static const u16 p_n_7a88e56c[4]={RGB(16,9,5),RGB(14,8,4),RGB(10,6,3),RGB(12,7,3)};
@@ -61,28 +89,6 @@ static const u16 p_n_344e842f[4]={RGB(20,4,7),RGB(29,5,10),RGB(23,4,8),RGB(15,3,
 MAT(n_344e842f,p_n_344e842f,2,6,"ab","ac","ac","ac","ac","dd")
 static const u16 p_n_bf7f0eff[2]={RGB(21,4,7),RGB(20,4,7)};
 MAT(n_bf7f0eff,p_n_bf7f0eff,2,2,"ab","ba")
-static const u16 p_n_b5518893[4]={RGB(17,6,6),RGB(18,6,6),RGB(30,27,20),RGB(24,8,8)};
-MAT(n_b5518893,p_n_b5518893,8,8,"aaaaaaaa","abcbdbca","acddccda","abdbcbda","adccddca","abcbdbca","acddccda","aaaaaaaa")
-static const u16 p_n_6b77d563[7]={RGB(25,18,9),RGB(24,17,8),RGB(20,14,7),RGB(14,10,5),RGB(22,15,8),RGB(23,16,8),RGB(13,9,5)};
-MAT(n_6b77d563,p_n_6b77d563,8,12,"aaaaaaaa","bccccccd","beeeeeed","bddddddd","bfdfdfdd","bfdfdfdd","bfdfdfdd","bfdfdfdd","bfdfdfdd","bfdfdfdd","bfdfdfdd","gggggggg")
-static const u16 p_n_431c842b[3]={RGB(25,18,9),RGB(14,10,5),RGB(11,8,4)};
-MAT(n_431c842b,p_n_431c842b,2,12,"ab","ab","cc","ab","ab","ab","cc","ab","ab","ab","cc","ab")
-static const u16 p_n_189abb03[5]={RGB(25,18,9),RGB(20,14,7),RGB(22,15,8),RGB(18,12,6),RGB(13,9,5)};
-MAT(n_189abb03,p_n_189abb03,8,4,"aaaaaaaa","bccccccb","bddddddb","eeeeeeee")
-static const u16 p_n_8b3b4cbc[2]={RGB(16,11,6),RGB(15,10,6)};
-MAT(n_8b3b4cbc,p_n_8b3b4cbc,2,2,"ab","ba")
-static const u16 p_n_0e249fce[2]={RGB(23,16,8),RGB(21,15,7)};
-MAT(n_0e249fce,p_n_0e249fce,2,2,"ab","ba")
-static const u16 p_n_88b16868[3]={RGB(23,16,8),RGB(14,10,5),RGB(17,12,6)};
-MAT(n_88b16868,p_n_88b16868,2,3,"ab","ac","ab")
-static const u16 p_n_24e1aab5[2]={RGB(22,15,8),RGB(20,14,7)};
-MAT(n_24e1aab5,p_n_24e1aab5,2,2,"ab","ba")
-static const u16 p_n_df09912c[3]={RGB(23,16,8),RGB(14,10,5),RGB(17,12,6)};
-MAT(n_df09912c,p_n_df09912c,2,4,"ab","ac","ab","ab")
-static const u16 p_n_9bc10d1d[5]={RGB(20,14,8),RGB(16,11,6),RGB(18,12,7),RGB(14,10,5),RGB(10,7,4)};
-MAT(n_9bc10d1d,p_n_9bc10d1d,8,4,"aaaaaaaa","bccccccb","bddddddb","eeeeeeee")
-static const u16 p_n_b5cec7ff[4]={RGB(21,7,7),RGB(30,10,10),RGB(24,8,8),RGB(16,5,5)};
-MAT(n_b5cec7ff,p_n_b5cec7ff,8,3,"abababab","acacacac","dddddddd")
 static const u16 p_n_3616d8d1[8]={RGB(18,31,23),RGB(17,31,22),RGB(14,26,18),RGB(10,18,13),RGB(13,24,17),RGB(10,18,12),RGB(9,16,11),RGB(9,17,12)};
 MAT(n_3616d8d1,p_n_3616d8d1,8,12,"aaaaaaaa","bccccccd","beccccfd","bebbbbfd","beccccfd","beccccfd","beccccfd","beccccfd","beccccfd","bgggggfd","bccccccd","hhhhhhhh")
 static const u16 p_n_f3a41006[2]={RGB(11,21,14),RGB(10,20,13)};
@@ -131,6 +137,8 @@ static const u16 p_n_b3508f0f[11]={RGB(15,9,4),RGB(17,9,5),RGB(7,4,2),RGB(11,7,3
 MAT(n_b3508f0f,p_n_b3508f0f,8,12,"abbbcbbd","aefgcegd","aehgcegd","aehgcegd","aehgcegd","aiigcigd","aeejcjed","aefgcegd","aehgcegd","aehgcegd","aiigcigd","kkkkckkd")
 static const u16 p_n_f96a1276[3]={RGB(28,20,10),RGB(17,12,6),RGB(20,14,8)};
 MAT(n_f96a1276,p_n_f96a1276,2,2,"ab","ac")
+static const u16 p_n_435dc5f6[2]={RGB(24,17,9),RGB(22,16,8)};
+MAT(n_435dc5f6,p_n_435dc5f6,2,2,"ab","ba")
 static const u16 p_n_e3828841[3]={RGB(31,22,12),RGB(24,17,9),RGB(17,12,6)};
 MAT(n_e3828841,p_n_e3828841,6,7,"abbbbc","abbbbc","abbbbc","abbbbc","abbbbc","abbbbc","abbbbc")
 static const u16 p_n_d73e6ed8[2]={RGB(17,12,6),RGB(16,11,6)};
@@ -209,10 +217,10 @@ static const u16 p_n_037bd757[4]={RGB(28,20,10),RGB(24,17,9),RGB(17,12,6),RGB(20
 MAT(n_037bd757,p_n_037bd757,6,2,"abbbbc","adbbbc")
 static const u16 p_n_ea73c0b6[3]={RGB(29,29,28),RGB(30,14,22),RGB(20,9,14)};
 MAT(n_ea73c0b6,p_n_ea73c0b6,2,2,"ab","bc")
-static const IBox bxB0[11]={{0,0,8,1,0,11,{&n_0b0ba28c,&n_77dbe4db,&n_77dbe4db,&n_77dbe4db,&n_3fe9dc3a}},{0,0,1,1,11,12,{&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e}},{7,0,8,1,11,12,{&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e}},{0,7,1,8,0,4,{&n_024c79f9,&n_024c79f9,&n_024c79f9,&n_024c79f9,&n_3fe9dc3a}},{7,7,8,8,0,4,{&n_024c79f9,&n_024c79f9,&n_024c79f9,&n_024c79f9,&n_3fe9dc3a}},{0,1,1,7,2,4,{&n_a8a411c3,&n_a8a411c3,&n_a8a411c3,&n_a8a411c3,&n_25b89f1f}},{7,1,8,7,2,4,{&n_a8a411c3,&n_a8a411c3,&n_a8a411c3,&n_a8a411c3,&n_25b89f1f}},{0,7,8,8,2,6,{&n_3c6fb6b7,&n_9224e5b9,&n_9f6eeaed,&n_9224e5b9,&n_25b89f1f}},{1,1,7,7,1,2,{&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b}},{1,1,7,7,2,5,{&n_b71857a0,&n_b71857a0,&n_b71857a0,&n_b71857a0,&n_ffab1fc5}},{2,1,6,3,5,6,{&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_17b17fb0}}};
-static const IBox bxB1[18]={{0,0,8,1,0,12,{&n_b6697666,&n_25b435cb,&n_25b435cb,&n_25b435cb,&n_622c1f44}},{0,0,1,1,12,20,{&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_0853a14e}},{7,0,8,1,12,20,{&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_0853a14e}},{0,7,1,8,0,20,{&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_0853a14e}},{7,7,8,8,0,20,{&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_0853a14e}},{0,1,1,7,19,20,{&n_7fb746be,&n_7fb746be,&n_7fb746be,&n_7fb746be,&n_59ab8c82}},{7,1,8,7,19,20,{&n_7fb746be,&n_7fb746be,&n_7fb746be,&n_7fb746be,&n_59ab8c82}},{1,7,7,8,19,20,{&n_7a88e56c,&n_7a88e56c,&n_7a88e56c,&n_7a88e56c,&n_59ab8c82}},{1,0,7,1,19,20,{&n_7a88e56c,&n_7a88e56c,&n_7a88e56c,&n_7a88e56c,&n_59ab8c82}},{0,1,1,7,2,4,{&n_2454c740,&n_2454c740,&n_2454c740,&n_2454c740,&n_59ab8c82}},{7,1,8,7,2,4,{&n_2454c740,&n_2454c740,&n_2454c740,&n_2454c740,&n_59ab8c82}},{0,7,8,8,2,5,{&n_c95ca3de,&n_2454c740,&n_b42b5cfc,&n_2454c740,&n_59ab8c82}},{1,1,7,7,1,2,{&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b}},{1,1,7,7,2,5,{&n_66bf1446,&n_66bf1446,&n_66bf1446,&n_66bf1446,&n_2e9d0a81}},{1,1,4,3,5,6,{&n_6de0febb,&n_6de0febb,&n_6de0febb,&n_6de0febb,&n_52ac8d6c}},{4,1,7,3,5,6,{&n_6de0febb,&n_6de0febb,&n_6de0febb,&n_6de0febb,&n_52ac8d6c}},{0,1,1,2,13,19,{&n_344e842f,&n_344e842f,&n_344e842f,&n_344e842f,&n_bf7f0eff}},{7,1,8,2,13,19,{&n_344e842f,&n_344e842f,&n_344e842f,&n_344e842f,&n_bf7f0eff}}};
-static const IBox bxB2[12]={{0,0,8,1,0,11,{&n_6b77d563,&n_8b3b4cbc,&n_8b3b4cbc,&n_8b3b4cbc,&n_0e249fce}},{0,0,1,1,11,12,{&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e}},{7,0,8,1,11,12,{&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e}},{0,7,1,8,0,4,{&n_431c842b,&n_431c842b,&n_431c842b,&n_431c842b,&n_0e249fce}},{7,7,8,8,0,4,{&n_431c842b,&n_431c842b,&n_431c842b,&n_431c842b,&n_0e249fce}},{0,1,1,7,2,4,{&n_88b16868,&n_88b16868,&n_88b16868,&n_88b16868,&n_24e1aab5}},{7,1,8,7,2,4,{&n_88b16868,&n_88b16868,&n_88b16868,&n_88b16868,&n_24e1aab5}},{0,7,8,8,2,6,{&n_189abb03,&n_df09912c,&n_9bc10d1d,&n_df09912c,&n_24e1aab5}},{1,1,7,7,1,2,{&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b}},{1,1,7,7,2,5,{&n_b5cec7ff,&n_b5cec7ff,&n_b5cec7ff,&n_b5cec7ff,&n_b5518893}},{1,1,4,3,5,6,{&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_17b17fb0}},{4,1,7,3,5,6,{&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_17b17fb0}}};
-static const IBox bxB3[8]={{0,0,8,1,0,8,{&n_3616d8d1,&n_f3a41006,&n_f3a41006,&n_f3a41006,&n_6f530e37}},{0,7,8,8,0,5,{&n_9de5c9e8,&n_4fb5b950,&n_f867a4e3,&n_4fb5b950,&n_4be07521}},{0,1,1,7,3,6,{&n_885c48fd,&n_885c48fd,&n_885c48fd,&n_885c48fd,&n_4be07521}},{7,1,8,7,3,6,{&n_885c48fd,&n_885c48fd,&n_885c48fd,&n_885c48fd,&n_4be07521}},{0,1,1,7,0,3,{&n_4fb5b950,&n_4fb5b950,&n_4fb5b950,&n_4fb5b950,&n_e6a577e9}},{7,1,8,7,0,3,{&n_4fb5b950,&n_4fb5b950,&n_4fb5b950,&n_4fb5b950,&n_e6a577e9}},{1,1,7,7,1,3,{&n_e74172e0,&n_e74172e0,&n_e74172e0,&n_e74172e0,&n_d0b69bc4}},{2,1,6,3,3,4,{&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_17b17fb0}}};
+static const IBox bxB0[12]={{0,0,8,1,0,11,{&n_0b0ba28c,&n_77dbe4db,&n_77dbe4db,&n_77dbe4db,&n_3fe9dc3a}},{0,0,1,1,11,12,{&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e}},{7,0,8,1,11,12,{&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e}},{0,7,1,8,0,4,{&n_024c79f9,&n_024c79f9,&n_024c79f9,&n_024c79f9,&n_3fe9dc3a}},{7,7,8,8,0,4,{&n_024c79f9,&n_024c79f9,&n_024c79f9,&n_024c79f9,&n_3fe9dc3a}},{0,1,1,7,2,4,{&n_a8a411c3,&n_a8a411c3,&n_a8a411c3,&n_a8a411c3,&n_25b89f1f}},{7,1,8,7,2,4,{&n_a8a411c3,&n_a8a411c3,&n_a8a411c3,&n_a8a411c3,&n_25b89f1f}},{0,7,8,8,2,6,{&n_3c6fb6b7,&n_9224e5b9,&n_9f6eeaed,&n_9224e5b9,&n_25b89f1f}},{1,1,7,7,1,2,{&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b}},{1,1,7,7,2,5,{&n_b71857a0,&n_b71857a0,&n_b71857a0,&n_b71857a0,&n_ffab1fc5}},{2,1,6,3,5,6,{&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_17b17fb0}},{1,3,7,7,5,6,{&n_06152340,&n_06152340,&n_06152340,&n_06152340,&n_0c5dbca5}}};
+static const IBox bxB1[18]={{0,0,16,1,0,12,{&n_b6697666,&n_25b435cb,&n_25b435cb,&n_25b435cb,&n_622c1f44}},{0,0,1,1,12,20,{&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_0853a14e}},{15,0,16,1,12,20,{&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_0853a14e}},{0,14,1,15,0,20,{&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_0853a14e}},{15,14,16,15,0,20,{&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_5b046bc8,&n_0853a14e}},{0,1,1,14,19,20,{&n_7fb746be,&n_7fb746be,&n_7fb746be,&n_7fb746be,&n_59ab8c82}},{15,1,16,14,19,20,{&n_7fb746be,&n_7fb746be,&n_7fb746be,&n_7fb746be,&n_59ab8c82}},{1,14,15,15,19,20,{&n_7a88e56c,&n_7a88e56c,&n_7a88e56c,&n_7a88e56c,&n_59ab8c82}},{1,0,15,1,19,20,{&n_7a88e56c,&n_7a88e56c,&n_7a88e56c,&n_7a88e56c,&n_59ab8c82}},{0,1,1,14,2,4,{&n_2454c740,&n_2454c740,&n_2454c740,&n_2454c740,&n_59ab8c82}},{15,1,16,14,2,4,{&n_2454c740,&n_2454c740,&n_2454c740,&n_2454c740,&n_59ab8c82}},{0,14,16,15,2,5,{&n_c95ca3de,&n_2454c740,&n_b42b5cfc,&n_2454c740,&n_59ab8c82}},{1,1,15,14,1,2,{&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b}},{1,1,15,14,2,5,{&n_66bf1446,&n_66bf1446,&n_66bf1446,&n_66bf1446,&n_2e9d0a81}},{2,1,6,3,5,6,{&n_6de0febb,&n_6de0febb,&n_6de0febb,&n_6de0febb,&n_52ac8d6c}},{10,1,14,3,5,6,{&n_6de0febb,&n_6de0febb,&n_6de0febb,&n_6de0febb,&n_52ac8d6c}},{0,1,1,2,13,19,{&n_344e842f,&n_344e842f,&n_344e842f,&n_344e842f,&n_bf7f0eff}},{15,1,16,2,13,19,{&n_344e842f,&n_344e842f,&n_344e842f,&n_344e842f,&n_bf7f0eff}}};
+static const IBox bxB2[13]={{0,0,16,1,0,11,{&n_6b77d563,&n_8b3b4cbc,&n_8b3b4cbc,&n_8b3b4cbc,&n_0e249fce}},{0,0,1,1,11,12,{&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e}},{15,0,16,1,11,12,{&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e}},{0,14,1,15,0,4,{&n_431c842b,&n_431c842b,&n_431c842b,&n_431c842b,&n_0e249fce}},{15,14,16,15,0,4,{&n_431c842b,&n_431c842b,&n_431c842b,&n_431c842b,&n_0e249fce}},{0,1,1,14,2,4,{&n_88b16868,&n_88b16868,&n_88b16868,&n_88b16868,&n_24e1aab5}},{15,1,16,14,2,4,{&n_88b16868,&n_88b16868,&n_88b16868,&n_88b16868,&n_24e1aab5}},{0,14,16,15,2,6,{&n_189abb03,&n_df09912c,&n_9bc10d1d,&n_df09912c,&n_24e1aab5}},{1,1,15,14,1,2,{&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b}},{1,1,15,14,2,5,{&n_b5cec7ff,&n_b5cec7ff,&n_b5cec7ff,&n_b5cec7ff,&n_b5518893}},{2,1,6,3,5,6,{&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_17b17fb0}},{10,1,14,3,5,6,{&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_17b17fb0}},{1,10,15,14,5,6,{&n_00c8d3ae,&n_00c8d3ae,&n_00c8d3ae,&n_00c8d3ae,&n_8b00f802}}};
+static const IBox bxB3[8]={{0,0,8,1,0,8,{&n_3616d8d1,&n_f3a41006,&n_f3a41006,&n_f3a41006,&n_6f530e37}},{0,11,8,12,0,5,{&n_9de5c9e8,&n_4fb5b950,&n_f867a4e3,&n_4fb5b950,&n_4be07521}},{0,1,1,11,3,6,{&n_885c48fd,&n_885c48fd,&n_885c48fd,&n_885c48fd,&n_4be07521}},{7,1,8,11,3,6,{&n_885c48fd,&n_885c48fd,&n_885c48fd,&n_885c48fd,&n_4be07521}},{0,1,1,11,0,3,{&n_4fb5b950,&n_4fb5b950,&n_4fb5b950,&n_4fb5b950,&n_e6a577e9}},{7,1,8,11,0,3,{&n_4fb5b950,&n_4fb5b950,&n_4fb5b950,&n_4fb5b950,&n_e6a577e9}},{1,1,7,11,1,3,{&n_e74172e0,&n_e74172e0,&n_e74172e0,&n_e74172e0,&n_d0b69bc4}},{2,1,6,3,3,4,{&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_17b17fb0}}};
 static const IBox bxB4[10]={{1,1,2,2,0,2,{&n_66f434db,&n_66f434db,&n_66f434db,&n_66f434db,&n_951a3a5e}},{6,1,7,2,0,2,{&n_66f434db,&n_66f434db,&n_66f434db,&n_66f434db,&n_951a3a5e}},{1,6,2,7,0,2,{&n_66f434db,&n_66f434db,&n_66f434db,&n_66f434db,&n_951a3a5e}},{6,6,7,7,0,2,{&n_66f434db,&n_66f434db,&n_66f434db,&n_66f434db,&n_951a3a5e}},{1,1,7,7,2,4,{&n_0741484b,&n_0741484b,&n_0741484b,&n_0741484b,&n_26b27787}},{1,6,7,7,4,9,{&n_20a23d06,&n_20a23d06,&n_20a23d06,&n_20a23d06,&n_48817149}},{1,1,7,2,4,9,{&n_20a23d06,&n_20a23d06,&n_20a23d06,&n_20a23d06,&n_48817149}},{1,2,2,6,4,9,{&n_a039d979,&n_a039d979,&n_a039d979,&n_a039d979,&n_48817149}},{6,2,7,6,4,9,{&n_a039d979,&n_a039d979,&n_a039d979,&n_a039d979,&n_48817149}},{1,1,7,3,9,14,{&n_1acdaba1,&n_1acdaba1,&n_1acdaba1,&n_1acdaba1,&n_cff54063}}};
 static const IBox bxB5[9]={{0,1,8,2,0,1,{&n_b68d3a53,&n_b68d3a53,&n_b68d3a53,&n_b68d3a53,&n_b68d3a53}},{0,6,8,7,0,1,{&n_b68d3a53,&n_b68d3a53,&n_b68d3a53,&n_b68d3a53,&n_b68d3a53}},{1,1,2,7,1,2,{&n_951a3a5e,&n_951a3a5e,&n_951a3a5e,&n_951a3a5e,&n_951a3a5e}},{6,1,7,7,1,2,{&n_951a3a5e,&n_951a3a5e,&n_951a3a5e,&n_951a3a5e,&n_951a3a5e}},{2,2,6,6,2,4,{&n_0741484b,&n_0741484b,&n_0741484b,&n_0741484b,&n_d2bac764}},{1,1,7,2,2,8,{&n_550795a9,&n_550795a9,&n_550795a9,&n_550795a9,&n_b68d3a53}},{1,6,7,7,2,8,{&n_550795a9,&n_550795a9,&n_550795a9,&n_550795a9,&n_b68d3a53}},{1,2,2,6,2,6,{&n_6ecd92d4,&n_6ecd92d4,&n_6ecd92d4,&n_6ecd92d4,&n_b68d3a53}},{6,2,7,6,2,6,{&n_6ecd92d4,&n_6ecd92d4,&n_6ecd92d4,&n_6ecd92d4,&n_b68d3a53}}};
 static const IBox bxB6[8]={{1,1,2,2,0,2,{&n_f96a1276,&n_f96a1276,&n_f96a1276,&n_f96a1276,&n_435dc5f6}},{6,1,7,2,0,2,{&n_f96a1276,&n_f96a1276,&n_f96a1276,&n_f96a1276,&n_435dc5f6}},{1,6,2,7,0,2,{&n_f96a1276,&n_f96a1276,&n_f96a1276,&n_f96a1276,&n_435dc5f6}},{6,6,7,7,0,2,{&n_f96a1276,&n_f96a1276,&n_f96a1276,&n_f96a1276,&n_435dc5f6}},{1,1,7,7,2,9,{&n_53a11b2d,&n_e3828841,&n_d73e6ed8,&n_e3828841,&n_3fe9dc3a}},{3,3,5,5,9,10,{&n_50c8a5bb,&n_50c8a5bb,&n_50c8a5bb,&n_50c8a5bb,&n_50c8a5bb}},{3,3,5,5,10,12,{&n_39680de8,&n_39680de8,&n_39680de8,&n_39680de8,&n_50c8a5bb}},{2,2,6,6,12,15,{&n_9803897c,&n_9803897c,&n_9803897c,&n_9803897c,&n_bef577e3}}};
@@ -221,10 +229,11 @@ static const IBox bxB8[11]={{1,0,2,8,0,1,{&n_b68d3a53,&n_b68d3a53,&n_b68d3a53,&n
 static const IBox bxB9[6]={{0,1,8,7,1,22,{&n_b3508f0f,&n_1baa24f2,&n_f191b164,&n_1baa24f2,&n_59ab8c82}},{0,1,8,7,22,24,{&n_c95ca3de,&n_c95ca3de,&n_c95ca3de,&n_c95ca3de,&n_325914cc}},{0,1,1,2,0,1,{&n_1f8d5992,&n_1f8d5992,&n_1f8d5992,&n_1f8d5992,&n_1f8d5992}},{7,1,8,2,0,1,{&n_1f8d5992,&n_1f8d5992,&n_1f8d5992,&n_1f8d5992,&n_1f8d5992}},{0,6,1,7,0,1,{&n_1f8d5992,&n_1f8d5992,&n_1f8d5992,&n_1f8d5992,&n_1f8d5992}},{7,6,8,7,0,1,{&n_1f8d5992,&n_1f8d5992,&n_1f8d5992,&n_1f8d5992,&n_1f8d5992}}};
 static const IBox bxB10[11]={{0,0,8,8,0,1,{&n_7e837b28,&n_7e837b28,&n_7e837b28,&n_7e837b28,&n_68e64b10}},{0,0,8,1,1,7,{&n_70d7108a,&n_70d7108a,&n_70d7108a,&n_70d7108a,&n_38ac502b}},{0,7,8,8,1,7,{&n_70d7108a,&n_70d7108a,&n_70d7108a,&n_70d7108a,&n_38ac502b}},{0,1,1,7,1,7,{&n_70d7108a,&n_70d7108a,&n_70d7108a,&n_70d7108a,&n_38ac502b}},{7,1,8,7,1,7,{&n_70d7108a,&n_70d7108a,&n_70d7108a,&n_70d7108a,&n_38ac502b}},{0,0,8,1,7,8,{&n_c05b1d0c,&n_c05b1d0c,&n_c05b1d0c,&n_c05b1d0c,&n_c327b417}},{0,7,8,8,7,8,{&n_c05b1d0c,&n_c05b1d0c,&n_c05b1d0c,&n_c05b1d0c,&n_c327b417}},{0,1,1,7,7,8,{&n_c05b1d0c,&n_c05b1d0c,&n_c05b1d0c,&n_c05b1d0c,&n_c327b417}},{7,1,8,7,7,8,{&n_c05b1d0c,&n_c05b1d0c,&n_c05b1d0c,&n_c05b1d0c,&n_c327b417}},{2,3,3,4,1,2,{&n_08f1c3b5,&n_08f1c3b5,&n_08f1c3b5,&n_08f1c3b5,&n_08f1c3b5}},{4,4,6,6,1,3,{&n_f9fa3345,&n_f9fa3345,&n_f9fa3345,&n_f9fa3345,&n_f9fa3345}}};
 static const IBox bxB11[6]={{0,1,8,7,0,8,{&n_8798cbae,&n_f7bda534,&n_d73e6ed8,&n_f7bda534,&n_25b89f1f}},{1,2,7,6,8,9,{&n_a2c5cf85,&n_a2c5cf85,&n_a2c5cf85,&n_a2c5cf85,&n_a2c5cf85}},{0,1,1,7,9,11,{&n_f96a1276,&n_f96a1276,&n_f96a1276,&n_f96a1276,&n_435dc5f6}},{7,1,8,7,9,11,{&n_f96a1276,&n_f96a1276,&n_f96a1276,&n_f96a1276,&n_435dc5f6}},{1,1,7,2,9,11,{&n_037bd757,&n_037bd757,&n_037bd757,&n_037bd757,&n_435dc5f6}},{1,3,3,5,9,10,{&n_ea73c0b6,&n_ea73c0b6,&n_ea73c0b6,&n_ea73c0b6,&n_ea73c0b6}}};
+static const IBox bxB12[12]={{0,0,8,1,0,11,{&n_0b0ba28c,&n_77dbe4db,&n_77dbe4db,&n_77dbe4db,&n_3fe9dc3a}},{0,0,1,1,11,12,{&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e}},{7,0,8,1,11,12,{&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e,&n_0853a14e}},{0,14,1,15,0,4,{&n_024c79f9,&n_024c79f9,&n_024c79f9,&n_024c79f9,&n_3fe9dc3a}},{7,14,8,15,0,4,{&n_024c79f9,&n_024c79f9,&n_024c79f9,&n_024c79f9,&n_3fe9dc3a}},{0,1,1,14,2,4,{&n_a8a411c3,&n_a8a411c3,&n_a8a411c3,&n_a8a411c3,&n_25b89f1f}},{7,1,8,14,2,4,{&n_a8a411c3,&n_a8a411c3,&n_a8a411c3,&n_a8a411c3,&n_25b89f1f}},{0,14,8,15,2,6,{&n_3c6fb6b7,&n_9224e5b9,&n_9f6eeaed,&n_9224e5b9,&n_25b89f1f}},{1,1,7,14,1,2,{&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b,&n_9dedbe8b}},{1,1,7,14,2,5,{&n_b71857a0,&n_b71857a0,&n_b71857a0,&n_b71857a0,&n_ffab1fc5}},{2,1,6,3,5,6,{&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_d06124b8,&n_17b17fb0}},{1,10,7,14,5,6,{&n_06152340,&n_06152340,&n_06152340,&n_06152340,&n_0c5dbca5}}};
 #define ITEMS_BED \
-    { (char)0xEB, "FOUR POSTER BED", bxB1, 18, 0, 0, F_ROT, 2200 },   \
-    { (char)0xEC, "FAMILY BED", bxB2, 12, 0, 0, F_ROT, 1500 },   \
-    { (char)0xED, "TODDLER BED", bxB3, 8, 0, 0, F_ROT, 450 },   \
+    { (char)0xEB, "FOUR POSTER BED", bxB1, 18, 0, 0, F_ROT|F_L2|F_W2, 2200 },   \
+    { (char)0xEC, "FAMILY BED", bxB2, 13, 0, 0, F_ROT|F_L2|F_W2, 1500 },   \
+    { (char)0xED, "TODDLER BED", bxB3, 8, 0, 0, F_ROT|F_L2, 450 },   \
     { (char)0xEE, "BASSINET", bxB4, 10, 0, 0, F_ROT, 200 },   \
     { (char)0xEF, "CRADLE", bxB5, 9, 0, 0, F_ROT, 260 },   \
     { (char)0xF0, "NIGHTSTAND", bxB6, 8, 0, 0, F_ROT, 80 },   \
@@ -233,4 +242,5 @@ static const IBox bxB11[6]={{0,1,8,7,0,8,{&n_8798cbae,&n_f7bda534,&n_d73e6ed8,&n
     { (char)0xF3, "WARDROBE", bxB9, 6, 0, 0, F_ROT, 320 },   \
     { (char)0xF4, "PLAYPEN", bxB10, 11, 0, 0, F_ROT, 180 },   \
     { (char)0xF5, "CHANGING TABLE", bxB11, 6, 0, 0, F_ROT, 160 },   \
+    { (char)0xF6, "SINGLE BED", bxB12, 12, 0, 0, F_ROT|F_L2, 600 },   \
 
