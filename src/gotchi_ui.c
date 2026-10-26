@@ -145,7 +145,7 @@ static const u8 *art; static int art_page = -1;
 static u8 *art_buf;   // (room for one picture's sectors: the art is read a page at a time, so it needs no more than that)
 static void guide_open(int back) {
     u32 n; u8 *base = (u8 *)crowd_scratch(&n) + OVL_AT; int room = (int)n - OVL_AT - 53248;
-    art = 0; art_page = -1; art_buf = 0; if (room >= 5 * 2048 && ovl_installed("GOTCHI.ART")) { art_buf = base + 53248; art = art_buf; }
+    art = 0; art_page = -1; art_buf = 0; if (room >= 5 * 2048 && ovl_installed("GOTCHI.OVL")) { art_buf = base + 53248; art = art_buf; }
     guidepage = 0; guideback = back; view = V_GUIDE;
 }
 void gotchi_open(int arg) {
