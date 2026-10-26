@@ -13,3 +13,8 @@ One lot (13 x 13 tiles), a house box and 6 billboard people on the 3D screen; th
 ## Next
 - D1: share the platform-free game core from `src/` (sim, world, people) through `plat_*` headers (Phase 0).
 - The shared sprite baker for people.
+
+## Verified so far (the shared core on a normal computer)
+`ports/host` builds the platform-free world generator (`src/bigmap.c`, unchanged) with plain gcc and prints a generated world: 21 settlements, sea, forest, hills, towns. That proves the world code does not depend on the PS1, which is the first requirement for the DSi/3DS ports. Run `cd ports/host && make run`.
+
+Next shared-core steps, in order: `look.c` (names and looks), `pop.c` (the people), `sim.c`, `save.c`; each added to the host build with a small shim, then the drawing goes through `plat_*` headers.
