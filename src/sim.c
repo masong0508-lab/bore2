@@ -1,5 +1,6 @@
 // sim.c - the household and the life: BORE's needs, clock, bills and job, with free 3D movement and a path finder for the others.
 #include "sim.h"
+#include "band.h"
 #include "wants.h"
 #include "arcade.h"
 #include "fight.h"
@@ -128,7 +129,7 @@ void sim_gotchi_absorb(int i) {   // staring at the toy: the owner forgets to ea
     static int n; static const char *const fun[5] = { "YOUR TUMMY GROWLS. THE PET LOOKS WORRIED", "WHEN DID YOU LAST EAT? THE PET WONDERS TOO", "YOUR HOUSEMATES ARE WAVING AT YOU", "YOU HAVEN'T BLINKED IN A WHILE", "THE FRIDGE IS RIGHT THERE. JUST SAYING" };
     if ((s->need[N_FOOD] >> 10) < 25) { sim_moodlet(s, ML_BLOB_HOOKED); if (!(++n & 3)) sim_note(fun[(n >> 2) % 5]); }
 }
-int dj_xp, dj_heat, sim_want_dj;
+int dj_xp, dj_heat, sim_want_dj, sim_want_super;
 void sim_dj_hit(int tip) { cash += tip; if (nsims) sim_moodlet(&sims[player], ML_DJ_HIT); }
 void sim_party_over(int score, int guests) {   // the last guest leaves: how it went, for everyone who lives here
     for (int i = 0; i < nsims; i++) { Sim *s = &sims[i]; if (s->away) continue;
@@ -182,7 +183,7 @@ static void turn_to(Sim *s, int target, int rate) {
 }
 
 void sim_init(void) {
-    gotchi_reset(); dj_xp = 0; dj_heat = 0; realm_reset();   // (a new life: no realm yet; a loaded one brings its own)
+    gotchi_reset(); dj_xp = 0; dj_heat = 0; band_reset(); realm_reset();   // (a new life: no realm yet; a loaded one brings its own)
     nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
     job_level = 0; job_car = CAR_FACTORY; job_take(CAR_FACTORY, -1, -1, "THE FACTORY"); job_none = 1;
     groceries = 10; room_bx = room_by = -1; room_until = 0; phone_tier = 1; handheld = 0;
@@ -1724,6 +1725,7 @@ static void swim(Sim *s) {   // into the nearest water
 // and a higher belt hits harder in a fight (citizens.c) ----
 static const u8 dj_start[3] = { 9, 13, 18 };
 int dojo_session(void) { for (int i = 0; i < 3; i++) if (clock_min >= dj_start[i] * 60 && clock_min < (dj_start[i] + 2) * 60) return i; return -1; }
+const char *const band_skill_name[BS_N] = { "VOICE", "GUITAR AND BASS", "KEYBOARDS", "DRUMS", "DANCING" };
 int dojo_belt(const Sim *s) { int l = wants_skill_level(s->skill_body) / 2; return l > 5 ? 5 : l; }
 static const char *const dj_belt[6] = { "WHITE", "YELLOW", "GREEN", "BLUE", "BROWN", "BLACK" };
 static const char *const dj_day[7] = { "STANCE AND GUARD", "THE COMBO", "KICKS", "THE FIREBALL", "THE UPPERCUT", "THE SPIN KICK", "MEDITATION" };
@@ -2008,7 +2010,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
     sv_u8(phone_tier); sv_u8(handheld);   // (version 10)
     sv_u8(job_none);   // (version 12)
     sv_u16((u16)arcade_tix); sv_u16((u16)fight_wins); sv_u8((u8)fight_champ); sv_u8((u8)fight_best);   // (version 15)
-    gotchi_save(); sv_u16(dj_xp); sv_u8(dj_heat);   // (version 21)
+    gotchi_save(); sv_u16(dj_xp); sv_u8(dj_heat); band_save();   // (version 21; the band: version 25)
     sv_u8(veh_own); sv_u8(veh_sel); for (int t = 0; t < VEH_N; t++) sv_u16((u16)veh_fuel[t]); traffic_save();   // (version 18: the vehicles)
     realm_save();   // (version 15: KINGDOM MODE's realm)
     for (int i = 0; i < nsims; i++) {
@@ -2016,7 +2018,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
         sv_n(b->look, LK_COUNT); sv_u8(b->stage); sv_u8(b->asp); sv_u8(b->ltw); sv_n(b->tr, TR_N); sv_str(b->first, NAME_LEN - 1); sv_str(b->last, NAME_LEN - 1);
         sv_u32((u32)s->x); sv_u32((u32)s->z); sv_u16(s->yaw);
         for (int k = 0; k < NEED_N; k++) sv_u32((u32)s->need[k]);
-        sv_u8(s->mood + 100); sv_u8(s->ai); sv_u16(s->skill_cook); sv_u16(s->skill_body); sv_u16(s->skill_fun); sv_u8(s->dead); sv_u8(s->grump);
+        sv_u8(s->mood + 100); sv_u8(s->ai); sv_u16(s->skill_cook); sv_u16(s->skill_body); sv_u16(s->skill_fun); sv_u8(s->dead); sv_u8(s->grump); for (int k = 0; k < BS_N; k++) sv_u16((u16)s->skill_band[k]);   // (version 24)
         for (int k = 0; k < 4; k++) { sv_u8(s->want[k].kind); sv_u8(s->want[k].arg); sv_u16(s->want[k].pts); sv_u16(s->want[k].age); }
         for (int k = 0; k < 2; k++) { sv_u8(s->fear[k].kind); sv_u8(s->fear[k].arg); sv_u16(s->fear[k].pts); sv_u16(s->fear[k].age); }
         sv_u16(s->asp_pts); sv_n(s->rel, MAX_SIMS); sv_u8(s->lvl);
@@ -2039,7 +2041,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     if (save_ver >= 10) { phone_tier = ld_u8() & 3; handheld = ld_u8() & 3; } else { phone_tier = 3; handheld = 0; }   // (an older life keeps every app it had)
     job_none = save_ver >= 12 ? ld_u8() & 1 : 0;   // (an older life keeps its job)
     if (save_ver >= 15) { arcade_tix = ld_u16(); fight_wins = ld_u16(); fight_champ = ld_u8() & 1; fight_best = ld_u8(); } else arcade_tix = fight_wins = fight_champ = fight_best = 0;
-    gotchi_load(save_ver); if (save_ver >= 23) { dj_xp = ld_u16(); dj_heat = ld_u8(); } else { dj_xp = 0; dj_heat = 0; }
+    gotchi_load(save_ver); if (save_ver >= 23) { dj_xp = ld_u16(); dj_heat = ld_u8(); } else { dj_xp = 0; dj_heat = 0; } band_load(save_ver);
     veh_on = 0; veh_odo = 0; veh_lowfuel = 0;
     if (save_ver >= 18) { veh_own = ld_u8() & ((1 << VEH_N) - 1); veh_sel = ld_u8() % VEH_N; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = ld_u16(); } else { veh_own = 0; veh_sel = 0; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = 0; }
     traffic_load(save_ver);
@@ -2052,7 +2054,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
         look_build(b);
         s->x = (int)ld_u32(); s->z = (int)ld_u32(); s->yaw = ld_u16();
         for (int k = 0; k < NEED_N; k++) s->need[k] = (int)ld_u32();
-        s->mood = ld_u8() - 100; s->ai = ld_u8(); s->skill_cook = ld_u16(); s->skill_body = ld_u16(); s->skill_fun = ld_u16(); s->dead = ld_u8(); s->grump = (u8)ld_u8();
+        s->mood = ld_u8() - 100; s->ai = ld_u8(); s->skill_cook = ld_u16(); s->skill_body = ld_u16(); s->skill_fun = ld_u16(); s->dead = ld_u8(); s->grump = (u8)ld_u8(); for (int k = 0; k < BS_N; k++) s->skill_band[k] = save_ver >= 24 ? ld_u16() : 0;
         for (int k = 0; k < 4; k++) { s->want[k].kind = (u8)ld_u8(); s->want[k].arg = (u8)ld_u8(); s->want[k].pts = (u16)ld_u16(); s->want[k].age = (u16)ld_u16(); }
         for (int k = 0; k < 2; k++) { s->fear[k].kind = (u8)ld_u8(); s->fear[k].arg = (u8)ld_u8(); s->fear[k].pts = (u16)ld_u16(); s->fear[k].age = (u16)ld_u16(); }
         s->asp_pts = ld_u16(); ld_n(s->rel, save_ver >= 22 ? MAX_SIMS : 6); s->lvl = (u8)ld_u8();

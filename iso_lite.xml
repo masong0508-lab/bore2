@@ -19,6 +19,7 @@
 			<file name="ARCADE.OVL" type="data" source="ARCADE.OVL" />
 			<file name="GOTCHI.OVL" type="data" source="GOTCHI.OVL" />
 			<file name="PARTY.OVL" type="data" source="PARTY.OVL" />
+			<file name="SUPER.OVL" type="data" source="SUPER.OVL" />
 			<file name="DJ.OVL" type="data" source="DJ.OVL" />
 			<file name="GOTCHI.ART" type="data" source="GOTCHI.ART" />
 			<dummy sectors="512"/>

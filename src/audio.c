@@ -77,6 +77,15 @@ typedef struct {
     volatile int laps, gain, tempo, pmul, mute, pending, cue_row, act, bars;   // laps; 0..256 fade; 8.8 tempo; 8.8 pitch (a scratch); channels muted; waiting for the other deck's order; ..; notes lately; orders played
 } Deck;
 static Deck dk[2];
+// ---- THE BAND (SUPERSTAR): the jukebox's deck 0, with every instrument's part played at its player's skill ----
+// A note names its instrument, and tools/band_roles.py says which skill plays each instrument (1 drums, 2 guitar/bass, 3 keys, 4 voice, 5 stage
+// effects). band_q[role] is how well that part is played, 0..256: a part played badly drops notes, goes sour and thin; played well it is
+// full, and at the top it shines. The ear is the only judge; band_n / band_miss count what was played and what was dropped.
+static volatile int band_on; static u8 band_role[32]; static int band_q[6] = { 256, 256, 256, 256, 256, 256 };
+volatile int band_n[6], band_miss[6]; static u32 band_seed = 0x9e3779b9u;
+static inline u32 band_rng(void) { band_seed ^= band_seed << 13; band_seed ^= band_seed >> 17; band_seed ^= band_seed << 5; return band_seed; }
+void audio_band_set(const unsigned char *role32, const int *q6) { for (int i = 0; i < 32; i++) band_role[i] = role32 ? role32[i] : 0; for (int i = 0; i < 6; i++) band_q[i] = q6 ? q6[i] : 256; for (int i = 0; i < 6; i++) band_n[i] = band_miss[i] = 0; band_on = role32 != 0; }
+void audio_band_quality(int role, int q) { if (role >= 0 && role < 6) band_q[role] = q < 0 ? 0 : q > 256 ? 256 : q; }
 static volatile int dj_mode;                    // 1: the DJ has both decks (voices are shared out as notes come)
 static u32 vtime[MUS_CH]; static int vdeck[MUS_CH], vtch[MUS_CH], vbl[MUS_CH], vbr[MUS_CH], vfreq[MUS_CH];
 static u32 vclock;
@@ -106,14 +115,29 @@ static void deck_row(int di) {
         if (so == 0xffffffff || nt >= 96) continue;
         d->act++;
         if (d->mute & (1 << tch)) continue;                           // (a channel the DJ has killed)
+        int bdt = 0, bvs = 256;
+        if (band_on && !dj_mode) {
+            int r = band_role[in];
+            if (r) {
+                band_n[r]++;
+                if (r != 5) {
+                    int q = band_q[r]; u32 h = band_rng();
+                    int pd = (((256 - q) * (256 - q)) >> 8) * (r == 1 ? 100 : 150) >> 8;   // the chance (of 256) the note is not played
+                    if ((int)(h & 255) < pd) { band_miss[r]++; continue; }
+                    if (r != 1) bdt = ((int)((h >> 8) & 255) - 128) * (256 - q) >> 7;         // a sour note: up to a semitone out (+-6 % of the pitch)
+                    bvs = 154 + ((q * 102) >> 8) + (q >= 240 ? 26 : 0) + ((int)((h >> 16) & 15) - 8) * (256 - q) / 256;   // thin when poor, full when good
+                }
+            }
+        }
         int ch = voice_for(di, tch);
-        int vl = (vol * d->bus[bus] * music_vol) >> 9, vr = (vol * d->bus[7 + bus] * music_vol) >> 9;   // the GBA's level: vol x bus / 2
+        int vl = (vol * d->bus[bus] * music_vol) >> 9, vr = (vol * d->bus[7 + bus] * music_vol) >> 9;
+        if (bvs != 256) { vl = vl * bvs >> 8; vr = vr * bvs >> 8; }   // the GBA's level: vol x bus / 2
         if (vl > 0x3fff) vl = 0x3fff; if (vr > 0x3fff) vr = 0x3fff;
         vbl[ch] = vl; vbr[ch] = vr; vfreq[ch] = d->pitch[in * 96 + nt];
         if (dj_mode) { vl = vl * d->gain >> 8; vr = vr * d->gain >> 8; }
         SPU_CH_VOL_L(ch) = vl;
         SPU_CH_VOL_R(ch) = vr;
-        SPU_CH_FREQ(ch) = dj_mode ? (vfreq[ch] * d->pmul >> 8) : vfreq[ch];
+        SPU_CH_FREQ(ch) = dj_mode ? (vfreq[ch] * d->pmul >> 8) : bdt ? vfreq[ch] * (4096 + bdt) >> 12 : vfreq[ch];
         SPU_CH_ADDR(ch) = getSPUAddr(d->base + (int)so);
         SPU_CH_ADSR1(ch) = 0x00ff;                       // instant attack, full sustain: the sample plays as it is (one-shot)
         { static const u16 relTab[4] = { 0x0005, 0x000C, 0x000D, 0x000E };   // the release when a note is cut: short (the tracker songs), or 0.2, 0.4, 0.7 s (a held sound let go)
@@ -140,6 +164,7 @@ static void seq_tick(void) {
     }
 }
 static void music_silence(void) {
+    band_on = 0;
     dk[0].on = dk[1].on = 0; dk[0].pending = dk[1].pending = 0; dj_mode = 0;
     SPU_KEY_OFF1 = 0xffff;
     for (int ch = 0; ch < MUS_CH; ch++) { SPU_CH_VOL_L(ch) = 0; SPU_CH_VOL_R(ch) = 0; vdeck[ch] = 0; vtime[ch] = 0; }
@@ -201,6 +226,7 @@ static int cur_song = -1, shuffle = 1;
 static int play_frames;
 
 int audio_song_count(void) { return NSONGS; }
+int audio_song_find(const char *name) { for (int i = 0; i < NSONGS; i++) if (!strcmp(songs[i].name, name)) return i; return -1; }
 const char *audio_song_name(int i) { return (i >= 0 && i < NSONGS) ? songs[i].name : ""; }
 const char *audio_song_artist(int i) { return (i >= 0 && i < NSONGS) ? songs[i].artist : ""; }
 int audio_song_len(int i) { return (i >= 0 && i < NSONGS) ? songs[i].seconds : 0; }

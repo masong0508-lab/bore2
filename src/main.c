@@ -111,7 +111,7 @@ static int t_vb;
 
 // ---- states ----
 static void party_begin(void);
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ, ST_SUPER };
 #ifdef AUTO_GOTCHI
 static void opts_dbg(int tab, int sel, int back);
 #endif
@@ -290,7 +290,7 @@ static void start_life(void) {
         a->rel[1] = m->rel[0] = 40; a->rel[2] = k->rel[0] = m->rel[2] = k->rel[1] = 30;
     }
     story_reset(); }
-#if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY) && !defined(AUTO_GOTCHI) && !defined(AUTO_DJ) && !defined(AUTO_DJ)
+#if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_SUPER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY) && !defined(AUTO_GOTCHI) && !defined(AUTO_DJ) && !defined(AUTO_DJ)
     nh_pending = life_mode == 0; cash = life_mode == 2 ? 1000 : 20000; mode_pending = life_mode; life_mode = 0;   // the family picks its home on THE NEIGHBORHOOD screen (The Sims: $20,000 to start), and life_update moves them in
 #endif
     life_started = 1;
@@ -578,12 +578,17 @@ static void life_update(int steps) {
             if (AUTO_GOTCHI == 22) { int i; for (i = 0; i < items_count(); i++) if ((u8)items_at(i) == 0xBE) break; build_item = i; build_x = px; build_y = py; build_tool = 0; room_on = 0; build_msg_t = 0; state = ST_BUILD; }
             if (AUTO_GOTCHI == 24) opts_dbg(5, 5, ST_LIFE); } } }
 #endif
+#ifdef AUTO_SUPER
+    { static int as_; if (++as_ == 40) {   // (test builds: a band of the family, skilled by AUTO_SUPER, straight into the band screens)
+        extern void band_test_setup(int lv); band_test_setup(AUTO_SUPER); sim_want_super = 1; } }
+#endif
 #ifdef AUTO_DJ
     { static int ad; if (++ad == 40) { dj_xp = AUTO_DJ; sim_want_dj = 1; } }   // (test builds: straight to the DJ booth, at that skill)
 #endif
 #ifdef AUTO_FIGHT
     { static int af; if (++af == 40) sim_want_arcade = AUTO_FIGHT; }   // (test builds: straight to a cabinet)
 #endif
+    if (sim_want_super) { sim_want_super = 0; if ((ovl = ovl_load("SUPER.OVL"))) { ovl->open(0); state = ST_SUPER; } return; }   // (SUPERSTAR: the band)
     if (sim_want_dj) { sim_want_dj = 0; if ((ovl = ovl_load("DJ.OVL"))) { ovl->open(0); state = ST_DJ; } return; }   // (the DJ booth: a file of its own on the disc)
     if (sim_want_party) { sim_want_party = 0; if ((ovl = ovl_load("PARTY.OVL"))) { ovl->open(0); state = ST_PARTY; } return; }   // (the PARTY pack: the guest list, a file of its own on the disc)
     if (sim_want_gotchi) { int g_ = sim_want_gotchi - 1; sim_want_gotchi = 0; if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(g_); state = ST_GOTCHI; } return; }   // (the BOREAGOTCHI! pack: a file of its own on the disc)
@@ -2125,8 +2130,8 @@ static void save_tick(void) {
     if (k == 5 && t >= 700) { k++; aging = 2; pop_aging = 1; for (int d = 0; d < 400; d++) pop_midnight(); save_game(1); dbg_sv[7] = (int)save_last_bytes; }
 }
 #endif
-static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "KINGDOM MODE", "BOREAGOTCHI", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "SAVE GAME", "NEW LIFE", "QUIT TO TITLE" };
-#define NPAUSE 12  // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
+static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "KINGDOM MODE", "BOREAGOTCHI", "SUPERSTAR BAND", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "SAVE GAME", "NEW LIFE", "QUIT TO TITLE" };
+#define NPAUSE 13  // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
 static void homes_open(void);
 #ifdef AUTO_PARTY
 int ap_frames, ap_vs, ap_cpu;
@@ -2173,30 +2178,31 @@ static void pause_update(void) {
             case 0: state = ST_LIFE; break;
             case 1: panel_tab = 0; state = ST_PANEL; break;
             case 4: { extern void gotchi_pause_open(void); gotchi_pause_open(); } break;
-            case 5: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
+            case 5: sim_want_super = 1; state = ST_LIFE; break;   // (SUPERSTAR: bands and concerts, a file of its own on the disc)
+            case 6: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
                     if (!world_backup()) { sim_note("NO ROOM FOR THE STUDIO JUST NOW. TRY AT HOME"); state = ST_LIFE; break; }
                     create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_gen_studio(); break;
-            case 6: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
+            case 7: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); audio_voice(VOICE_MOVE_YES); state = ST_LIFE; } break;
             case 3: if ((ovl = ovl_load("KINGDOM.OVL"))) { ovl->open(0); state = ST_REALM; } else state = ST_LIFE; break;
             case 2: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD;
                      if (world_zone == ZONE_CITY && !world_own_lot(build_x, build_y)) { int tx, ty; if (world_own_door(&tx, &ty)) { build_x = tx; build_y = ty - 1; } }   // (in SAN BOREAS: on your own lot)
                      break;
-            case 7: opts_open(ST_PAUSE); break;
-            case 8: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 9: slots_open(1, ST_PAUSE); break;
-            case 10: confirm_open("A NEW LIFE?", "THIS LIFE ENDS HERE, AND A NEW ONE BEGINS IN A NEW WORLD. ANYTHING NOT SAVED IS LOST. SAVE FIRST FROM THE PAUSE MENU IF YOU WANT TO COME BACK TO IT.", pause_new_life); break;
-            case 11: confirm_open("QUIT TO THE TITLE?", "ANYTHING NOT SAVED SINCE YOUR LAST SAVE IS LOST.", pause_quit); break;
+            case 8: opts_open(ST_PAUSE); break;
+            case 9: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
+            case 10: slots_open(1, ST_PAUSE); break;
+            case 11: confirm_open("A NEW LIFE?", "THIS LIFE ENDS HERE, AND A NEW ONE BEGINS IN A NEW WORLD. ANYTHING NOT SAVED IS LOST. SAVE FIRST FROM THE PAUSE MENU IF YOU WANT TO COME BACK TO IT.", pause_new_life); break;
+            case 12: confirm_open("QUIT TO THE TITLE?", "ANYTHING NOT SAVED SINCE YOUR LAST SAVE IS LOST.", pause_quit); break;
         }
     }
 }
 static void pause_draw(void) {   // one short column: the game itself (the rest of life is on the phone)
-    static const s8 ic[NPAUSE] = { IC_PLAY, IC_ARROW, IC_HAMMER, IC_SPROUT, IC_HEART, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_BOOK, IC_SPROUT, IC_DOOR };
+    static const s8 ic[NPAUSE] = { IC_PLAY, IC_ARROW, IC_HAMMER, IC_SPROUT, IC_HEART, IC_NOTE, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_BOOK, IC_SPROUT, IC_DOOR };
     life_draw();
     ui_dim();
     int top = ui_window(70, 4, 180, 228, "PAUSED", IC_PAUSE);
-    for (int i = 0; i < NPAUSE; i++) ui_button(78, top + i * 16, 164, 14, pauseNm[i], ic[i], i == menu_sel);
-    ui_hints(160, top + NPAUSE * 16 + 3, "SEL PHONE|O BACK", 1);
+    for (int i = 0; i < NPAUSE; i++) ui_button(78, top + i * 14, 164, 13, pauseNm[i], ic[i], i == menu_sel);
+    ui_hints(160, top + NPAUSE * 14 + 3, "SEL PHONE|O BACK", 1);
 }
 
 // ---- THE PHONE (SELECT): The Sims' cell phone. Twelve apps on a grid; the family's list for playing as someone else ----
@@ -2522,13 +2528,13 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
             sprintf(b, "-%d", s->fear[i].pts); ui_badge(306 - ui_tw(1, b) - 10, y - 2, b, UI_RED, UI_WHITE); }
     } else if (panel_tab == 2) {   // SKILLS and PERSONALITY
         static const char *const skNm[3] = { "COOKING", "BODY", "FUN" };
-        int raw[3] = { s->skill_cook, s->skill_body, s->skill_fun };
+        int raw[8] = { s->skill_cook, s->skill_body, s->skill_fun, s->skill_band[0], s->skill_band[1], s->skill_band[2], s->skill_band[3], s->skill_band[4] };
         ui_section(12, y0, 294, "SKILLS");
-        for (int i = 0; i < 3; i++) { int y = y0 + 12 + i * 14, lv = wants_skill_level(raw[i]);
-            ui_text(12, y, 1, skNm[i], UI_INK); ui_pips(96, y, lv, 10, UI_AMBER); sprintf(b, "LEVEL %d", lv); ui_text(224, y, 1, b, UI_SOFT); }
-        ui_section(12, y0 + 58, 294, "PERSONALITY");
-        for (int i = 0; i < TR_N; i++) { int y = y0 + 70 + i * 14;
-            ui_text(12, y, 1, look_trait_name(i), UI_INK); ui_pips(96, y, s->bore.tr[i], 10, UI_BLUE); }
+        for (int i = 0; i < 8; i++) { int y = y0 + 11 + i * 10, lv = wants_skill_level(raw[i]);
+            ui_text(12, y, 1, i < 3 ? skNm[i] : band_skill_name[i - 3], UI_INK); ui_pips(108, y, lv, 10, i < 3 ? UI_AMBER : UI_RED); sprintf(b, "LEVEL %d", lv); ui_text(236, y, 1, b, UI_SOFT); }
+        ui_section(12, y0 + 94, 294, "PERSONALITY");
+        for (int i = 0; i < TR_N; i++) { int y = y0 + 105 + i * 10;
+            ui_text(12, y, 1, look_trait_name(i), UI_INK); ui_pips(108, y, s->bore.tr[i], 10, UI_BLUE); }
     } else if (panel_tab == 3) {   // PEOPLE: how everyone else in the house feels about you (the daily relationship)
         int row = 0;
         for (int j = 0; j < nsims; j++) {
@@ -3345,7 +3351,7 @@ static void title_update(void) {
 #if defined(AUTO_WEAR) || defined(AUTO_FACE)
     if (title_t == 30) { world_backup(); prev_state = ST_MENU; create_tab = 4; create_row = 0; state = ST_CREATE; world_gen_studio(); return; }
 #endif
-#if defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM) || defined(AUTO_GOTCHI) || defined(AUTO_DJ) || defined(AUTO_DJ)
+#if defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM) || defined(AUTO_GOTCHI) || defined(AUTO_DJ) || defined(AUTO_SUPER)
     if (title_t == 30) { life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 #ifdef AUTO_CITY
         travel_go(ZONE_CITY);
@@ -3819,6 +3825,7 @@ int main(void) {
             case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
             case ST_SPICK: spick_update(); if (state == ST_SPICK) { if (sp_join) life_draw(); else title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t, sp_join); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
             case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
+            case ST_SUPER: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; audio_jukebox_stop(); ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_DJ: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_PARTY: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); if (party_go) { party_go = 0; party_begin(); } } break; }
             case ST_GOTCHI: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; if (gotchi_shelf) { gotchi_shelf = 0; crowd_reset(); wo_painted = 0; state = ST_WORLDS; } else { ovl_leave(); state = ST_LIFE; life_draw(); } } break; }

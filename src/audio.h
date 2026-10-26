@@ -13,6 +13,10 @@ void audio_update(void);                  // once a frame: the jukebox moves on 
 
 // jukebox
 int  audio_song_count(void);
+int  audio_song_find(const char *name);   // a song's jukebox number from its name (-1: none)
+extern volatile int band_n[6], band_miss[6];   // the band: notes played / dropped per role (1 drums 2 guitar 3 keys 4 voice 5 effects)
+void audio_band_set(const unsigned char *role32, const int *q6);   // play the next song as a band: each instrument's role, each role's quality 0..256 (call after audio_jukebox_play)
+void audio_band_quality(int role, int q);   // change one role's quality while playing
 const char *audio_song_name(int i);
 const char *audio_song_artist(int i);
 int  audio_song_len(int i);               // seconds

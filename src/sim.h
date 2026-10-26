@@ -29,6 +29,7 @@ typedef struct {
     char note[24]; int note_t;   // a floating note over the head
     int  hurt_t;
     int  skill_cook, skill_body, skill_fun;
+    int  skill_band[5];     // SUPERSTAR: voice, guitar/bass, keys, drums/percussion, dancing (counters like the others: 400 a level, 0..10)
     int  dead;
     u8   rage, rage_ko;      // after you in a fight (citizens.c); knocked down by you
     u8   grump;                 // the housemate who will NOT have a thing floating over their head
@@ -68,6 +69,8 @@ extern int  job_level, job_worked, job_days_good, job_strikes;
 extern int  phone_tier, handheld;
 extern int  sim_want_jobs, job_none, sim_want_arcade;
 int  dojo_session(void);                      // the dojo class on now (0..2), -1 none
+enum { BS_VOICE, BS_GTR, BS_KEYS, BS_DRUM, BS_DANCE, BS_N };
+extern const char *const band_skill_name[BS_N];
 int  dojo_belt(const Sim *s);                // WHITE 0 .. BLACK 5 (the body skill)
 int  sim_grave_count(void);
 int  sim_grave_spot(int i, int *mx, int *my);   // a departed Bore's gravestone, where it is in the map now (0: not in this place)
@@ -101,7 +104,7 @@ const char *sim_pie_title(void);           // whose / what menu it is
 int  sim_traits(const Sim *s, const char *out[3]);   // Sims 3 traits read off the personality: how many (up to 3)
 const char *sim_moodlet_name(int id);
 void sim_gotchi_mood(int simi, int kind);   // (gotchi.c) a moodlet from the BOREAGOTCHI toy
-extern int sim_want_party, sim_want_dj, dj_xp, dj_heat;   // (the DJ booth) its hidden skill, the set's heat
+extern int sim_want_super, sim_want_party, sim_want_dj, dj_xp, dj_heat;   // (the DJ booth) its hidden skill, the set's heat
 void sim_dj_hit(int tip);
 extern int sim_want_party_unused;   // (the PARTY pack) 1: open the guest list
 void sim_party_over(int score, int guests);   // (the party pack) how it went
