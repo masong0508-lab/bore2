@@ -18,7 +18,8 @@ int         citizens_punch(void);         // X during a fight: throw a punch (1 
 const char *citizens_hint(void);          // what X would do ("" if no citizen is near)
 int         citizens_pie_open(char opt[8][16]);   // the pie menu for the citizen in front (0 = none)
 const char *citizens_pie_title(void);
-void        citizens_pie_do(int i);
+int         citizens_pie_do(int i);              // 1: it opened a sub-menu (ask citizens_pie_more for its choices)
+int         citizens_pie_more(char opt[8][16]);
 int         citizens_party(void);         // throw a party round you: guests come (returns how many; 0 none, -1 one is on)
 int         citizens_party_on(void);
 int         citizens_friends(void);       // (stories) how many people out there are your friends

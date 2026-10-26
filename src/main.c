@@ -2268,7 +2268,8 @@ static void pie_update(void) {
         }
         pie_sel = best;
     }
-    if (PRESSED(PAD_CROSS)) { state = ST_LIFE; if (pie_cit) citizens_pie_do(pie_sel); else sim_pie_do(pie_sel); }
+    if (PRESSED(PAD_CROSS)) { state = ST_LIFE;
+        if (pie_cit) { if (citizens_pie_do(pie_sel)) { pie_n = citizens_pie_more(pie_opt); pie_sel = 0; if (pie_n > 1) state = ST_PIE; } } else sim_pie_do(pie_sel); }
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_TRIANGLE)) state = ST_LIFE;
 }
 static void pie_draw(void) {

@@ -33,7 +33,9 @@ int cit_live_max = LIVE_MAX, cit_maxdraw = 64, cit_sprite_rate = 1;   // (the op
 
 enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME, CM_LEAVE, CM_CHORE, CM_VISIT, CM_PARTY, CM_STOP, CM_AWAY };   // (STOP: a peacemaker, come to break the fight up)
 enum { PE_FRIENDLY, PE_GRUFF, PE_FLIRTY, PE_SHY };
-enum { PO_TALK, PO_JOKE, PO_HUG, PO_FLIRT, PO_GIFT, PO_PROPOSE, PO_FIGHT, PO_SORRY, PO_FAMILY, PO_MOVEIN };
+enum { PO_TALK, PO_JOKE, PO_HUG, PO_FLIRT, PO_GIFT, PO_PROPOSE, PO_FIGHT, PO_SORRY, PO_FAMILY, PO_MOVEIN,
+       PO_SUB_CHAT, PO_SUB_SOC, PO_SUB_ROM, PO_SUB_MEAN, PO_BACK,   // the pie's sub-menus
+       PO_COMPL, PO_GOSSIP, PO_JOB, PO_ADVICE, PO_HIGH5, PO_DANCE, PO_FLOWERS, PO_DRINK, PO_KISS, PO_DATE, PO_INSULT, PO_PRANK, PO_APOL };
 // the moodlet ids in sim.c's list
 enum { CML_GOOD_CHAT = 5, CML_EMBARRASSED = 9, CML_REJECTED = 12, CML_HUGGED = 14, CML_LAUGH = 16, CML_FLIRTY = 17 };
 
@@ -458,25 +460,55 @@ const char *citizens_hint(void) {
 
 // ---- the pie menu -------------------------------------------------------------------------------------
 const char *citizens_pie_title(void) { return pie_title; }
-COLD int citizens_pie_open(char opt[8][16]) {
-    int i = find_target(); if (i < 0) return 0;
-    Cit *c = &cits[i]; pie_c = i;
-    strcpy(pie_title, c->first);
-    int n = 0;
+static int pie_lvl;   // 0 the top; 1 CHAT, 2 FRIENDLY, 3 ROMANCE, 4 MEAN (each ends in BACK)
+static int pie_build(const Cit *c, char opt[8][16]) {
+    int n = 0, ad = adult(c) && pl_adult();
     #define OPT(txt, code) { strcpy(opt[n], txt); pie_code[n++] = (code); }
     if (c->mode == CM_CHASE) { OPT("SORRY!", PO_SORRY) return n; }
     if (c->mode == CM_SLEEP) { OPT("WAKE THEM UP", PO_TALK) return n; }
-    OPT("TALK", PO_TALK) OPT("JOKE", PO_JOKE)
-    if (c->hh != NONE) OPT("FAMILY", PO_FAMILY)
-    if (c->rel >= 25) OPT("HUG", PO_HUG)
-    if (adult(c) && pl_adult() && c->rel >= 30) OPT("FLIRT", PO_FLIRT)
-    OPT("GIVE $20 GIFT", PO_GIFT)
-    if (adult(c) && pl_adult() && c->rom >= 60 && c->rel >= 60) OPT("PROPOSE $150", PO_PROPOSE)
-    if (adult(c) && pl_adult() && c->rel >= 60 && c->rom < 60) OPT("ASK TO MOVE IN", PO_MOVEIN)   // (a good friend: borrowed from BORE on the GBA)
-    if (adult(c) && pl_adult()) OPT("FIGHT", PO_FIGHT)
+    switch (pie_lvl) {
+    case 0:
+        OPT("TALK", PO_TALK) OPT("CHAT...", PO_SUB_CHAT) OPT("FRIENDLY...", PO_SUB_SOC)
+        if (ad) OPT("ROMANCE...", PO_SUB_ROM)
+        OPT("MEAN...", PO_SUB_MEAN)
+        if (c->hh != NONE) OPT("FAMILY", PO_FAMILY)
+        break;
+    case 1:
+        OPT("JOKE", PO_JOKE) OPT("ASK ABOUT JOB", PO_JOB) OPT("GOSSIP", PO_GOSSIP) OPT("ASK ADVICE", PO_ADVICE) OPT("COMPLIMENT", PO_COMPL)
+        if (c->hh != NONE) OPT("FAMILY", PO_FAMILY)
+        OPT("BACK", PO_BACK)
+        break;
+    case 2:
+        if (c->rel >= 25) OPT("HUG", PO_HUG)
+        OPT("HIGH FIVE", PO_HIGH5) OPT("DANCE", PO_DANCE) OPT("BUY DRINK $10", PO_DRINK) OPT("GIVE $20 GIFT", PO_GIFT)
+        if (c->rel < 20) OPT("SAY SORRY", PO_APOL)
+        if (ad && c->rel >= 60 && c->rom < 60) OPT("ASK TO MOVE IN", PO_MOVEIN)   // (a good friend: borrowed from BORE on the GBA)
+        OPT("BACK", PO_BACK)
+        break;
+    case 3:
+        if (c->rel >= 30) OPT("FLIRT", PO_FLIRT)
+        OPT("FLOWERS $40", PO_FLOWERS)
+        if (c->rel >= 40 && c->rom >= 30) OPT("GO ON A DATE $60", PO_DATE)
+        if (c->rel >= 40 && c->rom >= 40) OPT("KISS", PO_KISS)
+        if (c->rom >= 60 && c->rel >= 60) OPT("PROPOSE $150", PO_PROPOSE)
+        OPT("BACK", PO_BACK)
+        break;
+    default:
+        OPT("INSULT", PO_INSULT) OPT("PRANK", PO_PRANK)
+        if (ad) OPT("FIGHT", PO_FIGHT)
+        OPT("BACK", PO_BACK)
+        break;
+    }
     #undef OPT
     return n;
 }
+COLD int citizens_pie_open(char opt[8][16]) {
+    int i = find_target(); if (i < 0) return 0;
+    Cit *c = &cits[i]; pie_c = i; pie_lvl = 0;
+    strcpy(pie_title, c->first);
+    return pie_build(c, opt);
+}
+COLD int citizens_pie_more(char opt[8][16]) { return pie_c < 0 ? 0 : pie_build(&cits[pie_c], opt); }   // a sub-menu: the pie again, with the new choices
 
 static int accept(const Cit *c, int base) {   // the dice: their mood towards you, their nature
     int ch = base + c->rel / 2 + sims[player].mood / 4;
@@ -511,16 +543,76 @@ static void marry_as(Cit *c, int wedding) {   // they move in: the civilian beco
 }
 static void marry(Cit *c) { marry_as(c, 1); }
 
-COLD void citizens_pie_do(int i) {
-    if (pie_c < 0 || i < 0) return;
+static const char *const L_GOSS[] = { "THE MAYOR NAPS AT WORK", "SOMEONE'S DOG ATE A SHOE", "THE DINER CHANGED ITS SOUP", "I HEARD A FIGHT DOWNTOWN", "THEY SAY THE PARK IS HAUNTED", "A NEW SHOP IS OPENING", "THE BUS DRIVER QUIT AGAIN" };
+static const char *const L_ADV[] = { "DRINK MORE WATER", "SLEEP. JUST SLEEP.", "BE NICE TO PEOPLE", "SAVE SOME CASH", "CALL YOUR FRIENDS", "EAT A REAL MEAL", "GO FOR A WALK" };
+COLD int citizens_pie_do(int i) {
+    if (pie_c < 0 || i < 0) return 0;
     Cit *c = &cits[pie_c];
-    if (c->mode == CM_GONE || c->mode == CM_KO) return;
+    if (c->mode == CM_GONE || c->mode == CM_KO) return 0;
     Sim *p = &sims[player];
     if (c->mode == CM_SLEEP) {   // you woke them up
         c->mode = CM_IDLE; c->t = 60; c->gait.sleep = 0; c->sub = 0; rel_add(c, -6);
-        say(c, "HUH? WHAT?"); sim_moodlet(p, CML_REJECTED); audio_voice(VOICE_GROAN); return;
+        say(c, "HUH? WHAT?"); sim_moodlet(p, CML_REJECTED); audio_voice(VOICE_GROAN); return 0;
     }
     switch (pie_code[i]) {
+    case PO_SUB_CHAT: pie_lvl = 1; return 1;
+    case PO_SUB_SOC:  pie_lvl = 2; return 1;
+    case PO_SUB_ROM:  pie_lvl = 3; return 1;
+    case PO_SUB_MEAN: pie_lvl = 4; return 1;
+    case PO_BACK:     pie_lvl = 0; return 1;
+    case PO_COMPL:
+        if (accept(c, 50)) { rel_add(c, 6); say(c, "AWW, YOU'RE SWEET"); chat_begin(c); sim_moodlet(p, CML_GOOD_CHAT); audio_voice(VOICE_AGREE); }
+        else { rel_add(c, -1); say(c, "OKAY...?"); audio_voice(VOICE_DISAGREE); }
+        break;
+    case PO_GOSSIP:
+        story_talks++;
+        if (accept(c, 40)) { rel_add(c, 4); say(c, L_GOSS[rn(NL(L_GOSS))]); chat_begin(c); story_event(E_CITCHAT, 0); audio_voice(VOICE_AGREE); }
+        else { say(c, "NOT MY BUSINESS"); audio_voice(VOICE_DISAGREE); }
+        break;
+    case PO_ADVICE:
+        if (accept(c, 40)) { rel_add(c, 3); say(c, L_ADV[rn(NL(L_ADV))]); chat_begin(c); sim_moodlet(p, CML_GOOD_CHAT); audio_voice(VOICE_AGREE); }
+        else { say(c, "ASK SOMEONE ELSE"); audio_voice(VOICE_DISAGREE); }
+        break;
+    case PO_JOB: {
+        static char jb[40];
+        if (c->pid != NOPID && accept(c, 50)) { pop_job_name(c->pid, jb); say(c, jb); rel_add(c, 3); chat_begin(c); audio_voice(VOICE_AGREE); }
+        else { say(c, c->pid != NOPID ? "WHY DO YOU ASK" : "JUST GETTING BY"); audio_voice(VOICE_DISAGREE); }
+        break; }
+    case PO_HIGH5:
+        if (accept(c, 55)) { rel_add(c, 5); say(c, "HIGH FIVE!"); chat_begin(c); sim_moodlet(p, CML_LAUGH); audio_voice(VOICE_YEHA); }
+        else { rel_add(c, -2); say(c, "NAH"); audio_voice(VOICE_DISAGREE); }
+        break;
+    case PO_DANCE:
+        if (accept(c, 40)) { rel_add(c, 7); say(c, "WOO! LET'S GO!"); chat_begin(c); c->gait.wave = 90; sim_moodlet(p, CML_LAUGH); audio_voice(VOICE_YAHOO); }
+        else { rel_add(c, -3); say(c, "I DON'T DANCE"); sim_moodlet(p, CML_EMBARRASSED); audio_voice(VOICE_DISAGREE); }
+        break;
+    case PO_DRINK:
+        if (cash < 10) { sim_note("A DRINK IS $10"); audio_voice(VOICE_NAH); break; }
+        cash -= 10; rel_add(c, 6); say(c, "CHEERS!"); chat_begin(c); sim_moodlet(p, CML_GOOD_CHAT); audio_voice(VOICE_YAHOO); break;
+    case PO_APOL:
+        if (accept(c, 30)) { rel_add(c, 12); say(c, "ALL RIGHT. WE'RE OKAY"); chat_begin(c); audio_voice(VOICE_AGREE); }
+        else { say(c, "NOT GOOD ENOUGH"); audio_voice(VOICE_DISAGREE); }
+        break;
+    case PO_FLOWERS:
+        if (cash < 40) { sim_note("FLOWERS ARE $40"); audio_voice(VOICE_NAH); break; }
+        cash -= 40; rel_add(c, 6); rom_add(c, c->pers == PE_SHY ? 5 : 8); say(c, "FLOWERS! FOR ME?"); chat_begin(c); sim_moodlet(p, CML_FLIRTY); audio_voice(VOICE_FLIRT); break;
+    case PO_DATE:
+        if (cash < 60) { sim_note("A DATE IS $60"); audio_voice(VOICE_NAH); break; }
+        if (accept(c, 25 + c->rom / 3)) { cash -= 60; rom_add(c, 14); rel_add(c, 8); say(c, "THAT WAS LOVELY"); chat_begin(c); sim_moodlet(p, CML_FLIRTY); audio_voice(VOICE_FLIRT); }
+        else { rom_add(c, -4); say(c, "MAYBE LATER"); sim_moodlet(p, CML_REJECTED); audio_voice(VOICE_DISAGREE); }
+        break;
+    case PO_KISS:
+        if (accept(c, 10 + c->rom / 2)) { rom_add(c, 10); rel_add(c, 5); say(c, "MMM..."); chat_begin(c); sim_moodlet(p, CML_FLIRTY); audio_voice(VOICE_FLIRT); }
+        else { rom_add(c, -8); rel_add(c, -8); say(c, "WHOA! NO!"); sim_moodlet(p, CML_EMBARRASSED); audio_voice(VOICE_DISAGREE); }
+        break;
+    case PO_INSULT:
+        rel_add(c, -12); say(c, c->pers == PE_GRUFF ? "SAY THAT AGAIN" : "WOW. RUDE."); audio_voice(VOICE_DISAGREE); sim_moodlet(p, CML_REJECTED);
+        if (c->pers == PE_GRUFF && rn(100) < 30) { c->mode = CM_CHASE; c->hp = (u8)(55 + rn(35)); c->cd = 30; c->t = 0; fight_on = 1; heat_add(8); crowd_react(1); audio_voice(VOICE_ANGRY); story_event(E_FIGHT, 0); }
+        break;
+    case PO_PRANK:
+        if (rn(100) < 45) { rel_add(c, 4); say(c, "HA! YOU GOT ME"); chat_begin(c); sim_moodlet(p, CML_LAUGH); audio_voice(VOICE_LAUGH); }
+        else { rel_add(c, -9); say(c, "NOT FUNNY!"); sim_moodlet(p, CML_REJECTED); audio_voice(VOICE_ANGRY); }
+        break;
     case PO_TALK:
         story_talks++;
         if (c->pers == PE_GRUFF && c->rel < 10 && rn(100) < 45) { say(c, "WHAT."); rel_add(c, -2); audio_voice(VOICE_DISAGREE); break; }
@@ -578,6 +670,7 @@ COLD void citizens_pie_do(int i) {
         else { say(c, "TOO LATE!"); audio_voice(VOICE_DISAGREE); }
         break;
     }
+    return 0;
 }
 
 COLD int citizens_friends(void) {   // (stories) the people out there who are your friends (50 and up): the ones about now, and the rest of SAN BOREAS
