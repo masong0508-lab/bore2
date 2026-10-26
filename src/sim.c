@@ -144,7 +144,7 @@ void sim_gotchi_absorb(int i) {   // staring at the toy: the owner forgets to ea
 }
 static void crime_midnight(void);
 static void farm_midnight(void);
-int sim_want_space, space_done; u8 space_tech[3]; int sim_want_resort; u8 pk_data[24];
+int sim_want_space, space_done; u8 space_tech[3]; int sim_want_resort; u8 pk_data[48];
 int dj_xp, dj_heat, sim_want_dj, sim_want_super, sim_want_bus, sim_want_dog, bus_pass, sim_want_prison, rap_sheet;   // sim_want_prison: a sentence in days (HARD TIME); rap_sheet: past arrests   // bus_pass: the pass is good while day_count < bus_pass
 int pet_kind, pet_col, pet_hun = 100, pet_x, pet_z, pet_yaw, pet_ph, pet_zone = -1;   // the pet (0 none, 1 dog, 2 cat): where it is, how hungry
 void sim_dj_hit(int tip) { cash += tip; if (nsims) sim_moodlet(&sims[player], ML_DJ_HIT); }
@@ -1673,7 +1673,8 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_RESORT, PC_CAMP, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_PAINT, PC_SELLART, PC_WRITE, PC_DIYFIX, PC_MECHFIX, PC_FPLANT0, PC_FPLANT_END = PC_FPLANT0 + 3, PC_FWATER, PC_FHARV, PC_FHEN, PC_FCOW, PC_FFEEDH, PC_FFEEDC, PC_FEGGS, PC_FMILK, PC_FSELL, PC_FEAT, PC_FSPRAY, PC_FFERT, PC_FORDER, PC_FUP, PC_FFAIR, PC_FDRINK, PC_FTALK, PC_FCURE, PC_FROOT, PC_FSPROUT, PC_MAIL, PC_SUN, PC_DIVE, PC_LAPS, PC_GRILL, PC_BIRDS, PC_SMELL, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
+       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_RESORT, PC_CAMP, PC_FARMBOOK, PC_SKYSEA, PC_HEIST, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_PAINT, PC_SELLART, PC_WRITE, PC_DIYFIX, PC_MECHFIX, PC_FPLANT0, PC_FPLANT_END = PC_FPLANT0 + 3, PC_FWATER, PC_FHARV, PC_FHEN, PC_FCOW, PC_FFEEDH, PC_FFEEDC, PC_FEGGS, PC_FMILK, PC_FSELL, PC_FEAT, PC_FSPRAY, PC_FFERT, PC_FORDER, PC_FUP, PC_FFAIR, PC_FDRINK, PC_FTALK, PC_FCURE, PC_FROOT, PC_FSPROUT, PC_MAIL, PC_SUN, PC_DIVE, PC_LAPS, PC_GRILL, PC_BIRDS, PC_SMELL, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
+_Static_assert(PC_VEH_END < 256, "pie codes are bytes");
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1825,11 +1826,11 @@ static int sim_pie_open_(char opt[8][24]) {
         case ACT_RUN: OPT("JOG", 0) OPT("SPRINT", 1) break;
         case ACT_COFFEE: OPT("A CUP", 0) OPT("ESPRESSO", 1) break;
         case ACT_READ: OPT("READ", 0) OPT("STUDY", 1) break;
-        case ACT_PHONE: OPT("CALL A FRIEND", 0) OPT("ORDER PIZZA", 1) OPT("THROW A PARTY", 2) if (s->bore.stage == AG_ADULT || s->bore.stage == AG_ELDER) OPT("ADOPT $1000", 35) break;
+        case ACT_PHONE: OPT("CALL A FRIEND", 0) OPT("ORDER PIZZA", 1) OPT("THROW A PARTY", 2) OPT("BOOK A RESORT", PC_RESORT) OPT("FARM LEDGER", PC_FARMBOOK) OPT("HARBOUR AND SKY", PC_SKYSEA) if (s->bore.stage >= AG_TEEN) OPT("UNDERWORLD", PC_HEIST) if (s->bore.stage == AG_ADULT || s->bore.stage == AG_ELDER) OPT("ADOPT $1000", 35) break;
         case ACT_TRAVEL: if (c == '+' && world_zone == ZONE_CITY) { OPT("BUS TO A TOWN", PC_BUS) OPT("TO THE COUNTRY, ISLAND", 0) OPT("DAY PASS $10", PC_PASS1) OPT("WEEK PASS $30", PC_PASS7) OPT("MONTH PASS $90", PC_PASS30) } else OPT(act_hint(act, c), 0) break;
         case ACT_STAIRS: OPT("GO UP", 0) break;
         case ACT_FUN: if (c == '[') {   // the COMPUTER (borrowed from BORE on the GBA): the job board, a paid gig, the web
-                          OPT("PLAY A GAME", 0) OPT("JOB BOARD", PC_JOBBOARD) OPT("PARADISE RESORT", PC_RESORT) OPT("SURF THE WEB", PC_WEB) OPT("WRITE A NOVEL", PC_WRITE)OPT("COOKING CLASS ONLINE", PC_COOKNET) OPT("CHAT ONLINE", PC_CHATNET)
+                          OPT("PLAY A GAME", 0) OPT("JOB BOARD", PC_JOBBOARD)  OPT("SURF THE WEB", PC_WEB) OPT("WRITE A NOVEL", PC_WRITE)OPT("COOKING CLASS ONLINE", PC_COOKNET) OPT("CHAT ONLINE", PC_CHATNET)
                           if (s->bore.stage >= AG_TEEN) OPT("FREELANCE GIG", PC_GIG) break; }
                       if (c == 'R' || c == 'A' || c == 'j') {   // a radio: the stations
                           for (int k = 0; k < audio_station_count(); k++) OPT(audio_station_name(k), 10 + k)
@@ -2141,6 +2142,9 @@ static void place_do(Sim *s, int code) {
             else { snprintf(b_, sizeof b_, "THE NOVEL: %d%% WRITTEN", novel); sim_note(b_); } break; }
         case PC_RESORT: sim_want_resort = 1; break;
         case PC_CAMP: sim_want_resort = 2; break;
+        case PC_HEIST: sim_want_prison = 3; break;
+        case PC_FARMBOOK: sim_want_resort = 5; break;
+        case PC_SKYSEA: sim_want_resort = 9; break;
         case PC_SPACE: if (space_cert() < 1) { sim_note("NOT CERTIFIED: GREAT MARKS OR A DEGREE FIRST"); audio_voice(VOICE_NAH); return; } sim_want_space = 1; break;
         case PC_ENR0: case PC_ENR0 + 1: case PC_ENR0 + 2: case PC_ENR0 + 3: { char b_[48]; int nl = col_lvl;
             if (code == PC_ENR0 + 3) { if (col_lvl < 1 || col_lvl > 2) return; } else { if (col_lvl > 0) { sim_note("YOU ALREADY HAVE A DEGREE"); return; } col_major = (u8)(code - PC_ENR0); }

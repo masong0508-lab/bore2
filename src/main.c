@@ -608,7 +608,7 @@ static void life_update(int steps) {
         extern void band_test_setup(int lv); band_test_setup(AUTO_SUPER); sim_want_super = 1; } }
 #endif
 #ifdef AUTO_RESORT
-    { static int ar; if (++ar == 40) { cash = 90000; pk_data[0] = 0x0b; sim_want_resort = 1 + (AUTO_RESORT & 1); } }
+    { static int ar; if (++ar == 40) { cash = 90000; pk_data[0] = 0x0b; sim_want_resort = AUTO_RESORT; } }
 #endif
 #ifdef AUTO_DJ
     { static int ad; if (++ad == 40) { dj_xp = AUTO_DJ; sim_want_dj = 1; } }   // (test builds: straight to the DJ booth, at that skill)
@@ -618,7 +618,7 @@ static void life_update(int steps) {
 #endif
     if (dog_want_name) { dog_want_name = 0; name_open(dog_edit.name, 12, "NAME YOUR DOG", 0); return; }   // (the dog maker's typing screen; then it comes back)
     if (dog_resume && !sim_want_dog) { dog_resume = 0; sim_want_dog = 3; }
-    if (sim_want_resort) { int a_ = sim_want_resort - 1; sim_want_resort = 0; if ((ovl = ovl_load("PARADISE.OVL"))) { ovl->open(a_); state = ST_SPACE; } return; }   // (ISLAND PARADISE: a file of its own on the disc)
+    if (sim_want_resort) { static const char *const pf_[3] = { "PARADISE.OVL", "FARM.OVL", "SKYSEA.OVL" }; int w_ = sim_want_resort - 1, a_ = w_ & 3; sim_want_resort = 0; if ((ovl = ovl_load(pf_[(w_ >> 2) % 3]))) { ovl->open(a_); state = ST_SPACE; } return; }   // (ISLAND PARADISE: a file of its own on the disc)
     if (sim_want_space) { sim_want_space = 0; if ((ovl = ovl_load("SPACE.OVL"))) { ovl->open(0); state = ST_SPACE; } return; }
     if (sim_want_prison) { int n = sim_want_prison; sim_want_prison = 0; if ((ovl = ovl_load("PRISON.OVL"))) { ovl->open(n); state = ST_PRISON; } return; }   // (HARD TIME: its own file on the disc)
     if (sim_want_dog) { int rs = sim_want_dog == 3; sim_want_dog = 0; if ((ovl = ovl_load("DOG.OVL"))) { ovl->open(rs); state = ST_DOG; } return; }   // (CREATE A DOG: its own file on the disc)
@@ -3669,21 +3669,21 @@ static void wm_draw(void) {
 #define WO_NMORE 24
 // the island creator, the base game's missions, the six older packs and THE LAND BOREFORE TIME (the GBA game's seven), then thirteen packs still to come
 static const char *const moreNm[WO_NMORE] = { "ISLAND CREATOR", "STORY MISSIONS", "BORE-OUT MAN!", "BOREZIES!", "WORLD WAR BORE", "BORTUA FIGHTER", "BOREAGOTCHI!", "BOREPILOGUE", "THE LAND BOREFORE TIME",
-    "SEASONS", "ISLAND PARADISE", "SUPERSTAR", "CRIME AND LAW", "FARM LIFE", "SKY HIGH", "SPEED CITY", "BIG SCREEN", "SEASIDE", "MAGIC AND MYTH", "FAMILY FUN", "WILD WEST", "SPACE AGE", "CREATE A DOG", "DJ BOOTH" };
+    "SEASONS", "ISLAND PARADISE", "SUPERSTAR", "CRIME AND LAW", "FARM LIFE", "SKY AND SEA", "SPEED CITY", "BIG SCREEN", "YOUR IDEA", "MAGIC AND MYTH", "FAMILY FUN", "WILD WEST", "SPACE AGE", "CREATE A DOG", "DJ BOOTH" };
 static const char *const moreCard[WO_NMORE] = { "ISLAND|CREATOR", "STORY|MISSIONS", "BORE-OUT|MAN!", "BOREZIES!", "WORLD|WAR BORE", "BORTUA|FIGHTER", "BORE-|AGOTCHI!", "BORE-|PILOGUE", "THE LAND|BOREFORE|TIME",
-    "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "CRIME|AND LAW", "FARM|LIFE", "SKY|HIGH", "SPEED|CITY", "BIG|SCREEN", "SEA-|SIDE", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE", "CREATE|A DOG", "DJ|BOOTH" };
+    "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "CRIME|AND LAW", "FARM|LIFE", "SKY AND|SEA", "SPEED|CITY", "BIG|SCREEN", "YOUR|IDEA", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE", "CREATE|A DOG", "DJ|BOOTH" };
 static const char *const moreBlurb[WO_NMORE] = {
     "STRANDED! VERY SMALL TO VERY BIG. COAST, JUNGLE, HILLS", "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. A SPACE-HOP ARCADE GAME.",
     "THE TOWN GOES UNDEAD. BOARD UP THE WINDOWS, SHARE THE CANNED BEANS.", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. RALLY THE STREET!", "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!",
     "RAISE EIGHT PIXEL PETS PER TOY. X: THE GUIDE!", "GROWN-UPS ONLY: RETIRE, WRITE YOUR WILL, LEAVE A LEGACY.", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
     "THE YEAR TURNS. X TURNS THE PACK ON OR OFF.", "A PRIVATE ISLAND: BEACH BARS, BOATS, A LONG HOLIDAY.", "FORM A BAND AND PLAY GIGS! PAUSE, SUPERSTAR BAND",
-    "BREAK THE LAW AND FIND OUT.", "CROPS, PESTS, FAIRS, ANIMALS. WATER TOO MUCH AND...", "BUILD IN THE CLOUDS: TOWERS, GLIDERS, ROOFTOP GARDENS.",
-    "RACE THE STREETS: GARAGES, TUNING, A CITY GRAND PRIX.", "MOVIE SETS, PREMIERES, AND A RED CARPET OF YOUR OWN.", "SANDCASTLES, SURF AND A PIER FULL OF GAMES.",
+    "BREAK THE LAW AND FIND OUT.", "THE RANCH LEDGER: BARN, SILO, ORCHARD, BEES, A FARM STAND AND CONTRACTS.", "BOATS, BALLOONS, SEAPLANES AND VOYAGES. SAIL AND SOAR!",
+    "RACE THE STREETS: GARAGES, TUNING, A CITY GRAND PRIX.", "MOVIE SETS, PREMIERES, AND A RED CARPET OF YOUR OWN.", "SOMETHING NEW. TELL US WHAT YOU WANT NEXT!",
     "WAND, SPELLBOOK, DRAGON. THE CORNER SHOP IS A TOWER.", "THROW PARTIES AT HOME: GUESTS, GAMES, A BIG CAKE.", "A DUSTY TOWN, A SHERIFF'S STAR, A SHOWDOWN AT NOON.",
     "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP.", "RAISE A DOG FROM A PUP. THE PET SHOP SELLS ONE.", "SPIN DECKS AT THE BOOTH. HOME AND CLUBS." };
-#define EX_PLAYABLE(i) ((i) == 0 || (i) == 1 || (i) == 5 || (i) == 6 || (i) == 8 || (i) == 9 || (i) == 10 || (i) == 11 || (i) == 12 || (i) == 19 || (i) == 21 || (i) == 22 || (i) == 23)
+#define EX_PLAYABLE(i) ((i) == 0 || (i) == 1 || (i) == 5 || (i) == 6 || (i) == 8 || (i) == 9 || (i) == 10 || (i) == 11 || (i) == 12 || (i) == 13 || (i) == 14 || (i) == 19 || (i) == 21 || (i) == 22 || (i) == 23)
 // the packs that are patches (tools/packs.py): the file each card needs on the disc (0: part of the base game, or not made yet)
-static const char *const packFile[WO_NMORE] = { 0, 0, 0, 0, 0, "ARCADE.OVL", "GOTCHI.OVL", 0, "KINGDOM.OVL", 0, "PARADISE.OVL", "SUPER.OVL", "PRISON.OVL", 0, 0, 0, 0, 0, 0, "PARTY.OVL", 0, "SPACE.OVL", "DOG.OVL", "DJ.OVL" };
+static const char *const packFile[WO_NMORE] = { 0, 0, 0, 0, 0, "ARCADE.OVL", "GOTCHI.OVL", 0, "KINGDOM.OVL", 0, "PARADISE.OVL", "SUPER.OVL", "PRISON.OVL", "FARM.OVL", "SKYSEA.OVL", 0, 0, 0, 0, "PARTY.OVL", 0, "SPACE.OVL", "DOG.OVL", "DJ.OVL" };
 // 0: not looked at yet, 1: on the disc, 2: not installed (a stub, or no file)
 // ---- PICK A MODE: the three ways in ----
 static int md_sel, md_t;

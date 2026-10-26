@@ -47,7 +47,9 @@ static char chg[3][40];
 #ifdef AUTO_PRISON
 #define FORCE_CORRUPT 1
 #endif
+extern void heist_open(void); extern int heist_update(int, int, int); extern void heist_draw(void); static int heisting;   // (GRAND THEFT: heist_ui.c, the underworld, opened from the phone)
 void prison_open(int arg) {
+    heisting = arg == 3; if (heisting) { heist_open(); return; }
     (void)arg; phase = P_ARREST; sentence = 0; day = 0; slot = 0; sel = 0; health = 100; respect = 10 + rap_sheet * 5; heat = 10; behav = 55; plan = 0; earned = 0; solitary = 0; anim = 0; over = 0; outcome = 0;
     msg = 0; msgT = 0; memset(logl, 0, sizeof logl); rs = (unsigned)(cash + 1 + crime_evid * 31 + rap_sheet * 977 + day_count * 13); tdays = 0; lawyer = 0; corrupt = rnd(100) < 16; 
 #ifdef FORCE_CORRUPT
@@ -193,6 +195,7 @@ static void court_draw(void) {
         ui_hints(280, top + 108, verdict == 0 ? "X WALK FREE" : "X TAKEN AWAY", 2); }
 }
 int prison_update(int hd, int pr, int steps) {
+    if (heisting) return heist_update(hd, pr, steps);
     if (phase < P_CELL && !(phase == P_VERDICT && over)) { anim += steps; return court_update(pr); }
     anim += steps; if (msgT > 0) { msgT -= steps; if (msgT <= 0) msg = 0; }
     if (over) { return !(pr & (PAD_CROSS | PAD_CIRCLE | PAD_START)); }
@@ -203,6 +206,7 @@ int prison_update(int hd, int pr, int steps) {
 }
 static void bar(int x, int y, const char *nm, int v, u32 c) { ui_text(x, y, 1, nm, UI_INK); ui_bar(x + 66, y + 2, 64, 6, v, c); }
 void prison_draw(void) {
+    if (heisting) { heist_draw(); return; }
     if (phase < P_CELL) { court_draw(); return; }
     // the cell: a grey wall, the Bore in orange, and bars
     gfx_set_clear(10, 10, 14); gfx_set_ambient(80, 90); gfx_sky(0x403c38u, 0x686460u);
