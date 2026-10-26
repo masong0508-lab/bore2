@@ -461,7 +461,7 @@ const char *citizens_hint(void) {
 // ---- the pie menu -------------------------------------------------------------------------------------
 const char *citizens_pie_title(void) { return pie_title; }
 static int pie_lvl;   // 0 the top; 1 CHAT, 2 FRIENDLY, 3 ROMANCE, 4 MEAN (each ends in BACK)
-static int pie_build(const Cit *c, char opt[8][16]) {
+static int pie_build(const Cit *c, char opt[8][24]) {
     int n = 0, ad = adult(c) && pl_adult();
     #define OPT(txt, code) { strcpy(opt[n], txt); pie_code[n++] = (code); }
     if (c->mode == CM_CHASE) { OPT("SORRY!", PO_SORRY) return n; }
@@ -502,14 +502,14 @@ static int pie_build(const Cit *c, char opt[8][16]) {
     #undef OPT
     return n;
 }
-COLD int citizens_pie_open(char opt[8][16]) {
+COLD int citizens_pie_open(char opt[8][24]) {
     int i = find_target(); if (i < 0) return 0;
     Cit *c = &cits[i]; pie_c = i; pie_lvl = 0;
     strcpy(pie_title, c->first);
     return pie_build(c, opt);
 }
 void citizens_door_marks(void) { for (int i = 0; i < NCIT; i++) { const Cit *c = &cits[i]; if (c->zone != world_zone || c->mode == CM_GONE || c->mode == CM_KO) continue; world_door_mark(c->x / TILE, (-c->z) / TILE); } }
-COLD int citizens_pie_more(char opt[8][16]) { return pie_c < 0 ? 0 : pie_build(&cits[pie_c], opt); }   // a sub-menu: the pie again, with the new choices
+COLD int citizens_pie_more(char opt[8][24]) { return pie_c < 0 ? 0 : pie_build(&cits[pie_c], opt); }   // a sub-menu: the pie again, with the new choices
 
 static int accept(const Cit *c, int base) {   // the dice: their mood towards you, their nature
     int ch = base + c->rel / 2 + sims[player].mood / 4;

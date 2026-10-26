@@ -16,11 +16,11 @@ void citizens_hud(void);                  // who is in front of you, and your he
 
 int         citizens_punch(void);         // X during a fight: throw a punch (1 if it was used)
 const char *citizens_hint(void);          // what X would do ("" if no citizen is near)
-int         citizens_pie_open(char opt[8][16]);   // the pie menu for the citizen in front (0 = none)
+int         citizens_pie_open(char opt[8][24]);   // the pie menu for the citizen in front (0 = none)
 const char *citizens_pie_title(void);
 int         citizens_pie_do(int i);              // 1: it opened a sub-menu (ask citizens_pie_more for its choices)
 void        citizens_door_marks(void);           // (doors) every person the crowd has out, for the doors to open for
-int         citizens_pie_more(char opt[8][16]);
+int         citizens_pie_more(char opt[8][24]);
 #define PG_GROUPS 48
 #define PG_MEMS   160
 typedef struct { u16 fam, first; u8 n; } PGroup;     // a household on the guest list (fam: pop.c's, or 0x8000 | the town's own)

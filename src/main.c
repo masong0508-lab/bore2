@@ -172,7 +172,7 @@ static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sim
 static int travel_sel;
 int dbg_shift_hb, dbg_shifts;
 static void taxi_to_block(int bx, int by, int tx, int ty, const char *where);
-static char pie_opt[8][16]; static int pie_n, pie_sel, pie_cit;   // the pie menu
+static char pie_opt[8][24]; static int pie_n, pie_sel, pie_cit;   // the pie menu
 static int panel_tab;                                      // the Bore panel's tab
 static int jobs_sel, jobs_n, jobs_scroll, jobs_car[16], jobs_pl[16];   // the JOBS screen
 static int jobs_board;   // 1: the JOB BOARD (the computer, or a smartphone): every opening; 0: the morning paper's three
@@ -2144,7 +2144,7 @@ static void story_test_tick(void) {
         if (t >= nt) { nt = t + 700; int l; if (story_place(&l)) story_taxi(); }
         if (t >= nx && nsims > 1 && state == ST_LIFE) { nx = t + 90; Sim *o = &sims[1];
             sim_player_cancel_sim(s); sim_player_cancel_sim(o); o->x = s->x + TILE; o->z = s->z; o->path_n = 0; s->yaw = 1024; o->yaw = 3072;
-            char opt[8][16]; int n = sim_pie_open(opt), pick = -1;
+            char opt[8][24]; int n = sim_pie_open(opt), pick = -1;
             { static const char *const want[4] = { "GO STEADY", "FLIRT", "HUG", "JOKE" }; int r = ns++ % 3;
               for (int i = 0; i < n; i++) if (!strcmp(opt[i], want[0])) pick = i;
               for (int k2 = 0; k2 < 3 && pick < 0; k2++) for (int i = 0; i < n; i++) if (!strcmp(opt[i], want[1 + (r + k2) % 3])) pick = i; }
@@ -3626,7 +3626,7 @@ static const char *const moreCard[WO_NMORE] = { "STORY|MISSIONS", "BORE-OUT|MAN!
     "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "CRIME|AND LAW", "FARM|LIFE", "SKY|HIGH", "SPEED|CITY", "BIG|SCREEN", "SEA-|SIDE", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE" };
 static const char *const moreBlurb[WO_NMORE] = { "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. NOT PORTED YET!", "THE TOWN GOES UNDEAD. NOT PORTED YET!", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. NOT PORTED YET!",
     "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!", "RAISE EIGHT PIXEL PETS PER TOY. X: THE GUIDE!", "GROWN-UPS ONLY: RETIRE AND LEAVE A LEGACY. NOT PORTED YET!", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
-    "THE YEAR TURNS. PLAY ON AND SEE.", "PLACEHOLDER PACK. NOT MADE YET!", "FORM A BAND AND PLAY GIGS! PAUSE, SUPERSTAR BAND", "BREAK THE LAW AND FIND OUT.", "BEDS, HENS AND COWS IN THE VILLAGES. SELL AT THE STAND.", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
+    "THE YEAR TURNS. PLAY ON AND SEE.", "PLACEHOLDER PACK. NOT MADE YET!", "FORM A BAND AND PLAY GIGS! PAUSE, SUPERSTAR BAND", "BREAK THE LAW AND FIND OUT.", "CROPS, PESTS, FAIRS, ANIMALS. WATER TOO MUCH AND...", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
     "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP." };
 static void worlds_update(void) {
     wo_t++;

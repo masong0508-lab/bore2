@@ -30,7 +30,8 @@ typedef struct {
     int  hurt_t;
     int  skill_cook, skill_body, skill_fun;
 #define SKL(raw) (((raw) / 400) > 10 ? 10 : ((raw) / 400))   // a skill counter -> its level 0..10
-    int  skill_logic, skill_char, skill_creat, skill_mech, skill_farm;   // LOGIC (reading, study, lectures, the stars), CHARISMA (chats), CREATIVITY (art, music), MECHANICAL (rockets, repairs)
+    int  skill_logic, skill_char, skill_creat, skill_mech, skill_farm;
+    u8   plant, plant_d, plant_t, plant_sk, plant_hc;   // FARM LIFE: 0 a person, 1 a living STALK (cannot move or talk, fades), 2 PLANTBORE; days as a stalk, spoken to today, the old skin and hair   // LOGIC (reading, study, lectures, the stars), CHARISMA (chats), CREATIVITY (art, music), MECHANICAL (rockets, repairs)
     int  skill_band[5];     // SUPERSTAR: voice, guitar/bass, keys, drums/percussion, dancing (counters like the others: 400 a level, 0..10)
     int  dead;
     u8   rage, rage_ko;      // after you in a fight (citizens.c); knocked down by you
@@ -81,7 +82,7 @@ void sim_say_to(Sim *s, const char *t);      // a word over their head
 int  sim_move_out(int i, char *where);   // a grown-up of the household moves to a home of their own in town (1: gone)   // the phone you own (0 none, 1 FLIP, 2 SMARTPHONE, 3 BORE PHONE MAX) and the handhelds (1 BOREBOY, 2 BOREBOY ADVANCE)
 // VEHICLES: bought at gas stations, ridden outdoors (O cycles the board and what you own), fuelled at the pumps
 enum { VEH_BIKE, VEH_SCOOTER, VEH_SEDAN, VEH_VAN, VEH_SPORTS, VEH_PICKUP, VEH_N };
-extern unsigned char fm_n[4], fm_g[4], fm_wet, fm_dry[4], fm_hens, fm_cows, fm_fed, veh_cond[VEH_N], art_n, novel; extern unsigned short fm_stock[4], fm_egg, fm_milk, fm_pe, fm_pm; extern unsigned short art_q, royalty;
+extern unsigned char fm_fert, fm_fz, fm_pest, fm_up, fm_wc, fm_ordk, fm_ordq, fm_ordt, fm_fair, fm_n[4], fm_g[4], fm_wet, fm_dry[4], fm_hens, fm_cows, fm_fed, veh_cond[VEH_N], art_n, novel; extern unsigned short fm_stock[4], fm_egg, fm_milk, fm_pe, fm_pm; extern unsigned short art_q, royalty;
 extern int  veh_own, veh_on, veh_sel, veh_fuel[VEH_N], veh_wph;   // owned (a bit each), ridden (0 none, else type + 1), the last one, tanks (quarter tiles), the wheels' turn
 int  veh_seat(int t); int veh_colour(int t); const char *veh_hud(void);   // how high the driver sits; the paint; "SEDAN  FUEL 73%" for the screen
 int  sim_ride_after_board(void);     // stepped off the board: on to a vehicle you own (1) or onto your feet (0)
@@ -101,7 +102,7 @@ void sim_init(void);
 void sim_add(const Bore *b, int mx, int my, int ai);
 void sim_step(void);                       // one logic step (60 per second)
 void sim_player_move(int dx, int dz, int run);   // world-space push from the stick, -4096..4096 each
-int  sim_pie_open(char opt[8][16]);       // X: the pie menu for what is in front (0 = nothing there)
+int  sim_pie_open(char opt[8][24]);       // X: the pie menu for what is in front (0 = nothing there)
 void sim_pie_do(int i);                    // the option picked
 const char *sim_pie_title(void);           // whose / what menu it is
 int  sim_traits(const Sim *s, const char *out[3]);   // Sims 3 traits read off the personality: how many (up to 3)
