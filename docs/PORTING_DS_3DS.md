@@ -16,7 +16,7 @@ Plain summary: **3DS first, DS second.** The 3DS has far more power than the PS1
 | CPU | 33 MHz | 268 MHz (New 3DS 804 MHz) | 67 MHz ARM9 |
 | RAM | 2 MB | 128 MB (New: 256) | 4 MB (DSi mode: 16 MB) |
 | Screens | 320x240 | 400x240 top, 320x240 bottom (+3D depth) | 256x192 x2 |
-| GPU | polygons, no z-buffer, ordering table | PICA200: z-buffer, shaders, real textures | fixed pipeline: 2048 polygons / 6144 vertices a frame, 4 MB... only 656 KB of VRAM |
+| GPU | polygons, no z-buffer, ordering table | PICA200: z-buffer, shaders, real textures | fixed pipeline: 2048 polygons / 6144 vertices a frame, only 656 KB of VRAM |
 | Storage | CD | SD card, any file size | cartridge (ROM size is the limit), SD with a flash card |
 | Toolchain | PSn00bSDK | devkitARM + libctru + citro3d | devkitARM + libnds (+ NitroFS) |
 
