@@ -198,7 +198,7 @@ static void turn_to(Sim *s, int target, int rate) {
 
 void sim_init(void) {
     gotchi_reset(); dj_xp = 0; dj_heat = 0; band_reset(); realm_reset();   // (a new life: no realm yet; a loaded one brings its own)
-    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; rap_sheet = 0; space_done = 0; memset(space_tech, 0, 3); memset(crime_n, 0, sizeof crime_n); crime_evid = crime_def = 0; dog_default(&pet_dog); nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
+    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; rap_sheet = 0; space_done = 0; memset(space_tech, 0, 3); col_lvl = col_major = col_on = col_cls = col_gpa = col_study = 0; memset(col_g, 0, 3); astro_xp = 0; memset(crime_n, 0, sizeof crime_n); crime_evid = crime_def = 0; dog_default(&pet_dog); nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
     job_level = 0; job_car = CAR_FACTORY; job_take(CAR_FACTORY, -1, -1, "THE FACTORY"); job_none = 1;
     groceries = 10; room_bx = room_by = -1; room_until = 0; phone_tier = 1; handheld = 0;
 #ifdef AUTO_PHONE_TIER
@@ -1293,6 +1293,16 @@ static void clock_tick(void) {
     }
 }
 
+u8 col_lvl, col_major, col_on, col_cls, col_gpa, col_study, col_g[3]; u16 astro_xp;   // COLLEGE: degrees (0 none .. 3 doctor), the major, enrolled, lectures, GPA, study points, the GPA of each degree; the stargazing xp
+static const char *const majNm[3] = { "SCIENCE", "ARTS", "BUSINESS" }, *const lvlNm[3] = { "BACHELOR", "MASTER", "DOCTOR" };
+static const int tuition[3] = { 400, 900, 1600 };
+const char *col_major_name(int m) { return majNm[m % 3]; }
+int space_cert(void) {   // what the space program lets you do: school marks or a degree open the door; a science degree (and the marks to match) climbs the ladder
+    const Sim *p = &sims[player];
+    if (col_lvl >= 1 && col_major == 0) { if (col_lvl >= 3 && col_g[2] >= 85) return 4; if (col_lvl >= 2 && col_g[1] >= 80) return 3; if (col_g[0] >= 75) return 2; }
+    return (col_lvl >= 1 || p->grade >= 90) ? 1 : 0;
+}
+const char *space_cert_name(int c) { static const char *const n[5] = { "NOT CERTIFIED", "SPACE TRAINEE", "ENGINEER", "MISSION SPECIALIST", "COMMANDER" }; return n[c % 5]; }
 u8 crime_n[CR_N]; int crime_evid, crime_def, arrest_how, sim_want_end, crime_skip;
 const char *const crime_nm[CR_N] = { "ASSAULT", "THEFT", "RESISTING ARREST", "JAILBREAK" }; const u8 crime_sev[CR_N] = { 8, 6, 10, 30 };
 int crime_total(void) { int t = 0; for (int i = 0; i < CR_N; i++) t += crime_n[i]; return t; }
@@ -1463,7 +1473,7 @@ static int front_tile(const Sim *s, int *mx, int *my) {
 }
 static int usable_at(int tx, int ty, char c) {   // something X does something with
     if (action_for(c) != ACT_NONE) return 1;
-    if ((u8)c >= 0xBE && (u8)c <= 0xD2) return 1;      // (the BOREAGOTCHI! pack's things)
+    if ((u8)c >= 0xBE && (u8)c <= 0xD9) return 1;      // (the BOREAGOTCHI! pack's things)
     if (c == '8') return world_zone == ZONE_CITY;      // a FOR SALE sign
     if (c == CH_RAFT) return 1;
     if (c == 'B') return !has_board;                   // a skateboard on the floor: pick it up
@@ -1549,7 +1559,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
+       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1627,6 +1637,9 @@ static int sim_pie_open_(char opt[8][16]) {
         case 0xD0: OPT("PRACTICE GUITAR", PC_PRAC0 + BS_GTR) act = ACT_NONE; break;
         case 0xD1: OPT("PRACTICE KEYS", PC_PRAC0 + BS_KEYS) act = ACT_NONE; break;
         case 0xD2: OPT("SING AND PRACTICE", PC_PRAC0 + BS_VOICE) act = ACT_NONE; break;
+        case 0xD3: case 0xD4: case 0xD5: case 0xD6: case 0xD7: { static const char *const sn[5] = { "STARGAZE: SMALL SCOPE", "STARGAZE: HOBBY SCOPE", "STARGAZE: RESEARCH SCOPE", "STARGAZE: OBSERVATORY", "STARGAZE: RADIO ARRAY" }; OPT(sn[(u8)c - 0xD3], PC_SCOPE0 + ((u8)c - 0xD3)) act = ACT_NONE; break; }
+        case 0xD8: OPT("ADMIRE THE ROCKET", PC_ADMIRE) act = ACT_NONE; break;
+        case 0xD9: OPT("MISSION CONTROL", PC_SPACE) OPT("MY RECORD", PC_REC) act = ACT_NONE; break;
     }
     if (c == CH_CAKE) {   // the birthday cake: the candles (if there is a birthday), then slices
         if (bday_one() >= 0) OPT("BLOW CANDLES", 30)
@@ -1660,7 +1673,7 @@ static int sim_pie_open_(char opt[8][16]) {
         case ACT_TRAVEL: if (c == '+' && world_zone == ZONE_CITY) { OPT("BUS TO A TOWN", PC_BUS) OPT("TO THE COUNTRY, ISLAND", 0) OPT("DAY PASS $10", PC_PASS1) OPT("WEEK PASS $30", PC_PASS7) OPT("MONTH PASS $90", PC_PASS30) } else OPT(act_hint(act, c), 0) break;
         case ACT_STAIRS: OPT("GO UP", 0) break;
         case ACT_FUN: if (c == '[') {   // the COMPUTER (borrowed from BORE on the GBA): the job board, a paid gig, the web
-                          OPT("PLAY A GAME", 0) OPT("JOB BOARD", PC_JOBBOARD) OPT("SURF THE WEB", PC_WEB) OPT("MISSION CONTROL", PC_SPACE) OPT("COOKING CLASS ONLINE", PC_COOKNET) OPT("CHAT ONLINE", PC_CHATNET)
+                          OPT("PLAY A GAME", 0) OPT("JOB BOARD", PC_JOBBOARD) OPT("SURF THE WEB", PC_WEB)OPT("COOKING CLASS ONLINE", PC_COOKNET) OPT("CHAT ONLINE", PC_CHATNET)
                           if (s->bore.stage >= AG_TEEN) OPT("FREELANCE GIG", PC_GIG) break; }
                       if (c == 'R' || c == 'A' || c == 'j') {   // a radio: the stations
                           for (int k = 0; k < audio_station_count(); k++) OPT(audio_station_name(k), 10 + k)
@@ -1690,6 +1703,11 @@ static int sim_pie_open_(char opt[8][16]) {
                           if (dojo_session() >= 0 && pie_n < 8) OPT("ATTEND CLASS $10", PC_CLASS)
                           if (pie_n < 8) OPT("DRILL THE BAG", PC_BAG)
                           if (pie_n < 8) OPT("MY BELT", PC_BELT) } break;
+        case LOT_SCHOOL: if (c == 'd' && (s->bore.stage == AG_ADULT || s->bore.stage == AG_ELDER) && pie_n < 7) {   // COLLEGE: for grown-ups, at a desk in any school
+                             if (col_on) { OPT("ATTEND LECTURE", PC_LECT) OPT("STUDY FOR EXAMS", PC_STUDY) }
+                             else if (col_lvl == 0) { OPT("ENROLL: SCIENCE $400", PC_ENR0) OPT("ENROLL: ARTS $400", PC_ENR0 + 1) OPT("ENROLL: BUSINESS $400", PC_ENR0 + 2) }
+                             else if (col_lvl < 3) OPT(col_lvl == 1 ? "MASTER'S COURSE $900" : "DOCTORATE $1600", PC_ENR0 + 3)
+                             OPT("MY RECORD", PC_REC) } break;
         case LOT_POOL: if ((c == '~' || c == '>') && pie_n < 8) OPT("SWIM", PC_SWIM) break;
         case LOT_INN: case LOT_HOTEL: if (c == 'y' || c == 'I') OPT(room_here() ? "MY ROOM: PAID" : "A ROOM $60", PC_ROOM) break;
         case LOT_CAFE: if (c == 'y' || c == 'c') { OPT("A LATTE $5", PC_LATTE) if (c == 'y') OPT("A CAKE $6", PC_CAKE) } break;
@@ -1876,7 +1894,39 @@ static void place_do(Sim *s, int code) {
         case PC_PRAC0: case PC_PRAC0 + 1: case PC_PRAC0 + 2: case PC_PRAC0 + 3: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = (u8)(8 + (code - PC_PRAC0)); s->act_t = 300; sim_say(s, "FROM THE TOP!"); break;
         case PC_STEAL: { int v = 40 + (int)(look_rand() % 80); if ((int)(look_rand() % 100) < 45) { cash += v; char b_[40]; sprintf(b_, "SHOPLIFTED $%d WORTH. RUN!", v); sim_note(b_); sim_say(s, "NOBODY SAW"); sim_crime(CR_THEFT, 8); }   // (unseen: but a camera may have)
                        else { sim_say(s, "OH NO"); sim_note("CAUGHT SHOPLIFTING!"); sim_crime(CR_THEFT, 40); sim_arrest(1); } } break;
-        case PC_SPACE: sim_want_space = 1; break;
+        case PC_SPACE: if (space_cert() < 1) { sim_note("NOT CERTIFIED: GREAT MARKS OR A DEGREE FIRST"); audio_voice(VOICE_NAH); return; } sim_want_space = 1; break;
+        case PC_ENR0: case PC_ENR0 + 1: case PC_ENR0 + 2: case PC_ENR0 + 3: { char b_[48]; int nl = col_lvl;
+            if (code == PC_ENR0 + 3) { if (col_lvl < 1 || col_lvl > 2) return; } else { if (col_lvl > 0) { sim_note("YOU ALREADY HAVE A DEGREE"); return; } col_major = (u8)(code - PC_ENR0); }
+            if (!pay(tuition[nl])) return; col_on = 1; col_cls = 0; col_gpa = 0; col_study = 0;
+            snprintf(b_, sizeof b_, "ENROLLED: %s OF %s", lvlNm[nl], majNm[col_major]); sim_note(b_); sim_note("LECTURES: WEEKDAYS 8 AM TO 5 PM"); audio_voice(VOICE_AGREE); break; }
+        case PC_STUDY: { if ((s->need[N_REST] >> 10) < 15) { sim_note("TOO TIRED TO STUDY"); audio_voice(VOICE_NAH); return; }
+            begin_action(s, ACT_READ, pie_mx, pie_my); s->act_t = 300; s->need[N_REST] = MAX(0, s->need[N_REST] - (6 << 10)); col_study = (u8)MIN(40, col_study + 14); sim_note("STUDIED HARD: READY FOR LECTURE"); break; }
+        case PC_LECT: { char b_[48];
+            if (clock_day >= 5 || clock_min < 8 * 60 || clock_min >= 17 * 60) { sim_note("LECTURES: WEEKDAYS 8 AM TO 5 PM"); audio_voice(VOICE_NAH); return; }
+            if ((s->need[N_REST] >> 10) < 20) { sim_note("TOO TIRED FOR LECTURE"); audio_voice(VOICE_NAH); return; }
+            begin_action(s, ACT_READ, pie_mx, pie_my); s->act_t = 480; s->need[N_REST] = MAX(0, s->need[N_REST] - (14 << 10));
+            { int sc = 36 + (int)(look_rand() % 26) + MIN(col_study, 36) + (s->mood > 30 ? 5 : 0); if (sc > 100) sc = 100; col_study = col_study > 12 ? (u8)(col_study - 12) : 0;
+              col_gpa = (u8)(((int)col_gpa * col_cls + sc) / (col_cls + 1)); col_cls++; snprintf(b_, sizeof b_, "LECTURE %d OF 8: GPA %d", col_cls, col_gpa); sim_note(b_); }
+            if (col_cls >= 8) { col_on = 0;
+                if (col_gpa >= 50) { col_g[col_lvl] = col_gpa; snprintf(b_, sizeof b_, "GRADUATED! %s OF %s", lvlNm[col_lvl], majNm[col_major]); col_lvl++; sim_note(b_); snprintf(b_, sizeof b_, "FINAL GPA %d", col_g[col_lvl - 1]); sim_note(b_); sims[player].mood = MIN(100, sims[player].mood + 60); audio_voice(VOICE_WIN); }
+                else { sim_note("YOU FAILED THE COURSE. TRY AGAIN"); audio_voice(VOICE_CRY); } } break; }
+        case PC_REC: { char b_[48];
+            if (col_on) { snprintf(b_, sizeof b_, "%s OF %s: %d OF 8, GPA %d", lvlNm[col_lvl], majNm[col_major], col_cls, col_gpa); sim_note(b_); }
+            if (col_lvl) { snprintf(b_, sizeof b_, "DEGREE: %s OF %s", lvlNm[col_lvl - 1], majNm[col_major]); sim_note(b_); }
+            else if (!col_on) sim_note("NO DEGREE YET. A SCHOOL DESK ENROLLS YOU");
+            snprintf(b_, sizeof b_, "SPACE: %s", space_cert_name(space_cert())); sim_note(b_); break; }
+        case PC_SCOPE0: case PC_SCOPE0 + 1: case PC_SCOPE0 + 2: case PC_SCOPE0 + 3: case PC_SCOPE0 + 4: { int L = code - PC_SCOPE0 + 1, hr = clock_min / 60; char b_[48];
+            static const struct { u8 L; const char *nm; u16 pay; } fd[10] = { {1,"MOON CRATERS",0}, {1,"SATURN'S RINGS",20}, {2,"A COMET",150}, {2,"A METEOR SHOWER",60}, {3,"A NEW ASTEROID",400}, {3,"A DISTANT NEBULA",300},
+                                                                              {4,"A SUPERNOVA",1500}, {4,"A NEW EXOPLANET",2500}, {5,"A BLACK HOLE'S GLOW",6000}, {5,"A REPEATING SIGNAL",12000} };
+            if (L >= 3 && space_cert() < L - 2) { snprintf(b_, sizeof b_, "NEEDS: %s", space_cert_name(L - 2)); sim_note(b_); audio_voice(VOICE_NAH); return; }
+            if (hr >= 5 && hr < 19) { sim_note("THE STARS COME OUT AT 7 PM"); audio_voice(VOICE_NAH); return; }
+            if (sim_weather()) { sim_note("CLOUDED OUT TONIGHT"); audio_voice(VOICE_NAH); return; }
+            if ((s->need[N_REST] >> 10) < 15) { sim_note("TOO TIRED TO STARGAZE"); audio_voice(VOICE_NAH); return; }
+            begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 420; s->need[N_REST] = MAX(0, s->need[N_REST] - (8 << 10)); s->act_var = 0;
+            if ((int)(look_rand() % 100) >= 30 + L * 8) { astro_xp = (u16)MIN(60000, astro_xp + 2); sim_note("A QUIET NIGHT. BEAUTIFUL STARS"); break; }
+            { int ok[10], n = 0; for (int i = 0; i < 10; i++) if (fd[i].L <= L) ok[n++] = i; int a = (int)(look_rand() % (u32)n), b2 = (int)(look_rand() % (u32)n); int k = ok[MAX(a, b2)];
+              cash += fd[k].pay; astro_xp = (u16)MIN(60000, astro_xp + fd[k].L * 6); s->mood = MIN(100, s->mood + 12 + fd[k].L * 6);
+              snprintf(b_, sizeof b_, fd[k].pay ? "FOUND %s! +$%d" : "YOU SEE %s", fd[k].nm, fd[k].pay); sim_note(b_); if (fd[k].L >= 4) audio_voice(VOICE_WIN); } break; }
         case PC_BUS: sim_want_bus = 1; break;
         case PC_PASS1: case PC_PASS7: case PC_PASS30: { int n = code == PC_PASS1 ? 1 : code == PC_PASS7 ? 7 : 30, pr = code == PC_PASS1 ? 10 : code == PC_PASS7 ? 30 : 90;
             if (!pay(pr)) return; bus_pass = MAX(bus_pass, day_count) + n; char b_[40]; sprintf(b_, "BUS PASS: %d DAYS LEFT", bus_pass - day_count); sim_note(b_); audio_voice(VOICE_FINISHED); } break;
@@ -1913,7 +1963,7 @@ int sim_debug_grow(int what, int arg) {   // (test builds) hurry a family's life
     return 0;
 }
 #endif
-#if defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME) || defined(AUTO_ISLE) || defined(AUTO_SCENE) || defined(AUTO_PHONE) || defined(AUTO_SAVE)
+#if defined(AUTO_SPORT) || defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME) || defined(AUTO_ISLE) || defined(AUTO_SCENE) || defined(AUTO_PHONE) || defined(AUTO_SAVE)
 int sim_debug_goto(char c, int lot) {   // (test builds) stand the player in front of the nearest c (at a place of that kind, lot >= 0)
     Sim *s = &sims[player]; int sx = sim_tile_x(s), sy = sim_tile_y(s), best = 1 << 30, bx = -1, by = -1, tx = 0, ty = 0;
     for (int y = 1; y < MH - 1; y++) for (int x = 1; x < MW - 1; x++) {
@@ -2075,7 +2125,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
     sv_u8(phone_tier); sv_u8(handheld);   // (version 10)
     sv_u8(job_none);   // (version 12)
     sv_u16((u16)arcade_tix); sv_u16((u16)fight_wins); sv_u8((u8)fight_champ); sv_u8((u8)fight_best);   // (version 15)
-    gotchi_save(); sv_u16(dj_xp); sv_u8(dj_heat); band_save(); sv_u8(pet_kind); sv_u8(pet_col); sv_u8(pet_hun); sv_u16(bus_pass); sv_n(pet_dog.look, DL_N); sv_n(pet_dog.tr, DOG_TR); sv_str(pet_dog.name, DOG_NAME - 1); sv_u8(rap_sheet); sv_n(crime_n, CR_N); sv_u8(crime_evid); sv_n(space_tech, 3); sv_u16(space_done);   // (version 21; the band: version 25)
+    gotchi_save(); sv_u16(dj_xp); sv_u8(dj_heat); band_save(); sv_u8(pet_kind); sv_u8(pet_col); sv_u8(pet_hun); sv_u16(bus_pass); sv_n(pet_dog.look, DL_N); sv_n(pet_dog.tr, DOG_TR); sv_str(pet_dog.name, DOG_NAME - 1); sv_u8(rap_sheet); sv_n(crime_n, CR_N); sv_u8(crime_evid); sv_n(space_tech, 3); sv_u16(space_done); sv_u8(col_lvl); sv_u8(col_major); sv_u8(col_on); sv_u8(col_cls); sv_u8(col_gpa); sv_u8(col_study); sv_n(col_g, 3); sv_u16(astro_xp);   // (version 21; the band: version 25)
     sv_u8(veh_own); sv_u8(veh_sel); for (int t = 0; t < VEH_N; t++) sv_u16((u16)veh_fuel[t]); traffic_save();   // (version 18: the vehicles)
     realm_save();   // (version 15: KINGDOM MODE's realm)
     for (int i = 0; i < nsims; i++) {
@@ -2106,7 +2156,8 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     if (save_ver >= 10) { phone_tier = ld_u8() & 3; handheld = ld_u8() & 3; } else { phone_tier = 3; handheld = 0; }   // (an older life keeps every app it had)
     job_none = save_ver >= 12 ? ld_u8() & 1 : 0;   // (an older life keeps its job)
     if (save_ver >= 15) { arcade_tix = ld_u16(); fight_wins = ld_u16(); fight_champ = ld_u8() & 1; fight_best = ld_u8(); } else arcade_tix = fight_wins = fight_champ = fight_best = 0;
-    gotchi_load(save_ver); if (save_ver >= 23) { dj_xp = ld_u16(); dj_heat = ld_u8(); } else { dj_xp = 0; dj_heat = 0; } band_load(save_ver); if (save_ver >= 27) { pet_kind = ld_u8() & 3; pet_col = ld_u8() % 6; pet_hun = ld_u8(); bus_pass = ld_u16(); if (save_ver >= 28) { ld_n(pet_dog.look, DL_N); ld_n(pet_dog.tr, DOG_TR); ld_str(pet_dog.name, DOG_NAME - 1); } else dog_random(&pet_dog, 1); if (save_ver >= 29) { rap_sheet = ld_u8(); ld_n(crime_n, CR_N); crime_evid = ld_u8(); if (save_ver >= 30) { ld_n(space_tech, 3); space_done = ld_u16(); } else { space_done = 0; memset(space_tech, 0, 3); } } else { rap_sheet = 0; memset(crime_n, 0, sizeof crime_n); crime_evid = 0; } } else { pet_kind = 0; pet_hun = 100; bus_pass = 0; } pet_zone = -1;
+    gotchi_load(save_ver); if (save_ver >= 23) { dj_xp = ld_u16(); dj_heat = ld_u8(); } else { dj_xp = 0; dj_heat = 0; } band_load(save_ver); if (save_ver >= 27) { pet_kind = ld_u8() & 3; pet_col = ld_u8() % 6; pet_hun = ld_u8(); bus_pass = ld_u16(); if (save_ver >= 28) { ld_n(pet_dog.look, DL_N); ld_n(pet_dog.tr, DOG_TR); ld_str(pet_dog.name, DOG_NAME - 1); } else dog_random(&pet_dog, 1); if (save_ver >= 29) { rap_sheet = ld_u8(); ld_n(crime_n, CR_N); crime_evid = ld_u8(); if (save_ver >= 30) { ld_n(space_tech, 3); space_done = ld_u16(); } else { space_done = 0; memset(space_tech, 0, 3); }
+            if (save_ver >= 31) { col_lvl = ld_u8() & 3; col_major = ld_u8() % 3; col_on = ld_u8() & 1; col_cls = ld_u8(); col_gpa = ld_u8(); col_study = ld_u8(); ld_n(col_g, 3); astro_xp = ld_u16(); } else { col_lvl = col_major = col_on = col_cls = col_gpa = col_study = 0; memset(col_g, 0, 3); astro_xp = 0; } } else { rap_sheet = 0; memset(crime_n, 0, sizeof crime_n); crime_evid = 0; } } else { pet_kind = 0; pet_hun = 100; bus_pass = 0; } pet_zone = -1;
     veh_on = 0; veh_odo = 0; veh_lowfuel = 0;
     if (save_ver >= 18) { veh_own = ld_u8() & ((1 << VEH_N) - 1); veh_sel = ld_u8() % VEH_N; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = ld_u16(); } else { veh_own = 0; veh_sel = 0; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = 0; }
     traffic_load(save_ver);

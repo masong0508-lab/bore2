@@ -265,7 +265,7 @@ static void start_life(void) {
 #if defined(AUTO_CITY) || defined(AUTO_PARTY)
         seed = 0x5EED1234u;                                    // (test builds: the same world every run, so runs compare)
 #endif
-        bm_gen = 4; bm_new(seed); world_new_seed(seed);
+        bm_gen = 5; bm_new(seed); world_new_seed(seed);
         loading("PEOPLING SAN BOREAS", 45);
         u32 sb; void *sc = crowd_scratch(&sb); pop_new(seed, sc, sb);
         loading("RAISING THE SKYLINE", 60);
@@ -755,6 +755,13 @@ static void life_draw(void) {
 #endif
 #ifdef AUTO_DOGMK
     { static int o3; if (++o3 == 40) sim_want_dog = 1; }
+#endif
+#ifdef AUTO_SPORT
+    { static int o6; extern int sim_debug_goto(char c, int lot); o6++;
+      if (o6 == 100) { for (int i = 0; i < bm_nset(); i++) { const Settle *st = bm_set(i); if (st->kind == ST_SPACEPORT) { sim_note(st->name); taxi_to_block(st->x, st->y, -1, -1, st->name); break; } } }
+      if (o6 == 255) { char nb[32]; int c9 = 0, cd = 0, cp = 0; for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) { c9 += (u8)lifeMap[y][x] == 0xD9; cd += (u8)lifeMap[y][x] == 0xD8; cp += (u8)lifeMap[y][x] == 'd'; } sprintf(nb, "D9 %d D8 %d d %d Z%d", c9, cd, cp, world_zone); sim_note(nb); }
+      if (o6 == 260) { clock_min = AUTO_SPORT == 3 ? 22 * 60 : 10 * 60; clock_day = 1; if (AUTO_SPORT == 4) { col_lvl = 3; col_major = 0; col_g[0] = col_g[1] = col_g[2] = 95; cash = 90000; }
+                       sim_note(sim_debug_goto(AUTO_SPORT == 2 ? 'd' : AUTO_SPORT == 3 ? (char)0xD4 : AUTO_SPORT == 5 ? (char)0xD8 : (char)0xD9, AUTO_SPORT == 2 ? LOT_SCHOOL : AUTO_SPORT == 3 ? LOT_OBS : -1) ? "GOTO OK" : "GOTO FAIL"); } if (o6 > 260) { cam_pitch = 640; cam_dist = 1500; } }
 #endif
 #ifdef AUTO_SPACE
     { static int o5; if (++o5 == 40) { sim_want_space = 1; space_tech[0] = 2; space_tech[1] = 1; space_tech[2] = 2; } }
@@ -1351,6 +1358,7 @@ static void nhood_paint(void) {                    // the blocks from above, 5 p
         else if (l == LOT_SQUARE) c = RGB(24, 23, 20);
         else if (l == LOT_EMPTY) c = RGB(22, 19, 11);
         else if (l == LOT_FARM) c = RGB(20, 22, 8);
+        else if (l == LOT_SPACE || l == LOT_OBS) c = RGB(28, 28, 31);
         else if (l != LOT_WILD && bm_is_place(l)) c = RGB(13, 16, 22);
         for (int y = 0; y < NH_P; y++) for (int x = 0; x < NH_P; x++) {
             u16 v = c;
@@ -1964,7 +1972,7 @@ static void save_body(void) {
 }
 static void load_body(void) {
     u32 seed = ld_u32();
-    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 17 ? 4 : 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
+    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 31 ? 5 : save_ver >= 17 ? 4 : 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
     bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2;
     traffic_level = 2; if (save_ver >= 19) traffic_level = ld_u8() % 5;
     if (save_ver >= 7) { bm_land = ld_u8() % BL_N; bm_sea = ld_u8() % 5; bm_clim = ld_u8() % 5; bm_hills = ld_u8() % 5;
@@ -3484,7 +3492,7 @@ static void worlds_open(void) {
 #endif
 }
 static void worlds_go(u32 seed, int mode) {
-    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 4; bm_packed = wo_packed; wo_name_for(seed); strcpy(life_cap, wo_name); start_life();
+    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 5; bm_packed = wo_packed; wo_name_for(seed); strcpy(life_cap, wo_name); start_life();
     cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 }
 // ---- CREATE A WORLD: make your own. What kind of life, then dials for the land (or the castaway's island), the map as you turn them ----
@@ -3618,7 +3626,7 @@ static const char *const moreCard[WO_NMORE] = { "STORY|MISSIONS", "BORE-OUT|MAN!
 static const char *const moreBlurb[WO_NMORE] = { "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. NOT PORTED YET!", "THE TOWN GOES UNDEAD. NOT PORTED YET!", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. NOT PORTED YET!",
     "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!", "RAISE EIGHT PIXEL PETS PER TOY. X: THE GUIDE!", "GROWN-UPS ONLY: RETIRE AND LEAVE A LEGACY. NOT PORTED YET!", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
     "THE YEAR TURNS. PLAY ON AND SEE.", "PLACEHOLDER PACK. NOT MADE YET!", "FORM A BAND AND PLAY GIGS! PAUSE, SUPERSTAR BAND", "BREAK THE LAW AND FIND OUT.", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
-    "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "THE COMPUTER HAS A MISSION CONTROL. LOOK UP." };
+    "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP." };
 static void worlds_update(void) {
     wo_t++;
     if (wo_more) {                                   // MISSIONS AND EXPANSIONS
@@ -3635,7 +3643,7 @@ static void worlds_update(void) {
     if (PRESSED(PAD_CIRCLE)) { state = ST_MENU; return; }
     if (PRESSED(PAD_TRIANGLE)) { wo_packed ^= 1; wo_painted = 0; audio_voice(VOICE_FINISHED); }   // TOWNS: ROOMY or PACKED
     if (PRESSED(PAD_SELECT) && wo_sel != WO_MORE) { name_open(wo_name, 17, "NAME YOUR CAPITAL CITY", worlds_named); return; }
-    bm_gen = 4; bm_packed = wo_packed;
+    bm_gen = 5; bm_packed = wo_packed;
     if (wo_sel == WO_CREATE) {                       // CREATE A WORLD: roll it, or step through, until you like the look of it
         if (PRESSED(PAD_SQUARE)) { wo_custom = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ (u32)wo_t; if (!wo_custom) wo_custom = 1; audio_voice(VOICE_FINISHED); }
         if (PRESSED(PAD_L1)) wo_custom--;

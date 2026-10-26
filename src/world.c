@@ -1105,6 +1105,21 @@ static void lot_library(int lx, int ly, unsigned h) {   // the stacks, a reading
     gFree(x1 - 1, y1 - 1, ';'); gFree(x1 - 2, y1 - 1, 'l'); gFree(x1 - 1, y1 - 3, ';'); gFree(x0 + 4, y1 - 1, 'y'); gFree(x0 + 3, y1 - 1, 'y'); gFree(x0 + 8, y0 + 6, 'r');
     gFree(lx + 2, ly + 12, 'N'); gFree(lx + 10, ly + 12, 'Z');
 }
+static void lot_space(int lx, int ly, unsigned h) {   // the SPACE CENTRE: mission control (consoles, a briefing desk) and the launch pad with its rocket
+    int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 6, wp = NWP + (int)((h >> 9) % 89);
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 10 : 6, wp, 1);
+    for (int x = x0 + 1; x <= x1 - 1; x += 2) { gFree(x, y0 + 1, (char)0xD9); gFree(x, y0 + 2, 'h'); }
+    gFree(x0 + 1, y1 - 1, '['); gFree(x1 - 1, y1 - 1, '['); gFree(x0 + 5, y1 - 1, 'd');
+    gBox(lx, ly + 8, lx + 12, ly + 12, FL_PAVING); gBox(lx + 4, ly + 9, lx + 8, ly + 12, FL_ROCK);
+    gFree(lx + 6, ly + 10, (char)0xD8); gFree(lx + 2, ly + 9, 'O'); gFree(lx + 10, ly + 9, 'O');
+}
+static void lot_obs(int lx, int ly, unsigned h) {   // the OBSERVATORY: the public scopes (a hobby scope, then a research telescope and a dome for the certified), a radio dish out the back
+    int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9, wp = NWP + (int)((h >> 9) % 89);
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 4 : 5, wp, 0);
+    gFree(x0 + 2, y0 + 2, (char)0xD4); gFree(x0 + 5, y0 + 2, (char)0xD5); gFree(x1 - 2, y0 + 2, (char)0xD6);
+    gFree(x0 + 1, y0 + 5, 'b'); gFree(x0 + 1, y0 + 6, 'b'); gFree(x1 - 1, y0 + 5, '['); gFree(x1 - 1, y0 + 6, 'h'); gFree(x0 + 4, y1 - 1, 'y');
+    gFree(lx + 2, ly + 11, (char)0xD7); gFree(lx + 10, ly + 11, (char)0xD3); gFree(lx + 6, ly + 11, 'N');
+}
 static void lot_spa(int lx, int ly, unsigned h) {   // the massage room, a sauna's showers, two hot tubs, a fountain, the front desk
     int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 10, wp = NWP + (int)((h >> 9) % 89);
     shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 6 : 5, wp, 0);
@@ -1520,6 +1535,8 @@ COLD static void gen_block(int wx, int wy) {
         case LOT_GALLERY: lot_gallery(lx, ly, h); break;
         case LOT_GAS:     lot_gas(lx, ly, h); break;
         case LOT_CONV:    lot_conv(lx, ly, h); break;
+        case LOT_SPACE:   lot_space(lx, ly, h); break;
+        case LOT_OBS:     lot_obs(lx, ly, h); break;
         case LOT_RIVER:   lot_river(ox, oy, b.road & BR_MEGA, h); break;
         default: break;
     }

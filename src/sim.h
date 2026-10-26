@@ -104,6 +104,7 @@ const char *sim_pie_title(void);           // whose / what menu it is
 int  sim_traits(const Sim *s, const char *out[3]);   // Sims 3 traits read off the personality: how many (up to 3)
 const char *sim_moodlet_name(int id);
 void sim_gotchi_mood(int simi, int kind);   // (gotchi.c) a moodlet from the BOREAGOTCHI toy
+extern u8 col_lvl, col_major, col_on, col_cls, col_gpa, col_study, col_g[3]; extern u16 astro_xp; const char *col_major_name(int m); int space_cert(void); const char *space_cert_name(int c);
 extern int sim_want_space, space_done; extern u8 space_tech[3];   // the space program: parts (hull, engine, guidance), missions done
 extern int sim_want_prison, rap_sheet; void sim_skip_days(int n);   // HARD TIME
 enum { CR_ASSAULT, CR_THEFT, CR_RESIST, CR_JAILBREAK, CR_N };   // the crimes on your record, waiting for a court

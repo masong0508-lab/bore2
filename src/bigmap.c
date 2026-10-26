@@ -77,7 +77,7 @@ static const char *const nmP[12] = { "PORT ", "SAN ", "LOS ", "NEW ", "OLD ", "L
 static void make_name(char *o, int kind) {
     for (int t = 0; t < 40; t++) {
         char b[40]; b[0] = 0;
-        int pre = kind != ST_VILLAGE && (rr() % 3) == 0;
+        int pre = kind < ST_VILLAGE && (rr() % 3) == 0;
         if (pre) { const char *p = nmP[rr() % 12]; strcpy(b, p); }
         strcat(b, nmA[rr() % 16]); strcat(b, nmB[rr() % 16]);
         if (strlen(b) > 17) continue;
@@ -119,6 +119,19 @@ static void link(int i, int j) {                  // a highway: along i's row to
 }
 static void rivers_make(void);
 static int mg_cx = -1;
+static void place_space(void) {   // the spaceport: the open country furthest from the capital, out at the edge of the map
+    if (nset >= NSET_MAX) return;
+    int bx = -1, by = 0, bd = -1;
+    for (int t = 0; t < 700; t++) {
+        int x = 60 + (int)(rr() % (u32)(BM_N - 120)), y = 60 + (int)(rr() % (u32)(BM_N - 120)), cx = x - BM_N / 2, cy = y - BM_N / 2, d = cx * cx + cy * cy, far = 1;
+        if (d <= bd) continue;
+        for (int i = 0; i < nset; i++) { int dx = x - sets[i].x, dy = y - sets[i].y, need = 5 + sets[i].r + 30; if (dx * dx + dy * dy < need * need) { far = 0; break; } }
+        if (!far || !land_ok(x, y, 5)) continue;
+        bx = x; by = y; bd = d;
+    }
+    if (bx < 0) return;
+    Settle *s = &sets[nset]; s->x = (u16)bx; s->y = (u16)by; s->r = 5; s->kind = ST_SPACEPORT; sprintf(s->name, "CAPE %s", nmA[rr() % 16]); nset++;
+}
 void bm_new(u32 seed) {
     wseed = seed ? seed : 1; rs = wseed ^ 0xA5A5A5A5u; nset = 0; nseg = 0;
     static const u8 capr[6] = { 6, 8, 11, 14, 18, 22 };
@@ -129,6 +142,7 @@ void bm_new(u32 seed) {
     for (int i = 0; i < MIN(bm_ncity, BM_MAXCITY); i++) place_set(ST_CITY, 9, BM_N / 2, BM_N / 2, 360);   // (CITIES, TOWNS, VILLAGES: as many as asked, room allowing)
     for (int i = 0; i < MIN(bm_ntown, BM_MAXTOWN); i++) place_set(ST_TOWN, 5 + (int)(rr() % 2), BM_N / 2, BM_N / 2, 400);
     for (int i = 0; i < MIN(bm_nvil, BM_MAXVIL); i++) place_set(ST_VILLAGE, 3 + (int)(rr() % 2), BM_N / 2, BM_N / 2, 420);
+    if (bm_gen >= 5) place_space();                                       // (worlds from now on: the spaceport, far out)
     // the highways: the shortest network that reaches every town (Prim), and a few more for loops
     u8 in[NSET_MAX] = { 0 }; in[0] = 1;
     for (int k = 1; k < nset; k++) {
@@ -187,6 +201,10 @@ static const u8 mixCoreP[] = { LOT_TOWER, 10, LOT_OFFICE, 4, LOT_SHOP, 9, LOT_DI
                               LOT_CAFE, 4, LOT_BAR, 4, LOT_CINEMA, 2, LOT_SALON, 2, LOT_RESTAURANT, 3, LOT_CLINIC, 2, LOT_LIBRARY, 1, LOT_SPA, 2, LOT_GALLERY, 2, 0, 0 };
 static const u8 mixVil[]  = { LOT_HOUSE, 18, LOT_COTTAGE, 22, LOT_EMPTY, 18, LOT_FARM, 16, LOT_PARK, 5, LOT_WILD, 12, LOT_SHOP, 3, LOT_DINER, 3, LOT_BAR, 3, 0, 0 };
 static int landmark(const Settle *s, int dx, int dy) {   // what every town has at its heart
+    if (s->kind == ST_SPACEPORT) {   // the space centre town: a launch complex, observatories, a canteen, a dorm, an academy, a shop, a clinic
+        static const signed char sp[][3] = { {0,0,LOT_SPACE}, {-1,0,LOT_OBS}, {1,0,LOT_DINER}, {0,1,LOT_INN}, {0,-1,LOT_SCHOOL}, {1,1,LOT_SHOP}, {-1,-1,LOT_CLINIC}, {-1,1,LOT_OBS}, {1,-1,LOT_LIBRARY}, {2,0,LOT_OBS} };
+        for (int i = 0; i < 10; i++) if (sp[i][0] == dx && sp[i][1] == dy) return sp[i][2];
+        return -1; }
     if (dx == 0 && dy == 0) return LOT_SQUARE;
     if (s->kind == ST_VILLAGE) {
         if (dx == 1 && dy == 0) return LOT_SHOP; if (dx == -1 && dy == 0) return LOT_DINER; if (dx == 0 && dy == 1) return LOT_INN; if (dx == 0 && dy == -1) return LOT_BAR;
@@ -218,7 +236,7 @@ static void bm_block0(int bx, int by, BInfo *b) {
         int lm = landmark(s, dx, dy);
         if (lm >= 0) { b->lot = (u8)lm; return; }
         int pk = packed();
-        const u8 *mix = s->kind == ST_VILLAGE ? (pk ? mixVilP : mixVil) : (s->kind == ST_CITY && q < 64) ? (pk ? mixCoreP : mixCore) : q < 170 ? (pk ? mixMidP : mixMid) : (pk ? mixOutP : mixOut);
+        const u8 *mix = s->kind >= ST_VILLAGE ? (pk ? mixVilP : mixVil) : (s->kind == ST_CITY && q < 64) ? (pk ? mixCoreP : mixCore) : q < 170 ? (pk ? mixMidP : mixMid) : (pk ? mixOutP : mixOut);
         b->lot = (u8)pick(b->h >> 4, mix);
         if (bm_gen >= 4) {   // PACKED fills its gaps with homes; ROOMY leaves green ones
             unsigned g2 = (b->h >> 8) % 100u;
@@ -269,7 +287,7 @@ static int mega_kind(int gx, int gy, int si) {   // -1: not a group; else MK_ (a
     if (mg_cx < 0) { cgx = -1; mg_cx = 0; }                // (a new world: forget the last answer)
     if (gx == cgx && gy == cgy && si == csi) return ck;
     cgx = gx; cgy = gy; csi = si; ck = -1;
-    const Settle *s = &sets[si]; if (s->kind == ST_VILLAGE) return ck;
+    const Settle *s = &sets[si]; if (s->kind >= ST_VILLAGE) return ck;
     u32 h = bm_hash(gx, gy, wseed ^ 0x3E6Au);
     if ((int)(h % 100u) >= (s->kind == ST_CITY ? (packed() ? 11 : 26) : (packed() ? 6 : 16))) return ck;
     for (int k = 0; k < 4; k++) {
@@ -303,10 +321,10 @@ int bm_storeys(const BInfo *b) {
 int bm_units(const BInfo *b) {
     switch (b->lot) { case LOT_TOWN: return 2; case LOT_HOUSE: case LOT_COTTAGE: case LOT_TWO: return 1; case LOT_APART: return 2 * bm_storeys(b); default: return 0; }
 }
-int bm_is_place(int lot) { return (lot >= LOT_SHOP && lot <= LOT_SKATE) || (lot >= LOT_CAFE && lot <= LOT_CONV); }
+int bm_is_place(int lot) { return (lot >= LOT_SHOP && lot <= LOT_SKATE) || (lot >= LOT_CAFE && lot <= LOT_CONV) || lot == LOT_SPACE || lot == LOT_OBS; }
 static const char *const lotNm[LOT_N] = { "OPEN COUNTRY", "HOUSE", "COTTAGE", "TOWNHOUSES", "TWO-STOREY", "FLATS", "SHOP", "DINER", "GYM", "OFFICE", "INN",
                                           "POOL", "SCHOOL", "ARCADE", "OFFICE TOWER", "HOTEL", "PARK", "TOWN SQUARE", "SKATE PLAZA", "EMPTY LOT", "FARM",
-                                          "CAFE", "BAR", "CINEMA", "SALON", "RESTAURANT", "CLINIC", "LIBRARY", "SPA", "GALLERY", "GAS STATION", "CONVENIENCE", "RIVER" };
+                                          "CAFE", "BAR", "CINEMA", "SALON", "RESTAURANT", "CLINIC", "LIBRARY", "SPA", "GALLERY", "GAS STATION", "CONVENIENCE", "RIVER", "SPACE CENTRE", "OBSERVATORY" };
 const char *bm_lot_name(int lot) { return lotNm[lot % LOT_N]; }
 
 static const char *const stNm[24] = { "MAIN", "ELM", "OAK", "PINE", "MAPLE", "BIRCH", "CEDAR", "ASH", "WILLOW", "LAKE", "HILL", "PARK",
@@ -341,8 +359,10 @@ const char *bm_place_name(int lot, u32 h, char *out) {
     static const char *const gas[5] = { "BORE-O-GAS", "SPEEDWAY FUEL", "FILL N' GO", "DIPPER OIL", "MOSS PETROL" };
     static const char *const cv[5] = { "QUICK STOP", "24/7 MART", "CORNER STORE", "HANDY MART", "LITTLE BORE" };
     static const char *const gal[4] = { "THE GREY GALLERY", "MOSS MODERN", "BEIGE ART HOUSE", "DIPPER MUSEUM" };
+    static const char *const spc[4] = { "STAR HARBOUR SPACE CENTRE", "THE LAUNCH COMPLEX", "ORBIT CONTROL", "CAPE BOREAL CENTRE" }, *const obsn[4] = { "THE GRAND OBSERVATORY", "STARGAZER HALL", "DEEP SKY OBSERVATORY", "THE DOME" };
     const char *s;
     switch (lot) {
+        case LOT_SPACE: s = spc[h % 4u]; break; case LOT_OBS: s = obsn[h % 4u]; break;
         case LOT_SHOP: s = shop[(h >> 8) % 5u][h % 4u]; break;   case LOT_DINER: s = diner[h % 6u]; break; case LOT_GYM: s = gym[h % 4u]; break;
         case LOT_OFFICE: s = off[h % 6u]; break;  case LOT_INN: s = inn[h % 4u]; break;     case LOT_POOL: s = pool[h % 3u]; break;
         case LOT_SCHOOL: s = sch[h % 3u]; break;  case LOT_ARCADE: s = arc[h % 3u]; break;  case LOT_PARK: s = park[h % 6u]; break;

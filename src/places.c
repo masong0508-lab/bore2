@@ -55,6 +55,8 @@ static void hours_of(int lot, int *a, int *b, int *days) {
         case LOT_GYM:    *a = 360; *b = 1320; break;
         case LOT_OFFICE: case LOT_TOWER: *a = 480; *b = 1080; *days = 0x1F; break;
         case LOT_POOL:   *a = 540; *b = 1200; break;
+        case LOT_SPACE:  *a = 360; *b = 1320; break;
+        case LOT_OBS:    *a = 1080; *b = 1740; break;                         // 6 PM till 5 AM: the night sky
         case LOT_SCHOOL: *a = 450; *b = 960; *days = 0x1F; break;
         case LOT_ARCADE: *a = 660; *b = 1440; break;
         default:         *a = 0; *b = 1440; break;                     // inns, hotels, parks, squares: always
