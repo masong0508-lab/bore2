@@ -65,3 +65,6 @@ Better Sim models in the lot (shoes, belt, collar, sleeves, hands, ears, eyes, b
 
 ## D13
 Thin walls (skirting board + wall + pale cap, merged into runs to save polygons), real doors (posts, lintel, swung leaf; Build > Wall palette has a Door), roomier generated house (12x9, open living/kitchen, bedroom + bath with doors). Fixed z-fighting lines (near plane, layer offsets, wall corner overlaps), blown-out lamp (softer light), and the polygon-budget bug that hid furniture. Note: sims do not yet collide with walls.
+
+## D14
+Sims path-find round walls (BFS per cell; doors are open, solid furniture blocks; "Cannot get there" if sealed in). Proportions: walls ~2.1 m, furniture heights scaled to the sims, narrower FOV (40 deg) and lower camera pitch, so less squashed; walls toward the camera drop to half height (cutaway).
