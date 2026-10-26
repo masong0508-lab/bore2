@@ -193,9 +193,11 @@ static void air_step(int hd) {
     int g = MAX(0, gh(px, pz)), over_sea = gh(px, pz) <= 0;
     { int i = (px + TS / 2) / TS - (px < -TS / 2), j = (pz + TS / 2) / TS - (pz < -TS / 2), bx, bz, bh, pop; if (bld(i, j, &bx, &bz, &bh, &pop) && !is_dead(i, j) && ABS(px - bx) < 70 && ABS(pz - bz) < 70 && py < g + bh) { crash_plane(px, pz, 0); return; } }
     if (py <= g + 4 && !crashed) {   // the ground
-        int vs = -vy, strip = on_strip(px, pz), floats = (a->fl & 1) && over_sea, ok = (spd < st * 3 / 2 || hel) && vs < (hel ? 18 : 14) && ABS(roll) < 260 && ABS(pitch) < 360 && (strip || floats || hel || cur == NB || (vs < 9 && spd < st));
+        int slope = ABS(gh(px + 60, pz) - gh(px - 60, pz)) + ABS(gh(px, pz + 60) - gh(px, pz - 60)), vs = -vy, strip = on_strip(px, pz), floats = (a->fl & 1) && over_sea, ok = (spd < st * 3 / 2 || hel) && vs < (hel ? 18 : 14) && ABS(roll) < 260 && ABS(pitch) < 360 && (strip || floats || ((hel || cur == NB || (vs < 9 && spd < st)) && slope < 70));
         if (ok) { py = g + 4; if (over_sea) py = 4; vy = 0; roll = 0; pitch = 0; spd = spd * 14 / 15; if (!landed) { landed = 1; int pay = 150 + (14 - MIN(14, vs)) * 25 + (strip ? 150 : 0); if (spd < 4 * 16) { } cash += pay; pk_data[28]++; sims[player].skill_mech += 25; sprintf(line, "SAFE LANDING! +$%d", pay); ctr = 240; audio_voice(VOICE_WIN); } }
-        else crash_plane(px, pz, 0);
+        else { int dm = vs * 4 + spd / 12 + slope / 4 + ABS(roll) / 40;   // a crash landing: how bad it is decides
+            if (dm < hull && dm < 90 && !over_sea) { hurt(dm); py = g + 4; vy = 0; spd = spd / 3; roll = pitch = 0; landed = 1; sprintf(line, "CRASH LANDING! HULL -%d", dm); ctr = 240; audio_voice(VOICE_NAH); }
+            else crash_plane(px, pz, 0); }
     } else landed = 0;
     if (landed && spd < 16 && thr < 10 && cur != NB) { /* parked */ }
 }
