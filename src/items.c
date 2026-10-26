@@ -9,6 +9,7 @@
 #include "items_gotchi.inc"   // the BOREAGOTCHI! pack's objects (tools/make_items_gotchi.py)
 #include "items_party.inc"    // the PARTY pack (tools/make_items_party.py)
 #include "items_band.inc"     // the SUPERSTAR practice instruments (tools/make_items_band.py)
+#include "items_farm.inc"     // FARM LIFE: crop bed, coop, cow, stand (tools/make_items_farm.py)
 #include "items_space.inc"    // the telescopes, rocket and console (tools/make_items_space.py)
 
 // ---- the sound pack, the phone and the DeadSet: boxes made for BORE 2 (the GBA drew them as pixel art) ----
@@ -334,6 +335,7 @@ static ItemDef defs[] = {   // (not const: items_init sets some of them to life 
     ITEMS_PARTY
     ITEMS_BAND
     ITEMS_SPACE
+    ITEMS_FARM
 };
 #define NDEFS ((int)(sizeof(defs) / sizeof(defs[0])))
 _Static_assert(sizeof(defs) / sizeof(defs[0]) < 255, "def_ix holds a def + 1 in a byte");

@@ -1152,11 +1152,11 @@ static void lot_empty(int lx, int ly, unsigned h) {   // nothing built yet: roug
 }
 static void lot_farm(int lx, int ly, unsigned h) {   // rows of crops, a barn, a fence
     for (int y = ly + 1; y <= ly + 11; y += 2) gBox(lx + 1, y, lx + 6, y, FL_SOIL);
-    for (int y = ly + 2; y <= ly + 10; y += 2) for (int x = lx + 1; x <= lx + 6; x += 2) gFree(x, y, (h >> (x & 7)) & 1 ? 'p' : 'Z');
+    for (int y = ly + 2; y <= ly + 10; y += 2) for (int x = lx + 1; x <= lx + 6; x += 2) gFree(x, y, (char)0xDB);   // (FARM LIFE: crop beds)
     gRoom(lx + 8, ly + 1, lx + 12, ly + 6, 9, NWP + (int)((h >> 9) % 89));
-    gPut(lx + 10, ly + 6, 'D'); gFree(lx + 9, ly + 2, '#'); gFree(lx + 9, ly + 3, '#'); gFree(lx + 11, ly + 2, 'O'); gFree(lx + 11, ly + 3, 'O');
+    gPut(lx + 10, ly + 6, 'D'); gFree(lx + 9, ly + 2, (char)0xDC); gFree(lx + 9, ly + 4, (char)0xDC); gFree(lx + 11, ly + 2, (char)0xDD); gFree(lx + 11, ly + 4, (char)0xDD); gFree(lx + 11, ly + 3, 'O');
     gLine(lx, ly + 12, lx + 12, ly + 12, 'w', 9); lifeMap[ly + 12][lx + 7] = '.';
-    gFree(lx + 9, ly + 9, 'K'); gFree(lx + 11, ly + 10, TREE);
+    gFree(lx + 9, ly + 9, 'K'); gFree(lx + 11, ly + 10, TREE); gFree(lx + 8, ly + 11, (char)0xDE);
 }
 
 // what stands on lot (i,j): the landmarks are fixed, the rest of the 5x5 grid is a hand-placed mix of homes so no two neighbours match

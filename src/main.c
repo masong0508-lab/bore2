@@ -761,7 +761,7 @@ static void life_draw(void) {
       if (o6 == 100) { for (int i = 0; i < bm_nset(); i++) { const Settle *st = bm_set(i); if (st->kind == ST_SPACEPORT) { sim_note(st->name); taxi_to_block(st->x, st->y, -1, -1, st->name); break; } } }
       if (o6 == 255) { char nb[32]; int c9 = 0, cd = 0, cp = 0; for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) { c9 += (u8)lifeMap[y][x] == 0xD9; cd += (u8)lifeMap[y][x] == 0xD8; cp += (u8)lifeMap[y][x] == 'd'; } sprintf(nb, "D9 %d D8 %d d %d Z%d", c9, cd, cp, world_zone); sim_note(nb); }
       if (o6 == 260) { clock_min = AUTO_SPORT == 3 ? 22 * 60 : 10 * 60; clock_day = 1; if (AUTO_SPORT == 4) { col_lvl = 3; col_major = 0; col_g[0] = col_g[1] = col_g[2] = 95; cash = 90000; }
-                       sim_note(sim_debug_goto(AUTO_SPORT == 2 ? 'd' : AUTO_SPORT == 3 ? (char)0xD4 : AUTO_SPORT == 5 ? (char)0xD8 : (char)0xD9, AUTO_SPORT == 2 ? LOT_SCHOOL : AUTO_SPORT == 3 ? LOT_OBS : -1) ? "GOTO OK" : "GOTO FAIL"); } if (o6 > 260) { cam_pitch = 640; cam_dist = 1500; } }
+                       sim_note(sim_debug_goto(AUTO_SPORT == 2 ? 'd' : AUTO_SPORT == 3 ? (char)0xD4 : AUTO_SPORT == 5 ? (char)0xD8 : AUTO_SPORT == 6 ? (char)0xDB : (char)0xD9, AUTO_SPORT == 2 ? LOT_SCHOOL : AUTO_SPORT == 3 ? LOT_OBS : AUTO_SPORT == 6 ? LOT_FARM : -1) ? "GOTO OK" : "GOTO FAIL"); } if (o6 > 260) { cam_pitch = 640; cam_dist = 1500; } }
 #endif
 #ifdef AUTO_SPACE
     { static int o5; if (++o5 == 40) { sim_want_space = 1; space_tech[0] = 2; space_tech[1] = 1; space_tech[2] = 2; } }
@@ -2596,12 +2596,12 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
             ui_icon(12, y - 2, IC_BOLT, UI_RED); ui_text(28, y, 1, t, UI_INK);
             sprintf(b, "-%d", s->fear[i].pts); ui_badge(306 - ui_tw(1, b) - 10, y - 2, b, UI_RED, UI_WHITE); }
     } else if (panel_tab == 2) {   // SKILLS and PERSONALITY
-        static const char *const skNm[7] = { "COOKING", "BODY", "FUN", "LOGIC", "CHARISMA", "CREATIVITY", "MECHANICAL" };
-        int raw[12] = { s->skill_cook, s->skill_body, s->skill_fun, s->skill_logic, s->skill_char, s->skill_creat, s->skill_mech, s->skill_band[0], s->skill_band[1], s->skill_band[2], s->skill_band[3], s->skill_band[4] };
-        static const u32 skCol[7] = { UI_RGB(236, 160, 40), UI_RGB(220, 90, 70), UI_RGB(70, 176, 238), UI_RGB(120, 90, 210), UI_RGB(236, 110, 160), UI_RGB(60, 190, 150), UI_RGB(130, 140, 150) };
+        static const char *const skNm[8] = { "COOKING", "BODY", "FUN", "LOGIC", "CHARISMA", "CREATIVITY", "MECHANICAL", "FARMING" };
+        int raw[13] = { s->skill_cook, s->skill_body, s->skill_fun, s->skill_logic, s->skill_char, s->skill_creat, s->skill_mech, s->skill_farm, s->skill_band[0], s->skill_band[1], s->skill_band[2], s->skill_band[3], s->skill_band[4] };
+        static const u32 skCol[8] = { UI_RGB(236, 160, 40), UI_RGB(220, 90, 70), UI_RGB(70, 176, 238), UI_RGB(120, 90, 210), UI_RGB(236, 110, 160), UI_RGB(60, 190, 150), UI_RGB(130, 140, 150), UI_RGB(110, 180, 70) };
         ui_section(12, y0, 294, "SKILLS");
-        for (int i = 0; i < 12; i++) { int col = i < 6 ? 0 : 1, row = i < 6 ? i : i - 6, x = col ? 164 : 12, y = y0 + 11 + row * 10, lv = wants_skill_level(raw[i]);
-            ui_text(x, y, 1, i < 7 ? skNm[i] : band_skill_name[i - 7], UI_INK); ui_bar(x + (col ? 94 : 68), y + 1, col ? 42 : 56, 6, lv * 10, i < 7 ? skCol[i] : UI_RED); sprintf(b, "%d", lv); ui_text(x + (col ? 142 : 128), y, 1, b, UI_SOFT); }
+        for (int i = 0; i < 13; i++) { int col = i < 7 ? 0 : 1, row = i < 7 ? i : i - 7, x = col ? 164 : 12, y = y0 + 11 + row * 9, lv = wants_skill_level(raw[i]);
+            ui_text(x, y, 1, i < 8 ? skNm[i] : band_skill_name[i - 8], UI_INK); ui_bar(x + (col ? 94 : 68), y + 1, col ? 42 : 56, 6, lv * 10, i < 8 ? skCol[i] : UI_RED); sprintf(b, "%d", lv); ui_text(x + (col ? 142 : 128), y, 1, b, UI_SOFT); }
         ui_section(12, y0 + 74, 294, "PERSONALITY");
         for (int i = 0; i < TR_N; i++) { int y = y0 + 85 + i * 10;
             ui_text(12, y, 1, look_trait_name(i), UI_INK); ui_pips(108, y, s->bore.tr[i], 10, UI_BLUE); }
@@ -3626,7 +3626,7 @@ static const char *const moreCard[WO_NMORE] = { "STORY|MISSIONS", "BORE-OUT|MAN!
     "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "CRIME|AND LAW", "FARM|LIFE", "SKY|HIGH", "SPEED|CITY", "BIG|SCREEN", "SEA-|SIDE", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE" };
 static const char *const moreBlurb[WO_NMORE] = { "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. NOT PORTED YET!", "THE TOWN GOES UNDEAD. NOT PORTED YET!", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. NOT PORTED YET!",
     "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!", "RAISE EIGHT PIXEL PETS PER TOY. X: THE GUIDE!", "GROWN-UPS ONLY: RETIRE AND LEAVE A LEGACY. NOT PORTED YET!", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
-    "THE YEAR TURNS. PLAY ON AND SEE.", "PLACEHOLDER PACK. NOT MADE YET!", "FORM A BAND AND PLAY GIGS! PAUSE, SUPERSTAR BAND", "BREAK THE LAW AND FIND OUT.", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
+    "THE YEAR TURNS. PLAY ON AND SEE.", "PLACEHOLDER PACK. NOT MADE YET!", "FORM A BAND AND PLAY GIGS! PAUSE, SUPERSTAR BAND", "BREAK THE LAW AND FIND OUT.", "BEDS, HENS AND COWS IN THE VILLAGES. SELL AT THE STAND.", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
     "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP." };
 static void worlds_update(void) {
     wo_t++;
