@@ -24,3 +24,10 @@ The DS build chain in tools/dsbuild (clang + libnds 1.8.2) and the headless melo
 Tested in the emulator (DS mode, FreeBIOS): bottom screen shows the 2D neighbourhood map from bigmap.c, a stylus tap picks a lot, the top screen draws that lot in 3D
 (houses with pitched roofs, backyard pools and fences, towers, shops, parks, people). L/R change town, A/B zoom, START re-rolls the world.
 Still to do: real DSi hardware flags (ndstool -g with the DSi unit code), the sim, saves, vehicles, and the other zones.
+
+## D2 status: LIVE / BUY / BUILD on two screens (Sims 2 / Sims 3 style)
+From the map, press A or tap the picked lot again to play it. Top screen: the live lot in 3D. Bottom screen: the tool.
+- LIVE: three sims wander the lot; bottom shows needs bars; tap a name to switch sim.
+- BUY: catalogue with 5 tabs and item cards (price, funds). Tap an item, then tap the plan (or D-pad) and tap again / A to place; the 3D lot shows the ghost at the cursor.
+- BUILD: plan view with FLOOR, WALL (tap near a cell edge), ERASE and SELL tools and colour palettes.
+X/Y zoom, L/R turn the view in LIVE. Lot contents are not saved yet.
