@@ -31,6 +31,7 @@ typedef struct {
     int  skill_cook, skill_body, skill_fun;
 #define SKL(raw) (((raw) / 400) > 10 ? 10 : ((raw) / 400))   // a skill counter -> its level 0..10
     int  skill_logic, skill_char, skill_creat, skill_mech, skill_farm;
+    u8   tod_walk, tod_talk, tod_potty, tod_story;   // a toddler's lessons: walking, talking, the potty, stories (0..100 each)
     u8   plant, plant_d, plant_t, plant_sk, plant_hc;   // FARM LIFE: 0 a person, 1 a living STALK (cannot move or talk, fades), 2 PLANTBORE; days as a stalk, spoken to today, the old skin and hair   // LOGIC (reading, study, lectures, the stars), CHARISMA (chats), CREATIVITY (art, music), MECHANICAL (rockets, repairs)
     int  skill_band[5];     // SUPERSTAR: voice, guitar/bass, keys, drums/percussion, dancing (counters like the others: 400 a level, 0..10)
     int  dead;
@@ -102,6 +103,8 @@ void sim_init(void);
 void sim_add(const Bore *b, int mx, int my, int ai);
 void sim_step(void);                       // one logic step (60 per second)
 void sim_player_move(int dx, int dz, int run);   // world-space push from the stick, -4096..4096 each
+const char *sim_life_text(const Sim *s, int full);   // the life stage in words (toddler, infant, plant greying), with the days into it when full
+int  sim_is_toddler(const Sim *b);
 int  sim_pie_open(char opt[8][24]);       // X: the pie menu for what is in front (0 = nothing there)
 void sim_pie_do(int i);                    // the option picked
 const char *sim_pie_title(void);           // whose / what menu it is

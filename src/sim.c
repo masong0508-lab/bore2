@@ -41,9 +41,9 @@ static u8 baby_par[2], baby_kind;   // the coming baby's parents' uids; 1 an ado
 static u8 next_uid = 1;
 static int cake_slices;             // slices left on the birthday cake (0: there is none)
 static struct { u8 x, y, city; char name[NAME_LEN]; } graves[6]; static int ngraves;   // (city: x, y on the home's block, not the window)
-static const u8 stLen[4][AG_N] = { { 0, 0, 0, 0, 0 }, { 1, 3, 3, 9, 5 }, { 2, 6, 6, 18, 9 }, { 4, 12, 12, 36, 18 } };
+static const u8 stLen[4][AG_N] = { { 0, 0, 0, 0, 0 }, { 2, 3, 3, 9, 5 }, { 4, 6, 6, 18, 9 }, { 8, 12, 12, 36, 18 } };   // (a baby: the first half infant, the second a toddler)
 int sim_stage_len(int stage) { return stLen[aging & 3][stage % AG_N]; }
-enum { CARE_FEED = 1, CARE_CHANGE, CARE_PLAY, CARE_CUDDLE, CARE_BED };
+enum { CARE_FEED = 1, CARE_CHANGE, CARE_PLAY, CARE_CUDDLE, CARE_BED, CARE_STORY, CARE_BATH, CARE_WALK, CARE_TALK, CARE_POTTY, CARE_COMFORT, CARE_HWHELP, CARE_FEELINGS, CARE_END };
 static void bake_done(Sim *s); static void cake_eaten(Sim *s); static void homework_done(Sim *s); static void care_done(Sim *s);
 static void baby_to_bed(Sim *b); static int baby_need(const Sim *b);
 static int school_age(const Sim *k); static void care_start(Sim *s, int baby, int kind);
@@ -106,7 +106,7 @@ enum { ML_NONE, ML_GOOD_MEAL, ML_SNACKED, ML_RESTED, ML_FRESH, ML_GOOD_CHAT, ML_
        ML_HUNGRY, ML_TIRED, ML_STINKY, ML_BURSTING, ML_LONELY, ML_BORED, ML_SINGING, ML_PIZZA,
        ML_ATE_OUT, ML_SWAM, ML_OUTFIT, ML_RETAIL, ML_NEW_GAME, ML_NEW_JOB, ML_COACHED, ML_HOTEL,
        ML_FINE_DINING, ML_FILM, ML_CUT, ML_NIGHT_OUT, ML_ROUND, ML_PAMPERED, ML_INSPIRED, ML_HEALTHY, ML_TREAT,
-       ML_BIRTHDAY, ML_NEW_BABY, ML_LOVE, ML_PROUD, ML_GRIEF, ML_MEMORIES, ML_CAKE, ML_GRADES, ML_HOMEWORK, ML_SCHOOL, ML_BLOB_BUDDY, ML_BLOB_HATCH, ML_BLOB_PROUD, ML_BLOB_WORRY, ML_BLOB_MISS, ML_BLOB_HOOKED, ML_BLOB_SHARED, ML_PARTY_OK, ML_PARTY_GREAT, ML_PARTY_LEGEND, ML_DJ_HIT, ML_EYES, ML_ABDUCT, ML_N };
+       ML_BIRTHDAY, ML_NEW_BABY, ML_LOVE, ML_PROUD, ML_GRIEF, ML_MEMORIES, ML_CAKE, ML_GRADES, ML_HOMEWORK, ML_SCHOOL, ML_BLOB_BUDDY, ML_BLOB_HATCH, ML_BLOB_PROUD, ML_BLOB_WORRY, ML_BLOB_MISS, ML_BLOB_HOOKED, ML_BLOB_SHARED, ML_PARTY_OK, ML_PARTY_GREAT, ML_PARTY_LEGEND, ML_DJ_HIT, ML_EYES, ML_ABDUCT, ML_TANTRUM, ML_MILESTONE, ML_BLOOM, ML_DORMANT, ML_N };
 static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "", 0, 0 }, { "GOOD MEAL", 12, 240 }, { "SNACKED", 4, 90 }, { "WELL RESTED", 12, 300 }, { "FRESH", 8, 180 }, { "GOOD CHAT", 10, 180 },
     { "MADE A FRIEND", 20, 480 }, { "PROMOTED", 25, 720 }, { "PAYDAY", 15, 360 }, { "EMBARRASSED", -12, 120 },
@@ -121,6 +121,7 @@ static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "GREAT BIRTHDAY", 20, 720 }, { "NEW BABY", 20, 1440 }, { "IN LOVE", 15, 720 }, { "PROUD PARENT", 8, 240 }, { "GRIEF", -15, 1440 },
     { "FOND MEMORIES", 8, 240 }, { "BIRTHDAY CAKE", 8, 180 }, { "GOOD GRADES", 10, 720 }, { "HOMEWORK DONE", 6, 240 }, { "LONG DAY AT SCHOOL", -5, 180 },
     { "BLOB BUDDY", 10, 240 }, { "IT HATCHED!", 16, 480 }, { "PROUD BLOB PARENT", 14, 720 }, { "WORRIED ABOUT MY BLOB", -8, 120 }, { "MISSING MY BLOB", -15, 720 }, { "HOOKED ON THE TOY", -8, 240 }, { "SHARED MY LUNCH", 8, 240 }, { "NICE PARTY", 10, 480 }, { "GREAT PARTY", 18, 720 }, { "LEGENDARY PARTY", 30, 1440 }, { "CROWD PLEASER", 12, 360 }, { "EYES BURNED", -25, 720 }, { "ABDUCTED!", -8, 600 },
+    { "TODDLER TANTRUM", -10, 180 }, { "A BIG MILESTONE", 14, 720 }, { "IN BLOOM", 12, 1440 }, { "DORMANT", -8, 1440 },
 };
 const char *sim_moodlet_name(int id) { return mlDef[id % ML_N].nm; }
 static int has_trait(const Sim *s, int t, int hi) { int v = s->bore.tr[t]; return hi ? v >= 8 : v <= 2; }
@@ -851,7 +852,11 @@ static void tick_needs(Sim *s) {
     }
     if (s->bore.stage == AG_BABY) {   // a baby: it cannot see to itself; it cries, and the grown-ups come
         int me = (int)(s - sims);
-        if ((s->need[N_WC] >> 10) == 0) { s->need[N_WC] = 100 << 10; s->need[N_CLEAN] = 0; }
+        if ((s->need[N_WC] >> 10) == 0) { if (s->tod_potty >= 100 && sim_is_toddler(s)) { s->need[N_WC] = 100 << 10; sim_say(s, "POTTY!"); } else { s->need[N_WC] = 100 << 10; s->need[N_CLEAN] = 0; } }
+        if (sim_is_toddler(s) && s->action != ACT_SLEEP && s->mood < -10 && ((walk_tick + me * 131) % 1200) == 0) {   // a toddler tantrum: the whole house hears of it
+            sim_say(s, "NO NO NO!"); audio_voice(VOICE_CRY); sim_moodlet(s, ML_TANTRUM);
+            for (int j = 0; j < nsims; j++) if (j != me && sims[j].bore.stage >= AG_TEEN && !sims[j].away && sims[j].lvl == s->lvl) sim_moodlet(&sims[j], ML_TANTRUM);
+            if (me == player || sims[player].lvl == s->lvl) sim_note("A TODDLER TANTRUM! COMFORT IT"); }
         if ((s->need[N_REST] >> 10) == 0 && s->action != ACT_SLEEP) baby_to_bed(s);
         if (baby_need(s) && s->action != ACT_SLEEP && ((walk_tick + me * 97) % 700) == 0) { sim_say(s, "WAAAH!"); audio_voice(VOICE_CRY); }
         return;
@@ -971,19 +976,34 @@ static void care_start(Sim *s, int baby, int kind) {
     s->act_var = (u8)kind; s->talk_to = baby;
     if (kind != CARE_BED && b->action == ACT_SLEEP) end_action(b);   // (a baby fed is a baby woken)
 }
+int sim_is_toddler(const Sim *b) { int L = sim_stage_len(AG_BABY); return b->bore.stage == AG_BABY && L >= 2 && b->age_days * 2 >= L; }
+static void milestone(Sim *b, const char *what) {   // a first: everyone who loves the little one hears of it
+    char t[48]; snprintf(t, sizeof t, "%s: %s!", b->bore.first, what); sim_note(t); sim_moodlet(b, ML_MILESTONE); sim_cheer = (int)(b - sims) + 1; audio_voice(VOICE_YAHOO);
+    for (int j = 0; j < nsims; j++) if (b->par[0] == sims[j].uid || b->par[1] == sims[j].uid) sim_moodlet(&sims[j], ML_MILESTONE);
+}
+static void teach(Sim *b, u8 *skill, const char *what) { int was = *skill; *skill = (u8)MIN(100, *skill + 25); if (was < 100 && *skill >= 100) milestone(b, what); }
 static void care_done(Sim *s) {
     int bi = s->talk_to; if (bi < 0 || bi >= nsims) return;
-    Sim *b = &sims[bi]; if (b->bore.stage != AG_BABY) return;
-    switch (s->act_var) {
-        case CARE_FEED: b->need[N_FOOD] += 60 << 10; sim_say(b, "NOM NOM"); break;
+    Sim *b = &sims[bi]; int k = s->act_var;
+    if (b->bore.stage != AG_BABY && k < CARE_STORY) return;
+    switch (k) {
+        case CARE_FEED: b->need[N_FOOD] += 60 << 10; sim_say(b, b->plant == 2 ? "GLUG GLUG" : "NOM NOM"); break;
         case CARE_CHANGE: b->need[N_WC] = 100 << 10; b->need[N_CLEAN] += 70 << 10; sim_say(b, "AHH"); break;
         case CARE_PLAY: b->need[N_FUN] += 50 << 10; s->need[N_FUN] += 10 << 10; sim_say(b, "HEE HEE!"); break;
         case CARE_CUDDLE: b->need[N_SOCIAL] += 50 << 10; b->need[N_COMFY] += 20 << 10; s->need[N_SOCIAL] += 15 << 10; sim_say(b, "GOO GOO"); break;
-        case CARE_BED: baby_to_bed(b); break;
+        case CARE_BED: baby_to_bed(b); b->need[N_REST] += 20 << 10; break;
+        case CARE_STORY: b->need[N_SOCIAL] += 35 << 10; b->need[N_FUN] += 15 << 10; b->need[N_REST] += 10 << 10; b->skill_logic += 25; b->tod_story = (u8)MIN(100, b->tod_story + 15); b->tod_talk = (u8)MIN(100, b->tod_talk + 6); s->skill_creat += 10; sim_say(b, "AGAIN! AGAIN!"); break;
+        case CARE_BATH: b->need[N_CLEAN] = 100 << 10; b->need[N_FUN] += 15 << 10; b->need[N_COMFY] += 15 << 10; sim_say(b, "SPLASH!"); break;
+        case CARE_WALK: teach(b, &b->tod_walk, "FIRST STEPS"); s->skill_body += 10; sim_say(b, "WOBBLE..."); break;
+        case CARE_TALK: { static const char *const w[4] = { "MA MA", "DA DA", "BALL!", "NO!" }; teach(b, &b->tod_talk, "FIRST WORDS"); s->skill_char += 8; sim_say(b, w[look_rand() % 4u]); break; }
+        case CARE_POTTY: teach(b, &b->tod_potty, "POTTY TRAINED"); b->need[N_WC] = 100 << 10; s->skill_mech += 0; sim_say(b, "POTTY!"); break;
+        case CARE_COMFORT: b->mood = MIN(100, b->mood + 30); b->need[N_SOCIAL] += 30 << 10; b->need[N_COMFY] += 20 << 10; sim_say(b, "SNIFF..."); break;
+        case CARE_HWHELP: if (b->homework) { sim_note("THE HOMEWORK IS ALREADY DONE"); break; } homework_done(b); b->grade = (u8)MIN(100, b->grade + 6); s->skill_logic += 15; sim_say(b, "THANKS!"); break;
+        case CARE_FEELINGS: b->mood = MIN(100, b->mood + 25); b->need[N_SOCIAL] += 35 << 10; s->skill_char += 20; { int me = (int)(s - sims); b->rel[me] = (s8)MIN(100, b->rel[me] + 6); } sim_say(b, "I FEEL BETTER"); break;
     }
     for (int i = 0; i < NEED_N; i++) { b->need[i] = CLAMP(b->need[i], 0, 100 << 10); s->need[i] = CLAMP(s->need[i], 0, 100 << 10); }
     if (s->uid && (b->par[0] == s->uid || b->par[1] == s->uid)) sim_moodlet(s, ML_PROUD);
-    { int me = (int)(s - sims); s->rel[bi] = (s8)MIN(100, s->rel[bi] + 6); b->rel[me] = (s8)MIN(100, b->rel[me] + 6); }   // (looking after a baby: it knows you)
+    { int me = (int)(s - sims); s->rel[bi] = (s8)MIN(100, s->rel[bi] + 6); b->rel[me] = (s8)MIN(100, b->rel[me] + 6); }   // (looking after a little one: it knows you)
     if (s == &sims[player]) story_event(E_CARE, b->uid);
 }
 static void homework_done(Sim *s) {
@@ -1021,6 +1041,10 @@ static void age_up(int i, int party) {   // a birthday: the next life stage, a n
     if (b->stage >= AG_ELDER) return;
     b->stage++;
     look_fix(b);
+    if (b->stage == AG_CHILD) { int avg = (s->tod_walk + s->tod_talk + s->tod_potty) / 3, st = s->tod_story;   // (the toddler years pay off)
+        s->grade = (u8)MIN(100, s->grade + avg / 8 + st / 12); s->skill_body += s->tod_walk * 2; s->skill_char += s->tod_talk * 2; s->skill_logic += st * 3; s->skill_fun += avg;
+        if (avg >= 70) { sim_note("A WELL-TAUGHT TODDLER: A HEAD START AT SCHOOL"); sim_moodlet(s, ML_PROUD); } else if (avg < 30) sim_note("THE TODDLER YEARS WENT BY. SCHOOL WILL BE HARD");
+        s->tod_walk = s->tod_talk = s->tod_potty = s->tod_story = 0; }
     if (b->stage == AG_CHILD) b->asp = AS_GROW;                                       // a child's aspiration: GROW UP
     if (b->stage == AG_ADULT && b->asp == AS_GROW) b->asp = (u8)(look_rand() % AS_PICK);   // grown up: an aspiration of their own
     look_build(b); crowd_forget(CROWD_MAX + i);
@@ -1111,7 +1135,9 @@ static void born(void) {   // the baby comes home (or the adopted child)
     Sim *ma = by_uid(baby_par[0]), *pa = by_uid(baby_par[1]);
     Bore b; look_default(&b); b.stage = baby_kind == 2 ? AG_CHILD : AG_BABY; look_random(&b);
     if (!baby_kind || baby_kind >= 3) genes(&b, ma ? &ma->bore : 0, pa ? &pa->bore : 0);
-    if (baby_kind >= 3) {   // an alien's: 3 a normal baby, a little more special; 4 out of this world
+    int seedling = baby_kind == 5 || (ma && ma->plant == 2) || (pa && pa->plant == 2);   // PLANTBORE: a seedling, from a plant parent
+    if (seedling) { b.look[LK_SKIN] = 4; b.look[LK_HCOL] = 5; }
+    if (baby_kind >= 3 && baby_kind < 5) {   // an alien's: 3 a normal baby, a little more special; 4 out of this world
         static const u8 alk[6] = { LK_ANTENNA, LK_HORNS, LK_TAIL, LK_PATTERN, LK_EYECOL, LK_SKIN };
         static const char *const an[8] = { "ZORP", "XEEN", "BLIP", "NEBULA", "QUASAR", "ORBIT", "COMET", "VEGA" };
         int n = baby_kind == 4 ? 6 : 1, from = baby_kind == 4 ? 0 : 4;
@@ -1128,14 +1154,15 @@ static void born(void) {   // the baby comes home (or the adopted child)
     sim_add(&b, tx, ty, 1);
     world_lvl = keep;
     Sim *n = &sims[nsims - 1]; n->par[0] = baby_par[0]; n->par[1] = baby_par[1]; n->lvl = nr->lvl;
-    if (baby_kind >= 3) { n->skill_fun += baby_kind == 4 ? 800 : 300; n->mood = MIN(100, n->mood + 20); }
+    if (seedling) { n->plant = 2; n->skill_farm += 400; n->plant_sk = 2; n->plant_hc = 2; n->need[N_FOOD] = 100 << 10; }
+    if (baby_kind >= 3 && baby_kind < 5) { n->skill_fun += baby_kind == 4 ? 800 : 300; n->mood = MIN(100, n->mood + 20); }
     if (b.stage == AG_BABY && home_is_here() && n->lvl == 0) {   // a crib comes with a baby (when the house has none)
         int have = 0, cx, cy;
         for (int y = 0; y < MH && !have; y++) for (int x = 0; x < MW; x++) if (lifeMap[y][x] == CH_CRIB) { have = 1; break; }
         if (!have && free_floor_near(0, tx, ty, &cx, &cy)) { lifeMap[cy][cx] = CH_CRIB; world_touched(); sim_note("A CRIB CAME WITH THE BABY"); }
     }
     char t[48];
-    if (baby_kind >= 3) snprintf(t, sizeof t, baby_kind == 4 ? "A STRANGE ONE! MEET %s" : "A SPECIAL BABY! MEET %s", b.first); else if (baby_kind) snprintf(t, sizeof t, "WELCOME HOME, %s!", b.first); else snprintf(t, sizeof t, "THE BABY IS HERE! MEET %s", b.first);
+    if (seedling) snprintf(t, sizeof t, "A SEEDLING! MEET %s", b.first); else if (baby_kind >= 3) snprintf(t, sizeof t, baby_kind == 4 ? "A STRANGE ONE! MEET %s" : "A SPECIAL BABY! MEET %s", b.first); else if (baby_kind) snprintf(t, sizeof t, "WELCOME HOME, %s!", b.first); else snprintf(t, sizeof t, "THE BABY IS HERE! MEET %s", b.first);
     sim_note(t);
     for (int j = 0; j < nsims - 1; j++) if (sims[j].uid && (sims[j].uid == baby_par[0] || sims[j].uid == baby_par[1])) { sim_moodlet(&sims[j], ML_NEW_BABY); wants_event(&sims[j], W_BABY, 0); }
     sim_cheer = -nsims;                                                   // (negative: a newcomer, not a birthday)
@@ -1228,11 +1255,35 @@ static void school_back(void) {   // 3 PM: home again, by the one you play (wher
     }
     if (n) sim_note("HOME FROM SCHOOL: HOMEWORK!");
 }
+const char *sim_life_text(const Sim *s, int full) {   // INFANT, TODDLER, CHILD.. with the days into it; a plant sim's greying in place of old age
+    static char b[40]; int g = s->bore.stage, L = sim_stage_len(g); const char *st = look_stage_name(g);
+    if (g == AG_BABY) st = sim_is_toddler(s) ? "TODDLER" : "INFANT";
+    if (!full) { snprintf(b, sizeof b, "%s", st); return b; }
+    if (s->plant == 2 && g == AG_ADULT) { int T = L + sim_stage_len(AG_ELDER); snprintf(b, sizeof b, "PLANT ADULT, GREY %d OF 4", T ? MIN(3, s->age_days * 4 / T) + 1 : 1); return b; }
+    if (L && g < AG_ELDER) snprintf(b, sizeof b, "%s, DAY %d OF %d", st, MIN(s->age_days + 1, L), L); else snprintf(b, sizeof b, "%s", st);
+    return b;
+}
+static void plant_grey(Sim *s, int note) {   // a plant sim ages by greying: green, yellowed, grey-green, grey (the same four stages, no elder body)
+    int T = sim_stage_len(AG_ADULT) + sim_stage_len(AG_ELDER); if (T < 1) return;
+    int g = MIN(3, s->age_days * 4 / T); static const u8 sk[4] = { 4, 20, 22, 23 }, hc[4] = { 5, 5, 4, 4 };
+    if (s->bore.look[LK_SKIN] == sk[g] && s->bore.look[LK_HCOL] == hc[g]) return;
+    s->bore.look[LK_SKIN] = sk[g]; s->bore.look[LK_HCOL] = hc[g]; look_build(&s->bore); crowd_forget(CROWD_MAX + (int)(s - sims));
+    if (note) { char t[48]; snprintf(t, sizeof t, g == 3 ? "%s IS GOING GREY AND WILTING" : "%s IS GREYING", s->bore.first); sim_note(t); }
+}
+static void plant_adult_tick(Sim *s, int i) {
+    int T = sim_stage_len(AG_ADULT) + sim_stage_len(AG_ELDER);
+    plant_grey(s, 1);
+    if (T && s->age_days >= T) { if (old_age && s->age_days > T) pass_on(i); else if (s->age_days == T) { char t[48]; snprintf(t, sizeof t, "%s IS WILTING. A SEEDLING WOULD CARRY ON", s->bore.first); sim_note(t); } }
+}
 static void midnight_ages(void) {   // a day older: birthdays come round, and at the very end of a long life, goodbye
+    for (int i = 0; i < nsims; i++) if (sims[i].plant == 2) { int se = sim_season(); if (se == 0) sim_moodlet(&sims[i], ML_BLOOM); else if (se == 3) { sim_moodlet(&sims[i], ML_DORMANT); sims[i].need[N_REST] = MAX(0, sims[i].need[N_REST] - (25 << 10)); } }   // (plants bloom in spring, doze in winter)
     if (aging) for (int i = nsims - 1; i >= 0; i--) {   // (backwards: someone may leave)
         Sim *s = &sims[i]; int L = sim_stage_len(s->bore.stage);
         if (s->bday) { age_up(i, 0); continue; }                                    // nobody baked: they grow up quietly overnight
         if (s->age_days < 255) s->age_days++;
+        if (sim_is_toddler(s)) { s->tod_walk = (u8)MIN(100, s->tod_walk + 4); s->tod_talk = (u8)MIN(100, s->tod_talk + 4); s->tod_potty = (u8)MIN(100, s->tod_potty + 3); }   // (a little learned on its own)
+        if (s->plant == 2 && s->bore.stage == AG_ADULT) { plant_adult_tick(s, i); continue; }   // (a plant sim never grows old: it greys)
+        if (s->plant == 2 && s->bore.stage == AG_ELDER && s->age_days == 1) { /* (a stalk turned plant late in life: stays as it is) */ }
         if (!L || s->age_days < L) continue;
         if (s->bore.stage == AG_ELDER) {
             char t[48];
@@ -1612,7 +1663,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_PAINT, PC_SELLART, PC_WRITE, PC_DIYFIX, PC_MECHFIX, PC_FPLANT0, PC_FPLANT_END = PC_FPLANT0 + 3, PC_FWATER, PC_FHARV, PC_FHEN, PC_FCOW, PC_FFEEDH, PC_FFEEDC, PC_FEGGS, PC_FMILK, PC_FSELL, PC_FEAT, PC_FSPRAY, PC_FFERT, PC_FORDER, PC_FUP, PC_FFAIR, PC_FDRINK, PC_FTALK, PC_FCURE, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
+       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_PAINT, PC_SELLART, PC_WRITE, PC_DIYFIX, PC_MECHFIX, PC_FPLANT0, PC_FPLANT_END = PC_FPLANT0 + 3, PC_FWATER, PC_FHARV, PC_FHEN, PC_FCOW, PC_FFEEDH, PC_FFEEDC, PC_FEGGS, PC_FMILK, PC_FSELL, PC_FEAT, PC_FSPRAY, PC_FFERT, PC_FORDER, PC_FUP, PC_FFAIR, PC_FDRINK, PC_FTALK, PC_FCURE, PC_FROOT, PC_FSPROUT, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1630,13 +1681,23 @@ static int sim_pie_open_(char opt[8][24]) {
         #define SOPT(txt, v) { snprintf(opt[pie_n], 24, "%s", txt); pie_code[pie_n++] = (u8)(v); }
         if (o->plant == 1) { SOPT("TALK TO THE STALK", PC_FTALK) SOPT("TONIC $500", PC_FCURE) return pie_n; }
         if (o->bore.stage == AG_BABY) {   // a baby: looking after it (the little ones can play and cuddle)
-            int big = s->bore.stage >= AG_TEEN;
-            if (big) { SOPT("FEED", 20 + CARE_FEED) SOPT("CHANGE", 20 + CARE_CHANGE) }
-            SOPT("PLAY", 20 + CARE_PLAY) SOPT("CUDDLE", 20 + CARE_CUDDLE)
-            if (big) SOPT("PUT TO BED", 20 + CARE_BED)
+            int big = s->bore.stage >= AG_TEEN, pl = o->plant == 2, td = sim_is_toddler(o);
+            if (big) { SOPT(pl ? "WATER IT" : "FEED", 20 + CARE_FEED) if (!td || o->tod_potty < 100) SOPT(pl ? "REPOT IT" : "CHANGE", 20 + CARE_CHANGE) }
+            SOPT("PLAY", 20 + CARE_PLAY)
+            if (!td) SOPT("CUDDLE", 20 + CARE_CUDDLE)
+            if (big && td) {
+                if (o->mood < 0) SOPT("COMFORT IT", 20 + CARE_COMFORT)
+                SOPT("READ A STORY", 20 + CARE_STORY)
+                if (o->tod_walk < 100) SOPT("TEACH TO WALK", 20 + CARE_WALK)
+                if (o->tod_talk < 100) SOPT("TEACH TO TALK", 20 + CARE_TALK)
+                if (o->tod_potty < 100) SOPT("POTTY TRAIN", 20 + CARE_POTTY)
+                if (pie_n < 7 && o->need[N_CLEAN] < (80 << 10)) SOPT("BATH TIME", 20 + CARE_BATH)
+            }
+            if (big && pie_n < 8) SOPT(td ? "LULLABY AND BED" : "PUT TO BED", 20 + CARE_BED)
             return pie_n;
         }
         int adults = s->bore.stage >= AG_TEEN && o->bore.stage >= AG_TEEN;
+        int kidcare = s->bore.stage >= AG_ADULT && (o->bore.stage == AG_CHILD || o->bore.stage == AG_TEEN) && !o->away;
         for (int k = 0; k < SO_N; k++) {
             if (k == SO_HUG && s->rel[who] < 25) continue;                  // you hug friends
             if (k == SO_FLIRT && (!adults || s->rel[who] < 35)) continue;   // flirting needs grown-ups who get on
@@ -1647,6 +1708,9 @@ static int sim_pie_open_(char opt[8][24]) {
             SOPT("START A FAMILY", 15)
         if (adults && s->partner != o->uid && pie_n < 8 && (story_is_partner(o->uid) ? story_loved() : s->rel[who] >= 70))
             SOPT("GO STEADY", 16)
+        if (kidcare && !o->homework && school_age(o) && pie_n < 8) SOPT("HELP WITH HOMEWORK", 20 + CARE_HWHELP)
+        if (kidcare && o->bore.stage == AG_TEEN && o->mood < 20 && pie_n < 8) SOPT("TALK FEELINGS", 20 + CARE_FEELINGS)
+        if (kidcare && o->bore.stage == AG_CHILD && pie_n < 8) SOPT("BEDTIME STORY", 20 + CARE_STORY)
         #undef SOPT
         return pie_n;
     }
@@ -1699,7 +1763,7 @@ static int sim_pie_open_(char opt[8][24]) {
         case 0xDB: { static const char *const cn[4] = { "WHEAT $2", "CORN $4", "TOMATOES $5", "PUMPKIN $8" }; int any = 0, rdy = 0; char b_[24]; Sim *s = &sims[player];
             for (int k = 0; k < 4; k++) { if (fm_n[k]) { any = 1; if (fm_g[k] >= fm_need(k)) rdy = 1; } }
             if (rdy) OPT("HARVEST", PC_FHARV) if (fm_pest) OPT("SPRAY PESTS $3", PC_FSPRAY) if (any) OPT("WATER THE CROPS", PC_FWATER)
-            if (s->plant == 2) OPT("DRINK FROM THE BED", PC_FDRINK)
+            if (s->plant == 2) { OPT("DRINK FROM THE BED", PC_FDRINK) OPT("ROOT IN THE SOIL", PC_FROOT) if (s->bore.stage == AG_ADULT && baby_due < 0 && nsims < MAX_SIMS && fm_fert >= 2) OPT("SPROUT A SEEDLING", PC_FSPROUT) }
             for (int k = 0; k < 4 && pie_n < 8; k++) { snprintf(b_, sizeof b_, "PLANT %s", cn[k]); OPT(b_, PC_FPLANT0 + k) }
             act = ACT_NONE; break; }
         case 0xDC: { char b_[24]; if (fm_pe) { snprintf(b_, sizeof b_, "COLLECT %d EGGS", fm_pe); OPT(b_, PC_FEGGS) } if (fm_hens < 6) OPT("BUY A HEN $40", PC_FHEN) if (fm_hens && !(fm_fed & 1)) OPT("FEED THE HENS $2", PC_FFEEDH) act = ACT_NONE; break; }
@@ -1986,6 +2050,10 @@ static void place_do(Sim *s, int code) {
             if (!fm_stock[3] || fm_fair) { sim_note("YOU HAVE ALREADY ENTERED"); return; } fm_stock[3]--; fm_fair = 1;
             pz = sc >= 85 ? 500 : sc >= 60 ? 200 : 40; cash += pz; s->skill_farm += 40; snprintf(b_, sizeof b_, sc >= 85 ? "BEST IN SHOW! +$%d" : sc >= 60 ? "SECOND PRIZE! +$%d" : "A RIBBON FOR TRYING +$%d", pz); sim_note(b_);
             if (sc >= 85) { sim_moodlet(s, ML_PROUD); audio_voice(VOICE_WIN); } break; }
+        case PC_FROOT: if (s->plant != 2) break; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 600; s->act_var = 7;
+            s->need[N_FOOD] = MIN(100 << 10, s->need[N_FOOD] + (50 << 10)); s->need[N_COMFY] = MIN(100 << 10, s->need[N_COMFY] + (30 << 10)); s->need[N_REST] = MIN(100 << 10, s->need[N_REST] + (25 << 10)); s->skill_farm += 25; sim_moodlet(s, ML_HEALTHY); sim_note("ROOTED IN THE SOIL: PEACE"); break;
+        case PC_FSPROUT: if (s->plant != 2 || s->bore.stage != AG_ADULT || baby_due >= 0 || nsims >= MAX_SIMS || fm_fert < 2) { sim_note("IT NEEDS 2 FERTILIZER AND ROOM"); return; }
+            fm_fert -= 2; baby_par[0] = s->uid; baby_par[1] = 0; baby_kind = 5; baby_due = life_minutes() + 1440 * (aging == 1 ? 1 : aging == 3 ? 3 : 2); sim_note("A SEEDLING IS SPROUTING..."); sim_moodlet(s, ML_NEW_BABY); break;
         case PC_FDRINK: if (s->plant != 2) break; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 150; s->act_var = 7; s->need[N_FOOD] = MIN(100 << 10, s->need[N_FOOD] + (35 << 10)); s->need[N_CLEAN] = MIN(100 << 10, s->need[N_CLEAN] + (20 << 10)); sim_note("SLURP. DELICIOUS"); break;
         case PC_DIYFIX: { int t = veh_on ? veh_on - 1 : veh_sel, lv = SKL(s->skill_mech), miss = 100 - veh_cond[t], parts = miss * VT[t].price / 600 * (100 - lv * 7) / 100 + 2;
             if (miss <= 0) { sim_note("IT RUNS FINE"); break; }
@@ -2154,7 +2222,7 @@ static void sim_pie_do_(int i) {
     if (i < 0 || i >= pie_n) return;
     if (pie_who >= 0) {
         int code = pie_code[i];
-        if (code > 20 && code <= 20 + CARE_BED) { care_start(s, pie_who, code - 20); return; }
+        if (code > 20 && code < 20 + CARE_END) { care_start(s, pie_who, code - 20); return; }
         if (code == PC_FTALK) { Sim *o = &sims[pie_who]; if (o->plant != 1) return; if (o->plant_t) { sim_note("IT HEARS YOU. COME BACK TOMORROW"); return; }
             o->plant_t = 1; if (o->plant_d) o->plant_d--; o->mood = MIN(100, o->mood + 30); o->need[N_SOCIAL] = MIN(100 << 10, o->need[N_SOCIAL] + (40 << 10)); sim_note("THE STALK RUSTLES. IT LIVES ON"); return; }
         if (code == PC_FCURE) { Sim *o = &sims[pie_who]; if (o->plant != 1) return; if (!pay(500)) return; o->plant = 0; o->plant_d = 0; o->bore.look[LK_SKIN] = o->plant_sk; o->bore.look[LK_HCOL] = o->plant_hc; o->mood = MIN(100, o->mood + 40); sim_moodlet(o, ML_PROUD); sim_note("THE TONIC WORKED! YOU ARE YOURSELF AGAIN"); return; }
@@ -2295,6 +2363,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
         sv_u16((u16)s->skill_logic); sv_u16((u16)s->skill_char); sv_u16((u16)s->skill_creat); sv_u16((u16)s->skill_mech);   // (version 32)
         sv_u16((u16)s->skill_farm);   // (version 34)
         sv_u8(s->plant); sv_u8(s->plant_d); sv_u8(s->plant_t); sv_u8(s->plant_sk); sv_u8(s->plant_hc);   // (version 35)
+        sv_u8(s->tod_walk); sv_u8(s->tod_talk); sv_u8(s->tod_potty); sv_u8(s->tod_story);   // (version 36)
         for (int k = 0; k < 4; k++) { sv_u8(s->want[k].kind); sv_u8(s->want[k].arg); sv_u16(s->want[k].pts); sv_u16(s->want[k].age); }
         for (int k = 0; k < 2; k++) { sv_u8(s->fear[k].kind); sv_u8(s->fear[k].arg); sv_u16(s->fear[k].pts); sv_u16(s->fear[k].age); }
         sv_u16(s->asp_pts); sv_n(s->rel, MAX_SIMS); sv_u8(s->lvl);
@@ -2335,6 +2404,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
         if (save_ver >= 32) { s->skill_logic = ld_u16(); s->skill_char = ld_u16(); s->skill_creat = ld_u16(); s->skill_mech = ld_u16(); } else s->skill_logic = s->skill_char = s->skill_creat = s->skill_mech = 0;
         if (save_ver >= 34) s->skill_farm = ld_u16(); else s->skill_farm = 0;
         if (save_ver >= 35) { s->plant = ld_u8(); s->plant_d = ld_u8(); s->plant_t = ld_u8(); s->plant_sk = ld_u8(); s->plant_hc = ld_u8(); } else s->plant = s->plant_d = s->plant_t = 0;
+        if (save_ver >= 36) { s->tod_walk = ld_u8(); s->tod_talk = ld_u8(); s->tod_potty = ld_u8(); s->tod_story = ld_u8(); } else s->tod_walk = s->tod_talk = s->tod_potty = s->tod_story = 0;
         for (int k = 0; k < 4; k++) { s->want[k].kind = (u8)ld_u8(); s->want[k].arg = (u8)ld_u8(); s->want[k].pts = (u16)ld_u16(); s->want[k].age = (u16)ld_u16(); }
         for (int k = 0; k < 2; k++) { s->fear[k].kind = (u8)ld_u8(); s->fear[k].arg = (u8)ld_u8(); s->fear[k].pts = (u16)ld_u16(); s->fear[k].age = (u16)ld_u16(); }
         s->asp_pts = ld_u16(); ld_n(s->rel, save_ver >= 22 ? MAX_SIMS : 6); s->lvl = (u8)ld_u8();

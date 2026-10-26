@@ -2372,7 +2372,7 @@ static void phone_draw(void) {
             int mm = o->mood; u32 ring = i == player ? UI_BLUE : mm > 15 ? UI_GREEN : mm > -15 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70);
             ui_disc(SX + 17, y + 11, 19, ring); ui_disc(SX + 17, y + 11, 15, UI_RGB(244, 248, 252)); draw_face_k(SX + 9, y + 3, mm, 1);
             ui_text(SX + 30, y + 3, 1, o->bore.first, UI_INK);
-            ui_text(SX + 30, y + 13, 1, i == player ? "PLAYING NOW" : o->away ? "AT SCHOOL" : look_stage_name(o->bore.stage), i == player ? UI_BLUE2 : UI_SOFT);
+            ui_text(SX + 30, y + 13, 1, i == player ? "PLAYING NOW" : o->away ? "AT SCHOOL" : sim_life_text(o, 0), i == player ? UI_BLUE2 : UI_SOFT);
         }
     } else {        // the apps: three across, four down
         for (int i = 0; i < PH_N; i++) {
@@ -2543,7 +2543,7 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
     u32 moodc = m > 15 ? UI_GREEN : m > -15 ? UI_AMBER : UI_RED, moodt = m > 15 ? UI_GOODT : m > -15 ? UI_GOLDT : UI_BADT;
     ui_disc(24, top + 10, 24, moodc); ui_disc(24, top + 10, 20, UI_RGB(250, 252, 255));
     draw_face_k(16, top + 2, m, 1);
-    sprintf(b, "%s - %s", look_stage_name(s->bore.stage), look_asp_name(s->bore.asp)); ui_text(42, top, 1, b, UI_SOFT);
+    sprintf(b, "%s - %s", sim_life_text(s, 1), look_asp_name(s->bore.asp)); ui_text(42, top, 1, b, UI_SOFT);
     {   // growing up: the next birthday
         int L = sim_stage_len(s->bore.stage), x = 42 + ui_tw(1, b) + 8;
         if (s->bday) ui_badge_i(x, top - 2, IC_CAKE, "BIRTHDAY TODAY!", UI_RGB(255, 186, 40), UI_WHITE);
@@ -2615,7 +2615,7 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
             ui_disc(23, y + 11, 21, mm > 15 ? UI_GREEN : mm > -15 ? UI_AMBER : UI_RED); ui_disc(23, y + 11, 17, UI_RGB(250, 252, 255));
             draw_face_k(15, y + 3, mm, 1);
             {   // the name, what they are to you (the family tree), and their stage of life
-                const char *rl = sim_relation(player, j), *sg = sims[j].away ? "AT SCHOOL" : look_stage_name(sims[j].bore.stage);
+                const char *rl = sim_relation(player, j), *sg = sims[j].away ? "AT SCHOOL" : sim_life_text(&sims[j], 0);
                 sprintf(b, "%s %s", sims[j].bore.first, sims[j].bore.last);
                 if (40 + ui_tw(1, b) + (rl ? ui_tw(1, rl) + 6 : 0) + 6 + ui_tw(1, sg) > 214) strcpy(b, sims[j].bore.first);
                 int x = 40; ui_text(x, y + 3, 1, b, UI_INK); x += ui_tw(1, b) + 6;
