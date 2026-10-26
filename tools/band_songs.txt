@@ -1,0 +1,26 @@
+# the 25 songs of SUPERSTAR: sid (as in bore-gba's songs.h)  genre
+cynicaller_dnb TECHNO
+quickbullet TECHNO
+hotdamn_rave TECHNO
+worthless_clouds TECHNO
+aim_and_shoot TECHNO
+ohio_hoe TECHNO
+gottcho_barracho_ii TECHNO
+spanish_flexicode TECHNO
+closer_to_the_end ROCK
+nursery_time ROCK
+cocaine_cola_ii HIPHOP
+excuses_house HOUSE
+meltdown_in_mars_house HOUSE
+condensed_music HOUSE
+emergency_hitech HITECH
+over_my_voice POP
+youre_winner POP
+here_today_gone_tomorrow BALLAD
+here_today_full BALLAD
+sunman_sunrise DISCO
+staged FUNK
+whistler_shuffle JAZZ
+the_ticking_bomb CHILL
+tree_fast CHILL
+magic_act WORLD
