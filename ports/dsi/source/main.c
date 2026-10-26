@@ -435,10 +435,14 @@ static void draw_build(int yaw) {
     int th = T / 16, whf = T * 21 / 5, whl = T * 2; float cs = cosLerp(yaw) / 4096.0f, sn = sinLerp(yaw) / 4096.0f; int tx0 = mode == M_LIVE ? camx : 0, tz0 = mode == M_LIVE ? camz : 0;   // thin walls (a skirting board, the wall, a pale cap) and proper doors
     for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) { int v = hwl[y][x]; if (!v) continue; int e = x + 1; if (v != 5) while (e < GN && hwl[y][e] == v) e++;   // runs of the same wall are one piece (the polygon budget)
         if (v == 5) { door_open = 0; for (int q = 0; q < 3; q++) if (abs(sims[q].x - x * 16) < 26 && abs(sims[q].y - (y * 16 - 8)) < 26) door_open = 1; }
-        { int mx = (tl(x * 2) + tl(e * 2)) / 2, mz = tl(y * 2); int near = (int)((mx - tx0) * -sn + (mz - tz0) * cs) > 2000; wall_seg(tl(x * 2) - th - 4, tl(y * 2) - th, tl(e * 2) + th + 4, tl(y * 2) + th, v, 0, near ? whl : whf); } x = e - 1; }
+        int through0 = y > 0 && y < GN && vwl[y - 1][x] && vwl[y][x], through1 = y > 0 && y < GN && e <= GN && vwl[y - 1][e] && vwl[y][e];   // does a wall run right across the end? then stop inside it (no poking out)
+        int mx = (tl(x * 2) + tl(e * 2)) / 2, mz = tl(y * 2); int near = (int)((mx - tx0) * -sn + (mz - tz0) * cs) > 2000;
+        wall_seg(tl(x * 2) - (through0 ? -6 : th + 4), tl(y * 2) - th, tl(e * 2) + (through1 ? -6 : th + 4), tl(y * 2) + th, v, 0, near ? whl : whf); x = e - 1; }
     for (int x = 0; x <= GN; x++) for (int y = 0; y < GN; y++) { int v = vwl[y][x]; if (!v) continue; int e = y + 1; if (v != 5) while (e < GN && vwl[e][x] == v) e++;
         if (v == 5) { door_open = 0; for (int q = 0; q < 3; q++) if (abs(sims[q].x - (x * 16 - 8)) < 26 && abs(sims[q].y - y * 16) < 26) door_open = 1; }
-        { int mx = tl(x * 2), mz = (tl(y * 2) + tl(e * 2)) / 2; int near = (int)((mx - tx0) * -sn + (mz - tz0) * cs) > 2000; wall_seg(tl(x * 2) - th, tl(y * 2) - th - 12, tl(x * 2) + th, tl(e * 2) + th + 12, v, 1, near ? whl : whf); } y = e - 1; }
+        int through0 = x > 0 && x < GN && hwl[y][x - 1] && hwl[y][x], through1 = x > 0 && x < GN && e <= GN && hwl[e][x - 1] && hwl[e][x];
+        int mx = tl(x * 2), mz = (tl(y * 2) + tl(e * 2)) / 2; int near = (int)((mx - tx0) * -sn + (mz - tz0) * cs) > 2000;
+        wall_seg(tl(x * 2) - th, tl(y * 2) - (through0 ? -6 : th + 12), tl(x * 2) + th, tl(e * 2) + (through1 ? -6 : th + 12), v, 1, near ? whl : whf); y = e - 1; }
     for (int i = 0; i < nobj; i++) obj3d(objs[i].x, objs[i].y, &ITEMS[objs[i].c][objs[i].i], objs[i].rot, 0);
     for (int i = 0; i < 3; i++) sim3d(i, yaw);
     if (mode == M_LIVE && mark_t > 0) { ground(tl(mark_x * 2), tl(mark_y * 2), tl(mark_x * 2 + 2), tl(mark_y * 2 + 2), -60, C15(31, 31, 12)); mark_t--; }
