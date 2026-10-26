@@ -140,7 +140,7 @@ void sim_gotchi_absorb(int i) {   // staring at the toy: the owner forgets to ea
     static int n; static const char *const fun[5] = { "YOUR TUMMY GROWLS. THE PET LOOKS WORRIED", "WHEN DID YOU LAST EAT? THE PET WONDERS TOO", "YOUR HOUSEMATES ARE WAVING AT YOU", "YOU HAVEN'T BLINKED IN A WHILE", "THE FRIDGE IS RIGHT THERE. JUST SAYING" };
     if ((s->need[N_FOOD] >> 10) < 25) { sim_moodlet(s, ML_BLOB_HOOKED); if (!(++n & 3)) sim_note(fun[(n >> 2) % 5]); }
 }
-int dj_xp, dj_heat, sim_want_dj, sim_want_super, sim_want_bus, bus_pass;   // bus_pass: the pass is good while day_count < bus_pass
+int dj_xp, dj_heat, sim_want_dj, sim_want_super, sim_want_bus, sim_want_dog, bus_pass;   // bus_pass: the pass is good while day_count < bus_pass
 int pet_kind, pet_col, pet_hun = 100, pet_x, pet_z, pet_yaw, pet_ph, pet_zone = -1;   // the pet (0 none, 1 dog, 2 cat): where it is, how hungry
 void sim_dj_hit(int tip) { cash += tip; if (nsims) sim_moodlet(&sims[player], ML_DJ_HIT); }
 void sim_party_over(int score, int guests) {   // the last guest leaves: how it went, for everyone who lives here
@@ -196,7 +196,7 @@ static void turn_to(Sim *s, int target, int rate) {
 
 void sim_init(void) {
     gotchi_reset(); dj_xp = 0; dj_heat = 0; band_reset(); realm_reset();   // (a new life: no realm yet; a loaded one brings its own)
-    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
+    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; dog_default(&pet_dog); nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
     job_level = 0; job_car = CAR_FACTORY; job_take(CAR_FACTORY, -1, -1, "THE FACTORY"); job_none = 1;
     groceries = 10; room_bx = room_by = -1; room_until = 0; phone_tier = 1; handheld = 0;
 #ifdef AUTO_PHONE_TIER
@@ -1297,12 +1297,12 @@ static void pet_tick(void) {   // the pet follows you about, gets hungry, and ch
     if (pet_zone != world_zone || dx * dx + dz * dz > 9 * TILE * 9 * TILE) { pet_zone = world_zone; pet_x = p->x - TILE; pet_z = p->z - TILE / 2; dx = p->x - pet_x; dz = p->z - pet_z; }
     int d = ABS(dx) + ABS(dz); world_lvl = p->lvl;
     if (d > TILE * 2 + TILE / 2) {
-        int sp = pet_kind == 1 ? 11 : 9, nx = pet_x + (dx > 0 ? sp : dx < 0 ? -sp : 0), nz = pet_z + (dz > 0 ? sp : dz < 0 ? -sp : 0);
+        int sp = pet_kind == 1 ? 14 - pet_dog.tr[1] / 2 : 9, nx = pet_x + (dx > 0 ? sp : dx < 0 ? -sp : 0), nz = pet_z + (dz > 0 ? sp : dz < 0 ? -sp : 0);
         if (world_walkable(nx / TILE, (-pet_z) / TILE)) pet_x = nx; if (world_walkable(pet_x / TILE, (-nz) / TILE)) pet_z = nz;
         pet_yaw = yaw_towards(dx, dz); pet_ph += 260;
     } else if (!(walk_tick & 63)) pet_yaw = (pet_yaw + (int)(look_rand() & 255) - 128) & 4095;
-    if (!(walk_tick % 1200) && pet_hun > 0) { pet_hun--; if (pet_hun == 20) sim_note("YOUR PET IS HUNGRY"); }
-    if (pet_hun > 20 && d < TILE * 4 && !(walk_tick & 127)) { p->need[N_FUN] = MIN(p->need[N_FUN] + 600, 100 << 10); p->need[N_SOCIAL] = MIN(p->need[N_SOCIAL] + 300, 100 << 10); }
+    if (!(walk_tick % (pet_kind == 1 ? 1500 - pet_dog.tr[3] * 90 : 1200)) && pet_hun > 0) { pet_hun--; if (pet_hun == 20) sim_note("YOUR PET IS HUNGRY"); }
+    if (pet_hun > 20 && d < TILE * 4 && !(walk_tick & 127)) { int pl = pet_kind == 1 ? pet_dog.tr[0] : 5, lo = pet_kind == 1 ? pet_dog.tr[2] : 5; p->need[N_FUN] = MIN(p->need[N_FUN] + 300 + pl * 60, 100 << 10); p->need[N_SOCIAL] = MIN(p->need[N_SOCIAL] + 150 + lo * 30, 100 << 10); }   // (a playful dog cheers you up, a loyal one keeps you company)
 }
 void sim_step(void) {
     walk_tick++;
@@ -1862,7 +1862,7 @@ static void place_do(Sim *s, int code) {
         case PC_BUS: sim_want_bus = 1; break;
         case PC_PASS1: case PC_PASS7: case PC_PASS30: { int n = code == PC_PASS1 ? 1 : code == PC_PASS7 ? 7 : 30, pr = code == PC_PASS1 ? 10 : code == PC_PASS7 ? 30 : 90;
             if (!pay(pr)) return; bus_pass = MAX(bus_pass, day_count) + n; char b_[40]; sprintf(b_, "BUS PASS: %d DAYS LEFT", bus_pass - day_count); sim_note(b_); audio_voice(VOICE_FINISHED); } break;
-        case PC_DOG: case PC_CAT: { if (!pay(code == PC_DOG ? 150 : 120)) return; pet_kind = code == PC_DOG ? 1 : 2; pet_col = (int)(look_rand() % 6); pet_hun = 100; pet_zone = -1; pet_ph = 0; sim_note(pet_kind == 1 ? "YOU GOT A PUPPY!" : "YOU GOT A KITTEN!"); audio_voice(VOICE_YAHOO); wants_event(s, W_FUN, 0); } break;
+        case PC_DOG: case PC_CAT: { if (!pay(code == PC_DOG ? 150 : 120)) return; pet_kind = code == PC_DOG ? 1 : 2; pet_col = (int)(look_rand() % 6); if (code == PC_DOG) dog_random(&pet_dog, look_rand());   /* (a store's puppy: a ready-made one; the CREATE A DOG screen makes your own) */ pet_hun = 100; pet_zone = -1; pet_ph = 0; sim_note(pet_kind == 1 ? "YOU GOT A PUPPY!" : "YOU GOT A KITTEN!"); audio_voice(VOICE_YAHOO); wants_event(s, W_FUN, 0); } break;
         case PC_PETFEED: if (!pay(3)) return; pet_hun = 100; sim_say(s, "GOOD PET!"); sim_note("YUM! YOUR PET IS FED"); break;
         case PC_PETPLAY: s->need[N_FUN] = MIN(s->need[N_FUN] + (12 << 10), 100 << 10); s->need[N_SOCIAL] = MIN(s->need[N_SOCIAL] + (6 << 10), 100 << 10); pet_hun = MAX(0, pet_hun - 4); pet_ph += 900; sim_say(s, "WHO'S A GOOD PET?"); break;
         case PC_ADMIRE: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 7; s->act_t = 200; break;
@@ -2057,7 +2057,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
     sv_u8(phone_tier); sv_u8(handheld);   // (version 10)
     sv_u8(job_none);   // (version 12)
     sv_u16((u16)arcade_tix); sv_u16((u16)fight_wins); sv_u8((u8)fight_champ); sv_u8((u8)fight_best);   // (version 15)
-    gotchi_save(); sv_u16(dj_xp); sv_u8(dj_heat); band_save(); sv_u8(pet_kind); sv_u8(pet_col); sv_u8(pet_hun); sv_u16(bus_pass);   // (version 21; the band: version 25)
+    gotchi_save(); sv_u16(dj_xp); sv_u8(dj_heat); band_save(); sv_u8(pet_kind); sv_u8(pet_col); sv_u8(pet_hun); sv_u16(bus_pass); sv_n(pet_dog.look, DL_N); sv_n(pet_dog.tr, DOG_TR); sv_str(pet_dog.name, DOG_NAME - 1);   // (version 21; the band: version 25)
     sv_u8(veh_own); sv_u8(veh_sel); for (int t = 0; t < VEH_N; t++) sv_u16((u16)veh_fuel[t]); traffic_save();   // (version 18: the vehicles)
     realm_save();   // (version 15: KINGDOM MODE's realm)
     for (int i = 0; i < nsims; i++) {
@@ -2088,7 +2088,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     if (save_ver >= 10) { phone_tier = ld_u8() & 3; handheld = ld_u8() & 3; } else { phone_tier = 3; handheld = 0; }   // (an older life keeps every app it had)
     job_none = save_ver >= 12 ? ld_u8() & 1 : 0;   // (an older life keeps its job)
     if (save_ver >= 15) { arcade_tix = ld_u16(); fight_wins = ld_u16(); fight_champ = ld_u8() & 1; fight_best = ld_u8(); } else arcade_tix = fight_wins = fight_champ = fight_best = 0;
-    gotchi_load(save_ver); if (save_ver >= 23) { dj_xp = ld_u16(); dj_heat = ld_u8(); } else { dj_xp = 0; dj_heat = 0; } band_load(save_ver); if (save_ver >= 27) { pet_kind = ld_u8() & 3; pet_col = ld_u8() % 6; pet_hun = ld_u8(); bus_pass = ld_u16(); } else { pet_kind = 0; pet_hun = 100; bus_pass = 0; } pet_zone = -1;
+    gotchi_load(save_ver); if (save_ver >= 23) { dj_xp = ld_u16(); dj_heat = ld_u8(); } else { dj_xp = 0; dj_heat = 0; } band_load(save_ver); if (save_ver >= 27) { pet_kind = ld_u8() & 3; pet_col = ld_u8() % 6; pet_hun = ld_u8(); bus_pass = ld_u16(); if (save_ver >= 28) { ld_n(pet_dog.look, DL_N); ld_n(pet_dog.tr, DOG_TR); ld_str(pet_dog.name, DOG_NAME - 1); } else dog_random(&pet_dog, 1); } else { pet_kind = 0; pet_hun = 100; bus_pass = 0; } pet_zone = -1;
     veh_on = 0; veh_odo = 0; veh_lowfuel = 0;
     if (save_ver >= 18) { veh_own = ld_u8() & ((1 << VEH_N) - 1); veh_sel = ld_u8() % VEH_N; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = ld_u16(); } else { veh_own = 0; veh_sel = 0; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = 0; }
     traffic_load(save_ver);

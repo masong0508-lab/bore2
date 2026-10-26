@@ -111,7 +111,7 @@ static int t_vb;
 
 // ---- states ----
 static void party_begin(void);
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ, ST_SUPER };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ, ST_SUPER, ST_DOG };
 #ifdef AUTO_GOTCHI
 static void opts_dbg(int tab, int sel, int back);
 #endif
@@ -601,6 +601,7 @@ static void life_update(int steps) {
 #ifdef AUTO_FIGHT
     { static int af; if (++af == 40) sim_want_arcade = AUTO_FIGHT; }   // (test builds: straight to a cabinet)
 #endif
+    if (sim_want_dog) { sim_want_dog = 0; if ((ovl = ovl_load("DOG.OVL"))) { ovl->open(0); state = ST_DOG; } return; }   // (CREATE A DOG: its own file on the disc)
     if (sim_want_bus) { sim_want_bus = 0; map_bus = 1; map_t = -1; state = ST_MAP; return; }   // (a bus stop: the bus map)
     if (sim_want_super) { sim_want_super = 0; if ((ovl = ovl_load("SUPER.OVL"))) { ovl->open(0); state = ST_SUPER; } return; }   // (SUPERSTAR: the band)
     if (sim_want_dj) { sim_want_dj = 0; if ((ovl = ovl_load("DJ.OVL"))) { ovl->open(0); state = ST_DJ; } return; }   // (the DJ booth: a file of its own on the disc)
@@ -748,6 +749,9 @@ static void life_draw(void) {
 #ifdef AUTO_DAY
     { static int once; if (++once == 30) { day_count = AUTO_DAY; clock_min = 12 * 60; } }
 #endif
+#ifdef AUTO_DOGMK
+    { static int o3; if (++o3 == 40) sim_want_dog = 1; }
+#endif
 #ifdef AUTO_PETBUS
     { static int once2; if (++once2 == 40) { Sim *pl = &sims[player]; int px = sim_tile_x(pl), py = sim_tile_y(pl), put = 0; pet_kind = AUTO_PETBUS; pet_col = 3; bus_pass = day_count + 4;
         for (int r = 2; r < 9 && !put; r++) for (int dy = -r; dy <= r && !put; dy++) for (int dx = -r; dx <= r && !put; dx++) { if (ABS(dx) != r && ABS(dy) != r) continue; int x = px + dx, y = py + dy;
@@ -800,7 +804,7 @@ static void life_draw(void) {
     gfx_prim_count = 0;
     world_doors_reset(); for (int i = 0; i < nsims; i++) world_door_mark(sim_tile_x(&sims[i]), sim_tile_y(&sims[i])); citizens_door_marks();
     { int t0 = hb_now(); world_draw(sim_tile_x(s), sim_tile_y(s), frame, wall_view == 1 || (wall_view == 0 && cam_view != 2)); t_world = hb_now() - t0;   // (WALL VIEW: AUTO cuts the walls between you and the camera, but not in first person; CUT AWAY always; FULL WALLS never)
-      t0 = hb_now(); gfx_prim_count = 0; draw_sims(); if (pet_kind && pet_zone == world_zone) items_draw_pet(pet_x, pet_z, pet_yaw, -sims[player].lvl * WALL_FULL, pet_kind, pet_col, pet_ph); ghost_draw(cam_yaw, frame); t_sims = hb_now() - t0; }
+      t0 = hb_now(); gfx_prim_count = 0; draw_sims(); if (pet_kind && pet_zone == world_zone) { if (pet_kind == 1) items_draw_dog(pet_x, pet_z, pet_yaw, -sims[player].lvl * WALL_FULL, &pet_dog, pet_ph); else items_draw_pet(pet_x, pet_z, pet_yaw, -sims[player].lvl * WALL_FULL, pet_kind, pet_col, pet_ph); } ghost_draw(cam_yaw, frame); t_sims = hb_now() - t0; }
     { int t0 = hb_now(); draw_bubbles(); t_bub = hb_now() - t0; }
     prims_last = gfx_prim_count;
     if (state != ST_OVER) { int t0 = hb_now(); hud_life(); t_hud = hb_now() - t0; }
@@ -2176,8 +2180,8 @@ static void save_tick(void) {
     if (k == 5 && t >= 700) { k++; aging = 2; pop_aging = 1; for (int d = 0; d < 400; d++) pop_midnight(); save_game(1); dbg_sv[7] = (int)save_last_bytes; }
 }
 #endif
-static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "KINGDOM MODE", "BOREAGOTCHI", "SUPERSTAR BAND", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "SAVE GAME", "NEW LIFE", "QUIT TO TITLE" };
-#define NPAUSE 13  // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
+static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "KINGDOM MODE", "BOREAGOTCHI", "SUPERSTAR BAND", "CREATE A DOG", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "SAVE GAME", "NEW LIFE", "QUIT TO TITLE" };
+#define NPAUSE 14  // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
 static void homes_open(void);
 #ifdef AUTO_PARTY
 int ap_frames, ap_vs, ap_cpu;
@@ -2225,25 +2229,26 @@ static void pause_update(void) {
             case 1: panel_tab = 0; state = ST_PANEL; break;
             case 4: { extern void gotchi_pause_open(void); gotchi_pause_open(); } break;
             case 5: sim_want_super = 1; state = ST_LIFE; break;   // (SUPERSTAR: bands and concerts, a file of its own on the disc)
-            case 6: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
+            case 6: sim_want_dog = 2; state = ST_LIFE; break;   // (YOUR DOG: the dog maker, a file of its own on the disc)
+            case 7: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
                     if (!world_backup()) { sim_note("NO ROOM FOR THE STUDIO JUST NOW. TRY AT HOME"); state = ST_LIFE; break; }
                     create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_gen_studio(); break;
-            case 7: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
+            case 8: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); audio_voice(VOICE_MOVE_YES); state = ST_LIFE; } break;
             case 3: if ((ovl = ovl_load("KINGDOM.OVL"))) { ovl->open(0); state = ST_REALM; } else state = ST_LIFE; break;
             case 2: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD;
                      if (world_zone == ZONE_CITY && !world_own_lot(build_x, build_y)) { int tx, ty; if (world_own_door(&tx, &ty)) { build_x = tx; build_y = ty - 1; } }   // (in SAN BOREAS: on your own lot)
                      break;
-            case 8: opts_open(ST_PAUSE); break;
-            case 9: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
-            case 10: slots_open(1, ST_PAUSE); break;
-            case 11: confirm_open("A NEW LIFE?", "THIS LIFE ENDS HERE, AND A NEW ONE BEGINS IN A NEW WORLD. ANYTHING NOT SAVED IS LOST. SAVE FIRST FROM THE PAUSE MENU IF YOU WANT TO COME BACK TO IT.", pause_new_life); break;
-            case 12: confirm_open("QUIT TO THE TITLE?", "ANYTHING NOT SAVED SINCE YOUR LAST SAVE IS LOST.", pause_quit); break;
+            case 9: opts_open(ST_PAUSE); break;
+            case 10: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
+            case 11: slots_open(1, ST_PAUSE); break;
+            case 12: confirm_open("A NEW LIFE?", "THIS LIFE ENDS HERE, AND A NEW ONE BEGINS IN A NEW WORLD. ANYTHING NOT SAVED IS LOST. SAVE FIRST FROM THE PAUSE MENU IF YOU WANT TO COME BACK TO IT.", pause_new_life); break;
+            case 13: confirm_open("QUIT TO THE TITLE?", "ANYTHING NOT SAVED SINCE YOUR LAST SAVE IS LOST.", pause_quit); break;
         }
     }
 }
 static void pause_draw(void) {   // one short column: the game itself (the rest of life is on the phone)
-    static const s8 ic[NPAUSE] = { IC_PLAY, IC_ARROW, IC_HAMMER, IC_SPROUT, IC_HEART, IC_NOTE, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_BOOK, IC_SPROUT, IC_DOOR };
+    static const s8 ic[NPAUSE] = { IC_PLAY, IC_ARROW, IC_HAMMER, IC_SPROUT, IC_HEART, IC_NOTE, IC_HEART, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_BOOK, IC_SPROUT, IC_DOOR };
     life_draw();
     ui_dim();
     int top = ui_window(70, 4, 180, 228, "PAUSED", IC_PAUSE);
@@ -3872,6 +3877,7 @@ int main(void) {
             case ST_SPICK: spick_update(); if (state == ST_SPICK) { if (sp_join) life_draw(); else title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t, sp_join); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
             case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
             case ST_SUPER: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; audio_jukebox_stop(); ovl_leave(); state = ST_LIFE; life_draw(); } break; }
+            case ST_DOG: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_DJ: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_PARTY: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); if (party_go) { party_go = 0; party_begin(); } } break; }
             case ST_GOTCHI: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; if (gotchi_shelf) { gotchi_shelf = 0; crowd_reset(); wo_painted = 0; state = ST_WORLDS; } else { ovl_leave(); state = ST_LIFE; life_draw(); } } break; }

@@ -1,6 +1,7 @@
 // items.c - BORE's textured-box items drawn as real boxes. The art is the GBA game's own (items_data.inc and the art headers).
 #include "items.h"
 #include "gfx.h"
+#include "dog.h"
 #include "atlas.h"
 
 #include "items_data.inc"   // defines Mat, IBox, IObj and the MAT macro, straight from the GBA game
@@ -788,6 +789,105 @@ void items_draw_bus(int x, int z, int yaw, int y) {   // the city bus: long, tal
     sk_box(-70, 70, -138, -126, 440, 448, 255, 200, 60); sk_box(-96, -60, -56, -40, 440, 448, 255, 240, 160); sk_box(60, 96, -56, -40, 440, 448, 255, 240, 160);
     sk_box(-96, -60, -56, -40, -448, -440, 220, 40, 40); sk_box(60, 96, -56, -40, -448, -440, 220, 40, 40);
     gfx_set_identity();
+}
+
+// ---- the CREATE-A-DOG pack: a dog from its DogLook (dog.h). Faces +z; feet at y 0, up is negative ----
+static void dbx(int x0, int x1, int y0, int y1, int z0, int z1, const int *c) { sk_box(x0, x1, y0, y1, z0, z1, c[0], c[1], c[2]); }
+static void dpal(int i, int *c) { dog_pal(i, &c[0], &c[1], &c[2]); }
+static void dshade(const int *c, int k, int *o) { for (int i = 0; i < 3; i++) o[i] = MIN(255, c[i] * k / 16); }
+void items_draw_dog(int x, int z, int yaw, int y, const DogLook *dl, int phase) {
+    const u8 *l = dl->look;
+    int c1[3], c2[3], cp[3], cn[3], ce[3], cl[3], ch[3], co[3], d1[3], dk[3] = { 24, 22, 26 }, wh[3] = { 244, 244, 240 }, gd[3] = { 232, 190, 60 }, pk[3] = { 236, 110, 130 };
+    dpal(l[DL_C1], c1); dpal(l[DL_C2], c2); dpal(l[DL_PATC], cp); dpal(l[DL_NOSEC], cn); { static const u8 ec[8] = { 2, 1, 15, 13, 14, 11, 9, 0 }; dpal(ec[l[DL_EYEC] & 7], ce); }
+    dpal(l[DL_COLLARC], cl); dpal(l[DL_HATC], ch); dpal(l[DL_OUTC], co); dshade(c1, 13, d1);
+    int k = 12 + l[DL_SIZE]; VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, yaw & 4095); sk_k = k;
+    int sw = (isin(phase & 4095) * 14) >> 12, wag = (isin((phase * 2) & 4095) * 8) >> 12;
+    int fur = l[DL_FUR] & 3, L = 36 + l[DL_BODY] * 4, DW = 22 + (fur >= 2 ? 3 : 0) + (fur == 3 ? 3 : 0), lh = 18 + l[DL_LEGS] * 6, yb1 = -lh, yb0 = yb1 - 38;
+    int hs = 15 + l[DL_HEAD] * 2, hz0 = L - 6, hz1 = hz0 + 2 * hs, hy1 = yb0 + 24, hy0 = hy1 - 2 * hs, zc = (hz0 + hz1) / 2;
+    int sn = 4 + l[DL_SNOUT] * 4, ws = hs * 11 / 20, sy0 = hy0 + hs * 9 / 10, sy1 = hy1 - 3, nz = 4 + l[DL_NOSESZ], pat = l[DL_PAT] % DOG_NPAT;
+    const int *bc = c1, *snc = (pat == 7) ? c2 : (pat == 8) ? cp : c1;
+    // the legs (four), the feet in the second colour for socks / tuxedo
+    for (int i = 0; i < 4; i++) { int xs = (i & 1) ? DW - 12 : -DW + 2, zz = (i & 2) ? -L + 4 : L - 18, sg = ((i & 1) ^ ((i >> 1) & 1)) ? sw : -sw;
+        dbx(xs, xs + 10, -lh, 0, zz + sg, zz + 14 + sg, d1);
+        if (pat == 4 || pat == 7) dbx(xs - 1, xs + 11, -9, 0, zz + sg - 1, zz + 15 + sg, c2); }
+    dbx(-DW, DW, yb0, yb1, -L, L, bc);                                                                     // the body
+    if (fur >= 2) { int cm[3]; dshade(c1, 17, cm); dbx(-DW + 4, DW - 4, yb0 - 4, yb0 + 10, L - 14, L + 6, cm); }   // a mane
+    if (fur == 3) { int cm[3]; dshade(c1, 15, cm); dbx(-DW - 2, DW + 2, yb1 - 6, yb1 + 2, -L + 4, L - 8, cm); }
+    dbx(-hs, hs, hy0, hy1, hz0, hz1, bc);                                                                // the head
+    dbx(-ws, ws, sy0, sy1, hz1, hz1 + sn, snc);                                                          // the snout
+    dbx(-nz, nz, sy0 - 1, sy0 + nz, hz1 + sn - 1, hz1 + sn + 4, cn);                                     // the nose
+    // the coat's pattern
+    if (pat == 1) { for (int i = -1; i <= 1; i++) { dbx(-DW + 4 + (i & 1) * 10, -DW + 14 + (i & 1) * 10, yb0 - 1, yb0 + 8, i * (L / 2) - 5, i * (L / 2) + 5, cp); dbx(DW - 12 - (i & 1) * 8, DW - 2, yb0 - 1, yb0 + 8, i * (L / 2) + 6, i * (L / 2) + 15, cp); } }
+    if (pat == 2) dbx(0, hs + 1, hy0 + 3, hy0 + hs + 2, hz1 - 7, hz1 + 1, cp);
+    if (pat == 3) dbx(-DW - 1, DW + 1, yb0 - 1, yb0 + 16, -L * 6 / 10, L * 3 / 10, cp);
+    if (pat == 5) { dbx(-DW + 4, DW - 4, yb1 - 8, yb1 + 1, -L + 6, L - 6, c2); dbx(-12, 12, yb0 + 12, yb1 - 2, L - 4, L + 1, c2); }
+    if (pat == 6) for (int i = -1; i <= 1; i++) dbx(-DW - 1, DW + 1, yb0 - 1, yb0 + 9, i * (L / 2) - 3, i * (L / 2) + 3, cp);
+    if (pat == 7) dbx(-12, 12, yb0 + 8, yb1 - 2, L - 4, L + 1, c2);
+    if (pat == 8) dbx(-hs + 3, hs - 3, hy0 + hs * 6 / 10, hy1 - 2, hz1 - 3, hz1 + 1, cp);
+    // the ears
+    { int es = 8 + l[DL_EARSZ] * 3, st = l[DL_EARS] & 7, e1[3]; dshade(c1, 12, e1);
+      for (int sd = -1; sd <= 1; sd += 2) { int xa = sd < 0 ? -hs - 6 : hs, xb = sd < 0 ? -hs : hs + 6;
+        switch (st) {
+          case 0: dbx(xa, xb, hy0 + 2, hy0 + 2 + es * 6 / 5, zc - 6, zc + 6, e1); break;                                  // floppy
+          case 1: dbx(sd < 0 ? -hs + 1 : hs - 11, sd < 0 ? -hs + 11 : hs - 1, hy0 - es * 6 / 10, hy0, zc - 4, zc + 4, e1); dbx(sd < 0 ? -hs + 3 : hs - 9, sd < 0 ? -hs + 9 : hs - 3, hy0 - es, hy0 - es * 6 / 10, zc - 3, zc + 3, e1); break;   // pointy
+          case 2: dbx(sd < 0 ? -hs - 3 : hs - 7, sd < 0 ? -hs + 7 : hs + 3, hy0 - es / 2, hy0 + 4, zc - 6, zc + 6, e1); break;       // round
+          case 3: dbx(xa + (sd < 0 ? 2 : 0), xb - (sd < 0 ? 0 : 2), hy0 + 2, hy0 + 2 + es * 9 / 5, zc - 4, zc + 4, e1); break;     // long
+          case 4: dbx(sd < 0 ? -hs : hs - 10, sd < 0 ? -hs + 10 : hs, hy0 - es / 2, hy0, zc - 6, zc + 6, e1); dbx(sd < 0 ? -hs : hs - 10, sd < 0 ? -hs + 10 : hs, hy0 - es / 2, hy0 - es / 4, zc + 6, zc + 12, e1); break;   // folded
+          case 5: dbx(sd < 0 ? -hs + 1 : hs - 13, sd < 0 ? -hs + 13 : hs - 1, hy0 - es * 14 / 10, hy0, zc - 3, zc + 3, e1); break; // bat
+          case 6: dbx(sd < 0 ? -hs + 2 : hs - 8, sd < 0 ? -hs + 8 : hs - 2, hy0 - 8, hy0, zc - 3, zc + 3, e1); break;              // tiny
+          default: break; } } }
+    // the tail
+    { int tl = 14 + l[DL_TAILSZ] * 5, st = l[DL_TAIL] % 7, yt = yb0 + 6;
+      switch (st) {
+        case 0: dbx(-4 + wag, 4 + wag, yt - 4, yt + 6, -L - tl / 2, -L, d1); dbx(-4 + wag, 4 + wag, yt - tl * 6 / 10, yt - 4, -L - tl * 8 / 10, -L - tl / 2, d1); break;
+        case 1: dbx(-4 + wag, 4 + wag, yb0 - 6, yb0 + 8, -L - 8, -L, d1); dbx(-4 + wag, 4 + wag, yb0 - 18, yb0 - 6, -L - 12, -L - 4, d1); dbx(-4 + wag, 4 + wag, yb0 - 22, yb0 - 14, -L - 8, -L, d1); break;
+        case 2: dbx(-8 + wag, 8 + wag, yt - 10, yt + 8, -L - tl * 8 / 10, -L, d1); dbx(-8 + wag, 8 + wag, yt - 10, yt + 8, -L - tl * 8 / 10 - 4, -L - tl * 8 / 10, c2); break;
+        case 3: dbx(-4 + wag, 4 + wag, yb0 - 4, yb0 + 8, -L - 7, -L, d1); break;
+        case 4: dbx(-2 + wag, 2 + wag, yt, yt + 4, -L - tl * 14 / 10, -L, d1); break;
+        case 5: dbx(-11 + wag, 11 + wag, yb0 - 14, yb0 + 10, -L - 20, -L, d1); break;
+        default: dbx(-4 + wag, 4 + wag, yb0 - tl - 6, yb0 + 6, -L - 7, -L, d1); break; } }
+    // the face: eyes, brows, mouth
+    { int e = 2 + l[DL_EYESZ] / 2, ey = hy0 + hs * 7 / 10, st = l[DL_EYEST] % 6, ex = hs * 5 / 10;
+      for (int sd = -1; sd <= 1; sd += 2) { int cx = sd * ex, ee = st == 5 ? e * 14 / 10 : e;
+        if (st == 4 || (st == 3 && sd < 0)) { dbx(cx - ee, cx + ee, ey, ey + 2, hz1, hz1 + 2, dk); continue; }   // squint, wink
+        if (st == 5) dbx(cx - ee - 1, cx + ee + 1, ey - ee - 1, ey + ee + 1, hz1, hz1 + 1, wh);
+        dbx(cx - ee, cx + ee, st == 1 ? ey : ey - ee, ey + ee, hz1 + 1, hz1 + 2, ce);
+        if (st == 1) dbx(cx - ee, cx + ee, ey - ee, ey, hz1 + 1, hz1 + 2, c1);                                     // sleepy: a lid
+        dbx(cx - ee / 2, cx + ee / 2, ey - ee / 2, ey + ee / 2, hz1 + 2, hz1 + 3, dk);
+        if (st == 2) dbx(cx + ee / 3, cx + ee / 3 + 2, ey - ee, ey - ee + 3, hz1 + 3, hz1 + 4, wh);              // a sparkle
+        if (l[DL_BROWS]) dbx(cx - ee + 1, cx + ee - 1, ey - ee - 6, ey - ee - 3, hz1, hz1 + 1, c2); } }
+    { int mo = l[DL_MOUTH] & 3, my = sy1 - 3;
+      if (mo == 0) dbx(-ws + 2, ws - 2, my, my + 2, hz1 + 1, hz1 + sn + 1, dk);
+      if (mo == 1) { dbx(-ws + 2, ws - 2, my, my + 2, hz1 + 1, hz1 + sn + 1, dk); dbx(-4, 4, my + 2, my + 12, hz1 + sn - 9, hz1 + sn - 2, pk); }
+      if (mo == 2) { dbx(-ws + 3, ws - 3, my - 2, my + 4, hz1 + 1, hz1 + sn + 1, dk); dbx(-4, 4, my + 3, my + 7, hz1 + sn - 8, hz1 + sn, pk); }
+      if (mo == 3) { dbx(-ws + 3, ws - 3, my - 2, my + 4, hz1 + 1, hz1 + sn + 1, dk); dbx(-5, 5, my + 3, my + 18, hz1 + sn - 10, hz1 + sn - 1, pk); } }
+    // the wear: collar, outfit, glasses, hat
+    { int st = l[DL_COLLAR] & 7, ny = yb0 + 4;
+      if (st) { dbx(-DW - 1, DW + 1, ny, ny + 12, L - 16, L - 8, st == 7 ? gd : cl);
+        if (st == 2) { dbx(-12, 12, ny + 12, ny + 26, L - 16, L - 8, cl); dbx(-5, 5, ny + 26, ny + 36, L - 16, L - 8, cl); }
+        if (st == 3) { dbx(-14, -2, ny + 2, ny + 14, L - 6, L, cl); dbx(2, 14, ny + 2, ny + 14, L - 6, L, cl); dbx(-3, 3, ny + 5, ny + 11, L - 7, L + 1, dk); }
+        if (st == 4) dbx(-4, 4, ny + 12, ny + 22, L - 8, L - 2, gd);
+        if (st == 5) for (int i = -1; i <= 1; i++) dbx(i * 14 - 2, i * 14 + 2, ny - 5, ny, L - 14, L - 10, wh);
+        if (st == 6) dbx(DW + 1, DW + 5, ny, ny + 30, L - 15, L - 9, cl); } }
+    { int st = l[DL_OUTFIT] % 6;
+      if (st == 1) { dbx(-DW - 2, DW + 2, yb0 - 1, yb1 - 6, -L + 10, L - 8, co); dbx(-DW - 3, DW + 3, yb0 + 12, yb0 + 18, -L + 10, L - 8, wh); }
+      if (st == 2) { dbx(-DW - 1, DW + 1, yb0 - 3, yb0, -L, L - 10, co); dbx(-DW - 3, -DW - 1, yb0 - 3, yb1 + 6, -L + 2, L - 12, co); dbx(DW + 1, DW + 3, yb0 - 3, yb1 + 6, -L + 2, L - 12, co); }
+      if (st == 3) { dbx(-DW - 2, -DW + 2, yb0 + 2, yb1 - 6, -L + 12, L - 14, co); dbx(DW - 2, DW + 2, yb0 + 2, yb1 - 6, -L + 12, L - 14, co); dbx(-DW, DW, yb0 - 2, yb0, -L + 12, L - 14, co); }
+      if (st == 4) { dbx(-12, 12, yb0 - 20, yb0, -L + 12, -L + 34, co); dbx(-12, 12, yb0 - 22, yb0 - 18, -L + 12, -L + 34, wh); }
+      if (st == 5) { dbx(-DW - 2, DW + 2, yb0 - 2, yb1 - 8, -L + 12, L - 14, co); dbx(-DW - 3, DW + 3, yb0 + 10, yb0 + 16, -L + 12, L - 14, wh); } }
+    { int st = l[DL_GLASS] & 3, e = 2 + l[DL_EYESZ] / 2, ey = hy0 + hs * 7 / 10, ex = hs * 5 / 10, lens[3] = { 150, 200, 235 };
+      if (st == 1) for (int sd = -1; sd <= 1; sd += 2) { int cx = sd * ex; dbx(cx - e - 3, cx + e + 3, ey - e - 3, ey + e + 3, hz1 + 3, hz1 + 4, dk); dbx(cx - e - 1, cx + e + 1, ey - e - 1, ey + e + 1, hz1 + 4, hz1 + 5, lens); }
+      if (st == 2) { dbx(-hs + 1, hs - 1, ey - e - 2, ey + e + 2, hz1 + 3, hz1 + 6, dk); }
+      if (st == 3) { int cx = ex; dbx(cx - e - 3, cx + e + 3, ey - e - 3, ey + e + 3, hz1 + 3, hz1 + 4, gd); dbx(cx - e - 1, cx + e + 1, ey - e - 1, ey + e + 1, hz1 + 4, hz1 + 5, lens); dbx(cx + e + 3, cx + e + 5, ey, ey + 40, hz1 + 3, hz1 + 4, gd); } }
+    { int st = l[DL_HAT] & 7;
+      if (st == 1) { dbx(-hs, hs, hy0 - 7, hy0, hz0 + 2, hz1 - 2, ch); dbx(-hs + 3, hs - 3, hy0 - 3, hy0, hz1 - 2, hz1 + 10, ch); }
+      if (st == 2) { dbx(-9, 9, hy0 - 8, hy0, zc - 9, zc + 9, ch); dbx(-6, 6, hy0 - 17, hy0 - 8, zc - 6, zc + 6, wh); dbx(-3, 3, hy0 - 26, hy0 - 17, zc - 3, zc + 3, ch); dbx(-2, 2, hy0 - 29, hy0 - 26, zc - 2, zc + 2, gd); }
+      if (st == 3) { dbx(-hs + 2, hs - 2, hy0 - 8, hy0, hz0 + 2, hz1 - 2, gd); for (int i = -1; i <= 1; i++) dbx(i * (hs - 6) - 3, i * (hs - 6) + 3, hy0 - 16, hy0 - 8, zc - 3, zc + 3, gd); dbx(-3, 3, hy0 - 6, hy0 - 2, hz1 - 4, hz1 - 2, ch); }
+      if (st == 4) { dbx(hs - 22, hs - 8, hy0 - 12, hy0, zc - 5, zc + 5, ch); dbx(hs - 6, hs + 8, hy0 - 12, hy0, zc - 5, zc + 5, ch); dbx(hs - 9, hs - 5, hy0 - 8, hy0 - 2, zc - 5, zc + 5, wh); }
+      if (st == 5) for (int sd = -1; sd <= 1; sd += 2) { int xa = sd * (hs - 8); dbx(xa - 2, xa + 2, hy0 - 24, hy0, zc - 2, zc + 2, ch); dbx(xa - 2 + sd * 6, xa + 2 + sd * 6, hy0 - 24, hy0 - 16, zc - 2, zc + 2, ch); dbx(xa - 2 - sd * 6, xa + 2 - sd * 6, hy0 - 16, hy0 - 10, zc - 2, zc + 2, ch); }
+      if (st == 6) { dbx(-hs - 4, hs + 4, hy0 - 4, hy0, hz0 - 4, hz1 + 4, dk); dbx(-hs + 4, hs - 4, hy0 - 28, hy0 - 4, hz0 + 4, hz1 - 4, dk); dbx(-hs + 4, hs - 4, hy0 - 12, hy0 - 6, hz0 + 4, hz1 - 4, ch); }
+      if (st == 7) { dbx(-1, 1, hy0 - 8, hy0, zc - 1, zc + 1, c1); for (int i = 0; i < 4; i++) dbx(((i & 1) ? 4 : -8), ((i & 1) ? 8 : -4), hy0 - 14 + (i >> 1) * 4, hy0 - 8 + (i >> 1) * 4, zc - 4 + (i & 2) * 2, zc + 0 + (i & 2) * 2, ch); } }
+    sk_k = 16; gfx_set_identity();
 }
 int bus_here(int mx, int my) { extern int clock_min; return ((clock_min + mx * 7 + my * 13) % 20) < 4; }   // a bus stands at every stop for four minutes of each twenty
 void items_draw(char ch, int mx, int my, int rot, int along, int t) {
