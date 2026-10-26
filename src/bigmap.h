@@ -15,7 +15,14 @@ enum { LOT_WILD, LOT_HOUSE, LOT_COTTAGE, LOT_TOWN, LOT_TWO, LOT_APART,          
        LOT_SHOP, LOT_DINER, LOT_GYM, LOT_OFFICE, LOT_INN, LOT_POOL, LOT_SCHOOL, LOT_ARCADE, LOT_TOWER, LOT_HOTEL,   // the places people go (TOWER: offices, storeys of them)
        LOT_PARK, LOT_SQUARE, LOT_SKATE, LOT_EMPTY, LOT_FARM,
        LOT_CAFE, LOT_BAR, LOT_CINEMA, LOT_SALON, LOT_RESTAURANT, LOT_CLINIC, LOT_LIBRARY, LOT_SPA, LOT_GALLERY,   // more places to go
+       LOT_RIVER,                                                                 // a river across a town: water, walks and bridges (not a place)
        LOT_N };
+// a block's road bits: 1 street along the top, 2 along the left, 4 the corner. A MEGA block (a 2x2 group made one place: a big park, a mall, a downtown plaza)
+// has BR_MEGA, its place in the group (BR_PART: 0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right) and what it is (BR_KIND: MK_). On a RIVER block BR_MEGA means it runs north-south.
+#define BR_MEGA 8
+#define BR_PART(r) (((r) >> 4) & 3)
+#define BR_KIND(r) (((r) >> 6) & 3)
+enum { MK_PARK, MK_MALL, MK_PLAZA };
 enum { ST_CITY, ST_TOWN, ST_VILLAGE };
 
 typedef struct {

@@ -258,7 +258,7 @@ static void start_life(void) {
 #if defined(AUTO_CITY) || defined(AUTO_PARTY)
         seed = 0x5EED1234u;                                    // (test builds: the same world every run, so runs compare)
 #endif
-        bm_gen = 3; bm_new(seed); world_new_seed(seed);
+        bm_gen = 4; bm_new(seed); world_new_seed(seed);
         loading("PEOPLING SAN BOREAS", 45);
         u32 sb; void *sc = crowd_scratch(&sb); pop_new(seed, sc, sb);
         loading("RAISING THE SKYLINE", 60);
@@ -1850,7 +1850,7 @@ static void save_body(void) {
 }
 static void load_body(void) {
     u32 seed = ld_u32();
-    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
+    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 17 ? 4 : 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
     bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1;
     if (save_ver >= 7) { bm_land = ld_u8() % BL_N; bm_sea = ld_u8() % 5; bm_clim = ld_u8() % 5; bm_hills = ld_u8() % 5;
         if (save_ver >= 8) { bm_ncity = ld_u8() % (BM_MAXCITY + 1); bm_ntown = ld_u8() % (BM_MAXTOWN + 1); bm_nvil = ld_u8() % (BM_MAXVIL + 1); bm_capsz = ld_u8() % 6; pop_people = ld_u8() % 6; pop_famsize = ld_u8() % 4; if (save_ver < 9) bm_capsz = bm_capsz == 0 ? 1 : bm_capsz == 1 ? 2 : 4; }   // (version 8: capital SMALL NORMAL HUGE)
@@ -3339,7 +3339,7 @@ static void worlds_open(void) {
     wo_painted = 0; wo_sel = 0; wo_t = 0; wo_more = 0; wo_msel = 0; state = ST_WORLDS;
 }
 static void worlds_go(u32 seed, int mode) {
-    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 3; bm_packed = wo_packed; wo_name_for(seed); strcpy(life_cap, wo_name); start_life();
+    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 4; bm_packed = wo_packed; wo_name_for(seed); strcpy(life_cap, wo_name); start_life();
     cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 }
 // ---- CREATE A WORLD: make your own. What kind of life, then dials for the land (or the castaway's island), the map as you turn them ----
@@ -3480,7 +3480,7 @@ static void worlds_update(void) {
     if (PRESSED(PAD_CIRCLE)) { state = ST_MENU; return; }
     if (PRESSED(PAD_TRIANGLE)) { wo_packed ^= 1; wo_painted = 0; audio_voice(VOICE_FINISHED); }   // TOWNS: ROOMY or PACKED
     if (PRESSED(PAD_SELECT) && wo_sel != WO_MORE) { name_open(wo_name, 17, "NAME YOUR CAPITAL CITY", worlds_named); return; }
-    bm_gen = 3; bm_packed = wo_packed;
+    bm_gen = 4; bm_packed = wo_packed;
     if (wo_sel == WO_CREATE) {                       // CREATE A WORLD: roll it, or step through, until you like the look of it
         if (PRESSED(PAD_SQUARE)) { wo_custom = look_rand() * 2654435761u ^ ((u32)VSync(-1) * 40503u) ^ (u32)wo_t; if (!wo_custom) wo_custom = 1; audio_voice(VOICE_FINISHED); }
         if (PRESSED(PAD_L1)) wo_custom--;

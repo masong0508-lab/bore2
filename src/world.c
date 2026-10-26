@@ -1327,6 +1327,44 @@ static void wild(int ox, int oy, const BInfo *b, int bx, int by) {   // the open
         if (c) lifeMap[oy + y][ox + x] = c;
     }
 }
+// ---- a river across a town, and the big shared places (a park, a mall, a downtown plaza: four blocks made one) ----
+COLD static void lot_river(int ox, int oy, int vert, unsigned h) {   // the lot is a river with a walk down each bank; the street along the edge crosses it as a bridge
+    int T = vert ? 0 : 1;   // (draw west-east, mirrored for north-south through x/y swap)
+    #define RX(a, b) (vert ? ox + (a) : ox + (b))
+    #define RY(a, b) (vert ? oy + (b) : oy + (a))
+    for (int d = 3; d < BM_BLK; d++) {                 // d: along the river's width (across), e: along its length
+        int fl = d <= 4 ? FL_PAVING : d <= 11 ? FL_WATER : d <= 13 ? FL_PAVING : FL_GRASS;
+        for (int e = 3; e < BM_BLK; e++) floorMap[RY(d, e)][RX(d, e)] = (u8)fl;
+    }
+    for (int e = 0; e < 3; e++) for (int d = 5; d <= 11; d++) floorMap[RY(d, e)][RX(d, e)] = FL_ASPHALT;   // (under the street: the bridge)
+    for (int e = 4; e < BM_BLK; e += 4) {              // lamps and benches down both walks, planters, and trees on the far bank
+        gFree(RX(3, e), RY(3, e), '"'); gFree(RX(13, e + 2), RY(13, e + 2), '"');
+        gFree(RX(4, e + 2), RY(4, e + 2), 'N'); gFree(RX(12, e), RY(12, e), 'N');
+        gFree(RX(15, e), RY(15, e), TREE); if (e + 2 < BM_BLK) gFree(RX(14, e + 2), RY(14, e + 2), TREE);
+    }
+    if (h & 1) gFree(RX(12, 9), RY(12, 9), 'Z'); if (h & 2) gFree(RX(4, 6), RY(4, 6), 'Z');
+    if (h & 4) { gPut(RX(7, 9), RY(7, 9), 'K'); }      // (a rock in the stream, if a rock is 'K': the item the park uses)
+    gFree(RX(3, 1), RY(3, 1), '"'); gFree(RX(13, 1), RY(13, 1), '"');
+    (void)T;
+    #undef RX
+    #undef RY
+}
+COLD static void mega_zone(int ox, int oy, int part, int kind, unsigned h) {   // the 3-wide strips that were streets between the four blocks: a plaza (or a green) now
+    int fl = kind == MK_PARK ? FL_GRASS : FL_PAVING;
+    if (part & 1) gBox(ox, oy + ((part & 2) ? 0 : 3), ox + 2, oy + BM_BLK - 1, (u8)fl);       // the strip down the left
+    if (part & 2) gBox(ox + ((part & 1) ? 0 : 3), oy, ox + BM_BLK - 1, oy + 2, (u8)fl);      // the strip along the top
+    if (kind == MK_PARK) {
+        if (part & 1) gBox(ox + 1, oy + ((part & 2) ? 0 : 3), ox + 1, oy + BM_BLK - 1, FL_PAVING);
+        if (part & 2) gBox(ox + ((part & 1) ? 0 : 3), oy + 1, ox + BM_BLK - 1, oy + 1, FL_PAVING);
+    }
+    if (part & 1) for (int y = oy + ((part & 2) ? 2 : 4); y < oy + BM_BLK; y += 4) { gFree(ox, y, kind == MK_PARK ? TREE : 'Z'); gFree(ox + 2, y, kind == MK_PARK ? TREE : 'Z'); gFree(ox + 1, y + 2, 'N'); gFree(ox + 2, y + 2, '"'); }
+    if (part & 2) for (int x = ox + ((part & 1) ? 2 : 4); x < ox + BM_BLK; x += 4) { gFree(x, oy, kind == MK_PARK ? TREE : 'Z'); gFree(x, oy + 2, kind == MK_PARK ? TREE : 'Z'); gFree(x + 2, oy + 1, 'N'); gFree(x + 2, oy + 2, '"'); }
+    if (part == 3) {                                    // the middle of the four: a pond in a park, a fountain in a plaza, with the benches round it
+        if (kind == MK_PARK) { gBox(ox, oy, ox + 2, oy + 2, FL_WATER); gFree(ox + 1, oy + 1, 'N'); }
+        else { gPut(ox + 1, oy + 1, '}'); gFree(ox, oy, 'N'); gFree(ox + 2, oy, 'N'); gFree(ox, oy + 2, 'N'); gFree(ox + 2, oy + 2, 'N'); }
+    }
+    (void)h;
+}
 COLD static void gen_block(int wx, int wy) {
     int bx = world_wbx + wx, by = world_wby + wy, ox = wx * BM_BLK, oy = wy * BM_BLK;
     BInfo b; bm_block(bx, by, &b);
@@ -1336,13 +1374,16 @@ COLD static void gen_block(int wx, int wy) {
     TREE = (b.terrain == BT_FOREST || b.terrain == BT_ROCKY) ? '6' : b.terrain == BT_DESERT ? 'u' : b.terrain == BT_BEACH ? 'g' : '3';
     for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) { lifeMap[oy + y][ox + x] = '.'; floorMap[oy + y][ox + x] = (u8)ground; wallMap[oy + y][ox + x] = 0; }
     for (int k = 0; k < NUP; k++) { Level *L = lv_get(k); if (L) for (int y = 0; y < BM_BLK; y++) memset(&L->map[oy + y][ox], ' ', BM_BLK); }
-    if (b.road & 1) { gBox(ox, oy, ox + BM_BLK - 1, oy + 2, FL_ASPHALT); gBox(ox + 3, oy + 1, ox + BM_BLK - 1, oy + 1, FL_LINE_H); }   // the street: asphalt, a dashed line down the middle
-    if (b.road & 2) { gBox(ox, oy, ox + 2, oy + BM_BLK - 1, FL_ASPHALT); gBox(ox + 1, oy + 3, ox + 1, oy + BM_BLK - 1, FL_LINE_V); }
-    if ((b.road & 3) == 1) gBox(ox, oy + 1, ox + 2, oy + 1, FL_LINE_H);
-    if ((b.road & 3) == 2) gBox(ox + 1, oy, ox + 1, oy + 2, FL_LINE_V);
+    int mg = b.lot != LOT_RIVER && (b.road & BR_MEGA), mpart = BR_PART(b.road), mkind = BR_KIND(b.road);
+    int rd = b.road & 7; if (mg) { if (mpart & 1) rd &= ~2; if (mpart & 2) rd &= ~1; }   // (inside a big place the streets between its blocks are gone)
+    if (rd & 1) { gBox(ox, oy, ox + BM_BLK - 1, oy + 2, FL_ASPHALT); gBox(ox + 3, oy + 1, ox + BM_BLK - 1, oy + 1, FL_LINE_H); }   // the street: asphalt, a dashed line down the middle
+    if (rd & 2) { gBox(ox, oy, ox + 2, oy + BM_BLK - 1, FL_ASPHALT); gBox(ox + 1, oy + 3, ox + 1, oy + BM_BLK - 1, FL_LINE_V); }
+    if ((rd & 3) == 1) gBox(ox, oy + 1, ox + 2, oy + 1, FL_LINE_H);
+    if ((rd & 3) == 2) gBox(ox + 1, oy, ox + 1, oy + 2, FL_LINE_V);
     if (b.set != 255 && b.terrain != BT_SEA) {           // in town: a pavement along the street
         gBox(ox + 3, oy + 3, ox + BM_BLK - 1, oy + 3, FL_PAVING); gBox(ox + 3, oy + 3, ox + 3, oy + BM_BLK - 1, FL_PAVING);
     }
+    if (mg && mpart) mega_zone(ox, oy, mpart, mkind, b.h);
     int mine = own.used && bx == own.bx && by == own.by;
     if (mine && !own.fresh) {                            // the family's own lot: as they left it
         own_load(wx, wy);
@@ -1362,7 +1403,7 @@ COLD static void gen_block(int wx, int wy) {
     if (mine) occ_blk[0] = own_occ;                      // (just bought: furnished for the family)
     int lx = ox + BM_LOT0, ly = oy + BM_LOT0; unsigned h = b.h;
 #ifdef AUTO_HOUSES
-    if (b.lot != LOT_WILD && b.lot != LOT_SQUARE && b.lot != LOT_PARK) b.lot = LOT_HOUSE;   // (test builds: every lot a house)
+    if (b.lot != LOT_WILD && b.lot != LOT_SQUARE && b.lot != LOT_PARK && b.lot != LOT_RIVER) b.lot = LOT_HOUSE;   // (test builds: every lot a house)
 #endif
     switch (b.lot) {
         case LOT_HOUSE:   city_house(lx, ly, h); break;
@@ -1394,6 +1435,7 @@ COLD static void gen_block(int wx, int wy) {
         case LOT_LIBRARY: lot_library(lx, ly, h); break;
         case LOT_SPA:     lot_spa(lx, ly, h); break;
         case LOT_GALLERY: lot_gallery(lx, ly, h); break;
+        case LOT_RIVER:   lot_river(ox, oy, b.road & BR_MEGA, h); break;
         default: break;
     }
     occ_on = 0; blk_bx = blk_by = 0xFFFF;

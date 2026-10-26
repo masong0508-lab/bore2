@@ -116,6 +116,8 @@ static void link(int i, int j) {                  // a highway: along i's row to
     add_seg(sets[i].y, sets[i].x, sets[j].x, 0);
     add_seg(sets[j].x, sets[i].y, sets[j].y, 1);
 }
+static void rivers_make(void);
+static int mg_cx = -1;
 void bm_new(u32 seed) {
     wseed = seed ? seed : 1; rs = wseed ^ 0xA5A5A5A5u; nset = 0; nseg = 0;
     static const u8 capr[6] = { 6, 8, 11, 14, 18, 22 };
@@ -138,6 +140,7 @@ void bm_new(u32 seed) {
     }
     for (int e = 0; e < 4 && nset > 3; e++) { int i = (int)(rr() % (u32)nset), j = (int)(rr() % (u32)nset); if (i != j) link(i, j); }
     for (int i = 0; i < nset; i++) if (ren[i][0]) strcpy(sets[i].name, ren[i]);
+    rivers_make();
 }
 void bm_rename_clear(void) { memset(ren, 0, sizeof ren); }
 void bm_rename(int i, const char *nm) { if (i < 0 || i >= NSET_MAX) return; strncpy(ren[i], nm, 17); ren[i][17] = 0; if (i < nset && ren[i][0]) strcpy(sets[i].name, ren[i]); }
@@ -197,7 +200,7 @@ static int landmark(const Settle *s, int dx, int dy) {   // what every town has 
     for (int i = 0; i < n; i++) if (lm[i][0] == dx && lm[i][1] == dy) return lm[i][2];
     return -1;
 }
-void bm_block(int bx, int by, BInfo *b) {
+static void bm_block0(int bx, int by, BInfo *b) {
     b->terrain = (u8)bm_terrain(bx, by);
     b->h = bm_hash(bx, by, wseed ^ 0xB10Cu);
     b->set = 255; b->road = 0; b->lot = LOT_WILD;
@@ -223,6 +226,60 @@ void bm_block(int bx, int by, BInfo *b) {
     if (on_road(bx, by, 1)) b->road |= 2;
     if (b->terrain == BT_GRASS && (b->h % 100u) < 3) b->lot = LOT_FARM;
 }
+// ---- rivers and mega places ----
+static u8 rvOn[NSET_MAX], rvV[NSET_MAX]; static s8 rvOff[NSET_MAX];
+static void rivers_make(void) {   // some towns have a river through them: along a row (or a column) of blocks a little off the centre
+    mg_cx = -1;
+    for (int i = 0; i < NSET_MAX; i++) rvOn[i] = 0;
+    for (int i = 0; i < nset; i++) {
+        const Settle *s = &sets[i]; u32 h = bm_hash(i, 77, wseed ^ 0x71E5u);
+        int ch = s->kind == ST_CITY ? 62 : s->kind == ST_TOWN ? 38 : 0;
+        if ((int)(h % 100u) >= ch || s->r < 4) continue;
+        int mag = 2 + (int)((h >> 9) % (u32)MIN(3, s->r - 3));
+        rvOn[i] = 1; rvV[i] = (u8)((h >> 8) & 1); rvOff[i] = (s8)(((h >> 12) & 1) ? -mag : mag);
+    }
+}
+static int river_at(int bx, int by, int si) {   // 0: no, 1: runs west-east, 2: north-south (the river belongs to town si and runs a little way out of it)
+#ifdef RIVER_TEST
+    if (by % 5 == 0) return 1; if (bx % 5 == 2) return 2;   // (test builds: rivers everywhere)
+#endif
+    for (int i = 0; i < nset; i++) if (rvOn[i] && (si == 255 || si == i)) {
+        int dx = bx - sets[i].x, dy = by - sets[i].y, r = sets[i].r + 3;
+        if (rvV[i]) { if (dx == rvOff[i] && ABS(dy) <= r) return 2; } else if (dy == rvOff[i] && ABS(dx) <= r) return 1;
+    }
+    return 0;
+}
+static const u8 mallMix[]  = { LOT_SHOP, 28, LOT_CAFE, 14, LOT_RESTAURANT, 10, LOT_SALON, 10, LOT_CINEMA, 12, LOT_ARCADE, 10, LOT_GYM, 6, LOT_GALLERY, 5, LOT_SPA, 5, 0, 0 };
+static const u8 plazaMix[] = { LOT_TOWER, 34, LOT_OFFICE, 20, LOT_HOTEL, 16, LOT_RESTAURANT, 10, LOT_CAFE, 8, LOT_BAR, 6, LOT_GALLERY, 6, 0, 0 };
+static int mega_kind(int gx, int gy, int si) {   // -1: not a group; else MK_ (a group is the 2x2 blocks from an even block)
+    static int cgx = -1, cgy = -1, csi = -1, ck;
+    if (mg_cx < 0) { cgx = -1; mg_cx = 0; }                // (a new world: forget the last answer)
+    if (gx == cgx && gy == cgy && si == csi) return ck;
+    cgx = gx; cgy = gy; csi = si; ck = -1;
+    const Settle *s = &sets[si]; if (s->kind == ST_VILLAGE) return ck;
+    u32 h = bm_hash(gx, gy, wseed ^ 0x3E6Au);
+    if ((int)(h % 100u) >= (s->kind == ST_CITY ? 17 : 10)) return ck;
+    for (int k = 0; k < 4; k++) {
+        int x = gx + (k & 1), y = gy + (k >> 1); BInfo t; bm_block0(x, y, &t);
+        if (t.set != si || t.terrain == BT_SEA || landmark(s, x - s->x, y - s->y) >= 0 || river_at(x, y, si)) return ck;
+    }
+    int k = (int)((h >> 8) % 100u);
+    ck = s->kind == ST_CITY ? (k < 34 ? MK_PARK : k < 64 ? MK_MALL : MK_PLAZA) : (k < 50 ? MK_PARK : MK_MALL);
+    return ck;
+}
+void bm_block(int bx, int by, BInfo *b) {
+    bm_block0(bx, by, b);
+    if (b->terrain == BT_SEA || bm_gen < 4) return;   // (rivers and mega places: worlds made from this version on)
+    int rv = river_at(bx, by, b->set);
+    if (rv) { b->lot = LOT_RIVER; if (rv == 2) b->road |= BR_MEGA; else b->road &= (u8)~BR_MEGA; return; }
+    if (b->set == 255 || b->lot == LOT_WILD) return;
+    int k = mega_kind(bx & ~1, by & ~1, b->set);
+    if (k < 0) return;
+    int part = (bx & 1) | ((by & 1) << 1);
+    b->road = (u8)((b->road & 7) | BR_MEGA | (part << 4) | (k << 6));
+    b->lot = (u8)(k == MK_PARK ? LOT_PARK : pick(b->h >> 4, k == MK_MALL ? mallMix : plazaMix));
+    if (k == MK_MALL && part == 0) b->lot = LOT_SHOP;
+}
 int bm_storeys(const BInfo *b) {
     if (b->lot == LOT_TWO) return 2;
     if (b->lot == LOT_APART) return b->set != 255 && sets[b->set].kind == ST_CITY && (b->h >> 27) < 20 ? 3 + (int)((b->h >> 12) % 3u) : 2 + (int)((b->h >> 12) & 1);
@@ -233,10 +290,10 @@ int bm_storeys(const BInfo *b) {
 int bm_units(const BInfo *b) {
     switch (b->lot) { case LOT_TOWN: return 2; case LOT_HOUSE: case LOT_COTTAGE: case LOT_TWO: return 1; case LOT_APART: return 2 * bm_storeys(b); default: return 0; }
 }
-int bm_is_place(int lot) { return (lot >= LOT_SHOP && lot <= LOT_SKATE) || (lot >= LOT_CAFE && lot < LOT_N); }
+int bm_is_place(int lot) { return (lot >= LOT_SHOP && lot <= LOT_SKATE) || (lot >= LOT_CAFE && lot <= LOT_GALLERY); }
 static const char *const lotNm[LOT_N] = { "OPEN COUNTRY", "HOUSE", "COTTAGE", "TOWNHOUSES", "TWO-STOREY", "FLATS", "SHOP", "DINER", "GYM", "OFFICE", "INN",
                                           "POOL", "SCHOOL", "ARCADE", "OFFICE TOWER", "HOTEL", "PARK", "TOWN SQUARE", "SKATE PLAZA", "EMPTY LOT", "FARM",
-                                          "CAFE", "BAR", "CINEMA", "SALON", "RESTAURANT", "CLINIC", "LIBRARY", "SPA", "GALLERY" };
+                                          "CAFE", "BAR", "CINEMA", "SALON", "RESTAURANT", "CLINIC", "LIBRARY", "SPA", "GALLERY", "RIVER" };
 const char *bm_lot_name(int lot) { return lotNm[lot % LOT_N]; }
 
 static const char *const stNm[24] = { "MAIN", "ELM", "OAK", "PINE", "MAPLE", "BIRCH", "CEDAR", "ASH", "WILLOW", "LAKE", "HILL", "PARK",
