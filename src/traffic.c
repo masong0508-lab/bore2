@@ -24,7 +24,7 @@ static const s8 DX[4] = { 0, 1, 0, -1 }, DY[4] = { 1, 0, -1, 0 };   // heading 0
 static const u8 tbl[5] = { 0, 3, 6, 11, 18 }, cheat_tbl[5] = { 0, 10, 30, 60, 120 };
 static int bx_(void) { return world_wbx * BLK; }
 static int by_(void) { return world_wby * BLK; }
-static int road(int tx, int ty) { if (tx < 0 || ty < 0 || tx >= MW || ty >= MH) return 0; int f = floorMap[ty][tx]; return f == FL_ASPHALT || f == FL_LINE_H || f == FL_LINE_V; }
+static int road(int tx, int ty) { if (tx < 0 || ty < 0 || tx >= MW || ty >= MH) return 0; int f = floorMap[ty][tx]; return FL_IS_ROAD(f); }
 static int lane_ok(int tx, int ty, int d) {   // drive on the right: east along the south lane, west the north, south the west lane, north the east
     switch (d) { case 1: return ty % BLK == LB; case 3: return ty % BLK == LA; case 0: return tx % BLK == LA; default: return tx % BLK == LB; }
 }

@@ -6,7 +6,7 @@ extern char lifeMap[MH][MW + 1];     // the map letters (BORE): '.' floor, 'W' w
 extern u8   floorMap[MH][MW];        // floor style per tile
 extern u8   wallMap[MH][MW];         // wallpaper per tile (0..NWP-1 patterns, NWP.. the KHLVH set)
 #define NWALLS (14 + 89 + 6)   // (the last six: brick, clapboard, stucco, shingle, beadboard, stone: appended so old maps keep their walls)
-#define NFLOORS 27   // BORE's 14 floors + GRASS, PAVING, SOIL, SAND, WATER, ROCK, ASPHALT and the road lines (outdoors)
+#define NFLOORS 33   // BORE's 14 floors + GRASS, PAVING, SOIL, SAND, WATER, ROCK, ASPHALT and the road lines (outdoors)
 #define FL_GRASS 14
 #define FL_PAVING 15
 #define FL_SOIL 16
@@ -20,6 +20,13 @@ extern u8   wallMap[MH][MW];         // wallpaper per tile (0..NWP-1 patterns, N
 #define FL_DECK 24
 #define FL_POOLTILE 25
 #define FL_GRAVEL 26   // ... along y
+#define FL_ZEB_A 27    // a crosswalk across a street that runs along x (bars along x), and its twin
+#define FL_ZEB_B 28
+#define FL_EDGE_N 29   // the white line along a street's edge: north, south, west, east
+#define FL_EDGE_S 30
+#define FL_EDGE_W 31
+#define FL_EDGE_E 32
+#define FL_IS_ROAD(f) ((f) == FL_ASPHALT || (f) == FL_LINE_H || (f) == FL_LINE_V || (f) >= FL_ZEB_A)
 // the three zones: the GBA lot, the island (Castaway) and the desert town
 enum { ZONE_HOME, ZONE_ISLAND, ZONE_TOWN, ZONE_CITY, ZONE_N };
 extern int world_zone;

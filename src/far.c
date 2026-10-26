@@ -356,7 +356,7 @@ static u32 floor_key0(int fl) {
     switch (fl) {
         case FL_GRASS: return 0x488400 | 96;  case FL_PAVING: return 0x9EA800 | 172; case FL_SOIL: return 0x3E5C00 | 120;
         case FL_SAND: return 0x96C600 | 212;  case FL_WATER: return 0x965C00 | 46;   case FL_ROCK: return 0x788200 | 136;
-        case FL_ASPHALT: case FL_LINE_H: case FL_LINE_V: return 0x4E4A00 | 74;
+        case FL_ASPHALT: case FL_LINE_H: case FL_LINE_V: case FL_ZEB_A: case FL_ZEB_B: case FL_EDGE_N: case FL_EDGE_S: case FL_EDGE_W: case FL_EDGE_E: return 0x4E4A00 | 74;
         default: return 0x728600 | 150;       // indoors (under a roof)
     }
 }

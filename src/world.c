@@ -95,24 +95,30 @@ static TexRef fl_tex[NFLOORS];       // 8x8 (the water: 16x16, the pattern twice
 static TexRef fl_tex4[NFLOORS];      // 32x32: four tiles' worth, the checker shade of the odd tiles baked in (2x2 blocks of floor draw as one quad)
 #define PN_NOISE "01000200","00020010","20001000","00100020","01000100","00200001","10002000","00010200"
 // the outdoor floors BORE 2 adds: 16x16, 4 colours, hand drawn here
-static const Tex outTex[13] = {
+static const Tex outTex[19] = {
  {"GRASS",{RGB(9,18,6),RGB(12,22,8),RGB(7,15,5),RGB(14,24,10)},{"01010210","10301001","01010100","20101031","01010210","10201001","31010100","00101010"}},
  {"PAVING",{RGB(17,16,15),RGB(20,19,18),RGB(13,12,12),RGB(22,21,19)},{"00000003","01110111","01110111","01110111","00000000","11101110","11101110","11101120"}},
  {"SOIL",{RGB(12,8,5),RGB(14,10,6),RGB(9,6,4),RGB(16,11,7)},{PN_NOISE}},
  {"SAND",{RGB(28,24,14),RGB(30,26,17),RGB(26,22,12),RGB(31,28,20)},{PN_NOISE}},
  {"WATER",{RGB(6,14,26),RGB(8,18,29),RGB(12,22,31),RGB(20,27,31)},{"00100000","01110020","00100000","00000100","20001110","00000100","01000000","11100001"}},
  {"ROCK",{RGB(15,13,12),RGB(18,16,14),RGB(12,11,10),RGB(21,19,16)},{"00010000","01000200","00000001","00020000","10000100","00000000","00100010","02000000"}},
- {"ASPHALT",{RGB(8,8,9),RGB(10,10,11),RGB(6,6,7),RGB(14,14,15)},{"01030201","00120310","21001032","03102001","01020130","30210012","10032010","02013021"}},
- {"ROAD LINE",{RGB(8,8,9),RGB(10,10,11),RGB(7,7,8),RGB(29,25,8)},{"01000200","00020010","20001000","03333330","03333330","00200001","10002000","00010200"}},
- {"ROAD LINE",{RGB(8,8,9),RGB(10,10,11),RGB(7,7,8),RGB(29,25,8)},{"01033200","00030010","20033000","00133020","01033100","00230001","10032000","00013200"}},
+ {"ASPHALT",{RGB(8,8,9),RGB(9,9,10),RGB(6,6,7),RGB(11,11,12)},{"01000100","00020010","10000001","00200010","01000100","00010020","10002000","00100001"}},
+ {"ROAD LINE",{RGB(8,8,9),RGB(9,9,10),RGB(6,6,7),RGB(29,25,8)},{"01000100","00020010","33333333","00200010","01000100","33333333","10002000","00100001"}},
+ {"ROAD LINE",{RGB(8,8,9),RGB(9,9,10),RGB(6,6,7),RGB(29,25,8)},{"01300300","00320310","10300301","00300310","01300300","00310320","10302300","00300301"}},
  {"BRICK PATIO",{RGB(21,9,7),RGB(18,8,6),RGB(24,20,18),RGB(16,7,5)},{"00010002","22222222","20001000","22222222","00010002","22222222","20001000","22222222"}},
  {"WOOD DECK",{RGB(21,15,8),RGB(18,12,6),RGB(24,18,10),RGB(12,8,4)},{"00001000","00010020","33333333","01000200","10000010","00200001","33333333","00010000"}},
  {"POOL TILE",{RGB(18,25,29),RGB(21,27,30),RGB(14,21,26),RGB(27,30,31)},{"00000003","00000003","00000003","00000003","00000003","00000003","00000003","33333333"}},
  {"GRAVEL",{RGB(16,15,14),RGB(20,19,17),RGB(12,11,10),RGB(24,23,21)},{"01020010","30010201","02100320","10200103","01030210","20100302","03021001","10300210"}},
+ {"CROSSWALK",{RGB(8,8,9),RGB(9,9,10),RGB(6,6,7),RGB(25,25,24)},{"01000100","33333333","33333333","00200010","01000100","33333333","33333333","00100001"}},
+ {"CROSSWALK",{RGB(8,8,9),RGB(9,9,10),RGB(6,6,7),RGB(25,25,24)},{"03300330","03320330","13300331","03300330","03300330","03310330","13302330","03300331"}},
+ {"ROAD EDGE",{RGB(8,8,9),RGB(9,9,10),RGB(6,6,7),RGB(25,25,24)},{"01000100","33333333","10000001","00200010","01000100","00010020","10002000","00100001"}},
+ {"ROAD EDGE",{RGB(8,8,9),RGB(9,9,10),RGB(6,6,7),RGB(25,25,24)},{"01000100","00020010","10000001","00200010","01000100","00010020","33333333","00100001"}},
+ {"ROAD EDGE",{RGB(8,8,9),RGB(9,9,10),RGB(6,6,7),RGB(25,25,24)},{"03000100","03020010","13000001","03200010","03000100","03010020","13002000","03100001"}},
+ {"ROAD EDGE",{RGB(8,8,9),RGB(9,9,10),RGB(6,6,7),RGB(25,25,24)},{"01000130","00020030","10000031","00200030","01000130","00010030","10002030","00100031"}},
 };
 static TexRef wp_tex[NWALLS];        // 8x24
 static u16 wp_top[NWALLS];
-static u8 fl_odd[NFLOORS] = { 14, 15, 15, 16, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15, 16, 15, 16, 16, 16, 15, 16, 16, 16, 15, 15, 15, 15 };
+static u8 fl_odd[NFLOORS] = { 14, 15, 15, 16, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15, 16, 15, 16, 16, 16, 15, 16, 16, 16, 15, 15, 15, 15, 16, 16, 16, 16, 16, 16 };
 static u16 tb[32 * 32];
 static TexRef glass_tex;
 
@@ -126,7 +132,7 @@ static const Tex newWp[6] = {   // the base game's newer walls (8x8, repeated do
 };
 #define NWPNEW 6
 const char *world_wall_name(int wp) { return wp < NWP ? look_wp_tex(wp)->nm : wp < NWP + NWX ? wxName[wp - NWP] : newWp[(wp - NWP - NWX) % NWPNEW].nm; }
-static const Tex *floor_tex(int i) { return i < NFL ? look_fl_tex(i) : &outTex[(i - NFL) % 13]; }
+static const Tex *floor_tex(int i) { return i < NFL ? look_fl_tex(i) : &outTex[(i - NFL) % 19]; }
 const char *world_floor_name(int fl) { return floor_tex(fl % NFLOORS)->nm; }
 
 static u16 fl_soft[NFLOORS][4];   // the floor colours, calmed: a GBA pattern blown up across a 3D floor shouts, so each colour leans toward the tile's average
@@ -137,7 +143,7 @@ static void soften_floors(void) {
         int r = 0, g = 0, b = 0, n = 0;
         for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) { u16 c = t->c[t->p[y][x] - '0']; r += C_R(c); g += C_G(c); b += C_B(c); n++; }
         r /= n; g /= n; b /= n; fl_avg[i] = RGB(r, g, b);
-        for (int k = 0; k < 4; k++) { u16 c = t->c[k]; fl_soft[i][k] = RGB((C_R(c) * 9 + r * 7) / 16, (C_G(c) * 9 + g * 7) / 16, (C_B(c) * 9 + b * 7) / 16); }
+        for (int k = 0; k < 4; k++) { u16 c = t->c[k]; if (FL_IS_ROAD(i)) fl_soft[i][k] = c; else fl_soft[i][k] = RGB((C_R(c) * 9 + r * 7) / 16, (C_G(c) * 9 + g * 7) / 16, (C_B(c) * 9 + b * 7) / 16); }
     }
 }
 static int skin_key = -1;
@@ -146,7 +152,7 @@ static u16 skin_c(int i, u16 c, int season, int wet) {   // one floor colour as 
     int snow = season == 3;
     if (i == FL_GRASS) { if (season == 0) { tr = 9; tg = 27; tb = 8; f = 8; } else if (season == 2) { tr = 24; tg = 15; tb = 6; f = 11; } else if (snow) { tr = 29; tg = 30; tb = 31; f = 15; } }
     else if (i == FL_WATER) { if (snow) { tr = 22; tg = 28; tb = 31; f = 9; } }
-    else if (i == FL_LINE_H || i == FL_LINE_V) { if (snow) { tr = 28; tg = 29; tb = 31; f = 9; } }
+    else if (i == FL_LINE_H || i == FL_LINE_V || i >= FL_ZEB_A) { if (snow) { tr = 28; tg = 29; tb = 31; f = 9; } }
     else if (i >= FL_PAVING && i <= FL_ASPHALT && i != FL_WATER) { if (snow) { tr = 28; tg = 29; tb = 31; f = i == FL_ASPHALT ? 14 : 12; } }
     r += (tr - r) * f / 16; g += (tg - g) * f / 16; b += (tb - b) * f / 16;
     if (wet == 1 && i >= FL_GRASS && i != FL_WATER) { r = r * 11 / 16; g = g * 12 / 16; b = b * 13 / 16; }   // rain-dark
@@ -1443,6 +1449,12 @@ int world_own_door(int *tx, int *ty) {   // where to stand on getting home: by t
 }
 int world_own_block(int *wx, int *wy) { return own_in_window(wx, wy); }
 
+static int blk_roads(int bx, int by) {   // which streets a block has (bit 0 along x, bit 1 along y), as the block's own generator will paint them
+    BInfo nb; bm_block(bx, by, &nb);
+    int mg = nb.lot != LOT_RIVER && (nb.road & BR_MEGA), mpart = BR_PART(nb.road), rd = nb.road & 7;
+    if (mg) { if (mpart & 1) rd &= ~2; if (mpart & 2) rd &= ~1; }
+    return rd;
+}
 static void wild(int ox, int oy, const BInfo *b, int bx, int by) {   // the open country: trees, rocks, cacti, palms
     for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) {
         { u8 f = floorMap[oy + y][ox + x]; if (f == FL_PAVING || f == FL_WATER || f >= FL_ASPHALT || lifeMap[oy + y][ox + x] != '.') continue; }
@@ -1512,6 +1524,21 @@ COLD static void gen_block(int wx, int wy) {
     if (rd & 2) { gBox(ox, oy, ox + SW - 1, oy + BM_BLK - 1, FL_ASPHALT); gBox(ox + SC, oy + SW, ox + SC, oy + BM_BLK - 1, FL_LINE_V); }
     if ((rd & 3) == 1) gBox(ox, oy + SC, ox + SW - 1, oy + SC, FL_LINE_H);
     if ((rd & 3) == 2) gBox(ox + SC, oy, ox + SC, oy + SW - 1, FL_LINE_V);
+    {   // the street furniture: a white line down each edge (none through a junction), and a crosswalk on each arm
+        int east = (rd & 1) ? (blk_roads(bx + 1, by) & 2) : 0, south = (rd & 2) ? (blk_roads(bx, by + 1) & 1) : 0;
+        if (rd & 1) {
+            int xs = (rd & 2) ? 6 : 0, xe = east ? BM_BLK - 2 : BM_BLK - 1;
+            gBox(ox + xs, oy, ox + xe, oy, FL_EDGE_N); gBox(ox + xs, oy + SW - 1, ox + xe, oy + SW - 1, FL_EDGE_S);
+            if (rd & 2) gBox(ox + 5, oy, ox + 5, oy + SW - 1, FL_ZEB_A);
+            if (east) gBox(ox + BM_BLK - 1, oy, ox + BM_BLK - 1, oy + SW - 1, FL_ZEB_A);
+        }
+        if (rd & 2) {
+            int ys = (rd & 1) ? 6 : 0, ye = south ? BM_BLK - 2 : BM_BLK - 1;
+            gBox(ox, oy + ys, ox, oy + ye, FL_EDGE_W); gBox(ox + SW - 1, oy + ys, ox + SW - 1, oy + ye, FL_EDGE_E);
+            if (rd & 1) gBox(ox, oy + 5, ox + SW - 1, oy + 5, FL_ZEB_B);
+            if (south) gBox(ox, oy + BM_BLK - 1, ox + SW - 1, oy + BM_BLK - 1, FL_ZEB_B);
+        }
+    }
     if (b.set != 255 && b.terrain != BT_SEA) {           // in town: a pavement along the street
         gBox(ox + BM_LOT0, oy + BM_LOT0, ox + BM_BLK - 1, oy + BM_LOT0, FL_PAVING); gBox(ox + BM_LOT0, oy + BM_LOT0, ox + BM_LOT0, oy + BM_BLK - 1, FL_PAVING);
     }
@@ -2083,7 +2110,7 @@ static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), 
             cc[0] = gfx_grade_tex((u32)ao_corner(mx, my, L) * 0x010101u); cc[1] = gfx_grade_tex((u32)ao_corner(mx + 2, my, L) * 0x010101u);
             cc[2] = gfx_grade_tex((u32)ao_corner(mx, my + 2, L) * 0x010101u); cc[3] = gfx_grade_tex((u32)ao_corner(mx + 2, my + 2, L) * 0x010101u);
         } else cc[0] = cc[1] = cc[2] = cc[3] = gfx_grade_tex((u32)L * 0x010101u);
-        if (fl >= FL_PAVING && fl != FL_WATER && fl != FL_ROCK) for (int k = 0; k < 4; k++) { int Lc = CLAMP(L * gvar(mx + 2 * (k & 1), my + 2 * (k >> 1)) >> 8, 20, 250); cc[k] = gfx_grade_tex((u32)Lc * 0x010101u); }
+        if (fl >= FL_PAVING && fl != FL_WATER && fl != FL_ROCK && !FL_IS_ROAD(fl)) for (int k = 0; k < 4; k++) { int Lc = CLAMP(L * gvar(mx + 2 * (k & 1), my + 2 * (k >> 1)) >> 8, 20, 250); cc[k] = gfx_grade_tex((u32)Lc * 0x010101u); }
         SVECTOR s4[4] SVEC_ALIGN; s4[0] = sv[0]; s4[1] = sv[1]; s4[2] = sv[2]; s4[3] = sv[3];
         nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 1, t->tpage, 0, uv4, 0);
         return;
@@ -2094,7 +2121,7 @@ static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), 
                      t->tpage, 0, t->u, t->v, t->u + 31, t->v + 31, 0);
         return;
     }
-    if (fl >= FL_PAVING && fl != FL_WATER && fl != FL_ROCK) {   // (the streets and paving: a tint that wanders from corner to corner)
+    if (fl >= FL_PAVING && fl != FL_WATER && fl != FL_ROCK && !FL_IS_ROAD(fl)) {   // (the streets and paving: a tint that wanders from corner to corner)
         int Lc[4]; for (int k = 0; k < 4; k++) Lc[k] = CLAMP(L * gvar(mx + 2 * (k & 1), my + 2 * (k >> 1)) >> 8, 20, 250);
         gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)Lc[0] * 0x010101u), gfx_grade_tex((u32)Lc[1] * 0x010101u), gfx_grade_tex((u32)Lc[2] * 0x010101u), gfx_grade_tex((u32)Lc[3] * 0x010101u), t->tpage, 0, t->u, t->v, t->u + 31, t->v + 31, 0);
         return;
