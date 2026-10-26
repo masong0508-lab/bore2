@@ -92,7 +92,7 @@ void band_load(int ver) {
 
 #ifdef AUTO_SUPER
 void band_test_setup(int lv) {   // (test builds) the family as a band, every skill at level lv (0..10), a setlist of the first songs
-    band.made = 1;
+    band.made = 1; band.fame = 70;
     for (int i = 0; i < nsims && i < BAND_MAX; i++) { int k = band_add(1, sims[i].uid); if (k < 0) continue; static const u8 rs[8] = { RL_FRONT, RL_LEADG, RL_KEYS, RL_DRUMS, RL_BASS, RL_DANCER, RL_LEADER, RL_SYNTH }; band.m[k].role[0] = rs[i & 7]; if (i == 0) band.m[k].role[1] = RL_LEADV;
         for (int s = 0; s < 5; s++) sims[i].skill_band[s] = lv * 400; }
     for (int i = 0; i < 5; i++) band.set[i] = (u8)(i * 5);
