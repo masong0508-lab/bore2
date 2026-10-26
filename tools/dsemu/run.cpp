@@ -108,11 +108,20 @@ int main(int argc, char** argv) {
   nds.Reset(); nds.SetupDirectBoot(argv[1]); nds.Start();
   int n = atoi(argv[2]);
   // optional script: argv[4] = "frame:keymask:tx:ty,..." (keymask bits: 1=A... as melon: 0=A 1=B 2=sel 3=start 4=R 5=L 6=U 7=D 8=R 9=L ; bit set = pressed)
-  fprintf(stderr, "hdr %08x %08x ram200 %08x\n", nds.ARM9Read32(0x027FFE20), nds.ARM9Read32(0x027FFE24), nds.ARM9Read32(0x02000000+0x7fc));
-  fprintf(stderr, "mem800 %08x entry? \n", nds.ARM9Read32(0x02000800));
-  for (int i = 0; i < n; i++) { nds.RunFrame(); if (getenv("PCT") && i < 8) fprintf(stderr, "f%d pc=%08x cpsr=%08x\n", i, nds.ARM9.R[15], nds.ARM9.CPSR); }
-  fprintf(stderr, "ARM9 pc=%08x ARM7 pc=%08x\n", nds.ARM9.R[15], nds.ARM7.R[15]);
-  fprintf(stderr, "vram %08x dispcnt %08x powcnt %04x\n", nds.ARM9Read32(0x06800000+0x400), nds.ARM9Read32(0x04000000), nds.ARM9Read16(0x04000304));
+  // script (argv[4]): "a-b:keys:tx,ty;..." frames a..b hold key bits (hex; 1=A 2=B 4=SEL 8=START 10=RIGHT 20=LEFT 40=UP 80=DOWN 100=R 200=L, 400=X 800=Y) and a touch at tx,ty (tx<0: none)
+  // extra screenshots: argv[5] = "frame,frame,..." writes out.ppm with the frame number inserted before .ppm
+  struct Ev { int a, b; unsigned keys; int tx, ty; }; std::vector<Ev> evs;
+  if (argc > 4) { char* p = argv[4]; while (*p) { Ev e{0,0,0,-1,-1}; int c = 0; sscanf(p, "%d-%d:%x:%d,%d%n", &e.a, &e.b, &e.keys, &e.tx, &e.ty, &c); if (!c) break; evs.push_back(e); p += c; if (*p == ';') p++; } }
+  std::vector<int> shots; if (argc > 5) { char* p = argv[5]; while (*p) { shots.push_back(atoi(p)); while (*p && *p != ',') p++; if (*p == ',') p++; } }
+  for (int i = 0; i < n; i++) {
+    unsigned keys = 0; int tx = -1, ty = -1;
+    for (auto& e : evs) if (i >= e.a && i <= e.b) { keys |= e.keys; if (e.tx >= 0) { tx = e.tx; ty = e.ty; } }
+    nds.SetKeyMask(0xFFF & ~keys);
+    if (tx >= 0) { nds.TouchScreen(tx, ty); nds.ARM9Write16(0x02FFF004, tx); nds.ARM9Write16(0x02FFF006, ty); nds.ARM9Write16(0x02FFF00C, 0x3F); nds.ARM9Write16(0x02FFF008, 100); nds.ARM9Write16(0x02FFF00A, 100); }
+    else { nds.ReleaseScreen(); nds.ARM9Write16(0x02FFF00C, 0x7F); }
+    nds.RunFrame();
+    for (int sf : shots) if (sf == i) { std::string nm = argv[3]; size_t d = nm.rfind(".ppm"); nm = nm.substr(0, d) + "_" + std::to_string(i) + ".ppm"; dump(nds, nm.c_str()); }
+  }
   dump(nds, argv[3]);
   return 0;
 }
