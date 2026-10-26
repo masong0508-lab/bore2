@@ -17,7 +17,7 @@
 typedef struct { char map[MH][MW + 1]; u8 fl[MH][MW]; u8 wp[MH][MW]; } Level;
 // Storage is a small shared pool: a storey takes a slot only once something is built on it (most zones have one loft at most),
 // which keeps 15 empty 19 KB levels out of the PS1's 2 MB.
-#define NLVPOOL 6
+#define NLVPOOL 5
 #define NLVPOOL8 20                                 // with 8 MB: storeys for every zone at once
 static Level lvpool_small[NLVPOOL]; static Level *lvpool = lvpool_small; static int nlvpool = NLVPOOL; static u8 lvbusy[NLVPOOL8];
 static u8 lvown[ZONE_N + 1][NUP];                   // per zone (and the studio): 1 + the pool slot of each storey, 0 = empty
@@ -770,6 +770,12 @@ static void yard(int lx, int ly, int dx, int dy, int vacant, unsigned h) {   // 
     gFree(lx + (int)((h >> 3) % 3u), ly + (int)((h >> 5) % 2u), TREE); gFree(lx + 12 - (int)((h >> 7) % 3u), ly + (int)((h >> 9) % 3u), TREE);
     if ((h >> 11) & 1) gFree(lx + 12, ly + 9, TREE);
     if (vacant) gFree(dx + 2, dy + 2, '8'); else gFree(dx + 3, dy + 3, 'Y');
+    if (!vacant) {   // the front garden: a lamp by the path, a bench on some, then flowers and rocks along the house, an oak or a pine for the odd corner
+        unsigned g = h >> 13;
+        gFree(dx + 3, dy + 1, 'l'); if (g & 1) gFree(dx - 3, dy + 1, 'N');
+        for (int k = -6; k <= 6; k += 2) { int x = dx + k; if (ABS(k) <= 3 || x < lx || x > lx + 12) continue; gFree(x, dy + 1, ((g >> (k + 6)) & 1) ? 'p' : ((g >> (k + 7)) & 1) ? '*' : 'Z'); }
+        if ((g >> 5) & 1) gFree(lx + 12, ly + (int)((g >> 7) % 3u), ((g >> 9) & 1) ? '3' : '6');
+    }
 }
 
 // ---- the homes ----
