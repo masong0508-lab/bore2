@@ -1974,7 +1974,7 @@ int world_hills_on(void) {
     return 0;
 #endif
     return world_zone == ZONE_CITY && world_wbx >= 0 && world_lvl == 0; }
-int world_gh_c(int X, int Y) {   // a tile corner of the window (0 where nothing rises). A town's lots stand on level pads, the streets slope between them; wild land rolls smoothly
+static int gh_raw(int X, int Y) {   // a tile corner of the window (0 where nothing rises). A town's lots stand on level pads, the streets slope between them; wild land rolls smoothly
     if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
     int ax = world_wbx * BM_BLK + X, ay = world_wby * BM_BLK + Y; if (ax < 0) ax = 0; if (ay < 0) ay = 0;
     int bx = ax / BM_BLK, by = ay / BM_BLK, lx = ax - bx * BM_BLK, ly = ay - by * BM_BLK;
@@ -1994,7 +1994,19 @@ int world_gh_c(int X, int Y) {   // a tile corner of the window (0 where nothing
     int top = h00 * (BM_BLK - fx) + h10 * fx, bot = h01 * (BM_BLK - fx) + h11 * fx;
     return (top * (BM_BLK - fy) + bot * fy) / (BM_BLK * BM_BLK);
 }
-void world_gh_reset(void) { gh_bx = -99999; }
+#define GCW 64
+static s16 gh_cache[GCW][GCW]; static int gh_cx = -1, gh_cy = -1, gh_cwx = -99, gh_cwy = -99, gh_cok;
+static void gh_cache_clear(int fx, int fy) {   // (a frame's ground heights: a corner is asked for by up to four tiles and by their walls and things, so it is worked out once)
+    gh_cx = fx - GCW / 2; gh_cy = fy - GCW / 2; gh_cwx = world_wbx; gh_cwy = world_wby; memset(gh_cache, 0x7f, sizeof gh_cache); gh_cok = 1;
+}
+int world_gh_c(int X, int Y) {
+    if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
+    int i = X - gh_cx, j = Y - gh_cy;
+    if (!gh_cok || (unsigned)i >= GCW || (unsigned)j >= GCW || gh_cwx != world_wbx || gh_cwy != world_wby) return gh_raw(X, Y);
+    s16 *c = &gh_cache[j][i]; if (*c == 0x7f7f) *c = (s16)gh_raw(X, Y);
+    return *c;
+}
+void world_gh_reset(void) { gh_bx = -99999; gh_cok = 0; }
 int world_gh(int x, int z) {   // the ground under a point (world units): 0 where it is level
     if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
     int tx = x >> 8, ty = (-z) >> 8, fx = x & 255, fy = (-z) & 255;
@@ -3059,6 +3071,7 @@ static void nat_far(int px, int py) {
 #undef XYW_
 
 void world_draw(int fx, int fy, int t, int cutaway) {
+    gh_cache_clear(fx, fy);
     gfx_lift_fn = world_gh;
     gfx_set_identity(); world_dbg_walls = 0;
     gfx_set_reserve(RESERVE_PEOPLE + RESERVE_UI);   // the world may not use up the room the people need
