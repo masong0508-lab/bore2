@@ -690,7 +690,7 @@ static void furnish_plan(int X0, int Y0, int X1, int Y1, int dx, const Occ *o, u
     int Wt = X1 - X0 + 1, Dt = Y1 - Y0 + 1;
     if (o->vacant || Wt < 7 || Dt < 7) { furnish_at(X0, Y0, X1, Y1, dx, Y1, 0, -1, o, h); return; }
     fz_h = h | 1;
-    int wpi = NWP + (int)((h >> 5) % 89), br = Dt >= 10 ? 4 : 3, wy = Y0 + br;
+    int wpi = NWP + (int)((h >> 5) % 89), br = Dt >= 11 ? 5 : Dt >= 9 ? 4 : 3, wy = Y0 + br;
     int k = Wt >= 11 ? 3 : 2;
     int cuts[3], rx0[3], rx1[3];                                                      // the back rooms' spans
     { int rw = (Wt - (k - 1)) / k, extra = (Wt - (k - 1)) - rw * k, x = X0;
@@ -740,7 +740,9 @@ static void yard(int lx, int ly, int dx, int dy, int vacant, unsigned h) {   // 
 static int reg_home(int x0, int y0, int x1, int y1, int dx, int dy);
 static void city_house(int lx, int ly, unsigned h) {
     int grand = ((h >> 24) & 3) == 0;                                       // one in four is a MANSION: the whole lot, rooms and an arch, a fountain out front
-    int w = grand ? 13 : 9 + (int)((h >> 3) % 4), hh = grand ? 11 : 7 + (int)((h >> 5) % 3);
+    int sz = (int)((h >> 26) & 15);                                          // how big: mansions run from 11x10 up to a rare 13x12 ESTATE (1 in 16); big houses 9..12 wide, 7..10 deep
+    int w = grand ? (sz == 0 ? 13 : sz < 5 ? 11 : sz < 9 ? 12 : 13) : 9 + (int)((h >> 3) % 4);
+    int hh = grand ? (sz == 0 ? 12 : sz < 5 ? 10 : 11) : 7 + (int)((h >> 5) % 4);
     int hx = lx + (13 - w) / 2, hy = grand ? ly : ly + 1 + (int)((h >> 7) % 2);
     if (!grand && hy + hh - 1 > ly + 10) hy = ly + 11 - hh;
     int fl = (int)((h >> 9) % 14), wp = NWP + (int)((h >> 13) % 89);
