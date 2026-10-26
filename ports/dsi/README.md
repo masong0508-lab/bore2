@@ -41,3 +41,6 @@ Bottom-screen HUD layer fixed (VRAM bank D mapping); tap picking checked (a tap 
 
 ## D5: Create-a-Sim styles
 Back to the flat-coloured chunky look (no gradients). Six tabs: Hair (12 styles, 2 pages), Color, Face (classic, round, long, big eyes, sleepy, freckles), Beard (none, stubble, mustache, goatee, beard, long), Skin, Shirt. Portraits and the 3D head and in-lot sims all follow the choices.
+
+## D6
+Sims 3 DS style title (Household Occupants / Start-Load profile), stylus Edit pad + RGB Paint in Create-a-Sim, drag-based Buy/Build, drag-paint neighborhood editor.
