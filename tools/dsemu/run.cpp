@@ -119,13 +119,15 @@ int main(int argc, char** argv) {
     unsigned keys = 0; int tx = -1, ty = -1;
     for (auto& e : evs) if (i >= e.a && i <= e.b) { keys |= e.keys; if (e.tx >= 0) { tx = e.tx; ty = e.ty; } }
     nds.SetKeyMask(0xFFF & ~keys);
-    if (tx >= 0) { nds.TouchScreen(tx, ty); nds.ARM9Write16(0x02FFF004, tx); nds.ARM9Write16(0x02FFF006, ty); nds.ARM9Write16(0x02FFF00C, 0x3F); nds.ARM9Write16(0x02FFF008, 100); nds.ARM9Write16(0x02FFF00A, 100); }
+    if (tx >= 0) { nds.TouchScreen(tx, ty); if (!getenv("REALTOUCH")) { nds.ARM9Write16(0x02FFF004, tx); nds.ARM9Write16(0x02FFF006, ty); nds.ARM9Write16(0x02FFF00C, 0x3F); nds.ARM9Write16(0x02FFF008, 100); nds.ARM9Write16(0x02FFF00A, 100); } }
     else { nds.ReleaseScreen(); nds.ARM9Write16(0x02FFF00C, 0x7F); }
     nds.RunFrame();
     for (int sf : shots) if (sf == i) { std::string nm = argv[3]; size_t d = nm.rfind(".ppm"); nm = nm.substr(0, d) + "_" + std::to_string(i) + ".ppm"; dump(nds, nm.c_str()); }
   }
   if (getenv("DBG")) fprintf(stderr, "dispcnt %08x bg0cnt %04x bg3cnt %04x vramD@0 %04x %04x bg(10,10)=%04x vramcnt D %02x\n", nds.ARM9Read32(0x04000000), nds.ARM9Read16(0x04000008), nds.ARM9Read16(0x0400000E), nds.ARM9Read16(0x06000000+(10*256+10)*2), nds.ARM9Read16(0x06000000+(4*256+4)*2), nds.ARM9Read16(0x06000000+(170*256+100)*2), nds.ARM9Read8(0x04000243));
   if (savp && nds.GetNDSCart() && nds.GetNDSCart()->GetSaveMemory()) { std::ofstream of(savp, std::ios::binary); of.write((const char*)nds.GetNDSCart()->GetSaveMemory(), nds.GetNDSCart()->GetSaveMemoryLength()); }
+  if (getenv("DBGTR")) { for (int o = 0; o < 0x20; o += 2) printf("%04X ", nds.ARM9Read16(0x027FF000 + o)); printf("| vc %08X vb %08X", nds.ARM7Read32(0x037fbd54), nds.ARM7Read32(0x037fbd54 + 4)); printf("\n"); }
+  if (getenv("DBGSPU")) { for (int c = 8; c < 12; c++) printf("ch%d cnt %08X tmr %04X | ", c, nds.ARM7Read32(0x04000400 + c * 16), nds.ARM7Read16(0x04000408 + c * 16)); printf("master %04X\n", nds.ARM7Read16(0x04000500)); }
   dump(nds, argv[3]);
   return 0;
 }

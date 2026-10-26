@@ -118,3 +118,15 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 - Options page 3: "Save space": Safe (default, 2 copies, power-cut proof) or Max (one copy uses the whole chip, about 2x more lots on 8 KB chips, 64 KB chips fit nearly all 48 lots).
 - Save format changed in D24: older D22/D23 saves will not load.
 - Why not bigger than 8 KB on Android: emulators fix the save size from their own game list; an unknown game gets 8 KB, and a bigger .sav file is ignored. So the game works inside that and uses 64 KB only if the chip really is 64 KB.
+
+## D25 - Options tabs, sound, real ARM7
+- **Real ARM7.** The old ARM7 was an 88-byte stub, so touch and X/Y buttons only worked in my test harness. Now a proper libnds ARM7 (touch, buttons, clock, sound) is in the ROM, so touch works in any emulator (Android melonDS/DraStic) and on hardware. Build: tools/dsbuild/arm7/build7.sh.
+- **Sound.** Four square-wave voices: 3 music (lead, bass, pad), 1 effects. Four tunes (Daydream, Evening, Bounce, Night). Auto picks by place and time of day. Effects: tap click, buy, error, save, new day, life stage.
+- **Options in 4 tabs** (Title > Opt): Graphics, Audio, Game, System. Green = changed from default.
+  - Graphics: Anti-alias, Outlines, Outline color, Shadows, Lighting, Item detail, Ground check, Draw distance, Fog, Fog range (fog now matches the sky), Sky (new Auto follows the clock), Brightness, Sim style, Poly meter, Traffic (Off/Few/Some/All).
+  - Audio: Master / Music / Effects volume, Music track, Tap clicks, Chimes, Stereo spread.
+  - Game: Camera, Map spin, Game speed, Autosave, Save space, 12/24 hour clock.
+  - System: Frame rate, Turbo CPU, Reset graphics / audio / all.
+- Options are saved in the save file (format changed again: D24 saves will not load).
+- Buttons: labels are now centred in tall buttons.
+- Not done: Options only open from the title screen (not yet from inside a lot).

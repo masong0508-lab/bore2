@@ -7,7 +7,7 @@ Scripts here are the glue; paths point at /tmp/dsb and /tmp/libnds182.
 - cc9.sh / cc9asm.sh: compile ARM9 C / asm files
 - stub/: tiny header stubs libnds needs without devkitARM
 - glue.c: newlib-ish hooks (stdout, sbrk, heap, argv)
-- a7.s: minimal ARM7 stub (IPC handshake only)
+- arm7/: the real ARM7 (touch screen, buttons, clock, sound) built from libnds ARM7 sources: arm7/build7.sh -> a7.bin. (a7.s is the old handshake-only stub, no longer used.)
 - mk.sh NAME: build NAME.c to NAME.nds. ndstool adds the 0x800 secure
   stub itself, so the first 0x800 bytes of the linked binary are dropped.
 - tools/dsemu/run.cpp: headless melonDS runner (NDS mode, FreeBIOS):

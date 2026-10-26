@@ -3,7 +3,27 @@
 // Top screen: that lot in 3D. L/R change town, A/B zoom, START re-rolls the world.
 // Fixed point only; the world is bigmap.c, shared with the PS1 build (nothing of it is stored).
 #define PMN 28
-static int o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, lit_on, lit_sgn = -1;
+static int o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1;
+
+// ---- the options: one table (name, the choices, the value, the tab it lives on, its default). Saved in table order, so new ones are only ever added at the end.
+typedef struct { const char *name, *vals; int *v; unsigned char tab, def; } Opt;
+static const Opt OPT[] = {
+    { "Anti-alias", "Off|On", &o_aa, 0, 1 }, { "Outlines", "Off|On", &o_out, 0, 0 }, { "Shadows", "Off|On", &o_shd, 0, 1 }, { "Lighting", "Off|On", &o_lit, 0, 1 },
+    { "Item detail", "Simple|Detailed", &o_det, 0, 1 }, { "Ground check", "Off|On", &o_chk, 0, 1 }, { "Frame rate", "60 fps|30 fps", &o_fps30, 3, 0 }, { "Brightness", "-4|-3|-2|-1|+0|+1|+2|+3|+4", &o_bri, 0, 4 },
+    { "Sky", "Day|Sunset|Night|Mint|Auto", &o_sky, 0, 0 }, { "Camera", "Close|Normal|Far", &o_cam, 2, 1 }, { "Map spin", "Off|Slow|Normal|Fast", &o_spin, 2, 2 }, { "Game speed", "1x|2x|3x", &o_spd, 2, 0 },
+    { "Turbo CPU", "Off|On", &o_turbo, 3, 0 }, { "Sim style", "Classic|Sims 3|Chunky", &o_sty, 0, 0 }, { "Poly meter", "Off|On", &o_pm, 0, 0 }, { "Fog", "Off|On", &o_fog, 0, 0 },
+    { "Save space", "Safe|Max", &o_smax, 2, 0 },
+    { "Outline color", "Dark|Black|White|Pink", &o_ocol, 0, 0 }, { "Draw distance", "Near|Normal|Far", &o_dd, 0, 1 }, { "Fog range", "Close|Normal|Far", &o_fogd, 0, 1 }, { "Traffic", "Off|Few|Some|All", &o_trf, 0, 3 },
+    { "Master volume", "Off|1|2|3|4|5|6|7|8|9|10", &o_vol, 1, 7 }, { "Music volume", "Off|1|2|3|4|5|6|7|8|9|10", &o_mus, 1, 6 }, { "Effects volume", "Off|1|2|3|4|5|6|7|8|9|10", &o_sfx, 1, 8 },
+    { "Music track", "Auto|Daydream|Evening|Bounce|Night", &o_trk, 1, 0 }, { "Tap clicks", "Off|On", &o_ckl, 1, 1 }, { "Chimes", "Off|On", &o_chm, 1, 1 }, { "Stereo", "Center|Spread", &o_pan, 1, 1 },
+    { "Autosave", "Off|On", &o_auto, 2, 1 }, { "Clock", "12 hour|24 hour", &o_c24, 2, 0 },
+    { "Reset graphics", "tap", 0, 3, 0 }, { "Reset audio", "tap", 0, 3, 1 }, { "Reset all", "tap", 0, 3, 255 },
+};
+#define NOPT ((int)(sizeof OPT / sizeof OPT[0]))
+static const char *const OPTAB[4] = { "Graphics", "Audio", "Game", "System" };
+static int opt_cnt(int i) { int n = 1; for (const char *p = OPT[i].vals; *p; p++) if (*p == '|') n++; return n; }
+static const char *opt_tok(int i, int n, char *b) { const char *p = OPT[i].vals; while (n-- > 0) { while (*p && *p != '|') p++; if (*p) p++; } int k = 0; while (*p && *p != '|' && k < 15) b[k++] = *p++; b[k] = 0; return b; }
+static int opt_list(int tab, int *idx) { int n = 0; for (int i = 0; i < NOPT; i++) if (OPT[i].tab == tab) idx[n++] = i; return n; }
 #include <nds.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -74,7 +94,7 @@ static void ne_cell(int bx, int by) {   // the tool on one block, the same chang
     }
 }
 static void chip(int x, int y, int w, int h, const char *t, int on) {
-    rect(x, y, w, h, on ? C15(31, 31, 20) : C15(2, 4, 12)); rect(x + 1, y + 1, w - 2, h - 2, on ? C15(10, 24, 10) : C15(6, 12, 26)); text(x + w / 2 - tw(1, t) / 2, y + 3, 1, C15(31, 31, 31), t);
+    rect(x, y, w, h, on ? C15(31, 31, 20) : C15(2, 4, 12)); rect(x + 1, y + 1, w - 2, h - 2, on ? C15(10, 24, 10) : C15(6, 12, 26)); text(x + w / 2 - tw(1, t) / 2, y + (h > 16 ? h / 2 - 4 : 3), 1, C15(31, 31, 31), t);
 }
 static void map_chip(int px_, int py_) {   // a tap on the strip under the map
     if (!ne_on) { if (hit(212, 162, 40, 13, px_, py_)) ne_on = 1; return; }
@@ -251,7 +271,45 @@ static const char *const HAIRN[12] = { "Short", "Bob", "Spikes", "Long", "Braids
 static const char *const BEARDN[6] = { "None", "Stubble", "Mustache", "Goatee", "Beard", "Long" };
 static const char *const FACEN[6] = { "Classic", "Round", "Long", "Big Eyes", "Sleepy", "Freckles" };
 static int st_days, st_born, st_died;   // lifetime stats
-static void say(const char *m) { msg = m; msg_t = 90; }
+
+// ---- sound: the ARM7 plays the DS's square-wave voices; the game sends notes to them. Four voices: lead, bass, pad (the music) and one for effects.
+static int vid[4], snd_on, snd_dirty = 1, song = -2, sstep, stick, sfx_n = -1, sfx_i, sfx_t;
+static const u16 MB[12] = { 1635, 1732, 1835, 1945, 2060, 2183, 2312, 2450, 2596, 2750, 2914, 3087 };
+static int mfreq(int m) { return MB[m % 12] * (1 << (m / 12 - 1)) / 100; }
+static const u8 SONGL[4][32] = {
+    { 72, 0, 76, 0, 79, 0, 76, 0, 74, 0, 77, 0, 81, 0, 77, 0, 72, 0, 76, 79, 84, 0, 79, 0, 77, 0, 76, 74, 72, 0, 0, 0 },
+    { 69, 0, 72, 0, 76, 0, 72, 0, 71, 0, 74, 0, 77, 0, 74, 0, 69, 0, 72, 76, 81, 0, 76, 0, 74, 0, 72, 71, 69, 0, 0, 0 },
+    { 79, 83, 86, 83, 79, 83, 86, 0, 81, 84, 88, 84, 81, 84, 88, 0, 79, 83, 86, 91, 88, 86, 83, 79, 74, 78, 81, 78, 74, 0, 0, 0 },
+    { 0, 0, 67, 0, 0, 0, 71, 0, 0, 0, 74, 0, 0, 0, 71, 0, 0, 0, 64, 0, 0, 0, 67, 0, 0, 0, 71, 0, 0, 0, 0, 0 } };
+static const u8 SONGB[4][8] = { { 48, 55, 53, 55, 48, 57, 53, 55 }, { 45, 40, 43, 40, 45, 41, 43, 40 }, { 43, 50, 48, 50, 43, 52, 50, 47 }, { 40, 40, 43, 38, 40, 40, 45, 43 } };
+static const u8 SONGF[4] = { 12, 16, 9, 22 };   // frames per step
+static const u8 SFXN[7][6] = { { 84, 0 }, { 72, 79, 84, 0 }, { 48, 45, 0 }, { 72, 76, 79, 84, 0 }, { 79, 84, 88, 0 }, { 72, 76, 79, 84, 88, 0 }, { 91, 96, 0 } };
+static const u8 SFXD[7][6] = { { 2 }, { 4, 4, 9 }, { 6, 12 }, { 4, 4, 4, 12 }, { 8, 8, 16 }, { 4, 4, 4, 4, 14 }, { 2, 3 } };
+static void snd_init(void) {
+    soundEnable(); static const u8 dc[4] = { DutyCycle_25, DutyCycle_50, DutyCycle_12, DutyCycle_50 };
+    for (int i = 0; i < 4; i++) vid[i] = soundPlayPSG((DutyCycle)dc[i], 8 * 440, 0, 64); snd_on = 1;
+}
+static void vset(int v, int m, int vol) { if (!snd_on || vid[v] < 0) return; if (!m || vol <= 0) { soundSetVolume(vid[v], 0); return; } soundSetFreq(vid[v], (u16)(8 * mfreq(m))); soundSetVolume(vid[v], (u8)(vol > 127 ? 127 : vol)); }
+static int mvol(int base) { return base * o_vol * o_mus / 100; }
+static void sfx(int n) {
+    if (!snd_on || !o_sfx || !o_vol || (n == 0 && !o_ckl) || (n >= 3 && n <= 5 && !o_chm)) return;
+    if (sfx_n >= 0 && n == 0) return; sfx_n = n; sfx_i = 0; sfx_t = 0; }
+static void snd_apply(void) { snd_dirty = 1; }
+static void snd_tick(void) {
+    if (!snd_on) return;
+    if (snd_dirty) { snd_dirty = 0; static const u8 pn[2][4] = { { 64, 64, 64, 64 }, { 36, 92, 64, 64 } }; for (int i = 0; i < 4; i++) if (vid[i] >= 0) soundSetPan(vid[i], pn[o_pan][i]); song = -2; }
+    int want = -1; if (o_mus && o_vol) { if (o_trk) want = o_trk - 1; else { int h = (minutes / 60) % 24; want = mode == M_TITLE || mode == M_CAS ? 0 : mode == M_BUY || mode == M_BUILD ? 2 : h >= 22 || h < 6 ? 3 : h >= 18 ? 1 : 0; } }
+    if (want != song) { song = want; sstep = 0; stick = 0; vset(0, 0, 0); vset(1, 0, 0); vset(2, 0, 0); }
+    if (song >= 0) { int f = SONGF[song];
+        if (stick == 0) { int nl = SONGL[song][sstep]; vset(0, nl, mvol(60)); if (!(sstep & 3)) { int nb = SONGB[song][(sstep >> 2) & 7]; vset(1, nb, mvol(55)); vset(2, nb + 12 + 7, mvol(22)); } }
+        else if (stick == f * 2 / 3) vset(0, SONGL[song][sstep], mvol(34)); else if (stick == f - 1 && SONGL[song][sstep]) vset(0, 0, 0);
+        if (++stick >= f) { stick = 0; sstep = (sstep + 1) & 31; } }
+    if (sfx_n >= 0) { int m = SFXN[sfx_n][sfx_i]; if (!m) { vset(3, 0, 0); sfx_n = -1; } else { if (sfx_t == 0) vset(3, m, o_vol * o_sfx * 90 / 100); if (++sfx_t >= SFXD[sfx_n][sfx_i]) { sfx_i++; sfx_t = 0; } } }
+}
+static const char *clk(char *b, int mn) { int h = (mn / 60) % 24, m = mn % 60, h12 = h % 12 ? h % 12 : 12; if (o_c24) sprintf(b, "%02d:%02d", h, m); else sprintf(b, "%d:%02d %s", h12, m, h >= 12 ? "pm" : "am"); return b; }
+static void say(const char *m) { msg = m; msg_t = 90;
+    if (strstr(m, "Bought") || strstr(m, "Sold")) sfx(1); else if (strstr(m, "saved") || strstr(m, "loaded")) sfx(3); else if (strstr(m, "is now a")) sfx(5);
+    else if (strstr(m, "Cannot") || strstr(m, "full") || strstr(m, "Not ") || strstr(m, "Too ") || strstr(m, "failed") || strstr(m, "No ") || strstr(m, "damaged")) sfx(2); }
 static int obj_at(int x, int y) { for (int i = 0; i < nobj; i++) if (objs[i].x == x && objs[i].y == y) return i; return -1; }
 static int spawn_x[3], spawn_y[3];
 
@@ -369,7 +427,7 @@ static void draw_ui(void) {
     for (int i = 0; i < 4; i++) button(i * 64, 0, 62, 16, tn[i], C15(8, 14, 24), mode == i);
     char t[40];
     sprintf(t, "Funds %d", funds); text(4, 182, 1, C15(31, 31, 20), t);
-    sprintf(t, "%d:%02d", (minutes / 60) % 24, minutes % 60); text(120, 182, 1, C15(24, 28, 31), t);
+    clk(t, minutes % 1440); text(120, 182, 1, C15(24, 28, 31), t);
     if (msg_t > 0) text(70, 182, 1, C15(31, 20, 12), msg);
     { const char *cc[7] = { "<", ">", "^", "v", "+", "-", "Rst" }; for (int k = 0; k < 7; k++) { int cx = 164 + (k < 4 ? k * 22 : (k - 4) * 29), cy = k < 4 ? 164 : 178; rect(cx, cy, k < 4 ? 20 : 27, 12, C15(2, 4, 12)); rect(cx + 1, cy + 1, k < 4 ? 18 : 25, 10, C15(8, 16, 28)); text(cx + 4, cy + 2, 1, C15(31, 31, 31), cc[k]); } }
     if (mode == M_BUY && pick < 0) {
@@ -461,7 +519,7 @@ static void ob(int lx0, int lz0, int lx1, int lz1, int h0, int h1, u16 c) {   //
 static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every item is a little model built from several boxes (coordinates 0..80 across the cell, heights in tenths of a quarter-tile)
     (void)ghost; int id = (int)(it - &ITEMS[0][0]); u16 c = it->col, d = shade(c, 6), l = shade(c, 10), wd = LC(16, 10, 5), dk = LC(3, 3, 4);
     ob_x = tl(x * 2) + T / 6; ob_z = tl(y * 2) + T / 6; ob_s = (2 * T - T / 3) / 8; ob_rot = rot; ob_hs = id >= 0 && id < 28 ? HSC[id] : 100;
-    if (!o_det || (mode == M_LIVE && (abs(ob_x - camx) + abs(ob_z - camz) > 3800))) { if (it->kind == 1) ob(0, 0, 80, 80, 0, 3, c); else ob(8, 8, 72, 72, 0, it->h * 10 + 6, c); return; }
+    if (!o_det || (mode == M_LIVE && (abs(ob_x - camx) + abs(ob_z - camz) > (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500)))) { if (it->kind == 1) ob(0, 0, 80, 80, 0, 3, c); else ob(8, 8, 72, 72, 0, it->h * 10 + 6, c); return; }
     if (it->kind == 1) { ob(0, 0, 80, 80, 0, 2, d); ob(6, 6, 74, 74, 0, 4, c); ob(14, 14, 66, 66, 0, 5, l); return; }   // rug: border and centre
     if (o_shd) { u16 sh = LC(6, 5, 4); ob_x -= 6; ob_z -= 4; ob(0, 0, 80, 80, -3, 0, sh); ob_x += 6; ob_z += 4; }   // a soft dark shadow on the floor
     switch (id) {
@@ -527,6 +585,8 @@ static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, int wh) { 
 // ---------- the living city (D18): citizens stroll the pavements, cars drive the roads, everyone follows the clock ----------
 #define NCIT 12
 #define NCAR 8
+#define CITN (o_trf * 4)
+#define CARN (o_trf == 3 ? 8 : o_trf * 3)
 typedef struct { int x, y, dir, stop; u8 on, stage, skin, shirt, hair, pants; u16 id; } Cit;
 typedef struct { u16 id; u8 rel, talks, taken; } CRel;
 typedef struct { int x, y, dx, dy; u16 col; } Car;
@@ -552,11 +612,11 @@ static void city_spawn(void) {
 }
 static void city_step(int frames) {
     static const int DXs[4] = { 1, 0, -1, 0 }, DYs[4] = { 0, 1, 0, -1 };
-    for (int k = 0; k < NCIT; k++) { Cit *c = &cits[k]; if (!c->on) continue; if (c->stop > 0) { c->stop--; continue; } if (!cit_vis(c) || ((frames + k) & 1)) continue;
+    for (int k = 0; k < CITN; k++) { Cit *c = &cits[k]; if (!c->on) continue; if (c->stop > 0) { c->stop--; continue; } if (!cit_vis(c) || ((frames + k) & 1)) continue;
         if (!(c->x & 15) && !(c->y & 15)) { int cx = c->x / 16, cy = c->y / 16, d = c->dir; if (hsh((u32)(frames * 31 + k)) % 100 < 30) d = (d + (hsh((u32)frames + (u32)k) & 1 ? 1 : 3)) & 3;
             for (int t = 0; t < 4; t++) { int dd = (d + t) & 3; if (cit_street(cx + DXs[dd], cy + DYs[dd])) { c->dir = dd; break; } } }
         { int nx = c->x + DXs[c->dir], ny = c->y + DYs[c->dir]; if (!(c->x & 15) && !(c->y & 15) && !cit_street(c->x / 16 + DXs[c->dir], c->y / 16 + DYs[c->dir])) continue; c->x = nx; c->y = ny; } }
-    for (int k = 0; k < NCAR; k++) { Car *c = &cars[k]; c->x += c->dx; c->y += c->dy; int lo = -SLC * 16, hi = SLC * 2 * 16; if (c->x < lo) c->x = hi - 1; if (c->x >= hi) c->x = lo; if (c->y < lo) c->y = hi - 1; if (c->y >= hi) c->y = lo; }
+    for (int k = 0; k < CARN; k++) { Car *c = &cars[k]; c->x += c->dx; c->y += c->dy; int lo = -SLC * 16, hi = SLC * 2 * 16; if (c->x < lo) c->x = hi - 1; if (c->x >= hi) c->x = lo; if (c->y < lo) c->y = hi - 1; if (c->y >= hi) c->y = lo; }
 }
 static void city_shift(int dx, int dy) {
     for (int k = 0; k < NCIT; k++) { cits[k].x -= dx * SLC * 16; cits[k].y -= dy * SLC * 16; }
@@ -566,12 +626,12 @@ static void draw_city(void) {
     static const u16 SK[6] = { C15(30, 24, 20), C15(27, 20, 15), C15(22, 15, 10), C15(16, 10, 6), C15(11, 7, 4), C15(29, 22, 17) };
     static const u16 SH[6] = { C15(26, 26, 26), C15(24, 8, 8), C15(8, 14, 26), C15(8, 22, 10), C15(28, 22, 8), C15(16, 8, 22) };
     static const u16 HR[6] = { C15(3, 3, 4), C15(14, 8, 4), C15(26, 20, 8), C15(24, 8, 4), C15(25, 25, 25), C15(10, 14, 28) };
-    for (int k = 0; k < NCIT; k++) { const Cit *c = &cits[k]; if (!cit_vis(c) || polys > 2800) continue; int sc = STSC[c->stage], x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, sw = (((c->x + c->y) >> 3) & 1) ? 30 : -30;
+    for (int k = 0; k < CITN; k++) { const Cit *c = &cits[k]; if (!cit_vis(c) || polys > 2800) continue; int sc = STSC[c->stage], x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, sw = (((c->x + c->y) >> 3) & 1) ? 30 : -30;
         u16 pn = c->pants == 0 ? C15(6, 7, 12) : c->pants == 1 ? C15(10, 10, 14) : c->pants == 2 ? C15(14, 10, 6) : C15(8, 12, 8);
         block(x - 70 * sc / 100, z - 40 * sc / 100 + sw, x + 70 * sc / 100, z + 40 * sc / 100 + sw, 0, -300 * sc / 100, pn, pn);
         block(x - 90 * sc / 100, z - 50 * sc / 100, x + 90 * sc / 100, z + 50 * sc / 100, -300 * sc / 100, -590 * sc / 100, SH[c->shirt], SH[c->shirt]);
         block(x - 60 * sc / 100, z - 60 * sc / 100, x + 60 * sc / 100, z + 60 * sc / 100, -590 * sc / 100, -800 * sc / 100, SK[c->skin], c->stage == 5 ? C15(25, 25, 26) : HR[c->hair]); }
-    for (int k = 0; k < NCAR; k++) { const Car *c = &cars[k]; if (polys > 2950) break; int x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, lx = c->dx ? 300 : 150, lz = c->dx ? 150 : 300, cx2 = c->dx ? 130 : 130, cz = c->dx ? 130 : 130;
+    for (int k = 0; k < CARN; k++) { const Car *c = &cars[k]; if (polys > 2950) break; int x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, lx = c->dx ? 300 : 150, lz = c->dx ? 150 : 300, cx2 = c->dx ? 130 : 130, cz = c->dx ? 130 : 130;
         block(x - lx, z - lz, x + lx, z + lz, -20, -150, c->col, shade(c->col, 10)); block(x - lx + (c->dx ? 90 : 0) + (c->dx ? 0 : 0) - (c->dx ? 0 : 0), z - lz + (c->dx ? 0 : 90), x + lx - (c->dx ? 90 : 0), z + lz - (c->dx ? 0 : 90), -150, -270, C15(20, 26, 31), C15(24, 24, 26)); (void)cx2; (void)cz; }
 }
 static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw) {   // a neighbour's lot: flat ground, a plain house or a few trees (cheap: the polygon budget is the DS's limit)
@@ -826,12 +886,11 @@ static void sim_die(int k) { st_died++;   // an elder passes away: a statue mark
     if (ctl == k) ctl = 0; else if (ctl > k) ctl--; if (stage_of(sims[ctl].age) == 0) for (int i = 0; i < nsim; i++) if (stage_of(sims[i].age) > 0) { ctl = i; break; }
     cur_sim = ctl; memset(ilim, 0, sizeof ilim); ui_ver++; }
 
-static int *const OPV[18]; static const u8 OPM[18];
 // ---- saving: the cartridge's save chip. Squeezed to fit any 8 KB EEPROM: two copies (A/B, 4 KB each) so a power cut mid-save never loses the older one. The lot you are on always goes first; older lots are dropped if there is no room.
 static int SAV_STRIDE = 4096;   // one copy's room: half the chip (4 KB on an 8 KB chip, 32 KB on a 64 KB chip)
 #define SAV_MAGIC 0x53325242u   // "BR2S"
 typedef struct { u32 magic, seq, crc, clen, rawlen; } SavHdr;
-typedef struct { int seed, minutes, funds, nsim, ctl, cur_sim, cur_set, lot_bx, lot_by; u8 opt[20]; int nlots, days, born, died; } SavCore;
+typedef struct { int seed, minutes, funds, nsim, ctl, cur_sim, cur_set, lot_bx, lot_by; u8 opt[40]; int nlots, days, born, died; } SavCore;
 typedef struct { s16 bx, by, pcx, pcy, dcx, dcy; u16 nobj; } SavLot;
 #define SAV_MAX 65536
 static u8 sav_sh[2][SAV_MAX], sav_raw[LSV_N * 2800 + 4096], sav_buf[SAV_MAX]; static int sav_type = -2, sav_have = -1, sav_seq;
@@ -855,7 +914,7 @@ static void sav_probe(void) {   // read both copies, find the newest good one
 static int sav_pack(int big) {   // returns the packed size in sav_buf (header included), or 0 if even the basics do not fit
     if (lot_bx >= 0) lot_save();
     SavCore c; memset(&c, 0, sizeof c); c.seed = seed; c.minutes = minutes; c.funds = funds; c.nsim = nsim; c.ctl = ctl; c.cur_sim = cur_sim; c.cur_set = cur_set; c.lot_bx = lot_bx; c.lot_by = lot_by; c.days = st_days; c.born = st_born; c.died = st_died;
-    for (int i = 0; i < 17; i++) c.opt[i] = (u8)*OPV[i];
+    for (int i = 0; i < NOPT && i < 40; i++) if (OPT[i].v) c.opt[i] = (u8)*OPT[i].v;
     int n = 0; u8 *r = sav_raw; memset(r, 0, sizeof sav_raw);
     #define PUT(p, l) do { memcpy(r + n, (p), (size_t)(l)); n += (l); } while (0)
     PUT(&c, (int)sizeof c); PUT(sname, (int)sizeof sname); PUT(sims, (int)sizeof sims); PUT(crt, (int)sizeof crt);
@@ -893,7 +952,7 @@ static int sav_apply(void) {   // 1 = loaded
         if (n + sl.nobj * 5 > rl) return 0; memset(L->objs, 0, sizeof L->objs); memcpy(L->objs, sav_raw + n, (size_t)sl.nobj * 5); n += sl.nobj * 5; tn_l++; }
     seed = c.seed; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
     st_days = c.days; st_born = c.born; st_died = c.died; minutes = c.minutes; funds = c.funds; nsim = c.nsim; ctl = c.ctl; cur_sim = c.cur_sim >= 0 && c.cur_sim < nsim ? c.cur_sim : ctl;
-    for (int i = 0; i < 17; i++) if (c.opt[i] < OPM[i]) *OPV[i] = c.opt[i];
+    for (int i = 0; i < NOPT && i < 40; i++) if (OPT[i].v && c.opt[i] < opt_cnt(i)) *OPT[i].v = c.opt[i];
     o_dirty = 1; memcpy(sname, tn, sizeof sname); memcpy(sims, ts, sizeof sims); memcpy(crt, tc, sizeof crt); for (int i = 0; i < tn_l; i++) lsv[i] = tl[i]; lsv_n = tn_l; lsv_next = 0;
     for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; m->act = -1; m->act_left = 0; m->soc = -1; m->tgt = 0; m->tx = m->wx = m->x; m->ty = m->wy = m->y; }
     memset(ilim, 0, sizeof ilim); memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; pick = -1; lot_bx = -1; lot_by = -1; nb_ok = 0;
@@ -904,7 +963,8 @@ static void day_roll(void) {
     st_days++; memset(ilim, 0, sizeof ilim); for (int k = 0; k < 64; k++) crt[k].talks = 0;
     for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; int s0 = stage_of(m->age); if (m->age < 99) m->age++; int s1 = stage_of(m->age); if (s0 != s1) { static char bf[40]; sprintf(bf, "%s is now a %s", sname[i], STGN[s1]); say(bf); } }
     for (int i = 0; i < nsim; i++) if (sims[i].age >= 80 && nsim > 1) { int alive = 0; for (int q = 0; q < nsim; q++) if (q != i && stage_of(sims[q].age) > 0) alive++; if (alive && (int)(hsh((u32)(minutes + i * 77)) % 100) < (sims[i].age - 79) * 7) { sim_die(i); break; } }
-    if (mode == M_LIVE && sav_ok() && lot_bx >= 0) { if (sav_write()) say("Game saved"); }
+    if (o_auto && mode == M_LIVE && sav_ok() && lot_bx >= 0) { if (sav_write()) say("Game saved"); }
+    sfx(4);
 }
 static void start_act(Sim *m, int obj, int sim) {   // walk to it, then do it
     if (sim >= 0) { start_soc((int)(m - sims), sim, S_CHAT); }
@@ -1254,38 +1314,36 @@ static void plumb_icon(int x, int y, int sz, u16 c) {
     for (int k = 0; k < 8; k++) { int dx = k < 4 ? (k & 1 ? 1 : -1) * (sz / 2 - 2) : 0, dy = k >= 4 ? ((k & 1) ? 1 : -1) * (sz / 2 - 2) : 0; rect(cx + dx - 1, cy + dy - 1, 3, 3, c); }
     rect(cx - sz / 2 + 2, cy, sz - 4, 1, c); rect(cx, cy - sz / 2 + 2, 1, sz - 4, c);
 }
-static const char *const OPN[18] = { "Anti-alias", "Outlines", "Shadows", "Lighting", "Item detail", "Ground check", "Frame rate", "Brightness", "Sky", "Camera", "Map spin", "Game speed", "Turbo CPU", "Sim style", "Poly meter", "Fog", "Save space", "Reset all" };
-static int *const OPV[18] = { &o_aa, &o_out, &o_shd, &o_lit, &o_det, &o_chk, &o_fps30, &o_bri, &o_sky, &o_cam, &o_spin, &o_spd, &o_turbo, &o_sty, &o_pm, &o_fog, &o_smax, 0 };
-static const u8 OPM[18] = { 2, 2, 2, 2, 2, 2, 2, 9, 4, 3, 4, 3, 2, 3, 2, 2, 2, 1 };
-static const char *opt_val(int i, char *b) {
-    int v = OPV[i] ? *OPV[i] : 0;
-    switch (i) { case 6: return v ? "30 fps" : "60 fps"; case 8: { static const char *n[4] = { "Day", "Sunset", "Night", "Mint" }; return n[v]; }
-        case 9: { static const char *n[3] = { "Close", "Normal", "Far" }; return n[v]; } case 10: { static const char *n[4] = { "Off", "Slow", "Normal", "Fast" }; return n[v]; }
-        case 11: { static const char *n[3] = { "1x", "2x", "3x" }; return n[v]; } case 7: b[0] = v < 4 ? '-' : '+'; b[1] = (char)('0' + (v < 4 ? 4 - v : v - 4)); b[2] = 0; return b;
-        case 17: return "tap"; case 16: return v ? "Max" : "Safe"; case 13: { static const char *n[3] = { "Classic", "Sims 3", "Chunky" }; return n[v]; } case 4: return v ? "Detailed" : "Simple"; default: return v ? "On" : "Off"; }
-}
+static int sky_now(void) { if (o_sky < 4) return o_sky; int h = (minutes / 60) % 24; return h < 5 || h >= 20 ? 2 : h < 7 || h >= 18 ? 1 : 0; }
+static void snd_apply(void);
 static void apply_opts(void) {
     if (o_aa) glEnable(GL_ANTIALIAS); else glDisable(GL_ANTIALIAS);
-    if (o_out) { glEnable(GL_OUTLINE); glSetOutlineColor(0, RGB15(2, 2, 5)); } else glDisable(GL_OUTLINE);
+    { static const u16 oc[4] = { RGB15(2, 2, 5), RGB15(0, 0, 0), RGB15(31, 31, 31), RGB15(31, 12, 20) }; if (o_out) { glEnable(GL_OUTLINE); glSetOutlineColor(0, oc[o_ocol]); } else glDisable(GL_OUTLINE); }
     setBrightness(3, (o_bri - 4) * 3);
-    { static const u8 sk[4][3] = { { 14, 20, 31 }, { 31, 18, 12 }, { 3, 4, 10 }, { 14, 28, 22 } }; glClearColor(sk[o_sky][0], sk[o_sky][1], sk[o_sky][2], 31); }
+    static const u8 sk[4][3] = { { 14, 20, 31 }, { 31, 18, 12 }, { 3, 4, 10 }, { 14, 28, 22 } }; int sn = sky_now(); glClearColor(sk[sn][0], sk[sn][1], sk[sn][2], 31);
     if (isDSiMode()) setCpuClock(o_turbo ? true : false);
-    if (o_fog) { glEnable(GL_FOG); glFogShift(2); glFogColor(14, 20, 31, 31); glFogOffset(0x2000); for (int q = 0; q < 32; q++) glFogDensity(q, q * 3); } else glDisable(GL_FOG);
-    speed = o_spd + 1; o_dirty = 0;
+    if (o_fog) { static const int fo[3] = { 0x1000, 0x2000, 0x4000 }; glEnable(GL_FOG); glFogShift(2); glFogColor(sk[sn][0], sk[sn][1], sk[sn][2], 31); glFogOffset(fo[o_fogd]); for (int q = 0; q < 32; q++) glFogDensity(q, q * 3); } else glDisable(GL_FOG);
+    speed = o_spd + 1; snd_apply(); o_dirty = 0;
 }
-static void draw_opt(void) {   // the Options screen (bottom): tap a row to change it (right half forwards, left half back)
-    scr = scr_sub; backdrop(); panel(6, 4, 244, 156, o_page == 0 ? "Options 1/3" : o_page == 1 ? "Options 2/3" : "Options 3/3");
-    for (int k = 0; k < 7; k++) { int i = o_page * 7 + k; if (i >= 18) break; int y = 24 + k * 19; char b[4];
-        rect(10, y, 236, 17, C15(5, 12, 26)); rect(10, y, 236, 1, C15(10, 18, 30)); text(16, y + 5, 1, TXT, OPN[i]);
-        rect(150, y + 2, 92, 13, i == 17 ? C15(24, 10, 10) : OPV[i] && *OPV[i] ? C15(8, 26, 8) : C15(10, 14, 22)); { const char *v = opt_val(i, b); text(196 - tw(1, v) / 2, y + 5, 1, TXT, v); } }
-    chip(10, 166, 60, 22, "Page >", 0); chip(186, 166, 60, 22, "Back", 0);
+static int opt_pg;   // page within the tab (6 rows each)
+static const u8 TABX[5] = { 10, 80, 134, 188, 246 };   // tab chip edges
+static void draw_opt(void) {   // the Options screen (bottom): tabs along the top; tap a row to change it (right half forwards, left half back)
+    scr = scr_sub; backdrop(); panel(6, 4, 244, 156, "Options");
+    for (int t = 0; t < 4; t++) { int x = TABX[t], w = TABX[t + 1] - x - 4; rect(x, 22, w, 15, o_tab == t ? C15(31, 31, 31) : C15(2, 4, 12)); rect(x + 1, 23, w - 2, 13, o_tab == t ? C15(8, 18, 31) : C15(10, 14, 22)); text(x + w / 2 - tw(1, OPTAB[t]) / 2, 26, 1, TXT, OPTAB[t]); }
+    int idx[40], n = opt_list(o_tab, idx), pages = (n + 5) / 6; if (opt_pg >= pages) opt_pg = 0;
+    for (int k = 0; k < 6; k++) { int q = opt_pg * 6 + k; if (q >= n) break; int i = idx[q], y = 40 + k * 19; char b[16];
+        rect(10, y, 236, 17, C15(5, 12, 26)); rect(10, y, 236, 1, C15(10, 18, 30)); text(16, y + 5, 1, TXT, OPT[i].name);
+        rect(130, y + 2, 112, 13, !OPT[i].v ? C15(24, 10, 10) : *OPT[i].v != OPT[i].def ? C15(8, 26, 8) : C15(10, 14, 22)); { const char *v = OPT[i].v ? opt_tok(i, *OPT[i].v, b) : "tap"; text(186 - tw(1, v) / 2, y + 5, 1, TXT, v); } }
+    { char pg[20]; sprintf(pg, "Page %d/%d >", opt_pg + 1, pages); chip(10, 166, 76, 22, pg, 0); } chip(186, 166, 60, 22, "Back", 0);
 }
 static void opt_touch(int tx, int ty) {
-    if (hit(10, 166, 60, 22, tx, ty)) { o_page = (o_page + 1) % 3; return; }
+    int idx[40], n = opt_list(o_tab, idx), pages = (n + 5) / 6;
+    for (int t = 0; t < 4; t++) if (hit(TABX[t], 22, TABX[t + 1] - TABX[t] - 4, 15, tx, ty)) { o_tab = t; opt_pg = 0; return; }
+    if (hit(10, 166, 76, 22, tx, ty)) { opt_pg = (opt_pg + 1) % pages; return; }
     if (hit(186, 166, 60, 22, tx, ty)) { opt_on = 0; return; }
-    for (int k = 0; k < 7; k++) { int i = o_page * 7 + k; if (i >= 18 || !hit(10, 24 + k * 19, 236, 17, tx, ty)) continue;
-        if (i == 17) { o_sty = 0; o_pm = 0; o_fog = 0; o_aa = 1; o_out = 0; o_shd = 1; o_det = 1; o_fps30 = 0; o_bri = 4; o_sky = 0; o_chk = 1; o_spin = 2; o_turbo = 0; o_cam = 1; o_spd = 0; o_lit = 1; }
-        else *OPV[i] = tx < 150 ? (*OPV[i] + OPM[i] - 1) % OPM[i] : (*OPV[i] + 1) % OPM[i];
+    for (int k = 0; k < 6; k++) { int q = opt_pg * 6 + k; if (q >= n || !hit(10, 40 + k * 19, 236, 17, tx, ty)) continue; int i = idx[q];
+        if (!OPT[i].v) { for (int j = 0; j < NOPT; j++) if (OPT[j].v && OPT[j].tab < 3 && (OPT[i].def == 255 || OPT[j].tab == OPT[i].def) && OPT[j].v != &o_smax) *OPT[j].v = OPT[j].def; }
+        else *OPT[i].v = tx < 130 ? (*OPT[i].v + opt_cnt(i) - 1) % opt_cnt(i) : (*OPT[i].v + 1) % opt_cnt(i);
         o_dirty = 1; }
 }
 static void draw_title(void) {
@@ -1295,7 +1353,7 @@ static void draw_title(void) {
     house_icon(34, 140, 20, C15(30, 18, 12)); sprintf(t, "%d", funds); text(30, 164, 1, TXT, t);
     rect(112, 140, 20, 18, C15(31, 31, 31)); rect(114, 142, 16, 3, C15(28, 8, 8)); text(106, 164, 1, TXT, "1 day");
     rect(194, 140, 20, 20, C15(31, 31, 31)); rect(196, 142, 16, 16, C15(22, 26, 31)); rect(204, 144, 1, 7, C15(2, 4, 12)); rect(204, 151, 5, 1, C15(2, 4, 12));
-    { int mn = minutes % 1440, h12 = (mn / 60) % 12 ? (mn / 60) % 12 : 12; sprintf(t, "%02d:%02d %s", h12, mn % 60, mn / 60 >= 12 ? "pm" : "am"); text(186, 164, 1, TXT, t); } (void)nm;
+    { clk(t, minutes % 1440); text(186, 164, 1, TXT, t); } (void)nm;
     if (opt_on) { draw_opt(); return; }
     scr = scr_sub; rect(0, 0, 256, 192, C15(3, 3, 4));
     rect(16, 40, 224, 118, PANB); rect(18, 42, 220, 114, C15(8, 16, 28)); rect(18, 42, 220, 16, PANH); text(26, 45, 2, TXT, "Start/Load profile");
@@ -1342,20 +1400,21 @@ static void live_touch(int tx, int ty) {
     int cx, cy; if (!pick_cell(tx, ty, &cx, &cy)) return;
     mark_x = cx; mark_y = cy; mark_t = 40;
     for (int i = 0; i < nsim; i++) { int sx = fdiv(sims[i].x + 8, 16), sy = fdiv(sims[i].y + 8, 16); if (sx == cx && sy == cy) { cur_sim = i; if (i != ctl) { popup = 2; popup_i = i; } return; } }
-    for (int k = 0; k < NCIT; k++) { const Cit *c = &cits[k]; if (!cit_vis(c)) continue; int sx = fdiv(c->x + 8, 16), sy = fdiv(c->y + 8, 16); if (sx == cx && sy == cy) { popup = 3; popup_i = k; return; } }
+    for (int k = 0; k < CITN; k++) { const Cit *c = &cits[k]; if (!cit_vis(c)) continue; int sx = fdiv(c->x + 8, 16), sy = fdiv(c->y + 8, 16); if (sx == cx && sy == cy) { popup = 3; popup_i = k; return; } }
     int o = obj_at(cx, cy); if (o >= 0) { popup = 1; popup_i = o; return; }
     if (cx >= -SLC && cy >= -SLC && cx < SLC * 2 && cy < SLC * 2) { cur_sim = ctl; sims[ctl].tx = cx * 16; sims[ctl].ty = cy * 16; sims[ctl].act = -1; sims[ctl].act_left = 0; }
 }
 
+void systemMsgHandler(int bytes, void *user_data);
 int main(void) {
-    powerOn(POWER_ALL_2D | POWER_3D_CORE | POWER_MATRIX); irqInit(); irqEnable(IRQ_VBLANK);
+    irqEnable(IRQ_VBLANK); powerOn(POWER_ALL_2D | POWER_3D_CORE | POWER_MATRIX);
     videoSetMode(MODE_5_3D | DISPLAY_BG3_ACTIVE);
     videoSetModeSub(MODE_5_2D | DISPLAY_BG3_ACTIVE);
     vramSetBankA(VRAM_A_TEXTURE); vramSetBankB(VRAM_B_TEXTURE); vramSetBankC(VRAM_C_SUB_BG); vramSetBankD(VRAM_D_MAIN_BG_0x06000000);
     int bg = bgInitSub(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0); scr_sub = scr = bgGetGfxPtr(bg);
     int bgm = bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0); hud = bgGetGfxPtr(bgm); bgSetPriority(bgm, 0);
     glInit(); glEnable(GL_ANTIALIAS); glClearColor(14, 20, 31, 31); glClearPolyID(63); glClearDepth(0x7FFF); glViewport(0, 0, 255, 191); REG_BG0CNT = BG_PRIORITY(1);
-    bm_dials_default(); bm_new(seed); pop_build();
+    snd_init(); bm_dials_default(); bm_new(seed); pop_build();
     cur_set = bm_capital(); town_pick(cur_set);
     lot_reset(); sims[0].skin = 2; sims[0].hair = 4; sims[0].hcol = 0; sims[0].shirt = 0; mode = M_TITLE; sav_probe(); lcdMainOnTop(); hud_clear();
     int yaw = 0, dist = 13000, frames = 0, dirty = 1; unsigned lastsig = 0; int lastmode = -1;
@@ -1443,6 +1502,9 @@ int main(void) {
                 if (sig != lastsig || (down & KEY_TOUCH)) { scr = scr_sub; backdrop(); draw_ui(); lastsig = sig; } }
             yaw = bb_yaw; pitch = bb_pitch; dist = bb_dist * (o_cam == 0 ? 85 : o_cam == 1 ? 100 : 125) / 100;
         }
+        { static int skyh = -1; int hh = (minutes / 60) % 24; if (o_sky == 4 && hh != skyh) o_dirty = 1; skyh = hh; }
+        if (down & KEY_TOUCH) sfx(0);
+        snd_tick();
         if (o_dirty) apply_opts();
         polys = 0;
         glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluPerspectivef32(degreesToAngle(40), 256 * 4096 / 192, 4096 * 3 / 4, 4096 * 12);
