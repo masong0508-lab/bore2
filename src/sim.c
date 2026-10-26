@@ -106,7 +106,7 @@ enum { ML_NONE, ML_GOOD_MEAL, ML_SNACKED, ML_RESTED, ML_FRESH, ML_GOOD_CHAT, ML_
        ML_HUNGRY, ML_TIRED, ML_STINKY, ML_BURSTING, ML_LONELY, ML_BORED, ML_SINGING, ML_PIZZA,
        ML_ATE_OUT, ML_SWAM, ML_OUTFIT, ML_RETAIL, ML_NEW_GAME, ML_NEW_JOB, ML_COACHED, ML_HOTEL,
        ML_FINE_DINING, ML_FILM, ML_CUT, ML_NIGHT_OUT, ML_ROUND, ML_PAMPERED, ML_INSPIRED, ML_HEALTHY, ML_TREAT,
-       ML_BIRTHDAY, ML_NEW_BABY, ML_LOVE, ML_PROUD, ML_GRIEF, ML_MEMORIES, ML_CAKE, ML_GRADES, ML_HOMEWORK, ML_SCHOOL, ML_BLOB_BUDDY, ML_BLOB_HATCH, ML_BLOB_PROUD, ML_BLOB_WORRY, ML_BLOB_MISS, ML_BLOB_HOOKED, ML_BLOB_SHARED, ML_PARTY_OK, ML_PARTY_GREAT, ML_PARTY_LEGEND, ML_DJ_HIT, ML_EYES, ML_N };
+       ML_BIRTHDAY, ML_NEW_BABY, ML_LOVE, ML_PROUD, ML_GRIEF, ML_MEMORIES, ML_CAKE, ML_GRADES, ML_HOMEWORK, ML_SCHOOL, ML_BLOB_BUDDY, ML_BLOB_HATCH, ML_BLOB_PROUD, ML_BLOB_WORRY, ML_BLOB_MISS, ML_BLOB_HOOKED, ML_BLOB_SHARED, ML_PARTY_OK, ML_PARTY_GREAT, ML_PARTY_LEGEND, ML_DJ_HIT, ML_EYES, ML_ABDUCT, ML_N };
 static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "", 0, 0 }, { "GOOD MEAL", 12, 240 }, { "SNACKED", 4, 90 }, { "WELL RESTED", 12, 300 }, { "FRESH", 8, 180 }, { "GOOD CHAT", 10, 180 },
     { "MADE A FRIEND", 20, 480 }, { "PROMOTED", 25, 720 }, { "PAYDAY", 15, 360 }, { "EMBARRASSED", -12, 120 },
@@ -120,7 +120,7 @@ static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "PAMPERED", 15, 360 }, { "INSPIRED", 10, 240 }, { "HEALTHY", 8, 1440 }, { "SWEET TREAT", 8, 120 },
     { "GREAT BIRTHDAY", 20, 720 }, { "NEW BABY", 20, 1440 }, { "IN LOVE", 15, 720 }, { "PROUD PARENT", 8, 240 }, { "GRIEF", -15, 1440 },
     { "FOND MEMORIES", 8, 240 }, { "BIRTHDAY CAKE", 8, 180 }, { "GOOD GRADES", 10, 720 }, { "HOMEWORK DONE", 6, 240 }, { "LONG DAY AT SCHOOL", -5, 180 },
-    { "BLOB BUDDY", 10, 240 }, { "IT HATCHED!", 16, 480 }, { "PROUD BLOB PARENT", 14, 720 }, { "WORRIED ABOUT MY BLOB", -8, 120 }, { "MISSING MY BLOB", -15, 720 }, { "HOOKED ON THE TOY", -8, 240 }, { "SHARED MY LUNCH", 8, 240 }, { "NICE PARTY", 10, 480 }, { "GREAT PARTY", 18, 720 }, { "LEGENDARY PARTY", 30, 1440 }, { "CROWD PLEASER", 12, 360 }, { "EYES BURNED", -25, 720 },
+    { "BLOB BUDDY", 10, 240 }, { "IT HATCHED!", 16, 480 }, { "PROUD BLOB PARENT", 14, 720 }, { "WORRIED ABOUT MY BLOB", -8, 120 }, { "MISSING MY BLOB", -15, 720 }, { "HOOKED ON THE TOY", -8, 240 }, { "SHARED MY LUNCH", 8, 240 }, { "NICE PARTY", 10, 480 }, { "GREAT PARTY", 18, 720 }, { "LEGENDARY PARTY", 30, 1440 }, { "CROWD PLEASER", 12, 360 }, { "EYES BURNED", -25, 720 }, { "ABDUCTED!", -8, 600 },
 };
 const char *sim_moodlet_name(int id) { return mlDef[id % ML_N].nm; }
 static int has_trait(const Sim *s, int t, int hi) { int v = s->bore.tr[t]; return hi ? v >= 8 : v <= 2; }
@@ -1107,7 +1107,15 @@ static void born(void) {   // the baby comes home (or the adopted child)
     if (nsims >= MAX_SIMS) { sim_note("NO ROOM: 8 BORES IS THE MOST"); return; }
     Sim *ma = by_uid(baby_par[0]), *pa = by_uid(baby_par[1]);
     Bore b; look_default(&b); b.stage = baby_kind == 2 ? AG_CHILD : AG_BABY; look_random(&b);
-    if (!baby_kind) genes(&b, ma ? &ma->bore : 0, pa ? &pa->bore : 0);
+    if (!baby_kind || baby_kind >= 3) genes(&b, ma ? &ma->bore : 0, pa ? &pa->bore : 0);
+    if (baby_kind >= 3) {   // an alien's: 3 a normal baby, a little more special; 4 out of this world
+        static const u8 alk[6] = { LK_ANTENNA, LK_HORNS, LK_TAIL, LK_PATTERN, LK_EYECOL, LK_SKIN };
+        static const char *const an[8] = { "ZORP", "XEEN", "BLIP", "NEBULA", "QUASAR", "ORBIT", "COMET", "VEGA" };
+        int n = baby_kind == 4 ? 6 : 1, from = baby_kind == 4 ? 0 : 4;
+        for (int k = 0; k < n; k++) { int id = baby_kind == 4 ? alk[k] : alk[from + (int)(look_rand() % 2u)], c = look_count(id), v = c > 1 ? 1 + (int)(look_rand() % (u32)(c - 1)) : 0; if (look_allowed(&b, id, v)) b.look[id] = (u8)v; }
+        for (int k = 0; k < (baby_kind == 4 ? 3 : 1); k++) b.tr[look_rand() % TR_N] = (u8)(baby_kind == 4 ? 10 : 8);
+        if (baby_kind == 4) strcpy(b.first, an[look_rand() % 8u]);
+    }
     strcpy(b.last, (ma ? ma : pa ? pa : &sims[player])->bore.last);
     b.asp = AS_GROW; look_fix(&b); look_build(&b);
     const Sim *nr = ma ? ma : pa ? pa : &sims[player];
@@ -1117,13 +1125,14 @@ static void born(void) {   // the baby comes home (or the adopted child)
     sim_add(&b, tx, ty, 1);
     world_lvl = keep;
     Sim *n = &sims[nsims - 1]; n->par[0] = baby_par[0]; n->par[1] = baby_par[1]; n->lvl = nr->lvl;
+    if (baby_kind >= 3) { n->skill_fun += baby_kind == 4 ? 800 : 300; n->mood = MIN(100, n->mood + 20); }
     if (b.stage == AG_BABY && home_is_here() && n->lvl == 0) {   // a crib comes with a baby (when the house has none)
         int have = 0, cx, cy;
         for (int y = 0; y < MH && !have; y++) for (int x = 0; x < MW; x++) if (lifeMap[y][x] == CH_CRIB) { have = 1; break; }
         if (!have && free_floor_near(0, tx, ty, &cx, &cy)) { lifeMap[cy][cx] = CH_CRIB; world_touched(); sim_note("A CRIB CAME WITH THE BABY"); }
     }
     char t[48];
-    if (baby_kind) snprintf(t, sizeof t, "WELCOME HOME, %s!", b.first); else snprintf(t, sizeof t, "THE BABY IS HERE! MEET %s", b.first);
+    if (baby_kind >= 3) snprintf(t, sizeof t, baby_kind == 4 ? "A STRANGE ONE! MEET %s" : "A SPECIAL BABY! MEET %s", b.first); else if (baby_kind) snprintf(t, sizeof t, "WELCOME HOME, %s!", b.first); else snprintf(t, sizeof t, "THE BABY IS HERE! MEET %s", b.first);
     sim_note(t);
     for (int j = 0; j < nsims - 1; j++) if (sims[j].uid && (sims[j].uid == baby_par[0] || sims[j].uid == baby_par[1])) { sim_moodlet(&sims[j], ML_NEW_BABY); wants_event(&sims[j], W_BABY, 0); }
     sim_cheer = -nsims;                                                   // (negative: a newcomer, not a birthday)
@@ -1926,7 +1935,16 @@ static void place_do(Sim *s, int code) {
             if (day && (int)(look_rand() % 100) < 3 + L * 2) {   // a slip of the scope: straight into the sun
                 sim_moodlet(s, ML_EYES); s->mood = MAX(-100, s->mood - 15); sim_note("OW! YOU LOOKED AT THE SUN!"); sim_note("YOUR EYES ARE BURNED"); sim_say(s, "MY EYES!"); audio_voice(VOICE_SHRIEK); break; }
             if ((int)(look_rand() % 100) >= (day ? 6 + L * 2 : 30 + L * 8)) { astro_xp = (u16)MIN(60000, astro_xp + (day ? 1 : 2)); sim_note(day ? "THE SKY IS BRIGHT. NOT MUCH TO SEE" : "A QUIET NIGHT. BEAUTIFUL STARS"); break; }
-            if (0) { astro_xp = (u16)MIN(60000, astro_xp + 2); sim_note("A QUIET NIGHT. BEAUTIFUL STARS"); break; }
+            if (!day && L >= 1) {   // a mind that has looked up long enough: THEY look back
+                static int last_abd = -99; int logic = astro_xp / 50 + col_lvl * 12 + (col_major == 0 ? col_gpa / 10 : 0), pct = MIN(14, logic / 5);
+                if (pct > 0 && day_count - last_abd >= 4 && (int)(look_rand() % 100) < pct) { last_abd = day_count; int r = (int)(look_rand() % 100); sim_moodlet(s, ML_ABDUCT);
+                    sim_note("A BRIGHT LIGHT FROM ABOVE!"); sim_note("YOU ARE ABDUCTED!"); clock_min = MIN(1439, clock_min + 180); astro_xp = (u16)MIN(60000, astro_xp + 40);
+                    if (r < 38 && s->bore.stage == AG_ADULT && baby_due < 0 && nsims < MAX_SIMS) {   // a baby, from the stars (whoever you are)
+                        baby_par[0] = s->uid; baby_par[1] = 0; baby_kind = (u8)((int)(look_rand() % 100) < 45 ? 4 : 3); int days = aging == 1 ? 1 : aging == 3 ? 3 : 2; baby_due = life_minutes() + days * 1440;
+                        sim_note("THEY LEAVE YOU WITH A SURPRISE..."); sim_note("A BABY IS ON THE WAY!"); sim_say(s, "WHAT JUST HAPPENED?"); audio_voice(VOICE_SHRIEK); }
+                    else if (r < 70) { int g = 300 + (int)(look_rand() % 700); cash += g; s->mood = MIN(100, s->mood + 25); snprintf(b_, sizeof b_, "A GIFT FROM ABOVE: +$%d", g); sim_note(b_); sim_say(s, "THEY WERE NICE!"); audio_voice(VOICE_YAHOO); }
+                    else { s->mood = MAX(-100, s->mood - 20); s->need[N_REST] = MAX(0, s->need[N_REST] - (30 << 10)); sim_note("PROBED AND RETURNED. RUDE."); sim_say(s, "NEVER AGAIN..."); audio_voice(VOICE_CRY); }
+                    break; } }
             { int ok[10], n = 0; for (int i = 0; i < 10; i++) if (fd[i].L <= (day ? 1 : L)) ok[n++] = i; int a = (int)(look_rand() % (u32)n), b2 = (int)(look_rand() % (u32)n); int k = ok[MAX(a, b2)];
               cash += fd[k].pay; astro_xp = (u16)MIN(60000, astro_xp + fd[k].L * 6); s->mood = MIN(100, s->mood + 12 + fd[k].L * 6);
               snprintf(b_, sizeof b_, fd[k].pay ? "FOUND %s! +$%d" : "YOU SEE %s", fd[k].nm, fd[k].pay); sim_note(b_); if (fd[k].L >= 4) audio_voice(VOICE_WIN); } break; }
