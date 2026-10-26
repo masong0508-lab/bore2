@@ -497,6 +497,13 @@ static void hud_life(void) {
     sprintf(b, "%s %02d:%02d", sim_day_name(clock_day), clock_min / 60, clock_min % 60);
     ui_text(226, 12, 2, b, UI_INK);
     sprintf(b, "$%ld", cash); ui_text(226, 26, 1, b, UI_RGB(40, 150, 50));
+    { static const u32 SC[4] = { UI_RGB(236, 120, 170), UI_RGB(236, 170, 30), UI_RGB(214, 110, 30), UI_RGB(80, 150, 220) };   // the season, and its festival on the last day
+      int se = sim_season(), fe = sim_festival(); { const char *sn = fe ? sim_festival_name(se) : sim_season_name(se); ui_badge(160 - (ui_tw(1, sn) + 10) / 2, 7, sn, fe ? UI_AMBER : SC[se], UI_WHITE); }
+      if (world_zone != ZONE_ISLAND && sim_outdoors(s)) {   // petals, leaves and snow drift down outdoors; confetti at the festival
+          static const u32 PC[4] = { UI_RGB(255, 190, 210), UI_RGB(255, 255, 255), UI_RGB(230, 130, 40), UI_RGB(250, 250, 255) };
+          int n = fe ? 24 : se == 1 ? 0 : 18;
+          for (int i = 0; i < n; i++) { int sp = 1 + (i % 3), x = (i * 53 + frame * (fe ? 0 : 1) / 2 * (i & 1 ? 1 : -1) + isin((frame * 9 + i * 400) & 4095) / 140 + 320 * 4) % 320, y = (i * 41 + frame * sp / 2) % 230 - 4;
+              ui_disc(x, y, 5, fe ? SC[i & 3] ^ (u32)(i * 0x331) : PC[se]); } } }
     { int ic = sim_speed <= 1 ? IC_PLAY : IC_FAST; ui_icon_disc(305, 29, 12, ic, sim_speed >= 3 ? UI_RGB(236, 150, 40) : UI_BLUE, UI_WHITE); }
     { int day_ = clock_min >= 360 && clock_min < 1200; ui_icon(286, 24, IC_SUN, day_ ? UI_RGB(236, 170, 30) : UI_RGB(120, 140, 200)); }
     {   // the want, under the clock
@@ -731,6 +738,9 @@ static void life_update(int steps) {
 }
 
 static void life_draw(void) {
+#ifdef AUTO_DAY
+    { static int once; if (++once == 30) { day_count = AUTO_DAY; clock_min = 12 * 60; } }
+#endif
     Sim *s = &sims[player];
     gfx_set_fog(0, 0);                                   // (the title's fog stays on the title)
     camera_apply(s->x, -200 - s->lvl * WALL_FULL - (on_board ? board_lift : 0), s->z);   // (up with a rider in the air)
@@ -759,6 +769,9 @@ static void life_draw(void) {
         int br = (215 * day) >> 8, bg = (205 * day) >> 8, bb = (190 * day) >> 8;
         if (world_zone == ZONE_TOWN) { tr = (110 * day) >> 8; tg = (140 * day) >> 8; tb = (200 * day) >> 8; br = (240 * day) >> 8; bg = (190 * day) >> 8; bb = (120 * day) >> 8; }
         if (world_zone == ZONE_ISLAND) { tr = (40 * day) >> 8; tg = (140 * day) >> 8; tb = (230 * day) >> 8; br = (200 * day) >> 8; bg = (230 * day) >> 8; bb = (240 * day) >> 8; }
+        if (world_zone == ZONE_CITY || world_zone == ZONE_HOME) {   // the season tints the sky
+            static const u8 ST[4][6] = { { 130, 160, 235, 240, 215, 220 }, { 60, 130, 240, 250, 225, 170 }, { 120, 110, 170, 240, 160, 90 }, { 150, 160, 190, 225, 230, 245 } };
+            const u8 *q = ST[sim_season()]; tr = (tr + ((q[0] * day) >> 8)) / 2; tg = (tg + ((q[1] * day) >> 8)) / 2; tb = (tb + ((q[2] * day) >> 8)) / 2; br = (br + ((q[3] * day) >> 8)) / 2; bg = (bg + ((q[4] * day) >> 8)) / 2; bb = (bb + ((q[5] * day) >> 8)) / 2; }
         u32 top = (u32)tr | ((u32)tg << 8) | ((u32)tb << 16), hor = (u32)br | ((u32)bg << 8) | ((u32)bb << 16);
         { extern u32 world_horizon; extern int world_far_range; world_horizon = hor; world_far_range = (world_zone == ZONE_CITY && far_view) ? 60 : 34; }
         if (world_zone == ZONE_CITY && far_view) far_sky(top, hor);   // the sky meets the land at the real horizon

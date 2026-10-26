@@ -75,6 +75,11 @@ static const u8 stSpd[5] = { 50, 80, 95, 100, 70 };
 static const char *const dayNm[7] = { "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN" };
 static const char *const needNm[NEED_N] = { "FOOD", "WC", "REST", "CLEAN", "COMFY", "FUN", "SOCIAL", "ROOM" };
 const char *sim_day_name(int d) { return dayNm[d % 7]; }
+int sim_outdoors(const Sim *s) { int mx = s->x / TILE, my = (-s->z) / TILE; return s->x >= 0 && s->z <= 0 && mx < MW && my < MH && floorMap[my][mx] >= FL_GRASS; }
+int sim_season(void) { return (day_count / 10) & 3; }
+const char *sim_season_name(int s) { static const char *const n[4] = { "SPRING", "SUMMER", "AUTUMN", "WINTER" }; return n[s & 3]; }
+int sim_festival(void) { return day_count % 10 == 9 && clock_min >= 600 && clock_min < 1320; }
+const char *sim_festival_name(int s) { static const char *const n[4] = { "FLOWER FAIR", "SUMMER CARNIVAL", "HARVEST FEAST", "WINTER LIGHTS" }; return n[s & 3]; }
 const char *sim_need_name(int n) { return needNm[n]; }
 int sim_need_val(const Sim *s, int n) { return s->need[n] >> 10; }
 int sim_tile_x(const Sim *s) { return s->x / TILE; }
@@ -1268,6 +1273,8 @@ static void clock_tick(void) {
     }
     if (clock_min >= 1440) {
         clock_min = 0; clock_day = (clock_day + 1) % 7; day_count++;
+        if (day_count % 10 == 0) { char sb_[40]; sprintf(sb_, "%s HAS COME!", sim_season_name(sim_season())); sim_note(sb_); }
+        else if (day_count % 10 == 9) { char sb_[40]; sprintf(sb_, "TODAY: THE %s! 10 AM", sim_festival_name(sim_season())); sim_note(sb_); }
         midnight_ages(); pop_midnight();                                    // (your household, and everyone else)
         if (job_none) sim_note(day_count & 1 ? "NO JOB, NO BILLS. THE PAPER HAS JOBS AT 6" : "STILL LOOKING FOR WORK? PHONE, JOBS");
         else cash -= BILLS;
@@ -1285,6 +1292,8 @@ void sim_step(void) {
         if (s->away) continue;                                        // (at school: back at 3)
         world_lvl = s->lvl;
         tick_needs(s);
+        if (!(walk_tick & 3) && sim_festival() && world_zone == ZONE_CITY && sim_outdoors(s)) {   // the festival: music, stalls and a crowd
+            s->need[N_FUN] = MIN(s->need[N_FUN] + GAIN_FUN / 2, 100 << 10); s->need[N_SOCIAL] = MIN(s->need[N_SOCIAL] + GAIN_TALK / 3, 100 << 10); }
         if (s->note_t > 0) s->note_t--;
         if (i != player && (s->rage || s->gait.sleep == 1 && s->action == ACT_NONE && s->rage_ko)) continue;   // (after you, or knocked down: citizens.c moves them)
         if (s->gait.wave > 0 && s->action != ACT_TALK && s->action != ACT_PHONE) s->gait.wave--;

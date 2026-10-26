@@ -121,6 +121,11 @@ const char *sim_hint(void);                // what X would do right now
 void sim_note(const char *s);
 int  sim_tile_x(const Sim *s); int sim_tile_y(const Sim *s);
 const char *sim_day_name(int d);
+int sim_outdoors(const Sim *s);            // standing out of doors
+int sim_season(void);                      // 0 SPRING 1 SUMMER 2 AUTUMN 3 WINTER: ten days each
+const char *sim_season_name(int s);
+int sim_festival(void);                    // 1 on a season's last day, from 10 AM to 10 PM: the town festival
+const char *sim_festival_name(int s);
 const char *sim_need_name(int n);
 int  sim_need_val(const Sim *s, int n);    // 0..100
 int  sim_awake(const Sim *s);
