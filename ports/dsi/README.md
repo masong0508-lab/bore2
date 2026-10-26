@@ -50,3 +50,6 @@ Create-a-Sim: 26 shape sliders (face + body: jaw, chin, ears, eye size, lips, ne
 
 ## D8
 Height slider; "Max x1/x2/x3" cheat chip multiplies every slider for extreme scales.
+
+## D9
+Max x2/x3 cheat no longer clamps: minimum values go negative (inverted geometry glitches).

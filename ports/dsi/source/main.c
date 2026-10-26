@@ -188,7 +188,7 @@ static const u16 WALLC[4] = { C15(30, 28, 22), C15(28, 20, 16), C15(20, 24, 30),
 static int mark_x = -1, mark_y, mark_t;
 static void set_mode(int m);
 static int cas_mult = 1;
-static void eff_pm(const u8 *pm, int *p) { for (int q = 0; q < PMN; q++) { int v = 50 + (pm[q] - 50) * cas_mult; p[q] = v < -30 ? -30 : v > 230 ? 230 : v; } }
+static void eff_pm(const u8 *pm, int *p) { for (int q = 0; q < PMN; q++) { int v = 50 + (pm[q] - 50) * cas_mult; p[q] = v; } }
 static void sim3d(int i, int yaw);
 typedef struct { u8 x, y, c, i, rot; } Obj;
 static Obj objs[48]; static int nobj, funds = 20000;
