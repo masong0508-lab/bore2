@@ -23,6 +23,7 @@
 			<file name="DOG.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/DOG.OVL" />
 			<file name="PRISON.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/PRISON.OVL" />
 			<file name="SPACE.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/SPACE.OVL" />
+			<file name="PARADISE.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/PARADISE.OVL" />
 			<file name="DJ.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/DJ.OVL" />
 			<file name="GOTCHI.ART" type="data" source="${CMAKE_BINARY_DIR}/slot_full/GOTCHI.ART" />
 			<dummy sectors="512"/>

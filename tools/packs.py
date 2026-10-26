@@ -26,6 +26,7 @@ PACKS = {
     "DOG":     ("CREATE A DOG", [("DOG.OVL", 8)]),
     "PRISON":  ("CRIME AND LAW", [("PRISON.OVL", 24)]),
     "SPACE":   ("SPACE AGE", [("SPACE.OVL", 16)]),
+    "PARADISE": ("ISLAND PARADISE", [("PARADISE.OVL", 16)]),
 }
 MAX_SLOT = 40                    # sectors: the overlay arena's room is a little over 80 KB
 
