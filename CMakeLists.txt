@@ -32,13 +32,15 @@ target_link_options(bore2 PRIVATE -Wl,--wrap=memcpy -Wl,--wrap=memmove)   # (src
 
 # THE OVERLAYS (src/ovl.h): KINGDOM MODE and the arcade are files on the disc, read into the crowd's arena when you walk into them.
 # Their code is built on its own (no gp: it is not linked with the game), then linked against bore2.elf's symbols at the arena's address.
-foreach(o kingdom arcade gotchi party)
+foreach(o kingdom arcade gotchi party dj)
 	if(o STREQUAL kingdom)
 		add_library(ovl_${o} OBJECT src/realm.c)
 	elseif(o STREQUAL gotchi)
 		add_library(ovl_${o} OBJECT src/gotchi_ui.c)
 	elseif(o STREQUAL party)
 		add_library(ovl_${o} OBJECT src/party_ui.c)
+	elseif(o STREQUAL dj)
+		add_library(ovl_${o} OBJECT src/dj_ui.c)
 	else()
 		add_library(ovl_${o} OBJECT src/arcade.c src/fight.c)
 	endif()
@@ -48,11 +50,11 @@ endforeach()
 # what the overlays use from the game: a table of it, so the game's linker keeps it
 add_custom_command(
 	OUTPUT  ${CMAKE_BINARY_DIR}/ovl_keep.c
-	COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/ovl.py keep ${CMAKE_BINARY_DIR}/ovl_keep.c ${TOOLCHAIN_NM} $<TARGET_OBJECTS:ovl_kingdom> $<TARGET_OBJECTS:ovl_arcade> $<TARGET_OBJECTS:ovl_gotchi> $<TARGET_OBJECTS:ovl_party>
-	DEPENDS ovl_kingdom ovl_arcade ovl_gotchi ovl_party $<TARGET_OBJECTS:ovl_kingdom> $<TARGET_OBJECTS:ovl_arcade> $<TARGET_OBJECTS:ovl_gotchi> $<TARGET_OBJECTS:ovl_party> ${CMAKE_SOURCE_DIR}/tools/ovl.py
+	COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/ovl.py keep ${CMAKE_BINARY_DIR}/ovl_keep.c ${TOOLCHAIN_NM} $<TARGET_OBJECTS:ovl_kingdom> $<TARGET_OBJECTS:ovl_arcade> $<TARGET_OBJECTS:ovl_gotchi> $<TARGET_OBJECTS:ovl_party> $<TARGET_OBJECTS:ovl_dj>
+	DEPENDS ovl_kingdom ovl_arcade ovl_gotchi ovl_party ovl_dj $<TARGET_OBJECTS:ovl_kingdom> $<TARGET_OBJECTS:ovl_arcade> $<TARGET_OBJECTS:ovl_gotchi> $<TARGET_OBJECTS:ovl_party> $<TARGET_OBJECTS:ovl_dj> ${CMAKE_SOURCE_DIR}/tools/ovl.py
 	COMMAND_EXPAND_LISTS
 )
-foreach(o kingdom arcade gotchi party)
+foreach(o kingdom arcade gotchi party dj)
 	string(TOUPPER ${o} O)
 	add_custom_command(
 		OUTPUT  ${CMAKE_BINARY_DIR}/${O}.OVL
@@ -62,7 +64,7 @@ foreach(o kingdom arcade gotchi party)
 	)
 endforeach()
 configure_file(${CMAKE_SOURCE_DIR}/assets/GOTCHI.ART ${CMAKE_BINARY_DIR}/GOTCHI.ART COPYONLY)
-add_custom_target(overlays DEPENDS ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART)
+add_custom_target(overlays DEPENDS ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART)
 
 # the voice clips (SPU ADPCM blob made by tools/build_audio.py)
 # (the voice clips are VOICES.BIN on the disc: audio.c sends them to sound memory at start-up, so they take no main memory)
@@ -71,7 +73,7 @@ psn00bsdk_add_cd_image(
 	iso
 	bore2
 	iso.xml
-	DEPENDS bore2 system.cnf overlays ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
+	DEPENDS bore2 system.cnf overlays ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
 )
 
 # the disc as one file: BORE2.chd (DuckStation, SwanStation and the libretro PlayStation cores open it)
@@ -88,5 +90,5 @@ psn00bsdk_add_cd_image(
 	iso_lite
 	bore2_lite
 	iso_lite.xml
-	DEPENDS bore2 system.cnf overlays ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
+	DEPENDS bore2 system.cnf overlays ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
 )

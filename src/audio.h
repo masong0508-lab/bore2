@@ -29,3 +29,12 @@ int  audio_station_count(void);
 const char *audio_station_name(int s);
 int  audio_station(void);            // -1: none
 void audio_station_play(int s);      // -1: off
+// the DJ (dj_ui.c is the booth): eight tracks on two tracker decks
+int  dj_count(void); const char *dj_track_name(int t); const char *dj_track_real(int t);
+int  dj_active(void); void dj_begin(void);
+int  dj_state(int d); int dj_track(int d); int dj_cue(int d, int t, int bars); int dj_bars(int t);
+void dj_fader(int d, int g); int dj_gain(int d);
+void dj_set_tempo(int d, int t); int dj_tempo(int d); int dj_order_ms(int d); int dj_order_ms0(int d);
+void dj_sync(int d, int err); void dj_launch(int d, int cue_row); int dj_pending(int d); void dj_stop(int d);
+void dj_mute(int d, int mask); int dj_mutemask(int d); void dj_pitch(int d, int pm); void dj_echo(int on);
+int  dj_pos(int d, int what);   // 0 order, 1 row, 2 rows in the order, 3 orders in the excerpt, 4 orders played, 5 notes so far, 6 playing

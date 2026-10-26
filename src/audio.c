@@ -58,63 +58,90 @@ static int cd_ok, cd_up;   // (cd_up: the drive answered at start-up)
 static struct { u32 sector, seq_sectors, smp_sectors, smp_bytes; } sidx[NSONGS];
 
 // ---- the sequencer (all of this is read inside the timer interrupt) ----
+// Two DECKS: the jukebox plays on deck 0 alone (every track on the voice of its own channel); the DJ (dj_*, below) runs both, the notes of
+// either taking whichever voice has been quiet longest, so two songs can sound at once and one fade into the other.
 typedef struct {
     u32 magic, nord, loop, rowN, rfr, npat, ninst, nvt, ev_size, smp_size, seconds;
     u32 o_order, o_rows, o_patoff, o_vt, o_pitch, o_smpoff, o_bus, o_ev, pad;
 } SeqHeader;
-static volatile int sq_on;
-static const SeqHeader *sq;
-static const u8 *sq_order, *sq_bus, *sq_ev;
-static const u16 *sq_rows, *sq_vt, *sq_pitch;
-static const u32 *sq_patoff, *sq_smpoff;
-static int sq_ord, sq_row;
-static SeqDec sq_dec;                  // the notes, unpacked a row at a time
-static const u8 *sq_body; static u32 sq_body_len;   // the part that loops
-static u32 sq_acc, sq_rowlen;          // the row clock: +MIXR*256 per tick; a row is (rowN*256 + rfr) * TICK_HZ
-static volatile int sq_laps;
+typedef struct {
+    volatile int on;
+    const SeqHeader *sq;
+    const u8 *order, *bus, *ev, *body;
+    const u16 *rows, *vt, *pitch;
+    const u32 *patoff, *smpoff;
+    int ord, row, loop_ord, end_ord, base;     // where it is; the order it loops to and the one it ends on (an excerpt); its samples in sound memory
+    SeqDec dec; u32 body_len;
+    u32 acc, rowlen, rowlen0;                  // the row clock: +MIXR*256 per tick; a row is (rowN*256 + rfr) * TICK_HZ (rowlen0 at the song's own tempo)
+    volatile int laps, gain, tempo, pmul, mute, pending, cue_row, act, bars;   // laps; 0..256 fade; 8.8 tempo; 8.8 pitch (a scratch); channels muted; waiting for the other deck's order; ..; notes lately; orders played
+} Deck;
+static Deck dk[2];
+static volatile int dj_mode;                    // 1: the DJ has both decks (voices are shared out as notes come)
+static u32 vtime[MUS_CH]; static int vdeck[MUS_CH], vtch[MUS_CH], vbl[MUS_CH], vbr[MUS_CH], vfreq[MUS_CH];
+static u32 vclock;
 static int music_vol = 320;
 void audio_music_level(int l) { static const short lv[4] = { 0, 110, 210, 320 }; music_vol = lv[l & 3]; }   // OFF, LOW, MEDIUM, FULL (from the next note on)
 static int music_vol_unused;            // 256 = the GBA level (a touch louder: the SPU has the headroom)
+static volatile int dj_wash;            // the DJ's echo: reverb added on top
 
-static void seq_row(void) {
-    int n = seqdec_row(&sq_dec);
+static int voice_for(int di, int tch) {
+    if (!dj_mode) return tch;
+    for (int v = 0; v < MUS_CH; v++) if (vdeck[v] == di + 1 && vtch[v] == tch) { vtime[v] = ++vclock; return v; }   // (its own voice again)
+    int best = 0; u32 old = 0xffffffffu;
+    for (int v = 0; v < MUS_CH; v++) if (vtime[v] < old) { old = vtime[v]; best = v; }
+    vdeck[best] = di + 1; vtch[best] = tch; vtime[best] = ++vclock; return best;
+}
+static void deck_row(int di) {
+    Deck *d = &dk[di];
+    int n = seqdec_row(&d->dec);
     u32 on = 0;
     while (n--) {
-        u32 w = (u32)seqdec_byte(&sq_dec); w |= (u32)seqdec_byte(&sq_dec) << 8; w |= (u32)seqdec_byte(&sq_dec) << 16;
-        u32 t = sq_vt[(w & 255) | ((w >> 22) << 8)];
-        int ch = t & 15, in = (t >> 4) & 31, bus = (t >> 9) & 7, nt = (w >> 8) & 127, vol = (w >> 15) & 127, rel = t >> 12;
-        if (nt == 127) { SPU_KEY_OFF1 = (u16)(1u << ch); continue; }   // a key off (the songs made from renders: tools/build_midi_songs.py): the note fades on its release
+        u32 w = (u32)seqdec_byte(&d->dec); w |= (u32)seqdec_byte(&d->dec) << 8; w |= (u32)seqdec_byte(&d->dec) << 16;
+        u32 t = d->vt[(w & 255) | ((w >> 22) << 8)];
+        int tch = t & 15, in = (t >> 4) & 31, bus = (t >> 9) & 7, nt = (w >> 8) & 127, vol = (w >> 15) & 127, rel = t >> 12;
+        if (nt == 127) { if (!dj_mode) SPU_KEY_OFF1 = (u16)(1u << tch); else for (int v = 0; v < MUS_CH; v++) if (vdeck[v] == di + 1 && vtch[v] == tch) SPU_KEY_OFF1 = (u16)(1u << v); continue; }   // a key off (the songs made from renders): the note fades on its release
         if (bus > 6) bus = 3;
-        u32 so = sq_smpoff[in];
+        u32 so = d->smpoff[in];
         if (so == 0xffffffff || nt >= 96) continue;
-        int vl = (vol * sq_bus[bus] * music_vol) >> 9, vr = (vol * sq_bus[7 + bus] * music_vol) >> 9;   // the GBA's level: vol x bus / 2
-        SPU_CH_VOL_L(ch) = vl > 0x3fff ? 0x3fff : vl;
-        SPU_CH_VOL_R(ch) = vr > 0x3fff ? 0x3fff : vr;
-        SPU_CH_FREQ(ch) = sq_pitch[in * 96 + nt];
-        SPU_CH_ADDR(ch) = getSPUAddr(song_base + (int)so);
+        d->act++;
+        if (d->mute & (1 << tch)) continue;                           // (a channel the DJ has killed)
+        int ch = voice_for(di, tch);
+        int vl = (vol * d->bus[bus] * music_vol) >> 9, vr = (vol * d->bus[7 + bus] * music_vol) >> 9;   // the GBA's level: vol x bus / 2
+        if (vl > 0x3fff) vl = 0x3fff; if (vr > 0x3fff) vr = 0x3fff;
+        vbl[ch] = vl; vbr[ch] = vr; vfreq[ch] = d->pitch[in * 96 + nt];
+        if (dj_mode) { vl = vl * d->gain >> 8; vr = vr * d->gain >> 8; }
+        SPU_CH_VOL_L(ch) = vl;
+        SPU_CH_VOL_R(ch) = vr;
+        SPU_CH_FREQ(ch) = dj_mode ? (vfreq[ch] * d->pmul >> 8) : vfreq[ch];
+        SPU_CH_ADDR(ch) = getSPUAddr(d->base + (int)so);
         SPU_CH_ADSR1(ch) = 0x00ff;                       // instant attack, full sustain: the sample plays as it is (one-shot)
         { static const u16 relTab[4] = { 0x0005, 0x000C, 0x000D, 0x000E };   // the release when a note is cut: short (the tracker songs), or 0.2, 0.4, 0.7 s (a held sound let go)
           SPU_CH_ADSR2(ch) = relTab[rel & 3]; }
         on |= 1u << ch;
     }
     if (on) SPU_KEY_ON1 = (u16)on;
-    if (++sq_row >= sq_rows[sq_order[sq_ord]]) {
-        sq_row = 0;
-        if (++sq_ord >= (int)sq->nord) { sq_ord = (int)sq->loop; sq_laps++; seqdec_start(&sq_dec, sq_body, sq_body_len); }
-        else if (sq_ord == (int)sq->loop) seqdec_start(&sq_dec, sq_body, sq_body_len);   // (the intro played: the part that loops)
+    if (++d->row >= d->rows[d->order[d->ord]]) {
+        d->row = 0; d->bars++;
+        if (++d->ord >= d->end_ord) { d->ord = d->loop_ord; d->laps++; seqdec_start(&d->dec, d->body, d->body_len); }
+        else if (d->ord == d->loop_ord) seqdec_start(&d->dec, d->body, d->body_len);   // (the intro played: the part that loops)
     }
 }
 extern void prof_sample(void);
 static void seq_tick(void) {
     prof_sample();
-    if (!sq_on) return;
-    sq_acc += MIXR * 256;
-    while (sq_acc >= sq_rowlen) { sq_acc -= sq_rowlen; seq_row(); }
+    for (int di = 0; di < 2; di++) {
+        Deck *d = &dk[di];
+        if (!d->on) continue;
+        d->acc += MIXR * 256;
+        while (d->acc >= d->rowlen) { d->acc -= d->rowlen; deck_row(di);
+            if (dj_mode) { Deck *o = &dk[di ^ 1]; if (o->pending && !o->on && d->row == o->cue_row) { o->pending = 0; o->acc = o->rowlen; o->on = 1; } }   // the other deck was waiting for this deck's order (or a row of it: a late cue)
+        }
+    }
 }
 static void music_silence(void) {
-    sq_on = 0;
+    dk[0].on = dk[1].on = 0; dk[0].pending = dk[1].pending = 0; dj_mode = 0;
     SPU_KEY_OFF1 = 0xffff;
-    for (int ch = 0; ch < MUS_CH; ch++) { SPU_CH_VOL_L(ch) = 0; SPU_CH_VOL_R(ch) = 0; }
+    for (int ch = 0; ch < MUS_CH; ch++) { SPU_CH_VOL_L(ch) = 0; SPU_CH_VOL_R(ch) = 0; vdeck[ch] = 0; vtime[ch] = 0; }
 }
 
 // ---- REVERB: the sound chip's own, one preset per song (songs.inc fx) ----
@@ -151,6 +178,23 @@ static void reverb_set(int fx) {
     SPU_CTRL |= 0x80;
 }
 
+static int deck_setup(Deck *d, const u8 *b, int base, int dj) {   // a song's sequence block (BSQ2: packed by tools/pack_songs.py) ready on a deck
+    const SeqHeader *sq = (const SeqHeader *)b;
+    if (sq->magic != 0x32515342) return 0;
+    d->on = 0; d->pending = 0; d->sq = sq;
+    d->order = b + sq->o_order; d->rows = (const u16 *)(b + sq->o_rows); d->patoff = (const u32 *)(b + sq->o_patoff);
+    d->vt = (const u16 *)(b + sq->o_vt); d->pitch = (const u16 *)(b + sq->o_pitch); d->smpoff = (const u32 *)(b + sq->o_smpoff);
+    d->bus = b + sq->o_bus; d->ev = b + sq->o_ev;
+    { const u32 *x = (const u32 *)(b + sq->pad); d->body = b + x[1]; d->body_len = x[2];   // the intro's and the loop's packed notes
+      if (sq->loop && !dj) seqdec_start(&d->dec, d->ev, x[0]); else seqdec_start(&d->dec, d->body, d->body_len); }
+    d->ord = dj ? (int)sq->loop : 0; d->row = 0; d->laps = 0; d->bars = 0; d->act = 0;
+    d->loop_ord = (int)sq->loop; d->end_ord = (int)sq->nord; d->base = base;
+    d->rowlen0 = (sq->rowN * 256 + sq->rfr) * TICK_HZ; d->tempo = 256; d->rowlen = d->rowlen0;
+    d->acc = d->rowlen - MIXR * 256;                     // the first row sounds on the first tick
+    d->gain = 256; d->pmul = 256; d->mute = 0; d->cue_row = 0;
+    return 1;
+}
+static void dj_pump(void);
 // ---- jukebox ----
 static int cur_song = -1, shuffle = 1;
 static int play_frames;
@@ -284,21 +328,135 @@ void audio_jukebox_play(int i) {
     }
     // the sequence
     if ((int)sidx[i].seq_sectors * 2048 > SEQ_MAX || !cd_read(sidx[i].sector, (int)sidx[i].seq_sectors, seqbuf)) return;
-    const u8 *b = (const u8 *)seqbuf;
-    sq = (const SeqHeader *)b;
-    if (sq->magic != 0x32515342) return;                 // (BSQ2: packed by tools/pack_songs.py)
-    sq_order = b + sq->o_order; sq_rows = (const u16 *)(b + sq->o_rows); sq_patoff = (const u32 *)(b + sq->o_patoff);
-    sq_vt = (const u16 *)(b + sq->o_vt); sq_pitch = (const u16 *)(b + sq->o_pitch); sq_smpoff = (const u32 *)(b + sq->o_smpoff);
-    sq_bus = b + sq->o_bus; sq_ev = b + sq->o_ev;
-    { const u32 *x = (const u32 *)(b + sq->pad); sq_body = b + x[1]; sq_body_len = x[2];   // the intro's and the loop's packed notes
-      if (sq->loop) seqdec_start(&sq_dec, sq_ev, x[0]); else seqdec_start(&sq_dec, sq_body, sq_body_len); }
-    sq_ord = 0; sq_row = 0; sq_laps = 0;
-    sq_rowlen = (sq->rowN * 256 + sq->rfr) * TICK_HZ;
-    sq_acc = sq_rowlen - MIXR * 256;                     // the first row sounds on the first tick
+    if (!deck_setup(&dk[0], (const u8 *)seqbuf, song_base, 0)) return;
     play_frames = 0; cur_song = i;
     reverb_set(songs[i].fx);
-    sq_on = 1;
+    dk[0].gain = 256; dk[0].on = 1;
 }
+// ---- THE DJ: eight of the songs, cut down to short excerpts, on two tracker decks ----
+// Everything is still the tracker: the songs' own notes and samples, played by the sound chip. A deck holds one song's excerpt (a minute at
+// most) and loops it; the other deck can be cued while the first plays (its samples come off the disc a few sectors a frame, so nothing
+// hitches), then launched on the first deck's next order, with its tempo squeezed to match (a tracker stretches time for free: the notes
+// only come faster). The crossfade, the tricks (echo, brake, scratch, drop, killing a part of the song) are all done on the decks' volumes,
+// tempo, pitch and muted channels. dj_ui.c (the overlay DJ.OVL) is the booth; how well it all goes is its business (the hidden skill).
+#define DJ_N 8
+typedef unsigned long long u64;
+static int station;
+// bars: the usual excerpt (about a minute); maxord: the most orders a deck may be given (3 x that: a master's long ride); sect: the sectors of
+// the song's sequence block that reach that far (worked out by tools/dj_sizes.py from the packed notes)
+static const struct { const char *song, *mix; u8 bars, maxord, sect; } djt[DJ_N] = {
+    { "THE CYNICAL SYNDICATION", "SYNDICATION OF SMIRKS", 20, 64, 6 }, { "MISTER QUICKBULLET", "QUICKBULLET RUSH", 16, 51, 7 },
+    { "HOT DAMN", "HOT DAMN, HOT DAMN!", 16, 51, 6 },               { "WORTHLESS CLOUDS", "PRICELESS CLOUDS", 16, 51, 7 },
+    { "AIM AND SHOOT", "AIM, SHOOT, DANCE", 10, 29, 4 },            { "OHIO HOE", "OH-HI-OH HOE-DOWN", 20, 57, 6 },
+    { "GOTTCHO BARRACHO", "GOTTCHA BARRA-KILLER", 20, 62, 5 },     { "AN ODE TO THE SPANISH FLEXICODE", "FLEXICODE FIESTA", 20, 46, 4 } };
+// (RAM is tight: both decks' notes sit in the jukebox's own sequence buffer, 16 KB each - only the first part of a song, as much as its excerpt can reach, is read - and the samples pass through the last 8 KB of it)
+#define DJ_SEQ(d)  ((u8 *)seqbuf + (d) * 16384)
+#define DJ_STAGE   ((u8 *)seqbuf + 32768)
+static int dj_st[2], dj_tr[2] = { -1, -1 }, dj_song_ix[DJ_N] = { -1 };
+static struct { int busy, deck, track, phase, left, sec, addr, n, bars; } ld;
+#define DJ_SLOT 98304                                   // each deck's room for samples (the biggest excerpt song is 93808)
+int dj_count(void) { return DJ_N; }
+const char *dj_track_name(int t) { return t >= 0 && t < DJ_N ? djt[t].mix : ""; }
+const char *dj_track_real(int t) { return t >= 0 && t < DJ_N ? djt[t].song : ""; }
+static void dj_resolve(void) {
+    if (dj_song_ix[0] >= 0 && dj_song_ix[1] != -2) { if (dj_song_ix[0] != -1) return; }
+    for (int t = 0; t < DJ_N; t++) { dj_song_ix[t] = -2; for (int i = 0; i < NSONGS; i++) if (!strcmp(songs[i].name, djt[t].song)) { dj_song_ix[t] = i; break; } }
+}
+int dj_active(void) { return dj_mode; }
+void dj_begin(void) {
+    if (!cd_ok) return;
+    if (dj_mode) return;
+    st_stop(); music_silence(); cur_song = -1; station = -1;
+    dj_resolve(); dj_st[0] = dj_st[1] = 0; dj_tr[0] = dj_tr[1] = -1; ld.busy = 0; dj_wash = 0;
+    for (int v = 0; v < MUS_CH; v++) { vdeck[v] = 0; vtime[v] = 0; }
+    reverb_set(1); dj_mode = 1;
+}
+int dj_state(int d) { return dj_st[d & 1]; }                 // 0 empty, 1 loading, 2 ready, 3 playing
+int dj_track(int d) { return dj_tr[d & 1]; }
+int dj_bars(int t) { return t >= 0 && t < DJ_N ? djt[t].bars : 0; }
+int dj_cue(int d, int t, int bars) {                                   // start reading a track onto a deck that is not playing (1: started)
+    d &= 1; if (!dj_mode || ld.busy || dj_st[d] == 3 || t < 0 || t >= DJ_N || dj_song_ix[t] < 0) return 0;
+    dk[d].on = 0; dk[d].pending = 0;
+    dj_st[d] = 1; dj_tr[d] = t; ld.bars = bars < 4 ? 4 : bars > djt[t].maxord ? djt[t].maxord : bars; ld.busy = 1; ld.deck = d; ld.track = t; ld.phase = 0;
+    return 1;
+}
+static void dj_pump(void) {
+    if (!ld.busy) return;
+    int i = dj_song_ix[ld.track], d = ld.deck; u8 *buf = DJ_SEQ(d);
+    if (ld.phase == 0) {
+        CdlLOC loc; CdIntToPos(CdPosToInt(&songs_loc) + (int)sidx[i].sector, &loc);
+        if (!CdControl(CdlSetloc, &loc, 0) || !CdRead(djt[ld.track].sect, (u32 *)buf, CdlModeSpeed)) { ld.busy = 0; dj_st[d] = 0; return; }
+        ld.phase = 1; return;
+    }
+    if (ld.phase == 1 || ld.phase == 3) {
+        int r = CdReadSync(1, 0); if (r > 0) return;
+        if (r < 0) { ld.busy = 0; dj_st[d] = 0; return; }
+        if (ld.phase == 1) { ld.left = (int)sidx[i].smp_sectors; ld.sec = (int)(sidx[i].sector + sidx[i].seq_sectors); ld.addr = d ? song_base + DJ_SLOT : song_base; }
+        else { spu_write(ld.addr, DJ_STAGE, ld.n * 2048); ld.addr += ld.n * 2048; ld.sec += ld.n; ld.left -= ld.n; }
+        if (ld.left <= 0) {
+            int base = d ? song_base + DJ_SLOT : song_base;
+            if (!deck_setup(&dk[d], buf, base, 1)) { ld.busy = 0; dj_st[d] = 0; return; }
+            if (dk[d].loop_ord + ld.bars < dk[d].end_ord) dk[d].end_ord = dk[d].loop_ord + ld.bars;
+            dk[d].gain = 0; ld.busy = 0; dj_st[d] = 2; return;
+        }
+        ld.phase = 2;
+    }
+    if (ld.phase == 2) {
+        ld.n = ld.left > 4 ? 4 : ld.left;
+        CdlLOC loc; CdIntToPos(CdPosToInt(&songs_loc) + ld.sec, &loc);
+        if (!CdControl(CdlSetloc, &loc, 0) || !CdRead(ld.n, (u32 *)DJ_STAGE, CdlModeSpeed)) { ld.busy = 0; dj_st[d] = 0; return; }
+        ld.phase = 3;
+    }
+}
+static void dj_apply_gain(int d) {
+    Deck *k = &dk[d]; int g = k->gain;
+    for (int v = 0; v < MUS_CH; v++) if (vdeck[v] == d + 1) { SPU_CH_VOL_L(v) = vbl[v] * g >> 8; SPU_CH_VOL_R(v) = vbr[v] * g >> 8; }
+}
+void dj_fader(int d, int g) { d &= 1; dk[d].gain = CLAMP(g, 0, 256); dj_apply_gain(d); }
+int  dj_gain(int d) { return dk[d & 1].gain; }
+void dj_set_tempo(int d, int t) { d &= 1; t = CLAMP(t, 20, 700); dk[d].tempo = t; dk[d].rowlen = (u32)(((u64)dk[d].rowlen0 * 256) / (u32)t); }
+int  dj_tempo(int d) { return dk[d & 1].tempo; }
+int  dj_order_ms(int d) {                                     // how long one order (a bar) lasts on a deck, as it plays now
+    Deck *k = &dk[d & 1]; if (!k->sq) return 0;
+    u64 rl = (u64)k->rowlen * k->rows[k->order[k->ord]]; return (int)(rl * 1000 / ((u64)MIXR * 256 * TICK_HZ));
+}
+int dj_order_ms0(int d) {                                     // ... at the song's own tempo
+    Deck *k = &dk[d & 1]; if (!k->sq) return 0;
+    u64 rl = (u64)k->rowlen0 * k->rows[k->order[k->loop_ord]]; return (int)(rl * 1000 / ((u64)MIXR * 256 * TICK_HZ));
+}
+void dj_sync(int d, int err) {                                 // squeeze deck d's tempo to the other deck's bar (err: 8.8 off, a bad hand); the half or double of it if that is nearer
+    d &= 1; Deck *k = &dk[d], *m = &dk[d ^ 1]; if (!k->sq || !m->sq) return;
+    int mm = dj_order_ms(d ^ 1), my = dj_order_ms0(d); if (mm <= 0 || my <= 0) return;
+    int best = 256, bd = 1 << 30;
+    for (int q = 0; q < 3; q++) { int tgt = q == 0 ? mm / 2 : q == 1 ? mm : mm * 2; int t = (int)((u64)256 * my / (u32)tgt); int dd = ABS(t - 256); if (dd < bd) { bd = dd; best = t; } }
+    best = CLAMP(best, 160, 400);
+    dj_set_tempo(d, best * (256 + err) / 256);
+}
+void dj_launch(int d, int cue_row) {                           // 1: the deck that is ready starts, on the playing deck's next order (cue_row rows into it: a late hand)
+    d &= 1; Deck *k = &dk[d]; if (dj_st[d] != 2) return;
+    dj_st[d] = 3; k->mute = 0; k->pmul = 256;
+    if (dk[d ^ 1].on) { k->cue_row = cue_row < 0 ? 0 : cue_row; k->pending = 1; }
+    else { k->acc = k->rowlen - MIXR * 256; k->on = 1; }
+    cur_song = dj_song_ix[dj_tr[d]];
+}
+int dj_pending(int d) { return dk[d & 1].pending; }
+void dj_stop(int d) {
+    d &= 1; dk[d].on = 0; dk[d].pending = 0; dj_st[d] = 0; dj_tr[d] = -1;
+    for (int v = 0; v < MUS_CH; v++) if (vdeck[v] == d + 1) { SPU_KEY_OFF1 = (u16)(1u << v); vdeck[v] = 0; }
+    if (dk[d ^ 1].on) cur_song = dj_song_ix[dj_tr[d ^ 1]];
+}
+void dj_mute(int d, int mask) {                                // channels 0..15 of the deck silenced (the part of the song "killed")
+    d &= 1; int fresh = mask & ~dk[d].mute; dk[d].mute = mask;
+    for (int v = 0; v < MUS_CH; v++) if (vdeck[v] == d + 1 && (fresh & (1 << vtch[v]))) SPU_KEY_OFF1 = (u16)(1u << v);
+}
+int  dj_mutemask(int d) { return dk[d & 1].mute; }
+void dj_pitch(int d, int pm) {                                 // a scratch: 8.8 pitch on the deck's sounding notes
+    d &= 1; pm = CLAMP(pm, 16, 1024); dk[d].pmul = pm;
+    for (int v = 0; v < MUS_CH; v++) if (vdeck[v] == d + 1) { int f = vfreq[v] * pm >> 8; SPU_CH_FREQ(v) = f > 0x3fff ? 0x3fff : f; }
+}
+void dj_echo(int on) { dj_wash = on; if (dj_mode) { int v = on ? 0x5200 : revFx[1].send; SPU_REVERB_VOL_L = v; SPU_REVERB_VOL_R = v; } }
+int  dj_pos(int d, int what) { Deck *k = &dk[d & 1]; return what == 0 ? k->ord - k->loop_ord : what == 1 ? k->row : what == 2 ? (k->sq ? k->rows[k->order[k->ord]] : 1) : what == 3 ? k->end_ord - k->loop_ord : what == 4 ? k->bars : what == 5 ? k->act : k->on; }
+
 // ---- RADIO STATIONS: the songs grouped by feel; a radio, stereo or jukebox tunes one in ----
 static const char *const stNm[4] = { "BORE FM", "RAVE 101", "CHILL WAVE", "SPACE RADIO" };
 static const char *const stKey[4] = { "DIPPER|EXCUSES|CORA|BARRACHO|FLEXICODE|WINNER|CIGARETTE",
@@ -330,10 +488,12 @@ void audio_jukebox_next(void) {
     audio_jukebox_play(n);
 }
 void audio_update(void) {
+    if (dj_mode) { dj_pump(); if (cur_song < 0) return; }
     if (cur_song < 0) return;
     play_frames++;
     if (songs[cur_song].stream) { st_feed(); if (st_done) audio_jukebox_next(); return; }
-    if (sq_laps > 0 && cur_song != 0) audio_jukebox_next();       // a song moves on when it has played once (THE DIPPER MAN, the title song, loops)
+    if (dj_mode) return;
+    if (dk[0].laps > 0 && cur_song != 0) audio_jukebox_next();       // a song moves on when it has played once (THE DIPPER MAN, the title song, loops)
 }
 
 void audio_init(void) {
@@ -384,5 +544,5 @@ void audio_init(void) {
     ExitCriticalSection();
 }
 
-int audio_dbg_song(void) { return cur_song * 10 + sq_on; }
+int audio_dbg_song(void) { return cur_song * 10 + dk[0].on; }
 int audio_dbg_stream(int k) { return k == 0 ? st_on : k == 1 ? st_read : k == 2 ? st_under : k == 3 ? st_n : st_done; }   // (test builds)   // (test builds: which song is playing, and whether the sequencer runs)

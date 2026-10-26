@@ -1143,6 +1143,7 @@ static void party_minute(void) {           // once a game minute: the clock runs
     if (!party_on) return;
     if (--party_left > 0) return;
     party_on = 0;                          // over: everyone heads off
+    if (dj_active()) party_score += dj_heat / 25;   // (a set in the booth that kept the floor hot: up to four more)
     { int gifts = 0, friends = 0;
       for (int k = 0; k < party_n; k++) { Cit *c = &cits[party_g[k]]; if (c->mode != CM_PARTY) continue;
           if (party_ginv[k]) { c->rel = (s8)MIN(100, c->rel + 3 + party_score / 2); friends++; if (party_score >= 4 && c->rom > 0) c->rom = (s8)MIN(100, c->rom + 2); }
