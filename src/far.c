@@ -509,6 +509,20 @@ static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int p
         face_f4(&o[4], &o[5], &o[6], &o[7], lit(flat, Ltop, hf), slot);
     }
 }
+static void far_dot(int x0, int z0, int x1, int z1, int sto, const u8 *wc) {   // very far off: the whole building as one flat rectangle (one point transformed, one primitive)
+    int cx = (x0 + x1) / 2, cz = (z0 + z1) / 2; FV b; fxf(cx, -far_lift, cz, &b);
+    if (b.vz < ZN * 4 || !fv_in(&b)) return;
+    int zw = b.z; if (zw < 64) return;
+    int s16_ = (230 << 14) / zw;                                       // pixels a unit (1/16384)
+    int wp = (MAX(x1 - x0, z0 - z1) * s16_) >> 14, hp = ((sto * WALL_FULL + 40) * s16_) >> 14;
+    if (wp < 1) wp = 1; if (hp < 1) hp = 1;
+    int xa = b.sx - wp / 2, xb = xa + wp, ya = b.sy - hp, yb = b.sy;
+    if (xb < 0 || xa >= SCREEN_W || yb < 0 || ya >= SCREEN_H) return;
+    u32 col = lit(wc, Ls, haze_f(zw));
+    u32 *p = pk(5); if (!p) return;
+    p[1] = 0x28000000u | col; p[2] = FXY(xa, ya); p[3] = FXY(xb, ya); p[4] = FXY(xa, yb); p[5] = FXY(xb, yb);
+    lk(p, 5, far_slot(zw));
+}
 static void far_building(const FB *f, int x0, int z0, int x1, int z1) {
     int pitched = foot[f->lot][4] && f->sto <= 2;
     far_lift = world_gh((x0 + x1) / 2, (z0 + z1) / 2);
@@ -544,7 +558,8 @@ static void draw_buildings(void) {
             int hgt = f->sto * WALL_FULL;
             if (230 * hgt < d * 2) continue;                            // under two pixels tall: lost in the haze
             if (far_detail == 0 && f->sto < 3 && d > M2U(120)) continue;
-            far_building(f, x0, z0, x1, z1);
+            if (d > M2U(300)) { far_lift = world_gh(cx, cz); far_dot(x0, z0, x1, z1, f->sto, wallc[f->col % 10]); far_lift = 0; }   // (far: one rectangle each)
+            else far_building(f, x0, z0, x1, z1);
           }
         }
     }
