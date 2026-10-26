@@ -2596,13 +2596,14 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
             ui_icon(12, y - 2, IC_BOLT, UI_RED); ui_text(28, y, 1, t, UI_INK);
             sprintf(b, "-%d", s->fear[i].pts); ui_badge(306 - ui_tw(1, b) - 10, y - 2, b, UI_RED, UI_WHITE); }
     } else if (panel_tab == 2) {   // SKILLS and PERSONALITY
-        static const char *const skNm[3] = { "COOKING", "BODY", "FUN" };
-        int raw[8] = { s->skill_cook, s->skill_body, s->skill_fun, s->skill_band[0], s->skill_band[1], s->skill_band[2], s->skill_band[3], s->skill_band[4] };
+        static const char *const skNm[7] = { "COOKING", "BODY", "FUN", "LOGIC", "CHARISMA", "CREATIVITY", "MECHANICAL" };
+        int raw[12] = { s->skill_cook, s->skill_body, s->skill_fun, s->skill_logic, s->skill_char, s->skill_creat, s->skill_mech, s->skill_band[0], s->skill_band[1], s->skill_band[2], s->skill_band[3], s->skill_band[4] };
+        static const u32 skCol[7] = { UI_RGB(236, 160, 40), UI_RGB(220, 90, 70), UI_RGB(70, 176, 238), UI_RGB(120, 90, 210), UI_RGB(236, 110, 160), UI_RGB(60, 190, 150), UI_RGB(130, 140, 150) };
         ui_section(12, y0, 294, "SKILLS");
-        for (int i = 0; i < 8; i++) { int y = y0 + 11 + i * 10, lv = wants_skill_level(raw[i]);
-            ui_text(12, y, 1, i < 3 ? skNm[i] : band_skill_name[i - 3], UI_INK); ui_pips(108, y, lv, 10, i < 3 ? UI_AMBER : UI_RED); sprintf(b, "LEVEL %d", lv); ui_text(236, y, 1, b, UI_SOFT); }
-        ui_section(12, y0 + 94, 294, "PERSONALITY");
-        for (int i = 0; i < TR_N; i++) { int y = y0 + 105 + i * 10;
+        for (int i = 0; i < 12; i++) { int col = i < 6 ? 0 : 1, row = i < 6 ? i : i - 6, x = col ? 164 : 12, y = y0 + 11 + row * 10, lv = wants_skill_level(raw[i]);
+            ui_text(x, y, 1, i < 7 ? skNm[i] : band_skill_name[i - 7], UI_INK); ui_bar(x + (col ? 94 : 68), y + 1, col ? 42 : 56, 6, lv * 10, i < 7 ? skCol[i] : UI_RED); sprintf(b, "%d", lv); ui_text(x + (col ? 142 : 128), y, 1, b, UI_SOFT); }
+        ui_section(12, y0 + 74, 294, "PERSONALITY");
+        for (int i = 0; i < TR_N; i++) { int y = y0 + 85 + i * 10;
             ui_text(12, y, 1, look_trait_name(i), UI_INK); ui_pips(108, y, s->bore.tr[i], 10, UI_BLUE); }
     } else if (panel_tab == 3) {   // PEOPLE: how everyone else in the house feels about you (the daily relationship)
         int row = 0;

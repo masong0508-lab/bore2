@@ -25,12 +25,12 @@ static unsigned rs = 7;
 static int rnd(int n) { rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5; return (int)((rs >> 3) % (unsigned)n); }
 static int tsum(void) { return space_tech[0] + space_tech[1] + space_tech[2]; }
 void space_open(int a) { (void)a; st = S_MAIN; sel = 0; msel = 0; anim = 0; line[0] = line2[0] = 0; rs = (unsigned)(cash * 3 + day_count * 17 + 5); }
-static void new_zone(void) { zw = 12 + space_tech[2] * 5 - msel; if (zw < 8) zw = 8; zone = 10 + rnd(80 - zw); mark = rnd(100); dir = rnd(2) ? 1 : -1; tmr = 0; }
+static void new_zone(void) { zw = 12 + space_tech[2] * 5 - msel + wants_skill_level(sims[player].skill_mech) / 2; if (zw < 8) zw = 8; zone = 10 + rnd(80 - zw); mark = rnd(100); dir = rnd(2) ? 1 : -1; tmr = 0; }
 static void start_fly(void) {
     fuelc = MFUEL[msel] * (100 - space_tech[1] * 9) / 100; if (cash < fuelc) { strcpy(line, "NOT ENOUGH CASH FOR FUEL."); return; }
     if (space_cert() < MCERT[msel]) { snprintf(line, sizeof line, "NEEDS: %s", space_cert_name(MCERT[msel])); return; }
     if (tsum() < MNEED[msel]) { strcpy(line, "THE ROCKET IS NOT READY."); return; }
-    cash -= fuelc; stage = 0; burns = 0; rough = 0; boom = 0; line[0] = 0; line2[0] = 0; st = S_FLY; new_zone(); audio_voice(VOICE_YAHOO);
+    cash -= fuelc; sims[player].skill_mech += 30 + msel * 10; sims[player].skill_logic += 20 + msel * 10; stage = 0; burns = 0; rough = 0; boom = 0; line[0] = 0; line2[0] = 0; st = S_FLY; new_zone(); audio_voice(VOICE_YAHOO);
 }
 static void finish_fly(void) {
     st = S_RES; int first = !(space_done & (1 << msel)); res = !boom;
@@ -48,7 +48,7 @@ int space_update(int hd, int pr, int steps) {
         if (pr & PAD_CROSS) { line[0] = 0;
             if (sel == 0) { st = S_MISS; msel = 0; }
             else if (sel == 4) return 0;
-            else { int t = sel - 1, lv = space_tech[t]; if (lv >= 4) strcpy(line, "ALREADY THE BEST."); else if (cash < UCOST[lv]) strcpy(line, "NOT ENOUGH CASH."); else { cash -= UCOST[lv]; space_tech[t]++; sprintf(line, "%s UPGRADED TO %d!", TNM[t], space_tech[t]); audio_voice(VOICE_AGREE); } } }
+            else { int t = sel - 1, lv = space_tech[t]; if (lv >= 4) strcpy(line, "ALREADY THE BEST."); else if (cash < UCOST[lv]) strcpy(line, "NOT ENOUGH CASH."); else { cash -= UCOST[lv]; space_tech[t]++; sims[player].skill_mech += 120; sprintf(line, "%s UPGRADED TO %d!", TNM[t], space_tech[t]); audio_voice(VOICE_AGREE); } } }
         return 1; }
     if (st == S_MISS) { if (pr & PAD_UP) msel = (msel + NM - 1) % NM; if (pr & PAD_DOWN) msel = (msel + 1) % NM; if (pr & PAD_CIRCLE) st = S_MAIN; if (pr & PAD_CROSS) start_fly(); return 1; }
     if (st == S_FLY) {
@@ -56,8 +56,8 @@ int space_update(int hd, int pr, int steps) {
         if (tmr > 0) { tmr -= steps; if (tmr <= 0) { if (++stage >= MSTG[msel] || boom) finish_fly(); else new_zone(); } return 1; }
         if (pr & PAD_CROSS) { int d = ABS(mark - (zone + zw / 2));
             if (d <= zw / 2) { strcpy(line, "PERFECT BURN!"); burns++; }
-            else if (d <= zw) { rough++; if (rnd(100) < space_tech[0] * 16 + 40) strcpy(line, "ROUGH BURN. THE HULL HOLDS."); else { strcpy(line, "ROUGH BURN! THE ROCKET BREAKS UP!"); boom = 1; } }
-            else { if (rnd(100) < space_tech[0] * 14 + 12) { strcpy(line, "A BAD BURN. THE HULL SURVIVES!"); rough++; } else { strcpy(line, "A BAD BURN! BOOM!"); boom = 1; } }
+            else if (d <= zw) { rough++; if (rnd(100) < space_tech[0] * 16 + 40 + wants_skill_level(sims[player].skill_mech) * 2) strcpy(line, "ROUGH BURN. THE HULL HOLDS."); else { strcpy(line, "ROUGH BURN! THE ROCKET BREAKS UP!"); boom = 1; } }
+            else { if (rnd(100) < space_tech[0] * 14 + 12 + wants_skill_level(sims[player].skill_mech)) { strcpy(line, "A BAD BURN. THE HULL SURVIVES!"); rough++; } else { strcpy(line, "A BAD BURN! BOOM!"); boom = 1; } }
             tmr = 50; }
         return 1; }
     if (st == S_RES) { if (pr & (PAD_CROSS | PAD_CIRCLE)) st = S_MAIN; return 1; }

@@ -570,7 +570,8 @@ static void begin_action(Sim *s, int act, int mx, int my) {
 static void chat_done(Sim *s, Sim *o) {   // a finished chat: the relationship grows (more between compatible people), the wants notice
     int me = (int)(s - sims), him = (int)(o - sims), bonus = 0;
     for (int t = 0; t < TR_N; t++) if (ABS((int)s->bore.tr[t] - (int)o->bore.tr[t]) <= 2) bonus++;
-    int was = s->rel[him], now = was + 8 + bonus; if (now > 100) now = 100;
+    s->skill_char += 6;
+    int was = s->rel[him], now = was + 8 + bonus + wants_skill_level(s->skill_char) / 2; if (now > 100) now = 100;
     s->rel[him] = (s8)now; if (o->rel[me] < now) o->rel[me] = (s8)now;
     wants_event(s, W_CHAT, 0); wants_event(s, W_CHAT_WITH, him); sim_moodlet(s, ML_GOOD_CHAT);
     if (was < 50 && now >= 50) { wants_event(s, W_FRIEND, him); if (me == player) { sim_note("YOU MADE A FRIEND"); } sim_moodlet(s, ML_FRIEND); sim_moodlet(o, ML_FRIEND); }
@@ -642,9 +643,9 @@ static void run_action(Sim *s) {
                       if ((s->need[N_COMFY] >> 10) >= 100) s->act_t = 0; break;
         case ACT_FUN: s->need[N_FUN] += GAIN_FUN; s->need[N_COMFY] += 30;
                       if (s->act_var == 5) { s->need[N_SOCIAL] += GAIN_TALK / 2; if (!(s->act_t & 63)) s->gait.wave = 20; }   // (a drink at the bar)
-                      if (s->act_var == 7 && !(s->act_t & 7)) s->skill_fun++;
-                      if (s->act_var >= 8 && s->act_var < 8 + 4) { if (!(s->act_t & 7)) { int k = s->act_var - 8; s->skill_band[k] = MIN(4400, s->skill_band[k] + 4); } s->need[N_FUN] += GAIN_FUN / 2; if (!(s->act_t & 31)) s->gait.wave = 20; } break;
-        case ACT_READ: s->need[N_FUN] += s->act_var == 1 ? GAIN_FUN / 4 : GAIN_FUN / 2; s->skill_fun += s->act_var == 1 ? 3 : 1; break;
+                      if (s->act_var == 7 && !(s->act_t & 7)) { s->skill_fun++; s->skill_creat++; }
+                      if (s->act_var >= 8 && s->act_var < 8 + 4) { if (!(s->act_t & 7)) { int k = s->act_var - 8; s->skill_band[k] = MIN(4400, s->skill_band[k] + 4); s->skill_creat += 2; } s->need[N_FUN] += GAIN_FUN / 2; if (!(s->act_t & 31)) s->gait.wave = 20; } break;
+        case ACT_READ: s->need[N_FUN] += s->act_var == 1 ? GAIN_FUN / 4 : GAIN_FUN / 2; s->skill_fun += s->act_var == 1 ? 3 : 1; s->skill_logic += s->act_var == 1 ? 3 : 1; break;
         case ACT_COFFEE: s->need[N_REST] += s->act_var == 1 ? 320 : 180; s->need[N_WC] -= s->act_var == 1 ? 110 : 60; break;
         case ACT_RUN: s->need[N_FUN] += 120; s->need[N_CLEAN] -= s->act_var ? 160 : 90; s->skill_body += s->act_var == 2 ? 3 : s->act_var == 1 ? 2 : 1; s->gait.amp = 4096; s->gait.run = 1; s->gait.phase = (s->gait.phase + 200) & 4095; break;
         case ACT_GATHER: if (!(s->act_t & 31)) s->gait.wave = 20;   // busy hands; chopping and hauling tire you
@@ -985,7 +986,7 @@ static void care_done(Sim *s) {
 }
 static void homework_done(Sim *s) {
     if (s->homework) return;
-    s->homework = 1; s->grade = (u8)MIN(100, s->grade + 8);
+    s->homework = 1; s->grade = (u8)MIN(100, s->grade + 8); s->skill_logic += 30;
     sim_moodlet(s, ML_HOMEWORK); wants_event(s, W_HOMEWORK, 0);
     if ((int)(s - sims) == player) sim_note(s->grade >= 85 ? "HOMEWORK DONE: STRAIGHT A'S!" : "HOMEWORK DONE");
 }
@@ -1864,8 +1865,8 @@ static void place_do(Sim *s, int code) {
             static u16 day_; static u8 used_[4]; int k = code - PC_GIG; if (day_ != (u16)(day_count + 1)) { day_ = (u16)(day_count + 1); memset(used_, 0, 4); }
             if (used_[k] >= (k == 0 ? 2 : 3)) { sim_note("ENOUGH OF THAT FOR TODAY"); audio_voice(VOICE_NAH); return; }
             if (k == 0 && (s->need[N_REST] >> 10) < 25) { sim_note("TOO TIRED FOR A GIG"); audio_voice(VOICE_NAH); return; }
-            used_[k]++; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = k == 0 ? 420 : 240;
-            if (k == 0) { int pay = 35 + (s->skill_cook + s->skill_fun) / 40; cash += pay; s->need[N_REST] = MAX(0, s->need[N_REST] - (15 << 10)); char b[32]; sprintf(b, "FREELANCE GIG: +$%d", pay); sim_note(b); audio_voice(VOICE_FINISHED); }
+            used_[k]++; if (k == 1) s->skill_logic += 12; if (k == 3) s->skill_char += 12; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = k == 0 ? 420 : 240;
+            if (k == 0) { int pay = 35 + (s->skill_cook + s->skill_fun + s->skill_creat + s->skill_logic) / 60; cash += pay; s->need[N_REST] = MAX(0, s->need[N_REST] - (15 << 10)); char b[32]; sprintf(b, "FREELANCE GIG: +$%d", pay); sim_note(b); audio_voice(VOICE_FINISHED); }
             else if (k == 1) sim_note((day_count + clock_min) & 3 ? "SURFED THE WEB" : "YOU FELL DOWN A WIKI HOLE");
             else if (k == 2) { s->skill_cook += 40; sim_note("A COOKING CLASS ONLINE: COOKING UP"); }
             else { s->need[N_SOCIAL] = MIN(100 << 10, s->need[N_SOCIAL] + (12 << 10)); sim_note("CHATTED ONLINE: FEELING LESS ALONE"); }
@@ -1909,12 +1910,12 @@ static void place_do(Sim *s, int code) {
             if (!pay(tuition[nl])) return; col_on = 1; col_cls = 0; col_gpa = 0; col_study = 0;
             snprintf(b_, sizeof b_, "ENROLLED: %s OF %s", lvlNm[nl], majNm[col_major]); sim_note(b_); sim_note("LECTURES: WEEKDAYS 8 AM TO 5 PM"); audio_voice(VOICE_AGREE); break; }
         case PC_STUDY: { if ((s->need[N_REST] >> 10) < 15) { sim_note("TOO TIRED TO STUDY"); audio_voice(VOICE_NAH); return; }
-            begin_action(s, ACT_READ, pie_mx, pie_my); s->act_t = 300; s->need[N_REST] = MAX(0, s->need[N_REST] - (6 << 10)); col_study = (u8)MIN(40, col_study + 14); sim_note("STUDIED HARD: READY FOR LECTURE"); break; }
+            begin_action(s, ACT_READ, pie_mx, pie_my); s->act_t = 300; s->need[N_REST] = MAX(0, s->need[N_REST] - (6 << 10)); col_study = (u8)MIN(40, col_study + 14); s->skill_logic += 30; sim_note("STUDIED HARD: READY FOR LECTURE"); break; }
         case PC_LECT: { char b_[48];
             if (clock_day >= 5 || clock_min < 8 * 60 || clock_min >= 17 * 60) { sim_note("LECTURES: WEEKDAYS 8 AM TO 5 PM"); audio_voice(VOICE_NAH); return; }
             if ((s->need[N_REST] >> 10) < 20) { sim_note("TOO TIRED FOR LECTURE"); audio_voice(VOICE_NAH); return; }
             begin_action(s, ACT_READ, pie_mx, pie_my); s->act_t = 480; s->need[N_REST] = MAX(0, s->need[N_REST] - (14 << 10));
-            { int sc = 36 + (int)(look_rand() % 26) + MIN(col_study, 36) + (s->mood > 30 ? 5 : 0); if (sc > 100) sc = 100; col_study = col_study > 12 ? (u8)(col_study - 12) : 0;
+            { s->skill_logic += 50; int sc = 36 + (int)(look_rand() % 26) + MIN(col_study, 36) + (s->mood > 30 ? 5 : 0) + wants_skill_level(s->skill_logic); if (sc > 100) sc = 100; col_study = col_study > 12 ? (u8)(col_study - 12) : 0;
               col_gpa = (u8)(((int)col_gpa * col_cls + sc) / (col_cls + 1)); col_cls++; snprintf(b_, sizeof b_, "LECTURE %d OF 8: GPA %d", col_cls, col_gpa); sim_note(b_); }
             if (col_cls >= 8) { col_on = 0;
                 if (col_gpa >= 50) { col_g[col_lvl] = col_gpa; snprintf(b_, sizeof b_, "GRADUATED! %s OF %s", lvlNm[col_lvl], majNm[col_major]); col_lvl++; sim_note(b_); snprintf(b_, sizeof b_, "FINAL GPA %d", col_g[col_lvl - 1]); sim_note(b_); sims[player].mood = MIN(100, sims[player].mood + 60); audio_voice(VOICE_WIN); }
@@ -1931,12 +1932,12 @@ static void place_do(Sim *s, int code) {
             int day = hr >= 6 && hr < 19;   // (daytime is allowed: slow, and the sun is in the sky)
             if (sim_weather()) { sim_note("CLOUDED OUT"); audio_voice(VOICE_NAH); return; }
             if ((s->need[N_REST] >> 10) < 15) { sim_note("TOO TIRED TO STARGAZE"); audio_voice(VOICE_NAH); return; }
-            begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 420; s->need[N_REST] = MAX(0, s->need[N_REST] - (8 << 10)); s->act_var = 0;
+            begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 420; s->need[N_REST] = MAX(0, s->need[N_REST] - (8 << 10)); s->act_var = 0; s->skill_logic += day ? 8 : 20;
             if (day && (int)(look_rand() % 100) < 3 + L * 2) {   // a slip of the scope: straight into the sun
                 sim_moodlet(s, ML_EYES); s->mood = MAX(-100, s->mood - 15); sim_note("OW! YOU LOOKED AT THE SUN!"); sim_note("YOUR EYES ARE BURNED"); sim_say(s, "MY EYES!"); audio_voice(VOICE_SHRIEK); break; }
-            if ((int)(look_rand() % 100) >= (day ? 6 + L * 2 : 30 + L * 8)) { astro_xp = (u16)MIN(60000, astro_xp + (day ? 1 : 2)); sim_note(day ? "THE SKY IS BRIGHT. NOT MUCH TO SEE" : "A QUIET NIGHT. BEAUTIFUL STARS"); break; }
+            if ((int)(look_rand() % 100) >= (day ? 6 + L * 2 : 30 + L * 8) + wants_skill_level(s->skill_logic)) { astro_xp = (u16)MIN(60000, astro_xp + (day ? 1 : 2)); sim_note(day ? "THE SKY IS BRIGHT. NOT MUCH TO SEE" : "A QUIET NIGHT. BEAUTIFUL STARS"); break; }
             if (!day && L >= 1) {   // a mind that has looked up long enough: THEY look back
-                static int last_abd = -99; int logic = astro_xp / 50 + col_lvl * 12 + (col_major == 0 ? col_gpa / 10 : 0), pct = MIN(14, logic / 5);
+                static int last_abd = -99; int pct = MIN(14, wants_skill_level(s->skill_logic) * 3 / 2 + col_lvl * 2);   // (the LOGIC skill: the sharper the mind, the likelier THEY notice)
                 if (pct > 0 && day_count - last_abd >= 4 && (int)(look_rand() % 100) < pct) { last_abd = day_count; int r = (int)(look_rand() % 100); sim_moodlet(s, ML_ABDUCT);
                     sim_note("A BRIGHT LIGHT FROM ABOVE!"); sim_note("YOU ARE ABDUCTED!"); clock_min = MIN(1439, clock_min + 180); astro_xp = (u16)MIN(60000, astro_xp + 40);
                     if (r < 38 && s->bore.stage == AG_ADULT && baby_due < 0 && nsims < MAX_SIMS) {   // a baby, from the stars (whoever you are)
@@ -1955,7 +1956,7 @@ static void place_do(Sim *s, int code) {
         case PC_PETFEED: if (!pay(3)) return; pet_hun = 100; sim_say(s, "GOOD PET!"); sim_note("YUM! YOUR PET IS FED"); break;
         case PC_PETPLAY: s->need[N_FUN] = MIN(s->need[N_FUN] + (12 << 10), 100 << 10); s->need[N_SOCIAL] = MIN(s->need[N_SOCIAL] + (6 << 10), 100 << 10); pet_hun = MAX(0, pet_hun - 4); pet_ph += 900; sim_say(s, "WHO'S A GOOD PET?"); break;
         case PC_ADMIRE: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 7; s->act_t = 200; break;
-        case PC_PAINTING: if (!pay(300)) return; shopped(s, "A PAINTING, JUST FOR YOU", ML_INSPIRED); break;
+        case PC_PAINTING: if (!pay(300)) return; s->skill_creat += 60; shopped(s, "A PAINTING, JUST FOR YOU", ML_INSPIRED); break;
         case PC_ROOM: if (room_here()) { sim_note("YOUR ROOM IS PAID TILL NOON"); return; }
                       if (!pay(60)) return; room_bx = pie_pi.bx; room_by = pie_pi.by; room_until = (day_count + 1) * 1440 + 12 * 60;
                       sim_note("A ROOM TILL NOON TOMORROW"); audio_voice(VOICE_YAHOO); break;
@@ -2155,6 +2156,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
         sv_u32((u32)s->x); sv_u32((u32)s->z); sv_u16(s->yaw);
         for (int k = 0; k < NEED_N; k++) sv_u32((u32)s->need[k]);
         sv_u8(s->mood + 100); sv_u8(s->ai); sv_u16(s->skill_cook); sv_u16(s->skill_body); sv_u16(s->skill_fun); sv_u8(s->dead); sv_u8(s->grump); for (int k = 0; k < BS_N; k++) sv_u16((u16)s->skill_band[k]);   // (version 24)
+        sv_u16((u16)s->skill_logic); sv_u16((u16)s->skill_char); sv_u16((u16)s->skill_creat); sv_u16((u16)s->skill_mech);   // (version 32)
         for (int k = 0; k < 4; k++) { sv_u8(s->want[k].kind); sv_u8(s->want[k].arg); sv_u16(s->want[k].pts); sv_u16(s->want[k].age); }
         for (int k = 0; k < 2; k++) { sv_u8(s->fear[k].kind); sv_u8(s->fear[k].arg); sv_u16(s->fear[k].pts); sv_u16(s->fear[k].age); }
         sv_u16(s->asp_pts); sv_n(s->rel, MAX_SIMS); sv_u8(s->lvl);
@@ -2192,6 +2194,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
         s->x = (int)ld_u32(); s->z = (int)ld_u32(); s->yaw = ld_u16();
         for (int k = 0; k < NEED_N; k++) s->need[k] = (int)ld_u32();
         s->mood = ld_u8() - 100; s->ai = ld_u8(); s->skill_cook = ld_u16(); s->skill_body = ld_u16(); s->skill_fun = ld_u16(); s->dead = ld_u8(); s->grump = (u8)ld_u8(); for (int k = 0; k < BS_N; k++) s->skill_band[k] = save_ver >= 24 ? ld_u16() : 0;
+        if (save_ver >= 32) { s->skill_logic = ld_u16(); s->skill_char = ld_u16(); s->skill_creat = ld_u16(); s->skill_mech = ld_u16(); } else s->skill_logic = s->skill_char = s->skill_creat = s->skill_mech = 0;
         for (int k = 0; k < 4; k++) { s->want[k].kind = (u8)ld_u8(); s->want[k].arg = (u8)ld_u8(); s->want[k].pts = (u16)ld_u16(); s->want[k].age = (u16)ld_u16(); }
         for (int k = 0; k < 2; k++) { s->fear[k].kind = (u8)ld_u8(); s->fear[k].arg = (u8)ld_u8(); s->fear[k].pts = (u16)ld_u16(); s->fear[k].age = (u16)ld_u16(); }
         s->asp_pts = ld_u16(); ld_n(s->rel, save_ver >= 22 ? MAX_SIMS : 6); s->lvl = (u8)ld_u8();

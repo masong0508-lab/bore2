@@ -29,6 +29,7 @@ typedef struct {
     char note[24]; int note_t;   // a floating note over the head
     int  hurt_t;
     int  skill_cook, skill_body, skill_fun;
+    int  skill_logic, skill_char, skill_creat, skill_mech;   // LOGIC (reading, study, lectures, the stars), CHARISMA (chats), CREATIVITY (art, music), MECHANICAL (rockets, repairs)
     int  skill_band[5];     // SUPERSTAR: voice, guitar/bass, keys, drums/percussion, dancing (counters like the others: 400 a level, 0..10)
     int  dead;
     u8   rage, rage_ko;      // after you in a fight (citizens.c); knocked down by you
