@@ -4134,20 +4134,24 @@ static void worlds_draw(void) {
         int c0 = CLAMP(wo_msel / 2 - 2, 0, (WO_NMORE + 1) / 2 - 5);   // (five columns show, and slide along)
         for (int i = 0; i < WO_NMORE; i++) {
             int col = i / 2 - c0; if (col < 0 || col > 4) continue;
-            int x = 14 + col * 59, y = top + 2 + (i & 1) * 80, on = i == wo_msel;
-            ui_round(x, y, 56, 76, 5, on ? UI_RGB(255, 236, 150) : UI_WHITE, on ? UI_RGB(255, 204, 70) : UI_RGB(214, 222, 236), 0);
-            ui_icon_disc(x + 28, y + 24, 30, mic[i], EX_PLAYABLE(i) ? UI_BLUE2 : UI_SOFT, UI_WHITE);
+            int x = 14 + col * 59, y = top + 1 + (i & 1) * 76, on = i == wo_msel;
+            ui_round(x, y, 56, 72, 5, on ? UI_RGB(255, 236, 150) : UI_WHITE, on ? UI_RGB(255, 204, 70) : UI_RGB(214, 222, 236), 0);
+            ui_round(x + 7, y + 3, 42, 42, 21, EX_PLAYABLE(i) ? UI_RGB(255, 204, 70) : UI_LINE, EX_PLAYABLE(i) ? UI_RGB(255, 204, 70) : UI_LINE, 0);
+            ui_icon_disc(x + 28, y + 24, 36, mic[i], EX_PLAYABLE(i) ? UI_BLUE2 : UI_SOFT, UI_WHITE);
             { char t[24]; strncpy(t, moreCard[i], 23); t[23] = 0; char *ln[3]; int nl = 0; ln[nl++] = t; for (char *q = t; *q && nl < 3; q++) if (*q == '|') { *q = 0; ln[nl++] = q + 1; }
-              int ty = y + 46; if (nl == 1) ty += 6; for (int k = 0; k < nl; k++) ui_textc(x + 28, ty + k * 10, 1, ln[k], UI_INK); }
-            if (pk_have[i] == 2) ui_badge(x + 6, y + 66, "NOT ADDED", UI_BADT, UI_WHITE);
-            else if (pk_have[i] == 1) ui_badge(x + 14, y + 66, "ADDED", UI_RGB(60, 170, 80), UI_WHITE);
-            if (i == 9) ui_badge(x + 14, y + 66, sim_seasons_on ? "ON" : "OFF", sim_seasons_on ? UI_RGB(60, 170, 80) : UI_BADT, UI_WHITE);
+              int ty = y + 48; if (nl == 1) ty += 5; for (int k = 0; k < nl; k++) ui_textc(x + 28, ty + k * 10, 1, ln[k], UI_INK); }
+            { int st = i == 9 ? (sim_seasons_on ? 1 : 3) : pk_have[i];   // (a round mark on the icon's corner: a tick is in, a padlock is not on this disc)
+              if (st == 1) ui_icon_disc(x + 46, y + 9, 14, IC_TICK, UI_RGB(60, 170, 80), UI_WHITE);
+              else if (st == 2) ui_icon_disc(x + 46, y + 9, 14, IC_LOCK, UI_BADT, UI_WHITE);
+              else if (st == 3) ui_icon_disc(x + 46, y + 9, 14, IC_LOCK, UI_SOFT, UI_WHITE); }
         }
         if (c0 > 0) ui_text(6, top + 76, 1, "<", UI_INK);
         if (c0 + 5 < (WO_NMORE + 1) / 2) ui_text(308 - 6, top + 76, 1, ">", UI_INK);
-        ui_textc(160, top + 160, 1, moreNm[wo_msel], UI_BLUE2);
-        ui_textc(160, top + 172, 1, pk_have[wo_msel] == 2 ? "NOT ADDED: PATCH IT ON WITH ITS BORE2 PACK .PPF" : moreBlurb[wo_msel], EX_PLAYABLE(wo_msel) && pk_have[wo_msel] != 2 ? UI_INK : UI_SOFT);
-        ui_hints(160, 214, wo_msel == 0 ? "X OPEN THE CREATOR|ARROWS MOVE|O BACK" : wo_msel == 1 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 6 ? "X THE GUIDE|ARROWS MOVE|O BACK" : wo_msel == 9 ? "X ON OR OFF|ARROWS MOVE|O BACK" : "ARROWS MOVE|O BACK", 1);
+        { int st = wo_msel == 9 ? (sim_seasons_on ? 1 : 3) : pk_have[wo_msel];
+          ui_round(10, top + 152, 300, 42, 5, UI_PANEL, UI_LINE, 0);
+          ui_textc(160, top + 156, 1, moreNm[wo_msel], UI_BLUE2);
+          ui_wrapc(16, top + 167, 288, 2, st == 2 ? "NOT ON THIS DISC. PATCH IT ON WITH ITS BORE2 PACK .PPF" : moreBlurb[wo_msel], EX_PLAYABLE(wo_msel) && st != 2 ? UI_INK : UI_SOFT); }
+        ui_hints(160, 218, wo_msel == 0 ? "X OPEN THE CREATOR|ARROWS MOVE|O BACK" : wo_msel == 1 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 6 ? "X THE GUIDE|ARROWS MOVE|O BACK" : wo_msel == 9 ? "X ON OR OFF|ARROWS MOVE|O BACK" : "ARROWS MOVE|O BACK", 1);
         return;
     }
     // the tabs
