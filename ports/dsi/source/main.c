@@ -120,7 +120,7 @@ static void qd(int x0, int y0, int z0, int x1, int y1, int z1, int x2, int y2, i
     if (lit_on) {   // lit: set the material from the colour, then the normal (which computes the lit colour); no glColor after it
         float ux = (float)(x1 - x0), uy = (float)(y0 - y1), uz = (float)(z1 - z0), vx = (float)(x3 - x0), vy = (float)(y0 - y3), vz = (float)(z3 - z0);
         float nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, l = nx * nx + ny * ny + nz * nz;
-        glMaterialf(GL_DIFFUSE, (u16)(c | BIT(15))); glMaterialf(GL_AMBIENT, (u16)(RGB15(((c & 31) * 6) >> 3, (((c >> 5) & 31) * 6) >> 3, (((c >> 10) & 31) * 6) >> 3)));
+        glMaterialf(GL_DIFFUSE, (u16)(c | BIT(15))); glMaterialf(GL_AMBIENT, (u16)(RGB15(((c & 31) * 11) >> 4, (((c >> 5) & 31) * 11) >> 4, (((c >> 10) & 31) * 11) >> 4)));
         if (l > 0) { float k = 511.0f * lit_sgn / __builtin_sqrtf(l); glNormal(NORMAL_PACK((int)(nx * k), (int)(ny * k), (int)(nz * k))); }
     } else glColor(c);
     glVertex3v16(x0, -y0, z0); glVertex3v16(x1, -y1, z1); glVertex3v16(x2, -y2, z2); glVertex3v16(x3, -y3, z3); polys += 2;
@@ -148,7 +148,6 @@ static void tree(int x, int z, int s) {   // a trunk, three tiers of leaves, a b
     block(x - s / 8, z - s / 8, x + s / 8, z + s / 8, 0, -s * 5 / 10, C15(13, 8, 4), C15(13, 8, 4));
     block(x - s / 2, z - s / 2, x + s / 2, z + s / 2, -s * 4 / 10, -s * 7 / 10, C15(4, 15, 5), C15(6, 19, 6));
     block(x - s * 36 / 100, z - s * 36 / 100, x + s * 36 / 100, z + s * 36 / 100, -s * 7 / 10, -s * 95 / 100, C15(5, 17, 5), C15(8, 22, 7));
-    block(x - s / 5, z - s / 5, x + s / 5, z + s / 5, -s * 95 / 100, -s * 115 / 100, C15(7, 20, 6), C15(11, 26, 9));
 }
 static void person(int x, int z, u16 c, int yaw) {   // a person: one quad that faces the camera
     int s = T, hx = (s * sinLerp(yaw)) >> 13, hz = (s * cosLerp(yaw)) >> 13;
@@ -195,7 +194,7 @@ static const Item ITEMS[5][4] = {
     { {"Bed", 800, 2, C15(20, 24, 31), 0}, {"Bathtub", 650, 2, C15(28, 30, 31), 0}, {"Toilet", 250, 2, C15(30, 30, 30), 0}, {"Sink", 200, 3, C15(26, 28, 30), 0} } };
 static const char *const CATN[5] = { "Seats", "Tables", "Tech", "Deco", "Rooms" };
 static const u16 FLOORC[5] = { C15(22, 16, 9), C15(26, 26, 24), C15(10, 16, 24), C15(14, 22, 12), C15(8, 8, 10) };
-static const u16 WALLC[4] = { C15(30, 28, 22), C15(28, 20, 16), C15(20, 24, 30), C15(30, 30, 30) };
+static const u16 WALLC[5] = { C15(30, 28, 22), C15(28, 20, 16), C15(20, 24, 30), C15(30, 30, 30), C15(13, 8, 5) };   // 5 = a door
 static int mark_x = -1, mark_y, mark_t;
 static void set_mode(int m);
 static int cas_mult = 1;
@@ -223,9 +222,9 @@ static const char *const FACEN[6] = { "Classic", "Round", "Long", "Big Eyes", "S
 static void say(const char *m) { msg = m; msg_t = 90; }
 static int obj_at(int x, int y) { for (int i = 0; i < nobj; i++) if (objs[i].x == x && objs[i].y == y) return i; return -1; }
 static int spawn_x[3], spawn_y[3];
-static void gen_house(void) {   // a well-formed starter home from the lot's seed: bedroom + bathroom at the back, living room + kitchen/dining at the front, doors between, a front door, furnished
-    u32 h = lot_seed * 2654435761u + 12345; int mir = (h >> 3) & 1, w = 9 + ((h >> 5) & 1) * 2, d = 7 + ((h >> 6) & 1), x0 = 1 + ((h >> 7) & 1), y0 = 2, x1 = x0 + w, y1 = y0 + d;
-    int ym = y0 + 4, xm = x0 + w * 55 / 100, xk = x0 + 5, xd = xk - 2; u8 ow = (u8)(1 + ((h >> 9) & 3)), iw = 4;
+static void gen_house(void) {   // a roomy starter home from the lot's seed: bedroom + bathroom at the back, living room + kitchen/dining at the front, real doors between, furnished with space to walk
+    u32 h = lot_seed * 2654435761u + 12345; int mir = (h >> 3) & 1, w = 11 + ((h >> 5) & 1), d = 9, x0 = ((h >> 7) & 1), y0 = 1, x1 = x0 + w, y1 = y0 + d;
+    int ym = y0 + 4, xm = x0 + 7, xk = x0 + 7, xd = x0 + 3; u8 ow = (u8)(1 + ((h >> 9) & 3)), iw = 4;
     #define MC(xx) (mir ? x0 + x1 - 1 - (xx) : (xx))
     #define ME(ee) (mir ? x0 + x1 - (ee) : (ee))
     #define FL(xa, ya, xb, yb, t) for (int yy = (ya); yy < (yb); yy++) for (int xx = (xa); xx < (xb); xx++) flr[yy][MC(xx)] = (u8)(t)
@@ -234,15 +233,16 @@ static void gen_house(void) {   // a well-formed starter home from the lot's see
     for (int y = y0; y < y1; y++) { vwl[y][ME(x0)] = ow; vwl[y][ME(x1)] = ow; }
     for (int x = x0; x < x1; x++) hwl[ym][MC(x)] = iw;
     for (int y = y0; y < ym; y++) vwl[y][ME(xm)] = iw;
-    hwl[ym][MC(x0 + 1)] = 0; hwl[ym][MC(xm + 1)] = 0;
-    hwl[y1][MC(xd)] = 0;
+    for (int y = ym; y < y1; y++) if (y != ym + 2) vwl[y][ME(xk)] = 0;   // living room and kitchen share one open space
+    hwl[ym][MC(x0 + 2)] = 5; hwl[ym][MC(xm + 1)] = 5;                       // bedroom door, bathroom door
+    hwl[y1][MC(xd)] = 5;                                                    // the front door
     #define PUT(xx, yy, cc, ii, rr) do { objs[nobj].x = (u8)MC(xx); objs[nobj].y = (u8)(yy); objs[nobj].c = (cc); objs[nobj].i = (ii); objs[nobj].rot = (u8)(mir && ((rr) & 1) ? (rr) ^ 2 : (rr)); nobj++; } while (0)
-    PUT(x0, y0, 4, 0, 0); PUT(x0 + 1, y0, 3, 0, 0); PUT(xm - 1, y0, 1, 1, 0); PUT(x0 + 1, y0 + 2, 3, 1, 0); PUT(xm - 1, ym - 1, 3, 2, 0);
-    PUT(xm, y0, 4, 2, 0); PUT(xm + 1, y0, 4, 3, 0); PUT(x1 - 1, y0, 4, 1, 0);
-    PUT(x0, ym + 1, 2, 0, 1); PUT(x0 + 2, ym + 1, 1, 2, 0); PUT(x0 + 3, ym + 1, 0, 2, 3); PUT(x0 + 2, y1 - 1, 0, 1, 2); PUT(x0, y1 - 1, 3, 2, 0); PUT(x0 + 1, ym, 3, 0, 0);
-    PUT(xk, ym, 2, 3, 0); PUT(xk + 1, ym, 1, 3, 0); PUT(xk + 2, ym, 1, 3, 0); PUT(xk + 1, ym + 2, 1, 0, 0); PUT(xk, ym + 2, 0, 0, 1); PUT(xk + 2, ym + 2, 0, 0, 3);
-    PUT(x0, y0 + 3, 2, 1, 1);
-    pcx = MC(xd); pcy = y1 + 1; { static const int sp[3] = { 1, 3, 4 }; for (int k = 0; k < 3; k++) { spawn_x[k] = MC(x0 + sp[k]); spawn_y[k] = y1 - 2; } }
+    PUT(x0, y0, 4, 0, 0); PUT(x0 + 1, y0, 3, 0, 0); PUT(xm - 1, y0, 1, 1, 0); PUT(x0 + 3, y0 + 2, 3, 1, 0); PUT(xm - 1, ym - 1, 3, 2, 0); PUT(x0, ym - 1, 3, 3, 0);   // bed, lamp, desk+computer, rug, plant, statue
+    PUT(xm, y0, 4, 2, 0); PUT(xm + 1, y0, 4, 3, 0); PUT(x1 - 1, y0, 4, 1, 0); PUT(x1 - 1, ym - 1, 3, 2, 0);                                                        // toilet, sink, bathtub, plant
+    PUT(x0, ym + 2, 2, 0, 1); PUT(x0 + 3, ym + 2, 0, 2, 3); PUT(x0 + 2, ym + 2, 1, 2, 0); PUT(x0 + 2, y1 - 1, 0, 1, 2); PUT(x0, y1 - 1, 3, 2, 0); PUT(x0, ym, 3, 0, 0); PUT(x0 + 5, y1 - 1, 3, 1, 0);   // tv, sofa, coffee table, armchair, plant, lamp, rug
+    PUT(xk, ym, 2, 3, 0); PUT(xk + 1, ym, 1, 3, 0); PUT(xk + 2, ym, 1, 3, 0); PUT(xk + 2, ym + 3, 1, 0, 0); PUT(xk + 1, ym + 3, 0, 0, 1); PUT(xk + 3, ym + 3, 0, 0, 3);   // fridge, counters, dining table and two chairs
+    PUT(x0 + 5, y0 + 3, 2, 2, 1);                                           // a stereo
+    pcx = MC(xd); pcy = y1 + 1; { static const int sp[3] = { 1, 4, 5 }; for (int k = 0; k < 3; k++) { spawn_x[k] = MC(x0 + sp[k]); spawn_y[k] = y1 - 3; } }
     #undef PUT
     #undef FL
 }
@@ -294,7 +294,7 @@ static void draw_ui(void) {
         plan(1);
         const char *tl2[5] = { "Floor", "Wall", "Erase", "Move", "Sell" };
         for (int i = 0; i < 5; i++) button(164, 22 + i * 17, 88, 15, tl2[i], C15(24, 14, 8), tool == i);
-        int n = tool == 0 ? 5 : tool == 1 ? 4 : 0;
+        int n = tool == 0 ? 5 : tool == 1 ? 5 : 0;
         for (int i = 0; i < n; i++) { rect(164 + i * 17, 112, 15, 15, pal == i + 1 ? 0xFFFF : C15(2, 2, 4)); rect(166 + i * 17, 114, 11, 11, tool == 0 ? FLOORC[i] : WALLC[i]); }
         text(164, 134, 1, C15(20, 24, 28), tool == 1 ? "Drag along edges" : tool == 3 ? "Drag furniture" : tool == 4 ? "Tap furniture" : "Drag to paint");
     }
@@ -332,8 +332,8 @@ static void ui_down(int tx, int ty) {
         if (hit(164, 90, 88, 22, tx, ty)) prot = (prot + 1) & 3;
         if (hit(164, 120, 88, 22, tx, ty)) pick = -1;
     } else if (mode == M_BUILD) {
-        for (int i = 0; i < 5; i++) if (hit(164, 22 + i * 17, 88, 15, tx, ty)) { tool = i; if (pal < 1) pal = 1; if (tool == 1 && pal > 4) pal = 4; }
-        int n = tool == 0 ? 5 : tool == 1 ? 4 : 0;
+        for (int i = 0; i < 5; i++) if (hit(164, 22 + i * 17, 88, 15, tx, ty)) { tool = i; if (pal < 1) pal = 1; if (tool == 1 && pal > 5) pal = 5; }
+        int n = tool == 0 ? 5 : tool == 1 ? 5 : 0;
         for (int i = 0; i < n; i++) if (hit(164 + i * 17, 112, 15, 15, tx, ty)) pal = i + 1;
         int c = lot_touch(tx, ty);
         if (c >= 0) { int x = c % GN, y = c / GN; pcx = x; pcy = y;
@@ -392,17 +392,37 @@ static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every
     case 19: ob(32, 24, 48, 48, 0, 20, d); ob(10, 14, 70, 56, 20, 26, c); ob(18, 20, 62, 50, 26, 27, LC(8, 20, 30)); ob(36, 8, 44, 16, 26, 38, LC(20, 20, 22)); break;   // sink on a pedestal
     default: ob(4, 4, 76, 76, 0, it->h * 10, c); break; }
 }
+static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, int wh) {   // one wall piece (or a door) on a cell edge; vert: it runs along z
+    u16 c = WALLC[v - 1], cap = shade(c, 10), base = shade(c, 6), frame = C15(11, 7, 4); int th = T / 16, ps = T / 6;
+    if (v == 5) {   // a door: two posts, a lintel, and the leaf swung open
+        u16 lf = C15(17, 11, 6);
+        if (!vert) {
+            block(x0, z0, x0 + ps, z1, -40, -wh, frame, shade(frame, 10)); block(x1 - ps, z0, x1, z1, -40, -wh, frame, shade(frame, 10));
+            block(x0 + ps, z0, x1 - ps, z1, -T * 3 / 2, -wh, c, cap); block(x0 + ps, z0 + 2, x1 - ps, z1 - 2, -40, -45, shade(frame, 7), shade(frame, 9));
+            block(x0 + ps, z0 - T * 9 / 10, x0 + ps + th, z0, -40, -T * 3 / 2, lf, shade(lf, 10)); block(x0 + ps + th, z0 - T / 8, x0 + ps + th + 18, z0 - T / 8 + 18, -T * 3 / 4, -T * 3 / 4 - 18, C15(30, 26, 8), C15(31, 28, 10));
+        } else {
+            block(x0, z0, x1, z0 + ps, -40, -wh, frame, shade(frame, 10)); block(x0, z1 - ps, x1, z1, -40, -wh, frame, shade(frame, 10));
+            block(x0, z0 + ps, x1, z1 - ps, -T * 3 / 2, -wh, c, cap); block(x0 + 2, z0 + ps, x1 - 2, z1 - ps, -40, -45, shade(frame, 7), shade(frame, 9));
+            block(x0 - T * 9 / 10, z0 + ps, x0, z0 + ps + th, -40, -T * 3 / 2, lf, shade(lf, 10));
+        }
+        return; }
+    block(x0 - 3, z0 - 3, x1 + 3, z1 + 3, -40, -40 - T / 7, base, shade(base, 9));                       // skirting board
+    block(x0, z0, x1, z1, -40 - T / 7, -wh, c, cap);                                                       // the wall, with a pale cap
+    (void)vert; (void)th;
+}
 static void draw_build(int yaw) {
     for (int z = 0; z < GN; z++) for (int x = 0; x < GN; x++) ground(tl(x * 2), tl(z * 2), tl(x * 2 + 2), tl(z * 2 + 2), 0, (((x + z) & 1) && o_chk) ? C15(9, 18, 7) : C15(11, 20, 8));
     ground(tl(-2), tl(-2), tl(GN * 2 + 2), tl(0), 0, C15(8, 8, 9)); ground(tl(-2), tl(GN * 2), tl(GN * 2 + 2), tl(GN * 2 + 2), 0, C15(8, 8, 9));
-    ground(tl(-14), tl(-8), tl(GN * 2 + 14), tl(GN * 2 + 12), 20, C15(7, 16, 6));   // grass all round, so the lot does not float
-    for (int i = 0; i < 9; i++) { tree(tl(-6 + (i * 7) % 5 * 1), tl(2 + i * 3), T * 2); tree(tl(GN * 2 + 3 - (i * 5) % 4), tl(1 + i * 3), T * 2); }
+    ground(tl(-14), tl(-8), tl(GN * 2 + 14), tl(GN * 2 + 12), 90, C15(7, 16, 6));   // grass all round, so the lot does not float
+    for (int i = 0; i < 5; i++) { tree(tl(-6 + (i * 7) % 5 * 1), tl(2 + i * 5), T * 2); tree(tl(GN * 2 + 3 - (i * 5) % 4), tl(1 + i * 5), T * 2); }
     for (int x = 0; x < GN * 2; x += 2) { block(tl(x), tl(GN * 2 + 1), tl(x) + T / 5, tl(GN * 2 + 1) + T / 5, 0, -T / 2, C15(28, 26, 20), C15(28, 26, 20)); }   // a picket fence at the back
     ground(tl(11), tl(GN * 2 - 4), tl(13), tl(GN * 2), -30, C15(18, 18, 18));   // a path from the street
     for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) if (flr[y][x]) ground(tl(x * 2), tl(y * 2), tl(x * 2 + 2), tl(y * 2 + 2), -40, FLOORC[flr[y][x] - 1]);
-    int wh = 2 * T;   // low walls, so you can see in
-    for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) if (hwl[y][x]) block(tl(x * 2), tl(y * 2) - T / 8, tl(x * 2 + 2), tl(y * 2) + T / 8, -40, -wh, WALLC[hwl[y][x] - 1], WALLC[hwl[y][x] - 1]);
-    for (int y = 0; y < GN; y++) for (int x = 0; x <= GN; x++) if (vwl[y][x]) block(tl(x * 2) - T / 8, tl(y * 2), tl(x * 2) + T / 8, tl(y * 2 + 2), -40, -wh, WALLC[vwl[y][x] - 1], WALLC[vwl[y][x] - 1]);
+    int wh = 2 * T, th = T / 16;   // thin walls (a skirting board, the wall, a pale cap) and proper doors
+    for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) { int v = hwl[y][x]; if (!v) continue; int e = x + 1; if (v != 5) while (e < GN && hwl[y][e] == v) e++;   // runs of the same wall are one piece (the polygon budget)
+        wall_seg(tl(x * 2) - th - 4, tl(y * 2) - th, tl(e * 2) + th + 4, tl(y * 2) + th, v, 0, wh); x = e - 1; }
+    for (int x = 0; x <= GN; x++) for (int y = 0; y < GN; y++) { int v = vwl[y][x]; if (!v) continue; int e = y + 1; if (v != 5) while (e < GN && vwl[e][x] == v) e++;
+        wall_seg(tl(x * 2) - th, tl(y * 2) - th - 12, tl(x * 2) + th, tl(e * 2) + th + 12, v, 1, wh); y = e - 1; }
     for (int i = 0; i < nobj; i++) obj3d(objs[i].x, objs[i].y, &ITEMS[objs[i].c][objs[i].i], objs[i].rot, 0);
     for (int i = 0; i < 3; i++) sim3d(i, yaw);
     if (mode == M_LIVE && mark_t > 0) { ground(tl(mark_x * 2), tl(mark_y * 2), tl(mark_x * 2 + 2), tl(mark_y * 2 + 2), -60, C15(31, 31, 12)); mark_t--; }
@@ -421,7 +441,7 @@ static const Act ACT[5][4] = {
     { {"Look", 1, 3, 30}, {"Look", 1, 3, 30}, {"Water", 1, 10, 60}, {"Admire", 1, 15, 60} },
     { {"Sleep", 2, 90, 240}, {"Bathe", 5, 90, 180}, {"Use", 4, 95, 100}, {"Wash", 5, 30, 80} } };
 static const char *const NEEDN[6] = { "Hunger", "Fun", "Energy", "Social", "Bladder", "Hygiene" };
-static int menu_open, popup, popup_i, speed = 1, yaw_t = 4096, live_yaw = 4096, live_dist = 7000, camx, camz, cas_tab, cas_done, cas_stage, cas_page;
+static int menu_open, popup, popup_i, speed = 1, yaw_t = 4096, live_yaw = 4096, live_dist = 9500, camx, camz, cas_tab, cas_done, cas_stage, cas_page;
 static const u16 BG_L = C15(18, 25, 31), PAN = C15(8, 16, 28), PANB = C15(2, 7, 20), PANH = C15(5, 12, 26), TXT = C15(31, 31, 31);
 
 static void panel(int x, int y, int w, int h, const char *title) {
@@ -988,7 +1008,7 @@ int main(void) {
             if (cam_on) {   // stylus camera: drag to orbit/tilt (or pan), buttons for zoom, follow, reset, done
                 if (down & KEY_TOUCH) { cam_drag = 0; if (hit(216, 36, 38, 20, tp.px, tp.py)) { cam_pan ^= 1; forced = 1; } else if (hit(216, 58, 38, 20, tp.px, tp.py)) cam_drag = 1;
                     else if (hit(216, 80, 38, 20, tp.px, tp.py)) cam_drag = 2; else if (hit(216, 102, 38, 20, tp.px, tp.py)) { cam_free ^= 1; forced = 1; }
-                    else if (hit(216, 124, 38, 20, tp.px, tp.py)) { live_yaw = yaw_t = 4096; live_pitch = 4800; live_dist = 7000; cam_free = 0; forced = 1; }
+                    else if (hit(216, 124, 38, 20, tp.px, tp.py)) { live_yaw = yaw_t = 4096; live_pitch = 4800; live_dist = 9500; cam_free = 0; forced = 1; }
                     else if (hit(216, 146, 38, 20, tp.px, tp.py)) { cam_on = 0; forced = 1; } else cam_drag = 3; cam_lx = tp.px; cam_ly = tp.py; }
                 else if (held & KEY_TOUCH) { int ddx = tp.px - cam_lx, ddy = tp.py - cam_ly; cam_lx = tp.px; cam_ly = tp.py;
                     if (cam_drag == 1) { if (live_dist > 3500) live_dist -= 70; } else if (cam_drag == 2) { if (live_dist < 16000) live_dist += 70; }
@@ -1034,14 +1054,14 @@ int main(void) {
         }
         if (o_dirty) apply_opts();
         polys = 0;
-        glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluPerspectivef32(degreesToAngle(50), 256 * 4096 / 192, 4096 / 8, 4096 * 40);
+        glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluPerspectivef32(degreesToAngle(50), 256 * 4096 / 192, 4096 * 3 / 4, 4096 * 12);
         glMatrixMode(GL_POSITION); glLoadIdentity();
         glTranslatef32(0, 0, -dist); glRotateXi(pitch); glRotateYi(yaw);
         if (mode == M_LIVE) glTranslatef32(-camx, 0, -camz); else if (mode == M_CAS) glTranslatef32(0, -650, 0);
         lit_on = o_lit && mode != M_TITLE && mode != M_MAP;
         glPolyFmt(POLY_ALPHA(31) | POLY_CULL_NONE | POLY_ID(1) | (lit_on ? (POLY_FORMAT_LIGHT0 | POLY_FORMAT_LIGHT1) : 0));
         if (lit_on) { glMaterialf(GL_SPECULAR, RGB15(0, 0, 0)); glMaterialf(GL_EMISSION, RGB15(0, 0, 0));
-            glLight(0, RGB15(31, 29, 25), floattov10(0.45f), floattov10(-0.55f), floattov10(-0.70f)); glLight(1, RGB15(9, 12, 20), floattov10(-0.7f), floattov10(0.1f), floattov10(0.7f)); }
+            glLight(0, RGB15(27, 25, 21), floattov10(0.45f), floattov10(-0.55f), floattov10(-0.70f)); glLight(1, RGB15(7, 10, 17), floattov10(-0.7f), floattov10(0.1f), floattov10(0.7f)); }
         glBegin(GL_QUADS);
         if (mode == M_CAS) draw_head(yaw);
         else if (mode == M_TITLE) {}

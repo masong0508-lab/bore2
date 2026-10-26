@@ -62,3 +62,6 @@ Real DS hardware lighting (key + fill light, per-face normals) on the Create-a-S
 
 ## D12
 Better Sim models in the lot (shoes, belt, collar, sleeves, hands, ears, eyes, brows, nose, mouth, hair fringes; they turn to face where they walk and swing arms and legs). Layered trees, house doors/windows/chimney, grass all round the lot, fence, path. Camera: LIVE has D-pad turn/tilt, L/R snap, X/Y zoom, SELECT follow/free, and a stylus Cam panel (drag to orbit/tilt, Pan mode, zoom, follow/free, reset). BUY/BUILD have camera buttons (turn, tilt, zoom, reset) on the bottom screen plus L/R, X/Y.
+
+## D13
+Thin walls (skirting board + wall + pale cap, merged into runs to save polygons), real doors (posts, lintel, swung leaf; Build > Wall palette has a Door), roomier generated house (12x9, open living/kitchen, bedroom + bath with doors). Fixed z-fighting lines (near plane, layer offsets, wall corner overlaps), blown-out lamp (softer light), and the polygon-budget bug that hid furniture. Note: sims do not yet collide with walls.
