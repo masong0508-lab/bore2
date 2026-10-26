@@ -219,6 +219,12 @@ static void bm_block0(int bx, int by, BInfo *b) {
         int pk = packed();
         const u8 *mix = s->kind == ST_VILLAGE ? (pk ? mixVilP : mixVil) : (s->kind == ST_CITY && q < 64) ? (pk ? mixCoreP : mixCore) : q < 170 ? (pk ? mixMidP : mixMid) : (pk ? mixOutP : mixOut);
         b->lot = (u8)pick(b->h >> 4, mix);
+        if (bm_gen >= 4) {                                 // (worlds from now on) gas stations and corner stores on some empty lots and shop lots
+            unsigned g = (b->h >> 20) % 100u;
+            if (b->lot == LOT_EMPTY && g < 42) b->lot = (u8)(g < 24 ? LOT_GAS : LOT_CONV);
+            else if (b->lot == LOT_SHOP && g < 16) b->lot = LOT_CONV;
+            else if (b->lot == LOT_DINER && g < 8) b->lot = LOT_GAS;
+        }
         if (b->terrain == BT_BEACH && b->lot == LOT_FARM) b->lot = LOT_PARK;
         return;
     }
@@ -290,10 +296,10 @@ int bm_storeys(const BInfo *b) {
 int bm_units(const BInfo *b) {
     switch (b->lot) { case LOT_TOWN: return 2; case LOT_HOUSE: case LOT_COTTAGE: case LOT_TWO: return 1; case LOT_APART: return 2 * bm_storeys(b); default: return 0; }
 }
-int bm_is_place(int lot) { return (lot >= LOT_SHOP && lot <= LOT_SKATE) || (lot >= LOT_CAFE && lot <= LOT_GALLERY); }
+int bm_is_place(int lot) { return (lot >= LOT_SHOP && lot <= LOT_SKATE) || (lot >= LOT_CAFE && lot <= LOT_CONV); }
 static const char *const lotNm[LOT_N] = { "OPEN COUNTRY", "HOUSE", "COTTAGE", "TOWNHOUSES", "TWO-STOREY", "FLATS", "SHOP", "DINER", "GYM", "OFFICE", "INN",
                                           "POOL", "SCHOOL", "ARCADE", "OFFICE TOWER", "HOTEL", "PARK", "TOWN SQUARE", "SKATE PLAZA", "EMPTY LOT", "FARM",
-                                          "CAFE", "BAR", "CINEMA", "SALON", "RESTAURANT", "CLINIC", "LIBRARY", "SPA", "GALLERY", "RIVER" };
+                                          "CAFE", "BAR", "CINEMA", "SALON", "RESTAURANT", "CLINIC", "LIBRARY", "SPA", "GALLERY", "GAS STATION", "CONVENIENCE", "RIVER" };
 const char *bm_lot_name(int lot) { return lotNm[lot % LOT_N]; }
 
 static const char *const stNm[24] = { "MAIN", "ELM", "OAK", "PINE", "MAPLE", "BIRCH", "CEDAR", "ASH", "WILLOW", "LAKE", "HILL", "PARK",
@@ -325,6 +331,8 @@ const char *bm_place_name(int lot, u32 h, char *out) {
     static const char *const cli[4] = { "BORE GENERAL", "MOSS MEDICAL", "DIPPER CLINIC", "WELLNESS CENTRE" };
     static const char *const lib[3] = { "BORE LIBRARY", "THE READING ROOM", "MOSS LIBRARY" };
     static const char *const spa[4] = { "SERENITY SPA", "THE STEAM ROOM", "ZEN DEN", "BLISS SPA" };
+    static const char *const gas[5] = { "BORE-O-GAS", "SPEEDWAY FUEL", "FILL N' GO", "DIPPER OIL", "MOSS PETROL" };
+    static const char *const cv[5] = { "QUICK STOP", "24/7 MART", "CORNER STORE", "HANDY MART", "LITTLE BORE" };
     static const char *const gal[4] = { "THE GREY GALLERY", "MOSS MODERN", "BEIGE ART HOUSE", "DIPPER MUSEUM" };
     const char *s;
     switch (lot) {
@@ -335,6 +343,7 @@ const char *bm_place_name(int lot, u32 h, char *out) {
         case LOT_CAFE: s = cafe[h % 6u]; break;   case LOT_BAR: s = bar[h % 6u]; break;     case LOT_CINEMA: s = cin[h % 4u]; break;
         case LOT_SALON: s = sal[h % 4u]; break;   case LOT_RESTAURANT: s = res[h % 6u]; break; case LOT_CLINIC: s = cli[h % 4u]; break;
         case LOT_LIBRARY: s = lib[h % 3u]; break; case LOT_SPA: s = spa[h % 4u]; break;     case LOT_GALLERY: s = gal[h % 4u]; break;
+        case LOT_GAS: s = gas[h % 5u]; break;     case LOT_CONV: s = cv[h % 5u]; break;
         default: s = bm_lot_name(lot); break;
     }
     strcpy(out, s);

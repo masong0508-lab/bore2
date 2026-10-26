@@ -235,7 +235,7 @@ static const char *job_title(int lot, int late) {
         case LOT_GYM: return "TRAINER"; case LOT_INN: return "INNKEEPER"; case LOT_POOL: return "LIFEGUARD"; case LOT_SCHOOL: return "TEACHER";
         case LOT_ARCADE: return "ARCADE ATTENDANT"; case LOT_CAFE: return "BARISTA"; case LOT_BAR: return "BARTENDER"; case LOT_CINEMA: return "USHER";
         case LOT_SALON: return "STYLIST"; case LOT_RESTAURANT: return late ? "WAITER" : "CHEF"; case LOT_CLINIC: return late ? "DOCTOR" : "NURSE";
-        case LOT_LIBRARY: return "LIBRARIAN"; case LOT_SPA: return "THERAPIST"; case LOT_GALLERY: return "CURATOR"; default: return "WORKER";
+        case LOT_LIBRARY: return "LIBRARIAN"; case LOT_SPA: return "THERAPIST"; case LOT_GALLERY: return "CURATOR"; case LOT_GAS: return "PUMP ATTENDANT"; case LOT_CONV: return "NIGHT CLERK"; default: return "WORKER";
     }
 }
 const char *pop_job_name(int p, char *out) {

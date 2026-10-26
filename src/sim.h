@@ -74,6 +74,11 @@ int  sim_grave_spot(int i, int *mx, int *my);   // a departed Bore's gravestone,
 void sim_grave_named(int i, char *out);
 void sim_say_to(Sim *s, const char *t);      // a word over their head
 int  sim_move_out(int i, char *where);   // a grown-up of the household moves to a home of their own in town (1: gone)   // the phone you own (0 none, 1 FLIP, 2 SMARTPHONE, 3 BORE PHONE MAX) and the handhelds (1 BOREBOY, 2 BOREBOY ADVANCE)
+// VEHICLES: bought at gas stations, ridden outdoors (O cycles the board and what you own), fuelled at the pumps
+enum { VEH_BIKE, VEH_SCOOTER, VEH_SEDAN, VEH_VAN, VEH_SPORTS, VEH_PICKUP, VEH_N };
+extern int  veh_own, veh_on, veh_sel, veh_fuel[VEH_N], veh_wph;   // owned (a bit each), ridden (0 none, else type + 1), the last one, tanks (quarter tiles), the wheels' turn
+int  veh_seat(int t); int veh_colour(int t); const char *veh_hud(void);   // how high the driver sits; the paint; "SEDAN  FUEL 73%" for the screen
+int  sim_ride_after_board(void);     // stepped off the board: on to a vehicle you own (1) or onto your feet (0)
 extern int  has_board, on_board, board_lift;   // (board_lift: how high above the floor the rider is, on a ramp or in the air)
 //     // a skateboard owned / being ridden (O toggles)
 extern int  sim_speed;               // 1 normal, 2 fast, 3 ultra

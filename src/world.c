@@ -991,6 +991,27 @@ static void lot_cafe(int lx, int ly, unsigned h) {   // the counter and its mach
     if (h & 2) gFree(x1 - 1, y0 + 3, ')');                                     // (some show a painting)
     gFree(lx + 2, ly + 11, 'K'); gFree(lx + 10, ly + 11, 'Z');
 }
+static void lot_gas(int lx, int ly, unsigned h) {   // a gas station: the shop at the back, the forecourt in front with its pump islands and the air and water, a sign by the road
+    int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 5;
+    gBox(lx, ly + 6, lx + 12, ly + 12, FL_ASPHALT);                                   // the forecourt
+    int dx = shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 6 : 3, NWP + (int)((h >> 9) % 89), 1);
+    gBox(dx, y1 + 1, dx, ly + 7, FL_PAVING);
+    gFree(x0 + 1, y0 + 1, 'F'); gFree(x0 + 2, y0 + 1, 'F'); gFree(x0 + 3, y0 + 1, 'c'); for (int x = x0 + 4; x <= x0 + 6; x++) gFree(x, y0 + 1, '7'); gFree(x1 - 1, y0 + 1, ':');
+    gFree(x1 - 1, y1 - 1, 'y'); gFree(x1 - 2, y1 - 1, 'y'); gFree(x1 - 1, y1 - 2, 'I'); gFree(x0 + 1, y1 - 1, '7'); gFree(x0 + 2, y1 - 1, '7');   // the till, a rack by the door
+    for (int k = 0; k < 2; k++) for (int j = 0; j < 2; j++) { gFree(lx + 2 + k * 8, ly + 8 + j * 2, '\x82'); gFree(lx + 3 + k * 8, ly + 8 + j * 2, '\x82'); }   // four islands of two pumps
+    gFree(lx + 1, ly + 12, 'O'); gFree(lx + 11, ly + 7, 'Y'); gFree(lx + 12, ly + 12, 'Z'); gFree(lx + 5, ly + 10, 'J'); gFree(lx + 7, ly + 10, 'J');
+    gFree(lx + 12, ly + 6, '"'); gFree(lx, ly + 6, '"');
+}
+static void lot_conv(int lx, int ly, unsigned h) {   // a corner store: shelves in aisles, the fridges along the wall, the till by the door, a bench and a bin outside
+    int x0 = lx + 2, y0 = ly + 3, x1 = lx + 10, y1 = ly + 9;
+    int dx = shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 10 : 4, NWP + (int)((h >> 9) % 89), 1);
+    int ix0 = x0 + 1, iy0 = y0 + 1, ix1 = x1 - 1, iy1 = y1 - 1;
+    for (int x = ix0; x <= ix1; x++) gFree(x, iy0, (x & 1) ? 'F' : '7');
+    for (int x = ix0 + 1; x <= ix1 - 2; x++) if (x != dx && x != dx - 1) { gFree(x, iy0 + 2, '7'); gFree(x, iy0 + 3, '7'); }
+    gFree(ix1, iy1, 'y'); gFree(ix1 - 1, iy1, 'y'); gFree(ix1, iy1 - 1, 'I'); gFree(ix0, iy1, 'c'); gFree(ix0 + 1, iy1, ':'); gFree(ix0, iy1 - 1, 'p');
+    gFree(lx + 1, ly + 10, 'N'); gFree(lx + 11, ly + 10, 'Y'); gFree(lx + 1, ly + 12, 'Z'); gFree(lx + 11, ly + 12, 'Z');
+    gBox(lx + 1, ly + 3, lx + 1, ly + 9, FL_PAVING);
+}
 static void lot_bar(int lx, int ly, unsigned h) {   // the counter and its stools, the back bar behind, a little stage, a booth, the jukebox
     int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
     shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 4 : 13, NWP + (int)((h >> 9) % 89), 0);
@@ -1460,6 +1481,8 @@ COLD static void gen_block(int wx, int wy) {
         case LOT_LIBRARY: lot_library(lx, ly, h); break;
         case LOT_SPA:     lot_spa(lx, ly, h); break;
         case LOT_GALLERY: lot_gallery(lx, ly, h); break;
+        case LOT_GAS:     lot_gas(lx, ly, h); break;
+        case LOT_CONV:    lot_conv(lx, ly, h); break;
         case LOT_RIVER:   lot_river(ox, oy, b.road & BR_MEGA, h); break;
         default: break;
     }

@@ -204,6 +204,12 @@ void sim_switch_player(void) {
 int phone_tier = 1, handheld;
 int sim_want_arcade;   // an arcade cabinet (game + 1) or the prize counter: main opens it
 int sim_want_jobs;   // the computer's JOB BOARD was picked: main opens JOBS with every opening   // (a new life: an old flip phone in the pocket; better ones from an electronics shop)
+// ---- VEHICLES ----
+int veh_own, veh_on, veh_sel, veh_fuel[VEH_N], veh_wph; static int veh_odo, veh_lowfuel;
+static const struct { const char *nm; short price, speed, tank, seat; } VT[VEH_N] = {   // tank: tiles of range (0: pedals); seat: how high the driver sits
+    { "BIKE", 150, 3, 0, 0 }, { "SCOOTER", 600, 4, 500, 0 }, { "SEDAN", 3200, 7, 1500, 30 }, { "VAN", 4800, 6, 1800, 30 }, { "SPORTS CAR", 9500, 10, 1000, 24 }, { "PICKUP", 5600, 6, 2000, 30 } };
+int veh_seat(int t) { return VT[t % VEH_N].seat; }
+int veh_colour(int t) { return (t * 5 + 2 + (int)((world_seed() >> 8) & 7)) % 6; }
 int has_board, on_board, board_lift;   // the skateboard: owned, ridden, how high the rider is (skate.c rides it)
 static int ramp_pass;   // set while the rider's own step is tried: a board can roll onto a ramp
 int dbg_air_max, dbg_tricks;
@@ -1266,6 +1272,62 @@ void sim_step(void) {
 }
 
 int sim_walk(Sim *s, int dx, int dz) { return walk(s, dx, dz); }   // (skate.c: a step with the board's way over ramps and decks)
+static void veh_dismount(Sim *s, const char *why) { veh_on = 0; s->gait.sit = 0; s->gait.amp = 0; s->gait.run = 0; if (why) sim_note(why); }
+static void veh_drive(Sim *s, int dx, int dz) {   // a step in a vehicle: it turns like a car (slowly) and goes at its speed, burning fuel by the distance
+    world_lvl = s->lvl;
+    int t = veh_on - 1; s->path_n = 0; s->action = ACT_NONE; s->gait.sit = VT[t].seat > 0; s->gait.amp = 0; s->gait.run = 0;
+    if (dx || dz) {
+        int want = yaw_towards(dx, dz), diff = ((want - s->yaw + 2048) & 4095) - 2048;
+        turn_to(s, want, 150 + (ABS(diff) >> 4));
+        int mag = SquareRoot0(dx * dx + dz * dz); if (mag > 4096) mag = 4096;
+        int align = 4096 - ABS(diff) * 2; if (align < 0) align = 0;
+        int mult = VT[t].speed; if (VT[t].tank && veh_fuel[t] <= 0) mult = 1;
+        int sp = (((speed_of(s) * mult * mag) >> 12) * align) >> 12;
+        int x0 = s->x, z0 = s->z;
+        if (sp) walk(s, (isin(s->yaw) * sp) >> 12, -((icos(s->yaw) * sp) >> 12));
+        int moved = ABS(s->x - x0) + ABS(s->z - z0);
+        veh_wph = (veh_wph + moved * 18) & 4095;
+        veh_odo += moved;
+        while (veh_odo >= 64) { veh_odo -= 64; if (VT[t].tank && veh_fuel[t] > 0) veh_fuel[t]--; }
+        if (VT[t].tank) {
+            int pct = veh_fuel[t] * 100 / (VT[t].tank * 4);
+            if (veh_fuel[t] <= 0 && veh_lowfuel < 2) { veh_lowfuel = 2; sim_note("OUT OF FUEL! FIND A GAS STATION"); audio_voice(VOICE_GROAN); }
+            else if (pct < 12 && !veh_lowfuel) { veh_lowfuel = 1; sim_note("FUEL IS LOW"); }
+            else if (pct >= 12 && veh_fuel[t] > 0) veh_lowfuel = 0;
+        }
+        { int tx = sim_tile_x(s), ty = sim_tile_y(s);                                   // a vehicle stays outdoors: into a doorway and you are off it
+#ifdef AUTO_VEH
+          if (0)
+#else
+          if (world_zone != ZONE_CITY || (tx >= 0 && ty >= 0 && tx < MW && ty < MH && floorMap[ty][tx] < FL_GRASS))
+#endif
+              veh_dismount(s, "PARKED OUTSIDE"); }
+    }
+    world_lvl = 0;
+}
+const char *veh_hud(void) {
+    static char b[32]; if (!veh_on) return "";
+    int t = veh_on - 1;
+    if (VT[t].tank) snprintf(b, sizeof b, "%s  FUEL %d%%", VT[t].nm, veh_fuel[t] * 100 / (VT[t].tank * 4)); else snprintf(b, sizeof b, "%s", VT[t].nm);
+    return b;
+}
+static int veh_mount(Sim *s, int t) {   // 1: you are on it
+    if (world_zone != ZONE_CITY) { sim_note("NOWHERE TO DRIVE HERE"); return 0; }
+#ifndef AUTO_VEH
+    { int tx = sim_tile_x(s), ty = sim_tile_y(s); if (s->lvl || tx < 0 || ty < 0 || tx >= MW || ty >= MH || floorMap[ty][tx] < FL_GRASS) { sim_note("OUTSIDE ONLY: NO DRIVING INDOORS"); return 0; } }
+#endif
+    veh_on = t + 1; veh_sel = t; veh_lowfuel = 0; s->gait.sit = VT[t].seat > 0; s->gait.amp = 0;
+    { char b[40]; snprintf(b, sizeof b, "ON THE %s. O TO GET OFF", VT[t].nm); sim_note(b); }
+    audio_voice(VOICE_YEHA); return 1;
+}
+static int ride_from(Sim *s, int st) {   // st: 0 on foot, 1 the board, 2.. a vehicle: the next thing to ride after it (1: on something)
+    for (int k = st + 1; k <= 1 + VEH_N; k++) {
+        if (k == 1 && has_board) { on_board = 1; skate_on(s); wants_event(s, W_SKATE, 0); sim_note("ON THE BOARD"); return 1; }
+        if (k >= 2 && ((veh_own >> (k - 2)) & 1) && veh_mount(s, k - 2)) return 1;
+    }
+    return 0;
+}
+int sim_ride_after_board(void) { return ride_from(&sims[player], 1); }
 void sim_player_move(int dx, int dz, int run) {
     Sim *s = &sims[player];
     world_lvl = s->lvl;
@@ -1275,7 +1337,12 @@ void sim_player_move(int dx, int dz, int run) {
         end_action(s);                                                       // walking off: it stops
     }
     s->path_n = 0; s->action = ACT_NONE;
+#ifdef AUTO_VEH
+    { static int n_, ty_; n_++; if (veh_on && n_ > 90) { veh_dismount(s, 0); ty_ = (ty_ + 1) % VEH_N; n_ = 0; }
+      if (!veh_on && world_zone == ZONE_CITY && n_ % 10 == 0) { veh_own = 63; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = VT[t].tank * 4; veh_mount(s, ty_); } }   // (test builds: a new vehicle every so often)
+#endif
     if (on_board) { skate_step(s, dx, dz); world_lvl = 0; return; }   // riding (skate.c)
+    if (veh_on) { veh_drive(s, dx, dz); return; }
     if (!dx && !dz) {
         s->gait.amp = s->gait.amp > 300 ? s->gait.amp - 300 : 0; s->gait.run = 0;
         world_lvl = 0; return; }
@@ -1304,6 +1371,7 @@ void sim_player_tank(int fwd, int turn, int run) {   // first person: left and r
         end_action(s);
     }
     s->path_n = 0; s->action = ACT_NONE;
+    if (veh_on) { int w = (s->yaw + turn * 7) & 4095; veh_drive(s, fwd > 0 ? (isin(w) * fwd) >> 12 : turn ? (isin(w) * 900) >> 12 : 0, fwd > 0 ? -((icos(w) * fwd) >> 12) : turn ? -((icos(w) * 900) >> 12) : 0); return; }   // (first person: up drives, left and right steer)
     if (on_board) { int w = (s->yaw + turn * 6) & 4095; skate_step(s, fwd > 0 ? (isin(w) * fwd) >> 12 : turn ? (isin(w) * 1200) >> 12 : 0, fwd > 0 ? -((icos(w) * fwd) >> 12) : turn ? -((icos(w) * 1200) >> 12) : 0); world_lvl = 0; return; }   // (first person on a board: up pushes, left and right carve)
     s->yaw = (s->yaw + turn) & 4095;
     if (!fwd) { s->gait.amp = turn ? 1600 : (s->gait.amp > 300 ? s->gait.amp - 300 : 0); if (turn) s->gait.phase = (s->gait.phase + 90) & 4095; world_lvl = 0; return; }
@@ -1385,12 +1453,13 @@ static const char *sim_hint_(void) {
         if (c == 'y' || c == 'I') switch (pi.lot) {
             case LOT_DINER: case LOT_CAFE: return "ORDER"; case LOT_SHOP: return "SHOP"; case LOT_INN: case LOT_HOTEL: return "CHECK IN";
             case LOT_BAR: return "A DRINK"; case LOT_CINEMA: return "POPCORN"; case LOT_SALON: return "A HAIRCUT"; case LOT_RESTAURANT: return "DINE";
-            case LOT_CLINIC: return "A CHECKUP"; case LOT_GALLERY: return "BUY ART"; default: return "SORRY, STAFF ONLY BACK THERE"; }
+            case LOT_CLINIC: return "A CHECKUP"; case LOT_GALLERY: return "BUY ART"; case LOT_GAS: case LOT_CONV: return "BUY"; default: return "SORRY, STAFF ONLY BACK THERE"; }
         if (c == ';' && pi.lot == LOT_CINEMA) return "A FILM";
         if (c == 't' && pi.lot == LOT_RESTAURANT) return "DINE";
         if (c == 'S' && pi.lot == LOT_SPA) return "A MASSAGE";
         if (c == '>' && pi.lot == LOT_SPA) return "SOAK";
         if (c == ')' && pi.lot == LOT_GALLERY) return "ADMIRE";
+        if (c == '\x82' && pi.lot == LOT_GAS) return "FUEL UP";
         if (c == '!' && pi.lot == LOT_ARCADE) { static char hb_[28]; snprintf(hb_, sizeof hb_, "PLAY %s", arcade_game_name(arcade_game_at(mx, my))); return hb_; }
         if (c == '7' || c == '`' || c == 'i') return pi.lot == LOT_SHOP ? "SHOP" : "";
         if (c == 'd') return "SORRY, STAFF ONLY BACK THERE";
@@ -1405,7 +1474,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES };
+       PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1536,6 +1605,16 @@ static int sim_pie_open_(char opt[8][16]) {
         case LOT_CLINIC: if (c == 'y') OPT("A CHECKUP $30", PC_CHECKUP) break;
         case LOT_SPA: if (c == 'S') OPT("A MASSAGE $50", PC_MASSAGE) else if (c == '>') OPT("SOAK $15", PC_SOAK) break;
         case LOT_GALLERY: if (c == ')') OPT("ADMIRE THE ART", PC_ADMIRE) else if (c == 'y') OPT("A PAINTING $300", PC_PAINTING) break;
+        case LOT_GAS: case LOT_CONV:
+            if (c == '\x82') {                                   // a pump: fill the tank of what you drive (or of the last thing you did)
+                int t = veh_on ? veh_on - 1 : veh_sel; char b_[16];
+                if (((veh_own >> t) & 1) && VT[t].tank) { int q = VT[t].tank * 4 - veh_fuel[t]; if (q <= 0) OPT("TANK IS FULL", 0) else { snprintf(b_, sizeof b_, "FILL UP $%d", MAX(2, (q * 2 + 399) / 400)); OPT(b_, PC_FUEL) } }
+                else OPT("WHAT IS IT?", 37)
+            } else if (c == 'y' || c == 'I') {
+                OPT("A SNACK $4", PC_CSNACK) OPT("A DRINK $3", PC_CDRINK)
+                if (pie_pi.lot == LOT_GAS) for (int t = 0; t < VEH_N && pie_n < 7; t++) if (!((veh_own >> t) & 1)) { char b_[16]; snprintf(b_, sizeof b_, "%s $%d", t == VEH_SPORTS ? "SPORTS" : VT[t].nm, VT[t].price); OPT(b_, PC_VEH0 + t) }
+            } else if (c == 'c') OPT("A COFFEE $3", PC_COFFEE)
+            break;
     }
     #undef OPT
     if (!pie_n) { sim_note(pie_place ? "SORRY, STAFF ONLY BACK THERE" : "NOTHING TO DO HERE"); return 0; }
@@ -1662,6 +1741,15 @@ static void place_do(Sim *s, int code) {
         case PC_SWIM: swim(s); break;
         case PC_PLAY: { int g_ = arcade_game_at(pie_mx, pie_my); if (!pay(arcade_price(g_))) return; sim_want_arcade = g_ + 1; break; }
         case PC_PRIZES: sim_want_arcade = AG_PRIZES + 1; break;
+        case PC_FUEL: { int t = veh_on ? veh_on - 1 : veh_sel; int q = VT[t].tank * 4 - veh_fuel[t], cost = MAX(2, (q * 2 + 399) / 400);
+                        if (q <= 0) { sim_note("THE TANK IS FULL"); break; }
+                        if (!pay(cost)) return; veh_fuel[t] = VT[t].tank * 4; veh_lowfuel = 0; shopped(s, "FILLED UP", ML_RETAIL); } break;
+        case PC_CSNACK: if (!pay(4)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 0; break;
+        case PC_CDRINK: if (!pay(3)) return; begin_action(s, ACT_COFFEE, pie_mx, pie_my); s->act_var = 1; break;
+        case PC_VEH0: case PC_VEH0 + 1: case PC_VEH0 + 2: case PC_VEH0 + 3: case PC_VEH0 + 4: case PC_VEH0 + 5: {
+            int t = code - PC_VEH0; if (t < 0 || t >= VEH_N || ((veh_own >> t) & 1)) break;
+            if (!pay(VT[t].price)) return; veh_own |= 1 << t; veh_fuel[t] = VT[t].tank * 4; veh_sel = t;
+            { char b[40]; snprintf(b, sizeof b, "A NEW %s! O TO RIDE", VT[t].nm); shopped(s, b, ML_RETAIL); } } break;
         case PC_LATTE: if (!pay(5)) return; begin_action(s, ACT_COFFEE, pie_mx, pie_my); s->act_var = 1; break;
         case PC_CAKE: if (!pay(6)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 4; s->act_t = 150; break;
         case PC_DRINK: if (!pay(8)) return; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 5; s->act_t = 300; sim_say(s, "WHAT'S GOOD HERE?"); break;
@@ -1821,7 +1909,13 @@ static int sim_player_interact_(void) {
     begin_action(s, action_for(c), mx, my);
     return 1;
 }
-void sim_player_cancel(void) { Sim *s = &sims[player]; if (s->action != ACT_NONE) end_action(s); else if (has_board) { if (on_board) skate_off(s); else { on_board = 1; skate_on(s); wants_event(s, W_SKATE, 0); } sim_note(on_board ? "ON THE BOARD" : "OFF THE BOARD AND ON YOUR FEET"); } }
+void sim_player_cancel(void) {
+    Sim *s = &sims[player];
+    if (s->action != ACT_NONE) { end_action(s); return; }
+    if (veh_on) { int t = veh_on - 1; veh_dismount(s, 0); if (!ride_from(s, 2 + t)) sim_note("OFF AND ON YOUR FEET"); return; }
+    if (on_board) { skate_off(s); if (!ride_from(s, 1)) sim_note("OFF THE BOARD AND ON YOUR FEET"); return; }
+    if (has_board || veh_own) ride_from(s, 0);
+}
 void sim_player_cancel_sim(Sim *s) { if (s->action != ACT_NONE) end_action(s); }
 
 const char * sim_hint(void) { world_lvl = sims[player].lvl; const char * r = sim_hint_(); world_lvl = 0; return r; }
@@ -1865,6 +1959,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
     sv_u8(phone_tier); sv_u8(handheld);   // (version 10)
     sv_u8(job_none);   // (version 12)
     sv_u16((u16)arcade_tix); sv_u16((u16)fight_wins); sv_u8((u8)fight_champ); sv_u8((u8)fight_best);   // (version 15)
+    sv_u8(veh_own); sv_u8(veh_sel); for (int t = 0; t < VEH_N; t++) sv_u16((u16)veh_fuel[t]);   // (version 18: the vehicles)
     realm_save();   // (version 15: KINGDOM MODE's realm)
     for (int i = 0; i < nsims; i++) {
         const Sim *s = &sims[i]; const Bore *b = &s->bore;
@@ -1894,6 +1989,8 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     if (save_ver >= 10) { phone_tier = ld_u8() & 3; handheld = ld_u8() & 3; } else { phone_tier = 3; handheld = 0; }   // (an older life keeps every app it had)
     job_none = save_ver >= 12 ? ld_u8() & 1 : 0;   // (an older life keeps its job)
     if (save_ver >= 15) { arcade_tix = ld_u16(); fight_wins = ld_u16(); fight_champ = ld_u8() & 1; fight_best = ld_u8(); } else arcade_tix = fight_wins = fight_champ = fight_best = 0;
+    veh_on = 0; veh_odo = 0; veh_lowfuel = 0;
+    if (save_ver >= 18) { veh_own = ld_u8() & ((1 << VEH_N) - 1); veh_sel = ld_u8() % VEH_N; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = ld_u16(); } else { veh_own = 0; veh_sel = 0; for (int t = 0; t < VEH_N; t++) veh_fuel[t] = 0; }
     realm_load(save_ver);
     for (int i = 0; i < n && i < MAX_SIMS; i++) {
         sim_add(blank, 0, 0, 1);   // (a blank Bore: the Bore is large, so it is filled in place)

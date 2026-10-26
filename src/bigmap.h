@@ -15,6 +15,7 @@ enum { LOT_WILD, LOT_HOUSE, LOT_COTTAGE, LOT_TOWN, LOT_TWO, LOT_APART,          
        LOT_SHOP, LOT_DINER, LOT_GYM, LOT_OFFICE, LOT_INN, LOT_POOL, LOT_SCHOOL, LOT_ARCADE, LOT_TOWER, LOT_HOTEL,   // the places people go (TOWER: offices, storeys of them)
        LOT_PARK, LOT_SQUARE, LOT_SKATE, LOT_EMPTY, LOT_FARM,
        LOT_CAFE, LOT_BAR, LOT_CINEMA, LOT_SALON, LOT_RESTAURANT, LOT_CLINIC, LOT_LIBRARY, LOT_SPA, LOT_GALLERY,   // more places to go
+       LOT_GAS, LOT_CONV,                                                          // a gas station (pumps, a shop, vehicles for sale) and a corner convenience store
        LOT_RIVER,                                                                 // a river across a town: water, walks and bridges (not a place)
        LOT_N };
 // a block's road bits: 1 street along the top, 2 along the left, 4 the corner. A MEGA block (a 2x2 group made one place: a big park, a mall, a downtown plaza)

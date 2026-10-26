@@ -183,7 +183,7 @@ static u16 fb_lo[64], fb_hi[64];             // each town's run in fb
 #define FBC_MAX 900
 static u16 fbc_cx[FBC_MAX], fbc_cy[FBC_MAX], fbc_lo[FBC_MAX], fbc_hi[FBC_MAX]; static int nfbc;   // the runs by cell (4x4 blocks)
 static u16 fbs_lo[64], fbs_hi[64];           // each town's cells
-static const u8 has_bld[LOT_N] = { 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+static const u8 has_bld[LOT_N] = { 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0 };
 // each lot's building, block-relative tiles (x0, y0, x1, y1) and roof (0 flat, 1 pitched)
 static const u8 foot[LOT_N][5] = {
     { 0, 0, 0, 0, 0 },   { 5, 5, 13, 12, 1 }, { 5, 5, 11, 11, 1 }, { 3, 5, 15, 12, 1 }, { 5, 4, 13, 12, 1 }, { 4, 4, 15, 15, 0 },
@@ -191,7 +191,8 @@ static const u8 foot[LOT_N][5] = {
     { 3, 4, 15, 15, 0 }, { 4, 4, 14, 13, 0 }, { 4, 4, 14, 14, 0 }, { 3, 3, 15, 15, 0 }, { 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0 },   { 0, 0, 0, 0, 0 },   { 6, 6, 11, 10, 1 },
     { 4, 5, 14, 12, 0 }, { 4, 5, 14, 12, 0 }, { 3, 3, 15, 14, 0 }, { 4, 5, 14, 12, 0 }, { 3, 4, 15, 13, 0 }, { 4, 4, 14, 13, 0 },   // cafe bar cinema salon restaurant clinic
-    { 3, 4, 15, 13, 0 }, { 4, 4, 14, 13, 0 }, { 4, 5, 14, 12, 0 } };                                                                 // library spa gallery
+    { 3, 4, 15, 13, 0 }, { 4, 4, 14, 13, 0 }, { 4, 5, 14, 12, 0 },
+    { 4, 4, 14, 9, 0 }, { 4, 5, 14, 11, 0 }, { 0, 0, 0, 0, 0 } };                                                                 // library spa gallery
 static const u8 wallc[10][3] = { { 226, 214, 190 }, { 176, 96, 76 }, { 236, 234, 226 }, { 214, 190, 150 }, { 160, 160, 164 },
                                  { 180, 200, 214 }, { 186, 206, 170 }, { 226, 180, 180 }, { 120, 140, 160 }, { 150, 120, 96 } };
 static const u8 roofc[4][3] = { { 150, 60, 50 }, { 70, 80, 110 }, { 90, 70, 60 }, { 60, 110, 70 } };

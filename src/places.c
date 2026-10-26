@@ -10,7 +10,7 @@
 const Career careers[CAR_N] = {
     { "FACTORY",     0,                                         9, 17, 0x1F, 1400, 800, "x",     { "LINE WORKER", "MACHINIST", "FOREMAN", "SUPERVISOR", "PLANT MANAGER", "FACTORY BOSS" } },
     { "CULINARY",    L(LOT_DINER) | L(LOT_CAFE) | L(LOT_RESTAURANT), 7, 15, 0x1F,  900, 700, "y/Fc-", { "DISHWASHER", "LINE COOK", "SOUS CHEF", "CHEF", "HEAD CHEF", "RESTAURATEUR" } },
-    { "RETAIL",      L(LOT_SHOP),                              10, 18, 0x7C,  800, 650, "y7I",   { "STOCK CLERK", "CASHIER", "SALES LEAD", "SUPERVISOR", "STORE MANAGER", "REGIONAL BOSS" } },
+    { "RETAIL",      L(LOT_SHOP) | L(LOT_CONV) | L(LOT_GAS),    10, 18, 0x7C,  800, 650, "y7I",   { "STOCK CLERK", "CASHIER", "SALES LEAD", "SUPERVISOR", "STORE MANAGER", "REGIONAL BOSS" } },
     { "FITNESS",     L(LOT_GYM),                                6, 14, 0x1F, 1000, 800, "]m_",   { "TOWEL ATTENDANT", "TRAINER", "SENIOR TRAINER", "HEAD COACH", "GYM MANAGER", "FITNESS GURU" } },
     { "LIFEGUARD",   L(LOT_POOL),                              10, 18, 0x67,  900, 600, "~>",    { "POOL CLEANER", "LIFEGUARD", "SWIM COACH", "HEAD LIFEGUARD", "POOL MANAGER", "AQUA LEGEND" } },
     { "HOSPITALITY", L(LOT_INN) | L(LOT_HOTEL),                 8, 16, 0x1F, 1000, 750, "yIS",   { "PORTER", "HOUSEKEEPER", "RECEPTIONIST", "CONCIERGE", "HOTEL MANAGER", "HOTELIER" } },

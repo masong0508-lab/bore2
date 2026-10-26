@@ -143,6 +143,14 @@ MAT(mLampT, pLamp, 1, 1, "b")
 static const IBox bxStreetLamp[2] = { {3,3,5,5,0,22,{&mLampP,&mLampP,&mLampP,&mLampP,&mLampP}}, {2,2,6,6,22,24,{&mLampH,&mLampH,&mLampH,&mLampH,&mLampT}} };
 static const IBox bxLounger[2] = { {0,2,8,6,0,2,{&mLnrS,&mLnrS,&mLnrS,&mLnrS,&mLnrT}}, {0,2,2,6,2,5,{&mLnrB,&mLnrB,&mLnrB,&mLnrB,&mLnrT}} };
 
+// ---- a fuel pump: a red body with a screen, a white hose holder, a yellow cap ----
+static const u16 pPump[5]={RGB(27,5,5),RGB(30,30,30),RGB(5,5,7),RGB(31,26,8),RGB(8,26,10)};
+MAT(mPmFront,pPump,4,6,"aaaa","acec","aaaa","abba","abba","aaaa")
+MAT(mPmSide,pPump,4,6,"aaaa","aaaa","aaaa","abba","aaaa","aaaa")
+MAT(mPmCap,pPump,1,1,"d")
+MAT(mPmTop,pPump,1,1,"b")
+static const IBox bxPump[2]={ {2,2,6,6,0,17,{&mPmFront,&mPmSide,&mPmFront,&mPmSide,&mPmTop}}, {1,1,7,7,17,20,{&mPmCap,&mPmCap,&mPmCap,&mPmCap,&mPmTop}} };
+
 // ---- the item table: letter, name, boxes (and the along-y variant), flags ----
 enum { F_ROT = 1, F_ALONG = 2, F_FLAT = 4, F_HIGH = 8 };   // F_FLAT: walk over it; F_HIGH: stand on top (crates)
 // ---- the family's things: a crib (white bars round a little mattress), a birthday cake on a party table, a gravestone ----
@@ -248,6 +256,7 @@ static ItemDef defs[] = {   // (not const: items_init sets some of them to life 
     { 'X', "FUNBOX", bxFunbox, 1, 0, 0, F_HIGH, 200 },
     { 'O', "BARREL", bxBarrel, 1, 0, 0, 0, 30 },
     { 'Y', "TRASH CAN", bxTrashCan, 2, 0, 0, 0, 30 },
+    { '\x82', "FUEL PUMP", bxPump, 2, 0, 0, 0, 60 },
     { 'Z', "PLANTER", bxPlanter, 1, 0, 0, 0, 90 },
     { 'K', "PICNIC", bxPicnicTable, 7, 0, 0, 0, 250 },
     { 'M', "MANUAL PAD", bxManualPad, 1, 0, 0, F_FLAT, 120 },
@@ -529,6 +538,63 @@ void items_draw_board(int x, int z, int yaw, int y, int roll, int pitch, int spi
     gfx_set_object_m(&m); gfx_set_light_yaw((yaw + spin) & 4095);
     sk_k = 13; skate_model(); sk_k = 16;
     gfx_set_identity();
+}
+// ---- VEHICLES: toy-scale open models (the driver sits at the origin, the front is +z): a bike, a scooter, a sedan, a van, a sports car, a pickup ----
+static const u8 vcol[6][3] = { { 200, 48, 48 }, { 56, 96, 190 }, { 232, 196, 60 }, { 70, 150, 90 }, { 236, 236, 232 }, { 40, 40, 48 } };
+static void veh_wheel(int x, int z, int R, int wph) {   // a tyre (a box) with a bright hub mark that turns with the road
+    sk_box(x - 14, x + 14, -2 * R, 0, z - R, z + R, 30, 30, 34);
+    int hy = -R + ((isin(wph & 4095) * (R - 6)) >> 12), hz = z + ((icos(wph & 4095) * (R - 6)) >> 12);
+    sk_box(x - (x < 0 ? 16 : 14), x + (x < 0 ? 14 : 16), hy - 4, hy + 4, hz - 4, hz + 4, 226, 226, 214);
+}
+static void veh_model(int t, int ci, int wph) {
+    int r = vcol[ci % 6][0], g = vcol[ci % 6][1], b = vcol[ci % 6][2], dk = 36, gl[3] = { 130, 176, 214 };
+    switch (t) {
+    case 0:   // a bike: a frame, a seat, handlebars, two spoked wheels
+        veh_wheel(0, -78, 34, wph); veh_wheel(0, 78, 34, wph);
+        sk_box(-4, 4, -66, -58, -70, 74, r, g, b); sk_box(-4, 4, -66, -26, 60, 68, r, g, b); sk_box(-4, 4, -66, -30, -76, -68, r, g, b);
+        sk_box(-12, 12, -76, -68, -60, -26, dk, dk, dk); sk_box(-34, 34, -100, -94, 56, 64, dk, dk, dk); sk_box(-4, 4, -100, -62, 58, 64, 150, 150, 160);
+        break;
+    case 1:   // a scooter: a deck, a stem, handlebars, small wheels
+        veh_wheel(0, -86, 22, wph); veh_wheel(0, 90, 22, wph);
+        sk_box(-26, 26, -30, -20, -100, 70, r, g, b); sk_box(-5, 5, -116, -26, 68, 76, 150, 150, 160); sk_box(-38, 38, -122, -114, 66, 80, dk, dk, dk);
+        sk_box(-18, 18, -34, -30, 72, 100, 240, 240, 200);
+        break;
+    case 2:   // a sedan (open top): body, bonnet, boot, a windscreen, seats, lights
+        veh_wheel(-114, -150, 32, wph); veh_wheel(114, -150, 32, wph); veh_wheel(-114, 150, 32, wph); veh_wheel(114, 150, 32, wph);
+        sk_box(-104, 104, -64, -30, -230, 240, r, g, b); sk_box(-100, 100, -76, -64, 50, 236, r * 9 / 10, g * 9 / 10, b * 9 / 10); sk_box(-100, 100, -76, -64, -226, -90, r * 9 / 10, g * 9 / 10, b * 9 / 10);
+        sk_box(-96, 96, -128, -76, 66, 76, gl[0], gl[1], gl[2]);                                      // the windscreen
+        sk_box(-96, -86, -128, -76, 62, 80, r, g, b); sk_box(86, 96, -128, -76, 62, 80, r, g, b);
+        sk_box(-60, 60, -84, -64, -54, 20, dk, dk, dk); sk_box(-60, 60, -112, -84, -54, -40, dk, dk, dk); sk_box(-60, 60, -84, -64, -150, -90, dk, dk, dk);
+        sk_box(-90, -50, -60, -44, 236, 244, 255, 240, 160); sk_box(50, 90, -60, -44, 236, 244, 255, 240, 160); sk_box(-90, -50, -60, -44, -236, -228, 220, 40, 40); sk_box(50, 90, -60, -44, -236, -228, 220, 40, 40);
+        break;
+    case 3:   // a van: a short cab, a tall box behind
+        veh_wheel(-114, -150, 34, wph); veh_wheel(114, -150, 34, wph); veh_wheel(-114, 110, 34, wph); veh_wheel(114, 110, 34, wph);
+        sk_box(-108, 108, -70, -30, -300, 170, r, g, b); sk_box(-108, 108, -250, -70, -300, -50, r * 8 / 10 + 40, g * 8 / 10 + 40, b * 8 / 10 + 40);
+        sk_box(-100, 100, -130, -70, 56, 66, gl[0], gl[1], gl[2]); sk_box(-100, -90, -130, -70, 52, 70, r, g, b); sk_box(90, 100, -130, -70, 52, 70, r, g, b);
+        sk_box(-50, 50, -88, -70, -40, 30, dk, dk, dk); sk_box(-50, 50, -116, -88, -40, -26, dk, dk, dk);
+        sk_box(-90, -50, -64, -48, 166, 174, 255, 240, 160); sk_box(50, 90, -64, -48, 166, 174, 255, 240, 160); sk_box(-80, 80, -170, -150, -304, -296, 230, 230, 230);
+        break;
+    case 4:   // a sports car: low and long, a nose, a spoiler
+        veh_wheel(-110, -140, 28, wph); veh_wheel(110, -140, 28, wph); veh_wheel(-110, 130, 28, wph); veh_wheel(110, 130, 28, wph);
+        sk_box(-100, 100, -50, -22, -190, 230, r, g, b); sk_box(-90, 90, -62, -50, 70, 220, r, g, b); sk_box(-80, 80, -60, -50, -180, -40, r, g, b);
+        sk_box(-90, 90, -100, -50, 42, 50, gl[0], gl[1], gl[2]); sk_box(-60, 60, -76, -50, -40, 20, dk, dk, dk); sk_box(-60, 60, -92, -76, -40, -28, dk, dk, dk);
+        sk_box(-84, 84, -88, -80, -200, -170, r, g, b); sk_box(-70, -62, -88, -50, -196, -184, dk, dk, dk); sk_box(62, 70, -88, -50, -196, -184, dk, dk, dk);
+        sk_box(-90, -40, -50, -36, 226, 234, 255, 240, 160); sk_box(40, 90, -50, -36, 226, 234, 255, 240, 160);
+        break;
+    default:  // a pickup: a cab like the sedan's, an open bed behind
+        veh_wheel(-116, -160, 36, wph); veh_wheel(116, -160, 36, wph); veh_wheel(-116, 120, 36, wph); veh_wheel(116, 120, 36, wph);
+        sk_box(-106, 106, -70, -30, -280, 220, r, g, b); sk_box(-100, 100, -82, -70, 50, 216, r * 9 / 10, g * 9 / 10, b * 9 / 10);
+        sk_box(-100, 100, -132, -82, 62, 72, gl[0], gl[1], gl[2]); sk_box(-100, -90, -132, -82, 58, 76, r, g, b); sk_box(90, 100, -132, -82, 58, 76, r, g, b);
+        sk_box(-100, -92, -110, -70, -270, -50, r, g, b); sk_box(92, 100, -110, -70, -270, -50, r, g, b); sk_box(-100, 100, -110, -70, -276, -268, r, g, b);   // the bed's sides and tailgate
+        sk_box(-60, 60, -92, -70, -40, 20, dk, dk, dk); sk_box(-60, 60, -118, -92, -40, -28, dk, dk, dk);
+        sk_box(-96, -56, -64, -48, 214, 222, 255, 240, 160); sk_box(56, 96, -64, -48, 214, 222, 255, 240, 160);
+        break;
+    }
+}
+int dbg_vdraw, dbg_vq;
+void items_draw_vehicle(int x, int z, int yaw, int y, int type, int ci, int wph) {
+    dbg_vdraw++; dbg_vq = type * 1000 + ci;
+    VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, yaw & 4095); sk_k = 16; veh_model(type, ci, wph); gfx_set_identity();
 }
 static void skate_model(void) {
     const int BW = 34, Lf = 78, L = 112, T = 6, top = -30;

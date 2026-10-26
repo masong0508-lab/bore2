@@ -71,7 +71,7 @@ static int cam_view;                                           // CAMERA: 0 THE 
 static int fp_pitch;                                           // first person: looking up (+) or down (-)
 static int cam_turn_rate = 40, cam_zoom_tilt = 1;
 static void camera_apply(int fx, int fy, int fz) {
-    { int k_ = (on_board || sims[player].gait.run) ? 3 : 6; cam_fx += (fx - cam_fx) / k_; cam_fy += (fy - cam_fy) / k_; cam_fz += (fz - cam_fz) / k_; }   // (a rider: kept up with)
+    { int k_ = (on_board || veh_on || sims[player].gait.run) ? 3 : 6; cam_fx += (fx - cam_fx) / k_; cam_fy += (fy - cam_fy) / k_; cam_fz += (fz - cam_fz) / k_; }   // (a rider: kept up with)
     cam_pitch = CLAMP(cam_pitch, 150, 1000);
     cam_dist = CLAMP(cam_dist, 600, 3600);
     int cp = icos(cam_pitch), sp = isin(cam_pitch);
@@ -330,6 +330,7 @@ static void draw_sims(void) {
         if (s->action == ACT_SIT || s->action == ACT_WC || (s->action == ACT_EAT && s->gait.sit)) p.vy = -items_height(world_at(s->act_x, s->act_y)) / 2 + 10;
         if (s->action == ACT_SWIM) p.vy = 30 + (isin((frame * 60) & 4095) >> 9);   // afloat, bobbing
         if (i == player && on_board && !skate_bailing()) p.vy -= 24 + board_lift;   // standing on the deck
+        if (i == player && veh_on) p.vy -= veh_seat(veh_on - 1) + 10;               // up on the seat
         if (i == player && on_board) skate_pose(&s->gait); else s->gait.skate = 0;
         s->gait.mood = s->mood; s->gait.talk = s->action == ACT_TALK; s->gait.seed = i; s->gait.clock = frame;
         p.vy -= s->lvl * WALL_FULL;
@@ -352,6 +353,7 @@ static void draw_sims(void) {
             if (far && !drawn) dbg_hh_miss++;
             PROF_END(4);
         }
+        if (i == player && veh_on) items_draw_vehicle(s->x, s->z, s->yaw, -s->lvl * WALL_FULL, veh_on - 1, veh_colour(veh_on - 1), veh_wph);
         if (i == player && on_board) { int ro, pi, sp; skate_board(&ro, &pi, &sp); items_draw_board(s->x, s->z, s->yaw, -board_lift - skate_board_up() - s->lvl * WALL_FULL, ro, pi, sp); }
         if (s->action != ACT_SLEEP && s->action != ACT_SWIM && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
@@ -385,7 +387,7 @@ static void venue_watch(void) {   // walking onto a place: its name and its hour
 }
 static const s8 lotIc[LOT_N] = { -1, IC_HOUSE, IC_HOUSE, IC_HOUSE, IC_HOUSE, IC_HOUSE, IC_MONEY, IC_FOOD, IC_BOLT, IC_CASE, IC_BED, IC_DROP, IC_BOOK,
                                  IC_PLAY, IC_CASE, IC_BED, IC_TREE, IC_PEOPLE, IC_FAST, -1, IC_SPROUT,
-                                 IC_FOOD, IC_NOTE, IC_CAMERA, IC_SMILE, IC_FOOD, IC_HEART, IC_BOOK, IC_DROP, IC_BRUSH };
+                                 IC_FOOD, IC_NOTE, IC_CAMERA, IC_SMILE, IC_FOOD, IC_HEART, IC_BOOK, IC_DROP, IC_BRUSH, IC_BOLT, IC_FOOD, -1 };
 static void venue_draw(void) {
     char sub[32], h[8]; int open_ = place_open(venue.lot, clock_min, clock_day);
     if (job_car != CAR_FACTORY && venue.bx == job_bx && venue.by == job_by) strcpy(sub, "YOUR WORKPLACE");
@@ -477,6 +479,7 @@ static void hud_life(void) {
     const char *hint = on_board ? skate_hint() : sim_hint();
     { const char *ch = on_board ? "" : citizens_hint(); if (ch[0] && !sim_front_service() && (s->action == ACT_NONE || s->action == ACT_WALK)) hint = ch; }   // (busy: X gets up)
     if (hint[0]) { sprintf(b, "X %s", hint); ui_round(180, 215, 132, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(185, 217, 1, b, UI_WHITE); }
+    else if (veh_on) { ui_round(150, 215, 162, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(155, 217, 1, veh_hud(), UI_WHITE); }   // (at the wheel: what it is, and the fuel)
     else ui_hints(246, 214, "SEL PHONE", 1);
     if (cam_view == 2 && (s->action == ACT_NONE || s->action == ACT_WALK)) {   // FIRST PERSON: a dot in the middle of the view; with something to use in front, it grows and says what X does
         if (hint[0]) { int w = ui_tw(1, hint) + 14; ui_disc(160, 120, 9, UI_WHITE); ui_disc(160, 120, 7, UI_BLUE);

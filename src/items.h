@@ -10,6 +10,7 @@ int  items_ramp_h(char ch, int facing, int lx, int lv);   // (old: 0)
 int  items_ramp_at(int mx, int my, int lx, int lv);       // a ramp's surface height at (lx, lv) of tile (mx, my), the run it is part of counted (0: no ramp)
 int  items_ramp_lip(int mx, int my, int *dir);            // this tile holds a run's lip: 1 (2 a quarter pipe's), *dir its way (0 N 1 W 2 S 3 E)
 int  items_ramp_rot(char c, int facing);
+void items_draw_vehicle(int x, int z, int yaw, int y, int type, int colour, int wheel_phase);   // a vehicle under the driver (VEH_ types: sim.h)
 void items_draw_board(int x, int z, int yaw, int y, int roll, int pitch, int spin);   // the ridden board (turned by a flip)
 int  items_blocking(char ch);                            // 1: a wall of a thing you cannot walk through
 int  items_is_item(char ch);                             // 1: a placeable item letter
