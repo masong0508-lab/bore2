@@ -3668,10 +3668,15 @@ static const char *const moreNm[WO_NMORE] = { "ISLAND CREATOR", "STORY MISSIONS"
     "SEASONS", "ISLAND PARADISE", "SUPERSTAR", "CRIME AND LAW", "FARM LIFE", "SKY HIGH", "SPEED CITY", "BIG SCREEN", "SEASIDE", "MAGIC AND MYTH", "FAMILY FUN", "WILD WEST", "SPACE AGE", "CREATE A DOG", "DJ BOOTH" };
 static const char *const moreCard[WO_NMORE] = { "ISLAND|CREATOR", "STORY|MISSIONS", "BORE-OUT|MAN!", "BOREZIES!", "WORLD|WAR BORE", "BORTUA|FIGHTER", "BORE-|AGOTCHI!", "BORE-|PILOGUE", "THE LAND|BOREFORE|TIME",
     "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "CRIME|AND LAW", "FARM|LIFE", "SKY|HIGH", "SPEED|CITY", "BIG|SCREEN", "SEA-|SIDE", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE", "CREATE|A DOG", "DJ|BOOTH" };
-static const char *const moreBlurb[WO_NMORE] = { "STRANDED! VERY SMALL TO VERY BIG. COAST, JUNGLE, HILLS", "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. NOT PORTED YET!", "THE TOWN GOES UNDEAD. NOT PORTED YET!", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. NOT PORTED YET!",
-    "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!", "RAISE EIGHT PIXEL PETS PER TOY. X: THE GUIDE!", "GROWN-UPS ONLY: RETIRE AND LEAVE A LEGACY. NOT PORTED YET!", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
-    "THE YEAR TURNS. X TURNS THE PACK ON OR OFF.", "PLACEHOLDER PACK. NOT MADE YET!", "FORM A BAND AND PLAY GIGS! PAUSE, SUPERSTAR BAND", "BREAK THE LAW AND FIND OUT.", "CROPS, PESTS, FAIRS, ANIMALS. WATER TOO MUCH AND...", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
-    "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP.", "RAISE A DOG FROM A PUP. THE PET SHOP SELLS ONE.", "SPIN DECKS AT THE BOOTH. HOME AND CLUBS." };
+static const char *const moreBlurb[WO_NMORE] = {
+    "STRANDED! VERY SMALL TO VERY BIG. COAST, JUNGLE, HILLS", "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. A SPACE-HOP ARCADE GAME.",
+    "THE TOWN GOES UNDEAD. BOARD UP THE WINDOWS, SHARE THE CANNED BEANS.", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. RALLY THE STREET!", "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!",
+    "RAISE EIGHT PIXEL PETS PER TOY. X: THE GUIDE!", "GROWN-UPS ONLY: RETIRE, WRITE YOUR WILL, LEAVE A LEGACY.", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
+    "THE YEAR TURNS. X TURNS THE PACK ON OR OFF.", "A PRIVATE ISLAND: BEACH BARS, BOATS, A LONG HOLIDAY.", "FORM A BAND AND PLAY GIGS! PAUSE, SUPERSTAR BAND",
+    "BREAK THE LAW AND FIND OUT.", "CROPS, PESTS, FAIRS, ANIMALS. WATER TOO MUCH AND...", "BUILD IN THE CLOUDS: TOWERS, GLIDERS, ROOFTOP GARDENS.",
+    "RACE THE STREETS: GARAGES, TUNING, A CITY GRAND PRIX.", "MOVIE SETS, PREMIERES, AND A RED CARPET OF YOUR OWN.", "SANDCASTLES, SURF AND A PIER FULL OF GAMES.",
+    "WAND, SPELLBOOK, DRAGON. THE CORNER SHOP IS A TOWER.", "THROW PARTIES AT HOME: GUESTS, GAMES, A BIG CAKE.", "A DUSTY TOWN, A SHERIFF'S STAR, A SHOWDOWN AT NOON.",
+    "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP.", "RAISE A DOG FROM A PUP. THE PET SHOP SELLS ONE.", "SPIN DECKS AT THE BOOTH. HOME AND CLUBS." };
 #define EX_PLAYABLE(i) ((i) == 0 || (i) == 1 || (i) == 5 || (i) == 6 || (i) == 8 || (i) == 9 || (i) == 11 || (i) == 12 || (i) == 19 || (i) == 21 || (i) == 22 || (i) == 23)
 // the packs that are patches (tools/packs.py): the file each card needs on the disc (0: part of the base game, or not made yet)
 static const char *const packFile[WO_NMORE] = { 0, 0, 0, 0, 0, "ARCADE.OVL", "GOTCHI.OVL", 0, "KINGDOM.OVL", 0, 0, "SUPER.OVL", "PRISON.OVL", 0, 0, 0, 0, 0, 0, "PARTY.OVL", 0, "SPACE.OVL", "DOG.OVL", "DJ.OVL" };
@@ -4135,22 +4140,24 @@ static void worlds_draw(void) {
         for (int i = 0; i < WO_NMORE; i++) {
             int col = i / 2 - c0; if (col < 0 || col > 4) continue;
             int x = 14 + col * 59, y = top + 1 + (i & 1) * 76, on = i == wo_msel;
-            ui_round(x, y, 56, 72, 5, on ? UI_RGB(255, 236, 150) : UI_WHITE, on ? UI_RGB(255, 204, 70) : UI_RGB(214, 222, 236), 0);
+            ui_round(x, y, 56, 72, 5, on ? UI_RGB(255, 236, 150) : EX_PLAYABLE(i) ? UI_WHITE : UI_PANEL, on ? UI_RGB(255, 204, 70) : UI_RGB(214, 222, 236), 0);
             ui_round(x + 7, y + 3, 42, 42, 21, EX_PLAYABLE(i) ? UI_RGB(255, 204, 70) : UI_LINE, EX_PLAYABLE(i) ? UI_RGB(255, 204, 70) : UI_LINE, 0);
             ui_icon_disc(x + 28, y + 24, 36, mic[i], EX_PLAYABLE(i) ? UI_BLUE2 : UI_SOFT, UI_WHITE);
             { char t[24]; strncpy(t, moreCard[i], 23); t[23] = 0; char *ln[3]; int nl = 0; ln[nl++] = t; for (char *q = t; *q && nl < 3; q++) if (*q == '|') { *q = 0; ln[nl++] = q + 1; }
               int ty = y + 48; if (nl == 1) ty += 5; for (int k = 0; k < nl; k++) ui_textc(x + 28, ty + k * 10, 1, ln[k], UI_INK); }
-            { int st = i == 9 ? (sim_seasons_on ? 1 : 3) : pk_have[i];   // (a round mark on the icon's corner: a tick is in, a padlock is not on this disc)
+            { int st = i == 9 ? (sim_seasons_on ? 1 : 3) : !EX_PLAYABLE(i) ? 4 : pk_have[i];   // (a round mark on the icon's corner: a tick is in, a padlock is not on this disc)
               if (st == 1) ui_icon_disc(x + 46, y + 9, 14, IC_TICK, UI_RGB(60, 170, 80), UI_WHITE);
               else if (st == 2) ui_icon_disc(x + 46, y + 9, 14, IC_LOCK, UI_BADT, UI_WHITE);
-              else if (st == 3) ui_icon_disc(x + 46, y + 9, 14, IC_LOCK, UI_SOFT, UI_WHITE); }
+              else if (st == 3) ui_icon_disc(x + 46, y + 9, 14, IC_LOCK, UI_SOFT, UI_WHITE);
+              else if (st == 4) ui_icon_disc(x + 46, y + 9, 14, IC_LOCK, UI_SOFT, UI_WHITE); }
         }
         if (c0 > 0) ui_text(6, top + 76, 1, "<", UI_INK);
         if (c0 + 5 < (WO_NMORE + 1) / 2) ui_text(308 - 6, top + 76, 1, ">", UI_INK);
-        { int st = wo_msel == 9 ? (sim_seasons_on ? 1 : 3) : pk_have[wo_msel];
+        { int st = wo_msel == 9 ? (sim_seasons_on ? 1 : 3) : !EX_PLAYABLE(wo_msel) ? 4 : pk_have[wo_msel];
           ui_round(10, top + 152, 300, 42, 5, UI_PANEL, UI_LINE, 0);
           ui_textc(160, top + 156, 1, moreNm[wo_msel], UI_BLUE2);
-          ui_wrapc(16, top + 167, 288, 2, st == 2 ? "NOT ON THIS DISC. PATCH IT ON WITH ITS BORE2 PACK .PPF" : moreBlurb[wo_msel], EX_PLAYABLE(wo_msel) && st != 2 ? UI_INK : UI_SOFT); }
+          { char bb[96]; snprintf(bb, sizeof bb, "%s%s", st == 4 ? "COMING SOON! " : "", st == 2 ? "NOT ON THIS DISC. PATCH IT ON WITH ITS BORE2 PACK .PPF" : moreBlurb[wo_msel]);
+            ui_wrapc(16, top + 167, 288, 2, bb, EX_PLAYABLE(wo_msel) && st != 2 ? UI_INK : UI_SOFT); } }
         ui_hints(160, 218, wo_msel == 0 ? "X OPEN THE CREATOR|ARROWS MOVE|O BACK" : wo_msel == 1 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 6 ? "X THE GUIDE|ARROWS MOVE|O BACK" : wo_msel == 9 ? "X ON OR OFF|ARROWS MOVE|O BACK" : "ARROWS MOVE|O BACK", 1);
         return;
     }
