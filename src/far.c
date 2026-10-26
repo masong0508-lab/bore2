@@ -361,6 +361,42 @@ static u32 floor_key0(int fl) {
         default: return 0x728600 | 150;       // indoors (under a roof)
     }
 }
+// ---- the streets, seen from far above: dark bands along the blocks' top and left edges (the land's colour alone shows none) ----
+#define RD_R 24                                        // blocks each way round the eye that are kept
+static u8 rdc[2 * RD_R + 1][2 * RD_R + 1]; static int rdc_bx = -99999, rdc_by, rdc_stamp = -1;
+static void roads_fill(int cbx, int cby) {
+    rdc_bx = cbx - RD_R; rdc_by = cby - RD_R;
+    for (int j = 0; j <= 2 * RD_R; j++) for (int i = 0; i <= 2 * RD_R; i++) {
+        int bx = rdc_bx + i, by = rdc_by + j; rdc[j][i] = 0;
+        if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) continue;
+        BInfo b; bm_block(bx, by, &b); if (b.terrain != BT_SEA) rdc[j][i] = (u8)(b.road & 7);
+    }
+}
+static void draw_roads(int hills) {
+    int ax = fwx0 + (feye.vx >> 8) / 1, ay = fwy0 - (feye.vz >> 8);                 // the eye's tile in the world
+    int cbx = ax / BM_BLK, cby = ay / BM_BLK;
+    if (rdc_bx == -99999 || ABS(cbx - (rdc_bx + RD_R)) > 6 || ABS(cby - (rdc_by + RD_R)) > 6 || rdc_stamp != world_stamp) { roads_fill(cbx, cby); rdc_stamp = world_stamp; }
+    for (int j = 0; j <= 2 * RD_R; j++) for (int i = 0; i <= 2 * RD_R; i++) rdc[j][i] &= 7;      // (the marks of last frame's runs off)
+    const int reach = MIN(max_ground, M2U(450)), RW = 3 * TILE, maxrun = hills ? 3 : 99;
+    #define IN_WIN(bx, by) (world_wbx >= 0 && (bx) >= world_wbx && (bx) < world_wbx + MW / BM_BLK && (by) >= world_wby && (by) < world_wby + MH / BM_BLK)
+    for (int pass = 0; pass < 2; pass++)
+    for (int j = 0; j <= 2 * RD_R; j++) for (int i = 0; i <= 2 * RD_R; i++) {
+        int bx = rdc_bx + i, by = rdc_by + j, bit = pass ? 2 : 1;
+        if (!(rdc[j][i] & bit) || (rdc[j][i] & (bit << 4)) || IN_WIN(bx, by)) continue;
+        int px = ((bx * BM_BLK) - fwx0) * TILE, pz = -(((by * BM_BLK) - fwy0) * TILE);   // the block's north-west corner
+        if (MAX(ABS(px - feye.vx), ABS(pz - feye.vz)) > reach) continue;
+        int n = 1;                                                                    // a run of blocks with the same street, joined into one band
+        while (n < maxrun) { int ii = i + (pass ? 0 : n), jj = j + (pass ? n : 0); if (ii > 2 * RD_R || jj > 2 * RD_R || !(rdc[jj][ii] & bit) || (rdc[jj][ii] & (bit << 4)) || IN_WIN(rdc_bx + ii, rdc_by + jj)) break; n++; }
+        int len = n * BM_BLK * TILE, x0, x1, z0, z1;
+        if (pass == 0) { x0 = px; x1 = px + len; z0 = pz; z1 = pz - RW; } else { x0 = px; x1 = px + RW; z0 = pz; z1 = pz - len; }
+        int hh[4], *hp = 0;
+        if (hills) { hh[0] = world_gh(x0, z0); hh[1] = world_gh(x1, z0); hh[2] = world_gh(x1, z1); hh[3] = world_gh(x0, z1); hp = hh; }
+        int r = 70, g = 70, b = 74; season_rgb(2, &r, &g, &b); r = r * 3 / 4; g = g * 3 / 4; b = b * 3 / 4;
+        ground_quad(x0, x1, z0, z1, r, g, b, OT_GROUND_FAR, hp);
+        for (int k = 0; k < n; k++) rdc[j + (pass ? k : 0)][i + (pass ? 0 : k)] |= (u8)(bit << 4);   // (joined: not started again)
+    }
+    #undef IN_WIN
+}
 static void draw_land(int rx0, int ry0, int rx1, int ry1) {
     const int hills = world_zone == ZONE_CITY && world_wbx >= 0;
     far_hb_win0 = gfx_hb();
@@ -421,6 +457,7 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
         }
         row_end();
     }
+    draw_roads(hills);
     for (int i = 0; i < nrect; i++) { const Rect *r = &rects[i]; int R, G, B; cell_rgb((int)r->key, &R, &G, &B);
         int x0 = ((gx0 + r->x0) * 2 * CELL_T - fwx0) * TILE, x1 = ((gx0 + r->x1) * 2 * CELL_T - fwx0) * TILE;
         int z0 = -(((gy0 + r->y0) * 2 * CELL_T - fwy0) * TILE), z1 = -(((gy0 + r->y1) * 2 * CELL_T - fwy0) * TILE);
