@@ -36,7 +36,7 @@ static void nub_make(void);
 int dbg_realm[4];
 static int mis_paid_all;                 // the realm is running; the mission you are on
 static int cdist = 1250, walkT;   // the camera's distance (L2 R2 zoom), how long the giant has walked (a run after a while)
-static int gx, gz, gyaw, gmove, gphase, cyaw, cyaw_t, spd, fr, msgT, panel, menu, msel, pick, psel, found_sel;
+static int gx, gz, gyaw, gmove, gspd, gphase, cyaw, cyaw_t, spd, fr, msgT, panel, menu, msel, pick, psel, found_sel;
 static const char *msg; static char msgB[64];
 
 // ---- the missions (kingmis.h): ten to the crown, then the royal years ----
@@ -196,11 +196,11 @@ int realm_update(int held, int pressed, int steps) {
         static const s16 dirY[3][3] = { { 3584, 3072, 2560 }, { 0, 0, 2048 }, { 512, 1024, 1536 } };   // [ux + 1][uy + 1]: up 0, right 1024, down 2048, left 3072
         int want = (dirY[ux + 1][1 - uy] + cyaw) & 4095, dy = ((want - gyaw + 2048) & 4095) - 2048;
         gyaw = (gyaw + CLAMP(dy, -300 * steps, 300 * steps)) & 4095;
-        walkT += steps; int sp = (held & PAD_CIRCLE) ? 30 : 18;   // (O held: a run)
+        walkT += steps; int sp = (held & PAD_CIRCLE) ? 36 : 18; gspd = sp;   // (O held: a run)
         for (int k = 0; k < steps; k++) {
             int mx = isin(want) * sp >> 12, mz = -(icos(want) * sp >> 12);
             if (walk_ok(gx + mx, gz + mz)) { gx += mx; gz += mz; } else if (walk_ok(gx + mx, gz)) gx += mx; else if (walk_ok(gx, gz + mz)) gz += mz;
-            gphase = (gphase + 150) & 4095; }
+            gphase = (gphase + (sp > 20 ? 230 : 150)) & 4095; }
     }
     if (pressed & PAD_CROSS) {
         int cx, cy; if (cursor_cell(&cx, &cy)) {
@@ -312,7 +312,7 @@ static void nub_make(void) {
 static void nub_sprite(int wx, int wz, int kind, int walk) {   // one Nubbin standing at (wx, wz)
     if (!nub_tex.w || nub_drawn >= 520) return;
     int sx, sy, z = gfx_proj(wx, 0, wz, &sx, &sy); if (z <= 0) return;
-    int h = 38 * 230 / z; if (h < 3) return; int w = h * 8 / 14 + 1;
+    int h = 38 * 230 / z; if (h < 3) return; int w = h * 8 / 14 + 1; if (gfx_wide) w = w * 3 / 4 + 1;
     int f = ((kind & 3) << 1) | (walk & 1), L = 128;
     gfx_ot_sprite(sx - w / 2, sy - h, w, h, nub_tex.tpage, nub_tex.u + f * 8, nub_tex.v, 8, 14, z, L, L, L);
     nub_drawn++;
@@ -525,7 +525,7 @@ void realm_draw(void) {
     land_draw();
     cursor_draw();
     {   // the giant: your own Bore
-        Gait g; memset(&g, 0, sizeof g); g.clock = fr; g.mood = 60; g.phase = gphase; g.amp = gmove ? 4096 : 0;
+        Gait g; memset(&g, 0, sizeof g); g.clock = fr; g.mood = 60; g.phase = gphase; g.amp = gmove ? 4096 : 0; g.run = gmove && (gspd > 20);
         if (S.hd.k != KHD_NONE) { static VPose carry; carry.arm[0] = carry.arm[1] = -1300; carry.elbow[0] = carry.elbow[1] = -500; carry.aroll[0] = -100; carry.aroll[1] = 100;
             carry.leg[0] = (s16)(gmove ? (isin(gphase) >> 4) : 0); carry.leg[1] = (s16)-carry.leg[0]; carry.knee[0] = carry.knee[1] = 120; g.pose = &carry; }
         VECTOR p = { gx, 0, gz }; voxel_draw(&sims[player].bore, &p, gyaw, &g); gfx_shadow(&p, 90);

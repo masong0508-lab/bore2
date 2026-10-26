@@ -47,3 +47,18 @@ int pad_read(int port, u8 *out) {                    // out: the BIOS layout (st
     out[0] = 0; out[1] = (u8)id;
     return 1;
 }
+
+// ---- taps between frames: the pad is also polled while the game waits for the next vblank (the halt function of VSync) and a
+// few times in a frame; every button seen down at any poll counts as held for the frame that follows (a quick tap can no longer
+// fall between two reads). Buttons are active low, so the latch is an AND.
+static u16 latch = 0xffff; static int last_poll_hb = -1000, pad_live;
+void pad_poll(void) {
+    if (!pad_live) return;
+    int hb = VSync(1); if (hb - last_poll_hb >= 0 && hb - last_poll_hb < 12) return;   // (not more than one a ~0.75 ms)
+    last_poll_hb = hb;
+    u8 b[8]; if (!pad_read(0, b) || b[0] != 0) return;
+    if (b[1] != 0x41 && b[1] != 0x73 && b[1] != 0x53 && b[1] != 0x23) { int t = b[1] >> 4; if (t != 4 && t != 5 && t != 7) return; }
+    latch &= (u16)(b[2] | (b[3] << 8));
+}
+u16 pad_latch_take(void) { u16 l = latch; latch = 0xffff; return l; }
+void pad_poll_on(int on) { pad_live = on; if (on) VSyncHaltFunction(pad_poll); }

@@ -42,7 +42,7 @@ static void read_pad(void) {
     PADTYPE *pad = (PADTYPE *)pad_buf[0];
     btn_prev = btn; btn = 0xffff; analog = 0; ls_x = ls_y = rs_x = rs_y = 0;
     if (pad->stat == 0 && (pad->type == 0x4 || pad->type == 0x5 || pad->type == 0x7)) {
-        btn = pad->btn;
+        btn = pad->btn & pad_latch_take();   // (and any tap seen between frames)
         if (pad->type == 0x5 || pad->type == 0x7) {
             analog = 1;
             ls_x = pad->ls_x - 128; ls_y = pad->ls_y - 128; rs_x = pad->rs_x - 128; rs_y = pad->rs_y - 128;
@@ -71,7 +71,7 @@ static int cam_view;                                           // CAMERA: 0 THE 
 static int fp_pitch;                                           // first person: looking up (+) or down (-)
 static int cam_turn_rate = 40, cam_zoom_tilt = 1;
 static void camera_apply(int fx, int fy, int fz) {
-    { int k_ = on_board ? 3 : 6; cam_fx += (fx - cam_fx) / k_; cam_fy += (fy - cam_fy) / k_; cam_fz += (fz - cam_fz) / k_; }   // (a rider: kept up with)
+    { int k_ = (on_board || sims[player].gait.run) ? 3 : 6; cam_fx += (fx - cam_fx) / k_; cam_fy += (fy - cam_fy) / k_; cam_fz += (fz - cam_fz) / k_; }   // (a rider: kept up with)
     cam_pitch = CLAMP(cam_pitch, 150, 1000);
     cam_dist = CLAMP(cam_dist, 600, 3600);
     int cp = icos(cam_pitch), sp = isin(cam_pitch);
@@ -1689,10 +1689,10 @@ static void grow_tick(void) {   // (test builds: a family's life in two minutes:
 // ---- OPTIONS: the picture and the speed, as many knobs as a PC game, with presets; the game runs behind as you change them ----
 static void title_draw(void);
 enum { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_CROWD, O_LIVE, O_SPR, O_SHADOW, O_AO, O_WALLS, O_FPSCAP, O_DITHER, O_CAM, O_SHOWFPS,
-       O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_CUTAWAY, O_ALONE, O_GHOSTS, O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_N };
+       O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_CUTAWAY, O_ALONE, O_GHOSTS, O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_WIDE, O_N };
 static const char *const optNm[O_N] = { "PRESET", "VIEW DISTANCE", "FULL DETAIL", "FAR BUILDINGS", "FAR TREES", "HAZE", "CROWD SIZE",
     "PEOPLE IN FULL 3D", "PEOPLE SPRITES", "SHADOWS", "FLOOR SHADING", "WALL LIGHT", "FRAME RATE", "DITHERING", "CAMERA", "SHOW FPS",
-    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC", "WALL VIEW", "YOUR BORE ALONE", "GHOSTS", "AGGRESSION", "WHO JOINS FIGHTS", "RAGE", "WHO LUNGES AT YOU", "PEACEMAKERS" };
+    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC", "WALL VIEW", "YOUR BORE ALONE", "GHOSTS", "AGGRESSION", "WHO JOINS FIGHTS", "RAGE", "WHO LUNGES AT YOU", "PEACEMAKERS", "SCREEN SHAPE" };
 static const char *const optV[O_N][6] = {
     { "CUSTOM", "LOW", "MEDIUM", "HIGH", "ULTRA" }, { "50 M", "250 M", "500 M", "1 KM", "1.5 KM", "2 KM" },
     { "10 M", "12 M", "15 M", "17 M" }, { "TALL ONLY", "ALL", "WITH WINDOWS" }, { "OFF", "100 M", "200 M", "350 M" },
@@ -1703,8 +1703,8 @@ static const char *const optV[O_N][6] = {
     { "LOW", "MEDIUM", "HIGH", "OVERHEAD" }, { "SLOW", "NORMAL", "FAST" }, { "OFF", "ON" }, { "OFF", "LOW", "MEDIUM", "FULL" },
     { "AUTO", "CUT AWAY", "FULL WALLS" }, { "OFF", "LOW", "HIGH" }, { "OFF", "ON", "HAUNTED" },
     { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" },
-    { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" }, { "OFF", "ON" } };
-static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3, 3, 6, 6, 6, 6, 2 };
+    { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" }, { "OFF", "ON" }, { "4:3 NORMAL", "16:9 WIDE" } };
+static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3, 3, 6, 6, 6, 6, 2, 2 };
 static const char *const optBlurb[O_N] = {
     "LOW, MEDIUM, HIGH OR ULTRA SETS THEM ALL", "HOW FAR SAN BOREAS GOES BEFORE THE SKY", "WHERE ROOMS, WALLS AND THINGS ARE DRAWN IN FULL",
     "THE TOWNS PAST THE MAP: TALL ONES, ALL, OR WINDOWS TOO", "TREES PAST THE NEAR DETAIL, OUT TO", "THE AIR BETWEEN YOU AND THE HORIZON",
@@ -1722,12 +1722,13 @@ static const char *const optBlurb[O_N] = {
     "WHO MAY JOIN A FIGHT YOU START",
     "NO FIGHT NEEDED: PEOPLE GO FOR YOU ON SIGHT. AT 100% EVERYONE DOES",
     "WHO GOES FOR YOU ON SIGHT, WHEN RAGE IS ON",
-    "BYSTANDERS TRY TO BREAK UP YOUR FIGHTS (HIT ONE AND THEY JOIN IN)" };
+    "BYSTANDERS TRY TO BREAK UP YOUR FIGHTS (HIT ONE AND THEY JOIN IN)",
+    "16:9: DRAWN SQUEEZED SO A WIDE SCREEN OR EMULATOR (16:9 DISPLAY) SHOWS MORE ON THE SIDES, NOT A STRETCHED PICTURE" };
 static const u8 presets[4][O_N] = {   // LOW, MEDIUM, HIGH, ULTRA (the graphics knobs; the frame rate, dithering, camera and the counter are left be)
     { 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0 }, { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 },
     { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1 }, { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 } };
 #define O_PRESET_LAST O_WALLS                 // (presets set O_VIEW .. O_WALLS)
-static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 0, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1, 1, 2, 0, 0, 1, 1 };   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
+static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 0, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1, 1, 2, 0, 0, 1, 1, 0 };   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
 static int opt_sel, opt_back, opt_tab;
 static void opts_apply(void);
 #ifdef AUTO_FLOAT
@@ -1744,6 +1745,10 @@ static void opts_apply(void) {
     gfx_set_dither(opt[O_DITHER]);
     alone_opt = opt[O_ALONE]; ghost_mode = opt[O_GHOSTS];
     { extern int aggro_pct, rage_pct, aggro_who, rage_who, peace_on; aggro_pct = opt[O_AGGRO] * 20; rage_pct = opt[O_RAGE] * 20; aggro_who = opt[O_AGWHO]; rage_who = opt[O_RAGEWHO]; peace_on = opt[O_PEACE]; }
+    gfx_wide = opt[O_WIDE];
+#ifdef WIDE_TEST
+    gfx_wide = 1;
+#endif
     show_fps = opt[O_SHOWFPS]; audio_music_level(opt[O_MUSIC]);
     aging = opt[O_AGING]; old_age = opt[O_OLDAGE]; pop_aging = opt[O_TOWNAGE];
     cam_view = opt[O_CAM] % 3; cam_turn_rate = opt[O_CAMSPD] == 0 ? 24 : opt[O_CAMSPD] == 1 ? 40 : 64; cam_zoom_tilt = opt[O_ZOOMTILT]; wall_view = opt[O_CUTAWAY] % 3;
@@ -1757,7 +1762,7 @@ static void opts_open(int back) { opt_back = back; opt_sel = 0; opt_tab = 0; sta
 #define NOTAB 7
 static const char *const optTabNm[NOTAB] = { "GRAPHICS", "PEOPLE", "LIGHT", "CAMERA", "PLAY", "LIFE", "CHEATS" };
 static const s8 optTabIc[NOTAB] = { IC_EYE, IC_PEOPLE, IC_SUN, IC_CAMERA, IC_BOLT, IC_SPROUT, IC_STAR };
-static const s8 optTab[NOTAB][7] = { { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, -1 }, { O_CROWD, O_LIVE, O_SPR, -1 },
+static const s8 optTab[NOTAB][7] = { { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_WIDE }, { O_CROWD, O_LIVE, O_SPR, -1 },
                                      { O_SHADOW, O_AO, O_WALLS, O_DITHER, -1 }, { O_CAM, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_CUTAWAY, -1 },
                                      { O_FPSCAP, O_SHOWFPS, O_MUSIC, -1 }, { O_AGING, O_OLDAGE, O_TOWNAGE, O_ALONE, O_GHOSTS, -1 }, { O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, -1 } };
 static int opt_kind(int i) {   // 0 a choice, 1 a slider, 2 a switch
@@ -1853,7 +1858,7 @@ static void load_body(void) {
         isl_size = ld_u8() % 3; isl_wild = ld_u8() % 3; isl_jungle = ld_u8() % 3; isl_rocks = ld_u8() % 3; }
     bm_rename_clear();
     if (save_ver >= 4) { int n = ld_u8(); for (int k = 0; k < n; k++) { int i = ld_u8(); char nm[18]; ld_str(nm, 17); bm_rename(i, nm); } }
-    ld_n(opt, save_ver >= 15 ? O_N : save_ver >= 14 ? O_N - 5 : save_ver >= 11 ? O_N - 6 : O_N - 7); if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1;
+    ld_n(opt, save_ver >= 16 ? O_N : save_ver >= 15 ? O_N - 1 : save_ver >= 14 ? O_N - 6 : save_ver >= 11 ? O_N - 7 : O_N - 8); if (save_ver < 16) opt[O_WIDE] = 0; if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1;
     if (save_ver < 15) { opt[O_AGGRO] = 2; opt[O_AGWHO] = 0; opt[O_RAGE] = 0; opt[O_RAGEWHO] = 1; opt[O_PEACE] = 1; } opts_apply();   // (YOUR BORE ALONE came with version 11)
     loading("LOADING YOUR GAME", 30);
     bm_new(seed); world_new_seed(seed);
@@ -3627,7 +3632,7 @@ int main(void) {
     boot("> ITEMS");       items_init();
     boot("> WORLD TEX");   world_init(); ghost_init();
     boot("> AUDIO+DISC");  audio_init();
-    pad_init();                                      // (the pad is read directly in read_pad: see pad.c)
+    pad_init(); pad_poll_on(1);                      // (the pad is read directly in read_pad: see pad.c; and polled in the waits between frames)
     boot("> CROWD");       crowd_init();             // the voice clips are in the sound chip now: their RAM holds the crowd's models
     opts_apply();                                    // (the options' starting choices: HIGH)
     look_default(&edit);
@@ -3644,7 +3649,7 @@ int main(void) {
         steps = CLAMP(steps, 1, 4);
         frame++;
         fps_frames++; if (now - fps_vb >= 60) { fps_val = fps_frames * 60 / (now - fps_vb); fps_frames = 0; fps_vb = now; }
-        audio_update();
+        audio_update(); pad_poll();
 #ifdef AUTO_TOUR
         tour_tick();
 #endif

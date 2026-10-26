@@ -875,8 +875,19 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
         }
         if (sad) { rollL += 100; rollR -= 100; headNod = 260; lean = 120; armL += 60; armR += 60; }   // sad: arms in, head down, a slouch
     }
+    int rn = g->run && moving && !g->sit && !g->skate && !lie, gaitK = 0, gaitB = 0;
     if (moving) { rollL -= 60; rollR += 60; armL = armL * 5 / 4; armR = armR * 5 / 4; lean = g->amp > 3800 ? 90 : 40;      // a stride leans in
                   headNod = -40 + (ABS(walk_sin) >> 8); }                                              // and the head bobs
+    if (moving && !g->sit && !g->skate && !lie) {   // THE GAIT: legs and arms swing against each other, the swing leg's knee folds as it comes through, the planted foot stays on the floor
+        int A = rn ? 560 : 330, am = g->amp, sn = (isin(g->phase) * am) >> 12;
+        int sw = (sn * A) >> 12;
+        legL = sw; legR = -sw;
+        armL = -((sw * (rn ? 13 : 9)) >> 3); armR = -armL;
+        rollL = rn ? -45 : -105; rollR = -rollL;
+        lean = rn ? 240 : 50; headNod = rn ? -130 : -25;
+        gaitK = rn ? 1150 : 520; gaitB = rn ? 170 : 70;
+        legRollL = legRollR = 0;
+    }
     if (g->talk && !g->wave) {                                            // in a conversation: one hand talks, the head nods along
         int gst = isin((t * 60) & 4095);
         armR = -700 + (gst >> 4); rollR += 120;
@@ -908,7 +919,11 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     }
     // ---- the elbows and the knees: a little bend at rest, the knee folding as the leg swings through a step, the shins down off a seat ----
     int elL = -260, elR = -260, knL = 60, knR = 60, twist = 0;
-    if (moving) { elL = -420 - (ABS(armL) >> 1); elR = -420 - (ABS(armR) >> 1); knL = 120 + MAX(0, -legL) * 3 / 2 + (ABS(legL) >> 2); knR = 120 + MAX(0, -legR) * 3 / 2 + (ABS(legR) >> 2); }
+    if (moving && gaitK) {
+        int cL = MAX(0, -icos(g->phase)), cR = MAX(0, icos(g->phase));            // the leg coming forward folds (the other is planted or pushing off)
+        knL = gaitB + (((gaitK * cL) >> 12) * g->amp >> 12); knR = gaitB + (((gaitK * cR) >> 12) * g->amp >> 12);
+        elL = (rn ? -1000 : -380) - (ABS(armL) >> 2); elR = (rn ? -1000 : -380) - (ABS(armR) >> 2);
+    } else if (moving) { elL = -420 - (ABS(armL) >> 1); elR = -420 - (ABS(armR) >> 1); knL = 120 + MAX(0, -legL) * 3 / 2 + (ABS(legL) >> 2); knR = 120 + MAX(0, -legR) * 3 / 2 + (ABS(legR) >> 2); }
     if (g->talk && !g->wave) elR = -900;
     if (g->wave) elR = -500;
     if (g->sit) { knL = knR = 1024; elL = elR = -500; }
@@ -925,6 +940,13 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
                 int fy = ((Lt * icos(lg) >> 12) + (Ls * icos(lg + kn) >> 12)) * icos(lr) >> 12; lo = MAX(lo, fy); }
             obj.t[1] += -hip - lo;
         }
+    }
+    if (gaitK && !g->pose && (b->j_ok & 12)) {   // the hips ride so the lower foot stays on the ground (and a run springs: up between the strides)
+        int lo = 0;
+        for (int s = 0; s < 2; s++) { int ky = b->j_kn[s][1], Lt = ky - hip, Ls = -ky, lg = s ? legR : legL, kn = s ? knR : knL;
+            int fy = (Lt * icos(lg) >> 12) + (Ls * icos(lg + kn) >> 12); lo = MAX(lo, fy); }
+        obj.t[1] += -hip - lo;
+        if (rn) obj.t[1] -= ((ABS(isin(g->phase * 2)) * g->amp >> 12) * 16) >> 12;
     }
     if (g->skate && g->roll && !lie) { MATRIX r; SVECTOR rr = { 0, 0, (short)g->roll, 0 }; RotMatrix(&rr, &r); r.t[0] = r.t[1] = r.t[2] = 0; { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); } }
     if (lean) { MATRIX r; SVECTOR rr = { (short)-lean, 0, 0, 0 }; RotMatrix(&rr, &r); r.t[0] = r.t[1] = r.t[2] = 0; { MATRIX t_ = obj; CompMatrixLV(&t_, &r, &obj); } }   // the lean pivots at the feet (RotMatrix leaves the translation unset)

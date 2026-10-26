@@ -31,7 +31,7 @@ int cit_live_max = LIVE_MAX, cit_maxdraw = 64, cit_sprite_rate = 1;   // (the op
 #define NOPID     0xFFFF
 #define NONE      255
 
-enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME, CM_LEAVE, CM_CHORE, CM_VISIT, CM_PARTY, CM_STOP };   // (STOP: a peacemaker, come to break the fight up)
+enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME, CM_LEAVE, CM_CHORE, CM_VISIT, CM_PARTY, CM_STOP, CM_AWAY };   // (STOP: a peacemaker, come to break the fight up)
 enum { PE_FRIENDLY, PE_GRUFF, PE_FLIRTY, PE_SHY };
 enum { PO_TALK, PO_JOKE, PO_HUG, PO_FLIRT, PO_GIFT, PO_PROPOSE, PO_FIGHT, PO_SORRY, PO_FAMILY, PO_MOVEIN };
 // the moodlet ids in sim.c's list
@@ -395,7 +395,12 @@ static void vanish_tick(void) {                    // the ones wanted elsewhere 
         Cit *c = &cits[i];
         if (!c->vanish || c->zone != ZONE_CITY || c->mode == CM_PARTY || c->mode == CM_CHAT || c->mode == CM_CHASE || i == pie_c) continue;
         int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz;
-        if (!gfx_visible(c->x, -110, c->z, 160) || dx * dx + dz * dz > 16 * TILE * 16 * TILE) main_free(c);
+        if (!gfx_visible(c->x, -110, c->z, 160) || dx * dx + dz * dz > 16 * TILE * 16 * TILE) { main_free(c); continue; }
+        if ((c->mode == CM_IDLE || c->mode == CM_WALK) && !indoors_at(c->x, c->z)) {   // seen, and wanted elsewhere: they walk off down the street rather than blink out
+            const Sim *p = &sims[player]; int px = p->x - c->x, pz = p->z - c->z, d = ABS(px) + ABS(pz) + 1;
+            int tx = c->x / TILE - px * 24 / d * 1, ty = (-c->z) / TILE + pz * 24 / d * 1;   // (away from you, a long way)
+            c->ax = (u8)CLAMP(tx, 2, MW - 3); c->ay = (u8)CLAMP(ty, 2, MH - 3); c->mode = CM_AWAY; c->t = 1200; c->wv = 0;
+        }
     }
 }
 
@@ -627,7 +632,7 @@ static void fam_step(void) {   // the family members who are after you (sim.c le
         s->yaw = yaw_to(dx, dz);
         if (d2 > 95 * 95) { int mx = (isin(s->yaw) * 6) >> 12, mz = -((icos(s->yaw) * 6) >> 12);
             if (body_free(s->x + mx, s->z + mz, in)) { s->x += mx; s->z += mz; } else if (body_free(s->x + mx, s->z, in)) s->x += mx; else if (body_free(s->x, s->z + mz, in)) s->z += mz;
-            s->gait.amp = 4096; s->gait.phase = (s->gait.phase + 220) & 4095; }
+            s->gait.amp = 4096; s->gait.run = 1; s->gait.phase = (s->gait.phase + 220) & 4095; }
         else { s->gait.amp = 0; if (fam_cd[i] > 0) fam_cd[i]--; else {
             pl_hp -= 3 + rn(5); fam_cd[i] = 45; s->gait.wave = 14; p->gait.squash = -10; audio_voice(VOICE_GROAN);
             if (pl_hp <= 0) { pl_hp = 60; fam_calm(); heat = 0; for (int k = 0; k < NCIT; k++) if (cits[k].mode == CM_CHASE || cits[k].mode == CM_STOP) { cits[k].mode = CM_IDLE; cits[k].t = 120; }
@@ -848,6 +853,7 @@ static const char *activity(const Cit *c) {   // what the HUD says they are up t
     case CM_SLEEP: return "ASLEEP";
     case CM_GOHOME: return "HEADING HOME";
     case CM_LEAVE: return "HEADING OUT";
+    case CM_AWAY: return "WALKING OFF";
     case CM_VISIT: return "VISITING";
     case CM_CHAT: return "CHATTING";
     case CM_CHASE: return "ANGRY";
@@ -1043,6 +1049,10 @@ static void step_one(Cit *c, int i) {
         if (body_free(c->x + mx, c->z + mz, in)) { c->x += (s16)mx; c->z += (s16)mz; moved_flag = 1; }
         else { c->wyaw = (u16)((c->yaw + 1024 + rn(2048)) & 4095); if (!rn(3)) { c->mode = CM_IDLE; c->t = 20; } }
         break; }
+    case CM_AWAY:   // wanted elsewhere: off along the streets to the edge, and gone once out of sight
+        if (!c->t || nav(c, c->ax, c->ay, in ? 3 : c->stage == AG_ELDER ? 3 : 5, in)) { c->mode = CM_IDLE; c->t = 30; }
+        else c->t--;
+        break;
     case CM_CHAT:
         if (c->t) c->t--;
         if (!c->t || d2 > 3 * TILE * 3 * TILE) { c->mode = CM_IDLE; c->t = 30; break; }
@@ -1140,7 +1150,8 @@ static void step_one(Cit *c, int i) {
     }
     if (c->mode == CM_IDLE && c->say_t == 0 && d2 < 2 * TILE * 2 * TILE && c->rel > 10 && !rn(900)) say(c, chat_line(c));   // a friend says hi in passing
     // the walk cycle
-    if (moved_flag) { c->gait.phase = (c->gait.phase + 130) & 4095; c->gait.amp = MIN(c->gait.amp + 400, 4096); }
+    c->gait.run = moved_flag && (c->mode == CM_CHASE || c->mode == CM_STOP);
+    if (moved_flag) { c->gait.phase = (c->gait.phase + (c->gait.run ? 200 : 130)) & 4095; c->gait.amp = MIN(c->gait.amp + 400, 4096); }
     else c->gait.amp = MAX(c->gait.amp - 500, 0);
     if (c->mode != CM_SLEEP && c->mode != CM_KO) c->gait.sleep = 0;
     if (c->mode != CM_CHORE) c->gait.sit = 0;

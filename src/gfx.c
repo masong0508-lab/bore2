@@ -16,6 +16,7 @@ static int  alloc_reserve;        // bytes of the packet buffer gfx_alloc keeps 
 char *gfx_pk_next, *gfx_pk_end;   // the packet cursor and its limit (the end, less the reserve): gfx_fast.h allocates inline
 u32 *gfx_ot_cur;                   // this frame's ordering table
 int gfx_zbias, gfx_fog_on, gfx_zbase, gfx_ot_max = OT_NEAR - 1;
+int gfx_wide;
 int gfx_min_vsyncs = 1;   // (the options menu: 2 a steady 30 FPS, 3 a steady 20)
 void gfx_set_dither(int on) { db[0].draw.dtd = db[1].draw.dtd = (u8)(on ? 1 : 0); }
 #define db_next gfx_pk_next
@@ -173,6 +174,7 @@ static void look_at(const VECTOR *eye, const VECTOR *at, MATRIX *m) {
     m->m[0][0] = xx.vx; m->m[1][0] = yx.vx; m->m[2][0] = zx.vx;
     m->m[0][1] = xx.vy; m->m[1][1] = yx.vy; m->m[2][1] = zx.vy;
     m->m[0][2] = xx.vz; m->m[1][2] = yx.vz; m->m[2][2] = zx.vz;
+    if (gfx_wide) { m->m[0][0] = m->m[0][0] * 3 / 4; m->m[0][1] = m->m[0][1] * 3 / 4; m->m[0][2] = m->m[0][2] * 3 / 4; }   // (WIDESCREEN: across the picture, three quarters: the TV stretches it back)
     pos.vx = -eye->vx; pos.vy = -eye->vy; pos.vz = -eye->vz;
     ApplyMatrixLV(m, &pos, &vec);
     TransMatrix(m, &vec);

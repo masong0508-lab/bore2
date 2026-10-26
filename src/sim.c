@@ -423,7 +423,7 @@ static int follow_path(Sim *s) {   // 1 while walking, 0 when there (or when the
         if (!sim_find_path(s, s->dest_x, s->dest_y)) { s->path_n = 0; s->spd = 0; return 0; }
         if (!(look_rand() & 1)) sim_say(s, "EXCUSE ME");
     }
-    s->gait.amp = CLAMP(1800 + s->spd * 3 / 2, 1800, 4096);                                // slow strolls swing less
+    s->gait.run = 0; s->gait.amp = CLAMP(1800 + s->spd * 3 / 2, 1800, 4096);                                // slow strolls swing less
     s->gait.phase = (s->gait.phase + sp * 16 + 20) & 4095;                                  // the legs keep up with the ground
     return 1;
 }
@@ -600,7 +600,7 @@ static void run_action(Sim *s) {
                       if (s->act_var == 7 && !(s->act_t & 7)) s->skill_fun++; break;
         case ACT_READ: s->need[N_FUN] += s->act_var == 1 ? GAIN_FUN / 4 : GAIN_FUN / 2; s->skill_fun += s->act_var == 1 ? 3 : 1; break;
         case ACT_COFFEE: s->need[N_REST] += s->act_var == 1 ? 320 : 180; s->need[N_WC] -= s->act_var == 1 ? 110 : 60; break;
-        case ACT_RUN: s->need[N_FUN] += 120; s->need[N_CLEAN] -= s->act_var ? 160 : 90; s->skill_body += s->act_var == 2 ? 3 : s->act_var == 1 ? 2 : 1; s->gait.amp = 4096; s->gait.phase = (s->gait.phase + 200) & 4095; break;
+        case ACT_RUN: s->need[N_FUN] += 120; s->need[N_CLEAN] -= s->act_var ? 160 : 90; s->skill_body += s->act_var == 2 ? 3 : s->act_var == 1 ? 2 : 1; s->gait.amp = 4096; s->gait.run = 1; s->gait.phase = (s->gait.phase + 200) & 4095; break;
         case ACT_GATHER: if (!(s->act_t & 31)) s->gait.wave = 20;   // busy hands; chopping and hauling tire you
                          if (s->act_var == G_WOOD || s->act_var == G_STONE || s->act_var == G_DIG) s->need[N_REST] -= 40;
                          if (s->act_var == G_FISH) s->need[N_FUN] += 30; break;
@@ -1277,7 +1277,7 @@ void sim_player_move(int dx, int dz, int run) {
     s->path_n = 0; s->action = ACT_NONE;
     if (on_board) { skate_step(s, dx, dz); world_lvl = 0; return; }   // riding (skate.c)
     if (!dx && !dz) {
-        s->gait.amp = s->gait.amp > 300 ? s->gait.amp - 300 : 0;
+        s->gait.amp = s->gait.amp > 300 ? s->gait.amp - 300 : 0; s->gait.run = 0;
         world_lvl = 0; return; }
     // REAL 3D WALKING: the Bore turns toward the push first and only ever moves the way it FACES -
     // far from the push direction it pivots on the spot, so it never slides sideways like a 2D sprite.
@@ -1286,11 +1286,12 @@ void sim_player_move(int dx, int dz, int run) {
     turn_to(s, want, 260 + (ABS(diff) >> 3));                                // the wider the turn, the faster it swings
     int mag = SquareRoot0(dx * dx + dz * dz); if (mag > 4096) mag = 4096;    // stick tilt = walk speed
     int align = 4096 - ABS(diff) * 2; if (align < 0) align = 0;              // 4096 facing it .. 0 facing away
-    int sp0 = speed_of(s); if (run) sp0 = sp0 * 3 / 2;
+    int sp0 = speed_of(s); if (run) sp0 = sp0 * 2;
     int sp = ((sp0 * mag) >> 12) * align >> 12;
     if (sp) walk(s, (isin(s->yaw) * sp) >> 12, -((icos(s->yaw) * sp) >> 12));
     s->gait.amp = MAX(1600, (mag * align) >> 12);                            // pivoting: small steps; under way: the full swing
-    s->gait.phase = (s->gait.phase + (((run ? 200 : 150) * MAX(mag, 2048)) >> 12)) & 4095;
+    s->gait.phase = (s->gait.phase + (((run ? 230 : 150) * MAX(mag, 2048)) >> 12)) & 4095;
+    s->gait.run = run && mag > 2400 && align > 2048;                         // (a run only when really going: a nudge is a walk)
     world_lvl = 0;
 }
 
@@ -1306,10 +1307,10 @@ void sim_player_tank(int fwd, int turn, int run) {   // first person: left and r
     if (on_board) { int w = (s->yaw + turn * 6) & 4095; skate_step(s, fwd > 0 ? (isin(w) * fwd) >> 12 : turn ? (isin(w) * 1200) >> 12 : 0, fwd > 0 ? -((icos(w) * fwd) >> 12) : turn ? -((icos(w) * 1200) >> 12) : 0); world_lvl = 0; return; }   // (first person on a board: up pushes, left and right carve)
     s->yaw = (s->yaw + turn) & 4095;
     if (!fwd) { s->gait.amp = turn ? 1600 : (s->gait.amp > 300 ? s->gait.amp - 300 : 0); if (turn) s->gait.phase = (s->gait.phase + 90) & 4095; world_lvl = 0; return; }
-    int sp = speed_of(s); if (run && fwd > 0) sp = sp * 3 / 2;
+    int sp = speed_of(s); if (run && fwd > 0) sp = sp * 2;
     sp = (sp * fwd) >> 12; if (fwd < 0) sp = sp * 2 / 3;                // (backing up: slower)
     walk(s, (isin(s->yaw) * sp) >> 12, -((icos(s->yaw) * sp) >> 12));
-    s->gait.amp = 4096; s->gait.phase = (s->gait.phase + (fwd < 0 ? -130 : run ? 200 : 150)) & 4095;
+    s->gait.amp = 4096; s->gait.phase = (s->gait.phase + (fwd < 0 ? -130 : run ? 230 : 150)) & 4095; s->gait.run = run && fwd > 0;
     world_lvl = 0;
 }
 static int front_tile(const Sim *s, int *mx, int *my) {

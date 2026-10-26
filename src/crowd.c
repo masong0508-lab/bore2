@@ -305,7 +305,7 @@ static int want_box(const Spr *s, const VECTOR *pos, const Gait *g, int z, int a
     int fx, fy, hx, hy;
     int zf = gfx_proj(pos->vx, pos->vy + 30, pos->vz, &fx, &fy), zh = gfx_proj(pos->vx, pos->vy - (g->sleep ? 200 : 470), pos->vz, &hx, &hy);
     if (!zf || !zh) return 0;
-    int zn = MIN(zf, zh), m = (70 * 230) / zn, hw = ((g->sleep ? 300 : 150) * 230) / zn;
+    int zn = MIN(zf, zh), m = (70 * 230) / zn, hw = (((g->sleep ? 300 : 150) * 230) / zn) * (gfx_wide ? 3 : 4) / 4;
     b[0] = MIN(fx, hx) - hw - ax; b[2] = MAX(fx, hx) + hw - ax; b[1] = MIN(fy, hy) - m - ay; b[3] = MAX(fy, hy) + m / 2 - ay;
     return 1;
 }

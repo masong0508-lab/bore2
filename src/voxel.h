@@ -30,6 +30,7 @@ typedef struct {
     int roll, pitch; // a lean along the board (a manual) and across it (a grind's balance, a carve)
     int push;       // 0..4096: the back foot's kick (pushing)
     int spread;     // 1: the feet held off a flipping board
+    int run;        // 1: a run, not a walk (a longer stride, the knees folding high, the elbows bent, a lean in)
 } Gait;
 
 // The crowd model: the same person at half the voxel resolution (4 x 2 x 4 cells instead of 6 x 4 x 8), made from the full Bore
