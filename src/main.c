@@ -3556,7 +3556,7 @@ static const char *const moreCard[WO_NMORE] = { "STORY|MISSIONS", "BORE-OUT|MAN!
     "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "SPOOKY|HOLLOW", "FARM|LIFE", "SKY|HIGH", "SPEED|CITY", "BIG|SCREEN", "SEA-|SIDE", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE" };
 static const char *const moreBlurb[WO_NMORE] = { "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. NOT PORTED YET!", "THE TOWN GOES UNDEAD. NOT PORTED YET!", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. NOT PORTED YET!",
     "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!", "RAISE EIGHT PIXEL PETS PER TOY. X: THE GUIDE!", "GROWN-UPS ONLY: RETIRE AND LEAVE A LEGACY. NOT PORTED YET!", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
-    "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
+    "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "FORM A BAND AND PLAY GIGS! PAUSE, SUPERSTAR BAND", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
     "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!" };
 static void worlds_update(void) {
     wo_t++;
@@ -3566,7 +3566,7 @@ static void worlds_update(void) {
         if (PRESSED(PAD_RIGHT)) { int n = wo_msel + 2; wo_msel = n < WO_NMORE ? n : (wo_msel & 1); }
         if (PRESSED(PAD_LEFT)) { int n = wo_msel - 2; wo_msel = n >= 0 ? n : ((WO_NMORE - 1) & ~1) | (wo_msel & 1); if (wo_msel >= WO_NMORE) wo_msel = WO_NMORE - 1; }
         if (PRESSED(PAD_CIRCLE)) { wo_more = 0; return; }
-        if (PRESSED(PAD_CROSS)) { if (wo_msel == 0) { sc_t = 0; sp_join = 0; state = ST_SPICK; } else if (wo_msel == 5) { if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(3); gotchi_shelf = 1; state = ST_GOTCHI; } else audio_voice(VOICE_NAH); } else audio_voice(VOICE_NAH); }
+        if (PRESSED(PAD_CROSS)) { if (wo_msel == 0) { sc_t = 0; sp_join = 0; state = ST_SPICK; } else if (wo_msel == 5) { if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(3); gotchi_shelf = 1; state = ST_GOTCHI; } else audio_voice(VOICE_NAH); } else if (wo_msel == 10) audio_voice(VOICE_FINISHED); else audio_voice(VOICE_NAH); }
         return;
     }
     if (PRESSED(PAD_UP)) wo_sel = (wo_sel + WO_N - 1) % WO_N;
