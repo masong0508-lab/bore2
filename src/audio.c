@@ -115,7 +115,7 @@ static void deck_row(int di) {
         if (so == 0xffffffff || nt >= 96) continue;
         d->act++;
         if (d->mute & (1 << tch)) continue;                           // (a channel the DJ has killed)
-        int bdt = 0, bvs = 256;
+        int bdt = 0, bvs = 256, harm = 0; u32 hh = 0;
         if (band_on && !dj_mode) {
             int r = band_role[in];
             if (r) {
@@ -125,6 +125,7 @@ static void deck_row(int di) {
                     int pd = (((256 - q) * (256 - q)) >> 8) * (r == 1 ? 100 : 150) >> 8;   // the chance (of 256) the note is not played
                     if ((int)(h & 255) < pd) { band_miss[r]++; continue; }
                     if (r != 1) bdt = ((int)((h >> 8) & 255) - 128) * (256 - q) >> 7;         // a sour note: up to a semitone out (+-6 % of the pitch)
+                    if (q >= 240 && r >= 2 && r <= 4 && vol > 24) { hh = h >> 20; if ((hh & 3) == 0) harm = r == 3 ? 2 * 4096 : 3 * 2048; }   // a master adds a fifth (or, on keys, an octave) now and then
                     bvs = 154 + ((q * 102) >> 8) + (q >= 240 ? 26 : 0) + ((int)((h >> 16) & 15) - 8) * (256 - q) / 256;   // thin when poor, full when good
                 }
             }
@@ -143,6 +144,15 @@ static void deck_row(int di) {
         { static const u16 relTab[4] = { 0x0005, 0x000C, 0x000D, 0x000E };   // the release when a note is cut: short (the tracker songs), or 0.2, 0.4, 0.7 s (a held sound let go)
           SPU_CH_ADSR2(ch) = relTab[rel & 3]; }
         on |= 1u << ch;
+        if (harm) {                                      // the harmony: a quieter copy a fifth/octave up, on a spare clip voice, left to fade
+            int hc = CLIP_CH0 + CLIP_N - 1 - (hh >> 2 & 1), hv = vl * 2 / 5, hr = vr * 2 / 5;
+            SpuSetKey(0, 1 << hc);
+            SPU_CH_FREQ(hc) = (vfreq[ch] * harm) >> 12 > 0x3fff ? 0x3fff : (vfreq[ch] * harm) >> 12;
+            SPU_CH_ADDR(hc) = getSPUAddr(d->base + (int)so);
+            SPU_CH_VOL_L(hc) = hv; SPU_CH_VOL_R(hc) = hr;
+            SPU_CH_ADSR1(hc) = 0x00ff; SPU_CH_ADSR2(hc) = 0xCC00;
+            SpuSetKey(1, 1 << hc);
+        }
     }
     if (on) SPU_KEY_ON1 = (u16)on;
     if (++d->row >= d->rows[d->order[d->ord]]) {
