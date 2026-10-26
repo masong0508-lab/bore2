@@ -69,7 +69,7 @@ This is a re-make of the rendering, not a copy.
 4. DS: base game first with the smaller renderer; only add expansions the memory allows.
 
 ## 5. Things to decide
-- **Plain DS, or DSi-enhanced only?** DSi-enhanced (16 MB) is much easier.
+- ~~Plain DS or DSi?~~ **Decided: the DS version is a DSi title (16 MB RAM). Plain DS is not a target.** See section 8.
 - **Old saves:** convert PS1 memory-card saves to the new format with a small tool, or start fresh on each system.
 - **One codebase or two?** Recommendation: one game core, separate `ports/ps1`, `ports/3ds`, `ports/ds` folders for the platform layers.
 - **Art and sound rights:** check that all sounds, music and fonts can be redistributed on a new system.
@@ -85,3 +85,68 @@ This is a re-make of the rendering, not a copy.
 1. Add the `plat_*` headers and the plain-C maths. Make the PS1 build still pass its tests.
 2. Build the Linux host build and run one lot with people, so the shared code runs somewhere other than the PS1.
 3. Make a 3DS "hello" that draws that same lot with citro3d.
+
+## 8. The DSi plan, in concrete terms (decided: DSi hardware only)
+
+### 8.1 What the DSi gives us, and what it does not
+- **Gives:** 16 MB main RAM (4 times a DS, 8 times the PS1), a faster main CPU than the DS (about 133 MHz in DSi mode), SD card access, and enough RAM to keep a whole world window, models and sound in memory.
+- **Does not change:** the 3D chip is the DS's. Still about 2048 polygons and 6144 vertices per frame, 256x192 per screen, and the same texture/palette memory (about 656 KB VRAM in total, shared by textures, sprites and the 2D layers). So the DSi helps the *game logic and memory*, not the *polygons*. That decides the whole design: **draw less, simulate as much as we like.**
+- Check these early, on real hardware, before relying on them: DSi-mode clock speed, SD speed, how the title is launched (DSiWare, flashcart, or a loader), and the sound path. (I am not certain of every figure; the first spike measures them.)
+
+### 8.2 The memory budget (16 MB, a first draft)
+| Use | Budget |
+|---|---|
+| Code and constant data | 1.5 MB |
+| World generation tables and the live world window (all layers, items, rooms) | 3 MB |
+| People: stored models, sprite baker, sprite cache (CPU memory) | 2 MB |
+| Textures and palettes staged in RAM (copied to VRAM as needed) | 1.5 MB |
+| Sound: music and voices streamed from SD, small ring buffers | 1 MB |
+| Expansion module arena (one pack loaded at a time, like the PS1 overlay) | 2 MB |
+| Save and scratch | 1 MB |
+| Free for growth (new features) | 4 MB |
+The 4 MB kept free is on purpose: you will add features, and we do not want to cut something to fit each one.
+
+### 8.3 The polygon budget (per frame, about 2000 triangles)
+- Ground: the tiles near you as merged quads (floors in 2x2 and 4x4 blocks like the PS1 `floor_block`): about 300.
+- Walls and roofs near you: about 700 (walls as single quads per face, roofs merged).
+- Far buildings: boxes with one flat face each, as the PS1 skyline does: about 300.
+- People: **not** as voxel cubes. See 8.4. About 4 triangles each (a billboard), plus 2 to 4 nearby people as simple low-poly bodies: about 200.
+- Items and furniture: sprites or boxes: about 300.
+- Spare: about 200.
+The draw code gets a "budget meter" (like the PS1 `gfx_prims_left`) and drops detail in a fixed order when it runs out.
+
+### 8.4 People as baked sprites
+- The PS1 build already renders a person into a small texture and shows it as one quad (`crowd_sprite`). The DSi build uses the same idea, with a **software sprite baker** that draws the voxel model with the CPU into a 4-bit or 8-bit paletted texture, in 8 turning angles and each walk frame, on demand.
+- The baker is plain C shared by the PC host build and the DSi build, so we test it on the PC first.
+- Result: any look the player makes (hair, clothes, colours) still works, because the sprite is baked from the same voxel model and palette.
+
+### 8.5 Rendering approach
+- Use libnds' fixed-point 3D calls directly (no z-buffer; the DS sorts polygons by the order they are sent, or by the "manual sort" flag). Send far to near, as the PS1 ordering table does, so the PS1 draw order logic transfers.
+- Textures: 8-bit paletted atlas (the same as the PS1 atlas), split to fit the texture banks. Palettes per material group.
+- 2D screens: the bottom screen is a normal tile/bitmap screen for the HUD, phone, needs, map and expansion menus. The PS1 text and UI code maps to this.
+
+### 8.6 Keeping it open to new features (the rules)
+These are what stop the DSi version from becoming a rewrite each time you add something.
+1. **One shared game core.** All gameplay logic stays in platform-free C (sim, world gen, people, saves, packs). New features go there first, and are tested on the PC host build.
+2. **Every feature has a cost sheet.** In a small file (`docs/COSTS.md`) each feature lists its code size, RAM, per-frame polygons and time on PS1, 3DS and DSi. A new feature is added with its row. This is how we notice a feature that will not fit on the DSi.
+3. **Capability tiers, not forks.** The core asks `plat_cap(CAP_X)` (people as voxels, far view distance, number of people, particle effects) and the port answers. A DSi build simply answers "low". The 3DS answers "high".
+4. **Packs stay modules.** Expansion packs keep the overlay shape (one entry table: open, update, draw). A pack can supply a "lite" draw for the DSi. SKY AND SEA, for example, would draw the sea and sky as bands and the buildings as boxes, with crashes kept as simulation only.
+5. **Data over code.** New people names, lots, items and houses are table entries, not new code, so they cost almost nothing on any platform.
+6. **Save format.** Keep versioned saves with room to grow (the PS1 `pk_data` style): new feature state goes in new fields, never moves old ones, so one save works across platforms where the features exist.
+7. **Draw through the platform layer only.** New visuals use the existing `gfx_*` calls (quad, sprite, text). If a feature needs a new draw call, add it to the platform header and to every port at once.
+
+### 8.7 DSi milestones
+| Step | What exists at the end | How we know |
+|---|---|---|
+| D0 spike (about a week) | One lot, 6 baked people, walking camera, on real DSi | Frame rate, polygon count and RAM measured and written into `COSTS.md` |
+| D1 | The base game's world window, rooms, furniture, needs, the phone on the touch screen | A day of play without a crash |
+| D2 | Saves to SD, music from SD, the neighborhood map | A save from one session loads in the next |
+| D3 | Expansions as modules: FARM, PARADISE, GOTCHI, DJ, PARTY, DOG first | Each one opens, plays and closes |
+| D4 | PRISON, ARCADE, KINGDOM, SPACE, then a lite SKYSEA | Each tested on hardware |
+| D5 | Polish, a real-hardware test pass, packaging | A release build that runs from a clean install |
+
+### 8.8 What I can do now, on the PS1 build, that helps the DSi
+- Add a polygon/RAM/time **cost line** for each expansion in `COSTS.md` (I can measure the PS1 numbers now).
+- Keep isolating the PS1-only calls (GTE, ordering table, CD), as in Phase 0.
+- Start the shared **sprite baker** as a PC/PS1 common function.
+- Keep adding features as table data and platform-free logic wherever possible.
