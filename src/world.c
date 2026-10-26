@@ -1997,9 +1997,11 @@ int world_gh(int x, int z) {   // the ground under a point (world units): 0 wher
     int a = world_gh_c(tx, ty), b = world_gh_c(tx + 1, ty), c = world_gh_c(tx, ty + 1), d = world_gh_c(tx + 1, ty + 1);
     return ((a * (256 - fx) + b * fx) * (256 - fy) + (c * (256 - fx) + d * fx) * fy) >> 16;
 }
-static inline int gvar(int x, int y) {   // the outdoor floors' patchiness: stains, wear, sun-bleached bits (per corner, so neighbours agree)
-    int a = (int)(((u32)x * 73856093u ^ (u32)y * 19349663u) >> 28), b = (int)(((u32)(x >> 2) * 2654435761u ^ (u32)(y >> 2) * 40503u + 91) >> 27), c = (int)(((u32)(x >> 4) * 83492791u ^ (u32)(y >> 4) * 668265263u) >> 28);
-    return 214 + a + b + c;   // about 230..292 (256 is plain)
+static u8 gperm[256]; static int gperm_ok;
+static inline int gh8(int x, int y, int k) { return gperm[(gperm[(x + k) & 255] + y) & 255]; }
+static inline int gvar(int x, int y) {   // the outdoor floors' patchiness: stains, wear, sun-bleached bits (per corner, so neighbours agree; table lookups, no multiplies)
+    if (!gperm_ok) { u32 s = 12345; for (int i = 0; i < 256; i++) gperm[i] = (u8)i; for (int i = 255; i > 0; i--) { s = s * 1664525u + 1013904223u; int k = (int)((s >> 16) % (u32)(i + 1)); u8 t = gperm[i]; gperm[i] = gperm[k]; gperm[k] = t; } gperm_ok = 1; }
+    return 214 + (gh8(x, y, 0) >> 4) + (gh8(x >> 2, y >> 2, 91) >> 3) + (gh8(x >> 4, y >> 4, 173) >> 4);   // about 214..291 (256 is plain)
 }
 static void floor_tile(int mx, int my) {
     int fl = dfl[my][mx] % NFLOORS;
