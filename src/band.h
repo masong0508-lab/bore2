@@ -12,7 +12,7 @@ enum { RL_NONE, RL_FRONT, RL_LEADV, RL_BACKV, RL_RAPPER, RL_LEADG, RL_RHYG, RL_B
 typedef struct { u8 kind; u16 ref; u8 role[2]; u8 sk[5]; } BandMem;   // kind: 0 empty, 1 a Bore of the family (ref: its uid), 2 anyone else (ref: pop's pid, or 0x8000 | a citizen's slot)
 typedef struct {
     char name[17]; u8 genre, logo, tone, made;      // made: the band exists
-    u16 fame, fans; u8 gigs, pad;
+    u16 fame, fans; u8 gigs, pad;                  // pad: 1 the band owns a tour bus
     BandMem m[BAND_MAX];
     u8 set[BAND_SET];                              // the setlist: indexes into the 25 band songs (255 empty)
 } Band;

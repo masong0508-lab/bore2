@@ -80,14 +80,14 @@ int band_dance(void) {
 void band_save(void) {
     sv_u8(band.made); sv_str(band.name, 16); sv_u8(band.genre); sv_u8(band.logo); sv_u8(band.tone); sv_u16(band.fame); sv_u16(band.fans); sv_u8(band.gigs);
     for (int i = 0; i < BAND_MAX; i++) { const BandMem *m = &band.m[i]; sv_u8(m->kind); sv_u16(m->ref); sv_u8(m->role[0]); sv_u8(m->role[1]); for (int k = 0; k < 5; k++) sv_u8(m->sk[k]); }
-    sv_n(band.set, BAND_SET);
+    sv_n(band.set, BAND_SET); sv_u8(band.pad);   // (version 26: the tour bus)
 }
 void band_load(int ver) {
     band_reset(); if (ver < 25) return;
     band.made = (u8)ld_u8(); ld_str(band.name, 16); band.genre = (u8)ld_u8(); band.logo = (u8)ld_u8(); band.tone = (u8)ld_u8(); band.fame = ld_u16(); band.fans = ld_u16(); band.gigs = (u8)ld_u8();
     for (int i = 0; i < BAND_MAX; i++) { BandMem *m = &band.m[i]; m->kind = (u8)ld_u8() & 3; m->ref = ld_u16(); m->role[0] = (u8)ld_u8(); m->role[1] = (u8)ld_u8(); for (int k = 0; k < 5; k++) m->sk[k] = (u8)ld_u8();
         if (m->role[0] >= RL_N) m->role[0] = 0; if (m->role[1] >= RL_N) m->role[1] = 0; }
-    ld_n(band.set, BAND_SET);
+    ld_n(band.set, BAND_SET); band.pad = ver >= 26 ? (u8)(ld_u8() & 1) : 0;
 }
 
 #ifdef AUTO_SUPER

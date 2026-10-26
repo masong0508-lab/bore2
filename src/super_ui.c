@@ -15,7 +15,7 @@
 #include "band_roles.inc"
 
 enum { L_HOME, L_MEM, L_PICK, L_ROLE, L_SET, L_REH, L_VEN, L_GIG, L_RES };
-enum { H_NAME, H_GENRE, H_LOGO, H_TONE, H_MEM, H_SET, H_REH, H_GIG, H_N };
+enum { H_NAME, H_GENRE, H_LOGO, H_TONE, H_MEM, H_SET, H_REH, H_BUS, H_GIG, H_N };
 static int lv, sel, top, slot, rsel, anim, msgT, song, reht, rehacc, pool_n, rehOn;
 static const char *msg;
 static struct { u8 kind; u16 ref; } pool[96];
@@ -77,7 +77,8 @@ static const struct { const char *nm; u16 fame, cap, pay; } VEN[7] = {
 #else
 #define SONGLEN 2700
 #endif
-static int ven, gsel, gn, gix, gt, gen, gcd, gsum, gcnt, glight, gstars, gacc, gset[3], gpay, gfame, gfans, gwalk, gq;
+static Bore stg[3]; static const Bore *gb[6]; static int gbm[6], gbn, stgn;   // the stage's models: family Bores as they are, friends made again from their seed
+static int tour, tpay, tfans, ven, gsel, gn, gix, gt, gen, gcd, gsum, gcnt, glight, gstars, gacc, gset[3], gpay, gfame, gfans, gwalk, gq;
 static const u32 LIGHT[4][3] = { { UI_RGB(255, 80, 80), UI_RGB(255, 220, 80), UI_RGB(255, 120, 200) }, { UI_RGB(80, 160, 255), UI_RGB(80, 255, 220), UI_RGB(180, 120, 255) },
                                  { UI_RGB(120, 255, 120), UI_RGB(255, 255, 120), UI_RGB(255, 160, 60) }, { UI_RGB(255, 255, 255), UI_RGB(200, 200, 255), UI_RGB(255, 200, 200) } };
 static int front_level(void) { int b = 0; for (int i = 0; i < BAND_MAX; i++) if (band.m[i].kind && (band.m[i].role[0] == RL_FRONT || band.m[i].role[1] == RL_FRONT)) { int l = band_level(i, BS_VOICE); if (l > b) b = l; } return b; }
@@ -87,19 +88,33 @@ static int gig_q(void) {
     if (gix < gn && bandsong[gset[gix]].genre == band.genre) q += 7;
     return q > 100 ? 100 : q;
 }
+static void stage_cast(void) {   // up to six members as real Bores (the rest stay as figures)
+    for (int k = 0; k < stgn; k++) look_release(&stg[k]);
+    stgn = 0; gbn = 0;
+    for (int i = 0; i < BAND_MAX && gbn < 6; i++) { const BandMem *m = &band.m[i]; if (!m->kind) continue;
+        const Bore *b = 0;
+        if (m->kind == 1) { for (int k = 0; k < nsims; k++) if (sims[k].uid == m->ref) b = &sims[k].bore; }
+        else if (stgn < 3) { Bore *nb = &stg[stgn++]; memset(nb, 0, sizeof *nb); nb->stage = AG_ADULT; u32 old = look_seed((u32)(m->ref + 7 + i) * 2654435761u + 12345u); look_random(nb); look_seed(old); b = nb; }
+        if (b) { gb[gbn] = b; gbm[gbn++] = i; } }
+}
 static void gig_start(int v) {
     ven = v; gn = 0; int ns = setn(), off = ns ? band.gigs % ns : 0;
     for (int k = 0; k < ns && gn < 3; k++) { int c = 0, i = 0; for (; i < BAND_SET; i++) if (band.set[i] != 255) { if (c == (off + k) % ns) break; c++; } gset[gn++] = band.set[i]; }
+    stage_cast();
     gix = 0; gt = 0; gen = 300; gcd = 0; gsum = 0; gcnt = 0; glight = 0; gacc = 0; gwalk = 0; play_song(gset[0]); lv = L_GIG;
 }
 static void gig_end(void) {
     audio_jukebox_stop(); rehOn = 0;
+    for (int k = 0; k < stgn; k++) look_release(&stg[k]);
+    stgn = 0; gbn = 0;
     int avg = gcnt ? gsum / gcnt : 0;
     gstars = gwalk ? 0 : avg >= 850 ? 5 : avg >= 700 ? 4 : avg >= 550 ? 3 : avg >= 400 ? 2 : avg >= 220 ? 1 : 0;
     int aud = MIN((int)VEN[ven].cap, 5 + band.fans / 4 + band.fame * 3);
     gpay = VEN[ven].pay * gstars / 3; if (band.fame >= 400 && gpay) gpay += gpay / 4;   // (a rocket company pays a little extra once you are known)
     { int mg = 0; for (int i = 0; i < BAND_MAX; i++) if (band.m[i].kind && (band.m[i].role[0] == RL_MANAGER || band.m[i].role[1] == RL_MANAGER)) mg = 1; if (mg) gpay += gpay / 5; }
-    gfame = gstars ? gstars * (ven + 1) : -(ven + 1); gfans = gstars * aud / 20;
+    if (band.pad && gpay) gpay += gpay / 10;                  // (the bus carries the gear: less hassle)
+    if (tour) { gpay += gpay / 2; }                            // (on tour: the road pays well)
+    gfame = gstars ? gstars * (ven + 1) : -(ven + 1); gfans = gstars * aud / 20; if (tour) gfans *= 2;
     cash += gpay; { int f = (int)band.fame + gfame; band.fame = (u16)(f < 0 ? 0 : f > 9999 ? 9999 : f); int fn = band.fans + gfans; band.fans = (u16)(fn > 60000 ? 60000 : fn); }
     if (band.gigs < 250) band.gigs++;
     if (gstars >= 4) audio_voice(VOICE_YAHOO);
@@ -117,21 +132,33 @@ static void gig_update(int pr, int steps) {
 }
 static void gig_draw(void) {
     char b[48]; int e = gen;
-    ui_round(0, 0, 320, 224, 0, UI_RGB(8, 8, 22), UI_RGB(44, 20, 64), 0);
-    for (int k = 0; k < 3; k++) { int x = 70 + k * 90 + (((anim / 5 + k * 17) % 40) - 20) * (1 + e / 400); ui_round(x - 12, 14, 24, 150, 6, LIGHT[glight][k], LIGHT[glight][k] & 0x7f7f7f, 1); }
-    ui_round(0, 150, 320, 74, 0, UI_RGB(30, 24, 40), UI_RGB(10, 8, 16), 0);
+    { static const u32 SKY[4][2] = { { 0x180820u, 0x302060u }, { 0x201008u, 0x603820u }, { 0x082008u, 0x206030u }, { 0x181818u, 0x484040u } };   // (0xBBGGRR)
+      gfx_set_clear(8, 8, 22); gfx_set_ambient(110, 110); gfx_sky(SKY[glight][0], SKY[glight][1]);
+      int cx = 0, cz = -(6 * TILE), cyaw = 2048, pitch = 110, dist = 1000;
+      cam.at.vx = cx; cam.at.vy = -150; cam.at.vz = cz;
+      cam.eye.vx = cx - ((isin(cyaw) * ((dist * icos(pitch)) >> 12)) >> 12); cam.eye.vz = cz - ((icos(cyaw) * ((dist * icos(pitch)) >> 12)) >> 12); cam.eye.vy = -150 - ((dist * isin(pitch)) >> 12);
+      gfx_camera_update(); gfx_set_fog(0, 0);
+      for (int k = 0; k < gbn; k++) { const BandMem *m = &band.m[gbm[k]];
+        int sk = band_role_skill(m->role[0]); if (sk < 0) sk = band_role_skill(m->role[1]);
+        VECTOR p; setVector(&p, cx + (k * 2 - (gbn - 1)) * 150, 0, cz);
+        Gait g; memset(&g, 0, sizeof g); g.clock = anim + k * 23; g.seed = k * 41; g.mood = 40 + e / 14; g.phase = (anim * 60) & 4095;
+        g.amp = sk == BS_DANCE ? 1800 : 0; g.sit = sk == BS_DRUM || sk == BS_KEYS; g.squash = (((anim / 4) + k * 3) & 7) < 4 ? 0 : (e > 300 ? 5 : 0);
+        if (e > 600 && !(((anim / 20) + k) & 3)) g.wave = 10;
+        voxel_draw(gb[k], &p, 2048, &g); gfx_shadow(&p, 70); } }
+    for (int k = 0; k < 6; k++) { int x = 30 + k * 52; ui_disc(x, 18, 7, LIGHT[glight][k % 3]); }
+    ui_round(0, 168, 320, 56, 0, UI_RGB(30, 24, 40), UI_RGB(10, 8, 16), 0);
     ui_textc(160, 12, 1, VEN[ven].nm, UI_WHITE);
     ui_textc(160, 24, 1, gix < gn ? bandsong[gset[gix]].song : "", UI_AMBER);
     ui_bar(40, 38, 240, 6, e / 10, e > 700 ? UI_GREEN : e > 400 ? UI_AMBER : UI_RED);
-    { int n = band_count(), x0 = 160 - n * 9; int k = 0;   // the band on the stage
-      for (int i = 0; i < BAND_MAX; i++) { const BandMem *m = &band.m[i]; if (!m->kind) continue;
+    { int n = band_count() - gbn, x0 = 160 - n * 9, k = 0;   // the rest of the band: little figures at the front of the stage
+      for (int i = 0; i < BAND_MAX; i++) { const BandMem *m = &band.m[i]; if (!m->kind) continue; int shown = 0; for (int j = 0; j < gbn; j++) if (gbm[j] == i) shown = 1; if (shown) continue;
         int sk = band_role_skill(m->role[0]); if (sk < 0) sk = band_role_skill(m->role[1]);
         u32 c = sk == BS_VOICE ? UI_RED : sk == BS_GTR ? UI_BLUE : sk == BS_KEYS ? UI_GREEN : sk == BS_DRUM ? UI_AMBER : sk == BS_DANCE ? UI_RGB(240, 120, 170) : UI_LINE;
-        int bob = ((((anim / 4) + i * 3) & 7) < 4 ? 0 : 2) * (e > 300 ? 1 : 0), x = x0 + k * 18, y = 92 - bob + (sk == BS_DANCE ? 12 : 0) - (sk == BS_DRUM ? 8 : 0);
+        int bob = ((((anim / 4) + i * 3) & 7) < 4 ? 0 : 2) * (e > 300 ? 1 : 0), x = x0 + k * 18, y = 148 - bob;
         ui_disc(x + 5, y, 9, UI_RGB(250, 220, 190)); ui_round(x, y + 6, 11, 16, 3, c, c, 0); k++; } }
     { int aud = MIN((int)VEN[ven].cap, 5 + band.fans / 4 + band.fame * 3), cn = 8 + aud * 32 / VEN[ven].cap;
       for (int i = 0; i < cn; i++) { int row = i / 14, col = i % 14, jump = (((anim / 3) + i * 5) & 7) < 4 ? 0 : (e / 250);
-        ui_disc(26 + col * 20 + (row & 1) * 9, 176 + row * 14 - jump, 11, UI_RGB(60 + (i * 37) % 90, 60 + (i * 53) % 90, 80 + (i * 29) % 90)); } }
+        ui_disc(26 + col * 20 + (row & 1) * 9, 184 + row * 12 - jump, 11, UI_RGB(60 + (i * 37) % 90, 60 + (i * 53) % 90, 80 + (i * 29) % 90)); } }
     sprintf(b, "SONG %d OF %d", gix + 1, gn); ui_text(10, 12, 1, b, UI_SOFT); sprintf(b, "%d%%", gq); ui_text(280, 12, 1, b, UI_SOFT);
     ui_hints(160, 214, gcd > 0 ? "SQ LIGHTS|O WALK OFF" : "X WORK THE CROWD|SQ LIGHTS|O WALK OFF", 1);
 }
@@ -144,10 +171,11 @@ static void res_draw(void) {
     sprintf(b, "NEW FANS +%d  (%d)", gfans, band.fans); ui_textc(160, t + 84, 1, b, UI_INK);
     ui_wrapc(54, t + 104, 212, 3, gstars >= 4 ? "THE CROWD WANTS MORE. A BIGGER STAGE IS OPENING UP." : gstars >= 2 ? "NOT BAD. PRACTISE THE WEAK PARTS AND PLAY AGAIN." : "THE BAND NEEDS MORE REHEARSAL BEFORE THE NEXT ONE.", UI_SOFT);
     { int nx = -1; for (int v = 0; v < 7; v++) if (band.fame < VEN[v].fame) { nx = v; break; } if (nx >= 0) { sprintf(b, "NEXT STAGE: %s AT %d FAME", VEN[nx].nm, VEN[nx].fame); ui_textc(160, t + 134, 1, b, UI_BLUE2); } }
-    ui_hints(160, 214, "X OK", 1);
+    ui_hints(160, 214, tour > 0 ? "X NEXT SHOW ON THE TOUR|O END TOUR" : "X OK", 1);
 }
 
 void super_open(int arg) {
+    memset(stg, 0, sizeof stg); stgn = 0; gbn = 0; tour = 0;
     lv = L_HOME; sel = 0; top = 0; slot = 0; rsel = 0; anim = 0; msgT = 0; msg = 0; song = 0; rehOn = 0; reht = 0;
     if (!band.made) { band.made = 1; }
     build_pool();
@@ -167,6 +195,7 @@ int super_update(int hd, int pr, int steps) {
             if (sel == H_MEM) { lv = L_MEM; slot = 0; }
             else if (sel == H_SET) { lv = L_SET; sel = 0; top = 0; }
             else if (sel == H_REH) { if (!band_count()) say("FORM THE BAND FIRST: ADD MEMBERS"); else if (!setn()) say("PICK SONGS FOR THE SETLIST FIRST"); else { int f = 0; while (band.set[f] == 255) f++; lv = L_REH; reh_start(band.set[f]); } }
+            else if (sel == H_BUS) { if (band.pad) say("TOUR: PRESS SQUARE ON THE STAGE LIST"); else if (cash < 6000) { say("A TOUR BUS COSTS $6000"); audio_voice(VOICE_NAH); } else { cash -= 6000; band.pad = 1; say("YOUR OWN TOUR BUS!"); audio_voice(VOICE_YAHOO); } }
             else if (sel == H_GIG) { if (!band_count()) say("FORM THE BAND FIRST: ADD MEMBERS"); else if (!setn()) say("PICK SONGS FOR THE SETLIST FIRST"); else { lv = L_VEN; gsel = 0; for (int v = 0; v < 7; v++) if (band.fame >= VEN[v].fame) gsel = v; } }
             else { strcpy(band.name, NAMES[(name_ix() + 1) % 24]); }
         }
@@ -204,9 +233,10 @@ int super_update(int hd, int pr, int steps) {
     } else if (lv == L_VEN) {
         if (pr & PAD_UP) gsel = (gsel + 6) % 7; if (pr & PAD_DOWN) gsel = (gsel + 1) % 7;
         if (pr & PAD_CIRCLE) { lv = L_HOME; sel = H_GIG; }
-        if (pr & PAD_CROSS) { if (band.fame < VEN[gsel].fame) { say("NOT FAMOUS ENOUGH FOR THAT STAGE YET"); audio_voice(VOICE_NAH); } else gig_start(gsel); }
+        if (pr & PAD_CROSS) { if (band.fame < VEN[gsel].fame) { say("NOT FAMOUS ENOUGH FOR THAT STAGE YET"); audio_voice(VOICE_NAH); } else { tour = 0; gig_start(gsel); } }
+        if (pr & PAD_SQUARE) { if (!band.pad) { say("A TOUR NEEDS A TOUR BUS"); audio_voice(VOICE_NAH); } else if (band.fame < VEN[gsel].fame) { say("NOT FAMOUS ENOUGH FOR THAT STAGE YET"); audio_voice(VOICE_NAH); } else if (cash < 60) { say("FUEL FOR A TOUR IS $60"); audio_voice(VOICE_NAH); } else { cash -= 60; tour = 2; tpay = tfans = 0; gig_start(gsel); } }
     } else if (lv == L_GIG) gig_update(pr, steps);
-    else if (lv == L_RES) { if (pr & (PAD_CROSS | PAD_CIRCLE)) { lv = L_HOME; sel = H_GIG; } }
+    else if (lv == L_RES) { if (tour > 0 && (pr & PAD_CROSS)) { tour--; gig_start(ven); } else if (pr & (PAD_CROSS | PAD_CIRCLE)) { tour = 0; lv = L_HOME; sel = H_GIG; } }
     else {   // the rehearsal
         reht += steps; rehacc += steps; if (rehacc >= 300) { rehacc -= 300; reh_train(); }
         if (pr & (PAD_LEFT | PAD_RIGHT)) { int d = (pr & PAD_RIGHT) ? 1 : -1, i = song, n = 0; do { i = (i + NBANDSONG + d) % NBANDSONG; n++; } while (in_set(i) < 0 && n < NBANDSONG); reh_start(i); }
@@ -235,16 +265,17 @@ void super_draw(void) {
     char b[64];
     int t = ui_window(10, 6, 300, 228, band.name, LOGO[band.logo & 7]);
     if (lv == L_HOME) {
-        static const char *const nm[H_N] = { "BAND NAME", "GENRE", "LOGO", "COLOUR", "MEMBERS", "SETLIST", "REHEARSE", "PLAY A GIG" };
-        static const s8 ic[H_N] = { IC_BOOK, IC_NOTE, IC_STAR, IC_BRUSH, IC_PEOPLE, IC_NOTE, IC_PLAY, IC_PARTY };
+        static const char *const nm[H_N] = { "BAND NAME", "GENRE", "LOGO", "COLOUR", "MEMBERS", "SETLIST", "REHEARSE", "TOUR BUS", "PLAY A GIG" };
+        static const s8 ic[H_N] = { IC_BOOK, IC_NOTE, IC_STAR, IC_BRUSH, IC_PEOPLE, IC_NOTE, IC_PLAY, IC_ARROW, IC_PARTY };
         for (int i = 0; i < H_N; i++) {
-            int y = t + 2 + i * 21, on = i == sel;
+            int y = t + 2 + i * 19, on = i == sel;
             ui_row(18, y, 170, 18, nm[i], ic[i], on);
             if (i == H_NAME) ui_textfit(104, y + 5, 80, band.name, UI_BLUE2);
             else if (i == H_GENRE) ui_textfit(104, y + 5, 80, GN[band.genre % 12], UI_BLUE2);
             else if (i == H_LOGO) ui_icon(104, y + 3, LOGO[band.logo & 7], TONE[band.tone & 7]);
             else if (i == H_TONE) { ui_round(104, y + 4, 40, 10, 4, TONE[band.tone & 7], TONE[band.tone & 7], 0); }
             else if (i == H_MEM) { sprintf(b, "%d / %d", band_count(), BAND_MAX); ui_badge(104, y + 3, b, UI_BLUE, UI_WHITE); }
+            else if (i == H_BUS) ui_badge(104, y + 3, band.pad ? "OWNED" : "$6000", band.pad ? UI_GREEN : UI_BLUE, UI_WHITE);
             else if (i == H_SET) { sprintf(b, "%d / %d", setn(), BAND_SET); ui_badge(104, y + 3, b, UI_BLUE, UI_WHITE); }
         }
         ui_round(196, t + 2, 104, 148, 7, UI_WHITE, UI_PANEL, 0);
@@ -285,7 +316,7 @@ void super_draw(void) {
             if (ok) { sprintf(b, "%d FANS", VEN[v].cap); ui_badge(140, y + 4, b, UI_BLUE, UI_WHITE); sprintf(b, "$%d", VEN[v].pay); ui_badge(224, y + 4, b, UI_GREEN, UI_WHITE); }
             else { sprintf(b, "%d FAME", VEN[v].fame); ui_badge(140, y + 4, b, UI_LINE, UI_SOFT); } }
         if (msg) { int w = ui_tw(1, msg) + 16; ui_round(160 - w / 2, 190, w, 16, 6, UI_WHITE, UI_PANEL, 0); ui_textc(160, 195, 1, msg, UI_INK); }
-        ui_hints(160, 214, "X PLAY HERE|O BACK", 1);
+        ui_hints(160, 214, band.pad ? "X PLAY HERE|SQ TOUR (3 SHOWS, $60)|O BACK" : "X PLAY HERE|O BACK", 1);
     } else if (lv == L_SET) {
         for (int k = 0; k < 6 && top + k < NBANDSONG; k++) {
             int i = top + k, y = t + 2 + k * 22, at = in_set(i);
