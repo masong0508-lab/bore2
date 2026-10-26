@@ -1969,7 +1969,11 @@ static void wquad_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const 
 }
 // ---- the hills: the ground's height (units up) at a tile corner, from the land's block heights; towns are level ----
 static int gh_bx = -99999, gh_by, gh_h[4], gh_t[4];
-int world_hills_on(void) { return world_zone == ZONE_CITY && world_wbx >= 0 && world_lvl == 0; }
+int world_hills_on(void) {
+#if EXP==1
+    return 0;
+#endif
+    return world_zone == ZONE_CITY && world_wbx >= 0 && world_lvl == 0; }
 int world_gh_c(int X, int Y) {   // a tile corner of the window (0 where nothing rises). A town's lots stand on level pads, the streets slope between them; wild land rolls smoothly
     if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
     int ax = world_wbx * BM_BLK + X, ay = world_wby * BM_BLK + Y; if (ax < 0) ax = 0; if (ay < 0) ay = 0;
@@ -1999,7 +2003,13 @@ int world_gh(int x, int z) {   // the ground under a point (world units): 0 wher
 }
 static u8 gperm[256]; static int gperm_ok;
 static inline int gh8(int x, int y, int k) { return gperm[(gperm[(x + k) & 255] + y) & 255]; }
-static inline int gvar(int x, int y) {   // the outdoor floors' patchiness: stains, wear, sun-bleached bits (per corner, so neighbours agree; table lookups, no multiplies)
+#ifndef EXP
+#define EXP 0
+#endif
+static inline int gvar(int x, int y) {
+#if EXP==2
+    return 256;
+#endif   // the outdoor floors' patchiness: stains, wear, sun-bleached bits (per corner, so neighbours agree; table lookups, no multiplies)
     if (!gperm_ok) { u32 s = 12345; for (int i = 0; i < 256; i++) gperm[i] = (u8)i; for (int i = 255; i > 0; i--) { s = s * 1664525u + 1013904223u; int k = (int)((s >> 16) % (u32)(i + 1)); u8 t = gperm[i]; gperm[i] = gperm[k]; gperm[k] = t; } gperm_ok = 1; }
     return 214 + (gh8(x, y, 0) >> 4) + (gh8(x >> 2, y >> 2, 91) >> 3) + (gh8(x >> 4, y >> 4, 173) >> 4);   // about 214..291 (256 is plain)
 }

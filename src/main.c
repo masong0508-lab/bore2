@@ -1878,6 +1878,9 @@ static void opts_apply(void) {
     gfx_noshadow = opt[O_SHADOW] == 0; getenv_noshadow = opt[O_SHADOW] < 2;
     dbg_noao = !opt[O_AO]; dbg_nograd = !opt[O_WALLS];
     gfx_min_vsyncs = opt[O_FPSCAP] == 0 ? 1 : opt[O_FPSCAP] == 1 ? 2 : 3;
+#ifdef AUTO_NODITHER
+    opt[O_DITHER] = 0;
+#endif
     gfx_set_dither(opt[O_DITHER]);
     alone_opt = opt[O_ALONE]; ghost_mode = opt[O_GHOSTS];
     { extern int aggro_pct, rage_pct, aggro_who, rage_who, peace_on; aggro_pct = opt[O_AGGRO] * 20; rage_pct = opt[O_RAGE] * 20; aggro_who = opt[O_AGWHO]; rage_who = opt[O_RAGEWHO]; peace_on = opt[O_PEACE]; }
