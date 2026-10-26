@@ -3479,10 +3479,14 @@ static void wm_draw(void) {
     ui_hints(160, 214, "LR CHANGE|SQ SURPRISE ME|START PLAY|O BACK", 1);
 }
 
-#define WO_NMORE 17
-static const char *const moreNm[WO_NMORE] = { "STORY MISSIONS", "AFTER DARK", "CAMPUS LIFE", "PETS AND STRAYS",
+#define WO_NMORE 21
+// the base game's missions, the six older packs and THE LAND BOREFORE TIME (the GBA game's seven), then thirteen packs still to come
+static const char *const moreNm[WO_NMORE] = { "STORY MISSIONS", "BORE-OUT MAN!", "BOREZIES!", "WORLD WAR BORE", "BORTUA FIGHTER", "BOREAGOTCHI!", "BOREPILOGUE", "THE LAND BOREFORE TIME",
     "SEASONS", "ISLAND PARADISE", "SUPERSTAR", "SPOOKY HOLLOW", "FARM LIFE", "SKY HIGH", "SPEED CITY", "BIG SCREEN", "SEASIDE", "MAGIC AND MYTH", "FAMILY FUN", "WILD WEST", "SPACE AGE" };
-static const char *const moreBlurb[WO_NMORE] = { "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "NIGHTCLUBS AND BIG DATES. NOT OUT YET!", "DORMS, EXAMS AND ALL-NIGHTERS. NOT OUT YET!", "CATS, DOGS AND STRAYS. NOT OUT YET!",
+static const char *const moreCard[WO_NMORE] = { "STORY|MISSIONS", "BORE-OUT|MAN!", "BOREZIES!", "WORLD|WAR BORE", "BORTUA|FIGHTER", "BORE-|AGOTCHI!", "BORE-|PILOGUE", "THE LAND|BOREFORE|TIME",
+    "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "SPOOKY|HOLLOW", "FARM|LIFE", "SKY|HIGH", "SPEED|CITY", "BIG|SCREEN", "SEA-|SIDE", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE" };
+static const char *const moreBlurb[WO_NMORE] = { "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. NOT PORTED YET!", "THE TOWN GOES UNDEAD. NOT PORTED YET!", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. NOT PORTED YET!",
+    "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!", "A PIXEL PET ON A KEYCHAIN. NOT PORTED YET!", "GROWN-UPS ONLY: RETIRE AND LEAVE A LEGACY. NOT PORTED YET!", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
     "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
     "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!" };
 static void worlds_update(void) {
@@ -3523,19 +3527,20 @@ static void worlds_draw(void) {
     char b[48];
     int top = ui_window(6, 6, 308, 228, wo_more ? "MISSIONS AND EXPANSIONS" : "PICK A WORLD", wo_more ? IC_STAR : IC_PIN);
     if (wo_more) {
-        static const s8 mic[WO_NMORE] = { IC_BOOK, IC_STAR, IC_CASE, IC_HEART, IC_SUN, IC_TREE, IC_NOTE, IC_EYE, IC_SPROUT, IC_BOLT, IC_CAR, IC_CAMERA, IC_DROP, IC_STAR, IC_PARTY, IC_HAMMER, IC_BOLT };
+        static const s8 mic[WO_NMORE] = { IC_BOOK, IC_STAR, IC_PEOPLE, IC_HAMMER, IC_BX, IC_SMILE, IC_HEART, IC_TREE, IC_SUN, IC_TREE, IC_NOTE, IC_EYE, IC_SPROUT, IC_BOLT, IC_CAR, IC_CAMERA, IC_DROP, IC_STAR, IC_PARTY, IC_HAMMER, IC_BOLT };
         int c0 = CLAMP(wo_msel / 2 - 2, 0, (WO_NMORE + 1) / 2 - 5);   // (five columns show, and slide along)
         for (int i = 0; i < WO_NMORE; i++) {
             int col = i / 2 - c0; if (col < 0 || col > 4) continue;
             int x = 14 + col * 59, y = top + 2 + (i & 1) * 80, on = i == wo_msel;
             ui_round(x, y, 56, 76, 5, on ? UI_RGB(255, 236, 150) : UI_WHITE, on ? UI_RGB(255, 204, 70) : UI_RGB(214, 222, 236), 0);
-            ui_icon_disc(x + 28, y + 24, 30, mic[i], i == 0 ? UI_BLUE2 : UI_SOFT, UI_WHITE);
-            char t[20]; strncpy(t, moreNm[i], 19); t[19] = 0; char *sp = strrchr(t, ' ');
-            if (sp) { *sp = 0; ui_textc(x + 28, y + 46, 1, t, UI_INK); ui_textc(x + 28, y + 58, 1, sp + 1, UI_INK); } else ui_textc(x + 28, y + 52, 1, t, UI_INK);
+            ui_icon_disc(x + 28, y + 24, 30, mic[i], (i == 0 || i == 4 || i == 7) ? UI_BLUE2 : UI_SOFT, UI_WHITE);
+            { char t[24]; strncpy(t, moreCard[i], 23); t[23] = 0; char *ln[3]; int nl = 0; ln[nl++] = t; for (char *q = t; *q && nl < 3; q++) if (*q == '|') { *q = 0; ln[nl++] = q + 1; }
+              int ty = y + 46 - (nl == 1 ? 0 : 0); if (nl == 1) ty += 6; for (int k = 0; k < nl; k++) ui_textc(x + 28, ty + k * 10, 1, ln[k], UI_INK); }
         }
         if (c0 > 0) ui_text(6, top + 76, 1, "<", UI_INK);
         if (c0 + 5 < (WO_NMORE + 1) / 2) ui_text(308 - 6, top + 76, 1, ">", UI_INK);
-        ui_textc(160, top + 170, 1, moreBlurb[wo_msel], wo_msel ? UI_SOFT : UI_INK);
+        ui_textc(160, top + 160, 1, moreNm[wo_msel], UI_BLUE2);
+        ui_textc(160, top + 172, 1, moreBlurb[wo_msel], (wo_msel == 0 || wo_msel == 4 || wo_msel == 7) ? UI_INK : UI_SOFT);
         ui_hints(160, 214, wo_msel == 0 ? "X PICK A STORY|ARROWS MOVE|O BACK" : "ARROWS MOVE|O BACK", 1);
         return;
     }
