@@ -47,3 +47,6 @@ Sims 3 DS style title (Household Occupants / Start-Load profile), stylus Edit pa
 
 ## D7
 Create-a-Sim: 26 shape sliders (face + body: jaw, chin, ears, eye size, lips, neck, shoulders, torso, arms, belly, hips, legs), 8-feature drag pad, full-body view, nicer tabs. Fixed top screen not clearing after title.
+
+## D8
+Height slider; "Max x1/x2/x3" cheat chip multiplies every slider for extreme scales.

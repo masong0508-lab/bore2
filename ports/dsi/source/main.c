@@ -2,7 +2,7 @@
 // Bottom screen: the 2D neighbourhood map. Tap a lot with the stylus (or use the D-pad) to pick it.
 // Top screen: that lot in 3D. L/R change town, A/B zoom, START re-rolls the world.
 // Fixed point only; the world is bigmap.c, shared with the PS1 build (nothing of it is stored).
-#define PMN 26
+#define PMN 28
 #include <nds.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -187,6 +187,8 @@ static const u16 FLOORC[5] = { C15(22, 16, 9), C15(26, 26, 24), C15(10, 16, 24),
 static const u16 WALLC[4] = { C15(30, 28, 22), C15(28, 20, 16), C15(20, 24, 30), C15(30, 30, 30) };
 static int mark_x = -1, mark_y, mark_t;
 static void set_mode(int m);
+static int cas_mult = 1;
+static void eff_pm(const u8 *pm, int *p) { for (int q = 0; q < PMN; q++) { int v = 50 + (pm[q] - 50) * cas_mult; p[q] = v < -30 ? -30 : v > 230 ? 230 : v; } }
 static void sim3d(int i, int yaw);
 typedef struct { u8 x, y, c, i, rot; } Obj;
 static Obj objs[48]; static int nobj, funds = 20000;
@@ -604,12 +606,12 @@ static void beard3d(int bd, u16 hc, u16 sk, int hw, int hz) {
     if (bd == 3) bx(-170, 20, hz - 80, 170, 480, hz + 70, hc);
 }
 static void sim3d(int i, int yaw) {
-    const Sim *m = &sims[i]; (void)yaw;
+    const Sim *m = &sims[i]; (void)yaw; int P[PMN]; eff_pm(m->pm, P);
     int x = m->x * 2 * T / 16 - GN * T + T, z = m->y * 2 * T / 16 - GN * T + T;
     gox = x; goy = 0; goz = z; gcs = cosLerp(m->dirn); gsn = sinLerp(m->dirn);
     // little models need a transform: we emit through block()/qd(), which do not rotate, so the sims here are drawn facing the camera's axes
     u16 sk = skin_of(m), hc = hair_of(m), sh = shirt_of(m);
-    int hw = 100 + (m->pm[8] - 50) / 2, ht = 200 + (m->pm[9] - 50) / 2, base = 630 + (m->pm[15] - 50) * 2 + (m->pm[22] - 50) * 2, lh = 320 + (m->pm[22] - 50) * 2, sw = 135 + (m->pm[14] - 50), at = 50 + (m->pm[21] - 50) / 2, lt = 90 + (m->pm[23] - 50) / 2, bz = 85 + (m->pm[24] - 50) * 2, al = 250 + (m->pm[20] - 50) * 2;
+    int hw = 100 + (P[8] - 50) / 2, ht = 200 + (P[9] - 50) / 2, base = 630 + (P[15] - 50) * 2 + (P[22] - 50) * 2 + (P[26] - 50) * 5, lh = 320 + (P[22] - 50) * 2 + (P[26] - 50) * 3, sw = 135 + (P[14] - 50), at = 50 + (P[21] - 50) / 2, lt = 90 + (P[23] - 50) / 2, bz = 85 + (P[24] - 50) * 2, al = 250 + (P[20] - 50) * 2;
     gox = goy = goz = 0; gcs = 4096; gsn = 0;
     #define OFS(v) (v)
     bx(x - 10 - lt, 0, z - 60, x - 10, lh, z + 70, C15(6, 7, 12)); bx(x + 10, 0, z - 60, x + 10 + lt, lh, z + 70, C15(6, 7, 12));
@@ -629,10 +631,10 @@ static void sim3d(int i, int yaw) {
 // ---- Create-a-Sim: the head on the top screen, the choices on the bottom ----
 static int cas_body;   // 1 when the Body sliders are showing: the camera pulls back to show the whole figure
 static void draw_head(int yaw) {
-    (void)yaw; const Sim *m = &sims[0]; u16 sk = skin_of(m), hc = hair_of(m), sh = shirt_of(m); const u8 *p = m->pm;
+    (void)yaw; const Sim *m = &sims[0]; u16 sk = skin_of(m), hc = hair_of(m), sh = shirt_of(m); int p[PMN]; eff_pm(m->pm, p);
     int hw = (m->fc == 1 ? 780 : 700) + (p[8] - 50) * 4, ht = (m->fc == 2 ? 1700 : 1500) + (p[9] - 50) * 6, hz = 700;
-    int nl = (p[18] - 50) * 6, nw = 300 + (p[19] - 50) * 4, sw = 1150 + (p[14] - 50) * 8, th = 2200 + (p[15] - 50) * 20, bz = 450 + (p[24] - 50) * 6;
-    int at = 350 + (p[21] - 50) * 4, al = 2200 + (p[20] - 50) * 20, hp = sw * 8 / 10 + (p[25] - 50) * 6, lh = 2800 + (p[22] - 50) * 25, lt = 300 + (p[23] - 50) * 4;
+    int nl = (p[18] - 50) * 6, nw = 300 + (p[19] - 50) * 4, sw = 1150 + (p[14] - 50) * 8, th = 2200 + (p[15] - 50) * 20 + (p[26] - 50) * 12, bz = 450 + (p[24] - 50) * 6;
+    int at = 350 + (p[21] - 50) * 4, al = 2200 + (p[20] - 50) * 20 + (p[26] - 50) * 8, hp = sw * 8 / 10 + (p[25] - 50) * 6, lh = 2800 + (p[22] - 50) * 25 + (p[26] - 50) * 20, lt = 300 + (p[23] - 50) * 4;
     int yt = -1000 - nl, yb = yt - th; u16 pants = C15(6, 7, 12);
     bx(-sw, yt, -520, sw, -300 - nl, 520, sh);                                    // shoulders
     bx(-sw * 8 / 10, yb, -450, sw * 8 / 10, yt, bz, sh);                          // torso (belly pushes the front out)
@@ -664,8 +666,8 @@ static void draw_head(int yaw) {
 static const int CAS_N[9] = { 12, 6, 6, 6, 6, 6, 0, 0, 0 };
 static int cas_feat, cas_tgt, cas_rgb[3], cas_drag, cas_sp, cas_sg;
 static const struct { const char *n; u8 i; } SLF[16] = { {"Mouth W",0},{"Mouth Y",1},{"Lips",17},{"Eye gap",2},{"Eye Y",3},{"Eye size",16},{"Nose W",4},{"Nose L",5},{"Brow tilt",6},{"Brow Y",7},{"Head W",8},{"Head H",9},{"Jaw W",10},{"Chin",11},{"Ear size",12},{"Ear Y",13} },
-  SLB[10] = { {"Shldrs",14},{"Torso",15},{"Neck L",18},{"Neck W",19},{"Arm L",20},{"Arm W",21},{"Leg L",22},{"Leg W",23},{"Belly",24},{"Hips",25} };
-static int sl_n(void) { return cas_sg ? 10 : 16; }
+  SLB[11] = { {"Shldrs",14},{"Torso",15},{"Neck L",18},{"Neck W",19},{"Arm L",20},{"Arm W",21},{"Leg L",22},{"Leg W",23},{"Belly",24},{"Hips",25},{"Height",26} };
+static int sl_n(void) { return cas_sg ? 11 : 16; }
 static int sl_idx(int k) { int j = cas_sp * 6 + k; return j >= sl_n() ? -1 : (cas_sg ? SLB[j].i : SLF[j].i); }
 static const char *sl_name(int k) { int j = cas_sp * 6 + k; return cas_sg ? SLB[j].n : SLF[j].n; }
 static const char *const FEATN[8] = { "Mouth", "Eyes", "Nose", "Brows", "Head", "Jaw", "Ears", "Body" };
@@ -700,6 +702,7 @@ static void draw_cas(void) {   // the bottom screen: icon tabs down the left, th
     } else if (cas_tab == 8) {   // every slider: Face or Body, six per page
         for (int i = 0; i < 2; i++) { rect(66 + i * 44, 22, 42, 13, cas_sg == i ? C15(10, 30, 10) : C15(4, 10, 24)); text(70 + i * 44, 25, 1, TXT, i ? "Body" : "Face"); }
         rect(156, 22, 44, 13, C15(24, 10, 10)); text(162, 25, 1, TXT, "Reset");
+        rect(204, 22, 44, 13, cas_mult > 1 ? C15(31, 14, 4) : C15(14, 8, 24)); { char cb[8] = "Max x1"; cb[5] = (char)('0' + cas_mult); text(208, 25, 1, TXT, cb); }
         rect(206, 6, 20, 12, C15(8, 26, 8)); text(212, 9, 1, TXT, "<"); rect(228, 6, 20, 12, C15(8, 26, 8)); text(234, 9, 1, TXT, ">");
         for (int k = 0; k < 6; k++) { int q = sl_idx(k); if (q < 0) continue; int y = 40 + k * 17, v = tmp.pm[q];
             text(66, y + 3, 1, TXT, sl_name(k)); rect(124, y, 100, 13, PANB); rect(125, y + 1, 98, 11, C15(2, 5, 12)); rect(125, y + 1, v * 98 / 100, 11, C15(6, 18, 28)); rect(125 + 49, y + 1, 1, 11, C15(10, 14, 22));
@@ -730,6 +733,7 @@ static void cas_touch(int tx, int ty) {
     if (cas_tab == 8) {
         if (hit(206, 6, 20, 12, tx, ty) && cas_sp > 0) cas_sp--; if (hit(228, 6, 20, 12, tx, ty) && (cas_sp + 1) * 6 < sl_n()) cas_sp++;
         for (int i = 0; i < 2; i++) if (hit(66 + i * 44, 22, 42, 13, tx, ty)) { cas_sg = i; cas_sp = 0; }
+        if (hit(204, 22, 44, 13, tx, ty)) cas_mult = cas_mult % 3 + 1;
         if (hit(156, 22, 44, 13, tx, ty)) for (int j = 0; j < sl_n(); j++) sims[0].pm[cas_sg ? SLB[j].i : SLF[j].i] = 50;
         cas_drag = 0; for (int k = 0; k < 6; k++) if (sl_idx(k) >= 0 && hit(118, 38 + k * 17, 112, 17, tx, ty)) { cas_drag = 20 + k; cas_drag_at(tx, ty); }
     }
@@ -831,7 +835,7 @@ int main(void) {
             if (!(held & KEY_TOUCH)) cas_drag = 0;
             if (forced || (down & KEY_TOUCH) || cas_drag) draw_cas();
             if (cas_done) { cas_done = 0; set_mode(M_MAP); dirty = 1; }
-            yaw = sinLerp(frames * 70) / 2; pitch = 0; dist = (cas_tab == 8 && cas_sg) || (cas_tab == 6 && cas_feat == 7) ? 19000 : 4700;
+            yaw = sinLerp(frames * 70) / 2; pitch = 0; dist = (cas_tab == 8 && cas_sg) || (cas_tab == 6 && cas_feat == 7) ? 19000 + (cas_mult - 1) * 6000 : 4700;
         } else if (mode == M_MAP) {
             if (down & (KEY_L | KEY_R)) { cur_set = (cur_set + ((down & KEY_R) ? 1 : bm_nset() - 1)) % bm_nset(); s = bm_set(cur_set); sel_x = s->x; sel_y = s->y; dirty = 1; }
             if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; bm_new((u32)seed); cur_set = bm_capital(); s = bm_set(cur_set); sel_x = s->x; sel_y = s->y; dirty = 1; }
