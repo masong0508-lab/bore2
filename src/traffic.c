@@ -7,9 +7,12 @@
 #include "items.h"
 #include "save.h"
 #include "traffic.h"
+#include "bigmap.h"
 
 #define NCAR 120
-#define BLK 16
+#define BLK BM_BLK
+#define LA (BM_LOT0 / 2 - 1)   // the street is five wide: two lanes of two each way and the line between. Cars hop along the tile nearest the kerb of a lane and are drawn half a tile over, mid-lane
+#define LB (BM_LOT0 / 2 + 1)
 int traffic_level = 2, traffic_cheat;
 typedef struct { s32 tx, ty; s8 d; u8 type, col, spd; s16 p; u16 wait, wph; s16 yaw; u8 on; } Car;   // tile (whole world), heading, progress along the tile 0..TILE
 static Car car[NCAR];
@@ -23,7 +26,7 @@ static int bx_(void) { return world_wbx * BLK; }
 static int by_(void) { return world_wby * BLK; }
 static int road(int tx, int ty) { if (tx < 0 || ty < 0 || tx >= MW || ty >= MH) return 0; int f = floorMap[ty][tx]; return f == FL_ASPHALT || f == FL_LINE_H || f == FL_LINE_V; }
 static int lane_ok(int tx, int ty, int d) {   // drive on the right: east along the south lane, west the north, south the west lane, north the east
-    switch (d) { case 1: return ty % BLK == 2; case 3: return ty % BLK == 0; case 0: return tx % BLK == 0; default: return tx % BLK == 2; }
+    switch (d) { case 1: return ty % BLK == LB; case 3: return ty % BLK == LA; case 0: return tx % BLK == LA; default: return tx % BLK == LB; }
 }
 static int target(void) {
 #ifdef TRAF_TEST
@@ -72,7 +75,8 @@ static void step_car(Car *c) {
             int r = rnd(n), k = 0; while (r >= (ok[k] ? w[k] : 0)) { r -= ok[k] ? w[k] : 0; k++; }
             c->d = ds[k];
         }
-        if (taken(c->tx + DX[(int)c->d], c->ty + DY[(int)c->d], c)) { if (++c->wait > 240) c->on = 0; return; }
+        { int blk = 0; for (int k = 1; k <= 3 && !blk; k++) blk = taken(c->tx + DX[(int)c->d] * k, c->ty + DY[(int)c->d] * k, c);   // (a car is three tiles long: room ahead for all of it)
+          if (blk) { if (++c->wait > 240) c->on = 0; return; } }
         c->wait = 0; c->p = 1;
     }
     c->p += c->spd; c->wph = (c->wph + c->spd * 18) & 4095;
@@ -89,7 +93,8 @@ void traffic_update(int steps) {
     for (int i = want; i < NCAR && n > want; i++) if (car[i].on) { car[i].on = 0; n--; }   // (the dial turned down: the cars fade away)
 }
 static void put(const Car *c) {
-    int x = (c->tx - bx_()) * TILE + TILE / 2 + DX[(int)c->d] * c->p, y = (c->ty - by_()) * TILE + TILE / 2 + DY[(int)c->d] * c->p;
+    static const s8 LX[4] = { -1, 0, 1, 0 }, LY[4] = { 0, 1, 0, -1 };   // (half a tile over, into the middle of the two-tile lane)
+    int x = (c->tx - bx_()) * TILE + TILE / 2 + DX[(int)c->d] * c->p + LX[(int)c->d] * (TILE / 2), y = (c->ty - by_()) * TILE + TILE / 2 + DY[(int)c->d] * c->p + LY[(int)c->d] * (TILE / 2);
     items_draw_vehicle(x, -y, c->yaw, 0, c->type, c->col, c->wph);
 }
 void traffic_draw(void) {

@@ -818,7 +818,7 @@ static void taxi_to_block(int bx, int by, int tx, int ty, const char *where) {  
     if (world_zone != ZONE_CITY) world_switch(ZONE_CITY);
     world_open_at(bx, by);
     loading("TAKING A TAXI", 85); far_reset();                  // the land round you, out to the horizon
-    int px = (bx - world_wbx) * BM_BLK + (tx >= 0 ? tx : 8), py = (by - world_wby) * BM_BLK + (ty >= 0 ? ty : 1);
+    int px = (bx - world_wbx) * BM_BLK + (tx >= 0 ? tx : 9), py = (by - world_wby) * BM_BLK + (ty >= 0 ? ty : BM_LOT0 / 2);
     put_household(px, py);
     citizens_enter(ZONE_CITY);
     char b[48]; snprintf(b, sizeof b, "WELCOME TO %s", where); sim_note(b);
@@ -3349,6 +3349,9 @@ static u32 wo_seed_of(int k) { return k >= WO_PRE1 && k <= WO_PRE3 ? wo_preset[k
 static void worlds_named(void) { wo_painted = 0; }   // (the map is drawn again, the new name on it)
 static void worlds_open(void) {
     wo_painted = 0; wo_sel = 0; wo_t = 0; wo_more = 0; wo_msel = 0; state = ST_WORLDS;
+#ifdef AUTO_PACKS
+    wo_more = 1; wo_msel = AUTO_PACKS;
+#endif
 }
 static void worlds_go(u32 seed, int mode) {
     life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 4; bm_packed = wo_packed; wo_name_for(seed); strcpy(life_cap, wo_name); start_life();
@@ -3476,14 +3479,19 @@ static void wm_draw(void) {
     ui_hints(160, 214, "LR CHANGE|SQ SURPRISE ME|START PLAY|O BACK", 1);
 }
 
-#define WO_NMORE 4
-static const char *const moreNm[WO_NMORE] = { "STORY MISSIONS", "AFTER DARK", "CAMPUS LIFE", "PETS AND STRAYS" };
-static const char *const moreBlurb[WO_NMORE] = { "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "NIGHTCLUBS AND BIG DATES. NOT OUT YET!", "DORMS, EXAMS AND ALL-NIGHTERS. NOT OUT YET!", "CATS, DOGS AND STRAYS. NOT OUT YET!" };
+#define WO_NMORE 17
+static const char *const moreNm[WO_NMORE] = { "STORY MISSIONS", "AFTER DARK", "CAMPUS LIFE", "PETS AND STRAYS",
+    "SEASONS", "ISLAND PARADISE", "SUPERSTAR", "SPOOKY HOLLOW", "FARM LIFE", "SKY HIGH", "SPEED CITY", "BIG SCREEN", "SEASIDE", "MAGIC AND MYTH", "FAMILY FUN", "WILD WEST", "SPACE AGE" };
+static const char *const moreBlurb[WO_NMORE] = { "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "NIGHTCLUBS AND BIG DATES. NOT OUT YET!", "DORMS, EXAMS AND ALL-NIGHTERS. NOT OUT YET!", "CATS, DOGS AND STRAYS. NOT OUT YET!",
+    "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!",
+    "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!", "PLACEHOLDER PACK. NOT MADE YET!" };
 static void worlds_update(void) {
     wo_t++;
     if (wo_more) {                                   // MISSIONS AND EXPANSIONS
-        if (PRESSED(PAD_UP)) wo_msel = (wo_msel + WO_NMORE - 1) % WO_NMORE;
-        if (PRESSED(PAD_DOWN)) wo_msel = (wo_msel + 1) % WO_NMORE;
+        // (two rows of tall cards, a column to a pair: item i sits in column i/2, row i%2)
+        if (PRESSED(PAD_UP) || PRESSED(PAD_DOWN)) { int n = wo_msel ^ 1; if (n < WO_NMORE) wo_msel = n; }
+        if (PRESSED(PAD_RIGHT)) { int n = wo_msel + 2; wo_msel = n < WO_NMORE ? n : (wo_msel & 1); }
+        if (PRESSED(PAD_LEFT)) { int n = wo_msel - 2; wo_msel = n >= 0 ? n : ((WO_NMORE - 1) & ~1) | (wo_msel & 1); if (wo_msel >= WO_NMORE) wo_msel = WO_NMORE - 1; }
         if (PRESSED(PAD_CIRCLE)) { wo_more = 0; return; }
         if (PRESSED(PAD_CROSS)) { if (wo_msel == 0) { sc_t = 0; sp_join = 0; state = ST_SPICK; } else audio_voice(VOICE_NAH); }
         return;
@@ -3515,9 +3523,20 @@ static void worlds_draw(void) {
     char b[48];
     int top = ui_window(6, 6, 308, 228, wo_more ? "MISSIONS AND EXPANSIONS" : "PICK A WORLD", wo_more ? IC_STAR : IC_PIN);
     if (wo_more) {
-        for (int i = 0; i < WO_NMORE; i++) ui_button(14, top + 4 + i * 22, 292, 18, moreNm[i], i == 0 ? IC_BOOK : IC_LOCK, i == wo_msel);
-        ui_textc(160, top + 100, 1, moreBlurb[wo_msel], wo_msel ? UI_SOFT : UI_INK);
-        ui_hints(160, 214, wo_msel == 0 ? "X PICK A STORY|O BACK" : "O BACK", 1);
+        static const s8 mic[WO_NMORE] = { IC_BOOK, IC_STAR, IC_CASE, IC_HEART, IC_SUN, IC_TREE, IC_NOTE, IC_EYE, IC_SPROUT, IC_BOLT, IC_CAR, IC_CAMERA, IC_DROP, IC_STAR, IC_PARTY, IC_HAMMER, IC_BOLT };
+        int c0 = CLAMP(wo_msel / 2 - 2, 0, (WO_NMORE + 1) / 2 - 5);   // (five columns show, and slide along)
+        for (int i = 0; i < WO_NMORE; i++) {
+            int col = i / 2 - c0; if (col < 0 || col > 4) continue;
+            int x = 14 + col * 59, y = top + 2 + (i & 1) * 80, on = i == wo_msel;
+            ui_round(x, y, 56, 76, 5, on ? UI_RGB(255, 236, 150) : UI_WHITE, on ? UI_RGB(255, 204, 70) : UI_RGB(214, 222, 236), 0);
+            ui_icon_disc(x + 28, y + 24, 30, mic[i], i == 0 ? UI_BLUE2 : UI_SOFT, UI_WHITE);
+            char t[20]; strncpy(t, moreNm[i], 19); t[19] = 0; char *sp = strrchr(t, ' ');
+            if (sp) { *sp = 0; ui_textc(x + 28, y + 46, 1, t, UI_INK); ui_textc(x + 28, y + 58, 1, sp + 1, UI_INK); } else ui_textc(x + 28, y + 52, 1, t, UI_INK);
+        }
+        if (c0 > 0) ui_text(6, top + 76, 1, "<", UI_INK);
+        if (c0 + 5 < (WO_NMORE + 1) / 2) ui_text(308 - 6, top + 76, 1, ">", UI_INK);
+        ui_textc(160, top + 170, 1, moreBlurb[wo_msel], wo_msel ? UI_SOFT : UI_INK);
+        ui_hints(160, 214, wo_msel == 0 ? "X PICK A STORY|ARROWS MOVE|O BACK" : "ARROWS MOVE|O BACK", 1);
         return;
     }
     static const s8 ic[WO_N] = { IC_DICE, IC_PIN, IC_PIN, IC_PIN, IC_BRUSH, IC_SUN, IC_STAR };

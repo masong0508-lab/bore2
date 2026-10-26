@@ -591,7 +591,7 @@ static void draw_trees(int rx0, int ry0, int rx1, int ry1) {
         u32 seed = bm_seed() ^ 0x7E3Eu;
         for (int j = 0; j < n; j++) {
             u32 hsh = bm_hash(cx * 61 + j, cy * 37 - j, seed);
-            int tx = ctx + (int)(hsh & 63), ty = cty + (int)((hsh >> 6) & 63);
+            int tx = ctx + (int)(hsh % CELL_T), ty = cty + (int)((hsh >> 6) % CELL_T);
             if (overlap && tx >= wx0 && tx < wx0 + MW && ty >= wy0 && ty < wy0 + MH) continue;   // (in the map: its own trees)
             int kk = k; if (t == BT_GRASS && (hsh >> 20) % 3u == 0) kk = 1;
             if (t == BT_FOREST && (hsh >> 21) % 4u == 0) kk = 0;

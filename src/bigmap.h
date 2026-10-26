@@ -7,8 +7,8 @@
 #include "common.h"
 
 #define BM_N    1024                  // blocks a side
-#define BM_BLK  16                    // tiles a block
-#define BM_LOT0 3                     // a block's lot starts 3 tiles in (the street runs along its top and left)
+#define BM_BLK  18                    // tiles a block
+#define BM_LOT0 5                     // a block's lot starts 3 tiles in (the street runs along its top and left)
 
 enum { BT_SEA, BT_BEACH, BT_GRASS, BT_FOREST, BT_DESERT, BT_ROCKY };
 enum { LOT_WILD, LOT_HOUSE, LOT_COTTAGE, LOT_TOWN, LOT_TWO, LOT_APART,            // nothing; the homes (APART: a block of flats, 2 a storey)

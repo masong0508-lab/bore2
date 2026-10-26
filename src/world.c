@@ -1266,7 +1266,7 @@ static void lot_hotel(int lx, int ly, unsigned h, int st) {   // a hotel: a corr
 // and the window moves a block that way: everything slides over (the map, the storeys, the homes, the people), and the row of
 // blocks coming into view is built from the generator. A block you built on is kept aside when it leaves, and comes back as you
 // left it.
-#define WB 5
+#define WB 4
 int world_wbx = -1, world_wby = -1;                    // the window's top-left block in the open world (-1: not made yet)
 typedef struct { u16 bx, by; char map[BM_BLK][BM_BLK]; u8 fl[BM_BLK][BM_BLK], wp[BM_BLK][BM_BLK]; } EditBlk;
 static EditBlk edit_small[12]; static EditBlk *edits = edit_small; static int nedit_max = 12, nedit, edit_next;
@@ -1373,17 +1373,18 @@ static void wild(int ox, int oy, const BInfo *b, int bx, int by) {   // the open
 // ---- a river across a town, and the big shared places (a park, a mall, a downtown plaza: four blocks made one) ----
 COLD static void lot_river(int ox, int oy, int vert, unsigned h) {   // the lot is a river with a walk down each bank; the street along the edge crosses it as a bridge
     int T = vert ? 0 : 1;   // (draw west-east, mirrored for north-south through x/y swap)
-    #define RX(a, b) (vert ? ox + (a) : ox + (b))
-    #define RY(a, b) (vert ? oy + (b) : oy + (a))
-    for (int d = 3; d < BM_BLK; d++) {                 // d: along the river's width (across), e: along its length
+    const int SH = BM_LOT0 - 3, NB = BM_BLK - SH;   // (the river was drawn for a 16-tile block with a 3-tile street: slid over by the wider street)
+    #define RX(a, b) (vert ? ox + (a) + SH : ox + (b) + SH)
+    #define RY(a, b) (vert ? oy + (b) + SH : oy + (a) + SH)
+    for (int d = 3; d < NB; d++) {                 // d: along the river's width (across), e: along its length
         int fl = d <= 4 ? FL_PAVING : d <= 11 ? FL_WATER : d <= 13 ? FL_PAVING : FL_GRASS;
-        for (int e = 3; e < BM_BLK; e++) floorMap[RY(d, e)][RX(d, e)] = (u8)fl;
+        for (int e = 3; e < NB; e++) floorMap[RY(d, e)][RX(d, e)] = (u8)fl;
     }
-    for (int e = 0; e < 3; e++) for (int d = 5; d <= 11; d++) floorMap[RY(d, e)][RX(d, e)] = FL_ASPHALT;   // (under the street: the bridge)
-    for (int e = 4; e < BM_BLK; e += 4) {              // lamps and benches down both walks, planters, and trees on the far bank
+    for (int e = -SH; e < 3; e++) for (int d = 5; d <= 11; d++) floorMap[RY(d, e)][RX(d, e)] = FL_ASPHALT;   // (under the street: the bridge)
+    for (int e = 4; e < NB; e += 4) {              // lamps and benches down both walks, planters, and trees on the far bank
         gFree(RX(3, e), RY(3, e), '"'); gFree(RX(13, e + 2), RY(13, e + 2), '"');
         gFree(RX(4, e + 2), RY(4, e + 2), 'N'); gFree(RX(12, e), RY(12, e), 'N');
-        gFree(RX(15, e), RY(15, e), TREE); if (e + 2 < BM_BLK) gFree(RX(14, e + 2), RY(14, e + 2), TREE);
+        gFree(RX(15, e), RY(15, e), TREE); if (e + 2 < NB) gFree(RX(14, e + 2), RY(14, e + 2), TREE);
     }
     if (h & 1) gFree(RX(12, 9), RY(12, 9), 'Z'); if (h & 2) gFree(RX(4, 6), RY(4, 6), 'Z');
     if (h & 4) { gPut(RX(7, 9), RY(7, 9), 'K'); }      // (a rock in the stream, if a rock is 'K': the item the park uses)
@@ -1392,19 +1393,19 @@ COLD static void lot_river(int ox, int oy, int vert, unsigned h) {   // the lot 
     #undef RX
     #undef RY
 }
-COLD static void mega_zone(int ox, int oy, int part, int kind, unsigned h) {   // the 3-wide strips that were streets between the four blocks: a plaza (or a green) now
-    int fl = kind == MK_PARK ? FL_GRASS : FL_PAVING;
-    if (part & 1) gBox(ox, oy + ((part & 2) ? 0 : 3), ox + 2, oy + BM_BLK - 1, (u8)fl);       // the strip down the left
-    if (part & 2) gBox(ox + ((part & 1) ? 0 : 3), oy, ox + BM_BLK - 1, oy + 2, (u8)fl);      // the strip along the top
+COLD static void mega_zone(int ox, int oy, int part, int kind, unsigned h) {   // the strips that were streets between the four blocks: a plaza (or a green) now
+    int fl = kind == MK_PARK ? FL_GRASS : FL_PAVING, S = BM_LOT0, C = S / 2, E = S - 1;
+    if (part & 1) gBox(ox, oy + ((part & 2) ? 0 : S), ox + E, oy + BM_BLK - 1, (u8)fl);       // the strip down the left
+    if (part & 2) gBox(ox + ((part & 1) ? 0 : S), oy, ox + BM_BLK - 1, oy + E, (u8)fl);      // the strip along the top
     if (kind == MK_PARK) {
-        if (part & 1) gBox(ox + 1, oy + ((part & 2) ? 0 : 3), ox + 1, oy + BM_BLK - 1, FL_PAVING);
-        if (part & 2) gBox(ox + ((part & 1) ? 0 : 3), oy + 1, ox + BM_BLK - 1, oy + 1, FL_PAVING);
+        if (part & 1) gBox(ox + C, oy + ((part & 2) ? 0 : S), ox + C, oy + BM_BLK - 1, FL_PAVING);
+        if (part & 2) gBox(ox + ((part & 1) ? 0 : S), oy + C, ox + BM_BLK - 1, oy + C, FL_PAVING);
     }
-    if (part & 1) for (int y = oy + ((part & 2) ? 2 : 4); y < oy + BM_BLK; y += 4) { gFree(ox, y, kind == MK_PARK ? TREE : 'Z'); gFree(ox + 2, y, kind == MK_PARK ? TREE : 'Z'); gFree(ox + 1, y + 2, 'N'); gFree(ox + 2, y + 2, '"'); }
-    if (part & 2) for (int x = ox + ((part & 1) ? 2 : 4); x < ox + BM_BLK; x += 4) { gFree(x, oy, kind == MK_PARK ? TREE : 'Z'); gFree(x, oy + 2, kind == MK_PARK ? TREE : 'Z'); gFree(x + 2, oy + 1, 'N'); gFree(x + 2, oy + 2, '"'); }
+    if (part & 1) for (int y = oy + ((part & 2) ? 2 : S + 1); y < oy + BM_BLK; y += 4) { gFree(ox, y, kind == MK_PARK ? TREE : 'Z'); gFree(ox + E, y, kind == MK_PARK ? TREE : 'Z'); gFree(ox + C, y + 2, 'N'); gFree(ox + E, y + 2, '"'); }
+    if (part & 2) for (int x = ox + ((part & 1) ? 2 : S + 1); x < ox + BM_BLK; x += 4) { gFree(x, oy, kind == MK_PARK ? TREE : 'Z'); gFree(x, oy + E, kind == MK_PARK ? TREE : 'Z'); gFree(x + 2, oy + C, 'N'); gFree(x + 2, oy + E, '"'); }
     if (part == 3) {                                    // the middle of the four: a pond in a park, a fountain in a plaza, with the benches round it
-        if (kind == MK_PARK) { gBox(ox, oy, ox + 2, oy + 2, FL_WATER); gFree(ox + 1, oy + 1, 'N'); }
-        else { gPut(ox + 1, oy + 1, '}'); gFree(ox, oy, 'N'); gFree(ox + 2, oy, 'N'); gFree(ox, oy + 2, 'N'); gFree(ox + 2, oy + 2, 'N'); }
+        if (kind == MK_PARK) { gBox(ox, oy, ox + E, oy + E, FL_WATER); gFree(ox + C, oy + C, 'N'); }
+        else { gPut(ox + C, oy + C, '}'); gFree(ox, oy, 'N'); gFree(ox + E, oy, 'N'); gFree(ox, oy + E, 'N'); gFree(ox + E, oy + E, 'N'); }
     }
     (void)h;
 }
@@ -1419,12 +1420,13 @@ COLD static void gen_block(int wx, int wy) {
     for (int k = 0; k < NUP; k++) { Level *L = lv_get(k); if (L) for (int y = 0; y < BM_BLK; y++) memset(&L->map[oy + y][ox], ' ', BM_BLK); }
     int mg = b.lot != LOT_RIVER && (b.road & BR_MEGA), mpart = BR_PART(b.road), mkind = BR_KIND(b.road);
     int rd = b.road & 7; if (mg) { if (mpart & 1) rd &= ~2; if (mpart & 2) rd &= ~1; }   // (inside a big place the streets between its blocks are gone)
-    if (rd & 1) { gBox(ox, oy, ox + BM_BLK - 1, oy + 2, FL_ASPHALT); gBox(ox + 3, oy + 1, ox + BM_BLK - 1, oy + 1, FL_LINE_H); }   // the street: asphalt, a dashed line down the middle
-    if (rd & 2) { gBox(ox, oy, ox + 2, oy + BM_BLK - 1, FL_ASPHALT); gBox(ox + 1, oy + 3, ox + 1, oy + BM_BLK - 1, FL_LINE_V); }
-    if ((rd & 3) == 1) gBox(ox, oy + 1, ox + 2, oy + 1, FL_LINE_H);
-    if ((rd & 3) == 2) gBox(ox + 1, oy, ox + 1, oy + 2, FL_LINE_V);
+    const int SW = BM_LOT0, SC = SW / 2;   // the street: five tiles wide, a lane of two each way and the line down the middle
+    if (rd & 1) { gBox(ox, oy, ox + BM_BLK - 1, oy + SW - 1, FL_ASPHALT); gBox(ox + SW, oy + SC, ox + BM_BLK - 1, oy + SC, FL_LINE_H); }
+    if (rd & 2) { gBox(ox, oy, ox + SW - 1, oy + BM_BLK - 1, FL_ASPHALT); gBox(ox + SC, oy + SW, ox + SC, oy + BM_BLK - 1, FL_LINE_V); }
+    if ((rd & 3) == 1) gBox(ox, oy + SC, ox + SW - 1, oy + SC, FL_LINE_H);
+    if ((rd & 3) == 2) gBox(ox + SC, oy, ox + SC, oy + SW - 1, FL_LINE_V);
     if (b.set != 255 && b.terrain != BT_SEA) {           // in town: a pavement along the street
-        gBox(ox + 3, oy + 3, ox + BM_BLK - 1, oy + 3, FL_PAVING); gBox(ox + 3, oy + 3, ox + 3, oy + BM_BLK - 1, FL_PAVING);
+        gBox(ox + BM_LOT0, oy + BM_LOT0, ox + BM_BLK - 1, oy + BM_LOT0, FL_PAVING); gBox(ox + BM_LOT0, oy + BM_LOT0, ox + BM_LOT0, oy + BM_BLK - 1, FL_PAVING);
     }
     if (mg && mpart) mega_zone(ox, oy, mpart, mkind, b.h);
     int mine = own.used && bx == own.bx && by == own.by;
@@ -1579,7 +1581,7 @@ COLD void world_open_at(int cbx, int cby) {          // the window round block (
 int world_stream(int ptx, int pty, int *dtx, int *dty) {
     *dtx = *dty = 0;
     if (world_zone != ZONE_CITY || world_wbx < 0 || ptx < 0 || pty < 0 || ptx >= MW || pty >= MH) return 0;
-    int sx = CLAMP(ptx / BM_BLK - WB / 2, -1, 1), sy = CLAMP(pty / BM_BLK - WB / 2, -1, 1);
+    int bxp = ptx / BM_BLK, byp = pty / BM_BLK, sx = (bxp >= WB - 1) - (bxp <= 0), sy = (byp >= WB - 1) - (byp <= 0);   // (in one of the two middle blocks: the window stays; further out it moves)
     if (world_wbx + sx < 0 || world_wbx + sx > BM_N - WB) sx = 0;
     if (world_wby + sy < 0 || world_wby + sy > BM_N - WB) sy = 0;
     if (!sx && !sy) return 0;
@@ -1591,7 +1593,7 @@ void world_arrival(int set, int *px, int *py) {  // where a bus or a taxi drops 
     const Settle *s = bm_set(set); if (!s) s = bm_set(0);
     if (!s) { *px = MW / 2; *py = MH / 2; return; }
     world_open_at(s->x, s->y);
-    *px = (s->x - world_wbx) * BM_BLK + 8; *py = (s->y - world_wby) * BM_BLK + 1;
+    *px = (s->x - world_wbx) * BM_BLK + 9; *py = (s->y - world_wby) * BM_BLK + BM_LOT0 / 2;
 }
 int world_block_info(int wx, int wy, BInfo *b) { if (world_wbx < 0) return 0; bm_block(world_wbx + wx, world_wby + wy, b); return 1; }
 void world_new_seed(u32 seed) { wsalt = seed; world_wbx = world_wby = -1; edit_init(); own.used = 0; }
@@ -2493,20 +2495,19 @@ static void roof_rebuild(void) {
     roof_dirty = 0; memset(rq_dirty, 0, sizeof rq_dirty); rq_n = 0;
 }
 // the window moved dx, dy tiles (whole blocks): the roofs, the buildings and the storeys' edges move with it
+static void bits_shift(u32 (*rows)[(MW + 31) / 32], int dx, int dy) {   // a bit a tile: the map slid by (dx, dy) tiles
+    static u32 tmp[MH][(MW + 31) / 32];
+    memset(tmp, 0, sizeof tmp);
+    for (int y = 0; y < MH; y++) { int ys = y + dy; if (ys < 0 || ys >= MH) continue;
+        for (int x = 0; x < MW; x++) { int xs = x + dx; if (xs >= 0 && xs < MW && ((rows[ys][xs >> 5] >> (xs & 31)) & 1)) tmp[y][x >> 5] |= 1u << (x & 31); } }
+    memcpy(rows, tmp, sizeof tmp);
+}
 static void roof_shift(int dx, int dy) {
     for (int l = 0; l < NLEVELS; l++) {
         shift2d(&roofH[l][0][0], RHW, RHW, MH + 1, dx / 2, dy, 0);   // (whole blocks of 16 tiles: 8 bytes of nibbles)
-        {   // the roof bits (and a storey's edge bits): 16 tiles to a half-word
-            u16 tmp[MH][6]; int hx = dx / 16;
-            for (int y = 0; y < MH; y++) { int ys = y + dy; const u16 *src = (const u16 *)roofM[l][ys < 0 ? 0 : ys >= MH ? MH - 1 : ys];
-                for (int i = 0; i < 6; i++) { int j = i + hx; tmp[y][i] = (ys < 0 || ys >= MH || j < 0 || j >= 5) ? 0 : src[j]; } }
-            for (int y = 0; y < MH; y++) memcpy(roofM[l][y], tmp[y], sizeof roofM[l][y]);
-        }
+        bits_shift(roofM[l], dx, dy);
         if (l) {
-            u16 tmp[MH][6]; int hx = dx / 16;
-            for (int y = 0; y < MH; y++) { int ys = y + dy; const u16 *src = (const u16 *)lvl_edge[l][ys < 0 ? 0 : ys >= MH ? MH - 1 : ys];
-                for (int i = 0; i < 6; i++) { int j = i + hx; tmp[y][i] = (ys < 0 || ys >= MH || j < 0 || j >= 5) ? 0 : src[j]; } }
-            for (int y = 0; y < MH; y++) memcpy(lvl_edge[l][y], tmp[y], sizeof lvl_edge[l][y]);
+            bits_shift(lvl_edge[l], dx, dy);
             if (lvl_used[l]) {
                 int a = lvl_bb[l][0] - dx, b = lvl_bb[l][1] - dy, c = lvl_bb[l][2] - dx, d = lvl_bb[l][3] - dy;
                 a = MAX(a, 0); b = MAX(b, 0); c = MIN(c, MW - 1); d = MIN(d, MH - 1);
@@ -2953,11 +2954,17 @@ __attribute__((optimize("Os"))) void world_load(void) {   // (after world_new_se
         own.bx = (u16)ld_u16(); own.by = (u16)ld_u16(); own.fresh = (u8)ld_u8(); own.lv = (u8)ld_u8(); own.home = (u8)ld_u8();
         own.hx0 = (u8)ld_u8(); own.hy0 = (u8)ld_u8(); own.hx1 = (u8)ld_u8(); own.hy1 = (u8)ld_u8(); own.hdx = (u8)ld_u8(); own.hdy = (u8)ld_u8();
         ld_n(&own_occ, sizeof own_occ);
+        if (save_ver < 20) {   // (before the wide streets a block was 16 tiles: its kept tiles cannot be laid over the new map, so they are read and let go)
+            static u8 junk[NLEVELS * 256];
+            if (!own.fresh) { ld_rle(junk, NLEVELS * 256); ld_rle(junk, NLEVELS * 256); ld_rle(junk, NLEVELS * 256); }
+            own.used = 0;
+        } else
         if (!own.fresh) { ld_rle(own.map, sizeof own.map); ld_rle(own.fl, sizeof own.fl); ld_rle(own.wp, sizeof own.wp); }
     }
     int n = ld_u16(); edit_next = ld_u16(); nedit = 0;
     for (int i = 0; i < n; i++) {
         EditBlk t; int keep = i < nedit_max; EditBlk *e = keep ? &edits[i] : &t;   // (t: a block too many for this machine's list is read and dropped)
+        if (save_ver < 20) { static u8 junk[256]; ld_u16(); ld_u16(); ld_rle(junk, 256); ld_rle(junk, 256); ld_rle(junk, 256); continue; }
         e->bx = (u16)ld_u16(); e->by = (u16)ld_u16(); ld_rle(e->map, sizeof e->map); ld_rle(e->fl, sizeof e->fl); ld_rle(e->wp, sizeof e->wp);
         if (keep) nedit++;
     }

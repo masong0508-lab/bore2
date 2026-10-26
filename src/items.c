@@ -594,7 +594,7 @@ static void veh_model(int t, int ci, int wph) {
 int dbg_vdraw, dbg_vq;
 void items_draw_vehicle(int x, int z, int yaw, int y, int type, int ci, int wph) {
     dbg_vdraw++; dbg_vq = type * 1000 + ci;
-    VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, yaw & 4095); sk_k = 20; veh_model(type, ci, wph); sk_k = 16; gfx_set_identity();
+    VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, yaw & 4095); sk_k = 28; veh_model(type, ci, wph); sk_k = 16; gfx_set_identity();
 }
 static void skate_model(void) {
     const int BW = 34, Lf = 78, L = 112, T = 6, top = -30;

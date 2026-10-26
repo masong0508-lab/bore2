@@ -209,7 +209,7 @@ int sim_want_jobs;   // the computer's JOB BOARD was picked: main opens JOBS wit
 int veh_own, veh_on, veh_sel, veh_fuel[VEH_N], veh_wph; static int veh_odo, veh_lowfuel;
 static const struct { const char *nm; short price, speed, tank, seat; } VT[VEH_N] = {   // tank: tiles of range (0: pedals); seat: how high the driver sits
     { "BIKE", 150, 3, 0, 0 }, { "SCOOTER", 600, 4, 500, 0 }, { "SEDAN", 3200, 7, 1500, 30 }, { "VAN", 4800, 6, 1800, 30 }, { "SPORTS CAR", 9500, 10, 1000, 24 }, { "PICKUP", 5600, 6, 2000, 30 } };
-int veh_seat(int t) { return VT[t % VEH_N].seat * 5 / 4; }
+int veh_seat(int t) { return VT[t % VEH_N].seat * 7 / 4; }
 int veh_colour(int t) { return (t * 5 + 2 + (int)((world_seed() >> 8) & 7)) % 6; }
 int has_board, on_board, board_lift;   // the skateboard: owned, ridden, how high the rider is (skate.c rides it)
 static int ramp_pass;   // set while the rider's own step is tried: a board can roll onto a ramp
