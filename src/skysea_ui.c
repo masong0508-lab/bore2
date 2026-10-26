@@ -40,7 +40,7 @@ static const char *const CNM[NCR] = { "ROWBOAT", "JET SKI", "FISHING SKIFF", "SP
 static const char *const CHINT[NCR] = { "OARS ONLY. FISH ALL DAY.", "FAST AND LIGHT. WAVES TOSS IT.", "SMALL HOLD. FISHES THE REEF.", "FAST. THIRSTY. RACES.", "FREE WIND. NEEDS A CROSSWIND.", "BIG HOLD. SLOW. FISHES BIG.", "PUSHES ANYTHING. TURNS ON A COIN.", "A BIG HOLD OF PASSENGERS.", "SKIMS WATER AND SAND.", "LUXURY AND SPEED.",
     "NO ENGINE. FIND THE LIFT.", "OPEN COCKPIT. FORGIVING.", "LAND ON THE WAVES.", "HOVERS. LANDS ANYWHERE.", "UP, DOWN, AND DRIFT.", "FAST. HARD TO LAND." };
 // the world
-#define CELL 320
+static int CELL = 320;   // (the ground's tile: bigger when you are high, so the far land shows)
 #define RAD 7
 #define NIS 5
 static const s16 IS[NIS][5] = { { 0, 0, 3600, 260, 0 }, { 7600, 0, 2000, 60, 55 }, { -6500, 4200, 2600, 1500, 0 }, { 2500, -6200, 1200, 130, 0 }, { -3000, -6500, 1500, 300, 0 } };
@@ -274,8 +274,8 @@ static void world_draw(int fx, int fy, int fz, int fyaw) {
         u32 ca = strip ? UI_RGB(80, 80, 88) : gcol(h00, x0, z0, 0), cb = strip ? UI_RGB(90, 90, 98) : gcol(h10, x0 + CELL, z0, 4), cc = strip ? UI_RGB(80, 80, 88) : gcol(h01, x0, z0 + CELL, 8), cd = strip ? UI_RGB(90, 90, 98) : gcol(h11, x0 + CELL, z0 + CELL, 12);
         gfx_quad_g(&a, &b, &c, &d, ca, cb, cc, cd, 0);
     }
-    int i0 = fx / TS - 4, j0 = fz / TS - 4;   // the town's buildings in range
-    for (int j = j0; j <= j0 + 8; j++) for (int i = i0; i <= i0 + 8; i++) { int bx, bz, bh, pop; if (!bld(i, j, &bx, &bz, &bh, &pop)) continue; int g = MAX(0, gh(bx, bz));
+    int bn = mode == M_BOAT ? 5 : 6; int i0 = fx / TS - bn, j0 = fz / TS - bn;   // the town's buildings in range
+    for (int j = j0; j <= j0 + 2 * bn; j++) for (int i = i0; i <= i0 + 2 * bn; i++) { int bx, bz, bh, pop; if (!bld(i, j, &bx, &bz, &bh, &pop)) continue; int g = MAX(0, gh(bx, bz));
         if (is_dead(i, j)) { box(bx - 50, -g - 14, bz - 50, bx + 50, -g, bz + 50, UI_RGB(60, 50, 46)); continue; }
         box(bx - 55, -g - bh, bz - 55, bx + 55, -g, bz + 55, UI_RGB(150 + (i * 37 & 63), 140 + (j * 53 & 63), 130 + ((i + j) * 29 & 63))); }
     (void)fy; (void)fyaw;
@@ -307,7 +307,8 @@ void skysea_draw(void) {
         cam.at.vx = fx; cam.at.vy = -fy - 20; cam.at.vz = fz;
         cam.eye.vx = fx - ((isin(yaw) * dist) >> 12); cam.eye.vz = fz - ((icos(yaw) * dist) >> 12); cam.eye.vy = -fy - vy_ - fy2;
         if (mode == M_CHUTE) { cam.eye.vx = fx - 300; cam.eye.vz = fz - 300; }
-        gfx_camera_update(); gfx_set_fog(1800, 3200); gfx_set_identity();
+        { int al = fy - MAX(0, gh(fx, fz)); CELL = al > 1200 ? 960 : al > 450 ? 640 : 480; }
+        gfx_camera_update(); gfx_set_fog(CELL * 5, CELL * 7 + 400); gfx_set_identity();
         world_draw(fx, fy, fz, yaw);
         if (mode == M_BOAT) craft_draw(cur, px, py, pz, yaw, 0, roll, 0);
         else if (mode == M_AIR) craft_draw(cur, px, py, pz, yaw, pitch, roll, 0);
