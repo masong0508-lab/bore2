@@ -36,11 +36,11 @@ scenes=[('p1',toasters,(225,525,84)),('p2',vacuum,(575,525,88)),('p3',duck,(930,
 def inset(poly,m=3):
     cx=sum(x for x,_ in poly)/len(poly); cy=sum(y for _,y in poly)/len(poly)
     return [(x+(cx-x)*0.0,y) for x,y in poly]
-SMOKE=[(968,1272,9,200),(979,1242,12,190),(962,1208,16,175),(982,1168,20,150),(960,1122,25,125),(986,1072,30,95)]
+SMOKE=[(984,1288,9,200),(992,1258,12,190),(978,1222,16,175),(996,1182,20,150),(974,1136,25,125),(1000,1084,30,95)]
 for k,fn,(ox,oy,s) in scenes:
     layer=Image.new('RGBA',im.size,(0,0,0,0)); ld=ImageDraw.Draw(layer)
-    ld.ellipse([(ox-150)*SS,(oy-20)*SS,(ox+150)*SS,(oy+12)*SS],fill=shade(COL[k],0.72)+(255,))
-    sc=fn(); sc.render(ld,ox*SS,(oy-8)*SS,s*SS,ow=3*SS//2+1)
+    ld.ellipse([(ox-150)*SS,(oy-20)*SS,(ox+150)*SS,(oy+12)*SS],fill=shade(COL[k],0.78)+(255,)); ld.ellipse([(ox-105)*SS,(oy-14)*SS,(ox+105)*SS,(oy+6)*SS],fill=shade(COL[k],0.62)+(255,))
+    sc=fn(); sc.render(ld,ox*SS,(oy-8)*SS,s*SS,ow=SS+1)
     if k=='q3':
         for x,y,r,a_ in SMOKE: ld.ellipse([(x-r)*SS,(y-r)*SS,(x+r)*SS,(y+r)*SS],fill=(238,232,244,a_),outline=(150,140,165,a_//2),width=2)
     mask=Image.new('L',im.size,0); ImageDraw.Draw(mask).polygon(S2(P[k]),fill=255)
@@ -78,8 +78,6 @@ layer.putalpha(ImageChops.multiply(layer.getchannel('A'),mask)); im.paste(layer,
 jp=S2(jag(P['logo'],seed=hash('logo')%97)); d.line(jp+[jp[0]],fill=INK,width=9*SS,joint='curve')
 tf=ImageFont.truetype('/usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf',34*SS)
 d.text((60*SS,905*SS),"BOREDOM. SIMULATED.",font=tf,fill=(244,236,214))
-tf2=ImageFont.truetype('/usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf',22*SS)
-d.text((62*SS,950*SS),"A WHOLE CITY OF BORES  -  PLAYSTATION",font=tf2,fill=(255,92,139))
 im=im.resize((W*2,H*2),Image.LANCZOS)
 im.save('/tmp/art/stage1.png')
 print('ok')
