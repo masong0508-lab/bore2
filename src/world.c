@@ -17,7 +17,7 @@
 typedef struct { char map[MH][MW + 1]; u8 fl[MH][MW]; u8 wp[MH][MW]; } Level;
 // Storage is a small shared pool: a storey takes a slot only once something is built on it (most zones have one loft at most),
 // which keeps 15 empty 19 KB levels out of the PS1's 2 MB.
-#define NLVPOOL 5
+#define NLVPOOL 3                                   // a plain 2 MB machine: three storeys at once (was 5: 38 KB back for the stack and the world). 8 MB uses NLVPOOL8, below
 #define NLVPOOL8 20                                 // with 8 MB: storeys for every zone at once
 static Level lvpool_small[NLVPOOL]; static Level *lvpool = lvpool_small; static int nlvpool = NLVPOOL; static u8 lvbusy[NLVPOOL8];
 static u8 lvown[ZONE_N + 1][NUP];                   // per zone (and the studio): 1 + the pool slot of each storey, 0 = empty
