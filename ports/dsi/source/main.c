@@ -44,7 +44,8 @@ static u16 *scr, *scr_sub, *hud;
 static void px(int x, int y, u16 c) { if ((unsigned)x < 256 && (unsigned)y < 192) scr[y * 256 + x] = c; }
 static void rect(int x, int y, int w, int h, u16 c) {
     if (x < 0) { w += x; x = 0; } if (y < 0) { h += y; y = 0; } if (x + w > 256) w = 256 - x; if (y + h > 192) h = 192 - y; if (w <= 0 || h <= 0) return;
-    for (int j = 0; j < h; j++) { u16 *p = scr + (y + j) * 256 + x; for (int i = 0; i < w; i++) p[i] = c; }
+    u32 cc = (u32)c | ((u32)c << 16);
+    for (int j = 0; j < h; j++) { u16 *p = scr + (y + j) * 256 + x; int i = 0, n = w; if (x & 1) { p[0] = c; i = 1; n--; } u32 *q = (u32 *)(p + i); for (int k = 0; k < n / 2; k++) q[k] = cc; if (n & 1) p[i + n - 1] = c; }
 }
 #include "font8.h"
 static int tw(int s, const char *t) {   // the width of a string in pixels
@@ -1844,8 +1845,15 @@ static void live_touch(int tx, int ty) {
 }
 
 void systemMsgHandler(int bytes, void *user_data);
+static volatile u32 lat_down; static volatile int lat_tx, lat_ty, lat_press, lat_got; static u32 lat_prev;
+static void vb_latch(void) {   // every vblank, remember fresh presses, so a quick tap is never lost while a slow frame is being drawn
+    u32 k = keysCurrent(), n = k & ~lat_prev; lat_prev = k;
+    lat_down |= n & ~(u32)KEY_TOUCH;
+    if (n & KEY_TOUCH) { lat_press = 1; lat_got = 0; }
+    if ((k & KEY_TOUCH) && lat_press && !lat_got) { touchPosition t; touchReadXY(&t); if (t.px || t.py) { lat_tx = t.px; lat_ty = t.py; lat_got = 1; } }
+}
 int main(void) {
-    irqEnable(IRQ_VBLANK); powerOn(POWER_ALL_2D | POWER_3D_CORE | POWER_MATRIX);
+    irqEnable(IRQ_VBLANK); irqSet(IRQ_VBLANK, vb_latch); powerOn(POWER_ALL_2D | POWER_3D_CORE | POWER_MATRIX);
     videoSetMode(MODE_5_3D | DISPLAY_BG3_ACTIVE);
     videoSetModeSub(MODE_5_2D | DISPLAY_BG3_ACTIVE);
     vramSetBankA(VRAM_A_TEXTURE); vramSetBankB(VRAM_B_TEXTURE); vramSetBankC(VRAM_C_SUB_BG); vramSetBankD(VRAM_D_MAIN_BG_0x06000000);
@@ -1858,6 +1866,7 @@ int main(void) {
     int yaw = 0, dist = 13000, frames = 0, dirty = 1; unsigned lastsig = 0; int lastmode = -1;
     while (1) {
         scanKeys(); int held = keysHeld(), down = keysDown(); touchPosition tp = {0}; if (held & KEY_TOUCH) touchRead(&tp);
+        { u32 ld = lat_down; lat_down = 0; down |= (int)ld; if (down & KEY_TOUCH) lat_press = 0; else if (lat_press && lat_got) { lat_press = 0; down |= KEY_TOUCH; tp.px = (u16)lat_tx; tp.py = (u16)lat_ty; } }
         const Settle *s = bm_set(cur_set); msg_t = msg_t > 0 ? msg_t - 1 : 0;
         unsigned sig = 0; int forced = (mode != lastmode); lastmode = mode;
         if (mode == M_TITLE) {
@@ -1905,8 +1914,11 @@ int main(void) {
                     else if (cam_drag == 3) { if (cam_pan) { int c = cosLerp(live_yaw), sn = sinLerp(live_yaw); cam_free = 1; camx += (-ddx * c + ddy * sn) * cam_deff / 4096 / 160; camz += (-ddx * sn - ddy * c) * cam_deff / 4096 / 160; }
                         else { live_yaw += ddx * 60; yaw_t = live_yaw; live_pitch += ddy * 30; if (live_pitch < 1800) live_pitch = 1800; if (live_pitch > 7600) live_pitch = 7600; } } }
             } else if (down & KEY_TOUCH) live_touch(tp.px, tp.py);
+            if ((down & KEY_B) && (menu_open || popup || jobui || juke)) { menu_open = popup = jobui = juke = 0; }
+            else if ((down & KEY_START) && !jobui && !juke && !popup) menu_open ^= 1;
+            if (juke) { if (down & KEY_DOWN) juke_pg++; if (down & KEY_UP && juke_pg > 0) juke_pg--; if (down & KEY_RIGHT) { int c = mus_cur < 0 ? 0 : mus_cur; o_song = (c + 1) % (mus_n > 0 ? mus_n : 1) + 1; } }
             if (down & KEY_L) yaw_t -= 4096; if (down & KEY_R) yaw_t += 4096;
-            if (held & KEY_LEFT) { yaw_t -= 120; live_yaw = yaw_t; } if (held & KEY_RIGHT) { yaw_t += 120; live_yaw = yaw_t; }
+            if (!juke && !menu_open && !jobui && !popup && (held & KEY_LEFT)) { yaw_t -= 120; live_yaw = yaw_t; } if (held & KEY_RIGHT) { yaw_t += 120; live_yaw = yaw_t; }
             if (held & KEY_UP) { if (live_pitch < 7600) live_pitch += 50; } if (held & KEY_DOWN) { if (live_pitch > 1800) live_pitch -= 50; }
             if (down & KEY_SELECT) { cam_free ^= 1; if (!cam_free) { live_yaw = yaw_t = 4096; live_pitch = 4300; } }
             if (held & KEY_X) { if (live_dist > 3500) live_dist -= 80; } if (held & KEY_Y) { if (live_dist < 16000) live_dist += 80; }
@@ -1914,9 +1926,9 @@ int main(void) {
             for (int k = 0; k < speed; k++) { sims_step(frames * speed + k); city_step(frames * speed + k); } lot_cross();
             int tx = sims[cur_sim].x * 2 * T / 16 - GN * T + T, tz = sims[cur_sim].y * 2 * T / 16 - GN * T + T; if (!cam_free) { camx += (tx - camx) / 8; camz += (tz - camz) / 8; }
             yaw = live_yaw; dist = live_dist * (o_cam == 0 ? 85 : o_cam == 1 ? 100 : 125) / 100; cam_deff = dist; pitch = live_pitch;
-            sig = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 7 + minutes * 13 + popup * 17 + popup_i * 19 + menu_open * 23 + speed * 29 + msg_t * 31 + funds + (o_pm ? polys / 64 : 0) + jobui * 37 + juke * 41 + info_pg * 43 + juke_pg * 47 + life_ver * 53 + o_song * 59 + mus_cur * 61);
-            for (int n = 0; n < 6; n++) sig = sig * 31 + (unsigned)sims[cur_sim].need[n]; sig = sig * 31 + (unsigned)sims[cur_sim].rel;
-            if (mode == M_LIVE && (sig != lastsig || forced)) { draw_top_status(); draw_hud(); lastsig = sig; }
+            { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)(cur_sim * 7 + ctl * 3 + minutes * 13 + funds + (o_pm ? polys / 64 : 0) + info_pg * 43 + life_ver * 53); for (int n = 0; n < 6; n++) a = a * 31 + (unsigned)sims[cur_sim].need[n]; a = a * 31 + (unsigned)sims[cur_sim].rel;
+              unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + juke_pg * 47 + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
+              if (forced) { ts = ~a; hs = ~b; } if (a != ts) { draw_top_status(); ts = a; } if (b != hs) { draw_hud(); hs = b; } }
         } else {   // BUY / BUILD: the live lot on the top screen, the catalogue or plan on the bottom (drag to place, paint, draw walls, move)
             if (down & KEY_TOUCH) ui_down(tp.px, tp.py); else if (held & KEY_TOUCH) ui_hold(tp.px, tp.py);
             if (keysUp() & KEY_TOUCH) ui_up();
@@ -1938,8 +1950,8 @@ int main(void) {
                 else if (k == 4) { if (bb_dist > 4500) bb_dist -= 120; } else if (k == 5) { if (bb_dist < 24000) bb_dist += 120; } else { bb_yaw = 3000; bb_pitch = 3900; bb_dist = 12500; } } } }
             sims_step(frames);
             if (mode != M_MAP) {
-                sig = (unsigned)(mode * 7 + cat * 13 + pick * 17 + pcx * 31 + pcy * 37 + prot * 41 + tool * 43 + pal * 47 + funds * 59 + nobj * 61 + (msg_t > 0) * 71 + msg_t * 73 + forced + ui_ver * 79 + drag * 83);
-                if (sig != lastsig || (down & KEY_TOUCH)) { scr = scr_sub; backdrop(); draw_ui(); lastsig = sig; } }
+                sig = (unsigned)(mode * 7 + cat * 13 + pick * 17 + pcx * 31 + pcy * 37 + prot * 41 + tool * 43 + pal * 47 + funds * 59 + nobj * 61 + (msg_t > 0) * 71 + forced + ui_ver * 79 + drag * 83 + (unsigned)(size_t)msg);
+                if (sig != lastsig) { scr = scr_sub; backdrop(); draw_ui(); lastsig = sig; } }
             yaw = bb_yaw; pitch = bb_pitch; dist = bb_dist * (o_cam == 0 ? 85 : o_cam == 1 ? 100 : 125) / 100;
         }
         { static int skyh = -1; int hh = (minutes / 60) % 24; if (o_sky == 4 && hh != skyh) o_dirty = 1; skyh = hh; }

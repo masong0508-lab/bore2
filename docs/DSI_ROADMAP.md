@@ -1,7 +1,7 @@
 # BORE 2 DS / DSi: roadmap (updated at D31)
 
 ## Where we are
-A Sims-DS style life sim on two screens, one ROM (`bore2_dsi_d31.nds`) that runs on DS, DSi and the emulators (melonDS, DraStic, NooDS, DeSmuME).
+A Sims-DS style life sim on two screens, one ROM (`bore2_dsi_d32.nds`) that runs on DS, DSi and the emulators (melonDS, DraStic, NooDS, DeSmuME).
 Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
 
 **Done**
@@ -22,7 +22,7 @@ Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
 2. **Walkable upper floors** (stairs, second-floor rooms) to go with the storey shell.
 3. **Catalogue to the PS1 size** (about 146 items) and better models for the ones that still use plain boxes.
 4. **Graphics options still open:** toon shading, per-item level of detail, screen swap, left-handed UI, text size, high contrast, colour filters.
-5. **Speed:** the live screen redraws the whole top screen every game minute; draw only what changed.
+5. **Speed:** done at D32 (redraw only what changed, tap latching).
 6. **Music extras:** songs by place (shop, park, night).
 
 ## Bring over from the PS1 game

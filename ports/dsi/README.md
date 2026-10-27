@@ -156,3 +156,7 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 ## D31
 - Careers (menu > Job), wants and fears (menu > Life), the dog (Pets > Puppy), ghosts, roofs and storeys (Build tools, Options > Roofs), 6 new Buy tabs (52 items), Jukebox screen (menu > Songs).
 - Save: a new trailer holds jobs, wants, the dog and ghosts; roof and storeys ride in the lot header's spare bits. Old saves still load.
+
+## D32
+- Input and lag: the live screen was running at about a quarter speed because it redrew both screens every frame while a message showed. Top screen, touch layer and Buy screen now redraw only when something changed, and rectangles fill 32 bits at a time. Taps are latched at every vblank, so even a 2-3 frame tap is never lost.
+- Buttons: B closes any menu or panel, Start opens the menu, Up/Down/Right work the Jukebox, the d-pad no longer turns the camera while a panel is open.
