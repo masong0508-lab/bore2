@@ -18,6 +18,24 @@ jobs:
         run: |
           export PATH=/opt/mipsel/bin:/opt/psn00bsdk/bin:$PATH PSN00BSDK_LIBS=/opt/psn00bsdk/lib/libpsn00b
           cmake --preset default && cmake --build build --target chd
+      - name: Memory report (what the game's RAM goes on)
+        continue-on-error: true
+        run: |
+          export PATH=/opt/mipsel/bin:$PATH
+          { echo "== sections =="; mipsel-none-elf-size -A build/bore2.elf
+            echo; echo "== biggest 70 symbols (bytes, type, name) =="
+            mipsel-none-elf-nm -S --size-sort -r build/bore2.elf | head -70 | python3 -c "import sys; [print(int(l.split()[1],16), l.split()[2], l.split()[3]) for l in sys.stdin if len(l.split())>=4]"
+            echo; echo "== biggest 25 map entries (bytes, section, file) =="
+            python3 -c "
+          import re
+          r=[]
+          for l in open('build/bore2.map'):
+              m=re.match(r'^ (\.[A-Za-z0-9_.]+)\s+0x[0-9a-f]+\s+(0x[0-9a-f]+)\s+(\S+)', l)
+              if m and int(m.group(2),16)>0: r.append((int(m.group(2),16), m.group(1), m.group(3)))
+          [print(*x) for x in sorted(r, reverse=True)[:25]]"
+          } | tee build/memreport.txt
+      - uses: actions/upload-artifact@v4
+        with: { name: memreport, path: "build/memreport.txt" }
       - uses: actions/upload-artifact@v4
         with: { name: bore2_disc, path: "build/bore2.*" }
       - uses: actions/upload-artifact@v4

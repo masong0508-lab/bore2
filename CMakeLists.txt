@@ -28,7 +28,7 @@ foreach(f ${BORE_SRCS})
 	endif()
 endforeach()
 
-target_link_options(bore2 PRIVATE -Wl,--wrap=memcpy -Wl,--wrap=memmove)   # (src/mem8.c: word copies, not the SDK's byte loops)
+target_link_options(bore2 PRIVATE -Wl,--wrap=memcpy -Wl,--wrap=memmove -Wl,-Map=${CMAKE_BINARY_DIR}/bore2.map)   # (src/mem8.c: word copies, not the SDK's byte loops)
 
 # THE OVERLAYS (src/ovl.h): KINGDOM MODE and the arcade are files on the disc, read into the crowd's arena when you walk into them.
 # Their code is built on its own (no gp: it is not linked with the game), then linked against bore2.elf's symbols at the arena's address.
