@@ -119,6 +119,100 @@ mk(0xBB, 'DOG HOUSE', 200, 'F_ROT', [(1,1,7,7,0,6,S('red')),(0,1,8,7,6,9,S('dark
 mk(0xBC, 'FIRE PIT', 150, '0', [(0,0,8,1,0,2,S('stone')),(0,7,8,8,0,2,S('stone')),(0,1,1,7,0,2,S('stone')),(7,1,8,7,0,2,S('stone')),(3,3,5,5,0,5,[GLOW]*5)])
 mk(0xBD, 'BEACH UMBRELLA', 100, '0', [(3,3,5,5,0,16,S('white')),(0,0,8,8,16,18,S('red')),(1,1,7,7,18,19,S('red'))])
 
+# ---- the second look: the same things with more to them (doors, drawers, burners, cushions, legs). The footprints and heights stay put, so
+# ---- placing, walking round and standing on them are as before; only the faces and the little parts change. (redo() swaps a thing's boxes by name)
+def lite(c, d): return tuple(min(31, v + d) for v in c)
+def dark_(c, d): return tuple(max(0, v - d) for v in c)
+def mat2(nm, cols, rows): MATS[nm] = (cols, len(rows[0]), len(rows), rows); return nm
+def cushion(nm, c): return mat2('m_cu_' + nm, [lite(c, 3), c, dark_(c, 4)], ["abba", "bbbb", "bbbb", "cccc"])
+def doors(nm, c, hd, n=2, w=8, h=6):
+    cols = [c, dark_(c, 5), hd, lite(c, 2)]
+    rows = []
+    for y in range(h):
+        r = ''
+        for x in range(w):
+            edge = y == 0 or y == h - 1 or x == 0 or x == w - 1 or (n == 2 and x == w // 2)
+            hnd = y == h // 2 and (x in (w // 2 - 2, w // 2 + 1) if n == 2 else x == w - 3)
+            r += 'c' if hnd else 'b' if edge else 'd' if y == 1 else 'a'
+        rows.append(r)
+    return mat2(nm, cols, rows)
+def drawers(nm, c, hd, n=2, w=8, h=8):
+    cols = [c, dark_(c, 5), hd, lite(c, 2)]
+    step = h // n; rows = []
+    for y in range(h):
+        r = ''
+        for x in range(w):
+            top = y % step == 0; mid = y % step == step // 2
+            r += 'c' if mid and x in (w // 2 - 1, w // 2) else 'b' if top or x == 0 or x == w - 1 or y == h - 1 else 'd' if y % step == 1 else 'a'
+        rows.append(r)
+    return mat2(nm, cols, rows)
+def redo(name, boxes):
+    for i, it in enumerate(ITEMS):
+        if it[1] == name: ITEMS[i] = it[:4] + (boxes,); return
+    raise KeyError(name)
+def faces(front, other, top=None): return [front, other, other, other, top or other]
+
+# materials
+W_TOP = mat2('m_woodtop', [PAL['oak'], dark_(PAL['oak'], 3), lite(PAL['oak'], 2)], ["aabaaaba", "cccccccc", "abaaabaa", "cccccccc"])
+MARB = mat2('m_marble', [PAL['white'], (26, 26, 27), (23, 24, 26)], ["aaaaabaa", "aabaaaaa", "aaaabbaa", "abaaaaac", "aaaaaaaa", "aacaaaba"])
+BENCHTOP = mat2('m_bench', [PAL['oak'], dark_(PAL['oak'], 4), (19, 12, 6)], ["aaaaaaaa", "bbbbbbbb", "aaaaaaaa", "ccccbccc"])
+BURN = mat2('m_burners', [PAL['char'], (4, 4, 6), (22, 5, 4), PAL['grey']], ["aaaaaaaa", "abbaabba", "abcaabca", "abbaabba", "aaaaaaaa", "abbaabba", "abcaabca", "abbaabba"][:8])
+STOVEF = mat2('m_stovef', [PAL['white'], PAL['black'], PAL['silver'], (10, 6, 4), (22, 5, 4)], ["aaaaaaaa", "acacacac", "aaaaaaaa", "abbbbbba", "abdddbba", "abdddbba", "abbbbbba", "acccccca"])
+MWF = mat2('m_mwf', [PAL['silver'], PAL['black'], (9, 14, 20), PAL['char'], (24, 6, 6)], ["aaaaaaaa", "abbbbcda", "abbbbcda", "abbbbcda", "abbbbcda", "abbbbcda", "aaaaaaaa"])
+DWF = mat2('m_dwf', [PAL['silver'], PAL['black'], PAL['grey'], (6, 20, 31)], ["abababab", "acccccca", "aaaaaaaa", "aaaaaaaa", "abbbbbba", "aaaaaaaa", "aaaaaaaa"])
+WMF = mat2('m_wmf', [PAL['white'], PAL['char'], (10, 18, 28), PAL['silver'], (17, 25, 31)], ["adadaaaa", "aaaaaaaa", "aabbbbaa", "abccccba", "abccdcba", "abccccba", "aabbbbaa", "aaaaaaaa"])
+KEYS2 = mat2('m_keys2', [PAL['white'], PAL['black'], (20, 20, 22)], ["abababaa", "abababaa", "abababaa", "aaaaaaaa", "cccccccc"])
+BATHW = mat2('m_bathw', [PAL['water'], lite(PAL['water'], 4), dark_(PAL['water'], 4)], ["aabaaaba", "baaabaaa", "aaabaaab", "abaaaaba"])
+for nm, c in (('blue', PAL['blue']), ('red', PAL['red']), ('orange', PAL['orange']), ('cream', PAL['cream']), ('pink', PAL['pink'])): cushion(nm, c)
+D_WARD = doors('m_d_ward', PAL['dark'], PAL['gold'], 2, 8, 12)
+D_OAK = doors('m_d_oak', PAL['oak'], PAL['dark'], 2, 8, 6)
+D_ISL = doors('m_d_isl', PAL['oak'], PAL['silver'], 2, 8, 7)
+DR_NS = drawers('m_dr_ns', PAL['wood'], PAL['gold'], 2, 6, 6)
+DR_FILE = drawers('m_dr_file', PAL['grey'], PAL['silver'], 3, 4, 12)
+DR_BENCH = drawers('m_dr_bench', PAL['dark'], PAL['silver'], 2, 4, 4)
+
+LEGD = lambda: [(0, 1, 1, 2, 0, 1, S('dark')), (7, 1, 8, 2, 0, 1, S('dark')), (0, 6, 1, 7, 0, 1, S('dark')), (7, 6, 8, 7, 0, 1, S('dark'))]
+def sofa(c, cu, frame, w0=0, w1=8, seats=2):
+    m = S(c); fr = S(frame); cm = 'm_cu_' + cu
+    bx = [(w0, 1, w1, 7, 1, 3, fr), (w0, 1, w1, 2, 3, 9, fr), (w0, 2, w0 + 1, 7, 3, 7, fr), (w1 - 1, 2, w1, 7, 3, 7, fr), (w0, 2, w0 + 1, 7, 7, 8, m), (w1 - 1, 2, w1, 7, 7, 8, m)]
+    bx += [(w0 + 1, 3, w1 - 1, 7, 3, 5, [cm, cm, cm, cm, cm])]
+    n = seats; span = (w1 - w0 - 2)
+    if n == 2: bx += [(w0 + 1, 2, w0 + 1 + span // 2, 3, 3, 9, cm), (w0 + 1 + span // 2, 2, w1 - 1, 3, 3, 9, cm)]
+    else: bx += [(w0 + 1, 2, w1 - 1, 3, 3, 9, cm)]
+    bx += [(w0, 1, w0 + 1, 2, 0, 1, S('dark')), (w1 - 1, 1, w1, 2, 0, 1, S('dark')), (w0, 6, w0 + 1, 7, 0, 1, S('dark')), (w1 - 1, 6, w1, 7, 0, 1, S('dark'))]
+    return bx
+redo('LOVESEAT', sofa('blue', 'blue', 'navy'))
+redo('ARMCHAIR', [(1, 2, 7, 7, 1, 3, S('dark')), (1, 1, 7, 2, 3, 9, S('leather')), (0, 2, 1, 7, 1, 6, S('leather')), (7, 2, 8, 7, 1, 6, S('leather')), (0, 2, 1, 7, 6, 7, S('wood')), (7, 2, 8, 7, 6, 7, S('wood')),
+                  (2, 3, 6, 7, 3, 4, 'm_cu_orange'), (2, 2, 6, 3, 3, 9, 'm_cu_orange'), (1, 2, 2, 3, 0, 1, S('dark')), (6, 2, 7, 3, 0, 1, S('dark')), (1, 6, 2, 7, 0, 1, S('dark')), (6, 6, 7, 7, 0, 1, S('dark'))])
+redo('RECLINER', [(1, 2, 7, 7, 1, 3, S('dark')), (1, 1, 7, 2, 3, 10, S('red')), (1, 2, 7, 3, 3, 9, 'm_cu_red'), (0, 2, 1, 7, 1, 6, S('dark')), (7, 2, 8, 7, 1, 6, S('dark')), (0, 2, 1, 7, 6, 7, S('red')), (7, 2, 8, 7, 6, 7, S('red')),
+                  (2, 3, 6, 6, 3, 4, 'm_cu_red'), (2, 6, 6, 7, 1, 3, 'm_cu_red'), (0, 2, 1, 3, 0, 1, S('black')), (7, 2, 8, 3, 0, 1, S('black'))])
+redo('BAR STOOL', [(2, 2, 3, 3, 0, 6, S('silver')), (5, 2, 6, 3, 0, 6, S('silver')), (2, 5, 3, 6, 0, 6, S('silver')), (5, 5, 6, 6, 0, 6, S('silver')), (2, 2, 6, 3, 2, 3, S('silver')), (2, 5, 6, 6, 2, 3, S('silver')),
+                   (2, 2, 6, 6, 6, 8, 'm_cu_red')])
+redo('COFFEE TABLE', [(1, 2, 7, 6, 3, 4, [W_TOP, W_TOP, W_TOP, W_TOP, W_TOP]), (1, 2, 7, 6, 2, 3, S('dark')), (2, 3, 6, 5, 1, 2, S('wood')), (1, 2, 2, 3, 0, 2, S('dark')), (6, 2, 7, 3, 0, 2, S('dark')), (1, 5, 2, 6, 0, 2, S('dark')), (6, 5, 7, 6, 0, 2, S('dark'))])
+redo('NIGHTSTAND', [(1, 2, 7, 7, 1, 6, [DR_NS, S('wood'), S('wood'), S('wood'), S('wood')]), (1, 2, 7, 7, 6, 7, [W_TOP] * 5), (1, 2, 2, 3, 0, 1, S('dark')), (6, 2, 7, 3, 0, 1, S('dark')), (1, 6, 2, 7, 0, 1, S('dark')), (6, 6, 7, 7, 0, 1, S('dark')),
+                    (3, 3, 5, 5, 7, 8, S('gold')), (3, 3, 5, 5, 8, 9, S('gold')), (2, 2, 6, 6, 9, 11, S('cream'))])
+redo('WARDROBE', [(0, 2, 8, 7, 1, 19, [D_WARD, S('dark'), S('dark'), S('dark'), S('dark')]), (0, 2, 8, 7, 0, 1, S('black')), (0, 2, 8, 7, 19, 20, S('wood')), (0, 2, 1, 7, 18, 19, S('wood')), (7, 2, 8, 7, 18, 19, S('wood'))])
+redo('FILING CABINET', [(2, 2, 6, 7, 0, 12, [DR_FILE, S('grey'), S('grey'), S('grey'), S('silver')]), (2, 2, 6, 7, 12, 13, S('silver'))])
+redo('STORAGE CHEST', [(1, 2, 7, 6, 0, 4, S('wood')), (1, 2, 7, 6, 4, 6, S('dark')), (2, 2, 3, 6, 0, 6, S('char')), (5, 2, 6, 6, 0, 6, S('char')), (3, 6, 5, 7, 3, 5, S('gold')), (1, 2, 7, 3, 4, 5, S('wood'))])
+redo('KITCHEN ISLAND', [(0, 1, 8, 7, 1, 7, [D_ISL, S('oak'), S('oak'), S('oak'), S('oak')]), (0, 1, 8, 7, 0, 1, S('dark')), (0, 1, 8, 7, 7, 8, [MARB] * 5)])
+redo('WORKBENCH', [(0, 2, 8, 6, 5, 6, [BENCHTOP] * 5), (0, 2, 8, 3, 4, 5, S('dark')), (0, 2, 1, 6, 0, 5, S('dark')), (4, 2, 8, 6, 1, 5, [DR_BENCH, S('dark'), S('dark'), S('dark'), S('dark')]), (4, 2, 8, 6, 0, 1, S('char')),
+                   (0, 2, 2, 4, 6, 8, S('red')), (0, 3, 1, 4, 8, 9, S('silver')), (3, 3, 4, 5, 6, 7, S('grey'))])
+redo('DISHWASHER', [(1, 1, 7, 7, 0, 7, [DWF, S('silver'), S('silver'), S('silver'), S('grey')]), (1, 1, 7, 7, 0, 1, S('char'))])
+redo('WASHING MACHINE', [(1, 1, 7, 7, 1, 12, [WMF, S('white'), S('white'), S('white'), S('white')]), (1, 1, 2, 2, 0, 1, S('grey')), (6, 1, 7, 2, 0, 1, S('grey')), (1, 6, 2, 7, 0, 1, S('grey')), (6, 6, 7, 7, 0, 1, S('grey')), (1, 1, 7, 7, 12, 13, S('silver'))])
+redo('SINK', [(1, 2, 7, 7, 1, 6, [D_OAK, S('oak'), S('oak'), S('oak'), S('oak')]), (1, 2, 7, 7, 0, 1, S('dark')), (1, 2, 7, 7, 6, 7, [MARB] * 5), (2, 3, 6, 6, 6, 7, S('white')),
+              (3, 2, 5, 3, 7, 10, S('silver')), (3, 3, 5, 4, 9, 10, S('silver')), (2, 2, 3, 3, 7, 8, S('blue')), (5, 2, 6, 3, 7, 8, S('red'))])
+redo('STOVE', [(1, 1, 7, 7, 0, 6, [STOVEF, S('white'), S('white'), S('white'), S('white')]), (1, 1, 7, 7, 6, 7, [S('char'), S('char'), S('char'), S('char'), BURN]), (1, 1, 7, 2, 7, 10, S('silver')), (2, 1, 3, 2, 10, 11, S('red')), (5, 1, 6, 2, 10, 11, S('red'))])
+redo('MICROWAVE', [(0, 1, 8, 7, 0, 6, [D_OAK, S('oak'), S('oak'), S('oak'), MARB]), (2, 2, 6, 6, 6, 9, [MWF, S('silver'), S('silver'), S('silver'), S('silver')]), (2, 2, 6, 3, 9, 10, S('char'))])
+redo('BATHTUB', [(0, 1, 8, 2, 1, 5, S('white')), (0, 6, 8, 7, 1, 5, S('white')), (0, 2, 1, 6, 1, 5, S('white')), (7, 2, 8, 6, 1, 5, S('white')), (1, 2, 7, 6, 1, 2, S('white')), (1, 2, 7, 6, 2, 4, BATHW),
+                 (7, 3, 8, 5, 5, 7, S('silver')), (7, 3, 8, 4, 7, 8, S('blue')), (7, 4, 8, 5, 7, 8, S('red')), (0, 1, 1, 2, 0, 1, S('gold')), (7, 1, 8, 2, 0, 1, S('gold')), (0, 6, 1, 7, 0, 1, S('gold')), (7, 6, 8, 7, 0, 1, S('gold'))])
+redo('PIANO', [(0, 2, 8, 6, 1, 8, S('black')), (0, 2, 8, 4, 8, 10, S('black')), (0, 2, 8, 3, 10, 11, S('char')), (1, 6, 7, 7, 5, 6, [KEYS2, S('black'), S('black'), S('black'), KEYS2]), (1, 6, 7, 7, 3, 5, S('black')),
+               (1, 3, 7, 4, 8, 12, S('black')), (0, 2, 1, 3, 0, 2, S('black')), (7, 2, 8, 3, 0, 2, S('black')), (3, 6, 5, 7, 0, 3, S('black'))])
+redo('COMPUTER', [(0, 2, 8, 7, 4, 5, [W_TOP] * 5), (0, 2, 1, 7, 0, 4, S('dark')), (7, 2, 8, 7, 0, 4, S('dark')), (0, 2, 8, 3, 0, 4, S('dark')), (2, 3, 6, 4, 5, 10, [SCREEN, S('black'), S('black'), S('black'), S('black')]), (3, 3, 5, 4, 5, 6, S('char')),
+                  (2, 5, 6, 6, 5, 6, [KEYS2] * 5), (6, 3, 7, 5, 5, 9, S('grey')), (6, 3, 7, 4, 7, 8, S('green'))])
+redo('FOUR POSTER BED', [(0, 0, 8, 8, 1, 3, S('wood')), (1, 1, 7, 7, 3, 5, 'm_cu_cream'), (1, 3, 7, 7, 5, 6, 'm_cu_pink'), (1, 1, 7, 3, 5, 7, 'm_cu_cream'), (0, 0, 8, 1, 3, 12, S('wood')), (0, 0, 1, 1, 3, 16, S('dark')), (7, 0, 8, 1, 3, 16, S('dark')),
+                         (0, 7, 1, 8, 3, 16, S('dark')), (7, 7, 8, 8, 3, 16, S('dark')), (0, 0, 1, 1, 0, 3, S('dark')), (7, 0, 8, 1, 0, 3, S('dark')), (0, 7, 1, 8, 0, 3, S('dark')), (7, 7, 8, 8, 0, 3, S('dark'))])
+
+
 def emit():
     out = ['// GENERATED by tools/make_items2.py: the furniture pack (included by items.c)\n']
     for nm, (cols, w, h, rows) in MATS.items():
