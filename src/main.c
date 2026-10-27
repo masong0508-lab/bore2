@@ -910,7 +910,7 @@ static void travel_draw(void) {   // where to: the four places, each on a row wi
         ui_icon_disc(61, y + 15, 22, open_ ? zic[i] : IC_LOCK, !open_ ? UI_RGB(176, 184, 196) : sel ? UI_BLUE : UI_RGB(110, 146, 190), UI_WHITE);
         ui_text(78, y + 6, 1, world_zone_name(i), !open_ ? UI_SOFT : sel ? UI_BLUE2 : UI_INK);
         const char *t = !open_ ? lockTxt[i] : blurb[i];
-        if (i == ZONE_CITY) { int nf = 0; while (nf < NFAM && pop_fam[nf].n) nf++; sprintf(b, "%d TOWNS, %d HOUSEHOLDS", bm_nset(), nf); t = b; }
+        if (i == ZONE_CITY) { int nf = 0; while (nf < pop_famcap && pop_fam[nf].n) nf++; sprintf(b, "%d TOWNS, %d HOUSEHOLDS", bm_nset(), nf); t = b; }
         if (here) t = "YOU ARE HERE";
         ui_text(78, y + 18, 1, t, here ? UI_GOODT : open_ ? UI_SOFT : UI_BADT);
     }
@@ -1129,7 +1129,7 @@ static int dir_sel, dir_fam = -1, dir_msel, dir_t, dir_counts[5];
 static void dir_open(void) { dir_fam = -1; dir_msel = 0; dir_t = 0; for (int i = 0; i < 5; i++) dir_counts[i] = pop_count_where(i); }
 static void dir_update(void) {
     dir_t++;
-    int nf = 0; while (nf < NFAM && pop_fam[nf].n) nf++;
+    int nf = 0; while (nf < pop_famcap && pop_fam[nf].n) nf++;
     if (!nf) { if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) state = ST_LIFE; return; }
     if (dir_fam < 0) {
         if (PRESSED(PAD_UP)) dir_sel = (dir_sel + nf - 1) % nf;
@@ -1161,7 +1161,7 @@ static void dir_draw(void) {
     gfx_camera_update();
     ui_backdrop();
     char b[64], sur[NAME_LEN], fn[NAME_LEN], addr[32];
-    int nf = 0; while (nf < NFAM && pop_fam[nf].n) nf++;
+    int nf = 0; while (nf < pop_famcap && pop_fam[nf].n) nf++;
     if (dir_fam < 0) {
         int top = ui_window(4, 4, 312, 232, "THE PEOPLE OF SAN BOREAS", IC_PEOPLE);
         sprintf(b, "%d HOUSEHOLDS, %d PEOPLE", nf, dir_counts[0] + dir_counts[1] + dir_counts[2] + dir_counts[3] + dir_counts[4]); ui_text(12, top - 1, 1, b, UI_SOFT);
@@ -3682,7 +3682,7 @@ static void wm_draw(void) {
     if (!wm_isle_view && wo_painted) {
         for (int i = 0; i < bm_nset(); i++) { const Settle *st = bm_set(i); int x = MX + st->x * MS / BM_N, yy = MY + st->y * MS / BM_N, dd = st->kind == ST_CITY ? 6 : st->kind == ST_TOWN ? 4 : 3;
             ui_disc(x, yy, dd + 2, UI_RGB(40, 46, 60)); ui_disc(x, yy, dd, i == bm_capital() ? UI_RGB(255, 204, 48) : UI_WHITE); }
-        const Settle *c = bm_set(bm_capital()); { int nf = 0; while (nf < NFAM && pop_fam[nf].n) nf++; (void)c; static const u8 lv[6] = { 35, 60, 80, 100, 150, 200 }; sprintf(b, "%d PLACES, %d HOMES", bm_nset(), NFAM_NORMAL * lv[wm_people % 6] / 100); }
+        const Settle *c = bm_set(bm_capital()); { int nf = 0; while (nf < pop_famcap && pop_fam[nf].n) nf++; (void)c; sprintf(b, "%d PLACES, %d HOMES", bm_nset(), pop_households(wm_people)); }
     } else strcpy(b, "THEY BEGIN STRANDED HERE");
     ui_badge(MX + 4, MY + 4, wm_isle_view ? "THE ISLAND" : "SAN BOREAS", UI_WHITE, UI_BLUE2);
     ui_text(MX, MY + MS + 5, 1, b, UI_INK);

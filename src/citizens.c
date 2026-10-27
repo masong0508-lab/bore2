@@ -1057,7 +1057,7 @@ COLD void citizens_gname(int g, char *out) {          // a household's name
 }
 COLD void citizens_known(void) {                      // build the lists: every household with someone you know in it
     pg_ng = pg_nm = 0;
-    for (int f = 0; f < NFAM && pg_ng < PG_GROUPS; f++) {
+    for (int f = 0; f < pop_famcap && pg_ng < PG_GROUPS; f++) {
         const Fam *fm = &pop_fam[f]; int any = 0, live = 0;
         for (int j = 0; j < fm->n; j++) { int p = fm->first + j; if (pop_per[p].flags & PF_GONE) continue; live++; if (pg_known_p(p)) any = 1; }
         if (!any || pg_nm + live > PG_MEMS) continue;

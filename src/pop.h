@@ -8,9 +8,11 @@
 #include "common.h"
 #include "look.h"
 
-#define NFAM    1748              // (874 as SAN BOREAS always was: the PEOPLE dial's NORMAL; up to twice that)
+#define NFAM    1234              // the most households any build holds: PACKED on 8 MB (874 as SAN BOREAS always was: the PEOPLE dial's NORMAL)
+#define NFAM_2MB 999              // PACKED on a plain 2 MB machine
 #define NFAM_NORMAL 874
-#define PER_MAX 3700
+#define PER_MAX 5200              // the most people any build holds (8 MB: room for the biggest households)
+#define PER_2MB 3700
 enum { HK_SINGLE, HK_OLDTIMER, HK_COUPLE, HK_RETIRED, HK_ROOMMATES, HK_YOUNGFAM, HK_BIGFAM, HK_SINGLEPARENT, HK_THREEGEN, HK_N };
 enum { AT_SLEEP, AT_HOME, AT_WORK, AT_SCHOOL, AT_OUT };
 
@@ -21,12 +23,14 @@ typedef struct { u16 bx, by; u8 lot, set; } Place;
 #define PF_GONE     2                 // moved in with you, or otherwise out of the world (hp 0: passed away)
 #define PF_DAY      4                 // flags bits 2..7: days lived in this life stage (growing up, like your own household)
 
-extern Fam pop_fam[NFAM];
-extern Per pop_per[PER_MAX];
+extern Fam *pop_fam;   // (a small array on 2 MB, a bigger one past the first 2 MB on 8 MB: pop_famcap and pop_percap say how many fit)
+extern Per *pop_per;
+extern int pop_famcap, pop_percap;
+int pop_households(int dial);   // how many homes are lived in for a PEOPLE dial (0..5): 5 is PACKED, 1234 on 8 MB, 999 on 2 MB
 extern int pop_nper, pop_nplace;
 extern Place pop_place[];
 
-extern int pop_people, pop_famsize;   // CREATE A WORLD: how many homes are lived in (0 FEW .. 3 NORMAL, as always, .. 5 PACKED: twice as many) and household size (0 SMALL, 1 MIXED, 2 BIG, 3 HUGE)
+extern int pop_people, pop_famsize;   // CREATE A WORLD: how many homes are lived in (0 FEW .. 3 NORMAL, as always, .. 5 PACKED: 1234 homes on 8 MB, 999 on 2 MB) and household size (0 SMALL, 1 MIXED, 2 BIG, 3 HUGE)
 int  pop_fam_of(int p);
 int  pop_move_out(const Bore *b, int near_bx, int near_by, int avoid_bx, int avoid_by, int rel);   // a Bore of yours to a home of their own in town: their pid (-1 none)
 const u8 *pop_custom_look(int pid, char *first, char *last);   // a moved-out Bore's own looks and names (0: an ordinary townie)

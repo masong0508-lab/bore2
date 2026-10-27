@@ -7,8 +7,21 @@
 #include "world.h"
 #include "citizens.h"
 
-Fam pop_fam[NFAM];
-Per pop_per[PER_MAX];
+#include "mem8.h"
+static Fam fam_small[NFAM_2MB]; static Per per_small[PER_2MB];
+Fam *pop_fam = fam_small; Per *pop_per = per_small; int pop_famcap = NFAM_2MB, pop_percap = PER_2MB;
+static void pop_arrays(void) {   // 8 MB: the household and people lists live past the first 2 MB, and are bigger (once, before the first world is made)
+    static int done; if (done) return; done = 1;
+    if (!ram8) return;
+    Fam *f = (Fam *)xalloc(sizeof(Fam) * NFAM); Per *p = (Per *)xalloc(sizeof(Per) * PER_MAX);
+    if (f && p) { pop_fam = f; pop_per = p; pop_famcap = NFAM; pop_percap = PER_MAX; }
+}
+int pop_households(int dial) {
+    pop_arrays();
+    static const u8 lived[4] = { 35, 60, 80, 100 };   // PEOPLE: households, a share of the usual 874 (HUGE: halfway to PACKED)
+    int d = dial % 6;
+    return d <= 3 ? NFAM_NORMAL * lived[d] / 100 : d == 4 ? (NFAM_NORMAL + pop_famcap) / 2 : pop_famcap;
+}
 #define PLACE_MAX 1800
 Place pop_place[PLACE_MAX];
 int pop_nper, pop_nplace;
@@ -85,7 +98,7 @@ static void set_person(Per *q, int f, int stage, int newborn) {   // somebody ne
     if (!newborn) q->flags |= (u8)(MIN(63, prn(MAX(1, sim_stage_len(stage)))) << 2);   // (nobody in town is all the same age)
 }
 static void add_person(int f, int stage) {
-    if (pop_nper >= PER_MAX) return;
+    if (pop_nper >= pop_percap) return;
     set_person(&pop_per[pop_nper++], f, stage, 0);
     pop_fam[f].n++;
 }
@@ -118,6 +131,7 @@ static int kind_for(int lot) {                     // who lives in a home like t
 typedef struct { u16 bx, by; u8 unit, set, lot, pad; } Unit;
 static int unit_key(const Unit *u) { return u->by * 2048 * 4 + u->bx * 4 + u->unit; }
 void pop_new(u32 seed, void *scratch, u32 scratch_bytes) {
+    pop_arrays();
     prs = seed ^ 0xC0FFEE11u; if (!prs) prs = 1;
     pop_nper = 0; pop_nplace = 0; nfam = 0; gen_done = 0; memset(regen_p, 0, sizeof regen_p); memset(chg_p, 0, sizeof chg_p); memset(regen_f, 0, sizeof regen_f);
     memset(set_pn, 0, sizeof set_pn);
@@ -142,9 +156,8 @@ void pop_new(u32 seed, void *scratch, u32 scratch_bytes) {
             int defer = bm_gen >= 3 && u->set == bm_capital() && (u->lot == LOT_HOUSE || u->lot == LOT_COTTAGE || u->lot == LOT_TWO) && bm_hash(u->bx, u->by, seed ^ 0x5A1Eu) % 100u < 35;
             if (defer) { Unit t = U[i]; U[i] = U[j]; U[j] = t; j--; } else i++; }
     }
-    static const u8 lived[6] = { 35, 60, 80, 100, 150, 200 };   // PEOPLE: households, a share of the usual 874
-    int nf = MIN(nu, MIN(NFAM, NFAM_NORMAL * lived[pop_people % 6] / 100));
-    memset(pop_fam, 0, sizeof pop_fam);
+    int nf = MIN(nu, pop_households(pop_people));   // PEOPLE: households (see pop_households)
+    memset(pop_fam, 0, sizeof(Fam) * pop_famcap);
     for (int gap = nf / 2; gap > 0; gap /= 2) for (int i = gap; i < nf; i++) {   // in block order, so a home's household is found by a search
         Unit t = U[i]; int j = i; while (j >= gap && unit_key(&U[j - gap]) > unit_key(&t)) { U[j] = U[j - gap]; j -= gap; } U[j] = t; }
     for (int f = 0; f < nf; f++) {
@@ -318,7 +331,7 @@ static void plane(int k, int n) { u8 *t = (u8 *)bfs_q; for (int i = 0; i < n; i+
 static void unplane(int k, int n) { u8 *t = (u8 *)bfs_q; ld_rle(t, n); for (int i = 0; i < n; i++) pl_set(&pop_per[i], k, t[i]); }
 __attribute__((optimize("Os"))) void pop_save(void) {
     int n = pop_nper;
-    sv_u32(prs); sv_u16(n);
+    sv_u32(prs); sv_u16(n); sv_u16(nfam);   // (version 40: the households, so a world saved on 8 MB with more of them is not misread on 2 MB)
     plane(PL_STAGE, n); plane(PL_FLAGS, n); plane(PL_REL, n); plane(PL_ROM, n); plane(PL_HP, n);
     sv_rle(regen_p, (n + 7) / 8); sv_rle(chg_p, (n + 7) / 8); sv_rle(regen_f, (nfam + 7) / 8);
     for (int i = 0; i < n; i++) if (bit(regen_p, i)) { sv_u32(pop_per[i].seed); sv_u8(pop_per[i].trait); sv_u8(shift_of(&pop_per[i])); }
@@ -328,6 +341,7 @@ __attribute__((optimize("Os"))) void pop_save(void) {
 }
 __attribute__((optimize("Os"))) void pop_load(void) {   // (after pop_new from the same seed)
     prs = ld_u32(); int n = ld_u16(); if (n != pop_nper) n = MIN(n, pop_nper);
+    if (save_ver >= 40 && ld_u16() != (u16)nfam) { ld_fail(); return; }   // (made for a machine with more or fewer homes: it cannot be read here)
     unplane(PL_STAGE, n); unplane(PL_FLAGS, n); unplane(PL_REL, n); unplane(PL_ROM, n); unplane(PL_HP, n);
     ld_rle(regen_p, (n + 7) / 8); ld_rle(chg_p, (n + 7) / 8); ld_rle(regen_f, (nfam + 7) / 8);
     for (int i = 0; i < n; i++) if (bit(regen_p, i)) { pop_per[i].seed = ld_u32(); pop_per[i].trait = (u8)(ld_u8() & 31); (void)ld_u8(); }   // (the shift byte: worked out from the seed now)
