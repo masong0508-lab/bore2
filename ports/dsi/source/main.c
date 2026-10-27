@@ -19,6 +19,7 @@ static const Opt OPT[] = {
     { "Autosave", "Off|On", &o_auto, 2, 1 }, { "Clock", "12 hour|24 hour", &o_c24, 2, 0 },
     { "Reset graphics", "tap", 0, 3, 0 }, { "Reset audio", "tap", 0, 3, 1 }, { "Reset all", "tap", 0, 3, 255 },
 };
+static void open_opts(void);
 #define NOPT ((int)(sizeof OPT / sizeof OPT[0]))
 static const char *const OPTAB[4] = { "Graphics", "Audio", "Game", "System" };
 static int opt_cnt(int i) { int n = 1; for (const char *p = OPT[i].vals; *p; p++) if (*p == '|') n++; return n; }
@@ -97,7 +98,7 @@ static void chip(int x, int y, int w, int h, const char *t, int on) {
     rect(x, y, w, h, on ? C15(31, 31, 20) : C15(2, 4, 12)); rect(x + 1, y + 1, w - 2, h - 2, on ? C15(10, 24, 10) : C15(6, 12, 26)); text(x + w / 2 - tw(1, t) / 2, y + (h > 16 ? h / 2 - 4 : 3), 1, C15(31, 31, 31), t);
 }
 static void map_chip(int px_, int py_) {   // a tap on the strip under the map
-    if (!ne_on) { if (hit(212, 162, 40, 13, px_, py_)) ne_on = 1; return; }
+    if (!ne_on) { if (hit(212, 175, 38, 15, px_, py_)) ne_on = 1; else if (hit(170, 175, 38, 15, px_, py_)) open_opts(); return; }
     for (int i = 0; i < 7; i++) if (hit(2 + i * 36, 162, 34, 13, px_, py_)) ne_tool = i;
     if (hit(2, 177, 110, 13, px_, py_)) { if (ne_tool == 0) ne_lot_i = (ne_lot_i + 1) % (int)sizeof NELOT; else if (ne_tool == 1) ne_g_i = (ne_g_i + 1) % 6; else if (ne_tool == 2) ne_road ^= 1; }
     if (hit(212, 177, 40, 13, px_, py_)) ne_on = 0;
@@ -141,9 +142,9 @@ static void draw_map(void) {
     BInfo b; bm_block(sel_x, sel_y, &b);
     char t[48];
     if (!ne_on) {
-        sprintf(t, "%s  %d/%d", s->name, cur_set + 1, bm_nset()); text(4, 164, 2, C15(31, 31, 22), t);
-        { int fm; int pp = pop_at(sel_x, sel_y, &fm); if (pp) sprintf(t, "%s %dh %d bores", bm_lot_name(b.lot), fm, pp); else sprintf(t, "%s  %d,%d", bm_lot_name(b.lot), sel_x, sel_y); text(4, 178, 2, C15(24, 28, 31), t); sprintf(t, "%d/%d", pop_per + pop_born, DS_POP_MAX); text(176, 164, 1, C15(24, 28, 31), t); }
-        chip(212, 162, 40, 13, "Edit", 0);
+        sprintf(t, "%s  %d/%d", s->name, cur_set + 1, bm_nset()); text(4, 163, 1, C15(31, 31, 22), t);
+        { int fm; int pp = pop_at(sel_x, sel_y, &fm); if (pp) sprintf(t, "%s: %d homes, %d bores", bm_lot_name(b.lot), fm, pp); else sprintf(t, "%s  (%d,%d)", bm_lot_name(b.lot), sel_x, sel_y); text(4, 177, 1, C15(24, 28, 31), t); sprintf(t, "%d/%d bores", pop_per + pop_born, DS_POP_MAX); text(120, 163, 1, C15(24, 24, 28), t); }
+        chip(170, 175, 38, 15, "Opt", 0); chip(212, 175, 38, 15, "Edit", 0);
     } else {
         for (int i = 0; i < 7; i++) chip(2 + i * 36, 162, 34, 13, NETN[i], ne_tool == i);
         const char *v = ne_tool == 0 ? bm_lot_name(NELOT[ne_lot_i]) : ne_tool == 1 ? NEGN[ne_g_i] : ne_tool == 2 ? (ne_road ? "Add road" : "Remove road") : 0;
@@ -242,6 +243,7 @@ static const u16 FLOORC[5] = { C15(22, 16, 9), C15(26, 26, 24), C15(10, 16, 24),
 static const u16 WALLC[6] = { C15(30, 28, 22), C15(28, 20, 16), C15(20, 24, 30), C15(30, 30, 30), C15(13, 8, 5), C15(28, 24, 14) };   // 5 = a door, 6 = a fence
 static int mark_x = -1, mark_y, mark_t;
 static void set_mode(int m);
+static int opt_ret = -1;   // where Back in Options returns to (-1 = the title)
 static int cas_mult = 1;
 static void eff_pm(const u8 *pm, int *p) { for (int q = 0; q < PMN; q++) { int v = 50 + (pm[q] - 50) * cas_mult; p[q] = v; } }
 static u32 lot_seed = 1;
@@ -404,6 +406,8 @@ static void lot_cross(void) {   // the sim you are playing left the lot's slot: 
     for (int i = 0; i < nsim; i++) { Sim *s2 = &sims[i]; int ax = dx * SLC * 16, ay = dy * SLC * 16; s2->x -= ax; s2->y -= ay; s2->tx -= ax; s2->ty -= ay; s2->wx -= ax; s2->wy -= ay; }
     city_shift(dx, dy); camx -= dx * 36 * T; camz -= dy * 36 * T; mark_x -= dx * SLC; mark_y -= dy * SLC; }
 static void bar(int x, int y, int w, int v, u16 c) { rect(x, y, w, 6, C15(4, 4, 6)); rect(x + 1, y + 1, (w - 2) * v / 100, 4, c); }
+static int catx[8];   // the category chips fit their words
+static void cat_layout(void) { int x = 2; for (int i = 0; i < 7; i++) { catx[i] = x; x += tw(1, CATN[i]) + 9; } catx[7] = x; }
 static void button(int x, int y, int w, int h, const char *t, u16 c, int on) {
     rect(x, y, w, h, on ? C15(31, 31, 20) : C15(2, 2, 4)); rect(x + 1, y + 1, w - 2, h - 2, on ? c : shade(c, 4));
     text(x + 4, y + h / 2 - 2, 1, on ? C15(2, 2, 4) : C15(31, 31, 31), t);
@@ -431,7 +435,7 @@ static void draw_ui(void) {
     if (msg_t > 0) text(70, 182, 1, C15(31, 20, 12), msg);
     { const char *cc[7] = { "<", ">", "^", "v", "+", "-", "Rst" }; for (int k = 0; k < 7; k++) { int cx = 164 + (k < 4 ? k * 22 : (k - 4) * 29), cy = k < 4 ? 164 : 178; rect(cx, cy, k < 4 ? 20 : 27, 12, C15(2, 4, 12)); rect(cx + 1, cy + 1, k < 4 ? 18 : 25, 10, C15(8, 16, 28)); text(cx + 4, cy + 2, 1, C15(31, 31, 31), cc[k]); } }
     if (mode == M_BUY && pick < 0) {
-        for (int i = 0; i < 7; i++) button(2 + i * 36, 20, 34, 14, CATN[i], C15(24, 14, 8), cat == i);
+        cat_layout(); for (int i = 0; i < 7; i++) button(catx[i], 20, catx[i + 1] - catx[i] - 2, 14, CATN[i], C15(24, 14, 8), cat == i);
         for (int i = 0; i < 4; i++) { const Item *it = &ITEMS[cat][i]; int x = 4 + (i & 1) * 125, y = 42 + (i >> 1) * 64;
             rect(x, y, 120, 58, drag == 1 && drag_item == i ? C15(31, 31, 20) : C15(2, 2, 4)); rect(x + 2, y + 2, 116, 54, C15(10, 12, 18)); rect(x + 8, y + 8, 34, 34, it->col); rect(x + 12, y + 12, 26, 26, shade(it->col, 6));
             text(x + 48, y + 12, 1, C15(31, 31, 31), it->name); sprintf(t, "%d", it->price); text(x + 48, y + 28, 1, funds >= it->price ? C15(31, 31, 18) : C15(31, 10, 10), t);
@@ -474,7 +478,7 @@ static void ui_down(int tx, int ty) {
     last_tx = tx; last_ty = ty; drag = 0; drag_card = 0;
     for (int i = 0; i < 4; i++) if (hit(i * 64, 0, 62, 16, tx, ty)) { set_mode(i); pick = -1; return; }
     if (mode == M_BUY && pick < 0) {
-        for (int i = 0; i < 7; i++) if (hit(2 + i * 36, 20, 34, 14, tx, ty)) cat = i;
+        cat_layout(); for (int i = 0; i < 7; i++) if (hit(catx[i], 20, catx[i + 1] - catx[i] - 2, 14, tx, ty)) cat = i;
         for (int i = 0; i < 4; i++) if (hit(4 + (i & 1) * 125, 42 + (i >> 1) * 64, 120, 58, tx, ty)) { if (funds >= ITEMS[cat][i].price) { drag = 1; drag_item = i; dsx = tx; dsy = ty; } else say("Not enough funds"); }
     } else if (mode == M_BUY) {
         int c = lot_touch(tx, ty);
@@ -823,7 +827,7 @@ static void draw_hud(void) {
     rect(62, 168, 30, 22, PANB); rect(63, 169, 28, 20, cam_on ? C15(8, 26, 8) : PAN); text(66, 176, 1, TXT, "Cam");
     if (cam_on) { const char *cb[6] = { cam_pan ? "Pan" : "Turn", "In", "Out", cam_free ? "Free" : "Follow", "Reset", "Done" }; for (int k = 0; k < 6; k++) { rect(216, 36 + k * 22, 38, 20, PANB); rect(217, 37 + k * 22, 36, 18, k == 0 && cam_pan ? C15(8, 26, 8) : PANH); text(220, 43 + k * 22, 1, TXT, cb[k]); } text(70, 40, 1, TXT, "Drag to look round"); }
     rect(104, 178, 48, 14, PANB); rect(105, 179, 46, 13, PAN); for (int i = 0; i < 3; i++) rect(118 + i * 8, 184, 4, 4, TXT);
-    if (menu_open) { const char *mn[5] = { "Buy", "Build", "Map", "Save", "Menu" }; for (int i = 0; i < 5; i++) { rect(10 + i * 47, 150, 45, 24, PANB); rect(11 + i * 47, 151, 43, 22, PANH); text(16 + i * 47, 158, 1, TXT, mn[i]); } }
+    if (menu_open) { static const char *const mn[6] = { "Buy", "Build", "Map", "Save", "Options", "Title" }; panel(30, 40, 196, 110, "Menu"); for (int i = 0; i < 6; i++) chip(38 + (i % 3) * 60, 66 + (i / 3) * 38, 56, 30, mn[i], 0); }
     if (popup == 1) {
         const Obj *o = &objs[popup_i]; const char *nm = ITEMS[o->c][o->i].name, *lab = ACT[o->c][o->i].lab;
         rect(56, 100, 144, 56, PANB); rect(57, 101, 142, 54, PAN); text(64, 106, 2, TXT, nm);
@@ -1340,7 +1344,7 @@ static void opt_touch(int tx, int ty) {
     int idx[40], n = opt_list(o_tab, idx), pages = (n + 5) / 6;
     for (int t = 0; t < 4; t++) if (hit(TABX[t], 22, TABX[t + 1] - TABX[t] - 4, 15, tx, ty)) { o_tab = t; opt_pg = 0; return; }
     if (hit(10, 166, 76, 22, tx, ty)) { opt_pg = (opt_pg + 1) % pages; return; }
-    if (hit(186, 166, 60, 22, tx, ty)) { opt_on = 0; return; }
+    if (hit(186, 166, 60, 22, tx, ty)) { opt_on = 0; if (opt_ret >= 0) { int m = opt_ret; opt_ret = -1; set_mode(m); } return; }
     for (int k = 0; k < 6; k++) { int q = opt_pg * 6 + k; if (q >= n || !hit(10, 40 + k * 19, 236, 17, tx, ty)) continue; int i = idx[q];
         if (!OPT[i].v) { for (int j = 0; j < NOPT; j++) if (OPT[j].v && OPT[j].tab < 3 && (OPT[i].def == 255 || OPT[j].tab == OPT[i].def) && OPT[j].v != &o_smax) *OPT[j].v = OPT[j].def; }
         else *OPT[i].v = tx < 130 ? (*OPT[i].v + opt_cnt(i) - 1) % opt_cnt(i) : (*OPT[i].v + 1) % opt_cnt(i);
@@ -1358,7 +1362,8 @@ static void draw_title(void) {
     scr = scr_sub; rect(0, 0, 256, 192, C15(3, 3, 4));
     rect(16, 40, 224, 118, PANB); rect(18, 42, 220, 114, C15(8, 16, 28)); rect(18, 42, 220, 16, PANH); text(26, 45, 2, TXT, "Start/Load profile");
     for (int i = 0; i < 3; i++) { int x = 26 + i * 70, y = 66; rect(x - 2, y - 2, 68, 60, slot_sel == i ? C15(31, 31, 31) : C15(2, 4, 12)); rect(x, y, 64, 56, i == 0 ? C15(10, 24, 8) : C15(6, 12, 26));
-        if (i == 0) house_icon(x + 12, y + 8, 40, C15(31, 31, 31)); else plumb_icon(x + 8, y + 4, 48, C15(28, 31, 31)); }
+        if (i == 0) house_icon(x + 12, y + 4, 40, C15(31, 31, 31)); else plumb_icon(x + 8, y + 0, 48, C15(28, 31, 31));
+        { const char *lb = i == 0 ? (sav_have >= 0 ? "Continue" : "New game") : "New sim"; rect(x, y + 42, 64, 14, C15(2, 4, 12)); text(x + 32 - tw(1, lb) / 2, y + 45, 1, TXT, lb); } }
     chip(98, 130, 28, 22, "<", 0); chip(130, 130, 28, 22, "Opt", 0); chip(162, 130, 28, 22, "Del", 0); chip(194, 130, 36, 22, "OK", 0);
     text(24, 128 - 0, 1, TXT, ""); { static char sb[40]; if (sav_have >= 0) sprintf(sb, "Saved: day %d, %d born, %d lost", st_days, st_born, st_died); const char *st = sav_ok() ? (sav_have >= 0 ? sb : "No saved game yet") : "No save chip found"; if (msg_t <= 0) text(24, 166, 1, C15(22, 26, 31), st); }
     if (msg_t > 0) text(24, 166, 1, C15(31, 20, 12), msg);
@@ -1376,6 +1381,7 @@ static void title_touch(int tx, int ty) {
     if (hit(162, 130, 28, 22, tx, ty)) { if (slot_sel == 0 && sav_have >= 0) { u8 z[sizeof(SavHdr)]; memset(z, 0, sizeof z); for (int k = 0; k < 2; k++) { cardWriteEeprom((u32)(k * SAV_STRIDE), z, sizeof z, sav_type); memset(sav_sh[k], 0, sizeof z); } sav_have = -1; sav_seq = 0; } new_household(); say("Cleared"); slot_sel = 0; }
     if (hit(194, 130, 36, 22, tx, ty)) { if (slot_sel == 0) { if (sav_have >= 0 && sav_apply()) { say("Game loaded"); } else if (sav_have >= 0) { say("Save is damaged"); new_household(); } set_mode(M_MAP); } else { new_household(); cas_tab = 0; cas_page = 0; slot_sel = 0; set_mode(M_CAS); } }
 }
+static void open_opts(void) { opt_ret = mode; set_mode(M_TITLE); opt_on = 1; }
 static void set_mode(int m) {
     mode = m;
     if (m == M_LIVE) { lcdMainOnBottom(); } else { lcdMainOnTop(); scr = hud; hud_clear(); }
@@ -1386,10 +1392,11 @@ static void live_touch(int tx, int ty) {
         { int tg = popup == 2 ? popup_i : -2 - popup_i, n = soc_list(tg); if (hit(212, 60, 22, 14, tx, ty)) popup = 0;
           else for (int k = 0; k < n; k++) if (hit(26 + (k & 1) * 104, 82 + (k >> 1) * 22, 100, 20, tx, ty)) { start_soc(ctl, tg, soc_pick[k]); popup = 0; break; } }
         return; }
-    if (menu_open) { menu_open = 0;
-        if (hit(10, 150, 45, 24, tx, ty)) { set_mode(M_BUY); pick = -1; } else if (hit(57, 150, 45, 24, tx, ty)) { set_mode(M_BUILD); } else if (hit(104, 150, 45, 24, tx, ty)) set_mode(M_MAP);
-        else if (hit(151, 150, 45, 24, tx, ty)) { if (!sav_ok()) say("No save chip found"); else say(sav_write() ? "Game saved" : "Save failed"); }
-        else if (hit(198, 150, 45, 24, tx, ty)) { if (sav_ok() && lot_bx >= 0) sav_write(); set_mode(M_TITLE); sav_probe(); }
+    if (menu_open) { menu_open = 0; int k = -1; for (int i = 0; i < 6; i++) if (hit(38 + (i % 3) * 60, 66 + (i / 3) * 38, 56, 30, tx, ty)) k = i;
+        if (k == 0) { set_mode(M_BUY); pick = -1; } else if (k == 1) set_mode(M_BUILD); else if (k == 2) set_mode(M_MAP);
+        else if (k == 3) { if (!sav_ok()) say("No save chip found"); else say(sav_write() ? "Game saved" : "Save failed"); }
+        else if (k == 4) open_opts();
+        else if (k == 5) { if (sav_ok() && lot_bx >= 0) sav_write(); set_mode(M_TITLE); sav_probe(); }
         return; }
     if (hit(2, 2, 26, 26, tx, ty)) { set_mode(M_MAP); return; }
     if (hit(104, 178, 48, 14, tx, ty)) { menu_open = 1; return; }

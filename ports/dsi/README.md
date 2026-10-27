@@ -130,3 +130,10 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 - Options are saved in the save file (format changed again: D24 saves will not load).
 - Buttons: labels are now centred in tall buttons.
 - Not done: Options only open from the title screen (not yet from inside a lot).
+
+## D26 - Interface pass
+- Lot menu is now a proper panel (Buy, Build, Map, Save, Options, Title) with big buttons.
+- Options open from inside a lot (Menu > Options) and from the map (Opt button); Back returns where you were.
+- Map strip cleaned up: no overlapping text, Opt and Edit buttons.
+- Buy/Build category chips fit their words (no more cut-off "Tabl").
+- Title slots are labelled (Continue / New game / New sim).
