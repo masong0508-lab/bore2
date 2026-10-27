@@ -17,7 +17,7 @@ jobs:
       - name: Build the disc
         run: |
           export PATH=/opt/mipsel/bin:/opt/psn00bsdk/bin:$PATH PSN00BSDK_LIBS=/opt/psn00bsdk/lib/libpsn00b
-          cmake --preset default && cmake --build build --target chd
+          cmake --preset default && cmake --build build --target chd base_chd packs
       - name: Memory report (what the game's RAM goes on)
         continue-on-error: true
         run: |
@@ -40,3 +40,10 @@ jobs:
         with: { name: bore2_disc, path: "build/bore2.*" }
       - uses: actions/upload-artifact@v4
         with: { name: BORE2_chd, path: "build/BORE2.chd" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BORE2_release
+          path: |
+            build/BORE2.chd
+            build/BORE2-base.chd
+            build/packs/*.ppf
