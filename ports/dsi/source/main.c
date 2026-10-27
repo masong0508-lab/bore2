@@ -641,7 +641,7 @@ static void draw_city(void) {
 static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw) {   // a neighbour's lot: flat ground, a plain house or a few trees (cheap: the polygon budget is the DS's limit)
     u32 h = b->h; int k = b->lot;
     u16 grass = b->terrain == BT_DESERT ? C15(24, 20, 10) : b->terrain == BT_ROCKY ? C15(13, 13, 13) : b->terrain == BT_BEACH ? C15(26, 24, 14) : C15(11, 20, 8);
-    ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), -2, grass);
+    ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), -20, grass);
     if (!far_house(b)) { int n = (k == LOT_PARK || k == LOT_SQUARE) ? 4 : 2; for (int i = 0; i < n; i++) tree(ox + tl(3 + (int)((h >> (i * 4)) & 15) * 3 / 2 % 20), oz + tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 3 / 2 % 20), T * 2); return; }
     int w = 10 + (int)(h & 3) * 2, d = 8 + (int)((h >> 2) & 3) * 2, x0 = 4 + (24 - w) / 2 / 2 * 2 - 4, z0 = 4;
     int st = bm_storeys(b); int hh = 2 * st + (st == 1 ? 2 : 0);
@@ -658,10 +658,10 @@ static void draw_world(int yaw) {   // LIVE: all round the lot, the lots next do
     for (int j = -1; j <= 1; j++) { int o = 36 * j;   // roads both ways
         ground(tl(-36), tl(28 + o), tl(72), tl(34 + o), 0, C15(7, 7, 9)); ground(tl(28 + o), tl(-36), tl(34 + o), tl(72), 0, C15(7, 7, 9)); }
     for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int ox = 36 * i, oz = 36 * j;   // pavements in the stretches between the roads
-        ground(tl(ox), tl(oz + 26), tl(ox + 26), tl(oz + 28), -4, C15(22, 22, 22)); ground(tl(ox), tl(oz + 34), tl(ox + 26), tl(oz + 36), -4, C15(22, 22, 22));
-        ground(tl(ox + 26), tl(oz + 26), tl(ox + 28), tl(oz + 28), -4, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz + 26), tl(ox + 36), tl(oz + 28), -4, C15(22, 22, 22)); ground(tl(ox + 26), tl(oz + 34), tl(ox + 28), tl(oz + 36), -4, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz + 34), tl(ox + 36), tl(oz + 36), -4, C15(22, 22, 22));
-        ground(tl(ox + 26), tl(oz), tl(ox + 28), tl(oz + 26), -4, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz), tl(ox + 36), tl(oz + 26), -4, C15(22, 22, 22)); }
-    for (int x = 0; x < 36; x += 6) { ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -6, C15(28, 26, 8)); ground(tl(31) - 14, tl(x), tl(31) + 14, tl(x) + T * 2, -6, C15(28, 26, 8)); }   // lane dashes by this lot
+        ground(tl(ox), tl(oz + 26), tl(ox + 26), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox), tl(oz + 34), tl(ox + 26), tl(oz + 36), -24, C15(22, 22, 22));
+        ground(tl(ox + 26), tl(oz + 26), tl(ox + 28), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz + 26), tl(ox + 36), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox + 26), tl(oz + 34), tl(ox + 28), tl(oz + 36), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz + 34), tl(ox + 36), tl(oz + 36), -24, C15(22, 22, 22));
+        ground(tl(ox + 26), tl(oz), tl(ox + 28), tl(oz + 26), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz), tl(ox + 36), tl(oz + 26), -24, C15(22, 22, 22)); }
+    for (int x = 0; x < 36; x += 6) { ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -30, C15(28, 26, 8)); ground(tl(31) - 14, tl(x), tl(31) + 14, tl(x) + T * 2, -30, C15(28, 26, 8)); }   // lane dashes by this lot
 }
 static void draw_far_all(int yaw) {   // last, so the lot, the sims and the citizens always get the polygons first
     for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { if (!i && !j) continue; const BInfo *b = &nb[j + 1][i + 1];
@@ -670,7 +670,7 @@ static void draw_far_all(int yaw) {   // last, so the lot, the sims and the citi
 }
 static void draw_build(int yaw) {
     ground(tl(0), tl(0), tl(GN * 2), tl(GN * 2), 0, C15(11, 20, 8));   // the lawn: one quad and big darker squares (every polygon counts on the DS)
-    if (o_chk) for (int z = 0; z < GN; z += 2) for (int x = 0; x < GN; x += 2) if (((x + z) / 2) & 1) { int e = x + 2 > GN ? GN : x + 2, f = z + 2 > GN ? GN : z + 2; ground(tl(x * 2), tl(z * 2), tl(e * 2), tl(f * 2), -2, C15(9, 18, 7)); }
+    if (o_chk) for (int z = 0; z < GN; z += 2) for (int x = 0; x < GN; x += 2) if (((x + z) / 2) & 1) { int e = x + 2 > GN ? GN : x + 2, f = z + 2 > GN ? GN : z + 2; ground(tl(x * 2), tl(z * 2), tl(e * 2), tl(f * 2), -20, C15(9, 18, 7)); }
     if (mode == M_LIVE) draw_world(yaw); else {
     ground(tl(-14), tl(-9), tl(40), tl(-2), 0, C15(7, 7, 9)); ground(tl(-14), tl(28), tl(40), tl(35), 0, C15(7, 7, 9));   // two proper streets, three cells wide
     block(tl(-14), tl(-2), tl(40), tl(0), 0, -14, C15(20, 20, 20), C15(24, 24, 24)); block(tl(-14), tl(26), tl(40), tl(28), 0, -14, C15(20, 20, 20), C15(24, 24, 24));   // pavements
@@ -678,7 +678,7 @@ static void draw_build(int yaw) {
     ground(tl(-14), tl(-9), tl(40), tl(35), 90, C15(7, 16, 6));   // grass all round, so the lot does not float
     for (int i = 0; i < 5; i++) { tree(tl(-6 + (i * 7) % 5 * 1), tl(2 + i * 5), T * 2); tree(tl(GN * 2 + 3 - (i * 5) % 4), tl(1 + i * 5), T * 2); }
     }
-    ground(tl(0), tl(26) - 30, tl(GN * 2), tl(26), -3, C15(14, 24, 10));   // a low hedge line along the back of the plot (no more posts sticking out)
+    ground(tl(0), tl(26) - 30, tl(GN * 2), tl(26), -20, C15(14, 24, 10));   // a low hedge line along the back of the plot (no more posts sticking out)
     block(tl(door_cx * 2) + T / 2, tl(door_cy * 2 + 1), tl(door_cx * 2 + 2) - T / 2, tl(26), 0, -26, C15(19, 18, 16), C15(23, 22, 20));   // a path from the front door to the pavement
     { static u8 dn[GN][GN]; memset(dn, 0, sizeof dn);   // floors as the biggest same-type rectangles: no seams for the edge anti-aliasing to show the grass through
       for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) { int t = flr[y][x]; if (!t || dn[y][x]) continue; int w = 1, d = 1;

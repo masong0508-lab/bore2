@@ -137,3 +137,7 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 - Map strip cleaned up: no overlapping text, Opt and Edit buttons.
 - Buy/Build category chips fit their words (no more cut-off "Tabl").
 - Title slots are labelled (Continue / New game / New sim).
+
+## D27 - Jagged ground fix
+- The lawn checker, lawn and pavements were drawn only 2-6 units above the ground under them, so the DS depth buffer flickered between them (saw-tooth diamonds). They now sit 20-30 units above: clean edges.
+- Options inside a lot: Menu (the "..." button) > Options (since D26).
