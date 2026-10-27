@@ -46,3 +46,6 @@ Done: one layout family (two back rooms, open front, four sizes). To add: two st
 ## Build notes
 `tools/dsbuild/mkp.sh` builds the ROM and runs `addmusic.py`; `tools/dsemu/run.cpp` is the headless melonDS runner (`AUDOUT=file.wav` records the sound, `DBGMEM=addr,addr` prints variables every 30 frames).
 Music data: `python3 tools/dsmusic/mk_dsmusic.py assets/SONGS.BIN assets/songs.inc assets/dsmusic.bin` (needs `gcc -O2 -shared -fPIC -o /tmp/adpcm.so tools/dsmusic/adpcm.c`).
+
+## D30 done
+Buy/CAS interface restyle and property system are finished. Still to test on real hardware: lot selling and ownership save round-trip.

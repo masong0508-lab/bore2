@@ -147,3 +147,8 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 ## D29 - the songs
 - All 52 PS1 jukebox songs on the DS, as sequenced samples (no streaming). See docs/DSI_ROADMAP.md. Options > Audio: Music source (Songs/Synth), Song (Auto/1-52). ROM is about 6 MB now.
 - tools/dsmusic (converter + IMA-ADPCM helper), tools/dsbuild/addmusic.py (appends and patches the ROM), run.cpp can record audio (AUDOUT).
+
+## D30
+- Buy menu restyled: item cards, category pictograms, coin prices, funds pill, place panel.
+- Character creation restyled: pictogram tabs, card grid with check badge, name picker (first/last names), top-screen nameplate.
+- Property system: lots must be bought on the Map (Buy/Sell chips, gold OWNED/HOME badges). Buy/Build only work on owned lots. First lot is free. Ownership is saved (old saves migrate).
