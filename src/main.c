@@ -1870,7 +1870,7 @@ static const u8 presets[4][O_N] = {   // LOW, MEDIUM, HIGH, ULTRA (the graphics 
     { 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0 }, { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 },
     { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1 }, { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 } };
 #define O_PRESET_LAST O_WALLS                 // (presets set O_VIEW .. O_WALLS)
-static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 1, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1, 1, 2, 0, 0, 1, 1, 0 };   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
+static u8 opt[O_N] = { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1, 1, 2, 0, 0, 1, 1, 0 };   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
 static int opt_sel, opt_back, opt_tab;
 static void opts_apply(void);
 #ifdef AUTO_FLOAT
@@ -4354,7 +4354,7 @@ int main(void) {
         t_frame0 = hb_now();
         read_pad();
         int now = VSync(-1), steps = now - t_vb; t_vb = now;
-        steps = CLAMP(steps, 1, 4);
+        steps = CLAMP(steps, 1, 3);   // LAGFIX_APPLIED: fewer catch-up steps
         frame++;
         fps_frames++; if (now - fps_vb >= 60) { fps_val = fps_frames * 60 / (now - fps_vb); fps_frames = 0; fps_vb = now; }
         audio_update(); pad_poll();
@@ -4459,8 +4459,8 @@ int main(void) {
             if (load < 420) { if (++fast_n >= 120 && world_detail_r < det_opt) { world_detail_r++; fast_n = 0; } } else if (load > 470) fast_n = 0;
             {   // still too slow after that: pull in the view distance, the skyline's detail, the trees and the crowd, a step at a time (and back out after a long quiet spell)
                 int ch = 0;
-                if (load > 540) { cool_n = 0; if (++hot_n >= 15 && shed_lvl < 3) { shed_lvl++; hot_n = 0; ch = 1; } } else hot_n = 0;
-                if (load < 400) { if (++cool_n >= 300 && shed_lvl > 0) { shed_lvl--; cool_n = 0; ch = 1; } } else if (load > 460) cool_n = 0;
+                if (load > 500) { cool_n = 0; if (++hot_n >= 4 && shed_lvl < 3) { shed_lvl++; hot_n = 0; ch = 1; } } else hot_n = 0;
+                if (load < 400) { if (++cool_n >= 600 && shed_lvl > 0) { shed_lvl--; cool_n = 0; ch = 1; } } else if (load > 460) cool_n = 0;
                 if (ch) {
                     int v = opt[O_VIEW]; far_view = v ? (v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
                     int tr = opt[O_TREES] - shed_lvl; far_trees = tr < 0 ? 0 : tr;
