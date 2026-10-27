@@ -178,7 +178,8 @@ static int go_funds = 2;   // the cash a new life starts with (an index into wmF
 static int help_page;
 static int hb_now(void) { return VSync(1); }   // hblanks since the last VSync(0) (the flip): 263 per vblank, 525 = one 30 FPS frame
 static int t_cpu, t_frame0, t_bub, t_hud, t_upd;
-static int shed_lvl;                                         // 0..3: how far a long run of slow frames has pulled in the view distance and the crowd
+static int shed_lvl;   // (LAGFIX: now 0..4; 4 = emergency, the far pass off)
+                                         // 0..3: how far a long run of slow frames has pulled in the view distance and the crowd
 static int det_opt = 12;                                      // the FULL DETAIL option's range (the range in use dips under it when frames run long)
 int dbg_slow[16][8], dbg_slow_n;
 int avg_cpu16, avg_world16, avg_hh16, hist_cpu[5], avg_prof16[8];
@@ -556,7 +557,7 @@ static void hud_life(void) {
       if (VSync(-1) - hint_vb < 480) ui_hintbar(150, "L1 R1 TURN|L2 R2 ZOOM|X USE|SQ RUN"); }
     if (show_fps) { extern int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block;
         gfx_rect(2, 57, 316, 86, 0, 0, 0, 0);
-        sprintf(b, "%d FPS  %d PRIMS %dK%s", fps_val, gfx_last_prims, gfx_last_bytes >> 10, gfx_last_overflow ? " FULL!" : ""); gfx_text(6, 60, 1, b, 120, 255, 120);
+        { extern int gfx_last_wait; sprintf(b, "%d FPS  %d PRIMS %dK SHED%d GW%d%s", fps_val, gfx_last_prims, gfx_last_bytes >> 10, shed_lvl, gfx_last_wait, gfx_last_overflow ? " FULL!" : ""); } gfx_text(6, 60, 1, b, 120, 255, 120);
         { extern int gfx_last_wait; static int mx_, mx_shown, mx_n; if (t_cpu > mx_) mx_ = t_cpu; if (++mx_n >= 60) { mx_shown = mx_; mx_ = 0; mx_n = 0; }
           static int mw, ms, ml, mu, mbb, mh, mws, mss, mls, mus, mbs, mhs; if (t_world > mw) mw = t_world; if (t_sims > ms) ms = t_sims; if (t_logic > ml) ml = t_logic;
           if (t_upd > mu) mu = t_upd; if (t_bub > mbb) mbb = t_bub; if (t_hud > mh) mh = t_hud;
@@ -4453,19 +4454,22 @@ int main(void) {
             // (the frame's whole cost: the CPU's time up to here, plus how long the GPU was still busy with the last frame. A slow GPU,
             //  big skyline boxes filling the screen, used to go unseen, because only the CPU's time was counted)
             int load = t_cpu + (gfx_last_wait > 0 ? gfx_last_wait : 0);
+            { static int lf_vb = -1; int nv = VSync(-1), per = lf_vb < 0 ? 0 : nv - lf_vb; lf_vb = nv;   // LAGFIX: the real time a frame took, whatever the stall (GPU, disc, a wait the timers above miss)
+              if (per * 263 > load) load = per * 263; }
             if (gfx_last_overflow && load < 560) load = 560;   // (the frame's packet buffer filled up: things were left undrawn, so count it as a slow frame)
             int floor_r = det_opt - 8; if (floor_r < 5) floor_r = 5; if (floor_r > det_opt) floor_r = det_opt;   // (it may now dip up to 8 tiles, not 4)
             if (load > 500) { fast_n = 0; if (++slow_n >= 1 && world_detail_r > floor_r) { world_detail_r--; slow_n = 0; } } else slow_n = 0;
             if (load < 420) { if (++fast_n >= 120 && world_detail_r < det_opt) { world_detail_r++; fast_n = 0; } } else if (load > 470) fast_n = 0;
             {   // still too slow after that: pull in the view distance, the skyline's detail, the trees and the crowd, a step at a time (and back out after a long quiet spell)
                 int ch = 0;
-                if (load > 500) { cool_n = 0; if (++hot_n >= 4 && shed_lvl < 3) { shed_lvl++; hot_n = 0; ch = 1; } } else hot_n = 0;
-                if (load < 400) { if (++cool_n >= 600 && shed_lvl > 0) { shed_lvl--; cool_n = 0; ch = 1; } } else if (load > 460) cool_n = 0;
+                if (load > 500) { cool_n = 0; if (++hot_n >= 2 && shed_lvl < 4) { shed_lvl++; hot_n = 0; ch = 1; } } else hot_n = 0;
+                if (load < 400) { if (++cool_n >= 150 + 150 * shed_lvl && shed_lvl > 0) { shed_lvl--; cool_n = 0; ch = 1; } } else if (load > 460) cool_n = 0;
                 if (ch) {
-                    int v = opt[O_VIEW]; far_view = v ? (v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
+                    int v = opt[O_VIEW]; far_view = (v && shed_lvl < 4) ? (v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
                     int tr = opt[O_TREES] - shed_lvl; far_trees = tr < 0 ? 0 : tr;
                     int fd = opt[O_FARB] - (shed_lvl > 1 ? shed_lvl - 1 : 0); far_detail = fd < 0 ? 0 : fd;
                     far_haze = shed_lvl >= 3 ? 0 : opt[O_HAZE];
+                    if (shed_lvl >= 4) { far_trees = 0; far_detail = 0; }
                     int c = ((opt[O_CROWD] & 3) + 1) * 16 >> shed_lvl; cit_maxdraw = c < 8 ? 8 : c;
                 }
             }
