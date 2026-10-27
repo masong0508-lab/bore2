@@ -1350,14 +1350,20 @@ static void opt_touch(int tx, int ty) {
         else *OPT[i].v = tx < 130 ? (*OPT[i].v + opt_cnt(i) - 1) % opt_cnt(i) : (*OPT[i].v + 1) % opt_cnt(i);
         o_dirty = 1; }
 }
+#include "logo_rects.h"
+static void draw_logo(int x0, int y0, int num, int den) {   // the BORE 2 logo, scaled num/den
+    for (int i = 0; i < LOGO_N; i++) { int x = x0 + LOGO_R[i].x * num / den, y = y0 + LOGO_R[i].y * num / den;
+        int w = x0 + (LOGO_R[i].x + LOGO_R[i].w) * num / den - x, h = y0 + (LOGO_R[i].y + LOGO_R[i].h) * num / den - y; if (w < 1) w = 1; if (h < 1) h = 1;
+        rect(x, y, w, h, LOGO_P[LOGO_R[i].c] | BIT(15)); }
+}
 static void draw_title(void) {
-    scr = hud; backdrop(); panel(8, 8, 240, 176, "Household Occupants");
-    const Sim *m = &sims[0]; rect(94, 34, 68, 68, C15(31, 31, 31)); face(98, 38, 60, m);
-    const char *nm = sname[0]; char t[40]; sprintf(t, "%s", "Ashley"); text(128 - tw(1, t) / 2, 108, 1, TXT, t); text(128 - tw(1, "Newbie") / 2, 119, 1, TXT, "Newbie");
-    house_icon(34, 140, 20, C15(30, 18, 12)); sprintf(t, "%d", funds); text(30, 164, 1, TXT, t);
-    rect(112, 140, 20, 18, C15(31, 31, 31)); rect(114, 142, 16, 3, C15(28, 8, 8)); text(106, 164, 1, TXT, "1 day");
-    rect(194, 140, 20, 20, C15(31, 31, 31)); rect(196, 142, 16, 16, C15(22, 26, 31)); rect(204, 144, 1, 7, C15(2, 4, 12)); rect(204, 151, 5, 1, C15(2, 4, 12));
-    { clk(t, minutes % 1440); text(186, 164, 1, TXT, t); } (void)nm;
+    scr = hud; backdrop(); draw_logo(78, 3, 2, 3); panel(8, 64, 240, 120, "Household Occupants");
+    const Sim *m = &sims[0]; rect(110, 86, 36, 36, C15(31, 31, 31)); face(112, 88, 32, m);
+    const char *nm = sname[0]; char t[40]; sprintf(t, "%s", "Ashley"); text(128 - tw(1, t) / 2, 124, 1, TXT, t); text(128 - tw(1, "Newbie") / 2, 134, 1, TXT, "Newbie");
+    house_icon(34, 146, 20, C15(30, 18, 12)); sprintf(t, "%d", funds); text(30, 168, 1, TXT, t);
+    rect(112, 146, 20, 18, C15(31, 31, 31)); rect(114, 148, 16, 3, C15(28, 8, 8)); text(106, 168, 1, TXT, "1 day");
+    rect(194, 146, 20, 20, C15(31, 31, 31)); rect(196, 148, 16, 16, C15(22, 26, 31)); rect(204, 150, 1, 7, C15(2, 4, 12)); rect(204, 157, 5, 1, C15(2, 4, 12));
+    { clk(t, minutes % 1440); text(186, 168, 1, TXT, t); } (void)nm;
     if (opt_on) { draw_opt(); return; }
     scr = scr_sub; rect(0, 0, 256, 192, C15(3, 3, 4));
     rect(16, 40, 224, 118, PANB); rect(18, 42, 220, 114, C15(8, 16, 28)); rect(18, 42, 220, 16, PANH); text(26, 45, 2, TXT, "Start/Load profile");

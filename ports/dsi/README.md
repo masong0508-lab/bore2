@@ -141,3 +141,5 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 ## D27 - Jagged ground fix
 - The lawn checker, lawn and pavements were drawn only 2-6 units above the ground under them, so the DS depth buffer flickered between them (saw-tooth diamonds). They now sit 20-30 units above: clean edges.
 - Options inside a lot: Menu (the "..." button) > Options (since D26).
+
+## D28: the new BORE 2 logo on both title screens (tools/make_logo.py makes src/logo_rects.h from docs/bore2_logo_1x.png).

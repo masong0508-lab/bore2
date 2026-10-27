@@ -1,4 +1,5 @@
 // BORE 2 - the sequel to BORE (GBA), on the PlayStation. True 3D: the voxel people, the rooms and the items are real geometry.
+#include "logo_rects.h"
 #include "common.h"
 #include "gfx.h"
 #include "pad.h"
@@ -3496,10 +3497,13 @@ static void title_draw(void) {
     Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (title_t * 120) & 4095; g.amp = 4096;
     voxel_draw(&title_bore, &p, (title_t * 9) & 4095, &g);
     gfx_shadow(&p, 70);
-    { int w = gfx_text_w(3, "BORE 2"); gfx_text_raw(162 - w / 2, 16, 3, "BORE 2", 60, 30, 10); }   // (a shadow under the logo)
-    gfx_textc(160, 14, 3, "BORE 2", GOLD);
-    { int w = gfx_text_w(1, "DIPPINN PRODUCTIONS"); gfx_text_raw(161 - w / 2, 53, 1, "DIPPINN PRODUCTIONS", 40, 30, 30); }
-    gfx_textc(160, 52, 1, "DIPPINN PRODUCTIONS", 230, 230, 236);
+    for (int i = 0; i < LOGO_N; i++) {   // the BORE 2 logo (tools/make_logo.py), drawn at 6/5 size
+        int x = 70 + LOGO_R[i].x * 6 / 5, y = 4 + LOGO_R[i].y * 6 / 5;
+        int w = 70 + (LOGO_R[i].x + LOGO_R[i].w) * 6 / 5 - x, h = 4 + (LOGO_R[i].y + LOGO_R[i].h) * 6 / 5 - y;
+        gfx_rect_c(x, y, w < 1 ? 1 : w, h < 1 ? 1 : h, LOGO_P[LOGO_R[i].c], 0);
+    }
+    { int w = gfx_text_w(1, "DIPPINN PRODUCTIONS"); gfx_text_raw(161 - w / 2, 113, 1, "DIPPINN PRODUCTIONS", 40, 30, 30); }
+    gfx_textc(160, 112, 1, "DIPPINN PRODUCTIONS", 230, 230, 236);
     if (state == ST_TITLE) {   // the tagline on a card, and what to press
         ui_card(66, 196, 188, 36);
         ui_textc(160, 201, 1, "THE VOXEL LIFE, NOW IN FULL 3D", UI_BLUE2);
