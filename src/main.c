@@ -4453,6 +4453,7 @@ int main(void) {
             // (the frame's whole cost: the CPU's time up to here, plus how long the GPU was still busy with the last frame. A slow GPU,
             //  big skyline boxes filling the screen, used to go unseen, because only the CPU's time was counted)
             int load = t_cpu + (gfx_last_wait > 0 ? gfx_last_wait : 0);
+            if (gfx_last_overflow && load < 560) load = 560;   // (the frame's packet buffer filled up: things were left undrawn, so count it as a slow frame)
             int floor_r = det_opt - 8; if (floor_r < 5) floor_r = 5; if (floor_r > det_opt) floor_r = det_opt;   // (it may now dip up to 8 tiles, not 4)
             if (load > 500) { fast_n = 0; if (++slow_n >= 1 && world_detail_r > floor_r) { world_detail_r--; slow_n = 0; } } else slow_n = 0;
             if (load < 420) { if (++fast_n >= 120 && world_detail_r < det_opt) { world_detail_r++; fast_n = 0; } } else if (load > 470) fast_n = 0;
