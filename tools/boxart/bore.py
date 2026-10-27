@@ -18,7 +18,7 @@ def bore(sc,pos=(0,0,0),yaw=0.0,skin=1,shirt='#c0392b',pants='#2c3e6b',hair='#2a
     sc.box((0,0.02,0),(0.98,0.2,0.54),pa)
     if butt:   # a blocky rear to match the rest of the model: two box cheeks under a boxer band
         sc.box((0,0.17,0),(1.02,0.12,0.58),(238,238,244)); sc.box((0,0.17,0),(1.03,0.04,0.59),(215,60,80))
-        for sx in(-1,1): sc.box((sx*0.25,-0.14,-0.16*butt),(0.48,0.5,0.3+0.12*butt),pa)
+        sc.box((0,-0.12,-0.1*butt),(0.98,0.46,0.26+0.08*butt),pa)
     # arms
     for side,(a,zz),el in((-1,armL,elbL),(1,armR,elbR)):
         sc.push(rx(a)@rz(zz),(side*0.66,0.98,0))
