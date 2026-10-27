@@ -178,6 +178,7 @@ static int go_funds = 2;   // the cash a new life starts with (an index into wmF
 static int help_page;
 static int hb_now(void) { return VSync(1); }   // hblanks since the last VSync(0) (the flip): 263 per vblank, 525 = one 30 FPS frame
 static int t_cpu, t_frame0, t_bub, t_hud, t_upd;
+static int shed_lvl;                                         // 0..3: how far a long run of slow frames has pulled in the view distance and the crowd
 static int det_opt = 12;                                      // the FULL DETAIL option's range (the range in use dips under it when frames run long)
 int dbg_slow[16][8], dbg_slow_n;
 int avg_cpu16, avg_world16, avg_hh16, hist_cpu[5], avg_prof16[8];
@@ -1869,7 +1870,7 @@ static const u8 presets[4][O_N] = {   // LOW, MEDIUM, HIGH, ULTRA (the graphics 
     { 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0 }, { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 },
     { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1 }, { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 } };
 #define O_PRESET_LAST O_WALLS                 // (presets set O_VIEW .. O_WALLS)
-static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 0, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1, 1, 2, 0, 0, 1, 1, 0 };   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
+static u8 opt[O_N] = { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1, 1, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1, 1, 2, 0, 0, 1, 1, 0 };   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
 static int opt_sel, opt_back, opt_tab;
 static void opts_apply(void);
 #ifdef AUTO_FLOAT
@@ -1877,6 +1878,7 @@ void float_opts(const u8 *p, int n) { for (int i = 0; i < n && i < O_N; i++) opt
 #endif
 static void opts_apply(void) {
     extern int getenv_noshadow, dbg_noao, dbg_nograd, world_detail_r, cit_live_max, cit_maxdraw, cit_sprite_rate;
+    shed_lvl = 0;
     far_view = opt[O_VIEW]; far_detail = opt[O_FARB]; far_trees = opt[O_TREES]; far_haze = opt[O_HAZE];
     static const u8 rr[4] = { 8, 10, 12, 14 }, cr[4] = { 16, 32, 48, 64 }, lv[4] = { 1, 2, 4, 6 };
     world_detail_r = det_opt = rr[opt[O_DETAIL] & 3]; cit_maxdraw = cr[opt[O_CROWD] & 3]; cit_live_max = lv[opt[O_LIVE] & 3]; cit_sprite_rate = opt[O_SPR];
@@ -4447,9 +4449,19 @@ int main(void) {
         }
         t_cpu = hb_now() - t_frame0;
         if (state == ST_LIFE) {   // a frame that ran past two screen refreshes: the full-detail range draws in a tile (back out once things are quiet)
-            extern int world_detail_r; static int slow_n, fast_n;
-            if (t_cpu > 500) { fast_n = 0; if (++slow_n >= 1 && world_detail_r > det_opt - 4) { world_detail_r--; slow_n = 0; } } else slow_n = 0;
+            extern int world_detail_r, cit_maxdraw; static int slow_n, fast_n, hot_n, cool_n;
+            int floor_r = det_opt - 8; if (floor_r < 5) floor_r = 5; if (floor_r > det_opt) floor_r = det_opt;   // (it may now dip up to 8 tiles, not 4)
+            if (t_cpu > 500) { fast_n = 0; if (++slow_n >= 1 && world_detail_r > floor_r) { world_detail_r--; slow_n = 0; } } else slow_n = 0;
             if (t_cpu < 420) { if (++fast_n >= 120 && world_detail_r < det_opt) { world_detail_r++; fast_n = 0; } } else if (t_cpu > 470) fast_n = 0;
+            {   // still too slow after that: pull in the view distance and the crowd too, a step at a time (and back out after a long quiet spell)
+                int ch = 0;
+                if (t_cpu > 540) { cool_n = 0; if (++hot_n >= 20 && shed_lvl < 3) { shed_lvl++; hot_n = 0; ch = 1; } } else hot_n = 0;
+                if (t_cpu < 400) { if (++cool_n >= 300 && shed_lvl > 0) { shed_lvl--; cool_n = 0; ch = 1; } } else if (t_cpu > 460) cool_n = 0;
+                if (ch) {
+                    int v = opt[O_VIEW]; far_view = v ? (v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
+                    int c = ((opt[O_CROWD] & 3) + 1) * 16 >> shed_lvl; cit_maxdraw = c < 8 ? 8 : c;
+                }
+            }
             if (world_detail_r > det_opt) world_detail_r = det_opt;
         }
 #ifdef AUTO_CITY
