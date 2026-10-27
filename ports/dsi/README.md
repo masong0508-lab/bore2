@@ -152,3 +152,7 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 - Buy menu restyled: item cards, category pictograms, coin prices, funds pill, place panel.
 - Character creation restyled: pictogram tabs, card grid with check badge, name picker (first/last names), top-screen nameplate.
 - Property system: lots must be bought on the Map (Buy/Sell chips, gold OWNED/HOME badges). Buy/Build only work on owned lots. First lot is free. Ownership is saved (old saves migrate).
+
+## D31
+- Careers (menu > Job), wants and fears (menu > Life), the dog (Pets > Puppy), ghosts, roofs and storeys (Build tools, Options > Roofs), 6 new Buy tabs (52 items), Jukebox screen (menu > Songs).
+- Save: a new trailer holds jobs, wants, the dog and ghosts; roof and storeys ride in the lot header's spare bits. Old saves still load.

@@ -3,7 +3,7 @@
 // Top screen: that lot in 3D. L/R change town, A/B zoom, START re-rolls the world.
 // Fixed point only; the world is bigmap.c, shared with the PS1 build (nothing of it is stored).
 #define PMN 28
-static int o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song;
+static int o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song;
 
 // ---- the options: one table (name, the choices, the value, the tab it lives on, its default). Saved in table order, so new ones are only ever added at the end.
 typedef struct { const char *name, *vals; int *v; unsigned char tab, def; } Opt;
@@ -19,6 +19,7 @@ static const Opt OPT[] = {
     { "Autosave", "Off|On", &o_auto, 2, 1 }, { "Clock", "12 hour|24 hour", &o_c24, 2, 0 },
     { "Reset graphics", "tap", 0, 3, 0 }, { "Reset audio", "tap", 0, 3, 1 }, { "Reset all", "tap", 0, 3, 255 },
     { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Auto|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52", &o_song, 1, 0 },
+    { "Roofs", "Cutaway|Always|Hide", &o_roof, 0, 0 },
 };
 static void open_opts(void);
 #define NOPT ((int)(sizeof OPT / sizeof OPT[0]))
@@ -268,16 +269,23 @@ static void draw_lot(const BInfo *b, int yaw) {
 #define GN 13                  // the buildable plot: 13 x 13 cells, each 2 units
 enum { M_MAP, M_LIVE, M_BUY, M_BUILD, M_CAS, M_TITLE };
 typedef struct { const char *name; int price; u8 h; u16 col; u8 kind; } Item;   // kind: 0 box, 1 flat (rug), 2 plant
-static const Item ITEMS[7][4] = {
+static const Item ITEMS[13][4] = {
     { {"Chair", 80, 2, C15(24, 16, 8), 0}, {"Armchair", 450, 2, C15(10, 14, 24), 0}, {"Sofa", 900, 2, C15(24, 8, 8), 0}, {"Bench", 150, 1, C15(20, 14, 8), 0} },
     { {"Dining", 300, 2, C15(22, 15, 8), 0}, {"Desk", 220, 2, C15(18, 18, 20), 0}, {"Coffee", 120, 1, C15(16, 10, 6), 0}, {"Counter", 260, 3, C15(26, 26, 24), 0} },
     { {"TV", 600, 3, C15(3, 3, 4), 0}, {"Computer", 900, 2, C15(20, 20, 22), 0}, {"Stereo", 350, 2, C15(6, 6, 8), 0}, {"Fridge", 700, 5, C15(28, 28, 30), 0} },
     { {"Lamp", 60, 4, C15(31, 28, 14), 0}, {"Rug", 100, 0, C15(22, 8, 12), 1}, {"Plant", 40, 3, C15(5, 18, 6), 2}, {"Statue", 500, 4, C15(24, 24, 22), 0} },
     { {"Bed", 800, 2, C15(20, 24, 31), 0}, {"Bathtub", 650, 2, C15(28, 30, 31), 0}, {"Toilet", 250, 2, C15(30, 30, 30), 0}, {"Sink", 200, 3, C15(26, 28, 30), 0} },
     { {"Crib", 400, 3, C15(28, 24, 16), 0}, {"Toy Box", 150, 2, C15(31, 20, 6), 0}, {"Books", 250, 4, C15(18, 12, 6), 0}, {"Rocker", 300, 2, C15(22, 14, 10), 0} },
-    { {"Fence", 40, 2, C15(28, 26, 20), 0}, {"Lamp Post", 120, 6, C15(6, 6, 8), 0}, {"Hedge", 60, 2, C15(6, 18, 6), 0}, {"Flowers", 30, 0, C15(28, 10, 14), 1} } };
-static const u8 ITMASK[28] = { 62, 62, 62, 62, 62, 60, 62, 56, 62, 60, 62, 62, 63, 63, 63, 63, 62, 62, 62, 62, 3, 7, 60, 48, 63, 63, 63, 63 };   // which life stages may use each item (bit 0 baby .. bit 5 elder)
-static const char *const CATN[7] = { "Seat", "Table", "Tech", "Deco", "Room", "Kids", "Yard" };
+    { {"Fence", 40, 2, C15(28, 26, 20), 0}, {"Lamp Post", 120, 6, C15(6, 6, 8), 0}, {"Hedge", 60, 2, C15(6, 18, 6), 0}, {"Flowers", 30, 0, C15(28, 10, 14), 1} },
+    { {"Stove", 450, 3, C15(26, 26, 26), 0}, {"Microwave", 150, 2, C15(26, 26, 28), 0}, {"Sink", 250, 3, C15(28, 28, 30), 0}, {"Bar", 600, 3, C15(18, 11, 6), 0} },
+    { {"Shower", 500, 6, C15(24, 28, 31), 0}, {"Mirror", 120, 5, C15(22, 28, 31), 0}, {"Hot Tub", 1400, 2, C15(18, 10, 6), 0}, {"Towels", 40, 3, C15(8, 22, 28), 0} },
+    { {"Piano", 1800, 3, C15(4, 4, 6), 0}, {"Pool Table", 1200, 2, C15(4, 18, 8), 0}, {"Arcade", 900, 6, C15(8, 8, 24), 0}, {"Console", 400, 2, C15(6, 6, 9), 0} },
+    { {"Bookcase", 350, 6, C15(16, 10, 5), 0}, {"Telescope", 700, 5, C15(26, 26, 28), 0}, {"Easel", 200, 4, C15(22, 16, 8), 0}, {"Treadmill", 800, 2, C15(10, 10, 12), 0} },
+    { {"Pool", 2500, 1, C15(6, 18, 30), 0}, {"BBQ", 450, 3, C15(6, 6, 8), 0}, {"Swing", 180, 5, C15(24, 8, 8), 0}, {"Fountain", 900, 3, C15(22, 22, 22), 0} },
+    { {"Puppy", 400, 1, C15(20, 13, 6), 0}, {"Dog Bed", 120, 1, C15(24, 10, 10), 0}, {"Dog Bowl", 40, 1, C15(26, 26, 28), 0}, {"Fish Tank", 300, 3, C15(8, 22, 30), 0} } };
+static const u8 ITMASK[52] = { 62, 62, 62, 62, 62, 60, 62, 56, 62, 60, 62, 62, 63, 63, 63, 63, 62, 62, 62, 62, 3, 7, 60, 48, 63, 63, 63, 63,
+    60, 60, 62, 48, 62, 62, 56, 62, 56, 60, 60, 60, 62, 62, 60, 56, 62, 56, 62, 62, 63, 63, 63, 62 };   // which life stages may use each item (bit 0 baby .. bit 5 elder)
+static const char *const CATN[13] = { "Seat", "Table", "Tech", "Deco", "Room", "Kids", "Yard", "Cook", "Bath", "Fun", "Study", "Patio", "Pets" };
 static const u16 FLOORC[5] = { C15(22, 16, 9), C15(26, 26, 24), C15(10, 16, 24), C15(14, 22, 12), C15(8, 8, 10) };
 static const u16 WALLC[6] = { C15(30, 28, 22), C15(28, 20, 16), C15(20, 24, 30), C15(30, 30, 30), C15(13, 8, 5), C15(28, 24, 14) };   // 5 = a door, 6 = a fence
 static int mark_x = -1, mark_y, mark_t;
@@ -292,13 +300,24 @@ static void sim3d(int i, int yaw);
 typedef struct { u8 x, y, c, i, rot; } Obj;
 static Obj objs[400]; static int nobj, funds = 20000;
 static u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1];     // floors (0 none, else 1..5), walls on the cell edges (0 none, else 1..4)
-static int mode = M_MAP, cat, pick = -1, pcx = 6, pcy = 6, prot, tool, pal, cam = 3000, pitch = 3200, msg_t;
+static int catoff, mode = M_MAP, cat, pick = -1, pcx = 6, pcy = 6, prot, tool, pal, cam = 3000, pitch = 3200, msg_t;
 static const char *msg = "";
 typedef struct { int x, y, tx, ty, wx, wy, need[6], acc[6], act, act_left, act_amt, act_obj, face, rel, dirn, age, soc, tgt; u8 skin, hair, hcol, shirt, beard, fc, pm[PMN]; u16 cc[3]; } Sim;   // x, y in 1/16 cells; needs 0..100: hunger, fun, energy, social, bladder, hygiene
 #define SIM_MAX 6
 static Sim sims[SIM_MAX]; static int cur_sim, nsim = 3, ctl, minutes = 11 * 60 + 40;
 static char sname[SIM_MAX][20] = { "Ashley Newbie", "Ronald Bacon", "Kit Farlow" };
 static const char *const STGN[6] = { "Baby", "Toddler", "Child", "Teen", "Adult", "Elder" };   // the life stages: 0-2, 3-5, 6-12, 13-17, 18-59, 60+ years (a year is a day on the clock)
+// ============ LIFE (D31): careers, wants and fears, the dog, ghosts, roofs and storeys ============
+#define JOBN 6
+enum { WN_NONE, WN_EAT, WN_SLEEP, WN_SHOWER, WN_FUN, WN_CHAT, WN_FRIEND, WN_JOB, WN_WORK, WN_PAID, WN_PROMO, WN_CASH, WN_BUY, WN_VISIT, WN_BABY, WN_PET, WN_SONG, WN_N };
+enum { FR_NONE, FR_PASS, FR_WET, FR_BAD, FR_DEMOTE, FR_GHOST, FR_N };
+typedef struct { u8 job, lvl, prog, strike, fear, worked, wk[3]; s16 wa[3]; u16 pts, shifts; } Life;
+typedef struct { s16 bx, by; int x, y, tx, ty; u8 skin, hair, shirt, on; } Ghost;
+#define GH_MAX 4
+static Life life[SIM_MAX]; static Ghost gh[GH_MAX]; static int ngh, gh_next;
+static int life_ver, info_pg, jobui, juke, juke_pg, dog_have, roof_st, up_st;
+static struct { int x, y, tx, ty, wx, wy, hun, fx, fz; } dog;
+static void life_ev(int i, int ev, int arg), ghost_add(const Sim *m), dog_reset(void), dog_draw(void), ghost_draw(void), shell_draw(void), day_roll(void); static int cl100(int v);
 static int stage_of(int a) { return a < 3 ? 0 : a < 6 ? 1 : a < 13 ? 2 : a < 18 ? 3 : a < 60 ? 4 : 5; }
 static const int STSC[6] = { 36, 50, 68, 88, 100, 95 };   // how tall each stage is, in percent
 static u8 ilim[SIM_MAX][SIM_MAX];   // how many times two household members have talked today
@@ -491,11 +510,11 @@ static void lot_reset(void) {
         for (int n = 0; n < 6; n++) { m->need[n] = 90 - (n * 17 + i * 11) % 60; m->acc[n] = 0; } m->rel = 0; for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0; if (i) { m->skin = (u8)(i * 2); m->hair = (u8)(i); m->hcol = (u8)(i * 2); m->shirt = (u8)(i + 2); m->hair = (u8)(6 + i * 2); m->beard = (u8)(i == 1 ? 3 : 0); m->fc = (u8)i; } }
 }
 
-typedef struct { int bx, by, nobj, pcx, pcy, dcx, dcy; u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1]; Obj objs[400]; } LotSave;
+typedef struct { int bx, by, nobj, pcx, pcy, dcx, dcy; u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1]; Obj objs[400]; u8 roof, up; } LotSave;
 #define LSV_N 48   // lots remembered (and saved)
 static LotSave lsv[LSV_N]; static int lsv_n, lsv_next;
 static void lot_save(void) { if (lot_bx < 0) return; int k = -1; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) k = i; if (k < 0) { if (lsv_n < LSV_N) k = lsv_n++; else { for (int t = 0; t < LSV_N && lot_owned(lsv[lsv_next].bx, lsv[lsv_next].by); t++) lsv_next = (lsv_next + 1) % LSV_N; k = lsv_next; lsv_next = (lsv_next + 1) % LSV_N; } }
-    LotSave *q = &lsv[k]; q->bx = lot_bx; q->by = lot_by; q->nobj = nobj; q->pcx = pcx; q->pcy = pcy; q->dcx = door_cx; q->dcy = door_cy; memcpy(q->flr, flr, sizeof flr); memcpy(q->hwl, hwl, sizeof hwl); memcpy(q->vwl, vwl, sizeof vwl); memcpy(q->objs, objs, sizeof objs); }
+    LotSave *q = &lsv[k]; q->bx = lot_bx; q->by = lot_by; q->nobj = nobj; q->pcx = pcx; q->pcy = pcy; q->dcx = door_cx; q->dcy = door_cy; q->roof = (u8)roof_st; q->up = (u8)up_st; memcpy(q->flr, flr, sizeof flr); memcpy(q->hwl, hwl, sizeof hwl); memcpy(q->vwl, vwl, sizeof vwl); memcpy(q->objs, objs, sizeof objs); }
 static void prop_trade(void) {   // Buy or Sell on the Map
     BInfo b; bm_block(sel_x, sel_y, &b);
     if (lot_owned(sel_x, sel_y)) {
@@ -505,15 +524,18 @@ static void prop_trade(void) {   // Buy or Sell on the Map
     } else { int pr = lot_price(&b); if (!pr) say("Not for sale"); else if (funds < pr) say("Not enough funds"); else if (nown >= OWN_MAX) say("Too many lots"); else { funds -= pr; own_add(sel_x, sel_y); say("Lot bought"); } }
 }
 static void lot_enter(int bx, int by) {   // the lot you walk into: what you built there last time, or a new home from its own seed
+    if (lot_bx >= 0 && (lot_bx != bx || lot_by != by)) life_ev(ctl, WN_VISIT, 0);
     lot_bx = bx; lot_by = by; lot_seed = (u32)(bx * 73856093 ^ by * 19349663); pick = -1;
-    for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == bx && lsv[i].by == by) { LotSave *q = &lsv[i]; nobj = q->nobj; pcx = q->pcx; pcy = q->pcy; door_cx = q->dcx; door_cy = q->dcy; memcpy(flr, q->flr, sizeof flr); memcpy(hwl, q->hwl, sizeof hwl); memcpy(vwl, q->vwl, sizeof vwl); memcpy(objs, q->objs, sizeof objs); nb_load(); return; }
-    memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0;
-    { BInfo bi; bm_block(bx, by, &bi); if (bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) gen_house(); else gen_public(bi.lot, bi.h); } nb_load(); }
+    for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == bx && lsv[i].by == by) { LotSave *q = &lsv[i]; nobj = q->nobj; pcx = q->pcx; pcy = q->pcy; door_cx = q->dcx; door_cy = q->dcy; roof_st = q->roof; up_st = q->up; memcpy(flr, q->flr, sizeof flr); memcpy(hwl, q->hwl, sizeof hwl); memcpy(vwl, q->vwl, sizeof vwl); memcpy(objs, q->objs, sizeof objs); nb_load(); return; }
+    memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; roof_st = up_st = 0;
+    { BInfo bi; bm_block(bx, by, &bi); if (bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) gen_house(); else gen_public(bi.lot, bi.h); } nb_load();
+}
 static void lot_cross(void) {   // the sim you are playing left the lot's slot: the next lot becomes the middle one and everything slides back by one slot
     const Sim *m = &sims[ctl]; int dx = fdiv(m->x + 8, 16 * SLC), dy = fdiv(m->y + 8, 16 * SLC); if (!dx && !dy) return;
     int nx = lot_bx + dx, ny = lot_by + dy; if (nx < 0 || ny < 0 || nx >= BM_N || ny >= BM_N) return;
     lot_save(); lot_enter(nx, ny);
     for (int i = 0; i < nsim; i++) { Sim *s2 = &sims[i]; int ax = dx * SLC * 16, ay = dy * SLC * 16; s2->x -= ax; s2->y -= ay; s2->tx -= ax; s2->ty -= ay; s2->wx -= ax; s2->wy -= ay; }
+    { int ax = dx * SLC * 16, ay = dy * SLC * 16; dog.x -= ax; dog.y -= ay; dog.tx -= ax; dog.ty -= ay; dog.wx -= ax; dog.wy -= ay; }
     city_shift(dx, dy); camx -= dx * 36 * T; camz -= dy * 36 * T; mark_x -= dx * SLC; mark_y -= dy * SLC; }
 static void bar(int x, int y, int w, int v, u16 c) { rect(x, y, w, 6, C15(4, 4, 6)); rect(x + 1, y + 1, (w - 2) * v / 100, 4, c); }
 static int catx[8];   // the category chips fit their words
@@ -545,6 +567,12 @@ static void cat_icon(int x, int y, int i, u16 c) {   // a 12x12 pictogram for ea
         case 3: rect(x + 4, y + 8, 4, 4, c); rect(x + 3, y + 1, 6, 3, C15(8, 24, 8)); rect(x + 1, y + 3, 10, 3, C15(8, 24, 8)); rect(x + 5, y + 5, 2, 3, C15(8, 24, 8)); break;   // a plant
         case 4: rect(x + 1, y, 10, 12, c); rect(x + 2, y + 1, 8, 10, C15(4, 8, 18)); rect(x + 8, y + 6, 2, 2, c); break;                // a door
         case 5: rect(x, y + 6, 6, 6, c); rect(x + 6, y + 6, 6, 6, shade(c, 6)); rect(x + 3, y, 6, 6, shade(c, 9)); break;                // toy blocks
+        case 7: rect(x + 1, y + 3, 10, 8, c); rect(x + 2, y + 1, 3, 2, c); rect(x + 7, y + 1, 3, 2, c); rect(x + 3, y + 6, 6, 3, C15(4, 4, 6)); break;   // a stove
+        case 8: rect(x + 2, y, 8, 2, c); rect(x + 5, y + 2, 2, 3, c); for (int k = 0; k < 3; k++) rect(x + 2 + k * 3, y + 6, 1, 3, C15(8, 20, 31)); rect(x, y + 10, 12, 2, c); break;   // a shower
+        case 9: rect(x + 2, y, 3, 8, c); rect(x + 5, y, 5, 3, c); rect(x, y + 8, 5, 4, c); rect(x + 8, y + 5, 4, 4, c); break;   // a note
+        case 10: rect(x + 1, y + 1, 10, 10, c); rect(x + 6, y + 1, 1, 10, C15(4, 8, 18)); rect(x + 2, y + 3, 3, 1, C15(4, 8, 18)); rect(x + 8, y + 3, 2, 1, C15(4, 8, 18)); break;   // a book
+        case 11: rect(x, y + 6, 12, 5, C15(6, 18, 30)); rect(x + 1, y + 5, 10, 1, C15(20, 26, 31)); rect(x + 8, y, 2, 6, c); rect(x + 5, y, 3, 2, c); break;   // a pool
+        case 12: rect(x + 3, y + 5, 7, 5, c); rect(x + 8, y + 2, 4, 4, c); rect(x + 4, y + 10, 2, 2, c); rect(x + 8, y + 10, 2, 2, c); rect(x + 1, y + 4, 3, 2, c); break;   // a dog
         default: rect(x + 5, y + 7, 2, 5, C15(14, 8, 4)); rect(x + 1, y, 10, 4, C15(6, 20, 6)); rect(x + 2, y + 3, 8, 5, C15(8, 24, 8)); break;   // a tree
     }
 }
@@ -561,15 +589,16 @@ static void draw_ui(void) {
     if (msg_t > 0) { int w = tw(1, msg) + 12; rect(80 - w / 2 + 40, 160, w, 12, C15(2, 2, 4)); rect(80 - w / 2 + 41, 161, w - 2, 10, C15(26, 10, 6)); text(80 - w / 2 + 46, 163, 1, C15(31, 31, 31), msg); }
     { const char *cc[7] = { "<", ">", "^", "v", "+", "-", "Rst" }; for (int k = 0; k < 7; k++) { int cx = 164 + (k < 4 ? k * 22 : (k - 4) * 29), cy = k < 4 ? 164 : 178; rect(cx, cy, k < 4 ? 20 : 27, 12, C15(2, 4, 12)); rect(cx + 1, cy + 1, k < 4 ? 18 : 25, 10, C15(8, 16, 28)); text(cx + 4, cy + 2, 1, TXT, cc[k]); } }
     if (mode == M_BUY && pick < 0) {
-        for (int i = 0; i < 7; i++) { int on = cat == i, y = 20 + i * 20; rect(2, y, 53, 19, on ? C15(31, 31, 31) : C15(2, 4, 12)); rect(3, y + 1, 51, 17, on ? C15(8, 26, 8) : C15(10, 14, 24)); rect(3, y + 1, 51, 1, on ? C15(20, 31, 20) : C15(16, 20, 30));
-            cat_icon(6, y + 3, i, on ? C15(31, 31, 31) : C15(24, 28, 31)); text(21, y + 6, 1, on ? C15(2, 6, 2) : TXT, CATN[i]); }
+        for (int k = 0; k < 6; k++) { int i = catoff + k, on = cat == i, y = 20 + k * 18; rect(2, y, 53, 17, on ? C15(31, 31, 31) : C15(2, 4, 12)); rect(3, y + 1, 51, 15, on ? C15(8, 26, 8) : C15(10, 14, 24)); rect(3, y + 1, 51, 1, on ? C15(20, 31, 20) : C15(16, 20, 30));
+            cat_icon(6, y + 2, i, on ? C15(31, 31, 31) : C15(24, 28, 31)); text(21, y + 5, 1, on ? C15(2, 6, 2) : TXT, CATN[i]); }
+        chip(2, 130, 25, 14, "^", 0); chip(30, 130, 25, 14, "v", 0); sprintf(t, "%d/%d", cat + 1, 13); text(10, 150, 1, C15(22, 26, 31), t);
         for (int i = 0; i < 4; i++) { const Item *it = &ITEMS[cat][i]; int x, y; buy_card_pos(i, &x, &y); int can = funds >= it->price, lift = drag == 1 && drag_item == i;
             rect(x, y, 96, 66, lift ? C15(31, 31, 20) : C15(2, 4, 12)); rect(x + 1, y + 1, 94, 64, can ? C15(28, 31, 31) : C15(18, 20, 24));
             rect(x + 1, y + 1, 94, 14, can ? C15(8, 18, 31) : C15(10, 12, 18)); text(x + 6, y + 4, 1, TXT, it->name);
             rect(x + 6, y + 20, 38, 34, C15(2, 4, 12)); rect(x + 7, y + 21, 36, 32, C15(20, 26, 31)); rect(x + 10, y + 46, 30, 4, C15(14, 20, 27));   // a little stage with a shadow
             rect(x + 12, y + 26, 26, 22, shade(it->col, 5)); rect(x + 12, y + 26, 26, 4, shade(it->col, 10)); rect(x + 12, y + 30, 26, 18, it->col); rect(x + 12, y + 44, 26, 4, shade(it->col, 6));
             rect(x + 50, y + 20, 40, 15, can ? C15(4, 18, 6) : C15(22, 6, 6)); rect(x + 51, y + 21, 38, 13, can ? C15(8, 24, 8) : C15(28, 10, 10)); coin(x + 54, y + 24); sprintf(t, "%d", it->price); text(x + 64, y + 24, 1, TXT, t);
-            { int mk = ITMASK[cat * 4 + i], lo = 0, hi = 5; while (!((mk >> lo) & 1)) lo++; while (!((mk >> hi) & 1)) hi--; if (lo == 0 && hi == 5) strcpy(t, "All ages"); else sprintf(t, "%.3s-%.3s", STGN[lo], STGN[hi]); text(x + 50, y + 40, 1, C15(8, 12, 22), t); }
+            { int mk = ITMASK[cat * 4 + i], lo = 0, hi = 5; while (!((mk >> lo) & 1)) lo++; while (!((mk >> hi) & 1)) hi--; if (lo == 0 && hi == 5) strcpy(t, "Anyone"); else sprintf(t, "%.3s-%.3s", STGN[lo], STGN[hi]); text(x + 50, y + 40, 1, C15(8, 12, 22), t); }
             text(x + 50, y + 52, 1, can ? C15(8, 12, 22) : C15(22, 6, 6), can ? "Drag" : "Too dear"); }
     } else if (mode == M_BUY) {
         plan(1); const Item *it = &ITEMS[cat][pick];
@@ -580,11 +609,13 @@ static void draw_ui(void) {
         text(166, 148, 1, C15(8, 12, 22), "Drag on the plan");
     } else if (mode == M_BUILD) {
         plan(1);
-        const char *tl2[5] = { "Floor", "Wall", "Erase", "Move", "Sell" };
-        for (int i = 0; i < 5; i++) button(164, 22 + i * 17, 88, 15, tl2[i], C15(24, 14, 8), tool == i);
+        static char rl[16], sl[16]; static const char *const RN[3] = { "None", "Flat", "Gable" }; sprintf(rl, "Roof: %s", RN[roof_st]); sprintf(sl, "Storeys: %d", up_st + 1);
+        const char *tl2[7] = { "Floor", "Wall", "Erase", "Move", "Sell", rl, sl };
+        for (int i = 0; i < 7; i++) button(164, 22 + i * 14, 88, 13, tl2[i], C15(24, 14, 8), tool == i);
         int n = tool == 0 ? 5 : tool == 1 ? 6 : 0;
-        for (int i = 0; i < n; i++) { rect(164 + i * 15, 112, 14, 15, pal == i + 1 ? 0xFFFF : C15(2, 2, 4)); rect(166 + i * 15, 114, 10, 11, tool == 0 ? FLOORC[i] : WALLC[i]); }
-        text(164, 134, 1, C15(20, 24, 28), tool == 1 ? "Drag along edges" : tool == 3 ? "Drag furniture" : tool == 4 ? "Tap furniture" : "Drag to paint");
+        for (int i = 0; i < n; i++) { rect(164 + i * 15, 124, 14, 15, pal == i + 1 ? 0xFFFF : C15(2, 2, 4)); rect(166 + i * 15, 126, 10, 11, tool == 0 ? FLOORC[i] : WALLC[i]); }
+        text(164, 144, 1, C15(20, 24, 28), tool == 1 ? "Drag along edges" : tool == 3 ? "Drag furniture" : tool == 4 ? "Tap furniture" : tool == 5 ? "Tap to change" : tool == 6 ? "Tap to add one" : "Drag to paint");
+        if (tool >= 5) text(164, 154, 1, C15(20, 24, 28), "See Options>Roofs");
     }
 }
 static int lot_touch(int tx, int ty) {   // a stylus tap on the plan: the cell (or -1)
@@ -597,10 +628,11 @@ static u8 *edge_at(int tx, int ty) {   // the wall slot nearest the stylus
     return b == 0 ? &hwl[y][x] : b == 1 ? &hwl[y + 1][x] : b == 2 ? &vwl[y][x] : &vwl[y][x + 1];
 }
 static void place_here(void) {
+    if (cat == 12 && pick == 0) { if (dog_have) say("You already have a dog"); else if (funds < ITEMS[12][0].price) say("Not enough funds"); else { funds -= ITEMS[12][0].price; dog_have = 1; dog_reset(); life_ver++; ui_ver++; say("Welcome home, Rex!"); life_ev(ctl, WN_BUY, 0); } pick = -1; return; }
     if (obj_at(pcx, pcy) >= 0) { say("Something is there"); return; }
     if (nobj >= 400) { say("Lot is full"); return; }
     if (funds < ITEMS[cat][pick].price) { say("Not enough funds"); pick = -1; return; }
-    funds -= ITEMS[cat][pick].price; objs[nobj].x = (u8)pcx; objs[nobj].y = (u8)pcy; objs[nobj].c = (u8)cat; objs[nobj].i = (u8)pick; objs[nobj].rot = (u8)prot; nobj++; say("Bought"); ui_ver++;
+    funds -= ITEMS[cat][pick].price; objs[nobj].x = (u8)pcx; objs[nobj].y = (u8)pcy; objs[nobj].c = (u8)cat; objs[nobj].i = (u8)pick; objs[nobj].rot = (u8)prot; nobj++; say("Bought"); ui_ver++; life_ev(ctl, WN_BUY, 0);
 }
 static void build_apply(int c) {   // paint or erase one cell
     int x = c % GN, y = c / GN; pcx = x; pcy = y;
@@ -611,7 +643,8 @@ static void ui_down(int tx, int ty) {
     last_tx = tx; last_ty = ty; drag = 0; drag_card = 0;
     for (int i = 0; i < 4; i++) if (hit(i * 64, 0, 62, 16, tx, ty)) { set_mode(i); pick = -1; return; }
     if (mode == M_BUY && pick < 0) {
-        for (int i = 0; i < 7; i++) if (hit(2, 20 + i * 20, 53, 19, tx, ty)) cat = i;
+        for (int k = 0; k < 6; k++) if (hit(2, 20 + k * 18, 53, 17, tx, ty)) cat = catoff + k;
+        if (hit(2, 130, 25, 14, tx, ty) && catoff > 0) catoff--; if (hit(30, 130, 25, 14, tx, ty) && catoff < 7) catoff++;
         for (int i = 0; i < 4; i++) { int x, y; buy_card_pos(i, &x, &y); if (hit(x, y, 96, 66, tx, ty)) { if (funds >= ITEMS[cat][i].price) { drag = 1; drag_item = i; dsx = tx; dsy = ty; } else say("Not enough funds"); } }
     } else if (mode == M_BUY) {
         int c = lot_touch(tx, ty);
@@ -620,9 +653,9 @@ static void ui_down(int tx, int ty) {
         if (hit(166, 98, 82, 22, tx, ty)) prot = (prot + 1) & 3;
         if (hit(166, 124, 82, 22, tx, ty)) pick = -1;
     } else if (mode == M_BUILD) {
-        for (int i = 0; i < 5; i++) if (hit(164, 22 + i * 17, 88, 15, tx, ty)) { tool = i; if (pal < 1) pal = 1; if (tool == 1 && pal > 6) pal = 6; }
+        for (int i = 0; i < 7; i++) if (hit(164, 22 + i * 14, 88, 13, tx, ty)) { tool = i; if (pal < 1) pal = 1; if (tool == 1 && pal > 6) pal = 6; if (i == 5) roof_st = (roof_st + 1) % 3; if (i == 6) up_st = (up_st + 1) % 3; ui_ver++; }
         int n = tool == 0 ? 5 : tool == 1 ? 6 : 0;
-        for (int i = 0; i < n; i++) if (hit(164 + i * 15, 112, 14, 15, tx, ty)) pal = i + 1;
+        for (int i = 0; i < n; i++) if (hit(164 + i * 15, 124, 14, 15, tx, ty)) pal = i + 1;
         int c = lot_touch(tx, ty);
         if (c >= 0) { int x = c % GN, y = c / GN; pcx = x; pcy = y;
             if (tool == 0 || tool == 2) { drag = 3; build_apply(c); }
@@ -687,6 +720,30 @@ static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every
     case 26: ob(0, 20, 80, 60, 0, 22, c); ob(4, 24, 76, 56, 22, 26, l); break;   // a hedge
     case 27: ob(0, 0, 80, 80, 0, 2, LC(8, 18, 6)); for (int k = 0; k < 5; k++) ob(8 + (k % 3) * 24, 8 + (k / 3) * 36 + (k & 1) * 6, 20 + (k % 3) * 24, 20 + (k / 3) * 36 + (k & 1) * 6, 2, 8, k & 1 ? c : LC(31, 28, 8)); break;   // a flower bed
     case 19: ob(32, 24, 48, 48, 0, 20, d); ob(10, 14, 70, 56, 20, 26, c); ob(18, 20, 62, 50, 26, 27, LC(8, 20, 30)); ob(36, 8, 44, 16, 26, 38, LC(20, 20, 22)); break;   // sink on a pedestal
+    case 28: ob(4, 8, 76, 76, 0, 28, c); ob(8, 12, 72, 70, 28, 30, dk); ob(14, 16, 30, 32, 30, 33, LC(12, 12, 12)); ob(46, 16, 62, 32, 30, 33, LC(12, 12, 12)); ob(14, 44, 30, 60, 30, 33, LC(12, 12, 12)); ob(46, 44, 62, 60, 30, 33, LC(12, 12, 12)); ob(10, 76, 70, 79, 16, 24, LC(28, 8, 8)); break;   // stove
+    case 29: ob(10, 20, 70, 66, 0, 14, c); ob(14, 64, 50, 67, 2, 12, dk); ob(54, 64, 66, 67, 4, 10, LC(8, 26, 8)); break;   // microwave
+    case 30: ob(0, 8, 80, 72, 0, 28, c); ob(14, 20, 54, 60, 28, 30, LC(16, 20, 28)); ob(58, 18, 64, 26, 30, 44, LC(20, 20, 22)); ob(58, 18, 74, 24, 44, 46, LC(20, 20, 22)); break;   // kitchen sink
+    case 31: ob(0, 20, 80, 56, 0, 30, wd); ob(0, 18, 80, 58, 30, 34, LC(22, 14, 8)); ob(8, 64, 22, 76, 0, 18, dk); ob(8, 64, 22, 76, 18, 22, c); ob(54, 64, 68, 76, 0, 18, dk); ob(54, 64, 68, 76, 18, 22, c); break;   // bar with stools
+    case 32: ob(4, 4, 76, 76, 0, 4, c); ob(4, 4, 8, 76, 4, 64, LC(22, 28, 31)); ob(4, 72, 76, 76, 4, 64, LC(22, 28, 31)); ob(4, 4, 76, 8, 4, 64, LC(22, 28, 31)); ob(58, 8, 72, 20, 56, 62, LC(20, 20, 22)); ob(64, 8, 66, 12, 20, 56, LC(20, 20, 22)); break;   // shower cabin
+    case 33: ob(14, 34, 66, 42, 0, 8, wd); ob(16, 36, 64, 40, 8, 56, c); ob(14, 34, 66, 36, 56, 60, wd); break;   // standing mirror
+    case 34: ob(0, 0, 80, 80, 0, 26, wd); ob(8, 8, 72, 72, 26, 28, LC(10, 22, 30)); ob(0, 0, 80, 6, 26, 32, wd); ob(0, 74, 80, 80, 26, 32, wd); break;   // hot tub
+    case 35: ob(10, 30, 70, 50, 0, 4, wd); ob(12, 36, 16, 44, 4, 50, wd); ob(64, 36, 68, 44, 4, 50, wd); ob(12, 38, 68, 42, 44, 48, wd); ob(20, 34, 60, 46, 20, 44, c); break;   // towel rack
+    case 36: ob(0, 16, 80, 64, 0, 22, dk); ob(0, 8, 80, 30, 22, 42, dk); ob(6, 52, 74, 66, 22, 25, LC(31, 31, 31)); ob(10, 56, 70, 64, 25, 26, LC(2, 2, 2)); ob(26, 68, 54, 80, 0, 16, LC(8, 6, 6)); break;   // piano and stool
+    case 37: ob(0, 10, 80, 70, 0, 20, wd); ob(4, 14, 76, 66, 20, 24, c); ob(40, 36, 46, 42, 24, 28, LC(31, 31, 31)); ob(24, 32, 30, 38, 24, 28, LC(28, 6, 6)); ob(52, 44, 58, 50, 24, 28, LC(28, 24, 4)); break;   // pool table
+    case 38: ob(14, 14, 66, 66, 0, 70, c); ob(14, 14, 66, 30, 70, 82, c); ob(18, 58, 62, 66, 36, 60, LC(4, 16, 26)); ob(18, 52, 62, 66, 26, 32, dk); ob(26, 54, 32, 60, 32, 38, LC(28, 6, 6)); break;   // arcade cabinet
+    case 39: ob(8, 30, 72, 52, 0, 6, wd); ob(14, 26, 66, 34, 6, 36, dk); ob(18, 28, 62, 33, 10, 32, LC(8, 18, 28)); ob(28, 40, 52, 56, 6, 10, LC(14, 14, 16)); break;   // a console and a screen
+    case 40: ob(6, 40, 74, 76, 0, 72, wd); for (int r = 0; r < 4; r++) for (int k = 0; k < 5; k++) ob(10 + k * 12, 66, 20 + k * 12, 76, 6 + r * 16, 18 + r * 16, (r + k) & 1 ? LC(28, 8, 8) : (r + k) % 3 == 0 ? LC(8, 14, 28) : LC(10, 24, 10)); break;   // tall bookcase
+    case 41: ob(36, 36, 44, 44, 0, 40, dk); ob(26, 26, 40, 40, 0, 6, dk); ob(20, 30, 60, 50, 40, 52, c); ob(54, 32, 72, 48, 46, 60, LC(10, 20, 30)); break;   // telescope
+    case 42: ob(14, 40, 24, 46, 0, 60, c); ob(56, 40, 66, 46, 0, 60, c); ob(18, 34, 62, 40, 20, 58, LC(30, 30, 28)); ob(26, 30, 36, 34, 22, 26, LC(28, 8, 8)); ob(40, 30, 50, 34, 24, 28, LC(8, 14, 28)); break;   // an easel
+    case 43: ob(6, 10, 74, 70, 0, 10, dk); ob(10, 14, 70, 66, 10, 14, LC(14, 14, 16)); ob(6, 6, 74, 16, 10, 52, dk); ob(24, 6, 56, 12, 52, 58, LC(20, 20, 22)); break;   // treadmill
+    case 44: ob(0, 0, 80, 80, 0, 6, LC(24, 24, 22)); ob(6, 6, 74, 74, 6, 8, c); ob(66, 30, 72, 40, 6, 34, LC(26, 26, 28)); break;   // swimming pool
+    case 45: ob(14, 24, 66, 56, 26, 36, dk); ob(18, 28, 62, 52, 36, 38, LC(8, 8, 8)); ob(20, 26, 26, 32, 0, 26, dk); ob(54, 26, 60, 32, 0, 26, dk); ob(20, 46, 26, 52, 0, 26, dk); ob(54, 46, 60, 52, 0, 26, dk); ob(14, 56, 66, 60, 30, 34, LC(26, 10, 6)); break;   // barbecue
+    case 46: ob(6, 34, 12, 46, 0, 72, c); ob(68, 34, 74, 46, 0, 72, c); ob(6, 34, 74, 46, 66, 72, c); ob(26, 38, 28, 42, 18, 66, LC(20, 20, 22)); ob(52, 38, 54, 42, 18, 66, LC(20, 20, 22)); ob(22, 34, 58, 46, 14, 18, wd); break;   // swing set
+    case 47: ob(10, 10, 70, 70, 0, 12, c); ob(14, 14, 66, 66, 12, 14, LC(8, 18, 30)); ob(36, 36, 44, 44, 14, 44, c); ob(28, 28, 52, 52, 44, 48, LC(8, 20, 30)); break;   // fountain
+    case 48: ob(20, 30, 60, 50, 10, 30, c); ob(52, 30, 72, 48, 24, 42, c); ob(22, 28, 28, 34, 0, 10, d); ob(52, 28, 58, 34, 0, 10, d); ob(22, 46, 28, 52, 0, 10, d); ob(52, 46, 58, 52, 0, 10, d); break;   // puppy
+    case 49: ob(8, 8, 72, 72, 0, 10, wd); ob(14, 14, 66, 66, 10, 12, c); break;   // dog bed
+    case 50: ob(24, 24, 56, 56, 0, 6, LC(26, 26, 28)); ob(28, 28, 52, 52, 6, 8, LC(20, 10, 6)); break;   // dog bowl
+    case 51: ob(6, 16, 74, 64, 0, 14, wd); ob(8, 18, 72, 62, 14, 50, c); ob(30, 30, 40, 40, 14, 26, LC(31, 20, 6)); ob(50, 40, 58, 48, 20, 30, LC(31, 8, 8)); ob(8, 18, 72, 62, 50, 52, wd); break;   // fish tank
     default: ob(4, 4, 76, 76, 0, it->h * 10, c); break; }
 }
 static int door_open;
@@ -801,6 +858,23 @@ static void draw_far_all(int yaw) {   // last, so the lot, the sims and the citi
         if (b->terrain == BT_SEA) { ground(tl(36 * i), tl(36 * j), tl(36 * i + 36), tl(36 * j + 36), -8, C15(5, 12, 24)); continue; }
         if (polys > 2700) continue; far_lot(b, 36 * i * T, 36 * j * T, nb_pop[j + 1][i + 1], yaw); }
 }
+// ---- roofs and upper storeys (D31): the shell of the building, drawn over the rooms ----
+static void shell_draw(void) {
+    if (!(roof_st || up_st)) return;
+    if (mode == M_LIVE ? o_roof == 2 : !(mode == M_BUILD && tool >= 5)) return;
+    int x0 = GN, x1 = -1, y0 = GN, y1 = -1;
+    for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) if (hwl[y][x] && hwl[y][x] != 6) { if (x < x0) x0 = x; if (x + 1 > x1) x1 = x + 1; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    for (int y = 0; y < GN; y++) for (int x = 0; x <= GN; x++) if (vwl[y][x] && vwl[y][x] != 6) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y + 1 > y1) y1 = y + 1; }
+    if (x1 <= x0 || y1 <= y0) return;
+    if (mode == M_LIVE && o_roof == 0) for (int q = 0; q < nsim; q++) { int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16); if (cx >= x0 && cx < x1 && cy >= y0 && cy < y1) return; }   // cutaway: someone is home, so you can see in
+    int X0 = tl(x0 * 2), X1 = tl(x1 * 2), Z0 = tl(y0 * 2), Z1 = tl(y1 * 2), wh = T * 21 / 5; u16 wc = C15(29, 26, 21), tr = C15(24, 21, 16), wn = C15(8, 14, 22);
+    for (int s = 0; s < up_st; s++) { int ya = -wh * (s + 1), yb = -wh * (s + 2);
+        block(X0, Z0, X1, Z1, ya, yb, wc, tr);
+        if (polys < 2500) for (int x = X0 + T; x + T * 3 / 2 <= X1; x += T * 2) { int wy0 = ya - wh / 4, wy1 = yb + wh / 4; qd(x, wy0, Z1 + 12, x + T * 3 / 2, wy0, Z1 + 12, x + T * 3 / 2, wy1, Z1 + 12, x, wy1, Z1 + 12, wn); qd(x, wy0, Z0 - 12, x + T * 3 / 2, wy0, Z0 - 12, x + T * 3 / 2, wy1, Z0 - 12, x, wy1, Z0 - 12, wn); } }
+    int top = -wh * (up_st + 1);
+    if (roof_st == 1) block(X0 - 10, Z0 - 10, X1 + 10, Z1 + 10, top, top - 70, C15(18, 18, 20), C15(22, 22, 24));
+    else if (roof_st == 2) { int span = (Z1 - Z0) < (X1 - X0) ? (Z1 - Z0) : (X1 - X0); gable(X0 - 60, Z0 - 60, X1 + 60, Z1 + 60, top, -span / 3, C15(22, 9, 7)); }
+}
 static void draw_build(int yaw) {
     ground(tl(0), tl(0), tl(GN * 2), tl(GN * 2), 0, C15(11, 20, 8));   // the lawn: one quad and big darker squares (every polygon counts on the DS)
     if (o_chk) for (int z = 0; z < GN; z += 2) for (int x = 0; x < GN; x += 2) if (((x + z) / 2) & 1) { int e = x + 2 > GN ? GN : x + 2, f = z + 2 > GN ? GN : z + 2; ground(tl(x * 2), tl(z * 2), tl(e * 2), tl(f * 2), -20, C15(9, 18, 7)); }
@@ -834,6 +908,7 @@ static void draw_build(int yaw) {
     for (int i = 0; i < nobj; i++) {   // then the items, nearest the camera first in budget terms: far ones are skipped when the DS runs out of polygons
         if (mode == M_LIVE) { int ox2 = tl(objs[i].x * 2) - camx, oz2 = tl(objs[i].y * 2) - camz; if (abs(ox2) + abs(oz2) > 9000 && polys > 1800) continue; if (polys > 2900) continue; }
         obj3d(objs[i].x, objs[i].y, &ITEMS[objs[i].c][objs[i].i], objs[i].rot, 0); }
+    dog_draw(); shell_draw(); ghost_draw();
     if (mode == M_LIVE) { draw_city(); draw_far_all(yaw); }
     if (mode == M_LIVE && mark_t > 0) { ground(tl(mark_x * 2), tl(mark_y * 2), tl(mark_x * 2 + 2), tl(mark_y * 2 + 2), -60, C15(31, 31, 12)); mark_t--; }
     if (mode == M_BUY || mode == M_BUILD) {   // the cursor
@@ -844,14 +919,20 @@ static void draw_build(int yaw) {
 
 // ============ the Sims-style game: LIVE (status on the top screen, the lot and its icons on the bottom, touch to play) ============
 typedef struct { const char *lab; u8 need; u8 amt; u8 dur; } Act;
-static const Act ACT[7][4] = {
+static const Act ACT[13][4] = {
     { {"Sit", 2, 25, 90}, {"Relax", 2, 35, 120}, {"Nap", 2, 60, 150}, {"Sit", 2, 20, 90} },
     { {"Sit", 1, 10, 60}, {"Look", 1, 5, 40}, {"Look", 1, 5, 40}, {"Cook", 0, 35, 120} },
     { {"Watch TV", 1, 60, 150}, {"Play", 1, 50, 150}, {"Listen", 1, 35, 120}, {"Eat", 0, 70, 120} },
     { {"Look", 1, 3, 30}, {"Look", 1, 3, 30}, {"Water", 1, 10, 60}, {"Admire", 1, 15, 60} },
     { {"Sleep", 2, 90, 240}, {"Bathe", 5, 90, 180}, {"Use", 4, 95, 100}, {"Wash", 5, 30, 80} },
     { {"Sleep", 2, 80, 200}, {"Play", 1, 60, 120}, {"Read", 1, 40, 120}, {"Rock", 2, 40, 150} },
-    { {"Look", 1, 3, 30}, {"Look", 1, 3, 30}, {"Look", 1, 3, 30}, {"Smell", 1, 10, 60} } };
+    { {"Look", 1, 3, 30}, {"Look", 1, 3, 30}, {"Look", 1, 3, 30}, {"Smell", 1, 10, 60} },
+    { {"Cook", 0, 45, 120}, {"Snack", 0, 55, 60}, {"Wash", 5, 25, 60}, {"Drink", 0, 40, 80} },
+    { {"Shower", 5, 95, 120}, {"Primp", 1, 6, 40}, {"Soak", 5, 70, 150}, {"Look", 1, 3, 30} },
+    { {"Play", 1, 70, 160}, {"Play", 1, 60, 140}, {"Play", 1, 80, 150}, {"Play", 1, 75, 150} },
+    { {"Read", 1, 45, 120}, {"Stargaze", 1, 50, 120}, {"Paint", 1, 60, 140}, {"Run", 1, 30, 100} },
+    { {"Swim", 1, 70, 140}, {"Grill", 0, 60, 120}, {"Swing", 1, 50, 100}, {"Admire", 1, 15, 60} },
+    { {"Look", 1, 3, 30}, {"Nap", 2, 40, 120}, {"Look", 1, 3, 30}, {"Watch", 1, 35, 100} } };
 static const char *const NEEDN[6] = { "Hunger", "Fun", "Energy", "Social", "Bladder", "Hygiene" };
 static int menu_open, popup, popup_i, speed = 1, yaw_t = 4096, live_yaw = 4096, live_dist = 12000, camx, camz, cas_tab, cas_done, cas_stage, cas_page;
 
@@ -908,6 +989,119 @@ static int mood(const Sim *m) { int s = 0; for (int n = 0; n < 6; n++) s += m->n
 static u16 need_col(int v) { return v > 55 ? C15(8, 26, 8) : v > 28 ? C15(28, 24, 6) : C15(30, 8, 6); }
 static const char *DAYN[7] = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
 static const char *relname(int r) { return r < 3 ? "Acquaintance" : r < 6 ? "Friend" : "Best Friend"; }
+// ---- LIFE: jobs, wants and fears, the jukebox screen (D31) ----
+static const char *const JOBNM[JOBN] = { "Line Cook", "Shop Clerk", "Lifeguard", "Barista", "Teacher", "Office Temp" };
+static const char *const JOBLV[JOBN][5] = {
+    { "Dishwasher", "Prep Cook", "Line Cook", "Sous Chef", "Head Chef" }, { "Stock Boy", "Cashier", "Sales Rep", "Supervisor", "Manager" },
+    { "Pool Boy", "Lifeguard", "Swim Coach", "Head Guard", "Pool Boss" }, { "Cup Washer", "Barista", "Latte Artist", "Shift Lead", "Cafe Owner" },
+    { "Aide", "Tutor", "Teacher", "Dept Head", "Principal" }, { "Intern", "Temp", "Analyst", "Manager", "Director" } };
+static const u8 JOBPAY[JOBN] = { 8, 7, 9, 7, 10, 12 };
+static int job_pay(const Life *L) { return L->job ? JOBPAY[L->job - 1] * 10 * (L->lvl + 1) : 0; }
+static const char *const WNM[WN_N] = { "", "Eat a meal", "Sleep in a bed", "Take a shower", "Have some fun", "Chat with someone", "Make a friend", "Get a job", "Go to work", "Get paid", "Get promoted", "Have $", "Buy something", "Visit another lot", "Have a baby", "Pet the dog", "Pick a song" };
+static const u16 WPT[WN_N] = { 0, 300, 300, 300, 300, 400, 900, 800, 500, 500, 1500, 1200, 400, 500, 3000, 400, 300 };
+static const char *const FNM[FR_N] = { "", "Pass out", "Wet myself", "A bad day at work", "Get demoted", "Meet a ghost" };
+static const u16 FPT[FR_N] = { 0, 600, 500, 700, 1000, 400 };
+static int want_ok(int i, int w) {   // may this sim want that, now?
+    const Sim *m = &sims[i]; const Life *L = &life[i]; int st = stage_of(m->age);
+    if (st == 0) return 0;
+    switch (w) {
+        case WN_JOB: return st >= 3 && !L->job; case WN_WORK: case WN_PAID: return st >= 3 && L->job; case WN_PROMO: return L->job && L->lvl < 4;
+        case WN_CASH: case WN_BUY: return st >= 3; case WN_BABY: return st == 4 && nsim < SIM_MAX; case WN_PET: return dog_have;
+        case WN_FRIEND: case WN_VISIT: return st >= 2; case WN_SONG: return mus_ok == 1;
+        default: return 1; }
+}
+static void want_roll(int i, int k) {
+    Life *L = &life[i];
+    for (int t = 0; t < 24; t++) {
+        int w = 1 + (int)(hsh((u32)(minutes * 31 + i * 977 + k * 131 + t * 17 + life_ver)) % (WN_N - 1)); if (!want_ok(i, w)) continue;
+        int dup = 0; for (int q = 0; q < 3; q++) if (L->wk[q] == w) dup = 1; if (dup) continue;
+        int arg = 0; if (w == WN_CASH) { arg = (funds / 1000 + 1) * 1000; if (arg > 30000) continue; }
+        L->wk[k] = (u8)w; L->wa[k] = (s16)arg; life_ver++; return; }
+}
+static void fear_roll(int i) {
+    Life *L = &life[i];
+    for (int t = 0; t < 8; t++) { int f = 1 + (int)(hsh((u32)(minutes * 13 + i * 71 + t * 5 + life_ver)) % (FR_N - 1)); if ((f == FR_DEMOTE || f == FR_BAD) && !L->job) continue; if (f != L->fear) { L->fear = (u8)f; life_ver++; return; } }
+}
+static void life_gain(int i, int k) {
+    Life *L = &life[i]; int w = L->wk[k], pts = WPT[w], old = L->pts / 1500; L->pts = (u16)(L->pts + pts > 60000 ? 60000 : L->pts + pts); L->wk[k] = 0; life_ver++;
+    if (i == ctl) { static char b[40]; if (L->pts / 1500 > old) { int bonus = 250 * (L->pts / 1500); funds += bonus; sprintf(b, "Aspiration up! +$%d", bonus); } else sprintf(b, "Want done! +%d", pts); say(b); sfx(3); }
+}
+static void life_ev(int i, int ev, int arg) { (void)arg; if (i < 0 || i >= nsim) return; Life *L = &life[i]; for (int k = 0; k < 3; k++) if (L->wk[k] == ev) { life_gain(i, k); break; } }
+static void life_fear(int i, int fr) {
+    Life *L = &life[i]; if (i < 0 || i >= nsim || L->fear != fr) return;
+    L->pts = L->pts > FPT[fr] ? (u16)(L->pts - FPT[fr]) : 0; if (i == ctl) say("A fear came true..."); fear_roll(i); life_ver++;
+}
+static void life_tick(void) {
+    for (int i = 0; i < nsim; i++) { Life *L = &life[i]; if (stage_of(sims[i].age) == 0) continue;
+        for (int k = 0; k < 3; k++) { if (!L->wk[k]) want_roll(i, k); else if (L->wk[k] == WN_CASH && funds >= L->wa[k]) life_gain(i, k); else if (!want_ok(i, L->wk[k])) { L->wk[k] = 0; life_ver++; } }
+        if (!L->fear) fear_roll(i); }
+}
+static void life_reset(void) { memset(life, 0, sizeof life); memset(gh, 0, sizeof gh); ngh = gh_next = 0; dog_have = 0; dog.hun = 80; life_ver++; roof_st = up_st = 0; jobui = juke = 0; info_pg = 0; }
+static void job_take(int j) {
+    Life *L = &life[ctl]; if (stage_of(sims[ctl].age) < 3) { say("Too young to work"); return; }
+    L->job = (u8)(j + 1); L->lvl = L->prog = L->strike = 0; life_ver++; static char b[40]; sprintf(b, "Hired: %s", JOBLV[j][0]); life_ev(ctl, WN_JOB, 0); say(b);
+}
+static void job_work(void) {
+    Life *L = &life[ctl]; static char b[44]; int hr = (minutes / 60) % 24, dw = (minutes / 1440) % 7, dn = (minutes / 1440) % 250 + 1;
+    if (!L->job) { say("Get a job first"); return; }
+    if (dw >= 5) { say("No shift at weekends"); return; }
+    if (hr < 6 || hr > 15) { say("Shifts start 6am to 3pm"); return; }
+    if (L->worked == dn) { say("Already worked today"); return; }
+    const Sim *m = &sims[ctl]; int perf = (m->need[0] + m->need[1] + m->need[2] + m->need[5]) / 4, good = perf >= 45, pay = job_pay(L), old = minutes;
+    L->worked = (u8)dn; L->shifts++; minutes += 360;
+    for (int q = 0; q < nsim; q++) { static const u8 dd[6] = { 35, 20, 30, 0, 30, 20 }; for (int n = 0; n < 6; n++) { int v = sims[q].need[n] - (q == ctl ? dd[n] : 12); sims[q].need[n] = v < 4 ? 4 : v; } }
+    if (minutes / 1440 != old / 1440) day_roll();
+    if (good) { funds += pay; L->prog++; L->strike = 0; sprintf(b, "Good shift! +$%d", pay); }
+    else { funds += pay / 2; L->strike++; sprintf(b, "Bad day... +$%d", pay / 2); life_fear(ctl, FR_BAD); }
+    life_ev(ctl, WN_WORK, 0); life_ev(ctl, WN_PAID, 0);
+    if (L->prog >= 3 && L->lvl < 4) { L->lvl++; L->prog = 0; funds += 100 * L->lvl; sprintf(b, "Promoted: %s!", JOBLV[L->job - 1][L->lvl]); life_ev(ctl, WN_PROMO, 0); }
+    else if (L->strike >= 2) { L->strike = 0; L->prog = 0; if (L->lvl > 0) { L->lvl--; sprintf(b, "Demoted to %s", JOBLV[L->job - 1][L->lvl]); } else { L->job = 0; strcpy(b, "You were fired"); } life_fear(ctl, FR_DEMOTE); }
+    say(b); life_ver++;
+}
+static void job_draw(void) {
+    const Life *L = &life[ctl]; char t[56]; panel(8, 20, 240, 152, "Career"); chip(204, 22, 40, 14, "X", 0);
+    if (stage_of(sims[ctl].age) < 3) { text(20, 60, 1, TXT, "Too young to work."); return; }
+    if (!L->job) { text(16, 42, 1, TXT, "Pick a job (6am-3pm, Mon-Fri)");
+        for (int k = 0; k < JOBN; k++) { sprintf(t, "%s $%d", JOBNM[k], JOBPAY[k] * 10); chip(14 + (k & 1) * 118, 56 + (k >> 1) * 36, 112, 30, t, 0); } return; }
+    sprintf(t, "%s (%s)", JOBLV[L->job - 1][L->lvl], JOBNM[L->job - 1]); text(16, 42, 1, TXT, t);
+    sprintf(t, "Level %d of 5   Pay $%d a shift", L->lvl + 1, job_pay(L)); text(16, 56, 1, TXT, t);
+    text(16, 72, 1, TXT, "Promotion"); rect(84, 71, 100, 8, C15(2, 6, 14)); rect(85, 72, 98 * L->prog / 3, 6, C15(8, 26, 8));
+    sprintf(t, "Strikes %d of 2   Shifts %d", L->strike, L->shifts); text(16, 86, 1, TXT, t);
+    chip(14, 108, 112, 28, "Go to work", 1); chip(130, 108, 112, 28, "Quit job", 0); text(16, 146, 1, C15(22, 26, 31), "Eat and rest first for a good shift.");
+}
+static void job_touch(int tx, int ty) {
+    if (hit(204, 22, 40, 14, tx, ty)) { jobui = 0; return; }
+    Life *L = &life[ctl]; if (stage_of(sims[ctl].age) < 3) return;
+    if (!L->job) { for (int k = 0; k < JOBN; k++) if (hit(14 + (k & 1) * 118, 56 + (k >> 1) * 36, 112, 30, tx, ty)) { job_take(k); jobui = 0; } return; }
+    if (hit(14, 108, 112, 28, tx, ty)) { job_work(); jobui = 0; } else if (hit(130, 108, 112, 28, tx, ty)) { L->job = 0; L->lvl = L->prog = L->strike = 0; life_ver++; say("You quit"); jobui = 0; }
+}
+static void juke_draw(void) {
+    char t[56]; panel(6, 20, 244, 164, "Jukebox"); chip(204, 22, 40, 14, "X", 0);
+    if (mus_ok != 1 || mus_n < 1) { text(16, 60, 1, TXT, "Songs are not available here."); text(16, 74, 1, TXT, "The synth tunes are playing."); return; }
+    sprintf(t, "Now: %.30s", mus_cur >= 0 ? mus_name(mus_cur) : "-"); text(14, 40, 1, C15(31, 31, 20), t);
+    int per = 6, pages = (mus_n + per - 1) / per; if (juke_pg >= pages) juke_pg = 0;
+    for (int k = 0; k < per; k++) { int n = juke_pg * per + k; if (n >= mus_n) break; sprintf(t, "%d %.26s", n + 1, mus_name(n)); chip(12, 52 + k * 16, 232, 14, t, n == mus_cur); }
+    chip(12, 152, 40, 24, "<", 0); chip(56, 152, 40, 24, ">", 0); chip(100, 152, 44, 24, "Next", 0); chip(148, 152, 52, 24, "Mix", 0); sprintf(t, "%d/%d", juke_pg + 1, pages); text(208, 160, 1, TXT, t);
+}
+static void juke_touch(int tx, int ty) {
+    if (hit(204, 22, 40, 14, tx, ty)) { juke = 0; return; }
+    if (mus_ok != 1) return; int per = 6, pages = (mus_n + per - 1) / per;
+    for (int k = 0; k < per; k++) { int n = juke_pg * per + k; if (n < mus_n && hit(12, 52 + k * 16, 232, 14, tx, ty)) { o_song = n + 1; life_ev(ctl, WN_SONG, 0); } }
+    if (hit(12, 152, 40, 24, tx, ty)) juke_pg = (juke_pg + pages - 1) % pages;
+    if (hit(56, 152, 40, 24, tx, ty)) juke_pg = (juke_pg + 1) % pages;
+    if (hit(100, 152, 44, 24, tx, ty)) { int c = mus_cur < 0 ? 0 : mus_cur; o_song = (c + 1) % mus_n + 1; life_ev(ctl, WN_SONG, 0); }
+    if (hit(148, 152, 52, 24, tx, ty)) o_song = 0;
+}
+static void life_panel(void) {   // the top screen's second page: job, aspiration, wants, fear, the dog
+    const Life *L = &life[ctl]; char t[56]; panel(6, 72, 244, 114, "Life");
+    if (L->job) sprintf(t, "Job: %.14s  L%d  $%d", JOBLV[L->job - 1][L->lvl], L->lvl + 1, job_pay(L)); else strcpy(t, "Job: none (menu > Job)");
+    text(14, 92, 1, TXT, t);
+    sprintf(t, "Aspiration: %d stars", L->pts / 1500); text(14, 104, 1, C15(31, 31, 20), t); rect(158, 104, 84, 8, C15(2, 6, 14)); rect(159, 105, 82 * (L->pts % 1500) / 1500, 6, C15(31, 26, 6));
+    for (int k = 0; k < 3; k++) { if (!L->wk[k]) continue; if (L->wk[k] == WN_CASH) sprintf(t, "Have $%d", L->wa[k]); else strcpy(t, WNM[L->wk[k]]);
+        rect(14, 118 + k * 13, 8, 8, C15(8, 22, 8)); text(26, 118 + k * 13, 1, TXT, t); sprintf(t, "+%d", WPT[L->wk[k]]); text(210, 118 + k * 13, 1, C15(31, 31, 20), t); }
+    if (L->fear) { text(14, 158, 1, C15(31, 14, 12), "Fear:"); text(52, 158, 1, TXT, FNM[L->fear]); }
+    if (dog_have) { sprintf(t, "Rex: %s", dog.hun > 50 ? "happy" : dog.hun > 20 ? "peckish" : "hungry!"); text(14, 172, 1, TXT, t); }
+}
 static void draw_top_status(void) {   // the top screen while you live: the sim's mood, the time and money, and the needs (or the bio of another sim)
     scr = scr_sub; backdrop(); const Sim *m = &sims[cur_sim];
     char t[48];
@@ -918,6 +1112,7 @@ static void draw_top_status(void) {   // the top screen while you live: the sim'
         int mn = minutes % 1440, h12 = (mn / 60) % 12 ? (mn / 60) % 12 : 12;
         sprintf(t, "%s %d:%02d %s", DAYN[(minutes / 1440) % 7], h12, mn % 60, mn / 60 >= 12 ? "PM" : "AM"); text(78, 42, 1, TXT, t); sprintf(t, "%s %d", STGN[stage_of(m->age)], m->age); text(190, 28, 1, C15(31, 31, 20), t);
         sprintf(t, "Funds %d", funds); text(78, 54, 1, C15(31, 31, 20), t); if (o_pm) { sprintf(t, "Quads %d", polys / 2); text(172, 54, 1, polys > 2900 ? C15(31, 12, 8) : C15(24, 28, 31), t); }
+        if (info_pg == 1) { life_panel(); return; }
         panel(6, 72, 244, 114, "Needs");
         static const int order[6] = { 0, 1, 2, 3, 4, 5 };
         for (int k = 0; k < 6; k++) { int n = order[k], cx = 14 + (k & 1) * 120, cy = 94 + (k >> 1) * 30;
@@ -960,11 +1155,14 @@ static void draw_hud(void) {
     rect(62, 168, 30, 22, PANB); rect(63, 169, 28, 20, cam_on ? C15(8, 26, 8) : PAN); text(66, 176, 1, TXT, "Cam");
     if (cam_on) { const char *cb[6] = { cam_pan ? "Pan" : "Turn", "In", "Out", cam_free ? "Free" : "Follow", "Reset", "Done" }; for (int k = 0; k < 6; k++) { rect(216, 36 + k * 22, 38, 20, PANB); rect(217, 37 + k * 22, 36, 18, k == 0 && cam_pan ? C15(8, 26, 8) : PANH); text(220, 43 + k * 22, 1, TXT, cb[k]); } text(70, 40, 1, TXT, "Drag to look round"); }
     rect(104, 178, 48, 14, PANB); rect(105, 179, 46, 13, PAN); for (int i = 0; i < 3; i++) rect(118 + i * 8, 184, 4, 4, TXT);
-    if (menu_open) { static const char *const mn[6] = { "Buy", "Build", "Map", "Save", "Options", "Title" }; panel(30, 40, 196, 110, "Menu"); for (int i = 0; i < 6; i++) chip(38 + (i % 3) * 60, 66 + (i / 3) * 38, 56, 30, mn[i], 0); }
+    if (menu_open) { static const char *const mn[9] = { "Buy", "Build", "Map", "Save", "Options", "Title", "Job", "Songs", "Life" }; panel(30, 38, 196, 140, "Menu"); for (int i = 0; i < 9; i++) chip(38 + (i % 3) * 60, 60 + (i / 3) * 36, 56, 30, mn[i], 0); }
     if (popup == 1) {
         const Obj *o = &objs[popup_i]; const char *nm = ITEMS[o->c][o->i].name, *lab = ACT[o->c][o->i].lab;
         rect(56, 100, 144, 56, PANB); rect(57, 101, 142, 54, PAN); text(64, 106, 2, TXT, nm);
         rect(64, 126, 62, 24, C15(8, 20, 8)); text(70, 135, 1, TXT, lab); rect(132, 126, 62, 24, C15(24, 8, 8)); text(138, 135, 1, TXT, "Cancel");
+    } else if (popup == 4) {
+        rect(56, 96, 144, 72, PANB); rect(57, 97, 142, 70, PAN); text(64, 102, 2, TXT, "Rex"); { char t2[24]; sprintf(t2, "Hunger %d", dog.hun); text(110, 106, 1, TXT, t2); }
+        chip(64, 118, 60, 20, "Pet", 0); chip(132, 118, 60, 20, "Play", 0); chip(64, 142, 60, 20, "Feed $5", 0); chip(132, 142, 60, 20, "Cancel", 0);
     } else if (popup >= 2) {
         char nm[40]; int tg = popup == 2 ? popup_i : -2 - popup_i, rel; if (popup == 2) { sprintf(nm, "%s - %s %d", sname[popup_i], STGN[stage_of(sims[popup_i].age)], sims[popup_i].age); rel = sims[popup_i].rel; }
         else { char n2[24]; cit_name(&cits[popup_i], n2); sprintf(nm, "%s - %s", n2, STGN[cits[popup_i].stage]); rel = crel(cits[popup_i].id)->rel; }
@@ -973,7 +1171,9 @@ static void draw_hud(void) {
         sprintf(nm, "%s", relname(rel)); text(26, 73, 1, C15(24, 28, 31), nm);
         for (int k = 0; k < n; k++) { int x = 26 + (k & 1) * 104, y = 82 + (k >> 1) * 22; rect(x, y, 100, 20, PANB); rect(x + 1, y + 1, 98, 18, soc_pick[k] == S_INVITE || soc_pick[k] == S_BABY ? C15(8, 20, 8) : PANH); text(x + 6, y + 6, 1, TXT, SOCN[soc_pick[k]]); }
         if (!n) text(26, 100, 1, TXT, "Nothing to do together"); }
-    if (msg_t > 0) { rect(70, 40, 116, 14, PANB); text(76, 45, 1, TXT, msg); }
+    if (jobui) job_draw();
+    if (juke) juke_draw();
+    if (msg_t > 0 && !jobui && !juke) { rect(70, 40, 116, 14, PANB); text(76, 45, 1, TXT, msg); }
 }
 // ---- picking: a stylus tap on the 3D lot -> the cell under it (the view is a camera we know, so we undo it) ----
 static int pick_cell(int sx, int sy, int *cx, int *cy) {
@@ -992,7 +1192,7 @@ static int pick_cell(int sx, int sy, int *cx, int *cy) {
 static int cl100(int v) { return v < 0 ? 0 : v > 100 ? 100 : v; }
 static void new_sim(int age, u8 skin, u8 hair, u8 hcol, u8 shirt, const char *nm, int x, int y) {
     if (nsim >= SIM_MAX) return; Sim *m = &sims[nsim]; memset(m, 0, sizeof *m); m->x = m->tx = m->wx = x; m->y = m->ty = m->wy = y; m->act = -1; m->soc = -1; m->age = age; m->skin = skin; m->hair = hair; m->hcol = hcol; m->shirt = shirt; m->fc = (u8)(nsim % 6);
-    for (int n = 0; n < 6; n++) m->need[n] = 70; for (int q = 0; q < PMN; q++) m->pm[q] = 50; strncpy(sname[nsim], nm, 19); sname[nsim][19] = 0; nsim++; ui_ver++;
+    memset(&life[nsim], 0, sizeof(Life)); for (int n = 0; n < 6; n++) m->need[n] = 70; for (int q = 0; q < PMN; q++) m->pm[q] = 50; strncpy(sname[nsim], nm, 19); sname[nsim][19] = 0; nsim++; ui_ver++;
 }
 static void apply_soc(int ai, int tgt, int id) {
     Sim *a = &sims[ai]; int cit = tgt <= -2, sb, rel; Sim *o = 0; CRel *cr = 0; Cit *ct = 0;
@@ -1005,10 +1205,11 @@ static void apply_soc(int ai, int tgt, int id) {
     if (id == S_BABY) { if (nsim >= SIM_MAX) { if (ai == ctl) say("Household is full"); return; } if (pop_per + pop_born >= DS_POP_MAX) { if (ai == ctl) say("City is full (2000)"); return; }
         int bx2 = a->x + 16, by2 = a->y; for (int k = 0; k < nobj; k++) if (objs[k].c == 5 && objs[k].i == 0) { bx2 = objs[k].x * 16; by2 = objs[k].y * 16; break; }
         static const char *const BN[8] = { "Bo", "Remy", "Pip", "Juno", "Tate", "Wren", "Otis", "Fern" }; char nm[20]; sprintf(nm, "%s %s", BN[(minutes / 7 + nsim) % 8], strrchr(sname[ai], ' ') ? strrchr(sname[ai], ' ') + 1 : "B");
-        new_sim(0, (minutes & 1) ? a->skin : o->skin, (u8)((minutes + nsim) % 12), (minutes & 2) ? a->hcol : o->hcol, (u8)(minutes % 6), nm, bx2, by2); pop_born++; st_born++; if (ai == ctl) say("A baby is born!"); }
+        new_sim(0, (minutes & 1) ? a->skin : o->skin, (u8)((minutes + nsim) % 12), (minutes & 2) ? a->hcol : o->hcol, (u8)(minutes % 6), nm, bx2, by2); pop_born++; st_born++; life_ev(ai, WN_BABY, 0); if (ai == ctl) say("A baby is born!"); }
     if (id == S_INVITE) { if (nsim >= SIM_MAX) { if (ai == ctl) say("Household is full"); return; } char nm[20]; cit_name(ct, nm);
         new_sim(sb == 3 ? 15 : sb == 4 ? 28 : 65, ct->skin, (u8)((ct->id >> 3) % 12), ct->hair, ct->shirt, nm, a->x, a->y); cr->taken = 1; ct->on = 0; if (ai == ctl) say("Moved in!"); return; }
     if (cit) { int r = (int)cr->rel + d; cr->rel = (u8)(r < 0 ? 0 : r > 10 ? 10 : r); } else { int r = o->rel + d; o->rel = r < 0 ? 0 : r > 10 ? 10 : r; r = a->rel + d; a->rel = r < 0 ? 0 : r > 10 ? 10 : r; }
+    { int nr = cit ? cr->rel : o->rel; life_ev(ai, WN_CHAT, 0); if (nr >= 3) life_ev(ai, WN_FRIEND, 0); }
     if (ai == ctl && id != S_BABY) say(SOCN[id]);
 }
 static void start_soc(int ai, int tgt, int id) {
@@ -1017,9 +1218,9 @@ static void start_soc(int ai, int tgt, int id) {
     m->tx = tx; m->ty = ty; m->act = 3 + 100; m->tgt = tgt; m->soc = id; m->act_amt = 50; m->face = 120; m->act_left = 0;
 }
 static void sim_die(int k) { st_died++;   // an elder passes away: a statue marks the spot and the household closes up
-    Sim *m = &sims[k]; int cx = fdiv(m->x + 8, 16), cy = fdiv(m->y + 8, 16); static char bf[40]; sprintf(bf, "%s passed away", sname[k]); say(bf);
+    Sim *m = &sims[k]; int cx = fdiv(m->x + 8, 16), cy = fdiv(m->y + 8, 16); static char bf[40]; sprintf(bf, "%s passed away", sname[k]); say(bf); ghost_add(m);
     if (cx >= 0 && cy >= 0 && cx < GN && cy < GN && nobj < 400) { objs[nobj].x = (u8)cx; objs[nobj].y = (u8)cy; objs[nobj].c = 3; objs[nobj].i = 3; objs[nobj].rot = 0; nobj++; }
-    for (int i = k; i < nsim - 1; i++) { sims[i] = sims[i + 1]; memcpy(sname[i], sname[i + 1], 20); } nsim--;
+    for (int i = k; i < nsim - 1; i++) { sims[i] = sims[i + 1]; life[i] = life[i + 1]; memcpy(sname[i], sname[i + 1], 20); } nsim--; life_ver++;
     if (ctl == k) ctl = 0; else if (ctl > k) ctl--; if (stage_of(sims[ctl].age) == 0) for (int i = 0; i < nsim; i++) if (stage_of(sims[i].age) > 0) { ctl = i; break; }
     cur_sim = ctl; memset(ilim, 0, sizeof ilim); ui_ver++; }
 
@@ -1048,6 +1249,7 @@ static void sav_probe(void) {   // read both copies, find the newest good one
     st_days = st_born = st_died = 0;
     if (sav_have >= 0) { SavHdr h; memcpy(&h, sav_sh[sav_have], sizeof h); if (unrle(sav_sh[sav_have] + sizeof h, (int)h.clen, sav_raw, (int)sizeof sav_raw) == (int)h.rawlen && h.rawlen >= sizeof(SavCore)) { SavCore c; memcpy(&c, sav_raw, sizeof c); st_days = c.days; st_born = c.born; st_died = c.died; } }
 }
+typedef struct { Life life[SIM_MAX]; Ghost gh[GH_MAX]; u8 ngh, dog, hun, pad; } LifeSave;
 static int sav_pack(int big) {   // returns the packed size in sav_buf (header included), or 0 if even the basics do not fit
     if (lot_bx >= 0) lot_save();
     SavCore c; memset(&c, 0, sizeof c); c.seed = seed; c.minutes = minutes; c.funds = funds; c.nsim = nsim; c.ctl = ctl; c.cur_sim = cur_sim; c.cur_set = cur_set; c.lot_bx = lot_bx; c.lot_by = lot_by; c.days = st_days; c.born = st_born; c.died = st_died;
@@ -1055,16 +1257,17 @@ static int sav_pack(int big) {   // returns the packed size in sav_buf (header i
     int n = 0; u8 *r = sav_raw; memset(r, 0, sizeof sav_raw);
     #define PUT(p, l) do { memcpy(r + n, (p), (size_t)(l)); n += (l); } while (0)
     PUT(&c, (int)sizeof c); PUT(sname, (int)sizeof sname); PUT(sims, (int)sizeof sims); PUT(crt, (int)sizeof crt);
-    int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4), base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
+    int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4) - (4 + (int)sizeof(LifeSave)), base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
     int order[LSV_N], no = 0; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) order[no++] = i; for (int i = 0; i < lsv_n; i++) if (!(lsv[i].bx == lot_bx && lsv[i].by == lot_by)) order[no++] = i;
-    for (int q = 0; q < no; q++) { const LotSave *L = &lsv[order[q]]; int m = n; SavLot h = { (s16)L->bx, (s16)L->by, (s16)L->pcx, (s16)L->pcy, (s16)L->dcx, (s16)L->dcy, (u16)L->nobj };
+    for (int q = 0; q < no; q++) { const LotSave *L = &lsv[order[q]]; int m = n; SavLot h = { (s16)L->bx, (s16)L->by, (s16)L->pcx, (s16)L->pcy, (s16)L->dcx, (s16)L->dcy, (u16)(L->nobj | (L->roof << 12) | (L->up << 14)) };
         if (m + (int)sizeof h + 533 + L->nobj * 5 > (int)sizeof sav_raw) break;
         memcpy(r + m, &h, sizeof h); m += (int)sizeof h; memcpy(r + m, L->flr, sizeof L->flr); m += (int)sizeof L->flr; memcpy(r + m, L->hwl, sizeof L->hwl); m += (int)sizeof L->hwl; memcpy(r + m, L->vwl, sizeof L->vwl); m += (int)sizeof L->vwl; memcpy(r + m, L->objs, (size_t)L->nobj * 5); m += L->nobj * 5;
         ((SavCore *)r)->nlots = nl + 1; int t = rle(r, m, sav_buf + sizeof(SavHdr), budget); if (t < 0) { ((SavCore *)r)->nlots = nl; break; } n = m; nl++; best = m; cl = t; }
     #undef PUT
     (void)base; ((SavCore *)r)->nlots = nl;
     { u16 th[2] = { 0x504F, (u16)nown }; memcpy(r + best, th, 4); memcpy(r + best + 4, own, (size_t)nown * 4); best += 4 + nown * 4; }   // the lots you own, after the lots
-    cl = rle(r, best, sav_buf + sizeof(SavHdr), budget + 4 + nown * 4); if (cl < 0) return 0;
+    { LifeSave ls; memset(&ls, 0, sizeof ls); memcpy(ls.life, life, sizeof life); memcpy(ls.gh, gh, sizeof gh); ls.ngh = (u8)ngh; ls.dog = (u8)dog_have; ls.hun = (u8)dog.hun; u16 th[2] = { 0x4C46, (u16)sizeof ls }; memcpy(r + best, th, 4); memcpy(r + best + 4, &ls, sizeof ls); best += 4 + (int)sizeof ls; }   // wants, jobs, the dog, ghosts
+    cl = rle(r, best, sav_buf + sizeof(SavHdr), budget + 4 + nown * 4 + 4 + (int)sizeof(LifeSave)); if (cl < 0) return 0;
     SavHdr h = { SAV_MAGIC, (u32)(sav_seq + 1), crc32b(sav_buf + sizeof(SavHdr), cl), (u32)cl, (u32)best }; memcpy(sav_buf, &h, sizeof h); return (int)sizeof h + cl;
 }
 static int sav_write(void) {
@@ -1085,11 +1288,13 @@ static int sav_apply(void) {   // 1 = loaded
     if (c.nsim < 1 || c.nsim > SIM_MAX || c.ctl < 0 || c.ctl >= c.nsim || c.nlots < 0 || c.nlots > LSV_N || c.lot_bx < -1 || c.lot_bx >= BM_N || c.lot_by < -1 || c.lot_by >= BM_N) return 0;
     static Sim ts[SIM_MAX]; static char tn[SIM_MAX][20]; static CRel tc[64]; static LotSave tl[LSV_N]; int tn_l = 0;
     memcpy(tn, sav_raw + n, sizeof tn); n += (int)sizeof tn; memcpy(ts, sav_raw + n, sizeof ts); n += (int)sizeof ts; memcpy(tc, sav_raw + n, sizeof tc); n += (int)sizeof tc;
-    for (int i = 0; i < c.nlots; i++) { SavLot sl; if (n + (int)sizeof sl + 533 > rl) return 0; memcpy(&sl, sav_raw + n, sizeof sl); n += (int)sizeof sl; if (sl.nobj > 400) return 0; LotSave *L = &tl[tn_l];
+    for (int i = 0; i < c.nlots; i++) { SavLot sl; if (n + (int)sizeof sl + 533 > rl) return 0; memcpy(&sl, sav_raw + n, sizeof sl); n += (int)sizeof sl; int rf = (sl.nobj >> 12) & 3, upv = (sl.nobj >> 14) & 3; sl.nobj &= 0xFFF; if (sl.nobj > 400) return 0; LotSave *L = &tl[tn_l]; L->roof = (u8)rf; L->up = (u8)upv;
         L->bx = sl.bx; L->by = sl.by; L->pcx = sl.pcx; L->pcy = sl.pcy; L->dcx = sl.dcx; L->dcy = sl.dcy; L->nobj = sl.nobj;
         memcpy(L->flr, sav_raw + n, sizeof L->flr); n += (int)sizeof L->flr; memcpy(L->hwl, sav_raw + n, sizeof L->hwl); n += (int)sizeof L->hwl; memcpy(L->vwl, sav_raw + n, sizeof L->vwl); n += (int)sizeof L->vwl;
         if (n + sl.nobj * 5 > rl) return 0; memset(L->objs, 0, sizeof L->objs); memcpy(L->objs, sav_raw + n, (size_t)sl.nobj * 5); n += sl.nobj * 5; tn_l++; }
-    nown = 0; if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x504F && th[1] <= OWN_MAX && n + 4 + th[1] * 4 <= rl) { memcpy(own, sav_raw + n + 4, (size_t)th[1] * 4); nown = th[1]; } }
+    nown = 0; memset(life, 0, sizeof life); memset(gh, 0, sizeof gh); ngh = 0; dog_have = 0; dog.hun = 80; life_ver++;
+    if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x504F && th[1] <= OWN_MAX && n + 4 + th[1] * 4 <= rl) { memcpy(own, sav_raw + n + 4, (size_t)th[1] * 4); nown = th[1]; n += 4 + th[1] * 4; } }
+    if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x4C46 && th[1] == sizeof(LifeSave) && n + 4 + (int)sizeof(LifeSave) <= rl) { LifeSave ls; memcpy(&ls, sav_raw + n + 4, sizeof ls); memcpy(life, ls.life, sizeof life); memcpy(gh, ls.gh, sizeof gh); ngh = ls.ngh > GH_MAX ? GH_MAX : ls.ngh; dog_have = ls.dog; dog.hun = ls.hun; } }
     seed = c.seed; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
     st_days = c.days; st_born = c.born; st_died = c.died; minutes = c.minutes; funds = c.funds; nsim = c.nsim; ctl = c.ctl; cur_sim = c.cur_sim >= 0 && c.cur_sim < nsim ? c.cur_sim : ctl;
     for (int i = 0; i < NOPT && i < 40; i++) if (OPT[i].v && c.opt[i] < opt_cnt(i)) *OPT[i].v = c.opt[i];
@@ -1134,11 +1339,53 @@ static int next_cell(int sx, int sy, int gx, int gy, int *nx, int *ny) {   // br
     return 0;
     #undef CL
 }
+// ---- the dog and the ghosts (D31) ----
+static void dog_reset(void) { const Sim *m = &sims[ctl]; dog.x = dog.wx = dog.tx = fdiv(m->x + 8, 16) * 16 + 16; dog.y = dog.wy = dog.ty = fdiv(m->y + 8, 16) * 16; dog.hun = 80; dog.fx = 1; dog.fz = 0; if (obj_solid(dog.x / 16, dog.y / 16)) { dog.x = dog.wx = dog.tx = fdiv(m->x + 8, 16) * 16; } }
+static void dog_step(int frames) {
+    if (!dog_have) return;
+    if ((frames % 500) == 0 && dog.hun > 0) { dog.hun--; if (dog.hun == 20) say("Rex is hungry"); }
+    if (dog.x == dog.tx && dog.y == dog.ty && ((frames * 7 + 3) % 90) == 0) { const Sim *m = &sims[ctl]; int cx = fdiv(m->x + 8, 16) + (int)(hsh((u32)frames) % 7) - 3, cy = fdiv(m->y + 8, 16) + (int)(hsh((u32)frames * 3 + 1) % 7) - 3; if (!obj_solid(cx, cy)) { dog.tx = cx * 16; dog.ty = cy * 16; } }
+    if (dog.x != dog.tx || dog.y != dog.ty) {
+        if ((dog.x & 15) == 0 && (dog.y & 15) == 0 && dog.wx == dog.x && dog.wy == dog.y) { int nx, ny; if (next_cell(fdiv(dog.x + 8, 16), fdiv(dog.y + 8, 16), fdiv(dog.tx + 8, 16), fdiv(dog.ty + 8, 16), &nx, &ny)) { dog.wx = nx * 16; dog.wy = ny * 16; } else { dog.tx = dog.x; dog.ty = dog.y; return; } }
+        if (dog.x < dog.wx) { dog.x += 2; dog.fx = 1; dog.fz = 0; } else if (dog.x > dog.wx) { dog.x -= 2; dog.fx = -1; dog.fz = 0; } else if (dog.y < dog.wy) { dog.y += 2; dog.fx = 0; dog.fz = 1; } else if (dog.y > dog.wy) { dog.y -= 2; dog.fx = 0; dog.fz = -1; }
+    }
+}
+static void dog_draw(void) {
+    if (!dog_have) return;
+    int x = dog.x * 2 * T / 16 - GN * T + T, z = dog.y * 2 * T / 16 - GN * T + T, fx = dog.fx, fz = dog.fz; u16 c = C15(20, 13, 6), d = C15(13, 8, 3), k = C15(3, 3, 4);
+    int lx = fx ? 95 : 45, lz = fx ? 45 : 95;
+    for (int a = -1; a <= 1; a += 2) for (int b = -1; b <= 1; b += 2) { int px = x + (fx ? a * 70 : b * 30), pz = z + (fx ? b * 30 : a * 70); block(px - 14, pz - 14, px + 14, pz + 14, 0, -50, d, d); }
+    block(x - lx, z - lz, x + lx, z + lz, -50, -120, c, shade(c, 10));
+    int hx = x + fx * 110, hz = z + fz * 110; block(hx - 42, hz - 42, hx + 42, hz + 42, -90, -170, c, shade(c, 10));
+    int sx = hx + fx * 46, sz = hz + fz * 46; block(sx - 18, sz - 18, sx + 18, sz + 18, -100, -135, k, k);
+    block(hx - 36, hz - 36, hx - 20, hz - 20, -170, -205, d, d); block(hx + 20, hz + 20, hx + 36, hz + 36, -170, -205, d, d);
+    int tx2 = x - fx * 100, tz2 = z - fz * 100; block(tx2 - 10, tz2 - 10, tx2 + 10, tz2 + 10, -110, -165, d, d);
+}
+static int night_now(void) { int hr = (minutes / 60) % 24; return hr >= 20 || hr < 5; }
+static void ghost_add(const Sim *m) { Ghost *g = &gh[gh_next++ % GH_MAX]; if (ngh < GH_MAX) ngh++; g->bx = (s16)lot_bx; g->by = (s16)lot_by; g->x = g->tx = m->x; g->y = g->ty = m->y; g->skin = m->skin; g->hair = m->hair; g->shirt = m->shirt; g->on = 1; }
+static void ghost_step(int frames) {
+    if (!ngh || !night_now()) return;
+    for (int k = 0; k < GH_MAX; k++) { Ghost *g = &gh[k]; if (!g->on || g->bx != lot_bx || g->by != lot_by) continue;
+        if ((frames & 1) == 0) { if (g->x < g->tx) g->x++; else if (g->x > g->tx) g->x--; if (g->y < g->ty) g->y++; else if (g->y > g->ty) g->y--; }
+        if (g->x == g->tx && g->y == g->ty && ((frames + k * 31) % 60) == 0) { g->tx = (int)(hsh((u32)(frames * 5 + k)) % (GN * 16)); g->ty = (int)(hsh((u32)(frames * 9 + k + 7)) % (GN * 16)); }
+        if (((frames + k * 17) % 240) == 0) for (int i = 0; i < nsim; i++) if (abs(sims[i].x - g->x) < 48 && abs(sims[i].y - g->y) < 48) { sims[i].need[1] = cl100(sims[i].need[1] - 15); sims[i].need[3] = cl100(sims[i].need[3] - 5); if (i == ctl) say("Boo! A ghost!"); life_fear(i, FR_GHOST); break; } }
+}
+static void ghost_draw(void) {
+    if (!ngh || !night_now()) return; int any = 0; for (int k = 0; k < GH_MAX; k++) if (gh[k].on && gh[k].bx == lot_bx && gh[k].by == lot_by) any = 1; if (!any) return;
+    int lf = lit_on ? (POLY_FORMAT_LIGHT0 | POLY_FORMAT_LIGHT1) : 0;
+    glEnd(); glPolyFmt(POLY_ALPHA(18) | POLY_CULL_NONE | POLY_ID(2) | lf); glBegin(GL_QUADS);
+    for (int k = 0; k < GH_MAX; k++) { const Ghost *g = &gh[k]; if (!g->on || g->bx != lot_bx || g->by != lot_by) continue;
+        int x = g->x * 2 * T / 16 - GN * T + T, z = g->y * 2 * T / 16 - GN * T + T, bob = sinLerp(gframes * 300 + k * 900) * 40 / 4096; u16 c = C15(27, 29, 31), e = C15(2, 2, 5);
+        block(x - 120, z - 120, x + 120, z + 120, -100 - bob, -560 - bob, c, c); block(x - 100, z - 100, x + 100, z + 100, -560 - bob, -760 - bob, c, c);
+        block(x - 60, z + 100, x - 20, z + 106, -640 - bob, -690 - bob, e, e); block(x + 20, z + 100, x + 60, z + 106, -640 - bob, -690 - bob, e, e);
+        block(x - 60, z - 106, x - 20, z - 100, -640 - bob, -690 - bob, e, e); block(x + 20, z - 106, x + 60, z - 100, -640 - bob, -690 - bob, e, e); }
+    glEnd(); glPolyFmt(POLY_ALPHA(31) | POLY_CULL_NONE | POLY_ID(1) | lf); glBegin(GL_QUADS);
+}
 static void sims_step(int frames) {
     for (int i = 0; i < nsim; i++) { Sim *m = &sims[i];
         if (m->act_left > 0) {
             for (int n = 0; n < 6; n++) if (n == (m->act >= 100 ? m->act - 100 : m->act)) { m->acc[n] += m->act_amt; while (m->acc[n] >= m->face) { m->acc[n] -= m->face; if (m->need[n] < 100) m->need[n]++; } }
-            m->act_left--; if (m->act_left == 0) { m->act = -1; if (i == ctl) say("Done"); }
+            m->act_left--; if (m->act_left == 0) { int an = m->act; m->act = -1; if (i == ctl) say("Done"); if (an == 0) life_ev(i, WN_EAT, 0); else if (an == 1) life_ev(i, WN_FUN, 0); else if (an == 2 && m->act_amt >= 80) life_ev(i, WN_SLEEP, 0); else if (an == 5 && m->act_amt >= 70) life_ev(i, WN_SHOWER, 0); }
         } else if (m->x != m->tx || m->y != m->ty) {
             if ((m->x & 15) == 0 && (m->y & 15) == 0 && m->wx == m->x && m->wy == m->y) {   // on a cell centre: plan the next cell round the walls
                 int nx, ny; if (next_cell(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), fdiv(m->tx + 8, 16), fdiv(m->ty + 8, 16), &nx, &ny)) { m->wx = nx * 16; m->wy = ny * 16; }
@@ -1151,7 +1398,11 @@ static void sims_step(int frames) {
         } else if (i != ctl && stage_of(m->age) > 0 && ((frames + i * 37) & 127) == 0) { m->tx = (1 + (frames * 7 + i * 5) % 11) * 16; m->ty = (1 + (frames * 3 + i * 9) % 12) * 16; m->act = -1; }
         if (((frames + i * 9) % 70) == 0) for (int n = 0; n < 6; n++) if (m->need[n] > 4 && n != 3) m->need[n]--;
         if (((frames + i * 9) % 140) == 0 && m->need[3] > 4) m->need[3]--;
+        if (((frames + i * 9) % 70) == 5 && !m->act_left) {
+            if (m->need[2] <= 6) { m->need[2] = 35; m->need[1] = cl100(m->need[1] - 15); if (i == ctl) say("Passed out!"); life_fear(i, FR_PASS); }
+            if (m->need[4] <= 6) { m->need[4] = 60; m->need[5] = cl100(m->need[5] - 25); m->need[1] = cl100(m->need[1] - 10); if (i == ctl) say("Oh no, an accident!"); life_fear(i, FR_WET); } }
     }
+    dog_step(frames); ghost_step(frames); if ((frames & 63) == 0) life_tick();
     if ((frames % 8) == 0) { minutes++; if (minutes % 1440 == 0) day_roll(); }
 }
 // ---- smooth shaded 3D: ellipsoids with a colour on every vertex, so a head is round and lit instead of a box ----
@@ -1538,7 +1789,7 @@ static void draw_title(void) {
     if (msg_t > 0) text(24, 166, 1, C15(31, 20, 12), msg);
 }
 static void new_household(void) {
-    st_days = st_born = st_died = 0; nown = 0;
+    st_days = st_born = st_died = 0; nown = 0; life_reset();
     lot_seed = (u32)minutes * 7919u + 17; lot_reset(); lot_bx = -1; lot_by = -1; Sim *m = &sims[0]; m->skin = (u8)(minutes % 6); m->hair = (u8)(minutes % 12); m->hcol = (u8)(minutes % 6); m->shirt = (u8)(minutes % 6); m->beard = 0; m->fc = 0;
     for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0;
 }
@@ -1557,16 +1808,25 @@ static void set_mode(int m) {
     if (m == M_LIVE) { lcdMainOnBottom(); } else { lcdMainOnTop(); scr = hud; hud_clear(); }
 }
 static void live_touch(int tx, int ty) {
+    if (jobui) { job_touch(tx, ty); return; }
+    if (juke) { juke_touch(tx, ty); return; }
+    if (popup == 4) {
+        if (hit(64, 118, 60, 20, tx, ty)) { Sim *m = &sims[ctl]; m->need[1] = cl100(m->need[1] + (dog.hun > 20 ? 25 : 8)); m->need[3] = cl100(m->need[3] + 8); say("Rex wags his tail"); life_ev(ctl, WN_PET, 0); life_ev(ctl, WN_FUN, 0); popup = 0; }
+        else if (hit(132, 118, 60, 20, tx, ty)) { Sim *m = &sims[ctl]; m->need[1] = cl100(m->need[1] + 35); m->need[2] = cl100(m->need[2] - 8); say("Playing fetch"); life_ev(ctl, WN_PET, 0); life_ev(ctl, WN_FUN, 0); popup = 0; }
+        else if (hit(64, 142, 60, 20, tx, ty)) { if (funds >= 5) { funds -= 5; dog.hun = 100; say("Rex is fed"); } else say("Not enough funds"); popup = 0; }
+        else if (hit(132, 142, 60, 20, tx, ty)) popup = 0;
+        return; }
     if (popup) {
         if (popup == 1) { if (hit(64, 126, 62, 24, tx, ty)) { start_act(&sims[ctl], popup_i, -1); popup = 0; } else if (hit(132, 126, 62, 24, tx, ty)) popup = 0; return; }
         { int tg = popup == 2 ? popup_i : -2 - popup_i, n = soc_list(tg); if (hit(212, 60, 22, 14, tx, ty)) popup = 0;
           else for (int k = 0; k < n; k++) if (hit(26 + (k & 1) * 104, 82 + (k >> 1) * 22, 100, 20, tx, ty)) { start_soc(ctl, tg, soc_pick[k]); popup = 0; break; } }
         return; }
-    if (menu_open) { menu_open = 0; int k = -1; for (int i = 0; i < 6; i++) if (hit(38 + (i % 3) * 60, 66 + (i / 3) * 38, 56, 30, tx, ty)) k = i;
+    if (menu_open) { menu_open = 0; int k = -1; for (int i = 0; i < 9; i++) if (hit(38 + (i % 3) * 60, 60 + (i / 3) * 36, 56, 30, tx, ty)) k = i;
         if (k == 0) { set_mode(M_BUY); pick = -1; } else if (k == 1) set_mode(M_BUILD); else if (k == 2) set_mode(M_MAP);
         else if (k == 3) { if (!sav_ok()) say("No save chip found"); else say(sav_write() ? "Game saved" : "Save failed"); }
         else if (k == 4) open_opts();
         else if (k == 5) { if (sav_ok() && lot_bx >= 0) sav_write(); set_mode(M_TITLE); sav_probe(); }
+        else if (k == 6) jobui = 1; else if (k == 7) juke = 1; else if (k == 8) { info_pg ^= 1; life_ver++; }
         return; }
     if (hit(2, 2, 26, 26, tx, ty)) { set_mode(M_MAP); return; }
     if (hit(104, 178, 48, 14, tx, ty)) { menu_open = 1; return; }
@@ -1577,6 +1837,7 @@ static void live_touch(int tx, int ty) {
     int cx, cy; if (!pick_cell(tx, ty, &cx, &cy)) return;
     mark_x = cx; mark_y = cy; mark_t = 40;
     for (int i = 0; i < nsim; i++) { int sx = fdiv(sims[i].x + 8, 16), sy = fdiv(sims[i].y + 8, 16); if (sx == cx && sy == cy) { cur_sim = i; if (i != ctl) { popup = 2; popup_i = i; } return; } }
+    if (dog_have && fdiv(dog.x + 8, 16) == cx && fdiv(dog.y + 8, 16) == cy) { popup = 4; return; }
     for (int k = 0; k < CITN; k++) { const Cit *c = &cits[k]; if (!cit_vis(c)) continue; int sx = fdiv(c->x + 8, 16), sy = fdiv(c->y + 8, 16); if (sx == cx && sy == cy) { popup = 3; popup_i = k; return; } }
     int o = obj_at(cx, cy); if (o >= 0) { popup = 1; popup_i = o; return; }
     if (cx >= -SLC && cy >= -SLC && cx < SLC * 2 && cy < SLC * 2) { cur_sim = ctl; sims[ctl].tx = cx * 16; sims[ctl].ty = cy * 16; sims[ctl].act = -1; sims[ctl].act_left = 0; }
@@ -1612,7 +1873,7 @@ int main(void) {
             yaw = sinLerp(frames * 70) / 2; pitch = 0; dist = (cas_tab == 8 && cas_sg) || (cas_tab == 6 && cas_feat == 7) ? 19000 + (cas_mult - 1) * 6000 : 4700;
         } else if (mode == M_MAP) {
             if (down & (KEY_L | KEY_R)) { cur_set = (cur_set + ((down & KEY_R) ? 1 : bm_nset() - 1)) % bm_nset(); town_pick(cur_set); dirty = 1; }
-            if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; nown = 0; nb_ok = 0; lot_bx = -1; cur_set = bm_capital(); town_pick(cur_set); dirty = 1; }
+            if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; nown = 0; life_reset(); nb_ok = 0; lot_bx = -1; cur_set = bm_capital(); town_pick(cur_set); dirty = 1; }
             if (down & KEY_LEFT) { sel_x--; dirty = 1; } if (down & KEY_RIGHT) { sel_x++; dirty = 1; }
             if (down & KEY_UP) { sel_y--; dirty = 1; } if (down & KEY_DOWN) { sel_y++; dirty = 1; }
             if (held & KEY_X) { if (dist > 3000) dist -= 60; } if (held & KEY_Y) { if (dist < 16000) dist += 60; }
@@ -1653,7 +1914,7 @@ int main(void) {
             for (int k = 0; k < speed; k++) { sims_step(frames * speed + k); city_step(frames * speed + k); } lot_cross();
             int tx = sims[cur_sim].x * 2 * T / 16 - GN * T + T, tz = sims[cur_sim].y * 2 * T / 16 - GN * T + T; if (!cam_free) { camx += (tx - camx) / 8; camz += (tz - camz) / 8; }
             yaw = live_yaw; dist = live_dist * (o_cam == 0 ? 85 : o_cam == 1 ? 100 : 125) / 100; cam_deff = dist; pitch = live_pitch;
-            sig = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 7 + minutes * 13 + popup * 17 + popup_i * 19 + menu_open * 23 + speed * 29 + msg_t * 31 + funds + (o_pm ? polys / 64 : 0));
+            sig = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 7 + minutes * 13 + popup * 17 + popup_i * 19 + menu_open * 23 + speed * 29 + msg_t * 31 + funds + (o_pm ? polys / 64 : 0) + jobui * 37 + juke * 41 + info_pg * 43 + juke_pg * 47 + life_ver * 53 + o_song * 59 + mus_cur * 61);
             for (int n = 0; n < 6; n++) sig = sig * 31 + (unsigned)sims[cur_sim].need[n]; sig = sig * 31 + (unsigned)sims[cur_sim].rel;
             if (mode == M_LIVE && (sig != lastsig || forced)) { draw_top_status(); draw_hud(); lastsig = sig; }
         } else {   // BUY / BUILD: the live lot on the top screen, the catalogue or plan on the bottom (drag to place, paint, draw walls, move)
@@ -1684,6 +1945,7 @@ int main(void) {
         { static int skyh = -1; int hh = (minutes / 60) % 24; if (o_sky == 4 && hh != skyh) o_dirty = 1; skyh = hh; }
         if (down & KEY_TOUCH) sfx(0);
         snd_tick();
+        { static int lm = -9; if (mus_cur != lm) { lm = mus_cur; if (mode == M_LIVE && mus_cur >= 0) { static char nb[48]; sprintf(nb, "Now playing: %.22s", mus_name(mus_cur)); say(nb); } } }
         if (o_dirty) apply_opts();
         polys = 0;
         glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluPerspectivef32(degreesToAngle(40), 256 * 4096 / 192, 4096 * 3 / 4, 4096 * 12);

@@ -1,7 +1,7 @@
-# BORE 2 DS / DSi: roadmap (updated at D29)
+# BORE 2 DS / DSi: roadmap (updated at D31)
 
 ## Where we are
-A Sims-DS style life sim on two screens, one ROM (`bore2_dsi_d29.nds`) that runs on DS, DSi and the emulators (melonDS, DraStic, NooDS, DeSmuME).
+A Sims-DS style life sim on two screens, one ROM (`bore2_dsi_d31.nds`) that runs on DS, DSi and the emulators (melonDS, DraStic, NooDS, DeSmuME).
 Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
 
 **Done**
@@ -13,29 +13,33 @@ Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
   - Safe fallback: if the cartridge cannot be read (a loader that only gives us the code), the old synth tunes play.
   - Known limits: no reverb or per-song effects (the DS has none), polyphony 9 (busy songs drop the oldest note), IMA-ADPCM is about 22 dB signal-to-noise (a little hiss), a song change pauses the game for a moment while it loads. Band, DJ and Superstar modes are not ported, so no per-player skill changes to the music yet.
 
+**Done at D30-D31**
+- D30: Buy cards, Create-a-Sim restyle with name picker, property system (buy and sell lots on the Map, owned lots only for Buy/Build, saved).
+- D31: **Careers** (6 jobs, 5 levels each, shifts Mon-Fri 6am-3pm, good or bad shifts, promotion, demotion, fired; menu > Job). **Wants and fears** (3 wants and 1 fear per sim, aspiration stars, bonus cash; menu > Life shows them on the top screen). **The dog** (buy the Puppy in Pets, pet / play / feed). **Ghosts** (a sim who dies comes back at night, spooks the household). **Roofs and storeys** in Build (Roof: none / flat / gable, Storeys 1-3; shown with Options > Roofs: Cutaway / Always / Hide; the upper floors are a shell for now, sims do not walk upstairs). **Catalogue** grew from 28 to 52 items (6 new tabs: Cook, Bath, Fun, Study, Patio, Pets, with 24 models). **Jukebox screen** (menu > Songs: all songs, Next, Mix, plus a "Now playing" toast).
+
 ## Next (in this order)
 1. **Real-hardware and Android tests** of the song reader (`cart_blk` in `main.c`), saving and touch. If a loader blocks cartridge reads, add an SD (libfat) path for DSi.
-2. **Interface restyle, part 2:** Buy cards and Create-a-Sim screens in the Sims-DS style (the title and Options are done).
-3. **Property system fix:** owning, buying and selling lots, and what is remembered per lot, in one pass with the map editor.
-4. **Item models:** better shapes for the 20 modelled items, then models for the rest of the catalogue.
-5. **Graphics options still open:** toon shading, per-item level of detail, screen swap, left-handed UI, text size, high contrast, colour filters.
-6. **Music extras:** a Jukebox screen (list, play, next, shuffle) like the PS1 one, a "Now playing" toast, songs by place (shop, park, night).
+2. **Walkable upper floors** (stairs, second-floor rooms) to go with the storey shell.
+3. **Catalogue to the PS1 size** (about 146 items) and better models for the ones that still use plain boxes.
+4. **Graphics options still open:** toon shading, per-item level of detail, screen swap, left-handed UI, text size, high contrast, colour filters.
+5. **Speed:** the live screen redraws the whole top screen every game minute; draw only what changed.
+6. **Music extras:** songs by place (shop, park, night).
 
 ## Bring over from the PS1 game
 | PS1 feature | Source | DS state |
 |---|---|---|
-| Buy catalogue (8 tabs, ~100 items + 46) | items.c, tools/make_items2.py | partial (400 per lot works; catalogue smaller) |
-| Build tools (rooms, doors, windows, floors, roof, storeys) | world.c | walls, fences, floors done; roof and storeys open |
+| Buy catalogue (8 tabs, ~100 items + 46) | items.c, tools/make_items2.py | partial (13 tabs, 52 items; 400 per lot works) |
+| Build tools (rooms, doors, windows, floors, roof, storeys) | world.c | walls, fences, floors, roof, storeys (shell only) done |
 | San Boreas map, places, hours | bigmap.c, places.c | shared map; lot types simplified |
-| Jobs, careers | places.c, story.c | open (small) |
-| Wants and fears | wants.c | open (small) |
+| Jobs, careers | places.c, story.c | **done (D31)**, simplified (6 jobs, no real workplaces) |
+| Wants and fears | wants.c | **done (D31)**, 16 wants and 5 fears |
 | Families, babies, ageing | pop.c | done (D18) |
-| Home buying and travel | home.c | open, see property system |
+| Home buying and travel | home.c | buying done (D30); travel open |
 | Castaway Island | island.c, nature.c | open (large) |
-| Music: jukebox | audio.c, SONGS.BIN | **done (D29)** |
+| Music: jukebox | audio.c, SONGS.BIN | **done (D29), screen added D31** |
 | Music: band, DJ | band.c, dj_ui.c | open (large) |
 | Mini-games (skate, arcade, fight, heist, gotchi, farm) | various | open, one at a time |
-| Dog, ghosts, traffic | dog.c, ghost.c, traffic.c | traffic done; dog and ghosts open |
+| Dog, ghosts, traffic | dog.c, ghost.c, traffic.c | all done (D31) |
 
 ## DSi-only ideas
 Use the 16 MB RAM and the 2x CPU clock (Turbo CPU option exists), DSi camera for skin and hair colours, Wi-Fi visits, banner and icon polish.
