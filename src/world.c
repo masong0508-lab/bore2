@@ -181,7 +181,7 @@ void world_season_skin(int season, int wet) {
 #pragma GCC optimize ("Os")   // (making the lots, rooms and the island: once a block, built small to leave memory for the world)
 void world_init(void) {
     nat_init();
-    if (ram8) { Level *p = (Level *)xalloc(sizeof(Level) * NLVPOOL8); if (p) { lvpool = p; nlvpool = NLVPOOL8; } }   // 8 MB: room for every storey anywhere
+    if (ram8) { Level *p = (Level *)xalloc(sizeof(Level) * NLVPOOL8); if (p) { lvpool = p; nlvpool = NLVPOOL8; xrelease(lvpool_small, sizeof lvpool_small); } }   // 8 MB: room for every storey anywhere (and the small pool goes back to the pot)
     for (int z = 0; z <= ZONE_N; z++) levels_clear(lvown[z]);
     soften_floors();
     for (int i = 0; i < NFLOORS; i++) {

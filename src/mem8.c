@@ -3,6 +3,7 @@
 
 int ram8;
 static u8 *x_top, *x_end;
+static struct { u8 *p; u32 n; } xr[6]; static int nxr;   // blocks given back with xrelease, used first
 static volatile u32 probe;
 
 void mem8_init(void) {
@@ -16,15 +17,21 @@ void mem8_init(void) {
     if (ram8) { x_top = (u8 *)0x80200000u; x_end = (u8 *)0x80800000u; }   // (the stack stays at the top of the first 2 MB)
     else x_top = x_end = 0;
 }
+void xrelease(void *p, u32 n) {
+    if (!x_top || nxr >= 6) return;
+    u32 a = ((u32)p + 7) & ~7u, e = ((u32)p + n) & ~7u;
+    if (e > a) { xr[nxr].p = (u8 *)a; xr[nxr].n = e - a; nxr++; }
+}
 void *xalloc(u32 n) {
     if (!x_top) return 0;
     n = (n + 7) & ~7u;
+    for (int i = 0; i < nxr; i++) if (xr[i].n >= n) { void *q = xr[i].p; xr[i].p += n; xr[i].n -= n; memset(q, 0, n); return q; }
     if (x_top + n > x_end) return 0;
     void *p = x_top; x_top += n;
     memset(p, 0, n);
     return p;
 }
-u32 xfree_bytes(void) { return x_top ? (u32)(x_end - x_top) : 0; }
+u32 xfree_bytes(void) { if (!x_top) return 0; u32 r = (u32)(x_end - x_top); for (int i = 0; i < nxr; i++) r += xr[i].n; return r; }
 
 __attribute__((optimize("no-tree-loop-distribute-patterns")))
 void wmove(void *dst, const void *src, u32 n) {

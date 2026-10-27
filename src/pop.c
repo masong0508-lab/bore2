@@ -14,7 +14,7 @@ static void pop_arrays(void) {   // 8 MB: the household and people lists live pa
     static int done; if (done) return; done = 1;
     if (!ram8) return;
     Fam *f = (Fam *)xalloc(sizeof(Fam) * NFAM); Per *p = (Per *)xalloc(sizeof(Per) * PER_MAX);
-    if (f && p) { pop_fam = f; pop_per = p; pop_famcap = NFAM; pop_percap = PER_MAX; }
+    if (f && p) { pop_fam = f; pop_per = p; pop_famcap = NFAM; pop_percap = PER_MAX; xrelease(fam_small, sizeof fam_small); xrelease(per_small, sizeof per_small); }
 }
 int pop_households(int dial) {
     pop_arrays();
