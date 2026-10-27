@@ -1891,13 +1891,18 @@ static XV cc_tmp[8]; static int cc_tmpi;
 // split into pieces, so no piece is huge on the screen and the PlayStation's flat texture warp stays small. View space, whole numbers. ----
 #define NC_Z 56                         // the cutting plane's depth (the GPU's own drop is Z_NEAR, 40)
 #define NC_NEAR_FP 520                  // first person: a quad whose nearest corner is closer than this goes this way too
+#define NC_NEAR_TP 1500                 // third person: close and running away from the eye goes this way too (the floor and walls near you)
+#define NC_BUDGET 320                   // pieces a frame may be split into past the first cut (keeps a crowded view from costing a frame)
 #define NC_DEPTH 5                      // a quad is split at most this many times
 #define NXY(v) ((u32)(u16)(v)->x | ((u32)(u16)(v)->y << 16))
 typedef struct { int x, y, z, u, v, r, g, b; } NV;     // a corner: view-space position, texel, colour
 static NV nq_c[4]; static int nq_tex, nq_cull; static u32 nq_tp, nq_cl;
 static inline int nc_need4(const XV *a, const XV *b, const XV *c, const XV *d) {   // 1: this quad goes the careful way
     int z = MIN(MIN(a->z, b->z), MIN(c->z, d->z));
-    return z < Z_NEAR || (world_fp && z < NC_NEAR_FP);
+    if (z < Z_NEAR) return 1;
+    if (world_fp) return z < NC_NEAR_FP;
+    if (z >= NC_NEAR_TP) return 0;
+    return MAX(MAX(a->z, b->z), MAX(c->z, d->z)) - z > z / 6;   // (third person: only a quad that runs away from the eye swims)
 }
 static void nc_lerp(NV *o, const NV *p, const NV *q, int t) {
     o->x = p->x + (((q->x - p->x) * t) >> 12); o->y = p->y + (((q->y - p->y) * t) >> 12); o->z = p->z + (((q->z - p->z) * t) >> 12);
@@ -1951,7 +1956,12 @@ static void nc_piece(int s0, int s1, int t0, int t1, int depth) {   // the part 
     if (x1 < 0 || x0 >= SCREEN_W || y1 < 0 || y0 >= SCREEN_H) return;                         // off the screen
     int sw = x1 - x0, sh = y1 - y0;
     int big = sw > 560 || sh > 330;                                                            // too big for the GPU (and its +-1024 corners) to be sure of
-    int warp = nq_tex && world_fp && zhi > 2 * zlo && zlo < NC_NEAR_FP && (sw > 80 || sh > 64);   // a textured piece running away from the eye: it would swim
+    int warp = 0;   // a textured piece running away from the eye: it would swim (the PlayStation maps a quad flat, not in perspective)
+    if (nq_tex) {
+        if (world_fp) warp = zhi * 2 > zlo * 3 && zlo < NC_NEAR_FP && (sw > 64 || sh > 48);
+        else warp = zhi - zlo > zlo / 6 && zlo < NC_NEAR_TP && (sw > 44 || sh > 36);
+    }
+    if (warp && depth > 0) { static int fr_ = -1, cnt_; if (fr_ != frame_t) { fr_ = frame_t; cnt_ = 0; } if (++cnt_ > NC_BUDGET) warp = 0; }
     if ((big || warp) && depth < NC_DEPTH) {
         int ls = MAX(ABS(p[1].x - p[0].x) + ABS(p[1].y - p[0].y) + ABS(p[1].z - p[0].z), ABS(p[2].x - p[3].x) + ABS(p[2].y - p[3].y) + ABS(p[2].z - p[3].z));
         int lt = MAX(ABS(p[3].x - p[0].x) + ABS(p[3].y - p[0].y) + ABS(p[3].z - p[0].z), ABS(p[2].x - p[1].x) + ABS(p[2].y - p[1].y) + ABS(p[2].z - p[1].z));
@@ -2918,6 +2928,12 @@ static void roofs_draw(int fx, int fy) {
                     const u32 cc[4] = { pc, pc, pc, pc }, uv0[4] = { 0, 0, 0, 0 };
                     nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 0, 0, 0, uv0, 0);
                 } else gfx_emit_f4(A, B, C, DQ, pc, 0);
+            } else if (!world_fp && nc_need4(A, B, C, DQ)) {   // (third person, close: the shingles are cut and split like the floor, so they hold their shape)
+                SVECTOR s4[4] SVEC_ALIGN; roof_corner(l, x, y, &s4[0], base, pitch); roof_corner(l, x + 1, y, &s4[1], base, pitch); roof_corner(l, x, y + 1, &s4[2], base, pitch); roof_corner(l, x + 1, y + 1, &s4[3], base, pitch);
+                const u32 cc[4] = { c, c, c, c };
+                const u32 uvA[4] = { (u32)u0 | ((u32)v0 << 8), (u32)u1 | ((u32)v0 << 8), (u32)u0 | ((u32)v1 << 8), (u32)u1 | ((u32)v1 << 8) };   // (courses across the slope)
+                const u32 uvB[4] = { (u32)u0 | ((u32)v0 << 8), (u32)u0 | ((u32)v1 << 8), (u32)u1 | ((u32)v0 << 8), (u32)u1 | ((u32)v1 << 8) };   // (courses down it)
+                nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 1, roof_tex.tpage, 0, ABS(dhz) >= ABS(dhx) ? uvA : uvB, 1);
             } else if (ABS(dhz) >= ABS(dhx)) gfx_emit_gt4(A, B, C, DQ, c, c, c, c, roof_tex.tpage, 0, u0, v0, u1, v1, !world_fp);   // courses run across the slope (first person: seen from under it too)
             else gfx_emit_ft4(A, B, C, DQ, c, roof_tex.tpage, 0, u0, v0, u0, v1, u1, v0, u1, v1, !world_fp, 0);
             if (big) { gables(l, x, y, base, pitch); gables(l, x + 1, y, base, pitch); gables(l, x, y + 1, base, pitch); gables(l, x + 1, y + 1, base, pitch);
