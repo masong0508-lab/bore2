@@ -3,7 +3,7 @@
 // Top screen: that lot in 3D. L/R change town, A/B zoom, START re-rolls the world.
 // Fixed point only; the world is bigmap.c, shared with the PS1 build (nothing of it is stored).
 #define PMN 28
-static int o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1;
+static int o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song;
 
 // ---- the options: one table (name, the choices, the value, the tab it lives on, its default). Saved in table order, so new ones are only ever added at the end.
 typedef struct { const char *name, *vals; int *v; unsigned char tab, def; } Opt;
@@ -18,6 +18,7 @@ static const Opt OPT[] = {
     { "Music track", "Auto|Daydream|Evening|Bounce|Night", &o_trk, 1, 0 }, { "Tap clicks", "Off|On", &o_ckl, 1, 1 }, { "Chimes", "Off|On", &o_chm, 1, 1 }, { "Stereo", "Center|Spread", &o_pan, 1, 1 },
     { "Autosave", "Off|On", &o_auto, 2, 1 }, { "Clock", "12 hour|24 hour", &o_c24, 2, 0 },
     { "Reset graphics", "tap", 0, 3, 0 }, { "Reset audio", "tap", 0, 3, 1 }, { "Reset all", "tap", 0, 3, 255 },
+    { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Auto|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52", &o_song, 1, 0 },
 };
 static void open_opts(void);
 #define NOPT ((int)(sizeof OPT / sizeof OPT[0]))
@@ -297,16 +298,79 @@ static void sfx(int n) {
     if (!snd_on || !o_sfx || !o_vol || (n == 0 && !o_ckl) || (n >= 3 && n <= 5 && !o_chm)) return;
     if (sfx_n >= 0 && n == 0) return; sfx_n = n; sfx_i = 0; sfx_t = 0; }
 static void snd_apply(void) { snd_dirty = 1; }
+static int mus_ok = -1, mus_cur = -1, mus_n; static void mus_init(void), mus_stop(void), mus_tick(void); static int mus_start(int);
 static void snd_tick(void) {
     if (!snd_on) return;
     if (snd_dirty) { snd_dirty = 0; static const u8 pn[2][4] = { { 64, 64, 64, 64 }, { 36, 92, 64, 64 } }; for (int i = 0; i < 4; i++) if (vid[i] >= 0) soundSetPan(vid[i], pn[o_pan][i]); song = -2; }
     int want = -1; if (o_mus && o_vol) { if (o_trk) want = o_trk - 1; else { int h = (minutes / 60) % 24; want = mode == M_TITLE || mode == M_CAS ? 0 : mode == M_BUY || mode == M_BUILD ? 2 : h >= 22 || h < 6 ? 3 : h >= 18 ? 1 : 0; } }
+    { int songs_on = o_msrc == 0 && o_mus && o_vol && mus_ok != 0;
+      if (mus_ok < 0) mus_init();
+      if (songs_on && mus_ok == 1) {
+          int pick = o_song ? o_song - 1 : (mode == M_TITLE || mode == M_CAS) ? 0 : 0;
+          if (o_song == 0 && mode != M_TITLE && mode != M_CAS && (mus_cur < 0 || mus_cur == 0)) { static u32 rs = 12345; rs = rs * 1664525u + 1013904223u + (u32)minutes; pick = 1 + (int)((rs >> 8) % (u32)(mus_n - 1)); }
+          if (mus_cur != pick && !(o_song == 0 && mode != M_TITLE && mode != M_CAS && mus_cur > 0)) mus_start(pick);
+          else if (mus_cur < 0) mus_start(pick);
+          if (mus_cur >= 0) mus_tick();
+          want = -1; if (song >= 0) { vset(0, 0, 0); vset(1, 0, 0); vset(2, 0, 0); song = -1; }
+      } else if (mus_cur >= 0) mus_stop(); }
     if (want != song) { song = want; sstep = 0; stick = 0; vset(0, 0, 0); vset(1, 0, 0); vset(2, 0, 0); }
     if (song >= 0) { int f = SONGF[song];
         if (stick == 0) { int nl = SONGL[song][sstep]; vset(0, nl, mvol(60)); if (!(sstep & 3)) { int nb = SONGB[song][(sstep >> 2) & 7]; vset(1, nb, mvol(55)); vset(2, nb + 12 + 7, mvol(22)); } }
         else if (stick == f * 2 / 3) vset(0, SONGL[song][sstep], mvol(34)); else if (stick == f - 1 && SONGL[song][sstep]) vset(0, 0, 0);
         if (++stick >= f) { stick = 0; sstep = (sstep + 1) & 31; } }
     if (sfx_n >= 0) { int m = SFXN[sfx_n][sfx_i]; if (!m) { vset(3, 0, 0); sfx_n = -1; } else { if (sfx_t == 0) vset(3, m, o_vol * o_sfx * 90 / 100); if (++sfx_t >= SFXD[sfx_n][sfx_i]) { sfx_i++; sfx_t = 0; } } }
+}
+
+// ---- THE SONGS: the PS1 game's jukebox on the DS, with no streaming. tools/dsmusic turns every song into a note list plus its instruments' samples
+// (IMA-ADPCM), and tools/dsbuild/addmusic.py appends it to the ROM. The song you hear is read off the cartridge into RAM, and each note is one of the
+// sound chip's sample channels. If the cartridge cannot be read (a loader that only gives us the game's code), the synth tunes play instead.
+#define MUS_BUFSZ 0x4A000
+static u8 mus_buf[MUS_BUFSZ] __attribute__((aligned(32)));
+static u8 mus_dir[8192] __attribute__((aligned(32)));
+static int mus_ent, mus_laps, m_hd, m_cnt, m_ch[16], mus_next = -1, mus_play;
+static u32 mus_base; static const u8 *mp; static u32 m_loop, m_smp, m_tbl;
+static volatile const u32 MUS_LOC[4] __attribute__((used, aligned(4))) = { 0x41444D42u, 0, 0, 0x2E4D4442u };   // 'BMDA', the songs' ROM address (patched in), the size, '.BDM'
+static int cart_blk(u32 addr, u32 *dst) {   // 512 bytes of the cartridge at addr (a multiple of 512)
+    u32 rc = *(vu32 *)0x027FFE60; if (!rc) rc = 0x00586000;
+    sysSetCartOwner(true); REG_AUXSPICNTH = CARD_CR1_ENABLE;
+    cardParamCommand(CARD_CMD_DATA_READ, addr, (rc & 0x00FFFFFF) | CARD_ACTIVATE | CARD_nRESET | CARD_BLK_SIZE(1), dst, 128);
+    return 1;
+}
+static void cart_read(u32 addr, void *dst, u32 len) { u32 *d = (u32 *)dst; for (u32 o = 0; o < len; o += 512) cart_blk(addr + o, d + o / 4); }
+static u32 rd32(const u8 *p) { return p[0] | p[1] << 8 | p[2] << 16 | (u32)p[3] << 24; }
+static void mus_init(void) {
+    mus_ok = 0; static u32 blk[128]; const volatile u32 *loc = MUS_LOC; if (loc[0] != 0x41444D42u || !loc[1] || loc[3] != 0x2E4D4442u) return;   // (addmusic.py wrote where the songs start)
+    mus_base = loc[1]; cart_blk(mus_base, blk); if (memcmp(blk, "BDM1", 4)) return;
+    cart_read(mus_base, mus_dir, 4096); 
+    mus_n = (int)rd32(mus_dir + 4); mus_ent = (int)rd32(mus_dir + 8); if (mus_n < 1 || mus_n > 64 || mus_ent != 96 || 16 + mus_n * mus_ent > (int)sizeof mus_dir) return;
+    if (16 + mus_n * mus_ent > 4096) cart_read(mus_base + 4096, mus_dir + 4096, 4096);
+    mus_ok = 1;
+}
+static const u8 *mus_e(int n) { return mus_dir + 16 + n * mus_ent; }
+static const char *mus_name(int n) { return n >= 0 && n < mus_n ? (const char *)mus_e(n) + 40 : ""; }
+static void mus_stop(void) { for (int i = 0; i < 16; i++) { if (m_ch[i] >= 0) soundKill(m_ch[i]); m_ch[i] = -1; } mus_cur = -1; }
+static int mus_start(int n) {
+    mus_stop(); if (mus_ok != 1 || n < 0 || n >= mus_n) return 0;
+    const u8 *e = mus_e(n); u32 len = rd32(e + 4); if (len > MUS_BUFSZ) return 0;
+    cart_read(mus_base + rd32(e), mus_buf, len); DC_FlushRange(mus_buf, len);
+    m_tbl = rd32(e + 8); m_smp = rd32(e + 12); m_loop = rd32(e + 20); mp = mus_buf; m_hd = 0; m_cnt = 0; mus_laps = 0; mus_cur = n; return 1;
+}
+static void mus_tick(void) {   // once a frame: play the notes that are due
+    int vs = o_vol * o_mus;
+    for (int guard = 0; guard < 400; guard++) {
+        if (!m_hd) { int d = *mp++; if (d == 255) { m_cnt = 254; m_hd = 2; } else { m_cnt = d; m_hd = 1; } }
+        if (m_cnt > 0) { m_cnt--; if (m_cnt) return; }
+        if (m_hd == 2) { m_hd = 0; continue; }
+        m_hd = 0; int ev = *mp++;
+        if (ev == 0xFF) { mus_laps++; if (o_song == 0 && mus_cur != 0) { mus_cur = -1; return; } mp = mus_buf + m_loop; continue; }
+        if (ev == 0xFE) continue;
+        if (ev & 0x80) { int sl = ev & 15; if (m_ch[sl] >= 0) { soundKill(m_ch[sl]); m_ch[sl] = -1; } continue; }
+        int sl = ev & 15, kill = ev & 0x40, in = mp[0], hz = mp[1] | mp[2] << 8, vol = mp[3], pan = mp[4]; mp += 5;
+        if (kill && m_ch[sl] >= 0) { soundKill(m_ch[sl]); m_ch[sl] = -1; }
+        int v = vol * vs / 72; if (v > 127) v = 127; if (v < 1) { m_ch[sl] = -1; continue; }
+        const u8 *ti = mus_buf + m_tbl + in * 8; u32 so = rd32(ti), sz = rd32(ti + 4);
+        m_ch[sl] = sz ? soundPlaySample(mus_buf + m_smp + so, SoundFormat_ADPCM, sz, (u16)hz, (u8)v, o_pan ? (u8)pan : 64, false, 0) : -1;
+    }
 }
 static const char *clk(char *b, int mn) { int h = (mn / 60) % 24, m = mn % 60, h12 = h % 12 ? h % 12 : 12; if (o_c24) sprintf(b, "%02d:%02d", h, m); else sprintf(b, "%d:%02d %s", h12, m, h >= 12 ? "pm" : "am"); return b; }
 static void say(const char *m) { msg = m; msg_t = 90;
@@ -1332,7 +1396,7 @@ static void apply_opts(void) {
 static int opt_pg;   // page within the tab (6 rows each)
 static const u8 TABX[5] = { 10, 80, 134, 188, 246 };   // tab chip edges
 static void draw_opt(void) {   // the Options screen (bottom): tabs along the top; tap a row to change it (right half forwards, left half back)
-    scr = scr_sub; backdrop(); panel(6, 4, 244, 156, "Options");
+    scr = scr_sub; backdrop(); { static char pt[48]; if (o_tab == 1 && mus_cur >= 0) { sprintf(pt, "Playing: %.30s", mus_name(mus_cur)); panel(6, 4, 244, 156, pt); } else panel(6, 4, 244, 156, "Options"); }
     for (int t = 0; t < 4; t++) { int x = TABX[t], w = TABX[t + 1] - x - 4; rect(x, 22, w, 15, o_tab == t ? C15(31, 31, 31) : C15(2, 4, 12)); rect(x + 1, 23, w - 2, 13, o_tab == t ? C15(8, 18, 31) : C15(10, 14, 22)); text(x + w / 2 - tw(1, OPTAB[t]) / 2, 26, 1, TXT, OPTAB[t]); }
     int idx[40], n = opt_list(o_tab, idx), pages = (n + 5) / 6; if (opt_pg >= pages) opt_pg = 0;
     for (int k = 0; k < 6; k++) { int q = opt_pg * 6 + k; if (q >= n) break; int i = idx[q], y = 40 + k * 19; char b[16];

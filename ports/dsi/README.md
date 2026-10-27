@@ -143,3 +143,7 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 - Options inside a lot: Menu (the "..." button) > Options (since D26).
 
 ## D28: the new BORE 2 logo on both title screens (tools/make_logo.py makes src/logo_rects.h from docs/bore2_logo_1x.png).
+
+## D29 - the songs
+- All 52 PS1 jukebox songs on the DS, as sequenced samples (no streaming). See docs/DSI_ROADMAP.md. Options > Audio: Music source (Songs/Synth), Song (Auto/1-52). ROM is about 6 MB now.
+- tools/dsmusic (converter + IMA-ADPCM helper), tools/dsbuild/addmusic.py (appends and patches the ROM), run.cpp can record audio (AUDOUT).

@@ -115,6 +115,7 @@ int main(int argc, char** argv) {
   struct Ev { int a, b; unsigned keys; int tx, ty; }; std::vector<Ev> evs;
   if (argc > 4) { char* p = argv[4]; while (*p) { Ev e{0,0,0,-1,-1}; int c = 0; sscanf(p, "%d-%d:%x:%d,%d%n", &e.a, &e.b, &e.keys, &e.tx, &e.ty, &c); if (!c) break; evs.push_back(e); p += c; if (*p == ';') p++; } }
   std::vector<int> shots; if (argc > 5) { char* p = argv[5]; while (*p) { shots.push_back(atoi(p)); while (*p && *p != ',') p++; if (*p == ',') p++; } }
+  FILE* aud = getenv("AUDOUT") ? fopen(getenv("AUDOUT"), "wb") : nullptr; if (aud) { char h[44] = {0}; fwrite(h, 1, 44, aud); }   // AUDOUT=file.wav: the sound the DS made (32 kHz stereo)
   for (int i = 0; i < n; i++) {
     unsigned keys = 0; int tx = -1, ty = -1;
     for (auto& e : evs) if (i >= e.a && i <= e.b) { keys |= e.keys; if (e.tx >= 0) { tx = e.tx; ty = e.ty; } }
@@ -122,12 +123,15 @@ int main(int argc, char** argv) {
     if (tx >= 0) { nds.TouchScreen(tx, ty); if (!getenv("REALTOUCH")) { nds.ARM9Write16(0x02FFF004, tx); nds.ARM9Write16(0x02FFF006, ty); nds.ARM9Write16(0x02FFF00C, 0x3F); nds.ARM9Write16(0x02FFF008, 100); nds.ARM9Write16(0x02FFF00A, 100); } }
     else { nds.ReleaseScreen(); nds.ARM9Write16(0x02FFF00C, 0x7F); }
     nds.RunFrame();
+    if (getenv("DBGMEM") && i % 30 == 0) { printf("f%d:", i); for (char* p = getenv("DBGMEM"); *p;) { unsigned a = strtoul(p, &p, 16); printf(" %d", (int)nds.ARM9Read32(a)); if (*p == ',') p++; } printf("\n"); }
+    if (aud) { static s16 ab[8192]; int got = nds.SPU.ReadOutput(ab, 2048); if (got > 0) fwrite(ab, 4, got, aud); }
     for (int sf : shots) if (sf == i) { std::string nm = argv[3]; size_t d = nm.rfind(".ppm"); nm = nm.substr(0, d) + "_" + std::to_string(i) + ".ppm"; dump(nds, nm.c_str()); }
   }
   if (getenv("DBG")) fprintf(stderr, "dispcnt %08x bg0cnt %04x bg3cnt %04x vramD@0 %04x %04x bg(10,10)=%04x vramcnt D %02x\n", nds.ARM9Read32(0x04000000), nds.ARM9Read16(0x04000008), nds.ARM9Read16(0x0400000E), nds.ARM9Read16(0x06000000+(10*256+10)*2), nds.ARM9Read16(0x06000000+(4*256+4)*2), nds.ARM9Read16(0x06000000+(170*256+100)*2), nds.ARM9Read8(0x04000243));
   if (savp && nds.GetNDSCart() && nds.GetNDSCart()->GetSaveMemory()) { std::ofstream of(savp, std::ios::binary); of.write((const char*)nds.GetNDSCart()->GetSaveMemory(), nds.GetNDSCart()->GetSaveMemoryLength()); }
   if (getenv("DBGTR")) { for (int o = 0; o < 0x20; o += 2) printf("%04X ", nds.ARM9Read16(0x027FF000 + o)); printf("| vc %08X vb %08X", nds.ARM7Read32(0x037fbd54), nds.ARM7Read32(0x037fbd54 + 4)); printf("\n"); }
-  if (getenv("DBGSPU")) { for (int c = 8; c < 12; c++) printf("ch%d cnt %08X tmr %04X | ", c, nds.ARM7Read32(0x04000400 + c * 16), nds.ARM7Read16(0x04000408 + c * 16)); printf("master %04X\n", nds.ARM7Read16(0x04000500)); }
+  if (getenv("DBGSPU")) { printf("hdr80 %08X hdr60 %08X hdr0 %08X\n", nds.ARM9Read32(0x027FFE80), nds.ARM9Read32(0x027FFE60), nds.ARM9Read32(0x027FFE00)); for (int c = 0; c < 16; c++) printf("ch%d cnt %08X tmr %04X | ", c, nds.ARM7Read32(0x04000400 + c * 16), nds.ARM7Read16(0x04000408 + c * 16)); printf("master %04X\n", nds.ARM7Read16(0x04000500)); }
+  if (aud) { long sz = ftell(aud); fseek(aud, 0, SEEK_SET); unsigned char h[44] = {'R','I','F','F',0,0,0,0,'W','A','V','E','f','m','t',' ',16,0,0,0,1,0,2,0,0x00,0x7D,0,0,0,0xF4,1,0,4,0,16,0,'d','a','t','a'}; unsigned ds = sz - 44, rs = sz - 8; memcpy(h + 4, &rs, 4); memcpy(h + 40, &ds, 4); fwrite(h, 1, 44, aud); fclose(aud); }
   dump(nds, argv[3]);
   return 0;
 }
