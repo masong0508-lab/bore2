@@ -2005,6 +2005,13 @@ static void wquad_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const 
     }
     gfx_emit_f4(&xv[0], &xv[1], &xv[2], &xv[3], col, cull);
 }
+// for items.c: a prop's face (corners a b / c d, world space) cut at the near plane and split so it holds its perspective
+int world_nc_need(const XV *a, const XV *b, const XV *c, const XV *d) { return nc_need4(a, b, c, d); }
+void world_nc_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d, const u32 *col, int tex, u16 tpage, const u32 *uv, int cull) {
+    SVECTOR s[4] SVEC_ALIGN; s[0] = *a; s[1] = *b; s[2] = *c; s[3] = *d;
+    for (int i = 0; i < 4; i++) s[i].vy = (short)(s[i].vy - gfx_lift);   // (the hills raise what is drawn: the GTE does it, so do it here too)
+    nc_quad(&s[0], &s[1], &s[2], &s[3], col, tex, tpage, 0, uv, cull);
+}
 // ---- the hills: the ground's height (units up) at a tile corner, from the land's block heights; towns are level ----
 static int gh_bx = -99999, gh_by, gh_h[4], gh_t[4];
 int world_hills_on(void) {
@@ -2839,7 +2846,7 @@ static void gables(int l, int x, int y, int base, int pitch) {   // the gable en
         setVector(&a, X1 * TILE, base - h1 * pitch, -Y1 * TILE); setVector(&b2, X2 * TILE, base - h2 * pitch, -Y2 * TILE);
         setVector(&cc, X1 * TILE, base, -Y1 * TILE); setVector(&dd, X2 * TILE, base, -Y2 * TILE);
         u32 g = gab_col[k];
-        gfx_quad_f(&a, &b2, &cc, &dd, g & 255, (g >> 8) & 255, g >> 16, 1);
+        wquad_f(&a, &b2, &cc, &dd, g & 255, (g >> 8) & 255, g >> 16, 1);
     }
 }
 // a 2x2 of roof tiles far off that lie in one plane, under one building: drawn as one quad (half the roof's work out there)
@@ -2928,12 +2935,12 @@ static void roofs_draw(int fx, int fy) {
                     const u32 cc[4] = { pc, pc, pc, pc }, uv0[4] = { 0, 0, 0, 0 };
                     nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 0, 0, 0, uv0, 0);
                 } else gfx_emit_f4(A, B, C, DQ, pc, 0);
-            } else if (!world_fp && nc_need4(A, B, C, DQ)) {   // (third person, close: the shingles are cut and split like the floor, so they hold their shape)
+            } else if (nc_need4(A, B, C, DQ)) {   // (third person, close: the shingles are cut and split like the floor, so they hold their shape)
                 SVECTOR s4[4] SVEC_ALIGN; roof_corner(l, x, y, &s4[0], base, pitch); roof_corner(l, x + 1, y, &s4[1], base, pitch); roof_corner(l, x, y + 1, &s4[2], base, pitch); roof_corner(l, x + 1, y + 1, &s4[3], base, pitch);
                 const u32 cc[4] = { c, c, c, c };
                 const u32 uvA[4] = { (u32)u0 | ((u32)v0 << 8), (u32)u1 | ((u32)v0 << 8), (u32)u0 | ((u32)v1 << 8), (u32)u1 | ((u32)v1 << 8) };   // (courses across the slope)
                 const u32 uvB[4] = { (u32)u0 | ((u32)v0 << 8), (u32)u0 | ((u32)v1 << 8), (u32)u1 | ((u32)v0 << 8), (u32)u1 | ((u32)v1 << 8) };   // (courses down it)
-                nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 1, roof_tex.tpage, 0, ABS(dhz) >= ABS(dhx) ? uvA : uvB, 1);
+                nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 1, roof_tex.tpage, 0, ABS(dhz) >= ABS(dhx) ? uvA : uvB, !world_fp);
             } else if (ABS(dhz) >= ABS(dhx)) gfx_emit_gt4(A, B, C, DQ, c, c, c, c, roof_tex.tpage, 0, u0, v0, u1, v1, !world_fp);   // courses run across the slope (first person: seen from under it too)
             else gfx_emit_ft4(A, B, C, DQ, c, roof_tex.tpage, 0, u0, v0, u0, v1, u1, v0, u1, v1, !world_fp, 0);
             if (big) { gables(l, x, y, base, pitch); gables(l, x + 1, y, base, pitch); gables(l, x, y + 1, base, pitch); gables(l, x + 1, y + 1, base, pitch);

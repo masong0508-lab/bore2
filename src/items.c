@@ -467,11 +467,18 @@ static void tex_face(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const
     gfx_quad_gt(a, b, c, d, t.tpage, 0, u0, t.v, u1, t.v, u0, t.v + t.h - 1, u1, t.v + t.h - 1, ct, ct, cb, cb, 1);
 }
 
-static void tex_facex(const XV *a, const XV *b, const XV *c, const XV *d, const TexRef *tp, int dir) {   // tex_face on the fast path (dir: S E N W)
-    if (!xv_vis4(a, b, c, d, 1)) return;
+int world_nc_need(const XV *a, const XV *b, const XV *c, const XV *d);
+void world_nc_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d, const u32 *col, int tex, u16 tpage, const u32 *uv, int cull);
+static void tex_facex(const XV *a, const XV *b, const XV *c, const XV *d, const SVECTOR *sa, const SVECTOR *sb, const SVECTOR *sc, const SVECTOR *sd, const TexRef *tp, int dir) {   // tex_face on the fast path (dir: S E N W)
     const TexRef *t = tp;
-    int s = sh6[dir], st = s + (s >> 4), sb = (s * box_ao) >> 8;
-    u32 ct = gfx_grade_tex((u32)st * 0x010101u), cb = gfx_grade_tex((u32)sb * 0x010101u);
+    int s = sh6[dir], st = s + (s >> 4), sb_ = (s * box_ao) >> 8;
+    u32 ct = gfx_grade_tex((u32)st * 0x010101u), cb = gfx_grade_tex((u32)sb_ * 0x010101u);
+    if (world_nc_need(a, b, c, d)) {   // (close to the eye: cut at the near plane and split, so a pole or a sign holds its shape)
+        const u32 cc[4] = { ct, ct, cb, cb };
+        const u32 uv[4] = { (u32)t->u | ((u32)t->v << 8), (u32)(t->u + t->w - 1) | ((u32)t->v << 8), (u32)t->u | ((u32)(t->v + t->h - 1) << 8), (u32)(t->u + t->w - 1) | ((u32)(t->v + t->h - 1) << 8) };
+        world_nc_quad(sa, sb, sc, sd, cc, 1, t->tpage, uv, 1); return;
+    }
+    if (!xv_vis4(a, b, c, d, 1)) return;
     gfx_put_gt4(a, b, c, d, ct, ct, cb, cb, (u32)t->tpage << 16, 0, t->u, t->v, t->u + t->w - 1, t->v + t->h - 1);
 }
 static void draw_box(const IBox *bx, const u16 *ref, int r, int ox, int oz, int t) {
@@ -494,23 +501,26 @@ static void draw_box(const IBox *bx, const u16 *ref, int r, int ox, int oz, int 
     SVECTOR cv[8]; XV v[8];
     for (int k = 0; k < 8; k++) setVector(&cv[k], (k & 1) ? x1 : x0, (k & 4) ? y1 : y0, (k & 2) ? zS : zN);
     gfx_xform(cv, v, 8);
-    if (fS) tex_facex(&v[2], &v[3], &v[6], &v[7], mS, 0);
-    if (fE) tex_facex(&v[3], &v[1], &v[7], &v[5], mE, 1);
-    if (fN) tex_facex(&v[1], &v[0], &v[5], &v[4], mN, 2);
-    if (fW) tex_facex(&v[0], &v[2], &v[4], &v[6], mW, 3);
+    if (fS) tex_facex(&v[2], &v[3], &v[6], &v[7], &cv[2], &cv[3], &cv[6], &cv[7], mS, 0);
+    if (fE) tex_facex(&v[3], &v[1], &v[7], &v[5], &cv[3], &cv[1], &cv[7], &cv[5], mE, 1);
+    if (fN) tex_facex(&v[1], &v[0], &v[5], &v[4], &cv[1], &cv[0], &cv[5], &cv[4], mN, 2);
+    if (fW) tex_facex(&v[0], &v[2], &v[4], &v[6], &cv[0], &cv[2], &cv[4], &cv[6], mW, 3);
     // top: TL=(x0,zN) TR=(x1,zN) BL=(x0,zS) BR=(x1,zS); the texture turns with the item
     if (fT) {
-        TexRef tt = *box_tex(ref, 4);
-        if (!xv_vis4(&v[0], &v[1], &v[2], &v[3], 1)) return;
-        int uv[4][2]; int cu[4] = { u0, u1, u0, u1 }, cv[4] = { v0, v0, v1, v1 };
+        TexRef tt = *box_tex(ref, 4); const SVECTOR *cv_ = cv;
+        int topnc = world_nc_need(&v[0], &v[1], &v[2], &v[3]);
+        if (!topnc && !xv_vis4(&v[0], &v[1], &v[2], &v[3], 1)) return;
+        int uv[4][2]; int cu[4] = { u0, u1, u0, u1 }, cvv[4] = { v0, v0, v1, v1 };
         int aw = bx->a1 - bx->a0, bh = bx->b1 - bx->b0; if (aw < 1) aw = 1; if (bh < 1) bh = 1;
         static const int rcp[9] = { 0, 65536, 32768, 21846, 16384, 13108, 10923, 9363, 8192 };   // 65536 / n (boxes are 1..8 units)
         int ra = aw <= 8 ? rcp[aw] : 65536 / aw, rb = bh <= 8 ? rcp[bh] : 65536 / bh;
         for (int k = 0; k < 4; k++) {
-            int la, lb; unrot(r, cu[k], cv[k], &la, &lb);
+            int la, lb; unrot(r, cu[k], cvv[k], &la, &lb);
             int fu = ((la - bx->a0) * (tt.w - 1) * ra) >> 16, fv = ((lb - bx->b0) * (tt.h - 1) * rb) >> 16;
             uv[k][0] = tt.u + CLAMP(fu, 0, tt.w - 1); uv[k][1] = tt.v + CLAMP(fv, 0, tt.h - 1);
         }
+        if (topnc) { const u32 cc[4] = { sh6_flat[4], sh6_flat[4], sh6_flat[4], sh6_flat[4] }; const u32 uvp[4] = { (u32)uv[0][0] | ((u32)uv[0][1] << 8), (u32)uv[1][0] | ((u32)uv[1][1] << 8), (u32)uv[2][0] | ((u32)uv[2][1] << 8), (u32)uv[3][0] | ((u32)uv[3][1] << 8) };
+            world_nc_quad(&cv_[0], &cv_[1], &cv_[2], &cv_[3], cc, 1, tt.tpage, uvp, 1); return; }
         gfx_emit_ft4(&v[0], &v[1], &v[2], &v[3], sh6_flat[4], tt.tpage, 0,
                      uv[0][0], uv[0][1], uv[1][0], uv[1][1], uv[2][0], uv[2][1], uv[3][0], uv[3][1], 1, 0);
     }
