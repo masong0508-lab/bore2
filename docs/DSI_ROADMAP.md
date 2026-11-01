@@ -1,7 +1,7 @@
-# BORE 2 DS / DSi: roadmap (updated at D41)
+# BORE 2 DS / DSi: roadmap (updated at D43)
 
 ## Where we are
-A Sims-DS style life sim on two screens, one ROM (`bore2_dsi_d41.nds`) that runs on DS, DSi and the emulators (melonDS, DraStic, NooDS, DeSmuME).
+A Sims-DS style life sim on two screens, one ROM (`bore2_dsi_d43.nds`) that runs on DS, DSi and the emulators (melonDS, DraStic, NooDS, DeSmuME).
 Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
 
 **Done**
@@ -135,6 +135,12 @@ At D38 (level of detail by the eye; more things near the eye keep their detail):
 
 D38's rate went up and down between 47 and 58 (judder); D41 holds 30 on every scene, the loop that reads the touch screen runs at 52-60. The GPU's limits are 2048 polygons and 6144 vertices; the busiest view (DSi detail, to the horizon) uses about 5500 vertices, and the far ring is sent last so it is what would be dropped.
 Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build without the DSi's BIOS and NAND).
+
+**Done at D42-D43 (`bore2_dsi_d43.nds`): roofs and textures**
+- **D42, roofs as the PS1's** (world.c roof_region, b_see): the lot's enclosed buildings are found (cells the outside cannot reach without crossing a wall or a shut door; walls inside a building do not part it), and each gets its own roof over its own top storey: HIP, GABLE (plaster gable ends) or FLAT (slab, parapet, a box on top), eaves a third of a tile over the walls, the slopes levelling off three cells in. Style, colour (CLAY RED, SLATE, CEDAR, MOSS GREEN, NAVY, SANDSTONE) and pitch (MEDIUM / STEEP) are each building's own dice, as in San Boreas; towers and big blocks flat; the island's huts cedar gables. Build > Roof sets one style for the lot: Auto / Flat / Gable / Hip (the save keeps the same two bits; old "None" is now Auto). Options > Roofs: Cutaway hides the roof of a building one of your Bores is in and roofs over storeys below the one you look at; Always; Hide. The neighbours, the far ring and the Map's picture use the same roofs. Park benches lie along the walk (they were turned at random).
+- **D43, textures**: see ports/dsi/README.md. 16 textures of 128 bytes in bank A, texture coordinates from each face's plane (one PS1 tile a cell), set once per run of faces in the still lists, so the frame rate is unchanged.
+- Frame rates in melonDS at D43: Map 30 (UI 60), Buy 30, Live house 30, island 30, farm 30, busy street 30, Strange Town 30, horizon 30 (UI 52-60 everywhere). Screenshots: docs/ds_shots/d42_roofs_*.png (roofs; Options > Roofs: Always) and d43_tex_*.png; before: d41_*.png.
+- Not done: textures on the Map's small picture and on the things you buy (they keep the PS1 models' flat colours), seasons on the ground textures (the PS1 tints grass by season).
 
 ## Next (in this order)
 1. **Real-hardware and Android tests** of the song reader (`cart_blk` in `main.c`), saving and touch. If a loader blocks cartridge reads, add an SD (libfat) path for DSi.

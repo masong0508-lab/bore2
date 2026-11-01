@@ -3,7 +3,7 @@
 // Top screen: that lot in 3D. L/R change town, A/B zoom, START re-rolls the world.
 // Fixed point only; the world is bigmap.c, shared with the PS1 build (nothing of it is stored).
 #define PMN 28
-static int o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song, o_need = 2, o_day = 1, o_msgt = 1, o_tmus = 1, o_gmus = 1, o_shuf = 1, o_look = 1, o_detl, prof_full, fast_cpu;
+static int o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song, o_need = 2, o_day = 1, o_msgt = 1, o_tmus = 1, o_gmus = 1, o_shuf = 1, o_look = 1, o_detl, prof_full, fast_cpu, o_tex = 1;
 
 // ---- the options: one table (name, the choices, the value, the tab it lives on, its default). Saved in table order, so new ones are only ever added at the end.
 typedef struct { const char *name, *vals; int *v; unsigned char tab, def; } Opt;
@@ -26,6 +26,7 @@ static const Opt OPT[] = {
     { "Reset game", "tap", 0, 3, 2 },
     // (D40) the 3D look (Classic: as before D40; Rich: a sky, haze in the distance, highlights; Toon: Rich with outlines round every thing) and the detail (Auto: DSi when the CPU is the DSi's fast one)
     { "3D look", "Classic|Rich|Toon", &o_look, 0, 1 }, { "Detail", "Auto|DS|DSi", &o_detl, 3, 0 },
+    { "Textures", "Off|On", &o_tex, 0, 1 },   // (D43: the PS1's patterns on the ground, floors, walls and roofs)
 };
 #define OPT_OLD 36   // options saved in the save's first 40 bytes (the rest go in the 'OX' block)
 static void open_opts(void);
@@ -243,7 +244,8 @@ static u32 gx_base, gx_spec; static int gx_far = 12; static u32 *gxb; static int
 static inline void gx_id(u32 id) { if (gxk >= 4) { gxh = gxn++; gxb[gxh] = 0; gxk = 0; } gxb[gxh] |= id << (gxk++ * 8); }
 static inline void gx_c1(u32 id, u32 v) { gx_id(id); gxb[gxn++] = v; }
 ITCM_CODE static void gx_c0(u32 id) { gxk = 4; gx_id(id); gxb[gxn++] = 0; gxk = 4; }   // (a command with no parameters gets a packed word of its own and a dummy zero, as GBATEK asks)
-static void gx_begin(u32 *b, int cap) { gxb = b; gxn = 0; gxk = 4; gx_cap = cap - 32; gx_full = 0; gx_lv = 0; gx_mat = gx_nrm = gx_col = ~0u; }
+static int tx_want, gx_txp;
+static void gx_begin(u32 *b, int cap) { gxb = b; gxn = 0; gxk = 4; gx_cap = cap - 32; gx_full = 0; gx_lv = 0; gx_mat = gx_nrm = gx_col = ~0u; tx_want = -1; gx_txp = -2; }
 static int gx_end(void) { gxb = 0; return gxn; }
 static void gx_fmt(u32 attr) {   // the polygon attributes (takes effect at the next BEGIN): recorded, or straight to the GPU
     gx_attr = attr; if (gxb) { if (gxn > gx_cap) return; gx_c1(0x29, attr); gx_c1(0x40, GL_QUADS); gx_lv = 0; } else { glEnd(); glPolyFmt(attr); glBegin(GL_QUADS); } }
@@ -261,6 +263,15 @@ static void gf_kick(u32 vb) {   // (from the vblank interrupt) the next frame, i
     for (int k = 0; k < gfr[gf_fly].ns; k++) { const GSeg *g = &gfr[gf_fly].s[k]; DMA_SRC(0) = (u32)g->p; DMA_DEST(0) = 0x4000400; DMA_CR(0) = DMA_FIFO | (u32)g->n; while (DMA_CR(0) & DMA_BUSY) {} }
     gf_busy = 0; }
 static void gf_stop(void) { gf_on = 0; while (gf_busy) {} gf_ready = -1; }   // (before the CPU writes to the GPU itself: the title, Create-a-Sim and the Map)
+// (D43) TEXTURES: the PS1's ground, floor, wall and roof patterns (tools/dsbuild/mk_dstex.py -> ds_tex.h), 8x8 16-bit textures in VRAM bank A, one a cell, laid
+// on each face by its plane (the ground by x and z, a wall by its run and its height). They hold the pattern's light and shade; the colour is the material's.
+// Far off (the far ring, the horizon) nothing is textured: the plain colour is the pattern's average, a mip level of one texel, and the haze is over it.
+#include "ds_tex.h"
+static int far_lod;
+static inline void gx_tex(int ax, int x, int y, int z) {   // the texture coordinate before a vertex (ax: 0 the ground, 1 a face along z, 2 a face along x)
+    int sc = ax == 0 ? x : ax == 1 ? z : x, tc = ax == 0 ? z : -y; gx_c1(0x22, (u32)(((sc * 199) >> 10) & 0xFFFF) | ((u32)((tc * 199) >> 10) << 16)); }
+static inline int gx_txon(void) {   // the texture for the next quad (0: none); emits the change
+    int w = far_lod || !o_tex ? -1 : tx_want; if (w != gx_txp) { gx_c1(0x2A, w < 0 ? 0 : (u32)(w * 16) | (1u << 16) | (1u << 17) | (7u << 26)); gx_txp = w; } return w >= 0; }
 static inline void gx_v(int x, int y, int z) {   // one vertex: the shortest command that sets it
     u32 xy = (u32)(x & 0xFFFF) | ((u32)y << 16);
     if (gx_lv) { if (z == gx_lz) { gx_c1(0x25, xy); goto done; } if (y == gx_ly) { gx_c1(0x26, (u32)(x & 0xFFFF) | ((u32)z << 16)); goto done; } if (x == gx_lx) { gx_c1(0x27, (u32)(y & 0xFFFF) | ((u32)z << 16)); goto done; } }
@@ -288,6 +299,8 @@ ITCM_CODE static void qd_n(int x0, int y0, int z0, int x1, int y1, int z1, int x
         if (m != gx_mat || nm != gx_nrm) { if (m != gx_mat) gx_c1(0x30, m); gx_c1(0x21, nm); gx_mat = m; gx_nrm = nm; } }
     else if (c != gx_col) { gx_c1(0x20, c); gx_col = c; }
     y0 += gy_off; y1 += gy_off; y2 += gy_off; y3 += gy_off;
+    if (gx_txon()) { int ax = nm == NORMAL_PACK(0, 511, 0) ? 0 : (nm == NORMAL_PACK(511, 0, 0) || nm == NORMAL_PACK(-511, 0, 0)) ? 1 : 2;
+        gx_tex(ax, x0, -y0, z0); gx_v(x0, -y0, z0); gx_tex(ax, x1, -y1, z1); gx_v(x1, -y1, z1); gx_tex(ax, x2, -y2, z2); gx_v(x2, -y2, z2); gx_tex(ax, x3, -y3, z3); gx_v(x3, -y3, z3); polys += 2; return; }
     gx_v(x0, -y0, z0); gx_v(x1, -y1, z1); gx_v(x2, -y2, z2); gx_v(x3, -y3, z3); polys += 2;
 }
 #define NRM_NX NORMAL_PACK(-511, 0, 0)
@@ -305,6 +318,9 @@ ITCM_CODE static void qd(int x0, int y0, int z0, int x1, int y1, int z1, int x2,
             if (m != gx_mat || nm != gx_nrm) { if (m != gx_mat) gx_c1(0x30, m); gx_c1(0x21, nm); gx_mat = m; gx_nrm = nm; } }
         else if (c != gx_col) { gx_c1(0x20, c); gx_col = c; }
         y0 += gy_off; y1 += gy_off; y2 += gy_off; y3 += gy_off;
+        if (gx_txon()) { int ax = 0; { s64 ux = x1 - x0, uy = y1 - y0, uz = z1 - z0, vx = x3 - x0, vy = y3 - y0, vz = z3 - z0, nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+                if (nx < 0) nx = -nx; if (ny < 0) ny = -ny; if (nz < 0) nz = -nz; ax = ny >= nx && ny >= nz ? 0 : nx >= nz ? 1 : 2; }
+            gx_tex(ax, x0, -y0, z0); gx_v(x0, -y0, z0); gx_tex(ax, x1, -y1, z1); gx_v(x1, -y1, z1); gx_tex(ax, x2, -y2, z2); gx_v(x2, -y2, z2); gx_tex(ax, x3, -y3, z3); gx_v(x3, -y3, z3); polys += 2; return; }
         gx_v(x0, -y0, z0); gx_v(x1, -y1, z1); gx_v(x2, -y2, z2); gx_v(x3, -y3, z3); polys += 2; return; }
     if (lit_on) {   // lit: set the material from the colour, then the normal (which computes the lit colour); no glColor after it
         glMaterialf(GL_DIFFUSE, (u16)(c | BIT(15))); glMaterialf(GL_AMBIENT, (u16)(RGB15(((c & 31) * 11) >> 4, (((c >> 5) & 31) * 11) >> 4, (((c >> 10) & 31) * 11) >> 4)));
@@ -938,7 +954,7 @@ static int ground_lift(int cx, int cy, int L) {   // (D41, as the PS1's fix: eve
     if (L > 0) return 40; if (cx >= 0 && cy >= 0 && cx < GN && cy < GN) return flr[cy][cx] ? 40 : 20;
     int lx = ((cx % SLC) + SLC) % SLC, ly = ((cy % SLC) + SLC) % SLC; if ((lx >= 14 && lx <= 16) || (ly >= 14 && ly <= 16)) return 0; if (lx >= 13 || ly >= 13) return 24; return 20; }
 static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every item is a little model built from several boxes (coordinates 0..80 across the cell, heights in tenths of a quarter-tile)
-    (void)ghost; int id = (int)(it - ITEMS); u16 c = it->col, d = shade(c, 6), l = shade(c, 10), wd = LC(16, 10, 5), dk = LC(3, 3, 4);
+    (void)ghost; tx_want = -1; int id = (int)(it - ITEMS); u16 c = it->col, d = shade(c, 6), l = shade(c, 10), wd = LC(16, 10, 5), dk = LC(3, 3, 4);
     { int ww = rot & 1 ? it->fl : it->fw, wl = rot & 1 ? it->fw : it->fl; ob_w = it->fw * 80; ob_l = it->fl * 80; ob_sx = (ww * 2 * T - T / 3) * 10 / (ww * 80); ob_sz = (wl * 2 * T - T / 3) * 10 / (wl * 80); }   // (a two-cell thing stretches to fill both)
     ob_x = tl(x * 2) + T / 6; ob_z = tl(y * 2) + T / 6; ob_rot = rot; ob_hs = id >= 0 && id < 28 ? HSC[id] : 100; ob_base = -ground_lift(x, y, gy_off ? 1 : 0);
     if (it->nbox) {   // (D35) a PS1 model: its own boxes, converted by tools/dsbuild/mk_dsitems.py (PS1 units: 10 across, 7 up)
@@ -1034,7 +1050,8 @@ ITCM_CODE static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, 
         }
         return; }
     if (o_det) block(x0 - 3, z0 - 3, x1 + 3, z1 + 3, -40, -40 - T / 7, base, shade(base, 9));                       // skirting board
-    block(x0, z0, x1, z1, -40 - T / 7, -wh, c, cap);                                                       // the wall, with a pale cap
+    { static const s8 WT[4] = { TX_CLAPBOARD, TX_BRICK, TX_STUCCO, TX_BEADBOARD }; tx_want = WT[(v - 1) & 3]; }   // (D43: the PS1's wall patterns, in the colour you painted)
+    block(x0, z0, x1, z1, -40 - T / 7, -wh, c, cap); tx_want = -1;                                                       // the wall, with a pale cap
     (void)vert; (void)th;
 }
 
@@ -1093,18 +1110,17 @@ static void draw_city(void) {
     for (int k = 0; k < CARN; k++) { const Car *c = &cars[k]; if (polys > 2950) break; int x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, lx = c->dx ? 300 : 150, lz = c->dx ? 150 : 300, cx2 = c->dx ? 130 : 130, cz = c->dx ? 130 : 130;
         block(x - lx, z - lz, x + lx, z + lz, -20, -150, c->col, shade(c->col, 10)); block(x - lx + (c->dx ? 90 : 0) + (c->dx ? 0 : 0) - (c->dx ? 0 : 0), z - lz + (c->dx ? 0 : 90), x + lx - (c->dx ? 90 : 0), z + lz - (c->dx ? 0 : 90), -150, -270, C15(20, 26, 31), C15(24, 24, 26)); (void)cx2; (void)cz; }
 }
-static int far_lod;   // (D40) 1: a lot in the far ring: its house without door and windows, no people
 static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw) {   // a neighbour's lot: flat ground, a plain house or a few trees (cheap: the polygon budget is the DS's limit)
     u32 h = b->h; int k = b->lot; if (far_lod) pop = 0;
     u16 grass = b->terrain == BT_DESERT ? C15(24, 20, 10) : b->terrain == BT_ROCKY ? C15(13, 13, 13) : b->terrain == BT_BEACH ? C15(26, 24, 14) : C15(11, 20, 8);
-    ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), -20, grass);
+    tx_want = b->terrain == BT_DESERT || b->terrain == BT_BEACH ? TX_SAND : b->terrain == BT_ROCKY ? TX_GRAVEL : TX_GRASS; ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), -20, grass); tx_want = -1;
     if (!far_house(b)) { int n = (k == LOT_PARK || k == LOT_SQUARE) ? 4 : 2; for (int i = 0; i < n; i++) tree(ox + tl(3 + (int)((h >> (i * 4)) & 15) * 3 / 2 % 20), oz + tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 3 / 2 % 20), T * 2); return; }
     int w = 10 + (int)(h & 3) * 2, d = 8 + (int)((h >> 2) & 3) * 2, x0 = 4 + (24 - w) / 2 / 2 * 2 - 4, z0 = 4;
     int st = bm_storeys(b); int hh = 2 * st + (st == 1 ? 2 : 0);
     u16 walls[6] = { C15(26, 22, 16), C15(24, 14, 10), C15(22, 24, 26), C15(26, 26, 18), C15(16, 22, 14), C15(24, 20, 22) }; u16 wall = walls[(h >> 8) % 6];
     if (k >= LOT_SHOP) wall = k == LOT_TOWER || k == LOT_OFFICE || k == LOT_HOTEL ? C15(16, 20, 26) : C15(27, 12, 10);
     int X0 = ox + tl(x0), X1 = ox + tl(x0 + w), Z0 = oz + tl(z0), Z1 = oz + tl(z0 + d), Y = -(hh * T);
-    block(X0, Z0, X1, Z1, 0, Y, wall, wall);
+    tx_want = k > LOT_APART ? TX_WINDOWS : TX_CLAPBOARD; block(X0, Z0, X1, Z1, 0, Y, wall, wall); tx_want = -1;   // (D43: shops and towers show storeys of windows)
     if (!far_lod) { int wn = (X1 - X0) / 5; block(X0 + wn * 2, Z1, X0 + wn * 2 + wn * 7 / 10, Z1 + 14, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); block(X0 + wn, Z1, X0 + wn + wn * 7 / 10, Z1 + 14, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); block(X0 + wn * 3, Z1, X0 + wn * 3 + wn * 7 / 10, Z1 + 14, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); }
     { u32 rh = hsh(h ^ 0x500Fu); int sty = st >= 3 || k > LOT_APART ? 1 : 2 + ((rh >> 2) & 1); static const s16 PIT[3] = { 110, 170, 250 };   // (D42) hip, gable or flat, a colour and a pitch per building
       roof_shape(X0 - T / 3, Z0 - T / 3, X1 + T / 3, Z1 + T / 3, Y, sty, PIT[1 + ((rh >> 8) & 1)], ROOFC[(rh >> 4) % 6], wall); }
@@ -1128,14 +1144,14 @@ static void slot_street(int ox, int oz) {   // (D40) a far slot's own streets (a
 }
 static void draw_world(int yaw) {   // LIVE: all round the lot, the lots next door, the streets and the land (a 3x3 patch of slots)
     if (zone == Z_ISLAND) { ground(tl(-40), tl(-40), tl(76), tl(76), 90, C15(25, 22, 14)); return; }   // (the island: sand between the lots, the sea is the neighbours')
-    ground(tl(-40), tl(-40), tl(76), tl(76), 90, zone == Z_TOWN ? C15(24, 21, 13) : C15(7, 16, 6));
+    tx_want = zone == Z_TOWN ? TX_SAND : TX_GRASS; ground(tl(-40), tl(-40), tl(76), tl(76), 90, zone == Z_TOWN ? C15(24, 21, 13) : C15(7, 16, 6)); tx_want = TX_ASPHALT;
     for (int j = -1; j <= 1; j++) { int o = 36 * j;   // roads both ways
         ground(tl(-36), tl(28 + o), tl(72), tl(34 + o), 0, C15(7, 7, 9)); ground(tl(28 + o), tl(-36), tl(34 + o), tl(72), 0, C15(7, 7, 9)); }
-    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int ox = 36 * i, oz = 36 * j;   // pavements in the stretches between the roads
+    tx_want = TX_PAVING; for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int ox = 36 * i, oz = 36 * j;   // pavements in the stretches between the roads
         ground(tl(ox), tl(oz + 26), tl(ox + 26), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox), tl(oz + 34), tl(ox + 26), tl(oz + 36), -24, C15(22, 22, 22));
         ground(tl(ox + 26), tl(oz + 26), tl(ox + 28), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz + 26), tl(ox + 36), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox + 26), tl(oz + 34), tl(ox + 28), tl(oz + 36), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz + 34), tl(ox + 36), tl(oz + 36), -24, C15(22, 22, 22));
         ground(tl(ox + 26), tl(oz), tl(ox + 28), tl(oz + 26), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz), tl(ox + 36), tl(oz + 26), -24, C15(22, 22, 22)); }
-    for (int x = 0; x < 36; x += 6) { ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -30, C15(28, 26, 8)); ground(tl(31) - 14, tl(x), tl(31) + 14, tl(x) + T * 2, -30, C15(28, 26, 8)); }   // lane dashes by this lot
+    tx_want = -1; for (int x = 0; x < 36; x += 6) { ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -30, C15(28, 26, 8)); ground(tl(31) - 14, tl(x), tl(31) + 14, tl(x) + T * 2, -30, C15(28, 26, 8)); }   // lane dashes by this lot
     if (!zone) for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) if (nb[j + 1][i + 1].terrain != BT_SEA) kerb_set(36 * i, 36 * j);   // (D40, as the PS1: lamps on the kerb facing the street, a bin by the corner)
 }
 static int ring_r = 1;   // (D40) how many slots out the land is drawn (Options > Draw distance, one more with the DSi's detail)
@@ -1284,22 +1300,21 @@ static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise
     int w = X1 - X0, d = Z1 - Z0, sh = w < d ? w : d, r = sh / 2; if (r > 6 * T) r = 6 * T;
     u16 fas = shade(rc, 5);
     if (sty == 1) {   // FLAT: the slab, a parapet round it, a box on top (the PS1's towers and big blocks)
-        u16 tc = shade(C15(18, 18, 19), 8), pc = shade(wc, 7);
-        block(X0, Z0, X1, Z1, ry + 30, ry - 40, fas, tc);
+        u16 tc = shade(C15(18, 18, 19), 8), pc = shade(wc, 7); tx_want = TX_GRAVEL;
+        block(X0, Z0, X1, Z1, ry + 30, ry - 40, fas, tc); tx_want = TX_STUCCO;
         block(X0, Z0, X1, Z0 + 40, ry - 40, ry - 110, pc, shade(pc, 10)); block(X0, Z1 - 40, X1, Z1, ry - 40, ry - 110, pc, shade(pc, 10));
         block(X0, Z0 + 40, X0 + 40, Z1 - 40, ry - 40, ry - 110, pc, shade(pc, 10)); block(X1 - 40, Z0 + 40, X1, Z1 - 40, ry - 40, ry - 110, pc, shade(pc, 10));
-        if (w > 4 * T && d > 4 * T) { int cx = X0 + w * 2 / 3, cz = Z0 + d / 3; block(cx - T / 2, cz - T / 2, cx + T / 2, cz + T / 2, ry - 40, ry - 40 - T * 2 / 3, C15(20, 20, 21), C15(25, 25, 26)); }
+        tx_want = -1; if (w > 4 * T && d > 4 * T) { int cx = X0 + w * 2 / 3, cz = Z0 + d / 3; block(cx - T / 2, cz - T / 2, cx + T / 2, cz + T / 2, ry - 40, ry - 40 - T * 2 / 3, C15(20, 20, 21), C15(25, 25, 26)); }
         return; }
     int RH_ = r * rise / 256, rtop = ry - RH_, along_x = w >= d, rx = along_x ? (sty == 3 ? r : 0) : r, rz = along_x ? r : (sty == 3 ? r : 0);
-    block(X0, Z0, X1, Z1, ry + 40, ry, fas, fas);   // (the eaves' thickness)
+    tx_want = -1; block(X0, Z0, X1, Z1, ry + 40, ry, fas, fas); tx_want = TX_SHINGLE_WALL;   // (the eaves' thickness; then the slopes in the PS1's shingles)
     u16 c0 = rc, c1 = shade(rc, 6), ce = rx ? shade(rc, 7) : wc, cf = rz ? rc : wc;   // (gable ends are the walls' plaster)
     qd(X0, ry, Z0, X1, ry, Z0, X1 - rx, rtop, Z0 + rz, X0 + rx, rtop, Z0 + rz, cf);
     qd(X0 + rx, rtop, Z1 - rz, X1 - rx, rtop, Z1 - rz, X1, ry, Z1, X0, ry, Z1, rz ? c1 : shade(wc, 7));
     qd(X0, ry, Z0, X0 + rx, rtop, Z0 + rz, X0 + rx, rtop, Z1 - rz, X0, ry, Z1, ce);
     qd(X1 - rx, rtop, Z0 + rz, X1, ry, Z0, X1, ry, Z1, X1 - rx, rtop, Z1 - rz, rx ? c1 : shade(wc, 6));
     if (X1 - rx > X0 + rx && Z1 - rz > Z0 + rz) ground(X0 + rx, Z0 + rz, X1 - rx, Z1 - rz, rtop, shade(rc, 9));   // (levelled off: a flat top)
-    else if (!rx || !rz) { int a = along_x ? Z0 + rz : X0 + rx; (void)a; }
-    (void)c0;
+    tx_want = -1; (void)c0;
 }
 typedef struct { s8 x0, y0, x1, y1, top; u8 sty, col, pit; } Bld;
 static Bld blds[12]; static int nbld;
@@ -1349,8 +1364,10 @@ static void draw_floors(int L) {   // floors as the biggest same-type rectangles
         while (x + w < GN && fl[y][x + w] == t && !dn[y][x + w]) w++;
         for (;;) { if (y + d >= GN) break; int ok = 1; for (int k = 0; k < w; k++) if (fl[y + d][x + k] != t || dn[y + d][x + k]) ok = 0; if (!ok) break; d++; }
         for (int j = 0; j < d; j++) for (int k = 0; k < w; k++) dn[y + j][x + k] = 1;
+        { static const s8 FT[5] = { TX_WOOD_DECK, TX_POOL_TILE, TX_SOIL, TX_GRAVEL, TX_PAVING }; tx_want = FT[(t - 1) % 5]; }   // (D43: wood, tiles, carpet, rush mat, slate)
         if (!L) ground(tl(x * 2) - 4, tl(y * 2) - 4, tl((x + w) * 2) + 4, tl((y + d) * 2) + 4, -40, FLOORC[t - 1]);
         else block(tl(x * 2) - 4, tl(y * 2) - 4, tl((x + w) * 2) + 4, tl((y + d) * 2) + 4, 30, -40, C15(24, 22, 19), FLOORC[t - 1]); }
+    tx_want = -1;
 }
 static u32 *wsig;          // (D39) set: draw_walls only mixes which walls are cut down into *wsig (the still list's signature)
 static void draw_walls(int L, int yaw) {   // thin walls (a skirting board, the wall, a pale cap) and proper doors
@@ -1390,10 +1407,11 @@ static void draw_build(int yaw) {   // (D39) dpass 1: the still part (recorded o
     int st = dpass == 0 || dpass == 1, mv = dpass == 0 || dpass == 2, wd = dpass == 0 || dpass == 3, it = dpass == 0 || dpass == 4;   // (D41: 1 the lot's build, 4 its things, 3 the world round it, 2 what moves)
     u16 lawn = land_col(nb[1][1].terrain);
     if (dpass == 3) goto world;
-    if (st) { gx_pid(1); ground(tl(0), tl(0), tl(GN * 2), tl(GN * 2), 0, lawn);   // the lawn (sand on a beach): one quad and big darker squares (every polygon counts on the DS)
+    int ltx = nb[1][1].terrain == BT_BEACH || nb[1][1].terrain == BT_DESERT || zone == Z_ISLAND || zone == Z_TOWN ? TX_SAND : nb[1][1].terrain == BT_ROCKY ? TX_GRAVEL : TX_GRASS;
+    if (st) { gx_pid(1); tx_want = ltx; ground(tl(0), tl(0), tl(GN * 2), tl(GN * 2), 0, lawn);   // the lawn (sand on a beach): one quad and big darker squares (every polygon counts on the DS)
         if (o_chk) for (int z = 0; z < GN; z += 2) for (int x = 0; x < GN; x += 2) if (((x + z) / 2) & 1) { int e = x + 2 > GN ? GN : x + 2, f = z + 2 > GN ? GN : z + 2; ground(tl(x * 2), tl(z * 2), tl(e * 2), tl(f * 2), -20, shade(lawn, 7)); }
         if (!zone) ground(tl(0), tl(26) - 30, tl(GN * 2), tl(26), -20, C15(14, 24, 10));   // a low hedge line along the back of the plot (no more posts sticking out)
-        if (!zone) block(tl(door_cx * 2) + T / 2, tl(door_cy * 2 + 1), tl(door_cx * 2 + 2) - T / 2, tl(26), 0, -26, C15(19, 18, 16), C15(23, 22, 20)); }   // a path from the front door to the pavement
+        tx_want = TX_PAVING; if (!zone) block(tl(door_cx * 2) + T / 2, tl(door_cy * 2 + 1), tl(door_cx * 2 + 2) - T / 2, tl(26), 0, -26, C15(19, 18, 16), C15(23, 22, 20)); tx_want = -1; }   // a path from the front door to the pavement
     if (dpass == 2) PROF(10);
     int top = top_lv(), vl = view_lv(), show = show_lv(); if (dpass == 2) PROF(9);
     for (int L = show; L >= 0; L--) {   // (from the storey you look at down: the DS draws at most 2048 polygons, and what is sent last is what it drops)
@@ -1411,10 +1429,10 @@ static void draw_build(int yaw) {   // (D39) dpass 1: the still part (recorded o
     gy_off = 0; lod_force = 0; if (dpass == 2) PROF(6);
 world:
     if (wd) { gx_pid(3); if (mode == M_LIVE) draw_world(yaw); else {   // (D36: the street round the plot after the house, so the house is never what the DS's polygon list drops)
-        ground(tl(-14), tl(-9), tl(40), tl(-2), 0, C15(7, 7, 9)); ground(tl(-14), tl(28), tl(40), tl(35), 0, C15(7, 7, 9));   // two proper streets, three cells wide
+        tx_want = TX_ASPHALT; ground(tl(-14), tl(-9), tl(40), tl(-2), 0, C15(7, 7, 9)); ground(tl(-14), tl(28), tl(40), tl(35), 0, C15(7, 7, 9)); tx_want = TX_PAVING;   // two proper streets, three cells wide
         block(tl(-14), tl(-2), tl(40), tl(0), 0, -14, C15(20, 20, 20), C15(24, 24, 24)); block(tl(-14), tl(26), tl(40), tl(28), 0, -14, C15(20, 20, 20), C15(24, 24, 24));   // pavements
-        for (int x = -13; x < 40; x += 4) { ground(tl(x), tl(-6) - 14, tl(x) + T * 2, tl(-6) + 14, -6, C15(28, 26, 8)); ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -6, C15(28, 26, 8)); }   // lane dashes (flat: one quad each, not five)
-        ground(tl(-14), tl(-9), tl(40), tl(35), 90, C15(7, 16, 6));   // grass all round, so the lot does not float
+        tx_want = -1; for (int x = -13; x < 40; x += 4) { ground(tl(x), tl(-6) - 14, tl(x) + T * 2, tl(-6) + 14, -6, C15(28, 26, 8)); ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -6, C15(28, 26, 8)); }   // lane dashes (flat: one quad each, not five)
+        tx_want = TX_GRASS; ground(tl(-14), tl(-9), tl(40), tl(35), 90, C15(7, 16, 6)); tx_want = -1;   // grass all round, so the lot does not float
         if (polys < 2600) for (int i = 0; i < 5; i++) { tree(tl(-6 + (i * 7) % 5 * 1), tl(2 + i * 5), T * 2); tree(tl(GN * 2 + 3 - (i * 5) % 4), tl(1 + i * 5), T * 2); }
         if (o_look && gxb) { int X = (gx_far + 9) * 1024; if (X > 32000) X = 32000; gx_c0(0x11); gx_id(0x1B); gxb[gxn++] = 4 * 4096; gxb[gxn++] = 4096; gxb[gxn++] = 4 * 4096; gx_lv = 0; ground(-X, -X, X, X, 180, C15(7, 16, 6)); gx_c1(0x12, 1); gx_lv = 0; }   // (D40: land to the haze, not a lot floating in the sky)
         } }
@@ -1431,14 +1449,14 @@ world:
 }
 static u32 world_sig(void) {   // (D41) what the world round the lot depends on
     u32 h = 2166136261u; h = (h ^ (u32)(mode == M_LIVE)) * 16777619u; h = (h ^ (u32)zone) * 16777619u; h = (h ^ (u32)lot_bx) * 16777619u; h = (h ^ (u32)lot_by) * 16777619u; h = (h ^ (u32)nb_ok) * 16777619u;
-    h = (h ^ (u32)(ring_r | gx_far << 4 | o_look << 10 | o_out << 12 | lit_on << 13 | o_det << 14 | o_chk << 15)) * 16777619u;
+    h = (h ^ (u32)(ring_r | gx_far << 4 | o_look << 10 | o_out << 12 | lit_on << 13 | o_det << 14 | o_chk << 15 | o_tex << 16)) * 16777619u;
     for (int j = 0; j < 3; j++) for (int i = 0; i < 3; i++) h = (h ^ nb_pop[j][i]) * 16777619u; return h; }
 static u32 still_sig(int yaw, int part) {   // (D39) everything a still list depends on: when this changes, it is recorded again (D41: part 0 the build, 1 the things)
     u32 h = 2166136261u + (u32)part;
     #define HM(v) h = (h ^ (u32)(v)) * 16777619u
     HM(mode); HM(zone); HM(lot_bx); HM(lot_by); HM(nb_ok); HM(nobj); HM(roof_st); HM(tool); HM(ed_lv); HM(view_lv()); HM(door_cx + door_cy * 32); HM(lit_on); HM(lit_sgn);
     int show = show_lv(), top = top_lv(); HM(show); HM(top); if (part == 0) { HM(roof_bits()); HM(roof_st | lot_seed << 2); }
-    HM(o_det | o_chk << 1 | o_shd << 2 | o_lit << 3 | o_roof << 4 | o_dd << 6 | o_sty << 8 | o_trf << 10 | o_look << 12 | o_out << 14 | ring_r << 16 | prof_full << 20);
+    HM(o_det | o_chk << 1 | o_shd << 2 | o_lit << 3 | o_roof << 4 | o_dd << 6 | o_sty << 8 | o_trf << 10 | o_look << 12 | o_out << 14 | ring_r << 16 | prof_full << 20 | o_tex << 22);
     { const u32 *w = (const u32 *)flr; for (unsigned k = 0; k < sizeof flr / 4; k++) HM(w[k]); }
     if (part == 0) { const u8 *q = &hwl[0][0]; for (unsigned k = 0; k < sizeof hwl; k++) HM(q[k]); q = &vwl[0][0]; for (unsigned k = 0; k < sizeof vwl; k++) HM(q[k]); }
     if (top) { const u8 *q = &uflr[0][0][0]; for (unsigned k = 0; k < sizeof uflr; k++) if (q[k]) HM(k * 256 + q[k]); q = &uhwl[0][0][0]; for (unsigned k = 0; k < sizeof uhwl; k++) if (q[k]) HM(k * 256 + q[k]); q = &uvwl[0][0][0]; for (unsigned k = 0; k < sizeof uvwl; k++) if (q[k]) HM(k * 256 + q[k]); }
@@ -2808,7 +2826,9 @@ int main(void) {
     int bg = bgInitSub(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0); scr_sub = scr = bgGetGfxPtr(bg);
     int bgm = bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0); hud = bgGetGfxPtr(bgm); bgSetPriority(bgm, 0);
     if (isDSiMode()) setCpuClock(true); cpu_probe();   // (D40) is the CPU the DSi's fast one?
-    glInit(); glEnable(GL_ANTIALIAS); glClearColor(14, 20, 31, 31); glClearPolyID(63); glClearDepth(0x7FFF); glViewport(0, 0, 255, 191); REG_BG0CNT = BG_PRIORITY(1);
+    glInit(); glEnable(GL_TEXTURE_2D);
+    vramSetBankA(VRAM_A_LCD); for (int k = 0; k < NDSTEX; k++) for (int i = 0; i < 64; i++) VRAM_A[k * 64 + i] = DSTEX[k][i]; vramSetBankA(VRAM_A_TEXTURE);   // (D43) the textures, 128 bytes each at the start of bank A
+    glEnable(GL_ANTIALIAS); glClearColor(14, 20, 31, 31); glClearPolyID(63); glClearDepth(0x7FFF); glViewport(0, 0, 255, 191); REG_BG0CNT = BG_PRIORITY(1);
     snd_init(); tabs_init(); for (int c = 0; c < 256; c++) if (PS1ID[c]) ID2CH[PS1ID[c] - 1] = (u8)c; bm_dials_default(); bm_new(seed); pop_build();
     cur_set = bm_capital(); town_pick(cur_set);
     lot_reset(); funds = 3500; sims[0].skin = 2; sims[0].hair = 4; sims[0].hcol = 0; sims[0].shirt = 0; mode = M_TITLE; sav_probe(); lcdMainOnTop(); hud_clear();
@@ -2973,7 +2993,7 @@ int main(void) {
                 gx_c1(0x50, 0); gf_cut(); gf_rec = 0; DC_FlushRange(gx_dlb[b], (u32)gxn * 4); gx_end();
                 polys = pd + b_polys + st_polys + w_polys; polys_last = polys; gf_ready = b; PROF(4); }
         } else if ((int)(vbl_n - next3d) >= 0) {   // the title, Create-a-Sim and the Map: straight to the GPU, as before
-        gf_stop(); u32 v3 = vbl_n;
+        gf_stop(); u32 v3 = vbl_n; GFX_TEX_FORMAT = 0;   // (D43: no texture left set by a list)
         polys = 0;
         glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluPerspectivef32(degreesToAngle(40), 256 * 4096 / 192, 4096 * 3 / 4, 4096 * 12);
         glMatrixMode(GL_POSITION); glLoadIdentity();
