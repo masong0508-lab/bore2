@@ -1,4 +1,4 @@
-# BORE 2 DS / DSi: roadmap (updated at D36)
+# BORE 2 DS / DSi: roadmap (updated at D37)
 
 ## Where we are
 A Sims-DS style life sim on two screens, one ROM (`bore2_dsi_d33.nds`) that runs on DS, DSi and the emulators (melonDS, DraStic, NooDS, DeSmuME).
@@ -62,15 +62,36 @@ Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
 - **Readout:** Options > Graphics > Poly meter now shows the frame rate too (Live: on the top screen; Buy, Build, Map: in the top screen's corner).
 - Tested in melonDS: a TWO-STOREY lot's loft (plan and 3D at each storey); Go Up and Go Down in Live; a save made upstairs reloads upstairs; a D34 save with "Storeys: 2" loads as a real second floor; flat and gable roofs on the loft; stairs bought and placed.
 
-**Frame rate in melonDS** (main-loop passes a second, the DS's 60 Hz; quads sent to the GPU, the DS's limit is 1536 quads by its 6144 vertices). Default lot (the generated house, 3 sims, citizens and cars in Live):
+**Done at D37 (`bore2_dsi_d37.nds`): travel and Castaway Island**
+- **Travel (menu > Travel, the PS1's "Where to?"):** Home, The Man Base, Castaway Island, Strange Town and San Boreas (the Map, a taxi to any lot). As on the PS1, the island opens after the household's first paycheck and the town after two promotions; a locked row is grey with what opens it. In the zones a **boat** (on the island) and a **bus stop** (in the town and at the base) open the same panel ("Sail", "Take the Bus").
+- **The zones are lots of their own**, off the San Boreas map (3x3 lots each, the sea or the desert round them; the Bore walks from one to the next as in the city):
+  - **The Man Base:** a house with a loft up the stairs (bedroom), the factory and the rail park.
+  - **Strange Town:** main street (bus stop, benches, the arcade and skate flags), the diner, the trailer and the lab, on desert sand.
+  - **Castaway Island:** the camp (campfire, palms, bushes, rocks), the jungle, the hills, the east beach with the wreck, and the islet out at sea. Sand everywhere, no roads.
+- **Castaway Island, the PS1's rules at DS size:**
+  - **Gathering:** tap a palm: "A Coconut" (food), "Chop Wood" (+1 wood), "Gather Leaves" (+2); rocks give stone, berry bushes food and leaves, the fishing spot 2 food (3 with a spear, and quicker). The stock is on the top screen ("W S L Food" and the secrets found, n/8).
+  - **The campfire:** "Cook and Eat" (uses food) and "Craft": tent (3 wood, 4 leaves), log bench, outhouse, spear, a wooden shelter (12 wood, 2 stone, 8 leaves: a 5x5 room with walls, a door, a bed and a bench), the raft (10 wood, 6 leaves, put on the shore). Things are built next to the fire; trees and bushes in the way are cleared and their wood is yours.
+  - **The raft:** "Sail Across" to the islet and back (everyone comes).
+  - **Eight secrets** as on the PS1: the message in a bottle, the buried treasure ($2500, "dig by the big rock"), the idol, the wreck ($500 and a map), the seashells, the hermit's journal, reaching the islet, the golden idol ($10000).
+  - Needs fall as everywhere: the tent is a bed (Sleep), the outhouse a toilet, the log bench a seat, and "Cook and Eat" at the fire uses one food.
+- **Smoother 2D screens:** the top status screen, the Live icons, the Buy/Build catalogue and the Map are drawn off screen and copied over in one go, so a half-drawn screen is never shown (melonDS screenshots used to catch the top screen mid-redraw).
+- **Saves:** a 'ZN' block after the storeys: the zone you are in and the island's stock, spear, shells and secrets. A save made in a zone loads straight back there (in Live; the Map has no zones). Older saves load with no trip and an untouched island.
+- **Also:** a Bore who dies now leaves the PS1's gravestone ("Remember") instead of a statue.
+- Tested in melonDS: the travel panel (locked and open rows); The Man Base; a work shift unlocking the island; the camp: the campfire popup, crafting a tent, a shelter and a raft (with a test-only stock key in a `-DDSTEST` build), "Not enough to make that"; palms: Chop Wood gives wood; the raft popup and sailing to the islet (secret 1/8 to 2/8 with the golden idol, funds +$10000); a save on the islet reloads on the islet with the stock; Strange Town (test-only unlock), its bus stop back home; a D34 save still loads.
+- Not tested: the hermit, the wreck, the shells and the treasure one by one (their code is the same pattern as the golden idol's), fishing with the spear.
 
-| Scene | D34 | D35 | D36 |
-|---|---|---|---|
-| Map | 60 | 60 | 60 (311 quads) |
-| Live, the house | about 32 | 43-45 | 43-45 (1363 quads) |
-| Live, upstairs in a two-storey | - | - | 41-46 |
-| Buy | about 15 | 55-56 | 55-56 (1397 quads) |
-| Build | - | 56-58 | 56-58 (1457 quads) |
+**Frame rate in melonDS** (main-loop passes a second, the DS's 60 Hz; in brackets the poly meter's count, two per quad: the DS draws at most 2048 polygons and 6144 vertices, about 1536 quads). Default lot (the generated house, 3 sims, citizens and cars in Live):
+
+| Scene | D34 | D35 | D36 | D37 |
+|---|---|---|---|---|
+| Map | 60 | 60 | 60 (311) | 60 |
+| Live, the house | about 32 | 43-45 | 43-45 (1363) | 43-45 |
+| Live, upstairs in a two-storey | - | - | 41-46 | 41-46 |
+| Buy | about 15 | 55-56 | 55-56 (1397) | 55-56 |
+| Build | - | 56-58 | 56-58 (1457) | 56-58 |
+| Live, island camp | - | - | - | 47-48 (1580-1940) |
+| Live, Strange Town main street | - | - | - | 47-53 (1820-1940) |
+| Live, The Man Base | - | - | - | 44-53 (2730-2750) |
 
 ## Next (in this order)
 1. **Real-hardware and Android tests** of the song reader (`cart_blk` in `main.c`), saving and touch. If a loader blocks cartridge reads, add an SD (libfat) path for DSi.
@@ -89,8 +110,8 @@ Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
 | Jobs, careers | places.c, story.c | **done (D31)**, simplified (6 jobs, no real workplaces) |
 | Wants and fears | wants.c | **done (D31)**, 16 wants and 5 fears |
 | Families, babies, ageing | pop.c | done (D18) |
-| Home buying and travel | home.c | buying done (D30); travel open |
-| Castaway Island | island.c, nature.c | open (large) |
+| Home buying and travel | home.c, main.c (ST_TRAVEL, travel_go) | buying done (D30); **travel done (D37)**: Home, The Man Base, Strange Town, Castaway Island, San Boreas; the PS1's unlocks |
+| Castaway Island | island.c, nature.c | **done (D37)** at DS size: gathering, campfire, crafting (tent, bench, outhouse, spear, shelter, raft), the islet, 8 secrets; no weather or day-night survival events yet |
 | Music: jukebox | audio.c, SONGS.BIN | **done (D29), screen added D31** |
 | Music: band, DJ | band.c, dj_ui.c | open (large) |
 | Mini-games (skate, arcade, fight, heist, gotchi, farm) | various | open, one at a time |

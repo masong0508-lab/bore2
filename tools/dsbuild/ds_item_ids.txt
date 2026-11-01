@@ -189,3 +189,18 @@
 187 ps1:F5 Changing Table
 188 ps1:F6 Single Bed
 189 ps1:7C Stairs
+190 ps1:83 Gravestone
+191 ps1:84 Message in a Bottle
+192 ps1:85 Sandy Mound
+193 ps1:86 Tiki Idol
+194 ps1:87 Shipwreck
+195 ps1:88 Seashell
+196 ps1:89 Berry Bush
+197 ps1:8A Fishing Spot
+198 ps1:8B Raft
+199 ps1:8C Golden Idol
+200 ps1:8D Old Journal
+201 ps1:61 Community Flag
+202 ps1:6B Skate Flag
+203 ps1:40 Boat
+204 ps1:2B Bus Stop

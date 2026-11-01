@@ -172,3 +172,6 @@ The PS1's whole buy catalogue: 189 items in the PS1's ten tabs, with the PS1's m
 
 ## D36
 Walkable storeys (up to four), stairs from Buy > Special (Go Up / Go Down in Live), the Floor chip in Buy and Build, the PS1's loft in the map's two-storey homes, old storey shells turned into real floors; gable ends fixed; fps readout on Options > Graphics > Poly meter.
+
+## D37
+Travel (menu > Travel: Home, The Man Base, Strange Town, Castaway Island, San Boreas) with the PS1's unlocks, boat and bus stops; Castaway Island at DS size (gathering, campfire, crafting a tent, shelter and raft, the islet, eight secrets); zone saves; the 2D screens drawn off screen and copied in one go; the gravestone.
