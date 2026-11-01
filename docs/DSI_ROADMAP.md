@@ -1,4 +1,4 @@
-# BORE 2 DS / DSi: roadmap (updated at D33)
+# BORE 2 DS / DSi: roadmap (updated at D34)
 
 ## Where we are
 A Sims-DS style life sim on two screens, one ROM (`bore2_dsi_d33.nds`) that runs on DS, DSi and the emulators (melonDS, DraStic, NooDS, DeSmuME).
@@ -32,6 +32,10 @@ Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
   - The home is saved ('HM' block); a save from before D33 takes the lot you were on as home.
   - Bug fixed: entering a lot no longer resets your funds to 3500 (you could buy a lot and get the money back by visiting).
 - Tested in melonDS: every Options tab and page, each new option's effect, save and reload (old and new saves), and the whole property flow with a save and reload.
+
+**Done at D34 (`bore2_dsi_d34.nds`)**
+- **Bug fix: a touch held over a screen change.** Tapping OK on the title, the Map button in Live or the Map chip in Buy/Build and keeping the stylus down picked the block under it as soon as the Map came up (the title's OK even chose an empty field as your first, free lot). Now every new screen ignores the stylus that opened it until it is lifted; a fresh tap counts at once.
+- Tested in melonDS: title OK held for 4 frames, Live Map button held for 50 frames (the selection stays on the home), then a tap and a drag on the Map still pick blocks.
 
 ## Next (in this order)
 1. **Real-hardware and Android tests** of the song reader (`cart_blk` in `main.c`), saving and touch. If a loader blocks cartridge reads, add an SD (libfat) path for DSi.

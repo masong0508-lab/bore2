@@ -1892,6 +1892,9 @@ int main(void) {
     while (1) {
         scanKeys(); int held = keysHeld(), down = keysDown(); touchPosition tp = {0}; if (held & KEY_TOUCH) touchRead(&tp);
         { u32 ld = lat_down; lat_down = 0; down |= (int)ld; if (down & KEY_TOUCH) lat_press = 0; else if (lat_press && lat_got) { lat_press = 0; down |= KEY_TOUCH; tp.px = (u16)lat_tx; tp.py = (u16)lat_ty; } }
+        { static int tb_mode = -1, tb_wait;   // (D34) a new screen takes no touch until the stylus that opened it is lifted: a tap held over the switch to the Map no longer picks the block under it
+          if (mode != tb_mode) { tb_mode = mode; tb_wait = 1; }
+          if (tb_wait) { if (!(held & KEY_TOUCH) || (down & KEY_TOUCH)) tb_wait = 0; else held &= ~KEY_TOUCH; } }
         const Settle *s = bm_set(cur_set); msg_t = msg_t > 0 ? msg_t - 1 : 0;
         unsigned sig = 0; int forced = (mode != lastmode); lastmode = mode;
         if (mode == M_TITLE) {
