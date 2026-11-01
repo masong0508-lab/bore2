@@ -1,39 +1,29 @@
 # Dreamcast port: where it stands
 
-Status: **groundwork only. Nothing here builds a Dreamcast game yet.** The PS1 build is untouched by it.
+Status: **first boot works** (toolchain, emulator, hello, title, SAN BOREAS in 3D). Not yet the full game. The PS1 build is untouched (no file under `src/` changed; `ports/dreamcast` is not in `CMakeLists.txt`). Build and emulator steps: `ports/dreamcast/README.md`.
 
-## Why it is not further on
-
-The Dreamcast needs KallistiOS and an `sh-elf-gcc` cross compiler. This workspace has neither, and its network is limited to a short allowlist, so nothing for the Dreamcast can be compiled or run here. Anything written for it now is untested. Everything below is a plan to build on, not a result.
-
-## What carries over almost as is (plain C, no PS1 calls)
-
-| Part | Files | Notes |
+## What works (seen in flycast, HLE BIOS, 640x480)
+| Stage | Screenshot | Notes |
 |---|---|---|
-| The world from one seed | `src/bigmap.c`, `src/bigmap.h` | Already shared with the DSi build. |
-| Population, wants, careers, stories | `src/pop.c`, `src/wants.c`, `src/story.c` (data) | They use `Sim` and `Bore` only. |
-| Sim logic | `src/sim.c` | Calls the UI only through `sim_note` and the `sim_want_*` flags. |
-| Look/Bore data | `src/look.c`, `src/look.h` | Face art uses `TexRef`, which needs a small texture shim. |
-| Cutscene data | `src/cutscene.c` (the film tables) | The engine part draws through `gfx_*`. |
+| Hello | `docs/dc_hello.png` | KOS + PowerVR, text from the shared 8x8 font in an ARGB4444 texture |
+| Title | `docs/dc_title.png` | the real BORE 2 logo (`logo_rects.h`, 1057 rectangles), sky, a turning blocky Bore, START |
+| SAN BOREAS | `docs/dc_life.png` | `bm_new`/`bm_block` of `src/bigmap.c`: terrain, hills (corner-averaged heights), streets with lane dashes, lots and buildings by type and storeys, trees, the capital BORE CITY; D-pad walk, camera follows |
 
-## What must be rewritten (the PS1-only layer)
+Shared code compiled unchanged so far: `bigmap.c`. Measured: the readout shows 60 FPS in the emulator (that shows the PVR keeps the frame pace; the emulator's CPU timing is not the real SH-4's, so real-hardware numbers are still to be taken). The PS1 build runs at 320x240 with an ordering table (its FRAME RATE option offers steady 30 or 20; I did not measure it here). This port: 640x480, per-pixel depth buffer (no sort errors), sub-pixel vertices, perspective-correct by the PVR.
 
+## Not done yet (honest list)
+- The people: `look.c` / `pop.c` are not linked yet (they need an atlas/texture stand-in and `voxel.c`'s drawing through a DC `gfx` layer); the Bore shown is a three-box stand-in. Next: `dc_atlas` stub, then `pop_new` and drawing the Bore's `vox` cells.
+- 1:1 with the PS1: sim, menus, saves, audio not ported. Plan as in the table below.
+- The new asks (60 fps with bilinear filtering and far fog, VMU screen / Boreagotchi / VMU saves with icon, Jump Pack rumble, Dreamcast catalogue items, shadows/water/glow, 4 pads, 16:9, extras page) are all still to do; each goes behind `BORE_DC` / `ports/dreamcast` only. The PVR already gives the depth buffer, perspective correction and 640x480 in this build; fog, bilinear textures and the rest come with textured polygons.
+
+## Carry-over plan (unchanged)
 | PS1 layer | Dreamcast replacement |
 |---|---|
-| `gfx.c`: GTE camera, ordering table, packet buffers | PVR via KOS `pvr_*`: submit vertices to the opaque and punch-through lists. The PVR sorts and does perspective-correct textures itself, so the OT depth tricks go away. |
-| `voxel.c`: GTE joint matrices | Same maths on the SH-4 FPU (`mat_*` and `fipr`); the joint tree stays. |
-| `audio.c`: SPU, XA streaming, CD seqs | AICA via KOS `snd_stream`, with the songs as ADPCM. The DS music pipeline (`tools/dsmusic`) is the closest tool. |
-| `pad.c` | `maple` controllers, same buttons (`CONT_*`). |
-| `mcard.c`, `save.c` | VMU saves via `vmu_pkg`. The save format itself is plain bytes and carries over. |
-| Overlays (`ovl.c`) | Not needed: the Dreamcast has 16 MB of RAM. Link everything in one binary. |
+| `gfx.c` GTE camera, ordering table | `dc_gfx.c`: PVR polygons with the depth buffer (done for flat/gouraud; textures next) |
+| `voxel.c` joints | same maths on the SH-4 FPU |
+| `audio.c` | AICA through `snd_stream` |
+| `pad.c` | maple `CONT_*` (done in `dc_pad`) |
+| `mcard.c`, `save.c` | VMU via `vmu_pkg` |
+| Overlays | not needed: 16 MB RAM |
 
-## Order of work
-
-1. `ports/dreamcast/platform.h`: the list of functions the shared code needs from a platform (`gfx_*`, `audio_*`, `pad_*`, `save_*`). The PS1 files already provide them, so this is mostly a header.
-2. A KOS `Makefile` plus a program that opens the PVR, clears the screen and draws one voxel Bore. This is the first thing that can run in an emulator (Flycast).
-3. Move `voxel.c` and `look.c` over. Then the town, then the life loop.
-4. Sound last.
-
-## Rule for the PS1
-
-Dreamcast work goes under `ports/dreamcast/` and uses `#ifdef BORE_DC` where it must touch shared files. The PS1 `CMakeLists.txt` does not build it, so the PS1 disc cannot change because of it.
+Rule for the PS1: Dreamcast work stays under `ports/dreamcast/` and `tools/dcrun.c`; any edit of `src/` would be `#ifdef BORE_DC` only, and a plain PS1 Release build must keep the same `_end`.
