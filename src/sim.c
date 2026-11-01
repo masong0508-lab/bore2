@@ -228,6 +228,14 @@ void sim_add(const Bore *b, int mx, int my, int ai) {
     s->grade = 60;
 }
 static int playable(int i) { return i >= 0 && i < nsims && sims[i].bore.stage != AG_BABY && !sims[i].away; }
+u8 sim_hold;   // SWITCH SIM: a bit per housemate you have told to stay put while you play someone else (no free will)
+int sim_playable(int i) { return playable(i); }
+void sim_set_player(int n) {   // take over anyone in the household (not a baby, not someone at school)
+    if (!playable(n) || n == player) return;
+    sims[player].ai = 1; sims[player].path_n = 0; sims[player].path_i = 0;
+    player = n; sims[player].ai = 0; sims[player].path_n = 0; sims[player].path_i = 0; sim_hold &= (u8)~(1u << n);
+    if (sims[player].grump) sim_note("NO MARKER. MOSS SAID NO.");
+}
 void sim_switch_player(void) {
     if (nsims < 2) return;
     int n = player;
@@ -744,6 +752,7 @@ static void ai_think(Sim *s) {
         return;
     }
     int me = (int)(s - sims);
+    if ((sim_hold >> me) & 1) return;   // (told to stay put: they wait where they are)
     if (s->bore.stage >= AG_TEEN && (s->need[N_FOOD] >> 10) > 15 && (s->need[N_WC] >> 10) > 15) {   // a baby crying, nobody seeing to it: go
         for (int i = 0; i < nsims; i++) {
             const Sim *b = &sims[i]; int k = baby_need(b); if (!k) continue;

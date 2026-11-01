@@ -112,7 +112,8 @@ static int t_vb;
 
 // ---- states ----
 static void party_begin(void);
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ, ST_SUPER, ST_DOG, ST_PRISON, ST_SPACE, ST_MODE, ST_NHED, ST_CUT };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ, ST_SUPER, ST_DOG, ST_PRISON, ST_SPACE, ST_MODE, ST_NHED, ST_CUT, ST_SWITCH };
+static void sw_open(int back);   // SWITCH SIM (below)
 #ifdef AUTO_GOTCHI
 static void opts_dbg(int tab, int sel, int back);
 #endif
@@ -717,7 +718,12 @@ static void life_update(int steps) {
     if (PRESSED(PAD_CIRCLE) && !on_board) sim_player_cancel();
     if (PRESSED(PAD_TRIANGLE) && !on_board && !veh_on) { sim_speed = sim_speed % 3 + 1; }
     if (PRESSED(PAD_L3)) show_fps ^= 1;
-    { extern int getenv_noshadow, dbg_noao, dbg_nograd; if (PRESSED(PAD_R3)) { static int mode; mode = (mode + 1) & 3; getenv_noshadow = mode == 1; dbg_noao = mode == 2; dbg_nograd = mode == 3; } }
+#ifdef AUTO_SWITCH
+    { static int n_; n_ += steps; if (n_ > 200 && nsims < 3) { for (int k = 0; k < 3; k++) { Bore b; look_default(&b); b.stage = AG_ADULT; look_random(&b); sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); } }
+      static int o_; if (n_ > 320 && !o_ && nsims > 1) { o_ = 1; sw_open(ST_LIFE); return; } }   // (test builds: the SWITCH SIM card)
+#endif
+    if (PRESSED(PAD_R3) && !HELD(PAD_L3) && nsims > 1 && !on_board && !veh_on) { sw_open(ST_LIFE); return; }   // R3: SWITCH SIM
+    { extern int getenv_noshadow, dbg_noao, dbg_nograd; if (PRESSED(PAD_R3) && HELD(PAD_L3)) { static int mode; mode = (mode + 1) & 3; getenv_noshadow = mode == 1; dbg_noao = mode == 2; dbg_nograd = mode == 3; } }
     if (PRESSED(PAD_SELECT)) { extern void phone_open(void); phone_open(); }   // the phone in your pocket
     { int t0 = hb_now(); for (int k = 0; k < steps; k++) sim_step(); citizens_update(steps); traffic_update(steps); t_logic = hb_now() - t0; }
     {   // SAN BOREAS: the map window follows you a block at a time (everything slides with it)
@@ -2558,12 +2564,50 @@ static void story_draw(void) {   // the goals of this life, ticked off as they a
     ui_hints(160, top + 180, story_id ? "TRI THE STORY|O BACK" : "SQ PICK A STORY|O BACK", 1);
 }
 
+// ---- SWITCH SIM (Bustin\' Out): everyone in the household on one card; take over any of them, or tell one to wait ----
+static int sw_sel, sw_back, sw_t;
+static void sw_open(int back) { sw_sel = player; sw_back = back; sw_t = 0; state = ST_SWITCH; audio_voice(VOICE_AGREE); }
+static void sw_update(void) {
+    sw_t++;
+#ifdef AUTO_SWITCH
+    if (sw_t == 150) { sw_sel = 1; sim_set_player(1); sim_hold |= 4; state = ST_LIFE; return; }   // (test builds: play the second housemate)
+#endif
+    int col = sw_sel & 1, row = sw_sel >> 1;
+    if (PRESSED(PAD_LEFT) && col) sw_sel--;
+    else if (PRESSED(PAD_RIGHT) && !col && sw_sel + 1 < nsims) sw_sel++;
+    if (PRESSED(PAD_UP) && row) sw_sel -= 2;
+    else if (PRESSED(PAD_DOWN) && sw_sel + 2 < nsims) sw_sel += 2;
+    if (PRESSED(PAD_L1) || PRESSED(PAD_R1)) { int d = PRESSED(PAD_R1) ? 1 : nsims - 1; sw_sel = (sw_sel + d) % nsims; }
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_R3)) { state = sw_back; return; }
+    if (PRESSED(PAD_CROSS)) {
+        if (sw_sel == player) { state = sw_back; return; }
+        if (sim_playable(sw_sel)) { sim_set_player(sw_sel); audio_voice(VOICE_YEHA); state = ST_LIFE; sim_note(sims[player].bore.first); return; }
+        audio_voice(VOICE_NAH);
+    }
+    if (PRESSED(PAD_SQUARE) && sw_sel != player && sim_playable(sw_sel)) { sim_hold ^= (u8)(1u << sw_sel); audio_voice(VOICE_AGREE); }   // free will on / off
+}
+static void sw_draw(void) {
+    life_draw(); ui_dim();
+    int top = ui_window(6, 6, 308, 226, "SWITCH SIM", IC_PEOPLE);
+    for (int i = 0; i < nsims; i++) {
+        const Sim *s = &sims[i]; int x = 12 + (i & 1) * 150, y = top + (i >> 1) * 48, sel = i == sw_sel, ok = sim_playable(i);
+        ui_round(x, y, 146, 44, 7, sel ? UI_HILITE : UI_CARD, sel ? UI_RGB(190, 222, 248) : UI_CARD2, 0);
+        int m = s->mood; u32 mc = m > 15 ? UI_GREEN : m > -15 ? UI_AMBER : UI_RED;
+        ui_disc(x + 20, y + 22, 18, ok ? mc : UI_LINE); ui_disc(x + 20, y + 22, 15, UI_RGB(250, 252, 255)); draw_face_k(x + 12, y + 14, m, 1);
+        ui_text(x + 42, y + 4, 1, s->bore.first, ok ? UI_INK : UI_SOFT);
+        ui_textfit(x + 42, y + 15, 100, sim_life_text(s, 1), UI_SOFT);
+        ui_bar(x + 42, y + 31, 34, 6, CLAMP((m + 100) / 2, 0, 100), mc);
+        const char *tag = i == player ? "YOU" : s->bore.stage == AG_BABY ? "BABY" : s->away ? "AT SCHOOL" : ((sim_hold >> i) & 1) ? "WAITING" : "FREE WILL";
+        ui_badge(x + 80, y + 28, tag, i == player ? UI_BLUE : ((sim_hold >> i) & 1) ? UI_AMBER : UI_CARD2, i == player ? UI_WHITE : UI_INK);
+    }
+    ui_hints(160, top + 198, "X PLAY THEM|SQ WAIT OR FREE WILL|O BACK", 1);
+}
 // ---- the Bore panel: MOOD / WANTS / SKILLS / PEOPLE / JOB tabs (the Sims 2 panel) ----
 static const char *const panelTab[5] = { "MOOD", "WANTS", "SKILLS", "PEOPLE", "JOB" };
 static void panel_update(void) {
     if (PRESSED(PAD_R1) || PRESSED(PAD_RIGHT)) panel_tab = (panel_tab + 1) % 5;
     if (PRESSED(PAD_L1) || PRESSED(PAD_LEFT)) panel_tab = (panel_tab + 4) % 5;
-    if (PRESSED(PAD_SELECT)) sim_switch_player();
+    if (PRESSED(PAD_SELECT)) sw_open(ST_PANEL);
     if (PRESSED(PAD_CIRCLE)) state = ST_PAUSE;
     if (PRESSED(PAD_START)) state = ST_LIFE;
 }
@@ -4401,7 +4445,7 @@ int main(void) {
             static const u8 acc[] = { [ST_TITLE] = 0, [ST_MENU] = 0, [ST_CREATE] = 5, [ST_LIFE] = 0, [ST_PAUSE] = 7, [ST_BUILD] = 3, [ST_JUKEBOX] = 4, [ST_HELP] = 1,
                 [ST_TRAVEL] = 1, [ST_STORY] = 6, [ST_WANTS] = 6, [ST_PIE] = 0, [ST_PANEL] = 2, [ST_MAP] = 1, [ST_DIR] = 2, [ST_OPTS] = 7, [ST_JOBS] = 3,
                 [ST_OVER] = 7, [ST_HOMES] = 3, [ST_CRAFT] = 3, [ST_PHONE] = 0, [ST_SLOTS] = 7, [ST_NHOOD] = 1, [ST_WORLDS] = 1, [ST_NAME] = 5, [ST_SPICK] = 6,
-                [ST_SCARD] = 6, [ST_WMAKE] = 2, [ST_MODE] = 1, [ST_NHED] = 2, [ST_CUT] = 6 };
+                [ST_SCARD] = 6, [ST_WMAKE] = 2, [ST_MODE] = 1, [ST_NHED] = 2, [ST_CUT] = 6, [ST_SWITCH] = 0 };
             ui_accent = state < (int)sizeof acc ? acc[state] : 0;
         }
         switch (state) {
@@ -4426,6 +4470,7 @@ int main(void) {
             case ST_STORY: story_update(); if (state == ST_STORY) story_draw(); else if (state == ST_SPICK) { life_draw(); } else life_draw(); break;
             case ST_PIE: pie_update(); pie_draw(); break;
             case ST_PANEL: panel_update(); panel_draw(); break;
+            case ST_SWITCH: sw_update(); if (state == ST_SWITCH) sw_draw(); else if (state == ST_PANEL) panel_draw(); else life_draw(); break;
             case ST_MAP: map_update(); map_draw(); break;
             case ST_DIR: dir_update(); dir_draw(); break;
             case ST_OPTS: opts_update(); opts_draw(); break;
