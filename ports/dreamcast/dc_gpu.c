@@ -522,8 +522,12 @@ int VSync(int m) {
     if (!t0_us) { t0_us = timer_us_gettime64(); vs_us = t0_us; vblank_handler_add(vbl_irq, 0); }
     if (m < 0) return vbl_now();
     if (m == 1) return (int)(((uint32_t)(timer_us_gettime64() - vs_us) * 129u) >> 13);   // hblanks (63.5 us) since the last VSync(0) (x 129 / 8192: no division)
-    int target = vbl_now() + 1;
+    // the next vblank after the last VSync(0): a frame that already took longer goes on at once (the PowerVR shows each finished
+    // frame at a vblank by itself, so nothing tears), instead of idling to the next vblank as the PS1 must
+    static int last_vs;
+    int target = last_vs + 1;
     while (vbl_now() < target) thd_pass();
+    last_vs = vbl_now();
     vs_us = timer_us_gettime64(); vs_count++;
     return 0;
 }
