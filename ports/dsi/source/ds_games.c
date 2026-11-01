@@ -999,7 +999,7 @@ static void gt_top(void) {
     scr = offbuf; char b[72]; rect(0, 0, 256, 192, K8(22, 12, 52));
     for (int i = 0; i < 24; i++) { int x = (i * 97 + 13) % 256, y = (i * 61 + 7) % 192; rect(x, y, ((ganim >> 3) + i) % 7 ? 1 : 2, ((ganim >> 3) + i) % 7 ? 1 : 2, C15(24, 24, 31)); }
     panel(4, 4, 248, 184, "Boreagotchi");
-    if (gview == GV_NONE) { text(12, 40, 1, TXT, "A Boreagotchi: a pet on a keychain."); text(12, 56, 1, TXT, "Eight creatures, 16 kinds, 64 forms."); text(12, 72, 1, TXT, "It grows up the way you care for it."); sprintf(b, "The toy costs $%d.", GOTCHI_PRICE); text(12, 96, 1, C15(31, 25, 6), b); if (gmsg) text(12, 150, 1, C15(31, 12, 10), gmsg); return; }
+    if (gview == GV_NONE) { text_fit(12, 40, 1, 228, TXT, "A Boreagotchi: a pet on a keychain."); text_fit(12, 56, 1, 228, TXT, "Eight creatures, 16 kinds, 64 forms."); text_fit(12, 72, 1, 228, TXT, "It grows up as you care for it."); sprintf(b, "The toy costs $%d.", GOTCHI_PRICE); text(12, 96, 1, C15(31, 25, 6), b); if (gmsg) text(12, 150, 1, C15(31, 12, 10), gmsg); return; }
     if (gview == GV_DEX) {
         sprintf(b, "BLOBDEX  %d OF %d   PAGE %d OF 4", gdex_count(), GSP_N * 4, gdexpage + 1); text(12, 26, 1, C15(31, 25, 6), b);
         for (int r = 0; r < 4; r++) { int sp = gdexpage * 4 + r, y = 36 + r * 34; text(10, y + 12, 1, TXT, gspNm[sp]);
@@ -1080,8 +1080,8 @@ static void gt_frame(int held, int down, int steps, int tx, int ty) {
 static void gm_open(void) { mg_ui = 5; mg_ver++; }
 static void gm_top(void) {
     scr = offbuf; rect(0, 0, 256, 192, K8(22, 12, 52)); panel(8, 8, 240, 176, "Games");
-    text(18, 40, 1, TXT, "Skateboard: ride it, do tricks."); text(18, 56, 1, C15(20, 24, 28), has_board ? (on_board ? "You are riding it." : "You have a board.") : "Buy one: Buy > Skate.");
-    text(18, 84, 1, TXT, "Boreagotchi: a pet on a keychain."); char b[40]; Toy *t = gtoy_of(ctl); sprintf(b, t ? "%d creatures. Level %d." : "A toy costs $5000.", t ? gcount(t) : 0, t ? glevel(t) : 0); text(18, 100, 1, C15(20, 24, 28), b);
+    text_fit(18, 40, 1, 224, TXT, "Skateboard: ride it, do tricks."); text(18, 56, 1, C15(20, 24, 28), has_board ? (on_board ? "You are riding it." : "You have a board.") : "Buy one: Buy > Skate.");
+    text_fit(18, 84, 1, 224, TXT, "Boreagotchi: a pet on a keychain."); char b[40]; Toy *t = gtoy_of(ctl); sprintf(b, t ? "%d creatures. Level %d." : "A toy costs $5000.", t ? gcount(t) : 0, t ? glevel(t) : 0); text(18, 100, 1, C15(20, 24, 28), b);
     text(18, 128, 1, TXT, "Arcade and prizes: in town."); text(18, 142, 1, TXT, "Underworld: Menu > Heist.");
 }
 static void gm_bottom(void) { scr = offbuf; rect(0, 0, 256, 192, K8(22, 12, 52)); rect(0, 0, 256, 16, K8(60, 30, 110)); ctext(128, 4, 1, K8(90, 230, 240), "GAMES");
