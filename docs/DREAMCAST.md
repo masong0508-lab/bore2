@@ -34,6 +34,15 @@ The EXTRAS tab, the VMU save icon (3 frames) and the VMU screen:
 
 Older shots: `dc_vs_ps1_title.png`, `dc_vs_ps1_city.png`.
 
+### Roofs: a bug found (not fixed yet)
+The `AUTO_HOME` test (buy a house, build, the roof tool) on both. Top: PS1 (DuckStation). Bottom: Dreamcast.
+On the PS1 the ROOF tool shows the whole clay roof. On the Dreamcast the roof shows for a moment, then the camera pulls out
+and the roof is gone (the panel still says THE ROOF). Walls, floors, windows and the furnished rooms match.
+![roof](dc_vs_ps1_roof_tool.png)
+How: PS1 `cmake -DCMAKE_C_FLAGS="-DAUTO_HOME=1 -DAB_LOCK4=1"`, `ninja iso_lite`, DuckStation with START at 1100 and X at 1180;
+Dreamcast `make AUTO="AUTO_HOME=1 -DAB_LOCK4=1 -DDC_NOSPEED -DDC_CLASSIC" disc`, script `ports/dreamcast/test/home_dc.txt`.
+Note: a Dreamcast test frame is about 2 vblanks, a DuckStation frame 1, so pair shots by the clock on the HUD.
+
 ## Speed (measured in flycast, which only roughly copies real Dreamcast timing)
 SAN BOREAS street, normal play (`AUTO_CITY` build, 1500-2500 frames in):
 | Step | fps |
@@ -53,7 +62,9 @@ PS1 side: `DS8MB=1 test/ds.sh bore2_lite.cue NAME 3500 script`.
 
 ## Still to do
 - Side by side with DuckStation: inside a house, pie menu, Buy/Build, night, first person, far view, a park.
-- Roofs (new ask): check every roof against the PS1, then DC-only better roofs (ridges, overhangs, tiles, chimneys, fade cut-away, far roofs with fog).
+- Roofs (new ask): fix the roof-tool bug above first; then check shops, towers, flats, near and far, and the cut-away when inside or
+  upstairs; then DC-only better roofs (ridges, overhangs, tiles with SMOOTH filtering, chimneys, fade cut-away, far roofs with fog).
+- The far buildings' window textures use the PS1 texture window (GP0 E2): not done in `dc_gpu.c` yet.
 - Steady 60 fps: sound on the AICA's own channels, a float GTE, cheaper OT walk.
 - Upgrades: sub-pixel vertices, depth buffer, full far view with fog, bigger crowds, smooth lighting.
 - Extras: Jump Pack rumble events, Boreagotchi on the VMU, DC catalogue set and outfits, shadows, water/glass, night glow, 4 controllers.
