@@ -8,6 +8,9 @@ Nothing under `src/` is touched; the PS1 build does not know this directory exis
 - `dc_main.c` boot / title / life stages. `dc_gfx.c/.h` the PowerVR layer (2D in the game's 320x240 coordinates doubled, 3D polygons with near-plane clipping, text from the shared 8x8 font, the pad). `dc_life.c` SAN BOREAS from `bm_*`. `dc_stubs.c` the few PS1 services shared code calls. `dc_shared_pre.h` force-included before shared sources (renames the game's `link` that clashes with libc).
 - `Makefile` (KOS). `toolchain/` the scripts that built the toolchain. `../../tools/dcrun.c` the headless emulator runner.
 
+## Quick restore (prebuilt)
+`ports/dreamcast/toolchain/restore.sh` unpacks the prebuilt toolchain, KOS, flycast core and dcrun into /tmp/dc from the `dc-toolchain` branch (48 MB). A GitHub release was not possible: the build session's GitHub access refuses creating releases (HTTP 403), so the archive lives on that orphan branch instead.
+
 ## Toolchain (rebuilt from source in /tmp/dc, C only, -j2; about 1.5 hours on 2 cores)
 Only GitHub is reachable here, so the GNU sources come from mirrors on GitHub. gnu.org, sourceware.org, gcc.gnu.org, PyPI-style package hosts, conda and Ubuntu apt were refused, and were not worked around.
 1. `git clone --depth 1 https://github.com/KallistiOS/kallistios /tmp/dc/kos` (the toolchain builder is `utils/kos-chain`; its profile "stable" = binutils 2.45.1, gcc 15.2.0, newlib 4.6.0).
