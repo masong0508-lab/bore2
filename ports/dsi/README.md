@@ -193,3 +193,6 @@ The lot's 3D is recorded as the GPU's own command lists: the still part (ground,
 - Things stand on what is under them (a floor, or the lawn outdoors); Bores stand on the floor (they were sunk into it), citizens on the pavement.
 - The still part is three lists (the lot's build, its things, the world round it), each recorded again only when it changes and at most one a frame, so turning the camera holds 30.
 - Frame rates before and after, per scene, and screenshots: docs/DSI_ROADMAP.md and docs/ds_shots/.
+
+## D42 - roofs
+As the PS1's: every enclosed building gets its own roof over its own top storey: hip, gable (plaster gable ends) or flat (a slab, a parapet, a box on top), eaves over the walls, levelling off three cells in. Each building rolls its style, colour (clay red, slate, cedar, moss green, navy, sandstone) and pitch; towers and big blocks are flat; the island's huts cedar gables. Build > Roof: Auto / Flat / Gable / Hip (old saves' "None" is now Auto). Cutaway hides the roof of a building one of your Bores is in, and roofs over storeys you look below; Always shows all; Hide none. The far buildings and the Map's picture have the same roofs. Park benches lie along the walk.

@@ -33,6 +33,7 @@ SC = {   # name: (script, pokes {frame: scene}, measure from, to, screenshot fra
 EXTRA = {}
 if os.environ.get("BENCH_LOOK"): EXTRA[300] = 10 + int(os.environ["BENCH_LOOK"])
 if os.environ.get("BENCH_DETAIL"): EXTRA[330] = 20 + int(os.environ["BENCH_DETAIL"])
+if os.environ.get("BENCH_ROOF"): EXTRA[360] = 30 + int(os.environ["BENCH_ROOF"])
 want = sys.argv[4:] or list(SC)
 mem = [syms["fps_now"], syms["polys_last"], "4000604"] + ([syms["ui_fps"], syms["st_rec"]] if "ui_fps" in syms else []) + (["%x" % (int(syms["prof_ms"], 16) + 4 * k) for k in range(12)] + [syms["sml_miss"]] if "prof_ms" in syms and os.environ.get("PROF") else [])
 for name in want:

@@ -353,6 +353,7 @@ static void person(int x, int z, u16 c, int yaw) {   // a person: one quad that 
     qd(x - hx, 0, z - hz, x + hx, 0, z + hz, x + hx, -s * 2, z + hz, x - hx, -s * 2, z - hz, c);
     qd(x + hx, 0, z + hz, x - hx, 0, z - hz, x - hx, -s * 2, z - hz, x + hx, -s * 2, z + hz, c);   // (D39: and its back, for the faces the GPU skips)
 }
+static u32 hsh(u32 a); static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise, u16 rc, u16 wc); static const u16 ROOFC[6];
 static void draw_lot(const BInfo *b, int yaw) {
     u32 h = b->h; int k = b->lot;
     u16 grass = b->terrain == BT_DESERT ? C15(24, 20, 10) : b->terrain == BT_ROCKY ? C15(13, 13, 13) : b->terrain == BT_BEACH ? C15(26, 24, 14) : C15(11, 20, 8);
@@ -371,8 +372,8 @@ static void draw_lot(const BInfo *b, int yaw) {
     block(X0, Z0, X1, Z1, 0, Y, wall, wall);
     { int wn = (X1 - X0) / 5; for (int r = 0; r < st; r++) for (int k = 0; k < 3; k++) { int wx = X0 + wn * (1 + k * 2 - (k == 1 && r == 0 ? 0 : 0)); if (r == 0 && k == 1) { block(wx, Z1, wx + wn * 7 / 10, Z1 + 14, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); continue; } block(wx, Z1, wx + wn * 7 / 10, Z1 + 14, -T * (1 + r * 2) , -T * (2 + r * 2), C15(17, 24, 31), C15(17, 24, 31)); } }   // front door and windows
     block((X0 + X1) / 2 + T, Z0 + T / 2, (X0 + X1) / 2 + T * 3 / 2, Z0 + T, Y, Y - T * 3 / 2, C15(12, 6, 5), C15(12, 6, 5));   // a chimney
-    if (k <= LOT_APART) gable(X0, Z0, X1, Z1, Y, -T * 2, C15(18, 8, 6));
-    else ground(X0, Z0, X1, Z1, Y - 24, C15(14, 14, 15));
+    { u32 rh = hsh(h ^ 0x500Fu); int sty = st >= 3 || k > LOT_APART ? 1 : 2 + ((rh >> 2) & 1); static const s16 PIT[3] = { 110, 170, 250 };   // (D42: the map's picture has the lot's real roof)
+      roof_shape(X0 - T / 3, Z0 - T / 3, X1 + T / 3, Z1 + T / 3, Y, sty, PIT[1 + ((rh >> 8) & 1)], ROOFC[(rh >> 4) % 6], wall); }
     if (k <= LOT_APART) {   // a fence and a pool behind, or a garden
         int bk = (int)((h >> 12) % 6);
         if (bk == 0) ground(tl(x0 + 1), tl(z0 + d + 2), tl(x0 + w - 1), tl(z0 + d + 6), -24, C15(6, 18, 28));
@@ -632,7 +633,8 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
         if (k == LOT_SQUARE || k == LOT_SKATE) for (int y = 2; y < 11; y++) for (int x = 2; x < 11; x++) flr[y][x] = 2;
         for (int i = 0; i < 14; i++) { int x = (int)((h >> (i * 2)) & 15) % 13, y = (int)((h >> (i * 2 + 1)) % 11) % 13; if (y > 10 || obj_at(x, y) >= 0) continue;
             int pick = (int)((h >> (i + 3)) % 5);
-            if (k == LOT_PARK || k == LOT_SQUARE) { if (pick == 0) PUTP(x, y, 0, 3, (int)(i & 3)); else if (pick == 1) PUTP(x, y, 6, 1, 0); else if (pick == 2) PUTP(x, y, 6, 3, 0); else if (pick == 3) PUTP(x, y, 6, 2, 0); else PUTP(x, y, 3, 2, 0); }
+            if (k == LOT_PARK || k == LOT_SQUARE) { if (pick == 0) PUTP(x, y, 0, 3, abs(x - 6) > abs(y - 6) ? 1 : 0);   // (D42, as the PS1: a bench lies along the walk by it, not at random)
+                else if (pick == 1) PUTP(x, y, 6, 1, 0); else if (pick == 2) PUTP(x, y, 6, 3, 0); else if (pick == 3) PUTP(x, y, 6, 2, 0); else PUTP(x, y, 3, 2, 0); }
             else if (k == LOT_FARM) continue; else PUTP(x, y, pick & 1 ? 3 : 6, pick & 1 ? 2 : 2, 0); }
         if (k == LOT_SQUARE) PUTP(6, 6, 3, 3, 0);
         if (k == LOT_FARM) {   // (D38) the PS1's lot_farm: rows of crop beds, a barn with the hen coops and the cows, a fence along the front with a gate
@@ -812,7 +814,7 @@ static void draw_ui(void) {
         chip(166, 96, 82, 20, "Place", 1); chip(166, 118, 82, 20, "Turn", 0); chip(166, 140, 82, 18, "Back", 0);
     } else if (mode == M_BUILD) {
         plan(1);
-        static char rl[16]; static const char *const RN[3] = { "None", "Flat", "Gable" }; sprintf(rl, "Roof: %s", RN[roof_st]);
+        static char rl[16]; static const char *const RN[4] = { "Auto", "Flat", "Gable", "Hip" }; sprintf(rl, "Roof: %s", RN[roof_st]);
         const char *tl2[6] = { "Floor", "Wall", "Erase", "Move", "Sell", rl };
         for (int i = 0; i < 6; i++) button(164, 22 + i * 14, 88, 13, tl2[i], C15(24, 14, 8), tool == i);
         if (ed_lv) { sprintf(t, "Floor %d of %d", ed_lv + 1, UPN + 1); text(164, 110, 1, C15(8, 12, 22), t); }
@@ -874,7 +876,7 @@ static void ui_down(int tx, int ty) {
         if (hit(166, 118, 82, 20, tx, ty)) prot = (prot + 1) & 3;
         if (hit(166, 140, 82, 18, tx, ty)) pick = -1;
     } else if (mode == M_BUILD) {
-        for (int i = 0; i < 6; i++) if (hit(164, 22 + i * 14, 88, 13, tx, ty)) { tool = i; if (pal < 1) pal = 1; if (tool == 1 && pal > 6) pal = 6; if (i == 5) roof_st = (roof_st + 1) % 3; ui_ver++; }
+        for (int i = 0; i < 6; i++) if (hit(164, 22 + i * 14, 88, 13, tx, ty)) { tool = i; if (pal < 1) pal = 1; if (tool == 1 && pal > 6) pal = 6; if (i == 5) roof_st = (roof_st + 1) % 4; ui_ver++; }
         int n = tool == 0 ? 5 : tool == 1 ? 6 : 0;
         for (int i = 0; i < n; i++) if (hit(164 + i * 15, 124, 14, 15, tx, ty)) pal = i + 1;
         int c = lot_touch(tx, ty);
@@ -1104,7 +1106,8 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw) {   // a n
     int X0 = ox + tl(x0), X1 = ox + tl(x0 + w), Z0 = oz + tl(z0), Z1 = oz + tl(z0 + d), Y = -(hh * T);
     block(X0, Z0, X1, Z1, 0, Y, wall, wall);
     if (!far_lod) { int wn = (X1 - X0) / 5; block(X0 + wn * 2, Z1, X0 + wn * 2 + wn * 7 / 10, Z1 + 14, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); block(X0 + wn, Z1, X0 + wn + wn * 7 / 10, Z1 + 14, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); block(X0 + wn * 3, Z1, X0 + wn * 3 + wn * 7 / 10, Z1 + 14, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); }
-    if (k <= LOT_APART) gable(X0, Z0, X1, Z1, Y, -T * 2, C15(18, 8, 6)); else ground(X0, Z0, X1, Z1, Y - 24, C15(14, 14, 15));
+    { u32 rh = hsh(h ^ 0x500Fu); int sty = st >= 3 || k > LOT_APART ? 1 : 2 + ((rh >> 2) & 1); static const s16 PIT[3] = { 110, 170, 250 };   // (D42) hip, gable or flat, a colour and a pitch per building
+      roof_shape(X0 - T / 3, Z0 - T / 3, X1 + T / 3, Z1 + T / 3, Y, sty, PIT[1 + ((rh >> 8) & 1)], ROOFC[(rh >> 4) % 6], wall); }
     for (int i = 0; i < pop && i < 3; i++) person(ox + tl(4 + i * 3), oz + tl(z0 + d + 3), C15(6 + i * 4, 10, 25 - i * 3), yaw);   // the bores who live there
 }
 static u16 land_col(int t) { return t == BT_BEACH || t == BT_DESERT ? C15(26, 23, 15) : t == BT_ROCKY ? C15(14, 16, 12) : t == BT_FOREST ? C15(8, 17, 6) : C15(11, 20, 8); }   // (D37)
@@ -1270,14 +1273,75 @@ static int lv_box(int L, int *x0, int *y0, int *x1, int *y1) {   // the outline 
     if (L) for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) if (fl[y][x]) { if (x < *x0) *x0 = x; if (x + 1 > *x1) *x1 = x + 1; if (y < *y0) *y0 = y; if (y + 1 > *y1) *y1 = y + 1; }
     return *x1 > *x0 && *y1 > *y0;
 }
+// ---- (D42) ROOFS, as the PS1's (world.c roof_region): every enclosed building gets a roof over its top storey, from its footprint: HIP (sloped all round),
+// GABLE (two slopes, plaster gable ends) or FLAT (a slab with a parapet). The height goes in from the edge at the pitch and levels off three cells in, as the PS1's
+// caps; eaves overhang the walls. In San Boreas each building rolls its own style, colour and pitch (the PS1's dice: towers and big blocks flat); Build > Roof
+// sets one style for the lot (Auto / Flat / Gable / Hip; the save's two roof bits, 0 was "None" and is now Auto). Cutaway hides the roof of a building a Bore of
+// yours is in, so you see in, and every roof over storeys you are below (as the PS1's b_see); Always shows them all; Hide none.
+static int view_lv(void);
+static const u16 ROOFC[6] = { C15(24, 11, 8), C15(13, 14, 16), C15(19, 13, 8), C15(11, 16, 10), C15(9, 11, 17), C15(26, 22, 16) };   // the PS1's CLAY RED, SLATE, CEDAR, MOSS GREEN, NAVY, SANDSTONE
+static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise, u16 rc, u16 wc) {   // a roof over the box (eaves included), its foot at ry (up is negative)
+    int w = X1 - X0, d = Z1 - Z0, sh = w < d ? w : d, r = sh / 2; if (r > 6 * T) r = 6 * T;
+    u16 fas = shade(rc, 5);
+    if (sty == 1) {   // FLAT: the slab, a parapet round it, a box on top (the PS1's towers and big blocks)
+        u16 tc = shade(C15(18, 18, 19), 8), pc = shade(wc, 7);
+        block(X0, Z0, X1, Z1, ry + 30, ry - 40, fas, tc);
+        block(X0, Z0, X1, Z0 + 40, ry - 40, ry - 110, pc, shade(pc, 10)); block(X0, Z1 - 40, X1, Z1, ry - 40, ry - 110, pc, shade(pc, 10));
+        block(X0, Z0 + 40, X0 + 40, Z1 - 40, ry - 40, ry - 110, pc, shade(pc, 10)); block(X1 - 40, Z0 + 40, X1, Z1 - 40, ry - 40, ry - 110, pc, shade(pc, 10));
+        if (w > 4 * T && d > 4 * T) { int cx = X0 + w * 2 / 3, cz = Z0 + d / 3; block(cx - T / 2, cz - T / 2, cx + T / 2, cz + T / 2, ry - 40, ry - 40 - T * 2 / 3, C15(20, 20, 21), C15(25, 25, 26)); }
+        return; }
+    int RH_ = r * rise / 256, rtop = ry - RH_, along_x = w >= d, rx = along_x ? (sty == 3 ? r : 0) : r, rz = along_x ? r : (sty == 3 ? r : 0);
+    block(X0, Z0, X1, Z1, ry + 40, ry, fas, fas);   // (the eaves' thickness)
+    u16 c0 = rc, c1 = shade(rc, 6), ce = rx ? shade(rc, 7) : wc, cf = rz ? rc : wc;   // (gable ends are the walls' plaster)
+    qd(X0, ry, Z0, X1, ry, Z0, X1 - rx, rtop, Z0 + rz, X0 + rx, rtop, Z0 + rz, cf);
+    qd(X0 + rx, rtop, Z1 - rz, X1 - rx, rtop, Z1 - rz, X1, ry, Z1, X0, ry, Z1, rz ? c1 : shade(wc, 7));
+    qd(X0, ry, Z0, X0 + rx, rtop, Z0 + rz, X0 + rx, rtop, Z1 - rz, X0, ry, Z1, ce);
+    qd(X1 - rx, rtop, Z0 + rz, X1, ry, Z0, X1, ry, Z1, X1 - rx, rtop, Z1 - rz, rx ? c1 : shade(wc, 6));
+    if (X1 - rx > X0 + rx && Z1 - rz > Z0 + rz) ground(X0 + rx, Z0 + rz, X1 - rx, Z1 - rz, rtop, shade(rc, 9));   // (levelled off: a flat top)
+    else if (!rx || !rz) { int a = along_x ? Z0 + rz : X0 + rx; (void)a; }
+    (void)c0;
+}
+typedef struct { s8 x0, y0, x1, y1, top; u8 sty, col, pit; } Bld;
+static Bld blds[12]; static int nbld;
+static void bld_scan(void) {   // the enclosed buildings of the lot (cells the outside cannot reach without crossing a wall or a shut door), each with its box and top storey
+    static u8 out[GN + 2][GN + 2], id[GN][GN]; static u8 qx[(GN + 2) * (GN + 2)], qy[(GN + 2) * (GN + 2)]; memset(out, 0, sizeof out); memset(id, 0, sizeof id); nbld = 0;
+    int qh = 0, qt = 0;
+    for (int y = 0; y < GN + 2; y++) for (int x = 0; x < GN + 2; x++) if (!x || !y || x == GN + 1 || y == GN + 1) { out[y][x] = 1; qx[qt] = (u8)x; qy[qt++] = (u8)y; }
+    while (qh < qt) { int x = qx[qh], y = qy[qh++];   // (grid with a border: cell (x-1, y-1))
+        static const s8 DD4[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+        for (int k = 0; k < 4; k++) { int nx = x + DD4[k][0], ny = y + DD4[k][1]; if (nx < 0 || ny < 0 || nx > GN + 1 || ny > GN + 1 || out[ny][nx]) continue;
+            int cx = x - 1, cy = y - 1, wv = 0;
+            if (k == 0 && cy >= 0 && cy < GN && cx + 1 >= 0 && cx + 1 <= GN) wv = vwl[cy][cx + 1]; if (k == 1 && cy >= 0 && cy < GN && cx >= 0 && cx <= GN) wv = vwl[cy][cx];
+            if (k == 2 && cx >= 0 && cx < GN && cy + 1 >= 0 && cy + 1 <= GN) wv = hwl[cy + 1][cx]; if (k == 3 && cx >= 0 && cx < GN && cy >= 0 && cy <= GN) wv = hwl[cy][cx];
+            if (wv && wv != 6) continue; out[ny][nx] = 1; qx[qt] = (u8)nx; qy[qt++] = (u8)ny; } }
+    for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) if (!out[y + 1][x + 1] && !id[y][x] && nbld < 12) {   // a building: every inside cell joined to it (walls inside it do not part it)
+        Bld *b = &blds[nbld++]; b->x0 = b->x1 = (s8)x; b->y0 = b->y1 = (s8)y; qh = qt = 0; id[y][x] = (u8)nbld; qx[qt] = (u8)x; qy[qt++] = (u8)y;
+        while (qh < qt) { int cx = qx[qh], cy = qy[qh++]; if (cx < b->x0) b->x0 = (s8)cx; if (cx > b->x1) b->x1 = (s8)cx; if (cy < b->y0) b->y0 = (s8)cy; if (cy > b->y1) b->y1 = (s8)cy;
+            static const s8 DD4[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+            for (int k = 0; k < 4; k++) { int nx = cx + DD4[k][0], ny = cy + DD4[k][1]; if (nx < 0 || ny < 0 || nx >= GN || ny >= GN || out[ny + 1][nx + 1] || id[ny][nx]) continue; id[ny][nx] = (u8)nbld; qx[qt] = (u8)nx; qy[qt++] = (u8)ny; } }
+        int t = 0; for (int L = 1; L <= UPN; L++) { int any = 0; for (int yy = b->y0; yy <= b->y1 && !any; yy++) for (int xx = b->x0; xx <= b->x1; xx++) if (uflr[L - 1][yy][xx]) { any = 1; break; } if (any) t = L; }
+        b->top = (s8)t;
+        u32 h = hsh(lot_seed * 2654435761u ^ (u32)(b->x0 * 31 + b->y0 * 977)); int w = b->x1 - b->x0 + 1, dd = b->y1 - b->y0 + 1;
+        BInfo bi; int kind = LOT_HOUSE; if (lot_bx >= 0 && lot_bx < 2000) { bm_block(lot_bx, lot_by, &bi); kind = bi.lot; }
+        int big = kind >= LOT_SHOP && kind != LOT_PARK && kind != LOT_FARM;
+        b->sty = (u8)(roof_st ? (roof_st == 1 ? 1 : roof_st == 2 ? 2 : 3) : (t >= 2 || (w >= 9 && dd >= 8 && (h & 3) == 0) || (big && (h & 1)) ? 1 : 2 + ((h >> 2) & 1)));   // (the PS1's dice: towers and big blocks flat, else hip or gable)
+        b->col = (u8)(zone == Z_ISLAND ? 2 : (h >> 4) % 6); b->pit = (u8)(1 + ((h >> 8) & 1));
+        if (zone == Z_ISLAND && b->sty == 1) b->sty = 2; }   // (the island's huts: thatch-brown gables)
+}
+static int bld_seen(const Bld *b) {   // (Cutaway) 0: a Bore of yours is inside, or you look at a storey under its top: no roof, so you see in
+    if (mode != M_LIVE) return mode == M_BUILD && tool == 5;
+    if (o_roof == 2) return 0; if (o_roof == 1) return 1;
+    if (view_lv() < b->top) return 0;
+    for (int q = 0; q < nsim; q++) { int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16); if (cx >= b->x0 && cx <= b->x1 && cy >= b->y0 && cy <= b->y1) return 0; }
+    return 1;
+}
+static u32 roof_bits(void) { bld_scan(); u32 m = 0; for (int i = 0; i < nbld; i++) if (bld_seen(&blds[i])) m |= 1u << i; return m; }
 static void roof_draw(int top) {
-    if (!roof_st) return;
-    if (mode == M_LIVE ? o_roof == 2 : !(mode == M_BUILD && tool == 5)) return;
-    int x0, y0, x1, y1; if (!lv_box(top, &x0, &y0, &x1, &y1)) return;
-    if (mode == M_LIVE && o_roof == 0) for (int q = 0; q < nsim; q++) { int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16); if (slv[q] == top && cx >= x0 && cx < x1 && cy >= y0 && cy < y1) return; }   // cutaway: someone is home up there, so you can see in
-    int X0 = tl(x0 * 2), X1 = tl(x1 * 2), Z0 = tl(y0 * 2), Z1 = tl(y1 * 2), ry = -WHF * (top + 1);
-    if (roof_st == 1) block(X0 - 10, Z0 - 10, X1 + 10, Z1 + 10, ry, ry - 70, C15(18, 18, 20), C15(22, 22, 24));
-    else if (roof_st == 2) { int span = (Z1 - Z0) < (X1 - X0) ? (Z1 - Z0) : (X1 - X0); gable(X0 - 60, Z0 - 60, X1 + 60, Z1 + 60, ry, -span / 3, C15(22, 9, 7)); }
+    (void)top; bld_scan(); static const s16 PIT[3] = { 110, 170, 250 };
+    for (int i = 0; i < nbld; i++) { const Bld *b = &blds[i]; if (!bld_seen(b)) continue;
+        int X0 = tl(b->x0 * 2) - T / 3, X1 = tl(b->x1 * 2 + 2) + T / 3, Z0 = tl(b->y0 * 2) - T / 3, Z1 = tl(b->y1 * 2 + 2) + T / 3, ry = -40 - WHF * (b->top + 1);
+        u16 wc = WALLC[0]; { int v = hwl[b->y0][b->x0]; if (v >= 1 && v <= 4) wc = WALLC[v - 1]; }
+        roof_shape(X0, Z0, X1, Z1, ry, b->sty, PIT[b->pit], ROOFC[b->col], wc); }
 }
 static void draw_floors(int L) {   // floors as the biggest same-type rectangles: no seams for the edge anti-aliasing to show the grass through (upstairs: slabs, so a storey has a thickness)
     static u8 dn[GN][GN]; memset(dn, 0, sizeof dn); u8 (*fl)[GN] = FLv(L);
@@ -1355,7 +1419,7 @@ world:
         if (o_look && gxb) { int X = (gx_far + 9) * 1024; if (X > 32000) X = 32000; gx_c0(0x11); gx_id(0x1B); gxb[gxn++] = 4 * 4096; gxb[gxn++] = 4096; gxb[gxn++] = 4 * 4096; gx_lv = 0; ground(-X, -X, X, X, 180, C15(7, 16, 6)); gx_c1(0x12, 1); gx_lv = 0; }   // (D40: land to the haze, not a lot floating in the sky)
         } }
     if (mv) { gx_pid(6); dog_draw(); ghost_draw(); }
-    if (st && show == top) { gy_off = 0; gx_pid(4); roof_draw(top); }
+    if (st) { gy_off = 0; gx_pid(4); roof_draw(top); }   // (D42: each building's own roof over its own top storey)
     if (mode == M_LIVE) { if (mv) { PROF(2); gx_pid(56); draw_city(); PROF(7); } if (wd) { gx_pid(3); draw_far_all(yaw); } }
     gy_off = -WHF * vl;
     if (mv && mode == M_LIVE && mark_t > 0) { ground(tl(mark_x * 2), tl(mark_y * 2), tl(mark_x * 2 + 2), tl(mark_y * 2 + 2), -60, C15(31, 31, 12)); mark_t--; }
@@ -1373,7 +1437,7 @@ static u32 still_sig(int yaw, int part) {   // (D39) everything a still list dep
     u32 h = 2166136261u + (u32)part;
     #define HM(v) h = (h ^ (u32)(v)) * 16777619u
     HM(mode); HM(zone); HM(lot_bx); HM(lot_by); HM(nb_ok); HM(nobj); HM(roof_st); HM(tool); HM(ed_lv); HM(view_lv()); HM(door_cx + door_cy * 32); HM(lit_on); HM(lit_sgn);
-    int show = show_lv(), top = top_lv(); HM(show); HM(top); HM(show == top && roof_st ? roof_seen(top) : 0);
+    int show = show_lv(), top = top_lv(); HM(show); HM(top); if (part == 0) { HM(roof_bits()); HM(roof_st | lot_seed << 2); }
     HM(o_det | o_chk << 1 | o_shd << 2 | o_lit << 3 | o_roof << 4 | o_dd << 6 | o_sty << 8 | o_trf << 10 | o_look << 12 | o_out << 14 | ring_r << 16 | prof_full << 20);
     { const u32 *w = (const u32 *)flr; for (unsigned k = 0; k < sizeof flr / 4; k++) HM(w[k]); }
     if (part == 0) { const u8 *q = &hwl[0][0]; for (unsigned k = 0; k < sizeof hwl; k++) HM(q[k]); q = &vwl[0][0]; for (unsigned k = 0; k < sizeof vwl; k++) HM(q[k]); }
@@ -2805,7 +2869,8 @@ int main(void) {
                 else if (sc == 3) { for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (door_cx + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 13 * 16; sims[q].act = -1; } live_pitch = 2200; yaw_t = live_yaw = 4096 * 2; live_dist = 14000; }
                 else if (sc == 5) { live_pitch = 1800; live_dist = 16000; yaw_t = live_yaw = 4096 * 2 + 1500; }   // (5: the horizon)
                 else if (sc >= 10 && sc < 13) { o_look = sc - 10; o_dirty = 1; }   // (10-12: Classic, Rich, Toon)
-                else if (sc >= 20 && sc < 23) { o_detl = sc - 20; o_dirty = 1; } }   // (20-22: Detail Auto, DS, DSi)
+                else if (sc >= 20 && sc < 23) { o_detl = sc - 20; o_dirty = 1; }
+                else if (sc >= 30 && sc < 33) { o_roof = sc - 30; o_dirty = 1; } }   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
 #endif
             if (cam_on) {   // stylus camera: drag to orbit/tilt (or pan), buttons for zoom, follow, reset, done
                 if (down & KEY_TOUCH) { cam_drag = 0; if (hit(216, 36, 38, 20, tp.px, tp.py)) { cam_pan ^= 1; forced = 1; } else if (hit(216, 58, 38, 20, tp.px, tp.py)) cam_drag = 1;
