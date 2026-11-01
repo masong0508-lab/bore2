@@ -1462,7 +1462,11 @@ void sim_crime(int k, int ev) { if (crime_n[k] < 9) crime_n[k]++; crime_evid = M
 void sim_arrest(int how) { arrest_how = how; sim_want_prison = 1; }   // (how: 0 caught fighting, 1 gave up, 2 a warrant, 3 a tip-off)
 static void crime_midnight(void) {   // the detectives: what you got away with can catch up; and a name on the record draws the wrong attention
     if (crime_skip) return; if (crime_evid > 0) crime_evid -= 2;
+#ifdef BORE_DC
+    if (crime_total() && (int)(look_rand() % 100) < crime_evid / 2) { sim_note("POLICE AT THE DOOR: A WARRANT!"); { extern void dc_rumble(int, int); dc_rumble(5, 20); } sim_arrest(2); return; }
+#else
     if (crime_total() && (int)(look_rand() % 100) < crime_evid / 2) { sim_note("POLICE AT THE DOOR: A WARRANT!"); sim_arrest(2); return; }
+#endif
     if (rap_sheet >= 1 && !crime_total() && (int)(look_rand() % 100) < rap_sheet * 2) { sim_note("A TIP-OFF! THE POLICE ARE HERE"); sim_arrest(3); }
 }
 void sim_skip_days(int n) { crime_skip = 1; for (int i = 0; i < n; i++) { clock_min = 1440; clock_tick(); } clock_min = 8 * 60; crime_skip = 0; }   // (HARD TIME: the days served go by)

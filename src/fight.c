@@ -85,6 +85,9 @@ static int land(Fz *a, Fz *o, int mv) {   // a blow's active frames: 1 = it conn
     if (o->st == BS_ATK && o->t < mvs[o->mv].start) { dmg = dmg * 3 / 2; call = "COUNTER!"; callT = 40; }
     if (o->st == BS_HIT) { o->combo++; numcall(" HITS", o->combo + 1); } else o->combo = 0;
     o->hp = o->hp > dmg ? o->hp - dmg : 0;
+#ifdef BORE_DC
+    { extern void dc_rumble(int, int); dc_rumble(dmg > 20 ? 7 : dmg > 10 ? 5 : 3, 6); }   // (Dreamcast: the Jump Pack feels the blow)
+#endif
     o->trailT = 24; o->flash = 4; o->crouch = 0;
     o->st = m->lvl == 3 ? BS_THROWN : BS_HIT; o->t = o->stun = m->stun; o->kx = S * m->kb * 13 >> 8; o->kz = C * m->kb * 13 >> 8; o->jatk = 0;
     a->ev |= EV_HIT; if (m->dmg >= 14) a->ev |= EV_BIG;

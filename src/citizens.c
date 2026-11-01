@@ -1378,7 +1378,11 @@ COLD static int step_rest(Cit *c, int i, int n, int dx, int dz, int d2, const Ho
     case CM_VISIT: {   // out to a neighbour's door, a knock, a wait, and off again
         if (c->sub == 0) { if (nav(c, c->ix, c->iy, c->stage == AG_ELDER ? 3 : 4, 0, n)) {
             c->sub = 1; c->t = (u16)(200 + rn(200)); c->yaw = 0;
+#ifdef BORE_DC
+            if (d2 < 7 * TILE * 7 * TILE) { say(c, "KNOCK KNOCK"); { extern void dc_rumble(int, int); dc_rumble(3, 4); } }   // (the Jump Pack knocks too)
+#else
             if (d2 < 7 * TILE * 7 * TILE) say(c, "KNOCK KNOCK");
+#endif
             const Hh *g = &hh[c->vh];
             for (int k = 0; k < g->n; k++) { Cit *o = &cits[g->mem[k]]; if (o->mode == CM_IDLE || (o->mode == CM_CHORE && o->sub == 1)) { if (!o->say_t && indoors_at(o->x, o->z)) say(o, "COMING!"); break; } }
         } used = g_used; }

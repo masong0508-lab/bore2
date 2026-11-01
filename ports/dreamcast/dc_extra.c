@@ -132,3 +132,15 @@ void dc_opts_draw(int top) {
     ui_icon(110, top + 176, IC_HELP, UI_BLUE);
     ui_wrap(126, top + 171, 176, 2, dblurb[dsel], UI_INK);
 }
+
+// ---------------------------------------------------------------- the Jump Pack: a shake for the game's big moments (src/ calls this
+// under BORE_DC only: a skate landing, a hit in the fight game, a knock at the door, the police at the door). power 1..7, a few frames.
+#include <dc/maple/purupuru.h>
+void dc_rumble(int power, int frames) {
+    if (!dc_opt_rumble) return;
+    maple_device_t *d = maple_enum_type(0, MAPLE_FUNC_PURUPURU);
+    if (!d) return;
+    purupuru_effect_t e; e.raw = 0;
+    e.motor = 1; e.fpow = (uint32_t)(power < 1 ? 1 : power > 7 ? 7 : power); e.conv = 1; e.freq = 26; e.inc = (uint8_t)(frames < 1 ? 1 : frames > 255 ? 255 : frames);
+    purupuru_rumble(d, &e);
+}

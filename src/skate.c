@@ -156,6 +156,9 @@ static void land(Sim *s, int g) {
     int face = (s->yaw + (k.fakie ? 2048 : 0)) & 4095, a = adiff(s->yaw, k.dir);   // the rider's nose against the way it travels
     EV(3, g, k.vy / FX, adiff(s->yaw, k.dir));
     k.y = g * FX;
+#ifdef BORE_DC
+    { extern void dc_rumble(int, int); int v = ABS(k.vy / FX); if (v > 8) dc_rumble(v > 60 ? 6 : v > 30 ? 4 : 2, 8); }   // (Dreamcast: the Jump Pack feels the landing)
+#endif
     if (k.flip && k.flipt < (k.fliptk == TK_IMPOSS ? 22 : 18) * k.flipn - 3) { bail(s, "LAND THE FLIP"); return; }
     if (ABS(a) < 760) k.fakie = 0; else if (ABS(a) > 2048 - 760) k.fakie = 1; else { bail(s, "LAND STRAIGHT"); return; }
     (void)face;
