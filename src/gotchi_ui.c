@@ -577,13 +577,13 @@ static void draw_friend(void) {
     sprintf(s, "%s THE %s", gx_given(c->nm), nm); strip(s);
     sprintf(s, u == t ? "YOURS" : "%s'S", os >= 0 ? sims[os].bore.first : "?"); lt(84, 22, s); lt(84, 34, relname(ck()->id, kc->id)); sprintf(s, "%d OF %d", sub + 1, fr_n); lt(84, 46, s);
     sprintf(s, "%s", gx_pers(kc->pers)); lt(84, 58, s); ui_icon_s(84, 72, IC_HEART, 12, c->bond >= 60 ? UI_RED : UI_LINE); lt(100, 74, c->bond >= 60 ? "CLOSE" : "NEW");
-    bar_msg("X PLAYDATE  SQ BATTLE  LR PICK  UD OTHER FAMILY");
+    bar_msg("X PLAY  SQ BATTLE  LR PICK  UD FAMILY");
 }
 static void draw_dress(void) {
     draw_hand(1); lcd_panel(); Blob *b = cb(); Kin k = *ck(); k.acc = (u8)sub; char s[40];
     scene(b, &k, anim / 20, 0, danceT > 0 ? MD_DANCE : MD_HAPPY); dots_draw(80, 18, 4, 0, 16, 0, 32);
-    ltc(160, 20, gx_acc(sub)); { const Toy *t = tt(); if (sub == 0 || (t->accs & (1 << sub))) s[0] = 0, strcpy(s, sub == ck()->acc ? "WEARING IT" : "OWNED"); else sprintf(s, "$%d", gx_acc_cost(sub)); lt(84, 100, s); }
-    sprintf(s, "%d / %d", sub + 1, NACC); lt(210, 100, s); ui_hints(160, 217, "X WEAR|LR PICK|O BACK", 1);
+    ltc(160, 100, gx_acc(sub)); { const Toy *t = tt(); if (sub == 0 || (t->accs & (1 << sub))) s[0] = 0, strcpy(s, sub == ck()->acc ? "WEARING IT" : "OWNED"); else sprintf(s, "$%d", gx_acc_cost(sub)); lt(84, 16, s); }
+    sprintf(s, "%d / %d", sub + 1, NACC); lt(210, 16, s); ui_hints(160, 217, "X WEAR|LR PICK|O BACK", 1);
 }
 static void draw_more(void) {
     draw_hand(1); lcd_panel(); static const char *const it[5] = { "FAMILY HOME", "PET DIARY", "AWARDS", "BLOBDEX", "HELP PAGES" };
@@ -621,7 +621,7 @@ static void draw_dexd(void) {
     for (int i = 0; i < GFORMS; i++) { int x = 20 + i * 47, h = gotchi_dex_has(dexsel, i); ui_round(x - 1, top + 86, 46, 26, 5, i == dexf ? UI_BLUE : UI_LINE, i == dexf ? UI_BLUE : UI_LINE, 0);
         ui_round(x, top + 87, 44, 24, 4, h ? UI_RGB(172, 196, 128) : UI_RGB(206, 214, 232), h ? UI_RGB(172, 196, 128) : UI_RGB(206, 214, 232), 0); dex_pet(dexsel, i, col, h, x - 2, top + 87, 1, 0); chip(x + 22, top + 114, h ? gx_form(i) : "???", h ? fcol[i] : UI_LINE, UI_WHITE); }
     ui_text(20, top + 134, 1, "COLOURS SEEN", UI_INK); for (int c = 0; c < 8; c++) { int sn = gotchi_cdex_has(dexsel, c); const u8 *p = PAL[c]; ui_disc(32 + c * 28, top + 156, 16, sn ? UI_RGB(p[0], p[1], p[2]) : UI_LINE); if (!sn) ui_textc(32 + c * 28, top + 152, 1, "?", UI_WHITE); }
-    ui_wrap(20, top + 166, 270, 2, "FAMILIES CAN HAND DOWN COLOURS, KINDS AND RARE MUTATIONS.", UI_SOFT);
+    ui_textfit(20, top + 168, 276, "KIDS CAN INHERIT COLOURS AND RARE MUTATIONS", UI_SOFT);
     ui_hints(160, 214, "LR FORM|O BACK", 1);
 }
 // ---- the family tree ----
@@ -647,7 +647,7 @@ void tree_input(int pr) {
 static void draw_tree(void) {
     sky(); ui_accent = 2; int top = ui_window(14, 8, 292, 224, "FAMILY TREE", IC_PEOPLE); ui_accent = 0; tree_build();
     if (!ntn) { ui_wrapc(30, top + 40, 260, 3, "THIS PET HAS NO FAMILY RECORD YET. EGGS FROM A PAIR START A TREE.", UI_SOFT); ui_hints(160, 214, "O BACK", 1); return; }
-    static const int ry[4] = { 0, 32, 64, 112 };
+    static const int ry[4] = { 0, 32, 64, 118 };
     int sy = top + 2;
     for (int i = 0; i < ntn; i++) {   // the lines first: from each parent's foot down to the child's head
         if (tn[i].row == 2 && tn[i].id != treeId) continue;
@@ -657,15 +657,15 @@ static void draw_tree(void) {
     }
     for (int i = 0; i < ntn; i++) {
         const Line *l = gotchi_line(tn[i].id); if (!l) continue; Blob b; Kin k; kin_blob(&b, &k, l); int sel = i == treeSel, alive = l->fc & 128, gone = (l->fc & 64) != 0, row = tn[i].row, x = tn[i].x, y = sy + ry[row] + 4;
-        int self = tn[i].id == treeId; int w = self ? 68 : 36;
-        if (self) { ui_round(x - 36, y - 4, 72, 52, 7, UI_HILITE, UI_HILITE, 0); }
-        if (sel) ui_round(x - w / 2 - 3, y - 3, w + 6, self ? 50 : 36, 6, UI_BLUE, UI_BLUE, 0);
+        int self = tn[i].id == treeId; int w = self ? 68 : 44;
+        if (self) { ui_round(x - 36, y - 4, 72, 55, 7, UI_HILITE, UI_HILITE, 0); }
+        if (sel) ui_round(x - w / 2 - 3, y - 3, w + 6, self ? 53 : 36, 6, UI_BLUE, UI_BLUE, 0);
         if (self) { scene(&b, &k, anim / 20, 0, MD_NORM); gfx_rect(x - 32, y, 64, 32, alive ? 172 : 150, alive ? 196 : 158, alive ? 128 : 150, 0); dots_all(x - 32, y, 2); }
         else mini_tile(&b, &k, x - 18, y, 36, gone);
-        ui_textfit(x - w / 2, y + (self ? 34 : 20), w, gx_given(l->nm), gone ? UI_SOFT : UI_INK);
+        ui_textfit(x - w / 2, y + (self ? 36 : 20), w, gx_given(l->nm), gone ? UI_SOFT : UI_INK);
         if (gone) ui_icon_s(x + (self ? 24 : 10), y - 2, IC_STAR, 10, UI_AMBER);
     }
-    { const Line *l = gotchi_line(tn[treeSel].id); char s[80]; int by = top + 152;
+    { const Line *l = gotchi_line(tn[treeSel].id); char s[80]; int by = top + 158;
       ui_round(20, by, 280, 18, 6, UI_PANEL, UI_PANEL, 0);
       if (l) { static const char *const rw[4] = { "GRANDPARENT", "PARENT", "", "CHILD" }; int rn = tn[treeSel].row; sprintf(s, "%s %s %s  GEN %d  %s", rn == 2 ? (tn[treeSel].id == treeId ? "THIS PET" : "SIBLING") : rw[rn], gx_given(l->nm), gx_species(l->sp), (l->pg >> 3) + 1, (l->fc & 64) ? "(PASSED ON)" : gx_pers(l->pg & 7)); ui_textfit(26, by + 5, 270, s, UI_INK); } }
     ui_hints(160, 214, "ARROWS PICK|X CENTRE|O BACK", 1);
@@ -788,6 +788,10 @@ static void draw_guide(void) {
     { char b[16]; sprintf(b, "%d OF %d", guidepage + 1, NGP); ui_text(24, 216, 1, b, UI_SOFT); } ui_hints(160, 214, "L1 R1 PAGE|O BACK", 1);
 }
 void gotchi_draw(void) {
+#ifdef AUTO_GVIEWS
+    { static int n; static const u8 vl[] = { V_BOX, V_BASKET, V_HAND, V_DEX, V_DEXD, V_FEED, V_PLAYPICK, V_FRIEND, V_STATS, V_GUIDE, V_TREE, V_HOME, V_DIARY, V_AWARD, V_MORE, V_DRESS, V_TREE, V_LOOK, V_COPY, V_CATCH, V_HILO, V_TREE, V_TREE };
+      int k = n++ / 60; if (k < (int)sizeof vl && n % 60 == 1) { view = vl[k]; sub = (k == 9) ? 0 : 1; bi = 0; isel = 0; treeId = 0; treeSel = k == 16 ? 1 : k == 21 ? 4 : k == 22 ? 5 : 0; dexsel = 17; dexf = 1; gach = 0x2A5; homeSel = 3; if (view == V_LOOK) start_look(); if (view == V_COPY) start_copy(); if (view == V_CATCH) start_catch(); if (view == V_HILO) start_hilo(); } }
+#endif
     switch (view) {
     case V_BOX: draw_box(); break; case V_BASKET: draw_basket(); break; case V_HAND: draw_hand(0); break; case V_FEED: draw_feed(); break;
     case V_PLAYPICK: draw_playpick(); break; case V_LOOK: draw_look(); break; case V_COPY: draw_copy(); break; case V_CATCH: draw_catch(); break; case V_HILO: draw_hilo(); break;
