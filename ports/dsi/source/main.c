@@ -3,7 +3,7 @@
 // Top screen: that lot in 3D. L/R change town, A/B zoom, START re-rolls the world.
 // Fixed point only; the world is bigmap.c, shared with the PS1 build (nothing of it is stored).
 #define PMN 28
-static int o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song;
+static int o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song, o_need = 2, o_day = 1, o_msgt = 1, o_tmus = 1, o_gmus = 1, o_shuf = 1;
 
 // ---- the options: one table (name, the choices, the value, the tab it lives on, its default). Saved in table order, so new ones are only ever added at the end.
 typedef struct { const char *name, *vals; int *v; unsigned char tab, def; } Opt;
@@ -20,13 +20,18 @@ static const Opt OPT[] = {
     { "Reset graphics", "tap", 0, 3, 0 }, { "Reset audio", "tap", 0, 3, 1 }, { "Reset all", "tap", 0, 3, 255 },
     { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Auto|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52", &o_song, 1, 0 },
     { "Roofs", "Cutaway|Always|Hide", &o_roof, 0, 0 },
+    // (D33, from the PS1 OPTIONS: these are saved in their own block after the others, so old saves load with the defaults)
+    { "Needs speed", "Never fall|Slow|Normal|Fast", &o_need, 2, 2 }, { "Day length", "Short|Normal|Long|Epic", &o_day, 2, 1 }, { "Message time", "Short|Normal|Long", &o_msgt, 2, 1 },
+    { "Title music", "Off|On", &o_tmus, 1, 1 }, { "Game music", "Off|On", &o_gmus, 1, 1 }, { "Shuffle songs", "In order|At random", &o_shuf, 1, 1 },
+    { "Reset game", "tap", 0, 3, 2 },
 };
+#define OPT_OLD 36   // options saved in the save's first 40 bytes (the rest go in the 'OX' block)
 static void open_opts(void);
 #define NOPT ((int)(sizeof OPT / sizeof OPT[0]))
 static const char *const OPTAB[4] = { "Graphics", "Audio", "Game", "System" };
 static int opt_cnt(int i) { int n = 1; for (const char *p = OPT[i].vals; *p; p++) if (*p == '|') n++; return n; }
 static const char *opt_tok(int i, int n, char *b) { const char *p = OPT[i].vals; while (n-- > 0) { while (*p && *p != '|') p++; if (*p) p++; } int k = 0; while (*p && *p != '|' && k < 15) b[k++] = *p++; b[k] = 0; return b; }
-static int opt_list(int tab, int *idx) { int n = 0; for (int i = 0; i < NOPT; i++) if (OPT[i].tab == tab) idx[n++] = i; return n; }
+static int opt_list(int tab, int *idx) { int n = 0; for (int i = 0; i < NOPT; i++) if (OPT[i].tab == tab && !(!OPT[i].v && OPT[i].def == 255)) idx[n++] = i; for (int i = 0; i < NOPT; i++) if (OPT[i].tab == tab && !OPT[i].v && OPT[i].def == 255) idx[n++] = i; return n; }   // (Reset all goes last)
 #include <nds.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -37,6 +42,8 @@ int bsprintf(char *o, const char *f, ...) { va_list a; va_start(a, f); int r = v
 int bsnprintf(char *o, unsigned cap, const char *f, ...) { va_list a; va_start(a, f); int r = vsnprintf(o, cap, f, a); va_end(a); return r; }
 void boot(const char *s) { (void)s; }
 void loading(const char *w, int p) { (void)w; (void)p; }
+// what bigmap.c (shared with the PS1) asks of the PS1 side: no 8 MB heap here, no world.c height cache, debug counters
+int ram8 = 0; void *xalloc(unsigned n) { (void)n; return 0; } int dbg_miss[4]; void world_gh_reset(void) {}
 
 // ---------- the bottom screen: a 256 x 256 16-bit bitmap ----------
 static u16 *scr, *scr_sub, *hud;
@@ -84,7 +91,8 @@ static u16 lot_rgb(const BInfo *b) {
 #define OWN_MAX 64
 typedef struct { s16 bx, by; } OwnL;
 static OwnL own[OWN_MAX]; static int nown;
-static int funds, lot_bx = -1, lot_by = -1;
+static int funds, lot_bx = -1, lot_by = -1, home_bx = -1, home_by = -1;   // lot_bx/by: the lot you are on now; home_bx/by: the one you live in (always one of yours)
+static int is_home(int bx, int by) { return home_bx == bx && home_by == by; }
 static int lot_owned(int bx, int by) { for (int i = 0; i < nown; i++) if (own[i].bx == bx && own[i].by == by) return 1; return 0; }
 static int lot_price(const BInfo *b) {   // 0: not for sale (the sea, a river)
     if (b->terrain == BT_SEA || b->lot == LOT_RIVER || b->lot == LOT_SPACE || b->lot == LOT_OBS) return 0;
@@ -103,6 +111,7 @@ static void own_add(int bx, int by) { if (!lot_owned(bx, by) && nown < OWN_MAX) 
 static void own_remove(int bx, int by) { for (int i = 0; i < nown; i++) if (own[i].bx == bx && own[i].by == by) { own[i] = own[--nown]; return; } }
 static int hit(int x, int y, int w, int h, int tx, int ty);
 static void prop_trade(void);
+static void say(const char *m);
 static int map_enter, ne_on, ne_tool, ne_lot_i, ne_g_i, ne_road = 1, ne_last_x = -1, ne_last_y;
 static const u8 NELOT[] = { LOT_HOUSE, LOT_COTTAGE, LOT_TOWN, LOT_TWO, LOT_APART, LOT_SHOP, LOT_DINER, LOT_OFFICE, LOT_PARK, LOT_SCHOOL, LOT_GYM, LOT_CAFE, LOT_TOWER, LOT_EMPTY, LOT_FARM };
 static const u8 NEG[] = { BT_GRASS, BT_FOREST, BT_DESERT, BT_ROCKY, BT_BEACH, BT_SEA };
@@ -129,6 +138,7 @@ static void map_chip(int px_, int py_) {   // a tap on the strip under the map
         if (hit(229, 175, 25, 15, px_, py_)) ne_on = 1; else if (hit(202, 175, 25, 15, px_, py_)) open_opts();
         else if (hit(102, 175, 38, 15, px_, py_)) map_enter = 1;
         else if (hit(142, 175, 58, 15, px_, py_)) prop_trade();
+        else if (hit(48, 175, 52, 15, px_, py_) && lot_owned(sel_x, sel_y) && !is_home(sel_x, sel_y)) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot live at sea"); else { home_bx = sel_x; home_by = sel_y; say("Moved in: your new home"); map_enter = 1; } }   // (the old home stays yours, as a property)
         return; }
     for (int i = 0; i < 7; i++) if (hit(2 + i * 36, 162, 34, 13, px_, py_)) ne_tool = i;
     if (hit(2, 177, 110, 13, px_, py_)) { if (ne_tool == 0) ne_lot_i = (ne_lot_i + 1) % (int)sizeof NELOT; else if (ne_tool == 1) ne_g_i = (ne_g_i + 1) % 6; else if (ne_tool == 2) ne_road ^= 1; }
@@ -167,24 +177,26 @@ static void draw_map(void) {
             if (b.road & 1) rect(i * 8, j * 8, 8, 1, C15(9, 9, 10));
             if (b.road & 2) rect(i * 8, j * 8, 1, 8, C15(9, 9, 10));
         }
-        if (lot_owned(bx, by)) { u16 g = C15(31, 26, 4); rect(i * 8, j * 8, 8, 1, g); rect(i * 8, j * 8 + 7, 8, 1, g); rect(i * 8, j * 8, 1, 8, g); rect(i * 8 + 7, j * 8, 1, 8, g); }
+        if (lot_owned(bx, by)) { u16 g = is_home(bx, by) ? C15(31, 26, 4) : C15(8, 28, 31);   /* gold: your home; light blue: a property you own */ rect(i * 8, j * 8, 8, 1, g); rect(i * 8, j * 8 + 7, 8, 1, g); rect(i * 8, j * 8, 1, 8, g); rect(i * 8 + 7, j * 8, 1, 8, g); }
         if (bx == sel_x && by == sel_y) { rect(i * 8, j * 8, 8, 1, 31 | 31 << 5 | 31 << 10 | BIT(15)); rect(i * 8, j * 8 + 7, 8, 1, 0xFFFF); rect(i * 8, j * 8, 1, 8, 0xFFFF); rect(i * 8 + 7, j * 8, 1, 8, 0xFFFF); }
     }
     rect(0, 160, 256, 32, C15(3, 3, 5));
     BInfo b; bm_block(sel_x, sel_y, &b);
     char t[48];
     if (!ne_on) {
-        int own_ = lot_owned(sel_x, sel_y), price = lot_price(&b), fm, pp = pop_at(sel_x, sel_y, &fm), here = lot_bx == sel_x && lot_by == sel_y;
+        int own_ = lot_owned(sel_x, sel_y), price = lot_price(&b), fm, pp = pop_at(sel_x, sel_y, &fm), home = is_home(sel_x, sel_y), mv = own_ && !home;
         sprintf(t, "%.15s", bm_lot_name(b.lot)); text(4, 163, 1, C15(31, 31, 22), t);
-        if (own_) { rect(150, 162, 44, 10, C15(31, 24, 2)); text(154, 163, 1, C15(8, 4, 0), here ? "HOME" : "OWNED"); }
+        if (own_) { rect(150, 162, home ? 44 : 64, 10, home ? C15(31, 24, 2) : C15(8, 26, 31)); text(154, 163, 1, C15(8, 4, 0), home ? "HOME" : "PROPERTY"); }
+        else if (price && pp) text(150, 163, 1, C15(20, 22, 28), "Family home");   // (someone lives there: not for sale)
         else if (price) { sprintf(t, "FOR SALE  %d", price); text(150, 163, 1, C15(31, 24, 10), t); }
         else text(150, 163, 1, C15(20, 22, 28), "Not for sale");
-        if (pp) { sprintf(t, "%d bores", pp); (void)fm; text(4, 174, 1, C15(20, 24, 28), t); }
-        else { sprintf(t, "%.12s", s->name); text(4, 174, 1, C15(20, 24, 28), t); }
-        sprintf(t, "%d,%d  %d/%d", sel_x, sel_y, pop_per + pop_born, DS_POP_MAX); text(4, 184, 1, C15(16, 18, 24), t);
+        if (pp && !own_) { sprintf(t, "%d bores", pp); (void)fm; text(4, 174, 1, C15(20, 24, 28), t); }
+        else { sprintf(t, mv ? "%.6s" : "%.12s", s->name); text(4, 174, 1, C15(20, 24, 28), t); }
+        if (mv) { sprintf(t, "%d,%d", sel_x, sel_y); text(4, 184, 1, C15(16, 18, 24), t); chip(48, 175, 52, 15, "Move in", 0); }
+        else { sprintf(t, "%d,%d  %d/%d", sel_x, sel_y, pop_per + pop_born, DS_POP_MAX); text(4, 184, 1, C15(16, 18, 24), t); }
         chip(102, 175, 38, 15, "Visit", 0);
         if (own_) { char sb[24]; sprintf(sb, "Sell %d", lot_sell_price(&b)); chip(142, 175, 58, 15, sb, 0); }
-        else if (price) { char bb[24]; sprintf(bb, "Buy %d", price); chip(142, 175, 58, 15, bb, funds >= price); }
+        else if (price && !pp) { char bb[24]; sprintf(bb, "Buy %d", price); chip(142, 175, 58, 15, bb, funds >= price); }
         chip(202, 175, 25, 15, "Opt", 0); chip(229, 175, 25, 15, "Edit", 0);
     } else {
         for (int i = 0; i < 7; i++) chip(2 + i * 36, 162, 34, 13, NETN[i], ne_tool == i);
@@ -360,12 +372,14 @@ static int mus_ok = -1, mus_cur = -1, mus_n; static void mus_init(void), mus_sto
 static void snd_tick(void) {
     if (!snd_on) return;
     if (snd_dirty) { snd_dirty = 0; static const u8 pn[2][4] = { { 64, 64, 64, 64 }, { 36, 92, 64, 64 } }; for (int i = 0; i < 4; i++) if (vid[i] >= 0) soundSetPan(vid[i], pn[o_pan][i]); song = -2; }
-    int want = -1; if (o_mus && o_vol) { if (o_trk) want = o_trk - 1; else { int h = (minutes / 60) % 24; want = mode == M_TITLE || mode == M_CAS ? 0 : mode == M_BUY || mode == M_BUILD ? 2 : h >= 22 || h < 6 ? 3 : h >= 18 ? 1 : 0; } }
-    { int songs_on = o_msrc == 0 && o_mus && o_vol && mus_ok != 0;
+    int title = mode == M_TITLE || mode == M_CAS, quiet = title ? !o_tmus : (!o_gmus && !(o_msrc == 0 ? o_song : o_trk));   // (Title music / Game music off: quiet, unless you picked a song or a track yourself)
+    int want = -1; if (o_mus && o_vol && !quiet) { if (o_trk) want = o_trk - 1; else { int h = (minutes / 60) % 24; want = mode == M_TITLE || mode == M_CAS ? 0 : mode == M_BUY || mode == M_BUILD ? 2 : h >= 22 || h < 6 ? 3 : h >= 18 ? 1 : 0; } }
+    { int songs_on = o_msrc == 0 && o_mus && o_vol && !quiet && mus_ok != 0;
       if (mus_ok < 0) mus_init();
       if (songs_on && mus_ok == 1) {
           int pick = o_song ? o_song - 1 : (mode == M_TITLE || mode == M_CAS) ? 0 : 0;
-          if (o_song == 0 && mode != M_TITLE && mode != M_CAS && (mus_cur < 0 || mus_cur == 0)) { static u32 rs = 12345; rs = rs * 1664525u + 1013904223u + (u32)minutes; pick = 1 + (int)((rs >> 8) % (u32)(mus_n - 1)); }
+          if (o_song == 0 && mode != M_TITLE && mode != M_CAS && (mus_cur < 0 || mus_cur == 0) && mus_n > 1) { static u32 rs = 12345; static int last; rs = rs * 1664525u + 1013904223u + (u32)minutes;   // (Shuffle songs: at random, or in order)
+              pick = o_shuf ? 1 + (int)((rs >> 8) % (u32)(mus_n - 1)) : last % (mus_n - 1) + 1; last = pick; }
           if (mus_cur != pick && !(o_song == 0 && mode != M_TITLE && mode != M_CAS && mus_cur > 0)) mus_start(pick);
           else if (mus_cur < 0) mus_start(pick);
           if (mus_cur >= 0) mus_tick();
@@ -431,7 +445,8 @@ static void mus_tick(void) {   // once a frame: play the notes that are due
     }
 }
 static const char *clk(char *b, int mn) { int h = (mn / 60) % 24, m = mn % 60, h12 = h % 12 ? h % 12 : 12; if (o_c24) sprintf(b, "%02d:%02d", h, m); else sprintf(b, "%d:%02d %s", h12, m, h >= 12 ? "pm" : "am"); return b; }
-static void say(const char *m) { msg = m; msg_t = 90;
+static void say(const char *m) { static const u8 MT[3] = { 45, 90, 150 }; msg = m; msg_t = MT[o_msgt % 3];   // (Options > Game > Message time)
+   
     if (strstr(m, "Bought") || strstr(m, "Sold")) sfx(1); else if (strstr(m, "saved") || strstr(m, "loaded")) sfx(3); else if (strstr(m, "is now a")) sfx(5);
     else if (strstr(m, "Cannot") || strstr(m, "full") || strstr(m, "Not ") || strstr(m, "Too ") || strstr(m, "failed") || strstr(m, "No ") || strstr(m, "damaged")) sfx(2); }
 static int obj_at(int x, int y) { for (int i = 0; i < nobj; i++) if (objs[i].x == x && objs[i].y == y) return i; return -1; }
@@ -505,7 +520,7 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
 }
 static void place_sims(void) { for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; int cx = i < 3 ? spawn_x[i] : door_cx + (i % 3) - 1, cy = i < 3 ? spawn_y[i] : door_cy + 1 + i / 3; if (cy > GN - 1) cy = GN - 1; m->x = m->tx = m->wx = cx * 16; m->y = m->ty = m->wy = cy * 16; m->act = -1; m->act_left = 0; } }
 static void lot_reset(void) {
-    memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; funds = 3500; pick = -1; mode = M_LIVE; cat = 0; tool = 0; pal = 1;
+    memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; pick = -1; mode = M_LIVE;   /* (funds are the household's: set by new_household, not reset on every lot you walk into) */ cat = 0; tool = 0; pal = 1;
     gen_house(); nsim = 3; ctl = 0; cur_sim = 0; memset(ilim, 0, sizeof ilim); strcpy(sname[0], "Ashley Newbie"); strcpy(sname[1], "Ronald Bacon"); strcpy(sname[2], "Kit Farlow");
     for (int i = 0; i < 3; i++) { Sim *m = &sims[i]; m->x = spawn_x[i] * 16; m->y = spawn_y[i] * 16; m->tx = m->x; m->ty = m->y; m->wx = m->x; m->wy = m->y; m->act = -1; m->act_left = 0; m->age = i == 0 ? 24 : i == 1 ? 31 : 9; m->soc = -1; m->tgt = 0;
         for (int n = 0; n < 6; n++) { m->need[n] = 90 - (n * 17 + i * 11) % 60; m->acc[n] = 0; } m->rel = 0; for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0; if (i) { m->skin = (u8)(i * 2); m->hair = (u8)(i); m->hcol = (u8)(i * 2); m->shirt = (u8)(i + 2); m->hair = (u8)(6 + i * 2); m->beard = (u8)(i == 1 ? 3 : 0); m->fc = (u8)i; } }
@@ -519,10 +534,11 @@ static void lot_save(void) { if (lot_bx < 0) return; int k = -1; for (int i = 0;
 static void prop_trade(void) {   // Buy or Sell on the Map
     BInfo b; bm_block(sel_x, sel_y, &b);
     if (lot_owned(sel_x, sel_y)) {
-        if (lot_bx == sel_x && lot_by == sel_y) say("You live here");
+        if (is_home(sel_x, sel_y)) say("Your home: move out first");
+        else if (lot_bx == sel_x && lot_by == sel_y) say("You are on it: leave first");
         else if (nown < 2) say("Keep at least one lot");
         else { funds += lot_sell_price(&b); own_remove(sel_x, sel_y); for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == sel_x && lsv[i].by == sel_y) { lsv[i] = lsv[--lsv_n]; if (lsv_next >= lsv_n) lsv_next = 0; break; } say("Lot sold"); }
-    } else { int pr = lot_price(&b); if (!pr) say("Not for sale"); else if (funds < pr) say("Not enough funds"); else if (nown >= OWN_MAX) say("Too many lots"); else { funds -= pr; own_add(sel_x, sel_y); say("Lot bought"); } }
+    } else { int pr = lot_price(&b); if (!pr) say("Not for sale"); else if (pop_at(sel_x, sel_y, 0)) say("A family lives here"); else if (funds < pr) say("Not enough funds"); else if (nown >= OWN_MAX) say("Too many lots"); else { funds -= pr; own_add(sel_x, sel_y); say("Lot bought"); } }
 }
 static void lot_enter(int bx, int by) {   // the lot you walk into: what you built there last time, or a new home from its own seed
     if (lot_bx >= 0 && (lot_bx != bx || lot_by != by)) life_ev(ctl, WN_VISIT, 0);
@@ -1050,7 +1066,8 @@ static void job_work(void) {
     if (L->worked == dn) { say("Already worked today"); return; }
     const Sim *m = &sims[ctl]; int perf = (m->need[0] + m->need[1] + m->need[2] + m->need[5]) / 4, good = perf >= 45, pay = job_pay(L), old = minutes;
     L->worked = (u8)dn; L->shifts++; minutes += 360;
-    for (int q = 0; q < nsim; q++) { static const u8 dd[6] = { 35, 20, 30, 0, 30, 20 }; for (int n = 0; n < 6; n++) { int v = sims[q].need[n] - (q == ctl ? dd[n] : 12); sims[q].need[n] = v < 4 ? 4 : v; } }
+    static const u8 NPCT[4] = { 0, 50, 100, 150 };   // (a shift tires them as the Needs speed says)
+    for (int q = 0; q < nsim; q++) { static const u8 dd[6] = { 35, 20, 30, 0, 30, 20 }; for (int n = 0; n < 6; n++) { int v = sims[q].need[n] - (q == ctl ? dd[n] : 12) * NPCT[o_need & 3] / 100; sims[q].need[n] = v < 4 ? 4 : v; } }
     if (minutes / 1440 != old / 1440) day_roll();
     if (good) { funds += pay; L->prog++; L->strike = 0; sprintf(b, "Good shift! +$%d", pay); }
     else { funds += pay / 2; L->strike++; sprintf(b, "Bad day... +$%d", pay / 2); life_fear(ctl, FR_BAD); }
@@ -1254,11 +1271,11 @@ typedef struct { Life life[SIM_MAX]; Ghost gh[GH_MAX]; u8 ngh, dog, hun, pad; } 
 static int sav_pack(int big) {   // returns the packed size in sav_buf (header included), or 0 if even the basics do not fit
     if (lot_bx >= 0) lot_save();
     SavCore c; memset(&c, 0, sizeof c); c.seed = seed; c.minutes = minutes; c.funds = funds; c.nsim = nsim; c.ctl = ctl; c.cur_sim = cur_sim; c.cur_set = cur_set; c.lot_bx = lot_bx; c.lot_by = lot_by; c.days = st_days; c.born = st_born; c.died = st_died;
-    for (int i = 0; i < NOPT && i < 40; i++) if (OPT[i].v) c.opt[i] = (u8)*OPT[i].v;
+    for (int i = 0; i < NOPT && i < OPT_OLD; i++) if (OPT[i].v) c.opt[i] = (u8)*OPT[i].v;
     int n = 0; u8 *r = sav_raw; memset(r, 0, sizeof sav_raw);
     #define PUT(p, l) do { memcpy(r + n, (p), (size_t)(l)); n += (l); } while (0)
     PUT(&c, (int)sizeof c); PUT(sname, (int)sizeof sname); PUT(sims, (int)sizeof sims); PUT(crt, (int)sizeof crt);
-    int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4) - (4 + (int)sizeof(LifeSave)), base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
+    int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4) - (4 + (int)sizeof(LifeSave)) - (4 + NOPT - OPT_OLD) - 8, base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
     int order[LSV_N], no = 0; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) order[no++] = i; for (int i = 0; i < lsv_n; i++) if (!(lsv[i].bx == lot_bx && lsv[i].by == lot_by)) order[no++] = i;
     for (int q = 0; q < no; q++) { const LotSave *L = &lsv[order[q]]; int m = n; SavLot h = { (s16)L->bx, (s16)L->by, (s16)L->pcx, (s16)L->pcy, (s16)L->dcx, (s16)L->dcy, (u16)(L->nobj | (L->roof << 12) | (L->up << 14)) };
         if (m + (int)sizeof h + 533 + L->nobj * 5 > (int)sizeof sav_raw) break;
@@ -1268,7 +1285,9 @@ static int sav_pack(int big) {   // returns the packed size in sav_buf (header i
     (void)base; ((SavCore *)r)->nlots = nl;
     { u16 th[2] = { 0x504F, (u16)nown }; memcpy(r + best, th, 4); memcpy(r + best + 4, own, (size_t)nown * 4); best += 4 + nown * 4; }   // the lots you own, after the lots
     { LifeSave ls; memset(&ls, 0, sizeof ls); memcpy(ls.life, life, sizeof life); memcpy(ls.gh, gh, sizeof gh); ls.ngh = (u8)ngh; ls.dog = (u8)dog_have; ls.hun = (u8)dog.hun; u16 th[2] = { 0x4C46, (u16)sizeof ls }; memcpy(r + best, th, 4); memcpy(r + best + 4, &ls, sizeof ls); best += 4 + (int)sizeof ls; }   // wants, jobs, the dog, ghosts
-    cl = rle(r, best, sav_buf + sizeof(SavHdr), budget + 4 + nown * 4 + 4 + (int)sizeof(LifeSave)); if (cl < 0) return 0;
+    { u16 th[2] = { 0x584F, (u16)(NOPT - OPT_OLD) }; memcpy(r + best, th, 4); for (int i = OPT_OLD; i < NOPT; i++) r[best + 4 + i - OPT_OLD] = OPT[i].v ? (u8)*OPT[i].v : 0; best += 4 + NOPT - OPT_OLD; }   // the options added at D33
+    { s16 th[4] = { 0x4D48, 4, (s16)home_bx, (s16)home_by }; memcpy(r + best, th, 8); best += 8; }   // the home you live in (D33)
+    cl = rle(r, best, sav_buf + sizeof(SavHdr), budget + 4 + nown * 4 + 4 + (int)sizeof(LifeSave) + 4 + NOPT - OPT_OLD + 8); if (cl < 0) return 0;
     SavHdr h = { SAV_MAGIC, (u32)(sav_seq + 1), crc32b(sav_buf + sizeof(SavHdr), cl), (u32)cl, (u32)best }; memcpy(sav_buf, &h, sizeof h); return (int)sizeof h + cl;
 }
 static int sav_write(void) {
@@ -1295,14 +1314,18 @@ static int sav_apply(void) {   // 1 = loaded
         if (n + sl.nobj * 5 > rl) return 0; memset(L->objs, 0, sizeof L->objs); memcpy(L->objs, sav_raw + n, (size_t)sl.nobj * 5); n += sl.nobj * 5; tn_l++; }
     nown = 0; memset(life, 0, sizeof life); memset(gh, 0, sizeof gh); ngh = 0; dog_have = 0; dog.hun = 80; life_ver++;
     if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x504F && th[1] <= OWN_MAX && n + 4 + th[1] * 4 <= rl) { memcpy(own, sav_raw + n + 4, (size_t)th[1] * 4); nown = th[1]; n += 4 + th[1] * 4; } }
-    if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x4C46 && th[1] == sizeof(LifeSave) && n + 4 + (int)sizeof(LifeSave) <= rl) { LifeSave ls; memcpy(&ls, sav_raw + n + 4, sizeof ls); memcpy(life, ls.life, sizeof life); memcpy(gh, ls.gh, sizeof gh); ngh = ls.ngh > GH_MAX ? GH_MAX : ls.ngh; dog_have = ls.dog; dog.hun = ls.hun; } }
+    if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x4C46 && th[1] == sizeof(LifeSave) && n + 4 + (int)sizeof(LifeSave) <= rl) { LifeSave ls; memcpy(&ls, sav_raw + n + 4, sizeof ls); memcpy(life, ls.life, sizeof life); memcpy(gh, ls.gh, sizeof gh); ngh = ls.ngh > GH_MAX ? GH_MAX : ls.ngh; dog_have = ls.dog; dog.hun = ls.hun; n += 4 + (int)sizeof(LifeSave); } }
+    u8 ox[32]; int ox_have = 0, ox_n = 0; if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x584F && th[1] <= 32 && n + 4 + th[1] <= rl) { ox_n = th[1]; memcpy(ox, sav_raw + n + 4, (size_t)ox_n); ox_have = 1; n += 4 + ox_n; } }
+    int hm_x = -1, hm_y = -1; if (n + 8 <= rl) { s16 th[4]; memcpy(th, sav_raw + n, 8); if (th[0] == 0x4D48 && th[1] == 4) { hm_x = th[2]; hm_y = th[3]; n += 8; } }
     seed = c.seed; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
     st_days = c.days; st_born = c.born; st_died = c.died; minutes = c.minutes; funds = c.funds; nsim = c.nsim; ctl = c.ctl; cur_sim = c.cur_sim >= 0 && c.cur_sim < nsim ? c.cur_sim : ctl;
-    for (int i = 0; i < NOPT && i < 40; i++) if (OPT[i].v && c.opt[i] < opt_cnt(i)) *OPT[i].v = c.opt[i];
+    for (int i = 0; i < NOPT && i < OPT_OLD; i++) if (OPT[i].v && c.opt[i] < opt_cnt(i)) *OPT[i].v = c.opt[i];
+    for (int i = OPT_OLD; i < NOPT; i++) if (OPT[i].v) *OPT[i].v = ox_have && i - OPT_OLD < ox_n && ox[i - OPT_OLD] < opt_cnt(i) ? ox[i - OPT_OLD] : OPT[i].def;   // (a save from before D33: the new ones at their defaults)
     o_dirty = 1; memcpy(sname, tn, sizeof sname); memcpy(sims, ts, sizeof sims); memcpy(crt, tc, sizeof crt); for (int i = 0; i < tn_l; i++) lsv[i] = tl[i]; lsv_n = tn_l; lsv_next = 0;
     for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; m->act = -1; m->act_left = 0; m->soc = -1; m->tgt = 0; m->tx = m->wx = m->x; m->ty = m->wy = m->y; }
     memset(ilim, 0, sizeof ilim); memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; pick = -1; lot_bx = -1; lot_by = -1; nb_ok = 0;
     if (!nown) { for (int i = 0; i < lsv_n; i++) own_add(lsv[i].bx, lsv[i].by); if (c.lot_bx >= 0) own_add(c.lot_bx, c.lot_by); }   // (a save from before lots could be bought: everything you had is yours)
+    home_bx = hm_x; home_by = hm_y; if (!lot_owned(home_bx, home_by)) { home_bx = home_by = -1; if (c.lot_bx >= 0 && lot_owned(c.lot_bx, c.lot_by)) { home_bx = c.lot_bx; home_by = c.lot_by; } else if (nown) { home_bx = own[0].bx; home_by = own[0].by; } }   // (a save from before D33: home is where you were, or your first lot)
     if (c.lot_bx >= 0) { lot_enter(c.lot_bx, c.lot_by); sel_x = c.lot_bx; sel_y = c.lot_by; }
     return 1;
 }
@@ -1397,14 +1420,16 @@ static void sims_step(int frames) {
                 if (m->act >= 100) { if (m->tgt >= 0) { Sim *o = &sims[m->tgt]; o->act_left = m->face; o->act = 3 + 100; o->act_amt = 0; } m->act = 3; apply_soc(i, m->tgt, m->soc); }
             }
         } else if (i != ctl && stage_of(m->age) > 0 && ((frames + i * 37) & 127) == 0) { m->tx = (1 + (frames * 7 + i * 5) % 11) * 16; m->ty = (1 + (frames * 3 + i * 9) % 12) * 16; m->act = -1; }
-        if (((frames + i * 9) % 70) == 0) for (int n = 0; n < 6; n++) if (m->need[n] > 4 && n != 3) m->need[n]--;
-        if (((frames + i * 9) % 140) == 0 && m->need[3] > 4) m->need[3]--;
+        { static const u8 NP[4] = { 0, 140, 70, 47 }; int np = NP[o_need & 3];   // (Options > Game > Needs speed: never fall, slow, normal, fast = frames per point)
+          if (np && ((frames + i * 9) % np) == 0) for (int n = 0; n < 6; n++) if (m->need[n] > 4 && n != 3) m->need[n]--;
+          if (np && ((frames + i * 9) % (np * 2)) == 0 && m->need[3] > 4) m->need[3]--; }
         if (((frames + i * 9) % 70) == 5 && !m->act_left) {
             if (m->need[2] <= 6) { m->need[2] = 35; m->need[1] = cl100(m->need[1] - 15); if (i == ctl) say("Passed out!"); life_fear(i, FR_PASS); }
             if (m->need[4] <= 6) { m->need[4] = 60; m->need[5] = cl100(m->need[5] - 25); m->need[1] = cl100(m->need[1] - 10); if (i == ctl) say("Oh no, an accident!"); life_fear(i, FR_WET); } }
     }
     dog_step(frames); ghost_step(frames); if ((frames & 63) == 0) life_tick();
-    if ((frames % 8) == 0) { minutes++; if (minutes % 1440 == 0) day_roll(); }
+    { static const u8 DP[4] = { 66, 100, 150, 250 }; static int dacc; int per = 8 * DP[o_day & 3];   // (Options > Game > Day length: a game minute every 5.3, 8, 12 or 20 steps)
+      dacc += 100; if (dacc >= per) { dacc -= per; if (dacc >= per) dacc = 0; minutes++; if (minutes % 1440 == 0) day_roll(); } }
 }
 // ---- smooth shaded 3D: ellipsoids with a colour on every vertex, so a head is round and lit instead of a box ----
 static int gox, goy, goz, gcs = 4096, gsn, gres_r = 8, gres_s = 12;   // the model's place and facing (yaw), and how finely to cut a ball
@@ -1790,7 +1815,7 @@ static void draw_title(void) {
     if (msg_t > 0) text(24, 166, 1, C15(31, 20, 12), msg);
 }
 static void new_household(void) {
-    st_days = st_born = st_died = 0; nown = 0; life_reset();
+    st_days = st_born = st_died = 0; nown = 0; home_bx = home_by = -1; funds = 3500; life_reset();
     lot_seed = (u32)minutes * 7919u + 17; lot_reset(); lot_bx = -1; lot_by = -1; Sim *m = &sims[0]; m->skin = (u8)(minutes % 6); m->hair = (u8)(minutes % 12); m->hcol = (u8)(minutes % 6); m->shirt = (u8)(minutes % 6); m->beard = 0; m->fc = 0;
     for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0;
 }
@@ -1862,7 +1887,7 @@ int main(void) {
     glInit(); glEnable(GL_ANTIALIAS); glClearColor(14, 20, 31, 31); glClearPolyID(63); glClearDepth(0x7FFF); glViewport(0, 0, 255, 191); REG_BG0CNT = BG_PRIORITY(1);
     snd_init(); bm_dials_default(); bm_new(seed); pop_build();
     cur_set = bm_capital(); town_pick(cur_set);
-    lot_reset(); sims[0].skin = 2; sims[0].hair = 4; sims[0].hcol = 0; sims[0].shirt = 0; mode = M_TITLE; sav_probe(); lcdMainOnTop(); hud_clear();
+    lot_reset(); funds = 3500; sims[0].skin = 2; sims[0].hair = 4; sims[0].hcol = 0; sims[0].shirt = 0; mode = M_TITLE; sav_probe(); lcdMainOnTop(); hud_clear();
     int yaw = 0, dist = 13000, frames = 0, dirty = 1; unsigned lastsig = 0; int lastmode = -1;
     while (1) {
         scanKeys(); int held = keysHeld(), down = keysDown(); touchPosition tp = {0}; if (held & KEY_TOUCH) touchRead(&tp);
@@ -1898,7 +1923,7 @@ int main(void) {
                 else if (nx != sel_x || ny != sel_y) { sel_x = nx; sel_y = ny; dirty = 1; } }
             if (!(held & KEY_TOUCH)) ne_last_x = -1;
             if (map_enter) { enter = 1; map_enter = 0; }
-            if (enter && !ne_on) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot build at sea"); else { if (!nown) own_add(sel_x, sel_y); if (lot_bx != sel_x || lot_by != sel_y) { Sim keep = sims[0]; lot_save(); lot_seed = (u32)(sel_x * 73856093 ^ sel_y * 19349663); lot_reset(); sims[0].skin = keep.skin; sims[0].hair = keep.hair; sims[0].hcol = keep.hcol; sims[0].shirt = keep.shirt; sims[0].beard = keep.beard; sims[0].fc = keep.fc; memcpy(sims[0].pm, keep.pm, PMN); memcpy(sims[0].cc, keep.cc, 6); lot_enter(sel_x, sel_y); place_sims(); city_spawn(); } else if (!nb_ok) { nb_load(); city_spawn(); } nb_ok = 1; cur_sim = 0; set_mode(M_LIVE); forced = 1; lastsig = ~lastsig; } }
+            if (enter && !ne_on) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot build at sea"); else { if (!nown) own_add(sel_x, sel_y); if (home_bx < 0 && lot_owned(sel_x, sel_y)) { home_bx = sel_x; home_by = sel_y; } if (lot_bx != sel_x || lot_by != sel_y) { Sim keep = sims[0]; lot_save(); lot_seed = (u32)(sel_x * 73856093 ^ sel_y * 19349663); lot_reset(); sims[0].skin = keep.skin; sims[0].hair = keep.hair; sims[0].hcol = keep.hcol; sims[0].shirt = keep.shirt; sims[0].beard = keep.beard; sims[0].fc = keep.fc; memcpy(sims[0].pm, keep.pm, PMN); memcpy(sims[0].cc, keep.cc, 6); lot_enter(sel_x, sel_y); place_sims(); city_spawn(); } else if (!nb_ok) { nb_load(); city_spawn(); } nb_ok = 1; cur_sim = 0; set_mode(M_LIVE); forced = 1; lastsig = ~lastsig; } }
             if (forced) dirty = 1;
             if (dirty) { scr = scr_sub; draw_map(); dirty = 0; }
             if (msg_t > 0) text(4, 150, 1, C15(31, 20, 12), msg);

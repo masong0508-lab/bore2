@@ -1,7 +1,7 @@
-# BORE 2 DS / DSi: roadmap (updated at D31)
+# BORE 2 DS / DSi: roadmap (updated at D33)
 
 ## Where we are
-A Sims-DS style life sim on two screens, one ROM (`bore2_dsi_d32.nds`) that runs on DS, DSi and the emulators (melonDS, DraStic, NooDS, DeSmuME).
+A Sims-DS style life sim on two screens, one ROM (`bore2_dsi_d33.nds`) that runs on DS, DSi and the emulators (melonDS, DraStic, NooDS, DeSmuME).
 Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
 
 **Done**
@@ -16,6 +16,22 @@ Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
 **Done at D30-D31**
 - D30: Buy cards, Create-a-Sim restyle with name picker, property system (buy and sell lots on the Map, owned lots only for Buy/Build, saved).
 - D31: **Careers** (6 jobs, 5 levels each, shifts Mon-Fri 6am-3pm, good or bad shifts, promotion, demotion, fired; menu > Job). **Wants and fears** (3 wants and 1 fear per sim, aspiration stars, bonus cash; menu > Life shows them on the top screen). **The dog** (buy the Puppy in Pets, pet / play / feed). **Ghosts** (a sim who dies comes back at night, spooks the household). **Roofs and storeys** in Build (Roof: none / flat / gable, Storeys 1-3; shown with Options > Roofs: Cutaway / Always / Hide; the upper floors are a shell for now, sims do not walk upstairs). **Catalogue** grew from 28 to 52 items (6 new tabs: Cook, Bath, Fun, Study, Patio, Pets, with 24 models). **Jukebox screen** (menu > Songs: all songs, Next, Mix, plus a "Now playing" toast).
+
+**Done at D33**
+- **Toolchain check.** The DS build chain in /tmp (`/tmp/dsb`, `/tmp/libnds182`, `/tmp/crtls_old`, melonDS core in `/tmp/mb`) was still there; `dsrun` was rebuilt from `tools/dsemu/run.cpp`. The rebuild-from-source steps are now in `tools/dsbuild/README.md`.
+- `src/bigmap.c` (shared with the PS1) now asks for `ram8`, `xalloc`, `dbg_miss` and `world_gh_reset`. The DS gives harmless stand-ins at the top of `main.c` (no 8 MB heap, no world.c height cache).
+- **Options closer to the PS1:** Game tab: Needs speed (Never fall / Slow / Normal / Fast), Day length (Short / Normal / Long / Epic), Message time (Short / Normal / Long). Audio tab: Title music (Off / On), Game music (Off / On; Off = quiet in the game unless you picked a song or a synth track yourself), Shuffle songs (In order / At random, for Auto in the game). System tab: Reset game (puts the Game tab back). "Reset all" is always the last row.
+  - Same scales as the PS1: needs fall at 0 / 50 / 100 / 150 %, a game minute takes 66 / 100 / 150 / 250 % as long, messages stay 0.5x / 1x / 1.7x. Work shifts drain needs by the Needs speed too.
+  - Not added: Thought bubbles (the DS shows none yet). PS1-only pages (People, Light, Camera, Screen, Cheats) have no DS counterpart yet.
+  - Saving: the new options are in their own block ('OX') after the life block; a save from before D33 loads with the old options kept and the new ones at their defaults.
+- **Property fix: one home, any number of properties.** The game now keeps which lot you live in (gold outline, HOME) apart from the lots you own (light blue outline, PROPERTY).
+  - You cannot buy a house a family lives in ("Family home", no Buy button). Empty houses and empty land are for sale.
+  - Buy and Build only on lots you own (as before). Visit works on any lot, your properties too.
+  - "Move in" on a property makes it your home and takes you there; the old home stays yours as a property.
+  - You cannot sell your home ("move out first") or the lot you are standing on.
+  - The home is saved ('HM' block); a save from before D33 takes the lot you were on as home.
+  - Bug fixed: entering a lot no longer resets your funds to 3500 (you could buy a lot and get the money back by visiting).
+- Tested in melonDS: every Options tab and page, each new option's effect, save and reload (old and new saves), and the whole property flow with a save and reload.
 
 ## Next (in this order)
 1. **Real-hardware and Android tests** of the song reader (`cart_blk` in `main.c`), saving and touch. If a loader blocks cartridge reads, add an SD (libfat) path for DSi.
