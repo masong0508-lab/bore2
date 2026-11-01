@@ -13,3 +13,11 @@ How the city's frame time is measured (used for docs/PS1_PERFORMANCE.md). All of
    down to source lines.
 4. Compare like with like: run each build at 3 lengths (`RUN=_3100 ab.sh NAME 3100`, 3700, 4300). One run varies a few percent
    with where the route happens to be.
+5. **A/B without the route drifting**: add `-DAB_LOCK4=1` to the test build's flags (with `AUTO_CITY=1`). Every frame then takes 4 vblanks and
+   runs 3 game steps whatever it costs, so two builds see the same city frame by frame (their logic readouts match) and the mean need,
+   the share within 3 vblanks and the world's hblanks compare like with like in one run (5200 frames gives about 960 city frames).
+   The fps it reads is 15 by design; measure the real fps with normal runs as in 4.
+6. **Pictures**: add `-DAB_FREEZE=N` too (with `AB_LOCK4`): after N life frames the city stands still and is still drawn, so shots of
+   two builds taken any time after that (`ds.sh` with a script of `NNNN shot` lines) can be laid over each other. Only the falling
+   blossom (it follows the frame count) and a crowd sprite refreshed a frame sooner or later should differ.
+7. **8 MB**: `DS8MB=1` before `ds.sh` (or `runbuild.sh`) runs DuckStation with its 8 MB RAM on (`ram8` is then 1 in the game).

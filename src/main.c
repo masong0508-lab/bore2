@@ -4653,6 +4653,9 @@ int main(void) {
                 { static int ap; if (++ap == 120) { cash += 100; throw_party(); } if (ap == 200) { extern int prof_on; prof_on = 1; }
                   if (ap > 200) { extern int ap_frames, ap_vs, ap_cpu; ap_frames++; ap_vs += steps; ap_cpu += t_cpu; } }   // (test builds: a party a couple of seconds in)
 #endif
+#ifdef AB_FREEZE
+                { static int ab_lf; if (++ab_lf > AB_FREEZE) { life_draw(); break; } }   // (test builds: the city stands still after AB_FREEZE frames, still drawn: two builds' pictures can be laid over each other)
+#endif
                 { int t0 = hb_now(); life_update(steps); t_upd = hb_now() - t0; } life_draw(); break;
             case ST_PAUSE: pause_update(); pause_draw(); break;
             case ST_BUILD: build_update(); build_draw(); break;

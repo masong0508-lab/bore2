@@ -44,10 +44,49 @@ A PC sampler in the test emulator (tools/perf) showed a flat profile with one cl
 - Where town frames go now (default camera, helper on, 18 fps, 75% within 3 vblanks): logic 112 (townsfolk 77), floor and walls and items 328, roofs 80, people 154 (of which the crowd's sprite renders, which fill the frame up to the next vblank), HUD 58. The slow frames are the ones whose own need is past 785 hblanks, where the sprite fill then runs to the 4th vblank. No single part is big enough left to win much alone: the next real step is the renderer rework in the list below (light worked out once per tile and kept; static geometry kept per block), and the logic at 30 steps a second.
 - Free RAM past `_end` is now about 19 KB (it was 43): the two caches and the new option text.
 
+## The near world reworked: light baked, cars, the cutter (city street, default camera, helper on)
+Same route, 2 MB, normal runs at three lengths (3100 / 3700 / 4300 frames). "Need" is a frame's cost without the crowd's spare-time sprite renders (what decides whether it makes 3 vblanks); "fit" is the share of frames whose need is within 3 vblanks (785 hblanks).
+
+| | fps | mean need (hb) | fit 3 vblanks | the world (hb) |
+|---|---|---|---|---|
+| before | 18.31 / 18.06 / 18.36 | 740 / 745 / 721 | 78 / 75 / 80% | 418 / 425 / 421 |
+| 1. floor light baked | 18.38 / 18.18 / 18.44 | 734 / 739 / 715 | 78 / 76 / 81% | 413 / 420 / 416 |
+| all below | **18.80 / 18.62 / 18.80** | **692 / 691 / 682** | **84 / 86 / 88%** | **366 / 371 / 376** |
+
+With 8 MB (DuckStation regtest with `DS8MB=1`, 3700 frames): 18.07 before, 18.62 after.
+
+**A cleaner A/B: `AB_LOCK4`.** A faster renderer changes how many frames end on the 4th vblank, which changes the game steps the route gets, so two builds soon see a different street (the townsfolk cost moved by 8 hblanks between builds with the same logic) and a few hblanks of gain hide in that. Built with `-DAB_LOCK4=1` (test builds only, in `gfx_flip`), every frame takes 4 vblanks and runs 3 game steps whatever it costs, so both builds see the very same city frame by frame (their logic readouts match to the hblank) and the difference in the frames' own cost is the change's. 5200 frames, about 960 city frames:
+
+| step (each on top of the last) | mean need | fit 3 vblanks | the world |
+|---|---|---|---|
+| before | 763 | 71% | 424 |
+| floor light baked + the cutter's corners projected once | 734 | 77% | 396 |
+| cars: drawn only on the screen, each box's corners transformed once | 690 | 87% | 391 (cars count with the people) |
+| ground heights without checks in the draw, the street's things past the range as a list | 687 | 87% | 384 |
+| the profiler's timer read inline | 679 | 88% | 377 |
+
+What was done:
+1. **The floor's light, baked** (`flc_*` in `world.c`). A ground tile's (or 2x2 block's) four corner shades (its slope's light, the checker, the contact shading by the walls, the grass's and the paving's tint) are kept until the light steps (`gfx_light_key()`: the ambient and sun strength the day sets, and the grade), the map or its shading changes (`world_stamp`, `ao_gen`), the heights change (`gh_gen`) or the window moves; a tile seen again is a table read and one call that writes the packet with colours from the grade table (`gfx_grade_lut()`). 16 x 16 tiles with 2 MB (1.25 KB: the town's 11 x 11 range fits), 32 x 32 with 8 MB (`xalloc`). Only the ground storey; the colour of a tile cut at the near plane is still worked out (it is a few tiles). **It gains only about 5 hblanks**: the light was not where the cost lived. `gfx_light` and the grading together were about 3% of the CPU, and the walls' and items' light was already worked out once a frame per direction. Baking the walls' tops and skirting the same way was tried and measured no gain, so it was left out; the roofs' light was already kept per slope.
+2. **The near-plane cutter projects each corner once** (`nc_proj`). A piece cut in two used to project all its corners again (two divisions each); now a corner is projected when it is made and the pieces keep it, and a piece with no corner behind the plane is not copied through the clipper. Same output. About 23 hblanks.
+3. **Cars** (`items_draw_vehicle`, `sk_box` in `items.c`; step 3, found by the profiler). The traffic and parked cars (up to 14 + the parked ones, each 15 to 25 boxes) were drawn without any test against the view, every face through `gfx_quad_f` (4 corners transformed per face, 20 a box). Now a car off the screen is skipped whole (a ball of 660 round it, lifted onto the hills as the model is), and a box's 8 corners are transformed once and each face tested on the CPU before it is coloured. Same output. About 44 hblanks of need: the biggest single gain.
+4. **Static per-tile work kept** (step 2): the ground heights read straight from their cache through the draw (`gh_live`: no zone, window and range checks per corner), and the street's things past the full-detail range (benches, lamps, bins) kept as a bit a tile until the map, its buildings (`bld_gen`) or the window change, so the loop reads 8 tiles at a time instead of testing every tile of a 25 x 25 square. About 7 hblanks.
+5. **The profiler's own cost**: `PROF_BEGIN`/`PROF_END` time every floor tile, wall and item, and each called `VSync(1)`; they now read the hblank counter inline (the difference of two readings is the same). About 7 hblanks.
+
+**Pictures**: `AB_FREEZE=N` (test builds, `main.c`) stops the city after N life frames and keeps drawing it; with `AB_LOCK4` two builds then stand on the very same frame. Laid over each other at three freeze points (a crossing close up, a street with cars and the crowd), the only pixels that differ are the falling blossom (it moves with the frame count) and one crowd sprite re-rendered a frame later. First person and zoomed in all the way were run too (same route, 3700 frames, normal runs; their shots show nothing amiss): first person (`AUTO_CAMTEST=4`) 24.3 to 25.9 fps, zoomed in all the way (`AUTO_CAMTEST=2`, where the cutter works hardest) 16.7 to 18.2 fps (the world 488 to 401 hblanks, 55% to 80% of frames within 3 vblanks).
+
+**RAM**: a plain Release build has 13.7 KB free past `_end` on 2 MB (it was 16.2 KB): the floor cache 1.25 KB, the rest code. The street's things' bits (800 bytes) are in the PlayStation's 1 KB scratchpad at 0x1F800000, which nothing else uses (the SDK's MDEC decoder would; the game does not use it). Both 2 MB and 8 MB boot to the title and run the city (regtest `DS8MB=1`).
+
+**Not done, and why**:
+- *Per-block prebuilt packet lists.* The camera moves every frame in the city, so a block's packets would have to be transformed again anyway; what could be kept is the world-space geometry (roof corners, item boxes), and that needs several KB a block: only 8 MB has it, and the gain left is small (the roof corners and item box set-up are 10 to 15 hblanks together). Worth doing only for 8 MB, after the logic.
+- *Wall pieces kept per tile*: a wall tile's neighbour tests cost about 1 hblank a frame in town; not worth the RAM.
+- *The cutter's view-space transform on the GTE*: it would round differently from the C it replaces when the hills lift the ground (`gfx_lift`), so it was left in C.
+- *The crowd's sprite fill* (`citizens.c`, being reworked elsewhere): when a frame's need drops, the fill takes the freed time up to 30 hblanks short of the vblank and sometimes overshoots it; about 0.4 fps is lost that way before and after (fit 86% "should" be 19.1 fps).
+- Where town frames go now (normal run, 3700): logic 120, the world 371 (layer-0 tiles 280: floor 96, walls 37, items 97; roofs 75), people and cars 144 (with the sprite fill), HUD 58. What is left in the world is flat again: the transforms, the cutter (about 40 hblanks), the items' boxes (about 50), the roofs' corners and gables (about 40).
+
 ## What "Crash Bandicoot style" still needs (not done)
 Crash got its speed by baking everything that does not change and streaming fixed-size zones. What that means here, in the order it should be done:
-1. **Bake the light.** A floor tile's or a wall's colour is the same from one frame to the next except as the sun moves. Keep each tile's four graded corner colours (with its ambient shading) in a table keyed by the light's step, so a tile costs a table read, not `gfx_light` + `gfx_grade_tex` + the ambient pass. The per-tile cost is where the flat 2.5 hblanks a primitive lives.
-2. **Per-block prebuilt packet lists.** Walls, roofs and ground of a block are static: build a block's list once (the far skyline in `far.c` already works this way) and copy it, so a block costs one copy, not a pass over its tiles.
+1. **Bake the light.** Done for the floor (above); it was worth 5 hblanks, not the 2.5 hblanks a primitive first thought: the cost is the transform, the clipping and the per-tile tests, not the light.
+2. **Per-block prebuilt packet lists.** Walls, roofs and ground of a block are static: build a block's list once (the far skyline in `far.c` already works this way) and copy it, so a block costs one copy, not a pass over its tiles. (See "Not done" above: with the camera moving it is the world-space geometry that can be kept, which needs 8 MB.)
 3. **Slice the logic.** Run the townsfolk in two halves on alternate steps and the sims' needs on a slower clock, so catch-up steps stop costing a full pass each.
 4. **Stream by block from the disc.** The city's tables are one set in RAM. Split the street grid into block files with the next ring read in the background (the CD is already read in the background for music). This needs 40 to 60 KB for a block buffer, which means freeing it first from `lvpool_small` (96 KB) or `seqbuf` (45 KB). Free RAM now: about 28 KB past `_end` (keep that above 8 KB or boot crashes at "AUDIO+DISC 60%").
 

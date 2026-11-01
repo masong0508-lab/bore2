@@ -537,7 +537,23 @@ static void sk_quad(SVECTOR *a, SVECTOR *b, SVECTOR *c, SVECTOR *d, int r, int g
     int L = gfx_light(nx, ny, nz);
     gfx_quad_f(a, b, c, d, MIN(255, (r * L) >> 7), MIN(255, (g * L) >> 7), MIN(255, (bl * L) >> 7), 1);
 }
+static __attribute__((noinline)) void sk_face(const XV *A, const XV *B, const XV *C, const XV *DQ, const s16 *n, int r, int g, int b) {   // (sk_box's fast path: one face, if it shows)
+    if (!xv_vis4(A, B, C, DQ, 1)) return;
+    int L = gfx_light(n[0], n[1], n[2]);
+    gfx_put_f4(A, B, C, DQ, gfx_grade_flat((u32)MIN(255, (r * L) >> 7) | ((u32)MIN(255, (g * L) >> 7) << 8) | ((u32)MIN(255, (b * L) >> 7) << 16)));
+    gfx_prim_count++;
+}
 static void sk_box(int x0, int x1, int y0, int y1, int z0, int z1, int r, int g, int b) {   // y0 top (smaller), z0 < z1
+    if (!gfx_bb_on) {   // the fast path: the 8 corners transformed once (not 4 for each of the 5 faces), each face tested and coloured only if it shows
+        static const u8 fc[5][4] = { { 0, 1, 2, 3 }, { 1, 5, 3, 7 }, { 5, 4, 7, 6 }, { 4, 0, 6, 2 }, { 4, 5, 0, 1 } };   // (the faces below, in their order; k: bit 0 x1, bit 1 bottom, bit 2 z1)
+        static const s16 fn[5][3] = { { 0, 0, -ONE }, { ONE, 0, 0 }, { 0, 0, ONE }, { -ONE, 0, 0 }, { 0, -ONE, 0 } };
+        const s16 X[2] = { (s16)(x0 * sk_k >> 4), (s16)(x1 * sk_k >> 4) }, Y[2] = { (s16)(y0 * sk_k >> 4), (s16)(y1 * sk_k >> 4) }, Z[2] = { (s16)(z0 * sk_k >> 4), (s16)(z1 * sk_k >> 4) };
+        SVECTOR cv[8] SVEC_ALIGN; XV v[8];
+        for (int k = 0; k < 8; k++) setVector(&cv[k], X[k & 1], Y[(k >> 1) & 1], Z[k >> 2]);
+        gfx_xform(cv, v, 8);
+        for (int f = 0; f < 5; f++) sk_face(&v[fc[f][0]], &v[fc[f][1]], &v[fc[f][2]], &v[fc[f][3]], fn[f], r, g, b);
+        return;
+    }
     SVECTOR A, B, C, DD;
     setVector(&A, x0, y0, z0); setVector(&B, x1, y0, z0); setVector(&C, x0, y1, z0); setVector(&DD, x1, y1, z0); sk_quad(&A, &B, &C, &DD, r, g, b, 0, 0, -ONE);
     setVector(&A, x1, y0, z0); setVector(&B, x1, y0, z1); setVector(&C, x1, y1, z0); setVector(&DD, x1, y1, z1); sk_quad(&A, &B, &C, &DD, r, g, b, ONE, 0, 0);
@@ -625,6 +641,9 @@ static void veh_model(int t, int ci, int wph) {
 int dbg_vdraw, dbg_vq;
 void items_draw_vehicle(int x, int z, int yaw, int y, int type, int ci, int wph) {
     dbg_vdraw++; dbg_vq = type * 1000 + ci;
+    {   // off the screen altogether: nothing to do (a car is up to 4.2 m long and 2.5 m high at its scale: a ball of 660 round its middle holds it, whichever way it faces)
+        int up = gfx_lift + (gfx_lift_fn ? gfx_lift_fn(x, z) : 0);
+        if (!gfx_bb_on && !gfx_visible(x, y - up - 220, z, 660)) return; }
     VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, yaw & 4095); sk_k = 28; veh_model(type, ci, wph); sk_k = 16; gfx_set_identity();
 }
 static void skate_model(void) {

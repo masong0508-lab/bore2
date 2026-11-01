@@ -129,6 +129,9 @@ void gfx_flip(void) {
     for (int i = 0; i < 8; i++) { gfx_prof_last[i] = gfx_prof[i]; gfx_prof[i] = 0; gfx_profn_last[i] = gfx_profn[i]; gfx_profn[i] = 0; }
     { int h0 = VSync(1); gfx_last_cpu = h0; DrawSync(0); gfx_last_wait = VSync(1) - h0; }   // how long the GPU was still busy with the last frame
     { extern void atlas_flush_deferred(void); atlas_flush_deferred(); }   // (the textures that waited for this moment)
+#ifdef AB_LOCK4
+    const int gfx_min_vsyncs = 4;   // (test builds: every frame takes 4 vblanks, so every frame runs 3 game steps whatever it costs: two builds see the very same
+#endif                              //  city frame by frame, and what a change costs or saves shows in the frames' own times without the route drifting)
     { static int flip_vb; while (gfx_min_vsyncs > 1 && VSync(-1) - flip_vb < gfx_min_vsyncs - 1) VSync(0);   // (a steady 30 or 20: never sooner)
       VSync(0); flip_vb = VSync(-1); }
     db_active ^= 1;
@@ -217,6 +220,9 @@ static void light_to_object(void) {
 }
 void gfx_set_light_yaw(int yaw) { obj_yaw = yaw; light_to_object(); }
 int  gfx_light_amb(void) { return light_amb; }
+// the light's step: changes whenever anything gfx_light or the colour grade depend on does (the ambient and sun strength the day-night
+// cycle sets, the grade switch). The sun's direction is fixed. Caches of lit colours key on it (with yaw 0: the world's own axes)
+int  gfx_light_key(void) { extern int gfx_grade; return 1 + (light_amb & 511) + ((light_dif & 511) << 9) + ((gfx_grade & 1) << 18); }
 int gfx_light(int nx, int ny, int nz) {
     int d = (nx * lx_obj + ny * ly_obj + nz * lz_obj) >> 12;   // -4096..4096
     if (d < 0) d = d / 6;                                                        // a little bounce light on the dark side
@@ -450,6 +456,7 @@ void gfx_xform(const SVECTOR *v, XV *o, int n) {
 }
 u32 gfx_grade_flat(u32 c) { return grade_rgb(c & 255, (c >> 8) & 255, (c >> 16) & 255); }
 u32 gfx_grade_tex(u32 c) { return gt_grade(c, 256); }
+const u32 *gfx_grade_lut(void) { grade_tex(0); return grade_lut; }   // grade_lut[s] == gfx_grade_tex(s * 0x010101)
 static inline u32 fog_col(u32 c, int f) { return (((c & 255) * f) >> 8) | (((((c >> 8) & 255) * f) >> 8) << 8) | (((((c >> 16) & 255) * f) >> 8) << 16); }
 u32 gfx_fog_apply(u32 c, int otz) { return fog_col(c, fog_scale(otz)); }
 #undef XV_TEST4

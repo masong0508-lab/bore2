@@ -1963,13 +1963,14 @@ static int frame_t;
 static u8 ao[MH + 1][MW + 1];
 int world_stamp;
 void world_touched(void) { ao_dirty = 1; roof_dirty = 1; world_stamp++; }
+static u32 ao_gen;                                      // (bumped whenever the contact shading is worked out again: the floor's light cache keys on it)
 static inline int wall0(int x, int y) { return (x < 0 || y < 0 || x >= MW || y >= MH) ? 1 : is_wall(lifeMap[y][x]); }   // (past the edge: a wall)
 static void ao_region(int X0, int Y0, int X1, int Y1) {   // the corners [X0..X1] x [Y0..Y1]: how many of the four tiles round each are walls
-    X1 = MIN(X1, MW); Y1 = MIN(Y1, MH);
+    X1 = MIN(X1, MW); Y1 = MIN(Y1, MH); ao_gen++;
     for (int Y = Y0; Y <= Y1; Y++) for (int X = X0; X <= X1; X++) ao[Y][X] = (u8)(wall0(X - 1, Y - 1) + wall0(X, Y - 1) + wall0(X - 1, Y) + wall0(X, Y));
 }
 static void ao_update(void) {
-    static u8 r0[MW + 2], r1[MW + 2];                     // two rows of wall flags (x = -1 .. MW), past the edge a wall
+    static u8 r0[MW + 2], r1[MW + 2]; ao_gen++;                     // two rows of wall flags (x = -1 .. MW), past the edge a wall
     memset(r0, 1, sizeof r0);
     for (int Y = 0; Y <= MH; Y++) {
         if (Y < MH) { const char *row = lifeMap[Y]; r1[0] = r1[MW + 1] = 1; for (int x = 0; x < MW; x++) r1[x + 1] = (u8)is_wall(row[x]); }
@@ -2001,7 +2002,10 @@ static XV cc_tmp[8]; static int cc_tmpi;
 #define NC_BUDGET 320                   // pieces a frame may be split into past the first cut (keeps a crowded view from costing a frame)
 #define NC_DEPTH 5                      // a quad is split at most this many times
 #define NXY(v) ((u32)(u16)(v)->x | ((u32)(u16)(v)->y << 16))
-typedef struct { int x, y, z, u, v, r, g, b; } NV;     // a corner: view-space position, texel, colour
+typedef struct { int x, y, z, u, v, r, g, b, sx, sy; } NV;   // a corner: view-space position, texel, colour; and where it lands on the screen
+// (worked out once, when the corner is made, if it is in front of the cutting plane: a piece cut in two keeps its corners' places, so each is
+// projected once however often the pieces round it are split; it used to be every piece, every corner, two divisions each)
+static __attribute__((noinline)) void nc_proj(NV *o) { if (o->z >= NC_Z) { o->sx = CENTER_X + (o->x * 230) / o->z; o->sy = CENTER_Y + (o->y * 230) / o->z; } }   // (the GTE's projection: H = 230)
 static NV nq_c[4]; static int nq_tex, nq_cull; static u32 nq_tp, nq_cl;
 static inline int nc_need4(const XV *a, const XV *b, const XV *c, const XV *d) {   // 1: this quad goes the careful way
     int z = MIN(MIN(a->z, b->z), MIN(c->z, d->z));
@@ -2019,6 +2023,7 @@ static inline void nc_mid(NV *o, const NV *p, const NV *q) {   // the halfway co
     o->x = (p->x + q->x) >> 1; o->y = (p->y + q->y) >> 1; o->z = (p->z + q->z) >> 1;
     o->u = (p->u + q->u) >> 1; o->v = (p->v + q->v) >> 1;
     o->r = (p->r + q->r) >> 1; o->g = (p->g + q->g) >> 1; o->b = (p->b + q->b) >> 1;
+    nc_proj(o);
 }
 static int nc_clip(const NV *const *in, NV *out) {   // the polygon (4 corners round) cut to the front of the plane: 0 to 5 corners
     int n = 0;
@@ -2026,7 +2031,7 @@ static int nc_clip(const NV *const *in, NV *out) {   // the polygon (4 corners r
         const NV *p = in[i], *q = in[(i + 1) & 3];
         int pin = p->z >= NC_Z, qin = q->z >= NC_Z;
         if (pin) out[n++] = *p;
-        if (pin != qin) { nc_lerp(&out[n], p, q, ((NC_Z - p->z) << 12) / (q->z - p->z)); out[n].z = NC_Z; n++; }
+        if (pin != qin) { nc_lerp(&out[n], p, q, ((NC_Z - p->z) << 12) / (q->z - p->z)); out[n].z = NC_Z; nc_proj(&out[n]); n++; }
     }
     return n;
 }
@@ -2052,15 +2057,15 @@ static void nc_put(const XV *a, const XV *b, const XV *c, const XV *d, const NV 
     }
 }
 static void nc_piece(const NV *p0, const NV *p1, const NV *p2, const NV *p3, int depth) {   // the piece with these corners, round: (0,0) (1,0) (1,1) (0,1)
-    NV o[5]; const NV *const P[4] = { p0, p1, p2, p3 };
-    if (p0->z < NC_Z && p1->z < NC_Z && p2->z < NC_Z && p3->z < NC_Z) return;                  // all behind the plane
-    int n = nc_clip(P, o);
-    if (n < 3) return;
-    int sx[5], sy[5], x0 = 1 << 20, x1 = -(1 << 20), y0 = 1 << 20, y1 = -(1 << 20), zlo = 1 << 30, zhi = 0;
+    NV o_[5]; const NV *o[5] = { p0, p1, p2, p3 }; const NV *const P[4] = { p0, p1, p2, p3 };
+    int n = 4, behind = (p0->z < NC_Z) + (p1->z < NC_Z) + (p2->z < NC_Z) + (p3->z < NC_Z);
+    if (behind == 4) return;                                                                  // all behind the plane
+    if (behind) { n = nc_clip(P, o_); if (n < 3) return; for (int i = 0; i < n; i++) o[i] = &o_[i]; }   // (all in front: the corners as they are)
+    int x0 = 1 << 20, x1 = -(1 << 20), y0 = 1 << 20, y1 = -(1 << 20), zlo = 1 << 30, zhi = 0;
     for (int i = 0; i < n; i++) {
-        sx[i] = CENTER_X + (o[i].x * 230) / o[i].z; sy[i] = CENTER_Y + (o[i].y * 230) / o[i].z;   // (the GTE's projection: H = 230)
-        if (sx[i] < x0) x0 = sx[i]; if (sx[i] > x1) x1 = sx[i]; if (sy[i] < y0) y0 = sy[i]; if (sy[i] > y1) y1 = sy[i];
-        if (o[i].z < zlo) zlo = o[i].z; if (o[i].z > zhi) zhi = o[i].z;
+        int sx = o[i]->sx, sy = o[i]->sy, z = o[i]->z;
+        if (sx < x0) x0 = sx; if (sx > x1) x1 = sx; if (sy < y0) y0 = sy; if (sy > y1) y1 = sy;
+        if (z < zlo) zlo = z; if (z > zhi) zhi = z;
     }
     if (x1 < 0 || x0 >= SCREEN_W || y1 < 0 || y0 >= SCREEN_H) return;                         // off the screen
     int sw = x1 - x0, sh = y1 - y0;
@@ -2081,11 +2086,11 @@ static void nc_piece(const NV *p0, const NV *p1, const NV *p2, const NV *p3, int
     }
     if (sw > 700 || sh > 340) return;                                                          // (split as far as it goes and still too big: leave it)
     XV v[5];
-    for (int i = 0; i < n; i++) { v[i].x = (short)sx[i]; v[i].y = (short)sy[i]; v[i].z = o[i].z; }
-    if (n == 3) nc_put(&v[0], &v[1], &v[2], &v[2], &o[0], &o[1], &o[2], &o[2]);
+    for (int i = 0; i < n; i++) { v[i].x = (short)o[i]->sx; v[i].y = (short)o[i]->sy; v[i].z = o[i]->z; }
+    if (n == 3) nc_put(&v[0], &v[1], &v[2], &v[2], o[0], o[1], o[2], o[2]);
     else {
-        nc_put(&v[0], &v[1], &v[3], &v[2], &o[0], &o[1], &o[3], &o[2]);
-        if (n == 5) nc_put(&v[0], &v[3], &v[4], &v[4], &o[0], &o[3], &o[4], &o[4]);
+        nc_put(&v[0], &v[1], &v[3], &v[2], o[0], o[1], o[3], o[2]);
+        if (n == 5) nc_put(&v[0], &v[3], &v[4], &v[4], o[0], o[3], o[4], o[4]);
     }
 }
 // a quad given as its corners a b / c d (world space), a colour and a texel for each, cut and drawn by the above
@@ -2099,6 +2104,7 @@ static void nc_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const 
         n->z = ((m->m[2][0] * x + m->m[2][1] * y + m->m[2][2] * z) >> 12) + m->t[2];
         n->u = (int)(uv[i] & 255); n->v = (int)((uv[i] >> 8) & 255);
         n->r = (int)(col[i] & 255); n->g = (int)((col[i] >> 8) & 255); n->b = (int)((col[i] >> 16) & 255);
+        nc_proj(n);
     }
     nq_tex = tex; nq_cull = cull; nq_tp = (u32)tpage << 16; nq_cl = (u32)clut << 16;
     if (nq_c[0].z < NC_Z && nq_c[1].z < NC_Z && nq_c[2].z < NC_Z && nq_c[3].z < NC_Z) return;
@@ -2164,16 +2170,21 @@ static int gh_raw(int X, int Y) {
 }
 // The ground's height at each corner of the window, kept (the land does not change while the window stays where it is: only a
 // move of the window, or a new city, wipes it). It used to be rebuilt every frame, 20 to 30 hb of work for the same numbers.
-static s16 gh_cache[MH + 1][MW + 1]; static int gh_cwx = -99, gh_cwy = -99, gh_cok;
+static s16 gh_cache[MH + 1][MW + 1]; static int gh_cwx = -99, gh_cwy = -99, gh_cok; static u32 gh_gen;
 static void gh_cache_clear(int fx, int fy) {
     (void)fx; (void)fy;
-    if (!gh_cok || gh_cwx != world_wbx || gh_cwy != world_wby) { gh_cwx = world_wbx; gh_cwy = world_wby; memset(gh_cache, 0x7f, sizeof gh_cache); gh_cok = 1; }
+    if (!gh_cok || gh_cwx != world_wbx || gh_cwy != world_wby) { gh_cwx = world_wbx; gh_cwy = world_wby; memset(gh_cache, 0x7f, sizeof gh_cache); gh_cok = 1; gh_gen++; }
 }
-static inline int gh_c(int X, int Y) {   // (inline: asked for a thousand times a frame, from every tile's corners)
+static int gh_live;   // (set through world_draw, when the cache is this window's: a corner is then a table read with no other checks)
+static __attribute__((noinline)) int gh_c_slow(int X, int Y) {
     if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
     if (!gh_cok || (unsigned)X > MW || (unsigned)Y > MH || gh_cwx != world_wbx || gh_cwy != world_wby) return gh_raw(X, Y);
     s16 *c = &gh_cache[Y][X]; if (*c == 0x7f7f) *c = (s16)gh_raw(X, Y);
     return *c;
+}
+static inline int gh_c(int X, int Y) {   // (inline: asked for a thousand times a frame, from every tile's corners)
+    if (gh_live && (unsigned)X <= MW && (unsigned)Y <= MH) { int v = gh_cache[Y][X]; if (v != 0x7f7f) return v; }
+    return gh_c_slow(X, Y);
 }
 int world_gh_c(int X, int Y) { return gh_c(X, Y); }
 void world_gh_reset(void) { gh_bx = -99999; gh_cok = 0; ghf_ok = 0; }   // (a new city: the land is different)
@@ -2205,25 +2216,48 @@ static inline int gvar(int x, int y) {
     if (!gperm_ok) { u32 s = 12345; for (int i = 0; i < 256; i++) gperm[i] = (u8)i; for (int i = 255; i > 0; i--) { s = s * 1664525u + 1013904223u; int k = (int)((s >> 16) % (u32)(i + 1)); u8 t = gperm[i]; gperm[i] = gperm[k]; gperm[k] = t; } gperm_ok = 1; }
     return 214 + (gh8(x, y, 0) >> 4) + (gh8(x >> 2, y >> 2, 91) >> 3) + (gh8(x >> 4, y >> 4, 173) >> 4);   // about 214..291 (256 is plain)
 }
+// ---- the floor's light, baked. A ground tile's four corner shades (its slope's light, the checker, the contact shading by the walls,
+// the grass's and the paving's wandering tint) are the same from frame to frame until the light steps (the time of day), the map or its
+// shading changes, the ground's heights change or the window moves: kept here, so a tile seen again costs a table read. A square of
+// tiles round wherever they are (a tile's slot is its map position mod the square; its tag says which of the map's squares it holds, if
+// it is a 2x2 block's, and if it has four shades or one): 16 x 16 with 2 MB (1.25 KB: the town's draw range, 11 x 11, fits), 32 x 32
+// with 8 MB (any range). Only the ground storey (the city's streets) is kept; the storeys above work it out as before ----
+static u32 flc_small[16 * 16]; static u8 flc_tag_small[16 * 16];
+static u32 *flc_sh = flc_small; static u8 *flc_tag = flc_tag_small; static int flc_b = 4, flc_up;
+#define OI_ROW ((MW + 7) / 8)                                   // (draw_layer: the street's things past the range, a bit a tile: in the 1 KB scratchpad)
+#define oi_bits ((volatile u8 *)0x1f800000u)
+static int flc_on; static const u32 *flc_lut; static u32 flc_key[8] = { 0xffffffffu };
+static void flc_frame(void) {   // (world_draw, each frame: throws the cache away when what it was worked out from has changed)
+    if (!flc_up) { flc_up = 1; if (ram8) { u32 *p = (u32 *)xalloc(32 * 32 * 4); u8 *t = (u8 *)xalloc(32 * 32); if (p && t) { flc_sh = p; flc_tag = t; flc_b = 5; flc_key[0] = 0xffffffffu; } } }
+    u32 k[8] = { (u32)gfx_light_key(), (u32)world_stamp, ao_gen, (u32)world_wbx, (u32)world_wby, (u32)world_zone, gh_gen, (u32)dbg_noao };
+    int same = 1; for (int i = 0; i < 8; i++) if (k[i] != flc_key[i]) { same = 0; flc_key[i] = k[i]; }
+    if (!same) memset(flc_tag, 0, 1u << (2 * flc_b));
+    flc_lut = gfx_grade_lut();
+}
+static inline int flc_want(int mx, int my, int blk) { return 1 + (mx >> flc_b) + 5 * (my >> flc_b) + (blk << 5); }   // (the square: 1..25, the map is 80 tiles; a block's: + 32)
+static inline int flc_slot(int mx, int my) { int m = (1 << flc_b) - 1; return ((my & m) << flc_b) | (mx & m); }
+// a tile's (or a 2x2 block's) quad, which shows (tested already), from its packed shades: four (a gouraud quad) or one (flat)
+static __attribute__((noinline)) void flc_emit(u32 sh, int four, const XV *A, const XV *B, const XV *C, const XV *Dq, u32 tp, int u, int v, int w) {
+    const u32 *G = flc_lut;
+    if (four) gfx_put_gt4(A, B, C, Dq, G[sh & 255], G[(sh >> 8) & 255], G[(sh >> 16) & 255], G[sh >> 24], tp, 0, u, v, u + w, v + w);
+    else gfx_put_ft4(A, B, C, Dq, G[sh & 255], tp, 0, (u32)u | ((u32)v << 8), (u32)(u + w) | ((u32)v << 8), (u32)u | ((u32)(v + w) << 8), (u32)(u + w) | ((u32)(v + w) << 8), 0);
+}
+static inline u32 flc_pack(int s0, int s1, int s2, int s3) { return (u32)(s0 & 255) | ((u32)(s1 & 255) << 8) | ((u32)(s2 & 255) << 16) | ((u32)(s3 & 255) << 24); }
+static int floor_Lup(void) { static int Lfr = -1, Lup; if (Lfr != frame_t) { Lfr = frame_t; Lup = gfx_light(0, -ONE, 0); } return Lup; }   // (the floor's light: once a frame)
 static void floor_tile(int mx, int my) {
     int fl = dfl[my][mx] % NFLOORS;
     const TexRef *t = &fl_tex[fl];
     int x0 = mx * TILE, x1 = x0 + TILE, zN = -my * TILE, zS = zN - TILE;
-    SVECTOR a, b, c, d;
-    int y = (fl == FL_WATER) ? 14 + (isin((frame_t * 40 + mx * 300 + my * 500) & 4095) >> 10) : 0;   // water sits a little low and heaves
-    int hA = 0, hB = 0, hC = 0, hD = 0, slope = 0;
-    if (world_hills_on()) { hA = gh_c(mx, my); hB = gh_c(mx + 1, my); hC = gh_c(mx, my + 1); hD = gh_c(mx + 1, my + 1); slope = (hB + hD - hA - hC) / 2 + (hC + hD - hA - hB) / 2; }
-    setVector(&a, x0, y - hA, zN); setVector(&b, x1, y - hB, zN); setVector(&c, x0, y - hC, zS); setVector(&d, x1, y - hD, zS);
-    static int Lfr = -1, Lup; if (Lfr != frame_t) { Lfr = frame_t; Lup = gfx_light(0, -ONE, 0); }   // (the floor's light: once a frame)
-    int L = Lup + slope * 5 / 16;
-    if ((mx + my) & 1) L = (L * fl_odd[fl]) >> 4;
-    L = CLAMP(L, 40, 200);
+    int hA = 0, hB = 0, hC = 0, hD = 0;
+    if (world_hills_on()) { hA = gh_c(mx, my); hB = gh_c(mx + 1, my); hC = gh_c(mx, my + 1); hD = gh_c(mx + 1, my + 1); }
+    #define FLOOR_L() int L; { int slope = (hB + hD - hA - hC) / 2 + (hC + hD - hA - hB) / 2; L = floor_Lup() + slope * 5 / 16; if ((mx + my) & 1) L = (L * fl_odd[fl]) >> 4; L = CLAMP(L, 40, 200); }
     int u = t->u, v = t->v;
-    if (fl == FL_WATER) { u += (frame_t >> 3) & 7; v += (frame_t >> 4) & 7; }   // (the 16x16 texture holds the 8x8 pattern twice: it tiles)
-    if (y == 0) {   // the fast path (all but water)
-        SVECTOR sv[4] = { a, b, c, d }; XV xv[4]; gfx_xform(sv, xv, 4);
+    if (fl != FL_WATER) {   // the fast path (all but water)
+        SVECTOR sv[4]; setVector(&sv[0], x0, -hA, zN); setVector(&sv[1], x1, -hB, zN); setVector(&sv[2], x0, -hC, zS); setVector(&sv[3], x1, -hD, zS);
+        XV xv[4]; gfx_xform(sv, xv, 4);
         const XV *A = &xv[0], *B = &xv[1], *C = &xv[2], *Dd = &xv[3];
         if (nc_need4(A, B, C, Dd)) {   // (the eye is close: cut at the near plane, split in first person)
+            FLOOR_L()
             u32 cc[4], uv4[4] = { (u32)u | ((u32)v << 8), (u32)(u + 7) | ((u32)v << 8), (u32)u | ((u32)(v + 7) << 8), (u32)(u + 7) | ((u32)(v + 7) << 8) };
             if (!dbg_noao && !is_wall(dm[my][mx]) && near_wall(mx, my)) {
                 cc[0] = gfx_grade_tex((u32)ao_corner(mx, my, L) * 0x010101u); cc[1] = gfx_grade_tex((u32)ao_corner(mx + 1, my, L) * 0x010101u);
@@ -2232,16 +2266,26 @@ static void floor_tile(int mx, int my) {
             nc_quad(&sv[0], &sv[1], &sv[2], &sv[3], cc, 1, t->tpage, 0, uv4, 0);
             return;
         }
-        if (!dbg_noao && !is_wall(dm[my][mx]) && near_wall(mx, my)) {
-            int L0 = ao_corner(mx, my, L), L1 = ao_corner(mx + 1, my, L), L2 = ao_corner(mx, my + 1, L), L3 = ao_corner(mx + 1, my + 1, L);
-            gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)L0 * 0x010101u), gfx_grade_tex((u32)L1 * 0x010101u), gfx_grade_tex((u32)L2 * 0x010101u), gfx_grade_tex((u32)L3 * 0x010101u),
-                         t->tpage, 0, u, v, u + 7, v + 7, 0);
-        } else if (fl == FL_GRASS) {   // (grass: a tint that wanders corner to corner, so a lawn is never one flat green)
+        if (!xv_vis4(A, B, C, Dd, 0)) return;
+        int i = flc_slot(mx, my), want = flc_want(mx, my, 0);
+        if (flc_on) { int tg = flc_tag[i]; if ((tg & 0x3f) == want) { flc_emit(flc_sh[i], tg >> 6, A, B, C, Dd, (u32)t->tpage << 16, u, v, 7); return; } }   // (baked)
+        FLOOR_L()
+        u32 sh; int four = 1;
+        if (!dbg_noao && !is_wall(dm[my][mx]) && near_wall(mx, my)) sh = flc_pack(ao_corner(mx, my, L), ao_corner(mx + 1, my, L), ao_corner(mx, my + 1, L), ao_corner(mx + 1, my + 1, L));   // next to a wall: the corners by it darken (contact shadow)
+        else if (fl == FL_GRASS) {   // (grass: a tint that wanders corner to corner, so a lawn is never one flat green)
             int Lc[4]; for (int k = 0; k < 4; k++) Lc[k] = CLAMP(L * gvar(mx + (k & 1), my + (k >> 1)) >> 8, 20, 250);
-            gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)Lc[0] * 0x010101u), gfx_grade_tex((u32)Lc[1] * 0x010101u), gfx_grade_tex((u32)Lc[2] * 0x010101u), gfx_grade_tex((u32)Lc[3] * 0x010101u), t->tpage, 0, u, v, u + 7, v + 7, 0);
-        } else gfx_emit_ft4(A, B, C, Dd, gfx_grade_tex((u32)L * 0x010101u), t->tpage, 0, u, v, u + 7, v, u, v + 7, u + 7, v + 7, 0, 0);
+            sh = flc_pack(Lc[0], Lc[1], Lc[2], Lc[3]);
+        } else { sh = (u32)L; four = 0; }
+        if (flc_on) { flc_sh[i] = sh; flc_tag[i] = (u8)(want | (four << 6)); }
+        flc_emit(sh, four, A, B, C, Dd, (u32)t->tpage << 16, u, v, 7);
         return;
     }
+    int y = 14 + (isin((frame_t * 40 + mx * 300 + my * 500) & 4095) >> 10);   // water sits a little low and heaves
+    SVECTOR a, b, c, d;
+    setVector(&a, x0, y - hA, zN); setVector(&b, x1, y - hB, zN); setVector(&c, x0, y - hC, zS); setVector(&d, x1, y - hD, zS);
+    FLOOR_L()
+    #undef FLOOR_L
+    u += (frame_t >> 3) & 7; v += (frame_t >> 4) & 7;   // (the 16x16 texture holds the 8x8 pattern twice: it tiles)
     if (!dbg_noao && !is_wall(dm[my][mx]) && near_wall(mx, my)) {   // next to a wall: the corners by it darken (contact shadow)
         int L0 = ao_corner(mx, my, L), L1 = ao_corner(mx + 1, my, L), L2 = ao_corner(mx, my + 1, L), L3 = ao_corner(mx + 1, my + 1, L);
         gfx_quad_gt(&a, &b, &c, &d, t->tpage, 0, u, v, u + 7, v, u, v + 7, u + 7, v + 7,
@@ -2374,31 +2418,31 @@ static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), 
     SVECTOR sv[4]; setVector(&sv[0], x0, -hA, zN); setVector(&sv[1], x1, -hB, zN); setVector(&sv[2], x0, -hC, zS); setVector(&sv[3], x1, -hD, zS);
     XV xv[4]; gfx_xform(sv, xv, 4);
     const XV *A = &xv[0], *B = &xv[1], *C = &xv[2], *Dd = &xv[3];
-    static int Lfr = -1, Lup; if (Lfr != frame_t) { Lfr = frame_t; Lup = CLAMP(gfx_light(0, -ONE, 0), 40, 200); }
-    int L = CLAMP(Lup + slope * 5 / 16, 40, 215);
+    #define BLOCK_L() int L = CLAMP(CLAMP(floor_Lup(), 40, 200) + slope * 5 / 16, 40, 215);
+    const int var = (fl >= FL_PAVING || fl == FL_GRASS) && fl != FL_WATER && fl != FL_ROCK && !FL_IS_ROAD(fl);   // (the streets and paving: a tint that wanders from corner to corner)
     if (nc_need4(A, B, C, Dd)) {   // (the eye is close: cut at the near plane, split in first person)
+        BLOCK_L()
         u32 cc[4], uv4[4] = { (u32)t->u | ((u32)t->v << 8), (u32)(t->u + 31) | ((u32)t->v << 8), (u32)t->u | ((u32)(t->v + 31) << 8), (u32)(t->u + 31) | ((u32)(t->v + 31) << 8) };
         if (!dbg_noao && (near_wall(mx, my) | near_wall(mx + 1, my) | near_wall(mx, my + 1) | near_wall(mx + 1, my + 1))) {
             cc[0] = gfx_grade_tex((u32)ao_corner(mx, my, L) * 0x010101u); cc[1] = gfx_grade_tex((u32)ao_corner(mx + 2, my, L) * 0x010101u);
             cc[2] = gfx_grade_tex((u32)ao_corner(mx, my + 2, L) * 0x010101u); cc[3] = gfx_grade_tex((u32)ao_corner(mx + 2, my + 2, L) * 0x010101u);
         } else cc[0] = cc[1] = cc[2] = cc[3] = gfx_grade_tex((u32)L * 0x010101u);
-        if ((fl >= FL_PAVING || fl == FL_GRASS) && fl != FL_WATER && fl != FL_ROCK && !FL_IS_ROAD(fl)) for (int k = 0; k < 4; k++) { int Lc = CLAMP(L * gvar(mx + 2 * (k & 1), my + 2 * (k >> 1)) >> 8, 20, 250); cc[k] = gfx_grade_tex((u32)Lc * 0x010101u); }
+        if (var) for (int k = 0; k < 4; k++) { int Lc = CLAMP(L * gvar(mx + 2 * (k & 1), my + 2 * (k >> 1)) >> 8, 20, 250); cc[k] = gfx_grade_tex((u32)Lc * 0x010101u); }
         SVECTOR s4[4] SVEC_ALIGN; s4[0] = sv[0]; s4[1] = sv[1]; s4[2] = sv[2]; s4[3] = sv[3];
         nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 1, t->tpage, 0, uv4, 0);
         return;
     }
-    if (!dbg_noao && (near_wall(mx, my) | near_wall(mx + 1, my) | near_wall(mx, my + 1) | near_wall(mx + 1, my + 1))) {
-        int L0 = ao_corner(mx, my, L), L1 = ao_corner(mx + 2, my, L), L2 = ao_corner(mx, my + 2, L), L3 = ao_corner(mx + 2, my + 2, L);
-        gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)L0 * 0x010101u), gfx_grade_tex((u32)L1 * 0x010101u), gfx_grade_tex((u32)L2 * 0x010101u), gfx_grade_tex((u32)L3 * 0x010101u),
-                     t->tpage, 0, t->u, t->v, t->u + 31, t->v + 31, 0);
-        return;
-    }
-    if ((fl >= FL_PAVING || fl == FL_GRASS) && fl != FL_WATER && fl != FL_ROCK && !FL_IS_ROAD(fl)) {   // (the streets and paving: a tint that wanders from corner to corner)
-        int Lc[4]; for (int k = 0; k < 4; k++) Lc[k] = CLAMP(L * gvar(mx + 2 * (k & 1), my + 2 * (k >> 1)) >> 8, 20, 250);
-        gfx_emit_gt4(A, B, C, Dd, gfx_grade_tex((u32)Lc[0] * 0x010101u), gfx_grade_tex((u32)Lc[1] * 0x010101u), gfx_grade_tex((u32)Lc[2] * 0x010101u), gfx_grade_tex((u32)Lc[3] * 0x010101u), t->tpage, 0, t->u, t->v, t->u + 31, t->v + 31, 0);
-        return;
-    }
-    gfx_emit_ft4(A, B, C, Dd, gfx_grade_tex((u32)L * 0x010101u), t->tpage, 0, t->u, t->v, t->u + 31, t->v, t->u, t->v + 31, t->u + 31, t->v + 31, 0, 0);
+    if (!xv_vis4(A, B, C, Dd, 0)) return;
+    int i = flc_slot(mx, my), want = flc_want(mx, my, 1);
+    if (flc_on) { int tg = flc_tag[i]; if ((tg & 0x3f) == want) { flc_emit(flc_sh[i], tg >> 6, A, B, C, Dd, (u32)t->tpage << 16, t->u, t->v, 31); return; } }   // (baked)
+    BLOCK_L()
+    #undef BLOCK_L
+    u32 sh; int four = 1;
+    if (!dbg_noao && (near_wall(mx, my) | near_wall(mx + 1, my) | near_wall(mx, my + 1) | near_wall(mx + 1, my + 1))) sh = flc_pack(ao_corner(mx, my, L), ao_corner(mx + 2, my, L), ao_corner(mx, my + 2, L), ao_corner(mx + 2, my + 2, L));
+    else if (var) { int Lc[4]; for (int k = 0; k < 4; k++) Lc[k] = CLAMP(L * gvar(mx + 2 * (k & 1), my + 2 * (k >> 1)) >> 8, 20, 250); sh = flc_pack(Lc[0], Lc[1], Lc[2], Lc[3]); }
+    else { sh = (u32)L; four = 0; }
+    if (flc_on) { flc_sh[i] = sh; flc_tag[i] = (u8)(want | (four << 6)); }
+    flc_emit(sh, four, A, B, C, Dd, (u32)t->tpage << 16, t->u, t->v, 31);
 }
 
 // ---- thin walls: a wall tile is a slab 40 units thick running along the line its neighbours make, like a Sims wall ----
@@ -2643,6 +2687,7 @@ static u8 lvl_bb[NLEVELS][4];
 static u32 lvl_edge[NLEVELS][MH][(MW + 31) / 32];
 // shell: a storey above the one you are on (only other buildings' outside walls show); focus: the building you are in
 static int cut_all;                                     // (this frame: the walls on the camera's side are cut low)
+static u32 bld_gen;
 static inline int cut_here(int mx, int my) { int b = bld[my][mx]; return !b || b_see[b]; }   // the walls cut are those of the buildings you are in or look into (and loose ones)
 static inline void lift_to(int L) { if (gfx_lift != L) { gfx_lift = L; gfx_set_identity(); } }   // (the hills: walls and floors are set down on the pad under them)
 static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, int focus) {
@@ -2747,18 +2792,31 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
     if (!lvl && !shell && world_item_r > world_detail_r) {
         const int IR = world_item_r;
         int ix0 = MAX(0, fx - IR), ix1 = MIN(MW - 1, fx + IR), iy0 = MAX(0, fy - IR), iy1 = MIN(MH - 1, fy + IR);
-        for (int my = iy0; my <= iy1; my++) for (int mx = ix0; mx <= ix1; mx++) {
-            if (mx >= rx0 && mx <= rx1 && my >= ry0 && my <= ry1) { mx = rx1; continue; }   // (the range did these)
+        // (which tiles hold such a thing does not change from frame to frame: they are kept as a bit a tile, 800 bytes in the PlayStation's
+        //  1 KB scratchpad, which nothing else uses; worked out again when the map, its buildings or the window change. The loop reads
+        //  only those bits, eight tiles at a time, in the same order as before, not every tile of the 25 x 25 square)
+        { static u32 key[6] = { 0xffffffffu }; u32 k[6] = { (u32)world_stamp, bld_gen, (u32)world_wbx, (u32)world_wby, (u32)world_zone, (u32)nat_on };
+          int same = 1; for (int i = 0; i < 6; i++) if (k[i] != key[i]) { same = 0; key[i] = k[i]; }
+          if (!same) {
+              memset((void *)oi_bits, 0, OI_ROW * MH);
+              for (int my = 0; my < MH; my++) for (int mx = 0; mx < MW; mx++) {
+                  char c = lifeMap[my][mx];
+                  if (c == '.' || c == ' ' || c == 'D' || c == 'r' || is_wall(c) || bld[my][mx]) continue;
+                  if (nat_on && nat_plant_char(c)) continue;
+                  oi_bits[my * OI_ROW + (mx >> 3)] |= (u8)(1 << (mx & 7));
+              } } }
+        for (int my = iy0; my <= iy1; my++) { const volatile u8 *row = &oi_bits[my * OI_ROW];
+          for (int mx = ix0; mx <= ix1; mx++) {
+            { int w = row[mx >> 3] >> (mx & 7); if (!w) { mx |= 7; continue; } if (!(w & 1)) continue; }   // (eight tiles with nothing at a time)
+            if (mx >= rx0 && mx <= rx1 && my >= ry0 && my <= ry1) continue;   // (the range did these)
             char c = dm[my][mx];
-            if (c == '.' || c == ' ' || c == 'D' || c == 'r' || is_wall(c) || bld[my][mx] || in_range(mx, my)) continue;
-            if (nat_on && nat_plant_char(c)) continue;
             int vx, vy, vz; tile_view(&tvT, mx, my, &vx, &vy, &vz);
             if (vz < -TILE || ABS(vx) > (vz * 3) / 4 + TILE * 2 || ABS(vy) > (vz * 5) / 8 + TILE * 3 + hm) continue;
             lift_to(0);
             int rot = items_rotates(c) ? world_item_facing(mx, my) : 0;
             int along = items_along(c) ? world_along(mx, my, c) : 0;
             { PROF_BEGIN(); items_draw(c, mx, my, rot, along, t); PROF_END(2); }
-        }
+        } }
     }
     lift_to(0);
 }
@@ -2793,7 +2851,9 @@ static int bld_alloc(void) { for (int b = 1; b < NBLD; b++) if (b_x0[b] == 255) 
 static u8 rbox[NLEVELS][4];
 int dbg_rr_hb, dbg_rr_n, dbg_rr_blk, dbg_ws[4];
 // the roofs and buildings of the box [x0..x1] x [y0..y1] (the whole map, or a block that has just come in)
+static u32 bld_gen;                                    // (bumped whenever the buildings are worked out again: what keys on bld[][] knows)
 static void roof_region(int x0, int y0, int x1, int y1) {
+    bld_gen++;
     int t0 = gfx_hb(); dbg_rr_n++;
     u8 (*out)[MW] = (u8 (*)[MW])bfs_par; u16 *q = bfs_q;
     u8 (*Dd)[MW] = (u8 (*)[MW])((u8 *)bfs_par + MH * MW);
@@ -2945,6 +3005,7 @@ static void bits_shift(u32 (*rows)[(MW + 31) / 32], int dx, int dy) {   // a bit
     memcpy(rows, tmp, sizeof tmp);
 }
 static void roof_shift(int dx, int dy) {
+    bld_gen++;
     for (int l = 0; l < NLEVELS; l++) {
         shift2d(&roofH[l][0][0], RHW, RHW, MH + 1, dx / 2, dy, 0);   // (whole blocks of 16 tiles: 8 bytes of nibbles)
         bits_shift(roofM[l], dx, dy);
@@ -3309,6 +3370,7 @@ static void nat_far(int px, int py) {
 
 void world_draw(int fx, int fy, int t, int cutaway) {
     gh_cache_clear(fx, fy);
+    gh_live = world_zone == ZONE_CITY && world_wbx >= 0 && gh_cok && gh_cwx == world_wbx && gh_cwy == world_wby;
     gfx_lift_fn = world_gh;
     gfx_set_identity(); world_dbg_walls = 0;
     gfx_set_reserve(RESERVE_PEOPLE + RESERVE_UI);   // the world may not use up the room the people need
@@ -3337,7 +3399,9 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     ex0 &= ~1; ey0 &= ~1;
     int keep_lvl = world_lvl; world_lvl = 0;
     cut_all = cutaway;
+    flc_frame(); flc_on = 1;   // (after the shading and the heights are brought up to date above)
     { int h0 = gfx_hb(); draw_layer(fx, fy, t, cutaway && world_view_lvl == 0, 0, 0, focus); world_hb_l0 = gfx_hb() - h0; }
+    flc_on = 0;
     int h1_ = gfx_hb(); int pw0_ = gfx_prof[1], pn0_ = gfx_profn[1], pf0_ = gfx_prof[0];
     {   // the storeys above: the drawing reads each storey's own arrays, with the camera dropped by its height. Up to the storey
         // you are on, everything; above it, other buildings' outside walls (the one you are in stays open to the sky)
@@ -3357,7 +3421,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     { PROF_BEGIN(); int h0 = gfx_hb(); roofs_draw(fx, fy); world_hb_roofs = gfx_hb() - h0; PROF_END(3); }
     if (nat_on || world_zone == ZONE_HOME || world_zone == ZONE_TOWN) { PROF_BEGIN(); nat_far(fx, fy); PROF_END(7); }   // (the ground past the range, out to the map's edge and on)
     {   // the skyline: everything past the range, as boxes (windows on the nearer ones); in SAN BOREAS, on out to the horizon
-        PROF_BEGIN(); gfx_set_identity();
+        PROF_BEGIN(); int sky_h0 = gfx_hb(); gfx_set_identity();
         int use_far = world_zone == ZONE_CITY && far_begin(world_horizon);
         int far2 = world_far_range * world_far_range;
         int etx = cam.eye.vx / TILE, ety = -cam.eye.vz / TILE;
@@ -3375,12 +3439,12 @@ void world_draw(int fx, int fy, int t, int cutaway) {
                               b_wall[b] ? b_wall[b] : RGB(24, 22, 19), b_sty[b] != 2, RGB(rc[0] >> 3, rc[1] >> 3, rc[2] >> 3)); }
             else far_box(b, d2 < 22 * 22);
         }
-        world_hb_sky1 = gfx_hb() - prof_t0_;
+        world_hb_sky1 = gfx_hb() - sky_h0;
         if (use_far) far_draw(rx0, ry0, rx1, ry1);   // the land, the towns and the trees, out to the horizon
         gfx_set_identity();
         PROF_END(3);
     }
-    world_lvl = keep_lvl;
+    world_lvl = keep_lvl; gh_live = 0;
     gfx_set_reserve(0);
     { extern int gfx_world_peak, gfx_bytes_used(void); int u = gfx_bytes_used(); if (u > gfx_world_peak) gfx_world_peak = u; }
 }

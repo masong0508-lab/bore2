@@ -43,14 +43,18 @@ int  gfx_light(int nx, int ny, int nz);       // local-space normal (units of 40
 void gfx_set_ambient(int amb, int dif);       // the day-night cycle moves these
 void gfx_set_light_yaw(int yaw);              // the yaw gfx_light rotates normals by (gfx_set_object sets it; set it yourself after gfx_set_object_m)
 int  gfx_light_amb(void);
+int  gfx_light_key(void);                     // changes when the light (or the grade) changes: a key for caches of lit colours
 void gfx_set_zbias(int b);
 void gfx_set_fog(int near, int far);          // things further than near darken towards far (0 = off)
 extern int gfx_prim_count;                    // 3D primitives sent (reset it yourself; the Bores' cost)
 extern int gfx_last_prims, gfx_last_bytes, gfx_last_overflow;
 extern int gfx_prof[8], gfx_prof_last[8]; int gfx_hb(void); int isqrt(int v);   // profiler buckets: 0 floors 1 walls 2 items 3 roofs 4 sims 5 cit full 6 cit crowd 7 shadows/misc
 extern int gfx_frame_prims, gfx_profn[8], gfx_profn_last[8];
-#define PROF_BEGIN() int prof_t0_ = gfx_hb(), prof_n0_ = gfx_frame_prims
-#define PROF_END(k) (gfx_prof[k] += gfx_hb() - prof_t0_, gfx_profn[k] += gfx_frame_prims - prof_n0_)   // profiler (L3 in life mode): last frame's 3D prims, packet bytes, prims that did not fit
+// (the hblank counter read straight from the root counter, inline: the drawing loops time every tile with these, and a call each way
+//  to VSync(1) cost about 5 hblanks a frame. A difference of two readings is what VSync(1) would give, wrapping at 16 bits)
+#define PROF_HB() ((int)*(volatile unsigned short *)0xbf801110u)
+#define PROF_BEGIN() int prof_t0_ = PROF_HB(), prof_n0_ = gfx_frame_prims
+#define PROF_END(k) (gfx_prof[k] += (unsigned short)(PROF_HB() - prof_t0_), gfx_profn[k] += gfx_frame_prims - prof_n0_)   // profiler (L3 in life mode): last frame's 3D prims, packet bytes, prims that did not fit
 
 // ---- the fast path: transform shared corners once (XV), then emit faces from them; colours already graded ----
 int  gfx_visible(int wx, int wy, int wz, int r);   // a world-space sphere inside the view?
@@ -67,6 +71,7 @@ int  gfx_proj(int wx, int wy, int wz, int *sx, int *sy);   // screen position; r
 void gfx_xform(const SVECTOR *v, XV *o, int n);
 u32  gfx_grade_flat(u32 rgb);                 // a lit colour (0xBBGGRR) as the flat/gouraud prims show it
 u32  gfx_grade_tex(u32 rgb);                  // ... as the textured prims show it (128 = the texture as it is)
+const u32 *gfx_grade_lut(void);               // gfx_grade_tex of a grey shade s (0..255), as a table: lut[s]
 
 // ---- 3D primitives in the current object space (return 1 if drawn) ----
 int gfx_quad_f (const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d, int r, int g, int b8, int cull);
