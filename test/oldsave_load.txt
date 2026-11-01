@@ -1,0 +1,9 @@
+1500 start
+1560 shot
+1600 down
+1640 shot
+1680 b
+1800 shot
+1860 b
+2100 shot
+2800 shot

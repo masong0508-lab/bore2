@@ -25,3 +25,10 @@ How the city's frame time is measured (used for docs/PS1_PERFORMANCE.md). All of
    in their spare time), and, with `AB_LOCK4`, "by the clock" fps from the need and from the flip: compare two builds on those (the same route,
    frame by frame). It also prints the household's route-search frames (`sim_step` histogram), the people's drawing split and the slowest frames.
 9. **The townsfolk** (`citprobe.py RAM ELF`, with a `-DCIT_PROBE=1` build): what they did over the run (steps lived and ground walked by mode, route searches, chores, walks and how they ended, greetings) and a snapshot every 512 steps; build the same with `-DCIT_FLAT=1` to compare against everyone thought about every step. `ramprof.py` also prints the townsfolk's tiers, thinking calls and worst frame.
+10. **A memory card that stays, the sound, the sound chip** (`regtest_card_wav.patch`, on top of the profiler patch; then `ninja duckstation-regtest`
+   in the runner's build): `DSCARD=<file>` makes card 1 that file, kept from run to run (made and formatted if missing), so a save made by one
+   build can be loaded by another (`test/oldsave.sh`); `DSWAV=<file.wav>` writes everything the SPU plays (44.1 kHz stereo; `test/audiocheck.py`
+   measures the AUDIO sliders with it); `DSSPU=<file>` writes the SPU's registers (1F801C00..1F801DFF) at the end. Without them it runs as before.
+11. **Test builds and RAM**: a test hook's code and data come out of the room past `_end`; under about 7 KB the boot or a busy frame can crash (the
+   stack runs into the SDK's interrupt tables, and the log then fills with "Unhandled instruction": cap it, e.g. `| head -c 30000000`).
+   `-DPLACE_MAX=1300` gives a test build about 3 KB back (the AUTO_CITY world has 1256 places of the 1800 kept for).
