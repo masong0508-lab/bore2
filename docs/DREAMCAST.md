@@ -87,14 +87,29 @@ On screen the PS1 words become the Dreamcast pad's, in `src/font.c` under `#ifde
 (whole words only; the PS1 build is untouched). Shot: the talk bar says "A TALK".
 ![buttons](dc_buttons_abxy.png)
 
+## Round 3 (speed, pads, VMU pet)
+Speed (flycast, same `AUTO_CITY` street; the Sim walks a different way each run, so this is rough: CPU hblanks a frame, 262 = 60 fps):
+| Step | CPU hblanks | fps seen |
+|---|---|---|
+| start of round 3 | 470-540 | 29-46 |
+| 32-bit GTE RTPS (no 64-bit shifts), incremental integer sprite rasteriser, 4-bit texture cells by palette, texture check skipped while VRAM is unchanged, packet prefetch | 420-500 (260-300 in quiet streets) | 31-52 |
+Profile now: GTE 10%, emit/emit_one/DrawOTag 23%, reverb 8%, cell conversion 5%, idle 8%. Still no steady 60 in the busy street. The profile showed the
+people-sprite rasteriser (software, into VRAM) was a big part of `emit`; it is about 3x cheaper per pixel now.
+- 2 players in the fight game: a controller in port B plays the second fighter (`dc_pad2` in `dc_plat.c`, `#ifdef BORE_DC` in `src/fight.c`; with no
+  second pad the AI plays as before). Not tested with a real second pad (the test emulator has one pad). Mini-games and Family Party still read pad A only.
+- VMU: when the Bore you play owns a Boreagotchi toy, the VMU screen shows the pet for 2 of every 6 seconds (blob by stage, an egg before hatching, hearts for
+  food and fun, a mess mark, "CALLS YOU!", XP). Shot: `dc_vmu_pet.png` (test build `-DDC_FAKEPET`). Rewards do not carry back to the game yet.
+![pet](dc_vmu_pet.png)
+- PS1 check: `ports/dreamcast/ps1_check.sh` gives the same image with and without the Dreamcast edits (`_end` 0x801fc044, sha1 9cfdf4cec1aaaad0 on this tree).
+- Shadows: the game already draws a soft shadow under every person (`gfx_shadow`, subtract blend); no change needed.
+
 ## Still to do
-- Side by side with DuckStation: inside a house, pie menu, Buy/Build, night, first person, far view, a park.
-- Roofs: side-by-side with DuckStation for shops, towers, flats, far roofs; a fade cut-away; far roofs with fog; bigger overhangs.
+- Side by side with DuckStation: pie menu, night, first person, far view, a park, roofs (shops, towers, flats). Not done.
+- Roofs: a fade cut-away; far roofs with fog; bigger overhangs.
 - The far buildings' window textures use the PS1 texture window (GP0 E2): not done in `dc_gpu.c` yet.
-- Steady 60 fps: sound on the AICA's own channels, a float GTE, cheaper OT walk.
-- Upgrades: sub-pixel vertices, depth buffer, full far view with fog, bigger crowds, smooth lighting.
-- Extras: Jump Pack rumble events, Boreagotchi on the VMU, DC catalogue set and outfits, shadows, water/glass, night glow, 4 controllers.
-- Not done in round 2: direct PVR path for people, SH-4 FTRV/FIPR matrix maths (RTPS is still 64-bit integer maths), sub-pixel vertices
-  (the game hands the GPU whole-pixel PS1 packets, so it needs a change in `src/`), depth buffer, fog, 16:9, bigger crowds, smooth lighting,
-  the DuckStation side-by-sides, and all of the extras list except the button names (Boreagotchi on the VMU, furniture, outfits, shadows,
-  water/glass, night glow, 4 controllers, gallery). 4 controllers also needs the game to read ports 2-4 (it reads only port 0).
+- Steady 60 fps: sound on the AICA's own channels (reverb 8% + mixer), the game's own vertex count, SH-4 FIPR/FTRV maths for the GTE, a direct PVR path for the world
+  and people (people are still software-drawn into VRAM cells, then textures).
+- Upgrades not done: sub-pixel vertices (the game hands the GPU whole-pixel packets: needs `src/` changes), a real depth buffer (the PVR z is the painter's order, so
+  PVR fog by depth is not possible yet), full far view with fog, bigger crowds, smooth lighting, 16:9 (the game lays out its HUD and camera for 320x240).
+- Extras not done: bring Boreagotchi rewards back from the VMU, Dreamcast furniture set and outfits, translucent water/glass, night glow, unlockables gallery,
+  pads C and D and second players in the mini-games.
