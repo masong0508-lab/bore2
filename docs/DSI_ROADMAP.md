@@ -180,7 +180,7 @@ Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build 
 - Time: creatures live by the game clock (one tick a game minute, as on the PS1 default). Saved in a new trailing block 'GT' (only the creatures that are there; the save now reserves exactly what the mini-games' blocks take, instead of a fixed 64 bytes, and the budget sign is fixed); old saves load.
 - Checked in melonDS: buy, hatch, feed, both games, Blobdex, save and load (a saved toy comes back with its creatures; the egg had hatched with the days). fps 30. `docs/ds_shots/d48_gotchi.png` (the basket, the handheld, COPY ME, the Blobdex: top over bottom).
 ![gotchi](ds_shots/d48_gotchi.png)
-- Not done: the Toy Box (other housemates' toys; here you tend your own Bore's), the guide pages, the LIVE (real-time) and off clock choices (it runs on the game clock), moodlets, the build and buy items (dock, shelf, cabinet, plush, ball, bed, bowl, lamp, trophy) and the shop that sells the toy (it is bought on its own screen).
+- (Toy Box, guide, LIVE/off clock, house things and the shop: D53. Still not done: moodlets.) Was: the build and buy items (dock, shelf, cabinet, plush, ball, bed, bowl, lamp, trophy) and the shop that sells the toy (it is bought on its own screen).
 - Not done in the mini-games: fight.
 
 **Done at D50 (`bore2_dsi_d50.nds`): the grass changes with the seasons (the PS1's world.c skin_c)**
@@ -198,6 +198,16 @@ Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build 
 - Every part of a bought thing takes a PS1 pattern by its colour: wood grain on brown, lawn on green, carpet on bright colours, plaster on grey; white and very dark parts stay plain. The Map's lot picture (drawn straight to the GPU, which had no textures) now has them: roof, walls, ground.
 - 30 fps in melonDS (live 30, close-up 30, Map 30). Shot (left: the Map's picture, right: furniture close up): `docs/ds_shots/d52_textures.png`.
 ![textures](ds_shots/d52_textures.png)
+
+**Done at D53 (`bore2_dsi_d53.nds`): Boreagotchi gaps closed (Toy Box, guide, clock choices, house things, the shop)**
+- **Toy Box:** Menu > Games > Boreagotchi opens the family's list (every housemate, their level, their eight pets as coloured dots, how many are calling). Open one to look in their basket; only the owner can act ("That is not your toy"). Blobdex and Guide chips, Back goes up one step as on the PS1.
+- **Guide:** nine pages, the PS1's words, a picture strip on the touch screen under each (live pets on little LCDs). The PS1's page pictures come from a disc file and are not on the DS; the strips are drawn.
+- **Clock:** Options > Game > Boreagotchi time: Game clock / LIVE / Off (also a T: chip in the Toy Box). LIVE: while the handheld is open the pets get a minute of life every second and the owner forgets to eat (hungry owner: messages). Off: the pets wait. LIVE or PAUSED shows on the handheld.
+- **House things:** the Gotch. tab's dock, shelf, cabinet, bed, bowl and lamp now do what the PS1's do (open the basket, the Toy Box, the Blobdex, tuck in, feed all $5, lights). Plush, ball, trophy keep their plain actions.
+- **The shop:** about half of the shops (by the lot's hash) have a Gotchi Dock on display: tap it, Boreagotchi $5000. The Games menu still sells it too.
+- fps 30 in melonDS (the screens sit on the same still lot). One more option byte in the save's option block; old saves load (the option is at its default). Shots (Toy Box, guide page 6, the LIVE handheld and basket, the shop dock): `docs/ds_shots/d53_gotchi.png`.
+![gotchi](ds_shots/d53_gotchi.png)
+- Not done: moodlets (the PS1's mood effects of the pets).
 
 ## Next (in this order)
 1. **Real-hardware and Android tests** of the song reader (`cart_blk` in `main.c`), saving and touch. If a loader blocks cartridge reads, add an SD (libfat) path for DSi.

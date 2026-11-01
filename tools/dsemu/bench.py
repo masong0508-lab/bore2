@@ -25,6 +25,11 @@ SC = {   # name: (script, pokes {frame: scene}, measure from, to, screenshot fra
     "farm":   (LIVE, {400: 2}, 700, 1300, 1280),
     "street": (LIVE, {400: 3}, 700, 1300, 1280),
     "town":   (LIVE, {400: 4}, 700, 1300, 1280),
+    "toybox": (LIVE, {400: 52}, 500, 800, 780),   # (D53) the Toy Box
+    "guide5": (LIVE, {400: 53}, 500, 800, 780),
+    "guide3": (LIVE, {400: 54}, 500, 800, 780),
+    "livebasket": (LIVE, {400: 55}, 500, 800, 780),
+    "shop":   (LIVE, {400: 51}, 500, 800, 780),
     "close":  (LIVE, {400: 6}, 700, 1000, 980),
     "horizon": (LIVE, {400: 5}, 700, 1300, 1280),
     "orbit":  (LIVE + ";500-1300:10:-1,-1", {}, 600, 1300, 1280),        # Live, the camera turning all the time (the still list is recorded again often)

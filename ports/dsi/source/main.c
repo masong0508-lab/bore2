@@ -3,7 +3,7 @@
 // Top screen: that lot in 3D. L/R change town, A/B zoom, START re-rolls the world.
 // Fixed point only; the world is bigmap.c, shared with the PS1 build (nothing of it is stored).
 #define PMN 28
-static int o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song, o_need = 2, o_day = 1, o_msgt = 1, o_tmus = 1, o_gmus = 1, o_shuf = 1, o_look = 1, o_detl, prof_full, fast_cpu, o_tex = 1, o_rt, rt_mon = -1, rt_md, rt_jump = 1;   // (o_rt: Options > Game > Real time; the real month (0 Jan) and day; 1: put the clock straight to the real one, nothing played through)
+static int o_gtime, o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song, o_need = 2, o_day = 1, o_msgt = 1, o_tmus = 1, o_gmus = 1, o_shuf = 1, o_look = 1, o_detl, prof_full, fast_cpu, o_tex = 1, o_rt, rt_mon = -1, rt_md, rt_jump = 1;   // (o_rt: Options > Game > Real time; the real month (0 Jan) and day; 1: put the clock straight to the real one, nothing played through)
 
 // ---- the options: one table (name, the choices, the value, the tab it lives on, its default). Saved in table order, so new ones are only ever added at the end.
 typedef struct { const char *name, *vals; int *v; unsigned char tab, def; } Opt;
@@ -27,7 +27,8 @@ static const Opt OPT[] = {
     // (D40) the 3D look (Classic: as before D40; Rich: a sky, haze in the distance, highlights; Toon: Rich with outlines round every thing) and the detail (Auto: DSi when the CPU is the DSi's fast one)
     { "3D look", "Classic|Rich|Toon", &o_look, 0, 1 }, { "Detail", "Auto|DS|DSi", &o_detl, 3, 0 },
     { "Textures", "Off|On", &o_tex, 0, 1 },   // (D43: the PS1's patterns on the ground, floors, walls and roofs)
-    { "Real time", "Off|On", &o_rt, 2, 0 },   // (D44: the clock is the DS's own: time of day, weekday, season by the month; sleep and work stay quick)
+    { "Real time", "Off|On", &o_rt, 2, 0 },
+    { "Boreagotchi time", "Game clock|LIVE|Off", &o_gtime, 2, 0 },   // (D53: how the pets live: on the game clock, LIVE (real time while you hold the toy too), or off)   // (D44: the clock is the DS's own: time of day, weekday, season by the month; sleep and work stay quick)
 };
 #define OPT_OLD 36   // options saved in the save's first 40 bytes (the rest go in the 'OX' block)
 static void open_opts(void);
@@ -703,6 +704,7 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
     else if (food) { for (int y = y0 + 3; y < y1 - 1; y += 2) for (int x = x0 + 1; x < x1 - 1; x += 3) { PUTP(x, y, 1, 0, 0); PUTP(x + 1, y, 0, 0, 3); } PUTP(x1 - 1, y0, 2, 3, 0); }
     else if (care) { for (int x = x0 + 1; x < x1 - 1; x += 2) PUTP(x, y0, 4, 0, 0); PUTP(x1 - 1, y0 + 2, 4, 3, 0); PUTP(x0 + 1, y0 + 4, 3, 2, 0); }
     else { for (int x = x0 + 1; x < x1 - 1; x += 2) { PUTP(x, y0, 1, 3, 0); } for (int x = x0 + 2; x < x1 - 1; x += 3) PUTP(x, y0 + 3, 3, 1, 0); PUTP(x0 + 1, y0 + 4, 2, 0, 1); PUTP(x1 - 1, y0 + 4, 2, 3, 3); PUTP(x0 + 1, y1 - 1, 3, 2, 0); }
+    if (k == LOT_SHOP && ((h >> 5) & 3) < 2) z_put(x1 - 2, y1 - 2, 0xBE, 0);   // (D53) an electronics shop sells the Boreagotchi: its display dock (tap it)
     for (int q = 0; q < 3; q++) { spawn_x[q] = 5 + q; spawn_y[q] = y1 - 2; }
     #undef PUTP
 }
@@ -1688,6 +1690,7 @@ static int fm_sig(void) { int a = fm_wet + fm_hens * 3 + fm_cows * 5 + fm_fed * 
     for (int k = 0; k < 4; k++) a = a * 7 + fm_n[k] * 3 + fm_g[k] + fm_stock[k] * 5; return a; }
 static u8 ID2CH[NITEM];   // an item's PS1 letter (0: the DS's own)
 static int popup_n, popup_code[8]; static const char *popup_lab[8];   // (D38: up to eight, the farm stand has that many)
+static int in_shop(void); static int gtoy_of_(int si); static void gt_furn(int cd);   // (D53, ds_games.c)
 static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a thing offers: the PS1's choices on the island, else the item's own action
     int c = ID2CH[OBJ_ID(&objs[o])], n = 0, isl = zone == Z_ISLAND;
     #define AC(l, k) do { lab[n] = (l); code[n] = (k); n++; } while (0)
@@ -1705,6 +1708,10 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     else if (c == 'B') AC("Ride the Board", 85);   // (D44)
     else if (c == '!' && in_arcade()) { static char pl[28]; int g_ = arcade_game_at(objs[o].x, objs[o].y); snprintf(pl, sizeof pl, "%s $%d", g_ == 1 ? "Bore Breaker" : g_ == 2 ? "Snack Catch" : g_ == 3 ? "Whack-a-Bore" : "High Striker", g_ == 1 ? 2 : 1); AC(pl, 86); }   // (D46: a cabinet)
     else if (c == 'y' && in_arcade()) { static char pz[28]; snprintf(pz, sizeof pz, "Prizes (%d tickets)", arcade_tix); AC(pz, 87); }   // (D46: the prize counter)
+    else if (c >= 0xBE && c <= 0xC5 && c != 0xC1 && c != 0xC2) {   // (D53) the Boreagotchi things (the PS1's pie choices)
+        if (c == 0xBE && in_shop() && !gtoy_of_(ctl)) AC("Boreagotchi $5000", 96);
+        if (c == 0xBE) { AC("Open the Basket", 90); AC("The Toy Box", 91); } else if (c == 0xBF) { AC("The Toy Box", 91); AC("Open the Basket", 90); } else if (c == 0xC0) { AC("View the Blobdex", 92); AC("The Toy Box", 91); }
+        else if (c == 0xC3) AC("Tuck Them In", 93); else if (c == 0xC4) AC("Feed Them All $5", 94); else if (c == 0xC5) AC("Lights For Them", 95); else AC(IT_OF(&objs[o])->lab, -1); }
     else AC(IT_OF(&objs[o])->lab, -1);
     #undef AC
     return n;
@@ -2870,6 +2877,7 @@ static void live_touch(int tx, int ty) {
                 else if (cd == 81) craft_ui = 1; else if (cd == 82) raft_sail(); else if (cd == 83) travel_ui = 1;
                 else if (cd == 86) { int g_ = arcade_game_at(ob->x, ob->y), pr_ = g_ == 1 ? 2 : 1; if (funds < pr_) say("Not enough funds"); else { funds -= pr_; ag_open(g_); } }   // (D46)
                 else if (cd == 87) ag_open(99);
+                else if (cd >= 90 && cd <= 96) gt_furn(cd);   // (D53) the Boreagotchi things
                 else if (cd == 85) { objs[popup_i] = objs[--nobj]; occ_ok = 0; has_board = 1; say("A skateboard! Menu > Board rides it"); skate_on(); }   // (D44: the PS1's PICKBOARD)
                 return; }
             if (popup_n <= 3 ? hit(162, top + 2 + popup_n * 24, 52, 22, tx, ty) : hit(196, top2 + 3, 50, 18, tx, ty)) popup = 0; return; }
@@ -2988,7 +2996,7 @@ int main(void) {
                 else if (sc >= 10 && sc < 13) { o_look = sc - 10; o_dirty = 1; }   // (10-12: Classic, Rich, Toon)
                 else if (sc >= 20 && sc < 23) { o_detl = sc - 20; o_dirty = 1; }
                 else if (sc >= 30 && sc < 33) { o_roof = sc - 30; o_dirty = 1; }
-                else if (sc >= 40 && sc < 50) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
+                else if (sc >= 40 && sc < 60) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
 #endif
             if (cam_on) {   // stylus camera: drag to orbit/tilt (or pan), buttons for zoom, follow, reset, done
                 if (down & KEY_TOUCH) { cam_drag = 0; if (hit(216, 36, 38, 20, tp.px, tp.py)) { cam_pan ^= 1; forced = 1; } else if (hit(216, 58, 38, 20, tp.px, tp.py)) cam_drag = 1;
