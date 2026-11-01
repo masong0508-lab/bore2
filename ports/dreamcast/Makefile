@@ -9,6 +9,8 @@ PLAT = dc_psx dc_gpu dc_plat
 OBJS = $(addsuffix .o,$(GAME) $(OVLS) $(PLAT))
 KOS_CFLAGS += -DBORE_DC -Ipsx -I$(SRC) -I../../assets -w -std=gnu11 \
               -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=incompatible-pointer-types -fno-strict-aliasing
+# test builds: make AUTO=AUTO_CITY (the PS1 build's own test hooks, e.g. straight into SAN BOREAS)
+KOS_CFLAGS += $(if $(AUTO),-D$(AUTO))
 vpath %.c $(SRC)
 GAME_OBJS = $(addsuffix .o,$(GAME) $(OVLS))
 $(GAME_OBJS): KOS_CFLAGS += -include dc_shared_pre.h

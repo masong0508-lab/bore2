@@ -72,18 +72,23 @@ MATRIX *RotMatrix(SVECTOR *r, MATRIX *m) {
     return m;
 }
 MATRIX *TransMatrix(MATRIX *m, VECTOR *r) { m->t[0] = r->vx; m->t[1] = r->vy; m->t[2] = r->vz; return m; }
+static inline int32_t sat16_(int64_t v) { return v < -32768 ? -32768 : v > 32767 ? 32767 : (int32_t)v; }
 VECTOR *ApplyMatrixLV(MATRIX *m, VECTOR *v0, VECTOR *v1) {
-    int64_t x = v0->vx, y = v0->vy, z = v0->vz; VECTOR o;
-    o.vx = (int32_t)((m->m[0][0] * x + m->m[0][1] * y + m->m[0][2] * z) >> 12);
-    o.vy = (int32_t)((m->m[1][0] * x + m->m[1][1] * y + m->m[1][2] * z) >> 12);
-    o.vz = (int32_t)((m->m[2][0] * x + m->m[2][1] * y + m->m[2][2] * z) >> 12);
+    // as the SDK does it on the GTE: the vector goes in through IR1..3 (16 bits) and comes out of them (saturated)
+    int64_t x = (int16_t)v0->vx, y = (int16_t)v0->vy, z = (int16_t)v0->vz; VECTOR o;
+    o.vx = sat16_((m->m[0][0] * x + m->m[0][1] * y + m->m[0][2] * z) >> 12);
+    o.vy = sat16_((m->m[1][0] * x + m->m[1][1] * y + m->m[1][2] * z) >> 12);
+    o.vz = sat16_((m->m[2][0] * x + m->m[2][1] * y + m->m[2][2] * z) >> 12);
     v1->vx = o.vx; v1->vy = o.vy; v1->vz = o.vz;
     return v1;
 }
+static inline int32_t sat16(int64_t v) { return v < -32768 ? -32768 : v > 32767 ? 32767 : (int32_t)v; }
 MATRIX *CompMatrixLV(MATRIX *m0, MATRIX *m1, MATRIX *m2) {
-    VECTOR t = { m1->t[0], m1->t[1], m1->t[2] }, o;
-    ApplyMatrixLV(m0, &t, &o);
-    int32_t t0 = o.vx + m0->t[0], t1 = o.vy + m0->t[1], t2 = o.vz + m0->t[2];
+    // as the SDK does it on the GTE: m1's translation goes in through IR1..3 (16 bits), comes out of IR1..3 (saturated to 16 bits)
+    int64_t ix = (int16_t)m1->t[0], iy = (int16_t)m1->t[1], iz = (int16_t)m1->t[2];
+    int32_t t0 = sat16((((int64_t)m0->t[0] << 12) + m0->m[0][0] * ix + m0->m[0][1] * iy + m0->m[0][2] * iz) >> 12);
+    int32_t t1 = sat16((((int64_t)m0->t[1] << 12) + m0->m[1][0] * ix + m0->m[1][1] * iy + m0->m[1][2] * iz) >> 12);
+    int32_t t2 = sat16((((int64_t)m0->t[2] << 12) + m0->m[2][0] * ix + m0->m[2][1] * iy + m0->m[2][2] * iz) >> 12);
     MulMatrix0(m0, m1, m2);
     m2->t[0] = t0; m2->t[1] = t1; m2->t[2] = t2;
     return m2;

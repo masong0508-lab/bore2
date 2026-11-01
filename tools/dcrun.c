@@ -112,6 +112,7 @@ static void (*p_retro_set_audio_sample)(retro_audio_sample_t), (*p_retro_set_aud
 static void (*p_retro_set_input_poll)(retro_input_poll_t), (*p_retro_set_input_state)(retro_input_state_t);
 static bool (*p_retro_load_game)(const struct retro_game_info *);
 static void (*p_retro_get_system_av_info)(struct retro_system_av_info *);
+static void *(*p_retro_get_memory_data)(unsigned); static size_t (*p_retro_get_memory_size)(unsigned);
 
 static int frame_no, want_shot; static char outprefix[512]; static int held_until[16];
 static int shots_at[1024], nshots; static const char *sysdir = "/tmp/dcsys";
@@ -206,7 +207,7 @@ int main(int argc, char **argv) {
     if (!h) { fprintf(stderr, "dlopen: %s\n", dlerror()); return 1; }
 #define L(n) *(void **)(&p_##n) = dlsym(h, #n)
     L(retro_init); L(retro_deinit); L(retro_set_environment); L(retro_set_video_refresh); L(retro_set_audio_sample);
-    L(retro_set_audio_sample_batch); L(retro_set_input_poll); L(retro_set_input_state); L(retro_load_game); L(retro_run); L(retro_get_system_av_info);
+    L(retro_set_audio_sample_batch); L(retro_set_input_poll); L(retro_set_input_state); L(retro_load_game); L(retro_run); L(retro_get_system_av_info); L(retro_get_memory_data); L(retro_get_memory_size);
     int frames = atoi(argv[3]); strncpy(outprefix, argv[4], sizeof outprefix - 1);
     typedef struct { int frame, btn; } Ev; static Ev evs[4096]; int nev = 0;
     if (argc > 5) {
@@ -244,6 +245,11 @@ int main(int argc, char **argv) {
     }
     for (int k = 0; k < 8 && want_shot; k++) { frame_no++; p_retro_run(); }
     fprintf(stderr, "frames drawn: %d\n", frames_seen);
+    if (p_retro_get_memory_data) {   // the Dreamcast's 16 MB at the end (<prefix>_ram.bin): the port leaves a text log in it (dc_log)
+        void *ram = p_retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM); size_t n = p_retro_get_memory_size(RETRO_MEMORY_SYSTEM_RAM);
+        char rp[600]; snprintf(rp, sizeof rp, "%s_ram.bin", outprefix); FILE *f = (ram && n) ? fopen(rp, "wb") : 0;
+        if (f) { fwrite(ram, 1, n, f); fclose(f); fprintf(stderr, "ram %zu bytes -> %s\n", n, rp); }
+    }
     if (audio_out) fclose(audio_out);
     _exit(0);   // (the core's threads and the GL context are not worth a clean shutdown here)
 }

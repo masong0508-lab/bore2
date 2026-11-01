@@ -13,6 +13,14 @@
 #include <psxgpu.h>
 
 #define SCALE 2.0f
+// a text log in RAM (tools/dcrun.c dumps the RAM: find "DCLOG{"), for looking at what the GPU was given
+char dc_log[65536] = "DCLOG{"; static int dc_log_n = 6;
+#include <stdarg.h>
+void dc_logf(const char *f, ...) { if (dc_log_n > 65000) return; va_list a; va_start(a, f); dc_log_n += vsnprintf(dc_log + dc_log_n, 65530 - dc_log_n, f, a); va_end(a); }
+#ifndef DC_DUMP
+#define DC_DUMP -1
+#endif
+int dc_dump_frame = DC_DUMP;   // (a test build: -DDC_DUMP=N logs frame N's big polygons)
 static uint16_t vram[512][1024] __attribute__((aligned(32)));
 static uint32_t page_gen[2][16];          // bumped when VRAM under a 64x256 page changes
 
@@ -110,7 +118,7 @@ int dc_prims_last;
 
 // drawing state (the GP0 E1..E6 commands and the DRAWENV)
 static DRAWENV cur_env; static int env_set;
-static int dm_tpage = 0x0a, ofs_x, ofs_y, off_screen;
+static int dm_tpage = 0x0a, ofs_x, ofs_y, off_screen, mask_set;
 static int area_x0, area_y0, area_x1 = 1023, area_y1 = 511;
 static uint32_t bg_rgb;
 
@@ -125,8 +133,22 @@ static inline uint32_t flat_col(uint32_t c) { return 0xff000000u | (c & 255) << 
 
 // the software rasteriser for drawing away from the screen (sprite cells): flat / gouraud / textured triangles into the VRAM copy
 static void sw_tri(const int *x, const int *y, const uint32_t *c, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi);
+static inline int tri_ok(int x0, int y0, int x1, int y1, int x2, int y2) {
+    int mnx = x0 < x1 ? (x0 < x2 ? x0 : x2) : (x1 < x2 ? x1 : x2), mxx = x0 > x1 ? (x0 > x2 ? x0 : x2) : (x1 > x2 ? x1 : x2);
+    int mny = y0 < y1 ? (y0 < y2 ? y0 : y2) : (y1 < y2 ? y1 : y2), mxy = y0 > y1 ? (y0 > y2 ? y0 : y2) : (y1 > y2 ? y1 : y2);
+    return mxx - mnx < 1024 && mxy - mny < 512;
+}
 
 static void emit(int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr) {
+    if (n == 4 && !off_screen) {   // the PS1 GPU skips a triangle wider than 1023 or taller than 511 pixels: a quad is two of them
+        int a = tri_ok(x[0], y[0], x[1], y[1], x[2], y[2]), b = tri_ok(x[1], y[1], x[2], y[2], x[3], y[3]);
+        if (!a && !b) return;
+        if (!a || !b) {
+            int o = a ? 0 : 1, x3[3], y3[3], u3[3], v3[3]; uint32_t c3[3];
+            for (int k = 0; k < 3; k++) { x3[k] = x[o + k]; y3[k] = y[o + k]; c3[k] = col[o + k]; if (textured) { u3[k] = u[o + k]; v3[k] = v[o + k]; } }
+            emit(3, x3, y3, c3, u3, v3, textured, tpage, clut, raw, semi, abr); return;
+        }
+    } else if (n == 3 && !off_screen && !tri_ok(x[0], y[0], x[1], y[1], x[2], y[2])) return;
     if (off_screen) {   // into VRAM (people sprites): two triangles
         int xi[3], yi[3], ui[3], vi[3]; uint32_t ci[3];
         for (int t = 0; t < n - 2; t++) for (int k = 0; k < 3; k++) {
@@ -158,6 +180,7 @@ static void emit(int n, const int *x, const int *y, const uint32_t *col, const i
 }
 
 static void do_poly(const uint32_t *w) {
+    extern int dc_frames;
     uint32_t cmd = w[0] >> 24; int quad = cmd & 8, tex = cmd & 4, gour = cmd & 16, semi = cmd & 2, raw = cmd & 1;
     int n = quad ? 4 : 3, x[4], y[4], u[4], v[4]; uint32_t c[4]; int tpage = dm_tpage, clut = 0, i = 0;
     for (int k = 0; k < n; k++) {
@@ -168,6 +191,10 @@ static void do_poly(const uint32_t *w) {
     }
     if (!gour) for (int k = 1; k < n; k++) c[k] = c[0];
     if (tex) dm_tpage = (dm_tpage & ~0x1ff) | (tpage & 0x1ff);   // (a textured polygon sets the draw mode's page too, as on the PS1)
+    if (dc_frames == dc_dump_frame && !off_screen) {
+        int mnx = 9999, mxx = -9999; for (int k = 0; k < n; k++) { if (x[k] < mnx) mnx = x[k]; if (x[k] > mxx) mxx = x[k]; }
+        if (mxx - mnx > 120) dc_logf("P%02x c%06x tp%04x cl%04x (%d,%d)(%d,%d)(%d,%d)(%d,%d)\n", (int)cmd, (int)(w[0] & 0xffffff), tpage, clut, x[0], y[0], x[1], y[1], x[2], y[2], n > 3 ? x[3] : 0, n > 3 ? y[3] : 0);
+    }
     emit(n, x, y, c, u, v, tex != 0, tpage, clut, raw != 0, semi != 0, (tpage >> 5) & 3);
 }
 static void do_rect(const uint32_t *w) {
@@ -236,6 +263,7 @@ static void run_packet(const uint32_t *w, int n) {
             off_screen = !(env_set && area_x0 == cur_env.clip.x && area_y0 == cur_env.clip.y);
         } else if (cmd == 0xe4) { area_x1 = w[i] & 0x3ff; area_y1 = (w[i] >> 10) & 0x3ff; }
         else if (cmd == 0xe5) { ofs_x = sx11(w[i]) - (off_screen ? 0 : 0); ofs_y = sx11(w[i] >> 11); if (!off_screen) { ofs_x -= area_x0; ofs_y -= area_y0; ofs_x += area_x0; ofs_y += area_y0; } }
+        else if (cmd == 0xe6) mask_set = w[i] & 1;
         else if (cmd == 0x80) len = 4;
         else if (cmd == 0xa0 || cmd == 0xc0) len = 3;
         i += (int)len;
@@ -311,7 +339,7 @@ int dc_frames;
 int DrawOTag(const uint32_t *ot) {
     dc_gpu_init();
     // a list for the screen (the frame) or one into VRAM (a sprite cell): the frame's starts with the DRAWENV's area
-    off_screen = 0; ofs_x = 0; ofs_y = 0;
+    off_screen = 0; ofs_x = 0; ofs_y = 0; mask_set = 0;
     area_x0 = env_set ? cur_env.clip.x : 0; area_y0 = env_set ? cur_env.clip.y : 0;
     ofs_x = area_x0 + cur_env.ofs[0]; ofs_y = area_y0 + cur_env.ofs[1];
     int frame = 1;
@@ -377,7 +405,7 @@ static void sw_tri(const int *x, const int *y, const uint32_t *c, const int *u, 
                 out = (uint16_t)(tr_ | tg << 5 | tb << 10 | (t & 0x8000));
             }
         } else out = (uint16_t)((r >> 3) | (g >> 3) << 5 | (b >> 3) << 10);
-        vram[py & 511][px & 1023] = out | 0x8000;   // (the cells draw with set-mask on: every pixel of the person is solid)
+        vram[py & 511][px & 1023] = mask_set ? (uint16_t)(out | 0x8000) : out;   // (E6 set-mask: the person's pixels are made solid; the cell's clear is not)
     }
     vram_dirty(minx, miny, maxx - minx + 1, maxy - miny + 1);
 }

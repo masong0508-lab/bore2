@@ -25,7 +25,7 @@ void dc_gte_rtps(int i);             /* one vertex V[i] through the pipeline (pu
 #define gte_ldv1(p)       do { const int16_t *s_ = (const int16_t *)(p); dc_gte.v[1][0] = s_[0]; dc_gte.v[1][1] = s_[1]; dc_gte.v[1][2] = s_[2]; } while (0)
 #define gte_ldv2(p)       do { const int16_t *s_ = (const int16_t *)(p); dc_gte.v[2][0] = s_[0]; dc_gte.v[2][1] = s_[1]; dc_gte.v[2][2] = s_[2]; } while (0)
 #define gte_ldv3(a, b, c) do { gte_ldv0(a); gte_ldv1(b); gte_ldv2(c); } while (0)
-#define gte_ldv3c(p)      do { const int16_t *s_ = (const int16_t *)(p); gte_ldv0(s_); gte_ldv1(s_ + 4); gte_ldv2(s_ + 8); } while (0)
+#define gte_ldv3c(p)      do { const int16_t *c3_ = (const int16_t *)(p); gte_ldv0(c3_); gte_ldv1(c3_ + 4); gte_ldv2(c3_ + 8); } while (0)
 
 #define gte_rtps()  dc_gte_rtps(0)
 #define gte_rtpt()  do { dc_gte_rtps(0); dc_gte_rtps(1); dc_gte_rtps(2); } while (0)
