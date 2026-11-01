@@ -175,3 +175,6 @@ Walkable storeys (up to four), stairs from Buy > Special (Go Up / Go Down in Liv
 
 ## D37
 Travel (menu > Travel: Home, The Man Base, Strange Town, Castaway Island, San Boreas) with the PS1's unlocks, boat and bus stops; Castaway Island at DS size (gathering, campfire, crafting a tent, shelter and raft, the islet, eight secrets); zone saves; the 2D screens drawn off screen and copied in one go; the gravestone.
+
+## D38
+FARM LIFE: crop beds, hens, cows and the farm stand with the PS1's rules, the farm ledger (build, market, contracts), seasons, farm lots laid out as on the PS1, crops drawn as they grow; popups with up to eight choices; level of detail by distance from the eye.

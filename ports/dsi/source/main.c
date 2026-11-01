@@ -508,6 +508,16 @@ static void gen_house(void) {   // a roomy starter home from the lot's seed: bed
     #undef PUT
     #undef FL
 }
+// ---- FARM LIFE (D38): the PS1's farm (sim.c: farm_midnight, the crop bed / hen coop / cow / farm stand choices) and its ledger (farm_ui.c). One farm for the household, as on the PS1 ----
+static u8 fm_n[4], fm_g[4], fm_dry[4], fm_wet, fm_hens, fm_cows, fm_fed, fm_fert, fm_fz, fm_pest, fm_up, fm_wc, fm_ordk, fm_ordq, fm_ordt, fm_fair, fm_cdone, fm_cday = 255;
+static u16 fm_stock[4], fm_egg, fm_milk, fm_pe, fm_pm, fm_built, fm_last, fsk[SIM_MAX];   // (fm_built / fm_last / fm_cdone / fm_cday: the ledger's pk_data 16-21; fsk: each Bore's farming skill, the PS1's skill_farm)
+static int farm_ui, farm_tab; static volatile u32 vbl_n;   // (vbl_n: the hens peck by the frame)
+static int fm_skl(int i) { int l = fsk[i] / 400; return l > 10 ? 10 : l; }   // (the PS1's SKL: a skill counter to its level 0..10)
+static int fm_season(void) { return (st_days / 10) & 3; }   // (the PS1's seasons: ten days each, spring first)
+static const char *const SEASN[4] = { "Spring", "Summer", "Autumn", "Winter" };
+static void farm_reset(void) { memset(fm_n, 0, 4); memset(fm_g, 0, 4); memset(fm_dry, 0, 4); fm_wet = fm_hens = fm_cows = fm_fed = fm_fert = fm_fz = fm_pest = fm_up = fm_wc = fm_ordk = fm_ordq = fm_ordt = fm_fair = fm_cdone = 0; fm_cday = 255;
+    memset(fm_stock, 0, sizeof fm_stock); fm_egg = fm_milk = fm_pe = fm_pm = fm_built = fm_last = 0; memset(fsk, 0, sizeof fsk); farm_ui = 0; }
+static int z_put(int x, int y, int ch, int rot); static void z_room(int x0, int y0, int x1, int y1, int fl, int wc);
 static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squares, farms and wild land outdoors; shops, diners, gyms, schools, clinics... as one open hall
     #define PUTP(xx, yy, cc, ii, rr) do { if (nobj < 400) { objs[nobj].x = (u8)(xx); objs[nobj].y = (u8)(yy); objs[nobj].c = (cc); objs[nobj].i = (ii); objs[nobj].rot = (u8)(rr); nobj++; occ_ok = 0; } } while (0)
     int outdoor = k == LOT_WILD || k == LOT_PARK || k == LOT_SQUARE || k == LOT_SKATE || k == LOT_EMPTY || k == LOT_RIVER || k == LOT_FARM;
@@ -518,9 +528,12 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
         for (int i = 0; i < 14; i++) { int x = (int)((h >> (i * 2)) & 15) % 13, y = (int)((h >> (i * 2 + 1)) % 11) % 13; if (y > 10 || obj_at(x, y) >= 0) continue;
             int pick = (int)((h >> (i + 3)) % 5);
             if (k == LOT_PARK || k == LOT_SQUARE) { if (pick == 0) PUTP(x, y, 0, 3, (int)(i & 3)); else if (pick == 1) PUTP(x, y, 6, 1, 0); else if (pick == 2) PUTP(x, y, 6, 3, 0); else if (pick == 3) PUTP(x, y, 6, 2, 0); else PUTP(x, y, 3, 2, 0); }
-            else if (k == LOT_FARM) { PUTP(x, y, 6, 3, 0); PUTP(x, y, 6, 3, 0); nobj--; } else PUTP(x, y, pick & 1 ? 3 : 6, pick & 1 ? 2 : 2, 0); }
+            else if (k == LOT_FARM) continue; else PUTP(x, y, pick & 1 ? 3 : 6, pick & 1 ? 2 : 2, 0); }
         if (k == LOT_SQUARE) PUTP(6, 6, 3, 3, 0);
-        if (k == LOT_FARM) for (int x = 1; x < 12; x++) { hwl[1][x] = 6; hwl[11][x] = 6; } if (k == LOT_FARM) for (int y = 1; y < 11; y++) { vwl[y][1] = 6; vwl[y][12] = 6; }
+        if (k == LOT_FARM) {   // (D38) the PS1's lot_farm: rows of crop beds, a barn with the hen coops and the cows, a fence along the front with a gate
+            for (int y = 2; y <= 10; y += 2) for (int x = 1; x <= 6; x += 2) z_put(x, y, 0xDB, 0);
+            z_room(8, 1, 13, 7, 1, 2); hwl[7][10] = 5; z_put(9, 2, 0xDC, 0); z_put(9, 4, 0xDC, 0); z_put(11, 2, 0xDD, 0); z_put(11, 4, 0xDD, 0); z_put(10, 6, 0xDE, 0);
+            for (int x = 0; x < GN; x++) if (x != 7) hwl[12][x] = 6; }
         for (int q = 0; q < 3; q++) { spawn_x[q] = 5 + q; spawn_y[q] = 12; } return; }
     int x0 = 2, x1 = 11, y0 = 1, y1 = 9, ow = 1 + (int)(h & 3);
     for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) flr[y][x] = (u8)(2 + (int)(h >> 4) % 3);
@@ -782,6 +795,8 @@ static void ui_up(void) {
     drag = 0; drag_card = 0; move_obj = -1;
 }
 static int ob_x, ob_z, ob_sx = 68, ob_sz = 68, ob_w = 80, ob_l = 80, ob_rot, ob_hs = 100, lod_force;   // the item being drawn: its corner, its scale across and along (a 10th of a unit), its footprint (80 a cell), its turn
+static int lod_ex, lod_ez; static s32 lod_r2 = 0x7FFFFFFF;   // (D38) the eye's place on the ground and how far from it things keep their detail
+static int lod_far(void) { int dx = (ob_x - lod_ex) >> 2, dz = (ob_z - lod_ez) >> 2; return dx * dx + dz * dz > lod_r2; }   // (was: far from the point looked at, so the things nearest the eye, at the foot of the screen, were the ones drawn as blocks)
 static const u8 HSC[28] = { 140, 140, 140, 140, 200, 200, 200, 200, 200, 200, 180, 200, 200, 100, 170, 200, 150, 200, 170, 200, 150, 100, 200, 150, 100, 200, 90, 100 };
 static void ob2(int lx0, int lz0, int lx1, int lz1, int h0, int h1, u16 c, u16 top) {   // a part in cell units (0..80 a cell, front = +z), heights in tenths of a quarter-tile; sides c, top
     if (pv_cap) { if (npv < PVMAX && h1 > 0) { PBox *b = &pv[npv++]; b->x0 = (s16)lx0; b->z0 = (s16)lz0; b->x1 = (s16)lx1; b->z1 = (s16)lz1; b->h0 = (s16)(h0 * ob_hs / 100); b->h1 = (s16)(h1 * ob_hs / 100); b->c = c; b->t = top; } return; }   // (the shop's picture)
@@ -792,16 +807,40 @@ static void ob2(int lx0, int lz0, int lx1, int lz1, int h0, int h1, u16 c, u16 t
 }
 static void ob(int lx0, int lz0, int lx1, int lz1, int h0, int h1, u16 c) { ob2(lx0, lz0, lx1, lz1, h0, h1, c, shade(c, 10)); }
 #define LC(r, g, b) C15(r, g, b)
+static int fm_need(int k);
+static void farm_extras(int ch, int x, int y, int base) {   // (D38) the PS1's farm_extras: what grows in a crop bed (its crop by where the bed is), the hens about a coop
+    int lod = ch >> 8; ch &= 0xFF;
+    if (ch == 0xDB) { int k = ((x >> 1) + (y >> 1)) & 3, n = fm_n[k]; if (!n) return;
+        int need = fm_need(k), g = fm_g[k], ready = g >= need, h = ready ? 32 : 8 + 20 * g / need, cnt = (n + 3) / 4 + 1, dry = fm_dry[k] > 0 && !ready; if (cnt > 4) cnt = 4;
+        u16 st = dry ? C15(19, 16, 6) : C15(5, 21, 6);
+        if (lod) { static const u16 RC[4] = { C15(31, 26, 10), C15(30, 26, 7), C15(29, 5, 5), C15(30, 16, 4) }; ob(14, 14, 66, 66, base, base + (k == 3 ? 10 : h * 3 / 4), ready ? RC[k] : k == 0 && !dry ? C15(27, 22, 7) : st); return; }   // (far off: one block of the crop)
+        for (int i = 0; i < cnt; i++) { int cx = (i & 1) ? 57 : 23, cz = (i & 2) ? 57 : 23;
+            switch (k) {
+            case 0: ob(cx - 12, cz - 3, cx + 12, cz + 3, base, base + h, dry ? C15(22, 18, 6) : C15(27, 22, 7)); if (ready) ob(cx - 13, cz - 4, cx + 13, cz + 4, base + h, base + h + 5, C15(31, 26, 10)); break;   // wheat: a row of stalks, golden ears when ripe
+            case 1: ob(cx - 4, cz - 4, cx + 4, cz + 4, base, base + h + 8, st); if (ready) ob(cx + 4, cz - 3, cx + 10, cz + 3, base + h - 4, base + h + 6, C15(30, 26, 7)); break;   // corn: a stalk, a cob when ripe
+            case 2: ob(cx - 11, cz - 11, cx + 11, cz + 11, base, base + h * 3 / 4, st); if (ready) { ob(cx - 9, cz + 8, cx - 3, cz + 13, base + h / 3, base + h / 3 + 5, C15(29, 5, 5)); ob(cx + 3, cz + 8, cx + 9, cz + 13, base + h / 2, base + h / 2 + 5, C15(29, 5, 5)); } break;   // tomatoes: a bush, red fruit
+            default: ob(cx - 13, cz - 13, cx + 13, cz + 13, base, base + 4, st); if (ready) ob(cx - 9, cz - 9, cx + 9, cz + 9, base + 4, base + 4 + h / 2, C15(30, 16, 4)); else if (h > 16) ob(cx - 3, cz - 3, cx + 3, cz + 3, base + 4, base + 8, C15(15, 21, 7)); break;   // pumpkins
+            } }
+        if ((fm_pest >> k) & 1) for (int i = 0; i < 3; i++) ob(10 + i * 25, 30 + i * 8, 16 + i * 25, 36 + i * 8, base, base + 3, C15(5, 4, 4));   // pests
+    } else if (!lod) { int ci = (y >> 1) & 1, nh = (fm_hens - ci + 1) / 2, t = (int)vbl_n; if (nh > 3) nh = 3;   // (two coops share the hens, as on the PS1)
+        for (int i = 0; i < nh; i++) { int ph = (t * 3 + i * 97 + ci * 40) & 255, hx = 16 + i * 24 + (sinLerp((s16)(ph << 7)) >> 10), hz = 76 + ((i * 13) & 7), pk = ((t / 10 + i * 3) & 7) == 0 ? 2 : 0;
+            ob(hx - 4, hz - 6, hx + 4, hz + 3, 0, 8 - pk, C15(30, 30, 29)); ob(hx - 2, hz + 2, hx + 2, hz + 6, 6 - pk, 10 - pk, C15(28, 6, 5)); } }
+}
 static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every item is a little model built from several boxes (coordinates 0..80 across the cell, heights in tenths of a quarter-tile)
     (void)ghost; int id = (int)(it - ITEMS); u16 c = it->col, d = shade(c, 6), l = shade(c, 10), wd = LC(16, 10, 5), dk = LC(3, 3, 4);
     { int ww = rot & 1 ? it->fl : it->fw, wl = rot & 1 ? it->fw : it->fl; ob_w = it->fw * 80; ob_l = it->fl * 80; ob_sx = (ww * 2 * T - T / 3) * 10 / (ww * 80); ob_sz = (wl * 2 * T - T / 3) * 10 / (wl * 80); }   // (a two-cell thing stretches to fill both)
     ob_x = tl(x * 2) + T / 6; ob_z = tl(y * 2) + T / 6; ob_rot = rot; ob_hs = id >= 0 && id < 28 ? HSC[id] : 100;
     if (it->nbox) {   // (D35) a PS1 model: its own boxes, converted by tools/dsbuild/mk_dsitems.py (PS1 units: 10 across, 7 up)
-        if (!pv_cap && (!o_det || lod_force || (mode == M_LIVE && (abs(ob_x - camx) + abs(ob_z - camz) > (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500))))) { ob(8, 8, ob_w - 8, ob_l - 8, 0, it->h * 10 + 6, c); return; }
+        int fch = id == PS1ID[0xDB] - 1 ? 0xDB : id == PS1ID[0xDC] - 1 ? 0xDC : 0, nb = fch == 0xDB ? 1 : it->nbox;   // (D38: a crop bed is its soil and what the farm has growing; a coop has its hens)
+        if (!pv_cap && (!o_det || lod_force || (mode == M_LIVE && lod_far()))) {   // far off: one box, as big as the model (D38: was the item's nominal height, so a crop bed stood like a crate)
+            if (fch == 0xDB) { const IBx *b = &IBOX[it->box0]; ob(0, 0, 80, 80, 0, b->z1 * 7, b->side); farm_extras(fch | 0x100, x, y, b->z1 * 7); return; }
+            int top = 0, a0 = 80, b0 = 80, a1 = 0, b1 = 0; for (int k = 0; k < nb; k++) { const IBx *b = &IBOX[it->box0 + k]; if (b->z1 * 7 > top) top = b->z1 * 7; if (b->a0 < a0) a0 = b->a0; if (b->b0 < b0) b0 = b->b0; if (b->a1 > a1) a1 = b->a1; if (b->b1 > b1) b1 = b->b1; }
+            ob(a0 * 10, b0 * 10, a1 * 10, b1 * 10, 0, top, c); return; }
         if (o_shd && !pv_cap && it->kind != 1) { u16 sh = LC(6, 5, 4); ob_x -= 6; ob_z -= 4; ob(0, 0, ob_w, ob_l, -3, 0, sh); ob_x += 6; ob_z += 4; }
-        for (int k = 0; k < it->nbox; k++) { const IBx *b = &IBOX[it->box0 + k]; ob2(b->a0 * 10, b->b0 * 10, b->a1 * 10, b->b1 * 10, b->z0 * 7, b->z1 * 7, b->side, b->top); }
+        for (int k = 0; k < nb; k++) { const IBx *b = &IBOX[it->box0 + k]; ob2(b->a0 * 10, b->b0 * 10, b->a1 * 10, b->b1 * 10, b->z0 * 7, b->z1 * 7, b->side, b->top); }
+        if (fch && !pv_cap) farm_extras(fch, x, y, IBOX[it->box0].z1 * 7);
         return; }
-    if (!pv_cap && (!o_det || lod_force || (mode == M_LIVE && (abs(ob_x - camx) + abs(ob_z - camz) > (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500))))) { if (it->kind == 1) ob(0, 0, 80, 80, 0, 3, c); else ob(8, 8, 72, 72, 0, it->h * 10 + 6, c); return; }
+    if (!pv_cap && (!o_det || lod_force || (mode == M_LIVE && lod_far()))) { if (it->kind == 1) ob(0, 0, 80, 80, 0, 3, c); else ob(8, 8, 72, 72, 0, it->h * 10 + 6, c); return; }
     if (it->kind == 1) { ob(0, 0, 80, 80, 0, 2, d); ob(6, 6, 74, 74, 0, 4, c); ob(14, 14, 66, 66, 0, 5, l); return; }   // rug: border and centre
     if (o_shd && !pv_cap) { u16 sh = LC(6, 5, 4); ob_x -= 6; ob_z -= 4; ob(0, 0, 80, 80, -3, 0, sh); ob_x += 6; ob_z += 4; }   // a soft dark shadow on the floor
     switch (id) {
@@ -1170,10 +1209,166 @@ static int menu_open, popup, popup_i, speed = 1, yaw_t = 4096, live_yaw = 4096, 
 
 
 static void lot_go(int bx, int by) {   // (D37) the household goes to a lot: the one it was on is kept, the new one entered, everyone at its arrival spot
-    lot_save(); lot_enter(bx, by); place_sims(); city_spawn(); nb_ok = 1; popup = 0; menu_open = 0; travel_ui = craft_ui = 0; cam_free = 0; set_mode(M_LIVE); life_ver++; }
+    lot_save(); lot_enter(bx, by); place_sims(); city_spawn(); nb_ok = 1; popup = 0; menu_open = 0; travel_ui = craft_ui = farm_ui = 0; cam_free = 0; set_mode(M_LIVE); life_ver++; }
 // ---- CASTAWAY ISLAND (D37): gathering, the secrets, the crafts and the raft, as the PS1's (sim.c gather_done, island.c) ----
+// ---- FARM LIFE (D38): the farm's day and what a tap on its things offers (the PS1's words and numbers, sentence case) ----
+static const char *const FMN[6] = { "Wheat", "Corn", "Tomatoes", "Pumpkins", "Eggs", "Milk" };
+static const u8 FM_PR[6] = { 4, 7, 9, 16, 5, 10 };   // (the PS1's market prices)
+static u32 fm_rs = 12345;
+static u32 fm_rand(void) { fm_rs = hsh(fm_rs + (u32)minutes * 2654435761u + 77u); return fm_rs; }
+static int fm_need(int k) { static const u8 d[4] = { 2, 3, 3, 4 }; int n = d[k] - (fm_skl(ctl) >= 5 ? 1 : 0); return n < 2 ? 2 : n; }   // nights of watered growth to be ready
+static int fm_have(int k) { return k < 4 ? fm_stock[k] : k == 4 ? fm_egg : fm_milk; }
+static void fm_take(int k, int n) { if (k < 4) fm_stock[k] -= (u16)n; else if (k == 4) fm_egg -= (u16)n; else fm_milk -= (u16)n; }
+static int fm_fest(void) { int mn = minutes % 1440; return st_days % 10 == 9 && mn >= 600 && mn < 1320; }   // (the PS1's festival: the tenth day of each season, 10am to 10pm)
+static void fm_sk(int i, int v) { if (i >= 0 && i < SIM_MAX) fsk[i] = (u16)(fsk[i] + v > 60000 ? 60000 : fsk[i] + v); }
+static char fm_say_b[4][48]; static int fm_say_k;
+static void fm_say(const char *fmt, int v) { char *b = fm_say_b[fm_say_k++ & 3]; sprintf(b, fmt, v); say(b); }   // (say keeps the pointer: a few buffers in turn)
+static void farm_midnight(void) {   // the PS1's farm_midnight: the crops grow where watered, wither after three dry nights, frost in winter, pests; the buyer's order; eggs and milk from fed animals
+    int se = fm_season();
+    if (fm_up & 1) fm_wet = 15;   // (a sprinkler; the DS has no rain)
+    for (int k = 0; k < 4; k++) { if (!fm_n[k]) continue;
+        if (se == 3 && !(fm_up & 4)) { fm_n[k] = 0; fm_g[k] = 0; fm_dry[k] = 0; fm_fz &= ~(1 << k); fm_pest &= ~(1 << k); say("Frost killed a crop. A greenhouse helps"); continue; }
+        if ((fm_pest >> k) & 1) { fm_pest &= ~(1 << k); fm_n[k] = (u8)((fm_n[k] + 1) / 2); say("Pests ate half a crop"); }
+        if (fm_g[k] >= fm_need(k)) continue;
+        if ((fm_wet >> k) & 1) { fm_g[k]++; fm_dry[k] = 0; if (fm_g[k] >= fm_need(k)) say("Crops are ready to harvest"); }
+        else if (++fm_dry[k] >= 3) { fm_n[k] = 0; fm_g[k] = 0; fm_dry[k] = 0; fm_fz &= ~(1 << k); say("A crop withered. Water it!"); } }
+    fm_wet = 0; fm_wc = 0; fm_fair = 0;
+    { int any = 0; for (int k = 0; k < 4; k++) if (fm_n[k]) any = 1;
+      if (any && !(fm_up & 2) && (int)(fm_rand() % 100) < (se == 1 ? 24 : 12)) { int k = (int)(fm_rand() % 4u); if (fm_n[k] && !((fm_pest >> k) & 1)) { static char b[40]; fm_pest |= (u8)(1 << k); sprintf(b, "Pests are at the %s! Spray", FMN[k]); say(b); } } }
+    if (fm_ordq && fm_ordt && --fm_ordt == 0) { fm_ordq = 0; say("The order expired"); }
+    if (!fm_ordq) { fm_ordk = (u8)(fm_rand() % 6u); fm_ordq = (u8)(5 + fm_rand() % 8u); fm_ordt = 5; }
+    if (fm_hens && (fm_fed & 1)) { int v = fm_pe + fm_hens * (1 + (fm_skl(ctl) >= 4)); fm_pe = (u16)(v > 60 ? 60 : v); }
+    if (fm_cows && (fm_fed & 2)) { int v = fm_pm + fm_cows * (1 + (fm_skl(ctl) >= 6)); fm_pm = (u16)(v > 40 ? 40 : v); }
+    fm_fed = 0;
+}
+static int fm_pay(int v) { if (funds < v) { say("Not enough funds"); return 0; } funds -= v; return 1; }
+static void fm_work(int i, int o, int t, int need, int amt) {   // the PS1's begin_action at the thing: walk over and work there a while
+    Sim *m = &sims[i]; if (o < 0 || o >= nobj) return; m->tx = objs[o].x * 16; m->ty = objs[o].y * 16; m->act = need; m->act_amt = amt; m->face = t; m->act_obj = o; m->act_left = 0;
+}
+enum { FC_PLANT = 100, FC_HARV = 104, FC_SPRAY, FC_WATER, FC_EGGS = 110, FC_HEN, FC_FEEDH, FC_MILK, FC_COW, FC_FEEDC, FC_SELL = 120, FC_ORDER, FC_FAIR, FC_FERT, FC_UP, FC_EAT, FC_LEDGER, FC_NOORDER };
+static char fm_lab[8][28];
+static int farm_acts(int c, const char **lab, int *code) {   // the PS1's choices for the crop bed, the hen coop, the cow and the farm stand (0: not a farm thing)
+    int n = 0;
+    #define FA(k, ...) do { sprintf(fm_lab[n], __VA_ARGS__); lab[n] = fm_lab[n]; code[n] = (k); n++; } while (0)
+    if (c == 0xDB) { static const char *const cn[4] = { "Wheat $2", "Corn $4", "Tomatoes $5", "Pumpkin $8" }; int any = 0, rdy = 0;
+        for (int k = 0; k < 4; k++) if (fm_n[k]) { any = 1; if (fm_g[k] >= fm_need(k)) rdy = 1; }
+        if (rdy) FA(FC_HARV, "Harvest"); if (fm_pest) FA(FC_SPRAY, "Spray Pests $3"); if (any) FA(FC_WATER, "Water the Crops");
+        for (int k = 0; k < 4 && n < 8; k++) FA(FC_PLANT + k, "Plant %s", cn[k]); }
+    else if (c == 0xDC) { if (fm_pe) FA(FC_EGGS, "Collect %d Eggs", fm_pe); if (fm_hens < 6) FA(FC_HEN, "Buy a Hen $40"); if (fm_hens && !(fm_fed & 1)) FA(FC_FEEDH, "Feed the Hens $2"); }
+    else if (c == 0xDD) { if (fm_pm) FA(FC_MILK, "Milk the Cows (%d)", fm_pm); if (fm_cows < 3) FA(FC_COW, "Buy a Cow $250"); if (fm_cows && !(fm_fed & 2)) FA(FC_FEEDC, "Feed the Cows $5"); }
+    else if (c == 0xDE) { static const char *const upn[4] = { "Sprinkler $400", "Scarecrow $120", "Greenhouse $900", "Tractor $1500" };
+        int tot = fm_stock[0] + fm_stock[1] + fm_stock[2] + fm_stock[3] + fm_egg + fm_milk;
+        if (tot) FA(FC_SELL, "Sell Produce (%d)", tot);
+        if (fm_ordq) FA(fm_have(fm_ordk) >= fm_ordq ? FC_ORDER : FC_NOORDER, "Order: %d %s", fm_ordq, FMN[fm_ordk]);
+        if (fm_fest() && !fm_fair && fm_stock[3]) FA(FC_FAIR, "Enter the Fair");
+        FA(FC_FERT, "Fertilizer $6");
+        for (int k = 0; k < 4; k++) if (!((fm_up >> k) & 1)) { FA(FC_UP, "%s", upn[k]); break; }
+        if (fm_stock[1] + fm_stock[2] + fm_stock[3] + fm_egg + fm_milk >= 2 && n < 7) FA(FC_EAT, "Eat a Fresh Meal");
+        if (n < 8) FA(FC_LEDGER, "Farm Ledger"); }
+    else return 0;
+    if (!n) FA(-1, "Look");
+    #undef FA
+    return n;
+}
+static void farm_do(int code, int i, int o) {   // the PS1's PC_F... codes
+    Sim *s = &sims[i]; static char b[48];
+    if (code >= FC_PLANT && code < FC_PLANT + 4) { static const u8 cost[4] = { 2, 4, 5, 8 }; int k = code - FC_PLANT;
+        if (fm_n[k] >= 8) { say("That field is full"); return; }
+        if (fm_n[k] && fm_g[k] >= fm_need(k)) { say("Harvest those first"); return; }
+        if (!fm_pay(cost[k])) return; fm_work(i, o, 150, 1, 3);
+        if (!fm_n[k]) { fm_g[k] = 0; fm_dry[k] = 0; fm_fz &= ~(1 << k); }
+        if (fm_fert && !((fm_fz >> k) & 1)) { fm_fert--; fm_fz |= (u8)(1 << k); fm_n[k]++; fm_sk(i, 12); say("Fertilized: a bigger harvest"); return; }
+        fm_n[k]++; fm_sk(i, 12); say("Planted. Now water it"); return; }
+    switch (code) {
+    case FC_WATER: { int any = 0, soaked = 1; for (int k = 0; k < 4; k++) if (fm_n[k]) { any = 1; if (!((fm_wet >> k) & 1) && fm_g[k] < fm_need(k)) soaked = 0; }
+        if (!any) { say("Nothing is planted"); return; }
+        for (int k = 0; k < 4; k++) if (fm_n[k] && fm_g[k] < fm_need(k)) fm_wet |= (u8)(1 << k);
+        fm_work(i, o, 200, 1, 3); s->need[2] = cl100(s->need[2] - 2);
+        if (soaked) { fm_wc += 2; say("Soaked already. Too much water?"); } else { fm_wc++; fm_sk(i, 10); say("Watered. They grow at night"); } return; }
+    case FC_HARV: { int lv = fm_skl(i), got = 0;
+        for (int k = 0; k < 4; k++) if (fm_n[k] && fm_g[k] >= fm_need(k)) { int y = fm_n[k] * (2 + lv / 3) + (int)(fm_rand() % (u32)(fm_n[k] + 1)); if ((fm_fz >> k) & 1) y = y * 3 / 2; if (fm_up & 8) y = y * 3 / 2;
+            fm_fz &= ~(1 << k); fm_stock[k] = (u16)(fm_stock[k] + y > 999 ? 999 : fm_stock[k] + y); got += y; sprintf(b, "%d %s picked", y, FMN[k]); say(b); fm_n[k] = 0; fm_g[k] = 0; fm_dry[k] = 0; }
+        if (!got) { say("Nothing is ready"); return; }
+        fm_work(i, o, 260, 1, 4); fm_sk(i, 30 + got * 3); s->need[2] = cl100(s->need[2] - 4); if (got >= 12) life_ev(i, WN_FUN, 0); return; }
+    case FC_SPRAY: if (!fm_pest) { say("No pests"); return; } if (!fm_pay(3)) return; fm_pest = 0; fm_work(i, o, 120, 1, 2); fm_sk(i, 15); say("Sprayed: the pests are gone"); return;
+    case FC_HEN: if (fm_hens >= 6) return; if (!fm_pay(40)) return; fm_hens++; say("A new hen! Feed it daily"); fm_sk(i, 15); return;
+    case FC_COW: if (fm_cows >= 3) return; if (!fm_pay(250)) return; fm_cows++; say("A new cow! Moo"); fm_sk(i, 25); return;
+    case FC_FEEDH: if (!fm_pay(2)) return; fm_fed |= 1; fm_work(i, o, 120, 1, 3); fm_sk(i, 8); say("The hens are fed: eggs by morning"); return;
+    case FC_FEEDC: if (!fm_pay(5)) return; fm_fed |= 2; fm_work(i, o, 120, 1, 3); fm_sk(i, 10); say("The cows are fed: milk by morning"); return;
+    case FC_EGGS: fm_egg = (u16)(fm_egg + fm_pe > 999 ? 999 : fm_egg + fm_pe); fm_say("%d eggs collected", fm_pe); fm_pe = 0; fm_sk(i, 15); return;
+    case FC_MILK: fm_milk = (u16)(fm_milk + fm_pm > 999 ? 999 : fm_milk + fm_pm); fm_say("%d milked", fm_pm); fm_pm = 0; fm_work(i, o, 200, 1, 6); fm_sk(i, 20); return;
+    case FC_SELL: { int tot = 0; for (int k = 0; k < 6; k++) tot += fm_have(k) * FM_PR[k] * (k == 3 && fm_season() == 2 ? 3 : 2) / 2; if (!tot) { say("Nothing to sell"); return; }
+        tot = tot * (100 + fm_skl(i) * 4) / 100; funds += tot; memset(fm_stock, 0, sizeof fm_stock); fm_egg = fm_milk = 0; fm_say("Sold the produce: +$%d", tot); sfx(3); return; }   // (the PS1 adds charisma too: the DS has no such skill)
+    case FC_NOORDER: say("Not enough for the order"); return;
+    case FC_ORDER: { if (!fm_ordq || fm_have(fm_ordk) < fm_ordq) { say("Not enough for the order"); return; }
+        int v = fm_ordq * FM_PR[fm_ordk] * 2; fm_take(fm_ordk, fm_ordq); funds += v; fm_ordq = 0; fm_ordt = 0; fm_sk(i, 25); fm_say("Order filled: +$%d", v); sfx(3); return; }
+    case FC_FAIR: { if (!fm_stock[3] || fm_fair) { say("You have already entered"); return; } fm_stock[3]--; fm_fair = 1;
+        int sc = 20 + fm_skl(i) * 8 + (fm_up & 8 ? 8 : 0) + (int)(fm_rand() % 40u), pz = sc >= 85 ? 500 : sc >= 60 ? 200 : 40; funds += pz; fm_sk(i, 40);
+        fm_say(sc >= 85 ? "Best in show! +$%d" : sc >= 60 ? "Second prize! +$%d" : "A ribbon for trying +$%d", pz); if (sc >= 85) { life_ev(i, WN_FUN, 0); sfx(5); } return; }
+    case FC_FERT: if (fm_fert >= 9) { say("The shed is full"); return; } if (!fm_pay(6)) return; fm_fert++; say("A bag of fertilizer"); return;
+    case FC_UP: { static const int uc[4] = { 400, 120, 900, 1500 }; static const char *const un[4] = { "Sprinkler: auto water", "Scarecrow: no pests", "Greenhouse: no frost", "Tractor: bigger harvests" };
+        int k = 0; while (k < 4 && ((fm_up >> k) & 1)) k++; if (k >= 4) return; if (!fm_pay(uc[k])) return; fm_up |= (u8)(1 << k); say(un[k]); return; }
+    case FC_EAT: { int left = 2; for (int k = 3; k >= 1 && left; k--) while (left && fm_stock[k]) { fm_stock[k]--; left--; } while (left && fm_egg) { fm_egg--; left--; } while (left && fm_milk) { fm_milk--; left--; }
+        fm_work(i, o, 150, 0, 40); say("Fresh from the farm!"); return; }
+    case FC_LEDGER: farm_ui = 1; farm_tab = 0; if (fm_cday != (u8)st_days) { fm_cdone = 0; fm_cday = (u8)st_days; } if (!fm_built && !fm_last) fm_last = (u16)st_days; return;
+    }
+}
+// ---- the farm ledger (farm_ui.c, FARM LIFE): build, market, contracts ----
+#define FB_N 6
+static const char *const FBNM[FB_N] = { "Barn", "Silo", "Orchard", "Beehives", "Farm Stand", "Windmill" };
+static const char *const FBHINT[FB_N] = { "A roof for the animals. They thrive.", "Grain keeps. A steady income.", "Apples and pears every year.", "Honey, and the crops like the bees.", "Sell at better prices, and earn.", "The farm runs itself a little." };
+static const int FBCOST[FB_N] = { 1500, 3000, 5000, 2000, 4000, 8000 }, FBINC[FB_N] = { 60, 110, 180, 80, 120, 300 }, FGPR[6] = { 4, 7, 9, 16, 5, 10 };
+static int fl_rate(void) { int r = 0; for (int k = 0; k < FB_N; k++) if ((fm_built >> k) & 1) r += FBINC[k]; return r * (100 + fm_skl(ctl) * 8) / 100; }
+static int fl_stand(void) { return (fm_built >> 4) & 1 ? 25 : 0; }
+static int fl_days(void) { int d = st_days - fm_last; return d < 0 ? 0 : d > 30 ? 30 : d; }
+static void fl_settle(void) { if (fm_built && st_days > fm_last) funds += fl_rate() * fl_days(); fm_last = (u16)st_days; }
+static void fl_contract(int r, int *k, int *q) { u32 h = ((u32)st_days * 2654435761u + (u32)r * 40503u + 17u) >> 8; *k = (int)(h % 6u); *q = 3 + (int)((h >> 4) % 6u) + fm_skl(ctl) / 3; }
+static int fl_rows(void) { return farm_tab == 0 ? FB_N + 1 : farm_tab == 1 ? 6 : 3; }
+static int fl_sel = -1;
+static void fl_act(int r) {
+    static char b[48]; fl_sel = r;
+    if (farm_tab == 0) {
+        if (r == FB_N) { int d = fl_days(); if (!fm_built) { say("Build something first."); return; } if (!d) { say("Nothing new today."); return; } int pay = fl_rate() * d; fl_settle(); sprintf(b, "%d days of the farm: +$%d", d, pay); say(b); sfx(3); return; }
+        if ((fm_built >> r) & 1) { say("Already built."); return; }
+        if (funds < FBCOST[r]) { say("Not enough cash."); return; }
+        fl_settle(); funds -= FBCOST[r]; fm_built |= (u16)(1 << r); fm_sk(ctl, 40); sprintf(b, "Built: %s", FBNM[r]); say(b); sfx(3); return; }
+    if (farm_tab == 1) { int n = fm_have(r); if (!n) { say("None to sell."); return; }
+        int pay = n * FGPR[r] * (100 + fl_stand()) / 100; fm_take(r, n); funds += pay; fm_sk(ctl, n); sprintf(b, "Sold %d %s: +$%d", n, FMN[r], pay); say(b); sfx(3); return; }
+    { int k, q; fl_contract(r, &k, &q); if ((fm_cdone >> r) & 1) { say("Done today."); return; }
+      if (fm_have(k) < q) { sprintf(b, "Need %d %s (have %d)", q, FMN[k], fm_have(k)); say(b); return; }
+      int pay = q * FGPR[k] * 18 / 10; fm_take(k, q); funds += pay; fm_cdone |= (u8)(1 << r); fm_sk(ctl, q * 2); sims[ctl].need[1] = cl100(sims[ctl].need[1] + 10); sprintf(b, "Contract filled: +$%d", pay); say(b); sfx(3); }
+}
+static void farm_draw(void) {
+    static const char *const TN[3] = { "Build", "Market", "Contracts" }; char b[56];
+    panel(6, 20, 244, 168, "Farm Life"); chip(204, 22, 40, 14, "X", 0);
+    for (int k = 0; k < 3; k++) chip(12 + k * 64, 40, 60, 14, TN[k], k == farm_tab);
+    sprintf(b, "$%d", funds); text(198 - tw(1, b), 25, 1, C15(16, 31, 16), b);
+    int n = fl_rows();
+    for (int r = 0; r < n; r++) { int y = 58 + r * 14; u16 bg = r == fl_sel ? C15(8, 16, 28) : (r & 1) ? C15(5, 11, 24) : C15(6, 13, 26); rect(12, y, 232, 13, bg);
+        if (farm_tab == 0) {
+            if (r == FB_N) { sprintf(b, "Collect  %d days = $%d", fl_days(), fl_rate() * fl_days()); text(18, y + 3, 1, C15(16, 31, 16), b); continue; }
+            int own = (fm_built >> r) & 1; text(18, y + 3, 1, own ? C15(16, 31, 16) : TXT, FBNM[r]);
+            if (own) text(204, y + 3, 1, C15(16, 31, 16), "Built"); else { sprintf(b, "$%d", FBCOST[r]); text(238 - tw(1, b), y + 3, 1, funds >= FBCOST[r] ? TXT : C15(31, 12, 10), b); }
+        } else if (farm_tab == 1) { int c = fm_have(r); sprintf(b, "%s  x%d", FMN[r], c); text(18, y + 3, 1, c ? TXT : C15(18, 20, 24), b);
+            sprintf(b, "$%d each", FGPR[r] * (100 + fl_stand()) / 100); text(238 - tw(1, b), y + 3, 1, C15(16, 31, 16), b);
+        } else { int k, q; fl_contract(r, &k, &q); int dn = (fm_cdone >> r) & 1; sprintf(b, "%d %s", q, FMN[k]); text(18, y + 3, 1, dn ? C15(16, 31, 16) : fm_have(k) >= q ? C15(20, 28, 31) : TXT, b);
+            if (dn) text(212, y + 3, 1, C15(16, 31, 16), "Done"); else { sprintf(b, "Pays $%d", q * FGPR[k] * 18 / 10); text(238 - tw(1, b), y + 3, 1, C15(16, 31, 16), b); } } }
+    int by = 158; rect(12, by, 232, 26, C15(4, 9, 20));
+    const char *l2;   // (the PS1's red line under the hint: what the last tap did, here in place of the hint while it shows)
+    if (farm_tab == 0) { sprintf(b, "Farm level %d  $%d a day", fm_skl(ctl), fl_rate()); text(18, by + 3, 1, C15(20, 28, 31), b); l2 = fl_sel >= 0 && fl_sel < FB_N ? FBHINT[fl_sel] : "The farm earns every day. Come back and collect."; }
+    else if (farm_tab == 1) { text_fit(18, by + 3, 1, 222, C15(20, 28, 31), fl_stand() ? "The farm stand adds 25% to every sale" : "Build a farm stand for better prices"); l2 = "Tap a row: sells all of that one."; }
+    else { text(18, by + 3, 1, C15(20, 28, 31), "New buyers every day"); l2 = "They pay about twice the market price."; }
+    if (msg_t > 0 && msg) text_fit(18, by + 14, 1, 222, C15(31, 22, 10), msg); else text_fit(18, by + 14, 1, 222, TXT, l2);
+}
+static void farm_touch(int tx, int ty) {
+    if (hit(204, 22, 40, 14, tx, ty)) { farm_ui = 0; return; }
+    for (int k = 0; k < 3; k++) if (hit(12 + k * 64, 40, 60, 14, tx, ty)) { farm_tab = k; fl_sel = -1; return; }
+    int n = fl_rows(); for (int r = 0; r < n; r++) if (hit(12, 58 + r * 14, 232, 13, tx, ty)) { fl_act(r); return; }
+}
+static int fm_sig(void) { int a = fm_wet + fm_hens * 3 + fm_cows * 5 + fm_fed * 7 + fm_fert * 11 + fm_pest * 13 + fm_up * 17 + fm_ordq * 19 + fm_fair * 23 + fm_pe * 29 + fm_pm * 31 + fm_built * 37 + fm_cdone * 41 + farm_tab * 43 + fl_sel * 47 + fm_egg * 53 + fm_milk * 59;
+    for (int k = 0; k < 4; k++) a = a * 7 + fm_n[k] * 3 + fm_g[k] + fm_stock[k] * 5; return a; }
 static u8 ID2CH[NITEM];   // an item's PS1 letter (0: the DS's own)
-static int popup_n, popup_code[3]; static const char *popup_lab[3];
+static int popup_n, popup_code[8]; static const char *popup_lab[8];   // (D38: up to eight, the farm stand has that many)
 static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a thing offers: the PS1's choices on the island, else the item's own action
     int c = ID2CH[OBJ_ID(&objs[o])], n = 0, isl = zone == Z_ISLAND;
     #define AC(l, k) do { lab[n] = (l); code[n] = (k); n++; } while (0)
@@ -1185,6 +1380,7 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     else if (c == 0x85) AC("Dig", 60 + G_DIG); else if (c == 0x87) AC("Search It", 60 + G_WRECK); else if (c == 0x84) AC("Read It", 60 + G_BOTTLE);
     else if (c == 0x8D) AC("Read It", 60 + G_JOURNAL); else if (c == 0x86) AC("Listen", 60 + G_IDOL); else if (c == 0x88) AC("Pick It Up", 60 + G_SHELL); else if (c == 0x8C) AC("Take It", 60 + G_GOLD);
     else if (isl && c == 's') { if (isl_food > 0) AC("Cook and Eat", 80); AC("Craft", 81); }
+    else if (c >= 0xDB && c <= 0xDE) return farm_acts(c, lab, code);
     else if (c == 0x8B) { AC("Sail Across", 82); AC("Not Now", 84); }
     else if (c == '@' || c == '+') AC(IT_OF(&objs[o])->lab, 83);
     else AC(IT_OF(&objs[o])->lab, -1);
@@ -1449,7 +1645,7 @@ static void draw_top_status(void) {   // the top screen while you live: the sim'
         panel(70, 6, 180, 60, sname[ctl]);
         text(78, 28, 1, TXT, "Mood"); rect(112, 26, 70, 9, C15(24, 28, 31)); rect(113, 27, 68 * mood(m) / 100, 7, need_col(mood(m)));
         int mn = minutes % 1440, h12 = (mn / 60) % 12 ? (mn / 60) % 12 : 12;
-        sprintf(t, "%s %d:%02d %s", DAYN[(minutes / 1440) % 7], h12, mn % 60, mn / 60 >= 12 ? "PM" : "AM"); text(78, 42, 1, TXT, t); sprintf(t, "%s %d", STGN[stage_of(m->age)], m->age); text(190, 28, 1, C15(31, 31, 20), t);
+        sprintf(t, "%s %d:%02d %s  %s", DAYN[(minutes / 1440) % 7], h12, mn % 60, mn / 60 >= 12 ? "PM" : "AM", SEASN[fm_season()]); text(78, 42, 1, TXT, t); sprintf(t, "%s %d", STGN[stage_of(m->age)], m->age); text(190, 28, 1, C15(31, 31, 20), t);
         sprintf(t, "Funds %d", funds); text(78, 54, 1, C15(31, 31, 20), t); if (o_pm) { sprintf(t, "%dfps %dq", fps_now, polys_last / 2); text(172, 54, 1, polys > 2900 ? C15(31, 12, 8) : C15(24, 28, 31), t); }
         if (info_pg == 1) { life_panel(); return; }
         panel(6, 72, 244, 114, "Needs");
@@ -1497,10 +1693,15 @@ static void draw_hud(void) {
     rect(104, 178, 48, 14, PANB); rect(105, 179, 46, 13, PAN); for (int i = 0; i < 3; i++) rect(118 + i * 8, 184, 4, 4, TXT);
     if (menu_open) { static const char *const mn[10] = { "Buy", "Build", "Map", "Save", "Options", "Title", "Job", "Songs", "Life", "Travel" }; panel(8, 38, 240, 140, "Menu"); for (int i = 0; i < 10; i++) chip(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, mn[i], i == 9 && zone); }
     if (popup == 1) {
-        const Item *it = IT_OF(&objs[popup_i]); const char *nm = it->name; int top = 150 - popup_n * 24;   // (D35: wide, for the PS1's words; D37: up to three choices)
-        rect(36, top, 184, 30 + popup_n * 24, PANB); rect(37, top + 1, 182, 28 + popup_n * 24, PAN); if (tw(2, nm) <= 168) text(44, top + 6, 2, TXT, nm); else text_fit(44, top + 6, 1, 168, TXT, nm);
-        for (int k = 0; k < popup_n; k++) { int y = top + 26 + k * 24; rect(42, y, 116, 22, C15(8, 20, 8)); text_fit(47, y + 8, 1, 108, TXT, popup_lab[k]); }
-        rect(162, top + 2 + popup_n * 24, 52, 22, C15(24, 8, 8)); text(168, top + 10 + popup_n * 24, 1, TXT, "Cancel");
+        const Item *it = IT_OF(&objs[popup_i]); const char *nm = it->name;   // (D35: wide, for the PS1's words; D37: up to three choices; D38: up to eight, in two columns)
+        if (popup_n <= 3) { int top = 150 - popup_n * 24;
+            rect(36, top, 184, 30 + popup_n * 24, PANB); rect(37, top + 1, 182, 28 + popup_n * 24, PAN); if (tw(2, nm) <= 168) text(44, top + 6, 2, TXT, nm); else text_fit(44, top + 6, 1, 168, TXT, nm);
+            for (int k = 0; k < popup_n; k++) { int y = top + 26 + k * 24; rect(42, y, 116, 22, C15(8, 20, 8)); text_fit(47, y + 8, 1, 108, TXT, popup_lab[k]); }
+            rect(162, top + 2 + popup_n * 24, 52, 22, C15(24, 8, 8)); text(168, top + 10 + popup_n * 24, 1, TXT, "Cancel");
+        } else { int rows = (popup_n + 1) / 2, top = 156 - rows * 24;
+            rect(4, top, 248, 30 + rows * 24, PANB); rect(5, top + 1, 246, 28 + rows * 24, PAN); text_fit(12, top + 6, tw(2, nm) <= 170 ? 2 : 1, 170, TXT, nm);
+            rect(196, top + 3, 50, 18, C15(24, 8, 8)); text(202, top + 9, 1, TXT, "Cancel");
+            for (int k = 0; k < popup_n; k++) { int x = 9 + (k & 1) * 121, y = top + 26 + (k >> 1) * 24; rect(x, y, 117, 22, popup_code[k] == FC_NOORDER ? C15(10, 12, 14) : C15(8, 20, 8)); text_fit(x + 4, y + 8, 1, 110, TXT, popup_lab[k]); } }
     } else if (popup == 5) {   // (D36) at the top of a flight
         rect(36, 100, 184, 56, PANB); rect(37, 101, 182, 54, PAN); text(44, 106, 2, TXT, "Stairs");
         rect(42, 126, 116, 24, C15(8, 20, 8)); text(47, 135, 1, TXT, "Go Down"); rect(162, 126, 52, 24, C15(24, 8, 8)); text(168, 135, 1, TXT, "Cancel");
@@ -1517,8 +1718,8 @@ static void draw_hud(void) {
         if (!n) text(26, 100, 1, TXT, "Nothing to do together"); }
     if (jobui) job_draw();
     if (juke) juke_draw();
-    if (travel_ui) travel_draw(); else if (craft_ui) craft_draw();
-    if (msg_t > 0 && !jobui && !juke && !travel_ui && !craft_ui) { rect(70, 40, 116, 14, PANB); text(76, 45, 1, TXT, msg); }
+    if (travel_ui) travel_draw(); else if (craft_ui) craft_draw(); else if (farm_ui) farm_draw();
+    if (msg_t > 0 && !jobui && !juke && !travel_ui && !craft_ui && !farm_ui) { rect(70, 40, 116, 14, PANB); text(76, 45, 1, TXT, msg); }
 }
 // ---- picking: a stylus tap on the 3D lot -> the cell under it (the view is a camera we know, so we undo it) ----
 static int pick_cell_h(int sx, int sy, int hgt, int *cx, int *cy) {   // the cell where the stylus ray meets the plane hgt world units above the ground
@@ -1613,6 +1814,13 @@ static void sav_probe(void) {   // read both copies, find the newest good one
     if (sav_have >= 0) { SavHdr h; memcpy(&h, sav_sh[sav_have], sizeof h); if (unrle(sav_sh[sav_have] + sizeof h, (int)h.clen, sav_raw, (int)sizeof sav_raw) == (int)h.rawlen && h.rawlen >= sizeof(SavCore)) { SavCore c; memcpy(&c, sav_raw, sizeof c); st_days = c.days; st_born = c.born; st_died = c.died; } }
 }
 typedef struct { Life life[SIM_MAX]; Ghost gh[GH_MAX]; u8 ngh, dog, hun, pad; } LifeSave;
+typedef struct { u8 b[28]; u16 w[10]; u16 sk[SIM_MAX]; } FarmSave;   // (D38) the farm: 'FM' block
+static void fm_pack(FarmSave *f) { memset(f, 0, sizeof *f); memcpy(f->b, fm_n, 4); memcpy(f->b + 4, fm_g, 4); memcpy(f->b + 8, fm_dry, 4);
+    u8 v[15] = { fm_wet, fm_hens, fm_cows, fm_fed, fm_fert, fm_fz, fm_pest, fm_up, fm_wc, fm_ordk, fm_ordq, fm_ordt, fm_fair, fm_cdone, fm_cday }; memcpy(f->b + 12, v, 15);
+    u16 w[10] = { fm_stock[0], fm_stock[1], fm_stock[2], fm_stock[3], fm_egg, fm_milk, fm_pe, fm_pm, fm_built, fm_last }; memcpy(f->w, w, sizeof w); memcpy(f->sk, fsk, sizeof fsk); }
+static void fm_unpack(const FarmSave *f) { memcpy(fm_n, f->b, 4); memcpy(fm_g, f->b + 4, 4); memcpy(fm_dry, f->b + 8, 4); const u8 *v = f->b + 12;
+    fm_wet = v[0]; fm_hens = v[1] > 6 ? 6 : v[1]; fm_cows = v[2] > 3 ? 3 : v[2]; fm_fed = v[3]; fm_fert = v[4]; fm_fz = v[5]; fm_pest = v[6]; fm_up = v[7]; fm_wc = v[8]; fm_ordk = v[9] % 6; fm_ordq = v[10]; fm_ordt = v[11]; fm_fair = v[12]; fm_cdone = v[13]; fm_cday = v[14];
+    for (int k = 0; k < 4; k++) { if (fm_n[k] > 8) fm_n[k] = 8; fm_stock[k] = f->w[k]; } fm_egg = f->w[4]; fm_milk = f->w[5]; fm_pe = f->w[6]; fm_pm = f->w[7]; fm_built = f->w[8]; fm_last = f->w[9]; memcpy(fsk, f->sk, sizeof fsk); }
 static int sav_pack(int big) {   // returns the packed size in sav_buf (header included), or 0 if even the basics do not fit
     if (lot_bx >= 0) lot_save();
     SavCore c; memset(&c, 0, sizeof c); c.seed = seed; c.minutes = minutes; c.funds = funds; c.nsim = nsim; c.ctl = ctl; c.cur_sim = cur_sim; c.cur_set = cur_set; c.lot_bx = lot_bx; c.lot_by = lot_by; c.days = st_days; c.born = st_born; c.died = st_died;
@@ -1620,7 +1828,7 @@ static int sav_pack(int big) {   // returns the packed size in sav_buf (header i
     int n = 0; u8 *r = sav_raw; memset(r, 0, sizeof sav_raw);
     #define PUT(p, l) do { memcpy(r + n, (p), (size_t)(l)); n += (l); } while (0)
     PUT(&c, (int)sizeof c); PUT(sname, (int)sizeof sname); PUT(sims, (int)sizeof sims); PUT(crt, (int)sizeof crt);
-    int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4) - (4 + (int)sizeof(LifeSave)) - (4 + NOPT - OPT_OLD) - 8 - (4 + SIM_MAX) - 20, base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
+    int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4) - (4 + (int)sizeof(LifeSave)) - (4 + NOPT - OPT_OLD) - 8 - (4 + SIM_MAX) - 20 - (4 + (int)sizeof(FarmSave)), base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
     int order[LSV_N], no = 0; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) order[no++] = i; for (int i = 0; i < lsv_n; i++) if (!(lsv[i].bx == lot_bx && lsv[i].by == lot_by)) order[no++] = i;
     for (int q = 0; q < no; q++) { const LotSave *L = &lsv[order[q]]; int m = n; SavLot h = { (s16)L->bx, (s16)L->by, (s16)L->pcx, (s16)L->pcy, (s16)L->dcx, (s16)L->dcy, (u16)(L->nobj | (L->roof << 12) | (L->up << 14)) };
         int nup = L->hasup ? L->up : 0; if (nup > UPN) nup = UPN; if (nup) h.nobj |= 0x800;   // (D36) its upper storeys follow
@@ -1636,7 +1844,8 @@ static int sav_pack(int big) {   // returns the packed size in sav_buf (header i
     { s16 th[4] = { 0x4D48, 4, (s16)home_bx, (s16)home_by }; memcpy(r + best, th, 8); best += 8; }   // the home you live in (D33)
     { u16 th[2] = { 0x4C53, SIM_MAX }; memcpy(r + best, th, 4); memcpy(r + best + 4, slv, SIM_MAX); best += 4 + SIM_MAX; }   // the storey each sim is on (D36)
     { s16 zs[10] = { 0x4E5A, 16, (s16)zone, (s16)isl_wood, (s16)isl_stone, (s16)isl_leaves, (s16)isl_food, (s16)isl_spear, (s16)isl_shells, (s16)isl_secrets }; memcpy(r + best, zs, 20); best += 20; }   // the zone and the island (D37)
-    cl = rle(r, best, sav_buf + sizeof(SavHdr), budget + 4 + nown * 4 + 4 + (int)sizeof(LifeSave) + 4 + NOPT - OPT_OLD + 8 + 4 + SIM_MAX + 20); if (cl < 0) return 0;
+    { u16 th[2] = { 0x4D46, (u16)sizeof(FarmSave) }; FarmSave f; fm_pack(&f); memcpy(r + best, th, 4); memcpy(r + best + 4, &f, sizeof f); best += 4 + (int)sizeof f; }   // the farm (D38)
+    cl = rle(r, best, sav_buf + sizeof(SavHdr), budget + 4 + nown * 4 + 4 + (int)sizeof(LifeSave) + 4 + NOPT - OPT_OLD + 8 + 4 + SIM_MAX + 20 + 4 + (int)sizeof(FarmSave)); if (cl < 0) return 0;
     SavHdr h = { SAV_MAGIC, (u32)(sav_seq + 1), crc32b(sav_buf + sizeof(SavHdr), cl), (u32)cl, (u32)best }; memcpy(sav_buf, &h, sizeof h); return (int)sizeof h + cl;
 }
 static int sav_write(void) {
@@ -1672,6 +1881,7 @@ static int sav_apply(void) {   // 1 = loaded
     zone = 0; isl_wood = isl_stone = isl_leaves = isl_spear = isl_shells = 0; isl_food = 3; isl_secrets = 0;
     u8 lvs[SIM_MAX]; memset(lvs, 0, sizeof lvs); if (n + 4 + SIM_MAX <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x4C53 && th[1] == SIM_MAX) { memcpy(lvs, sav_raw + n + 4, SIM_MAX); n += 4 + SIM_MAX; } }   // (D36; before: everyone on the ground)
     if (n + 20 <= rl) { s16 zs[10]; memcpy(zs, sav_raw + n, 20); if (zs[0] == 0x4E5A && zs[1] == 16 && zs[2] >= 0 && zs[2] < Z_N) { zone = zs[2]; isl_wood = zs[3]; isl_stone = zs[4]; isl_leaves = zs[5]; isl_food = zs[6]; isl_spear = zs[7]; isl_shells = zs[8]; isl_secrets = (u16)zs[9]; n += 20; } }   // (D37)
+    farm_reset(); if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x4D46 && th[1] == sizeof(FarmSave) && n + 4 + (int)sizeof(FarmSave) <= rl) { FarmSave f; memcpy(&f, sav_raw + n + 4, sizeof f); fm_unpack(&f); n += 4 + (int)sizeof f; } }   // (D38; before: no farm)
     seed = c.seed; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
     st_days = c.days; st_born = c.born; st_died = c.died; minutes = c.minutes; funds = c.funds; nsim = c.nsim; ctl = c.ctl; cur_sim = c.cur_sim >= 0 && c.cur_sim < nsim ? c.cur_sim : ctl;
     for (int i = 0; i < NOPT && i < OPT_OLD; i++) if (OPT[i].v && c.opt[i] < opt_cnt(i)) *OPT[i].v = c.opt[i];
@@ -1685,7 +1895,7 @@ static int sav_apply(void) {   // 1 = loaded
     return 1;
 }
 static void day_roll(void) {
-    st_days++; memset(ilim, 0, sizeof ilim); for (int k = 0; k < 64; k++) crt[k].talks = 0;
+    st_days++; memset(ilim, 0, sizeof ilim); farm_midnight(); for (int k = 0; k < 64; k++) crt[k].talks = 0;
     for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; int s0 = stage_of(m->age); if (m->age < 99) m->age++; int s1 = stage_of(m->age); if (s0 != s1) { static char bf[40]; sprintf(bf, "%s is now a %s", sname[i], STGN[s1]); say(bf); } }
     for (int i = 0; i < nsim; i++) if (sims[i].age >= 80 && nsim > 1) { int alive = 0; for (int q = 0; q < nsim; q++) if (q != i && stage_of(sims[q].age) > 0) alive++; if (alive && (int)(hsh((u32)(minutes + i * 77)) % 100) < (sims[i].age - 79) * 7) { sim_die(i); break; } }
     if (o_auto && mode == M_LIVE && sav_ok() && lot_bx >= 0) { if (sav_write()) say("Game saved"); }
@@ -2187,7 +2397,7 @@ static void draw_title(void) {
     if (msg_t > 0) text(24, 166, 1, C15(31, 20, 12), msg);
 }
 static void new_household(void) {
-    zone = 0; isl_wood = isl_stone = isl_leaves = isl_spear = isl_shells = 0; isl_food = 3; isl_secrets = 0;
+    zone = 0; isl_wood = isl_stone = isl_leaves = isl_spear = isl_shells = 0; isl_food = 3; isl_secrets = 0; farm_reset();
     st_days = st_born = st_died = 0; nown = 0; home_bx = home_by = -1; funds = 3500; life_reset();
     lot_seed = (u32)minutes * 7919u + 17; lot_reset(); lot_bx = -1; lot_by = -1; Sim *m = &sims[0]; m->skin = (u8)(minutes % 6); m->hair = (u8)(minutes % 12); m->hcol = (u8)(minutes % 6); m->shirt = (u8)(minutes % 6); m->beard = 0; m->fc = 0;
     for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0;
@@ -2213,6 +2423,7 @@ static void live_touch(int tx, int ty) {
     if (jobui) { job_touch(tx, ty); return; }
     if (travel_ui) { travel_touch(tx, ty); return; }
     if (craft_ui) { craft_touch(tx, ty); return; }
+    if (farm_ui) { farm_touch(tx, ty); return; }
     if (juke) { juke_touch(tx, ty); return; }
     if (popup == 4) {
         if (hit(64, 118, 60, 20, tx, ty)) { Sim *m = &sims[ctl]; m->need[1] = cl100(m->need[1] + (dog.hun > 20 ? 25 : 8)); m->need[3] = cl100(m->need[3] + 8); say("Rex wags his tail"); life_ev(ctl, WN_PET, 0); life_ev(ctl, WN_FUN, 0); popup = 0; }
@@ -2221,13 +2432,14 @@ static void live_touch(int tx, int ty) {
         else if (hit(132, 142, 60, 20, tx, ty)) popup = 0;
         return; }
     if (popup) {
-        if (popup == 1) { int top = 150 - popup_n * 24;
-            for (int k = 0; k < popup_n; k++) if (hit(42, top + 26 + k * 24, 116, 22, tx, ty)) { int cd = popup_code[k]; Sim *m = &sims[ctl]; const Obj *ob = &objs[popup_i]; popup = 0;
+        if (popup == 1) { int top = 150 - popup_n * 24, rows = (popup_n + 1) / 2, top2 = 156 - rows * 24;
+            for (int k = 0; k < popup_n; k++) if (popup_n <= 3 ? hit(42, top + 26 + k * 24, 116, 22, tx, ty) : hit(9 + (k & 1) * 121, top2 + 26 + (k >> 1) * 24, 117, 22, tx, ty)) { int cd = popup_code[k]; Sim *m = &sims[ctl]; const Obj *ob = &objs[popup_i]; popup = 0;
                 if (cd < 0) start_act(m, popup_i, -1);
+                else if (cd >= 100) farm_do(cd, ctl, popup_i);   // (D38) the farm
                 else if (cd < 81) { m->tx = ob->x * 16; m->ty = ob->y * 16; m->act = cd; m->act_amt = 0; m->face = cd < 80 ? gather_len(cd - 60) : 1; m->act_obj = popup_i; m->act_left = 0; }   // (gather, or the castaway's meal: walk there, then do it)
                 else if (cd == 81) craft_ui = 1; else if (cd == 82) raft_sail(); else if (cd == 83) travel_ui = 1;
                 return; }
-            if (hit(162, top + 2 + popup_n * 24, 52, 22, tx, ty)) popup = 0; return; }
+            if (popup_n <= 3 ? hit(162, top + 2 + popup_n * 24, 52, 22, tx, ty) : hit(196, top2 + 3, 50, 18, tx, ty)) popup = 0; return; }
         if (popup == 5) { if (hit(42, 126, 116, 24, tx, ty)) { Sim *m = &sims[ctl]; const Obj *st = &objs[popup_i]; int r = st->rot & 3; m->tx = (st->x - SFX_[r]) * 16; m->ty = (st->y - SFY_[r]) * 16; m->act = 51; m->act_amt = 0; m->face = 1; m->act_obj = popup_i; m->act_left = 0; popup = 0; }   // (down: to the landing)
                           else if (hit(162, 126, 52, 24, tx, ty)) popup = 0; return; }
         { int tg = popup == 2 ? popup_i : -2 - popup_i, n = soc_list(tg); if (hit(212, 60, 22, 14, tx, ty)) popup = 0;
@@ -2331,7 +2543,7 @@ int main(void) {
                     else if (cam_drag == 3) { if (cam_pan) { int c = cosLerp(live_yaw), sn = sinLerp(live_yaw); cam_free = 1; camx += (-ddx * c + ddy * sn) * cam_deff / 4096 / 160; camz += (-ddx * sn - ddy * c) * cam_deff / 4096 / 160; }
                         else { live_yaw += ddx * 60; yaw_t = live_yaw; live_pitch += ddy * 30; if (live_pitch < 1800) live_pitch = 1800; if (live_pitch > 7600) live_pitch = 7600; } } }
             } else if (down & KEY_TOUCH) live_touch(tp.px, tp.py);
-            if ((down & KEY_B) && (menu_open || popup || jobui || juke || travel_ui || craft_ui)) { menu_open = popup = jobui = juke = travel_ui = craft_ui = 0; }
+            if ((down & KEY_B) && (menu_open || popup || jobui || juke || travel_ui || craft_ui || farm_ui)) { menu_open = popup = jobui = juke = travel_ui = craft_ui = farm_ui = 0; }
             else if ((down & KEY_START) && !jobui && !juke && !popup) menu_open ^= 1;
             if (juke) { if (down & KEY_DOWN) juke_pg++; if (down & KEY_UP && juke_pg > 0) juke_pg--; if (down & KEY_RIGHT) { int c = mus_cur < 0 ? 0 : mus_cur; o_song = (c + 1) % (mus_n > 0 ? mus_n : 1) + 1; } }
             if (down & KEY_L) yaw_t -= 4096; if (down & KEY_R) yaw_t += 4096;
@@ -2339,15 +2551,21 @@ int main(void) {
             if (held & KEY_UP) { if (live_pitch < 7600) live_pitch += 50; } if (held & KEY_DOWN) { if (live_pitch > 1800) live_pitch -= 50; }
             if (down & KEY_SELECT) { cam_free ^= 1; if (!cam_free) { live_yaw = yaw_t = 4096; live_pitch = 4300; } }
 #ifdef DSTEST
-            if (zone == Z_ISLAND && (down & KEY_SELECT)) { isl_wood += 20; isl_stone += 10; isl_leaves += 20; }   // (test builds only: island stock)
+            if (zone == Z_ISLAND && (down & KEY_SELECT) && (held & KEY_L) && (held & KEY_R)) { cam_free ^= 1; isl_wood += 20; isl_stone += 10; isl_leaves += 20; }   // (test builds only: island stock)
+            if (zone != Z_ISLAND && (down & KEY_SELECT) && (held & KEY_L) && (held & KEY_R)) { cam_free ^= 1; int bed = -1; for (int q = 0; q < nobj; q++) if (ID2CH[OBJ_ID(&objs[q])] == 0xDB) bed = q;   // (test builds only: the first press makes this lot a farm, the next ones jump to the next morning)
+                if (bed < 0) { memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(LOT_FARM, 1); funds += 5000; occ_ok = 0; for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (7 + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 11 * 16; sims[q].act = -1; } }
+                else { minutes += 1440 - minutes % 1440 + 360; day_roll(); } }
+            if ((down & KEY_START) && (held & KEY_L) && (held & KEY_R)) { static int fk; int want = 0xDB + (fk++ & 3); menu_open = 0;   // (test builds only: the popup of the next farm thing in turn: crop bed, coop, cow, stand)
+                for (int q = 0; q < nobj; q++) if (ID2CH[OBJ_ID(&objs[q])] == want) { popup = 1; popup_i = q; popup_n = obj_acts(q, popup_lab, popup_code); break; } }
 #endif
             if (held & KEY_X) { if (live_dist > 3500) live_dist -= 80; } if (held & KEY_Y) { if (live_dist < 16000) live_dist += 80; }
             live_yaw += (yaw_t - live_yaw) / 4; if (yaw_t - live_yaw > -4 && yaw_t - live_yaw < 4) live_yaw = yaw_t;
             for (int k = 0; k < speed; k++) { sims_step(frames * speed + k); city_step(frames * speed + k); } lot_cross();
             int tx = sims[cur_sim].x * 2 * T / 16 - GN * T + T, tz = sims[cur_sim].y * 2 * T / 16 - GN * T + T; if (!cam_free) { camx += (tx - camx) / 8; camz += (tz - camz) / 8; }
             yaw = live_yaw; dist = live_dist * (o_cam == 0 ? 85 : o_cam == 1 ? 100 : 125) / 100; cam_deff = dist; pitch = live_pitch;
+            { int hd = dist * cosLerp(pitch) >> 12, r = (hd + (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500)) >> 2; lod_ex = camx - (hd * sinLerp(yaw) >> 12); lod_ez = camz + (hd * cosLerp(yaw) >> 12); lod_r2 = r * r; }   // (D38) the level of detail goes by the distance from the eye
             { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)(cur_sim * 7 + ctl * 3 + minutes * 13 + funds + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_secrets * 23) * 31 * zone + (o_pm ? polys_last / 64 + fps_now * 977 : 0) + info_pg * 43 + life_ver * 53); for (int n = 0; n < 6; n++) a = a * 31 + (unsigned)sims[cur_sim].need[n]; a = a * 31 + (unsigned)sims[cur_sim].rel;
-              unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
+              unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + farm_ui * 97 + (popup || farm_ui ? fm_sig() * 107 : 0) + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
               if (forced) { ts = ~a; hs = ~b; } if (mode == M_LIVE) { if (a != ts) { draw_top_status(); off_show(scr_sub); ts = a; } if (b != hs) { draw_hud(); off_show(hud); hs = b; } } }   // (D35: not after a menu chip has just left Live, or the Live icons stayed over Buy's 3D view)
         } else {   // BUY / BUILD: the live lot on the top screen, the catalogue or plan on the bottom (drag to place, paint, draw walls, move)
             LV = ed_lv;
