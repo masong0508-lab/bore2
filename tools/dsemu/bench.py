@@ -30,6 +30,7 @@ SC = {   # name: (script, pokes {frame: scene}, measure from, to, screenshot fra
     "guide3": (LIVE, {400: 54}, 500, 800, 780),
     "livebasket": (LIVE, {400: 55}, 500, 800, 780),
     "shop":   (LIVE, {400: 51}, 500, 800, 780),
+    "fight":  (LIVE + ";450-455:1:-1,-1;520-525:1:-1,-1" + "".join(";%d-%d:%x:-1,-1" % (800 + 40 * q, 819 + 40 * q, [0x1, 0x11, 0x2, 0x21, 0x4, 0x80][q % 6]) for q in range(30)), {400: 56}, 400, 1500, 1480),   # (D54) BORTUA FIGHTER: pick, VS, then punching and kicking
     "close":  (LIVE, {400: 6}, 700, 1000, 980),
     "horizon": (LIVE, {400: 5}, 700, 1300, 1280),
     "orbit":  (LIVE + ";500-1300:10:-1,-1", {}, 600, 1300, 1280),        # Live, the camera turning all the time (the still list is recorded again often)
@@ -45,6 +46,7 @@ want = sys.argv[4:] or list(SC)
 mem = [syms["fps_now"], syms["polys_last"], "4000604"] + ([syms["ui_fps"], syms["st_rec"]] if "ui_fps" in syms else []) + (["%x" % (int(syms["prof_ms"], 16) + 4 * k) for k in range(12)] + [syms["sml_miss"]] if "prof_ms" in syms and os.environ.get("PROF") else [])
 for name in want:
     script, pokes, a, b, shot = SC[name]
+    if os.environ.get("BENCH_SHOT"): shot = int(os.environ["BENCH_SHOT"]); b = max(b, shot + 1)
     env = dict(os.environ, DBGMEM=",".join(mem))
     pokes = dict(pokes); pokes.update(EXTRA) if name != "map" else None
     if pokes: env["POKE"] = ",".join("%d:%s:%x" % (f, syms["test_scene"], v) for f, v in pokes.items())

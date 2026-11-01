@@ -1706,7 +1706,7 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     else if (c == 0x8B) { AC("Sail Across", 82); AC("Not Now", 84); }
     else if (c == '@' || c == '+') AC(IT_OF(&objs[o])->lab, 83);
     else if (c == 'B') AC("Ride the Board", 85);   // (D44)
-    else if (c == '!' && in_arcade()) { static char pl[28]; int g_ = arcade_game_at(objs[o].x, objs[o].y); snprintf(pl, sizeof pl, "%s $%d", g_ == 1 ? "Bore Breaker" : g_ == 2 ? "Snack Catch" : g_ == 3 ? "Whack-a-Bore" : "High Striker", g_ == 1 ? 2 : 1); AC(pl, 86); }   // (D46: a cabinet)
+    else if (c == '!' && in_arcade()) { static char pl[28]; int g_ = arcade_game_at(objs[o].x, objs[o].y); snprintf(pl, sizeof pl, "%s $%d", g_ == 0 ? "Bortua Fighter" : g_ == 1 ? "Bore Breaker" : g_ == 2 ? "Snack Catch" : g_ == 3 ? "Whack-a-Bore" : "High Striker", g_ <= 1 ? 2 : 1); AC(pl, 86); }   // (D46: a cabinet)
     else if (c == 'y' && in_arcade()) { static char pz[28]; snprintf(pz, sizeof pz, "Prizes (%d tickets)", arcade_tix); AC(pz, 87); }   // (D46: the prize counter)
     else if (c >= 0xBE && c <= 0xC5 && c != 0xC1 && c != 0xC2) {   // (D53) the Boreagotchi things (the PS1's pie choices)
         if (c == 0xBE && in_shop() && !gtoy_of_(ctl)) AC("Boreagotchi $5000", 96);
@@ -2875,7 +2875,7 @@ static void live_touch(int tx, int ty) {
                 else if (cd >= 100) farm_do(cd, ctl, popup_i);   // (D38) the farm
                 else if (cd < 81) { m->tx = ob->x * 16; m->ty = ob->y * 16; m->act = cd; m->act_amt = 0; m->face = cd < 80 ? gather_len(cd - 60) : 1; m->act_obj = popup_i; m->act_left = 0; }   // (gather, or the castaway's meal: walk there, then do it)
                 else if (cd == 81) craft_ui = 1; else if (cd == 82) raft_sail(); else if (cd == 83) travel_ui = 1;
-                else if (cd == 86) { int g_ = arcade_game_at(ob->x, ob->y), pr_ = g_ == 1 ? 2 : 1; if (funds < pr_) say("Not enough funds"); else { funds -= pr_; ag_open(g_); } }   // (D46)
+                else if (cd == 86) { int g_ = arcade_game_at(ob->x, ob->y), pr_ = g_ <= 1 ? 2 : 1; if (funds < pr_) say("Not enough funds"); else { funds -= pr_; ag_open(g_); } }   // (D46)
                 else if (cd == 87) ag_open(99);
                 else if (cd >= 90 && cd <= 96) gt_furn(cd);   // (D53) the Boreagotchi things
                 else if (cd == 85) { objs[popup_i] = objs[--nobj]; occ_ok = 0; has_board = 1; say("A skateboard! Menu > Board rides it"); skate_on(); }   // (D44: the PS1's PICKBOARD)
@@ -3074,7 +3074,7 @@ int main(void) {
         if (o_dirty) apply_opts();
         if (sky_on) sky_update(pitch);
         // (D39) the 3D: a steady 30 frames a second (or up to 60, Options > System > Frame rate); the passes in between do the game and the 2D screens, so the touch screen answers at 60
-        static u32 next3d; int is_lot = mode == M_LIVE || mode == M_BUY || mode == M_BUILD;
+        static u32 next3d; int fight_on = mode == M_LIVE && mg_ui == 6, is_lot = (mode == M_LIVE || mode == M_BUY || mode == M_BUILD) && !fight_on;
         if (is_lot) {   // (D39) the lot: a new frame is written whenever the last one has been taken; the vblank interrupt sends it on the beat
             gf_on = 1;
             { int want = mode == M_LIVE ? slv[ctl] * WHF : (mode == M_BUY || mode == M_BUILD) ? ed_lv * WHF : 0; cam_y += (want - cam_y) / 6; if (want - cam_y > -8 && want - cam_y < 8) cam_y = want; }   // (D36) the camera rises to the storey
@@ -3107,13 +3107,15 @@ int main(void) {
         glMatrixMode(GL_POSITION); glLoadIdentity();
         glTranslatef32(0, 0, -dist); glRotateXi(pitch); glRotateYi(yaw);
         if (mode == M_CAS) glTranslatef32(0, -650, 0);
+        if (fight_on) { int fd, fp, fy, fx, fyy, fz; glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluPerspectivef32(degreesToAngle(62), 256 * 4096 / 192, 4096 / 5, 4096 * 12); glMatrixMode(GL_POSITION); fight_cam(&fd, &fp, &fy, &fx, &fyy, &fz); glLoadIdentity(); glTranslatef32(0, 0, -fd); glRotateXi(fp); glRotateYi(fy); glTranslatef32(-fx, -fyy, -fz); }
         lit_on = o_lit && mode != M_TITLE && mode != M_MAP;
         gx_base = POLY_ALPHA(31) | POLY_CULL_NONE | POLY_ID(1) | (lit_on ? (POLY_FORMAT_LIGHT0 | POLY_FORMAT_LIGHT1) : 0);
         glPolyFmt(gx_base);
         if (lit_on) { glMaterialf(GL_SPECULAR, RGB15(0, 0, 0)); glMaterialf(GL_EMISSION, RGB15(0, 0, 0));
             glLight(0, RGB15(27, 25, 21), floattov10(0.45f), floattov10(-0.55f), floattov10(-0.70f)); glLight(1, RGB15(7, 10, 17), floattov10(-0.7f), floattov10(0.1f), floattov10(0.7f)); }
         glBegin(GL_QUADS);
-        if (mode == M_CAS) draw_head(yaw);
+        if (fight_on) fight_3d();
+        else if (mode == M_CAS) draw_head(yaw);
         else if (mode == M_MAP) { BInfo b; bm_block(sel_x, sel_y, &b); draw_lot(&b, yaw); }
         glEnd();
         polys_last = polys; gf_shown++;
