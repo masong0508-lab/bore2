@@ -1131,8 +1131,16 @@ static void draw_city(void) {
         block(x - 90 * sc / 100, z - 50 * sc / 100, x + 90 * sc / 100, z + 50 * sc / 100, -300 * sc / 100, -590 * sc / 100, SH[c->shirt], SH[c->shirt]);
         block(x - 60 * sc / 100, z - 60 * sc / 100, x + 60 * sc / 100, z + 60 * sc / 100, -590 * sc / 100, -800 * sc / 100, SK[c->skin], c->stage == 5 ? C15(25, 25, 26) : HR[c->hair]); }
     gy_off = 0;
-    for (int k = 0; k < CARN; k++) { const Car *c = &cars[k]; if (polys > 2950) break; int x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, lx = c->dx ? 300 : 150, lz = c->dx ? 150 : 300, cx2 = c->dx ? 130 : 130, cz = c->dx ? 130 : 130;
-        block(x - lx, z - lz, x + lx, z + lz, -20, -150, c->col, shade(c->col, 10)); block(x - lx + (c->dx ? 90 : 0) + (c->dx ? 0 : 0) - (c->dx ? 0 : 0), z - lz + (c->dx ? 0 : 90), x + lx - (c->dx ? 90 : 0), z + lz - (c->dx ? 0 : 90), -150, -270, C15(20, 26, 31), C15(24, 24, 26)); (void)cx2; (void)cz; }
+    for (int k = 0; k < CARN; k++) { const Car *c = &cars[k]; if (polys > 2950) break;   // (D49: a car with a hood, a set-back glass cabin and a roof, lamps at the right end, a dark skirt over the wheels, facing the way it drives)
+        int ax = c->dx != 0, sg = (ax ? c->dx : c->dy) < 0 ? -1 : 1, x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, la = 300, lb = 140;   // (along its way, across)
+#define CARB(a0, b0, a1, b1, y0, y1, w, r) do { int A0 = sg * (a0), A1 = sg * (a1); if (ax) block(x + A0, z + (b0), x + A1, z + (b1), y0, y1, w, r); else block(x + (b0), z + A0, x + (b1), z + A1, y0, y1, w, r); } while (0)
+        u16 col = c->col, glass = C15(13, 19, 25);
+        CARB(-la + 20, -lb + 12, la - 20, lb - 12, -8, -48, C15(5, 5, 7), C15(6, 6, 8));                                 // (the skirt and the wheels)
+        CARB(-la, -lb, la, lb, -40, -140, col, shade(col, 10));                                                           // (the body)
+        CARB(-la + 70, -lb + 18, la - 150, lb - 18, -140, -250, glass, shade(col, 6));                                    // (the cabin: glass, a roof the colour of the car)
+        CARB(la - 12, -lb + 24, la, lb - 24, -60, -100, C15(31, 29, 18), C15(31, 29, 18));                                // (the headlamps)
+        CARB(-la, -lb + 24, -la + 12, lb - 24, -60, -100, C15(28, 5, 4), C15(28, 5, 4)); }
+#undef CARB
 }
 static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw) {   // a neighbour's lot: flat ground, a plain house or a few trees (cheap: the polygon budget is the DS's limit)
     u32 h = b->h; int k = b->lot; if (far_lod) pop = 0;
