@@ -195,7 +195,8 @@ static inline int tri_ok(int x0, int y0, int x1, int y1, int x2, int y2) {
     return mxx - mnx < 1024 && mxy - mny < 512;
 }
 
-static void emit_one(Prim *p, int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr, int var);
+static int uv_exact;
+static void emit_one(int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr, int var);
 static void emit(int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr) {
     if (n == 4 && !off_screen) {   // the PS1 GPU skips a triangle wider than 1023 or taller than 511 pixels: a quad is two of them
         int a = tri_ok(x[0], y[0], x[1], y[1], x[2], y[2]), b = tri_ok(x[1], y[1], x[2], y[2], x[3], y[3]);
@@ -219,40 +220,50 @@ static void emit(int n, const int *x, const int *y, const uint32_t *col, const i
         if (f == 0) return;
         if (f == 1) semi = 0;                      // (no STP texels under it: all solid)
         else if (f == 3) {                         // both: the solid texels, then the blended ones
-            if (npt < MAXPT) { Prim *q = &pt[npt]; emit_one(q, n, x, y, col, u, v, 1, tpage, clut, raw, 0, abr, 1); if (q->tex >= 0) npt++; }
-            if (ntr < MAXTR) { Prim *q = &tr[ntr]; emit_one(q, n, x, y, col, u, v, 1, tpage, clut, raw, 1, abr, 2); if (q->tex >= 0) ntr++; }
+            emit_one(n, x, y, col, u, v, 1, tpage, clut, raw, 0, abr, 1);
+            emit_one(n, x, y, col, u, v, 1, tpage, clut, raw, 1, abr, 2);
             return;
         }
     }
-    Prim *p;
-    int *cnt;
-    if (semi) { if (ntr >= MAXTR) return; p = &tr[ntr]; cnt = &ntr; }
-    else if (textured) { if (npt >= MAXPT) return; p = &pt[npt]; cnt = &npt; }
-    else { if (nop >= MAXOP) return; p = &op[nop]; cnt = &nop; }
-    p->tex = -1;
-    emit_one(p, n, x, y, col, u, v, textured, tpage, clut, raw, semi, abr, 0);
-    if (!textured || p->tex >= 0) (*cnt)++;
+    emit_one(n, x, y, col, u, v, textured, tpage, clut, raw, semi, abr, 0);
 }
-static void emit_one(Prim *p, int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr, int var) {
+// One primitive into its list. The PS1 tints a texture by colour/128, so a lit texture can be up to twice as bright as painted; the PVR
+// multiplies by at most 1. A primitive tinted above 128 is drawn at 1, then once more on top, added: the texture times the rest.
+static void emit_one(int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr, int var) {
+    Prim *p;
+    if (semi) { if (ntr >= MAXTR) return; p = &tr[ntr]; }
+    else if (textured) { if (npt >= MAXPT) return; p = &pt[npt]; }
+    else { if (nop >= MAXOP) return; p = &op[nop]; }
     zseq += 1.0f / 4096.0f;
     p->z = 1.0f + zseq; p->n = (int8_t)n; p->blend = (int8_t)(semi ? abr : -1); p->filt = 0;
     p->tex = textured ? (int8_t)tex_get(tpage, clut, var) : -1;
     if (textured && p->tex < 0) return;
+    int boost = 0, a = abr == 0 ? 128 : abr == 3 ? 64 : 255;
     for (int k = 0; k < n; k++) {
         p->x[k] = (x[k] + ofs_x - area_x0) * SCALE; p->y[k] = (y[k] + ofs_y - area_y0) * SCALE;
         uint32_t c = textured ? mod_col(col[k], raw) : flat_col(col[k]);
-        if (semi) { int a = abr == 0 ? 128 : abr == 3 ? 64 : 255; c = (c & 0xffffff) | (uint32_t)a << 24; }
+        if (textured && !raw && ((col[k] & 0x808080) && ((col[k] & 255) > 128 || ((col[k] >> 8) & 255) > 128 || ((col[k] >> 16) & 255) > 128))) boost = 1;
+        if (semi) c = (c & 0xffffff) | (uint32_t)a << 24;
         p->c[k] = c;
         if (textured) { p->u[k] = u[k]; p->v[k] = v[k]; }
     }
-    if (textured && n == 4) {   // a sprite-like quad that shows texels u0..u1 inclusive: reach to the far edge of the last texel
+    if (textured && n == 4 && !uv_exact) {   // a sprite-like quad that shows texels u0..u1 inclusive: reach to the far edge of the last texel
         float sw = p->x[1] - p->x[0], uw = p->u[1] - p->u[0], sh = p->y[2] - p->y[0], vh = p->v[2] - p->v[0];
         if (uw > 0 && sw > 0 && (int)(sw / SCALE + 0.5f) == (int)uw + 1) { p->u[1] += 1; p->u[3] += 1; }
         if (vh > 0 && sh > 0 && (int)(sh / SCALE + 0.5f) == (int)vh + 1) { p->v[2] += 1; p->v[3] += 1; }
     }
     if (textured) for (int k = 0; k < n; k++) { p->u[k] /= 256.0f; p->v[k] /= 256.0f; }
+    if (semi) ntr++; else if (textured) npt++; else nop++;
+    if (boost && (!semi || abr != 2) && ntr < MAXTR) {   // the part above 1: added (for a blended primitive, at its own blend's share)
+        Prim *q = &tr[ntr++]; *q = *p;
+        q->blend = (int8_t)(!semi ? 1 : abr == 0 ? 4 : abr);
+        for (int k = 0; k < n; k++) {
+            uint32_t c = col[k]; int r = (int)(c & 255) - 128, g = (int)((c >> 8) & 255) - 128, b = (int)((c >> 16) & 255) - 128;
+            r = r < 0 ? 0 : r * 2; g = g < 0 ? 0 : g * 2; b = b < 0 ? 0 : b * 2; if (r > 255) r = 255; if (g > 255) g = 255; if (b > 255) b = 255;
+            q->c[k] = (uint32_t)(semi ? a : 255) << 24 | (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
+        }
+    }
 }
-
 static void do_poly(const uint32_t *w) {
     extern int dc_frames;
     uint32_t cmd = w[0] >> 24; int quad = cmd & 8, tex = cmd & 4, gour = cmd & 16, semi = cmd & 2, raw = cmd & 1;
@@ -281,8 +292,9 @@ static void do_rect(const uint32_t *w) {
     int u[4] = { u0, u0 + ww, u0, u0 + ww }, v[4] = { v0, v0, v0 + hh, v0 + hh };
     uint32_t c[4] = { w[0] & 0xffffff, w[0] & 0xffffff, w[0] & 0xffffff, w[0] & 0xffffff };
     if (tex) { for (int k = 0; k < 4; k++) { u[k] = u[k] > 256 ? 256 : u[k]; v[k] = v[k] > 256 ? 256 : v[k]; } }
+    uv_exact = 1;   // (a rectangle's texels are exactly u0 .. u0+w-1: no edge reach)
     emit(4, x, y, c, u, v, tex != 0, dm_tpage, clut, raw != 0, semi != 0, (dm_tpage >> 5) & 3);
-    if (tex) { Prim *p = semi ? &tr[ntr - 1] : &pt[npt - 1]; if (!off_screen && p->n == 4) { p->u[1] = p->u[3] = (u0 + ww) / 256.0f; p->v[2] = p->v[3] = (v0 + hh) / 256.0f; } }
+    uv_exact = 0;
 }
 static void do_line(int x0, int y0, int x1, int y1, uint32_t c0, uint32_t c1, int semi) {
     float dx = (float)(x1 - x0), dy = (float)(y1 - y0); int hor = (dx < 0 ? -dx : dx) >= (dy < 0 ? -dy : dy);
@@ -437,7 +449,7 @@ int DrawOTag(const uint32_t *ot) {
     submit_list(PVR_LIST_PT_POLY, pt, npt);
     submit_list(PVR_LIST_TR_POLY, tr, ntr);
     pvr_scene_finish();
-    { extern volatile int dc_vbl; if (dc_frames % 100 == 0) dc_logf("vbl %d f%d prims %d/%d/%d pages %d cells %d pvrfree %d\n", dc_vbl, dc_frames, nop, npt, ntr, dc_tex_uploads, dc_tex_cells, (int)pvr_mem_available()); }
+    { extern volatile int dc_vbl; extern int dc_spu_cbs, dc_spu_frames, dc_spu_voices_on, dc_spu_peak; if (dc_frames % 100 == 0) dc_logf("snd cb %d fr %d on %d peak %d | vbl %d f%d prims %d/%d/%d pages %d cells %d pvrfree %d\n", dc_spu_cbs, dc_spu_frames, dc_spu_voices_on, dc_spu_peak, dc_vbl, dc_frames, nop, npt, ntr, dc_tex_uploads, dc_tex_cells, (int)pvr_mem_available()); }
     tex_waited = 0;
     dc_frames++;
     return 0;

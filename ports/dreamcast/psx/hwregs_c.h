@@ -43,10 +43,18 @@ extern unsigned char dc_iobase[];   /* Dreamcast: the PS1 registers are a plain 
 #define SPU_MASTER_VOL_R	_MMIO16(IOBASE | 0x1d82)
 #define SPU_REVERB_VOL_L	_MMIO16(IOBASE | 0x1d84)
 #define SPU_REVERB_VOL_R	_MMIO16(IOBASE | 0x1d86)
+#ifdef DC_SPU_EVENTS   /* Dreamcast: in the sound code each key write is an event for the software SPU (dc_spu.c) */
+volatile uint16_t *dc_spu_kreg(int r);
+#define SPU_KEY_ON1			(*dc_spu_kreg(0))
+#define SPU_KEY_ON2			(*dc_spu_kreg(1))
+#define SPU_KEY_OFF1		(*dc_spu_kreg(2))
+#define SPU_KEY_OFF2		(*dc_spu_kreg(3))
+#else
 #define SPU_KEY_ON1			_MMIO16(IOBASE | 0x1d88)
 #define SPU_KEY_ON2			_MMIO16(IOBASE | 0x1d8a)
 #define SPU_KEY_OFF1		_MMIO16(IOBASE | 0x1d8c)
 #define SPU_KEY_OFF2		_MMIO16(IOBASE | 0x1d8e)
+#endif
 #define SPU_FM_MODE1		_MMIO16(IOBASE | 0x1d90)
 #define SPU_FM_MODE2		_MMIO16(IOBASE | 0x1d92)
 #define SPU_NOISE_MODE1		_MMIO16(IOBASE | 0x1d94)
