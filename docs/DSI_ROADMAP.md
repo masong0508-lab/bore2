@@ -174,7 +174,14 @@ Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build 
 - Simplified (the DS has no crime and law pack): being caught costs a fine and some fun and social, and the heat rises; there is no court or hard time. Kept boats and aircraft are only recorded: SKY AND SEA on the DS cannot sail or fly them yet.
 - fps in melonDS: 30 (the sims stand still). Shots: `docs/ds_shots/d47_heist.png` (the list, a gate, a caught getaway on the top screens and the touch pad below).
 ![heist](ds_shots/d47_heist.png)
-- Not done in the mini-games: fight, gotchi (next).
+**Done at D48 (`bore2_dsi_d48.nds`): Boreagotchi (the PS1's src/gotchi.c and gotchi_ui.c)**
+- Menu > **Games** (this replaces the old Board chip: it holds the Skateboard and the Boreagotchi; Heist keeps its own chip). A toy costs $5000 and belongs to one Bore of the household; it holds up to eight creatures (eggs, babies, children, teens, grown-ups), 16 kinds, four grown-up forms each (SUPER, SLOB, CHILL, STAR), a new egg $150. All the rules are the PS1's gotchi.c: hunger, happiness, mess, sickness, sleep and the light, fibbing (scold it), care mistakes, bond, discipline, snacks versus meals deciding the form, weight, care levels (NEW PARENT to GOTCHI MASTER), playdates, battles and an egg from two loving grown-ups, the Blobdex, housemates who feed their own pet, a starving owner starving the pet, pets that lift or drag the owner's fun. Creatures are drawn the PS1's way: shapes on a 32 x 16 LCD (the same drawing code), four sizes.
+- The handheld: its ten icons (feed, light, play, medicine, clean, stats, scold, attention, friends, blobdex) as touch buttons or D-pad + A; L / R change pet. Feed has Meal, Snack, or your own Lunch. Play: WHICH WAY (5 rounds, 3 to win) and COPY ME (3 rounds, 2 to win). Top screen is the big LCD with hunger, happy and bond; bottom is the basket (8 tiles, tap to pick, tap again to open), the icons, and the game buttons.
+- Time: creatures live by the game clock (one tick a game minute, as on the PS1 default). Saved in a new trailing block 'GT' (only the creatures that are there; the save now reserves exactly what the mini-games' blocks take, instead of a fixed 64 bytes, and the budget sign is fixed); old saves load.
+- Checked in melonDS: buy, hatch, feed, both games, Blobdex, save and load (a saved toy comes back with its creatures; the egg had hatched with the days). fps 30. `docs/ds_shots/d48_gotchi.png` (the basket, the handheld, COPY ME, the Blobdex: top over bottom).
+![gotchi](ds_shots/d48_gotchi.png)
+- Not done: the Toy Box (other housemates' toys; here you tend your own Bore's), the guide pages, the LIVE (real-time) and off clock choices (it runs on the game clock), moodlets, the build and buy items (dock, shelf, cabinet, plush, ball, bed, bowl, lamp, trophy) and the shop that sells the toy (it is bought on its own screen).
+- Not done in the mini-games: fight.
 
 ## Next (in this order)
 1. **Real-hardware and Android tests** of the song reader (`cart_blk` in `main.c`), saving and touch. If a loader blocks cartridge reads, add an SD (libfat) path for DSi.
@@ -197,7 +204,7 @@ Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build 
 | Castaway Island | island.c, nature.c | **done (D37)** at DS size: gathering, campfire, crafting (tent, bench, outhouse, spear, shelter, raft), the islet, 8 secrets; no weather or day-night survival events yet |
 | Music: jukebox | audio.c, SONGS.BIN | **done (D29), screen added D31** |
 | Music: band, DJ | band.c, dj_ui.c | open (large) |
-| Mini-games (skate, arcade, fight, heist, gotchi, farm) | various | **farm done (D38)** (farm_ui.c and the farm in sim.c); **skate done (D45)**; **arcade done (D46)** (four cabinets and the prize counter); **heist done (D47)** (simplified: no court); fight, gotchi open |
+| Mini-games (skate, arcade, fight, heist, gotchi, farm) | various | **farm done (D38)** (farm_ui.c and the farm in sim.c); **skate done (D45)**; **arcade done (D46)** (four cabinets and the prize counter); **heist done (D47)** (simplified: no court); **gotchi done (D48)**; fight open |
 | Dog, ghosts, traffic | dog.c, ghost.c, traffic.c | all done (D31) |
 
 ## DSi-only ideas

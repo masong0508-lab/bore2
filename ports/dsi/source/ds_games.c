@@ -1,4 +1,5 @@
 // ds_games.c - the PS1's mini-games on the DS (included by main.c, after the lot, the sims and the 2D helpers it uses).
+// D48: BOREAGOTCHI (src/gotchi.c, gotchi_ui.c): a toy with eight creatures.
 // D47: THE UNDERWORLD (src/heist_ui.c): the heist.
 // D46: the ARCADE (src/arcade.c): BORE BREAKER, SNACK CATCH, WHACK-A-BORE, HIGH STRIKER, the prize counter, tickets.
 // D45: SKATE (src/skate.c): the board in Live, the PS1's physics, tricks, combos and score.
@@ -662,23 +663,454 @@ static void hs_frame(int held, int down, int steps, int tx, int ty) {
     if (pr || op != hp || os != hsel || ot != htmr || hp == H_GATE || hp == H_CHASE) mg_ver++;
 }
 
+#define MG_GT 0x5447   // 'GT': the Boreagotchi toy, its creatures and the Blobdex
+// ==== BOREAGOTCHI! (src/gotchi.c, gotchi_ui.c): a toy ($5000) with up to eight creatures: eggs, babies ... grown-ups, 16 kinds, four forms each, by how they were looked after ====
+#define GT_MAX 8
+#define GB_N 8
+#define GSP_N 16
+#define GOTCHI_PRICE 5000
+#define GOTCHI_EGG 150
+enum { GS_EGG, GS_BABY, GS_CHILD, GS_TEEN, GS_ADULT };
+enum { GF_SICK = 1, GF_SLEEP = 2, GF_DARK = 4, GF_CALL = 8, GF_FAKE = 16 };
+typedef struct { u8 on, stage, form, sp, nm, hun, hap, disc, wt, poop, fl, miss, needT, bond, snk, meal, gen; u16 age; } Blob;
+typedef struct { u8 uid, own, sel, pad; u16 xp, hatched, wins, cared; Blob b[GB_N]; } Toy;
+static Toy gtoy[GT_MAX]; static u32 gdex[2]; static u32 grng = 0x1234567u;
+static int gr(void) { grng = grng * 1103515245u + 12345u; return (int)((grng >> 16) & 255); }
+static const char *const gspNm[GSP_N] = { "BLOB", "CAT", "BUNNY", "BIRD", "FROG", "DINO", "FISH", "BEAR", "GHOST", "ROBOT", "SHROOM", "SLIME", "BAT", "SNAIL", "OCTO", "ALIEN" };
+static const char *const ggiv[32] = { "BLOBERT", "SNORLOCK", "MEH-CHAN", "DOZY", "SIR SIGH", "YAWNIE", "PUDDLE", "KEVIN", "NIBBLES", "GRUMP", "WOBBLE", "SPROCKET",
+    "TOASTY", "MOCHI", "BEANS", "ZIGGY", "PICKLE", "DUMPLING", "FUZZ", "CLANK", "BOOP", "SQUISH", "MUNCH", "BISCUIT", "GLORP", "NOODLE", "PIP", "WAFFLES", "TWIG", "DOUGH", "ORBIT", "SNOOZE" };
+static const char *const gformPre[3][4] = { { "", "", "", "" }, { "ANGSTY ", "SLOUCHY ", "", "" }, { "SUPER ", "SLOB ", "CHILL ", "STAR " } };
+static void gname(const Blob *b, char *out) {
+    const char *pre = b->stage == GS_ADULT ? gformPre[2][b->form & 3] : b->stage == GS_TEEN ? gformPre[1][b->form & 1] : "";
+    strcpy(out, pre); strcat(out, b->stage == GS_EGG ? "EGG" : gspNm[b->sp % GSP_N]); if (b->stage == GS_BABY) strcat(out, " BABY"); }
+static void gdex_see(int sp, int form) { int i = (sp % GSP_N) * 4 + (form & 3); gdex[i >> 5] |= 1u << (i & 31); }
+static int gdex_has(int sp, int form) { int i = (sp % GSP_N) * 4 + (form & 3); return (gdex[i >> 5] >> (i & 31)) & 1; }
+static int gdex_count(void) { int n = 0; for (int i = 0; i < GSP_N * 4; i++) n += (gdex[i >> 5] >> (i & 31)) & 1; return n; }
+static void gt_reset(void) { memset(gtoy, 0, sizeof gtoy); gdex[0] = gdex[1] = 0; }
+static int gsim_of(const Toy *t) { return t->uid < nsim ? t->uid : -1; }
+static Toy *gtoy_of(int si) { if (si < 0 || si >= nsim) return 0; for (int i = 0; i < GT_MAX; i++) if (gtoy[i].own && gtoy[i].uid == si) return &gtoy[i]; return 0; }
+static int gcount(const Toy *t) { int n = 0; for (int i = 0; i < GB_N; i++) n += t->b[i].on; return n; }
+static int gneeds(const Blob *b) { return b->on && b->stage > GS_EGG && (b->hun == 0 || b->hap == 0 || b->poop || (b->fl & GF_SICK) || ((b->fl & GF_SLEEP) && !(b->fl & GF_DARK)) || (b->fl & GF_FAKE)); }
+static int gcalling(const Toy *t) { int n = 0; for (int i = 0; i < GB_N; i++) n += gneeds(&t->b[i]); return n; }
+static const char *gwant(const Blob *b) {
+    if (b->stage == GS_EGG) return "STILL AN EGG";
+    return b->hun == 0 ? "IT IS HUNGRY" : b->hap == 0 ? "IT IS BORED" : b->poop ? "IT MADE A MESS" : (b->fl & GF_SICK) ? "IT FEELS SICK" :
+           ((b->fl & GF_SLEEP) && !(b->fl & GF_DARK)) ? "TURN THE LIGHT OFF" : (b->fl & GF_FAKE) ? "IT IS FIBBING. SCOLD IT" : "ALL GOOD"; }
+static const u16 gxpAt[6] = { 0, 30, 100, 250, 500, 900 };
+static const char *const glvNm[6] = { "NEW PARENT", "CARING", "ATTENTIVE", "BLOB WHISPERER", "BREEDER", "GOTCHI MASTER" };
+static int glevel(const Toy *t) { int l = 0; for (int i = 1; i < 6; i++) if (t->xp >= gxpAt[i]) l = i; return l; }
+static int gnext_xp(const Toy *t) { int l = glevel(t); return l >= 5 ? 0 : gxpAt[l + 1]; }
+static void gxp(Toy *t, int n) { int l0 = glevel(t); t->xp = (u16)MIN(60000, t->xp + n); t->cared++; if (glevel(t) > l0) { static char b[40]; snprintf(b, sizeof b, "Blob care level %d!", glevel(t)); say(b); } }
+// the owner's stats (the PS1's sim_gotchi_*): mood -100..100, food 0..100; fun and food given
+static int gstat(int si, int what) { if (si < 0 || si >= nsim) return 0; return what == 0 ? (mood(&sims[si]) - 50) * 2 : sims[si].need[0]; }
+static void gfun(int si, int n) { if (si >= 0 && si < nsim) sims[si].need[1] = cl100(sims[si].need[1] + n); }
+static void gfood(int si, int n) { if (si >= 0 && si < nsim) sims[si].need[0] = cl100(sims[si].need[0] + n); }
+static void gfresh(Blob *b, int sp) { memset(b, 0, sizeof *b); b->on = 1; b->sp = (u8)(sp % GSP_N); b->nm = (u8)(gr() & 31); b->hun = 4; b->hap = 4; b->wt = 5; }
+static int gbuy(int si) {
+    if (si < 0 || si >= nsim || gtoy_of(si)) return 0;
+    int k = -1; for (int i = 0; i < GT_MAX; i++) if (!gtoy[i].own || gsim_of(&gtoy[i]) < 0) { k = i; break; } if (k < 0) return 0;
+    Toy *t = &gtoy[k]; memset(t, 0, sizeof *t); t->own = 1; t->uid = (u8)si; gfresh(&t->b[0], gr()); return 1; }
+static int gegg(Toy *t, int slot) { if (slot < 0 || slot >= GB_N || t->b[slot].on) return 0; gfresh(&t->b[slot], gr()); return 1; }
+static int gnight(void) { int c = minutes % 1440; return c >= 20 * 60 || c < 6 * 60; }
+static void gtick(Toy *t, Blob *b) {   // one game minute of one creature
+    if (!b->on) return;
+    if (b->age < 65000) b->age++;
+    if (b->stage == GS_EGG) { if (b->age >= 20) { b->stage = GS_BABY; b->age = 0; b->hun = 3; b->hap = 3; gdex_see(b->sp, 0); t->hatched++; say("A Boreagotchi hatched!"); } return; }
+    int n = gnight(), sl = (b->fl & GF_SLEEP) != 0;
+    if (n && !sl && b->stage >= GS_CHILD) b->fl |= GF_SLEEP; else if (!n && sl) b->fl &= (u8)~(GF_SLEEP | GF_DARK);
+    sl = (b->fl & GF_SLEEP) != 0;
+    int lv = glevel(t), rate = (b->stage == GS_BABY ? 30 : b->stage == GS_CHILD ? 45 : 60) + lv * 4; if (sl) rate *= 3;
+    if (b->age % rate == 0 && b->hun) b->hun--;
+    if (b->age % (rate + 10) == 0 && b->hap) b->hap--;
+    if (!sl && b->meal && b->age % 90 == 45 && b->poop < 3) b->poop++;
+    if (b->poop && b->age % 60 == 30 && ((gr() * 100) >> 8) < 35 - lv * 4) b->fl |= GF_SICK;
+    if (!(b->fl & GF_FAKE) && !gneeds(b) && !sl && b->age % 150 == 75 && (gr() & 1)) b->fl |= GF_FAKE;
+    if (gneeds(b)) { b->fl |= GF_CALL; if (++b->needT >= 15 + lv * 2) { b->needT = 0; if (b->miss < 99) b->miss++; if (b->bond) b->bond--; b->fl &= (u8)~GF_FAKE; } }
+    else { b->fl &= (u8)~GF_CALL; b->needT = 0; if (!sl && b->hun >= 3 && b->hap >= 3 && b->age % 120 == 0 && b->bond < 100) b->bond++; }
+    static const u16 grow[5] = { 0, 240, 720, 1440, 0 };
+    if (b->stage < GS_ADULT && b->age >= grow[b->stage]) {
+        b->stage++; b->age = 0;
+        if (b->stage == GS_TEEN) b->form = b->miss <= 2 ? 0 : 1;
+        if (b->stage == GS_ADULT) {
+            b->form = (b->miss <= 1 && b->bond >= 80 && b->disc >= 50) ? 3 : (b->snk > b->meal && b->snk >= 6) ? 2 : (b->miss <= 2 && b->disc >= 50) ? 0 : 1;
+            gdex_see(b->sp, b->form);
+            if (b->form == 0 || b->form == 3) say(b->form == 3 ? "A rare STAR form!" : "A SUPER Bore! So proud"); else say("Your Boreagotchi grew up");
+        }
+        b->miss = 0; }
+    if (b->hun == 0 && b->hap == 0 && (b->fl & GF_SICK) && b->miss >= 12) { b->on = 0; say("A Boreagotchi went home"); }
+}
+static const char *gfeed(Toy *t, Blob *b, int snack) {
+    if (b->stage == GS_EGG) return "IT IS STILL AN EGG";
+    if (b->fl & GF_SLEEP) return "SHHH. IT IS ASLEEP";
+    if (!snack) { if (b->hun >= 4) return "IT REFUSES. IT IS FULL"; b->hun++; if (b->wt < 99) b->wt++; if (b->meal < 250) b->meal++; if (b->bond < 100 && !(gr() & 3)) b->bond++; gxp(t, 1); return "NOM NOM. A MEAL"; }
+    if (b->hap < 4) b->hap++; if (b->wt < 98) b->wt += 2; if (b->snk < 250) b->snk++; gxp(t, 1); return "CRUNCH. A SNACK. SO RELAXED"; }
+static const char *glight(Toy *t, Blob *b) { (void)t; b->fl ^= GF_DARK; return (b->fl & GF_DARK) ? ((b->fl & GF_SLEEP) ? "LIGHTS OUT. GOOD NIGHT" : "LIGHTS OUT") : "LIGHTS ON"; }
+static const char *gmedicine(Toy *t, Blob *b) { if (!(b->fl & GF_SICK)) return "IT IS NOT SICK. IT SPITS IT OUT"; b->fl &= (u8)~GF_SICK; if (b->bond < 100) b->bond++; gxp(t, 2); return "ALL BETTER"; }
+static const char *gclean(Toy *t, Blob *b) { if (!b->poop) return "NOTHING TO CLEAN"; b->poop = 0; if (b->bond < 100) b->bond++; gxp(t, 2); return "FLUSHED"; }
+static const char *gscold(Toy *t, Blob *b) {
+    if (b->fl & GF_FAKE) { b->fl &= (u8)~GF_FAKE; b->disc = (u8)(b->disc + 25 > 100 ? 100 : b->disc + 25); gxp(t, 3); return "IT KNOWS BETTER NOW. DISCIPLINE UP"; }
+    if (b->hap) b->hap--; return "IT DID NOTHING WRONG. IT IS SAD NOW"; }
+static const char *ggame(Toy *t, Blob *b, int won) {
+    if (!won) { gxp(t, 1); return "IT LOST. STILL FUN"; }
+    if (b->hap < 4) b->hap++; if (b->wt > 1) b->wt--; if (b->bond < 100) b->bond += 2; gxp(t, 2); t->wins++; gfun(gsim_of(t), 6); return "IT WON! SO HAPPY"; }
+static int gpower(const Blob *b) { return (b->hun + b->hap) * 3 + b->disc / 8 + b->stage * 6 + b->bond / 10 - b->miss * 2 - (b->fl & GF_SICK ? 10 : 0) + (b->form == 0 || b->form == 3 ? 4 : 0); }
+static const char *gfriends(Toy *t, int a, int c, int battle) {
+    Blob *x = &t->b[a], *y = &t->b[c];
+    if (a == c || !x->on || !y->on || x->stage == GS_EGG || y->stage == GS_EGG) return "THEY BOTH NEED TO HAVE HATCHED";
+    if ((x->fl | y->fl) & GF_SLEEP) return "SHHH. SOMEONE IS ASLEEP";
+    if (battle) { int px = gpower(x) + gr() % 12, py = gpower(y) + gr() % 12; Blob *w = px >= py ? x : y, *l = px >= py ? y : x;
+        if (w->bond < 97) w->bond += 3; if (l->hap) l->hap--; w->disc = (u8)MIN(100, w->disc + 6); gxp(t, 3); t->wins++;
+        return w == x ? "YOUR FIRST ONE WON THE BATTLE!" : "YOUR SECOND ONE WON THE BATTLE!"; }
+    if (x->hap < 4) x->hap++; if (y->hap < 4) y->hap++; x->bond = (u8)MIN(100, x->bond + 4); y->bond = (u8)MIN(100, y->bond + 4); gxp(t, 3); gfun(gsim_of(t), 8);
+    if (x->stage == GS_ADULT && y->stage == GS_ADULT && x->bond >= 60 && y->bond >= 60 && !(gr() & 1)) {   // two grown-ups who love each other: an egg
+        for (int s = 0; s < GB_N; s++) if (!t->b[s].on) { gfresh(&t->b[s], (gr() & 3) == 0 ? gr() : (gr() & 1 ? x->sp : y->sp)); t->b[s].gen = (u8)MIN(99, MAX(x->gen, y->gen) + 1); return "THEY PLAYED... AND LEFT AN EGG!"; } }
+    return "A LOVELY PLAYDATE. BOTH ARE HAPPY"; }
+static const char *glunch(Toy *t, Blob *b) {
+    int si = gsim_of(t); if (b->stage == GS_EGG) return "IT IS STILL AN EGG"; if (b->fl & GF_SLEEP) return "SHHH. IT IS ASLEEP";
+    if (gstat(si, 1) < 12) return "YOU ARE TOO HUNGRY TO SHARE. EAT FIRST!";
+    if (b->hun >= 4) return "IT IS FULL. KEEP YOUR LUNCH"; gfood(si, -15); b->hun = 4; if (b->hap < 4) b->hap++; b->bond = (u8)MIN(100, b->bond + 3); if (b->meal < 250) b->meal++; gxp(t, 2);
+    return "YOU GAVE IT YOUR LUNCH. YOUR TUMMY GROWLS"; }
+static const char *gnuzzle(Toy *t, Blob *b) {
+    int si = gsim_of(t), h = (minutes / 60) & 255; if (b->stage == GS_EGG) return "IT IS STILL AN EGG";
+    if (t->pad == (u8)h) return "IT ALREADY NUZZLED YOU THIS HOUR"; t->pad = (u8)h; gfun(si, 6); if (b->bond < 100) b->bond++; gxp(t, 1); return "ALL GOOD. IT NUZZLES YOU. AWW"; }
+static int gkin(int si) { return gstat(si, 1) >= 20 && gstat(si, 0) > -40; }
+static void gt_minute(void) {   // every game minute: every creature lives on
+    for (int k = 0; k < GT_MAX; k++) {
+        Toy *t = &gtoy[k]; if (!t->own) continue; int si = gsim_of(t); if (si < 0) continue;
+        for (int i = 0; i < GB_N; i++) {
+            Blob *b = &t->b[i]; if (!b->on) continue;
+            gtick(t, b);
+            { int food = gstat(si, 1), md = gstat(si, 0);   // a starving or miserable owner starves their pet of mood too, and a happy one lifts it
+              if (b->stage > GS_EGG && !(b->fl & GF_SLEEP)) {
+                  if (food < 15 && !(gr() & 15) && b->hun) { b->hun--; if (si == ctl && !(gr() & 7)) say("Your pet feels what you feel"); }
+                  if (md < -40 && b->age % 25 == 0 && b->hap) b->hap--;
+                  if (md > 50 && b->age % 40 == 0) { if (b->hap < 4) b->hap++; if (b->bond < 100 && !(gr() & 3)) b->bond++; } } }
+            if (si != ctl && gkin(si) && gneeds(b) && !(gr() & 15)) {   // a housemate looks after their own
+                if (b->hun == 0) gfeed(t, b, 0); else if (b->poop) gclean(t, b); else if (b->fl & GF_SICK) gmedicine(t, b); else if (b->fl & GF_FAKE) gscold(t, b); else if (b->hap == 0) b->hap = 2; } } }
+    for (int k = 0; k < GT_MAX; k++) {   // and the other way: pets in a bad way drag their owner down, happy ones lift them
+        Toy *t = &gtoy[k]; if (!t->own) continue; int si = gsim_of(t); if (si < 0 || minutes % 60) continue;
+        int n = 0, glum = 0, glad = 0; for (int i = 0; i < GB_N; i++) { Blob *b = &t->b[i]; if (!b->on || b->stage == GS_EGG) continue; n++; if (b->hun == 0 && b->hap == 0) glum++; else if (b->hap >= 3 && b->hun >= 2) glad++; }
+        if (glum) gfun(si, -3 * glum); else if (n >= 2 && glad == n) gfun(si, 3); }
+    { static int beep; Toy *me = gtoy_of(ctl); if (me && gcalling(me) && ++beep >= 60) { beep = 0; say("Your Boreagotchi is beeping"); } }
+}
+// ---- the save: only the creatures that are there ----
+static int gt_pack(u8 *o) {
+    int n = 0, nt = 0; for (int k = 0; k < GT_MAX; k++) if (gtoy[k].own) nt++;
+    if (!nt && !gdex[0] && !gdex[1]) return 0;
+    u8 *q = o + 4; memcpy(q, gdex, 8); q += 8; *q++ = (u8)nt;
+    for (int k = 0; k < GT_MAX; k++) { const Toy *t = &gtoy[k]; if (!t->own) continue; *q++ = t->uid; *q++ = t->sel; memcpy(q, &t->xp, 2); q += 2; memcpy(q, &t->hatched, 2); q += 2; memcpy(q, &t->wins, 2); q += 2; memcpy(q, &t->cared, 2); q += 2; *q++ = t->pad;
+        for (int i = 0; i < GB_N; i++) { const Blob *b = &t->b[i]; *q++ = b->on; if (b->on) { memcpy(q, &b->stage, 16); q += 16; memcpy(q, &b->age, 2); q += 2; } } }
+    n = (int)(q - o) - 4; u16 th[2] = { MG_GT, (u16)n }; memcpy(o, th, 4); return n + 4; }
+static void gt_unpack(const u8 *p, int n) {
+    if (n < 9) return; memcpy(gdex, p, 8); const u8 *q = p + 8, *e = p + n; int nt = *q++;
+    for (int k = 0; k < nt && k < GT_MAX; k++) { Toy *t = &gtoy[k]; if (q + 11 > e) break; memset(t, 0, sizeof *t); t->own = 1; t->uid = *q++; t->sel = *q++; memcpy(&t->xp, q, 2); q += 2; memcpy(&t->hatched, q, 2); q += 2; memcpy(&t->wins, q, 2); q += 2; memcpy(&t->cared, q, 2); q += 2; t->pad = *q++;
+        for (int i = 0; i < GB_N; i++) { if (q >= e) break; Blob *b = &t->b[i]; b->on = *q++; if (b->on) { if (q + 18 > e) { b->on = 0; break; } memcpy(&b->stage, q, 16); q += 16; memcpy(&b->age, q, 2); q += 2; } } } }
+
+// ---- the screens: the creature big on the top screen, the pad on the bottom ----
+enum { GV_NONE, GV_BASKET, GV_HAND, GV_DEX, GV_FEED, GV_PLAYPICK, GV_LOOK, GV_COPY, GV_FRIEND, GV_STATS };
+#define PD_SQ 128
+#define PD_L1 256
+#define PD_R1 512
+static int gview, gti, gbi, gisel, ganim, gmsgT, gdexpage, gsub, gmN, gmT, gmWon, gmRound, gmDir, gsidx; static u8 gseq[6]; static const char *gmsg;
+static unsigned glrng;
+static int grr(void) { glrng = glrng * 1103515245u + 12345u; return (int)((glrng >> 16) & 255); }
+static Toy *gtt(void) { return &gtoy[gti]; }
+static Blob *gcb(void) { return &gtt()->b[gbi]; }
+static void gsay(const char *s) { gmsg = s; gmsgT = 150; }
+static int gliving(Toy *t, int from, int dir) { for (int k = 1; k <= GB_N; k++) { int j = (from + dir * k + GB_N * 2) % GB_N; if (t->b[j].on) return j; } return from; }
+// ---- the 32 x 16 LCD, and the creatures drawn on it (gotchi_ui.c, as it is) ----
+static u8 gdot[16][32]; static int gminY;
+static void gP(int x, int y, int v) { if (x >= 0 && x < 32 && y >= 0 && y < 16) { gdot[y][x] = (u8)v; if (v && y < gminY) gminY = y; } }
+static void gRC(int x0, int y0, int x1, int y1, int v) { for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) gP(x, y, v); }
+static void gELL(int cx, int cy, int rx, int ry, int v) { for (int y = -ry; y <= ry; y++) for (int x = -rx; x <= rx; x++) if (x * x * ry * ry + y * y * rx * rx <= rx * rx * ry * ry + rx * ry) gP(cx + x, cy + y, v); }
+static void gLN(int x0, int y0, int x1, int y1, int v) {
+    int dx = x1 > x0 ? x1 - x0 : x0 - x1, dy = y1 > y0 ? y1 - y0 : y0 - y1, sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, e = dx - dy;
+    for (int n = 0; n < 40; n++) { gP(x0, y0, v); if (x0 == x1 && y0 == y1) break; int e2 = 2 * e; if (e2 > -dy) { e -= dy; x0 += sx; } if (e2 < dx) { e += dx; y0 += sy; } }
+}
+static void gstar(int x, int y) { gP(x, y, 1); gP(x - 1, y, 1); gP(x + 1, y, 1); gP(x, y - 1, 1); gP(x, y + 1, 1); }
+
+static void g_creature(const Blob *b, int fr, int d, int ox) {
+    static const u8 RX[5] = { 0, 3, 4, 5, 6 }, RY[5] = { 0, 3, 4, 4, 5 };
+    int st = b->stage, sp = b->sp % GSP_N, rx = RX[st], ry = RY[st], bob = fr & 1, by = 14 - bob, cx = 16 + ox, cy, top, ex, eyY, big = st >= GS_TEEN;
+    switch (sp) {   // the body, and what makes the kind
+    case 0: cy = by - ry; gELL(cx, cy, rx, ry, 1); gP(cx - rx / 2, by + 1, 1); gP(cx + rx / 2, by + 1, 1); break;
+    case 1: cy = by - ry; gELL(cx, cy, rx, ry, 1); top = cy - ry; gP(cx - rx + 1, top - 1, 1); gP(cx + rx - 1, top - 1, 1); if (st > 1) { gP(cx - rx + 1, top - 2, 1); gP(cx + rx - 1, top - 2, 1); }
+        gLN(cx - d * rx, cy + 1, cx - d * (rx + 2), cy - 2 + bob, 1); gP(cx - 1, by + 1, 1); gP(cx + 1, by + 1, 1); break;
+    case 2: ry--; cy = by - ry; gELL(cx, cy, rx, ry, 1); top = cy - ry; { int h = 2 + st, w = st >= GS_TEEN ? 1 : 0; gRC(cx - rx / 2 - 1 - w, top - h, cx - rx / 2 - 1, top - 1, 1); gRC(cx + rx / 2 + 1, top - h + bob, cx + rx / 2 + 1 + w, top - 1, 1); }
+        gP(cx - d * (rx + 1), cy + ry - 1, 1); gP(cx - 1, by + 1, 1); gP(cx + 1, by + 1, 1); break;
+    case 3: cy = by - ry; gELL(cx, cy, rx, ry, 1); top = cy - ry; gP(cx + d * (rx + 1), cy, 1); if (st > 1) gP(cx + d * (rx + 2), cy, 1); gP(cx, top - 1, 1); gP(cx + 1, top - 2, 1);
+        gLN(cx - d, cy, cx - d * (rx - 1), cy + ry - 2, 0); gP(cx - 1, by + 1, 1); gP(cx + 1, by + 1, 1); break;
+    case 4: ry--; cy = by - ry; gELL(cx, cy, rx + 1, ry, 1); top = cy - ry; gELL(cx - rx / 2 - 1, top, 1, 1, 1); gELL(cx + rx / 2 + 1, top, 1, 1, 1);
+        gRC(cx - rx + 1, cy + 1, cx + rx - 1, cy + 1, 0); if (bob) gP(cx + d * rx, cy + 1, 1); gP(cx - rx, by + 1, 1); gP(cx + rx, by + 1, 1); break;
+    case 5: cy = by - ry; gELL(cx, cy, rx, ry, 1); top = cy - ry; for (int i = 0; i <= rx / 2; i++) gP(cx - d * i * 2, top - 1, 1);
+        gLN(cx - d * rx, cy + ry - 1, cx - d * (rx + 3), cy + ry - 3 + bob, 1); gP(cx + d * (rx + 1), cy - 1, 1); gP(cx + d * rx, cy + 2, 1); gP(cx - 1, by + 1, 1); gP(cx + 1, by + 1, 1); break;
+    case 6: ry--; cy = by - ry - 1 + bob; gELL(cx, cy, rx + 1, ry, 1); top = cy - ry; gLN(cx - d * (rx + 1), cy, cx - d * (rx + 4), cy - 2, 1); gLN(cx - d * (rx + 1), cy, cx - d * (rx + 4), cy + 2, 1); gRC(cx - d * (rx + 3), cy - 1, cx - d * (rx + 3), cy + 1, 1);
+        gP(cx, top - 1, 1); gP(cx - d, top - 1, 1); gP(cx + d * (rx + 1), cy + 1, 0); break;
+    case 7: cy = by - ry; gELL(cx, cy, rx, ry, 1); top = cy - ry; gELL(cx - rx + 1, top, 1, 1, 1); gELL(cx + rx - 1, top, 1, 1, 1); gP(cx - rx - 1, cy + 2, 1); gP(cx + rx + 1, cy + 2, 1); gP(cx - 1, by + 1, 1); gP(cx + 1, by + 1, 1); break;
+    case 8: cy = by - ry; gELL(cx, cy - 1, rx, ry - 1, 1); gRC(cx - rx, cy - 1, cx + rx, by - 1, 1); for (int x = -rx; x <= rx; x++) if (((x + fr) & 1) == 0) gP(cx + x, by, 1); gP(cx - rx - 1, cy + bob, 1); gP(cx + rx + 1, cy + 1 - bob, 1); break;
+    case 9: cy = by - ry; gRC(cx - rx, cy - ry, cx + rx, by - 1, 1); gP(cx - rx, cy - ry, 0); gP(cx + rx, cy - ry, 0); top = cy - ry; gLN(cx, top - 1, cx, top - 2, 1); gP(cx + bob, top - 3, 1);
+        gRC(cx - rx + 1, by, cx - 1, by + 1, 1); gRC(cx + 1, by, cx + rx - 1, by + 1, 1); gRC(cx - rx - 1, cy - 1, cx - rx - 1, cy + 2, 1); gRC(cx + rx + 1, cy - 1, cx + rx + 1, cy + 2, 1); break;
+    case 10: { int capry = ry / 2 + 1; cy = by - ry / 2; gRC(cx - rx / 2, by - ry, cx + rx / 2, by, 1); gELL(cx, by - ry, rx, capry, 1); gP(cx - rx / 2, by - ry - 1, 0); gP(cx + rx / 2, by - ry - 1, 0); if (st > 1) gP(cx, by - ry - capry + 1, 0); gRC(cx - rx / 2 - 1, by + 1 - 1, cx - rx / 2 - 1, by, 1); break; }
+    case 11: cy = by - ry / 2; gELL(cx, by, rx + 1 + bob, ry, 1); for (int y = by + 1; y < 16; y++) for (int x = 0; x < 32; x++) gdot[y][x] = 0; gP(cx - rx, by + 1, 1); if (fr & 2) gP(cx + rx - 1, by + 1, 1); break;
+    case 12: cy = by - ry; gELL(cx, cy, rx - 1, ry - 1, 1); top = cy - ry + 1; gP(cx - rx + 2, top - 1, 1); gP(cx + rx - 2, top - 1, 1);
+        for (int i = 1; i <= 4; i++) { int w = bob ? -2 : 1; gRC(cx - rx + 1 - i, cy - 2 + (bob ? 0 : 2) + i / 2 + w / 2, cx - rx + 1 - i, cy + 1 + i / 3, 1); gRC(cx + rx - 1 + i, cy - 2 + (bob ? 0 : 2) + i / 2 + w / 2, cx + rx - 1 + i, cy + 1 + i / 3, 1); } break;
+    case 13: cy = by - ry; gRC(cx - rx, by - 1, cx + rx, by, 1); gELL(cx + d * rx, by - 2, 1, 1, 1); gELL(cx - d, by - ry + 1, ry - 1 > 1 ? ry - 1 : 2, ry - 1 > 1 ? ry - 1 : 2, 1); gP(cx - d, by - ry + 1, 0); gP(cx - d + 1, by - ry + 1, 0); gP(cx - d + 1, by - ry + 2, 0);
+        gLN(cx + d * rx, by - 3, cx + d * rx, by - 5, 1); gLN(cx + d * (rx - 1), by - 3, cx + d * (rx - 1), by - 5 + bob, 1); cy = by - 2; break;
+    case 14: ry--; cy = by - ry - 1; gELL(cx, cy, rx, ry, 1); for (int i = 0; i < 4; i++) { int x = cx - rx + 1 + i * (2 * rx - 2) / 3; for (int y = cy + ry; y <= by + 1; y++) gP(x + (((fr + i + y) & 2) ? 1 : 0), y, 1); } break;
+    default: cy = by - ry; gELL(cx, cy - 1, rx, ry - 1, 1); gRC(cx - 1, cy + ry - 2, cx + 1, by, 1); top = cy - ry; gLN(cx - 2, top + 1, cx - 4, top - 2, 1); gLN(cx + 2, top + 1, cx + 4, top - 2 + bob, 1); gP(cx - 4, top - 3, 1); gP(cx + 4, top - 3 + bob, 1); break;
+    }
+    // face
+    ex = rx / 2 > 0 ? rx / 2 : 1; eyY = cy - ry / 3; if (sp == 4 || sp == 6 || sp == 11) eyY = cy - 1; if (sp == 10) eyY = by - ry + 1; if (sp == 13) eyY = by - 4; if (sp == 12 || sp == 15) eyY = cy - 1;
+    int e1 = cx + d - ex, e2 = cx + d + ex; if (sp == 6) { e1 = e2 = cx + d * (rx - 1); } if (sp == 13) { e1 = e2 = cx + d * rx; }
+    int chill = st == GS_ADULT && b->form == 2, sleepy = (b->fl & GF_SLEEP) != 0;
+    if (sp == 9) { gP(e1, eyY, 0); gP(e2, eyY, 0); if (big) { gP(e1 + 1, eyY, 0); gP(e2 + 1, eyY, 0); } }
+    else if (sleepy || chill) { gP(e1, eyY, 0); gP(e2, eyY, 0); if (e1 != e2 && big) { gP(e1 - 1, eyY, 0); gP(e2 + 1, eyY, 0); } }
+    else { gP(e1, eyY, 0); gP(e2, eyY, 0); if (big || sp == 15) { gP(e1, eyY + 1, 0); gP(e2, eyY + 1, 0); } if (sp == 15) { gP(e1 - 1, eyY, 0); gP(e2 + 1, eyY, 0); } }
+    if (sp != 4 && sp != 6) {
+        int my = cy + ry / 2 + (sp == 10 ? 1 : 0); if (sp == 13) my = by - 2;
+        if (b->hun == 0 || b->hap == 0 || (b->fl & GF_SICK)) { gP(cx + d, my, 0); gP(cx + d - 1, my + 1, 0); gP(cx + d + 1, my + 1, 0); }
+        else if (b->hap >= 3 && big) { gP(cx + d - 1, my, 0); gP(cx + d, my + 1, 0); gP(cx + d + 1, my, 0); }
+        else gP(cx + d, my, 0);
+    }
+    // the form: what looking after it made of it
+    if (st == GS_TEEN) { if (b->form == 0) { gP(e1 - 1, eyY - 1, 0); gP(e2 + 1, eyY - 1, 0); } else gP(cx + rx + 1, cy - ry + 1, 1); }
+    if (st == GS_ADULT) switch (b->form) {
+        case 0: gRC(cx - 2, gminY - 1, cx + 2, gminY - 1, 1); gP(cx - 2, gminY - 2, 1); gP(cx, gminY - 2, 1); gP(cx + 2, gminY - 2, 1); if (fr & 2) gstar(cx + rx + 3, cy - ry); break;
+        case 1: gP(cx - rx - 2 + ((fr >> 1) & 3), gminY - 1, 1); gP(cx + rx + 2 - ((fr >> 1) & 3), gminY, 1); gP(e1, eyY + 2, 0); gP(e2, eyY + 2, 0); break;
+        case 2: gP(cx + rx + 2, cy - 2, 1); gP(cx + rx + 3, cy - 3, 1); gP(cx + rx + 3, cy - 1, 1); if (fr & 2) gP(cx + rx + 4, cy - 4, 1); break;
+        default: gstar(cx, gminY - 3); gstar(cx - rx - 3, cy); if (fr & 2) gstar(cx + rx + 3, cy - ry + 1); break;
+    }
+}
+static void g_egg(const Blob *b, int fr) {
+    int bob = fr & 1, cy = 10 - bob; gELL(16, cy, 4, 5, 1);
+    switch (b->sp & 3) { case 0: gP(14, cy - 2, 0); gP(18, cy, 0); gP(15, cy + 2, 0); gP(17, cy - 3, 0); break; case 1: gRC(13, cy - 1, 19, cy - 1, 0); gRC(13, cy + 2, 19, cy + 2, 0); break;
+        case 2: for (int x = 12; x < 21; x++) gP(x, cy + ((x & 1) ? 0 : 1), 0); break; default: gELL(14, cy - 1, 1, 1, 0); gELL(18, cy + 2, 1, 1, 0); break; }
+    if (b->age >= 15) { gLN(16, cy - 5, 14, cy - 2, 0); gLN(14, cy - 2, 17, cy, 0); gLN(17, cy, 15, cy + 3, 0); }
+}
+static void g_scene(const Blob *b, int fr, int look) {
+    for (int y = 0; y < 16; y++) for (int x = 0; x < 32; x++) gdot[y][x] = 0;
+    gminY = 16;
+    if (!b->on) return;
+    int d = look ? look : ((fr >> 1) & 1 ? -1 : 1), ox = look ? 0 : (((fr >> 1) % 3) - 1) * 2;
+    if (b->stage == GS_EGG) g_egg(b, fr); else g_creature(b, fr, d, ox);
+    static const u8 pp[4][4] = { { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 1, 1, 0 }, { 1, 1, 1, 1 } };
+    for (int i = 0; i < b->poop && i < 3; i++) { int px = 28 - (i & 1) * 4, py = 12 - (i >> 1) * 4; for (int r = 0; r < 4; r++) for (int q = 0; q < 4; q++) if (pp[r][q]) gP(px + q - 1, py + r, 1); }
+    if (b->fl & GF_SICK) { static const char *sk[5] = { ".###.", "#.#.#", "#####", ".###.", ".#.#." }; for (int r = 0; r < 5; r++) for (int q = 0; q < 5; q++) if (sk[r][q] == '#') gP(1 + q, 1 + r, 1); }
+    if (b->fl & GF_SLEEP) { static const char *z[5] = { "###.", "..#.", ".#..", "###.", "...." }; for (int r = 0; r < 5; r++) for (int q = 0; q < 4; q++) if (z[r][q] == '#') gP(24 + q + ((fr >> 2) & 1), 1 + r, 1); }
+}
+
+static const char *const giconNm[10] = { "FEED", "LIGHT", "PLAY", "MEDICINE", "CLEAN", "STATS", "SCOLD", "ATTENTION", "FRIENDS", "BLOBDEX" };
+static const char *const gicon[10][7] = {
+    { "...#.....", "..#.##...", ".#####...", "#######..", "#######..", ".#####...", "........." },
+    { "...###...", "..#...#..", "..#...#..", "...#.#...", "...###...", "...###...", "........." },
+    { ".#######.", "#..#....#", "#.###.#.#", "#..#..#.#", "#.......#", ".#######.", "........." },
+    { "...###...", "...#.#...", ".###.###.", ".#.....#.", ".###.###.", "...#.#...", "...###..." },
+    { "..#.#.#..", "...#.#...", "..#####..", "...###...", "...###...", "..#####..", "........." },
+    { "#........", "#..#.....", "#..#..#..", "#.##..#..", "#.##.##..", "#########", "........." },
+    { ".#####...", ".#...#...", ".#.#.#...", ".#####...", "...#.....", "...###...", "........." },
+    { "...#.....", "..###....", "..###....", ".#####...", ".#####...", "#######..", "...#....." },
+    { ".##...##.", "#..#.#..#", ".##...##.", "..#...#..", ".###.###.", "#..#.#..#", "........." },
+    { "..#####..", ".#.....#.", "#.##.##.#", "#.#...#.#", "#.##.##.#", ".#.....#.", "..#####.." } };
+
+static void gdots_draw(int x, int y, int s, u16 c) {   // the LCD's dots onto the screen: runs of them joined into one box
+    for (int j = 0; j < 16; j++) for (int i = 0; i < 32;) { if (!gdot[j][i]) { i++; continue; } int k = i; while (k < 32 && gdot[j][k]) k++; rect(x + i * s, y + j * s, (k - i) * s - (s > 2), s - (s > 2), c); i = k; } }
+#define LCD_BG C15(21, 24, 16)
+#define LCD_INK C15(3, 5, 3)
+static void gt_open(void) {
+    glrng = 0xB0BE5u + (u32)minutes * 7; ganim = 0; gmsgT = 0; gmsg = 0; gdexpage = 0; gisel = 0; gsub = 0; mg_ui = 4; mg_ver++;
+    Toy *t = gtoy_of(ctl); if (t) { gti = (int)(t - gtoy); gview = GV_BASKET; gbi = t->sel < GB_N ? t->sel : 0; } else gview = GV_NONE; }
+static void gfinish_game(int won) { gview = GV_HAND; gsay(ggame(gtt(), gcb(), won)); voice(won ? V_YAHOO : V_NAH); }
+static void guse_icon(void) {
+    Blob *b = gcb(); Toy *t = gtt(); int sl = (b->fl & GF_SLEEP) != 0;
+    if (b->stage == GS_EGG && gisel != 5 && gisel != 9) { gsay("IT IS STILL AN EGG. GIVE IT A MINUTE"); return; }
+    if (sl && gisel != 1 && gisel != 5 && gisel != 3 && gisel != 9) { gsay("SHHH. IT IS ASLEEP"); return; }
+    switch (gisel) {
+    case 0: gsub = 0; gview = GV_FEED; break;
+    case 1: gsay(glight(t, b)); break;
+    case 2: gsub = 0; gview = GV_PLAYPICK; break;
+    case 3: gsay(gmedicine(t, b)); break;
+    case 4: gsay(gclean(t, b)); break;
+    case 5: gsub = 0; gview = GV_STATS; break;
+    case 6: gsay(gscold(t, b)); break;
+    case 7: gsay(gneeds(b) ? gwant(b) : gnuzzle(t, b)); break;
+    case 8: { int n = 0; for (int i = 0; i < GB_N; i++) if (i != gbi && t->b[i].on && t->b[i].stage > GS_EGG) n++; if (!n) { gsay("YOU NEED A SECOND ONE, HATCHED, TO PLAY WITH"); return; }
+              gsub = gliving(t, gbi, 1); gview = GV_FRIEND; break; }
+    default: gdexpage = 0; gview = GV_DEX; break;
+    }
+}
+static int gt_update(int pr, int steps) {   // 1 while it runs (gotchi_update)
+    ganim += steps; if (gmsgT > 0) { gmsgT -= steps; if (gmsgT <= 0) { gmsgT = 0; gmsg = 0; } }
+    switch (gview) {
+    case GV_NONE: if (pr & PD_O) return 0; if (pr & PD_X) { if (funds < GOTCHI_PRICE) { gsay("A TOY COSTS $5000"); voice(V_NAH); } else if (gbuy(ctl)) { funds -= GOTCHI_PRICE; say("A Boreagotchi and its first egg!"); gt_open(); voice(V_YAHOO); } } break;
+    case GV_BASKET: { Toy *t = gtt();
+        if (pr & PD_L) gbi = (gbi + GB_N - 1) % GB_N; if (pr & PD_R) gbi = (gbi + 1) % GB_N; if (pr & PD_U) gbi = (gbi + GB_N - 4) % GB_N; if (pr & PD_D) gbi = (gbi + 4) % GB_N;
+        t->sel = (u8)gbi;
+        if (pr & PD_SQ) { gview = GV_DEX; gdexpage = 0; }
+        if (pr & PD_O) return 0;
+        if (pr & PD_X) { if (!t->b[gbi].on) { if (funds < GOTCHI_EGG) { gsay("A NEW EGG COSTS $150"); voice(V_NAH); } else { funds -= GOTCHI_EGG; gegg(t, gbi); gsay("A NEW EGG! KEEP IT CLOSE"); voice(V_YAHOO); } } else { gview = GV_HAND; gisel = 0; gmsgT = 0; gmsg = 0; } }
+        break; }
+    case GV_HAND: { Toy *t = gtt();
+        if (pr & PD_R) gisel = (gisel + 1) % 10; if (pr & PD_L) gisel = (gisel + 9) % 10; if (pr & (PD_U | PD_D)) gisel = (gisel + 5) % 10;
+        if (pr & PD_R1) gbi = gliving(t, gbi, 1); if (pr & PD_L1) gbi = gliving(t, gbi, -1);
+        t->sel = (u8)gbi;
+        if (pr & PD_O) { gview = GV_BASKET; gmsgT = 0; gmsg = 0; }
+        if (pr & PD_X) guse_icon();
+        break; }
+    case GV_FEED:
+        if (pr & PD_R) gsub = (gsub + 1) % 3; if (pr & PD_L) gsub = (gsub + 2) % 3;
+        if (pr & PD_O) { gview = GV_HAND; return 1; }
+        if (pr & PD_X) { gsay(gsub == 2 ? glunch(gtt(), gcb()) : gfeed(gtt(), gcb(), gsub)); gview = GV_HAND; voice(V_YAHOO); }
+        break;
+    case GV_PLAYPICK:
+        if (pr & (PD_L | PD_R)) gsub ^= 1; if (pr & PD_O) gview = GV_HAND;
+        if (pr & PD_X) { if (gsub == 0) { gview = GV_LOOK; gmRound = 0; gmWon = 0; gmT = 0; gmN = 0; gmDir = 0; } else { gview = GV_COPY; gmRound = 0; gmWon = 0; gmN = 2; for (int i = 0; i < 6; i++) gseq[i] = (u8)(grr() & 3); gsidx = 0; gmT = -60; } }
+        break;
+    case GV_LOOK:   // WHICH WAY? it looks left or right: guess first. 5 rounds, 3 to win
+        if (gmN == 0) { if (pr & PD_L) { gmDir = -1; gmN = 1; gmT = 0; } if (pr & PD_R) { gmDir = 1; gmN = 1; gmT = 0; } if (pr & PD_O) gview = GV_HAND; if (gmN) gsidx = (grr() & 1) ? 1 : 0; }
+        else { gmT += steps; if (gmT > 50) { int way = gsidx ? 1 : -1; if (way == gmDir) gmWon++; gmRound++; gmN = 0; if (gmRound >= 5) gfinish_game(gmWon >= 3); } }
+        break;
+    case GV_COPY: {   // COPY ME: watch the blob, then do the same moves (the D-pad). Three rounds, two to win
+        if (pr & PD_O) { gview = GV_HAND; break; }
+        gmT += steps; if (gmT < 0) break; if (gmT < gmN * 40) break;
+        int key = (pr & PD_U) ? 0 : (pr & PD_D) ? 1 : (pr & PD_L) ? 2 : (pr & PD_R) ? 3 : -1;
+        if (key >= 0) { if (key == gseq[gsidx]) { gsidx++; voice(V_YEHA); if (gsidx >= gmN) { gmWon++; gmRound++; gsidx = 0; gmN++; gmT = -50; if (gmRound >= 3) gfinish_game(1); } }
+                        else { gmRound++; gsidx = 0; gmT = -50; voice(V_NAH); if (gmRound - gmWon >= 2) gfinish_game(0); else if (gmRound >= 3) gfinish_game(gmWon >= 2); } }
+        break; }
+    case GV_FRIEND: { Toy *t = gtt();
+        if (pr & PD_R) gsub = gliving(t, gsub, 1); if (pr & PD_L) gsub = gliving(t, gsub, -1); while (gsub == gbi) gsub = gliving(t, gsub, 1);
+        if (pr & PD_O) gview = GV_HAND;
+        if (pr & (PD_X | PD_SQ)) { const char *m = gfriends(t, gbi, gsub, (pr & PD_SQ) != 0); gview = GV_HAND; gsay(m); voice(V_YAHOO); }
+        break; }
+    case GV_STATS:
+        if (pr & (PD_X | PD_R | PD_D)) { if (++gsub >= 2) gview = GV_HAND; }
+        if (pr & (PD_O | PD_L)) { if (gsub > 0) gsub--; else gview = GV_HAND; }
+        break;
+    case GV_DEX:
+        if (pr & (PD_R1 | PD_R)) gdexpage = (gdexpage + 1) & 3; if (pr & (PD_L1 | PD_L)) gdexpage = (gdexpage + 3) & 3;
+        if (pr & PD_O) gview = GV_BASKET;
+        break;
+    }
+    return 1;
+}
+// ---- drawing ----
+static void gpips(int x, int y, int v, int n, u16 on) { for (int i = 0; i < n; i++) rect(x + i * 9, y, 7, 7, i < v ? on : C15(9, 7, 11)); }
+static const char *const gformNm[4] = { "SUPER", "SLOB", "CHILL", "STAR" };
+static void gt_top(void) {
+    scr = offbuf; char b[72]; rect(0, 0, 256, 192, K8(22, 12, 52));
+    for (int i = 0; i < 24; i++) { int x = (i * 97 + 13) % 256, y = (i * 61 + 7) % 192; rect(x, y, ((ganim >> 3) + i) % 7 ? 1 : 2, ((ganim >> 3) + i) % 7 ? 1 : 2, C15(24, 24, 31)); }
+    panel(4, 4, 248, 184, "Boreagotchi");
+    if (gview == GV_NONE) { text(12, 40, 1, TXT, "A Boreagotchi: a pet on a keychain."); text(12, 56, 1, TXT, "Eight creatures, 16 kinds, 64 forms."); text(12, 72, 1, TXT, "It grows up the way you care for it."); sprintf(b, "The toy costs $%d.", GOTCHI_PRICE); text(12, 96, 1, C15(31, 25, 6), b); if (gmsg) text(12, 150, 1, C15(31, 12, 10), gmsg); return; }
+    if (gview == GV_DEX) {
+        sprintf(b, "BLOBDEX  %d OF %d   PAGE %d OF 4", gdex_count(), GSP_N * 4, gdexpage + 1); text(12, 26, 1, C15(31, 25, 6), b);
+        for (int r = 0; r < 4; r++) { int sp = gdexpage * 4 + r, y = 36 + r * 34; text(10, y + 12, 1, TXT, gspNm[sp]);
+            for (int f = 0; f < 4; f++) { int x = 70 + f * 46; rect(x - 1, y - 1, 45, 32, f == 0 ? C15(29, 22, 5) : f == 1 ? C15(18, 14, 8) : f == 2 ? C15(7, 23, 26) : C15(27, 8, 22)); rect(x, y, 43, 30, LCD_BG);
+                if (gdex_has(sp, f)) { Blob bb; memset(&bb, 0, sizeof bb); bb.on = 1; bb.stage = GS_ADULT; bb.sp = (u8)sp; bb.form = (u8)f; bb.hun = bb.hap = 4; g_scene(&bb, 0, 0); gdots_draw(x + 5, y + 7, 1, LCD_INK); } else text(x + 18, y + 12, 1, C15(12, 14, 12), "?"); } }
+        text(12, 174, 1, C15(20, 24, 28), "Care: SUPER, STAR. Snacks: CHILL."); return; }
+    Toy *t = gtt(); Blob *c = gcb(); int dark = (c->fl & GF_SLEEP) && (c->fl & GF_DARK);
+    rect(14, 24, 228, 112, K8(26, 10, 40)); rect(18, 28, 220, 104, dark ? C15(8, 10, 8) : LCD_BG);
+    if (gview == GV_FRIEND) { c = &t->b[gsub]; }
+    int look = gview == GV_LOOK ? (gmN ? (gsidx ? 1 : -1) : 0) : 0, jump = 0;
+    if (gview == GV_COPY) { int showing = gmT >= 0 && gmT < gmN * 40, k = showing ? gmT / 40 : -1; if (showing) { int m = gseq[k]; look = m == 2 ? -1 : m == 3 ? 1 : 0; jump = m == 0; } }
+    if (gview == GV_STATS) { Blob *s = c; text(26, 34, 1, LCD_INK, "");
+        if (gsub == 0) { text(26, 34, 1, LCD_INK, "HUNGER"); gpips(26, 48, s->hun, 4, LCD_INK); text(26, 66, 1, LCD_INK, "HAPPY"); gpips(26, 80, s->hap, 4, LCD_INK); text(140, 34, 1, LCD_INK, "BOND"); for (int i = 0; i < 4; i++) rect(140 + i * 10, 48, 8, 8, i < (s->bond + 12) / 25 ? C15(26, 4, 4) : C15(14, 17, 10)); sprintf(b, "%d GRAMS", s->wt); text(140, 66, 1, LCD_INK, b); }
+        else { gname(s, b); text(26, 34, 1, LCD_INK, b); sprintf(b, "AGE %d HOURS", s->age / 60); text(26, 48, 1, LCD_INK, b); sprintf(b, "DISCIPLINE %d%%", s->disc); text(26, 62, 1, LCD_INK, b); sprintf(b, "MISTAKES %d  GEN %d", s->miss, s->gen + 1); text(26, 76, 1, LCD_INK, b); sprintf(b, "YOU: %s", glvNm[glevel(t)]); text(26, 90, 1, LCD_INK, b);
+            int nx = gnext_xp(t); if (nx) { rect(26, 104, 120, 5, C15(14, 17, 10)); rect(26, 104, 120 * t->xp / nx, 5, LCD_INK); } } }
+    else { g_scene(c, ganim / 20 + (jump ? 1 : 0), look); gdots_draw(26, 32 - (jump ? 6 : 0), 6, dark ? C15(14, 18, 12) : LCD_INK); }
+    gname(c, b); { char b2[80]; sprintf(b2, "%s THE %s", ggiv[c->nm & 31], b); text(128 - tw(1, b2) / 2, 142, 1, TXT, b2); }
+    text(20, 156, 1, C15(31, 22, 8), "HUNGER"); gpips(66, 154, c->hun, 4, C15(31, 22, 8)); text(112, 156, 1, C15(31, 14, 24), "HAPPY"); gpips(152, 154, c->hap, 4, C15(31, 14, 24));
+    for (int i = 0; i < 4; i++) rect(196 + i * 11, 154, 9, 7, i < (c->bond + 12) / 25 ? C15(31, 8, 8) : C15(9, 7, 11));
+    { const char *w = c->stage == GS_EGG ? "AN EGG" : gneeds(c) ? gwant(c) : "ALL GOOD"; text(20, 172, 1, gneeds(c) ? C15(31, 14, 12) : C15(20, 28, 20), w); }
+    if (gview == GV_LOOK) { sprintf(b, "ROUND %d  WINS %d", gmRound + 1, gmWon); text(140, 172, 1, C15(31, 31, 18), b); }
+    if (gview == GV_COPY) { sprintf(b, "ROUND %d  GOT %d", gmRound + 1, gmWon); text(140, 172, 1, C15(31, 31, 18), b); }
+    if (gmsg || gview == GV_LOOK || gview == GV_COPY) { const char *m = gmsg; static char m2[40];
+        if (gview == GV_LOOK && !gmsg) m = gmN == 0 ? "WHICH WAY WILL IT LOOK?" : ((gsidx ? 1 : -1) == gmDir ? "YES! IT LOOKED YOUR WAY" : "NOPE. THE OTHER WAY");
+        if (gview == GV_COPY && !gmsg) { static const char *nm[4] = { "UP", "DOWN", "LEFT", "RIGHT" }; int showing = gmT >= 0 && gmT < gmN * 40; if (gmT < 0) m = "WATCH CLOSELY..."; else if (showing) m = nm[gseq[gmT / 40]]; else { sprintf(m2, "YOUR TURN: %d OF %d", gsidx + 1, gmN); m = m2; } }
+        if (m) { rect(10, 124, 236, 14, K8(24, 10, 40)); text_fit(14, 128, 1, 228, TXT, m); } }
+}
+static unsigned gt_bsig(void) { return (unsigned)(gview * 31 + gbi * 7 + gisel * 11 + gsub * 13 + gdexpage * 17 + gmN * 19 + (gview == GV_COPY ? gmT >= 0 && gmT < gmN * 40 : 0) + (funds >= GOTCHI_PRICE) * 23 + (gtt()->b[gbi].on) * 29); }
+static void gt_bottom(void) {
+    scr = offbuf; char b[40]; rect(0, 0, 256, 192, K8(22, 12, 52)); rect(0, 0, 256, 16, K8(60, 30, 110)); ctext(128, 4, 1, K8(90, 230, 240), "BOREAGOTCHI");
+    if (gview == GV_NONE) { chip(14, 60, 228, 50, funds >= GOTCHI_PRICE ? "Buy a toy $5000" : "Toy $5000 (not enough)", funds >= GOTCHI_PRICE); chip(14, 150, 228, 30, "Back", 0); return; }
+    Toy *t = gtt();
+    if (gview == GV_BASKET || gview == GV_DEX) {
+        if (gview == GV_DEX) { chip(8, 30, 70, 40, "< Page", 0); chip(178, 30, 70, 40, "Page >", 0); chip(78, 100, 100, 40, "Back", 1); return; }
+        for (int i = 0; i < GB_N; i++) { const Blob *c = &t->b[i]; int x = 8 + (i & 3) * 61, y = 20 + (i >> 2) * 66, s = i == gbi;
+            rect(x, y, 59, 63, s ? C15(31, 31, 20) : PANB); rect(x + 1, y + 1, 57, 61, s ? C15(24, 28, 31) : PAN);
+            if (c->on) { g_scene(c, ganim / 20 + i, 0); rect(x + 2, y + 3, 55, 28, LCD_BG); gdots_draw(x + 2 + 12, y + 3 + 6, 1, LCD_INK); if (gneeds(c)) { rect(x + 46, y + 3, 11, 11, C15(29, 6, 6)); text(x + 50, y + 5, 1, TXT, "!"); }
+                text_fit(x + 3, y + 36, 1, 54, s ? C15(2, 7, 20) : TXT, ggiv[c->nm & 31]); gname(c, b); text_fit(x + 3, y + 47, 1, 54, s ? C15(8, 14, 24) : C15(20, 24, 28), b); for (int h = 0; h < 4; h++) rect(x + 5 + h * 12, y + 57, 9, 3, h < (c->bond + 12) / 25 ? C15(31, 8, 8) : C15(9, 7, 11)); }
+            else { text(x + 13, y + 20, 1, s ? C15(2, 7, 20) : C15(14, 18, 24), s ? "NEW EGG" : "EMPTY"); text(x + 17, y + 36, 1, C15(31, 25, 6), "$150"); } }
+        chip(8, 154, 74, 30, "Blobdex", 0); sprintf(b, "LV %d", glevel(t)); chip(90, 154, 74, 30, b, 0); chip(172, 154, 76, 30, "Back", 0); return; }
+    if (gview == GV_HAND || gview == GV_STATS || gview == GV_FEED || gview == GV_PLAYPICK || gview == GV_LOOK || gview == GV_COPY || gview == GV_FRIEND) {
+        if (gview == GV_HAND) {
+            for (int i = 0; i < 10; i++) { int x = 8 + (i % 5) * 49, y = 22 + (i / 5) * 56, s = i == gisel, lit = i == 7 && (gcb()->fl & GF_CALL);
+                rect(x, y, 47, 52, s ? C15(31, 31, 31) : PANB); rect(x + 1, y + 1, 45, 50, s ? C15(26, 29, 31) : lit ? C15(31, 22, 6) : C15(11, 4, 14));
+                u16 ic = s ? C15(16, 8, 4) : lit ? C15(4, 8, 14) : C15(24, 16, 30); for (int r = 0; r < 7; r++) for (int q = 0; q < 9; q++) if (gicon[i][r][q] == '#') rect(x + 8 + q * 3, y + 7 + r * 3, 3, 3, ic);
+                t_tight = 1; text_fit(x + 23 - MIN(tw(1, giconNm[i]), 44) / 2, y + 40, 1, 44, s ? C15(2, 7, 20) : TXT, giconNm[i]); t_tight = 0; }
+            chip(8, 138, 60, 20, "< Pet", 0); chip(190, 138, 58, 20, "Pet >", 0); chip(72, 138, 114, 20, "Use", 1); chip(8, 164, 100, 22, "Basket", 0); return; }
+        if (gview == GV_FEED) { chip(8, 30, 74, 50, "Meal", gsub == 0); chip(91, 30, 74, 50, "Snack", gsub == 1); chip(174, 30, 74, 50, "Lunch", gsub == 2);
+            static const char *const bl[3] = { "A meal fills it up", "A snack cheers it up", "Your own lunch: you get hungrier" }; text_fit(14, 100, 1, 228, TXT, bl[gsub]); chip(8, 150, 108, 30, "Give", 1); chip(140, 150, 108, 30, "Back", 0); return; }
+        if (gview == GV_PLAYPICK) { chip(8, 30, 114, 60, "Which way?", gsub == 0); chip(134, 30, 114, 60, "Copy me", gsub == 1); text_fit(14, 108, 1, 228, TXT, gsub ? "Repeat its moves. 3 rounds." : "Guess where it looks. 5 rounds."); chip(8, 150, 108, 30, "Play", 1); chip(140, 150, 108, 30, "Back", 0); return; }
+        if (gview == GV_LOOK) { chip(8, 30, 114, 90, "< Left", gmN == 0 && gmDir == -1); chip(134, 30, 114, 90, "Right >", gmN == 0 && gmDir == 1); chip(140, 150, 108, 30, "Quit", 0); return; }
+        if (gview == GV_COPY) { chip(88, 24, 80, 44, "Up", 0); chip(88, 100, 80, 44, "Down", 0); chip(8, 62, 76, 44, "Left", 0); chip(172, 62, 76, 44, "Right", 0); chip(140, 154, 108, 28, "Quit", 0); return; }
+        if (gview == GV_FRIEND) { chip(8, 30, 60, 50, "<", 0); chip(188, 30, 60, 50, ">", 0); chip(8, 100, 112, 44, "Playdate", 1); chip(136, 100, 112, 44, "Battle", 0); chip(140, 154, 108, 28, "Back", 0); return; }
+        chip(8, 60, 114, 60, "Next", 1); chip(134, 60, 114, 60, "Back", 0); return; }
+}
+static void gt_frame(int held, int down, int steps, int tx, int ty) {
+    (void)held; int pr = 0, td = down & KEY_TOUCH;
+    if (down & KEY_LEFT) pr |= PD_L; if (down & KEY_RIGHT) pr |= PD_R; if (down & KEY_UP) pr |= PD_U; if (down & KEY_DOWN) pr |= PD_D; if (down & KEY_A) pr |= PD_X; if (down & KEY_B) pr |= PD_O; if (down & KEY_Y) pr |= PD_SQ; if (down & KEY_L) pr |= PD_L1; if (down & KEY_R) pr |= PD_R1;
+    if (td) {
+        if (gview == GV_NONE) { if (hit(14, 60, 228, 50, tx, ty)) pr |= PD_X; if (hit(14, 150, 228, 30, tx, ty)) pr |= PD_O; }
+        else if (gview == GV_DEX) { if (hit(8, 30, 70, 40, tx, ty)) pr |= PD_L1; if (hit(178, 30, 70, 40, tx, ty)) pr |= PD_R1; if (hit(78, 100, 100, 40, tx, ty)) pr |= PD_O; }
+        else if (gview == GV_BASKET) { for (int i = 0; i < GB_N; i++) if (hit(8 + (i & 3) * 61, 20 + (i >> 2) * 66, 59, 63, tx, ty)) { if (gbi == i) pr |= PD_X; gbi = i; }
+            if (hit(8, 154, 74, 30, tx, ty)) pr |= PD_SQ; if (hit(172, 154, 76, 30, tx, ty)) pr |= PD_O; }
+        else if (gview == GV_HAND) { for (int i = 0; i < 10; i++) if (hit(8 + (i % 5) * 49, 22 + (i / 5) * 56, 47, 52, tx, ty)) { gisel = i; pr |= PD_X; }
+            if (hit(8, 138, 60, 20, tx, ty)) pr |= PD_L1; if (hit(190, 138, 58, 20, tx, ty)) pr |= PD_R1; if (hit(72, 138, 114, 20, tx, ty)) pr |= PD_X; if (hit(8, 164, 100, 22, tx, ty)) pr |= PD_O; }
+        else if (gview == GV_FEED) { for (int i = 0; i < 3; i++) if (hit(8 + i * 83, 30, 74, 50, tx, ty)) gsub = i; if (hit(8, 150, 108, 30, tx, ty)) pr |= PD_X; if (hit(140, 150, 108, 30, tx, ty)) pr |= PD_O; }
+        else if (gview == GV_PLAYPICK) { if (hit(8, 30, 114, 60, tx, ty)) gsub = 0; if (hit(134, 30, 114, 60, tx, ty)) gsub = 1; if (hit(8, 150, 108, 30, tx, ty)) pr |= PD_X; if (hit(140, 150, 108, 30, tx, ty)) pr |= PD_O; }
+        else if (gview == GV_LOOK) { if (hit(8, 30, 114, 90, tx, ty)) pr |= PD_L; if (hit(134, 30, 114, 90, tx, ty)) pr |= PD_R; if (hit(140, 150, 108, 30, tx, ty)) pr |= PD_O; }
+        else if (gview == GV_COPY) { if (hit(88, 24, 80, 44, tx, ty)) pr |= PD_U; if (hit(88, 100, 80, 44, tx, ty)) pr |= PD_D; if (hit(8, 62, 76, 44, tx, ty)) pr |= PD_L; if (hit(172, 62, 76, 44, tx, ty)) pr |= PD_R; if (hit(140, 154, 108, 28, tx, ty)) pr |= PD_O; }
+        else if (gview == GV_FRIEND) { if (hit(8, 30, 60, 50, tx, ty)) pr |= PD_L; if (hit(188, 30, 60, 50, tx, ty)) pr |= PD_R; if (hit(8, 100, 112, 44, tx, ty)) pr |= PD_X; if (hit(136, 100, 112, 44, tx, ty)) pr |= PD_SQ; if (hit(140, 154, 108, 28, tx, ty)) pr |= PD_O; }
+        else if (gview == GV_STATS) { if (hit(8, 60, 114, 60, tx, ty)) pr |= PD_X; if (hit(134, 60, 114, 60, tx, ty)) pr |= PD_O; } }
+    int og = gview, ob = gbi, oi = gisel, os = gsub;
+    if (!gt_update(pr, steps)) { mg_ui = 0; mg_ver++; return; }
+    if (pr || og != gview || ob != gbi || oi != gisel || os != gsub || gview == GV_LOOK || gview == GV_COPY || (ganim & 15) < steps) mg_ver++;
+}
+
+// ---- the Games menu: what the Menu's Games chip opens ----
+static void gm_open(void) { mg_ui = 5; mg_ver++; }
+static void gm_top(void) {
+    scr = offbuf; rect(0, 0, 256, 192, K8(22, 12, 52)); panel(8, 8, 240, 176, "Games");
+    text(18, 40, 1, TXT, "Skateboard: ride it, do tricks."); text(18, 56, 1, C15(20, 24, 28), has_board ? (on_board ? "You are riding it." : "You have a board.") : "Buy one: Buy > Skate.");
+    text(18, 84, 1, TXT, "Boreagotchi: a pet on a keychain."); char b[40]; Toy *t = gtoy_of(ctl); sprintf(b, t ? "%d creatures. Level %d." : "A toy costs $5000.", t ? gcount(t) : 0, t ? glevel(t) : 0); text(18, 100, 1, C15(20, 24, 28), b);
+    text(18, 128, 1, TXT, "Arcade and prizes: in town."); text(18, 142, 1, TXT, "Underworld: Menu > Heist.");
+}
+static void gm_bottom(void) { scr = offbuf; rect(0, 0, 256, 192, K8(22, 12, 52)); rect(0, 0, 256, 16, K8(60, 30, 110)); ctext(128, 4, 1, K8(90, 230, 240), "GAMES");
+    chip(14, 30, 228, 50, on_board ? "Get off the board" : has_board ? "Ride the board" : "Skateboard (none yet)", on_board); chip(14, 92, 228, 50, "Boreagotchi", 0); chip(14, 154, 228, 28, "Back", 0); }
+static void gm_frame(int down, int tx, int ty) {
+    int td = down & KEY_TOUCH; if (down & KEY_B) { mg_ui = 0; mg_ver++; return; }
+    if (!td) return;
+    if (hit(14, 30, 228, 50, tx, ty)) { mg_ui = 0; mg_ver++; if (on_board) skate_off(); else if (has_board) skate_on(); else say("Buy a skateboard (Buy > Skate)"); }
+    else if (hit(14, 92, 228, 50, tx, ty)) gt_open();
+    else if (hit(14, 154, 228, 28, tx, ty)) { mg_ui = 0; mg_ver++; } }
+
 // ---- the shell: which mini-game has the screens ----
 static unsigned mg_sig(void) { return (unsigned)(mg_ver * 131 + mg_ui * 7); }
-static unsigned mg_bsig(void) { return mg_ui == 3 ? (unsigned)(30 + hp * 5 + hsel * 11 + hs_heat * 0) : ar_bsig(); }
-static void mg_top(void) { if (mg_ui == 3) hs_top(); else ar_top(); }
-static void mg_bottom(void) { if (mg_ui == 3) hs_bottom(); else ar_bottom(); }
-static void mg_frame(int held, int down, int steps, int tx, int ty) { if (mg_ui == 3) hs_frame(held, down, steps, tx, ty); else ar_frame(held, down, steps, tx, ty); }
+static unsigned mg_bsig(void) { return mg_ui == 3 ? (unsigned)(30 + hp * 5 + hsel * 11) : mg_ui == 4 ? gt_bsig() + 77 : mg_ui == 5 ? 5 : ar_bsig(); }
+static void mg_top(void) { if (mg_ui == 3) hs_top(); else if (mg_ui == 4) gt_top(); else if (mg_ui == 5) gm_top(); else ar_top(); }
+static void mg_bottom(void) { if (mg_ui == 3) hs_bottom(); else if (mg_ui == 4) gt_bottom(); else if (mg_ui == 5) gm_bottom(); else ar_bottom(); }
+static void mg_frame(int held, int down, int steps, int tx, int ty) { if (mg_ui == 3) hs_frame(held, down, steps, tx, ty); else if (mg_ui == 4) gt_frame(held, down, steps, tx, ty); else if (mg_ui == 5) gm_frame(down, tx, ty); else ar_frame(held, down, steps, tx, ty); }
 
 // ==== the mini-games' saves: blocks after the farm's, each { magic, size, data }; a save from before has none (all at their start) ====
 #define MG_HT 0x5448   // 'HT': the underworld's heat, kept boats and aircraft, logic
 #define MG_AR 0x5241   // 'AR': the arcade's tickets, the fight record
 #define MG_SK 0x4B53   // 'SK': the board and the skate scores
-static void mg_reset(void) { has_board = on_board = 0; board_lift = 0; skate_score = skate_best = 0; arcade_tix = fight_wins = fight_champ = fight_best = 0; mg_ui = 0; hs_heat = hs_day = hs_stolen = hs_logic = 0; }
+static void mg_reset(void) { has_board = on_board = 0; board_lift = 0; skate_score = skate_best = 0; arcade_tix = fight_wins = fight_champ = fight_best = 0; mg_ui = 0; hs_heat = hs_day = hs_stolen = hs_logic = 0; gt_reset(); }
 static int mg_pack(u8 *o) {
     int n = 0; u16 th[2]; s32 v[3];
     th[0] = MG_SK; th[1] = 12; v[0] = has_board; v[1] = (s32)skate_score; v[2] = (s32)skate_best; memcpy(o + n, th, 4); memcpy(o + n + 4, v, 12); n += 16;
     th[0] = MG_AR; th[1] = 16; { s32 w[4] = { arcade_tix, fight_wins, fight_champ, fight_best }; memcpy(o + n, th, 4); memcpy(o + n + 4, w, 16); n += 20; }
     th[0] = MG_HT; th[1] = 16; { s32 w[4] = { hs_heat, hs_day, hs_stolen, hs_logic }; memcpy(o + n, th, 4); memcpy(o + n + 4, w, 16); n += 20; }
+    n += gt_pack(o + n);
     return n; }
 static int mg_unpack(const u8 *p, int left) {
     mg_reset(); int n = 0;
@@ -686,12 +1118,16 @@ static int mg_unpack(const u8 *p, int left) {
         if (th[0] == MG_SK && th[1] == 12) { s32 v[3]; memcpy(v, p + n + 4, 12); has_board = v[0] & 1; skate_score = v[1] < 0 ? 0 : v[1]; skate_best = v[2] < 0 ? 0 : v[2]; }
         else if (th[0] == MG_AR && th[1] == 16) { s32 w[4]; memcpy(w, p + n + 4, 16); arcade_tix = CLAMP(w[0], 0, 9999); fight_wins = MAX(0, w[1]); fight_champ = w[2] & 1; fight_best = MAX(0, w[3]); }
         else if (th[0] == MG_HT && th[1] == 16) { s32 w[4]; memcpy(w, p + n + 4, 16); hs_heat = CLAMP(w[0], 0, 100); hs_day = w[1] & 255; hs_stolen = w[2] & 0xFFFF; hs_logic = MAX(0, w[3]); }
+        else if (th[0] == MG_GT) gt_unpack(p + n + 4, th[1]);
         else break;
         n += 4 + th[1]; }
     return n; }
 #ifdef DSTEST
 static void mg_test(int sc) {
     if (sc == 42) { ag_testlot = 1; memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(LOT_ARCADE, 0x5A3C91u); occ_ok = 0; funds += 5000; for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (5 + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 7 * 16; sims[q].act = -1; } }
+    if (sc == 49) { funds += 8000; gt_reset(); gbuy(ctl); Toy *t = gtoy_of(ctl); static const u8 stg[8] = { GS_EGG, GS_BABY, GS_CHILD, GS_TEEN, GS_ADULT, GS_ADULT, GS_ADULT, GS_ADULT };
+        for (int i = 0; i < 7; i++) { Blob *b = &t->b[i]; gfresh(b, i * 3 + 1); b->stage = stg[i]; b->form = (u8)(i - 4 < 0 ? i & 1 : i - 4); b->age = (u16)(i * 11); b->bond = (u8)(i * 14); b->hun = (u8)(4 - (i == 2)); b->hap = (u8)(i == 3 ? 0 : 3); if (i == 1) b->poop = 2; if (i == 5) b->fl |= GF_SICK; gdex_see(b->sp, b->form); }
+        for (int f = 0; f < 4; f++) { gdex_see(0, f); gdex_see(9, f); } t->xp = 120; gt_open(); }
     if (sc == 48) { funds += 5000; hs_open(); }
     if (sc >= 43 && sc <= 47) { arcade_tix = 37; funds += 5000; ag_open(sc == 47 ? AG_PRIZES : sc - 42); }   // (test builds) 40: this lot becomes the skate plaza, your Bore on the board at its west side
     if (sc == 40 || sc == 41) { memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(LOT_SKATE, 1); occ_ok = 0; funds += 5000;

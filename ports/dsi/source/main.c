@@ -419,8 +419,8 @@ static int gframes, cam_on, cam_pan, cam_free, live_pitch = 4300, cam_deff = 900
 static void sim3d(int i, int yaw);
 static int has_board, on_board, board_lift; static long skate_score, skate_best; static const int *em_R; static int sk_x3, sk_z3, sk_cr, sk_Rm[9];   // (D44) the skateboard: owned, ridden, the rider's height (PS1 units); em_R: a free turn for the rider's model
 static void skate_draw_board(int ground); static void skate_top(void); static unsigned skate_sig(void); static void skate_on(void), skate_off(void); static void skate_frame(int held, int down, int steps);
-static int mg_ui, mg_ver, arcade_tix, fight_wins, fight_champ, fight_best; static unsigned mg_sig(void), mg_bsig(void); static void mg_top(void), mg_bottom(void), mg_frame(int held, int down, int steps, int tx, int ty); static void ag_open(int g), hs_open(void); static int arcade_game_at(int x, int y), in_arcade(void);
-#define MG_SAVE 128   // (D45 on) the most the mini-games' save blocks take, after the farm's
+static int mg_ui, mg_ver, arcade_tix, fight_wins, fight_champ, fight_best; static unsigned mg_sig(void), mg_bsig(void); static void mg_top(void), mg_bottom(void), mg_frame(int held, int down, int steps, int tx, int ty); static void ag_open(int g), hs_open(void), gm_open(void), gt_minute(void); static int arcade_game_at(int x, int y), in_arcade(void);
+#define MG_SAVE 256   // (D45 on) the most the mini-games' save blocks take, after the farm's
 static int mg_pack(u8 *o); static int mg_unpack(const u8 *p, int left); static void mg_reset(void);
 typedef struct { u8 x, y, c, i, rot; } Obj;
 static Obj objs[400]; static int nobj, funds = 20000;
@@ -1997,7 +1997,7 @@ static void draw_hud(void) {
     if (cam_on) { const char *cb[6] = { cam_pan ? "Pan" : "Turn", "In", "Out", cam_free ? "Free" : "Follow", "Reset", "Done" }; for (int k = 0; k < 6; k++) { rect(216, 36 + k * 22, 38, 20, PANB); rect(217, 37 + k * 22, 36, 18, k == 0 && cam_pan ? C15(8, 26, 8) : PANH); text(220, 43 + k * 22, 1, TXT, cb[k]); } text(70, 40, 1, TXT, "Drag to look round"); }
     rect(104, 178, 48, 14, PANB); rect(105, 179, 46, 13, PAN); for (int i = 0; i < 3; i++) rect(118 + i * 8, 184, 4, 4, TXT);
     if (on_board) { rect(196, 168, 58, 22, PANB); rect(197, 169, 56, 20, C15(24, 8, 8)); text(203, 176, 1, TXT, "Get Off"); }   // (D44)
-    if (menu_open) { static const char *const mn[12] = { "Buy", "Build", "Map", "Save", "Options", "Title", "Job", "Songs", "Life", "Travel", "Board", "Heist" }; panel(8, 38, 240, 140, "Menu"); for (int i = 0; i < 12; i++) chip(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, mn[i], i == 9 && zone); }
+    if (menu_open) { static const char *const mn[12] = { "Buy", "Build", "Map", "Save", "Options", "Title", "Job", "Songs", "Life", "Travel", "Games", "Heist" }; panel(8, 38, 240, 140, "Menu"); for (int i = 0; i < 12; i++) chip(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, mn[i], i == 9 && zone); }
     if (popup == 1) {
         const Item *it = IT_OF(&objs[popup_i]); const char *nm = it->name;   // (D35: wide, for the PS1's words; D37: up to three choices; D38: up to eight, in two columns)
         if (popup_n <= 3) { int top = 150 - popup_n * 24;
@@ -2134,7 +2134,8 @@ static int sav_pack(int big) {   // returns the packed size in sav_buf (header i
     int n = 0; u8 *r = sav_raw; memset(r, 0, sizeof sav_raw);
     #define PUT(p, l) do { memcpy(r + n, (p), (size_t)(l)); n += (l); } while (0)
     PUT(&c, (int)sizeof c); PUT(sname, (int)sizeof sname); PUT(sims, (int)sizeof sims); PUT(crt, (int)sizeof crt);
-    int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4) - (4 + (int)sizeof(LifeSave)) - (4 + NOPT - OPT_OLD) - 8 - (4 + SIM_MAX) - 20 - (4 + (int)sizeof(FarmSave) - MG_SAVE), base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
+    u8 mgbuf[1300]; int mgsz = mg_pack(mgbuf);   // (D48: the mini-games' blocks, as big as they are)
+    int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4) - (4 + (int)sizeof(LifeSave)) - (4 + NOPT - OPT_OLD) - 8 - (4 + SIM_MAX) - 20 - (4 + (int)sizeof(FarmSave)) - mgsz, base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
     int order[LSV_N], no = 0; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) order[no++] = i; for (int i = 0; i < lsv_n; i++) if (!(lsv[i].bx == lot_bx && lsv[i].by == lot_by)) order[no++] = i;
     for (int q = 0; q < no; q++) { const LotSave *L = &lsv[order[q]]; int m = n; SavLot h = { (s16)L->bx, (s16)L->by, (s16)L->pcx, (s16)L->pcy, (s16)L->dcx, (s16)L->dcy, (u16)(L->nobj | (L->roof << 12) | (L->up << 14)) };
         int nup = L->hasup ? L->up : 0; if (nup > UPN) nup = UPN; if (nup) h.nobj |= 0x800;   // (D36) its upper storeys follow
@@ -2151,8 +2152,8 @@ static int sav_pack(int big) {   // returns the packed size in sav_buf (header i
     { u16 th[2] = { 0x4C53, SIM_MAX }; memcpy(r + best, th, 4); memcpy(r + best + 4, slv, SIM_MAX); best += 4 + SIM_MAX; }   // the storey each sim is on (D36)
     { s16 zs[10] = { 0x4E5A, 16, (s16)zone, (s16)isl_wood, (s16)isl_stone, (s16)isl_leaves, (s16)isl_food, (s16)isl_spear, (s16)isl_shells, (s16)isl_secrets }; memcpy(r + best, zs, 20); best += 20; }   // the zone and the island (D37)
     { u16 th[2] = { 0x4D46, (u16)sizeof(FarmSave) }; FarmSave f; fm_pack(&f); memcpy(r + best, th, 4); memcpy(r + best + 4, &f, sizeof f); best += 4 + (int)sizeof f; }   // the farm (D38)
-    best += mg_pack(r + best);   // (D44 on) the mini-games: the board, the scores
-    cl = rle(r, best, sav_buf + sizeof(SavHdr), budget + 4 + nown * 4 + 4 + (int)sizeof(LifeSave) + 4 + NOPT - OPT_OLD + 8 + 4 + SIM_MAX + 20 + 4 + (int)sizeof(FarmSave) + MG_SAVE); if (cl < 0) return 0;
+    memcpy(r + best, mgbuf, (size_t)mgsz); best += mgsz;   // (D44 on) the mini-games: the board, the scores
+    cl = rle(r, best, sav_buf + sizeof(SavHdr), budget + 4 + nown * 4 + 4 + (int)sizeof(LifeSave) + 4 + NOPT - OPT_OLD + 8 + 4 + SIM_MAX + 20 + 4 + (int)sizeof(FarmSave) + mgsz); if (cl < 0) return 0;
     SavHdr h = { SAV_MAGIC, (u32)(sav_seq + 1), crc32b(sav_buf + sizeof(SavHdr), cl), (u32)cl, (u32)best }; memcpy(sav_buf, &h, sizeof h); return (int)sizeof h + cl;
 }
 static int sav_write(void) {
@@ -2307,7 +2308,7 @@ static void rt_sync(void) {
     if (rt_jump) { rt_jump = 0; minutes += gap; return; }
     if (gap > 10080 - 1440) { minutes -= 10080 - gap; return; }   // (the clock went back: straight there)
     if (gap > 1440) { minutes += gap - 1440; gap = 1440; }
-    while (gap-- > 0) { minutes++; if (minutes % 1440 == 0) day_roll(); }
+    while (gap-- > 0) { minutes++; gt_minute(); if (minutes % 1440 == 0) day_roll(); }
 }
 static void sims_step(int frames) {
     int keep_lv = LV;
@@ -2336,7 +2337,7 @@ static void sims_step(int frames) {
     { static int was; if (o_rt && !was) rt_jump = 1; was = o_rt; }   // (just switched on: straight to the real time)
     if (o_rt) { if (rt_jump || (frames & 63) == 0) rt_sync(); }
     else { static const u8 DP[4] = { 66, 100, 150, 250 }; static int dacc; int per = 8 * DP[o_day & 3];   // (Options > Game > Day length: a game minute every 5.3, 8, 12 or 20 steps)
-      dacc += 100; if (dacc >= per) { dacc -= per; if (dacc >= per) dacc = 0; minutes++; if (minutes % 1440 == 0) day_roll(); } }
+      dacc += 100; if (dacc >= per) { dacc -= per; if (dacc >= per) dacc = 0; minutes++; gt_minute(); if (minutes % 1440 == 0) day_roll(); } }
 }
 // ---- smooth shaded 3D: ellipsoids with a colour on every vertex, so a head is round and lit instead of a box ----
 static int gox, goy, goz, gcs = 4096, gsn, gres_r = 8, gres_s = 12;   // the model's place and facing (yaw), and how finely to cut a ball
@@ -2850,7 +2851,7 @@ static void live_touch(int tx, int ty) {
         return; }
     if (menu_open) { menu_open = 0; int k = -1; for (int i = 0; i < 12; i++) if (hit(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, tx, ty)) k = i;
         if (k == 11) { if (stage_of(sims[ctl].age) < 3) say("Teens and up"); else hs_open(); return; }   // (D47: the underworld)
-        if (k == 10) { if (on_board) skate_off(); else if (has_board) skate_on(); else say("Buy a skateboard (Buy > Skate)"); return; }   // (D44)
+        if (k == 10) { gm_open(); return; }   // (D48: the Games menu: the skateboard (D44) and the Boreagotchi)
         if (k == 9) { travel_ui = 1; return; }
         if (k == 0) { set_mode(M_BUY); pick = -1; } else if (k == 1) set_mode(M_BUILD); else if (k == 2) set_mode(M_MAP);
         else if (k == 3) { if (!sav_ok()) say("No save chip found"); else say(sav_write() ? "Game saved" : "Save failed"); }
