@@ -769,16 +769,21 @@ static const VB B_SCOOT[] = {
 COLD static void veh_scooter(int ci, int wph) {
     veh_tones(ci); veh_wheel(0, -86, 22, wph, 8); veh_wheel(0, 90, 22, wph, 8); veh_rows(B_SCOOT, sizeof B_SCOOT / sizeof(VB));
 }
+#ifdef VEH_SLOPE
+#define VGH(x, z) (((x) - cam.at.vx) / 5 + ((z) - cam.at.vz) / 9)   /* (test builds: a made-up hill under the vehicles, to see them tip) */
+#else
+#define VGH(x, z) gfx_lift_fn((x), (z))
+#endif
 COLD static int veh_pitch_roll(int x, int z, int ang, int half, int hw, int *pitch, int *roll) {   // the slope under a vehicle: its nose and tail, its two sides (ang: the model's turn)
     int s = isin(ang), c = icos(ang), fx = (s * half) >> 12, fz = (c * half) >> 12, rx = (c * hw) >> 12, rz = -((s * hw) >> 12);   // (the front is (sin, cos), the +x side (cos, -sin))
-    int hf = gfx_lift_fn(x + fx, z + fz), hr = gfx_lift_fn(x - fx, z - fz), hp = gfx_lift_fn(x + rx, z + rz), hn = gfx_lift_fn(x - rx, z - rz);
+    int hf = VGH(x + fx, z + fz), hr = VGH(x - fx, z - fz), hp = VGH(x + rx, z + rz), hn = VGH(x - rx, z - rz);
     *pitch = CLAMP((hf - hr) * 652 / (2 * half), -300, 300); *roll = CLAMP(-(hp - hn) * 652 / (2 * hw), -250, 250);
     return *pitch || *roll;
 }
 int dbg_vdraw, dbg_vq, dbg_vpitch;
 COLD void items_draw_vehicle(int x, int z, int yaw, int y, int type, int ci, int wph) {
     dbg_vdraw++; dbg_vq = type * 1000 + ci;
-    int up = gfx_lift_fn ? gfx_lift_fn(x, z) : gfx_lift;   // (the same ground gfx_set_object stands it on)
+    int up = gfx_lift_fn ? VGH(x, z) : gfx_lift;   // (the same ground gfx_set_object stands it on)
     if (!gfx_bb_on && !gfx_visible(x, y - up - 220, z, 660)) return;   // (off the screen altogether: a car is up to 4.2 m long and 2.5 m high at its scale: a ball of 660 round its middle holds it)
     int ang = (2048 - yaw) & 4095;
     { int ex = cam.eye.vx - x, ez = cam.eye.vz - z, c = icos(ang), s = isin(ang);   // the camera in the model's frame: which side's wheels show, and how far off it is
