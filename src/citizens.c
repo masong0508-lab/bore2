@@ -97,6 +97,12 @@ int dbg_wk[4];                        // walks begun, ended by the time, ended h
 #define CP(k, v) ((void)0)
 #define WK(k) ((void)0)
 #endif
+#ifdef AUTO_LE
+extern int dbg_greet[6];
+#define GL(k) (dbg_greet[k]++)
+#else
+#define GL(k) ((void)0)
+#endif
 static u32 crnd(void) { crng ^= crng << 13; crng ^= crng >> 17; crng ^= crng << 5; return crng; }
 static int  rn(int n) { return (int)((crnd() >> 8) % (u32)n); }
 
@@ -1300,16 +1306,18 @@ COLD static int step_rest(Cit *c, int i, int n, int dx, int dz, int d2, const Ho
         if (!c->t || nav(c, c->ax, c->ay, in ? 3 : c->stage == AG_ELDER ? 3 : 5, in, MIN(n, (int)c->t))) { c->mode = CM_IDLE; c->t = 30; }
         else { used = g_used; c->t = (u16)(c->t - MIN((int)c->t, used)); }
         break;
-    case CM_GREET:  // someone who knows you, come over to say hello (straight to you; given up if the way is blocked)
-        if (!c->t || c->st > 90 || d2 > 12 * TILE * 12 * TILE) { c->mode = CM_IDLE; c->t = 60; break; }
+    case CM_GREET:  // someone who knows you, come over to say hello (round the benches, lamps and fences, then straight up to you; given up if held up)
+        if (!c->t || c->st > 90 || d2 > 12 * TILE * 12 * TILE) { GL(!c->t ? 2 : c->st > 90 ? 3 : 4); c->mode = CM_IDLE; c->t = 60; break; }
         if (d2 < 150 * 150) {
             static const char *const gl[6] = { "HEY! IT'S YOU!", "THERE YOU ARE!", "FANCY SEEING YOU HERE", "HI! HOW ARE YOU?", "I WAS JUST THINKING OF YOU", "LONG TIME NO SEE!" };
             const char *ln = c->rel < 0 ? (c->pers == PE_GRUFF ? "YOU AGAIN." : "OH. HELLO.") : c->rom >= 40 ? "THERE YOU ARE, YOU" : gl[rn(6)];
             say(c, ln); c->gait.wave = 40; c->yaw = (u16)yaw_to(dx, dz); c->mode = CM_IDLE; c->t = 150;
             if (c->rel >= 0) rel_add(c, 1); if (c->pid != NOPID) pop_seen(c->pid);
-            CP(10, 1); break;
+            CP(10, 1); GL(1); break;
         }
-        go(c, p->x, p->z, in ? 4 : c->stage == AG_ELDER ? 4 : 7, in, MIN(n, (int)c->t));   // (a hurry: you might be off again) used = g_used; c->t = (u16)(c->t - MIN((int)c->t, used));
+        { int spd = in ? 4 : c->stage == AG_ELDER ? 4 : 7, m = MIN(n, (int)c->t);   // (a hurry: you might be off again)
+          if (d2 < 2 * TILE * 2 * TILE) go(c, p->x, p->z, spd, in, m); else nav(c, p->x / TILE, (-p->z) / TILE, spd, in, m);
+          used = g_used; c->t = (u16)(c->t - MIN((int)c->t, used)); }   // (the steps walked count against its time, which never ran down before: a greeter who could not reach you kept on)
         break;
     case CM_CHAT:
         if (c->t) c->t--;
@@ -1499,7 +1507,7 @@ static void meet(Cit *c) {           // any interaction at all: they know you no
 COLD static void greet_maybe(Cit *c, int d2, int in) {   // (at a loose end) someone who knows you, out and seeing you out too, comes over to say hello: once each time they are out
     if (!cit_known(c) || (c->flg & F_HI) || in || c->rel <= -40 || fight_on || c->stage < AG_CHILD) return;
     if (d2 > 8 * TILE * 8 * TILE || d2 < 2 * TILE * 2 * TILE || indoors_at(sims[player].x, sims[player].z) || rn(3)) return;
-    c->flg |= F_HI; c->mode = CM_GREET; c->t = 420; c->st = 0; c->wv = 0;
+    c->flg |= F_HI; c->mode = CM_GREET; c->t = 420; c->st = 0; c->wv = 0; GL(0);
 }
 static int ceil_div(int a, int b) { return (a + b - 1) / b; }
 // A body costs about 190 hb (the voxel model's shaping is most of it): a quarter of a 20 fps frame, so a frame that built one used to
@@ -1812,3 +1820,27 @@ void citizens_debug(int zone, int *in, int *out, int *asleep, int *transit, int 
 }
 #endif
 void citizens_rebuild(void) { for (int i = 0; i < NCIT; i++) cits[i].built = 0; }   // (the crowd's arena was lent out: every model is made again, nearest first)
+#ifdef AUTO_LE
+int dbg_greet[6];   // (test builds) people who know you: set off to say hello, got to you; gave up: the time, held up, you too far
+int citizens_dbg_walk_up(int slot, int want, int far) {   // (test builds) walk up to that one (slot -1: the nearest grown-up out of doors and awake who likes you less
+    // than want): in front of them (far 0), or on the pavement far tiles off (passing by, on a walk round town). Their slot, or -1
+    Sim *p = &sims[player]; int best = slot >= 0 && slot < NCIT && cits[slot].zone == world_zone && cits[slot].mode != CM_GONE ? slot : -1, bd = 1 << 30;
+    for (int i = 0; i < NCIT && slot < 0; i++) { const Cit *c = &cits[i];
+        if (c->zone != world_zone || c->mode == CM_GONE || c->mode == CM_KO || c->mode == CM_SLEEP || c->mode == CM_CHAT || c->rel >= want || c->stage < AG_TEEN || indoors_at(c->x, c->z)) continue;
+        int dx = c->x - p->x, dz = c->z - p->z, d = dx * dx + dz * dz; if (d < bd) { bd = d; best = i; } }
+    if (best < 0) return -1;
+    Cit *c = &cits[best];
+    if (!far) { p->x = c->x - TILE * 2 / 3; p->z = c->z; p->yaw = 1024; c->mode = CM_IDLE; c->t = 300; return best; }
+    if (indoors_at(c->x, c->z)) return -1;   // (on the pavement, far tiles off or as near that as there is: where a walk round town goes)
+    int cx = c->x / TILE, cy = (-c->z) / TILE, ux = -1, uy = -1, bs = 99;
+    for (int y = cy - far; y <= cy + far; y++) for (int x = cx - far; x <= cx + far; x++) {
+        if (x < 1 || y < 1 || x >= MW - 1 || y >= MH - 1 || floorMap[y][x] != FL_PAVING || !world_walkable(x, y)) continue;
+        int d = MAX(ABS(x - cx), ABS(y - cy)); if (d >= 3 && far - d < bs) { bs = far - d; ux = x; uy = y; } }
+    if (ux < 0) return -1;
+    p->x = ux * TILE + TILE / 2; p->z = -(uy * TILE + TILE / 2); return best;
+}
+int citizens_dbg_rel(int slot) { return slot >= 0 && slot < NCIT ? cits[slot].rel : -999; }
+int citizens_dbg_pid(int slot) { return slot >= 0 && slot < NCIT ? cits[slot].pid : -1; }
+int citizens_dbg_state(int slot) { if (slot < 0 || slot >= NCIT) return -1; const Cit *c = &cits[slot]; int dx = (c->x - sims[player].x) / TILE, dz = (c->z - sims[player].z) / TILE;
+    return c->mode | MIN(99, ABS(dx) + ABS(dz)) << 4 | (c->flg & 7) << 11 | indoors_at(c->x, c->z) << 14 | indoors_at(sims[player].x, sims[player].z) << 15 | MIN(c->t, 4095) << 16; }
+#endif

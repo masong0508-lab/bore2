@@ -2453,7 +2453,7 @@ static void prop_tick(void) {
 }
 #endif
 #ifdef AUTO_LE
-int dbg_le[32];   // (test builds, with AUTO_CITY: lean checks. 1: a home and properties in three towns, then the phone's map; 2: the AUDIO sliders)
+int dbg_le[32], dbg_st[8]; char dbg_note[32];   // (test builds, with AUTO_CITY: lean checks. 1: a home and properties in three towns, then the phone's map)
 static void le_tick(void) {
     static int t0 = -1, k;
     if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30 || world_zone != ZONE_CITY) return; t0 = VSync(-1); }
@@ -2472,6 +2472,32 @@ static void le_tick(void) {
         if (t >= 100 && s < 8 && seg[s][3] && ph >= 60 && t >= nv) { nv = t + 90; audio_voice(VOICE_YAHOO); }
         if (t >= 100 && s < 8 && ph >= 300 && rd == s) { rd++; dbg_le[10 + s] = *(volatile u16 *)0x1F801D80; dbg_le[18 + s] = *(volatile u16 *)0x1F801C00; }   // (the SPU's main volume, and voice 0's)
         dbg_le[8] = audio_jukebox_current(); dbg_le[9] = t;
+    }
+#elif AUTO_LE == 3
+    {   // people who know you, in a life like a player's: a home in the capital; drinks bought for four people met out on the street till they are friends;
+        // a walk round town past each of them (5 tiles off, out of doors: do they come over?); four days in a far town at full speed (do they phone?);
+        // home again and the walk round town again. dbg_le: 0 bought, 1-4 the friends' liking, 9 drinks, 10/11 hellos set off / arrived on the first walk,
+        // 12/13 on the second, 14 calls, 15 the day, 16 the step, 18-21 and 22-25 whether each friend was passed on each walk; dbg_note: the last call
+        extern int citizens_dbg_walk_up(int slot, int want, int far), citizens_dbg_rel(int slot), citizens_dbg_pid(int slot), dbg_greet[4], dbg_kn[4]; extern char last_note[32];
+        static int who = -1, nf, nt, g0, g1, d0, q; static int pid[4]; Sim *p = &sims[player]; char opt[8][24];
+        for (int i = 0; i < N_ROOM; i++) p->need[i] = 100 << 10; alone_opt = 0;   // (your Bore stays where the test puts it)
+        if (k == 0 && t >= 60) { k++; HomeAd ad[4]; cash = 900000; const Settle *st = bm_set(0); if (home_list(st->x, st->y, ad, 4)) dbg_le[0] = home_buy(ad[0].bx, ad[0].by, HB_KEEP); clock_min = 9 * 60; nt = t + 340; }
+        if (k == 1 && t >= nt) { nt = t + 50;   // (a drink at a time: up to them, the pie menu, FRIENDLY..., BUY DRINK $10)
+            if (who < 0 || citizens_dbg_rel(who) >= 42) { if (who >= 0) dbg_le[nf] = citizens_dbg_rel(who); who = nf < 4 ? citizens_dbg_walk_up(-1, 42, 0) : -1; if (who >= 0) pid[nf++] = citizens_dbg_pid(who); }
+            else citizens_dbg_walk_up(who, 42, 0);
+            if (who >= 0 && citizens_pie_open(opt)) for (int i = 0; i < 8; i++) if (!strcmp(opt[i], "FRIENDLY...") && citizens_pie_do(i)) { int n = citizens_pie_more(opt);
+                for (int j = 0; j < n; j++) if (!strncmp(opt[j], "BUY DRINK", 9)) { citizens_pie_do(j); dbg_le[9]++; break; } break; }
+            if (nf >= 4 && who < 0) { k++; q = 0; nt = t + 600; g0 = dbg_greet[0]; g1 = dbg_greet[1]; } }
+        if ((k == 2 || k == 5) && t >= nt) {   // the walk round town: past each friend in turn
+            if (q > 0) { extern int citizens_dbg_state(int slot); int sl = pop_per[pid[q - 1]].slot; dbg_st[(k == 2 ? 0 : 4) + q - 1] = sl == 255 ? -2 : citizens_dbg_state(sl); }
+            if (q < 4) { int sl = pid[q] >= 0 ? pop_per[pid[q]].slot : 255; dbg_le[(k == 2 ? 18 : 22) + q] = sl == 255 ? -2 : citizens_dbg_walk_up(sl, 999, 5); if (k == 2) dbg_st[4 + q] = VSync(-1); q++; nt = t + 500; }
+            else { dbg_le[k == 2 ? 10 : 12] = dbg_greet[0] - g0; dbg_le[k == 2 ? 11 : 13] = dbg_greet[1] - g1; k++;
+                if (k == 3) { int far = 0, fd = -1; for (int i = 0; i < bm_nset(); i++) { const Settle *st = bm_set(i); int d = ABS(st->x - home_bx) + ABS(st->y - home_by); if (d > fd) { fd = d; far = i; } }
+                              taxi_to_block(bm_set(far)->x, bm_set(far)->y, -1, -1, "AWAY"); sim_speed = 3; d0 = day_count; } } }
+        if (k == 3) { if (dbg_kn[0] != dbg_le[14]) { dbg_le[14] = dbg_kn[0]; memcpy(dbg_note, last_note, 32); }
+            if (day_count >= d0 + 4 && clock_min >= 10 * 60) { k++; sim_speed = 1; home_go(); nt = t + 300; } }
+        if (k == 4 && t >= nt) { k++; q = 0; nt = t; g0 = dbg_greet[0]; g1 = dbg_greet[1]; }
+        dbg_le[15] = day_count; dbg_le[16] = k;
     }
 #endif
 }

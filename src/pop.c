@@ -24,7 +24,9 @@ int pop_households(int dial) {
     int d = dial % 6;
     return d <= 3 ? NFAM_NORMAL * lived[d] / 100 : d == 4 ? (NFAM_NORMAL + pop_famcap) / 2 : pop_famcap;
 }
-#define PLACE_MAX 1800
+#ifndef PLACE_MAX
+#define PLACE_MAX 1800   // (test builds may pass less: the AUTO_CITY world has 1256 places, and a test hook needs the RAM)
+#endif
 Place pop_place[PLACE_MAX];
 int pop_nper, pop_nplace;
 static int nfam;
