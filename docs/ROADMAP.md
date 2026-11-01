@@ -1,4 +1,5 @@
 # BORE 2: what to do next
+Per port: PS1_ROADMAP.md, DSI_ROADMAP.md (end), DREAMCAST.md (end). Expansion packs and placeholders: EXPANSION_PACKS.md.
 
 Plain list, most important first. Tick a line when it is done.
 Detail for each port: DSI_ROADMAP.md (DS), DREAMCAST.md (Dreamcast), PS1_PERFORMANCE.md (PS1 speed).

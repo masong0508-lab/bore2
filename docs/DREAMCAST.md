@@ -113,3 +113,12 @@ people-sprite rasteriser (software, into VRAM) was a big part of `emit`; it is a
   PVR fog by depth is not possible yet), full far view with fog, bigger crowds, smooth lighting, 16:9 (the game lays out its HUD and camera for 320x240).
 - Extras not done: bring Boreagotchi rewards back from the VMU, Dreamcast furniture set and outfits, translucent water/glass, night glow, unlockables gallery,
   pads C and D and second players in the mini-games.
+
+## What the Dreamcast needs next (updated Nov 1)
+See also ROADMAP.md and EXPANSION_PACKS.md. The disc in the repo history is a few hours behind main: rebuild with the `build-dreamcast` workflow or `make disc`. In order:
+1. Speed toward 60 fps: sound on the AICA, a direct PVR path for the world and people, SH-4 FIPR/FTRV maths.
+2. Upgrades: sub-pixel vertices, depth buffer, far view with fog, bigger crowds, smooth lighting, 16:9.
+3. Side-by-side checks against DuckStation (pie menu, night, first person, far view, a park, roofs).
+4. Extras as placeholders first (COMING SOON in the EXTRAS tab), then real: VMU pet rewards back into the game, Dreamcast furniture set and outfits, water and glass, night glow, unlockables gallery, pads 3 and 4.
+5. Disc packs: put the PS1 packs on the disc as files (see EXPANSION_PACKS.md).
+6. Real hardware test.

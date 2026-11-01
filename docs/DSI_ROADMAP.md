@@ -245,3 +245,13 @@ Music data: `python3 tools/dsmusic/mk_dsmusic.py assets/SONGS.BIN assets/songs.i
 
 ## D30 done
 Buy/CAS interface restyle and property system are finished. Still to test on real hardware: lot selling and ownership save round-trip.
+
+## What the DS needs next (updated Nov 1; newest ROM d54)
+See also ROADMAP.md and EXPANSION_PACKS.md. In order:
+1. Finish the DS Boreagotchi: branch `wip-gotchi` (rules written in ds_games.c, new screens in ports/dsi/wip/ not spliced in): splice, add view names and icons, draw hats, build, test scenes, shots, 30 fps, make d55.
+2. BORTUA FIGHTER: branch `wip-ds-fight` (ds_fight.c, ds_fight_logic.h); then the arcade's fifth cabinet.
+3. Placeholders (COMING SOON cards) for everything not here yet, see EXPANSION_PACKS.md.
+4. Skate plaza to a steady 30 fps; textures on bought furniture and the Map's house picture.
+5. Band and DJ: a two-deck audio path first.
+6. The arcade's new games (after the PS1 ones, branch `wip-arcade`).
+7. A DSi-type ROM for the extra memory and CPU; real DS and DSi tests.
