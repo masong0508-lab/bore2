@@ -160,3 +160,12 @@ Doors are solid wooden leaves with panels and handles, shut until a sim is at th
 ## D32
 - Input and lag: the live screen was running at about a quarter speed because it redrew both screens every frame while a message showed. Top screen, touch layer and Buy screen now redraw only when something changed, and rectangles fill 32 bits at a time. Taps are latched at every vblank, so even a 2-3 frame tap is never lost.
 - Buttons: B closes any menu or panel, Start opens the menu, Up/Down/Right work the Jukebox, the d-pad no longer turns the camera while a panel is open.
+
+## D33
+Options closer to the PS1 (needs speed, day length, message time, title/game music, shuffle, reset game); one home plus owned properties.
+
+## D34
+A touch held while the screen changes (title OK, the Map button) no longer picks a block on the Map: each new screen waits for the stylus to lift.
+
+## D35
+The PS1's whole buy catalogue: 189 items in the PS1's ten tabs, with the PS1's models (tools/dsbuild/mk_dsitems.py -> source/ds_items.h), names, prices and action words; two-tile beds; a picture of each item's model on its shop card. Short taps are no longer lost (the tap latch read garbage), Buy runs about four times faster, tapping a tall item in Live picks it. See docs/DSI_ROADMAP.md.

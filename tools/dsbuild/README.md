@@ -8,6 +8,7 @@ Scripts here are the glue; paths point at /tmp/dsb and /tmp/libnds182.
 - stub/: tiny header stubs libnds needs without devkitARM
 - glue.c: newlib-ish hooks (stdout, sbrk, heap, argv)
 - arm7/: the real ARM7 (touch screen, buttons, clock, sound) built from libnds ARM7 sources: arm7/build7.sh -> a7.bin. (a7.s is the old handshake-only stub, no longer used.)
+- mk_dsitems.py: the PS1's buy catalogue for the DS (D35): reads src/items.c and its packs, writes ports/dsi/source/ds_items.h (run it after the PS1 items change; the DS build itself needs no Python for it).
 - mk.sh NAME: build NAME.c to NAME.nds. ndstool adds the 0x800 secure
   stub itself, so the first 0x800 bytes of the linked binary are dropped.
 - tools/dsemu/run.cpp: headless melonDS runner (NDS mode, FreeBIOS):
