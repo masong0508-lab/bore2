@@ -90,6 +90,45 @@ void dc_extra_frame(void) {
     { extern int dbg_sv[16], dbg_st[8], dbg_opt[2], dbg_cells[6]; extern void dc_logf(const char *f, ...);   // (test builds: the save test's readouts)
       if (tick % 200 == 0) { dc_logf("save:"); for (int i = 0; i < 16; i++) dc_logf(" %d", dbg_sv[i]); dc_logf(" | opt %x | stream", dbg_opt[0]); for (int i = 0; i < 8; i++) dc_logf(" %d", dbg_st[i]); dc_logf(" | song %d\n", dbg_cells[2]); } }
 #endif
-    if (saving || (tick % 30)) return;   // (twice a second is plenty for the VMU)
+    extern int dc_opt_vmuscreen;
+    if (saving || (tick % 30) || !dc_opt_vmuscreen) return;   // (twice a second is plenty for the VMU)
     vmu_status();
+}
+
+// ---------------------------------------------------------------- OPTIONS > DREAMCAST: the Dreamcast's own switches (a tab of the
+// PS1 options screen, drawn with the game's own interface parts; kept apart from the PS1 options, so saves are the same on both)
+#include "ui.h"
+#include <psxpad.h>
+extern int dc_vivid, dc_filter;
+int dc_opt_rumble = 1, dc_opt_vmuscreen = 1;
+extern void dc_grade_changed(void);
+enum { DO_COLOUR, DO_TEX, DO_RUMBLE, DO_VMU, DO_N };
+static const char *const dnm[DO_N] = { "COLOURS", "TEXTURES", "JUMP PACK", "VMU SCREEN" };
+static const char *const dval[DO_N][2] = { { "CLASSIC PS1", "VIVID" }, { "SHARP", "SMOOTH" }, { "OFF", "ON" }, { "OFF", "ON" } };
+static const char *const dblurb[DO_N] = { "VIVID: RICHER, BRIGHTER COLOURS. CLASSIC: THE PLAYSTATION'S OWN",
+    "SMOOTH: TEXTURES FILTERED (BILINEAR). SHARP: CRISP PIXELS AS ON THE PS1", "THE JUMP PACK SHAKES FOR THE DOORBELL, THE PHONE, FIGHTS AND LANDINGS",
+    "YOUR BORE'S FACE, MOOD, CLOCK AND NEEDS ON THE VMU" };
+static int dsel;
+static int *dvar(int i) { return i == DO_COLOUR ? &dc_vivid : i == DO_TEX ? &dc_filter : i == DO_RUMBLE ? &dc_opt_rumble : &dc_opt_vmuscreen; }
+void dc_opts_update(unsigned short btn, unsigned short prev) {
+#define DP(b) (!(btn & (b)) && (prev & (b)))
+    if (DP(PAD_UP)) dsel = (dsel + DO_N - 1) % DO_N;
+    if (DP(PAD_DOWN)) dsel = (dsel + 1) % DO_N;
+    if (DP(PAD_LEFT) || DP(PAD_RIGHT) || DP(PAD_CROSS)) {
+        int *v = dvar(dsel); *v = !*v;
+        if (dsel == DO_COLOUR) dc_grade_changed();
+    }
+#undef DP
+}
+void dc_opts_draw(int top) {
+    for (int r = 0; r < DO_N; r++) {
+        int y = top + r * 26, sel = r == dsel; const char *v = dval[r][*dvar(r) & 1];
+        if (sel) { ui_round(104, y, 202, 24, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); }
+        ui_text(110, y + 3, 1, dnm[r], sel ? UI_BLUE2 : UI_INK);
+        ui_text(300 - ui_tw(1, v), y + 3, 1, v, UI_BLUE2);
+        if (sel) ui_text(110, y + 13, 1, "LEFT RIGHT TO CHANGE", UI_SOFT);
+    }
+    ui_round(104, top + 166, 202, 32, 6, UI_RGB(234, 240, 248), UI_RGB(224, 231, 240), 0);
+    ui_icon(110, top + 176, IC_HELP, UI_BLUE);
+    ui_wrap(126, top + 171, 176, 2, dblurb[dsel], UI_INK);
 }

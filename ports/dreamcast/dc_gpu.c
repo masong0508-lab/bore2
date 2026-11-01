@@ -82,11 +82,46 @@ static uint32_t clut_sig(int mode, int cx, int cy) {
     if (mode == 1) for (int k = 1; k < 16; k++) s += blk_gen[(cy >> 4) & 31][((cx >> 4) + k) & 63] * (k + 1);
     return s;
 }
+// ---------------------------------------------------------------- the colour grade (Extras: VIVID, the default, or CLASSIC PS1)
+// VIVID: colours a third more saturated and a touch brighter, with a gentle S-curve for depth - on the shading (24-bit) and on
+// the textures (the PS1's own 15-bit texels, mapped through a table: no new steps). CLASSIC: the PS1's colours as they are.
+#ifdef DC_CLASSIC
+int dc_vivid = 0;   // (test builds: the PS1's colours)
+#else
+int dc_vivid = 1;
+#endif
+static uint16_t viv_lut[32768]; static int viv_ok;
+static inline void grade8(int *r, int *g, int *b) {
+    int l = (*r * 77 + *g * 150 + *b * 29) >> 8;
+    int rr = l + (((*r - l) * 372) >> 8), gg = l + (((*g - l) * 372) >> 8), bb = l + (((*b - l) * 372) >> 8);   // saturation x 1.45
+    rr = rr * 269 >> 8; gg = gg * 269 >> 8; bb = bb * 269 >> 8;                                                      // brightness x 1.05
+    rr = rr < 0 ? 0 : rr > 255 ? 255 : rr; gg = gg < 0 ? 0 : gg > 255 ? 255 : gg; bb = bb < 0 ? 0 : bb > 255 ? 255 : bb;
+    *r = rr; *g = gg; *b = bb;
+}
+static inline uint32_t vivid(uint32_t argb) {   // 0xAARRGGBB
+    if (!dc_vivid) return argb;
+    int r = (argb >> 16) & 255, g = (argb >> 8) & 255, b = argb & 255; grade8(&r, &g, &b);
+    return (argb & 0xff000000u) | (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
+}
+static void viv_build(void) {
+    for (int c = 0; c < 32768; c++) {
+        int r = (c & 31) * 255 / 31, g = ((c >> 5) & 31) * 255 / 31, b = ((c >> 10) & 31) * 255 / 31; grade8(&r, &g, &b);
+        int o = ((r * 31 + 127) / 255) | ((g * 31 + 127) / 255) << 5 | ((b * 31 + 127) / 255) << 10;
+        viv_lut[c] = (uint16_t)(c && !o ? 0x0400 : o);   // (a colour never becomes 0, which is see-through)
+    }
+    viv_ok = 1;
+}
 static inline uint16_t to1555(uint16_t c, int var) {
     if (var == 1 && (c & 0x8000)) return 0;
     if (var == 2 && !(c & 0x8000)) return 0;
     if (!c) return 0;
+    if (dc_vivid) c = (uint16_t)((c & 0x8000) | viv_lut[c & 0x7fff]);
     return (uint16_t)(0x8000 | ((c & 31) << 10) | (c & 0x3e0) | ((c >> 10) & 31));
+}
+void dc_grade_changed(void) {   // every texture converted again
+    if (dc_vivid && !viv_ok) viv_build();
+    for (int py = 0; py < 2; py++) for (int px = 0; px < 16; px++) page_gen[py][px] += 1000;
+    for (int y = 0; y < 32; y++) for (int x = 0; x < 64; x++) blk_gen[y][x]++;
 }
 static inline uint16_t texel(const Tex *t, int u, int v) {   // the raw PS1 texel (15 bit + STP) at page coordinates u, v
     const uint16_t *row = vram[(t->py * 256 + v) & 511]; int x0 = t->px * 64;
@@ -231,6 +266,7 @@ static void emit(int n, const int *x, const int *y, const uint32_t *col, const i
 // multiplies by at most 1. A primitive tinted above 128 is drawn at 1, then once more on top, added: the texture times the rest.
 // The primitives go straight into three buffers of PowerVR vertices (opaque, punch-through, translucent), with a polygon header
 // wherever the texture or the blend changes: at the end of the frame each buffer is one copy to the tile accelerator.
+extern int dc_filter;
 static int hdr_put(VList *L, int tex, int blend);
 static void emit_one(int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr, int var) {
     VList *L = semi ? &vl_tr : textured ? &vl_pt : &vl_op;
@@ -244,7 +280,7 @@ static void emit_one(int n, const int *x, const int *y, const uint32_t *col, con
     int boost = 0, a = abr == 0 ? 128 : abr == 3 ? 64 : 255;
     for (int k = 0; k < n; k++) {
         fx[k] = (float)((x[k] + ofs_x - area_x0) * 2); fy[k] = (float)((y[k] + ofs_y - area_y0) * 2);
-        uint32_t c = textured ? mod_col(col[k], raw) : flat_col(col[k]);
+        uint32_t c = vivid(textured ? mod_col(col[k], raw) : flat_col(col[k]));
         if (textured && !raw && ((col[k] & 255) > 128 || ((col[k] >> 8) & 255) > 128 || ((col[k] >> 16) & 255) > 128)) boost = 1;
         if (semi) c = (c & 0xffffff) | (uint32_t)a << 24;
         c4[k] = c;
@@ -255,8 +291,13 @@ static void emit_one(int n, const int *x, const int *y, const uint32_t *col, con
         if (uw > 0 && sw > 0 && (int)(sw / SCALE + 0.5f) == (int)uw + 1) { fu[1] += 1; fu[3] += 1; }
         if (vh > 0 && sh > 0 && (int)(sh / SCALE + 0.5f) == (int)vh + 1) { fv[2] += 1; fv[3] += 1; }
     }
+    int filt = 0;   // SMOOTH textures: the 3D world filtered; the 2D interface (rectangles, sprites one texel to a pixel) stays crisp
+    if (textured && dc_filter && !uv_exact) {
+        filt = 1;
+        if (n == 4 && fy[0] == fy[1] && fx[0] == fx[2] && fv[0] == fv[1] && fu[0] == fu[2] && (fx[1] - fx[0]) == (fu[1] - fu[0]) * SCALE) filt = 0;
+    }
     if (textured) for (int k = 0; k < n; k++) { fu[k] *= (1.0f / 256.0f); fv[k] *= (1.0f / 256.0f); }
-    hdr_put(L, ti, blend);
+    hdr_put(L, ti, blend + filt * 16);
     pvr_vertex_t *o = &L->v[L->n];
     for (int k = 0; k < n; k++, o++) {
         o->flags = k == n - 1 ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX;
@@ -265,7 +306,7 @@ static void emit_one(int n, const int *x, const int *y, const uint32_t *col, con
     L->n += n;
     if (boost && (!semi || abr != 2)) {   // the part above 1: added (for a blended primitive, at its own blend's share)
         VList *T = &vl_tr;
-        hdr_put(T, ti, !semi ? 1 : abr == 0 ? 4 : abr);
+        hdr_put(T, ti, (!semi ? 1 : abr == 0 ? 4 : abr) + filt * 16);
         o = &T->v[T->n];
         for (int k = 0; k < n; k++, o++) {
             uint32_t c = col[k]; int r = (int)(c & 255) - 128, g = (int)((c >> 8) & 255) - 128, b = (int)((c >> 16) & 255) - 128;
@@ -373,6 +414,7 @@ static void run_packet(const uint32_t *w, int n) {
 static int pvr_ready;
 void dc_gpu_init(void) {
     if (pvr_ready) return;
+    if (dc_vivid) viv_build();
     // 24-bit colour out (the PS1 dithers its 24-bit shading down to 15 bits; here there are no steps to hide), 640x480
     vid_set_mode(DM_640x480, PM_RGB888P);
     pvr_init_params_t pp = { { PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_16 }, 1024 * 1024, 0, 0, 1, 3 };
@@ -398,16 +440,21 @@ void ClearOTag(uint32_t *ot, size_t n) {
 }
 
 // a polygon header for (list, texture, blend), compiled once and kept
-int dc_filter;                              // (the Extras page: 1 bilinear filtering of the textures)
-static pvr_poly_hdr_t hcache[3][NTEX + 1][6]; static uint8_t hvalid[3][NTEX + 1][6]; static int hfilter = -1;
+#ifdef DC_SMOOTH
+int dc_filter = 1;   // (test builds: smooth textures from the start)
+#else
+int dc_filter;                              // (OPTIONS > EXTRAS: 1 bilinear filtering of the 3D world's textures)
+#endif
+static pvr_poly_hdr_t hcache[3][NTEX + 1][12]; static uint8_t hvalid[3][NTEX + 1][12];
 static int hdr_put(VList *L, int ti, int blend) {
-    if (ti == L->cur_tex && blend == L->cur_blend) return 0;
-    if (hfilter != dc_filter) { memset(hvalid, 0, sizeof hvalid); hfilter = dc_filter; }
+    if (ti == L->cur_tex && blend == L->cur_blend) return 0;   // (blend: + 16 for a filtered texture)
+    int filt = blend >= 16; blend &= 15;   // (16 added: this one filtered)
     int li = L->list == PVR_LIST_OP_POLY ? 0 : L->list == PVR_LIST_PT_POLY ? 1 : 2, list = L->list;
-    pvr_poly_hdr_t *h = &hcache[li][ti + 1][blend + 1];
-    if (!hvalid[li][ti + 1][blend + 1]) {
+    int hk = blend + 1 + filt * 6;
+    pvr_poly_hdr_t *h = &hcache[li][ti + 1][hk];
+    if (!hvalid[li][ti + 1][hk]) {
         pvr_poly_cxt_t cx;
-        if (ti >= 0) pvr_poly_cxt_txr(&cx, list, PVR_TXRFMT_ARGB1555 | PVR_TXRFMT_NONTWIDDLED, 256, 256, tex[ti].ptr, dc_filter ? PVR_FILTER_BILINEAR : PVR_FILTER_NONE);
+        if (ti >= 0) pvr_poly_cxt_txr(&cx, list, PVR_TXRFMT_ARGB1555 | PVR_TXRFMT_NONTWIDDLED, 256, 256, tex[ti].ptr, filt ? PVR_FILTER_BILINEAR : PVR_FILTER_NONE);
         else pvr_poly_cxt_col(&cx, list);
         cx.gen.culling = PVR_CULLING_NONE;
         cx.depth.comparison = PVR_DEPTHCMP_GEQUAL;
@@ -422,10 +469,10 @@ static int hdr_put(VList *L, int ti, int blend) {
             }
         } else if (ti >= 0) cx.txr.env = PVR_TXRENV_MODULATE;
         pvr_poly_compile(h, &cx);
-        hvalid[li][ti + 1][blend + 1] = 1;
+        hvalid[li][ti + 1][hk] = 1;
     }
     memcpy(&L->v[L->n], h, 32); L->n++;
-    L->cur_tex = ti; L->cur_blend = blend;
+    L->cur_tex = ti; L->cur_blend = blend + filt * 16;
     return 1;
 }
 static void submit_list(VList *L) {
@@ -461,7 +508,8 @@ int DrawOTag(const uint32_t *ot) {
     if (off_screen && vl_op.n + vl_pt.n + vl_tr.n == 0) return 0;   // (a sprite cell's list: all of it went into VRAM)
     dc_prims_last = vl_op.n + vl_pt.n + vl_tr.n;
     pvr_wait_ready();
-    pvr_set_bg_color((bg_rgb & 255) / 255.0f, ((bg_rgb >> 8) & 255) / 255.0f, ((bg_rgb >> 16) & 255) / 255.0f);
+    { uint32_t bg = vivid(0xff000000u | (bg_rgb & 255) << 16 | (bg_rgb & 0xff00) | ((bg_rgb >> 16) & 255));
+      pvr_set_bg_color(((bg >> 16) & 255) / 255.0f, ((bg >> 8) & 255) / 255.0f, (bg & 255) / 255.0f); }
     pvr_scene_begin();
     submit_list(&vl_op); submit_list(&vl_pt); submit_list(&vl_tr);
     pvr_scene_finish();

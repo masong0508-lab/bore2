@@ -2007,6 +2007,9 @@ static void opts_apply(void) {
 #ifdef AB_VIEW
     opt[O_VIEW] = AB_VIEW;
 #endif
+#if defined(BORE_DC) && defined(DC_NOSPEED)
+    opt[O_SPEED] = 0;   // (Dreamcast test builds: no speed helper, so two builds' pictures hold the same detail)
+#endif
 #ifdef AB_FPSCAP
     opt[O_FPSCAP] = AB_FPSCAP;   // (test builds: the FRAME RATE option, 2 = STEADY 20)
 #endif
@@ -2142,11 +2145,22 @@ static void opts_reset(int which) {   // 0 graphics, 1 audio, 2 the game, 3 ever
     opts_apply();
     if (which == 1 || which == 3) { if (opt_back == ST_MENU) title_music_resume(); }
 }
+#ifdef BORE_DC
+static void opts_update(void) {   // (the Dreamcast: a tenth tab, DREAMCAST, after DATA - ports/dreamcast/dc_extra.c)
+    int nr;
+    if (opt_flash > 0) opt_flash--;
+    if (PRESSED(PAD_L1)) { opt_tab = (opt_tab + NOTAB) % (NOTAB + 1); opt_sel = 0; }
+    if (PRESSED(PAD_R1)) { opt_tab = (opt_tab + 1) % (NOTAB + 1); opt_sel = 0; }
+    if (opt_tab == NOTAB) { extern void dc_opts_update(unsigned short, unsigned short); dc_opts_update(btn, btn_prev);
+        if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_TRIANGLE)) state = opt_back;
+        return; }
+#else
 static void opts_update(void) {
     int nr = opt_rows(opt_tab);
     if (opt_flash > 0) opt_flash--;
     if (PRESSED(PAD_L1)) { opt_tab = (opt_tab + NOTAB - 1) % NOTAB; opt_sel = 0; }
     if (PRESSED(PAD_R1)) { opt_tab = (opt_tab + 1) % NOTAB; opt_sel = 0; }
+#endif
     nr = opt_rows(opt_tab);
     if (PRESSED(PAD_UP)) opt_sel = (opt_sel + nr - 1) % nr;
     if (PRESSED(PAD_DOWN)) opt_sel = (opt_sel + 1) % nr;
@@ -2182,8 +2196,17 @@ static void opts_draw(void) {
     { char b[40]; sprintf(b, "%d FPS%s", fps_val, ram8 ? "  8 MB" : "");
       ui_badge(304 - ui_tw(1, b) - 10, 12, b, fps_val >= 25 ? UI_GREEN : fps_val >= 18 ? UI_RGB(236, 180, 40) : UI_RGB(228, 84, 70), UI_WHITE); }
     // the tabs down the left (a gold dot on one that is not as it came)
+#ifdef BORE_DC
+    {   int t = NOTAB, y = top + 1 + t * 16, on = t == opt_tab;   // (the Dreamcast's tab)
+        ui_round(14, y, 78, 15, 5, on ? UI_RGB(70, 176, 238) : UI_RGB(238, 243, 249), on ? UI_BLUE2 : UI_RGB(224, 231, 240), 0);
+        ui_icon_disc(24, y + 7, 12, IC_STAR, on ? UI_WHITE : UI_BLUE, on ? UI_BLUE : UI_WHITE);
+        ui_text(34, y + 4, 1, "EXTRAS", on ? UI_WHITE : UI_INK); }
+    for (int t = 0; t < NOTAB; t++) {
+        int y = top + 1 + t * 16, on = t == opt_tab, moved = 0;
+#else
     for (int t = 0; t < NOTAB; t++) {
         int y = top + 1 + t * 18, on = t == opt_tab, moved = 0;
+#endif
         for (int r = 0; r < 7 && optTab[t][r] >= 0; r++) { int k = optTab[t][r]; if (k < OA && k != O_PRESET && opt[k] != optDef[k]) moved = 1; }
         ui_round(14, y, 78, 16, 5, on ? UI_RGB(70, 176, 238) : UI_RGB(238, 243, 249), on ? UI_BLUE2 : UI_RGB(224, 231, 240), 0);
         ui_icon_disc(24, y + 8, 12, optTabIc[t], on ? UI_WHITE : UI_BLUE, on ? UI_BLUE : UI_WHITE);
@@ -2191,8 +2214,14 @@ static void opts_draw(void) {
         if (moved) ui_disc(86, y + 8, 5, UI_RGB(236, 180, 40));
     }
     ui_hints(16, top + 170, "L1 R1 TABS", 0);
+#ifdef BORE_DC
     // the knobs
     gfx_rect(98, top, 1, 168, 214, 222, 232, 0);
+    if (opt_tab == NOTAB) { extern void dc_opts_draw(int top); dc_opts_draw(top); ui_hints(16, top + 185, "O BACK", 0); return; }
+#else
+    // the knobs
+    gfx_rect(98, top, 1, 168, 214, 222, 232, 0);
+#endif
     int nr = opt_rows(opt_tab), pitch = nr > 6 ? 23 : 26;
     for (int r = 0; r < nr; r++) {
         int i = optTab[opt_tab][r], sel = r == opt_sel, y = top + r * pitch, k = opt_kind(i); char vb[8];

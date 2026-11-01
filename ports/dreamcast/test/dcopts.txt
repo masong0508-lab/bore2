@@ -1,0 +1,12 @@
+250 start
+320 down
+340 down
+360 down
+380 down
+400 b
+460 shot
+480 l2
+540 shot
+560 down
+580 right
+640 shot

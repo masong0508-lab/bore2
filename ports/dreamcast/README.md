@@ -1,28 +1,33 @@
 # BORE 2 on the Dreamcast
 
-Status: **boots and runs in an emulator.** Hello screen, the title with the BORE 2 logo, and SAN BOREAS drawn on the PowerVR at 640x480
-from the game's own world code (`src/bigmap.c`, compiled unchanged). See `docs/DREAMCAST.md` for what works and what is next.
-Nothing under `src/` is touched; the PS1 build does not know this directory exists.
+The PS1 game's own code (`../../src`) on a Dreamcast platform layer. What works and what is next: `docs/DREAMCAST.md`.
 
 ## Files
-- `dc_main.c` boot / title / life stages. `dc_gfx.c/.h` the PowerVR layer (2D in the game's 320x240 coordinates doubled, 3D polygons with near-plane clipping, text from the shared 8x8 font, the pad). `dc_life.c` SAN BOREAS from `bm_*`. `dc_stubs.c` the few PS1 services shared code calls. `dc_shared_pre.h` force-included before shared sources (renames the game's `link` that clashes with libc).
-- `Makefile` (KOS). `toolchain/` the scripts that built the toolchain. `../../tools/dcrun.c` the headless emulator runner.
+- `dc_gpu.c` the PS1 GPU: VRAM in RAM, ordering tables to PowerVR vertex lists, texture pages (updated cell by cell), the colour grade, VSync.
+- `dc_psx.c` the GTE and its maths library in C (PS1 fixed point). `psx/` PSn00bSDK headers for the Dreamcast.
+- `dc_spu.c` the PS1 SPU in software, mixed to the AICA. `dc_audio_*.h` let `audio.c` run unchanged (generated from `src/audio.h`).
+- `dc_cd.c` the PS1 CD calls on the disc's ISO9660. `dc_vmu.c` memory card calls on the VMU. `dc_plat.c` pad, RAM, overlays.
+- `dc_extra.c` Dreamcast-only: the VMU screen, the OPTIONS > EXTRAS tab. `dc_prof.c` a sampling profiler for test builds.
+- `mkdisc.py` builds the GD-ROM image. `test/` scripts: `newlife.txt`, `dcopts.txt`, `vmuls.py` (list a VMU image, draw its icons), `profsym.py`.
 
-## Quick restore (prebuilt)
-`ports/dreamcast/toolchain/restore.sh` unpacks the prebuilt toolchain, KOS, flycast core and dcrun into /tmp/dc from the `dc-toolchain` branch (48 MB). A GitHub release was not possible: the build session's GitHub access refuses creating releases (HTTP 403), so the archive lives on that orphan branch instead.
+## Build
+```
+ports/dreamcast/toolchain/restore.sh          # once: sh-elf, KallistiOS, flycast core, dcrun into /tmp/dc
+source /tmp/dc/environ.sh
+cd ports/dreamcast && make disc               # obj/bore2_dc.gdi (+ obj/bore2_dc.elf)
+make O=obj_city AUTO="AUTO_CITY=1" disc       # a test build in its own folder (the PS1's test hooks)
+make PROF=600 ...                             # the profiler: frames 600-1200, top places in the log
+```
+The `.gdi` is the one to play: the songs and voices are on the disc (an `.elf` alone runs silent).
 
-## Toolchain (rebuilt from source in /tmp/dc, C only, -j2; about 1.5 hours on 2 cores)
-Only GitHub is reachable here, so the GNU sources come from mirrors on GitHub. gnu.org, sourceware.org, gcc.gnu.org, PyPI-style package hosts, conda and Ubuntu apt were refused, and were not worked around.
-1. `git clone --depth 1 https://github.com/KallistiOS/kallistios /tmp/dc/kos` (the toolchain builder is `utils/kos-chain`; its profile "stable" = binutils 2.45.1, gcc 15.2.0, newlib 4.6.0).
-2. Sources: binutils 2.46.0, GMP 6.2.1, MPFR 4.2.1, MPC 1.3.1 and flex 2.6.4 from `NetBSD/src` (`external/gpl3/binutils/dist`, `external/lgpl3/*/dist`, `external/bsd/flex/dist`; sparse checkout). gcc from `gcc-mirror/gcc` tag `releases/gcc-15.2.0` (sparse; keep `gcc/testsuite/selftests`, `contrib/texi2pod.pl`, `gcc/d/*.def`, `gcc/rust/*.def`). newlib from `cygwin/cygwin` tag `newlib-4.6.0` (sparse; keep `newlib/doc`). bminor/* mirrors were not reachable.
-3. Run, in order (they patch with KOS's own diffs): `toolchain/build_flex.sh`, `build_binutils.sh`, `prep_gcc.sh`, `build_gcc.sh`, `build_newlib.sh`. (Fixes baked in: NetBSD's bfd Makefile uses bmake's `$>`; NetBSD strips generated lexers, hence host flex; gcc wants empty `gcc/d` and `gcc/rust` build dirs.) One multilib, m4-single little-endian. gcc is C only (no C++).
-4. `source toolchain/environ.sh` (paths to /tmp/dc), then `make -C /tmp/dc/kos/kernel`, `make -C /tmp/dc/kos/addons`, `make -C /tmp/dc/kos/utils/{scramble,makeip,bin2c}`.
-5. `cd ports/dreamcast && source /tmp/dc/environ.sh && make` gives `bore2_dc.elf`.
-
-## Emulator (headless, scriptable)
-flycast (`flyinghead/flycast`, libretro core, `-DLIBRETRO=ON -DUSE_VULKAN=OFF -DUSE_LUA=OFF -DUSE_BREAKPAD=OFF`, submodules libchdr tinygettext(+tinycmmc) asio xbyak rcheevos SDL). No GL dev headers here: `GL/gl.h` was a stand-in (`#include <SDL_opengl.h>` with `NO_SDL_GLEXT`, Khronos `glext.h`, `khrplatform.h`). The core runs the ELF straight in its built-in HLE BIOS (no Sega BIOS needed).
-`tools/dcrun.c` is the frontend: surfaceless EGL on Mesa llvmpipe, scripted pad, PPM screenshots.
-`gcc -O1 -o dcrun tools/dcrun.c -I<libretro.h dir> -ldl` then `dcrun flycast_libretro.so bore2_dc.elf 300 /tmp/shot script.txt` (script lines `frame start|a|up...` or `frame shot`; a shot is also saved at the end). A frame takes about 1 s on llvmpipe, so 300 frames is a few minutes.
+## Emulator (headless)
+`/tmp/dc/pack/bin/dcrun /tmp/dc/pack/bin/flycast_libretro.so obj/bore2_dc.gdi 1000 /tmp/shot [script]`
+Script lines: `frame button` (b = A, a = B, y = X, x = Y, l2 / r2 triggers, start, up...) or `frame shot`.
+It saves PPM shots, the sound (`_audio.raw`, 44.1 kHz stereo) and prints the port's log. A VMU and a Jump Pack are plugged in
+(VMU file in `$DCRUN_SYS/dc/vmu_save_A1.bin`); `DCRUN_VMU=1` shows the VMU screen in the picture.
 
 ## Controls
-START or A on the title. In SAN BOREAS: D-pad walks and turns, A runs, X/Y zoom, B back to the title.
+A = CROSS, B = CIRCLE, X = SQUARE, Y = TRIANGLE, triggers = L1 / R1 (both = L2 + R2), START + both triggers = SELECT.
+
+## Toolchain from source
+See `toolchain/` (binutils 2.46, gcc 15.2, newlib 4.6 from GitHub mirrors, KallistiOS master; about 1.5 hours on 2 cores).
