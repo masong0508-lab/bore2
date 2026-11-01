@@ -163,15 +163,15 @@ static int tex_flags(int ti, const int *u, const int *v, int n) {   // the cells
     return f;
 }
 
-// ---------------------------------------------------------------- the primitives of a frame, sorted into the PVR's lists
-typedef struct { float x[4], y[4], u[4], v[4]; uint32_t c[4]; float z; int8_t n, tex, blend, filt; } Prim;
-#define MAXOP 6000
-#define MAXPT 6000
-#define MAXTR 4000
-static Prim op[MAXOP], pt[MAXPT], tr[MAXTR];
-static int nop, npt, ntr; static float zseq;
+// ---------------------------------------------------------------- the primitives of a frame: PowerVR vertices in three lists
+typedef struct { pvr_vertex_t *v; int n, cap, list, cur_tex, cur_blend; } VList;
+#define VOP 12000
+#define VPT 14000
+#define VTR 14000
+static pvr_vertex_t vb_op[VOP] __attribute__((aligned(32))), vb_pt[VPT] __attribute__((aligned(32))), vb_tr[VTR] __attribute__((aligned(32)));
+static VList vl_op = { vb_op, 0, VOP, PVR_LIST_OP_POLY, -2, -9 }, vl_pt = { vb_pt, 0, VPT, PVR_LIST_PT_POLY, -2, -9 }, vl_tr = { vb_tr, 0, VTR, PVR_LIST_TR_POLY, -2, -9 };
+static float zseq;
 int dc_prims_last;
-
 // drawing state (the GP0 E1..E6 commands and the DRAWENV)
 static DRAWENV cur_env; static int env_set;
 static int dm_tpage = 0x0a, ofs_x, ofs_y, off_screen, mask_set;
@@ -229,39 +229,52 @@ static void emit(int n, const int *x, const int *y, const uint32_t *col, const i
 }
 // One primitive into its list. The PS1 tints a texture by colour/128, so a lit texture can be up to twice as bright as painted; the PVR
 // multiplies by at most 1. A primitive tinted above 128 is drawn at 1, then once more on top, added: the texture times the rest.
+// The primitives go straight into three buffers of PowerVR vertices (opaque, punch-through, translucent), with a polygon header
+// wherever the texture or the blend changes: at the end of the frame each buffer is one copy to the tile accelerator.
+static int hdr_put(VList *L, int tex, int blend);
 static void emit_one(int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr, int var) {
-    Prim *p;
-    if (semi) { if (ntr >= MAXTR) return; p = &tr[ntr]; }
-    else if (textured) { if (npt >= MAXPT) return; p = &pt[npt]; }
-    else { if (nop >= MAXOP) return; p = &op[nop]; }
+    VList *L = semi ? &vl_tr : textured ? &vl_pt : &vl_op;
+    if (L->n + 6 + (semi || !textured ? 0 : 5) > L->cap || vl_tr.n + 6 > vl_tr.cap) return;
+    int ti = textured ? tex_get(tpage, clut, var) : -1;
+    if (textured && ti < 0) return;
     zseq += 1.0f / 4096.0f;
-    p->z = 1.0f + zseq; p->n = (int8_t)n; p->blend = (int8_t)(semi ? abr : -1); p->filt = 0;
-    p->tex = textured ? (int8_t)tex_get(tpage, clut, var) : -1;
-    if (textured && p->tex < 0) return;
+    float z = 1.0f + zseq;
+    int blend = semi ? abr : -1;
+    float fx[4], fy[4], fu[4], fv[4]; uint32_t c4[4];
     int boost = 0, a = abr == 0 ? 128 : abr == 3 ? 64 : 255;
     for (int k = 0; k < n; k++) {
-        p->x[k] = (x[k] + ofs_x - area_x0) * SCALE; p->y[k] = (y[k] + ofs_y - area_y0) * SCALE;
+        fx[k] = (float)((x[k] + ofs_x - area_x0) * 2); fy[k] = (float)((y[k] + ofs_y - area_y0) * 2);
         uint32_t c = textured ? mod_col(col[k], raw) : flat_col(col[k]);
-        if (textured && !raw && ((col[k] & 0x808080) && ((col[k] & 255) > 128 || ((col[k] >> 8) & 255) > 128 || ((col[k] >> 16) & 255) > 128))) boost = 1;
+        if (textured && !raw && ((col[k] & 255) > 128 || ((col[k] >> 8) & 255) > 128 || ((col[k] >> 16) & 255) > 128)) boost = 1;
         if (semi) c = (c & 0xffffff) | (uint32_t)a << 24;
-        p->c[k] = c;
-        if (textured) { p->u[k] = u[k]; p->v[k] = v[k]; }
+        c4[k] = c;
+        if (textured) { fu[k] = (float)u[k]; fv[k] = (float)v[k]; }
     }
     if (textured && n == 4 && !uv_exact) {   // a sprite-like quad that shows texels u0..u1 inclusive: reach to the far edge of the last texel
-        float sw = p->x[1] - p->x[0], uw = p->u[1] - p->u[0], sh = p->y[2] - p->y[0], vh = p->v[2] - p->v[0];
-        if (uw > 0 && sw > 0 && (int)(sw / SCALE + 0.5f) == (int)uw + 1) { p->u[1] += 1; p->u[3] += 1; }
-        if (vh > 0 && sh > 0 && (int)(sh / SCALE + 0.5f) == (int)vh + 1) { p->v[2] += 1; p->v[3] += 1; }
+        float sw = fx[1] - fx[0], uw = fu[1] - fu[0], sh = fy[2] - fy[0], vh = fv[2] - fv[0];
+        if (uw > 0 && sw > 0 && (int)(sw / SCALE + 0.5f) == (int)uw + 1) { fu[1] += 1; fu[3] += 1; }
+        if (vh > 0 && sh > 0 && (int)(sh / SCALE + 0.5f) == (int)vh + 1) { fv[2] += 1; fv[3] += 1; }
     }
-    if (textured) for (int k = 0; k < n; k++) { p->u[k] /= 256.0f; p->v[k] /= 256.0f; }
-    if (semi) ntr++; else if (textured) npt++; else nop++;
-    if (boost && (!semi || abr != 2) && ntr < MAXTR) {   // the part above 1: added (for a blended primitive, at its own blend's share)
-        Prim *q = &tr[ntr++]; *q = *p;
-        q->blend = (int8_t)(!semi ? 1 : abr == 0 ? 4 : abr);
-        for (int k = 0; k < n; k++) {
+    if (textured) for (int k = 0; k < n; k++) { fu[k] *= (1.0f / 256.0f); fv[k] *= (1.0f / 256.0f); }
+    hdr_put(L, ti, blend);
+    pvr_vertex_t *o = &L->v[L->n];
+    for (int k = 0; k < n; k++, o++) {
+        o->flags = k == n - 1 ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX;
+        o->x = fx[k]; o->y = fy[k]; o->z = z; o->u = fu[k]; o->v = fv[k]; o->argb = c4[k]; o->oargb = 0;
+    }
+    L->n += n;
+    if (boost && (!semi || abr != 2)) {   // the part above 1: added (for a blended primitive, at its own blend's share)
+        VList *T = &vl_tr;
+        hdr_put(T, ti, !semi ? 1 : abr == 0 ? 4 : abr);
+        o = &T->v[T->n];
+        for (int k = 0; k < n; k++, o++) {
             uint32_t c = col[k]; int r = (int)(c & 255) - 128, g = (int)((c >> 8) & 255) - 128, b = (int)((c >> 16) & 255) - 128;
             r = r < 0 ? 0 : r * 2; g = g < 0 ? 0 : g * 2; b = b < 0 ? 0 : b * 2; if (r > 255) r = 255; if (g > 255) g = 255; if (b > 255) b = 255;
-            q->c[k] = (uint32_t)(semi ? a : 255) << 24 | (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
+            o->flags = k == n - 1 ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX;
+            o->x = fx[k]; o->y = fy[k]; o->z = z; o->u = fu[k]; o->v = fv[k]; o->oargb = 0;
+            o->argb = (uint32_t)(semi ? a : 255) << 24 | (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
         }
+        T->n += n;
     }
 }
 static void do_poly(const uint32_t *w) {
@@ -384,43 +397,46 @@ void ClearOTag(uint32_t *ot, size_t n) {
     ot[n - 1] = 0xffffff;
 }
 
-static pvr_poly_hdr_t hdr;
-static void submit_list(int list, Prim *ps, int np) {
-    if (!np) return;
-    pvr_list_begin(list);
-    int cur_tex = -2, cur_blend = -9;
-    for (int i = 0; i < np; i++) {
-        Prim *p = &ps[i];
-        if (p->tex != cur_tex || p->blend != cur_blend) {
-            pvr_poly_cxt_t cx;
-            if (p->tex >= 0) pvr_poly_cxt_txr(&cx, list, PVR_TXRFMT_ARGB1555 | PVR_TXRFMT_NONTWIDDLED, 256, 256, tex[(int)p->tex].ptr, PVR_FILTER_NONE);
-            else pvr_poly_cxt_col(&cx, list);
-            cx.gen.culling = PVR_CULLING_NONE;
-            cx.depth.comparison = PVR_DEPTHCMP_GEQUAL;
-            if (list == PVR_LIST_TR_POLY) {
-                cx.gen.alpha = PVR_ALPHA_ENABLE; cx.depth.write = PVR_DEPTHWRITE_DISABLE;
-                if (p->tex >= 0) cx.txr.env = PVR_TXRENV_MODULATEALPHA;
-                switch (p->blend) {
-                    case 0: cx.blend.src = PVR_BLEND_SRCALPHA; cx.blend.dst = PVR_BLEND_INVSRCALPHA; break;   // half and half
-                    case 1: cx.blend.src = PVR_BLEND_SRCALPHA; cx.blend.dst = PVR_BLEND_ONE; break;          // add
-                    case 2: cx.blend.src = PVR_BLEND_ZERO; cx.blend.dst = PVR_BLEND_INVDESTCOLOR; break;     // subtract: back x (1 - front)
-                    default: cx.blend.src = PVR_BLEND_SRCALPHA; cx.blend.dst = PVR_BLEND_ONE; break;         // add a quarter
-                }
-            } else if (p->tex >= 0) cx.txr.env = PVR_TXRENV_MODULATE;
-            pvr_poly_compile(&hdr, &cx);
-            pvr_prim(&hdr, sizeof hdr);
-            cur_tex = p->tex; cur_blend = p->blend;
-        }
-        pvr_vertex_t v; v.oargb = 0;
-        static const int ord4[4] = { 0, 1, 2, 3 };
-        for (int k = 0; k < p->n; k++) {
-            int q = ord4[k];
-            v.flags = k == p->n - 1 ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX;
-            v.x = p->x[q]; v.y = p->y[q]; v.z = p->z; v.u = p->u[q]; v.v = p->v[q]; v.argb = p->c[q];
-            pvr_prim(&v, sizeof v);
-        }
+// a polygon header for (list, texture, blend), compiled once and kept
+int dc_filter;                              // (the Extras page: 1 bilinear filtering of the textures)
+static pvr_poly_hdr_t hcache[3][NTEX + 1][6]; static uint8_t hvalid[3][NTEX + 1][6]; static int hfilter = -1;
+static int hdr_put(VList *L, int ti, int blend) {
+    if (ti == L->cur_tex && blend == L->cur_blend) return 0;
+    if (hfilter != dc_filter) { memset(hvalid, 0, sizeof hvalid); hfilter = dc_filter; }
+    int li = L->list == PVR_LIST_OP_POLY ? 0 : L->list == PVR_LIST_PT_POLY ? 1 : 2, list = L->list;
+    pvr_poly_hdr_t *h = &hcache[li][ti + 1][blend + 1];
+    if (!hvalid[li][ti + 1][blend + 1]) {
+        pvr_poly_cxt_t cx;
+        if (ti >= 0) pvr_poly_cxt_txr(&cx, list, PVR_TXRFMT_ARGB1555 | PVR_TXRFMT_NONTWIDDLED, 256, 256, tex[ti].ptr, dc_filter ? PVR_FILTER_BILINEAR : PVR_FILTER_NONE);
+        else pvr_poly_cxt_col(&cx, list);
+        cx.gen.culling = PVR_CULLING_NONE;
+        cx.depth.comparison = PVR_DEPTHCMP_GEQUAL;
+        if (list == PVR_LIST_TR_POLY) {
+            cx.gen.alpha = PVR_ALPHA_ENABLE; cx.depth.write = PVR_DEPTHWRITE_DISABLE;
+            if (ti >= 0) cx.txr.env = PVR_TXRENV_MODULATEALPHA;
+            switch (blend) {
+                case 0: cx.blend.src = PVR_BLEND_SRCALPHA; cx.blend.dst = PVR_BLEND_INVSRCALPHA; break;   // half and half
+                case 1: cx.blend.src = PVR_BLEND_SRCALPHA; cx.blend.dst = PVR_BLEND_ONE; break;          // add
+                case 2: cx.blend.src = PVR_BLEND_ZERO; cx.blend.dst = PVR_BLEND_INVDESTCOLOR; break;     // subtract: back x (1 - front)
+                default: cx.blend.src = PVR_BLEND_SRCALPHA; cx.blend.dst = PVR_BLEND_ONE; break;         // add a quarter (3); a brightening pass (4)
+            }
+        } else if (ti >= 0) cx.txr.env = PVR_TXRENV_MODULATE;
+        pvr_poly_compile(h, &cx);
+        hvalid[li][ti + 1][blend + 1] = 1;
     }
+    memcpy(&L->v[L->n], h, 32); L->n++;
+    L->cur_tex = ti; L->cur_blend = blend;
+    return 1;
+}
+static void submit_list(VList *L) {
+    if (!L->n) return;
+    pvr_list_begin(L->list);
+    pvr_prim(L->v, (size_t)L->n * 32);
     pvr_list_finish();
+}
+static void lists_reset(void) {
+    vl_op.n = vl_pt.n = vl_tr.n = 0;
+    vl_op.cur_tex = vl_pt.cur_tex = vl_tr.cur_tex = -2; vl_op.cur_blend = vl_pt.cur_blend = vl_tr.cur_blend = -9;
 }
 
 int dc_frames;
@@ -434,7 +450,7 @@ int DrawOTag(const uint32_t *ot) {
     if (env_set && cur_env.isbg) bg_rgb = cur_env.r0 | cur_env.g0 << 8 | (uint32_t)cur_env.b0 << 16;
     const uint32_t *p = ot;
     int guard = 0;
-    nop = npt = ntr = 0; zseq = 0;
+    lists_reset(); zseq = 0;
     while (guard++ < 400000) {
         uint32_t hdrw = *p, n = hdrw >> 24, next = hdrw & 0xffffff;
         if (n) run_packet(p + 1, (int)n);
@@ -442,22 +458,20 @@ int DrawOTag(const uint32_t *ot) {
         p = (const uint32_t *)(0x8c000000u | next);
     }
     if (!frame) return 0;
-    if (off_screen && nop + npt + ntr == 0) return 0;   // (a sprite cell's list: all of it went into VRAM)
-    dc_prims_last = nop + npt + ntr;
+    if (off_screen && vl_op.n + vl_pt.n + vl_tr.n == 0) return 0;   // (a sprite cell's list: all of it went into VRAM)
+    dc_prims_last = vl_op.n + vl_pt.n + vl_tr.n;
     pvr_wait_ready();
     pvr_set_bg_color((bg_rgb & 255) / 255.0f, ((bg_rgb >> 8) & 255) / 255.0f, ((bg_rgb >> 16) & 255) / 255.0f);
     pvr_scene_begin();
-    submit_list(PVR_LIST_OP_POLY, op, nop);
-    submit_list(PVR_LIST_PT_POLY, pt, npt);
-    submit_list(PVR_LIST_TR_POLY, tr, ntr);
+    submit_list(&vl_op); submit_list(&vl_pt); submit_list(&vl_tr);
     pvr_scene_finish();
     {   // the log, every 100 frames: frames per second over them (real vblanks), the game's own CPU time a frame (hblanks, 262 = 1/60 s), the GPU side
         extern volatile int dc_vbl; extern int dc_spu_voices_on, dc_spu_peak, gfx_last_cpu; static int last_vbl, cpu_sum, cpu_max;
         cpu_sum += gfx_last_cpu; if (gfx_last_cpu > cpu_max) cpu_max = gfx_last_cpu;
         if (dc_frames % 100 == 0) {
             int dv = dc_vbl - last_vbl; last_vbl = dc_vbl;
-            dc_logf("f%d fps %d.%d cpu %d max %d hb | prims %d/%d/%d pages %d cells %d pvrfree %d | snd on %d peak %d\n", dc_frames, dv ? 6000 / dv : 0, dv ? (60000 / dv) % 10 : 0,
-                    cpu_sum / 100, cpu_max, nop, npt, ntr, dc_tex_uploads, dc_tex_cells, (int)pvr_mem_available(), dc_spu_voices_on, dc_spu_peak);
+            dc_logf("f%d fps %d.%d cpu %d max %d hb | verts %d/%d/%d pages %d cells %d pvrfree %d | snd on %d peak %d\n", dc_frames, dv ? 6000 / dv : 0, dv ? (60000 / dv) % 10 : 0,
+                    cpu_sum / 100, cpu_max, vl_op.n, vl_pt.n, vl_tr.n, dc_tex_uploads, dc_tex_cells, (int)pvr_mem_available(), dc_spu_voices_on, dc_spu_peak);
             cpu_sum = cpu_max = 0;
         }
     }
