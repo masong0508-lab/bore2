@@ -5,6 +5,37 @@
 #include "fonttex.inc"
 #include "fonttex_ui.inc"   // (size 3: the menus' and the HUD's type, the medium font shrunk smooth)
 
+#ifdef BORE_DC
+#include <string.h>
+// Dreamcast pad: the PS1 button names in the texts become the Dreamcast's (X = A, O = B, SQ / SQUARE = X, TRI / TRIANGLE = Y), whole words only
+static int dc_wc(int c) { return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '\'' || c == '$' || c == '%'; }
+static const char *dc_btn(const char *s, char *buf) {
+    static const struct { const char *from, *to; } m[] = { { "CROSS", "A" }, { "CIRCLE", "B" }, { "SQUARE", "X" }, { "TRIANGLE", "Y" }, { "SQ", "X" }, { "TRI", "Y" }, { "X", "A" }, { "O", "B" } };
+    int o = 0, hit = 0;
+    for (const char *p = s; *p;) {
+        int prev = p > s ? p[-1] : ' ';
+        if (dc_wc(*p) && !dc_wc(prev) && prev != '.') {
+            int k;
+            for (k = 0; k < 8; k++) {
+                int l = (int)strlen(m[k].from);
+                if (strncmp(p, m[k].from, (size_t)l)) continue;
+                int nx = p[l];
+                if (dc_wc(nx) || nx == '.' || nx == '-' || nx == ':') continue;
+                if (o + 2 >= 600) return s;
+                buf[o++] = m[k].to[0]; p += l; hit = 1; break;
+            }
+            if (k < 8) continue;
+        }
+        if (o + 2 >= 600) return s;
+        buf[o++] = *p++;
+    }
+    if (!hit) return s;
+    buf[o] = 0; return buf;
+}
+#define DC_BTN(s) char dcb_[600]; s = dc_btn(s, dcb_)
+#else
+#define DC_BTN(s)
+#endif
 static TexRef sheet[4];
 static s8 idx_of[128];
 // (size 0, the old small sheet, nothing draws any more: it is the ui type, so a stray 0 still prints)
@@ -38,13 +69,13 @@ void font_init(void) {
 
 int font_line(int size) { return line_h[CLAMP(size, 0, 3)]; }
 int font_w(int size, const char *s) {
-    size = CLAMP(size, 0, 3); int w = 0;
+    DC_BTN(s); size = CLAMP(size, 0, 3); int w = 0;
     for (; *s; s++) { int c = (u8)*s; int i = c < 128 ? idx_of[c] : -1; w += i < 0 ? space_w[size] : glyph[size][i][3]; }
     return w;
 }
 int font_sub;   // 1: the glyphs are taken away from what is under them (dark ink on a white card); 0: added (light text)
 void font_text(int x, int y, int size, const char *s, int r, int g, int b) {
-    size = CLAMP(size, 0, 3);
+    DC_BTN(s); size = CLAMP(size, 0, 3);
     TexRef tt = sheet[size]; const TexRef *t = &tt; int lh = line_h[size], top = top_rows[size];
     if (font_sub) tt.tpage = (u16)((tt.tpage & ~(3 << 5)) | (2 << 5));   // (subtract: the colour given is what to take away)
     y -= top;                                                 // y is the top of the capitals, like the GBA game
@@ -61,7 +92,7 @@ void font_textc(int cx, int y, int size, const char *s, int r, int g, int b) { f
 // the medium type blown up zoom times (big arcade words: "K.O.", "ROUND 1"); x is the left edge, y the capitals' top
 int font_w_zoom(int zoom, const char *s) { return font_w(1, s) * zoom; }
 void font_text_zoom(int x, int y, int zoom, const char *s, int r, int g, int b) {
-    const int size = 1; TexRef tt = sheet[size]; int lh = line_h[size], top = top_rows[size];
+    DC_BTN(s); const int size = 1; TexRef tt = sheet[size]; int lh = line_h[size], top = top_rows[size];
     if (font_sub) tt.tpage = (u16)((tt.tpage & ~(3 << 5)) | (2 << 5));
     y -= top * zoom;
     for (; *s; s++) {
