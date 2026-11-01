@@ -44,4 +44,7 @@ if nn:
     f=rd('dbg_sum_far',6); print('far pass per frame: quads %.0f (clipped %.0f) cone tests %.0f | prims land %.0f buildings %.0f trees %.0f'%tuple(x/nn for x in f))
 
 if nn:
-    f=rd('dbg_sum_miss',4); print('per frame: height-corner misses %.0f | block hill misses %.0f | bm_terrain calls %.0f | (spare) %.0f'%tuple(x/nn for x in f))
+    f=rd('dbg_sum_miss',4); print('per frame: height-corner misses %.0f | block hill misses %.0f | bm_terrain calls %.0f | far ring hb %.0f'%tuple(x/nn for x in f))
+
+if nn:
+    print('far roads hb per frame %.0f'%(rd('dbg_sum_roads')[0]/nn))

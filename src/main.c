@@ -187,7 +187,7 @@ static int shed_lvl;   // (LAGFIX: now 0..4; 4 = emergency, the far pass off)
 static int det_opt = 12;                                      // the FULL DETAIL option's range (the range in use dips under it when frames run long)
 int dbg_slow[16][8], dbg_slow_n;
 int avg_cpu16, avg_world16, avg_hh16, hist_cpu[5], avg_prof16[8];
-int dbg_sum_far[6], dbg_miss[4], dbg_sum_miss[4];   // (test readouts: the far pass's quads, clipped quads, cone tests, and prims: land, buildings, trees)
+int dbg_sum_far[6], dbg_miss[4], dbg_sum_miss[4], dbg_roads_hb, dbg_sum_roads;   // (test readouts: the far pass's quads, clipped quads, cone tests, and prims: land, buildings, trees)
 int dbg_life_n, dbg_life_vb, dbg_life_vb0, dbg_sum_cpu, dbg_sum_prof[8], dbg_sum_part[6], dbg_sum_lg[4], dbg_sum_w[8], dbg_sum_pn[8], dbg_sum_shed, dbg_sum_r;   // (test readouts over the whole stay in the city: frames, vblanks they took, their summed cost)
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
@@ -4621,7 +4621,7 @@ int main(void) {
             if (!dbg_life_n) dbg_life_vb0 = VSync(-1); dbg_life_n++; dbg_life_vb = VSync(-1) - dbg_life_vb0; dbg_sum_cpu += t_cpu; for (int k = 0; k < 8; k++) dbg_sum_prof[k] += gfx_prof[k];
             { extern int world_hb_l0, world_hb_up, world_hb_roofs, world_hb_sky1; dbg_sum_w[0] += world_hb_l0; dbg_sum_w[1] += world_hb_up; dbg_sum_w[2] += world_hb_roofs; dbg_sum_w[3] += world_hb_sky1; { extern int far_hb[3]; dbg_sum_w[4] += far_hb[0]; dbg_sum_w[5] += far_hb[1]; dbg_sum_w[6] += far_hb[2]; } }
             { extern int gfx_profn[8]; for (int k = 0; k < 8; k++) dbg_sum_pn[k] += gfx_profn[k]; }
-            { extern int far_nquad, far_nclip, far_ncone, far_np[3]; dbg_sum_far[0] += far_nquad; dbg_sum_far[1] += far_nclip; dbg_sum_far[2] += far_ncone; dbg_sum_far[3] += far_np[0]; dbg_sum_far[4] += far_np[1]; dbg_sum_far[5] += far_np[2]; for (int k = 0; k < 4; k++) { dbg_sum_miss[k] += dbg_miss[k]; dbg_miss[k] = 0; } }
+            { extern int far_nquad, far_nclip, far_ncone, far_np[3]; dbg_sum_far[0] += far_nquad; dbg_sum_far[1] += far_nclip; dbg_sum_far[2] += far_ncone; dbg_sum_far[3] += far_np[0]; dbg_sum_far[4] += far_np[1]; dbg_sum_far[5] += far_np[2]; for (int k = 0; k < 4; k++) { dbg_sum_miss[k] += dbg_miss[k]; dbg_miss[k] = 0; } dbg_sum_roads += dbg_roads_hb; dbg_roads_hb = 0; }
             { extern int world_detail_r; dbg_sum_shed += shed_lvl; dbg_sum_r += world_detail_r; }
             dbg_sum_part[0] += t_upd; dbg_sum_part[1] += t_logic; dbg_sum_part[2] += t_world; dbg_sum_part[3] += t_sims; dbg_sum_part[4] += t_bub; dbg_sum_part[5] += t_hud;
             for (int k = 0; k < 8; k++) avg_prof16[k] += gfx_prof[k] - (avg_prof16[k] >> 4); }

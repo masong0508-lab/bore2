@@ -382,7 +382,7 @@ static void draw_roads(int hills) {
     int cbx = ax / BM_BLK, cby = ay / BM_BLK;
     if (rdc_bx == -99999 || ABS(cbx - (rdc_bx + RD_R)) > 6 || ABS(cby - (rdc_by + RD_R)) > 6 || rdc_stamp != bm_edit_stamp) { roads_fill(cbx, cby); rdc_stamp = bm_edit_stamp; }
     { u32 *w = (u32 *)rdc; for (int k = 0; k < RD_W * RD_W / 4; k++) w[k] &= 0x07070707u; rdc[RD_W - 1][RD_W - 1] &= 7; }      // (the marks of last frame's runs off: four a time)
-    const int reach = MIN(max_ground, M2U(450)), RW = 3 * TILE, maxrun = hills ? 3 : 99;
+    const int reach = MIN(max_ground, M2U(160)), RW = 3 * TILE, maxrun = hills ? 3 : 99;
     #define IN_WIN(bx, by) (world_wbx >= 0 && (bx) >= world_wbx && (bx) < world_wbx + MW / BM_BLK && (by) >= world_wby && (by) < world_wby + MH / BM_BLK)
     // only the blocks within reach of the eye (the table holds 49 x 49: reach is usually a good deal less)
     const int rb = reach / (BM_BLK * TILE) + 2, ei = cbx - rdc_bx, ej = cby - rdc_by;
@@ -397,6 +397,8 @@ static void draw_roads(int hills) {
         while (n < maxrun) { int ii = i + (pass ? 0 : n), jj = j + (pass ? n : 0); if (ii > 2 * RD_R || jj > 2 * RD_R || !(rdc[jj][ii] & bit) || (rdc[jj][ii] & (bit << 4)) || IN_WIN(rdc_bx + ii, rdc_by + jj)) break; n++; }
         int len = n * BM_BLK * TILE, x0, x1, z0, z1;
         if (pass == 0) { x0 = px; x1 = px + len; z0 = pz; z1 = pz - RW; } else { x0 = px; x1 = px + RW; z0 = pz; z1 = pz - len; }
+        if (!in_cone((x0 + x1) / 2, (z0 + z1) / 2, (len > RW ? len : RW) / 2 + TILE, reach + len)) {   // (out of the view: behind you, or off to the side)
+            for (int k = 0; k < n; k++) rdc[j + (pass ? k : 0)][i + (pass ? 0 : k)] |= (u8)(bit << 4); continue; }
         int hh[4], *hp = 0;
         if (hills) { hh[0] = world_gh(x0, z0); hh[1] = world_gh(x1, z0); hh[2] = world_gh(x1, z1); hh[3] = world_gh(x0, z1); hp = hh; }
         int r = 70, g = 70, b = 74; season_rgb(2, &r, &g, &b); r = r * 3 / 4; g = g * 3 / 4; b = b * 3 / 4;
@@ -447,7 +449,7 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
                 ground_quad(cx * 4 * TILE, (cx + sp) * 4 * TILE, -(cy * 4 * TILE), -((cy + sp) * 4 * TILE), r->key & 255, (r->key >> 16) & 255, (r->key >> 8) & 255, OT_GROUND_WIN, hh); } }
         else
         ground_quad(r->x0 * 4 * TILE, r->x1 * 4 * TILE, -(r->y0 * 4 * TILE), -(r->y1 * 4 * TILE), r->key & 255, (r->key >> 16) & 255, (r->key >> 8) & 255, OT_GROUND_WIN, 0); }
-    far_hb_win = gfx_hb();
+    far_hb_win = gfx_hb(); { extern int dbg_miss[4]; dbg_miss[3] += far_hb_win - far_hb_win0; }
     // 2. past the window: the land's cells (77 m)
     int reach = max_ground / (CELL_T * TILE) + 1;
     int pcx = pbx / FCB, pcy = pby / FCB;
@@ -479,7 +481,7 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
         }
         row_end();
     }
-    draw_roads(hills);
+    { int t_ = gfx_hb(); draw_roads(hills); extern int dbg_roads_hb; dbg_roads_hb += gfx_hb() - t_; }
     for (int i = 0; i < nrect; i++) { const Rect *r = &rects[i]; int R, G, B; cell_rgb((int)r->key, &R, &G, &B);
         int x0 = ((gx0 + r->x0) * 2 * CELL_T - fwx0) * TILE, x1 = ((gx0 + r->x1) * 2 * CELL_T - fwx0) * TILE;
         int z0 = -(((gy0 + r->y0) * 2 * CELL_T - fwy0) * TILE), z1 = -(((gy0 + r->y1) * 2 * CELL_T - fwy0) * TILE);
