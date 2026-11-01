@@ -208,6 +208,7 @@ static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sim
 static int travel_sel;
 int dbg_shift_hb, dbg_shifts;
 #ifdef AB_CFG
+volatile u8 ab_par[20] = { 'A', 'B', 'P', 'R' };   // (test builds: 16 tuning bytes, 0 = the built-in value; patched in the disc image by tools/perf/abcfg.py, AB_PAR="k=v,k=v")
 volatile u8 ab_cfg[8] = { 'A', 'B', 'C', 'F', 1, 2, 0, 0 };   // (test builds: camera 1..5, VIEW DISTANCE 0..5, helper off; patched in the disc image by tools/perf/abcfg.py)
 #endif
 static void taxi_to_block(int bx, int by, int tx, int ty, const char *where);

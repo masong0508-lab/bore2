@@ -201,7 +201,7 @@ static FB fb[FB_MAX]; static u8 fb_sto[FB_MAX]; static int nfb;
 #define FSTO(f) fb_sto[(f) - fb]
 static u16 fb_lo[64], fb_hi[64];             // each town's run in fb
 #define FBC_MAX 900
-static u16 fbc_cx[FBC_MAX], fbc_cy[FBC_MAX], fbc_lo[FBC_MAX], fbc_hi[FBC_MAX]; static int nfbc;   // the runs by cell (4x4 blocks)
+static u16 fbc_cx[FBC_MAX], fbc_cy[FBC_MAX], fbc_lo[FBC_MAX], fbc_hi[FBC_MAX]; static u8 fbc_sto[FBC_MAX]; static int nfbc;   // (a cell's tallest building in fbc_sto: a cell too far for even that to show is passed over whole)   // the runs by cell (4x4 blocks)
 static u16 fbs_lo[64], fbs_hi[64];           // each town's cells
 static const u8 has_bld[LOT_N] = { 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0 };
 // each lot's building, block-relative tiles (x0, y0, x1, y1) and roof (0 flat, 1 pitched)
@@ -242,7 +242,8 @@ void far_new_world(void) {
         for (int a = fb_lo[i]; a < nfb; ) {
             int cx = fb[a].bx >> 2, cy = fb[a].by >> 2, b = a;
             while (b < nfb && (fb[b].bx >> 2) == cx && (fb[b].by >> 2) == cy) b++;
-            if (nfbc < FBC_MAX) { fbc_cx[nfbc] = (u16)cx; fbc_cy[nfbc] = (u16)cy; fbc_lo[nfbc] = (u16)a; fbc_hi[nfbc] = (u16)b; nfbc++; }
+            if (nfbc < FBC_MAX) { int mx_ = 0; for (int q = a; q < b; q++) if (fb_sto[q] > mx_) mx_ = fb_sto[q];
+                fbc_cx[nfbc] = (u16)cx; fbc_cy[nfbc] = (u16)cy; fbc_lo[nfbc] = (u16)a; fbc_hi[nfbc] = (u16)b; fbc_sto[nfbc] = (u8)mx_; nfbc++; }
             a = b;
         }
         fbs_hi[i] = (u16)nfbc;
@@ -458,14 +459,48 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
     // 2. past the window: the land's cells (77 m)
     int reach = max_ground / (CELL_T * TILE) + 1;
     int pcx = pbx / FCB, pcy = pby / FCB;
+    const int lod2_u = M2U(far_lite ? 350 : 600), lod4_u = M2U(far_lite ? 800 : 1200);
     static u8 vis2[FC / 2 + 2][FC / 2 + 2];                      // 2x2 groups of cells the view might take in
     int gx0 = (pcx - reach) >> 1, gy0 = (pcy - reach) >> 1, gn = MIN(FC / 2 + 1, reach + 2);
     if (gx0 != lat_gx0 || gy0 != lat_gy0 || lat_stamp != bm_edit_stamp) { for (int y = 0; y < LAT_N; y++) for (int x = 0; x < LAT_N; x++) lat[y][x] = 0x7fff; lat_gx0 = gx0; lat_gy0 = gy0; lat_stamp = bm_edit_stamp; }   // (the lattice moved, which is rare, or the land changed)
-    for (int gy = 0; gy <= gn; gy++) for (int gx = 0; gx <= gn; gx++) {
-        int cx = (gx0 + gx) * 2, cy = (gy0 + gy) * 2;
+    for (int sy = 0; sy <= gn; sy += 4) for (int sx = 0; sx <= gn; sx += 4) {   // (4 x 4 groups at a time: the cone is tested for the whole block first, and group by group only where the block is in it)
+        int cx = (gx0 + sx) * 2, cy = (gy0 + sy) * 2;
         int x0 = (cx * CELL_T - fwx0) * TILE, z0 = -((cy * CELL_T - fwy0) * TILE);
-        vis2[gy][gx] = (u8)in_cone(x0 + CELL_T * TILE, z0 - CELL_T * TILE, CELL_T * TILE * 3 / 2, max_ground);
+        int any = in_cone(x0 + 4 * CELL_T * TILE, z0 - 4 * CELL_T * TILE, 4 * CELL_T * TILE * 3 / 2 + CELL_T * TILE, max_ground);
+        for (int gy = sy; gy < sy + 4 && gy <= gn; gy++) for (int gx = sx; gx < sx + 4 && gx <= gn; gx++) {
+            if (!any) { vis2[gy][gx] = 0; continue; }
+            int cx2 = (gx0 + gx) * 2, cy2 = (gy0 + gy) * 2;
+            int xx = (cx2 * CELL_T - fwx0) * TILE, zz = -((cy2 * CELL_T - fwy0) * TILE);
+            vis2[gy][gx] = (u8)in_cone(xx + CELL_T * TILE, zz - CELL_T * TILE, CELL_T * TILE * 3 / 2, max_ground);
+        }
     }
+    // far out the land is drawn in blocks of 2 x 2 groups (308 m), and further still 4 x 4 (616 m): a quad each, the lattice's alternate corners, the colour
+    // of the block's middle cells. The blocks sit on the world's own grid (they never shift as you move; a block comes in or goes out whole, in the haze).
+    // Their groups are taken out of the rectangles below.
+    for (int S = 4; S >= 2; S >>= 1) {
+        const int thr = S == 4 ? lod4_u : lod2_u;
+        for (int gy = 0; gy + S <= gn + 1; gy++) {
+            if ((gy0 + gy) & (S - 1)) continue;
+            for (int gx = 0; gx + S <= gn + 1; gx++) {
+                if ((gx0 + gx) & (S - 1)) continue;
+                int taken = 0, seen = 0;
+                for (int j = 0; j < S; j++) for (int i = 0; i < S; i++) { taken |= vis2[gy + j][gx + i] == 2; seen |= vis2[gy + j][gx + i] == 1; }
+                if (taken || !seen) continue;
+                int ax = ((gx0 + gx) * 2 * CELL_T - fwx0) * TILE, bz = -(((gy0 + gy) * 2 * CELL_T - fwy0) * TILE), g2 = S * 2 * CELL_T * TILE;
+                if (MAX(ABS(ax + g2 / 2 - feye.vx), ABS(bz - g2 / 2 - feye.vz)) <= thr) continue;
+                int ix = (gx0 + gx) * 2 - fc_x0 + S - 1, iy = (gy0 + gy) * 2 - fc_y0 + S - 1;
+                if (ix < 0 || iy < 0 || ix + 1 >= FC || iy + 1 >= FC) continue;
+                int a = fcell[iy][ix], b = fcell[iy][ix + 1], c = fcell[iy + 1][ix], d = fcell[iy + 1][ix + 1];
+                int t = (a == b || a == c || a == d) ? a : (b == c || b == d) ? b : c == d ? c : a;
+                for (int j = 0; j < S; j++) for (int i = 0; i < S; i++) vis2[gy + j][gx + i] = 2;
+                int R, G, B; cell_rgb(t, &R, &G, &B);
+                if (hills) { int hq[4] = { lat_h(gx, gy, ax, bz), lat_h(gx + S, gy, ax + g2, bz), lat_h(gx + S, gy + S, ax + g2, bz - g2), lat_h(gx, gy + S, ax, bz - g2) };
+                    ground_quad(ax, ax + g2, bz, bz - g2, R, G, B, OT_GROUND_FAR, hq); }
+                else ground_quad(ax, ax + g2, bz, bz - g2, R, G, B, OT_GROUND_FAR, 0);
+            }
+        }
+    }
+    for (int gy = 0; gy <= gn; gy++) for (int gx = 0; gx <= gn; gx++) vis2[gy][gx] &= 1;   // (taken groups: not again)
     // in 2x2 groups (154 m: the window's own floor covers the first 50 m round you): each the colour most of its four cells are
     rows_begin();
     for (int gy = 0; gy <= gn; gy++) {
@@ -487,7 +522,6 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
         row_end();
     }
     if (!far_lite) { int t_ = gfx_hb(); draw_roads(hills); extern int dbg_roads_hb; dbg_roads_hb += gfx_hb() - t_; }
-    const int lod2_u = M2U(far_lite ? 350 : 600);
     for (int i = 0; i < nrect; i++) { const Rect *r = &rects[i]; int R, G, B; cell_rgb((int)r->key, &R, &G, &B);
         int x0 = ((gx0 + r->x0) * 2 * CELL_T - fwx0) * TILE, x1 = ((gx0 + r->x1) * 2 * CELL_T - fwx0) * TILE;
         int z0 = -(((gy0 + r->y0) * 2 * CELL_T - fwy0) * TILE), z1 = -(((gy0 + r->y1) * 2 * CELL_T - fwy0) * TILE);
@@ -495,14 +529,6 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
             for (int j = 0; j < nz; j++) for (int i = 0; i < nx; i++) {
                 int ax = x0 + i * gs, bz = z0 - j * gs;
                 int lx = r->x0 + i, ly = r->y0 + j;
-                {   // (far out, a quad to every 2 x 2 groups: the lattice's alternate corners; the haze hides the difference. The pair is drawn from its top left.)
-                    int ox = (gx0 + lx) & 1, oy = (gy0 + ly) & 1, i0 = i - ox, j0 = j - oy;
-                    if (i0 >= 0 && j0 >= 0 && i0 + 1 < nx && j0 + 1 < nz) {
-                        int pcx = x0 + (i0 + 1) * gs, pcz = z0 - (j0 + 1) * gs;
-                        if (MAX(ABS(pcx - feye.vx), ABS(pcz - feye.vz)) > lod2_u) {
-                            if (ox | oy) continue;
-                            int g2 = 2 * gs, hq[4] = { lat_h(lx, ly, ax, bz), lat_h(lx + 2, ly, ax + g2, bz), lat_h(lx + 2, ly + 2, ax + g2, bz - g2), lat_h(lx, ly + 2, ax, bz - g2) };
-                            ground_quad(ax, ax + g2, bz, bz - g2, R, G, B, OT_GROUND_FAR, hq); continue; } } }
                 int hh[4] = { lat_h(lx, ly, ax, bz), lat_h(lx + 1, ly, ax + gs, bz), lat_h(lx + 1, ly + 1, ax + gs, bz - gs), lat_h(lx, ly + 1, ax, bz - gs) };
                 ground_quad(ax, ax + gs, bz, bz - gs, R, G, B, OT_GROUND_FAR, hh); } }
         else
@@ -622,6 +648,8 @@ static void draw_buildings(void) {
         for (int c = fbs_lo[i]; c < fbs_hi[i]; c++) {
           int ccx = ((fbc_cx[c] * 4 + 2) * BM_BLK - fwx0) * TILE, ccz = -(((fbc_cy[c] * 4 + 2) * BM_BLK - fwy0) * TILE);
           if (!in_cone(ccx, ccz, CELL_T * TILE * 3 / 4, far2)) continue;
+          { int cdx = ABS(ccx - feye.vx), cdz = ABS(ccz - feye.vz), cd = MAX(cdx, cdz) + MIN(cdx, cdz) / 2 - CELL_T * TILE * 3 / 2;   // (the nearest any of its buildings can be: none of them tall enough to show)
+            if (cd > 0 && 230 * fbc_sto[c] * WALL_FULL < cd * 2) continue; }
           for (int k = fbc_lo[c]; k < fbc_hi[c]; k++) {
             const FB *f = &fb[k];
             if (f->bx >= world_wbx && f->bx < world_wbx + MW / BM_BLK && f->by >= world_wby && f->by < world_wby + MH / BM_BLK) continue;   // (the map draws its own)

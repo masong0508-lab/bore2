@@ -2092,12 +2092,25 @@ static XV cc_tmp[8]; static int cc_tmpi;
 #define NC_NEAR_TP 2600                 // third person: close and running away from the eye goes this way too (the floor and walls near you)
 #define NC_BUDGET 320                   // pieces a frame may be split into past the first cut (keeps a crowded view from costing a frame)
 #ifndef NC_WDIV
-#define NC_WDIV 4                       // third person: a piece is cut again while its far corners are this much (1/n) deeper than its near ones...
+#ifdef AB_CFG
+extern volatile u8 ab_par[20];
+#define AB_PAR(k, d) (ab_par[4 + (k)] ? ab_par[4 + (k)] : (d))
+#else
+#define AB_PAR(k, d) (d)
+#endif
+#define NC_WDIV AB_PAR(0, 4)
+#define NC_WW AB_PAR(1, 96)
+#define NC_WH AB_PAR(2, 72)
+#define NC_BIGW (AB_PAR(3, 220) * 4)
+#define NC_BIGH (AB_PAR(4, 115) * 4)
+#define NC_XXOLD 4                       // third person: a piece is cut again while its far corners are this much (1/n) deeper than its near ones...
 #endif
 #ifndef NC_WW
-#define NC_WW 64                        // ...and it is wider than this or taller than NC_WH on the screen
-#define NC_WH 48
+#define NC_WW 96                        // ...and it is wider than this or taller than NC_WH on the screen
+#define NC_WH 72
 #endif
+#define NC_BIGW 880                     // a piece wider or taller than this (px) is cut in two
+#define NC_BIGH 460
 #define NC_DEPTH 5                      // a quad is split at most this many times
 #define NXY(v) ((u32)(u16)(v)->x | ((u32)(u16)(v)->y << 16))
 typedef struct { int x, y, z, u, v, r, g, b, sx, sy; } NV;   // a corner: view-space position, texel, colour; and where it lands on the screen
@@ -2167,7 +2180,7 @@ static void nc_piece(const NV *p0, const NV *p1, const NV *p2, const NV *p3, int
     }
     if (x1 < 0 || x0 >= SCREEN_W || y1 < 0 || y0 >= SCREEN_H) return;                         // off the screen
     int sw = x1 - x0, sh = y1 - y0;
-    int big = sw > 560 || sh > 330;                                                            // too big for the GPU (and its +-1024 corners) to be sure of
+    int big = sw > NC_BIGW || sh > NC_BIGH || x0 < -1000 || x1 > 1000 || y0 < -1000 || y1 > 1000;   // too big for the GPU to draw (a polygon over 1023 wide or 511 tall is dropped; its corners must be inside +-1024)
     int warp = 0;   // a textured piece running away from the eye: it would swim (the PlayStation maps a quad flat, not in perspective)
     if (nq_tex) {
         if (world_fp) warp = zhi * 2 > zlo * 3 && zlo < NC_NEAR_FP && (sw > 64 || sh > 48);
@@ -2182,7 +2195,7 @@ static void nc_piece(const NV *p0, const NV *p1, const NV *p2, const NV *p3, int
         else { nc_mid(&m0, p0, p3); nc_mid(&m1, p1, p2); nc_piece(p0, p1, &m1, &m0, depth + 1); nc_piece(&m0, &m1, p2, p3, depth + 1); }
         return;
     }
-    if (sw > 700 || sh > 340) return;                                                          // (split as far as it goes and still too big: leave it)
+    if (sw > NC_BIGW + 100 || sh > NC_BIGH + 40) return;                                       // (split as far as it goes and still too big: leave it)
     XV v[5];
     for (int i = 0; i < n; i++) { v[i].x = (short)o[i]->sx; v[i].y = (short)o[i]->sy; v[i].z = o[i]->z; }
     if (n == 3) nc_put(&v[0], &v[1], &v[2], &v[2], o[0], o[1], o[2], o[2]);

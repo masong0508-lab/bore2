@@ -8,3 +8,10 @@ i = d.find(b'ABCF')
 assert i >= 0 and d.find(b'ABCF', i + 1) < 0, 'magic not found once'
 d[i + 4], d[i + 5], d[i + 6], d[i + 7] = cam, view, off, pin   # (pin: hold the far view's helper step: 1 as chosen, 2 to 4 shorter, 5 lite, 6 none; 0 the helper decides)
 open(p, 'wb').write(d)
+import os
+par = os.environ.get('AB_PAR')
+if par:   # AB_PAR="0=5,1=96": tuning bytes of an AB_CFG build (src/world.c and others read them with ab_par(k, default))
+    d = bytearray(open(p_ := sys.argv[1], 'rb').read()); j = d.find(b'ABPR'); assert j >= 0
+    for kv in par.split(','):
+        k, v = kv.split('='); d[j + 4 + int(k)] = int(v)
+    open(sys.argv[1], 'wb').write(d)
