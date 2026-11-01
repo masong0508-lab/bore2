@@ -189,6 +189,11 @@ Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build 
 ![seasons](ds_shots/d50_seasons.png)
 - Not done: textures on the things you buy and on the Map's small house picture.
 
+**Done at D51 (`bore2_dsi_d51.nds`): the skate plaza holds 30 fps**
+- While you ride, the whole lot is drawn in full detail and the culling by distance is off, so the still lists are not recorded again as the camera follows you (before: 156 re-records in 700 frames and dips to 27). A cell cache for the ramp and deck lookups in the physics.
+- melonDS, riding round the plaza with jumps and flips: 29-30 fps (average 29.9), 0 list re-records. New bench scene `skate` in tools/dsemu/bench.py. Shot: `docs/ds_shots/d51_skate_plaza.png`.
+![plaza](ds_shots/d51_skate_plaza.png)
+
 ## Next (in this order)
 1. **Real-hardware and Android tests** of the song reader (`cart_blk` in `main.c`), saving and touch. If a loader blocks cartridge reads, add an SD (libfat) path for DSi.
 2. ~~Walkable upper floors~~ done at D36.

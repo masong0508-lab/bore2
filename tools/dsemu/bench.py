@@ -27,6 +27,7 @@ SC = {   # name: (script, pokes {frame: scene}, measure from, to, screenshot fra
     "town":   (LIVE, {400: 4}, 700, 1300, 1280),
     "horizon": (LIVE, {400: 5}, 700, 1300, 1280),
     "orbit":  (LIVE + ";500-1300:10:-1,-1", {}, 600, 1300, 1280),        # Live, the camera turning all the time (the still list is recorded again often)
+    "skate":  (LIVE + "".join(";%d-%d:%x:-1,-1" % (500 + 50 * q, 549 + 50 * q, [0x50, 0x41, 0x20, 0x81][q % 4] | (0x800 if q % 3 == 1 else 0) | (0x400 if q % 5 == 2 else 0)) for q in range(20)), {400: 41}, 600, 1000, 980),   # (D51) riding about the plaza, jumping and flipping, staying inside the lot
     "farmorbit": (LIVE + ";500-1300:10:-1,-1", {400: 2}, 600, 1300, 1280),
 }
 # BENCH_LOOK=0/1/2 (Classic, Rich, Toon) and BENCH_DETAIL=0/1/2 (Auto, DS, DSi): poked at frame 300 and 330
@@ -57,6 +58,7 @@ for name in want:
     if os.path.exists(ppm): os.remove(ppm)
     uis = " ui %d-%d  still lists recorded %d" % (min(ui), max(ui), rec[-1] - rec[0]) if ui else ""
     if prof: uis += "  ms/s steps %d ui %d moving %d still %d dma %d rest %d walls %d sims %d setup %d lvl %d pre %d - %d  sim misses %d" % tuple(sum(p[k] for p in prof) // len(prof) for k in range(13))
+    if os.environ.get("TRACE") == "2": [print(f, "fps", x, "prof(steps ui moving still dma rest walls sims setup)", pr[:9]) for f, x, pr in zip(range(len(fps)), fps, prof)]
     if os.environ.get("TRACE"): print(" ".join("%d/%d" % (f, u) for f, u in zip(fps, ui or fps)))
     gp = [g & 0xFFF for g in gpu]; gv = [(g >> 16) & 0x1FFF for g in gpu]
     print("%-7s fps %2d-%2d avg %4.1f  quads sent %4d-%4d, GPU drew %4d-%4d polygons %4d-%4d vertices%s" % (name, min(fps), max(fps), sum(fps) / len(fps), min(quads), max(quads), min(gp), max(gp), min(gv), max(gv), uis))

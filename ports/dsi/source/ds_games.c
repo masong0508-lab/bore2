@@ -68,16 +68,26 @@ static int ramp_prof(int kind, int n, int d) { int L = n * 64; d = CLAMP(d, 0, L
     if (kind == 1) { int HT = MIN(150 * n, 420); return (HT * t2) >> 12; }
     { int R = n * 256, x = (d * 4 * 972) >> 10; return R - g_isq(R * R - x * x); } }
 static int ramp_localB(int r, int lx, int lv) { switch (r & 3) { case 0: return lv >> 2; case 1: return lx >> 2; case 2: return 64 - (lv >> 2); default: return 64 - (lx >> 2); } }
-static int ramp_at(int mx, int my, int lx, int lv) { int c = sk_ch(mx, my); if (!is_ramp_c(c)) return 0;
-    int kind = ramp_kind(c), r = sk_face(mx, my), idx, n; ramp_run(mx, my, kind, r, &idx, &n);
-    int B = CLAMP(ramp_localB(r, CLAMP(lx, 0, 255), CLAMP(lv, 0, 255)), 0, 64); return ramp_prof(kind, n, n * 64 - (idx * 64 + B)); }
+typedef struct { s8 ok, idx, n, kind, r; u8 c; s16 h; } SkCell;   // (D51) what a cell is, worked out once (the physics asked for it ten times a step)
+static SkCell sk_cc[GN][GN]; static int sk_cc_key = -1;
+static int sk_deck_c(int c);
+static const SkCell *sk_cc_get(int mx, int my) {
+    int key = nobj * 977 + lot_bx * 31 + lot_by * 7 + zone * 3 + (occ_ok ? 0 : 1); if (key != sk_cc_key) { sk_cc_key = key; memset(sk_cc, 0, sizeof sk_cc); }
+    SkCell *e = &sk_cc[my][mx]; if (e->ok) return e;
+    int c = sk_ch(mx, my); e->c = (u8)c; e->ok = 1; e->kind = 0; e->idx = e->n = e->r = 0; e->h = 0;
+    if (is_ramp_c(c)) { int kind = ramp_kind(c), r = sk_face(mx, my), idx, n; ramp_run(mx, my, kind, r, &idx, &n); e->kind = (s8)kind; e->r = (s8)r; e->idx = (s8)idx; e->n = (s8)n; }
+    else if (sk_deck_c(c)) e->h = (s16)sk_ih(c);
+    return e; }
+static int ramp_at(int mx, int my, int lx, int lv) { if (mx < 0 || my < 0 || mx >= GN || my >= GN) return 0; const SkCell *e = sk_cc_get(mx, my); if (!is_ramp_c(e->c)) return 0;
+    int B = CLAMP(ramp_localB(e->r, CLAMP(lx, 0, 255), CLAMP(lv, 0, 255)), 0, 64); return ramp_prof(e->kind, e->n, e->n * 64 - (e->idx * 64 + B)); }
 static int ramp_lip(int mx, int my, int *dir) { int c = sk_ch(mx, my); if (!is_ramp_c(c)) return 0;
     int kind = ramp_kind(c), r = sk_face(mx, my), idx, n; ramp_run(mx, my, kind, r, &idx, &n); *dir = r; return idx == 0 ? (kind == 2 ? 2 : 1) : 0; }
 static int deck_c(int c) { return c == 'X' || c == 'M' || c == 'L' || c == 'N' || c == 'Z'; }
+static int sk_deck_c(int c) { return deck_c(c); }
 static int ground_at(int x, int z, int y) {   // the ground under the board (PS1 units)
     int mx = fdiv(x, 256), my = fdiv(-z, 256); if (mx < 0 || my < 0 || mx >= GN || my >= GN) return 0;
-    int c = sk_ch(mx, my), r = ramp_at(mx, my, x - mx * 256, -z - my * 256); if (r) return r;
-    if (deck_c(c)) { int h = sk_ih(c); if (y >= h - 24 || h <= 60) return h; }
+    const SkCell *e = sk_cc_get(mx, my); int c = e->c, r = ramp_at(mx, my, x - mx * 256, -z - my * 256); if (r) return r;
+    if (deck_c(c)) { int h = e->h; if (y >= h - 24 || h <= 60) return h; }
     return 0; }
 static int grind_c(int c) { return c == '=' || c == 'L' || c == 'N' || c == 'J' || c == 'Z'; }
 static int grind_top(int mx, int my, int *coping) { if (mx < 0 || my < 0 || mx >= GN || my >= GN) { *coping = 0; return 0; }
