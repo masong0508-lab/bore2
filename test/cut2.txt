@@ -1,0 +1,4 @@
+60 shot
+200 shot
+400 shot
+800 shot
