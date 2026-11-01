@@ -11,6 +11,7 @@ extern int far_detail;   // buildings past the map: 0 the tall ones only, 1 ever
 extern int far_haze;     // 0 clear air, 1 light haze, 2 thick haze
 extern int far_prims;    // (last frame's far polygons)
 int  far_metres(void);
+int  far_reach_m(void);      // how far the last frame's far view really reached, in metres (the camera's angle limits it); -1 when it was off
 void far_new_world(void);                  // a new world (after bm_new): every town's buildings, worked out once
 void far_reset(void);                      // after a jump (arriving, a taxi): the land round you, worked out again
 int  far_begin(u32 horizon);               // a frame's far view: set up (0: off). The sky's colour at the horizon, for the haze

@@ -31,6 +31,7 @@ int  sim_speed = 1;
 int  bills_due = 800;
 int  job_none;   // no job yet (a new life starts so, as on the GBA): no shifts, no pay, and no bills until you are hired
 char last_note[32]; int last_note_t;
+int sim_need_pct = 100, sim_day_pct = 100, sim_msg_t = 180;   // OPTIONS > GAME: how fast the needs fall, how long a day lasts, how long a message stays (percent, percent, steps)
 int  travel_asked;
 int  story_paid, story_talks;
 u8   story_visit[4];
@@ -94,11 +95,11 @@ int sim_tile_y(const Sim *s) { return (-s->z) / TILE; }
 int sim_awake(const Sim *s) { return s->action != ACT_SLEEP; }
 char note_q[4][32]; int note_qn;   // the notes the feed has not shown yet (main takes them every frame)
 void sim_note(const char *s) {
-    strncpy(last_note, s, 31); last_note[31] = 0; last_note_t = 180;
+    strncpy(last_note, s, 31); last_note[31] = 0; last_note_t = sim_msg_t;
     if (note_qn == 4) { memmove(note_q[0], note_q[1], 3 * 32); note_qn = 3; }
     strcpy(note_q[note_qn++], last_note);
 }
-static void sim_say(Sim *s, const char *t) { strncpy(s->note, t, 23); s->note[23] = 0; s->note_t = 150; }
+static void sim_say(Sim *s, const char *t) { strncpy(s->note, t, 23); s->note[23] = 0; s->note_t = sim_msg_t * 5 / 6; }
 
 // ---- integer atan2 (4096 = a turn) ----
 // ================================================================== MOODLETS (Sims 3) and TRAITS
@@ -843,13 +844,15 @@ static void arrive(Sim *s) {   // an AI sim reached the end of its path
 
 static void tick_needs(Sim *s) {
     int sleeping = s->action == ACT_SLEEP;
-    s->need[N_FOOD] -= sleeping ? RATE_FOOD / 3 : RATE_FOOD;
-    s->need[N_WC] -= sleeping ? RATE_WC / 3 : RATE_WC;
-    if (!sleeping) s->need[N_REST] -= is_night() ? RATE_REST * 3 / 2 : RATE_REST;
-    s->need[N_CLEAN] -= RATE_CLEAN;
-    if (s->action != ACT_SIT && s->action != ACT_SLEEP) s->need[N_COMFY] -= RATE_COMFY;
-    if (s->action != ACT_FUN && s->action != ACT_READ) s->need[N_FUN] -= RATE_FUN;
-    if (s->action != ACT_TALK && s->action != ACT_PHONE) s->need[N_SOCIAL] -= RATE_SOCIAL;
+    #define NR(r) ((r) * sim_need_pct / 100)   // (OPTIONS > GAME > NEEDS: off, slow, normal, fast)
+    s->need[N_FOOD] -= sleeping ? NR(RATE_FOOD / 3) : NR(RATE_FOOD);
+    s->need[N_WC] -= sleeping ? NR(RATE_WC / 3) : NR(RATE_WC);
+    if (!sleeping) s->need[N_REST] -= is_night() ? NR(RATE_REST * 3 / 2) : NR(RATE_REST);
+    s->need[N_CLEAN] -= NR(RATE_CLEAN);
+    if (s->action != ACT_SIT && s->action != ACT_SLEEP) s->need[N_COMFY] -= NR(RATE_COMFY);
+    if (s->action != ACT_FUN && s->action != ACT_READ) s->need[N_FUN] -= NR(RATE_FUN);
+    if (s->action != ACT_TALK && s->action != ACT_PHONE) s->need[N_SOCIAL] -= NR(RATE_SOCIAL);
+    #undef NR
     int target;   // (the room's score is a look at the 25 tiles round the sim, and it only moves the need a 256th a step: looked at every 8th step is plenty)
     { static u8 rs_age[16]; static s16 rs_val[16]; int si = (int)(s - sims) & 15; if (!(rs_age[si]++ & 7)) rs_val[si] = (s16)world_room_score(sim_tile_x(s), sim_tile_y(s)); target = rs_val[si] << 10; }
     s->need[N_ROOM] += (target - s->need[N_ROOM]) / 256;
@@ -1322,7 +1325,7 @@ static void midnight_ages(void) {   // a day older: birthdays come round, and at
 
 static void clock_tick(void) {
     static int acc = 0;
-    int spm = STEPS_MIN;
+    int spm = STEPS_MIN * sim_day_pct / 100;   // (OPTIONS > GAME > DAY LENGTH)
     if ((sims[player].action == ACT_SLEEP && sims[player].act_var != 2) || sims[player].action == ACT_WORK) spm = 1;   // asleep or at work: the hours fly (not on a massage table)
     if (sim_speed == 2) spm /= 3; if (sim_speed == 3) spm = 1;
     if (spm < 1) spm = 1;

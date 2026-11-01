@@ -2026,9 +2026,7 @@ int world_hills_on(void) {
     return 0;
 #endif
     return world_zone == ZONE_CITY && world_wbx >= 0 && world_lvl == 0; }
-static int gh_raw(int X, int Y) {   // a tile corner of the window (0 where nothing rises). A town's lots stand on level pads, the streets slope between them; wild land rolls smoothly
-    if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
-    int ax = world_wbx * BM_BLK + X, ay = world_wby * BM_BLK + Y; if (ax < 0) ax = 0; if (ay < 0) ay = 0;
+static int gh_raw0(int ax, int ay) {   // a tile corner (world tiles; 0 where nothing rises). A town's lots stand on level pads, the streets slope between them; wild land rolls smoothly
     int bx = ax / BM_BLK, by = ay / BM_BLK, lx = ax - bx * BM_BLK, ly = ay - by * BM_BLK;
     if (bx != gh_bx || by != gh_by) {   // the block, its west, north and north-west neighbours (the street strip blends their pads)
         gh_bx = bx; gh_by = by;
@@ -2046,6 +2044,18 @@ static int gh_raw(int X, int Y) {   // a tile corner of the window (0 where noth
     int top = h00 * (BM_BLK - fx) + h10 * fx, bot = h01 * (BM_BLK - fx) + h11 * fx;
     return (top * (BM_BLK - fy) + bot * fy) / (BM_BLK * BM_BLK);
 }
+// The land far past the window (the far view's ground quads, its roads, buildings and trees) asks for the same few hundred corners every
+// frame, each a stack of noise: kept in a small table by the corner's world tile (the land never changes unless it is edited or remade).
+#define GHF_N 1024
+static struct { u16 x, y; s16 h; } ghf[GHF_N]; static int ghf_ok;
+static int gh_raw(int X, int Y) {
+    if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
+    int ax = world_wbx * BM_BLK + X, ay = world_wby * BM_BLK + Y; if (ax < 0) ax = 0; if (ay < 0) ay = 0;
+    if (!ghf_ok) { memset(ghf, 0xff, sizeof ghf); ghf_ok = 1; }
+    u32 k = (((u32)ax * 0x9E3779B1u) ^ ((u32)ay * 0x85EBCA6Bu)) >> 22;
+    if (ghf[k].x == (u16)ax && ghf[k].y == (u16)ay) return ghf[k].h;
+    int h = gh_raw0(ax, ay); ghf[k].x = (u16)ax; ghf[k].y = (u16)ay; ghf[k].h = (s16)h; return h;
+}
 // The ground's height at each corner of the window, kept (the land does not change while the window stays where it is: only a
 // move of the window, or a new city, wipes it). It used to be rebuilt every frame, 20 to 30 hb of work for the same numbers.
 static s16 gh_cache[MH + 1][MW + 1]; static int gh_cwx = -99, gh_cwy = -99, gh_cok;
@@ -2060,11 +2070,13 @@ static inline int gh_c(int X, int Y) {   // (inline: asked for a thousand times 
     return *c;
 }
 int world_gh_c(int X, int Y) { return gh_c(X, Y); }
-void world_gh_reset(void) { gh_bx = -99999; gh_cok = 0; }   // (a new city: the land is different)
+void world_gh_reset(void) { gh_bx = -99999; gh_cok = 0; ghf_ok = 0; }   // (a new city: the land is different)
 int world_gh(int x, int z) {   // the ground under a point (world units): 0 where it is level
     if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
     int tx = x >> 8, ty = (-z) >> 8, fx = x & 255, fy = (-z) & 255;
-    int a = gh_c(tx, ty), b = gh_c(tx + 1, ty), c = gh_c(tx, ty + 1), d = gh_c(tx + 1, ty + 1);
+    int a = gh_c(tx, ty);
+    if (!fx && !fy) return a;   // (on a tile corner, as the far ground's quads and roads are: the other three do not count)
+    int b = fx ? gh_c(tx + 1, ty) : a, c = fy ? gh_c(tx, ty + 1) : a, d = fx && fy ? gh_c(tx + 1, ty + 1) : fx ? b : c;
     return ((a * (256 - fx) + b * fx) * (256 - fy) + (c * (256 - fx) + d * fx) * fy) >> 16;
 }
 static u8 gperm[256]; static int gperm_ok;

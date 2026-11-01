@@ -73,6 +73,9 @@ static int wall_view;                                          // WALL VIEW (opt
 static int cam_view;                                           // CAMERA: 0 THE SIMS (it orbits you), 1 BEHIND (it swings round behind you), 2 FIRST PERSON
 static int fp_pitch;                                           // first person: looking up (+) or down (-)
 static int cam_turn_rate = 40, cam_zoom_tilt = 1;
+static int ui_clock12, ui_thoughts = 1;                        // OPTIONS > SCREEN: the clock's hours, thought bubbles over heads
+static void clock_fmt(char *b, int m, int suffix) { int h = m / 60 % 24; if (ui_clock12) sprintf(b, "%d:%02d%s", h % 12 ? h % 12 : 12, m % 60, suffix ? (h < 12 ? " AM" : " PM") : ""); else sprintf(b, "%02d:%02d", h, m % 60); }
+static void game_music_check(void);                            // (OPTIONS > AUDIO > GAME MUSIC off: a new life or a loaded one starts quiet)
 static void camera_apply(int fx, int fy, int fz) {
     { int k_ = (on_board || veh_on || sims[player].gait.run) ? 3 : 6; cam_fx += (fx - cam_fx) / k_; cam_fy += (fy - cam_fy) / k_; cam_fz += (fz - cam_fz) / k_; }   // (a rider: kept up with)
     cam_pitch = CLAMP(cam_pitch, 150, 1000);
@@ -184,6 +187,7 @@ static int shed_lvl;   // (LAGFIX: now 0..4; 4 = emergency, the far pass off)
 static int det_opt = 12;                                      // the FULL DETAIL option's range (the range in use dips under it when frames run long)
 int dbg_slow[16][8], dbg_slow_n;
 int avg_cpu16, avg_world16, avg_hh16, hist_cpu[5], avg_prof16[8];
+int dbg_sum_far[6];   // (test readouts: the far pass's quads, clipped quads, cone tests, and prims: land, buildings, trees)
 int dbg_life_n, dbg_life_vb, dbg_life_vb0, dbg_sum_cpu, dbg_sum_prof[8], dbg_sum_part[6], dbg_sum_lg[4], dbg_sum_w[8], dbg_sum_pn[8], dbg_sum_shed, dbg_sum_r;   // (test readouts over the whole stay in the city: frames, vblanks they took, their summed cost)
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
@@ -316,6 +320,7 @@ static void start_life(void) {
     citizens_init();   // a hundred civilians out in the island, the town and the city
     sim_note("WELCOME HOME. X USES THINGS.");
     if (life_story) { story_begin(); life_story = 0; }
+    game_music_check();
 }
 
 static void draw_marker(const Sim *s) {   // who you are playing: a bobbing gold arrow. (It used to be a green diamond. MOSS won.)
@@ -394,7 +399,7 @@ static void draw_sims(void) {
 static void draw_bubbles(void) {   // thoughts and notes over heads
     for (int i = 0; i < nsims; i++) {
         Sim *s = &sims[i];
-        if (s->think < 0 && s->note_t <= 0) continue;
+        if ((s->think < 0 || !ui_thoughts) && s->note_t <= 0) continue;
         if (s->lvl > world_view_lvl || s->away) continue;
         VECTOR p; setVector(&p, s->x, -s->lvl * WALL_FULL, s->z);
         gfx_set_object(&p, 0);
@@ -516,8 +521,9 @@ static void hud_life(void) {
         else { ui_disc(160, 120, 5, UI_RGB(40, 40, 40)); ui_disc(160, 120, 3, UI_WHITE); } }
     // the clock and the money, top right
     ui_card(220, 9, 96, 28);
-    sprintf(b, "%s %02d:%02d", sim_day_name(clock_day), clock_min / 60, clock_min % 60);
+    { char t_[12]; clock_fmt(t_, clock_min, 0); sprintf(b, "%s %s", sim_day_name(clock_day), t_); }
     ui_text(226, 12, 2, b, UI_INK);
+    if (ui_clock12) ui_text(226 + ui_tw(2, b) + 2, 19, 1, clock_min / 60 % 24 < 12 ? "AM" : "PM", UI_SOFT);
     sprintf(b, "$%ld", cash); ui_text(226, 26, 1, b, UI_RGB(40, 150, 50));
     { static const u32 SC[4] = { UI_RGB(236, 120, 170), UI_RGB(236, 170, 30), UI_RGB(214, 110, 30), UI_RGB(80, 150, 220) };   // the season, and its festival on the last day
       int se = sim_season(), fe = sim_festival(); { const char *sn = fe ? sim_festival_name(se) : sim_season_name(se); ui_badge(160 - (ui_tw(1, sn) + 10) / 2, 7, sn, fe ? UI_AMBER : SC[se], UI_WHITE); }
@@ -732,6 +738,9 @@ static void life_update(int steps) {
         int dtx, dty;
 #ifdef AUTO_CITY
         { static int fr_, done_; fr_ += steps;   // (test builds: by the clock, 60 a second, so runs at any frame rate line up)
+#ifdef AUTO_CAMTEST
+          if (fr_ > 100) { switch (AUTO_CAMTEST) { case 2: cam_dist = 700; cam_pitch = 380; break; case 3: cam_dist = 3600; cam_pitch = 760; break; case 4: cam_view = 2; break; } }   // (test builds: zoomed in, zoomed out, first person)
+#endif
 #if defined(AUTO_TOUR)
           (void)0;
 #elif defined(AUTO_PLACES)
@@ -1840,12 +1849,15 @@ static void grow_tick(void) {   // (test builds: a family's life in two minutes:
 // ---- OPTIONS: the picture and the speed, as many knobs as a PC game, with presets; the game runs behind as you change them ----
 static void title_draw(void);
 enum { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_CROWD, O_LIVE, O_SPR, O_SHADOW, O_AO, O_WALLS, O_FPSCAP, O_DITHER, O_CAM, O_SHOWFPS,
-       O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_CUTAWAY, O_ALONE, O_GHOSTS, O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_WIDE, O_TRAF, O_GOTCHI, O_N };
+       O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_CUTAWAY, O_ALONE, O_GHOSTS, O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_WIDE, O_TRAF, O_GOTCHI,
+       O_MASTER, O_MUSICV, O_SFX, O_TITLEMUS, O_GAMEMUS, O_SHUFFLE, O_NEEDS, O_DAYLEN, O_CLOCK, O_MSGT, O_THINK, O_SPEED, O_N };   // (new ones go on the end: old saves hold the first O_GOTCHI + 1)
+#define O_N_V40 (O_GOTCHI + 1)
 static const char *const optNm[O_N] = { "PRESET", "VIEW DISTANCE", "FULL DETAIL", "FAR BUILDINGS", "FAR TREES", "HAZE", "CROWD SIZE",
     "PEOPLE IN FULL 3D", "PEOPLE SPRITES", "SHADOWS", "FLOOR SHADING", "WALL LIGHT", "FRAME RATE", "DITHERING", "CAMERA", "SHOW FPS",
-    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC", "WALL VIEW", "YOUR BORE ALONE", "GHOSTS", "AGGRESSION", "WHO JOINS FIGHTS", "RAGE", "WHO LUNGES AT YOU", "PEACEMAKERS", "SCREEN SHAPE", "TRAFFIC CHEAT", "BOREAGOTCHI TIME" };
+    "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC", "WALL VIEW", "YOUR BORE ALONE", "GHOSTS", "AGGRESSION", "WHO JOINS FIGHTS", "RAGE", "WHO LUNGES AT YOU", "PEACEMAKERS", "SCREEN SHAPE", "TRAFFIC CHEAT", "BOREAGOTCHI TIME",
+    "MASTER VOLUME", "MUSIC VOLUME", "SOUND VOLUME", "TITLE MUSIC", "GAME MUSIC", "SHUFFLE SONGS", "NEEDS", "DAY LENGTH", "CLOCK", "MESSAGE TIME", "THOUGHT BUBBLES", "SPEED HELPER" };
 static const char *const optV[O_N][6] = {
-    { "CUSTOM", "LOW", "MEDIUM", "HIGH", "ULTRA" }, { "50 M", "250 M", "500 M", "1 KM", "1.5 KM", "2 KM" },
+    { "CUSTOM", "LOW", "MEDIUM", "HIGH", "ULTRA" }, { "NEAR: 40 M", "250 M", "500 M", "1 KM", "1.5 KM", "2 KM" },
     { "10 M", "12 M", "15 M", "17 M" }, { "TALL ONLY", "ALL", "WITH WINDOWS" }, { "OFF", "100 M", "200 M", "350 M" },
     { "OFF", "LIGHT", "THICK" }, { "16", "32", "48", "64" }, { "1", "2", "4", "6" }, { "SLOW", "NORMAL", "FAST" },
     { "OFF", "PEOPLE", "EVERYTHING" }, { "OFF", "ON" }, { "FLAT", "SOFT" }, { "AS FAST AS IT CAN", "STEADY 30", "STEADY 20" },
@@ -1854,14 +1866,16 @@ static const char *const optV[O_N][6] = {
     { "LOW", "MEDIUM", "HIGH", "OVERHEAD" }, { "SLOW", "NORMAL", "FAST" }, { "OFF", "ON" }, { "OFF", "LOW", "MEDIUM", "FULL" },
     { "AUTO", "CUT AWAY", "FULL WALLS" }, { "OFF", "LOW", "HIGH" }, { "OFF", "ON", "HAUNTED" },
     { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" },
-    { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" }, { "OFF", "ON" }, { "4:3 NORMAL", "16:9 WIDE" }, { "OFF", "+10 CARS", "+30 CARS", "+60 CARS", "LUDICROUS" }, { "GAME CLOCK", "LIVE IN HAND", "OFF: THEY WAIT" } };
-static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3, 3, 6, 6, 6, 6, 2, 2, 5, 3 };
+    { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" }, { "OFF", "ON" }, { "4:3 NORMAL", "16:9 WIDE" }, { "OFF", "+10 CARS", "+30 CARS", "+60 CARS", "LUDICROUS" }, { "GAME CLOCK", "LIVE IN HAND", "OFF: THEY WAIT" },
+    { "0" }, { "0" }, { "0" }, { "OFF", "ON" }, { "OFF", "ON" }, { "IN ORDER", "AT RANDOM" },
+    { "NEVER FALL", "SLOW", "NORMAL", "FAST" }, { "SHORT", "NORMAL", "LONG", "EPIC" }, { "24 HOUR", "12 HOUR" }, { "SHORT", "NORMAL", "LONG" }, { "OFF", "ON" }, { "OFF", "ON" } };
+static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3, 3, 6, 6, 6, 6, 2, 2, 5, 3, 11, 11, 11, 2, 2, 2, 4, 4, 2, 3, 2, 2 };
 static const char *const optBlurb[O_N] = {
     "LOW, MEDIUM, HIGH OR ULTRA SETS THEM ALL", "HOW FAR SAN BOREAS GOES BEFORE THE SKY", "WHERE ROOMS, WALLS AND THINGS ARE DRAWN IN FULL",
     "THE TOWNS PAST THE MAP: TALL ONES, ALL, OR WINDOWS TOO", "TREES PAST THE NEAR DETAIL, OUT TO", "THE AIR BETWEEN YOU AND THE HORIZON",
     "HOW MANY PEOPLE CAN BE DRAWN AT ONCE", "THE NEAREST, DRAWN AS REAL 3D (THE REST ARE SPRITES)", "HOW OFTEN THE CROWD'S SPRITES ARE REDRAWN",
     "SOFT SHADOWS UNDER PEOPLE AND THINGS", "FLOORS DARKEN WHERE THEY MEET WALLS", "WALLS LIGHTER UP TOP, DARKER AT THE FOOT",
-    "A STEADY RATE FEELS SMOOTHER THAN A JUMPY ONE", "THE PLAYSTATION'S SMOOTHING OF COLOURS", "L2 + R2 TOGETHER SWITCH IT. FIRST PERSON: UP WALKS, L2 R2 LOOK",
+    "A STEADY RATE FEELS SMOOTHER THAN A JUMPY ONE", "THE PLAYSTATION'S SMOOTHING OF COLOURS", "L2+R2 SWITCHES IT. FIRST PERSON: L2 R2 LOOK UP AND DOWN",
     "THE FRAME RATE IN A CORNER (L3 IN PLAY)",
     "HOW FAST BORES GROW UP, FROM BABY TO ELDER", "AT THE END OF THE ELDER YEARS: GO ON, OR SAY GOODBYE",
     "EVERYONE IN SAN BOREAS GETS OLDER AND HAS BABIES TOO",
@@ -1869,19 +1883,27 @@ static const char *const optBlurb[O_N] = {
     "WALLS BETWEEN YOU AND THE CAMERA: AUTO, CUT LOW OR FULL",
     "PUT THE PAD DOWN AND YOUR BORE LOOKS AFTER ITSELF (LOW: AFTER 25 S, HIGH: 10 S)",
     "THE FAMILY'S DEPARTED RISE FROM THEIR GRAVES AT NIGHT (HAUNTED: DAY AND NIGHT)",
-    "START A FIGHT AND OTHERS MAY PILE IN. AT 100% EVERYONE IN SIGHT DOES",
+    "START A FIGHT AND OTHERS MAY PILE IN. 100% IS EVERYONE",
     "WHO MAY JOIN A FIGHT YOU START",
-    "NO FIGHT NEEDED: PEOPLE GO FOR YOU ON SIGHT. AT 100% EVERYONE DOES",
+    "PEOPLE GO FOR YOU ON SIGHT. AT 100% EVERYONE DOES",
     "WHO GOES FOR YOU ON SIGHT, WHEN RAGE IS ON",
     "BYSTANDERS TRY TO BREAK UP YOUR FIGHTS (HIT ONE AND THEY JOIN IN)",
-    "16:9: DRAWN SQUEEZED SO A WIDE SCREEN OR EMULATOR (16:9 DISPLAY) SHOWS MORE ON THE SIDES, NOT A STRETCHED PICTURE",
+    "WIDE: SQUEEZED SO A 16:9 SCREEN SHOWS MORE SIDEWAYS",
     "ADD CARS TO THE STREETS",
-    "PET TIME: WITH THE GAME CLOCK, LIVE (RUNS WHILE YOU PLAY THE TOY: YOU MAY FORGET TO EAT!) OR OFF" };
+    "PET TIME: WITH THE GAME CLOCK, LIVE (RUNS WHILE YOU PLAY THE TOY: YOU MAY FORGET TO EAT!) OR OFF",
+    "HOW LOUD EVERYTHING IS: SONGS, VOICES AND SOUNDS", "HOW LOUD THE SONGS AND THE RADIO PLAY", "VOICES AND SOUND EFFECTS. YOU HEAR ONE AS YOU SLIDE",
+    "THE TITLE SONG PLAYS ON THE TITLE SCREEN", "SONGS KEEP PLAYING IN THE GAME. OFF: QUIET UNTIL YOU PUT ON THE RADIO OR THE JUKEBOX",
+    "THE NEXT SONG IS AT RANDOM, OR IN ORDER", "HOW FAST HUNGER, REST, THE LOO AND THE REST FALL. NEVER: THEY STAY FULL",
+    "HOW LONG A DAY TAKES: SHORT, NORMAL, LONG, EPIC", "THE CLOCK AT THE TOP, AND ON THE PHONE", "HOW LONG A MESSAGE STAYS ON SCREEN",
+    "WHAT PEOPLE NEED, SHOWN OVER THEIR HEADS",
+    "ON: PULLS THE VIEW IN WHEN SLOW. OFF: DRAWS ALL YOU PICKED" };
 static const u8 presets[4][O_N] = {   // LOW, MEDIUM, HIGH, ULTRA (the graphics knobs; the frame rate, dithering, camera and the counter are left be)
     { 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0 }, { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 },
     { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1 }, { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 } };
 #define O_PRESET_LAST O_WALLS                 // (presets set O_VIEW .. O_WALLS)
-static u8 opt[O_N] = { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1, 1, 2, 0, 0, 1, 1, 0 };   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
+#define OPT_DEFAULTS { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1, 1, 2, 0, 0, 1, 1, 0, 0, 0,   10, 10, 10, 1, 1, 1, 2, 1, 0, 1, 1, 1 }
+static const u8 optDef[O_N] = OPT_DEFAULTS;
+static u8 opt[O_N] = OPT_DEFAULTS;   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
 static int opt_sel, opt_back, opt_tab;
 static void opts_apply(void);
 #ifdef AUTO_FLOAT
@@ -1890,6 +1912,9 @@ void float_opts(const u8 *p, int n) { for (int i = 0; i < n && i < O_N; i++) opt
 static void opts_apply(void) {
     extern int getenv_noshadow, dbg_noao, dbg_nograd, world_detail_r, cit_live_max, cit_maxdraw, cit_sprite_rate;
     shed_lvl = 0;
+#ifdef AB_VIEW
+    opt[O_VIEW] = AB_VIEW;
+#endif
     far_view = opt[O_VIEW]; far_detail = opt[O_FARB]; far_trees = opt[O_TREES]; far_haze = opt[O_HAZE];
     static const u8 rr[4] = { 8, 10, 12, 14 }, cr[4] = { 16, 32, 48, 64 }, lv[4] = { 1, 2, 4, 6 };
     world_detail_r = det_opt = rr[opt[O_DETAIL] & 3]; cit_maxdraw = cr[opt[O_CROWD] & 3]; cit_live_max = lv[opt[O_LIVE] & 3]; cit_sprite_rate = opt[O_SPR];
@@ -1910,7 +1935,10 @@ static void opts_apply(void) {
 #ifdef AUTO_FPS
     show_fps = 1;
 #endif
-    audio_music_level(opt[O_MUSIC]);
+    audio_volumes(opt[O_MASTER], opt[O_MUSICV], opt[O_SFX]); if (audio_jukebox_shuffle() != opt[O_SHUFFLE]) audio_jukebox_toggle_shuffle();
+    { extern int sim_need_pct, sim_day_pct, sim_msg_t; static const u8 np[4] = { 0, 50, 100, 150 }, dp[4] = { 66, 100, 150, 250 }; static const short mt[3] = { 90, 180, 300 };
+      sim_need_pct = np[opt[O_NEEDS] & 3]; sim_day_pct = dp[opt[O_DAYLEN] & 3]; sim_msg_t = mt[opt[O_MSGT] % 3]; }
+    ui_clock12 = opt[O_CLOCK]; ui_thoughts = opt[O_THINK];
     aging = opt[O_AGING]; old_age = opt[O_OLDAGE]; pop_aging = opt[O_TOWNAGE];
     cam_view = opt[O_CAM] % 3; cam_turn_rate = opt[O_CAMSPD] == 0 ? 24 : opt[O_CAMSPD] == 1 ? 40 : 64; cam_zoom_tilt = opt[O_ZOOMTILT]; wall_view = opt[O_CUTAWAY] % 3;
 }
@@ -1922,23 +1950,48 @@ void cam_view_set(int v) {   // (L2 + R2 in play, and the options)
 static void opts_dbg(int tab, int sel, int back) { opt_back = back; opt_tab = tab; opt_sel = sel; state = ST_OPTS; }
 #endif
 static void opts_open(int back) { opt_back = back; opt_sel = 0; opt_tab = 0; state = ST_OPTS; }
-// the knobs in four tabs (L1 R1), like The Sims 4's game options: sliders for amounts, switches for on and off, pills for choices
-#define NOTAB 7
-static const char *const optTabNm[NOTAB] = { "GRAPHICS", "PEOPLE", "LIGHT", "CAMERA", "PLAY", "LIFE", "CHEATS" };
-static const s8 optTabIc[NOTAB] = { IC_EYE, IC_PEOPLE, IC_SUN, IC_CAMERA, IC_BOLT, IC_SPROUT, IC_STAR };
-static const s8 optTab[NOTAB][7] = { { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_WIDE }, { O_CROWD, O_LIVE, O_SPR, -1 },
+// the knobs in nine tabs (L1 R1), like The Sims 4's game options: sliders for amounts, switches for on and off, pills for choices
+#define NOTAB 9
+#define OA 60                                                    // (rows from OA up are buttons, not knobs: the DATA tab)
+static const char *const optTabNm[NOTAB] = { "GRAPHICS", "PEOPLE", "LIGHT", "CAMERA", "SCREEN", "AUDIO", "GAME", "CHEATS", "DATA" };
+static const s8 optTabIc[NOTAB] = { IC_EYE, IC_PEOPLE, IC_SUN, IC_CAMERA, IC_BOLT, IC_NOTE, IC_SPROUT, IC_STAR, IC_GEAR };
+static const s8 optTab[NOTAB][7] = { { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_SPEED }, { O_CROWD, O_LIVE, O_SPR, -1 },
                                      { O_SHADOW, O_AO, O_WALLS, O_DITHER, -1 }, { O_CAM, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_CUTAWAY, -1 },
-                                     { O_FPSCAP, O_SHOWFPS, O_MUSIC, -1 }, { O_AGING, O_OLDAGE, O_TOWNAGE, O_ALONE, O_GHOSTS, O_GOTCHI, -1 }, { O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_TRAF, -1 } };
-static int opt_kind(int i) {   // 0 a choice, 1 a slider, 2 a switch
-    if (i == O_AO || i == O_DITHER || i == O_SHOWFPS || i == O_TOWNAGE || i == O_ZOOMTILT || i == O_PEACE) return 2;
+                                     { O_WIDE, O_FPSCAP, O_SHOWFPS, O_CLOCK, O_MSGT, O_THINK, -1 },
+                                     { O_MASTER, O_MUSICV, O_SFX, O_TITLEMUS, O_GAMEMUS, O_SHUFFLE, -1 },
+                                     { O_NEEDS, O_DAYLEN, O_AGING, O_OLDAGE, O_TOWNAGE, O_ALONE, O_GHOSTS },
+                                     { O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_TRAF, O_GOTCHI },
+                                     { OA, OA + 1, OA + 2, OA + 3, -1 } };
+static const char *const optActNm[4] = { "RESET GRAPHICS", "RESET AUDIO", "RESET THE GAME", "RESET EVERYTHING" };
+static const char *const optActBlurb[4] = { "THE PICTURE, THE SCREEN AND THE SPEED GO BACK TO HOW THEY CAME", "ALL THE VOLUMES AND THE SONG SWITCHES GO BACK TO HOW THEY CAME",
+                                            "CAMERA, LIFE AND CHEATS GO BACK TO HOW THEY CAME", "EVERY KNOB IN OPTIONS GOES BACK TO HOW IT CAME" };
+static int opt_kind(int i) {   // 0 a choice, 1 a slider, 2 a switch, 3 a button
+    if (i >= OA) return 3;
+    if (i == O_AO || i == O_DITHER || i == O_SHOWFPS || i == O_TOWNAGE || i == O_ZOOMTILT || i == O_PEACE || i == O_TITLEMUS || i == O_GAMEMUS || i == O_SHUFFLE || i == O_THINK || i == O_SPEED) return 2;
     if (i == O_AGGRO || i == O_RAGE) return 1;
-    if (i == O_CAMH || i == O_CAMSPD || i == O_MUSIC) return 1;
+    if (i == O_CAMH || i == O_CAMSPD || i == O_MASTER || i == O_MUSICV || i == O_SFX || i == O_NEEDS || i == O_DAYLEN || i == O_MSGT) return 1;
     if (i == O_VIEW || i == O_DETAIL || i == O_TREES || i == O_HAZE || i == O_CROWD || i == O_LIVE || i == O_SPR) return 1;
     return 0;
 }
+static const char *opt_val(int i, char *b) {   // what the knob says now
+    if (i == O_MASTER || i == O_MUSICV || i == O_SFX) { sprintf(b, "%d", opt[i]); return b; }
+    return optV[i][opt[i] % optN[i]];
+}
+static int opt_default_group(int i) { return i == O_MASTER || i == O_MUSICV || i == O_SFX || i == O_TITLEMUS || i == O_GAMEMUS || i == O_SHUFFLE || i == O_MUSIC ? 1 :
+                                             i <= O_PRESET_LAST || i == O_FPSCAP || i == O_DITHER || i == O_SHOWFPS || i == O_WIDE || i == O_CLOCK || i == O_MSGT || i == O_THINK || i == O_SPEED ? 0 : 2; }
 static int opt_rows(int t) { int n = 0; while (n < 7 && optTab[t][n] >= 0) n++; return n; }
+static int opt_flash;                                            // a RESET button's "done"
+static void title_music_resume(void) { if (opt[O_TITLEMUS]) audio_jukebox_play(0); }   // (back at the title: its song again)
+static void game_music_check(void) { if (!opt[O_GAMEMUS]) audio_jukebox_stop(); }
+static void opts_reset(int which) {   // 0 graphics, 1 audio, 2 the game, 3 everything
+    for (int k = 0; k < O_N; k++) if (which == 3 || opt_default_group(k) == which) opt[k] = optDef[k];
+    if (which >= 2) { static const s16 ph[4] = { 330, 520, 680, 940 }; cam_pitch = ph[opt[O_CAMH] & 3]; fp_pitch = 0; }
+    opts_apply();
+    if (which == 1 || which == 3) { if (opt_back == ST_MENU) title_music_resume(); }
+}
 static void opts_update(void) {
     int nr = opt_rows(opt_tab);
+    if (opt_flash > 0) opt_flash--;
     if (PRESSED(PAD_L1)) { opt_tab = (opt_tab + NOTAB - 1) % NOTAB; opt_sel = 0; }
     if (PRESSED(PAD_R1)) { opt_tab = (opt_tab + 1) % NOTAB; opt_sel = 0; }
     nr = opt_rows(opt_tab);
@@ -1947,7 +2000,11 @@ static void opts_update(void) {
     if (opt_sel >= nr) opt_sel = 0;
     int d = PRESSED(PAD_RIGHT) || PRESSED(PAD_CROSS) ? 1 : PRESSED(PAD_LEFT) ? -1 : 0;
     if (d) {
-        int i = optTab[opt_tab][opt_sel], n = optN[i];
+        int i = optTab[opt_tab][opt_sel];
+        if (i >= OA) {   // a button: X only
+            if (PRESSED(PAD_CROSS)) { opts_reset(i - OA); opt_flash = 90; audio_voice(VOICE_FINISHED); }
+        } else {
+        int n = optN[i];
         if (i == O_PRESET) {
             int p = opt[O_PRESET] + d; if (p < 1) p = 4; if (p > 4) p = 1;       // (CUSTOM is not picked: it is what you get by hand)
             opt[O_PRESET] = (u8)p; for (int k = O_VIEW; k <= O_PRESET_LAST; k++) opt[k] = presets[p - 1][k];   // (each row starts with the preset itself, like opt)
@@ -1957,8 +2014,11 @@ static void opts_update(void) {
             if (i <= O_PRESET_LAST) opt[O_PRESET] = 0;
             if (i == O_CAMH) { static const s16 ph[4] = { 330, 520, 680, 940 }; cam_pitch = ph[opt[O_CAMH] & 3]; }
             if (i == O_CAM) fp_pitch = 0;
+            if (i == O_TITLEMUS && opt_back == ST_MENU) { if (opt[O_TITLEMUS]) audio_jukebox_play(0); else audio_jukebox_stop(); }
+            if (i == O_GAMEMUS && opt_back != ST_MENU) { if (opt[O_GAMEMUS]) audio_jukebox_next(); else audio_jukebox_stop(); }
         }
         opts_apply(); audio_voice(VOICE_YAHOO);
+        }
     }
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_TRIANGLE)) state = opt_back;
 }
@@ -1968,22 +2028,30 @@ static void opts_draw(void) {
     int top = ui_window(8, 8, 304, 224, "OPTIONS", IC_GEAR);
     { char b[40]; sprintf(b, "%d FPS%s", fps_val, ram8 ? "  8 MB" : "");
       ui_badge(304 - ui_tw(1, b) - 10, 12, b, fps_val >= 25 ? UI_GREEN : fps_val >= 18 ? UI_RGB(236, 180, 40) : UI_RGB(228, 84, 70), UI_WHITE); }
-    // the tabs down the left
+    // the tabs down the left (a gold dot on one that is not as it came)
     for (int t = 0; t < NOTAB; t++) {
-        int y = top + 2 + t * 24, on = t == opt_tab;
-        ui_round(14, y, 78, 20, 6, on ? UI_RGB(70, 176, 238) : UI_RGB(238, 243, 249), on ? UI_BLUE2 : UI_RGB(224, 231, 240), 0);
-        ui_icon_disc(25, y + 10, 15, optTabIc[t], on ? UI_WHITE : UI_BLUE, on ? UI_BLUE : UI_WHITE);
-        ui_text(36, y + 7, 1, optTabNm[t], on ? UI_WHITE : UI_INK);
+        int y = top + 1 + t * 18, on = t == opt_tab, moved = 0;
+        for (int r = 0; r < 7 && optTab[t][r] >= 0; r++) { int k = optTab[t][r]; if (k < OA && k != O_PRESET && opt[k] != optDef[k]) moved = 1; }
+        ui_round(14, y, 78, 16, 5, on ? UI_RGB(70, 176, 238) : UI_RGB(238, 243, 249), on ? UI_BLUE2 : UI_RGB(224, 231, 240), 0);
+        ui_icon_disc(24, y + 8, 12, optTabIc[t], on ? UI_WHITE : UI_BLUE, on ? UI_BLUE : UI_WHITE);
+        ui_text(34, y + 4, 1, optTabNm[t], on ? UI_WHITE : UI_INK);
+        if (moved) ui_disc(86, y + 8, 5, UI_RGB(236, 180, 40));
     }
     ui_hints(16, top + 170, "L1 R1 TABS", 0);
     // the knobs
     gfx_rect(98, top, 1, 168, 214, 222, 232, 0);
-    int nr = opt_rows(opt_tab);
+    int nr = opt_rows(opt_tab), pitch = nr > 6 ? 23 : 26;
     for (int r = 0; r < nr; r++) {
-        int i = optTab[opt_tab][r], sel = r == opt_sel, y = top + r * 26, k = opt_kind(i);
-        if (sel) { ui_round(104, y, 202, 24, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(104, y + 3, 2, 18, 38, 146, 222, 0); }
+        int i = optTab[opt_tab][r], sel = r == opt_sel, y = top + r * pitch, k = opt_kind(i); char vb[8];
+        if (sel) { ui_round(104, y, 202, pitch - 2, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(104, y + 3, 2, pitch - 8, 38, 146, 222, 0); }
+        if (k == 3) {
+            ui_text(110, y + 3, 1, optActNm[i - OA], sel ? UI_BLUE2 : UI_INK);
+            if (sel) ui_text(110, y + 13, 1, "PRESS X", UI_SOFT);
+            if (sel && opt_flash > 0) ui_badge(300 - ui_tw(1, "DONE") - 10, y + 3, "DONE", UI_GREEN, UI_WHITE);
+            continue;
+        }
         ui_text(110, y + 3, 1, optNm[i], sel ? UI_BLUE2 : UI_INK);
-        const char *v = optV[i][opt[i] % optN[i]];
+        const char *v = opt_val(i, vb);
         if (k == 2) ui_toggle(278, y + 3, opt[i], sel);
         else ui_text(300 - ui_tw(1, v), y + 3, 1, v, UI_BLUE2);
         if (k == 1) ui_slider(110, y + 13, 188, opt[i], optN[i], sel);
@@ -1996,7 +2064,10 @@ static void opts_draw(void) {
     // what the knob does
     ui_round(104, top + 166, 202, 32, 6, UI_RGB(234, 240, 248), UI_RGB(224, 231, 240), 0);
     ui_icon(110, top + 176, IC_HELP, UI_BLUE);
-    ui_wrap(126, top + 171, 176, 2, optBlurb[optTab[opt_tab][opt_sel]], UI_INK);
+    { int i = optTab[opt_tab][opt_sel]; const char *bl = i >= OA ? optActBlurb[i - OA] : optBlurb[i]; char vb2[48];
+      if (i == O_VIEW && opt_back != ST_MENU && opt[O_VIEW] > 0 && shed_lvl >= 4) bl = "SPEED HELPER CUT THE VIEW HERE. SWITCH IT OFF TO SEE ALL";
+      else if (i == O_VIEW && opt_back != ST_MENU) { int m = far_reach_m(); sprintf(vb2, m < 0 ? "NOT DRAWN NOW: ONLY THE MAP ROUND YOU" : "DRAWN OUT TO %d M HERE. A LOWER CAMERA SEES FARTHER", m); bl = vb2; }
+      ui_wrap(126, top + 171, 176, 2, bl, UI_INK); }
     ui_hints(16, top + 185, "O BACK", 0);
 }
 
@@ -2026,7 +2097,8 @@ static void load_body(void) {
     if (save_ver >= 4) { int n = ld_u8(); for (int k = 0; k < n; k++) { int i = ld_u8(); char nm[18]; ld_str(nm, 17); bm_rename(i, nm); } }
     sim_season_lock = 0; sim_seasons_on = 1; bm_ovr_clear();
     if (save_ver >= 37) { sim_season_lock = ld_u8() % 5; sim_seasons_on = ld_u8() & 1; ovr_load(); }
-    { int o_n = save_ver >= 21 ? O_N : save_ver >= 19 ? O_N - 1 : O_N - 2; ld_n(opt, save_ver >= 16 ? o_n : save_ver >= 15 ? o_n - 1 : save_ver >= 14 ? o_n - 6 : save_ver >= 11 ? o_n - 7 : o_n - 8); } if (save_ver < 19) opt[O_TRAF] = 0; if (save_ver < 21) opt[O_GOTCHI] = 0; if (save_ver < 16) opt[O_WIDE] = 0; if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1;
+    { int o_n = save_ver >= 41 ? O_N : save_ver >= 21 ? O_N_V40 : save_ver >= 19 ? O_N_V40 - 1 : O_N_V40 - 2; ld_n(opt, save_ver >= 16 ? o_n : save_ver >= 15 ? o_n - 1 : save_ver >= 14 ? o_n - 6 : save_ver >= 11 ? o_n - 7 : o_n - 8); } if (save_ver < 19) opt[O_TRAF] = 0; if (save_ver < 21) opt[O_GOTCHI] = 0; if (save_ver < 16) opt[O_WIDE] = 0; if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1;
+    if (save_ver < 41) { static const u8 mm[4] = { 0, 3, 6, 10 }; for (int k = O_MASTER; k < O_N; k++) opt[k] = optDef[k]; opt[O_MUSICV] = mm[opt[O_MUSIC] & 3]; }   // (version 41: the AUDIO and GAME pages; an older save's music level becomes a slider)
     if (save_ver < 15) { opt[O_AGGRO] = 2; opt[O_AGWHO] = 0; opt[O_RAGE] = 0; opt[O_RAGEWHO] = 1; opt[O_PEACE] = 1; } opts_apply();   // (YOUR BORE ALONE came with version 11)
     loading("LOADING YOUR GAME", 30);
     bm_new(seed); world_new_seed(seed);
@@ -2058,6 +2130,7 @@ static int load_game(int slot) {   // 1: the saved life is up and running
     life_started = 1; save_msg = 0;
     cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; frame = 0;
     sim_note("WELCOME BACK");
+    game_music_check();
     return 1;
 }
 // the slot list: three lives on the card (SAVE GAME picks where, CONTINUE picks which)
@@ -2219,7 +2292,7 @@ static void story_test_tick(void) {
 int dbg_cells[6];
 #endif
 #ifdef AUTO_SAVE
-int dbg_sv[16], dbg_st[8];   // (test builds) before / after a save and a load: the zone, the tent, the bench, the hut's walls, the player's action, food; then the long-life save's size
+int dbg_opt[2], dbg_sv[16], dbg_st[8];   // (test builds) before / after a save and a load: the zone, the tent, the bench, the hut's walls, the player's action, food; then the long-life save's size
 static void save_tick(void) {
     extern int sim_debug_goto(char c, int lot); extern u32 save_last_bytes;
     static int t0 = -1, k;
@@ -2233,9 +2306,10 @@ static void save_tick(void) {
     if (k == 0 && t >= 60) { k++; isl_wood = isl_stone = isl_leaves = 40; isl_food = 7; isl_make(4); isl_make(0); isl_make(1); }
     if (k == 1 && t >= 120) { k++; sims[player].need[N_REST] = 10 << 10; dbg_sv[14] = sim_debug_goto('z', -1); dbg_sv[15] = sim_player_interact(); }
     if (k == 2 && t >= 300) { k++; dbg_sv[0] = world_zone; dbg_sv[1] = world_count('z'); dbg_sv[2] = world_count('%'); dbg_sv[3] = world_count('W'); dbg_sv[4] = sims[player].action; dbg_sv[5] = isl_food;
-                              story_id = STY_SKATE; story_ch = 2; save_game(0); story_reset(); }   // (and a story: it must come back)
+                              story_id = STY_SKATE; story_ch = 2; opt[O_MASTER] = 5; opt[O_MUSICV] = 7; opt[O_NEEDS] = 3; opt[O_SPEED] = 0; opt[O_CLOCK] = 1; save_game(0); story_reset();   // (and a story: it must come back; and the options)
+                              opt[O_MASTER] = 1; opt[O_MUSICV] = 1; opt[O_NEEDS] = 1; opt[O_SPEED] = 1; opt[O_CLOCK] = 0; }
     if (k == 3 && t >= 400) { k++; if (load_game(0)) state = ST_LIFE; }
-    if (k == 4 && t >= 460) { k++; dbg_sv[8] = world_zone; dbg_sv[9] = world_count('z'); dbg_sv[10] = world_count('%'); dbg_sv[11] = world_count('W'); dbg_sv[12] = sims[player].action; dbg_sv[13] = isl_food; dbg_sv[6] = (int)save_last_bytes; dbg_sv[14] = story_id * 10 + story_ch; }
+    if (k == 4 && t >= 460) { k++; dbg_opt[0] = opt[O_MASTER] | opt[O_MUSICV] << 8 | opt[O_NEEDS] << 16 | opt[O_SPEED] << 20 | opt[O_CLOCK] << 24; dbg_opt[1] = O_N; dbg_sv[8] = world_zone; dbg_sv[9] = world_count('z'); dbg_sv[10] = world_count('%'); dbg_sv[11] = world_count('W'); dbg_sv[12] = sims[player].action; dbg_sv[13] = isl_food; dbg_sv[6] = (int)save_last_bytes; dbg_sv[14] = story_id * 10 + story_ch; }
     { static int played; if (k == 5 && t >= 600 && !played) { extern int audio_dbg_song(void); played = 1; audio_jukebox_play(7); dbg_cells[2] = audio_dbg_song(); } }   // (the biggest song: it must still fit)
     { static int sp; extern int audio_dbg_stream(int k); extern int dbg_st[8];   // (a streamed song: it must keep coming off the disc)
       if (k == 6 && !sp) { sp = 1; audio_jukebox_play(33); dbg_st[0] = t; }
@@ -2275,7 +2349,7 @@ static void party_begin(void) {   // the list is made (PARTY.OVL): the party sta
 void party_begin_t(void) { party_begin(); }
 #endif
 static void pause_new_life(void) { life_started = 0; start_life(); state = ST_LIFE; }
-static void pause_quit(void) { audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); }
+static void pause_quit(void) { audio_jukebox_stop(); life_started = 0; state = ST_TITLE; title_music_resume(); look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); }
 void gotchi_pause_open(void) {
     if (!gotchi_any()) { sim_note("NO BOREAGOTCHI YET: $5000 AT ELECTRONICS SHOPS. HERE IS THE GUIDE"); sim_want_gotchi = 4; state = ST_LIFE; return; }
     sim_want_gotchi = 1; state = ST_LIFE;
@@ -2405,7 +2479,7 @@ static void phone_draw(void) {
     const int SX = PX + 6, SW = PW - 12; int sy = py + 13, sh = PH_ - 30;
     static const u32 scrT[4] = { 0, UI_RGB(150, 190, 150), UI_RGB(120, 196, 246), UI_RGB(250, 170, 120) }, scrB[4] = { 0, UI_RGB(70, 110, 80), UI_RGB(58, 120, 206), UI_RGB(170, 70, 150) };
     ui_round(SX, sy, SW, sh, 9, scrT[phone_tier & 3], scrB[phone_tier & 3], 0);     // the screen's wallpaper: a green flip display, a blue sky, a sunset
-    sprintf(b, "%02d:%02d", clock_min / 60, clock_min % 60); gfx_text_raw(SX + 7, sy + 5, 1, b, 255, 255, 255);
+    clock_fmt(b, clock_min, 1); gfx_text_raw(SX + 7, sy + 5, 1, b, 255, 255, 255);
     sprintf(b, "$%ld", cash); gfx_text_raw(SX + SW - 7 - gfx_text_w(1, b), sy + 5, 1, b, 220, 255, 220);
     ui_round(PX + 54, py + PH_ - 11, 40, 4, 2, UI_RGB(200, 206, 216), UI_RGB(170, 176, 188), 0);   // the home bar
     if (ph_fam) {   // the family list
@@ -2481,7 +2555,7 @@ static void pie_draw(void) {
 // ---- the end: the last of the family has gone ----
 static void over_update(void) {
     if (PRESSED(PAD_CROSS)) { life_started = 0; start_life(); state = ST_LIFE; }
-    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { audio_jukebox_stop(); life_started = 0; state = ST_TITLE; look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); }
+    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { audio_jukebox_stop(); life_started = 0; state = ST_TITLE; title_music_resume(); look_release(&title_bore); look_default(&title_bore); look_random(&title_bore); }
 }
 static void over_draw(void) {
     life_draw();
@@ -4504,7 +4578,11 @@ int main(void) {
             case ST_WMAKE: wm_update(); if (state == ST_WMAKE) wm_draw(); else if (state == ST_MODE) mode_draw(); else if (state == ST_NHED) ne_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_NAME) name_draw(); else life_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
-        if (state == ST_LIFE) {   // a frame that ran past two screen refreshes: the full-detail range draws in a tile (back out once things are quiet)
+#ifdef AB_NOSHED
+        if (0) {   // (test builds: the speed helper off, so a setting's own cost shows)
+#else
+        if (state == ST_LIFE && opt[O_SPEED]) {   // a frame that ran past two screen refreshes: the full-detail range draws in a tile (back out once things are quiet)
+#endif
             extern int world_detail_r, cit_maxdraw, gfx_last_wait; static int slow_n, fast_n, hot_n, cool_n;
             // (the frame's whole cost: the CPU's time up to here, plus how long the GPU was still busy with the last frame. A slow GPU,
             //  big skyline boxes filling the screen, used to go unseen, because only the CPU's time was counted)
@@ -4520,7 +4598,9 @@ int main(void) {
             {   // still too slow after that: pull in the view distance, the skyline's detail, the trees and the crowd, a step at a time (and back out after a long quiet spell)
                 int ch = 0;
                 if (load > 500) { cool_n = 0; if (++hot_n >= 2 && shed_lvl < 4) { shed_lvl++; hot_n = 0; ch = 1; } } else hot_n = 0;
-                if (load < 400) { if (++cool_n >= 150 + 150 * shed_lvl && shed_lvl > 0) { shed_lvl--; cool_n = 0; ch = 1; } } else if (load > 460) cool_n = 0;
+                { extern int far_hb[3]; extern int far_reach_m(void); static int far_cost = 350;   // (what the far view costs when it is on: learned, so it is not brought back only to be cut again at once)
+                  if (far_reach_m() >= 0) far_cost += (far_hb[0] + far_hb[1] + far_hb[2] - far_cost) / 8;
+                  if (load < 400 && (shed_lvl < 4 || load + far_cost < 520)) { if (++cool_n >= 150 + 150 * shed_lvl && shed_lvl > 0) { shed_lvl--; cool_n = 0; ch = 1; } } else if (load > 460) cool_n = 0; }
                 if (ch) {
                     int v = opt[O_VIEW]; far_view = (v && shed_lvl < 4) ? (v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
                     int tr = opt[O_TREES] - shed_lvl; far_trees = tr < 0 ? 0 : tr;
@@ -4541,6 +4621,7 @@ int main(void) {
             if (!dbg_life_n) dbg_life_vb0 = VSync(-1); dbg_life_n++; dbg_life_vb = VSync(-1) - dbg_life_vb0; dbg_sum_cpu += t_cpu; for (int k = 0; k < 8; k++) dbg_sum_prof[k] += gfx_prof[k];
             { extern int world_hb_l0, world_hb_up, world_hb_roofs, world_hb_sky1; dbg_sum_w[0] += world_hb_l0; dbg_sum_w[1] += world_hb_up; dbg_sum_w[2] += world_hb_roofs; dbg_sum_w[3] += world_hb_sky1; { extern int far_hb[3]; dbg_sum_w[4] += far_hb[0]; dbg_sum_w[5] += far_hb[1]; dbg_sum_w[6] += far_hb[2]; } }
             { extern int gfx_profn[8]; for (int k = 0; k < 8; k++) dbg_sum_pn[k] += gfx_profn[k]; }
+            { extern int far_nquad, far_nclip, far_ncone, far_np[3]; dbg_sum_far[0] += far_nquad; dbg_sum_far[1] += far_nclip; dbg_sum_far[2] += far_ncone; dbg_sum_far[3] += far_np[0]; dbg_sum_far[4] += far_np[1]; dbg_sum_far[5] += far_np[2]; }
             { extern int world_detail_r; dbg_sum_shed += shed_lvl; dbg_sum_r += world_detail_r; }
             dbg_sum_part[0] += t_upd; dbg_sum_part[1] += t_logic; dbg_sum_part[2] += t_world; dbg_sum_part[3] += t_sims; dbg_sum_part[4] += t_bub; dbg_sum_part[5] += t_hud;
             for (int k = 0; k < 8; k++) avg_prof16[k] += gfx_prof[k] - (avg_prof16[k] >> 4); }

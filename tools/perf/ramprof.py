@@ -39,3 +39,6 @@ for i,c in enumerate(h):
     acc+=c
     if c: print('   %4d-%4d hb %4d frames  cum %.0f%%'%(i*50,i*50+49,c,100*acc/tot))
 under=sum(h[:16]); print('   share of frames that fit 3 vblanks (<=785): %.0f%%'%(100*under/tot))
+
+if nn:
+    f=rd('dbg_sum_far',6); print('far pass per frame: quads %.0f (clipped %.0f) cone tests %.0f | prims land %.0f buildings %.0f trees %.0f'%tuple(x/nn for x in f))

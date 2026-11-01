@@ -33,7 +33,9 @@ jobs, homes, the people, goals, photos) and the BORE PHONE MAX ($900: every app,
 BOREBOY ($120) and the BOREBOY ADVANCE ($220), played from the phone's GAMES for fun. Locked apps show a padlock and say what
 unlocks them. Each phone has its own look (grey, black, gold). Saves keep what you own (version 10; older lives keep every app).
 
-From BORE on the GBA: YOUR BORE ALONE (OPTIONS, LIFE: OFF, LOW, HIGH): put the pad down and after 25 s (or 10 s) your Bore looks
+OPTIONS has nine pages, like the GBA game's: GRAPHICS, PEOPLE, LIGHT, CAMERA, SCREEN (shape, frame rate, clock, message time), AUDIO (master, music and sound volumes 0 to 10 on the GBA's curve, title music, game music, shuffle), GAME (how fast needs fall, how long a day is, ages, ghosts), CHEATS, and DATA (reset graphics, audio, the game, or everything). A gold dot marks a page that is not as it came. They are saved with each save game (version 41; older saves load with the new rows at their defaults, and an old music level becomes the music slider). VIEW DISTANCE says how far the view really reaches at this camera; SPEED HELPER (on) pulls the view in when the game gets slow, off it draws all you picked.
+
+From BORE on the GBA: YOUR BORE ALONE (OPTIONS, GAME: OFF, LOW, HIGH): put the pad down and after 25 s (or 10 s) your Bore looks
 after itself like the rest of the household; any button gives it back. THE JOB HUNT: the paper comes at 6 AM (a headline, and three
 jobs in TODAY'S CLASSIFIEDS, a different three each day, on the phone's JOBS); a smartphone or the COMPUTER at home shows the whole
 JOB BOARD. The COMPUTER also has a game, the web, a cooking class, chatting online and a paid FREELANCE GIG (a few of each a day).

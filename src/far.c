@@ -12,6 +12,8 @@ int far_view = FAR_VIEW0, far_trees = 2, far_detail = 2, far_haze = 1, far_prims
 int far_hb[3], far_np[3], far_nclip, far_ncone, far_nquad, far_hb_win, far_hb_win0;   // (test readouts: land, buildings, trees)
 static const short view_m[6] = { 0, 250, 500, 1000, 1500, 2000 };
 int far_metres(void) { return view_m[CLAMP(far_view, 0, 5)]; }
+static int far_reach_u;                    // how far (world units) the last frame's far pass could show anything: set by far_setup
+int far_reach_m(void);                     // that in metres; -1 when the far view was not drawn (the options screen tells you)
 #define M2U(m) ((m) * 213)                  // metres to world units (a tile, 256 units, is 1.2 m)
 #define ZN 4                                // the near plane, in 1/16 units (64 world units)
 #define GB 3                                // the guard band: the view's edges pushed out 3x (screen coordinates stay inside +-1023)
@@ -325,6 +327,7 @@ static int far_setup(void) {
     static const int hz_m[3] = { 0, 170, 235 };
     hz_max = hz_m[CLAMP(far_haze, 0, 2)]; hz_d0 = M2U(60); hz_span = MAX(far - hz_d0, M2U(100));
     hz_inv = (256 << 16) / (hz_span >> 4) >> 4;                 // (f = (z - d0) * 256 / span, without a division a point)
+    far_reach_u = MAX(max_ground, max_bld);
     return max_ground > 0 || max_bld > 0;
 }
 
@@ -363,7 +366,8 @@ static u32 floor_key0(int fl) {
 }
 // ---- the streets, seen from far above: dark bands along the blocks' top and left edges (the land's colour alone shows none) ----
 #define RD_R 24                                        // blocks each way round the eye that are kept
-static u8 rdc[2 * RD_R + 1][2 * RD_R + 1]; static int rdc_bx = -99999, rdc_by, rdc_stamp = -1;
+static u8 rdc[2 * RD_R + 1][2 * RD_R + 1] __attribute__((aligned(4))); static int rdc_bx = -99999, rdc_by, rdc_stamp = -1;
+#define RD_W (2 * RD_R + 1)
 static void roads_fill(int cbx, int cby) {
     rdc_bx = cbx - RD_R; rdc_by = cby - RD_R;
     for (int j = 0; j <= 2 * RD_R; j++) for (int i = 0; i <= 2 * RD_R; i++) {
@@ -376,11 +380,14 @@ static void draw_roads(int hills) {
     int ax = fwx0 + (feye.vx >> 8) / 1, ay = fwy0 - (feye.vz >> 8);                 // the eye's tile in the world
     int cbx = ax / BM_BLK, cby = ay / BM_BLK;
     if (rdc_bx == -99999 || ABS(cbx - (rdc_bx + RD_R)) > 6 || ABS(cby - (rdc_by + RD_R)) > 6 || rdc_stamp != world_stamp) { roads_fill(cbx, cby); rdc_stamp = world_stamp; }
-    for (int j = 0; j <= 2 * RD_R; j++) for (int i = 0; i <= 2 * RD_R; i++) rdc[j][i] &= 7;      // (the marks of last frame's runs off)
+    { u32 *w = (u32 *)rdc; for (int k = 0; k < RD_W * RD_W / 4; k++) w[k] &= 0x07070707u; rdc[RD_W - 1][RD_W - 1] &= 7; }      // (the marks of last frame's runs off: four a time)
     const int reach = MIN(max_ground, M2U(450)), RW = 3 * TILE, maxrun = hills ? 3 : 99;
     #define IN_WIN(bx, by) (world_wbx >= 0 && (bx) >= world_wbx && (bx) < world_wbx + MW / BM_BLK && (by) >= world_wby && (by) < world_wby + MH / BM_BLK)
+    // only the blocks within reach of the eye (the table holds 49 x 49: reach is usually a good deal less)
+    const int rb = reach / (BM_BLK * TILE) + 2, ei = cbx - rdc_bx, ej = cby - rdc_by;
+    const int i0 = MAX(0, ei - rb), i1 = MIN(2 * RD_R, ei + rb), j0 = MAX(0, ej - rb), j1 = MIN(2 * RD_R, ej + rb);
     for (int pass = 0; pass < 2; pass++)
-    for (int j = 0; j <= 2 * RD_R; j++) for (int i = 0; i <= 2 * RD_R; i++) {
+    for (int j = j0; j <= j1; j++) for (int i = i0; i <= i1; i++) {
         int bx = rdc_bx + i, by = rdc_by + j, bit = pass ? 2 : 1;
         if (!(rdc[j][i] & bit) || (rdc[j][i] & (bit << 4)) || IN_WIN(bx, by)) continue;
         int px = ((bx * BM_BLK) - fwx0) * TILE, pz = -(((by * BM_BLK) - fwy0) * TILE);   // the block's north-west corner
@@ -421,9 +428,13 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
         row_end();
     }
     for (int i = 0; i < nrect; i++) { const Rect *r = &rects[i];
-        if (hills) { for (int cy = r->y0; cy < r->y1; cy++) for (int cx = r->x0; cx < r->x1; cx++) {   // (hills: a quad a cell, each corner at the height of the land there)
-                int hh[4] = { world_gh_c(cx * 4, cy * 4), world_gh_c(cx * 4 + 4, cy * 4), world_gh_c(cx * 4 + 4, cy * 4 + 4), world_gh_c(cx * 4, cy * 4 + 4) };
-                ground_quad(cx * 4 * TILE, (cx + 1) * 4 * TILE, -(cy * 4 * TILE), -((cy + 1) * 4 * TILE), r->key & 255, (r->key >> 16) & 255, (r->key >> 8) & 255, OT_GROUND_WIN, hh); } }
+        if (hills) { for (int cy = r->y0; cy < r->y1; cy++) for (int cx = r->x0; cx < r->x1; cx++) {   // (hills: a quad a cell, each corner at the height of the land there; past 24 tiles, a quad to every 2 x 2 cells)
+                int bx0 = cx & ~1, by0 = cy & ~1, sp = 1;
+                if (bx0 >= r->x0 && bx0 + 1 < r->x1 && by0 >= r->y0 && by0 + 1 < r->y1 && MAX(ABS((bx0 * 4 + 4) * TILE - feye.vx), ABS(-((by0 * 4 + 4) * TILE) - feye.vz)) > 24 * TILE) {
+                    if ((cx | cy) & 1 && (cx != bx0 || cy != by0)) continue;   // (a cell of a pair-up already drawn from its top left)
+                    sp = 2; }
+                int n4 = 4 * sp, hh[4] = { world_gh_c(cx * 4, cy * 4), world_gh_c(cx * 4 + n4, cy * 4), world_gh_c(cx * 4 + n4, cy * 4 + n4), world_gh_c(cx * 4, cy * 4 + n4) };
+                ground_quad(cx * 4 * TILE, (cx + sp) * 4 * TILE, -(cy * 4 * TILE), -((cy + sp) * 4 * TILE), r->key & 255, (r->key >> 16) & 255, (r->key >> 8) & 255, OT_GROUND_WIN, hh); } }
         else
         ground_quad(r->x0 * 4 * TILE, r->x1 * 4 * TILE, -(r->y0 * 4 * TILE), -(r->y1 * 4 * TILE), r->key & 255, (r->key >> 16) & 255, (r->key >> 8) & 255, OT_GROUND_WIN, 0); }
     far_hb_win = gfx_hb();
@@ -762,6 +773,7 @@ int far_begin(u32 horizon) {
     far_gte(); far_on_frame = 1;
     return 1;
 }
+int far_reach_m(void) { return far_on_frame ? far_reach_u / 213 : -1; }
 void far_draw(int rx0, int ry0, int rx1, int ry1) {
     if (!far_on_frame) return;
     far_gte();

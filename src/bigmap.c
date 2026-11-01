@@ -54,9 +54,10 @@ int bm_ovr_next(int *it, int *bx, int *by, int *f, u8 *v) {   // walk the change
 static Settle sets[NSET_MAX]; static int nset;
 // ---- the hills you walk on: the height of a block's middle in world units, from the same land as the 3D model (0 at the sea, the beach and in and round towns, which are built level) ----
 typedef struct { s16 x, y, h; u8 town; } HillC;
-static HillC hcache[64];
+#define HC_N 512
+static HillC hcache[HC_N];
 void world_gh_reset(void);
-void bm_hill_reset(void) { memset(hcache, 0xFF, sizeof hcache); world_gh_reset(); }   // (world.c keeps the heights it worked out from these: they go too)
+void bm_hill_reset(void) { memset(hcache, 0x7F, sizeof hcache); world_gh_reset(); }   // (world.c keeps the heights it worked out from these: they go too)
 static int hill_raw(int bx, int by) {
     if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return 0;
     if (bm_terrain(bx, by) == BT_SEA) return 0;
@@ -66,7 +67,7 @@ static int hill_raw(int bx, int by) {
     return MIN(v, 4800);
 }
 int bm_hill_t(int bx, int by, int *town) {   // a block's height (units) at its middle: a town's lot is levelled to it, wild land rolls through it
-    HillC *c = &hcache[(bx * 7 + by * 13) & 63];
+    HillC *c = &hcache[(((u32)bx * 0x9E3779B1u) ^ ((u32)by * 0x85EBCA6Bu)) >> 23];
     if (c->x != bx || c->y != by) { c->x = (s16)bx; c->y = (s16)by; c->h = (s16)hill_raw(bx, by); c->town = (u8)(bx >= 0 && by >= 0 && bx < BM_N && by < BM_N && bm_set_at(bx, by) != 255 && c->h > 0); }
     if (town) *town = c->town;
     return c->h;

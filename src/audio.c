@@ -37,14 +37,18 @@ static int upload_sample(const void *data, int size) {
     return addr;
 }
 
+// the volume curve of the GBA game's options (0..10: a gentle ear-shaped climb to 256 = full)
+static const short volTab[11] = { 0, 8, 17, 28, 42, 60, 84, 114, 150, 198, 256 };
+static int sfx_gain = 256, master_v = 0x3fff;
+
 void audio_voice(int v) {
     if (!spu_ok || v < 0 || v >= VOICE_N || !voice_addr[v]) return;
     int ch = CLIP_CH0 + next_clip;
     SpuSetKey(0, 1 << ch);
     SPU_CH_FREQ(ch) = getSPUSampleRate(voice_rate[v]);
     SPU_CH_ADDR(ch) = getSPUAddr(voice_addr[v]);
-    SPU_CH_VOL_L(ch) = 0x2fff;
-    SPU_CH_VOL_R(ch) = 0x2fff;
+    SPU_CH_VOL_L(ch) = 0x2fff * sfx_gain >> 8;
+    SPU_CH_VOL_R(ch) = 0x2fff * sfx_gain >> 8;
     SPU_CH_ADSR1(ch) = 0x00ff;
     SPU_CH_ADSR2(ch) = 0x0000;
     SpuSetKey(1, 1 << ch);
@@ -91,6 +95,11 @@ static u32 vtime[MUS_CH]; static int vdeck[MUS_CH], vtch[MUS_CH], vbl[MUS_CH], v
 static u32 vclock;
 static int music_vol = 320;
 void audio_music_level(int l) { static const short lv[4] = { 0, 110, 210, 320 }; music_vol = lv[l & 3]; }   // OFF, LOW, MEDIUM, FULL (from the next note on)
+void audio_volumes(int master, int music, int sfx) {   // OPTIONS > AUDIO: three sliders, 0..10 each
+    master = master < 0 ? 0 : master > 10 ? 10 : master; music = music < 0 ? 0 : music > 10 ? 10 : music; sfx = sfx < 0 ? 0 : sfx > 10 ? 10 : sfx;
+    master_v = 0x3fff * volTab[master] >> 8; music_vol = 320 * volTab[music] >> 8; sfx_gain = volTab[sfx];
+    if (spu_ok) SpuSetCommonMasterVolume(master_v, master_v);
+}
 static int music_vol_unused;            // 256 = the GBA level (a touch louder: the SPU has the headroom)
 static volatile int dj_wash;            // the DJ's echo: reverb added on top
 
@@ -553,7 +562,7 @@ void audio_update(void) {
 void audio_init(void) {
     SpuInit();
     spu_ok = 1;
-    SpuSetCommonMasterVolume(0x3fff, 0x3fff);
+    SpuSetCommonMasterVolume(master_v, master_v);
     music_silence();
     cd_ok = 0;
     song_base = spu_next;

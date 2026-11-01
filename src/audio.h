@@ -9,6 +9,7 @@ void audio_init(void);
 int  audio_cd_part(const char *name, u32 sector, int count, void *dst);   // sectors from inside a disc file
 int  audio_cd_load(const char *name, void *dst, int room);   // a file off the disc into RAM (0: not there, or too big)
 void audio_voice(int v);
+void audio_volumes(int master, int music, int sfx);   // the master, music and sound sliders (0..10)
 void audio_music_level(int l);            // the music's volume: 0 off, 1 low, 2 medium, 3 full
 void audio_update(void);                  // once a frame: the jukebox moves on when a song ends
 
