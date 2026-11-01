@@ -192,6 +192,9 @@ static int det_opt = 12;                                      // the FULL DETAIL
 int dbg_slow[16][8], dbg_slow_n;
 int avg_cpu16, avg_world16, avg_hh16, hist_cpu[5], avg_prof16[8];
 int dbg_sum_far[6], dbg_miss[4], dbg_sum_miss[4], dbg_roads_hb, dbg_sum_roads;   // (test readouts: the far pass's quads, clipped quads, cone tests, and prims: land, buildings, trees)
+#ifdef AUTO_CITY
+int dbg_lg_max[2], dbg_cit_hist[12];   // (test readouts: the townsfolk's and the household's worst frame, the townsfolk's cost a frame in 20-hb bins)
+#endif
 int dbg_life_n, dbg_life_vb, dbg_life_vb0, dbg_sum_cpu, dbg_sum_prof[8], dbg_sum_part[6], dbg_sum_lg[4], dbg_sum_w[8], dbg_sum_pn[8], dbg_sum_shed, dbg_sum_r;   // (test readouts over the whole stay in the city: frames, vblanks they took, their summed cost)
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
@@ -737,7 +740,11 @@ static void life_update(int steps) {
     { extern int getenv_noshadow, dbg_noao, dbg_nograd; if (PRESSED(PAD_R3) && HELD(PAD_L3)) { static int mode; mode = (mode + 1) & 3; getenv_noshadow = mode == 1; dbg_noao = mode == 2; dbg_nograd = mode == 3; } }
     if (PRESSED(PAD_SELECT)) { extern void phone_open(void); phone_open(); }   // the phone in your pocket
     { extern int dbg_sum_lg[4]; int t0 = hb_now(), t1, t2, t3; for (int k = 0; k < steps; k++) sim_step(); t1 = hb_now(); citizens_update(steps); t2 = hb_now(); traffic_update(steps); t3 = hb_now();
-      dbg_sum_lg[0] += t1 - t0; dbg_sum_lg[1] += t2 - t1; dbg_sum_lg[2] += t3 - t2; dbg_sum_lg[3] += steps; t_logic = t3 - t0; }
+      dbg_sum_lg[0] += t1 - t0; dbg_sum_lg[1] += t2 - t1; dbg_sum_lg[2] += t3 - t2; dbg_sum_lg[3] += steps; t_logic = t3 - t0;
+#ifdef AUTO_CITY
+      { extern int dbg_lg_max[2], dbg_cit_hist[12]; if (t2 - t1 > dbg_lg_max[0]) dbg_lg_max[0] = t2 - t1; if (t1 - t0 > dbg_lg_max[1]) dbg_lg_max[1] = t1 - t0; dbg_cit_hist[MIN(11, MAX(0, t2 - t1) / 20)]++; }
+#endif
+    }
     {   // SAN BOREAS: the map window follows you a block at a time (everything slides with it)
         int dtx, dty;
 #ifdef AUTO_CITY
@@ -776,7 +783,11 @@ static void life_update(int steps) {
             cam_pitch = 470; cam_dist = 3200; cam_yaw = (fr_ * 3) & 4095;
           }
 #elif !defined(AUTO_TOWER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_PROP)
+#ifdef CIT_STAND
+          if (fr_ > 240 && fr_ < CIT_STAND && s->action == ACT_NONE) s->x += 11 * steps;   // (test builds: a stroll, then stand about on the street)
+#else
           if (fr_ > 240 && s->action == ACT_NONE) s->x += 11 * steps;   // (stroll east along the street)
+#endif
           if (fr_ > 2000) { cam_pitch = 700; cam_dist = 4200; cam_yaw = 2048 + 500; }   // (then look over the roofs)
 #ifdef AUTO_LOW
           if (fr_ > 600) { cam_pitch = AUTO_LOW; cam_dist = 2200; cam_yaw = (cam_yaw + 3 * steps) & 4095; }   // (a low camera turning round: the horizon)
@@ -3710,7 +3721,17 @@ static void title_update(void) {
     if (title_t == 30) { world_backup(); prev_state = ST_MENU; create_tab = 4; create_row = 0; state = ST_CREATE; world_gen_studio(); return; }
 #endif
 #if defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM) || defined(AUTO_GOTCHI) || defined(AUTO_DJ) || defined(AUTO_SUPER)
-    if (title_t == 30) { life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
+    if (title_t == 30) {
+#ifdef CIT_PEOPLE
+        pop_people = CIT_PEOPLE; pop_famsize = 2;   // (test builds: a bigger SAN BOREAS, PEOPLE 5 = PACKED, BIG households)
+#endif
+        life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
+#ifdef CIT_KNOWN
+        { int n = 0; for (int p = 0; p < pop_nper; p += CIT_KNOWN) { pop_per[p].met = 1; pop_per[p].rel = (s8)(10 + n % 70); n++; } pop_known_rebuild(); }   // (test builds: every CIT_KNOWNth person in SAN BOREAS knows you already)
+#ifdef CIT_LIFE
+        { extern int dbg_kn[4]; int c0 = clock_min; for (int d = 0; d < 3; d++) pop_midnight(); for (int h = 8; h <= 22; h++) { clock_min = h * 60; pop_hour(); } clock_min = c0; dbg_kn[3] = pop_kn_n; }   // (test builds: three days and a day's hours of their lives off the map, at once)
+#endif
+#endif
 #ifdef AUTO_CITY
         travel_go(ZONE_CITY);
 #endif

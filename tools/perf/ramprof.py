@@ -22,6 +22,16 @@ if nn:
     print('residual (sky, audio, pad, packet setup, flip prep): %.0f hb'%((sc-pt[0]-pt[2]-pt[3]-pt[4]-pt[5])/nn))
 if nn:
     lg=rd('dbg_sum_lg',4); print('logic per frame hb: sim_step %.0f  citizens %.0f  traffic %.0f   (avg steps/frame %.2f)'%(lg[0]/nn,lg[1]/nn,lg[2]/nn,lg[3]/nn))
+if nn and 'dbg_lg_max' in S:
+    mx=rd('dbg_lg_max',2); h=rd('dbg_cit_hist',12); t=sum(h) or 1
+    print('logic worst frame hb: citizens %d  sim_step %d | citizens a frame, 20-hb bins: %s'%(mx[0],mx[1],' '.join('%d'%x for x in h)))
+    acc=0; p95=0
+    for i,c in enumerate(h):
+        acc+=c
+        if acc>=0.95*t: p95=(i+1)*20; break
+    print('   citizens: 95%% of frames under %d hb'%p95)
+if nn and 'dbg_ctier' in S:
+    c=rd('dbg_ctier',8); print('townsfolk a frame: busy with you %.1f | know you %.1f | strangers near %.1f | far %.1f | thinking calls %.1f | frames spaced out %d, put off by the clock %d'%(c[0]/nn,c[1]/nn,c[2]/nn,c[3]/nn,c[4]/nn,c[6],c[7]))
 if nn:
     w=rd('dbg_sum_w',4); print('world parts hb: layer0 tiles %.0f | upper storeys %.0f | roofs %.0f | skyline boxes (cumulative from prof start) %.0f'%tuple(x/nn for x in w))
 if nn:

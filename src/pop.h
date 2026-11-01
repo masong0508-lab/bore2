@@ -17,7 +17,7 @@ enum { HK_SINGLE, HK_OLDTIMER, HK_COUPLE, HK_RETIRED, HK_ROOMMATES, HK_YOUNGFAM,
 enum { AT_SLEEP, AT_HOME, AT_WORK, AT_SCHOOL, AT_OUT };
 
 typedef struct { u16 bx, by; u8 unit, n; u16 first; u16 sur; u8 set, kind; } Fam;
-typedef struct { u32 seed; u16 job; u8 stage : 3, trait : 5; u8 flags, slot; s8 rel, rom; u8 hp; } Per;   // 12 bytes (the household: pop_fam_of, by where they sit in the list; the work shift: from the seed)
+typedef struct { u32 seed; u16 job; u8 stage : 3, trait : 5; u8 flags, slot; s8 rel, rom; u8 hp : 7, met : 1; } Per;   // 12 bytes (met: has had anything to do with you, ever: the save keeps it with hp) (the household: pop_fam_of, by where they sit in the list; the work shift: from the seed)
 typedef struct { u16 bx, by; u8 lot, set; } Place;
 #define PF_HOMEBODY 1
 #define PF_GONE     2                 // moved in with you, or otherwise out of the world (hp 0: passed away)
@@ -50,6 +50,15 @@ const char *pop_job_name(int p, char *out);                 // "COOK AT THE DIPP
 const char *pop_doing(int p, char *out);                    // "ASLEEP AT HOME", "AT WORK: BOREMART", "AT ELM PARK"
 int  pop_stage_of(int p);
 void pop_tick(void);                                        // once a frame in SAN BOREAS: bring people in the window to life
+// WHO KNOWS YOU (the scheduler's first tier; see citizens.c): anyone you have met, anyone with feelings about you either way,
+// your moved-out Bores, your block's neighbours and your coworkers. The first three are kept on a list (KN_MAX), so pop_tick
+// brings them in first and a coarse clock (pop_hour, pop_midnight) keeps their lives going off the map: calls, drifting apart.
+int  pop_knows_you(int p);
+void pop_know(int p);                                       // (met, or feelings: onto the list)
+void pop_seen(int p);                                       // (seen today: no drifting apart)
+void pop_hour(void);                                        // once a game hour (sim.c's clock)
+void pop_known_rebuild(void);                               // (after a load)
+extern int pop_kn_n;
 int  pop_count_where(int at);                               // (directory) how many people are asleep / home / at work ...
 extern int pop_aging;                                       // (options) the rest of SAN BOREAS grows older too
 void pop_midnight(void);                                    // a day older all over SAN BOREAS: birthdays, babies, the old passing, new families

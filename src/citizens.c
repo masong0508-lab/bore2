@@ -31,7 +31,7 @@ int cit_live_max = LIVE_MAX, cit_maxdraw = 64, cit_sprite_rate = 1;   // (the op
 #define NOPID     0xFFFF
 #define NONE      255
 
-enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME, CM_LEAVE, CM_CHORE, CM_VISIT, CM_PARTY, CM_STOP, CM_AWAY };   // (STOP: a peacemaker, come to break the fight up)
+enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME, CM_LEAVE, CM_CHORE, CM_VISIT, CM_PARTY, CM_STOP, CM_AWAY, CM_GREET };   // (STOP: a peacemaker, come to break the fight up; GREET: someone who knows you, come over to say hello)
 enum { PE_FRIENDLY, PE_GRUFF, PE_FLIRTY, PE_SHY };
 enum { PO_TALK, PO_JOKE, PO_HUG, PO_FLIRT, PO_GIFT, PO_PROPOSE, PO_FIGHT, PO_SORRY, PO_FAMILY, PO_MOVEIN,
        PO_SUB_CHAT, PO_SUB_SOC, PO_SUB_ROM, PO_SUB_MEAN, PO_BACK,   // the pie's sub-menus
@@ -51,21 +51,30 @@ typedef struct {
     s8   rel, rom;                  // what they think of you, and the romance
     u8   hh, mem, sub, homebody;    // their household, their place in it, the step of a door/bed routine, stays in by day
     s8   off;                       // minutes early or late: no household moves as one
+    u8   owe;                       // the scheduler: steps lived but not yet thought through (in what was padding)
     u16  st;                        // steps spent held up
-    u8   wx, wy, gx, gy, wv;        // the next tile of a routed walk, the goal tile it was routed to, whether it is current
+    u8   wx, wy, gx, gy, wv;        // the next tile of a routed walk, the goal tile it was routed to, whether it is current (2: no way found from tile wx,wy)
     u8   path[8], plen, pi;         // the route itself, 2 bits a step (worked out once per goal, not at every tile)
     u8   chore, chain, chx, chy, ix, iy, vh;   // a chore at home: the item letter, the one that follows it, where they stand, where the item is; a visit: the door tile and the household
     u8   zone0;                     // a party guest from another zone: where to go back to (255: none)
+    u8   flg;                       // F_*: met you, said hello, known some other way, put off, far; the tier (in what was padding)
     u16  pid, mplace;               // SAN BOREAS: who they are in pop.c (NOPID: one of the island's or the town's own), and where they were brought to life (NOPID: home)
     u8   ax, ay, vanish;            // ... the place they hang about (a tile), and 1 when they are wanted elsewhere
     u8   cop;                       // 1: a police officer, called to a fight (in uniform)
 } Cit;
+#define F_MET  1                    // has met you: any interaction at all, for good
+#define F_HI   2                    // came over to say hello, this time out
+#define F_KN   4                    // known to you some other way (pop.c: a moved-out Bore, a neighbour, a coworker)
+#define F_LATE 8                    // put off by the clock last frame
+#define F_FAR  16                   // a far stranger, past 26 tiles
+#define F_TSH  5                    // the tier this frame, bits 5-6
 typedef struct { u8 zone, home, n, fam; u8 mem[6]; u16 pfam; } Hh;   // a household: who lives in which of the zone's homes, under which surname (pfam: its pop.c family, or NOPID)
 
 static Cit cits[NCIT];
 static Hh hh[NHH]; static int nhh; static u8 formed[ZONE_N];
 // (a citizen is built in crowd.c's unpacking Bore: it is only ever needed between one unpack and the drawing that follows)
 static void party_leave_done(Cit *c);
+static void meet(Cit *c); static int cit_known(const Cit *c);
 static void crowd_react(int start); static void heat_add(int v); static int fam_in_reach(void); static int fam_punch(void); static void fam_calm(void); static void fam_step(void); static int heat;
 extern int aggro_pct, rage_pct, aggro_who, rage_who, peace_on;
 static int party_on, party_left, party_cx, party_cy, party_in, party_spx, party_spz, party_n, party_next, party_t, home_guests;
@@ -76,6 +85,18 @@ static u32 crng = 0x9E3779B9u;
 static char pie_title[NAME_LEN + 2];
 static u8 pie_code[8]; static int pie_c = -1;
 
+#ifdef CIT_PROBE   // (test builds: what the townsfolk do over a run, to compare one scheduler with another: tools/perf/citprobe.py)
+int dbg_cc[16];                       // counters (names in citprobe.py)
+u16 dbg_cpr[24][24]; int dbg_cpr_n;   // a snapshot of the crowd every 512 steps
+int dbg_cm[16][2], dbg_pm[16][2];     // steps lived and ground walked, by mode; route searches by mode, and the ones that found no way
+int dbg_rf[8][8], dbg_rfn;            // the last route searches that found no way: who, from, to
+int dbg_wk[4];                        // walks begun, ended by the time, ended held up, steps held up
+#define CP(k, v) (dbg_cc[k] += (v))
+#define WK(k) (dbg_wk[k]++)
+#else
+#define CP(k, v) ((void)0)
+#define WK(k) ((void)0)
+#endif
 static u32 crnd(void) { crng ^= crng << 13; crng ^= crng >> 17; crng ^= crng << 5; return crng; }
 static int  rn(int n) { return (int)((crnd() >> 8) % (u32)n); }
 
@@ -157,7 +178,7 @@ static void build_lod(Cit *c) {
     strncpy(c->first, scratch.first, NAME_LEN - 1); c->first[NAME_LEN - 1] = 0;
     strncpy(c->last, scratch.last, NAME_LEN - 1); c->last[NAME_LEN - 1] = 0;
     voxel_lod_build(&scratch, &c->lod);
-    c->built = 1;
+    c->built = 1; CP(9, 1);
     #undef scratch
 }
 
@@ -259,7 +280,7 @@ COLD void citizens_init(void) {
         c->stage = r < 8 ? AG_CHILD : r < 20 ? AG_TEEN : r < 78 ? AG_ADULT : AG_ELDER;   // (until a household is formed round them)
         c->pers = (u8)rn(4);
         c->hh = NONE; c->off = (s8)(rn(91) - 45); c->sub = 0; c->st = 0;
-        c->hp = 100; c->mode = CM_IDLE; c->slot = 0; c->built = 0; c->zone0 = 255;
+        c->hp = 100; c->mode = CM_IDLE; c->slot = 0; c->built = 0; c->zone0 = 255; c->owe = 0; c->flg = 0;
         strcpy(c->first, "..."); c->last[0] = 0;
         if (i >= MAIN0) c->mode = CM_GONE;
     }
@@ -294,7 +315,7 @@ COLD static void place_initial(Cit *c, int px, int pz) {   // where they are rig
 }
 
 // ---- SAN BOREAS: people brought to life where pop.c says they are -------------------------------------------
-static int fam_hh(int f) {                        // the household entry for a pop.c family (made when the first of them turns up)
+COLD static int fam_hh(int f) {                        // the household entry for a pop.c family (made when the first of them turns up)
     for (int k = 0; k < NHH; k++) if (hh[k].pfam == f && hh[k].zone == ZONE_CITY) return k;
     const Fam *fm = &pop_fam[f];
     int home = world_home_find(ZONE_CITY, fm->bx, fm->by, fm->unit); if (home < 0) return -1;
@@ -302,22 +323,23 @@ static int fam_hh(int f) {                        // the household entry for a p
         Hh *g = &hh[k]; g->zone = ZONE_CITY; g->home = (u8)home; g->n = 0; g->fam = 0; g->pfam = (u16)f; return k; }
     return -1;
 }
-static void hh_drop(Cit *c) {                     // out of their household's list (the entry goes when the last one does)
+COLD static void hh_drop(Cit *c) {                     // out of their household's list (the entry goes when the last one does)
     if (c->hh == NONE) return;
     Hh *g = &hh[c->hh]; int ci = (int)(c - cits);
     for (int k = 0; k < g->n; k++) if (g->mem[k] == ci) { g->mem[k] = g->mem[g->n - 1]; g->n--; break; }
     if (g->pfam != NOPID && !g->n) { g->zone = 255; g->pfam = NOPID; }
     c->hh = NONE;
 }
-static void main_free(Cit *c) {                   // back into pop.c: what they think of you goes with them
+COLD static void main_free(Cit *c) {                   // back into pop.c: what they think of you goes with them
     int i = (int)(c - cits);
-    if (c->pid != NOPID) { Per *q = &pop_per[c->pid]; q->rel = c->rel; q->rom = c->rom; if (!(q->flags & PF_GONE) || q->hp) q->hp = c->hp; q->slot = 255; }   // (hp 0 and gone: passed away)
+    if (c->pid != NOPID) { Per *q = &pop_per[c->pid]; q->rel = c->rel; q->rom = c->rom; if (!(q->flags & PF_GONE) || q->hp) q->hp = MIN(c->hp, 127); q->slot = 255;   // (hp 0 and gone: passed away)
+        if (c->flg & F_MET) q->met = 1; if (q->met || q->rel || q->rom) pop_know(c->pid); }   // (who knows you is remembered, and kept on pop.c's list of them)
     hh_drop(c);
     if (cur == i) cur = -1;
     crowd_forget(i);
-    c->pid = NOPID; c->mplace = NOPID; c->vanish = 0; c->zone = 255; c->mode = CM_GONE; c->built = 0; c->say_t = 0; c->zone0 = 255;
+    c->pid = NOPID; c->mplace = NOPID; c->vanish = 0; c->zone = 255; c->mode = CM_GONE; c->built = 0; c->say_t = 0; c->zone0 = 255; c->owe = 0; c->flg = 0;
 }
-static int place_tile(const Place *pl, int worker, int *tx, int *ty, int *indoor) {   // somewhere to stand at a place in the window
+COLD static int place_tile(const Place *pl, int worker, int *tx, int *ty, int *indoor) {   // somewhere to stand at a place in the window
     int ox = (pl->bx - world_wbx) * BM_BLK + BM_LOT0, oy = (pl->by - world_wby) * BM_BLK + BM_LOT0;
     int want_in = pl->lot != LOT_PARK && pl->lot != LOT_SQUARE && pl->lot != LOT_SKATE && pl->lot != LOT_POOL;
     for (int pass = 0; pass < 3; pass++) for (int t = 0; t < 40; t++) {
@@ -338,6 +360,17 @@ int dbg_tf[6];
 COLD int citizens_take(int pid, int at, int place) {
     int slot = -1;
     for (int i = MAIN0; i < NCIT; i++) if (cits[i].zone == 255 && cits[i].pid == NOPID) { slot = i; break; }
+    int kn = pop_knows_you(pid);
+    if (slot < 0 && kn) {                          // every body taken, and this one knows you: a stranger out of sight makes room (back into pop.c, as they are)
+        int bd = -1;
+        for (int i = MAIN0; i < NCIT; i++) { const Cit *o = &cits[i];
+            if (o->zone != ZONE_CITY || o->pid == NOPID || cit_known(o) || i == cur || i == pie_c || o->zone0 != 255) continue;
+            if (o->mode != CM_IDLE && o->mode != CM_WALK && o->mode != CM_AWAY && o->mode != CM_SLEEP && o->mode != CM_CHORE) continue;
+            if (gfx_visible(o->x, -110, o->z, 160)) continue;
+            int dx = (o->x - cam.at.vx) >> 4, dz = (o->z - cam.at.vz) >> 4, d = dx * dx + dz * dz;
+            if (d > bd) { bd = d; slot = i; } }
+        if (slot >= 0) { main_free(&cits[slot]); CP(14, 1); }
+    }
     if (slot < 0) { dbg_tf[0]++; return -1; }
     Per *q = &pop_per[pid]; Cit *c = &cits[slot];
     int px = sims[player].x, pz = sims[player].z;
@@ -347,6 +380,7 @@ COLD int citizens_take(int pid, int at, int place) {
     c->homebody = (q->flags & PF_HOMEBODY) ? 1 : 0; c->off = pop_offset(pid);
     c->zone = ZONE_CITY; c->zone0 = 255; c->mode = CM_IDLE; c->t = (u16)(10 + rn(150)); c->sub = 0; c->st = 0; c->wv = 0; c->say_t = 0; c->cd = 0; c->slot = 0;
     c->pid = (u16)pid; c->vanish = 0; c->hh = NONE; c->mem = 0; c->built = 0;
+    c->flg = (u8)((q->met ? F_MET : 0) | (kn ? F_KN : 0)); c->owe = 0; CP(13, kn);
     crowd_forget(slot);
     if (place < 0) {                               // at home: in their household, and wherever the clock puts them in it
         int k = fam_hh(pop_fam_of(pid)); if (k < 0) { dbg_tf[1]++; c->zone = 255; c->pid = NOPID; c->mode = CM_GONE; return -1; }
@@ -377,7 +411,8 @@ COLD void citizens_shift(int dtx, int dty) {
         c->x = (s16)x; c->z = (s16)z; c->ax = (u8)CLAMP(ax, 0, MW - 1); c->ay = (u8)CLAMP(ay, 0, MH - 1);
         c->wv = 0;                                 // routes and errands are worked out again
         if (c->mode == CM_CHORE || c->mode == CM_VISIT || c->mode == CM_GOHOME || c->mode == CM_LEAVE) { c->mode = CM_IDLE; c->t = 20; c->gait.sit = 0; }
-        if (c->mode == CM_SLEEP && c->sub == 0) c->sub = 0;
+        if (c->mode == CM_SLEEP && c->sub == 3) c->sub = 0;      // (the way to bed: the bed is found again)
+        if (c->mode == CM_GREET) { c->mode = CM_IDLE; c->t = 20; }
     }
     for (int k = 0; k < NHH; k++) {               // the households' homes have new numbers
         Hh *g = &hh[k]; if (g->zone != ZONE_CITY || g->pfam == NOPID) continue;
@@ -392,8 +427,9 @@ COLD void citizens_shift(int dtx, int dty) {
         if (party_cx < 2 || party_cy < 2 || party_cx >= MW - 2 || party_cy >= MH - 2) party_left = 1;
     }
 }
-static void vanish_tick(void) {                    // the ones wanted elsewhere go, once nobody can see them
-    for (int i = MAIN0; i < NCIT; i++) {
+COLD static void vanish_tick(const u8 *lv, int nlv) {   // the ones wanted elsewhere go, once nobody can see them (lv: the live list)
+    for (int j = 0; j < nlv; j++) {
+        int i = lv[j]; if (i < MAIN0) continue;
         Cit *c = &cits[i];
         if (!c->vanish || c->zone != ZONE_CITY || c->mode == CM_PARTY || c->mode == CM_CHAT || c->mode == CM_CHASE || i == pie_c) continue;
         int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz;
@@ -420,6 +456,7 @@ COLD void citizens_enter(int zone) {
         c->slot = 0;
         if (c->zone != zone || c->mode == CM_GONE) continue;
         if (c->hp < 30) c->hp = 30;
+        c->flg &= F_MET | F_KN; c->owe = 0;   // (a new visit: they may come over to say hello again)
         c->x = 0; c->z = 0;
         place_initial(c, px, pz);
     }
@@ -427,10 +464,10 @@ COLD void citizens_enter(int zone) {
 }
 
 // ---- who is in front of you ---------------------------------------------------------------------------
-static int find_target(void) {
+COLD static int find_target_l(const u8 *lv, int nlv) {   // (lv: the frame's live list, or 0 for every slot)
     const Sim *p = &sims[player]; int best = -1, bd = 1 << 30;
-    for (int i = 0; i < NCIT; i++) {
-        const Cit *c = &cits[i];
+    for (int j = 0; j < (lv ? nlv : NCIT); j++) {
+        int i = lv ? lv[j] : j; const Cit *c = &cits[i];
         if (c->zone != world_zone || c->mode == CM_GONE || c->mode == CM_KO || !c->built) continue;
         int dx = c->x - p->x, dz = c->z - p->z;
         if (ABS(dx) > REACH || ABS(dz) > REACH) continue;
@@ -439,6 +476,7 @@ static int find_target(void) {
     }
     return best;
 }
+static int find_target(void) { return find_target_l(0, 0); }
 static int hostile_in_reach(void) {
     const Sim *p = &sims[player]; int best = -1, bd = 1 << 30;
     for (int i = 0; i < NCIT; i++) {
@@ -461,7 +499,7 @@ const char *citizens_hint(void) {
 // ---- the pie menu -------------------------------------------------------------------------------------
 const char *citizens_pie_title(void) { return pie_title; }
 static int pie_lvl;   // 0 the top; 1 CHAT, 2 FRIENDLY, 3 ROMANCE, 4 MEAN (each ends in BACK)
-static int pie_build(const Cit *c, char opt[8][24]) {
+COLD static int pie_build(const Cit *c, char opt[8][24]) {
     int n = 0, ad = adult(c) && pl_adult();
     #define OPT(txt, code) { strcpy(opt[n], txt); pie_code[n++] = (code); }
     if (c->mode == CM_CHASE) { OPT("SORRY!", PO_SORRY) return n; }
@@ -504,7 +542,7 @@ static int pie_build(const Cit *c, char opt[8][24]) {
 }
 COLD int citizens_pie_open(char opt[8][24]) {
     int i = find_target(); if (i < 0) return 0;
-    Cit *c = &cits[i]; pie_c = i; pie_lvl = 0;
+    Cit *c = &cits[i]; pie_c = i; pie_lvl = 0; meet(c);
     strcpy(pie_title, c->first);
     return pie_build(c, opt);
 }
@@ -524,7 +562,7 @@ static void chat_begin(Cit *c) {
     c->yaw = (u16)yaw_to(sims[player].x - c->x, sims[player].z - c->z);
 }
 
-static void marry_as(Cit *c, int wedding) {   // they move in: the civilian becomes a housemate with the full model (a wedding: as your partner)
+COLD static void marry_as(Cit *c, int wedding) {   // they move in: the civilian becomes a housemate with the full model (a wedding: as your partner)
     Bore *wedp = crowd_temp_bore();
     #define wed (*wedp)
     memset(&wed, 0, sizeof wed);
@@ -699,13 +737,13 @@ static int fam_in_reach(void) {
         if (ABS(s->x - p->x) <= PUNCH_R && ABS(s->z - p->z) <= PUNCH_R) return i; }
     return -1;
 }
-static void fam_go(int i) {   // one of the family turns on you
+COLD static void fam_go(int i) {   // one of the family turns on you
     Sim *s = &sims[i]; if (s->rage || fam_ko[i] || s->bore.stage < AG_TEEN || s->away || s->lvl != sims[player].lvl) return;
     s->rage = 1; fam_hp[i] = 70; fam_cd[i] = 40; s->action = ACT_NONE; s->path_n = 0;
     static const char *const fl[4] = { "YOU'RE GROUNDED!", "NOT IN THIS FAMILY!", "I'VE HAD IT WITH YOU!", "COME HERE!" };
     sim_say_to(s, fl[rn(4)]); audio_voice(VOICE_ANGRY);
 }
-static int fam_punch(void) {
+COLD static int fam_punch(void) {
     int i = fam_in_reach(); if (i < 0) return 0;
     Sim *p = &sims[player], *s = &sims[i];
     if (pl_cd > 0) return 1;
@@ -715,7 +753,7 @@ static int fam_punch(void) {
     else sim_say_to(s, rn(2) ? "OW!" : "HOW COULD YOU!");
     return 1;
 }
-static void fam_step(void) {   // the family members who are after you (sim.c leaves them be while they are)
+COLD static void fam_step(void) {   // the family members who are after you (sim.c leaves them be while they are)
     Sim *p = &sims[player];
     for (int i = 0; i < nsims; i++) {
         Sim *s = &sims[i]; if (i == player) continue;
@@ -733,12 +771,12 @@ static void fam_step(void) {   // the family members who are after you (sim.c le
                 sim_note("KNOCKED OUT BY FAMILY. AWKWARD."); sim_say_to(s, "AND STAY OUT OF MY ROOM!"); audio_voice(VOICE_CRY); } } }
     }
 }
-static void join_in(Cit *c) {
+COLD static void join_in(Cit *c) {
     static const char *const jl[5] = { "FIGHT! FIGHT!", "GET THEM!", "LEAVE THEM ALONE!", "MY TURN!", "YOU WANT SOME TOO?" };
     c->mode = CM_CHASE; c->hp = (u8)(c->cop ? 120 : c->stage == AG_ELDER ? 35 : 55 + rn(35)); c->cd = 20 + rn(30); c->t = 0;
-    say(c, c->cop ? (rn(2) ? "POLICE! FREEZE!" : "DROP IT, BORE!") : jl[rn(5)]); rel_add(c, -8);
+    say(c, c->cop ? (rn(2) ? "POLICE! FREEZE!" : "DROP IT, BORE!") : jl[rn(5)]); rel_add(c, -8); meet(c);
 }
-static void call_cop(void) {   // the police: an officer arrives from up the street
+COLD static void call_cop(void) {   // the police: an officer arrives from up the street
     Sim *p = &sims[player]; int best = -1, bd = 0;
     for (int i = 0; i < NCIT; i++) { Cit *c = &cits[i];
         if (c->zone != world_zone || c->cop || !adult(c) || (c->mode != CM_IDLE && c->mode != CM_WALK)) continue;
@@ -747,7 +785,7 @@ static void call_cop(void) {   // the police: an officer arrives from up the str
     Cit *c = &cits[best]; c->cop = 1; c->built = 0;   // (dressed again: the uniform)
     join_in(c); sim_note("SOMEONE CALLED THE POLICE!"); audio_voice(VOICE_SHRIEK);
 }
-static void crowd_react(int start) {   // the people who can see you make up their minds (start: a fight has just begun)
+COLD static void crowd_react(int start) {   // the people who can see you make up their minds (start: a fight has just begun)
     Sim *p = &sims[player];
     if (crime_total() && crime_evid >= 30 && rn(1000) < crime_evid / 3 + (int)crime_total()) call_cop();   // (a witness phones in what you did)
     if (!fight_on && !start) { if (heat > 0) heat--; }
@@ -763,7 +801,7 @@ static void crowd_react(int start) {   // the people who can see you make up the
         if (!fight_on && !start) continue;
         int ch = aggro_pct >= 100 ? 100 : heat * aggro_pct / 150;
         if ((ab & kind) && rn(100) < ch) { join_in(c); heat_add(3); continue; }
-        if (peace_on && !c->cop && heat < 80 && rn(100) < 6 + (start ? 10 : 0)) { c->mode = CM_STOP; c->t = 400; say(c, "HEY! STOP THAT!"); }
+        if (peace_on && !c->cop && heat < 80 && rn(100) < 6 + (start ? 10 : 0)) { c->mode = CM_STOP; c->t = 400; say(c, "HEY! STOP THAT!"); meet(c); }
     }
     if (fight_on || start) {   // a hot fight brings the police; a cool one may be talked down
         if ((ab & 2) && heat >= 35 && cops < 1 + heat / 35 && rn(100) < 20 + aggro_pct / 2) call_cop();
@@ -776,7 +814,7 @@ static void crowd_react(int start) {   // the people who can see you make up the
 }
 COLD int citizens_punch(void) {
     int i = hostile_in_reach(); if (i < 0) return fam_punch();
-    Cit *c = &cits[i]; Sim *p = &sims[player];
+    Cit *c = &cits[i]; Sim *p = &sims[player]; meet(c);
     if (pl_cd > 0) return 1;
     pl_cd = 18;
     p->gait.wave = 14;
@@ -806,11 +844,23 @@ COLD int citizens_punch(void) {
 #ifdef CIT_TEST
 int cit_snaps, cit_go; int cit_by[12][4];
 #endif
-static int go(Cit *c, int tx, int tz, int spd, int in) {   // walk towards a point, round things; 1 when there. A body held up too long is simply put there.
-    int dx = tx - c->x, dz = tz - c->z;
-    if (ABS(dx) + ABS(dz) < 40) return 1;
-    turn(c, yaw_to(dx, dz), 170);
+// THE SCHEDULER lets one call live several steps (n) at once (someone far off, thought about every few frames): a walk
+// covers the ground of n steps in one move where the way is clear (never past the point it walks to), timers count down by n.
+// g_used says how many steps the call took; what is left over is lived on the next call, so nothing is lost, only grouped.
+static int g_used;
+static int stride_free(const Cit *c, int mx, int mz, int k, int in) {   // a stride of k steps: clear at its end and every 24 units along it (no corner a single step could not get past)
+    int len = (ABS(mx) + ABS(mz)) * k, every = MAX(1, k * 24 / MAX(len, 1));
+    for (int j = every; j < k; j += every) if (!body_free(c->x + mx * j, c->z + mz * j, in)) return 0;
+    return body_free(c->x + mx * k, c->z + mz * k, in);
+}
+static int go(Cit *c, int tx, int tz, int spd, int in, int n) {   // walk towards a point, round things; 1 when there. A body held up too long is simply put there.
+    int dx = tx - c->x, dz = tz - c->z, d = ABS(dx) + ABS(dz);
+    g_used = 1;
+    if (d < 40) return 1;
+    int k = n > 1 ? MIN(n, MAX(1, (d * 7 / 10 - 28) / spd)) : 1;   // (steps that stay short of the point, however it lies)
+    turn(c, yaw_to(dx, dz), 170 * k);
     int mx = (isin(c->yaw) * spd) >> 12, mz = -((icos(c->yaw) * spd) >> 12);
+    if (k > 1 && stride_free(c, mx, mz, k, in)) { c->x += (s16)(mx * k); c->z += (s16)(mz * k); c->st = 0; moved_flag = 1; g_used = k; return 0; }
     if (body_free(c->x + mx, c->z + mz, in)) { c->x += (s16)mx; c->z += (s16)mz; c->st = 0; moved_flag = 1; }
     else if (mx && body_free(c->x + mx * 2, c->z, in)) { c->x += (s16)(mx * 2); c->st = 0; moved_flag = 1; }
     else if (mz && body_free(c->x, c->z + mz * 2, in)) { c->z += (s16)(mz * 2); c->st = 0; moved_flag = 1; }
@@ -818,7 +868,7 @@ static int go(Cit *c, int tx, int tz, int spd, int in) {   // walk towards a poi
 #ifdef CIT_TEST
         cit_snaps++; cit_by[c->mode][c->sub & 3]++;
 #endif
-        c->x = (s16)tx; c->z = (s16)tz; c->st = 0; return 1; }
+        c->x = (s16)tx; c->z = (s16)tz; c->st = 0; CP(6, 1); return 1; }
     return 0;
 }
 #define BW 12                                    // routes are worked out inside a window of 25x25 tiles round the goal
@@ -854,8 +904,16 @@ static int route_next(int gx, int gy, int sx, int sy, int in, int *nx, int *ny) 
     return 0;
 }
 static int route_plan(Cit *c, int gx, int gy, int sx, int sy, int in) {   // one search, then the whole route (up to 32 steps) kept
-    int nx, ny;
-    if (!route_next(gx, gy, sx, sy, in, &nx, &ny)) return 0;              // (fills bdist from the goal)
+    int nx, ny; CP(2, 1);
+#ifdef CIT_PROBE
+    dbg_pm[c->mode & 15][0]++;
+#endif
+    if (!route_next(gx, gy, sx, sy, in, &nx, &ny)) {
+#ifdef CIT_PROBE
+        { int *f = dbg_rf[dbg_rfn++ & 7]; f[0] = (int)(c - cits); f[1] = sx; f[2] = sy; f[3] = gx; f[4] = gy; f[5] = in; f[6] = floorMap[sy][sx] | world_walkable(sx, sy) << 8 | (c->x & 255) << 16; f[7] = c->sub | c->owe << 8 | (c->flg >> F_TSH & 3) << 16 | ((-c->z) & 255) << 24; }
+        dbg_pm[c->mode & 15][1]++;
+#endif
+        return 0; }              // (fills bdist from the goal)
     const int N = 2 * BW + 1, ox = gx - BW, oy = gy - BW;
     static const signed char dx4[4] = { 1, -1, 0, 0 }, dy4[4] = { 0, 0, 1, -1 };
     int x = sx, y = sy, n = 0; memset(c->path, 0, sizeof c->path);
@@ -877,24 +935,35 @@ static int route_step(Cit *c, int sx, int sy) {   // the next waypoint along the
     c->wx = (u8)(sx + dx4[k]); c->wy = (u8)(sy + dy4[k]);
     return 1;
 }
-static int nav(Cit *c, int gtx, int gty, int spd, int in) {   // walk to a tile round the furniture (or the neighbours' houses); 1 when there
+// BIG DECISIONS are shared out over frames: a route search (a 25x25 breadth-first fill) or a look round the home for
+// something to do costs a token, and a frame has CIT_THINK of them (the last one kept for those who know you, or are
+// busy with you). Someone who finds none waits where they are until the next frame's.
+#define CIT_THINK 4
+static int think_tok, think_pri;
+static int think(void) { if (think_tok > (think_pri ? 0 : 1)) { think_tok--; return 1; } CP(12, 1); return 0; }
+COLD static int nav(Cit *c, int gtx, int gty, int spd, int in, int n) {   // walk to a tile round the furniture (or the neighbours' houses); 1 when there
     int sx = c->x / TILE, sy = (-c->z) / TILE;
-    if (sx == gtx && sy == gty) return go(c, gtx * TILE + TILE / 2, -(gty * TILE + TILE / 2), spd, in);
-    int fresh = !c->wv || c->gx != gtx || c->gy != gty;
+    if (sx == gtx && sy == gty) return go(c, gtx * TILE + TILE / 2, -(gty * TILE + TILE / 2), spd, in, n);
+    if (c->wv == 2 && c->gx == gtx && c->gy == gty && c->wx == sx && c->wy == sy)   // (searched from this very tile for this goal and found no way: the straight line again, without the search)
+        return go(c, gtx * TILE + TILE / 2, -(gty * TILE + TILE / 2), spd, in, n);
+    int fresh = c->wv != 1 || c->gx != gtx || c->gy != gty;
     if (fresh || (sx == c->wx && sy == c->wy)) {
         int ok = 0;
         if (!fresh && sx == c->wx && sy == c->wy) ok = route_step(c, sx, sy);           // on to the next tile of the route
-        if (!ok && route_plan(c, gtx, gty, sx, sy, in)) ok = route_step(c, sx, sy);     // (new goal, or the route ran out: search again)
-        if (!ok) { c->wv = 0; return go(c, gtx * TILE + TILE / 2, -(gty * TILE + TILE / 2), spd, in); }   // no route found: the straight line
+        if (!ok) { if (!think()) { g_used = n; return 0; }                              // (no search left this frame: they stand and think)
+                   if (route_plan(c, gtx, gty, sx, sy, in)) ok = route_step(c, sx, sy); }   // (new goal, or the route ran out: search again)
+        if (!ok) { c->wv = 2; c->gx = (u8)gtx; c->gy = (u8)gty; c->wx = (u8)sx; c->wy = (u8)sy; return go(c, gtx * TILE + TILE / 2, -(gty * TILE + TILE / 2), spd, in, n); }   // no route found: the straight line (and no search again until they are on another tile)
     }
-    go(c, c->wx * TILE + TILE / 2, -(c->wy * TILE + TILE / 2), spd, in);
+    go(c, c->wx * TILE + TILE / 2, -(c->wy * TILE + TILE / 2), spd, in, n);
     return 0;
 }
-static int scripted(Cit *c, int tx, int tz, int spd) {   // straight to a point, through a doorway, ignoring everything
+static int scripted(Cit *c, int tx, int tz, int spd, int n) {   // straight to a point, through a doorway, ignoring everything
     int dx = tx - c->x, dz = tz - c->z, d = ABS(dx) + ABS(dz);
+    g_used = 1;
     if (d <= spd * 2) { c->x = (s16)tx; c->z = (s16)tz; return 1; }
+    int k = MIN(n, MAX(1, d / spd - 2));
     c->yaw = (u16)yaw_to(dx, dz);
-    c->x += (s16)(dx * spd / d); c->z += (s16)(dz * spd / d); moved_flag = 1;
+    c->x += (s16)(dx * spd * k / d); c->z += (s16)(dz * spd * k / d); moved_flag = 1; g_used = k;
     return 0;
 }
 
@@ -906,7 +975,7 @@ static int free_floor(const Home *hm, int x, int y) {   // a tile of the home's 
     if (x == hm->dx && y >= hm->dy - 1) return 0;
     return world_walkable(x, y);
 }
-static int find_item(const Home *hm, const char *letters, int *ix, int *iy, int *sx, int *sy) {   // one of those things in the home, and the tile to stand on to use it
+COLD static int find_item(const Home *hm, const char *letters, int *ix, int *iy, int *sx, int *sy) {   // one of those things in the home, and the tile to stand on to use it
     int fx[16], fy[16], n = 0;
     for (int y = hm->y0; y <= hm->y1; y++) for (int x = hm->x0; x <= hm->x1 && n < 16; x++) {
         char ch = world_at(x, y);
@@ -924,10 +993,10 @@ COLD static int start_chore(Cit *c, const Home *hm, const char *letters, char ch
     int ix, iy, sx, sy;
     if (!find_item(hm, letters, &ix, &iy, &sx, &sy)) return 0;
     c->chore = (u8)world_at(ix, iy); c->chain = (u8)chain; c->ix = (u8)ix; c->iy = (u8)iy; c->chx = (u8)sx; c->chy = (u8)sy;
-    c->mode = CM_CHORE; c->sub = 0; c->st = 0; c->wv = 0;
+    c->mode = CM_CHORE; c->sub = 0; c->st = 0; c->wv = 0; CP(3, 1);
     return 1;
 }
-static int pick_chore(Cit *c, const Home *hm) {   // what a person does with a free hour at home: it depends on the time of day
+COLD static int pick_chore(Cit *c, const Home *hm) {   // what a person does with a free hour at home: it depends on the time of day
     int m = clock_min + c->off; if (m < 0) m += 1440; if (m >= 1440) m -= 1440;
     int r = rn(100); const char *L;
     if (m < 600)        L = r < 30 ? "H," : r < 65 ? "F/" : r < 80 ? "T" : "-";
@@ -950,6 +1019,7 @@ static const char *activity(const Cit *c) {   // what the HUD says they are up t
     case CM_GOHOME: return "HEADING HOME";
     case CM_LEAVE: return "HEADING OUT";
     case CM_AWAY: return "WALKING OFF";
+    case CM_GREET: return "COMING OVER";
     case CM_VISIT: return "VISITING";
     case CM_CHAT: return "CHATTING";
     case CM_CHASE: return "ANGRY";
@@ -960,7 +1030,7 @@ static const char *activity(const Cit *c) {   // what the HUD says they are up t
     default: return indoors_at(c->x, c->z) ? "AT HOME" : "OUT AND ABOUT";
     }
 }
-static int start_visit(Cit *c) {   // a neighbour in the same zone, a short walk away: go and knock
+COLD static int start_visit(Cit *c) {   // a neighbour in the same zone, a short walk away: go and knock
     const Home *me = home_of(c); if (!me) return 0;
     int cand[NHH], n = 0;
     for (int h = 0; h < NHH; h++) {
@@ -972,11 +1042,11 @@ static int start_visit(Cit *c) {   // a neighbour in the same zone, a short walk
     if (!n) return 0;
     int h = cand[rn(n)]; const Home *o = world_home(hh[h].zone, hh[h].home);
     c->vh = (u8)h; c->ix = o->dx; c->iy = (u8)(o->dy + 1);
-    c->mode = CM_VISIT; c->sub = 0; c->st = 0; c->wv = 0;
+    c->mode = CM_VISIT; c->sub = 0; c->st = 0; c->wv = 0; CP(4, 1);
     return 1;
 }
 
-static void decide(Cit *c) {   // the clock says where they should be: out, in, or in bed
+COLD static void decide(Cit *c) {   // the clock says where they should be: out, in, or in bed
     if (c->hh == NONE || c->mode == CM_PARTY) return;
     int w = want(c), in = indoors_at(c->x, c->z);
     if (c->mode == CM_IDLE || c->mode == CM_WALK) {
@@ -1006,7 +1076,7 @@ static int party_tile_ok(int x, int y) {
     if (!world_walkable(x, y)) return 0;
     return (floorMap[y][x] < FL_GRASS) == party_in && floorMap[y][x] != FL_WATER;
 }
-static int party_spots(void) {             // the dance floor: free tiles round the host, nearest first (a breadth-first fill)
+COLD static int party_spots(void) {             // the dance floor: free tiles round the host, nearest first (a breadth-first fill)
     const int N = 2 * BW + 1, ox = party_cx - BW, oy = party_cy - BW;
     static const signed char dx4[4] = { 1, -1, 0, 0 }, dy4[4] = { 0, 0, 1, -1 };
     memset(bdist, 255, sizeof bdist);
@@ -1022,7 +1092,7 @@ static int party_spots(void) {             // the dance floor: free tiles round 
     }
     return n;
 }
-static void party_entry(void) {            // where guests come in: inside the nearest door for a party indoors, else down the street
+COLD static void party_entry(void) {            // where guests come in: inside the nearest door for a party indoors, else down the street
     party_spx = party_cx * TILE + TILE / 2; party_spz = -(party_cy * TILE + TILE / 2);
     int best = 1 << 30;
     for (int y = MAX(1, party_cy - 12); y <= MIN(MH - 2, party_cy + 12); y++) for (int x = MAX(1, party_cx - 12); x <= MIN(MW - 2, party_cx + 12); x++) {
@@ -1072,14 +1142,14 @@ COLD void citizens_known(void) {                      // build the lists: every 
         for (int j = 0; j < hp->n; j++) { const Cit *c = &cits[hp->mem[j]]; if (c->mode == CM_GONE || c->pid != NOPID) continue; PGuest *m = &pg_mem[pg_nm++]; m->ref = (u16)(0x8000 | hp->mem[j]); m->on = 0; m->known = (u8)pg_known_c(c); g->n++; }
     }
 }
-static int party_item_score(void) {                  // the party things round the host: each kind counts up to three
+COLD static int party_item_score(void) {                  // the party things round the host: each kind counts up to three
     int cnt[8] = { 0 };
     for (int y = MAX(1, party_cy - 12); y <= MIN(MH - 2, party_cy + 12); y++) for (int x = MAX(1, party_cx - 12); x <= MIN(MW - 2, party_cx + 12); x++) {
         int ch = (u8)world_at(x, y); if (ch >= 0xC7 && ch <= 0xCE && cnt[ch - 0xC7] < 3) cnt[ch - 0xC7]++; }
     int sc = 0; for (int k = 0; k < 8; k++) sc += cnt[k]; return sc;
 }
 int citizens_party_score_here(void) { const Sim *p = &sims[player]; party_cx = p->x / TILE; party_cy = (-p->z) / TILE; return party_item_score(); }
-static int slot_for(u16 ref) {                      // a guest's body: their own live one, or one made for the night (SAN BOREAS's people)
+COLD static int slot_for(u16 ref) {                      // a guest's body: their own live one, or one made for the night (SAN BOREAS's people)
     if (ref & 0x8000) { int i = ref & 0x7FFF; Cit *c = &cits[i]; return (c->mode == CM_GONE || c->mode == CM_KO || c->mode == CM_PARTY || c->zone == 255) ? -1 : i; }
     Per *q = &pop_per[ref]; if (q->flags & PF_GONE) return -1;
     if (q->slot != 255 && q->slot < NCIT) { Cit *c = &cits[q->slot]; return c->mode == CM_PARTY ? -1 : q->slot; }
@@ -1090,6 +1160,7 @@ static int slot_for(u16 ref) {                      // a guest's body: their own
     c->pers = q->trait == 1 ? PE_GRUFF : q->trait == 6 ? PE_FLIRTY : (q->trait == 8 || q->trait == 13) ? PE_SHY : PE_FRIENDLY;
     c->homebody = 0; c->off = 0; c->zone = ZONE_CITY; c->zone0 = 255; c->mode = CM_IDLE; c->t = 10; c->sub = 0; c->st = 0; c->wv = 0; c->say_t = 0; c->cd = 0; c->slot = 0;
     c->pid = ref; c->vanish = 0; c->hh = NONE; c->mem = 0; c->built = 0; c->mplace = NOPID; c->x = 0; c->z = 0;
+    c->flg = (u8)((q->met ? F_MET : 0) | (pop_knows_you(ref) ? F_KN : 0)); c->owe = 0;
     crowd_forget(slot); q->slot = (u8)slot; return slot;
 }
 COLD int citizens_party(void) {      // the list is pg_mem[].on (and party_open: strangers fill the rest)
@@ -1122,14 +1193,14 @@ COLD int citizens_party(void) {      // the list is pg_mem[].on (and party_open:
     return party_n;
 }
 int citizens_party_on(void) { return party_on; }
-static void party_arrive(Cit *c, int k) {  // a guest walks in
+COLD static void party_arrive(Cit *c, int k) {  // a guest walks in
     if (c->zone != world_zone) { c->zone0 = c->zone; c->zone = (u8)world_zone; if (world_zone == ZONE_HOME) home_guests++; }
     c->x = (s16)(party_spx + (int)rn(61) - 30); c->z = (s16)(party_spz + (int)rn(61) - 30);
-    c->mode = CM_PARTY; c->sub = 0; c->st = 0; c->wv = 0; c->gait.sleep = 0; c->gait.sit = 0;
+    c->mode = CM_PARTY; c->sub = 0; c->st = 0; c->wv = 0; c->gait.sleep = 0; c->gait.sit = 0; meet(c);
     c->chx = party_sx[k % PARTY_MAX]; c->chy = party_sy[k % PARTY_MAX];
     c->t = (u16)(600 + rn(600));
 }
-static void party_leave_done(Cit *c) {     // home time
+COLD static void party_leave_done(Cit *c) {     // home time
     if (c->pid != NOPID) { if (c->zone0 != 255 && c->zone == ZONE_HOME && home_guests > 0) home_guests--; c->zone0 = 255; main_free(c); return; }   // (one of SAN BOREAS's, made for the night: back into pop.c)
     c->mode = CM_IDLE; c->t = (u16)rn(60); c->sub = 0; c->wv = 0;
     if (c->zone0 != 255) { if (c->zone == ZONE_HOME && home_guests > 0) home_guests--; c->zone = c->zone0; c->zone0 = 255; c->x = 0; c->z = 0; crowd_drop_sprite((int)(c - cits)); }
@@ -1141,7 +1212,7 @@ static void party_tick(void) {             // once a step: guests arrive one aft
         if (party_next == 1) say(c, "WE BROUGHT SNACKS!");
     }
 }
-static void party_minute(void) {           // once a game minute: the clock runs out
+COLD static void party_minute(void) {           // once a game minute: the clock runs out
     if (!party_on) return;
     if (--party_left > 0) return;
     party_on = 0;                          // over: everyone heads off
@@ -1156,10 +1227,10 @@ static void party_minute(void) {           // once a game minute: the clock runs
       { char b[48]; sprintf(b, party_score >= 8 ? "LEGENDARY PARTY! $%d IN GIFTS" : party_score >= 4 ? "GREAT PARTY! $%d IN GIFTS" : party_score >= 2 ? "NICE PARTY. $%d IN GIFTS" : "A QUIET ONE. THEY HAD FUN%.0d", gifts); sim_note(b); } (void)friends; }
     for (int i = 0; i < NCIT; i++) { Cit *c = &cits[i]; if (c->mode == CM_PARTY) { c->sub = 2; c->wv = 0; c->st = 0; } }
 }
-static void party_step(Cit *c, int i) {
+COLD static void party_step(Cit *c, int i) {   // (party guests are thought about every step: one step at a time)
     int in = indoors_at(c->x, c->z);
     if (c->sub == 0) {                     // on the way to their spot
-        if (nav(c, c->chx, c->chy, 5, party_in)) { c->sub = 1; c->yaw = (u16)yaw_to(party_cx * TILE + TILE / 2 - c->x, -(party_cy * TILE + TILE / 2) - c->z); }
+        if (nav(c, c->chx, c->chy, 5, party_in, 1)) { c->sub = 1; c->yaw = (u16)yaw_to(party_cx * TILE + TILE / 2 - c->x, -(party_cy * TILE + TILE / 2) - c->z); }
         else if (++c->st > 400) { c->x = (s16)(c->chx * TILE + TILE / 2); c->z = (s16)(-(c->chy * TILE + TILE / 2)); c->sub = 1; }
         return;
     }
@@ -1173,61 +1244,20 @@ static void party_step(Cit *c, int i) {
         return;
     }
     // sub 2: the party's over - out the way they came, then off home
-    if (go(c, party_spx, party_spz, 5, in)) party_leave_done(c);
+    if (go(c, party_spx, party_spz, 5, in, 1)) party_leave_done(c);
     else if (++c->st > 300) party_leave_done(c);
 }
 
 // ---- the crowd: walking, talking, brawling ----------------------------------------------------------------
-static void step_one(Cit *c, int i) {
+static int count_down(u16 *t, int n) { int k = MIN((int)*t, n); *t = (u16)(*t - k); return MAX(k, 1); }   // (a timer: the steps it took)
+static int decide_due(int i, int n) {   // the clock is looked at for 8 steps in every 128 (((tick >> 3) + i) & 15 == 0): did one of the n steps just lived fall there?
+    return n >= 128 || (int)((tick + 8 * i) & 127) <= n + 6;   // (the phase of this step in that cycle; the window is its first 8)
+}
+static void greet_maybe(Cit *c, int d2, int in);
+COLD static void fight_one(Cit *c, int dx, int dz, int d2, int in) {   // (one step) after you, or come to break the fight up
     Sim *p = &sims[player];
-    int dx = p->x - c->x, dz = p->z - c->z;
-    int d2 = dx * dx + dz * dz;
-    const Home *hm = home_of(c);
-    int in = indoors_at(c->x, c->z);
-    moved_flag = 0;
-    if (c->say_t) c->say_t--;
-    if (c->cd) c->cd--;
-    c->gait.talk = c->mode == CM_CHAT;
-    c->gait.mood = c->rel / 2;
-    if (!(((tick >> 3) + i) & 15)) decide(c);   // look at the clock every so often
-    switch (c->mode) {
-    case CM_IDLE:
-        if (c->t) { c->t--; break; }
-        if (hm && in && want(c) == 1 && rn(100) < 70 && pick_chore(c, hm)) break;                    // a free hour at home: something to do
-        if (hm && !in && c->stage >= AG_TEEN && clock_min >= 540 && clock_min < 1260 && !rn(14) && start_visit(c)) break;   // or a knock on a neighbour's door
-        c->wyaw = (u16)rn(4096); c->t = (u16)(80 + rn(220)); c->mode = CM_WALK;
-        if (hm && !in) {   // out on the streets: drift back towards home when too far from it
-            int a, zf, b, e; door_geo(hm, &a, &zf, &b, &e);
-            int hx = a - c->x, hz = zf - c->z;
-            if (hx * hx + hz * hz > 9 * TILE * 9 * TILE) c->wyaw = (u16)((yaw_to(hx, hz) + rn(512) - 256) & 4095);
-        }
-        if (!hm && c->mplace != NOPID) {   // at work, at school, out somewhere: they keep about the place
-            int hx = c->ax * TILE + TILE / 2 - c->x, hz = -(c->ay * TILE + TILE / 2) - c->z;
-            if (hx * hx + hz * hz > 4 * TILE * 4 * TILE) c->wyaw = (u16)((yaw_to(hx, hz) + rn(400) - 200) & 4095);
-            else if (!rn(3)) { c->mode = CM_IDLE; c->t = (u16)(60 + rn(240)); break; }   // mostly they stay put (behind the counter, at the desk)
-        }
-        break;
-    case CM_WALK: {
-        if (!c->t) { c->mode = CM_IDLE; c->t = (u16)(30 + rn(200)); break; }
-        c->t--;
-        turn(c, c->wyaw, 90);
-        int spd = in ? 3 : c->stage == AG_CHILD ? 6 : c->stage == AG_ELDER ? 3 : 5 + (c->pers & 1);
-        int mx = (isin(c->yaw) * spd) >> 12, mz = -((icos(c->yaw) * spd) >> 12);
-        if (d2 < 120 * 120 && (mx * dx + mz * dz) > 0) { c->mode = CM_IDLE; c->t = 40; break; }   // do not walk into you
-        if (body_free(c->x + mx, c->z + mz, in)) { c->x += (s16)mx; c->z += (s16)mz; moved_flag = 1; }
-        else { c->wyaw = (u16)((c->yaw + 1024 + rn(2048)) & 4095); if (!rn(3)) { c->mode = CM_IDLE; c->t = 20; } }
-        break; }
-    case CM_AWAY:   // wanted elsewhere: off along the streets to the edge, and gone once out of sight
-        if (!c->t || nav(c, c->ax, c->ay, in ? 3 : c->stage == AG_ELDER ? 3 : 5, in)) { c->mode = CM_IDLE; c->t = 30; }
-        else c->t--;
-        break;
-    case CM_CHAT:
-        if (c->t) c->t--;
-        if (!c->t || d2 > 3 * TILE * 3 * TILE) { c->mode = CM_IDLE; c->t = 30; break; }
-        turn(c, yaw_to(dx, dz), 200);
-        break;
-    case CM_CHASE: {
-        if (d2 > (c->cop ? 12 : 7) * TILE * (c->cop ? 12 : 7) * TILE) { c->mode = CM_IDLE; c->t = 60; say(c, "FORGET IT"); break; }
+    if (c->mode == CM_CHASE) {
+        if (d2 > (c->cop ? 12 : 7) * TILE * (c->cop ? 12 : 7) * TILE) { c->mode = CM_IDLE; c->t = 60; say(c, "FORGET IT"); return; }
         turn(c, yaw_to(dx, dz), 180);
         if (d2 > 90 * 90) {
             int spd = in ? 4 : 7;
@@ -1236,7 +1266,7 @@ static void step_one(Cit *c, int i) {
             else if (body_free(c->x + mx, c->z, in)) { c->x += (s16)mx; moved_flag = 1; }
             else if (body_free(c->x, c->z + mz, in)) { c->z += (s16)mz; moved_flag = 1; }
         } else if (c->cop && !c->cd && rn(100) < (heat < 50 ? 60 : 30)) {   // the police try to cuff you first; the cooler you are, the likelier
-            if (rn(100) < (int)(SKL(sims[player].skill_char)) * 5 && crime_total() < 3) { sim_note("YOU TALK YOUR WAY OUT OF IT"); say(c, "...JUST A WARNING."); fam_calm(); fight_on = 0; heat = heat / 2; c->mode = CM_IDLE; c->t = 200; for (int k = 0; k < NCIT; k++) if (cits[k].mode == CM_CHASE || cits[k].mode == CM_STOP) { cits[k].mode = CM_IDLE; cits[k].t = 120; } break; }   // (CHARISMA)
+            if (rn(100) < (int)(SKL(sims[player].skill_char)) * 5 && crime_total() < 3) { sim_note("YOU TALK YOUR WAY OUT OF IT"); say(c, "...JUST A WARNING."); fam_calm(); fight_on = 0; heat = heat / 2; c->mode = CM_IDLE; c->t = 200; for (int k = 0; k < NCIT; k++) if (cits[k].mode == CM_CHASE || cits[k].mode == CM_STOP) { cits[k].mode = CM_IDLE; cits[k].t = 120; } return; }   // (CHARISMA)
             int how_ = crime_total() && heat < 50 ? 1 : 0; sim_note("UNDER ARREST!"); say(c, "YOU ARE UNDER ARREST."); fam_calm(); fight_on = 0; heat = 0; c->mode = CM_IDLE; c->t = 120;
             for (int k = 0; k < NCIT; k++) if (cits[k].mode == CM_CHASE || cits[k].mode == CM_STOP) { cits[k].mode = CM_IDLE; cits[k].t = 120; }
             sim_arrest(how_); audio_voice(VOICE_CRY);
@@ -1253,47 +1283,73 @@ static void step_one(Cit *c, int i) {
                 fight_on = 0; say(c, c->cop ? "YOU HAVE THE RIGHT TO STAY BORED." : "STAY DOWN."); audio_voice(VOICE_CRY);
             }
         }
-        break; }
-    case CM_STOP: {   // a peacemaker: up close, hands out, talking you down
+        return; }
+    {   // a peacemaker: up close, hands out, talking you down
         if (c->t) c->t--;
-        if (!c->t || !fight_on) { c->mode = CM_IDLE; c->t = 60; say(c, fight_on ? "I GIVE UP ON YOU" : "THANK GOODNESS"); break; }
+        if (!c->t || !fight_on) { c->mode = CM_IDLE; c->t = 60; say(c, fight_on ? "I GIVE UP ON YOU" : "THANK GOODNESS"); return; }
         turn(c, yaw_to(dx, dz), 180);
         if (d2 > 140 * 140) { int spd = in ? 4 : 6, mx = (isin(c->yaw) * spd) >> 12, mz = -((icos(c->yaw) * spd) >> 12);
             if (body_free(c->x + mx, c->z + mz, in)) { c->x += (s16)mx; c->z += (s16)mz; moved_flag = 1; } }
         else { c->gait.wave = 10; if (!c->say_t) { static const char *const st[4] = { "STOP IT!", "BREAK IT UP!", "THAT'S ENOUGH!", "CALM DOWN!" }; say(c, st[rn(4)]); } }
-        break; }
+        }
+}
+COLD static int step_rest(Cit *c, int i, int n, int dx, int dz, int d2, const Home *hm, int in) {   // (step_core's other modes: built small)
+    Sim *p = &sims[player]; int used = 1;
+    switch (c->mode) {
+    case CM_AWAY:   // wanted elsewhere: off along the streets to the edge, and gone once out of sight
+        if (!c->t || nav(c, c->ax, c->ay, in ? 3 : c->stage == AG_ELDER ? 3 : 5, in, MIN(n, (int)c->t))) { c->mode = CM_IDLE; c->t = 30; }
+        else { used = g_used; c->t = (u16)(c->t - MIN((int)c->t, used)); }
+        break;
+    case CM_GREET:  // someone who knows you, come over to say hello (straight to you; given up if the way is blocked)
+        if (!c->t || c->st > 90 || d2 > 12 * TILE * 12 * TILE) { c->mode = CM_IDLE; c->t = 60; break; }
+        if (d2 < 150 * 150) {
+            static const char *const gl[6] = { "HEY! IT'S YOU!", "THERE YOU ARE!", "FANCY SEEING YOU HERE", "HI! HOW ARE YOU?", "I WAS JUST THINKING OF YOU", "LONG TIME NO SEE!" };
+            const char *ln = c->rel < 0 ? (c->pers == PE_GRUFF ? "YOU AGAIN." : "OH. HELLO.") : c->rom >= 40 ? "THERE YOU ARE, YOU" : gl[rn(6)];
+            say(c, ln); c->gait.wave = 40; c->yaw = (u16)yaw_to(dx, dz); c->mode = CM_IDLE; c->t = 150;
+            if (c->rel >= 0) rel_add(c, 1); if (c->pid != NOPID) pop_seen(c->pid);
+            CP(10, 1); break;
+        }
+        go(c, p->x, p->z, in ? 4 : c->stage == AG_ELDER ? 4 : 7, in, MIN(n, (int)c->t));   // (a hurry: you might be off again) used = g_used; c->t = (u16)(c->t - MIN((int)c->t, used));
+        break;
+    case CM_CHAT:
+        if (c->t) c->t--;
+        if (!c->t || d2 > 3 * TILE * 3 * TILE) { c->mode = CM_IDLE; c->t = 30; break; }
+        turn(c, yaw_to(dx, dz), 200);
+        break;
+    case CM_CHASE: case CM_STOP: fight_one(c, dx, dz, d2, in); break;
     case CM_KO:
         c->gait.sleep = 1;
-        if (c->t) c->t--;
+        if (c->t) used = count_down(&c->t, n);
         if (!c->t) { c->mode = CM_IDLE; c->hp = 25; c->gait.sleep = 0; c->t = 60; say(c, "...OW."); }
         break;
     case CM_GOHOME: {   // to the front of their door, in through it, and a step inside
         if (!hm) { c->mode = CM_IDLE; break; }
         int gx, zf, zd, zi; door_geo(hm, &gx, &zf, &zd, &zi);
         int spd = c->stage == AG_ELDER ? 3 : 5;
-        if (c->sub == 0) { if (nav(c, hm->dx, hm->dy + 1, spd, 0)) c->sub = 1; }
-        else if (c->sub == 1) { if (scripted(c, gx, zd, 3)) c->sub = 2; }
-        else if (scripted(c, gx, zi, 3)) { c->mode = CM_IDLE; c->t = (u16)(20 + rn(100)); }
-        break; }
+        if (c->sub == 0) { if (nav(c, hm->dx, hm->dy + 1, spd, 0, n)) c->sub = 1; }
+        else if (c->sub == 1) { if (scripted(c, gx, zd, 3, n)) c->sub = 2; }
+        else if (scripted(c, gx, zi, 3, n)) { c->mode = CM_IDLE; c->t = (u16)(20 + rn(100)); }
+        used = g_used; break; }
     case CM_LEAVE: {    // across the floor to the door, out through it, and off
         if (!hm) { c->mode = CM_IDLE; break; }
         int gx, zf, zd, zi; door_geo(hm, &gx, &zf, &zd, &zi);
-        if (c->sub == 0) { if (nav(c, hm->dx, hm->dy - 1, 3, 1)) c->sub = 1; }
-        else if (c->sub == 1) { if (scripted(c, gx, zd, 3)) c->sub = 2; }
-        else if (scripted(c, gx, zf, 3)) { c->mode = CM_IDLE; c->t = (u16)rn(40); }
-        break; }
+        if (c->sub == 0) { if (nav(c, hm->dx, hm->dy - 1, 3, 1, n)) c->sub = 1; }
+        else if (c->sub == 1) { if (scripted(c, gx, zd, 3, n)) c->sub = 2; }
+        else if (scripted(c, gx, zf, 3, n)) { c->mode = CM_IDLE; c->t = (u16)rn(40); }
+        used = g_used; break; }
     case CM_CHORE: {
         if (!hm) { c->mode = CM_IDLE; break; }
         if (c->sub == 0) {
-            if (nav(c, c->chx, c->chy, 3, 1)) {
+            if (nav(c, c->chx, c->chy, 3, 1, n)) {
                 c->sub = 1; c->t = (u16)(chore_len((char)c->chore) / 2 + rn(chore_len((char)c->chore)));
                 c->x = (s16)(c->chx * TILE + TILE / 2); c->z = (s16)(-(c->chy * TILE + TILE / 2));
                 if (c->chx != c->ix || c->chy != c->iy) c->yaw = (u16)yaw_to((c->ix - c->chx) * TILE, -(c->iy - c->chy) * TILE);   // face the thing
                 c->gait.sit = sit_item((char)c->chore) && c->chx == c->ix && c->chy == c->iy;
                 if (d2 < 5 * TILE * 5 * TILE && !c->say_t) say(c, chore_say((char)c->chore));
             }
+            used = g_used;
         } else if (c->t) {
-            c->t--;
+            used = count_down(&c->t, n);
             if (c->chore == 'F' || c->chore == '/' || c->chore == '-') c->gait.wave = (c->t & 31) < 6 ? 8 : c->gait.wave;   // a bit of busy hands
         } else {
             c->gait.sit = 0;
@@ -1302,87 +1358,261 @@ static void step_one(Cit *c, int i) {
         }
         break; }
     case CM_VISIT: {   // out to a neighbour's door, a knock, a wait, and off again
-        if (c->sub == 0) { if (nav(c, c->ix, c->iy, c->stage == AG_ELDER ? 3 : 4, 0)) {
+        if (c->sub == 0) { if (nav(c, c->ix, c->iy, c->stage == AG_ELDER ? 3 : 4, 0, n)) {
             c->sub = 1; c->t = (u16)(200 + rn(200)); c->yaw = 0;
             if (d2 < 7 * TILE * 7 * TILE) say(c, "KNOCK KNOCK");
             const Hh *g = &hh[c->vh];
             for (int k = 0; k < g->n; k++) { Cit *o = &cits[g->mem[k]]; if (o->mode == CM_IDLE || (o->mode == CM_CHORE && o->sub == 1)) { if (!o->say_t && indoors_at(o->x, o->z)) say(o, "COMING!"); break; } }
-        } }
-        else if (c->t) c->t--;
+        } used = g_used; }
+        else if (c->t) used = count_down(&c->t, n);
         else { c->mode = CM_IDLE; c->t = (u16)(60 + rn(200)); if (!rn(2)) say(c, "OH WELL, LATER"); }
         break; }
     case CM_PARTY: party_step(c, i); break;
-    case CM_SLEEP:
+    case CM_SLEEP:   // (sub 0: the bed is looked for, once; 3: on the way to it; 1: asleep)
         if (!hm) { c->mode = CM_IDLE; break; }
         if (c->sub == 0) {
-            int sx, sz; sleep_spot(c, hm, &sx, &sz);
-            if (nav(c, sx / TILE, (-sz) / TILE, 3, 1)) { c->sub = 1; c->x = (s16)sx; c->z = (s16)sz; c->yaw = 1024; }
-        } else { c->gait.sleep = 1; c->gait.amp = 0; }
-        if (c->sub == 1 && !c->gait.sleep) c->gait.sleep = 1;
+            if (!think()) { used = n; break; }
+            int sx, sz; sleep_spot(c, hm, &sx, &sz); c->ix = (u8)(sx / TILE); c->iy = (u8)((-sz) / TILE); c->sub = 3;
+        }
+        if (c->sub == 3) {
+            if (nav(c, c->ix, c->iy, 3, 1, n)) { c->sub = 1; c->x = (s16)(c->ix * TILE + TILE / 2); c->z = (s16)(-(c->iy * TILE + TILE / 2)); c->yaw = 1024; }
+            used = g_used;
+        } else if (c->sub == 1) { c->gait.sleep = 1; c->gait.amp = 0; used = n; }   // (a night's sleep: all the steps there are)
         break;
     }
-    if (c->mode == CM_IDLE && c->say_t == 0 && d2 < 2 * TILE * 2 * TILE && c->rel > 10 && !rn(900)) say(c, chat_line(c));   // a friend says hi in passing
+    return used;
+}
+COLD static int step_core(Cit *c, int i, int n) {   // live up to n steps of this person's life in one go; returns the steps it took (1..n)
+    Sim *p = &sims[player];
+    int dx = p->x - c->x, dz = p->z - c->z;
+    int d2 = dx * dx + dz * dz;
+    const Home *hm = home_of(c);
+    int in = indoors_at(c->x, c->z), used = 1, say0 = c->say_t, cd0 = c->cd;
+    moved_flag = 0; g_used = 1;
+    c->gait.talk = c->mode == CM_CHAT;
+    c->gait.mood = c->rel / 2;
+    if (decide_due(i, n)) { int m0_ = c->mode; decide(c); CP(5, c->mode != m0_); (void)m0_; }   // look at the clock every so often
+    switch (c->mode) {
+    case CM_IDLE:
+        if (c->t) { used = count_down(&c->t, n); break; }
+        if (hm && in && want(c) == 1 && rn(100) < 70) { if (!think()) { used = n; break; } if (pick_chore(c, hm)) break; }   // a free hour at home: something to do
+        if (hm && !in && c->stage >= AG_TEEN && clock_min >= 540 && clock_min < 1260 && !rn(14)) { if (!think()) { used = n; break; } if (start_visit(c)) break; }   // or a knock on a neighbour's door
+        greet_maybe(c, d2, in); if (c->mode == CM_GREET) break;                                   // or, knowing you, over to say hello
+        c->wyaw = (u16)rn(4096); c->t = (u16)(80 + rn(220)); c->mode = CM_WALK; WK(0);
+        if (hm && !in) {   // out on the streets: drift back towards home when too far from it
+            int a, zf, b, e; door_geo(hm, &a, &zf, &b, &e);
+            int hx = a - c->x, hz = zf - c->z;
+            if (hx * hx + hz * hz > 9 * TILE * 9 * TILE) c->wyaw = (u16)((yaw_to(hx, hz) + rn(512) - 256) & 4095);
+        }
+        if (!hm && c->mplace != NOPID) {   // at work, at school, out somewhere: they keep about the place
+            int hx = c->ax * TILE + TILE / 2 - c->x, hz = -(c->ay * TILE + TILE / 2) - c->z;
+            if (hx * hx + hz * hz > 4 * TILE * 4 * TILE) c->wyaw = (u16)((yaw_to(hx, hz) + rn(400) - 200) & 4095);
+            else if (!rn(3)) { c->mode = CM_IDLE; c->t = (u16)(60 + rn(240)); break; }   // mostly they stay put (behind the counter, at the desk)
+        }
+        break;
+    case CM_WALK: {
+        if (!c->t) { c->mode = CM_IDLE; c->t = (u16)(30 + rn(200)); WK(1); break; }
+        int k = ABS(((c->wyaw - c->yaw + 6144) & 4095) - 2048) > 90 ? 1 : MIN(n, (int)c->t);   // (still turning: a step at a time, as ever; facing the way: strides)
+        turn(c, c->wyaw, 90 * k);
+        int spd = in ? 3 : c->stage == AG_CHILD ? 6 : c->stage == AG_ELDER ? 3 : 5 + (c->pers & 1);
+        int mx = (isin(c->yaw) * spd) >> 12, mz = -((icos(c->yaw) * spd) >> 12);
+        if (d2 < 120 * 120 && (mx * dx + mz * dz) > 0) { c->mode = CM_IDLE; c->t = 40; break; }   // do not walk into you
+        if (k > 1 && stride_free(c, mx, mz, k, in)) { c->x += (s16)(mx * k); c->z += (s16)(mz * k); moved_flag = 1; c->t = (u16)(c->t - k); used = k; break; }   // (several steps of clear street at once)
+        c->t--;
+        if (body_free(c->x + mx, c->z + mz, in)) { c->x += (s16)mx; c->z += (s16)mz; moved_flag = 1; }
+        else { c->wyaw = (u16)((c->yaw + 1024 + rn(2048)) & 4095); WK(3); if (!rn(3)) { c->mode = CM_IDLE; c->t = 20; WK(2); } }
+        break; }
+    default: used = step_rest(c, i, n, dx, dz, d2, hm, in); break;
+    }
+    if (used > n) used = n;
+    if (c->mode == CM_IDLE && c->say_t == 0 && d2 < 2 * TILE * 2 * TILE && c->rel > 10 && rn(900) < used) say(c, chat_line(c));   // a friend says hi in passing
+    if (c->say_t && c->say_t == say0) c->say_t = (u16)MAX(0, say0 - used);   // (the bubble and the cool-down run out by the steps lived; a new line starts its own)
+    if (c->cd && c->cd == cd0) c->cd = (u8)MAX(0, cd0 - used);
     // the walk cycle
     c->gait.run = moved_flag && (c->mode == CM_CHASE || c->mode == CM_STOP);
-    if (moved_flag) { c->gait.phase = (c->gait.phase + (c->gait.run ? 200 : 130)) & 4095; c->gait.amp = MIN(c->gait.amp + 400, 4096); }
-    else c->gait.amp = MAX(c->gait.amp - 500, 0);
+    if (moved_flag) { c->gait.phase = (c->gait.phase + (c->gait.run ? 200 : 130) * used) & 4095; c->gait.amp = MIN(c->gait.amp + 400 * used, 4096); }
+    else c->gait.amp = MAX(c->gait.amp - 500 * used, 0);
     if (c->mode != CM_SLEEP && c->mode != CM_KO) c->gait.sleep = 0;
     if (c->mode != CM_CHORE) c->gait.sit = 0;
-    if (c->gait.wave > 0) c->gait.wave--;
-    if (c->gait.squash < 0) c->gait.squash++;
+    if (c->gait.wave > 0) c->gait.wave = MAX(0, c->gait.wave - used);
+    if (c->gait.squash < 0) c->gait.squash = MIN(0, c->gait.squash + used);
     c->gait.seed = i; c->gait.clock = tick;
+    return used;
+}
+COLD static void step_one(Cit *c, int i, int n) {   // n steps of their life: a few big strides through it (what is left goes to the next call)
+    int x0_ = c->x, z0_ = c->z, left = n;
+    for (int it = 0; it < 8 && left > 0 && c->mode != CM_GONE; it++) {
+#ifdef CIT_PROBE
+        int m_ = c->mode & 15, x1_ = c->x, z1_ = c->z;
+#endif
+        int u = step_core(c, i, left); left -= u; CP(0, 1);
+#ifdef CIT_PROBE
+        dbg_cm[m_][0] += u; dbg_cm[m_][1] += ABS(c->x - x1_) + ABS(c->z - z1_);
+#endif
+    }
+    c->owe = (u8)MIN(left, 255);
+    CP(1, n - left); CP(7, ABS(c->x - x0_) + ABS(c->z - z0_)); (void)x0_; (void)z0_;
 }
 
-void citizens_update(int steps) {
+#ifdef CIT_PROBE
+static void cit_probe(void) {   // a snapshot of the crowd every 512 steps
+    if (dbg_cpr_n >= 24) return;
+    u16 *r = dbg_cpr[dbg_cpr_n++]; memset(r, 0, 48);
+    r[0] = (u16)clock_min; r[23] = (u16)(clock_day | indoors_at(sims[player].x, sims[player].z) << 8);   // (and whether you are indoors)
+    for (int i = 0; i < NCIT; i++) { const Cit *c = &cits[i]; if (c->zone != world_zone || c->mode == CM_GONE) continue;
+        r[1]++; if (c->mode < 14) r[2 + c->mode]++; if (indoors_at(c->x, c->z)) r[16]++; if (c->mode == CM_SLEEP && c->sub == 1) r[17]++; if (c->rel > 0) r[18] += (u16)c->rel;
+        if (c->rel || c->rom) r[22]++; }
+    r[19] = (u16)dbg_cc[3]; r[20] = (u16)dbg_cc[5]; r[21] = (u16)(dbg_cc[7] >> 8);
+}
+#endif
+// ---- THE SCHEDULER: 5 townsfolk or 500, the same time a frame, and the ones who know you first ------------------------------
+// Each frame every live townsperson is put in one of four tiers:
+//   0 BUSY WITH YOU: chatting, fighting you, making peace, at your party, coming over to you, the one in front of you, or
+//     within 3 tiles: thought about every logic step, as always.
+//   1 KNOW YOU (or you them): met you (any interaction at all, for good), a friend, a rival or an ex (what they think of you,
+//     the romance), one of yours who moved out, a neighbour on your block, a coworker at your job: every step too, wherever
+//     they are in the map window.
+//   2 STRANGERS NEAR OR IN SIGHT (10 tiles, or on the screen to 16): once a frame, living all the frame's steps (1..3) in one.
+//   3 STRANGERS FAR: every 4th frame (past 26 tiles every 8th), living all the steps since their last turn.
+// A call that lives several steps is the same life in bigger strides (step_core: timers run out by the steps, walks cover the
+// ground of them in one move, the clock is looked at if its moment fell in them): nobody's routine slows down or loses state.
+// The work is counted in thinking calls against CIT_BUDGET a frame (a new body built this frame takes CIT_BUILD_COST of it),
+// handed out tier by tier: a tier that does not fit what is left is spaced out round-robin (every 2nd frame, 4th, ...) with
+// each living all the steps it missed, never thinned out. A clock stops the strangers' turns in a frame that has already run
+// CIT_HB_CAP hblanks (a body was built): they go first in the next one. Route searches and looking round a home are shared out
+// over frames too (CIT_THINK, above).
+#define CIT_BUDGET     64            // thinking calls a frame (about half an hblank each): a crowd of 60 who all know you is still thought about every frame
+#define CIT_BUILD_COST 32
+#define CIT_HB_CAP     80            // (a frame's townsfolk: about 30 hb, so only a frame with a new body in it gets here)
+#define OWE_MAX        64            // (more steps than that owed: a stranger starved for seconds; the rest are let go)
+#if defined(AUTO_CITY) || defined(CIT_PROBE)
+int dbg_ctier[8];                    // (test readouts, summed over frames: the four tiers' sizes, calls, frames a tier was spaced out, strangers put off by the clock)
+#define CT(k, v) (dbg_ctier[k] += (v))
+#else
+#define CT(k, v) ((void)0)
+#endif
+static int cit_known(const Cit *c) { return (c->flg & (F_MET | F_KN)) || c->rel || c->rom; }
+static void meet(Cit *c) {           // any interaction at all: they know you now, for good
+    if (c->flg & F_MET) return;
+    c->flg |= F_MET; if (c->pid != NOPID) { pop_per[c->pid].met = 1; pop_know(c->pid); }
+}
+COLD static void greet_maybe(Cit *c, int d2, int in) {   // (at a loose end) someone who knows you, out and seeing you out too, comes over to say hello: once each time they are out
+    if (!cit_known(c) || (c->flg & F_HI) || in || c->rel <= -40 || fight_on || c->stage < AG_CHILD) return;
+    if (d2 > 8 * TILE * 8 * TILE || d2 < 2 * TILE * 2 * TILE || indoors_at(sims[player].x, sims[player].z) || rn(3)) return;
+    c->flg |= F_HI; c->mode = CM_GREET; c->t = 420; c->st = 0; c->wv = 0;
+}
+static int ceil_div(int a, int b) { return (a + b - 1) / b; }
+COLD static void cit_build(const u8 *lv, int nlv, int *built) {   // bodies for those who have none yet: the nearest the camera first (in SAN BOREAS, only those near enough to be seen soon)
+    int best = -1, bd = world_zone == ZONE_CITY ? (DRAW_DIST + 4 * TILE) * (DRAW_DIST + 4 * TILE) : 1 << 30;
+    for (int j = 0; j < nlv; j++) {
+        int i = lv[j]; const Cit *c = &cits[i];
+        if (c->zone != world_zone || c->built || c->mode == CM_GONE) continue;
+        int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz, d = dx * dx + dz * dz;
+        if (d < bd) { bd = d; best = i; }
+    }
+    if (best >= 0) { atlas_defer = 1; build_lod(&cits[best]); atlas_defer = 0; (*built)++; return; }   // (its face goes to VRAM at the flip)
+    best = -1; bd = DRAW_DIST * DRAW_DIST;   // someone near the camera whose stored model was let go (the store was full): build them again
+    for (int j = 0; j < nlv; j++) {
+        int i = lv[j]; const Cit *c = &cits[i];
+        if (c->zone != world_zone || !c->built || c->mode == CM_GONE) continue;
+        int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz, d = dx * dx + dz * dz;
+        if (d < bd && !crowd_has(i)) { bd = d; best = i; }   // (the near ones only are asked about)
+    }
+    if (best >= 0) { atlas_defer = 1; build_lod(&cits[best]); atlas_defer = 0; (*built)++; }
+}
+COLD void citizens_update(int steps) {   // (built small: the work is in step_one)
     if (world_zone == ZONE_HOME && !home_guests && !party_on) { cur = -1; fight_on = 0; return; }
-    if (world_zone == ZONE_CITY) { pop_tick(); vanish_tick(); }
-    int built = 0;
-    {   // bodies for those who have none yet: the nearest the camera first
-        int best = -1, bd = 1 << 30;
-        for (int i = 0; i < NCIT; i++) {
-            const Cit *c = &cits[i];
-            if (c->zone != world_zone || c->built || c->mode == CM_GONE) continue;
-            int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz, d = dx * dx + dz * dz;
-            if (d < bd) { bd = d; best = i; }
-        }
-        if (best >= 0) { atlas_defer = 1; build_lod(&cits[best]); atlas_defer = 0; built++; }   // (its face goes to VRAM at the flip)
+    int h0 = VSync(1);
+    static int cfr; cfr++;
+    if (world_zone == ZONE_CITY) pop_tick();
+    static u8 lv[NCIT], lst[NCIT]; int nlv = 0;   // who is here: one look at every slot a frame, and everything after works from this list
+    for (int i = 0; i < NCIT; i++) if (cits[i].zone == world_zone && cits[i].mode != CM_GONE) lv[nlv++] = (u8)i;
+    if (world_zone == ZONE_CITY) vanish_tick(lv, nlv);
+    int built = 0; cit_build(lv, nlv, &built);
+    // the tiers (lst: the busy with you from the front, the ones who know you from the back; everyone's tier is kept in flg)
+    int nt[4] = { 0, 0, 0, 0 }, nfar2 = 0;
+    const Sim *me = &sims[player];
+    for (int j = 0; j < nlv; j++) {
+        int i = lv[j]; Cit *c = &cits[i];
+        if (c->zone != world_zone || c->mode == CM_GONE) continue;
+        int dx = (me->x - c->x) >> 4, dz = (me->z - c->z) >> 4, d2 = dx * dx + dz * dz, t;   // (in sixteenths of a tile)
+        #define T16(n) ((n) * TILE / 16) * ((n) * TILE / 16)
+#ifdef CIT_FLAT
+        if (1) t = 0; else   // (test builds: everyone every step, one at a time: what the strides are checked against)
+#endif
+        if (c->mode == CM_CHAT || c->mode == CM_CHASE || c->mode == CM_STOP || c->mode == CM_PARTY || c->mode == CM_GREET || i == cur || i == pie_c || d2 < T16(3)) t = 0;
+        else if (cit_known(c)) t = 1;
+        else if (d2 < T16(10) || (d2 < T16(16) && gfx_visible(c->x, -110, c->z, 160))) t = 2;
+        else { t = 3; if (d2 > T16(26)) nfar2++; }
+        c->flg = (u8)((c->flg & (F_MET | F_HI | F_KN | F_LATE)) | (t == 3 && d2 > T16(26) ? F_FAR : 0) | t << F_TSH);
+        if (c->pid != NOPID && t <= 1 && d2 < T16(6) && !((cfr + i) & 31)) pop_seen(c->pid);   // (someone who knows you, and saw you today)
+        #undef T16
+        if (t == 0) lst[nt[0]] = (u8)i; else if (t == 1) lst[NCIT - 1 - nt[1]] = (u8)i;
+        nt[t]++;
     }
-    if (!built) {   // someone near the camera whose stored model was let go (the store was full): build them again
-        int best = -1, bd = DRAW_DIST * DRAW_DIST;
-        for (int i = 0; i < NCIT; i++) {
-            const Cit *c = &cits[i];
-            if (c->zone != world_zone || !c->built || c->mode == CM_GONE || crowd_has(i)) continue;
-            int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz, d = dx * dx + dz * dz;
-            if (d < bd) { bd = d; best = i; }
-        }
-        if (best >= 0) { atlas_defer = 1; build_lod(&cits[best]); atlas_defer = 0; }
-    }
+    // the budget, tier by tier: every step, or once every fp frames (round-robin, all the steps since)
+    int bud = CIT_BUDGET - (built ? CIT_BUILD_COST : 0) - nt[0] * steps;
+    int fpA = 0;                                                         // (0: every step)
+    if (nt[1] * steps > bud) { fpA = 1; while (fpA < 8 && ceil_div(nt[1], fpA) > bud) fpA <<= 1; CT(6, 1); }
+    bud -= fpA ? ceil_div(nt[1], fpA) : nt[1] * steps;
+    int fpB = 1; while (fpB < 8 && ceil_div(nt[2], fpB) > bud) fpB <<= 1;
+    bud -= ceil_div(nt[2], fpB);
+    int mC = 1; while (mC < 4 && ceil_div(nt[3] - nfar2, 4 * mC) + ceil_div(nfar2, 8 * mC) > bud) mC <<= 1;
+    if (fpB > 1 || mC > 1) CT(6, 1);
+    for (int t = 0; t < 4; t++) CT(t, nt[t]);
+    int calls0 = 0;
+#ifdef CIT_PROBE
+    calls0 = dbg_cc[0];
+#endif
+    think_tok = CIT_THINK;
     for (int k = 0; k < steps; k++) {
         tick++;
         party_tick();
         { static int last_min = -1; if (clock_min != last_min) { if (last_min >= 0) party_minute(); last_min = clock_min; } }
         if (pl_cd > 0) pl_cd--;
-        const Sim *me = &sims[player];
-        for (int i = 0; i < NCIT; i++) {
-            Cit *c = &cits[i];
+        think_pri = 1;
+        for (int j = 0, e = nt[0] + (fpA ? 0 : nt[1]); j < e; j++) {   // busy with you, and (when they fit) the ones who know you: a step at a time
+            int i = j < nt[0] ? lst[j] : lst[NCIT - 1 - (j - nt[0])]; Cit *c = &cits[i];
             if (c->zone != world_zone || c->mode == CM_GONE) continue;
-            if ((tick + i) & 3) {   // far off (past the full detail, out of the way of anything you do): fewer steps are enough (half past 14 tiles, a quarter past 26)
-                int dx = (me->x - c->x) >> 4, dz = (me->z - c->z) >> 4, d2 = dx * dx + dz * dz;
-                if (c->mode != CM_CHASE && c->mode != CM_PARTY && c->mode != CM_CHAT) {
-                    if (d2 > (26 * TILE / 16) * (26 * TILE / 16)) continue;
-                    if (((tick + i) & 1) && d2 > (14 * TILE / 16) * (14 * TILE / 16)) continue;
-                }
-            }
-            step_one(c, i);
+            if (c->owe < 255) c->owe++;
+            step_one(c, i, c->owe); CT(4, 1);
         }
+#ifdef CIT_PROBE
+        if (!(tick & 511)) cit_probe();
+#endif
+#ifdef CIT_STAND
+        if (!(tick % 600) && tick > 1200) {   // (test builds: now and then three people out on the street come near you, having met you once: do they come over?)
+            const Sim *p = &sims[player]; int put = 0;
+            for (int j = 0; j < nlv && put < 3; j++) { Cit *c = &cits[lv[j]];
+                if (c->zone != world_zone || indoors_at(c->x, c->z) || (c->mode != CM_IDLE && c->mode != CM_WALK)) continue;
+                place_street(c, p->x, p->z, p->x / TILE, (-p->z) / TILE, 6); c->mode = CM_IDLE; c->t = 0; c->flg &= (u8)~F_HI; meet(c); c->wv = 0; put++; } }
+#endif
         if (!fight_on && pl_hp < 100 && !(tick & 63)) pl_hp++;   // you heal about a point a second
         fam_step();
         if (!(tick & 31)) crowd_react(0);
     }
-    cur = find_target();
-    fight_on = 0; for (int i = 0; i < NCIT; i++) if (cits[i].zone == world_zone && cits[i].mode == CM_CHASE) fight_on = 1;
+    // the rest: their turn comes round every fp frames (or straight away, if the clock put them off last frame); the list is
+    // started at a different place each frame, so the clock never puts off the same people twice running
+    for (int j0 = nlv ? (cfr * 7) % nlv : 0, j = 0; j < nlv; j++) {
+        int i = lv[(j0 + j) % nlv]; Cit *c = &cits[i]; int t = c->flg >> F_TSH & 3;
+        if (c->zone != world_zone || c->mode == CM_GONE || t < (fpA ? 1 : 2)) continue;
+        { int o = c->owe + steps; if (o > OWE_MAX) { CP(15, o - OWE_MAX); o = OWE_MAX; } c->owe = (u8)o; }   // (the steps of this frame, owed to everyone not yet stepped)
+        int late = c->flg & F_LATE;
+        int fp = t == 1 ? fpA : t == 2 ? fpB : ((c->flg & F_FAR) ? 8 : 4) * mC;
+        if (!late && ((cfr + i) & (fp - 1)) && c->owe < OWE_MAX) continue;  // not their frame
+        think_pri = t == 1;
+        if (t >= 2 && c->owe < OWE_MAX / 2 && VSync(1) - h0 > CIT_HB_CAP) { c->flg |= F_LATE; CT(7, 1); continue; }   // (the frame has run long: next frame; but not for someone already half a second behind)
+        c->flg &= (u8)~F_LATE;
+        step_one(c, i, c->owe); CT(4, 1);
+    }
+#ifdef CIT_PROBE
+    { int cl = dbg_cc[0] - calls0; if (cl > dbg_cc[11]) dbg_cc[11] = cl; }
+#endif
+    (void)calls0;
+    cur = find_target_l(lv, nlv);   // (a party guest who came in from another zone this frame is on the list from the next)
+    fight_on = 0; { int ch = 0, co = 0; for (int j = 0; j < nlv; j++) { const Cit *c = &cits[lv[j]]; if (c->zone == world_zone && c->mode == CM_CHASE) { fight_on = 1; ch++; co += c->cop; } } dbg_rage[0] = ch; dbg_rage[1] = co; }
     for (int i = 0; i < nsims; i++) if (sims[i].rage) fight_on = 1;
-    { int ch = 0, co = 0; for (int i = 0; i < NCIT; i++) if (cits[i].zone == world_zone && cits[i].mode == CM_CHASE) { ch++; co += cits[i].cop; } dbg_rage[0] = ch; dbg_rage[1] = co; dbg_rage[2] = pl_hp; dbg_rage[3] = heat; }
+    dbg_rage[2] = pl_hp; dbg_rage[3] = heat;
 }
 
 // ---- drawing ----------------------------------------------------------------------------------------------

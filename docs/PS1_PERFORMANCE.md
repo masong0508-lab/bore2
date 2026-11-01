@@ -87,7 +87,56 @@ What was done:
 Crash got its speed by baking everything that does not change and streaming fixed-size zones. What that means here, in the order it should be done:
 1. **Bake the light.** Done for the floor (above); it was worth 5 hblanks, not the 2.5 hblanks a primitive first thought: the cost is the transform, the clipping and the per-tile tests, not the light.
 2. **Per-block prebuilt packet lists.** Walls, roofs and ground of a block are static: build a block's list once (the far skyline in `far.c` already works this way) and copy it, so a block costs one copy, not a pass over its tiles. (See "Not done" above: with the camera moving it is the world-space geometry that can be kept, which needs 8 MB.)
-3. **Slice the logic.** Run the townsfolk in two halves on alternate steps and the sims' needs on a slower clock, so catch-up steps stop costing a full pass each.
+3. **Slice the logic.** Done for the townsfolk a different way (not halves: a scheduler that keeps the people who know you at full rate; see "The townsfolk's scheduler" below). The household's needs are still worked out every step (8 sims, about 22 hb).
 4. **Stream by block from the disc.** The city's tables are one set in RAM. Split the street grid into block files with the next ring read in the background (the CD is already read in the background for music). This needs 40 to 60 KB for a block buffer, which means freeing it first from `lvpool_small` (96 KB) or `seqbuf` (45 KB). Free RAM now: about 28 KB past `_end` (keep that above 8 KB or boot crashes at "AUDIO+DISC 60%").
+
+## The townsfolk's scheduler: 5 Bores or 500, the same time a frame, and the ones who know you first
+The townsfolk (`citizens_update` in `citizens.c`) cost 81 to 86 hblanks a frame in the city (73 to 83 before the near-world rework), and the cost grew with every catch-up step a slow frame forced (each step was a pass over everyone). Far people were "made cheaper" by skipping their steps (every 2nd past 14 tiles, every 4th past 26), which also meant they lived at half or a quarter speed: a chore, a walk, a shift took them two or four times as long. The new scheduler thinks about each person as often as they matter, but every person lives every step.
+
+**The tiers** (worked out once a frame for everyone in the map window):
+| tier | who | how often they think |
+|---|---|---|
+| 0 busy with you | chatting, fighting you, making peace, at your party, coming over to you, the one in front of you, anyone within 3 tiles | every logic step |
+| 1 know you (or you them) | met you (any interaction: the pie menu, a punch, joining a fight, a peacemaker, a party guest), anyone with feelings about you either way (friends, rivals, exes: `rel`/`rom`), your moved-out Bores, your block's neighbours, coworkers at your job | every logic step, wherever they are in the window |
+| 2 strangers near or in sight | within 10 tiles, or on the screen out to 16 | once a frame, living the frame's 1 to 3 steps in one go |
+| 3 strangers far | the rest | every 4th frame (past 26 tiles every 8th), living all the steps since |
+
+Meeting someone marks them for good: `F_MET` in `Cit.flg`, and in SAN BOREAS `Per.met` (it rides in the top bit of the saved `hp` byte, so the save format is unchanged and older saves read as "not met").
+
+**Living several steps in one call** (`step_core(c, i, n)`): timers run down by the steps, a walk covers the ground of k steps in one move when the way is clear (checked every 24 units along it, so no corner a single step could not pass is cut, and only once the walker faces where it is going; turning is still a step at a time), `go`/`scripted` stop short of their point, the clock check (`decide`) runs if its moment fell inside the steps, the speech bubble and cool-downs run out by the steps. A call returns the steps it used; what is left is lived on the next call, so time is never lost, only grouped (`step_one` takes up to 8 strides a call; past 64 owed steps the rest would be dropped, which happens for well under 1% of steps even in the worst test).
+
+**The budget** (`CIT_BUDGET` 64 thinking calls a frame, about half an hblank each): tier 0 always; then tier 1 every step if it fits, else once a frame, every 2nd, ... (round robin, each living the steps it missed); then tier 2, then tier 3 (their periods stretched the same way). A frame that builds a new body (the crowd model, about 200 hb, `CIT_BUILD_COST`) has less to give out, and a clock (`CIT_HB_CAP`, 80 hb) puts off the strangers in a frame that has run long (they go first next frame, from a different place in the list each frame, and never past half a second behind). Bodies are now only built for people within 18 tiles of the camera (the rest never needed one: they are never drawn).
+
+**Big decisions spread over frames**: a route search (a 25 x 25 breadth-first fill) or a look round the home for something to do costs one of `CIT_THINK` (4) tokens a frame; the last one is kept for tiers 0 and 1; whoever finds none stands and thinks until the next frame. A search that found no way is not repeated until the walker is on another tile (some homes put a chore where it cannot be reached; the old code searched again every step, hundreds of times a minute). Going to bed looks for the bed once, not every step. In the household (`sim.c`), one sim makes a real decision a step: two who come free together are a 60th of a second apart.
+
+**Off the map** (`pop.c`): the people of SAN BOREAS who know you are kept on a list (128; the strongest feelings, if more). `pop_tick` brings 8 of them into the window a frame before its usual 40 others (all 128 in 16 frames, where a stranger's turn comes round every 90 frames); if every body is taken, a stranger out of sight makes room for someone who knows you. Their days already follow the clock (`pop_where`); a coarse clock now keeps the rest going: once a game hour one of them who has not seen you for two days may phone (at most a call every three hours; it warms them to you and lifts your social need), and at midnight those not seen for three days drift (friendship cools by 1 a day, a grudge eases by 1, romance cools after five days; never back to strangers). Out on the streets, someone who knows you and sees you out comes over to say hello, once each time they are out (`CM_GREET`).
+
+**Measured** (AUTO_CITY Release, the city route at three lengths, on top of the near-world rework above; "before" is that rework alone):
+| | before | now |
+|---|---|---|
+| townsfolk a frame (hb) | 86 / 84 / 81 | 50 / 46 / 45 |
+| all game logic a frame (hb) | 121 / 120 / 117 | 88 / 82 / 81 |
+| frames a second, whole stay | 18.80 / 18.62 / 18.80 | 19.78 / 20.72 / 21.53 |
+| frames within 3 vblanks | 84 / 86 / 88% | 95 / 96 / 97% |
+| townsfolk: 95% of frames under | 240 hb | 100 / 100 / 80 hb |
+| townsfolk: the worst frame (a body built) | 275 hb | 243 hb |
+| thinking calls a frame | 42 | 6.7 to 8.5 |
+| steps actually lived by the townsfolk (a 4300-frame run) | 38,600 | 93,000 (all of them) |
+
+Part of the gain is the catch-up steps: a cheaper frame runs fewer of them (2.99 steps a frame before, 2.72 to 2.93 now). Measured before the near-world rework went in, the same change was 83 / 77 / 73 to 51 / 49 / 49 hblanks for the townsfolk (18.3 to 18.9-19.2 fps). (The traffic's slice reads 3 hb higher only because the interrupts that used to land in the longer townsfolk slice now land in it; it does no more work.)
+
+**Scaling** (CIT_PEOPLE=5: PACKED, 999 homes on 2 MB, BIG households; 45 to 78 people live in the window; 4300 frames):
+| | before | now |
+|---|---|---|
+| townsfolk a frame | 99 hb | 68 hb |
+| townsfolk: 95% of frames under | 240 hb | 200 hb |
+| frames a second | 19.02 | 21.93 |
+| everyone in SAN BOREAS knows you (CIT_KNOWN=1; about 50 in the window, all tier 1) | - | 81 hb, 19.41 fps: every one of them thought about every frame |
+
+**Behaviour checked** with `CIT_PROBE` builds (`tools/perf/citprobe.py` prints the run's counters and a snapshot every 512 steps) against `CIT_FLAT` (the same code with everyone thought about every step, one step at a time): chores 29 / 28, route searches 23 / 24 (none failing), walks ending held up 62 / 64%, ending by the time 7 / 8%, held-up steps a walk 1.8 / 1.9. With `CIT_STAND` people who know you came over to say hello in the street; with `CIT_LIFE` three days off the map moved all 158 people on the list (drift) and the phone rang. The share of steps spent walking differs from run to run (15 to 23%) with who happens to be in the window (shop workers walk slowly in tight rooms); the old scheduler's far people lived a quarter to a half of their steps, so they did fewer chores and walked less in a day than they should. Test hooks (Release, with AUTO_CITY): `CIT_PEOPLE=n` (the PEOPLE dial), `CIT_KNOWN=n` (every nth person knows you), `CIT_STAND=frame` (stop the stroll there, and now and then bring three people who know you near), `CIT_LIFE` (with `CIT_KNOWN`: three days and a day's hours of the off-map clock at the start).
+
+**RAM**: a plain Release build ends at 0x1fd5d4, 10.5 KB free (13.7 with the near-world rework alone, 16.4 before both). The new per-person state (`owe`, `flg`) sits in what was padding in `Cit`, so the crowd's table did not grow; the known list is 384 bytes; the rest is code. To stay above 10 KB the townsfolk's step code, route walking and party dancing are built small (`COLD`, -Os): they now run a few dozen times a frame, not hundreds, and the measured cost did not change.
+
+**Not done**: the household's own needs still tick every step (22 hb; all 8 sims know you, so they stay at full rate by the rule above). The body builds (about 200 hb, in `crowd.c`/`voxel.c`) cannot be split over frames without touching the crowd renderer; they are now rarer and the strangers make room for them. The island and the town (50 people, no `pop.c`) use the same tiers but have no off-map life.
 
 How to measure any of this: tools/perf/README.md.

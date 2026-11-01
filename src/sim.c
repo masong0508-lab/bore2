@@ -745,8 +745,10 @@ static int pick_stroll(const Sim *s, int *ox, int *oy) {
     if (bx < 0) return 0;
     *ox = bx; *oy = by; return 1;
 }
+static int think_tok;   // (one of the household makes a real decision a step: two who come free at once are a 60th of a second apart, not one frame's spike)
 static void ai_think(Sim *s) {
     if (s->action != ACT_NONE || s->path_i < s->path_n) return;
+    if (!s->wander_t) { if (think_tok) return; think_tok = 1; }
     if (s->bore.stage == AG_BABY) {   // a baby: asleep in its crib at night (or when tired), otherwise sat on the floor playing
         if (is_night() || (s->need[N_REST] >> 10) < 35) baby_to_bed(s);
         else { begin_action(s, ACT_SIT, sim_tile_x(s), sim_tile_y(s)); s->act_t = 240; }
@@ -1332,6 +1334,7 @@ static void clock_tick(void) {
     if (++acc < spm) return;
     acc = 0;
     clock_min++;
+    if (!(clock_min % 60)) pop_hour();   // (the lives of the ones who know you, off the map: an hour at a time)
     for (int i = 0; i < nsims; i++) { wants_minute(&sims[i]); moodlets_minute(&sims[i]); }
     gotchi_minute();
     if (clock_min == 16 * 60) for (int i = 0; i < nsims; i++) for (int j = 0; j < nsims; j++) { int r = sims[i].rel[j]; sims[i].rel[j] = (s8)(r > 0 ? r - 2 : r < 0 ? r + 2 : 0); }   // 4 PM: the day's warmth fades a little
@@ -1443,7 +1446,7 @@ static void pet_tick(void) {   // the pet follows you about, gets hungry, and ch
     if (pet_hun > 20 && d < TILE * 4 && !(walk_tick & 127)) { int pl = pet_kind == 1 ? pet_dog.tr[0] : 5, lo = pet_kind == 1 ? pet_dog.tr[2] : 5; p->need[N_FUN] = MIN(p->need[N_FUN] + 300 + pl * 60, 100 << 10); p->need[N_SOCIAL] = MIN(p->need[N_SOCIAL] + 150 + lo * 30, 100 << 10); }   // (a playful dog cheers you up, a loyal one keeps you company)
 }
 void sim_step(void) {
-    walk_tick++;
+    walk_tick++; think_tok = 0;
     clock_tick(); pet_tick();
     { static int lastwx; int wx = sim_weather(); if (wx != lastwx) { lastwx = wx; sim_note(wx == 1 ? "IT IS RAINING. TAKE COVER!" : wx == 2 ? "HAIL! GET INSIDE!" : wx == 3 ? "HEAVY SNOW IS FALLING" : "THE WEATHER HAS CLEARED"); } }
     for (int i = 0; i < nsims; i++) {

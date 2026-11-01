@@ -6,6 +6,8 @@
 #include "sim.h"
 #include "world.h"
 #include "citizens.h"
+#include "home.h"
+extern int job_bx, job_by;   // (places.h: the workplace's block)
 
 #include "mem8.h"
 static Fam fam_small[NFAM_2MB]; static Per per_small[PER_2MB];
@@ -92,7 +94,7 @@ static void days_of(Per *q, int f) {   // what they do with their days at this s
 static void set_person(Per *q, int f, int stage, int newborn) {   // somebody new: who they are from the dice, how far into this stage of life
     if (gen_done) mark(regen_p, (int)(q - pop_per));
     q->seed = pr(); q->stage = (u8)stage; q->trait = (u8)prn(NTRAIT); q->flags = 0; q->slot = 255;
-    q->rel = 0; q->rom = 0; q->hp = 100; (void)pr();   // (the dice for the old shift byte: the world comes out the same)
+    q->rel = 0; q->rom = 0; q->hp = 100; q->met = 0; (void)pr();   // (the dice for the old shift byte: the world comes out the same)
     if (stage == AG_ELDER && prn(16) < 10) for (int t = 0; t < 64 && !old_name(name_of(q->seed)); t++) q->seed = pr();   // (mostly an old-fashioned name)
     days_of(q, f);
     if (!newborn) q->flags |= (u8)(MIN(63, prn(MAX(1, sim_stage_len(stage)))) << 2);   // (nobody in town is all the same age)
@@ -165,7 +167,7 @@ void pop_new(u32 seed, void *scratch, u32 scratch_bytes) {
         fm->kind = (u8)kind_for(U[f].lot); fm->sur = (u16)pr();
         make_members(f);
     }
-    nfam = nf; gen_done = 1; ncust = 0;
+    nfam = nf; gen_done = 1; ncust = 0; pop_kn_n = 0;
 }
 int pop_family_at(int bx, int by, int unit) {
     int key = by * 2048 * 4 + bx * 4 + unit, lo = 0, hi = nfam - 1;
@@ -197,8 +199,8 @@ static int work_hours(int p, int *a, int *b) {     // today's shift at their job
         default: if (d == off1 || d == off2) return 0; *a = late ? 840 : 360; *b = late ? 1320 : 840; if (lot == LOT_SHOP) { *a += 120; *b = MIN(*b + 60, 1320); } return 1;
     }
 }
-static int leisure(int p, int slot, int *place) {   // out for a couple of hours: somewhere fun in their town (-1: they stay in)
-    const Per *q = &pop_per[p]; const Fam *fm = &pop_fam[pop_fam_of(p)];
+static int leisure(int p, int f, int slot, int *place) {   // out for a couple of hours: somewhere fun in their town (-1: they stay in)
+    const Per *q = &pop_per[p]; const Fam *fm = &pop_fam[f < 0 ? pop_fam_of(p) : f];
     u32 h = bm_hash((int)q->seed & 0x7FFF, clock_day * 16 + slot, q->seed);
     int chance = q->stage == AG_ELDER ? 30 : q->stage == AG_ADULT ? 40 : 60;
     if (q->trait == 9) chance += 25; if (q->trait == 2 || q->trait == 8) chance -= 15;   // outgoing / lazy, loner
@@ -214,7 +216,7 @@ static int leisure(int p, int slot, int *place) {   // out for a couple of hours
     }
     return 0;
 }
-int pop_where(int p, int *place) {
+static int where_f(int p, int f, int *place) {   // (f: their household when the caller knows it, else -1)
     const Per *q = &pop_per[p]; *place = -1;
     int m = clock_min + pop_offset(p); if (m < 0) m += 1440; if (m >= 1440) m -= 1440;
     int st = q->stage, sleep = st <= AG_CHILD ? (m >= 1230 || m < 420) : st == AG_ELDER ? (m >= 1290 || m < 390) : st == AG_TEEN ? (m >= 1380 || m < 420) : (m >= 1350 || m < 400);
@@ -226,9 +228,10 @@ int pop_where(int p, int *place) {
     if (q->flags & PF_HOMEBODY) return AT_HOME;
     int from = st <= AG_TEEN ? 600 : st == AG_ELDER ? 540 : 1020, to = st <= AG_TEEN ? 1170 : st == AG_ELDER ? 1020 : 1320;
     if (clock_day >= 5 && st == AG_ADULT) from = 600;
-    if (m >= from && m < to && leisure(p, m / 120, place)) return AT_OUT;
+    if (m >= from && m < to && leisure(p, f, m / 120, place)) return AT_OUT;
     return AT_HOME;
 }
+int pop_where(int p, int *place) { return where_f(p, -1, place); }
 int pop_want(int p) { int pl, w = pop_where(p, &pl); return w == AT_SLEEP ? 2 : w == AT_HOME ? 1 : 0; }
 int pop_count_where(int at) { int n = 0, pl; for (int p = 0; p < pop_nper; p++) if (!(pop_per[p].flags & PF_GONE) && pop_where(p, &pl) == at) n++; return n; }
 
@@ -265,30 +268,96 @@ const char *pop_doing(int p, char *out) {
 
 // ---- bringing them to life around you ----
 int dbg_take_ok, dbg_take_fail, dbg_in;
+#define KN_MAX 128
+static u16 kn_pid[KN_MAX]; static u8 kn_unseen[KN_MAX]; int pop_kn_n;   // WHO KNOWS YOU: the list (the strongest feelings, if more), and the days since each was last seen
+#if defined(AUTO_CITY) || defined(CIT_PROBE)
+int dbg_kn[4];   // (test readouts: calls made, steps of drift, the list's size at the last midnight)
+#define KN_DBG(k, v) (dbg_kn[k] = (v))
+#else
+#define KN_DBG(k, v) ((void)0)
+#endif
+static void tick_one(int p, int f) {   // is this person in the map window (by the clock), and alive in it? Bring them in, or let them go
+    Per *q = &pop_per[p];
+    if (q->flags & PF_GONE) return;
+    int place, at = where_f(p, f, &place), bx, by;
+    const Fam *fm = &pop_fam[f];
+    if (at <= AT_HOME) { bx = fm->bx; by = fm->by; } else { bx = pop_place[place].bx; by = pop_place[place].by; }
+    int in = bx >= world_wbx && bx < world_wbx + 5 && by >= world_wby && by < world_wby + 5;
+    if (in && at <= AT_HOME && world_home_find(ZONE_CITY, bx, by, fm->unit) < 0) in = 0;
+    if (q->slot != 255) {
+        int mp = citizens_place_of(q->slot);
+        if (!in || (at <= AT_HOME) != (mp < 0) || (at > AT_HOME && mp != place)) citizens_release(q->slot);
+    } else if (in) { if (citizens_take(p, at, at <= AT_HOME ? -1 : place) >= 0) dbg_take_ok++; else dbg_take_fail++; }
+    if (in) dbg_in++;
+}
 void pop_tick(void) {
     if (world_zone != ZONE_CITY || world_wbx < 0 || !pop_nper) return;
-    static int cur;
+    static int kc;                                   // the ones who know you first: 8 of them a frame (all 128 in 16 frames), wherever they are
+    for (int k = 0; k < 8 && k < pop_kn_n; k++) { if (kc >= pop_kn_n) kc = 0; int p = kn_pid[kc++]; tick_one(p, pop_fam_of(p)); }
+    static int cur, cf;                              // then 40 of everyone, in turn (their household walked along with them)
     for (int k = 0; k < 40; k++) {
         int p = cur++; if (cur >= pop_nper) cur = 0;
-        Per *q = &pop_per[p];
-        if (q->flags & PF_GONE) continue;
-        int place, at = pop_where(p, &place), bx, by;
-        const Fam *fm = &pop_fam[pop_fam_of(p)];
-        if (at <= AT_HOME) { bx = fm->bx; by = fm->by; } else { bx = pop_place[place].bx; by = pop_place[place].by; }
-        int in = bx >= world_wbx && bx < world_wbx + 5 && by >= world_wby && by < world_wby + 5;
-        if (in && at <= AT_HOME && world_home_find(ZONE_CITY, bx, by, fm->unit) < 0) in = 0;
-        if (q->slot != 255) {
-            int mp = citizens_place_of(q->slot);
-            if (!in || (at <= AT_HOME) != (mp < 0) || (at > AT_HOME && mp != place)) citizens_release(q->slot);
-        } else if (in) { if (citizens_take(p, at, at <= AT_HOME ? -1 : place) >= 0) dbg_take_ok++; else dbg_take_fail++; }
-        if (in) dbg_in++;
+        if (p == 0 || cf >= nfam || pop_fam[cf].first > p) cf = pop_fam_of(p);
+        while (cf + 1 < nfam && pop_fam[cf + 1].first <= p) cf++;
+        tick_one(p, cf);
     }
+}
+
+// ---- WHO KNOWS YOU, off the map: the list, and a coarse clock for their lives (an hour, a day) ----
+static int kn_find(int p) { for (int i = 0; i < pop_kn_n; i++) if (kn_pid[i] == p) return i; return -1; }
+int pop_knows_you(int p) {
+    const Per *q = &pop_per[p];
+    if (q->met || q->rel || q->rom || pop_custom_look(p, 0, 0)) return 1;
+    const Fam *fm = &pop_fam[pop_fam_of(p)];
+    if (home_city && fm->bx == home_bx && fm->by == home_by) return 1;                                  // your block's neighbours
+    if (!job_none && q->job != 0xFFFF && q->stage >= AG_ADULT && pop_place[q->job].bx == job_bx && pop_place[q->job].by == job_by) return 1;   // coworkers
+    return 0;
+}
+void pop_know(int p) {
+    if (p < 0 || p >= pop_nper || kn_find(p) >= 0) return;
+    if (pop_kn_n < KN_MAX) { kn_pid[pop_kn_n] = (u16)p; kn_unseen[pop_kn_n++] = 0; return; }
+    int w = -1, wv = 1 << 30;                        // (full: the one with the faintest feelings makes room, if the new one's are stronger)
+    for (int i = 0; i < pop_kn_n; i++) { const Per *o = &pop_per[kn_pid[i]]; int v = (o->flags & PF_GONE) ? -1 : ABS(o->rel) + o->rom; if (v < wv && o->slot == 255) { wv = v; w = i; } }
+    const Per *q = &pop_per[p];
+    if (w >= 0 && ABS(q->rel) + q->rom >= wv) { kn_pid[w] = (u16)p; kn_unseen[w] = 0; }
+}
+void pop_seen(int p) { int i = kn_find(p); if (i >= 0) kn_unseen[i] = 0; }
+void pop_known_rebuild(void) {
+    pop_kn_n = 0;
+    for (int p = 0; p < pop_nper; p++) { const Per *q = &pop_per[p]; if (!(q->flags & PF_GONE) && (q->met || q->rel || q->rom || pop_custom_look(p, 0, 0))) pop_know(p); }
+}
+void pop_hour(void) {   // an hour of their lives: someone who knows you, not seen for a couple of days, may ring (a call every three hours at most)
+    static int kc, quiet;
+    if (quiet > 0) { quiet--; return; }
+    if (!pop_kn_n || clock_min < 8 * 60 || clock_min > 22 * 60 || sims[player].action == ACT_SLEEP) return;
+    for (int t = 0; t < 16 && t < pop_kn_n; t++) {
+        if (kc >= pop_kn_n) kc = 0;
+        int i = kc++, p = kn_pid[i]; Per *q = &pop_per[p];
+        if ((q->flags & PF_GONE) || q->slot != 255 || q->stage < AG_TEEN || q->rel < 40 || kn_unseen[i] < 2) continue;
+        int pl; if (look_rand() % 24 || pop_where(p, &pl) == AT_SLEEP) continue;
+        char nm[24], b[48]; pop_first(p, nm);
+        snprintf(b, sizeof b, q->rom >= 50 ? "%s CALLED: MISSES YOU" : q->rel >= 75 ? "%s CALLED FOR A LONG CHAT" : "%s CALLED TO CATCH UP", nm); sim_note(b);
+        q->rel = (s8)MIN(100, q->rel + 2); kn_unseen[i] = 0; KN_DBG(0, dbg_kn[0] + 1); quiet = 2;
+        Sim *s = &sims[player]; s->need[N_SOCIAL] = MIN(100 << 10, s->need[N_SOCIAL] + (10 << 10));
+        break;
+    }
+}
+static void known_midnight(void) {   // a day: the gone come off the list; those not seen for days drift (friends apart, grudges cool), never to strangers
+    int n = 0;
+    for (int i = 0; i < pop_kn_n; i++) {
+        Per *q = &pop_per[kn_pid[i]]; if (q->flags & PF_GONE) continue;
+        u8 un = kn_unseen[i]; if (un < 255) un++;
+        if (q->slot == 255 && un >= 3) { if (q->rel > 1) q->rel--; else if (q->rel < -1) q->rel++; if (un >= 5 && q->rom > 1) q->rom--; KN_DBG(1, dbg_kn[1] + 1); }
+        kn_pid[n] = kn_pid[i]; kn_unseen[n++] = un;
+    }
+    pop_kn_n = n; KN_DBG(2, n);
 }
 
 // ---- growing up, all over SAN BOREAS: once a day at midnight, the same life stages as your own household ----
 int pop_aging = 1;
 int pop_alive(int f) { const Fam *fm = &pop_fam[f]; int n = 0; for (int i = 0; i < fm->n; i++) if (!(pop_per[fm->first + i].flags & PF_GONE)) n++; return n; }
 void pop_midnight(void) {
+    known_midnight();
     if (!pop_aging || !aging || !pop_nper) return;
     for (int p = 0; p < pop_nper; p++) {   // a day older: a birthday at the end of each stage, and at the end of a long life, goodbye
         Per *q = &pop_per[p]; if (q->flags & PF_GONE) continue;
@@ -325,8 +394,8 @@ void pop_midnight(void) {
 extern u16 bfs_q[];   // (sim.c: scratch, free here)
 static int bit(const u8 *a, int i) { return (a[i >> 3] >> (i & 7)) & 1; }
 enum { PL_STAGE, PL_FLAGS, PL_REL, PL_ROM, PL_HP };   // (the save keeps each of these as a row of bytes, one a person)
-static int pl_get(const Per *q, int k) { return k == PL_STAGE ? q->stage : k == PL_FLAGS ? q->flags : k == PL_REL ? (u8)q->rel : k == PL_ROM ? (u8)q->rom : q->hp; }
-static void pl_set(Per *q, int k, int v) { if (k == PL_STAGE) q->stage = (u8)(v % 5); else if (k == PL_FLAGS) q->flags = (u8)v; else if (k == PL_REL) q->rel = (s8)v; else if (k == PL_ROM) q->rom = (s8)v; else q->hp = (u8)v; }
+static int pl_get(const Per *q, int k) { return k == PL_STAGE ? q->stage : k == PL_FLAGS ? q->flags : k == PL_REL ? (u8)q->rel : k == PL_ROM ? (u8)q->rom : q->hp | q->met << 7; }   // (met rides in hp's top bit: older saves read as not met)
+static void pl_set(Per *q, int k, int v) { if (k == PL_STAGE) q->stage = (u8)(v % 5); else if (k == PL_FLAGS) q->flags = (u8)v; else if (k == PL_REL) q->rel = (s8)v; else if (k == PL_ROM) q->rom = (s8)v; else { q->hp = (u8)(v & 127); q->met = (u8)(v >> 7 & 1); } }
 static void plane(int k, int n) { u8 *t = (u8 *)bfs_q; for (int i = 0; i < n; i++) t[i] = (u8)pl_get(&pop_per[i], k); sv_rle(t, n); }
 static void unplane(int k, int n) { u8 *t = (u8 *)bfs_q; ld_rle(t, n); for (int i = 0; i < n; i++) pl_set(&pop_per[i], k, t[i]); }
 __attribute__((optimize("Os"))) void pop_save(void) {
@@ -348,6 +417,7 @@ __attribute__((optimize("Os"))) void pop_load(void) {   // (after pop_new from t
     for (int i = 0; i < n; i++) if (bit(regen_p, i) || bit(chg_p, i)) pop_per[i].job = (u16)ld_u16();
     for (int f = 0; f < nfam; f++) if (bit(regen_f, f)) { pop_fam[f].kind = (u8)ld_u8(); pop_fam[f].sur = (u16)ld_u16(); }
     pop_custom_load();
+    pop_known_rebuild();
 }
 
 // ---- MOVED OUT (borrowed from BORE on the GBA): one of your household goes to live in a home of their own in SAN BOREAS. The
@@ -379,6 +449,7 @@ int pop_move_out(const Bore *b, int near_bx, int near_by, int avoid_bx, int avoi
     int k = ncust < NCUSTOM ? ncust++ : 0;
     if (k == 0 && ncust == NCUSTOM) { memmove(&cust[0], &cust[1], sizeof cust[0] * (NCUSTOM - 1)); k = NCUSTOM - 1; }   // (full: the first to move out is forgotten)
     cust[k].pid = (u16)(fm->first); strcpy(cust[k].first, b->first); strcpy(cust[k].last, b->last); memcpy(cust[k].look, b->look, LK_COUNT);
+    pop_know(fm->first);   // (one of yours: they know you)
     return fm->first;
 }
 void pop_custom_save(void) { sv_u8(ncust); for (int i = 0; i < ncust; i++) { sv_u16(cust[i].pid); sv_str(cust[i].first, NAME_LEN - 1); sv_str(cust[i].last, NAME_LEN - 1); sv_rle(cust[i].look, LK_COUNT); } }
