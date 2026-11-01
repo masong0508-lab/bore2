@@ -194,7 +194,7 @@ int dbg_slow[16][8], dbg_slow_n;
 int avg_cpu16, avg_world16, avg_hh16, hist_cpu[5], avg_prof16[8];
 int dbg_sum_far[6], dbg_miss[4], dbg_sum_miss[4], dbg_roads_hb, dbg_sum_roads;   // (test readouts: the far pass's quads, clipped quads, cone tests, and prims: land, buildings, trees)
 #ifdef AUTO_CITY
-int dbg_lg_max[2], dbg_cit_hist[12], dbg_sim_hist[12], dbg_sum_ppl[4];   // (test readouts: the townsfolk's and the household's worst frame, the townsfolk's cost a frame in 20-hb bins, the household's in 40-hb bins;
+int dbg_lg_max[2], dbg_cit_hist[12], dbg_sim_hist[12], dbg_sum_ppl[4], dbg_rn[3];   // (test readouts: the townsfolk's and the household's worst frame, the townsfolk's cost a frame in 20-hb bins, the household's in 40-hb bins;
                                                                          //  summed: the crowd's drawing, its spare-time work, the household's drawing, the traffic's)
 #endif
 int dbg_end_hist[24], dbg_per_hist[6], dbg_edge[12], dbg_vbs[4], dbg_need_last, dbg_gw[3];   // (test readouts: life frames by their need (the cost without the spare-time work), in 50-hb bins; by the vblanks they took)
@@ -2034,14 +2034,14 @@ static void opts_apply(void) {
 // (learned the last time it was given back: the far view's from its own timer) fits under the target. A step that had to be given
 // up again soon after waits twice as long the next time (and half again once it holds): no flicker.
 static void helper_apply(void) {
-    extern int cit_maxdraw, cit_live_cap, cit_fresh_max;
+    extern int cit_maxdraw, cit_live_cap, cit_fresh_max, cit_stale_n;
     int v = opt[O_VIEW]; far_view = (v && shed_lvl < 4) ? (v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
     int tr = opt[O_TREES] - shed_lvl; far_trees = tr < 0 ? 0 : tr;
     int fd = opt[O_FARB] - (shed_lvl > 1 ? shed_lvl - 1 : 0); far_detail = fd < 0 ? 0 : fd;
     far_haze = shed_lvl >= 3 ? 0 : opt[O_HAZE];
     if (shed_lvl >= 4) { far_trees = 0; far_detail = 0; }
     int c = ((opt[O_CROWD] & 3) + 1) * 16 >> crowd_lvl; cit_maxdraw = c < 8 ? 8 : c;
-    cit_live_cap = crowd_lvl >= 2 ? 1 : 99; cit_fresh_max = crowd_lvl >= 1 ? 1 : 2;
+    cit_live_cap = crowd_lvl >= 2 ? 1 : 99; cit_fresh_max = crowd_lvl >= 1 ? 1 : 2; cit_stale_n = crowd_lvl >= 1 ? 12 : 6;   // (a render that does not fit costs ~140 hb: a frame past its vblank)
 }
 int dbg_hl[6];   // (test readouts: steps given up, given back, frames aiming at 30, the ladder's step and the crowd's step, summed)
 COLD static void helper_frame(void) {

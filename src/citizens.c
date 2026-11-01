@@ -1666,7 +1666,7 @@ COLD void citizens_update(int steps) {   // (built small: the work is in step_on
 }
 
 // ---- drawing ----------------------------------------------------------------------------------------------
-int cit_live_cap = 99, cit_fresh_max = 2;   // (main's speed helper, when frames run slow: fewer people in full 3D, fewer first sprites a frame)
+int cit_live_cap = 99, cit_fresh_max = 2, cit_stale_n = 6;   // (main's speed helper, when frames run slow: fewer people in full 3D, fewer first sprites a frame, a stale sprite forced less often)
 int cit_spare_hb;                    // this frame's work done only because it fitted the spare time before the vblank (main: the frame's need is the rest)
 #define CIT_FLIP_HB 12               // (the flip's own work before it waits for the vblank, and a little give)
 int cit_n_full, cit_n_lod, cit_n_spr, cit_n_vis; static int cit_end_hb = -1;
@@ -1746,7 +1746,7 @@ void citizens_draw(void) {
         int first = bs >= 100000, t0 = gfx_hb(), fits = t0 + rest + est <= target;
         if (first) { waiting = 1; if (fresh >= cit_fresh_max) break; }
         if (!fits) {   // (no time for it: only the one a frame that keeps everyone from going stale, or FAST's one more)
-            if (over || !(cit_sprite_rate == 2 || (first ? fskip >= 3 : skipped >= 6))) break;
+            if (over || !(cit_sprite_rate == 2 || (first ? fskip >= 3 : skipped >= cit_stale_n))) break;
             over = 1;
         }
         Cit *c = &cits[order[best]];
@@ -1754,6 +1754,9 @@ void citizens_draw(void) {
         tier[best] = 2;
         if (first) fresh++; else nr++;
         if (fits) cit_spare_hb += gfx_hb() - t0;
+#ifdef AUTO_CITY
+        { extern int dbg_rn[3]; dbg_rn[fits ? 0 : first ? 1 : 2]++; }   // (test readout: renders in spare time; forced: first sprites, stale ones)
+#endif
     }
     if (nr) skipped = 0; else skipped++;
     if (fresh || !waiting) fskip = 0; else fskip++;

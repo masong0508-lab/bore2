@@ -57,6 +57,7 @@ if 'dbg_slow' in S:
 if nn and 'dbg_sim_hist' in S:
     h=rd('dbg_sim_hist',12); print('household (sim_step) a frame, 40-hb bins: %s'%' '.join(str(x) for x in h))
     p=rd('dbg_sum_ppl',4); print('people a frame hb: the crowd %.0f (of it spare-time work %.0f) | the household %.0f | traffic %.0f'%(p[0]/nn,p[1]/nn,p[2]/nn,p[3]/nn))
+    if 'dbg_rn' in S: r=rd('dbg_rn',3); print('crowd sprite renders: %d in spare time, forced (no time left): %d first sprites, %d stale'%r)
 if 'dbg_end_hist' not in S: sys.exit(0)
 h=rd('dbg_end_hist',24)
 tot=sum(h) or 1

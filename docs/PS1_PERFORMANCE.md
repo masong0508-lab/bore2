@@ -173,4 +173,35 @@ Part of the gain is the catch-up steps: a cheaper frame runs fewer of them (2.99
 - RAM: the six texture builders' own buffers (the far windows and tree cards, the soft shadow, the ghost, the items' materials, the walls' and floors' textures, the roof shingles: 9.5 KB kept for good, each used once or now and then) build in the upper half of the atlas's 32 KB upload scratch (`atlas_scratch_hi`; the upload copies into the lower half, and the route searches and the roof rebuild that also borrow it use only the lower half). Plain Release, 2 MB: 20.8 KB free past `_end` (it was down to 9.2 KB after this step's tables and the other changes merged meanwhile).
 - Measured: like for like (city street) 19.16 to 19.19 fps by the clock; first person with the 1 km view (helper off) 13.23 to 13.86 fps on 2 MB (the far streets 189 to 131 hb), 13.82 to 13.86 with 8 MB. Pictures (frozen, first person with the far view): only the blossom and two of the crowd's idle poses (they follow the frame count) differ.
 
+**4. A sprite render that does not fit is forced half as often while the helper has the crowd cut.** A crowd sprite render is a whole person drawn (`voxel_draw`, 93 hb on average over 986 draws, 71 quads after culling, the worst 154; with the impostor's set-up and the model's unpacking about 135). In a town frame the spare time (about 100 hb) never fits one, so the sprites there were refreshed by the guarantee alone (a stale one every 6th frame, someone's first sprite at least every 3rd), and each of those pushed its frame past the vblank: 27 stale and 4 first-sprite renders in the 961 frames of the like-for-like route, against 182 that fitted. At the helper's crowd steps (it has already cut the crowd for speed) the stale guarantee is every 12th frame (`cit_stale_n`): 15 forced, like for like 19.19 to 19.27. A new readout counts the renders (in spare time / forced first / forced stale).
+
+## Where it stands after this round
+Like for like (the same route frame by frame, `AB_LOCK4`, 5200 frames, "by the clock" fps from each frame's flip; 2 MB unless said; the helper on, as a player has it, except where it says off):
+
+| | before this round | now |
+|---|---|---|
+| default camera | 19.21 | 19.24 (runs of one build differ by about 0.05) |
+| zoomed in all the way | 19.14 | 19.24 |
+| zoomed out all the way | 19.24 | 19.28 |
+| first person | 26.03 | 26.56 |
+| first person, 1 km far view (helper off) | 12.85 | 13.58 |
+| default camera, 1 km far view (helper off) | 14.16 | 14.17 |
+| default camera, 8 MB | 19.21 | 19.28 |
+| first person, 1 km far view, 8 MB | 13.21 | 13.76 |
+| frames the spare-time work pushed past their vblank (default camera) | 24 | 6 to 8 |
+
+Normal runs (3700 frames) of the final build: default camera 19.17 fps (10% of frames took 4 vblanks), zoomed in 19.09, zoomed out 19.14, first person 27.28 (83% of frames at 30), first person 1 km far view 13.82, default camera far view 14.24, STEADY 20 at the default camera 19.18; 8 MB default camera 19.19. These walk the expensive route (see "A word on normal runs"): the numbers at the top of this round (19.8 to 21.5 at the default camera) were the cheap one, so the two cannot be set side by side.
+
+Plain Release, 2 MB: 20.8 KB free past `_end` with this round's changes (10.8 at its start, 9.2 at its lowest with the merges); 15.6 KB after the FARM LIFE work merged at its end. Both 2 MB and 8 MB boot to the title.
+
+**Why the city street still is not a steady 20.** With everything the helper can give up (far view off, 5-tile range, 8 people drawn) the frames' need at the default camera is 666 hb on the mean and 7 to 8% of frames need more than 3 vblanks (786 hb). They are not spikes: most are 790 to 850 hb, the heavier stretches of the route (the world 450 to 500 hb, the people 180 to 230). What is left in a frame, from the profile of the busy time: the world 41% (the per-tile loop 7%, the roofs about 11%, the near-plane cutter 8%, the floor 5%, the walls 4%), the street's things and furniture 13% (cars 5% of it), people 10% (the player's own full model alone is about 90 hb when it is drawn full), the HUD 50 hb (the Bore's card 15, the needs 8.5, the clock 8, the want and notes 8). It is flat again: no part is big enough to win the last 50 hb alone.
+
+**Not done, and why:**
+- *The HUD's packets kept from frame to frame* (redraw only what changed): about 30 hb to win, but the blossom, the weather and the notes' slide are drawn between the cards (moving them on top changes the picture), the cache needs a region of each packet buffer kept for it, and its key is half the game's state. Left for a round of its own.
+- *The near-plane cutter's colours packed four to a word, its projection by one division*: worth maybe 10 hb; the projection would round differently from the C it replaces.
+- *A cheaper person* (`voxel_draw`, 93 hb): it is already corners-once, colours from a table; what is left is per face. Faster renders would let the town's spare time fit sprite refreshes again.
+- *Window shifts* (a block coming into the map window: about 1% of the route's frames, 1150 hb each) and *the household's long route searches* (6 frames in 960 over 440 hb, the worst 1190): spreading either over frames needs the map or the search kept half-done across frames (the search's table is lent to the drawing every frame).
+- *The far view in first person*: the far land is now 320 hb (the streets 131, the map window's own ground past the detail 108, the land past it about 80), the far buildings 119, the trees 65: 13.6 to 13.9 fps. The next step there is the land kept as a grid of shared corners (each corner transformed and hazed once, not by each of its four quads), and the map window's ground cells walked by their visible span only; neither fits the time left in this round. The helper gives the far view up in first person (27 fps) and, with STEADY 20, does not give it back (it would cost more than the room).
+- *A bigger height table on 2 MB*: the far view's 1024-entry table now misses 49 times a frame in first person (146 before); 2048 entries would be 6 KB of RAM.
+
 How to measure any of this: tools/perf/README.md.
