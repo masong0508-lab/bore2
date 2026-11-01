@@ -553,7 +553,7 @@ void gfx_sky(u32 top, u32 bottom) {
 #include "atlas.h"
 static TexRef shadow_tex; static u16 shadow_tpage; static int shadow_ready;
 static void shadow_init(void) {
-    static u16 px[32 * 32];
+    u16 *px = atlas_scratch_hi();   // (32 x 32)
     for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
         int dx = x * 2 - 31, dy = y * 2 - 31, d2 = dx * dx + dy * dy;          // 0 .. 961 at the rim
         int a = 961 - d2; if (a < 0) a = 0;

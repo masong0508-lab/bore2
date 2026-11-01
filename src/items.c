@@ -376,10 +376,9 @@ int items_height(char ch) {
 static const Mat *mat_key[MAXMAT];
 static TexRef mat_tex[MAXMAT];
 static int nmat;
-static u16 mbuf[32 * 32];
 static TexRef mat_ref(const Mat *m) {
     for (int i = 0; i < nmat; i++) if (mat_key[i] == m) return mat_tex[i];
-    int w = m->w, h = m->h;
+    int w = m->w, h = m->h; u16 *mbuf = atlas_scratch_hi();   // (up to 32 x 32)
     if (w > 32) w = 32; if (h > 32) h = 32;
     for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
         char ch = m->rows[y][x];

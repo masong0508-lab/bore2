@@ -83,6 +83,8 @@ static inline int cg(u32 c) { return (c >> 8) & 255; }
 static inline int cb(u32 c) { return (c >> 16) & 255; }
 static u32 mix(u32 a, u32 b, int t, int n) {   // a .. b at t of n
     if (n <= 0) return a;
+    if (a == b || t == 0) return a & 0xffffff;   // (a card's edge and its shadow are one colour top to bottom: no divisions for them)
+    if (t == n) return b & 0xffffff;
     return UI_RGB(cr(a) + (cr(b) - cr(a)) * t / n, cg(a) + (cg(b) - cg(a)) * t / n, cb(a) + (cb(b) - cb(a)) * t / n);
 }
 // size 1 is the interface's own smooth type (font size 3: the medium font shrunk, not the old 5-pixel one); 2 the medium

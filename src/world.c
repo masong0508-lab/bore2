@@ -119,7 +119,7 @@ static const Tex outTex[19] = {
 static TexRef wp_tex[NWALLS];        // 8x24
 static u16 wp_top[NWALLS];
 static u8 fl_odd[NFLOORS] = { 14, 15, 15, 16, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15, 16, 15, 16, 16, 16, 15, 16, 16, 16, 15, 15, 15, 15, 16, 16, 16, 16, 16, 16 };
-static u16 tb[32 * 32];
+#define TB (atlas_scratch_hi())   // (32 x 32: the wall and floor textures are built in the upload scratch's upper half)
 static TexRef glass_tex;
 
 static const Tex newWp[6] = {   // the base game's newer walls (8x8, repeated down the wall)
@@ -163,16 +163,16 @@ void world_season_skin(int season, int wet) {
     for (int i = FL_GRASS; i < NFLOORS; i++) {
         const Tex *t = floor_tex(i); u16 sc[4]; int r = 0, g = 0, b = 0;
         for (int k = 0; k < 4; k++) sc[k] = skin_c(i, fl_soft[i][k], season, wet);
-        { int sz = i == FL_WATER ? 16 : 8; for (int y = 0; y < sz; y++) for (int x = 0; x < sz; x++) { u16 c = sc[t->p[y & 7][x & 7] - '0']; tb[y * sz + x] = c ? c : 0x8000; } }
-        atlas_upload(&fl_tex[i], tb);
+        { int sz = i == FL_WATER ? 16 : 8; for (int y = 0; y < sz; y++) for (int x = 0; x < sz; x++) { u16 c = sc[t->p[y & 7][x & 7] - '0']; TB[y * sz + x] = c ? c : 0x8000; } }
+        atlas_upload(&fl_tex[i], TB);
         if (!fl_tex4[i].tpage) { for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) { u16 c = sc[t->p[y][x] - '0']; r += C_R(c); g += C_G(c); b += C_B(c); } fl_avg[i] = RGB(r / 64, g / 64, b / 64); continue; }
         for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
             u16 c = sc[t->p[y & 7][x & 7] - '0'];
             int odd = ((x >> 3) + (y >> 3)) & 1, k = odd ? fl_odd[i] : 16;
             u16 o = RGB(C_R(c) * k / 16, C_G(c) * k / 16, C_B(c) * k / 16);
-            tb[y * 32 + x] = o ? o : 0x8000;
+            TB[y * 32 + x] = o ? o : 0x8000;
         }
-        atlas_upload(&fl_tex4[i], tb);
+        atlas_upload(&fl_tex4[i], TB);
         for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) { u16 c = sc[t->p[y][x] - '0']; r += C_R(c); g += C_G(c); b += C_B(c); }
         fl_avg[i] = RGB(r / 64, g / 64, b / 64);
     }
@@ -187,41 +187,41 @@ void world_init(void) {
     for (int i = 0; i < NFLOORS; i++) {
         const Tex *t = floor_tex(i);
         int sz = i == FL_WATER ? 16 : 8;   // (only the water scrolls, so only it needs the pattern twice over)
-        for (int y = 0; y < sz; y++) for (int x = 0; x < sz; x++) { u16 c = fl_soft[i][t->p[y & 7][x & 7] - '0']; tb[y * sz + x] = c ? c : 0x8000; }
-        fl_tex[i] = atlas_add(sz, sz, tb);
+        for (int y = 0; y < sz; y++) for (int x = 0; x < sz; x++) { u16 c = fl_soft[i][t->p[y & 7][x & 7] - '0']; TB[y * sz + x] = c ? c : 0x8000; }
+        fl_tex[i] = atlas_add(sz, sz, TB);
         if (FL_NO4(i)) { fl_tex4[i].tpage = 0; continue; }   // (the one-tile-wide road markings never draw as a 2x2 block)
         for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
             u16 c = fl_soft[i][t->p[y & 7][x & 7] - '0'];
             int odd = ((x >> 3) + (y >> 3)) & 1, k = odd ? fl_odd[i] : 16;
             u16 o = RGB(C_R(c) * k / 16, C_G(c) * k / 16, C_B(c) * k / 16);
-            tb[y * 32 + x] = o ? o : 0x8000;
+            TB[y * 32 + x] = o ? o : 0x8000;
         }
-        fl_tex4[i] = atlas_add(32, 32, tb);
+        fl_tex4[i] = atlas_add(32, 32, TB);
     }
     for (int i = 0; i < NWP; i++) {
         const Tex *t = look_wp_tex(i);
-        for (int y = 0; y < 24; y++) for (int x = 0; x < 8; x++) { u16 c = t->c[t->p[y & 7][x] - '0']; tb[y * 8 + x] = c ? c : 0x8000; }
-        wp_tex[i] = atlas_add(8, 24, tb);
+        for (int y = 0; y < 24; y++) for (int x = 0; x < 8; x++) { u16 c = t->c[t->p[y & 7][x] - '0']; TB[y * 8 + x] = c ? c : 0x8000; }
+        wp_tex[i] = atlas_add(8, 24, TB);
         wp_top[i] = look_wp_avg(i);
     }
     for (int i = 0; i < NWX; i++) {   // the KHLVH set is pre-shaded 12/16 for the left face: lift it back
         for (int y = 0; y < 24; y++) for (int x = 0; x < 8; x++) {
             u16 c = wxPal[wxPalOff[i] + wxIdx[i][x][y]];
             int r = MIN(31, C_R(c) * 16 / 12), g = MIN(31, C_G(c) * 16 / 12), b = MIN(31, C_B(c) * 16 / 12);
-            u16 o = RGB(r, g, b); tb[y * 8 + x] = o ? o : 0x8000;
+            u16 o = RGB(r, g, b); TB[y * 8 + x] = o ? o : 0x8000;
         }
-        wp_tex[NWP + i] = atlas_add(8, 24, tb);
+        wp_tex[NWP + i] = atlas_add(8, 24, TB);
         wp_top[NWP + i] = wxAvg[i];
     }
     for (int i = 0; i < NWPNEW; i++) {
         const Tex *t = &newWp[i]; u32 ar = 0, ag = 0, ab = 0;
-        for (int y = 0; y < 24; y++) for (int x = 0; x < 8; x++) { u16 c = t->c[t->p[y & 7][x] - '0']; tb[y * 8 + x] = c ? c : 0x8000; }
+        for (int y = 0; y < 24; y++) for (int x = 0; x < 8; x++) { u16 c = t->c[t->p[y & 7][x] - '0']; TB[y * 8 + x] = c ? c : 0x8000; }
         for (int k = 0; k < 4; k++) { ar += C_R(t->c[k]); ag += C_G(t->c[k]); ab += C_B(t->c[k]); }
-        wp_tex[NWP + NWX + i] = atlas_add(8, 24, tb);
+        wp_tex[NWP + NWX + i] = atlas_add(8, 24, TB);
         wp_top[NWP + NWX + i] = RGB(ar / 4, ag / 4, ab / 4);
     }
-    for (int i = 0; i < 64; i++) tb[i] = RGB(18 + (i & 1), 24, 30);
-    glass_tex = atlas_add(8, 8, tb);
+    for (int i = 0; i < 64; i++) TB[i] = RGB(18 + (i & 1), 24, 30);
+    glass_tex = atlas_add(8, 8, TB);
 }
 
 // ---- BORE's map builders ----
@@ -1908,7 +1908,18 @@ static int world_covered0(int mx, int my) {   // a tile under the far end of a l
     }
     return 0;
 }
+static int world_walkable0(int mx, int my);
+// (the walkers, the route searches and the straight-line checks ask this for every tile they look at, every step: on the ground floor
+//  it reads the maps straight, and a bare floor tile's answer is world_covered's kept bit)
 int world_walkable(int mx, int my) {
+    if (world_lvl != 0 || (unsigned)mx >= MW || (unsigned)my >= MH) return world_walkable0(mx, my);
+    char c = lifeMap[my][mx];
+    if (c == '.') return floorMap[my][mx] != FL_WATER && !world_covered(mx, my);
+    if (is_wall(c) || c == ' ' || floorMap[my][mx] == FL_WATER) return 0;
+    if (c == 'D' || c == 'P' || c == 'B') return 1;
+    return !items_blocking(c);
+}
+static int world_walkable0(int mx, int my) {
     char c = world_at(mx, my);
     if (is_wall(c) || c == ' ') return 0;                       // (' ': open air on an upper storey)
     if (world_lvl == 0 && mx >= 0 && my >= 0 && mx < MW && my < MH && floorMap[my][mx] == FL_WATER) return 0;
@@ -2187,7 +2198,8 @@ static inline int gh_c(int X, int Y) {   // (inline: asked for a thousand times 
     return gh_c_slow(X, Y);
 }
 int world_gh_c(int X, int Y) { return gh_c(X, Y); }
-void world_gh_reset(void) { gh_bx = -99999; gh_cok = 0; ghf_ok = 0; }   // (a new city: the land is different)
+int world_gh_epoch;   // (bumped when the land is different: what keeps heights elsewhere keys on it)
+void world_gh_reset(void) { gh_bx = -99999; gh_cok = 0; ghf_ok = 0; world_gh_epoch++; }   // (a new city: the land is different)
 int world_gh(int x, int z);
 int world_gh_lot(int x, int z) {   // world_gh, quicker for a point well inside a town's lot (a far building): the lot is a level pad at its block's height
     if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
@@ -3036,7 +3048,7 @@ static void roof_pending(int max) {                            // work out up to
     }
 }
 static void roof_tex_make(void) {   // shingles: courses of overlapping tiles, every other course offset
-    static u16 px[16 * 16];
+    u16 *px = atlas_scratch_hi();   // (16 x 16)
     for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) {
         int course = y / 4, off = (course & 1) * 4, v = 15 - (y & 3);          // each shingle darkens toward its lower edge
         if (((x + off) & 7) == 0) v -= 5;                                       // the gaps between shingles

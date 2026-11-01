@@ -84,7 +84,7 @@ static TexRef gtex[2]; static int gtex_ok;
 static u16 gcool[GH_MAX];
 void ghost_init(void) { extern void ghost_tex_(void); ghost_tex_(); }
 void ghost_tex_(void) {   // the two frames, see-through (the body blends with what is behind; the eyes and mouth do not)
-    static u16 px[16 * 32];
+    u16 *px = atlas_scratch_hi();   // (16 x 32)
     for (int f = 0; f < 2; f++) {
         for (int y = 0; y < 32; y++) for (int x = 0; x < 16; x++) { char c = ghArt[f][y][x]; u16 v = 0;
             if (c == '#') v = RGB(12, 14, 22) | 0x8000; else if (c == 'o') v = RGB(27, 29, 31) | 0x8000; else if (c == 's') v = RGB(17, 21, 28) | 0x8000;

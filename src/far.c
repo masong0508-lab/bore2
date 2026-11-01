@@ -246,7 +246,7 @@ void far_new_world(void) {
 static TexRef win_tex, tree_tex[4]; static int tex_ok;
 static u32 win_e2;                           // the texture window that repeats win_tex every 16 texels
 static void far_tex(void) {
-    static u16 px[32 * 32];
+    u16 *px = atlas_scratch_hi();   // (32 x 32)
     for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) {   // two windows across, two storeys up: a frame, the glass
         int cx = x & 7, cy = y & 7; u16 c = RGB(31, 31, 31);
         if (cx >= 2 && cx <= 5 && cy >= 2 && cy <= 6) c = (cx == 2 || cy == 2) ? RGB(7, 9, 12) : RGB(10, 13, 17);
@@ -256,7 +256,7 @@ static void far_tex(void) {
     win_tex = atlas_add_aligned(16, 16, 16, px);
     win_e2 = 0xE2000000u | 0x1E | (0x1E << 5) | (((win_tex.u >> 3) & 0x1F) << 10) | (((win_tex.v >> 3) & 0x1F) << 15);
     for (int k = 0; k < 4; k++) {            // oak, pine, palm, cactus: 16 x 32, the trunk at the bottom middle
-        memset(px, 0, sizeof px);
+        memset(px, 0, 32 * 32 * sizeof(u16));
         for (int y = 0; y < 32; y++) for (int x = 0; x < 16; x++) {
             u16 c = 0; int dx = x * 2 - 15, n = (x * 7 + y * 13) & 3;
             if (k == 0) {   // oak: a round crown on a trunk
@@ -290,7 +290,9 @@ static int cone_c, cone_s;                    // the cone the view takes in on t
 static int Ls, Ln, Lw, Le, Ltop, Lroof;        // the sun on each side of a box (once a frame)
 // is the ground point (x, z) (local units, radius rad) inside the view's cone, and nearer than dmax?
 static inline int in_cone(int x, int z, int rad, int dmax) {
-    far_ncone++;
+#ifdef AUTO_CITY
+    far_ncone++;   // (test readout)
+#endif
     int dx = x - feye.vx, dz = z - feye.vz;
     if (ABS(dx) > dmax + rad || ABS(dz) > dmax + rad) return 0;
     int fwd = (dx * fdx + dz * fdz) >> 12;                     // along the view
@@ -376,10 +378,31 @@ static void roads_fill(int cbx, int cby) {
         BInfo b; bm_block(bx, by, &b); if (b.terrain != BT_SEA) rdc[j][i] = (u8)(b.road & 7);
     }
 }
+// The bands' corner heights, kept by block (the block's own corner, 3 tiles east of it, 3 tiles south of it: every band starts and ends
+// on those) round the eye's block, the table wrapping round as the eye moves (only the row or column coming in is forgotten). They
+// were four calls into the land's height code a band, a hundred bands a frame in first person with a long view.
+#define RH_R 12                                        // (a band reaches at most 9 blocks out, and runs 3 more)
+#define RH_N (2 * RH_R + 1)
+static s16 rh_tab[RH_N][RH_N][3]; static int rh_cx = -99999, rh_cy, rh_key = -1;
+static void rh_follow(int cbx, int cby) {
+    extern int world_gh_epoch; int key = world_gh_epoch * 4099 + bm_edit_stamp;
+    if (key != rh_key || ABS(cbx - rh_cx) >= RH_N || ABS(cby - rh_cy) >= RH_N) { memset(rh_tab, 0x7f, sizeof rh_tab); rh_cx = cbx; rh_cy = cby; rh_key = key; return; }
+    while (rh_cx != cbx) { int c = rh_cx < cbx ? rh_cx + RH_R + 1 : rh_cx - RH_R - 1; rh_cx += rh_cx < cbx ? 1 : -1;   // (the column coming in)
+        c = ((c % RH_N) + RH_N) % RH_N; for (int j = 0; j < RH_N; j++) { rh_tab[j][c][0] = rh_tab[j][c][1] = rh_tab[j][c][2] = 0x7f7f; } }
+    while (rh_cy != cby) { int r = rh_cy < cby ? rh_cy + RH_R + 1 : rh_cy - RH_R - 1; rh_cy += rh_cy < cby ? 1 : -1;
+        r = ((r % RH_N) + RH_N) % RH_N; memset(rh_tab[r], 0x7f, sizeof rh_tab[r]); }
+}
+static inline int rh_get(int bx, int by, int k, int x, int z) {   // k: 0 the corner, 1 three tiles east, 2 three south; (x, z): that point
+    if (ABS(bx - rh_cx) > RH_R || ABS(by - rh_cy) > RH_R) return world_gh(x, z);
+    s16 *p = &rh_tab[by % RH_N][bx % RH_N][k]; if (*p == 0x7f7f) *p = (s16)world_gh(x, z);
+    return *p;
+}
 static void draw_roads(int hills) {
     int ax = fwx0 + (feye.vx >> 8) / 1, ay = fwy0 - (feye.vz >> 8);                 // the eye's tile in the world
     int cbx = ax / BM_BLK, cby = ay / BM_BLK;
     if (rdc_bx == -99999 || ABS(cbx - (rdc_bx + RD_R)) > 6 || ABS(cby - (rdc_by + RD_R)) > 6 || rdc_stamp != bm_edit_stamp) { roads_fill(cbx, cby); rdc_stamp = bm_edit_stamp; }
+    if (hills) rh_follow(cbx, cby);
+    int rr = 70, rg = 70, rb_ = 74; season_rgb(2, &rr, &rg, &rb_); rr = rr * 3 / 4; rg = rg * 3 / 4; rb_ = rb_ * 3 / 4;   // (the bands' colour: the same all frame)
     { u32 *w = (u32 *)rdc; for (int k = 0; k < RD_W * RD_W / 4; k++) w[k] &= 0x07070707u; rdc[RD_W - 1][RD_W - 1] &= 7; }      // (the marks of last frame's runs off: four a time)
     const int reach = MIN(max_ground, M2U(160)), RW = 3 * TILE, maxrun = hills ? 3 : 99;
     #define IN_WIN(bx, by) (world_wbx >= 0 && (bx) >= world_wbx && (bx) < world_wbx + MW / BM_BLK && (by) >= world_wby && (by) < world_wby + MH / BM_BLK)
@@ -399,9 +422,10 @@ static void draw_roads(int hills) {
         if (!in_cone((x0 + x1) / 2, (z0 + z1) / 2, (len > RW ? len : RW) / 2 + TILE, reach + len)) {   // (out of the view: behind you, or off to the side)
             for (int k = 0; k < n; k++) rdc[j + (pass ? k : 0)][i + (pass ? 0 : k)] |= (u8)(bit << 4); continue; }
         int hh[4], *hp = 0;
-        if (hills) { hh[0] = world_gh(x0, z0); hh[1] = world_gh(x1, z0); hh[2] = world_gh(x1, z1); hh[3] = world_gh(x0, z1); hp = hh; }
-        int r = 70, g = 70, b = 74; season_rgb(2, &r, &g, &b); r = r * 3 / 4; g = g * 3 / 4; b = b * 3 / 4;
-        ground_quad(x0, x1, z0, z1, r, g, b, OT_GROUND_FAR, hp);
+        if (hills) { hp = hh;
+            if (pass == 0) { hh[0] = rh_get(bx, by, 0, x0, z0); hh[1] = rh_get(bx + n, by, 0, x1, z0); hh[2] = rh_get(bx + n, by, 2, x1, z1); hh[3] = rh_get(bx, by, 2, x0, z1); }
+            else { hh[0] = rh_get(bx, by, 0, x0, z0); hh[1] = rh_get(bx, by, 1, x1, z0); hh[2] = rh_get(bx, by + n, 1, x1, z1); hh[3] = rh_get(bx, by + n, 0, x0, z1); } }
+        ground_quad(x0, x1, z0, z1, rr, rg, rb_, OT_GROUND_FAR, hp);
         for (int k = 0; k < n; k++) rdc[j + (pass ? k : 0)][i + (pass ? 0 : k)] |= (u8)(bit << 4);   // (joined: not started again)
     }
     #undef IN_WIN

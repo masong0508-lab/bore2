@@ -16,6 +16,7 @@ void   atlas_flush_deferred(void);                           // (gfx_flip: send 
 TexRef atlas_add(int w, int h, const u16 *pixels);
 TexRef atlas_solid(u16 c15);                                // a 2x2 solid texture
 extern int atlas_fails;                                     // textures that did not fit
+u16   *atlas_scratch_hi(void);                                // its upper half (8192 pixels): a texture built there can be uploaded from it (the upload copies into the lower half)
 u16   *atlas_scratch(void);                                   // 128x128 pixels of scratch (free between uploads: the world map is built in it)
 void   atlas_vram_load(int x, int y, int w, int h, const u16 *pixels);   // pixels straight into VRAM (w*h even)
 int    atlas_used(void);                                    // pixels used (for the debug readout)
