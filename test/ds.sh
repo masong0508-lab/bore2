@@ -6,7 +6,7 @@ mkdir -p /tmp/dsd /tmp/dsr; rm -rf /tmp/dsd/$N
 cp -f $C /tmp/dsr/$N.cue; cp -f $(dirname $C)/$(grep -o '"[^"]*"' $C | tr -d '"') /tmp/dsr/$N.bin
 sed -i "s/FILE \"[^\"]*\"/FILE \"$N.bin\"/" /tmp/dsr/$N.cue
 [ -n "$S" ] && export DSSCRIPT=$(realpath $S)
-DSRAM=/tmp/ds_${N}_ram.bin timeout 900 /home/claude/tools/ds/b/bin/duckstation-regtest -log info -frames $F -dumpdir /tmp/dsd -dumpinterval ${DI:-100000} /tmp/dsr/$N.cue > /tmp/ds_$N.log 2>&1
+DSRAM=/tmp/ds_${N}_ram.bin timeout 900 /home/claude/tools/ds/b/bin/duckstation-regtest -log info -frames $F -dumpdir /tmp/dsd -dumpinterval ${DI:-100000} /tmp/dsr/$N.cue 2>&1 | head -c 30000000 > /tmp/ds_$N.log
 python3 -c "
 import glob
 from PIL import Image

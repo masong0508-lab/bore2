@@ -406,7 +406,7 @@ static void draw_sims(void) {
             if (far && !drawn) dbg_hh_miss++;
             PROF_END(4);
         }
-        if (i == player && veh_on) items_draw_vehicle(s->x, s->z, s->yaw, -s->lvl * WALL_FULL, veh_on - 1, veh_colour(veh_on - 1), veh_wph);
+        if (i == player && veh_on) { extern int items_veh_open; items_veh_open = 1; items_draw_vehicle(s->x, s->z, s->yaw, -s->lvl * WALL_FULL, veh_on - 1, veh_colour(veh_on - 1), veh_wph); items_veh_open = 0; }
         if (i == player && on_board) { int ro, pi, sp; skate_board(&ro, &pi, &sp); items_draw_board(s->x, s->z, s->yaw, -board_lift - skate_board_up() - s->lvl * WALL_FULL, ro, pi, sp); }
         if (s->action != ACT_SLEEP && s->action != ACT_SWIM && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
@@ -5001,9 +5001,9 @@ int main(void) {
 #ifdef VEH_SHOT
                     {   // (test builds: a lineup of every vehicle by the player, and the camera and the ridden vehicle stepping through a table, 100 frames each)
                       extern int veh_shot_f, veh_own, veh_on, veh_wph; static const struct { s16 yaw, pitch, dist; s8 rider, fp; } vt_[] = {
-                        { 2600, 640, 1500, -1, 0 }, { 2600, 380, 700, -1, 0 }, { 2600 + 2048, 520, 900, -1, 0 }, { 1536, 440, 800, -1, 0 }, { 2600, 760, 3600, -1, 0 }, { 3300, 460, 760, -1, 0 },
+                        { 2600, 640, 1500, -1, 0 }, { 2600, 420, 1150, -1, 0 }, { 2600 + 2048, 480, 1350, -1, 0 }, { 1536, 400, 1300, -1, 0 }, { 2600, 760, 3600, -1, 0 }, { 3300, 440, 1250, -1, 0 },
                         { 2600, 640, 1500, 0, 0 }, { 2600, 640, 1500, 1, 0 }, { 2600, 640, 1500, 2, 0 }, { 2600, 640, 1500, 3, 0 }, { 2600, 640, 1500, 4, 0 }, { 2600, 640, 1500, 5, 0 },
-                        { 2600, 380, 700, 2, 0 }, { 2600, 380, 700, 4, 0 }, { 2600, 380, 700, 0, 0 }, { 2600, 640, 1500, 2, 1 } };
+                        { 2600, 380, 800, 2, 0 }, { 2600, 380, 800, 4, 0 }, { 2600 + 2048, 380, 800, 0, 0 }, { 2600, 640, 1500, 2, 1 } };
                       int e = (veh_shot_f / 100) % (int)(sizeof vt_ / sizeof vt_[0]); veh_shot_f++;
                       cam_yaw = vt_[e].yaw; cam_pitch = vt_[e].pitch; cam_dist = vt_[e].dist; cam_view = vt_[e].fp ? 2 : 0;
                       veh_own = 63; veh_on = vt_[e].rider >= 0 ? vt_[e].rider + 1 : 0; sims[player].gait.sit = veh_on >= 3; veh_wph = (veh_shot_f * 70) & 4095; life_draw(); { char b_[16]; sprintf(b_, "E%d", e); ui_text(2, 30, 1, b_, UI_WHITE); } break; }

@@ -585,65 +585,213 @@ void items_draw_board(int x, int z, int yaw, int y, int roll, int pitch, int spi
     sk_k = 13; skate_model(); sk_k = 16;
     gfx_set_identity();
 }
-// ---- VEHICLES: toy-scale open models (the driver sits at the origin, the front is +z): a bike, a scooter, a sedan, a van, a sports car, a pickup ----
+// ---- VEHICLES: toy-scale models in the game's voxel/box style (the driver sits at the origin, the model's front is +z, up is -y; the world scale is 28/16) ----
+// A car is a table of boxes in ten tones (body, a darker lower tone, an accent for the roof and stripes, glass, trim, lamps ...), a sloped
+// cabin (windscreen, side windows, rear window and roof) and four wheels with a rim and spokes that turn with the road. A far car (veh_lod)
+// keeps the same footprint and height in a handful of boxes. Under a driver the car is open (no roof) so the driver shows.
+// The game's yaw faces south at 0 and a vehicle walks (sin, -cos) like a Bore: the models are turned by 2048 - yaw (voxel.c's MODEL_ANGLE).
 static const u8 vcol[6][3] = { { 200, 48, 48 }, { 56, 96, 190 }, { 232, 196, 60 }, { 70, 150, 90 }, { 236, 236, 232 }, { 40, 40, 48 } };
-static void veh_wheel(int x, int z, int R, int wph) {   // a tyre (a box) with a bright hub mark that turns with the road
-    sk_box(x - 14, x + 14, -2 * R, 0, z - R, z + R, 30, 30, 34);
-    int hy = -R + ((isin(wph & 4095) * (R - 6)) >> 12), hz = z + ((icos(wph & 4095) * (R - 6)) >> 12);
-    sk_box(x - (x < 0 ? 16 : 14), x + (x < 0 ? 14 : 16), hy - 4, hy + 4, hz - 4, hz + 4, 226, 226, 214);
+int items_veh_open;                                       // set by the caller while the vehicle under the driver is drawn: no roof
+static int veh_lod, veh_cs;                               // 1: far, simple model; which side the camera is on (-1 the model's -x side, 1 its +x, 0 above)
+static u8 vtone[10][3];
+enum { K_BODY, K_LOW, K_ACC, K_GLASS, K_DARK, K_CHROME, K_HEAD, K_TAIL, K_WHITE, K_SEAT };
+enum { F_MIR = 1, F_OPEN = 2, F_NEAR = 4, F_FAR = 8 };    // mirror across x; only with the top open; only up close; only far off
+typedef struct { s16 x0, x1, y0, y1, z0, z1; u8 k, f; } VB;
+#define VBX(x0, x1, y0, y1, z0, z1, k, f) { x0, x1, y0, y1, z0, z1, k, f }
+static void veh_tones(int ci) {
+    const u8 *c = vcol[ci % 6]; int i;
+    for (i = 0; i < 3; i++) { vtone[K_BODY][i] = c[i]; vtone[K_LOW][i] = c[i] * 7 / 10; vtone[K_ACC][i] = (ci & 1) ? 232 - i * 4 : 46 + i * 3; }
+    static const u8 fix[7][3] = { { 130, 176, 214 }, { 38, 38, 44 }, { 196, 202, 214 }, { 255, 238, 160 }, { 224, 40, 40 }, { 236, 238, 244 }, { 54, 50, 62 } };
+    for (i = 0; i < 7; i++) for (int j = 0; j < 3; j++) vtone[K_GLASS + i][j] = fix[i][j];
 }
-static void veh_model(int t, int ci, int wph) {
-    int r = vcol[ci % 6][0], g = vcol[ci % 6][1], b = vcol[ci % 6][2], dk = 36, gl[3] = { 130, 176, 214 };
-    switch (t) {
-    case 0:   // a bike: a frame, a seat, handlebars, two spoked wheels
-        veh_wheel(0, -78, 34, wph); veh_wheel(0, 78, 34, wph);
-        sk_box(-4, 4, -66, -58, -70, 74, r, g, b); sk_box(-4, 4, -66, -26, 60, 68, r, g, b); sk_box(-4, 4, -66, -30, -76, -68, r, g, b);
-        sk_box(-12, 12, -76, -68, -60, -26, dk, dk, dk); sk_box(-34, 34, -100, -94, 56, 64, dk, dk, dk); sk_box(-4, 4, -100, -62, 58, 64, 150, 150, 160);
-        break;
-    case 1:   // a scooter: a deck, a stem, handlebars, small wheels
-        veh_wheel(0, -86, 22, wph); veh_wheel(0, 90, 22, wph);
-        sk_box(-26, 26, -30, -20, -100, 70, r, g, b); sk_box(-5, 5, -116, -26, 68, 76, 150, 150, 160); sk_box(-38, 38, -122, -114, 66, 80, dk, dk, dk);
-        sk_box(-18, 18, -34, -30, 72, 100, 240, 240, 200);
-        break;
-    case 2:   // a sedan (open top): body, bonnet, boot, a windscreen, seats, lights
-        veh_wheel(-114, -150, 32, wph); veh_wheel(114, -150, 32, wph); veh_wheel(-114, 150, 32, wph); veh_wheel(114, 150, 32, wph);
-        sk_box(-104, 104, -64, -30, -230, 240, r, g, b); sk_box(-100, 100, -76, -64, 50, 236, r * 9 / 10, g * 9 / 10, b * 9 / 10); sk_box(-100, 100, -76, -64, -226, -90, r * 9 / 10, g * 9 / 10, b * 9 / 10);
-        sk_box(-96, 96, -128, -76, 66, 76, gl[0], gl[1], gl[2]);                                      // the windscreen
-        sk_box(-96, -86, -128, -76, 62, 80, r, g, b); sk_box(86, 96, -128, -76, 62, 80, r, g, b);
-        sk_box(-60, 60, -84, -64, -54, 20, dk, dk, dk); sk_box(-60, 60, -112, -84, -54, -40, dk, dk, dk); sk_box(-60, 60, -84, -64, -150, -90, dk, dk, dk);
-        sk_box(-90, -50, -60, -44, 236, 244, 255, 240, 160); sk_box(50, 90, -60, -44, 236, 244, 255, 240, 160); sk_box(-90, -50, -60, -44, -236, -228, 220, 40, 40); sk_box(50, 90, -60, -44, -236, -228, 220, 40, 40);
-        break;
-    case 3:   // a van: a short cab, a tall box behind
-        veh_wheel(-114, -150, 34, wph); veh_wheel(114, -150, 34, wph); veh_wheel(-114, 110, 34, wph); veh_wheel(114, 110, 34, wph);
-        sk_box(-108, 108, -70, -30, -300, 170, r, g, b); sk_box(-108, 108, -250, -70, -300, -50, r * 8 / 10 + 40, g * 8 / 10 + 40, b * 8 / 10 + 40);
-        sk_box(-100, 100, -130, -70, 56, 66, gl[0], gl[1], gl[2]); sk_box(-100, -90, -130, -70, 52, 70, r, g, b); sk_box(90, 100, -130, -70, 52, 70, r, g, b);
-        sk_box(-50, 50, -88, -70, -40, 30, dk, dk, dk); sk_box(-50, 50, -116, -88, -40, -26, dk, dk, dk);
-        sk_box(-90, -50, -64, -48, 166, 174, 255, 240, 160); sk_box(50, 90, -64, -48, 166, 174, 255, 240, 160); sk_box(-80, 80, -170, -150, -304, -296, 230, 230, 230);
-        break;
-    case 4:   // a sports car: low and long, a nose, a spoiler
-        veh_wheel(-110, -140, 28, wph); veh_wheel(110, -140, 28, wph); veh_wheel(-110, 130, 28, wph); veh_wheel(110, 130, 28, wph);
-        sk_box(-100, 100, -50, -22, -190, 230, r, g, b); sk_box(-90, 90, -62, -50, 70, 220, r, g, b); sk_box(-80, 80, -60, -50, -180, -40, r, g, b);
-        sk_box(-90, 90, -100, -50, 42, 50, gl[0], gl[1], gl[2]); sk_box(-60, 60, -76, -50, -40, 20, dk, dk, dk); sk_box(-60, 60, -92, -76, -40, -28, dk, dk, dk);
-        sk_box(-84, 84, -88, -80, -200, -170, r, g, b); sk_box(-70, -62, -88, -50, -196, -184, dk, dk, dk); sk_box(62, 70, -88, -50, -196, -184, dk, dk, dk);
-        sk_box(-90, -40, -50, -36, 226, 234, 255, 240, 160); sk_box(40, 90, -50, -36, 226, 234, 255, 240, 160);
-        break;
-    default:  // a pickup: a cab like the sedan's, an open bed behind
-        veh_wheel(-116, -160, 36, wph); veh_wheel(116, -160, 36, wph); veh_wheel(-116, 120, 36, wph); veh_wheel(116, 120, 36, wph);
-        sk_box(-106, 106, -70, -30, -280, 220, r, g, b); sk_box(-100, 100, -82, -70, 50, 216, r * 9 / 10, g * 9 / 10, b * 9 / 10);
-        sk_box(-100, 100, -132, -82, 62, 72, gl[0], gl[1], gl[2]); sk_box(-100, -90, -132, -82, 58, 76, r, g, b); sk_box(90, 100, -132, -82, 58, 76, r, g, b);
-        sk_box(-100, -92, -110, -70, -270, -50, r, g, b); sk_box(92, 100, -110, -70, -270, -50, r, g, b); sk_box(-100, 100, -110, -70, -276, -268, r, g, b);   // the bed's sides and tailgate
-        sk_box(-60, 60, -92, -70, -40, 20, dk, dk, dk); sk_box(-60, 60, -118, -92, -40, -28, dk, dk, dk);
-        sk_box(-96, -56, -64, -48, 214, 222, 255, 240, 160); sk_box(56, 96, -64, -48, 214, 222, 255, 240, 160);
-        break;
+static void veh_box(int k, int x0, int x1, int y0, int y1, int z0, int z1) { sk_box(x0, x1, y0, y1, z0, z1, vtone[k][0], vtone[k][1], vtone[k][2]); }
+static void veh_rows(const VB *v, int n) {
+    for (; n > 0; n--, v++) {
+        int f = v->f;
+        if (((f & F_OPEN) && !items_veh_open) || ((f & F_NEAR) && veh_lod) || ((f & F_FAR) && !veh_lod)) continue;
+        veh_box(v->k, v->x0, v->x1, v->y0, v->y1, v->z0, v->z1);
+        if (f & F_MIR) veh_box(v->k, -v->x1, -v->x0, v->y0, v->y1, v->z0, v->z1);
     }
 }
-int dbg_vdraw, dbg_vq;
-void items_draw_vehicle(int x, int z, int yaw, int y, int type, int ci, int wph) {
+static void sk_q(int k, int nx, int ny, int nz, int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, int dx, int dy, int dz) {   // a free quad (corners TL TR BL BR as seen from outside)
+    SVECTOR A, B, C, DD; setVector(&A, ax, ay, az); setVector(&B, bx, by, bz); setVector(&C, cx, cy, cz); setVector(&DD, dx, dy, dz);
+    sk_quad(&A, &B, &C, &DD, vtone[k][0], vtone[k][1], vtone[k][2], nx, ny, nz);
+}
+// a strip on the plane x (facing out, x < 0 the other way), from (za, ya) to (zb, yb), w across each side of the line: a spoke, the side of a tube
+static void veh_strip(int k, int x, int za, int ya, int zb, int yb, int w) {
+    int dz = zb - za, dy = yb - ya, l = SquareRoot0(dz * dz + dy * dy); if (l < 1) l = 1;
+    int pz = -dy * w / l, py = dz * w / l;     // (the line turned a quarter)
+    if (x > 0) sk_q(k, ONE, 0, 0, x, ya - py, za - pz, x, yb - py, zb - pz, x, ya + py, za + pz, x, yb + py, zb + pz);
+    else       sk_q(k, -ONE, 0, 0, x, yb - py, zb - pz, x, ya - py, za - pz, x, yb + py, zb + pz, x, ya + py, za + pz);
+}
+// a thin tube from (za, ya) to (zb, yb) (a bike's frame): both sides and the top
+COLD static void veh_tube(int k, int za, int ya, int zb, int yb, int w) {
+    if (zb < za) { int t = za; za = zb; zb = t; t = ya; ya = yb; yb = t; }   // (rear end first)
+    veh_strip(k, w, za, ya, zb, yb, w + 1); veh_strip(k, -w, za, ya, zb, yb, w + 1);
+    sk_q(k, 0, -ONE, 0, -w, yb - w - 1, zb, w, yb - w - 1, zb, -w, ya - w - 1, za, w, ya - w - 1, za);
+}
+// a wheel: a tyre (two boxes make an octagon), then, on the side that shows, a rim, spokes and a hub cap that turn (wph: 4096 a turn at the reference radius 32)
+COLD static void veh_wheel(int x, int z, int R, int wph, int tw) {
+    int s = x < 0 ? -1 : 1, ang = (wph * 32 / R) & 4095, c = R * 3 / 10;
+    if (veh_lod) { sk_box(x - tw, x + tw, -2 * R, 0, z - R, z + R, 30, 30, 34); return; }
+    sk_box(x - tw, x + tw, -2 * R, 0, z - R + c, z + R - c, 30, 30, 34); sk_box(x - tw, x + tw, -2 * R + c, -c, z - R, z + R, 30, 30, 34);
+    if (veh_cs && veh_cs != s) return;           // (the side that does not show: the tyre alone)
+    int xo = x + s * tw, r2 = R * 6 / 10;
+    sk_box(s > 0 ? xo : xo - 2, s > 0 ? xo + 2 : xo, -R - r2, -R + r2, z - r2, z + r2, 190, 196, 208);
+    for (int k = 0; k < 2; k++) { int a = (ang + k * 1024) & 4095, dy = (isin(a) * (r2 - 1)) >> 12, dz = (icos(a) * (r2 - 1)) >> 12;
+        veh_strip(K_DARK, xo + s * 3, z - dz, -R - dy, z + dz, -R + dy, 3); }
+    sk_box(s > 0 ? xo : xo - 5, s > 0 ? xo + 5 : xo, -R - 4, -R + 4, z - 4, z + 4, 236, 236, 230);
+}
+static void veh_wheels(int R, int x, int zr, int zf, int wph, int tw) {
+    veh_wheel(-x, zr, R, wph, tw); veh_wheel(x, zr, R, wph, tw); veh_wheel(-x, zf, R, wph, tw); veh_wheel(x, zf, R, wph, tw);
+}
+// the cabin: its base (ybase) runs from zr0 to zf0, its top (ytop) from zr1 to zf1 (a windscreen and a rear window that slope), half a width hw; the roof is the accent tone
+COLD static void veh_cabin(int hw, int ybase, int ytop, int zr0, int zr1, int zf1, int zf0) {
+    int nz = 2400, ny = -3000;
+    if (veh_lod) { veh_box(K_GLASS, -hw, hw, ytop + 7, ybase, (zr0 + zr1) / 2, (zf0 + zf1) / 2); veh_box(K_ACC, -hw, hw, ytop, ytop + 7, zr1 - 6, zf1 + 4); return; }   // (far: glass and a roof, one box each)
+    sk_q(K_GLASS, 0, ny, nz, hw, ytop, zf1, -hw, ytop, zf1, hw, ybase, zf0, -hw, ybase, zf0);                  // the windscreen
+    if (items_veh_open) {   // open: a low frame at the windscreen, no roof; the driver shows
+        veh_box(K_BODY, -hw, -hw + 6, ytop, ybase, zf1 - 2, zf0 + 2); veh_box(K_BODY, hw - 6, hw, ytop, ybase, zf1 - 2, zf0 + 2);
+        return; }
+    sk_q(K_GLASS, 0, ny, -nz, -hw, ytop, zr1, hw, ytop, zr1, -hw, ybase, zr0, hw, ybase, zr0);                // the rear window
+    sk_q(K_GLASS, ONE, 0, 0, hw, ytop, zr1, hw, ytop, zf1, hw, ybase, zr0, hw, ybase, zf0);                   // the side windows
+    sk_q(K_GLASS, -ONE, 0, 0, -hw, ytop, zf1, -hw, ytop, zr1, -hw, ybase, zf0, -hw, ybase, zr0);
+    { int zm = (zr1 + zf1) / 2 - 6;                                                                            // the middle pillar
+      veh_box(K_BODY, hw - 1, hw + 1, ytop, ybase, zm - 4, zm + 4); veh_box(K_BODY, -hw - 1, -hw + 1, ytop, ybase, zm - 4, zm + 4); }
+    veh_box(K_ACC, -hw, hw, ytop - 7, ytop, zr1 - 6, zf1 + 4);                                                // the roof
+}
+// body tables: z runs from the tail (-) to the nose (+)
+static const VB B_SEDAN[] = {
+    VBX(-104, 104, -34, -14, -226, 234, K_DARK, 0),                                       // the underside between the wheels
+    VBX(-106, 106, -64, -34, -232, 240, K_BODY, 0),                                       // the lower body
+    VBX(-107, 107, -40, -30, -190, 206, K_LOW, F_NEAR),                                   // the sills
+    VBX(-99, 99, -72, -64, 82, 238, K_BODY, F_NEAR),                                      // the bonnet
+    VBX(-99, 99, -70, -64, -230, -90, K_BODY, F_NEAR),                                    // the boot
+    VBX(-100, 100, -54, -38, 238, 249, K_CHROME, F_NEAR), VBX(-100, 100, -54, -38, -246, -234, K_CHROME, F_NEAR),   // the bumpers
+    VBX(-48, 48, -62, -50, 238, 244, K_DARK, F_NEAR),                                     // the grille
+    VBX(58, 98, -64, -50, 240, 246, K_HEAD, F_NEAR | F_MIR), VBX(60, 100, -62, -48, -242, -234, K_TAIL, F_NEAR | F_MIR),
+    VBX(106, 108, -62, -34, -34, -30, K_DARK, F_NEAR | F_MIR), VBX(106, 108, -62, -34, 66, 70, K_DARK, F_NEAR | F_MIR),   // the door seams
+    VBX(104, 116, -96, -86, 62, 72, K_DARK, F_NEAR | F_MIR),                              // the mirrors
+    VBX(-70, 70, -86, -64, -60, 22, K_SEAT, F_OPEN | F_NEAR), VBX(-70, 70, -116, -86, -60, -44, K_SEAT, F_OPEN | F_NEAR),   // the seat
+    VBX(-70, 70, -86, -64, -150, -90, K_SEAT, F_OPEN | F_NEAR), VBX(-70, 70, -112, -86, -150, -134, K_SEAT, F_OPEN | F_NEAR),
+    VBX(-92, 92, -88, -66, 40, 66, K_DARK, F_OPEN | F_NEAR),
+};
+static const VB B_SPORT[] = {
+    VBX(-106, 106, -28, -12, -204, 236, K_DARK, 0),
+    VBX(-108, 108, -58, -26, -206, 244, K_BODY, 0),                                       // low and wide
+    VBX(-109, 109, -36, -26, -170, 200, K_LOW, F_NEAR),
+    VBX(-94, 94, -64, -58, 90, 238, K_BODY, F_NEAR),                                      // a low bonnet
+    VBX(-94, 94, -64, -58, -200, -110, K_BODY, F_NEAR),
+    VBX(-14, 14, -66, -64, -200, 238, K_ACC, F_NEAR),                                     // a racing stripe
+    VBX(-100, 100, -42, -26, 244, 255, K_DARK, F_NEAR), VBX(-100, 100, -44, -28, -216, -206, K_DARK, F_NEAR),
+    VBX(-60, 60, -54, -42, 244, 250, K_DARK, F_NEAR),
+    VBX(52, 102, -56, -46, 244, 250, K_HEAD, F_NEAR | F_MIR), VBX(50, 104, -52, -42, -216, -208, K_TAIL, F_NEAR | F_MIR),
+    VBX(-90, 90, -96, -90, -210, -170, K_ACC, F_NEAR), VBX(-72, -64, -90, -58, -206, -190, K_DARK, F_NEAR), VBX(64, 72, -90, -58, -206, -190, K_DARK, F_NEAR),   // the wing
+    VBX(108, 118, -82, -74, 80, 90, K_DARK, F_NEAR | F_MIR),
+    VBX(-62, 62, -72, -58, -60, 14, K_SEAT, F_OPEN | F_NEAR), VBX(-62, 62, -96, -72, -60, -44, K_SEAT, F_OPEN | F_NEAR),
+    VBX(-84, 84, -78, -60, 32, 56, K_DARK, F_OPEN | F_NEAR),
+};
+static const VB B_VAN[] = {
+    VBX(-106, 106, -36, -14, -300, 176, K_DARK, 0),
+    VBX(-108, 108, -90, -34, -304, 176, K_BODY, 0),                                       // the chassis and the cab's lower half
+    VBX(-109, 109, -44, -34, -270, 150, K_LOW, F_NEAR),
+    VBX(-104, 104, -246, -90, -304, -44, K_WHITE, 0),                                     // the box, white
+    VBX(-105, 105, -170, -146, -300, -48, K_ACC, F_NEAR),                                 // a stripe along the box
+    VBX(-98, 98, -252, -246, -296, -48, K_LOW, F_NEAR),                                   // the roof
+    VBX(-2, 2, -240, -92, -306, -304, K_DARK, F_NEAR), VBX(-60, 60, -150, -128, -307, -304, K_ACC, F_NEAR),     // the doors' seam, a sign
+    VBX(-100, 100, -84, -66, 176, 188, K_DARK, F_NEAR),                                   // the front bumper
+    VBX(-48, 48, -88, -70, 176, 182, K_DARK, F_NEAR), VBX(56, 98, -88, -74, 178, 184, K_HEAD, F_NEAR | F_MIR),
+    VBX(60, 100, -86, -66, -312, -304, K_TAIL, F_NEAR | F_MIR), VBX(-100, 100, -72, -58, -318, -304, K_DARK, F_NEAR),
+    VBX(106, 120, -140, -124, 76, 86, K_DARK, F_NEAR | F_MIR),
+    VBX(-70, 70, -100, -84, -40, 26, K_SEAT, F_OPEN | F_NEAR), VBX(-70, 70, -134, -100, -40, -26, K_SEAT, F_OPEN | F_NEAR),
+    VBX(-86, 86, -102, -88, 50, 86, K_DARK, F_OPEN | F_NEAR),
+};
+static const VB B_PICK[] = {
+    VBX(-106, 106, -36, -14, -278, 224, K_DARK, 0),
+    VBX(-108, 108, -86, -34, -280, 232, K_BODY, 0),
+    VBX(-109, 109, -46, -34, -250, 200, K_LOW, F_NEAR),
+    VBX(-98, 98, -94, -86, -274, -50, K_DARK, F_NEAR),                                    // the bed's floor
+    VBX(98, 108, -118, -86, -280, -50, K_BODY, F_NEAR | F_MIR), VBX(-108, 108, -118, -86, -284, -276, K_BODY, F_NEAR), VBX(-108, 108, -118, -86, -56, -48, K_BODY, F_NEAR),   // the bed's sides, tailgate and bulkhead
+    VBX(-109, 109, -124, -118, -284, -48, K_ACC, F_NEAR),                                 // the rail
+    VBX(76, 98, -104, -94, -190, -140, K_LOW, F_NEAR | F_MIR),                            // the wheel arches inside
+    VBX(-104, 104, -78, -62, 232, 242, K_CHROME, F_NEAR), VBX(-104, 104, -78, -62, -292, -284, K_CHROME, F_NEAR),
+    VBX(-48, 48, -84, -70, 232, 238, K_DARK, F_NEAR), VBX(62, 100, -86, -72, 234, 240, K_HEAD, F_NEAR | F_MIR), VBX(64, 102, -82, -68, -292, -284, K_TAIL, F_NEAR | F_MIR),
+    VBX(108, 120, -128, -112, 80, 92, K_DARK, F_NEAR | F_MIR),
+    VBX(-70, 70, -100, -86, -40, 28, K_SEAT, F_OPEN | F_NEAR), VBX(-70, 70, -132, -100, -40, -28, K_SEAT, F_OPEN | F_NEAR),
+    VBX(-92, 92, -104, -88, 50, 84, K_DARK, F_OPEN | F_NEAR),
+    VBX(-100, 100, -118, -94, -272, -52, K_DARK, F_FAR),                                  // (far: the bed seen as one dark block)
+};
+// the cabins and the wheels: hw, ybase, ytop, zr0, zr1, zf1, zf0, then the wheel radius, x, rear axle, front axle, tyre half width
+static const s16 VCAB[4][12] = {
+    { 100, -72, -128, -170, -122, 38, 82, 32, 101, -150, 150, 14 },      // sedan
+    { 100, -64, -102, -124, -74, 14, 90, 28, 104, -140, 132, 15 },       // sports
+    { 104, -90, -148, -62, -48, 42, 84, 34, 102, -150, 112, 14 },        // van
+    { 104, -86, -142, -66, -50, 44, 86, 36, 104, -160, 124, 15 },        // pickup
+};
+COLD static void veh_car(int t, int ci, int wph) {
+    static const VB *const tab[4] = { B_SEDAN, B_SPORT, B_VAN, B_PICK };
+    static const u8 nrow[4] = { sizeof B_SEDAN / sizeof(VB), sizeof B_SPORT / sizeof(VB), sizeof B_VAN / sizeof(VB), sizeof B_PICK / sizeof(VB) };
+    int m = t == 2 ? 0 : t == 4 ? 1 : t == 3 ? 2 : 3; const s16 *c = VCAB[m];
+    veh_tones(ci);
+    veh_rows(tab[m], nrow[m]);
+    veh_cabin(c[0], c[1], c[2], c[3], c[4], c[5], c[6]);
+    veh_wheels(c[7], c[8], c[9], c[10], wph, c[11]);
+}
+static const VB B_BIKE[] = {
+    VBX(-6, 6, -108, -100, -44, -10, K_DARK, 0),                                          // the saddle
+    VBX(-30, 30, -118, -112, 52, 62, K_DARK, 0), VBX(26, 34, -122, -112, 50, 64, K_WHITE, F_MIR),   // the bars and grips
+    VBX(-9, 9, -30, -26, -24, -16, K_CHROME, 0), VBX(-3, 3, -30, -26, -24, 20, K_CHROME, 0),        // the chain ring and crank
+    VBX(-14, -4, -22, -18, 10, 24, K_DARK, 0), VBX(4, 14, -22, -18, -26, -12, K_DARK, 0),           // the pedals
+};
+static const s8 BIKE_TUBE[7][5] = { { -78, -34, -8, -22, 3 }, { -78, -34, -30, -100, 3 }, { -8, -22, -30, -100, 3 }, { -8, -22, 62, -96, 3 }, { -30, -92, 62, -100, 3 }, { 62, -104, 78, -34, 3 }, { 58, -108, 66, -92, 4 } };
+COLD static void veh_bike(int ci, int wph) {   // two spoked wheels, a real frame, a saddle, handlebars, pedals
+    veh_tones(ci);
+    const int R = 34, c = 10;
+    for (int e = 0; e < 2; e++) { int z = e ? 78 : -78, ang = (wph * 32 / R) & 4095;
+        for (int k = 0; k < 8; k++) {   // the tyre: a ring of eight boxes (top, bottom, front, back and the four corners)
+            int y0, y1, z0, z1;
+            switch (k) { case 0: y0 = -2 * R; y1 = y0 + 5; z0 = z - R + c; z1 = z + R - c; break; case 1: y0 = -5; y1 = 0; z0 = z - R + c; z1 = z + R - c; break;
+                         case 2: y0 = -2 * R + c; y1 = -c; z0 = z - R; z1 = z0 + 5; break; case 3: y0 = -2 * R + c; y1 = -c; z1 = z + R; z0 = z1 - 5; break;
+                         default: y0 = (k & 1) ? -5 - c : -2 * R + 5; y1 = y0 + c; z0 = (k & 2) ? z + R - 5 - c : z - R + 5; z1 = z0 + c; }
+            if (veh_lod && k > 3) continue;
+            sk_box(-3, 3, y0, y1, z0, z1, 30, 30, 34); }
+        if (!veh_lod) for (int s = -1; s <= 1; s += 2) { if (veh_cs && veh_cs != s) continue;
+            for (int k = 0; k < 3; k++) { int a = (ang + k * 683) & 4095, dy = (isin(a) * (R - 6)) >> 12, dz = (icos(a) * (R - 6)) >> 12; veh_strip(K_CHROME, s * 4, z - dz, -R - dy, z + dz, -R + dy, 1); } }
+        veh_box(K_CHROME, -6, 6, -R - 5, -R + 5, z - 5, z + 5); }
+    for (int i = 0; i < 7; i++) { const s8 *t = BIKE_TUBE[i]; veh_tube(i == 5 ? K_ACC : K_BODY, t[0], t[1], t[2], t[3], t[4]); }
+    veh_rows(B_BIKE, sizeof B_BIKE / sizeof(VB));
+}
+static const VB B_SCOOT[] = {
+    VBX(-26, 26, -34, -22, -104, 62, K_BODY, 0), VBX(-22, 22, -42, -34, -100, -40, K_DARK, 0), VBX(-22, 22, -50, -42, -96, -44, K_ACC, 0),   // the deck, the seat's base, the seat
+    VBX(-24, 24, -48, -28, -112, -102, K_BODY, 0), VBX(-18, 18, -38, -22, 62, 104, K_BODY, 0), VBX(-5, 5, -118, -34, 66, 74, K_CHROME, 0),   // the rear mudguard, the front body, the stem
+    VBX(-38, 38, -126, -118, 62, 78, K_DARK, 0), VBX(36, 44, -128, -116, 60, 80, K_WHITE, F_MIR), VBX(-10, 10, -112, -100, 74, 84, K_HEAD, 0), VBX(-12, 12, -34, -28, -112, -104, K_TAIL, 0),
+};
+COLD static void veh_scooter(int ci, int wph) {
+    veh_tones(ci); veh_wheel(0, -86, 22, wph, 8); veh_wheel(0, 90, 22, wph, 8); veh_rows(B_SCOOT, sizeof B_SCOOT / sizeof(VB));
+}
+COLD static int veh_pitch_roll(int x, int z, int ang, int half, int hw, int *pitch, int *roll) {   // the slope under a vehicle: its nose and tail, its two sides (ang: the model's turn)
+    int s = isin(ang), c = icos(ang), fx = (s * half) >> 12, fz = (c * half) >> 12, rx = (c * hw) >> 12, rz = -((s * hw) >> 12);   // (the front is (sin, cos), the +x side (cos, -sin))
+    int hf = gfx_lift_fn(x + fx, z + fz), hr = gfx_lift_fn(x - fx, z - fz), hp = gfx_lift_fn(x + rx, z + rz), hn = gfx_lift_fn(x - rx, z - rz);
+    *pitch = CLAMP((hf - hr) * 652 / (2 * half), -300, 300); *roll = CLAMP(-(hp - hn) * 652 / (2 * hw), -250, 250);
+    return *pitch || *roll;
+}
+int dbg_vdraw, dbg_vq, dbg_vpitch;
+COLD void items_draw_vehicle(int x, int z, int yaw, int y, int type, int ci, int wph) {
     dbg_vdraw++; dbg_vq = type * 1000 + ci;
-    {   // off the screen altogether: nothing to do (a car is up to 4.2 m long and 2.5 m high at its scale: a ball of 660 round its middle holds it, whichever way it faces)
-        int up = gfx_lift_fn ? gfx_lift_fn(x, z) : gfx_lift;   // (the same ground gfx_set_object stands it on)
-        if (!gfx_bb_on && !gfx_visible(x, y - up - 220, z, 660)) return; }
-    VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, yaw & 4095); sk_k = 28; veh_model(type, ci, wph); sk_k = 16; gfx_set_identity();
+    int up = gfx_lift_fn ? gfx_lift_fn(x, z) : gfx_lift;   // (the same ground gfx_set_object stands it on)
+    if (!gfx_bb_on && !gfx_visible(x, y - up - 220, z, 660)) return;   // (off the screen altogether: a car is up to 4.2 m long and 2.5 m high at its scale: a ball of 660 round its middle holds it)
+    int ang = (2048 - yaw) & 4095;
+    { int ex = cam.eye.vx - x, ez = cam.eye.vz - z, c = icos(ang), s = isin(ang);   // the camera in the model's frame: which side's wheels show, and how far off it is
+      int ox = (ex * c - ez * s) >> 12; veh_cs = ox > 120 ? 1 : ox < -120 ? -1 : 0;
+      int ey = (cam.eye.vy + y - up) >> 4; ex >>= 4; ez >>= 4; veh_lod = ex * ex + ez * ez + ey * ey > (2800 >> 4) * (2800 >> 4) && !items_veh_open; }
+    int pi = 0, ro = 0;
+    if (type >= 2 && gfx_lift_fn && !veh_lod && veh_pitch_roll(x, z, ang, 260, 190, &pi, &ro)) {   // on a slope: tipped to follow it, about the middle
+        MATRIX my_, mf, m; SVECTOR ry = { 0, (short)ang, 0, 0 }, rf = { (short)pi, 0, (short)ro, 0 };
+        RotMatrix(&ry, &my_); RotMatrix(&rf, &mf); MulMatrix0(&my_, &mf, &m);
+        m.t[0] = x; m.t[1] = y - up; m.t[2] = z; sk_k = 28; gfx_set_object_m(&m); gfx_set_light_yaw(ang); dbg_vpitch = pi * 1000 + ro;
+    } else { VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, ang); sk_k = 28; }
+    switch (type) { case 0: veh_bike(ci, wph); break; case 1: veh_scooter(ci, wph); break; default: veh_car(type, ci, wph); }
+    sk_k = 16; gfx_set_identity();
 }
 static void skate_model(void) {
     const int BW = 34, Lf = 78, L = 112, T = 6, top = -30;
@@ -818,19 +966,30 @@ void items_draw_pet(int x, int z, int yaw, int y, int kind, int ci, int phase) {
     }
     gfx_set_identity();
 }
-void items_draw_bus(int x, int z, int yaw, int y) {   // the city bus: long, tall, blue and white, a row of windows, four wheels
-    VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, yaw & 4095); sk_k = 16;
-    int gl0 = 130, gl1 = 176, gl2 = 214;
-    veh_wheel(-114, -280, 36, 0); veh_wheel(114, -280, 36, 0); veh_wheel(-114, 260, 36, 0); veh_wheel(114, 260, 36, 0);
-    sk_box(-110, 110, -140, -40, -440, 440, 236, 238, 244);                                  // the body, white
-    sk_box(-111, 111, -70, -52, -440, 440, 40, 110, 200);                                    // a blue stripe
-    sk_box(-112, 112, -126, -88, -400, 380, gl0, gl1, gl2);                                  // the windows
-    for (int k = -4; k <= 4; k++) sk_box(-113, 113, -126, -88, k * 90 - 5, k * 90 + 5, 236, 238, 244);   // (the pillars between)
-    sk_box(-106, 106, -150, -140, -430, 430, 40, 110, 200);                                  // the roof
-    sk_box(-100, 100, -130, -70, 440, 448, gl0, gl1, gl2);                                   // the windscreen
-    sk_box(-70, 70, -138, -126, 440, 448, 255, 200, 60); sk_box(-96, -60, -56, -40, 440, 448, 255, 240, 160); sk_box(60, 96, -56, -40, 440, 448, 255, 240, 160);
-    sk_box(-96, -60, -56, -40, -448, -440, 220, 40, 40); sk_box(60, 96, -56, -40, -448, -440, 220, 40, 40);
-    gfx_set_identity();
+static const VB B_BUS[] = {   // the city bus (model units at the cars' scale): white, a stripe, a row of windows, two doors, a lit destination sign
+    VBX(-118, 118, -50, -22, -336, 336, K_DARK, 0),                                       // the underside
+    VBX(-122, 122, -128, -46, -340, 340, K_WHITE, 0),                                     // the lower body
+    VBX(-123, 123, -108, -84, -340, 340, K_BODY, 0),                                      // the stripe, in the body colour
+    VBX(-123, 123, -208, -128, -318, 300, K_GLASS, 0),                                    // the windows
+    VBX(-122, 122, -244, -208, -340, 340, K_WHITE, 0),                                    // the roof's band
+    VBX(-104, 104, -252, -244, -300, 300, K_LOW, F_NEAR), VBX(-60, 60, -260, -252, -170, 40, K_WHITE, F_NEAR),   // the roof and an air unit
+    VBX(-116, 116, -214, -130, 340, 346, K_GLASS, 0),                                     // the windscreen
+    VBX(-80, 80, -240, -218, 340, 346, K_HEAD, F_NEAR),                                   // the destination sign
+    VBX(-120, 120, -62, -42, 340, 352, K_DARK, F_NEAR), VBX(-120, 120, -62, -42, -352, -340, K_DARK, F_NEAR),   // the bumpers
+    VBX(80, 116, -108, -88, 344, 352, K_HEAD, F_NEAR | F_MIR), VBX(80, 116, -108, -88, -352, -344, K_TAIL, F_NEAR | F_MIR),
+    VBX(-100, 100, -204, -134, -346, -340, K_GLASS, F_NEAR),                              // the back window
+    VBX(122, 126, -200, -52, 222, 296, K_DARK, F_NEAR | F_MIR), VBX(122, 126, -200, -52, -86, -12, K_DARK, F_NEAR | F_MIR),   // the doors
+    VBX(123, 128, -204, -198, 218, 300, K_WHITE, F_NEAR | F_MIR), VBX(123, 128, -204, -198, -90, -8, K_WHITE, F_NEAR | F_MIR),
+    VBX(123, 128, -200, -52, 256, 260, K_WHITE, F_NEAR | F_MIR), VBX(123, 128, -200, -52, -52, -48, K_WHITE, F_NEAR | F_MIR),   // (the door leaves meet)
+    VBX(122, 142, -204, -176, 300, 308, K_DARK, F_NEAR | F_MIR),                          // the mirrors
+};
+void items_draw_bus(int x, int z, int yaw, int y) {   // the city bus; yaw is the model's own turn (as stands at a stop)
+    VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, yaw & 4095); sk_k = 28;
+    { int ex = cam.eye.vx - x, ez = cam.eye.vz - z, c = icos(yaw), s = isin(yaw), ox = (ex * c - ez * s) >> 12; veh_cs = ox > 120 ? 1 : ox < -120 ? -1 : 0; veh_lod = 0; }
+    veh_tones(1); items_veh_open = 0;
+    veh_rows(B_BUS, sizeof B_BUS / sizeof(VB));
+    veh_wheels(38, 112, -200, 210, 0, 16);
+    sk_k = 16; gfx_set_identity();
 }
 
 // ---- the CREATE-A-DOG pack: a dog from its DogLook (dog.h). Faces +z; feet at y 0, up is negative ----

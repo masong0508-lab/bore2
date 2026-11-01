@@ -9,12 +9,12 @@
 #include "traffic.h"
 #include "bigmap.h"
 
-#define NCAR 120
+#define NCAR 40
 #define BLK BM_BLK
 #define LA (BM_LOT0 / 2 - 1)   // the street is five wide: two lanes of two each way and the line between. Cars hop along the tile nearest the kerb of a lane and are drawn half a tile over, mid-lane
 #define LB (BM_LOT0 / 2 + 1)
 int traffic_level = 2, traffic_cheat;
-typedef struct { s32 tx, ty; s8 d; u8 type, col, spd; s16 p; u16 wait, wph; s16 yaw; u8 on; } Car;   // tile (whole world), heading, progress along the tile 0..TILE
+typedef struct { s32 tx, ty; s8 d, pd; u8 type, col, spd; s16 p; u16 wait, wph; s16 yaw; u8 on; } Car;   // tile (whole world), heading, progress along the tile 0..TILE
 static Car car[NCAR];
 typedef struct { s32 x, y; s16 yaw; u8 on; } Park;   // (x, y: whole-world units; y grows south)
 static Park park[VEH_N];
@@ -55,7 +55,7 @@ static void spawn(void) {
         int d = rnd(4); if (!lane_ok(tx, ty, d) || !road(tx + DX[d], ty + DY[d])) continue;
         if (taken(tx + bx_(), ty + by_(), 0)) continue;
         for (int i = 0; i < NCAR; i++) if (!car[i].on) {
-            Car *c = &car[i]; c->on = 1; c->tx = tx + bx_(); c->ty = ty + by_(); c->d = d; c->p = 0; c->wait = 0; c->wph = 0; c->yaw = d * 1024;
+            Car *c = &car[i]; c->on = 1; c->tx = tx + bx_(); c->ty = ty + by_(); c->d = c->pd = d; c->p = 0; c->wait = 0; c->wph = 0; c->yaw = d * 1024;
             static const u8 ty_[8] = { 2, 2, 2, 3, 4, 5, 5, 1 }; c->type = ty_[rnd(8)]; if (c->type == 1) c->type = 2; c->col = rnd(6); c->spd = 9 + rnd(8); return; }
         return;
     }
@@ -65,7 +65,6 @@ static void step_car(Car *c) {
     if (lx < 1 || ly < 1 || lx >= MW - 1 || ly >= MH - 1) { c->on = 0; return; }
     int dd = ABS(lx - ptx()) + ABS(ly - pty());
     if (dd > 46) { c->on = 0; return; }
-    int want = c->d * 1024, df = ((want - c->yaw + 2048) & 4095) - 2048; c->yaw = (c->yaw + (df > 140 ? 140 : df < -140 ? -140 : df)) & 4095;   // (the turn eases round)
     if (c->p == 0 && honk_t > 0 && dd < 9) return;   // (a horn: they hold still a moment)
     if (c->p == 0) {   // at a tile centre: pick the way
         if (c->wait == 0) {
@@ -73,14 +72,14 @@ static void step_car(Car *c) {
             for (int k = 0; k < 3; k++) { int d = ds[k]; ok[k] = lane_ok(lx, ly, d) && road(lx + DX[d], ly + DY[d]); if (ok[k]) n += w[k]; }
             if (!n) { c->on = 0; return; }   // (a dead end: gone round the back)
             int r = rnd(n), k = 0; while (r >= (ok[k] ? w[k] : 0)) { r -= ok[k] ? w[k] : 0; k++; }
-            c->d = ds[k];
+            c->pd = c->d; c->d = ds[k];   // (pd: the way it came: the turn is drawn from it, put() blends)
         }
         { int blk = 0; for (int k = 1; k <= 3 && !blk; k++) blk = taken(c->tx + DX[(int)c->d] * k, c->ty + DY[(int)c->d] * k, c);   // (a car is three tiles long: room ahead for all of it)
           if (blk) { if (++c->wait > 240) c->on = 0; return; } }
         c->wait = 0; c->p = 1;
     }
-    c->p += c->spd; c->wph = (c->wph + c->spd * 18) & 4095;
-    if (c->p >= TILE) { c->p = 0; c->tx += DX[(int)c->d]; c->ty += DY[(int)c->d]; }
+    c->p += c->spd; c->wph = (c->wph + c->spd * 12) & 4095;   // (a wheel at the reference radius turns 4096 in 352 units)
+    if (c->p >= TILE) { c->p = 0; c->tx += DX[(int)c->d]; c->ty += DY[(int)c->d]; c->pd = c->d; }
 }
 void traffic_update(int steps) {
     if (world_zone != ZONE_CITY || world_wbx < 0) return;
@@ -94,8 +93,11 @@ void traffic_update(int steps) {
 }
 static void put(const Car *c) {
     static const s8 LX[4] = { -1, 0, 1, 0 }, LY[4] = { 0, 1, 0, -1 };   // (half a tile over, into the middle of the two-tile lane)
-    int x = (c->tx - bx_()) * TILE + TILE / 2 + DX[(int)c->d] * c->p + LX[(int)c->d] * (TILE / 2), y = (c->ty - by_()) * TILE + TILE / 2 + DY[(int)c->d] * c->p + LY[(int)c->d] * (TILE / 2);
-    items_draw_vehicle(x, -y, c->yaw, 0, c->type, c->col, c->wph);
+    int d = c->d, pd = c->pd, t = c->p * 4096 / TILE, sm = (t * t >> 12) * (12288 - 2 * t) >> 12;   // (t 0..4096 along the tile; sm: eased)
+    int lx = LX[pd] * (4096 - sm) + LX[d] * sm, ly = LY[pd] * (4096 - sm) + LY[d] * sm;   // (a turn: the lane's offset slides from the old lane's to the new, and the car swings with it)
+    int x = (c->tx - bx_()) * TILE + TILE / 2 + DX[d] * c->p + ((lx * (TILE / 2)) >> 12), y = (c->ty - by_()) * TILE + TILE / 2 + DY[d] * c->p + ((ly * (TILE / 2)) >> 12);
+    int df = ((d * 1024 - pd * 1024 + 2048) & 4095) - 2048, yaw = (pd * 1024 + ((df * sm) >> 12)) & 4095;
+    items_draw_vehicle(x, -y, yaw, 0, c->type, c->col, c->wph);
 }
 #ifdef VEH_SHOT
 int veh_shot_f;

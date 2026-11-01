@@ -17,7 +17,7 @@ endif()
 target_compile_options(bore2 PRIVATE -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-misleading-indentation -Wno-parentheses -Wno-strict-aliasing -fno-strict-aliasing)
 get_target_property(BORE_SRCS bore2 SOURCES)
 # the life's rules and the menus run a few times a frame at most: built small (-Os), which leaves more of the 2 MB for the world
-set(BORE_SMALL src/main.c src/pop.c src/wants.c src/places.c src/look.c src/audio.c src/home.c src/island.c src/nature.c src/save.c src/mcard.c src/sim.c src/story.c src/ui.c src/bigmap.c src/skate.c src/gotchi.c src/band.c src/dog.c src/fmt.c src/font.c src/ovl.c src/realm_res.c src/arcade_res.c ${BORE_SMALL_EXTRA})
+set(BORE_SMALL src/main.c src/pop.c src/wants.c src/places.c src/look.c src/audio.c src/home.c src/island.c src/nature.c src/save.c src/mcard.c src/sim.c src/story.c src/ui.c src/bigmap.c src/skate.c src/traffic.c src/gotchi.c src/band.c src/dog.c src/fmt.c src/font.c src/ovl.c src/realm_res.c src/arcade_res.c ${BORE_SMALL_EXTRA})
 foreach(f ${BORE_SRCS})
 	if(f MATCHES "\\.c$")
 		if(f IN_LIST BORE_SMALL)
