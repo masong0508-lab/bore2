@@ -1,0 +1,22 @@
+name: build-ds
+# One DS/DSi ROM per run: bore2_dsi.nds. Run it by hand (Actions > build-ds > Run workflow) or it runs on every push
+# that touches the DS port or the shared game files.
+on:
+  workflow_dispatch:
+  push:
+    paths: ["ports/dsi/**", "tools/dsbuild/**", "src/bigmap.*", "src/common.h", "assets/dsmusic.bin", ".github/workflows/build-ds.yml"]
+jobs:
+  rom:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools (clang, lld, python)
+        run: sudo apt-get update && sudo apt-get install -y clang-18 lld-18 llvm-18 python3 xz-utils && sudo ln -sf /usr/bin/ld.lld-18 /usr/local/bin/ld.lld && sudo ln -sf /usr/bin/llvm-objcopy-18 /usr/local/bin/llvm-objcopy && sudo ln -sf /usr/bin/clang-18 /usr/local/bin/clang
+      - name: Get the saved DS toolchain (branch ds-toolchain)
+        run: tools/dsbuild/restore.sh
+      - name: Build the ROM
+        run: OUT=$PWD/out tools/dsbuild/mkp.sh
+      - name: Name it
+        run: mkdir -p rom && cp out/bore.nds rom/bore2_dsi_${GITHUB_SHA::7}.nds && ls -la rom
+      - uses: actions/upload-artifact@v4
+        with: { name: bore2_dsi_rom, path: "rom/*.nds" }

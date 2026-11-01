@@ -1,0 +1,31 @@
+name: build-dreamcast
+# One Dreamcast disc per run: bore2_dc.gdi (plus the .elf). Run it by hand (Actions > build-dreamcast > Run workflow)
+# or it runs on every push that touches the Dreamcast port or the game's own sources.
+on:
+  workflow_dispatch:
+  push:
+    paths: ["ports/dreamcast/**", "src/**", ".github/workflows/build-dreamcast.yml"]
+jobs:
+  disc:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y python3 xz-utils make libpng-dev
+      - name: Get the saved Dreamcast toolchain (branch dc-toolchain)
+        run: ports/dreamcast/toolchain/restore.sh
+      - name: Build the disc
+        run: |
+          source /tmp/dc/environ.sh
+          cd ports/dreamcast && make disc
+      - name: Check that the PS1 image is unchanged
+        continue-on-error: true
+        run: ports/dreamcast/ps1_check.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bore2_dc_disc
+          path: |
+            ports/dreamcast/obj/bore2_dc.gdi
+            ports/dreamcast/obj/*.bin
+            ports/dreamcast/obj/*.raw
+            ports/dreamcast/obj/bore2_dc.elf

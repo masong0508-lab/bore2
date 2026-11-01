@@ -56,3 +56,9 @@ About 31-52 fps in the city in the emulator. 60 needs under 262 hblanks per fram
 - Commit and push with `git pull --rebase` first.
 - Old saves must keep loading (bump VERSION in src/save.c for new blocks).
 - Keep the game's logic deep: people who know the player always get full thinking.
+
+## Getting each ROM (GitHub Actions: repo > Actions tab > pick a workflow > Run workflow)
+- `build` : PS1 disc (BORE2.chd, BORE2-base.chd, patches, memory report).
+- `build-ds` : the DS ROM bore2_dsi_<commit>.nds.
+- `build-dreamcast` : the Dreamcast disc bore2_dc.gdi (+ .elf).
+The DS and Dreamcast ones were written but NOT run yet (no way to run Actions from the build session): if one fails, open its log; the likely causes are the apt package names, the restore script, or the Dreamcast make needing files the disc step expects. Each unpacks its saved toolchain from the `ds-toolchain` / `dc-toolchain` branch.
