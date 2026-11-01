@@ -366,7 +366,7 @@ static u32 floor_key0(int fl) {
 }
 // ---- the streets, seen from far above: dark bands along the blocks' top and left edges (the land's colour alone shows none) ----
 #define RD_R 24                                        // blocks each way round the eye that are kept
-static u8 rdc[2 * RD_R + 1][2 * RD_R + 1] __attribute__((aligned(4))); static int rdc_bx = -99999, rdc_by, rdc_stamp = -1;
+static u8 rdc[2 * RD_R + 1][2 * RD_R + 1] __attribute__((aligned(4))); static int rdc_bx = -99999, rdc_by, rdc_stamp = -1; extern int bm_edit_stamp;
 #define RD_W (2 * RD_R + 1)
 static void roads_fill(int cbx, int cby) {
     rdc_bx = cbx - RD_R; rdc_by = cby - RD_R;
@@ -379,7 +379,7 @@ static void roads_fill(int cbx, int cby) {
 static void draw_roads(int hills) {
     int ax = fwx0 + (feye.vx >> 8) / 1, ay = fwy0 - (feye.vz >> 8);                 // the eye's tile in the world
     int cbx = ax / BM_BLK, cby = ay / BM_BLK;
-    if (rdc_bx == -99999 || ABS(cbx - (rdc_bx + RD_R)) > 6 || ABS(cby - (rdc_by + RD_R)) > 6 || rdc_stamp != world_stamp) { roads_fill(cbx, cby); rdc_stamp = world_stamp; }
+    if (rdc_bx == -99999 || ABS(cbx - (rdc_bx + RD_R)) > 6 || ABS(cby - (rdc_by + RD_R)) > 6 || rdc_stamp != bm_edit_stamp) { roads_fill(cbx, cby); rdc_stamp = bm_edit_stamp; }
     { u32 *w = (u32 *)rdc; for (int k = 0; k < RD_W * RD_W / 4; k++) w[k] &= 0x07070707u; rdc[RD_W - 1][RD_W - 1] &= 7; }      // (the marks of last frame's runs off: four a time)
     const int reach = MIN(max_ground, M2U(450)), RW = 3 * TILE, maxrun = hills ? 3 : 99;
     #define IN_WIN(bx, by) (world_wbx >= 0 && (bx) >= world_wbx && (bx) < world_wbx + MW / BM_BLK && (by) >= world_wby && (by) < world_wby + MH / BM_BLK)

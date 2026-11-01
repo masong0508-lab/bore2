@@ -57,7 +57,8 @@ typedef struct { s16 x, y, h; u8 town; } HillC;
 #define HC_N 512
 static HillC hcache[HC_N];
 void world_gh_reset(void);
-void bm_hill_reset(void) { memset(hcache, 0x7F, sizeof hcache); world_gh_reset(); }   // (world.c keeps the heights it worked out from these: they go too)
+int bm_edit_stamp;   // (counts every change to the big map: a new world, the neighborhood editor; the far view's road table is rebuilt when it moves)
+void bm_hill_reset(void) { memset(hcache, 0x7F, sizeof hcache); world_gh_reset(); bm_edit_stamp++; }   // (world.c keeps the heights it worked out from these: they go too)
 static int hill_raw(int bx, int by) {
     if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return 0;
     if (bm_terrain(bx, by) == BT_SEA) return 0;
