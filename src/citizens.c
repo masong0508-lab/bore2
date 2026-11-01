@@ -1366,9 +1366,12 @@ void citizens_update(int steps) {
         for (int i = 0; i < NCIT; i++) {
             Cit *c = &cits[i];
             if (c->zone != world_zone || c->mode == CM_GONE) continue;
-            if ((tick + i) & 1) {   // far off (past the full detail, out of the way of anything you do): every other step is enough
-                int dx = (me->x - c->x) >> 4, dz = (me->z - c->z) >> 4;
-                if (dx * dx + dz * dz > (14 * TILE / 16) * (14 * TILE / 16) && c->mode != CM_CHASE && c->mode != CM_PARTY && c->mode != CM_CHAT) continue;
+            if ((tick + i) & 3) {   // far off (past the full detail, out of the way of anything you do): fewer steps are enough (half past 14 tiles, a quarter past 26)
+                int dx = (me->x - c->x) >> 4, dz = (me->z - c->z) >> 4, d2 = dx * dx + dz * dz;
+                if (c->mode != CM_CHASE && c->mode != CM_PARTY && c->mode != CM_CHAT) {
+                    if (d2 > (26 * TILE / 16) * (26 * TILE / 16)) continue;
+                    if (((tick + i) & 1) && d2 > (14 * TILE / 16) * (14 * TILE / 16)) continue;
+                }
             }
             step_one(c, i);
         }
@@ -1383,9 +1386,10 @@ void citizens_update(int steps) {
 }
 
 // ---- drawing ----------------------------------------------------------------------------------------------
+int dbg_end_hist[24], cit_need_hb;   // (cit_need_hb: this frame's cost without the spare-time sprite renders; 0: no crowd drawn this frame)
 int cit_n_full, cit_n_lod, cit_n_spr, cit_n_vis; static int cit_end_hb = -1;
 void citizens_draw(void) {
-    cit_n_full = cit_n_lod = cit_n_spr = 0;
+    cit_n_full = cit_n_lod = cit_n_spr = 0; cit_need_hb = 0;
     if (world_zone == ZONE_HOME && !home_guests) { cit_end_hb = -1; return; }
     int order[MAXDRAW], od[MAXDRAW], n = 0;
     int pin = indoors_at(sims[player].x, sims[player].z);
@@ -1442,6 +1446,7 @@ void citizens_draw(void) {
     static int post = 100, skipped;                                   // the frame's time after the people (from the last frame)
     if (cit_end_hb >= 0 && gfx_last_cpu > cit_end_hb) post = gfx_last_cpu - cit_end_hb;
     int now = gfx_hb(), end = now + post, target = end <= 515 ? 522 : end <= 777 ? 785 : 1045;
+    cit_need_hb = end; { extern int dbg_end_hist[24]; dbg_end_hist[MIN(23, MAX(0, end) / 50)]++; }   // (test readout: how long the frame would take without the sprite renders that fill its spare time)
     int budget = (target - 30 - end) / MAX(20, crowd_render_hb), fresh = 0;   // (a margin: a frame that runs over waits a whole extra vblank)
     if (cit_sprite_rate == 0) budget = budget > 1 ? budget / 2 : budget; else if (cit_sprite_rate == 2) budget++;
     if (budget <= 0 && ++skipped >= 6) budget = 1;

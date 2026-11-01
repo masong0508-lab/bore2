@@ -184,6 +184,7 @@ static int shed_lvl;   // (LAGFIX: now 0..4; 4 = emergency, the far pass off)
 static int det_opt = 12;                                      // the FULL DETAIL option's range (the range in use dips under it when frames run long)
 int dbg_slow[16][8], dbg_slow_n;
 int avg_cpu16, avg_world16, avg_hh16, hist_cpu[5], avg_prof16[8];
+int dbg_life_n, dbg_life_vb, dbg_life_vb0, dbg_sum_cpu, dbg_sum_prof[8], dbg_sum_part[6], dbg_sum_lg[4], dbg_sum_w[8], dbg_sum_pn[8], dbg_sum_shed, dbg_sum_r;   // (test readouts over the whole stay in the city: frames, vblanks they took, their summed cost)
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
 int dbg_shift_hb, dbg_shifts;
@@ -725,7 +726,8 @@ static void life_update(int steps) {
     if (PRESSED(PAD_R3) && !HELD(PAD_L3) && nsims > 1 && !on_board && !veh_on) { sw_open(ST_LIFE); return; }   // R3: SWITCH SIM
     { extern int getenv_noshadow, dbg_noao, dbg_nograd; if (PRESSED(PAD_R3) && HELD(PAD_L3)) { static int mode; mode = (mode + 1) & 3; getenv_noshadow = mode == 1; dbg_noao = mode == 2; dbg_nograd = mode == 3; } }
     if (PRESSED(PAD_SELECT)) { extern void phone_open(void); phone_open(); }   // the phone in your pocket
-    { int t0 = hb_now(); for (int k = 0; k < steps; k++) sim_step(); citizens_update(steps); traffic_update(steps); t_logic = hb_now() - t0; }
+    { extern int dbg_sum_lg[4]; int t0 = hb_now(), t1, t2, t3; for (int k = 0; k < steps; k++) sim_step(); t1 = hb_now(); citizens_update(steps); t2 = hb_now(); traffic_update(steps); t3 = hb_now();
+      dbg_sum_lg[0] += t1 - t0; dbg_sum_lg[1] += t2 - t1; dbg_sum_lg[2] += t3 - t2; dbg_sum_lg[3] += steps; t_logic = t3 - t0; }
     {   // SAN BOREAS: the map window follows you a block at a time (everything slides with it)
         int dtx, dty;
 #ifdef AUTO_CITY
@@ -4506,6 +4508,8 @@ int main(void) {
             extern int world_detail_r, cit_maxdraw, gfx_last_wait; static int slow_n, fast_n, hot_n, cool_n;
             // (the frame's whole cost: the CPU's time up to here, plus how long the GPU was still busy with the last frame. A slow GPU,
             //  big skyline boxes filling the screen, used to go unseen, because only the CPU's time was counted)
+            // (the frame's whole cost: the CPU's time up to here, plus how long the GPU was still busy with the last frame. A slow GPU,
+            //  big skyline boxes filling the screen, used to go unseen, because only the CPU's time was counted)
             int load = t_cpu + (gfx_last_wait > 0 ? gfx_last_wait : 0);
             { static int lf_vb = -1; int nv = VSync(-1), per = lf_vb < 0 ? 0 : nv - lf_vb; lf_vb = nv;   // LAGFIX: the real time a frame took, whatever the stall (GPU, disc, a wait the timers above miss)
               if (per * 263 > load) load = per * 263; }
@@ -4529,11 +4533,16 @@ int main(void) {
             if (world_detail_r > det_opt) world_detail_r = det_opt;
         }
 #ifdef AUTO_CITY
-        { extern int dbg_slow[16][8], dbg_slow_n; if (state == ST_LIFE && t_cpu > 525) { int *d = dbg_slow[dbg_slow_n++ & 15];   // (test builds: what the slow frames spent their time on)
+        { extern int dbg_slow[16][8], dbg_slow_n; if (state == ST_LIFE && t_cpu > 800) { int *d = dbg_slow[dbg_slow_n++ & 15];   // (test builds: what the slow frames spent their time on)
             d[0] = t_cpu; d[1] = t_upd; d[2] = t_logic; d[3] = t_world; d[4] = t_sims; d[5] = t_hud + t_bub; d[6] = gfx_prof[3]; d[7] = frame; } }
 #endif
         if (state == ST_LIFE) { avg_cpu16 += t_cpu - (avg_cpu16 >> 4); avg_world16 += t_world - (avg_world16 >> 4);   // (the test readouts)
             avg_hh16 += gfx_prof[4] - (avg_hh16 >> 4); hist_cpu[MIN(4, t_cpu / 262)]++;
+            if (!dbg_life_n) dbg_life_vb0 = VSync(-1); dbg_life_n++; dbg_life_vb = VSync(-1) - dbg_life_vb0; dbg_sum_cpu += t_cpu; for (int k = 0; k < 8; k++) dbg_sum_prof[k] += gfx_prof[k];
+            { extern int world_hb_l0, world_hb_up, world_hb_roofs, world_hb_sky1; dbg_sum_w[0] += world_hb_l0; dbg_sum_w[1] += world_hb_up; dbg_sum_w[2] += world_hb_roofs; dbg_sum_w[3] += world_hb_sky1; { extern int far_hb[3]; dbg_sum_w[4] += far_hb[0]; dbg_sum_w[5] += far_hb[1]; dbg_sum_w[6] += far_hb[2]; } }
+            { extern int gfx_profn[8]; for (int k = 0; k < 8; k++) dbg_sum_pn[k] += gfx_profn[k]; }
+            { extern int world_detail_r; dbg_sum_shed += shed_lvl; dbg_sum_r += world_detail_r; }
+            dbg_sum_part[0] += t_upd; dbg_sum_part[1] += t_logic; dbg_sum_part[2] += t_world; dbg_sum_part[3] += t_sims; dbg_sum_part[4] += t_bub; dbg_sum_part[5] += t_hud;
             for (int k = 0; k < 8; k++) avg_prof16[k] += gfx_prof[k] - (avg_prof16[k] >> 4); }
         gfx_flip();
     }

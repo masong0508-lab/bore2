@@ -55,7 +55,8 @@ static Settle sets[NSET_MAX]; static int nset;
 // ---- the hills you walk on: the height of a block's middle in world units, from the same land as the 3D model (0 at the sea, the beach and in and round towns, which are built level) ----
 typedef struct { s16 x, y, h; u8 town; } HillC;
 static HillC hcache[64];
-void bm_hill_reset(void) { memset(hcache, 0xFF, sizeof hcache); }
+void world_gh_reset(void);
+void bm_hill_reset(void) { memset(hcache, 0xFF, sizeof hcache); world_gh_reset(); }   // (world.c keeps the heights it worked out from these: they go too)
 static int hill_raw(int bx, int by) {
     if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return 0;
     if (bm_terrain(bx, by) == BT_SEA) return 0;

@@ -850,7 +850,8 @@ static void tick_needs(Sim *s) {
     if (s->action != ACT_SIT && s->action != ACT_SLEEP) s->need[N_COMFY] -= RATE_COMFY;
     if (s->action != ACT_FUN && s->action != ACT_READ) s->need[N_FUN] -= RATE_FUN;
     if (s->action != ACT_TALK && s->action != ACT_PHONE) s->need[N_SOCIAL] -= RATE_SOCIAL;
-    int target = world_room_score(sim_tile_x(s), sim_tile_y(s)) << 10;
+    int target;   // (the room's score is a look at the 25 tiles round the sim, and it only moves the need a 256th a step: looked at every 8th step is plenty)
+    { static u8 rs_age[16]; static s16 rs_val[16]; int si = (int)(s - sims) & 15; if (!(rs_age[si]++ & 7)) rs_val[si] = (s16)world_room_score(sim_tile_x(s), sim_tile_y(s)); target = rs_val[si] << 10; }
     s->need[N_ROOM] += (target - s->need[N_ROOM]) / 256;
     for (int i = 0; i < NEED_N; i++) s->need[i] = CLAMP(s->need[i], 0, 100 << 10);
     // mood: the needs feed HAPPY
