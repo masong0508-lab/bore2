@@ -914,6 +914,43 @@ void items_draw_dog(int x, int z, int yaw, int y, const DogLook *dl, int phase) 
     sk_k = 16; gfx_set_identity();
 }
 int bus_here(int mx, int my) { extern int clock_min; return ((clock_min + mx * 7 + my * 13) % 20) < 4; }   // a bus stands at every stop for four minutes of each twenty
+// ---- FARM LIFE, alive: the crops grow in the beds (the farm's state: a stage per crop), the hens scratch about the coop ----
+#include "sim.h"
+static void fm_box(int x0, int x1, int y0, int y1, int z0, int z1, int r, int g, int b) { sk_box(x0, x1, y0, y1, z0, z1, r, g, b); }
+static void farm_extras(char ch, int mx, int my, int t) {
+    VECTOR p; setVector(&p, mx * TILE + TILE / 2, 0, -(my * TILE + TILE / 2));
+    gfx_set_object(&p, 0);
+    if (ch == (char)0xDB) {
+        int k = ((mx >> 1) + (my >> 1)) & 3, n = fm_n[k], need = fm_need(k);
+        if (n) {
+            int g = fm_g[k], ready = g >= need, h = ready ? 100 : 22 + 62 * g / (need ? need : 1), cnt = MIN(4, (n + 3) / 4 + 1);
+            int dry = fm_dry[k] > 0 && !ready;
+            for (int i = 0; i < cnt; i++) {
+                int cx = (i & 1) ? 54 : -54, cz = (i & 2) ? 54 : -54, w = 11;
+                int sr = dry ? 150 : 40, sg = dry ? 130 : 170, sb = dry ? 50 : 50;
+                switch (k) {
+                case 0: for (int j = -1; j <= 1; j++) { fm_box(cx + j * 22 - 4, cx + j * 22 + 4, -h, -2, cz - 4, cz + 4, 214, 178, 56); if (ready) fm_box(cx + j * 22 - 6, cx + j * 22 + 6, -h - 12, -h, cz - 5, cz + 5, 240, 200, 70); } break;   // wheat
+                case 1: fm_box(cx - w / 2, cx + w / 2, -h - 20, -2, cz - w / 2, cz + w / 2, sr, sg, sb); if (ready) fm_box(cx + w / 2, cx + w / 2 + 12, -h - 6, -h + 18, cz - 6, cz + 6, 245, 210, 60); break;   // corn
+                case 2: fm_box(cx - 20, cx + 20, -h * 3 / 4, -2, cz - 20, cz + 20, sr, sg, sb); if (ready) { fm_box(cx - 16, cx - 6, -h * 3 / 4 - 8, -h * 3 / 4 + 4, cz - 4, cz + 8, 230, 40, 40); fm_box(cx + 8, cx + 18, -h * 3 / 4 - 8, -h * 3 / 4 + 4, cz - 8, cz + 4, 230, 40, 40); } break;   // tomatoes
+                default: fm_box(cx - 24, cx + 24, -14, -2, cz - 24, cz + 24, sr, sg, sb); if (ready) fm_box(cx - 14, cx + 14, -h * 2 / 3, -14, cz - 14, cz + 14, 240, 130, 30); else if (h > 40) fm_box(cx - 6, cx + 6, -22, -14, cz - 6, cz + 6, 120, 170, 60); break;   // pumpkins
+                }
+            }
+            if ((fm_pest >> k) & 1) for (int i = 0; i < 3; i++) fm_box(-70 + i * 60, -62 + i * 60, -10, -4, -30 + i * 20, -22 + i * 20, 40, 30, 30);   // pests
+        }
+    } else {   // the coop: hens, a few steps about in front
+        int ci = (my >> 1) & 1, nh = MAX(0, MIN(3, (fm_hens - ci + 1) / 2));
+        for (int i = 0; i < nh; i++) {
+            int ph = (t * 3 + i * 97 + ci * 40) & 255, x = -50 + i * 50 + (isin((ph << 4) & 4095) >> 9), z = 108 + (i * 13 & 15);
+            int peck = ((t / 10 + i * 3) & 7) == 0 ? 8 : 0;
+            fm_box(x - 9, x + 9, -22 + peck / 2, -6, z - 14, z + 8, 245, 245, 240);                      // the body
+            fm_box(x - 5, x + 5, -34 + peck, -22 + peck / 2, z - 18, z - 8, 245, 245, 240);              // the head
+            fm_box(x - 2, x + 2, -39 + peck, -34 + peck, z - 16, z - 12, 220, 40, 40);                   // the comb
+            fm_box(x - 2, x + 2, -29 + peck, -26 + peck, z - 22, z - 18, 240, 170, 40);                  // the beak
+            fm_box(x - 6, x - 3, -6, 0, z - 4, z - 1, 240, 170, 40); fm_box(x + 3, x + 6, -6, 0, z - 4, z - 1, 240, 170, 40);   // the feet
+        }
+    }
+    gfx_set_identity();
+}
 void items_draw(char ch, int mx, int my, int rot, int along, int t) {
     if (ch == 'P') return;
     shade6_update(t);
@@ -942,5 +979,8 @@ void items_draw(char ch, int mx, int my, int rot, int along, int t) {
         }
     }
     if (ch == '1' || ch == '2' || ch == '4' || ch == '5' || ch == '9') { ramp_draw(ch, mx, my, r); return; }   // (the ramps: smooth slopes, not stacked slabs)
+    if (ch == (char)0xDB) n = 1;                                              // (FARM LIFE: a bed draws only its soil; what grows in it is the farm's own state)
+    else if (ch == (char)0xDD && fm_cows <= ((my >> 1) & 1)) n = 1;           // (a stall: the cow is there only when you own one for it)
     for (int i = 0; i < n; i++) draw_box(&b[i], box_ref[base + i], r, ox, oz, t);
+    if (ch == (char)0xDB || ch == (char)0xDC) farm_extras(ch, mx, my, t);
 }
