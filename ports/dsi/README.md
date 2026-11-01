@@ -181,3 +181,10 @@ FARM LIFE: crop beds, hens, cows and the farm stand with the PS1's rules, the fa
 
 ## D39 - steady 30
 The lot's 3D is recorded as the GPU's own command lists: the still part (ground, floors, walls, things, streets) only when it changes, each Bore's model once for its looks and stride, what moves every frame. The vblank interrupt sends a finished frame by DMA every second vblank: the 3D is a steady 30 frames a second while the game and the touch screen run at up to 60. Faces turned away are skipped by the GPU. The Live top screen redraws only the values that changed. Options > System > Frame rate: Steady 30 / Up to 60. Toolchain: `tools/dsbuild/restore.sh` (prebuilt, from the ds-toolchain branch); bench: `tools/dsemu/tb.sh outdir`.
+
+## D40 - a longer view and a sky
+- A sky behind the 3D, drawn by the 2D engine (one colour a scanline, set by hblank DMA, graded to where the horizon is for the camera's tilt). The far land fades into it (the GPU's fog on alpha), so nothing pops in.
+- The land goes on past the 3x3: a ring of plain lots with their streets (two slots out on a DS, three on a DSi), then the horizon out to the haze. Each far slot is drawn round its own corner with a matrix move.
+- Street lamps on the pavement at the kerb, their lamps out over the street, and a bin in the corner square (as the PS1's fix). Citizens walk the pavements and cross at the corners (they used to walk in the lanes).
+- Options > Graphics > 3D look: Classic (as D38), Rich (sky, haze, soft highlights), Toon (Rich with outlines round every thing: each thing has its own polygon id for the GPU's edge marking). Options > System > Detail: Auto / DS / DSi (Auto: DSi when the CPU runs at 134 MHz: more view and twice the crowd). Turbo CPU: Auto / On / Off.
+- Saves: unchanged format; the two new options default for older saves.

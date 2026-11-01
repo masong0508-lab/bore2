@@ -25,20 +25,27 @@ SC = {   # name: (script, pokes {frame: scene}, measure from, to, screenshot fra
     "farm":   (LIVE, {400: 2}, 700, 1300, 1280),
     "street": (LIVE, {400: 3}, 700, 1300, 1280),
     "town":   (LIVE, {400: 4}, 700, 1300, 1280),
+    "horizon": (LIVE, {400: 5}, 700, 1300, 1280),
 }
+# BENCH_LOOK=0/1/2 (Classic, Rich, Toon) and BENCH_DETAIL=0/1/2 (Auto, DS, DSi): poked at frame 300 and 330
+EXTRA = {}
+if os.environ.get("BENCH_LOOK"): EXTRA[300] = 10 + int(os.environ["BENCH_LOOK"])
+if os.environ.get("BENCH_DETAIL"): EXTRA[330] = 20 + int(os.environ["BENCH_DETAIL"])
 want = sys.argv[4:] or list(SC)
-mem = [syms["fps_now"], syms["polys_last"]] + ([syms["ui_fps"], syms["st_rec"]] if "ui_fps" in syms else []) + (["%x" % (int(syms["prof_ms"], 16) + 4 * k) for k in range(12)] + [syms["sml_miss"]] if "prof_ms" in syms and os.environ.get("PROF") else [])
+mem = [syms["fps_now"], syms["polys_last"], "4000604"] + ([syms["ui_fps"], syms["st_rec"]] if "ui_fps" in syms else []) + (["%x" % (int(syms["prof_ms"], 16) + 4 * k) for k in range(12)] + [syms["sml_miss"]] if "prof_ms" in syms and os.environ.get("PROF") else [])
 for name in want:
     script, pokes, a, b, shot = SC[name]
     env = dict(os.environ, DBGMEM=",".join(mem))
+    pokes = dict(pokes); pokes.update(EXTRA) if name != "map" else None
     if pokes: env["POKE"] = ",".join("%d:%s:%x" % (f, syms["test_scene"], v) for f, v in pokes.items())
     ppm = os.path.join(out, name + ".ppm")
     r = subprocess.run(["/tmp/dsrun", rom, str(b + 1), ppm, script, str(shot)], capture_output=True, text=True, env=env)
-    fps, quads, ui, rec, prof = [], [], [], [], []
+    fps, quads, ui, rec, prof, gpu = [], [], [], [], [], []
     for ln in r.stdout.splitlines():
         m = re.match(r"f(\d+):(.*)", ln)
         if not m or not (a <= int(m.group(1)) <= b): continue
         v = [int(x) for x in m.group(2).split()]
+        gpu.append(v[2]); v = v[:2] + v[3:]
         fps.append(v[0]); quads.append(v[1] // 2)
         if len(v) > 3: ui.append(v[2]); rec.append(v[3])
         if len(v) > 4: prof.append(v[4:])
@@ -48,4 +55,5 @@ for name in want:
     uis = " ui %d-%d  still lists recorded %d" % (min(ui), max(ui), rec[-1] - rec[0]) if ui else ""
     if prof: uis += "  ms/s steps %d ui %d moving %d still %d dma %d rest %d walls %d sims %d setup %d lvl %d pre %d - %d  sim misses %d" % tuple(sum(p[k] for p in prof) // len(prof) for k in range(13))
     if os.environ.get("TRACE"): print(" ".join("%d/%d" % (f, u) for f, u in zip(fps, ui or fps)))
-    print("%-7s fps %2d-%2d avg %4.1f  quads %4d-%4d%s" % (name, min(fps), max(fps), sum(fps) / len(fps), min(quads), max(quads), uis))
+    gp = [g & 0xFFF for g in gpu]; gv = [(g >> 16) & 0x1FFF for g in gpu]
+    print("%-7s fps %2d-%2d avg %4.1f  quads sent %4d-%4d, GPU drew %4d-%4d polygons %4d-%4d vertices%s" % (name, min(fps), max(fps), sum(fps) / len(fps), min(quads), max(quads), min(gp), max(gp), min(gv), max(gv), uis))

@@ -3,7 +3,7 @@
 // Top screen: that lot in 3D. L/R change town, A/B zoom, START re-rolls the world.
 // Fixed point only; the world is bigmap.c, shared with the PS1 build (nothing of it is stored).
 #define PMN 28
-static int o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song, o_need = 2, o_day = 1, o_msgt = 1, o_tmus = 1, o_gmus = 1, o_shuf = 1;
+static int o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song, o_need = 2, o_day = 1, o_msgt = 1, o_tmus = 1, o_gmus = 1, o_shuf = 1, o_look = 1, o_detl, prof_full, fast_cpu;
 
 // ---- the options: one table (name, the choices, the value, the tab it lives on, its default). Saved in table order, so new ones are only ever added at the end.
 typedef struct { const char *name, *vals; int *v; unsigned char tab, def; } Opt;
@@ -11,7 +11,7 @@ static const Opt OPT[] = {
     { "Anti-alias", "Off|On", &o_aa, 0, 1 }, { "Outlines", "Off|On", &o_out, 0, 0 }, { "Shadows", "Off|On", &o_shd, 0, 1 }, { "Lighting", "Off|On", &o_lit, 0, 1 },
     { "Item detail", "Simple|Detailed", &o_det, 0, 1 }, { "Ground check", "Off|On", &o_chk, 0, 1 }, { "Frame rate", "Steady 30|Up to 60", &o_fps30, 3, 0 }, { "Brightness", "-4|-3|-2|-1|+0|+1|+2|+3|+4", &o_bri, 0, 4 },
     { "Sky", "Day|Sunset|Night|Mint|Auto", &o_sky, 0, 0 }, { "Camera", "Close|Normal|Far", &o_cam, 2, 1 }, { "Map spin", "Off|Slow|Normal|Fast", &o_spin, 2, 2 }, { "Game speed", "1x|2x|3x", &o_spd, 2, 0 },
-    { "Turbo CPU", "Off|On", &o_turbo, 3, 0 }, { "Sim style", "Classic|Sims 3|Chunky", &o_sty, 0, 0 }, { "Poly meter", "Off|On", &o_pm, 0, 0 }, { "Fog", "Off|On", &o_fog, 0, 0 },
+    { "Turbo CPU", "Auto|On|Off", &o_turbo, 3, 0 }, { "Sim style", "Classic|Sims 3|Chunky", &o_sty, 0, 0 }, { "Poly meter", "Off|On", &o_pm, 0, 0 }, { "Fog", "Off|On", &o_fog, 0, 0 },
     { "Save space", "Safe|Max", &o_smax, 2, 0 },
     { "Outline color", "Dark|Black|White|Pink", &o_ocol, 0, 0 }, { "Draw distance", "Near|Normal|Far", &o_dd, 0, 1 }, { "Fog range", "Close|Normal|Far", &o_fogd, 0, 1 }, { "Traffic", "Off|Few|Some|All", &o_trf, 0, 3 },
     { "Master volume", "Off|1|2|3|4|5|6|7|8|9|10", &o_vol, 1, 7 }, { "Music volume", "Off|1|2|3|4|5|6|7|8|9|10", &o_mus, 1, 6 }, { "Effects volume", "Off|1|2|3|4|5|6|7|8|9|10", &o_sfx, 1, 8 },
@@ -24,6 +24,8 @@ static const Opt OPT[] = {
     { "Needs speed", "Never fall|Slow|Normal|Fast", &o_need, 2, 2 }, { "Day length", "Short|Normal|Long|Epic", &o_day, 2, 1 }, { "Message time", "Short|Normal|Long", &o_msgt, 2, 1 },
     { "Title music", "Off|On", &o_tmus, 1, 1 }, { "Game music", "Off|On", &o_gmus, 1, 1 }, { "Shuffle songs", "In order|At random", &o_shuf, 1, 1 },
     { "Reset game", "tap", 0, 3, 2 },
+    // (D40) the 3D look (Classic: as before D40; Rich: a sky, haze in the distance, highlights; Toon: Rich with outlines round every thing) and the detail (Auto: DSi when the CPU is the DSi's fast one)
+    { "3D look", "Classic|Rich|Toon", &o_look, 0, 1 }, { "Detail", "Auto|DS|DSi", &o_detl, 3, 0 },
 };
 #define OPT_OLD 36   // options saved in the save's first 40 bytes (the rest go in the 'OX' block)
 static void open_opts(void);
@@ -241,6 +243,8 @@ static void gx_begin(u32 *b, int cap) { gxb = b; gxn = 0; gxk = 4; gx_cap = cap 
 static int gx_end(void) { gxb = 0; return gxn; }
 static void gx_fmt(u32 attr) {   // the polygon attributes (takes effect at the next BEGIN): recorded, or straight to the GPU
     gx_attr = attr; if (gxb) { if (gxn > gx_cap) return; gx_c1(0x29, attr); gx_c1(0x40, GL_QUADS); gx_lv = 0; } else { glEnd(); glPolyFmt(attr); glBegin(GL_QUADS); } }
+static void gx_pid(int id) {   // (D40) a polygon id for what follows (outlines are drawn where the id changes): only when outlines are on, each id costs a BEGIN
+    if (gxb && (o_out || o_look == 2) && gxn < gx_cap) { gx_c1(0x29, (gx_base & ~0x3F000000u) | ((u32)id << 24)); gx_c1(0x40, GL_QUADS); gx_lv = 0; } }
 static void gx_run(const u32 *b, int n) {   // send a list to the geometry FIFO by DMA (channel 0) and wait for it
     if (n <= 0) return; DC_FlushRange(b, n * 4); while (DMA_CR(0) & DMA_BUSY) {}
     DMA_SRC(0) = (u32)b; DMA_DEST(0) = 0x4000400; DMA_CR(0) = DMA_FIFO | n; while (DMA_CR(0) & DMA_BUSY) {} }
@@ -259,7 +263,7 @@ static inline void gx_v(int x, int y, int z) {   // one vertex: the shortest com
     gx_id(0x23); gxb[gxn++] = xy; gxb[gxn++] = (u32)(z & 0xFFFF);
 done: gx_lx = x; gx_ly = y; gx_lz = z; gx_lv = 1; }
 static void gx_cam(int dist, int pitch, int yaw, int cx, int cy, int cz) {   // (D39) the projection, the camera, the lights and the material into the list (the CPU must not write to the GPU while a frame is being sent)
-    int ymax = mulf32(4096 * 3 / 4, tanLerp(degreesToAngle(40) >> 1)), xmax = mulf32(ymax, 256 * 4096 / 192), nr = 4096 * 3 / 4, fr = 4096 * gx_far;
+    int ymax = mulf32(4096 * 3 / 4, tanLerp(degreesToAngle(40) >> 1)), xmax = mulf32(ymax, 256 * 4096 / 192), nr = 4096 * 3 / 4, fr = 4096 * gx_far;   // (D40: the far plane goes with the view: 14 to 22 units)
     gx_c1(0x10, 0); gx_c0(0x15); gx_id(0x18); u32 *o = &gxb[gxn]; memset(o, 0, 64);
     o[0] = (u32)divf32(2 * nr, 2 * xmax); o[5] = (u32)divf32(2 * nr, 2 * ymax); o[10] = (u32)-divf32(fr + nr, fr - nr); o[11] = (u32)-4096; o[14] = (u32)-divf32(2 * mulf32(fr, nr), fr - nr); gxn += 16;
     gx_c1(0x10, 2); gx_c0(0x15); gx_c1(0x10, 1);
@@ -554,10 +558,17 @@ static int nb_ok; static BInfo nb[3][3]; static u8 nb_pop[3][3], nb_fam[3][3];
 static int fdiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 enum { Z_CITY, Z_BASE, Z_ISLAND, Z_TOWN, Z_N };
 static int zone; static void zone_block(int bx, int by, BInfo *b); static void gen_zone(int bx, int by);   // (D37) the zone you are in, and its lots
-static void nb_load(void) { for (int dy = 0; dy < 3; dy++) for (int dx = 0; dx < 3; dx++) { int x = lot_bx + dx - 1, y = lot_by + dy - 1;
+#define RING_MAX 3
+static BInfo nbf[RING_MAX * 2 + 1][RING_MAX * 2 + 1];   // (D40) the lots round, out to three slots each way (the ring past the 3x3 is only drawn)
+static void nb_load(void) {
+    for (int dy = -RING_MAX; dy <= RING_MAX; dy++) for (int dx = -RING_MAX; dx <= RING_MAX; dx++) { int x = lot_bx + dx, y = lot_by + dy; BInfo *b = &nbf[dy + RING_MAX][dx + RING_MAX];
+        if (dx >= -1 && dx <= 1 && dy >= -1 && dy <= 1) continue;
+        if (lot_bx >= 2000) zone_block(x, y, b); else if (x < 0 || y < 0 || x >= BM_N || y >= BM_N) { memset(b, 0, sizeof(BInfo)); b->terrain = BT_SEA; } else bm_block(x, y, b); }
+    for (int dy = 0; dy < 3; dy++) for (int dx = 0; dx < 3; dx++) { int x = lot_bx + dx - 1, y = lot_by + dy - 1;
     if (x >= 2000) { zone_block(x, y, &nb[dy][dx]); nb_pop[dy][dx] = 0; nb_fam[dy][dx] = 0; continue; }
     if (x < 0 || y < 0 || x >= BM_N || y >= BM_N) { memset(&nb[dy][dx], 0, sizeof(BInfo)); nb[dy][dx].terrain = BT_SEA; nb_pop[dy][dx] = 0; nb_fam[dy][dx] = 0; }
-    else { bm_block(x, y, &nb[dy][dx]); int f; nb_pop[dy][dx] = (u8)pop_at(x, y, &f); nb_fam[dy][dx] = (u8)f; } } }
+    else { bm_block(x, y, &nb[dy][dx]); int f; nb_pop[dy][dx] = (u8)pop_at(x, y, &f); nb_fam[dy][dx] = (u8)f; } }
+    for (int dy = 0; dy < 3; dy++) for (int dx = 0; dx < 3; dx++) nbf[dy + RING_MAX - 1][dx + RING_MAX - 1] = nb[dy][dx]; }
 static void city_spawn(void); static void city_shift(int dx, int dy);
 static int far_house(const BInfo *b) { return b->terrain != BT_SEA && b->lot >= LOT_HOUSE && b->lot != LOT_PARK && b->lot != LOT_SQUARE && b->lot != LOT_SKATE && b->lot != LOT_EMPTY && b->lot != LOT_RIVER; }
 static void far_foot(const BInfo *b, int *x0, int *z0, int *x1, int *z1) { int w = 10 + (int)(b->h & 3) * 2, d = 8 + (int)((b->h >> 2) & 3) * 2, t0 = 4 + (24 - w) / 2 / 2 * 2 - 4; *x0 = t0 / 2; *x1 = (t0 + w + 1) / 2; *z0 = 2; *z1 = (4 + d + 1) / 2; }
@@ -1019,10 +1030,10 @@ ITCM_CODE static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, 
 
 
 // ---------- the living city (D18): citizens stroll the pavements, cars drive the roads, everyone follows the clock ----------
-#define NCIT 12
-#define NCAR 8
-#define CITN (o_trf * 4)
-#define CARN (o_trf == 3 ? 8 : o_trf * 3)
+#define NCIT 24
+#define NCAR 12
+#define CITN (o_trf * (prof_full ? 8 : 4))                          // (D40: twice the crowd with the DSi's detail)
+#define CARN (o_trf == 3 ? (prof_full ? 12 : 8) : o_trf * 3)
 typedef struct { int x, y, dir, stop; u8 on, stage, skin, shirt, hair, pants; u16 id; } Cit;
 typedef struct { u16 id; u8 rel, talks, taken; } CRel;
 typedef struct { int x, y, dx, dy; u16 col; } Car;
@@ -1032,14 +1043,14 @@ static const char *const LNAMES[8] = { "Park", "Reyes", "Ford", "Nash", "Cole", 
 static u32 hsh(u32 a) { a ^= a >> 16; a *= 0x7feb352dU; a ^= a >> 15; a *= 0x846ca68bU; a ^= a >> 16; return a; }
 static CRel *crel(u16 id) { int h = id & 63; for (int k = 0; k < 64; k++) { CRel *c = &crt[(h + k) & 63]; if (c->id == id) return c; if (!c->id) { c->id = id; return c; } } return &crt[h]; }
 static void cit_name(const Cit *c, char *o) { sprintf(o, "%s %s", FNAMES[c->id % 12], LNAMES[(c->id / 12) % 8]); }
-static int cit_street(int x, int y) { int lx = ((x % SLC) + SLC) % SLC, ly = ((y % SLC) + SLC) % SLC; return (lx >= 13 || ly >= 13) && !far_solid(x, y); }
+static int cit_street(int x, int y) { int lx = ((x % SLC) + SLC) % SLC, ly = ((y % SLC) + SLC) % SLC; return (lx == 13 || lx == 17 || ly == 13 || ly == 17 || (lx >= 13 && ly >= 13)) && !far_solid(x, y); }   // (D40: the pavements, and across the road only at the corners; it was the whole street, lanes too)
 static int cit_vis(const Cit *c) { int hr = (minutes / 60) % 24; return c->on && hr >= 6 && hr < 23 && ((hr * 5 + c->id) % 7) < 5; }   // asleep indoors at night, out and about by day
 static void city_spawn(void) {
     int sl[9], ns = 0; for (int j = 0; j < 9; j++) if (nb[j / 3][j % 3].set != 255 && nb[j / 3][j % 3].terrain != BT_SEA) sl[ns++] = j;
     for (int k = 0; k < NCIT; k++) { Cit *c = &cits[k]; c->on = 0; c->stop = 0; if (!ns) continue; int j = (k < 6 && nb[1][1].set != 255) ? 4 : sl[k % ns], sy = j / 3 - 1, sx = j % 3 - 1;
         u32 h = hsh((u32)(lot_bx + sx) * 73856093u ^ (u32)(lot_by + sy) * 19349663u ^ (u32)k * 83492791u); c->id = (u16)((h >> 8) | 1); if (crel(c->id)->taken) continue;
         int r = (int)(h % 100); c->stage = (u8)(r < 16 ? 2 : r < 30 ? 3 : r < 86 ? 4 : 5);
-        int lx = 13 + (int)((h >> 8) % 5), ly = (int)((h >> 12) % 18); if ((h >> 20) & 1) { int t = lx; lx = ly; ly = t; }
+        int lx = (h >> 8) & 1 ? 17 : 13, ly = (int)((h >> 12) % 18);   // (D40: on a pavement, not in a lane) if ((h >> 20) & 1) { int t = lx; lx = ly; ly = t; }
         int cx = sx * SLC + lx, cy = sy * SLC + ly; if (far_solid(cx, cy)) continue;
         c->x = cx * 16; c->y = cy * 16; c->dir = (int)((h >> 24) & 3); c->skin = (u8)((h >> 5) % 6); c->shirt = (u8)((h >> 9) % 6); c->hair = (u8)((h >> 13) % 6); c->pants = (u8)((h >> 17) % 4); c->on = 1; }
     for (int k = 0; k < NCAR; k++) { Car *c = &cars[k]; if (!ns) { c->x = c->y = -9999; c->dx = c->dy = 0; continue; } u32 h = hsh((u32)k * 977u + (u32)lot_bx * 31u + (u32)lot_by * 7u); int j = (int)((k >> 1) % 3) - 1, hz = k & 1, fw = (int)((k >> 2) & 1); int at = (int)(h % (SLC * 3 * 16)) - SLC * 16;
@@ -1070,8 +1081,9 @@ static void draw_city(void) {
     for (int k = 0; k < CARN; k++) { const Car *c = &cars[k]; if (polys > 2950) break; int x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, lx = c->dx ? 300 : 150, lz = c->dx ? 150 : 300, cx2 = c->dx ? 130 : 130, cz = c->dx ? 130 : 130;
         block(x - lx, z - lz, x + lx, z + lz, -20, -150, c->col, shade(c->col, 10)); block(x - lx + (c->dx ? 90 : 0) + (c->dx ? 0 : 0) - (c->dx ? 0 : 0), z - lz + (c->dx ? 0 : 90), x + lx - (c->dx ? 90 : 0), z + lz - (c->dx ? 0 : 90), -150, -270, C15(20, 26, 31), C15(24, 24, 26)); (void)cx2; (void)cz; }
 }
+static int far_lod;   // (D40) 1: a lot in the far ring: its house without door and windows, no people
 static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw) {   // a neighbour's lot: flat ground, a plain house or a few trees (cheap: the polygon budget is the DS's limit)
-    u32 h = b->h; int k = b->lot;
+    u32 h = b->h; int k = b->lot; if (far_lod) pop = 0;
     u16 grass = b->terrain == BT_DESERT ? C15(24, 20, 10) : b->terrain == BT_ROCKY ? C15(13, 13, 13) : b->terrain == BT_BEACH ? C15(26, 24, 14) : C15(11, 20, 8);
     ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), -20, grass);
     if (!far_house(b)) { int n = (k == LOT_PARK || k == LOT_SQUARE) ? 4 : 2; for (int i = 0; i < n; i++) tree(ox + tl(3 + (int)((h >> (i * 4)) & 15) * 3 / 2 % 20), oz + tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 3 / 2 % 20), T * 2); return; }
@@ -1081,11 +1093,26 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw) {   // a n
     if (k >= LOT_SHOP) wall = k == LOT_TOWER || k == LOT_OFFICE || k == LOT_HOTEL ? C15(16, 20, 26) : C15(27, 12, 10);
     int X0 = ox + tl(x0), X1 = ox + tl(x0 + w), Z0 = oz + tl(z0), Z1 = oz + tl(z0 + d), Y = -(hh * T);
     block(X0, Z0, X1, Z1, 0, Y, wall, wall);
-    { int wn = (X1 - X0) / 5; block(X0 + wn * 2, Z1, X0 + wn * 2 + wn * 7 / 10, Z1 + 14, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); block(X0 + wn, Z1, X0 + wn + wn * 7 / 10, Z1 + 14, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); block(X0 + wn * 3, Z1, X0 + wn * 3 + wn * 7 / 10, Z1 + 14, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); }
+    if (!far_lod) { int wn = (X1 - X0) / 5; block(X0 + wn * 2, Z1, X0 + wn * 2 + wn * 7 / 10, Z1 + 14, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); block(X0 + wn, Z1, X0 + wn + wn * 7 / 10, Z1 + 14, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); block(X0 + wn * 3, Z1, X0 + wn * 3 + wn * 7 / 10, Z1 + 14, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); }
     if (k <= LOT_APART) gable(X0, Z0, X1, Z1, Y, -T * 2, C15(18, 8, 6)); else ground(X0, Z0, X1, Z1, Y - 24, C15(14, 14, 15));
     for (int i = 0; i < pop && i < 3; i++) person(ox + tl(4 + i * 3), oz + tl(z0 + d + 3), C15(6 + i * 4, 10, 25 - i * 3), yaw);   // the bores who live there
 }
 static u16 land_col(int t) { return t == BT_BEACH || t == BT_DESERT ? C15(26, 23, 15) : t == BT_ROCKY ? C15(14, 16, 12) : t == BT_FOREST ? C15(8, 17, 6) : C15(11, 20, 8); }   // (D37)
+static void lamp_kerb(int x, int z, int dx, int dz) {   // (D40, as the PS1's kerb_lamp) a street lamp on the pavement at the kerb, its arm out over the street (dx, dz: towards the road)
+    u16 pc = C15(9, 10, 11); block(x - 12, z - 12, x + 12, z + 12, 0, -T * 5 / 2, pc, pc);
+    int ax = x + dx * T / 2, az = z + dz * T / 2;   // (the arm and the lamp in one box: lamp-coloured underneath)
+    block(dx ? (x < ax ? x : ax) - 22 * (dx < 0) : x - 22, dz ? (z < az ? z : az) - 22 * (dz < 0) : z - 22, dx ? (x > ax ? x : ax) + 22 * (dx > 0) : x + 22, dz ? (z > az ? z : az) + 22 * (dz > 0) : z + 22, -T * 5 / 2 + 30, -T * 5 / 2 - 6, C15(31, 29, 18), C15(12, 12, 13));
+}
+static void bin_at(int x, int z) { block(x - 30, z - 30, x + 30, z + 30, 0, -110, C15(6, 14, 8), C15(4, 8, 5)); }
+static void kerb_set(int ox, int oz) {   // (D40) a slot's street lamps (two a side, by the corner and half way, never within two cells of each other) and a bin in the pavement's corner square
+    lamp_kerb(tl(ox + 14), tl(oz + 28) - 30, 0, 1); lamp_kerb(tl(ox + 4), tl(oz + 34) + 30, 0, -1); lamp_kerb(tl(ox + 28) - 30, tl(oz + 4), 1, 0); lamp_kerb(tl(ox + 34) + 30, tl(oz + 14), -1, 0);   // (half way on the lot's side, by the corner across the street)
+    bin_at(tl(ox + 26) + 70, tl(oz + 26) + 70);
+}
+static void slot_street(int ox, int oz) {   // (D40) a far slot's own streets (along its front and its right side) in its local tiles
+    ground(tl(ox), tl(oz + 28), tl(ox + 36), tl(oz + 34), 0, C15(7, 7, 9)); ground(tl(ox + 28), tl(oz), tl(ox + 34), tl(oz + 28), 0, C15(7, 7, 9));
+    ground(tl(ox), tl(oz + 26), tl(ox + 26), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox), tl(oz + 34), tl(ox + 36), tl(oz + 36), -24, C15(22, 22, 22));
+    ground(tl(ox + 26), tl(oz), tl(ox + 28), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz), tl(ox + 36), tl(oz + 34), -24, C15(22, 22, 22));
+}
 static void draw_world(int yaw) {   // LIVE: all round the lot, the lots next door, the streets and the land (a 3x3 patch of slots)
     if (zone == Z_ISLAND) { ground(tl(-40), tl(-40), tl(76), tl(76), 90, C15(25, 22, 14)); return; }   // (the island: sand between the lots, the sea is the neighbours')
     ground(tl(-40), tl(-40), tl(76), tl(76), 90, zone == Z_TOWN ? C15(24, 21, 13) : C15(7, 16, 6));
@@ -1096,11 +1123,24 @@ static void draw_world(int yaw) {   // LIVE: all round the lot, the lots next do
         ground(tl(ox + 26), tl(oz + 26), tl(ox + 28), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz + 26), tl(ox + 36), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox + 26), tl(oz + 34), tl(ox + 28), tl(oz + 36), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz + 34), tl(ox + 36), tl(oz + 36), -24, C15(22, 22, 22));
         ground(tl(ox + 26), tl(oz), tl(ox + 28), tl(oz + 26), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz), tl(ox + 36), tl(oz + 26), -24, C15(22, 22, 22)); }
     for (int x = 0; x < 36; x += 6) { ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -30, C15(28, 26, 8)); ground(tl(31) - 14, tl(x), tl(31) + 14, tl(x) + T * 2, -30, C15(28, 26, 8)); }   // lane dashes by this lot
+    if (!zone) for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) if (nb[j + 1][i + 1].terrain != BT_SEA) kerb_set(36 * i, 36 * j);   // (D40, as the PS1: lamps on the kerb facing the street, a bin by the corner)
 }
+static int ring_r = 1;   // (D40) how many slots out the land is drawn (Options > Draw distance, one more with the DSi's detail)
+static u16 horizon_col(void) { return zone == Z_ISLAND ? C15(5, 12, 24) : zone == Z_TOWN ? C15(24, 21, 13) : C15(7, 16, 6); }
 static void draw_far_all(int yaw) {   // last, so the lot, the sims and the citizens always get the polygons first
     for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { if (!i && !j) continue; const BInfo *b = &nb[j + 1][i + 1];
         if (b->terrain == BT_SEA) { ground(tl(36 * i), tl(36 * j), tl(36 * i + 36), tl(36 * j + 36), -8, C15(5, 12, 24)); continue; }
         if (polys > 2700) continue; far_lot(b, 36 * i * T, 36 * j * T, nb_pop[j + 1][i + 1], yaw); }
+    // (D40) THE FAR RING: the slots past the 3x3, each drawn round its own corner (a matrix move: no 16-bit overflow): plain houses, streets, the land; then the
+    // horizon, one big quad scaled up four times, under everything out to the far plane. The haze fades it all into the sky, so nothing pops in.
+    far_lod = 1;
+    for (int r = 2; r <= ring_r; r++) for (int j = -r; j <= r; j++) for (int i = -r; i <= r; i++) { if (abs(i) != r && abs(j) != r) continue; const BInfo *b = &nbf[j + RING_MAX][i + RING_MAX];
+        gx_push(36 * i * T, 0, 36 * j * T);
+        if (b->terrain == BT_SEA) ground(tl(0), tl(0), tl(36), tl(36), -8, C15(5, 12, 24));
+        else { ground(tl(0), tl(0), tl(36), tl(36), 90, land_col(b->terrain)); if (!zone || zone == Z_TOWN) slot_street(0, 0); far_lot(b, 0, 0, 0, yaw); }
+        gx_pop(); }
+    far_lod = 0;
+    if (gxb) { int X = (gx_far + 9) * 1024; if (X > 32000) X = 32000; gx_c0(0x11); gx_id(0x1B); gxb[gxn++] = 4 * 4096; gxb[gxn++] = 4096; gxb[gxn++] = 4 * 4096; gx_lv = 0; ground(-X, -X, X, X, 180, horizon_col()); gx_c1(0x12, 1); gx_lv = 0; }
 }
 // ============ TRAVEL (D37): the PS1's zones, each a few DS lots laid out from the PS1's maps with the PS1's own things ============
 // SAN BOREAS is the big map (zone 0). THE MAN BASE (house, factory, rail park), CASTAWAY ISLAND (the camp, the jungle, the hills, the east beach and the
@@ -1275,7 +1315,7 @@ static int obj_far(const Obj *o) { ob_x = tl(o->x * 2) + T / 6; ob_z = tl(o->y *
 static void draw_build(int yaw) {   // (D39) dpass 1: the still part (recorded once), 2: what moves (every frame), 0: both
     int st = dpass != 2, mv = dpass != 1;
     u16 lawn = land_col(nb[1][1].terrain);
-    if (st) { ground(tl(0), tl(0), tl(GN * 2), tl(GN * 2), 0, lawn);   // the lawn (sand on a beach): one quad and big darker squares (every polygon counts on the DS)
+    if (st) { gx_pid(1); ground(tl(0), tl(0), tl(GN * 2), tl(GN * 2), 0, lawn);   // the lawn (sand on a beach): one quad and big darker squares (every polygon counts on the DS)
         if (o_chk) for (int z = 0; z < GN; z += 2) for (int x = 0; x < GN; x += 2) if (((x + z) / 2) & 1) { int e = x + 2 > GN ? GN : x + 2, f = z + 2 > GN ? GN : z + 2; ground(tl(x * 2), tl(z * 2), tl(e * 2), tl(f * 2), -20, shade(lawn, 7)); }
         if (!zone) ground(tl(0), tl(26) - 30, tl(GN * 2), tl(26), -20, C15(14, 24, 10));   // a low hedge line along the back of the plot (no more posts sticking out)
         if (!zone) block(tl(door_cx * 2) + T / 2, tl(door_cy * 2 + 1), tl(door_cx * 2 + 2) - T / 2, tl(26), 0, -26, C15(19, 18, 16), C15(23, 22, 20)); }   // a path from the front door to the pavement
@@ -1283,27 +1323,28 @@ static void draw_build(int yaw) {   // (D39) dpass 1: the still part (recorded o
     int top = top_lv(), vl = view_lv(), show = show_lv(); if (dpass == 2) PROF(9);
     for (int L = show; L >= 0; L--) {   // (from the storey you look at down: the DS draws at most 2048 polygons, and what is sent last is what it drops)
         gy_off = -WHF * L; lod_force = L < vl;   // (the things on the storeys under yours: simple boxes)
-        if (st) draw_floors(L);
-        draw_walls(L, yaw);
-        if (mv) { if (dpass == 2) PROF(6); for (int i = 0; i < nsim; i++) if (slv[i] == L) sim3d(i, yaw);   // sims first: they always get their polygons
+        if (st) { gx_pid(1); draw_floors(L); }
+        gx_pid(2); draw_walls(L, yaw);
+        if (mv) { if (dpass == 2) PROF(6); for (int i = 0; i < nsim; i++) if (slv[i] == L) { gx_pid(8 + i); sim3d(i, yaw); }   // sims first: they always get their polygons
             if (dpass == 2) PROF(7);
-            for (int i = 0; i < nobj; i++) if (OBJ_LV(&objs[i]) == L && ID2CH[OBJ_ID(&objs[i])] == 0xDC) obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); }   // (the hens peck about: they move)
+            for (int i = 0; i < nobj; i++) if (OBJ_LV(&objs[i]) == L && ID2CH[OBJ_ID(&objs[i])] == 0xDC) gx_pid(16 + i % 40), obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); }   // (the hens peck about: they move)
         if (st) for (int i = 0; i < nobj; i++) {   // then the items, nearest the camera first in budget terms: far ones are skipped when the DS runs out of polygons
             if (OBJ_LV(&objs[i]) != L) continue;
             if (mode == M_LIVE) { int ox2 = tl(objs[i].x * 2) - camx, oz2 = tl(objs[i].y * 2) - camz; if (abs(ox2) + abs(oz2) > 9000 && polys > 1800) continue; }
             if (polys > 2900) continue;
-            obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); } }
+            gx_pid(16 + i % 40); obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); } }
     gy_off = 0; lod_force = 0; if (dpass == 2) PROF(6);
-    if (st) { if (mode == M_LIVE) draw_world(yaw); else {   // (D36: the street round the plot after the house, so the house is never what the DS's polygon list drops)
+    if (st) { gx_pid(3); if (mode == M_LIVE) draw_world(yaw); else {   // (D36: the street round the plot after the house, so the house is never what the DS's polygon list drops)
         ground(tl(-14), tl(-9), tl(40), tl(-2), 0, C15(7, 7, 9)); ground(tl(-14), tl(28), tl(40), tl(35), 0, C15(7, 7, 9));   // two proper streets, three cells wide
         block(tl(-14), tl(-2), tl(40), tl(0), 0, -14, C15(20, 20, 20), C15(24, 24, 24)); block(tl(-14), tl(26), tl(40), tl(28), 0, -14, C15(20, 20, 20), C15(24, 24, 24));   // pavements
         for (int x = -13; x < 40; x += 4) { ground(tl(x), tl(-6) - 14, tl(x) + T * 2, tl(-6) + 14, -6, C15(28, 26, 8)); ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -6, C15(28, 26, 8)); }   // lane dashes (flat: one quad each, not five)
         ground(tl(-14), tl(-9), tl(40), tl(35), 90, C15(7, 16, 6));   // grass all round, so the lot does not float
         if (polys < 2600) for (int i = 0; i < 5; i++) { tree(tl(-6 + (i * 7) % 5 * 1), tl(2 + i * 5), T * 2); tree(tl(GN * 2 + 3 - (i * 5) % 4), tl(1 + i * 5), T * 2); }
+        if (o_look && gxb) { int X = (gx_far + 9) * 1024; if (X > 32000) X = 32000; gx_c0(0x11); gx_id(0x1B); gxb[gxn++] = 4 * 4096; gxb[gxn++] = 4096; gxb[gxn++] = 4 * 4096; gx_lv = 0; ground(-X, -X, X, X, 180, C15(7, 16, 6)); gx_c1(0x12, 1); gx_lv = 0; }   // (D40: land to the haze, not a lot floating in the sky)
         } }
-    if (mv) { dog_draw(); ghost_draw(); }
-    if (st && show == top) { gy_off = 0; roof_draw(top); }
-    if (mode == M_LIVE) { if (mv) { PROF(2); draw_city(); PROF(7); } if (st) draw_far_all(yaw); }
+    if (mv) { gx_pid(6); dog_draw(); ghost_draw(); }
+    if (st && show == top) { gy_off = 0; gx_pid(4); roof_draw(top); }
+    if (mode == M_LIVE) { if (mv) { PROF(2); gx_pid(56); draw_city(); PROF(7); } if (st) { gx_pid(3); draw_far_all(yaw); } }
     gy_off = -WHF * vl;
     if (mv && mode == M_LIVE && mark_t > 0) { ground(tl(mark_x * 2), tl(mark_y * 2), tl(mark_x * 2 + 2), tl(mark_y * 2 + 2), -60, C15(31, 31, 12)); mark_t--; }
     if (mv && (mode == M_BUY || mode == M_BUILD)) {   // the cursor
@@ -1317,7 +1358,7 @@ static u32 still_sig(int yaw) {   // (D39) everything the still list depends on:
     #define HM(v) h = (h ^ (u32)(v)) * 16777619u
     HM(mode); HM(zone); HM(lot_bx); HM(lot_by); HM(nb_ok); HM(nobj); HM(roof_st); HM(tool); HM(ed_lv); HM(view_lv()); HM(door_cx + door_cy * 32); HM(lit_on); HM(lit_sgn);
     int show = show_lv(), top = top_lv(); HM(show); HM(top); HM(show == top && roof_st ? roof_seen(top) : 0);
-    HM(o_det | o_chk << 1 | o_shd << 2 | o_lit << 3 | o_roof << 4 | o_dd << 6 | o_sty << 8 | o_trf << 10);
+    HM(o_det | o_chk << 1 | o_shd << 2 | o_lit << 3 | o_roof << 4 | o_dd << 6 | o_sty << 8 | o_trf << 10 | o_look << 12 | o_out << 14 | ring_r << 16 | prof_full << 20);
     { const u32 *w = (const u32 *)flr; for (unsigned k = 0; k < sizeof flr / 4; k++) HM(w[k]); }
     { const u8 *q = &hwl[0][0]; for (unsigned k = 0; k < sizeof hwl; k++) HM(q[k]); q = &vwl[0][0]; for (unsigned k = 0; k < sizeof vwl; k++) HM(q[k]); }
     if (top) { const u8 *q = &uflr[0][0][0]; for (unsigned k = 0; k < sizeof uflr; k++) if (q[k]) HM(k * 256 + q[k]); q = &uhwl[0][0][0]; for (unsigned k = 0; k < sizeof uhwl; k++) if (q[k]) HM(k * 256 + q[k]); q = &uvwl[0][0][0]; for (unsigned k = 0; k < sizeof uvwl; k++) if (q[k]) HM(k * 256 + q[k]); }
@@ -2501,13 +2542,53 @@ static void plumb_icon(int x, int y, int sz, u16 c) {
 }
 static int sky_now(void) { if (o_sky < 4) return o_sky; int h = (minutes / 60) % 24; return h < 5 || h >= 20 ? 2 : h < 7 || h >= 18 ? 1 : 0; }
 static void snd_apply(void);
+// ---- (D40) THE LOOK: a sky drawn by the 2D engine behind the 3D (one colour a scanline, changed in each hblank by DMA, graded to the camera's horizon), haze that
+// fades the far land into it (the GPU's fog on alpha only), highlights from a shininess table, and in Toon outlines round every thing (edge marking by polygon id).
+static u16 sky_tbl[194] __attribute__((aligned(32))); static int sky_on; static u16 sky_hz, sky_zn;
+static void sky_vbl(void) {   // (vblank) restart the hblank DMA (channel 1) on the main engine's backdrop colour
+    DMA_CR(1) = 0; if (!sky_on) return; BG_PALETTE[0] = sky_tbl[0]; DMA_SRC(1) = (u32)(sky_tbl + 1); DMA_DEST(1) = (u32)BG_PALETTE;
+    DMA_CR(1) = DMA_ENABLE | DMA_REPEAT | DMA_START_HBL | DMA_16_BIT | DMA_SRC_INC | DMA_DST_FIX | 1; }
+static u16 mix15(u16 a, u16 b, int t) { int r = (a & 31) + (((b & 31) - (a & 31)) * t >> 8), g = ((a >> 5) & 31) + ((((b >> 5) & 31) - ((a >> 5) & 31)) * t >> 8), bl = ((a >> 10) & 31) + ((((b >> 10) & 31) - ((a >> 10) & 31)) * t >> 8); return (u16)RGB15(r, g, bl); }
+static void sky_update(int pitch) {   // the sky for this camera: the horizon's line on the screen follows the tilt (40 degrees of view: 20 each side of the middle)
+    int pd = pitch * 360 / 32768;   // degrees down
+    for (int y = 0; y < 193; y++) { int e = -pd * 16 + (96 - y) * 20 * 16 / 96, t = e <= 0 ? 0 : e >= 40 * 16 ? 256 : e * 256 / (40 * 16); t = t * (512 - t) >> 8;   // (elevation in 1/16 degrees; eased)
+        sky_tbl[y] = e < 0 ? mix15(sky_hz, C15(31, 31, 31), (-e > 64 ? 64 : -e) / 4) : mix15(sky_hz, sky_zn, t); }
+    DC_FlushRange(sky_tbl, sizeof sky_tbl);
+}
+static int fog_dep(int d, int f) { int n = 3072; s64 z = ((s64)(f + n) << 12) / (f - n) - ((((s64)2 * f * n) << 12) / ((s64)(f - n) * d)); return (int)((z * 0x4000 >> 12) + 0x3FFF); }   // the 15-bit depth the fog reads at a distance d (4.12)
+static void fog_setup(int d0, int d1, int alpha) {   // haze from d0 to d1 (4.12 units from the eye): the GPU's fog table over the z-buffer's depth
+    int f = gx_far * 4096, a = fog_dep(d0, f), b = fog_dep(d1, f), sh = 0; while (sh < 10 && 32 * (0x400 >> (sh + 1)) >= b - a) sh++; int step = 0x400 >> sh;
+    glFogShift(sh); glFogOffset(a);
+    for (int q = 0; q < 32; q++) { int dep = a + q * step, lo = 0, hi = f;   // the distance at this depth (by halving), then the haze there
+        if (dep >= 0x7FFF) { glFogDensity(q, 127); continue; } for (int it = 0; it < 16; it++) { int m = (lo + hi) / 2; if (fog_dep(m < 3100 ? 3100 : m, f) < dep) lo = m; else hi = m; }
+        int t = (lo - d0) * 128 / (d1 - d0); if (t < 0) t = 0; if (t > 127) t = 127; glFogDensity(q, t * t / 127); }
+    GFX_CONTROL = (GFX_CONTROL & ~(u16)GL_FOG_ONLY_ALPHA) | (alpha ? GL_FOG_ONLY_ALPHA : 0); glEnable(GL_FOG);
+}
+static int cpu_ticks;   // (D40) bus ticks of a fixed loop at start: about half on a DSi's 134 MHz CPU
+ITCM_CODE static void cpu_probe(void) {   // a register-only loop in the ITCM (no memory waits): its time is the CPU clock's alone
+    TIMER_CR(2) = 0; TIMER_DATA(2) = 0; TIMER_CR(2) = TIMER_ENABLE | TIMER_DIV_64; __asm__ volatile("mov r0, #65536\n1: subs r0, r0, #1\n bne 1b" ::: "r0", "cc"); cpu_ticks = TIMER_DATA(2); TIMER_CR(2) = 0;
+    fast_cpu = cpu_ticks > 0 && cpu_ticks < 1536; }   // (65536 turns of about 4 cycles: 2048 ticks at 67 MHz, 1024 at 134 MHz)
 static void apply_opts(void) {
     if (o_aa) glEnable(GL_ANTIALIAS); else glDisable(GL_ANTIALIAS);
-    { static const u16 oc[4] = { RGB15(2, 2, 5), RGB15(0, 0, 0), RGB15(31, 31, 31), RGB15(31, 12, 20) }; if (o_out) { glEnable(GL_OUTLINE); glSetOutlineColor(0, oc[o_ocol]); } else glDisable(GL_OUTLINE); }
+    static const u8 sk[4][3] = { { 14, 20, 31 }, { 31, 18, 12 }, { 3, 4, 10 }, { 14, 28, 22 } }; int sn = sky_now();
+    static const u16 SZ[4] = { C15(7, 13, 28), C15(9, 7, 19), C15(1, 2, 6), C15(8, 20, 19) }, SH[4] = { C15(21, 26, 31), C15(31, 21, 13), C15(6, 8, 16), C15(22, 30, 26) };
+    sky_zn = SZ[sn]; sky_hz = SH[sn];
+    { static const u16 oc[4] = { RGB15(2, 2, 5), RGB15(0, 0, 0), RGB15(31, 31, 31), RGB15(31, 12, 20) }; int on = o_out || o_look == 2; u16 c = o_out ? oc[o_ocol] : RGB15(3, 3, 6);
+      if (on) { glEnable(GL_OUTLINE); for (int k = 0; k < 8; k++) glSetOutlineColor(k, c); } else glDisable(GL_OUTLINE); }
     setBrightness(3, (o_bri - 4) * 3);
-    static const u8 sk[4][3] = { { 14, 20, 31 }, { 31, 18, 12 }, { 3, 4, 10 }, { 14, 28, 22 } }; int sn = sky_now(); glClearColor(sk[sn][0], sk[sn][1], sk[sn][2], 31);
-    if (isDSiMode()) setCpuClock(o_turbo ? true : false);
-    if (o_fog) { static const int fo[3] = { 0x1000, 0x2000, 0x4000 }; glEnable(GL_FOG); glFogShift(2); glFogColor(sk[sn][0], sk[sn][1], sk[sn][2], 31); glFogOffset(fo[o_fogd]); for (int q = 0; q < 32; q++) glFogDensity(q, q * 3); } else glDisable(GL_FOG);
+    if (isDSiMode() && o_turbo != 2) setCpuClock(true); else if (isDSiMode()) setCpuClock(false);
+    prof_full = o_detl == 2 || (o_detl == 0 && (fast_cpu || isDSiMode()));
+    { static const u8 RR[2][3] = { { 1, 2, 2 }, { 2, 3, 3 } }; ring_r = RR[prof_full][o_dd]; gx_far = 10 + ring_r * 4; if (o_look == 0) { ring_r = 1; gx_far = 12; } }   // (Classic: the D38 view)
+    int rich = o_look > 0 && mode != M_TITLE && mode != M_CAS;
+    if (rich) { glClearColor(sk[sn][0], sk[sn][1], sk[sn][2], 0); REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG0 | BLEND_DST_BACKDROP; sky_on = 1; }
+    else { glClearColor(sk[sn][0], sk[sn][1], sk[sn][2], 31); REG_BLDCNT = 0; sky_on = 0; }
+    { static const int fn[3] = { 10, 20, 30 }, ff[3] = { 45, 60, 80 }; int F = gx_far * 4096;   // (Fog on: thick, from close; Rich and Toon: a haze at the end of the view only)
+      if (o_fog) { glFogColor(sk[sn][0], sk[sn][1], sk[sn][2], rich ? 0 : 31); fog_setup(F / 100 * fn[o_fogd], F / 100 * ff[o_fogd], rich); }
+      else if (rich) { glFogColor(0, 0, 0, 0); fog_setup(F / 100 * 50, F / 100 * 94, 1); } else glDisable(GL_FOG); }
+    { int sp = o_look == 0 ? 0 : o_look == 1 ? 1 : 2; static u8 shin[128] __attribute__((aligned(4)));   // highlights: a soft curve (Rich), two hard bands (Toon)
+      for (int q = 0; q < 128; q++) { int t = q * 2; shin[q] = (u8)(sp == 2 ? (t > 200 ? 255 : t > 150 ? 110 : 0) : (t * t / 255) * t / 255); }
+      for (int q = 0; q < 32; q++) GFX_SHININESS = (u32)shin[q * 4] | (u32)shin[q * 4 + 1] << 8 | (u32)shin[q * 4 + 2] << 16 | (u32)shin[q * 4 + 3] << 24;
+      gx_spec = sp == 0 ? 0 : sp == 1 ? (RGB15(6, 6, 5) | BIT(15)) : (RGB15(9, 9, 8) | BIT(15)); }
     speed = o_spd + 1; snd_apply(); o_dirty = 0;
 }
 static int opt_pg;   // page within the tab (6 rows each)
@@ -2632,7 +2713,7 @@ static void live_touch(int tx, int ty) {
 void systemMsgHandler(int bytes, void *user_data);
 static volatile u32 lat_down; static volatile int lat_tx, lat_ty, lat_press, lat_got; static u32 lat_prev; static volatile u32 vbl_n;
 static void vb_latch(void) {   // every vblank, remember fresh presses, so a quick tap is never lost while a slow frame is being drawn
-    vbl_n++; gf_kick(vbl_n); u32 k = keysCurrent(), n = k & ~lat_prev; lat_prev = k;
+    vbl_n++; sky_vbl(); gf_kick(vbl_n); u32 k = keysCurrent(), n = k & ~lat_prev; lat_prev = k;
     lat_down |= n & ~(u32)KEY_TOUCH;
     if (n & KEY_TOUCH) { lat_press = 1; lat_got = 0; }
     if ((k & KEY_TOUCH) && lat_press && !lat_got) { touchPosition t; touchRead(&t); if (t.px || t.py) { lat_tx = t.px; lat_ty = t.py; lat_got = 1; } }   // (D35: was touchReadXY(&t), which in libnds 1.8.2 takes no argument and returns the struct: t stayed garbage, so a tap shorter than one pass of the main loop landed at a random place)
@@ -2645,6 +2726,7 @@ int main(void) {
     vramSetBankA(VRAM_A_TEXTURE); vramSetBankB(VRAM_B_TEXTURE); vramSetBankC(VRAM_C_SUB_BG); vramSetBankD(VRAM_D_MAIN_BG_0x06000000);
     int bg = bgInitSub(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0); scr_sub = scr = bgGetGfxPtr(bg);
     int bgm = bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0); hud = bgGetGfxPtr(bgm); bgSetPriority(bgm, 0);
+    if (isDSiMode()) setCpuClock(true); cpu_probe();   // (D40) is the CPU the DSi's fast one?
     glInit(); glEnable(GL_ANTIALIAS); glClearColor(14, 20, 31, 31); glClearPolyID(63); glClearDepth(0x7FFF); glViewport(0, 0, 255, 191); REG_BG0CNT = BG_PRIORITY(1);
     snd_init(); tabs_init(); for (int c = 0; c < 256; c++) if (PS1ID[c]) ID2CH[PS1ID[c] - 1] = (u8)c; bm_dials_default(); bm_new(seed); pop_build();
     cur_set = bm_capital(); town_pick(cur_set);
@@ -2703,7 +2785,10 @@ int main(void) {
             if (test_scene) { int sc = test_scene; test_scene = 0;   // (test builds only: the emulator runner pokes a scene number here to measure it: 1 island, 2 farm, 3 busy street, 4 Strange Town)
                 if (sc == 1) travel_go(Z_ISLAND); else if (sc == 4) travel_go(Z_TOWN);
                 else if (sc == 2) { memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(LOT_FARM, 1); occ_ok = 0; for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (7 + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 11 * 16; sims[q].act = -1; } }
-                else if (sc == 3) { for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (door_cx + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 13 * 16; sims[q].act = -1; } live_pitch = 2200; yaw_t = live_yaw = 4096 * 2; live_dist = 14000; } }
+                else if (sc == 3) { for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (door_cx + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 13 * 16; sims[q].act = -1; } live_pitch = 2200; yaw_t = live_yaw = 4096 * 2; live_dist = 14000; }
+                else if (sc == 5) { live_pitch = 1800; live_dist = 16000; yaw_t = live_yaw = 4096 * 2 + 1500; }   // (5: the horizon)
+                else if (sc >= 10 && sc < 13) { o_look = sc - 10; o_dirty = 1; }   // (10-12: Classic, Rich, Toon)
+                else if (sc >= 20 && sc < 23) { o_detl = sc - 20; o_dirty = 1; } }   // (20-22: Detail Auto, DS, DSi)
 #endif
             if (cam_on) {   // stylus camera: drag to orbit/tilt (or pan), buttons for zoom, follow, reset, done
                 if (down & KEY_TOUCH) { cam_drag = 0; if (hit(216, 36, 38, 20, tp.px, tp.py)) { cam_pan ^= 1; forced = 1; } else if (hit(216, 58, 38, 20, tp.px, tp.py)) cam_drag = 1;
@@ -2775,7 +2860,9 @@ int main(void) {
         snd_tick();
         { static int lm = -9; if (mus_cur != lm) { lm = mus_cur; if (mode == M_LIVE && mus_cur >= 0) { static char nb[48]; sprintf(nb, "Now playing: %.22s", mus_name(mus_cur)); say(nb); } } }
         PROF(1);
+        { static int lm = -1; if ((mode == M_TITLE || mode == M_CAS) != lm) { lm = mode == M_TITLE || mode == M_CAS; o_dirty = 1; } }
         if (o_dirty) apply_opts();
+        if (sky_on) sky_update(pitch);
         // (D39) the 3D: a steady 30 frames a second (or up to 60, Options > System > Frame rate); the passes in between do the game and the 2D screens, so the touch screen answers at 60
         static u32 next3d; int is_lot = mode == M_LIVE || mode == M_BUY || mode == M_BUILD;
         if (is_lot) {   // (D39) the lot: a new frame is written whenever the last one has been taken; the vblank interrupt sends it on the beat
