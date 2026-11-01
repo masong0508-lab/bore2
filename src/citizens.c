@@ -1386,6 +1386,7 @@ void citizens_update(int steps) {
 }
 
 // ---- drawing ----------------------------------------------------------------------------------------------
+int cit_live_cap = 99, cit_fresh_max = 2;   // (main's speed helper, when frames run slow: fewer people in full 3D, fewer first sprites a frame)
 int dbg_end_hist[24], cit_need_hb;   // (cit_need_hb: this frame's cost without the spare-time sprite renders; 0: no crowd drawn this frame)
 int cit_n_full, cit_n_lod, cit_n_spr, cit_n_vis; static int cit_end_hb = -1;
 void citizens_draw(void) {
@@ -1427,7 +1428,7 @@ void citizens_draw(void) {
     // live: the biggest on the screen (too big for a sprite cell at 1:1, or near enough that their sprite would go stale fast),
     // the very biggest first, while the frame has time
     static u8 was_live[NCIT];                                         // (a little give, so no one flips between the two)
-    for (int live = 0; live < MIN(cit_live_max, LIVE_MAX); live++) {
+    for (int live = 0; live < MIN(MIN(cit_live_max, cit_live_cap), LIVE_MAX); live++) {
         int best = -1;
         for (int k = 0; k < n; k++) if (tier[k] == 1 && need[k] > (was_live[order[k]] ? 100 : 112) && crowd_has(order[k]) && (best < 0 || need[k] > need[best])) best = k;
         if (best < 0 || (live >= 2 && gfx_hb() + live * 36 > 340)) break;
@@ -1455,7 +1456,7 @@ void citizens_draw(void) {
         int best = -1, bs = 4;
         for (int k = 0; k < n; k++) if (tier[k] == 1 && score[k] > bs) { bs = score[k]; best = k; }
         if (best < 0) break;
-        if (bs >= 100000) { if (++fresh > 2) break; }
+        if (bs >= 100000) { if (++fresh > cit_fresh_max) break; }
         else if (budget-- <= 0) break;
         Cit *c = &cits[order[best]];
         PROF_BEGIN(); crowd_sprite(order[best], &pp[best], c->yaw, &c->gait, 1); PROF_END(6);

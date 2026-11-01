@@ -1416,7 +1416,8 @@ static int edit_load(int wx, int wy) {
     for (int y = 0; y < BM_BLK; y++) { memcpy(&lifeMap[oy + y][ox], e->map[y], BM_BLK); memcpy(&floorMap[oy + y][ox], e->fl[y], BM_BLK); memcpy(&wallMap[oy + y][ox], e->wp[y], BM_BLK); }
     return 1;
 }
-static void mark_dirty(int l, int mx, int my) { if (world_zone == ZONE_CITY && l <= 0 && mx >= 0 && my >= 0 && mx < MW && my < MH) wdirty[my / BM_BLK][mx / BM_BLK] = 1; }
+extern int world_stamp;
+static void mark_dirty(int l, int mx, int my) { if (l <= 0) world_stamp++; if (world_zone == ZONE_CITY && l <= 0 && mx >= 0 && my >= 0 && mx < MW && my < MH) wdirty[my / BM_BLK][mx / BM_BLK] = 1; }
 static int own_at(int wx, int wy) { return own.used && world_wbx + wx == own.bx && world_wby + wy == own.by; }
 static int own_in_window(int *wx, int *wy) {
     if (!own.used || world_zone != ZONE_CITY || world_wbx < 0) return 0;
@@ -1789,7 +1790,18 @@ void world_reset_all(void) {
     ao_dirty = 1; for (int i = 0; i < ZONE_N; i++) { if (i < ZONE_CITY) zone_drop(i); levels_clear(lvown[i]); } world_zone = ZONE_HOME; UP = lvown[0]; world_gen(); }
 char world_at(int mx, int my) { return world_at_l(world_lvl, mx, my); }
 static int is_wall(char c) { return c == 'W' || c == 'w' || c == 'E' || c == 'e' || c == 'f'; }
-int world_covered(int mx, int my) {   // a tile under the far end of a long thing (a bed) from a neighbour's tile: the neighbour's tile owns it
+static int world_covered0(int mx, int my);
+// (asked for every step by every walker for every tile it looks at: on the ground floor the answer is kept, bit by bit, until the world changes)
+static u32 cov_known[MH][(MW + 31) / 32], cov_val[MH][(MW + 31) / 32]; static int cov_stamp = -1, cov_wx, cov_wy, cov_zone;
+int world_covered(int mx, int my) {
+    if (world_lvl > 0 || mx < 0 || my < 0 || mx >= MW || my >= MH) return world_covered0(mx, my);
+    if (cov_stamp != world_stamp || cov_wx != world_wbx || cov_wy != world_wby || cov_zone != world_zone) {
+        memset(cov_known, 0, sizeof cov_known); cov_stamp = world_stamp; cov_wx = world_wbx; cov_wy = world_wby; cov_zone = world_zone; }
+    u32 bit = 1u << (mx & 31); int w = mx >> 5;
+    if (!(cov_known[my][w] & bit)) { cov_known[my][w] |= bit; if (world_covered0(mx, my)) cov_val[my][w] |= bit; else cov_val[my][w] &= ~bit; }
+    return (cov_val[my][w] & bit) != 0;
+}
+static int world_covered0(int mx, int my) {   // a tile under the far end of a long thing (a bed) from a neighbour's tile: the neighbour's tile owns it
     for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
         if (!(dx | dy)) continue;
         int x = mx + dx, y = my + dy; if (x < 0 || y < 0 || x >= MW || y >= MH) continue;

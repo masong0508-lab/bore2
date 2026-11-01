@@ -4608,6 +4608,7 @@ int main(void) {
                     far_haze = shed_lvl >= 3 ? 0 : opt[O_HAZE];
                     if (shed_lvl >= 4) { far_trees = 0; far_detail = 0; }
                     int c = ((opt[O_CROWD] & 3) + 1) * 16 >> shed_lvl; cit_maxdraw = c < 8 ? 8 : c;
+                    { extern int cit_live_cap, cit_fresh_max; cit_live_cap = shed_lvl >= 4 ? 1 : 99; cit_fresh_max = shed_lvl >= 3 ? 1 : 2; }
                 }
             }
             if (world_detail_r > det_opt) world_detail_r = det_opt;
