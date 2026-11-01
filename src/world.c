@@ -1812,20 +1812,38 @@ COLD static void shift2d(u8 *a, int stride, int w, int h, int dx, int dy, u8 fil
 static void roof_shift(int dx, int dy); static void ao_region(int X0, int Y0, int X1, int Y1);
 static u8 rq_dirty[WB][WB]; static int rq_n;                  // the blocks that have come into the window, their roofs still to work out
 static u8 ao[MH + 1][MW + 1];
-extern int dbg_ws[4];
+extern int dbg_ws[8];
+// The blocks that come into the window are made one a frame, the nearest first, in the frames after the move (they are at least 16 tiles
+// from you as they come in: past the full-detail range). The move itself only slides the maps. All four in the moving frame cost 180 hb
+// on top of the slide; one a frame is 45. Until it is made a block is open grass with nothing on it.
+static u8 gen_pend[WB][WB]; static int gen_npend;
+static void gen_one(int wx, int wy) {
+    int keep_r = roof_dirty, keep_a = ao_dirty;
+    gen_block(wx, wy); gen_pend[wy][wx] = 0; gen_npend--;
+    roof_dirty = keep_r; ao_dirty = keep_a;                                       // (the lots' own builders flag the whole map)
+    if (!rq_dirty[wy][wx]) { rq_dirty[wy][wx] = 1; rq_n++; }
+    ao_region(wx * BM_BLK, wy * BM_BLK, wx * BM_BLK + BM_BLK, wy * BM_BLK + BM_BLK);
+    for (int y = wy * BM_BLK; y < wy * BM_BLK + BM_BLK; y++) lifeMap[y][MW] = 0;
+    world_stamp++;
+}
+static void gen_flush(void) { for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) if (gen_pend[wy][wx]) gen_one(wx, wy); gen_npend = 0; }
 static void window_shift(int sx, int sy) {
+    gen_flush();                                                                  // (a move before the last one's blocks were all made: make them now)
     int T0 = gfx_hb(), T; world_stamp++;
     for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks leaving: keep what was built on
         int nx = wx - sx, ny = wy - sy;
         if (nx >= 0 && ny >= 0 && nx < WB && ny < WB) continue;
         blk_keep(wx, wy);
     }
+    T = gfx_hb(); if (T - T0 > dbg_ws[4]) dbg_ws[4] = T - T0;
     int dx = sx * BM_BLK, dy = sy * BM_BLK;
     shift2d((u8 *)lifeMap, MW + 1, MW, MH, dx, dy, '.');
     shift2d((u8 *)floorMap, MW, MW, MH, dx, dy, FL_GRASS);
     shift2d((u8 *)wallMap, MW, MW, MH, dx, dy, 0);
+    { int T2 = gfx_hb(); if (T2 - T > dbg_ws[5]) dbg_ws[5] = T2 - T; T = T2; }
     for (int k = 0; k < NUP; k++) { Level *L = lv_get(k); if (!L) continue;
-        shift2d((u8 *)L->map, MW + 1, MW, MH, dx, dy, ' '); shift2d((u8 *)L->fl, MW, MW, MH, dx, dy, 0); shift2d((u8 *)L->wp, MW, MW, MH, dx, dy, 0); }
+        shift2d((u8 *)L->map, MW + 1, MW, MH, dx, dy, ' '); shift2d((u8 *)L->fl, MW, MW, MH, dx, dy, 0); shift2d((u8 *)L->wp, MW, MW, MH, dx, dy, 0); dbg_ws[7]++; }
+    { int T2 = gfx_hb(); if (T2 - T > dbg_ws[6]) dbg_ws[6] = T2 - T; }
     shift2d((u8 *)wdirty, WB, WB, WB, sx, sy, 0);
     world_wbx += sx; world_wby += sy;
     int z = ZONE_CITY, n = 0;                                                     // the homes that stay, moved over
@@ -1844,9 +1862,9 @@ static void window_shift(int sx, int sy) {
       if (!keep_r) roof_shift(dx, dy);
       T = gfx_hb(); if (T - T0 > dbg_ws[1]) dbg_ws[1] = T - T0; T0 = T;
       shift2d(&rq_dirty[0][0], WB, WB, WB, sx, sy, 0);
-      for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks coming into view
+      for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks coming into view: made in the frames that follow
           int ox = wx + sx, oy = wy + sy;
-          if (ox < 0 || oy < 0 || ox >= WB || oy >= WB) { gen_block(wx, wy); rq_dirty[wy][wx] = 1; }
+          if (ox < 0 || oy < 0 || ox >= WB || oy >= WB) { gen_pend[wy][wx] = 1; gen_npend++; rq_dirty[wy][wx] = 0; }
       }
       T = gfx_hb(); if (T - T0 > dbg_ws[2]) dbg_ws[2] = T - T0; T0 = T;
       rq_n = 0; for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) rq_n += rq_dirty[wy][wx];
@@ -1865,19 +1883,41 @@ COLD void world_open_at(int cbx, int cby) {          // the window round block (
     world_wbx = CLAMP(cbx - WB / 2, 0, BM_N - WB); world_wby = CLAMP(cby - WB / 2, 0, BM_N - WB);
     nhomes[ZONE_CITY] = 0;
     levels_clear(UP);
-    memset(wdirty, 0, sizeof wdirty);
+    memset(wdirty, 0, sizeof wdirty); memset(gen_pend, 0, sizeof gen_pend); gen_npend = 0;
     for (int y = 0; y < MH; y++) lifeMap[y][MW] = 0;
     for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) gen_block(wx, wy);
     ao_dirty = 1; roof_dirty = 1;
 }
-int world_stream(int ptx, int pty, int *dtx, int *dty) {
-    *dtx = *dty = 0;
+// The move can wait: as you step into an edge block the window's own edge is still 16 tiles off. It waits for a frame with the time to
+// spare before its vblank (main: world_stream_spare, after the frame is drawn), and goes in the update anyway when you are within 5 tiles
+// of the edge or it has waited 150 frames. A move costs about 250 hb: in a frame of its own it took a 3-vblank frame to 4.
+int world_stream_want, world_stream_hb = 260, dbg_ws_spare;
+static int ws_wait;
+int world_stream_now(int ptx, int pty, int *dtx, int *dty, int now);
+int world_stream(int ptx, int pty, int *dtx, int *dty) { return world_stream_now(ptx, pty, dtx, dty, 0); }
+int world_stream_now(int ptx, int pty, int *dtx, int *dty, int now) {
+    *dtx = *dty = 0; world_stream_want = 0;
     if (world_zone != ZONE_CITY || world_wbx < 0 || ptx < 0 || pty < 0 || ptx >= MW || pty >= MH) return 0;
     int bxp = ptx / BM_BLK, byp = pty / BM_BLK, sx = (bxp >= WB - 1) - (bxp <= 0), sy = (byp >= WB - 1) - (byp <= 0);   // (in one of the two middle blocks: the window stays; further out it moves)
     if (world_wbx + sx < 0 || world_wbx + sx > BM_N - WB) sx = 0;
     if (world_wby + sy < 0 || world_wby + sy > BM_N - WB) sy = 0;
-    if (!sx && !sy) return 0;
-    window_shift(sx, sy);
+    if (!sx && !sy) {
+        if (gen_npend > 0) {                                                      // a block still to make: the nearest to you, this frame
+            int bw = -1, bh = 0, bd = 1 << 20;
+            for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) if (gen_pend[wy][wx]) { int d = ABS(wx - bxp) + ABS(wy - byp); if (d < bd) { bd = d; bw = wx; bh = wy; } }
+            if (bw >= 0) gen_one(bw, bh); else gen_npend = 0;
+        }
+        return 0;
+    }
+    if (!now) {
+        int edge = 1 << 20;                                                       // tiles left to the window's edge, the way it would move
+        if (sx > 0) edge = MIN(edge, WB * BM_BLK - 1 - ptx); if (sx < 0) edge = MIN(edge, ptx);
+        if (sy > 0) edge = MIN(edge, WB * BM_BLK - 1 - pty); if (sy < 0) edge = MIN(edge, pty);
+        if (edge > 5 && ws_wait < 150) { ws_wait++; world_stream_want = 1; return 0; }
+    }
+    { int t0 = gfx_hb(); window_shift(sx, sy); int t = gfx_hb() - t0;
+      world_stream_hb = t > world_stream_hb ? t : world_stream_hb - ((world_stream_hb - t) >> 2); }   // (what a move costs: the most lately, easing down)
+    ws_wait = 0;
     *dtx = sx * BM_BLK; *dty = sy * BM_BLK;
     return 1;
 }
@@ -2914,7 +2954,7 @@ static u32 lvl_edge[NLEVELS][MH][(MW + 31) / 32];  // each storey's tiles next t
 // what was worked out for the blocks that stay is moved with them and only the blocks coming in are worked out (a few a frame).
 static int bld_alloc(void) { for (int b = 1; b < NBLD; b++) if (b_x0[b] == 255) { if (b > nbld) nbld = b; return b; } return NBLD - 1; }
 static u8 rbox[NLEVELS][4];
-int dbg_rr_hb, dbg_rr_n, dbg_rr_blk, dbg_ws[4];
+int dbg_rr_hb, dbg_rr_n, dbg_rr_blk, dbg_ws[8];
 // the roofs and buildings of the box [x0..x1] x [y0..y1] (the whole map, or a block that has just come in)
 static u32 bld_gen;                                    // (bumped whenever the buildings are worked out again: what keys on bld[][] knows)
 static void roof_region(int x0, int y0, int x1, int y1) {
@@ -3062,12 +3102,22 @@ static void roof_rebuild(void) {
     roof_dirty = 0; memset(rq_dirty, 0, sizeof rq_dirty); rq_n = 0;
 }
 // the window moved dx, dy tiles (whole blocks): the roofs, the buildings and the storeys' edges move with it
-static void bits_shift(u32 (*rows)[(MW + 31) / 32], int dx, int dy) {   // a bit a tile: the map slid by (dx, dy) tiles
-    static u32 tmp[MH][(MW + 31) / 32];
-    memset(tmp, 0, sizeof tmp);
-    for (int y = 0; y < MH; y++) { int ys = y + dy; if (ys < 0 || ys >= MH) continue;
-        for (int x = 0; x < MW; x++) { int xs = x + dx; if (xs >= 0 && xs < MW && ((rows[ys][xs >> 5] >> (xs & 31)) & 1)) tmp[y][x >> 5] |= 1u << (x & 31); } }
-    memcpy(rows, tmp, sizeof tmp);
+// a bit a tile: the map slid by (dx, dy) tiles. A row is three words, slid as words (it went a bit at a time: 6400 tests a map, eleven maps,
+// most of the 870 hb the window's move cost in one frame)
+_Static_assert((MW + 31) / 32 == 3 && MW > 64, "bits_shift: a row is three words");
+static void bits_shift(u32 (*rows)[(MW + 31) / 32], int dx, int dy) {
+    const u32 top = (1u << (MW - 64)) - 1;
+    int y0 = dy >= 0 ? 0 : MH - 1, y1 = dy >= 0 ? MH : -1, st = dy >= 0 ? 1 : -1;   // (in place: rows read before they are written)
+    for (int y = y0; y != y1; y += st) {
+        int ys = y + dy; u32 *d = rows[y];
+        if (ys < 0 || ys >= MH) { d[0] = d[1] = d[2] = 0; continue; }
+        u32 a = rows[ys][0], b = rows[ys][1], c = rows[ys][2] & top; int k = dx;   // new bit x = old bit x + dx
+        while (k >= 32) { a = b; b = c; c = 0; k -= 32; }
+        while (k <= -32) { c = b; b = a; a = 0; k += 32; }
+        if (k > 0) { a = (a >> k) | (b << (32 - k)); b = (b >> k) | (c << (32 - k)); c >>= k; }
+        else if (k < 0) { k = -k; c = (c << k) | (b >> (32 - k)); b = (b << k) | (a >> (32 - k)); a <<= k; }
+        d[0] = a; d[1] = b; d[2] = c & top;
+    }
 }
 static void roof_shift(int dx, int dy) {
     bld_gen++;

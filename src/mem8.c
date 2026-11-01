@@ -34,26 +34,44 @@ void *xalloc(u32 n) {
 u32 xfree_bytes(void) { if (!x_top) return 0; u32 r = (u32)(x_end - x_top); for (int i = 0; i < nxr; i++) r += xr[i].n; return r; }
 
 __attribute__((optimize("no-tree-loop-distribute-patterns")))
+// (a source a byte or two off its destination's word, as a map slid by 18 tiles or a row 81 bytes wide is, went a byte at a time: five
+//  times slower. It goes in whole words now, each put together from two by shifts)
 void wmove(void *dst, const void *src, u32 n) {
     u8 *d = (u8 *)dst; const u8 *s = (const u8 *)src;
     if (d == s || !n) return;
     if (d < s || d >= s + n) {                                    // forwards
-        if ((((u32)d ^ (u32)s) & 3) == 0) {
-            while (n && ((u32)d & 3)) { *d++ = *s++; n--; }
-            u32 *dw = (u32 *)d; const u32 *sw = (const u32 *)s;
-            while (n >= 16) { u32 a = sw[0], b = sw[1], c = sw[2], e = sw[3]; dw[0] = a; dw[1] = b; dw[2] = c; dw[3] = e; dw += 4; sw += 4; n -= 16; }
-            while (n >= 4) { *dw++ = *sw++; n -= 4; }
-            d = (u8 *)dw; s = (const u8 *)sw;
+        while (n && ((u32)d & 3)) { *d++ = *s++; n--; }
+        if (n >= 4) {
+            u32 *dw = (u32 *)d; u32 off = (u32)s & 3;
+            if (!off) {
+                const u32 *sw = (const u32 *)s;
+                while (n >= 16) { u32 a = sw[0], b = sw[1], c = sw[2], e = sw[3]; dw[0] = a; dw[1] = b; dw[2] = c; dw[3] = e; dw += 4; sw += 4; n -= 16; }
+                while (n >= 4) { *dw++ = *sw++; n -= 4; }
+                s = (const u8 *)sw;
+            } else {                                              // (the source a byte or two off the word: whole words, put together by shifts)
+                const u32 *sw = (const u32 *)(s - off); u32 sh = off * 8, a = *sw++;
+                while (n >= 8) { u32 b = sw[0], c = sw[1]; dw[0] = (a >> sh) | (b << (32 - sh)); dw[1] = (b >> sh) | (c << (32 - sh)); a = c; sw += 2; dw += 2; n -= 8; s += 8; }
+                if (n >= 4) { u32 b = *sw; *dw++ = (a >> sh) | (b << (32 - sh)); n -= 4; s += 4; }
+            }
+            d = (u8 *)dw;
         }
         while (n--) *d++ = *s++;
     } else {                                                      // backwards (the copy overlaps, ahead of the source)
         d += n; s += n;
-        if ((((u32)d ^ (u32)s) & 3) == 0) {
-            while (n && ((u32)d & 3)) { *--d = *--s; n--; }
-            u32 *dw = (u32 *)d; const u32 *sw = (const u32 *)s;
-            while (n >= 16) { dw -= 4; sw -= 4; u32 a = sw[0], b = sw[1], c = sw[2], e = sw[3]; dw[0] = a; dw[1] = b; dw[2] = c; dw[3] = e; n -= 16; }
-            while (n >= 4) { *--dw = *--sw; n -= 4; }
-            d = (u8 *)dw; s = (const u8 *)sw;
+        while (n && ((u32)d & 3)) { *--d = *--s; n--; }
+        if (n >= 4) {
+            u32 *dw = (u32 *)d; u32 off = (u32)s & 3;
+            if (!off) {
+                const u32 *sw = (const u32 *)s;
+                while (n >= 16) { dw -= 4; sw -= 4; u32 a = sw[0], b = sw[1], c = sw[2], e = sw[3]; dw[0] = a; dw[1] = b; dw[2] = c; dw[3] = e; n -= 16; }
+                while (n >= 4) { *--dw = *--sw; n -= 4; }
+                s = (const u8 *)sw;
+            } else {
+                const u32 *sw = (const u32 *)(s - off); u32 sh = off * 8, hi = *sw;
+                while (n >= 8) { u32 lo = sw[-1], lo2 = sw[-2]; dw[-1] = (lo >> sh) | (hi << (32 - sh)); dw[-2] = (lo2 >> sh) | (lo << (32 - sh)); hi = lo2; sw -= 2; dw -= 2; n -= 8; s -= 8; }
+                if (n >= 4) { u32 lo = sw[-1]; *--dw = (lo >> sh) | (hi << (32 - sh)); n -= 4; s -= 4; }
+            }
+            d = (u8 *)dw;
         }
         while (n--) *--d = *--s;
     }

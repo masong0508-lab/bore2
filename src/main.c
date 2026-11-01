@@ -609,6 +609,13 @@ static void hud_life(void) {
 }
 
 static int alone_opt = 1;   // (OPTIONS > LIFE > YOUR BORE ALONE, from opts_apply)
+// the map window following you (world_stream): the update asks (now 0: it may wait for a frame with time to spare), the end of a frame
+// with time left before its vblank moves it (now 1)
+static void life_stream(int now) {
+    const Sim *s = &sims[player]; int dtx, dty, ts_ = hb_now();
+    if (world_stream_now(sim_tile_x(s), sim_tile_y(s), &dtx, &dty, now)) { sim_shift(dtx, dty); citizens_shift(dtx, dty); cam_fx -= dtx * TILE; cam_fz += dty * TILE;
+        { extern int dbg_shift_hb, dbg_shifts; int d = hb_now() - ts_; if (d > dbg_shift_hb) dbg_shift_hb = d; dbg_shifts++; } }
+}
 static void life_update(int steps) {
     if (nh_pending) { nh_pending = 0; nhood_open(1); return; }
     if (mode_pending == 1) { mode_pending = 0; travel_go(ZONE_ISLAND); story_visit[1] = 1; sim_note("STRANDED! THE BOAT HOME IS ON THE BEACH"); return; }
@@ -819,9 +826,7 @@ static void life_update(int steps) {
 #endif
         }
 #endif
-        int ts_ = hb_now();
-        if (world_stream(sim_tile_x(s), sim_tile_y(s), &dtx, &dty)) { sim_shift(dtx, dty); citizens_shift(dtx, dty); cam_fx -= dtx * TILE; cam_fz += dty * TILE;
-            { extern int dbg_shift_hb, dbg_shifts; int d = hb_now() - ts_; if (d > dbg_shift_hb) dbg_shift_hb = d; dbg_shifts++; } }
+        (void)dtx; (void)dty; life_stream(0);   // (the move may wait for a frame with time to spare: see the end of the frame)
     }
     story_tick(steps);
     feed_poll();
@@ -4968,6 +4973,10 @@ int main(void) {
             case ST_WMAKE: wm_update(); if (state == ST_WMAKE) wm_draw(); else if (state == ST_MODE) mode_draw(); else if (state == ST_NHED) ne_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_NAME) name_draw(); else life_draw(); break;
         }
         t_cpu = hb_now() - t_frame0;
+        if (state == ST_LIFE && world_stream_want) {   // the map window's move, waiting: now, if it fits before the vblank this frame reaches anyway
+            int vb = (t_cpu + 40 + 262) / 263; if (vb < gfx_min_vsyncs) vb = gfx_min_vsyncs;
+            if (vb * 2625 / 10 - t_cpu - 40 >= world_stream_hb + 16) { extern int dbg_ws_spare; life_stream(1); dbg_ws_spare++; t_cpu = hb_now() - t_frame0; }
+        }
 #ifdef AB_NOSHED
         if (0) {   // (test builds: the speed helper off, so a setting's own cost shows)
 #else

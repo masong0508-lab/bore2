@@ -1737,6 +1737,7 @@ void citizens_draw(void) {
     int vb = (now + rest_lo + CIT_FLIP_HB - 36 + 262) / 263; if (vb < gfx_min_vsyncs) vb = gfx_min_vsyncs;   // (24 hb past it: clearly)
     int target = vb * 2625 / 10 - CIT_FLIP_HB;
     if (cit_sprite_rate == 0) target = end + (target - end) / 2;     // (SPRITES: SLOW: half the spare time)
+    { extern int world_stream_want, world_stream_hb; if (world_stream_want) target -= world_stream_hb + 16; }   // (the map window's move waiting for spare time comes first)
     cit_spare_hb = cit_spare_build(target - end);                     // a body someone is waiting for
     int est = MAX(20, crowd_render_hb) + 4, fresh = 0, nr = 0, over = 0, waiting = 0;
     for (int r = 0; r < 12; r++) {

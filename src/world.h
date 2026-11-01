@@ -54,6 +54,8 @@ void world_new_seed(u32 seed);                   // a new life: a new world
 u32  world_seed(void);                           // this world's seed (the memory card)
 void world_open_at(int bx, int by);              // build the window round that block
 int  world_stream(int ptx, int pty, int *dtx, int *dty);   // keep it round the player's tile: 1 if it moved (everything shifts by -dtx, -dty tiles)
+int  world_stream_now(int ptx, int pty, int *dtx, int *dty, int now);   // now 0: the move may wait for a frame with time to spare (world_stream_want)
+extern int world_stream_want, world_stream_hb;                           // (a move is waiting; what one costs lately)
 void world_arrival(int set, int *px, int *py);   // open the window at a town and say where to stand (the street by its square)
 // the family's own lot (home.c): one block of SAN BOREAS, kept as they build it, every storey (with the properties' tiles)
 void world_own_set(int bx, int by, const u8 *occ);   // bought (occ: adults, kids, teens, elders, a couple, babies: it comes furnished for them; 0: a property of theirs, as it is)
