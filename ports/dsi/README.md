@@ -169,3 +169,6 @@ A touch held while the screen changes (title OK, the Map button) no longer picks
 
 ## D35
 The PS1's whole buy catalogue: 189 items in the PS1's ten tabs, with the PS1's models (tools/dsbuild/mk_dsitems.py -> source/ds_items.h), names, prices and action words; two-tile beds; a picture of each item's model on its shop card. Short taps are no longer lost (the tap latch read garbage), Buy runs about four times faster, tapping a tall item in Live picks it. See docs/DSI_ROADMAP.md.
+
+## D36
+Walkable storeys (up to four), stairs from Buy > Special (Go Up / Go Down in Live), the Floor chip in Buy and Build, the PS1's loft in the map's two-storey homes, old storey shells turned into real floors; gable ends fixed; fps readout on Options > Graphics > Poly meter.

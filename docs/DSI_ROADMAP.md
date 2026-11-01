@@ -1,4 +1,4 @@
-# BORE 2 DS / DSi: roadmap (updated at D35)
+# BORE 2 DS / DSi: roadmap (updated at D36)
 
 ## Where we are
 A Sims-DS style life sim on two screens, one ROM (`bore2_dsi_d33.nds`) that runs on DS, DSi and the emulators (melonDS, DraStic, NooDS, DeSmuME).
@@ -51,9 +51,30 @@ Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
   - Tapping an item in Live tests the item's whole box as the camera sees it, nearest first: tall and thin things (a dartboard on its post, a lamp, a fridge's top) are caught where they are drawn, not by the floor behind them.
 - Tested in melonDS: all ten tabs and their pages; every tab's items laid out on a bare plot (a test-only key in a `-DDSTEST` build) and looked at; buying and placing a 1x1 and a 1x2 bed, turning it 2x1; a D34 save loaded in D35; a save with new items (single bed, dartboard) saved and reloaded; tapping the dartboard in Live gives "Throw Darts" and the Bore walks over and plays.
 
+**Done at D36 (`bore2_dsi_d36.nds`): walkable storeys and stairs**
+- **Up to four storeys** (the ground and three more; the PS1 has six). Each upper storey has its own floor (cells without one are open air), walls, doors, fences and things, as the ground does. Build and Buy work on one storey at a time: the **Floor N** chip at the top right of their screen steps through them, the plan shows that storey (open air dark, a stairwell marked), and the 3D view rises to it with the storeys above cut away.
+- **The PS1's rules:** an upper floor needs something under it or a floor beside it on its own storey; a stairwell stays open; Erase upstairs takes the floor itself away (not under a thing); things upstairs stand on floor only ("Build a floor there first").
+- **Stairs** (Buy > Special, $400, the PS1's STAIRS): a flight of eight steps from its open front up a whole storey. Placing it opens the cell above it as the stairwell ("No storey above the top one" on the top storey); selling it closes the stairwell again; it cannot be moved (as on the PS1). In Live, tap the flight: **Go Up** walks the Bore to its foot and up to the cell behind it on the storey above ("Build a floor where the stairs come out" if there is none); tap the stairwell from above: **Go Down** walks to the landing and down to the cell in front of the flight ("Something is in the way down there").
+- **Sims on storeys:** each Bore walks on its own storey (pathfinding per storey, only on floor), the camera rises to your Bore's storey and the storeys over it are cut away (Roofs: Always shows the whole house; Cutaway shows it when nobody is in it; the roof sits on the top storey). Taps pick on your storey. A baby is born on its parent's storey.
+- **Generated homes:** the map's TWO-STOREY lots now have the PS1's loft up the stairs (a floor over the back rooms with a bed, a lamp, a rug and a computer, and a gable roof).
+- **Saves:** a lot's upper storeys follow its things (a spare bit of its count says so), the sims' storeys have their own block; a lot saved before D36 with Storeys 2-3 gets its old shell turned into real floors with walls round them on entering. Item ids are now fixed in `tools/dsbuild/ds_item_ids.txt` (a saved thing is its id; new PS1 items only ever add lines), and D35's ids are unchanged.
+- **Fixes:** the gable roof's two end triangles were drawn upside down (under the ground) everywhere: on the lots, the neighbours' houses and the Map preview. The street round the plot in Buy/Build is drawn after the house (and its lane dashes are flat), so when the DS's polygon list is full it is the scenery that goes, not the fridge.
+- **Readout:** Options > Graphics > Poly meter now shows the frame rate too (Live: on the top screen; Buy, Build, Map: in the top screen's corner).
+- Tested in melonDS: a TWO-STOREY lot's loft (plan and 3D at each storey); Go Up and Go Down in Live; a save made upstairs reloads upstairs; a D34 save with "Storeys: 2" loads as a real second floor; flat and gable roofs on the loft; stairs bought and placed.
+
+**Frame rate in melonDS** (main-loop passes a second, the DS's 60 Hz; quads sent to the GPU, the DS's limit is 1536 quads by its 6144 vertices). Default lot (the generated house, 3 sims, citizens and cars in Live):
+
+| Scene | D34 | D35 | D36 |
+|---|---|---|---|
+| Map | 60 | 60 | 60 (311 quads) |
+| Live, the house | about 32 | 43-45 | 43-45 (1363 quads) |
+| Live, upstairs in a two-storey | - | - | 41-46 |
+| Buy | about 15 | 55-56 | 55-56 (1397 quads) |
+| Build | - | 56-58 | 56-58 (1457 quads) |
+
 ## Next (in this order)
 1. **Real-hardware and Android tests** of the song reader (`cart_blk` in `main.c`), saving and touch. If a loader blocks cartridge reads, add an SD (libfat) path for DSi.
-2. **Walkable upper floors** (stairs, second-floor rooms) to go with the storey shell.
+2. ~~Walkable upper floors~~ done at D36.
 3. ~~Catalogue to the PS1 size~~ done at D35.
 4. **Graphics options still open:** toon shading, per-item level of detail, screen swap, left-handed UI, text size, high contrast, colour filters.
 5. **Speed:** done at D32 (redraw only what changed, tap latching).
@@ -63,7 +84,7 @@ Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
 | PS1 feature | Source | DS state |
 |---|---|---|
 | Buy catalogue (10 tabs, ~180 items) | items.c, tools/make_items2.py | **done (D35)**: 189 items in the PS1 tabs, PS1 models, names, prices, actions; doors and stairs are Build things |
-| Build tools (rooms, doors, windows, floors, roof, storeys) | world.c | walls, fences, floors, roof, storeys (shell only) done |
+| Build tools (rooms, doors, windows, floors, roof, storeys) | world.c | walls, fences, floors, roof done; **walkable storeys and stairs done (D36)**, 4 storeys (PS1 6); no room tool or windows yet |
 | San Boreas map, places, hours | bigmap.c, places.c | shared map; lot types simplified |
 | Jobs, careers | places.c, story.c | **done (D31)**, simplified (6 jobs, no real workplaces) |
 | Wants and fears | wants.c | **done (D31)**, 16 wants and 5 fears |

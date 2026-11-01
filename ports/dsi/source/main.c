@@ -211,7 +211,7 @@ static void draw_map(void) {
 // ---------- the top screen: one lot in 3D ----------
 #define T 330                  // a tile in 4.12 fixed point (1.0 = 4096), so a 13-tile lot is about a unit wide
 #define LOTN 13
-static int polys;
+static int polys, gy_off, polys_last, fps_now;   // (gy_off: the rise of a storey being drawn, D36)
 static inline int tl(int t) { return (t - LOTN) * T; }   // tile coordinate -> centred model coordinate
 static void qd(int x0, int y0, int z0, int x1, int y1, int z1, int x2, int y2, int z2, int x3, int y3, int z3, u16 c) {
     if (lit_on) {   // lit: set the material from the colour, then the normal (which computes the lit colour); no glColor after it
@@ -224,6 +224,7 @@ static void qd(int x0, int y0, int z0, int x1, int y1, int z1, int x2, int y2, i
         else { float nx = (float)inx, ny = (float)iny, nz = (float)inz, l = nx * nx + ny * ny + nz * nz;
             if (l > 0) { float k = 511.0f * lit_sgn / __builtin_sqrtf(l); glNormal(NORMAL_PACK((int)(nx * k), (int)(ny * k), (int)(nz * k))); } }
     } else glColor(c);
+    y0 += gy_off; y1 += gy_off; y2 += gy_off; y3 += gy_off;
     glVertex3v16(x0, -y0, z0); glVertex3v16(x1, -y1, z1); glVertex3v16(x2, -y2, z2); glVertex3v16(x3, -y3, z3); polys += 2;
 }
 static u16 shade(u16 c, int k) {   // k/8 of the colour
@@ -242,8 +243,8 @@ static void gable(int x0, int z0, int x1, int z1, int y, int ridge, u16 roof) { 
     int zm = (z0 + z1) / 2;
     qd(x0, y, z0, x1, y, z0, x1, y + ridge, zm, x0, y + ridge, zm, roof);
     qd(x0, y + ridge, zm, x1, y + ridge, zm, x1, y, z1, x0, y, z1, shade(roof, 6));
-    glColor(shade(roof, 5)); glVertex3v16(x0, y, z0); glVertex3v16(x0, y, z1); glVertex3v16(x0, y + ridge, zm); glVertex3v16(x0, y + ridge, zm); polys++;
-    glColor(shade(roof, 5)); glVertex3v16(x1, y, z0); glVertex3v16(x1, y + ridge, zm); glVertex3v16(x1, y, z1); glVertex3v16(x1, y + ridge, zm); polys++;
+    qd(x0, y, z0, x0, y, z1, x0, y + ridge, zm, x0, y + ridge, zm, shade(roof, 5));   // (D36: the gable ends; they were drawn with y the wrong way up, under the ground)
+    qd(x1, y, z0, x1, y + ridge, zm, x1, y, z1, x1, y + ridge, zm, shade(roof, 5));
 }
 static void tree(int x, int z, int s) {   // a trunk, three tiers of leaves, a bright top
     block(x - s / 8, z - s / 8, x + s / 8, z + s / 8, 0, -s * 5 / 10, C15(13, 8, 4), C15(13, 8, 4));
@@ -303,15 +304,26 @@ static void sim3d(int i, int yaw);
 typedef struct { u8 x, y, c, i, rot; } Obj;
 static Obj objs[400]; static int nobj, funds = 20000;
 static void obj_fp(const Obj *o, int *w, int *h) { const Item *it = IT_OF(o); if (o->rot & 1) { *w = it->fl; *h = it->fw; } else { *w = it->fw; *h = it->fl; } }   // (D35) the cells it covers: a two-tile bed is 1 x 2, turned 2 x 1
-static u16 occ[GN][GN]; static int occ_ok; static u32 occ_sum;   // what stands on each plot cell: its object + 1 (bit 15: it blocks walking), rebuilt when the objects change
-static void occ_build(void) { memset(occ, 0, sizeof occ); for (int i = 0; i < nobj; i++) { int w, h; obj_fp(&objs[i], &w, &h); u16 v = (u16)((i + 1) | (IT_OF(&objs[i])->kind != 1 ? 0x8000 : 0)); for (int y = objs[i].y; y < objs[i].y + h && y < GN; y++) for (int x = objs[i].x; x < objs[i].x + w && x < GN; x++) occ[y][x] = v; } occ_ok = 1; }
+// ---- (D36) WALKABLE STOREYS: up to UPN floors over the ground, each with its own floor (0: open air), walls and things; stairs join them (as the PS1's)
+#define UPN 3                                  // upper storeys (the PS1 has 5): the ground and three more
+#define WHF (T * 21 / 5)                       // a storey's height (the walls')
+#define OBJ_LV(o) (((o)->rot >> 2) & 3)        // a thing's storey rides in its turn byte (bits 2-3), so every save's objects are still 5 bytes and old ones are on the ground
+static u8 uflr[UPN][GN][GN], uhwl[UPN][GN + 1][GN], uvwl[UPN][GN][GN + 1];
+static int LV, ed_lv, cam_y;                   // the storey being worked on (walking, taps, the plan), the one Buy and Build edit, the camera's rise
+static void ups_clear(void); static int obj_solid(int cx, int cy);
+static u16 occ[UPN + 1][GN][GN]; static int occ_ok; static u32 occ_sum;   // what stands on each cell of each storey: its object + 1 (bit 15: it blocks walking), rebuilt when the objects change
+static void occ_build(void) { memset(occ, 0, sizeof occ); for (int i = 0; i < nobj; i++) { int w, h, l = OBJ_LV(&objs[i]); if (l > UPN) continue; obj_fp(&objs[i], &w, &h); u16 v = (u16)((i + 1) | (IT_OF(&objs[i])->kind != 1 ? 0x8000 : 0)); for (int y = objs[i].y; y < objs[i].y + h && y < GN; y++) for (int x = objs[i].x; x < objs[i].x + w && x < GN; x++) occ[l][y][x] = v; } occ_ok = 1; }
 static void occ_check(void) { u32 sm = (u32)nobj * 2654435761u; const u8 *q = (const u8 *)objs; for (int i = 0; i < nobj * 5; i++) sm = sm * 31 + q[i]; if (sm != occ_sum) { occ_sum = sm; occ_ok = 0; } }   // (once a frame, so nothing that moves an object is missed)
 static u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1];     // floors (0 none, else 1..5), walls on the cell edges (0 none, else 1..4)
+static u8 (*FLv(int L))[GN] { return L ? uflr[L - 1] : flr; }      // a storey's floor, walls along x, walls along z
+static u8 (*HWv(int L))[GN] { return L ? uhwl[L - 1] : hwl; }
+static u8 (*VWv(int L))[GN + 1] { return L ? uvwl[L - 1] : vwl; }
 static int mode = M_MAP, cat, pick = -1, pcx = 6, pcy = 6, prot, tool, pal, cam = 3000, pitch = 3200, msg_t;
 static const char *msg = "";
 typedef struct { int x, y, tx, ty, wx, wy, need[6], acc[6], act, act_left, act_amt, act_obj, face, rel, dirn, age, soc, tgt; u8 skin, hair, hcol, shirt, beard, fc, pm[PMN]; u16 cc[3]; } Sim;   // x, y in 1/16 cells; needs 0..100: hunger, fun, energy, social, bladder, hygiene
 #define SIM_MAX 6
 static Sim sims[SIM_MAX]; static int cur_sim, nsim = 3, ctl, minutes = 11 * 60 + 40;
+static u8 slv[SIM_MAX];   // (D36) the storey each sim is on
 static char sname[SIM_MAX][20] = { "Ashley Newbie", "Ronald Bacon", "Kit Farlow" };
 static const char *const STGN[6] = { "Baby", "Toddler", "Child", "Teen", "Adult", "Elder" };   // the life stages: 0-2, 3-5, 6-12, 13-17, 18-59, 60+ years (a year is a day on the clock)
 // ============ LIFE (D31): careers, wants and fears, the dog, ghosts, roofs and storeys ============
@@ -324,7 +336,7 @@ typedef struct { s16 bx, by; int x, y, tx, ty; u8 skin, hair, shirt, on; } Ghost
 static Life life[SIM_MAX]; static Ghost gh[GH_MAX]; static int ngh, gh_next;
 static int life_ver, info_pg, jobui, juke, juke_pg, dog_have, roof_st, up_st;
 static struct { int x, y, tx, ty, wx, wy, hun, fx, fz; } dog;
-static void life_ev(int i, int ev, int arg), ghost_add(const Sim *m), dog_reset(void), dog_draw(void), ghost_draw(void), shell_draw(void), day_roll(void); static int cl100(int v);
+static void life_ev(int i, int ev, int arg), ghost_add(const Sim *m), dog_reset(void), dog_draw(void), ghost_draw(void), day_roll(void); static int cl100(int v);
 static int stage_of(int a) { return a < 3 ? 0 : a < 6 ? 1 : a < 13 ? 2 : a < 18 ? 3 : a < 60 ? 4 : 5; }
 static const int STSC[6] = { 36, 50, 68, 88, 100, 95 };   // how tall each stage is, in percent
 static u8 ilim[SIM_MAX][SIM_MAX];   // how many times two household members have talked today
@@ -443,7 +455,7 @@ static void say(const char *m) { static const u8 MT[3] = { 45, 90, 150 }; msg = 
    
     if (strstr(m, "Bought") || strstr(m, "Sold")) sfx(1); else if (strstr(m, "saved") || strstr(m, "loaded")) sfx(3); else if (strstr(m, "is now a")) sfx(5);
     else if (strstr(m, "Cannot") || strstr(m, "full") || strstr(m, "Not ") || strstr(m, "Too ") || strstr(m, "failed") || strstr(m, "No ") || strstr(m, "damaged")) sfx(2); }
-static int obj_at(int x, int y) { if (x < 0 || y < 0 || x >= GN || y >= GN) return -1; if (!occ_ok) occ_build(); return (occ[y][x] & 0x7FFF) - 1; }   // the object covering that cell
+static int obj_at(int x, int y) { if (x < 0 || y < 0 || x >= GN || y >= GN) return -1; if (!occ_ok) occ_build(); return (occ[LV][y][x] & 0x7FFF) - 1; }   // the object covering that cell (of the storey LV)
 static int spawn_x[3], spawn_y[3];
 
 // ---------- the open street world (D16): the lot you live on is the middle of a 3x3 patch of lot slots; walk off it and the next lot is there ----------
@@ -461,6 +473,7 @@ static int far_solid(int wx, int wy) {   // a cell outside the plot: open street
     const BInfo *b = &nb[sy + 1][sx + 1]; if (b->terrain == BT_SEA) return 1; if (!far_house(b)) return 0;
     int lx = wx - sx * SLC, ly = wy - sy * SLC, x0, z0, x1, z1; far_foot(b, &x0, &z0, &x1, &z1); return lx >= x0 && lx < x1 && ly >= z0 && ly < z1;
 }
+static int gen_two;   // (D36) the lot is a TWO-STOREY: the house gets its loft
 static void gen_house(void) {   // a roomy starter home from the lot's seed: bedroom + bathroom at the back, living room + kitchen/dining at the front, real doors between, furnished with space to walk
     u32 h = lot_seed * 2654435761u + 12345; int mir = (h >> 3) & 1, w = 11 + ((h >> 5) & 1), d = 9, x0 = ((h >> 7) & 1), y0 = 1, x1 = x0 + w, y1 = y0 + d;
     int ym = y0 + 4, xm = x0 + 7, xk = x0 + 7, xd = x0 + 3; u8 ow = (u8)(1 + ((h >> 9) & 3)), iw = 4;
@@ -481,6 +494,13 @@ static void gen_house(void) {   // a roomy starter home from the lot's seed: bed
     PUT(x0, ym + 2, 2, 0, 1); PUT(x0 + 3, ym + 2, 0, 2, 3); PUT(x0 + 2, ym + 2, 1, 2, 0); PUT(x0 + 2, y1 - 1, 0, 1, 2); PUT(x0, y1 - 1, 3, 2, 0); PUT(x0, ym, 3, 0, 0); PUT(x0 + 5, y1 - 1, 3, 1, 0);   // tv, sofa, coffee table, armchair, plant, lamp, rug
     PUT(xk, ym, 2, 3, 0); PUT(xk + 1, ym, 1, 3, 0); PUT(xk + 2, ym, 1, 3, 0); PUT(xk + 2, ym + 3, 1, 0, 0); PUT(xk + 1, ym + 3, 0, 0, 1); PUT(xk + 3, ym + 3, 0, 0, 3);   // fridge, counters, dining table and two chairs
     PUT(x0 + 5, y0 + 3, 2, 2, 1);                                           // a stereo
+    if (gen_two) {   // the loft: a floor over the back rooms, walls round it, stairs up from the living room (they rise to the back), a bed, a lamp and a rug up there
+        for (int yy = y0; yy < ym; yy++) for (int xx = x0; xx < x1; xx++) uflr[0][yy][MC(xx)] = 2;
+        for (int xx = x0; xx < x1; xx++) { uhwl[0][y0][MC(xx)] = ow; uhwl[0][ym][MC(xx)] = ow; } for (int yy = y0; yy < ym; yy++) { uvwl[0][yy][ME(x0)] = ow; uvwl[0][yy][ME(x1)] = ow; }
+        uhwl[0][ym][MC(x0 + 5)] = 0;                                         // (the top of the stairs: open)
+        PUT(x0 + 5, ym, ID_STAIRS >> 2, ID_STAIRS & 3, 0);                  // the stairs (their landing: the loft's cell behind them)
+        PUT(x0 + 1, y0, 4, 0, 4); PUT(x0, y0, 3, 0, 4); PUT(x0 + 3, y0 + 1, 3, 1, 4); PUT(x1 - 2, y0, 2, 1, 4);   // bed, lamp, rug, computer (rot | storey 1 << 2)
+        roof_st = 2; }
     pcx = MC(xd); pcy = y1 + 1; door_cx = MC(xd); door_cy = y1; { static const int sp[3] = { 1, 4, 5 }; for (int k = 0; k < 3; k++) { spawn_x[k] = MC(x0 + sp[k]); spawn_y[k] = y1 - 3; } }
     #undef PUT
     #undef FL
@@ -512,19 +532,27 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
     for (int q = 0; q < 3; q++) { spawn_x[q] = 5 + q; spawn_y[q] = y1 - 2; }
     #undef PUTP
 }
-static void place_sims(void) { for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; int cx = i < 3 ? spawn_x[i] : door_cx + (i % 3) - 1, cy = i < 3 ? spawn_y[i] : door_cy + 1 + i / 3; if (cy > GN - 1) cy = GN - 1; m->x = m->tx = m->wx = cx * 16; m->y = m->ty = m->wy = cy * 16; m->act = -1; m->act_left = 0; } }
+static void place_sims(void) { memset(slv, 0, sizeof slv); for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; int cx = i < 3 ? spawn_x[i] : door_cx + (i % 3) - 1, cy = i < 3 ? spawn_y[i] : door_cy + 1 + i / 3; if (cy > GN - 1) cy = GN - 1; m->x = m->tx = m->wx = cx * 16; m->y = m->ty = m->wy = cy * 16; m->act = -1; m->act_left = 0; } }
 static void lot_reset(void) {
-    memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; pick = -1; mode = M_LIVE;   /* (funds are the household's: set by new_household, not reset on every lot you walk into) */ cat = 0; tool = 0; pal = 1;
+    memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); ups_clear(); memset(slv, 0, sizeof slv); ed_lv = 0; nobj = 0; occ_ok = 0; pick = -1; mode = M_LIVE;   /* (funds are the household's: set by new_household, not reset on every lot you walk into) */ cat = 0; tool = 0; pal = 1;
     gen_house(); nsim = 3; ctl = 0; cur_sim = 0; memset(ilim, 0, sizeof ilim); strcpy(sname[0], "Ashley Newbie"); strcpy(sname[1], "Ronald Bacon"); strcpy(sname[2], "Kit Farlow");
     for (int i = 0; i < 3; i++) { Sim *m = &sims[i]; m->x = spawn_x[i] * 16; m->y = spawn_y[i] * 16; m->tx = m->x; m->ty = m->y; m->wx = m->x; m->wy = m->y; m->act = -1; m->act_left = 0; m->age = i == 0 ? 24 : i == 1 ? 31 : 9; m->soc = -1; m->tgt = 0;
         for (int n = 0; n < 6; n++) { m->need[n] = 90 - (n * 17 + i * 11) % 60; m->acc[n] = 0; } m->rel = 0; for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0; if (i) { m->skin = (u8)(i * 2); m->hair = (u8)(i); m->hcol = (u8)(i * 2); m->shirt = (u8)(i + 2); m->hair = (u8)(6 + i * 2); m->beard = (u8)(i == 1 ? 3 : 0); m->fc = (u8)i; } }
 }
 
-typedef struct { int bx, by, nobj, pcx, pcy, dcx, dcy; u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1]; Obj objs[400]; u8 roof, up; } LotSave;
+typedef struct { int bx, by, nobj, pcx, pcy, dcx, dcy; u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1]; Obj objs[400]; u8 roof, up, hasup; u8 ufl[UPN][GN][GN], uhw[UPN][GN + 1][GN], uvw[UPN][GN][GN + 1]; } LotSave;
+static int top_lv(void); static int lv_box(int L, int *x0, int *y0, int *x1, int *y1);
+static void ups_clear(void) { memset(uflr, 0, sizeof uflr); memset(uhwl, 0, sizeof uhwl); memset(uvwl, 0, sizeof uvwl); }
+static void shell_to_floors(int up) {   // (D36) a lot saved before D36: its upper storeys were a shell over the house; now real floors with walls round them (and stairs to buy)
+    int x0, y0, x1, y1; if (!lv_box(0, &x0, &y0, &x1, &y1)) return;
+    for (int L = 1; L <= up && L <= UPN; L++) { for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) uflr[L - 1][y][x] = 2;
+        for (int x = x0; x < x1; x++) { uhwl[L - 1][y0][x] = 1; uhwl[L - 1][y1][x] = 1; } for (int y = y0; y < y1; y++) { uvwl[L - 1][y][x0] = 1; uvwl[L - 1][y][x1] = 1; } }
+}
 #define LSV_N 48   // lots remembered (and saved)
 static LotSave lsv[LSV_N]; static int lsv_n, lsv_next;
 static void lot_save(void) { if (lot_bx < 0) return; int k = -1; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) k = i; if (k < 0) { if (lsv_n < LSV_N) k = lsv_n++; else { for (int t = 0; t < LSV_N && lot_owned(lsv[lsv_next].bx, lsv[lsv_next].by); t++) lsv_next = (lsv_next + 1) % LSV_N; k = lsv_next; lsv_next = (lsv_next + 1) % LSV_N; } }
-    LotSave *q = &lsv[k]; q->bx = lot_bx; q->by = lot_by; q->nobj = nobj; q->pcx = pcx; q->pcy = pcy; q->dcx = door_cx; q->dcy = door_cy; q->roof = (u8)roof_st; q->up = (u8)up_st; memcpy(q->flr, flr, sizeof flr); memcpy(q->hwl, hwl, sizeof hwl); memcpy(q->vwl, vwl, sizeof vwl); memcpy(q->objs, objs, sizeof objs); }
+    LotSave *q = &lsv[k]; q->bx = lot_bx; q->by = lot_by; q->nobj = nobj; q->pcx = pcx; q->pcy = pcy; q->dcx = door_cx; q->dcy = door_cy; q->roof = (u8)roof_st; up_st = top_lv(); q->up = (u8)up_st; q->hasup = 1; memcpy(q->flr, flr, sizeof flr); memcpy(q->hwl, hwl, sizeof hwl); memcpy(q->vwl, vwl, sizeof vwl); memcpy(q->objs, objs, sizeof objs);
+    memcpy(q->ufl, uflr, sizeof uflr); memcpy(q->uhw, uhwl, sizeof uhwl); memcpy(q->uvw, uvwl, sizeof uvwl); }
 static void prop_trade(void) {   // Buy or Sell on the Map
     BInfo b; bm_block(sel_x, sel_y, &b);
     if (lot_owned(sel_x, sel_y)) {
@@ -536,10 +564,12 @@ static void prop_trade(void) {   // Buy or Sell on the Map
 }
 static void lot_enter(int bx, int by) {   // the lot you walk into: what you built there last time, or a new home from its own seed
     if (lot_bx >= 0 && (lot_bx != bx || lot_by != by)) life_ev(ctl, WN_VISIT, 0);
-    lot_bx = bx; lot_by = by; lot_seed = (u32)(bx * 73856093 ^ by * 19349663); pick = -1;
-    for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == bx && lsv[i].by == by) { LotSave *q = &lsv[i]; nobj = q->nobj; pcx = q->pcx; pcy = q->pcy; door_cx = q->dcx; door_cy = q->dcy; roof_st = q->roof; up_st = q->up; memcpy(flr, q->flr, sizeof flr); memcpy(hwl, q->hwl, sizeof hwl); memcpy(vwl, q->vwl, sizeof vwl); memcpy(objs, q->objs, sizeof objs); occ_ok = 0; nb_load(); return; }
-    memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; occ_ok = 0; roof_st = up_st = 0;
-    { BInfo bi; bm_block(bx, by, &bi); if (bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) gen_house(); else gen_public(bi.lot, bi.h); } nb_load();
+    lot_bx = bx; lot_by = by; lot_seed = (u32)(bx * 73856093 ^ by * 19349663); pick = -1; memset(slv, 0, sizeof slv); ed_lv = 0; int keep = LV; LV = 0;
+    for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == bx && lsv[i].by == by) { LotSave *q = &lsv[i]; nobj = q->nobj; pcx = q->pcx; pcy = q->pcy; door_cx = q->dcx; door_cy = q->dcy; roof_st = q->roof; up_st = q->up; memcpy(flr, q->flr, sizeof flr); memcpy(hwl, q->hwl, sizeof hwl); memcpy(vwl, q->vwl, sizeof vwl); memcpy(objs, q->objs, sizeof objs); occ_ok = 0;
+        if (q->hasup) { memcpy(uflr, q->ufl, sizeof uflr); memcpy(uhwl, q->uhw, sizeof uhwl); memcpy(uvwl, q->uvw, sizeof uvwl); } else { ups_clear(); shell_to_floors(up_st); }
+        nb_load(); LV = keep; return; }
+    memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); ups_clear(); nobj = 0; occ_ok = 0; roof_st = up_st = 0;
+    { BInfo bi; bm_block(bx, by, &bi); if (bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) { gen_two = bi.lot == LOT_TWO; gen_house(); gen_two = 0; } else gen_public(bi.lot, bi.h); } nb_load(); LV = keep;
 }
 static void lot_cross(void) {   // the sim you are playing left the lot's slot: the next lot becomes the middle one and everything slides back by one slot
     const Sim *m = &sims[ctl]; int dx = fdiv(m->x + 8, 16 * SLC), dy = fdiv(m->y + 8, 16 * SLC); if (!dx && !dy) return;
@@ -595,13 +625,16 @@ static void draw_mini(int x, int y, int w, int h, int id) {
 static void age_txt(char *t, int mk) { int lo = 0, hi = 5; while (lo < 5 && !((mk >> lo) & 1)) lo++; while (hi > 0 && !((mk >> hi) & 1)) hi--; if (lo == 0 && hi == 5) strcpy(t, "Anyone"); else sprintf(t, "%.3s-%.3s", STGN[lo], STGN[hi]); }
 #define PX 2                  // the plan view: 13 cells of 12 pixels
 #define PY 22
+static int stairs_below(int L, int x, int y) { if (!L) return -1; int keep = LV; LV = L - 1; int o = obj_at(x, y); LV = keep; return o >= 0 && OBJ_ID(&objs[o]) == ID_STAIRS ? o : -1; }   // (D36) the flight that rises into this cell from the storey below
 static void plan(int ghost) {
+    u8 (*fl)[GN] = FLv(LV); u8 (*hw)[GN] = HWv(LV); u8 (*vw)[GN + 1] = VWv(LV);
     for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) {
-        rect(PX + x * 12, PY + y * 12, 12, 12, flr[y][x] ? FLOORC[flr[y][x] - 1] : (((x + y) & 1) ? C15(9, 18, 7) : C15(11, 20, 8)));
+        rect(PX + x * 12, PY + y * 12, 12, 12, fl[y][x] ? FLOORC[fl[y][x] - 1] : LV ? (((x + y) & 1) ? C15(4, 6, 10) : C15(5, 7, 12)) : (((x + y) & 1) ? C15(9, 18, 7) : C15(11, 20, 8)));
+        if (LV && !fl[y][x] && stairs_below(LV, x, y) >= 0) { rect(PX + x * 12 + 2, PY + y * 12 + 2, 8, 8, C15(24, 18, 11)); rect(PX + x * 12 + 4, PY + y * 12 + 4, 4, 4, C15(4, 6, 10)); }   // the stairwell
         rect(PX + x * 12, PY + y * 12, 12, 1, C15(0, 0, 0) | 0); }
-    for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) if (hwl[y][x]) rect(PX + x * 12, PY + y * 12 - 1, 13, 3, WALLC[hwl[y][x] - 1]);
-    for (int y = 0; y < GN; y++) for (int x = 0; x <= GN; x++) if (vwl[y][x]) rect(PX + x * 12 - 1, PY + y * 12, 3, 13, WALLC[vwl[y][x] - 1]);
-    for (int i = 0; i < nobj; i++) { int w, h; obj_fp(&objs[i], &w, &h); rect(PX + objs[i].x * 12 + 2, PY + objs[i].y * 12 + 2, w * 12 - 4, h * 12 - 4, IT_OF(&objs[i])->col); }
+    for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) if (hw[y][x]) rect(PX + x * 12, PY + y * 12 - 1, 13, 3, WALLC[hw[y][x] - 1]);
+    for (int y = 0; y < GN; y++) for (int x = 0; x <= GN; x++) if (vw[y][x]) rect(PX + x * 12 - 1, PY + y * 12, 3, 13, WALLC[vw[y][x] - 1]);
+    for (int i = 0; i < nobj; i++) { if (OBJ_LV(&objs[i]) != LV) continue; int w, h; obj_fp(&objs[i], &w, &h); rect(PX + objs[i].x * 12 + 2, PY + objs[i].y * 12 + 2, w * 12 - 4, h * 12 - 4, IT_OF(&objs[i])->col); }
     if (ghost) { int w = 1, h = 1; if (mode == M_BUY && pick >= 0) { const Item *it = &ITEMS[pick]; w = prot & 1 ? it->fl : it->fw; h = prot & 1 ? it->fw : it->fl; }
         int X = PX + pcx * 12, Y = PY + pcy * 12, gw = w * 12, gh = h * 12; rect(X, Y, gw, 1, 0xFFFF); rect(X, Y + gh - 1, gw, 1, 0xFFFF); rect(X, Y, 1, gh, 0xFFFF); rect(X + gw - 1, Y, 1, gh, 0xFFFF); }
 }
@@ -629,8 +662,9 @@ static void draw_ui(void) {
     backdrop();
     const char *tn[4] = { "Map", "Live", "Buy", "Build" };
     rect(0, 0, 256, 18, C15(2, 4, 12));
-    for (int i = 0; i < 4; i++) chip(i * 64 + 1, 1, 62, 15, tn[i], mode == i);
+    for (int i = 0; i < 4; i++) chip(i * 52 + 1, 1, 50, 15, tn[i], mode == i);
     char t[40];
+    if (mode == M_BUY || mode == M_BUILD) { sprintf(t, "Floor %d", ed_lv + 1); chip(210, 1, 45, 15, t, ed_lv > 0); }   // (D36) the storey Buy and Build work on
     rect(0, 172, 160, 20, C15(2, 4, 12)); rect(1, 173, 158, 18, C15(5, 12, 26)); coin(5, 176); sprintf(t, "%d", funds); text(15, 177, 1, C15(31, 31, 20), t);
     clk(t, minutes % 1440); text(160 - tw(1, t) - 6, 177, 1, C15(24, 28, 31), t);
     if (msg_t > 0) { int w = tw(1, msg) + 12; rect(80 - w / 2 + 40, 160, w, 12, C15(2, 2, 4)); rect(80 - w / 2 + 41, 161, w - 2, 10, C15(26, 10, 6)); text(80 - w / 2 + 46, 163, 1, C15(31, 31, 31), msg); }
@@ -657,13 +691,14 @@ static void draw_ui(void) {
         chip(166, 96, 82, 20, "Place", 1); chip(166, 118, 82, 20, "Turn", 0); chip(166, 140, 82, 18, "Back", 0);
     } else if (mode == M_BUILD) {
         plan(1);
-        static char rl[16], sl[16]; static const char *const RN[3] = { "None", "Flat", "Gable" }; sprintf(rl, "Roof: %s", RN[roof_st]); sprintf(sl, "Storeys: %d", up_st + 1);
-        const char *tl2[7] = { "Floor", "Wall", "Erase", "Move", "Sell", rl, sl };
-        for (int i = 0; i < 7; i++) button(164, 22 + i * 14, 88, 13, tl2[i], C15(24, 14, 8), tool == i);
+        static char rl[16]; static const char *const RN[3] = { "None", "Flat", "Gable" }; sprintf(rl, "Roof: %s", RN[roof_st]);
+        const char *tl2[6] = { "Floor", "Wall", "Erase", "Move", "Sell", rl };
+        for (int i = 0; i < 6; i++) button(164, 22 + i * 14, 88, 13, tl2[i], C15(24, 14, 8), tool == i);
+        if (ed_lv) { sprintf(t, "Floor %d of %d", ed_lv + 1, UPN + 1); text(164, 110, 1, C15(8, 12, 22), t); }
         int n = tool == 0 ? 5 : tool == 1 ? 6 : 0;
         for (int i = 0; i < n; i++) { rect(164 + i * 15, 124, 14, 15, pal == i + 1 ? 0xFFFF : C15(2, 2, 4)); rect(166 + i * 15, 126, 10, 11, tool == 0 ? FLOORC[i] : WALLC[i]); }
-        text(164, 144, 1, C15(20, 24, 28), tool == 1 ? "Drag along edges" : tool == 3 ? "Drag furniture" : tool == 4 ? "Tap furniture" : tool == 5 ? "Tap to change" : tool == 6 ? "Tap to add one" : "Drag to paint");
-        if (tool >= 5) text(164, 154, 1, C15(20, 24, 28), "See Options>Roofs");
+        text(164, 144, 1, C15(20, 24, 28), tool == 1 ? "Drag along edges" : tool == 3 ? "Drag furniture" : tool == 4 ? "Tap furniture" : tool == 5 ? "Tap to change" : "Drag to paint");
+        if (tool == 5) text(164, 154, 1, C15(20, 24, 28), "See Options>Roofs"); else if (ed_lv) text(164, 154, 1, C15(20, 24, 28), "Stairs: Buy>Special");
     }
 }
 static int lot_touch(int tx, int ty) {   // a stylus tap on the plan: the cell (or -1)
@@ -673,11 +708,11 @@ static int lot_touch(int tx, int ty) {   // a stylus tap on the plan: the cell (
 static u8 *edge_at(int tx, int ty) {   // the wall slot nearest the stylus
     int c = lot_touch(tx, ty); if (c < 0) return 0; int x = c % GN, y = c / GN, fx = (tx - PX) % 12, fy = (ty - PY) % 12, d[4] = { fy, 11 - fy, fx, 11 - fx }, b = 0;
     for (int k = 1; k < 4; k++) if (d[k] < d[b]) b = k;
-    return b == 0 ? &hwl[y][x] : b == 1 ? &hwl[y + 1][x] : b == 2 ? &vwl[y][x] : &vwl[y][x + 1];
+    u8 (*hw)[GN] = HWv(LV); u8 (*vw)[GN + 1] = VWv(LV); return b == 0 ? &hw[y][x] : b == 1 ? &hw[y + 1][x] : b == 2 ? &vw[y][x] : &vw[y][x + 1];
 }
 static int fp_free(int x, int y, int w, int h, int skip) {   // (D35) every cell of a footprint inside the plot, and nothing else on it
     if (x < 0 || y < 0 || x + w > GN || y + h > GN) return 0;
-    for (int j = y; j < y + h; j++) for (int i = x; i < x + w; i++) { int o = obj_at(i, j); if (o >= 0 && o != skip) return 0; }
+    for (int j = y; j < y + h; j++) for (int i = x; i < x + w; i++) { int o = obj_at(i, j); if ((o >= 0 && o != skip) || (LV && !uflr[LV - 1][j][i])) return 0; }   // (upstairs: on the floor only)
     return 1;
 }
 static void place_here(void) {
@@ -685,19 +720,27 @@ static void place_here(void) {
     if (pick == 48) { if (dog_have) say("You already have a dog"); else if (funds < it->price) say("Not enough funds"); else { funds -= it->price; dog_have = 1; dog_reset(); life_ver++; ui_ver++; say("Welcome home, Rex!"); life_ev(ctl, WN_BUY, 0); } pick = -1; return; }   // (the puppy is the dog, not a thing)
     int w = prot & 1 ? it->fl : it->fw, h = prot & 1 ? it->fw : it->fl;
     if (pcx + w > GN || pcy + h > GN) { say("Not enough room"); return; }
+    if (LV) for (int j = pcy; j < pcy + h; j++) for (int i = pcx; i < pcx + w; i++) if (!uflr[LV - 1][j][i]) { say("Build a floor there first"); return; }
+    if (pick == ID_STAIRS && LV >= UPN) { say("No storey above the top one"); return; }   // (the PS1's words)
     if (!fp_free(pcx, pcy, w, h, -1)) { say("Something is there"); return; }
     if (nobj >= 400) { say("Lot is full"); return; }
     if (funds < it->price) { say("Not enough funds"); pick = -1; return; }
-    funds -= it->price; objs[nobj].x = (u8)pcx; objs[nobj].y = (u8)pcy; objs[nobj].c = (u8)(pick >> 2); objs[nobj].i = (u8)(pick & 3); objs[nobj].rot = (u8)prot; nobj++; occ_ok = 0; say("Bought"); ui_ver++; life_ev(ctl, WN_BUY, 0);
+    funds -= it->price; objs[nobj].x = (u8)pcx; objs[nobj].y = (u8)pcy; objs[nobj].c = (u8)(pick >> 2); objs[nobj].i = (u8)(pick & 3); objs[nobj].rot = (u8)(prot | LV << 2); nobj++; occ_ok = 0; say("Bought"); ui_ver++; life_ev(ctl, WN_BUY, 0);
+    if (pick == ID_STAIRS) { uflr[LV][pcy][pcx] = 0; say("Stairs: build a floor above, behind them"); }   // the cell over the flight becomes its stairwell
 }
-static void build_apply(int c) {   // paint or erase one cell
-    int x = c % GN, y = c / GN; pcx = x; pcy = y;
-    if (tool == 0 && flr[y][x] != pal) { flr[y][x] = (u8)pal; ui_ver++; }
-    else if (tool == 2) { flr[y][x] = 0; hwl[y][x] = 0; hwl[y + 1][x] = 0; vwl[y][x] = 0; vwl[y][x + 1] = 0; ui_ver++; }
+static int floor_ok(int L, int x, int y) {   // (D36) an upper floor needs something under it, or a floor beside it on its own storey (the PS1's rule); a stairwell stays open
+    if (!L) return 1; if (stairs_below(L, x, y) >= 0) return 0; if (L == 1 || FLv(L - 1)[y][x]) return 1;
+    u8 (*fl)[GN] = FLv(L); return (x > 0 && fl[y][x - 1]) || (x < GN - 1 && fl[y][x + 1]) || (y > 0 && fl[y - 1][x]) || (y < GN - 1 && fl[y + 1][x]);
+}
+static void build_apply(int c) {   // paint or erase one cell (of the storey being worked on)
+    int x = c % GN, y = c / GN; pcx = x; pcy = y; u8 (*fl)[GN] = FLv(LV); u8 (*hw)[GN] = HWv(LV); u8 (*vw)[GN + 1] = VWv(LV);
+    if (tool == 0 && fl[y][x] != pal && floor_ok(LV, x, y)) { fl[y][x] = (u8)pal; ui_ver++; }
+    else if (tool == 2) { if (LV && obj_at(x, y) >= 0) return; if (LV) fl[y][x] = 0; else flr[y][x] = 0; hw[y][x] = 0; hw[y + 1][x] = 0; vw[y][x] = 0; vw[y][x + 1] = 0; ui_ver++; }   // (upstairs the floor itself goes: open air)
 }
 static void ui_down(int tx, int ty) {
     last_tx = tx; last_ty = ty; drag = 0; drag_card = 0;
-    for (int i = 0; i < 4; i++) if (hit(i * 64, 0, 62, 16, tx, ty)) { set_mode(i); pick = -1; return; }
+    for (int i = 0; i < 4; i++) if (hit(i * 52, 0, 50, 16, tx, ty)) { set_mode(i); pick = -1; return; }
+    if (hit(210, 0, 46, 16, tx, ty)) { ed_lv = (ed_lv + 1) % (UPN + 1); LV = ed_lv; ui_ver++; return; }
     if (mode == M_BUY && pick < 0) {
         for (int k = 0; k < NTAB; k++) if (hit(2, 20 + k * 14, 56, 14, tx, ty)) { cat = k; bpage = 0; ui_ver++; }
         { int pages = tab_pages(); if (hit(204, 19, 24, 12, tx, ty)) { bpage = (bpage + pages - 1) % pages; ui_ver++; } if (hit(230, 19, 24, 12, tx, ty)) { bpage = (bpage + 1) % pages; ui_ver++; } }
@@ -710,15 +753,16 @@ static void ui_down(int tx, int ty) {
         if (hit(166, 118, 82, 20, tx, ty)) prot = (prot + 1) & 3;
         if (hit(166, 140, 82, 18, tx, ty)) pick = -1;
     } else if (mode == M_BUILD) {
-        for (int i = 0; i < 7; i++) if (hit(164, 22 + i * 14, 88, 13, tx, ty)) { tool = i; if (pal < 1) pal = 1; if (tool == 1 && pal > 6) pal = 6; if (i == 5) roof_st = (roof_st + 1) % 3; if (i == 6) up_st = (up_st + 1) % 3; ui_ver++; }
+        for (int i = 0; i < 6; i++) if (hit(164, 22 + i * 14, 88, 13, tx, ty)) { tool = i; if (pal < 1) pal = 1; if (tool == 1 && pal > 6) pal = 6; if (i == 5) roof_st = (roof_st + 1) % 3; ui_ver++; }
         int n = tool == 0 ? 5 : tool == 1 ? 6 : 0;
         for (int i = 0; i < n; i++) if (hit(164 + i * 15, 124, 14, 15, tx, ty)) pal = i + 1;
         int c = lot_touch(tx, ty);
         if (c >= 0) { int x = c % GN, y = c / GN; pcx = x; pcy = y;
             if (tool == 0 || tool == 2) { drag = 3; build_apply(c); }
             else if (tool == 1) { u8 *e = edge_at(tx, ty); if (e) { wall_val = *e ? 0 : pal; *e = (u8)wall_val; drag = 4; ui_ver++; } }
-            else if (tool == 3) { int o = obj_at(x, y); if (o >= 0) { drag = 5; move_obj = o; } }
-            else if (tool == 4) { int o = obj_at(x, y); if (o >= 0) { funds += IT_OF(&objs[o])->price / 2; objs[o] = objs[--nobj]; occ_ok = 0; say("Sold"); ui_ver++; } } }
+            else if (tool == 3) { int o = obj_at(x, y); if (o >= 0) { if (OBJ_ID(&objs[o]) == ID_STAIRS) say("Stairs stay put"); else { drag = 5; move_obj = o; } } }   // (the PS1 cannot pick stairs up either)
+            else if (tool == 4) { int o = obj_at(x, y); if (o >= 0) { int sx = objs[o].x, sy = objs[o].y, st = OBJ_ID(&objs[o]) == ID_STAIRS; funds += IT_OF(&objs[o])->price / 2; objs[o] = objs[--nobj]; occ_ok = 0; say("Sold"); ui_ver++;
+                if (st && LV < UPN) { u8 (*up)[GN] = FLv(LV + 1); int f = sx > 0 ? up[sy][sx - 1] : 0; if (!f && sx < GN - 1) f = up[sy][sx + 1]; if (!f && sy > 0) f = up[sy - 1][sx]; if (!f && sy < GN - 1) f = up[sy + 1][sx]; up[sy][sx] = (u8)f; } } } }   // (selling stairs closes their stairwell, if there is floor round it)
     }
 }
 static void ui_hold(int tx, int ty) {
@@ -734,7 +778,7 @@ static void ui_up(void) {
     else if (drag == 2) { if (lot_touch(last_tx, last_ty) >= 0) place_here(); else if (drag_card) { pick = -1; ui_ver++; } }
     drag = 0; drag_card = 0; move_obj = -1;
 }
-static int ob_x, ob_z, ob_sx = 68, ob_sz = 68, ob_w = 80, ob_l = 80, ob_rot, ob_hs = 100;   // the item being drawn: its corner, its scale across and along (a 10th of a unit), its footprint (80 a cell), its turn
+static int ob_x, ob_z, ob_sx = 68, ob_sz = 68, ob_w = 80, ob_l = 80, ob_rot, ob_hs = 100, lod_force;   // the item being drawn: its corner, its scale across and along (a 10th of a unit), its footprint (80 a cell), its turn
 static const u8 HSC[28] = { 140, 140, 140, 140, 200, 200, 200, 200, 200, 200, 180, 200, 200, 100, 170, 200, 150, 200, 170, 200, 150, 100, 200, 150, 100, 200, 90, 100 };
 static void ob2(int lx0, int lz0, int lx1, int lz1, int h0, int h1, u16 c, u16 top) {   // a part in cell units (0..80 a cell, front = +z), heights in tenths of a quarter-tile; sides c, top
     if (pv_cap) { if (npv < PVMAX && h1 > 0) { PBox *b = &pv[npv++]; b->x0 = (s16)lx0; b->z0 = (s16)lz0; b->x1 = (s16)lx1; b->z1 = (s16)lz1; b->h0 = (s16)(h0 * ob_hs / 100); b->h1 = (s16)(h1 * ob_hs / 100); b->c = c; b->t = top; } return; }   // (the shop's picture)
@@ -750,11 +794,11 @@ static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every
     { int ww = rot & 1 ? it->fl : it->fw, wl = rot & 1 ? it->fw : it->fl; ob_w = it->fw * 80; ob_l = it->fl * 80; ob_sx = (ww * 2 * T - T / 3) * 10 / (ww * 80); ob_sz = (wl * 2 * T - T / 3) * 10 / (wl * 80); }   // (a two-cell thing stretches to fill both)
     ob_x = tl(x * 2) + T / 6; ob_z = tl(y * 2) + T / 6; ob_rot = rot; ob_hs = id >= 0 && id < 28 ? HSC[id] : 100;
     if (it->nbox) {   // (D35) a PS1 model: its own boxes, converted by tools/dsbuild/mk_dsitems.py (PS1 units: 10 across, 7 up)
-        if (!pv_cap && (!o_det || (mode == M_LIVE && (abs(ob_x - camx) + abs(ob_z - camz) > (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500))))) { ob(8, 8, ob_w - 8, ob_l - 8, 0, it->h * 10 + 6, c); return; }
+        if (!pv_cap && (!o_det || lod_force || (mode == M_LIVE && (abs(ob_x - camx) + abs(ob_z - camz) > (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500))))) { ob(8, 8, ob_w - 8, ob_l - 8, 0, it->h * 10 + 6, c); return; }
         if (o_shd && !pv_cap && it->kind != 1) { u16 sh = LC(6, 5, 4); ob_x -= 6; ob_z -= 4; ob(0, 0, ob_w, ob_l, -3, 0, sh); ob_x += 6; ob_z += 4; }
         for (int k = 0; k < it->nbox; k++) { const IBx *b = &IBOX[it->box0 + k]; ob2(b->a0 * 10, b->b0 * 10, b->a1 * 10, b->b1 * 10, b->z0 * 7, b->z1 * 7, b->side, b->top); }
         return; }
-    if (!pv_cap && (!o_det || (mode == M_LIVE && (abs(ob_x - camx) + abs(ob_z - camz) > (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500))))) { if (it->kind == 1) ob(0, 0, 80, 80, 0, 3, c); else ob(8, 8, 72, 72, 0, it->h * 10 + 6, c); return; }
+    if (!pv_cap && (!o_det || lod_force || (mode == M_LIVE && (abs(ob_x - camx) + abs(ob_z - camz) > (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500))))) { if (it->kind == 1) ob(0, 0, 80, 80, 0, 3, c); else ob(8, 8, 72, 72, 0, it->h * 10 + 6, c); return; }
     if (it->kind == 1) { ob(0, 0, 80, 80, 0, 2, d); ob(6, 6, 74, 74, 0, 4, c); ob(14, 14, 66, 66, 0, 5, l); return; }   // rug: border and centre
     if (o_shd && !pv_cap) { u16 sh = LC(6, 5, 4); ob_x -= 6; ob_z -= 4; ob(0, 0, 80, 80, -3, 0, sh); ob_x += 6; ob_z += 4; }   // a soft dark shadow on the floor
     switch (id) {
@@ -923,63 +967,90 @@ static void draw_far_all(int yaw) {   // last, so the lot, the sims and the citi
         if (b->terrain == BT_SEA) { ground(tl(36 * i), tl(36 * j), tl(36 * i + 36), tl(36 * j + 36), -8, C15(5, 12, 24)); continue; }
         if (polys > 2700) continue; far_lot(b, 36 * i * T, 36 * j * T, nb_pop[j + 1][i + 1], yaw); }
 }
-// ---- roofs and upper storeys (D31): the shell of the building, drawn over the rooms ----
-static void shell_draw(void) {
-    if (!(roof_st || up_st)) return;
-    if (mode == M_LIVE ? o_roof == 2 : !(mode == M_BUILD && tool >= 5)) return;
-    int x0 = GN, x1 = -1, y0 = GN, y1 = -1;
-    for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) if (hwl[y][x] && hwl[y][x] != 6) { if (x < x0) x0 = x; if (x + 1 > x1) x1 = x + 1; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-    for (int y = 0; y < GN; y++) for (int x = 0; x <= GN; x++) if (vwl[y][x] && vwl[y][x] != 6) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y + 1 > y1) y1 = y + 1; }
-    if (x1 <= x0 || y1 <= y0) return;
-    if (mode == M_LIVE && o_roof == 0) for (int q = 0; q < nsim; q++) { int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16); if (cx >= x0 && cx < x1 && cy >= y0 && cy < y1) return; }   // cutaway: someone is home, so you can see in
-    int X0 = tl(x0 * 2), X1 = tl(x1 * 2), Z0 = tl(y0 * 2), Z1 = tl(y1 * 2), wh = T * 21 / 5; u16 wc = C15(29, 26, 21), tr = C15(24, 21, 16), wn = C15(8, 14, 22);
-    for (int s = 0; s < up_st; s++) { int ya = -wh * (s + 1), yb = -wh * (s + 2);
-        block(X0, Z0, X1, Z1, ya, yb, wc, tr);
-        if (polys < 2500) for (int x = X0 + T; x + T * 3 / 2 <= X1; x += T * 2) { int wy0 = ya - wh / 4, wy1 = yb + wh / 4; qd(x, wy0, Z1 + 12, x + T * 3 / 2, wy0, Z1 + 12, x + T * 3 / 2, wy1, Z1 + 12, x, wy1, Z1 + 12, wn); qd(x, wy0, Z0 - 12, x + T * 3 / 2, wy0, Z0 - 12, x + T * 3 / 2, wy1, Z0 - 12, x, wy1, Z0 - 12, wn); } }
-    int top = -wh * (up_st + 1);
-    if (roof_st == 1) block(X0 - 10, Z0 - 10, X1 + 10, Z1 + 10, top, top - 70, C15(18, 18, 20), C15(22, 22, 24));
-    else if (roof_st == 2) { int span = (Z1 - Z0) < (X1 - X0) ? (Z1 - Z0) : (X1 - X0); gable(X0 - 60, Z0 - 60, X1 + 60, Z1 + 60, top, -span / 3, C15(22, 9, 7)); }
+// ---- storeys and the roof (D36): every storey drawn at its height, the roof over the top one ----
+static int top_lv(void) {   // the highest storey with a floor or a wall on it
+    for (int L = UPN; L > 0; L--) { const u8 *f = &uflr[L - 1][0][0], *h = &uhwl[L - 1][0][0], *v = &uvwl[L - 1][0][0];
+        for (int k = 0; k < GN * GN; k++) if (f[k]) return L; for (int k = 0; k < (GN + 1) * GN; k++) if (h[k] || v[k]) return L; }
+    return 0;
 }
+static int lv_box(int L, int *x0, int *y0, int *x1, int *y1) {   // the outline of a storey's walls (not fences), or of its floor
+    u8 (*hw)[GN] = HWv(L); u8 (*vw)[GN + 1] = VWv(L); u8 (*fl)[GN] = FLv(L); *x0 = GN; *x1 = -1; *y0 = GN; *y1 = -1;
+    for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) if (hw[y][x] && hw[y][x] != 6) { if (x < *x0) *x0 = x; if (x + 1 > *x1) *x1 = x + 1; if (y < *y0) *y0 = y; if (y > *y1) *y1 = y; }
+    for (int y = 0; y < GN; y++) for (int x = 0; x <= GN; x++) if (vw[y][x] && vw[y][x] != 6) { if (x < *x0) *x0 = x; if (x > *x1) *x1 = x; if (y < *y0) *y0 = y; if (y + 1 > *y1) *y1 = y + 1; }
+    if (L) for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) if (fl[y][x]) { if (x < *x0) *x0 = x; if (x + 1 > *x1) *x1 = x + 1; if (y < *y0) *y0 = y; if (y + 1 > *y1) *y1 = y + 1; }
+    return *x1 > *x0 && *y1 > *y0;
+}
+static void roof_draw(int top) {
+    if (!roof_st) return;
+    if (mode == M_LIVE ? o_roof == 2 : !(mode == M_BUILD && tool == 5)) return;
+    int x0, y0, x1, y1; if (!lv_box(top, &x0, &y0, &x1, &y1)) return;
+    if (mode == M_LIVE && o_roof == 0) for (int q = 0; q < nsim; q++) { int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16); if (slv[q] == top && cx >= x0 && cx < x1 && cy >= y0 && cy < y1) return; }   // cutaway: someone is home up there, so you can see in
+    int X0 = tl(x0 * 2), X1 = tl(x1 * 2), Z0 = tl(y0 * 2), Z1 = tl(y1 * 2), ry = -WHF * (top + 1);
+    if (roof_st == 1) block(X0 - 10, Z0 - 10, X1 + 10, Z1 + 10, ry, ry - 70, C15(18, 18, 20), C15(22, 22, 24));
+    else if (roof_st == 2) { int span = (Z1 - Z0) < (X1 - X0) ? (Z1 - Z0) : (X1 - X0); gable(X0 - 60, Z0 - 60, X1 + 60, Z1 + 60, ry, -span / 3, C15(22, 9, 7)); }
+}
+static void draw_floors(int L) {   // floors as the biggest same-type rectangles: no seams for the edge anti-aliasing to show the grass through (upstairs: slabs, so a storey has a thickness)
+    static u8 dn[GN][GN]; memset(dn, 0, sizeof dn); u8 (*fl)[GN] = FLv(L);
+    for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) { int t = fl[y][x]; if (!t || dn[y][x]) continue; int w = 1, d = 1;
+        while (x + w < GN && fl[y][x + w] == t && !dn[y][x + w]) w++;
+        for (;;) { if (y + d >= GN) break; int ok = 1; for (int k = 0; k < w; k++) if (fl[y + d][x + k] != t || dn[y + d][x + k]) ok = 0; if (!ok) break; d++; }
+        for (int j = 0; j < d; j++) for (int k = 0; k < w; k++) dn[y + j][x + k] = 1;
+        if (!L) ground(tl(x * 2) - 4, tl(y * 2) - 4, tl((x + w) * 2) + 4, tl((y + d) * 2) + 4, -40, FLOORC[t - 1]);
+        else block(tl(x * 2) - 4, tl(y * 2) - 4, tl((x + w) * 2) + 4, tl((y + d) * 2) + 4, 30, -40, C15(24, 22, 19), FLOORC[t - 1]); }
+}
+static void draw_walls(int L, int yaw) {   // thin walls (a skirting board, the wall, a pale cap) and proper doors
+    u8 (*hw)[GN] = HWv(L); u8 (*vw)[GN + 1] = VWv(L);
+    int th = T / 16, whf = WHF, whl = T * 2; float cs = cosLerp(yaw) / 4096.0f, sn = sinLerp(yaw) / 4096.0f; int tx0 = mode == M_LIVE ? camx : 0, tz0 = mode == M_LIVE ? camz : 0;
+    for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) { int v = hw[y][x]; if (!v) continue; int e = x + 1; if (v != 5 && v != 6) while (e < GN && hw[y][e] == v) e++;   // runs of the same wall are one piece (the polygon budget)
+        if (v == 5) { door_open = 0; for (int q = 0; q < nsim; q++) if (slv[q] == L && abs(sims[q].x - x * 16) < 26 && abs(sims[q].y - (y * 16 - 8)) < 26) door_open = 1; }
+        int through0 = v != 6 && y > 0 && y < GN && vw[y - 1][x] && vw[y][x], through1 = v != 6 && y > 0 && y < GN && e <= GN && vw[y - 1][e] && vw[y][e];   // does a wall run right across the end? then stop inside it (no poking out)
+        int mx = (tl(x * 2) + tl(e * 2)) / 2, mz = tl(y * 2); int near = (int)((mx - tx0) * -sn + (mz - tz0) * cs) > 2000;
+        wall_seg(tl(x * 2) - (through0 ? -6 : th + 4), tl(y * 2) - th, tl(e * 2) + (through1 ? -6 : th + 4), tl(y * 2) + th, v, 0, near ? whl : whf); x = e - 1; }
+    for (int x = 0; x <= GN; x++) for (int y = 0; y < GN; y++) { int v = vw[y][x]; if (!v) continue; int e = y + 1; if (v != 5 && v != 6) while (e < GN && vw[e][x] == v) e++;
+        if (v == 5) { door_open = 0; for (int q = 0; q < nsim; q++) if (slv[q] == L && abs(sims[q].x - (x * 16 - 8)) < 26 && abs(sims[q].y - y * 16) < 26) door_open = 1; }
+        int through0 = v != 6 && x > 0 && x < GN && hw[y][x - 1] && hw[y][x], through1 = v != 6 && x > 0 && x < GN && e <= GN && hw[e][x - 1] && hw[e][x];
+        int mx = tl(x * 2), mz = (tl(y * 2) + tl(e * 2)) / 2; int near = (int)((mx - tx0) * -sn + (mz - tz0) * cs) > 2000;
+        wall_seg(tl(x * 2) - th, tl(y * 2) - (through0 ? -6 : th + 12), tl(x * 2) + th, tl(e * 2) + (through1 ? -6 : th + 12), v, 1, near ? whl : whf); y = e - 1; }
+}
+static int view_lv(void) { return mode == M_LIVE ? slv[ctl] : ed_lv; }   // the storey you are looking at: the ones above it are cut away
 static void draw_build(int yaw) {
     ground(tl(0), tl(0), tl(GN * 2), tl(GN * 2), 0, C15(11, 20, 8));   // the lawn: one quad and big darker squares (every polygon counts on the DS)
     if (o_chk) for (int z = 0; z < GN; z += 2) for (int x = 0; x < GN; x += 2) if (((x + z) / 2) & 1) { int e = x + 2 > GN ? GN : x + 2, f = z + 2 > GN ? GN : z + 2; ground(tl(x * 2), tl(z * 2), tl(e * 2), tl(f * 2), -20, C15(9, 18, 7)); }
-    if (mode == M_LIVE) draw_world(yaw); else {
-    ground(tl(-14), tl(-9), tl(40), tl(-2), 0, C15(7, 7, 9)); ground(tl(-14), tl(28), tl(40), tl(35), 0, C15(7, 7, 9));   // two proper streets, three cells wide
-    block(tl(-14), tl(-2), tl(40), tl(0), 0, -14, C15(20, 20, 20), C15(24, 24, 24)); block(tl(-14), tl(26), tl(40), tl(28), 0, -14, C15(20, 20, 20), C15(24, 24, 24));   // pavements
-    for (int x = -13; x < 40; x += 4) { block(tl(x), tl(-6) - 14, tl(x) + T * 2, tl(-6) + 14, 0, -6, C15(28, 26, 8), C15(28, 26, 8)); block(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, 0, -6, C15(28, 26, 8), C15(28, 26, 8)); }   // lane dashes
-    ground(tl(-14), tl(-9), tl(40), tl(35), 90, C15(7, 16, 6));   // grass all round, so the lot does not float
-    for (int i = 0; i < 5; i++) { tree(tl(-6 + (i * 7) % 5 * 1), tl(2 + i * 5), T * 2); tree(tl(GN * 2 + 3 - (i * 5) % 4), tl(1 + i * 5), T * 2); }
-    }
     ground(tl(0), tl(26) - 30, tl(GN * 2), tl(26), -20, C15(14, 24, 10));   // a low hedge line along the back of the plot (no more posts sticking out)
     block(tl(door_cx * 2) + T / 2, tl(door_cy * 2 + 1), tl(door_cx * 2 + 2) - T / 2, tl(26), 0, -26, C15(19, 18, 16), C15(23, 22, 20));   // a path from the front door to the pavement
-    { static u8 dn[GN][GN]; memset(dn, 0, sizeof dn);   // floors as the biggest same-type rectangles: no seams for the edge anti-aliasing to show the grass through
-      for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) { int t = flr[y][x]; if (!t || dn[y][x]) continue; int w = 1, d = 1;
-        while (x + w < GN && flr[y][x + w] == t && !dn[y][x + w]) w++;
-        for (;;) { if (y + d >= GN) break; int ok = 1; for (int k = 0; k < w; k++) if (flr[y + d][x + k] != t || dn[y + d][x + k]) ok = 0; if (!ok) break; d++; }
-        for (int j = 0; j < d; j++) for (int k = 0; k < w; k++) dn[y + j][x + k] = 1;
-        ground(tl(x * 2) - 4, tl(y * 2) - 4, tl((x + w) * 2) + 4, tl((y + d) * 2) + 4, -40, FLOORC[t - 1]); } }
-    int th = T / 16, whf = T * 21 / 5, whl = T * 2; float cs = cosLerp(yaw) / 4096.0f, sn = sinLerp(yaw) / 4096.0f; int tx0 = mode == M_LIVE ? camx : 0, tz0 = mode == M_LIVE ? camz : 0;   // thin walls (a skirting board, the wall, a pale cap) and proper doors
-    for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) { int v = hwl[y][x]; if (!v) continue; int e = x + 1; if (v != 5 && v != 6) while (e < GN && hwl[y][e] == v) e++;   // runs of the same wall are one piece (the polygon budget)
-        if (v == 5) { door_open = 0; for (int q = 0; q < nsim; q++) if (abs(sims[q].x - x * 16) < 26 && abs(sims[q].y - (y * 16 - 8)) < 26) door_open = 1; }
-        int through0 = v != 6 && y > 0 && y < GN && vwl[y - 1][x] && vwl[y][x], through1 = v != 6 && y > 0 && y < GN && e <= GN && vwl[y - 1][e] && vwl[y][e];   // does a wall run right across the end? then stop inside it (no poking out)
-        int mx = (tl(x * 2) + tl(e * 2)) / 2, mz = tl(y * 2); int near = (int)((mx - tx0) * -sn + (mz - tz0) * cs) > 2000;
-        wall_seg(tl(x * 2) - (through0 ? -6 : th + 4), tl(y * 2) - th, tl(e * 2) + (through1 ? -6 : th + 4), tl(y * 2) + th, v, 0, near ? whl : whf); x = e - 1; }
-    for (int x = 0; x <= GN; x++) for (int y = 0; y < GN; y++) { int v = vwl[y][x]; if (!v) continue; int e = y + 1; if (v != 5 && v != 6) while (e < GN && vwl[e][x] == v) e++;
-        if (v == 5) { door_open = 0; for (int q = 0; q < nsim; q++) if (abs(sims[q].x - (x * 16 - 8)) < 26 && abs(sims[q].y - y * 16) < 26) door_open = 1; }
-        int through0 = v != 6 && x > 0 && x < GN && hwl[y][x - 1] && hwl[y][x], through1 = v != 6 && x > 0 && x < GN && e <= GN && hwl[e][x - 1] && hwl[e][x];
-        int mx = tl(x * 2), mz = (tl(y * 2) + tl(e * 2)) / 2; int near = (int)((mx - tx0) * -sn + (mz - tz0) * cs) > 2000;
-        wall_seg(tl(x * 2) - th, tl(y * 2) - (through0 ? -6 : th + 12), tl(x * 2) + th, tl(e * 2) + (through1 ? -6 : th + 12), v, 1, near ? whl : whf); y = e - 1; }
-    for (int i = 0; i < nsim; i++) sim3d(i, yaw);   // sims first: they always get their polygons
-    for (int i = 0; i < nobj; i++) {   // then the items, nearest the camera first in budget terms: far ones are skipped when the DS runs out of polygons
-        if (mode == M_LIVE) { int ox2 = tl(objs[i].x * 2) - camx, oz2 = tl(objs[i].y * 2) - camz; if (abs(ox2) + abs(oz2) > 9000 && polys > 1800) continue; if (polys > 2900) continue; }
-        obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); }
-    dog_draw(); shell_draw(); ghost_draw();
+    int top = top_lv(), vl = view_lv(), show = vl;   // the storeys over the one you look at are cut away; Roofs: Always shows the whole house, and so does Cutaway when nobody is in it
+    if (mode == M_LIVE && top > 0 && o_roof != 2) { int x0, y0, x1, y1, in = 0; if (lv_box(0, &x0, &y0, &x1, &y1)) for (int q = 0; q < nsim; q++) { int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16); if (cx >= x0 && cx < x1 && cy >= y0 && cy < y1) in = 1; }
+        if (o_roof == 1 || !in) show = top; }
+    if (mode == M_BUILD && tool == 5) show = top;   // (the Roof tool shows the whole house and its roof)
+    if (show > top) show = top; if (show < vl) show = vl;
+    for (int L = show; L >= 0; L--) {   // (from the storey you look at down: the DS draws at most 2048 polygons, and what is sent last is what it drops)
+        gy_off = -WHF * L; lod_force = L < vl;   // (the things on the storeys under yours: simple boxes)
+        draw_floors(L); draw_walls(L, yaw);
+        for (int i = 0; i < nsim; i++) if (slv[i] == L) sim3d(i, yaw);   // sims first: they always get their polygons
+        for (int i = 0; i < nobj; i++) {   // then the items, nearest the camera first in budget terms: far ones are skipped when the DS runs out of polygons
+            if (OBJ_LV(&objs[i]) != L) continue;
+            if (mode == M_LIVE) { int ox2 = tl(objs[i].x * 2) - camx, oz2 = tl(objs[i].y * 2) - camz; if (abs(ox2) + abs(oz2) > 9000 && polys > 1800) continue; }
+            if (polys > 2900) continue;
+            obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); } }
+    gy_off = 0; lod_force = 0;
+    if (mode == M_LIVE) draw_world(yaw); else {   // (D36: the street round the plot after the house, so the house is never what the DS's polygon list drops)
+    ground(tl(-14), tl(-9), tl(40), tl(-2), 0, C15(7, 7, 9)); ground(tl(-14), tl(28), tl(40), tl(35), 0, C15(7, 7, 9));   // two proper streets, three cells wide
+    block(tl(-14), tl(-2), tl(40), tl(0), 0, -14, C15(20, 20, 20), C15(24, 24, 24)); block(tl(-14), tl(26), tl(40), tl(28), 0, -14, C15(20, 20, 20), C15(24, 24, 24));   // pavements
+    for (int x = -13; x < 40; x += 4) { ground(tl(x), tl(-6) - 14, tl(x) + T * 2, tl(-6) + 14, -6, C15(28, 26, 8)); ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -6, C15(28, 26, 8)); }   // lane dashes (flat: one quad each, not five)
+    ground(tl(-14), tl(-9), tl(40), tl(35), 90, C15(7, 16, 6));   // grass all round, so the lot does not float
+    if (polys < 2600) for (int i = 0; i < 5; i++) { tree(tl(-6 + (i * 7) % 5 * 1), tl(2 + i * 5), T * 2); tree(tl(GN * 2 + 3 - (i * 5) % 4), tl(1 + i * 5), T * 2); }
+    }
+    for (int i = 0; i < nsim; i++) if (slv[i] > show) { /* (upstairs, cut away) */ }
+    dog_draw(); ghost_draw();
+    if (show == top) { gy_off = 0; roof_draw(top); }
     if (mode == M_LIVE) { draw_city(); draw_far_all(yaw); }
+    gy_off = -WHF * vl;
     if (mode == M_LIVE && mark_t > 0) { ground(tl(mark_x * 2), tl(mark_y * 2), tl(mark_x * 2 + 2), tl(mark_y * 2 + 2), -60, C15(31, 31, 12)); mark_t--; }
     if (mode == M_BUY || mode == M_BUILD) {   // the cursor
         ground(tl(pcx * 2), tl(pcy * 2), tl(pcx * 2 + 2), tl(pcy * 2 + 2), -80, C15(31, 31, 31));
         if (mode == M_BUY && pick >= 0) obj3d(pcx, pcy, &ITEMS[pick], prot, 1);
     }
+    gy_off = 0;
 }
 
 // ============ the Sims-style game: LIVE (status on the top screen, the lot and its icons on the bottom, touch to play) ============
@@ -1162,7 +1233,7 @@ static void draw_top_status(void) {   // the top screen while you live: the sim'
         text(78, 28, 1, TXT, "Mood"); rect(112, 26, 70, 9, C15(24, 28, 31)); rect(113, 27, 68 * mood(m) / 100, 7, need_col(mood(m)));
         int mn = minutes % 1440, h12 = (mn / 60) % 12 ? (mn / 60) % 12 : 12;
         sprintf(t, "%s %d:%02d %s", DAYN[(minutes / 1440) % 7], h12, mn % 60, mn / 60 >= 12 ? "PM" : "AM"); text(78, 42, 1, TXT, t); sprintf(t, "%s %d", STGN[stage_of(m->age)], m->age); text(190, 28, 1, C15(31, 31, 20), t);
-        sprintf(t, "Funds %d", funds); text(78, 54, 1, C15(31, 31, 20), t); if (o_pm) { sprintf(t, "Quads %d", polys / 2); text(172, 54, 1, polys > 2900 ? C15(31, 12, 8) : C15(24, 28, 31), t); }
+        sprintf(t, "Funds %d", funds); text(78, 54, 1, C15(31, 31, 20), t); if (o_pm) { sprintf(t, "%dfps %dq", fps_now, polys_last / 2); text(172, 54, 1, polys > 2900 ? C15(31, 12, 8) : C15(24, 28, 31), t); }
         if (info_pg == 1) { life_panel(); return; }
         panel(6, 72, 244, 114, "Needs");
         static const int order[6] = { 0, 1, 2, 3, 4, 5 };
@@ -1211,6 +1282,9 @@ static void draw_hud(void) {
         const Item *it = IT_OF(&objs[popup_i]); const char *nm = it->name, *lab = it->lab;   // (D35: wider, for the PS1's words: "Dance Under the Lights")
         rect(36, 100, 184, 56, PANB); rect(37, 101, 182, 54, PAN); if (tw(2, nm) <= 168) text(44, 106, 2, TXT, nm); else text_fit(44, 106, 1, 168, TXT, nm);
         rect(42, 126, 116, 24, C15(8, 20, 8)); text_fit(47, 135, 1, 108, TXT, lab); rect(162, 126, 52, 24, C15(24, 8, 8)); text(168, 135, 1, TXT, "Cancel");
+    } else if (popup == 5) {   // (D36) at the top of a flight
+        rect(36, 100, 184, 56, PANB); rect(37, 101, 182, 54, PAN); text(44, 106, 2, TXT, "Stairs");
+        rect(42, 126, 116, 24, C15(8, 20, 8)); text(47, 135, 1, TXT, "Go Down"); rect(162, 126, 52, 24, C15(24, 8, 8)); text(168, 135, 1, TXT, "Cancel");
     } else if (popup == 4) {
         rect(56, 96, 144, 72, PANB); rect(57, 97, 142, 70, PAN); text(64, 102, 2, TXT, "Rex"); { char t2[24]; sprintf(t2, "Hunger %d", dog.hun); text(110, 106, 1, TXT, t2); }
         chip(64, 118, 60, 20, "Pet", 0); chip(132, 118, 60, 20, "Play", 0); chip(64, 142, 60, 20, "Feed $5", 0); chip(132, 142, 60, 20, "Cancel", 0);
@@ -1234,7 +1308,7 @@ static int pick_cell_h(int sx, int sy, int hgt, int *cx, int *cy) {   // the cel
     float ay = dy * cp + dz * sp, az = -dy * sp + dz * cp, by = oy * cp + oz * sp, bz = -oy * sp + oz * cp;
     float ddx = dx * c - az * s, ddz = dx * s + az * c, oox = ox * c - bz * s + camx, ooz = ox * s + bz * c + camz;
     if (ay > -0.0001f && ay < 0.0001f) return 0;
-    float t = ((float)hgt - by) / ay; float hx = oox + t * ddx, hz = ooz + t * ddz;
+    float t = ((float)(hgt - cam_y) - by) / ay; float hx = oox + t * ddx, hz = ooz + t * ddz;
     *cx = (int)((hx / T + GN) / 2.0f + 200) - 200; *cy = (int)((hz / T + GN) / 2.0f + 200) - 200;
     return 1;
 }
@@ -1247,9 +1321,9 @@ static int obj_height(int o) {   // how tall an item stands, in world units: the
 }
 static int pick_obj(int sx, int sy) {   // (D35) the item under the stylus, nearest first: each item's box is projected with the 3D view's own camera (a tall or thin thing is caught by its top too)
     float c = cosLerp(live_yaw) / 4096.0f, s = sinLerp(live_yaw) / 4096.0f, cp = cosLerp(pitch) / 4096.0f, sp = sinLerp(pitch) / 4096.0f, best = 1e30f; int bi = -1;
-    for (int i = 0; i < nobj; i++) { int w, h; obj_fp(&objs[i], &w, &h); float x0 = (float)tl(objs[i].x * 2), x1 = (float)tl((objs[i].x + w) * 2), z0 = (float)tl(objs[i].y * 2), z1 = (float)tl((objs[i].y + h) * 2), y1 = 40.0f + (float)obj_height(i);
+    for (int i = 0; i < nobj; i++) { if (OBJ_LV(&objs[i]) != LV) continue; int w, h; obj_fp(&objs[i], &w, &h); float fy = 40.0f + (float)(LV * WHF - cam_y), x0 = (float)tl(objs[i].x * 2), x1 = (float)tl((objs[i].x + w) * 2), z0 = (float)tl(objs[i].y * 2), z1 = (float)tl((objs[i].y + h) * 2), y1 = fy + (float)obj_height(i);
         float u0 = 1e9f, u1 = -1e9f, v0 = 1e9f, v1 = -1e9f, zc = 0; int ok = 1;
-        for (int k = 0; k < 8; k++) { float X = ((k & 1) ? x1 : x0) - camx, Y = (k & 2) ? y1 : 40.0f, Z = ((k & 4) ? z1 : z0) - camz;
+        for (int k = 0; k < 8; k++) { float X = ((k & 1) ? x1 : x0) - camx, Y = (k & 2) ? y1 : fy, Z = ((k & 4) ? z1 : z0) - camz;
             float xa = X * c + Z * s, za = -X * s + Z * c, yb = Y * cp - za * sp, zb = Y * sp + za * cp - (float)cam_deff;
             if (zb > -100.0f) { ok = 0; break; } float u = 128.0f + xa / -zb / (0.3640f * 1.3333f) * 128.0f, v = 96.0f - yb / -zb / 0.3640f * 96.0f;
             if (u < u0) u0 = u; if (u > u1) u1 = u; if (v < v0) v0 = v; if (v > v1) v1 = v; zc += zb; }
@@ -1261,7 +1335,7 @@ static int pick_obj(int sx, int sy) {   // (D35) the item under the stylus, near
 static int cl100(int v) { return v < 0 ? 0 : v > 100 ? 100 : v; }
 static void new_sim(int age, u8 skin, u8 hair, u8 hcol, u8 shirt, const char *nm, int x, int y) {
     if (nsim >= SIM_MAX) return; Sim *m = &sims[nsim]; memset(m, 0, sizeof *m); m->x = m->tx = m->wx = x; m->y = m->ty = m->wy = y; m->act = -1; m->soc = -1; m->age = age; m->skin = skin; m->hair = hair; m->hcol = hcol; m->shirt = shirt; m->fc = (u8)(nsim % 6);
-    memset(&life[nsim], 0, sizeof(Life)); for (int n = 0; n < 6; n++) m->need[n] = 70; for (int q = 0; q < PMN; q++) m->pm[q] = 50; strncpy(sname[nsim], nm, 19); sname[nsim][19] = 0; nsim++; ui_ver++;
+    memset(&life[nsim], 0, sizeof(Life)); slv[nsim] = (u8)LV; for (int n = 0; n < 6; n++) m->need[n] = 70; for (int q = 0; q < PMN; q++) m->pm[q] = 50; strncpy(sname[nsim], nm, 19); sname[nsim][19] = 0; nsim++; ui_ver++;
 }
 static void apply_soc(int ai, int tgt, int id) {
     Sim *a = &sims[ai]; int cit = tgt <= -2, sb, rel; Sim *o = 0; CRel *cr = 0; Cit *ct = 0;
@@ -1289,7 +1363,7 @@ static void start_soc(int ai, int tgt, int id) {
 static void sim_die(int k) { st_died++;   // an elder passes away: a statue marks the spot and the household closes up
     Sim *m = &sims[k]; int cx = fdiv(m->x + 8, 16), cy = fdiv(m->y + 8, 16); static char bf[40]; sprintf(bf, "%s passed away", sname[k]); say(bf); ghost_add(m);
     if (cx >= 0 && cy >= 0 && cx < GN && cy < GN && nobj < 400) { objs[nobj].x = (u8)cx; objs[nobj].y = (u8)cy; objs[nobj].c = 3; objs[nobj].i = 3; objs[nobj].rot = 0; nobj++; occ_ok = 0; }
-    for (int i = k; i < nsim - 1; i++) { sims[i] = sims[i + 1]; life[i] = life[i + 1]; memcpy(sname[i], sname[i + 1], 20); } nsim--; life_ver++;
+    for (int i = k; i < nsim - 1; i++) { sims[i] = sims[i + 1]; life[i] = life[i + 1]; slv[i] = slv[i + 1]; memcpy(sname[i], sname[i + 1], 20); } nsim--; life_ver++;
     if (ctl == k) ctl = 0; else if (ctl > k) ctl--; if (stage_of(sims[ctl].age) == 0) for (int i = 0; i < nsim; i++) if (stage_of(sims[i].age) > 0) { ctl = i; break; }
     cur_sim = ctl; memset(ilim, 0, sizeof ilim); ui_ver++; }
 
@@ -1300,7 +1374,7 @@ typedef struct { u32 magic, seq, crc, clen, rawlen; } SavHdr;
 typedef struct { int seed, minutes, funds, nsim, ctl, cur_sim, cur_set, lot_bx, lot_by; u8 opt[40]; int nlots, days, born, died; } SavCore;
 typedef struct { s16 bx, by, pcx, pcy, dcx, dcy; u16 nobj; } SavLot;
 #define SAV_MAX 65536
-static u8 sav_sh[2][SAV_MAX], sav_raw[LSV_N * 2800 + 4096], sav_buf[SAV_MAX]; static int sav_type = -2, sav_have = -1, sav_seq;
+static u8 sav_sh[2][SAV_MAX], sav_raw[LSV_N * 4300 + 4096], sav_buf[SAV_MAX]; static int sav_type = -2, sav_have = -1, sav_seq;
 static u32 crc32b(const u8 *p, int n) { u32 c = 0xFFFFFFFFu; while (n--) { c ^= *p++; for (int k = 0; k < 8; k++) c = (c >> 1) ^ (0xEDB88320u & (0u - (c & 1))); } return ~c; }
 static int rle(const u8 *p, int n, u8 *o, int mx) { int w = 0; for (int i = 0; i < n;) { if (w + 2 > mx) return -1; if (p[i]) { o[w++] = p[i++]; } else { int r = 0; while (i < n && !p[i] && r < 255) { i++; r++; } o[w++] = 0; o[w++] = (u8)r; } } return w; }
 static int unrle(const u8 *p, int n, u8 *o, int mx) { int w = 0; for (int i = 0; i < n;) { if (p[i]) { if (w >= mx) return -1; o[w++] = p[i++]; } else { if (i + 1 >= n) return -1; int r = p[i + 1]; if (w + r > mx) return -1; while (r--) o[w++] = 0; i += 2; } } return w; }
@@ -1326,11 +1400,13 @@ static int sav_pack(int big) {   // returns the packed size in sav_buf (header i
     int n = 0; u8 *r = sav_raw; memset(r, 0, sizeof sav_raw);
     #define PUT(p, l) do { memcpy(r + n, (p), (size_t)(l)); n += (l); } while (0)
     PUT(&c, (int)sizeof c); PUT(sname, (int)sizeof sname); PUT(sims, (int)sizeof sims); PUT(crt, (int)sizeof crt);
-    int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4) - (4 + (int)sizeof(LifeSave)) - (4 + NOPT - OPT_OLD) - 8, base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
+    int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4) - (4 + (int)sizeof(LifeSave)) - (4 + NOPT - OPT_OLD) - 8 - (4 + SIM_MAX), base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
     int order[LSV_N], no = 0; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) order[no++] = i; for (int i = 0; i < lsv_n; i++) if (!(lsv[i].bx == lot_bx && lsv[i].by == lot_by)) order[no++] = i;
     for (int q = 0; q < no; q++) { const LotSave *L = &lsv[order[q]]; int m = n; SavLot h = { (s16)L->bx, (s16)L->by, (s16)L->pcx, (s16)L->pcy, (s16)L->dcx, (s16)L->dcy, (u16)(L->nobj | (L->roof << 12) | (L->up << 14)) };
-        if (m + (int)sizeof h + 533 + L->nobj * 5 > (int)sizeof sav_raw) break;
+        int nup = L->hasup ? L->up : 0; if (nup > UPN) nup = UPN; if (nup) h.nobj |= 0x800;   // (D36) its upper storeys follow
+        if (m + (int)sizeof h + 533 + L->nobj * 5 + 1 + nup * 533 > (int)sizeof sav_raw) break;
         memcpy(r + m, &h, sizeof h); m += (int)sizeof h; memcpy(r + m, L->flr, sizeof L->flr); m += (int)sizeof L->flr; memcpy(r + m, L->hwl, sizeof L->hwl); m += (int)sizeof L->hwl; memcpy(r + m, L->vwl, sizeof L->vwl); m += (int)sizeof L->vwl; memcpy(r + m, L->objs, (size_t)L->nobj * 5); m += L->nobj * 5;
+        if (nup) { r[m++] = (u8)nup; for (int u = 0; u < nup; u++) { memcpy(r + m, L->ufl[u], sizeof L->ufl[u]); m += (int)sizeof L->ufl[u]; memcpy(r + m, L->uhw[u], sizeof L->uhw[u]); m += (int)sizeof L->uhw[u]; memcpy(r + m, L->uvw[u], sizeof L->uvw[u]); m += (int)sizeof L->uvw[u]; } }
         ((SavCore *)r)->nlots = nl + 1; int t = rle(r, m, sav_buf + sizeof(SavHdr), budget); if (t < 0) { ((SavCore *)r)->nlots = nl; break; } n = m; nl++; best = m; cl = t; }
     #undef PUT
     (void)base; ((SavCore *)r)->nlots = nl;
@@ -1338,7 +1414,8 @@ static int sav_pack(int big) {   // returns the packed size in sav_buf (header i
     { LifeSave ls; memset(&ls, 0, sizeof ls); memcpy(ls.life, life, sizeof life); memcpy(ls.gh, gh, sizeof gh); ls.ngh = (u8)ngh; ls.dog = (u8)dog_have; ls.hun = (u8)dog.hun; u16 th[2] = { 0x4C46, (u16)sizeof ls }; memcpy(r + best, th, 4); memcpy(r + best + 4, &ls, sizeof ls); best += 4 + (int)sizeof ls; }   // wants, jobs, the dog, ghosts
     { u16 th[2] = { 0x584F, (u16)(NOPT - OPT_OLD) }; memcpy(r + best, th, 4); for (int i = OPT_OLD; i < NOPT; i++) r[best + 4 + i - OPT_OLD] = OPT[i].v ? (u8)*OPT[i].v : 0; best += 4 + NOPT - OPT_OLD; }   // the options added at D33
     { s16 th[4] = { 0x4D48, 4, (s16)home_bx, (s16)home_by }; memcpy(r + best, th, 8); best += 8; }   // the home you live in (D33)
-    cl = rle(r, best, sav_buf + sizeof(SavHdr), budget + 4 + nown * 4 + 4 + (int)sizeof(LifeSave) + 4 + NOPT - OPT_OLD + 8); if (cl < 0) return 0;
+    { u16 th[2] = { 0x4C53, SIM_MAX }; memcpy(r + best, th, 4); memcpy(r + best + 4, slv, SIM_MAX); best += 4 + SIM_MAX; }   // the storey each sim is on (D36)
+    cl = rle(r, best, sav_buf + sizeof(SavHdr), budget + 4 + nown * 4 + 4 + (int)sizeof(LifeSave) + 4 + NOPT - OPT_OLD + 8 + 4 + SIM_MAX); if (cl < 0) return 0;
     SavHdr h = { SAV_MAGIC, (u32)(sav_seq + 1), crc32b(sav_buf + sizeof(SavHdr), cl), (u32)cl, (u32)best }; memcpy(sav_buf, &h, sizeof h); return (int)sizeof h + cl;
 }
 static int sav_write(void) {
@@ -1359,15 +1436,19 @@ static int sav_apply(void) {   // 1 = loaded
     if (c.nsim < 1 || c.nsim > SIM_MAX || c.ctl < 0 || c.ctl >= c.nsim || c.nlots < 0 || c.nlots > LSV_N || c.lot_bx < -1 || c.lot_bx >= BM_N || c.lot_by < -1 || c.lot_by >= BM_N) return 0;
     static Sim ts[SIM_MAX]; static char tn[SIM_MAX][20]; static CRel tc[64]; static LotSave tl[LSV_N]; int tn_l = 0;
     memcpy(tn, sav_raw + n, sizeof tn); n += (int)sizeof tn; memcpy(ts, sav_raw + n, sizeof ts); n += (int)sizeof ts; memcpy(tc, sav_raw + n, sizeof tc); n += (int)sizeof tc;
-    for (int i = 0; i < c.nlots; i++) { SavLot sl; if (n + (int)sizeof sl + 533 > rl) return 0; memcpy(&sl, sav_raw + n, sizeof sl); n += (int)sizeof sl; int rf = (sl.nobj >> 12) & 3, upv = (sl.nobj >> 14) & 3; sl.nobj &= 0xFFF; if (sl.nobj > 400) return 0; LotSave *L = &tl[tn_l]; L->roof = (u8)rf; L->up = (u8)upv;
+    for (int i = 0; i < c.nlots; i++) { SavLot sl; if (n + (int)sizeof sl + 533 > rl) return 0; memcpy(&sl, sav_raw + n, sizeof sl); n += (int)sizeof sl; int rf = (sl.nobj >> 12) & 3, upv = (sl.nobj >> 14) & 3, hu = (sl.nobj >> 11) & 1; sl.nobj &= 0x7FF; if (sl.nobj > 400) return 0; LotSave *L = &tl[tn_l]; L->roof = (u8)rf; L->up = (u8)upv; L->hasup = 0; memset(L->ufl, 0, sizeof L->ufl); memset(L->uhw, 0, sizeof L->uhw); memset(L->uvw, 0, sizeof L->uvw);
         L->bx = sl.bx; L->by = sl.by; L->pcx = sl.pcx; L->pcy = sl.pcy; L->dcx = sl.dcx; L->dcy = sl.dcy; L->nobj = sl.nobj;
         memcpy(L->flr, sav_raw + n, sizeof L->flr); n += (int)sizeof L->flr; memcpy(L->hwl, sav_raw + n, sizeof L->hwl); n += (int)sizeof L->hwl; memcpy(L->vwl, sav_raw + n, sizeof L->vwl); n += (int)sizeof L->vwl;
-        if (n + sl.nobj * 5 > rl) return 0; memset(L->objs, 0, sizeof L->objs); memcpy(L->objs, sav_raw + n, (size_t)sl.nobj * 5); n += sl.nobj * 5; { int k2 = 0; for (int q = 0; q < L->nobj; q++) if (L->objs[q].c * 4 + L->objs[q].i < NITEM) L->objs[k2++] = L->objs[q]; L->nobj = k2; } tn_l++; }
+        if (n + sl.nobj * 5 > rl) return 0; memset(L->objs, 0, sizeof L->objs); memcpy(L->objs, sav_raw + n, (size_t)sl.nobj * 5); n += sl.nobj * 5; { int k2 = 0; for (int q = 0; q < L->nobj; q++) if (L->objs[q].c * 4 + L->objs[q].i < NITEM) L->objs[k2++] = L->objs[q]; L->nobj = k2; }
+        if (hu) { if (n + 1 > rl) return 0; int nu = sav_raw[n++]; if (nu > UPN || n + nu * 533 > rl) return 0; L->hasup = 1;   // (D36) the upper storeys (a save from before: none, so the old shell is turned into floors on entering)
+            for (int u = 0; u < nu; u++) { memcpy(L->ufl[u], sav_raw + n, sizeof L->ufl[u]); n += (int)sizeof L->ufl[u]; memcpy(L->uhw[u], sav_raw + n, sizeof L->uhw[u]); n += (int)sizeof L->uhw[u]; memcpy(L->uvw[u], sav_raw + n, sizeof L->uvw[u]); n += (int)sizeof L->uvw[u]; } }
+        tn_l++; }
     nown = 0; memset(life, 0, sizeof life); memset(gh, 0, sizeof gh); ngh = 0; dog_have = 0; dog.hun = 80; life_ver++;
     if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x504F && th[1] <= OWN_MAX && n + 4 + th[1] * 4 <= rl) { memcpy(own, sav_raw + n + 4, (size_t)th[1] * 4); nown = th[1]; n += 4 + th[1] * 4; } }
     if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x4C46 && th[1] == sizeof(LifeSave) && n + 4 + (int)sizeof(LifeSave) <= rl) { LifeSave ls; memcpy(&ls, sav_raw + n + 4, sizeof ls); memcpy(life, ls.life, sizeof life); memcpy(gh, ls.gh, sizeof gh); ngh = ls.ngh > GH_MAX ? GH_MAX : ls.ngh; dog_have = ls.dog; dog.hun = ls.hun; n += 4 + (int)sizeof(LifeSave); } }
     u8 ox[32]; int ox_have = 0, ox_n = 0; if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x584F && th[1] <= 32 && n + 4 + th[1] <= rl) { ox_n = th[1]; memcpy(ox, sav_raw + n + 4, (size_t)ox_n); ox_have = 1; n += 4 + ox_n; } }
     int hm_x = -1, hm_y = -1; if (n + 8 <= rl) { s16 th[4]; memcpy(th, sav_raw + n, 8); if (th[0] == 0x4D48 && th[1] == 4) { hm_x = th[2]; hm_y = th[3]; n += 8; } }
+    u8 lvs[SIM_MAX]; memset(lvs, 0, sizeof lvs); if (n + 4 + SIM_MAX <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x4C53 && th[1] == SIM_MAX) { memcpy(lvs, sav_raw + n + 4, SIM_MAX); n += 4 + SIM_MAX; } }   // (D36; before: everyone on the ground)
     seed = c.seed; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
     st_days = c.days; st_born = c.born; st_died = c.died; minutes = c.minutes; funds = c.funds; nsim = c.nsim; ctl = c.ctl; cur_sim = c.cur_sim >= 0 && c.cur_sim < nsim ? c.cur_sim : ctl;
     for (int i = 0; i < NOPT && i < OPT_OLD; i++) if (OPT[i].v && c.opt[i] < opt_cnt(i)) *OPT[i].v = c.opt[i];
@@ -1377,7 +1458,7 @@ static int sav_apply(void) {   // 1 = loaded
     memset(ilim, 0, sizeof ilim); memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; pick = -1; lot_bx = -1; lot_by = -1; nb_ok = 0;
     if (!nown) { for (int i = 0; i < lsv_n; i++) own_add(lsv[i].bx, lsv[i].by); if (c.lot_bx >= 0) own_add(c.lot_bx, c.lot_by); }   // (a save from before lots could be bought: everything you had is yours)
     home_bx = hm_x; home_by = hm_y; if (!lot_owned(home_bx, home_by)) { home_bx = home_by = -1; if (c.lot_bx >= 0 && lot_owned(c.lot_bx, c.lot_by)) { home_bx = c.lot_bx; home_by = c.lot_by; } else if (nown) { home_bx = own[0].bx; home_by = own[0].by; } }   // (a save from before D33: home is where you were, or your first lot)
-    if (c.lot_bx >= 0) { lot_enter(c.lot_bx, c.lot_by); sel_x = c.lot_bx; sel_y = c.lot_by; }
+    if (c.lot_bx >= 0) { lot_enter(c.lot_bx, c.lot_by); sel_x = c.lot_bx; sel_y = c.lot_by; for (int i = 0; i < SIM_MAX; i++) slv[i] = lvs[i] <= UPN ? lvs[i] : 0; }
     return 1;
 }
 static void day_roll(void) {
@@ -1387,16 +1468,25 @@ static void day_roll(void) {
     if (o_auto && mode == M_LIVE && sav_ok() && lot_bx >= 0) { if (sav_write()) say("Game saved"); }
     sfx(4);
 }
+static const int SFX_[4] = { 0, 1, 0, -1 }, SFY_[4] = { 1, 0, -1, 0 };   // a flight's front (its open side) by its turn; it rises away from it
+static void stairs_go(int i, int o, int down) {   // (D36) the sim at the foot (or at the landing) changes storey
+    Sim *m = &sims[i]; const Obj *st = &objs[o]; int L = OBJ_LV(st), r = st->rot & 3, tx = down ? st->x + SFX_[r] : st->x - SFX_[r], ty = down ? st->y + SFY_[r] : st->y - SFY_[r], tl_ = down ? L : L + 1;
+    int keep = LV; LV = tl_; int ok = tx >= 0 && ty >= 0 && tx < GN && ty < GN && !obj_solid(tx, ty); LV = keep;
+    if (!ok) { if (i == ctl) say(down ? "Something is in the way down there" : "Build a floor where the stairs come out"); return; }
+    slv[i] = (u8)tl_; m->x = m->tx = m->wx = tx * 16; m->y = m->ty = m->wy = ty * 16; m->act = -1; m->act_left = 0; sfx(0);
+}
 static void start_act(Sim *m, int obj, int sim) {   // walk to it, then do it
     if (sim >= 0) { start_soc((int)(m - sims), sim, S_CHAT); }
+    else if (OBJ_ID(&objs[obj]) == ID_STAIRS) { const Obj *o = &objs[obj]; m->tx = o->x * 16; m->ty = o->y * 16; m->act = 50; m->act_amt = 0; m->face = 1; m->act_obj = obj; }   // (up: to the foot of the flight)
     else { const Obj *o = &objs[obj]; const Item *a = IT_OF(o); if (!((a->mask >> stage_of(m->age)) & 1)) { say(stage_of(m->age) < 3 ? "Too young for that" : "Not for your age"); return; } m->tx = o->x * 16; m->ty = o->y * 16; m->act = a->need; m->act_amt = a->amt; m->face = a->dur; m->act_obj = obj; }
 }
-static int obj_solid(int cx, int cy) { if (cx < 0 || cy < 0 || cx >= GN || cy >= GN) return far_solid(cx, cy); if (!occ_ok) occ_build(); return occ[cy][cx] >> 15; }
+static int obj_solid(int cx, int cy) { if (cx < 0 || cy < 0 || cx >= GN || cy >= GN) return LV ? 1 : far_solid(cx, cy); if (LV && !uflr[LV - 1][cy][cx]) return 1; if (!occ_ok) occ_build(); return occ[LV][cy][cx] >> 15; }   // (upstairs: only the floor there is)
 static int edge_open(int ax, int ay, int bx2, int by) {   // can a sim step between two neighbouring cells? walls block, doors do not
     int ina = ax >= 0 && ay >= 0 && ax < GN && ay < GN, inb = bx2 >= 0 && by >= 0 && bx2 < GN && by < GN;
+    if (LV && (!ina || !inb)) return 0;   // (upstairs: the plot is all there is)
     if (!ina || !inb) { if (ina == inb) return 1; return !(by != ay && (ay == GN - 1 || by == GN - 1) && bx2 != door_cx && ax != door_cx) ? 1 : 0; }   // out of the plot: open, but the back fence has one gap, at the path
-    int w;
-    if (bx2 > ax) w = vwl[ay][ax + 1]; else if (bx2 < ax) w = vwl[ay][ax]; else if (by > ay) w = hwl[ay + 1][ax]; else w = hwl[ay][ax];
+    int w; u8 (*hw)[GN] = HWv(LV); u8 (*vw)[GN + 1] = VWv(LV);
+    if (bx2 > ax) w = vw[ay][ax + 1]; else if (bx2 < ax) w = vw[ay][ax]; else if (by > ay) w = hw[ay + 1][ax]; else w = hw[ay][ax];
     return w == 0 || w == 5;
 }
 static int next_cell(int sx, int sy, int gx, int gy, int *nx, int *ny) {   // breadth-first search from the goal over the whole 3x3 patch; returns the neighbour of (sx,sy) that is one step closer
@@ -1457,7 +1547,9 @@ static void ghost_draw(void) {
     glEnd(); glPolyFmt(POLY_ALPHA(31) | POLY_CULL_NONE | POLY_ID(1) | lf); glBegin(GL_QUADS);
 }
 static void sims_step(int frames) {
-    for (int i = 0; i < nsim; i++) { Sim *m = &sims[i];
+    int keep_lv = LV;
+    for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; LV = slv[i];   // (D36: each walks on its own storey)
+        if ((m->act == 50 || m->act == 51) && !m->act_left && m->x == m->tx && m->y == m->ty) { stairs_go(i, m->act_obj, m->act == 51); continue; }   // (already at the foot, or on the landing)
         if (m->act_left > 0) {
             for (int n = 0; n < 6; n++) if (n == (m->act >= 100 ? m->act - 100 : m->act)) { m->acc[n] += m->act_amt; while (m->acc[n] >= m->face) { m->acc[n] -= m->face; if (m->need[n] < 100) m->need[n]++; } }
             m->act_left--; if (m->act_left == 0) { int an = m->act; m->act = -1; if (i == ctl) say("Done"); if (an == 0) life_ev(i, WN_EAT, 0); else if (an == 1) life_ev(i, WN_FUN, 0); else if (an == 2 && m->act_amt >= 80) life_ev(i, WN_SLEEP, 0); else if (an == 5 && m->act_amt >= 70) life_ev(i, WN_SHOWER, 0); }
@@ -1466,6 +1558,7 @@ static void sims_step(int frames) {
                 int nx, ny; if (next_cell(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), fdiv(m->tx + 8, 16), fdiv(m->ty + 8, 16), &nx, &ny)) { m->wx = nx * 16; m->wy = ny * 16; }
                 else { m->tx = m->x; m->ty = m->y; m->act = -1; if (i == ctl) say("Cannot get there"); continue; } }
             if (m->x < m->wx) { m->x++; m->dirn = 8192; } else if (m->x > m->wx) { m->x--; m->dirn = 24576; } else if (m->y < m->wy) { m->y++; m->dirn = 0; } else if (m->y > m->wy) { m->y--; m->dirn = 16384; }
+            if (m->x == m->tx && m->y == m->ty && (m->act == 50 || m->act == 51)) { stairs_go(i, m->act_obj, m->act == 51); continue; }
             if (m->x == m->tx && m->y == m->ty && m->act >= 0) {
                 m->act_left = m->face;
                 if (m->act >= 100) { if (m->tgt >= 0) { Sim *o = &sims[m->tgt]; o->act_left = m->face; o->act = 3 + 100; o->act_amt = 0; } m->act = 3; apply_soc(i, m->tgt, m->soc); }
@@ -1478,7 +1571,7 @@ static void sims_step(int frames) {
             if (m->need[2] <= 6) { m->need[2] = 35; m->need[1] = cl100(m->need[1] - 15); if (i == ctl) say("Passed out!"); life_fear(i, FR_PASS); }
             if (m->need[4] <= 6) { m->need[4] = 60; m->need[5] = cl100(m->need[5] - 25); m->need[1] = cl100(m->need[1] - 10); if (i == ctl) say("Oh no, an accident!"); life_fear(i, FR_WET); } }
     }
-    dog_step(frames); ghost_step(frames); if ((frames & 63) == 0) life_tick();
+    LV = 0; dog_step(frames); ghost_step(frames); LV = keep_lv; if ((frames & 63) == 0) life_tick();
     { static const u8 DP[4] = { 66, 100, 150, 250 }; static int dacc; int per = 8 * DP[o_day & 3];   // (Options > Game > Day length: a game minute every 5.3, 8, 12 or 20 steps)
       dacc += 100; if (dacc >= per) { dacc -= per; if (dacc >= per) dacc = 0; minutes++; if (minutes % 1440 == 0) day_roll(); } }
 }
@@ -1881,6 +1974,7 @@ static void title_touch(int tx, int ty) {
 static void open_opts(void) { opt_ret = mode; set_mode(M_TITLE); opt_on = 1; }
 static void set_mode(int m) {
     if ((m == M_BUY || m == M_BUILD) && lot_bx >= 0 && !lot_owned(lot_bx, lot_by)) { say("Not your lot: buy it on the Map"); return; }
+    if ((m == M_BUY || m == M_BUILD) && mode == M_LIVE) ed_lv = slv[ctl];   // (D36) Buy and Build start on your sim's storey
     mode = m;
     if (m == M_LIVE) { lcdMainOnBottom(); } else { lcdMainOnTop(); scr = hud; hud_clear(); }
 }
@@ -1895,6 +1989,8 @@ static void live_touch(int tx, int ty) {
         return; }
     if (popup) {
         if (popup == 1) { if (hit(42, 126, 116, 24, tx, ty)) { start_act(&sims[ctl], popup_i, -1); popup = 0; } else if (hit(162, 126, 52, 24, tx, ty)) popup = 0; return; }
+        if (popup == 5) { if (hit(42, 126, 116, 24, tx, ty)) { Sim *m = &sims[ctl]; const Obj *st = &objs[popup_i]; int r = st->rot & 3; m->tx = (st->x - SFX_[r]) * 16; m->ty = (st->y - SFY_[r]) * 16; m->act = 51; m->act_amt = 0; m->face = 1; m->act_obj = popup_i; m->act_left = 0; popup = 0; }   // (down: to the landing)
+                          else if (hit(162, 126, 52, 24, tx, ty)) popup = 0; return; }
         { int tg = popup == 2 ? popup_i : -2 - popup_i, n = soc_list(tg); if (hit(212, 60, 22, 14, tx, ty)) popup = 0;
           else for (int k = 0; k < n; k++) if (hit(26 + (k & 1) * 104, 82 + (k >> 1) * 22, 100, 20, tx, ty)) { start_soc(ctl, tg, soc_pick[k]); popup = 0; break; } }
         return; }
@@ -1911,19 +2007,20 @@ static void live_touch(int tx, int ty) {
     if (hit(36, 168, 24, 22, tx, ty)) { speed = speed == 1 ? 2 : speed == 2 ? 3 : 1; return; }
     if (hit(0, 158, 34, 34, tx, ty)) { cur_sim = ctl; return; }
     for (int i = 0; i < nsim; i++) if (hit(132 + i * 21, 2, 20, 27, tx, ty)) { cur_sim = i; if (stage_of(sims[i].age) > 0) ctl = i; return; }
-    int cx, cy; if (!pick_cell(tx, ty, &cx, &cy)) return;
+    int vl = slv[ctl], cx, cy; LV = vl; if (!pick_cell_h(tx, ty, 40 + vl * WHF, &cx, &cy)) return;
     mark_x = cx; mark_y = cy; mark_t = 40;
-    for (int i = 0; i < nsim; i++) { int sx = fdiv(sims[i].x + 8, 16), sy = fdiv(sims[i].y + 8, 16); if (sx == cx && sy == cy) { cur_sim = i; if (i != ctl) { popup = 2; popup_i = i; } return; } }
-    if (dog_have && fdiv(dog.x + 8, 16) == cx && fdiv(dog.y + 8, 16) == cy) { popup = 4; return; }
-    for (int k = 0; k < CITN; k++) { const Cit *c = &cits[k]; if (!cit_vis(c)) continue; int sx = fdiv(c->x + 8, 16), sy = fdiv(c->y + 8, 16); if (sx == cx && sy == cy) { popup = 3; popup_i = k; return; } }
+    for (int i = 0; i < nsim; i++) { int sx = fdiv(sims[i].x + 8, 16), sy = fdiv(sims[i].y + 8, 16); if (slv[i] == vl && sx == cx && sy == cy) { cur_sim = i; if (i != ctl) { popup = 2; popup_i = i; } return; } }
+    if (!vl && dog_have && fdiv(dog.x + 8, 16) == cx && fdiv(dog.y + 8, 16) == cy) { popup = 4; return; }
+    for (int k = 0; k < CITN && !vl; k++) { const Cit *c = &cits[k]; if (!cit_vis(c)) continue; int sx = fdiv(c->x + 8, 16), sy = fdiv(c->y + 8, 16); if (sx == cx && sy == cy) { popup = 3; popup_i = k; return; } }
     int o = pick_obj(tx, ty); if (o < 0) o = obj_at(cx, cy); if (o >= 0) { popup = 1; popup_i = o; return; }
+    if (vl && cx >= 0 && cy >= 0 && cx < GN && cy < GN && !uflr[vl - 1][cy][cx]) { int st = stairs_below(vl, cx, cy); if (st >= 0) { popup = 5; popup_i = st; } return; }   // (D36) the top of a flight: Go Down; open air elsewhere
     if (cx >= -SLC && cy >= -SLC && cx < SLC * 2 && cy < SLC * 2) { cur_sim = ctl; sims[ctl].tx = cx * 16; sims[ctl].ty = cy * 16; sims[ctl].act = -1; sims[ctl].act_left = 0; }
 }
 
 void systemMsgHandler(int bytes, void *user_data);
-static volatile u32 lat_down; static volatile int lat_tx, lat_ty, lat_press, lat_got; static u32 lat_prev;
+static volatile u32 lat_down; static volatile int lat_tx, lat_ty, lat_press, lat_got; static u32 lat_prev; static volatile u32 vbl_n;
 static void vb_latch(void) {   // every vblank, remember fresh presses, so a quick tap is never lost while a slow frame is being drawn
-    u32 k = keysCurrent(), n = k & ~lat_prev; lat_prev = k;
+    vbl_n++; u32 k = keysCurrent(), n = k & ~lat_prev; lat_prev = k;
     lat_down |= n & ~(u32)KEY_TOUCH;
     if (n & KEY_TOUCH) { lat_press = 1; lat_got = 0; }
     if ((k & KEY_TOUCH) && lat_press && !lat_got) { touchPosition t; touchRead(&t); if (t.px || t.py) { lat_tx = t.px; lat_ty = t.py; lat_got = 1; } }   // (D35: was touchReadXY(&t), which in libnds 1.8.2 takes no argument and returns the struct: t stayed garbage, so a tap shorter than one pass of the main loop landed at a random place)
@@ -1983,6 +2080,7 @@ int main(void) {
             if (msg_t > 0) text(4, 150, 1, C15(31, 20, 12), msg);
             yaw += (o_spin == 0 ? 0 : o_spin == 1 ? 40 : o_spin == 2 ? 80 : 170); pitch = 3200;
         } else if (mode == M_LIVE) {
+            LV = slv[ctl];
             if (cam_on) {   // stylus camera: drag to orbit/tilt (or pan), buttons for zoom, follow, reset, done
                 if (down & KEY_TOUCH) { cam_drag = 0; if (hit(216, 36, 38, 20, tp.px, tp.py)) { cam_pan ^= 1; forced = 1; } else if (hit(216, 58, 38, 20, tp.px, tp.py)) cam_drag = 1;
                     else if (hit(216, 80, 38, 20, tp.px, tp.py)) cam_drag = 2; else if (hit(216, 102, 38, 20, tp.px, tp.py)) { cam_free ^= 1; forced = 1; }
@@ -2005,10 +2103,11 @@ int main(void) {
             for (int k = 0; k < speed; k++) { sims_step(frames * speed + k); city_step(frames * speed + k); } lot_cross();
             int tx = sims[cur_sim].x * 2 * T / 16 - GN * T + T, tz = sims[cur_sim].y * 2 * T / 16 - GN * T + T; if (!cam_free) { camx += (tx - camx) / 8; camz += (tz - camz) / 8; }
             yaw = live_yaw; dist = live_dist * (o_cam == 0 ? 85 : o_cam == 1 ? 100 : 125) / 100; cam_deff = dist; pitch = live_pitch;
-            { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)(cur_sim * 7 + ctl * 3 + minutes * 13 + funds + (o_pm ? polys / 64 : 0) + info_pg * 43 + life_ver * 53); for (int n = 0; n < 6; n++) a = a * 31 + (unsigned)sims[cur_sim].need[n]; a = a * 31 + (unsigned)sims[cur_sim].rel;
+            { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)(cur_sim * 7 + ctl * 3 + minutes * 13 + funds + (o_pm ? polys_last / 64 + fps_now * 977 : 0) + info_pg * 43 + life_ver * 53); for (int n = 0; n < 6; n++) a = a * 31 + (unsigned)sims[cur_sim].need[n]; a = a * 31 + (unsigned)sims[cur_sim].rel;
               unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + juke_pg * 47 + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
               if (forced) { ts = ~a; hs = ~b; } if (mode == M_LIVE) { if (a != ts) { draw_top_status(); ts = a; } if (b != hs) { draw_hud(); hs = b; } } }   // (D35: not after a menu chip has just left Live, or the Live icons stayed over Buy's 3D view)
         } else {   // BUY / BUILD: the live lot on the top screen, the catalogue or plan on the bottom (drag to place, paint, draw walls, move)
+            LV = ed_lv;
             if (down & KEY_TOUCH) ui_down(tp.px, tp.py); else if (held & KEY_TOUCH) ui_hold(tp.px, tp.py);
             if (keysUp() & KEY_TOUCH) ui_up();
 #ifdef DSTEST
@@ -2046,7 +2145,8 @@ int main(void) {
         glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluPerspectivef32(degreesToAngle(40), 256 * 4096 / 192, 4096 * 3 / 4, 4096 * 12);
         glMatrixMode(GL_POSITION); glLoadIdentity();
         glTranslatef32(0, 0, -dist); glRotateXi(pitch); glRotateYi(yaw);
-        if (mode == M_LIVE) glTranslatef32(-camx, 0, -camz); else if (mode == M_CAS) glTranslatef32(0, -650, 0);
+        { int want = mode == M_LIVE ? slv[ctl] * WHF : (mode == M_BUY || mode == M_BUILD) ? ed_lv * WHF : 0; cam_y += (want - cam_y) / 6; if (want - cam_y > -8 && want - cam_y < 8) cam_y = want; }   // (D36) the camera rises to the storey
+        if (mode == M_LIVE) glTranslatef32(-camx, -cam_y, -camz); else if (mode == M_CAS) glTranslatef32(0, -650, 0); else if (mode == M_BUY || mode == M_BUILD) glTranslatef32(0, -cam_y, 0);
         lit_on = o_lit && mode != M_TITLE && mode != M_MAP;
         glPolyFmt(POLY_ALPHA(31) | POLY_CULL_NONE | POLY_ID(1) | (lit_on ? (POLY_FORMAT_LIGHT0 | POLY_FORMAT_LIGHT1) : 0));
         if (lit_on) { glMaterialf(GL_SPECULAR, RGB15(0, 0, 0)); glMaterialf(GL_EMISSION, RGB15(0, 0, 0));
@@ -2057,6 +2157,9 @@ int main(void) {
         else if (mode == M_MAP) { BInfo b; bm_block(sel_x, sel_y, &b); draw_lot(&b, yaw); }
         else draw_build(yaw);
         glEnd();
+        polys_last = polys;
+        { static u32 v0; static int n0; n0++; if (vbl_n - v0 >= 60) { fps_now = (int)(n0 * 60 / (int)(vbl_n - v0)); v0 = vbl_n; n0 = 0;   // (D36) the frame rate: passes of this loop a second (Options > Graphics > Poly meter shows it)
+            if (o_pm && mode != M_LIVE && mode != M_TITLE && mode != M_CAS) { u16 *keep = scr; scr = hud; char t[32]; rect(0, 182, 92, 10, C15(2, 2, 4)); sprintf(t, "%d fps %d quads", fps_now, polys / 2); text(2, 184, 1, TXT, t); scr = keep; } } }
         gframes = frames; glFlush(0); swiWaitForVBlank(); if (o_fps30) swiWaitForVBlank(); frames++;
     }
     return 0;
