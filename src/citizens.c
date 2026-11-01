@@ -31,7 +31,7 @@ int cit_live_max = LIVE_MAX, cit_maxdraw = 64, cit_sprite_rate = 1;   // (the op
 #define NOPID     0xFFFF
 #define NONE      255
 
-enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME, CM_LEAVE, CM_CHORE, CM_VISIT, CM_PARTY, CM_STOP, CM_AWAY, CM_GREET };   // (STOP: a peacemaker, come to break the fight up; GREET: someone who knows you, come over to say hello)
+enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME, CM_LEAVE, CM_CHORE, CM_VISIT, CM_PARTY, CM_STOP, CM_AWAY, CM_GREET, CM_BUY };   // (STOP: a peacemaker, come to break the fight up; GREET: someone who knows you, come over to say hello; BUY: a customer for the farm stand)
 enum { PE_FRIENDLY, PE_GRUFF, PE_FLIRTY, PE_SHY };
 enum { PO_TALK, PO_JOKE, PO_HUG, PO_FLIRT, PO_GIFT, PO_PROPOSE, PO_FIGHT, PO_SORRY, PO_FAMILY, PO_MOVEIN,
        PO_SUB_CHAT, PO_SUB_SOC, PO_SUB_ROM, PO_SUB_MEAN, PO_BACK,   // the pie's sub-menus
@@ -98,10 +98,14 @@ int dbg_wk[4];                        // walks begun, ended by the time, ended h
 #define WK(k) ((void)0)
 #endif
 #ifdef AUTO_LE
-extern int dbg_greet[6];
+extern int dbg_greet[6], dbg_buy[6];
 #define GL(k) (dbg_greet[k]++)
+#define GB(k) (dbg_buy[k]++)
+#define IFLE(x) (x)
 #else
 #define GL(k) ((void)0)
+#define GB(k) ((void)0)
+#define IFLE(x) ((void)0)
 #endif
 static u32 crnd(void) { crng ^= crng << 13; crng ^= crng >> 17; crng ^= crng << 5; return crng; }
 static int  rn(int n) { return (int)((crnd() >> 8) % (u32)n); }
@@ -418,7 +422,7 @@ COLD void citizens_shift(int dtx, int dty) {
         c->wv = 0;                                 // routes and errands are worked out again
         if (c->mode == CM_CHORE || c->mode == CM_VISIT || c->mode == CM_GOHOME || c->mode == CM_LEAVE) { c->mode = CM_IDLE; c->t = 20; c->gait.sit = 0; }
         if (c->mode == CM_SLEEP && c->sub == 3) c->sub = 0;      // (the way to bed: the bed is found again)
-        if (c->mode == CM_GREET) { c->mode = CM_IDLE; c->t = 20; }
+        if (c->mode == CM_GREET || c->mode == CM_BUY) { c->mode = CM_IDLE; c->t = 20; }   // (a customer's stand has moved with the map: the next one comes)
     }
     for (int k = 0; k < NHH; k++) {               // the households' homes have new numbers
         Hh *g = &hh[k]; if (g->zone != ZONE_CITY || g->pfam == NOPID) continue;
@@ -1026,6 +1030,7 @@ static const char *activity(const Cit *c) {   // what the HUD says they are up t
     case CM_LEAVE: return "HEADING OUT";
     case CM_AWAY: return "WALKING OFF";
     case CM_GREET: return "COMING OVER";
+    case CM_BUY: return "OFF TO THE FARM STAND";
     case CM_VISIT: return "VISITING";
     case CM_CHAT: return "CHATTING";
     case CM_CHASE: return "ANGRY";
@@ -1318,6 +1323,11 @@ COLD static int step_rest(Cit *c, int i, int n, int dx, int dz, int d2, const Ho
         { int spd = in ? 4 : c->stage == AG_ELDER ? 4 : 7, m = MIN(n, (int)c->t);   // (a hurry: you might be off again)
           if (d2 < 2 * TILE * 2 * TILE) go(c, p->x, p->z, spd, in, m); else nav(c, p->x / TILE, (-p->z) / TILE, spd, in, m);
           used = g_used; c->t = (u16)(c->t - MIN((int)c->t, used)); }   // (the steps walked count against its time, which never ran down before: a greeter who could not reach you kept on)
+        break;
+    case CM_BUY:    // a customer for the farm stand (citizens_send_buyer): over to it, buys a few of something (sim.c), a word, and off again; they know you now
+        if (!c->t || c->st > 90) { GB(3); c->mode = CM_IDLE; c->t = 60; break; }
+        if (ABS(c->x / TILE - c->ix) + ABS((-c->z) / TILE - c->iy) <= 1) { int v; GB(2); say(c, farm_customer(&v)); c->gait.wave = 40; c->mode = CM_IDLE; c->t = 240; meet(c); if (v) rel_add(c, 2); break; }
+        nav(c, c->ix, c->iy, 5, in, MIN(n, (int)c->t)); used = g_used; c->t = (u16)(c->t - MIN((int)c->t, used));
         break;
     case CM_CHAT:
         if (c->t) c->t--;
@@ -1820,8 +1830,18 @@ void citizens_debug(int zone, int *in, int *out, int *asleep, int *transit, int 
 }
 #endif
 void citizens_rebuild(void) { for (int i = 0; i < NCIT; i++) cits[i].built = 0; }   // (the crowd's arena was lent out: every model is made again, nearest first)
+COLD int citizens_send_buyer(int tx, int ty) {   // FARM LIFE: someone out and about near the farm stand at tile (tx, ty) comes over to buy (the ones who know you first); 1: sent
+    int best = -1, bs = 1 << 30; GB(0);
+    for (int i = 0; i < NCIT; i++) { const Cit *c = &cits[i];
+        if (c->zone != world_zone || (c->mode != CM_IDLE && c->mode != CM_WALK) || c->stage < AG_TEEN || i == pie_c || indoors_at(c->x, c->z)) continue;
+        int dx = c->x / TILE - tx, dy = (-c->z) / TILE - ty, d = dx * dx + dy * dy; if (d > 24 * 24) continue;
+        if (cit_known(c)) d >>= 2;
+        if (d < bs) { bs = d; best = i; } }
+    if (best < 0) return 0;
+    GB(1); IFLE(dbg_buy[4] = best); Cit *c = &cits[best]; c->mode = CM_BUY; c->ix = (u8)tx; c->iy = (u8)ty; c->t = 900; c->st = 0; c->wv = 0; return 1;
+}
 #ifdef AUTO_LE
-int dbg_greet[6];   // (test builds) people who know you: set off to say hello, got to you; gave up: the time, held up, you too far
+int dbg_greet[6], dbg_buy[6];   // (test builds) farm stand customers: asked for, sent, got there, gave up. And people who know you: set off to say hello, got to you; gave up: the time, held up, you too far
 int citizens_dbg_walk_up(int slot, int want, int far) {   // (test builds) walk up to that one (slot -1: the nearest grown-up out of doors and awake who likes you less
     // than want): in front of them (far 0), or on the pavement far tiles off (passing by, on a walk round town). Their slot, or -1
     Sim *p = &sims[player]; int best = slot >= 0 && slot < NCIT && cits[slot].zone == world_zone && cits[slot].mode != CM_GONE ? slot : -1, bd = 1 << 30;

@@ -37,4 +37,5 @@ int         citizens_friends(void);       // (stories) how many people out there
 int  citizens_take(int pid, int at, int place);  // bring person pid to life: at home (place -1) or at a place (its index); the slot, or -1
 void citizens_release(int slot);                 // they are wanted elsewhere: gone as soon as nobody is looking
 int  citizens_place_of(int slot);                // where a living one was brought to life: the place, or -1 for home
+int  citizens_send_buyer(int tx, int ty);       // FARM LIFE: someone near the farm stand at that tile comes to buy (1: sent)
 void citizens_shift(int dtx, int dty);           // the window moved by that many tiles: everyone with it

@@ -183,6 +183,30 @@ a drink or a round, a film, a haircut, a massage, a checkup, a swim, a room for 
 Jobs (PHONE, JOBS) are at real places too: 14 careers (13 in town, and the old factory) with their own shifts, days, pay and six titles each (DISHWASHER to
 RESTAURATEUR, INTERN to CEO, ORDERLY to MEDICAL LEGEND...). Go there (the boss pays the taxi) and X on a counter, desk or machine.
 
+## Farm life
+Farms stand in the villages and out in the country (and BUILD MODE sells crop beds, a coop, a cow stall and a farm stand for your
+own yard). All the beds are one farm, yours: X on a thing shows what it can do.
+- **Crops through the seasons** (a crop bed): PLANT WHEAT, CORN, TOMATOES or a PUMPKIN, WATER THE CROPS, and they grow each night
+  they had water; HARVEST when ready. Each crop loves its seasons (wheat spring and autumn, corn summer, tomatoes spring and summer,
+  pumpkins summer and autumn) and grows every other day out of them. Three dry days and a crop withers; bugs eat half (SPRAY);
+  the last day of autumn warns FROST TOMORROW, and the first winter night kills what is left. In winter the ground is too cold to
+  plant, unless you have the GREENHOUSE. A sprinkler, a scarecrow and a tractor help too (the stand).
+- **Animals** (the coop, the stalls): BUY A HEN ($40, up to 6) or A COW ($250, up to 3), FEED them and PET THE HENS / BRUSH THE COWS
+  every day. They have a happiness bar: fed and petted they lay and give twice as much; hungry or sad they give nothing. COLLECT the
+  eggs and MILK THE COWS in the morning.
+- **Selling**: at the farm stand (SELL PRODUCE, the ORDER board, the FAIR on festival days), at any grocery in town (SELL FARM FOOD,
+  a fifth more), or in the FARM BOOK. While you are by a stand with food to sell, the townsfolk come over to buy (a few at a time, at
+  the stand's price), and they know you after.
+- **A farm job**: FARMING is a career on the JOBS list (FARM HAND, PICKER, HERDER, GROWER, FARM MANAGER, FARM BOSS; 6 AM to 2 PM,
+  Monday to Saturday) at the nearest farm: X WORK on its beds, coop, stalls or stand. It raises the farming skill.
+- **Wants and moodlets**: PICK A CROP, SELL FARM FOOD and CARE FOR ANIMALS come up for a family that farms; GOOD HARVEST,
+  HAPPY ANIMALS, SOLD AT MARKET and LOST A CROP come with them.
+- **The FARM BOOK** (the phone's FARM LEDGER, or FARM BOOK at the stand; the FARM LIFE pack's `FARM.OVL`): FARM shows each crop with a
+  growth bar and READY, WATER ME, BUGS! or GROWING, which crops are GOOD NOW this season, and one TO DO line (what to do next);
+  ANIMALS shows the hens and cows, their happiness, fed and petted ticks and what waits to be collected; SELL, BUILD (barn, silo,
+  orchard, beehives, farm stand, windmill: they earn every day) and ORDERS.
+Saves keep it all (version 43; older saves load with content animals and nothing sold yet).
+
 ## Growing up
 Every Bore grows up a day at a time: BABY, CHILD, TEEN, ADULT, ELDER (OPTIONS, LIFE: off, short, normal or long lives).
 On a birthday, X on the fridge or the stove bakes a cake, and BLOW CANDLES on it makes the birthday a party (with confetti).

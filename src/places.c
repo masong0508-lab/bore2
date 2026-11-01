@@ -22,6 +22,7 @@ const Career careers[CAR_N] = {
     { "FILM",        L(LOT_CINEMA),                            14, 22, 0x7C,  800, 800, "yv:A",  { "USHER", "PROJECTIONIST", "FILM CRITIC", "SCREENWRITER", "DIRECTOR", "MOVIE MOGUL" } },
     { "BEAUTY",      L(LOT_SALON) | L(LOT_SPA),                10, 18, 0x3E,  900, 700, "`y-S>H", { "SHAMPOOER", "STYLIST", "SENIOR STYLIST", "COLOURIST", "SALON OWNER", "STYLE ICON" } },
     { "ARTS",        L(LOT_GALLERY),                           10, 18, 0x3E,  800, 900, ")y}",   { "GALLERY GUIDE", "ART TEACHER", "PAINTER", "CURATOR", "GALLERY OWNER", "GRAND MASTER" } },
+    { "FARMING",     L(LOT_FARM),                               6, 14, 0x3F,  850, 650, "\xDB\xDC\xDD\xDE", { "FARM HAND", "PICKER", "HERDER", "GROWER", "FARM MANAGER", "FARM BOSS" } },   // (the beds, the coop, the stalls, the stand)
 };
 #undef L
 int  job_car = CAR_FACTORY, job_bx = -1, job_by = -1;
@@ -94,8 +95,13 @@ int job_here(int tx, int ty, char c) {
     const Career *cr = &careers[job_car];
     if (!c || !strchr(cr->station, c)) return 0;
     if (job_car == CAR_FACTORY) return world_zone == ZONE_HOME;           // the factory's work marker, back home
-    PlaceInfo pi;
-    return place_at(tx, ty, &pi) && pi.bx == job_bx && pi.by == job_by;
+    if (world_zone != ZONE_CITY || world_wbx < 0 || tx < 0 || ty < 0 || tx % BM_BLK < BM_LOT0 || ty % BM_BLK < BM_LOT0) return 0;   // (on the workplace's own lot: a farm is not a place)
+    return world_wbx + tx / BM_BLK == job_bx && world_wby + ty / BM_BLK == job_by;
+}
+int job_farm_bx = -1, job_farm_by = -1;
+const char *farm_name(int bx, int by, char *out) {
+    static const char *const fn[8] = { "SUNNY ACRES", "GREEN ACRES", "HAPPY HEN", "OLD OAK", "BLUE BARN", "MAPLE", "HILLTOP", "MEADOW" };
+    sprintf(out, "%s FARM", fn[bm_hash(bx, by, 3) % 8u]); return out;
 }
 void job_take(int car, int bx, int by, const char *place) {
     if (car != job_car) job_level = 0;                                   // a new career starts at the bottom
@@ -115,6 +121,14 @@ int job_openings(int refbx, int refby, int *car, int *place, int n) {
             if (d < bd) { bd = d; best = i; }
         }
         if (best >= 0) { car[k] = c; place[k] = best; k++; }
+    }
+    if (k < n) {   // FARMING: the nearest farm, in a town or out in the country (farms are not on the list of places): place -2. Ring by ring, out to 48 blocks
+        int bd = 1 << 30; job_farm_bx = -1;
+        for (int r = 1; r <= 48 && job_farm_bx < 0; r++) for (int dy = -r; dy <= r; dy++) for (int dx = -r; dx <= r; dx += (dy == -r || dy == r) ? 1 : 2 * r) {
+            int bx = refbx + dx, by = refby + dy, d = dx * dx + dy * dy; BInfo b;
+            if (d >= bd || bx < 0 || by < 0 || bx >= BM_N || by >= BM_N || (job_car == CAR_FARM && bx == job_bx && by == job_by)) continue;
+            bm_block(bx, by, &b); if (b.lot == LOT_FARM) { bd = d; job_farm_bx = bx; job_farm_by = by; } }
+        if (job_farm_bx >= 0) { car[k] = CAR_FARM; place[k] = -2; k++; }
     }
     if (job_car != CAR_FACTORY && k < n) { car[k] = CAR_FACTORY; place[k] = -1; k++; }   // the old factory, back home
     return k;

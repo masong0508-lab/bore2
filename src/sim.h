@@ -84,6 +84,17 @@ int  sim_move_out(int i, char *where);   // a grown-up of the household moves to
 // VEHICLES: bought at gas stations, ridden outdoors (O cycles the board and what you own), fuelled at the pumps
 enum { VEH_BIKE, VEH_SCOOTER, VEH_SEDAN, VEH_VAN, VEH_SPORTS, VEH_PICKUP, VEH_N };
 extern unsigned char fm_fert, fm_fz, fm_pest, fm_up, fm_wc, fm_ordk, fm_ordq, fm_ordt, fm_fair, fm_n[4], fm_g[4], fm_wet, fm_dry[4], fm_hens, fm_cows, fm_fed, veh_cond[VEH_N], art_n, novel; extern unsigned short fm_stock[4], fm_egg, fm_milk, fm_pe, fm_pm; extern unsigned short art_q, royalty;
+// FARM LIFE, deeper (save version 43): how happy the hens and the cows are (0..100: fed and petted every day, they lay and give more; sad, nothing),
+// petted today (1 hens, 2 cows), what the farm has sold (dollars, all its life) and to how many townsfolk at the stand
+extern unsigned char fm_hh, fm_ch, fm_pet; extern unsigned short fm_buyers; extern int fm_earned;
+extern const char *const fmGood[6]; extern const unsigned char fmPr[6];   // WHEAT CORN TOMATOES PUMPKINS EGGS MILK, and each one's price
+int  fm_need(int k);                       // days a crop needs to grow
+int  fm_in_season(int k);                  // 1: that crop loves this season (it grows every day; out of its season every other day; winter: frost)
+int  fm_have(int k);                       // how many of farm good k there are to sell
+int  fm_total(void);                       // all of them
+int  farm_going(void);                     // 1: the family farms (something planted, an animal, or the job)
+const char *farm_customer(int *sold);      // (citizens.c) a townsperson at the farm stand buys a few of something: what they say
+void farm_save(void); void farm_load(void);
 extern int  veh_own, veh_on, veh_sel, veh_fuel[VEH_N], veh_wph;   // owned (a bit each), ridden (0 none, else type + 1), the last one, tanks (quarter tiles), the wheels' turn
 int  veh_seat(int t); int veh_colour(int t); const char *veh_hud(void);   // how high the driver sits; the paint; "SEDAN  FUEL 73%" for the screen
 int  sim_ride_after_board(void);     // stepped off the board: on to a vehicle you own (1) or onto your feet (0)

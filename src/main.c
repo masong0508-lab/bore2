@@ -1751,7 +1751,7 @@ static void scene_tick(void) {   // (test builds: CASTAWAY ISLAND's sights, each
 #endif
 
 // ---- JOBS: your job (and a free ride to it), and the jobs going at real places near you ----
-static const s8 carIc[CAR_N] = { IC_HAMMER, IC_FOOD, IC_MONEY, IC_BOLT, IC_DROP, IC_BED, IC_PLAY, IC_CASE, IC_BOOK, IC_NOTE, IC_HEART, IC_CAMERA, IC_SMILE, IC_BRUSH };
+static const s8 carIc[CAR_N] = { IC_HAMMER, IC_FOOD, IC_MONEY, IC_BOLT, IC_DROP, IC_BED, IC_PLAY, IC_CASE, IC_BOOK, IC_NOTE, IC_HEART, IC_CAMERA, IC_SMILE, IC_BRUSH, IC_SPROUT };
 static void jobs_open(void) {
     int rbx, rby;
     if (world_zone == ZONE_CITY && world_wbx >= 0) { rbx = world_wbx + sim_tile_x(&sims[player]) / BM_BLK; rby = world_wby + sim_tile_y(&sims[player]) / BM_BLK; }
@@ -1788,7 +1788,8 @@ static void jobs_update(void) {
         return;
     }
     int k = jobs_sel - 1;
-    if (jobs_pl[k] < 0) sim_take_job(CAR_FACTORY, -1, -1, "THE FACTORY");
+    if (jobs_pl[k] == -2) { char nm[24]; sim_take_job(CAR_FARM, job_farm_bx, job_farm_by, farm_name(job_farm_bx, job_farm_by, nm)); }   // (a farm: not on the list of places)
+    else if (jobs_pl[k] < 0) sim_take_job(CAR_FACTORY, -1, -1, "THE FACTORY");
     else { const Place *p = &pop_place[jobs_pl[k]]; char nm[24]; bm_place_name(p->lot, bm_hash(p->bx, p->by, 3), nm); sim_take_job(jobs_car[k], p->bx, p->by, nm); }
     jobs_open();
 }
@@ -1827,7 +1828,8 @@ static void jobs_draw(void) {
         ui_text(40, y, 1, cr->title[lv], on ? UI_BLUE2 : UI_INK);
         sprintf(b, "$%d A SHIFT", cr->pay0 + cr->pay_lvl * lv); ui_text(306 - ui_tw(1, b), y, 1, b, UI_GOODT);
         shift_short(t, c); int tw2 = ui_tw(1, t);
-        if (jobs_pl[k] < 0) strcpy(b, "THE FACTORY, THE MAN BASE");
+        if (jobs_pl[k] == -2) farm_name(job_farm_bx, job_farm_by, b);
+        else if (jobs_pl[k] < 0) strcpy(b, "THE FACTORY, THE MAN BASE");
         else { const Place *p = &pop_place[jobs_pl[k]]; char nm[24]; const Settle *st = bm_set(p->set);
                sprintf(b, "%s, %s", bm_place_name(p->lot, bm_hash(p->bx, p->by, 3), nm), st ? st->name : "");
                if (40 + ui_tw(1, b) + 8 > 306 - tw2) strcpy(b, nm); }   // (no room for the town: the place alone)
@@ -2217,6 +2219,7 @@ static void save_body(void) {
     sv_u8(home_city); sv_u16(home_bx); sv_u16(home_by); sv_u32((u32)home_paid); prop_save();   // (version 42: the properties)
     sim_save(); world_save(!home_city); pop_save(); isl_save();
     story_save();
+    farm_save();   // (version 43: FARM LIFE deeper: the animals, the stand)
 }
 static void load_body(void) {
     u32 seed = ld_u32();
@@ -2244,6 +2247,7 @@ static void load_body(void) {
     home_city = ld_u8(); home_bx = (s16)ld_u16(); home_by = (s16)ld_u16(); home_paid = (int)ld_u32(); prop_load();
     sim_load(&edit); world_load(); pop_load(); isl_load();
     if (save_ver >= 5) story_load(); else story_reset();
+    if (save_ver >= 43) farm_load();   // (older: the animals content, nothing sold yet)
 }
 static int save_game(int slot) {
     loading("SAVING YOUR GAME", 50);
@@ -2515,6 +2519,7 @@ static void prop_tick(void) {
 }
 #endif
 #ifdef AUTO_LE
+static int le_pick(char opt[8][24], int n, const char *w) { int l = strlen(w); for (int i = 0; i < n; i++) if (!strncmp(opt[i], w, l)) { sim_pie_do(i); return 1; } return 0; }   // (test builds: X on the pie option that starts so)
 int dbg_le[32], dbg_st[8]; char dbg_note[32];   // (test builds, with AUTO_CITY: lean checks. 1: a home and properties in three towns, then the phone's map)
 static void le_tick(void) {
     static int t0 = -1, k;
@@ -2561,6 +2566,74 @@ static void le_tick(void) {
         if (k == 4 && t >= nt) { k++; q = 0; nt = t; g0 = dbg_greet[0]; g1 = dbg_greet[1]; }
         dbg_le[15] = day_count; dbg_le[16] = k;
     }
+#elif AUTO_LE == 4
+    {   // FARM LIFE, lived like a player: the farm job from the JOBS list and a ride there; crops planted (in season and not), hens and a cow bought;
+        // six days of a shift at work, then the chores (pick, plant again, water, eggs, milk, feed, pet, brush) and the afternoon by the stand
+        // (do the townsfolk come to buy?); the frost at the end of autumn; a save and a load; the FARM BOOK. Everything through the pie menus.
+        // dbg_le: 0 the job found, 1 its career, 2-3 its block, 4 planted, 5 hens, 6 cows, 7-8 cash before and after the first shift, 9 job level,
+        // 10 picked, 11 eggs, 12 milk, 13 buyers, 14 the farm's takings, 15-16 hens' and cows' happiness, 17 farm wants seen, 18 moodlets seen (bits:
+        // harvest, animals, lost a crop, market), 19 crops left after the frost, 20 winter planting refused, 21-22 save, load, 23 what came back (bits),
+        // 24 the day, 25 the step, 26 farm skill, 27 corn's growth, 28 pumpkins' growth (out of season) on day 2, 29 sold at the stand, 30 job pay days
+        static int nt, a, dl = -1, wk = -1, cs = -1; Sim *p = &sims[player]; char opt[8][24]; int dd = 0;
+        #define PIE(ch, w) (sim_debug_goto((char)(ch), -1) && (sim_player_cancel_sim(p), (n_ = sim_pie_open(opt)) > 0) && le_pick(opt, n_, w))
+        int n_; extern int sim_debug_goto(char c, int lot);
+        for (int i = 0; i < N_ROOM; i++) p->need[i] = 100 << 10; alone_opt = 0;
+        for (int i = 0; i < 6; i++) { const char *m = sim_moodlet_name(p->ml[i].id); dd |= !strcmp(m, "GOOD HARVEST") | !strcmp(m, "HAPPY ANIMALS") << 1 | !strcmp(m, "LOST A CROP") << 2 | !strcmp(m, "SOLD AT MARKET") << 3; } dbg_le[18] |= dd;
+        for (int i = 0; i < 4; i++) if (p->want[i].kind >= W_HARVEST) dbg_le[17] |= 1 << (p->want[i].kind - W_HARVEST);
+        if (k == 0 && t >= 60) { k++; cash = 3000; clock_min = 5 * 60; jobs_board = 1; jobs_open();   // (the JOB BOARD: every job going, as a smartphone shows)
+           
+            for (int i = 0; i < jobs_n; i++) if (jobs_car[i] == CAR_FARM) { char nm[24]; dbg_le[0] = i + 1; sim_take_job(CAR_FARM, job_farm_bx, job_farm_by, farm_name(job_farm_bx, job_farm_by, nm)); break; }
+            dbg_le[1] = job_car; dbg_le[2] = job_bx; dbg_le[3] = job_by; taxi_to_block(job_bx, job_by, -1, -1, job_place); nt = t + 300; }
+        if (k == 1 && t >= nt) {   // first morning: seeds (corn and tomatoes love spring and summer, pumpkins grow slow in spring), three hens, a cow
+            static const struct { u8 ch; const char *w; } s0[] = { { 0xDB, "PLANT CORN" }, { 0xDB, "PLANT CORN" }, { 0xDB, "PLANT CORN" }, { 0xDB, "PLANT TOMATOES" }, { 0xDB, "PLANT TOMATOES" },
+                { 0xDB, "PLANT PUMPKIN" }, { 0xDB, "PLANT PUMPKIN" }, { 0xDB, "WATER" }, { 0xDC, "BUY A HEN" }, { 0xDC, "BUY A HEN" }, { 0xDC, "BUY A HEN" }, { 0xDD, "BUY A COW" },
+                { 0xDC, "FEED" }, { 0xDD, "FEED" }, { 0xDC, "PET" }, { 0xDD, "BRUSH" } };
+            if (a < (int)(sizeof s0 / sizeof s0[0])) { if (world_count((char)0xDB)) { PIE(s0[a].ch, s0[a].w); a++; } }   // (once the farm is there: the taxi may still be on its way)   // (once the farm is there: the taxi may still be on its way)
+            else { k++; a = 0; dbg_le[4] = fm_n[0] + fm_n[1] + fm_n[2] + fm_n[3]; dbg_le[5] = fm_hens; dbg_le[6] = fm_cows; } }
+        if (k == 2) {   // the days: a shift, the chores, the afternoon by the stand, the night at full speed
+            int h = clock_min / 60;
+            if (day_count != dl) { dl = day_count; a = 0; if (day_count == 2) { dbg_le[27] = fm_g[1]; dbg_le[28] = fm_g[3]; } }
+            if (h >= 6 && h < 14 && job_on_shift() && wk != day_count && p->action != ACT_WORK) { if (cs < 0) dbg_le[7] = (int)cash; if (PIE(0xDB, "WORK")) wk = day_count; sim_speed = 1; }
+            if (h >= 14 && h < 19 && a < 13) {   // the chores, one a frame
+                static const struct { u8 ch; const char *w; } s1[14] = { { 0xDB, "HARVEST" }, { 0xDB, "SPRAY" }, { 0xDB, "PLANT CORN" }, { 0xDB, "PLANT TOMATOES" }, { 0xDB, "PLANT WHEAT" }, { 0xDB, "WATER" },
+                    { 0xDC, "COLLECT" }, { 0xDD, "MILK" }, { 0xDC, "FEED" }, { 0xDD, "FEED" }, { 0xDC, "PET" }, { 0xDD, "BRUSH" }, { 0xDE, "SELL PRODUCE" }, { 0, 0 } };
+                if (cs < 0 && h >= 14) { cs = 1; dbg_le[8] = (int)cash; dbg_le[9] = job_level; }
+                int s0_ = fm_stock[0] + fm_stock[1] + fm_stock[2] + fm_stock[3], e0 = fm_egg, m0 = fm_milk;
+                if (a < 13 && (a != 12 || day_count >= 3)) PIE(s1[a].ch, s1[a].w);      // (sell it all at the stand only on the last days: the townsfolk buy first)
+                dbg_le[10] += MAX(0, fm_stock[0] + fm_stock[1] + fm_stock[2] + fm_stock[3] - s0_); dbg_le[11] += MAX(0, fm_egg - e0); dbg_le[12] += MAX(0, fm_milk - m0);
+                if (++a == 13) { sim_player_cancel_sim(p); sim_debug_goto((char)0xDE, -1); sim_speed = 1; } }
+            if (h >= 19 || h < 6) sim_speed = 3; else if (p->action != ACT_WORK) sim_speed = 2;   // (the afternoon by the stand: fast, so the days go by)
+            if (day_count >= 4 && h >= 19) { k++; a = 0; sim_speed = 1; dbg_le[30] = job_days_good + job_level * 10; } }
+        if (k == 3) {   // the end of autumn: crops in, the frost warning, the first night of winter, then no planting
+            if (a < 3) { if (a == 0) { day_count = 28; clock_min = 10 * 60; } else PIE(0xDB, a == 1 ? "PLANT WHEAT" : "PLANT PUMPKIN"); a++; nt = t + 5; }
+            else if (a == 3 && t >= nt) { a++; clock_min = 1439; }                            // (to the last day of autumn: FROST TOMORROW)
+            else if (a == 4 && day_count == 29) { a++; clock_min = 1439; }                    // (to the first night of winter)
+            else if (a == 5 && day_count == 30) { a++; dbg_le[19] = fm_n[0] + fm_n[1] + fm_n[2] + fm_n[3]; clock_min = 10 * 60; nt = t + 5; }
+            else if (a == 6 && t >= nt) { a = 0; k++; PIE(0xDB, "PLANT CORN"); dbg_le[20] = fm_n[1] == 0; memcpy(dbg_note, last_note, 32); } }
+        if (k == 4) { k++; dbg_le[21] = save_game(0); nt = t + 200;   // a save (load it with today's plain build: DSCARD and test/oldsave_load.txt; a test build has too little stack for a load)
+            dbg_le[22] = fm_hh | fm_ch << 8 | fm_hens << 16 | fm_cows << 24; dbg_le[23] = fm_buyers; dbg_le[31] = fm_earned; }
+        if (k == 5 && t >= nt) { k++; state = ST_LIFE; sim_want_resort = 5; }   // (the FARM BOOK: the test's pad script turns its pages)
+        dbg_le[13] = fm_buyers; dbg_le[14] = fm_earned; dbg_le[15] = fm_hh; dbg_le[16] = fm_ch; dbg_le[24] = day_count; dbg_le[25] = k; dbg_le[26] = p->skill_farm; dbg_le[29] = fm_earned;
+        #undef PIE
+        (void)n_;
+    }
+#elif AUTO_LE == 6
+    {   // (farm stand customers: the farm job, a ride there, food to sell, you by the stand from 10 AM at normal speed; dbg_buy counts them, dbg_le the last one's state)
+        extern int dbg_buy[6], citizens_dbg_state(int slot), sim_debug_goto(char c, int lot);
+        if (k == 0 && t >= 60) { k++; jobs_board = 1; jobs_open(); for (int i = 0; i < jobs_n; i++) if (jobs_car[i] == CAR_FARM) { char nm[24]; sim_take_job(CAR_FARM, job_farm_bx, job_farm_by, farm_name(job_farm_bx, job_farm_by, nm)); break; }
+            taxi_to_block(job_bx, job_by, -1, -1, job_place); }
+        if (k == 1 && world_count((char)0xDE)) { k++; fm_egg = 40; fm_stock[2] = 30; clock_min = 10 * 60; sim_debug_goto((char)0xDE, -1); }
+        if (k == 2) { alone_opt = 0; for (int i = 0; i < N_ROOM; i++) sims[player].need[i] = 100 << 10; dbg_le[0] = fm_buyers; dbg_le[1] = fm_earned; dbg_le[2] = citizens_dbg_state(dbg_buy[4]); dbg_le[3] = clock_min; dbg_le[4] = fm_egg + fm_stock[2]; }
+    }
+#elif AUTO_LE == 5
+    if (k == 0 && t >= 60) { k++;   // (the FARM BOOK's pages over a farm part way through summer: the test's pad script turns them)
+        static const u8 n[4] = { 6, 8, 0, 5 }, g[4] = { 2, 1, 0, 3 }; memcpy(fm_n, n, 4); memcpy(fm_g, g, 4); fm_wet = 2; fm_pest = 8; fm_hens = 4; fm_cows = 2; fm_hh = 90; fm_ch = 25;
+        fm_fed = 1; fm_pet = 2; fm_pe = 7; fm_stock[0] = 12; fm_stock[2] = 30; fm_egg = 9; fm_milk = 4; fm_earned = 1234; fm_buyers = 17; day_count = 13; cash = 4321;
+#ifdef AUTO_LE5_SAVE
+        dbg_le[0] = save_game(0); state = ST_LIFE; }   // (a save first: the book after it)
+    if (k == 1 && t >= 300) { k++;
+#endif
+        sim_want_resort = 5; }
 #endif
 }
 #endif

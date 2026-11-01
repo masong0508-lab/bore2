@@ -5,7 +5,7 @@
 #include "common.h"
 
 enum { CAR_FACTORY, CAR_FOOD, CAR_RETAIL, CAR_FIT, CAR_SWIM, CAR_HOTEL, CAR_GAME, CAR_BIZ, CAR_TEACH,
-       CAR_NIGHT, CAR_MED, CAR_FILM, CAR_BEAUTY, CAR_ART, CAR_N };
+       CAR_NIGHT, CAR_MED, CAR_FILM, CAR_BEAUTY, CAR_ART, CAR_FARM, CAR_N };   // (FARM: at a farm, not a place: job_openings finds the nearest, place -2)
 typedef struct {
     const char *name;                 // "CULINARY"
     u32 lots;                         // where it is done (a bit for each LOT_ that will do)
@@ -39,4 +39,6 @@ const char *job_title(void);                      // "LINE COOK"
 int  job_here(int tx, int ty, char c);            // c at (tx, ty) is something the player works at, at their own workplace
 void job_take(int car, int bx, int by, const char *place);   // a new job (the same career elsewhere keeps the level)
 int  job_openings(int refbx, int refby, int *car, int *place, int n);   // jobs going near that block: careers and pop_place indices
+extern int job_farm_bx, job_farm_by;               // (the farm job_openings found: its place is -2)
+const char *farm_name(int bx, int by, char *out); // "SUNNY ACRES FARM"
 int  life_minutes(void);                          // minutes since the life began (for the room)

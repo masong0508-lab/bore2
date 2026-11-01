@@ -19,6 +19,7 @@
 #include "island.h"
 #include "save.h"
 #include "story.h"
+#include "citizens.h"
 #include "skate.h"
 
 Sim  sims[MAX_SIMS];
@@ -108,7 +109,7 @@ enum { ML_NONE, ML_GOOD_MEAL, ML_SNACKED, ML_RESTED, ML_FRESH, ML_GOOD_CHAT, ML_
        ML_HUNGRY, ML_TIRED, ML_STINKY, ML_BURSTING, ML_LONELY, ML_BORED, ML_SINGING, ML_PIZZA,
        ML_ATE_OUT, ML_SWAM, ML_OUTFIT, ML_RETAIL, ML_NEW_GAME, ML_NEW_JOB, ML_COACHED, ML_HOTEL,
        ML_FINE_DINING, ML_FILM, ML_CUT, ML_NIGHT_OUT, ML_ROUND, ML_PAMPERED, ML_INSPIRED, ML_HEALTHY, ML_TREAT,
-       ML_BIRTHDAY, ML_NEW_BABY, ML_LOVE, ML_PROUD, ML_GRIEF, ML_MEMORIES, ML_CAKE, ML_GRADES, ML_HOMEWORK, ML_SCHOOL, ML_BLOB_BUDDY, ML_BLOB_HATCH, ML_BLOB_PROUD, ML_BLOB_WORRY, ML_BLOB_MISS, ML_BLOB_HOOKED, ML_BLOB_SHARED, ML_PARTY_OK, ML_PARTY_GREAT, ML_PARTY_LEGEND, ML_DJ_HIT, ML_EYES, ML_ABDUCT, ML_TANTRUM, ML_MILESTONE, ML_BLOOM, ML_DORMANT, ML_SUNBURN, ML_TAN, ML_N };
+       ML_BIRTHDAY, ML_NEW_BABY, ML_LOVE, ML_PROUD, ML_GRIEF, ML_MEMORIES, ML_CAKE, ML_GRADES, ML_HOMEWORK, ML_SCHOOL, ML_BLOB_BUDDY, ML_BLOB_HATCH, ML_BLOB_PROUD, ML_BLOB_WORRY, ML_BLOB_MISS, ML_BLOB_HOOKED, ML_BLOB_SHARED, ML_PARTY_OK, ML_PARTY_GREAT, ML_PARTY_LEGEND, ML_DJ_HIT, ML_EYES, ML_ABDUCT, ML_TANTRUM, ML_MILESTONE, ML_BLOOM, ML_DORMANT, ML_SUNBURN, ML_TAN, ML_HARVEST, ML_HERD, ML_CROPLOST, ML_MARKET, ML_N };
 static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "", 0, 0 }, { "GOOD MEAL", 12, 240 }, { "SNACKED", 4, 90 }, { "WELL RESTED", 12, 300 }, { "FRESH", 8, 180 }, { "GOOD CHAT", 10, 180 },
     { "MADE A FRIEND", 20, 480 }, { "PROMOTED", 25, 720 }, { "PAYDAY", 15, 360 }, { "EMBARRASSED", -12, 120 },
@@ -124,6 +125,7 @@ static const struct { const char *nm; s8 val; u16 mins; } mlDef[ML_N] = {
     { "FOND MEMORIES", 8, 240 }, { "BIRTHDAY CAKE", 8, 180 }, { "GOOD GRADES", 10, 720 }, { "HOMEWORK DONE", 6, 240 }, { "LONG DAY AT SCHOOL", -5, 180 },
     { "BLOB BUDDY", 10, 240 }, { "IT HATCHED!", 16, 480 }, { "PROUD BLOB PARENT", 14, 720 }, { "WORRIED ABOUT MY BLOB", -8, 120 }, { "MISSING MY BLOB", -15, 720 }, { "HOOKED ON THE TOY", -8, 240 }, { "SHARED MY LUNCH", 8, 240 }, { "NICE PARTY", 10, 480 }, { "GREAT PARTY", 18, 720 }, { "LEGENDARY PARTY", 30, 1440 }, { "CROWD PLEASER", 12, 360 }, { "EYES BURNED", -25, 720 }, { "ABDUCTED!", -8, 600 },
     { "TODDLER TANTRUM", -10, 180 }, { "A BIG MILESTONE", 14, 720 }, { "IN BLOOM", 12, 1440 }, { "DORMANT", -8, 1440 }, { "SUNBURNT", -12, 720 }, { "SUN KISSED", 8, 480 },
+    { "GOOD HARVEST", 14, 480 }, { "HAPPY ANIMALS", 10, 360 }, { "LOST A CROP", -10, 480 }, { "SOLD AT MARKET", 12, 300 },   // (FARM LIFE)
 };
 const char *sim_moodlet_name(int id) { return mlDef[id % ML_N].nm; }
 static int has_trait(const Sim *s, int t, int hi) { int v = s->bore.tr[t]; return hi ? v >= 8 : v <= 2; }
@@ -202,7 +204,7 @@ static void turn_to(Sim *s, int target, int rate) {
 
 void sim_init(void) {
     gotchi_reset(); dj_xp = 0; dj_heat = 0; band_reset(); realm_reset();   // (a new life: no realm yet; a loaded one brings its own)
-    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; rap_sheet = 0; space_done = 0; memset(space_tech, 0, 3); memset(pk_data, 0, sizeof pk_data); col_lvl = col_major = col_on = col_cls = col_gpa = col_study = 0; memset(col_g, 0, 3); astro_xp = 0; art_n = novel = 0; art_q = royalty = 0; fm_fert = fm_fz = fm_pest = fm_up = fm_wc = fm_ordk = fm_ordq = fm_ordt = fm_fair = 0; memset(fm_n, 0, 4); memset(fm_g, 0, 4); memset(fm_dry, 0, 4); memset(fm_stock, 0, sizeof fm_stock); fm_wet = fm_hens = fm_cows = fm_fed = 0; fm_egg = fm_milk = fm_pe = fm_pm = 0; for (int t = 0; t < VEH_N; t++) veh_cond[t] = 100; memset(crime_n, 0, sizeof crime_n); crime_evid = crime_def = 0; dog_default(&pet_dog); nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
+    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; rap_sheet = 0; space_done = 0; memset(space_tech, 0, 3); memset(pk_data, 0, sizeof pk_data); col_lvl = col_major = col_on = col_cls = col_gpa = col_study = 0; memset(col_g, 0, 3); astro_xp = 0; art_n = novel = 0; art_q = royalty = 0; fm_fert = fm_fz = fm_pest = fm_up = fm_wc = fm_ordk = fm_ordq = fm_ordt = fm_fair = 0; memset(fm_n, 0, 4); memset(fm_g, 0, 4); memset(fm_dry, 0, 4); memset(fm_stock, 0, sizeof fm_stock); fm_wet = fm_hens = fm_cows = fm_fed = 0; fm_egg = fm_milk = fm_pe = fm_pm = 0; fm_hh = fm_ch = 70; fm_pet = 0; fm_buyers = 0; fm_earned = 0; for (int t = 0; t < VEH_N; t++) veh_cond[t] = 100; memset(crime_n, 0, sizeof crime_n); crime_evid = crime_def = 0; dog_default(&pet_dog); nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
     job_level = 0; job_car = CAR_FACTORY; job_take(CAR_FACTORY, -1, -1, "THE FACTORY"); job_none = 1;
     groceries = 10; room_bx = room_by = -1; room_until = 0; phone_tier = 1; handheld = 0;
 #ifdef AUTO_PHONE_TIER
@@ -684,7 +686,7 @@ static void run_action(Sim *s) {
             s->yaw = (t * 5) & 4095; s->gait.sleep = 1; break; }
         case ACT_PHONE: if (s->act_var == 1) s->need[N_FOOD] += 300; else if (s->act_var == 5) s->need[N_FUN] += (handheld & 2) ? 90 : 70; else s->need[N_SOCIAL] += GAIN_TALK; if (s->act_var != 5) s->gait.wave = 2; break;
         case ACT_TALK: s->need[N_SOCIAL] += GAIN_TALK; s->need[N_FUN] += 40; if ((s->act_t & 63) == 0) s->gait.wave = 40; break;
-        case ACT_WORK: if (is_work()) { s->need[N_FUN] -= 20; if (!(s->act_t & 63)) s->gait.wave = 24; } else { s->act_t = 0; } break;   // (the minutes count in clock_tick)
+        case ACT_WORK: if (is_work()) { s->need[N_FUN] -= 20; if (!(s->act_t & 63)) s->gait.wave = 24; if (job_car == CAR_FARM && !(s->act_t & 15)) s->skill_farm++; } else { s->act_t = 0; } break;   // (the minutes count in clock_tick)
         default: break;
     }
     for (int i = 0; i < NEED_N; i++) s->need[i] = CLAMP(s->need[i], 0, 100 << 10);
@@ -1337,6 +1339,9 @@ static void clock_tick(void) {
     acc = 0;
     clock_min++;
     if (!(clock_min % 60)) pop_hour();   // (the lives of the ones who know you, off the map: an hour at a time)
+    if (!(clock_min % 30) && clock_min >= 8 * 60 && clock_min < 19 * 60 && world_zone == ZONE_CITY && fm_total()) {   // FARM LIFE: by a farm stand with food to sell, the townsfolk come to buy
+        int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), y0 = MAX(0, py - 10), y1 = MIN(MH - 1, py + 10), x0 = MAX(0, px - 10), x1 = MIN(MW - 1, px + 10);
+        for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) if ((u8)lifeMap[y][x] == 0xDE) { citizens_send_buyer(x, y); y = y1; break; } }
     for (int i = 0; i < nsims; i++) { wants_minute(&sims[i]); moodlets_minute(&sims[i]); }
     gotchi_minute();
     if (clock_min == 16 * 60) for (int i = 0; i < nsims; i++) for (int j = 0; j < nsims; j++) { int r = sims[i].rel[j]; sims[i].rel[j] = (s8)(r > 0 ? r - 2 : r < 0 ? r + 2 : 0); }   // 4 PM: the day's warmth fades a little
@@ -1389,27 +1394,54 @@ u8 art_n, novel; u16 art_q, royalty;
 // FARM LIFE: the crops (planted, days grown, thirsty or watered, days dry), the hens and cows, what you have picked and what waits at the coop and the stalls
 u8 fm_fert, fm_fz, fm_pest, fm_up, fm_wc, fm_ordk, fm_ordq, fm_ordt, fm_fair;   // fertilizer in the shed, which crops have it, pests, upgrades (1 sprinkler 2 scarecrow 4 greenhouse 8 tractor), water given today, the order board, the fair
 u8 fm_n[4], fm_g[4], fm_wet, fm_dry[4], fm_hens, fm_cows, fm_fed; u16 fm_stock[4], fm_egg, fm_milk, fm_pe, fm_pm;
+u8 fm_hh = 70, fm_ch = 70, fm_pet; u16 fm_buyers; int fm_earned;   // (save version 43: see sim.h)
+const char *const fmGood[6] = { "WHEAT", "CORN", "TOMATOES", "PUMPKINS", "EGGS", "MILK" }; const u8 fmPr[6] = { 4, 7, 9, 16, 5, 10 };
+#define fmNm fmGood
 int fm_need(int k) { static const u8 d[4] = { 2, 3, 3, 4 }; int n = d[k] - (SKL(sims[player].skill_farm) >= 5 ? 1 : 0); return n < 2 ? 2 : n; }
+int fm_in_season(int k) { static const u8 ls[4] = { 5, 2, 3, 6 }; int se = sim_season(); return se < 3 && ((ls[k & 3] >> se) & 1); }   // WHEAT spring and autumn, CORN summer, TOMATOES spring and summer, PUMPKINS summer and autumn
+int fm_have(int k) { return k < 4 ? fm_stock[k] : k == 4 ? fm_egg : fm_milk; }
+static void fm_take(int k, int n) { if (k < 4) fm_stock[k] -= (u16)n; else if (k == 4) fm_egg -= (u16)n; else fm_milk -= (u16)n; }
+int fm_total(void) { int t = 0; for (int k = 0; k < 6; k++) t += fm_have(k); return t; }
+int farm_going(void) { return (fm_n[0] | fm_n[1] | fm_n[2] | fm_n[3] | fm_hens | fm_cows) || (job_car == CAR_FARM && !job_none) || fm_total(); }
+static void fm_sold(Sim *s, int v) { fm_earned += v; wants_event(s, W_FARMSELL, 0); if (v >= 40) sim_moodlet(s, ML_MARKET); }
+const char *farm_customer(int *sold) {   // a townsperson at the farm stand buys 1 to 4 of something there is, at the stand's price (half as much again as the market)
+    static const char *const ln[6] = { "FRESH WHEAT!", "SWEET CORN!", "RED TOMATOES!", "A BIG PUMPKIN!", "FRESH EGGS!", "FRESH MILK!" };
+    int k0 = (int)(look_rand() % 6u), k = -1; *sold = 0;
+    for (int i = 0; i < 6 && k < 0; i++) if (fm_have((k0 + i) % 6)) k = (k0 + i) % 6;
+    if (k < 0) return "SOLD OUT? OH WELL";
+    int n = MIN(fm_have(k), 1 + (int)(look_rand() % 4u)), v = n * fmPr[k] * 3 / 2; char b[40];
+    fm_take(k, n); cash += v; fm_buyers++; *sold = v; snprintf(b, sizeof b, "SOLD %d %s AT THE STAND: +$%d", n, fmGood[k], v); sim_note(b); fm_sold(&sims[player], v);
+    return ln[k];
+}
+void farm_save(void) { sv_u8(fm_hh); sv_u8(fm_ch); sv_u8(fm_pet); sv_u16(fm_buyers); sv_u32((u32)fm_earned); }
+void farm_load(void) { int h = ld_u8(), c = ld_u8(); fm_hh = (u8)MIN(100, h); fm_ch = (u8)MIN(100, c); fm_pet = (u8)ld_u8();   // (MIN reads its arguments twice: read first)
+    fm_buyers = (u16)ld_u16(); fm_earned = (int)ld_u32(); }
 static void pass_on(int i);
-static const char *const fmNm[4] = { "WHEAT", "CORN", "TOMATOES", "PUMPKINS" };
 static void farm_midnight(void) {
-    int se = sim_season(), wx = sim_weather(), pb = 0;
+    int se = sim_season(), wx = sim_weather(), pb = 0, lost = 0, gh = fm_up & 4;
     for (int i = 0; i < nsims; i++) if (sims[i].plant == 2) pb = 1;
     if ((fm_up & 1) || wx == 1) fm_wet = 15;                       // (a sprinkler, or the rain)
     for (int k = 0; k < 4; k++) { if (!fm_n[k]) continue;
-        if (se == 3 && !(fm_up & 4)) { fm_n[k] = 0; fm_g[k] = 0; fm_dry[k] = 0; fm_fz &= ~(1 << k); fm_pest &= ~(1 << k); sim_note("FROST KILLED A CROP. A GREENHOUSE HELPS"); continue; }
-        if ((fm_pest >> k) & 1) { fm_pest &= ~(1 << k); fm_n[k] = (u8)((fm_n[k] + 1) / 2); sim_note("PESTS ATE HALF A CROP"); }
+        if (se == 3 && !gh) { fm_n[k] = 0; fm_g[k] = 0; fm_dry[k] = 0; fm_fz &= ~(1 << k); fm_pest &= ~(1 << k); lost = 1; sim_note("FROST KILLED A CROP. A GREENHOUSE HELPS"); continue; }   // (winter: they wilt)
+        if ((fm_pest >> k) & 1) { fm_pest &= ~(1 << k); fm_n[k] = (u8)((fm_n[k] + 1) / 2); lost = 1; sim_note("PESTS ATE HALF A CROP"); }
         if (fm_g[k] >= fm_need(k)) continue;
-        if ((fm_wet >> k) & 1) { fm_g[k]++; if (pb && fm_g[k] < fm_need(k)) fm_g[k]++; fm_dry[k] = 0; if (fm_g[k] >= fm_need(k)) sim_note("CROPS ARE READY TO HARVEST"); }
-        else if (++fm_dry[k] >= 3) { fm_n[k] = 0; fm_g[k] = 0; fm_dry[k] = 0; fm_fz &= ~(1 << k); sim_note("A CROP WITHERED. WATER IT!"); } }
+        if ((fm_wet >> k) & 1) { fm_dry[k] = 0; if (!gh && !fm_in_season(k) && (day_count & 1)) continue;   // (out of its season: it grows every other day)
+                                 fm_g[k]++; if (pb && fm_g[k] < fm_need(k)) fm_g[k]++; if (fm_g[k] >= fm_need(k)) sim_note("CROPS ARE READY TO HARVEST"); }
+        else if (++fm_dry[k] >= 3) { fm_n[k] = 0; fm_g[k] = 0; fm_dry[k] = 0; fm_fz &= ~(1 << k); lost = 1; sim_note("A CROP WITHERED. WATER IT!"); } }
     fm_wet = 0; fm_wc = 0; fm_fair = 0;
-    { int any = 0; for (int k = 0; k < 4; k++) if (fm_n[k]) any = 1;
-      if (any && !(fm_up & 2) && (int)(look_rand() % 100) < (se == 1 ? 24 : 12)) { int k = (int)(look_rand() % 4u); if (fm_n[k] && !((fm_pest >> k) & 1)) { fm_pest |= 1 << k; char b_[40]; snprintf(b_, sizeof b_, "PESTS ARE AT THE %s! SPRAY", fmNm[k]); sim_note(b_); } } }
+    { int any = fm_n[0] | fm_n[1] | fm_n[2] | fm_n[3];
+      if (any && !(fm_up & 2) && (int)(look_rand() % 100) < (se == 1 ? 24 : 12)) { int k = (int)(look_rand() % 4u); if (fm_n[k] && !((fm_pest >> k) & 1)) { fm_pest |= 1 << k; char b_[40]; snprintf(b_, sizeof b_, "PESTS ARE AT THE %s! SPRAY", fmNm[k]); sim_note(b_); } }
+      if (any && se == 2 && day_count % 10 == 9 && !gh) sim_note("FROST TOMORROW! PICK YOUR CROPS"); }   // (the last day of autumn)
+    if (lost) sim_moodlet(&sims[player], ML_CROPLOST);
     if (fm_ordq && fm_ordt && --fm_ordt == 0) { fm_ordq = 0; sim_note("THE ORDER EXPIRED"); }
     if (!fm_ordq) { fm_ordk = (u8)(look_rand() % 6u); fm_ordq = (u8)(5 + look_rand() % 8u); fm_ordt = 5; }
-    if (fm_hens && (fm_fed & 1)) fm_pe = (u16)MIN(60, fm_pe + fm_hens * (1 + (SKL(sims[player].skill_farm) >= 4)));
-    if (fm_cows && (fm_fed & 2)) fm_pm = (u16)MIN(40, fm_pm + fm_cows * (1 + (SKL(sims[player].skill_farm) >= 6)));
-    fm_fed = 0;
+    for (int a = 0; a < 2; a++) {   // the animals (0 hens, 1 cows): fed and petted every day they are happy (a happy one lays or gives twice as much); unfed or sad, nothing
+        int n = a ? fm_cows : fm_hens, fed = (fm_fed >> a) & 1; u8 *hp = a ? &fm_ch : &fm_hh; u16 *pp = a ? &fm_pm : &fm_pe; if (!n) continue;
+        *hp = (u8)CLAMP(*hp + (fed ? 8 : -25) + ((fm_pet >> a) & 1 ? 12 : 0), 0, 100);
+        if (!fed || *hp < 30) { char b_[40]; snprintf(b_, sizeof b_, fed ? "THE %s ARE SAD: NO %s. PET THEM" : "THE %s WERE HUNGRY: NO %s", a ? "COWS" : "HENS", fmGood[4 + a]); sim_note(b_); }
+        else *pp = (u16)MIN(60, *pp + n * (1 + (SKL(sims[player].skill_farm) >= 4 + 2 * a) + (*hp >= 80)));
+    }
+    fm_fed = 0; fm_pet = 0;
     for (int i = nsims - 1; i >= 0; i--) if (sims[i].plant == 1) { Sim *s = &sims[i]; s->plant_t = 0; if (++s->plant_d >= 3) pass_on(i); else sim_note("THE STALK FADES. TALK TO IT!"); }   // (a stalk: three days, unless someone helps)
 }
 u8 col_lvl, col_major, col_on, col_cls, col_gpa, col_study, col_g[3]; u16 astro_xp;   // COLLEGE: degrees (0 none .. 3 doctor), the major, enrolled, lectures, GPA, study points, the GPA of each degree; the stargazing xp
@@ -1691,7 +1723,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_RESORT, PC_CAMP, PC_FARMBOOK, PC_SKYSEA, PC_HEIST, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_PAINT, PC_SELLART, PC_WRITE, PC_DIYFIX, PC_MECHFIX, PC_FPLANT0, PC_FPLANT_END = PC_FPLANT0 + 3, PC_FWATER, PC_FHARV, PC_FHEN, PC_FCOW, PC_FFEEDH, PC_FFEEDC, PC_FEGGS, PC_FMILK, PC_FSELL, PC_FEAT, PC_FSPRAY, PC_FFERT, PC_FORDER, PC_FUP, PC_FFAIR, PC_FDRINK, PC_FTALK, PC_FCURE, PC_FROOT, PC_FSPROUT, PC_MAIL, PC_SUN, PC_DIVE, PC_LAPS, PC_GRILL, PC_BIRDS, PC_SMELL, PC_BUYPROP, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
+       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_RESORT, PC_CAMP, PC_FARMBOOK, PC_SKYSEA, PC_HEIST, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_PAINT, PC_SELLART, PC_WRITE, PC_DIYFIX, PC_MECHFIX, PC_FPLANT0, PC_FPLANT_END = PC_FPLANT0 + 3, PC_FWATER, PC_FHARV, PC_FHEN, PC_FCOW, PC_FFEEDH, PC_FFEEDC, PC_FEGGS, PC_FMILK, PC_FSELL, PC_FEAT, PC_FSPRAY, PC_FFERT, PC_FORDER, PC_FUP, PC_FFAIR, PC_FDRINK, PC_FTALK, PC_FCURE, PC_FROOT, PC_FSPROUT, PC_MAIL, PC_SUN, PC_DIVE, PC_LAPS, PC_GRILL, PC_BIRDS, PC_SMELL, PC_BUYPROP, PC_FPET, PC_FBRUSH, PC_FSHOP, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
 _Static_assert(PC_VEH_END < 256, "pie codes are bytes");
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
@@ -1796,8 +1828,8 @@ static int sim_pie_open_(char opt[8][24]) {
             if (s->plant == 2) { OPT("DRINK FROM THE BED", PC_FDRINK) OPT("ROOT IN THE SOIL", PC_FROOT) if (s->bore.stage == AG_ADULT && baby_due < 0 && nsims < MAX_SIMS && fm_fert >= 2) OPT("SPROUT A SEEDLING", PC_FSPROUT) }
             for (int k = 0; k < 4 && pie_n < 8; k++) { snprintf(b_, sizeof b_, "PLANT %s", cn[k]); OPT(b_, PC_FPLANT0 + k) }
             act = ACT_NONE; break; }
-        case 0xDC: { char b_[24]; if (fm_pe) { snprintf(b_, sizeof b_, "COLLECT %d EGGS", fm_pe); OPT(b_, PC_FEGGS) } if (fm_hens < 6) OPT("BUY A HEN $40", PC_FHEN) if (fm_hens && !(fm_fed & 1)) OPT("FEED THE HENS $2", PC_FFEEDH) act = ACT_NONE; break; }
-        case 0xDD: { char b_[24]; if (fm_pm) { snprintf(b_, sizeof b_, "MILK THE COWS (%d)", fm_pm); OPT(b_, PC_FMILK) } if (fm_cows < 3) OPT("BUY A COW $250", PC_FCOW) if (fm_cows && !(fm_fed & 2)) OPT("FEED THE COWS $5", PC_FFEEDC) act = ACT_NONE; break; }
+        case 0xDC: { char b_[24]; if (fm_pe) { snprintf(b_, sizeof b_, "COLLECT %d EGGS", fm_pe); OPT(b_, PC_FEGGS) } if (fm_hens && !(fm_fed & 1)) OPT("FEED THE HENS $2", PC_FFEEDH) if (fm_hens && !(fm_pet & 1)) OPT("PET THE HENS", PC_FPET) if (fm_hens < 6) OPT("BUY A HEN $40", PC_FHEN) act = ACT_NONE; break; }
+        case 0xDD: { char b_[24]; if (fm_pm) { snprintf(b_, sizeof b_, "MILK THE COWS (%d)", fm_pm); OPT(b_, PC_FMILK) } if (fm_cows && !(fm_fed & 2)) OPT("FEED THE COWS $5", PC_FFEEDC) if (fm_cows && !(fm_pet & 2)) OPT("BRUSH THE COWS", PC_FBRUSH) if (fm_cows < 3) OPT("BUY A COW $250", PC_FCOW) act = ACT_NONE; break; }
         case 0xE0: OPT("CHECK THE MAIL", PC_MAIL) act = ACT_NONE; break;
         case 0xE2: OPT("SMELL THE FLOWERS", PC_SMELL) act = ACT_NONE; break;
         case 0xE3: OPT("ADMIRE THE GNOME", PC_ADMIRE) act = ACT_NONE; break;
@@ -1807,14 +1839,15 @@ static int sim_pie_open_(char opt[8][24]) {
         case 0xE7: OPT("WATCH THE POOL", PC_BIRDS) act = ACT_NONE; break;
         case 0xE8: case 0xE9: OPT("SUNBATHE", PC_SUN) act = ACT_NONE; break;
         case 0xEA: OPT("GRILL OUT $8", PC_GRILL) act = ACT_NONE; break;
-        case 0xDE: { static const char *const on[6] = { "WHEAT", "CORN", "TOMATOES", "PUMPKINS", "EGGS", "MILK" }, *const upn[4] = { "SPRINKLER $400", "SCARECROW $120", "GREENHOUSE $900", "TRACTOR $1500" };
-            char b_[28]; int tot = fm_stock[0] + fm_stock[1] + fm_stock[2] + fm_stock[3] + fm_egg + fm_milk, have[6] = { fm_stock[0], fm_stock[1], fm_stock[2], fm_stock[3], fm_egg, fm_milk };
+        case 0xDE: { static const char *const upn[4] = { "SPRINKLER $400", "SCARECROW $120", "GREENHOUSE $900", "TRACTOR $1500" };
+            char b_[28]; int tot = fm_total();
             if (tot) { snprintf(b_, sizeof b_, "SELL PRODUCE (%d)", tot); OPT(b_, PC_FSELL) }
-            if (fm_ordq) { snprintf(b_, sizeof b_, "ORDER: %d %s", fm_ordq, on[fm_ordk]); OPT(b_, have[fm_ordk] >= fm_ordq ? PC_FORDER : 0) }
+            if (fm_ordq) { snprintf(b_, sizeof b_, "ORDER: %d %s", fm_ordq, fmGood[fm_ordk]); OPT(b_, fm_have(fm_ordk) >= fm_ordq ? PC_FORDER : 0) }
             if (sim_festival() && !fm_fair && fm_stock[3]) OPT("ENTER THE FAIR", PC_FFAIR)
+            OPT("FARM BOOK", PC_FARMBOOK)
             OPT("FERTILIZER $6", PC_FFERT)
             for (int k = 0; k < 4; k++) if (!((fm_up >> k) & 1)) { OPT(upn[k], PC_FUP + 0) pie_code[pie_n - 1] = (u8)(PC_FUP); break; }
-            if (fm_stock[1] + fm_stock[2] + fm_stock[3] + fm_egg + fm_milk >= 2) OPT("EAT A FRESH MEAL", PC_FEAT)
+            if (tot - fm_stock[0] >= 2) OPT("EAT A FRESH MEAL", PC_FEAT)
             act = ACT_NONE; break; }
     }
     if (c == CH_CAKE) {   // the birthday cake: the candles (if there is a birthday), then slices
@@ -1864,6 +1897,7 @@ static int sim_pie_open_(char opt[8][24]) {
         case LOT_DINER: if (c == 'y') { OPT("A MEAL $15", PC_MEAL) OPT("A SNACK $6", PC_SNACK) OPT("A COFFEE $3", PC_COFFEE) } else if (c == 'c') OPT("A COFFEE $3", PC_COFFEE) break;
         case LOT_SHOP: { static const char *const buy[5] = { "GROCERIES $60", "AN OUTFIT $150", "A GAME $60", 0, "A RECORD $25" };
                          int k = place_shop_kind(bm_hash(pie_pi.bx, pie_pi.by, 3)); if (buy[k] && pie_n < 7) OPT(buy[k], PC_BUY0 + k)
+                         if (k == 0 && fm_total() && pie_n < 7) OPT("SELL FARM FOOD", PC_FSHOP)   // (FARM LIFE: a grocery buys what the farm makes)
                          if (k == 3) {   // an electronics shop: phones and handhelds
                              if (phone_tier < 1) OPT("FLIP PHONE $60", PC_PHONE1)
                              if (phone_tier < 2) OPT("SMARTPHONE $350", PC_PHONE2)
@@ -2049,8 +2083,10 @@ static void place_do(Sim *s, int code) {
         case PC_FPLANT0: case PC_FPLANT0 + 1: case PC_FPLANT0 + 2: case PC_FPLANT0 + 3: { static const u8 cost[4] = { 2, 4, 5, 8 }; int k = code - PC_FPLANT0;
             if (fm_n[k] >= 8) { sim_note("THAT FIELD IS FULL"); audio_voice(VOICE_NAH); return; }
             if (fm_n[k] && fm_g[k] >= fm_need(k)) { sim_note("HARVEST THOSE FIRST"); return; }
+            if (sim_season() == 3 && !(fm_up & 4)) { sim_note("TOO COLD TO PLANT. A GREENHOUSE HELPS"); audio_voice(VOICE_NAH); return; }   // (winter: the ground is frozen)
             if (!pay(cost[k])) return; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 150; s->act_var = 7;
-            if (!fm_n[k]) { fm_g[k] = 0; fm_dry[k] = 0; fm_fz &= ~(1 << k); } if (fm_fert && !((fm_fz >> k) & 1)) { fm_fert--; fm_fz |= 1 << k; sim_note("FERTILIZED: A BIGGER HARVEST"); } fm_n[k]++; s->skill_farm += 12 * (s->plant == 2 ? 2 : 1); sim_note("PLANTED. NOW WATER IT"); break; }
+            if (!fm_n[k]) { fm_g[k] = 0; fm_dry[k] = 0; fm_fz &= ~(1 << k); } if (fm_fert && !((fm_fz >> k) & 1)) { fm_fert--; fm_fz |= 1 << k; sim_note("FERTILIZED: A BIGGER HARVEST"); } fm_n[k]++; s->skill_farm += 12 * (s->plant == 2 ? 2 : 1);
+            sim_note(fm_in_season(k) || (fm_up & 4) ? "PLANTED. NOW WATER IT" : "PLANTED. IT GROWS SLOW THIS SEASON"); break; }
         case PC_FWATER: { int any = 0, soaked = 1; for (int k = 0; k < 4; k++) if (fm_n[k]) { any = 1; if (!((fm_wet >> k) & 1) && fm_g[k] < fm_need(k)) soaked = 0; }
             if (!any) { sim_note("NOTHING IS PLANTED"); return; }
             for (int k = 0; k < 4; k++) if (fm_n[k] && fm_g[k] < fm_need(k)) fm_wet |= 1 << k;
@@ -2061,20 +2097,25 @@ static void place_do(Sim *s, int code) {
                     sim_note("YOU WATERED TOO MUCH... YOU ARE A STALK!"); audio_voice(VOICE_GROAN); }
                 else if (r < 35) { s->plant = 2; s->plant_sk = s->bore.look[LK_SKIN]; s->plant_hc = s->bore.look[LK_HCOL]; s->bore.look[LK_SKIN] = 4; s->bore.look[LK_HCOL] = 5; sim_moodlet(s, ML_PROUD);
                     sim_note("YOU ARE PLANTBORE! THE SUN FEEDS YOU"); audio_voice(VOICE_YAHOO); } } break; }
-        case PC_FHARV: { int lv = SKL(s->skill_farm), got = 0; static const char *const nm[4] = { "WHEAT", "CORN", "TOMATOES", "PUMPKINS" }; char b_[40];
-            for (int k = 0; k < 4; k++) if (fm_n[k] && fm_g[k] >= fm_need(k)) { int y = fm_n[k] * (2 + lv / 3) + (int)(look_rand() % (fm_n[k] + 1)); if ((fm_fz >> k) & 1) y = y * 3 / 2; if (fm_up & 8) y = y * 3 / 2; if (s->plant == 2) y += fm_n[k]; fm_fz &= ~(1 << k); fm_stock[k] = (u16)MIN(999, fm_stock[k] + y); got += y; snprintf(b_, sizeof b_, "%d %s PICKED", y, nm[k]); sim_note(b_); fm_n[k] = 0; fm_g[k] = 0; fm_dry[k] = 0; }
+        case PC_FHARV: { int lv = SKL(s->skill_farm), got = 0; char b_[40];
+            for (int k = 0; k < 4; k++) if (fm_n[k] && fm_g[k] >= fm_need(k)) { int y = fm_n[k] * (2 + lv / 3) + (int)(look_rand() % (fm_n[k] + 1)); if ((fm_fz >> k) & 1) y = y * 3 / 2; if (fm_up & 8) y = y * 3 / 2; if (s->plant == 2) y += fm_n[k]; fm_fz &= ~(1 << k); fm_stock[k] = (u16)MIN(999, fm_stock[k] + y); got += y; snprintf(b_, sizeof b_, "%d %s PICKED", y, fmGood[k]); sim_note(b_); fm_n[k] = 0; fm_g[k] = 0; fm_dry[k] = 0; }
             if (!got) { sim_note("NOTHING IS READY"); return; }
-            begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 260; s->act_var = 7; s->skill_farm += 30 + got * 3; s->need[N_REST] = MAX(0, s->need[N_REST] - (4 << 10)); if (got >= 12) sim_moodlet(s, ML_PROUD); break; }
-        case PC_FHEN: if (fm_hens >= 6) break; if (!pay(40)) return; fm_hens++; sim_note("A NEW HEN! FEED IT DAILY"); s->skill_farm += 15; break;
-        case PC_FCOW: if (fm_cows >= 3) break; if (!pay(250)) return; fm_cows++; sim_note("A NEW COW! MOO"); s->skill_farm += 25; break;
-        case PC_FFEEDH: if (!pay(2)) return; fm_fed |= 1; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 120; s->act_var = 7; s->skill_farm += 8; sim_note("THE HENS ARE FED: EGGS BY MORNING"); break;
-        case PC_FFEEDC: if (!pay(5)) return; fm_fed |= 2; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 120; s->act_var = 7; s->skill_farm += 10; sim_note("THE COWS ARE FED: MILK BY MORNING"); break;
-        case PC_FEGGS: { char b_[32]; fm_egg = (u16)MIN(999, fm_egg + fm_pe); snprintf(b_, sizeof b_, "%d EGGS COLLECTED", fm_pe); sim_note(b_); fm_pe = 0; s->skill_farm += 15; break; }
-        case PC_FMILK: { char b_[32]; fm_milk = (u16)MIN(999, fm_milk + fm_pm); snprintf(b_, sizeof b_, "%d MILKED", fm_pm); sim_note(b_); fm_pm = 0; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 200; s->act_var = 7; s->skill_farm += 20; break; }
-        case PC_FSELL: { static const u8 pr[6] = { 4, 7, 9, 16, 5, 10 }; int tot = 0, v[6] = { fm_stock[0], fm_stock[1], fm_stock[2], fm_stock[3], fm_egg, fm_milk }; char b_[40];
-            for (int k = 0; k < 6; k++) tot += v[k] * pr[k] * (k == 3 && sim_season() == 2 ? 3 : 2) / 2; if (!tot) { sim_note("NOTHING TO SELL"); return; }
-            tot = tot * (100 + SKL(s->skill_char) * 3 + SKL(s->skill_farm) * 4) / 100; cash += tot; memset(fm_stock, 0, sizeof fm_stock); fm_egg = fm_milk = 0; s->skill_char += 10;
-            snprintf(b_, sizeof b_, "SOLD THE PRODUCE: +$%d", tot); sim_note(b_); audio_voice(VOICE_YAHOO); break; }
+            begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 260; s->act_var = 7; s->skill_farm += 30 + got * 3; s->need[N_REST] = MAX(0, s->need[N_REST] - (4 << 10));
+            sim_moodlet(s, ML_HARVEST); if (got >= 12) sim_moodlet(s, ML_PROUD); wants_event(s, W_HARVEST, 0); break; }
+        case PC_FHEN: if (fm_hens >= 6) break; if (!pay(40)) return; if (!fm_hens) fm_hh = 70; fm_hens++; sim_note("A NEW HEN! FEED IT DAILY"); s->skill_farm += 15; break;
+        case PC_FCOW: if (fm_cows >= 3) break; if (!pay(250)) return; if (!fm_cows) fm_ch = 70; fm_cows++; sim_note("A NEW COW! MOO"); s->skill_farm += 25; break;
+        case PC_FFEEDH: case PC_FFEEDC: { int c_ = code == PC_FFEEDC; if (!pay(c_ ? 5 : 2)) return; fm_fed |= 1 << c_; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 120; s->act_var = 7; s->skill_farm += 8 + c_ * 2;
+            sim_note(c_ ? "THE COWS ARE FED: MILK BY MORNING" : "THE HENS ARE FED: EGGS BY MORNING"); wants_event(s, W_ANIMALS, 0); break; }
+        case PC_FPET: case PC_FBRUSH: { int c_ = code == PC_FBRUSH; fm_pet |= 1 << c_; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 180; s->act_var = 7; s->skill_farm += 10;   // (once a day each: they are happier, and so are you)
+            s->need[N_FUN] = MIN(100 << 10, s->need[N_FUN] + (15 << 10)); s->need[N_COMFY] = MIN(100 << 10, s->need[N_COMFY] + (8 << 10)); sim_moodlet(s, ML_HERD); wants_event(s, W_ANIMALS, 0);
+            sim_note(c_ ? "THE COWS LOVE A BRUSH. MOO!" : "THE HENS CLUCK HAPPILY"); break; }
+        case PC_FEGGS: case PC_FMILK: { int c_ = code == PC_FMILK, n_ = c_ ? fm_pm : fm_pe; char b_[32]; if (c_) { fm_milk = (u16)MIN(999, fm_milk + n_); fm_pm = 0; } else { fm_egg = (u16)MIN(999, fm_egg + n_); fm_pe = 0; }
+            snprintf(b_, sizeof b_, c_ ? "%d MILK" : "%d EGGS", n_); strcat(b_, " COLLECTED"); sim_note(b_); s->skill_farm += 15 + c_ * 5; if (c_) { begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 200; s->act_var = 7; }
+            if ((c_ ? fm_ch : fm_hh) >= 80) sim_moodlet(s, ML_HERD); wants_event(s, W_ANIMALS, 0); break; }
+        case PC_FSELL: case PC_FSHOP: { int tot = 0; char b_[40];   // (the stand, or a grocery in town: the grocery pays a fifth more)
+            for (int k = 0; k < 6; k++) tot += fm_have(k) * fmPr[k] * (k == 3 && sim_season() == 2 ? 3 : 2) / 2; if (!tot) { sim_note("NOTHING TO SELL"); return; }
+            tot = tot * (100 + SKL(s->skill_char) * 3 + SKL(s->skill_farm) * 4 + (code == PC_FSHOP) * 20) / 100; cash += tot; memset(fm_stock, 0, sizeof fm_stock); fm_egg = fm_milk = 0; s->skill_char += 10;
+            snprintf(b_, sizeof b_, "SOLD THE FARM FOOD: +$%d", tot); sim_note(b_); audio_voice(VOICE_YAHOO); fm_sold(s, tot); break; }
         case PC_FEAT: { int left = 2; for (int k = 3; k >= 1 && left; k--) while (left && fm_stock[k]) { fm_stock[k]--; left--; } while (left && fm_egg) { fm_egg--; left--; } while (left && fm_milk) { fm_milk--; left--; }
             begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 0; s->need[N_FOOD] += 40 << 10; sim_moodlet(s, ML_HEALTHY); s->skill_cook += 25; sim_note("FRESH FROM THE FARM!"); break; }
         case PC_FSPRAY: if (!fm_pest) { sim_note("NO PESTS"); return; } if (!pay(3)) return; fm_pest = 0; begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_t = 120; s->act_var = 7; s->skill_farm += 15; s->skill_mech += 5; sim_note("SPRAYED: THE PESTS ARE GONE"); break;
@@ -2082,13 +2123,13 @@ static void place_do(Sim *s, int code) {
         case PC_FORDER: { int have[6] = { fm_stock[0], fm_stock[1], fm_stock[2], fm_stock[3], fm_egg, fm_milk }; static const u8 pr[6] = { 4, 7, 9, 16, 5, 10 }; char b_[40];
             if (!fm_ordq || have[fm_ordk] < fm_ordq) { sim_note("NOT ENOUGH FOR THE ORDER"); return; }
             { int v = fm_ordq * pr[fm_ordk] * 2; if (fm_ordk < 4) fm_stock[fm_ordk] -= fm_ordq; else if (fm_ordk == 4) fm_egg -= fm_ordq; else fm_milk -= fm_ordq;
-              v = v * (100 + SKL(s->skill_char) * 3) / 100; cash += v; fm_ordq = 0; fm_ordt = 0; s->skill_char += 12; s->skill_farm += 25; snprintf(b_, sizeof b_, "ORDER FILLED: +$%d", v); sim_note(b_); sim_moodlet(s, ML_PROUD); } break; }
+              v = v * (100 + SKL(s->skill_char) * 3) / 100; cash += v; fm_ordq = 0; fm_ordt = 0; s->skill_char += 12; s->skill_farm += 25; snprintf(b_, sizeof b_, "ORDER FILLED: +$%d", v); sim_note(b_); sim_moodlet(s, ML_PROUD); fm_sold(s, v); } break; }
         case PC_FUP: { static const int uc[4] = { 400, 120, 900, 1500 }; static const char *const un[4] = { "SPRINKLER: AUTO WATER", "SCARECROW: NO PESTS", "GREENHOUSE: NO FROST", "TRACTOR: BIGGER HARVESTS" };
             int k = 0; while (k < 4 && ((fm_up >> k) & 1)) k++; if (k >= 4) break; if (!pay(uc[k])) return; fm_up |= 1 << k; sim_note(un[k]); s->skill_mech += 40; audio_voice(VOICE_AGREE); break; }
         case PC_FFAIR: { char b_[40]; int sc = 20 + SKL(s->skill_farm) * 8 + (fm_up & 8 ? 8 : 0) + SKL(s->skill_creat) * 2 + (int)(look_rand() % 40u), pz;
             if (!fm_stock[3] || fm_fair) { sim_note("YOU HAVE ALREADY ENTERED"); return; } fm_stock[3]--; fm_fair = 1;
             pz = sc >= 85 ? 500 : sc >= 60 ? 200 : 40; cash += pz; s->skill_farm += 40; snprintf(b_, sizeof b_, sc >= 85 ? "BEST IN SHOW! +$%d" : sc >= 60 ? "SECOND PRIZE! +$%d" : "A RIBBON FOR TRYING +$%d", pz); sim_note(b_);
-            if (sc >= 85) { sim_moodlet(s, ML_PROUD); audio_voice(VOICE_WIN); } break; }
+            if (sc >= 85) { sim_moodlet(s, ML_PROUD); audio_voice(VOICE_WIN); } fm_sold(s, pz); break; }
         case PC_MAIL: { static int mail_day = -1; char b_[40]; if (mail_day == day_count) { sim_note("NO NEW MAIL TODAY"); return; } mail_day = day_count; int r = (int)(look_rand() % 100u);
             if (r < 40) sim_note("JUNK MAIL. INTO THE BIN"); else if (r < 65) { sim_note("A LETTER FROM A FRIEND!"); sim_moodlet(s, ML_GOOD_CHAT); s->need[N_SOCIAL] = MIN(100 << 10, s->need[N_SOCIAL] + (20 << 10)); }
             else if (r < 85) { int v = 20 + (int)(look_rand() % 40u); cash += v; snprintf(b_, sizeof b_, "A CARD WITH $%d INSIDE!", v); sim_note(b_); sim_moodlet(s, ML_PAYDAY); }
@@ -2245,7 +2286,7 @@ int sim_debug_grow(int what, int arg) {   // (test builds) hurry a family's life
     return 0;
 }
 #endif
-#if defined(AUTO_SPORT) || defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME) || defined(AUTO_ISLE) || defined(AUTO_SCENE) || defined(AUTO_PHONE) || defined(AUTO_SAVE)
+#if defined(AUTO_SPORT) || defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_GROW) || defined(AUTO_HOME) || defined(AUTO_ISLE) || defined(AUTO_SCENE) || defined(AUTO_PHONE) || defined(AUTO_SAVE) || defined(AUTO_LE)
 int sim_debug_goto(char c, int lot) {   // (test builds) stand the player in front of the nearest c (at a place of that kind, lot >= 0)
     Sim *s = &sims[player]; int sx = sim_tile_x(s), sy = sim_tile_y(s), best = 1 << 30, bx = -1, by = -1, tx = 0, ty = 0;
     for (int y = 1; y < MH - 1; y++) for (int x = 1; x < MW - 1; x++) {
@@ -2304,7 +2345,7 @@ static void sim_pie_do_(int i) {
                  { BInfo b; bm_block(world_wbx + pie_mx / BM_BLK, world_wby + pie_my / BM_BLK, &b); char t[40];
                    snprintf(t, sizeof t, "FOR SALE: %s", home_kind(b.lot)); sim_note(t); sim_note(home_blurb(b.lot)); return; }
     }
-    if (pie_code[i] >= 100) { begin_action(s, ACT_GATHER, pie_mx, pie_my); s->act_var = (u8)(pie_code[i] - 100); s->act_t = gather_len(s->act_var); return; }   // (the island)
+    if (pie_code[i] >= 100 && pie_code[i] < 114 && action_for(world_at(pie_mx, pie_my)) == ACT_GATHER) { begin_action(s, ACT_GATHER, pie_mx, pie_my); s->act_var = (u8)(pie_code[i] - 100); s->act_t = gather_len(s->act_var); return; }   // (the island: 100 + what is gathered. Only for a thing you gather from: the codes past PC_PRAC_END are 100 and up too, and every one of them landed here)
     if (pie_code[i] >= PC_WORK) { place_do(s, pie_code[i]); return; }
     if (pie_code[i] == 1 && world_zone == ZONE_ISLAND && world_at(pie_mx, pie_my) == 's') {   // the castaway's meal
         begin_action(s, ACT_EAT, pie_mx, pie_my); if (s->action == ACT_EAT) { s->act_var = 1; s->act_t = 300; } return; }

@@ -32,3 +32,8 @@ How the city's frame time is measured (used for docs/PS1_PERFORMANCE.md). All of
 11. **Test builds and RAM**: a test hook's code and data come out of the room past `_end`; under about 7 KB the boot or a busy frame can crash (the
    stack runs into the SDK's interrupt tables, and the log then fills with "Unhandled instruction": cap it, e.g. `| head -c 30000000`).
    `-DPLACE_MAX=1300` gives a test build about 3 KB back (the AUTO_CITY world has 1256 places of the 1800 kept for).
+12. **Lean test hooks** (`-DAUTO_CITY=1 -DAUTO_LE=n`, main.c `le_tick`; results in `dbg_le`): 1 a home and properties, then the phone's map; 2 the AUDIO
+   sliders (with `DSWAV`, then `test/audiocheck.py`); 3 the townsfolk who know you (hellos and calls, `dbg_greet`); 4 FARM LIFE lived through the pie
+   menus for four days (the farm job, crops, animals, chores, the frost, a save: load that card with today's plain build and `test/oldsave_load.txt`);
+   5 the FARM BOOK's pages (press R1 in the script; `-DAUTO_LE5_SAVE=1` saves first); 6 farm-stand customers (`dbg_buy`: asked for, sent, got there,
+   gave up). Use `-DPLACE_MAX=1300` with 3, 4 and 6.
