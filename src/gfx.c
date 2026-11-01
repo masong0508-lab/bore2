@@ -12,6 +12,11 @@ typedef struct {
 
 static DB   db[2];
 static int  db_active = 0;
+#ifdef BORE_DC
+#define KEEP_BYTES 0               // (the Dreamcast port draws the 2D overlay afresh every frame)
+#else
+#define KEEP_BYTES 5120            // the end of each packet buffer holds pieces of the 2D overlay kept from frame to frame (gfx_keep_begin)
+#endif
 static int  alloc_reserve;        // bytes of the packet buffer gfx_alloc keeps back (gfx_set_reserve)
 char *gfx_pk_next, *gfx_pk_end;   // the packet cursor and its limit (the end, less the reserve): gfx_fast.h allocates inline
 u32 *gfx_ot_cur;                   // this frame's ordering table
@@ -103,7 +108,7 @@ void gfx_init(void) {
     PutDrawEnv(&db[0].draw);
     ClearOTagR(db[0].ot, OT_LEN);
     ClearOTagR(db[1].ot, OT_LEN);
-    db_next = db[0].p; gfx_pk_end = db[0].p + PACKET_LEN - 64; gfx_ot_cur = db[0].ot;
+    db_next = db[0].p; gfx_pk_end = db[0].p + PACKET_LEN - 64 - KEEP_BYTES; gfx_ot_cur = db[0].ot;
     ui_head = ui_tail = 0;
     setRECT(&screen_clip, 0, 0, SCREEN_W, SCREEN_H);
 
@@ -140,7 +145,7 @@ void gfx_flip(void) {
       VSync(0); flip_vb = VSync(-1); }
     db_active ^= 1;
     db_next = db[db_active].p;
-    alloc_reserve = 0; gfx_pk_end = db[db_active].p + PACKET_LEN - 64; gfx_ot_cur = db[db_active].ot;
+    alloc_reserve = 0; gfx_pk_end = db[db_active].p + PACKET_LEN - 64 - KEEP_BYTES; gfx_ot_cur = db[db_active].ot;
     ui_head = ui_tail = 0;
     ClearOTagR(db[db_active].ot, OT_LEN);
     {   // the frame starts by flushing the GPU's texture cache: the sprite cells were drawn into since it last saw them
@@ -154,7 +159,7 @@ void gfx_flip(void) {
     DrawOTag(db[1 - db_active].ot + (OT_LEN - 1));
 }
 
-void gfx_set_reserve(int bytes) { alloc_reserve = bytes; gfx_pk_end = db[db_active].p + PACKET_LEN - 64 - bytes; }
+void gfx_set_reserve(int bytes) { alloc_reserve = bytes; gfx_pk_end = db[db_active].p + PACKET_LEN - 64 - bytes - (bytes < RESERVE_PEOPLE ? KEEP_BYTES : 0); }   // (the kept pieces' room, KEEP_BYTES, is the last of the buffer: the world's and the land's limits do not count it, everyone after them does)
 int gfx_bytes_used(void) { return (int)(db_next - db[db_active].p); }
 void *gfx_alloc(int bytes) {
     char *p = db_next;
@@ -498,6 +503,40 @@ static void ui_add(void *prim) {
     setaddr(prim, 0xffffff);
     if (ui_tail) setaddr(ui_tail, prim); else ui_head = (u32 *)prim;
     ui_tail = (u32 *)prim;
+}
+// ---- pieces of the 2D overlay kept in place. The HUD's cards (the needs, the Bore's card) are the same picture frame after frame; drawing them
+// is some 30 hb a frame. A kept piece is drawn once into its own corner at the end of the packet buffer; the buffer is not cleared between
+// the two frames that share it, so a frame that finds its buffer's piece still as the same key made it just links it into the chain again
+// (nothing is copied: its packets are where they were). A different key: it is drawn again, into the same place. A piece is checked when it
+// is made: its packets must be the whole of what was allocated and one run of the chain, or it is never kept.
+#define KEEP_SLOTS 2
+static const short keep_off[KEEP_SLOTS + 1] = { 0, 2048, 5120 };   // the needs' card (1.6 KB most), the Bore's card (2 KB most)
+static u32 keep_key[2][KEEP_SLOTS]; static u32 *keep_last[2][KEEP_SLOTS]; static u8 keep_bad[KEEP_SLOTS];
+static int keep_cur = -1, keep_ovf; static char *keep_sv_next, *keep_sv_end; static u32 keep_k, *keep_tail0;
+int gfx_keep_begin(int slot, u32 key) {   // 1: it is in place and linked, draw nothing. 0: draw it, then gfx_keep_end(slot)
+#ifdef BORE_DC
+    return 0;
+#endif
+    if (keep_bad[slot] || keep_cur >= 0 || !ui_tail) return 0;
+    int b = db_active; char *rs = db[b].p + PACKET_LEN - 64 - KEEP_BYTES + keep_off[slot];
+    if (keep_key[b][slot] == key && keep_last[b][slot]) {
+        u32 *last = keep_last[b][slot]; setaddr(ui_tail, rs); ui_tail = last; setaddr(last, 0xffffff);
+        return 1;
+    }
+    keep_key[b][slot] = 0; keep_last[b][slot] = 0;
+    keep_cur = slot; keep_sv_next = db_next; keep_sv_end = gfx_pk_end; keep_k = key; keep_tail0 = ui_tail; keep_ovf = gfx_overflow;
+    db_next = rs; gfx_pk_end = db[b].p + PACKET_LEN - 64 - KEEP_BYTES + keep_off[slot + 1];
+    return 0;
+}
+void gfx_keep_end(int slot) {
+    if (keep_cur != slot) return;
+    keep_cur = -1; int b = db_active; char *rs = db[b].p + PACKET_LEN - 64 - KEEP_BYTES + keep_off[slot];
+    int bytes = (int)(db_next - rs), ok = bytes > 0 && gfx_overflow == keep_ovf && ui_tail;
+    db_next = keep_sv_next; gfx_pk_end = keep_sv_end;
+    if (ok) { ok = ((*keep_tail0 & 0xffffff) == ((u32)rs & 0xffffff)); u32 *q = (u32 *)rs; int tot = 0;   // (the chain from the piece's first packet to the tail: all of it, and only it)
+              while (ok) { tot += (int)((*q >> 24) + 1) * 4; if (q == ui_tail) break; q = (u32 *)(0x80000000u | (*q & 0xffffff)); if (tot > bytes) break; }
+              ok = ok && tot == bytes; }
+    if (ok) { keep_key[b][slot] = keep_k; keep_last[b][slot] = ui_tail; } else keep_bad[slot] = 1;
 }
 void gfx_rect(int x, int y, int w, int h, int r, int g, int b, int semi) {
     TILE *t = (TILE *)gfx_alloc(sizeof(TILE));

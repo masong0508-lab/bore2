@@ -80,3 +80,4 @@ if nn:
 if 'dbg_ws' in S:
     w=rd('dbg_ws',8); print('window shift worst hb: keep+maps %d | ao+roofs move %d | new blocks %d | their shading %d | keep alone %d, ground maps %d, storeys %d (storey slides %d)'%w)
     print('window moves: %d, in a frame\'s spare time %d, worst %d hb'%(rd('dbg_shifts')[0], rd('dbg_ws_spare')[0], rd('dbg_shift_hb')[0]))
+if 'gfx_peak_bytes' in S: print('packet buffer peak bytes this run: %d (of %d)'%(rd('gfx_peak_bytes')[0], 58*1024))

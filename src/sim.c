@@ -344,38 +344,70 @@ static int los(int x0, int z0, int x1, int z1) {   // can a body walk the straig
     for (int i = 1; i <= n; i++) if (!footprint_r(x0 + dx * i / n, z0 + dz * i / n, LOS_R)) return 0;
     return 1;
 }
+#ifdef AUTO_CITY
+int dbg_bfs[8];   // (test readouts: searches, found, nodes taken, most nodes in one, not found, their nodes, searches over 1500 nodes, searches done the old way too)
+#endif
+// A route is searched A*-wise (the tiles nearest the goal first: a walk across the street looks at a few hundred tiles, not the whole window's
+// thousands; a long search was one frame of 1000 hb). The open tiles wait in buckets by their estimate (steps so far + the straight-line count
+// still to go, which never over-counts, so the first time a tile is taken its route is the shortest). Each tile's table entry is (steps << 2) |
+// the way it was reached; the buckets and their chains live in the route queue's room. A search that finds no way, or would need a detour of
+// hundreds of tiles, says so: no route.
+#define AS_NB 480            // the buckets: estimates up to this much over the straight-line count
+#define AS_POOL 5800         // open entries (a tile can be waiting twice)
+static const signed char as_dx[4] = { 1, -1, 0, 0 }, as_dy[4] = { 0, 0, 1, -1 };
+static int route_astar(int sx, int sy, int tx, int ty, int *taken) {
+    u16 *pool = bfs_q, *head = bfs_q + 2 * AS_POOL;
+    for (int i = 0; i < AS_NB; i++) head[i] = 0xffff;
+    memset(bfs_par, 0xff, sizeof bfs_par);   // (-1: not reached, -2: cannot be walked)
+    int f0 = ABS(tx - sx) + ABS(ty - sy), np = 0, b = 0, left = 1, found = 0;
+    bfs_par[sy][sx] = 0; pool[0] = (u16)(sy * MW + sx); pool[1] = 0xffff; head[0] = 0; np = 1;
+    while (left && !found) {
+        while (b < AS_NB && head[b] == 0xffff) b++;
+        if (b >= AS_NB) return 0;
+        int e = head[b]; head[b] = pool[2 * e + 1]; left--;
+        int c = pool[2 * e], cx = c % MW, cy = c / MW, g = bfs_par[cy][cx] >> 2;
+        if (g + ABS(tx - cx) + ABS(ty - cy) - f0 != b) continue;   // (stale: a better way to this tile was found after it was queued)
+        (*taken)++;
+        for (int d = 0; d < 4; d++) {
+            int nx = cx + as_dx[d], ny = cy + as_dy[d];
+            if ((unsigned)nx >= MW || (unsigned)ny >= MH) continue;
+            int v = bfs_par[ny][nx]; if (v == -2) continue;
+            if (v == -1 && !(nx == tx && ny == ty) && !world_walkable(nx, ny)) { bfs_par[ny][nx] = -2; continue; }
+            if (v >= 0 && (v >> 2) <= g + 1) continue;
+            bfs_par[ny][nx] = (s16)(((g + 1) << 2) | d);
+            if (nx == tx && ny == ty) { found = 1; break; }   // (the goal itself, reached: the best way into it is the first, as the estimate cannot be beaten)
+            int nb = g + 1 + ABS(tx - nx) + ABS(ty - ny) - f0;
+            if (nb < b) nb = b;
+            if (nb >= AS_NB || np >= AS_POOL) return 0;
+            pool[2 * np] = (u16)(ny * MW + nx); pool[2 * np + 1] = head[nb]; head[nb] = (u16)np; np++; left++;
+        }
+    }
+    return found;
+}
 int sim_find_path(Sim *s, int tx, int ty) {
     int sx = sim_tile_x(s), sy = sim_tile_y(s);
     s->dest_x = (u8)tx; s->dest_y = (u8)ty;
     if (sx == tx && sy == ty) { s->path_n = 0; return 1; }
     if (sx < 0 || sy < 0 || sx >= MW || sy >= MH) return 0;
-    memset(bfs_par, 0xff, sizeof bfs_par);   // (-1: not reached)
-    int qh = 0, qt = 0;
-    bfs_q[qt++] = (u16)(sy * MW + sx); bfs_par[sy][sx] = (s16)(sy * MW + sx);
-    static const signed char dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
-    int found = 0;
-    // (a tile that cannot be walked is marked -2 the first time it is asked about: it used to be asked again from each of its sides,
-    //  about a tenth of a long search's time in a city window; the same tiles, in the same order, come out)
-    while (qh < qt && !found) {
-        int c = bfs_q[qh++], cx = c % MW, cy = c / MW;
-        for (int d = 0; d < 4; d++) {
-            int nx = cx + dx[d], ny = cy + dy[d];
-            if (nx < 0 || ny < 0 || nx >= MW || ny >= MH || bfs_par[ny][nx] != -1) continue;
-            if (nx == tx && ny == ty) { bfs_par[ny][nx] = (s16)c; found = 1; break; }
-            if (!world_walkable(nx, ny)) { bfs_par[ny][nx] = -2; continue; }
-            bfs_par[ny][nx] = (s16)c;
-            bfs_q[qt++] = (u16)(ny * MW + nx);
-        }
-    }
+    int taken = 0, found = route_astar(sx, sy, tx, ty, &taken);
+#ifdef AUTO_CITY
+    { int nn = taken; dbg_bfs[0]++; dbg_bfs[2] += nn; if (nn > dbg_bfs[3]) dbg_bfs[3] = nn; if (found) dbg_bfs[1]++; else { dbg_bfs[4]++; dbg_bfs[5] += nn; } if (nn > 1500) dbg_bfs[6]++; }
+#endif
     if (!found) return 0;
     // walk the parents back, then reverse into the path
     u8 *rx = (u8 *)bfs_q, *ry = rx + 640; int n = 0;   // (in the queue's room: it is not needed any more)
     int c = ty * MW + tx;
-    while (c != sy * MW + sx) { if (n >= 640) return 0; rx[n] = (u8)(c % MW); ry[n] = (u8)(c / MW); n++; c = bfs_par[c / MW][c % MW]; }
+    while (c != sy * MW + sx) { if (n >= 640) return 0; int cx = c % MW, cy = c / MW; rx[n] = (u8)cx; ry[n] = (u8)cy; n++; int d = bfs_par[cy][cx] & 3; c = (cy - as_dy[d]) * MW + (cx - as_dx[d]); }
     // pull it straight: from where the body really is, reach for the furthest tile in sight, and again from there
-    int ax = s->x, az = s->z, i = 0, m = 0;
+    // (a long route is straightened for as long as it takes under about 1.5 hb of the frame's spare time; what is left of it keeps to the
+    //  runs of the search's own steps, a waypoint at each turn: it was one frame of 400 hb for a walk across the window)
+    int ax = s->x, az = s->z, i = 0, m = 0, t_ = gfx_hb();
     while (i < n && m < 64) {
         int j = MIN(n - 1, i + LOS_WIN - 1);
+        if (m >= 3 && gfx_hb() - t_ > 40) {   // (out of time: along the straight run of tiles)
+            int k0 = n - 1 - i; j = i;
+            if (i + 1 < n) { int ddx = rx[k0 - 1] - rx[k0], ddy = ry[k0 - 1] - ry[k0]; j = i + 1; while (j + 1 < n && j - i < 40 && rx[n - 2 - j] - rx[n - 1 - j] == ddx && ry[n - 2 - j] - ry[n - 1 - j] == ddy) j++; }
+        } else
         for (; j > i; j--) { int k = n - 1 - j; if (los(ax, az, rx[k] * TILE + TILE / 2, -(ry[k] * TILE + TILE / 2))) break; }
         int k = n - 1 - j;
         s->path_x[m] = rx[k]; s->path_y[m] = ry[k]; m++;

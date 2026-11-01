@@ -26,6 +26,8 @@ void  gfx_flip(void);
 void *gfx_alloc(int bytes);
 u32  *gfx_ot(void);
 int   gfx_prims_left(void);
+int   gfx_keep_begin(int slot, u32 key);   // a piece of the 2D overlay kept from frame to frame: 1 it is in place (draw nothing), 0 draw it, then gfx_keep_end(slot)
+void  gfx_keep_end(int slot);
 void  gfx_set_reserve(int bytes);   // gfx_alloc refuses to dip into the last `bytes` of the frame's packet buffer (0 = no reserve)
 
 // ---- camera ----

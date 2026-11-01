@@ -3543,7 +3543,8 @@ static void nat_far(int px, int py) {
 // street's things past it stood in the sky. A grid of 8 x 8-tile cells over the window, its corners on the hills and transformed once
 // by the GTE (121 corners, three at a time), each cell one flat quad the colour of the floor in its middle, at the back of the frame
 // (the detailed floor is drawn over it). Cells inside the range, or reaching behind the eye, are left to the near floor.
-COLD static void ground_win(void) {
+u32 far_haze_col(u32 col, int zw);
+COLD static void ground_win(int hz) {   // hz: the far view is on, so the corners fade into its haze
     enum { G = 8, NG = MW / G, NC = (NG + 1) * (NG + 1) };
     extern s16 bfs_par[MH][MW]; SVECTOR *cv = (SVECTOR *)&bfs_par[0][0]; XV *xv = (XV *)&bfs_par[MH / 2][0];   // (the route finder's table, lent as the floor drawing and the roofs borrow it: they are done by now)
     int L = CLAMP(gfx_light(0, -ONE, 0), 40, 200);
@@ -3561,6 +3562,12 @@ COLD static void ground_win(void) {
         if (ABS(a->x - d->x) > 1000 || ABS(b->x - c->x) > 1000 || ABS(a->y - d->y) > 500 || ABS(b->y - c->y) > 500) continue;   // (past the GPU's size: the near floor's job)
         u16 f = fl_avg[floorMap[ty + G / 2][tx + G / 2]];
         u32 col = gfx_grade_flat((u32)MIN(255, ((C_R(f) << 3) * L) >> 7) | ((u32)MIN(255, ((C_G(f) << 3) * L) >> 7) << 8) | ((u32)MIN(255, ((C_B(f) << 3) * L) >> 7) << 16));
+        if (hz) {
+            u32 *q = xv_alloc(9); if (!q) return;
+            q[1] = far_haze_col(col, a->z) | 0x38000000u; q[2] = NXY(a); q[3] = far_haze_col(col, b->z); q[4] = NXY(b); q[5] = far_haze_col(col, c->z); q[6] = NXY(c); q[7] = far_haze_col(col, d->z); q[8] = NXY(d);
+            q[0] = (8u << 24) | (*ot & 0xffffff); *ot = (u32)q & 0xffffff; gfx_frame_prims++;
+            continue;
+        }
         u32 *q = xv_alloc(6); if (!q) return;
         q[1] = col | 0x28000000u; q[2] = NXY(a); q[3] = NXY(b); q[4] = NXY(c); q[5] = NXY(d);
         q[0] = (5u << 24) | (*ot & 0xffffff); *ot = (u32)q & 0xffffff; gfx_frame_prims++;
@@ -3638,8 +3645,8 @@ void world_draw(int fx, int fy, int t, int cutaway) {
             else far_box(b, d2 < 22 * 22);
         }
         world_hb_sky1 = gfx_hb() - sky_h0;
+        if (world_zone == ZONE_CITY && world_wbx >= 0) ground_win(use_far);   // (the window's own ground: it never ends a few steps away; with the far view on it fades into the haze)
         if (use_far) far_draw(rx0, ry0, rx1, ry1);   // the land, the towns and the trees, out to the horizon
-        else if (world_zone == ZONE_CITY && world_wbx >= 0) ground_win();   // (or at least the window's own ground: it never ends a few steps away)
         gfx_set_identity();
         PROF_END(3);
     }

@@ -8,6 +8,7 @@
 #ifndef FAR_VIEW0
 #define FAR_VIEW0 3
 #endif
+int far_lite;                               // the speed helper's LITE far view: the ground and the buildings, no streets, no trees, the buildings flat from 100 m
 int far_view = FAR_VIEW0, far_trees = 2, far_detail = 2, far_haze = 1, far_prims;
 int far_hb[3], far_np[3], far_nclip, far_ncone, far_nquad, far_hb_win, far_hb_win0;   // (test readouts: land, buildings, trees)
 static const short view_m[6] = { 0, 250, 500, 1000, 1500, 2000 };
@@ -56,6 +57,11 @@ static inline int haze_f(int zw) {          // 0 .. hz_max (of 256)
 static inline u32 hazed(int r, int g, int b, int f) {
     r += ((hz_r - r) * f) >> 8; g += ((hz_g - g) * f) >> 8; b += ((hz_b - b) * f) >> 8;
     return (u32)CLAMP(r, 0, 255) | ((u32)CLAMP(g, 0, 255) << 8) | ((u32)CLAMP(b, 0, 255) << 16);
+}
+
+u32 far_haze_col(u32 col, int zw) {   // a colour (r | g << 8 | b << 16) faded into the haze at that depth (world units): for the map's own ground
+    int f = haze_f(zw); if (!f) return col;
+    return hazed(col & 255, (col >> 8) & 255, (col >> 16) & 255, f);
 }
 
 // ================================================================== clipping (big ground pieces near the eye)
@@ -189,9 +195,10 @@ static void cell_rgb(int t, int *r, int *g, int *b) {
 }
 
 // ================================================================== every town's buildings (worked out once a world)
-typedef struct { u16 bx, by; u8 lot, sto, col, pad; } FB;
+typedef struct { u32 bx : 10, by : 10, lot : 6, col : 4, pad : 2; } FB;   // (4 bytes: the storeys are in fb_sto, a byte each)
 #define FB_MAX 2400
-static FB fb[FB_MAX]; static int nfb;
+static FB fb[FB_MAX]; static u8 fb_sto[FB_MAX]; static int nfb;
+#define FSTO(f) fb_sto[(f) - fb]
 static u16 fb_lo[64], fb_hi[64];             // each town's run in fb
 #define FBC_MAX 900
 static u16 fbc_cx[FBC_MAX], fbc_cy[FBC_MAX], fbc_lo[FBC_MAX], fbc_hi[FBC_MAX]; static int nfbc;   // the runs by cell (4x4 blocks)
@@ -220,16 +227,16 @@ void far_new_world(void) {
             BInfo b; bm_block(bx, by, &b);
             if (b.set != i || b.lot >= LOT_N || !has_bld[b.lot] || nfb >= FB_MAX) continue;
             FB *f = &fb[nfb++];
-            f->bx = (u16)bx; f->by = (u16)by; f->lot = b.lot; f->sto = (u8)bm_storeys(&b);
-            f->col = (u8)(b.lot == LOT_TOWER ? 8 : (b.h >> 20) % 8u);
-            f->pad = (u8)((b.h >> 9) & 3);
+            f->bx = bx; f->by = by; f->lot = b.lot; fb_sto[f - fb] = (u8)bm_storeys(&b);
+            f->col = b.lot == LOT_TOWER ? 8 : (b.h >> 20) % 8u;
+            f->pad = (b.h >> 9) & 3;
         }
         fb_hi[i] = (u16)nfb;
         // in cell order (a cell's buildings together: the view takes or leaves a whole cell at once)
         for (int a = fb_lo[i] + 1; a < nfb; a++) {
-            FB t = fb[a]; u32 kt = ((u32)(t.by >> 2) << 10) | (t.bx >> 2); int b = a - 1;
-            while (b >= fb_lo[i] && (((u32)(fb[b].by >> 2) << 10) | (fb[b].bx >> 2)) > kt) { fb[b + 1] = fb[b]; b--; }
-            fb[b + 1] = t;
+            FB t = fb[a]; u8 ts = fb_sto[a]; u32 kt = ((u32)(t.by >> 2) << 10) | (t.bx >> 2); int b = a - 1;
+            while (b >= fb_lo[i] && (((u32)(fb[b].by >> 2) << 10) | (fb[b].bx >> 2)) > kt) { fb[b + 1] = fb[b]; fb_sto[b + 1] = fb_sto[b]; b--; }
+            fb[b + 1] = t; fb_sto[b + 1] = ts;
         }
         fbs_lo[i] = (u16)nfbc;
         for (int a = fb_lo[i]; a < nfb; ) {
@@ -442,36 +449,11 @@ static inline int lat_h(int lx, int ly, int x, int z) {
 static void draw_land(int rx0, int ry0, int rx1, int ry1) {
     const int hills = world_zone == ZONE_CITY && world_wbx >= 0;
     far_hb_win0 = gfx_hb();
-    // 1. the window round you, past the detail: its own floor, in cells of 4 x 4 tiles
-    rows_begin();
-    for (int cy = 0; cy < MH / 4; cy++) {
-        row_begin();
-        int run0 = -1; u32 rk = 0;
-        for (int cx = 0; cx <= MW / 4; cx++) {
-            int ok = 0; u32 k = 0;
-            if (cx < MW / 4) {
-                int tx = cx * 4, ty = cy * 4;
-                int inside = tx >= rx0 && tx + 3 <= rx1 && ty >= ry0 && ty + 3 <= ry1;
-                int wcx = tx * TILE + 2 * TILE, wcz = -(ty * TILE + 2 * TILE);
-                int vis = in_cone(wcx, wcz, 3 * TILE, MAX(max_ground, max_tree)); wvis[cy][cx] = (u8)vis;
-                int near_ = MAX(ABS(wcx - feye.vx), ABS(wcz - feye.vz)) <= max_ground + 3 * TILE;
-                if (!inside && vis && near_) { ok = 1; k = floor_key(floorMap[ty + 2][tx + 2]); }
-            }
-            if (run0 >= 0 && (!ok || k != rk)) { row_run(cy, run0, cx, rk); run0 = -1; }
-            if (ok && run0 < 0) { run0 = cx; rk = k; }
-        }
-        row_end();
-    }
-    for (int i = 0; i < nrect; i++) { const Rect *r = &rects[i];
-        if (hills) { for (int cy = r->y0; cy < r->y1; cy++) for (int cx = r->x0; cx < r->x1; cx++) {   // (hills: a quad a cell, each corner at the height of the land there; past 24 tiles, a quad to every 2 x 2 cells)
-                int bx0 = cx & ~1, by0 = cy & ~1, sp = 1;
-                if (bx0 >= r->x0 && bx0 + 1 < r->x1 && by0 >= r->y0 && by0 + 1 < r->y1 && MAX(ABS((bx0 * 4 + 4) * TILE - feye.vx), ABS(-((by0 * 4 + 4) * TILE) - feye.vz)) > 24 * TILE) {
-                    if ((cx | cy) & 1 && (cx != bx0 || cy != by0)) continue;   // (a cell of a pair-up already drawn from its top left)
-                    sp = 2; }
-                int n4 = 4 * sp, hh[4] = { world_gh_c(cx * 4, cy * 4), world_gh_c(cx * 4 + n4, cy * 4), world_gh_c(cx * 4 + n4, cy * 4 + n4), world_gh_c(cx * 4, cy * 4 + n4) };
-                ground_quad(cx * 4 * TILE, (cx + sp) * 4 * TILE, -(cy * 4 * TILE), -((cy + sp) * 4 * TILE), r->key & 255, (r->key >> 16) & 255, (r->key >> 8) & 255, OT_GROUND_WIN, hh); } }
-        else
-        ground_quad(r->x0 * 4 * TILE, r->x1 * 4 * TILE, -(r->y0 * 4 * TILE), -(r->y1 * 4 * TILE), r->key & 255, (r->key >> 16) & 255, (r->key >> 8) & 255, OT_GROUND_WIN, 0); }
+    // 1. the window round you, past the detail: its own ground is world.c's ground_win now (corners transformed once, hazed), drawn just before this.
+    //    What is left here is which of its 4 x 4-tile cells the view takes in, for the trees.
+    if (far_trees && tex_ok)
+        for (int cy = 0; cy < MH / 4; cy++) for (int cx = 0; cx < MW / 4; cx++)
+            wvis[cy][cx] = (u8)in_cone(cx * 4 * TILE + 2 * TILE, -(cy * 4 * TILE + 2 * TILE), 3 * TILE, MAX(max_ground, max_tree));
     far_hb_win = gfx_hb(); { extern int dbg_miss[4]; dbg_miss[3] += far_hb_win - far_hb_win0; }
     // 2. past the window: the land's cells (77 m)
     int reach = max_ground / (CELL_T * TILE) + 1;
@@ -504,7 +486,7 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
         }
         row_end();
     }
-    { int t_ = gfx_hb(); draw_roads(hills); extern int dbg_roads_hb; dbg_roads_hb += gfx_hb() - t_; }
+    if (!far_lite) { int t_ = gfx_hb(); draw_roads(hills); extern int dbg_roads_hb; dbg_roads_hb += gfx_hb() - t_; }
     for (int i = 0; i < nrect; i++) { const Rect *r = &rects[i]; int R, G, B; cell_rgb((int)r->key, &R, &G, &B);
         int x0 = ((gx0 + r->x0) * 2 * CELL_T - fwx0) * TILE, x1 = ((gx0 + r->x1) * 2 * CELL_T - fwx0) * TILE;
         int z0 = -(((gy0 + r->y0) * 2 * CELL_T - fwy0) * TILE), z1 = -(((gy0 + r->y1) * 2 * CELL_T - fwy0) * TILE);
@@ -609,9 +591,9 @@ static void far_dot(int x0, int z0, int x1, int z1, int sto, const u8 *wc) {   /
     lk(p, 5, far_slot(zw));
 }
 static void far_building(const FB *f, int x0, int z0, int x1, int z1) {
-    int pitched = foot[f->lot][4] && f->sto <= 2;
+    int pitched = foot[f->lot][4] && FSTO(f) <= 2;
     far_lift = world_gh_lot((x0 + x1) / 2, (z0 + z1) / 2);
-    far_box(x0, z0, x1, z1, f->sto, wallc[f->col % 10], pitched, roofc[f->pad & 3], f->lot != LOT_HOUSE && f->lot != LOT_COTTAGE);
+    far_box(x0, z0, x1, z1, FSTO(f), wallc[f->col % 10], pitched, roofc[f->pad & 3], f->lot != LOT_HOUSE && f->lot != LOT_COTTAGE);
     far_lift = 0;
 }
 // the map's own buildings past the detail (world.c's skyline), drawn the same way
@@ -640,10 +622,10 @@ static void draw_buildings(void) {
             int cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
             int dx = ABS(cx - feye.vx), dz = ABS(cz - feye.vz), d = MAX(dx, dz) + MIN(dx, dz) / 2;
             if (d > far2) continue;
-            int hgt = f->sto * WALL_FULL;
+            int hgt = FSTO(f) * WALL_FULL;
             if (230 * hgt < d * 2) continue;                            // under two pixels tall: lost in the haze
-            if (far_detail == 0 && f->sto < 3 && d > M2U(120)) continue;
-            if (d > M2U(300)) { far_lift = world_gh_lot(cx, cz); far_dot(x0, z0, x1, z1, f->sto, wallc[f->col % 10]); far_lift = 0; }   // (far: one rectangle each)
+            if (far_detail == 0 && FSTO(f) < 3 && d > M2U(120)) continue;
+            if (d > M2U(far_lite ? 100 : 300)) { far_lift = world_gh_lot(cx, cz); far_dot(x0, z0, x1, z1, FSTO(f), wallc[f->col % 10]); far_lift = 0; }   // (far: one rectangle each)
             else far_building(f, x0, z0, x1, z1);
           }
         }

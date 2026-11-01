@@ -187,7 +187,8 @@ static int go_funds = 2;   // the cash a new life starts with (an index into wmF
 static int help_page;
 static int hb_now(void) { return VSync(1); }   // hblanks since the last VSync(0) (the flip): 263 per vblank, 525 = one 30 FPS frame
 static int t_cpu, t_frame0, t_bub, t_hud, t_upd;
-static int shed_lvl, crowd_lvl;   // (the speed helper: the far view's steps given up 0..4, 4 = the far pass off; the crowd's 0..2)
+#define FSH 5   // (the steps of the far view on the speed helper's ladder: 0 as chosen, 1..3 shorter, 4 lite, 5 gone)
+static int shed_lvl, crowd_lvl;   // (the speed helper: the far view's steps given up 0..3, 4 = the lite far view, 5 = the far pass off (the last thing given up); the crowd's 0..2)
 static void helper_apply(void);
                                          // 0..3: how far a long run of slow frames has pulled in the view distance and the crowd
 static int det_opt = 12;                                      // the FULL DETAIL option's range (the range in use dips under it when frames run long)
@@ -207,7 +208,7 @@ static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sim
 static int travel_sel;
 int dbg_shift_hb, dbg_shifts;
 #ifdef AB_CFG
-volatile u8 ab_cfg[8] = { 'A', 'B', 'C', 'F', 1, 2, 0, 0 };   // (test builds: camera 1..4, VIEW DISTANCE 0..5, helper off; patched in the disc image by tools/perf/abcfg.py)
+volatile u8 ab_cfg[8] = { 'A', 'B', 'C', 'F', 1, 2, 0, 0 };   // (test builds: camera 1..5, VIEW DISTANCE 0..5, helper off; patched in the disc image by tools/perf/abcfg.py)
 #endif
 static void taxi_to_block(int bx, int by, int tx, int ty, const char *where);
 static char pie_opt[8][24]; static int pie_n, pie_sel, pie_cit;   // the pie menu
@@ -498,6 +499,10 @@ static void cheer_draw(void) {
     ui_text(x + 34, y + 3, 2, cheer_a, cheer_new ? UI_RGB(200, 70, 120) : UI_RGB(200, 120, 10));
     ui_text(x + 34, y + 19, 1, cheer_b, UI_INK);
 }
+#ifdef AUTO_CITY
+int dbg_hudb[8], dbg_hudh[8];   // (test readouts: the most bytes of packets, and the summed hblanks, of the HUD's parts: household, action card, needs, Bore card, hint, clock, weather and petals, want)
+#endif
+static u32 hkey(u32 h, const char *t) { while (*t) h = h * 16777619u ^ (u32)(u8)*t++; return h * 31u + 7u; }
 static void hud_life(void) {
     if (!nsims) return;
     Sim *s = &sims[player];
@@ -505,6 +510,12 @@ static void hud_life(void) {
     int m = s->mood;
     u32 moodc = m > 15 ? UI_GREEN : m > -15 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70);
     u32 moodt = m > 15 ? UI_RGB(40, 140, 40) : m > -15 ? UI_RGB(170, 110, 10) : UI_RGB(200, 60, 50);   // (the same, deep enough to read on white)
+#ifdef AUTO_CITY
+    extern int dbg_hudb[8], dbg_hudh[8]; int m0_ = gfx_prims_left(), h0_ = hb_now();
+#define HM(k) { int m1_ = gfx_prims_left(), h1_ = hb_now(); if (m0_ - m1_ > dbg_hudb[k]) dbg_hudb[k] = m0_ - m1_; dbg_hudh[k] += h1_ - h0_; m0_ = m1_; h0_ = h1_; }
+#else
+#define HM(k)
+#endif
     // the household, top left: round portraits, a ring in each one's mood colour, the one you play ringed blue with the gold arrow
     for (int i = 0; i < nsims; i++) {
         const Sim *o = &sims[i];
@@ -517,36 +528,54 @@ static void hud_life(void) {
         if (o->bday && !o->away) { ui_disc(x - 8, y + 8, 12, UI_RGB(255, 200, 60)); ui_icon_s(x - 12, y + 4, IC_CAKE, 8, UI_WHITE); }   // a birthday today
         if (me && o->bore.stage != AG_BABY) { ui_disc(x + 8, y + 8, 11, UI_WHITE); ui_icon_s(x + 4, y + 4, IC_ARROW, 8, UI_RGB(236, 176, 40)); }
     }
+    HM(0)
     draw_action_card(s);
+    HM(1)
     // the needs, bottom left: a white card, an icon and a bar for each (green, then yellow, then red)
     static const s8 nic[NEED_N] = { IC_FOOD, IC_DROP, IC_BED, IC_BUBBLES, IC_SOFA, IC_SMILE, IC_CHAT, IC_HOUSE };
-    ui_card(4, 178, 166, 52);
-    for (int n = 0; n < NEED_N; n++) {
-        int v = sim_need_val(s, n), cx = 10 + (n >> 2) * 80, cy = 183 + (n & 3) * 11;
-        int r, g, bb; need_rgb(v, &r, &g, &bb);
-        ui_icon(cx, cy - 1, nic[n], v < 20 ? UI_RGB(220, 60, 50) : UI_SOFT);
-        ui_bar(cx + 14, cy + 1, 60, 7, v, UI_RGB(r, g, bb));
+    {   // (kept from frame to frame while no bar moves: see gfx_keep_begin)
+        u32 k = 0x5bd1e995u + (u32)gfx_wide; for (int n = 0; n < NEED_N; n++) k = k * 131u + (u32)sim_need_val(s, n) + 1u;
+        if (!gfx_keep_begin(0, k | 1u)) {
+            ui_card(4, 178, 166, 52);
+            for (int n = 0; n < NEED_N; n++) {
+                int v = sim_need_val(s, n), cx = 10 + (n >> 2) * 80, cy = 183 + (n & 3) * 11;
+                int r, g, bb; need_rgb(v, &r, &g, &bb);
+                ui_icon(cx, cy - 1, nic[n], v < 20 ? UI_RGB(220, 60, 50) : UI_SOFT);
+                ui_bar(cx + 14, cy + 1, 60, 7, v, UI_RGB(r, g, bb));
+            }
+            gfx_keep_end(0);
+        }
     }
+    HM(2)
     // the Bore, bottom right: the mood on a big round badge, the name, how they feel, what X would do
-    ui_card(174, 178, 142, 52);
-    ui_disc(192, 196, 28, moodc); ui_disc(192, 196, 24, UI_RGB(250, 252, 255));
-    draw_face_k(184, 188, m, 1);
-    ui_text(210, 182, 2, s->bore.first, UI_INK);
     const char *mood = m > 50 ? "STOKED" : m > 15 ? "HAPPY" : m > -15 ? "FINE" : m > -50 ? "SAD" : "MISERABLE";
-    ui_text(210, 197, 1, mood, moodt);
     if (s->bore.stage == AG_CHILD || s->bore.stage == AG_TEEN) sprintf(b, "GRADE %s", sim_grade(s->grade)); else sprintf(b, "LVL %d", job_level);   // (a kid: the school grade)
-    ui_text(212 + ui_tw(1, mood) + 4, 197, 1, b, UI_SOFT);
-    { int lv = wants_level(s);                                   // the aspiration meter, under the mood
-      ui_bar(210, 207, 100, 5, 100 * s->asp_pts / ASP_MAX, UI_RGB(aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2])); }
     const char *hint = on_board ? skate_hint() : sim_hint();
     { const char *ch = on_board ? "" : citizens_hint(); if (ch[0] && !sim_front_service() && (s->action == ACT_NONE || s->action == ACT_WALK)) hint = ch; }   // (busy: X gets up)
-    if (hint[0]) { sprintf(b, "X %s", hint); ui_round(180, 215, 132, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(185, 217, 1, b, UI_WHITE); }
-    else if (veh_on) { ui_round(150, 215, 162, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(155, 217, 1, veh_hud(), UI_WHITE); }   // (at the wheel: what it is, and the fuel)
-    else ui_hints(246, 214, "SEL PHONE", 1);
+    {   // (kept from frame to frame while nothing on it changes: the key is everything it shows)
+        int lv = wants_level(s);
+        const char *vh = (!hint[0] && veh_on) ? veh_hud() : "";
+        u32 k = 0x1b873593u + (u32)gfx_wide + (u32)(mood[0] << 8) + (u32)(veh_on << 20) + (u32)(hint[0] ? 1 << 22 : 0) + (u32)(lv << 24) + (u32)(100 * s->asp_pts / ASP_MAX) * 4099u;
+        k = hkey(hkey(hkey(hkey(k, s->bore.first), mood), b), hint[0] ? hint : vh);
+        if (!gfx_keep_begin(1, k | 1u)) {
+            ui_card(174, 178, 142, 52);
+            ui_disc(192, 196, 28, moodc); ui_disc(192, 196, 24, UI_RGB(250, 252, 255));
+            draw_face_k(184, 188, m, 1);
+            ui_text(210, 182, 2, s->bore.first, UI_INK);
+            ui_text(210, 197, 1, mood, moodt);
+            ui_text(212 + ui_tw(1, mood) + 4, 197, 1, b, UI_SOFT);
+            ui_bar(210, 207, 100, 5, 100 * s->asp_pts / ASP_MAX, UI_RGB(aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2]));   // (the aspiration meter, under the mood)
+            if (hint[0]) { char hb_[48]; sprintf(hb_, "X %s", hint); ui_round(180, 215, 132, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(185, 217, 1, hb_, UI_WHITE); }
+            else if (veh_on) { ui_round(150, 215, 162, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(155, 217, 1, vh, UI_WHITE); }   // (at the wheel: what it is, and the fuel)
+            else ui_hints(246, 214, "SEL PHONE", 1);
+            gfx_keep_end(1);
+        }
+    }
     if (cam_view == 2 && (s->action == ACT_NONE || s->action == ACT_WALK)) {   // FIRST PERSON: a dot in the middle of the view; with something to use in front, it grows and says what X does
         if (hint[0]) { int w = ui_tw(1, hint) + 14; ui_disc(160, 120, 9, UI_WHITE); ui_disc(160, 120, 7, UI_BLUE);
                        ui_round(160 - w / 2, 131, w, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(160 - w / 2 + 5, 133, 1, "X", UI_WHITE); ui_text(160 - w / 2 + 14, 133, 1, hint, UI_WHITE); }
         else { ui_disc(160, 120, 5, UI_RGB(40, 40, 40)); ui_disc(160, 120, 3, UI_WHITE); } }
+    HM(4)
     // the clock and the money, top right
     ui_card(220, 9, 96, 28);
     { char t_[12]; clock_fmt(t_, clock_min, 0); sprintf(b, "%s %s", sim_day_name(clock_day), t_); }
@@ -565,6 +594,7 @@ static void hud_life(void) {
           int n = fe ? 24 : se == 1 ? 0 : 18;
           for (int i = 0; i < n; i++) { int sp = 1 + (i % 3), x = (i * 53 + frame * (fe ? 0 : 1) / 2 * (i & 1 ? 1 : -1) + isin((frame * 9 + i * 400) & 4095) / 140 + 320 * 4) % 320, y = (i * 41 + frame * sp / 2) % 230 - 4;
               ui_disc(x, y, 5, fe ? SC[i & 3] ^ (u32)(i * 0x331) : PC[se]); } } }
+    HM(5)
     { int ic = sim_speed <= 1 ? IC_PLAY : IC_FAST; ui_icon_disc(305, 29, 12, ic, sim_speed >= 3 ? UI_RGB(236, 150, 40) : UI_BLUE, UI_WHITE); }
     { int day_ = clock_min >= 360 && clock_min < 1200; ui_icon(286, 24, IC_SUN, day_ ? UI_RGB(236, 170, 30) : UI_RGB(120, 140, 200)); }
     {   // the want, under the clock
@@ -586,6 +616,7 @@ static void hud_life(void) {
             ui_icon(cx, cy, ic[k], icc[k]); sprintf(b, "%d", v[k]); ui_text(cx + 15, cy + 2, 1, b, k == 3 && !isl_food ? UI_BADT : UI_INK); }
         ui_icon(x + 4, y + 27, IC_STAR, UI_RGB(236, 170, 30)); sprintf(b, "SECRETS %d/%d", isl_secret_count(), SEC_N); ui_text(x + 19, y + 29, 1, b, UI_INK);
     }
+    HM(6)
     skate_hud();
     cheer_poll(); cheer_draw();
     citizens_hud();
@@ -779,7 +810,7 @@ static void life_update(int steps) {
 #ifdef AUTO_CITY
         { static int fr_, done_; fr_ += steps;   // (test builds: by the clock, 60 a second, so runs at any frame rate line up)
 #ifdef AB_CFG
-          { extern volatile u8 ab_cfg[8]; if (fr_ > 100) { switch (ab_cfg[4]) { case 2: cam_dist = 700; cam_pitch = 380; break; case 3: cam_dist = 3600; cam_pitch = 760; break; case 4: cam_view = 2; break; } } }
+          { extern volatile u8 ab_cfg[8]; if (fr_ > 100) { switch (ab_cfg[4]) { case 2: cam_dist = 700; cam_pitch = 380; break; case 3: cam_dist = 3600; cam_pitch = 760; break; case 4: cam_view = 2; break; case 5: cam_dist = 2600; cam_pitch = 200; break; } } }   // (5: a low camera that sees the horizon)
 #elif defined(AUTO_CAMTEST)
           if (fr_ > 100) { switch (AUTO_CAMTEST) { case 2: cam_dist = 700; cam_pitch = 380; break; case 3: cam_dist = 3600; cam_pitch = 760; break; case 4: cam_view = 2; break; } }   // (test builds: zoomed in, zoomed out, first person)
 #endif
@@ -2066,25 +2097,31 @@ static void opts_apply(void) {
 // up again soon after waits twice as long the next time (and half again once it holds): no flicker.
 static void helper_apply(void) {
     extern int cit_maxdraw, cit_live_cap, cit_fresh_max, cit_stale_n;
-    int v = opt[O_VIEW]; far_view = (v && shed_lvl < 4) ? (v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
+    // (the far view's steps: 1 to 3 shorten it and drop its trees and detail, 4 is the LITE far view: the whole distance asked for, but only
+    //  the ground (no streets, no trees) and the buildings as boxes near, flat rectangles far, still fading into the haze; 5 is none of it)
+    extern int far_lite;
+    int v = opt[O_VIEW]; far_lite = shed_lvl == 4;
+    far_view = (v && shed_lvl < 5) ? (shed_lvl == 4 ? MIN(v, 3) : v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
     int tr = opt[O_TREES] - shed_lvl; far_trees = tr < 0 ? 0 : tr;
     int fd = opt[O_FARB] - (shed_lvl > 1 ? shed_lvl - 1 : 0); far_detail = fd < 0 ? 0 : fd;
-    far_haze = shed_lvl >= 3 ? 0 : opt[O_HAZE];
+    far_haze = shed_lvl == 3 ? 0 : opt[O_HAZE];
     if (shed_lvl >= 4) { far_trees = 0; far_detail = 0; }
     int c = ((opt[O_CROWD] & 3) + 1) * 16 >> crowd_lvl; cit_maxdraw = c < 8 ? 8 : c;
     cit_live_cap = crowd_lvl >= 2 ? 1 : 99; cit_fresh_max = crowd_lvl >= 1 ? 1 : 2; cit_stale_n = crowd_lvl >= 1 ? 12 : 6;   // (a render that does not fit costs ~140 hb: a frame past its vblank)
 }
 int dbg_hl[6];   // (test readouts: steps given up, given back, frames aiming at 30, the ladder's step and the crowd's step, summed)
 COLD static void helper_frame(void) {
-    extern int world_detail_r, gfx_last_wait, cit_spare_hb, far_hb[3]; extern int far_reach_m(void);
-    static int mode30 = 1, avg = 600 << 4, hist, since, mode_n, last_s, meas_s, meas_a, far_cost = 350;
+    extern int world_detail_r, gfx_last_wait, cit_spare_hb;
+#ifdef AB_CFG
+    { extern volatile u8 ab_cfg[8]; if (ab_cfg[7]) { if (shed_lvl != ab_cfg[7] - 1) { shed_lvl = ab_cfg[7] - 1; helper_apply(); } return; } }   // (test builds: the far view's step held where the disc image says, 1 = as chosen .. 5 = lite .. 6 = none)
+#endif
+    static int mode30 = 1, avg = 600 << 4, hist, since, mode_n, last_s, meas_s, meas_a;
     static short cost[24], quiet[24];
     int floor_r = det_opt - 8; if (floor_r < 5) floor_r = 5; if (floor_r > det_opt) floor_r = det_opt;
-    int R = det_opt - floor_r, kmax = 4 + R + 2;
+    int R = det_opt - floor_r, kmax = 5 + R + 2;   // (the far view's steps 0..3, 4 = lite, 5 = gone; then the range, then the crowd's two)
     if (world_detail_r > det_opt) world_detail_r = det_opt;
     if (world_detail_r < floor_r) world_detail_r = floor_r;
-    int k = shed_lvl < 4 ? shed_lvl : crowd_lvl ? 4 + R + crowd_lvl : 4 + det_opt - world_detail_r;   // (where on the ladder it stands)
-    if (far_reach_m() >= 0) far_cost += (far_hb[0] + far_hb[1] + far_hb[2] - far_cost) / 8;   // (what the far view costs when it is on)
+    int k = shed_lvl < FSH ? shed_lvl : crowd_lvl ? 5 + R + crowd_lvl : 5 + det_opt - world_detail_r;   // (where on the ladder it stands)
     int T = mode30 && opt[O_FPSCAP] != 2 ? 524 : 786;
     int need = t_cpu - cit_spare_hb + (gfx_last_wait > 0 ? gfx_last_wait : 0);
     if (gfx_last_overflow && need < T + 20) need = T + 20;   // (the packet buffer filled up: things were left undrawn, so count it as slow)
@@ -2098,15 +2135,15 @@ COLD static void helper_frame(void) {
         if (last_s == k + 1 && since < 300) quiet[k + 1] = (short)MIN(2400, (quiet[k + 1] ? quiet[k + 1] : 120) * 2);   // (it was given back too soon)
         k++; ch = 1; hist = 0; meas_s = 0; dbg_hl[0]++;
     } else if (k > 0) {   // give one back, after a quiet spell, if what it costs fits
-        int q = quiet[k] ? quiet[k] : k <= 4 ? 240 : 120;
-        int c = k == 4 ? far_cost : cost[k] ? cost[k] : k <= 4 ? 40 : 15;
+        int q = quiet[k] ? quiet[k] : k <= 5 ? 240 : 120;
+        int c = cost[k] ? cost[k] : k == 5 ? 90 : k <= 4 ? 40 : 15;
         if (since >= q && __builtin_popcount(hist) <= 1 && A + c < T - 60) { meas_s = last_s = k; meas_a = A; k--; ch = 1; dbg_hl[1]++; }
     }
     if (opt[O_FPSCAP] != 2) {   // 30 or 20: back to 20 when even everything given up does not hold 30; 30 again once the frames clearly fit it
         if (mode30) { if (k == kmax && A > 524 - 24) { if (++mode_n >= 60) { mode30 = 0; mode_n = 0; } } else mode_n = 0; }
         else { if (A < 524 - 60) { if (++mode_n >= 240) { mode30 = 1; mode_n = 0; } } else mode_n = 0; }
     }
-    if (ch) { shed_lvl = MIN(k, 4); world_detail_r = det_opt - CLAMP(k - 4, 0, R); crowd_lvl = k > 4 + R ? k - 4 - R : 0; helper_apply(); since = 0; }
+    if (ch) { shed_lvl = MIN(k, FSH); world_detail_r = det_opt - CLAMP(k - 5, 0, R); crowd_lvl = CLAMP(k - 5 - R, 0, 2); helper_apply(); since = 0; }
     dbg_hl[2] += T == 524; dbg_hl[3] += k; dbg_hl[4] += crowd_lvl;
 }
 void cam_view_set(int v) {   // (L2 + R2 in play, and the options)
@@ -2260,7 +2297,7 @@ static void opts_draw(void) {
     ui_round(104, top + 166, 202, 32, 6, UI_RGB(234, 240, 248), UI_RGB(224, 231, 240), 0);
     ui_icon(110, top + 176, IC_HELP, UI_BLUE);
     { int i = optTab[opt_tab][opt_sel]; const char *bl = i >= OA ? optActBlurb[i - OA] : optBlurb[i]; char vb2[48];
-      if (i == O_VIEW && opt_back != ST_MENU && opt[O_VIEW] > 0 && shed_lvl >= 4) bl = "SPEED HELPER CUT THE VIEW HERE. SWITCH IT OFF TO SEE ALL";
+      if (i == O_VIEW && opt_back != ST_MENU && opt[O_VIEW] > 0 && shed_lvl >= 4) bl = shed_lvl >= FSH ? "SPEED HELPER CUT THE VIEW HERE. SWITCH IT OFF TO SEE ALL" : "SPEED HELPER SIMPLIFIED THE VIEW HERE. SWITCH IT OFF TO SEE ALL";
       else if (i == O_VIEW && opt_back != ST_MENU) { int m = far_reach_m(); sprintf(vb2, m < 0 ? "NOT DRAWN NOW: ONLY THE MAP ROUND YOU" : "DRAWN OUT TO %d M HERE. A LOWER CAMERA SEES FARTHER", m); bl = vb2; }
       ui_wrap(126, top + 169, 176, 3, bl, UI_INK); }
     ui_hints(16, top + 185, "O BACK", 0);
