@@ -45,6 +45,13 @@ How: PS1 `cmake -DCMAKE_C_FLAGS="-DAUTO_HOME=1 -DAB_LOCK4=1"`, `ninja iso_lite`,
 Dreamcast `make AUTO="AUTO_HOME=1 -DAB_LOCK4=1 -DDC_NOSPEED -DDC_CLASSIC" disc`, script `ports/dreamcast/test/home_dc.txt`.
 Note: a Dreamcast test frame is about 2 vblanks, a DuckStation frame 1, so pair shots by the clock on the HUD.
 
+### Roofs: better Dreamcast roofs (BORE_DC only)
+A 32x32 clay-tile texture (rounded tiles, offset courses; filtered when TEXTURES is SMOOTH), a ridge board along every roof top,
+and rooftop boxes on flat roofs. Chimneys and the PS1's eaves stay. The cut-away is unchanged: the roof of the building you are in is
+left out (left: roofs from the street; right: the Sim inside a shop, its roof hidden). Not done yet: a fade for the cut-away.
+![roofs](dc_roofs.png)
+The city roofs could not be paired with DuckStation: in the PS1 test run the Sim walked off to a field, so the two routes differ.
+
 ## Speed (measured in flycast, which only roughly copies real Dreamcast timing)
 SAN BOREAS street, normal play (`AUTO_CITY` build, 1500-2500 frames in):
 | Step | fps |
@@ -70,8 +77,7 @@ Dreamcast's clock; flycast gives it the host's time. Left: the option on, no que
 
 ## Still to do
 - Side by side with DuckStation: inside a house, pie menu, Buy/Build, night, first person, far view, a park.
-- Roofs (new ask): fix the roof-tool bug above first; then check shops, towers, flats, near and far, and the cut-away when inside or
-  upstairs; then DC-only better roofs (ridges, overhangs, tiles with SMOOTH filtering, chimneys, fade cut-away, far roofs with fog).
+- Roofs: side-by-side with DuckStation for shops, towers, flats, far roofs; a fade cut-away; far roofs with fog; bigger overhangs.
 - The far buildings' window textures use the PS1 texture window (GP0 E2): not done in `dc_gpu.c` yet.
 - Steady 60 fps: sound on the AICA's own channels, a float GTE, cheaper OT walk.
 - Upgrades: sub-pixel vertices, depth buffer, full far view with fog, bigger crowds, smooth lighting.

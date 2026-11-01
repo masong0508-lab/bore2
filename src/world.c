@@ -3150,6 +3150,23 @@ static void roof_pending(int max) {                            // work out up to
         roof_region(wx * BM_BLK, wy * BM_BLK, wx * BM_BLK + BM_BLK - 1, wy * BM_BLK + BM_BLK - 1);
     }
 }
+#ifdef BORE_DC
+#define RTS 32
+static void roof_tex_make(void) {   // (Dreamcast: 32 x 32, rounded clay tiles in courses, every other course offset; filtered smooth when SMOOTH is on)
+    u16 *px = atlas_scratch_hi();
+    for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
+        int course = y / 8, ry = y & 7, off = (course & 1) * 4, tx = (x + off) & 7;
+        int v = 17 - ry * 12 / 8;                                   // each tile darkens toward its lower edge
+        int curve = tx < 4 ? tx : 7 - tx; v += curve - 2;           // rounded: the middle of a tile is lighter
+        if (tx == 0) v -= 4;                                        // the gaps between tiles
+        if (ry == 7) v -= 5;                                        // the shadow under a course
+        v += ((x * 7 + y * 13) & 3) - 1;
+        v = CLAMP(v, 4, 20); px[y * 32 + x] = RGB(v, v, v);
+    }
+    roof_tex = atlas_add(32, 32, px); roof_tex_ok = 1;
+}
+#else
+#define RTS 16
 static void roof_tex_make(void) {   // shingles: courses of overlapping tiles, every other course offset
     u16 *px = atlas_scratch_hi();   // (16 x 16)
     for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) {
@@ -3161,6 +3178,7 @@ static void roof_tex_make(void) {   // shingles: courses of overlapping tiles, e
     }
     roof_tex = atlas_add(16, 16, px); roof_tex_ok = 1;
 }
+#endif
 static inline int rmask(int l, int x, int y) { return x >= 0 && y >= 0 && x < MW && y < MH && rm_get(l, x, y); }
 static int rc_sty;
 static void roof_corner(int l, int X, int Y, SVECTOR *v, int base, int pitch) {   // a roof corner, the eaves pushed out at the footprint's edge
@@ -3223,6 +3241,32 @@ static void chimney(int l, int X, int Y, int base, int pitch) {   // a brick chi
     CQ(x0 - 4, yt, z0 + 4, x1 + 4, yt, z0 + 4, x0 - 4, yt, z1 - 4, x1 + 4, yt, z1 - 4, 74, 64, 60)   // the cap
     #undef CQ
 }
+#ifdef BORE_DC
+static void ridge_cap(int l, int x, int y, int base, int pitch) {   // (Dreamcast) a ridge board along a roof's top line, and a rooftop vent
+    int h = rh_get(l, x, y); if (h < 1) return;
+    int hx = rh_get(l, x + 1, y), hy = rh_get(l, x, y + 1);
+    SVECTOR a, b, c, d; int yy = base - h * pitch - 9, L = CLAMP(gfx_light(0, -ONE, 0), 60, 220);
+    int r = (150 * L) >> 7, g = (70 * L) >> 7, bl = (52 * L) >> 7;
+    if (hx == h && rh_get(l, x, y - 1) < h && rh_get(l, x, y + 1) < h) {   // a ridge running along x
+        int X0 = x * TILE - (rmask(l, x - 1, y) && rh_get(l, x - 1, y) == h ? 0 : 6), X1 = (x + 1) * TILE + 6, Z = -y * TILE;
+        setVector(&a, X0, yy, Z + 15); setVector(&b, X1, yy, Z + 15); setVector(&c, X0, yy, Z - 15); setVector(&d, X1, yy, Z - 15); wquad_f(&a, &b, &c, &d, r, g, bl, 1);
+        setVector(&a, X0, yy, Z + 15); setVector(&b, X1, yy, Z + 15); setVector(&c, X0, yy + 9, Z + 21); setVector(&d, X1, yy + 9, Z + 21); wquad_f(&a, &b, &c, &d, r * 3 / 4, g * 3 / 4, bl * 3 / 4, 1);
+        setVector(&a, X1, yy, Z - 15); setVector(&b, X0, yy, Z - 15); setVector(&c, X1, yy + 9, Z - 21); setVector(&d, X0, yy + 9, Z - 21); wquad_f(&a, &b, &c, &d, r * 5 / 8, g * 5 / 8, bl * 5 / 8, 1);
+    } else if (hy == h && rh_get(l, x - 1, y) < h && rh_get(l, x + 1, y) < h) {   // along z
+        int Z0 = -y * TILE + 6, Z1 = -(y + 1) * TILE - 6, X = x * TILE;
+        setVector(&a, X - 15, yy, Z0); setVector(&b, X + 15, yy, Z0); setVector(&c, X - 15, yy, Z1); setVector(&d, X + 15, yy, Z1); wquad_f(&a, &b, &c, &d, r, g, bl, 1);
+        setVector(&a, X + 15, yy, Z0); setVector(&b, X + 15, yy, Z1); setVector(&c, X + 21, yy + 9, Z0); setVector(&d, X + 21, yy + 9, Z1); wquad_f(&a, &b, &c, &d, r * 3 / 4, g * 3 / 4, bl * 3 / 4, 1);
+        setVector(&a, X - 15, yy, Z1); setVector(&b, X - 15, yy, Z0); setVector(&c, X - 21, yy + 9, Z1); setVector(&d, X - 21, yy + 9, Z0); wquad_f(&a, &b, &c, &d, r * 5 / 8, g * 5 / 8, bl * 5 / 8, 1);
+    }
+}
+static void roof_unit(int X, int Z, int Y, int w, int hgt) {   // (Dreamcast) a rooftop box: an air-conditioner or a stair hut
+    SVECTOR a, b, c, d; int x0 = X - w, x1 = X + w, z0 = Z + w, z1 = Z - w, yt = Y - hgt;
+    setVector(&a, x0, yt, z0); setVector(&b, x1, yt, z0); setVector(&c, x0, yt, z1); setVector(&d, x1, yt, z1); wquad_f(&a, &b, &c, &d, 176, 176, 170, 1);
+    setVector(&a, x0, yt, z0); setVector(&b, x1, yt, z0); setVector(&c, x0, Y, z0); setVector(&d, x1, Y, z0); wquad_f(&a, &b, &c, &d, 128, 130, 132, 1);
+    setVector(&a, x1, yt, z0); setVector(&b, x1, yt, z1); setVector(&c, x1, Y, z0); setVector(&d, x1, Y, z1); wquad_f(&a, &b, &c, &d, 100, 102, 106, 1);
+    setVector(&a, x0, yt, z1); setVector(&b, x0, yt, z0); setVector(&c, x0, Y, z1); setVector(&d, x0, Y, z0); wquad_f(&a, &b, &c, &d, 112, 114, 118, 1);
+}
+#endif
 static void roofs_draw(int fx, int fy) {
     if (!roof_tex_ok) roof_tex_make();
     int focus = (fx >= 0 && fy >= 0 && fx < MW && fy < MH) ? bld[fy][fx] : 0;
@@ -3266,6 +3310,11 @@ static void roofs_draw(int fx, int fy) {
                     setVector(&a, X1, Y - 24, Z0); setVector(&bb, X0, Y - 24, Z0); setVector(&cc, X1, Y, Z0); setVector(&dd, X0, Y, Z0); wquad_f(&a, &bb, &cc, &dd, 150, 146, 140, 1);
                     setVector(&a, X0, Y - 24, Z0); setVector(&bb, X0, Y - 24, Z1); setVector(&cc, X0, Y, Z0); setVector(&dd, X0, Y, Z1); wquad_f(&a, &bb, &cc, &dd, 132, 128, 124, 1);
                     setVector(&a, X1, Y - 24, Z1); setVector(&bb, X1, Y - 24, Z0); setVector(&cc, X1, Y, Z1); setVector(&dd, X1, Y, Z0); wquad_f(&a, &bb, &cc, &dd, 132, 128, 124, 1);
+#ifdef BORE_DC
+                    if (!world_fp) { int hh_ = (b_x0[b] * 7 + b_y0[b] * 13 + b_x1[b]) & 7, wd = X1 - X0 - 120, dp = Z0 - Z1 - 120;
+                        if (wd > 100 && dp > 100) { roof_unit(X0 + 70 + (hh_ * 53) % wd, Z1 + 70 + (hh_ * 37) % dp, Y, 26, 30);
+                                                    if (wd > 400 && dp > 300) roof_unit(X0 + 70 + (hh_ * 91 + 200) % wd, Z1 + 70 + (hh_ * 61 + 150) % dp, Y, 40, 44); } }
+#endif
                     continue;
                 }
             }
@@ -3280,6 +3329,9 @@ static void roofs_draw(int fx, int fy) {
             else if (!world_fp && !(x & 1) && !(y & 1) && vz > TILE * 7 && x + 1 <= lx1 && y + 1 <= ly1 && roof_merge_ok(l, x, y, b, 2)) sp = 2;
             int big = sp > 1;
             if (!big && b && rc_sty != 2 && l == b_top[b] && x == b_x0[b] + 2 && y == b_y0[b] + 1 && b_x1[b] - b_x0[b] >= 5 && ((b_x0[b] * 7 + b_y0[b] * 13) & 1) && vz < TILE * 14) chimney(l, x, y, base, pitch);   // (a chimney on every other home, close up)
+#ifdef BORE_DC
+            if (!big && !world_fp && b && rc_sty != 2 && vz < TILE * 14) ridge_cap(l, x, y, base, pitch);
+#endif
             const XV *A = cc_roof_at(x, y), *B = cc_roof_at(x + sp, y), *C = cc_roof_at(x, y + sp), *DQ = cc_roof_at(x + sp, y + sp);
             int hA = rh_get(l, x, y), hB = rh_get(l, x + 1, y), hC = rh_get(l, x, y + 1), hD = rh_get(l, x + 1, y + 1);   // (a merged 2x2 has the same slope as its first tile)
             int dhx = ((hB + hD - hA - hC) * pitch) / 2, dhz = ((hA + hB - hC - hD) * pitch) / 2;   // the slope across the tile
@@ -3290,7 +3342,7 @@ static void roofs_draw(int fx, int fy) {
             else { int len = SquareRoot0(dhx * dhx + TILE * TILE + dhz * dhz); if (len < 1) len = 1;
                    L = last_L = gfx_light((-dhx << 12) / len, (-TILE << 12) / len, (-dhz << 12) / len); last_key = key; }
             u32 c = gfx_grade_tex((u32)MIN(255, (rc[0] * L) >> 7) | ((u32)MIN(255, (rc[1] * L) >> 7) << 8) | ((u32)MIN(255, (rc[2] * L) >> 7) << 16));
-            int u0 = roof_tex.u, v0 = roof_tex.v, u1 = u0 + 15, v1 = v0 + 15;
+            int u0 = roof_tex.u, v0 = roof_tex.v, u1 = u0 + RTS - 1, v1 = v0 + RTS - 1;
             if (world_fp && b && b_see[b]) {   // first person, under your own roof: a plain plaster ceiling, not shingles
                 int lc = CLAMP(gfx_light_amb() * 2, 80, 190);
                 u32 pc = (u32)lc | ((u32)(lc - 4) << 8) | ((u32)(lc - 12) << 16);
