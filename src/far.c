@@ -487,6 +487,7 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
         row_end();
     }
     if (!far_lite) { int t_ = gfx_hb(); draw_roads(hills); extern int dbg_roads_hb; dbg_roads_hb += gfx_hb() - t_; }
+    const int lod2_u = M2U(far_lite ? 350 : 600);
     for (int i = 0; i < nrect; i++) { const Rect *r = &rects[i]; int R, G, B; cell_rgb((int)r->key, &R, &G, &B);
         int x0 = ((gx0 + r->x0) * 2 * CELL_T - fwx0) * TILE, x1 = ((gx0 + r->x1) * 2 * CELL_T - fwx0) * TILE;
         int z0 = -(((gy0 + r->y0) * 2 * CELL_T - fwy0) * TILE), z1 = -(((gy0 + r->y1) * 2 * CELL_T - fwy0) * TILE);
@@ -494,6 +495,14 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
             for (int j = 0; j < nz; j++) for (int i = 0; i < nx; i++) {
                 int ax = x0 + i * gs, bz = z0 - j * gs;
                 int lx = r->x0 + i, ly = r->y0 + j;
+                {   // (far out, a quad to every 2 x 2 groups: the lattice's alternate corners; the haze hides the difference. The pair is drawn from its top left.)
+                    int ox = (gx0 + lx) & 1, oy = (gy0 + ly) & 1, i0 = i - ox, j0 = j - oy;
+                    if (i0 >= 0 && j0 >= 0 && i0 + 1 < nx && j0 + 1 < nz) {
+                        int pcx = x0 + (i0 + 1) * gs, pcz = z0 - (j0 + 1) * gs;
+                        if (MAX(ABS(pcx - feye.vx), ABS(pcz - feye.vz)) > lod2_u) {
+                            if (ox | oy) continue;
+                            int g2 = 2 * gs, hq[4] = { lat_h(lx, ly, ax, bz), lat_h(lx + 2, ly, ax + g2, bz), lat_h(lx + 2, ly + 2, ax + g2, bz - g2), lat_h(lx, ly + 2, ax, bz - g2) };
+                            ground_quad(ax, ax + g2, bz, bz - g2, R, G, B, OT_GROUND_FAR, hq); continue; } } }
                 int hh[4] = { lat_h(lx, ly, ax, bz), lat_h(lx + 1, ly, ax + gs, bz), lat_h(lx + 1, ly + 1, ax + gs, bz - gs), lat_h(lx, ly + 1, ax, bz - gs) };
                 ground_quad(ax, ax + gs, bz, bz - gs, R, G, B, OT_GROUND_FAR, hh); } }
         else

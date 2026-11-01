@@ -2101,7 +2101,7 @@ static void helper_apply(void) {
     //  the ground (no streets, no trees) and the buildings as boxes near, flat rectangles far, still fading into the haze; 5 is none of it)
     extern int far_lite;
     int v = opt[O_VIEW]; far_lite = shed_lvl == 4;
-    far_view = (v && shed_lvl < 5) ? (shed_lvl == 4 ? MIN(v, 3) : v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
+    far_view = (v && shed_lvl < 5) ? (shed_lvl == 4 ? v : v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
     int tr = opt[O_TREES] - shed_lvl; far_trees = tr < 0 ? 0 : tr;
     int fd = opt[O_FARB] - (shed_lvl > 1 ? shed_lvl - 1 : 0); far_detail = fd < 0 ? 0 : fd;
     far_haze = shed_lvl == 3 ? 0 : opt[O_HAZE];
@@ -2118,10 +2118,14 @@ COLD static void helper_frame(void) {
     static int mode30 = 1, avg = 600 << 4, hist, since, mode_n, last_s, meas_s, meas_a;
     static short cost[24], quiet[24];
     int floor_r = det_opt - 8; if (floor_r < 5) floor_r = 5; if (floor_r > det_opt) floor_r = det_opt;
-    int R = det_opt - floor_r, kmax = 5 + R + 2;   // (the far view's steps 0..3, 4 = lite, 5 = gone; then the range, then the crowd's two)
+    int R = det_opt - floor_r, kmax = FSH + R + 2;   // (the ladder: the far view's steps 0..3, 4 = lite, [FSH = gone here when FAR_FIRST], the range, the crowd's two, [gone last otherwise])
     if (world_detail_r > det_opt) world_detail_r = det_opt;
     if (world_detail_r < floor_r) world_detail_r = floor_r;
-    int k = shed_lvl < FSH ? shed_lvl : crowd_lvl ? 5 + R + crowd_lvl : 5 + det_opt - world_detail_r;   // (where on the ladder it stands)
+#ifdef FAR_FIRST
+    int k = shed_lvl < FSH ? shed_lvl : crowd_lvl ? FSH + R + crowd_lvl : FSH + det_opt - world_detail_r;   // (where on the ladder it stands)
+#else
+    int k = shed_lvl >= FSH ? kmax : shed_lvl < 4 ? shed_lvl : crowd_lvl ? 4 + R + crowd_lvl : 4 + det_opt - world_detail_r;
+#endif
     int T = mode30 && opt[O_FPSCAP] != 2 ? 524 : 786;
     int need = t_cpu - cit_spare_hb + (gfx_last_wait > 0 ? gfx_last_wait : 0);
     if (gfx_last_overflow && need < T + 20) need = T + 20;   // (the packet buffer filled up: things were left undrawn, so count it as slow)
@@ -2131,19 +2135,28 @@ COLD static void helper_frame(void) {
     if (last_s && since == 900 && quiet[last_s] > 240) quiet[last_s] = (short)(quiet[last_s] / 2);   // (it held)
     int ch = 0;
     // (one slow frame alone is a spike, a route search or a block coming into the window: giving detail up does not help it)
-    if ((__builtin_popcount(hist & 0xffff) >= 3 || A > T - 30) && k < kmax && since >= (A > T + 60 ? 2 : 6)) {   // give a step up (every other frame when far over)
+    if ((__builtin_popcount(hist & 0xffff) >= 3 || A > T - 30) && k < kmax && (k < kmax - 1 || A > T + 30) && since >= (A > T + 60 ? 2 : 6)) {   // (the very last step, the far view gone, only when the frames really are slow: a lite far view at 27 is worth more than none at 30)   // give a step up (every other frame when far over)
         if (last_s == k + 1 && since < 300) quiet[k + 1] = (short)MIN(2400, (quiet[k + 1] ? quiet[k + 1] : 120) * 2);   // (it was given back too soon)
         k++; ch = 1; hist = 0; meas_s = 0; dbg_hl[0]++;
     } else if (k > 0) {   // give one back, after a quiet spell, if what it costs fits
-        int q = quiet[k] ? quiet[k] : k <= 5 ? 240 : 120;
-        int c = cost[k] ? cost[k] : k == 5 ? 90 : k <= 4 ? 40 : 15;
+        int q = quiet[k] ? quiet[k] : k <= FSH ? 240 : 120;
+        #ifdef FAR_FIRST
+        int far_k = FSH;
+#else
+        int far_k = kmax;
+#endif
+        int c = cost[k] ? cost[k] : k == far_k ? 90 : k <= 4 ? 40 : 15;
         if (since >= q && __builtin_popcount(hist) <= 1 && A + c < T - 60) { meas_s = last_s = k; meas_a = A; k--; ch = 1; dbg_hl[1]++; }
     }
     if (opt[O_FPSCAP] != 2) {   // 30 or 20: back to 20 when even everything given up does not hold 30; 30 again once the frames clearly fit it
         if (mode30) { if (k == kmax && A > 524 - 24) { if (++mode_n >= 60) { mode30 = 0; mode_n = 0; } } else mode_n = 0; }
         else { if (A < 524 - 60) { if (++mode_n >= 240) { mode30 = 1; mode_n = 0; } } else mode_n = 0; }
     }
-    if (ch) { shed_lvl = MIN(k, FSH); world_detail_r = det_opt - CLAMP(k - 5, 0, R); crowd_lvl = CLAMP(k - 5 - R, 0, 2); helper_apply(); since = 0; }
+    #ifdef FAR_FIRST
+    if (ch) { shed_lvl = MIN(k, FSH); world_detail_r = det_opt - CLAMP(k - FSH, 0, R); crowd_lvl = CLAMP(k - FSH - R, 0, 2); helper_apply(); since = 0; }
+#else
+    if (ch) { shed_lvl = k >= kmax ? FSH : MIN(k, 4); world_detail_r = det_opt - CLAMP(k - 4, 0, R); crowd_lvl = CLAMP(k - 4 - R, 0, 2); helper_apply(); since = 0; }
+#endif
     dbg_hl[2] += T == 524; dbg_hl[3] += k; dbg_hl[4] += crowd_lvl;
 }
 void cam_view_set(int v) {   // (L2 + R2 in play, and the options)
