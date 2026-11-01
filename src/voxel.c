@@ -570,7 +570,16 @@ static void head_box(const Bore *b, int *hx, int *hy, int *hz, int *hs) {
 static inline int scl(int v, int c, int k) { return c + (((v - c) * k) >> 12); }
 static inline int lerp12(int a, int b, int t) { return a + (((b - a) * t) >> 12); }   // t 0..4096
 
-static SVECTOR WC[NCELL_MAX][8] __attribute__((aligned(8)));   // the corners while a person is being worked out (kept whole; packed into the Bore's cells at the end)
+typedef struct {
+    SVECTOR wc_[NCELL_MAX][8];                // the corners while a person is being worked out (kept whole; packed into the Bore's cells at the end)
+    u8 pv_[H + 2][D + 2][W + 2];
+    s8 dx_[H + 1][D + 1][W + 1], dz_[H + 1][D + 1][W + 1], dr_[H + 1][D + 1][W + 1], tr_[H + 1][D + 1][W + 1];
+    u8 ok_[H + 1][D + 1][W + 1];
+} PrepScratch;
+extern s16 bfs_par[MH][MW];                   // (sim.c's route finder's table: see below)
+typedef char prep_fits_[sizeof(PrepScratch) <= sizeof(bfs_par) ? 1 : -1];
+#define PREP ((PrepScratch *)(void *)bfs_par)
+#define WC (PREP->wc_)
 int vox_clamped;   // (debug: corner offsets that did not fit an s8)
 static inline void nominal(const Bore *b, int i, int k, int *nx, int *ny, int *nz) {
     *nx = (b->cell[i].x - 3 + (k & 1)) * VOX; *ny = (k < 4) ? -(b->cell[i].y + 1) * VOX : -b->cell[i].y * VOX; *nz = (b->cell[i].z - 2 + ((k >> 1) & 1)) * VOX;
@@ -713,10 +722,15 @@ static void split_limbs(Bore *b) {
 
 // voxel_prepare's working copy: the blocks with a border of air (no bounds checks), and each grid point's corner shaping worked
 // out once (four blocks share a corner: it was worked out four times, and the city builds a new person most frames)
-static u8 pv[H + 2][D + 2][W + 2];
+// (these and the corners WC, 6 KB, are only alive inside voxel_prepare: they live in the route finder's table, which is lent the
+//  same way to the floor drawing and the roof rebuild; none of those ever runs inside another)
+#define pv     (PREP->pv_)
 #define PV(x, y, z) pv[(y) + 1][(z) + 1][(x) + 1]
-static s8 pc_dx[H + 1][D + 1][W + 1], pc_dz[H + 1][D + 1][W + 1], pc_dr[H + 1][D + 1][W + 1], pc_tr[H + 1][D + 1][W + 1];
-static u8 pc_ok[H + 1][D + 1][W + 1];   // 1 pc_disp known, 2 pc_top known (y from -1: index y + 1)
+#define pc_dx  (PREP->dx_)
+#define pc_dz  (PREP->dz_)
+#define pc_dr  (PREP->dr_)
+#define pc_tr  (PREP->tr_)
+#define pc_ok  (PREP->ok_)   // 1 pc_disp known, 2 pc_top known (y from -1: index y + 1)
 static void pc_disp(int X, int y, int Z, int *dx, int *dz, int *drop) {   // the top corner at grid point (X, Z) of layer y: pulled in where
     // the hull is exposed (the thin limb blocks stand apart: they do not shape it), and a hair corner dropped where its cut shows
     u8 *ok = &pc_ok[y + 1][Z][X];

@@ -193,8 +193,10 @@ int dbg_slow[16][8], dbg_slow_n;
 int avg_cpu16, avg_world16, avg_hh16, hist_cpu[5], avg_prof16[8];
 int dbg_sum_far[6], dbg_miss[4], dbg_sum_miss[4], dbg_roads_hb, dbg_sum_roads;   // (test readouts: the far pass's quads, clipped quads, cone tests, and prims: land, buildings, trees)
 #ifdef AUTO_CITY
-int dbg_lg_max[2], dbg_cit_hist[12];   // (test readouts: the townsfolk's and the household's worst frame, the townsfolk's cost a frame in 20-hb bins)
+int dbg_lg_max[2], dbg_cit_hist[12], dbg_sim_hist[12], dbg_sum_ppl[4];   // (test readouts: the townsfolk's and the household's worst frame, the townsfolk's cost a frame in 20-hb bins, the household's in 40-hb bins;
+                                                                         //  summed: the crowd's drawing, its spare-time work, the household's drawing, the traffic's)
 #endif
+int dbg_end_hist[24], dbg_per_hist[6], dbg_edge[12], dbg_vbs[4], dbg_need_last, dbg_gw[3];   // (test readouts: life frames by their need (the cost without the spare-time work), in 50-hb bins; by the vblanks they took)
 int dbg_life_n, dbg_life_vb, dbg_life_vb0, dbg_sum_cpu, dbg_sum_prof[8], dbg_sum_part[6], dbg_sum_lg[4], dbg_sum_w[8], dbg_sum_pn[8], dbg_sum_shed, dbg_sum_r;   // (test readouts over the whole stay in the city: frames, vblanks they took, their summed cost)
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
@@ -350,6 +352,9 @@ int dbg_hh_spr, dbg_hh_full, dbg_hh_miss;
 #define LOD_DIST 1280   // beyond this many world units (5 tiles) from the camera's focus, people are drawn with the crowd model
 static void draw_sims(void) {
     gfx_set_reserve(RESERVE_UI);   // the people may use what the world left, but not the HUD's share
+#ifdef AUTO_CITY
+    { extern int dbg_sum_ppl[4]; dbg_sum_ppl[2] -= hb_now(); }
+#endif
     for (int i = 0; i < nsims; i++) {
         Sim *s = &sims[i];
         { Gait *g_ = &s->gait; int tg_ = g_->sleep ? 4096 : 0; g_->lie += CLAMP(tg_ - g_->lie, -170, 170); }   // lying down and getting up take about a second: lie follows where sleep is heading (voxel.c works the pose out from it)
@@ -397,8 +402,16 @@ static void draw_sims(void) {
         if (i == player && on_board) { int ro, pi, sp; skate_board(&ro, &pi, &sp); items_draw_board(s->x, s->z, s->yaw, -board_lift - skate_board_up() - s->lvl * WALL_FULL, ro, pi, sp); }
         if (s->action != ACT_SLEEP && s->action != ACT_SWIM && s->lvl == 0) { VECTOR sp; setVector(&sp, s->x, 0, s->z); gfx_shadow(&sp, 70); }
     }
+#ifdef AUTO_CITY
+    int tp0_ = hb_now(); { extern int dbg_sum_ppl[4]; dbg_sum_ppl[2] += tp0_; }
+    traffic_draw();
+    int tp1_ = hb_now();
+    citizens_draw();
+    { extern int dbg_sum_ppl[4], cit_spare_hb; int tp2_ = hb_now(); dbg_sum_ppl[0] += tp2_ - tp1_; dbg_sum_ppl[1] += cit_spare_hb; dbg_sum_ppl[3] += tp1_ - tp0_; }   // (test readouts)
+#else
     traffic_draw();
     citizens_draw();
+#endif
     if (nsims && !sims[player].grump) draw_marker(&sims[player]);   // MOSS gets nothing. MOSS made that very clear.
     gfx_set_reserve(0);
 }
@@ -742,7 +755,7 @@ static void life_update(int steps) {
     { extern int dbg_sum_lg[4]; int t0 = hb_now(), t1, t2, t3; for (int k = 0; k < steps; k++) sim_step(); t1 = hb_now(); citizens_update(steps); t2 = hb_now(); traffic_update(steps); t3 = hb_now();
       dbg_sum_lg[0] += t1 - t0; dbg_sum_lg[1] += t2 - t1; dbg_sum_lg[2] += t3 - t2; dbg_sum_lg[3] += steps; t_logic = t3 - t0;
 #ifdef AUTO_CITY
-      { extern int dbg_lg_max[2], dbg_cit_hist[12]; if (t2 - t1 > dbg_lg_max[0]) dbg_lg_max[0] = t2 - t1; if (t1 - t0 > dbg_lg_max[1]) dbg_lg_max[1] = t1 - t0; dbg_cit_hist[MIN(11, MAX(0, t2 - t1) / 20)]++; }
+      { extern int dbg_lg_max[2], dbg_cit_hist[12], dbg_sim_hist[12]; if (t2 - t1 > dbg_lg_max[0]) dbg_lg_max[0] = t2 - t1; if (t1 - t0 > dbg_lg_max[1]) dbg_lg_max[1] = t1 - t0; dbg_cit_hist[MIN(11, MAX(0, t2 - t1) / 20)]++; dbg_sim_hist[MIN(11, MAX(0, t1 - t0) / 40)]++; }
 #endif
     }
     {   // SAN BOREAS: the map window follows you a block at a time (everything slides with it)
@@ -4627,6 +4640,12 @@ int main(void) {
         t_frame0 = hb_now();
         read_pad();
         int now = VSync(-1), steps = now - t_vb; t_vb = now;
+        { static int was_life; if (was_life) { int k = MIN(5, MAX(0, steps)); dbg_per_hist[k]++;   // (test readouts: how many vblanks each life frame really took,
+              extern int gfx_last_cpu; int e = gfx_last_cpu; if (e > dbg_edge[k]) dbg_edge[k] = e; if (!dbg_edge[6 + k] || e < dbg_edge[6 + k]) dbg_edge[6 + k] = e;   //  and the latest / earliest flip each count saw;
+              int vr = (e * 10 + 2624) / 2625, vn = (dbg_need_last * 10 + 4 * 10 + 2624) / 2625; if (vr < gfx_min_vsyncs) vr = gfx_min_vsyncs; if (vn < gfx_min_vsyncs) vn = gfx_min_vsyncs;
+              dbg_vbs[0] += vn; dbg_vbs[1] += vr; if (vr > vn) dbg_vbs[2]++; if (vr < vn) dbg_vbs[3]++;   //  and the vblanks it would take from its need and from its flip: a like-for-like fps with AB_LOCK4;
+              { extern int gfx_last_wait; dbg_gw[0] += gfx_last_wait; if (gfx_last_wait > 2) dbg_gw[1]++; if (gfx_last_wait > dbg_gw[2]) dbg_gw[2] = gfx_last_wait; } }   //  how long the flip waited for the GPU)
+          was_life = state == ST_LIFE; }
         steps = CLAMP(steps, 1, 3);   // LAGFIX_APPLIED: fewer catch-up steps
         frame++;
         fps_frames++; if (now - fps_vb >= 60) { fps_val = fps_frames * 60 / (now - fps_vb); fps_frames = 0; fps_vb = now; }
@@ -4772,11 +4791,12 @@ int main(void) {
             if (world_detail_r > det_opt) world_detail_r = det_opt;
         }
 #ifdef AUTO_CITY
-        { extern int dbg_slow[16][8], dbg_slow_n; if (state == ST_LIFE && t_cpu > 800) { int *d = dbg_slow[dbg_slow_n++ & 15];   // (test builds: what the slow frames spent their time on)
-            d[0] = t_cpu; d[1] = t_upd; d[2] = t_logic; d[3] = t_world; d[4] = t_sims; d[5] = t_hud + t_bub; d[6] = gfx_prof[3]; d[7] = frame; } }
+        { extern int dbg_slow[16][8], dbg_slow_n, cit_spare_hb; if (state == ST_LIFE && t_cpu - cit_spare_hb > 785) { int *d = dbg_slow[dbg_slow_n++ & 15];   // (test builds: what the slow frames spent their time on)
+            d[0] = t_cpu; d[1] = t_cpu - cit_spare_hb; d[2] = t_logic; d[3] = t_world; d[4] = t_sims; d[5] = t_hud + t_bub; d[6] = gfx_prof[3]; d[7] = frame; } }
 #endif
         if (state == ST_LIFE) { avg_cpu16 += t_cpu - (avg_cpu16 >> 4); avg_world16 += t_world - (avg_world16 >> 4);   // (the test readouts)
             avg_hh16 += gfx_prof[4] - (avg_hh16 >> 4); hist_cpu[MIN(4, t_cpu / 262)]++;
+            { extern int cit_spare_hb; int nd = t_cpu - cit_spare_hb; dbg_end_hist[MIN(23, MAX(0, nd) / 50)]++; dbg_need_last = nd + (hb_now() - t_cpu - t_frame0); }   // (the need, and the stats' own time up to here)
             if (!dbg_life_n) dbg_life_vb0 = VSync(-1); dbg_life_n++; dbg_life_vb = VSync(-1) - dbg_life_vb0; dbg_sum_cpu += t_cpu; for (int k = 0; k < 8; k++) dbg_sum_prof[k] += gfx_prof[k];
             { extern int world_hb_l0, world_hb_up, world_hb_roofs, world_hb_sky1; dbg_sum_w[0] += world_hb_l0; dbg_sum_w[1] += world_hb_up; dbg_sum_w[2] += world_hb_roofs; dbg_sum_w[3] += world_hb_sky1; { extern int far_hb[3]; dbg_sum_w[4] += far_hb[0]; dbg_sum_w[5] += far_hb[1]; dbg_sum_w[6] += far_hb[2]; } }
             { extern int gfx_profn[8]; for (int k = 0; k < 8; k++) dbg_sum_pn[k] += gfx_profn[k]; }

@@ -144,13 +144,12 @@ static void cells_follow(int budget) {       // keep the cells centred on you; w
     int dx = want_x - fc_x0, dy = want_y - fc_y0;
     if (dx || dy) {
         if (ABS(dx) >= FC / 2 || ABS(dy) >= FC / 2) memset(fcell, 0xFF, sizeof fcell);
-        else {
-            static u8 tmp[FC][FC];
-            for (int y = 0; y < FC; y++) for (int x = 0; x < FC; x++) {
-                int sx = x + dx, sy = y + dy;
-                tmp[y][x] = (sx < 0 || sy < 0 || sx >= FC || sy >= FC) ? 0xFF : fcell[sy][sx];
-            }
-            memcpy(fcell, tmp, sizeof fcell);
+        else for (int k = 0; k < FC; k++) {   // fcell[y][x] = fcell[y + dy][x + dx] (0xFF from outside), in place: the rows in the order that reads each before it is written
+            int y = dy >= 0 ? k : FC - 1 - k, sy = y + dy; u8 *d = fcell[y];   // (a 4 KB copy of the table used to be kept for this)
+            if (sy < 0 || sy >= FC) { memset(d, 0xFF, FC); continue; }
+            const u8 *s = fcell[sy];
+            if (dx >= 0) { memmove(d, s + dx, FC - dx); memset(d + FC - dx, 0xFF, dx); }
+            else { memmove(d - dx, s, FC + dx); memset(d, 0xFF, -dx); }
         }
         fc_x0 = want_x; fc_y0 = want_y;
         fc_unknown = 0; for (int y = 0; y < FC; y++) for (int x = 0; x < FC; x++) fc_unknown += fcell[y][x] == 0xFF;
@@ -776,7 +775,7 @@ void far_sky(u32 top, u32 horizon) { far_sky_sea(top, horizon, 0); }
 // ================================================================== the frame
 static int far_on_frame;
 int far_begin(u32 horizon) {
-    far_prims = 0; far_on_frame = 0; far_nclip = far_ncone = far_nquad = 0;
+    far_prims = 0; far_on_frame = 0; far_nclip = far_ncone = far_nquad = 0; far_hb[0] = far_hb[1] = far_hb[2] = 0;   // (a frame without the far pass reads 0, not the last one's)
     if (world_zone != ZONE_CITY || world_wbx < 0 || far_view <= 0) return 0;
     if (!tex_ok) far_tex();
     hz_r = horizon & 255; hz_g = (horizon >> 8) & 255; hz_b = (horizon >> 16) & 255;

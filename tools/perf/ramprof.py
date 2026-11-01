@@ -40,15 +40,30 @@ if nn:
     pn=rd('dbg_sum_pn',8); print('prims per frame [floor,walls,items,roofs/far,sims,citfull,citlod,x]',[round(x/nn) for x in pn], 'total',round(sum(pn)/nn))
 if nn:
     print('mean shed level %.2f (0 none .. 4 most), mean detail radius %.1f tiles'%(rd('dbg_sum_shed')[0]/nn, rd('dbg_sum_r')[0]/nn))
+if 'dbg_per_hist' in S:
+    p=rd('dbg_per_hist',6); t=sum(p) or 1
+    print('frame periods (vblanks each life frame really took) 1..5+: %s  | took 4 or more: %.1f%%  2 or fewer: %.1f%%'%(' '.join(str(x) for x in p[1:]),100*sum(p[4:])/t,100*sum(p[:3])/t))
+    e=rd('dbg_edge',12); print('   latest flip (hb) seen with 1..5 vblanks: %s | earliest: %s'%(e[1:6],e[7:12]))
+    if 'dbg_vbs' in S:
+        v=rd('dbg_vbs',4)
+        if v[0] and v[1]: print('   by the clock (like for like under AB_LOCK4): fps from the need %.2f, from the flip (with the spare-time work) %.2f; spare-time work pushed %d frames past their vblank'%(60.0*t/v[0],60.0*t/v[1],v[2]))
+    if 'dbg_gw' in S:
+        g=rd('dbg_gw',3); print('   the flip waited for the GPU: mean %.1f hb, in %d frames (over 2 hb), at most %d hb'%(g[0]/t,g[1],g[2]))
+if 'dbg_slow' in S:
+    n=min(16,rd('dbg_slow_n')[0]); sl=[rd('dbg_slow',8,32*i) for i in range(n)]
+    for s in sorted(sl,key=lambda s:s[7]): print('   slow frame %6d: cpu %d need %d logic %d world %d people %d hud+bub %d roofs/far %d'%(s[7],s[0],s[1],s[2],s[3],s[4],s[5],s[6]))
+if nn and 'dbg_sim_hist' in S:
+    h=rd('dbg_sim_hist',12); print('household (sim_step) a frame, 40-hb bins: %s'%' '.join(str(x) for x in h))
+    p=rd('dbg_sum_ppl',4); print('people a frame hb: the crowd %.0f (of it spare-time work %.0f) | the household %.0f | traffic %.0f'%(p[0]/nn,p[1]/nn,p[2]/nn,p[3]/nn))
 if 'dbg_end_hist' not in S: sys.exit(0)
 h=rd('dbg_end_hist',24)
 tot=sum(h) or 1
-print('frame cost WITHOUT the spare-time sprite fill (the real need), 50-hb bins; 786 = 3 vblanks (20 fps), 524 = 2 vb (30 fps):')
+print('frame cost WITHOUT the work done only in its spare time (the real need), 50-hb bins; 786 = 3 vblanks (20 fps), 524 = 2 vb (30 fps):')
 acc=0
 for i,c in enumerate(h):
     acc+=c
     if c: print('   %4d-%4d hb %4d frames  cum %.0f%%'%(i*50,i*50+49,c,100*acc/tot))
-under=sum(h[:16]); print('   share of frames that fit 3 vblanks (<=785): %.0f%%'%(100*under/tot))
+under=sum(h[:16]); print('   share of frames that fit 3 vblanks (<=785): %.0f%%   (mean need %.0f hb)'%(100*under/tot, sum((i*50+25)*c for i,c in enumerate(h))/tot))
 
 if nn:
     f=rd('dbg_sum_far',6); print('far pass per frame: quads %.0f (clipped %.0f) cone tests %.0f | prims land %.0f buildings %.0f trees %.0f'%tuple(x/nn for x in f))

@@ -891,7 +891,7 @@ static int route_next(int gx, int gy, int sx, int sy, int in, int *nx, int *ny) 
         for (int k = 0; k < 4; k++) {
             int a = x + dx4[k], b = y + dy4[k];
             if (a < ox || b < oy || a >= ox + N || b >= oy + N || bdist[b - oy][a - ox] != 255) continue;
-            if (!tile_ok(a, b, in) && !(a == sx && b == sy)) continue;
+            if (!(a == sx && b == sy) && !tile_ok(a, b, in)) { bdist[b - oy][a - ox] = 254; continue; }   // (blocked: asked once, not from each side; 254 is never walked back to)
             bdist[b - oy][a - ox] = (u8)(bdist[y - oy][x - ox] + 1); bq[t++] = (u16)((b - oy) * N + (a - ox));
         }
     }
@@ -1502,23 +1502,55 @@ COLD static void greet_maybe(Cit *c, int d2, int in) {   // (at a loose end) som
     c->flg |= F_HI; c->mode = CM_GREET; c->t = 420; c->st = 0; c->wv = 0;
 }
 static int ceil_div(int a, int b) { return (a + b - 1) / b; }
+// A body costs about 190 hb (the voxel model's shaping is most of it): a quarter of a 20 fps frame, so a frame that built one used to
+// miss its vblank. Now only someone who would be drawn this very frame and has no body is built at once, here; everyone else who
+// wants one (coming into range, off the screen, or whose stored model was let go and is drawn plain meanwhile) waits for a frame
+// with the time to spare (citizens_draw builds them there, before the sprite renders, which get what is left). If no such frame
+// comes for a second and a half, the nearest is built here anyway.
+static int cit_pend = -1, cit_pend_wait;   // the body to build in spare time (-1 none); frames it has waited
+int cit_build_hb = 200;                    // what a body costs (the highest lately, easing down: a spare frame must have this much)
+COLD static int would_draw(const Cit *c, int pin) {   // citizens_draw would draw them now (as far as the update can tell: last frame's camera)
+    int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz, d = dx * dx + dz * dz;
+    if (d > DRAW_DIST * DRAW_DIST) return 0;
+    if (!pin && d > 3 * TILE * 3 * TILE && indoors_at(c->x, c->z)) return 0;
+    return gfx_visible(c->x, -110, c->z, 150);
+}
+COLD static __attribute__((noinline)) void cit_build_now(Cit *c) {
+    int t0 = VSync(1);
+    atlas_defer = 1; build_lod(c); atlas_defer = 0;   // (its face goes to VRAM at the flip)
+    int t = VSync(1) - t0; if (t > 0 && t < 600) cit_build_hb = t > cit_build_hb ? t : cit_build_hb - ((cit_build_hb - t) >> 4);
+}
 COLD static void cit_build(const u8 *lv, int nlv, int *built) {   // bodies for those who have none yet: the nearest the camera first (in SAN BOREAS, only those near enough to be seen soon)
-    int best = -1, bd = world_zone == ZONE_CITY ? (DRAW_DIST + 4 * TILE) * (DRAW_DIST + 4 * TILE) : 1 << 30;
+    int pin = indoors_at(sims[player].x, sims[player].z);
+    int best = -1, bd = world_zone == ZONE_CITY ? (DRAW_DIST + 4 * TILE) * (DRAW_DIST + 4 * TILE) : 1 << 30, now = -1, nd = 1 << 30;
     for (int j = 0; j < nlv; j++) {
         int i = lv[j]; const Cit *c = &cits[i];
         if (c->zone != world_zone || c->built || c->mode == CM_GONE) continue;
         int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz, d = dx * dx + dz * dz;
         if (d < bd) { bd = d; best = i; }
+        if (d < nd && would_draw(c, pin)) { nd = d; now = i; }   // (on the screen with nothing to draw: it cannot wait)
     }
-    if (best >= 0) { atlas_defer = 1; build_lod(&cits[best]); atlas_defer = 0; (*built)++; return; }   // (its face goes to VRAM at the flip)
-    best = -1; bd = DRAW_DIST * DRAW_DIST;   // someone near the camera whose stored model was let go (the store was full): build them again
-    for (int j = 0; j < nlv; j++) {
-        int i = lv[j]; const Cit *c = &cits[i];
-        if (c->zone != world_zone || !c->built || c->mode == CM_GONE) continue;
-        int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz, d = dx * dx + dz * dz;
-        if (d < bd && !crowd_has(i)) { bd = d; best = i; }   // (the near ones only are asked about)
+    if (best < 0) {
+        bd = DRAW_DIST * DRAW_DIST;   // someone near the camera whose stored model was let go (the store was full): build them again
+        for (int j = 0; j < nlv; j++) {
+            int i = lv[j]; const Cit *c = &cits[i];
+            if (c->zone != world_zone || !c->built || c->mode == CM_GONE) continue;
+            int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz, d = dx * dx + dz * dz;
+            if (d < bd && !crowd_has(i)) { bd = d; best = i; }   // (the near ones only are asked about)
+        }
     }
-    if (best >= 0) { atlas_defer = 1; build_lod(&cits[best]); atlas_defer = 0; (*built)++; }
+    cit_pend = best;
+    if (best < 0) { cit_pend_wait = 0; return; }
+    if (now < 0 && ++cit_pend_wait <= 30) return;   // (it can wait for a frame with time to spare)
+    cit_build_now(&cits[now >= 0 ? now : best]); (*built)++; cit_pend = -1; cit_pend_wait = 0;
+}
+COLD static __attribute__((noinline)) int cit_spare_build(int left) {   // (citizens_draw) a body in the frame's spare time, if one is wanted and fits in left hb: the time it took
+    if (cit_pend < 0) return 0;
+    Cit *c = &cits[cit_pend];
+    if (c->zone != world_zone || c->mode == CM_GONE || (c->built && crowd_has(cit_pend))) { cit_pend = -1; return 0; }
+    if (left < cit_build_hb + 8) return 0;
+    int t0 = VSync(1); cit_build_now(c); cit_pend = -1; cit_pend_wait = 0;
+    return VSync(1) - t0;
 }
 COLD void citizens_update(int steps) {   // (built small: the work is in step_one)
     if (world_zone == ZONE_HOME && !home_guests && !party_on) { cur = -1; fight_on = 0; return; }
@@ -1617,10 +1649,11 @@ COLD void citizens_update(int steps) {   // (built small: the work is in step_on
 
 // ---- drawing ----------------------------------------------------------------------------------------------
 int cit_live_cap = 99, cit_fresh_max = 2;   // (main's speed helper, when frames run slow: fewer people in full 3D, fewer first sprites a frame)
-int dbg_end_hist[24], cit_need_hb;   // (cit_need_hb: this frame's cost without the spare-time sprite renders; 0: no crowd drawn this frame)
+int cit_spare_hb;                    // this frame's work done only because it fitted the spare time before the vblank (main: the frame's need is the rest)
+#define CIT_FLIP_HB 12               // (the flip's own work before it waits for the vblank, and a little give)
 int cit_n_full, cit_n_lod, cit_n_spr, cit_n_vis; static int cit_end_hb = -1;
 void citizens_draw(void) {
-    cit_n_full = cit_n_lod = cit_n_spr = 0; cit_need_hb = 0;
+    cit_n_full = cit_n_lod = cit_n_spr = 0; cit_spare_hb = 0;
     if (world_zone == ZONE_HOME && !home_guests) { cit_end_hb = -1; return; }
     int order[MAXDRAW], od[MAXDRAW], n = 0;
     int pin = indoors_at(sims[player].x, sims[player].z);
@@ -1671,27 +1704,41 @@ void citizens_draw(void) {
     }
     static int score[MAXDRAW];                                        // how out of date each sprite is (worked out once a frame)
     for (int k = 0; k < n; k++) score[k] = tier[k] == 1 ? crowd_sprite_score(order[k], &pp[k], cits[order[k]].yaw, &cits[order[k]].gait) : 0;
-    // the sprite renders: the most out of date first, as many as fit in the time the frame has left over (it ends on a
-    // vblank either way: what is left before that is free), anyone with no sprite at all (two a frame) and now and then one
-    // even when there is no time, so nobody stays out of date for long
-    static int post = 100, skipped;                                   // the frame's time after the people (from the last frame)
-    if (cit_end_hb >= 0 && gfx_last_cpu > cit_end_hb) post = gfx_last_cpu - cit_end_hb;
-    int now = gfx_hb(), end = now + post, target = end <= 515 ? 522 : end <= 777 ? 785 : 1045;
-    cit_need_hb = end; { extern int dbg_end_hist[24]; dbg_end_hist[MIN(23, MAX(0, end) / 50)]++; }   // (test readout: how long the frame would take without the sprite renders that fill its spare time)
-    int budget = (target - 30 - end) / MAX(20, crowd_render_hb), fresh = 0;   // (a margin: a frame that runs over waits a whole extra vblank)
-    if (cit_sprite_rate == 0) budget = budget > 1 ? budget / 2 : budget; else if (cit_sprite_rate == 2) budget++;
-    if (budget <= 0 && ++skipped >= 6) budget = 1;
-    if (budget > 0) skipped = 0;
+    // THE FRAME'S SPARE TIME. It ends on a vblank either way, so the time between its own work and that vblank is free. What is
+    // still to do after this point (the sprites and shadows below, the speech bubbles, the HUD, the flip) is taken from the last
+    // frame (the most of it lately); the vblank is the one the frame's own work reaches, never sooner than the FRAME RATE option
+    // lets it. The spare time goes to a body someone is waiting for, then to the most out of date sprites, each one only if it
+    // still fits by the clock (a count worked out up front, as it was, let a frame run past its vblank now and then, and the work
+    // after this point was not counted at all). Someone with no sprite yet (drawn plain meanwhile) is rendered when it fits, two
+    // a frame at most, and at least every 3rd frame; one stale sprite at least every 6th, so nobody stays out of date for long.
+    static int rest = 160, rest_lo = 100, skipped, fskip;           // (the time after this point: the most of it lately, and the least)
+    if (cit_end_hb >= 0 && gfx_last_cpu > cit_end_hb) { int r_ = gfx_last_cpu - cit_end_hb; rest = r_ > rest ? r_ : rest - ((rest - r_) >> 3); rest_lo = r_ < rest_lo ? r_ : rest_lo + ((r_ - rest_lo) >> 3); }
+    int now = gfx_hb(), end = now + rest;
+    // the vblank: the first one the frame's own work does not clearly run past, from the least it could still need (filling a
+    // frame on to the next vblank when it would have made this one costs a whole vblank; guessing too early only leaves time unused)
+    int vb = (now + rest_lo + CIT_FLIP_HB - 36 + 262) / 263; if (vb < gfx_min_vsyncs) vb = gfx_min_vsyncs;   // (24 hb past it: clearly)
+    int target = vb * 2625 / 10 - CIT_FLIP_HB;
+    if (cit_sprite_rate == 0) target = end + (target - end) / 2;     // (SPRITES: SLOW: half the spare time)
+    cit_spare_hb = cit_spare_build(target - end);                     // a body someone is waiting for
+    int est = MAX(20, crowd_render_hb) + 4, fresh = 0, nr = 0, over = 0, waiting = 0;
     for (int r = 0; r < 12; r++) {
         int best = -1, bs = 4;
         for (int k = 0; k < n; k++) if (tier[k] == 1 && score[k] > bs) { bs = score[k]; best = k; }
         if (best < 0) break;
-        if (bs >= 100000) { if (++fresh > cit_fresh_max) break; }
-        else if (budget-- <= 0) break;
+        int first = bs >= 100000, t0 = gfx_hb(), fits = t0 + rest + est <= target;
+        if (first) { waiting = 1; if (fresh >= cit_fresh_max) break; }
+        if (!fits) {   // (no time for it: only the one a frame that keeps everyone from going stale, or FAST's one more)
+            if (over || !(cit_sprite_rate == 2 || (first ? fskip >= 3 : skipped >= 6))) break;
+            over = 1;
+        }
         Cit *c = &cits[order[best]];
         PROF_BEGIN(); crowd_sprite(order[best], &pp[best], c->yaw, &c->gait, 1); PROF_END(6);
         tier[best] = 2;
+        if (first) fresh++; else nr++;
+        if (fits) cit_spare_hb += gfx_hb() - t0;
     }
+    if (nr) skipped = 0; else skipped++;
+    if (fresh || !waiting) fskip = 0; else fskip++;
     for (int k = 0; k < n; k++) {
         Cit *c = &cits[order[k]];
         if (tier[k] == 3) { PROF_BEGIN(); voxel_draw_lod(&c->lod, &pp[k], c->yaw, &c->gait); cit_n_lod++; PROF_END(6); }

@@ -305,7 +305,7 @@ static int speed_of(const Sim *s) {
 
 // ---- path finding: BFS over the tiles, then pulled straight (a person cuts corners, they do not walk a staircase) ----
 extern u16 bfs_q[];                 // (atlas.c's upload buffer, lent: also to the roof rebuild in world.c, never at the same time)
-s16 bfs_par[MH][MW];
+s16 bfs_par[MH][MW] __attribute__((aligned(8)));   // (also voxel.c's scratch while it shapes a person, and lent to the floor drawing and the roofs)
 static u32 walk_tick;          // steps since the game began: the wobble and the dice run off it
 #define LOS_R 60               // the clearance a straight line needs (a little more than the body)
 #define LOS_STEP 96
@@ -327,19 +327,21 @@ int sim_find_path(Sim *s, int tx, int ty) {
     s->dest_x = (u8)tx; s->dest_y = (u8)ty;
     if (sx == tx && sy == ty) { s->path_n = 0; return 1; }
     if (sx < 0 || sy < 0 || sx >= MW || sy >= MH) return 0;
-    for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) bfs_par[y][x] = -1;
+    memset(bfs_par, 0xff, sizeof bfs_par);   // (-1: not reached)
     int qh = 0, qt = 0;
     bfs_q[qt++] = (u16)(sy * MW + sx); bfs_par[sy][sx] = (s16)(sy * MW + sx);
     static const signed char dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
     int found = 0;
+    // (a tile that cannot be walked is marked -2 the first time it is asked about: it used to be asked again from each of its sides,
+    //  about a tenth of a long search's time in a city window; the same tiles, in the same order, come out)
     while (qh < qt && !found) {
         int c = bfs_q[qh++], cx = c % MW, cy = c / MW;
         for (int d = 0; d < 4; d++) {
             int nx = cx + dx[d], ny = cy + dy[d];
-            if (nx < 0 || ny < 0 || nx >= MW || ny >= MH || bfs_par[ny][nx] >= 0) continue;
-            if (!(nx == tx && ny == ty) && !world_walkable(nx, ny)) continue;
+            if (nx < 0 || ny < 0 || nx >= MW || ny >= MH || bfs_par[ny][nx] != -1) continue;
+            if (nx == tx && ny == ty) { bfs_par[ny][nx] = (s16)c; found = 1; break; }
+            if (!world_walkable(nx, ny)) { bfs_par[ny][nx] = -2; continue; }
             bfs_par[ny][nx] = (s16)c;
-            if (nx == tx && ny == ty) { found = 1; break; }
             bfs_q[qt++] = (u16)(ny * MW + nx);
         }
     }

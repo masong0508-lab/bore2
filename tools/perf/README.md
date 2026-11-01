@@ -21,4 +21,7 @@ How the city's frame time is measured (used for docs/PS1_PERFORMANCE.md). All of
    two builds taken any time after that (`ds.sh` with a script of `NNNN shot` lines) can be laid over each other. Only the falling
    blossom (it follows the frame count) and a crowd sprite refreshed a frame sooner or later should differ.
 7. **8 MB**: `DS8MB=1` before `ds.sh` (or `runbuild.sh`) runs DuckStation with its 8 MB RAM on (`ram8` is then 1 in the game).
-8. **The townsfolk** (`citprobe.py RAM ELF`, with a `-DCIT_PROBE=1` build): what they did over the run (steps lived and ground walked by mode, route searches, chores, walks and how they ended, greetings) and a snapshot every 512 steps; build the same with `-DCIT_FLAT=1` to compare against everyone thought about every step. `ramprof.py` also prints the townsfolk's tiers, thinking calls and worst frame.
+8. **Real frame times**: `ramprof.py` prints how many vblanks each life frame really took, the frames' *need* (their time less the work done only
+   in their spare time), and, with `AB_LOCK4`, "by the clock" fps from the need and from the flip: compare two builds on those (the same route,
+   frame by frame). It also prints the household's route-search frames (`sim_step` histogram), the people's drawing split and the slowest frames.
+9. **The townsfolk** (`citprobe.py RAM ELF`, with a `-DCIT_PROBE=1` build): what they did over the run (steps lived and ground walked by mode, route searches, chores, walks and how they ended, greetings) and a snapshot every 512 steps; build the same with `-DCIT_FLAT=1` to compare against everyone thought about every step. `ramprof.py` also prints the townsfolk's tiers, thinking calls and worst frame.
