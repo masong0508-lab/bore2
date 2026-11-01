@@ -676,7 +676,8 @@ static void life_update(int steps) {
             if (a && b) { a->mom = 200; a->dad = 201; a->pg |= 1 << 3; b->pg |= 1 << 3; t0->k[0].mate = 2; t0->k[1].mate = 1; t0->b[0].gen = t0->b[1].gen = 1;
                 for (int i = 2; i < 8; i++) { Line *c = gotchi_line(t0->k[i].id); if (c && i != 3) { c->mom = a->id; c->dad = b->id; c->pg = (u8)((c->pg & 7) | 2 << 3); t0->b[i].gen = 2; } } }
             t0->k[0].acc = 6; t0->k[1].acc = 1; t0->k[2].mut = 1; t0->k[2].acc = 3; t0->k[4].mut = 4; t0->k[5].col = 7; t0->k[6].col = 3; t0->k[6].acc = 7; t0->k[3].col = 2; t0->k[3].acc = 2; t0->b[3].sp = 17; t0->b[2].sp = 16; t0->b[4].sp = 18; t0->b[5].sp = 19;
-            t0->b[2].fl |= GF_TANTRUM; t0->b[4].fl |= GF_SICK; t0->b[6].hap = 0; t0->deco = 0x2B; gotchi_diary(GD_HATCH, a ? a->id : 0); gotchi_diary(GD_EGG, 3); gotchi_diary(GD_PASS, 200); gt_h = 40; gt_done = 40; } }
+            t0->b[2].fl |= GF_TANTRUM; t0->b[4].fl |= GF_SICK; t0->b[6].hap = 0; t0->deco = 0x2B; gotchi_diary(GD_HATCH, a ? a->id : 0); gotchi_diary(GD_EGG, 3); gotchi_diary(GD_PASS, 200); gt_h = 30; gt_done = 0; }
+          { Toy *t1 = gotchi_toy(1); if (t1) for (int i = 0; i < 5; i++) { t1->b[i].bond = 90; t1->b[i].hun = t1->b[i].hap = 4; } } }
         if (AUTO_GOTCHI < 20) sim_want_gotchi = (AUTO_GOTCHI >> 1) + 1;
         else if (AUTO_GOTCHI >= 26) {   // (the party pack: its things about the house, a guest list, a party going)
             int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), put = 0; static const u8 ch[8] = { AUTO_GOTCHI >= 32 ? 0xCF : 0xC7, AUTO_GOTCHI >= 32 ? 0xD0 : 0xC8, AUTO_GOTCHI >= 32 ? 0xD1 : 0xC9, AUTO_GOTCHI >= 32 ? 0xD2 : 0xCA, 0xCB, 0xCC, 0xCD, 0xCE };

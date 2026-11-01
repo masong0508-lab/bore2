@@ -170,9 +170,9 @@ static void lcd_bg(int x, int y, int w, int h, int dark) { gfx_rect(x, y, w, h, 
 // ---- the icons ----
 #define NICON 12
 static const char *const iconNm[NICON] = { "FEED", "PLAY", "LIGHT", "MEDS", "CLEAN", "SCOLD", "PET", "STATS", "FAMILY", "VISIT", "DRESS", "MORE" };
-static const char *const iconHint[NICON] = { "FEED MEALS, SNACKS OR YOUR OWN LUNCH. IT HAS FAVOURITES", "FOUR GAMES TO CHEER IT UP AND TRAIN IT", "LIGHTS OUT HELPS IT SLEEP. ON IN THE DAY",
-    "CURES THE SICK. NOT FOR A HEALTHY PET", "FLUSH THE MESS BEFORE IT MAKES THEM ILL", "ONLY FOR FIBS AND TANTRUMS", "CUDDLE IT. CALMS A TANTRUM. A NUZZLE CHEERS YOU", "NEEDS, PERSONALITY, TASTES, AGE",
-    "THE FAMILY TREE: PARENTS, KIDS, GRANDPARENTS", "PLAYDATES AND BATTLES WITH ANY PET, EVEN A HOUSEMATE'S", "HATS AND BOWS FOR YOUR PET", "HOME, DIARY, AWARDS, BLOBDEX AND HELP" };
+static const char *const iconHint[NICON] = { "MEALS, SNACKS, YOUR LUNCH. IT HAS FAVOURITES", "FOUR GAMES TO CHEER IT UP AND TRAIN IT", "LIGHTS OUT HELPS IT SLEEP. ON IN THE DAY",
+    "CURES THE SICK. NOT FOR A HEALTHY PET", "FLUSH THE MESS BEFORE IT MAKES THEM ILL", "ONLY FOR FIBS AND TANTRUMS", "CUDDLE IT. CALMS TANTRUMS. CHEERS YOU UP", "NEEDS, PERSONALITY, TASTES, AGE",
+    "THE FAMILY TREE: PARENTS, KIDS, GRANDPARENTS", "PLAYDATES AND BATTLES, EVEN WITH HOUSEMATES", "HATS AND BOWS FOR YOUR PET", "HOME, DIARY, AWARDS, BLOBDEX AND HELP" };
 static const char *const icon[NICON][7] = {
     { "...#.....", "..#.##...", ".#####...", "#######..", "#######..", ".#####...", "........." },
     { ".#######.", "#..#....#", "#.###.#.#", "#..#..#.#", "#.......#", ".#######.", "........." },
@@ -190,6 +190,12 @@ static void icon_bits(int i, int x, int y, int sc, u32 c) { for (int r = 0; r < 
 
 // ---- helpers ----
 static void lt(int x, int y, const char *s) { gfx_text_raw(x, y, 1, s, 28, 44, 24); }
+static int lwrap(int x, int y, int w, int lines, const char *s) {   // words on the LCD (its own ink), broken to fit
+    char ln[64]; int n = 0, l = 0, len = 0; ln[0] = 0;
+    while (1) { while (*s == ' ') s++; if (!*s) break; int k = 0; while (s[k] && s[k] != ' ') k++; char t[40]; memcpy(t, s, k); t[k] = 0;
+        if (len && gfx_text_w(1, ln) + gfx_text_w(1, " ") + gfx_text_w(1, t) > w) { if (++l >= lines) return n; lt(x, y + n, ln); n += 10; len = 0; ln[0] = 0; }
+        if (len) strcat(ln, " "); strcat(ln, t); len = 1; s += k; }
+    if (len && l < lines) { lt(x, y + n, ln); n += 10; } return n; }
 static void ltc(int cx, int y, const char *s) { gfx_text_raw(cx - gfx_text_w(1, s) / 2, y, 1, s, 28, 44, 24); }
 static Toy *tt(void) { return &gtoy[ti]; }
 static Blob *cb(void) { return &tt()->b[bi]; }
@@ -490,6 +496,8 @@ static void draw_hand(int lcdMode) {
     ui_round(20, 211, 280, 20, 8, UI_RGB(24, 10, 40), UI_RGB(12, 4, 24), 0);
     if (msg) ui_wrapc(26, 213, 268, 2, msg, UI_WHITE); else if (lcdMode == 0) ui_hints(160, 217, "X USE|L1 R1 PET|O BASKET", 1);
 }
+static void bar_msg(const char *s) { ui_wrapc(26, 213, 268, 2, s, UI_WHITE); }   // the line along the bottom (the games set it every frame)
+static void strip(const char *s) { gfx_rect(80, 100, 160, 12, 150, 176, 108, 0); ltc(160, 102, s); }                   // a line of the LCD's own, along its foot
 static void lcd_panel(void) { lcd_bg(80, 18, 160, 94, 0); }
 static void draw_stats(void) {
     draw_hand(1); lcd_panel(); Toy *t = tt(); Blob *b = cb(); Kin *k = ck(); char s[64], nm[40]; gx_name(b, nm);
@@ -499,12 +507,12 @@ static void draw_stats(void) {
         sprintf(s, "DISCIPLINE %d  MISTAKES %d", b->disc, b->miss); lt(84, 90, s); sprintf(s, "WEIGHT %d G   %s", b->wt, (b->fl & GF_SICK) ? "SICK" : b->poop ? "MESSY" : "WELL"); lt(84, 101, s);
     } else if (sub == 1) {
         lt(84, 20, nm); sprintf(s, "%s %s   GEN %d", gx_colour(k->col), gx_species(b->sp), b->gen + 1); lt(84, 31, s);
-        sprintf(s, "%s: %s", gx_pers(k->pers), gx_pers_note(k->pers)); ui_wrap(84, 42, 152, 2, s, UI_RGB(28, 44, 24));
+        sprintf(s, "%s: %s", gx_pers(k->pers), gx_pers_note(k->pers)); lwrap(84, 42, 152, 2, s);
         sprintf(s, "LIKES %s", gx_food(k->taste >> 4)); lt(84, 64, s); sprintf(s, "HATES %s", gx_food(k->taste & 15)); lt(84, 75, s);
         sprintf(s, "AGE %d HOURS IN THIS STAGE", b->age / 60); lt(84, 86, s); sprintf(s, "%s%s", k->mut ? "RARE MUTATION! " : "", k->acc ? gx_acc(k->acc) : "NO HAT"); lt(84, 97, s);
     } else {
         ltc(160, 20, "YOU AS A CARER"); sprintf(s, "LEVEL %d: %s", gotchi_level(t), gx_level(gotchi_level(t))); lt(84, 36, s);
-        int nx = gotchi_next_xp(t); if (nx) ui_bar(84, 50, 150, 6, t->xp * 100 / nx, UI_RGB(28, 44, 24));
+        int nx = gotchi_next_xp(t); if (nx) { gfx_rect(84, 50, 150, 6, 130, 160, 100, 0); gfx_rect(85, 51, 148 * MIN(100, t->xp * 100 / nx) / 100, 4, 28, 44, 24, 0); }
         sprintf(s, "CARE SCORE %d", gx_score()); lt(84, 62, s); sprintf(s, "%d HATCHED  %d WINS", t->hatched, t->wins); lt(84, 74, s); sprintf(s, "%d PLAYDATES AND GAMES", t->plays); lt(84, 86, s);
         sprintf(s, "%d AWARDS OF %d", ({ int c = 0; for (int i = 0; i < NACH; i++) c += (gach >> i) & 1; c; }), NACH); lt(84, 98, s);
     }
@@ -515,9 +523,9 @@ static void tab(int x, int w, const char *l, int on) { ui_round(x, 22, w, 12, 5,
 static void draw_feed(void) {
     draw_hand(1); lcd_panel(); Kin *k = ck(); char s[32];
     tab(84, 46, "MEALS", sub == 0); tab(134, 46, "SNACKS", sub == 1); tab(184, 52, "LUNCH", sub == 2);
-    if (sub == 2) { ui_wrapc(86, 46, 148, 4, "SHARE YOUR OWN LUNCH. IT IS FULL RIGHT UP, BUT YOUR TUMMY GROWLS AND YOU GET HUNGRIER", UI_INK); }
+    if (sub == 2) { lwrap(86, 46, 148, 5, "SHARE YOUR OWN LUNCH. IT IS FULL RIGHT UP, BUT YOUR TUMMY GROWLS AND YOU GET HUNGRIER."); }
     else for (int i = 0; i < 6; i++) { int f = sub * 6 + i, y = 38 + i * 12, on = i == listTop;
-        if (on) gfx_rect(84, y - 1, 152, 12, 255, 255, 255, 1); lt(88, y + 1, gx_food(f));
+        if (on) gfx_rect(84, y - 1, 152, 12, 222, 238, 176, 0); lt(88, y + 1, gx_food(f));
         if ((k->taste >> 4) == f) ui_icon_s(188, y, IC_HEART, 10, UI_RED); else if ((k->taste & 15) == f) { gfx_text_raw(188, y + 1, 1, "YUCK", 200, 50, 50); }
         if (gx_food_cost(f)) { sprintf(s, "$%d", gx_food_cost(f)); gfx_text_raw(236 - gfx_text_w(1, s) - 2, y + 1, 1, s, 120, 80, 10); } else if (on) { } }
     ui_hints(160, 217, "X GIVE|LR TAB|UD PICK|O BACK", 1);
@@ -526,29 +534,29 @@ static void draw_playpick(void) {
     draw_hand(1); lcd_panel(); ltc(160, 22, "PICK A GAME");
     static const char *const how[NGAME] = { "GUESS WHERE IT LOOKS. 5 ROUNDS", "REPEAT ITS MOVES. 3 ROUNDS", "SLIDE TO CATCH TREATS, DODGE MESS", "WILL THE NEXT NUMBER BE HIGHER OR LOWER?" };
     for (int i = 0; i < NGAME; i++) { int x = 84 + (i & 1) * 78, y = 36 + (i >> 1) * 20; ui_round(x, y, 74, 17, 5, i == sub ? UI_BLUE : UI_CARD2, i == sub ? UI_BLUE2 : UI_CARD2, 0); ui_textc(x + 37, y + 5, 1, gx_game(i), i == sub ? UI_WHITE : UI_INK); }
-    ui_wrapc(86, 82, 148, 3, how[sub], UI_INK); ui_hints(160, 217, "X PLAY|O BACK", 1);
+    lwrap(86, 80, 148, 3, how[sub]); ui_hints(160, 217, "X PLAY|O BACK", 1);
 }
 static void game_scene(int look, int ox, int mood) { Blob *b = cb(); scene(b, ck(), anim / 20, look, mood); }
 static void draw_look(void) {
     draw_hand(1); lcd_panel(); char s[40];
     game_scene(mgN ? (sidx ? 1 : -1) : 0, 0, MD_NORM); dots_draw(80, 18, 5, 0, 16, 0, 32);
-    sprintf(s, "ROUND %d  WINS %d", mgRound + 1, mgWon); tshadowc(160, 118, s, 255, 235, 140);
-    msg = mgN == 0 ? "WHICH WAY WILL IT LOOK? LEFT OR RIGHT" : ((sidx ? 1 : -1) == mgDir ? "YES! IT LOOKED YOUR WAY" : "NOPE. THE OTHER WAY"); msgT = 2;
+    sprintf(s, "ROUND %d  WINS %d", mgRound + 1, mgWon); strip(s);
+    bar_msg(mgN == 0 ? "WHICH WAY WILL IT LOOK? LEFT OR RIGHT" : ((sidx ? 1 : -1) == mgDir ? "YES! IT LOOKED YOUR WAY" : "NOPE. THE OTHER WAY"));
 }
 static void draw_copy(void) {
     draw_hand(1); lcd_panel(); char s[40]; static const char *nm[4] = { "UP", "DOWN", "LEFT", "RIGHT" };
     int showing = mgT >= 0 && mgT < mgN * 40, k = showing ? mgT / 40 : -1, look = 0, jump = 0;
     if (showing) { int m = seq[k]; look = m == 2 ? -1 : m == 3 ? 1 : 0; jump = m == 0; }
     memset(dot, 0, sizeof dot); scene(cb(), ck(), jump ? 1 : 0, look, jump ? MD_HAPPY : MD_NORM); dots_draw(80, 18 - (jump ? 6 : 0), 5, 0, 16, 0, 32);
-    sprintf(s, "ROUND %d  GOT %d", mgRound + 1, mgWon); tshadowc(160, 118, s, 255, 235, 140);
-    if (mgT < 0) msg = "WATCH CLOSELY..."; else if (showing) msg = nm[seq[k]]; else { static char m2[32]; sprintf(m2, "YOUR TURN: %d OF %d", sidx + 1, mgN); msg = m2; } msgT = 2;
+    sprintf(s, "ROUND %d  GOT %d", mgRound + 1, mgWon); strip(s);
+    if (mgT < 0) bar_msg("WATCH CLOSELY..."); else if (showing) bar_msg(nm[seq[k]]); else { char m2[32]; sprintf(m2, "YOUR TURN: %d OF %d", sidx + 1, mgN); bar_msg(m2); }
 }
 static void draw_catch(void) {
     draw_hand(1); lcd_panel(); char s[40]; Blob *b = cb();
     memset(dot, 0, sizeof dot); minY = 16; lcdCol = ck()->col; Blob g = *b; g.stage = MIN(g.stage, GS_CHILD); if (g.stage < GS_CHILD) g.stage = GS_CHILD; creature(&g, ck(), anim / 8, 1, cx_, MD_NORM);
     for (int i = 0; i < 3; i++) if (cY[i] >= 0 && cY[i] < 15) { if (cK[i]) blit(bPoop, 4, cX[i] - 1, cY[i] - 1, 1); else { star(cX[i], cY[i], 4); } }
     dots_draw(80, 18, 5, 0, 16, 0, 32);
-    sprintf(s, "TREATS %d   MESS %d   %d LEFT", cScore, cBad, 14 - cN); tshadowc(160, 118, s, 255, 235, 140); msg = mgT < 0 ? "GET READY..." : "LEFT AND RIGHT: CATCH THE STARS, DODGE THE MESS"; msgT = 2;
+    sprintf(s, "TREATS %d   MESS %d   %d LEFT", cScore, cBad, 14 - cN); strip(s); bar_msg(mgT < 0 ? "GET READY..." : "LEFT AND RIGHT: CATCH THE STARS, DODGE THE MESS");
 }
 static void draw_hilo(void) {
     draw_hand(1); lcd_panel(); char s[40]; Blob *b = cb();
@@ -556,7 +564,7 @@ static void draw_hilo(void) {
     dots_draw(80, 18, 5, 0, 16, 0, 32);
     sprintf(s, "%d", hiNum); gfx_text_raw(188, 30, 3, s, 28, 44, 24);
     if (hiNext) { sprintf(s, "%d", hiNext); gfx_text_raw(188, 62, 3, s, (hiNext > hiNum) == (hiGuess > 0) ? 30 : 200, (hiNext > hiNum) == (hiGuess > 0) ? 130 : 40, 40); }
-    sprintf(s, "ROUND %d  WINS %d", mgRound + 1, mgWon); tshadowc(160, 118, s, 255, 235, 140); msg = hiNext ? ((hiNext > hiNum) == (hiGuess > 0) ? "RIGHT!" : "WRONG. NEXT ONE") : "UP: HIGHER    DOWN: LOWER"; msgT = 2;
+    sprintf(s, "ROUND %d  WINS %d", mgRound + 1, mgWon); strip(s); bar_msg(hiNext ? ((hiNext > hiNum) == (hiGuess > 0) ? "RIGHT!" : "WRONG. NEXT ONE") : "UP: HIGHER    DOWN: LOWER");
 }
 static const char *relname(int a, int c) {
     const Line *x = gotchi_line(a), *y = gotchi_line(c); if (!x || !y) return "STRANGERS"; if (a == c) return "SAME";
@@ -565,11 +573,11 @@ static const char *relname(int a, int c) {
 }
 static void draw_friend(void) {
     draw_hand(1); fr_build(); if (!fr_n) return; if (sub >= fr_n) sub = 0; Toy *t = tt(); Toy *u = &gtoy[fr_t[sub]]; Blob *c = &u->b[fr_s[sub]]; Kin *kc = &u->k[fr_s[sub]];
-    lcd_panel(); scene(c, kc, anim / 20, 0, mood_of(c)); dots_draw(80, 18, 4, 0, 16, 0, 32); char s[64], nm[40]; gx_name(c, nm); int os = gotchi_sim_of(u);
-    sprintf(s, "%s THE %s", gx_given(c->nm), nm); tshadowc(160, 118, s, 255, 235, 140);
-    sprintf(s, u == t ? "YOURS" : "%s'S", os >= 0 ? sims[os].bore.first : "?"); lt(84, 22, s); lt(84, 33, relname(ck()->id, kc->id)); sprintf(s, "%d / %d", sub + 1, fr_n); lt(84, 44, s);
-    ui_icon_s(210, 22, IC_HEART, 12, c->bond >= 60 ? UI_RED : UI_LINE);
-    msg = "X: PLAYDATE    SQUARE: BATTLE    <> PICK A FRIEND, UD SWAP FAMILY"; msgT = 2;
+    lcd_panel(); scene(c, kc, anim / 20, 0, mood_of(c)); dots_draw(160, 34, 3, 1, 16, 4, 28); char s[64], nm[40]; gx_name(c, nm); int os = gotchi_sim_of(u);
+    sprintf(s, "%s THE %s", gx_given(c->nm), nm); strip(s);
+    sprintf(s, u == t ? "YOURS" : "%s'S", os >= 0 ? sims[os].bore.first : "?"); lt(84, 22, s); lt(84, 34, relname(ck()->id, kc->id)); sprintf(s, "%d OF %d", sub + 1, fr_n); lt(84, 46, s);
+    sprintf(s, "%s", gx_pers(kc->pers)); lt(84, 58, s); ui_icon_s(84, 72, IC_HEART, 12, c->bond >= 60 ? UI_RED : UI_LINE); lt(100, 74, c->bond >= 60 ? "CLOSE" : "NEW");
+    bar_msg("X PLAYDATE  SQ BATTLE  LR PICK  UD OTHER FAMILY");
 }
 static void draw_dress(void) {
     draw_hand(1); lcd_panel(); Blob *b = cb(); Kin k = *ck(); k.acc = (u8)sub; char s[40];
@@ -639,13 +647,12 @@ void tree_input(int pr) {
 static void draw_tree(void) {
     sky(); ui_accent = 2; int top = ui_window(14, 8, 292, 224, "FAMILY TREE", IC_PEOPLE); ui_accent = 0; tree_build();
     if (!ntn) { ui_wrapc(30, top + 40, 260, 3, "THIS PET HAS NO FAMILY RECORD YET. EGGS FROM A PAIR START A TREE.", UI_SOFT); ui_hints(160, 214, "O BACK", 1); return; }
-    static const int ry[4] = { 0, 28, 62, 108 }; static const char *const rl[4] = { "GRANDPARENTS", "PARENTS", "", "CHILDREN" };
-    for (int i = 0; i < 4; i++) if (rl[i][0]) { int has = 0; for (int q = 0; q < ntn; q++) has |= tn[q].row == i; if (has) ui_text(20, top + 2 + ry[i] + (i == 0 ? 0 : 0), 1, rl[i], UI_SOFT); }
+    static const int ry[4] = { 0, 32, 64, 112 };
     int sy = top + 2;
-    for (int i = 0; i < ntn; i++) {   // the lines first
+    for (int i = 0; i < ntn; i++) {   // the lines first: from each parent's foot down to the child's head
         if (tn[i].row == 2 && tn[i].id != treeId) continue;
-        for (int j = 0; j < ntn; j++) if (tn[j].row == tn[i].row + 1 || 0) { const Line *c = gotchi_line(tn[j].id); int isp = c && (c->mom == tn[i].id || c->dad == tn[i].id); if (tn[i].row == 2 && tn[j].row != 3) continue; if (!isp) continue;
-            int x0 = tn[i].x, y0 = sy + ry[tn[i].row] + (tn[i].row == 2 ? 50 : 36), x1 = tn[j].x, y1 = sy + ry[tn[j].row] + 6; if (tn[i].row == 2) y1 = sy + ry[3] + 4;
+        for (int j = 0; j < ntn; j++) if (tn[j].row == tn[i].row + 1) { const Line *c = gotchi_line(tn[j].id); if (!c || (c->mom != tn[i].id && c->dad != tn[i].id)) continue;
+            int x0 = tn[i].x, y0 = sy + ry[tn[i].row] + (tn[i].row == 2 ? 50 : 36), x1 = tn[j].x, y1 = sy + ry[tn[j].row] + 3;
             int ym = (y0 + y1) / 2; gfx_rect(x0 - 1, y0, 2, ym - y0, 150, 160, 190, 0); gfx_rect(MIN(x0, x1) - 1, ym, ABS(x1 - x0) + 2, 2, 150, 160, 190, 0); gfx_rect(x1 - 1, ym, 2, y1 - ym, 150, 160, 190, 0); }
     }
     for (int i = 0; i < ntn; i++) {
@@ -653,14 +660,14 @@ static void draw_tree(void) {
         int self = tn[i].id == treeId; int w = self ? 68 : 36;
         if (self) { ui_round(x - 36, y - 4, 72, 52, 7, UI_HILITE, UI_HILITE, 0); }
         if (sel) ui_round(x - w / 2 - 3, y - 3, w + 6, self ? 50 : 36, 6, UI_BLUE, UI_BLUE, 0);
-        if (self) { scene(&b, &k, anim / 20, 0, MD_NORM); lcd_bg(x - 32, y, 64, 32, 0); dots_all(x - 32, y, 2); if (!alive) gfx_rect(x - 32, y, 64, 32, 255, 255, 255, 1); }
+        if (self) { scene(&b, &k, anim / 20, 0, MD_NORM); gfx_rect(x - 32, y, 64, 32, alive ? 172 : 150, alive ? 196 : 158, alive ? 128 : 150, 0); dots_all(x - 32, y, 2); }
         else mini_tile(&b, &k, x - 18, y, 36, gone);
         ui_textfit(x - w / 2, y + (self ? 34 : 20), w, gx_given(l->nm), gone ? UI_SOFT : UI_INK);
         if (gone) ui_icon_s(x + (self ? 24 : 10), y - 2, IC_STAR, 10, UI_AMBER);
     }
-    { const Line *l = gotchi_line(tn[treeSel].id); char s[80]; int by = top + 178;
-      ui_round(20, by, 280, 20, 6, UI_PANEL, UI_PANEL, 0);
-      if (l) { sprintf(s, "%s THE %s %s  GEN %d  %s", gx_given(l->nm), gx_colour((l->fc >> 3) & 7), gx_species(l->sp), (l->pg >> 3) + 1, (l->fc & 64) ? "PASSED ON. REMEMBERED" : (l->fc & 128) ? gx_pers(l->pg & 7) : "UNKNOWN"); ui_textfit(26, by + 6, 270, s, UI_INK); } }
+    { const Line *l = gotchi_line(tn[treeSel].id); char s[80]; int by = top + 152;
+      ui_round(20, by, 280, 18, 6, UI_PANEL, UI_PANEL, 0);
+      if (l) { static const char *const rw[4] = { "GRANDPARENT", "PARENT", "", "CHILD" }; int rn = tn[treeSel].row; sprintf(s, "%s %s %s  GEN %d  %s", rn == 2 ? (tn[treeSel].id == treeId ? "THIS PET" : "SIBLING") : rw[rn], gx_given(l->nm), gx_species(l->sp), (l->pg >> 3) + 1, (l->fc & 64) ? "(PASSED ON)" : gx_pers(l->pg & 7)); ui_textfit(26, by + 5, 270, s, UI_INK); } }
     ui_hints(160, 214, "ARROWS PICK|X CENTRE|O BACK", 1);
 }
 // ---- the family home: the family in its room, the memorials on the shelf, and the room yours to dress ----
@@ -703,8 +710,8 @@ static void draw_award(void) {
         if (sel) ui_round(x - 1, y - 1, 140, 19, 6, UI_BLUE, UI_BLUE, 1);
         ui_icon_s(x + 3, y + 3, got ? IC_TICK : IC_LOCK, 11, got ? UI_GREEN : UI_LINE); ui_textfit(x + 18, y + 5, 116, gx_ach(i), got ? UI_INK : UI_SOFT); }
     sprintf(s, "%s: %s  (+$%d)", gx_ach(sub), gx_ach_how(sub), 50 + sub * 10); ui_round(20, top + 160, 280, 14, 5, UI_AMBER, UI_AMBER, 0); ui_textfit(26, top + 163, 268, s, UI_INK);
-    sprintf(s, "CARE SCORE %d", gx_score()); ui_textc(160, top + 178, 1, s, UI_GOLDT);
-    ui_hints(160, 214, "UD PICK|O BACK", 1);
+    sprintf(s, "CARE SCORE %d", gx_score()); ui_text(24, 216, 1, s, UI_GOLDT);
+    ui_hints(300, 214, "UD PICK|O BACK", 2);
 }
 // ---- the guide: pictures, little live art, and plain words ----
 #define NGP 14

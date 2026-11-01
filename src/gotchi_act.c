@@ -162,7 +162,7 @@ int gx_egg_of(Toy *t, int slot, int mom, int dad) {   // an egg: kind, colour, t
     return 1;
 }
 void gx_award(int bit) {
-    if (gach & (1u << bit)) return; gach |= 1u << bit; gotchi_diary(GD_AWARD, bit);
+    if (gach & (1u << bit)) return; gach |= 1u << bit;
     if (!gotchi_toy(player)) return; int g = 50 + bit * 10; cash += g; char b[48]; sprintf(b, "BOREAGOTCHI AWARD! +$%d", g); sim_note(b); sim_gotchi_mood(player, 2);
 }
 int gx_score(void) {

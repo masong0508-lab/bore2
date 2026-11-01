@@ -178,7 +178,8 @@ void gotchi_save(void) {
     sv_n(gdiary, sizeof gdiary);
 }
 static void upgrade(Toy *t) {   // an old Boreagotchi: kin and a line for each creature that lives
-    for (int i = 0; i < GB_N; i++) { Blob *b = &t->b[i]; if (!b->on) continue; Kin *k = &t->k[i]; memset(k, 0, sizeof *k); traits(k);
+    for (int i = 0; i < GB_N; i++) { Blob *b = &t->b[i]; if (!b->on) continue; Kin *k = &t->k[i]; memset(k, 0, sizeof *k); traits(k); if (b->stage == GS_ADULT && b->age > 900) b->age = 900;   // (a grown-up from before: years of adulthood ahead)
+       
         Line *l = line_new(); if (l) { l->sp = b->sp; l->nm = b->nm; l->fc = (u8)(128 | k->col << 3 | (b->stage >= GS_ADULT ? b->form & 7 : 0)); l->pg = (u8)(k->pers | MIN(31, b->gen) << 3); k->id = l->id; }
         if (b->stage > GS_EGG) gotchi_cdex_see(b->sp, k->col); }
 }
