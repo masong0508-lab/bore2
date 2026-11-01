@@ -140,7 +140,7 @@ Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build 
 - **D42, roofs as the PS1's** (world.c roof_region, b_see): the lot's enclosed buildings are found (cells the outside cannot reach without crossing a wall or a shut door; walls inside a building do not part it), and each gets its own roof over its own top storey: HIP, GABLE (plaster gable ends) or FLAT (slab, parapet, a box on top), eaves a third of a tile over the walls, the slopes levelling off three cells in. Style, colour (CLAY RED, SLATE, CEDAR, MOSS GREEN, NAVY, SANDSTONE) and pitch (MEDIUM / STEEP) are each building's own dice, as in San Boreas; towers and big blocks flat; the island's huts cedar gables. Build > Roof sets one style for the lot: Auto / Flat / Gable / Hip (the save keeps the same two bits; old "None" is now Auto). Options > Roofs: Cutaway hides the roof of a building one of your Bores is in and roofs over storeys below the one you look at; Always; Hide. The neighbours, the far ring and the Map's picture use the same roofs. Park benches lie along the walk (they were turned at random).
 - **D43, textures**: see ports/dsi/README.md. 16 textures of 128 bytes in bank A, texture coordinates from each face's plane (one PS1 tile a cell), set once per run of faces in the still lists, so the frame rate is unchanged.
 - Frame rates in melonDS at D43: Map 30 (UI 60), Buy 30, Live house 30, island 30, farm 30, busy street 30, Strange Town 30, horizon 30 (UI 52-60 everywhere). Screenshots: docs/ds_shots/d42_roofs_*.png (roofs; Options > Roofs: Always) and d43_tex_*.png; before: d41_*.png.
-- Not done: textures on the Map's small picture and on the things you buy (they keep the PS1 models' flat colours). (Seasons on the ground: D49.)
+- Not done: textures on the Map's small picture and on the things you buy (they keep the PS1 models' flat colours). (Seasons on the ground: D50.)
 
 **Done at D44 (`bore2_dsi_d44.nds`): Real time**
 - Options > Game > **Real time** (off as it comes; saved in the options block, old saves load with it off): the clock is the DS's own clock chip, so the time of day and the weekday are yours, the season comes from the month (March spring, June summer, September autumn, December winter) and the festival is the month's first Saturday. The sky follows the clock (as Sky: Auto). Shops, work and night follow it as before.
@@ -183,10 +183,10 @@ Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build 
 - Not done: the Toy Box (other housemates' toys; here you tend your own Bore's), the guide pages, the LIVE (real-time) and off clock choices (it runs on the game clock), moodlets, the build and buy items (dock, shelf, cabinet, plush, ball, bed, bowl, lamp, trophy) and the shop that sells the toy (it is bought on its own screen).
 - Not done in the mini-games: fight.
 
-**Done at D49 (`bore2_dsi_d49.nds`): the grass changes with the seasons (the PS1's world.c skin_c)**
+**Done at D50 (`bore2_dsi_d50.nds`): the grass changes with the seasons (the PS1's world.c skin_c)**
 - The lawn, the neighbours' lots and the far ground take the season: spring greener, summer as it was, autumn toward brown, winter toward snow (the PS1's own targets and strengths). It follows the clock (ten days a season, or the month with Real time) and the cached 3D lists are rebuilt when the season turns.
-- Same 30 fps (only the vertex colour of the ground changes). `docs/ds_shots/d49_seasons.png`: spring, summer, autumn, winter (days 2, 12, 22, 32).
-![seasons](ds_shots/d49_seasons.png)
+- Same 30 fps (only the vertex colour of the ground changes). `docs/ds_shots/d50_seasons.png`: spring, summer, autumn, winter (days 2, 12, 22, 32).
+![seasons](ds_shots/d50_seasons.png)
 - Not done: textures on the things you buy and on the Map's small house picture.
 
 ## Next (in this order)

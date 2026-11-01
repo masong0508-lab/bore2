@@ -371,7 +371,7 @@ static void person(int x, int z, u16 c, int yaw) {   // a person: one quad that 
     qd(x + hx, 0, z + hz, x - hx, 0, z - hz, x - hx, -s * 2, z - hz, x + hx, -s * 2, z + hz, c);   // (D39: and its back, for the faces the GPU skips)
 }
 static int fm_season(void);
-static u16 seas(u16 c) {   // (D49) the grass as the season makes it, as the PS1's world.c skin_c: spring greener, autumn toward brown, winter toward snow (summer as it is)
+static u16 seas(u16 c) {   // (D50) the grass as the season makes it, as the PS1's world.c skin_c: spring greener, autumn toward brown, winter toward snow (summer as it is)
     int s = fm_season(); if (s == 1) return c;
     int r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31, tr, tg, tb, f; if (s == 0) { tr = 9; tg = 27; tb = 8; f = 8; } else if (s == 2) { tr = 24; tg = 15; tb = 6; f = 11; } else { tr = 29; tg = 30; tb = 31; f = 15; }
     r += (tr - r) * f / 16; g += (tg - g) * f / 16; b += (tb - b) * f / 16; return (u16)(r | g << 5 | b << 10 | 0x8000); }
@@ -1163,7 +1163,7 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw) {   // a n
       roof_shape(X0 - T / 3, Z0 - T / 3, X1 + T / 3, Z1 + T / 3, Y, sty, PIT[1 + ((rh >> 8) & 1)], ROOFC[(rh >> 4) % 6], wall); }
     for (int i = 0; i < pop && i < 3; i++) person(ox + tl(4 + i * 3), oz + tl(z0 + d + 3), C15(6 + i * 4, 10, 25 - i * 3), yaw);   // the bores who live there
 }
-static u16 land_col(int t) { return t == BT_BEACH || t == BT_DESERT ? C15(26, 23, 15) : t == BT_ROCKY ? C15(14, 16, 12) : t == BT_FOREST ? seas(C15(8, 17, 6)) : seas(C15(11, 20, 8)); }   // (D37; D49: by the season)
+static u16 land_col(int t) { return t == BT_BEACH || t == BT_DESERT ? C15(26, 23, 15) : t == BT_ROCKY ? C15(14, 16, 12) : t == BT_FOREST ? seas(C15(8, 17, 6)) : seas(C15(11, 20, 8)); }   // (D37; D50: by the season)
 static void lamp_kerb(int x, int z, int dx, int dz) {   // (D40, as the PS1's kerb_lamp) a street lamp on the pavement at the kerb, its arm out over the street (dx, dz: towards the road)
     u16 pc = C15(9, 10, 11); block(x - 12, z - 12, x + 12, z + 12, 0, -T * 5 / 2, pc, pc);
     int ax = x + dx * T / 2, az = z + dz * T / 2;   // (the arm and the lamp in one box: lamp-coloured underneath)
