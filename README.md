@@ -35,6 +35,17 @@ unlocks them. Each phone has its own look (grey, black, gold). Saves keep what y
 
 OPTIONS has nine pages, like the GBA game's: GRAPHICS, PEOPLE, LIGHT, CAMERA, SCREEN (shape, frame rate, clock, message time), AUDIO (master, music and sound volumes 0 to 10 on the GBA's curve, title music, game music, shuffle), GAME (how fast needs fall, how long a day is, ages, ghosts), CHEATS, and DATA (reset graphics, audio, the game, or everything). A gold dot marks a page that is not as it came. They are saved with each save game (version 41; older saves load with the new rows at their defaults, and an old music level becomes the music slider). VIEW DISTANCE says how far the view really reaches at this camera; SPEED HELPER (on) pulls the view in when the game gets slow, off it draws all you picked.
 
+REAL TIME (OPTIONS, GAME; off as it comes): the clock runs at real speed and shows your own time of day, weekday and season (the
+season by the month: MARCH spring, JUNE summer, SEPTEMBER autumn, DECEMBER winter; the festival is the month's first SATURDAY). Shops,
+work, school and night follow it. The PlayStation has no clock chip, so switching it on asks the time and date (SET THE CLOCK, the
+overlay CLOCK.OVL: `src/clock_ui.c`); the vblanks keep it while the console is on (50 a second on a PAL machine). After loading a save
+when the clock has not been set since the console came on, it asks IS IT STILL 9:41 PM? (X keeps it, or change it). The Dreamcast reads
+its own clock, with no question. Needs fall per real minute as two of a normal day's game minutes (hungry about every 5 hours awake;
+NEEDS still scales it; DAY LENGTH reads REAL TIME). Sleep and work still go fast: sleep fills REST in seconds and you wake rested even
+at night; at work the shift's minutes are done a minute a step and you go home, paid when the shift ends. The clock never leaves the
+real one. The minutes gone by since the last look (a load, the clock set later) are played through, at most a day of them (bills,
+pay, birthdays; past a day the rest is skipped); needs do not fall for that time. Saved from version 44 (the real minute at the save).
+
 From BORE on the GBA: YOUR BORE ALONE (OPTIONS, GAME: OFF, LOW, HIGH): put the pad down and after 25 s (or 10 s) your Bore looks
 after itself like the rest of the household; any button gives it back. THE JOB HUNT: the paper comes at 6 AM (a headline, and three
 jobs in TODAY'S CLASSIFIEDS, a different three each day, on the phone's JOBS); a smartphone or the COMPUTER at home shows the whole

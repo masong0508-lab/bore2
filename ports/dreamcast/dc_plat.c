@@ -81,3 +81,13 @@ const OvlHead *ovl_load(const char *file) {
 }
 void ovl_leave(void) { crowd_reset(); citizens_rebuild(); }
 
+
+// ---------------------------------------------------------------- REAL TIME (OPTIONS > GAME, sim.c): the Dreamcast's own clock
+// The clock chip holds local time (set in the Dreamcast's own menu), read as minutes since 1 JAN 2000; 0 when it was never set.
+// Read twice a second at most (a read goes over the G2 bus).
+#include <kos/rtc.h>
+u32 dc_rtc_min(void) {
+    static u32 m; static int vb = -1000; extern int VSync(int); int now = VSync(-1);
+    if (now - vb >= 30 || now < vb) { vb = now; time_t t = rtc_unix_secs(); m = t > 946684800 ? (u32)((t - 946684800) / 60) : 0; }
+    return m;
+}

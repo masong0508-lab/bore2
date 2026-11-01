@@ -85,9 +85,29 @@ int sim_weather(void) {
     return (w && hr >= start && hr < start + len) ? w : 0;
 }
 int sim_season_lock, sim_seasons_on = 1;   // the editor / CREATE A WORLD: 0 the year turns, 1..4 held on spring .. winter; the SEASONS pack off: summer all year
-int sim_season(void) { return sim_season_lock ? sim_season_lock - 1 : !sim_seasons_on ? 1 : (day_count / 10) & 3; }
+// REAL TIME (OPTIONS > GAME): the clock is your own. Real time is counted in minutes since 1 JAN 2000 (local time; 0: not known).
+// The Dreamcast and the DS read their clock chips; the PlayStation has none, so the player sets it (main.c, SET CLOCK) and the
+// vblanks count on from there while the console is on.
+int sim_rt, rt_on, rt_hz = 60, rt_vb0; u32 rt_last, rt_base;   // the option; it is working now; the PS1's vblank rate, the vblank and the minute it was set at; the real minute the clock was last put to (saved)
+s8 rt_mon = -1; u8 rt_mday; static int rt_dayn = -1;  // the real date: the month (0 JAN), the day
+static int rt_leap(int y) { return !(y & 3) && (y % 100 || !(y % 400)); }
+int rt_mdays(int y, int m) { return m == 1 ? 28 + rt_leap(y) : 31 - ((m + (m >= 7)) & 1); }
+COLD void rt_date(int dn, int *y, int *m, int *d) { int yy = 2000, mm = 0; while (dn >= 365 + rt_leap(yy)) dn -= 365 + rt_leap(yy++); while (dn >= rt_mdays(yy, mm)) dn -= rt_mdays(yy, mm++); *y = yy; *m = mm; *d = dn + 1; }
+u32 sim_rt_now(void) {
+#ifdef BORE_DC
+    { extern u32 dc_rtc_min(void); u32 m = dc_rtc_min(); if (m) return m; }   // (the Dreamcast's own clock)
+#endif
+    return rt_base ? rt_base + (u32)(VSync(-1) - rt_vb0) / (u32)(rt_hz * 60) : 0;
+}
+static void rt_put(u32 m) {   // the clock to that real minute (the weekday and the date with it)
+    int dn = (int)(m / 1440); clock_min = (int)(m % 1440); clock_day = (dn + 5) % 7;   // (1 JAN 2000 was a SATURDAY)
+    if (dn != rt_dayn) { int y, mo, d; rt_dayn = dn; rt_date(dn, &y, &mo, &d); rt_mon = (s8)mo; rt_mday = (u8)d; }
+}
+void sim_rt_set(int on) { if (on && !sim_rt) rt_last = 0; sim_rt = on; if (!on) rt_on = 0; }   // (switched on: straight to the real time, nothing caught up)
+int sim_season(void) { return sim_season_lock ? sim_season_lock - 1 : !sim_seasons_on ? 1 : rt_on && rt_mon >= 0 ? (rt_mon + 10) / 3 % 4 : (day_count / 10) & 3; }   // (REAL TIME: by the month, MARCH spring .. DECEMBER winter)
 const char *sim_season_name(int s) { static const char *const n[4] = { "SPRING", "SUMMER", "AUTUMN", "WINTER" }; return n[s & 3]; }
-int sim_festival(void) { return day_count % 10 == 9 && clock_min >= 600 && clock_min < 1320; }
+static int fest_day(void) { return rt_on && rt_mon >= 0 ? clock_day == 5 && rt_mday <= 7 : day_count % 10 == 9; }   // (REAL TIME: the month's first SATURDAY)
+int sim_festival(void) { return fest_day() && clock_min >= 600 && clock_min < 1320; }
 const char *sim_festival_name(int s) { static const char *const n[4] = { "FLOWER FAIR", "SUMMER CARNIVAL", "HARVEST FEAST", "WINTER LIGHTS" }; return n[s & 3]; }
 const char *sim_need_name(int n) { return needNm[n]; }
 int sim_need_val(const Sim *s, int n) { return s->need[n] >> 10; }
@@ -204,7 +224,7 @@ static void turn_to(Sim *s, int target, int rate) {
 
 void sim_init(void) {
     gotchi_reset(); dj_xp = 0; dj_heat = 0; band_reset(); realm_reset();   // (a new life: no realm yet; a loaded one brings its own)
-    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; rap_sheet = 0; space_done = 0; memset(space_tech, 0, 3); memset(pk_data, 0, sizeof pk_data); col_lvl = col_major = col_on = col_cls = col_gpa = col_study = 0; memset(col_g, 0, 3); astro_xp = 0; art_n = novel = 0; art_q = royalty = 0; fm_fert = fm_fz = fm_pest = fm_up = fm_wc = fm_ordk = fm_ordq = fm_ordt = fm_fair = 0; memset(fm_n, 0, 4); memset(fm_g, 0, 4); memset(fm_dry, 0, 4); memset(fm_stock, 0, sizeof fm_stock); fm_wet = fm_hens = fm_cows = fm_fed = 0; fm_egg = fm_milk = fm_pe = fm_pm = 0; fm_hh = fm_ch = 70; fm_pet = 0; fm_buyers = 0; fm_earned = 0; for (int t = 0; t < VEH_N; t++) veh_cond[t] = 100; memset(crime_n, 0, sizeof crime_n); crime_evid = crime_def = 0; dog_default(&pet_dog); nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
+    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; rap_sheet = 0; space_done = 0; memset(space_tech, 0, 3); memset(pk_data, 0, sizeof pk_data); col_lvl = col_major = col_on = col_cls = col_gpa = col_study = 0; memset(col_g, 0, 3); astro_xp = 0; art_n = novel = 0; art_q = royalty = 0; fm_fert = fm_fz = fm_pest = fm_up = fm_wc = fm_ordk = fm_ordq = fm_ordt = fm_fair = 0; memset(fm_n, 0, 4); memset(fm_g, 0, 4); memset(fm_dry, 0, 4); memset(fm_stock, 0, sizeof fm_stock); fm_wet = fm_hens = fm_cows = fm_fed = 0; fm_egg = fm_milk = fm_pe = fm_pm = 0; fm_hh = fm_ch = 70; fm_pet = 0; fm_buyers = 0; fm_earned = 0; for (int t = 0; t < VEH_N; t++) veh_cond[t] = 100; memset(crime_n, 0, sizeof crime_n); crime_evid = crime_def = 0; dog_default(&pet_dog); nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; rt_last = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
     job_level = 0; job_car = CAR_FACTORY; job_take(CAR_FACTORY, -1, -1, "THE FACTORY"); job_none = 1;
     groceries = 10; room_bx = room_by = -1; room_until = 0; phone_tier = 1; handheld = 0;
 #ifdef AUTO_PHONE_TIER
@@ -349,7 +369,7 @@ int sim_find_path(Sim *s, int tx, int ty) {
     }
     if (!found) return 0;
     // walk the parents back, then reverse into the path
-    static u8 rx[640], ry[640]; int n = 0;
+    u8 *rx = (u8 *)bfs_q, *ry = rx + 640; int n = 0;   // (in the queue's room: it is not needed any more)
     int c = ty * MW + tx;
     while (c != sy * MW + sx) { if (n >= 640) return 0; rx[n] = (u8)(c % MW); ry[n] = (u8)(c / MW); n++; c = bfs_par[c / MW][c % MW]; }
     // pull it straight: from where the body really is, reach for the furthest tile in sight, and again from there
@@ -663,7 +683,7 @@ static void run_action(Sim *s) {
         case ACT_WC: s->need[N_WC] += GAIN_WC; break;
         case ACT_SLEEP: if (s->act_var == 2) { s->need[N_COMFY] += GAIN_SIT; s->need[N_FUN] += GAIN_FUN / 2; s->need[N_REST] += 60; break; }   // (a massage)
                         s->need[N_REST] += is_night() ? GAIN_SLEEP * 5 / 4 : GAIN_SLEEP; s->need[N_COMFY] += 40;
-                        if ((s->need[N_REST] >> 10) >= 100 && (!is_night() || clock_min < NIGHT_FROM)) { s->act_t = 0; sim_say(s, "RESTED"); } break;
+                        if ((s->need[N_REST] >> 10) >= 100 && (!is_night() || clock_min < NIGHT_FROM || rt_on)) { s->act_t = 0; sim_say(s, "RESTED"); } break;
         case ACT_SHOWER: s->need[N_CLEAN] += GAIN_WASH; if (s->act_var == 1) s->need[N_FUN] += 90; break;
         case ACT_SIT: s->need[N_COMFY] += GAIN_SIT; if (s->act_var == 6) { s->need[N_FUN] += GAIN_FUN; break; }   // (a film: to the end)
                       if ((s->need[N_COMFY] >> 10) >= 100) s->act_t = 0; break;
@@ -849,8 +869,8 @@ static void arrive(Sim *s) {   // an AI sim reached the end of its path
 }
 
 static void tick_needs(Sim *s) {
-    int sleeping = s->action == ACT_SLEEP;
-    #define NR(r) ((r) * sim_need_pct / 100)   // (OPTIONS > GAME > NEEDS: off, slow, normal, fast)
+    int sleeping = s->action == ACT_SLEEP, np = rt_on && walk_tick % 120 ? 0 : sim_need_pct;   // (REAL TIME: a real minute takes what two of a normal day's game minutes do)
+    #define NR(r) ((r) * np / 100)   // (OPTIONS > GAME > NEEDS: off, slow, normal, fast)
     s->need[N_FOOD] -= sleeping ? NR(RATE_FOOD / 3) : NR(RATE_FOOD);
     s->need[N_WC] -= sleeping ? NR(RATE_WC / 3) : NR(RATE_WC);
     if (!sleeping) s->need[N_REST] -= is_night() ? NR(RATE_REST * 3 / 2) : NR(RATE_REST);
@@ -1329,14 +1349,33 @@ static void midnight_ages(void) {   // a day older: birthdays come round, and at
         if (k->grade >= 85) sim_moodlet(k, ML_GRADES); }
 }
 
+static void clock_minute(void);
+COLD static void rt_follow(u32 now) {   // REAL TIME: the clock to the real one, the minutes gone by played through (at most a day of them)
+    if (now == rt_last) { if (clock_min != (int)(now % 1440)) rt_put(now); return; }   // (something moved the clock: back it goes)
+    if (!rt_last || now < rt_last) { rt_put(now); rt_last = now; job_worked = 0; return; }   // (just switched on, a new life, or the clock set back: straight there)
+    u32 d = now - rt_last; if (d > 1440) { rt_last = now - 1440; d = 1440; }   // (away more than a day: the last day's hours go by, the rest is skipped)
+    rt_put(rt_last); rt_last = now;
+    while (d--) clock_minute();
+    rt_put(now);
+}
 static void clock_tick(void) {
-    static int acc = 0;
+    static int acc = 0, wcap = -1;
+    if (sim_rt) { u32 now = sim_rt_now(); rt_on = now != 0;
+        if (rt_on) { rt_follow(now);
+            if (sims[player].action == ACT_WORK && is_work()) {   // at work: the shift's work done in a blink (a minute a step), paid when the shift ends
+                const Career *cr = &careers[job_car]; if (wcap < 0) wcap = MIN((cr->to - cr->from) * 60, job_worked + cr->to * 60 - clock_min);
+                if (job_worked < wcap) job_worked++; else { end_action(&sims[player]); sim_note("SHIFT DONE. PAID WHEN IT ENDS"); }
+            } else wcap = -1;
+            return; } }
     int spm = STEPS_MIN * sim_day_pct / 100;   // (OPTIONS > GAME > DAY LENGTH)
     if ((sims[player].action == ACT_SLEEP && sims[player].act_var != 2) || sims[player].action == ACT_WORK) spm = 1;   // asleep or at work: the hours fly (not on a massage table)
     if (sim_speed == 2) spm /= 3; if (sim_speed == 3) spm = 1;
     if (spm < 1) spm = 1;
     if (++acc < spm) return;
     acc = 0;
+    clock_minute();
+}
+COLD static void clock_minute(void) {
     clock_min++;
     if (!(clock_min % 60)) pop_hour();   // (the lives of the ones who know you, off the map: an hour at a time)
     if (!(clock_min % 30) && clock_min >= 8 * 60 && clock_min < 19 * 60 && world_zone == ZONE_CITY && fm_total()) {   // FARM LIFE: by a farm stand with food to sell, the townsfolk come to buy
@@ -1378,8 +1417,9 @@ static void clock_tick(void) {
     }
     if (clock_min >= 1440) {
         clock_min = 0; clock_day = (clock_day + 1) % 7; day_count++;
-        if (day_count % 10 == 0) { char sb_[40]; sprintf(sb_, "%s HAS COME!", sim_season_name(sim_season())); sim_note(sb_); }
-        else if (day_count % 10 == 9) { char sb_[40]; sprintf(sb_, "TODAY: THE %s! 10 AM", sim_festival_name(sim_season())); sim_note(sb_); }
+        if (rt_on) rt_put((u32)(rt_dayn + 1) * 1440);   // (REAL TIME: tomorrow's date; a season comes on the 1st of MARCH, JUNE, SEPTEMBER, DECEMBER)
+        if (rt_on ? rt_mday == 1 && rt_mon % 3 == 2 : day_count % 10 == 0) { char sb_[40]; sprintf(sb_, "%s HAS COME!", sim_season_name(sim_season())); sim_note(sb_); }
+        else if (fest_day()) { char sb_[40]; sprintf(sb_, "TODAY: THE %s! 10 AM", sim_festival_name(sim_season())); sim_note(sb_); }
         midnight_ages(); pop_midnight(); crime_midnight(); farm_midnight();
         if (royalty) { char rb_[32]; cash += royalty; sprintf(rb_, "ROYALTIES: +$%d", royalty); sim_note(rb_); }                                    // (your household, and everyone else)
         if (job_none) sim_note(day_count & 1 ? "NO JOB, NO BILLS. THE PAPER HAS JOBS AT 6" : "STILL LOOKING FOR WORK? PHONE, JOBS");

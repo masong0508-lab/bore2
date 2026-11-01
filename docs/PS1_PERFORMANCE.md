@@ -299,3 +299,5 @@ does). 8 MB runs the same (`DS8MB=1`, every camera).
 **Left to do**: the block entering the map window still costs about 1150 hb in one frame (about 1% of frames): making the 4 new blocks one a
 frame needs the window's maps kept half-built; per-block visibility worked out ahead (occlusion), built geometry per block, and a cheap far
 view for first person. The DS port has no copy of the street generator (its lots are made per lot), so nothing to fix there.
+
+**RAM, REAL TIME (2026-11-01)**: plain Release, 2 MB: 10.2 KB free past `_end` (9.0 KB before). The REAL TIME clock costs about 2.4 KB resident (its SET CLOCK screen is the overlay CLOCK.OVL); paid for by lending the route queue (`bfs_q`, already lent to the room fill and the save) to the route walk-back (`rx`/`ry`, 1280 bytes), the room fill's seen-bits (801) and the neighbourhood pick's reservoirs (384); the boot log in the neighbourhood model's room (640, unused until after boot); the housemates' LOD cache sized to MAX_SIMS (16 to 8: 448); `dbg_slow` only in AUTO_CITY builds (512).

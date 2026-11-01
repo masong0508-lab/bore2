@@ -32,7 +32,7 @@ target_link_options(bore2 PRIVATE -Wl,--wrap=memcpy -Wl,--wrap=memmove -Wl,-Map=
 
 # THE OVERLAYS (src/ovl.h): KINGDOM MODE and the arcade are files on the disc, read into the crowd's arena when you walk into them.
 # Their code is built on its own (no gp: it is not linked with the game), then linked against bore2.elf's symbols at the arena's address.
-foreach(o kingdom arcade gotchi party dj super dog prison space paradise farm skysea cut)
+foreach(o kingdom arcade gotchi party dj super dog prison space paradise farm skysea cut clock)
 	if(o STREQUAL kingdom)
 		add_library(ovl_${o} OBJECT src/realm.c)
 	elseif(o STREQUAL gotchi)
@@ -57,6 +57,8 @@ foreach(o kingdom arcade gotchi party dj super dog prison space paradise farm sk
 		add_library(ovl_${o} OBJECT src/skysea_ui.c)
 	elseif(o STREQUAL cut)
 		add_library(ovl_${o} OBJECT src/cutscene.c)
+	elseif(o STREQUAL clock)
+		add_library(ovl_${o} OBJECT src/clock_ui.c)
 	else()
 		add_library(ovl_${o} OBJECT src/arcade.c src/fight.c)
 	endif()
@@ -66,11 +68,11 @@ endforeach()
 # what the overlays use from the game: a table of it, so the game's linker keeps it
 add_custom_command(
 	OUTPUT  ${CMAKE_BINARY_DIR}/ovl_keep.c
-	COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/ovl.py keep ${CMAKE_BINARY_DIR}/ovl_keep.c ${TOOLCHAIN_NM} $<TARGET_OBJECTS:ovl_kingdom> $<TARGET_OBJECTS:ovl_arcade> $<TARGET_OBJECTS:ovl_gotchi> $<TARGET_OBJECTS:ovl_party> $<TARGET_OBJECTS:ovl_dj> $<TARGET_OBJECTS:ovl_super> $<TARGET_OBJECTS:ovl_dog> $<TARGET_OBJECTS:ovl_prison> $<TARGET_OBJECTS:ovl_space> $<TARGET_OBJECTS:ovl_paradise> $<TARGET_OBJECTS:ovl_farm> $<TARGET_OBJECTS:ovl_skysea> $<TARGET_OBJECTS:ovl_cut>
-	DEPENDS ovl_kingdom ovl_arcade ovl_gotchi ovl_party ovl_dj ovl_super ovl_dog ovl_prison ovl_space ovl_paradise ovl_farm ovl_skysea ovl_cut $<TARGET_OBJECTS:ovl_kingdom> $<TARGET_OBJECTS:ovl_arcade> $<TARGET_OBJECTS:ovl_gotchi> $<TARGET_OBJECTS:ovl_party> $<TARGET_OBJECTS:ovl_dj> $<TARGET_OBJECTS:ovl_super> $<TARGET_OBJECTS:ovl_dog> $<TARGET_OBJECTS:ovl_prison> $<TARGET_OBJECTS:ovl_space> $<TARGET_OBJECTS:ovl_paradise> $<TARGET_OBJECTS:ovl_farm> $<TARGET_OBJECTS:ovl_skysea> $<TARGET_OBJECTS:ovl_cut> ${CMAKE_SOURCE_DIR}/tools/ovl.py
+	COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/ovl.py keep ${CMAKE_BINARY_DIR}/ovl_keep.c ${TOOLCHAIN_NM} $<TARGET_OBJECTS:ovl_kingdom> $<TARGET_OBJECTS:ovl_arcade> $<TARGET_OBJECTS:ovl_gotchi> $<TARGET_OBJECTS:ovl_party> $<TARGET_OBJECTS:ovl_dj> $<TARGET_OBJECTS:ovl_super> $<TARGET_OBJECTS:ovl_dog> $<TARGET_OBJECTS:ovl_prison> $<TARGET_OBJECTS:ovl_space> $<TARGET_OBJECTS:ovl_paradise> $<TARGET_OBJECTS:ovl_farm> $<TARGET_OBJECTS:ovl_skysea> $<TARGET_OBJECTS:ovl_cut> $<TARGET_OBJECTS:ovl_clock>
+	DEPENDS ovl_kingdom ovl_arcade ovl_gotchi ovl_party ovl_dj ovl_super ovl_dog ovl_prison ovl_space ovl_paradise ovl_farm ovl_skysea ovl_cut ovl_clock $<TARGET_OBJECTS:ovl_kingdom> $<TARGET_OBJECTS:ovl_arcade> $<TARGET_OBJECTS:ovl_gotchi> $<TARGET_OBJECTS:ovl_party> $<TARGET_OBJECTS:ovl_dj> $<TARGET_OBJECTS:ovl_super> $<TARGET_OBJECTS:ovl_dog> $<TARGET_OBJECTS:ovl_prison> $<TARGET_OBJECTS:ovl_space> $<TARGET_OBJECTS:ovl_paradise> $<TARGET_OBJECTS:ovl_farm> $<TARGET_OBJECTS:ovl_skysea> $<TARGET_OBJECTS:ovl_cut> $<TARGET_OBJECTS:ovl_clock> ${CMAKE_SOURCE_DIR}/tools/ovl.py
 	COMMAND_EXPAND_LISTS
 )
-foreach(o kingdom arcade gotchi party dj super dog prison space paradise farm skysea cut)
+foreach(o kingdom arcade gotchi party dj super dog prison space paradise farm skysea cut clock)
 	string(TOUPPER ${o} O)
 	add_custom_command(
 		OUTPUT  ${CMAKE_BINARY_DIR}/${O}.OVL
@@ -80,7 +82,7 @@ foreach(o kingdom arcade gotchi party dj super dog prison space paradise farm sk
 	)
 endforeach()
 configure_file(${CMAKE_SOURCE_DIR}/assets/GOTCHI.ART ${CMAKE_BINARY_DIR}/GOTCHI.ART COPYONLY)
-add_custom_target(overlays DEPENDS ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/SUPER.OVL ${CMAKE_BINARY_DIR}/DOG.OVL ${CMAKE_BINARY_DIR}/PRISON.OVL ${CMAKE_BINARY_DIR}/SPACE.OVL ${CMAKE_BINARY_DIR}/PARADISE.OVL ${CMAKE_BINARY_DIR}/FARM.OVL ${CMAKE_BINARY_DIR}/SKYSEA.OVL ${CMAKE_BINARY_DIR}/CUT.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART)
+add_custom_target(overlays DEPENDS ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/SUPER.OVL ${CMAKE_BINARY_DIR}/DOG.OVL ${CMAKE_BINARY_DIR}/PRISON.OVL ${CMAKE_BINARY_DIR}/SPACE.OVL ${CMAKE_BINARY_DIR}/PARADISE.OVL ${CMAKE_BINARY_DIR}/FARM.OVL ${CMAKE_BINARY_DIR}/SKYSEA.OVL ${CMAKE_BINARY_DIR}/CUT.OVL ${CMAKE_BINARY_DIR}/CLOCK.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART)
 
 # THE PACKS (tools/packs.py): every overlay (and the art) padded to its fixed slot. The FULL disc has the real files in the slots,
 # the BASE disc a stub in each; the patches (BORE2-<PACK>.ppf) are the difference, one per pack, and go on in any order.
@@ -98,7 +100,7 @@ psn00bsdk_add_cd_image(
 	iso
 	bore2
 	iso.xml
-	DEPENDS bore2 system.cnf overlays slots ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/SUPER.OVL ${CMAKE_BINARY_DIR}/DOG.OVL ${CMAKE_BINARY_DIR}/PRISON.OVL ${CMAKE_BINARY_DIR}/SPACE.OVL ${CMAKE_BINARY_DIR}/PARADISE.OVL ${CMAKE_BINARY_DIR}/FARM.OVL ${CMAKE_BINARY_DIR}/SKYSEA.OVL ${CMAKE_BINARY_DIR}/CUT.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
+	DEPENDS bore2 system.cnf overlays slots ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/SUPER.OVL ${CMAKE_BINARY_DIR}/DOG.OVL ${CMAKE_BINARY_DIR}/PRISON.OVL ${CMAKE_BINARY_DIR}/SPACE.OVL ${CMAKE_BINARY_DIR}/PARADISE.OVL ${CMAKE_BINARY_DIR}/FARM.OVL ${CMAKE_BINARY_DIR}/SKYSEA.OVL ${CMAKE_BINARY_DIR}/CUT.OVL ${CMAKE_BINARY_DIR}/CLOCK.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
 )
 
 # the disc as one file: BORE2.chd (DuckStation, SwanStation and the libretro PlayStation cores open it)
@@ -137,7 +139,7 @@ psn00bsdk_add_cd_image(
 	iso_lite
 	bore2_lite
 	iso_lite.xml
-	DEPENDS bore2 system.cnf overlays slots ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/SUPER.OVL ${CMAKE_BINARY_DIR}/DOG.OVL ${CMAKE_BINARY_DIR}/PRISON.OVL ${CMAKE_BINARY_DIR}/SPACE.OVL ${CMAKE_BINARY_DIR}/PARADISE.OVL ${CMAKE_BINARY_DIR}/FARM.OVL ${CMAKE_BINARY_DIR}/SKYSEA.OVL ${CMAKE_BINARY_DIR}/CUT.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
+	DEPENDS bore2 system.cnf overlays slots ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/SUPER.OVL ${CMAKE_BINARY_DIR}/DOG.OVL ${CMAKE_BINARY_DIR}/PRISON.OVL ${CMAKE_BINARY_DIR}/SPACE.OVL ${CMAKE_BINARY_DIR}/PARADISE.OVL ${CMAKE_BINARY_DIR}/FARM.OVL ${CMAKE_BINARY_DIR}/SKYSEA.OVL ${CMAKE_BINARY_DIR}/CUT.OVL ${CMAKE_BINARY_DIR}/CLOCK.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
 )
 
 # the quick disc with every pack a stub (what the base game looks like without patches), for testing

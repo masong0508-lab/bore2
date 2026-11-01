@@ -68,6 +68,10 @@ typedef struct {
 extern Sim  sims[MAX_SIMS];
 extern int  nsims, player;
 extern int  clock_min, clock_day;    // game time: minutes 0..1439, MON..SUN
+// REAL TIME (OPTIONS > GAME): the clock follows the real one. Minutes since 1 JAN 2000, local time (0: not known: the PS1 until SET CLOCK)
+extern int sim_rt, rt_on, rt_hz, rt_vb0; extern u32 rt_last, rt_base;
+u32  sim_rt_now(void); void sim_rt_set(int on);
+int  rt_mdays(int y, int m); void rt_date(int dn, int *y, int *m, int *d);   // (month 0 JAN; days since 1 JAN 2000)
 extern long cash;
 extern int  job_level, job_worked, job_days_good, job_strikes;
 extern int  phone_tier, handheld;

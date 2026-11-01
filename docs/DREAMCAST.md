@@ -60,6 +60,12 @@ ordering-table walk 15%, the rest is the game itself.
 `DCRUN_VMU=1` draws the VMU screen into the picture. The log (fps, CPU, lists) prints at the end.
 PS1 side: `DS8MB=1 test/ds.sh bore2_lite.cue NAME 3500 script`.
 
+## REAL TIME (OPTIONS > GAME)
+The Dreamcast reads its own clock chip (`dc_rtc_min` in `dc_plat.c`, KOS `rtc_unix_secs`, read twice a second at most): switching
+REAL TIME on asks nothing (the PlayStation has no clock and asks the time). The clock, weekday and season (by the month) follow the
+Dreamcast's clock; flycast gives it the host's time. Left: the option on, no question; right: SAN BOREAS at the real 18:38.
+![real time](realtime_dc.png)
+
 ## Still to do
 - Side by side with DuckStation: inside a house, pie menu, Buy/Build, night, first person, far view, a park.
 - Roofs (new ask): fix the roof-tool bug above first; then check shops, towers, flats, near and far, and the cut-away when inside or
