@@ -156,13 +156,17 @@ static inline int16_t *rv(int base, int off) {
     return (int16_t *)spu_ram + o;
 }
 static inline int sat(int x) { return x > 32767 ? 32767 : x < -32768 ? -32768 : x; }
-static void reverb_step(int inL, int inR) {
+static int rcA[32], rcV[32];
+static void reverb_cache(void) {   // the reverb registers only change at a tick: read them once per stretch
     const volatile int16_t *R = (const volatile int16_t *)(dc_iobase + 0x1dc0);
+    for (int i = 0; i < 32; i++) { rcV[i] = (int)R[i]; rcA[i] = (int)(uint16_t)R[i] * 4; }
+}
+static void reverb_step(int inL, int inR) {
     int base = (int)((uint32_t)R16(0x1a2) * 4) & 0x3ffff;     // SPU_REVERB_ADDR, in halfwords
     if (rev_cur < base) rev_cur = base;
     int wr = R16(0x1aa) & 0x80;
-#define A(i) ((int)(uint16_t)R[i] * 4)
-#define V(i) ((int)R[i])
+#define A(i) rcA[i]
+#define V(i) rcV[i]
     int Lin = (V(30) * inL) >> 15, Rin = (V(31) * inR) >> 15;
     int vIIR = V(2), vWALL = V(7);
     if (wr) {
@@ -206,20 +210,23 @@ static inline uint32_t run(const int16_t *restrict s0, uint32_t ctr, int step, i
     }
     return ctr;
 }
-static void mix_seg(int16_t *out, int n) {
+static int16_t last_hl, last_hr;
+static void mix_seg(int16_t *out, int nf) {
+    int n = (nf + 1) >> 1;   // mixed at half rate (22.05 kHz, the PS1's own sample rates), then interpolated up: half the work
+    reverb_cache();
     memset(sumL, 0, n * 4); memset(sumR, 0, n * 4);
     uint32_t ron = R16(0x198) | (uint32_t)R16(0x19a) << 16; int any_rev = 0;
     for (int vi = 0; vi < NV; vi++) {
         Voice *v = &vc[vi];
         if (v->phase == OFF) continue;
         dc_spu_voices_on++;
-        int vl = vol16(VREG(vi, 0)), vr = vol16(VREG(vi, 2)), step = VREG(vi, 4); if (step > 0x3fff) step = 0x3fff;
+        int vl = vol16(VREG(vi, 0)), vr = vol16(VREG(vi, 2)), step = VREG(vi, 4); if (step > 0x3fff) step = 0x3fff; step *= 2;
         int rev = (ron >> vi) & 1;
         if (rev && !any_rev) { memset(rvL, 0, n * 4); memset(rvR, 0, n * 4); any_rev = 1; }
         for (int i = 0; i < n && v->phase != OFF;) {
             // how far before something changes: the envelope's next step, the end of the block
             int k = n - i;
-            if (!v->eidle && v->ectr < k) k = v->ectr;
+            if (!v->eidle && v->ectr < 2 * k) k = (v->ectr + 1) >> 1;
             if (step > 0) { int to_end = (int)((((28u << 12) - v->ctr) + (uint32_t)step - 1) / (uint32_t)step); if (to_end < k) k = to_end; }
             if (k < 1) k = 1;
             int gl = (v->env * vl) >> 15, gr = (v->env * vr) >> 15;
@@ -227,7 +234,7 @@ static void mix_seg(int16_t *out, int n) {
                                      : run(&v->s[0], v->ctr, step, gl, gr, sumL + i, sumR + i, 0, 0, k, 0);
             else v->ctr += (uint32_t)step * (uint32_t)k;
             i += k;
-            if (!v->eidle) { v->ectr -= k - 1; env_tick(v, vi); }   // (env_tick counts the last sample of the run)
+            if (!v->eidle) { v->ectr -= 2 * k - 1; env_tick(v, vi); }   // (env_tick counts the last sample of the run)
             if ((v->ctr >> 12) >= 28) {
                 v->ctr -= 28 << 12; v->addr += 16; v->first = 0;
                 if (v->flags & 1) {   // loop end: to the repeat address; without the repeat flag the voice stops
@@ -239,15 +246,18 @@ static void mix_seg(int16_t *out, int n) {
         }
     }
     int ml = vol16(R16(0x180)), mr = vol16(R16(0x182)), peak = dc_spu_peak;
-    for (int i = 0; i < n; i++) {
-        if (any_rev) { rev_inL += rvL[i]; rev_inR += rvR[i]; }
-        if (rev_odd) { reverb_step(sat(rev_inL >> 1), sat(rev_inR >> 1)); rev_inL = rev_inR = 0; }
-        rev_odd ^= 1;
-        int L = sat(sumL[i] + rev_outL), R = sat(sumR[i] + rev_outR);
+    int16_t pl = last_hl, pr = last_hr;
+    for (int j = 0; j < n; j++) {
+        if (any_rev) reverb_step(sat(rvL[j]), sat(rvR[j])); else reverb_step(0, 0);
+        int L = sat(sumL[j] + rev_outL), R = sat(sumR[j] + rev_outR);
         L = (L * ml) >> 15; R = (R * mr) >> 15;
-        out[i * 2] = (int16_t)L; out[i * 2 + 1] = (int16_t)R;
+        int mL = (pl + L) >> 1, mR = (pr + R) >> 1;   // between the last and this half-rate sample
+        out[j * 4] = (int16_t)mL; out[j * 4 + 1] = (int16_t)mR;
+        if (j * 2 + 1 < nf) { out[j * 4 + 2] = (int16_t)L; out[j * 4 + 3] = (int16_t)R; }
+        pl = (int16_t)L; pr = (int16_t)R;
         int a = L < 0 ? -L : L; if (a > peak) peak = a;
     }
+    last_hl = pl; last_hr = pr;
     dc_spu_peak = peak;
 }
 static void mix(int16_t *out, int frames) {

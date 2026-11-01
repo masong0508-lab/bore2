@@ -98,10 +98,15 @@ static inline void grade8(int *r, int *g, int *b) {
     rr = rr < 0 ? 0 : rr > 255 ? 255 : rr; gg = gg < 0 ? 0 : gg > 255 ? 255 : gg; bb = bb < 0 ? 0 : bb > 255 ? 255 : bb;
     *r = rr; *g = gg; *b = bb;
 }
+static uint32_t viv_ck[1024], viv_cv[1024];   // a cache of graded colours (flat and shaded colours repeat a lot)
 static inline uint32_t vivid(uint32_t argb) {   // 0xAARRGGBB
     if (!dc_vivid) return argb;
+    uint32_t rgb = argb & 0xffffffu, h = (rgb * 2654435761u) >> 22;
+    if (viv_ck[h] == (rgb | 0x1000000u)) return (argb & 0xff000000u) | viv_cv[h];
     int r = (argb >> 16) & 255, g = (argb >> 8) & 255, b = argb & 255; grade8(&r, &g, &b);
-    return (argb & 0xff000000u) | (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
+    uint32_t o = (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
+    viv_ck[h] = rgb | 0x1000000u; viv_cv[h] = o;
+    return (argb & 0xff000000u) | o;
 }
 static void viv_build(void) {
     for (int c = 0; c < 32768; c++) {
@@ -119,6 +124,7 @@ static inline uint16_t to1555(uint16_t c, int var) {
     return (uint16_t)(0x8000 | ((c & 31) << 10) | (c & 0x3e0) | ((c >> 10) & 31));
 }
 void dc_grade_changed(void) {   // every texture converted again
+    memset(viv_ck, 0, sizeof viv_ck);
     if (dc_vivid && !viv_ok) viv_build();
     for (int py = 0; py < 2; py++) for (int px = 0; px < 16; px++) page_gen[py][px] += 1000;
     for (int y = 0; y < 32; y++) for (int x = 0; x < 64; x++) blk_gen[y][x]++;

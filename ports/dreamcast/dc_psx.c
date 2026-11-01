@@ -27,7 +27,7 @@ void dc_gte_rtps(int i) {
     dc_gte.sz[0] = dc_gte.sz[1]; dc_gte.sz[1] = dc_gte.sz[2]; dc_gte.sz[2] = dc_gte.sz[3]; dc_gte.sz[3] = (uint16_t)z;
     // the divide: H / SZ in 0.16, saturating at 0x1FFFF when SZ <= H/2 (what the PS1's unsigned Newton-Raphson divider does)
     uint32_t h = (uint32_t)dc_gte.h, q;
-    if (z * 2 > (int32_t)h) { q = h < 32768 ? (((h << 17) / (uint32_t)z + 1) >> 1) : (uint32_t)((((uint64_t)h << 17) / (uint32_t)z + 1) >> 1); if (q > 0x1FFFF) q = 0x1FFFF; } else q = 0x1FFFF;   // (32-bit divide when it fits: the same result)
+    if (z * 2 > (int32_t)h) { q = (uint32_t)((float)h * 131072.0f / (float)z + 0.5f); if (q > 0x1FFFF) q = 0x1FFFF; } else q = 0x1FFFF;   // (the FPU divide: 17 bits fit a float exactly enough)
     int64_t sx = ((int64_t)dc_gte.ir[1] * q + dc_gte.ofx) >> 16, sy = ((int64_t)dc_gte.ir[2] * q + dc_gte.ofy) >> 16;
     if (sx < -1024) sx = -1024; if (sx > 1023) sx = 1023; if (sy < -1024) sy = -1024; if (sy > 1023) sy = 1023;
     dc_gte.sx[0] = dc_gte.sx[1]; dc_gte.sy[0] = dc_gte.sy[1]; dc_gte.sx[1] = dc_gte.sx[2]; dc_gte.sy[1] = dc_gte.sy[2];
