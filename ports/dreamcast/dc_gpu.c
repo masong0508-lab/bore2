@@ -535,6 +535,7 @@ int DrawOTag(const uint32_t *ot) {
     lists_reset(); zseq = 0;
     while (guard++ < 400000) {
         uint32_t hdrw = *p, n = hdrw >> 24, next = hdrw & 0xffffff;
+        __builtin_prefetch((const void *)(0x8c000000u | next));   // (the next packet is fetched while this one is worked on)
         if (n) run_packet(p + 1, (int)n);
         if (next == 0xffffff) break;
         p = (const uint32_t *)(0x8c000000u | next);

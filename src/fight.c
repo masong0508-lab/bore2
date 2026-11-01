@@ -348,8 +348,30 @@ static void read_input(int held, int pressed, FIn *in) {
     in->a = !!(held & PAD_CROSS); in->b = !!(held & PAD_CIRCLE); in->pa = !!(pressed & PAD_CROSS); in->pb = !!(pressed & PAD_CIRCLE);
     in->pj = !!(pressed & PAD_TRIANGLE); in->guard = !!(held & (PAD_SQUARE | PAD_R1));
 }
+#ifdef BORE_DC
+extern int dc_pad2(int *held, int *pressed);   // (Dreamcast: a second controller in port B plays the other fighter; 0 = none, the AI plays)
+static void read_input_p2(int held, int pressed, FIn *in) {
+    memset(in, 0, sizeof *in);
+    int ux = (held & PAD_RIGHT ? 1 : 0) - (held & PAD_LEFT ? 1 : 0), uy = (held & PAD_UP ? 1 : 0) - (held & PAD_DOWN ? 1 : 0);
+    if (cam_mode == CAM_CHASE) { orbit_vec(&F[1], &F[0], uy, ux, &in->mx, &in->mz); }
+    else {
+        int S = fsin(cyaw), C = fcos(cyaw);
+        in->mx = uy * S + ux * C; in->mz = uy * C - ux * S; if (uy && ux) { in->mx = in->mx * 181 >> 8; in->mz = in->mz * 181 >> 8; }
+        if (cam_mode == CAM_SIDE && uy < 0 && !ux) { in->mx = in->mz = 0; in->down = 1; }
+        else if (cam_mode == CAM_SIDE && uy > 0 && !ux) { in->mx = in->mx / 2; in->mz = in->mz / 2; }
+    }
+    if (cam_mode != CAM_SIDE && (held & PAD_L1)) in->down = 1;
+    in->a = !!(held & PAD_CROSS); in->b = !!(held & PAD_CIRCLE); in->pa = !!(pressed & PAD_CROSS); in->pb = !!(pressed & PAD_CIRCLE);
+    in->pj = !!(pressed & PAD_TRIANGLE); in->guard = !!(held & (PAD_SQUARE | PAD_R1));
+}
+#endif
 static void step_fight(int held, int pressed) {
-    FIn a, b; read_input(held, pressed, &a); ai(&F[1], &F[0], &b);
+    FIn a, b; read_input(held, pressed, &a);
+#ifdef BORE_DC
+    { int h2, p2; if (dc_pad2(&h2, &p2)) read_input_p2(h2, p2, &b); else ai(&F[1], &F[0], &b); }
+#else
+    ai(&F[1], &F[0], &b);
+#endif
     if (style == 3) { if (rnd8() < 40 && b.guard) b.guard = 0; }
     fstep(&F[0], &F[1], &a); fstep(&F[1], &F[0], &b);
     events(&F[0]); events(&F[1]);

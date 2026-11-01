@@ -8,6 +8,7 @@
 #include <string.h>
 #include "common.h"
 #include "sim.h"
+#include "gotchi.h"
 
 // ---------------------------------------------------------------- a 3x5 font for the VMU screen
 static const uint16_t f35[40] = {   // 0-9, A-Z, ':', ' ', '-', '.' ; 15 bits, rows top to bottom, 3 bits each (left = 4)
@@ -56,7 +57,46 @@ void dc_vmu_saving(int on) {
     text(21, 8, "SAVE"); text(21, 16, "...");
     lcd_send();
 }
+// the Boreagotchi page: the toy of the Bore you play (shown every few seconds between the status pages): its first creature as a
+// blob (an egg while unhatched) that bounces, hearts for hunger and fun, a "!" when it calls you, a mess mark when it made one
+extern int isin(int), icos(int);
+static int gotchi_page(void) {
+    Toy *t = gotchi_toy(player);
+#ifdef DC_FAKEPET
+    static Toy ft; if (!t) { t = &ft; ft.b[0].on = 1; ft.b[0].stage = GS_CHILD; ft.b[0].hun = 3; ft.b[0].hap = 2; ft.xp = 42; }   // (a test build: a pet to look at)
+#endif
+    if (!t) return 0;
+    Blob *b = 0; for (int i = 0; i < GB_N; i++) { int k = (t->sel + i) % GB_N; if (t->b[k].on) { b = &t->b[k]; break; } }
+    if (!b) return 0;
+    memset(lcd, 0, sizeof lcd);
+    int hop = (tick / 15) % 2, cx = 12, cy = 12 - hop;
+    if (b->stage == GS_EGG) {   // an egg: an oval with a crack
+        for (int y = -9; y <= 9; y++) { int w = y < -6 ? 3 : y < -3 ? 5 : y < 4 ? 6 : y < 7 ? 5 : 3; px(cx - w, cy + y); px(cx + w, cy + y); }
+        for (int x = -3; x <= 3; x++) { px(cx + x, cy - 9); px(cx + x, cy + 9); }
+        for (int x = -4; x <= 4; x++) px(cx + x, cy + 1 + (x & 1));
+    } else {   // a blob that grows with its stage, with eyes and a mouth
+        int r = 5 + b->stage * 2;
+        for (int a = 0; a < 120; a++) { int x = (int)(r * icos(a * 4096 / 120) / 4096.0f * 1.2f), y = (int)(r * isin(a * 4096 / 120) / 4096.0f); px(cx + x, cy + y); }
+        int sl = b->fl & GF_SLEEP;
+        if (sl) { px(cx - 3, cy - 1); px(cx - 2, cy - 1); px(cx + 2, cy - 1); px(cx + 3, cy - 1); text(cx + 8, cy - 9, "Z"); }
+        else { px(cx - 3, cy - 2); px(cx - 3, cy - 1); px(cx + 3, cy - 2); px(cx + 3, cy - 1); }
+        int sad = !b->hun || !b->hap || (b->fl & GF_SICK);
+        for (int i = -2; i <= 2; i++) px(cx + i, cy + 3 + (sad ? (i == -2 || i == 2 ? 1 : 0) : (i == -2 || i == 2 ? -1 : 0)));
+    }
+    text(26, 0, "PET");
+    static const char *const st[5] = { "EGG", "BABY", "CHILD", "TEEN", "ADULT" };
+    text(26, 6, st[b->stage > 4 ? 4 : b->stage]);
+    for (int i = 0; i < 2; i++) {   // hearts: F food, J fun (4 each)
+        int y = 14 + i * 7, v = i ? b->hap : b->hun; char l[2] = { i ? 'J' : 'F', 0 }; text(26, y, l);
+        for (int j = 0; j < 4; j++) { int x = 32 + j * 4; if (j < v) { px(x, y); px(x + 2, y); px(x, y + 1); px(x + 1, y + 1); px(x + 2, y + 1); px(x + 1, y + 2); } else { px(x, y + 1); px(x + 2, y + 1); } }
+    }
+    if (b->poop) text(40, 0, "*");
+    if ((b->fl & GF_CALL) && (tick / 30) % 2) text(2, 25, "CALLS YOU!");
+    else if (b->stage > GS_EGG) { char w[8]; w[0] = 'X'; w[1] = 'P'; w[2] = ' '; int x = t->xp; w[3] = (char)('0' + x / 100 % 10); w[4] = (char)('0' + x / 10 % 10); w[5] = (char)('0' + x % 10); w[6] = 0; text(2, 25, w); }
+    lcd_send(); return 1;
+}
 static void vmu_status(void) {
+    if (nsims > 0 && player >= 0 && player < nsims && (tick / 30) % 12 >= 8 && gotchi_page()) return;   // (every 12 half seconds, the last 4: the pet)
     memset(lcd, 0, sizeof lcd);
     if (nsims <= 0 || player < 0 || player >= nsims) {   // the title: the logo
         text(8, 6, "BORE 2"); face(16, 14, 100, (tick / 30) % 5 == 0);

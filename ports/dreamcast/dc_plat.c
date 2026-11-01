@@ -19,10 +19,10 @@ KOS_INIT_FLAGS(INIT_DEFAULT);
 // PS1 bits (active low): 0 SELECT 3 START 4 UP 5 RIGHT 6 DOWN 7 LEFT 8 L2 9 R2 10 L1 11 R1 12 TRIANGLE 13 CIRCLE 14 CROSS 15 SQUARE.
 // A = CROSS, B = CIRCLE, X = SQUARE, Y = TRIANGLE, the triggers = L1 / R1; pulled all the way with the other one = L2 / R2;
 // SELECT = START with the triggers both held. The analog stick reads as the PS1's left stick.
-static uint16_t dc_btn(int *ax, int *ay) {
-    maple_device_t *c = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
+static uint16_t dc_btn_port(int port, int *ax, int *ay) {
+    maple_device_t *c = port == 0 ? maple_enum_type(0, MAPLE_FUNC_CONTROLLER) : maple_enum_dev(port, 0);
     *ax = *ay = 128;
-    if (!c) return 0xffff;
+    if (!c || !(c->info.functions & MAPLE_FUNC_CONTROLLER)) return 0xffff;
     cont_state_t *s = (cont_state_t *)maple_dev_status(c);
     if (!s) return 0xffff;
     uint16_t d = 0; uint32_t b = s->buttons;
@@ -35,6 +35,14 @@ static uint16_t dc_btn(int *ax, int *ay) {
     *ax = s->joyx + 128; *ay = s->joyy + 128;
     return (uint16_t)~d;
 }
+static uint16_t dc_btn(int *ax, int *ay) { return dc_btn_port(0, ax, ay); }
+// controllers B, C, D: held (active high, the game's own order) and newly pressed, for the fight's second player; 0 when nothing is plugged in
+int dc_pad_n(int port, int *held, int *pressed) {
+    static uint16_t prev[4] = { 0, 0, 0, 0 }; int ax, ay; maple_device_t *c = maple_enum_dev(port, 0);
+    if (!c || !(c->info.functions & MAPLE_FUNC_CONTROLLER)) { prev[port] = 0; return 0; }
+    uint16_t h = (uint16_t)~dc_btn_port(port, &ax, &ay); *held = h; *pressed = h & ~prev[port]; prev[port] = h; return 1;
+}
+int dc_pad2(int *held, int *pressed) { return dc_pad_n(1, held, pressed); }
 static uint16_t latch = 0xffff; static int poll_on;
 void pad_init(void) {}
 void pad_poll_on(int on) { poll_on = on; }
