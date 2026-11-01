@@ -6,14 +6,18 @@
 #include "world.h"
 #include "audio.h"
 #include "wants.h"
+#include "save.h"
 
 int home_city, home_bx = -1, home_by = -1, home_paid, home_move_asked;
+Prop props[PROP_MAX]; int nprops;
 
-void home_reset(void) { home_city = 0; home_bx = home_by = -1; home_paid = 0; home_move_asked = 0; }
+void home_reset(void) { home_city = 0; home_bx = home_by = -1; home_paid = 0; home_move_asked = 0; nprops = 0; }
+int prop_find(int bx, int by) { for (int i = 0; i < nprops; i++) if (props[i].bx == bx && props[i].by == by) return i; return -1; }
 static int buyable(int lot) { return lot == LOT_HOUSE || lot == LOT_COTTAGE || lot == LOT_TWO || lot == LOT_EMPTY; }
 int home_for_sale(int bx, int by) {
     if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return 0;
     if (home_city && bx == home_bx && by == home_by) return 0;   // (yours)
+    if (prop_find(bx, by) >= 0) return 0;                        // (yours too)
     BInfo b; bm_block(bx, by, &b);
     if (!buyable(b.lot) || b.terrain == BT_SEA) return 0;
     return b.lot == LOT_EMPTY || pop_family_at(bx, by, 0) < 0;   // (an empty lot, or a home nobody lives in)
@@ -55,14 +59,60 @@ int home_is_here(void) {
     const Sim *p = &sims[player];
     return sim_tile_x(p) / BM_BLK == wx && sim_tile_y(p) / BM_BLK == wy;
 }
-static void move_in(int bx, int by, int price) {   // the lot is theirs: furnished for whoever is in the household
-    home_city = 1; home_bx = bx; home_by = by; home_paid = price;
-    u8 occ[6] = { 0, 0, 0, 0, 0, 0 };
+static void hh_occ(u8 *occ) {   // who is in the household (adults, kids, teens, elders, a couple, babies): a home is furnished for them
+    memset(occ, 0, 6);
     for (int i = 0; i < nsims; i++) { int st = sims[i].bore.stage;
         if (st == AG_BABY) occ[5]++; else if (st == AG_CHILD) occ[1]++; else if (st == AG_TEEN) occ[2]++; else if (st == AG_ELDER) occ[3]++; else occ[0]++;
         if (sims[i].partner) occ[4] = 1; }
     if (!occ[0] && !occ[3]) occ[0] = 1;
+}
+static void move_in(int bx, int by, int price) {   // the lot is theirs: furnished for whoever is in the household
+    home_city = 1; home_bx = bx; home_by = by; home_paid = price;
+    u8 occ[6]; hh_occ(occ);
     world_own_set(bx, by, occ);
+}
+int prop_here(void) {
+    const Sim *p = &sims[player]; int tx = sim_tile_x(p), ty = sim_tile_y(p);
+    return world_prop_lot(tx, ty) ? prop_find(world_wbx + tx / BM_BLK, world_wby + ty / BM_BLK) : -1;
+}
+static void old_home_kept(void) {   // the family moves out: the old home stays theirs, a property
+    char t[48], a[24];
+    if (!home_city || nprops >= PROP_MAX || !world_prop_from_home()) return;
+    Prop *p = &props[nprops++]; p->bx = (s16)home_bx; p->by = (s16)home_by; p->paid = home_paid;
+    snprintf(t, sizeof t, "OLD HOME KEPT: %s", home_address(home_bx, home_by, a)); sim_note(t);
+    home_city = 0;
+}
+static Prop prop_take(int i) { Prop p = props[i]; for (int k = i; k < nprops - 1; k++) props[k] = props[k + 1]; nprops--; return p; }   // (off the list)
+int prop_move_in(int i) {
+    char t[48], a[24];
+    if (i < 0 || i >= nprops) return 0;
+    Prop p = prop_take(i);
+    old_home_kept();                                                   // (there is room: one just came off the list)
+    if (home_city) { cash += home_paid; world_own_clear(); }            // (and if it could not be kept, it sells)
+    u8 occ[6]; hh_occ(occ);
+    world_prop_to_home(p.bx, p.by, occ);
+    home_city = 1; home_bx = p.bx; home_by = p.by; home_paid = p.paid;
+    snprintf(t, sizeof t, "HOME NOW: %s", home_address(p.bx, p.by, a)); sim_note(t);
+    audio_voice(VOICE_WIN);
+    home_move_asked = 1;
+    for (int k = 0; k < nsims; k++) wants_event(&sims[k], W_HOME, 0);
+    return 1;
+}
+int prop_sell(int i) {
+    char t[48], a[24];
+    if (i < 0 || i >= nprops) return 0;
+    Prop p = prop_take(i);
+    world_prop_add(p.bx, p.by);                                       // (a second time: let go)
+    cash += p.paid;
+    snprintf(t, sizeof t, "SOLD %s FOR $%d", home_address(p.bx, p.by, a), p.paid); sim_note(t);
+    audio_voice(VOICE_WIN);
+    return 1;
+}
+void prop_save(void) { sv_u8(nprops); sv_n(props, nprops * (int)sizeof(Prop)); }
+void prop_load(void) {
+    nprops = 0; if (save_ver < 42) return;
+    int n = ld_u8(); if (n > PROP_MAX) { ld_fail(); return; }
+    ld_n(props, n * (int)sizeof(Prop)); nprops = n;
 }
 int home_start(void) {   // a new life begins in SAN BOREAS, in a lived-in sort of house nearest the capital's square: a gift, so it sells back for nothing
     int cap = bm_capital(), nset = bm_nset();
@@ -76,12 +126,24 @@ int home_start(void) {   // a new life begins in SAN BOREAS, in a lived-in sort 
     }
     return 0;                                                          // (nothing free anywhere: THE MAN BASE, as before)
 }
-int home_buy(int bx, int by) {
-    char t[40], a[24];
+int home_buy(int bx, int by, int how) {
+    char t[48], a[24];
     if (!home_for_sale(bx, by)) { sim_note("SORRY, THAT HOME IS NOT FOR SALE"); return 0; }
-    int price = home_price(bx, by), refund = home_city ? home_paid : 0;
+    int price = home_price(bx, by);
+    if (how == HB_PROP) {                                            // to own, not to live in
+        if (nprops >= PROP_MAX) { sim_note("YOU OWN 8 PROPERTIES. SELL ONE FIRST"); audio_voice(VOICE_NAH); return 0; }
+        if (cash < price) { sprintf(t, "NOT ENOUGH MONEY: IT IS $%d", price); sim_note(t); audio_voice(VOICE_NAH); return 0; }
+        if (!world_prop_add(bx, by)) return 0;
+        cash -= price;
+        Prop *p = &props[nprops++]; p->bx = (s16)bx; p->by = (s16)by; p->paid = price;
+        snprintf(t, sizeof t, "BOUGHT %s AS PROPERTY", home_address(bx, by, a)); sim_note(t);
+        audio_voice(VOICE_WIN);
+        return 1;
+    }
+    int keep = home_city && how == HB_KEEP && nprops < PROP_MAX, refund = home_city && !keep ? home_paid : 0;
     if (cash + refund < price) { sprintf(t, "NOT ENOUGH MONEY: IT IS $%d", price); sim_note(t); audio_voice(VOICE_NAH); return 0; }
-    if (home_city) { cash += refund; sprintf(t, "OLD HOME SOLD FOR $%d", refund); sim_note(t); world_own_clear(); }
+    if (keep) old_home_kept();
+    if (home_city) { cash += home_paid; sprintf(t, "OLD HOME SOLD FOR $%d", home_paid); sim_note(t); world_own_clear(); home_city = 0; }
     cash -= price;
     move_in(bx, by, price);                                          // who is moving in: it is furnished for them
     snprintf(t, sizeof t, "BOUGHT %s!", home_address(bx, by, a)); sim_note(t);

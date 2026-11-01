@@ -197,8 +197,18 @@ too (`src/pop.c`): its people have birthdays, babies, leave home, pass on, and n
 PHONE, HOMES lists the homes for sale near you in SAN BOREAS: houses, cottages and two-storeys nobody lives in, and empty lots,
 each with its price (dearer in a city). A FOR SALE sign in a yard sells that one too (X on it). Buy one and the family moves in by
 taxi; a house comes furnished for them, an empty lot is cleared for building. That block is theirs from then on (`src/home.c`,
-and `world.c` keeps it just as they build it, every storey), TRAVEL has HOME at the top, and the map shows where it is. Buy another
-and the old one sells for what it cost. THE MAN BASE stays yours too.
+and `world.c` keeps it just as they build it, every storey), TRAVEL has HOME at the top, and the map shows where it is. THE MAN
+BASE stays yours too.
+
+Properties: besides the home, the family can own up to 8 more places nobody lives in. X on a home for sale (THE NEIGHBORHOOD or the
+list) asks BUY IT HOW?: MOVE IN, KEEP OLD HOME (the old home stays theirs as a property), MOVE IN, SELL OLD HOME (it sells for what
+it cost), or BUY AS PROPERTY (theirs, but they live where they are). A FOR SALE sign offers MOVE IN and BUY AS PROPERTY. A property
+is not furnished for the family and has no sign; walking onto it says YOUR PROPERTY. You can build on it like your home, never on
+other people's lots. MY PROPERTIES (TRIANGLE on THE NEIGHBORHOOD, R1 on the list) shows the home and each property with its
+value: X GO THERE (a free taxi), SQUARE MOVE IN (it becomes the home, furnished for them if nothing on it was changed; the old
+home becomes a property), TRIANGLE SELL (for what was paid). The home you live in only sells by moving first. The home's and the
+properties' tiles are kept packed row by row in the zone keep (`world.c`); saves are version 42 (older saves load with no
+properties).
 
 Build mode has seven tools: BUY, ROOM (X on one corner, X on the other: walls round it, a floor inside), WALL, DOORS AND
 WINDOWS (X on a wall), FLOOR, WALLPAPER and ROOF. L2 R2 change the storey (five in all): a room upstairs stands on the walls

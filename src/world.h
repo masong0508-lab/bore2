@@ -55,12 +55,17 @@ u32  world_seed(void);                           // this world's seed (the memor
 void world_open_at(int bx, int by);              // build the window round that block
 int  world_stream(int ptx, int pty, int *dtx, int *dty);   // keep it round the player's tile: 1 if it moved (everything shifts by -dtx, -dty tiles)
 void world_arrival(int set, int *px, int *py);   // open the window at a town and say where to stand (the street by its square)
-// the family's own lot (home.c): one block of SAN BOREAS, kept as they build it, every storey
-void world_own_set(int bx, int by, const u8 *occ);   // bought (occ: adults, kids, teens, elders, a couple, babies: it comes furnished for them)
+// the family's own lot (home.c): one block of SAN BOREAS, kept as they build it, every storey (with the properties' tiles)
+void world_own_set(int bx, int by, const u8 *occ);   // bought (occ: adults, kids, teens, elders, a couple, babies: it comes furnished for them; 0: a property of theirs, as it is)
 void world_own_clear(void);                      // sold
 int  world_own_lot(int tx, int ty);              // that tile of the window is on the lot (build mode)
 int  world_own_door(int *tx, int *ty);           // where the family stands on getting home (0: the lot is out of the window)
 int  world_own_block(int *wx, int *wy);          // the lot's block in the window (0: not in it)
+// the family's properties (home.c): up to 8 more blocks they own but do not live in, kept as they leave them
+int  world_prop_add(int bx, int by);             // bought as a property (0: no room on the list); called again for it: sold
+int  world_prop_from_home(void);                 // the family moves out: their lot becomes a property, as it is (0: no room)
+void world_prop_to_home(int bx, int by, const u8 *occ);   // ... and into a property: it is their lot now (furnished for them if nothing on it changed)
+int  world_prop_lot(int tx, int ty);             // that tile of the window is on a block of theirs, a property or the home (build mode): not 0
 
 void world_init(void);
 void world_touched(void);                        // the map changed (build mode): the floor shading is worked out again

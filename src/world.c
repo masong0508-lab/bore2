@@ -327,6 +327,7 @@ const char *world_zone_name(int z) { return zoneNm[z % ZONE_N]; }
 #define ZPACK (28 * 1024)
 static u8 zpack[ZPACK]; static u16 zp_off[ZONE_CITY], zp_len[ZONE_CITY]; static u8 zp_made[ZONE_CITY]; static s8 zp_slot[ZONE_CITY] = { -1, -1, -1 };
 int world_zone_lost;   // a place that could not be kept (no room at all): main says so
+static int pb_zused(void);   // (the properties' tiles, kept at the top of zpack on a 2 MB machine: below)
 static int zp_used(void) { int u = 0; for (int i = 0; i < ZONE_CITY; i++) if (zp_slot[i] < 0) u += zp_len[i]; return u; }
 static void zone_drop(int z) {
     if (zp_slot[z] >= 0) { lvbusy[zp_slot[z]] = 0; zp_slot[z] = -1; }
@@ -338,9 +339,9 @@ static void zone_drop(int z) {
 }
 static void zone_keep(int z) {   // the live tiles into the keep
     zone_drop(z);
-    int u = zp_used(), a = rle_pack(lifeMap, MH * (MW + 1), zpack + u, ZPACK - u), b = -1, c = -1;
-    if (a >= 0) b = rle_pack(floorMap, MH * MW, zpack + u + a, ZPACK - u - a);
-    if (b >= 0) c = rle_pack(wallMap, MH * MW, zpack + u + a + b, ZPACK - u - a - b);
+    int u = zp_used(), Z = ZPACK - pb_zused(), a = rle_pack(lifeMap, MH * (MW + 1), zpack + u, Z - u), b = -1, c = -1;   // (the properties' keep is at the top: below it)
+    if (a >= 0) b = rle_pack(floorMap, MH * MW, zpack + u + a, Z - u - a);
+    if (b >= 0) c = rle_pack(wallMap, MH * MW, zpack + u + a + b, Z - u - a - b);
     if (c >= 0) { zp_off[z] = (u16)u; zp_len[z] = (u16)(a + b + c); zp_made[z] = 1; return; }
     int sl = 0; while (sl < nlvpool && lvbusy[sl]) sl++;
     if (sl == nlvpool) { world_zone_lost = 1; return; }
@@ -1393,9 +1394,8 @@ static void lot_hotel(int lx, int ly, unsigned h, int st) {   // a hotel: a corr
 int world_wbx = -1, world_wby = -1;                    // the window's top-left block in the open world (-1: not made yet)
 typedef struct { u16 bx, by; char map[BM_BLK][BM_BLK]; u8 fl[BM_BLK][BM_BLK], wp[BM_BLK][BM_BLK]; } EditBlk;
 static EditBlk edit_small[12]; static EditBlk *edits = edit_small; static int nedit_max = 12, nedit, edit_next;
-// the family's own lot (home.c buys it): the whole block, every storey, kept just as they build it
-typedef struct { u16 bx, by; u8 used, fresh, lv, home; u8 hx0, hy0, hx1, hy1, hdx, hdy;
-                 char map[NLEVELS][BM_BLK][BM_BLK]; u8 fl[NLEVELS][BM_BLK][BM_BLK], wp[NLEVELS][BM_BLK][BM_BLK]; } OwnBlk;
+// the family's own lot (home.c buys it): which block, and where its house is. Its tiles, every storey, are kept with the properties' (below)
+typedef struct { u16 bx, by; u8 used, fresh, lv, home; u8 hx0, hy0, hx1, hy1, hdx, hdy; } OwnBlk;
 static OwnBlk own; static Occ own_occ;                 // (fresh: bought, not yet built: the generator makes it, furnished for the family)
 #pragma GCC pop_options
 static void edit_init(void) {
@@ -1417,37 +1417,79 @@ static int edit_load(int wx, int wy) {
     return 1;
 }
 extern int world_stamp;
-static void mark_dirty(int l, int mx, int my) { if (l <= 0) world_stamp++; if (world_zone == ZONE_CITY && l <= 0 && mx >= 0 && my >= 0 && mx < MW && my < MH) wdirty[my / BM_BLK][mx / BM_BLK] = 1; }
-static int own_at(int wx, int wy) { return own.used && world_wbx + wx == own.bx && world_wby + wy == own.by; }
+static void pb_touch(int mx, int my);
+static void mark_dirty(int l, int mx, int my) { if (l <= 0) world_stamp++; if (world_zone == ZONE_CITY && l <= 0 && mx >= 0 && my >= 0 && mx < MW && my < MH) wdirty[my / BM_BLK][mx / BM_BLK] = 1; pb_touch(mx, my); }
 static int own_in_window(int *wx, int *wy) {
     if (!own.used || world_zone != ZONE_CITY || world_wbx < 0) return 0;
     int x = own.bx - world_wbx, y = own.by - world_wby;
     if (x < 0 || y < 0 || x >= WB || y >= WB) return 0;
     *wx = x; *wy = y; return 1;
 }
-static void own_save(int wx, int wy) {   // the window's lot into the keep (the ground and the storeys over it)
-    int ox = wx * BM_BLK, oy = wy * BM_BLK;
-    for (int y = 0; y < BM_BLK; y++) { memcpy(own.map[0][y], &lifeMap[oy + y][ox], BM_BLK); memcpy(own.fl[0][y], &floorMap[oy + y][ox], BM_BLK); memcpy(own.wp[0][y], &wallMap[oy + y][ox], BM_BLK); }
-    own.lv = 0;
-    for (int k = 0; k < NUP; k++) {
-        const Level *L = lv_get(k); int any = 0;
-        for (int y = 0; y < BM_BLK; y++) {
-            if (L) { memcpy(own.map[k + 1][y], &L->map[oy + y][ox], BM_BLK); memcpy(own.fl[k + 1][y], &L->fl[oy + y][ox], BM_BLK); memcpy(own.wp[k + 1][y], &L->wp[oy + y][ox], BM_BLK); }
-            else memset(own.map[k + 1][y], ' ', BM_BLK);
-            for (int x = 0; x < BM_BLK; x++) if (own.map[k + 1][y][x] != ' ') any = 1;
-        }
-        if (any) own.lv |= (u8)(1 << k);
-    }
+// ---- the blocks the family owns: their home and their properties (home.c buys them). Each is the generator's block (furnished for
+// the family when it is their new home; emptied, no sign, when it is a property) until something on it changes; from then on its
+// tiles, every storey, are kept, packed row by row: on a 2 MB machine at the top of the zone keep (zpack), with 8 MB in a store of
+// its own. Made again, it is the generator's block with the kept tiles laid over it. (No room: its ground floor goes with the other
+// built-on blocks instead.)
+#define NPB (8 + 2)                                     // (home.c's 8 properties, the home, and one more while moving)
+typedef struct { u16 bx, by, len; u8 kept, touched, lv, pad; } PropBlk;
+static PropBlk pb[NPB]; static int npb, pb_used;
+static u8 *pbx; static int pbx_cap;                    // (8 MB: the store)
+static const u8 *pb_src;                               // (an old save's home: its tiles laid out [storey][y][x], map, floors, walls)
+static u8 *pb_end(void) { return pbx ? pbx + pbx_cap : zpack + ZPACK; }
+static int pb_zused(void) { return pbx ? 0 : pb_used; }
+static u8 *pb_at(int i) { int s = 0; for (int k = 0; k <= i; k++) s += pb[k].len; return pb_end() - s; }
+COLD __attribute__((noinline)) static int pb_find(int bx, int by) { for (int i = 0; i < npb; i++) if (pb[i].bx == bx && pb[i].by == by) return i; return -1; }
+static int pb_in(int wx, int wy) { return npb ? pb_find(world_wbx + wx, world_wby + wy) : -1; }
+COLD static void pb_reset(void) {
+    npb = 0; pb_used = 0;
+    if (ram8 && !pbx) { pbx = (u8 *)xalloc(64 * 1024); if (pbx) pbx_cap = 64 * 1024; }
 }
-static void own_load(int wx, int wy) {   // ... and back
-    int ox = wx * BM_BLK, oy = wy * BM_BLK;
-    for (int y = 0; y < BM_BLK; y++) { memcpy(&lifeMap[oy + y][ox], own.map[0][y], BM_BLK); memcpy(&floorMap[oy + y][ox], own.fl[0][y], BM_BLK); memcpy(&wallMap[oy + y][ox], own.wp[0][y], BM_BLK); }
-    for (int k = 0; k < NUP; k++) {
-        if (!(own.lv & (1 << k))) continue;
-        Level *L = lv_need(k); if (!L) continue;
-        for (int y = 0; y < BM_BLK; y++) { memcpy(&L->map[oy + y][ox], own.map[k + 1][y], BM_BLK); memcpy(&L->fl[oy + y][ox], own.fl[k + 1][y], BM_BLK); memcpy(&L->wp[oy + y][ox], own.wp[k + 1][y], BM_BLK); }
+COLD static int pb_add(int bx, int by) { if (npb >= NPB) return -1; PropBlk *b = &pb[npb]; memset(b, 0, sizeof *b); b->bx = (u16)bx; b->by = (u16)by; return npb++; }
+COLD __attribute__((noinline)) static void pb_remove(int i, int all) {   // its kept tiles let go (the ones kept after it slide up); all: the record too
+    u8 *p = pb_at(i), *lo = pb_end() - pb_used; int n = pb[i].len;
+    memmove(lo + n, lo, (size_t)(p - lo)); pb_used -= n; pb[i].len = 0; pb[i].kept = 0;
+    if (all) { for (int k = i; k < npb - 1; k++) pb[k] = pb[k + 1]; npb--; }
+}
+COLD static int pb_xfer(PropBlk *b, u8 *buf, int cap, int wx, int wy, int unpack) {   // a block's every storey, packed row by row into buf (wx < 0:
+    static u8 junk[BM_BLK];                                                              // from pb_src), or unpacked into the window. The length (-1: no room)
+    int o = 0, ox = wx * BM_BLK, oy = wy * BM_BLK, N = NLEVELS * BM_BLK * BM_BLK;
+    if (!unpack && wx >= 0) b->lv = 0;
+    for (int k = 0; k < NLEVELS; k++) {
+        int bit = k ? 1 << (k - 1) : 0, sm = MW + 1, s = MW; u8 *m, *f, *w; Level *L = 0;
+        if (wx < 0) { if (bit && !(b->lv & bit)) continue; m = (u8 *)pb_src + k * BM_BLK * BM_BLK; f = m + N; w = f + N; sm = s = BM_BLK; }
+        else {
+            if (k && !(b->lv & bit)) {   // (packing, every storey looked over; unpacking, a storey with nothing of theirs is cleared)
+                if (!(L = lv_get(k - 1))) continue;
+                int any = 0; for (int y = oy; y < oy + BM_BLK; y++) for (int x = ox; x < ox + BM_BLK; x++) { if (unpack) { L->map[y][x] = ' '; L->fl[y][x] = L->wp[y][x] = 0; } any |= L->map[y][x] != ' '; }
+                if (unpack || !any) continue;
+            } else if (k) L = lv_need(k - 1);
+            m = k ? (L ? (u8 *)&L->map[oy][ox] : junk) : (u8 *)&lifeMap[oy][ox]; f = k ? (L ? &L->fl[oy][ox] : junk) : &floorMap[oy][ox]; w = k ? (L ? &L->wp[oy][ox] : junk) : &wallMap[oy][ox];
+            if (k && !L) sm = s = 0;
+        }
+        if (!unpack) b->lv |= (u8)bit;
+        for (int j = 0; j < 3; j++) for (int y = 0; y < BM_BLK; y++) {
+            u8 *p = j == 0 ? m + y * sm : (j == 1 ? f : w) + y * s;
+            if (unpack) o += rle_unpack(buf + o, p, BM_BLK);
+            else { int n = rle_pack(p, BM_BLK, buf + o, cap - o); if (n < 0) return -1; o += n; }
+        }
     }
-    roof_dirty = 1;
+    if (unpack) roof_dirty = 1;
+    return o;
+}
+static void edit_forget(int bx, int by) { EditBlk *e = edit_find(bx, by); if (e) e->bx = e->by = 0xFFFF; }
+COLD static void pb_keep(int i, int wx, int wy) {   // a block of theirs leaving the window (or the save): its tiles kept
+    pb_remove(i, 0);
+    PropBlk b = pb[i]; for (int k = i; k < npb - 1; k++) pb[k] = pb[k + 1]; i = npb - 1;   // (the newest keep goes at the bottom of the store)
+    u8 *lo = pbx ? pbx : zpack + zp_used(), *top = pb_end() - pb_used;
+    int n = top > lo ? pb_xfer(&b, lo, (int)(top - lo), wx, wy, 0) : -1;
+    b.touched = 0;
+    if (n >= 0) { memmove(top - n, lo, (size_t)n); pb_used += n; b.len = (u16)n; b.kept = 1; }
+    else if (wx >= 0) edit_save(wx, wy);                  // (no room: the ground floor, the usual way)
+    pb[i] = b;
+}
+COLD static void blk_keep(int wx, int wy) {   // a block of the window about to go: what was built on it kept aside
+    int q = pb_in(wx, wy);
+    if (q >= 0) { if (pb[q].touched) pb_keep(q, wx, wy); } else if (wdirty[wy][wx]) edit_save(wx, wy);
 }
 static void homes_drop(int bx, int by) {   // a block made again: its homes are registered afresh
     int z = ZONE_CITY, n = 0;
@@ -1456,15 +1498,22 @@ static void homes_drop(int bx, int by) {   // a block made again: its homes are 
 }
 static void gen_block(int wx, int wy);
 COLD static void block_again(int wx, int wy) { homes_drop(world_wbx + wx, world_wby + wy); gen_block(wx, wy); ao_dirty = 1; roof_dirty = 1; world_stamp++; }
-COLD void world_own_set(int bx, int by, const u8 *occ) {   // the family's new lot (occ: adults, kids, teens, elders, a couple, babies)
-    own.used = 1; own.fresh = 1; own.bx = (u16)bx; own.by = (u16)by; own.lv = 0; own.home = 0;
-    memset(&own_occ, 0, sizeof own_occ);
-    own_occ.adults = occ[0]; own_occ.kids = occ[1]; own_occ.teens = occ[2]; own_occ.elders = occ[3]; own_occ.couple = occ[4]; own_occ.babies = occ[5];
-    int wx, wy; if (own_in_window(&wx, &wy)) block_again(wx, wy);   // (standing there: it is made for them now)
+COLD static void own_rect(int wx, int wy) {   // where the home's house is, from the homes in the window (an empty lot: none)
+    int hi = world_home_find(ZONE_CITY, own.bx, own.by, 0), ox = wx * BM_BLK, oy = wy * BM_BLK; own.home = hi >= 0;
+    if (hi >= 0) { const Home *hm = &homes[ZONE_CITY][hi];
+        own.hx0 = (u8)(hm->x0 - ox); own.hy0 = (u8)(hm->y0 - oy); own.hx1 = (u8)(hm->x1 - ox); own.hy1 = (u8)(hm->y1 - oy); own.hdx = (u8)(hm->dx - ox); own.hdy = (u8)(hm->dy - oy); }
+}
+COLD void world_own_set(int bx, int by, const u8 *occ) {   // the family's new lot (occ: adults, kids, teens, elders, a couple, babies). occ 0: a
+    int i = pb_find(bx, by), wx, wy;                         // property of theirs, kept as it is
+    if (i < 0) i = pb_add(bx, by); else if (occ) pb_remove(i, 0);
+    own.used = 1; own.fresh = occ != 0; own.bx = (u16)bx; own.by = (u16)by; own.lv = 0; own.home = 0;
+    memset(&own_occ, 0, sizeof own_occ); own_occ.vacant = !occ;
+    if (occ) { own_occ.adults = occ[0]; own_occ.kids = occ[1]; own_occ.teens = occ[2]; own_occ.elders = occ[3]; own_occ.couple = occ[4]; own_occ.babies = occ[5]; }
+    if (own_in_window(&wx, &wy)) { if (occ) block_again(wx, wy); else { own_rect(wx, wy); if (i >= 0) pb[i].touched = 1; } }   // (standing there: it is made for them now)
 }
 void world_own_clear(void) {   // sold: the block is the generator's again
-    int wx, wy, in = own_in_window(&wx, &wy);
-    own.used = 0;
+    int wx, wy, in = own_in_window(&wx, &wy), i = pb_find(own.bx, own.by);
+    own.used = 0; if (i >= 0) pb_remove(i, 1);
     if (in) block_again(wx, wy);
 }
 int world_own_lot(int tx, int ty) {   // that tile of the window is on the family's own lot (not the street round it)
@@ -1479,6 +1528,49 @@ int world_own_door(int *tx, int *ty) {   // where to stand on getting home: by t
     return 1;
 }
 int world_own_block(int *wx, int *wy) { return own_in_window(wx, wy); }
+COLD static int pb_win(int bx, int by, int *wx, int *wy) { *wx = bx - world_wbx; *wy = by - world_wby; return world_zone == ZONE_CITY && world_wbx >= 0 && *wx >= 0 && *wy >= 0 && *wx < WB && *wy < WB; }
+COLD int world_prop_add(int bx, int by) {   // bought, to own and not live in: the generator's block, emptied (or sold, add again: the generator's)
+    int i = pb_find(bx, by), wx, wy;
+    if (i >= 0) pb_remove(i, 1); else if (pb_add(bx, by) < 0) return 0;
+    edit_forget(bx, by);
+    if (pb_win(bx, by, &wx, &wy)) block_again(wx, wy);
+    return 1;
+}
+COLD int world_prop_from_home(void) {   // the family moves out of its lot: it stays theirs, a property now, just as they left it
+    int wx, wy, i = own.used ? pb_find(own.bx, own.by) : -1; if (i < 0) return 0;
+    if (own_in_window(&wx, &wy)) pb[i].touched = 1;          // (in view: its tiles are kept when it goes)
+    own.used = 0;
+    return 1;
+}
+COLD void world_prop_to_home(int bx, int by, const u8 *occ) {   // ... and moves into a property: if nothing on it was changed it is furnished for them now
+    int i = pb_find(bx, by);
+    world_own_set(bx, by, i >= 0 && (pb[i].kept || pb[i].touched) ? 0 : occ);
+}
+COLD __attribute__((noinline)) int world_prop_lot(int tx, int ty) {   // which block of theirs that tile of the window is on, + 1 (0: none; not the street round it)
+    if (!npb || world_zone != ZONE_CITY || world_wbx < 0 || tx < 0 || ty < 0 || tx >= MW || ty >= MH || tx % BM_BLK < BM_LOT0 || ty % BM_BLK < BM_LOT0) return 0;
+    return pb_in(tx / BM_BLK, ty / BM_BLK) + 1;
+}
+static void pb_touch(int mx, int my) { int i = world_prop_lot(mx, my); if (i) pb[i - 1].touched = 1; }
+#ifdef AUTO_PROP
+int world_dbg_oldsave(void) {   // (test builds) the home's tiles laid out as a save before version 42 held them, packed the way world_load does for one, made again: 1 if they match
+    int wx, wy, i = pb_find(own.bx, own.by), N = NLEVELS * BM_BLK * BM_BLK, bad = 0, lv = 0; if (i < 0 || !own_in_window(&wx, &wy)) return -1;
+    u8 *t = (u8 *)atlas_scratch(), *c = t + 3 * N; int ox = wx * BM_BLK, oy = wy * BM_BLK;
+    for (int k = 0; k < NLEVELS; k++) { const Level *L = k ? lv_get(k - 1) : 0; int any = 0;
+        for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) { int o = (k * BM_BLK + y) * BM_BLK + x;
+            t[o] = k ? (L ? L->map[oy + y][ox + x] : ' ') : lifeMap[oy + y][ox + x]; t[N + o] = k ? (L ? L->fl[oy + y][ox + x] : 0) : floorMap[oy + y][ox + x]; t[2 * N + o] = k ? (L ? L->wp[oy + y][ox + x] : 0) : wallMap[oy + y][ox + x];
+            if (k && t[o] != ' ') any = 1; }
+        if (any) lv |= 1 << (k - 1); }
+    memcpy(c, t, 3 * N);
+    pb_remove(i, 0); pb[i].lv = (u8)lv; pb_src = t; pb_keep(i, -1, -1);
+    i = pb_find(own.bx, own.by); if (!pb[i].kept) return -2;
+    block_again(wx, wy);
+    for (int k = 0; k < NLEVELS; k++) { const Level *L = k ? lv_get(k - 1) : 0; if (k && !(lv & (1 << (k - 1)))) continue;
+        for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) { int o = (k * BM_BLK + y) * BM_BLK + x;
+            bad += c[o] != (k ? (L ? (u8)L->map[oy + y][ox + x] : ' ') : (u8)lifeMap[oy + y][ox + x]); } }
+    return bad ? -100 - bad : 1 + lv * 10;
+}
+#endif
+   // something on a block of theirs changed: it is kept from now on
 
 static int blk_roads(int bx, int by) {   // which streets a block has (bit 0 along x, bit 1 along y), as the block's own generator will paint them
     BInfo nb; bm_block(bx, by, &nb);
@@ -1583,12 +1675,7 @@ COLD static void gen_block(int wx, int wy) {
         if (rd & 2) for (int i = 0; i < nc; i++) gFace(ox + BM_LOT0, oy + 7 + i * 6 + (int)((b.h >> (12 + i * 3)) % 3), '+', 1);
     }
     if (mg && mpart) mega_zone(ox, oy, mpart, mkind, b.h);
-    int mine = own.used && bx == own.bx && by == own.by;
-    if (mine && !own.fresh) {                            // the family's own lot: as they left it
-        own_load(wx, wy);
-        if (own.home) { blk_bx = bx; blk_by = by; blk_unit = 0; reg_home(ox + own.hx0, oy + own.hy0, ox + own.hx1, oy + own.hy1, ox + own.hdx, oy + own.hdy); blk_bx = blk_by = 0xFFFF; }
-        wdirty[wy][wx] = 0; return;
-    }
+    int mine = own.used && bx == own.bx && by == own.by, prop = npb ? pb_in(wx, wy) : -1;   // (their home, or a block of theirs: kept tiles laid over the generator's, below)
     blk_bx = bx; blk_by = by; blk_unit = 0;
     int units = bm_units(&b), st = bm_storeys(&b);
     occ_on = 1;
@@ -1660,16 +1747,19 @@ COLD static void gen_block(int wx, int wy) {
         gFree(ox + 3, oy + 3, '"'); gFree(ox + 10, oy + 3, '"'); gFree(ox + 3, oy + 10, '"');
         if ((h >> 24) % 3u == 0) gFree(ox + 6, oy + 3, 'Y');
     }
-    if (mine) {                                          // the family's lot, made for the first time: no sign now; kept from here on
+    if (mine || prop >= 0) {                             // the family's lot (or a property of theirs), made for the first time: no sign now
         for (int y = oy; y < oy + BM_BLK; y++) for (int x = ox; x < ox + BM_BLK; x++) if (lifeMap[y][x] == '8') lifeMap[y][x] = '.';
         if (b.lot == LOT_EMPTY)                          // an empty lot: cleared for building (the junk carted off, the ground levelled; the trees round its edge stay)
             for (int y = ly + 1; y <= ly + 11; y++) for (int x = lx + 1; x <= lx + 11; x++) {
                 lifeMap[y][x] = '.'; if (floorMap[y][x] == FL_SOIL || floorMap[y][x] == FL_ROCK) floorMap[y][x] = (u8)ground; }
-        int hi = world_home_find(ZONE_CITY, bx, by, 0);
-        if (hi >= 0) { const Home *hm = &homes[ZONE_CITY][hi]; own.home = 1;
-            own.hx0 = (u8)(hm->x0 - ox); own.hy0 = (u8)(hm->y0 - oy); own.hx1 = (u8)(hm->x1 - ox); own.hy1 = (u8)(hm->y1 - oy); own.hdx = (u8)(hm->dx - ox); own.hdy = (u8)(hm->dy - oy); }
-        own.fresh = 0; own_save(wx, wy); wdirty[wy][wx] = 0; return;
     }
+    if (prop >= 0 && pb[prop].kept) pb_xfer(&pb[prop], pb_at(prop), 0, wx, wy, 1);   // their home or a property: as they left it (the homes registered as made)
+    if (mine) {                                          // (the family's lot: kept from here on)
+        own_rect(wx, wy); own.fresh = 0; own_occ.vacant = 1; if (prop >= 0) pb[prop].touched = 1;
+        if (prop < 0 || !pb[prop].kept) edit_load(wx, wy);   // (its tiles had no room in the store: the ground floor, kept the usual way)
+        wdirty[wy][wx] = 0; return;
+    }
+    if (prop >= 0 && pb[prop].kept) { wdirty[wy][wx] = 0; return; }
     wdirty[wy][wx] = (u8)edit_load(wx, wy);
 }
 static void row_from(u8 *a, int stride, int w, int h, int y, int ys, int dx, u8 fill) {
@@ -1692,7 +1782,7 @@ static void window_shift(int sx, int sy) {
     for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks leaving: keep what was built on
         int nx = wx - sx, ny = wy - sy;
         if (nx >= 0 && ny >= 0 && nx < WB && ny < WB) continue;
-        if (own_at(wx, wy)) own_save(wx, wy); else if (wdirty[wy][wx]) edit_save(wx, wy);
+        blk_keep(wx, wy);
     }
     int dx = sx * BM_BLK, dy = sy * BM_BLK;
     shift2d((u8 *)lifeMap, MW + 1, MW, MH, dx, dy, '.');
@@ -1731,7 +1821,7 @@ static void window_shift(int sx, int sy) {
 }
 static void window_keep(void) {                  // what was built in the window, kept aside before it goes
     if (world_zone != ZONE_CITY || world_wbx < 0) return;
-    for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) { if (own_at(wx, wy)) own_save(wx, wy); else if (wdirty[wy][wx]) edit_save(wx, wy); }
+    for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) blk_keep(wx, wy);
 }
 COLD void world_open_at(int cbx, int cby) {          // the window round block (cbx, cby): a new arrival, a taxi ride
     window_keep();
@@ -1763,7 +1853,7 @@ void world_arrival(int set, int *px, int *py) {  // where a bus or a taxi drops 
 }
 int world_block_info(int wx, int wy, BInfo *b) { if (world_wbx < 0) return 0; bm_block(world_wbx + wx, world_wby + wy, b); return 1; }
 void world_gh_reset(void);
-void world_new_seed(u32 seed) { wsalt = seed; world_wbx = world_wby = -1; edit_init(); own.used = 0; world_gh_reset(); }
+void world_new_seed(u32 seed) { wsalt = seed; world_wbx = world_wby = -1; edit_init(); own.used = 0; pb_reset(); world_gh_reset(); }
 void world_gen_city(void) { nhomes[ZONE_CITY] = 0; world_wbx = world_wby = -1; }   // (the window is built where you arrive: world_arrival, world_open_at)
 
 COLD void world_switch(int z) {
@@ -1787,6 +1877,7 @@ COLD void world_switch(int z) {
 }
 void world_reset_all(void) {
     for (int i = 0; i < ZONE_N; i++) nhomes[i] = 0;
+    pb_reset();
     ao_dirty = 1; for (int i = 0; i < ZONE_N; i++) { if (i < ZONE_CITY) zone_drop(i); levels_clear(lvown[i]); } world_zone = ZONE_HOME; UP = lvown[0]; world_gen(); }
 char world_at(int mx, int my) { return world_at_l(world_lvl, mx, my); }
 static int is_wall(char c) { return c == 'W' || c == 'w' || c == 'E' || c == 'e' || c == 'f'; }
@@ -3323,8 +3414,8 @@ __attribute__((optimize("Os"))) void world_save(int with_home) {   // with_home:
         sv_u16(own.bx); sv_u16(own.by); sv_u8(own.fresh); sv_u8(own.lv); sv_u8(own.home);
         sv_u8(own.hx0); sv_u8(own.hy0); sv_u8(own.hx1); sv_u8(own.hy1); sv_u8(own.hdx); sv_u8(own.hdy);
         sv_n(&own_occ, sizeof own_occ);
-        if (!own.fresh) { sv_rle(own.map, sizeof own.map); sv_rle(own.fl, sizeof own.fl); sv_rle(own.wp, sizeof own.wp); }
     }
+    sv_u8(npb); sv_n(pb, npb * (int)sizeof(PropBlk)); sv_u16(pb_used); sv_n(pb_end() - pb_used, pb_used);   // (version 42: the blocks they own, the home and the properties, and the tiles kept for them)
     int e0 = MAX(0, nedit - 48);   // (the 48 blocks built on last, at most: an 8 MB machine keeps more in play than a card should hold)
     sv_u16(nedit - e0); sv_u16(e0 ? 0 : edit_next);
     for (int i = e0; i < nedit; i++) { sv_u16(edits[i].bx); sv_u16(edits[i].by); sv_rle(edits[i].map, sizeof edits[i].map); sv_rle(edits[i].fl, sizeof edits[i].fl); sv_rle(edits[i].wp, sizeof edits[i].wp); }
@@ -3334,6 +3425,7 @@ __attribute__((optimize("Os"))) void world_load(void) {   // (after world_new_se
     world_wbx_saved = wbx; world_wby_saved = wby;
     if (ld_u8()) ld_zone_live();
     for (int z = ZONE_ISLAND; z <= ZONE_TOWN; z++) if (ld_u8()) { world_switch(z); ld_zone_live(); world_switch(ZONE_HOME); }   // (made by its generator first: its homes, the dock, the fire; then the tiles as they were)
+    npb = 0; pb_used = 0;
     own.used = ld_u8();
     if (own.used) {
         own.bx = (u16)ld_u16(); own.by = (u16)ld_u16(); own.fresh = (u8)ld_u8(); own.lv = (u8)ld_u8(); own.home = (u8)ld_u8();
@@ -3344,8 +3436,16 @@ __attribute__((optimize("Os"))) void world_load(void) {   // (after world_new_se
             if (!own.fresh) { ld_rle(junk, NLEVELS * 256); ld_rle(junk, NLEVELS * 256); ld_rle(junk, NLEVELS * 256); }
             own.used = 0;
         } else
-        if (!own.fresh) { ld_rle(own.map, sizeof own.map); ld_rle(own.fl, sizeof own.fl); ld_rle(own.wp, sizeof own.wp); }
+        if (save_ver < 42) {   // (before version 42 the home's tiles came here, as they were: packed into the store now, the way the save keeps them)
+            int i = pb_add(own.bx, own.by), N = NLEVELS * BM_BLK * BM_BLK; u8 *t = (u8 *)atlas_scratch();
+            if (!own.fresh) { ld_rle(t, N); ld_rle(t + N, N); ld_rle(t + 2 * N, N); pb[i].lv = own.lv; pb_src = t; pb_keep(i, -1, -1); }
+        }
     }
+    if (save_ver >= 42) { int m = ld_u8(); if (m > NPB) { ld_fail(); m = 0; }
+        ld_n(pb, m * (int)sizeof(PropBlk)); npb = m;
+        int k = ld_u16(); u8 *lo = pbx ? pbx : zpack + zp_used();
+        if (pb_end() - k >= lo) { ld_n(pb_end() - k, k); pb_used = k; }
+        else { while (k--) ld_u8(); for (int i = 0; i < npb; i++) pb[i].kept = 0, pb[i].len = 0; } }   // (no room for their tiles: the generator's blocks)
     int n = ld_u16(); edit_next = ld_u16(); nedit = 0;
     for (int i = 0; i < n; i++) {
         EditBlk t; int keep = i < nedit_max; EditBlk *e = keep ? &edits[i] : &t;   // (t: a block too many for this machine's list is read and dropped)

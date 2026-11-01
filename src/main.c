@@ -142,8 +142,9 @@ static void travel_go(int z);
 static void name_open(char *buf, int cap, const char *title, void (*done)(void));
 // ---- ARE YOU SURE: before anything that cannot be undone (a new life, quitting, moving house). NO is picked to start with ----
 static const char *cf_title; static char cf_body[160]; static void (*cf_yes)(void); static int cf_back, cf_sel, cf_t;
+static const char *const *cf_lab; static int cf_n; static void (*cf_pick)(int);   // (or a choice of cf_n: the last one is NO)
 static void confirm_open(const char *title, const char *body, void (*yes)(void)) {
-    cf_title = title; strncpy(cf_body, body, sizeof cf_body - 1); cf_body[sizeof cf_body - 1] = 0; cf_yes = yes; cf_back = state; cf_sel = 1; cf_t = 0; state = ST_CONFIRM;
+    cf_title = title; strncpy(cf_body, body, sizeof cf_body - 1); cf_body[sizeof cf_body - 1] = 0; cf_yes = yes; cf_back = state; cf_sel = 1; cf_t = 0; cf_n = 0; state = ST_CONFIRM;
 }
 static void life_draw(void);
 static int map_bus, map_t;   // the map is the bus map (a stop on the street): $ a ride, and the wait, instead of the $20 taxi
@@ -168,6 +169,9 @@ static void wm_check_dials(void);
 static int wm_used;
 static void create_draw(void);
 static void nhood_open(int first);   // THE NEIGHBORHOOD: 48 lots to pick a home from (first: a new life, before they have one)
+static void buyask_open(int bx, int by);   // BUY IT HOW?: move in, or own it as a property
+static void homes_open(void);
+static int hm_tab;                         // HOMES: 0 for sale, 1 MY PROPERTIES
 static int nh_pending;                // a new life has begun: the neighborhood opens on its first frame
 static u32 life_seed;                 // the world the next new life is made in (0: fresh dice)
 static char life_cap[18];             // ... and its capital's name, if the player gave it one
@@ -771,7 +775,7 @@ static void life_update(int steps) {
             if (fr_ > 120 && s->action == ACT_NONE) { int ph = ((fr_ - 120) / 700) & 3; int v = 9 * steps; if (ph == 0) s->x += v; else if (ph == 1) s->z -= v; else if (ph == 2) s->x -= v; else s->z += v; }
             cam_pitch = 470; cam_dist = 3200; cam_yaw = (fr_ * 3) & 4095;
           }
-#elif !defined(AUTO_TOWER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR)
+#elif !defined(AUTO_TOWER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_PROP)
           if (fr_ > 240 && s->action == ACT_NONE) s->x += 11 * steps;   // (stroll east along the street)
           if (fr_ > 2000) { cam_pitch = 700; cam_dist = 4200; cam_yaw = 2048 + 500; }   // (then look over the roofs)
 #ifdef AUTO_LOW
@@ -793,6 +797,8 @@ static void life_update(int steps) {
     if (travel_asked) { travel_asked = 0; travel_sel = home_city && home_is_here() ? 0 : world_zone + home_city; state = ST_TRAVEL; }
     if (sim_story_over) { sim_story_over = 0; state = ST_OVER; }   // the last of the family is gone
     if (home_move_asked) { home_move_asked = 0; home_go(); }          // a home just bought: they move in
+    { static int pa_last = -1; int pi = prop_here();                  // on one of your properties: say so (once each time you come onto it)
+      if (pi != pa_last && (pa_last = pi) >= 0) { char b[48], ad[24]; snprintf(b, sizeof b, "YOUR PROPERTY: %s", home_address(props[pi].bx, props[pi].by, ad)); sim_note(b); } }
     if (isl_craft_asked) { isl_craft_asked = 0; craft_sel = 0; craft_msg_t = 0; state = ST_CRAFT; }   // the campfire: make something
 }
 
@@ -1248,53 +1254,100 @@ static void homes_open(void) {
     int cbx, cby;
     if (world_zone == ZONE_CITY && world_wbx >= 0) { cbx = world_wbx + sim_tile_x(&sims[player]) / BM_BLK; cby = world_wby + sim_tile_y(&sims[player]) / BM_BLK; }
     else { const Settle *cp = bm_set(bm_capital()); cbx = cp->x; cby = cp->y; }
-    hm_n = home_list(cbx, cby, hm_ad, 16); hm_sel = 0; hm_scroll = 0; state = ST_HOMES;
+    hm_n = home_list(cbx, cby, hm_ad, 16); hm_sel = 0; hm_scroll = 0; hm_tab = 0; state = ST_HOMES;
 }
+// BUY IT HOW?: move in (the old home kept as a property, or sold), or buy it as a property (yours; the family lives where it is)
+static int bk_bx, bk_by, bk_set; static const u8 bkHow[3][4] = { { HB_KEEP, HB_PROP }, { HB_KEEP, HB_SELL, HB_PROP }, { HB_SELL, HB_PROP } };   // (no home yet; a home; a home and 8 properties)
+static const char *const bkLab[3][4] = { { "MOVE IN", "BUY AS PROPERTY", "NO, GO BACK" }, { "MOVE IN, KEEP OLD HOME", "MOVE IN, SELL OLD HOME", "BUY AS PROPERTY", "NO, GO BACK" },
+                                         { "MOVE IN, SELL OLD HOME", "BUY AS PROPERTY", "NO, GO BACK" } };
+static void buyask_pick(int k) { if (home_buy(bk_bx, bk_by, bkHow[bk_set][k])) state = ST_LIFE; }   // (moving in: life_update moves the family in)
+static void buyask_open(int bx, int by) {
+    char b[160], ad[24]; BInfo bi; bm_block(bx, by, &bi);
+    if (!home_for_sale(bx, by)) { sim_note("TOO LATE, THAT ONE IS SOLD"); audio_voice(VOICE_NAH); return; }
+    int n = snprintf(b, sizeof b, "%s, %s: $%d. YOU HAVE $%ld.", home_address(bx, by, ad), home_kind(bi.lot), home_price(bx, by), cash);
+    if (home_city) snprintf(b + n, sizeof b - n, " YOUR OLD HOME SELLS FOR $%d.", home_paid);
+    bk_bx = bx; bk_by = by; bk_set = !home_city ? 0 : nprops < PROP_MAX ? 1 : 2; confirm_open("BUY IT HOW?", b, 0);
+    cf_n = bk_set == 1 ? 4 : 3; cf_lab = bkLab[bk_set]; cf_pick = buyask_pick; cf_sel = 0;
+}
+// MY PROPERTIES (the second page): the home first, then the places the family owns. Go there, move in, sell
+static int hm_rows(void) { return hm_tab ? 1 + nprops : hm_n; }
+static int hm_row(int i, int *bx, int *by, int *price) {   // that row's block and price; its lot (-1: THE MAN BASE)
+    if (!hm_tab) { *bx = hm_ad[i].bx; *by = hm_ad[i].by; *price = hm_ad[i].price; return hm_ad[i].lot; }
+    if (!i && !home_city) { *price = 0; return -1; }
+    *bx = i ? props[i - 1].bx : home_bx; *by = i ? props[i - 1].by : home_by; *price = i ? props[i - 1].paid : home_paid;
+    BInfo b; bm_block(*bx, *by, &b); return b.lot;
+}
+static void prop_go(int i) {   // a taxi there, free (it is yours): by its front door (an empty lot: its middle)
+    int bx = props[i].bx, by = props[i].by; char ad[24]; home_address(bx, by, ad);
+    taxi_to_block(bx, by, BM_LOT0 + 6, BM_LOT0 + 6, ad);
+    int hi = world_home_find(ZONE_CITY, bx, by, 0);
+    if (hi >= 0) { const Home *h = world_home(ZONE_CITY, hi); put_household(h->dx, h->dy + 1); }
+}
+static void props_move_yes(void) { if (prop_move_in(hm_sel - 1)) state = ST_LIFE; }   // (life_update moves the family in)
+static void props_sell_yes(void) { prop_sell(hm_sel - 1); if (hm_sel > nprops) hm_sel = nprops; }
 static void homes_update(void) {
+    char b[160], ad[24];
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { state = BACK_TO(); return; }
-    if (!hm_n) return;
-    if (PRESSED(PAD_UP)) hm_sel = (hm_sel + hm_n - 1) % hm_n;
-    if (PRESSED(PAD_DOWN)) hm_sel = (hm_sel + 1) % hm_n;
+    if (PRESSED(PAD_L1) || PRESSED(PAD_R1)) { hm_tab ^= 1; hm_sel = hm_scroll = 0; audio_voice(VOICE_AGREE); }
+    int n = hm_rows(); if (!n) return;
+    if (PRESSED(PAD_UP)) hm_sel = (hm_sel + n - 1) % n;
+    if (PRESSED(PAD_DOWN)) hm_sel = (hm_sel + 1) % n;
+    if (hm_tab) {
+        int i = hm_sel - 1;
+        if (PRESSED(PAD_CROSS)) { state = ST_LIFE; if (i >= 0) prop_go(i); else if (home_city) { if (!home_is_here()) home_go(); } else if (world_zone != ZONE_HOME) travel_go(ZONE_HOME); return; }
+        if (i < 0) { if (PRESSED(PAD_SQUARE) || PRESSED(PAD_TRIANGLE)) { sim_note("YOU LIVE HERE. MOVE TO ANOTHER HOME FIRST"); audio_voice(VOICE_NAH); } return; }
+        home_address(props[i].bx, props[i].by, ad);
+        if (PRESSED(PAD_SQUARE)) { snprintf(b, sizeof b, "MOVE TO %s? YOUR HOME NOW STAYS YOURS, AS A PROPERTY.", ad); confirm_open("MOVE IN?", b, props_move_yes); }
+        if (PRESSED(PAD_TRIANGLE)) { snprintf(b, sizeof b, "SELL %s FOR $%d? ANYTHING YOU BUILT THERE GOES WITH IT.", ad, props[i].paid); confirm_open("SELL IT?", b, props_sell_yes); }
+        return;
+    }
     const HomeAd *a = &hm_ad[hm_sel];
-    if (PRESSED(PAD_CROSS)) { if (home_buy(a->bx, a->by)) state = ST_LIFE; }   // (life_update moves the family in)
+    if (PRESSED(PAD_CROSS)) buyask_open(a->bx, a->by);                         // (move in, or own it as a property)
     if (PRESSED(PAD_SQUARE)) {                                                 // go and see it first
         if (cash < 20) { audio_voice(VOICE_NAH); return; }
-        cash -= 20; char ad[24]; home_address(a->bx, a->by, ad); taxi_to_block(a->bx, a->by, -1, -1, ad); state = ST_LIFE;
+        cash -= 20; home_address(a->bx, a->by, ad); taxi_to_block(a->bx, a->by, -1, -1, ad); state = ST_LIFE;
     }
 }
 static void homes_draw(void) {
     life_draw();
     ui_dim();
     char b[48], ad[24];
-    int top = ui_window(8, 6, 304, 228, "HOMES FOR SALE", IC_HOUSE);
-    if (home_city) { home_address(home_bx, home_by, ad); snprintf(b, sizeof b, "YOURS: %s", ad); } else strcpy(b, "YOURS: THE MAN BASE");
+    int top = ui_window(8, 6, 304, 228, hm_tab ? "MY PROPERTIES" : "HOMES FOR SALE", IC_HOUSE), n = hm_rows(), bx = 0, by = 0, pr;
+    if (hm_tab) sprintf(b, "HOME + %d OF %d PROPERTIES", nprops, PROP_MAX);
+    else if (home_city) { home_address(home_bx, home_by, ad); snprintf(b, sizeof b, "YOURS: %s", ad); } else strcpy(b, "YOURS: THE MAN BASE");
     ui_icon(12, top - 2, IC_HOUSE, UI_GREEN); ui_text(28, top, 1, b, UI_GOODT);
     sprintf(b, "$%ld", cash); ui_text(306 - ui_tw(1, b), top, 1, b, UI_GOODT);
     gfx_rect(12, top + 12, 296, 1, 214, 222, 232, 0);
-    if (!hm_n) { ui_textc(160, top + 60, 1, "NOTHING FOR SALE NEAR HERE", UI_SOFT); ui_hints(160, 214, "O BACK", 1); return; }
+    if (!n) { ui_textc(160, top + 60, 1, "NOTHING FOR SALE NEAR HERE", UI_SOFT); ui_hints(160, 214, "R1 MINE|O BACK", 1); return; }
     int refund = home_city ? home_paid : 0, rows = 9;
     if (hm_sel < hm_scroll) hm_scroll = hm_sel;
     if (hm_sel >= hm_scroll + rows) hm_scroll = hm_sel - rows + 1;
-    for (int k = 0; k < rows && hm_scroll + k < hm_n; k++) {   // the list: what, where, how much (red: more than you have)
-        int i = hm_scroll + k, y = top + 18 + k * 13, sel = i == hm_sel; const HomeAd *a = &hm_ad[i];
+    for (int k = 0; k < rows && hm_scroll + k < n; k++) {   // the list: what, where, how much (red: more than you have)
+        int i = hm_scroll + k, y = top + 18 + k * 13, sel = i == hm_sel, lot = hm_row(i, &bx, &by, &pr), home = hm_tab && !i;
         if (sel) { ui_round(12, y - 2, 296, 13, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(12, y, 2, 9, 38, 146, 222, 0); }
-        ui_icon(17, y - 2, a->lot == LOT_EMPTY ? IC_SPROUT : IC_HOUSE, sel ? UI_BLUE : UI_SOFT);
-        ui_text(33, y, 1, home_address(a->bx, a->by, ad), sel ? UI_BLUE2 : UI_INK);
-        ui_text(162, y, 1, home_kind(a->lot), UI_SOFT);
-        sprintf(b, "$%d", a->price); ui_text(304 - ui_tw(1, b), y, 1, b, cash + refund >= a->price ? UI_GOODT : UI_BADT);
+        ui_icon(17, y - 2, lot == LOT_EMPTY ? IC_SPROUT : IC_HOUSE, home ? UI_GREEN : sel ? UI_BLUE : UI_SOFT);
+        ui_textfit(33, y, 126, lot < 0 ? "THE MAN BASE" : home_address(bx, by, ad), sel ? UI_BLUE2 : UI_INK);
+        ui_text(162, y, 1, home ? "HOME" : home_kind(lot), home ? UI_GOODT : UI_SOFT);
+        sprintf(b, "$%d", pr); if (lot >= 0) ui_text(304 - ui_tw(1, b), y, 1, b, hm_tab || cash + refund >= pr ? UI_GOODT : UI_BADT);
     }
     {   // the one picked: where, what you get
-        const HomeAd *a = &hm_ad[hm_sel]; const Settle *st = a->set != 255 ? bm_set(a->set) : 0;
-        int y = top + 18 + rows * 13 + 4;
+        int lot = hm_row(hm_sel, &bx, &by, &pr), y = top + 18 + rows * 13 + 4; const Settle *st = 0;
+        if (lot >= 0) { BInfo bi; bm_block(bx, by, &bi); st = bi.set != 255 ? bm_set(bi.set) : 0; }
         ui_round(12, y, 296, 40, 6, UI_RGB(234, 240, 248), UI_RGB(224, 231, 240), 0);
-        ui_icon_disc(30, y + 20, 26, a->lot == LOT_EMPTY ? IC_SPROUT : IC_HOUSE, UI_BLUE, UI_WHITE);
-        snprintf(b, sizeof b, "%s IN %s", home_kind(a->lot), st ? st->name : "SAN BOREAS"); ui_text(48, y + 5, 1, b, UI_INK);
-        ui_text(48, y + 17, 1, home_blurb(a->lot), UI_SOFT);
-        if (cash + refund < a->price) ui_text(48, y + 28, 1, "NOT ENOUGH MONEY YET", UI_BADT);
-        else if (home_city) { sprintf(b, "YOUR HOME NOW SELLS FOR $%d", home_paid); ui_text(48, y + 28, 1, b, UI_SOFT); }
-        else ui_text(48, y + 28, 1, "THE MAN BASE STAYS YOURS TOO", UI_SOFT);
+        ui_icon_disc(30, y + 20, 26, lot == LOT_EMPTY ? IC_SPROUT : IC_HOUSE, hm_tab && !hm_sel ? UI_GREEN : UI_BLUE, UI_WHITE);
+        snprintf(b, sizeof b, "%s IN %s", lot < 0 ? "THE MAN BASE" : home_kind(lot), st ? st->name : "SAN BOREAS"); ui_text(48, y + 5, 1, b, UI_INK);
+        if (hm_tab) {
+            ui_text(48, y + 17, 1, hm_sel ? "YOURS. NOBODY LIVES HERE" : "YOUR HOME: THE FAMILY LIVES HERE", UI_SOFT);
+            if (hm_sel ? prop_here() == hm_sel - 1 : home_is_here()) ui_text(48, y + 28, 1, "YOU ARE HERE", UI_GOODT);
+            else if (hm_sel) { sprintf(b, "SELLS FOR $%d", pr); ui_text(48, y + 28, 1, b, UI_SOFT); }
+        } else {
+            ui_text(48, y + 17, 1, home_blurb(lot), UI_SOFT);
+            if (cash + refund < pr) ui_text(48, y + 28, 1, "NOT ENOUGH MONEY YET", UI_BADT);
+            else if (home_city) { sprintf(b, "YOUR HOME NOW SELLS FOR $%d", home_paid); ui_text(48, y + 28, 1, b, UI_SOFT); }
+            else ui_text(48, y + 28, 1, "THE MAN BASE STAYS YOURS TOO", UI_SOFT);
+        }
     }
-    ui_hints(160, 214, "X BUY AND MOVE IN|SQ SEE IT $20|O BACK", 1);
+    ui_hints(160, 214, !hm_tab ? "X BUY|SQ SEE IT $20|R1 MINE|O BACK" : hm_sel ? "X GO THERE|SQ MOVE IN|TRI SELL|L1 SALE|O BACK" : "X GO HOME|L1 FOR SALE|O BACK", 1);
 }
 
 #ifdef AUTO_HOME
@@ -1304,7 +1357,7 @@ static void home_tick(void) {   // (test builds: buy a house and move in, build 
     if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); cash = 40000; }
     static const struct { s16 at; char op; s8 arg; } plan[] = {
         { 60, 'Q', PH_HOMES }, { 160, 'b', 'X' },                            // the phone: HOMES
-        { 300, 'h', 0 }, { 400, 'b', 'X' },                                  // an affordable house: buy it and move in
+        { 300, 'h', 0 }, { 400, 'b', 'X' }, { 450, 'b', 'X' },              // an affordable house: buy it and move in (BUY IT HOW?: MOVE IN)
         { 800, 'k', 1 }, { 900, 'i', 0 }, { 1100, 'k', 0 },                  // outside, then inside: furnished for them
         { 1300, 'B', BT_ROOM }, { 1310, 'l', 1 }, { 1320, 'c', 0 }, { 1360, 'b', 'X' }, { 1400, 'c', 1 }, { 1500, 'b', 'X' },   // a storey over the house: the ROOM tool
         { 1600, 'B', BT_DOOR }, { 1610, 'w', 0 }, { 1640, 'R', 0 }, { 1660, 'b', 'X' },   // a window in it
@@ -1315,7 +1368,7 @@ static void home_tick(void) {   // (test builds: buy a house and move in, build 
         { 2700, 't', 0 }, { 2720, 'b', 'X' },                                 // TRAVEL: HOME
         { 3000, 'v', 0 }, { 3300, 'k', 0 },
         { 3400, 'Q', PH_HOMES }, { 3500, 'b', 'X' },                          // HOMES again
-        { 3600, 'h', 1 }, { 3700, 'b', 'X' },                                 // an empty lot this time (the house sells)
+        { 3600, 'h', 1 }, { 3700, 'b', 'X' }, { 3740, 'b', 'D' }, { 3780, 'b', 'X' },   // an empty lot this time (MOVE IN, SELL OLD HOME: the house sells)
         { 4100, 'k', 1 }, { 4200, 'B', BT_ROOM }, { 4210, 'c', 2 }, { 4240, 'b', 'X' }, { 4280, 'c', 3 }, { 4350, 'b', 'X' },   // a room on the lot
         { 4450, 'B', BT_DOOR }, { 4460, 'c', 4 }, { 4480, 'b', 'X' }, { 4560, 'b', 'O' }, { 4600, 'v', 1 },
         { 4900, 'Q', PH_TRAVEL }, { 4960, 'b', 'X' },                         // TRAVEL: home is on the list
@@ -1439,12 +1492,11 @@ static void nhood_hop(int dx, int dy) {            // the nearest lot that way (
     }
     if (best >= 0) { nh_sel = best; audio_voice(VOICE_FINISHED); }
 }
-static int nh_buy_sel;
-static void nhood_buy_yes(void) { if (home_buy(nh_bx[nh_buy_sel], nh_by[nh_buy_sel])) state = ST_LIFE; }
 static void nhood_update(void) {
     if (nh_t < 0) nhood_paint();
     nh_t++;
     if (PRESSED(PAD_CIRCLE) && !nh_first) { state = BACK_TO(); return; }
+    if (!nh_first && PRESSED(PAD_TRIANGLE)) { homes_open(); hm_tab = 1; return; }   // (MY PROPERTIES)
     if (!nh_n) { if (PRESSED(PAD_CROSS) || PRESSED(PAD_TRIANGLE) || PRESSED(PAD_CIRCLE)) state = ST_LIFE; return; }
     if (PRESSED(PAD_LEFT)) nhood_hop(-1, 0);
     if (PRESSED(PAD_RIGHT)) nhood_hop(1, 0);
@@ -1460,15 +1512,8 @@ static void nhood_update(void) {
     if (!nh_first && PRESSED(PAD_SELECT)) { homes_open(); return; }   // (the plain list)
     if (PRESSED(PAD_CROSS)) {
         if (!home_for_sale(nh_bx[nh_sel], nh_by[nh_sel])) { sim_note("TOO LATE, THAT ONE IS SOLD"); audio_voice(VOICE_NAH); return; }
-        if (home_city && !nh_first) {   // you have a home already: what moving costs, and what stays behind, first
-            if (nh_bx[nh_sel] == home_bx && nh_by[nh_sel] == home_by) { sim_note("THAT ONE IS YOUR HOME ALREADY"); return; }
-            char ad[24], old[24]; home_address(nh_bx[nh_sel], nh_by[nh_sel], ad); home_address(home_bx, home_by, old);
-            int net = nh_price[nh_sel] - home_paid; char b[160];
-            if (cash + home_paid < nh_price[nh_sel]) { sprintf(b, "NOT ENOUGH MONEY: IT IS $%d, AND YOURS SELLS FOR $%d", nh_price[nh_sel], home_paid); sim_note(b); audio_voice(VOICE_NAH); return; }
-            snprintf(b, sizeof b, "MOVE TO %s? %s SELLS FOR $%d. ANYTHING YOU BUILT OR BOUGHT THERE STAYS WITH THE HOUSE. %s $%d.", ad, old, home_paid, net >= 0 ? "AFTER THE SALE YOU PAY" : "AFTER THE SALE YOU GET", net >= 0 ? net : -net);
-            nh_buy_sel = nh_sel; confirm_open("MOVE HOUSE?", b, nhood_buy_yes); return;
-        }
-        if (home_buy(nh_bx[nh_sel], nh_by[nh_sel])) state = ST_LIFE;   // (life_update moves the family in)
+        if (nh_first) { if (home_buy(nh_bx[nh_sel], nh_by[nh_sel], HB_KEEP)) state = ST_LIFE; return; }   // (a new life: straight in. Life_update moves the family in)
+        buyask_open(nh_bx[nh_sel], nh_by[nh_sel]);     // (move in, or own it as a property)
     }
 }
 static void nhood_draw(void) {   // the neighborhood as a 3D model on the left (a post on every lot), the picked lot's card on the right
@@ -1485,12 +1530,13 @@ static void nhood_draw(void) {   // the neighborhood as a 3D model on the left (
             else dio_post(nh_bx[i], nh_by[i], sold ? 150 : empty ? 236 : 60, sold ? 150 : empty ? 176 : 190, sold ? 150 : empty ? 40 : 90, 80);
         }
         if (home_city) dio_post(home_bx, home_by, 70, 140, 255, 130);   // yours
+        for (int k = 0; k < nprops; k++) dio_post(props[k].bx, props[k].by, 150, 110, 240, 110);   // (and your properties)
     } else { gfx_set_clear(188, 204, 222); gfx_camera_update(); ui_backdrop(); }
     gfx_rect(0, 206, 320, 34, 14, 18, 28, 0);
     ui_badge(8, 8, "THE NEIGHBORHOOD", UI_WHITE, UI_BLUE2);
     int top = ui_window(194, 4, 122, 200, ns ? ns->name : "SAN BOREAS", IC_HOUSE);
     const int PX = 198, PW = 110;                   // the picked lot, on the right
-    if (!nh_n) { ui_wrap(PX, top + 10, PW, 4, "NO HOMES FOR SALE ROUND HERE RIGHT NOW", UI_SOFT); ui_hints(160, 212, nh_first ? "X STAY AT THE MAN BASE" : "O BACK", 1); return; }
+    if (!nh_n) { ui_wrap(PX, top + 10, PW, 4, "NO HOMES FOR SALE ROUND HERE RIGHT NOW", UI_SOFT); ui_hints(160, 212, nh_first ? "X STAY AT THE MAN BASE" : "TRI MINE|O BACK", 1); return; }
     int i = nh_sel, empty = nh_lot[i] == LOT_EMPTY, refund = home_city ? home_paid : 0;
     sprintf(b, "LOT %d OF %d", i + 1, nh_n); ui_text(PX, top + 1, 1, b, UI_SOFT);
     ui_round(PX - 2, top + 13, PW + 4, 50, 6, UI_RGB(234, 240, 248), UI_RGB(224, 231, 240), 0);
@@ -1509,7 +1555,7 @@ static void nhood_draw(void) {   // the neighborhood as a 3D model on the left (
         ui_disc(PX + 4, ky + 3, 7, UI_RGB(60, 190, 90)); ui_text(PX + 12, ky, 1, "HOME", UI_INK);
         ui_disc(PX + 54, ky + 3, 7, UI_RGB(236, 176, 40)); ui_text(PX + 62, ky, 1, "EMPTY", UI_INK);
     }
-    ui_hints(160, 212, nh_first ? "DPAD PICK|X MOVE IN|TRI THE MAN BASE" : "DPAD PICK|X BUY|SQ SEE $20|SEL LIST|O BACK", 1);
+    ui_hints(160, 212, nh_first ? "DPAD PICK|X MOVE IN|TRI THE MAN BASE" : "X BUY|SQ SEE $20|SEL LIST|TRI MINE|O BACK", 1);
 }
 
 // ---- CRAFT: what the castaways can make at the campfire from what they have gathered ----
@@ -2080,7 +2126,7 @@ static void save_body(void) {
       sv_u8(n); for (int i = 0; i < BM_NSET_MAX; i++) if (bm_renamed(i)[0]) { sv_u8(i); sv_str(bm_renamed(i), 17); } }
     sv_u8(sim_season_lock); sv_u8(sim_seasons_on); ovr_save();   // (version 37: the neighborhood editor's changes, and the held season)
     sv_n(opt, O_N);
-    sv_u8(home_city); sv_u16(home_bx); sv_u16(home_by); sv_u32((u32)home_paid);
+    sv_u8(home_city); sv_u16(home_bx); sv_u16(home_by); sv_u32((u32)home_paid); prop_save();   // (version 42: the properties)
     sim_save(); world_save(!home_city); pop_save(); isl_save();
     story_save();
 }
@@ -2107,7 +2153,7 @@ static void load_body(void) {
     world_reset_all(); home_reset(); isl_reset();
     for (int i = 0; i < nsims; i++) look_release(&sims[i].bore);
     sim_init();
-    home_city = ld_u8(); home_bx = (s16)ld_u16(); home_by = (s16)ld_u16(); home_paid = (int)ld_u32();
+    home_city = ld_u8(); home_bx = (s16)ld_u16(); home_by = (s16)ld_u16(); home_paid = (int)ld_u32(); prop_load();
     sim_load(&edit); world_load(); pop_load(); isl_load();
     if (save_ver >= 5) story_load(); else story_reset();
 }
@@ -2317,6 +2363,68 @@ static void save_tick(void) {
     if (k == 5 && t >= 700) { k++; aging = 2; pop_aging = 1; for (int d = 0; d < 400; d++) pop_midnight(); save_game(1); dbg_sv[7] = (int)save_last_bytes; }
 }
 #endif
+#ifdef AUTO_PROP
+static int build_ok(int x, int y);
+int dbg_prop[48];   // (test builds) properties: buy two, visit, build on them, go away and back, move into one, sell one, save and load, the screens
+static int ap_find(int bx, int by, int *x, int *y, char want) {   // a tile of that block's lot holding want (window tiles); 0: none
+    int wx = bx - world_wbx, wy = by - world_wby; if (wx < 0 || wy < 0 || wx >= 4 || wy >= 4) return 0;
+    for (int j = BM_LOT0 + 1; j < BM_BLK - 1; j++) for (int i = BM_LOT0 + 1; i < BM_BLK - 1; i++) { int tx = wx * BM_BLK + i, ty = wy * BM_BLK + j;
+        if (world_at(tx, ty) == want && (want != '.' || (world_at(tx + 1, ty) == '.' && world_at(tx, ty + 1) == '.' && world_at(tx - 1, ty) == '.' && world_at(tx, ty - 1) == '.'))) { *x = tx; *y = ty; return 1; } }
+    return 0;
+}
+static int ap_signs(int bx, int by) { int wx = bx - world_wbx, wy = by - world_wby, n = 0; if (wx < 0 || wy < 0 || wx >= 4 || wy >= 4) return -1;
+    for (int j = 0; j < BM_BLK; j++) for (int i = 0; i < BM_BLK; i++) n += world_at(wx * BM_BLK + i, wy * BM_BLK + j) == '8'; return n; }
+static void prop_tick(void) {
+    static int t0 = -1, k, pA[2], pE[2], pH[2], pB[2], ax, ay, ex, ey, ok; static long c0;
+    if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30 || world_zone != ZONE_CITY) return; t0 = VSync(-1); dbg_prop[39] = t0; cash = 200000; }
+    int t = VSync(-1) - t0, x, y;
+    #define AT(n) (k == (n) - 1 && t >= at_[(n) - 1] && (k = (n), 1))
+    static const short at_[] = { 60, 200, 260, 400, 500, 600, 700, 760, 900, 960, 1060, 1200, 1260, 1400, 1460, 1520, 1600, 1800, 1950, 2100, 2250, 2400, 2600, 2700, 2800 };
+    if (AT(1)) { HomeAd ad[16]; int n = home_list(world_wbx + 2, world_wby + 2, ad, 16), h = 0;
+        for (int i = 0; i < n; i++) { int *d = ad[i].lot == LOT_EMPTY ? (pE[0] ? 0 : pE) : !h ? (h = 1, pH) : !pA[0] ? pA : !pB[0] ? pB : 0; if (d && !d[0]) { d[0] = ad[i].bx; d[1] = ad[i].by; } }
+        dbg_prop[0] = n * 1000 + (pA[0] > 0) * 100 + (pE[0] > 0) * 10 + (pB[0] > 0); home_buy(pH[0], pH[1], HB_KEEP); dbg_prop[1] = home_city; }
+    if (AT(2)) { c0 = cash; home_buy(pA[0], pA[1], HB_PROP); home_buy(pE[0], pE[1], HB_PROP); dbg_prop[2] = nprops; dbg_prop[3] = home_for_sale(pA[0], pA[1]) * 10 + home_for_sale(pE[0], pE[1]); dbg_prop[4] = (int)(c0 - cash); }
+    if (AT(3)) prop_go(prop_find(pA[0], pA[1]));
+    if (AT(4)) { dbg_prop[5] = prop_here(); dbg_prop[6] = ap_signs(pA[0], pA[1]);
+        if (ap_find(pA[0], pA[1], &ax, &ay, '.')) { *world_cell(0, ax, ay) = 'N'; world_touched(); ax -= (pA[0] - world_wbx) * BM_BLK; ay -= (pA[1] - world_wby) * BM_BLK; dbg_prop[7] = 1; }
+        dbg_prop[8] = build_ok(ax + (pA[0] - world_wbx) * BM_BLK, ay + (pA[1] - world_wby) * BM_BLK);
+        dbg_prop[9] = -1; for (int j = 0; j < 4 && dbg_prop[9] < 0; j++) for (int i = 0; i < 4; i++) { int bx = world_wbx + i, by = world_wby + j; BInfo b; bm_block(bx, by, &b);
+            if (prop_find(bx, by) < 0 && !(home_city && bx == home_bx && by == home_by) && b.set != 255) { dbg_prop[9] = build_ok(i * BM_BLK + 10, j * BM_BLK + 10); break; } } }
+    if (AT(5)) taxi_to_block(pA[0] + 9, pA[1], -1, -1, "AWAY");
+    if (AT(6)) prop_go(prop_find(pA[0], pA[1]));
+    if (AT(7)) { int wx = pA[0] - world_wbx, wy = pA[1] - world_wby; dbg_prop[10] = world_at(wx * BM_BLK + ax, wy * BM_BLK + ay) == 'N'; dbg_prop[11] = ap_signs(pA[0], pA[1]); }
+    if (AT(8)) prop_go(prop_find(pE[0], pE[1]));
+    if (AT(9)) { dbg_prop[12] = ap_signs(pE[0], pE[1]);
+        if (ap_find(pE[0], pE[1], &ex, &ey, '.')) { *world_cell(0, ex, ey) = 'N'; *world_cell(1, ex, ey) = 'N'; *world_floor_cell(1, ex, ey) = 1; world_touched();
+            ex -= (pE[0] - world_wbx) * BM_BLK; ey -= (pE[1] - world_wby) * BM_BLK; dbg_prop[13] = 1; } }
+    if (AT(10)) taxi_to_block(pE[0] - 9, pE[1], -1, -1, "AWAY");
+    if (AT(11)) prop_go(prop_find(pE[0], pE[1]));
+    if (AT(12)) { extern char world_at_l(int l, int mx, int my); int wx = pE[0] - world_wbx, wy = pE[1] - world_wby;
+        dbg_prop[14] = world_at(wx * BM_BLK + ex, wy * BM_BLK + ey) == 'N'; dbg_prop[15] = world_at_l(1, wx * BM_BLK + ex, wy * BM_BLK + ey) == 'N'; }
+    if (AT(13)) { prop_move_in(prop_find(pA[0], pA[1])); dbg_prop[16] = home_bx == pA[0] && home_by == pA[1]; dbg_prop[17] = nprops; dbg_prop[18] = prop_find(pH[0], pH[1]) >= 0; }
+    if (AT(14)) { int wx = pA[0] - world_wbx, wy = pA[1] - world_wby; dbg_prop[19] = home_is_here(); dbg_prop[20] = world_at(wx * BM_BLK + ax, wy * BM_BLK + ay) == 'N'; dbg_prop[21] = ap_signs(pA[0], pA[1]); }
+    if (AT(15)) { c0 = cash; int i = prop_find(pE[0], pE[1]), paid = props[i].paid; prop_sell(i); dbg_prop[22] = nprops; dbg_prop[23] = (int)(cash - c0) == paid; dbg_prop[24] = home_for_sale(pE[0], pE[1]); }
+    if (AT(16)) { extern u32 save_last_bytes; dbg_prop[25] = save_game(0); dbg_prop[26] = (int)save_last_bytes; }
+    if (AT(17)) { nprops = 0; dbg_prop[27] = load_game(0); if (dbg_prop[27]) state = ST_LIFE; }
+    if (AT(18)) { dbg_prop[28] = nprops; dbg_prop[29] = nprops == 1 && props[0].bx == pH[0] && props[0].by == pH[1]; dbg_prop[30] = home_city && home_bx == pA[0] && home_by == pA[1]; home_go(); }
+    if (AT(19)) { int wx = pA[0] - world_wbx, wy = pA[1] - world_wby; dbg_prop[31] = world_at(wx * BM_BLK + ax, wy * BM_BLK + ay) == 'N'; dbg_prop[32] = home_is_here(); }
+    if (AT(20)) { homes_open(); hm_tab = 1; hm_sel = 1; }
+    if (AT(21)) { hm_tab = 0; state = ST_HOMES; if (hm_n) buyask_open(hm_ad[0].bx, hm_ad[0].by); }
+    if (AT(22)) { state = ST_LIFE; nhood_open(0); }
+    if (AT(23)) { state = ST_LIFE; dbg_prop[33] = home_buy(pB[0], pB[1], HB_KEEP); }
+    if (AT(24)) { dbg_prop[34] = nprops; dbg_prop[35] = prop_find(pA[0], pA[1]) >= 0; dbg_prop[36] = home_bx == pB[0] && home_by == pB[1]; }
+    if (AT(25)) { prop_go(prop_find(pA[0], pA[1])); }
+    if (k == 25 && t >= 2950) { int wx = pA[0] - world_wbx, wy = pA[1] - world_wby; dbg_prop[37] = world_at(wx * BM_BLK + ax, wy * BM_BLK + ay) == 'N'; dbg_prop[38] = prop_here(); k++; }
+    if (k == 26 && t >= 3050) { k++; home_go(); }
+    if (k == 27 && t >= 3200) { k++; if (ap_find(pB[0], pB[1], &ex, &ey, '.')) { *world_cell(1, ex, ey) = 'N'; *world_floor_cell(1, ex, ey) = 1; world_touched(); ex -= (pB[0] - world_wbx) * BM_BLK; ey -= (pB[1] - world_wby) * BM_BLK; dbg_prop[40] = 1; } }
+    if (k == 28 && t >= 3260) { k++; taxi_to_block(pB[0] + 9, pB[1], -1, -1, "AWAY"); }
+    if (k == 29 && t >= 3400) { k++; home_go(); }
+    if (k == 30 && t >= 3550) { extern int world_dbg_oldsave(void); k++; int wx = pB[0] - world_wbx, wy = pB[1] - world_wby; dbg_prop[41] = world_at_l(1, wx * BM_BLK + ex, wy * BM_BLK + ey) == 'N'; dbg_prop[42] = world_dbg_oldsave();
+                                dbg_prop[43] = world_at_l(1, wx * BM_BLK + ex, wy * BM_BLK + ey) == 'N'; }
+    #undef AT
+    (void)x; (void)y; (void)ok;
+}
+#endif
 static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "KINGDOM MODE", "BOREAGOTCHI", "SUPERSTAR BAND", "CREATE A DOG", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "SAVE GAME", "NEW LIFE", "QUIT TO TITLE" };
 #define NPAUSE 14  // (calls, parties, the map, travel, jobs, homes, the people, music and the goals are on the phone: SELECT)
 static void homes_open(void);
@@ -2374,7 +2482,7 @@ static void pause_update(void) {
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); audio_voice(VOICE_MOVE_YES); state = ST_LIFE; } break;
             case 3: if ((ovl = ovl_load("KINGDOM.OVL"))) { ovl->open(0); state = ST_REALM; } else state = ST_LIFE; break;
             case 2: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD;
-                     if (world_zone == ZONE_CITY && !world_own_lot(build_x, build_y)) { int tx, ty; if (world_own_door(&tx, &ty)) { build_x = tx; build_y = ty - 1; } }   // (in SAN BOREAS: on your own lot)
+                     if (world_zone == ZONE_CITY && !world_own_lot(build_x, build_y) && !world_prop_lot(build_x, build_y)) { int tx, ty; if (world_own_door(&tx, &ty)) { build_x = tx; build_y = ty - 1; } }   // (in SAN BOREAS: on your own lot)
                      break;
             case 9: opts_open(ST_PAUSE); break;
             case 10: prev_state = ST_PAUSE; help_page = 0; state = ST_HELP; break;
@@ -2844,16 +2952,19 @@ static char nk_text[24];
 static const char nk_keys[4][11] = { "ABCDEFGHIJ", "KLMNOPQRST", "UVWXYZ0123", "456789 -'." };
 static void confirm_update(void) {
     cf_t++;
-    if (PRESSED(PAD_LEFT) || PRESSED(PAD_RIGHT) || PRESSED(PAD_UP) || PRESSED(PAD_DOWN)) cf_sel ^= 1;
+    if (cf_n) { if (PRESSED(PAD_UP)) cf_sel = (cf_sel + cf_n - 1) % cf_n; if (PRESSED(PAD_DOWN)) cf_sel = (cf_sel + 1) % cf_n; }
+    else if (PRESSED(PAD_LEFT) || PRESSED(PAD_RIGHT) || PRESSED(PAD_UP) || PRESSED(PAD_DOWN)) cf_sel ^= 1;
     if (PRESSED(PAD_CIRCLE)) { state = cf_back; return; }
+    if (PRESSED(PAD_CROSS) && cf_n) { state = cf_back; if (cf_sel < cf_n - 1) cf_pick(cf_sel); return; }
     if (PRESSED(PAD_CROSS)) { state = cf_back; if (cf_sel == 0 && cf_yes) { audio_voice(VOICE_AGREE); cf_yes(); } }
 }
 static void confirm_draw(void) {
     if (cf_back == ST_NHOOD) { gfx_set_clear(188, 204, 222); gfx_camera_update(); ui_backdrop(); } else if (cf_back == ST_NHED) { ne_draw(); ui_dim(); } else { life_draw(); ui_dim(); }
-    int nl = ui_wrap_n(236, cf_body), h = 58 + nl * 10;
+    int nl = ui_wrap_n(236, cf_body), h = 38 + nl * 10 + (cf_n ? cf_n * 22 : 20);
     int top = ui_window(30, 120 - h / 2 - 10, 260, h + 20, cf_title, IC_HELP);
     ui_wrap(42, top + 4, 236, 6, cf_body, UI_INK);
     int by = top + 10 + nl * 10;
+    if (cf_n) { for (int i = 0; i < cf_n; i++) ui_button(42, by + i * 22, 236, 18, cf_lab[i], i == cf_n - 1 ? IC_BX + 1 : IC_HOUSE, i == cf_sel); return; }
     ui_button(42, by, 112, 18, "YES", IC_TICK, cf_sel == 0);
     ui_button(166, by, 112, 18, "NO, GO BACK", IC_BX + 1, cf_sel == 1);
 }
@@ -3050,7 +3161,7 @@ static void carry_return(void) {   // an item being moved goes back where it cam
     build_carry = 0; world_touched();
 }
 static int is_wallish(char c) { return c == 'W' || c == 'w' || c == 'E' || c == 'e' || c == 'f' || c == 'D'; }
-static int build_ok(int x, int y) { return world_zone != ZONE_CITY || world_own_lot(x, y); }   // in SAN BOREAS: on your own lot only
+static int build_ok(int x, int y) { return world_zone != ZONE_CITY || world_own_lot(x, y) || world_prop_lot(x, y); }   // in SAN BOREAS: on your own lot (your home, or a property) only
 
 static int foot_ok(char ch, int L, int x, int y, int rr) {   // a long thing (a bed) needs its far tiles free floor, nothing else lying over them
     int w, l; if (!items_foot(ch, &w, &l)) return 1;
@@ -3297,9 +3408,9 @@ static void build_update(void) {
         return;
     }
     int L = build_lvl;
-    if ((build_tool == BT_FLOOR || build_tool == BT_PAINT) && PRESSED(PAD_TRIANGLE)) { if (build_ok(build_x, build_y)) room_fill_tool(); else { build_say(home_city ? "NOT YOUR LOT" : "BUY A HOME TO BUILD HERE"); audio_voice(VOICE_NAH); } return; }
+    if ((build_tool == BT_FLOOR || build_tool == BT_PAINT) && PRESSED(PAD_TRIANGLE)) { if (build_ok(build_x, build_y)) room_fill_tool(); else { build_say(home_city || nprops ? "NOT YOUR LOT" : "BUY A HOME TO BUILD HERE"); audio_voice(VOICE_NAH); } return; }
     if (build_tool == BT_ROOM) {   // the ROOM tool: X a corner, X the other corner; O lets go of the first
-        if (PRESSED(PAD_CROSS)) { if (!room_on) { if (build_ok(build_x, build_y)) { room_on = 1; room_ax = build_x; room_ay = build_y; audio_voice(VOICE_AGREE); } else { build_say(home_city ? "BUILD ON YOUR OWN LOT ONLY" : "BUY A HOME TO BUILD HERE"); audio_voice(VOICE_NAH); } }
+        if (PRESSED(PAD_CROSS)) { if (!room_on) { if (build_ok(build_x, build_y)) { room_on = 1; room_ax = build_x; room_ay = build_y; audio_voice(VOICE_AGREE); } else { build_say(home_city || nprops ? "BUILD ON YOUR OWN LOT ONLY" : "BUY A HOME TO BUILD HERE"); audio_voice(VOICE_NAH); } }
                                   else room_build(); }
         if (PRESSED(PAD_CIRCLE) && room_on) { room_on = 0; return; }
         if (PRESSED(PAD_SQUARE)) { room_open = (room_open + 1) % 3; build_say_ok(roomOpenNm[room_open]); audio_voice(VOICE_AGREE); }
@@ -3308,7 +3419,7 @@ static void build_update(void) {
         return;
     }
     if ((PRESSED(PAD_CROSS) || PRESSED(PAD_SQUARE)) && !build_ok(build_x, build_y)) {   // in SAN BOREAS: not someone else's
-        build_say(home_city ? "BUILD ON YOUR OWN LOT ONLY" : "BUY A HOME TO BUILD HERE"); audio_voice(VOICE_NAH);
+        build_say(home_city || nprops ? "BUILD ON YOUR OWN LOT ONLY" : "BUY A HOME TO BUILD HERE"); audio_voice(VOICE_NAH);
         if (PRESSED(PAD_TRIANGLE) || PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { build_lvl = 0; state = ST_LIFE; }
         return;
     }
@@ -3430,7 +3541,7 @@ static void build_draw(void) {
         ui_text(10, 27, 1, toolNm[build_tool], UI_BLUE2);
         sprintf(b, "STOREY %d OF %d", build_lvl + 1, NLEVELS); ui_text(188 - ui_tw(1, b), 27, 1, b, UI_SOFT);
         if (build_msg_t > 0) strcpy(b, build_msg);
-        else if (!build_ok(build_x, build_y)) strcpy(b, home_city ? "NOT YOUR LOT" : "BUY A HOME TO BUILD HERE");
+        else if (!build_ok(build_x, build_y)) strcpy(b, home_city || nprops ? "NOT YOUR LOT" : "BUY A HOME TO BUILD HERE");
         else if (build_carry) sprintf(b, "MOVING %s (TRI TURNS)", items_name(build_carry));
         else if (build_tool == BT_BUY && build_tile_state() == 2) { char hc = world_at_l(build_lvl, build_x, build_y); sprintf(b, "%s: X MOVES, SQ SELLS $%d", items_name(hc), items_cost(hc) * 3 / 4); }   // (an item under the cursor)
         else if (build_tool == BT_BUY) sprintf(b, "%s  $%d", items_name(items_at(build_item)), items_cost(items_at(build_item)));
@@ -4503,6 +4614,9 @@ int main(void) {
 #ifdef AUTO_SAVE
         save_tick();
 #endif
+#ifdef AUTO_PROP
+        prop_tick();
+#endif
 #ifdef AUTO_STREAM
         stream_tick();
 #endif
@@ -4554,14 +4668,14 @@ int main(void) {
             case ST_OPTS: opts_update(); opts_draw(); break;
             case ST_JOBS: jobs_update(); jobs_draw(); break;
             case ST_OVER: over_update(); over_draw(); break;
-            case ST_HOMES: homes_update(); homes_draw(); break;
+            case ST_HOMES: homes_update(); if (state == ST_HOMES) homes_draw(); else if (state == ST_CONFIRM) confirm_draw(); else life_draw(); break;
             case ST_CRAFT: craft_update(); craft_draw(); break;
-            case ST_CONFIRM: confirm_update(); if (state == ST_CONFIRM) confirm_draw(); else if (state == ST_NHED) ne_draw(); else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
+            case ST_CONFIRM: confirm_update(); if (state == ST_CONFIRM) confirm_draw(); else if (state == ST_HOMES) homes_draw(); else if (state == ST_NHED) ne_draw(); else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
             case ST_NAME: name_update(); if (state == ST_NAME) name_draw(); else if (state == ST_CREATE) create_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_WMAKE) wm_draw(); else if (state == ST_NHED) ne_draw(); else if (state == ST_MAP) map_draw(); else life_draw(); break;
             case ST_WORLDS: worlds_update(); if (state == ST_WORLDS) worlds_draw(); else if (state == ST_MENU) menu_draw(); else if (state == ST_MODE) mode_draw(); else if (state == ST_WMAKE) wm_draw(); else if (state == ST_NHED) ne_draw(); else life_draw(); break;
             case ST_MODE: mode_update(); if (state == ST_MODE) mode_draw(); else if (state == ST_MENU) menu_draw(); else if (state == ST_WORLDS) worlds_draw(); else if (state == ST_WMAKE) wm_draw(); else life_draw(); break;
             case ST_NHED: ne_update(); if (state == ST_NHED) ne_draw(); else if (state == ST_WMAKE) wm_draw(); else if (state == ST_CONFIRM) confirm_draw(); else life_draw(); break;
-            case ST_NHOOD: nhood_update(); if (state == ST_NHOOD) nhood_draw(); else if (state == ST_HOMES) homes_draw(); else life_draw(); break;
+            case ST_NHOOD: nhood_update(); if (state == ST_NHOOD) nhood_draw(); else if (state == ST_HOMES) homes_draw(); else if (state == ST_CONFIRM) confirm_draw(); else life_draw(); break;
             case ST_SLOTS: slots_update(); if (state == ST_SLOTS) slots_draw(); else if (state == ST_LIFE) life_draw(); else if (state == ST_MENU) menu_draw(); else pause_draw(); break;
             case ST_PHONE: phone_update(); if (state == ST_PHONE) phone_draw(); else life_draw(); break;
             case ST_SPICK: spick_update(); if (state == ST_SPICK) { if (sp_join) life_draw(); else title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t, sp_join); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;

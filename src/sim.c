@@ -1686,7 +1686,7 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_RESORT, PC_CAMP, PC_FARMBOOK, PC_SKYSEA, PC_HEIST, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_PAINT, PC_SELLART, PC_WRITE, PC_DIYFIX, PC_MECHFIX, PC_FPLANT0, PC_FPLANT_END = PC_FPLANT0 + 3, PC_FWATER, PC_FHARV, PC_FHEN, PC_FCOW, PC_FFEEDH, PC_FFEEDC, PC_FEGGS, PC_FMILK, PC_FSELL, PC_FEAT, PC_FSPRAY, PC_FFERT, PC_FORDER, PC_FUP, PC_FFAIR, PC_FDRINK, PC_FTALK, PC_FCURE, PC_FROOT, PC_FSPROUT, PC_MAIL, PC_SUN, PC_DIVE, PC_LAPS, PC_GRILL, PC_BIRDS, PC_SMELL, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
+       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_RESORT, PC_CAMP, PC_FARMBOOK, PC_SKYSEA, PC_HEIST, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_PAINT, PC_SELLART, PC_WRITE, PC_DIYFIX, PC_MECHFIX, PC_FPLANT0, PC_FPLANT_END = PC_FPLANT0 + 3, PC_FWATER, PC_FHARV, PC_FHEN, PC_FCOW, PC_FFEEDH, PC_FFEEDC, PC_FEGGS, PC_FMILK, PC_FSELL, PC_FEAT, PC_FSPRAY, PC_FFERT, PC_FORDER, PC_FUP, PC_FFAIR, PC_FDRINK, PC_FTALK, PC_FCURE, PC_FROOT, PC_FSPROUT, PC_MAIL, PC_SUN, PC_DIVE, PC_LAPS, PC_GRILL, PC_BIRDS, PC_SMELL, PC_BUYPROP, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
 _Static_assert(PC_VEH_END < 256, "pie codes are bytes");
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
@@ -1744,8 +1744,9 @@ static int sim_pie_open_(char opt[8][24]) {
         int bx = world_wbx + mx / BM_BLK, by = world_wby + my / BM_BLK;
         if (!home_for_sale(bx, by)) { sim_note("SOLD!"); return 0; }
         home_address(bx, by, pie_title);
-        sprintf(opt[0], "BUY $%d", home_price(bx, by)); pie_code[0] = 36;
-        strcpy(opt[1], "WHAT IS IT?"); pie_code[1] = 37; pie_n = 2; return 2;
+        sprintf(opt[0], "MOVE IN $%d", home_price(bx, by)); pie_code[0] = 36; pie_n = 1;   // (the old home is kept as a property)
+        strcpy(opt[pie_n], "BUY AS PROPERTY"); pie_code[pie_n++] = PC_BUYPROP;                 // (yours, but you live where you are)
+        strcpy(opt[pie_n], "WHAT IS IT?"); pie_code[pie_n++] = 37; return pie_n;
     }
     if (c == 'B') { strcpy(pie_title, "SKATEBOARD"); strcpy(opt[0], "PICK UP"); pie_code[0] = PC_PICKBOARD; pie_n = 1; return 1; }
     pie_place = place_at(mx, my, &pie_pi);
@@ -2290,7 +2291,8 @@ static void sim_pie_do_(int i) {
         case 33: begin_action(s, ACT_READ, pie_mx, pie_my); s->act_var = 3; s->act_t = 240; return;
         case 34: begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 8; s->act_t = 300; sim_say(s, "A CAKE FOR THE BIRTHDAY!"); return;
         case 35: adopt(s); return;
-        case 36: home_buy(world_wbx + pie_mx / BM_BLK, world_wby + pie_my / BM_BLK); return;   // (main moves the family in)
+        case 36: home_buy(world_wbx + pie_mx / BM_BLK, world_wby + pie_my / BM_BLK, HB_KEEP); return;   // (main moves the family in)
+        case PC_BUYPROP: home_buy(world_wbx + pie_mx / BM_BLK, world_wby + pie_my / BM_BLK, HB_PROP); return;
         case 38: isl_craft_asked = 1; return;                                                  // (main opens the list of things to make)
         case 39: raft_sail(); return;
         case 37: if (world_zone != ZONE_CITY) return;
