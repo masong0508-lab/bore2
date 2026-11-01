@@ -112,7 +112,7 @@ static int t_vb;
 
 // ---- states ----
 static void party_begin(void);
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ, ST_SUPER, ST_DOG, ST_PRISON, ST_SPACE, ST_MODE, ST_NHED };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ, ST_SUPER, ST_DOG, ST_PRISON, ST_SPACE, ST_MODE, ST_NHED, ST_CUT };
 #ifdef AUTO_GOTCHI
 static void opts_dbg(int tab, int sel, int back);
 #endif
@@ -2506,6 +2506,7 @@ static void spick_update(void) {   // STORY MISSIONS: one story's card at a time
     if (PRESSED(PAD_LEFT) || PRESSED(PAD_L1) || PRESSED(PAD_UP)) sp_sel = (sp_sel + STY_N - 3) % (STY_N - 1) + 1;
     if (PRESSED(PAD_RIGHT) || PRESSED(PAD_R1) || PRESSED(PAD_DOWN)) sp_sel = sp_sel % (STY_N - 1) + 1;
     if (PRESSED(PAD_CIRCLE)) { state = sp_join ? ST_STORY : ST_WORLDS; return; }
+    if (PRESSED(PAD_TRIANGLE) && sp_sel > STY_PLAYABLE) { if ((ovl = ovl_load("CUT.OVL"))) { ovl->open(0); state = ST_CUT; } else audio_voice(VOICE_NAH); return; }   // (the story's opening film: CUT.OVL, the cutscene engine)
     if (PRESSED(PAD_CROSS)) {
         if (sp_sel > STY_PLAYABLE) { audio_voice(VOICE_NAH); return; }
         if (sp_join) { if (story_join(sp_sel)) { goals_old = 0; state = ST_LIFE; } else audio_voice(VOICE_NAH); return; }   // (from GOALS: this life)
@@ -4400,11 +4401,15 @@ int main(void) {
             static const u8 acc[] = { [ST_TITLE] = 0, [ST_MENU] = 0, [ST_CREATE] = 5, [ST_LIFE] = 0, [ST_PAUSE] = 7, [ST_BUILD] = 3, [ST_JUKEBOX] = 4, [ST_HELP] = 1,
                 [ST_TRAVEL] = 1, [ST_STORY] = 6, [ST_WANTS] = 6, [ST_PIE] = 0, [ST_PANEL] = 2, [ST_MAP] = 1, [ST_DIR] = 2, [ST_OPTS] = 7, [ST_JOBS] = 3,
                 [ST_OVER] = 7, [ST_HOMES] = 3, [ST_CRAFT] = 3, [ST_PHONE] = 0, [ST_SLOTS] = 7, [ST_NHOOD] = 1, [ST_WORLDS] = 1, [ST_NAME] = 5, [ST_SPICK] = 6,
-                [ST_SCARD] = 6, [ST_WMAKE] = 2, [ST_MODE] = 1, [ST_NHED] = 2 };
+                [ST_SCARD] = 6, [ST_WMAKE] = 2, [ST_MODE] = 1, [ST_NHED] = 2, [ST_CUT] = 6 };
             ui_accent = state < (int)sizeof acc ? acc[state] : 0;
         }
         switch (state) {
-            case ST_TITLE: title_update(); title_draw(); break;
+            case ST_TITLE:
+#ifdef AUTO_CUT
+                { static int ar; if (++ar == 60 && (ovl = ovl_load("CUT.OVL"))) { ovl->open(AUTO_CUT > 1 ? AUTO_CUT : 0); state = ST_CUT; break; } }   // (test builds: straight into the Missy film, AUTO_CUT steps in)
+#endif
+                title_update(); title_draw(); break;
             case ST_MENU: menu_update(); menu_draw(); break;
             case ST_CREATE: create_update(); create_draw(); break;
             case ST_LIFE:
@@ -4439,6 +4444,7 @@ int main(void) {
             case ST_SPICK: spick_update(); if (state == ST_SPICK) { if (sp_join) life_draw(); else title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t, sp_join); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
             case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
             case ST_SUPER: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; audio_jukebox_stop(); ovl_leave(); state = ST_LIFE; life_draw(); } break; }
+            case ST_CUT: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_SPICK; sc_t = 0; title_draw(); } break; }
             case ST_DOG: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_SPACE: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_PRISON: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; if (sim_want_end) { sim_want_end = 0; pause_new_life(); } life_draw(); } break; }

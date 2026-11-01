@@ -457,7 +457,7 @@ void story_pick_draw(int sel, int t, int join) {
     ui_text(86, top + 2, 2, s->name, UI_INK);
     ui_badge(86, top + 20, s->tag, slight(sel), scol(sel, 5));
     for (int i = 0; i < 3; i++) ui_text(86, top + 36 + i * 10, 1, s->blurb[i], UI_INK);
-    if (lock) { ui_text(14, top + 74, 1, "MISSY'S STORY IS ON ITS WAY: VOICED AND FILMED.", UI_BADT); ui_text(14, top + 84, 1, "COMING SOON.", UI_SOFT); }
+    if (lock) { ui_text(14, top + 74, 1, "MISSY'S STORY IS ON ITS WAY: VOICED AND FILMED.", UI_BADT); ui_text(14, top + 84, 1, "COMING SOON.  TRI: WATCH THE OPENING FILM", UI_BLUE2); }
     else {
         if (join) { if (s->ncast == 2) snprintf(b, sizeof b, "%s AND %s MOVE IN WITH YOU", s->cast[0].first, s->cast[1].first);
                     else if (s->ncast) snprintf(b, sizeof b, "%s MOVES IN WITH YOU", s->cast[0].first); else strcpy(b, "JUST YOU AND THIS LIFE"); }

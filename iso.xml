@@ -27,6 +27,7 @@
 			<file name="FARM.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/FARM.OVL" />
 			<file name="SKYSEA.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/SKYSEA.OVL" />
 			<file name="DJ.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/DJ.OVL" />
+			<file name="CUT.OVL" type="data" source="${CMAKE_BINARY_DIR}/CUT.OVL" />
 			<file name="GOTCHI.ART" type="data" source="${CMAKE_BINARY_DIR}/slot_full/GOTCHI.ART" />
 			<dummy sectors="512"/>
 		</directory_tree>
