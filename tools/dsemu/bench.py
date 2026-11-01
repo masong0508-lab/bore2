@@ -34,6 +34,8 @@ SC = {   # name: (script, pokes {frame: scene}, measure from, to, screenshot fra
     "more":   (LIVE, {400: 58}, 500, 800, 780),
     "home":   (LIVE, {400: 59}, 500, 800, 780),   # (D54) its family tree
     "shop":   (LIVE, {400: 51}, 500, 800, 780),
+    "fight":  (LIVE + ";385-396:400:-1,-1;450-455:1:-1,-1;520-525:1:-1,-1" + "".join(";%d-%d:%x:-1,-1" % (800 + 40 * q, 819 + 40 * q, [0x1, 0x11, 0x2, 0x21, 0x4, 0x80][q % 6]) for q in range(30)), {}, 700, 1900, 1880),   # (D59) BORTUA FIGHTER vs the CPU: pick, VS, then punching and kicking (build with XTRA=-DAUTO_SCENE=88: X held at frame 385 opens scene 89)
+    "fight2p": (LIVE + ";385-396:400:-1,-1;430-432:80:-1,-1;440-442:80:-1,-1;450-452:80:-1,-1;460-462:10:-1,-1;480-482:1:-1,-1;520-522:1:-1,-1;700-770:10:-1,-1;700-770:800:-1,-1" + "".join(";%d-%d:%x:-1,-1" % (780 + 40 * q, 790 + 40 * q, [0x200, 0x100, 0x1, 0x2, 0x400, 0x40][q % 6]) for q in range(30)), {}, 700, 1900, 1880),   # (D59) the same with two players on one DS
     "close":  (LIVE, {400: 6}, 700, 1000, 980),
     "horizon": (LIVE, {400: 5}, 700, 1300, 1280),
     "orbit":  (LIVE + ";500-1300:10:-1,-1", {}, 600, 1300, 1280),        # Live, the camera turning all the time (the still list is recorded again often)
@@ -49,6 +51,7 @@ want = sys.argv[4:] or list(SC)
 mem = [syms["fps_now"], syms["polys_last"], "4000604"] + ([syms["ui_fps"], syms["st_rec"]] if "ui_fps" in syms else []) + (["%x" % (int(syms["prof_ms"], 16) + 4 * k) for k in range(12)] + [syms["sml_miss"]] if "prof_ms" in syms and os.environ.get("PROF") else [])
 for name in want:
     script, pokes, a, b, shot = SC[name]
+    if os.environ.get("BENCH_SHOT"): shot = int(os.environ["BENCH_SHOT"]); b = max(b, shot + 1)
     env = dict(os.environ, DBGMEM=",".join(mem))
     pokes = dict(pokes); pokes.update(EXTRA) if name != "map" else None
     if pokes: env["POKE"] = ",".join("%d:%s:%x" % (f, syms["test_scene"], v) for f, v in pokes.items())

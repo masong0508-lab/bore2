@@ -405,7 +405,7 @@ static const u16 agPar[AG_NGAME] = { 60, 120, 60, 40, 400, 600, 2000, 3000, 2000
 static const u8 agCol[AG_NGAME][3] = { { 230, 60, 70 }, { 60, 200, 250 }, { 250, 170, 50 }, { 120, 220, 90 }, { 250, 120, 40 }, { 170, 90, 250 }, { 250, 80, 170 }, { 250, 220, 50 }, { 250, 230, 60 }, { 250, 130, 60 }, { 90, 220, 160 }, { 90, 160, 255 }, { 250, 90, 220 }, { 255, 120, 190 } };
 static const char *const agHow1[AG_NGAME] = { "", "SLIDE THE STYLUS: THE PADDLE FOLLOWS", "SLIDE THE STYLUS: THE BASKET FOLLOWS", "TAP A HOLE, OR D-PAD AND A", "TAP A: STOP THE METER", "D-PAD MOVE. A TURNS. UP DROPS", "D-PAD FLY. A SHOOT. B BOMB", "LEFT RIGHT STEER. A GAS. B NITRO", "D-PAD TURNS. EAT EVERY DOT", "LEFT RIGHT MOVE. A STOPS THE METER", "LEFT RIGHT AIM. HOLD A, LET GO", "D-PAD MOVES YOUR MALLET", "D-PAD OR A B X Y ON THE LINE", "LEFT RIGHT MOVE. A DROPS" };
 static const char *const agHow2[AG_NGAME] = { "", "BREAK THE WALL. CATCH POWER-UPS", "CATCH SNACKS. DODGE ROCKS", "GOLD BORES PAY MORE. NO BOMBS", "HIT THE SWEET SPOT. RING THE BELL", "FILL LINES. THE FLOOR RISES", "SHOOT THE FLEET. BEAT THE BOSS", "BEAT THE CLOCK. DODGE THE TRAFFIC", "BIG DOTS MAKE GHOSTS SCARED", "SINK IT. KEEP A STREAK. GET HOT", "ROLL FOR THE HIGH RINGS", "FIRST TO SEVEN", "KEEP THE GROOVE UP. BUILD A COMBO", "GRAB A PLUSH AND BRING IT HOME" };
-static int arcade_game_at(int x, int y) { return 1 + (x * 3 + y * 2) % (AG_NGAME - 1); }   // (no fighter yet: 1..13)
+static int arcade_game_at(int x, int y) { return (x * 3 + y * 2) % AG_NGAME; }   // (all fourteen, BORTUA FIGHTER the last cabinet of the rotation)
 static const char *ag_title(int g) { return agTitle[g % AG_NGAME]; }
 static int ag_price(int g) { return agPrice[g % AG_NGAME]; }
 #ifdef DSTEST
@@ -440,7 +440,8 @@ static const Prize prz[] = {
     { "GOLDEN TICKET", 400, 10, 0, 0, 500, "TRADED IN FOR $500!" } };
 #define NPRZ ((int)(sizeof prz / sizeof prz[0]))
 static void need_add(Sim *s, int n, int v) { s->need[n] = cl100(s->need[n] + v); }
-static void ag_open(int g) { ag = g; ag_phase = 0; ag_acc = 0; ag_psel = 0; ag_msg = ""; ag_rt = 0; dsag_tx = dsag_tap = -1; ag_held_id = 0; mg_ui = g == AG_PRIZES ? 2 : 1; mg_ver++; }
+static void fight_open(int cr);
+static void ag_open(int g) { if (g == AG_FIGHTER) { ag = g; mg_ui = 6; mg_ver++; fight_open(1); return; } ag = g; ag_phase = 0; ag_acc = 0; ag_psel = 0; ag_msg = ""; ag_rt = 0; dsag_tx = dsag_tap = -1; ag_held_id = 0; mg_ui = g == AG_PRIZES ? 2 : 1; mg_ver++; }
 static void ag_finish(void) {   // a game over: the tickets, fun, a little sleepier
     Sim *s = &sims[ctl]; static char b[48];
     arcade_tix = MIN(9999, arcade_tix + ag_tix);
@@ -542,6 +543,7 @@ static void ar_bottom(void) {
     rect(8, 22, 240, 26, K8(40, 28, 90)); rect(10, 24, 236, 22, K8(30, 20, 70)); ctext(128, 31, 1, K8(170, 190, 250), "SLIDE THE STYLUS HERE");
     for (int i = 0; i < 8; i++) chip(BTN[i].x, BTN[i].y, BTN[i].w, BTN[i].h, BTN[i].t, ag_held_id == BTN[i].id);
 }
+#include "ds_fight.c"   // (D59) BORTUA FIGHTER
 static unsigned ar_bsig(void) { return (unsigned)(mg_ui * 3 + ag_phase * 5 + ag * 7 + ag_psel * 13 + ag_ic * 19 + ag_held_id * 29 + (arcade_tix > 0) * 23); }
 static void ar_frame(int held, int down, int steps, int tx, int ty) {
     int hd = 0, pr = 0, tch = held & KEY_TOUCH, td = down & KEY_TOUCH; dsag_tx = -1; ag_dirty = 0;
@@ -1562,10 +1564,10 @@ static void gm_frame(int down, int tx, int ty) {
 
 // ---- the shell: which mini-game has the screens ----
 static unsigned mg_sig(void) { return (unsigned)(mg_ver * 131 + mg_ui * 7); }
-static unsigned mg_bsig(void) { return mg_ui == 3 ? (unsigned)(30 + hp * 5 + hsel * 11) : mg_ui == 4 ? gt_bsig() + 77 : mg_ui == 5 ? 5 : ar_bsig(); }
-static void mg_top(void) { if (mg_ui == 3) hs_top(); else if (mg_ui == 4) gt_top(); else if (mg_ui == 5) gm_top(); else ar_top(); }
-static void mg_bottom(void) { if (mg_ui == 3) hs_bottom(); else if (mg_ui == 4) gt_bottom(); else if (mg_ui == 5) gm_bottom(); else ar_bottom(); }
-static void mg_frame(int held, int down, int steps, int tx, int ty) { if (mg_ui == 3) hs_frame(held, down, steps, tx, ty); else if (mg_ui == 4) gt_frame(held, down, steps, tx, ty); else if (mg_ui == 5) gm_frame(down, tx, ty); else ar_frame(held, down, steps, tx, ty); }
+static unsigned mg_bsig(void) { return mg_ui == 6 ? fight_bsig() : mg_ui == 3 ? (unsigned)(30 + hp * 5 + hsel * 11) : mg_ui == 4 ? gt_bsig() + 77 : mg_ui == 5 ? 5 : ar_bsig(); }
+static void mg_top(void) { if (mg_ui == 6) fight_top(); else if (mg_ui == 3) hs_top(); else if (mg_ui == 4) gt_top(); else if (mg_ui == 5) gm_top(); else ar_top(); }
+static void mg_bottom(void) { if (mg_ui == 6) fight_bottom(); else if (mg_ui == 3) hs_bottom(); else if (mg_ui == 4) gt_bottom(); else if (mg_ui == 5) gm_bottom(); else ar_bottom(); }
+static void mg_frame(int held, int down, int steps, int tx, int ty) { if (mg_ui == 6) fight_frame(held, down, steps, tx, ty); else if (mg_ui == 3) hs_frame(held, down, steps, tx, ty); else if (mg_ui == 4) gt_frame(held, down, steps, tx, ty); else if (mg_ui == 5) gm_frame(down, tx, ty); else ar_frame(held, down, steps, tx, ty); }
 
 // ==== the mini-games' saves: blocks after the farm's, each { magic, size, data }; a save from before has none (all at their start) ====
 #define MG_HT 0x5448   // 'HT': the underworld's heat, kept boats and aircraft, logic
@@ -1611,6 +1613,7 @@ static void mg_test(int sc) {
         if (sc == 52) gt_open_a(0); else if (sc == 53) { gt_open_a(3); gguide = 5; } else if (sc == 54) { gt_open_a(3); gguide = 3; } else { gt_open_a(1); o_gtime = 1; } }
     if (sc >= 58 && sc <= 59) { mg_test(56); Toy *t = gtt(); gbi = 0; gsub = 1; t->deco = 5; t->mem = 2; t->room = 1; gview = sc == 59 ? GV_HOME : GV_MORE; }   // (D56) More page, family home
     if (sc >= 43 && sc <= 47) { arcade_tix = 37; funds += 5000; ag_open(sc == 47 ? AG_PRIZES : sc - 42); }
+    if (sc == 89) { arcade_tix = 37; funds += 5000; ag_open(AG_FIGHTER); }
     if (sc >= 80 && sc <= 88) { arcade_tix = 37; funds += 5000; ag_open(sc - 75); }   // (test builds) 60..71: games 5..13+   // (test builds) 40: this lot becomes the skate plaza, your Bore on the board at its west side
     if (sc == 40 || sc == 41) { memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(LOT_SKATE, 1); occ_ok = 0; funds += 5000;
         for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = 0; sims[q].y = sims[q].ty = sims[q].wy = (5 + q) * 16; sims[q].act = -1; }

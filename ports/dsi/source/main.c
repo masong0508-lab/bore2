@@ -437,7 +437,7 @@ static int gframes, cam_on, cam_pan, cam_free, live_pitch = 4300, cam_deff = 900
 static void sim3d(int i, int yaw);
 static int has_board, on_board, board_lift; static long skate_score, skate_best; static const int *em_R; static int sk_x3, sk_z3, sk_cr, sk_Rm[9];   // (D44) the skateboard: owned, ridden, the rider's height (PS1 units); em_R: a free turn for the rider's model
 static void skate_draw_board(int ground); static void skate_top(void); static unsigned skate_sig(void); static void skate_on(void), skate_off(void); static void skate_frame(int held, int down, int steps);
-static int mg_ui, mg_ver, arcade_tix, fight_wins, fight_champ, fight_best; static unsigned mg_sig(void), mg_bsig(void); static void mg_top(void), mg_bottom(void), mg_frame(int held, int down, int steps, int tx, int ty); static void ag_open(int g), hs_open(void), gm_open(void), gt_minute(void); static int arcade_game_at(int x, int y), in_arcade(void), ag_price(int g); static const char *ag_title(int g);
+static int mg_ui, mg_ver, arcade_tix, fight_wins, fight_champ, fight_best; static void fight_3d(void), fight_cam(int *, int *, int *, int *, int *, int *); static unsigned mg_sig(void), mg_bsig(void); static void mg_top(void), mg_bottom(void), mg_frame(int held, int down, int steps, int tx, int ty); static void ag_open(int g), hs_open(void), gm_open(void), gt_minute(void); static int arcade_game_at(int x, int y), in_arcade(void), ag_price(int g); static const char *ag_title(int g);
 #define MG_SAVE 256   // (D45 on) the most the mini-games' save blocks take, after the farm's
 static int mg_pack(u8 *o); static int mg_unpack(const u8 *p, int left); static void mg_reset(void);
 typedef struct { u8 x, y, c, i, rot; } Obj;
@@ -3164,7 +3164,8 @@ int main(void) {
         if (o_dirty) apply_opts();
         if (sky_on) sky_update(pitch);
         // (D39) the 3D: a steady 30 frames a second (or up to 60, Options > System > Frame rate); the passes in between do the game and the 2D screens, so the touch screen answers at 60
-        static u32 next3d; int is_lot = mode == M_LIVE || mode == M_BUY || mode == M_BUILD;
+        static u32 next3d; int fight_on = mode == M_LIVE && mg_ui == 6, is_lot = (mode == M_LIVE || mode == M_BUY || mode == M_BUILD) && !fight_on;
+        { static int aa = 1; int want = !fight_on; if (want != aa) { aa = want; if (want) glEnable(GL_ANTIALIAS); else glDisable(GL_ANTIALIAS); } }   // (D59: BORTUA FIGHTER's ring has no edge blending: it showed the sky along the mat's seams)
         if (is_lot) {   // (D39) the lot: a new frame is written whenever the last one has been taken; the vblank interrupt sends it on the beat
             gf_on = 1;
             { int want = mode == M_LIVE ? slv[ctl] * WHF : (mode == M_BUY || mode == M_BUILD) ? ed_lv * WHF : 0; cam_y += (want - cam_y) / 6; if (want - cam_y > -8 && want - cam_y < 8) cam_y = want; }   // (D36) the camera rises to the storey
@@ -3193,9 +3194,10 @@ int main(void) {
         } else if ((int)(vbl_n - next3d) >= 0) {   // the title, Create-a-Sim and the Map: straight to the GPU, as before
         gf_stop(); u32 v3 = vbl_n; GFX_TEX_FORMAT = 0; imm_txp = -1;   // (D43: no texture left set by a list)
         polys = 0;
-        glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluPerspectivef32(degreesToAngle(40), 256 * 4096 / 192, 4096 * 3 / 4, 4096 * 12);
+        glMatrixMode(GL_PROJECTION); glLoadIdentity(); if (fight_on) gluPerspectivef32(degreesToAngle(55), 256 * 4096 / 192, 450, 4096 * 4); else gluPerspectivef32(degreesToAngle(40), 256 * 4096 / 192, 4096 * 3 / 4, 4096 * 12);
         glMatrixMode(GL_POSITION); glLoadIdentity();
-        glTranslatef32(0, 0, -dist); glRotateXi(pitch); glRotateYi(yaw);
+        if (fight_on) { int fd, fp, fy, fx, fyy, fz; fight_cam(&fd, &fp, &fy, &fx, &fyy, &fz); glTranslatef32(0, 0, -fd); glRotateXi(fp); glRotateYi(fy); glTranslatef32(-fx, -fyy, -fz); }
+        else { glTranslatef32(0, 0, -dist); glRotateXi(pitch); glRotateYi(yaw); }
         if (mode == M_CAS) glTranslatef32(0, -650, 0);
         lit_on = o_lit && mode != M_TITLE && mode != M_MAP;
         gx_base = POLY_ALPHA(31) | POLY_CULL_NONE | POLY_ID(1) | (lit_on ? (POLY_FORMAT_LIGHT0 | POLY_FORMAT_LIGHT1) : 0);
@@ -3212,6 +3214,7 @@ int main(void) {
         else
 #endif
         if (mode == M_CAS) draw_head(yaw);
+        else if (fight_on) fight_3d();
         else if (mode == M_MAP) { BInfo b; bm_block(sel_x, sel_y, &b); draw_lot(&b, yaw); }
         glEnd();
         polys_last = polys; gf_shown++;
