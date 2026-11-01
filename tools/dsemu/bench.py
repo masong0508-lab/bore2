@@ -26,6 +26,8 @@ SC = {   # name: (script, pokes {frame: scene}, measure from, to, screenshot fra
     "street": (LIVE, {400: 3}, 700, 1300, 1280),
     "town":   (LIVE, {400: 4}, 700, 1300, 1280),
     "horizon": (LIVE, {400: 5}, 700, 1300, 1280),
+    "orbit":  (LIVE + ";500-1300:10:-1,-1", {}, 600, 1300, 1280),        # Live, the camera turning all the time (the still list is recorded again often)
+    "farmorbit": (LIVE + ";500-1300:10:-1,-1", {400: 2}, 600, 1300, 1280),
 }
 # BENCH_LOOK=0/1/2 (Classic, Rich, Toon) and BENCH_DETAIL=0/1/2 (Auto, DS, DSi): poked at frame 300 and 330
 EXTRA = {}

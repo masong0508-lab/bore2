@@ -1,7 +1,7 @@
-# BORE 2 DS / DSi: roadmap (updated at D38)
+# BORE 2 DS / DSi: roadmap (updated at D41)
 
 ## Where we are
-A Sims-DS style life sim on two screens, one ROM (`bore2_dsi_d33.nds`) that runs on DS, DSi and the emulators (melonDS, DraStic, NooDS, DeSmuME).
+A Sims-DS style life sim on two screens, one ROM (`bore2_dsi_d41.nds`) that runs on DS, DSi and the emulators (melonDS, DraStic, NooDS, DeSmuME).
 Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
 
 **Done**
@@ -110,12 +110,38 @@ Tested in melonDS only. Not yet tested on real hardware or on Android emulators.
 
 At D38 (level of detail by the eye; more things near the eye keep their detail): Live, the house 49-53 (2812-2982); Live, a farm lot with fifteen crop beds 46-51 (2710-2744).
 
+**Done at D39-D41 (`bore2_dsi_d41.nds`): steady 30, a longer view, a sky**
+- **D39, the 3D as recorded lists.** The lot's 3D is written into RAM as the GPU's own packed commands (a vertex that shares two coordinates with the one before goes as one word; a box face gets its normal without maths) and sent by DMA. Four lists: what moves (Bores, doors, hens, the dog, ghosts, citizens, cars, the cursor) every frame; the lot's build (lawn, floors, walls, roof), its things, and the world round it (streets, lamps, the lots next door, the far ring, the horizon) each recorded again only when its signature changes, at most one a frame. A Bore's model is recorded once for its looks and stride and placed and turned by one matrix (lighting turns with it). The vblank interrupt sends a finished frame every second vblank, so the 3D is a steady 30 while the game and the touch screen run at up to 60 (the game steps by the vblanks gone by, so it keeps its speed). Faces turned away are skipped by the GPU. The Live top screen redraws only what changed (the clock was redrawing the whole screen every game minute). Options > System > Frame rate: Steady 30 / Up to 60.
+- **D40, the look.** A sky drawn by the 2D engine behind the 3D (one colour a scanline, set by hblank DMA on channel 1, graded to the horizon for the camera's tilt); the GPU's fog on alpha only fades the far land into it. The land goes on past the 3x3: a ring of plain lots with their streets (two slots out on a DS, three on a DSi), each drawn round its own corner by a matrix move, then a horizon quad scaled four times out to the far plane (18 units on a DS, 22 on a DSi; 12 before). Options > Graphics > 3D look: Classic (as D38) / Rich (sky, haze, soft highlights from a shininess table) / Toon (Rich with outlines: each thing has its own polygon id for edge marking, hard highlight bands). Options > System > Detail: Auto / DS / DSi (Auto measures the CPU with a register loop in the ITCM: 134 MHz means the DSi's view and twice the crowd, 24 citizens and 12 cars). Turbo CPU: Auto / On / Off.
+- **D40-D41, the PS1's placement fixes on the DS.** Street lamps stand on the pavement at the kerb with the lamp out over the street (half way on the lot's side, by the corner across), a bin in the pavement's corner square; citizens walk the pavements and cross at the corners (the DS's own stale offset: cells 13-17 were all "street", so they walked in the lanes and spawned there). Things stand on what is under them: a floor, or the lawn outdoors (they all stood at floor height); Bores stand on the floor indoors (they were sunk 40 units into it) and citizens on the pavement.
+- **Saves:** format unchanged; the new options default for older saves. A D38 save loads, saves and reloads in D41.
+- **Toolchain:** `tools/dsbuild/restore.sh` brings the prebuilt chain back from the `ds-toolchain` branch. Bench: `tools/dsemu/tb.sh outdir [scene...]` builds a `-DDSTEST` ROM and prints per scene the 3D frames a second, the loop passes a second (UI), the quads sent and the GPU's polygon and vertex use, with a screenshot each (`tools/dsemu/bench.py`; test scenes are poked into `test_scene` with the runner's `POKE`). `tools/dsemu/peek.py` prints variables; `DBGPC=1` the CPUs' PCs.
+
+**Frame rate in melonDS, D38 against D41** (3D frames a second; D41 also the game/UI loop a second; screenshots in `docs/ds_shots/`, d38_* and d41_*):
+
+| Scene | D38 | D41 3D | D41 UI | GPU polygons D41 |
+|---|---|---|---|---|
+| Map | 60 | 30 (Steady 30) | 60 | 150-250 |
+| Buy | 55-58 | 30 | 55-60 | 910-950 |
+| Build | 55-58 | 30 | 55-60 | 910-950 |
+| Live, the house | 47-52 | 30 | 53-58 | 750-800 |
+| Live, Castaway Island | 47-53 | 30 | 55-60 | 340-380 |
+| Live, a farm lot | 47-50 | 30 | 52-56 | 590-680 |
+| Live, a busy street (low camera, citizens, cars) | 47-51 | 30 | 52-60 | 950-1020 |
+| Live, Strange Town | 48-51 | 30 | 52-56 | 350-390 |
+| Live, low camera to the horizon (new) | - | 30 | 55-60 | 1180-1230 |
+| Live, the camera turning all the time (new) | - | 29-30 | 53-58 | up to 880 |
+| Same with Detail: DSi (on a DS's CPU in melonDS) | - | 30 | 52-60 | street 1030-1120, horizon 1300-1380 |
+
+D38's rate went up and down between 47 and 58 (judder); D41 holds 30 on every scene, the loop that reads the touch screen runs at 52-60. The GPU's limits are 2048 polygons and 6144 vertices; the busiest view (DSi detail, to the horizon) uses about 5500 vertices, and the far ring is sent last so it is what would be dropped.
+Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build without the DSi's BIOS and NAND).
+
 ## Next (in this order)
 1. **Real-hardware and Android tests** of the song reader (`cart_blk` in `main.c`), saving and touch. If a loader blocks cartridge reads, add an SD (libfat) path for DSi.
 2. ~~Walkable upper floors~~ done at D36.
 3. ~~Catalogue to the PS1 size~~ done at D35.
-4. **Graphics options still open:** toon shading, per-item level of detail, screen swap, left-handed UI, text size, high contrast, colour filters.
-5. **Speed:** done at D32 (redraw only what changed, tap latching).
+4. **Graphics options still open:** screen swap, left-handed UI, text size, high contrast, colour filters. (Toon look and the long view: done at D40.)
+5. **Speed:** done at D32 and D39-D41 (lists, steady 30). Still open: the ROM is a plain DS ROM (unit code 0), so a DSi runs it in DS mode; the 134 MHz clock is used when the loader (TWiLight Menu's "TWL clock") or DSi mode gives it, and the game measures it. A DSi-enhanced header (arm9i/arm7i, so `isDSiMode()` and the 16 MB are there) needs a DSi BIOS/NAND to test in melonDS. Textures for the ground and walls (VRAM A and B are free). Spread a still list's recording over two frames if a lot ever gets bigger than today's busiest.
 6. **Music extras:** songs by place (shop, park, night).
 
 ## Bring over from the PS1 game

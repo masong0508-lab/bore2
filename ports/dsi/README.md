@@ -188,3 +188,8 @@ The lot's 3D is recorded as the GPU's own command lists: the still part (ground,
 - Street lamps on the pavement at the kerb, their lamps out over the street, and a bin in the corner square (as the PS1's fix). Citizens walk the pavements and cross at the corners (they used to walk in the lanes).
 - Options > Graphics > 3D look: Classic (as D38), Rich (sky, haze, soft highlights), Toon (Rich with outlines round every thing: each thing has its own polygon id for the GPU's edge marking). Options > System > Detail: Auto / DS / DSi (Auto: DSi when the CPU runs at 134 MHz: more view and twice the crowd). Turbo CPU: Auto / On / Off.
 - Saves: unchanged format; the two new options default for older saves.
+
+## D41 - standing on the ground, never a missed beat
+- Things stand on what is under them (a floor, or the lawn outdoors); Bores stand on the floor (they were sunk into it), citizens on the pavement.
+- The still part is three lists (the lot's build, its things, the world round it), each recorded again only when it changes and at most one a frame, so turning the camera holds 30.
+- Frame rates before and after, per scene, and screenshots: docs/DSI_ROADMAP.md and docs/ds_shots/.

@@ -14,7 +14,10 @@ Scripts here are the glue; paths point at /tmp/dsb and /tmp/libnds182.
 - tools/dsemu/run.cpp: headless melonDS runner (NDS mode, FreeBIOS):
   `dsrun rom.nds FRAMES out.ppm` dumps both screens.
 
-## Rebuilding /tmp from source (new container)
+## Getting the toolchain back (new container)
+Fastest: `tools/dsbuild/restore.sh` unpacks the prebuilt chain (all of /tmp/dsb, /tmp/libnds182, /tmp/crtls_old, /tmp/dsrun, and melonDS + /tmp/mb/src to relink dsrun) from the repo's `ds-toolchain` branch. Then `tools/dsbuild/mkp.sh` builds (`OUT=dir`, `XTRA=-DDSTEST` for a test build) and `tools/dsemu/tb.sh outdir` builds a test ROM and runs the frame-rate bench.
+
+## Rebuilding /tmp from source (if the branch is ever gone)
 Check first: if /tmp/dsb, /tmp/libnds182, /tmp/crtls_old and /tmp/mb are there, only `dsrun` may need rebuilding.
 - picolibc 1.8.12: `cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=tc.cmake -DCMAKE_INSTALL_PREFIX=/tmp/dsb/pl` (pip has no meson here, cmake works), then `ninja install`.
 - compiler-rt builtins (llvm 18) for armv5te -> /tmp/dsb/libgcc.a.
@@ -25,4 +28,4 @@ Check first: if /tmp/dsb, /tmp/libnds182, /tmp/crtls_old and /tmp/mb are there, 
 - ndstool from github devkitPro/ndstool -> /tmp/dsb/bin/ndstool.
 - melonDS core: build melonDS with cmake into /tmp/mb (libcore.a, teakra), then
   `g++ -std=c++17 -O2 -DARCHITECTURE_x86_64=1 -DGDBSTUB_ENABLED -I/tmp/melonDS/src -I/tmp/melonDS/src/teakra/include tools/dsemu/run.cpp /tmp/mb/src/libcore.a /tmp/mb/src/teakra/src/libteakra.a -lpthread -o /tmp/dsrun`
-- Runner extras: `BORE_SAV=file` keeps an 8 KB EEPROM save between runs; argv[4] is a touch/button script, argv[5] a list of frames to dump.
+- Runner extras: `BORE_SAV=file` keeps an 8 KB EEPROM save between runs; argv[4] is a touch/button script, argv[5] a list of frames to dump; `POKE=frame:addr:value,...` writes RAM at a frame (test hooks); `DBGMEM=addr,...` prints words every 30 frames (`DBGPC=1` adds both CPUs' PCs).
