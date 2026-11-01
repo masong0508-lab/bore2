@@ -142,6 +142,15 @@ Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build 
 - Frame rates in melonDS at D43: Map 30 (UI 60), Buy 30, Live house 30, island 30, farm 30, busy street 30, Strange Town 30, horizon 30 (UI 52-60 everywhere). Screenshots: docs/ds_shots/d42_roofs_*.png (roofs; Options > Roofs: Always) and d43_tex_*.png; before: d41_*.png.
 - Not done: textures on the Map's small picture and on the things you buy (they keep the PS1 models' flat colours), seasons on the ground textures (the PS1 tints grass by season).
 
+**Done at D44 (`bore2_dsi_d44.nds`): Real time**
+- Options > Game > **Real time** (off as it comes; saved in the options block, old saves load with it off): the clock is the DS's own clock chip, so the time of day and the weekday are yours, the season comes from the month (March spring, June summer, September autumn, December winter) and the festival is the month's first Saturday. The sky follows the clock (as Sky: Auto). Shops, work and night follow it as before.
+- Needs fall per real minute as two of a normal day's game minutes (Needs speed still scales it), so a real day is not brutal. Sleep refills as fast as before; a work shift still goes by in a blink (paid at once) and the clock stays real.
+- Minutes gone by while the DS was off (or since the save) are played through when you come back, a day at most (midnight: the day's roll); needs do not fall for that time. Switching it on goes straight to the real time.
+- The ARM7 (tools/dsbuild/arm7/main7.c, a7.bin) reads the clock chip into the transfer region once a second by hand (libnds 1.8.2's own read came back empty in melonDS). `tools/dsemu/run.cpp`: `RTCNOW=1` (host time) or `RTCNOW="2026-11-01 21:41"` sets melonDS's clock chip (it starts at 1 Jan 2000 otherwise).
+- Checked in melonDS: the option (left), live at the real Sun 9:41 PM in autumn (middle), saved, then loaded three hours later: Mon 12:41 AM, the day rolled (right). `docs/ds_shots/d44_realtime.png`
+![real time](ds_shots/d44_realtime.png)
+- Not done: the title screen's household card shows the saved clock, not the real one, until you go in.
+
 ## Next (in this order)
 1. **Real-hardware and Android tests** of the song reader (`cart_blk` in `main.c`), saving and touch. If a loader blocks cartridge reads, add an SD (libfat) path for DSi.
 2. ~~Walkable upper floors~~ done at D36.

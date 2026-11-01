@@ -3,7 +3,7 @@
 // Top screen: that lot in 3D. L/R change town, A/B zoom, START re-rolls the world.
 // Fixed point only; the world is bigmap.c, shared with the PS1 build (nothing of it is stored).
 #define PMN 28
-static int o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song, o_need = 2, o_day = 1, o_msgt = 1, o_tmus = 1, o_gmus = 1, o_shuf = 1, o_look = 1, o_detl, prof_full, fast_cpu, o_tex = 1;
+static int o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song, o_need = 2, o_day = 1, o_msgt = 1, o_tmus = 1, o_gmus = 1, o_shuf = 1, o_look = 1, o_detl, prof_full, fast_cpu, o_tex = 1, o_rt, rt_mon = -1, rt_md, rt_jump = 1;   // (o_rt: Options > Game > Real time; the real month (0 Jan) and day; 1: put the clock straight to the real one, nothing played through)
 
 // ---- the options: one table (name, the choices, the value, the tab it lives on, its default). Saved in table order, so new ones are only ever added at the end.
 typedef struct { const char *name, *vals; int *v; unsigned char tab, def; } Opt;
@@ -27,6 +27,7 @@ static const Opt OPT[] = {
     // (D40) the 3D look (Classic: as before D40; Rich: a sky, haze in the distance, highlights; Toon: Rich with outlines round every thing) and the detail (Auto: DSi when the CPU is the DSi's fast one)
     { "3D look", "Classic|Rich|Toon", &o_look, 0, 1 }, { "Detail", "Auto|DS|DSi", &o_detl, 3, 0 },
     { "Textures", "Off|On", &o_tex, 0, 1 },   // (D43: the PS1's patterns on the ground, floors, walls and roofs)
+    { "Real time", "Off|On", &o_rt, 2, 0 },   // (D44: the clock is the DS's own: time of day, weekday, season by the month; sleep and work stay quick)
 };
 #define OPT_OLD 36   // options saved in the save's first 40 bytes (the rest go in the 'OX' block)
 static void open_opts(void);
@@ -635,7 +636,7 @@ static u8 fm_n[4], fm_g[4], fm_dry[4], fm_wet, fm_hens, fm_cows, fm_fed, fm_fert
 static u16 fm_stock[4], fm_egg, fm_milk, fm_pe, fm_pm, fm_built, fm_last, fsk[SIM_MAX];   // (fm_built / fm_last / fm_cdone / fm_cday: the ledger's pk_data 16-21; fsk: each Bore's farming skill, the PS1's skill_farm)
 static int farm_ui, farm_tab; static volatile u32 vbl_n;   // (vbl_n: the hens peck by the frame)
 static int fm_skl(int i) { int l = fsk[i] / 400; return l > 10 ? 10 : l; }   // (the PS1's SKL: a skill counter to its level 0..10)
-static int fm_season(void) { return (st_days / 10) & 3; }   // (the PS1's seasons: ten days each, spring first)
+static int fm_season(void) { return o_rt && rt_mon >= 0 ? (rt_mon + 10) / 3 % 4 : (st_days / 10) & 3; }   // (the PS1's seasons: ten days each, spring first; Real time: by the month, March spring .. December winter)
 static const char *const SEASN[4] = { "Spring", "Summer", "Autumn", "Winter" };
 static void farm_reset(void) { memset(fm_n, 0, 4); memset(fm_g, 0, 4); memset(fm_dry, 0, 4); fm_wet = fm_hens = fm_cows = fm_fed = fm_fert = fm_fz = fm_pest = fm_up = fm_wc = fm_ordk = fm_ordq = fm_ordt = fm_fair = fm_cdone = 0; fm_cday = 255;
     memset(fm_stock, 0, sizeof fm_stock); fm_egg = fm_milk = fm_pe = fm_pm = fm_built = fm_last = 0; memset(fsk, 0, sizeof fsk); farm_ui = 0; }
@@ -1485,7 +1486,7 @@ static u32 fm_rand(void) { fm_rs = hsh(fm_rs + (u32)minutes * 2654435761u + 77u)
 static int fm_need(int k) { static const u8 d[4] = { 2, 3, 3, 4 }; int n = d[k] - (fm_skl(ctl) >= 5 ? 1 : 0); return n < 2 ? 2 : n; }   // nights of watered growth to be ready
 static int fm_have(int k) { return k < 4 ? fm_stock[k] : k == 4 ? fm_egg : fm_milk; }
 static void fm_take(int k, int n) { if (k < 4) fm_stock[k] -= (u16)n; else if (k == 4) fm_egg -= (u16)n; else fm_milk -= (u16)n; }
-static int fm_fest(void) { int mn = minutes % 1440; return st_days % 10 == 9 && mn >= 600 && mn < 1320; }   // (the PS1's festival: the tenth day of each season, 10am to 10pm)
+static int fm_fest(void) { int mn = minutes % 1440; return (o_rt && rt_mon >= 0 ? (minutes / 1440) % 7 == 5 && rt_md <= 7 : st_days % 10 == 9) && mn >= 600 && mn < 1320; }   // (Real time: the month's first Saturday)   // (the PS1's festival: the tenth day of each season, 10am to 10pm)
 static void fm_sk(int i, int v) { if (i >= 0 && i < SIM_MAX) fsk[i] = (u16)(fsk[i] + v > 60000 ? 60000 : fsk[i] + v); }
 static char fm_say_b[4][48]; static int fm_say_k;
 static void fm_say(const char *fmt, int v) { char *b = fm_say_b[fm_say_k++ & 3]; sprintf(b, fmt, v); say(b); }   // (say keeps the pointer: a few buffers in turn)
@@ -1846,7 +1847,7 @@ static void job_work(void) {
     if (hr < 6 || hr > 15) { say("Shifts start 6am to 3pm"); return; }
     if (L->worked == dn) { say("Already worked today"); return; }
     const Sim *m = &sims[ctl]; int perf = (m->need[0] + m->need[1] + m->need[2] + m->need[5]) / 4, good = perf >= 45, pay = job_pay(L), old = minutes;
-    L->worked = (u8)dn; L->shifts++; minutes += 360;
+    L->worked = (u8)dn; L->shifts++; if (!o_rt) minutes += 360;   // (Real time: the shift goes by in a blink, the clock stays real)
     static const u8 NPCT[4] = { 0, 50, 100, 150 };   // (a shift tires them as the Needs speed says)
     for (int q = 0; q < nsim; q++) { static const u8 dd[6] = { 35, 20, 30, 0, 30, 20 }; for (int n = 0; n < 6; n++) { int v = sims[q].need[n] - (q == ctl ? dd[n] : 12) * NPCT[o_need & 3] / 100; sims[q].need[n] = v < 4 ? 4 : v; } }
     if (minutes / 1440 != old / 1440) day_roll();
@@ -2260,6 +2261,21 @@ static int arrive(int i) {   // at the thing: start doing it (0: nothing to do a
     if (m->act >= 100) { if (m->tgt >= 0) { Sim *o = &sims[m->tgt]; o->act_left = m->face; o->act = 3 + 100; o->act_amt = 0; } m->act = 3; apply_soc(i, m->tgt, m->soc); }
     return 1;
 }
+// ---- (D44) Real time: the DS's own clock (the ARM7 reads the clock chip into the transfer region every second: tools/dsbuild/arm7/main7.c).
+// Local time as seconds since 1 Jan 1970; the game's clock is put to its weekday and minute. Minutes gone by since the last look (the DS
+// was off, a save loaded) are played through, a day at most (bills, pay, birthdays at midnight); the rest is skipped.
+static void rt_sync(void) {
+    u32 t = *(volatile u32 *)0x02FFF010; if (t < 946684800u) return;   // (libnds' __transferRegion()->unixTime; before 2000: the clock is not set)
+    u32 dn = t / 86400u; int mn = (int)(t % 86400u / 60u), y = 1970, m = 0, d = (int)dn;
+    while (d >= 365 + (!(y & 3) && (y % 100 || !(y % 400)))) d -= 365 + (!(y & 3) && (y % 100 || !(y % 400))), y++;
+    for (;; m++) { int ml = m == 1 ? 28 + (!(y & 3) && (y % 100 || !(y % 400))) : 31 - ((m + (m >= 7)) & 1); if (d < ml) break; d -= ml; }
+    rt_mon = m; rt_md = d + 1;
+    int want = (int)((dn + 3) % 7) * 1440 + mn, cur = ((minutes / 1440) % 7) * 1440 + minutes % 1440, gap = (want - cur + 10080) % 10080;   // (1 Jan 1970 was a Thursday)
+    if (rt_jump) { rt_jump = 0; minutes += gap; return; }
+    if (gap > 10080 - 1440) { minutes -= 10080 - gap; return; }   // (the clock went back: straight there)
+    if (gap > 1440) { minutes += gap - 1440; gap = 1440; }
+    while (gap-- > 0) { minutes++; if (minutes % 1440 == 0) day_roll(); }
+}
 static void sims_step(int frames) {
     int keep_lv = LV;
     for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; LV = slv[i];   // (D36: each walks on its own storey)
@@ -2276,7 +2292,7 @@ static void sims_step(int frames) {
             if (m->x == m->tx && m->y == m->ty && m->act >= 0) { if (!arrive(i)) continue; }
         } else if (m->act >= 0 && m->act != 50 && m->act != 51) { if (!arrive(i)) continue;   // (already there)
         } else if (i != ctl && stage_of(m->age) > 0 && ((frames + i * 37) & 127) == 0) { m->tx = (1 + (frames * 7 + i * 5) % 11) * 16; m->ty = (1 + (frames * 3 + i * 9) % 12) * 16; m->act = -1; }
-        { static const u8 NP[4] = { 0, 140, 70, 47 }; int np = NP[o_need & 3];   // (Options > Game > Needs speed: never fall, slow, normal, fast = frames per point)
+        { static const u8 NP[4] = { 0, 140, 70, 47 }; int np = NP[o_need & 3] * (o_rt ? 225 : 1);   // (Options > Game > Needs speed: never fall, slow, normal, fast = frames per point; Real time: a real minute takes what two of a normal day's game minutes do)
           if (np && ((frames + i * 9) % np) == 0) for (int n = 0; n < 6; n++) if (m->need[n] > 4 && n != 3) m->need[n]--;
           if (np && ((frames + i * 9) % (np * 2)) == 0 && m->need[3] > 4) m->need[3]--; }
         if (((frames + i * 9) % 70) == 5 && !m->act_left) {
@@ -2284,7 +2300,9 @@ static void sims_step(int frames) {
             if (m->need[4] <= 6) { m->need[4] = 60; m->need[5] = cl100(m->need[5] - 25); m->need[1] = cl100(m->need[1] - 10); if (i == ctl) say("Oh no, an accident!"); life_fear(i, FR_WET); } }
     }
     LV = 0; dog_step(frames); ghost_step(frames); LV = keep_lv; if ((frames & 63) == 0) life_tick();
-    { static const u8 DP[4] = { 66, 100, 150, 250 }; static int dacc; int per = 8 * DP[o_day & 3];   // (Options > Game > Day length: a game minute every 5.3, 8, 12 or 20 steps)
+    { static int was; if (o_rt && !was) rt_jump = 1; was = o_rt; }   // (just switched on: straight to the real time)
+    if (o_rt) { if (rt_jump || (frames & 63) == 0) rt_sync(); }
+    else { static const u8 DP[4] = { 66, 100, 150, 250 }; static int dacc; int per = 8 * DP[o_day & 3];   // (Options > Game > Day length: a game minute every 5.3, 8, 12 or 20 steps)
       dacc += 100; if (dacc >= per) { dacc -= per; if (dacc >= per) dacc = 0; minutes++; if (minutes % 1440 == 0) day_roll(); } }
 }
 // ---- smooth shaded 3D: ellipsoids with a colour on every vertex, so a head is round and lit instead of a box ----
@@ -2639,7 +2657,8 @@ static void plumb_icon(int x, int y, int sz, u16 c) {
     for (int k = 0; k < 8; k++) { int dx = k < 4 ? (k & 1 ? 1 : -1) * (sz / 2 - 2) : 0, dy = k >= 4 ? ((k & 1) ? 1 : -1) * (sz / 2 - 2) : 0; rect(cx + dx - 1, cy + dy - 1, 3, 3, c); }
     rect(cx - sz / 2 + 2, cy, sz - 4, 1, c); rect(cx, cy - sz / 2 + 2, 1, sz - 4, c);
 }
-static int sky_now(void) { if (o_sky < 4) return o_sky; int h = (minutes / 60) % 24; return h < 5 || h >= 20 ? 2 : h < 7 || h >= 18 ? 1 : 0; }
+static int sky_now(void) { if (o_sky < 4 && !o_rt) return o_sky;   // (Real time: the sky follows the clock)
+    int h = (minutes / 60) % 24; return h < 5 || h >= 20 ? 2 : h < 7 || h >= 18 ? 1 : 0; }
 static void snd_apply(void);
 // ---- (D40) THE LOOK: a sky drawn by the 2D engine behind the 3D (one colour a scanline, changed in each hblank by DMA, graded to the camera's horizon), haze that
 // fades the far land into it (the GPU's fog on alpha only), highlights from a shininess table, and in Toon outlines round every thing (edge marking by polygon id).
@@ -2738,7 +2757,7 @@ static void draw_title(void) {
 }
 static void new_household(void) {
     zone = 0; isl_wood = isl_stone = isl_leaves = isl_spear = isl_shells = 0; isl_food = 3; isl_secrets = 0; farm_reset();
-    st_days = st_born = st_died = 0; nown = 0; home_bx = home_by = -1; funds = 3500; life_reset();
+    st_days = st_born = st_died = 0; nown = 0; home_bx = home_by = -1; funds = 3500; life_reset(); rt_jump = 1;
     lot_seed = (u32)minutes * 7919u + 17; lot_reset(); lot_bx = -1; lot_by = -1; Sim *m = &sims[0]; m->skin = (u8)(minutes % 6); m->hair = (u8)(minutes % 12); m->hcol = (u8)(minutes % 6); m->shirt = (u8)(minutes % 6); m->beard = 0; m->fc = 0;
     for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0;
 }
@@ -2957,7 +2976,7 @@ int main(void) {
                 if (sig != lastsig) { scr = offbuf; backdrop(); draw_ui(); off_show(scr_sub); lastsig = sig; } }
             yaw = bb_yaw; pitch = bb_pitch; dist = bb_dist * (o_cam == 0 ? 85 : o_cam == 1 ? 100 : 125) / 100;
         }
-        { static int skyh = -1; int hh = (minutes / 60) % 24; if (o_sky == 4 && hh != skyh) o_dirty = 1; skyh = hh; }
+        { static int skyh = -1; int hh = (minutes / 60) % 24; if ((o_sky == 4 || o_rt) && hh != skyh) o_dirty = 1; skyh = hh; }
         if (down & KEY_TOUCH) sfx(0);
         snd_tick();
         { static int lm = -9; if (mus_cur != lm) { lm = mus_cur; if (mode == M_LIVE && mus_cur >= 0) { static char nb[48]; sprintf(nb, "Now playing: %.22s", mus_name(mus_cur)); say(nb); } } }

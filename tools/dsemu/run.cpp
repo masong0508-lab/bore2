@@ -1,3 +1,4 @@
+#include <ctime>
 // Headless melonDS runner: run.cpp rom.nds frames out.ppm [touchx touchy]
 // Builds against melonDS core (libcore.a). NDS mode, FreeBIOS.
 #include <cstdio>
@@ -107,7 +108,11 @@ int main(int argc, char** argv) {
   auto cart = NDSCart::ParseROM(rom.data(), rom.size(), nullptr, std::move(cargs));
   if (!cart) { fprintf(stderr, "bad rom\n"); return 2; }
   nds.SetNDSCart(std::move(cart));
-  nds.Reset(); nds.SetupDirectBoot(argv[1]); nds.Start();
+  nds.Reset(); nds.SetupDirectBoot(argv[1]);
+  if (const char* rt = getenv("RTCNOW")) {   // RTCNOW=1: the clock chip set to the host's local time (as melonDS's own front end does); RTCNOW="2026-11-01 21:41": that time
+    int Y, M, D, h, m; time_t t = time(nullptr); struct tm* tm = localtime(&t); Y = tm->tm_year + 1900; M = tm->tm_mon + 1; D = tm->tm_mday; h = tm->tm_hour; m = tm->tm_min;
+    sscanf(rt, "%d-%d-%d %d:%d", &Y, &M, &D, &h, &m); nds.RTC.SetDateTime(Y, M, D, h, m, 0); }
+  nds.Start();
   int n = atoi(argv[2]);
   // optional script: argv[4] = "frame:keymask:tx:ty,..." (keymask bits: 1=A... as melon: 0=A 1=B 2=sel 3=start 4=R 5=L 6=U 7=D 8=R 9=L ; bit set = pressed)
   // script (argv[4]): "a-b:keys:tx,ty;..." frames a..b hold key bits (hex; 1=A 2=B 4=SEL 8=START 10=RIGHT 20=LEFT 40=UP 80=DOWN 100=R 200=L, 400=X 800=Y) and a touch at tx,ty (tx<0: none)
