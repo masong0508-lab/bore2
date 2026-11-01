@@ -782,7 +782,7 @@ static void life_update(int steps) {
             if (fr_ > 120 && s->action == ACT_NONE) { int ph = ((fr_ - 120) / 700) & 3; int v = 9 * steps; if (ph == 0) s->x += v; else if (ph == 1) s->z -= v; else if (ph == 2) s->x -= v; else s->z += v; }
             cam_pitch = 470; cam_dist = 3200; cam_yaw = (fr_ * 3) & 4095;
           }
-#elif !defined(AUTO_TOWER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_PROP)
+#elif !defined(AUTO_TOWER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_PROP) && !defined(AUTO_LE)
 #ifdef CIT_STAND
           if (fr_ > 240 && fr_ < CIT_STAND && s->action == ACT_NONE) s->x += 11 * steps;   // (test builds: a stroll, then stand about on the street)
 #else
@@ -1130,9 +1130,11 @@ static void map_draw(void) {   // the state on a card: the map on the left (the 
         int x = MX + st->x * MS / BM_N, y = MY + st->y * MS / BM_N, d = st->kind == ST_CITY ? 7 : st->kind == ST_TOWN ? 5 : 3;
         ui_disc(x, y, d + 2, UI_RGB(40, 46, 60)); ui_disc(x, y, d, UI_WHITE);
     }
-    if (home_city) {   // home: a house on a green disc
-        int x = MX + home_bx * MS / BM_N, y = MY + home_by * MS / BM_N;
-        ui_disc(x, y, 15, UI_WHITE); ui_icon_disc(x, y, 13, IC_HOUSE, UI_GREEN, UI_WHITE);
+    for (int i = 0; i <= nprops; i++) {   // each property a house on an orange disc; home last (on top), a bigger house on a green disc
+        int h = i == nprops, bx = h ? home_bx : props[i].bx, by = h ? home_by : props[i].by; if (h && !home_city) continue;
+        int x = MX + bx * MS / BM_N, y = MY + by * MS / BM_N;
+        ui_disc(x, y, h ? 15 : 17, h ? UI_WHITE : UI_RGB(40, 46, 60)); ui_icon_disc(x, y, h ? 13 : 15, IC_HOUSE, h ? UI_GREEN : UI_AMBER, UI_WHITE);
+        if (i == 0 && !h) ui_badge_i(MX + 3, MY + MS - 15, IC_HOUSE, "YOURS", UI_AMBER, UI_WHITE);   // (the key, when there are any)
     }
     if (world_zone == ZONE_CITY && world_wbx >= 0) {   // you are here
         int wx = world_wbx * BM_BLK + sim_tile_x(&sims[player]), wy = world_wby * BM_BLK + sim_tile_y(&sims[player]);
@@ -2432,8 +2434,23 @@ static void prop_tick(void) {
     if (k == 29 && t >= 3400) { k++; home_go(); }
     if (k == 30 && t >= 3550) { extern int world_dbg_oldsave(void); k++; int wx = pB[0] - world_wbx, wy = pB[1] - world_wby; dbg_prop[41] = world_at_l(1, wx * BM_BLK + ex, wy * BM_BLK + ey) == 'N'; dbg_prop[42] = world_dbg_oldsave();
                                 dbg_prop[43] = world_at_l(1, wx * BM_BLK + ex, wy * BM_BLK + ey) == 'N'; }
+    if (k == 31 && t >= 3700) { k++; dbg_prop[44] = nprops; map_t = -1; state = ST_MAP; }   // (the phone's map: the home and the properties on it)
     #undef AT
     (void)x; (void)y; (void)ok;
+}
+#endif
+#ifdef AUTO_LE
+int dbg_le[32];   // (test builds, with AUTO_CITY: lean checks. 1: a home and properties in three towns, then the phone's map)
+static void le_tick(void) {
+    static int t0 = -1, k;
+    if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30 || world_zone != ZONE_CITY) return; t0 = VSync(-1); }
+    int t = VSync(-1) - t0;
+#if AUTO_LE == 1
+    if (k == 0 && t >= 60) { k++; HomeAd ad[4]; cash = 900000;
+        for (int i = 0; i < 4 && i < bm_nset(); i++) { const Settle *st = bm_set(i); int n = home_list(st->x, st->y, ad, 4); if (n) dbg_le[i] = home_buy(ad[0].bx, ad[0].by, i ? HB_PROP : HB_KEEP); }
+        dbg_le[4] = nprops; dbg_le[5] = home_city; }
+    if (k == 1 && t >= 400) { k++; map_t = -1; state = ST_MAP; }
+#endif
 }
 #endif
 static const char *const pauseNm[] = { "RESUME", "BORE PANEL", "BUILD MODE", "KINGDOM MODE", "BOREAGOTCHI", "SUPERSTAR BAND", "CREATE A DOG", "CREATE A BORE", "ADD A BORE", "OPTIONS", "HOW TO PLAY", "SAVE GAME", "NEW LIFE", "QUIT TO TITLE" };
@@ -4637,6 +4654,9 @@ int main(void) {
 #endif
 #ifdef AUTO_PROP
         prop_tick();
+#endif
+#ifdef AUTO_LE
+        le_tick();
 #endif
 #ifdef AUTO_STREAM
         stream_tick();

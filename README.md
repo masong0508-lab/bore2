@@ -203,7 +203,8 @@ BASE stays yours too.
 Properties: besides the home, the family can own up to 8 more places nobody lives in. X on a home for sale (THE NEIGHBORHOOD or the
 list) asks BUY IT HOW?: MOVE IN, KEEP OLD HOME (the old home stays theirs as a property), MOVE IN, SELL OLD HOME (it sells for what
 it cost), or BUY AS PROPERTY (theirs, but they live where they are). A FOR SALE sign offers MOVE IN and BUY AS PROPERTY. A property
-is not furnished for the family and has no sign; walking onto it says YOUR PROPERTY. You can build on it like your home, never on
+is not furnished for the family and has no sign; walking onto it says YOUR PROPERTY. The phone's MAP marks the home (a house on a
+green disc) and every property (a house on an orange disc; the YOURS key in the corner). You can build on it like your home, never on
 other people's lots. MY PROPERTIES (TRIANGLE on THE NEIGHBORHOOD, R1 on the list) shows the home and each property with its
 value: X GO THERE (a free taxi), SQUARE MOVE IN (it becomes the home, furnished for them if nothing on it was changed; the old
 home becomes a property), TRIANGLE SELL (for what was paid). The home you live in only sells by moving first. The home's and the
