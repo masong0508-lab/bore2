@@ -1,4 +1,5 @@
 // ds_games.c - the PS1's mini-games on the DS (included by main.c, after the lot, the sims and the 2D helpers it uses).
+// D47: THE UNDERWORLD (src/heist_ui.c): the heist.
 // D46: the ARCADE (src/arcade.c): BORE BREAKER, SNACK CATCH, WHACK-A-BORE, HIGH STRIKER, the prize counter, tickets.
 // D45: SKATE (src/skate.c): the board in Live, the PS1's physics, tricks, combos and score.
 
@@ -531,11 +532,8 @@ static void ar_bottom(void) {
     case AG_STRIKER: chip(8, 24, 240, 130, "STOP (A)", 1); break;
     }
 }
-static unsigned mg_sig(void) { return (unsigned)(mg_ver * 131 + mg_ui * 7); }
-static unsigned mg_bsig(void) { return (unsigned)(mg_ui * 3 + ag_phase * 5 + ag * 7 + (mg_ui == 1 && ag == AG_WHACK ? aw_sel * 11 : 0) + ag_psel * 13 + ab_held * 17 + (arcade_tix > 0) * 23); }
-static void mg_top(void) { ar_top(); }
-static void mg_bottom(void) { ar_bottom(); }
-static void mg_frame(int held, int down, int steps, int tx, int ty) {
+static unsigned ar_bsig(void) { return (unsigned)(mg_ui * 3 + ag_phase * 5 + ag * 7 + (mg_ui == 1 && ag == AG_WHACK ? aw_sel * 11 : 0) + ag_psel * 13 + ab_held * 17 + (arcade_tix > 0) * 23); }
+static void ar_frame(int held, int down, int steps, int tx, int ty) {
     int hd = 0, pr = 0, tch = held & KEY_TOUCH, td = down & KEY_TOUCH; ag_tx = -1; ag_dirty = 0;
     if (held & KEY_LEFT) hd |= PD_L; if (held & KEY_RIGHT) hd |= PD_R; if (held & KEY_UP) hd |= PD_U; if (held & KEY_DOWN) hd |= PD_D; if (held & KEY_A) hd |= PD_X;
     if (down & KEY_LEFT) pr |= PD_L; if (down & KEY_RIGHT) pr |= PD_R; if (down & KEY_UP) pr |= PD_U; if (down & KEY_DOWN) pr |= PD_D; if (down & KEY_A) pr |= PD_X; if (down & KEY_B) pr |= PD_O; if (down & KEY_START) pr |= PD_ST;
@@ -554,26 +552,147 @@ static void mg_frame(int held, int down, int steps, int tx, int ty) {
     if (ag_dirty || pr || old != ag_phase || op != ag_psel || ag_tx >= 0) mg_ver++;
 }
 
+// ==== THE UNDERWORLD (src/heist_ui.c): GRAND THEFT. Pick a ride, sneak through three gates (a gauge each), run for it if the alarm went; keep it or fence it. Heat cools with the days ====
+enum { H_LIST, H_GATE, H_CHOICE, H_CHASE, H_END };
+#define HT_N 10
+static const char *const hTNM[HT_N] = { "HATCHBACK", "PICKUP TRUCK", "SPORTS CAR", "MOTORBIKE", "POLICE CRUISER", "SPEEDBOAT", "YACHT", "BIPLANE", "SEAPLANE", "JET" };
+static const char *const hTWH[HT_N] = { "CAR LOT", "CAR LOT", "CAR LOT", "CAR LOT", "POLICE YARD", "HARBOUR", "HARBOUR", "AIRFIELD", "AIRFIELD", "AIRFIELD" };
+static const u8 hTDF[HT_N] = { 1, 1, 3, 2, 4, 3, 5, 4, 5, 6 }, hTST[HT_N] = { 1, 1, 2, 2, 3, 2, 3, 3, 3, 5 };
+static const int hTVAL[HT_N] = { 400, 700, 2500, 900, 1800, 3500, 12000, 6000, 9000, 30000 };
+static const char *const hGNM[3] = { "THE FENCE", "THE GUARD", "THE LOCK" };
+static const char *const hGHINT[3] = { "CLIMB WHEN THE LIGHT IS AWAY.", "SLIP PAST WHEN HE LOOKS OFF.", "PICK IT IN THE QUIET MOMENT." };
+static int hs_heat, hs_day, hs_stolen, hs_logic;   // saved ('HT'): the heat, the day it was last cooled, the boats and aircraft kept (a bit each), the logic points
+static int hp, hsel, hgate, halarm, htgt, hstars, hround, hmiss, hmark, hdir, hzone, hzw, htmr, hanim; static char hline[48], hline2[48];
+static unsigned hrs = 9;
+static int hrnd(int n) { hrs ^= hrs << 13; hrs ^= hrs >> 17; hrs ^= hrs << 5; return (int)((hrs >> 3) % (unsigned)n); }
+static int hlg(void) { int l = hs_logic / 400; return l > 10 ? 10 : l; }
+static void hs_open(void) {
+    hp = H_LIST; hsel = 0; hline[0] = hline2[0] = 0; hanim = 0; hrs = (unsigned)(funds * 7 + st_days * 31 + 11); mg_ui = 3; mg_ver++;
+    if (hs_day != (u8)st_days) { int d = (u8)st_days - hs_day; if (d < 0) d += 256; hs_heat = MAX(0, hs_heat - d * 12); hs_day = (u8)st_days; } }
+static void hnew_zone(int w) { hzw = w < 8 ? 8 : w; hzone = 10 + hrnd(80 - hzw); hmark = hrnd(100); hdir = hrnd(2) ? 1 : -1; htmr = 0; }
+static void hbusted(const char *why) {   // (the PS1 puts it on the record and sends you to court; here you pay a fine, are shaken, and the heat rises)
+    int fine = MIN(funds, 100 * hstars * (1 + hstars / 2)); funds -= fine;
+    hs_heat = MIN(100, hs_heat + 20); { Sim *s = &sims[ctl]; s->need[1] = cl100(s->need[1] - 30); s->need[3] = cl100(s->need[3] - 15); }
+    say("Arrested!"); hp = H_END; strcpy(hline, why); sprintf(hline2, "FINED $%d. IT IS ON THE RECORD.", fine); voice(V_CRY);
+}
+static void hbegin(int t) {
+    htgt = t; hgate = 0; halarm = 0; hstars = hTST[t] + (hs_heat > 50); hmiss = 0; hp = H_GATE; hline[0] = 0;
+    hnew_zone(30 + hlg() * 2 - hTDF[t] * 3); voice(V_YAHOO);
+}
+static void hgot_away(void) {
+    hs_heat = MIN(100, hs_heat + 10 + hstars * 6); hs_day = (u8)st_days; hs_logic += 30 + hTDF[htgt] * 10; hp = H_CHOICE; hsel = 0; hline[0] = 0;
+    say("You got away with it!"); voice(V_WIN);
+}
+static void hfinish_gate(int ok) {
+    if (ok) strcpy(hline, "CLEAN!"); else { halarm++; strcpy(hline, "A SLIP! SOMETHING CLANGED."); hstars = MIN(5, hstars + 1); }
+    htmr = 40;
+}
+static int hs_update(int pr, int steps) {   // 1 while it runs (heist_update)
+    hanim += steps;
+    if (hp == H_LIST) {
+        if (pr & PD_O) return 0;
+        if (pr & PD_U) hsel = (hsel + HT_N - 1) % HT_N; if (pr & PD_D) hsel = (hsel + 1) % HT_N;
+        if (pr & PD_X) { if (stage_of(sims[ctl].age) < 3) { strcpy(hline, "TOO YOUNG FOR THIS."); return 1; } hbegin(hsel); }
+        return 1; }
+    if (hp == H_GATE) {
+        int sp = 2 + hgate + hTDF[htgt] / 2 - hlg() / 4; if (sp < 1) sp = 1;
+        for (int i = 0; i < steps; i++) { hmark += hdir * sp; if (hmark > 99) { hmark = 99; hdir = -1; } if (hmark < 0) { hmark = 0; hdir = 1; } }
+        if (htmr > 0) { htmr -= steps; if (htmr <= 0) {
+            if (halarm >= 2) { hbusted("CAUGHT RED-HANDED!"); return 1; }
+            if (++hgate >= 3) { if (halarm) { hp = H_CHASE; hround = 0; hmiss = 0; hnew_zone(36 + hlg() * 2 - hstars * 3); hline[0] = 0; strcpy(hline2, "THE ALARM IS RINGING! RUN!"); } else hgot_away(); }
+            else hnew_zone(30 + hlg() * 2 - hTDF[htgt] * 3 - hgate * 2); }
+            return 1; }
+        if (pr & PD_X) { int d = ABS(hmark - (hzone + hzw / 2)); hfinish_gate(d <= hzw / 2 + 2); sfx(d <= hzw / 2 + 2 ? 1 : 0); }
+        return 1; }
+    if (hp == H_CHOICE) {
+        if (pr & (PD_U | PD_D)) hsel ^= 1;
+        if (pr & PD_X) {
+            if (hsel == 0) { if (htgt >= 5) { hs_stolen |= 1 << htgt; sprintf(hline, "KEPT: THE %s (HOT).", hTNM[htgt]); } else { int pay = hTVAL[htgt] * (100 + hlg() * 3) / 200; funds += pay; sprintf(hline, "A CAR CAN'T BE KEPT HERE. SOLD $%d", pay); } }
+            else { int pay = hTVAL[htgt] * (100 + hlg() * 3) / 100; funds += pay; sprintf(hline, "FENCED FOR $%d", pay); voice(V_WIN); }
+            hp = H_END; strcpy(hline2, hs_heat > 60 ? "THE HEAT IS ON. LAY LOW." : "QUIET, FOR NOW."); life_ev(ctl, WN_CASH, 0); }
+        return 1; }
+    if (hp == H_CHASE) {
+        int sp = 3 + hround + hstars; if (sp < 2) sp = 2;
+        for (int i = 0; i < steps; i++) { hmark += hdir * sp; if (hmark > 99) { hmark = 99; hdir = -1; } if (hmark < 0) { hmark = 0; hdir = 1; } }
+        if (htmr > 0) { htmr -= steps; if (htmr <= 0) { if (hmiss >= 2) hbusted("THE POLICE GOT YOU!"); else if (++hround >= hstars + 1) hgot_away(); else hnew_zone(36 + hlg() * 2 - hstars * 3 - hround); } return 1; }
+        if (pr & PD_X) { int d = ABS(hmark - (hzone + hzw / 2)); if (d <= hzw / 2 + 2) strcpy(hline, "LOST THEM AT THE CORNER!"); else { hmiss++; strcpy(hline, "THEY ARE ON YOUR TAIL!"); } htmr = 40; }
+        return 1; }
+    if (pr & (PD_X | PD_O)) return 0;
+    return 1;
+}
+static void hs_top(void) {
+    scr = offbuf; char b[56]; rect(0, 0, 256, 192, K8(14, 14, 34));
+    for (int i = 0; i < 6; i++) rect(10 + i * 40, 150 - (i * 37) % 50, 24, 60, K8(24, 24, 46));   // a skyline at night
+    panel(8, 8, 240, 176, "Underworld"); int top = 38;
+    if (hp == H_LIST) {
+        text(16, top, 1, C15(20, 24, 28), "PICK A RIDE. ANY NIGHT."); sprintf(b, "HEAT %d", hs_heat); text(240 - tw(1, b), top, 1, hs_heat > 50 ? C15(31, 12, 10) : C15(14, 30, 14), b);
+        text(16, top + 18, 2, TXT, hTNM[hsel]); sprintf(b, "%s   $%d", hTWH[hsel], hTVAL[hsel]); text(16, top + 40, 1, C15(14, 30, 14), b);
+        sprintf(b, "SECURITY %d  WANTED %d  YOUR LOGIC %d", hTDF[hsel], hTST[hsel], hlg()); text(16, top + 56, 1, C15(24, 28, 31), b);
+        text_fit(16, top + 74, 1, 224, C15(20, 24, 28), hsel >= 5 ? "KEPT: HOT. SKY AND SEA CAN TAKE IT OUT." : "A CAR OR BIKE: THE CHOP SHOP, FOR CASH.");
+        if (hs_stolen & (1 << hsel)) text(16, top + 90, 1, C15(31, 25, 6), "YOU KEEP ONE OF THESE ALREADY.");
+        text(16, top + 108, 1, C15(31, 12, 10), hline); return; }
+    if (hp == H_GATE || hp == H_CHASE) {
+        if (hp == H_GATE) { text(16, top, 1, TXT, hTNM[htgt]); sprintf(b, "GATE %d OF 3: %s", hgate + 1, hGNM[hgate]); text(16, top + 14, 1, C15(24, 28, 31), b); text(16, top + 28, 1, C15(20, 24, 28), hGHINT[hgate]); }
+        else { text(16, top, 1, C15(31, 12, 10), "THE GETAWAY"); sprintf(b, "CORNER %d OF %d", hround + 1, hstars + 1); text(16, top + 14, 1, C15(24, 28, 31), b); text(16, top + 28, 1, C15(20, 24, 28), hline2); }
+        rect(16, top + 50, 224, 16, K8(200, 206, 214)); rect(16 + hzone * 224 / 100, top + 50, hzw * 224 / 100, 16, K8(255, 235, 120)); rect(14 + hmark * 224 / 100, top + 46, 5, 24, K8(60, 70, 200));
+        for (int i = 0; i < 5; i++) { rect(16 + i * 16, top + 84, 12, 12, i < hstars ? K8(236, 170, 30) : K8(110, 110, 130)); }
+        text(16, top + 108, 1, TXT, hline); return; }
+    if (hp == H_CHOICE) { text(16, top, 1, TXT, "YOU'RE IN. NOW WHAT?"); text(16, top + 24, 1, C15(24, 28, 31), htgt >= 5 ? "KEEP IT. IT IS HOT." : "SELL IT TO THE CHOP SHOP"); text(16, top + 42, 1, C15(24, 28, 31), "FENCE IT FOR CASH"); return; }
+    text_fit(16, top + 6, 1, 224, TXT, hline); text_fit(16, top + 28, 1, 224, C15(20, 24, 28), hline2); sprintf(b, "FUNDS $%d   HEAT %d", funds, hs_heat); text(16, top + 60, 1, C15(14, 30, 14), b);
+}
+static void hs_bottom(void) {
+    scr = offbuf; rect(0, 0, 256, 192, K8(14, 14, 34)); rect(0, 0, 256, 16, K8(30, 20, 50)); ctext(128, 4, 1, K8(200, 190, 250), "UNDERWORLD");
+    if (hp == H_LIST) {
+        for (int i = 0; i < HT_N; i++) { int y = 18 + i * 14, s = i == hsel; rect(8, y, 240, 13, s ? K8(226, 242, 254) : PANB); rect(9, y + 1, 238, 11, s ? C15(24, 28, 31) : PAN); char b[40]; sprintf(b, "%s", hTNM[i]); text(14, y + 6, 1, s ? C15(2, 7, 20) : TXT, b); sprintf(b, "$%d", hTVAL[i]); text(242 - tw(1, b), y + 6, 1, s ? C15(2, 14, 4) : C15(14, 30, 14), b); }
+        chip(8, 162, 116, 26, "Case it", 1); chip(132, 162, 116, 26, "Leave", 0); return; }
+    if (hp == H_GATE || hp == H_CHASE) { chip(8, 26, 240, 130, "NOW!", 1); return; }
+    if (hp == H_CHOICE) { chip(8, 26, 240, 60, htgt >= 5 ? "Keep it (hot)" : "Sell to the chop shop", hsel == 0); chip(8, 96, 240, 60, "Fence it for cash", hsel == 1); return; }
+    chip(8, 40, 240, 100, "OK", 1);
+}
+static void hs_frame(int held, int down, int steps, int tx, int ty) {
+    (void)held; int pr = 0, td = down & KEY_TOUCH;
+    if (down & KEY_UP) pr |= PD_U; if (down & KEY_DOWN) pr |= PD_D; if (down & KEY_A) pr |= PD_X; if (down & KEY_B) pr |= PD_O;
+    if (td) {
+        if (hp == H_LIST) { for (int i = 0; i < HT_N; i++) if (hit(8, 18 + i * 14, 240, 13, tx, ty)) hsel = i; if (hit(8, 162, 116, 26, tx, ty)) pr |= PD_X; if (hit(132, 162, 116, 26, tx, ty)) pr |= PD_O; }
+        else if (hp == H_GATE || hp == H_CHASE) { if (hit(8, 26, 240, 130, tx, ty)) pr |= PD_X; }
+        else if (hp == H_CHOICE) { if (hit(8, 26, 240, 60, tx, ty)) { hsel = 0; pr |= PD_X; } else if (hit(8, 96, 240, 60, tx, ty)) { hsel = 1; pr |= PD_X; } }
+        else if (hit(8, 40, 240, 100, tx, ty)) pr |= PD_X; }
+    int op = hp, os = hsel, ot = htmr;
+    if (!hs_update(pr, steps)) { mg_ui = 0; mg_ver++; return; }
+    if (pr || op != hp || os != hsel || ot != htmr || hp == H_GATE || hp == H_CHASE) mg_ver++;
+}
+
+// ---- the shell: which mini-game has the screens ----
+static unsigned mg_sig(void) { return (unsigned)(mg_ver * 131 + mg_ui * 7); }
+static unsigned mg_bsig(void) { return mg_ui == 3 ? (unsigned)(30 + hp * 5 + hsel * 11 + hs_heat * 0) : ar_bsig(); }
+static void mg_top(void) { if (mg_ui == 3) hs_top(); else ar_top(); }
+static void mg_bottom(void) { if (mg_ui == 3) hs_bottom(); else ar_bottom(); }
+static void mg_frame(int held, int down, int steps, int tx, int ty) { if (mg_ui == 3) hs_frame(held, down, steps, tx, ty); else ar_frame(held, down, steps, tx, ty); }
+
 // ==== the mini-games' saves: blocks after the farm's, each { magic, size, data }; a save from before has none (all at their start) ====
+#define MG_HT 0x5448   // 'HT': the underworld's heat, kept boats and aircraft, logic
 #define MG_AR 0x5241   // 'AR': the arcade's tickets, the fight record
 #define MG_SK 0x4B53   // 'SK': the board and the skate scores
-static void mg_reset(void) { has_board = on_board = 0; board_lift = 0; skate_score = skate_best = 0; arcade_tix = fight_wins = fight_champ = fight_best = 0; mg_ui = 0; }
+static void mg_reset(void) { has_board = on_board = 0; board_lift = 0; skate_score = skate_best = 0; arcade_tix = fight_wins = fight_champ = fight_best = 0; mg_ui = 0; hs_heat = hs_day = hs_stolen = hs_logic = 0; }
 static int mg_pack(u8 *o) {
     int n = 0; u16 th[2]; s32 v[3];
     th[0] = MG_SK; th[1] = 12; v[0] = has_board; v[1] = (s32)skate_score; v[2] = (s32)skate_best; memcpy(o + n, th, 4); memcpy(o + n + 4, v, 12); n += 16;
     th[0] = MG_AR; th[1] = 16; { s32 w[4] = { arcade_tix, fight_wins, fight_champ, fight_best }; memcpy(o + n, th, 4); memcpy(o + n + 4, w, 16); n += 20; }
+    th[0] = MG_HT; th[1] = 16; { s32 w[4] = { hs_heat, hs_day, hs_stolen, hs_logic }; memcpy(o + n, th, 4); memcpy(o + n + 4, w, 16); n += 20; }
     return n; }
 static int mg_unpack(const u8 *p, int left) {
     mg_reset(); int n = 0;
     while (n + 4 <= left) { u16 th[2]; memcpy(th, p + n, 4); if (n + 4 + th[1] > left) break;
         if (th[0] == MG_SK && th[1] == 12) { s32 v[3]; memcpy(v, p + n + 4, 12); has_board = v[0] & 1; skate_score = v[1] < 0 ? 0 : v[1]; skate_best = v[2] < 0 ? 0 : v[2]; }
         else if (th[0] == MG_AR && th[1] == 16) { s32 w[4]; memcpy(w, p + n + 4, 16); arcade_tix = CLAMP(w[0], 0, 9999); fight_wins = MAX(0, w[1]); fight_champ = w[2] & 1; fight_best = MAX(0, w[3]); }
+        else if (th[0] == MG_HT && th[1] == 16) { s32 w[4]; memcpy(w, p + n + 4, 16); hs_heat = CLAMP(w[0], 0, 100); hs_day = w[1] & 255; hs_stolen = w[2] & 0xFFFF; hs_logic = MAX(0, w[3]); }
         else break;
         n += 4 + th[1]; }
     return n; }
 #ifdef DSTEST
 static void mg_test(int sc) {
     if (sc == 42) { ag_testlot = 1; memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(LOT_ARCADE, 0x5A3C91u); occ_ok = 0; funds += 5000; for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (5 + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 7 * 16; sims[q].act = -1; } }
+    if (sc == 48) { funds += 5000; hs_open(); }
     if (sc >= 43 && sc <= 47) { arcade_tix = 37; funds += 5000; ag_open(sc == 47 ? AG_PRIZES : sc - 42); }   // (test builds) 40: this lot becomes the skate plaza, your Bore on the board at its west side
     if (sc == 40 || sc == 41) { memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(LOT_SKATE, 1); occ_ok = 0; funds += 5000;
         for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = 0; sims[q].y = sims[q].ty = sims[q].wy = (5 + q) * 16; sims[q].act = -1; }

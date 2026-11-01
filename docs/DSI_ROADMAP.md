@@ -158,7 +158,6 @@ Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build 
 - fps in melonDS riding round the plaza: 28-30 (UI 33-55); the camera only swings behind you when the turn is large, so the still lists are not re-recorded every frame. Away from the plaza 30.
 - Shots: `docs/ds_shots/d45_skate_trick.png` (an ollie + kickflip banked: 125 x 1), `d45_skate_ride.png`.
 ![skate](ds_shots/d45_skate_trick.png)
-- Not done in the mini-games: fight, heist, gotchi (next).
 
 **Done at D46 (`bore2_dsi_d46.nds`): the Arcade (the PS1's src/arcade.c, in ports/dsi/source/ds_games.c)**
 - Four of the five cabinets, rule for rule from the PS1: BORE BREAKER (4 rows of 10, 3 lives, tickets = score / 2, +8 for a clear wall), SNACK CATCH (20 seconds, rocks cost a life, tickets = score / 2), WHACK-A-BORE (30 seconds, the Bore pops up faster as you score, tickets = score x 2 / 3), HIGH STRIKER (five swings, tickets = points / 45). Same 30 ticks a second, same field (240 x 160, 1:1 on the top screen). BORTUA FIGHTER (the fifth cabinet) comes with the fight: until then a cabinet only picks from the four.
@@ -168,6 +167,14 @@ Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build 
 - fps in melonDS: 30 in the arcade lot and in the games (the sims stand still while a game runs). Shots: `docs/ds_shots/d46_arcade_games.png` (Breaker, Catch, Whack, Striker: top over bottom), `d46_arcade_lot.png` (the lot, the cabinet's choice, the prize counter).
 ![arcade games](ds_shots/d46_arcade_games.png)
 ![arcade lot](ds_shots/d46_arcade_lot.png)
+
+**Done at D47 (`bore2_dsi_d47.nds`): the Underworld heist (the PS1's src/heist_ui.c)**
+- Menu > **Heist** (teens and up; the PS1 reaches it from the phone: UNDERWORLD). The PS1's ten rides with the PS1's security, wanted level and values (hatchback to jet). Case the joint: three gates (fence, guard, lock), each a moving marker you stop in the yellow zone (X / A, or tap NOW). Two slips and you are caught red-handed. A slip raises the alarm: then the getaway, one corner per star, a marker for each; two misses and the police have you. Clean away: keep it (boats and aircraft, hot) or fence it for cash (x1.0), a car sold to the chop shop (x0.5); your logic level raises the pay and widens the zones, and each job adds logic. Heat rises with each job and cools 12 a day; more than 50 adds a wanted star.
+- Saved in a new trailing block 'HT' (heat, the day it was cooled, the boats and aircraft kept, the logic points); old saves load.
+- Simplified (the DS has no crime and law pack): being caught costs a fine and some fun and social, and the heat rises; there is no court or hard time. Kept boats and aircraft are only recorded: SKY AND SEA on the DS cannot sail or fly them yet.
+- fps in melonDS: 30 (the sims stand still). Shots: `docs/ds_shots/d47_heist.png` (the list, a gate, a caught getaway on the top screens and the touch pad below).
+![heist](ds_shots/d47_heist.png)
+- Not done in the mini-games: fight, gotchi (next).
 
 ## Next (in this order)
 1. **Real-hardware and Android tests** of the song reader (`cart_blk` in `main.c`), saving and touch. If a loader blocks cartridge reads, add an SD (libfat) path for DSi.
@@ -190,7 +197,7 @@ Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build 
 | Castaway Island | island.c, nature.c | **done (D37)** at DS size: gathering, campfire, crafting (tent, bench, outhouse, spear, shelter, raft), the islet, 8 secrets; no weather or day-night survival events yet |
 | Music: jukebox | audio.c, SONGS.BIN | **done (D29), screen added D31** |
 | Music: band, DJ | band.c, dj_ui.c | open (large) |
-| Mini-games (skate, arcade, fight, heist, gotchi, farm) | various | **farm done (D38)** (farm_ui.c and the farm in sim.c); **skate done (D45)**; **arcade done (D46)** (four cabinets and the prize counter); fight, heist, gotchi open |
+| Mini-games (skate, arcade, fight, heist, gotchi, farm) | various | **farm done (D38)** (farm_ui.c and the farm in sim.c); **skate done (D45)**; **arcade done (D46)** (four cabinets and the prize counter); **heist done (D47)** (simplified: no court); fight, gotchi open |
 | Dog, ghosts, traffic | dog.c, ghost.c, traffic.c | all done (D31) |
 
 ## DSi-only ideas
