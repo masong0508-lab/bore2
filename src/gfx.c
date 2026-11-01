@@ -37,7 +37,11 @@ int isqrt(int v) {
 u16 prof_hist[PH_N]; int prof_on, prof_total;
 void prof_sample(void) {
     if (!prof_on) return;
+#ifdef BORE_DC
+    u32 epc = 0; return;   // (no sampling profiler on the Dreamcast)
+#else
     u32 epc; __asm__ volatile("mfc0 %0, $14" : "=r"(epc));
+#endif
     u32 off = epc - 0x80010000u;
     if (epc >= (u32)&prof_sample && epc < (u32)&prof_sample + 0x120) return;   // (the profiler itself)
     if (off < PH_N * 256u) { prof_hist[off >> 8]++; prof_total++; }

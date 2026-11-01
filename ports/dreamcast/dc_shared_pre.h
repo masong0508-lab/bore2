@@ -6,3 +6,6 @@
 #include <unistd.h>
 #include <math.h>
 #define link bore_link
+#define logl bore_logl
+#define alarm bore_alarm
+#define jn bore_jn

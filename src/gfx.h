@@ -52,7 +52,12 @@ extern int gfx_prof[8], gfx_prof_last[8]; int gfx_hb(void); int isqrt(int v);   
 extern int gfx_frame_prims, gfx_profn[8], gfx_profn_last[8];
 // (the hblank counter read straight from the root counter, inline: the drawing loops time every tile with these, and a call each way
 //  to VSync(1) cost about 5 hblanks a frame. A difference of two readings is what VSync(1) would give, wrapping at 16 bits)
+#ifdef BORE_DC
+int dc_hblanks(void);   // (Dreamcast: the hblank count from the frame clock)
+#define PROF_HB() dc_hblanks()
+#else
 #define PROF_HB() ((int)*(volatile unsigned short *)0xbf801110u)
+#endif
 #define PROF_BEGIN() int prof_t0_ = PROF_HB(), prof_n0_ = gfx_frame_prims
 #define PROF_END(k) (gfx_prof[k] += (unsigned short)(PROF_HB() - prof_t0_), gfx_profn[k] += gfx_frame_prims - prof_n0_)   // profiler (L3 in life mode): last frame's 3D prims, packet bytes, prims that did not fit
 

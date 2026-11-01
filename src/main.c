@@ -4781,8 +4781,10 @@ void boot(const char *stage) {
 }
 
 __attribute__((noinline)) static void stack_paint(void) {   // the free RAM under the stack, marked: how deep the stack ever reaches can be read off later
+#ifndef BORE_DC   // (the Dreamcast keeps its heap there: nothing is painted)
     volatile u32 here; u32 *p = (u32 *)(((u32)_end + 15) & ~15u), *q = (u32 *)(((u32)&here - 512) & ~15u);
     while (p < q) *p++ = 0x5AC0FFEEu;
+#endif
 }
 int main(void) {
     stack_paint();

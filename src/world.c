@@ -2237,7 +2237,12 @@ static inline int gvar(int x, int y) {
 static u32 flc_small[16 * 16]; static u8 flc_tag_small[16 * 16];
 static u32 *flc_sh = flc_small; static u8 *flc_tag = flc_tag_small; static int flc_b = 4, flc_up;
 #define OI_ROW ((MW + 7) / 8)                                   // (draw_layer: the street's things past the range, a bit a tile: in the 1 KB scratchpad)
+#ifdef BORE_DC
+extern u8 dc_scratchpad[1024];   // (Dreamcast: the PS1 scratchpad is a plain array)
+#define oi_bits ((volatile u8 *)dc_scratchpad)
+#else
 #define oi_bits ((volatile u8 *)0x1f800000u)
+#endif
 static int flc_on; static const u32 *flc_lut; static u32 flc_key[8] = { 0xffffffffu };
 static void flc_frame(void) {   // (world_draw, each frame: throws the cache away when what it was worked out from has changed)
     if (!flc_up) { flc_up = 1; if (ram8) { u32 *p = (u32 *)xalloc(32 * 32 * 4); u8 *t = (u8 *)xalloc(32 * 32); if (p && t) { flc_sh = p; flc_tag = t; flc_b = 5; flc_key[0] = 0xffffffffu; } } }

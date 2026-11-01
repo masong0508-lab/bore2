@@ -5,6 +5,9 @@
 // The SDK's LoadImage rounds the DMA up to whole 16-word blocks, so a texture whose size is not a multiple of 32 pixels
 // sends a few extra words. The GPU reads those as drawing commands: PCSX ignores them, but a real PlayStation and DuckStation
 // do not, and a stray "copy to VRAM" command makes the GPU wait for data forever (a black screen at boot).
+#ifdef BORE_DC
+static void vram_load(const RECT *r, const void *data) { LoadImage(r, (const u32 *)data); }   // (Dreamcast: the PS1 VRAM is kept in RAM by the platform layer)
+#else
 static void vram_load(const RECT *r, const void *data) {
     DrawSync(0);
     int words = (r->w * r->h) >> 1;
@@ -35,6 +38,7 @@ static void vram_load(const RECT *r, const void *data) {
     while (!(GPU_GP1 & (1 << 26))) { }                     // the GPU has taken it all
     GPU_GP1 = 0x04000000;
 }
+#endif
 
 #define PAGES 4
 #define PAGE_X 640   // pages 0 and 1 are 256 wide at x=640; page 2 is the 128-wide strip at x=896
