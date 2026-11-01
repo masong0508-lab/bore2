@@ -148,7 +148,7 @@ static const u16 pLamp[4] = { RGB(9, 9, 11), RGB(15, 15, 17), RGB(31, 29, 20), R
 MAT(mLampP, pLamp, 2, 2, "ab", "ba")
 MAT(mLampH, pLamp, 4, 2, "bbbb", "cddc")
 MAT(mLampT, pLamp, 1, 1, "b")
-static const IBox bxStreetLamp[2] = { {3,3,5,5,0,22,{&mLampP,&mLampP,&mLampP,&mLampP,&mLampP}}, {2,2,6,6,22,24,{&mLampH,&mLampH,&mLampH,&mLampH,&mLampT}} };
+static const IBox bxStreetLamp[2] = { {3,0,5,2,0,22,{&mLampP,&mLampP,&mLampP,&mLampP,&mLampP}}, {2,0,6,3,22,24,{&mLampH,&mLampH,&mLampH,&mLampH,&mLampT}} };   // (the pole at the kerb edge: local north, turned to face the street)
 static const IBox bxLounger[2] = { {0,2,8,6,0,2,{&mLnrS,&mLnrS,&mLnrS,&mLnrS,&mLnrT}}, {0,2,2,6,2,5,{&mLnrB,&mLnrB,&mLnrB,&mLnrB,&mLnrT}} };
 
 // ---- a fuel pump: a red body with a screen, a white hose holder, a yellow cap ----
@@ -160,7 +160,7 @@ MAT(mPmTop,pPump,1,1,"b")
 static const IBox bxPump[2]={ {2,2,6,6,0,17,{&mPmFront,&mPmSide,&mPmFront,&mPmSide,&mPmTop}}, {1,1,7,7,17,20,{&mPmCap,&mPmCap,&mPmCap,&mPmCap,&mPmTop}} };
 
 // ---- the item table: letter, name, boxes (and the along-y variant), flags ----
-enum { F_ROT = 1, F_ALONG = 2, F_FLAT = 4, F_HIGH = 8, F_L2 = 16, F_W2 = 32 };   // F_L2 / F_W2: the thing is two tiles long (from its tile, away from the wall) / two wide   // F_FLAT: walk over it; F_HIGH: stand on top (crates)
+enum { F_ROT = 1, F_ALONG = 2, F_FLAT = 4, F_HIGH = 8, F_L2 = 16, F_W2 = 32, F_KERB = 64 };   // F_KERB: a pole at the kerb edge of a pavement tile (turned to face the street): people walk past it on the same tile   // F_L2 / F_W2: the thing is two tiles long (from its tile, away from the wall) / two wide   // F_FLAT: walk over it; F_HIGH: stand on top (crates)
 // ---- the family's things: a crib (white bars round a little mattress), a birthday cake on a party table, a gravestone ----
 static const u16 pCrib[5]={RGB(29,29,27),RGB(19,24,30),RGB(30,22,25),RGB(22,22,20),RGB(31,31,31)};
 MAT(mCrPost,pCrib,1,1,"a")
@@ -318,7 +318,7 @@ static ItemDef defs[] = {   // (not const: items_init sets some of them to life 
     { '7', "SHOP SHELF", bxShelfG, 1, 0, 0, F_ROT, 200 },
     { '8', "FOR SALE SIGN", bxSign, 2, 0, 0, 0, 10 },
     { '~', "POOL LOUNGER", bxLounger, 2, 0, 0, F_ROT, 90 },
-    { '"', "STREET LAMP", bxStreetLamp, 2, 0, 0, 0, 120 },
+    { '"', "STREET LAMP", bxStreetLamp, 2, 0, 0, F_ROT | F_KERB, 120 },
     { CH_CRIB, "CRIB", bxCrib, 9, 0, 0, F_ROT, 250 },
     { CH_CAKE, "BIRTHDAY CAKE", bxCake, 8, 0, 0, 0, 40 },
     { CH_GRAVE, "GRAVESTONE", bxGrave, 3, 0, 0, F_ROT, 0 },
@@ -356,7 +356,7 @@ int items_count(void) { return NDEFS; }
 char items_at(int i) { return defs[i].ch; }
 int items_cost(char ch) { const ItemDef *d = def_of(ch); return d ? d->cost : 0; }
 int items_is_item(char ch) { return def_of(ch) != 0; }
-int items_blocking(char ch) { const ItemDef *d = def_of(ch); return d && !(d->flags & F_FLAT); }
+int items_blocking(char ch) { const ItemDef *d = def_of(ch); return d && !(d->flags & (F_FLAT | F_KERB)); }
 int items_rotates(char ch) { const ItemDef *d = def_of(ch); return d && (d->flags & F_ROT); }
 int items_foot(char ch, int *w, int *l) {   // the tiles a thing covers (w across, l along its facing); 1 when it covers more than its own tile
     const ItemDef *d = def_of(ch); *w = *l = 1; if (!d) return 0;
@@ -641,7 +641,7 @@ int dbg_vdraw, dbg_vq;
 void items_draw_vehicle(int x, int z, int yaw, int y, int type, int ci, int wph) {
     dbg_vdraw++; dbg_vq = type * 1000 + ci;
     {   // off the screen altogether: nothing to do (a car is up to 4.2 m long and 2.5 m high at its scale: a ball of 660 round its middle holds it, whichever way it faces)
-        int up = gfx_lift + (gfx_lift_fn ? gfx_lift_fn(x, z) : 0);
+        int up = gfx_lift_fn ? gfx_lift_fn(x, z) : gfx_lift;   // (the same ground gfx_set_object stands it on)
         if (!gfx_bb_on && !gfx_visible(x, y - up - 220, z, 660)) return; }
     VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, yaw & 4095); sk_k = 28; veh_model(type, ci, wph); sk_k = 16; gfx_set_identity();
 }

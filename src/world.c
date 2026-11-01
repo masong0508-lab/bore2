@@ -1608,13 +1608,14 @@ COLD static void lot_river(int ox, int oy, int vert, unsigned h) {   // the lot 
     }
     for (int e = -SH; e < 3; e++) for (int d = 5; d <= 11; d++) floorMap[RY(d, e)][RX(d, e)] = FL_ASPHALT;   // (under the street: the bridge)
     for (int e = 4; e < NB; e += 4) {              // lamps and benches down both walks, planters, and trees on the far bank
-        gFree(RX(3, e), RY(3, e), '"'); gFree(RX(13, e + 2), RY(13, e + 2), '"');
+        gFace(RX(3, e), RY(3, e), '"', vert ? 1 : 0); gFace(RX(13, e + 2), RY(13, e + 2), '"', vert ? 1 : 0);   // (the poles on the street's or the water's side)
         gFree(RX(4, e + 2), RY(4, e + 2), 'N'); gFree(RX(12, e), RY(12, e), 'N');
         gFree(RX(15, e), RY(15, e), TREE); if (e + 2 < NB) gFree(RX(14, e + 2), RY(14, e + 2), TREE);
     }
     if (h & 1) gFree(RX(12, 9), RY(12, 9), 'Z'); if (h & 2) gFree(RX(4, 6), RY(4, 6), 'Z');
     if (h & 4) { gPut(RX(7, 9), RY(7, 9), 'K'); }      // (a rock in the stream, if a rock is 'K': the item the park uses)
-    gFree(RX(3, 1), RY(3, 1), '"'); gFree(RX(13, 1), RY(13, 1), '"');
+    for (int d = 5; d <= 11; d++) floorMap[RY(d, 3)][RX(d, 3)] = FL_PAVING;   // (the pavement beside the street crosses on the bridge too)
+    gFace(RX(4, 3), RY(4, 3), '"', vert ? 0 : 1); gFace(RX(12, 3), RY(12, 3), '"', vert ? 0 : 1);   // a lamp at each end of the bridge, on the pavement by the street
     (void)T;
     #undef RX
     #undef RY
@@ -1635,7 +1636,37 @@ COLD static void mega_zone(int ox, int oy, int part, int kind, unsigned h) {   /
     }
     (void)h;
 }
-COLD static void gen_block(int wx, int wy) {
+// ---- the kerb: a town block's pavement runs along row BM_LOT0 (beside the street along x, south of it) and column BM_LOT0 (beside the
+// street along y, east of it), one tile wide; the street itself is tiles 0..BM_LOT0-1 (two lanes of two and the line). Street lamps
+// stand on the pavement at its kerb edge, turned to face the street (people walk past them on the same tile); a lamp is never within
+// two tiles of another or of a bus stop. (They used to stand at block tiles 3 and 10: in the lanes and on the crossing, left from
+// when the street was three tiles wide.)
+COLD __attribute__((noinline)) static int kerb_near(int x, int y, int dx, int dy) {
+    for (int k = -2; k <= 2; k++) { int ax = x + dx * k, ay = y + dy * k; if (ax < 0 || ay < 0 || ax >= MW || ay >= MH) continue;
+        char c = lifeMap[ay][ax]; if (c == '"' || c == '+') return 1; }
+    return 0;
+}
+COLD __attribute__((noinline)) static void kerb_lamp(int x, int y, int dir) {   // dir 0: the pavement of a street along x (the street to its north); 1: along y (to its west)
+    if (x < 0 || y < 0 || x >= MW || y >= MH || floorMap[y][x] != FL_PAVING || kerb_near(x, y, dir ? 0 : 1, dir ? 1 : 0)) return;
+    gFace(x, y, '"', dir);
+}
+COLD __attribute__((noinline)) static int open_ground(int x, int y) { if (x < 0 || y < 0 || x >= MW || y >= MH || lifeMap[y][x] != '.') return 0; int f = floorMap[y][x]; return f != FL_WATER && f != FL_PAVING && f != FL_PATIO && f != FL_GRAVEL && !FL_IS_ROAD(f); }
+COLD __attribute__((noinline)) static void kerb_clear(int ox, int oy) {   // the pavement kept walkable: a lot's tree, plant or bin left standing on it is moved a tile in (or taken away)
+    for (int k = BM_LOT0; k < BM_BLK; k++) for (int side = 0; side < 2; side++) {
+        int x = side ? ox + BM_LOT0 : ox + k, y = side ? oy + k : oy + BM_LOT0; char c = lifeMap[y][x];
+        if (c == '.' || c == '+' || c == '"' || c == 'D' || is_wall(c) || floorMap[y][x] != FL_PAVING || !items_is_item(c) || !items_blocking(c)) continue;
+        int ix = side ? x + 1 : x, iy = side ? y : y + 1;
+        if (open_ground(ix, iy)) { lifeMap[iy][ix] = c; wallMap[iy][ix] = wallMap[y][x]; }
+        lifeMap[y][x] = '.'; wallMap[y][x] = 0;
+    }
+}
+COLD __attribute__((noinline)) static void street_clean(int ox, int oy) {   // (lamps and bins an older generator left in the lanes, kept in a save's tiles: taken off the road)
+    for (int y = oy; y < oy + BM_BLK; y++) for (int x = ox; x < ox + BM_BLK; x++) { char c = lifeMap[y][x];
+        if ((c == '"' || c == 'Y') && FL_IS_ROAD(floorMap[y][x]) && !(wallMap[y][x] & 0x80)) { lifeMap[y][x] = '.'; wallMap[y][x] = 0; } }
+}
+static void gen_block0(int wx, int wy);
+COLD static void gen_block(int wx, int wy) { gen_block0(wx, wy); street_clean(wx * BM_BLK, wy * BM_BLK); }
+COLD static void gen_block0(int wx, int wy) {
     int bx = world_wbx + wx, by = world_wby + wy, ox = wx * BM_BLK, oy = wy * BM_BLK;
     BInfo b; bm_block(bx, by, &b);
     static const u8 tfl[6] = { FL_WATER, FL_SAND, FL_GRASS, FL_GRASS, FL_SAND, FL_ROCK };
@@ -1743,9 +1774,14 @@ COLD static void gen_block(int wx, int wy) {
             if (edge ? (r < 140 && ((x + y) & 1) == 0) : r < 36) lifeMap[y][x] = r % 5 == 0 ? '6' : '3';
         }
     }
-    if (b.set != 255 && b.terrain != BT_SEA) {                      // street lamps on the corners and half way along, a bin now and then
-        gFree(ox + 3, oy + 3, '"'); gFree(ox + 10, oy + 3, '"'); gFree(ox + 3, oy + 10, '"');
-        if ((h >> 24) % 3u == 0) gFree(ox + 6, oy + 3, 'Y');
+    if (b.set != 255 && b.terrain != BT_SEA) {                      // the pavement kept clear; street lamps along it by the corner, half way and at the far crossing; a bin now and then
+        kerb_clear(ox, oy);
+        if (rd & 1) { kerb_lamp(ox + 6, oy + BM_LOT0, 0); kerb_lamp(ox + 11, oy + BM_LOT0, 0); kerb_lamp(ox + BM_BLK - 1, oy + BM_LOT0, 0); }
+        if (rd & 2) { kerb_lamp(ox + BM_LOT0, oy + 6, 1); kerb_lamp(ox + BM_LOT0, oy + 11, 1); kerb_lamp(ox + BM_LOT0, oy + BM_BLK - 1, 1); }
+        if ((h >> 24) % 3u == 0) {                                  // (a bin on the pavement only where people can step round it)
+            if ((rd & 1) && lifeMap[oy + BM_LOT0][ox + 9] == '.' && open_ground(ox + 9, oy + BM_LOT0 + 1)) gPut(ox + 9, oy + BM_LOT0, 'Y');
+            else if ((rd & 2) && lifeMap[oy + 9][ox + BM_LOT0] == '.' && open_ground(ox + BM_LOT0 + 1, oy + 9)) gPut(ox + BM_LOT0, oy + 9, 'Y');
+        }
     }
     if (mine || prop >= 0) {                             // the family's lot (or a property of theirs), made for the first time: no sign now
         for (int y = oy; y < oy + BM_BLK; y++) for (int x = ox; x < ox + BM_BLK; x++) if (lifeMap[y][x] == '8') lifeMap[y][x] = '.';
@@ -1953,6 +1989,10 @@ int world_item_facing(int x, int y) {
 }
 int world_along(int x, int y, char ch) {
     int ax = (x > 0 && dm[y][x - 1] == ch) + (x < MW - 1 && dm[y][x + 1] == ch), ay = (y > 0 && dm[y - 1][x] == ch) + (y < MH - 1 && dm[y + 1][x] == ch);
+    if (!ax && !ay && x > 0 && y > 0 && x < MW - 1 && y < MH - 1) {   // on its own: along the walk it stands on (a bench on a pavement along y runs along y, not across it)
+        int f = dfl[y][x]; ax = (dfl[y][x - 1] == f) + (dfl[y][x + 1] == f); ay = (dfl[y - 1][x] == f) + (dfl[y + 1][x] == f);
+        return !(ay == 2 && ax < 2);
+    }
     return !(ay > 0 && ax == 0);
 }
 int world_room_score(int mx, int my) {
@@ -2707,6 +2747,12 @@ static int cut_all;                                     // (this frame: the wall
 static u32 bld_gen;
 static inline int cut_here(int mx, int my) { int b = bld[my][mx]; return !b || b_see[b]; }   // the walls cut are those of the buildings you are in or look into (and loose ones)
 static inline void lift_to(int L) { if (gfx_lift != L) { gfx_lift = L; gfx_set_identity(); } }   // (the hills: walls and floors are set down on the pad under them)
+// the one ground height a thing on a tile stands at: the middle of its tile (as world_gh gives people, cars and the crowd there); a
+// lot is a level pad, so there it is the pad. Up a storey, the storey's floor (the pad, as its walls). Things used to be drawn at the
+// flat's height whatever the hill: sunk into a rise or floating over a dip.
+static __attribute__((noinline)) int item_lift(int mx, int my, int lvl) {
+    return lvl ? world_gh_c(mx, my) : world_gh(mx * TILE + TILE / 2, -(my * TILE + TILE / 2));
+}
 static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, int focus) {
     // the camera's forward on the ground (unit, 4096), to decide which walls stand between it and the focus
     int cdx = cam.at.vx - cam.eye.vx, cdz = cam.at.vz - cam.eye.vz;
@@ -2797,6 +2843,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
                 PROF_BEGIN(); nat_plant(c, mx, my, t, fade); PROF_END(2);
                 continue;
             }
+            if (hm) lift_to(item_lift(mx, my, lvl));
             int rot = items_rotates(c) ? world_item_facing(mx, my) : 0;
             int along = items_along(c) ? world_along(mx, my, c) : 0;
             { PROF_BEGIN(); items_draw(c, mx, my, rot, along, t); PROF_END(2); }
@@ -2829,7 +2876,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
             char c = dm[my][mx];
             int vx, vy, vz; tile_view(&tvT, mx, my, &vx, &vy, &vz);
             if (vz < -TILE || ABS(vx) > (vz * 3) / 4 + TILE * 2 || ABS(vy) > (vz * 5) / 8 + TILE * 3 + hm) continue;
-            lift_to(0);
+            lift_to(hm ? item_lift(mx, my, 0) : 0);
             int rot = items_rotates(c) ? world_item_facing(mx, my) : 0;
             int along = items_along(c) ? world_along(mx, my, c) : 0;
             { PROF_BEGIN(); items_draw(c, mx, my, rot, along, t); PROF_END(2); }

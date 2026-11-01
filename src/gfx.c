@@ -193,7 +193,9 @@ int gfx_lift;   // everything set up from here is raised this many units (the hi
 void gfx_set_object(const VECTOR *pos, int yaw) {
     MATRIX om; SVECTOR rot = { 0, (short)yaw, 0, 0 };
     RotMatrix(&rot, &om);
-    if (gfx_lift || gfx_lift_fn) { VECTOR p = *pos; p.vy -= gfx_lift + (gfx_lift_fn ? gfx_lift_fn(pos->vx, pos->vz) : 0); TransMatrix(&om, &p); } else
+    // (one ground height: the ground under the object's own origin when the world gives one, else the lift the drawing set. Both were
+    //  added, so a car, a bus at its stop or a farm's animals drawn while a hill's lift was set stood twice as high as the ground)
+    if (gfx_lift || gfx_lift_fn) { VECTOR p = *pos; p.vy -= gfx_lift_fn ? gfx_lift_fn(pos->vx, pos->vz) : gfx_lift; TransMatrix(&om, &p); } else
     TransMatrix(&om, (VECTOR *)pos);
     CompMatrixLV(&cam.view, &om, &om);
     gte_SetRotMatrix(&om);

@@ -37,3 +37,10 @@ How the city's frame time is measured (used for docs/PS1_PERFORMANCE.md). All of
    menus for four days (the farm job, crops, animals, chores, the frost, a save: load that card with today's plain build and `test/oldsave_load.txt`);
    5 the FARM BOOK's pages (press R1 in the script; `-DAUTO_LE5_SAVE=1` saves first); 6 farm-stand customers (`dbg_buy`: asked for, sent, got there,
    gave up). Use `-DPLACE_MAX=1300` with 3, 4 and 6.
+13. **Every camera and VIEW DISTANCE from one build** (`-DAUTO_CITY=1 -DAB_LOCK4=1 -DAB_CFG=1`): `abcfg.py DISC.bin CAM VIEW [HELPER_OFF]` sets the
+   camera (1 the Sims camera as it starts, 2 zoomed in all the way, 3 zoomed out all the way, 4 first person), the VIEW DISTANCE (0..5) and the speed
+   helper (1 = off) in a copy of the disc image, so a table of every camera at every view distance needs one build. The camera chosen holds for the
+   whole run (the plain route switches to a high look over the roofs at step 2000 whatever was asked, so `AUTO_CAMTEST` numbers before this were
+   mostly that camera).
+14. **Where the street's things stand** (`placecheck.py RAM ELF`, any AUTO_CITY run): things on the road (asphalt, lines, crossings), things on the
+   kerb-side pavement, tall things side by side.

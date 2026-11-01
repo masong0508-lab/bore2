@@ -202,6 +202,9 @@ int dbg_life_n, dbg_life_vb, dbg_life_vb0, dbg_sum_cpu, dbg_sum_prof[8], dbg_sum
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
 int dbg_shift_hb, dbg_shifts;
+#ifdef AB_CFG
+volatile u8 ab_cfg[8] = { 'A', 'B', 'C', 'F', 1, 2, 0, 0 };   // (test builds: camera 1..4, VIEW DISTANCE 0..5, helper off; patched in the disc image by tools/perf/abcfg.py)
+#endif
 static void taxi_to_block(int bx, int by, int tx, int ty, const char *where);
 static char pie_opt[8][24]; static int pie_n, pie_sel, pie_cit;   // the pie menu
 static int panel_tab;                                      // the Bore panel's tab
@@ -763,7 +766,9 @@ static void life_update(int steps) {
         int dtx, dty;
 #ifdef AUTO_CITY
         { static int fr_, done_; fr_ += steps;   // (test builds: by the clock, 60 a second, so runs at any frame rate line up)
-#ifdef AUTO_CAMTEST
+#ifdef AB_CFG
+          { extern volatile u8 ab_cfg[8]; if (fr_ > 100) { switch (ab_cfg[4]) { case 2: cam_dist = 700; cam_pitch = 380; break; case 3: cam_dist = 3600; cam_pitch = 760; break; case 4: cam_view = 2; break; } } }
+#elif defined(AUTO_CAMTEST)
           if (fr_ > 100) { switch (AUTO_CAMTEST) { case 2: cam_dist = 700; cam_pitch = 380; break; case 3: cam_dist = 3600; cam_pitch = 760; break; case 4: cam_view = 2; break; } }   // (test builds: zoomed in, zoomed out, first person)
 #endif
 #if defined(AUTO_TOUR)
@@ -802,7 +807,11 @@ static void life_update(int steps) {
 #else
           if (fr_ > 240 && s->action == ACT_NONE) s->x += 11 * steps;   // (stroll east along the street)
 #endif
+#ifndef AB_CFG
           if (fr_ > 2000) { cam_pitch = 700; cam_dist = 4200; cam_yaw = 2048 + 500; }   // (then look over the roofs)
+#else
+          if (fr_ > 100 && ab_cfg[4] == 1) { cam_pitch = 640; cam_dist = 1500; }   // (AB_CFG: the camera chosen holds the whole run; the plain route looks over the roofs from step 2000 whatever was asked)
+#endif
 #ifdef AUTO_LOW
           if (fr_ > 600) { cam_pitch = AUTO_LOW; cam_dist = 2200; cam_yaw = (cam_yaw + 3 * steps) & 4095; }   // (a low camera turning round: the horizon)
 #endif
@@ -863,12 +872,12 @@ static void life_draw(void) {
     if (cam_view == 2) {   // FIRST PERSON: the eye in the Bore's head, looking the way it faces (fp_pitch up or down)
         int fx = isin(s->yaw), fz = -icos(s->yaw), eh = H * VOX - 60;   // (the face is (sin, -cos): sim.c's yaw)
         if (s->bore.stage == AG_CHILD) eh = eh * 3 / 4; else if (s->bore.stage == AG_BABY) eh /= 2;
-        cam.eye.vx = s->x - (fx * 40 >> 12); cam.eye.vz = s->z - (fz * 40 >> 12); cam.eye.vy = -eh - s->lvl * WALL_FULL - (s->gait.amp > 2000 ? (ABS(isin(s->gait.phase * 2)) >> (HELD(PAD_SQUARE) ? 8 : 9)) : 0);   // (a step's bob, bigger running)
+        cam.eye.vx = s->x - (fx * 40 >> 12); cam.eye.vz = s->z - (fz * 40 >> 12); cam.eye.vy = -eh - s->lvl * WALL_FULL - (s->lvl ? 0 : world_gh(s->x, s->z)) - (s->gait.amp > 2000 ? (ABS(isin(s->gait.phase * 2)) >> (HELD(PAD_SQUARE) ? 8 : 9)) : 0);   // (a step's bob, bigger running; on a hill the eye stands on the ground under you, as the body does: it was left at the flat's height, under the hillside)
         if (s->gait.amp > 2000) { int sw = (isin(s->gait.phase) * (HELD(PAD_SQUARE) ? 26 : 16)) >> 12; cam.eye.vx += (fz * sw) >> 12; cam.eye.vz -= (fx * sw) >> 12; }   // (and a sway side to side, one way per foot)
         int cp = icos(fp_pitch), sp = isin(fp_pitch);
         cam.at.vx = cam.eye.vx + ((fx * cp >> 12) * 600 >> 12); cam.at.vz = cam.eye.vz + ((fz * cp >> 12) * 600 >> 12); cam.at.vy = cam.eye.vy - (sp * 600 >> 12);
         gfx_camera_update();
-        cam_fx = s->x; cam_fy = -200 - s->lvl * WALL_FULL; cam_fz = s->z;   // (the third-person camera picks up from here)
+        cam_fx = s->x; cam_fy = -200 - s->lvl * WALL_FULL - (s->lvl ? 0 : world_gh(s->x, s->z)); cam_fz = s->z;   // (the third-person camera picks up from here)
         cam_yaw = (2048 - s->yaw) & 4095;
         world_view_lvl = MIN(NUP, s->lvl + 1);                             // (the storey above: its floor is the ceiling)
     }
@@ -1987,6 +1996,9 @@ void float_opts(const u8 *p, int n) { for (int i = 0; i < n && i < O_N; i++) opt
 static void opts_apply(void) {
     extern int getenv_noshadow, dbg_noao, dbg_nograd, world_detail_r, cit_live_max, cit_maxdraw, cit_sprite_rate;
     shed_lvl = 0;
+#ifdef AB_CFG
+    { extern volatile u8 ab_cfg[8]; opt[O_VIEW] = ab_cfg[5]; if (ab_cfg[6]) opt[O_SPEED] = 0; }   // (test builds: camera, VIEW DISTANCE and the helper patched into the disc image per run)
+#endif
 #ifdef AB_VIEW
     opt[O_VIEW] = AB_VIEW;
 #endif
