@@ -1917,7 +1917,7 @@ static void opts_apply(void) {
 #endif
     far_view = opt[O_VIEW]; far_detail = opt[O_FARB]; far_trees = opt[O_TREES]; far_haze = opt[O_HAZE];
     static const u8 rr[4] = { 8, 10, 12, 14 }, cr[4] = { 16, 32, 48, 64 }, lv[4] = { 1, 2, 4, 6 };
-    world_detail_r = det_opt = rr[opt[O_DETAIL] & 3]; cit_maxdraw = cr[opt[O_CROWD] & 3]; cit_live_max = lv[opt[O_LIVE] & 3]; cit_sprite_rate = opt[O_SPR];
+    world_detail_r = det_opt = rr[opt[O_DETAIL] & 3]; { extern int world_item_r; world_item_r = det_opt; } cit_maxdraw = cr[opt[O_CROWD] & 3]; cit_live_max = lv[opt[O_LIVE] & 3]; cit_sprite_rate = opt[O_SPR];
     gfx_noshadow = opt[O_SHADOW] == 0; getenv_noshadow = opt[O_SHADOW] < 2;
     dbg_noao = !opt[O_AO]; dbg_nograd = !opt[O_WALLS];
     gfx_min_vsyncs = opt[O_FPSCAP] == 0 ? 1 : opt[O_FPSCAP] == 1 ? 2 : 3;

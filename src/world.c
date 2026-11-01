@@ -1894,7 +1894,7 @@ static XV cc_tmp[8]; static int cc_tmpi;
 // split into pieces, so no piece is huge on the screen and the PlayStation's flat texture warp stays small. View space, whole numbers. ----
 #define NC_Z 56                         // the cutting plane's depth (the GPU's own drop is Z_NEAR, 40)
 #define NC_NEAR_FP 520                  // first person: a quad whose nearest corner is closer than this goes this way too
-#define NC_NEAR_TP 1500                 // third person: close and running away from the eye goes this way too (the floor and walls near you)
+#define NC_NEAR_TP 2600                 // third person: close and running away from the eye goes this way too (the floor and walls near you)
 #define NC_BUDGET 320                   // pieces a frame may be split into past the first cut (keeps a crowded view from costing a frame)
 #define NC_DEPTH 5                      // a quad is split at most this many times
 #define NXY(v) ((u32)(u16)(v)->x | ((u32)(u16)(v)->y << 16))
@@ -2638,6 +2638,25 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
         }
       }
     }
+    // the street's things past the full-detail range (benches, fountains, lamps, bins: outdoors, not in a building): they stay in their
+    // places out to the FULL DETAIL you picked, even when the speed helper pulls the range in (they used to blink in and out at its edge)
+    extern int world_item_r, world_detail_r;
+    if (!lvl && !shell && world_item_r > world_detail_r) {
+        const int IR = world_item_r;
+        int ix0 = MAX(0, fx - IR), ix1 = MIN(MW - 1, fx + IR), iy0 = MAX(0, fy - IR), iy1 = MIN(MH - 1, fy + IR);
+        for (int my = iy0; my <= iy1; my++) for (int mx = ix0; mx <= ix1; mx++) {
+            if (mx >= rx0 && mx <= rx1 && my >= ry0 && my <= ry1) { mx = rx1; continue; }   // (the range did these)
+            char c = dm[my][mx];
+            if (c == '.' || c == ' ' || c == 'D' || c == 'r' || is_wall(c) || bld[my][mx] || in_range(mx, my)) continue;
+            if (nat_on && nat_plant_char(c)) continue;
+            int vx, vy, vz; tile_view(&tvT, mx, my, &vx, &vy, &vz);
+            if (vz < -TILE || ABS(vx) > (vz * 3) / 4 + TILE * 2 || ABS(vy) > (vz * 5) / 8 + TILE * 3 + hm) continue;
+            lift_to(0);
+            int rot = items_rotates(c) ? world_item_facing(mx, my) : 0;
+            int along = items_along(c) ? world_along(mx, my, c) : 0;
+            { PROF_BEGIN(); items_draw(c, mx, my, rot, along, t); PROF_END(2); }
+        }
+    }
     lift_to(0);
 }
 
@@ -3083,6 +3102,7 @@ static void see_through(int focus, int fx, int fy) {
     }
 }
 int world_detail_r = 12;                        // the full-detail range round you, tiles (the options menu)
+int world_item_r = 12;                          // the street's things are drawn this far round you, whatever the speed helper does (main: FULL DETAIL)
 int world_far_range = 34;                       // how far (tiles) the skyline reaches (more with 8 MB: everything in the window)
 // ---- the island beyond the range: 4x4-tile cells out to 40 tiles round you (its land, its woods a raised canopy, the sea past its
 // shores), going into the haze; the endless sea past them is the sky's (far_sky_sea) ----
