@@ -34,12 +34,14 @@ The EXTRAS tab, the VMU save icon (3 frames) and the VMU screen:
 
 Older shots: `dc_vs_ps1_title.png`, `dc_vs_ps1_city.png`.
 
-### Roofs: a bug found (not fixed yet)
-The `AUTO_HOME` test (buy a house, build, the roof tool) on both. Top: PS1 (DuckStation). Bottom: Dreamcast.
-On the PS1 the ROOF tool shows the whole clay roof. On the Dreamcast the roof shows for a moment, then the camera pulls out
-and the roof is gone (the panel still says THE ROOF). Walls, floors, windows and the furnished rooms match.
+### Roofs: the roof-tool bug (fixed)
+The ROOF tool pulls the camera out so the whole roof shows. On the Dreamcast the roof showed for a moment, then vanished.
+Cause: the roofs are drawn last, and the PS1 packet buffer (58 KB, of which the world may use about 20 KB) ran out of room
+(130-220 primitives dropped a frame) at full detail range. The PS1 build looked fine only because its speed helper had shrunk the
+detail range. Fix: on the Dreamcast (`#ifdef BORE_DC` in `src/gfx.h`) the packet buffer is 160 KB and the PowerVR vertex lists are
+bigger. Left: PS1 (DuckStation). Right: Dreamcast, same moment of the `AUTO_HOME` test (buy a house, build, the roof tool).
 ![roof](dc_vs_ps1_roof_tool.png)
-How: PS1 `cmake -DCMAKE_C_FLAGS="-DAUTO_HOME=1 -DAB_LOCK4=1"`, `ninja iso_lite`, DuckStation with START at 1100 and X at 1180;
+How: PS1 `cmake -DCMAKE_C_FLAGS="-DAUTO_HOME=1 -DAB_LOCK4=1"`, `ninja iso_lite`, DuckStation with START at 1100 and X at 1180, shot near 3200;
 Dreamcast `make AUTO="AUTO_HOME=1 -DAB_LOCK4=1 -DDC_NOSPEED -DDC_CLASSIC" disc`, script `ports/dreamcast/test/home_dc.txt`.
 Note: a Dreamcast test frame is about 2 vblanks, a DuckStation frame 1, so pair shots by the clock on the HUD.
 
