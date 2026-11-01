@@ -8,11 +8,12 @@ SRC = ../../src
 GAME = main gfx atlas look voxel items world sim wants citizens font fmt save crowd bigmap pop far ui places home island nature \
        story skate traffic gotchi band dog ghost realm_res arcade_res audio
 OVLS = realm arcade fight gotchi_ui party_ui dj_ui super_ui dog_ui prison_ui heist_ui space_ui paradise_ui farm_ui skysea_ui cutscene
-PLAT = dc_psx dc_gpu dc_plat dc_spu dc_cd dc_vmu dc_extra
+PLAT = dc_psx dc_gpu dc_plat dc_spu dc_cd dc_vmu dc_extra dc_prof
 OBJS = $(addprefix $(O)/,$(addsuffix .o,$(GAME) $(OVLS) $(PLAT)))
 KOS_CFLAGS += -DBORE_DC -Ipsx -I. -I$(SRC) -I../../assets -w -std=gnu11 -MMD \
               -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=incompatible-pointer-types -fno-strict-aliasing
 KOS_CFLAGS += $(if $(AUTO),-D$(AUTO))
+KOS_CFLAGS += $(if $(PROF),-DDC_PROF=$(PROF))   # make PROF=600: the sampling profiler from frame 600 for 600 frames (dc_prof.c)
 vpath %.c $(SRC)
 GAME_OBJS = $(addprefix $(O)/,$(addsuffix .o,$(GAME) $(OVLS)))
 $(GAME_OBJS): KOS_CFLAGS += -include dc_shared_pre.h

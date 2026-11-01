@@ -15,10 +15,10 @@ DcGte dc_gte;
 
 // ---------------------------------------------------------------- the GTE's RTPS (sf=1, lm=0), one vertex V[i]
 void dc_gte_rtps(int i) {
-    int64_t vx = dc_gte.v[i][0], vy = dc_gte.v[i][1], vz = dc_gte.v[i][2];
+    int32_t vx = dc_gte.v[i][0], vy = dc_gte.v[i][1], vz = dc_gte.v[i][2];   // (16-bit x 16-bit products: 32 bits each; only the sum needs 64)
     int32_t mac[3];
     for (int k = 0; k < 3; k++) {
-        int64_t m = ((int64_t)dc_gte.t[k] << 12) + dc_gte.r[k][0] * vx + dc_gte.r[k][1] * vy + dc_gte.r[k][2] * vz;
+        int64_t m = ((int64_t)dc_gte.t[k] << 12) + (int64_t)(dc_gte.r[k][0] * vx) + (int64_t)(dc_gte.r[k][1] * vy) + (int64_t)(dc_gte.r[k][2] * vz);
         mac[k] = (int32_t)(m >> 12);
     }
     dc_gte.mac[1] = mac[0]; dc_gte.mac[2] = mac[1]; dc_gte.mac[3] = mac[2];
@@ -27,7 +27,7 @@ void dc_gte_rtps(int i) {
     dc_gte.sz[0] = dc_gte.sz[1]; dc_gte.sz[1] = dc_gte.sz[2]; dc_gte.sz[2] = dc_gte.sz[3]; dc_gte.sz[3] = (uint16_t)z;
     // the divide: H / SZ in 0.16, saturating at 0x1FFFF when SZ <= H/2 (what the PS1's unsigned Newton-Raphson divider does)
     uint32_t h = (uint32_t)dc_gte.h, q;
-    if (z * 2 > (int32_t)h) { q = (uint32_t)((((uint64_t)h << 17) / (uint32_t)z + 1) >> 1); if (q > 0x1FFFF) q = 0x1FFFF; } else q = 0x1FFFF;
+    if (z * 2 > (int32_t)h) { q = h < 32768 ? (((h << 17) / (uint32_t)z + 1) >> 1) : (uint32_t)((((uint64_t)h << 17) / (uint32_t)z + 1) >> 1); if (q > 0x1FFFF) q = 0x1FFFF; } else q = 0x1FFFF;   // (32-bit divide when it fits: the same result)
     int64_t sx = ((int64_t)dc_gte.ir[1] * q + dc_gte.ofx) >> 16, sy = ((int64_t)dc_gte.ir[2] * q + dc_gte.ofy) >> 16;
     if (sx < -1024) sx = -1024; if (sx > 1023) sx = 1023; if (sy < -1024) sy = -1024; if (sy > 1023) sy = 1023;
     dc_gte.sx[0] = dc_gte.sx[1]; dc_gte.sy[0] = dc_gte.sy[1]; dc_gte.sx[1] = dc_gte.sx[2]; dc_gte.sy[1] = dc_gte.sy[2];

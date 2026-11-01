@@ -63,7 +63,7 @@ int SpuIsTransferCompleted(int mode) { (void)mode; return 1; }
 // ---------------------------------------------------------------- the voices
 enum { OFF, ATTACK, DECAY, SUSTAIN, RELEASE };
 typedef struct {
-    int phase, env, ectr, erate, edec, eexp, etarget;
+    int phase, env, ectr, erate, edec, eexp, etarget, eticks, estep, eidle;
     uint32_t addr, ctr;                 // the block being played (byte address); 12-bit fraction, sample index from bit 12
     int16_t s[3 + 28]; int h1, h2;      // the last 3 samples of the block before, then this block's 28; the ADPCM history
     uint8_t flags; int first, ignore_loop; uint16_t loop_seen;
@@ -76,7 +76,8 @@ static inline void env_step(int rate, int dec, int *ticks, int *step) {
 }
 static void env_set(Voice *v, int rate, int dec, int exp, int target) {
     v->erate = rate; v->edec = dec; v->eexp = exp; v->etarget = target;
-    int t, s; env_step(rate, dec, &t, &s); v->ectr = t;
+    int t, s; env_step(rate, dec, &t, &s); v->ectr = t; v->eticks = t; v->estep = s;
+    v->eidle = 0;
 }
 static void phase_set(Voice *v, int vi, int ph) {
     uint16_t a1 = VREG(vi, 8), a2 = VREG(vi, 10);
@@ -89,21 +90,21 @@ static void phase_set(Voice *v, int vi, int ph) {
         default: v->env = 0; break;
     }
 }
-static inline void env_tick(Voice *v, int vi) {
-    if (--v->ectr > 0) return;
-    int t, s; env_step(v->erate, v->edec, &t, &s); v->ectr = t;
+static void env_tick_slow(Voice *v, int vi) {
+    int s = v->estep; v->ectr = v->eticks;
     if (v->eexp) {
         if (v->edec) s = (s * v->env) >> 15;
         else if (v->env >= 0x6000) { if (v->erate < 40) s >>= 2; else if (v->erate >= 44) v->ectr >>= 2; else { s >>= 1; v->ectr >>= 1; } }
     }
     int e = v->env + s; v->env = e < 0 ? 0 : e > 32767 ? 32767 : e;
-    if (v->phase == SUSTAIN) return;
+    if (v->phase == SUSTAIN) { if (v->edec ? v->env == 0 : v->env == 32767) v->eidle = 1; return; }   // (held at the top or the bottom: nothing more to do)
     if (v->edec ? v->env <= v->etarget : v->env >= v->etarget) {
         if (v->phase == ATTACK) phase_set(v, vi, DECAY);
         else if (v->phase == DECAY) phase_set(v, vi, SUSTAIN);
         else if (v->phase == RELEASE) { v->phase = OFF; v->env = 0; }
     }
 }
+static inline void env_tick(Voice *v, int vi) { if (v->eidle) return; if (--v->ectr > 0) return; env_tick_slow(v, vi); }
 static void block_decode(Voice *v, int vi) {
     static const int fp[5] = { 0, 60, 115, 98, 122 }, fn[5] = { 0, 0, -52, -55, -60 };
     uint32_t a = v->addr & 0x7fff0;
@@ -186,29 +187,47 @@ static void reverb_step(int inL, int inR) {
 }
 
 // ---------------------------------------------------------------- the mixer
+// Mixed in stretches between two of the sequencer's ticks (registers only change at a tick or an event), voice by voice into
+// 32-bit sums. Within a stretch a voice runs in runs: between two envelope steps and block ends nothing changes but the
+// sample position, so the inner loop is only the gaussian interpolation and the two volumes.
 static int tick_acc;
 int dc_spu_voices_on, dc_spu_peak;                 // (readouts: voices sounding, the loudest sample of the last buffer)
-static void mix(int16_t *out, int frames) {
-    events_run();
-    uint16_t rel = *(volatile uint16_t *)(dc_iobase + 0x1108 + 32);   // TIMER_RELOAD(2): the sequencer's rate
-    int tick_hz = rel ? (int)(4233600 / rel) : 0;
-    int peak = 0, on = 0;
-    for (int f = 0; f < frames; f++) {
-        if (tick_hz && cb_timer2) { tick_acc += tick_hz; if (tick_acc >= RATE) { tick_acc -= RATE; cb_timer2(); events_run(); } }
-        int L = 0, Rr = 0, rL = 0, rR = 0;
-        uint32_t ron = R16(0x198) | (uint32_t)R16(0x19a) << 16;
-        for (int vi = 0; vi < NV; vi++) {
-            Voice *v = &vc[vi];
-            if (v->phase == OFF) continue;
-            int si = (int)(v->ctr >> 12), ii = (int)((v->ctr >> 4) & 255);
-            const int16_t *s = &v->s[3 + si];
-            int smp = (spu_gauss[0xff - ii] * s[-3] + spu_gauss[0x1ff - ii] * s[-2] + spu_gauss[0x100 + ii] * s[-1] + spu_gauss[ii] * s[0]) >> 15;
-            smp = (smp * v->env) >> 15;
-            int l = (smp * vol16(VREG(vi, 0))) >> 15, r = (smp * vol16(VREG(vi, 2))) >> 15;
-            L += l; Rr += r; if (ron & (1u << vi)) { rL += l; rR += r; }
-            env_tick(v, vi);
-            int step = VREG(vi, 4); if (step > 0x3fff) step = 0x3fff;
-            v->ctr += (uint32_t)step;
+static int32_t sumL[512], sumR[512], rvL[512], rvR[512];
+static inline uint32_t run(const int16_t *restrict s0, uint32_t ctr, int step, int gl, int gr, int32_t *restrict dl, int32_t *restrict dr,
+                           int32_t *restrict el, int32_t *restrict er, int n, int rev) {
+    for (int i = 0; i < n; i++) {
+        int si = (int)(ctr >> 12), ii = (int)((ctr >> 4) & 255);
+        const int16_t *s = s0 + si;
+        int smp = (spu_gauss[0xff - ii] * s[0] + spu_gauss[0x1ff - ii] * s[1] + spu_gauss[0x100 + ii] * s[2] + spu_gauss[ii] * s[3]) >> 15;
+        int l = (smp * gl) >> 15, r = (smp * gr) >> 15;
+        dl[i] += l; dr[i] += r;
+        if (rev) { el[i] += l; er[i] += r; }
+        ctr += (uint32_t)step;
+    }
+    return ctr;
+}
+static void mix_seg(int16_t *out, int n) {
+    memset(sumL, 0, n * 4); memset(sumR, 0, n * 4);
+    uint32_t ron = R16(0x198) | (uint32_t)R16(0x19a) << 16; int any_rev = 0;
+    for (int vi = 0; vi < NV; vi++) {
+        Voice *v = &vc[vi];
+        if (v->phase == OFF) continue;
+        dc_spu_voices_on++;
+        int vl = vol16(VREG(vi, 0)), vr = vol16(VREG(vi, 2)), step = VREG(vi, 4); if (step > 0x3fff) step = 0x3fff;
+        int rev = (ron >> vi) & 1;
+        if (rev && !any_rev) { memset(rvL, 0, n * 4); memset(rvR, 0, n * 4); any_rev = 1; }
+        for (int i = 0; i < n && v->phase != OFF;) {
+            // how far before something changes: the envelope's next step, the end of the block
+            int k = n - i;
+            if (!v->eidle && v->ectr < k) k = v->ectr;
+            if (step > 0) { int to_end = (int)((((28u << 12) - v->ctr) + (uint32_t)step - 1) / (uint32_t)step); if (to_end < k) k = to_end; }
+            if (k < 1) k = 1;
+            int gl = (v->env * vl) >> 15, gr = (v->env * vr) >> 15;
+            if (v->env) v->ctr = rev ? run(&v->s[0], v->ctr, step, gl, gr, sumL + i, sumR + i, rvL + i, rvR + i, k, 1)
+                                     : run(&v->s[0], v->ctr, step, gl, gr, sumL + i, sumR + i, 0, 0, k, 0);
+            else v->ctr += (uint32_t)step * (uint32_t)k;
+            i += k;
+            if (!v->eidle) { v->ectr -= k - 1; env_tick(v, vi); }   // (env_tick counts the last sample of the run)
             if ((v->ctr >> 12) >= 28) {
                 v->ctr -= 28 << 12; v->addr += 16; v->first = 0;
                 if (v->flags & 1) {   // loop end: to the repeat address; without the repeat flag the voice stops
@@ -217,17 +236,32 @@ static void mix(int16_t *out, int frames) {
                 }
                 if (v->phase != OFF) block_decode(v, vi);
             }
-            on++;
         }
-        rev_inL += rL; rev_inR += rR;
+    }
+    int ml = vol16(R16(0x180)), mr = vol16(R16(0x182)), peak = dc_spu_peak;
+    for (int i = 0; i < n; i++) {
+        if (any_rev) { rev_inL += rvL[i]; rev_inR += rvR[i]; }
         if (rev_odd) { reverb_step(sat(rev_inL >> 1), sat(rev_inR >> 1)); rev_inL = rev_inR = 0; }
         rev_odd ^= 1;
-        L = sat(L + rev_outL); Rr = sat(Rr + rev_outR);
-        L = (L * vol16(R16(0x180))) >> 15; Rr = (Rr * vol16(R16(0x182))) >> 15;
-        out[f * 2] = (int16_t)L; out[f * 2 + 1] = (int16_t)Rr;
+        int L = sat(sumL[i] + rev_outL), R = sat(sumR[i] + rev_outR);
+        L = (L * ml) >> 15; R = (R * mr) >> 15;
+        out[i * 2] = (int16_t)L; out[i * 2 + 1] = (int16_t)R;
         int a = L < 0 ? -L : L; if (a > peak) peak = a;
     }
-    dc_spu_peak = peak; dc_spu_voices_on = on / (frames ? frames : 1);
+    dc_spu_peak = peak;
+}
+static void mix(int16_t *out, int frames) {
+    events_run();
+    uint16_t rel = *(volatile uint16_t *)(dc_iobase + 0x1108 + 32);   // TIMER_RELOAD(2): the sequencer's rate
+    int tick_hz = rel && cb_timer2 ? (int)(4233600 / rel) : 0;
+    dc_spu_peak = 0; dc_spu_voices_on = 0;
+    for (int f = 0; f < frames;) {
+        int n = frames - f; if (n > 512) n = 512;
+        if (tick_hz) { int left = (RATE - tick_acc + tick_hz - 1) / tick_hz; if (left < 1) left = 1; if (n > left) n = left; }
+        mix_seg(out + f * 2, n);
+        f += n;
+        if (tick_hz) { tick_acc += tick_hz * n; if (tick_acc >= RATE) { tick_acc -= RATE; cb_timer2(); events_run(); } }
+    }
 }
 
 // ---------------------------------------------------------------- the AICA stream and its thread

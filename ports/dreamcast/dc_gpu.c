@@ -451,9 +451,18 @@ int DrawOTag(const uint32_t *ot) {
     submit_list(PVR_LIST_PT_POLY, pt, npt);
     submit_list(PVR_LIST_TR_POLY, tr, ntr);
     pvr_scene_finish();
-    { extern volatile int dc_vbl; extern int dc_spu_cbs, dc_spu_frames, dc_spu_voices_on, dc_spu_peak; if (dc_frames % 100 == 0) dc_logf("snd cb %d fr %d on %d peak %d | vbl %d f%d prims %d/%d/%d pages %d cells %d pvrfree %d\n", dc_spu_cbs, dc_spu_frames, dc_spu_voices_on, dc_spu_peak, dc_vbl, dc_frames, nop, npt, ntr, dc_tex_uploads, dc_tex_cells, (int)pvr_mem_available()); }
+    {   // the log, every 100 frames: frames per second over them (real vblanks), the game's own CPU time a frame (hblanks, 262 = 1/60 s), the GPU side
+        extern volatile int dc_vbl; extern int dc_spu_voices_on, dc_spu_peak, gfx_last_cpu; static int last_vbl, cpu_sum, cpu_max;
+        cpu_sum += gfx_last_cpu; if (gfx_last_cpu > cpu_max) cpu_max = gfx_last_cpu;
+        if (dc_frames % 100 == 0) {
+            int dv = dc_vbl - last_vbl; last_vbl = dc_vbl;
+            dc_logf("f%d fps %d.%d cpu %d max %d hb | prims %d/%d/%d pages %d cells %d pvrfree %d | snd on %d peak %d\n", dc_frames, dv ? 6000 / dv : 0, dv ? (60000 / dv) % 10 : 0,
+                    cpu_sum / 100, cpu_max, nop, npt, ntr, dc_tex_uploads, dc_tex_cells, (int)pvr_mem_available(), dc_spu_voices_on, dc_spu_peak);
+            cpu_sum = cpu_max = 0;
+        }
+    }
     tex_waited = 0;
-    { extern void dc_extra_frame(void); dc_extra_frame(); }
+    { extern void dc_extra_frame(void), dc_prof_frame(int); dc_extra_frame(); dc_prof_frame(dc_frames); }
     dc_frames++;
     return 0;
 }
@@ -512,10 +521,10 @@ static int vbl_now(void) { return dc_vbl; }
 int VSync(int m) {
     if (!t0_us) { t0_us = timer_us_gettime64(); vs_us = t0_us; vblank_handler_add(vbl_irq, 0); }
     if (m < 0) return vbl_now();
-    if (m == 1) return (int)((timer_us_gettime64() - vs_us) * 10 / 635);   // hblanks (63.5 us) since the last VSync(0)
+    if (m == 1) return (int)(((uint32_t)(timer_us_gettime64() - vs_us) * 129u) >> 13);   // hblanks (63.5 us) since the last VSync(0) (x 129 / 8192: no division)
     int target = vbl_now() + 1;
     while (vbl_now() < target) thd_pass();
     vs_us = timer_us_gettime64(); vs_count++;
     return 0;
 }
-int dc_hblanks(void) { if (!t0_us) VSync(-1); return (int)(((timer_us_gettime64() - t0_us) * 10 / 635) & 0xffff); }
+int dc_hblanks(void) { if (!t0_us) VSync(-1); return (int)((((timer_us_gettime64() - t0_us) * 129u) >> 13) & 0xffff); }
