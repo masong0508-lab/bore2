@@ -2091,6 +2091,13 @@ static XV cc_tmp[8]; static int cc_tmpi;
 #define NC_NEAR_FP 520                  // first person: a quad whose nearest corner is closer than this goes this way too
 #define NC_NEAR_TP 2600                 // third person: close and running away from the eye goes this way too (the floor and walls near you)
 #define NC_BUDGET 320                   // pieces a frame may be split into past the first cut (keeps a crowded view from costing a frame)
+#ifndef NC_WDIV
+#define NC_WDIV 4                       // third person: a piece is cut again while its far corners are this much (1/n) deeper than its near ones...
+#endif
+#ifndef NC_WW
+#define NC_WW 64                        // ...and it is wider than this or taller than NC_WH on the screen
+#define NC_WH 48
+#endif
 #define NC_DEPTH 5                      // a quad is split at most this many times
 #define NXY(v) ((u32)(u16)(v)->x | ((u32)(u16)(v)->y << 16))
 typedef struct { int x, y, z, u, v, r, g, b, sx, sy; } NV;   // a corner: view-space position, texel, colour; and where it lands on the screen
@@ -2164,7 +2171,7 @@ static void nc_piece(const NV *p0, const NV *p1, const NV *p2, const NV *p3, int
     int warp = 0;   // a textured piece running away from the eye: it would swim (the PlayStation maps a quad flat, not in perspective)
     if (nq_tex) {
         if (world_fp) warp = zhi * 2 > zlo * 3 && zlo < NC_NEAR_FP && (sw > 64 || sh > 48);
-        else warp = zhi - zlo > zlo / 6 && zlo < NC_NEAR_TP && (sw > 44 || sh > 36);
+        else warp = zhi - zlo > zlo / NC_WDIV && zlo < NC_NEAR_TP && (sw > NC_WW || sh > NC_WH);
     }
     if (warp && depth > 0) { static int fr_ = -1, cnt_; if (fr_ != frame_t) { fr_ = frame_t; cnt_ = 0; } if (++cnt_ > NC_BUDGET) warp = 0; }
     if ((big || warp) && depth < NC_DEPTH) {
