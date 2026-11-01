@@ -2,7 +2,7 @@
 
 The real PS1 game code (`src/`) runs on the Dreamcast. Only the platform layer is new (`ports/dreamcast/`).
 `src/` edits are only under `#ifdef BORE_DC`; `ports/dreamcast/ps1_check.sh` shows the PS1 Release image is unchanged
-(last check: `_end` 0x801fcd04, image sha1 82df98002af9767d, the same with and without the Dreamcast edits).
+(last check: `_end` 0x801fd6d4, image sha1 9e71d5420789ccf6, the same with and without the Dreamcast edits).
 Build, disc and emulator steps: `ports/dreamcast/README.md`.
 
 ## What works now
