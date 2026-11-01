@@ -36,7 +36,7 @@ foreach(o kingdom arcade gotchi party dj super dog prison space paradise farm sk
 	if(o STREQUAL kingdom)
 		add_library(ovl_${o} OBJECT src/realm.c)
 	elseif(o STREQUAL gotchi)
-		add_library(ovl_${o} OBJECT src/gotchi_ui.c)
+		add_library(ovl_${o} OBJECT src/gotchi_ui.c src/gotchi_act.c)
 	elseif(o STREQUAL party)
 		add_library(ovl_${o} OBJECT src/party_ui.c)
 	elseif(o STREQUAL dj)

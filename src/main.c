@@ -670,6 +670,13 @@ static void life_update(int steps) {
             for (int i = 0; i < (k == 0 ? 8 : k == 1 ? 5 : 2); i++) { gotchi_egg(t, i); Blob *b = &t->b[i]; b->sp = (u8)((i * 2 + k * 3 + (AUTO_GOTCHI & 1)) % 16); b->stage = st[i]; b->form = fm[i]; b->hun = 3; b->hap = 4; b->bond = (u8)(i * 14); b->age = 16; b->poop = (u8)(i == 1 && k == 0); if (i == 2) b->hun = 0;
                 if (st[i] == 4) gotchi_dex_see(b->sp, b->form); } }
         for (int k = 0; k < 40; k += 3) gotchi_dex_see(k / 4, k & 3);
+        { Toy *t0 = gotchi_toy(0); if (t0) {   // (a family to look at: a pair, their young, two grandparents who passed on, a rare mutant, a hat)
+            Line *ga = &gline[30], *gb = &gline[31]; memset(ga, 0, sizeof *ga); memset(gb, 0, sizeof *gb); ga->id = 200; ga->sp = 2; ga->nm = 7; ga->fc = (u8)(64 | 3 << 3 | 0); ga->pg = 5; gb->id = 201; gb->sp = 7; gb->nm = 9; gb->fc = (u8)(64 | 2 << 3 | 3); gb->pg = 2;
+            Line *a = gotchi_line(t0->k[0].id), *b = gotchi_line(t0->k[1].id);
+            if (a && b) { a->mom = 200; a->dad = 201; a->pg |= 1 << 3; b->pg |= 1 << 3; t0->k[0].mate = 2; t0->k[1].mate = 1; t0->b[0].gen = t0->b[1].gen = 1;
+                for (int i = 2; i < 8; i++) { Line *c = gotchi_line(t0->k[i].id); if (c && i != 3) { c->mom = a->id; c->dad = b->id; c->pg = (u8)((c->pg & 7) | 2 << 3); t0->b[i].gen = 2; } } }
+            t0->k[0].acc = 6; t0->k[1].acc = 1; t0->k[2].mut = 1; t0->k[2].acc = 3; t0->k[4].mut = 4; t0->k[5].col = 7; t0->k[6].col = 3; t0->k[6].acc = 7; t0->k[3].col = 2; t0->k[3].acc = 2; t0->b[3].sp = 17; t0->b[2].sp = 16; t0->b[4].sp = 18; t0->b[5].sp = 19;
+            t0->b[2].fl |= GF_TANTRUM; t0->b[4].fl |= GF_SICK; t0->b[6].hap = 0; t0->deco = 0x2B; gotchi_diary(GD_HATCH, a ? a->id : 0); gotchi_diary(GD_EGG, 3); gotchi_diary(GD_PASS, 200); gt_h = 40; gt_done = 40; } }
         if (AUTO_GOTCHI < 20) sim_want_gotchi = (AUTO_GOTCHI >> 1) + 1;
         else if (AUTO_GOTCHI >= 26) {   // (the party pack: its things about the house, a guest list, a party going)
             int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), put = 0; static const u8 ch[8] = { AUTO_GOTCHI >= 32 ? 0xCF : 0xC7, AUTO_GOTCHI >= 32 ? 0xD0 : 0xC8, AUTO_GOTCHI >= 32 ? 0xD1 : 0xC9, AUTO_GOTCHI >= 32 ? 0xD2 : 0xCA, 0xCB, 0xCC, 0xCD, 0xCE };
