@@ -15,23 +15,24 @@ DcGte dc_gte;
 
 // ---------------------------------------------------------------- the GTE's RTPS (sf=1, lm=0), one vertex V[i]
 void dc_gte_rtps(int i) {
-    int32_t vx = dc_gte.v[i][0], vy = dc_gte.v[i][1], vz = dc_gte.v[i][2];   // (16-bit x 16-bit products: 32 bits each; only the sum needs 64)
-    int32_t mac[3];
-    for (int k = 0; k < 3; k++) {
-        int64_t m = ((int64_t)dc_gte.t[k] << 12) + (int64_t)(dc_gte.r[k][0] * vx) + (int64_t)(dc_gte.r[k][1] * vy) + (int64_t)(dc_gte.r[k][2] * vz);
-        mac[k] = (int32_t)(m >> 12);
-    }
-    dc_gte.mac[1] = mac[0]; dc_gte.mac[2] = mac[1]; dc_gte.mac[3] = mac[2];
-    for (int k = 0; k < 3; k++) { int32_t v = mac[k]; dc_gte.ir[k + 1] = v < -32768 ? -32768 : v > 32767 ? 32767 : v; }
-    int32_t z = mac[2]; if (z < 0) z = 0; if (z > 65535) z = 65535;
+    // 32-bit maths (SH-4: no 64-bit shifts): (T<<12 + R*V)>>12 == T + (R*V>>12) while the three products stay inside 32 bits (they do for BORE 2's matrices)
+    const int16_t *v = dc_gte.v[i]; const int32_t *r = &dc_gte.r[0][0];
+    int32_t vx = v[0], vy = v[1], vz = v[2];
+    int32_t m0 = dc_gte.t[0] + ((r[0] * vx + r[1] * vy + r[2] * vz) >> 12);
+    int32_t m1 = dc_gte.t[1] + ((r[3] * vx + r[4] * vy + r[5] * vz) >> 12);
+    int32_t m2 = dc_gte.t[2] + ((r[6] * vx + r[7] * vy + r[8] * vz) >> 12);
+    dc_gte.mac[1] = m0; dc_gte.mac[2] = m1; dc_gte.mac[3] = m2;
+    int32_t i0 = m0 < -32768 ? -32768 : m0 > 32767 ? 32767 : m0, i1 = m1 < -32768 ? -32768 : m1 > 32767 ? 32767 : m1, i2 = m2 < -32768 ? -32768 : m2 > 32767 ? 32767 : m2;
+    dc_gte.ir[1] = i0; dc_gte.ir[2] = i1; dc_gte.ir[3] = i2;
+    int32_t z = m2 < 0 ? 0 : m2 > 65535 ? 65535 : m2;
     dc_gte.sz[0] = dc_gte.sz[1]; dc_gte.sz[1] = dc_gte.sz[2]; dc_gte.sz[2] = dc_gte.sz[3]; dc_gte.sz[3] = (uint16_t)z;
     // the divide: H / SZ in 0.16, saturating at 0x1FFFF when SZ <= H/2 (what the PS1's unsigned Newton-Raphson divider does)
-    uint32_t h = (uint32_t)dc_gte.h, q;
-    if (z * 2 > (int32_t)h) { q = (uint32_t)((float)h * 131072.0f / (float)z + 0.5f); if (q > 0x1FFFF) q = 0x1FFFF; } else q = 0x1FFFF;   // (the FPU divide: 17 bits fit a float exactly enough)
-    int64_t sx = ((int64_t)dc_gte.ir[1] * q + dc_gte.ofx) >> 16, sy = ((int64_t)dc_gte.ir[2] * q + dc_gte.ofy) >> 16;
-    if (sx < -1024) sx = -1024; if (sx > 1023) sx = 1023; if (sy < -1024) sy = -1024; if (sy > 1023) sy = 1023;
+    int32_t h = dc_gte.h, q;
+    if (z * 2 > h) { q = (int32_t)((float)h * 131072.0f / (float)z + 0.5f); if (q > 0x1FFFF) q = 0x1FFFF; } else q = 0x1FFFF;
+    int64_t sx = ((int64_t)i0 * q + dc_gte.ofx) >> 16, sy = ((int64_t)i1 * q + dc_gte.ofy) >> 16;
+    int32_t xx = sx < -1024 ? -1024 : sx > 1023 ? 1023 : (int32_t)sx, yy = sy < -1024 ? -1024 : sy > 1023 ? 1023 : (int32_t)sy;
     dc_gte.sx[0] = dc_gte.sx[1]; dc_gte.sy[0] = dc_gte.sy[1]; dc_gte.sx[1] = dc_gte.sx[2]; dc_gte.sy[1] = dc_gte.sy[2];
-    dc_gte.sx[2] = (int16_t)sx; dc_gte.sy[2] = (int16_t)sy;
+    dc_gte.sx[2] = (int16_t)xx; dc_gte.sy[2] = (int16_t)yy;
 }
 
 void InitGeom(void) {

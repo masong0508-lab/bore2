@@ -23,11 +23,13 @@ void dc_logf(const char *f, ...) { if (dc_log_n > 65000) return; va_list a; va_s
 int dc_dump_frame = DC_DUMP;   // (a test build: -DDC_DUMP=N logs frame N's big polygons)
 static uint16_t vram[512][1024] __attribute__((aligned(32)));
 static uint32_t page_gen[2][16];          // bumped when VRAM under a 64x256 bank changes (the quick test)
+static uint32_t vgen = 1;                  // bumped on any VRAM change: a texture checked since then needs no new check
 static uint32_t blk_gen[32][64];          // bumped when VRAM under a 16x16 block changes (only what changed is converted again)
 
 // ---------------------------------------------------------------- VRAM
 static void vram_dirty(int x, int y, int w, int h) {
     if (w <= 0 || h <= 0) return;
+    vgen++;
     if (w > 1024) w = 1024; if (h > 512) h = 512;
     int px0 = (x & 1023) >> 6, px1 = ((x + w - 1) & 1023) >> 6, py0 = (y & 511) >> 8, py1 = ((y + h - 1) & 511) >> 8;
     if (w >= 1024) { px0 = 0; px1 = 15; }
@@ -67,7 +69,7 @@ int ClearImage(const RECT *r, int rr, int gg, int bb) {
 // Each cell also keeps two flags: it has solid texels (STP clear) / it has texels with STP set. A semi-transparent PS1 primitive
 // blends only its STP texels and draws the others solid: a primitive over cells with both is drawn as two (see emit).
 #define NTEX 40
-typedef struct { uint32_t key, sig, clsig, used; pvr_ptr_t ptr; int mode, px, py, cx, cy, var; uint32_t cg[16][16]; uint8_t fl[16][16]; } Tex;
+typedef struct { uint32_t key, sig, clsig, used, vg; pvr_ptr_t ptr; int mode, px, py, cx, cy, var; uint32_t cg[16][16]; uint8_t fl[16][16]; } Tex;
 static Tex tex[NTEX]; static uint32_t tex_clock;
 static uint16_t conv[256 * 256] __attribute__((aligned(32)));
 int dc_tex_uploads, dc_tex_cells;          // (whole pages / cells converted this run: the readout)
@@ -126,6 +128,7 @@ static inline uint16_t to1555(uint16_t c, int var) {
 void dc_grade_changed(void) {   // every texture converted again
     memset(viv_ck, 0, sizeof viv_ck);
     if (dc_vivid && !viv_ok) viv_build();
+    vgen++;
     for (int py = 0; py < 2; py++) for (int px = 0; px < 16; px++) page_gen[py][px] += 1000;
     for (int y = 0; y < 32; y++) for (int x = 0; x < 64; x++) blk_gen[y][x]++;
 }
@@ -140,11 +143,31 @@ static inline uint32_t cell_gen(const Tex *t, int cu, int cv) {   // the VRAM bl
     return blk_gen[((t->py * 256 + cv * 16) >> 4) & 31][(hx >> 4) & 63];
 }
 static void cell_convert(Tex *t, int cu, int cv, uint16_t *out, int stride) {   // one 16x16 cell: converted into out, flags worked out
-    int f = 0;
-    for (int j = 0; j < 16; j++) for (int i = 0; i < 16; i++) {
-        uint16_t c = texel(t, cu * 16 + i, cv * 16 + j);
-        if (c & 0x8000) f |= 2; else if (c) f |= 1;
-        out[j * stride + i] = to1555(c, t->var);
+    int f = 0, var = t->var, mode = t->mode;
+    if (mode == 0) {   // 4 bit: the 16 colours of the palette are converted once, then each row is 4 words of nibbles
+        uint16_t pal[16]; int seen = 0;
+        for (int k = 0; k < 16; k++) pal[k] = to1555(vram[t->cy][(t->cx + k) & 1023], var);
+        for (int j = 0; j < 16; j++) {
+            const uint16_t *row = &vram[(t->py * 256 + cv * 16 + j) & 511][(t->px * 64 + cu * 4) & 1023]; uint16_t *o = out + j * stride;
+            for (int w = 0; w < 4; w++) {
+                unsigned q = row[w];
+                unsigned n0 = q & 15, n1 = (q >> 4) & 15, n2 = (q >> 8) & 15, n3 = q >> 12;
+                o[w * 4] = pal[n0]; o[w * 4 + 1] = pal[n1]; o[w * 4 + 2] = pal[n2]; o[w * 4 + 3] = pal[n3];
+                seen |= (1 << n0) | (1 << n1) | (1 << n2) | (1 << n3);
+            }
+        }
+        for (int k = 0; k < 16; k++) if (seen >> k & 1) { uint16_t c = vram[t->cy][(t->cx + k) & 1023]; if (c & 0x8000) f |= 2; else if (c) f |= 1; }
+    } else {
+        for (int j = 0; j < 16; j++) {
+            const uint16_t *row = vram[(t->py * 256 + cv * 16 + j) & 511]; int x0 = t->px * 64; uint16_t *o = out + j * stride;
+            for (int i = 0; i < 16; i++) {
+                int u = cu * 16 + i; uint16_t c;
+                if (mode == 2) c = row[(x0 + u) & 1023];
+                else c = vram[t->cy][(t->cx + ((row[(x0 + (u >> 1)) & 1023] >> ((u & 1) * 8)) & 255)) & 1023];
+                if (c & 0x8000) f |= 2; else if (c) f |= 1;
+                o[i] = to1555(c, var);
+            }
+        }
     }
     t->fl[cv][cu] = (uint8_t)f; t->cg[cv][cu] = cell_gen(t, cu, cv);
 }
@@ -175,8 +198,9 @@ static int tex_get(int tpage, int clut, int var) {
     int mode = (tpage >> 7) & 3; if (mode == 3) mode = 2;
     int px = tpage & 15, py = (tpage >> 4) & 1, cx = (clut & 63) * 16, cy = (clut >> 6) & 511;
     uint32_t key = (uint32_t)mode << 28 | (uint32_t)px << 24 | (uint32_t)py << 23 | (uint32_t)var << 21 | (mode < 2 ? (uint32_t)(clut & 0x7fff) : 0);
-    uint32_t sig = tex_sig(mode, px, py);
     tex_clock++;
+    if (tex_last >= 0 && tex[tex_last].key == key && tex[tex_last].ptr && tex[tex_last].vg == vgen) { tex[tex_last].used = tex_clock; return tex_last; }
+    uint32_t sig = tex_sig(mode, px, py);
     int lru = 0, i = tex_last;
     if (i >= 0 && tex[i].key == key && tex[i].ptr) goto hit;
     for (i = 0; i < NTEX; i++) {
@@ -188,9 +212,9 @@ static int tex_get(int tpage, int clut, int var) {
     {   Tex *t = &tex[lru];
         t->key = key; t->sig = sig; t->clsig = clut_sig(mode, cx, cy); t->used = tex_clock;
         t->mode = mode; t->px = px; t->py = py; t->cx = cx; t->cy = cy; t->var = var;
-        tex_full(t); tex_last = lru; return lru; }
+        tex_full(t); t->vg = vgen; tex_last = lru; return lru; }
 hit:
-    {   Tex *t = &tex[i]; t->used = tex_clock; tex_last = i;
+    {   Tex *t = &tex[i]; t->used = tex_clock; tex_last = i; t->vg = vgen;
         if (t->sig != sig) { t->sig = sig; uint32_t cs = clut_sig(mode, cx, cy); if (cs != t->clsig) { t->clsig = cs; tex_full(t); } else tex_update(t); }
         else if (mode < 2) { uint32_t cs = clut_sig(mode, cx, cy); if (cs != t->clsig) { t->clsig = cs; tex_full(t); } }
         return i; }
@@ -283,11 +307,16 @@ static void emit_one(int n, const int *x, const int *y, const uint32_t *col, con
     float z = 1.0f + zseq;
     int blend = semi ? abr : -1;
     float fx[4], fy[4], fu[4], fv[4]; uint32_t c4[4];
+    uint32_t pc = 0;
     int boost = 0, a = abr == 0 ? 128 : abr == 3 ? 64 : 255;
     for (int k = 0; k < n; k++) {
         fx[k] = (float)((x[k] + ofs_x - area_x0) * 2); fy[k] = (float)((y[k] + ofs_y - area_y0) * 2);
-        uint32_t c = vivid(textured ? mod_col(col[k], raw) : flat_col(col[k]));
-        if (textured && !raw && ((col[k] & 255) > 128 || ((col[k] >> 8) & 255) > 128 || ((col[k] >> 16) & 255) > 128)) boost = 1;
+        uint32_t c;
+        if (k && col[k] == col[k - 1]) c = pc;   // (flat primitives and shared corners: graded once)
+        else {
+            c = pc = vivid(textured ? mod_col(col[k], raw) : flat_col(col[k]));
+            if (textured && !raw && ((col[k] & 255) > 128 || ((col[k] >> 8) & 255) > 128 || ((col[k] >> 16) & 255) > 128)) boost = 1;
+        }
         if (semi) c = (c & 0xffffff) | (uint32_t)a << 24;
         c4[k] = c;
         if (textured) { fu[k] = (float)u[k]; fv[k] = (float)v[k]; }
@@ -552,28 +581,48 @@ static void sw_tri(const int *x, const int *y, const uint32_t *c, const int *u, 
     if (minx > maxx || miny > maxy) return;
     int area = (x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0]);
     if (!area) return;
-    float ia = 1.0f / (float)area;
-    for (int py = miny; py <= maxy; py++) for (int px = minx; px <= maxx; px++) {
-        float fx = px + 0.5f, fy = py + 0.5f;
-        float w0 = ((x[1] - fx) * (y[2] - fy) - (x[2] - fx) * (y[1] - fy)) * ia;
-        float w1 = ((x[2] - fx) * (y[0] - fy) - (x[0] - fx) * (y[2] - fy)) * ia;
-        float w2 = 1.0f - w0 - w1;
-        if (w0 < 0 || w1 < 0 || w2 < 0) continue;
-        int r = (int)(w0 * (c[0] & 255) + w1 * (c[1] & 255) + w2 * (c[2] & 255));
-        int g = (int)(w0 * ((c[0] >> 8) & 255) + w1 * ((c[1] >> 8) & 255) + w2 * ((c[2] >> 8) & 255));
-        int b = (int)(w0 * ((c[0] >> 16) & 255) + w1 * ((c[1] >> 16) & 255) + w2 * ((c[2] >> 16) & 255));
-        uint16_t out;
-        if (textured) {
-            int tu = (int)(w0 * u[0] + w1 * u[1] + w2 * u[2]), tv = (int)(w0 * v[0] + w1 * v[1] + w2 * v[2]);
-            uint16_t t = tex_fetch(tpage, clut, tu, tv); if (!t) continue;
-            if (raw) out = t;
-            else {
-                int tr_ = ((t & 31) * r) >> 7, tg = (((t >> 5) & 31) * g) >> 7, tb = (((t >> 10) & 31) * b) >> 7;
-                if (tr_ > 31) tr_ = 31; if (tg > 31) tg = 31; if (tb > 31) tb = 31;
-                out = (uint16_t)(tr_ | tg << 5 | tb << 10 | (t & 0x8000));
-            }
-        } else out = (uint16_t)((r >> 3) | (g >> 3) << 5 | (b >> 3) << 10);
-        vram[py & 511][px & 1023] = mask_set ? (uint16_t)(out | 0x8000) : out;   // (E6 set-mask: the person's pixels are made solid; the cell's clear is not)
+    // exact integer edge functions (x4, pixel centres): inside = all three >= 0; they step by a constant per pixel. The colours and
+    // texture coordinates are planes: value = v2 + M0 * k0 + M1 * k1 (k = (v0-v2) / total, (v1-v2) / total)
+    int sg = area > 0 ? 1 : -1, tot = 4 * area * sg;
+    int d0 = 4 * (y[1] - y[2]) * sg, d1 = 4 * (y[2] - y[0]) * sg;
+    float iaf = 1.0f / (float)tot;
+    float kr0 = iaf * (float)((int)(c[0] & 255) - (int)(c[2] & 255)), kr1 = iaf * (float)((int)(c[1] & 255) - (int)(c[2] & 255));
+    float kg0 = iaf * (float)((int)((c[0] >> 8) & 255) - (int)((c[2] >> 8) & 255)), kg1 = iaf * (float)((int)((c[1] >> 8) & 255) - (int)((c[2] >> 8) & 255));
+    float kb0 = iaf * (float)((int)((c[0] >> 16) & 255) - (int)((c[2] >> 16) & 255)), kb1 = iaf * (float)((int)((c[1] >> 16) & 255) - (int)((c[2] >> 16) & 255));
+    float r2 = (float)(c[2] & 255), g2 = (float)((c[2] >> 8) & 255), b2 = (float)((c[2] >> 16) & 255);
+    float ku0 = 0, ku1 = 0, kv0 = 0, kv1 = 0, u2 = 0, v2 = 0;
+    int mode = 0, tx0 = 0, ty0 = 0, tcx = 0, tcy = 0;
+    if (textured) {
+        ku0 = iaf * (float)(u[0] - u[2]); ku1 = iaf * (float)(u[1] - u[2]); kv0 = iaf * (float)(v[0] - v[2]); kv1 = iaf * (float)(v[1] - v[2]);
+        u2 = (float)u[2]; v2 = (float)v[2];
+        mode = (tpage >> 7) & 3; tx0 = (tpage & 15) * 64; ty0 = ((tpage >> 4) & 1) * 256; tcx = (clut & 63) * 16; tcy = (clut >> 6) & 511;
+    }
+    for (int py = miny; py <= maxy; py++) {
+        int ey = 2 * py + 1;   // (the pixel centre, doubled)
+        int m0 = sg * ((2 * x[1] - (2 * minx + 1)) * (2 * y[2] - ey) - (2 * x[2] - (2 * minx + 1)) * (2 * y[1] - ey));
+        int m1 = sg * ((2 * x[2] - (2 * minx + 1)) * (2 * y[0] - ey) - (2 * x[0] - (2 * minx + 1)) * (2 * y[2] - ey));
+        uint16_t *dst = &vram[py & 511][0];
+        for (int px = minx; px <= maxx; px++, m0 += d0, m1 += d1) {
+            if ((m0 | m1 | (tot - m0 - m1)) < 0) continue;
+            float f0 = (float)m0, f1 = (float)m1;
+            int r = (int)(r2 + f0 * kr0 + f1 * kr1), g = (int)(g2 + f0 * kg0 + f1 * kg1), b = (int)(b2 + f0 * kb0 + f1 * kb1);
+            uint16_t out;
+            if (textured) {
+                int tu = (int)(u2 + f0 * ku0 + f1 * ku1) & 255, tv = (int)(v2 + f0 * kv0 + f1 * kv1) & 255;
+                const uint16_t *row = vram[(ty0 + tv) & 511]; uint16_t t;
+                if (mode == 0) t = vram[tcy][(tcx + ((row[(tx0 + (tu >> 2)) & 1023] >> ((tu & 3) * 4)) & 15)) & 1023];
+                else if (mode == 1) t = vram[tcy][(tcx + ((row[(tx0 + (tu >> 1)) & 1023] >> ((tu & 1) * 8)) & 255)) & 1023];
+                else t = row[(tx0 + tu) & 1023];
+                if (!t) continue;
+                if (raw) out = t;
+                else {
+                    int tr_ = ((t & 31) * r) >> 7, tg = (((t >> 5) & 31) * g) >> 7, tb = (((t >> 10) & 31) * b) >> 7;
+                    if (tr_ > 31) tr_ = 31; if (tg > 31) tg = 31; if (tb > 31) tb = 31;
+                    out = (uint16_t)(tr_ | tg << 5 | tb << 10 | (t & 0x8000));
+                }
+            } else out = (uint16_t)((r >> 3) | (g >> 3) << 5 | (b >> 3) << 10);
+            dst[px & 1023] = mask_set ? (uint16_t)(out | 0x8000) : out;   // (E6 set-mask: the person's pixels are made solid; the cell's clear is not)
+        }
     }
     vram_dirty(minx, miny, maxx - minx + 1, maxy - miny + 1);
 }
