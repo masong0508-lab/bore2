@@ -4997,7 +4997,18 @@ int main(void) {
                   if (ap > 200) { extern int ap_frames, ap_vs, ap_cpu; ap_frames++; ap_vs += steps; ap_cpu += t_cpu; } }   // (test builds: a party a couple of seconds in)
 #endif
 #ifdef AB_FREEZE
-                { static int ab_lf; if (++ab_lf > AB_FREEZE) { life_draw(); break; } }   // (test builds: the city stands still after AB_FREEZE frames, still drawn: two builds' pictures can be laid over each other)
+                { static int ab_lf; if (++ab_lf > AB_FREEZE) {
+#ifdef VEH_SHOT
+                    {   // (test builds: a lineup of every vehicle by the player, and the camera and the ridden vehicle stepping through a table, 100 frames each)
+                      extern int veh_shot_f, veh_own, veh_on, veh_wph; static const struct { s16 yaw, pitch, dist; s8 rider, fp; } vt_[] = {
+                        { 2600, 640, 1500, -1, 0 }, { 2600, 380, 700, -1, 0 }, { 2600 + 2048, 520, 900, -1, 0 }, { 1536, 440, 800, -1, 0 }, { 2600, 760, 3600, -1, 0 }, { 3300, 460, 760, -1, 0 },
+                        { 2600, 640, 1500, 0, 0 }, { 2600, 640, 1500, 1, 0 }, { 2600, 640, 1500, 2, 0 }, { 2600, 640, 1500, 3, 0 }, { 2600, 640, 1500, 4, 0 }, { 2600, 640, 1500, 5, 0 },
+                        { 2600, 380, 700, 2, 0 }, { 2600, 380, 700, 4, 0 }, { 2600, 380, 700, 0, 0 }, { 2600, 640, 1500, 2, 1 } };
+                      int e = (veh_shot_f / 100) % (int)(sizeof vt_ / sizeof vt_[0]); veh_shot_f++;
+                      cam_yaw = vt_[e].yaw; cam_pitch = vt_[e].pitch; cam_dist = vt_[e].dist; cam_view = vt_[e].fp ? 2 : 0;
+                      veh_own = 63; veh_on = vt_[e].rider >= 0 ? vt_[e].rider + 1 : 0; sims[player].gait.sit = veh_on >= 3; veh_wph = (veh_shot_f * 70) & 4095; life_draw(); { char b_[16]; sprintf(b_, "E%d", e); ui_text(2, 30, 1, b_, UI_WHITE); } break; }
+#endif
+                    life_draw(); break; } }   // (test builds: the city stands still after AB_FREEZE frames, still drawn: two builds' pictures can be laid over each other)
 #endif
                 { int t0 = hb_now(); life_update(steps); t_upd = hb_now() - t0; } life_draw(); break;
             case ST_PAUSE: pause_update(); pause_draw(); break;

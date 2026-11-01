@@ -97,8 +97,21 @@ static void put(const Car *c) {
     int x = (c->tx - bx_()) * TILE + TILE / 2 + DX[(int)c->d] * c->p + LX[(int)c->d] * (TILE / 2), y = (c->ty - by_()) * TILE + TILE / 2 + DY[(int)c->d] * c->p + LY[(int)c->d] * (TILE / 2);
     items_draw_vehicle(x, -y, c->yaw, 0, c->type, c->col, c->wph);
 }
+#ifdef VEH_SHOT
+int veh_shot_f;
+#ifndef VEH_SHOT_YAW
+#define VEH_SHOT_YAW 3072
+#endif
+extern void items_draw_bus(int x, int z, int yaw, int y);
+#endif
 void traffic_draw(void) {
     if (world_zone != ZONE_CITY || world_wbx < 0) return;
+#ifdef VEH_SHOT
+    if (veh_shot_f) { const Sim *s = &sims[player]; int fx = isin(2600), fz = icos(2600), rx = fz, rz = -fx;   // (test builds: three cars a row, two rows, the bus, laid out across the default view)
+        for (int t = 0; t < 6; t++) { int a = t < 3 ? 250 : 950, b = ((t % 3) - 1) * 560;
+            items_draw_vehicle(s->x + ((fx * a + rx * b) >> 12), s->z + ((fz * a + rz * b) >> 12), VEH_SHOT_YAW, 0, t, veh_colour(t), veh_shot_f * 40); }
+        items_draw_bus(s->x + ((fx * 1750 + rx * 300) >> 12), s->z + ((fz * 1750 + rz * 300) >> 12), VEH_SHOT_YAW, 0); }
+#endif
     int px = ptx(), py = pty(), shown = 0;
     for (int i = 0; i < NCAR && shown < 14; i++) { const Car *c = &car[i]; if (!c->on) continue;
         if (ABS(c->tx - bx_() - px) + ABS(c->ty - by_() - py) > 17) continue; put(c); shown++; }
