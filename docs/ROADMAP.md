@@ -13,7 +13,7 @@ Detail for each port: DSI_ROADMAP.md (DS), DREAMCAST.md (Dreamcast), PS1_PERFORM
 - [ ] Clock card is not kept between frames (no packet room).
 - [ ] Old-save load test for the Boreagotchi save (version 45) and REAL TIME (version 44) on a real memory card.
 - [ ] Bus facing at stops, car pitch on real hills, first-person and gas-station vehicle shots.
-- [ ] Boreagotchi: overlapping text in the family tree hint bar and its labels (docs/gotchi_4_1.png). Check every Boreagotchi screen.
+- [x] Boreagotchi PS1 text overlaps fixed (commit 9b4fc5c). Test hook -DAUTO_GVIEWS and test/gviews.sh step through every screen; the disc image does not rebuild when only an overlay changes, the script forces it.
 
 ## 2. DS
 Newest ROM: bore2_dsi_d54.nds. Everything is melonDS-only (no real DS or DSi tried).
@@ -21,7 +21,7 @@ Newest ROM: bore2_dsi_d54.nds. Everything is melonDS-only (no real DS or DSi tri
 - [ ] Textures on bought furniture and the Map's house picture.
 - [ ] BORTUA FIGHTER (see wip-ds-fight).
 - [ ] Band and DJ: needs a two-deck audio path first.
-- [ ] Boreagotchi on the DS is missing: new foods and games, family home, accessories, awards, diary, playdates, grandparents on the tree, the Toy Box and the shop. Fix the clipped labels on the family page (docs/gotchi_ds_tree.png).
+- [ ] `wip-gotchi`: DS Boreagotchi rules are written in ds_games.c (never built); the new screens are in ports/dsi/wip/ui_update.c, ui_top.c, ui_bottom.c, not spliced in. Splice in, add view names and icons, draw hats, build, fix errors, test scenes, shots, 30 fps, make d55. Missing before that work: new foods and games, family home, accessories, awards, diary, playdates, grandparents on the tree, the Toy Box and the shop. Fix the clipped labels on the family page (docs/gotchi_ds_tree.png).
 - [ ] New arcade games on the DS after the PS1 ones are done.
 - [ ] A DSi-type ROM for the extra memory and CPU (cannot be tested here).
 - [ ] Try on a real DS or DSi.
