@@ -1,0 +1,4 @@
+250 start
+300 shot
+320 b
+380 shot

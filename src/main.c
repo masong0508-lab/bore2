@@ -2287,7 +2287,11 @@ static int load_game(int slot) {   // 1: the saved life is up and running
 static int slot_ask;   // 1: X again replaces the save in that slot, 2: SQUARE again deletes it
 static int slot_save, slot_sel, slot_back, slot_have[SAVE_SLOTS], slot_card; static SaveInfo slot_in[SAVE_SLOTS];
 static void slots_open(int saving, int back) {
+#ifdef BORE_DC
+    loading("LOOKING AT THE VMU", 50);
+#else
     loading("LOOKING AT THE MEMORY CARD", 50);
+#endif
     slot_save = saving; slot_back = back; slot_sel = 0; save_msg = 0; slot_ask = 0;
     mcard_dir_keep = 0; slot_have[0] = save_info(0, &slot_in[0]);   // (the card's directory read once for all three)
     mcard_dir_keep = 1; for (int i = 1; i < SAVE_SLOTS; i++) slot_have[i] = save_info(i, &slot_in[i]);
@@ -2307,7 +2311,11 @@ static void slots_update(void) {
         return;
     }
     if (!PRESSED(PAD_CROSS)) return;
+#ifdef BORE_DC
+    if (!slot_card) { save_msg = "NO VMU IN CONTROLLER A"; audio_voice(VOICE_NAH); slot_card = mcard_present(); return; }
+#else
     if (!slot_card) { save_msg = "NO MEMORY CARD IN SLOT 1"; audio_voice(VOICE_NAH); slot_card = mcard_present(); return; }
+#endif
     if (slot_save) {
         if (slot_have[slot_sel] && slot_ask != 1) { slot_ask = 1; return; }   // (a slot in use: X again to replace it)
         slot_ask = 0; save_game(slot_sel); state = ST_LIFE; return;
@@ -2327,7 +2335,11 @@ static void slots_draw(void) {
         else { sprintf(t, "%d. EMPTY", i + 1); strcpy(u, slot_save ? "FREE: YOUR LIFE CAN GO HERE" : "FREE: NO LIFE SAVED HERE YET"); }
         ui_text(56, y + 3, 1, t, UI_INK); ui_text(56, y + 14, 1, u, UI_SOFT);
     }
+#ifdef BORE_DC
+    const char *m = slot_ask == 1 ? "REPLACE THIS SAVE? X AGAIN TO REPLACE" : slot_ask == 2 ? "DELETE THIS SAVE? SQUARE AGAIN" : save_msg ? save_msg : !slot_card ? "NO VMU IN CONTROLLER A" : "";
+#else
     const char *m = slot_ask == 1 ? "REPLACE THIS SAVE? X AGAIN TO REPLACE" : slot_ask == 2 ? "DELETE THIS SAVE? SQUARE AGAIN" : save_msg ? save_msg : !slot_card ? "NO MEMORY CARD IN SLOT 1" : "";
+#endif
     ui_textc(160, top + 98, 1, m, slot_ask || (save_msg && strcmp(save_msg, "SAVE DELETED")) || !slot_card ? UI_BADT : UI_SOFT);
     ui_hints(160, top + 112, slot_ask ? (slot_ask == 1 ? "X REPLACE|O NO" : "SQ DELETE|O NO") : slot_have[slot_sel] ? (slot_save ? "X SAVE|SQ DELETE|O BACK" : "X LOAD|SQ DELETE|O BACK") : (slot_save ? "X SAVE|O BACK" : "X LOAD|O BACK"), 1);
 }
@@ -3866,7 +3878,11 @@ static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
         { IC_EYE, "L2 + R2 TOGETHER: SIMS CAMERA, BEHIND YOU, OR FIRST PERSON." },
         { IC_PLAY, "FIRST PERSON: UP WALKS, LEFT AND RIGHT TURN, L2 R2 LOOK. L1 + R1 TURN ROUND. THE DOT SHOWS WHAT X DOES." },
         { IC_CASE, "WORK: PHONE, JOBS. BILLS ARE $800, EVERY MIDNIGHT." },
+#ifdef BORE_DC
+        { IC_ARROW, "START: THE BORE PANEL, BUILD MODE, OPTIONS AND SAVE GAME (3 SLOTS ON THE VMU)." } } },
+#else
         { IC_ARROW, "START: THE BORE PANEL, BUILD MODE, OPTIONS AND SAVE GAME (3 SLOTS ON THE MEMORY CARD)." } } },
+#endif
     { "BUILD AND CREATE", { { IC_HAMMER, "BUILD MODE: ITEMS, WALLS, FLOORS AND 103 WALLPAPERS." },
         { IC_BRUSH, "SELECT PICKS THE TOOL. L1 R1 PICK THE THING. X PLACES IT, SQUARE TAKES IT AWAY." },
         { IC_HOUSE, "L2 R2 CHANGE THE STOREY. L3 SHOWS THE ROOF." },
@@ -4228,7 +4244,11 @@ static void nh_load_body(void) {
 static int nh_peek_i;
 static void nh_peek_body(void) { ld_str(nh_names[nh_peek_i], 17); }
 static void nh_scan(void) {
+#ifdef BORE_DC
+    loading("LOOKING AT THE VMU", 50);
+#else
     loading("LOOKING AT THE MEMORY CARD", 50);
+#endif
     nh_card = mcard_present(); nh_msg = 0; nh_ask = 0;
     SaveInfo si; mcard_dir_keep = 0;
     for (int i = 0; i < 3; i++) { nh_have[i] = nh_card && save_info(3 + i, &si); mcard_dir_keep = 1; nh_names[i][0] = 0; if (nh_have[i]) { nh_peek_i = i; if (!save_read(3 + i, nh_peek_body)) nh_have[i] = 0; } }
@@ -4518,7 +4538,11 @@ static void ne_move(int dx, int dy) {
 static void ne_menu_do(int k) {
     if (k == 0) {
         if (!nh_card) nh_card = mcard_present();
+#ifdef BORE_DC
+        if (!nh_card) { ne_msg = "NO VMU IN CONTROLLER A"; ne_msgt = 120; audio_voice(VOICE_NAH); }
+#else
         if (!nh_card) { ne_msg = "NO MEMORY CARD IN SLOT 1"; ne_msgt = 120; audio_voice(VOICE_NAH); }
+#endif
         else if (nh_save()) { ne_msg = "NEIGHBORHOOD SAVED"; ne_msgt = 120; ne_changed = 0; audio_voice(VOICE_WIN); }
         else { ne_msg = save_error(); ne_msgt = 150; audio_voice(VOICE_NAH); }
         ne_menu = 0;
@@ -4681,7 +4705,11 @@ static void worlds_draw(void) {
         ui_icon_disc(MX + MS / 2, MY + 44, 44, nh_have[nh_sel] ? IC_PIN : IC_BRUSH, UI_WHITE, UI_BLUE2);
         ui_textc(MX + MS / 2, MY + 76, 1, nh_have[nh_sel] ? (nh_names[nh_sel][0] ? nh_names[nh_sel] : "MY TOWN") : "A BLANK PLACE", UI_WHITE);
         ui_wrap(MX + 8, MY + 90, MS - 16, 4, nh_have[nh_sel] ? "X: LIVE HERE. SQUARE: OPEN THE EDITOR" : "X: MAKE A NEIGHBORHOOD. PAINT, TERRAFORM, ROAD, BUILD", UI_WHITE);
+#ifdef BORE_DC
+        const char *m = nh_ask == 2 ? "DELETE THIS NEIGHBORHOOD? TRIANGLE AGAIN" : nh_msg ? nh_msg : !nh_card ? "NO VMU: YOU CAN MAKE ONE, BUT NOT KEEP IT" : "";
+#else
         const char *m = nh_ask == 2 ? "DELETE THIS NEIGHBORHOOD? TRIANGLE AGAIN" : nh_msg ? nh_msg : !nh_card ? "NO MEMORY CARD: YOU CAN MAKE ONE, BUT NOT KEEP IT" : "";
+#endif
         ui_text(12, top + 96, 1, m, nh_ask || nh_msg || !nh_card ? UI_BADT : UI_SOFT);
         ui_text(12, top + 112, 1, "MADE IN THE EDITOR:", UI_SOFT);
         ui_wrap(12, top + 124, 126, 5, "ROADS, BUILDINGS, TERRAIN, TOWN LAND, SEASON, CASH", UI_INK);

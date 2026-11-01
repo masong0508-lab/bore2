@@ -165,9 +165,9 @@ static int tex_flags(int ti, const int *u, const int *v, int n) {   // the cells
 
 // ---------------------------------------------------------------- the primitives of a frame, sorted into the PVR's lists
 typedef struct { float x[4], y[4], u[4], v[4]; uint32_t c[4]; float z; int8_t n, tex, blend, filt; } Prim;
-#define MAXOP 14000
-#define MAXPT 10000
-#define MAXTR 5000
+#define MAXOP 6000
+#define MAXPT 6000
+#define MAXTR 4000
 static Prim op[MAXOP], pt[MAXPT], tr[MAXTR];
 static int nop, npt, ntr; static float zseq;
 int dc_prims_last;
@@ -360,7 +360,9 @@ static void run_packet(const uint32_t *w, int n) {
 static int pvr_ready;
 void dc_gpu_init(void) {
     if (pvr_ready) return;
-    pvr_init_params_t pp = { { PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_16 }, 1536 * 1024, 0, 0, 1, 3 };
+    // 24-bit colour out (the PS1 dithers its 24-bit shading down to 15 bits; here there are no steps to hide), 640x480
+    vid_set_mode(DM_640x480, PM_RGB888P);
+    pvr_init_params_t pp = { { PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_16 }, 1024 * 1024, 0, 0, 1, 3 };
     pvr_init(&pp);
     pvr_ready = 1;
 }
@@ -451,6 +453,7 @@ int DrawOTag(const uint32_t *ot) {
     pvr_scene_finish();
     { extern volatile int dc_vbl; extern int dc_spu_cbs, dc_spu_frames, dc_spu_voices_on, dc_spu_peak; if (dc_frames % 100 == 0) dc_logf("snd cb %d fr %d on %d peak %d | vbl %d f%d prims %d/%d/%d pages %d cells %d pvrfree %d\n", dc_spu_cbs, dc_spu_frames, dc_spu_voices_on, dc_spu_peak, dc_vbl, dc_frames, nop, npt, ntr, dc_tex_uploads, dc_tex_cells, (int)pvr_mem_available()); }
     tex_waited = 0;
+    { extern void dc_extra_frame(void); dc_extra_frame(); }
     dc_frames++;
     return 0;
 }

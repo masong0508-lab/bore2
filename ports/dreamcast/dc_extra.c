@@ -1,0 +1,95 @@
+// dc_extra.c: things only the Dreamcast has. Called once a frame from the platform layer (dc_gpu.c, after the frame is handed to
+// the PowerVR), so the PS1 game code knows nothing of them.
+// - The VMU screen (48x32): the Bore you play - their face, which follows their mood - their name, the clock, and four needs
+//   as bars; a little animation while a save is being written.
+#include <kos.h>
+#include <dc/maple.h>
+#include <dc/maple/vmu.h>
+#include <string.h>
+#include "common.h"
+#include "sim.h"
+
+// ---------------------------------------------------------------- a 3x5 font for the VMU screen
+static const uint16_t f35[40] = {   // 0-9, A-Z, ':', ' ', '-', '.' ; 15 bits, rows top to bottom, 3 bits each (left = 4)
+    075557, 026227, 071747, 071717, 055711, 074717, 074757, 071111, 075757, 075717,
+    025755, 065656, 034443, 065556, 074647, 074644, 034553, 055755, 072227, 011157, 055655, 044447, 057555, 065555, 025552,
+    065644, 025573, 065655, 034317, 072222, 055557, 055522, 055575, 055255, 055222, 071247, 002020, 0, 000700, 000002 };
+static int glyph(int c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'Z') return 10 + c - 'A';
+    if (c >= 'a' && c <= 'z') return 10 + c - 'a';
+    return c == ':' ? 36 : c == '-' ? 38 : c == '.' ? 39 : 37;
+}
+static uint8_t lcd[32][48];
+static void px(int x, int y) { if (x >= 0 && x < 48 && y >= 0 && y < 32) lcd[y][x] = 1; }
+static void text(int x, int y, const char *s) {
+    for (; *s; s++, x += 4) { uint16_t g = f35[glyph(*s)]; for (int r = 0; r < 5; r++) for (int c = 0; c < 3; c++) if (g & (1 << (14 - r * 3 - c))) px(x + c, y + r); }
+}
+static void lcd_send(void) {
+    maple_device_t *d = maple_enum_type(0, MAPLE_FUNC_LCD);
+    if (!d) return;
+    static uint8_t bits[192], last[192];
+    memset(bits, 0, sizeof bits);
+    for (int y = 0; y < 32; y++) for (int x = 0; x < 48; x++) if (lcd[y][x]) bits[y * 6 + x / 8] |= (uint8_t)(0x80 >> (x & 7));
+    if (!memcmp(bits, last, sizeof bits)) return;
+    memcpy(last, bits, sizeof bits);
+    vmu_draw_lcd_rotated(d, bits);
+}
+static void face(int ox, int oy, int mood, int blink) {   // a 16x16 Bore head: a box with eyes and a mouth that follows the mood
+    for (int i = 0; i < 16; i++) { px(ox + i, oy); px(ox + i, oy + 15); px(ox, oy + i); px(ox + 15, oy + i); }
+    if (blink) { for (int i = 0; i < 3; i++) { px(ox + 3 + i, oy + 6); px(ox + 10 + i, oy + 6); } }
+    else for (int j = 0; j < 3; j++) for (int i = 0; i < 2; i++) { px(ox + 4 + i, oy + 4 + j); px(ox + 10 + i, oy + 4 + j); }
+    int m = mood > 15 ? 2 : mood < -15 ? 0 : 1;
+    for (int i = 0; i < 8; i++) {
+        int y = oy + 11;
+        if (m == 2) y += (i == 0 || i == 7) ? -1 : (i == 1 || i == 6) ? 0 : 1;
+        if (m == 0) y += (i == 0 || i == 7) ? 1 : (i == 1 || i == 6) ? 0 : -1;
+        px(ox + 4 + i, y);
+    }
+}
+static int saving, tick;
+void dc_vmu_saving(int on) {
+    saving = on;
+    if (!on) return;
+    memset(lcd, 0, sizeof lcd);
+    face(2, 8, 100, 0);
+    text(21, 8, "SAVE"); text(21, 16, "...");
+    lcd_send();
+}
+static void vmu_status(void) {
+    memset(lcd, 0, sizeof lcd);
+    if (nsims <= 0 || player < 0 || player >= nsims) {   // the title: the logo
+        text(8, 6, "BORE 2"); face(16, 14, 100, (tick / 30) % 5 == 0);
+        lcd_send(); return;
+    }
+    const Sim *s = &sims[player];
+    face(0, 0, s->mood, (tick / 30) % 6 == 0);
+    char nm[8]; int k = 0; for (const char *p = s->bore.first; *p && k < 7; p++) nm[k++] = *p; nm[k] = 0;
+    text(18, 0, nm);
+    char clk[8]; int h = clock_min / 60, m = clock_min % 60; clk[0] = (char)('0' + h / 10); clk[1] = (char)('0' + h % 10); clk[2] = ':'; clk[3] = (char)('0' + m / 10); clk[4] = (char)('0' + m % 10); clk[5] = 0;
+    text(18, 7, clk);
+    static const int nd[4] = { N_FOOD, N_REST, N_FUN, N_SOCIAL }; static const char lab[4] = { 'F', 'R', 'J', 'S' };
+    for (int i = 0; i < 4; i++) {   // the needs: a letter, then a bar (outlined; filled as far as the need is met)
+        int y = 19 + (i & 1) * 7, x = (i >> 1) * 25;
+        char l[2] = { lab[i], 0 }; text(x, y, l);
+        int v = s->need[nd[i]] / 1024; if (v < 0) v = 0; if (v > 100) v = 100;
+        int w = (v * 15 + 50) / 100;
+        for (int j = 0; j < 17; j++) { px(x + 5 + j, y); px(x + 5 + j, y + 4); }
+        for (int r = 1; r < 4; r++) { px(x + 5, y + r); px(x + 21, y + r); }
+        for (int j = 0; j < w; j++) for (int r = 2; r < 3 + 0; r++) { px(x + 6 + j, y + 1); px(x + 6 + j, y + 2); px(x + 6 + j, y + 3); }
+    }
+    lcd_send();
+}
+void dc_extra_frame(void) {
+    tick++;
+    if (tick == 60) {   // (the log: what is plugged in)
+        extern void dc_logf(const char *f, ...);
+        for (int p = 0; p < 4; p++) for (int u = 0; u < 6; u++) { maple_device_t *d = maple_enum_dev(p, u); if (d && d->valid) dc_logf("maple %c%d: %08lx %s\n", 'A' + p, u, (unsigned long)d->info.functions, d->info.product_name); }
+    }
+#ifdef AUTO_SAVE
+    { extern int dbg_sv[16], dbg_st[8], dbg_opt[2], dbg_cells[6]; extern void dc_logf(const char *f, ...);   // (test builds: the save test's readouts)
+      if (tick % 200 == 0) { dc_logf("save:"); for (int i = 0; i < 16; i++) dc_logf(" %d", dbg_sv[i]); dc_logf(" | opt %x | stream", dbg_opt[0]); for (int i = 0; i < 8; i++) dc_logf(" %d", dbg_st[i]); dc_logf(" | song %d\n", dbg_cells[2]); } }
+#endif
+    if (saving || (tick % 30)) return;   // (twice a second is plenty for the VMU)
+    vmu_status();
+}

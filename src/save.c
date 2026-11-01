@@ -64,8 +64,13 @@ int rle_unpack(const u8 *in, void *p, int n) {   // the packed bytes read
     return k;
 }
 void ld_fail(void) { ld_bad = 1; }
+#ifdef BORE_DC   // (the Dreamcast saves on the VMU in controller A)
+static const char *const err_text[] = { "", "NO VMU IN CONTROLLER A", "THE VMU IS NOT FORMATTED", "NO SAVE ON THE VMU", "THE VMU COULD NOT BE READ",
+                                        "THE VMU COULD NOT BE WRITTEN", "THE VMU IS FULL", "THE SAVE IS TOO BIG" };
+#else
 static const char *const err_text[] = { "", "NO MEMORY CARD IN SLOT 1", "THE CARD IS NOT FORMATTED", "NO SAVE ON THE CARD", "THE CARD COULD NOT BE READ",
                                         "THE CARD COULD NOT BE WRITTEN", "THE CARD IS FULL", "THE SAVE IS TOO BIG" };
+#endif
 static const char *bad_msg;
 const char *save_error(void) { return bad_msg ? bad_msg : err_text[mcard_last_err < 8 ? mcard_last_err : 0]; }
 

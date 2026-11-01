@@ -51,21 +51,6 @@ void sio_select(int port) { (void)port; }
 int sio_xfer(int byte, int want_ack, int wait) { (void)byte; (void)want_ack; (void)wait; return -1; }
 void sio_deselect(void) {}
 
-// ---------------------------------------------------------------- the memory card: none yet (the VMU comes next)
-int mcard_last_err = MC_NOCARD, mcard_dir_keep;
-int mcard_read(int sector, u8 *out) { (void)sector; (void)out; return 0; }
-int mcard_write(int sector, const u8 *in) { (void)sector; (void)in; return 0; }
-int mcard_present(void) { mcard_last_err = MC_NOCARD; return 0; }
-int mcard_rbegin(const char *name) { (void)name; mcard_last_err = MC_NOCARD; return 0; }
-void mcard_rget(void *out, int n) { memset(out, 0, n); }
-int mcard_rok(void) { return 0; }
-int mcard_wbegin(const char *name, int blocks) { (void)name; (void)blocks; mcard_last_err = MC_NOCARD; return 0; }
-void mcard_wput(const void *in, int n) { (void)in; (void)n; }
-int mcard_wpatch(int sector, const u8 *sec) { (void)sector; (void)sec; return 0; }
-int mcard_delete(const char *name) { (void)name; return 0; }
-int mcard_wend(void) { return 0; }
-void mcard_title_sector(u8 *sec, const char *title, int blocks, const u16 *pal) { (void)sec; (void)title; (void)blocks; (void)pal; }
-
 // ---------------------------------------------------------------- memory: the Dreamcast has 16 MB, so it is the "8 MB" PS1 build
 int ram8 = 1;
 static u8 *x_pool, *x_top, *x_end;

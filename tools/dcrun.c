@@ -149,9 +149,17 @@ static bool env_cb(unsigned cmd, void *data) {
             if (!strcmp(v->key, "reicast_broadcast")) v->value = "NTSC";
             if (!strcmp(v->key, "reicast_cable_type")) v->value = "VGA";   // a 640x480 progressive picture
             if (!strcmp(v->key, "reicast_per_content_vmus")) v->value = "disabled";
+            if (!strcmp(v->key, "reicast_device_port1_slot1")) v->value = "VMU";          // a VMU in controller A ...
+            if (!strcmp(v->key, "reicast_device_port1_slot2")) v->value = "Purupuru";     // ... and a Jump Pack
+            if (getenv("DCRUN_VMU")) {   // the VMU's screen drawn into the picture (upper right, 3x), to look at it
+                if (!strcmp(v->key, "reicast_vmu1_screen_display")) v->value = "enabled";
+                if (!strcmp(v->key, "reicast_vmu1_screen_position")) v->value = "Upper Right";
+                if (!strcmp(v->key, "reicast_vmu1_screen_size_mult")) v->value = "3x";
+            }
             return v->value != NULL;
         }
-        case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: *(bool *)data = false; return true;
+        case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: {   // (once, on the first frame: flycast reads the expansion slots - VMU, Jump Pack - only on an update)
+            static int told; *(bool *)data = !told && frame_no >= 1; if (*(bool *)data) told = 1; return true; }
         case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS: return false;
         default: return false;
     }
