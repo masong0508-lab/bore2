@@ -42,7 +42,7 @@ overlay CLOCK.OVL: `src/clock_ui.c`); the vblanks keep it while the console is o
 when the clock has not been set since the console came on, it asks IS IT STILL 9:41 PM? (X keeps it, or change it). The Dreamcast reads
 its own clock, with no question. Needs fall per real minute as two of a normal day's game minutes (hungry about every 5 hours awake;
 NEEDS still scales it; DAY LENGTH reads REAL TIME). Sleep and work still go fast: sleep fills REST in seconds and you wake rested even
-at night; at work the shift's minutes are done a minute a step and you go home, paid when the shift ends. The clock never leaves the
+at night (housemates sleep the real night through); at work the shift's minutes are done a minute a step and you go home, paid when the shift ends. The clock never leaves the
 real one. The minutes gone by since the last look (a load, the clock set later) are played through, at most a day of them (bills,
 pay, birthdays; past a day the rest is skipped); needs do not fall for that time. Saved from version 44 (the real minute at the save).
 

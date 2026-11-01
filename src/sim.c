@@ -683,7 +683,7 @@ static void run_action(Sim *s) {
         case ACT_WC: s->need[N_WC] += GAIN_WC; break;
         case ACT_SLEEP: if (s->act_var == 2) { s->need[N_COMFY] += GAIN_SIT; s->need[N_FUN] += GAIN_FUN / 2; s->need[N_REST] += 60; break; }   // (a massage)
                         s->need[N_REST] += is_night() ? GAIN_SLEEP * 5 / 4 : GAIN_SLEEP; s->need[N_COMFY] += 40;
-                        if ((s->need[N_REST] >> 10) >= 100 && (!is_night() || clock_min < NIGHT_FROM || rt_on)) { s->act_t = 0; sim_say(s, "RESTED"); } break;
+                        if ((s->need[N_REST] >> 10) >= 100 && (!is_night() || clock_min < NIGHT_FROM || (rt_on && me == player))) { s->act_t = 0; sim_say(s, "RESTED"); } break;   // (REAL TIME: you wake when rested; the others sleep the real night through)
         case ACT_SHOWER: s->need[N_CLEAN] += GAIN_WASH; if (s->act_var == 1) s->need[N_FUN] += 90; break;
         case ACT_SIT: s->need[N_COMFY] += GAIN_SIT; if (s->act_var == 6) { s->need[N_FUN] += GAIN_FUN; break; }   // (a film: to the end)
                       if ((s->need[N_COMFY] >> 10) >= 100) s->act_t = 0; break;
