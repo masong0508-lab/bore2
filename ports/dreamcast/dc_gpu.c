@@ -200,9 +200,9 @@ static int tex_flags(int ti, const int *u, const int *v, int n) {   // the cells
 
 // ---------------------------------------------------------------- the primitives of a frame: PowerVR vertices in three lists
 typedef struct { pvr_vertex_t *v; int n, cap, list, cur_tex, cur_blend; } VList;
-#define VOP 12000
-#define VPT 14000
-#define VTR 14000
+#define VOP 24000
+#define VPT 28000
+#define VTR 28000
 static pvr_vertex_t vb_op[VOP] __attribute__((aligned(32))), vb_pt[VPT] __attribute__((aligned(32))), vb_tr[VTR] __attribute__((aligned(32)));
 static VList vl_op = { vb_op, 0, VOP, PVR_LIST_OP_POLY, -2, -9 }, vl_pt = { vb_pt, 0, VPT, PVR_LIST_PT_POLY, -2, -9 }, vl_tr = { vb_tr, 0, VTR, PVR_LIST_TR_POLY, -2, -9 };
 static float zseq;
