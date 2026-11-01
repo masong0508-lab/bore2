@@ -3153,11 +3153,11 @@ static void gables(int l, int x, int y, int base, int pitch) {   // the gable en
     }
 }
 // a 2x2 of roof tiles far off that lie in one plane, under one building: drawn as one quad (half the roof's work out there)
-static int roof_merge_ok(int l, int x, int y, int b) {
-    if (x + 2 > MW || y + 2 > MH) return 0;
-    for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) if (!rm_get(l, x + i, y + j) || bld[y + j][x + i] != b || !in_range(x + i, y + j)) return 0;
+static int roof_merge_ok(int l, int x, int y, int b, int k) {   // a k x k square of one building's roof, all in one plane: one quad
+    if (x + k > MW || y + k > MH) return 0;
+    for (int j = 0; j < k; j++) for (int i = 0; i < k; i++) if (!rm_get(l, x + i, y + j) || bld[y + j][x + i] != b || !in_range(x + i, y + j)) return 0;
     int h00 = rh_get(l, x, y), ax = rh_get(l, x + 1, y) - h00, ay = rh_get(l, x, y + 1) - h00;
-    for (int j = 0; j <= 2; j++) for (int i = 0; i <= 2; i++) if (rh_get(l, x + i, y + j) != h00 + i * ax + j * ay) return 0;
+    for (int j = 0; j <= k; j++) for (int i = 0; i <= k; i++) if (rh_get(l, x + i, y + j) != h00 + i * ax + j * ay) return 0;
     return 1;
 }
 static void chimney(int l, int X, int Y, int base, int pitch) {   // a brick chimney through the roof, standing at that corner
@@ -3178,10 +3178,10 @@ static void roofs_draw(int fx, int fy) {
     gfx_set_identity();
     { static const signed char ex[4] = { 0, 1, 0, -1 }, ey[4] = { 1, 0, -1, 0 };
       for (int k = 0; k < 4; k++) { int Lw = gfx_light(ex[k] * ONE, 0, -ey[k] * ONE); gab_col[k] = (u32)MIN(255, (226 * Lw) >> 7) | ((u32)MIN(255, (214 * Lw) >> 7) << 8) | ((u32)MIN(255, (190 * Lw) >> 7) << 16); } }
-    u32 skip_a[(MW + 31) / 32], skip_b[(MW + 31) / 32];
+    u32 skip_r[4][(MW + 31) / 32];   // (the merged squares' lower rows, a ring of four rows)
     for (int l = 0; l < NLEVELS; l++) {
         if (!lvl_used[l]) continue;
-        u32 *skip_cur = skip_a, *skip_nx = skip_b; memset(skip_a, 0, sizeof skip_a); memset(skip_b, 0, sizeof skip_b);
+        u32 *skip_cur = skip_r[0]; memset(skip_r, 0, sizeof skip_r);
         int base = -(l + 1) * WALL_FULL;
         TileView tv; tile_view_init(&tv, TILE / 2, base - 170, -TILE / 2);
         rc_l = l; rc_base = base; cc_begin(&cc_roof, ex0, ey0, base);
@@ -3192,7 +3192,7 @@ static void roofs_draw(int fx, int fy) {
         static u8 fr_lo[MH], fr_hi[MH]; memset(fr_lo, 255, sizeof fr_lo); memset(fr_hi, 0, sizeof fr_hi);
         for (int b = 1; b <= nbld; b++) if (b_x0[b] != 255 && b_sty[b] == 2 && b_top[b] == l && b_y0[b] < MH) { if (b_x0[b] < fr_lo[b_y0[b]]) fr_lo[b_y0[b]] = b_x0[b]; if (b_x0[b] > fr_hi[b_y0[b]]) fr_hi[b_y0[b]] = b_x0[b]; }
         for (int y = ly0; y <= ly1; y++) { const u32 *row = roofM[l][y];
-          { u32 *t = skip_cur; skip_cur = skip_nx; skip_nx = t; memset(skip_nx, 0, sizeof skip_a); }   // (the merged 2x2s' lower halves)
+          if (y > ly0) memset(skip_r[(y - 1) & 3], 0, sizeof skip_r[0]); skip_cur = skip_r[y & 3];   // (the merged squares' lower rows)
           int sx0 = lx0, sx1 = lx1; tile_row_span(&tv, y, TILE + 64, TILE * 2 + 64, TILE * 3 + 64, &sx0, &sx1);
           if (fr_lo[y] <= fr_hi[y]) { if (sx0 > sx1) sx0 = sx1 = fr_lo[y]; if (fr_lo[y] < sx0) sx0 = fr_lo[y]; if (fr_hi[y] > sx1) sx1 = fr_hi[y]; sx0 = MAX(sx0, lx0); sx1 = MIN(sx1, lx1); }
           for (int x = sx0; x <= sx1; x++) {
@@ -3223,8 +3223,11 @@ static void roofs_draw(int fx, int fy) {
             if (ABS(vx) > (vz * 3) / 4 + TILE * 2) continue;
             if (ABS(vy) > (vz * 5) / 8 + TILE * 3) continue;
             if (!flat) lift_to(b && world_zone == ZONE_CITY && world_wbx >= 0 ? gh_c(b_x0[b], b_y0[b]) : 0);   // (only for what is drawn: not for the tiles the view culls)
-            int big = !world_fp && !(x & 1) && !(y & 1) && vz > TILE * 7 && x + 1 <= lx1 && y + 1 <= ly1 && roof_merge_ok(l, x, y, b);
-            int sp = big ? 2 : 1;
+            // (further off, a roof's plane in fewer quads: 2 x 2 tiles past 7 tiles, 4 x 4 past 13; the shingles are a blur there)
+            int sp = 1;
+            if (!world_fp && !(x & 3) && !(y & 3) && vz > TILE * 13 && x + 3 <= lx1 && y + 3 <= ly1 && roof_merge_ok(l, x, y, b, 4)) sp = 4;
+            else if (!world_fp && !(x & 1) && !(y & 1) && vz > TILE * 7 && x + 1 <= lx1 && y + 1 <= ly1 && roof_merge_ok(l, x, y, b, 2)) sp = 2;
+            int big = sp > 1;
             if (!big && b && rc_sty != 2 && l == b_top[b] && x == b_x0[b] + 2 && y == b_y0[b] + 1 && b_x1[b] - b_x0[b] >= 5 && ((b_x0[b] * 7 + b_y0[b] * 13) & 1) && vz < TILE * 14) chimney(l, x, y, base, pitch);   // (a chimney on every other home, close up)
             const XV *A = cc_roof_at(x, y), *B = cc_roof_at(x + sp, y), *C = cc_roof_at(x, y + sp), *DQ = cc_roof_at(x + sp, y + sp);
             int hA = rh_get(l, x, y), hB = rh_get(l, x + 1, y), hC = rh_get(l, x, y + 1), hD = rh_get(l, x + 1, y + 1);   // (a merged 2x2 has the same slope as its first tile)
@@ -3253,8 +3256,8 @@ static void roofs_draw(int fx, int fy) {
                 nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 1, roof_tex.tpage, 0, ABS(dhz) >= ABS(dhx) ? uvA : uvB, !world_fp);
             } else if (ABS(dhz) >= ABS(dhx)) gfx_emit_gt4(A, B, C, DQ, c, c, c, c, roof_tex.tpage, 0, u0, v0, u1, v1, !world_fp);   // courses run across the slope (first person: seen from under it too)
             else gfx_emit_ft4(A, B, C, DQ, c, roof_tex.tpage, 0, u0, v0, u0, v1, u1, v0, u1, v1, !world_fp, 0);
-            if (big) { gables(l, x, y, base, pitch); gables(l, x + 1, y, base, pitch); gables(l, x, y + 1, base, pitch); gables(l, x + 1, y + 1, base, pitch);
-                       skip_nx[x >> 5] |= 1u << (x & 31); skip_nx[(x + 1) >> 5] |= 1u << ((x + 1) & 31); x++; }
+            if (big) { for (int j = 0; j < sp; j++) for (int i = 0; i < sp; i++) { gables(l, x + i, y + j, base, pitch); if (j) skip_r[(y + j) & 3][(x + i) >> 5] |= 1u << ((x + i) & 31); }
+                       x += sp - 1; }
             else gables(l, x, y, base, pitch);
         } }
     }

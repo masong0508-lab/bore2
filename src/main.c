@@ -4834,7 +4834,7 @@ int main(void) {
         steps = CLAMP(steps, 1, 3);   // LAGFIX_APPLIED: fewer catch-up steps
         frame++;
         fps_frames++; if (now - fps_vb >= 60) { fps_val = fps_frames * 60 / (now - fps_vb); fps_frames = 0; fps_vb = now; }
-        audio_update(); pad_poll();
+        audio_update();   // (the pad was read again here, microseconds after read_pad: a second serial exchange a frame for nothing; the waits between frames still poll it for taps)
 #ifdef AUTO_TOUR
         tour_tick();
 #endif
