@@ -40,6 +40,8 @@ if nn:
     pn=rd('dbg_sum_pn',8); print('prims per frame [floor,walls,items,roofs/far,sims,citfull,citlod,x]',[round(x/nn) for x in pn], 'total',round(sum(pn)/nn))
 if nn:
     print('mean shed level %.2f (0 none .. 4 most), mean detail radius %.1f tiles'%(rd('dbg_sum_shed')[0]/nn, rd('dbg_sum_r')[0]/nn))
+if nn and 'dbg_hl' in S:
+    h=rd('dbg_hl',6); print('speed helper: steps given up %d, given back %d | aiming at 30 in %.0f%% of frames | mean ladder step %.2f, crowd step %.2f'%(h[0],h[1],100.0*h[2]/nn,h[3]/nn,h[4]/nn))
 if 'dbg_per_hist' in S:
     p=rd('dbg_per_hist',6); t=sum(p) or 1
     print('frame periods (vblanks each life frame really took) 1..5+: %s  | took 4 or more: %.1f%%  2 or fewer: %.1f%%'%(' '.join(str(x) for x in p[1:]),100*sum(p[4:])/t,100*sum(p[:3])/t))

@@ -186,7 +186,8 @@ static int go_funds = 2;   // the cash a new life starts with (an index into wmF
 static int help_page;
 static int hb_now(void) { return VSync(1); }   // hblanks since the last VSync(0) (the flip): 263 per vblank, 525 = one 30 FPS frame
 static int t_cpu, t_frame0, t_bub, t_hud, t_upd;
-static int shed_lvl;   // (LAGFIX: now 0..4; 4 = emergency, the far pass off)
+static int shed_lvl, crowd_lvl;   // (the speed helper: the far view's steps given up 0..4, 4 = the far pass off; the crowd's 0..2)
+static void helper_apply(void);
                                          // 0..3: how far a long run of slow frames has pulled in the view distance and the crowd
 static int det_opt = 12;                                      // the FULL DETAIL option's range (the range in use dips under it when frames run long)
 int dbg_slow[16][8], dbg_slow_n;
@@ -1987,6 +1988,9 @@ static void opts_apply(void) {
 #ifdef AB_VIEW
     opt[O_VIEW] = AB_VIEW;
 #endif
+#ifdef AB_FPSCAP
+    opt[O_FPSCAP] = AB_FPSCAP;   // (test builds: the FRAME RATE option, 2 = STEADY 20)
+#endif
     far_view = opt[O_VIEW]; far_detail = opt[O_FARB]; far_trees = opt[O_TREES]; far_haze = opt[O_HAZE];
     static const u8 rr[4] = { 8, 10, 12, 14 }, cr[4] = { 16, 32, 48, 64 }, lv[4] = { 1, 2, 4, 6 };
     world_detail_r = det_opt = rr[opt[O_DETAIL] & 3]; { extern int world_item_r; world_item_r = det_opt; } cit_maxdraw = cr[opt[O_CROWD] & 3]; cit_live_max = lv[opt[O_LIVE] & 3]; cit_sprite_rate = opt[O_SPR];
@@ -2013,6 +2017,64 @@ static void opts_apply(void) {
     ui_clock12 = opt[O_CLOCK]; ui_thoughts = opt[O_THINK];
     aging = opt[O_AGING]; old_age = opt[O_OLDAGE]; pop_aging = opt[O_TOWNAGE];
     cam_view = opt[O_CAM] % 3; cam_turn_rate = opt[O_CAMSPD] == 0 ? 24 : opt[O_CAMSPD] == 1 ? 40 : 64; cam_zoom_tilt = opt[O_ZOOMTILT]; wall_view = opt[O_CUTAWAY] % 3;
+    crowd_lvl = 0; helper_apply();   // (the speed helper starts from everything as chosen)
+}
+// ---- THE SPEED HELPER (OPTIONS > GRAPHICS > SPEED HELPER). A ladder of what can be given up when frames run long, in the order it is
+// given up: the far view a step at a time (its trees and detail, its reach, then all of it), the full-detail range a tile at a time
+// (never under 5 tiles; the street's things stay put: world_item_r), then the crowd (half, then a quarter and only the nearest in
+// full 3D). It aims at the frame rate the FRAME RATE option asks for: a steady 20 (3 vblanks) with STEADY 20; 30 with STEADY 30 or
+// AS FAST AS IT CAN, as long as 30 can be held at all. Where even everything given up does not hold 30 (a city street: it used to
+// aim at 30 there and sat at its most the whole time, the far view and most of the crowd gone, the range at 5 tiles), it settles
+// for a steady 20 and gives back whatever fits in that; it tries 30 again once the frames clearly fit it.
+// A frame's load is its need: its time less the work done only in its spare time (the crowd's sprite renders and bodies fill the
+// time up to the vblank whatever the frame costs), plus any wait for the GPU. A step is given up after two frames in sixteen ran (or
+// nearly ran) past the target, or when the mean does; one is given back only after a quiet spell, and only if the step's own cost
+// (learned the last time it was given back: the far view's from its own timer) fits under the target. A step that had to be given
+// up again soon after waits twice as long the next time (and half again once it holds): no flicker.
+static void helper_apply(void) {
+    extern int cit_maxdraw, cit_live_cap, cit_fresh_max;
+    int v = opt[O_VIEW]; far_view = (v && shed_lvl < 4) ? (v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
+    int tr = opt[O_TREES] - shed_lvl; far_trees = tr < 0 ? 0 : tr;
+    int fd = opt[O_FARB] - (shed_lvl > 1 ? shed_lvl - 1 : 0); far_detail = fd < 0 ? 0 : fd;
+    far_haze = shed_lvl >= 3 ? 0 : opt[O_HAZE];
+    if (shed_lvl >= 4) { far_trees = 0; far_detail = 0; }
+    int c = ((opt[O_CROWD] & 3) + 1) * 16 >> crowd_lvl; cit_maxdraw = c < 8 ? 8 : c;
+    cit_live_cap = crowd_lvl >= 2 ? 1 : 99; cit_fresh_max = crowd_lvl >= 1 ? 1 : 2;
+}
+int dbg_hl[6];   // (test readouts: steps given up, given back, frames aiming at 30, the ladder's step and the crowd's step, summed)
+COLD static void helper_frame(void) {
+    extern int world_detail_r, gfx_last_wait, cit_spare_hb, far_hb[3]; extern int far_reach_m(void);
+    static int mode30 = 1, avg = 600 << 4, hist, since, mode_n, last_s, meas_s, meas_a, far_cost = 350;
+    static short cost[24], quiet[24];
+    int floor_r = det_opt - 8; if (floor_r < 5) floor_r = 5; if (floor_r > det_opt) floor_r = det_opt;
+    int R = det_opt - floor_r, kmax = 4 + R + 2;
+    if (world_detail_r > det_opt) world_detail_r = det_opt;
+    if (world_detail_r < floor_r) world_detail_r = floor_r;
+    int k = shed_lvl < 4 ? shed_lvl : crowd_lvl ? 4 + R + crowd_lvl : 4 + det_opt - world_detail_r;   // (where on the ladder it stands)
+    if (far_reach_m() >= 0) far_cost += (far_hb[0] + far_hb[1] + far_hb[2] - far_cost) / 8;   // (what the far view costs when it is on)
+    int T = mode30 && opt[O_FPSCAP] != 2 ? 524 : 786;
+    int need = t_cpu - cit_spare_hb + (gfx_last_wait > 0 ? gfx_last_wait : 0);
+    if (gfx_last_overflow && need < T + 20) need = T + 20;   // (the packet buffer filled up: things were left undrawn, so count it as slow)
+    avg += need - (avg >> 4); int A = avg >> 4;              // (the mean, over about 16 frames)
+    int over = need > T - 14; hist = (hist << 1) | over; since++;
+    if (meas_s && since == 32) { int d = A - meas_a; if (d < 4) d = 4; cost[meas_s] = (short)(cost[meas_s] ? (cost[meas_s] + d) / 2 : d); meas_s = 0; }   // (what the step given back costs)
+    if (last_s && since == 900 && quiet[last_s] > 240) quiet[last_s] = (short)(quiet[last_s] / 2);   // (it held)
+    int ch = 0;
+    // (one slow frame alone is a spike, a route search or a block coming into the window: giving detail up does not help it)
+    if ((__builtin_popcount(hist & 0xffff) >= 3 || A > T - 30) && k < kmax && since >= (A > T + 60 ? 2 : 6)) {   // give a step up (every other frame when far over)
+        if (last_s == k + 1 && since < 300) quiet[k + 1] = (short)MIN(2400, (quiet[k + 1] ? quiet[k + 1] : 120) * 2);   // (it was given back too soon)
+        k++; ch = 1; hist = 0; meas_s = 0; dbg_hl[0]++;
+    } else if (k > 0) {   // give one back, after a quiet spell, if what it costs fits
+        int q = quiet[k] ? quiet[k] : k <= 4 ? 240 : 120;
+        int c = k == 4 ? far_cost : cost[k] ? cost[k] : k <= 4 ? 40 : 15;
+        if (since >= q && __builtin_popcount(hist) <= 1 && A + c < T - 60) { meas_s = last_s = k; meas_a = A; k--; ch = 1; dbg_hl[1]++; }
+    }
+    if (opt[O_FPSCAP] != 2) {   // 30 or 20: back to 20 when even everything given up does not hold 30; 30 again once the frames clearly fit it
+        if (mode30) { if (k == kmax && A > 524 - 24) { if (++mode_n >= 60) { mode30 = 0; mode_n = 0; } } else mode_n = 0; }
+        else { if (A < 524 - 60) { if (++mode_n >= 240) { mode30 = 1; mode_n = 0; } } else mode_n = 0; }
+    }
+    if (ch) { shed_lvl = MIN(k, 4); world_detail_r = det_opt - CLAMP(k - 4, 0, R); crowd_lvl = k > 4 + R ? k - 4 - R : 0; helper_apply(); since = 0; }
+    dbg_hl[2] += T == 524; dbg_hl[3] += k; dbg_hl[4] += crowd_lvl;
 }
 void cam_view_set(int v) {   // (L2 + R2 in play, and the options)
     cam_view = v; opt[O_CAM] = (u8)v; fp_pitch = 0;
@@ -4796,35 +4858,7 @@ int main(void) {
 #else
         if (state == ST_LIFE && opt[O_SPEED]) {   // a frame that ran past two screen refreshes: the full-detail range draws in a tile (back out once things are quiet)
 #endif
-            extern int world_detail_r, cit_maxdraw, gfx_last_wait; static int slow_n, fast_n, hot_n, cool_n;
-            // (the frame's whole cost: the CPU's time up to here, plus how long the GPU was still busy with the last frame. A slow GPU,
-            //  big skyline boxes filling the screen, used to go unseen, because only the CPU's time was counted)
-            // (the frame's whole cost: the CPU's time up to here, plus how long the GPU was still busy with the last frame. A slow GPU,
-            //  big skyline boxes filling the screen, used to go unseen, because only the CPU's time was counted)
-            int load = t_cpu + (gfx_last_wait > 0 ? gfx_last_wait : 0);
-            { static int lf_vb = -1; int nv = VSync(-1), per = lf_vb < 0 ? 0 : nv - lf_vb; lf_vb = nv;   // LAGFIX: the real time a frame took, whatever the stall (GPU, disc, a wait the timers above miss)
-              if (per * 263 > load) load = per * 263; }
-            if (gfx_last_overflow && load < 560) load = 560;   // (the frame's packet buffer filled up: things were left undrawn, so count it as a slow frame)
-            int floor_r = det_opt - 8; if (floor_r < 5) floor_r = 5; if (floor_r > det_opt) floor_r = det_opt;   // (it may now dip up to 8 tiles, not 4)
-            if (load > 500) { fast_n = 0; if (++slow_n >= 1 && world_detail_r > floor_r) { world_detail_r--; slow_n = 0; } } else slow_n = 0;
-            if (load < 420) { if (++fast_n >= 120 && world_detail_r < det_opt) { world_detail_r++; fast_n = 0; } } else if (load > 470) fast_n = 0;
-            {   // still too slow after that: pull in the view distance, the skyline's detail, the trees and the crowd, a step at a time (and back out after a long quiet spell)
-                int ch = 0;
-                if (load > 500) { cool_n = 0; if (++hot_n >= 2 && shed_lvl < 4) { shed_lvl++; hot_n = 0; ch = 1; } } else hot_n = 0;
-                { extern int far_hb[3]; extern int far_reach_m(void); static int far_cost = 350;   // (what the far view costs when it is on: learned, so it is not brought back only to be cut again at once)
-                  if (far_reach_m() >= 0) far_cost += (far_hb[0] + far_hb[1] + far_hb[2] - far_cost) / 8;
-                  if (load < 400 && (shed_lvl < 4 || load + far_cost < 520)) { if (++cool_n >= 150 + 150 * shed_lvl && shed_lvl > 0) { shed_lvl--; cool_n = 0; ch = 1; } } else if (load > 460) cool_n = 0; }
-                if (ch) {
-                    int v = opt[O_VIEW]; far_view = (v && shed_lvl < 4) ? (v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
-                    int tr = opt[O_TREES] - shed_lvl; far_trees = tr < 0 ? 0 : tr;
-                    int fd = opt[O_FARB] - (shed_lvl > 1 ? shed_lvl - 1 : 0); far_detail = fd < 0 ? 0 : fd;
-                    far_haze = shed_lvl >= 3 ? 0 : opt[O_HAZE];
-                    if (shed_lvl >= 4) { far_trees = 0; far_detail = 0; }
-                    int c = ((opt[O_CROWD] & 3) + 1) * 16 >> shed_lvl; cit_maxdraw = c < 8 ? 8 : c;
-                    { extern int cit_live_cap, cit_fresh_max; cit_live_cap = shed_lvl >= 4 ? 1 : 99; cit_fresh_max = shed_lvl >= 3 ? 1 : 2; }
-                }
-            }
-            if (world_detail_r > det_opt) world_detail_r = det_opt;
+            helper_frame();
         }
 #ifdef AUTO_CITY
         { extern int dbg_slow[16][8], dbg_slow_n, cit_spare_hb; if (state == ST_LIFE && t_cpu - cit_spare_hb > 785) { int *d = dbg_slow[dbg_slow_n++ & 15];   // (test builds: what the slow frames spent their time on)
