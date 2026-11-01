@@ -60,7 +60,14 @@ SAN BOREAS street, normal play (`AUTO_CITY` build, 1500-2500 frames in):
 | faster sound mixer, no 64-bit divides | 26-29 |
 | a late frame no longer waits for the next vblank | 41-48 |
 | vertices written straight into PowerVR lists | 39-49 (CPU 230-360 of 262 hblanks a frame) |
-So: about 45 fps, not yet a steady 60. Where the time goes (profiler, `make PROF=600`): sound mixing 17%, GTE 11%,
+| sound mixed at 22.05 kHz then interpolated up, reverb registers read once per stretch, FPU divide in the GTE, colour-grade cache | see below |
+Round 2 (same flycast, same `AUTO_CITY` build without `AB_LOCK4`; the Sim walks a different way each run, so only roughly comparable):
+| Step | fps | CPU hblanks of 262 |
+|---|---|---|
+| before round 2 | 29.5-30.5 | 515-540 |
+| after round 2 | 36-36.5 | 433-437 |
+Profile after round 2: GTE RTPS 16%, ordering-table walk + vertex writing (`emit`, `emit_one`, `DrawOTag`) 31%, reverb 8%, texture cell conversion 4.5%, mixer 3-5%.
+So: still not a steady 60 (the CPU needs under 262 hblanks a frame; it is at about 435 in this street). Where the time goes (profiler, `make PROF=600`): sound mixing 17%, GTE 11%,
 ordering-table walk 15%, the rest is the game itself.
 
 ## How shots and numbers are taken
@@ -75,6 +82,11 @@ REAL TIME on asks nothing (the PlayStation has no clock and asks the time). The 
 Dreamcast's clock; flycast gives it the host's time. Left: the option on, no question; right: SAN BOREAS at the real 18:38.
 ![real time](realtime_dc.png)
 
+## Button names (A/B/X/Y)
+On screen the PS1 words become the Dreamcast pad's, in `src/font.c` under `#ifdef BORE_DC`: X = A, O = B, SQ / SQUARE = X, TRI / TRIANGLE = Y
+(whole words only; the PS1 build is untouched). Shot: the talk bar says "A TALK".
+![buttons](dc_buttons_abxy.png)
+
 ## Still to do
 - Side by side with DuckStation: inside a house, pie menu, Buy/Build, night, first person, far view, a park.
 - Roofs: side-by-side with DuckStation for shops, towers, flats, far roofs; a fade cut-away; far roofs with fog; bigger overhangs.
@@ -82,4 +94,7 @@ Dreamcast's clock; flycast gives it the host's time. Left: the option on, no que
 - Steady 60 fps: sound on the AICA's own channels, a float GTE, cheaper OT walk.
 - Upgrades: sub-pixel vertices, depth buffer, full far view with fog, bigger crowds, smooth lighting.
 - Extras: Jump Pack rumble events, Boreagotchi on the VMU, DC catalogue set and outfits, shadows, water/glass, night glow, 4 controllers.
-- Button names on screen are still the PS1's (X = A, O = B, SQUARE = X, TRIANGLE = Y).
+- Not done in round 2: direct PVR path for people, SH-4 FTRV/FIPR matrix maths (RTPS is still 64-bit integer maths), sub-pixel vertices
+  (the game hands the GPU whole-pixel PS1 packets, so it needs a change in `src/`), depth buffer, fog, 16:9, bigger crowds, smooth lighting,
+  the DuckStation side-by-sides, and all of the extras list except the button names (Boreagotchi on the VMU, furniture, outfits, shadows,
+  water/glass, night glow, 4 controllers, gallery). 4 controllers also needs the game to read ports 2-4 (it reads only port 0).
