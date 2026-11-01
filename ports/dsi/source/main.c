@@ -419,6 +419,8 @@ static int gframes, cam_on, cam_pan, cam_free, live_pitch = 4300, cam_deff = 900
 static void sim3d(int i, int yaw);
 static int has_board, on_board, board_lift; static long skate_score, skate_best; static const int *em_R; static int sk_x3, sk_z3, sk_cr, sk_Rm[9];   // (D44) the skateboard: owned, ridden, the rider's height (PS1 units); em_R: a free turn for the rider's model
 static void skate_draw_board(int ground); static void skate_top(void); static unsigned skate_sig(void); static void skate_on(void), skate_off(void); static void skate_frame(int held, int down, int steps);
+#define MG_SAVE 64   // (D45 on) the most the mini-games' save blocks take, after the farm's
+static int mg_pack(u8 *o); static int mg_unpack(const u8 *p, int left); static void mg_reset(void);
 typedef struct { u8 x, y, c, i, rot; } Obj;
 static Obj objs[400]; static int nobj, funds = 20000;
 static void obj_fp(const Obj *o, int *w, int *h) { const Item *it = IT_OF(o); if (o->rot & 1) { *w = it->fl; *h = it->fw; } else { *w = it->fw; *h = it->fl; } }   // (D35) the cells it covers: a two-tile bed is 1 x 2, turned 2 x 1
@@ -962,6 +964,7 @@ static void farm_extras(int ch, int x, int y, int base) {   // (D38) the PS1's f
         for (int i = 0; i < nh; i++) { int ph = (t * 3 + i * 97 + ci * 40) & 255, hx = 16 + i * 24 + (sinLerp((s16)(ph << 7)) >> 10), hz = 76 + ((i * 13) & 7), pk = ((t / 10 + i * 3) & 7) == 0 ? 2 : 0;
             ob(hx - 4, hz - 6, hx + 4, hz + 3, 0, 8 - pk, C15(30, 30, 29)); ob(hx - 2, hz + 2, hx + 2, hz + 6, 6 - pk, 10 - pk, C15(28, 6, 5)); } }
 }
+static u8 ID2CH[NITEM]; static void ramp3d(int x, int y, int ch, int r, int base);   // (D45)
 static int ground_lift(int cx, int cy, int L) {   // (D41, as the PS1's fix: everything stands on the ground under it) how high the ground is at a cell: a floor 40, the lawn 20 (the checker's top), a pavement 24, a road 0
     if (L > 0) return 40; if (cx >= 0 && cy >= 0 && cx < GN && cy < GN) return flr[cy][cx] ? 40 : 20;
     int lx = ((cx % SLC) + SLC) % SLC, ly = ((cy % SLC) + SLC) % SLC; if ((lx >= 14 && lx <= 16) || (ly >= 14 && ly <= 16)) return 0; if (lx >= 13 || ly >= 13) return 24; return 20; }
@@ -969,6 +972,7 @@ static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every
     (void)ghost; tx_want = -1; int id = (int)(it - ITEMS); u16 c = it->col, d = shade(c, 6), l = shade(c, 10), wd = LC(16, 10, 5), dk = LC(3, 3, 4);
     { int ww = rot & 1 ? it->fl : it->fw, wl = rot & 1 ? it->fw : it->fl; ob_w = it->fw * 80; ob_l = it->fl * 80; ob_sx = (ww * 2 * T - T / 3) * 10 / (ww * 80); ob_sz = (wl * 2 * T - T / 3) * 10 / (wl * 80); }   // (a two-cell thing stretches to fill both)
     ob_x = tl(x * 2) + T / 6; ob_z = tl(y * 2) + T / 6; ob_rot = rot; ob_hs = id >= 0 && id < 28 ? HSC[id] : 100; ob_base = -ground_lift(x, y, gy_off ? 1 : 0);
+    if (!pv_cap && id >= 0) { int rc = ID2CH[id]; if ((rc == '1' || rc == '5' || rc == '9') && !gy_off) { if (dpass == 2 && !ghost) return; ramp3d(x, y, rc, rot & 3, ob_base); return; } }   // (D45) a ramp: the PS1's curve (ds_games.c)
     if (it->nbox) {   // (D35) a PS1 model: its own boxes, converted by tools/dsbuild/mk_dsitems.py (PS1 units: 10 across, 7 up)
         int fch = id == PS1ID[0xDB] - 1 ? 0xDB : id == PS1ID[0xDC] - 1 ? 0xDC : 0, nb = fch == 0xDB ? 1 : it->nbox;   // (D38: a crop bed is its soil and what the farm has growing; a coop has its hens)
         if (dpass == 2 && !pv_cap && !ghost) { if (fch == 0xDC && o_det && !lod_force && !(mode == M_LIVE && lod_far())) farm_extras(fch, x, y, IBOX[it->box0].z1 * 7); return; }   // (D39: the moving pass draws only the hens)
@@ -2118,7 +2122,7 @@ static int sav_pack(int big) {   // returns the packed size in sav_buf (header i
     int n = 0; u8 *r = sav_raw; memset(r, 0, sizeof sav_raw);
     #define PUT(p, l) do { memcpy(r + n, (p), (size_t)(l)); n += (l); } while (0)
     PUT(&c, (int)sizeof c); PUT(sname, (int)sizeof sname); PUT(sims, (int)sizeof sims); PUT(crt, (int)sizeof crt);
-    int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4) - (4 + (int)sizeof(LifeSave)) - (4 + NOPT - OPT_OLD) - 8 - (4 + SIM_MAX) - 20 - (4 + (int)sizeof(FarmSave)), base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
+    int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4) - (4 + (int)sizeof(LifeSave)) - (4 + NOPT - OPT_OLD) - 8 - (4 + SIM_MAX) - 20 - (4 + (int)sizeof(FarmSave) - MG_SAVE), base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
     int order[LSV_N], no = 0; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) order[no++] = i; for (int i = 0; i < lsv_n; i++) if (!(lsv[i].bx == lot_bx && lsv[i].by == lot_by)) order[no++] = i;
     for (int q = 0; q < no; q++) { const LotSave *L = &lsv[order[q]]; int m = n; SavLot h = { (s16)L->bx, (s16)L->by, (s16)L->pcx, (s16)L->pcy, (s16)L->dcx, (s16)L->dcy, (u16)(L->nobj | (L->roof << 12) | (L->up << 14)) };
         int nup = L->hasup ? L->up : 0; if (nup > UPN) nup = UPN; if (nup) h.nobj |= 0x800;   // (D36) its upper storeys follow
@@ -2135,7 +2139,8 @@ static int sav_pack(int big) {   // returns the packed size in sav_buf (header i
     { u16 th[2] = { 0x4C53, SIM_MAX }; memcpy(r + best, th, 4); memcpy(r + best + 4, slv, SIM_MAX); best += 4 + SIM_MAX; }   // the storey each sim is on (D36)
     { s16 zs[10] = { 0x4E5A, 16, (s16)zone, (s16)isl_wood, (s16)isl_stone, (s16)isl_leaves, (s16)isl_food, (s16)isl_spear, (s16)isl_shells, (s16)isl_secrets }; memcpy(r + best, zs, 20); best += 20; }   // the zone and the island (D37)
     { u16 th[2] = { 0x4D46, (u16)sizeof(FarmSave) }; FarmSave f; fm_pack(&f); memcpy(r + best, th, 4); memcpy(r + best + 4, &f, sizeof f); best += 4 + (int)sizeof f; }   // the farm (D38)
-    cl = rle(r, best, sav_buf + sizeof(SavHdr), budget + 4 + nown * 4 + 4 + (int)sizeof(LifeSave) + 4 + NOPT - OPT_OLD + 8 + 4 + SIM_MAX + 20 + 4 + (int)sizeof(FarmSave)); if (cl < 0) return 0;
+    best += mg_pack(r + best);   // (D44 on) the mini-games: the board, the scores
+    cl = rle(r, best, sav_buf + sizeof(SavHdr), budget + 4 + nown * 4 + 4 + (int)sizeof(LifeSave) + 4 + NOPT - OPT_OLD + 8 + 4 + SIM_MAX + 20 + 4 + (int)sizeof(FarmSave) + MG_SAVE); if (cl < 0) return 0;
     SavHdr h = { SAV_MAGIC, (u32)(sav_seq + 1), crc32b(sav_buf + sizeof(SavHdr), cl), (u32)cl, (u32)best }; memcpy(sav_buf, &h, sizeof h); return (int)sizeof h + cl;
 }
 static int sav_write(void) {
@@ -2172,6 +2177,7 @@ static int sav_apply(void) {   // 1 = loaded
     u8 lvs[SIM_MAX]; memset(lvs, 0, sizeof lvs); if (n + 4 + SIM_MAX <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x4C53 && th[1] == SIM_MAX) { memcpy(lvs, sav_raw + n + 4, SIM_MAX); n += 4 + SIM_MAX; } }   // (D36; before: everyone on the ground)
     if (n + 20 <= rl) { s16 zs[10]; memcpy(zs, sav_raw + n, 20); if (zs[0] == 0x4E5A && zs[1] == 16 && zs[2] >= 0 && zs[2] < Z_N) { zone = zs[2]; isl_wood = zs[3]; isl_stone = zs[4]; isl_leaves = zs[5]; isl_food = zs[6]; isl_spear = zs[7]; isl_shells = zs[8]; isl_secrets = (u16)zs[9]; n += 20; } }   // (D37)
     farm_reset(); if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x4D46 && th[1] == sizeof(FarmSave) && n + 4 + (int)sizeof(FarmSave) <= rl) { FarmSave f; memcpy(&f, sav_raw + n + 4, sizeof f); fm_unpack(&f); n += 4 + (int)sizeof f; } }   // (D38; before: no farm)
+    n += mg_unpack(sav_raw + n, rl - n);   // (D44 on; before: none of it)
     seed = c.seed; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
     st_days = c.days; st_born = c.born; st_died = c.died; minutes = c.minutes; funds = c.funds; nsim = c.nsim; ctl = c.ctl; cur_sim = c.cur_sim >= 0 && c.cur_sim < nsim ? c.cur_sim : ctl;
     for (int i = 0; i < NOPT && i < OPT_OLD; i++) if (OPT[i].v && c.opt[i] < opt_cnt(i)) *OPT[i].v = c.opt[i];
@@ -2933,7 +2939,8 @@ int main(void) {
                 else if (sc == 5) { live_pitch = 1800; live_dist = 16000; yaw_t = live_yaw = 4096 * 2 + 1500; }   // (5: the horizon)
                 else if (sc >= 10 && sc < 13) { o_look = sc - 10; o_dirty = 1; }   // (10-12: Classic, Rich, Toon)
                 else if (sc >= 20 && sc < 23) { o_detl = sc - 20; o_dirty = 1; }
-                else if (sc >= 30 && sc < 33) { o_roof = sc - 30; o_dirty = 1; } }   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
+                else if (sc >= 30 && sc < 33) { o_roof = sc - 30; o_dirty = 1; }
+                else if (sc >= 40 && sc < 50) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
 #endif
             if (cam_on) {   // stylus camera: drag to orbit/tilt (or pan), buttons for zoom, follow, reset, done
                 if (down & KEY_TOUCH) { cam_drag = 0; if (hit(216, 36, 38, 20, tp.px, tp.py)) { cam_pan ^= 1; forced = 1; } else if (hit(216, 58, 38, 20, tp.px, tp.py)) cam_drag = 1;

@@ -151,6 +151,15 @@ Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build 
 ![real time](ds_shots/d44_realtime.png)
 - Not done: the title screen's household card shows the saved clock, not the real one, until you go in.
 
+**Done at D45 (`bore2_dsi_d45.nds`): Skateboarding (the PS1's, ports/dsi/source/ds_games.c)**
+- Same rules as src/skate.c: the PS1's physics (ground, air, grind, manual, bail), tricks (ollie, flips, grabs, spins, grinds, manuals), combo pool and multiplier, score and best combo. Controls: A ollie (hold for higher), Y flip / manual, B grab (in the air) or off, X grind / trick, L R spin, D-pad rides (as the camera sees it). The top screen shows score, combo, the balance meter on a grind or manual, and button hints. Touch: Get Off.
+- Get a board: Buy a skateboard, or pick up the board 'B' on the Skate Park lot. Menu > Board, or the board's own menu > Ride the Board. The Skate Park lot has the PS1's plaza: quarter pipes, funbox with kickers, rail, ledge, manual pad, launch ramp.
+- Score and best combo are saved in a new trailing block 'SK'; old saves load (the block is simply absent).
+- fps in melonDS riding round the plaza: 28-30 (UI 33-55); the camera only swings behind you when the turn is large, so the still lists are not re-recorded every frame. Away from the plaza 30.
+- Shots: `docs/ds_shots/d45_skate_trick.png` (an ollie + kickflip banked: 125 x 1), `d45_skate_ride.png`.
+![skate](ds_shots/d45_skate_trick.png)
+- Not done in the mini-games: arcade, fight, heist, gotchi (next).
+
 ## Next (in this order)
 1. **Real-hardware and Android tests** of the song reader (`cart_blk` in `main.c`), saving and touch. If a loader blocks cartridge reads, add an SD (libfat) path for DSi.
 2. ~~Walkable upper floors~~ done at D36.
@@ -172,7 +181,7 @@ Not measured: real DS / DSi hardware (DSi mode cannot run in this melonDS build 
 | Castaway Island | island.c, nature.c | **done (D37)** at DS size: gathering, campfire, crafting (tent, bench, outhouse, spear, shelter, raft), the islet, 8 secrets; no weather or day-night survival events yet |
 | Music: jukebox | audio.c, SONGS.BIN | **done (D29), screen added D31** |
 | Music: band, DJ | band.c, dj_ui.c | open (large) |
-| Mini-games (skate, arcade, fight, heist, gotchi, farm) | various | **farm done (D38)** (farm_ui.c and the farm in sim.c); skate, arcade, fight, heist, gotchi open |
+| Mini-games (skate, arcade, fight, heist, gotchi, farm) | various | **farm done (D38)** (farm_ui.c and the farm in sim.c); **skate done (D45)**; arcade, fight, heist, gotchi open |
 | Dog, ghosts, traffic | dog.c, ghost.c, traffic.c | all done (D31) |
 
 ## DSi-only ideas

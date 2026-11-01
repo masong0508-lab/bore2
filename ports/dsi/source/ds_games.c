@@ -1,10 +1,10 @@
 // ds_games.c - the PS1's mini-games on the DS (included by main.c, after the lot, the sims and the 2D helpers it uses).
-// D44: SKATE (src/skate.c): the board in Live, the PS1's physics, tricks, combos and score.
+// D45: SKATE (src/skate.c): the board in Live, the PS1's physics, tricks, combos and score.
 
 // ---- small maths in the PS1's units (angles 0..4095 a turn, sines x4096) ----
 static inline int isin(int a) { return sinLerp((s16)((a & 4095) << 3)); }
 static inline int icos(int a) { return cosLerp((s16)((a & 4095) << 3)); }
-static int isq(int n) { if (n <= 0) return 0; int x = n, y = (x + 1) >> 1; while (y < x) { x = y; y = (x + n / x) >> 1; } return x; }
+static int g_isq(int n) { if (n <= 0) return 0; int x = n, y = (x + 1) >> 1; while (y < x) { x = y; y = (x + n / x) >> 1; } return x; }
 #define ABS(v) ((v) < 0 ? -(v) : (v))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -37,7 +37,7 @@ static struct {
 static struct { int x, z, yaw; } skr;    // the rider (PS1 units)
 static int sk_lx, sk_ly, sk_on_t, sk_tricks;   // (the DS sim's last position from the rider; the controls card's time; tricks landed)
 static void sk_pop(const char *a, const char *b, int ok) { strncpy(k.popa, a, 39); k.popa[39] = 0; strncpy(k.popb, b ? b : "", 23); k.popb[23] = 0; k.popt = 100; k.popok = ok; }
-static int sk_yaw_of(int x, int y) {   // the PS1's atan_ (0 south, 1024 east)
+static int sk_yaw_of(int y, int x) {   // the PS1's atan_ (0 south, 1024 east)
     if (!x && !y) return 0;
     int ax = ABS(x), ay = ABS(y), a = ax >= ay ? (ay * 512) / (ax + (ay >> 1)) : 1024 - (ax * 512) / (ay + (ax >> 1));
     if (x < 0) a = 2048 - a; if (y < 0) a = -a; return a & 4095;
@@ -45,7 +45,7 @@ static int sk_yaw_of(int x, int y) {   // the PS1's atan_ (0 south, 1024 east)
 static int yaw_of(int dx, int dz) { return sk_yaw_of(dx, -dz) & 4095; }
 static int adiff(int a, int b) { return ((a - b + 2048) & 4095) - 2048; }
 // ---- what is on a cell, as the PS1's world letters ----
-static int sk_cell(int mx, int my) { LV = 0; int o = obj_at(mx, my); return o; }
+static int sk_cell(int mx, int my) { int keep = LV; LV = 0; int o = obj_at(mx, my); LV = keep; return o; }
 static int sk_ch(int mx, int my) { int o = sk_cell(mx, my); return o < 0 ? '.' : ID2CH[OBJ_ID(&objs[o])] ? ID2CH[OBJ_ID(&objs[o])] : '#'; }
 static int sk_face(int mx, int my) { int o = sk_cell(mx, my); return o < 0 ? 0 : objs[o].rot & 3; }
 static int sk_ih(int c) {   // items_height: the top of its model (PS1 units)
@@ -63,7 +63,7 @@ static void ramp_run(int mx, int my, int kind, int r, int *idx, int *n) { int a 
 static int ramp_prof(int kind, int n, int d) { int L = n * 64; d = CLAMP(d, 0, L); int t = d * 4096 / L, t2 = (t * t) >> 12;
     if (kind == 0) { int HT = n == 1 ? 110 : n == 2 ? 170 : 230; return (HT * (((t * 1434) >> 12) + ((t2 * 2662) >> 12))) >> 12; }
     if (kind == 1) { int HT = MIN(150 * n, 420); return (HT * t2) >> 12; }
-    { int R = n * 256, x = (d * 4 * 972) >> 10; return R - isq(R * R - x * x); } }
+    { int R = n * 256, x = (d * 4 * 972) >> 10; return R - g_isq(R * R - x * x); } }
 static int ramp_localB(int r, int lx, int lv) { switch (r & 3) { case 0: return lv >> 2; case 1: return lx >> 2; case 2: return 64 - (lv >> 2); default: return 64 - (lx >> 2); } }
 static int ramp_at(int mx, int my, int lx, int lv) { int c = sk_ch(mx, my); if (!is_ramp_c(c)) return 0;
     int kind = ramp_kind(c), r = sk_face(mx, my), idx, n; ramp_run(mx, my, kind, r, &idx, &n);
@@ -91,7 +91,7 @@ static void sk_walk(int dx, int dz) {   // sim_walk for the board: walls and sol
             if (!edge_open(cx0, cy0, cx1, cy1)) continue;
             int o = sk_cell(cx1, cy1); LV = 0;
             if (o >= 0 || obj_solid(cx1, cy1)) { int c = o >= 0 ? sk_ch(cx1, cy1) : '#'; if (!sk_ride_c(c) && (o < 0 || sk_ih(c) > y + 30)) continue; }
-            if (ground_at(nx, nz, y) > y + 40) continue; }
+            if (ground_at(nx, nz, y) > y + 100) continue; }   // (the PS1 lets a board climb 100 units a step)
         skr.x = nx; skr.z = nz; }
 }
 // ---- the combo ----
@@ -146,7 +146,7 @@ static void sk_land(int g) {
     int ahead = ground_at(skr.x + ((isin(k.dir) * 40) >> 12), skr.z - ((icos(k.dir) * 40) >> 12), g), behind = ground_at(skr.x - ((isin(k.dir) * 40) >> 12), skr.z + ((icos(k.dir) * 40) >> 12), g);
     int vfall = -k.vy, vh = k.vert ? ABS(k.lat) : k.vh, wasvert = k.vert;
     if (k.vert) { k.dir = (k.dir + 2048) & 4095; k.fakie ^= 1; int t = ahead; ahead = behind; behind = t; }
-    if (wasvert || behind > ahead + 10) k.v = MIN(VMAX, isq(vh * vh + vfall * vfall) * 15 / 16); else k.v = vh;
+    if (wasvert || behind > ahead + 10) k.v = MIN(VMAX, g_isq(vh * vh + vfall * vfall) * 15 / 16); else k.v = vh;
     k.st = KS_GROUND; k.vy = 0; k.vert = 0; k.grab = 0; k.flip = 0;
     skr.yaw = (k.dir + (k.fakie ? 2048 : 0)) & 4095;
     k.landt = 26; k.landsq = 14;
@@ -182,7 +182,7 @@ static int rail_try(int from_ground) {
     add_trick(k.rtk, tkPts[k.rtk]); k.landt = 0; voice(V_FIN);
     return 1; }
 static void skate_step(int wx, int wz) {   // one 60 Hz step; (wx, wz) the stick in world space, -4096..4096
-    int m = isq(wx * wx + wz * wz); if (m > 4096) m = 4096;
+    int m = g_isq(wx * wx + wz * wz); if (m > 4096) m = 4096;
     int want = m > 900 ? yaw_of(wx, wz) : -1;
     int pr = k.pr; k.pr = 0;
     int rel = want >= 0 ? adiff(want, k.dir) : -9999, relb = want >= 0 ? adiff(want, skr.yaw) : -9999;
@@ -218,14 +218,14 @@ static void skate_step(int wx, int wz) {   // one 60 Hz step; (wx, wz) the stick
         int g = ground_at(skr.x, skr.z, y0 / FX) * FX, run_ = (k.v * k.cosk) >> 12;
         if (g < y0 - 8 * FX - 4 * run_) { int vy = 0, vh = k.v;
             { int bx = px0 - ((isin(k.dir) * 24) >> 12), bz = pz0 + ((icos(k.dir) * 24) >> 12), rise = ground_at(px0, pz0, y0 / FX) - ground_at(bx, bz, y0 / FX);
-              if (rise > 0) { int l = isq(24 * 24 + rise * rise); vy = k.v * rise / l; vh = k.v * 24 / l; } }
+              if (rise > 0) { int l = g_isq(24 * 24 + rise * rise); vy = k.v * rise / l; vh = k.v * 24 / l; } }
             if (k.st == KS_MANUAL) k.st = KS_GROUND;
             take_off(vy, vh, 1);
             if (k.vert) { skr.x = px0 - ((isin(k.vdir) * 10) >> 12); skr.z = pz0 + ((icos(k.vdir) * 10) >> 12); }
             k.landt = 0; break; }
         int dh = g - y0;
-        { long v2 = (long)k.v * k.v - 2L * GRAV * dh; if (v2 <= 0) { if (dh > FX) { k.dir = (k.dir + 2048) & 4095; k.fakie ^= 1; k.v = FX * 2; } else k.v = 0; } else k.v = MIN(VMAX, isq((int)MIN(v2, 0x3FFFFFFFL))); }
-        { int run = MAX((k.v * k.cosk) >> 12, FX); int l = isq(run / 4 * (run / 4) + dh / 4 * (dh / 4)); k.cosk = l ? CLAMP(((run / 4) * 4096) / l, 900, 4096) : 4096; }
+        { long v2 = (long)k.v * k.v - 2L * GRAV * dh; if (v2 <= 0) { if (dh > FX) { k.dir = (k.dir + 2048) & 4095; k.fakie ^= 1; k.v = FX * 2; } else k.v = 0; } else k.v = MIN(VMAX, g_isq((int)MIN(v2, 0x3FFFFFFFL))); }
+        { int run = MAX((k.v * k.cosk) >> 12, FX); int l = g_isq(run / 4 * (run / 4) + dh / 4 * (dh / 4)); k.cosk = l ? CLAMP(((run / 4) * 4096) / l, 900, 4096) : 4096; }
         k.vy = dh; k.y = g;
         if (k.landt && --k.landt == 0 && k.st == KS_GROUND) combo_bank();
         if (!k.landt && k.ntr && k.st == KS_GROUND && !(k.held & SKB_X)) combo_bank();
@@ -310,17 +310,24 @@ static void skate_frame(int held, int down, int steps) {
     int ux = ((held & KEY_RIGHT) ? 1 : 0) - ((held & KEY_LEFT) ? 1 : 0), uy = ((held & KEY_UP) ? 1 : 0) - ((held & KEY_DOWN) ? 1 : 0);
     int th = live_yaw, c = cosLerp((s16)th), s = sinLerp((s16)th), sc = (ux && uy) ? 2896 : 4096;
     int east = (ux * c + uy * s) * sc >> 12, south = (ux * s - uy * c) * sc >> 12;   // (screen up is (sin, -cos) of the camera's turn: see gx_cam)
+#ifdef DSTEST
+    u32 t0_ = prof_now();
+#endif
     for (int t = 0; t < steps && on_board; t++) { skate_step(east, -south); k.held = h; }
+#ifdef DSTEST
+    { extern volatile int sk_cyc; sk_cyc += (int)(prof_now() - t0_); }
+#endif
     if (!on_board) return;
     if (sk_on_t > 0) sk_on_t -= steps;
     m->x = m->tx = m->wx = (skr.x - 128) / 16; m->y = m->ty = m->wy = (-skr.z - 128) / 16; sk_lx = m->x; sk_ly = m->y; m->act = -1; m->act_left = 0;
     sk_x3 = sk_wx(); sk_z3 = sk_wz(); sk_cr = skate_crouch() * 150 / 4096; rot_y(sk_Rm, (skr.yaw + 1024) & 4095);   // (the rider: where, how low, side on)
     { int d = skr.yaw; fq4[ctl] = ((d + 512) & 4095) / 1024 == 0 ? 0 : ((d + 512) & 4095) / 1024 == 1 ? 1 : ((d + 512) & 4095) / 1024 == 2 ? 2 : 3; }
     if (!cam_free && k.v / FX > 6 && k.st != KS_AIR) {   // riding: the camera swings round behind the way you roll
-        int want = (16384 - k.dir * 8) & 32767, cur = yaw_t & 32767, d = ((want - cur + 16384) & 32767) - 16384; d = CLAMP(d, -260, 260); yaw_t += d; live_yaw = yaw_t; }
+        int want = (16384 - k.dir * 8) & 32767, cur = yaw_t & 32767, d = ((want - cur + 16384) & 32767) - 16384; static int swing; if (abs(d) > 7000) swing = 1; if (abs(d) < 600) swing = 0;   // (a dead zone: the still lists are only recorded again while the view swings round)
+        if (swing) { d = CLAMP(d, -300, 300); yaw_t += d; live_yaw = yaw_t; } }
 }
 static void tk_name(int i, char *out) { int t = k.tk[i & 3], n = k.tkn[i & 3]; if (t == TK_SPIN) { strcpy(out, "SPIN"); return; } sprintf(out, "%s%s", n == 2 ? "DOUBLE " : n >= 3 ? "TRIPLE " : "", tkNm[t]); }
-static unsigned skate_sig(void) { return (unsigned)(k.popt * 3 + k.ntr * 7 + (unsigned)k.pool * 11 + k.mult * 13 + (k.bal >> 7) * 17 + k.st * 19 + (unsigned)skate_score * 23 + (sk_on_t > 0) * 29 + (k.st == KS_AIR) * 31); }
+static unsigned skate_sig(void) { int bl = (k.st == KS_GRIND || k.st == KS_MANUAL) ? (k.bal >> 9) + 100 : 0; return (unsigned)((k.popt > 0) * 3 + k.ntr * 7 + (unsigned)(k.pool >> 3) * 11 + k.mult * 13 + bl * 17 + (k.st == KS_AIR) * 19 + (unsigned)skate_score * 23); }   // (only what the top screen shows, coarsely: it is redrawn whole)
 static void skate_top(void) {   // the top screen while you ride: the score, the combo, the balance, what just happened, the buttons
     scr = offbuf; backdrop(); char b[64];
     panel(6, 6, 244, 34, "Skate"); sprintf(b, "Score %ld", skate_score); text(14, 24, 2, C15(31, 31, 20), b); sprintf(b, "Best combo %ld", skate_best); text(246 - tw(1, b), 26, 1, C15(24, 28, 31), b);
@@ -335,3 +342,59 @@ static void skate_top(void) {   // the top screen while you ride: the score, the
     if (k.st == KS_AIR) { text(12, 157, 1, TXT, "Y flip   B grab (hold)   L R spin"); text(12, 171, 1, TXT, "X grind   D-pad picks the trick"); }
     else { text(12, 157, 1, TXT, "A ollie (hold: higher)   Y manual"); text(12, 171, 1, TXT, "X grind   B off   D-pad rides"); }
 }
+
+// ==== the mini-games' saves: blocks after the farm's, each { magic, size, data }; a save from before has none (all at their start) ====
+#define MG_SK 0x4B53   // 'SK': the board and the skate scores
+static void mg_reset(void) { has_board = on_board = 0; board_lift = 0; skate_score = skate_best = 0; }
+static int mg_pack(u8 *o) {
+    int n = 0; u16 th[2]; s32 v[3];
+    th[0] = MG_SK; th[1] = 12; v[0] = has_board; v[1] = (s32)skate_score; v[2] = (s32)skate_best; memcpy(o + n, th, 4); memcpy(o + n + 4, v, 12); n += 16;
+    return n; }
+static int mg_unpack(const u8 *p, int left) {
+    mg_reset(); int n = 0;
+    while (n + 4 <= left) { u16 th[2]; memcpy(th, p + n, 4); if (n + 4 + th[1] > left) break;
+        if (th[0] == MG_SK && th[1] == 12) { s32 v[3]; memcpy(v, p + n + 4, 12); has_board = v[0] & 1; skate_score = v[1] < 0 ? 0 : v[1]; skate_best = v[2] < 0 ? 0 : v[2]; }
+        else break;
+        n += 4 + th[1]; }
+    return n; }
+#ifdef DSTEST
+static void mg_test(int sc) {   // (test builds) 40: this lot becomes the skate plaza, your Bore on the board at its west side
+    if (sc == 40 || sc == 41) { memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(LOT_SKATE, 1); occ_ok = 0; funds += 5000;
+        for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = 0; sims[q].y = sims[q].ty = sims[q].wy = (5 + q) * 16; sims[q].act = -1; }
+        sims[ctl].x = sims[ctl].tx = sims[ctl].wx = (sc == 41 ? 3 : 1) * 16; sims[ctl].y = sims[ctl].ty = sims[ctl].wy = (sc == 41 ? 3 : 7) * 16; fq4[ctl] = 1; has_board = 1; skate_on(); }
+}
+#endif
+// ---- the ramps drawn as the PS1 draws them (items.c ramp_draw): the run's own curve, sides only at its ends; a few quads instead of the model's stacked boxes ----
+static u32 qd_nrm(const int (*p)[3]) {   // a quad's normal in integers, as qd works it out (qd's floats and square root cost a frame on the ARM9)
+    int ux = p[1][0] - p[0][0], uy = p[0][1] - p[1][1], uz = p[1][2] - p[0][2], vx = p[3][0] - p[0][0], vy = p[0][1] - p[3][1], vz = p[3][2] - p[0][2];
+    s64 a = (s64)uy * vz - (s64)uz * vy, b = (s64)uz * vx - (s64)ux * vz, d = (s64)ux * vy - (s64)uy * vx;
+    while (a > 20000 || a < -20000 || b > 20000 || b < -20000 || d > 20000 || d < -20000) { a /= 4; b /= 4; d /= 4; }
+    int l = g_isq((int)(a * a + b * b + d * d)), k = lit_sgn * 511; if (!l) return NORMAL_PACK(0, 511, 0);
+    return NORMAL_PACK((int)(a * k / l), (int)(b * k / l), (int)(d * k / l)) | 0x80000000u; }   // (bit 31: worked out; the GPU ignores it)
+static void qd_c(const int (*p)[3], u16 c, u32 *nc) {   // a quad whose normal is kept in *nc once worked out (the same slope, the same normal)
+    if (!gxb) { qd(p[0][0], p[0][1], p[0][2], p[1][0], p[1][1], p[1][2], p[2][0], p[2][1], p[2][2], p[3][0], p[3][1], p[3][2], c); return; }
+    if (!*nc || ((*nc >> 30) & 1) != (lit_sgn < 0)) *nc = qd_nrm(p) | (lit_sgn < 0 ? 0x40000000u : 0);
+    qd_n(p[0][0], p[0][1], p[0][2], p[1][0], p[1][1], p[1][2], p[2][0], p[2][1], p[2][2], p[3][0], p[3][1], p[3][2], c, *nc & 0x3FFFFFFFu); }
+static s16 rp_hc[3][3][3][8]; static u8 rp_hok; static u32 rp_nt[3][3][3][6][4], rp_ns[3][3][3][6][4][2], rp_nb[4], rp_ncop[4];
+static int rp_seg(int kind) { return kind == 2 ? 4 : kind == 1 ? 3 : 2; }
+volatile int dbg_noramp;
+static void ramp3d(int x, int y, int ch, int r, int base) {
+    if (dbg_noramp) return;
+    if (!rp_hok) { rp_hok = 1; for (int kd = 0; kd < 3; kd++) for (int nn = 1; nn <= 3; nn++) for (int ix = 0; ix < nn; ix++) for (int q = 0; q <= rp_seg(kd); q++) rp_hc[kd][nn - 1][ix][q] = (s16)ramp_prof(kd, nn, nn * 64 - (ix * 64 + 64 * q / rp_seg(kd))); }
+    int kind = ramp_kind(ch), idx, n; ramp_run(x, y, kind, r, &idx, &n);
+    static const u16 TOPC[3] = { C15(19, 13, 8), C15(8, 13, 21), C15(13, 13, 15) }, SIDC[3] = { C15(16, 11, 6), C15(6, 9, 16), C15(19, 13, 8) };
+    int S = rp_seg(kind), X0 = tl(x * 2), Z0 = tl(y * 2), RW_ = 2 * T;
+    static const s8 ax[4] = { 1, 0, -1, 0 }, az[4] = { 0, -1, 0, 1 };
+    int sideA = !same_ramp(x - ax[r], y - az[r], kind, r), sideB = !same_ramp(x + ax[r], y + az[r], kind, r);
+    const s16 *hc = rp_hc[kind][n - 1][idx];
+    #define RP(A, B, H, o) do { int u_, v_; switch (r & 3) { case 0: u_ = A; v_ = B; break; case 1: u_ = B; v_ = 64 - (A); break; case 2: u_ = 64 - (A); v_ = 64 - (B); break; default: u_ = 64 - (B); v_ = A; } o[0] = X0 + u_ * RW_ / 64; o[1] = H; o[2] = Z0 + v_ * RW_ / 64; } while (0)
+    for (int s = 0; s < S; s++) { int B0 = 64 * s / S, B1 = 64 * (s + 1) / S, h0 = base - hc[s] * 12 / 5, h1 = base - hc[s + 1] * 12 / 5, p[4][3];
+        RP(0, B0, h0, p[0]); RP(64, B0, h0, p[1]); RP(64, B1, h1, p[2]); RP(0, B1, h1, p[3]);
+        qd_c((const int (*)[3])p, TOPC[kind], &rp_nt[kind][n - 1][idx][s][r]);
+        if (sideA && (h0 < base || h1 < base)) { RP(0, B1, base, p[0]); RP(0, B0, base, p[1]); RP(0, B0, h0, p[2]); RP(0, B1, h1, p[3]); qd_c((const int (*)[3])p, SIDC[kind], &rp_ns[kind][n - 1][idx][s][r][0]); }
+        if (sideB && (h0 < base || h1 < base)) { RP(64, B0, base, p[0]); RP(64, B1, base, p[1]); RP(64, B1, h1, p[2]); RP(64, B0, h0, p[3]); qd_c((const int (*)[3])p, SIDC[kind], &rp_ns[kind][n - 1][idx][s][r][1]); } }
+    if (idx == 0) { int h = base - hc[0] * 12 / 5, p[4][3]; RP(0, 0, base, p[0]); RP(64, 0, base, p[1]); RP(64, 0, h, p[2]); RP(0, 0, h, p[3]); qd_c((const int (*)[3])p, shade(SIDC[kind], 6), &rp_nb[r]);
+        if (kind == 2) { RP(0, -2, h - 14, p[0]); RP(64, -2, h - 14, p[1]); RP(64, 3, h - 14, p[2]); RP(0, 3, h - 14, p[3]); qd_c((const int (*)[3])p, C15(24, 24, 26), &rp_ncop[r]); } }   // (a quarter pipe's coping)
+    #undef RP
+}
+volatile int sk_cyc;
