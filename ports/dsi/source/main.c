@@ -9,7 +9,7 @@ static int o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_
 typedef struct { const char *name, *vals; int *v; unsigned char tab, def; } Opt;
 static const Opt OPT[] = {
     { "Anti-alias", "Off|On", &o_aa, 0, 1 }, { "Outlines", "Off|On", &o_out, 0, 0 }, { "Shadows", "Off|On", &o_shd, 0, 1 }, { "Lighting", "Off|On", &o_lit, 0, 1 },
-    { "Item detail", "Simple|Detailed", &o_det, 0, 1 }, { "Ground check", "Off|On", &o_chk, 0, 1 }, { "Frame rate", "60 fps|30 fps", &o_fps30, 3, 0 }, { "Brightness", "-4|-3|-2|-1|+0|+1|+2|+3|+4", &o_bri, 0, 4 },
+    { "Item detail", "Simple|Detailed", &o_det, 0, 1 }, { "Ground check", "Off|On", &o_chk, 0, 1 }, { "Frame rate", "Steady 30|Up to 60", &o_fps30, 3, 0 }, { "Brightness", "-4|-3|-2|-1|+0|+1|+2|+3|+4", &o_bri, 0, 4 },
     { "Sky", "Day|Sunset|Night|Mint|Auto", &o_sky, 0, 0 }, { "Camera", "Close|Normal|Far", &o_cam, 2, 1 }, { "Map spin", "Off|Slow|Normal|Fast", &o_spin, 2, 2 }, { "Game speed", "1x|2x|3x", &o_spd, 2, 0 },
     { "Turbo CPU", "Off|On", &o_turbo, 3, 0 }, { "Sim style", "Classic|Sims 3|Chunky", &o_sty, 0, 0 }, { "Poly meter", "Off|On", &o_pm, 0, 0 }, { "Fog", "Off|On", &o_fog, 0, 0 },
     { "Save space", "Safe|Max", &o_smax, 2, 0 },
@@ -211,9 +211,93 @@ static void draw_map(void) {
 // ---------- the top screen: one lot in 3D ----------
 #define T 330                  // a tile in 4.12 fixed point (1.0 = 4096), so a 13-tile lot is about a unit wide
 #define LOTN 13
-static int polys, gy_off, polys_last, fps_now;   // (gy_off: the rise of a storey being drawn, D36)
+static int polys, gy_off, polys_last, fps_now, ui_n; static volatile int ui_fps, st_rec;   // (gy_off: the rise of a storey being drawn, D36)
 static inline int tl(int t) { return (t - LOTN) * T; }   // tile coordinate -> centred model coordinate
-static void qd(int x0, int y0, int z0, int x1, int y1, int z1, int x2, int y2, int z2, int x3, int y3, int z3, u16 c) {
+// ---- (D39) GX DISPLAY LISTS: the lot's 3D is written into RAM as the geometry engine's own packed commands and sent to it by DMA.
+// The still part (ground, floors, walls, things, streets, the lots round) is recorded only when something in it changes; what moves is recorded every frame.
+// Saves the ARM9 nearly all of its 3D work; vertices that share two coordinates with the one before go as one word (VTX_XY / XZ / YZ).
+#define GXS_MAX 49152
+#define GXD_MAX 24576
+static u32 gx_slb[2][GXS_MAX + 64] __attribute__((aligned(32))), gx_dlb[2][GXD_MAX + 64] __attribute__((aligned(32)));   // (two of each: one is being sent while the next is written)
+// A FRAME is a run of pieces (the moving list cut where a sim's cached model goes in, the still list, the swap), sent one after another by DMA (channel 0)
+// from the vblank interrupt: the 3D goes out on a steady beat whatever the game loop is doing.
+typedef struct { const u32 *p; int n; } GSeg;
+typedef struct { GSeg s[48]; int ns; } GFrm;
+static GFrm gfr[2]; static volatile int gf_ready = -1, gf_fly = -1, gf_busy, gf_on, gf_shown; static int gf_ss;   // (gf_ss: where the piece being written began)
+
+#ifdef DSTEST
+volatile int test_scene; volatile int prof_ms[12]; static u32 prof_t[12], prof_last;   // (test builds only: where the ARM9's time goes, ms a second: steps, 2D and logic, moving list, still signature and list, DMA, the rest)
+static inline u32 prof_now(void) { u16 lo = TIMER_DATA(0); u16 hi = TIMER_DATA(1); if (TIMER_DATA(0) < lo) hi = TIMER_DATA(1); return ((u32)hi << 16) | lo; }
+#define PROF(k) do { u32 _n = prof_now(); prof_t[k] += _n - prof_last; prof_last = _n; } while (0)
+#else
+#define PROF(k) do {} while (0)
+#endif
+static int dpass;          // (D39) 0: draw everything (straight to the GPU), 1: the still part only (recorded once), 2: what moves only (every frame)
+static u32 gx_base, gx_spec; static int gx_far = 12; static u32 *gxb; static int gxn, gxh, gxk = 4, gx_cap, gx_full, gx_lx, gx_ly, gx_lz, gx_lv; static u32 gx_mat, gx_nrm, gx_col, gx_attr;
+static inline void gx_id(u32 id) { if (gxk >= 4) { gxh = gxn++; gxb[gxh] = 0; gxk = 0; } gxb[gxh] |= id << (gxk++ * 8); }
+static inline void gx_c1(u32 id, u32 v) { gx_id(id); gxb[gxn++] = v; }
+ITCM_CODE static void gx_c0(u32 id) { gxk = 4; gx_id(id); gxb[gxn++] = 0; gxk = 4; }   // (a command with no parameters gets a packed word of its own and a dummy zero, as GBATEK asks)
+static void gx_begin(u32 *b, int cap) { gxb = b; gxn = 0; gxk = 4; gx_cap = cap - 32; gx_full = 0; gx_lv = 0; gx_mat = gx_nrm = gx_col = ~0u; }
+static int gx_end(void) { gxb = 0; return gxn; }
+static void gx_fmt(u32 attr) {   // the polygon attributes (takes effect at the next BEGIN): recorded, or straight to the GPU
+    gx_attr = attr; if (gxb) { if (gxn > gx_cap) return; gx_c1(0x29, attr); gx_c1(0x40, GL_QUADS); gx_lv = 0; } else { glEnd(); glPolyFmt(attr); glBegin(GL_QUADS); } }
+static void gx_run(const u32 *b, int n) {   // send a list to the geometry FIFO by DMA (channel 0) and wait for it
+    if (n <= 0) return; DC_FlushRange(b, n * 4); while (DMA_CR(0) & DMA_BUSY) {}
+    DMA_SRC(0) = (u32)b; DMA_DEST(0) = 0x4000400; DMA_CR(0) = DMA_FIFO | n; while (DMA_CR(0) & DMA_BUSY) {} }
+static GFrm *gf_rec;   // the frame whose moving list is being written (0: none)
+static void gf_add(const u32 *p, int n) { if (gf_rec && n > 0 && gf_rec->ns < 48) { gf_rec->s[gf_rec->ns].p = p; gf_rec->s[gf_rec->ns].n = n; gf_rec->ns++; } }
+static void gf_cut(void) { if (gf_rec) { gf_add(gxb + gf_ss, gxn - gf_ss); gf_ss = gxn; gxk = 4; } }   // end the piece written so far (the next command starts a fresh packed word)
+static void gf_kick(u32 vb) {   // (from the vblank interrupt) the next frame, if one is ready and it is its turn
+    if (!gf_on || gf_busy || gf_ready < 0 || (!o_fps30 && (vb & 1))) return;
+    gf_fly = gf_ready; gf_ready = -1; gf_shown++; gf_busy = 1;   // (the pieces one after another, waiting on each: a DMA-end interrupt chain hung the sound's FIFO in melonDS)
+    for (int k = 0; k < gfr[gf_fly].ns; k++) { const GSeg *g = &gfr[gf_fly].s[k]; DMA_SRC(0) = (u32)g->p; DMA_DEST(0) = 0x4000400; DMA_CR(0) = DMA_FIFO | (u32)g->n; while (DMA_CR(0) & DMA_BUSY) {} }
+    gf_busy = 0; }
+static void gf_stop(void) { gf_on = 0; while (gf_busy) {} gf_ready = -1; }   // (before the CPU writes to the GPU itself: the title, Create-a-Sim and the Map)
+static inline void gx_v(int x, int y, int z) {   // one vertex: the shortest command that sets it
+    u32 xy = (u32)(x & 0xFFFF) | ((u32)y << 16);
+    if (gx_lv) { if (z == gx_lz) { gx_c1(0x25, xy); goto done; } if (y == gx_ly) { gx_c1(0x26, (u32)(x & 0xFFFF) | ((u32)z << 16)); goto done; } if (x == gx_lx) { gx_c1(0x27, (u32)(y & 0xFFFF) | ((u32)z << 16)); goto done; } }
+    gx_id(0x23); gxb[gxn++] = xy; gxb[gxn++] = (u32)(z & 0xFFFF);
+done: gx_lx = x; gx_ly = y; gx_lz = z; gx_lv = 1; }
+static void gx_cam(int dist, int pitch, int yaw, int cx, int cy, int cz) {   // (D39) the projection, the camera, the lights and the material into the list (the CPU must not write to the GPU while a frame is being sent)
+    int ymax = mulf32(4096 * 3 / 4, tanLerp(degreesToAngle(40) >> 1)), xmax = mulf32(ymax, 256 * 4096 / 192), nr = 4096 * 3 / 4, fr = 4096 * gx_far;
+    gx_c1(0x10, 0); gx_c0(0x15); gx_id(0x18); u32 *o = &gxb[gxn]; memset(o, 0, 64);
+    o[0] = (u32)divf32(2 * nr, 2 * xmax); o[5] = (u32)divf32(2 * nr, 2 * ymax); o[10] = (u32)-divf32(fr + nr, fr - nr); o[11] = (u32)-4096; o[14] = (u32)-divf32(2 * mulf32(fr, nr), fr - nr); gxn += 16;
+    gx_c1(0x10, 2); gx_c0(0x15); gx_c1(0x10, 1);
+    gx_id(0x1C); gxb[gxn++] = 0; gxb[gxn++] = 0; gxb[gxn++] = (u32)-dist;
+    int c = cosLerp(pitch), sn = sinLerp(pitch); gx_id(0x1A); o = &gxb[gxn]; o[0] = 4096; o[1] = 0; o[2] = 0; o[3] = 0; o[4] = (u32)c; o[5] = (u32)sn; o[6] = 0; o[7] = (u32)-sn; o[8] = (u32)c; gxn += 9;
+    c = cosLerp(yaw); sn = sinLerp(yaw); gx_id(0x1A); o = &gxb[gxn]; o[0] = (u32)c; o[1] = 0; o[2] = (u32)-sn; o[3] = 0; o[4] = 4096; o[5] = 0; o[6] = (u32)sn; o[7] = 0; o[8] = (u32)c; gxn += 9;
+    gx_id(0x1C); gxb[gxn++] = (u32)-cx; gxb[gxn++] = (u32)-cy; gxb[gxn++] = (u32)-cz;
+    if (lit_on) { gx_c1(0x31, gx_spec);
+        gx_c1(0x32, (0u << 30) | ((u32)(-358 & 0x3FF) << 20) | ((u32)(-281 & 0x3FF) << 10) | (u32)(230 & 0x3FF)); gx_c1(0x33, (0u << 30) | RGB15(27, 25, 21));
+        gx_c1(0x32, (1u << 30) | ((u32)(358 & 0x3FF) << 20) | ((u32)(51 & 0x3FF) << 10) | (u32)(-358 & 0x3FF)); gx_c1(0x33, (1u << 30) | RGB15(7, 10, 17)); }
+    gx_c1(0x29, gx_base); gx_c1(0x40, GL_QUADS); gx_lv = 0;
+}
+static void gx_push(int x, int y, int z) { if (gxb) { gx_c0(0x11); gx_id(0x1C); gxb[gxn++] = (u32)x; gxb[gxn++] = (u32)y; gxb[gxn++] = (u32)z; gx_lv = 0; } else { glPushMatrix(); glTranslatef32(x, y, z); } }   // (a far lot drawn round its own centre: no 16-bit overflow)
+static void gx_pop(void) { if (gxb) { gx_c1(0x12, 1); gx_lv = 0; } else glPopMatrix(1); }
+ITCM_CODE static void qd_n(int x0, int y0, int z0, int x1, int y1, int z1, int x2, int y2, int z2, int x3, int y3, int z3, u16 c, u32 nm) {   // (D39) recording, the normal known (a box face)
+    if (gxn > gx_cap) { gx_full = 1; return; }
+    if (lit_on) { u32 m = (u32)(c | BIT(15)) | ((u32)RGB15(((c & 31) * 11) >> 4, (((c >> 5) & 31) * 11) >> 4, (((c >> 10) & 31) * 11) >> 4) << 16);
+        if (m != gx_mat || nm != gx_nrm) { if (m != gx_mat) gx_c1(0x30, m); gx_c1(0x21, nm); gx_mat = m; gx_nrm = nm; } }
+    else if (c != gx_col) { gx_c1(0x20, c); gx_col = c; }
+    y0 += gy_off; y1 += gy_off; y2 += gy_off; y3 += gy_off;
+    gx_v(x0, -y0, z0); gx_v(x1, -y1, z1); gx_v(x2, -y2, z2); gx_v(x3, -y3, z3); polys += 2;
+}
+#define NRM_NX NORMAL_PACK(-511, 0, 0)
+#define NRM_PX NORMAL_PACK(511, 0, 0)
+#define NRM_NZ NORMAL_PACK(0, 0, -511)
+#define NRM_PZ NORMAL_PACK(0, 0, 511)
+#define NRM_UP NORMAL_PACK(0, 511, 0)
+ITCM_CODE static void qd(int x0, int y0, int z0, int x1, int y1, int z1, int x2, int y2, int z2, int x3, int y3, int z3, u16 c) {
+    if (gxb) {   // (D39) recording
+        if (gxn > gx_cap) { gx_full = 1; return; }
+        if (lit_on) { u32 m = (u32)(c | BIT(15)) | ((u32)RGB15(((c & 31) * 11) >> 4, (((c >> 5) & 31) * 11) >> 4, (((c >> 10) & 31) * 11) >> 4) << 16), nm = 0;
+            s64 ux = x1 - x0, uy = y0 - y1, uz = z1 - z0, vx = x3 - x0, vy = y0 - y3, vz = z3 - z0, inx = uy * vz - uz * vy, iny = uz * vx - ux * vz, inz = ux * vy - uy * vx; int s = lit_sgn * 511;
+            if (!inx && !iny) nm = NORMAL_PACK(0, 0, inz > 0 ? s : -s); else if (!inx && !inz) nm = NORMAL_PACK(0, iny > 0 ? s : -s, 0); else if (!iny && !inz) nm = NORMAL_PACK(inx > 0 ? s : -s, 0, 0);
+            else { float nx = (float)inx, ny = (float)iny, nz = (float)inz, l = nx * nx + ny * ny + nz * nz; if (l > 0) { float k = 511.0f * lit_sgn / __builtin_sqrtf(l); nm = NORMAL_PACK((int)(nx * k), (int)(ny * k), (int)(nz * k)); } }
+            if (m != gx_mat || nm != gx_nrm) { if (m != gx_mat) gx_c1(0x30, m); gx_c1(0x21, nm); gx_mat = m; gx_nrm = nm; } }
+        else if (c != gx_col) { gx_c1(0x20, c); gx_col = c; }
+        y0 += gy_off; y1 += gy_off; y2 += gy_off; y3 += gy_off;
+        gx_v(x0, -y0, z0); gx_v(x1, -y1, z1); gx_v(x2, -y2, z2); gx_v(x3, -y3, z3); polys += 2; return; }
     if (lit_on) {   // lit: set the material from the colour, then the normal (which computes the lit colour); no glColor after it
         glMaterialf(GL_DIFFUSE, (u16)(c | BIT(15))); glMaterialf(GL_AMBIENT, (u16)(RGB15(((c & 31) * 11) >> 4, (((c >> 5) & 31) * 11) >> 4, (((c >> 10) & 31) * 11) >> 4)));
         s64 ux = x1 - x0, uy = y0 - y1, uz = z1 - z0, vx = x3 - x0, vy = y0 - y3, vz = z3 - z0, inx = uy * vz - uz * vy, iny = uz * vx - ux * vz, inz = ux * vy - uy * vx;
@@ -227,12 +311,17 @@ static void qd(int x0, int y0, int z0, int x1, int y1, int z1, int x2, int y2, i
     y0 += gy_off; y1 += gy_off; y2 += gy_off; y3 += gy_off;
     glVertex3v16(x0, -y0, z0); glVertex3v16(x1, -y1, z1); glVertex3v16(x2, -y2, z2); glVertex3v16(x3, -y3, z3); polys += 2;
 }
-static u16 shade(u16 c, int k) {   // k/8 of the colour
-    int r = (c & 31) * k / 8, g = ((c >> 5) & 31) * k / 8, b = ((c >> 10) & 31) * k / 8;
+ITCM_CODE static u16 shade(u16 c, int k) {   // k/8 of the colour
+    int r = ((c & 31) * k) >> 3, g = (((c >> 5) & 31) * k) >> 3, b = (((c >> 10) & 31) * k) >> 3;   // (k is never negative: >> 3 is / 8)
     return (u16)(RGB15(r > 31 ? 31 : r, g > 31 ? 31 : g, b > 31 ? 31 : b) | BIT(15));
 }
-static void ground(int x0, int z0, int x1, int z1, int y, u16 c) { qd(x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1, c); }
-static void block(int x0, int z0, int x1, int z1, int y0, int y1, u16 wall, u16 roof) {   // a box (y up is negative in this view: we flip below)
+ITCM_CODE static void ground(int x0, int z0, int x1, int z1, int y, u16 c) { if (x0 > x1) { int t = x0; x0 = x1; x1 = t; } if (z0 > z1) { int t = z0; z0 = z1; z1 = t; } qd(x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1, c); }
+ITCM_CODE static void block(int x0, int z0, int x1, int z1, int y0, int y1, u16 wall, u16 roof) {   // a box (y up is negative in this view: we flip below)
+    if (x0 > x1) { int t = x0; x0 = x1; x1 = t; } if (z0 > z1) { int t = z0; z0 = z1; z1 = t; } if (y1 > y0) { int t = y0; y0 = y1; y1 = t; }   // (D39: always wound the same way, so the GPU can skip the faces turned away)
+    if (gxb) { u16 sw = shade(wall, 6);   // (D39) recording: the five normals are known
+        qd_n(x0, y0, z0, x1, y0, z0, x1, y1, z0, x0, y1, z0, wall, NRM_NZ); qd_n(x1, y0, z0, x1, y0, z1, x1, y1, z1, x1, y1, z0, sw, NRM_PX);
+        qd_n(x1, y0, z1, x0, y0, z1, x0, y1, z1, x1, y1, z1, wall, NRM_PZ); qd_n(x0, y0, z1, x0, y0, z0, x0, y1, z0, x0, y1, z1, sw, NRM_NX);
+        qd_n(x0, y1, z0, x1, y1, z0, x1, y1, z1, x0, y1, z1, roof, NRM_UP); return; }
     qd(x0, y0, z0, x1, y0, z0, x1, y1, z0, x0, y1, z0, wall);
     qd(x1, y0, z0, x1, y0, z1, x1, y1, z1, x1, y1, z0, shade(wall, 6));
     qd(x1, y0, z1, x0, y0, z1, x0, y1, z1, x1, y1, z1, wall);
@@ -254,6 +343,7 @@ static void tree(int x, int z, int s) {   // a trunk, three tiers of leaves, a b
 static void person(int x, int z, u16 c, int yaw) {   // a person: one quad that faces the camera
     int s = T, hx = (s * sinLerp(yaw)) >> 13, hz = (s * cosLerp(yaw)) >> 13;
     qd(x - hx, 0, z - hz, x + hx, 0, z + hz, x + hx, -s * 2, z + hz, x - hx, -s * 2, z - hz, c);
+    qd(x + hx, 0, z + hz, x - hx, 0, z - hz, x - hx, -s * 2, z - hz, x + hx, -s * 2, z + hz, c);   // (D39: and its back, for the faces the GPU skips)
 }
 static void draw_lot(const BInfo *b, int yaw) {
     u32 h = b->h; int k = b->lot;
@@ -798,7 +888,7 @@ static int ob_x, ob_z, ob_sx = 68, ob_sz = 68, ob_w = 80, ob_l = 80, ob_rot, ob_
 static int lod_ex, lod_ez; static s32 lod_r2 = 0x7FFFFFFF;   // (D38) the eye's place on the ground and how far from it things keep their detail
 static int lod_far(void) { int dx = (ob_x - lod_ex) >> 2, dz = (ob_z - lod_ez) >> 2; return dx * dx + dz * dz > lod_r2; }   // (was: far from the point looked at, so the things nearest the eye, at the foot of the screen, were the ones drawn as blocks)
 static const u8 HSC[28] = { 140, 140, 140, 140, 200, 200, 200, 200, 200, 200, 180, 200, 200, 100, 170, 200, 150, 200, 170, 200, 150, 100, 200, 150, 100, 200, 90, 100 };
-static void ob2(int lx0, int lz0, int lx1, int lz1, int h0, int h1, u16 c, u16 top) {   // a part in cell units (0..80 a cell, front = +z), heights in tenths of a quarter-tile; sides c, top
+ITCM_CODE static void ob2(int lx0, int lz0, int lx1, int lz1, int h0, int h1, u16 c, u16 top) {   // a part in cell units (0..80 a cell, front = +z), heights in tenths of a quarter-tile; sides c, top
     if (pv_cap) { if (npv < PVMAX && h1 > 0) { PBox *b = &pv[npv++]; b->x0 = (s16)lx0; b->z0 = (s16)lz0; b->x1 = (s16)lx1; b->z1 = (s16)lz1; b->h0 = (s16)(h0 * ob_hs / 100); b->h1 = (s16)(h1 * ob_hs / 100); b->c = c; b->t = top; } return; }   // (the shop's picture)
     int ax, az, bx2, bz;
     switch (ob_rot & 3) { case 1: ax = lz0; az = ob_w - lx0; bx2 = lz1; bz = ob_w - lx1; break; case 2: ax = ob_w - lx0; az = ob_l - lz0; bx2 = ob_w - lx1; bz = ob_l - lz1; break; case 3: ax = ob_l - lz0; az = lx0; bx2 = ob_l - lz1; bz = lx1; break; default: ax = lx0; az = lz0; bx2 = lx1; bz = lz1; }
@@ -832,13 +922,14 @@ static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every
     ob_x = tl(x * 2) + T / 6; ob_z = tl(y * 2) + T / 6; ob_rot = rot; ob_hs = id >= 0 && id < 28 ? HSC[id] : 100;
     if (it->nbox) {   // (D35) a PS1 model: its own boxes, converted by tools/dsbuild/mk_dsitems.py (PS1 units: 10 across, 7 up)
         int fch = id == PS1ID[0xDB] - 1 ? 0xDB : id == PS1ID[0xDC] - 1 ? 0xDC : 0, nb = fch == 0xDB ? 1 : it->nbox;   // (D38: a crop bed is its soil and what the farm has growing; a coop has its hens)
+        if (dpass == 2 && !pv_cap && !ghost) { if (fch == 0xDC && o_det && !lod_force && !(mode == M_LIVE && lod_far())) farm_extras(fch, x, y, IBOX[it->box0].z1 * 7); return; }   // (D39: the moving pass draws only the hens)
         if (!pv_cap && (!o_det || lod_force || (mode == M_LIVE && lod_far()))) {   // far off: one box, as big as the model (D38: was the item's nominal height, so a crop bed stood like a crate)
             if (fch == 0xDB) { const IBx *b = &IBOX[it->box0]; ob(0, 0, 80, 80, 0, b->z1 * 7, b->side); farm_extras(fch | 0x100, x, y, b->z1 * 7); return; }
             int top = 0, a0 = 80, b0 = 80, a1 = 0, b1 = 0; for (int k = 0; k < nb; k++) { const IBx *b = &IBOX[it->box0 + k]; if (b->z1 * 7 > top) top = b->z1 * 7; if (b->a0 < a0) a0 = b->a0; if (b->b0 < b0) b0 = b->b0; if (b->a1 > a1) a1 = b->a1; if (b->b1 > b1) b1 = b->b1; }
             ob(a0 * 10, b0 * 10, a1 * 10, b1 * 10, 0, top, c); return; }
         if (o_shd && !pv_cap && it->kind != 1) { u16 sh = LC(6, 5, 4); ob_x -= 6; ob_z -= 4; ob(0, 0, ob_w, ob_l, -3, 0, sh); ob_x += 6; ob_z += 4; }
         for (int k = 0; k < nb; k++) { const IBx *b = &IBOX[it->box0 + k]; ob2(b->a0 * 10, b->b0 * 10, b->a1 * 10, b->b1 * 10, b->z0 * 7, b->z1 * 7, b->side, b->top); }
-        if (fch && !pv_cap) farm_extras(fch, x, y, IBOX[it->box0].z1 * 7);
+        if (fch && !pv_cap && !(fch == 0xDC && dpass == 1)) farm_extras(fch, x, y, IBOX[it->box0].z1 * 7);
         return; }
     if (!pv_cap && (!o_det || lod_force || (mode == M_LIVE && lod_far()))) { if (it->kind == 1) ob(0, 0, 80, 80, 0, 3, c); else ob(8, 8, 72, 72, 0, it->h * 10 + 6, c); return; }
     if (it->kind == 1) { ob(0, 0, 80, 80, 0, 2, d); ob(6, 6, 74, 74, 0, 4, c); ob(14, 14, 66, 66, 0, 5, l); return; }   // rug: border and centre
@@ -898,7 +989,7 @@ static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every
     default: ob(4, 4, 76, 76, 0, it->h * 10, c); break; }
 }
 static int door_open;
-static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, int wh) {   // one wall piece (or a door) on a cell edge; vert: it runs along z
+ITCM_CODE static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, int wh) {   // one wall piece (or a door) on a cell edge; vert: it runs along z
     u16 c = WALLC[v - 1], cap = shade(c, 10), base = shade(c, 6), frame = C15(11, 7, 4); int th = T / 16, ps = T / 6;
     if (v == 6) {   // a fence: two posts and two rails on the cell edge (gardens, yards, paddocks)
         int fh = T * 7 / 10; u16 pc = shade(c, 7), rc = c;
@@ -1147,60 +1238,96 @@ static void draw_floors(int L) {   // floors as the biggest same-type rectangles
         if (!L) ground(tl(x * 2) - 4, tl(y * 2) - 4, tl((x + w) * 2) + 4, tl((y + d) * 2) + 4, -40, FLOORC[t - 1]);
         else block(tl(x * 2) - 4, tl(y * 2) - 4, tl((x + w) * 2) + 4, tl((y + d) * 2) + 4, 30, -40, C15(24, 22, 19), FLOORC[t - 1]); }
 }
+static u32 *wsig;          // (D39) set: draw_walls only mixes which walls are cut down into *wsig (the still list's signature)
 static void draw_walls(int L, int yaw) {   // thin walls (a skirting board, the wall, a pale cap) and proper doors
     u8 (*hw)[GN] = HWv(L); u8 (*vw)[GN + 1] = VWv(L);
-    int th = T / 16, whf = WHF, whl = T * 2; float cs = cosLerp(yaw) / 4096.0f, sn = sinLerp(yaw) / 4096.0f; int tx0 = mode == M_LIVE ? camx : 0, tz0 = mode == M_LIVE ? camz : 0;
+    int th = T / 16, whf = WHF, whl = T * 2, cs = cosLerp(yaw), sn = sinLerp(yaw); int tx0 = mode == M_LIVE ? camx : 0, tz0 = mode == M_LIVE ? camz : 0;
     for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) { int v = hw[y][x]; if (!v) continue; int e = x + 1; if (v != 5 && v != 6) while (e < GN && hw[y][e] == v) e++;   // runs of the same wall are one piece (the polygon budget)
+        int mx = (tl(x * 2) + tl(e * 2)) / 2, mz = tl(y * 2); int near = (((mx - tx0) * -sn + (mz - tz0) * cs) >> 12) > 2000;
+        if (wsig) { *wsig = (*wsig ^ (u32)(near + x * 2 + y * 64)) * 16777619u; x = e - 1; continue; }
+        if (v == 5 ? dpass == 1 : dpass == 2) { x = e - 1; continue; }   // (doors open and shut as the sims pass: they are drawn with what moves)
         if (v == 5) { door_open = 0; for (int q = 0; q < nsim; q++) if (slv[q] == L && abs(sims[q].x - x * 16) < 26 && abs(sims[q].y - (y * 16 - 8)) < 26) door_open = 1; }
         int through0 = v != 6 && y > 0 && y < GN && vw[y - 1][x] && vw[y][x], through1 = v != 6 && y > 0 && y < GN && e <= GN && vw[y - 1][e] && vw[y][e];   // does a wall run right across the end? then stop inside it (no poking out)
-        int mx = (tl(x * 2) + tl(e * 2)) / 2, mz = tl(y * 2); int near = (int)((mx - tx0) * -sn + (mz - tz0) * cs) > 2000;
         wall_seg(tl(x * 2) - (through0 ? -6 : th + 4), tl(y * 2) - th, tl(e * 2) + (through1 ? -6 : th + 4), tl(y * 2) + th, v, 0, near ? whl : whf); x = e - 1; }
     for (int x = 0; x <= GN; x++) for (int y = 0; y < GN; y++) { int v = vw[y][x]; if (!v) continue; int e = y + 1; if (v != 5 && v != 6) while (e < GN && vw[e][x] == v) e++;
+        int mx = tl(x * 2), mz = (tl(y * 2) + tl(e * 2)) / 2; int near = (((mx - tx0) * -sn + (mz - tz0) * cs) >> 12) > 2000;
+        if (wsig) { *wsig = (*wsig ^ (u32)(near + x * 4096 + y * 128)) * 16777619u; y = e - 1; continue; }
+        if (v == 5 ? dpass == 1 : dpass == 2) { y = e - 1; continue; }
         if (v == 5) { door_open = 0; for (int q = 0; q < nsim; q++) if (slv[q] == L && abs(sims[q].x - (x * 16 - 8)) < 26 && abs(sims[q].y - y * 16) < 26) door_open = 1; }
         int through0 = v != 6 && x > 0 && x < GN && hw[y][x - 1] && hw[y][x], through1 = v != 6 && x > 0 && x < GN && e <= GN && hw[e][x - 1] && hw[e][x];
-        int mx = tl(x * 2), mz = (tl(y * 2) + tl(e * 2)) / 2; int near = (int)((mx - tx0) * -sn + (mz - tz0) * cs) > 2000;
         wall_seg(tl(x * 2) - th, tl(y * 2) - (through0 ? -6 : th + 12), tl(x * 2) + th, tl(e * 2) + (through1 ? -6 : th + 12), v, 1, near ? whl : whf); y = e - 1; }
 }
 static int view_lv(void) { return mode == M_LIVE ? slv[ctl] : ed_lv; }   // the storey you are looking at: the ones above it are cut away
-static void draw_build(int yaw) {
-    u16 lawn = land_col(nb[1][1].terrain);
-    ground(tl(0), tl(0), tl(GN * 2), tl(GN * 2), 0, lawn);   // the lawn (sand on a beach): one quad and big darker squares (every polygon counts on the DS)
-    if (o_chk) for (int z = 0; z < GN; z += 2) for (int x = 0; x < GN; x += 2) if (((x + z) / 2) & 1) { int e = x + 2 > GN ? GN : x + 2, f = z + 2 > GN ? GN : z + 2; ground(tl(x * 2), tl(z * 2), tl(e * 2), tl(f * 2), -20, shade(lawn, 7)); }
-    if (!zone) ground(tl(0), tl(26) - 30, tl(GN * 2), tl(26), -20, C15(14, 24, 10));   // a low hedge line along the back of the plot (no more posts sticking out)
-    if (!zone) block(tl(door_cx * 2) + T / 2, tl(door_cy * 2 + 1), tl(door_cx * 2 + 2) - T / 2, tl(26), 0, -26, C15(19, 18, 16), C15(23, 22, 20));   // a path from the front door to the pavement
-    int top = top_lv(), vl = view_lv(), show = vl;   // the storeys over the one you look at are cut away; Roofs: Always shows the whole house, and so does Cutaway when nobody is in it
+static u8 ID2CH[NITEM];
+static int show_lv(void) {   // the storeys drawn: the ones over the one you look at are cut away; Roofs: Always shows the whole house, and so does Cutaway when nobody is in it
+    int top = top_lv(), vl = view_lv(), show = vl;
     if (mode == M_LIVE && top > 0 && o_roof != 2) { int x0, y0, x1, y1, in = 0; if (lv_box(0, &x0, &y0, &x1, &y1)) for (int q = 0; q < nsim; q++) { int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16); if (cx >= x0 && cx < x1 && cy >= y0 && cy < y1) in = 1; }
         if (o_roof == 1 || !in) show = top; }
     if (mode == M_BUILD && tool == 5) show = top;   // (the Roof tool shows the whole house and its roof)
-    if (show > top) show = top; if (show < vl) show = vl;
+    if (show > top) show = top; if (show < vl) show = vl; return show;
+}
+static int roof_seen(int top) {   // (D39, from roof_draw) 0: Cutaway hides the roof because someone is up there
+    int x0, y0, x1, y1; if (!lv_box(top, &x0, &y0, &x1, &y1)) return 0;
+    if (mode == M_LIVE && o_roof == 0) for (int q = 0; q < nsim; q++) { int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16); if (slv[q] == top && cx >= x0 && cx < x1 && cy >= y0 && cy < y1) return 0; }
+    return 1;
+}
+static int obj_far(const Obj *o) { ob_x = tl(o->x * 2) + T / 6; ob_z = tl(o->y * 2) + T / 6; return mode == M_LIVE && lod_far(); }
+static void draw_build(int yaw) {   // (D39) dpass 1: the still part (recorded once), 2: what moves (every frame), 0: both
+    int st = dpass != 2, mv = dpass != 1;
+    u16 lawn = land_col(nb[1][1].terrain);
+    if (st) { ground(tl(0), tl(0), tl(GN * 2), tl(GN * 2), 0, lawn);   // the lawn (sand on a beach): one quad and big darker squares (every polygon counts on the DS)
+        if (o_chk) for (int z = 0; z < GN; z += 2) for (int x = 0; x < GN; x += 2) if (((x + z) / 2) & 1) { int e = x + 2 > GN ? GN : x + 2, f = z + 2 > GN ? GN : z + 2; ground(tl(x * 2), tl(z * 2), tl(e * 2), tl(f * 2), -20, shade(lawn, 7)); }
+        if (!zone) ground(tl(0), tl(26) - 30, tl(GN * 2), tl(26), -20, C15(14, 24, 10));   // a low hedge line along the back of the plot (no more posts sticking out)
+        if (!zone) block(tl(door_cx * 2) + T / 2, tl(door_cy * 2 + 1), tl(door_cx * 2 + 2) - T / 2, tl(26), 0, -26, C15(19, 18, 16), C15(23, 22, 20)); }   // a path from the front door to the pavement
+    if (dpass == 2) PROF(10);
+    int top = top_lv(), vl = view_lv(), show = show_lv(); if (dpass == 2) PROF(9);
     for (int L = show; L >= 0; L--) {   // (from the storey you look at down: the DS draws at most 2048 polygons, and what is sent last is what it drops)
         gy_off = -WHF * L; lod_force = L < vl;   // (the things on the storeys under yours: simple boxes)
-        draw_floors(L); draw_walls(L, yaw);
-        for (int i = 0; i < nsim; i++) if (slv[i] == L) sim3d(i, yaw);   // sims first: they always get their polygons
-        for (int i = 0; i < nobj; i++) {   // then the items, nearest the camera first in budget terms: far ones are skipped when the DS runs out of polygons
+        if (st) draw_floors(L);
+        draw_walls(L, yaw);
+        if (mv) { if (dpass == 2) PROF(6); for (int i = 0; i < nsim; i++) if (slv[i] == L) sim3d(i, yaw);   // sims first: they always get their polygons
+            if (dpass == 2) PROF(7);
+            for (int i = 0; i < nobj; i++) if (OBJ_LV(&objs[i]) == L && ID2CH[OBJ_ID(&objs[i])] == 0xDC) obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); }   // (the hens peck about: they move)
+        if (st) for (int i = 0; i < nobj; i++) {   // then the items, nearest the camera first in budget terms: far ones are skipped when the DS runs out of polygons
             if (OBJ_LV(&objs[i]) != L) continue;
             if (mode == M_LIVE) { int ox2 = tl(objs[i].x * 2) - camx, oz2 = tl(objs[i].y * 2) - camz; if (abs(ox2) + abs(oz2) > 9000 && polys > 1800) continue; }
             if (polys > 2900) continue;
             obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); } }
-    gy_off = 0; lod_force = 0;
-    if (mode == M_LIVE) draw_world(yaw); else {   // (D36: the street round the plot after the house, so the house is never what the DS's polygon list drops)
-    ground(tl(-14), tl(-9), tl(40), tl(-2), 0, C15(7, 7, 9)); ground(tl(-14), tl(28), tl(40), tl(35), 0, C15(7, 7, 9));   // two proper streets, three cells wide
-    block(tl(-14), tl(-2), tl(40), tl(0), 0, -14, C15(20, 20, 20), C15(24, 24, 24)); block(tl(-14), tl(26), tl(40), tl(28), 0, -14, C15(20, 20, 20), C15(24, 24, 24));   // pavements
-    for (int x = -13; x < 40; x += 4) { ground(tl(x), tl(-6) - 14, tl(x) + T * 2, tl(-6) + 14, -6, C15(28, 26, 8)); ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -6, C15(28, 26, 8)); }   // lane dashes (flat: one quad each, not five)
-    ground(tl(-14), tl(-9), tl(40), tl(35), 90, C15(7, 16, 6));   // grass all round, so the lot does not float
-    if (polys < 2600) for (int i = 0; i < 5; i++) { tree(tl(-6 + (i * 7) % 5 * 1), tl(2 + i * 5), T * 2); tree(tl(GN * 2 + 3 - (i * 5) % 4), tl(1 + i * 5), T * 2); }
-    }
-    for (int i = 0; i < nsim; i++) if (slv[i] > show) { /* (upstairs, cut away) */ }
-    dog_draw(); ghost_draw();
-    if (show == top) { gy_off = 0; roof_draw(top); }
-    if (mode == M_LIVE) { draw_city(); draw_far_all(yaw); }
+    gy_off = 0; lod_force = 0; if (dpass == 2) PROF(6);
+    if (st) { if (mode == M_LIVE) draw_world(yaw); else {   // (D36: the street round the plot after the house, so the house is never what the DS's polygon list drops)
+        ground(tl(-14), tl(-9), tl(40), tl(-2), 0, C15(7, 7, 9)); ground(tl(-14), tl(28), tl(40), tl(35), 0, C15(7, 7, 9));   // two proper streets, three cells wide
+        block(tl(-14), tl(-2), tl(40), tl(0), 0, -14, C15(20, 20, 20), C15(24, 24, 24)); block(tl(-14), tl(26), tl(40), tl(28), 0, -14, C15(20, 20, 20), C15(24, 24, 24));   // pavements
+        for (int x = -13; x < 40; x += 4) { ground(tl(x), tl(-6) - 14, tl(x) + T * 2, tl(-6) + 14, -6, C15(28, 26, 8)); ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -6, C15(28, 26, 8)); }   // lane dashes (flat: one quad each, not five)
+        ground(tl(-14), tl(-9), tl(40), tl(35), 90, C15(7, 16, 6));   // grass all round, so the lot does not float
+        if (polys < 2600) for (int i = 0; i < 5; i++) { tree(tl(-6 + (i * 7) % 5 * 1), tl(2 + i * 5), T * 2); tree(tl(GN * 2 + 3 - (i * 5) % 4), tl(1 + i * 5), T * 2); }
+        } }
+    if (mv) { dog_draw(); ghost_draw(); }
+    if (st && show == top) { gy_off = 0; roof_draw(top); }
+    if (mode == M_LIVE) { if (mv) { PROF(2); draw_city(); PROF(7); } if (st) draw_far_all(yaw); }
     gy_off = -WHF * vl;
-    if (mode == M_LIVE && mark_t > 0) { ground(tl(mark_x * 2), tl(mark_y * 2), tl(mark_x * 2 + 2), tl(mark_y * 2 + 2), -60, C15(31, 31, 12)); mark_t--; }
-    if (mode == M_BUY || mode == M_BUILD) {   // the cursor
+    if (mv && mode == M_LIVE && mark_t > 0) { ground(tl(mark_x * 2), tl(mark_y * 2), tl(mark_x * 2 + 2), tl(mark_y * 2 + 2), -60, C15(31, 31, 12)); mark_t--; }
+    if (mv && (mode == M_BUY || mode == M_BUILD)) {   // the cursor
         ground(tl(pcx * 2), tl(pcy * 2), tl(pcx * 2 + 2), tl(pcy * 2 + 2), -80, C15(31, 31, 31));
         if (mode == M_BUY && pick >= 0) obj3d(pcx, pcy, &ITEMS[pick], prot, 1);
     }
     gy_off = 0;
+}
+static u32 still_sig(int yaw) {   // (D39) everything the still list depends on: when this changes, it is recorded again
+    u32 h = 2166136261u;
+    #define HM(v) h = (h ^ (u32)(v)) * 16777619u
+    HM(mode); HM(zone); HM(lot_bx); HM(lot_by); HM(nb_ok); HM(nobj); HM(roof_st); HM(tool); HM(ed_lv); HM(view_lv()); HM(door_cx + door_cy * 32); HM(lit_on); HM(lit_sgn);
+    int show = show_lv(), top = top_lv(); HM(show); HM(top); HM(show == top && roof_st ? roof_seen(top) : 0);
+    HM(o_det | o_chk << 1 | o_shd << 2 | o_lit << 3 | o_roof << 4 | o_dd << 6 | o_sty << 8 | o_trf << 10);
+    { const u32 *w = (const u32 *)flr; for (unsigned k = 0; k < sizeof flr / 4; k++) HM(w[k]); }
+    { const u8 *q = &hwl[0][0]; for (unsigned k = 0; k < sizeof hwl; k++) HM(q[k]); q = &vwl[0][0]; for (unsigned k = 0; k < sizeof vwl; k++) HM(q[k]); }
+    if (top) { const u8 *q = &uflr[0][0][0]; for (unsigned k = 0; k < sizeof uflr; k++) if (q[k]) HM(k * 256 + q[k]); q = &uhwl[0][0][0]; for (unsigned k = 0; k < sizeof uhwl; k++) if (q[k]) HM(k * 256 + q[k]); q = &uvwl[0][0][0]; for (unsigned k = 0; k < sizeof uvwl; k++) if (q[k]) HM(k * 256 + q[k]); }
+    for (int i = 0; i < nobj; i++) { const Obj *o = &objs[i]; HM(o->x | o->y << 8 | o->c << 16 | (u32)o->i << 24); HM(o->rot);
+        if (mode == M_LIVE) { int ox2 = tl(o->x * 2) - camx, oz2 = tl(o->y * 2) - camz; HM((abs(ox2) + abs(oz2) > 9000) | obj_far(o) << 1); } }
+    for (int k = 0; k < 4; k++) HM(fm_n[k] | fm_g[k] << 8 | fm_dry[k] << 16); HM(fm_pest);
+    for (int j = 0; j < 3; j++) for (int i = 0; i < 3; i++) HM(nb_pop[j][i]);
+    wsig = &h; for (int L = show; L >= 0; L--) draw_walls(L, yaw); wsig = 0;
+    #undef HM
+    return h;
 }
 
 // ============ the Sims-style game: LIVE (status on the top screen, the lot and its icons on the bottom, touch to play) ============
@@ -1637,23 +1764,31 @@ static void life_panel(void) {   // the top screen's second page: job, aspiratio
 }
 static u16 offbuf[256 * 192] __attribute__((aligned(32)));   // (D37) a 2D screen is drawn here and copied over in one go: no half-drawn screen is ever shown
 static void off_show(u16 *dst) { DC_FlushRange(offbuf, sizeof offbuf); dmaCopy(offbuf, dst, sizeof offbuf); scr = dst; }
+static void status_vals(int clear) {   // (D39) what changes by the minute on the Live top screen (mood, clock, funds, needs): redrawn on its own, straight on the screen, not the whole screen
+    const Sim *m = &sims[cur_sim]; char t[48];
+    rect(112, 26, 70, 9, C15(24, 28, 31)); rect(113, 27, 68 * mood(m) / 100, 7, need_col(mood(m)));
+    if (clear) { rect(78, 41, 170, 10, PAN); rect(78, 53, 170, 10, PAN); }
+    int mn = minutes % 1440, h12 = (mn / 60) % 12 ? (mn / 60) % 12 : 12;
+    sprintf(t, "%s %d:%02d %s  %s", DAYN[(minutes / 1440) % 7], h12, mn % 60, mn / 60 >= 12 ? "PM" : "AM", SEASN[fm_season()]); text(78, 42, 1, TXT, t);
+    sprintf(t, "Funds %d", funds); text(78, 54, 1, C15(31, 31, 20), t); if (o_pm) { sprintf(t, "%dfps %dq", fps_now, polys_last / 2); text(172, 54, 1, polys_last > 2900 ? C15(31, 12, 8) : C15(24, 28, 31), t); }
+    if (info_pg == 1) return;
+    for (int k = 0; k < 6; k++) { int cx = 14 + (k & 1) * 120, cy = 94 + (k >> 1) * 30;
+        rect(cx + 3, cy + 3, 8, 8, need_col(m->need[k])); rect(cx + 18, cy + 7, 84, 8, C15(2, 6, 14)); rect(cx + 19, cy + 8, 82 * m->need[k] / 100, 6, need_col(m->need[k])); }
+}
 static void draw_top_status(void) {   // the top screen while you live: the sim's mood, the time and money, and the needs (or the bio of another sim)
     scr = offbuf; backdrop(); const Sim *m = &sims[cur_sim];
     char t[48];
     if (cur_sim == ctl) {
         face(8, 8, 56, m);
         panel(70, 6, 180, 60, sname[ctl]);
-        text(78, 28, 1, TXT, "Mood"); rect(112, 26, 70, 9, C15(24, 28, 31)); rect(113, 27, 68 * mood(m) / 100, 7, need_col(mood(m)));
-        int mn = minutes % 1440, h12 = (mn / 60) % 12 ? (mn / 60) % 12 : 12;
-        sprintf(t, "%s %d:%02d %s  %s", DAYN[(minutes / 1440) % 7], h12, mn % 60, mn / 60 >= 12 ? "PM" : "AM", SEASN[fm_season()]); text(78, 42, 1, TXT, t); sprintf(t, "%s %d", STGN[stage_of(m->age)], m->age); text(190, 28, 1, C15(31, 31, 20), t);
-        sprintf(t, "Funds %d", funds); text(78, 54, 1, C15(31, 31, 20), t); if (o_pm) { sprintf(t, "%dfps %dq", fps_now, polys_last / 2); text(172, 54, 1, polys > 2900 ? C15(31, 12, 8) : C15(24, 28, 31), t); }
-        if (info_pg == 1) { life_panel(); return; }
+        text(78, 28, 1, TXT, "Mood"); sprintf(t, "%s %d", STGN[stage_of(m->age)], m->age); text(190, 28, 1, C15(31, 31, 20), t);
+        if (info_pg == 1) { status_vals(0); life_panel(); return; }
         panel(6, 72, 244, 114, "Needs");
         if (zone == Z_ISLAND) { int n = 0; for (int k = 0; k < SEC_N; k++) n += (isl_secrets >> k) & 1; sprintf(t, "W%d S%d L%d Food %d  %d/8", isl_wood, isl_stone, isl_leaves, isl_food, n); text(70, 77, 1, C15(31, 31, 20), t); }   // (D37: wood, stone, leaves, food, secrets)
         static const int order[6] = { 0, 1, 2, 3, 4, 5 };
         for (int k = 0; k < 6; k++) { int n = order[k], cx = 14 + (k & 1) * 120, cy = 94 + (k >> 1) * 30;
-            rect(cx, cy, 14, 14, C15(18, 24, 31)); text(cx + 4, cy + 4, 1, PANB, "-"); rect(cx + 3, cy + 3, 8, 8, need_col(m->need[n]));
-            text(cx + 18, cy, 1, TXT, NEEDN[n]); rect(cx + 18, cy + 7, 84, 8, C15(2, 6, 14)); rect(cx + 19, cy + 8, 82 * m->need[n] / 100, 6, need_col(m->need[n])); }
+            rect(cx, cy, 14, 14, C15(18, 24, 31)); text(cx + 18, cy, 1, TXT, NEEDN[n]); }
+        status_vals(0);
     } else {
         char tt[40]; sprintf(tt, "%s - %s %d", sname[cur_sim], STGN[stage_of(m->age)], m->age); panel(6, 6, 244, 180, tt);
         face(16, 30, 64, m);
@@ -1970,14 +2105,13 @@ static void ghost_step(int frames) {
 }
 static void ghost_draw(void) {
     if (!ngh || !night_now()) return; int any = 0; for (int k = 0; k < GH_MAX; k++) if (gh[k].on && gh[k].bx == lot_bx && gh[k].by == lot_by) any = 1; if (!any) return;
-    int lf = lit_on ? (POLY_FORMAT_LIGHT0 | POLY_FORMAT_LIGHT1) : 0;
-    glEnd(); glPolyFmt(POLY_ALPHA(18) | POLY_CULL_NONE | POLY_ID(2) | lf); glBegin(GL_QUADS);
+    gx_fmt((gx_base & ~(u32)0x3F1F0000) | POLY_ALPHA(18) | POLY_ID(2));   // (D39: recorded with the rest)
     for (int k = 0; k < GH_MAX; k++) { const Ghost *g = &gh[k]; if (!g->on || g->bx != lot_bx || g->by != lot_by) continue;
         int x = g->x * 2 * T / 16 - GN * T + T, z = g->y * 2 * T / 16 - GN * T + T, bob = sinLerp(gframes * 300 + k * 900) * 40 / 4096; u16 c = C15(27, 29, 31), e = C15(2, 2, 5);
         block(x - 120, z - 120, x + 120, z + 120, -100 - bob, -560 - bob, c, c); block(x - 100, z - 100, x + 100, z + 100, -560 - bob, -760 - bob, c, c);
         block(x - 60, z + 100, x - 20, z + 106, -640 - bob, -690 - bob, e, e); block(x + 20, z + 100, x + 60, z + 106, -640 - bob, -690 - bob, e, e);
         block(x - 60, z - 106, x - 20, z - 100, -640 - bob, -690 - bob, e, e); block(x + 20, z - 106, x + 60, z - 100, -640 - bob, -690 - bob, e, e); }
-    glEnd(); glPolyFmt(POLY_ALPHA(31) | POLY_CULL_NONE | POLY_ID(1) | lf); glBegin(GL_QUADS);
+    gx_fmt(gx_base);
 }
 static int arrive(int i) {   // at the thing: start doing it (0: nothing to do after all)
     Sim *m = &sims[i];
@@ -2136,10 +2270,23 @@ static void beard3d(int bd, u16 hc, u16 sk, int hw, int hz) {
     if (bd == 3) bx(-170, 20, hz - 80, 170, 480, hz + 70, hc);
 }
 static int sq_q, fq4[SIM_MAX], sb_sc = 100;
-static void sb(int ox, int oz, int lx0, int lu0, int lz0, int lx1, int lu1, int lz1, u16 c) {   // a part in the sim's own frame (z = front), turned to face where it walks
+ITCM_CODE static void sb(int ox, int oz, int lx0, int lu0, int lz0, int lx1, int lu1, int lz1, u16 c) {   // a part in the sim's own frame (z = front), turned to face where it walks
     int ax, az, bx2, bz; lx0 = lx0 * sb_sc / 100; lx1 = lx1 * sb_sc / 100; lu0 = lu0 * sb_sc / 100; lu1 = lu1 * sb_sc / 100; lz0 = lz0 * sb_sc / 100; lz1 = lz1 * sb_sc / 100;
     switch (sq_q & 3) { case 1: ax = lz0; az = -lx0; bx2 = lz1; bz = -lx1; break; case 2: ax = -lx0; az = -lz0; bx2 = -lx1; bz = -lz1; break; case 3: ax = -lz0; az = lx0; bx2 = -lz1; bz = lx1; break; default: ax = lx0; az = lz0; bx2 = lx1; bz = lz1; }
     bx(ox + (ax < bx2 ? ax : bx2), lu0, oz + (az < bz ? az : bz), ox + (ax < bx2 ? bx2 : ax), lu1, oz + (az < bz ? bz : az), c);
+}
+// (D39) A SIM'S MODEL IS RECORDED ONCE (for its looks, its stride and its detail) round its own feet, facing +z, and each frame placed and turned by one matrix (lighting turns with it)
+#define SML_N 24
+#define SML_W 2400
+typedef struct { u32 key, used; int n; u32 w[SML_W]; } SimL;
+static SimL sml[SML_N] __attribute__((aligned(32))); static int sml_next; static volatile int sml_miss; static u32 gf_serial = 8;
+static void sim_emit(const SimL *e, int x, int y, int z, int q) {   // into the list being recorded: push, turn by q quarters and move to x,y,z, the model, pop
+    static const s8 RC[4][4] = { { 1, 0, 0, 1 }, { 0, -1, 1, 0 }, { -1, 0, 0, -1 }, { 0, 1, -1, 0 } };   // (m00 m02 m20 m22: as sb() turns a part)
+    if (gxn + e->n + 40 > gx_cap) { gx_full = 1; return; }
+    gx_c0(0x11); gx_c1(0x10, 2); gx_id(0x19); const s8 *r = RC[q & 3];
+    u32 *o = &gxb[gxn]; o[0] = (u32)(r[0] * 4096); o[1] = 0; o[2] = (u32)(r[1] * 4096); o[3] = 0; o[4] = 4096; o[5] = 0; o[6] = (u32)(r[2] * 4096); o[7] = 0; o[8] = (u32)(r[3] * 4096); o[9] = (u32)x; o[10] = (u32)y; o[11] = (u32)z; gxn += 12;
+    gx_c1(0x10, 1); if (gf_rec) { gf_cut(); gf_add(e->w, e->n); } else { gxk = 4; memcpy(&gxb[gxn], e->w, (size_t)e->n * 4); gxn += e->n; }   // (the model goes as a piece of its own: no copying)
+    gxk = 4; gx_lv = 0; gx_mat = gx_nrm = gx_col = ~0u; gx_c1(0x12, 1);
 }
 static void sim3d(int i, int yaw) {
     const Sim *m = &sims[i]; (void)yaw; int P[PMN]; eff_pm(m->pm, P); int stg = stage_of(m->age); sb_sc = STSC[stg]; int lod = i != ctl && (abs(m->x * 2 * T / 16 - GN * T + T - camx) + abs(m->y * 2 * T / 16 - GN * T + T - camz) > 2400); if (stg < 3) { P[8] += (3 - stg) * 24; P[9] += (3 - stg) * 24; }
@@ -2152,6 +2299,16 @@ static void sim3d(int i, int yaw) {
     int hw = 100 + (P[8] - 50) / 2, ht = 200 + (P[9] - 50) / 2, lh = 320 + (P[22] - 50) * 2 + (P[26] - 50) * 3, base = 630 + (P[15] - 50) * 2 + (P[22] - 50) * 2 + (P[26] - 50) * 5,
         sw = 135 + (P[14] - 50), at = 50 + (P[21] - 50) / 2, lt = 90 + (P[23] - 50) / 2, bz = 85 + (P[24] - 50) * 2, al = 250 + (P[20] - 50) * 2, hb = base + 30;
     int sw_l = mv ? sinLerp(gframes * 1100 + i * 700) * 70 / 4096 : 0;
+    SimL *se = 0; int cached = 0, ox = x, oz = z, oq = sq_q, ogy = gy_off; u32 *sb_ = 0; int sn_ = 0, sh_ = 0, sk_ = 0, sc_ = 0; u32 sm_ = 0, snm_ = 0, scl_ = 0;
+    if (gxb && dpass == 2) {   // (D39) the cached model: the key is everything its shape and colours come from
+        if (mv) sw_l = sinLerp((s16)(((gframes * 1100 + i * 700) & 32767) & ~4095)) * 70 / 4096;   // (the stride in eight steps)
+        u32 key = 2166136261u; for (int q = 0; q < PMN; q++) key = (key ^ (u32)P[q]) * 16777619u;
+        key = (key ^ (u32)(stg | lod << 3 | (u32)m->hair << 4 | (u32)m->beard << 9 | (u32)lit_on << 13)) * 16777619u; key = (key ^ ((u32)sk | (u32)hc << 16)) * 16777619u; key = (key ^ ((u32)sh | (u32)pants << 16)) * 16777619u; key = (key ^ (u32)(sw_l + 1000)) * 16777619u;
+        for (int q = 0; q < SML_N; q++) if (sml[q].key == key && sml[q].n) { se = &sml[q]; cached = 1; break; }
+        if (!se) { for (int t = 0; t < SML_N; t++) { se = &sml[sml_next]; sml_next = (sml_next + 1) % SML_N; if (se->used + 2 < gf_serial) break; }   // (never one the frame being sent still uses)
+            se->key = key; se->n = 0; sml_miss++;
+            sb_ = gxb; sn_ = gxn; sh_ = gxh; sk_ = gxk; sc_ = gx_cap; sm_ = gx_mat; snm_ = gx_nrm; scl_ = gx_col; gx_begin(se->w, SML_W); x = 0; z = 0; sq_q = 0; gy_off = 0; } }
+    if (!cached) {
     // legs, shoes, belt
     for (int sd = -1; sd <= 1; sd += 2) { int lx0 = sd > 0 ? 8 : -8 - lt, lx1 = sd > 0 ? 8 + lt : -8, o = sd * sw_l;
         sb(x, z, lx0, 0, -60 + o, lx1, 55, 110 + o, C15(5, 4, 4)); sb(x, z, lx0, 55, -50 + o, lx1, lh, 60 + o, pants); }
@@ -2179,6 +2336,9 @@ static void sim3d(int i, int yaw) {
       sb(x, z, -16 - (P[4] - 50) / 4, ey - 70, f, 16 + (P[4] - 50) / 4, ey - 6, f + 28 + (P[5] - 50) / 4, shade(sk, 8));
       int mw = 36 + (P[0] - 50) / 2, my = ey - 100 + (50 - P[1]) / 3; sb(x, z, -mw, my, f, mw, my + 16 + (P[17] - 50) / 6, f + 6, C15(21, 7, 8)); sb(x, z, -mw + 6, my + 15, f, mw - 6, my + 22, f + 5, C15(26, 12, 12));
       if (m->beard) sb(x, z, -hw + 8, hb, f - 4, hw - 8, ey - 60, f + 8, m->beard == 1 ? lit(sk, 10) : hc); }
+    }
+    if (se) { se->used = gf_serial; if (!cached) { se->n = gx_full ? 0 : gxn; DC_FlushRange(se->w, (u32)se->n * 4); gxb = sb_; gxn = sn_; gxh = sh_; gxk = sk_; gx_cap = sc_; gx_mat = sm_; gx_nrm = snm_; gx_col = scl_; gx_full = 0; gy_off = ogy; x = ox; z = oz; sq_q = oq; }
+        if (se->n) sim_emit(se, ox, -ogy, oz, oq); polys += 120; }
     if (i == ctl) { int py = (hb + ht + 190) * sb_sc / 100; sb_sc = 100; sq_q = 0; bx(x - 40, py, z - 40, x + 40, py + 120, z + 40, C15(6, 30, 6)); bx(x - 30, py - 90, z - 30, x + 30, py, z + 30, C15(5, 22, 5)); }
 }
 // ---- Create-a-Sim: the head on the top screen, the choices on the bottom ----
@@ -2472,11 +2632,12 @@ static void live_touch(int tx, int ty) {
 void systemMsgHandler(int bytes, void *user_data);
 static volatile u32 lat_down; static volatile int lat_tx, lat_ty, lat_press, lat_got; static u32 lat_prev; static volatile u32 vbl_n;
 static void vb_latch(void) {   // every vblank, remember fresh presses, so a quick tap is never lost while a slow frame is being drawn
-    vbl_n++; u32 k = keysCurrent(), n = k & ~lat_prev; lat_prev = k;
+    vbl_n++; gf_kick(vbl_n); u32 k = keysCurrent(), n = k & ~lat_prev; lat_prev = k;
     lat_down |= n & ~(u32)KEY_TOUCH;
     if (n & KEY_TOUCH) { lat_press = 1; lat_got = 0; }
     if ((k & KEY_TOUCH) && lat_press && !lat_got) { touchPosition t; touchRead(&t); if (t.px || t.py) { lat_tx = t.px; lat_ty = t.py; lat_got = 1; } }   // (D35: was touchReadXY(&t), which in libnds 1.8.2 takes no argument and returns the struct: t stayed garbage, so a tap shorter than one pass of the main loop landed at a random place)
 }
+
 int main(void) {
     irqEnable(IRQ_VBLANK); irqSet(IRQ_VBLANK, vb_latch); powerOn(POWER_ALL_2D | POWER_3D_CORE | POWER_MATRIX);
     videoSetMode(MODE_5_3D | DISPLAY_BG3_ACTIVE);
@@ -2489,7 +2650,12 @@ int main(void) {
     cur_set = bm_capital(); town_pick(cur_set);
     lot_reset(); funds = 3500; sims[0].skin = 2; sims[0].hair = 4; sims[0].hcol = 0; sims[0].shirt = 0; mode = M_TITLE; sav_probe(); lcdMainOnTop(); hud_clear();
     int yaw = 0, dist = 13000, frames = 0, dirty = 1; unsigned lastsig = 0; int lastmode = -1;
+#ifdef DSTEST
+    TIMER_DATA(0) = 0; TIMER_DATA(1) = 0; TIMER_CR(1) = TIMER_ENABLE | TIMER_CASCADE; TIMER_CR(0) = TIMER_ENABLE | TIMER_DIV_1;
+#endif
     while (1) {
+        PROF(5);
+        int steps; { static u32 lastv; u32 v = vbl_n; steps = (int)(v - lastv); lastv = v; if (steps < 1) steps = 1; if (steps > 4) steps = 4; }   // (D39) game steps this pass: one a vblank
         scanKeys(); int held = keysHeld(), down = keysDown(); touchPosition tp = {0}; if (held & KEY_TOUCH) touchRead(&tp);
         { u32 ld = lat_down; lat_down = 0; down |= (int)ld; if (down & KEY_TOUCH) lat_press = 0; else if (lat_press && lat_got) { lat_press = 0; down |= KEY_TOUCH; tp.px = (u16)lat_tx; tp.py = (u16)lat_ty; } }
         { static int tb_mode = -1, tb_wait;   // (D34) a new screen takes no touch until the stylus that opened it is lifted: a tap held over the switch to the Map no longer picks the block under it
@@ -2533,6 +2699,12 @@ int main(void) {
             yaw += (o_spin == 0 ? 0 : o_spin == 1 ? 40 : o_spin == 2 ? 80 : 170); pitch = 3200;
         } else if (mode == M_LIVE) {
             LV = slv[ctl];
+#ifdef DSTEST
+            if (test_scene) { int sc = test_scene; test_scene = 0;   // (test builds only: the emulator runner pokes a scene number here to measure it: 1 island, 2 farm, 3 busy street, 4 Strange Town)
+                if (sc == 1) travel_go(Z_ISLAND); else if (sc == 4) travel_go(Z_TOWN);
+                else if (sc == 2) { memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(LOT_FARM, 1); occ_ok = 0; for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (7 + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 11 * 16; sims[q].act = -1; } }
+                else if (sc == 3) { for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (door_cx + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 13 * 16; sims[q].act = -1; } live_pitch = 2200; yaw_t = live_yaw = 4096 * 2; live_dist = 14000; } }
+#endif
             if (cam_on) {   // stylus camera: drag to orbit/tilt (or pan), buttons for zoom, follow, reset, done
                 if (down & KEY_TOUCH) { cam_drag = 0; if (hit(216, 36, 38, 20, tp.px, tp.py)) { cam_pan ^= 1; forced = 1; } else if (hit(216, 58, 38, 20, tp.px, tp.py)) cam_drag = 1;
                     else if (hit(216, 80, 38, 20, tp.px, tp.py)) cam_drag = 2; else if (hit(216, 102, 38, 20, tp.px, tp.py)) { cam_free ^= 1; forced = 1; }
@@ -2560,13 +2732,14 @@ int main(void) {
 #endif
             if (held & KEY_X) { if (live_dist > 3500) live_dist -= 80; } if (held & KEY_Y) { if (live_dist < 16000) live_dist += 80; }
             live_yaw += (yaw_t - live_yaw) / 4; if (yaw_t - live_yaw > -4 && yaw_t - live_yaw < 4) live_yaw = yaw_t;
-            for (int k = 0; k < speed; k++) { sims_step(frames * speed + k); city_step(frames * speed + k); } lot_cross();
+            for (int t = 0; t < steps; t++) { for (int k = 0; k < speed; k++) { sims_step((frames + t) * speed + k); city_step((frames + t) * speed + k); } lot_cross(); } PROF(0);   // (D39: by the vblanks gone by, so the game keeps its speed whatever the frame rate)
             int tx = sims[cur_sim].x * 2 * T / 16 - GN * T + T, tz = sims[cur_sim].y * 2 * T / 16 - GN * T + T; if (!cam_free) { camx += (tx - camx) / 8; camz += (tz - camz) / 8; }
             yaw = live_yaw; dist = live_dist * (o_cam == 0 ? 85 : o_cam == 1 ? 100 : 125) / 100; cam_deff = dist; pitch = live_pitch;
             { int hd = dist * cosLerp(pitch) >> 12, r = (hd + (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500)) >> 2; lod_ex = camx - (hd * sinLerp(yaw) >> 12); lod_ez = camz + (hd * cosLerp(yaw) >> 12); lod_r2 = r * r; }   // (D38) the level of detail goes by the distance from the eye
-            { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)(cur_sim * 7 + ctl * 3 + minutes * 13 + funds + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_secrets * 23) * 31 * zone + (o_pm ? polys_last / 64 + fps_now * 977 : 0) + info_pg * 43 + life_ver * 53); for (int n = 0; n < 6; n++) a = a * 31 + (unsigned)sims[cur_sim].need[n]; a = a * 31 + (unsigned)sims[cur_sim].rel;
+            { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)(cur_sim * 7 + ctl * 3 + (minutes / 1440) * 13 + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_secrets * 23) * 31 * zone + o_pm * 977 + info_pg * 43 + life_ver * 53 + sims[cur_sim].age * 59 + (cur_sim != ctl ? minutes * 7 + funds : 0)); a = a * 31 + (unsigned)sims[cur_sim].rel;
+              static unsigned tv; unsigned av = (unsigned)(minutes * 13 + funds + (o_pm ? polys_last / 64 + fps_now * 977 : 0) + mood(&sims[cur_sim]) * 5); for (int n = 0; n < 6; n++) av = av * 31 + (unsigned)sims[cur_sim].need[n];   // (D39: the values alone are redrawn on their own)
               unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + farm_ui * 97 + (popup || farm_ui ? fm_sig() * 107 : 0) + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
-              if (forced) { ts = ~a; hs = ~b; } if (mode == M_LIVE) { if (a != ts) { draw_top_status(); off_show(scr_sub); ts = a; } if (b != hs) { draw_hud(); off_show(hud); hs = b; } } }   // (D35: not after a menu chip has just left Live, or the Live icons stayed over Buy's 3D view)
+              if (forced) { ts = ~a; hs = ~b; } if (mode == M_LIVE) { if (a != ts) { draw_top_status(); off_show(scr_sub); ts = a; tv = av; } else if (av != tv) { scr = scr_sub; status_vals(1); tv = av; } if (b != hs) { draw_hud(); off_show(hud); hs = b; } } }   // (D35: not after a menu chip has just left Live, or the Live icons stayed over Buy's 3D view)
         } else {   // BUY / BUILD: the live lot on the top screen, the catalogue or plan on the bottom (drag to place, paint, draw walls, move)
             LV = ed_lv;
             if (down & KEY_TOUCH) ui_down(tp.px, tp.py); else if (held & KEY_TOUCH) ui_hold(tp.px, tp.py);
@@ -2591,7 +2764,7 @@ int main(void) {
             if (held & KEY_TOUCH) { int px = tp.px, py = tp.py; for (int k = 0; k < 7; k++) { int cx = 164 + (k < 4 ? k * 22 : (k - 4) * 29), cy = k < 4 ? 164 : 178; if (hit(cx, cy, k < 4 ? 20 : 27, 12, px, py)) {
                 if (k == 0) bb_yaw -= 90; else if (k == 1) bb_yaw += 90; else if (k == 2) { if (bb_pitch < 7200) bb_pitch += 50; } else if (k == 3) { if (bb_pitch > 2000) bb_pitch -= 50; }
                 else if (k == 4) { if (bb_dist > 4500) bb_dist -= 120; } else if (k == 5) { if (bb_dist < 24000) bb_dist += 120; } else { bb_yaw = 3000; bb_pitch = 3900; bb_dist = 12500; } } } }
-            sims_step(frames);
+            for (int t = 0; t < steps; t++) sims_step(frames + t);
             if (mode != M_MAP) {
                 sig = (unsigned)(mode * 7 + cat * 13 + pick * 17 + bpage * 19 + pcx * 31 + pcy * 37 + prot * 41 + tool * 43 + pal * 47 + funds * 59 + nobj * 61 + (msg_t > 0) * 71 + forced + ui_ver * 79 + drag * 83 + (unsigned)(size_t)msg);
                 if (sig != lastsig) { scr = offbuf; backdrop(); draw_ui(); off_show(scr_sub); lastsig = sig; } }
@@ -2601,27 +2774,55 @@ int main(void) {
         if (down & KEY_TOUCH) sfx(0);
         snd_tick();
         { static int lm = -9; if (mus_cur != lm) { lm = mus_cur; if (mode == M_LIVE && mus_cur >= 0) { static char nb[48]; sprintf(nb, "Now playing: %.22s", mus_name(mus_cur)); say(nb); } } }
+        PROF(1);
         if (o_dirty) apply_opts();
+        // (D39) the 3D: a steady 30 frames a second (or up to 60, Options > System > Frame rate); the passes in between do the game and the 2D screens, so the touch screen answers at 60
+        static u32 next3d; int is_lot = mode == M_LIVE || mode == M_BUY || mode == M_BUILD;
+        if (is_lot) {   // (D39) the lot: a new frame is written whenever the last one has been taken; the vblank interrupt sends it on the beat
+            gf_on = 1;
+            { int want = mode == M_LIVE ? slv[ctl] * WHF : (mode == M_BUY || mode == M_BUILD) ? ed_lv * WHF : 0; cam_y += (want - cam_y) / 6; if (want - cam_y > -8 && want - cam_y < 8) cam_y = want; }   // (D36) the camera rises to the storey
+            if (gf_ready < 0) {
+                static u32 st_sig = 1; static int st_n, st_polys, st_k; static u8 st_mode = 255, f_st[2];
+                int b = gf_fly == 0 ? 1 : 0; GFrm *f = &gfr[b]; f->ns = 0; gf_serial++;
+                polys = 0; lit_on = o_lit;
+                gx_base = POLY_ALPHA(31) | POLY_CULL_FRONT | POLY_ID(1) | POLY_FOG | (lit_on ? (POLY_FORMAT_LIGHT0 | POLY_FORMAT_LIGHT1) : 0);
+                gx_begin(gx_dlb[b], GXD_MAX); gf_rec = f; gf_ss = 0;
+                gx_cam(dist, pitch, yaw, mode == M_LIVE ? camx : 0, cam_y, mode == M_LIVE ? camz : 0);
+                dpass = 2; draw_build(yaw); int pd = polys; gf_cut(); gf_rec = 0; u32 *db = gxb; int dn = gxn, dh = gxh, dk = gxk; PROF(2);
+                u32 sg = still_sig(yaw) ^ (u32)mode;
+                if (sg != st_sig || st_mode != mode) { int k = st_k ^ 1; if (gf_busy && f_st[gf_fly] == k) while (gf_busy) {}
+                    polys = pd; gx_begin(gx_slb[k], GXS_MAX); dpass = 1; draw_build(yaw); st_n = gx_end(); DC_FlushRange(gx_slb[k], (u32)st_n * 4); st_polys = polys - pd; st_sig = sg; st_mode = (u8)mode; st_k = k; st_rec++; }
+                PROF(3); dpass = 0;
+                gxb = db; gxn = dn; gxh = dh; gxk = dk; gf_rec = f; gf_ss = gxn;
+                gf_add(gx_slb[st_k], st_n); f_st[b] = (u8)st_k;
+                gx_c1(0x50, 0); gf_cut(); gf_rec = 0; DC_FlushRange(gx_dlb[b], (u32)gxn * 4); gx_end();
+                polys = pd + st_polys; polys_last = polys; gf_ready = b; PROF(4); }
+        } else if ((int)(vbl_n - next3d) >= 0) {   // the title, Create-a-Sim and the Map: straight to the GPU, as before
+        gf_stop(); u32 v3 = vbl_n;
         polys = 0;
         glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluPerspectivef32(degreesToAngle(40), 256 * 4096 / 192, 4096 * 3 / 4, 4096 * 12);
         glMatrixMode(GL_POSITION); glLoadIdentity();
         glTranslatef32(0, 0, -dist); glRotateXi(pitch); glRotateYi(yaw);
-        { int want = mode == M_LIVE ? slv[ctl] * WHF : (mode == M_BUY || mode == M_BUILD) ? ed_lv * WHF : 0; cam_y += (want - cam_y) / 6; if (want - cam_y > -8 && want - cam_y < 8) cam_y = want; }   // (D36) the camera rises to the storey
-        if (mode == M_LIVE) glTranslatef32(-camx, -cam_y, -camz); else if (mode == M_CAS) glTranslatef32(0, -650, 0); else if (mode == M_BUY || mode == M_BUILD) glTranslatef32(0, -cam_y, 0);
+        if (mode == M_CAS) glTranslatef32(0, -650, 0);
         lit_on = o_lit && mode != M_TITLE && mode != M_MAP;
-        glPolyFmt(POLY_ALPHA(31) | POLY_CULL_NONE | POLY_ID(1) | (lit_on ? (POLY_FORMAT_LIGHT0 | POLY_FORMAT_LIGHT1) : 0));
+        gx_base = POLY_ALPHA(31) | POLY_CULL_NONE | POLY_ID(1) | (lit_on ? (POLY_FORMAT_LIGHT0 | POLY_FORMAT_LIGHT1) : 0);
+        glPolyFmt(gx_base);
         if (lit_on) { glMaterialf(GL_SPECULAR, RGB15(0, 0, 0)); glMaterialf(GL_EMISSION, RGB15(0, 0, 0));
             glLight(0, RGB15(27, 25, 21), floattov10(0.45f), floattov10(-0.55f), floattov10(-0.70f)); glLight(1, RGB15(7, 10, 17), floattov10(-0.7f), floattov10(0.1f), floattov10(0.7f)); }
         glBegin(GL_QUADS);
         if (mode == M_CAS) draw_head(yaw);
-        else if (mode == M_TITLE) {}
         else if (mode == M_MAP) { BInfo b; bm_block(sel_x, sel_y, &b); draw_lot(&b, yaw); }
-        else draw_build(yaw);
         glEnd();
-        polys_last = polys;
-        { static u32 v0; static int n0; n0++; if (vbl_n - v0 >= 60) { fps_now = (int)(n0 * 60 / (int)(vbl_n - v0)); v0 = vbl_n; n0 = 0;   // (D36) the frame rate: passes of this loop a second (Options > Graphics > Poly meter shows it)
-            if (o_pm && mode != M_LIVE && mode != M_TITLE && mode != M_CAS) { u16 *keep = scr; scr = hud; char t[32]; rect(0, 182, 92, 10, C15(2, 2, 4)); sprintf(t, "%d fps %d quads", fps_now, polys / 2); text(2, 184, 1, TXT, t); scr = keep; } } }
-        gframes = frames; glFlush(0); swiWaitForVBlank(); if (o_fps30) swiWaitForVBlank(); frames++;
+        polys_last = polys; gf_shown++;
+        glFlush(0);
+        next3d = v3 + (o_fps30 ? 1 : 2);   // (o_fps30 is "Up to 60" since D39)
+        }
+        { static u32 v0; static int n0, ui0; if (vbl_n - v0 >= 60) { int dv = (int)(vbl_n - v0); fps_now = (gf_shown - n0) * 60 / dv; ui_fps = (ui_n - ui0) * 60 / dv; v0 = vbl_n; n0 = gf_shown; ui0 = ui_n;   // (D36) the frame rate (D39: 3D frames shown a second; ui_fps: passes of this loop)
+#ifdef DSTEST
+            for (int k = 0; k < 12; k++) { prof_ms[k] = (int)(prof_t[k] / 33514); prof_t[k] = 0; }
+#endif
+            if (o_pm && mode != M_LIVE && mode != M_TITLE && mode != M_CAS) { u16 *keep = scr; scr = hud; char t[32]; rect(0, 182, 92, 10, C15(2, 2, 4)); sprintf(t, "%d fps %d quads", fps_now, polys_last / 2); text(2, 184, 1, TXT, t); scr = keep; } } }
+        ui_n++; gframes = frames; swiWaitForVBlank(); frames += steps;
     }
     return 0;
 }

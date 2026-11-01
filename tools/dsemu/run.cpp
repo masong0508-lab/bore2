@@ -122,8 +122,9 @@ int main(int argc, char** argv) {
     nds.SetKeyMask(0xFFF & ~keys);
     if (tx >= 0) { nds.TouchScreen(tx, ty); if (!getenv("REALTOUCH")) { nds.ARM9Write16(0x02FFF004, tx); nds.ARM9Write16(0x02FFF006, ty); nds.ARM9Write16(0x02FFF00C, 0x3F); nds.ARM9Write16(0x02FFF008, 100); nds.ARM9Write16(0x02FFF00A, 100); } }
     else { nds.ReleaseScreen(); nds.ARM9Write16(0x02FFF00C, 0x7F); }
+    if (const char* pk = getenv("POKE")) { const char* p = pk; while (*p) { int f = 0, c = 0; unsigned a = 0, v = 0; if (sscanf(p, "%d:%x:%x%n", &f, &a, &v, &c) < 3 || !c) break; if (f == i) nds.ARM9Write32(a, v); p += c; if (*p == ',') p++; } }   // POKE=frame:addr:value,... writes a word into the DS's RAM at that frame (test hooks)
     nds.RunFrame();
-    if (getenv("DBGMEM") && i % 30 == 0) { printf("f%d:", i); for (char* p = getenv("DBGMEM"); *p;) { unsigned a = strtoul(p, &p, 16); printf(" %d", (int)nds.ARM9Read32(a)); if (*p == ',') p++; } printf("\n"); }
+    if (getenv("DBGMEM") && i % 30 == 0) { printf("f%d:", i); if (getenv("DBGPC")) printf(" pc=%08x lr=%08x pc7=%08x", nds.ARM9.R[15], nds.ARM9.R[14], nds.ARM7.R[15]); for (char* p = getenv("DBGMEM"); *p;) { unsigned a = strtoul(p, &p, 16); printf(" %d", (int)nds.ARM9Read32(a)); if (*p == ',') p++; } printf("\n"); }
     if (aud) { static s16 ab[8192]; int got = nds.SPU.ReadOutput(ab, 2048); if (got > 0) fwrite(ab, 4, got, aud); }
     for (int sf : shots) if (sf == i) { std::string nm = argv[3]; size_t d = nm.rfind(".ppm"); nm = nm.substr(0, d) + "_" + std::to_string(i) + ".ppm"; dump(nds, nm.c_str()); }
   }

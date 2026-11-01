@@ -178,3 +178,6 @@ Travel (menu > Travel: Home, The Man Base, Strange Town, Castaway Island, San Bo
 
 ## D38
 FARM LIFE: crop beds, hens, cows and the farm stand with the PS1's rules, the farm ledger (build, market, contracts), seasons, farm lots laid out as on the PS1, crops drawn as they grow; popups with up to eight choices; level of detail by distance from the eye.
+
+## D39 - steady 30
+The lot's 3D is recorded as the GPU's own command lists: the still part (ground, floors, walls, things, streets) only when it changes, each Bore's model once for its looks and stride, what moves every frame. The vblank interrupt sends a finished frame by DMA every second vblank: the 3D is a steady 30 frames a second while the game and the touch screen run at up to 60. Faces turned away are skipped by the GPU. The Live top screen redraws only the values that changed. Options > System > Frame rate: Steady 30 / Up to 60. Toolchain: `tools/dsbuild/restore.sh` (prebuilt, from the ds-toolchain branch); bench: `tools/dsemu/tb.sh outdir`.
