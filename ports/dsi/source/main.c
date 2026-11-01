@@ -419,7 +419,8 @@ static int gframes, cam_on, cam_pan, cam_free, live_pitch = 4300, cam_deff = 900
 static void sim3d(int i, int yaw);
 static int has_board, on_board, board_lift; static long skate_score, skate_best; static const int *em_R; static int sk_x3, sk_z3, sk_cr, sk_Rm[9];   // (D44) the skateboard: owned, ridden, the rider's height (PS1 units); em_R: a free turn for the rider's model
 static void skate_draw_board(int ground); static void skate_top(void); static unsigned skate_sig(void); static void skate_on(void), skate_off(void); static void skate_frame(int held, int down, int steps);
-#define MG_SAVE 64   // (D45 on) the most the mini-games' save blocks take, after the farm's
+static int mg_ui, mg_ver, arcade_tix, fight_wins, fight_champ, fight_best; static unsigned mg_sig(void), mg_bsig(void); static void mg_top(void), mg_bottom(void), mg_frame(int held, int down, int steps, int tx, int ty); static void ag_open(int g); static int arcade_game_at(int x, int y), in_arcade(void);
+#define MG_SAVE 128   // (D45 on) the most the mini-games' save blocks take, after the farm's
 static int mg_pack(u8 *o); static int mg_unpack(const u8 *p, int left); static void mg_reset(void);
 typedef struct { u8 x, y, c, i, rot; } Obj;
 static Obj objs[400]; static int nobj, funds = 20000;
@@ -672,6 +673,13 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
             z_room(8, 1, 13, 7, 1, 2); hwl[7][10] = 5; z_put(9, 2, 0xDC, 0); z_put(9, 4, 0xDC, 0); z_put(11, 2, 0xDD, 0); z_put(11, 4, 0xDD, 0); z_put(10, 6, 0xDE, 0);
             for (int x = 0; x < GN; x++) if (x != 7) hwl[12][x] = 6; }
         for (int q = 0; q < 3; q++) { spawn_x[q] = 5 + q; spawn_y[q] = 12; } return; }
+    if (k == LOT_ARCADE) {   // (D46) the PS1's lot_arcade (world.c): a row of cabinets along the back, two down the side, the prize counter by the door
+        int ax0 = 1, ay0 = 2, ax1 = 11, ay1 = 9, aw = 1 + (int)(h & 3);
+        z_room(ax0, ay0, ax1, ay1, 2 + (int)(h >> 4) % 3, aw); hwl[ay1][6] = 5; door_cx = 6; door_cy = ay1;
+        for (int x = ax0 + 1; x <= ax1 - 1; x++) z_put(x, ay0 + 1, '!', 0);
+        z_put(ax0 + 1, ay0 + 3, '!', 0); z_put(ax0 + 1, ay0 + 4, '!', 0); z_put(ax1 - 1, ay0 + 3, 'j', 0); z_put(ax1 - 1, ay0 + 5, 'V', 0);
+        z_put(ax0 + 4, ay0 + 4, '?', 0); z_put(ax0 + 1, ay1 - 1, 'C', 0); z_put(ax1 - 2, ay1 - 1, 'y', 0); z_put(ax1 - 1, ay1 - 1, 'c', 0); z_put(ax0 + 6, ay0 + 4, 'U', 0);
+        for (int q = 0; q < 3; q++) { spawn_x[q] = 5 + q; spawn_y[q] = ay1 - 2; } return; }
     int x0 = 2, x1 = 11, y0 = 1, y1 = 9, ow = 1 + (int)(h & 3);
     for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) flr[y][x] = (u8)(2 + (int)(h >> 4) % 3);
     for (int x = x0; x < x1; x++) { hwl[y0][x] = (u8)ow; hwl[y1][x] = (u8)ow; } for (int y = y0; y < y1; y++) { vwl[y][x0] = (u8)ow; vwl[y][x1] = (u8)ow; }
@@ -1666,6 +1674,8 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     else if (c == 0x8B) { AC("Sail Across", 82); AC("Not Now", 84); }
     else if (c == '@' || c == '+') AC(IT_OF(&objs[o])->lab, 83);
     else if (c == 'B') AC("Ride the Board", 85);   // (D44)
+    else if (c == '!' && in_arcade()) { static char pl[28]; int g_ = arcade_game_at(objs[o].x, objs[o].y); snprintf(pl, sizeof pl, "%s $%d", g_ == 1 ? "Bore Breaker" : g_ == 2 ? "Snack Catch" : g_ == 3 ? "Whack-a-Bore" : "High Striker", g_ == 1 ? 2 : 1); AC(pl, 86); }   // (D46: a cabinet)
+    else if (c == 'y' && in_arcade()) { static char pz[28]; snprintf(pz, sizeof pz, "Prizes (%d tickets)", arcade_tix); AC(pz, 87); }   // (D46: the prize counter)
     else AC(IT_OF(&objs[o])->lab, -1);
     #undef AC
     return n;
@@ -1921,7 +1931,7 @@ static void life_panel(void) {   // the top screen's second page: job, aspiratio
 static u16 offbuf[256 * 192] __attribute__((aligned(32)));   // (D37) a 2D screen is drawn here and copied over in one go: no half-drawn screen is ever shown
 static void off_show(u16 *dst) { DC_FlushRange(offbuf, sizeof offbuf); dmaCopy(offbuf, dst, sizeof offbuf); scr = dst; }
 static void status_vals(int clear) {   // (D39) what changes by the minute on the Live top screen (mood, clock, funds, needs): redrawn on its own, straight on the screen, not the whole screen
-    if (on_board && cur_sim == ctl) return;   // (D44: the skate screen is up)
+    if ((on_board || mg_ui) && cur_sim == ctl) return;   // (D44: the skate screen is up; D46: a game)
     const Sim *m = &sims[cur_sim]; char t[48];
     rect(112, 26, 70, 9, C15(24, 28, 31)); rect(113, 27, 68 * mood(m) / 100, 7, need_col(mood(m)));
     if (clear) { rect(78, 41, 170, 10, PAN); rect(78, 53, 170, 10, PAN); }
@@ -1933,6 +1943,7 @@ static void status_vals(int clear) {   // (D39) what changes by the minute on th
         rect(cx + 3, cy + 3, 8, 8, need_col(m->need[k])); rect(cx + 18, cy + 7, 84, 8, C15(2, 6, 14)); rect(cx + 19, cy + 8, 82 * m->need[k] / 100, 6, need_col(m->need[k])); }
 }
 static void draw_top_status(void) {   // the top screen while you live: the sim's mood, the time and money, and the needs (or the bio of another sim)
+    if (mg_ui) { mg_top(); return; }   // (D46) a mini-game: its screen
     if (on_board && cur_sim == ctl) { skate_top(); return; }   // (D44) riding: the score and the combo
     scr = offbuf; backdrop(); const Sim *m = &sims[cur_sim];
     char t[48];
@@ -1977,6 +1988,7 @@ static int soc_list(int tgt) { int sa = stage_of(sims[ctl].age), sb, rel, cit = 
     for (int id = 0; id < S_N && n < 8; id++) if (soc_ok(id, sa, sb, rel, cit)) soc_pick[n++] = id; return n; }
 static void draw_hud(void) {
     scr = offbuf; memset(offbuf, 0, sizeof offbuf);
+    if (mg_ui) { mg_bottom(); return; }   // (D46)
     rect(2, 2, 26, 26, PANB); rect(3, 3, 24, 24, C15(14, 22, 28)); rect(8, 12, 14, 10, C15(26, 14, 10)); rect(6, 8, 18, 5, C15(24, 6, 6)); rect(13, 16, 4, 6, C15(8, 8, 10));   // MAP: a little house
     for (int i = 0; i < nsim; i++) { int x = 132 + i * 21; rect(x, 2, 20, 27, i == ctl ? C15(31, 31, 12) : PANB); rect(x + 1, 3, 18, 25, C15(14, 22, 28)); face(x + 2, 4, 16, &sims[i]); rect(x + 1, 24, 18, 4, C15(2, 6, 14)); rect(x + 1, 24, 18 * mood(&sims[i]) / 100, 4, need_col(mood(&sims[i]))); }   // the household
     rect(0, 158, 34, 34, PANB); face(2, 160, 30, &sims[ctl]);
@@ -2802,10 +2814,12 @@ static void set_mode(int m) {
     if ((m == M_BUY || m == M_BUILD) && lot_bx >= 0 && !lot_owned(lot_bx, lot_by)) { say("Not your lot: buy it on the Map"); return; }
     if ((m == M_BUY || m == M_BUILD) && mode == M_LIVE) ed_lv = slv[ctl];   // (D36) Buy and Build start on your sim's storey
     if (m != M_LIVE && on_board) skate_off();
+    if (m != M_LIVE) mg_ui = 0;
     mode = m;
     if (m == M_LIVE) { lcdMainOnBottom(); } else { lcdMainOnTop(); scr = hud; hud_clear(); }
 }
 static void live_touch(int tx, int ty) {
+    if (mg_ui) return;   // (D46: the mini-game reads the stylus itself)
     if (jobui) { job_touch(tx, ty); return; }
     if (travel_ui) { travel_touch(tx, ty); return; }
     if (craft_ui) { craft_touch(tx, ty); return; }
@@ -2824,6 +2838,8 @@ static void live_touch(int tx, int ty) {
                 else if (cd >= 100) farm_do(cd, ctl, popup_i);   // (D38) the farm
                 else if (cd < 81) { m->tx = ob->x * 16; m->ty = ob->y * 16; m->act = cd; m->act_amt = 0; m->face = cd < 80 ? gather_len(cd - 60) : 1; m->act_obj = popup_i; m->act_left = 0; }   // (gather, or the castaway's meal: walk there, then do it)
                 else if (cd == 81) craft_ui = 1; else if (cd == 82) raft_sail(); else if (cd == 83) travel_ui = 1;
+                else if (cd == 86) { int g_ = arcade_game_at(ob->x, ob->y), pr_ = g_ == 1 ? 2 : 1; if (funds < pr_) say("Not enough funds"); else { funds -= pr_; ag_open(g_); } }   // (D46)
+                else if (cd == 87) ag_open(99);
                 else if (cd == 85) { objs[popup_i] = objs[--nobj]; occ_ok = 0; has_board = 1; say("A skateboard! Menu > Board rides it"); skate_on(); }   // (D44: the PS1's PICKBOARD)
                 return; }
             if (popup_n <= 3 ? hit(162, top + 2 + popup_n * 24, 52, 22, tx, ty) : hit(196, top2 + 3, 50, 18, tx, ty)) popup = 0; return; }
@@ -2953,13 +2969,14 @@ int main(void) {
                         else { live_yaw += ddx * 60; yaw_t = live_yaw; live_pitch += ddy * 30; if (live_pitch < 1800) live_pitch = 1800; if (live_pitch > 7600) live_pitch = 7600; } } }
             } else if (down & KEY_TOUCH) live_touch(tp.px, tp.py);
             if ((down & KEY_B) && (menu_open || popup || jobui || juke || travel_ui || craft_ui || farm_ui)) { menu_open = popup = jobui = juke = travel_ui = craft_ui = farm_ui = 0; down &= ~KEY_B; }   // (D44: that B is not the board's)
-            else if ((down & KEY_START) && !jobui && !juke && !popup) menu_open ^= 1;            if (juke) { if (down & KEY_DOWN) juke_pg++; if (down & KEY_UP && juke_pg > 0) juke_pg--; if (down & KEY_RIGHT) { int c = mus_cur < 0 ? 0 : mus_cur; o_song = (c + 1) % (mus_n > 0 ? mus_n : 1) + 1; } }
-            if (on_board) { if (!menu_open && !popup && !jobui && !juke && !travel_ui && !craft_ui && !farm_ui) skate_frame(held, down, steps); }   // (D44) riding: the buttons are the board's
+            else if ((down & KEY_START) && !jobui && !juke && !popup && !mg_ui) menu_open ^= 1;            if (juke) { if (down & KEY_DOWN) juke_pg++; if (down & KEY_UP && juke_pg > 0) juke_pg--; if (down & KEY_RIGHT) { int c = mus_cur < 0 ? 0 : mus_cur; o_song = (c + 1) % (mus_n > 0 ? mus_n : 1) + 1; } }
+            if (mg_ui) mg_frame(held, down, steps, tp.px, tp.py);   // (D46) a mini-game has the buttons and the stylus
+            else if (on_board) { if (!menu_open && !popup && !jobui && !juke && !travel_ui && !craft_ui && !farm_ui) skate_frame(held, down, steps); }   // (D44) riding: the buttons are the board's
             else {
             if (down & KEY_L) yaw_t -= 4096; if (down & KEY_R) yaw_t += 4096;
             if (!juke && !menu_open && !jobui && !popup && (held & KEY_LEFT)) { yaw_t -= 120; live_yaw = yaw_t; } if (held & KEY_RIGHT) { yaw_t += 120; live_yaw = yaw_t; }
             if (held & KEY_UP) { if (live_pitch < 7600) live_pitch += 50; } if (held & KEY_DOWN) { if (live_pitch > 1800) live_pitch -= 50; } }
-            if (down & KEY_SELECT) { cam_free ^= 1; if (!cam_free) { live_yaw = yaw_t = 4096; live_pitch = 4300; } }
+            if ((down & KEY_SELECT) && !mg_ui) { cam_free ^= 1; if (!cam_free) { live_yaw = yaw_t = 4096; live_pitch = 4300; } }
 #ifdef DSTEST
             if (zone == Z_ISLAND && (down & KEY_SELECT) && (held & KEY_L) && (held & KEY_R)) { cam_free ^= 1; isl_wood += 20; isl_stone += 10; isl_leaves += 20; }   // (test builds only: island stock)
             if (zone != Z_ISLAND && (down & KEY_SELECT) && (held & KEY_L) && (held & KEY_R)) { cam_free ^= 1; int bed = -1; for (int q = 0; q < nobj; q++) if (ID2CH[OBJ_ID(&objs[q])] == 0xDB) bed = q;   // (test builds only: the first press makes this lot a farm, the next ones jump to the next morning)
@@ -2968,15 +2985,15 @@ int main(void) {
             if ((down & KEY_START) && (held & KEY_L) && (held & KEY_R)) { static int fk; int want = 0xDB + (fk++ & 3); menu_open = 0;   // (test builds only: the popup of the next farm thing in turn: crop bed, coop, cow, stand)
                 for (int q = 0; q < nobj; q++) if (ID2CH[OBJ_ID(&objs[q])] == want) { popup = 1; popup_i = q; popup_n = obj_acts(q, popup_lab, popup_code); break; } }
 #endif
-            if (!on_board) { if (held & KEY_X) { if (live_dist > 3500) live_dist -= 80; } if (held & KEY_Y) { if (live_dist < 16000) live_dist += 80; } }
+            if (!on_board && !mg_ui) { if (held & KEY_X) { if (live_dist > 3500) live_dist -= 80; } if (held & KEY_Y) { if (live_dist < 16000) live_dist += 80; } }
             live_yaw += (yaw_t - live_yaw) / 4; if (yaw_t - live_yaw > -4 && yaw_t - live_yaw < 4) live_yaw = yaw_t;
-            for (int t = 0; t < steps; t++) { for (int k = 0; k < speed; k++) { sims_step((frames + t) * speed + k); city_step((frames + t) * speed + k); } lot_cross(); } PROF(0);   // (D39: by the vblanks gone by, so the game keeps its speed whatever the frame rate)
+            if (!mg_ui) for (int t = 0; t < steps; t++) { for (int k = 0; k < speed; k++) { sims_step((frames + t) * speed + k); city_step((frames + t) * speed + k); } lot_cross(); } PROF(0);   // (D39: by the vblanks gone by, so the game keeps its speed whatever the frame rate)
             int tx = sims[cur_sim].x * 2 * T / 16 - GN * T + T, tz = sims[cur_sim].y * 2 * T / 16 - GN * T + T; if (!cam_free) { camx += (tx - camx) / 8; camz += (tz - camz) / 8; }
             yaw = live_yaw; dist = live_dist * (o_cam == 0 ? 85 : o_cam == 1 ? 100 : 125) / 100; cam_deff = dist; pitch = live_pitch;
             { int hd = dist * cosLerp(pitch) >> 12, r = (hd + (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500)) >> 2; lod_ex = camx - (hd * sinLerp(yaw) >> 12); lod_ez = camz + (hd * cosLerp(yaw) >> 12); lod_r2 = r * r; }   // (D38) the level of detail goes by the distance from the eye
-            { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)((on_board ? skate_sig() * 977 + 5 : 0) + cur_sim * 7 + ctl * 3 + (minutes / 1440) * 13 + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_secrets * 23) * 31 * zone + o_pm * 977 + info_pg * 43 + life_ver * 53 + sims[cur_sim].age * 59 + (cur_sim != ctl ? minutes * 7 + funds : 0)); a = a * 31 + (unsigned)sims[cur_sim].rel;
+            { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)((on_board ? skate_sig() * 977 + 5 : 0) + (mg_ui ? mg_sig() * 983 + 3 : 0) + cur_sim * 7 + ctl * 3 + (minutes / 1440) * 13 + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_secrets * 23) * 31 * zone + o_pm * 977 + info_pg * 43 + life_ver * 53 + sims[cur_sim].age * 59 + (cur_sim != ctl ? minutes * 7 + funds : 0)); a = a * 31 + (unsigned)sims[cur_sim].rel;
               static unsigned tv; unsigned av = (unsigned)(minutes * 13 + funds + (o_pm ? polys_last / 64 + fps_now * 977 : 0) + mood(&sims[cur_sim]) * 5); for (int n = 0; n < 6; n++) av = av * 31 + (unsigned)sims[cur_sim].need[n];   // (D39: the values alone are redrawn on their own)
-              unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + farm_ui * 97 + (popup || farm_ui ? fm_sig() * 107 : 0) + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + on_board * 113 + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
+              unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + farm_ui * 97 + (popup || farm_ui ? fm_sig() * 107 : 0) + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + on_board * 113 + (mg_ui ? mg_bsig() * 127 + 1 : 0) + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
               if (forced) { ts = ~a; hs = ~b; } if (mode == M_LIVE) { if (a != ts) { draw_top_status(); off_show(scr_sub); ts = a; tv = av; } else if (av != tv) { scr = scr_sub; status_vals(1); tv = av; } if (b != hs) { draw_hud(); off_show(hud); hs = b; } } }   // (D35: not after a menu chip has just left Live, or the Live icons stayed over Buy's 3D view)
         } else {   // BUY / BUILD: the live lot on the top screen, the catalogue or plan on the bottom (drag to place, paint, draw walls, move)
             LV = ed_lv;
