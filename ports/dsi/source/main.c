@@ -245,7 +245,7 @@ static u32 gx_base, gx_spec; static int gx_far = 12; static u32 *gxb; static int
 static inline void gx_id(u32 id) { if (gxk >= 4) { gxh = gxn++; gxb[gxh] = 0; gxk = 0; } gxb[gxh] |= id << (gxk++ * 8); }
 static inline void gx_c1(u32 id, u32 v) { gx_id(id); gxb[gxn++] = v; }
 ITCM_CODE static void gx_c0(u32 id) { gxk = 4; gx_id(id); gxb[gxn++] = 0; gxk = 4; }   // (a command with no parameters gets a packed word of its own and a dummy zero, as GBATEK asks)
-static int tx_want, gx_txp;
+static int tx_want, gx_txp, imm_txp = -2;
 static void gx_begin(u32 *b, int cap) { gxb = b; gxn = 0; gxk = 4; gx_cap = cap - 32; gx_full = 0; gx_lv = 0; gx_mat = gx_nrm = gx_col = ~0u; tx_want = -1; gx_txp = -2; }
 static int gx_end(void) { gxb = 0; return gxn; }
 static void gx_fmt(u32 attr) {   // the polygon attributes (takes effect at the next BEGIN): recorded, or straight to the GPU
@@ -334,6 +334,14 @@ ITCM_CODE static void qd(int x0, int y0, int z0, int x1, int y1, int z1, int x2,
             if (l > 0) { float k = 511.0f * lit_sgn / __builtin_sqrtf(l); glNormal(NORMAL_PACK((int)(nx * k), (int)(ny * k), (int)(nz * k))); } }
     } else glColor(c);
     y0 += gy_off; y1 += gy_off; y2 += gy_off; y3 += gy_off;
+    { int w = far_lod || !o_tex ? -1 : tx_want;   // (D52) the direct path (the Map's lot picture, the title) takes the patterns too
+      if (w != imm_txp) { GFX_TEX_FORMAT = w < 0 ? 0 : (u32)(w * 16) | (1u << 16) | (1u << 17) | (7u << 26); imm_txp = w; }
+      if (w >= 0) { int ax; { s64 ux = x1 - x0, uy = y1 - y0, uz = z1 - z0, vx = x3 - x0, vy = y3 - y0, vz = z3 - z0, nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+                if (nx < 0) nx = -nx; if (ny < 0) ny = -ny; if (nz < 0) nz = -nz; ax = ny >= nx && ny >= nz ? 0 : nx >= nz ? 1 : 2; }
+            #define ITX(x, y, z) { int sc_ = ax == 0 ? (x) : ax == 1 ? (z) : (x), tc_ = ax == 0 ? (z) : -(y); GFX_TEX_COORD = (u32)(((sc_ * 199) >> 10) & 0xFFFF) | ((u32)((tc_ * 199) >> 10) << 16); }
+            ITX(x0, -y0, z0) glVertex3v16(x0, -y0, z0); ITX(x1, -y1, z1) glVertex3v16(x1, -y1, z1); ITX(x2, -y2, z2) glVertex3v16(x2, -y2, z2); ITX(x3, -y3, z3) glVertex3v16(x3, -y3, z3); polys += 2; return;
+            #undef ITX
+      } }
     glVertex3v16(x0, -y0, z0); glVertex3v16(x1, -y1, z1); glVertex3v16(x2, -y2, z2); glVertex3v16(x3, -y3, z3); polys += 2;
 }
 ITCM_CODE static u16 shade(u16 c, int k) {   // k/8 of the colour
@@ -949,12 +957,19 @@ static int ob_x, ob_z, ob_sx = 68, ob_sz = 68, ob_w = 80, ob_l = 80, ob_rot, ob_
 static int lod_ex, lod_ez; static s32 lod_r2 = 0x7FFFFFFF;   // (D38) the eye's place on the ground and how far from it things keep their detail
 static int lod_far(void) { int dx = (ob_x - lod_ex) >> 2, dz = (ob_z - lod_ez) >> 2; return dx * dx + dz * dz > lod_r2; }   // (was: far from the point looked at, so the things nearest the eye, at the foot of the screen, were the ones drawn as blocks)
 static const u8 HSC[28] = { 140, 140, 140, 140, 200, 200, 200, 200, 200, 200, 180, 200, 200, 100, 170, 200, 150, 200, 170, 200, 150, 100, 200, 150, 100, 200, 90, 100 };
+static int ob_tx_ok;   // (D52) 1 while a bought thing is drawn: its parts take the PS1's patterns by their colour
+static int item_tx(u16 c) {   // (D52) wood grain on brown, lawn on green, carpet on bright colours, plaster on grey; white and the very dark stay plain
+    int r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31, mx = MAX(r, MAX(g, b)), mn = MIN(r, MIN(g, b)), sat = mx - mn;
+    if (mx < 8) return -1; if (sat < 4) return mn >= 24 ? -1 : TX_STUCCO;
+    if (g > r + 3 && g > b + 3) return TX_GRASS;
+    if (r >= g && g >= b && r - b >= 6 && mx <= 23) return TX_WOOD_DECK;
+    return TX_SOIL; }
 ITCM_CODE static void ob2(int lx0, int lz0, int lx1, int lz1, int h0, int h1, u16 c, u16 top) {   // a part in cell units (0..80 a cell, front = +z), heights in tenths of a quarter-tile; sides c, top
     if (pv_cap) { if (npv < PVMAX && h1 > 0) { PBox *b = &pv[npv++]; b->x0 = (s16)lx0; b->z0 = (s16)lz0; b->x1 = (s16)lx1; b->z1 = (s16)lz1; b->h0 = (s16)(h0 * ob_hs / 100); b->h1 = (s16)(h1 * ob_hs / 100); b->c = c; b->t = top; } return; }   // (the shop's picture)
     int ax, az, bx2, bz;
     switch (ob_rot & 3) { case 1: ax = lz0; az = ob_w - lx0; bx2 = lz1; bz = ob_w - lx1; break; case 2: ax = ob_w - lx0; az = ob_l - lz0; bx2 = ob_w - lx1; bz = ob_l - lz1; break; case 3: ax = ob_l - lz0; az = lx0; bx2 = ob_l - lz1; bz = lx1; break; default: ax = lx0; az = lz0; bx2 = lx1; bz = lz1; }
     int X0 = ob_x + (ax < bx2 ? ax : bx2) * ob_sx / 10, X1 = ob_x + (ax < bx2 ? bx2 : ax) * ob_sx / 10, Z0 = ob_z + (az < bz ? az : bz) * ob_sz / 10, Z1 = ob_z + (az < bz ? bz : az) * ob_sz / 10;
-    int hq = T / 4; block(X0, Z0, X1, Z1, ob_base - h0 * hq / 10 * ob_hs / 100, ob_base - h1 * hq / 10 * ob_hs / 100, c, top);
+    int hq = T / 4; tx_want = ob_tx_ok ? item_tx(c) : -1; block(X0, Z0, X1, Z1, ob_base - h0 * hq / 10 * ob_hs / 100, ob_base - h1 * hq / 10 * ob_hs / 100, c, top); tx_want = -1;
 }
 static void ob(int lx0, int lz0, int lx1, int lz1, int h0, int h1, u16 c) { ob2(lx0, lz0, lx1, lz1, h0, h1, c, shade(c, 10)); }
 #define LC(r, g, b) C15(r, g, b)
@@ -981,7 +996,7 @@ static u8 ID2CH[NITEM]; static void ramp3d(int x, int y, int ch, int r, int base
 static int ground_lift(int cx, int cy, int L) {   // (D41, as the PS1's fix: everything stands on the ground under it) how high the ground is at a cell: a floor 40, the lawn 20 (the checker's top), a pavement 24, a road 0
     if (L > 0) return 40; if (cx >= 0 && cy >= 0 && cx < GN && cy < GN) return flr[cy][cx] ? 40 : 20;
     int lx = ((cx % SLC) + SLC) % SLC, ly = ((cy % SLC) + SLC) % SLC; if ((lx >= 14 && lx <= 16) || (ly >= 14 && ly <= 16)) return 0; if (lx >= 13 || ly >= 13) return 24; return 20; }
-static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every item is a little model built from several boxes (coordinates 0..80 across the cell, heights in tenths of a quarter-tile)
+static void obj3d_in(int x, int y, const Item *it, int rot, int ghost) {   // every item is a little model built from several boxes (coordinates 0..80 across the cell, heights in tenths of a quarter-tile)
     (void)ghost; tx_want = -1; int id = (int)(it - ITEMS); u16 c = it->col, d = shade(c, 6), l = shade(c, 10), wd = LC(16, 10, 5), dk = LC(3, 3, 4);
     { int ww = rot & 1 ? it->fl : it->fw, wl = rot & 1 ? it->fw : it->fl; ob_w = it->fw * 80; ob_l = it->fl * 80; ob_sx = (ww * 2 * T - T / 3) * 10 / (ww * 80); ob_sz = (wl * 2 * T - T / 3) * 10 / (wl * 80); }   // (a two-cell thing stretches to fill both)
     ob_x = tl(x * 2) + T / 6; ob_z = tl(y * 2) + T / 6; ob_rot = rot; ob_hs = id >= 0 && id < 28 ? HSC[id] : 100; ob_base = -ground_lift(x, y, gy_off ? 1 : 0);
@@ -1054,6 +1069,7 @@ static void obj3d(int x, int y, const Item *it, int rot, int ghost) {   // every
     case 51: ob(6, 16, 74, 64, 0, 14, wd); ob(8, 18, 72, 62, 14, 50, c); ob(30, 30, 40, 40, 14, 26, LC(31, 20, 6)); ob(50, 40, 58, 48, 20, 30, LC(31, 8, 8)); ob(8, 18, 72, 62, 50, 52, wd); break;   // fish tank
     default: ob(4, 4, 76, 76, 0, it->h * 10, c); break; }
 }
+static void obj3d(int x, int y, const Item *it, int rot, int ghost) { ob_tx_ok = !pv_cap; obj3d_in(x, y, it, rot, ghost); ob_tx_ok = 0; }   // (D52)
 static int door_open;
 ITCM_CODE static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, int wh) {   // one wall piece (or a door) on a cell edge; vert: it runs along z
     u16 c = WALLC[v - 1], cap = shade(c, 10), base = shade(c, 6), frame = C15(11, 7, 4); int th = T / 16, ps = T / 6;
@@ -2967,6 +2983,7 @@ int main(void) {
                 if (sc == 1) travel_go(Z_ISLAND); else if (sc == 4) travel_go(Z_TOWN);
                 else if (sc == 2) { memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(LOT_FARM, 1); occ_ok = 0; for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (7 + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 11 * 16; sims[q].act = -1; } }
                 else if (sc == 3) { for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (door_cx + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 13 * 16; sims[q].act = -1; } live_pitch = 2200; yaw_t = live_yaw = 4096 * 2; live_dist = 14000; }
+                else if (sc == 6) { live_pitch = 2600; live_dist = 4200; yaw_t = live_yaw = 4096 + 600; }   // (6: close up on the house, to see the patterns)
                 else if (sc == 5) { live_pitch = 1800; live_dist = 16000; yaw_t = live_yaw = 4096 * 2 + 1500; }   // (5: the horizon)
                 else if (sc >= 10 && sc < 13) { o_look = sc - 10; o_dirty = 1; }   // (10-12: Classic, Rich, Toon)
                 else if (sc >= 20 && sc < 23) { o_detl = sc - 20; o_dirty = 1; }
@@ -3076,7 +3093,7 @@ int main(void) {
                 gx_c1(0x50, 0); gf_cut(); gf_rec = 0; DC_FlushRange(gx_dlb[b], (u32)gxn * 4); gx_end();
                 polys = pd + b_polys + st_polys + w_polys; polys_last = polys; gf_ready = b; PROF(4); }
         } else if ((int)(vbl_n - next3d) >= 0) {   // the title, Create-a-Sim and the Map: straight to the GPU, as before
-        gf_stop(); u32 v3 = vbl_n; GFX_TEX_FORMAT = 0;   // (D43: no texture left set by a list)
+        gf_stop(); u32 v3 = vbl_n; GFX_TEX_FORMAT = 0; imm_txp = -1;   // (D43: no texture left set by a list)
         polys = 0;
         glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluPerspectivef32(degreesToAngle(40), 256 * 4096 / 192, 4096 * 3 / 4, 4096 * 12);
         glMatrixMode(GL_POSITION); glLoadIdentity();

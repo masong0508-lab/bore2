@@ -25,6 +25,7 @@ SC = {   # name: (script, pokes {frame: scene}, measure from, to, screenshot fra
     "farm":   (LIVE, {400: 2}, 700, 1300, 1280),
     "street": (LIVE, {400: 3}, 700, 1300, 1280),
     "town":   (LIVE, {400: 4}, 700, 1300, 1280),
+    "close":  (LIVE, {400: 6}, 700, 1000, 980),
     "horizon": (LIVE, {400: 5}, 700, 1300, 1280),
     "orbit":  (LIVE + ";500-1300:10:-1,-1", {}, 600, 1300, 1280),        # Live, the camera turning all the time (the still list is recorded again often)
     "skate":  (LIVE + "".join(";%d-%d:%x:-1,-1" % (500 + 50 * q, 549 + 50 * q, [0x50, 0x41, 0x20, 0x81][q % 4] | (0x800 if q % 3 == 1 else 0) | (0x400 if q % 5 == 2 else 0)) for q in range(20)), {400: 41}, 600, 1000, 980),   # (D51) riding about the plaza, jumping and flipping, staying inside the lot
