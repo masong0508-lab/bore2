@@ -17,6 +17,7 @@
 			<file name="VOICES.BIN" type="data" source="${PROJECT_SOURCE_DIR}/assets/voices.bin" />
 			<file name="KINGDOM.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_base/KINGDOM.OVL" />
 			<file name="ARCADE.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_base/ARCADE.OVL" />
+			<file name="ARCADE2.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_base/ARCADE2.OVL" />
 			<file name="GOTCHI.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_base/GOTCHI.OVL" />
 			<file name="PARTY.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_base/PARTY.OVL" />
 			<file name="SUPER.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_base/SUPER.OVL" />

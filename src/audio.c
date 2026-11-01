@@ -257,12 +257,13 @@ int audio_cd_ok(void) { return cd_ok; }
 
 int audio_cd_load(const char *name, void *dst, int room) {   // a whole file from the disc into RAM (an overlay); 0 if it is not there or does not fit
     if (!cd_up) return 0;
+    extern unsigned char arun[]; arun[3] = 1;
     char path[24]; snprintf(path, sizeof path, "\\%s;1", name);
-    CdlFILE f; if (!CdSearchFile(&f, path)) return 0;
-    int secs = (int)((f.size + 2047) / 2048); if (secs * 2048 > room) return 0;
-    if (!CdControl(CdlSetloc, &f.pos, 0)) return 0;
-    if (!CdRead(secs, (u32 *)dst, CdlModeSpeed)) return 0;
-    return CdReadSync(0, 0) >= 0;
+    CdlFILE f; if (!CdSearchFile(&f, path)) return 0; arun[3] = 2;
+    int secs = (int)((f.size + 2047) / 2048); if (secs * 2048 > room) { arun[3] = 8; return 0; } arun[4] = (unsigned char)secs;
+    if (!CdControl(CdlSetloc, &f.pos, 0)) return 0; arun[3] = 3;
+    if (!CdRead(secs, (u32 *)dst, CdlModeSpeed)) return 0; arun[3] = 4;
+    { int r = CdReadSync(0, 0) >= 0; arun[3] = 5; return r; }
 }
 int audio_cd_part(const char *name, u32 sector, int count, void *dst) {   // some sectors from inside a file (one picture of a big art file at a time)
     if (!cd_up) return 0;

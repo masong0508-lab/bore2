@@ -17,13 +17,14 @@ int ovl_installed(const char *file) {   // the first sector of the file: a real 
     return sec[0] == OVL_MAGIC;
 }
 static char pk_msg[40];
-const OvlHead *ovl_load(const char *file) {
+extern unsigned char arun[];
+const OvlHead *ovl_load(const char *file) { arun[2] = 1;
     if (!ovl_keep_tab[0]) return 0;
     u32 n; u8 *base = (u8 *)crowd_scratch(&n) + OVL_AT; int room = (int)n - OVL_AT;
-    crowd_reset();                                           // (the crowd's models are let go: the code goes where they were)
+    arun[2] = 2; crowd_reset(); arun[2] = 3;                 // (the crowd's models are let go: the code goes where they were)
     memset(base, 0, room);                                   // (the overlay's zeroed data comes zeroed)
-    if (!audio_cd_load(file, base, room)) { sim_note("THE DISC COULD NOT BE READ. TRY AGAIN"); citizens_rebuild(); return 0; }
-    FlushCache();                                            // (new code: the CPU must not run what its cache remembers)
+    arun[2] = 4; if (!audio_cd_load(file, base, room)) { arun[2] = 9; sim_note("THE DISC COULD NOT BE READ. TRY AGAIN"); citizens_rebuild(); return 0; }
+    arun[2] = 5; FlushCache();                                            // (new code: the CPU must not run what its cache remembers)
     const OvlHead *h = (const OvlHead *)base;
     if (h->magic == OVL_STUB) { snprintf(pk_msg, sizeof pk_msg, "%s IS NOT INSTALLED", ovl_pack_name(file)); sim_note(pk_msg); citizens_rebuild(); return 0; }
     if (h->magic != OVL_MAGIC) { sim_note("THAT PART OF THE DISC IS DAMAGED"); citizens_rebuild(); return 0; }
