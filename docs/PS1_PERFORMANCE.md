@@ -205,3 +205,97 @@ Plain Release, 2 MB: 20.8 KB free past `_end` with this round's changes (10.8 at
 - *A bigger height table on 2 MB*: the far view's 1024-entry table now misses 49 times a frame in first person (146 before); 2048 entries would be 6 KB of RAM.
 
 How to measure any of this: tools/perf/README.md.
+
+## Things in their places, the ground to the window's edge, and every camera measured (this round)
+Pictures: `docs/street_lamps_before_after.png` (the Sims camera and zoomed in, the same frozen moment) and `docs/city_view_before_after.png`
+(left before, right after: the Sims camera, zoomed in, zoomed out, first person).
+
+**What was wrong, and the fixes (root causes in the shared code):**
+- *Street lamps in the road.* `gen_block` put them at block tiles (3,3), (10,3), (3,10) and a bin at (6,3): in the lanes and on the
+  crossings, left from when the street was 3 tiles wide (it is `BM_LOT0` = 5, the pavement row/column 5). They now stand on the pavement at
+  its kerb edge, turned to face the street (`F_KERB`: a pole at the tile's street-side edge, people walk past it), by the corner, half way
+  and at the far crossing, never within two tiles of another lamp or a bus stop. Bins only where people can step round them. A lot's tree,
+  plant or bin left on the pavement moves a tile in (`kerb_clear`). Lamps and bins an older generator left on the road and a save kept are
+  taken off it (`street_clean`). The river's bridge carries the pavement, with a lamp at each end. `tools/perf/placecheck.py` (any city RAM
+  dump) lists things on the road: 69 before (48 lamps, 9 bins), only the gas station's forecourt things after.
+- *Everything outdoors slid against the ground on the hills.* The ground floor, walls, people, cars and the crowd stood on the hills'
+  ground (`world_gh`), but items (lamps, benches, bins, trees, planters, fountains, furniture: `items_draw` after `lift_to(0)`) were drawn
+  at the flat's height. In a town on a hill (the AUTO_CITY town stands about 530 units up) every item was drawn 2 tiles under the ground, so
+  on the screen it sat off its tile and slid against the floor as the camera moved: most of the "off kilter" look (a planter seemed to
+  stand on the crossing). Items now stand at the middle of their tile on `world_gh` (`item_lift`), upstairs on the storey's pad.
+  `gfx_set_object` no longer adds the drawing's lift on top of the ground under the object (one ground height: a bus at its stop or a car
+  drawn while a lift was set would have stood twice as high).
+- *First person on a hill looked at the ground from below.* The eye was left at the flat's height (under the hillside: the street showed as
+  a ceiling). It now stands on the ground under you, and the third-person camera picks up from there.
+- *Benches* on their own lie along the walk they stand on (they always lay along x).
+- *The lean of tall poles* near the screen's edges is the ordinary perspective of a camera looking down 56 degrees with a 70-degree view
+  (verticals meet below the screen), the same in the Dreamcast port; the per-object matrices are rotations about y only (no shear, uniform
+  scale). What made it look wrong was the poles standing 2 tiles under the ground (above). A longer lens (a narrower view with the camera
+  further back) would straighten it more; not done, it changes the framing of everything.
+- *The ground ended a few steps away.* With the far view off (chosen, or given up by the speed helper, which it always is in a street),
+  nothing was drawn past the full-detail range (5 tiles in a town): the sky showed through and the street's things past the range stood in
+  it. Now the window's own ground is always drawn to its edge (`ground_win`: 8 x 8-tile cells on the hills, the corners transformed once,
+  about 10 hb).
+- Cheaper: roofs far off in 4 x 4 quads where they are one plane (2 x 2 past 7 tiles as before, 4 x 4 past 13), the pad read once a frame
+  (it was read twice), no contact shadows on the street's things past the range.
+- Tried and dropped: the near-plane cutter's warp splits as one even grid projected by the GTE (no recursion): more pieces, no faster.
+- A test hook, `AB_CFG` (`tools/perf/abcfg.py`): camera, view distance and helper patched into the disc image, so one build runs the whole
+  table. The camera now holds the whole run (the old route switched to a high look over the roofs at step 2000 whatever was asked, so the
+  older "zoomed in" and "zoomed out" numbers were mostly that camera).
+
+**Every camera at every VIEW DISTANCE** (like for like: `AB_LOCK4`, the same route, 5200 frames, fps "by the clock" from each frame's flip):
+
+**2 MB, speed helper on (as a player has it)**: before / after
+
+| camera | OFF | 250 M | 500 M | 1 KM | 1.5 KM | 2 KM |
+|---|---|---|---|---|---|---|
+| the Sims camera | 19.51 / 19.59 | 19.39 / 19.55 | 19.39 / 19.55 | 19.39 / 19.55 | 19.39 / 19.55 | 19.39 / 19.55 |
+| zoomed in | 19.25 / 19.37 | 19.23 / 19.33 | 19.23 / 19.33 | 19.23 / 19.33 | 19.23 / 19.33 | 19.23 / 19.33 |
+| zoomed out | 19.31 / 19.46 | 19.26 / 19.41 | 19.26 / 19.41 | 19.26 / 19.41 | 19.26 / 19.41 | 19.26 / 19.41 |
+| first person | 26.83 / 28.14 | 26.62 / 28.11 | 26.62 / 28.11 | 26.62 / 28.11 | 26.62 / 28.11 | 26.62 / 28.11 |
+
+**2 MB, speed helper off**: before / after
+
+| camera | OFF | 250 M | 500 M | 1 KM | 1.5 KM | 2 KM |
+|---|---|---|---|---|---|---|
+| the Sims camera | 18.06 / 18.93 | 15.91 / 17.15 | 15.91 / 17.15 | 15.91 / 17.15 | 15.91 / 17.15 | 15.91 / 17.15 |
+| zoomed in | 17.54 / 18.69 | 13.59 / 14.01 | 13.59 / 14.01 | 13.59 / 14.01 | 13.59 / 14.01 | 13.59 / 14.01 |
+| zoomed out | 15.01 / 14.91 | 14.11 / 14.36 | 14.11 / 14.36 | 14.11 / 14.36 | 14.11 / 14.36 | 14.11 / 14.36 |
+| first person | 24.23 / 26.14 | 14.37 / 14.74 | 14.08 / 14.31 | 13.81 / 14.06 | 13.31 / 13.65 | 12.24 / 12.50 |
+
+**8 MB, speed helper on**: before / after
+
+| camera | OFF | 250 M | 500 M | 1 KM | 1.5 KM | 2 KM |
+|---|---|---|---|---|---|---|
+| the Sims camera | 19.50 / 19.59 | 19.40 / 19.55 | 19.40 / 19.55 | 19.40 / 19.55 | 19.40 / 19.55 | 19.40 / 19.55 |
+| zoomed in | 19.06 / 19.37 | 19.23 / 19.33 | 19.23 / 19.33 | 19.23 / 19.33 | 19.23 / 19.33 | 19.23 / 19.33 |
+| zoomed out | 19.31 / 19.46 | 19.26 / 19.41 | 19.26 / 19.41 | 19.26 / 19.41 | 19.26 / 19.41 | 19.26 / 19.41 |
+| first person | 26.70 / 28.26 | 26.60 / 28.11 | 26.60 / 28.11 | 26.60 / 28.11 | 26.60 / 28.11 | 26.60 / 28.11 |
+
+**8 MB, speed helper off**: before / after
+
+| camera | OFF | 250 M | 500 M | 1 KM | 1.5 KM | 2 KM |
+|---|---|---|---|---|---|---|
+| the Sims camera | 18.06 / 18.93 | 15.81 / 17.26 | 15.81 / 17.26 | 15.81 / 17.26 | 15.81 / 17.26 | 15.81 / 17.26 |
+| zoomed in | 17.54 / 18.69 | 13.72 / 14.15 | 13.72 / 14.15 | 13.72 / 14.15 | 13.72 / 14.15 | 13.72 / 14.15 |
+| zoomed out | 15.16 / 15.09 | 14.15 / 14.35 | 14.15 / 14.35 | 14.15 / 14.35 | 14.15 / 14.35 | 14.15 / 14.35 |
+| first person | 24.24 / 26.11 | 14.43 / 14.85 | 14.15 / 14.47 | 13.86 / 14.15 | 13.43 / 13.77 | 12.43 / 12.74 |
+
+The one step back: zoomed out with the helper off and the far view OFF (15.01 to 14.91): the ground past the range is drawn there now, where
+the sky showed before. First person "before" looked at the underside of the ground for much of the route (the eye under the hill). With the
+helper on, the VIEW DISTANCE makes no difference in a street: the helper gives the far view up at once (it costs more than the frame has), so
+every column reads the same.
+
+**25 frames a second: not reached, except in first person.** The third-person cameras run at 19.3 to 19.6 with everything the helper can give
+up. 25 fps needs about 60% of frames within 2 vblanks (524 hb); their mean need is 640 hb at the Sims camera (logic 82, the world 364:
+floor 67, walls 53, items 73, roofs 95; people 143, the HUD 50). No part is more than about 15% of the frame, so no single change gets there:
+it needs the renderer kept as built geometry (walls, roofs and ground per block, transformed and emitted without the per-tile work: 8 MB has
+the room, 2 MB has about 11 KB free) and the logic at 2 steps a frame. First person runs at 28 with the far view given up; with the far view on
+it is 12.5 to 14.8 (the window's ground cells, the far streets and the far buildings: about 450 hb).
+
+**RAM**: plain Release, 2 MB: 10.7 KB free past `_end` (`ground_win`'s corner tables use the route finder's table, lent as the floor drawing
+does). 8 MB runs the same (`DS8MB=1`, every camera).
+
+**Left to do**: the block entering the map window still costs about 1150 hb in one frame (about 1% of frames): making the 4 new blocks one a
+frame needs the window's maps kept half-built; per-block visibility worked out ahead (occlusion), built geometry per block, and a cheap far
+view for first person. The DS port has no copy of the street generator (its lots are made per lot), so nothing to fix there.

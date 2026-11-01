@@ -2879,7 +2879,8 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
             lift_to(hm ? item_lift(mx, my, 0) : 0);
             int rot = items_rotates(c) ? world_item_facing(mx, my) : 0;
             int along = items_along(c) ? world_along(mx, my, c) : 0;
-            { PROF_BEGIN(); items_draw(c, mx, my, rot, along, t); PROF_END(2); }
+            { extern int getenv_noshadow; int ks_ = getenv_noshadow; getenv_noshadow = 1;   // (past the range: no contact shadow, a blur at that distance)
+              PROF_BEGIN(); items_draw(c, mx, my, rot, along, t); PROF_END(2); getenv_noshadow = ks_; }
         } }
     }
     lift_to(0);
@@ -3435,6 +3436,34 @@ static void nat_far(int px, int py) {
 }
 #undef XYW_
 
+// ---- the window's own ground past the full-detail range, when the far view is off (chosen, or given up by the speed helper: it is,
+// in any busy street). Without it the ground ended a few steps away (the range is 5 tiles in a town with the helper on) and the
+// street's things past it stood in the sky. A grid of 8 x 8-tile cells over the window, its corners on the hills and transformed once
+// by the GTE (121 corners, three at a time), each cell one flat quad the colour of the floor in its middle, at the back of the frame
+// (the detailed floor is drawn over it). Cells inside the range, or reaching behind the eye, are left to the near floor.
+COLD static void ground_win(void) {
+    enum { G = 8, NG = MW / G, NC = (NG + 1) * (NG + 1) };
+    extern s16 bfs_par[MH][MW]; SVECTOR *cv = (SVECTOR *)&bfs_par[0][0]; XV *xv = (XV *)&bfs_par[MH / 2][0];   // (the route finder's table, lent as the floor drawing and the roofs borrow it: they are done by now)
+    int L = CLAMP(gfx_light(0, -ONE, 0), 40, 200);
+    lift_to(0); gfx_set_identity();
+    for (int Y = 0, k = 0; Y <= NG; Y++) for (int X = 0; X <= NG; X++, k++) setVector(&cv[k], X * G * TILE, -gh_c(X * G, Y * G), -(Y * G * TILE));
+    gfx_xform(cv, xv, NC);
+    u32 *ot = gfx_ot_cur + OT_GROUND_WIN;
+    for (int Y = 0; Y < NG; Y++) for (int X = 0; X < NG; X++) {
+        int tx = X * G, ty = Y * G;
+        if (tx >= rx0 && tx + G - 1 <= rx1 && ty >= ry0 && ty + G - 1 <= ry1) continue;   // (all inside the range)
+        const XV *a = &xv[Y * (NG + 1) + X], *b = a + 1, *c = a + NG + 1, *d = c + 1;
+        if (a->z < Z_NEAR || b->z < Z_NEAR || c->z < Z_NEAR || d->z < Z_NEAR) continue;
+        if ((a->x < 0 && b->x < 0 && c->x < 0 && d->x < 0) || (a->x >= SCREEN_W && b->x >= SCREEN_W && c->x >= SCREEN_W && d->x >= SCREEN_W) ||
+            (a->y < 0 && b->y < 0 && c->y < 0 && d->y < 0) || (a->y >= SCREEN_H && b->y >= SCREEN_H && c->y >= SCREEN_H && d->y >= SCREEN_H)) continue;
+        if (ABS(a->x - d->x) > 1000 || ABS(b->x - c->x) > 1000 || ABS(a->y - d->y) > 500 || ABS(b->y - c->y) > 500) continue;   // (past the GPU's size: the near floor's job)
+        u16 f = fl_avg[floorMap[ty + G / 2][tx + G / 2]];
+        u32 col = gfx_grade_flat((u32)MIN(255, ((C_R(f) << 3) * L) >> 7) | ((u32)MIN(255, ((C_G(f) << 3) * L) >> 7) << 8) | ((u32)MIN(255, ((C_B(f) << 3) * L) >> 7) << 16));
+        u32 *q = xv_alloc(6); if (!q) return;
+        q[1] = col | 0x28000000u; q[2] = NXY(a); q[3] = NXY(b); q[4] = NXY(c); q[5] = NXY(d);
+        q[0] = (5u << 24) | (*ot & 0xffffff); *ot = (u32)q & 0xffffff; gfx_frame_prims++;
+    }
+}
 void world_draw(int fx, int fy, int t, int cutaway) {
     gh_cache_clear(fx, fy);
     gh_live = world_zone == ZONE_CITY && world_wbx >= 0 && gh_cok && gh_cwx == world_wbx && gh_cwy == world_wby;
@@ -3508,6 +3537,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         }
         world_hb_sky1 = gfx_hb() - sky_h0;
         if (use_far) far_draw(rx0, ry0, rx1, ry1);   // the land, the towns and the trees, out to the horizon
+        else if (world_zone == ZONE_CITY && world_wbx >= 0) ground_win();   // (or at least the window's own ground: it never ends a few steps away)
         gfx_set_identity();
         PROF_END(3);
     }
