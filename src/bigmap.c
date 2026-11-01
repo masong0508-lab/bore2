@@ -54,11 +54,12 @@ int bm_ovr_next(int *it, int *bx, int *by, int *f, u8 *v) {   // walk the change
 static Settle sets[NSET_MAX]; static int nset;
 // ---- the hills you walk on: the height of a block's middle in world units, from the same land as the 3D model (0 at the sea, the beach and in and round towns, which are built level) ----
 typedef struct { s16 x, y, h; u8 town; } HillC;
-#define HC_N 512
+#define HC_N 128
 static HillC hcache[HC_N];
+static int hg_cx = -99999;   // (the block-height table's middle: see bm_hill_center)
 void world_gh_reset(void);
 int bm_edit_stamp;   // (counts every change to the big map: a new world, the neighborhood editor; the far view's road table is rebuilt when it moves)
-void bm_hill_reset(void) { memset(hcache, 0x7F, sizeof hcache); world_gh_reset(); bm_edit_stamp++; }   // (world.c keeps the heights it worked out from these: they go too)
+void bm_hill_reset(void) { memset(hcache, 0x7F, sizeof hcache); hg_cx = -99999; world_gh_reset(); bm_edit_stamp++; }   // (world.c keeps the heights it worked out from these: they go too)
 static int hill_raw(int bx, int by) {
     if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return 0;
     if (bm_terrain(bx, by) == BT_SEA) return 0;
@@ -67,9 +68,25 @@ static int hill_raw(int bx, int by) {
     int v = base * K[bm_hills % 5]; if (bm_hills >= 3 && bm_terrain(bx, by) == BT_ROCKY) v += v / 2;   // (mountains: the rock climbs in cliffs)
     return MIN(v, 4800);
 }
+// Round the eye, every block's height is kept in a square table (worked out the first time it is asked for): the far view asks for
+// thousands a frame as the view sweeps, each a stack of noise. 2 MB: 49 x 49 blocks (900 m across); 8 MB: 129 x 129 (2.5 km).
+static u16 hg_small[49 * 49]; static u16 *hg = hg_small; static int hg_r = 24, hg_w = 49, hg_cy, hg_up;
+#define HG_NONE 0xFFFF
+void bm_hill_center(int bx, int by) {   // (the far view, each frame: where the eye is)
+    extern int ram8; extern void *xalloc(unsigned);
+    if (!hg_up) { hg_up = 1; if (ram8) { u16 *p = (u16 *)xalloc(129 * 129 * 2); if (p) { hg = p; hg_r = 64; hg_w = 129; } } }
+    if (hg_cx != -99999 && ABS(bx - hg_cx) <= hg_r / 4 && ABS(by - hg_cy) <= hg_r / 4) return;   // (moved little: keep it)
+    hg_cx = bx; hg_cy = by; memset(hg, 0xFF, (unsigned)hg_w * hg_w * 2);
+}
 int bm_hill_t(int bx, int by, int *town) {   // a block's height (units) at its middle: a town's lot is levelled to it, wild land rolls through it
-    HillC *c = &hcache[(((u32)bx * 0x9E3779B1u) ^ ((u32)by * 0x85EBCA6Bu)) >> 23];
-    if (c->x != bx || c->y != by) { c->x = (s16)bx; c->y = (s16)by; c->h = (s16)hill_raw(bx, by); c->town = (u8)(bx >= 0 && by >= 0 && bx < BM_N && by < BM_N && bm_set_at(bx, by) != 255 && c->h > 0); }
+    { int i = bx - hg_cx + hg_r, j = by - hg_cy + hg_r;
+      if (hg_cx != -99999 && (unsigned)i < (unsigned)hg_w && (unsigned)j < (unsigned)hg_w) {
+          u16 *g = &hg[j * hg_w + i];
+          if (*g == HG_NONE) { int h = hill_raw(bx, by), t = bx >= 0 && by >= 0 && bx < BM_N && by < BM_N && bm_set_at(bx, by) != 255 && h > 0; *g = (u16)(h | t << 15); { extern int dbg_miss[4]; dbg_miss[1]++; } }
+          if (town) *town = *g >> 15;
+          return *g & 0x7fff; } }
+    HillC *c = &hcache[(((u32)bx * 0x9E3779B1u) ^ ((u32)by * 0x85EBCA6Bu)) >> 25];
+    if (c->x != bx || c->y != by) { { extern int dbg_miss[4]; dbg_miss[1]++; } c->x = (s16)bx; c->y = (s16)by; c->h = (s16)hill_raw(bx, by); c->town = (u8)(bx >= 0 && by >= 0 && bx < BM_N && by < BM_N && bm_set_at(bx, by) != 255 && c->h > 0); }
     if (town) *town = c->town;
     return c->h;
 }
@@ -122,7 +139,7 @@ static int elev(int bx, int by) {
     if (ov_live && ov_n) e += bm_ovr_delta(bx, by) * 6;       // the neighbourhood editor: raised or lowered land
     return e - (bm_sea - 2) * 8;                              // SEA: the water higher or lower
 }
-int bm_terrain(int bx, int by) {
+int bm_terrain(int bx, int by) { { extern int dbg_miss[4]; dbg_miss[2]++; }
     if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return BT_SEA;
     if (ov_live && ov_n) { int i = ov_find(bx, by, 0); if (i >= 0 && (OV_F(&ov[i]) & BO_GROUND) && !(OV_F(&ov[i]) & BO_ELEV)) return (int)OV_T(&ov[i]); }
     int e = elev(bx, by);

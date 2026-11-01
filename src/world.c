@@ -2047,13 +2047,16 @@ static int gh_raw0(int ax, int ay) {   // a tile corner (world tiles; 0 where no
 // The land far past the window (the far view's ground quads, its roads, buildings and trees) asks for the same few hundred corners every
 // frame, each a stack of noise: kept in a small table by the corner's world tile (the land never changes unless it is edited or remade).
 #define GHF_N 1024
-static struct { u16 x, y; s16 h; } ghf[GHF_N]; static int ghf_ok;
+typedef struct { u16 x, y; s16 h; } GhF;
+static GhF ghf_small[GHF_N], *ghf = ghf_small; static int ghf_ok, ghf_n = GHF_N, ghf_sh = 22, ghf_up;   // (8 MB: 8192 of them)
 static int gh_raw(int X, int Y) {
     if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
     int ax = world_wbx * BM_BLK + X, ay = world_wby * BM_BLK + Y; if (ax < 0) ax = 0; if (ay < 0) ay = 0;
-    if (!ghf_ok) { memset(ghf, 0xff, sizeof ghf); ghf_ok = 1; }
-    u32 k = (((u32)ax * 0x9E3779B1u) ^ ((u32)ay * 0x85EBCA6Bu)) >> 22;
+    if (!ghf_up) { ghf_up = 1; if (ram8) { GhF *p = (GhF *)xalloc(8192 * sizeof(GhF)); if (p) { ghf = p; ghf_n = 8192; ghf_sh = 19; ghf_ok = 0; } } }
+    if (!ghf_ok) { memset(ghf, 0xff, (unsigned)ghf_n * sizeof(GhF)); ghf_ok = 1; }
+    u32 k = (((u32)ax * 0x9E3779B1u) ^ ((u32)ay * 0x85EBCA6Bu)) >> ghf_sh;
     if (ghf[k].x == (u16)ax && ghf[k].y == (u16)ay) return ghf[k].h;
+    { extern int dbg_miss[4]; dbg_miss[0]++; }
     int h = gh_raw0(ax, ay); ghf[k].x = (u16)ax; ghf[k].y = (u16)ay; ghf[k].h = (s16)h; return h;
 }
 // The ground's height at each corner of the window, kept (the land does not change while the window stays where it is: only a
@@ -2071,6 +2074,14 @@ static inline int gh_c(int X, int Y) {   // (inline: asked for a thousand times 
 }
 int world_gh_c(int X, int Y) { return gh_c(X, Y); }
 void world_gh_reset(void) { gh_bx = -99999; gh_cok = 0; ghf_ok = 0; }   // (a new city: the land is different)
+int world_gh(int x, int z);
+int world_gh_lot(int x, int z) {   // world_gh, quicker for a point well inside a town's lot (a far building): the lot is a level pad at its block's height
+    if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
+    int ax = world_wbx * BM_BLK + (x >> 8), ay = world_wby * BM_BLK + ((-z) >> 8);
+    if (ax >= 0 && ay >= 0) { int lx = ax % BM_BLK, ly = ay % BM_BLK;
+        if (lx >= BM_LOT0 && ly >= BM_LOT0 && lx <= BM_BLK - 2 && ly <= BM_BLK - 2) { int t; int h = bm_hill_t(ax / BM_BLK, ay / BM_BLK, &t); if (t) return h; } }   // (all four corners on the pad: the same height)
+    return world_gh(x, z);
+}
 int world_gh(int x, int z) {   // the ground under a point (world units): 0 where it is level
     if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
     int tx = x >> 8, ty = (-z) >> 8, fx = x & 255, fy = (-z) & 255;

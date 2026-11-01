@@ -11,6 +11,7 @@
 int far_view = FAR_VIEW0, far_trees = 2, far_detail = 2, far_haze = 1, far_prims;
 int far_hb[3], far_np[3], far_nclip, far_ncone, far_nquad, far_hb_win, far_hb_win0;   // (test readouts: land, buildings, trees)
 static const short view_m[6] = { 0, 250, 500, 1000, 1500, 2000 };
+int world_gh_lot(int x, int z);
 int far_metres(void) { return view_m[CLAMP(far_view, 0, 5)]; }
 static int far_reach_u;                    // how far (world units) the last frame's far pass could show anything: set by far_setup
 int far_reach_m(void);                     // that in metres; -1 when the far view was not drawn (the options screen tells you)
@@ -404,6 +405,15 @@ static void draw_roads(int hills) {
     }
     #undef IN_WIN
 }
+// The far ground's corners lie on a lattice two cells (128 tiles) apart. Their heights are kept here by lattice point, so a quad's
+// corners are a table read: worked out once when they first show (the view sweeping round used to work out hundreds a frame, from noise).
+#define LAT_N 36
+static s16 lat[LAT_N][LAT_N]; static int lat_gx0 = -99999, lat_gy0, lat_stamp = -1; extern int bm_edit_stamp;
+static inline int lat_h(int lx, int ly, int x, int z) {
+    if ((unsigned)lx >= LAT_N || (unsigned)ly >= LAT_N) return world_gh(x, z);
+    s16 *c = &lat[ly][lx]; if (*c == 0x7fff) *c = (s16)world_gh(x, z);
+    return *c;
+}
 static void draw_land(int rx0, int ry0, int rx1, int ry1) {
     const int hills = world_zone == ZONE_CITY && world_wbx >= 0;
     far_hb_win0 = gfx_hb();
@@ -443,6 +453,7 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
     int pcx = pbx / FCB, pcy = pby / FCB;
     static u8 vis2[FC / 2 + 2][FC / 2 + 2];                      // 2x2 groups of cells the view might take in
     int gx0 = (pcx - reach) >> 1, gy0 = (pcy - reach) >> 1, gn = MIN(FC / 2 + 1, reach + 2);
+    if (gx0 != lat_gx0 || gy0 != lat_gy0 || lat_stamp != bm_edit_stamp) { for (int y = 0; y < LAT_N; y++) for (int x = 0; x < LAT_N; x++) lat[y][x] = 0x7fff; lat_gx0 = gx0; lat_gy0 = gy0; lat_stamp = bm_edit_stamp; }   // (the lattice moved, which is rare, or the land changed)
     for (int gy = 0; gy <= gn; gy++) for (int gx = 0; gx <= gn; gx++) {
         int cx = (gx0 + gx) * 2, cy = (gy0 + gy) * 2;
         int x0 = (cx * CELL_T - fwx0) * TILE, z0 = -((cy * CELL_T - fwy0) * TILE);
@@ -475,7 +486,8 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
         if (hills) { int gs = 2 * CELL_T * TILE, nx = (x1 - x0) / gs, nz = (z0 - z1) / gs;   // (hills: a quad a group of cells)
             for (int j = 0; j < nz; j++) for (int i = 0; i < nx; i++) {
                 int ax = x0 + i * gs, bz = z0 - j * gs;
-                int hh[4] = { world_gh(ax, bz), world_gh(ax + gs, bz), world_gh(ax + gs, bz - gs), world_gh(ax, bz - gs) };
+                int lx = r->x0 + i, ly = r->y0 + j;
+                int hh[4] = { lat_h(lx, ly, ax, bz), lat_h(lx + 1, ly, ax + gs, bz), lat_h(lx + 1, ly + 1, ax + gs, bz - gs), lat_h(lx, ly + 1, ax, bz - gs) };
                 ground_quad(ax, ax + gs, bz, bz - gs, R, G, B, OT_GROUND_FAR, hh); } }
         else
         ground_quad(x0, x1, z0, z1, R, G, B, OT_GROUND_FAR, 0); }
@@ -573,14 +585,14 @@ static void far_dot(int x0, int z0, int x1, int z1, int sto, const u8 *wc) {   /
 }
 static void far_building(const FB *f, int x0, int z0, int x1, int z1) {
     int pitched = foot[f->lot][4] && f->sto <= 2;
-    far_lift = world_gh((x0 + x1) / 2, (z0 + z1) / 2);
+    far_lift = world_gh_lot((x0 + x1) / 2, (z0 + z1) / 2);
     far_box(x0, z0, x1, z1, f->sto, wallc[f->col % 10], pitched, roofc[f->pad & 3], f->lot != LOT_HOUSE && f->lot != LOT_COTTAGE);
     far_lift = 0;
 }
 // the map's own buildings past the detail (world.c's skyline), drawn the same way
 void far_box_world(int x0, int z0, int x1, int z1, int sto, u16 wall15, int pitched, u16 roof15) {
     u8 wc[3] = { (u8)R8(wall15), (u8)G8(wall15), (u8)B8(wall15) }, rc[3] = { (u8)R8(roof15), (u8)G8(roof15), (u8)B8(roof15) };
-    far_lift = world_gh((x0 + x1) / 2, (z0 + z1) / 2);
+    far_lift = world_gh_lot((x0 + x1) / 2, (z0 + z1) / 2);
     far_box(x0, z0, x1, z1, sto, wc, pitched && sto <= 2, rc, sto >= 2);
     far_lift = 0;
 }
@@ -606,7 +618,7 @@ static void draw_buildings(void) {
             int hgt = f->sto * WALL_FULL;
             if (230 * hgt < d * 2) continue;                            // under two pixels tall: lost in the haze
             if (far_detail == 0 && f->sto < 3 && d > M2U(120)) continue;
-            if (d > M2U(300)) { far_lift = world_gh(cx, cz); far_dot(x0, z0, x1, z1, f->sto, wallc[f->col % 10]); far_lift = 0; }   // (far: one rectangle each)
+            if (d > M2U(300)) { far_lift = world_gh_lot(cx, cz); far_dot(x0, z0, x1, z1, f->sto, wallc[f->col % 10]); far_lift = 0; }   // (far: one rectangle each)
             else far_building(f, x0, z0, x1, z1);
           }
         }
@@ -768,6 +780,7 @@ int far_begin(u32 horizon) {
     hz_r = horizon & 255; hz_g = (horizon >> 8) & 255; hz_b = (horizon >> 16) & 255;
     fwx0 = world_wbx * BM_BLK; fwy0 = world_wby * BM_BLK;
     { int ptx = (cam.at.vx >> 8) + fwx0, pty = (-cam.at.vz >> 8) + fwy0; pbx = ptx / BM_BLK; pby = pty / BM_BLK; }
+    { extern void bm_hill_center(int bx, int by); bm_hill_center(pbx, pby); }
     cells_follow(24);
     if (!far_setup()) return 0;
     far_gte(); far_on_frame = 1;

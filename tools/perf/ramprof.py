@@ -42,3 +42,6 @@ under=sum(h[:16]); print('   share of frames that fit 3 vblanks (<=785): %.0f%%'
 
 if nn:
     f=rd('dbg_sum_far',6); print('far pass per frame: quads %.0f (clipped %.0f) cone tests %.0f | prims land %.0f buildings %.0f trees %.0f'%tuple(x/nn for x in f))
+
+if nn:
+    f=rd('dbg_sum_miss',4); print('per frame: height-corner misses %.0f | block hill misses %.0f | bm_terrain calls %.0f | (spare) %.0f'%tuple(x/nn for x in f))
