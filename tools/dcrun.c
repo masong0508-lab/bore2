@@ -183,7 +183,7 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch) {
         for (unsigned y = 0; y < h; y++) for (unsigned x = 0; x < w; x++) { uint32_t px = ((const uint32_t *)((const uint8_t *)data + y * pitch))[x]; uint8_t *o = buf + ((size_t)y * w + x) * 4; o[0] = px >> 16; o[1] = px >> 8; o[2] = px; o[3] = 255; }
         save_ppm_rgba(p, buf, w, h, 0); free(buf);
     }
-    fprintf(stderr, "shot %s (%ux%u)\n", p, w, h);
+    fprintf(stderr, "shot %s (%ux%u) at frame %d, frames drawn so far %d\n", p, w, h, frame_no, frames_seen);
 }
 static FILE *audio_out;
 static void audio_cb(int16_t l, int16_t r) { (void)l; (void)r; }
@@ -248,7 +248,11 @@ int main(int argc, char **argv) {
     if (p_retro_get_memory_data) {   // the Dreamcast's 16 MB at the end (<prefix>_ram.bin): the port leaves a text log in it (dc_log)
         void *ram = p_retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM); size_t n = p_retro_get_memory_size(RETRO_MEMORY_SYSTEM_RAM);
         char rp[600]; snprintf(rp, sizeof rp, "%s_ram.bin", outprefix); FILE *f = (ram && n) ? fopen(rp, "wb") : 0;
-        if (f) { fwrite(ram, 1, n, f); fclose(f); fprintf(stderr, "ram %zu bytes -> %s\n", n, rp); }
+        if (f && getenv("DCRUN_RAM")) { fwrite(ram, 1, n, f); fclose(f); fprintf(stderr, "ram %zu bytes -> %s\n", n, rp); } else if (f) { fclose(f); remove(rp); }
+        for (size_t i = 0; ram && i + 6 < n; i++) if (!memcmp((char *)ram + i, "DCLOG{", 6)) {   // the port's text log: printed
+            const char *t = (const char *)ram + i + 6; size_t k = 0; while (i + 6 + k < n && t[k] && k < 65536) k++;
+            fprintf(stderr, "---- DCLOG\n%.*s\n----\n", (int)k, t); break;
+        }
     }
     if (audio_out) fclose(audio_out);
     _exit(0);   // (the core's threads and the GL context are not worth a clean shutdown here)

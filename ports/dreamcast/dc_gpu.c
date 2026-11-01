@@ -22,17 +22,21 @@ void dc_logf(const char *f, ...) { if (dc_log_n > 65000) return; va_list a; va_s
 #endif
 int dc_dump_frame = DC_DUMP;   // (a test build: -DDC_DUMP=N logs frame N's big polygons)
 static uint16_t vram[512][1024] __attribute__((aligned(32)));
-static uint32_t page_gen[2][16];          // bumped when VRAM under a 64x256 page changes
+static uint32_t page_gen[2][16];          // bumped when VRAM under a 64x256 bank changes (the quick test)
+static uint32_t blk_gen[32][64];          // bumped when VRAM under a 16x16 block changes (only what changed is converted again)
 
 // ---------------------------------------------------------------- VRAM
 static void vram_dirty(int x, int y, int w, int h) {
     if (w <= 0 || h <= 0) return;
+    if (w > 1024) w = 1024; if (h > 512) h = 512;
     int px0 = (x & 1023) >> 6, px1 = ((x + w - 1) & 1023) >> 6, py0 = (y & 511) >> 8, py1 = ((y + h - 1) & 511) >> 8;
     if (w >= 1024) { px0 = 0; px1 = 15; }
     for (int py = 0; py < 2; py++) {
         if (!(py >= py0 && py <= py1) && !(py1 < py0)) continue;
         for (int px = 0; px < 16; px++) if ((px0 <= px1) ? (px >= px0 && px <= px1) : (px >= px0 || px <= px1)) page_gen[py][px]++;
     }
+    int bx0 = x >> 4, bx1 = (x + w - 1) >> 4, by0 = y >> 4, by1 = (y + h - 1) >> 4;
+    for (int by = by0; by <= by1; by++) for (int bx = bx0; bx <= bx1; bx++) blk_gen[by & 31][bx & 63]++;
 }
 int LoadImage(const RECT *r, const uint32_t *data) {
     const uint16_t *s = (const uint16_t *)data;
@@ -58,57 +62,105 @@ int ClearImage(const RECT *r, int rr, int gg, int bb) {
 }
 
 // ---------------------------------------------------------------- textures: PS1 pages as PVR textures
-#define NTEX 36
-typedef struct { uint32_t key, sig; pvr_ptr_t ptr; uint32_t used; } Tex;
+// A 256x256 page (with its CLUT for 4/8 bit) becomes an ARGB1555 PVR texture when first used. Afterwards only the 16x16-texel cells
+// whose VRAM changed are converted again (the people's sprite cells change every frame; the rest of their page does not).
+// Each cell also keeps two flags: it has solid texels (STP clear) / it has texels with STP set. A semi-transparent PS1 primitive
+// blends only its STP texels and draws the others solid: a primitive over cells with both is drawn as two (see emit).
+#define NTEX 40
+typedef struct { uint32_t key, sig, clsig, used; pvr_ptr_t ptr; int mode, px, py, cx, cy, var; uint32_t cg[16][16]; uint8_t fl[16][16]; } Tex;
 static Tex tex[NTEX]; static uint32_t tex_clock;
 static uint16_t conv[256 * 256] __attribute__((aligned(32)));
-int dc_tex_uploads;                        // (conversions this run: the readout)
-static uint32_t tex_sig(int mode, int px, int py, int cx, int cy) {
+int dc_tex_uploads, dc_tex_cells;          // (whole pages / cells converted this run: the readout)
+static uint32_t tex_sig(int mode, int px, int py) {
     uint32_t s = 0; int np = mode == 0 ? 1 : mode == 1 ? 2 : 4;
     for (int k = 0; k < np; k++) s += page_gen[py][(px + k) & 15] * (k + 1);
-    if (mode < 2) { s += page_gen[(cy >> 8) & 1][(cx >> 6) & 15] * 7; if (mode == 1) s += page_gen[(cy >> 8) & 1][((cx + 255) >> 6) & 15] * 11; }
     return s;
 }
-static int tex_var;   // 0: every texel; 1: only texels without STP; 2: only texels with STP (a semi-transparent prim's two parts)
-static inline uint16_t to1555(uint16_t c) {
-    if (tex_var == 1 && (c & 0x8000)) return 0;
-    if (tex_var == 2 && !(c & 0x8000)) return 0;
+static uint32_t clut_sig(int mode, int cx, int cy) {
+    if (mode == 2) return 0;
+    uint32_t s = blk_gen[(cy >> 4) & 31][(cx >> 4) & 63];
+    if (mode == 1) for (int k = 1; k < 16; k++) s += blk_gen[(cy >> 4) & 31][((cx >> 4) + k) & 63] * (k + 1);
+    return s;
+}
+static inline uint16_t to1555(uint16_t c, int var) {
+    if (var == 1 && (c & 0x8000)) return 0;
+    if (var == 2 && !(c & 0x8000)) return 0;
     if (!c) return 0;
     return (uint16_t)(0x8000 | ((c & 31) << 10) | (c & 0x3e0) | ((c >> 10) & 31));
 }
+static inline uint16_t texel(const Tex *t, int u, int v) {   // the raw PS1 texel (15 bit + STP) at page coordinates u, v
+    const uint16_t *row = vram[(t->py * 256 + v) & 511]; int x0 = t->px * 64;
+    if (t->mode == 2) return row[(x0 + u) & 1023];
+    if (t->mode == 1) return vram[t->cy][(t->cx + ((row[(x0 + (u >> 1)) & 1023] >> ((u & 1) * 8)) & 255)) & 1023];
+    return vram[t->cy][(t->cx + ((row[(x0 + (u >> 2)) & 1023] >> ((u & 3) * 4)) & 15)) & 1023];
+}
+static inline uint32_t cell_gen(const Tex *t, int cu, int cv) {   // the VRAM block under a texel cell
+    int hx = t->px * 64 + ((cu * 16) >> (2 - t->mode));
+    return blk_gen[((t->py * 256 + cv * 16) >> 4) & 31][(hx >> 4) & 63];
+}
+static void cell_convert(Tex *t, int cu, int cv, uint16_t *out, int stride) {   // one 16x16 cell: converted into out, flags worked out
+    int f = 0;
+    for (int j = 0; j < 16; j++) for (int i = 0; i < 16; i++) {
+        uint16_t c = texel(t, cu * 16 + i, cv * 16 + j);
+        if (c & 0x8000) f |= 2; else if (c) f |= 1;
+        out[j * stride + i] = to1555(c, t->var);
+    }
+    t->fl[cv][cu] = (uint8_t)f; t->cg[cv][cu] = cell_gen(t, cu, cv);
+}
+static int tex_waited;   // (a texture is changed only once the PVR has finished drawing the last frame, which may still use it)
+static inline void tex_wait(void) { if (!tex_waited) { pvr_wait_render_done(); tex_waited = 1; } }
+static void tex_full(Tex *t) {
+    tex_wait();
+    for (int cv = 0; cv < 16; cv++) for (int cu = 0; cu < 16; cu++) cell_convert(t, cu, cv, conv + cv * 16 * 256 + cu * 16, 256);
+    pvr_txr_load(conv, t->ptr, sizeof conv);
+    dc_tex_uploads++;
+}
+static void tex_update(Tex *t) {   // only the cells whose VRAM changed
+    int n = 0; static uint8_t dirty[256];
+    for (int cv = 0; cv < 16; cv++) for (int cu = 0; cu < 16; cu++) if (t->cg[cv][cu] != cell_gen(t, cu, cv)) dirty[n++] = (uint8_t)(cv * 16 + cu);
+    if (n > 96) { tex_full(t); return; }
+    if (n) tex_wait();
+    uint16_t cell[256] __attribute__((aligned(8)));
+    for (int k = 0; k < n; k++) {
+        int cu = dirty[k] & 15, cv = dirty[k] >> 4;
+        cell_convert(t, cu, cv, cell, 16);
+        volatile uint32_t *d = (volatile uint32_t *)((uint8_t *)t->ptr + (cv * 16 * 256 + cu * 16) * 2); const uint32_t *s = (const uint32_t *)cell;
+        for (int j = 0; j < 16; j++, d += 128, s += 8) { d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = s[3]; d[4] = s[4]; d[5] = s[5]; d[6] = s[6]; d[7] = s[7]; }
+    }
+    dc_tex_cells += n;
+}
+static int tex_last = -1;
 static int tex_get(int tpage, int clut, int var) {
-    tex_var = var;
     int mode = (tpage >> 7) & 3; if (mode == 3) mode = 2;
     int px = tpage & 15, py = (tpage >> 4) & 1, cx = (clut & 63) * 16, cy = (clut >> 6) & 511;
-    uint32_t key = (uint32_t)mode << 28 | (uint32_t)px << 24 | (uint32_t)py << 23 | (mode < 2 ? (uint32_t)(clut & 0x7fff) : 0) | (uint32_t)var << 21;
-    uint32_t sig = tex_sig(mode, px, py, cx, cy);
+    uint32_t key = (uint32_t)mode << 28 | (uint32_t)px << 24 | (uint32_t)py << 23 | (uint32_t)var << 21 | (mode < 2 ? (uint32_t)(clut & 0x7fff) : 0);
+    uint32_t sig = tex_sig(mode, px, py);
     tex_clock++;
-    int lru = 0;
-    for (int i = 0; i < NTEX; i++) {
-        if (tex[i].ptr && tex[i].key == key) {
-            tex[i].used = tex_clock;
-            if (tex[i].sig == sig) return i;
-            lru = i; goto convert;
-        }
+    int lru = 0, i = tex_last;
+    if (i >= 0 && tex[i].key == key && tex[i].ptr) goto hit;
+    for (i = 0; i < NTEX; i++) {
+        if (tex[i].ptr && tex[i].key == key) goto hit;
         if (!tex[i].ptr) { lru = i; break; }
         if (tex[i].used < tex[lru].used) lru = i;
     }
-    if (!tex[lru].ptr) tex[lru].ptr = pvr_mem_malloc(256 * 256 * 2);
-convert:
-    tex[lru].key = key; tex[lru].sig = sig; tex[lru].used = tex_clock;
-    {
-        int x0 = px * 64, y0 = py * 256;
-        const uint16_t *cl = &vram[cy][0];
-        for (int v = 0; v < 256; v++) {
-            const uint16_t *row = vram[(y0 + v) & 511]; uint16_t *o = conv + v * 256;
-            if (mode == 2) for (int u = 0; u < 256; u++) o[u] = to1555(row[(x0 + u) & 1023]);
-            else if (mode == 1) for (int u = 0; u < 256; u++) { int i = (row[(x0 + (u >> 1)) & 1023] >> ((u & 1) * 8)) & 255; o[u] = to1555(cl[(cx + i) & 1023]); }
-            else for (int u = 0; u < 256; u++) { int i = (row[(x0 + (u >> 2)) & 1023] >> ((u & 3) * 4)) & 15; o[u] = to1555(cl[(cx + i) & 1023]); }
-        }
-        pvr_txr_load(conv, tex[lru].ptr, sizeof conv);
-        dc_tex_uploads++;
-    }
-    return lru;
+    if (!tex[lru].ptr) { tex[lru].ptr = pvr_mem_malloc(256 * 256 * 2); if (!tex[lru].ptr) { tex_last = -1; return -1; } }
+    {   Tex *t = &tex[lru];
+        t->key = key; t->sig = sig; t->clsig = clut_sig(mode, cx, cy); t->used = tex_clock;
+        t->mode = mode; t->px = px; t->py = py; t->cx = cx; t->cy = cy; t->var = var;
+        tex_full(t); tex_last = lru; return lru; }
+hit:
+    {   Tex *t = &tex[i]; t->used = tex_clock; tex_last = i;
+        if (t->sig != sig) { t->sig = sig; uint32_t cs = clut_sig(mode, cx, cy); if (cs != t->clsig) { t->clsig = cs; tex_full(t); } else tex_update(t); }
+        else if (mode < 2) { uint32_t cs = clut_sig(mode, cx, cy); if (cs != t->clsig) { t->clsig = cs; tex_full(t); } }
+        return i; }
+}
+static int tex_flags(int ti, const int *u, const int *v, int n) {   // the cells under a primitive's texels: 1 solid ones, 2 STP ones
+    if (ti < 0) return 0;
+    int u0 = 255, u1 = 0, v0 = 255, v1 = 0;
+    for (int k = 0; k < n; k++) { int a = u[k] & 255, b = v[k] & 255; if (a < u0) u0 = a; if (a > u1) u1 = a; if (b < v0) v0 = b; if (b > v1) v1 = b; }
+    int f = 0; const Tex *t = &tex[ti];
+    for (int cv = v0 >> 4; cv <= v1 >> 4; cv++) for (int cu = u0 >> 4; cu <= u1 >> 4; cu++) f |= t->fl[cv][cu];
+    return f;
 }
 
 // ---------------------------------------------------------------- the primitives of a frame, sorted into the PVR's lists
@@ -163,20 +215,29 @@ static void emit(int n, const int *x, const int *y, const uint32_t *col, const i
         return;
     }
     if (semi && textured) {   // the PS1 blends only the texels with the STP bit set; the rest of a semi-transparent texture is drawn solid
-        if (npt < MAXPT) { Prim *q = &pt[npt]; emit_one(q, n, x, y, col, u, v, 1, tpage, clut, raw, 0, abr, 1); npt++; }
-        if (ntr < MAXTR) { Prim *q = &tr[ntr]; emit_one(q, n, x, y, col, u, v, 1, tpage, clut, raw, 1, abr, 2); ntr++; }
-        return;
+        int f = tex_flags(tex_get(tpage, clut, 0), u, v, n);
+        if (f == 0) return;
+        if (f == 1) semi = 0;                      // (no STP texels under it: all solid)
+        else if (f == 3) {                         // both: the solid texels, then the blended ones
+            if (npt < MAXPT) { Prim *q = &pt[npt]; emit_one(q, n, x, y, col, u, v, 1, tpage, clut, raw, 0, abr, 1); if (q->tex >= 0) npt++; }
+            if (ntr < MAXTR) { Prim *q = &tr[ntr]; emit_one(q, n, x, y, col, u, v, 1, tpage, clut, raw, 1, abr, 2); if (q->tex >= 0) ntr++; }
+            return;
+        }
     }
     Prim *p;
-    if (semi) { if (ntr >= MAXTR) return; p = &tr[ntr++]; }
-    else if (textured) { if (npt >= MAXPT) return; p = &pt[npt++]; }
-    else { if (nop >= MAXOP) return; p = &op[nop++]; }
+    int *cnt;
+    if (semi) { if (ntr >= MAXTR) return; p = &tr[ntr]; cnt = &ntr; }
+    else if (textured) { if (npt >= MAXPT) return; p = &pt[npt]; cnt = &npt; }
+    else { if (nop >= MAXOP) return; p = &op[nop]; cnt = &nop; }
+    p->tex = -1;
     emit_one(p, n, x, y, col, u, v, textured, tpage, clut, raw, semi, abr, 0);
+    if (!textured || p->tex >= 0) (*cnt)++;
 }
 static void emit_one(Prim *p, int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr, int var) {
     zseq += 1.0f / 4096.0f;
     p->z = 1.0f + zseq; p->n = (int8_t)n; p->blend = (int8_t)(semi ? abr : -1); p->filt = 0;
     p->tex = textured ? (int8_t)tex_get(tpage, clut, var) : -1;
+    if (textured && p->tex < 0) return;
     for (int k = 0; k < n; k++) {
         p->x[k] = (x[k] + ofs_x - area_x0) * SCALE; p->y[k] = (y[k] + ofs_y - area_y0) * SCALE;
         uint32_t c = textured ? mod_col(col[k], raw) : flat_col(col[k]);
@@ -376,6 +437,8 @@ int DrawOTag(const uint32_t *ot) {
     submit_list(PVR_LIST_PT_POLY, pt, npt);
     submit_list(PVR_LIST_TR_POLY, tr, ntr);
     pvr_scene_finish();
+    { extern volatile int dc_vbl; if (dc_frames % 100 == 0) dc_logf("vbl %d f%d prims %d/%d/%d pages %d cells %d pvrfree %d\n", dc_vbl, dc_frames, nop, npt, ntr, dc_tex_uploads, dc_tex_cells, (int)pvr_mem_available()); }
+    tex_waited = 0;
     dc_frames++;
     return 0;
 }
@@ -424,11 +487,15 @@ static void sw_tri(const int *x, const int *y, const uint32_t *c, const int *u, 
 }
 
 // ---------------------------------------------------------------- VSync and the clocks
+// VSync counts the Dreamcast's real vertical blanks (60 a second); VSync(1), the PS1's hblank count since the last VSync(0) (the
+// game's own profiler), comes from the microsecond clock.
+volatile int dc_vbl;
 static uint64_t t0_us, vs_us;
 static int vs_count;
-static int vbl_now(void) { return (int)((timer_us_gettime64() - t0_us) * 60 / 1000000); }
+static void vbl_irq(uint32_t code, void *data) { (void)code; (void)data; dc_vbl++; }
+static int vbl_now(void) { return dc_vbl; }
 int VSync(int m) {
-    if (!t0_us) { t0_us = timer_us_gettime64(); vs_us = t0_us; }
+    if (!t0_us) { t0_us = timer_us_gettime64(); vs_us = t0_us; vblank_handler_add(vbl_irq, 0); }
     if (m < 0) return vbl_now();
     if (m == 1) return (int)((timer_us_gettime64() - vs_us) * 10 / 635);   // hblanks (63.5 us) since the last VSync(0)
     int target = vbl_now() + 1;
