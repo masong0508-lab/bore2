@@ -9,3 +9,4 @@ test/*.raw
 test/before/
 bore2-dsi-port.zip
 bore2-ps1.zip
+.claude/
