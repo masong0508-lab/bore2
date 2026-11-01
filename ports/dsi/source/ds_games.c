@@ -682,11 +682,17 @@ static void hs_frame(int held, int down, int steps, int tx, int ty) {
 #define GOTCHI_EGG 150
 enum { GS_EGG, GS_BABY, GS_CHILD, GS_TEEN, GS_ADULT, GS_ELDER };
 enum { GF_SICK = 1, GF_SLEEP = 2, GF_DARK = 4, GF_CALL = 8, GF_FAKE = 16 };
-typedef struct { u8 on, stage, form, sp, nm, hun, hap, disc, wt, poop, fl, miss, needT, bond, snk, meal, gen; u16 age; u8 pers, col, mut, id, mom, dad, mate; } Blob;   // (D54: family) pers, colour, rare mutation, its own id, its parents' ids, its mate's id
+typedef struct { u8 on, stage, form, sp, nm, hun, hap, disc, wt, poop, fl, miss, needT, bond, snk, meal, gen; u16 age; u8 pers, col, mut, id, mom, dad, mate, acc, taste; } Blob;   // (D54: family) pers, colour, rare mutation, its own id, its parents' ids, its mate's id
 typedef struct { u8 id, sp, nm, mom, dad, col; } Ln;   // one line of a family tree: kept after a pet has passed on (nm bit 7)
-#define GLN 12
-typedef struct { u8 uid, own, sel, pad; u16 xp, hatched, wins, cared; Blob b[GB_N]; Ln ln[GLN]; u8 nid, lh, mem, memnm, memsp; } Toy;
-static Toy gtoy[GT_MAX]; static u32 gdex[2]; static u32 grng = 0x1234567u;
+#define GLN 24
+typedef struct { u8 uid, own, sel, pad; u16 xp, hatched, wins, cared, plays; Blob b[GB_N]; Ln ln[GLN]; u8 nid, lh, mem, memnm, memsp, room, deco, accs; } Toy;   // (D55) plays, the home's walls and things, the hats owned
+typedef struct { u16 day; u8 kind, nm; } Dy;   // (D55) a line of the pet diary
+#define GD_N 16
+#define NACH 16
+#define NACC 8
+#define NFOOD 12
+enum { GD_HATCH = 1, GD_GROW, GD_ADULT, GD_PASS, GD_GIFT, GD_BDAY, GD_TANTRUM, GD_ILL, GD_EGG, GD_PLAY, GD_MUT, GD_CARED, GD_BOND, GD_VISIT, GD_AWARD };
+static Toy gtoy[GT_MAX]; static Dy gdy[GD_N]; static u8 gdn; static u32 gdex[2], gach; static u32 grng = 0x1234567u;
 static int gr(void) { grng = grng * 1103515245u + 12345u; return (int)((grng >> 16) & 255); }
 static const char *const gspNm[GSP_N] = { "BLOB", "CAT", "BUNNY", "BIRD", "FROG", "DINO", "FISH", "BEAR", "GHOST", "ROBOT", "SHROOM", "SLIME", "BAT", "SNAIL", "OCTO", "ALIEN" };
 static const char *const ggiv[32] = { "BLOBERT", "SNORLOCK", "MEH-CHAN", "DOZY", "SIR SIGH", "YAWNIE", "PUDDLE", "KEVIN", "NIBBLES", "GRUMP", "WOBBLE", "SPROCKET",
@@ -701,7 +707,8 @@ static void gname(const Blob *b, char *out) {
 static void gdex_see(int sp, int form) { int i = (sp % GSP_N) * 4 + (form & 3); gdex[i >> 5] |= 1u << (i & 31); }
 static int gdex_has(int sp, int form) { int i = (sp % GSP_N) * 4 + (form & 3); return (gdex[i >> 5] >> (i & 31)) & 1; }
 static int gdex_count(void) { int n = 0; for (int i = 0; i < GSP_N * 4; i++) n += (gdex[i >> 5] >> (i & 31)) & 1; return n; }
-static void gt_reset(void) { memset(gtoy, 0, sizeof gtoy); gdex[0] = gdex[1] = 0; }
+static void gt_reset(void) { memset(gtoy, 0, sizeof gtoy); gdex[0] = gdex[1] = 0; gach = 0; gdn = 0; memset(gdy, 0, sizeof gdy); }
+static void gdiary(int kind, int nm) { Dy *d = &gdy[gdn++ % GD_N]; d->day = (u16)(minutes / 60); d->kind = (u8)kind; d->nm = (u8)nm; }
 static int gsim_of(const Toy *t) { return t->uid < nsim ? t->uid : -1; }
 static Toy *gtoy_of(int si) { if (si < 0 || si >= nsim) return 0; for (int i = 0; i < GT_MAX; i++) if (gtoy[i].own && gtoy[i].uid == si) return &gtoy[i]; return 0; }
 static int gcount(const Toy *t) { int n = 0; for (int i = 0; i < GB_N; i++) n += t->b[i].on; return n; }
@@ -720,27 +727,35 @@ static void gxp(Toy *t, int n) { int l0 = glevel(t); t->xp = (u16)MIN(60000, t->
 static int gstat(int si, int what) { if (si < 0 || si >= nsim) return 0; return what == 0 ? (mood(&sims[si]) - 50) * 2 : sims[si].need[0]; }
 static void gfun(int si, int n) { if (si >= 0 && si < nsim) sims[si].need[1] = cl100(sims[si].need[1] + n); }
 static void gfood(int si, int n) { if (si >= 0 && si < nsim) sims[si].need[0] = cl100(sims[si].need[0] + n); }
-static void gfresh(Blob *b, int sp) { memset(b, 0, sizeof *b); b->on = 1; b->sp = (u8)(sp % GSP_N); b->nm = (u8)(gr() & 31); b->hun = 4; b->hap = 4; b->wt = 5; b->pers = (u8)(gr() & 7); b->col = (u8)(gr() & 7); b->mut = (gr() & 31) == 0; }
+static void gfresh(Blob *b, int sp) { memset(b, 0, sizeof *b); b->on = 1; b->sp = (u8)(sp % GSP_N); b->nm = (u8)(gr() & 31); b->hun = 4; b->hap = 4; b->wt = 5; b->pers = (u8)(gr() & 7); b->col = (u8)(gr() & 7); b->mut = (gr() & 31) == 0; { int l = gr() % 12, d = gr() % 11; b->taste = (u8)(l << 4 | (d >= l ? d + 1 : d)); } }
 static void gln_set(Toy *t, const Blob *b, int gone) {   // the family tree remembers it: kept up to date, and kept after it has passed on
-    int k = -1; for (int i = 0; i < GLN; i++) if (t->ln[i].id == b->id) { k = i; break; } if (k < 0) k = t->lh++ % GLN;
+    int k = -1; for (int i = 0; i < GLN; i++) if (t->ln[i].id == b->id) { k = i; break; } if (k < 0) { for (int i = 0; i < GLN && k < 0; i++) if (!t->ln[i].id) k = i;
+        for (int i = 0; i < GLN && k < 0; i++) if (t->ln[i].nm & 128) { int par = 0; for (int j = 0; j < GLN; j++) if (t->ln[j].id && (t->ln[j].mom == t->ln[i].id || t->ln[j].dad == t->ln[i].id)) par = 1; if (!par) k = i; }   // (D55) the oldest memorial nobody descends from goes first
+        if (k < 0) k = t->lh++ % GLN; }
     t->ln[k].id = b->id; t->ln[k].sp = b->sp; t->ln[k].nm = (u8)((b->nm & 31) | (gone ? 128 : 0)); t->ln[k].mom = b->mom; t->ln[k].dad = b->dad; t->ln[k].col = b->col; }
 static void gnewid(Toy *t, Blob *b, int mom, int dad) { if (!++t->nid) ++t->nid; b->id = t->nid; b->mom = (u8)mom; b->dad = (u8)dad; gln_set(t, b, 0); }
 static Blob *gby_id(Toy *t, int id) { if (!id) return 0; for (int i = 0; i < GB_N; i++) if (t->b[i].on && t->b[i].id == id) return &t->b[i]; return 0; }
 static const Ln *gln_of(const Toy *t, int id) { if (!id) return 0; for (int i = 0; i < GLN; i++) if (t->ln[i].id == id) return &t->ln[i]; return 0; }
-static int gbreed(Toy *t, Blob *x, Blob *y) {   // two grown-ups who love each other leave an egg: kind, colour, nature and a rare shine come from them
+static int gpar_of(const Toy *t, const Ln *a, int c) { for (int i = 0; i < 2; i++) { int p = i ? a->dad : a->mom; if (!p) continue; if (p == c) return 1; const Ln *l = gln_of(t, p); if (l && (l->mom == c || l->dad == c)) return 1; } return 0; }
+static int grel(const Toy *t, int a, int c) {   // (D55) the same pet, a parent or grandparent, a brother or sister: relatives never pair up
+    const Ln *x = gln_of(t, a), *y = gln_of(t, c); if (a == c) return 1; if (!x || !y) return 0; if (gpar_of(t, x, c) || gpar_of(t, y, a)) return 1;
+    return (x->mom && (x->mom == y->mom || x->mom == y->dad)) || (x->dad && (x->dad == y->dad || x->dad == y->mom)); }
+static int gimport(Toy *h, const Toy *src, const Blob *p) {   // a parent from another family gets a line in this family's tree
+    if (src == h) return p->id; Blob tmp = *p; if (!++h->nid) ++h->nid; tmp.id = h->nid; tmp.mom = tmp.dad = 0; gln_set(h, &tmp, 0); return tmp.id; }
+static int gbreed(Toy *t, const Blob *x, const Blob *y, int mid, int did) {   // two grown-ups who love each other leave an egg: kind, colour, nature and a rare shine come from them
     for (int s = 0; s < GB_N; s++) if (!t->b[s].on) { Blob *e = &t->b[s]; gfresh(e, (gr() & 15) == 0 ? gr() : (gr() & 1 ? x->sp : y->sp));
-        e->gen = (u8)MIN(99, MAX(x->gen, y->gen) + 1); e->pers = (gr() & 7) == 0 ? (u8)(gr() & 7) : (gr() & 1 ? x->pers : y->pers); e->col = (gr() & 7) == 0 ? (u8)(gr() & 7) : (gr() & 1 ? x->col : y->col); e->mut = (gr() & 15) == 0 || (x->mut && y->mut && (gr() & 1)); gnewid(t, e, x->id, y->id); return 1; }
+        e->gen = (u8)MIN(99, MAX(x->gen, y->gen) + 1); e->pers = (gr() & 7) == 0 ? (u8)(gr() & 7) : (gr() & 1 ? x->pers : y->pers); e->col = (gr() & 7) == 0 ? (u8)(gr() & 7) : (gr() & 1 ? x->col : y->col); e->mut = (gr() & 15) == 0 || (x->mut && y->mut && (gr() & 1)); gnewid(t, e, mid, did); gdiary(GD_EGG, e->nm); return 1; }
     return 0; }
 static int gbuy(int si) {
     if (si < 0 || si >= nsim || gtoy_of(si)) return 0;
     int k = -1; for (int i = 0; i < GT_MAX; i++) if (!gtoy[i].own || gsim_of(&gtoy[i]) < 0) { k = i; break; } if (k < 0) return 0;
-    Toy *t = &gtoy[k]; memset(t, 0, sizeof *t); t->own = 1; t->uid = (u8)si; gfresh(&t->b[0], gr()); gnewid(t, &t->b[0], 0, 0); return 1; }
+    Toy *t = &gtoy[k]; memset(t, 0, sizeof *t); t->own = 1; t->uid = (u8)si; t->room = (u8)(gr() % 6); gfresh(&t->b[0], gr()); gnewid(t, &t->b[0], 0, 0); return 1; }
 static int gegg(Toy *t, int slot) { if (slot < 0 || slot >= GB_N || t->b[slot].on) return 0; gfresh(&t->b[slot], gr()); gnewid(t, &t->b[slot], 0, 0); return 1; }
 static int gnight(void) { int c = minutes % 1440; return c >= 20 * 60 || c < 6 * 60; }
 static void gtick(Toy *t, Blob *b) {   // one game minute of one creature
     if (!b->on) return;
     if (b->age < 65000) b->age++;
-    if (b->stage == GS_EGG) { if (b->age >= 20) { b->stage = GS_BABY; b->age = 0; b->hun = 3; b->hap = 3; gdex_see(b->sp, 0); t->hatched++; say("A Boreagotchi hatched!"); } return; }
+    if (b->stage == GS_EGG) { if (b->age >= 20) { b->stage = GS_BABY; b->age = 0; b->hun = 3; b->hap = 3; gdex_see(b->sp, 0); t->hatched++; gdiary(GD_HATCH, b->nm); say("A Boreagotchi hatched!"); } return; }
     int n = gnight(), sl = (b->fl & GF_SLEEP) != 0;
     if (n && !sl && b->stage >= GS_CHILD) b->fl |= GF_SLEEP; else if (!n && sl) b->fl &= (u8)~(GF_SLEEP | GF_DARK);
     sl = (b->fl & GF_SLEEP) != 0;
@@ -759,19 +774,31 @@ static void gtick(Toy *t, Blob *b) {   // one game minute of one creature
         if (b->stage == GS_TEEN) b->form = b->miss <= 2 ? 0 : 1;
         if (b->stage == GS_ADULT) {
             b->form = (b->miss <= 1 && b->bond >= 80 && b->disc >= 50) ? 3 : (b->snk > b->meal && b->snk >= 6) ? 2 : (b->miss <= 2 && b->disc >= 50) ? 0 : 1;
-            gdex_see(b->sp, b->form);
+            gdex_see(b->sp, b->form); gdiary(GD_ADULT, b->nm);
             if (b->form == 0 || b->form == 3) say(b->form == 3 ? "A rare STAR form!" : "A SUPER Bore! So proud"); else say("Your Boreagotchi grew up");
         }
         b->miss = 0; }
     if (b->stage == GS_ADULT && b->age >= 2880) { b->stage = GS_ELDER; b->age = 0; gln_set(t, b, 0); say("A Boreagotchi is an ELDER now"); }
-    if (b->stage == GS_ELDER && b->age >= 1440 + b->bond * 6) { static char pm[56]; snprintf(pm, sizeof pm, "%s passed on. Always remembered", ggiv[b->nm & 31]); say(pm); gln_set(t, b, 1); t->mem++; t->memnm = b->nm; t->memsp = b->sp; b->on = 0; return; }
-    if (b->hun == 0 && b->hap == 0 && (b->fl & GF_SICK) && b->miss >= 12) { b->on = 0; gln_set(t, b, 1); say("A Boreagotchi went home"); }
+    if (b->stage == GS_ELDER && b->age >= 1440 + b->bond * 6) { static char pm[56]; snprintf(pm, sizeof pm, "%s passed on. Always remembered", ggiv[b->nm & 31]); say(pm); gdiary(GD_PASS, b->nm); gln_set(t, b, 1); t->mem++; t->memnm = b->nm; t->memsp = b->sp; b->on = 0; return; }
+    if (b->hun == 0 && b->hap == 0 && (b->fl & GF_SICK) && b->miss >= 12) { b->on = 0; gdiary(GD_PASS, b->nm); gln_set(t, b, 1); say("A Boreagotchi went home"); }
 }
-static const char *gfeed(Toy *t, Blob *b, int snack) {
+static const char *const gfoodNm[NFOOD] = { "RICE BALL", "MISO SOUP", "NOODLES", "GRILLED FISH", "VEG STEW", "BERRY PIE", "COOKIE", "CANDY", "FRUIT", "ICE CREAM", "POPCORN", "PUDDING" };
+static const u8 gfoodCost[NFOOD] = { 0, 0, 0, 5, 5, 10, 0, 5, 0, 10, 5, 10 };
+static const char *gfeed(Toy *t, Blob *b, int food, int pay) {   // (D55) twelve foods, a favourite and a dislike each; 0..5 meals, 6..11 snacks
+    int snack = food >= 6;
     if (b->stage == GS_EGG) return "IT IS STILL AN EGG";
     if (b->fl & GF_SLEEP) return "SHHH. IT IS ASLEEP";
-    if (!snack) { if (b->hun >= 4) return "IT REFUSES. IT IS FULL"; b->hun++; if (b->wt < 99) b->wt++; if (b->meal < 250) b->meal++; if (b->bond < 100 && !(gr() & 3)) b->bond++; gxp(t, 1); return "NOM NOM. A MEAL"; }
-    if (b->hap < 4) b->hap++; if (b->wt < 98) b->wt += 2; if (b->snk < 250) b->snk++; gxp(t, 1); return "CRUNCH. A SNACK. SO RELAXED"; }
+    if (!snack && b->hun >= 4) return "IT REFUSES. IT IS FULL";
+    if (snack && b->hap >= 4 && b->hun >= 4) return "IT IS FULL AND HAPPY";
+    if (pay && funds < gfoodCost[food]) return "NOT ENOUGH CASH FOR THAT";
+    if (pay) funds -= gfoodCost[food];
+    if ((b->taste & 15) == food && b->pers != 4) { if (b->hap) b->hap--; return "YUCK! IT HATES THAT. IT SPITS IT OUT"; }
+    int love = (b->taste >> 4) == food;
+    if (!snack) { b->hun++; if (b->wt < 99) b->wt++; if (b->meal < 250) b->meal++; if (!(gr() & 3) && b->bond < 100) b->bond++; }
+    else { if (b->hap < 4) b->hap++; if (b->wt < 98) b->wt += 2; if (b->snk < 250) b->snk++; }
+    if (love || b->pers == 4) { if (b->hap < 4) b->hap++; b->bond = (u8)MIN(100, b->bond + 2); }
+    gxp(t, love ? 2 : 1);
+    return love ? "ITS FAVOURITE! HAPPY WIGGLES" : snack ? "CRUNCH. A SNACK. SO RELAXED" : "NOM NOM. A MEAL"; }
 static const char *glight(Toy *t, Blob *b) { (void)t; b->fl ^= GF_DARK; return (b->fl & GF_DARK) ? ((b->fl & GF_SLEEP) ? "LIGHTS OUT. GOOD NIGHT" : "LIGHTS OUT") : "LIGHTS ON"; }
 static const char *gmedicine(Toy *t, Blob *b) { if (!(b->fl & GF_SICK)) return "IT IS NOT SICK. IT SPITS IT OUT"; b->fl &= (u8)~GF_SICK; if (b->bond < 100) b->bond++; gxp(t, 2); return "ALL BETTER"; }
 static const char *gclean(Toy *t, Blob *b) { if (!b->poop) return "NOTHING TO CLEAN"; b->poop = 0; if (b->bond < 100) b->bond++; gxp(t, 2); return "FLUSHED"; }
@@ -782,17 +809,24 @@ static const char *ggame(Toy *t, Blob *b, int won) {
     if (!won) { gxp(t, 1); return "IT LOST. STILL FUN"; }
     if (b->hap < 4) b->hap++; if (b->wt > 1) b->wt--; if (b->bond < 100) b->bond += 2; gxp(t, 2); t->wins++; gfun(gsim_of(t), 6); return "IT WON! SO HAPPY"; }
 static int gpower(const Blob *b) { return (b->hun + b->hap) * 3 + b->disc / 8 + b->stage * 6 + b->bond / 10 - b->miss * 2 - (b->fl & GF_SICK ? 10 : 0) + (b->form == 0 || b->form == 3 ? 4 : 0); }
-static const char *gfriends(Toy *t, int a, int c, int battle) {
-    Blob *x = &t->b[a], *y = &t->b[c];
-    if (a == c || !x->on || !y->on || x->stage == GS_EGG || y->stage == GS_EGG) return "THEY BOTH NEED TO HAVE HATCHED";
+static void gx_award(int bit);
+static const char *gmeet(Toy *t, int a, Toy *u, int c, int battle) {   // (D55) a playdate or battle, in the family or with a housemate's pet
+    Blob *x = &t->b[a], *y = &u->b[c];
+    if (x == y || !x->on || !y->on || x->stage == GS_EGG || y->stage == GS_EGG) return "THEY BOTH NEED TO HAVE HATCHED";
     if ((x->fl | y->fl) & GF_SLEEP) return "SHHH. SOMEONE IS ASLEEP";
-    if (battle) { int px = gpower(x) + gr() % 12, py = gpower(y) + gr() % 12; Blob *w = px >= py ? x : y, *l = px >= py ? y : x;
-        if (w->bond < 97) w->bond += 3; if (l->hap) l->hap--; w->disc = (u8)MIN(100, w->disc + 6); gxp(t, 3); t->wins++;
-        return w == x ? "YOUR FIRST ONE WON THE BATTLE!" : "YOUR SECOND ONE WON THE BATTLE!"; }
-    if (x->hap < 4) x->hap++; if (y->hap < 4) y->hap++; x->bond = (u8)MIN(100, x->bond + 4); y->bond = (u8)MIN(100, y->bond + 4); gxp(t, 3); gfun(gsim_of(t), 8);
-    if (x->stage == GS_ADULT && y->stage == GS_ADULT && x->bond >= 60 && y->bond >= 60) {   // two grown-ups who love each other: a couple, and then eggs
-        if (!x->mate && !y->mate) { x->mate = y->id; y->mate = x->id; return "THEY ARE A COUPLE NOW. HEARTS EVERYWHERE"; }
-        if (x->mate == y->id && !(gr() & 1) && gbreed(t, x, y)) return "THEY PLAYED... AND LEFT AN EGG!"; }
+    if (battle) { int px = gpower(x) + gr() % 12 + (x->pers == 5) * 5, py = gpower(y) + gr() % 12 + (y->pers == 5) * 5; Blob *w = px >= py ? x : y, *l = px >= py ? y : x;
+        if (w->bond < 97) w->bond += 3; if (l->hap) l->hap--; w->disc = (u8)MIN(100, w->disc + 6); gxp(t, 3); t->wins++; gdiary(GD_PLAY, x->nm);
+        return w == x ? "YOUR PET WON THE BATTLE!" : "THE OTHER PET WON THE BATTLE!"; }
+    int rel = t == u ? grel(t, x->id, y->id) : 0, sh = (x->pers == 6) + (y->pers == 6), gain = MAX(1, 4 + rel - sh);
+    if (x->hap < 4) x->hap++; if (y->hap < 4) y->hap++; x->bond = (u8)MIN(100, x->bond + gain); y->bond = (u8)MIN(100, y->bond + gain); t->plays++; if (u != t) u->plays++; gxp(t, 3); gdiary(GD_PLAY, x->nm);
+    gfun(gsim_of(t), 8); if (u != t) gfun(gsim_of(u), 6);
+    if (rel) return "FAMILY PLAYS TOGETHER. A LOVELY GAME";
+    if (x->stage >= GS_ADULT && y->stage >= GS_ADULT && x->bond >= 60 && y->bond >= 60) {   // two grown-ups who love each other: a couple, and then eggs
+        if (t == u && !x->mate && !y->mate) { x->mate = y->id; y->mate = x->id; gdiary(GD_BOND, x->nm); return "THEY FELL IN LOVE! A NEW PAIR"; }
+        if ((t != u || x->mate == y->id) && (gr() & 1)) { Toy *h = t; int s = -1; for (int e = 0; e < GB_N && s < 0; e++) if (!t->b[e].on) s = e;
+            if (s < 0 && u != t) { h = u; for (int e = 0; e < GB_N && s < 0; e++) if (!u->b[e].on) s = e; }
+            if (s >= 0) { int mid = gimport(h, t, x), did = gimport(h, u, y); gbreed(h, x, y, mid, did); if (t != u) gx_award(14); return t != u ? "TWO FAMILIES MET... AND LEFT AN EGG!" : "THEY PLAYED... AND LEFT AN EGG!"; }
+            return "A LOVELY PLAYDATE. NO ROOM FOR AN EGG"; } }
     return "A LOVELY PLAYDATE. BOTH ARE HAPPY"; }
 static const char *glunch(Toy *t, Blob *b) {
     int si = gsim_of(t); if (b->stage == GS_EGG) return "IT IS STILL AN EGG"; if (b->fl & GF_SLEEP) return "SHHH. IT IS ASLEEP";
@@ -810,8 +844,40 @@ static void gfamily(Toy *t, int si) {   // once an hour: mates with an egg of lo
         if (x->mate && !gby_id(t, x->mate)) x->mate = 0;
         if (x->stage == GS_ADULT && x->mate && x->bond >= 60) { Blob *y = gby_id(t, x->mate);
             if (y && y->stage == GS_ADULT && y->bond >= 60 && x->id < y->id && !(gr() & 7)) { int has = 0; for (int q = 0; q < GB_N; q++) if (t->b[q].on && t->b[q].stage == GS_EGG && t->b[q].mom == x->id) has = 1;
-                if (!has && gbreed(t, x, y) && si == ctl) say("Love left an egg in the basket"); } }
+                if (!has && gbreed(t, x, y, x->id, y->id) && si == ctl) say("Love left an egg in the basket"); } }
+        if (x->stage >= GS_CHILD && !(x->fl & GF_SLEEP) && x->bond >= 50 && x->hap >= 3 && si >= 0 && !(gr() % 14)) { int g = 20 + gr() % 40; if (si == ctl) { static char gb[48]; funds += g; snprintf(gb, sizeof gb, "Your Boreagotchi brought a gift: $%d", g); say(gb); } gfun(si, 4); gdiary(GD_GIFT, x->nm); }   // (D55) a gift for its owner
         if (x->stage > GS_EGG && x->mom) for (int j = i + 1; j < GB_N; j++) { Blob *y = &t->b[j]; if (y->on && y->stage > GS_EGG && y->mom == x->mom && !(gr() & 3)) { if (x->hap < 4) x->hap++; if (y->hap < 4) y->hap++; if (x->bond < 99) x->bond++; if (y->bond < 99) y->bond++; } } } }
+// ---- (D55) accessories, awards (the PS1's sixteen), playdates between families ----
+static const char *const gaccNm[NACC] = { "NOTHING", "BOW", "TOP HAT", "SHADES", "SCARF", "FLOWER", "CROWN", "PARTY HAT" };
+static const u8 gaccCost[NACC] = { 0, 20, 40, 40, 30, 20, 100, 30 };
+static const char *gdress(Toy *t, Blob *b, int acc) {
+    if (b->stage == GS_EGG) return "AN EGG HAS NO HEAD YET";
+    if (acc && !(t->accs & (1 << acc))) { if (funds < gaccCost[acc]) return "NOT ENOUGH CASH"; funds -= gaccCost[acc]; t->accs |= (u8)(1 << acc); }
+    b->acc = (u8)acc; if (b->hap < 4) b->hap++; gxp(t, 1); return acc ? "LOOKING GOOD!" : "ALL NATURAL"; }
+static const char *const gachNm[NACH] = { "FIRST HATCH", "ALL GROWN UP", "STAR QUALITY", "COLLECTOR", "FIRST FAMILY", "GRANDPARENT", "FULL HOUSE", "BEST FRIENDS", "SHINY", "REMEMBERED", "PLAYMATES", "DYNASTY", "GOOD CARER", "BLOBDEX STAR", "TWO FAMILIES", "GOTCHI MASTER" };
+static const char *const gachHow[NACH] = { "HATCH AN EGG", "RAISE A GROWN-UP", "RAISE A STAR FORM", "24 FORMS IN THE BLOBDEX", "A PAIR LAYS AN EGG", "A GRANDCHILD IS BORN", "FIVE PETS IN ONE TOY", "A PET WITH FULL HEARTS",
+    "A GOLD OR SHINY PET", "A PET PASSES ON", "10 PLAYDATES", "FIVE GENERATIONS", "CARE SCORE OF 500", "40 FORMS IN THE BLOBDEX", "AN EGG FROM TWO FAMILIES", "REACH CARE LEVEL 5" };
+static int gdepth(const Toy *t, int id, int n) { const Ln *l = gln_of(t, id); if (!l || n > 6) return 0; int a = l->mom ? 1 + gdepth(t, l->mom, n + 1) : 0, b = l->dad ? 1 + gdepth(t, l->dad, n + 1) : 0; return MAX(a, b); }   // generations above it
+static int gscore(void) {
+    int s = 0, n = 0; for (int k = 0; k < GT_MAX; k++) if (gtoy[k].own) { const Toy *t = &gtoy[k]; s += t->xp / 2 + t->hatched * 5 + t->wins * 2 + t->plays; for (int i = 0; i < GLN; i++) if (t->ln[i].id) s += gdepth(t, t->ln[i].id, 0) * 8 + ((t->ln[i].nm & 128) ? 5 : 0); }
+    for (int i = 0; i < NACH; i++) n += (gach >> i) & 1; return s + n * 25 + gdex_count() * 3; }
+static void gx_award(int bit) {
+    if (gach & (1u << bit)) return; gach |= 1u << bit; Toy *t = gtoy_of(ctl); if (!t) return; int g = 50 + bit * 10; funds += g; { static char b[48]; snprintf(b, sizeof b, "Boreagotchi award! +$%d", g); say(b); } gfun(ctl, 6); gdiary(GD_AWARD, bit); }
+static void gx_check(void) {
+    int sum = 0, big = 0, ad = 0, star = 0, any = 0, deep = 0, kids = 0, gone = 0;
+    for (int k = 0; k < GT_MAX; k++) if (gtoy[k].own) { const Toy *t = &gtoy[k]; any = 1; sum += t->plays; if (t->hatched) gx_award(0); if (glevel(t) >= 5) gx_award(15);
+        int n = 0; for (int i = 0; i < GB_N; i++) { const Blob *b = &t->b[i]; if (!b->on) continue; n++; if (b->stage >= GS_ADULT) { ad = 1; if (b->form == 3) star = 1; } if (b->gen >= 4) big = 1; if (b->mut || b->col == 3) gx_award(8); if (b->bond >= 100) gx_award(7); }
+        if (n >= 5) gx_award(6);
+        for (int i = 0; i < GLN; i++) if (t->ln[i].id) { if (t->ln[i].mom) kids = 1; if (gdepth(t, t->ln[i].id, 0) >= 2) deep = 1; if (t->ln[i].nm & 128) gone = 1; } }
+    if (!any) return;
+    if (ad) gx_award(1); if (star) gx_award(2); if (gdex_count() >= 24) gx_award(3); if (kids) gx_award(4); if (deep) gx_award(5); if (gone) gx_award(9); if (sum >= 10) gx_award(10); if (big) gx_award(11); if (gscore() >= 500) gx_award(12); if (gdex_count() >= 40) gx_award(13); }
+static int gawake(const Blob *b, int minstage) { return b->on && b->stage >= minstage && !(b->fl & GF_SLEEP); }
+static void gvisits(void) {   // housemates' pets visit each other; grown-ups who love each other leave an egg for the two families
+    int a = gr() % GT_MAX, c = gr() % GT_MAX; Toy *x = &gtoy[a], *y = &gtoy[c]; if (a == c || !x->own || !y->own) return;
+    int i = gr() % GB_N, j = gr() % GB_N; Blob *p = &x->b[i], *q = &y->b[j]; if (!gawake(p, GS_CHILD) || !gawake(q, GS_CHILD) || p->stage == GS_ELDER || q->stage == GS_ELDER) return;
+    if (p->hap < 4) p->hap++; if (q->hap < 4) q->hap++; if (p->bond < 100) p->bond++; if (q->bond < 100) q->bond++; x->plays++; y->plays++; gdiary(GD_VISIT, p->nm);
+    int sa = gsim_of(x), sc = gsim_of(y); gfun(sa, 3); gfun(sc, 3); if (sa == ctl || sc == ctl) say("Your Boreagotchi had a playdate with a housemate's");
+    if (p->stage >= GS_ADULT && q->stage >= GS_ADULT && p->bond >= 60 && q->bond >= 60 && !(gr() & 3)) { Toy *h = sa == ctl ? x : y; for (int e = 0; e < GB_N; e++) if (!h->b[e].on) { int mid = gimport(h, x, p), did = gimport(h, y, q); gbreed(h, p, q, mid, did); say("Two families met and left an egg!"); gx_award(14); break; } } }
 static void gt_pets(void) {   // one minute of pet life: every creature lives on
     for (int k = 0; k < GT_MAX; k++) {
         Toy *t = &gtoy[k]; if (!t->own) continue; int si = gsim_of(t); if (si < 0) continue;
@@ -824,12 +890,13 @@ static void gt_pets(void) {   // one minute of pet life: every creature lives on
                   if (md < -40 && b->age % 25 == 0 && b->hap) b->hap--;
                   if (md > 50 && b->age % 40 == 0) { if (b->hap < 4) b->hap++; if (b->bond < 100 && !(gr() & 3)) b->bond++; } } }
             if (gneeds(b) && !(gr() & 15) && ((si != ctl && gkin(si)) || gparent(t, b))) {   // a housemate looks after their own, and parents look after their young
-                if (b->hun == 0) gfeed(t, b, 0); else if (b->poop) gclean(t, b); else if (b->fl & GF_SICK) gmedicine(t, b); else if (b->fl & GF_FAKE) gscold(t, b); else if (b->hap == 0) b->hap = 2; } } }
+                if (b->hun == 0) gfeed(t, b, (b->taste >> 4) % 6, 0); else if (b->poop) gclean(t, b); else if (b->fl & GF_SICK) gmedicine(t, b); else if (b->fl & GF_FAKE) gscold(t, b); else if (b->hap == 0) b->hap = 2; } } }
     for (int k = 0; k < GT_MAX; k++) {   // and the other way: pets in a bad way drag their owner down, happy ones lift them
         Toy *t = &gtoy[k]; if (!t->own) continue; int si = gsim_of(t); if (si < 0 || minutes % 60) continue;
         int n = 0, glum = 0, glad = 0; for (int i = 0; i < GB_N; i++) { Blob *b = &t->b[i]; if (!b->on || b->stage == GS_EGG) continue; n++; if (b->hun == 0 && b->hap == 0) glum++; else if (b->hap >= 3 && b->hun >= 2) glad++; }
         gfamily(t, si);
         if (glum) gfun(si, -3 * glum); else if (n >= 2 && glad == n) gfun(si, 3); }
+    if (minutes % 60 == 0) { if (minutes % 120 == 0) gvisits(); gx_check(); }
 }
 static void gt_minute(void) {   // every game minute (D53: Options > Game > Boreagotchi time: the game clock, LIVE, or off: they wait)
     if (o_gtime != 2) gt_pets();
@@ -855,6 +922,10 @@ static int gt_pack(u8 *o) {
     *q++ = 'F';   // (D54) the families, after everything an older game knows
     for (int k = 0; k < GT_MAX; k++) { const Toy *t = &gtoy[k]; if (!t->own) continue; *q++ = t->nid; *q++ = t->mem; *q++ = t->memnm; *q++ = t->memsp; int nl = 0; for (int i = 0; i < GLN; i++) nl += t->ln[i].id != 0; *q++ = (u8)nl; for (int i = 0; i < GLN; i++) if (t->ln[i].id) { memcpy(q, &t->ln[i], 6); q += 6; }
         for (int i = 0; i < GB_N; i++) { const Blob *b = &t->b[i]; if (b->on) { memcpy(q, &b->pers, 7); q += 7; } } }
+    *q++ = 'H';   // (D55) the awards, the diary, each home's walls and things and hats, and each pet's hat and taste
+    memcpy(q, &gach, 4); q += 4; *q++ = gdn; memcpy(q, gdy, sizeof gdy); q += sizeof gdy;
+    for (int k = 0; k < GT_MAX; k++) { const Toy *t = &gtoy[k]; if (!t->own) continue; *q++ = t->room; *q++ = t->deco; *q++ = t->accs; memcpy(q, &t->plays, 2); q += 2;
+        for (int i = 0; i < GB_N; i++) { const Blob *b = &t->b[i]; if (b->on) { *q++ = b->acc; *q++ = b->taste; } } }
     n = (int)(q - o) - 4; u16 th[2] = { MG_GT, (u16)n }; memcpy(o, th, 4); return n + 4; }
 static void gt_unpack(const u8 *p, int n) {
     if (n < 9) return; memcpy(gdex, p, 8); const u8 *q = p + 8, *e = p + n; int nt = *q++;
@@ -865,7 +936,12 @@ static void gt_unpack(const u8 *p, int n) {
         if (fam && q + 5 <= e) { t->nid = *q++; t->mem = *q++; t->memnm = *q++; t->memsp = *q++; int nl = *q++; for (int i = 0; i < nl && q + 6 <= e; i++) { if (i < GLN) memcpy(&t->ln[i], q, 6); q += 6; } t->lh = (u8)MIN(nl, GLN); }
         for (int i = 0; i < GB_N; i++) { Blob *b = &t->b[i]; if (!b->on) continue;
             if (fam && q + 7 <= e) { memcpy(&b->pers, q, 7); q += 7; }
-            else { b->pers = (u8)(b->nm & 7); b->col = (u8)((b->nm >> 3) & 3); if (b->stage == GS_ADULT && b->age > 900) b->age = 900; if (!++t->nid) ++t->nid; b->id = t->nid; gln_set(t, b, 0); } } } }
+            else { b->pers = (u8)(b->nm & 7); b->col = (u8)((b->nm >> 3) & 3); if (b->stage == GS_ADULT && b->age > 900) b->age = 900; if (!++t->nid) ++t->nid; b->id = t->nid; gln_set(t, b, 0); } } }
+    int hv = q + 70 <= e && *q == 'H';
+    if (hv) { q++; memcpy(&gach, q, 4); q += 4; gdn = *q++; memcpy(gdy, q, sizeof gdy); q += sizeof gdy; }
+    for (int k = 0; k < nt && k < GT_MAX; k++) { Toy *t = &gtoy[k]; t->room = (u8)(k % 6);
+        if (hv && q + 5 <= e) { t->room = *q++; t->deco = *q++; t->accs = *q++; memcpy(&t->plays, q, 2); q += 2; }
+        for (int i = 0; i < GB_N; i++) { Blob *b = &t->b[i]; if (!b->on) continue; if (hv && q + 2 <= e) { b->acc = *q++; b->taste = *q++; } else { int l = (b->nm + i) % 12; b->taste = (u8)(l << 4 | (l + 1 + b->nm % 10) % 12); } } } }
 
 // ---- the screens: the creature big on the top screen, the pad on the bottom ----
 enum { GV_NONE, GV_BASKET, GV_HAND, GV_DEX, GV_FEED, GV_PLAYPICK, GV_LOOK, GV_COPY, GV_FRIEND, GV_STATS, GV_BOX, GV_GUIDE, GV_TREE };   // (D53: the Toy Box and the guide)
