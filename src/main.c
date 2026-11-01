@@ -2453,7 +2453,7 @@ static void prop_tick(void) {
 }
 #endif
 #ifdef AUTO_LE
-int dbg_le[32];   // (test builds, with AUTO_CITY: lean checks. 1: a home and properties in three towns, then the phone's map)
+int dbg_le[32];   // (test builds, with AUTO_CITY: lean checks. 1: a home and properties in three towns, then the phone's map; 2: the AUDIO sliders)
 static void le_tick(void) {
     static int t0 = -1, k;
     if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30 || world_zone != ZONE_CITY) return; t0 = VSync(-1); }
@@ -2463,6 +2463,16 @@ static void le_tick(void) {
         for (int i = 0; i < 4 && i < bm_nset(); i++) { const Settle *st = bm_set(i); int n = home_list(st->x, st->y, ad, 4); if (n) dbg_le[i] = home_buy(ad[0].bx, ad[0].by, i ? HB_PROP : HB_KEEP); }
         dbg_le[4] = nprops; dbg_le[5] = home_city; }
     if (k == 1 && t >= 400) { k++; map_t = -1; state = ST_MAP; }
+#elif AUTO_LE == 2
+    {   // the AUDIO sliders: 8 stretches of 600 frames (run with DSWAV and compare their loudness): master, music, sound, a voice clip every 90 frames
+        static const u8 seg[8][4] = { { 10, 10, 10, 1 }, { 5, 10, 10, 1 }, { 10, 3, 10, 0 }, { 10, 10, 10, 0 }, { 10, 0, 10, 1 }, { 10, 0, 4, 1 }, { 10, 0, 0, 1 }, { 0, 10, 10, 1 } };
+        static int ap, rd, nv; int s = (t - 100) / 600, ph = (t - 100) % 600;   // (the loop can skip frames: every step is "once past", never "exactly at")
+        if (t >= 100 && s < 8 && s == k) { k++; audio_jukebox_stop(); *(volatile u16 *)0x1F801D80 = *(volatile u16 *)0x1F801D82 = 0; dbg_le[s] = VSync(-1); }   // (a second of silence marks where each stretch starts)
+        if (t >= 100 && s < 8 && ph >= 60 && ap == s) { ap++; opt[O_MASTER] = seg[s][0]; opt[O_MUSICV] = seg[s][1]; opt[O_SFX] = seg[s][2]; opts_apply(); audio_jukebox_play(1); nv = t + 30; }   // (the song from its start each time: the same notes)
+        if (t >= 100 && s < 8 && seg[s][3] && ph >= 60 && t >= nv) { nv = t + 90; audio_voice(VOICE_YAHOO); }
+        if (t >= 100 && s < 8 && ph >= 300 && rd == s) { rd++; dbg_le[10 + s] = *(volatile u16 *)0x1F801D80; dbg_le[18 + s] = *(volatile u16 *)0x1F801C00; }   // (the SPU's main volume, and voice 0's)
+        dbg_le[8] = audio_jukebox_current(); dbg_le[9] = t;
+    }
 #endif
 }
 #endif
