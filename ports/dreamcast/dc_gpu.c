@@ -69,14 +69,18 @@ static uint32_t tex_sig(int mode, int px, int py, int cx, int cy) {
     if (mode < 2) { s += page_gen[(cy >> 8) & 1][(cx >> 6) & 15] * 7; if (mode == 1) s += page_gen[(cy >> 8) & 1][((cx + 255) >> 6) & 15] * 11; }
     return s;
 }
+static int tex_var;   // 0: every texel; 1: only texels without STP; 2: only texels with STP (a semi-transparent prim's two parts)
 static inline uint16_t to1555(uint16_t c) {
+    if (tex_var == 1 && (c & 0x8000)) return 0;
+    if (tex_var == 2 && !(c & 0x8000)) return 0;
     if (!c) return 0;
     return (uint16_t)(0x8000 | ((c & 31) << 10) | (c & 0x3e0) | ((c >> 10) & 31));
 }
-static int tex_get(int tpage, int clut) {
+static int tex_get(int tpage, int clut, int var) {
+    tex_var = var;
     int mode = (tpage >> 7) & 3; if (mode == 3) mode = 2;
     int px = tpage & 15, py = (tpage >> 4) & 1, cx = (clut & 63) * 16, cy = (clut >> 6) & 511;
-    uint32_t key = (uint32_t)mode << 28 | (uint32_t)px << 24 | (uint32_t)py << 23 | (mode < 2 ? (uint32_t)(clut & 0x7fff) : 0);
+    uint32_t key = (uint32_t)mode << 28 | (uint32_t)px << 24 | (uint32_t)py << 23 | (mode < 2 ? (uint32_t)(clut & 0x7fff) : 0) | (uint32_t)var << 21;
     uint32_t sig = tex_sig(mode, px, py, cx, cy);
     tex_clock++;
     int lru = 0;
@@ -139,6 +143,7 @@ static inline int tri_ok(int x0, int y0, int x1, int y1, int x2, int y2) {
     return mxx - mnx < 1024 && mxy - mny < 512;
 }
 
+static void emit_one(Prim *p, int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr, int var);
 static void emit(int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr) {
     if (n == 4 && !off_screen) {   // the PS1 GPU skips a triangle wider than 1023 or taller than 511 pixels: a quad is two of them
         int a = tri_ok(x[0], y[0], x[1], y[1], x[2], y[2]), b = tri_ok(x[1], y[1], x[2], y[2], x[3], y[3]);
@@ -157,13 +162,21 @@ static void emit(int n, const int *x, const int *y, const uint32_t *col, const i
         }
         return;
     }
+    if (semi && textured) {   // the PS1 blends only the texels with the STP bit set; the rest of a semi-transparent texture is drawn solid
+        if (npt < MAXPT) { Prim *q = &pt[npt]; emit_one(q, n, x, y, col, u, v, 1, tpage, clut, raw, 0, abr, 1); npt++; }
+        if (ntr < MAXTR) { Prim *q = &tr[ntr]; emit_one(q, n, x, y, col, u, v, 1, tpage, clut, raw, 1, abr, 2); ntr++; }
+        return;
+    }
     Prim *p;
     if (semi) { if (ntr >= MAXTR) return; p = &tr[ntr++]; }
     else if (textured) { if (npt >= MAXPT) return; p = &pt[npt++]; }
     else { if (nop >= MAXOP) return; p = &op[nop++]; }
+    emit_one(p, n, x, y, col, u, v, textured, tpage, clut, raw, semi, abr, 0);
+}
+static void emit_one(Prim *p, int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr, int var) {
     zseq += 1.0f / 4096.0f;
     p->z = 1.0f + zseq; p->n = (int8_t)n; p->blend = (int8_t)(semi ? abr : -1); p->filt = 0;
-    p->tex = textured ? (int8_t)tex_get(tpage, clut) : -1;
+    p->tex = textured ? (int8_t)tex_get(tpage, clut, var) : -1;
     for (int k = 0; k < n; k++) {
         p->x[k] = (x[k] + ofs_x - area_x0) * SCALE; p->y[k] = (y[k] + ofs_y - area_y0) * SCALE;
         uint32_t c = textured ? mod_col(col[k], raw) : flat_col(col[k]);
