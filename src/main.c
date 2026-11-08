@@ -4348,7 +4348,7 @@ static const char *const moreBlurb[WO_NMORE] = {
     "BREAK THE LAW AND FIND OUT.", "THE RANCH LEDGER: BARN, SILO, ORCHARD, BEES, A FARM STAND AND CONTRACTS.", "BOATS, BALLOONS, SEAPLANES AND VOYAGES. SAIL AND SOAR!",
     "RACE THE STREETS: GARAGES, TUNING, A CITY GRAND PRIX.", "MOVIE SETS, PREMIERES, AND A RED CARPET OF YOUR OWN.", "SOMETHING NEW. TELL US WHAT YOU WANT NEXT!",
     "WAND, SPELLBOOK, DRAGON. THE CORNER SHOP IS A TOWER.", "THROW PARTIES AT HOME: GUESTS, GAMES, A BIG CAKE.", "A DUSTY TOWN, A SHERIFF'S STAR, A SHOWDOWN AT NOON.",
-    "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP.", "RAISE A DOG FROM A PUP. THE PET SHOP SELLS ONE.", "SPIN DECKS AT THE BOOTH. HOME AND CLUBS.", "REAL WEATHER AND HOLIDAYS.", "GENERATIONS AND INHERITANCE." };
+    "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP.", "RAISE A DOG FROM A PUP. THE PET SHOP SELLS ONE.", "SPIN DECKS AT THE BOOTH. HOME AND CLUBS.", "REAL WEATHER AND HOLIDAYS." };
 #define EX_PLAYABLE(i) ((i) == 0 || (i) == 1 || (i) == 5 || (i) == 6 || (i) == 8 || (i) == 9 || (i) == 10 || (i) == 11 || (i) == 12 || (i) == 13 || (i) == 14 || (i) == 19 || (i) == 21 || (i) == 22 || (i) == 23)
 // the packs that are patches (tools/packs.py): the file each card needs on the disc (0: part of the base game, or not made yet)
 static const char *const packFile[WO_NMORE] = { 0, 0, 0, 0, 0, "ARCADE.OVL", "GOTCHI.OVL", 0, "KINGDOM.OVL", 0, "PARADISE.OVL", "SUPER.OVL", "PRISON.OVL", "FARM.OVL", "SKYSEA.OVL", 0, 0, 0, 0, "PARTY.OVL", 0, "SPACE.OVL", "DOG.OVL", "DJ.OVL", 0 };
@@ -4778,7 +4778,7 @@ static void worlds_update(void) {
         if (PRESSED(PAD_CROSS)) {
             if (wo_msel == 0) { wo_more = 0; wm_open_mode(1); }
             else if (wo_msel == 1) { sc_t = 0; sp_join = 0; state = ST_SPICK; }
-            else if (wo_msel == 6) { if (pk_have[6] == 2) audio_voice(VOICE_NAH); else if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(3); gotchi_shelf = 1; state = ST_GOTCHI; } else audio_voice(VOICE_NAH); }
+            else if (wo_msel == 6 && pk_have[6] != 2) { if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(3); gotchi_shelf = 1; state = ST_GOTCHI; } else audio_voice(VOICE_NAH); }
             else if (wo_msel == 9) { sim_seasons_on ^= 1; audio_voice(VOICE_AGREE); }   // (the SEASONS pack: on, the year turns; off, summer all year)
             else if ((ovl = ovl_load("PKINFO.OVL"))) { ovl->open(wo_msel); pk_shelf = 1; state = ST_SPACE; } else audio_voice(VOICE_NAH);   // (the pack's PAGE: what it holds, its goals, or COMING SOON and what it will add)
         }
@@ -4823,7 +4823,7 @@ static void worlds_draw(void) {
     char b[48];
     int top = ui_window(6, 6, 308, 228, wo_more ? "EXPANSIONS" : "NEIGHBORHOODS", wo_more ? IC_STAR : IC_PIN);
     if (wo_more) {
-        static const s8 mic[WO_NMORE] = { IC_SUN, IC_BOOK, IC_STAR, IC_PEOPLE, IC_HAMMER, IC_BX, IC_SMILE, IC_HEART, IC_TREE, IC_SUN, IC_TREE, IC_NOTE, IC_EYE, IC_SPROUT, IC_BOLT, IC_CAR, IC_CAMERA, IC_DROP, IC_STAR, IC_PARTY, IC_HAMMER, IC_BOLT, IC_HEART, IC_NOTE, IC_PIN, IC_BABY };
+        static const s8 mic[WO_NMORE] = { IC_SUN, IC_BOOK, IC_STAR, IC_PEOPLE, IC_HAMMER, IC_BX, IC_SMILE, IC_HEART, IC_TREE, IC_SUN, IC_TREE, IC_NOTE, IC_EYE, IC_SPROUT, IC_BOLT, IC_CAR, IC_CAMERA, IC_DROP, IC_STAR, IC_PARTY, IC_HAMMER, IC_BOLT, IC_HEART, IC_NOTE, IC_PIN };
         int c0 = CLAMP(wo_msel / 2 - 2, 0, (WO_NMORE + 1) / 2 - 5);   // (five columns show, and slide along)
         for (int i = 0; i < WO_NMORE; i++) {
             int col = i / 2 - c0; if (col < 0 || col > 4) continue;
@@ -4844,9 +4844,9 @@ static void worlds_draw(void) {
         { int st = wo_msel == 9 ? (sim_seasons_on ? 1 : 3) : !EX_PLAYABLE(wo_msel) ? 4 : pk_have[wo_msel];
           ui_round(10, top + 152, 300, 42, 5, UI_PANEL, UI_LINE, 0);
           ui_textc(160, top + 156, 1, moreNm[wo_msel], UI_BLUE2);
-          { char bb[128]; snprintf(bb, sizeof bb, "%s%s", st == 4 || (st == 2 && wo_msel == 6) ? "COMING SOON! " : "", st == 2 ? (wo_msel == 6 ? "A POCKET PET TOY WITH 20 KINDS, EGGS AND FAMILIES. PATCH ITS PACK ON TO PLAY" : "NOT ON THIS DISC. PATCH IT ON WITH ITS BORE2 PACK .PPF") : moreBlurb[wo_msel]);
+          { char bb[128]; snprintf(bb, sizeof bb, "%s%s", st == 4 ? "COMING SOON! " : "", st == 2 ? "NOT ON THIS DISC. PATCH IT ON WITH ITS BORE2 PACK .PPF" : moreBlurb[wo_msel]);
             ui_wrapc(16, top + 166, 288, 3, bb, EX_PLAYABLE(wo_msel) && st != 2 ? UI_INK : UI_SOFT); } }
-        ui_hints(160, 218, wo_msel == 0 ? "X OPEN THE CREATOR|ARROWS MOVE|O BACK" : wo_msel == 1 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 6 ? (pk_have[6] == 2 ? "ARROWS MOVE|O BACK" : "X THE GUIDE|ARROWS MOVE|O BACK") : wo_msel == 9 ? "X ON OR OFF|ARROWS MOVE|O BACK" : "X ABOUT IT|ARROWS MOVE|O BACK", 1);
+        ui_hints(160, 218, wo_msel == 0 ? "X OPEN THE CREATOR|ARROWS MOVE|O BACK" : wo_msel == 1 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 6 && pk_have[6] != 2 ? "X THE GUIDE|ARROWS MOVE|O BACK" : wo_msel == 9 ? "X ON OR OFF|ARROWS MOVE|O BACK" : "X ABOUT IT|ARROWS MOVE|O BACK", 1);
         return;
     }
     // the tabs
