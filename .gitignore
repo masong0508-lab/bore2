@@ -10,3 +10,7 @@ test/before/
 bore2-dsi-port.zip
 bore2-ps1.zip
 .claude/
+ports/host/lotsim/lotsim
+ports/host/lotsim/lotsim_old
+ports/host/lotsim/items_tab.h
+ports/host/lotsim/old_gen.inc
