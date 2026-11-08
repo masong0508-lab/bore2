@@ -864,6 +864,34 @@ static void life_update(int steps) {
                 if (fr_ >= stp[k].at + 200 && !(done_ & b1)) { done_ |= b1; sim_debug_goto(stp[k].c, stp[k].lot); }
                 if (fr_ >= stp[k].at && fr_ < stp[k].at + 30) { cam_pitch = 760; cam_dist = 1800; }
             } }
+#elif defined(AUTO_LOTS)
+          {   // (test builds, AUTO_CITY with AUTO_LOTS=n (the n-th block of each kind, 0 the nearest; AUTO_LOTS_K=k: just target k): a tour of lots for the shots, docs/lots_*.png. Every 300 frames the next target: a taxi to the n-th block of that kind
+              // counting out from the capital, the Sim held on a tile of it, the camera set. 0 house inside, 1 house yard, 2 shop inside, 3 park, 4 street overview, 5 cottage, 6 two-storey,
+              // 7 diner, 8 cafe, 9 town houses, 10 gym, 11 school, 12 clinic, 13 library. Same blocks in every build: the lot kinds come from the map, not from the generators.)
+            static const struct { s8 lot; u8 in; s16 pitch, dist; } tg[] = { { LOT_HOUSE, 1, 640, 1300 }, { LOT_HOUSE, 0, 520, 2300 }, { LOT_SHOP, 1, 640, 1500 }, { LOT_PARK, 0, 600, 2500 }, { LOT_HOUSE, 0, 760, 3700 },
+                { LOT_COTTAGE, 1, 640, 1200 }, { LOT_TWO, 1, 640, 1300 }, { LOT_DINER, 1, 640, 1500 }, { LOT_CAFE, 1, 640, 1500 }, { LOT_TOWN, 1, 640, 1300 }, { LOT_GYM, 1, 640, 1500 }, { LOT_SCHOOL, 1, 640, 1600 }, { LOT_CLINIC, 1, 640, 1500 }, { LOT_LIBRARY, 1, 640, 1600 } };
+            static int k_ = -1, hx_, hz_;
+            int k = fr_ / 300 - 1;
+#ifdef AUTO_LOTS_K
+            k = fr_ > 30 ? AUTO_LOTS_K : -1;                                                        // (AUTO_LOTS_K=k: only target k, held for good)
+#endif
+            if (k >= 0 && k < (int)(sizeof tg / sizeof tg[0]) && k != k_) {
+                k_ = k; int want = AUTO_LOTS, n = 0, found = 0, bx = 0, by = 0; const Settle *cp = bm_set(bm_capital());
+                for (int r = 0; r < 40 && !found; r++) for (int dy = -r; dy <= r && !found; dy++) for (int dx = -r; dx <= r && !found; dx++) {
+                    if (ABS(dx) != r && ABS(dy) != r) continue; int x = cp->x + dx, y = cp->y + dy; if (x < 0 || y < 0 || x >= BM_N || y >= BM_N) continue;
+                    BInfo bi; bm_block(x, y, &bi); if (bi.set == 255 || bi.lot != tg[k].lot) continue; if (n++ < want) continue; found = 1; bx = x; by = y; }
+                if (found) {
+                    taxi_to_block(bx, by, -1, -1, "TEST");
+                    int tx = BM_LOT0 + 6, ty = BM_LOT0 + 6; int hi = world_home_find(ZONE_CITY, bx, by, 0);
+                    if (tg[k].in && hi >= 0) { const Home *hm = world_home(ZONE_CITY, hi); tx = (hm->x0 + hm->x1) / 2 - (bx - world_wbx) * BM_BLK; ty = (hm->y0 + hm->y1) / 2 - (by - world_wby) * BM_BLK; }
+                    else if (tg[k].in) { tx = BM_LOT0 + 6; ty = BM_LOT0 + 4; }
+                    else if (tg[k].lot == LOT_HOUSE) { tx = BM_LOT0 + 6; ty = BM_LOT0 + 11; }
+                    hx_ = ((bx - world_wbx) * BM_BLK + tx) * TILE + TILE / 2; hz_ = -(((by - world_wby) * BM_BLK + ty) * TILE + TILE / 2);
+                    cam_pitch = tg[k].pitch; cam_dist = tg[k].dist; cam_yaw = 2600;
+                }
+            }
+            if (k_ >= 0) { for (int i = 0; i < nsims; i++) { sims[i].x = hx_ + (i % 3) * 3; sims[i].z = hz_ - (i / 3) * 3; sims[i].path_n = 0; sims[i].lvl = 0; } cam_fx = hx_; cam_fz = hz_; }
+          }
 #elif defined(AUTO_TOWER)
           if (fr_ >= 120 && !(done_ & 1)) { done_ |= 1; const Settle *cp = bm_set(bm_capital()); taxi_to_block(cp->x + AUTO_TOWER, cp->y + 2, 8, 1, "TEST"); }
           if (fr_ > 120) { cam_pitch = 760; cam_dist = 3600; cam_yaw = 2048 + 300; }
@@ -876,7 +904,7 @@ static void life_update(int steps) {
             if (fr_ > 120 && s->action == ACT_NONE) { int ph = ((fr_ - 120) / 700) & 3; int v = 9 * steps; if (ph == 0) s->x += v; else if (ph == 1) s->z -= v; else if (ph == 2) s->x -= v; else s->z += v; }
             cam_pitch = 470; cam_dist = 3200; cam_yaw = (fr_ * 3) & 4095;
           }
-#elif !defined(AUTO_TOWER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_PROP) && !defined(AUTO_LE)
+#elif !defined(AUTO_TOWER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_PROP) && !defined(AUTO_LE) && !defined(AUTO_LOTS)
 #ifdef CIT_STAND
           if (fr_ > 240 && fr_ < CIT_STAND && s->action == ACT_NONE) s->x += 11 * steps;   // (test builds: a stroll, then stand about on the street)
 #else
