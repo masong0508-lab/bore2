@@ -1,5 +1,19 @@
 # PS1 speed and streaming: where it stands
 
+## Round 4 (Nov 8): measured, tried, nothing kept yet
+Tool added: `tools/perf/trtable.py RAM ELF` (held-camera row from an `AB_TRACE` + `AB_LOCK4` run: fps, mean hb, over 786, late, worst; `FROM=n TO=m` picks frames, e.g. a frozen stretch). Run each camera with `abcfg.py` (arg 4 = 1 turns the helper off).
+
+**Read this before measuring.** With the helper ON, two builds that differ by a few hb drift apart (the helper settles at different steps): one frozen street frame came out at 789 hb (late every frame) in one run and 562 hb in another, with the same picture. For A/B of real cost use the helper OFF (`abcfg.py DISC CAM 2 1`): frame by frame identical, and a result is real if the mean moves. Use helper ON only for the final table.
+Also: in this harness 8 MB and 2 MB cost the same with the helper off (Sims camera 794 vs 795 hb, same people near: 3.7). The 8 MB gap seen with the helper on comes from the helper's history, not from the crowd.
+
+Tried and measured (helper off, mean hb, Sims / zoomed in; base 795 / 926), none kept:
+- Projecting the cutter's corners and midpoints on the GTE (identity matrix while a cut is drawn): 803 / 952 and 795 / 940 (worse; the matrix save/restore and the GTE wait cost more than the two divides).
+- Throwing a back-facing face out in nc_quad before projecting it: 795 / 924 (no change: the faces asked for are almost all front-facing).
+- Nearer car LOD (2800 to 1800): no change (766 vs 763).
+Counts, Sims camera, per frame: 91 cut quads become 66 pieces (floor 15 to 14, walls 58 to 47, flat 15 to 4); zoomed in, 112 quads, 259 piece calls, 617 projections. The cutter is flat work: no single step to save, so fewer pieces needs a different rule, not tuning.
+Spikes: with the helper on, 53 of 925 frames were over 786 and only 4 of them had a logic spike (over 150 hb); 48 are heavy streets (world 500 to 680 hb with the helper off). Spreading the planner and route searches would not move the late share.
+Not done: shared-corner/merged floor quads (merging gains nothing: a cut piece is already smaller than a tile wherever a tile is cut), baked block geometry (the camera moves every frame, so only colours can be baked, and those already are), the household model cache (in the city route there is one full model on screen), 30 fps (mean 600+ against 524).
+
 ## Round 3 (Nov 8): strict warp back, a locked 20, spikes, light
 Measured the held-camera way (`AB_LOCK4`, the same city frame by frame, 960 city frames a run, helper on, default VIEW). "over 786" is the share of frames whose own cost is past 3 vblanks; "late" is the share that really take 4 or more vblanks (cost plus the flip). Worst is the dearest frame after the first two of a life (the life's start builds the city behind the loading fade). Frame rate is what the frames would give if each takes at least the lock (before: 2 vblanks, so light frames ran at 30 between the 20s; now 3).
 
