@@ -1014,6 +1014,7 @@ static void g_creature(const Blob *b, int fr, int d, int ox) {
     case 14: ry--; cy = by - ry - 1; gELL(cx, cy, rx, ry, 1); for (int i = 0; i < 4; i++) { int x = cx - rx + 1 + i * (2 * rx - 2) / 3; for (int y = cy + ry; y <= by + 1; y++) gP(x + (((fr + i + y) & 2) ? 1 : 0), y, 1); } break;
     default: cy = by - ry; gELL(cx, cy - 1, rx, ry - 1, 1); gRC(cx - 1, cy + ry - 2, cx + 1, by, 1); top = cy - ry; gLN(cx - 2, top + 1, cx - 4, top - 2, 1); gLN(cx + 2, top + 1, cx + 4, top - 2 + bob, 1); gP(cx - 4, top - 3, 1); gP(cx + 4, top - 3 + bob, 1); break;
     }
+    int hat_top = gminY;
     // face
     ex = rx / 2 > 0 ? rx / 2 : 1; eyY = cy - ry / 3; if (sp == 4 || sp == 6 || sp == 11) eyY = cy - 1; if (sp == 10) eyY = by - ry + 1; if (sp == 13) eyY = by - 4; if (sp == 12 || sp == 15) eyY = cy - 1;
     int e1 = cx + d - ex, e2 = cx + d + ex; if (sp == 6) { e1 = e2 = cx + d * (rx - 1); } if (sp == 13) { e1 = e2 = cx + d * rx; }
@@ -1037,6 +1038,17 @@ static void g_creature(const Blob *b, int fr, int d, int ox) {
         case 2: gP(cx + rx + 2, cy - 2, 1); gP(cx + rx + 3, cy - 3, 1); gP(cx + rx + 3, cy - 1, 1); if (fr & 2) gP(cx + rx + 4, cy - 4, 1); break;
         default: gstar(cx, gminY - 3); gstar(cx - rx - 3, cy); if (fr & 2) gstar(cx + rx + 3, cy - ry + 1); break;
     }
+    // (D60) the hats, as the PS1 draws them: dots 2 red, 3 blue, 4 gold on top of the body
+    { int top = hat_top;
+    switch (b->acc) {
+        case 1: gP(cx - 1, top - 1, 2); gP(cx + 1, top - 1, 2); gP(cx, top - 1, 4); gP(cx - 2, top - 2, 2); gP(cx + 2, top - 2, 2); break;
+        case 2: gRC(cx - 2, top - 1, cx + 2, top - 1, 1); gRC(cx - 1, top - 3, cx + 1, top - 2, 1); gRC(cx - 1, top - 2, cx + 1, top - 2, 2); break;
+        case 3: gRC(e1 - 1, eyY, e2 + 1, eyY, 1); gP(e1, eyY, 1); gP(e2, eyY, 1); break;
+        case 4: gRC(cx - rx + 1, cy + ry - 1, cx + rx - 1, cy + ry - 1, 2); gP(cx + rx - 1, cy + ry, 2); gP(cx + rx - 1, cy + ry + 1, 2); break;
+        case 5: gP(cx + rx - 1, top - 1, 2); gP(cx + rx, top - 1, 2); gP(cx + rx - 1, top - 2, 2); gP(cx + rx - 2, top - 1, 2); gP(cx + rx - 1, top - 1, 4); break;
+        case 6: gP(cx - 2, top - 1, 4); gP(cx - 2, top - 2, 4); gP(cx, top - 1, 4); gP(cx, top - 3, 4); gP(cx, top - 2, 4); gP(cx + 2, top - 1, 4); gP(cx + 2, top - 2, 4); gRC(cx - 2, top, cx + 2, top, 4); break;
+        case 7: gP(cx, top - 4, 2); gRC(cx - 1, top - 3, cx + 1, top - 3, 3); gRC(cx - 2, top - 2, cx + 2, top - 2, 2); gRC(cx - 2, top - 1, cx + 2, top - 1, 3); break;
+    } }
 }
 static void g_egg(const Blob *b, int fr) {
     int bob = fr & 1, cy = 10 - bob; gELL(16, cy, 4, 5, 1);
@@ -1056,7 +1068,7 @@ static void g_scene(const Blob *b, int fr, int look) {
     if (b->fl & GF_SLEEP) { static const char *z[5] = { "###.", "..#.", ".#..", "###.", "...." }; for (int r = 0; r < 5; r++) for (int q = 0; q < 4; q++) if (z[r][q] == '#') gP(24 + q + ((fr >> 2) & 1), 1 + r, 1); }
 }
 
-static const char *const giconNm[10] = { "FEED", "LIGHT", "PLAY", "MEDICINE", "CLEAN", "STATS", "SCOLD", "ATTENTION", "FRIENDS", "BLOBDEX" };
+static const char *const giconNm[10] = { "FEED", "LIGHT", "PLAY", "MEDS", "CLEAN", "STATS", "SCOLD", "CALL", "FRIENDS", "BLOBDEX" };
 static const char *const gicon[10][7] = {
     { "...#.....", "..#.##...", ".#####...", "#######..", "#######..", ".#####...", "........." },
     { "...###...", "..#...#..", "..#...#..", "...#.#...", "...###...", "...###...", "........." },
@@ -1069,8 +1081,10 @@ static const char *const gicon[10][7] = {
     { ".##...##.", "#..#.#..#", ".##...##.", "..#...#..", ".###.###.", "#..#.#..#", "........." },
     { "..#####..", ".#.....#.", "#.##.##.#", "#.#...#.#", "#.##.##.#", ".#.....#.", "..#####.." } };
 
-static void gdots_draw(int x, int y, int s, u16 c) {   // the LCD's dots onto the screen: runs of them joined into one box
-    for (int j = 0; j < 16; j++) for (int i = 0; i < 32;) { if (!gdot[j][i]) { i++; continue; } int k = i; while (k < 32 && gdot[j][k]) k++; rect(x + i * s, y + j * s, (k - i) * s - (s > 2), s - (s > 2), c); i = k; } }
+static int gdots_plain;   // 1: one ink only (a silhouette, a memorial)
+static void gdots_draw(int x, int y, int s, u16 c) {   // the LCD's dots onto the screen: runs of one ink joined into one box (D60: 2 red, 3 blue, 4 gold for the hats)
+    static const u16 acc[5] = { 0, 0, C15(27, 6, 8), C15(8, 16, 27), C15(27, 19, 1) };
+    for (int j = 0; j < 16; j++) for (int i = 0; i < 32;) { int v = gdot[j][i]; if (!v) { i++; continue; } int k = i; while (k < 32 && gdot[j][k] == v) k++; rect(x + i * s, y + j * s, (k - i) * s - (s > 2), s - (s > 2), v > 1 && v < 5 && !gdots_plain ? acc[v] : c); i = k; } }
 #define LCD_BG C15(21, 24, 16)
 #define LCD_INK C15(3, 5, 3)
 static void gt_open_basket(int si) { Toy *t = gtoy_of(si); if (!t) { gsay(si == ctl ? "NO BOREAGOTCHI YET. A SHOP SELLS THEM" : "THEY HAVE NO TOY YET"); return; } gti = (int)(t - gtoy); gview = GV_BASKET; gbi = t->sel < GB_N ? t->sel : 0; gmsgT = 0; gmsg = 0; }
@@ -1601,7 +1615,7 @@ static void mg_test(int sc) {
         for (int i = 0; i < 7; i++) { Blob *b = &t->b[i]; gfresh(b, i * 3 + 1); b->stage = stg[i]; b->form = (u8)(i - 4 < 0 ? i & 1 : i - 4); b->age = (u16)(i * 11); b->bond = (u8)(i * 14); b->hun = (u8)(4 - (i == 2)); b->hap = (u8)(i == 3 ? 0 : 3); if (i == 1) b->poop = 2; if (i == 5) b->fl |= GF_SICK; gdex_see(b->sp, b->form); }
         for (int f = 0; f < 4; f++) { gdex_see(0, f); gdex_see(9, f); } t->xp = 120; gt_open(); }
     if (sc == 56 || sc == 57) { funds += 8000; gt_reset(); gbuy(ctl); Toy *t = gtoy_of(ctl); Blob *bs = t->b; static const u8 stg[8] = { GS_ADULT, GS_ADULT, GS_BABY, GS_CHILD, GS_TEEN, GS_ELDER, GS_EGG, GS_ADULT };
-        for (int i = 0; i < 8; i++) { Blob *b = &bs[i]; gfresh(b, i * 2 + 1); b->stage = stg[i]; b->age = (u16)(i * 30); b->bond = 80; b->pers = (u8)i; b->col = (u8)i; b->mut = i == 2; gnewid(t, b, 0, 0); }
+        for (int i = 0; i < 8; i++) { Blob *b = &bs[i]; gfresh(b, i * 2 + 1); b->stage = stg[i]; b->age = (u16)(i * 30); b->bond = 80; b->pers = (u8)i; b->col = (u8)i; b->mut = i == 2; b->acc = (u8)(i % 8); gnewid(t, b, 0, 0); }
         bs[0].mate = bs[1].id; bs[1].mate = bs[0].id; for (int i = 2; i < 5; i++) { bs[i].mom = bs[0].id; bs[i].dad = bs[1].id; gln_set(t, &bs[i], 0); } bs[6].mom = bs[1].id; bs[6].dad = bs[0].id; gln_set(t, &bs[6], 0);
         { Blob gm; memset(&gm, 0, sizeof gm); gm.on = 1; gm.sp = 3; gm.nm = 7; gm.col = 3; gnewid(t, &gm, 0, 0); gln_set(t, &gm, 1); bs[0].mom = gm.id; gln_set(t, &bs[0], 0); t->mem = 1; t->memnm = 7; t->memsp = 3; }
         for (int f = 0; f < 4; f++) gdex_see(0, f);
