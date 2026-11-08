@@ -560,6 +560,25 @@ def describe(t):
         parts.append(eff_text(h, m))
     return '. '.join(parts)
 
+# ------------------------------------------------ slots, unlocks and the personality -> traits mapping (docs/TRAITS.md, "Slots" and "Family")
+BASE_SLOTS = 6                      # slots every grown-up has: 1..6
+STAGE_SLOTS = [1, 3, 4, 6, 6]       # normal slots by life stage: BABY CHILD TEEN ADULT ELDER (AG_*)
+UNLOCK_STAGE = 2                    # the unlockable slots 7..10 are for TEEN and up
+UNLOCKS = [('WISHES', 1, 'FINISH 1 WISH'), ('WISHES', 3, 'FINISH 3 WISHES'), ('JOB', 5, 'REACH JOB LEVEL 5'), ('WISHES', 10, 'FINISH 10 WISHES')]   # slot 7, 8, 9, 10, in this order
+BARS = ['NEAT', 'OUTGOING', 'ACTIVE', 'PLAYFUL', 'NICE']
+# the pull of each personality bar (0..10, 5 is neutral) on each trait category: weight * (bar - 5)
+_PK = {'BODY': (1, 0, 4, 0, 0), 'MIND': (1, -2, -1, 0, 0), 'SOCIAL': (0, 3, 0, 1, 2), 'ROMANCE': (0, 2, 0, 1, 2), 'WORK': (2, 0, 1, -2, 0), 'MONEY': (1, 0, 0, -1, -2),
+       'FOOD': (0, 0, -1, 1, 1), 'HOME': (3, -2, -1, 0, 1), 'OUTDOORS': (-1, 1, 3, 1, 0), 'CREATIVE': (-1, 0, -1, 2, 0), 'FUN': (-1, 1, 0, 3, 0), 'NIGHT AND DAY': (-1, 2, 0, 1, 0),
+       'PETS': (0, 0, 0, 1, 3), 'LUCK': (-1, 0, 0, 2, 1), 'FIGHTING': (0, 0, 3, 0, -3)}
+PK = [_PK[c] for c in CATS[:15]]
+# the aspiration (AS_FORTUNE, AS_KNOW, AS_POP, AS_PLEAS, AS_HOME, AS_GROW): a flat bonus (x 4) to some categories
+_PA = [{'MONEY': 3, 'WORK': 2, 'LUCK': 1}, {'MIND': 3, 'WORK': 2, 'CREATIVE': 1}, {'SOCIAL': 3, 'FUN': 2, 'NIGHT AND DAY': 2}, {'FUN': 2, 'FOOD': 3, 'ROMANCE': 2, 'NIGHT AND DAY': 1},
+       {'HOME': 3, 'FOOD': 2, 'PETS': 2, 'ROMANCE': 1}, {'MIND': 2, 'BODY': 1, 'FUN': 1}]
+PASP = [[a.get(c, 0) for c in CATS[:15]] for a in _PA]
+# the star sign's element (sign index % 4: fire ARIES LEO SAGITTARIUS, earth TAURUS VIRGO CAPRICORN, air GEMINI LIBRA AQUARIUS, water CANCER SCORPIO PISCES): a flat bonus (x 3)
+_PS = [{'FIGHTING': 2, 'OUTDOORS': 2, 'BODY': 1}, {'MONEY': 2, 'HOME': 2, 'WORK': 1}, {'SOCIAL': 2, 'MIND': 1, 'CREATIVE': 2}, {'ROMANCE': 2, 'PETS': 1, 'CREATIVE': 1, 'LUCK': 1}]
+PSIGN = [[a.get(c, 0) for c in CATS[:15]] for a in _PS]
+
 def main():
     T, earned, rewards, cheats, wishes, K = build()
     all_traits = {}
@@ -602,6 +621,14 @@ def main():
     A('#define TR_NCAT %d' % len(CATS))
     A('#define TR_NHOOK %d' % len(HOOKS))
     A('#define WISH_N %d' % len(wishes))
+    A('#define TR_BASE %d' % BASE_SLOTS)
+    A('#define TR_NUNL %d' % len(UNLOCKS))
+    A('#define TR_UNL_STAGE %d' % UNLOCK_STAGE)
+    A('enum { UK_WISHES, UK_JOB };')
+    A('static const u8 tr_stage_slots[5] = { %s };   // normal slots by life stage' % ', '.join(str(x) for x in STAGE_SLOTS))
+    A('static const u8 tr_unl_kind[TR_NUNL] = { %s };   // slot 7..10: what counts' % ', '.join('UK_' + u[0] for u in UNLOCKS))
+    A('static const u8 tr_unl_thr[TR_NUNL] = { %s };    // ... and how many' % ', '.join(str(u[1]) for u in UNLOCKS))
+    A('static const char *const tr_unl_text[TR_NUNL] = { %s };' % ', '.join(c_str(u[2]) for u in UNLOCKS))
     A('enum { M_PCT, M_ADD, M_CHN, M_FLR };')
     A('enum { RK_NONE, RK_CASH, RK_TRAIT, RK_OUTFIT, RK_FOOD, RK_BUS, RK_TOKENS, RK_ASP };')
     # resident small tables
@@ -667,6 +694,15 @@ def main():
     A('    ;')
     reg = sorted([i for i in range(1, K['FIRST_EARN']) if i in all_traits], key=lambda i: all_traits[i]['name'].upper())
     chs = sorted([t['id'] for t in cheats], key=lambda i: all_traits[i]['name'].upper())
+    A('static const s8 tr_pk[15][5] = {   // personality bars (NEAT OUTGOING ACTIVE PLAYFUL NICE) -> category pull, x (bar - 5)')
+    for ci in range(15): A('    { %s },   // %s' % (', '.join(str(x) for x in PK[ci]), CATS[ci]))
+    A('};')
+    A('static const s8 tr_pasp[6][15] = {   // aspiration -> category bonus (x 4)')
+    for r in PASP: A('    { %s },' % ', '.join(str(x) for x in r))
+    A('};')
+    A('static const s8 tr_psign[4][15] = {   // star sign element (sign % 4) -> category bonus (x 3)')
+    for r in PSIGN: A('    { %s },' % ', '.join(str(x) for x in r))
+    A('};')
     A('static const u16 tr_sorted[TR_NREG] = { %s };   // the regular traits by name' % ', '.join(str(i) for i in reg))
     A('static const u16 tr_csorted[TR_NCHEAT] = { %s };   // the cheats by name' % ', '.join(str(i) for i in chs))
     A('static const char *const tr_catname[TR_NCAT] = { %s };' % ', '.join(c_str(c) for c in CAT_SHORT))
@@ -724,6 +760,13 @@ def main():
         if t['kind'] == 'earn': d['event'] = t['ev']; d['count'] = t['thr']
         return d
     js = dict(
+        slots=dict(base=BASE_SLOTS, by_stage=dict(zip(['BABY', 'CHILD', 'TEEN', 'ADULT', 'ELDER'], STAGE_SLOTS)), unlock_from_stage='TEEN',
+                   unlocks=[dict(slot=BASE_SLOTS + 1 + i, counts=u[0], at=u[1], text=u[2]) for i, u in enumerate(UNLOCKS)],
+                   cheat_traits='only in unlocked slots 7..10, and only with OPTIONS > CHEAT TRAITS on'),
+        personality=dict(bars=BARS, category_pull_per_bar_point=dict((CATS[i], PK[i]) for i in range(15)),
+                         aspiration_bonus_x4=dict((['FORTUNE', 'KNOW', 'POP', 'PLEASURE', 'HOME', 'GROW'][i], dict((CATS[c], PASP[i][c]) for c in range(15) if PASP[i][c])) for i in range(6)),
+                         sign_element_bonus_x3=dict((['FIRE', 'EARTH', 'AIR', 'WATER'][i], dict((CATS[c], PSIGN[i][c]) for c in range(15) if PSIGN[i][c])) for i in range(4)),
+                         score='category_score = sum(pull * (bar - 5)) + 4 * aspiration + 3 * sign; trait_score = 4 * category_score + jitter(seed, trait) 0..23, + 40 if a parent has it; earned and prize traits are in the pool at half the category score and need 60; at most 3 per category and 2 inherited; no clashes'),
         about='BORE 2 traits, generated by tools/make_traits.py. amount = tier * unit. See docs/TRAITS.md.',
         hooks=[dict(id=h['id'], code=h['code'], category=CATS[h['cat']], group=h['sub'], mode=['percent', 'points', 'chance', 'floor'][h['mode']], unit=h['unit'],
                     positive_is_good=h['good'] > 0, up=h['up'], down=h['dn'], regular_tiers=list(h['reg']), cheat_tiers=list(h['cheat'])) for h in HOOKS],
