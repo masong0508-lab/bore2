@@ -171,7 +171,7 @@ static const char *const *egg_make(int kind, int pat, int crack) {   // the plai
     if (crack && kind < 2) for (int n = 0; n < fsCrkN[kind][crack]; n++) { char *c = &eggBuf[fsCrk[kind][n * 2] >> 4][fsCrk[kind][n * 2] & 15]; *c = (*c == 'o' || *c == 'g') ? 'u' : (char)fsCrk[kind][n * 2 + 1]; }   // (a crack through a spot is light)
     return eggRow;
 }
-static const char eggKeys[] = "#mdhoulg";   // an egg sprite's keys; on the dots they are the values 16 up (egg_rgb makes the colours)
+static const char eggKeys[] = "#mdohulg";   // an egg sprite's keys; on the dots they are the values 16 up (egg_rgb makes the colours)
 static int egg_pat(const Blob *b, const Kin *k) { return (b->sp >= 16 || k->mut) ? FS_EGG_N - 1 : b->sp % (FS_EGG_N - 1); }   // the kind picks the pattern, the rare ones are gold
 static void egg_dots(const char *const *r, int w, int h, int x, int y, int tilt) {   // a sprite onto the dots; its top leans by tilt dots, the foot stays
     for (int j = 0; j < h; j++) { int sh = tilt * (h - 1 - j) / (h - 1); for (int i = 0; i < w; i++) if (r[j][i] != '.') P(x + i + sh, y + j, 16 + (int)(strchr(eggKeys, r[j][i]) - eggKeys)); }
@@ -223,19 +223,16 @@ static void scene(const Blob *b, const Kin *k, int fr, int look, int mood) {
 }
 static const u8 PAL[10][3] = { { 28, 44, 24 }, { 214, 58, 120 }, { 40, 92, 214 }, { 226, 112, 24 }, { 126, 64, 200 }, { 20, 150, 140 }, { 196, 40, 44 }, { 218, 160, 10 }, { 54, 44, 90 }, { 214, 222, 234 } };
 static const u8 INKV[5][3] = { { 0, 0, 0 }, { 0, 0, 0 }, { 214, 50, 70 }, { 48, 96, 214 }, { 220, 160, 18 } };
-static void egg_rgb(int ink, int key, u8 *o) {   // an egg's colour for a key (see eggKeys), from the pet's colour (PAL row): a cream body leaning to it, a shade, spots, a dark outline of it
-    static const u8 cr[3] = { 240, 238, 206 }; const u8 *in = PAL[ink % 10];
-    for (int i = 0; i < 3; i++) switch (key) {
-        case '#': o[i] = (u8)(in[i] * 42 / 100); break; case 'm': o[i] = (u8)((cr[i] * 74 + in[i] * 26) / 100); break; case 'd': o[i] = (u8)((cr[i] * 48 + in[i] * 52) / 100); break;
-        case 'o': o[i] = (u8)(in[i] * 92 / 100); break; case 'h': o[i] = i == 2 ? 240 : 255; break; case 'u': o[i] = i == 0 ? 255 : i == 1 ? 250 : 190; break;
-        case 'g': o[i] = i == 0 ? 255 : i == 1 ? 208 : 60; break; default: o[i] = i == 0 ? 150 : i == 1 ? 176 : 108; break; }
+static void egg_rgb(int ink, int key, u8 *o) {   // an egg's colour for a key (an index in eggKeys), from the pet's colour (PAL row): a cream body leaning to it, a shade, spots, a dark outline of it
+    static const u8 mx[4][2] = { { 0, 42 }, { 74, 26 }, { 48, 52 }, { 0, 92 } }, fx[4][3] = { { 255, 255, 240 }, { 255, 250, 190 }, { 150, 176, 108 }, { 255, 208, 60 } }, cr[3] = { 240, 238, 206 };
+    const u8 *in = PAL[ink % 10]; for (int i = 0; i < 3; i++) o[i] = key < 4 ? (u8)((cr[i] * mx[key][0] + in[i] * mx[key][1]) / 100) : fx[key - 4][i];
 }
 // the dots onto the screen: runs of one ink are joined into one box, a thin gap under each row gives the LCD its lines
 static void dots_draw(int x, int y, int s, int c0, int c1, int xa, int xb) {
     for (int j = c0; j < c1; j++) {
         for (int i = xa; i < xb;) {
             int v = dot[j][i]; if (!v) { i++; continue; } int k = i; while (k < xb && dot[j][k] == v) k++;
-            u8 e[3]; const u8 *c; if (v >= 16) { egg_rgb(lcdCol, eggKeys[v - 16], e); c = e; } else c = lcdCol == 8 ? PAL[8] : v == 1 ? PAL[lcdCol] : INKV[v];
+            u8 e[3]; const u8 *c; if (v >= 16) { egg_rgb(lcdCol, v - 16, e); c = e; } else c = lcdCol == 8 ? PAL[8] : v == 1 ? PAL[lcdCol] : INKV[v];
             gfx_rect(x + (i - xa) * s, y + (j - c0) * s, (k - i) * s, (s >= 3 && v < 16) ? s - 1 : s, c[0], c[1], c[2], 0); i = k;   // (an egg is square dots, no gap)
         }
     }

@@ -1941,7 +1941,7 @@
 "s": "shell, owner colour",
 "z": "shell, owner colour * 0.6",
 "L": "LCD on (172,196,128) / off (58,72,70)",
-"l": "LCD shade (150,176,108), the ground shadow",
+"l": "LCD shade on (150,176,108) / off (44,56,56); also the egg's ground shadow",
 "#": "egg outline: pet colour * 0.42",
 "m": "egg body: cream (240,238,206) 74% + pet colour 26%",
 "d": "egg shade: cream 48% + pet colour 52%",

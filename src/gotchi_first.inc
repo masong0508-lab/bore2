@@ -9,7 +9,7 @@ static void f_setup(int shell, int ink, int lcd) {   // the owner's colour for t
     const u8 *sh = PAL[1 + shell % 7];
     f_key('S', MIN(255, sh[0] + 40), MIN(255, sh[1] + 40), MIN(255, sh[2] + 40)); f_key('s', sh[0], sh[1], sh[2]); f_key('z', sh[0] * 6 / 10, sh[1] * 6 / 10, sh[2] * 6 / 10);
     if (lcd) { f_key('L', 172, 196, 128); f_key('l', 150, 176, 108); } else { f_key('L', 58, 72, 70); f_key('l', 44, 56, 56); }
-    for (const char *e = "#mdhou"; *e; e++) { u8 o[3]; egg_rgb(ink % 8, *e, o); f_key(*e, o[0], o[1], o[2]); }   // the egg's colours from the pet's (the same as on the LCD dots)
+    for (const char *e = "#mdhou"; *e; e++) { u8 o[3]; egg_rgb(ink % 8, (int)(strchr(eggKeys, *e) - eggKeys), o); f_key(*e, o[0], o[1], o[2]); }   // the egg's colours from the pet's (the same as on the LCD dots)
 }
 static void f_clip(int x0, int y0, int x1, int y1) { fcx0 = x0; fcy0 = y0; fcx1 = x1; fcy1 = y1; }
 static void f_noclip(void) { f_clip(0, 0, 320, 240); }

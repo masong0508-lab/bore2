@@ -330,7 +330,7 @@ def preview(path):
 def emit_json(path):   # the same art for any other port: {sprites: {name: [rows]}, palette: {key: [r, g, b]}, mapped: how the game colours the keys it sets, font: {char: 7 rows of 5}}
     import json
     f = {c: [v[i * 5:i * 5 + 5] for i in range(7)] for c, v in FNT.items()}
-    mapped = {'S': 'shell, owner colour + 40', 's': 'shell, owner colour', 'z': 'shell, owner colour * 0.6', 'L': 'LCD on (172,196,128) / off (58,72,70)', 'l': 'LCD shade on (150,176,108) / off (44,56,56)', '#': 'egg outline: pet colour * 0.42', 'm': 'egg body: cream (240,238,206) 74% + pet colour 26%', 'd': 'egg shade: cream 48% + pet colour 52%', 'o': 'egg spots: pet colour * 0.92', 'h': 'highlight (255,255,240)', 'u': 'light in a crack (255,250,190)', 'g': 'gold (255,208,60)', 'l': 'LCD shade (150,176,108), the ground shadow'}
+    mapped = {'S': 'shell, owner colour + 40', 's': 'shell, owner colour', 'z': 'shell, owner colour * 0.6', 'L': 'LCD on (172,196,128) / off (58,72,70)', 'l': 'LCD shade on (150,176,108) / off (44,56,56); also the egg\'s ground shadow', '#': 'egg outline: pet colour * 0.42', 'm': 'egg body: cream (240,238,206) 74% + pet colour 26%', 'd': 'egg shade: cream 48% + pet colour 52%', 'o': 'egg spots: pet colour * 0.92', 'h': 'highlight (255,255,240)', 'u': 'light in a crack (255,250,190)', 'g': 'gold (255,208,60)', }
     eg = {'patterns': {'EGG%s%d' % (k_, p_): egg_runs(k_, p_) for k_ in 'BLS' for p_ in range(EGG_N)}, 'cracks': {k_: {'cells': crack_cells(k_)[0], 'stage_counts': crack_cells(k_)[1]} for k_ in 'BL'}}
     spr = dict(S); spr.update(FULL)
     json.dump({'sprites': spr, 'egg_parts': eg, 'palette': {k: list(v) for k, v in FPAL.items()}, 'mapped': mapped, 'font': f}, open(path, 'w'), indent=0)
