@@ -23,8 +23,8 @@ static const char *const achNm[NACH] = { "FIRST HATCH", "ALL GROWN UP", "STAR QU
     "SHINY", "REMEMBERED", "PLAYMATES", "DYNASTY", "GOOD CARER", "BLOBDEX STAR", "TWO FAMILIES", "GOTCHI MASTER", "3 DAY STREAK", "WEEK STREAK", "SKILLED", "TOP SCORE" };
 static const char *const achHow[NACH] = { "HATCH AN EGG", "RAISE A GROWN-UP", "RAISE A STAR FORM", "24 FORMS IN THE BLOBDEX", "A PAIR LAYS AN EGG", "A GRANDCHILD IS BORN", "FIVE PETS IN ONE TOY", "HATCH A RARE KIND",
     "A GOLD OR MUTANT PET", "A PET PASSES ON", "10 PLAYDATES", "FIVE GENERATIONS", "CARE SCORE OF 500", "60 FORMS IN THE BLOBDEX", "AN EGG FROM TWO FAMILIES", "REACH CARE LEVEL 5", "ALL GOALS 3 DAYS RUNNING", "ALL GOALS 7 DAYS RUNNING", "A SKILL OF 60", "GRADE S IN A GAME" };
-static const char *const gameNm[NGAME] = { "WHICH WAY", "COPY ME", "CATCH", "HIGH LOW", "BEAT", "HOP", "STACK" };
-static const u8 gameSk[NGAME] = { 2, 1, 0, 1, 2, 0, 1 };   // the skill each game trains: 0 speed 1 brains 2 charm
+static const char *const gameNm[NGAME] = { "WHICH WAY", "COPY ME", "CATCH", "HIGH LOW", "BEAT", "HOP", "STACK", "WHACK" };
+static const u8 gameSk[NGAME] = { 2, 1, 0, 1, 2, 0, 1, 0 };   // the skill each game trains: 0 speed 1 brains 2 charm
 static const char *const roomNm[6] = { "SUNNY ROOM", "SEA ROOM", "BERRY ROOM", "MINT ROOM", "NIGHT ROOM", "GOLD ROOM" };
 static const char *const dayNm[7] = { "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN" };
 
@@ -60,6 +60,8 @@ void gx_diary(const Diary *d, char *out) {   // the diary tells it as a story: w
     if (kd == GD_AWARD) { sprintf(out, "%sAWARD: %s", t, achNm[d->id % NACH]); return; }
     if (kd == GD_DAY) { sprintf(out, "%sGOODNIGHT. %d CARES TODAY", t, d->id); return; }
     if (l) sprintf(w, "%s THE %s", giv[l->nm & 31], spNm[l->sp % GSP_N]); else strcpy(w, "A PET");
+    if (kd == GD_BEST) { sprintf(out, "%s%s BEAT ITS BEST AT %s", t, w, gameNm[sg]); return; }
+    if (kd == GD_TRAIN && sg) { sprintf(out, "%s%s TRAINED ITS %s", t, w, gx_skill(sg - 1)); return; }
     if (kd == GD_GROW) { sprintf(out, "%s%s %s", t, w, sg == GS_CHILD ? "IS A CHILD NOW" : sg == GS_TEEN ? "IS A TEEN NOW" : sg == GS_ELDER ? "IS GETTING OLD" : "GREW UP A BIT"); return; }
     if (kd == GD_ADULT) { sprintf(out, "%s%s GREW UP: A %s ADULT", t, w, formNm[sg % GFORMS]); return; }
     sprintf(out, "%s%s %s", t, w, vb[kd & 31]);
@@ -68,7 +70,8 @@ void gx_diary(const Diary *d, char *out) {   // the diary tells it as a story: w
 void gx_diary_mem(const Diary *d, char *out) {   // one line of a pet's own memories (no name: the page is about it)
     static const char *const vb[32] = { "", "HATCHED", "GREW UP A BIT", "GREW UP", "PASSED ON", "BROUGHT A GIFT", "BIRTHDAY", "HAD A TANTRUM", "WAS ILL", "LAID AN EGG", "HAD A PLAYDATE", "RARE MUTANT", "WAS LOOKED AFTER", "FELL IN LOVE", "VISITED A FRIEND", "",
         "WISH GRANTED", "TRAINED HARD", "NEW BEST SCORE", "BEST FRIEND", "MISSED A FRIEND", "A SURPRISE", "GOALS KEPT", "", "", "", "", "", "", "", "", "" };
-    int kd = d->kind & 31; sprintf(out, "%s %02d  %s", dayNm[(d->day / 24) % 7], d->day % 24, vb[kd]);
+    int kd = d->kind & 31, sg = d->kind >> 5; sprintf(out, "%s %02d  ", dayNm[(d->day / 24) % 7], d->day % 24); char *e = out + strlen(out);
+    if (kd == GD_BEST) sprintf(e, "NEW BEST AT %s", gameNm[sg]); else if (kd == GD_TRAIN && sg) sprintf(e, "TRAINED %s", gx_skill(sg - 1)); else strcpy(e, vb[kd]);
 }
 // ---- actions ----
 static void up(u8 *v, int max, int n) { int x = *v + n; *v = (u8)(x > max ? max : x < 0 ? 0 : x); }
@@ -193,7 +196,7 @@ const char *gx_game_result(Toy *t, int slot, int game, int pct, int train) {
     t->plays++; gx_grade = g; tch(t, slot);
     int cost = train ? 12 : 6; if (b->wt >= 20) cost += 3; if (pr == GP_LAZY) cost += 2; x->nrg = (u8)(x->nrg > cost ? x->nrg - cost : 0); up(&x->hyg, 100, train ? -8 : -4);
     if (train) { if (b->hun > 1) b->hun--; int gain = 1 + g * 2; if (pr == GP_CLEVER) gain++; if (pr == GP_LAZY && gain > 1) gain--; gain = gain * (50 + m) / 100 + (g > 0); if (gain < 1) gain = 1; up(&x->sk[sk], 100, gain);
-        up(&b->disc, 100, 2 + g * 3 + (pr == GP_CLEVER ? 3 : 0)); if (g < 2) up(&b->hap, 4, -1); if (g >= 2) up(&b->bond, 100, 1); gotchi_xp(t, 2 + g); gpadd(t, 3); wish_hit(t, slot, 4); gotchi_diary(GD_TRAIN, k->id); }
+        up(&b->disc, 100, 2 + g * 3 + (pr == GP_CLEVER ? 3 : 0) + x->sk[1] / 20); if (g < 2) up(&b->hap, 4, -1); if (g >= 2) up(&b->bond, 100, 1); gotchi_xp(t, 2 + g); gpadd(t, 3); wish_hit(t, slot, 4); gotchi_diary(GD_TRAIN | (sk + 1) << 5, k->id); }
     else {
         up(&b->hap, 4, (g >= 2) + (g >= 4) + (pr == GP_PLAYFUL && g >= 1)); if (g >= 2 && b->wt > 1) b->wt--; up(&b->bond, 100, (g >= 1) + (g >= 3) * 2 + (pr == GP_PLAYFUL ? 1 : 0) + (m >= 80));
         up(&x->sk[sk], 100, g >= 2 ? 1 : 0); gotchi_xp(t, 1 + g); if (g >= 2) t->wins++; if (g >= 1) { gpadd(t, 1); wish_hit(t, slot, 2); }
@@ -204,7 +207,7 @@ const char *gx_game_result(Toy *t, int slot, int game, int pct, int train) {
     if (g >= 3 && !train) { int c = (g == 4 ? 10 : 5) + x->sk[2] / 20; sprintf(rmsg, "GRADE %s +$%d", gn[g], c); }
     if (g == 4) gx_award(19);
     if (x->sk[0] >= 60 || x->sk[1] >= 60 || x->sk[2] >= 60) gx_award(18);
-    if (game >= 0 && game < 8 && pct > gbest[game]) { if (gbest[game]) { strcat(rmsg, ". NEW BEST!"); gotchi_diary(GD_BEST, k->id); gx_fx = 4; } gbest[game] = (u8)pct; }
+    if (game >= 0 && game < 8 && pct > gbest[game]) { if (gbest[game]) { strcat(rmsg, ". NEW BEST!"); gx_fx = 4; } if (gbest[game] || pct >= 50) gotchi_diary(GD_BEST | game << 5, k->id); gbest[game] = (u8)pct; }
     return rmsg;
 }
 static void friend2(Toy *t, int i, int j, int n) {   // two pets of one toy grow closer: each keeps one best friend

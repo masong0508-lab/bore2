@@ -4,7 +4,7 @@
 
 #define NFOOD 12
 #define NACC 8
-#define NGAME 7
+#define NGAME 8
 #define NACH 20
 const char *gx_species(int sp);
 const char *gx_given(int nm);
