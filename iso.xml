@@ -30,6 +30,17 @@
 			<file name="DJ.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/DJ.OVL" />
 			<file name="CUT.OVL" type="data" source="${CMAKE_BINARY_DIR}/CUT.OVL" />
 			<file name="CLOCK.OVL" type="data" source="${CMAKE_BINARY_DIR}/CLOCK.OVL" />
+			<file name="REALWRLD.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/REALWRLD.OVL" />
+			<file name="FAMTREE2.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/FAMTREE2.OVL" />
+			<file name="SPEEDCTY.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/SPEEDCTY.OVL" />
+			<file name="BIGSCREN.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/BIGSCREN.OVL" />
+			<file name="MAGICMYT.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/MAGICMYT.OVL" />
+			<file name="WILDWEST.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/WILDWEST.OVL" />
+			<file name="BOREOUT.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/BOREOUT.OVL" />
+			<file name="BOREZIES.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/BOREZIES.OVL" />
+			<file name="WWBORE.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/WWBORE.OVL" />
+			<file name="BOREPILG.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/BOREPILG.OVL" />
+			<file name="PKINFO.OVL" type="data" source="${CMAKE_BINARY_DIR}/PKINFO.OVL" />
 			<file name="GOTCHI.ART" type="data" source="${CMAKE_BINARY_DIR}/slot_full/GOTCHI.ART" />
 			<dummy sectors="512"/>
 		</directory_tree>

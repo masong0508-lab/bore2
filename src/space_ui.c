@@ -34,8 +34,8 @@ static void start_fly(void) {
 }
 static void finish_fly(void) {
     st = S_RES; int first = !(space_done & (1 << msel)); res = !boom;
-    if (res) { int pay = first ? MPAY[msel] : MPAY[msel] / 3; cash += pay; space_done |= 1 << msel;
-        sprintf(line, first ? "MISSION COMPLETE! +$%d" : "ANOTHER GOOD FLIGHT +$%d", pay); strcpy(line2, first ? "THE WORLD WATCHES. FIRST TIME IS FAMOUS." : "THE CREW WAVES. THE PAY IS SMALLER.");
+    if (res) { int pay = first ? MPAY[msel] : MPAY[msel] / 3, flawless = !rough && burns >= MSTG[msel]; if (flawless) pay += pay / 4; cash += pay; space_done |= 1 << msel; astro_xp = (u16)MIN(60000, astro_xp + 10 + msel * 8);
+        sprintf(line, first ? "MISSION COMPLETE! +$%d" : "ANOTHER GOOD FLIGHT +$%d", pay); strcpy(line2, flawless ? "A FLAWLESS FLIGHT: PAID A QUARTER MORE." : first ? "THE WORLD WATCHES. FIRST TIME IS FAMOUS." : "THE CREW WAVES. THE PAY IS SMALLER.");
         sims[player].mood = MIN(100, sims[player].mood + (first ? 80 : 30)); audio_voice(VOICE_FINISHED); }
     else { int lose = space_tech[0] > 0 ? 0 : 1; if (rnd(100) < 50) { int t = rnd(3); if (space_tech[t] > 0) space_tech[t]--; }
         strcpy(line, "THE ROCKET IS LOST. SOMETHING WAS SAVED."); strcpy(line2, lose ? "TIME TO REBUILD." : "A PART SURVIVED THE FALL."); (void)lose;
@@ -64,11 +64,11 @@ int space_update(int hd, int pr, int steps) {
     return 1;
 }
 static void panel(void) {
-    char b[48]; int top = ui_window(150, 6, 164, 228, "MISSION CONTROL", IC_STAR);
+    char b[48]; int top = ui_window(150, 6, 164, 228, "SPACE AGE", IC_STAR);
     sprintf(b, "CASH $%d", (int)cash); ui_text(156, top, 1, b, UI_GOODT);
     for (int t = 0; t < 3; t++) { ui_text(156, top + 14 + t * 11, 1, TNM[t], UI_INK); for (int i = 0; i < 4; i++) ui_round(220 + i * 18, top + 14 + t * 11, 15, 7, 2, i < space_tech[t] ? UI_RGB(60, 170, 230) : UI_RGB(200, 206, 214), i < space_tech[t] ? UI_RGB(30, 110, 190) : UI_RGB(170, 176, 186), 0); }
-    ui_text(156, top + 38, 1, space_cert_name(space_cert()), UI_BLUE2);
-    int done = 0; for (int i = 0; i < NM; i++) done += (space_done >> i) & 1; sprintf(b, "MISSIONS DONE %d OF %d", done, NM); ui_text(156, top + 50, 1, b, UI_SOFT);
+    ui_text(156, top + 48, 1, space_cert_name(space_cert()), UI_BLUE2);
+    int done = 0; for (int i = 0; i < NM; i++) done += (space_done >> i) & 1; sprintf(b, "MISSIONS DONE %d OF %d", done, NM); ui_text(156, top + 59, 1, b, UI_SOFT);
 }
 void space_draw(void) {
     gfx_set_clear(2, 2, 10); ui_round(0, 0, 320, 240, 0, UI_RGB(4, 4, 22), UI_RGB(14, 10, 40), 0);
@@ -77,19 +77,19 @@ void space_draw(void) {
     if (st != S_FLY) { int rx = 70, ry = 70; ui_round(rx - 8, ry, 16, 60, 6, UI_RGB(235, 235, 245), UI_RGB(160, 165, 190), 0); ui_round(rx - 4, ry - 12, 8, 16, 4, UI_RGB(230, 60, 60), UI_RGB(160, 30, 30), 0);
         ui_round(rx - 16, ry + 40, 8, 22, 3, UI_RGB(60, 120, 220), UI_RGB(30, 70, 150), 0); ui_round(rx + 8, ry + 40, 8, 22, 3, UI_RGB(60, 120, 220), UI_RGB(30, 70, 150), 0);
         ui_round(rx - 4, ry + 14, 8, 8, 4, UI_RGB(120, 190, 250), UI_RGB(60, 120, 200), 0); }
-    if (st == S_MAIN) { panel(); int top = 6 + 14 + 62; static const char *const mm[5] = { "MISSIONS", "UPGRADE HULL", "UPGRADE ENGINE", "UPGRADE GUIDANCE", "LEAVE" };
+    if (st == S_MAIN) { panel(); int top = 6 + 24 + 76; static const char *const mm[5] = { "MISSIONS", "UPGRADE HULL", "UPGRADE ENGINE", "UPGRADE GUIDANCE", "LEAVE" };
         for (int i = 0; i < 5; i++) { int y = top + i * 14; if (i == sel) ui_round(154, y - 2, 156, 13, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
             if (i >= 1 && i <= 3) { int lv = space_tech[i - 1]; sprintf(b, lv >= 4 ? "%s  MAX" : "%s  $%d", mm[i] + 8, UCOST[lv]); ui_text(160, y, 1, b, i == sel ? UI_BLUE2 : UI_INK); }
             else ui_text(160, y, 1, mm[i], i == sel ? UI_BLUE2 : UI_INK); }
         if (sel >= 1 && sel <= 3) ui_wrap(156, top + 76, 150, 2, THINT[sel - 1], UI_SOFT);
         ui_text(156, top + 96, 1, line, UI_RED); ui_hints(310, 226, "X PICK|O LEAVE", 2); return; }
-    if (st == S_MISS) { panel(); int top = 6 + 14 + 62;
+    if (st == S_MISS) { panel(); int top = 6 + 24 + 76;
         for (int i = 0; i < NM; i++) { int y = top + i * 12; int lock = tsum() < MNEED[i] || space_cert() < MCERT[i]; if (i == msel) ui_round(154, y - 2, 156, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
             ui_text(160, y, 1, MNM[i], lock ? UI_SOFT : i == msel ? UI_BLUE2 : UI_INK); if (space_done >> i & 1) ui_text(300, y, 1, "*", UI_GOODT); }
         sprintf(b, "FUEL $%d  PAYS $%d", MFUEL[msel] * (100 - space_tech[1] * 9) / 100, MPAY[msel]); ui_text(156, top + 76, 1, b, UI_INK);
-        if (space_cert() < MCERT[msel]) { sprintf(b, "NEEDS: %s", space_cert_name(MCERT[msel])); ui_text(156, top + 88, 1, b, UI_RED); }
-        else if (tsum() < MNEED[msel]) { sprintf(b, "NEEDS PARTS TOTAL %d (YOU HAVE %d)", MNEED[msel], tsum()); ui_text(156, top + 88, 1, b, UI_RED); }
-        ui_text(156, top + 100, 1, line, UI_RED); ui_hints(310, 226, "X LAUNCH|O BACK", 2); return; }
+        if (line[0]) ui_text(156, top + 88, 1, line, UI_RED);
+        else if (space_cert() < MCERT[msel]) { sprintf(b, "NEEDS: %s", space_cert_name(MCERT[msel])); ui_text(156, top + 88, 1, b, UI_RED); }
+        else if (tsum() < MNEED[msel]) { sprintf(b, "NEEDS PARTS TOTAL %d (YOU HAVE %d)", MNEED[msel], tsum()); ui_text(156, top + 88, 1, b, UI_RED); } ui_hints(310, 226, "X LAUNCH|O BACK", 2); return; }
     if (st == S_FLY) {   // the rocket climbs; the gauge sweeps
         int ry = 140 - stage * 10 + (tmr > 0 ? (anim & 2) : 0); ui_round(70 - 8, ry, 16, 50, 6, UI_RGB(235, 235, 245), UI_RGB(160, 165, 190), 0); ui_round(66, ry - 12, 8, 14, 4, UI_RGB(230, 60, 60), UI_RGB(160, 30, 30), 0);
         if (boom && tmr > 0) { ui_round(40, ry - 10, 60, 60, 30, UI_RGB(255, 220, 80), UI_RGB(255, 80, 20), 0); }

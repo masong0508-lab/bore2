@@ -63,6 +63,7 @@ void prison_open(int arg) {
 }
 static void finish(int how) {   // 0 served, 1 parole, 2 escaped, 3 hospital, 4 acquitted, 5 executed, 6 freed on appeal
     over = 1; outcome = how; cash += earned; char b[48]; int served = how == 0 ? sentence : day;
+    if (how < 3 && pk_ext[PKX_PRISON + how] < 255) pk_ext[PKX_PRISON + how]++;   // (the PACK GOALS page: sentences served, paroles, escapes)
     sim_skip_days(how == 4 ? 1 : how == 5 ? 0 : served);
     if (how == 2) rap_sheet = MIN(9, rap_sheet + 2);
     memset(crime_n, 0, sizeof crime_n); crime_evid = 0; crime_def = 0;

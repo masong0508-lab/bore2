@@ -30,6 +30,20 @@ PACKS = {
     "FARM":     ("FARM LIFE", [("FARM.OVL", 16)]),
     "SKYSEA":   ("SKY AND SEA", [("SKYSEA.OVL", 28)]),
 }
+# SLOTS KEPT FOR PACKS NOT MADE YET (docs/EXPANSION_PACKS.md). Both the base and the full disc hold a stub in each, so a pack made later is a patch
+# on a disc made today, and no other pack moves. No patch is made for them until they have a real file.  Each has save room too: sim.h, PKX_RES.
+RESERVED = {
+    "REALWORLD": ("REAL WORLD",           [("REALWRLD.OVL", 12)]),
+    "FAMTREE2":  ("FAMILY TREE 2",        [("FAMTREE2.OVL", 12)]),
+    "SPEEDCITY": ("SPEED CITY",           [("SPEEDCTY.OVL", 24)]),
+    "BIGSCREEN": ("BIG SCREEN",           [("BIGSCREN.OVL", 20)]),
+    "MAGIC":     ("MAGIC AND MYTH",       [("MAGICMYT.OVL", 28)]),
+    "WILDWEST":  ("WILD WEST",            [("WILDWEST.OVL", 28)]),
+    "BOREOUT":   ("BORE-OUT MAN!",        [("BOREOUT.OVL", 12)]),
+    "BOREZIES":  ("BOREZIES!",            [("BOREZIES.OVL", 20)]),
+    "WWBORE":    ("WORLD WAR BORE",       [("WWBORE.OVL", 20)]),
+    "BOREPILOG": ("BOREPILOGUE",          [("BOREPILG.OVL", 12)]),
+}
 MAX_SLOT = 40                    # sectors: the overlay arena's room is a little over 80 KB
 
 def stub(pack, fname, sectors):
@@ -38,6 +52,10 @@ def stub(pack, fname, sectors):
 
 def cmd_slots(bd):
     os.makedirs(bd + "/slot_full", exist_ok=True); os.makedirs(bd + "/slot_base", exist_ok=True)
+    for pid, (title, files) in RESERVED.items():       # (a stub on both discs: nothing to patch yet)
+        for fname, sectors in files:
+            assert sectors <= MAX_SLOT
+            for side in ("slot_full", "slot_base"): open(os.path.join(bd, side, fname), "wb").write(stub(pid, fname, sectors))
     for pid, (title, files) in PACKS.items():
         for fname, sectors in files:
             assert sectors <= MAX_SLOT
@@ -95,6 +113,13 @@ def cmd_ppf(basep, fullp, outd):
             changes += diff_range(a, b, lo, hi)
         write_ppf(os.path.join(outd, "BORE2-%s.ppf" % pid), "BORE 2 pack: " + title, changes)
         print("%-8s %-30s %7d bytes in %d runs" % (pid, title, sum(len(d) for _, d in changes), len(changes)))
+    for pid, (title, files) in RESERVED.items():          # reserved slots: the same stub on both discs, nothing to patch
+        for fname, sectors in files:
+            lba, size = fb[fname]
+            if size != sectors * 2048: sys.exit("%s (reserved) on the disc is %d bytes, not %d" % (fname, size, sectors * 2048))
+            if a[lba * SECTOR:(lba + sectors) * SECTOR] != b[lba * SECTOR:(lba + sectors) * SECTOR]: sys.exit("%s (reserved) differs between the discs" % fname)
+            covered.add((lba * SECTOR, (lba + sectors) * SECTOR))
+        print("%-9s %-30s reserved (%d sectors), no patch yet" % (pid, title, sum(n for _, n in files)))
     # outside the slots the two builds may differ only in the file dates the disc maker stamps (a few directory sectors)
     out = [i // SECTOR for i in range(0, len(a), SECTOR) if a[i:i + SECTOR] != b[i:i + SECTOR] and not any(lo <= i < hi for lo, hi in covered)]
     if len(out) > 6: sys.exit("the discs differ outside the pack slots in %d sectors (%s ...)" % (len(out), out[:8]))

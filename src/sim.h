@@ -128,6 +128,15 @@ const char *sim_moodlet_name(int id);
 void sim_gotchi_mood(int simi, int kind);   // (gotchi.c) a moodlet from the BOREAGOTCHI toy
 extern u8 col_lvl, col_major, col_on, col_cls, col_gpa, col_study, col_g[3]; extern u16 astro_xp; const char *col_major_name(int m); int space_cert(void); const char *space_cert_name(int c);
 extern int sim_want_resort;   // a pack's screen wanted: pack*4 + arg + 1 (0 PARADISE, 1 FARM, 2 SKYSEA)
+// THE PACKS' SAVED BYTES (docs/EXPANSION_PACKS.md): pk_data is ISLAND PARADISE's (0-12), FARM LIFE's (16-21), SKY AND SEA's and the heist's (24-43).
+// pk_ext (save version 46): [0..11] the goals claimed, a byte for each real pack (a bit a goal); the packs' own counters follow; then 104 bytes the save
+// keeps for packs to come (8 each: REAL WORLD, FAMILY TREE 2, SPEED CITY, BIG SCREEN, MAGIC AND MYTH, WILD WEST, BORE-OUT MAN!, BOREZIES!, WORLD WAR BORE,
+// BOREPILOGUE, ARCADE 2, GOTCHI 2, YOUR IDEA). They are written as zeros and read past; a pack made later reads its own eight from there.
+#define PKX_LIVE 24
+#define PKX_RES  104
+#define PKX_VER  46
+enum { PKX_PARTY = 12 /* parties thrown, best score */, PKX_PRISON = 14 /* sentences served, paroles, escapes, heists */ };
+extern u8 pk_ext[PKX_LIVE];
  extern u8 pk_data[48];   // ISLAND PARADISE (and room for packs to come): a few saved bytes a pack keeps for itself
 extern int sim_want_space, space_done; extern u8 space_tech[3];   // the space program: parts (hull, engine, guidance), missions done
 extern int sim_want_prison, rap_sheet; void sim_skip_days(int n);   // HARD TIME

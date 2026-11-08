@@ -43,6 +43,7 @@ static void begin(int t) {
 static void got_away(void) {
     sim_crime(CR_THEFT, 4 + stars * 2); pk_data[42] = (u8)MIN(100, heat() + 10 + stars * 6); pk_data[43] = (u8)day_count;
     sims[player].skill_logic += 30 + TDF[tgt] * 10; hp = H_CHOICE; hsel = 0; line[0] = 0;
+    if (pk_ext[PKX_PRISON + 3] < 255) pk_ext[PKX_PRISON + 3]++;   // (the PACK GOALS page: heists pulled off)
     sim_note("YOU GOT AWAY WITH IT!"); audio_voice(VOICE_WIN);
 }
 static void finish_gate(int ok) {

@@ -167,11 +167,12 @@ void sim_gotchi_absorb(int i) {   // staring at the toy: the owner forgets to ea
 }
 static void crime_midnight(void);
 static void farm_midnight(void);
-int sim_want_space, space_done; u8 space_tech[3]; int sim_want_resort; u8 pk_data[48];
+int sim_want_space, space_done; u8 space_tech[3]; int sim_want_resort; u8 pk_data[48]; u8 pk_ext[PKX_LIVE];
 int dj_xp, dj_heat, sim_want_dj, sim_want_super, sim_want_bus, sim_want_dog, bus_pass, sim_want_prison, rap_sheet;   // sim_want_prison: a sentence in days (HARD TIME); rap_sheet: past arrests   // bus_pass: the pass is good while day_count < bus_pass
 int pet_kind, pet_col, pet_hun = 100, pet_x, pet_z, pet_yaw, pet_ph, pet_zone = -1;   // the pet (0 none, 1 dog, 2 cat): where it is, how hungry
 void sim_dj_hit(int tip) { cash += tip; if (nsims) sim_moodlet(&sims[player], ML_DJ_HIT); }
 void sim_party_over(int score, int guests) {   // the last guest leaves: how it went, for everyone who lives here
+    if (pk_ext[PKX_PARTY] < 255) pk_ext[PKX_PARTY]++; if (score > pk_ext[PKX_PARTY + 1]) pk_ext[PKX_PARTY + 1] = (u8)MIN(score, 255);   // (the PACK GOALS page counts parties thrown and the best)
     for (int i = 0; i < nsims; i++) { Sim *s = &sims[i]; if (s->away) continue;
         if (score >= 1) sim_moodlet(s, score >= 8 ? ML_PARTY_LEGEND : score >= 4 ? ML_PARTY_GREAT : ML_PARTY_OK);
         s->need[N_SOCIAL] = MIN(s->need[N_SOCIAL] + ((10 + MIN(guests, 30) + score * 3) << 10), 100 << 10);
@@ -224,7 +225,7 @@ static void turn_to(Sim *s, int target, int rate) {
 
 void sim_init(void) {
     gotchi_reset(); dj_xp = 0; dj_heat = 0; band_reset(); realm_reset();   // (a new life: no realm yet; a loaded one brings its own)
-    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; rap_sheet = 0; space_done = 0; memset(space_tech, 0, 3); memset(pk_data, 0, sizeof pk_data); col_lvl = col_major = col_on = col_cls = col_gpa = col_study = 0; memset(col_g, 0, 3); astro_xp = 0; art_n = novel = 0; art_q = royalty = 0; fm_fert = fm_fz = fm_pest = fm_up = fm_wc = fm_ordk = fm_ordq = fm_ordt = fm_fair = 0; memset(fm_n, 0, 4); memset(fm_g, 0, 4); memset(fm_dry, 0, 4); memset(fm_stock, 0, sizeof fm_stock); fm_wet = fm_hens = fm_cows = fm_fed = 0; fm_egg = fm_milk = fm_pe = fm_pm = 0; fm_hh = fm_ch = 70; fm_pet = 0; fm_buyers = 0; fm_earned = 0; for (int t = 0; t < VEH_N; t++) veh_cond[t] = 100; memset(crime_n, 0, sizeof crime_n); crime_evid = crime_def = 0; dog_default(&pet_dog); nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; rt_last = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
+    pet_kind = 0; pet_zone = -1; pet_hun = 100; bus_pass = 0; rap_sheet = 0; space_done = 0; memset(space_tech, 0, 3); memset(pk_data, 0, sizeof pk_data); memset(pk_ext, 0, sizeof pk_ext); col_lvl = col_major = col_on = col_cls = col_gpa = col_study = 0; memset(col_g, 0, 3); astro_xp = 0; art_n = novel = 0; art_q = royalty = 0; fm_fert = fm_fz = fm_pest = fm_up = fm_wc = fm_ordk = fm_ordq = fm_ordt = fm_fair = 0; memset(fm_n, 0, 4); memset(fm_g, 0, 4); memset(fm_dry, 0, 4); memset(fm_stock, 0, sizeof fm_stock); fm_wet = fm_hens = fm_cows = fm_fed = 0; fm_egg = fm_milk = fm_pe = fm_pm = 0; fm_hh = fm_ch = 70; fm_pet = 0; fm_buyers = 0; fm_earned = 0; for (int t = 0; t < VEH_N; t++) veh_cond[t] = 100; memset(crime_n, 0, sizeof crime_n); crime_evid = crime_def = 0; dog_default(&pet_dog); nsims = 0; player = 0; clock_min = 8 * 60; clock_day = 0; day_count = 0; rt_last = 0; cash = 15000; last_note[0] = 0; note_qn = 0;
     job_level = 0; job_car = CAR_FACTORY; job_take(CAR_FACTORY, -1, -1, "THE FACTORY"); job_none = 1;
     groceries = 10; room_bx = room_by = -1; room_until = 0; phone_tier = 1; handheld = 0;
 #ifdef AUTO_PHONE_TIER
@@ -2533,6 +2534,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
     sv_u8(veh_own); sv_u8(veh_sel); for (int t = 0; t < VEH_N; t++) sv_u16((u16)veh_fuel[t]); traffic_save();   // (version 18: the vehicles)
     realm_save();   // (version 15: KINGDOM MODE's realm)
     sv_n(pk_data, sizeof pk_data);   // (version 39: what a pack keeps)
+    sv_n(pk_ext, PKX_LIVE); { u8 z[8] = { 0 }; for (int i = 0; i < PKX_RES / 8; i++) sv_n(z, 8); }   // (version 46: the packs' goals, and room kept for the packs to come: see docs/EXPANSION_PACKS.md)
     for (int i = 0; i < nsims; i++) {
         const Sim *s = &sims[i]; const Bore *b = &s->bore;
         sv_n(b->look, LK_COUNT); sv_u8(b->stage); sv_u8(b->asp); sv_u8(b->ltw); sv_n(b->tr, TR_N); sv_str(b->first, NAME_LEN - 1); sv_str(b->last, NAME_LEN - 1);
@@ -2572,6 +2574,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     traffic_load(save_ver);
     realm_load(save_ver);
     if (save_ver >= 39) ld_n(pk_data, sizeof pk_data); else memset(pk_data, 0, sizeof pk_data);
+    if (save_ver >= PKX_VER) { u8 z[8]; ld_n(pk_ext, PKX_LIVE); for (int i = 0; i < PKX_RES / 8; i++) ld_n(z, 8); } else memset(pk_ext, 0, sizeof pk_ext);   // (the reserved bytes are for packs not made yet: read past)
     for (int i = 0; i < n && i < MAX_SIMS; i++) {
         sim_add(blank, 0, 0, 1);   // (a blank Bore: the Bore is large, so it is filled in place)
         Sim *s = &sims[nsims - 1]; Bore *b = &s->bore;

@@ -131,7 +131,7 @@ static int rts_pending; static void rts_open(int back, int ask);   // (REAL TIME
 static int menu_sel;
 static int sub_back = ST_LIFE;
 enum { PH_CALL, PH_PIZZA, PH_PARTY, PH_MAP, PH_TRAVEL, PH_JOBS, PH_HOMES, PH_PEOPLE, PH_FAMILY, PH_ADOPT, PH_MUSIC, PH_GOALS, PH_TEXT, PH_PHOTO, PH_GAMES, PH_N };   // the phone's apps
-static int ph_sel; void phone_open(void);              // (the phone: below)                       // where O goes back to from the phone's screens (the phone itself)
+static int pk_shelf, ph_sel; void phone_open(void);              // (the phone: below)                       // where O goes back to from the phone's screens (the phone itself)
 #define BACK_TO() (PRESSED(PAD_START) ? ST_LIFE : sub_back)
 static int create_tab, create_row, create_from, create_turn;
 static int build_tool, build_item, build_x = 8, build_y = 8, build_fl = 1, build_wp = 1, build_lvl, build_peek;
@@ -337,7 +337,7 @@ static void start_life(void) {
         a->rel[1] = m->rel[0] = 40; a->rel[2] = k->rel[0] = m->rel[2] = k->rel[1] = 30;
     }
     story_reset(); }
-#if !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_SUPER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY) && !defined(AUTO_GOTCHI) && !defined(AUTO_DJ) && !defined(AUTO_RESORT)
+#if !defined(AUTO_PKLIFE) && !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_SUPER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY) && !defined(AUTO_GOTCHI) && !defined(AUTO_DJ) && !defined(AUTO_RESORT)
     nh_pending = life_mode == 0; cash = life_mode == 2 ? 1000 : wmFundsV[go_funds % 6]; mode_pending = life_mode; life_mode = 0;   // the family picks its home on THE NEIGHBORHOOD screen (The Sims: $20,000 to start), and life_update moves them in
 #endif
     life_started = 1;
@@ -713,6 +713,9 @@ static void life_update(int steps) {
       if (ar == 20) travel_go(AUTO_ZONE);
 #endif
       if (ar == AUTO_RWAIT) { cash = 90000; pk_data[0] = 0x0b; pk_data[39] |= 4; sim_want_resort = AUTO_RESORT; } }
+#endif
+#ifdef AUTO_PKGOAL
+    { static int ag; if (++ag == 40) { dj_xp = 1000; pk_ext[PKX_PARTY] = 16; pk_ext[PKX_PARTY + 1] = 9; pk_ext[PKX_PRISON] = 1; pk_ext[PKX_PRISON + 3] = 2; space_done = 7; pet_kind = 1; pet_hun = 90; cash = 1000; } }   // (test builds: some pack goals done, for the PACK GOALS page)
 #endif
 #ifdef AUTO_DJ
     { static int ad; if (++ad == 40) { dj_xp = AUTO_DJ; sim_want_dj = 1; } }   // (test builds: straight to the DJ booth, at that skill)
@@ -3082,6 +3085,7 @@ static void scard_update(void) {
 static void scard_draw(void) { life_draw(); ui_dim(); story_card_draw(story_card(), sc_t); }
 static void story_update(void) {
     if (story_id && PRESSED(PAD_TRIANGLE)) { goals_old ^= 1; return; }
+    if (PRESSED(PAD_R1)) { if ((ovl = ovl_load("PKINFO.OVL"))) { ovl->open(255); pk_shelf = 0; state = ST_SPACE; } else audio_voice(VOICE_NAH); return; }   // (PACK GOALS: the packs' goals and their rewards)
     if (story_id && !goals_old && PRESSED(PAD_CROSS)) { int l; if (story_place(&l)) { story_taxi(); return; } }
     if (!story_id && PRESSED(PAD_SQUARE)) { sp_join = 1; sc_t = 0; state = ST_SPICK; return; }   // a story for this life
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_CROSS) || PRESSED(PAD_START)) state = BACK_TO();
@@ -3115,7 +3119,7 @@ static void story_draw(void) {   // the goals of this life, ticked off as they a
     sprintf(b, "%d OF %d DONE", done, NG);
     ui_text(40, top + 165, 1, b, UI_INK);
     ui_bar(124, top + 165, 156, 7, done * 100 / NG, UI_GREEN);
-    ui_hints(160, top + 180, story_id ? "TRI THE STORY|O BACK" : "SQ PICK A STORY|O BACK", 1);
+    ui_hints(160, top + 180, story_id ? "TRI THE STORY|R1 PACK GOALS|O BACK" : "SQ PICK A STORY|R1 PACK GOALS|O BACK", 1);
 }
 
 // ---- SWITCH SIM (Bustin\' Out): everyone in the household on one card; take over any of them, or tell one to wait ----
@@ -4081,7 +4085,7 @@ static void title_update(void) {
 #if defined(AUTO_WEAR) || defined(AUTO_FACE)
     if (title_t == 30) { world_backup(); prev_state = ST_MENU; create_tab = 4; create_row = 0; state = ST_CREATE; world_gen_studio(); return; }
 #endif
-#if defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM) || defined(AUTO_GOTCHI) || defined(AUTO_DJ) || defined(AUTO_SUPER)
+#if defined(AUTO_PKLIFE) || defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM) || defined(AUTO_GOTCHI) || defined(AUTO_DJ) || defined(AUTO_SUPER)
     if (title_t == 30) {
 #ifdef CIT_PEOPLE
         pop_people = CIT_PEOPLE; pop_famsize = 2;   // (test builds: a bigger SAN BOREAS, PEOPLE 5 = PACKED, BIG households)
@@ -4135,7 +4139,7 @@ enum { WO_RANDOM, WO_PRE1, WO_PRE2, WO_PRE3, WO_CREATE, WO_CASTAWAY, WO_MORE, WO
 static const u32 wo_preset[3] = { 0x0B0E2001u, 0x51A7E5EDu, 0x7A11C0DEu };
 static const char *const wo_cap[3] = { "MAPLE SHORES", "SUNNY HOLLOW", "PINE BAY" };   // the set worlds' names
 static int gotchi_shelf;   // the BOREAGOTCHI! guide opened from the expansion shelf (not in a life)
-static u8 pk_have[24]; static int pk_i;
+static u8 pk_have[26]; static int pk_i;   // (pk_shelf: a pack's PAGE (PKINFO.OVL) is open from the shelf, not from a life)
 static int wo_sel, wo_t, wo_more, wo_msel, wo_packed; static char wo_name[18];   // (wo_name: the capital named by the player, "" as made)
 static u32 wo_seed, wo_painted, wo_custom = 0x00C0FFEEu;
 static void paint_world(u32 seed) {                 // SAN BOREAS from above for that seed (the land, the highways, the towns), into the map's picture
@@ -4307,12 +4311,12 @@ static void wm_draw(void) {
     ui_hints(160, 214, wm_mode == 2 ? "LR CHANGE|SQ SURPRISE ME|START OR O BACK TO THE EDITOR" : "LR CHANGE|SQ SURPRISE ME|START PLAY|O BACK", 1);
 }
 
-#define WO_NMORE 24
+#define WO_NMORE 26
 // the island creator, the base game's missions, the six older packs and THE LAND BOREFORE TIME (the GBA game's seven), then thirteen packs still to come
 static const char *const moreNm[WO_NMORE] = { "ISLAND CREATOR", "STORY MISSIONS", "BORE-OUT MAN!", "BOREZIES!", "WORLD WAR BORE", "BORTUA FIGHTER", "BOREAGOTCHI!", "BOREPILOGUE", "THE LAND BOREFORE TIME",
-    "SEASONS", "ISLAND PARADISE", "SUPERSTAR", "CRIME AND LAW", "FARM LIFE", "SKY AND SEA", "SPEED CITY", "BIG SCREEN", "YOUR IDEA", "MAGIC AND MYTH", "FAMILY FUN", "WILD WEST", "SPACE AGE", "CREATE A DOG", "DJ BOOTH" };
+    "SEASONS", "ISLAND PARADISE", "SUPERSTAR", "CRIME AND LAW", "FARM LIFE", "SKY AND SEA", "SPEED CITY", "BIG SCREEN", "YOUR IDEA", "MAGIC AND MYTH", "FAMILY FUN", "WILD WEST", "SPACE AGE", "CREATE A DOG", "DJ BOOTH", "REAL WORLD", "FAMILY TREE 2" };
 static const char *const moreCard[WO_NMORE] = { "ISLAND|CREATOR", "STORY|MISSIONS", "BORE-OUT|MAN!", "BOREZIES!", "WORLD|WAR BORE", "BORTUA|FIGHTER", "BORE-|AGOTCHI!", "BORE-|PILOGUE", "THE LAND|BOREFORE|TIME",
-    "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "CRIME|AND LAW", "FARM|LIFE", "SKY AND|SEA", "SPEED|CITY", "BIG|SCREEN", "YOUR|IDEA", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE", "CREATE|A DOG", "DJ|BOOTH" };
+    "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "CRIME|AND LAW", "FARM|LIFE", "SKY AND|SEA", "SPEED|CITY", "BIG|SCREEN", "YOUR|IDEA", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE", "CREATE|A DOG", "DJ|BOOTH", "REAL|WORLD", "FAMILY|TREE 2" };
 static const char *const moreBlurb[WO_NMORE] = {
     "STRANDED! VERY SMALL TO VERY BIG. COAST, JUNGLE, HILLS", "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. A SPACE-HOP ARCADE GAME.",
     "THE TOWN GOES UNDEAD. BOARD UP THE WINDOWS, SHARE THE CANNED BEANS.", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. RALLY THE STREET!", "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!",
@@ -4321,10 +4325,10 @@ static const char *const moreBlurb[WO_NMORE] = {
     "BREAK THE LAW AND FIND OUT.", "THE RANCH LEDGER: BARN, SILO, ORCHARD, BEES, A FARM STAND AND CONTRACTS.", "BOATS, BALLOONS, SEAPLANES AND VOYAGES. SAIL AND SOAR!",
     "RACE THE STREETS: GARAGES, TUNING, A CITY GRAND PRIX.", "MOVIE SETS, PREMIERES, AND A RED CARPET OF YOUR OWN.", "SOMETHING NEW. TELL US WHAT YOU WANT NEXT!",
     "WAND, SPELLBOOK, DRAGON. THE CORNER SHOP IS A TOWER.", "THROW PARTIES AT HOME: GUESTS, GAMES, A BIG CAKE.", "A DUSTY TOWN, A SHERIFF'S STAR, A SHOWDOWN AT NOON.",
-    "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP.", "RAISE A DOG FROM A PUP. THE PET SHOP SELLS ONE.", "SPIN DECKS AT THE BOOTH. HOME AND CLUBS." };
+    "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP.", "RAISE A DOG FROM A PUP. THE PET SHOP SELLS ONE.", "SPIN DECKS AT THE BOOTH. HOME AND CLUBS.", "REAL WEATHER AND HOLIDAYS.", "GENERATIONS AND INHERITANCE." };
 #define EX_PLAYABLE(i) ((i) == 0 || (i) == 1 || (i) == 5 || (i) == 6 || (i) == 8 || (i) == 9 || (i) == 10 || (i) == 11 || (i) == 12 || (i) == 13 || (i) == 14 || (i) == 19 || (i) == 21 || (i) == 22 || (i) == 23)
 // the packs that are patches (tools/packs.py): the file each card needs on the disc (0: part of the base game, or not made yet)
-static const char *const packFile[WO_NMORE] = { 0, 0, 0, 0, 0, "ARCADE.OVL", "GOTCHI.OVL", 0, "KINGDOM.OVL", 0, "PARADISE.OVL", "SUPER.OVL", "PRISON.OVL", "FARM.OVL", "SKYSEA.OVL", 0, 0, 0, 0, "PARTY.OVL", 0, "SPACE.OVL", "DOG.OVL", "DJ.OVL" };
+static const char *const packFile[WO_NMORE] = { 0, 0, 0, 0, 0, "ARCADE.OVL", "GOTCHI.OVL", 0, "KINGDOM.OVL", 0, "PARADISE.OVL", "SUPER.OVL", "PRISON.OVL", "FARM.OVL", "SKYSEA.OVL", 0, 0, 0, 0, "PARTY.OVL", 0, "SPACE.OVL", "DOG.OVL", "DJ.OVL", 0, 0 };
 // 0: not looked at yet, 1: on the disc, 2: not installed (a stub, or no file)
 // ---- PICK A MODE: the three ways in ----
 static int md_sel, md_t;
@@ -4753,7 +4757,7 @@ static void worlds_update(void) {
             else if (wo_msel == 1) { sc_t = 0; sp_join = 0; state = ST_SPICK; }
             else if (wo_msel == 6) { if (pk_have[6] == 2) audio_voice(VOICE_NAH); else if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(3); gotchi_shelf = 1; state = ST_GOTCHI; } else audio_voice(VOICE_NAH); }
             else if (wo_msel == 9) { sim_seasons_on ^= 1; audio_voice(VOICE_AGREE); }   // (the SEASONS pack: on, the year turns; off, summer all year)
-            else if (wo_msel == 11) audio_voice(VOICE_FINISHED); else audio_voice(VOICE_NAH);
+            else if ((ovl = ovl_load("PKINFO.OVL"))) { ovl->open(wo_msel); pk_shelf = 1; state = ST_SPACE; } else audio_voice(VOICE_NAH);   // (the pack's PAGE: what it holds, its goals, or COMING SOON and what it will add)
         }
         return;
     }
@@ -4791,12 +4795,12 @@ static void worlds_update(void) {
     }
 }
 static void worlds_draw(void) {
-    title_draw();
-    ui_dim();
+    if (wo_more) { gfx_set_clear(18, 34, 66); gfx_camera_update(); ui_round(0, 0, 320, 240, 0, UI_RGB(30, 56, 104), UI_RGB(70, 116, 176), 0); }   // (the shelf draws a lot of little things: the town behind it ate the packet buffer, and its last lines and hints were lost)
+    else { title_draw(); ui_dim(); }
     char b[48];
     int top = ui_window(6, 6, 308, 228, wo_more ? "EXPANSIONS" : "NEIGHBORHOODS", wo_more ? IC_STAR : IC_PIN);
     if (wo_more) {
-        static const s8 mic[WO_NMORE] = { IC_SUN, IC_BOOK, IC_STAR, IC_PEOPLE, IC_HAMMER, IC_BX, IC_SMILE, IC_HEART, IC_TREE, IC_SUN, IC_TREE, IC_NOTE, IC_EYE, IC_SPROUT, IC_BOLT, IC_CAR, IC_CAMERA, IC_DROP, IC_STAR, IC_PARTY, IC_HAMMER, IC_BOLT, IC_HEART, IC_NOTE };
+        static const s8 mic[WO_NMORE] = { IC_SUN, IC_BOOK, IC_STAR, IC_PEOPLE, IC_HAMMER, IC_BX, IC_SMILE, IC_HEART, IC_TREE, IC_SUN, IC_TREE, IC_NOTE, IC_EYE, IC_SPROUT, IC_BOLT, IC_CAR, IC_CAMERA, IC_DROP, IC_STAR, IC_PARTY, IC_HAMMER, IC_BOLT, IC_HEART, IC_NOTE, IC_PIN, IC_BABY };
         int c0 = CLAMP(wo_msel / 2 - 2, 0, (WO_NMORE + 1) / 2 - 5);   // (five columns show, and slide along)
         for (int i = 0; i < WO_NMORE; i++) {
             int col = i / 2 - c0; if (col < 0 || col > 4) continue;
@@ -4819,7 +4823,7 @@ static void worlds_draw(void) {
           ui_textc(160, top + 156, 1, moreNm[wo_msel], UI_BLUE2);
           { char bb[128]; snprintf(bb, sizeof bb, "%s%s", st == 4 ? "COMING SOON! " : "", st == 2 ? "NOT ON THIS DISC. PATCH IT ON WITH ITS BORE2 PACK .PPF" : moreBlurb[wo_msel]);
             ui_wrapc(16, top + 166, 288, 3, bb, EX_PLAYABLE(wo_msel) && st != 2 ? UI_INK : UI_SOFT); } }
-        ui_hints(160, 218, wo_msel == 0 ? "X OPEN THE CREATOR|ARROWS MOVE|O BACK" : wo_msel == 1 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 6 ? "X THE GUIDE|ARROWS MOVE|O BACK" : wo_msel == 9 ? "X ON OR OFF|ARROWS MOVE|O BACK" : "ARROWS MOVE|O BACK", 1);
+        ui_hints(160, 218, wo_msel == 0 ? "X OPEN THE CREATOR|ARROWS MOVE|O BACK" : wo_msel == 1 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 6 ? "X THE GUIDE|ARROWS MOVE|O BACK" : wo_msel == 9 ? "X ON OR OFF|ARROWS MOVE|O BACK" : "X ABOUT IT|ARROWS MOVE|O BACK", 1);
         return;
     }
     // the tabs
@@ -4881,7 +4885,7 @@ static void menu_update(void) {
     if (PRESSED(PAD_CROSS) || PRESSED(PAD_START)) {
         switch (menu_sel) {
             case 0:
-#if defined(AUTO_CITY) || defined(AUTO_PARTY) || defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_SCENE) || defined(AUTO_PHONE) || defined(AUTO_ISLE) || defined(AUTO_HOME) || defined(AUTO_GROW) || defined(AUTO_SAVE) || defined(AUTO_TOWER) || defined(AUTO_FLOAT) || defined(AUTO_STREAM)
+#if defined(AUTO_PKLIFE) || defined(AUTO_CITY) || defined(AUTO_PARTY) || defined(AUTO_PLACES) || defined(AUTO_TOUR) || defined(AUTO_SCENE) || defined(AUTO_PHONE) || defined(AUTO_ISLE) || defined(AUTO_HOME) || defined(AUTO_GROW) || defined(AUTO_SAVE) || defined(AUTO_TOWER) || defined(AUTO_FLOAT) || defined(AUTO_STREAM)
                 worlds_go(0, 0); break;   // (test builds: straight into a life, as before)
 #endif
                 mode_open(); break;
@@ -5111,7 +5115,7 @@ int main(void) {
             case ST_SUPER: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; audio_jukebox_stop(); ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_CUT: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_SPICK; sc_t = 0; title_draw(); } break; }
             case ST_DOG: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
-            case ST_SPACE: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
+            case ST_SPACE: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; if (pk_shelf) { pk_shelf = 0; crowd_reset(); wo_painted = 0; state = ST_WORLDS; } else { ovl_leave(); state = ST_LIFE; life_draw(); } } break; }
             case ST_PRISON: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; if (sim_want_end) { sim_want_end = 0; pause_new_life(); } life_draw(); } break; }
             case ST_DJ: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_PARTY: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); if (party_go) { party_go = 0; party_begin(); } } break; }
