@@ -81,3 +81,12 @@ the marker), tidy panel titles in the heading face, money and the clock in the n
 * Keep the three rules: y is the cap top, centre on ink width, measure before placing. Then the same call sites work in every port.
 * The case rules are plain C in `src/font.c` (`font_case`, three word lists) and can be copied as they are.
 * Dreamcast: `src` is shared, `FONTS.BIN` is on the GD-ROM (ports/dreamcast/Makefile passes it to mkdisc.py); nothing else is needed. Shot: `docs/fonts_dreamcast.png`.
+
+## Second pass: the overlay screens (docs/fonts2_*.png, before | after)
+
+Fixed with the measure-then-centre helpers (no hand offsets): shops' neighbours (homes, expansions), party, super (band: members, roles, setlist, venues, the gig panel, rehearsal), dog studio, prison and the court, the underworld, space, farm, sky and sea, paradise, the loading screen (the TIP pill is measured: no gap), the people list, the build catalogue and the pie menu. The Boreagotchi stray "ers/ars": the BOND / MANNERS meter labels sit under the big DAY ONE card and showed past its edge; the side meters now wait until the card is gone (`card` in `draw_hand`, gotchi_ui.c). Blinks and bounces removed: the build cursor's breathing brackets, the paradise sun, the sky and sea clouds, the space menu's drifting stars.
+
+New helpers in `src/ui.c`: `ui_fit_box` (body type in a box, ending ... when too long), `ui_row_lr` ("NAME  $PRICE" split at the double space), `ui_toast` (the news pill), `ui_badge_r` (right-aligned badge), `ui_item` (a list line's backing).
+The pie menu is a slim-header card (title = who or what) with the choices round a hub and the hints bar under; the build catalogue has tab pills (the chosen tab wide with its picture), a scroll bar and "n of m".
+
+Re-shooting: `python3 -I test/fonts2_tour.py gen`, build with `-DAUTO_SCREENS=420 -DCIT_KNOWN=3` (Release, `ninja iso_lite`), `bash test/fonts2_tour.sh BUILD NAME` (about 6 minutes each), then `python3 -I test/fonts2_tour.py pair BEFORE AFTER`. The hook is `scr_tick` in `src/main.c`; add a screen as a `case` there and a line in `SLOTS`.

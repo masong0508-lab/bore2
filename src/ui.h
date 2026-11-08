@@ -35,6 +35,11 @@ int  ui_cap(int size);
 void ui_text_box(int x, int y, int w, int h, int flags, int size, const char *s, u32 c);   // measured, then placed in the box: flags TX_CENTER | TX_MID ... (gfx.h)
 void ui_text_base(int x, int base, int size, const char *s, u32 c);   // y is the baseline, so different sizes on a line line up
 void ui_textr(int rx, int y, int size, const char *s, u32 c);         // right-aligned: the text ends at rx
+void ui_fit_box(int x, int y, int w, int h, int flags, const char *s, u32 c);   // the body type, measured and placed in a box, ending with ... when it is too long
+void ui_row_lr(int x, int y, int w, int h, const char *s, u32 cl, u32 cr);   // "NAME  $PRICE" split at the double space: the name left, the figure right
+void ui_toast(int y, const char *msg);                         // a news pill, centred across the screen
+int  ui_badge_r(int rx, int y, const char *s, u32 bg, u32 ink);   // a badge whose right edge is rx; returns its width
+void ui_item(int x, int y, int w, int h, int sel);             // a list line's backing (the chosen one lit with its blue edge)
 void ui_round(int x, int y, int w, int h, int r, u32 top, u32 bot, int semi);   // a rounded box, shaded top to bottom
 void ui_shadow(int x, int y, int w, int h, int r);             // its soft shadow (call first)
 void ui_card(int x, int y, int w, int h);                      // a white card with its shadow

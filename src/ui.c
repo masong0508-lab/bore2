@@ -146,6 +146,22 @@ void ui_text_box(int x, int y, int w, int h, int flags, int size, const char *s,
 }
 void ui_text_base(int x, int base, int size, const char *s, u32 c) { text_place(x, base - ui_cap(size), size, s, c); }   // y is the baseline: two sizes on one line sit on the same line this way
 void ui_textr(int rx, int y, int size, const char *s, u32 c) { text_place(rx - gfx_text_wi(ustyle(size), s), y, size, s, c); }   // right edge at rx
+void ui_fit_box(int x, int y, int w, int h, int flags, const char *s, u32 c) {   // the body type measured and placed in a box; too long for the box, it ends with ...
+    char sb[160], b[64]; s = font_shaped(s, sb, sizeof sb);
+    if (ui_tw(1, s) > w) { ui_lint_note(2, s); int n = (int)strlen(s); if (n > 60) n = 60;
+        do { n--; while (n > 0 && s[n - 1] == ' ') n--; memcpy(b, s, n); strcpy(b + n, "..."); } while (n > 0 && ui_tw(1, b) > w); s = b; }
+    ui_text_box(x, y, w, h, flags, 1, s, c);
+}
+void ui_row_lr(int x, int y, int w, int h, const char *s, u32 cl, u32 cr_) {   // "NAME  $PRICE": split at the double space, the name left and the figure right, each measured and centred in the line
+    const char *g = strstr(s, "  "); char l[48]; if (!g) { ui_fit_box(x, y, w, h, TX_LEFT | TX_MID, s, cl); return; }
+    int n = (int)(g - s); if (n > 47) n = 47; memcpy(l, s, n); l[n] = 0; while (*g == ' ') g++;
+    int rw = ui_tw(1, g); ui_text_box(x + w - rw, y, rw, h, TX_RIGHT | TX_MID, 1, g, cr_); ui_fit_box(x, y, w - rw - 6, h, TX_LEFT | TX_MID, l, cl);
+}
+void ui_toast(int y, const char *msg) {   // a news line: a pale pill, measured, centred on the screen (UI_FLOW: one place for every screen)
+    int w = MIN(ui_tw(1, msg) + 20, 296); ui_round(160 - w / 2, y, w, 16, 6, UI_WHITE, UI_PANEL, 0); ui_text_box(160 - w / 2, y, w, 16, TX_CENTER | TX_MID, 1, msg, UI_INK);
+}
+int ui_badge_r(int rx, int y, const char *s, u32 bg, u32 ink) { int w = gfx_text_wi(ustyle(1), s) + 10; ui_badge(rx - w, y, s, bg, ink); return w; }   // a badge whose right edge is at rx
+void ui_item(int x, int y, int w, int h, int sel) { ui_round(x, y, w, h, 5, sel ? UI_HILITE : UI_WHITE, sel ? UI_HILITE : UI_PANEL, 0); if (sel) gfx_rect(x, y + 3, 2, h - 6, cr(UI_BLUE), cg(UI_BLUE), cb(UI_BLUE), 0); }   // a list line's backing; the chosen one lit with its blue edge (as OPTIONS)
 
 static const u8 rin4[4] = { 2, 1, 0, 0 }, rin6[6] = { 4, 2, 1, 1, 0, 0 };
 void ui_round(int x, int y, int w, int h, int r, u32 top, u32 bot, int semi) {

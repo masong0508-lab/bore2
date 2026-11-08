@@ -484,38 +484,38 @@ void skysea_draw(void) {
         scene();
         // the HUD
         ui_round(8, 8, 150, 44, 6, UI_RGB(14, 18, 34), UI_RGB(30, 36, 60), 0);
-        if (mode == M_BOAT) { sprintf(b, "%s  %d KNOTS", CNM[cur], ABS(spd) / 5); ui_text(14, 12, 1, b, UI_WHITE); hud_bar(14, 24, 60, fuel, BT[cur].fuel * 2, UI_RGB(240, 200, 60)); hud_bar(14, 35, 60, hull, BT[cur].hull * 2, UI_RGB(80, 200, 100)); ui_text(80, 23, 1, "FUEL", UI_SOFT); ui_text(80, 34, 1, "HULL", UI_SOFT); hud_bar(112, 24, 40, temp, 130, temp > 100 ? UI_RGB(240, 70, 50) : UI_RGB(240, 150, 60)); ui_text(118, 34, 1, "HEAT", UI_SOFT); hud_bar(14, 45, 138, thr + 30, 130, UI_RGB(80, 160, 240)); }
-        else if (mode == M_AIR) { sprintf(b, "%s  %d  ALT %d", CNM[cur], spd / 5, MAX(0, py - MAX(0, gh(px, pz)))); ui_text(14, 12, 1, b, UI_WHITE); hud_bar(14, 24, 60, fuel, AT[cur - NB].fuel * 2 + 1, UI_RGB(240, 200, 60)); hud_bar(14, 35, 60, hull, AT[cur - NB].hull * 2, UI_RGB(80, 200, 100)); ui_text(80, 23, 1, "FUEL", UI_SOFT); ui_text(80, 34, 1, "HULL", UI_SOFT); hud_bar(14, 45, 138, thr, 100, UI_RGB(80, 160, 240)); if (spd < AT[cur - NB].stall * 16 && AT[cur - NB].stall) ui_text(104, 12, 1, "STALL!", UI_BADT); }
+        if (mode == M_BOAT) { sprintf(b, "%s  %d KNOTS", CNM[cur], ABS(spd) / 5); ui_text(14, 12, 1, b, UI_WHITE); hud_bar(14, 24, 60, fuel, BT[cur].fuel * 2, UI_RGB(240, 200, 60)); hud_bar(14, 35, 60, hull, BT[cur].hull * 2, UI_RGB(80, 200, 100)); ui_text(80, 24, 1, "FUEL", UI_SOFT); ui_text(80, 35, 1, "HULL", UI_SOFT); hud_bar(112, 24, 40, temp, 130, temp > 100 ? UI_RGB(240, 70, 50) : UI_RGB(240, 150, 60)); ui_text(118, 34, 1, "HEAT", UI_SOFT); hud_bar(14, 45, 138, thr + 30, 130, UI_RGB(80, 160, 240)); }
+        else if (mode == M_AIR) { sprintf(b, "%s  %d  ALT %d", CNM[cur], spd / 5, MAX(0, py - MAX(0, gh(px, pz)))); ui_text(14, 12, 1, b, UI_WHITE); hud_bar(14, 24, 60, fuel, AT[cur - NB].fuel * 2 + 1, UI_RGB(240, 200, 60)); hud_bar(14, 35, 60, hull, AT[cur - NB].hull * 2, UI_RGB(80, 200, 100)); ui_text(80, 24, 1, "FUEL", UI_SOFT); ui_text(80, 35, 1, "HULL", UI_SOFT); hud_bar(14, 45, 138, thr, 100, UI_RGB(80, 160, 240)); if (spd < AT[cur - NB].stall * 16 && AT[cur - NB].stall) ui_text(104, 12, 1, "STALL!", UI_BADT); }
         else { ui_text(14, 12, 1, chute_on ? "PARACHUTE" : "FALLING!", UI_WHITE); sprintf(b, "ALT %d", MAX(0, cy_ - MAX(0, gh(cx, cz_)))); ui_text(14, 24, 1, b, UI_WHITE); }
-        sprintf(b, "$%d", (int)cash); ui_text(312 - ui_tw(1, b), 10, 1, b, UI_GOODT);
-        if (hot) ui_text(312 - ui_tw(1, "HOT CRAFT"), 22, 1, "HOT CRAFT", UI_BADT);
+        sprintf(b, "$%d", (int)cash); ui_textr(304, 12, 1, b, UI_GOODT);
+        if (hot) ui_textr(304, 24, 1, "HOT CRAFT", UI_BADT);
         if (mode == M_BOAT && jtype) { int dx = (jx - px) / 8, dz = (jz - pz) / 8; sprintf(b, jtype == 2 ? "FISH %d/%d  %s" : "JOB  %dM  %ds", jtype == 2 ? fish : isq(dx * dx + dz * dz) * 8 * SC / 213, jtype == 2 ? BT[cur].hold : jt / 60, jtype == 2 ? (fcast ? "..." : "STOP IN THE RING") : ""); ui_text(14, 56, 1, b, UI_WHITE); }
-        if (mode == M_BOAT && near_dock() >= 0 && ABS(spd) < 60) ui_text(160, 200, 1, "TRIANGLE: HARBOUR  O: GET OFF", UI_WHITE);
+        if (mode == M_BOAT && near_dock() >= 0 && ABS(spd) < 60) ui_textc(160, 196, 1, "TRIANGLE: HARBOUR  O: GET OFF", UI_WHITE);
         if (mode == M_WRECK) { ui_textc(160, 30, 1, line, UI_WHITE); ui_textc(160, 44, 1, line2, UI_WHITE); }
         if (ctr > 0) ui_textc(160, 180, 1, line, UI_WHITE);
         ui_hints(160, 218, mode == M_BOAT ? "X GAS|SQ BRAKE|PAD STEER" : mode == M_AIR ? "X THRUST|SQ LESS|TRI CHUTE|R1 JUMP" : mode == M_WRECK ? "X SKIP" : "PAD STEER", 1);
         return; }
     gfx_set_clear(110, 190, 240);
     ui_round(0, 0, 320, 240, 0, UI_RGB(140, 210, 255), UI_RGB(60, 150, 210), 0); ui_round(0, 150, 320, 90, 0, UI_RGB(30, 130, 190), UI_RGB(20, 90, 150), 0);
-    for (int i = 0; i < 4; i++) ui_round((i * 91 + anim / 2) % 340 - 20, 20 + i * 14, 50, 14, 7, UI_RGB(255, 255, 255), UI_RGB(225, 235, 245), 0);
-    if (mode == M_END) { int top = ui_window(30, 40, 260, 150, "TRIP OVER", IC_PIN); ui_wrap(40, top + 4, 240, 3, line, UI_INK); ui_wrap(40, top + 42, 240, 4, line2, UI_SOFT); sprintf(b, "CASH $%d", (int)cash); ui_text(40, top + 100, 1, b, UI_GOODT); ui_hints(160, 176, "X OK", 1); return; }
+    for (int i = 0; i < 4; i++) ui_round(i * 91 - 10, 20 + i * 14, 50, 14, 7, UI_RGB(255, 255, 255), UI_RGB(225, 235, 245), 0);
+    if (mode == M_END) { int top = ui_window(30, 40, 260, 150, "TRIP OVER", IC_PIN); ui_wrap(40, top + 4, 240, 3, line, UI_INK); ui_wrap(40, top + 42, 240, 4, line2, UI_SOFT); sprintf(b, "CASH $%d", (int)cash); ui_text_box(40, top + 98, 240, 12, TX_LEFT | TX_MID, 1, b, UI_GOODT); ui_hints(160, 176, "X OK", 1); return; }
     int top = ui_window(8, 6, 304, 228, "SKY AND SEA", IC_CAR);
-    sprintf(b, "$%d", (int)cash); ui_text(300 - ui_tw(1, b), top + 1, 1, b, UI_GOODT); ui_text(16, top + 1, 1, "BOATS AND AIRCRAFT", UI_SOFT);
+    sprintf(b, "$%d", (int)cash); ui_text_box(220, top - 2, 80, 14, TX_RIGHT | TX_MID, 1, b, UI_GOODT); ui_text_box(16, top - 2, 200, 14, TX_LEFT | TX_MID, 1, "BOATS AND AIRCRAFT", UI_SOFT);
     int n = nrows(), first = CLAMP(sel - 3, 0, MAX(0, n - 7)), y0 = top + 14;
     for (int k = 0; k < 7 && first + k < n; k++) {
         int i = first + k, y = y0 + k * 15, on = i == sel; if (on) ui_round(14, y - 2, 292, 15, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
-        if (i == NCR) { int d = MIN(30, MAX(0, day_count - last())); sprintf(b, "COLLECT  %d DAYS = $%d", d, rate() * d); ui_text(20, y + 1, 1, b, on ? UI_BLUE2 : UI_GOODT); continue; }
-        if (i == NCR + 4) { int k = (pk_data[39] >> 3) & 3; ui_text(20, y + 1, 1, k == 0 ? "BLAST SCALE: NORMAL" : k == 1 ? "BLAST SCALE: LOW" : "BLAST SCALE: EXTREME", on ? UI_BLUE2 : UI_INK); continue; }
-        if (i == NCR + 3) { ui_text(20, y + 1, 1, dbg() ? "DEBUG: EVERY CRAFT FREE (ON)" : "DEBUG: EVERY CRAFT FREE (OFF)", on ? UI_BLUE2 : UI_INK); continue; }
-        if (i == NCR + 2) { ui_text(20, y + 1, 1, pk_data[39] & 2 ? "FALL DAMAGE: ON" : "FALL DAMAGE: OFF", on ? UI_BLUE2 : UI_INK); continue; }
-        if (i == NCR + 1) { ui_text(20, y + 1, 1, real() ? "CRASH MODE: REAL (THE TOWN PAYS)" : "CRASH MODE: ARCADE (BOUNCE BACK)", on ? UI_BLUE2 : UI_INK); continue; }
-        int h = has(i); sprintf(b, "%s%s", CNM[i], stol(i) ? " (HOT)" : ""); ui_text(20, y + 1, 1, b, h ? (on ? UI_BLUE2 : UI_GOODT) : on ? UI_BLUE2 : UI_INK);
-        if (h) { sprintf(b, "DRIVE T%d", tune(i)); ui_text(300 - ui_tw(1, b), y + 1, 1, b, UI_GOODT); } else { sprintf(b, "$%d", price(i)); ui_text(300 - ui_tw(1, b), y + 1, 1, b, cash >= price(i) ? UI_INK : UI_BADT); }
+        if (i == NCR) { int d = MIN(30, MAX(0, day_count - last())); sprintf(b, "COLLECT  %d DAYS = $%d", d, rate() * d); ui_text_box(20, y - 2, 240, 15, TX_LEFT | TX_MID, 1, b, on ? UI_BLUE2 : UI_GOODT); continue; }
+        if (i == NCR + 4) { int k = (pk_data[39] >> 3) & 3; ui_text_box(20, y - 2, 240, 15, TX_LEFT | TX_MID, 1, k == 0 ? "BLAST SCALE: NORMAL" : k == 1 ? "BLAST SCALE: LOW" : "BLAST SCALE: EXTREME", on ? UI_BLUE2 : UI_INK); continue; }
+        if (i == NCR + 3) { ui_text_box(20, y - 2, 240, 15, TX_LEFT | TX_MID, 1, dbg() ? "DEBUG: EVERY CRAFT FREE (ON)" : "DEBUG: EVERY CRAFT FREE (OFF)", on ? UI_BLUE2 : UI_INK); continue; }
+        if (i == NCR + 2) { ui_text_box(20, y - 2, 240, 15, TX_LEFT | TX_MID, 1, pk_data[39] & 2 ? "FALL DAMAGE: ON" : "FALL DAMAGE: OFF", on ? UI_BLUE2 : UI_INK); continue; }
+        if (i == NCR + 1) { ui_text_box(20, y - 2, 240, 15, TX_LEFT | TX_MID, 1, real() ? "CRASH MODE: REAL (THE TOWN PAYS)" : "CRASH MODE: ARCADE (BOUNCE BACK)", on ? UI_BLUE2 : UI_INK); continue; }
+        int h = has(i); sprintf(b, "%s%s", CNM[i], stol(i) ? " (HOT)" : ""); ui_text_box(20, y - 2, 240, 15, TX_LEFT | TX_MID, 1, b, h ? (on ? UI_BLUE2 : UI_GOODT) : on ? UI_BLUE2 : UI_INK);
+        if (h) { sprintf(b, "DRIVE T%d", tune(i)); ui_text_box(200, y - 2, 100, 15, TX_RIGHT | TX_MID, 1, b, UI_GOODT); } else { sprintf(b, "$%d", price(i)); ui_text_box(200, y - 2, 100, 15, TX_RIGHT | TX_MID, 1, b, cash >= price(i) ? UI_INK : UI_BADT); }
     }
     int by = top + 124; ui_round(14, by, 292, 62, 5, UI_PANEL, UI_LINE, 0);
-    if (sel < NCR) { sprintf(b, "%s  %s", CNM[sel], sel < NB ? "BOAT" : "AIRCRAFT"); ui_text(20, by + 4, 1, b, UI_BLUE2); ui_wrap(20, by + 16, 280, 2, CHINT[sel], UI_INK); sprintf(b, "EARNS $%d A DAY  SQ TUNES UP", inc(sel)); ui_text(20, by + 40, 1, b, UI_SOFT); }
-    else { sprintf(b, "%d CRAFT  $%d A DAY", __builtin_popcount(owned()), rate()); ui_text(20, by + 4, 1, b, UI_BLUE2); sprintf(b, "LANDINGS %d  DOWN %d  HURT %d  KILLED %d", pk_data[28], pk_data[37], pk_data[38], pk_data[29]); ui_text(20, by + 18, 1, b, UI_INK); }
-    ui_text(20, by + 50, 1, line, UI_RED);
+    if (sel < NCR) { sprintf(b, "%s  %s", CNM[sel], sel < NB ? "BOAT" : "AIRCRAFT"); ui_text_box(20, by + 2, 280, 12, TX_LEFT | TX_MID, 1, b, UI_BLUE2); ui_wrap(20, by + 16, 280, 2, CHINT[sel], UI_INK); sprintf(b, "EARNS $%d A DAY", inc(sel)); ui_text_box(20, by + 38, 150, 12, TX_LEFT | TX_MID, 1, b, UI_SOFT); ui_hints(298, by + 38, "SQ TUNE UP", 2); }
+    else { sprintf(b, "%d CRAFT  $%d A DAY", __builtin_popcount(owned()), rate()); ui_text_box(20, by + 2, 280, 12, TX_LEFT | TX_MID, 1, b, UI_BLUE2); sprintf(b, "LANDINGS %d  DOWN %d  HURT %d  KILLED %d", pk_data[28], pk_data[37], pk_data[38], pk_data[29]); ui_text_box(20, by + 16, 280, 12, TX_LEFT | TX_MID, 1, b, UI_INK); }
+    ui_text_box(20, by + 48, 280, 12, TX_LEFT | TX_MID, 1, line, UI_RED);
     ui_hints(160, 218, "X PICK|O LEAVE", 1);
 }
 __attribute__((section(".ovl_head"), used)) const OvlHead ovl_head = { OVL_MAGIC, skysea_open, skysea_update, skysea_draw };

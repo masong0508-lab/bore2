@@ -1,5 +1,5 @@
 #!/bin/bash
-# gviews.sh frames DI: every BOREAGOTCHI screen in turn (cmake with -DAUTO_GOTCHI=0 -DAUTO_GVIEWS into $GV, default /tmp/c_gv; forces the slot files and disc to rebuild);
+# gviews.sh frames DI (a full sweep: 9600 120, then SKIP=8 for the loading frames; the game runs 30 frames a second): every BOREAGOTCHI screen in turn (cmake with -DAUTO_GOTCHI=0 -DAUTO_GVIEWS into $GV, default /tmp/c_gv: CMakeLists.txt builds the overlay with -Os for it so the hook links; forces the slot files and disc to rebuild);
 # tiles (12 a sheet) in ${DSD:-/tmp/dsd}/${GVN}t*.png. GVN (default gv) names the run so helpers do not clash; FULL=1 shows the whole 320x240 frame.
 cd "$(dirname "$0")/.."
 GV=${GV:-/tmp/c_gv}; N=${GVN:-gv}; SKIP=${SKIP:-12}

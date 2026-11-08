@@ -100,33 +100,33 @@ void paradise_draw(void) {
     gfx_set_clear(40, 150, 200);   // a sunset sky over a lagoon
     ui_round(0, 0, 320, 240, 0, UI_RGB(255, 190, 120), UI_RGB(70, 190, 210), 0);
     ui_round(0, 150, 320, 90, 0, UI_RGB(30, 150, 200), UI_RGB(20, 110, 170), 0);
-    ui_round(250 + (anim >> 4) % 4, 30, 40, 40, 20, UI_RGB(255, 235, 150), UI_RGB(255, 200, 90), 0);
+    ui_round(252, 30, 40, 40, 20, UI_RGB(255, 235, 150), UI_RGB(255, 200, 90), 0);
     ui_round(210, 138, 90, 24, 12, UI_RGB(240, 214, 150), UI_RGB(210, 180, 120), 0); ui_round(246, 100, 5, 42, 2, UI_RGB(120, 80, 40), UI_RGB(90, 60, 30), 0); ui_round(228, 92, 40, 12, 6, UI_RGB(50, 160, 70), UI_RGB(30, 120, 50), 0);
     int top = ui_window(8, 6, 304, 228, "ISLAND PARADISE", IC_SUN);
-    { int x = 14; for (int i = 0; i < T_N; i++) { int w = ui_tw(1, TN[i]) + 14, on = i == tab; ui_round(x, top, w, 14, 4, on ? UI_BLUE : UI_PANEL, on ? UI_BLUE2 : UI_PANEL, 0); ui_text(x + 7, top + 3, 1, TN[i], on ? UI_WHITE : UI_SOFT); x += w + 4; } }
-    sprintf(b, "$%d", (int)cash); ui_text(300 - ui_tw(1, b), top + 3, 1, b, UI_GOODT);
+    { int x = 14; for (int i = 0; i < T_N; i++) { int w = ui_tw(1, TN[i]) + 14, on = i == tab; ui_round(x, top, w, 14, 4, on ? UI_BLUE : UI_PANEL, on ? UI_BLUE2 : UI_PANEL, 0); ui_text_box(x, top, w, 14, TX_CENTER | TX_MID, 1, TN[i], on ? UI_WHITE : UI_SOFT); x += w + 4; } }
+    sprintf(b, "$%d", (int)cash); ui_text_box(220, top, 80, 14, TX_RIGHT | TX_MID, 1, b, UI_GOODT);
     int n = nrows(), first = CLAMP(sel - 3, 0, MAX(0, n - 7)), y0 = top + 20;
     for (int k = 0; k < 7 && first + k < n; k++) {
         int i = first + k, y = y0 + k * 15, on = i == sel;
         if (on) ui_round(14, y - 2, 292, 15, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
         if (tab == T_RESORT) {
-            if (i == NF) { int days = MIN(30, MAX(0, day_count - last())); sprintf(b, "COLLECT EARNINGS  %d DAYS = $%d", days, rate() * days); ui_text(20, y + 1, 1, b, on ? UI_BLUE2 : UI_GOODT); continue; }
-            int own = have() >> i & 1; ui_text(20, y + 1, 1, FNM[i], own ? UI_GOODT : on ? UI_BLUE2 : UI_INK);
-            if (own) ui_text(268, y + 1, 1, "BUILT", UI_GOODT); else { sprintf(b, "$%d", disc(FCOST[i])); ui_text(300 - ui_tw(1, b), y + 1, 1, b, cash >= disc(FCOST[i]) ? UI_INK : UI_BADT); }
+            if (i == NF) { int days = MIN(30, MAX(0, day_count - last())); sprintf(b, "COLLECT EARNINGS  %d DAYS = $%d", days, rate() * days); ui_text_box(20, y - 2, 240, 15, TX_LEFT | TX_MID, 1, b, on ? UI_BLUE2 : UI_GOODT); continue; }
+            int own = have() >> i & 1; ui_text_box(20, y - 2, 240, 15, TX_LEFT | TX_MID, 1, FNM[i], own ? UI_GOODT : on ? UI_BLUE2 : UI_INK);
+            if (own) ui_text_box(200, y - 2, 100, 15, TX_RIGHT | TX_MID, 1, "BUILT", UI_GOODT); else { sprintf(b, "$%d", disc(FCOST[i])); ui_text_box(200, y - 2, 100, 15, TX_RIGHT | TX_MID, 1, b, cash >= disc(FCOST[i]) ? UI_INK : UI_BADT); }
         } else if (tab == T_ISLES) {
-            int ok = isle_ok(i); ui_text(20, y + 1, 1, ok ? INM[i] : "???", pk_data[2] == i + 1 ? UI_GOODT : !ok ? UI_SOFT : on ? UI_BLUE2 : UI_INK);
-            if (!ok) ui_text(250, y + 1, 1, "NO ISLE", UI_SOFT); else if (pk_data[2] == i + 1) ui_text(256, y + 1, 1, "HOME", UI_GOODT); else { sprintf(b, "$%d", ICOST[i]); ui_text(300 - ui_tw(1, b), y + 1, 1, b, cash >= ICOST[i] ? UI_INK : UI_BADT); }
+            int ok = isle_ok(i); ui_text_box(20, y - 2, 240, 15, TX_LEFT | TX_MID, 1, ok ? INM[i] : "???", pk_data[2] == i + 1 ? UI_GOODT : !ok ? UI_SOFT : on ? UI_BLUE2 : UI_INK);
+            if (!ok) ui_text_box(200, y - 2, 100, 15, TX_RIGHT | TX_MID, 1, "NO ISLE", UI_SOFT); else if (pk_data[2] == i + 1) ui_text_box(200, y - 2, 100, 15, TX_RIGHT | TX_MID, 1, "HOME", UI_GOODT); else { sprintf(b, "$%d", ICOST[i]); ui_text_box(200, y - 2, 100, 15, TX_RIGHT | TX_MID, 1, b, cash >= ICOST[i] ? UI_INK : UI_BADT); }
         } else {
-            int dn = paid() >> i & 1, rd = cr_ok(i); ui_text(20, y + 1, 1, CNM[i], dn ? UI_GOODT : rd ? UI_BLUE2 : on ? UI_INK : UI_SOFT);
-            if (dn) ui_text(268, y + 1, 1, "PAID", UI_GOODT); else { sprintf(b, rd ? "CLAIM $%d" : "$%d", CPAY[i]); ui_text(300 - ui_tw(1, b), y + 1, 1, b, rd ? UI_GOODT : UI_SOFT); }
+            int dn = paid() >> i & 1, rd = cr_ok(i); ui_text_box(20, y - 2, 240, 15, TX_LEFT | TX_MID, 1, CNM[i], dn ? UI_GOODT : rd ? UI_BLUE2 : on ? UI_INK : UI_SOFT);
+            if (dn) ui_text_box(200, y - 2, 100, 15, TX_RIGHT | TX_MID, 1, "PAID", UI_GOODT); else { sprintf(b, rd ? "CLAIM $%d" : "$%d", CPAY[i]); ui_text_box(200, y - 2, 100, 15, TX_RIGHT | TX_MID, 1, b, rd ? UI_GOODT : UI_SOFT); }
         }
     }
     int by = top + 128; ui_round(14, by, 292, 56, 5, UI_PANEL, UI_LINE, 0);
-    if (tab == T_RESORT) { sprintf(b, "%d STARS  $%d A DAY%s", stars(), rate(), pk_data[2] ? "  AT" : ""); ui_text(20, by + 4, 1, b, UI_BLUE2); if (pk_data[2]) ui_text(20 + ui_tw(1, b) + 4, by + 4, 1, INM[pk_data[2] - 1], UI_GOODT);
+    if (tab == T_RESORT) { sprintf(b, stars() == 1 ? "%d STAR  $%d A DAY%s" : "%d STARS  $%d A DAY%s", stars(), rate(), pk_data[2] ? "  AT" : ""); ui_text_box(20, by + 2, 280, 12, TX_LEFT | TX_MID, 1, b, UI_BLUE2); if (pk_data[2]) ui_text_box(20 + ui_tw(1, b) + 4, by + 2, 120, 12, TX_LEFT | TX_MID, 1, INM[pk_data[2] - 1], UI_GOODT);
         ui_wrap(20, by + 17, 280, 2, sel < NF ? FHINT[sel] : "THE GUESTS PAY EVERY DAY. COME BACK AND COLLECT.", UI_INK); }
-    else if (tab == T_ISLES) { ui_text(20, by + 4, 1, "SMALL ISLES CUT OFF FROM THE WORLD", UI_BLUE2); ui_wrap(20, by + 17, 280, 2, isle_ok(sel) ? IHINT[sel] : "THIS WORLD HAS NO SUCH ISLE.", UI_INK); }
-    else { int n2 = popc(paid()); sprintf(b, "RANK: %s  (%d OF %d)", RANK[MIN(4, n2 / 3)], n2, NC); ui_text(20, by + 4, 1, b, UI_BLUE2); ui_wrap(20, by + 17, 280, 2, CHINT[sel], UI_INK); }
-    ui_text(20, by + 42, 1, line, UI_RED);
+    else if (tab == T_ISLES) { ui_text_box(20, by + 2, 280, 12, TX_LEFT | TX_MID, 1, "SMALL ISLES CUT OFF FROM THE WORLD", UI_BLUE2); ui_wrap(20, by + 17, 280, 2, isle_ok(sel) ? IHINT[sel] : "THIS WORLD HAS NO SUCH ISLE.", UI_INK); }
+    else { int n2 = popc(paid()); sprintf(b, "RANK: %s  (%d OF %d)", RANK[MIN(4, n2 / 3)], n2, NC); ui_text_box(20, by + 2, 280, 12, TX_LEFT | TX_MID, 1, b, UI_BLUE2); ui_wrap(20, by + 17, 280, 2, CHINT[sel], UI_INK); }
+    ui_text_box(20, by + 40, 280, 12, TX_LEFT | TX_MID, 1, line, UI_RED);
     ui_hints(160, 218, "X PICK|L1 R1 TABS|O LEAVE", 1);
 }
 __attribute__((section(".ovl_head"), used)) const OvlHead ovl_head = { OVL_MAGIC, paradise_open, paradise_update, paradise_draw };

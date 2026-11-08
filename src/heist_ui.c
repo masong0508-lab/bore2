@@ -89,22 +89,23 @@ void heist_draw(void) {
     for (int i = 0; i < 6; i++) ui_round(10 + i * 52, 150 - (i * 37) % 50, 30, 90, 0, UI_RGB(24, 24, 46), UI_RGB(18, 18, 36), 0);   // a skyline at night
     int top = ui_window(30, 10, 260, 218, "UNDERWORLD", IC_LOCK);
     if (hp == H_LIST) {
-        ui_text(36, top, 1, "PICK A RIDE. ANY NIGHT.", UI_SOFT); sprintf(b, "HEAT %d", heat()); ui_text(284 - ui_tw(1, b), top, 1, b, heat() > 50 ? UI_BADT : UI_GOODT);
+        ui_text_box(36, top - 1, 150, 12, TX_LEFT | TX_MID, 1, "PICK A RIDE. ANY NIGHT.", UI_SOFT); sprintf(b, "HEAT %d", heat()); ui_text_box(190, top - 1, 94, 12, TX_RIGHT | TX_MID, 1, b, heat() > 50 ? UI_BADT : UI_GOODT);
         int first = CLAMP(hsel - 4, 0, NT - 8);
-        for (int k = 0; k < 8; k++) { int i = first + k, y = top + 14 + k * 14, on = i == hsel; if (on) ui_round(36, y - 2, 248, 14, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
-            sprintf(b, "%s  %s", TNM[i], TWH[i]); ui_text(40, y, 1, b, on ? UI_BLUE2 : UI_INK); sprintf(b, "$%d", TVAL[i]); ui_text(280 - ui_tw(1, b), y, 1, b, UI_GOODT); }
-        sprintf(b, "SECURITY %d  WANTED %d  YOUR LOGIC %d", TDF[hsel], TST[hsel], lg()); ui_text(36, top + 130, 1, b, UI_BLUE2);
+        for (int k = 0; k < 8; k++) { int i = first + k, y = top + 13 + k * 14, on = i == hsel; if (on) { ui_round(36, y, 248, 14, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(36, y + 3, 2, 8, 38, 146, 222, 0); }
+            ui_text_box(42, y, 100, 14, TX_LEFT | TX_MID, 1, TNM[i], on ? UI_BLUE2 : UI_INK); ui_text_box(140, y, 90, 14, TX_LEFT | TX_MID, 1, TWH[i], UI_SOFT);
+            sprintf(b, "$%d", TVAL[i]); ui_text_box(200, y, 78, 14, TX_RIGHT | TX_MID, 1, b, UI_GOODT); }
+        { int x = 36; sprintf(b, "SECURITY %d", TDF[hsel]); ui_badge(x, top + 129, b, UI_BLUE, UI_WHITE); x += ui_tw(1, b) + 14; sprintf(b, "WANTED %d", TST[hsel]); ui_badge(x, top + 129, b, UI_RED, UI_WHITE); x += ui_tw(1, b) + 14; sprintf(b, "YOUR LOGIC %d", lg()); ui_badge(x, top + 129, b, UI_LINE, UI_SOFT); }
         ui_wrap(36, top + 144, 244, 2, hsel >= 5 ? "THE THING CAN BE KEPT: HOT. SKY AND SEA CAN TAKE IT OUT." : "A CAR OR BIKE GOES TO A CHOP SHOP FOR CASH.", UI_SOFT);
-        ui_text(36, top + 166, 1, line, UI_RED); ui_hints(160, 214, "X CASE IT|O LEAVE", 1); return; }
+        ui_text_box(36, top + 166, 244, 12, TX_LEFT | TX_MID, 1, line, UI_RED); ui_hints(160, 214, "X CASE IT|O LEAVE", 1); return; }
     if (hp == H_GATE || hp == H_CHASE) {
-        if (hp == H_GATE) { ui_text(36, top, 1, TNM[tgt], UI_INK); sprintf(b, "GATE %d OF 3: %s", gate + 1, GNM[gate]); ui_text(36, top + 14, 1, b, UI_BLUE2); ui_wrap(36, top + 28, 244, 2, GHINT[gate], UI_SOFT); }
-        else { ui_text(36, top, 1, "THE GETAWAY", UI_BADT); sprintf(b, "CORNER %d OF %d", round_ + 1, stars + 1); ui_text(36, top + 14, 1, b, UI_BLUE2); ui_wrap(36, top + 28, 244, 2, line2, UI_SOFT); }
+        if (hp == H_GATE) { ui_text_box(36, top - 1, 244, 12, TX_LEFT | TX_MID, 1, TNM[tgt], UI_INK); sprintf(b, "GATE %d OF 3: %s", gate + 1, GNM[gate]); ui_text_box(36, top + 13, 244, 12, TX_LEFT | TX_MID, 1, b, UI_BLUE2); ui_wrap(36, top + 28, 244, 2, GHINT[gate], UI_SOFT); }
+        else { ui_text_box(36, top - 1, 244, 12, TX_LEFT | TX_MID, 1, "THE GETAWAY", UI_BADT); sprintf(b, "CORNER %d OF %d", round_ + 1, stars + 1); ui_text_box(36, top + 13, 244, 12, TX_LEFT | TX_MID, 1, b, UI_BLUE2); ui_wrap(36, top + 28, 244, 2, line2, UI_SOFT); }
         ui_round(40, top + 66, 236, 16, 4, UI_RGB(200, 206, 214), UI_RGB(170, 176, 186), 0);
         ui_round(40 + zone * 236 / 100, top + 66, zw * 236 / 100, 16, 4, UI_RGB(255, 235, 120), UI_RGB(240, 190, 40), 0); ui_round(38 + mark * 236 / 100, top + 62, 5, 24, 2, UI_RGB(60, 70, 200), UI_RGB(30, 40, 140), 0);
         for (int i = 0; i < 5; i++) ui_icon(40 + i * 16, top + 100, IC_STAR, i < stars ? UI_RGB(236, 170, 30) : UI_RGB(110, 110, 130));   // the wanted stars
         ui_wrap(36, top + 124, 244, 2, line, UI_INK); ui_hints(160, 214, "X NOW", 1); return; }
-    if (hp == H_CHOICE) { ui_text(36, top, 1, "YOU'RE IN. NOW WHAT?", UI_INK); const char *o[2] = { tgt >= 5 ? "KEEP IT. IT IS HOT." : "SELL IT TO THE CHOP SHOP", "FENCE IT FOR CASH" };
-        for (int i = 0; i < 2; i++) { int y = top + 24 + i * 18; if (i == hsel) ui_round(36, y - 2, 248, 16, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); ui_text(42, y + 1, 1, o[i], i == hsel ? UI_BLUE2 : UI_INK); }
+    if (hp == H_CHOICE) { ui_text_box(36, top - 1, 244, 12, TX_LEFT | TX_MID, 1, "YOU'RE IN. NOW WHAT?", UI_INK); const char *o[2] = { tgt >= 5 ? "KEEP IT. IT IS HOT." : "SELL IT TO THE CHOP SHOP", "FENCE IT FOR CASH" };
+        for (int i = 0; i < 2; i++) { int y = top + 22 + i * 20; if (i == hsel) { ui_round(36, y, 248, 18, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(36, y + 3, 2, 12, 38, 146, 222, 0); } ui_text_box(44, y, 236, 18, TX_LEFT | TX_MID, 1, o[i], i == hsel ? UI_BLUE2 : UI_INK); }
         ui_hints(160, 214, "X PICK", 1); return; }
-    ui_wrap(36, top + 6, 244, 3, line, UI_INK); ui_wrap(36, top + 44, 244, 3, line2, UI_SOFT); sprintf(b, "CASH $%d   HEAT %d", (int)cash, heat()); ui_text(36, top + 100, 1, b, UI_GOODT); ui_hints(160, 214, "X OK", 1);
+    ui_wrap(36, top + 6, 244, 3, line, UI_INK); ui_wrap(36, top + 44, 244, 3, line2, UI_SOFT); sprintf(b, "CASH $%d   HEAT %d", (int)cash, heat()); ui_text_box(36, top + 98, 244, 12, TX_LEFT | TX_MID, 1, b, UI_GOODT); ui_hints(160, 214, "X OK", 1);
 }

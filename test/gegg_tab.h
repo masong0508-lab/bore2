@@ -1,5 +1,5 @@
 // the egg shots (test/gegg.sh = test/gseq.sh with this table, a build with -DAUTO_GOTCHI=0 -DAUTO_GSEQ -DAUTO_GEGG): {view, sub, clock, x, a} and a label after //.
-// x: 128 = every slot an egg (slot i pattern i, slot 6 a rare one), bits 0-2 = the slot to show + 1;  a: that egg's age + 1 (15 on is cracking).  sub is the guide page for V_GUIDE.
+// x: 128 = every slot an egg (slot i pattern i, slot 6 a rare one), bits 0-3 = the slot to show + 1 (8: slot 7, a mystery egg);  a: that egg's age + 1 (15 on is cracking).  sub is the guide page for V_GUIDE.
 {V_INTRO,0,60}, // shop card
 {V_INTRO,1,150}, // unbox reveal t150
 {V_INTRO,2,60}, // egg card
@@ -34,3 +34,15 @@
 {V_HATCH,0,0,0x84}, // hatch t0 pattern 3
 {V_HATCH,0,0,0x87}, // hatch t0 rare egg
 {V_HATCH,0,76,0x87}, // hatch t76 rare egg
+{V_INTRO,0,60,0x88}, // shop card, mystery egg
+{V_HAND,7,0,0x88}, // pet view mystery egg
+{V_HAND,7,0,0x88,16}, // mystery egg crack 1 (age 15)
+{V_HAND,7,0,0x88,20}, // mystery egg crack 3 (age 19)
+{V_BASKET,0,0,0x88}, // basket with the mystery egg
+{V_HOME,0,0,0x88}, // home with the mystery egg
+{V_TREE,0,0,0x88}, // tree, mystery egg badge
+{V_DIARY,0,0,0x88}, // diary: hatched, egg, mystery egg
+{V_HATCH,0,0,0x88}, // hatch t0 mystery egg
+{V_HATCH,0,40,0x88}, // hatch t40 mystery egg
+{V_HATCH,0,76,0x88}, // hatch t76 mystery egg
+{V_HATCH,0,120,0x88}, // hatch t120 from a mystery egg

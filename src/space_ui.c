@@ -64,41 +64,46 @@ int space_update(int hd, int pr, int steps) {
     if (st == S_RES) { if (pr & (PAD_CROSS | PAD_CIRCLE)) st = S_MAIN; return 1; }
     return 1;
 }
+static void srow(int y, int h, const char *l, const char *r, int sel, u32 rc) {   // a line in the panel: the name left, a figure right, both measured and centred in the row
+    if (sel) ui_round(154, y, 156, h, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
+    ui_text_box(160, y, 146, h, TX_LEFT | TX_MID, 1, l, sel ? UI_BLUE2 : UI_INK);
+    if (r) ui_text_box(160, y, 144, h, TX_RIGHT | TX_MID, 1, r, rc);
+}
 static void panel(void) {
     char b[48]; int top = ui_window(148, 8, 164, 224, "SPACE AGE", IC_STAR);
-    sprintf(b, "CASH $%d", (int)cash); ui_text(156, top, 1, b, UI_GOODT);
-    for (int t = 0; t < 3; t++) { ui_text(156, top + 14 + t * 11, 1, TNM[t], UI_INK); for (int i = 0; i < 4; i++) ui_round(220 + i * 18, top + 14 + t * 11, 15, 7, 2, i < space_tech[t] ? UI_RGB(60, 170, 230) : UI_RGB(200, 206, 214), i < space_tech[t] ? UI_RGB(30, 110, 190) : UI_RGB(170, 176, 186), 0); }
-    ui_text(156, top + 48, 1, space_cert_name(space_cert()), UI_BLUE2);
-    int done = 0; for (int i = 0; i < NM; i++) done += (space_done >> i) & 1; sprintf(b, "MISSIONS DONE %d OF %d", done, NM); ui_text(156, top + 59, 1, b, UI_SOFT);
+    sprintf(b, "CASH $%d", (int)cash); ui_text_box(156, top - 1, 150, 11, TX_LEFT | TX_MID, 1, b, UI_GOODT);
+    for (int t = 0; t < 3; t++) { int y = top + 12 + t * 12; ui_text_box(156, y, 60, 9, TX_LEFT | TX_MID, 1, TNM[t], UI_INK); for (int i = 0; i < 4; i++) ui_round(220 + i * 18, y + 1, 15, 7, 2, i < space_tech[t] ? UI_RGB(60, 170, 230) : UI_RGB(200, 206, 214), i < space_tech[t] ? UI_RGB(30, 110, 190) : UI_RGB(170, 176, 186), 0); }
+    ui_text_box(156, top + 49, 150, 10, TX_LEFT | TX_MID, 1, space_cert_name(space_cert()), UI_BLUE2);
+    int done = 0; for (int i = 0; i < NM; i++) done += (space_done >> i) & 1; sprintf(b, "MISSIONS DONE %d OF %d", done, NM); ui_text_box(156, top + 60, 150, 10, TX_LEFT | TX_MID, 1, b, UI_SOFT);
 }
 void space_draw(void) {
     gfx_set_clear(2, 2, 10); ui_round(0, 0, 320, 240, 0, UI_RGB(4, 4, 22), UI_RGB(14, 10, 40), 0);
-    for (int i = 0; i < 40; i++) { int x = (i * 53 + 11) % 146 + 2, y = (i * 97 + (st == S_FLY ? anim * (1 + i % 3) : anim / 3 * (1 + i % 2))) % 236, c = 120 + (i * 37) % 130; ui_round(x, y, 2, 2, 1, UI_RGB(c, c, c), UI_RGB(c, c, c), 0); }
+    for (int i = 0; i < 40; i++) { int x = (i * 53 + 11) % 146 + 2, y = (i * 97 + (st == S_FLY ? anim * (1 + i % 3) : 0)) % 236, c = 120 + (i * 37) % 130; ui_round(x, y, 2, 2, 1, UI_RGB(c, c, c), UI_RGB(c, c, c), 0); }
     char b[48];
     if (st != S_FLY) { int rx = 70, ry = 70; ui_round(rx - 8, ry, 16, 60, 6, UI_RGB(235, 235, 245), UI_RGB(160, 165, 190), 0); ui_round(rx - 4, ry - 12, 8, 16, 4, UI_RGB(230, 60, 60), UI_RGB(160, 30, 30), 0);
         ui_round(rx - 16, ry + 40, 8, 22, 3, UI_RGB(60, 120, 220), UI_RGB(30, 70, 150), 0); ui_round(rx + 8, ry + 40, 8, 22, 3, UI_RGB(60, 120, 220), UI_RGB(30, 70, 150), 0);
         ui_round(rx - 4, ry + 14, 8, 8, 4, UI_RGB(120, 190, 250), UI_RGB(60, 120, 200), 0); }
     if (st == S_MAIN) { panel(); int top = 8 + 24 + 76; static const char *const mm[5] = { "MISSIONS", "UPGRADE HULL", "UPGRADE ENGINE", "UPGRADE GUIDANCE", "LEAVE" };
-        for (int i = 0; i < 5; i++) { int y = top + i * 14; if (i == sel) ui_round(154, y - 2, 156, 13, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
-            if (i >= 1 && i <= 3) { int lv = space_tech[i - 1]; sprintf(b, lv >= 4 ? "%s  MAX" : "%s  $%d", mm[i] + 8, UCOST[lv]); ui_text(160, y, 1, b, i == sel ? UI_BLUE2 : UI_INK); }
-            else ui_text(160, y, 1, mm[i], i == sel ? UI_BLUE2 : UI_INK); }
+        for (int i = 0; i < 5; i++) { int y = top + i * 14 - 2;
+            if (i >= 1 && i <= 3) { int lv = space_tech[i - 1]; char c[12]; if (lv >= 4) strcpy(c, "MAX"); else sprintf(c, "$%d", UCOST[lv]); srow(y, 13, mm[i], c, i == sel, UI_GOODT); }
+            else srow(y, 13, mm[i], 0, i == sel, 0); }
         if (sel >= 1 && sel <= 3) ui_wrap(156, top + 76, 150, 2, THINT[sel - 1], UI_SOFT);
-        ui_text(156, top + 96, 1, line, UI_RED); ui_hints(310, 218, "X PICK|O LEAVE", 2); return; }
+        ui_text_box(156, top + 95, 150, 11, TX_LEFT | TX_MID, 1, line, UI_RED); ui_hints(230, 218, "X PICK|O LEAVE", 1); return; }
     if (st == S_MISS) { panel(); int top = 8 + 24 + 76;
-        for (int i = 0; i < NM; i++) { int y = top + i * 12; int lock = tsum() < MNEED[i] || space_cert() < MCERT[i]; if (i == msel) ui_round(154, y - 2, 156, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
-            ui_text(160, y, 1, MNM[i], lock ? UI_SOFT : i == msel ? UI_BLUE2 : UI_INK); if (space_done >> i & 1) ui_text(300, y, 1, "*", UI_GOODT); }
-        sprintf(b, "FUEL $%d  PAYS $%d", MFUEL[msel] * (100 - space_tech[1] * 9) / 100, MPAY[msel]); ui_text(156, top + 76, 1, b, UI_INK);
-        if (line[0]) ui_text(156, top + 88, 1, line, UI_RED);
-        else if (space_cert() < MCERT[msel]) { sprintf(b, "NEEDS: %s", space_cert_name(MCERT[msel])); ui_text(156, top + 88, 1, b, UI_RED); }
-        else if (tsum() < MNEED[msel]) { sprintf(b, "NEEDS PARTS TOTAL %d (YOU HAVE %d)", MNEED[msel], tsum()); ui_text(156, top + 88, 1, b, UI_RED); } ui_hints(310, 218, "X LAUNCH|O BACK", 2); return; }
+        for (int i = 0; i < NM; i++) { int y = top + i * 12 - 2; int lock = tsum() < MNEED[i] || space_cert() < MCERT[i]; if (i == msel) ui_round(154, y, 156, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
+            ui_text_box(160, y, 130, 12, TX_LEFT | TX_MID, 1, MNM[i], lock ? UI_SOFT : i == msel ? UI_BLUE2 : UI_INK); if (space_done >> i & 1) ui_icon(293, y, IC_TICK, UI_GOODT); }
+        sprintf(b, "FUEL $%d  PAYS $%d", MFUEL[msel] * (100 - space_tech[1] * 9) / 100, MPAY[msel]); ui_text_box(156, top + 75, 150, 11, TX_LEFT | TX_MID, 1, b, UI_INK);
+        if (line[0]) ui_text_box(156, top + 87, 150, 11, TX_LEFT | TX_MID, 1, line, UI_RED);
+        else if (space_cert() < MCERT[msel]) { sprintf(b, "NEEDS: %s", space_cert_name(MCERT[msel])); ui_text_box(156, top + 87, 150, 11, TX_LEFT | TX_MID, 1, b, UI_RED); }
+        else if (tsum() < MNEED[msel]) { sprintf(b, "NEEDS PARTS TOTAL %d (YOU HAVE %d)", MNEED[msel], tsum()); ui_text_box(156, top + 87, 150, 11, TX_LEFT | TX_MID, 1, b, UI_RED); } ui_hints(230, 218, "X LAUNCH|O BACK", 1); return; }
     if (st == S_FLY) {   // the rocket climbs; the gauge sweeps
         int ry = 140 - stage * 10 + (tmr > 0 ? (anim & 2) : 0); ui_round(70 - 8, ry, 16, 50, 6, UI_RGB(235, 235, 245), UI_RGB(160, 165, 190), 0); ui_round(66, ry - 12, 8, 14, 4, UI_RGB(230, 60, 60), UI_RGB(160, 30, 30), 0);
         if (boom && tmr > 0) { ui_round(40, ry - 10, 60, 60, 30, UI_RGB(255, 220, 80), UI_RGB(255, 80, 20), 0); }
         else ui_round(66, ry + 50, 8, 18 + (anim & 7), 4, UI_RGB(255, 230, 120), UI_RGB(255, 100, 30), 0);
-        int top = ui_window(148, 8, 164, 224, MNM[msel], IC_STAR); sprintf(b, "BURN %d OF %d", stage + 1, MSTG[msel]); ui_text(156, top, 1, b, UI_INK);
+        int top = ui_window(148, 8, 164, 224, MNM[msel], IC_STAR); sprintf(b, "BURN %d OF %d", stage + 1, MSTG[msel]); ui_text_box(156, top - 1, 150, 11, TX_LEFT | TX_MID, 1, b, UI_INK);
         ui_round(156, top + 20, 150, 14, 4, UI_RGB(200, 206, 214), UI_RGB(170, 176, 186), 0);
         ui_round(156 + zone * 150 / 100, top + 20, zw * 150 / 100, 14, 4, UI_RGB(255, 235, 120), UI_RGB(240, 190, 40), 0); ui_round(154 + mark * 150 / 100, top + 16, 5, 22, 2, UI_RGB(60, 70, 200), UI_RGB(30, 40, 140), 0);
-        ui_wrap(156, top + 48, 150, 3, line, boom ? UI_RED : UI_INK); sprintf(b, "PERFECT %d  ROUGH %d", burns, rough); ui_text(156, top + 80, 1, b, UI_SOFT); ui_hints(310, 218, "X BURN", 2); return; }
-    { int top = ui_window(148, 8, 164, 224, res ? "LANDED" : "LOST", IC_STAR); ui_wrap(156, top + 4, 150, 3, line, res ? UI_GREEN : UI_RED); ui_wrap(156, top + 40, 150, 3, line2, UI_SOFT); sprintf(b, "CASH $%d", (int)cash); ui_text(156, top + 80, 1, b, UI_GOODT); ui_hints(310, 218, "X BACK", 2); }
+        ui_wrap(156, top + 48, 150, 3, line, boom ? UI_RED : UI_INK); sprintf(b, "PERFECT %d  ROUGH %d", burns, rough); ui_text_box(156, top + 79, 150, 11, TX_LEFT | TX_MID, 1, b, UI_SOFT); ui_hints(230, 218, "X BURN", 1); return; }
+    { int top = ui_window(148, 8, 164, 224, res ? "LANDED" : "LOST", IC_STAR); ui_wrap(156, top + 4, 150, 3, line, res ? UI_GREEN : UI_RED); ui_wrap(156, top + 40, 150, 3, line2, UI_SOFT); sprintf(b, "CASH $%d", (int)cash); ui_text_box(156, top + 79, 150, 11, TX_LEFT | TX_MID, 1, b, UI_GOODT); ui_hints(230, 218, "X BACK", 1); }
 }
 __attribute__((section(".ovl_head"), used)) const OvlHead ovl_head = { OVL_MAGIC, space_open, space_update, space_draw };
