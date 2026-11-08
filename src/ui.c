@@ -365,7 +365,7 @@ int ui_window_s(int x, int y, int w, int h, const char *title) {
     ui_round(x + 1, y + 1, w - 2, 15, 6, at, ab, 0);
     gfx_rect(x + 1, y + 10, w - 2, 6, cr(ab), cg(ab), cb(ab), 0); }
     gfx_rect(x + 1, y + 16, w - 2, 1, 255, 255, 255, 0);
-    if (title) ui_textc(x + w / 2, y + 5, 1, title, UI_WHITE);
+    if (title) ui_text_box(x + 1, y + 1, w - 2, 15, TX_CENTER | TX_MID, 1, title, UI_WHITE);
     return y + 20;
 }
 void ui_pips(int x, int y, int v, int n, u32 c) {

@@ -3,6 +3,7 @@
 // ARCADE2.OVL (arc2.c, ag_*.c): walking up to a cabinet and pressing X sends you there and a game's end brings you back (arcade_res.c).
 // BORTUA FIGHTER (fight.c) is in this overlay. The cabinet's flow (rules, play, initials) is arc_core.c.
 #include "arc_i.h"
+#include "font.h"
 
 static int mode, game, ft, quit, pe, on_core;
 static u32 arng_;  
@@ -136,7 +137,7 @@ static void cab_draw(int g, int x, int y, int lit) {
     K(x, y + 6, CABW, 40, UI_RGB(r / 5 + 14, gg / 5 + 12, b / 5 + 18));                              // body
     K(x, y + 6, 3, 40, UI_RGB(r / 8, gg / 8, b / 8 + 6)); K(x + 29, y + 6, 3, 40, UI_RGB(r / 8, gg / 8, b / 8 + 6));
     K(x, y, CABW, 8, UI_RGB(r, gg, b)); KA(x, y, CABW, 2, UI_RGB(255, 255, 255));                    // marquee
-    ui_textc(x + 16, y + 1, 1, a->tag, UI_RGB(255, 255, 255));
+    font_raw = 1; ui_textc(x + 16, y + 1, 1, a->tag, UI_RGB(255, 255, 255)); font_raw = 0;   // (the three-letter code stays in capitals)
     K(x + 3, y + 9, 26, 20, UI_RGB(4, 4, 8)); thumb(g, x + 5, y + 11);                               // screen
     K(x + 3, y + 9, 26, 1, UI_RGB(r / 2, gg / 2, b / 2));
     K(x + 1, y + 30, 30, 6, UI_RGB(r / 2 + 40, gg / 2 + 40, b / 2 + 40));                            // control deck

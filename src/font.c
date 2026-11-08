@@ -95,7 +95,7 @@ static int lstr(const char *list, const char *w, int n) {      // is w (n letter
 }
 static const char L_SMALL[] = "A AN AND AS AT BUT BY FOR IN OF ON OR THE TO UP IF IS IT ME MY NO SO US WE BE DO GO HE OFF OUT";
 static const char L_ACRO[] = "TV DJ OK PM ID XP HP PC CD DS GBA VMU FPS ATM NPC BMX UFO DIY LED USB GPS SUV VIP BBQ WC MC CPU RAM VMS HQ PS2 UD LR LRUD ABC RIP";
-static const char L_PROPER[] = "BORE BORES BOREAS SAN DIXIE DIPPINN MISSY BOREBOY BOREAGOTCHI PLAYSTATION DREAMCAST SIMS MAPLE SHORES SUNNY HOLLOW PINE BAY STRANGE TOWN BYTE BARN GADGET GARAGE BLEEP BLOOP ZAP ELECTRONICS MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY SATURDAY SUNDAY JANUARY FEBRUARY MARCH APRIL MAY JUNE JULY AUGUST SEPTEMBER OCTOBER NOVEMBER DECEMBER DIPPER MAN HI YO OH AH";
+static const char L_PROPER[] = "BORE BORES BOREAS SAN DIXIE DIPPINN MISSY BOREBOY BOREAGOTCHI PLAYSTATION DREAMCAST SIMS MAPLE SHORES SUNNY HOLLOW PINE BAY STRANGE TOWN BYTE BARN GADGET GARAGE BLEEP BLOOP ZAP ELECTRONICS MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY SATURDAY SUNDAY JANUARY FEBRUARY MARCH APRIL JUNE JULY AUGUST SEPTEMBER OCTOBER NOVEMBER DECEMBER DIPPER MAN HI YO OH AH";
 int font_case(const char *s, char *out, int n) {
     int len = (int)strlen(s), nw = 0, has_lower = 0, sent_p = 0;
     if (len >= n) return 0;
@@ -106,13 +106,14 @@ int font_case(const char *s, char *out, int n) {
         if ((c == '.' || c == '?' || c == '!') && s[i + 1] == ' ' && i + 2 < len) sent_p = 1;
     }
     if (has_lower || !nw) return 0;
-    int sentence = nw >= 4 || sent_p;
+    int keyed = (s[0] == 'X' || s[0] == 'O') && s[1] == ' ';           // a pad hint ("X PLAY BORTUA FIGHTER"): a command with names in it: Title Case unless it is long
+    int sentence = keyed ? (nw >= 7 || sent_p) : (nw >= 4 || sent_p);
     int cap_next = 1, last_digit = 0, changed = 0;
     for (int i = 0; i < len;) {
         int c = (u8)s[i];
         if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) {     // a separator
             out[i] = (char)c;
-            if (c == ':' || ((c == '.' || c == '?' || c == '!') && (s[i + 1] == ' ' || !s[i + 1]))) cap_next = 1;
+            if (((c == '.' || c == '?' || c == '!') && (s[i + 1] == ' ' || !s[i + 1]))) cap_next = 1;
             i++; continue;
         }
         int j = i, dig = 0, nlet = 0;                                   // a word: letters and digits, and apostrophes between letters

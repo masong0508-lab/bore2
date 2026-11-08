@@ -27,9 +27,9 @@ CHARS = [chr(c) for c in range(33, 127)]      # 94 glyphs, '!' .. '~'
 NUMSET = set('0123456789.,:;$%+-/\'!?()=xX*#')
 # name, file, cap height (px), x-height target (px) or None, lh, top (rows above the cap line), round (px of rounding), gain, spacing (px added to each advance), charset, fallback, clut kind
 FONTS = [
-  dict(name='BODY', file='InstrumentSans-Bold.ttf', cap=7, top=2, lh=12, rnd=0.0, gain=1.10, space=0.7, xh=None, tw=0, clut=1),
-  dict(name='READ', file='DejaVuSans-Bold.ttf',     cap=7, top=2, lh=12, rnd=0.0, gain=1.10, space=0.6, xh=None, tw=0, clut=2),
-  dict(name='HEAD', file='Outfit-Bold.ttf',         cap=9, top=3, lh=15, rnd=0.45, gain=1.12, space=0.5, xh=None, tw=0, clut=1),
+  dict(name='BODY', file='InstrumentSans-Bold.ttf', cap=7, top=2, lh=12, rnd=0.0, gain=1.10, space=0.7, xh=None, tw=0, clut=1, dsc=1.5, serif=1),
+  dict(name='READ', file='DejaVuSans-Bold.ttf',     cap=7, top=2, lh=12, rnd=0.0, gain=1.10, space=0.6, xh=None, tw=0, clut=2, dsc=1.3, serif=1),
+  dict(name='HEAD', file='Outfit-Bold.ttf',         cap=9, top=3, lh=15, rnd=0.3, gain=1.05, space=0.6, xh=None, tw=0, clut=1, dsc=1.2, serif=1),
   dict(name='NUM',  file='Outfit-Bold.ttf',         cap=9, top=3, lh=15, rnd=0.45, gain=1.12, space=0.7, xh=None, tw=1, clut=1, only=NUMSET, fb=0),
   dict(name='FUN',  file='EricaOne-Regular.ttf',    cap=12, top=3, lh=19, rnd=0.0, erode=5, gain=1.15, space=1.2, xh=None, tw=0, clut=1),
   dict(name='BIG',  file='EricaOne-Regular.ttf',    cap=20, top=4, lh=30, rnd=0.0, gain=1.0, space=1.0, xh=None, tw=0, clut=1, only=set('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?.,:-+$%/\'')),
@@ -55,7 +55,14 @@ def render(fd):
         W = int(adv * SS) + 2 * pad + 6 * SS; H = int(fd['lh'] * SS * 1.6) + 2 * pad
         base = pad + int((fd['top'] + fd['cap']) * SS) + 4 * SS    # baseline row (hi-res); a few rows of slack above
         im = Image.new('L', (W, H), 0)
+        if ch == 'I' and fd.get('serif'): shift += SS; adv += 2      # a capital I with feet, so it is never taken for a small l or a 1
         ImageDraw.Draw(im).text((pad + shift, base), ch, font=big, fill=255, anchor='ls')
+        if ch == 'I' and fd.get('serif'):
+            bx0, by0, bx1, by1 = im.getbbox(); t = max(SS * 0.9, (bx1 - bx0) * 0.38); d = ImageDraw.Draw(im)
+            d.rectangle((bx0 - SS, by0, bx1 + SS, by0 + t), fill=255); d.rectangle((bx0 - SS, by1 - t, bx1 + SS, by1), fill=255)
+        if fd.get('dsc'):                                           # longer tails under the line (g j p q y read as o i n u v at this size)
+            lo = im.crop((0, base, W, H)); lo = lo.resize((W, int((H - base) * fd['dsc'])), Image.BILINEAR)
+            im.paste(0, (0, base, W, H)); im.paste(lo.crop((0, 0, W, H - base)), (0, base))
         if fd.get('erode'): im = im.filter(ImageFilter.MinFilter(fd['erode']))
         if fd['rnd'] > 0:
             r = fd['rnd'] * SS
@@ -158,7 +165,7 @@ def main():
 
 def preview(tables, img, R, path):
     # draws sample lines with each font from the packed data itself (what the console will show), 4x
-    samples = ['Feed the Pet  Money $1,250  7:45 PM', 'Illinois 1lI0O  Quit & Save? (Yes!)', 'FEED THE PET  BUY IT NOW  GO TO BED']
+    samples = ['Feed the Pet  Money $1,250  7:45 PM', 'Illinois 1lI0O  Quit & Save? (Yes!)', 'FEED THE PET  BUY IT NOW  GO TO BED', 'Having Fun  gjpqy  Bag Jug Pig']
     rows = []
     for (fd, sp, c, glyphs) in tables:
         for s in (samples if fd['name'] in ('BODY', 'READ', 'HEAD', 'FUN') else ['$1,250  7:45  12/31  50%', 'BORE 2  0123456789'] ):

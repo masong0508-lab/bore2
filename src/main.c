@@ -2412,13 +2412,13 @@ static void opts_draw(void) {
         }
         ui_text(110, y + 3, 1, optNm[i], sel ? UI_BLUE2 : UI_INK);
         const char *v = opt_val(i, vb);
-        if (k == 2) ui_toggle(278, y + 3, opt[i], sel);
+        if (k == 2) ui_toggle(278, y + 1, opt[i], sel);   // (the switch is level with the name: both are centred on y + 6)
         else ui_text(300 - ui_tw(1, v), y + 3, 1, v, UI_BLUE2);
         if (k == 1) ui_slider(110, y + 13, 188, opt[i], optN[i], sel);
         else if (k == 0) {   // a choice: its arrows
             int w = ui_tw(1, v);
             ui_text(300 - w - 10, y + 3, 1, "<", sel ? UI_BLUE : UI_LINE);
-            if (sel) { ui_text(110, y + 13, 1, "LEFT RIGHT TO CHANGE", UI_SOFT); }
+            if (sel) { ui_text(110, y + 13, 1, "LEFT OR RIGHT TO CHANGE", UI_SOFT); }
         }
     }
     // what the knob does
@@ -3113,7 +3113,7 @@ static void pie_update(void) {
 }
 static void pie_draw(void) {
     life_draw();
-    int cx = 160, cy = 100, R = pie_n > 4 ? 60 : 50;
+    int cx = 160, cy = 94, R = pie_n > 4 ? 60 : 50;   // (a little up: the hint bar sits clear of the name card)
     { const char *t = pie_cit ? citizens_pie_title() : sim_pie_title();   // the centre: who or what it is, on a round badge
       ui_shadow(cx - 9, cy - 9, 18, 18, 6); ui_icon_disc(cx, cy, 20, pie_cit ? IC_CHAT : IC_ARROW, UI_BLUE, UI_WHITE);
       int w = ui_tw(1, t) + 12; ui_round(cx - w / 2, cy + 12, w, 13, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_textc(cx, cy + 15, 1, t, UI_WHITE); }
@@ -3124,7 +3124,7 @@ static void pie_draw(void) {
         ui_round(x - w / 2, y - 7, w, 15, 6, sel ? UI_RGB(70, 176, 238) : UI_WHITE, sel ? UI_BLUE2 : UI_RGB(230, 236, 244), 0);
         ui_textc(x, y - 3, 1, pie_opt[i], sel ? UI_WHITE : UI_INK);
     }
-    ui_hintbar(172, "DPAD PICK|X DO IT|O NEVER MIND");
+    ui_hintbar(153, "DPAD PICK|X DO IT|O NEVER MIND");
 }
 
 
@@ -4256,13 +4256,14 @@ static void title_draw(void) {
     Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (title_t * 120) & 4095; g.amp = 4096;
     voxel_draw(&title_bore, &p, (title_t * 9) & 4095, &g);
     gfx_shadow(&p, 70);
-    for (int i = 0; i < LOGO_N; i++) {   // the BORE 2 logo (tools/make_logo.py), drawn at 6/5 size
+    int logo = state == ST_TITLE || state == ST_MENU;   // (behind the options, the slots and the other screens the logo is left out: its 1057 rects used up the packet buffer, and the text on top was cut off)
+    for (int i = 0; logo && i < LOGO_N; i++) {   // the BORE 2 logo (tools/make_logo.py), drawn at 6/5 size
         int x = 70 + LOGO_R[i].x * 6 / 5, y = 4 + LOGO_R[i].y * 6 / 5;
         int w = 70 + (LOGO_R[i].x + LOGO_R[i].w) * 6 / 5 - x, h = 4 + (LOGO_R[i].y + LOGO_R[i].h) * 6 / 5 - y;
         gfx_rect_c(x, y, w < 1 ? 1 : w, h < 1 ? 1 : h, LOGO_P[LOGO_R[i].c], 0);
     }
-    { int w = gfx_text_w(1, "DIPPINN PRODUCTIONS"); gfx_text_raw(161 - w / 2, 113, 1, "DIPPINN PRODUCTIONS", 40, 30, 30); }
-    gfx_textc(160, 112, 1, "DIPPINN PRODUCTIONS", 230, 230, 236);
+    if (logo) { int w = gfx_text_w(1, "DIPPINN PRODUCTIONS"); gfx_text_raw(161 - w / 2, 113, 1, "DIPPINN PRODUCTIONS", 40, 30, 30); }
+    if (logo) gfx_textc(160, 112, 1, "DIPPINN PRODUCTIONS", 230, 230, 236);
     if (state == ST_TITLE) {   // the tagline on a card, and what to press
         ui_card(66, 196, 188, 36);
         ui_textc(160, 201, 1, "THE VOXEL LIFE, NOW IN FULL 3D", UI_BLUE2);
