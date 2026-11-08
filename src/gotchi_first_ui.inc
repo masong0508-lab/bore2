@@ -6,7 +6,7 @@ static int f_ease(int p, int n) { p = CLAMP(p, 0, n); int q = 256 - p * 256 / n;
 static int f_wave(int t, int per, int amp) { return isin((t * 4096 / per) & 4095) * amp >> 12; }
 static void f_toy(int x, int y, int sx16, int sy, int front, int lcd, int etilt) {   // the toy (x, y its corner); the egg shows in its LCD
     int a = fsx, b = fsy; fsx = sx16; fsy = sy;
-    if (front) { SPR(TOY_FRONT, x, y, 0, 0); if (lcd) f_spr(fsEggS[cb()->sp & 3], FS_EGGS0_W, FS_EGGS0_H, x + (7 * sx16 >> 4), y + 10 * sy, etilt, 0); } else SPR(TOY_BACK, x, y, 0, 0);
+    if (front) { SPR(TOY_FRONT, x, y, 0, 0); if (lcd) { fsq = 1; f_spr(fsEggS[egg_pat(cb(), ck())], FS_EGGS0_W, FS_EGGS0_H, x + (7 * sx16 >> 4), y + 10 * sy, etilt, 0); fsq = 0; } } else SPR(TOY_BACK, x, y, 0, 0);   // (the LCD is 12 x 11 art pixels: the egg 8 x 9 sits in the middle of it)
     fsx = a; fsy = b;
 }
 static void f_rays(int cx, int cy, int n, int r0, int r1, int rot, int cr, int cg, int cb, int sz) {   // beams of light from a point (thin lines, three wide; sz 0: all but every other one)
@@ -126,17 +126,17 @@ static void draw_hatch(void) {
     f_clip(lx, ly, lx + lw, ly + lh);
     int rock = 0, hopy = 0; for (int i = 0; i < 5; i++) if (h >= hRock[i].s && h < hRock[i].e) rock = f_wave(h - hRock[i].s, (hRock[i].e - hRock[i].s) / 3, hRock[i].amp);
     if (h >= 62 && h < 84 && (h % 8) < 3) hopy = -(h % 8 + 1) * 2;
-    int stage = h >= 72 ? 3 : h >= 52 ? 2 : h >= 34 ? 1 : 0, ex = 118, ey = 29 + hopy, pat = b->sp & 3;
-    if (h >= 52 && h < 88) { int g = MIN(9, (h - 52) / 3 + 2) + ((h >> 1) & 1); f_disc(160, 80, 52, g * 3, g * 2, g / 2); }
-    if (h < 88) { fsx = 96; fsy = 6; f_spr(fsEgg[pat], FS_EGG0_W, FS_EGG0_H, ex, ey, rock, 0);
-        if (stage) { const char *const *cr = stage == 1 ? FS_CRACK1 : stage == 2 ? FS_CRACK2 : FS_CRACK3; f_spr(cr, FS_CRACK1_W, FS_CRACK1_H, ex, ey, rock, 0); } }
+    int stage = h >= 72 ? 3 : h >= 52 ? 2 : h >= 34 ? 1 : 0, ex = lx + (lw - FS_EGGB0_W * 5) / 2, ey = ly + (lh - (FS_EGGB0_H - 2) * 5 - 10) / 2 + hopy, pat = egg_pat(b, k);   // (5 px a dot, the LCD's own scale: 14 x 17 and its shadow, in the middle)
+    if (h >= 52 && h < 88) { int v = MIN(14, (h - 52) / 3 + 2); f_add(); f_rect(lx, ly, lw, lh, v, v, v * 9 / 10, 1); }   // (the LCD brightens as the light inside grows: no halo round the egg)
+    if (h < 88) { fsx = 80; fsy = 5; fsq = 1; f_spr(fsEgg[pat] + FS_EGGB0_H - 2, FS_EGGB0_W, 2, ex, ey - hopy + (FS_EGGB0_H - 2) * 5, 0, 0); f_spr(fsEgg[pat], FS_EGGB0_W, FS_EGGB0_H - 2, ex, ey, rock, 0);   // (the shadow stays on the ground when it hops)
+        if (stage) { const char *const *cr = stage == 1 ? FS_CRACKB1 : stage == 2 ? FS_CRACKB2 : FS_CRACKB3; f_spr(cr, FS_CRACKB1_W, FS_EGGB0_H - 2, ex, ey, rock, 0); } fsq = 0; }
     if (h >= 84 && h < 96) { f_add(); int v = h < 88 ? (h - 84) * 28 : 110 - (h - 88) * 14; f_rect(lx, ly, lw, lh, MIN(255, v), MIN(255, v), MIN(255, v * 9 / 10), 1); }
     if (h >= 88) {   // the baby hops out of the shell; the shell's bits and the light fly
         int u = h - 88; int hy = u < 22 ? -(isin(u * 2048 / 22) * 16 >> 12) : 0;
         if (h >= 92) { scene(b, k, (h - 90) / 8, 0, h > 112 ? MD_HAPPY : MD_NORM); dots_draw(64, 32 + hy, 6, 0, 16, 0, 32); }
-        fsx = 96; fsy = 6; f_spr(FS_EGGCUP, FS_EGGCUP_W, FS_EGGCUP_H, ex, 104, 0, 0);
+        fsx = 80; fsy = 5; f_spr(FS_EGGCUP, FS_EGGCUP_W, FS_EGGCUP_H, ex, ey - hopy + (FS_EGGB0_H - FS_EGGCUP_H) * 5, 0, 0);
         if (u < 36) { f_ring(160, 84, u * 5, 16, 4, 255 - u * 6, 250 - u * 6, 170 - u * 4); }
-        for (int i = 0; i < 12; i++) { u32 q = hsh(i * 17 + 3); int vx = (int)(q % 61) - 30, vy = -(30 + (int)((q >> 8) % 36)), x = 154 + vx * u / 4, y = 74 + vy * u / 6 + u * u / 14; fsx = 80; fsy = 5; f_spr(fsShard[i & 3], 4, 4, x, y, 0, ((u >> 2) + i) & 1); }
+        for (int i = 0; i < 12; i++) { u32 q = hsh(i * 17 + 3); int vx = (int)(q % 61) - 30, vy = -(30 + (int)((q >> 8) % 36)), x = 154 + vx * u / 4, y = 74 + vy * u / 6 + u * u / 14; fsx = 80; fsy = 5; f_spr(fsShard[i & 3], fsShardW[i & 3], fsShardH[i & 3], x, y, 0, ((u >> 2) + i) & 1); }
         for (int i = 0; i < 6; i++) { int ph = (u * 2 + i * 31) % 50; if (u > 6 && ph < 36) f_spark(lx + 22 + (int)(hsh(i * 29 + 1) % (lw - 44)), ly + 16 + (int)(hsh(i * 19 + 5) % 60), ph < 20 ? 1 : 0); }
     }
     f_noclip();

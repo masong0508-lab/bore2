@@ -1,18 +1,15 @@
 // gotchi_first.inc - the BOREAGOTCHI! screens' sky and the first run's pixel-art helpers (included by gotchi_ui.c; its art is gotchi_first_art.h,
 // made by tools/make_gotchi_first.py). A sprite is drawn as runs of boxes: scaled in 16ths across and whole pixels down, tilted (a row-by-row slide:
 // a wobble), flipped, clipped to a box (the LCD), in the colours of the keys: the toy's shell, the LCD and the egg's ink are set by f_setup.
-#include "gotchi_first_art.h"
 static u8 fm[128][3];
-static int fsx = 64, fsy = 4, fsemi, fcx0, fcy0, fcx1 = 320, fcy1 = 240;   // the pixel's size (16ths across, pixels down), see-through, the clip box
+static int fsx = 64, fsy = 4, fsemi, fsq, fcx0, fcy0, fcx1 = 320, fcy1 = 240;   // the pixel's size (16ths across, pixels down), see-through, the clip box
 static void f_key(int k, int r, int g, int b) { fm[k & 127][0] = (u8)r; fm[k & 127][1] = (u8)g; fm[k & 127][2] = (u8)b; }
-static void f_mixk(int k, const u8 *a, const u8 *b, int t) { f_key(k, (a[0] * (100 - t) + b[0] * t) / 100, (a[1] * (100 - t) + b[1] * t) / 100, (a[2] * (100 - t) + b[2] * t) / 100); }
 static void f_setup(int shell, int ink, int lcd) {   // the owner's colour for the shell, a pet colour for the egg's ink, the LCD on (1) or off (0)
-    static const u8 lg[3] = { 172, 196, 128 }, wh[3] = { 255, 255, 255 };
     for (int i = 0; i < FS_PAL_N; i++) f_key(FS_PAL[i][0], FS_PAL[i][1], FS_PAL[i][2], FS_PAL[i][3]);
-    const u8 *sh = PAL[1 + shell % 7], *in = PAL[ink % 8];
+    const u8 *sh = PAL[1 + shell % 7];
     f_key('S', MIN(255, sh[0] + 40), MIN(255, sh[1] + 40), MIN(255, sh[2] + 40)); f_key('s', sh[0], sh[1], sh[2]); f_key('z', sh[0] * 6 / 10, sh[1] * 6 / 10, sh[2] * 6 / 10);
     if (lcd) { f_key('L', 172, 196, 128); f_key('l', 150, 176, 108); } else { f_key('L', 58, 72, 70); f_key('l', 44, 56, 56); }
-    f_key('#', in[0], in[1], in[2]); f_mixk('m', lg, in, 22); f_mixk('d', lg, in, 48); f_mixk('o', lg, in, 72); f_mixk('h', lg, wh, 55); f_key('u', 255, 248, 190);
+    for (const char *e = "#mdhou"; *e; e++) { u8 o[3]; egg_rgb(ink % 8, *e, o); f_key(*e, o[0], o[1], o[2]); }   // the egg's colours from the pet's (the same as on the LCD dots)
 }
 static void f_clip(int x0, int y0, int x1, int y1) { fcx0 = x0; fcy0 = y0; fcx1 = x1; fcy1 = y1; }
 static void f_noclip(void) { f_clip(0, 0, 320, 240); }
@@ -23,6 +20,7 @@ static void f_spr(const char *const *rows, int w, int h, int x, int y, int tilt,
     for (int j = 0; j < h; j++) {
         int yy = y + j * fsy; if (yy + fsy <= fcy0 || yy >= fcy1) continue;
         int sh = h > 1 ? tilt * (h - 1 - j) / (h - 1) : 0; const char *r = rows[j];
+        if (fsq) { int u = fsx >> 4; sh = (sh + (sh < 0 ? -u / 2 : u / 2)) / u * u; }   // (fsq: the lean in whole pixels of art, so an egg's edge stays crisp)
         for (int i = 0; i < w;) {
             int c = flip ? r[w - 1 - i] : r[i]; if (c == '.') { i++; continue; }
             int k = i + 1; while (k < w && (flip ? r[w - 1 - k] : r[k]) == c) k++;
@@ -32,8 +30,8 @@ static void f_spr(const char *const *rows, int w, int h, int x, int y, int tilt,
 }
 #define SPR(n, x, y, t, f) f_spr(FS_##n, FS_##n##_W, FS_##n##_H, x, y, t, f)
 static void f_scale(int px) { fsx = px * 16; fsy = px; }
-static const char *const *const fsEgg[4] = { FS_EGG0, FS_EGG1, FS_EGG2, FS_EGG3 }, *const *const fsEggS[4] = { FS_EGGS0, FS_EGGS1, FS_EGGS2, FS_EGGS3 };
 static const char *const *const fsShard[4] = { FS_SHARD0, FS_SHARD1, FS_SHARD2, FS_SHARD3 };
+static const u8 fsShardW[4] = { FS_SHARD0_W, FS_SHARD1_W, FS_SHARD2_W, FS_SHARD3_W }, fsShardH[4] = { FS_SHARD0_H, FS_SHARD1_H, FS_SHARD2_H, FS_SHARD3_H };
 static void f_add(void) { gfx_ui_blend(1); }   // see-through boxes add light (what is under them can have changed it: say so before each lot)
 static void f_spark(int cx, int cy, int size) {   // a twinkle: 0 small, 1 middle, 2 big (centred)
     int sx = fsx, sy = fsy, se = fsemi; f_scale(2); fsemi = 1; f_add();

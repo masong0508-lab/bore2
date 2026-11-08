@@ -2,7 +2,7 @@
 # BOREAGOTCHI! first run: the pixel art (src/gotchi_first_art.h, plain C, no PS1 types: the DS port can include it as it is).
 # Every sprite is a list of strings; a character is a palette key (FPAL below, or one of the keys the game maps while drawing:
 #   S s z  the toy's shell, light / mid / dark (the owner's colour)      L l  the LCD, on or off
-#   # m d h o u  an egg's ink, body, shade, highlight, spots, light from a crack (the pet's LCD ink over the LCD green)
+#   # m d h o u g  an egg's outline, body, shade, highlight, spots, light from a crack, gold (the pet's colour: EGG_RAMP below; the game does the same sums), l the LCD's shade
 # '.' is clear. Run:  python3 tools/make_gotchi_first.py [preview.png]   (writes the header; the PNG is a contact sheet to look at).
 import sys, math
 
@@ -93,82 +93,115 @@ def toy(front):
     for (x, y) in ((10, 3), (11, 3)): c.set(x, y, 'v')
     c.set(9, 1, 'v'); c.set(10, 1, 'v')
     if front:
-        c.rect(4, 8, 17, 19, 'N'); c.rect(5, 9, 16, 18, 'L'); c.rect(5, 9, 16, 9, 'l'); c.rect(5, 9, 5, 18, 'l'); c.rect(4, 19, 17, 19, 'n')
+        c.rect(4, 8, 17, 20, 'N'); c.rect(5, 9, 16, 19, 'L'); c.rect(5, 9, 16, 9, 'l'); c.rect(5, 9, 5, 19, 'l'); c.rect(4, 20, 17, 20, 'n')
         for bx in (4, 9, 14):
-            c.rect(bx, 21, bx + 3, 23, 'g'); c.rect(bx, 23, bx + 3, 23, 'G'); c.rect(bx, 21, bx + 1, 21, 'y'); c.rect(bx - 1 if False else bx, 24, bx + 3, 24, 'o')
+            c.rect(bx, 22, bx + 3, 24, 'g'); c.rect(bx, 24, bx + 3, 24, 'G'); c.rect(bx, 22, bx + 1, 22, 'y'); c.rect(bx, 25, bx + 3, 25, 'o')
     else:
         c.ell(10.5, 14, 5.5, 6.5, 'z'); c.ell(10.2, 13.6, 5, 6, 'S'); c.ell(10.6, 14, 3, 4, 's'); c.rect(8, 12, 13, 13, 'w'); c.rect(7, 21, 14, 22, 'z')
     return c
 S['TOY_FRONT'] = toy(True).rows(); S['TOY_BACK'] = toy(False).rows()
 
-# ---- the egg: 14x17 (a big one for the hatching), 7x9 (inside the toy's LCD); four patterns ----
-def egg_shape(W, H):
-    c = C(W, H)
+# ---- the eggs: one design in three sizes, seven patterns (0-5 by kind, 6 the rare one with gold stars) ----
+# B 14x17 + 2 shadow rows (the hatching, drawn 5 px a dot), L 10x12 + 1 shadow row (a dot of the 32x16 LCD: pet view, basket, home, tree), S 8x9 (inside the toy's LCD).
+# Every egg is symmetric about the LCD's own centre (an even width), an outline one dot wide in the dark of the colour, a light body, a shade down the right and the bottom,
+# a highlight top left, and no dithering. Keys: # outline, m body, d shade, h highlight, o spots, g gold, u light from a crack, l the LCD's shade (the ground shadow).
+EGG_N = 7
+EW = {'L': (10, 12, [4, 6, 6, 8, 8, 10, 10, 10, 10, 8, 8, 4]), 'B': (14, 17, [4, 6, 8, 10, 10, 12, 12, 12, 14, 14, 14, 14, 14, 12, 10, 8, 6]), 'S': (8, 9, [4, 6, 6, 8, 8, 8, 8, 6, 4])}
+EHL = {'L': [(3, 2), (2, 3), (2, 4)], 'B': [(5, 2), (4, 3), (3, 4), (3, 5), (3, 6)], 'S': [(2, 2), (1, 3), (1, 4)]}
+ESH = {'L': (1, 1), 'B': (2, 1), 'S': (1, 1)}   # the shade's width down the right side, and at the bottom
+def egg_base(kind):
+    W, H, ws = EW[kind]; g = [['.'] * W for _ in range(H)]
+    for y, w in enumerate(ws):
+        for x in range((W - w) // 2, (W - w) // 2 + w): g[y][x] = 'm'
+    get = lambda x, y: g[y][x] if 0 <= x < W and 0 <= y < H else '.'
+    o = [r[:] for r in g]
     for y in range(H):
-        t = (y + .5) / H; hw = (W / 2) * math.sqrt(max(0, 1 - (2 * t - 1) ** 2)) * (.80 + .20 * t) * 1.02
         for x in range(W):
-            if abs(x + .5 - W / 2) <= hw: c.set(x, y, 'm')
+            if g[y][x] == 'm' and any(get(x + dx, y + dy) == '.' for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))): o[y][x] = '#'
+    g = o; sr, sd = ESH[kind]
     for y in range(H):
         for x in range(W):
-            if c.get(x, y) != 'm': continue
-            if any(c.get(x + dx, y + dy) == '.' for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))): c.set(x, y, '#')
-    return c
-def egg_big(pat):
-    c = egg_shape(14, 17)
-    for y in range(17):
-        for x in range(14):
-            if c.get(x, y) == 'm' and (x >= 9 and y >= 6 or y >= 14): c.set(x, y, 'd')
-    for (x, y) in ((3, 3), (4, 3), (3, 4), (3, 5)): c.set(x, y, 'h') if c.get(x, y) == 'm' else None
-    sp = [[(4, 7), (5, 7), (4, 8), (5, 8), (9, 4), (8, 4), (8, 11), (9, 11), (9, 12), (8, 12), (5, 13), (4, 13)],
-          [(x, y) for y in (6, 11) for x in range(3, 11)] + [(x, 8) for x in range(4, 10, 2)],
-          [(x, 9 + (1 if x % 2 else 0)) for x in range(2, 12)] + [(x, 5 + (1 if x % 2 else 0)) for x in range(4, 10)],
-          [(4, 5), (5, 5), (4, 6), (5, 6), (8, 8), (9, 8), (8, 9), (9, 9), (5, 12), (6, 12), (5, 13), (6, 13), (10, 4), (3, 10), (3, 11)]][pat]
-    for (x, y) in sp:
-        if c.get(x, y) in 'mdh': c.set(x, y, 'o')
-    return c
-def egg_small(pat):
-    c = egg_shape(7, 9)
-    for y in range(9):
-        for x in range(7):
-            if c.get(x, y) == 'm' and (x >= 4 and y >= 4 or y >= 7): c.set(x, y, 'd')
-    c.set(2, 2, 'h'); c.set(2, 3, 'h') if c.get(2, 3) == 'm' else None
-    for (x, y) in [[(2, 5), (4, 3), (3, 7)], [(1, 4), (2, 4), (3, 4), (4, 4), (5, 4), (2, 6), (3, 6), (4, 6)], [(1, 5), (3, 6), (5, 5), (2, 3), (4, 3)], [(2, 4), (4, 6), (3, 7)]][pat]:
-        if c.get(x, y) in 'mdh': c.set(x, y, 'o')
-    return c
-for p in range(4): S['EGG%d' % p] = egg_big(p).rows(); S['EGGS%d' % p] = egg_small(p).rows()
-girdle = lambda x: 8 + (1 if x % 2 == 0 else 0)   # the crack all round the egg
-def crack(stage):
-    c = C(14, 17)
-    path = [(7, 0), (6, 1), (7, 2), (6, 3), (7, 4), (8, 5), (7, 6), (6, 7)]
-    n = {1: 4, 2: 8}.get(stage, 0)
+            if g[y][x] != 'm': continue
+            dr = 1
+            while get(x + dr, y) in 'md': dr += 1
+            dd = 1
+            while get(x, y + dd) in 'md': dd += 1
+            if (dr <= sr and y >= H * .28) or (dd <= sd and x >= W * .3): g[y][x] = 'd'
+    for (x, y) in EHL[kind]:
+        if g[y][x] in 'md': g[y][x] = 'h'
+    return g
+EPAT = {
+ ('L', 0): ('s', [(5, 2), (3, 5), (7, 5), (4, 8), (7, 8)]), ('L', 1): ('r', [5, 8]), ('L', 2): ('z', 1, [6, 5, 6, 5, 6, 5, 6, 5]),
+ ('L', 3): ('s', [(5, 2), (6, 2), (5, 3), (6, 3), (2, 7), (3, 7), (2, 8), (3, 8), (4, 8), (7, 6), (7, 10)]), ('L', 4): ('s', [(5, 3), (3, 5), (7, 5), (5, 7), (3, 9), (7, 9)]),
+ ('L', 5): ('p', 2, 5, ['oo..oo', 'oooooo', '.oooo.', '..oo..']), ('L', 6): ('p', 3, 4, ['.gg.', 'gggg', 'gggg', '.gg.'], [(7, 8), (2, 9)]),
+ ('B', 0): ('s', [(6, 3), (7, 3), (5, 7), (6, 7), (9, 5), (3, 10), (4, 10), (8, 9), (9, 9), (6, 13), (7, 13), (10, 12)]), ('B', 1): ('r', [6, 7, 11, 12]),
+ ('B', 2): ('z', 1, [10, 9, 8, 9, 10, 9, 8, 9, 10, 9, 8, 9]),
+ ('B', 3): ('s', [(6, 3), (7, 3), (6, 4), (7, 4), (8, 4), (2, 9), (3, 9), (4, 9), (2, 10), (3, 10), (4, 10), (3, 11), (9, 8), (10, 8), (9, 9), (10, 9), (8, 13), (9, 13), (8, 14), (9, 14)]),
+ ('B', 4): ('s', [(6, 3), (7, 3), (3, 7), (4, 7), (9, 7), (10, 7), (6, 10), (7, 10), (3, 13), (10, 13)]),
+ ('B', 5): ('p', 3, 6, ['.oo..oo.', 'oooooooo', 'oooooooo', '.oooooo.', '..oooo..', '...oo...']),
+ ('B', 6): ('p', 4, 5, ['..gg..', '..gg..', 'gggggg', 'gggggg', '..gg..', '..gg..'], [(2, 9), (11, 12), (10, 3)]),
+ ('S', 0): ('s', [(4, 2), (5, 5), (2, 6)]), ('S', 1): ('r', [5]), ('S', 2): ('z', 1, [5, 4, 5, 4, 5, 4]), ('S', 3): ('s', [(4, 2), (5, 2), (4, 3), (5, 3), (2, 6), (3, 6)]),
+ ('S', 4): ('s', [(4, 2), (2, 4), (5, 4), (3, 6)]), ('S', 5): ('p', 2, 4, ['o..o', 'oooo', '.oo.']), ('S', 6): ('p', 2, 3, ['.gg.', 'gggg', '.gg.']),
+}
+def egg(kind, pat):
+    g = egg_base(kind); W, H, _ = EW[kind]; p = EPAT[(kind, pat)]
+    def put(x, y, c):
+        if 0 <= y < H and 0 <= x < W and g[y][x] in 'mdh': g[y][x] = c
+    if p[0] == 's':
+        for (x, y) in p[1]: put(x, y, 'o')
+    elif p[0] == 'r':
+        for y in p[1]:
+            for x in range(W): put(x, y, 'o')
+    elif p[0] == 'z':
+        for i, y in enumerate(p[2]): put(p[1] + i, y, 'o')
+    else:
+        for j, r in enumerate(p[3]):
+            for i, ch in enumerate(r):
+                if ch != '.': put(p[1] + i, p[2] + j, ch)
+        for (x, y) in (p[4] if len(p) > 4 else []): put(x, y, 'g')
+    rows = [''.join(r) for r in g]
+    if kind == 'L': rows.append('.llllllll.')
+    if kind == 'B': rows += ['.llllllllllll.', '...llllllll...']
+    return rows
+for p_ in range(EGG_N):
+    for k_ in 'BLS': S['EGG%s%d' % (k_, p_)] = egg(k_, p_)
+def girdle(kind):   # the line the egg splits along: a zigzag in steps of two across the middle
+    W, H, _ = EW[kind]; y0 = 6 if kind == 'L' else 10
+    return [y0 + (0, 0, 1, 1)[x % 4] for x in range(W)]
+# crack overlays (drawn over an egg of the same size): a dark line and the light inside it. Stage 1 a hairline from the top, 2 a long crack with branches, 3 the split all round
+def crack_ov(kind, stage):
+    W, H, _ = EW[kind]; c = C(W, H + (2 if kind == 'B' else 1))
+    path = {'L': [(5, 1), (4, 2), (5, 3), (4, 4), (5, 5), (4, 6)], 'B': [(7, 1), (6, 2), (7, 3), (6, 4), (7, 5), (6, 6), (7, 7), (6, 8)]}[kind]
+    branch = {'L': [(6, 4), (7, 5), (7, 6)], 'B': [(8, 6), (9, 6), (10, 7), (10, 8), (4, 9), (3, 10), (3, 11)]}[kind]
+    n = {1: len(path) // 2 + 1, 2: len(path), 3: len(path)}[stage]
     for (x, y) in path[:n]: c.set(x, y, '#')
+    for (x, y) in path[1:n:2]: c.set(x + 1, y, 'u')
     if stage >= 2:
-        for (x, y) in ((8, 5), (9, 6), (10, 7)): c.set(x, y, '#')
-        for (x, y) in ((6, 10), (5, 11), (6, 12)): c.set(x, y, '#')
+        for (x, y) in branch: c.set(x, y, '#')
+        for (x, y) in branch[:3]: c.set(x, y - 1, 'u')
     if stage >= 3:
-        for x in range(0, 14): c.set(x, girdle(x), '#')
-        for x in range(1, 13): c.set(x, girdle(x) + 1, 'u')
-        for (x, y) in ((6, 10), (5, 11), (6, 12)): c.set(x, y, '#')
-        for (x, y) in ((10, 7), (11, 6)): c.set(x, y, 'u')
-    return c
-for st in (1, 2, 3): S['CRACK%d' % st] = crack(st).rows()
-def cup(pat):   # what is left of the egg when it has hatched: the bottom five rows, a ragged edge on top
-    e = egg_big(pat); c = C(14, 17)
-    for y in range(17):
-        for x in range(14):
-            v = e.get(x, y)
-            if v != '.' and y >= 12 + (x % 2): c.set(x, y, 'm' if v == 'd' else v)
-    o = C(14, 17)
-    for y in range(17):
-        for x in range(14):
-            v = c.get(x, y)
-            if v == '.': continue
-            if any(c.get(x + dx, y + dy) == '.' for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))): v = '#'
-            o.set(x, y, v)
-    return o.rows()[12:]
-S['EGGCUP'] = cup(0)
-shards = {'SHARD0': ['.##.', '#mh#', '#mm#', '.##.'], 'SHARD1': ['##..', '#m#.', '#dm#', '.###'], 'SHARD2': ['.###', '#hm#', '.#d#', '..##'], 'SHARD3': ['#.##', '#mm#', '.#d#', '..#.']}
-for k, v in shards.items(): S[k] = v
+        gy = girdle(kind)
+        for x in range(W):
+            y = gy[x]
+            if egg(kind, 0)[y][x] != '.': c.set(x, y, '#'); c.set(x, y + 1, 'u')
+    return c.rows()
+for st in (1, 2, 3):
+    S['CRACKB%d' % st] = crack_ov('B', st); S['CRACKL%d' % st] = crack_ov('L', st)
+def cup():   # the bottom of the shell, left standing when it has hatched: the egg below its split, a dark ragged edge, the light of the inside along it
+    e = egg('B', 0)[:17]; gy = girdle('B'); W = 14; y0 = 10
+    o = C(W, 17 - y0)
+    for x in range(W):
+        for y in range(gy[x] + 1, 17):
+            v = e[y][x]
+            if v != '.': o.set(x, y - y0, v)
+        if e[gy[x]][x] != '.': o.set(x, gy[x] - y0, '#')
+        if o.get(x, gy[x] - y0 + 1) in 'mdh': o.set(x, gy[x] - y0 + 1, 'u')
+    return o.rows() + ['.llllllllllll.', '...llllllll...']
+S['EGGCUP'] = cup()
+S['SHARD0'] = ['..#..', '.#h#.', '#hmd#', '#####']
+S['SHARD1'] = ['##...', '#h##.', '#mmd#', '.#dd#', '..###']
+S['SHARD2'] = ['.###.', '#hmm#', '#mmd#', '.###.']
+S['SHARD3'] = ['#..##', '#h#d#', '.#mm#', '..###']
 # ---- sparkles, a heart for the card ----
 S['SPK_S'] = ['.y.', 'yWy', '.y.']
 S['SPK_M'] = ['..y..', '..y..', 'yyWyy', '..y..', '..y..']
@@ -222,9 +255,15 @@ FPAL = {
 }
 LCD_ON = (172, 196, 128); LCD_OFF = (58, 72, 70); LCD_SHADE = (150, 176, 108)   # the LCD green (the same as lcd_bg in the handheld)
 
+EGG_CREAM = (240, 238, 206)
+def egg_rgb(ink, k):   # an egg's key as a colour, from the pet's colour (the game's egg_rgb in src/gotchi_ui.c does these sums in integers)
+    mixc = lambda a, b, t: tuple((a[i] * (100 - t) + b[i] * t) // 100 for i in range(3))
+    return {'#': tuple(c * 42 // 100 for c in ink), 'm': mixc(EGG_CREAM, ink, 26), 'd': mixc(EGG_CREAM, ink, 52), 'o': tuple(c * 92 // 100 for c in ink), 'h': (255, 255, 240), 'u': (255, 250, 190), 'g': (255, 208, 60), 'l': LCD_SHADE}[k]
+
 def emit(path):
     o = ['// GENERATED by tools/make_gotchi_first.py: the BOREAGOTCHI! first-run pixel art (plain C: the DS port can include this file as it is)',
          '// a sprite is a list of equal-length strings; a character is a palette key (see FPAL; the toy shell S s z, the LCD L l and the egg # m d h o u are mapped by the game), . is clear']
+    o.append('#define FS_EGG_N %d   /* egg patterns per size: the last is the rare one */' % EGG_N)
     for k, rows in S.items():
         o.append('#define FS_%s_W %d\n#define FS_%s_H %d' % (k, len(rows[0]), k, len(rows)))
         o.append('static const char *const FS_%s[%d] = {%s};' % (k, len(rows), ','.join('"%s"' % r for r in rows)))
@@ -238,8 +277,7 @@ def preview(path):
     from PIL import Image
     shell = ((190, 120, 230), (150, 90, 210), (90, 54, 126)); ink = (28, 44, 24)
     mp = dict(FPAL); mp.update({'S': shell[0], 's': shell[1], 'z': shell[2], 'L': LCD_ON, 'l': LCD_SHADE})
-    mix = lambda a, b, t: tuple(int(a[i] * (1 - t) + b[i] * t) for i in range(3))
-    mp.update({'#': ink, 'm': mix(LCD_ON, ink, .22), 'd': mix(LCD_ON, ink, .5), 'h': mix(LCD_ON, (255, 255, 255), .6), 'o': mix(LCD_ON, ink, .72), 'u': (255, 250, 200)})
+    mp.update({k: egg_rgb((226, 112, 24), k) for k in '#mdhoul'}); mp['g'] = FPAL['g']
     names = list(S.keys()); sc = 4
     W = 1000; x = 6; y = 6; rowh = 0; items = []
     for n in names:
@@ -258,7 +296,7 @@ def preview(path):
 def emit_json(path):   # the same art for any other port: {sprites: {name: [rows]}, palette: {key: [r, g, b]}, mapped: how the game colours the keys it sets, font: {char: 7 rows of 5}}
     import json
     f = {c: [v[i * 5:i * 5 + 5] for i in range(7)] for c, v in FNT.items()}
-    mapped = {'S': 'shell, owner colour + 40', 's': 'shell, owner colour', 'z': 'shell, owner colour * 0.6', 'L': 'LCD on (172,196,128) / off (58,72,70)', 'l': 'LCD shade on (150,176,108) / off (44,56,56)', '#': 'pet ink', 'm': 'LCD green 78% + ink 22%', 'd': 'LCD green 52% + ink 48%', 'o': 'LCD green 28% + ink 72%', 'h': 'LCD green 45% + white 55%', 'u': '(255,248,190)'}
+    mapped = {'S': 'shell, owner colour + 40', 's': 'shell, owner colour', 'z': 'shell, owner colour * 0.6', 'L': 'LCD on (172,196,128) / off (58,72,70)', 'l': 'LCD shade on (150,176,108) / off (44,56,56)', '#': 'egg outline: pet colour * 0.42', 'm': 'egg body: cream (240,238,206) 74% + pet colour 26%', 'd': 'egg shade: cream 48% + pet colour 52%', 'o': 'egg spots: pet colour * 0.92', 'h': 'highlight (255,255,240)', 'u': 'light in a crack (255,250,190)', 'g': 'gold (255,208,60)', 'l': 'LCD shade (150,176,108), the ground shadow'}
     json.dump({'sprites': S, 'palette': {k: list(v) for k, v in FPAL.items()}, 'mapped': mapped, 'font': f}, open(path, 'w'), indent=0)
 
 if __name__ == '__main__':
