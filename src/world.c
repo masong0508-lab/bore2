@@ -1660,10 +1660,6 @@ COLD __attribute__((noinline)) static void kerb_clear(int ox, int oy) {   // the
         lifeMap[y][x] = '.'; wallMap[y][x] = 0;
     }
 }
-COLD __attribute__((noinline)) static void street_clean(int ox, int oy) {   // (lamps and bins an older generator left in the lanes, kept in a save's tiles: taken off the road)
-    for (int y = oy; y < oy + BM_BLK; y++) for (int x = ox; x < ox + BM_BLK; x++) { char c = lifeMap[y][x];
-        if ((c == '"' || c == 'Y') && FL_IS_ROAD(floorMap[y][x]) && !(wallMap[y][x] & 0x80)) { lifeMap[y][x] = '.'; wallMap[y][x] = 0; } }
-}
 // ---- ONE definition of road, kerb and plot (the generator, the clean-up, the test hooks and the ports all ask this) ----
 // A block's street strip is its tiles 0..BM_LOT0-1 along the top (bit 0 of its road bits) and down the left (bit 1); in a town the pavement
 // is the row and the column at BM_LOT0; everything else is the plot (a lot, a yard, open country). The roads are the map's own bits
@@ -1688,8 +1684,8 @@ COLD int world_tile_class(int tx, int ty) {   // that tile of the city window: T
 // A test build (-DROAD_AUDIT=1): every block made is checked against that definition, and the window is swept over every town, highway
 // and a grid of open country when the first one opens (ra_sweep). Counters in dbg_ra: 0 blocks, 1 props, 2 props on a road tile, 3 walls
 // on one, 4 road floor on the street strip where the map has no street (the forecourts are in the plot: not counted), 5 street strip not
-// painted road, 6 windows swept, 8 sweep finished.
-int dbg_ra[16], dbg_raw[16][8]; u8 dbg_rach[256]; static int ra_busy, ra_shown, ra_nw;   // (dbg_raw: the first offenders: kind, block x, y, tile x, y, the lot, the floor, the letter)
+// painted road, 6 windows swept, 8 sweep finished, 9 props the generators left on a road that street_purge took off (-DROAD_NOPURGE=1 leaves them, to see the test catch them).
+int dbg_ra[16], dbg_raw[16][8]; u8 dbg_rach[256], dbg_rapurge[256]; static int ra_busy, ra_shown, ra_nw;   // (dbg_raw: the first offenders: kind, block x, y, tile x, y, the lot, the floor, the letter)
 static void ra_block(int wx, int wy) {
     int bx = world_wbx + wx, by = world_wby + wy, rd, town, rv; blk_street(bx, by, &rd, &town, &rv);
     dbg_ra[0]++;
@@ -1722,8 +1718,24 @@ static void ra_sweep(int hx, int hy) {
 }
 #endif
 static void gen_block0(int wx, int wy);
+// What may stand on a street tile: nothing (the bus stop's pole is on the pavement). Whatever a generator, an older version's kept tiles or a
+// save put there is taken off, once, after the block is made: the one rule that holds, instead of each generator keeping clear of the road.
+COLD __attribute__((noinline)) static void street_purge(int wx, int wy) {
+    int rd, town, rv; blk_street(world_wbx + wx, world_wby + wy, &rd, &town, &rv);
+    if (!(rd & 3) && !rv) return;
+    for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) {
+        if (tile_class(rd, town, rv, x, y) != TC_ROAD) continue;
+        int mx = wx * BM_BLK + x, my = wy * BM_BLK + y; char c = lifeMap[my][mx]; if (c == '.' || c == ' ' || c == 0) continue;
+#ifdef ROAD_AUDIT
+        dbg_ra[9]++; if (dbg_rapurge[(u8)c] < 255) dbg_rapurge[(u8)c]++;   // (what the generators put on the road: the purge counts it)
+#endif
+#ifndef ROAD_NOPURGE
+        lifeMap[my][mx] = '.'; wallMap[my][mx] = 0;
+#endif
+    }
+}
 COLD static void gen_block(int wx, int wy) {
-    gen_block0(wx, wy); street_clean(wx * BM_BLK, wy * BM_BLK);
+    gen_block0(wx, wy); street_purge(wx, wy);
 #ifdef ROAD_AUDIT
     ra_block(wx, wy);
 #endif

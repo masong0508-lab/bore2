@@ -481,7 +481,9 @@ static u8 uflr[UPN][GN][GN], uhwl[UPN][GN + 1][GN], uvwl[UPN][GN][GN + 1];
 static int LV, ed_lv, cam_y;                   // the storey being worked on (walking, taps, the plan), the one Buy and Build edit, the camera's rise
 static void ups_clear(void); static int obj_solid(int cx, int cy);
 static u16 occ[UPN + 1][GN][GN]; static int occ_ok; static u32 occ_sum;   // what stands on each cell of each storey: its object + 1 (bit 15: it blocks walking), rebuilt when the objects change
-static void occ_build(void) { memset(occ, 0, sizeof occ); for (int i = 0; i < nobj; i++) { int w, h, l = OBJ_LV(&objs[i]); if (l > UPN) continue; obj_fp(&objs[i], &w, &h); u16 v = (u16)((i + 1) | (IT_OF(&objs[i])->kind != 1 ? 0x8000 : 0)); for (int y = objs[i].y; y < objs[i].y + h && y < GN; y++) for (int x = objs[i].x; x < objs[i].x + w && x < GN; x++) occ[l][y][x] = v; } occ_ok = 1; }
+static int ds_oob;   // (test readout: things a generator put outside the plot, taken off)
+static void occ_build(void) { for (int i = 0; i < nobj; ) { if (objs[i].x >= GN || objs[i].y >= GN) { objs[i] = objs[--nobj]; ds_oob++; } else i++; }   /* (nothing stands off the 13 x 13 plot, where the street and its pavement are) */
+    memset(occ, 0, sizeof occ); for (int i = 0; i < nobj; i++) { int w, h, l = OBJ_LV(&objs[i]); if (l > UPN) continue; obj_fp(&objs[i], &w, &h); u16 v = (u16)((i + 1) | (IT_OF(&objs[i])->kind != 1 ? 0x8000 : 0)); for (int y = objs[i].y; y < objs[i].y + h && y < GN; y++) for (int x = objs[i].x; x < objs[i].x + w && x < GN; x++) occ[l][y][x] = v; } occ_ok = 1; }
 static void occ_check(void) { u32 sm = (u32)nobj * 2654435761u; const u8 *q = (const u8 *)objs; for (int i = 0; i < nobj * 5; i++) sm = sm * 31 + q[i]; if (sm != occ_sum) { occ_sum = sm; occ_ok = 0; } }   // (once a frame, so nothing that moves an object is missed)
 static u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1];     // floors (0 none, else 1..5), walls on the cell edges (0 none, else 1..4)
 static u8 (*FLv(int L))[GN] { return L ? uflr[L - 1] : flr; }      // a storey's floor, walls along x, walls along z

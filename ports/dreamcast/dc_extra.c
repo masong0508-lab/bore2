@@ -135,10 +135,21 @@ void dc_extra_frame(void) {
     { extern int clock_min; clock_min = DC_NIGHT * 60; }   // (a test build: it is always that hour)
 #endif
 #ifdef DC_SHOWITEMS
-    if (tick == 200 && nsims > 0) {   // (a test build: the Dreamcast furniture set in a row in front of you)
-        int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), put = 0; extern void dc_logf(const char *f, ...);
-        for (int k = 0; k < 6; k++) { int x = DC_SHOWITEMS == 2 ? px + 3 - k : px - 3 + k, y = py + 1; if (x > 0 && y > 0 && x < MW && y < MH) { lifeMap[y][x] = (char)(0xF7 + k); put++; } }
-        dc_logf("items placed %d at %d,%d\n", put, px, py);
+    if (tick == 200 && nsims > 0) {   // (a test build: the Dreamcast furniture set in a row on the nearest free yard, never on the street or the pavement)
+        extern void dc_logf(const char *f, ...);
+        Sim *p = &sims[player]; int px = sim_tile_x(p), py = sim_tile_y(p), put = 0, bx = -1, by = -1, bd = 1 << 20;
+        for (int y = 1; y < MH - 3; y++) for (int x = 1; x < MW - 7; x++) {   // 6 free tiles of a plot in a row, a free row above (where you stand) and below
+            int ok = 1;
+            for (int r = 0; r < 3 && ok; r++) for (int k = 0; k < 6 && ok; k++) { int xx = x + k, yy = y + r, f = floorMap[yy][xx];
+                ok = lifeMap[yy][xx] == '.' && world_tile_class(xx, yy) == TC_PLOT && f != FL_WATER && !FL_IS_ROAD(f) && f != FL_PAVING; }
+            if (!ok) continue;
+            int d = (x + 3 > px ? x + 3 - px : px - x - 3) + (y > py ? y - py : py - y); if (d < bd) { bd = d; bx = x; by = y; }
+        }
+        if (bx >= 0) {
+            for (int k = 0; k < 6; k++) { lifeMap[by + 1][DC_SHOWITEMS == 2 ? bx + 5 - k : bx + k] = (char)(0xF7 + k); put++; }
+            p->lvl = 0; p->x = (bx + 3) * TILE + TILE / 2; p->z = -(by * TILE + TILE / 2);   // (you stand on the yard behind the row, so the camera sees it)
+        }
+        dc_logf("items placed %d at %d,%d (you were at %d,%d)\n", put, bx, by + 1, px, py);
         world_touched();
     }
 #endif
