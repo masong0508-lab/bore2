@@ -2091,24 +2091,24 @@ static XV cc_tmp[8]; static int cc_tmpi;
 #define NC_NEAR_FP 520                  // first person: a quad whose nearest corner is closer than this goes this way too
 #define NC_NEAR_TP 2600                 // third person: close and running away from the eye goes this way too (the floor and walls near you)
 #define NC_BUDGET 320                   // pieces a frame may be split into past the first cut (keeps a crowded view from costing a frame)
-#ifndef NC_WDIV
 #ifdef AB_CFG
 extern volatile u8 ab_par[20];
 #define AB_PAR(k, d) (ab_par[4 + (k)] ? ab_par[4 + (k)] : (d))
 #else
 #define AB_PAR(k, d) (d)
 #endif
-#define NC_WDIV AB_PAR(0, 4)
-#define NC_WW AB_PAR(1, 96)
-#define NC_WH AB_PAR(2, 72)
-#define NC_BIGW (AB_PAR(3, 220) * 4)
-#define NC_BIGH (AB_PAR(4, 115) * 4)
-#define NC_XXOLD 4                       // third person: a piece is cut again while its far corners are this much (1/n) deeper than its near ones...
-#endif
+#define NC_WDIV AB_PAR(0, 6)
+#define NC_WW AB_PAR(1, 44)
+#define NC_WH AB_PAR(2, 36)
+int nc_loose;                           // 1 only on the speed helper's last step (set in main.c): far pieces are cut less
 #ifndef NC_WW
-#define NC_WW 96                        // ...and it is wider than this or taller than NC_WH on the screen
-#define NC_WH 72
+#define NC_WW 44                        // ...and it is wider than this or taller than NC_WH on the screen (strict: the floor holds its texture as the camera moves)
+#define NC_WH 36
 #endif
+#ifndef NC_WDIV
+#define NC_WDIV 6
+#endif
+#define NC_LOOSE_Z 1100                 // the speed helper's very last step cuts less (1/4 deeper, 96 x 72 px), but only for pieces at least this far from the eye
 #define NC_BIGW 880                     // a piece wider or taller than this (px) is cut in two
 #define NC_BIGH 460
 #define NC_DEPTH 5                      // a quad is split at most this many times
@@ -2184,6 +2184,7 @@ static void nc_piece(const NV *p0, const NV *p1, const NV *p2, const NV *p3, int
     int warp = 0;   // a textured piece running away from the eye: it would swim (the PlayStation maps a quad flat, not in perspective)
     if (nq_tex) {
         if (world_fp) warp = zhi * 2 > zlo * 3 && zlo < NC_NEAR_FP && (sw > 64 || sh > 48);
+        else if (nc_loose && zlo >= NC_LOOSE_Z) warp = zhi - zlo > zlo / 4 && zlo < NC_NEAR_TP && (sw > 96 || sh > 72);
         else warp = zhi - zlo > zlo / NC_WDIV && zlo < NC_NEAR_TP && (sw > NC_WW || sh > NC_WH);
     }
     if (warp && depth > 0) { static int fr_ = -1, cnt_; if (fr_ != frame_t) { fr_ = frame_t; cnt_ = 0; } if (++cnt_ > NC_BUDGET) warp = 0; }

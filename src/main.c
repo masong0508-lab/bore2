@@ -76,7 +76,13 @@ static int cam_turn_rate = 40, cam_zoom_tilt = 1;
 static int ui_clock12, ui_thoughts = 1;                        // OPTIONS > SCREEN: the clock's hours, thought bubbles over heads
 static void clock_fmt(char *b, int m, int suffix) { int h = m / 60 % 24; if (ui_clock12) sprintf(b, "%d:%02d%s", h % 12 ? h % 12 : 12, m % 60, suffix ? (h < 12 ? " AM" : " PM") : ""); else sprintf(b, "%02d:%02d", h, m % 60); }
 static void game_music_check(void);                            // (OPTIONS > AUDIO > GAME MUSIC off: a new life or a loaded one starts quiet)
+#ifdef AB_PAN
+int ab_pan_x = -1;   // (test builds with AB_FREEZE: the frozen city's camera slides along x by whole tiles, one every 40 frames, so a floor texture's swimming shows between shots)
+#endif
 static void camera_apply(int fx, int fy, int fz) {
+#ifdef AB_PAN
+    if (ab_pan_x >= 0) { fx += ab_pan_x; cam_fx = fx; }   // (no smoothing: every build's camera stands exactly there)
+#endif
     { int k_ = (on_board || veh_on || sims[player].gait.run) ? 3 : 6; cam_fx += (fx - cam_fx) / k_; cam_fy += (fy - cam_fy) / k_; cam_fz += (fz - cam_fz) / k_; }   // (a rider: kept up with)
     cam_pitch = CLAMP(cam_pitch, 150, 1000);
     cam_dist = CLAMP(cam_dist, 600, 3600);
@@ -2109,6 +2115,7 @@ static void helper_apply(void) {
     // (the far view's steps: 1 to 3 shorten it and drop its trees and detail, 4 is the LITE far view: the whole distance asked for, but only
     //  the ground (no streets, no trees) and the buildings as boxes near, flat rectangles far, still fading into the haze; 5 is none of it)
     extern int far_lite;
+    { extern int nc_loose; nc_loose = shed_lvl >= FSH; }   // (the texture-warp cutter relaxes, far from the eye, only on the very last step)
     int v = opt[O_VIEW]; far_lite = shed_lvl == 4;
     far_view = (v && shed_lvl < 5) ? (shed_lvl == 4 ? v : v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
     int tr = opt[O_TREES] - shed_lvl; far_trees = tr < 0 ? 0 : tr;
@@ -5057,6 +5064,9 @@ int main(void) {
 #endif
 #ifdef AB_FREEZE
                 { static int ab_lf; if (++ab_lf > AB_FREEZE) {
+#ifdef AB_PAN
+                    ab_pan_x = ((VSync(-1) / 160) & 7) * (TILE / 4) * AB_PAN;   // (AB_PAN = how many quarter tiles each step)
+#endif
 #ifdef VEH_SHOT
                     {   // (test builds: a lineup of every vehicle by the player, and the camera and the ridden vehicle stepping through a table, 100 frames each)
                       extern int veh_shot_f, veh_own, veh_on, veh_wph; static const struct { s16 yaw, pitch, dist; s8 rider, fp; } vt_[] = {
