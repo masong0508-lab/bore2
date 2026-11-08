@@ -1304,10 +1304,12 @@ static CRel *crel(u16 id) { int h = id & 63; for (int k = 0; k < 64; k++) { CRel
 static void cit_name(const Cit *c, char *o) { sprintf(o, "%s %s", FNAMES[c->id % 12], LNAMES[(c->id / 12) % 8]); }
 static int cit_street(int x, int y) { int lx = ((x % SLC) + SLC) % SLC, ly = ((y % SLC) + SLC) % SLC; return (lx == 13 || lx == 17 || ly == 13 || ly == 17 || (lx >= 13 && ly >= 13)) && !far_solid(x, y); }   // (D40: the pavements, and across the road only at the corners; it was the whole street, lanes too)
 static int cit_vis(const Cit *c) { int hr = (minutes / 60) % 24; return c->on && hr >= 6 && hr < 23 && ((hr * 5 + c->id) % 7) < 5; }   // asleep indoors at night, out and about by day
+volatile unsigned town_sig, town_sig_seed = 777;   // (test readouts)
+static u8 town_legacy;   // (D75) 1: a save from before D75: its townies are made from the place alone, as they were (their relations and who moved in are kept by that id). Anything else: the save's world seed goes in as well, so another save has other people
 static void city_spawn(void) {
     int sl[9], ns = 0; for (int j = 0; j < 9; j++) if (nb[j / 3][j % 3].set != 255 && nb[j / 3][j % 3].terrain != BT_SEA) sl[ns++] = j;
     for (int k = 0; k < NCIT; k++) { Cit *c = &cits[k]; c->on = 0; c->stop = 0; if (!ns) continue; int j = (k < 6 && nb[1][1].set != 255) ? 4 : sl[k % ns], sy = j / 3 - 1, sx = j % 3 - 1;
-        u32 h = hsh((u32)(lot_bx + sx) * 73856093u ^ (u32)(lot_by + sy) * 19349663u ^ (u32)k * 83492791u); c->id = (u16)((h >> 8) | 1); if (crel(c->id)->taken) continue;
+        u32 h = hsh((u32)(lot_bx + sx) * 73856093u ^ (u32)(lot_by + sy) * 19349663u ^ (u32)k * 83492791u ^ (town_legacy ? 0u : hsh((u32)seed ^ 0x70574E49u))); c->id = (u16)((h >> 8) | 1); if (crel(c->id)->taken) continue;
         int r = (int)(h % 100); c->stage = (u8)(r < 16 ? 2 : r < 30 ? 3 : r < 86 ? 4 : 5);
         int lx = (h >> 8) & 1 ? 17 : 13, ly = (int)((h >> 12) % 18);   // (D40: on a pavement, not in a lane) if ((h >> 20) & 1) { int t = lx; lx = ly; ly = t; }
         int cx = sx * SLC + lx, cy = sy * SLC + ly; if (far_solid(cx, cy)) continue;
@@ -2442,7 +2444,8 @@ static void fm_unpack(const FarmSave *f) { memcpy(fm_n, f->b, 4); memcpy(fm_g, f
 #define MGBUF_N 4096   // (D64) the mini-games' save blocks (the Boreagotchi's v48 extras need the room)
 static int sav_pack(int big) {   // returns the packed size in sav_buf (header included), or 0 if even the basics do not fit
     if (lot_bx >= 0) lot_save();
-    SavCore c; memset(&c, 0, sizeof c); c.seed = seed; c.minutes = minutes; c.funds = funds; c.nsim = nsim; c.ctl = ctl; c.cur_sim = cur_sim; c.cur_set = cur_set; c.lot_bx = lot_bx; c.lot_by = lot_by; c.days = st_days; c.born = st_born; c.died = st_died;
+    SavCore c; memset(&c, 0, sizeof c); c.opt[39] = 0x5E; c.seed = seed;   // (D75: opt[36..39] were never used: 0x5E says the townies are made from the world seed too)
+     c.minutes = minutes; c.funds = funds; c.nsim = nsim; c.ctl = ctl; c.cur_sim = cur_sim; c.cur_set = cur_set; c.lot_bx = lot_bx; c.lot_by = lot_by; c.days = st_days; c.born = st_born; c.died = st_died;
     for (int i = 0; i < NOPT && i < OPT_OLD; i++) if (OPT[i].v) c.opt[i] = (u8)*OPT[i].v;
     int n = 0; u8 *r = sav_raw; memset(r, 0, sizeof sav_raw);
     #define PUT(p, l) do { memcpy(r + n, (p), (size_t)(l)); n += (l); } while (0)
@@ -2504,7 +2507,7 @@ static int sav_apply(void) {   // 1 = loaded
     if (n + 20 <= rl) { s16 zs[10]; memcpy(zs, sav_raw + n, 20); if (zs[0] == 0x4E5A && zs[1] == 16 && zs[2] >= 0 && zs[2] < Z_N) { zone = zs[2]; isl_wood = zs[3]; isl_stone = zs[4]; isl_leaves = zs[5]; isl_food = zs[6]; isl_spear = zs[7]; isl_shells = zs[8]; isl_secrets = (u16)zs[9]; n += 20; } }   // (D37)
     farm_reset(); if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x4D46 && th[1] == sizeof(FarmSave) && n + 4 + (int)sizeof(FarmSave) <= rl) { FarmSave f; memcpy(&f, sav_raw + n + 4, sizeof f); fm_unpack(&f); n += 4 + (int)sizeof f; } }   // (D38; before: no farm)
     n += mg_unpack(sav_raw + n, rl - n);   // (D44 on; before: none of it)
-    seed = c.seed; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
+    town_legacy = c.opt[39] != 0x5E; seed = c.seed; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
     st_days = c.days; st_born = c.born; st_died = c.died; minutes = c.minutes; funds = c.funds; nsim = c.nsim; ctl = c.ctl; cur_sim = c.cur_sim >= 0 && c.cur_sim < nsim ? c.cur_sim : ctl;
     for (int i = 0; i < NOPT && i < OPT_OLD; i++) if (OPT[i].v && c.opt[i] < opt_cnt(i)) *OPT[i].v = c.opt[i];
     for (int i = OPT_OLD; i < NOPT; i++) if (OPT[i].v) *OPT[i].v = ox_have && i - OPT_OLD < ox_n && ox[i - OPT_OLD] < opt_cnt(i) ? ox[i - OPT_OLD] : OPT[i].def;   // (a save from before D33: the new ones at their defaults)
@@ -3712,7 +3715,7 @@ int main(void) {
             yaw = sinLerp(frames * 70) / 2; pitch = 0; dist = cas_cd;
         } else if (mode == M_MAP) {
             if (down & (KEY_L | KEY_R)) { cur_set = (cur_set + ((down & KEY_R) ? 1 : bm_nset() - 1)) % bm_nset(); town_pick(cur_set); dirty = 1; }
-            if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; nown = 0; life_reset(); nb_ok = 0; lot_bx = -1; cur_set = bm_capital(); town_pick(cur_set); dirty = 1; }
+            if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; town_legacy = 0; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; nown = 0; life_reset(); nb_ok = 0; lot_bx = -1; cur_set = bm_capital(); town_pick(cur_set); dirty = 1; }
             if (down & KEY_LEFT) { sel_x--; dirty = 1; } if (down & KEY_RIGHT) { sel_x++; dirty = 1; }
             if (down & KEY_UP) { sel_y--; dirty = 1; } if (down & KEY_DOWN) { sel_y++; dirty = 1; }
             if (held & KEY_X) { if (dist > 3000) dist -= 60; } if (held & KEY_Y) { if (dist < 16000) dist += 60; }
@@ -3752,6 +3755,11 @@ int main(void) {
                 else if (sc == 140) { for (int q = 1; q < nsim; q++) dtr[q].f = TF_AUTO | TF_PEND; info_pg = 2; cur_sim = 1; life_ver++; ui_ver++; }   // (D73: 140 the traits page of the second housemate, 141 the first, 142 a move-in with its toast)
                 else if (sc == 141) { for (int q = 1; q < nsim; q++) dtr[q].f = TF_AUTO | TF_PEND; info_pg = 2; cur_sim = nsim > 2 ? 2 : 1; life_ver++; ui_ver++; }
                 else if (sc == 142) { trg_quiet = 0; new_sim(26, 2, 3, 1, 2, "Morgan Vale", 9 * 16, 9 * 16); info_pg = 2; cur_sim = nsim - 1; life_ver++; ui_ver++; }
+                else if (sc >= 145 && sc <= 148) {   // (D75: the townies are the same people. 145: spawn them and write the save; 146: read it back and spawn them again; 147: the same as 145 for an old save (their ids as before D75); 148: spawn them for the seed in town_sig_seed. town_sig is a checksum of their ids, looks and names)
+                    if (sc == 146) test_sres = 500 + sav_apply();
+                    if (sc == 147) town_legacy = 1; if (sc == 148) { seed = (int)town_sig_seed; bm_new((u32)seed); }
+                    city_spawn(); { u32 h = 2166136261u; char nb[24]; for (int z = 0; z < NCIT; z++) { const Cit *q = &cits[z]; h = (h ^ q->id) * 16777619u; h = (h ^ (u32)(q->skin | q->shirt << 4 | q->hair << 8 | q->pants << 12 | q->stage << 16)) * 16777619u; cit_name(q, nb); for (const char *t = nb; *t; t++) h = (h ^ (u8)*t) * 16777619u; } town_sig = h; }
+                    if (sc == 145) test_sres = 300 + sav_write(); }
                 else if (sc == 143 || sc == 144) {   // (D73: 143 gives traits and wishes and writes the save, 144 reads it back; test_sres 300 + write/apply result, trg_sig the trait state's checksum: the two must match)
                     if (sc == 143) { trf_init(); { int k = 0, w = 1; for (int id = 1; id <= TR_MAXID && k < 6; id += 37) if (trf_on(id)) dtr[0].tid[k++] = (u16)id; while (w < WISH_N && !trf_won(w)) w++; dtr[0].wish = (u8)w; } tr_unl = 2; dtr[0].wd[0] = 6; tr_earned = 5; tr_recent[0] = dtr[0].tid[1]; test_sres = 300 + sav_write(); }
                     else test_sres = 400 + sav_apply();

@@ -7,6 +7,8 @@
 #define NCIT 128                  // 0..9 the island, 10..49 the town, 50.. SAN BOREAS (taken by whoever of its people is near)
 
 void citizens_init(void);                 // a new life: roll the hundred (bodies are built as each zone is first seen)
+void citizens_save(void);                 // (the memory card, version 53) the crowd townies who moved in with you
+void citizens_load(void);
 void citizens_enter(int zone);            // after arriving in a zone: put its people out on the streets
 void citizens_rebuild(void);              // every model made again (the crowd arena was lent to KINGDOM MODE)
 void citizens_update(int steps);          // once a frame from the life loop

@@ -21,3 +21,14 @@ void persona_of(u32 seed, int stage, Persona *p) {
     p->asp = (u8)(stage < 2 ? 5 : hmix(seed, 2) % 5u);
     p->ltw = (u8)(hmix(seed, 3) % 4u);
 }
+
+// ---- the stable townie: who a crowd person is comes from two numbers, the save's world seed and their id (their slot), and nothing else ----
+u32 persona_mix(u32 a, u32 b) { return hmix(a, b); }
+u32 persona_town_seed(u32 wseed, u32 id) { u32 s = hmix(wseed ^ 0x70574E49u, id * 40503u + 0x1001u); return s ? s : 1u; }   // (their dice: look, name, personality all come from this)
+void persona_town_dna(u32 seed, TownDna *d) {
+    u32 r = hmix(seed, 40) % 100u;
+    d->age = (u8)(r < 8 ? 0 : r < 20 ? 1 : r < 78 ? 2 : 3);                   // child, teen, adult, elder (before a household is formed round them)
+    d->pers = (u8)(hmix(seed, 41) & 3u);                                       // friendly, gruff, flirty, shy
+    d->off = (s8)((int)(hmix(seed, 42) % 91u) - 45);                           // minutes early or late
+    d->first = hmix(seed, 43) & 0xFFFFFFu; d->last = hmix(seed, 44) & 0xFFFFFFu;   // the name dice (look_first_gen / look_last_gen)
+}

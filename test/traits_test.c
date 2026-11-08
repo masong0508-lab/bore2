@@ -277,7 +277,37 @@ int main(void) {
         CHK(hh_ok, hh_tot, sizeof(TrState) == TR_SIZE_V51 + EV_N + 8 && TR_SIZE_V51 == 180, "TrState is the old 180 bytes + counters + wishes (%d, %d)", (int)sizeof(TrState), (int)TR_SIZE_V51);
         printf("household: 8 members, own traits (%d differ), own counters, earned and personal wish checked\n", diff);
     }
-    bad += (pe_tot - pe_ok) + (st_tot - st_ok) + (hh_tot - hh_ok) + (sl_tot - sl_ok) + (un_tot - un_ok) + (au_tot - au_ok) + (cp_tot - cp_ok) + (ef_tot - ef_ok) + (rt_tot - rt_ok) + (gr_tot - gr_ok) + (ag_tot - ag_ok);
+    int tw_ok = 0, tw_tot = 0;
+    {   // STABLE TOWNIES (docs/TRAITS.md): a crowd townie is a pure function of the save's world seed and the id. Same pair, same person; another save, another person; the save keeps only the seed
+        static u32 seen[60000], srt[60000]; int clash = 0; u32 ws = 0xC0FFEE42u;
+        for (u32 id = 0; id < 60000; id++) {
+            u32 a = persona_town_seed(ws, id), b = persona_town_seed(ws, id), o = persona_town_seed(ws ^ 0x9E3779B9u, id);
+            TownDna da, db; persona_town_dna(a, &da); persona_town_dna(b, &db);
+            Persona pa, pb; persona_of(a, 3, &pa); persona_of(b, 3, &pb);
+            CHK(tw_ok, tw_tot, a == b && !memcmp(&da, &db, sizeof da) && !memcmp(&pa, &pb, sizeof pa), "townie %u is not stable", id);
+            CHK(tw_ok, tw_tot, a != 0 && da.age < 4 && da.pers < 4 && da.off >= -45 && da.off <= 45 && da.first < (1u << 24) && da.last < (1u << 24), "townie %u dna out of range", id);
+            seen[id] = a; clash += o == a;
+        }
+        CHK(tw_ok, tw_tot, clash == 0, "%d ids gave the same seed in another save", clash);
+        memcpy(srt, seen, sizeof srt);
+        int dup = 0; for (int i = 1; i < 60000; i++) for (int j = i; j > 0 && srt[j] < srt[j - 1]; j--) { u32 t = srt[j]; srt[j] = srt[j - 1]; srt[j - 1] = t; }
+        for (int i = 1; i < 60000; i++) dup += srt[i] == srt[i - 1];
+        CHK(tw_ok, tw_tot, dup == 0, "%d ids share a seed", dup);
+        int same_name = 0, same_pers = 0;
+        for (u32 id = 0; id < 5000; id++) { TownDna x, y; persona_town_dna(persona_town_seed(ws, id), &x); persona_town_dna(persona_town_seed(ws + 1, id), &y); same_name += x.first == y.first && x.last == y.last;
+            Persona p, q; persona_of(persona_town_seed(ws, id), 3, &p); persona_of(persona_town_seed(ws + 1, id), 3, &q); same_pers += !memcmp(&p, &q, sizeof p); }
+        CHK(tw_ok, tw_tot, same_name == 0 && same_pers < 5000 / 20, "another save's townies are the same people (%d names, %d personalities of 5000)", same_name, same_pers);
+        // save / load round trip: the save holds the world seed (4 bytes as sv_u32 / ld_u32 write them; every save since version 2 has it) and nothing else about them
+        u8 card[4] = { (u8)ws, (u8)(ws >> 8), (u8)(ws >> 16), (u8)(ws >> 24) };
+        u32 back = (u32)card[0] | (u32)card[1] << 8 | (u32)card[2] << 16 | (u32)card[3] << 24;
+        // (an old save, version 52 or older, has that same world seed: its townies are made the same way, so loading it gives each of them the identity a new boot of that world gives)
+        // (a person who moved in: the Bore is made from the same seed in cit_bore, so their bars and name dice are the town ones)
+        for (u32 id = 0; id < 50; id++) { u32 sd = persona_town_seed(ws, id), sb = persona_town_seed(back, id); TownDna x, y; persona_town_dna(sd, &x); persona_town_dna(sb, &y);
+            Persona t, m; persona_of(sd, 3, &t); persona_of(sb, 3, &m);
+            CHK(tw_ok, tw_tot, sd == sb && !memcmp(&x, &y, sizeof x) && !memcmp(&t, &m, sizeof t), "townie %u changed over a save", id); }
+        printf("stable townies: 60000 ids: same seed twice, %d clashes with another save, %d duplicate seeds; save round trip; old save; move-in\n", clash, dup);
+    }
+    bad += (pe_tot - pe_ok) + (st_tot - st_ok) + (hh_tot - hh_ok) + (sl_tot - sl_ok) + (un_tot - un_ok) + (au_tot - au_ok) + (cp_tot - cp_ok) + (ef_tot - ef_ok) + (rt_tot - rt_ok) + (gr_tot - gr_ok) + (ag_tot - ag_ok) + (tw_tot - tw_ok);
     printf("\n%-10s %6s %6s\n", "group", "traits", "pass");
     for (int g = 0; g < 4; g++) printf("%-10s %6d %6d\n", gn[g], tot[g], ok[g]);
     printf("%-10s %6d %6d   (reaching the count grants the trait)\n", "earn-run", etot, eok);
@@ -293,6 +323,7 @@ int main(void) {
     printf("%-10s %6d %6d   (a town person's personality: the same from the id, five bars add up to 25, the sign is the bars', all 12 signs, kids GROW UP)\n", "persona", pe_tot, pe_ok);
     printf("%-10s %6d %6d   (the same person gives the same traits in town and the day they move in)\n", "same-trait", st_tot, st_ok);
     printf("%-10s %6d %6d   (8 members: own state, own counters, own earned traits, own wish, save round trip)\n", "household", hh_tot, hh_ok);
+    printf("%-10s %6d %6d   (a crowd townie from the world seed and the id alone: same every time, another save differs, save round trip, old save, move-in)\n", "stable", tw_tot, tw_ok);
     int fail = bad + (etot - eok) + (WISH_N - wok);
     printf("%s: %d failures\n", fail ? "FAIL" : "PASS", fail);
     return fail != 0;

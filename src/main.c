@@ -2587,6 +2587,7 @@ static void save_body(void) {
     story_save();
     farm_save();   // (version 43: FARM LIFE deeper: the animals, the stand)
     sv_u32(rt_last);   // (version 44: REAL TIME: the real minute the clock was at)
+    citizens_save();   // (version 53: the crowd townies who moved in: the same townies come back from the world seed, so the ones in your house are not in town too)
 }
 static void load_body(void) {
     u32 seed = ld_u32();
@@ -2619,6 +2620,7 @@ static void load_body(void) {
     if (save_ver >= 5) story_load(); else story_reset();
     if (save_ver >= 43) farm_load();   // (older: the animals content, nothing sold yet)
     if (save_ver >= 44) rt_last = ld_u32();
+    if (save_ver >= 53) citizens_load();
 }
 static int save_game(int slot) {
     loading("SAVING YOUR GAME", 50);

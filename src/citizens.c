@@ -13,6 +13,7 @@
 #include "pop.h"
 #include "bigmap.h"
 #include "persona.h"
+#include "save.h"
 
 #define LIVE_MAX  6                 // civilians drawn live in 3D at once (the nearest); everyone else is a sprite of the same model
 int cit_live_max = LIVE_MAX, cit_maxdraw = 64, cit_sprite_rate = 1;   // (the options menu: live ones, the crowd's size, sprite refresh 0 slow 1 normal 2 fast)
@@ -86,6 +87,9 @@ static int tick, pl_hp = 100, pl_cd, cur = -1, fight_on, moved_flag;
 int dbg_cardname;
 #endif
 static u32 crng = 0x9E3779B9u;
+static u8 moved_mask[(50 + 7) / 8]; static u8 moved_got;   // the crowd townies (slots 0..49) who moved in with you: the save keeps the list (version 53), so they are not out in town as well
+void citizens_save(void) { sv_n(moved_mask, sizeof moved_mask); }
+void citizens_load(void) { ld_n(moved_mask, sizeof moved_mask); moved_got = 1; }
 static char pie_title[NAME_LEN + 2];
 static u8 pie_code[8]; static int pie_c = -1;
 
@@ -186,6 +190,7 @@ COLD static void cit_bore0(Bore *b, const Cit *c) {
     look_seed(old);
     if (c->cop) { static int pt; if (!pt) pt = look_theme_named("POLICE"); look_theme(b, pt); b->col[6] = RGB(4, 8, 20); b->col[7] = RGB(3, 5, 14); }   // (the uniform)
     if (c->pid != NOPID) { pop_first(c->pid, b->first); pop_surname(pop_fam_of(c->pid), b->last); return; }   // SAN BOREAS: their own names
+    { TownDna d; persona_town_dna(c->seed, &d); look_first_gen(d.first, b->first); look_last_gen(d.last, b->last); }   // a crowd townie's name: from their seed alone (the same name in every boot, every save of this world)
     if (c->hh != NONE) { strncpy(b->last, look_last_name(hh[c->hh].fam), NAME_LEN - 1); b->last[NAME_LEN - 1] = 0; }   // a household shares its surname
 }
 static void build_lod(Cit *c) {
@@ -249,9 +254,10 @@ static void roles(int size, u8 *st) {   // who lives together
 COLD static void form_households(int zone) {   // the first time a zone is seen: its people sort themselves into the homes the generator built
     if (zone == ZONE_CITY || formed[zone]) return;   // (SAN BOREAS's households come from pop.c)
     formed[zone] = 1;
+    u32 keep_rng = crng; crng = persona_mix(world_seed() ^ 0x48554F53u, (u32)zone + 1u); if (!crng) crng = 1;   // who lives with whom: from the world seed and the zone alone (the same every boot); the dice are put back at the end
     int nh = world_home_count(zone), idx[NCIT], n = 0;
     for (int i = 0; i < NCIT; i++) if (cits[i].zone == zone) idx[n++] = i;
-    if (!nh || !n) return;
+    if (!nh || !n) { crng = keep_rng; return; }
     int order[MAXHOMES];
     for (int i = 0; i < nh; i++) order[i] = i;
     for (int i = nh - 1; i > 0; i--) { int j = rn(i + 1), t = order[i]; order[i] = order[j]; order[j] = t; }
@@ -269,6 +275,7 @@ COLD static void form_households(int zone) {   // the first time a zone is seen:
         }
         nhh++;
     }
+    crng = keep_rng;
 }
 
 // ---- the day: asleep, at home, or out ------------------------------------------------------------------
@@ -289,22 +296,25 @@ static int want(const Cit *c) {   // 0 out and about, 1 at home awake, 2 asleep 
 
 // ---- the hundred ------------------------------------------------------------------------------------
 COLD void citizens_init(void) {
-    crng ^= (u32)look_rand() * 2246822519u;
+    crng ^= (u32)look_rand() * 2246822519u;   // (what the crowd does from here is dice; who they are is not: see persona_town_seed)
     if (!crng) crng = 0x9E3779B9u;
+    u32 wseed = world_seed();
+    if (!moved_got) memset(moved_mask, 0, sizeof moved_mask);   // (a new life: nobody has moved in yet; a loaded one brought its list)
     memset(cits, 0, sizeof cits);
     for (int i = 0; i < NCIT; i++) {
         Cit *c = &cits[i];
-        c->seed = crnd();
+        TownDna dna; c->seed = persona_town_seed(wseed, (u32)i); persona_town_dna(c->seed, &dna);   // (a pure function of the world seed and the slot)
         c->zone = i < 10 ? ZONE_ISLAND : i < 50 ? ZONE_TOWN : 255;          // 10 on the island, 40 in town; the rest wait for SAN BOREAS's people
         c->pid = NOPID; c->mplace = NOPID; c->vanish = 0;
-        int r = rn(100);
-        c->stage = r < 8 ? AG_CHILD : r < 20 ? AG_TEEN : r < 78 ? AG_ADULT : AG_ELDER;   // (until a household is formed round them)
-        c->pers = (u8)rn(4);
-        c->hh = NONE; c->off = (s8)(rn(91) - 45); c->sub = 0; c->st = 0;
+        c->stage = dna.age == 0 ? AG_CHILD : dna.age == 1 ? AG_TEEN : dna.age == 2 ? AG_ADULT : AG_ELDER;   // (until a household is formed round them)
+        c->pers = dna.pers;
+        c->hh = NONE; c->off = dna.off; c->sub = 0; c->st = 0;
         c->hp = 100; c->mode = CM_IDLE; c->slot = 0; c->built = 0; c->zone0 = 255; c->owe = 0; c->flg = 0;
         strcpy(c->first, "..."); c->last[0] = 0;
         if (i >= MAIN0) c->mode = CM_GONE;
+        if (i < MAIN0 && (moved_mask[i >> 3] >> (i & 7) & 1)) c->mode = CM_GONE;   // moved in with you: they are in your house, not out in town too
     }
+    moved_got = 0;
     memset(hh, 0, sizeof hh); nhh = 0; memset(formed, 0, sizeof formed);
     for (int k = 0; k < NHH; k++) { hh[k].pfam = NOPID; hh[k].zone = 255; }
     crowd_reset();
@@ -596,6 +606,7 @@ COLD static void marry_as(Cit *c, int wedding) {   // they move in: the civilian
     if (wedding) { w->partner = sims[player].uid; sims[player].partner = w->uid; }   // (the family tree: partners)
     w->x = p->x + 70; w->z = p->z;
     c->mode = CM_GONE; c->say_t = 0;
+    { int ci = (int)(c - cits); if (c->pid == NOPID && ci < MAIN0) moved_mask[ci >> 3] |= (u8)(1u << (ci & 7)); }
     if (c->pid != NOPID) { pop_per[c->pid].flags |= PF_GONE; main_free(c); }
     char b[40]; if (wedding) sprintf(b, "MARRIED %s!", w->bore.first); else sprintf(b, "%s MOVED IN WITH YOU!", w->bore.first); sim_note(b);
     audio_voice(wedding ? VOICE_WIN : VOICE_MOVE_YES);
