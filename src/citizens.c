@@ -84,7 +84,7 @@ static int party_on, party_left, party_cx, party_cy, party_in, party_spx, party_
 static u8 party_g[PARTY_MAX], party_sx[PARTY_MAX], party_sy[PARTY_MAX];
 static int tick, pl_hp = 100, pl_cd, cur = -1, fight_on, moved_flag;
 #ifdef AUTO_CARD
-int dbg_cardname;
+int dbg_cardname; char dbg_cardwho[4][16];
 #endif
 static u32 crng = 0x9E3779B9u;
 static u8 moved_mask[(50 + 7) / 8]; static u8 moved_got;   // the crowd townies (slots 0..49) who moved in with you: the save keeps the list (version 53), so they are not out in town as well
@@ -1686,9 +1686,14 @@ COLD void citizens_update(int steps) {   // (built small: the work is in step_on
 #endif
     (void)calls0;
     cur = find_target_l(lv, nlv);   // (a party guest who came in from another zone this frame is on the list from the next)
-#ifdef AUTO_CARD   // (test builds: the person nearest to you is the one the card shows; AUTO_CARD & 2: at frame AUTO_CARD_AT they move in with you (the shots of the same person in town and in the household))
-    { static int n_; n_++; if (cur < 0) { int bd = 1 << 30; for (int j = 0; j < nlv; j++) { const Cit *c = &cits[lv[j]]; int dx = (c->x - sims[player].x) >> 4, dz = (c->z - sims[player].z) >> 4, d = dx * dx + dz * dz; if (c->zone == world_zone && c->mode != CM_GONE && d < bd) { bd = d; cur = lv[j]; } } }
-      if ((AUTO_CARD & 2) && n_ >= AUTO_CARD_AT && !dbg_cardname && cur >= 0 && nsims < MAX_SIMS) { char tb[80]; sprintf(tb, "%s %s", cits[cur].first, cits[cur].last); dbg_cardname = tb[0]; marry_as(&cits[cur], 0); cur = -1; } }
+#ifdef AUTO_CARD   // (test builds: the card shows one person, pinned AUTO_CARD_AT - 300 steps before the end, the one nearest you then; AUTO_CARD & 2: at step AUTO_CARD_AT they move in with you, so the card in town and the traits page in the household are the same person. AUTO_CARD_N = n: n of them move in, one every 40 steps (a big household for the page shots))
+#ifndef AUTO_CARD_N
+#define AUTO_CARD_N 1
+#endif
+    { static int n_, pin = -1; n_++; int at = AUTO_CARD_AT + 40 * dbg_cardname;
+      if (pin < 0 && n_ >= at - 300) { int bd = 1 << 30; for (int j = 0; j < nlv; j++) { const Cit *c = &cits[lv[j]]; int dx = (c->x - sims[player].x) >> 4, dz = (c->z - sims[player].z) >> 4, d = dx * dx + dz * dz; if (c->zone == world_zone && c->mode != CM_GONE && c->pid == NOPID && d < bd) { bd = d; pin = lv[j]; } } }
+      if (pin >= 0 && !dbg_cardname && cits[pin].mode != CM_GONE && cits[pin].zone == world_zone) cur = pin;
+      if ((AUTO_CARD & 2) && n_ >= at && dbg_cardname < AUTO_CARD_N && pin >= 0 && cits[pin].mode != CM_GONE && nsims < MAX_SIMS) { marry_as(&cits[pin], 0); strncpy(dbg_cardwho[dbg_cardname & 3], sims[nsims - 1].bore.first, 15); dbg_cardname++; pin = -1; cur = -1; } }
 #endif
     fight_on = 0; { int ch = 0, co = 0; for (int j = 0; j < nlv; j++) { const Cit *c = &cits[lv[j]]; if (c->zone == world_zone && c->mode == CM_CHASE) { fight_on = 1; ch++; co += c->cop; } } dbg_rage[0] = ch; dbg_rage[1] = co; }
     for (int i = 0; i < nsims; i++) if (sims[i].rage) fight_on = 1;

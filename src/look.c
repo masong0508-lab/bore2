@@ -290,7 +290,7 @@ static const char *const nB[48] = { "WORTH", "FIELD", "SON", "MAN", "BY", "TON",
     "WOOD", "BROOK", "CROFT", "GATE", "HURST", "LAND", "MERE", "NESS", "PORT", "RIDGE", "STONE", "THWAITE", "VILLE", "WARD", "WOLD", "YARD", "BEE", "COTT", "DEN", "FALL", "HOLT", "LOW", "MOOR", "TREE" };
 static u32 nh(u32 v) { v ^= v >> 15; v *= 0x2c1b3c6du; v ^= v >> 12; v *= 0x297a2d39u; return v ^ (v >> 15); }
 void look_first_gen(u32 v, char *out) {   // a first name from a number: a real-ish pool name now and then, else built from sounds (some thousands of them)
-    v = nh(v); if ((v & 7) < 3) { strcpy(out, poolNm[(v >> 4) % 48u]); return; }
+    v = nh(v); if ((v & 7) < 3) { { u32 k = (v >> 4) % 48u; if (k >= 40) k -= 40; strcpy(out, poolNm[k]); return; } }   // (the pool has 40 names: the last 8 of 48 used to be NULL, an empty name, and on a console a read of address 0)
     int two = (v >> 4) & 1; v >>= 5;
     strcpy(out, ons[v & 31]); strcat(out, vow[(v >> 5) % 12u]); v >>= 9;
     if (two) { strcat(out, ons[v & 31]); strcat(out, vow[(v >> 5) % 12u]); v >>= 9; }

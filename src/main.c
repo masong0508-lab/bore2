@@ -761,6 +761,24 @@ static void life_update(int steps) {
 #ifndef AUTO_RWAIT
 #define AUTO_RWAIT 40
 #endif
+#if defined(AUTO_CARD) && defined(AUTO_CARD_ZONE)
+    { static int ac_; if (++ac_ == 60) { story_paid = 1; job_level = 2; travel_go(AUTO_CARD_ZONE); } }   // (test builds: out among the crowd townies of the island (1) or the town (2), for the card shots)
+#endif
+#if defined(AUTO_CARD) && (AUTO_CARD & 4)
+#ifndef AUTO_CARD_N
+#define AUTO_CARD_N 1
+#endif
+#ifndef AUTO_CARD_PG
+#define AUTO_CARD_PG 90
+#endif
+    { extern int dbg_cardname; static int pgt_; if (dbg_cardname >= AUTO_CARD_N && !pgt_) pgt_ = frame; if (pgt_ && pgt_ != -1 && frame >= pgt_ + AUTO_CARD_PG && state == ST_LIFE) { pgt_ = -1;
+#if AUTO_CARD & 16
+      panel_tab = 5; state = ST_PANEL;   // (16: the Life panel's TRAITS tab instead)
+#else
+      if ((ovl = ovl_load("CREATE.OVL"))) { ovl->open(2); state = ST_SPACE; }
+#endif
+    } }   // (the traits page, 90 frames after they moved in: LEFT picks the newest housemate)
+#endif
 #ifdef AUTO_RESORT
     { static int ar; ar++;
 #ifdef AUTO_ZONE
