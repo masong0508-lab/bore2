@@ -3309,8 +3309,17 @@ static void live_touch(int tx, int ty) {
 
 void systemMsgHandler(int bytes, void *user_data);
 static volatile u32 lat_down; static volatile int lat_tx, lat_ty, lat_press, lat_got; static u32 lat_prev; static volatile u32 vbl_n;
+#ifdef DSTEST
+// (D70) responsiveness meter, test builds only (tools/dsemu/uibench.py): every fresh press seen at a vblank (ui_seen), the ones the main loop acted on (ui_proc),
+// the vblanks from the press to the end of the pass that answered it (ui_lat_*), and how many vblanks each pass took (ui_stp[1..4]: 1 = a smooth 60, 2+ = a hitch)
+#define UI_MASK (KEY_A | KEY_B | KEY_X | KEY_Y | KEY_L | KEY_R | KEY_START | KEY_SELECT | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT | KEY_TOUCH)
+volatile int ui_seen, ui_proc, ui_lat_sum, ui_lat_max, ui_lat_n, ui_stp[5]; static volatile u32 ui_t0; static u32 ui_cur;
+#endif
 static void vb_latch(void) {   // every vblank, remember fresh presses, so a quick tap is never lost while a slow frame is being drawn
     vbl_n++; sky_vbl(); gf_kick(vbl_n); u32 k = keysCurrent(), n = k & ~lat_prev; lat_prev = k;
+#ifdef DSTEST
+    if (n & UI_MASK) { if (!ui_t0) ui_t0 = vbl_n; ui_seen += __builtin_popcount(n & UI_MASK); }
+#endif
     lat_down |= n & ~(u32)KEY_TOUCH;
     if (n & KEY_TOUCH) { lat_press = 1; lat_got = 0; }
     if ((k & KEY_TOUCH) && lat_press && !lat_got) { touchPosition t; touchRead(&t); if (t.px || t.py) { lat_tx = t.px; lat_ty = t.py; lat_got = 1; } }   // (D35: was touchReadXY(&t), which in libnds 1.8.2 takes no argument and returns the struct: t stayed garbage, so a tap shorter than one pass of the main loop landed at a random place)
@@ -3355,6 +3364,9 @@ int main(void) {
         int steps; { static u32 lastv; u32 v = vbl_n; steps = (int)(v - lastv); lastv = v; if (steps < 1) steps = 1; if (steps > 4) steps = 4; }   // (D39) game steps this pass: one a vblank
         scanKeys(); int held = keysHeld(), down = keysDown(); touchPosition tp = {0}; if (held & KEY_TOUCH) touchRead(&tp);
         { u32 ld = lat_down; lat_down = 0; down |= (int)ld; if (down & KEY_TOUCH) lat_press = 0; else if (lat_press && lat_got) { lat_press = 0; down |= KEY_TOUCH; tp.px = (u16)lat_tx; tp.py = (u16)lat_ty; } }
+#ifdef DSTEST
+        { int pc = __builtin_popcount((u32)down & UI_MASK); if (pc) { ui_proc += pc; ui_cur = ui_t0 ? ui_t0 : vbl_n; ui_t0 = 0; } ui_stp[steps > 4 ? 4 : steps]++; }
+#endif
         { static int tb_mode = -1, tb_wait;   // (D34) a new screen takes no touch until the stylus that opened it is lifted: a tap held over the switch to the Map no longer picks the block under it
           if (mode != tb_mode) { tb_mode = mode; tb_wait = 1; }
           if (tb_wait) { if (!(held & KEY_TOUCH) || (down & KEY_TOUCH)) tb_wait = 0; else held &= ~KEY_TOUCH; } }
@@ -3566,6 +3578,9 @@ int main(void) {
             for (int k = 0; k < 12; k++) { prof_ms[k] = (int)(prof_t[k] / 33514); prof_t[k] = 0; }
 #endif
             if (o_pm && mode != M_LIVE && mode != M_TITLE && mode != M_CAS) { u16 *keep = scr; scr = hud; char t[32]; rect(0, 182, 92, 10, C15(2, 2, 4)); sprintf(t, "%d fps %d quads", fps_now, polys_last / 2); text_box(0, 182, 92, 10, FS_SMALL, TXT, AL_C, t); scr = keep; } } }
+#ifdef DSTEST
+        if (ui_cur) { int l = (int)(vbl_n - ui_cur); ui_lat_sum += l; ui_lat_n++; if (l > ui_lat_max) ui_lat_max = l; ui_cur = 0; }
+#endif
         ui_n++; gframes = frames; swiWaitForVBlank(); frames += steps;
     }
     return 0;
