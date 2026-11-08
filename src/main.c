@@ -2130,11 +2130,11 @@ static const char *const optBlurb[O_N] = {
     "WHAT PEOPLE NEED, SHOWN OVER THEIR HEADS",
     "ON: PULLS THE VIEW IN WHEN SLOW. OFF: DRAWS ALL YOU PICKED",
 #ifdef BORE_DC
-    "THE DREAMCAST'S OWN CLOCK AND DATE. SLEEP AND WORK GO FAST, THE CLOCK STAYS REAL" };
+    "THE DREAMCAST'S OWN CLOCK AND DATE. SLEEP AND WORK GO FAST, THE CLOCK STAYS REAL",
 #else
     "THE PS1 HAS NO CLOCK: SET YOURS. SLEEP AND WORK GO FAST, THE CLOCK STAYS REAL",
 #endif
-    "FRIENDLY: ROUND TYPE. EXTRA CLEAR: WIDER, HEAVIER LETTERS, FOR EASY READING. CAPITALS: THE TEXT AS WRITTEN" };
+    "ROUND FRIENDLY TYPE, WIDER HEAVIER LETTERS FOR EASY READING, OR ALL CAPITALS" };
 static const u8 presets[4][O_N] = {   // LOW, MEDIUM, HIGH, ULTRA (the graphics knobs; the frame rate, dithering, camera and the counter are left be)
     { 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0 }, { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 },
     { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1 }, { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 } };
