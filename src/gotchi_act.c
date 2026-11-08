@@ -95,7 +95,7 @@ void gx_goals_roll(Toy *t) {   // a new day: the counts start again; a missed da
     if (dd || !(t->gflag & 128)) { memset(t->gp, 0, 6); t->gflag = 128; }
     t->gday = (u16)day_count;
 }
-static int cashup(Toy *t, int n) { if (owner(t) == player) { cash += tr_scale(&sims[player].tr, E_GOTCHI_GIFT, n); return 1; } return 0; }
+static int cashup(Toy *t, int n) { if (owner(t) == player) { cash += tr_scale(sims[player].tr, E_GOTCHI_GIFT, n); return 1; } return 0; }
 static void gpadd(Toy *t, int kind) {
     gx_goals_roll(t); if (t->gp[kind] < 250) t->gp[kind]++;
     for (int i = 0; i < 3; i++) if (gx_goal_type(t, i) == kind && t->gp[kind] == gTarget[kind] && !(t->gflag & (2 << i))) { t->gflag |= (u8)(2 << i); cashup(t, 10); gotchi_xp(t, 3); gx_fx = 2; strcpy(gmsg, "GOAL DONE! +$10"); gmsgOn = 1; }
@@ -325,7 +325,7 @@ int gx_egg_of(Toy *t, int slot, int mom, int dad) {   // an egg: kind, colour, t
 static int abit(int i) { return i < 16 ? i : i + 5; }   // (the first sixteen awards are bits 0-15, the tutorial owns 16-20, the newer ones 21 up)
 int gx_has(int i) { return (gach >> abit(i)) & 1; }
 void gx_award(int bit) {
-    if (nsims && tr_cheating(&sims[player].tr)) return;   // (a cheat trait: no awards)
+    if (nsims && tr_cheating(sims[player].tr)) return;   // (a cheat trait: no awards)
     int ab = abit(bit); if (gach & (1u << ab)) return; gach |= 1u << ab;
     if (!gotchi_toy(player)) return; int g = 50 + bit * 10; cash += g; char b[48]; sprintf(b, "BOREAGOTCHI AWARD! +$%d", g); sim_note(b); sim_gotchi_mood(player, 2);
 }

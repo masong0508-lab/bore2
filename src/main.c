@@ -1264,7 +1264,7 @@ static void map_island_draw(void) {   // the island on a card: you, the camp, th
 static int bus_pass_ok(void) { return day_count < bus_pass; }
 static void bus_trip(const Settle *st, int *fare, int *mins) {   // the ride to a town: by distance. The wait for the bus (one every 20 minutes) is on top
     int pbx = world_wbx + sim_tile_x(&sims[player]) / BM_BLK, pby = world_wby + sim_tile_y(&sims[player]) / BM_BLK, d = ABS(st->x - pbx) + ABS(st->y - pby);
-    *fare = bus_pass_ok() ? 0 : tr_scale(&sims[player].tr, E_FARE, MIN(15, 3 + d / 40)); *mins = 15 + MIN(150, d / 3) + ((clock_min % 20) < 4 ? 0 : 20 - clock_min % 20);
+    *fare = bus_pass_ok() ? 0 : tr_scale(sims[player].tr, E_FARE, MIN(15, 3 + d / 40)); *mins = 15 + MIN(150, d / 3) + ((clock_min % 20) < 4 ? 0 : 20 - clock_min % 20);
 }
 static void map_open(void) {
     if (world_zone == ZONE_ISLAND) { map_island_open(); return; }
@@ -1309,7 +1309,7 @@ static void map_update(void) {
     }
     if (PRESSED(PAD_CROSS)) {
         if (cash < 20) { sim_note("A TAXI RIDE COSTS $20"); audio_voice(VOICE_NAH); return; }
-        cash -= tr_scale(&sims[player].tr, E_FARE, 20);
+        cash -= tr_scale(sims[player].tr, E_FARE, 20);
         const Settle *st = bm_set(map_sel);
         taxi_to_block(st->x, st->y, -1, -1, st->name);
         state = ST_LIFE;
@@ -1393,7 +1393,7 @@ static void dir_update(void) {
     if (PRESSED(PAD_CIRCLE)) { dir_fam = -1; return; }
     if (PRESSED(PAD_CROSS)) {                      // go and knock: a taxi to their front door
         if (cash < 20) { sim_note("A TAXI RIDE COSTS $20"); audio_voice(VOICE_NAH); return; }
-        cash -= tr_scale(&sims[player].tr, E_FARE, 20);
+        cash -= tr_scale(sims[player].tr, E_FARE, 20);
         char sur[NAME_LEN], b[40]; pop_surname(dir_fam, sur); snprintf(b, sizeof b, "THE %sS' HOUSE", sur);
         taxi_to_block(f->bx, f->by, 8, 1, b);
         int h = world_home_find(ZONE_CITY, f->bx, f->by, f->unit);
@@ -1525,7 +1525,7 @@ static void homes_update(void) {
     if (PRESSED(PAD_CROSS)) buyask_open(a->bx, a->by);                         // (move in, or own it as a property)
     if (PRESSED(PAD_SQUARE)) {                                                 // go and see it first
         if (cash < 20) { audio_voice(VOICE_NAH); return; }
-        cash -= tr_scale(&sims[player].tr, E_FARE, 20); home_address(a->bx, a->by, ad); taxi_to_block(a->bx, a->by, -1, -1, ad); state = ST_LIFE;
+        cash -= tr_scale(sims[player].tr, E_FARE, 20); home_address(a->bx, a->by, ad); taxi_to_block(a->bx, a->by, -1, -1, ad); state = ST_LIFE;
     }
 }
 static void homes_draw(void) {
@@ -1726,7 +1726,7 @@ static void nhood_update(void) {
     if (nh_first && PRESSED(PAD_TRIANGLE)) { sim_note("THE MAN BASE IT IS. HOME SWEET HOME"); state = ST_LIFE; return; }   // (stay in the old place)
     if (!nh_first && PRESSED(PAD_SQUARE)) {        // go and see it first
         if (cash < 20) { audio_voice(VOICE_NAH); return; }
-        cash -= tr_scale(&sims[player].tr, E_FARE, 20); char ad[24]; home_address(nh_bx[nh_sel], nh_by[nh_sel], ad); taxi_to_block(nh_bx[nh_sel], nh_by[nh_sel], -1, -1, ad); state = ST_LIFE; return;
+        cash -= tr_scale(sims[player].tr, E_FARE, 20); char ad[24]; home_address(nh_bx[nh_sel], nh_by[nh_sel], ad); taxi_to_block(nh_bx[nh_sel], nh_by[nh_sel], -1, -1, ad); state = ST_LIFE; return;
     }
     if (!nh_first && PRESSED(PAD_SELECT)) { homes_open(); return; }   // (the plain list)
     if (PRESSED(PAD_CROSS)) {
@@ -3279,7 +3279,7 @@ static void story_taxi(void) {   // where the story's chapter sends you, by taxi
     int bi = -1, bd = 1 << 30;
     for (int i = 0; i < pop_nplace; i++) if (pop_place[i].lot == lot) { int d = ABS(pop_place[i].bx - bx0) + ABS(pop_place[i].by - by0); if (d < bd) { bd = d; bi = i; } }
     if (bi < 0) { sim_note("SAN BOREAS HAS NO PLACE LIKE THAT"); audio_voice(VOICE_NAH); return; }
-    cash -= tr_scale(&sims[player].tr, E_FARE, 20); state = ST_LIFE;
+    cash -= tr_scale(sims[player].tr, E_FARE, 20); state = ST_LIFE;
     char nm[24]; const Place *p = &pop_place[bi]; bm_place_name(p->lot, bm_hash(p->bx, p->by, 3), nm);
     taxi_to_block(p->bx, p->by, -1, -1, nm);
 }
@@ -3494,14 +3494,16 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
         else { ui_icon(12, 199, IC_HEART, UI_RED);
             ui_text(28, 201, 1, "CHAT, JOKE AND HUG TO MAKE FRIENDS. 50 IS A FRIEND.", UI_SOFT); }
     } else if (panel_tab == 5) {   // TRAITS: the chosen ones, the won ones, the lifetime wish
-        const TrState *tt = &s->tr; int n = 0;
+        const TrState *tt = s->tr; int n = 0;
         ui_section(12, y0, 294, "TRAITS");
         for (int k = 0; k < TR_PICK; k++) if (tt->tid[k]) { int y = y0 + 12 + n * 12; ui_icon(12, y - 2, tt->tid[k] >= TR_FIRST_CHEAT ? IC_BOLT : IC_SMILE, tt->tid[k] >= TR_FIRST_CHEAT ? UI_RED : UI_BLUE);
-            ui_text(28, y, 1, tt->tn[k], tt->tid[k] >= TR_FIRST_CHEAT ? UI_BADT : UI_INK); n++; }
+            ui_text(28, y, 1, tr_pn[k], tt->tid[k] >= TR_FIRST_CHEAT ? UI_BADT : UI_INK); n++; }
         if (!n) ui_text(12, y0 + 12, 1, "NONE CHOSEN. YOU PICK THEM WHEN YOU MAKE A BORE.", UI_SOFT);
         { int m = 0; ui_section(12, y0 + 76, 294, "WON");
-          for (int k = TR_PICK; k < TR_SLOTS; k++) if (tt->tid[k]) { int x = m % 2 ? 164 : 12, y = y0 + 88 + (m / 2) * 12; ui_icon(x, y - 2, IC_STAR, UI_AMBER); ui_textfit(x + 16, y, 128, tr_small_name(tt->tid[k]), UI_INK); m++; }
-          if (!m) ui_text(12, y0 + 88, 1, "DO THINGS MANY TIMES TO WIN MORE", UI_SOFT); }
+          for (int k = TR_PICK; k < TR_SLOTS; k++) if (tt->tid[k]) m++;
+          ui_icon(12, y0 + 86, IC_STAR, UI_AMBER);
+          if (m) { sprintf(b, "%d WON. X SHOWS THEM", m); ui_text(28, y0 + 88, 1, b, UI_INK); }
+          else ui_text(12, y0 + 88, 1, "DO THINGS MANY TIMES TO WIN MORE", UI_SOFT); }
         { int need, pr = tr_wish_prog(tt, &need); ui_section(12, y0 + 128, 294, "LIFETIME WISH");
           if (need) { ui_bar(12, y0 + 141, 200, 9, MIN(100, 100 * pr / need), UI_GREEN); sprintf(b, "%d OF %d", MIN(pr, need), need); ui_text(220, y0 + 141, 1, b, UI_INK); }
           else ui_text(12, y0 + 141, 1, "NO WISH CHOSEN YET", UI_SOFT);

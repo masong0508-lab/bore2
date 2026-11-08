@@ -316,9 +316,6 @@ static const EarnDef tr_earn[TR_NEARN] = {
     { 0, 0 },
 };
 static const u8 tr_ev_abs[EV_N] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };   // 1: the counter is a level or a state read off the game (progress = its value), 0: a count of events
-static const char tr_spool[] = "HOME COOK\0KITCHEN HERO\0REGULAR DINER\0FOOD CRITIC\0CAKE BOSS\0SNACK LORD\0SOUND SLEEPER\0DREAM WEAVER\0SQUEAKY CLEAN\0FUN MACHINE\0FILM BUFF\0BOOKWORM PRIME\0CAFFEINE CREW\0GYM REGULAR\0IRON LUNGS\0WATER RAT\0PHONE ADDICT\0PIZZA PRO\0FORAGER\0CHATTY CATHY\0SOCIAL STAR\0BABY WHISPERER\0CLASS CLOWN\0HUG MACHINE\0SMOOTH MOVER\0SWEET TALKER\0STEADY EARNER\0CAREER CLIMBER\0HONOUR ROLL\0CAKE LOVER\0LUCKY STREAK\0LONG HAUL\0VETERAN\0MONEY MAKER\0TYCOON\0NEST EGG\0WELL LIKED\0BIG FAMILY\0GLOBE TROTTER\0RING MASTER\0ARCADE REGULAR\0PARTY HOST\0HOME OWNER\0SCHOLAR MIND\0SPACE CADET\0ROAD WARRIOR\0SOULMATE FOUND\0EGG KEEPER\0ELDER KEEPER\0PET PARENT\0BAND VETERAN\0\0\0\0\0\0CASH KING\0LADDER LEGEND\0LANDLORD PRIDE\0FAMILY GLOW\0CHAMP SPIRIT\0MASTER CHEF\0IRON BODY\0BIG BRAIN\0SOCIAL GLUE\0MAKER MIND\0GREEN FINGERS\0WHEEL WIZARD\0GAME LEGEND\0PET HERO\0WORLD WALKER\0HEART WINNER\0PARTY SOUL\0RICH LIFE\0LUCKY SOUL\0CALM MIND\0STAR POWER\0SOUND BODY\0NIGHT HERO\0WISE ELDER\0";   // earned and reward trait names, packed (resident, for the toast and the Life page)
-static const u16 tr_soff[TR_NEARN + TR_NRWD] = { 0, 10, 23, 37, 49, 59, 70, 84, 97, 111, 123, 133, 148, 162, 174, 185, 195, 208, 218, 226, 239, 251, 266, 278, 290, 303, 316, 330, 345, 357, 368, 381, 391, 399, 411, 418, 427, 438, 449, 463, 475, 490, 501, 512, 525, 537, 550, 565, 576, 589, 600, 613, 614, 615, 616, 617, 618, 628, 642, 657, 669, 682, 694, 704, 714, 726, 737, 751, 764, 776, 785, 798, 811, 822, 832, 843, 853, 864, 875, 886 };
-#define tr_sname(i) (tr_spool + tr_soff[i])
 // the earned and reward traits' effects (hook, tier) x3: resident, so a trait can be won in the middle of the game
 static const u8 tr_small[TR_NEARN + TR_NRWD][6] = {
     { 26, 15, 0, 2, 2, 0 },   // Home Cook
@@ -403,6 +400,7 @@ static const u8 tr_small[TR_NEARN + TR_NRWD][6] = {
     { 104, 35, 0, 252, 2, 0 },   // Wise Elder
 };
 #ifdef TR_BIG
+#define tr_sname(i) (tr_names + tr_nameoff[(i) < TR_NEARN ? TR_FIRST_EARN + (i) : TR_FIRST_RWD + (i) - TR_NEARN])   // earned and reward names, from the big table
 // ---- big (TRAITS.OVL, the host test): every trait's effects, names, category
 static const u8 tr_eff[TR_MAXID + 1][6] = {   // hook x3, tier x3 (s8)
     { 0, 0, 0, 0, 0, 0 },

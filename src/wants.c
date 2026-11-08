@@ -111,7 +111,7 @@ static void gain(Sim *s, int pts) {
         sim_proud(s);
         if ((int)(s - sims) == player) sim_note("PLATINUM! NOTHING CAN BRING YOU DOWN");
     }
-    if (pts > 0) pts = tr_scale(&s->tr, E_ASP_GAIN, pts);
+    if (pts > 0) pts = tr_scale(s->tr, E_ASP_GAIN, pts);
     s->asp_pts += pts; if (s->asp_pts > ASP_MAX) s->asp_pts = ASP_MAX; if (s->asp_pts < 0) s->asp_pts = 0; }
 
 void wants_event(Sim *s, int kind, int arg) {
@@ -142,7 +142,7 @@ void wants_minute(Sim *s) {
     // decay (per game hour: platinum 250, gold 190, green 60, red 90; it slows near the bottom)
     static const u8 dec[4] = { 90, 60, 190, 250 };
     int lv = wants_level(s);
-    if (((clock_min + (int)(s - sims)) & 3) == 0) { int d = dec[lv]; if (s->asp_pts < 600) d = 20; s->asp_pts -= tr_scale(&s->tr, E_ASP_KEEP, (d + 7) / 15); if (s->asp_pts < 0) s->asp_pts = 0; }
+    if (((clock_min + (int)(s - sims)) & 3) == 0) { int d = dec[lv]; if (s->asp_pts < 600) d = 20; s->asp_pts -= tr_scale(s->tr, E_ASP_KEEP, (d + 7) / 15); if (s->asp_pts < 0) s->asp_pts = 0; }
     for (int i = 0; i < 4; i++) { if (s->want[i].age < 60000) s->want[i].age++; if (s->want[i].age >= 2 * 24 * 60) { s->want[i].kind = 0; roll_want(s, i); } }   // two days unfulfilled: forgotten
     // the wants the clock can see on its own
     for (int i = 0; i < 4; i++) {

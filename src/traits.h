@@ -17,19 +17,23 @@ enum { TF_CHEAT = 1, TF_CHON = 2, TF_BASE = 4 };
 typedef struct {
     u16 tid[TR_SLOTS];
     s8  fx[E_N];                 // the sum of every effect's tier, by hook
-    u8  ev[EV_N];                // lifetime counters (saturate at 255)
     u8  ch[6]; s8 cm[6];         // the cheat traits' effects (kept apart: the OPTIONS switch takes them out of fx and puts them back)
-    char tn[TR_PICK][TR_NLEN];   // the chosen traits' names (the Life page shows them without the big table)
     u8  wish, wbase, title, f;   // lifetime wish 1..WISH_N (0 none), its counter at the start, the last wish done, flags
     u16 skp[9]; u8 skr[9]; u8 ageacc; u8 nacc[7]; s8 mc;   // skill gain watch, the aging and need-fall remainders
 } TrState;
 
+extern u8 tr_ev_a[EV_N];          // lifetime counters (saturate at 255), one family-wide set: the Bores that have traits count into it
+extern char tr_pn[TR_PICK][TR_NLEN];   // the names of the player's chosen traits (the Life panel shows them without the big table)
 extern u8 tr_cheat_opt;          // OPTIONS > GAME > CHEAT TRAITS: 1 on
 extern u8 tr_cheat_ok;           // the confirm was said yes once
 extern u8 tr_wdone[8];           // wishes done (a bit each), this family
 extern u32 tr_earned;
 extern u16 tr_recent[8];         // the traits picked last (creator: RECENT)
 extern u16 tr_ed_pick[TR_PICK];  // the creator's picks while it runs
+// Only a Bore made in the creator has traits: Sim.tr points at one of two states in tr_pool, or at tr_null (all zero, never written) for everyone else.
+#define TR_NPOOL 2
+extern TrState tr_null, tr_pool[TR_NPOOL], *tr_stage_p;
+TrState *tr_alloc(void);          // a free state, cleared; tr_null when both are taken
 extern u8 tr_ed_wish, tr_staged; // ... the wish, and 1: sims[MAX_SIMS - 1].tr holds a new Bore's traits (main.c moves them to the Bore it adds)            // dollars earned in all (the income watch)
 
 // ---- the hooks: one array read each ----
@@ -47,7 +51,6 @@ void tr_fx_add(TrState *t, int hook, int tier);                    // add one ef
 void tr_apply_id(TrState *t, int id, const u8 *hooks, const s8 *tiers);   // a trait's three effects (cheats are kept apart)
 int  tr_give(TrState *t, int id);                                   // an earned / reward trait: into a free slot 5..9, effects on
 void tr_cheat_refresh(TrState *t, int now_on);                      // the OPTIONS switch changed: cheat effects out or in
-const char *tr_small_name(int id);
 void tr_ev_quiet(TrState *t, int ev, int v);   // a counter takes a value read off the game without winning anything (the start of a life)
 int  tr_ev(TrState *t, int ev, int n);                             // count n events (returns the new count)
 void tr_ev_set(TrState *t, int ev, int v);                         // a level / state read off the game: raised, never lowered

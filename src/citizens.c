@@ -758,7 +758,7 @@ COLD static int fam_punch(void) {
     Sim *p = &sims[player], *s = &sims[i];
     if (pl_cd > 0) return 1;
     pl_cd = 18; p->gait.wave = 14; p->yaw = yaw_to(s->x - p->x, s->z - p->z);
-    fam_hp[i] -= tr_scale(&p->tr, E_FIGHT_DMG, 9 + rn(8) + (dojo_belt(p) + tr_add(&p->tr, E_FIGHT_BELT)) * 2); s->gait.squash = -12; heat_add(5); audio_voice(VOICE_SHRIEK);
+    fam_hp[i] -= tr_scale(p->tr, E_FIGHT_DMG, 9 + rn(8) + (dojo_belt(p) + tr_add(p->tr, E_FIGHT_BELT)) * 2); s->gait.squash = -12; heat_add(5); audio_voice(VOICE_SHRIEK);
     if (fam_hp[i] <= 0) { s->rage = 0; s->rage_ko = 1; fam_ko[i] = 600; s->gait.sleep = 1; s->gait.amp = 0; sim_say_to(s, "I'M TELLING MOM..."); audio_voice(VOICE_CRY); }
     else sim_say_to(s, rn(2) ? "OW!" : "HOW COULD YOU!");
     return 1;
@@ -776,7 +776,7 @@ COLD static void fam_step(void) {   // the family members who are after you (sim
             if (body_free(s->x + mx, s->z + mz, in)) { s->x += mx; s->z += mz; } else if (body_free(s->x + mx, s->z, in)) s->x += mx; else if (body_free(s->x, s->z + mz, in)) s->z += mz;
             s->gait.amp = 4096; s->gait.run = 1; s->gait.phase = (s->gait.phase + 220) & 4095; }
         else { s->gait.amp = 0; if (fam_cd[i] > 0) fam_cd[i]--; else {
-            pl_hp -= tr_scale(&p->tr, E_FIGHT_DEF, 3 + rn(5)); fam_cd[i] = 45; s->gait.wave = 14; p->gait.squash = -10; audio_voice(VOICE_GROAN);
+            pl_hp -= tr_scale(p->tr, E_FIGHT_DEF, 3 + rn(5)); fam_cd[i] = 45; s->gait.wave = 14; p->gait.squash = -10; audio_voice(VOICE_GROAN);
             if (pl_hp <= 0) { pl_hp = 60; fam_calm(); heat = 0; for (int k = 0; k < NCIT; k++) if (cits[k].mode == CM_CHASE || cits[k].mode == CM_STOP) { cits[k].mode = CM_IDLE; cits[k].t = 120; }
                 sim_note("KNOCKED OUT BY FAMILY. AWKWARD."); sim_say_to(s, "AND STAY OUT OF MY ROOM!"); audio_voice(VOICE_CRY); } } }
     }
@@ -830,7 +830,7 @@ COLD int citizens_punch(void) {
     p->gait.wave = 14;
     int dx = c->x - p->x, dz = c->z - p->z;
     p->yaw = yaw_to(dx, dz);
-    int dmg = tr_scale(&p->tr, E_FIGHT_DMG, 9 + rn(8) + (dojo_belt(p) + tr_add(&p->tr, E_FIGHT_BELT)) * 2);   // (the dojo belt: a black belt hits a good deal harder)
+    int dmg = tr_scale(p->tr, E_FIGHT_DMG, 9 + rn(8) + (dojo_belt(p) + tr_add(p->tr, E_FIGHT_BELT)) * 2);   // (the dojo belt: a black belt hits a good deal harder)
     c->hp = (u8)MAX((int)c->hp - dmg, 0);
     c->gait.squash = -12;
     { int d = MAX(ABS(dx) + ABS(dz), 1), kx = dx * 40 / d, kz = dz * 40 / d, in = indoors_at(c->x, c->z);   // a shove back
@@ -842,7 +842,7 @@ COLD int citizens_punch(void) {
         int ex = q->x - p->x, ez = q->z - p->z; if (ex * ex + ez * ez < 3 * TILE * 3 * TILE && rn(100) < 30 + heat / 2) { q->mode = CM_CHASE; q->hp = (u8)(55 + rn(35)); q->cd = 30; say(q, "THAT'S IT!"); heat_add(10); } }
     if (c->hp == 0) {
         c->mode = CM_KO; c->t = 900; c->gait.sleep = 1; c->gait.amp = 0;
-        int loot = tr_scale(&p->tr, E_LOOT, 5 + rn(21)); cash += loot;
+        int loot = tr_scale(p->tr, E_LOOT, 5 + rn(21)); cash += loot;
         char b[32]; sprintf(b, "KO! +$%d", loot); sim_note(b);
         rel_add(c, -30); say(c, "OOF..."); audio_voice(VOICE_WIN); heat_add(15);
         if (hostile_in_reach() < 0) fight_on = 0;
@@ -1283,7 +1283,7 @@ COLD static void fight_one(Cit *c, int dx, int dz, int d2, int in) {   // (one s
             sim_arrest(how_); audio_voice(VOICE_CRY);
         } else if (!c->cd) {
             int dmg = (c->stage == AG_ELDER ? 2 : 3) + rn(5) + (c->cop ? 3 : 0);
-            pl_hp -= tr_scale(&p->tr, E_FIGHT_DEF, dmg); c->cd = 45; c->gait.wave = 14; p->gait.squash = -10;
+            pl_hp -= tr_scale(p->tr, E_FIGHT_DEF, dmg); c->cd = 45; c->gait.wave = 14; p->gait.squash = -10;
             audio_voice(VOICE_GROAN);
             if (pl_hp <= 0) {
                 int lost = MIN((int)cash, 60); cash -= lost; pl_hp = 60;
@@ -1641,7 +1641,7 @@ COLD void citizens_update(int steps) {   // (built small: the work is in step_on
                 if (c->zone != world_zone || indoors_at(c->x, c->z) || (c->mode != CM_IDLE && c->mode != CM_WALK)) continue;
                 place_street(c, p->x, p->z, p->x / TILE, (-p->z) / TILE, 6); c->mode = CM_IDLE; c->t = 0; c->flg &= (u8)~F_HI; meet(c); c->wv = 0; put++; } }
 #endif
-        if (!fight_on && pl_hp < 100 && !(tick & 63)) pl_hp = MIN(100, pl_hp + 1 + tr_pct(&sims[player].tr, E_FIGHT_REGEN) / 100);   // you heal about a point a second
+        if (!fight_on && pl_hp < 100 && !(tick & 63)) pl_hp = MIN(100, pl_hp + 1 + tr_pct(sims[player].tr, E_FIGHT_REGEN) / 100);   // you heal about a point a second
         fam_step();
         if (!(tick & 31)) crowd_react(0);
     }

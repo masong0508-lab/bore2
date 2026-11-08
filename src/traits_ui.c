@@ -86,7 +86,7 @@ static void wbuild(void) { nw = 0; for (int w = 1; w <= WISH_N; w++) if (wcat < 
 
 static void c_open(int inlife) {
     memset(tr_ed_pick, 0, sizeof tr_ed_pick); tr_ed_wish = 0; msgt = 0; view = V_CAT; tcat = 0; ccat = -1; helper = H_NONE; filt = -1; sel = top = wsel = wtop = 0; wcat = -1;
-    if (inlife && nsims) { const TrState *t = &sims[player].tr; for (int i = 0; i < TR_PICK; i++) tr_ed_pick[i] = t->tid[i]; tr_ed_wish = t->wish; }
+    if (inlife && nsims) { const TrState *t = sims[player].tr; for (int i = 0; i < TR_PICK; i++) tr_ed_pick[i] = t->tid[i]; tr_ed_wish = t->wish; }
     build(); wbuild();
 }
 static int rep(int held, int pr, int bit_dn, int bit_up) {   // a move with the pad, repeating while it is held
@@ -218,9 +218,12 @@ static void rebuild(TrState *t) {   // every effect again, from the ids
     }
 }
 static void c_commit(int inlife) {
-    TrState *t = inlife && nsims ? &sims[player].tr : &sims[MAX_SIMS - 1].tr;
-    if (!(inlife && nsims)) { tr_clear(t); tr_staged = 1; }
-    for (int i = 0; i < TR_PICK; i++) { t->tid[i] = tr_ed_pick[i]; t->tn[i][0] = 0; if (tr_ed_pick[i]) { strncpy(t->tn[i], nameof(tr_ed_pick[i]), TR_NLEN - 1); t->tn[i][TR_NLEN - 1] = 0; } }
+    TrState *t;
+    if (inlife && nsims) { if (sims[player].tr == &tr_null) sims[player].tr = tr_alloc(); t = sims[player].tr; }
+    else { tr_stage_p = 0; t = tr_stage_p = tr_alloc(); tr_staged = 1; }
+    if (t == &tr_null) return;
+    int pn = !inlife || !nsims || sims[player].tr == t;   // (the names on the Life panel are the player's)
+    for (int i = 0; i < TR_PICK; i++) { t->tid[i] = tr_ed_pick[i]; if (pn) { tr_pn[i][0] = 0; if (tr_ed_pick[i]) { strncpy(tr_pn[i], nameof(tr_ed_pick[i]), TR_NLEN - 1); tr_pn[i][TR_NLEN - 1] = 0; } } }
     rebuild(t);
     int w = tr_ed_wish ? tr_ed_wish : 1;
     if (w != t->wish) tr_wish_pick(t, w);
@@ -231,7 +234,7 @@ const CasPick tr_cas = { c_open, c_update, c_draw, c_commit, c_sum, c_hint };
 static int pg_tab, pg_sel, pg_top, pg_n;
 static u16 pg_id[TR_SLOTS];
 static u8 seen_set[TR_NEARN / 8 + 1];
-static const TrState *pg_t(void) { return &sims[player].tr; }
+static const TrState *pg_t(void) { return sims[player].tr; }
 static int small_i(int id) { return id >= TR_FIRST_RWD ? TR_NEARN + id - TR_FIRST_RWD : id - TR_FIRST_EARN; }
 static int shown_has(int i) { return seen_set[i >> 3] >> (i & 7) & 1; }
 static void seen_mark(int i) { seen_set[i >> 3] |= (u8)(1 << (i & 7)); }
@@ -248,7 +251,7 @@ int tr_page_update(int held, int pr) {
     else {
         if (lr) { wcat += lr; if (wcat < -1) wcat = NCATS - 1; if (wcat >= NCATS) wcat = -1; wsel = wtop = 0; wbuild(); }
         if (mv && nw) { wsel = (wsel + nw + mv) % nw; wbuild(); }
-        if ((pr & PAD_CROSS) && nw) { int w = wl[wsel]; if (tr_wdone[w >> 3] >> (w & 7) & 1) audio_voice(VOICE_NAH); else { tr_wish_pick(&sims[player].tr, w); audio_voice(VOICE_YAHOO); } }
+        if ((pr & PAD_CROSS) && nw) { int w = wl[wsel]; if (tr_wdone[w >> 3] >> (w & 7) & 1) audio_voice(VOICE_NAH); else { tr_wish_pick(sims[player].tr, w); audio_voice(VOICE_YAHOO); } }
     }
     return 1;
 }
@@ -267,7 +270,7 @@ void tr_page_draw(void) {
         for (int i = pg_top; i < pg_n && i < pg_top + 6; i++) { int id = pg_id[i], y = y0 + (i - pg_top) * 14, s = i == pg_sel, ch = id >= TR_FIRST_CHEAT;
             if (s) ui_round(10, y, 138, 13, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
             ui_icon(12, y, id < TR_FIRST_EARN ? (ch ? IC_BOLT : IC_SMILE) : IC_STAR, ch ? UI_RED : id < TR_FIRST_EARN ? UI_BLUE : UI_AMBER);
-            ui_textfit(28, y + 3, 116, id < TR_FIRST_EARN || ch ? nameof(id) : tr_small_name(id), ch ? UI_BADT : s ? UI_BLUE2 : UI_INK); }
+            ui_textfit(28, y + 3, 116, nameof(id), ch ? UI_BADT : s ? UI_BLUE2 : UI_INK); }
         if (!pg_n) ui_wrapc(10, y0 + 10, 138, 4, "NO TRAITS YET. PICK THEM IN CREATE A BORE. DO THINGS MANY TIMES AND YOU WIN MORE.", UI_SOFT);
         if (pg_n) { int id = pg_id[pg_sel], ch = id >= TR_FIRST_CHEAT; ui_section(156, y0 - 2, 150, "WHAT IT DOES");
             if (id < TR_FIRST_EARN || ch) fmt_desc(id, b, sizeof b); else fmt_eff(tr_small[small_i(id)], b, sizeof b);
@@ -279,10 +282,10 @@ void tr_page_draw(void) {
         for (int shown = 0; shown < 3; shown++) {   // the three earned traits nearest to being won
             int best = -1, bp = -1;
             for (int i = 0; i < TR_NEARN; i++) { if (!tr_sname(i)[0] || shown_has(i)) continue; int id = TR_FIRST_EARN + i, own = 0; for (int k = 0; k < TR_SLOTS; k++) own |= t->tid[k] == id; if (own) continue;
-                int p = 100 * t->ev[tr_earn[i].ev] / (tr_earn[i].thr ? tr_earn[i].thr : 1); if (p > bp) { bp = p; best = i; } }
+                int p = 100 * tr_ev_a[tr_earn[i].ev] / (tr_earn[i].thr ? tr_earn[i].thr : 1); if (p > bp) { bp = p; best = i; } }
             if (best < 0) break;
             { int y = y0 + 102 + shown * 17; const EarnDef *e = &tr_earn[best]; ui_textfit(10, y, 110, tr_sname(best), UI_INK); ui_bar(124, y + 1, 120, 7, MIN(100, bp), UI_GREEN);
-              snprintf(b, sizeof b, "%d/%d", MIN(t->ev[e->ev], e->thr), e->thr); ui_text(250, y, 1, b, UI_SOFT); ui_textfit(10, y + 8, 230, tr_ev_name[e->ev], UI_SOFT); }
+              snprintf(b, sizeof b, "%d/%d", MIN(tr_ev_a[e->ev], e->thr), e->thr); ui_text(250, y, 1, b, UI_SOFT); ui_textfit(10, y + 8, 230, tr_ev_name[e->ev], UI_SOFT); }
             seen_mark(best);
         }
     } else {
@@ -297,7 +300,7 @@ void tr_page_draw(void) {
             snprintf(b, sizeof b, "GOAL %d: %s", d->thr, tr_ev_name[d->ev]); ui_wrap(140, y0 + 46, 164, 2, b, UI_SOFT);
             prize(d, b, sizeof b); ui_textfit(140, y0 + 68, 164, b, UI_GOLDT);
             if (dn) ui_badge_i(140, y0 + 84, IC_TICK, "DONE", UI_GREEN, UI_WHITE);
-            else { int need, pr; if (t->wish == w) { pr = tr_wish_prog(t, &need); ui_text(140, y0 + 84, 1, "YOUR WISH NOW", UI_GOLDT); } else { need = d->thr; pr = t->ev[d->ev]; ui_text(140, y0 + 84, 1, "X CHOOSES THIS WISH", UI_BLUE2); }
+            else { int need, pr; if (t->wish == w) { pr = tr_wish_prog(t, &need); ui_text(140, y0 + 84, 1, "YOUR WISH NOW", UI_GOLDT); } else { need = d->thr; pr = tr_ev_a[d->ev]; ui_text(140, y0 + 84, 1, "X CHOOSES THIS WISH", UI_BLUE2); }
                 ui_bar(140, y0 + 98, 120, 8, MIN(100, 100 * pr / (need ? need : 1)), UI_GREEN); snprintf(b, sizeof b, "%d/%d", MIN(pr, need), need); ui_text(266, y0 + 97, 1, b, UI_INK); } }
     }
     ui_hints(160, top + 194, pg_tab ? "X CHOOSE|L1 R1 TAB|O BACK" : "UP DOWN LOOK|L1 R1 TAB|O BACK", 1);

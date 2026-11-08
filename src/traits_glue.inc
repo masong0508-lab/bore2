@@ -7,10 +7,10 @@
 #include <stddef.h>
 
 void tr_toast(const char *s) { sim_note(s); }
-static int char_lvl(const Sim *s) { return CLAMP(SKL(s->skill_char) + tr_add(&s->tr, E_CHARM), 0, 20); }   // E_CHARM: the charisma it acts with
-static int luck_roll(Sim *s, int base) { int ok = (int)(look_rand() % 100) < tr_chance(&s->tr, E_LUCK, base); if (ok && base < 50) tr_ev(&s->tr, EV_LUCKY, 1); return ok; }   // E_LUCK
+static int char_lvl(const Sim *s) { return CLAMP(SKL(s->skill_char) + tr_add(s->tr, E_CHARM), 0, 20); }   // E_CHARM: the charisma it acts with
+static int luck_roll(Sim *s, int base) { int ok = (int)(look_rand() % 100) < tr_chance(s->tr, E_LUCK, base); if (ok && base < 50) tr_ev(s->tr, EV_LUCKY, 1); return ok; }   // E_LUCK
 void tr_reward(TrState *t, int kind, int arg, int wish) {   // a lifetime wish is done: its reward changes something real
-    Sim *s = (Sim *)((char *)t - offsetof(Sim, tr));
+    Sim *s = &sims[player]; for (int i = 0; i < nsims; i++) if (sims[i].tr == t) s = &sims[i];
     char b[40];
     switch (kind) {
         case RK_CASH: cash += arg; snprintf(b, sizeof b, "LIFETIME WISH DONE! +$%d", arg); break;
@@ -24,15 +24,15 @@ void tr_reward(TrState *t, int kind, int arg, int wish) {   // a lifetime wish i
     (void)wish; sim_note(b); sim_moodlet(s, ML_PROUD); audio_voice(VOICE_WIN);
 }
 static int need_fall(Sim *s, int n, int r, int np) {   // E_DEC_*: the fall of need n this step. r: the plain rate, np: the NEEDS option. In 16ths with the rest carried, so 3 a step can still change by 10%
-    int p = tr_pct(&s->tr, E_DEC0 + n);
-    if (n == N_REST) p += tr_pct(&s->tr, is_night() ? E_NIGHT_REST : E_DAY_REST);
+    int p = tr_pct(s->tr, E_DEC0 + n);
+    if (n == N_REST) p += tr_pct(s->tr, is_night() ? E_NIGHT_REST : E_DAY_REST);
     if (!p) return r * np / 100;
     if (p < -100) p = -100;
-    int r16 = r * np * 16 / 100 * (100 + p) / 100 + s->tr.nacc[n];
-    s->tr.nacc[n] = (u8)(r16 & 15); return r16 >> 4;
+    int r16 = r * np * 16 / 100 * (100 + p) / 100 + s->tr->nacc[n];
+    s->tr->nacc[n] = (u8)(r16 & 15); return r16 >> 4;
 }
 static __attribute__((noinline)) int trait_mood(const Sim *s) {   // the mood points from traits: flat, by the time, the place, the weather, the company
-    const TrState *t = &s->tr; int m = tr_add(t, E_MOOD_BASE), night = is_night(), out = sim_outdoors(s);
+    const TrState *t = s->tr; int m = tr_add(t, E_MOOD_BASE), night = is_night(), out = sim_outdoors(s);
     m += tr_add(t, night ? E_NIGHT_MOOD : E_DAY_MOOD);
     m += tr_add(t, out ? E_OUTDOORS : E_INDOORS);
     if (s->lvl > 0) m += tr_add(t, E_FEAR_HEIGHT);
@@ -48,13 +48,13 @@ static const u8 actHook[ACT_GATHER + 1] = { 0, E_ACT_EAT, 0, E_ACT_SLEEP, E_ACT_
 static void need_gains(Sim *s, const int *snap) {   // E_GAIN_*, E_ACT_*: what an action put into a need this step, scaled
     int ah = actHook[s->action];
     for (int i = 0; i < 7; i++) { int d = s->need[i] - snap[i]; if (d <= 0) continue;
-        int p = tr_pct(&s->tr, E_GAIN0 + i) + (ah ? tr_pct(&s->tr, ah) : 0); if (!p) continue; if (p < -100) p = -100;
+        int p = tr_pct(s->tr, E_GAIN0 + i) + (ah ? tr_pct(s->tr, ah) : 0); if (!p) continue; if (p < -100) p = -100;
         s->need[i] = snap[i] + d * (100 + p) / 100; }
 }
 static int skl_of(int raw) { return SKL(raw); }
 static const u16 skOff[9] = { offsetof(Sim, skill_cook), offsetof(Sim, skill_body), offsetof(Sim, skill_fun), offsetof(Sim, skill_logic), offsetof(Sim, skill_char), offsetof(Sim, skill_creat), offsetof(Sim, skill_mech), offsetof(Sim, skill_farm), offsetof(Sim, skill_band) };
 static __attribute__((noinline)) void tr_watch(Sim *s, int si) {   // every 8th step: skill gains scaled (E_SK_*), the skill levels and the game's own numbers counted for the wishes
-    TrState *t = &s->tr;
+    TrState *t = s->tr;
     for (int k = 0; k < 9; k++) {
         int *pp = (int *)((char *)s + skOff[k]), raw = *pp;
         if (k == 8) { raw = 0; for (int b = 0; b < BS_N; b++) raw += s->skill_band[b]; }
@@ -79,13 +79,19 @@ static long tr_cash_prev = -1;
 static void tr_cash_watch(void) {   // E_INCOME, E_SPEND: whatever changed the money since the last look, more or less of it
     if (tr_cash_prev == -1 || !nsims) { tr_cash_prev = cash; return; }
     long d = cash - tr_cash_prev; if (!d) return;
-    const TrState *t = &sims[player].tr; int p;
+    const TrState *t = sims[player].tr; int p;
     if (d > 0) { tr_earned = MIN(tr_earned + (u32)d, 4000000000u); p = tr_pct(t, E_INCOME); }
     else p = tr_pct(t, E_SPEND);
     if (p) { if (p < -100) p = -100; cash += d * p / 100; if (cash < 0) cash = 0; }
     tr_cash_prev = cash;
 }
-static int tr_ev_player(int ev) { return nsims ? tr_ev(&sims[player].tr, ev, 1) : 0; }
-void tr_new_life(void) { tr_cash_prev = -1; memset(tr_wdone, 0, sizeof tr_wdone); tr_earned = 0; }
-void sim_cheat_opt(int on) { tr_cheat_opt = (u8)on; for (int i = 0; i < nsims; i++) tr_cheat_refresh(&sims[i].tr, on); }
-void tr_take_stage(Sim *s) { if (!tr_staged) return; tr_staged = 0; if (s != &sims[MAX_SIMS - 1]) { s->tr = sims[MAX_SIMS - 1].tr; tr_clear(&sims[MAX_SIMS - 1].tr); } tr_cheat_refresh(&s->tr, tr_cheat_opt); }
+static int tr_ev_player(int ev) { return nsims ? tr_ev(sims[player].tr, ev, 1) : 0; }
+TrState *tr_alloc(void) {   // a pool state no Sim uses (a Bore that left frees its own)
+    for (int k = 0; k < TR_NPOOL; k++) { TrState *p = &tr_pool[k]; int used = p == tr_stage_p;
+        for (int i = 0; i < nsims; i++) used |= sims[i].tr == p;
+        if (!used) { tr_clear(p); return p; } }
+    return &tr_null;
+}
+void tr_new_life(void) { memset(tr_pool, 0, sizeof tr_pool); memset(tr_ev_a, 0, sizeof tr_ev_a); memset(tr_pn, 0, sizeof tr_pn); tr_stage_p = 0; tr_staged = 0; tr_cash_prev = -1; memset(tr_wdone, 0, sizeof tr_wdone); tr_earned = 0; }
+void sim_cheat_opt(int on) { tr_cheat_opt = (u8)on; for (int i = 0; i < nsims; i++) tr_cheat_refresh(sims[i].tr, on); }
+void tr_take_stage(Sim *s) { if (!tr_staged) { if (s->tr == &tr_null) s->tr = tr_alloc(); return; } tr_staged = 0; if (tr_stage_p) { s->tr = tr_stage_p; tr_stage_p = 0; tr_cheat_refresh(s->tr, tr_cheat_opt); } }

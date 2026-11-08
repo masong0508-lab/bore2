@@ -64,7 +64,7 @@ typedef struct {
     u8   grade;             // school: 0..100 (85 an A)
     u8   homework;          // 1: today's homework is done
     u8   errand;            // (the AI) what it is walking over to do: 1..5 look after a baby
-    TrState tr;             // traits, their summed effects, lifetime counters and the wish (traits.h)
+    TrState *tr;             // traits, their summed effects, lifetime counters and the wish (traits.h)
 } Sim;
 
 extern Sim  sims[MAX_SIMS];

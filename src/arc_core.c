@@ -64,7 +64,7 @@ void core_fx_draw(void) {
 void ini_str(u32 e, char *o) { for (int i = 0; i < 3; i++) { int v = (e >> (17 + i * 5)) & 31; o[i] = (char)(v >= 1 && v <= 26 ? 'A' + v - 1 : '-'); } o[3] = 0; }
 int hs_rank(int g, int sc) { for (int i = 0; i < 3; i++) if (sc > SC(arc.hs[g][i])) return i; return -1; }
 void hs_put(int g, int k, int sc, const char *ini) {
-    if (tr_cheating(&sims[player].tr)) return;   // no high scores with a cheat trait
+    if (tr_cheating(sims[player].tr)) return;   // no high scores with a cheat trait
     for (int i = 2; i > k; i--) arc.hs[g][i] = arc.hs[g][i - 1];
     u32 e = (u32)MIN(sc, 0x1FFFF); for (int i = 0; i < 3; i++) e |= (u32)((ini[i] - 'A' + 1) & 31) << (17 + i * 5);
     arc.hs[g][k] = e;
@@ -72,7 +72,7 @@ void hs_put(int g, int k, int sc, const char *ini) {
 const char *const medal_nm[20] = { "WELCOME", "FIRST GAME", "25 GAMES", "100 GAMES", "ALL 14 GAMES", "A HIGH SCORE", "HALF THE WALL", "JACKPOT 40", "FIRST PRIZE",
     "NEW OUTFIT", "A PET", "AN EGG", "WON A CHALLENGE", "BEAT A RIVAL", "FAMILY FUN", "COMBO OF 15", "FLAWLESS", "TWO PLAYER WIN", "REFLEXES 5", "LOGIC 5" };
 void medal(int b) {
-    if (tr_cheating(&sims[player].tr)) return;   // no medals with a cheat trait
+    if (tr_cheating(sims[player].tr)) return;   // no medals with a cheat trait
     if (arc.ach & (1u << b)) return;
     arc.ach |= 1u << b; arcade_tix = MIN(9999, arcade_tix + 25);
     char s[40]; snprintf(s, sizeof s, "MEDAL: %s! +25 TICKETS", medal_nm[b]); sim_note(s); audio_voice(VOICE_YEHA);
@@ -101,8 +101,8 @@ static int tix_calc(int g, int pts) {
 }
 static void finish(void) {   // a game is over: the tickets, the table, the skills, the mood, the medals
     Sim *s = &sims[player]; char b[56]; int g = core_game;
-    ag_pts = tr_scale(&s->tr, E_ARC_SCORE, ag_pts);
-    tix = tr_scale(&s->tr, E_ARC_TIX, tix_calc(g, ag_pts)); if (!(arc.pm & (1 << g))) { tix += 10; arc.pm |= (u16)(1 << g); }
+    ag_pts = tr_scale(s->tr, E_ARC_SCORE, ag_pts);
+    tix = tr_scale(s->tr, E_ARC_TIX, tix_calc(g, ag_pts)); if (!(arc.pm & (1 << g))) { tix += 10; arc.pm |= (u16)(1 << g); }
     didwin = 0; arun.res = 0;
     if (arun.foe > 0) {   // a challenge: win it for the stake and a bonus
         didwin = ag_pts > arun.foe; arun.res = (u8)(didwin ? 1 : 2);

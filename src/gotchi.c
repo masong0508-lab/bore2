@@ -43,7 +43,7 @@ static const u16 xpAt[6] = { 0, 30, 100, 250, 500, 900 };
 int gotchi_level(const Toy *t) { int l = 0; for (int i = 1; i < 6; i++) if (t->xp >= xpAt[i]) l = i; return l; }
 int gotchi_next_xp(const Toy *t) { int l = gotchi_level(t); return l >= 5 ? 0 : xpAt[l + 1]; }
 void gotchi_xp(Toy *t, int n) {
-    { int si = gotchi_sim_of(t); if (si >= 0) n = tr_scale(&sims[si].tr, E_GOTCHI_XP, n); }   // E_GOTCHI_XP
+    { int si = gotchi_sim_of(t); if (si >= 0) n = tr_scale(sims[si].tr, E_GOTCHI_XP, n); }   // E_GOTCHI_XP
     int l0 = gotchi_level(t); t->xp = (u16)MIN(60000, t->xp + n); t->cared++;
     if (gotchi_level(t) > l0) { char b[40]; sprintf(b, "BLOB CARE LEVEL %d", gotchi_level(t)); sim_note(b); }
 }
