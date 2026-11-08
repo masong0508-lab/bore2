@@ -110,7 +110,8 @@ static void trg_tick(int frames) {
     for (int k = EV_DAYS; k <= EV_PET; k++) { if (!trf_evok[k]) continue; int x = v[k - EV_DAYS]; x = x > 255 ? 255 : x < 0 ? 0 : x; if (t->f & TF_BASE) tr_ev_set(t, k, x); else tr_ev_quiet(t, k, x); }
     { int x = fm_skl(trg_pl); if (t->f & TF_BASE) tr_ev_set(t, EV_SK_FARM, x); else tr_ev_quiet(t, EV_SK_FARM, x); }
     t->f |= TF_BASE;
-    { int n = tr_unl_check(trg_wdone_n(), trg_joblv()); if (n) { static char b[40]; sprintf(b, "Trait slot %d unlocked!", TR_BASE + tr_unl); if (!trg_quiet) { say(b); sfx(3); } trg_pend_all(); }
+    { int n = tr_unl_check(trg_wdone_n(), trg_joblv()); if (n) { static char b[40]; sprintf(b, "Trait slot %d unlocked!", TR_BASE + tr_unl); if (!trg_quiet) { say(b); sfx(3); } trg_pend_all();
+        for (int i = 0; i < nsim && i < SIM_MAX; i++) if (!(dtr[i].f & TF_AUTO)) { u16 sv[TR_BASE]; for (int k = 0; k < TR_BASE; k++) sv[k] = dtr[i].tid[k]; trg_assign(i, 0); for (int k = 0; k < TR_BASE; k++) dtr[i].tid[k] = sv[k]; trf_rebuild(&dtr[i]); } }   // (the played Sim's new slot fills itself from its personality; its picked slots stay)
       if (n || !(frames & 511)) tr_regive(t); }
 }
 static void trg_act_end(int i, int an) {   // an action finished: what it counts for the wishes (by the item's own words), the fun spark

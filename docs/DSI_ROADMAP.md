@@ -393,3 +393,14 @@ No press was dropped (seen = acted on) in any scene. The 3D stays 30 in every `b
 - Cause of the "very sped up / loose" songs: the ARM9 stepped the song once per main-loop pass and rounded every gap to whole frames (each gap one frame short), so a fast song ran sped up and a 30 fps scene made it slow and uneven. Also libnds SOUND_FREQ (2^24) is 0.12 % sharp against the chip's 16756991 Hz.
 - Now the ARM7 plays the songs (`tools/dsbuild/arm7/main7.c`): timer 0 at 1022.76 Hz, timer 1 counts its overflows (a late interrupt catches up, no tick is lost). `assets/dsmusic.bin` is BDM2 (note list in ticks, 10 voices, `tools/dsmusic/mk_dsmusic.py`); the ARM9 hands over a MusCtl block and a song number only. Frame rate no longer touches tempo.
 - Check: melonDS AUDOUT on the title song, onset fit peaks at tempo scale 1.00. See `docs/MUSIC_TIMING.md`.
+
+## D73: the PS1 traits system (Nov 8; `bore2_dsi_d73.nds`)
+- The PS1 engine (`traits.c`, `traits_auto.c`, `traits_data.h`) is built into the DS ROM; `ds_trfx.h` has the hook tables, `ds_trgame.h` the game wiring, `ds_trui.h` the picker and Life page.
+- Offered: 348 regular, 30 earned, 7 prize, 248 cheat traits; 41 wishes. Every one changes a real DS number (78 hooks). The rest are listed in `docs/DS_TRAITS.md` and not offered.
+- Slots 1-6, plus 7-10 (1 wish, 3 wishes, job level 5, 10 wishes). Cheat traits in 7-10 only, OPTIONS > GAME > Cheat traits (default Off), red badge, asked once, no medals or high scores while on.
+- Create-a-Sim: Traits tab with 15 categories (counts), ALL / PICKED / FOR YOU / RECENT / CHEATS, A-Z jump, effect filter, clash greying, Random, lock text, wish page with progress. Touch rows 24 px.
+- Housemates get traits from personality (move-in, spouse, roommate, baby, first family), children inherit. Life page 3, LEFT/RIGHT picks the housemate. Move-in toast.
+- Save: new `TR` block; old d70/d71/d72 saves load; a new save reloads the same (melonDS). Host test: 78/78 hooks, 633 offered traits 0 fail (`ports/dsi/test/ds_traits_test.sh`).
+- Live 3D 28-30 fps (avg 29.8), UI 54-58, same as d72. ROM 7.04 MB.
+- Shots: `docs/ds_shots/traits_*.png`.
+- Left: the per-trait proof runs on the host (same engine and accessors), not as a probe inside the ROM; unsupported hooks (comfort, skills but farm, moodlets, many jobs) need DS systems first.

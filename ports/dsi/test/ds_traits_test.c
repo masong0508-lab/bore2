@@ -86,6 +86,7 @@ int main(void) {
         if (!ok) { nfail++; printf("FAIL trait %d\n", id); }
     }
     tr_cheat_opt = 0;
+    { int nw = 0, nwp = 0; for (int w = 1; w <= WISH_N; w++) if (trf_won(w)) { nw++; if (tr_wish[w].rk != RK_NONE && tr_wish[w].rk != 0) nwp++; } printf("wishes: %d of %d offered\n", nw, WISH_N); }
     printf("offered: %d regular, %d earned, %d prize, %d cheat (%d of 600 regular)\n", noff - ncheat - nearn - nprz, nearn, nprz, ncheat, noff - ncheat - nearn - nprz);
     for (int c = 0; c < 15; c++) printf("  cat %2d %-12s %d\n", c, tr_catname[c], cat[c]);
     OK(nfail == 0, "%d offered traits do not move a DS number", nfail);

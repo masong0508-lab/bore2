@@ -102,3 +102,4 @@ The DS and Dreamcast ones were written but NOT run yet (no way to run Actions fr
 - [x] Party, super, dog, prison, underworld, space, farm, sky and sea, paradise, loading TIP pill, people list, build catalogue and tabs, pie menu, panel skills: centred, no clipping, no blink. Shots `docs/fonts2_*.png`; tour `test/fonts2_tour.py` (`AUTO_SCREENS`).
 - [ ] Left: DJ, the arcade/realm packs, DS. (The Boreagotchi DAY ONE card was shot on screen: no stray "ars" at the right edge, `docs/gotchi_dayone_card.png`, from `test/gseq.sh`.)
 - DS D71: Boreagotchi first-run art, redrawn and mystery eggs ported from the PS1 (bore2_dsi_d71.nds; see DSI_ROADMAP.md).
+- DS D73: PS1 traits system ported (600/51/24/351 pool filtered to what the DS can change: 348/30/7/248; 10 slots, wishes, cheat traits option, housemate traits page; bore2_dsi_d73.nds; see DS_TRAITS.md and DSI_ROADMAP.md).

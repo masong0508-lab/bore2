@@ -566,7 +566,7 @@ static s8 trg_mp[SIM_MAX], trg_mf[SIM_MAX]; static u8 trg_ah[SIM_MAX], trg_ak[SI
 static void trg_ev(int ev, int n), trg_evs(int ev, int v), trg_tick(int frames), trg_died(int k), trg_newsim(int i), trg_act_end(int i, int an), trg_arrive(int i), trg_reset_all(void);
 static void trg_cheat_set(int on); static int tp_open; static void tp_draw(void), tp_top(void), tp_slots_draw(void), tp_wishpage_draw(void), tp_random(void), tp_keys(u32 down), tp_commit(void), tp_begin(void), tp_random_wish(void), trg_page(int i), trg_title(char *d, const char *s, int mx);
 static int tp_touch(int tx, int ty), tp_slots_touch(int tx, int ty), tp_wishpage_touch(int tx, int ty), trg_wdone_n(void); static const char *trg_tname(int id);
-static int trg_loaded, trg_cheat_now(void), trg_pack(u8 *o), trg_unpack(const u8 *p, int len); static void trg_migrate(void), trg_begin(void), trg_after_load(void);
+volatile unsigned trg_sig; static int trg_loaded, trg_cheat_now(void), trg_pack(u8 *o), trg_unpack(const u8 *p, int len); static void trg_migrate(void), trg_begin(void), trg_after_load(void);
 static u32 trg_rnd(void) { trg_rs = trg_rs * 1664525u + 1013904223u; return trg_rs >> 8; }
 static void trg_fsync(void) { trg_lastf = funds; }
 static void trg_funds(void) {   // E_INCOME / E_SPEND: whatever changed the money since the last look, more or less of it (the player's traits)
@@ -3749,6 +3749,10 @@ int main(void) {
                 else if (sc == 140) { for (int q = 1; q < nsim; q++) dtr[q].f = TF_AUTO | TF_PEND; info_pg = 2; cur_sim = 1; life_ver++; ui_ver++; }   // (D73: 140 the traits page of the second housemate, 141 the first, 142 a move-in with its toast)
                 else if (sc == 141) { for (int q = 1; q < nsim; q++) dtr[q].f = TF_AUTO | TF_PEND; info_pg = 2; cur_sim = nsim > 2 ? 2 : 1; life_ver++; ui_ver++; }
                 else if (sc == 142) { trg_quiet = 0; new_sim(26, 2, 3, 1, 2, "Morgan Vale", 9 * 16, 9 * 16); info_pg = 2; cur_sim = nsim - 1; life_ver++; ui_ver++; }
+                else if (sc == 143 || sc == 144) {   // (D73: 143 gives traits and wishes and writes the save, 144 reads it back; test_sres 300 + write/apply result, trg_sig the trait state's checksum: the two must match)
+                    if (sc == 143) { trf_init(); { int k = 0, w = 1; for (int id = 1; id <= TR_MAXID && k < 6; id += 37) if (trf_on(id)) dtr[0].tid[k++] = (u16)id; while (w < WISH_N && !trf_won(w)) w++; dtr[0].wish = (u8)w; } tr_unl = 2; tr_wdone[0] = 6; tr_earned = 5; tr_recent[0] = dtr[0].tid[1]; test_sres = 300 + sav_write(); }
+                    else test_sres = 400 + sav_apply();
+                    { u32 h = 2166136261u; for (int z = 0; z < nsim && z < SIM_MAX; z++) { for (int k = 0; k < TR_SLOTS; k++) h = (h ^ dtr[z].tid[k]) * 16777619u; h = (h ^ dtr[z].wish) * 16777619u; } for (int z = 0; z < 8; z++) h = (h ^ tr_wdone[z]) * 16777619u; h = (h ^ tr_unl) * 16777619u; h = (h ^ tr_earned) * 16777619u; trg_sig = h; } }
                 else if (sc == 71 || sc == 72) mg_test_save(sc);   // (D62: 71 writes a save with scores and family links, 72 loads it)
                 else if (sc == 70) { live_pitch = 2000; live_dist = 1800; yaw_t = live_yaw = 4096 + 600; }   // (70: face height camera)
                 else if ((sc >= 40 && sc < 60) || (sc >= 73 && sc < 80) || (sc >= 80 && sc < 116)) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
