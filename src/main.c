@@ -3510,6 +3510,9 @@ static void create_draw(void) {
     int bx = 4 * TILE + TILE / 2, bz = -(5 * TILE + TILE / 2);              // the Bore stands on the rug
     cam_fx = bx - (close ? 190 : 230); cam_fy = close ? -290 : -200; cam_fz = bz;   // the focus sits right of the Bore: it shows in the left half, beside the card
     int yaw = 2048, pitch = close ? 260 : 380, dist = close ? 560 : 820;
+#ifdef HAIR_DEV   // (test builds: the camera right up to the head, for pictures of the hair)
+    { dist = HAIR_DEV; cam_fx = bx - 85; cam_fy = -285; pitch = 80; }
+#endif
     cam.at.vx = cam_fx; cam.at.vy = cam_fy; cam.at.vz = cam_fz;
     cam.eye.vx = cam_fx - ((isin(yaw) * ((dist * icos(pitch)) >> 12)) >> 12);
     cam.eye.vz = cam_fz - ((icos(yaw) * ((dist * icos(pitch)) >> 12)) >> 12);

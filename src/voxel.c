@@ -6,7 +6,6 @@
 #include "voxel.h"
 #include "gfx.h"
 #include "atlas.h"
-#include "hairtex.inc"
 #include "wear_models.inc"
 
 static TexRef tx_side, tx_crown, tx_tips, tx_fringe, tx_curl, skin_tex, cloth_tex;
@@ -24,11 +23,8 @@ static const Bore *cur;
 static int sld(const Bore *b, int id);
 static void head_pt(const Bore *b, SVECTOR *p);
 static int walk_sin;
-static int hair_cx, hair_cy, hair_cz, hair_curly, hair_style;
 static int hx_, hy_, hz_, hs_;
 static int cam_lx, cam_ly, cam_lz, cam_cull;
-static int body_corner_light(int gx, int gz, int nx, int ny, int nz);
-static u8 hl_gen = 1;   // the eye in the body's space; cull axis faces that face away (body group only)
 // faces that cannot face the camera are dropped before the GTE sees them (the hide bits: 0 -z, 1 +z, 2 -x, 3 +x, 4 top, 5 bottom)
 static inline int cull_bits(int x0, int x1, int y0, int y1, int z0, int z1) {
     if (!cam_cull) return 0;
@@ -45,12 +41,28 @@ int voxel_quads(void) { return quads; }
 static u16 tbuf[16 * 16];
 static u32 tseed = 99;
 static int tr(void) { tseed = tseed * 1103515245u + 12345u; return (int)((tseed >> 10) & 255); }
+static inline u16 gv(int v) { v = CLAMP(v >> 3, 1, 31); return (u16)(v | (v << 5) | (v << 10)); }   // a grey (never 0: that is see-through)
+// the hair textures, grey (the hair colour modulates them), made here: strands with a bright band under the crown, strands that end in
+// points (0 = see-through), bangs with gaps, a whorl for the crown, a pile of curls
+static void hair_textures(void) {
+    int cb[18], ln[16];
+    for (int x = 0; x < 18; x++) cb[x] = tr() % 25 - 12;
+    for (int x = 0; x < 16; x++) { cb[x] = (cb[x] * 2 + cb[x + 1] + cb[x + 2]) >> 2; ln[x] = 9 + tr() % 7; }   // (strands two or three texels wide)
+    for (int k = 0; k < 5; k++) {
+        for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) {
+            int v = 118 + cb[x] + tr() % 7 - 3 + (((x * 2 + y) % 5) == 0 ? -9 : 0), tp = 0;
+            if (k == 2) { if (y > ln[x] - (x & 1) * 2) tp = 1; else v += 6; }                                                       // the tips
+            if (k == 3) { int l = 6 + ln[x] / 2 + ((x & 1) ? 0 : 3); if (y > l) tp = 1; v += y < 3 ? 12 : 0; }                    // bangs
+            if (k == 1) { int dx = x - 8, dy = y - 8, d = dx * dx + dy * dy; v = 120 + cb[x] / 2 + tr() % 7 - 3 + (d < 14 ? 12 : 0) - (((x * 3 + y * 5) % 7) == 0 ? 10 : 0); }   // the crown's whorl
+            if (k == 4) { int cx = x & 3, cy = y & 3, r2 = (cx - 1) * (cx - 1) + (cy - 1) * (cy - 1); v = 126 - r2 * 5 + ((cx + cy < 2) ? 14 : 0) + tr() % 7 - 3 + cb[x] / 2; }   // curls
+            tbuf[y * 16 + x] = tp ? 0 : gv(v);
+        }
+        TexRef *t = k == 0 ? &tx_side : k == 1 ? &tx_crown : k == 2 ? &tx_tips : k == 3 ? &tx_fringe : &tx_curl;
+        *t = atlas_add(16, 16, tbuf);
+    }
+}
 void voxel_init(void) {
-    tx_side   = atlas_add(16, 32, hair_side);
-    tx_crown  = atlas_add(16, 16, hair_crown);
-    tx_tips   = atlas_add(16, 16, hair_tips);
-    tx_fringe = atlas_add(16, 16, hair_fringe);
-    tx_curl   = atlas_add(16, 16, hair_curl);
+    hair_textures();
     // skin: an even tone with the faintest grain
     for (int i = 0; i < 256; i++) { int v = (124 + (tr() % 9) - 4) >> 3; tbuf[i] = RGB(v, v, v); }
     skin_tex = atlas_add(16, 16, tbuf);
@@ -129,7 +141,6 @@ static inline int cube_at(const Bore *b, int x, int y, int z) {   // a full cube
     int v = solid_at(b, x, y, z);
     return v && (v >> 4) == 0;
 }
-static inline int hair_at(const Bore *b, int x, int y, int z) { int v = solid_at(b, x, y, z); return v && (v & 15) == 5; }
 
 static int kind_of(int slot) {   // 0 flat, 2 skin, 3 cloth, 4+ a patterned cloth (index into pat_tex as a flat array)
     if (slot == 1) return 2;
@@ -217,121 +228,8 @@ static void radial_table(void) {       // the rounded body light at every x,z gr
 #define RK   8      // how far an exposed corner is pulled in (units)
 #define TK   7      // how far an exposed TOP corner of skin / clothes is pulled down per missing neighbour (a soft, pillowy top: heads, shoulders)
 #define HK2  5      // how far a hair corner is pulled down per missing neighbour
+#define ISHAIR(v) (((v) & 15) == 5 || ((v) & 15) == 13)   // the hair colour: a beard or fur block (5) or a hair-style block (13, drawn as pieces)
 static int is_hull(int v) { return v && (v >> 4) != 1 && (v >> 4) != 2 && (v >> 4) != 3; }
-// per-vertex light of the rounded hair mass: the normal points away from the hair centre. Cached per grid point per draw.
-static u8 hl_cache[H + 2][D + 2][W + 2];
-static u8 hl_stamp[H + 2][D + 2][W + 2];
-
-static int hair_corner_light(int gx, int gy, int gz) {   // grid point (gx 0..W, gy 0..H, gz 0..D)
-    if (hl_stamp[gy][gz][gx] == hl_gen) return hl_cache[gy][gz][gx];
-    int px = gx * VOX - 3 * VOX, py = -gy * VOX, pz = gz * VOX - 2 * VOX;
-    int vx = px - hair_cx, vy = py - hair_cy, vz = pz - hair_cz;
-    int len = SquareRoot0(vx * vx + vy * vy + vz * vz); if (len < 8) len = 8;
-    int Ls = gfx_light((vx << 12) / len, (vy << 12) / len, (vz << 12) / len);
-    Ls = CLAMP(Ls, 0, 255);
-    hl_cache[gy][gz][gx] = (u8)Ls; hl_stamp[gy][gz][gx] = hl_gen;
-    return Ls;
-}
-// the body's rounded light: the normal leans away from the body's vertical axis (cached per x,z grid point per draw)
-static u8 bl_cache[D + 2][W + 2], bl_stamp[D + 2][W + 2];
-static int body_corner_light(int gx, int gz, int nx, int ny, int nz) {   // nx..nz here carry the FACE light already (see VL)
-    int Lr;
-    if (bl_stamp[gz][gx] == hl_gen) Lr = bl_cache[gz][gx];
-    else {
-        int vx = gx * VOX - 3 * VOX, vz = gz * VOX - 2 * VOX;
-        int len = SquareRoot0(vx * vx + vz * vz); if (len < 8) len = 8;
-        Lr = CLAMP(gfx_light((vx << 12) / len, -600, (vz << 12) / len), 0, 255);
-        bl_cache[gz][gx] = (u8)Lr; bl_stamp[gz][gx] = hl_gen;
-    }
-    (void)ny; (void)nz;
-    return (Lr + nx) >> 1;
-}
-static u32 hair_col(u16 col, int L, int var) {   // hair is lit a little more generously: the darkest tones would otherwise go black
-    L = L * 5 / 4 + 10 + var;
-    return pack((R8(col) * L) >> 7, (G8(col) * L) >> 7, (B8(col) * L) >> 7);
-}
-
-// one hair face: corners (TL, TR, BL, BR) seen from outside with their sphere lights, texture t with its uv box, face normal n, tone var
-static void hface(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d, int la, int lb, int lc, int ld, const TexRef *t,
-                  int u0, int v0, int u1, int v1, u16 col, int nx, int ny, int nz, int var) {
-    int Lf = gfx_light(nx, ny, nz);                 // mostly the sphere, a little of the face itself (keeps a hint of the block edges)
-    u32 c0 = hair_col(col, (la * 3 + Lf) >> 2, var), c1 = hair_col(col, (lb * 3 + Lf) >> 2, var);
-    u32 c2 = hair_col(col, (lc * 3 + Lf) >> 2, var - 6), c3 = hair_col(col, (ld * 3 + Lf) >> 2, var - 6);
-    quads += gfx_quad_gt(a, b, c, d, t->tpage, 0, t->u + u0, t->v + v0, t->u + u1, t->v + v0, t->u + u0, t->v + v1, t->u + u1, t->v + v1, c0, c1, c2, c3, 1);
-}
-static void hfacex(const XV *a, const XV *b, const XV *c, const XV *d, int la, int lb, int lc, int ld, const TexRef *t,   // (the fast path: corners already transformed)
-                   int u0, int v0, int u1, int v1, u16 col, int Lf, int var) {
-    u32 c0 = gfx_grade_tex(hair_col(col, (la * 3 + Lf) >> 2, var)), c1 = gfx_grade_tex(hair_col(col, (lb * 3 + Lf) >> 2, var));
-    u32 c2 = gfx_grade_tex(hair_col(col, (lc * 3 + Lf) >> 2, var - 6)), c3 = gfx_grade_tex(hair_col(col, (ld * 3 + Lf) >> 2, var - 6));
-    quads += gfx_emit_gt4(a, b, c, d, c0, c1, c2, c3, t->tpage, 0, t->u + u0, t->v + v0, t->u + u1, t->v + v1, 1);
-}
-
-// a hair block at grid cell (x,y,z); c = its 8 corners from the cache (the rounded hull and the drops folded in)
-static void hair_block(const Bore *b, int x, int y, int z, int m, int hide, u16 col, const SVECTOR *c) {
-    int x0 = (x - 3) * VOX, y0 = -(y + 1) * VOX, z0 = (z - 2) * VOX;
-    hide |= cull_bits(x0 + 8, x0 + VOX - 8, y0 + 16, y0 + VOX - 8, z0 + 8, z0 + VOX - 8) & 0x2f;   // (rounded: a margin; the top always tilts a little)
-    if ((hide & 0x3f) == 0x3f) return;
-    XV xv[8]; gfx_xform(c, xv, 8);
-    const XV *t = xv, *bt = xv + 4;
-    int lt[4], lb[4];
-    for (int k = 0; k < 4; k++) {
-        lt[k] = hair_corner_light(x + (k & 1), y + 1, z + (k >> 1));
-        lb[k] = hair_corner_light(x + (k & 1), y, z + (k >> 1));
-    }
-    int below_any = solid_at(b, x, y - 1, z) != 0;
-    int above_hair = hair_at(b, x, y + 1, z);
-    int var = ((x * 7 + y * 3 + z * 11) & 7) * 2 - 7;            // a touch of tone per block
-    const TexRef *side = hair_curly ? &tx_curl : &tx_side;
-    int sv0 = hair_curly ? 0 : (above_hair ? 16 : 0), sv1 = sv0 + 15;   // the top layer wears the sheen
-    if (!hair_curly && !below_any && y > 0) { side = &tx_tips; sv0 = 0; sv1 = 15; }   // a hanging end: points
-    // top
-    if (!(hide & 16)) {
-        const TexRef *tt = hair_curly ? &tx_curl : &tx_crown;
-        int nw = hs_ * 2 + 2, nd = hs_ * 2 + 2;                      // the cap's columns and rows share one whorl
-        int cu = CLAMP(x - (hx_ - 1), 0, nw - 1), cv = CLAMP(z - (hz_ - 1), 0, nd - 1);
-        int u0 = cu * 16 / nw, u1 = (cu + 1) * 16 / nw - 1, v0 = (nd - 1 - cv) * 16 / nd, v1 = (nd - cv) * 16 / nd - 1;
-        if (hair_curly) { u0 = 0; u1 = 15; v0 = 0; v1 = 15; }
-        int lx = ((m & 10) == 10) ? -ONE / 2 : ((m & 5) == 5) ? ONE / 2 : 0;
-        int lz = ((m & 12) == 12) ? -ONE / 2 : ((m & 3) == 3) ? ONE / 2 : 0;
-        hfacex(&t[2], &t[3], &t[0], &t[1], lt[2], lt[3], lt[0], lt[1], tt, u0, v0, u1, v1, col, (lx | lz) ? gfx_light(lx, -ONE, lz) : Lf6[4], var);
-    }
-    if (!(hide & 2)) hfacex(&t[3], &t[2], &bt[3], &bt[2], lt[3], lt[2], lb[3], lb[2], side, 0, sv0, 15, sv1, col, Lf6[1], var);      // front +z
-    if (!(hide & 1)) hfacex(&t[0], &t[1], &bt[0], &bt[1], lt[0], lt[1], lb[0], lb[1], side, 0, sv0, 15, sv1, col, Lf6[0], var);     // back -z
-    if (!(hide & 4)) hfacex(&t[2], &t[0], &bt[2], &bt[0], lt[2], lt[0], lb[2], lb[0], side, 0, sv0, 15, sv1, col, Lf6[2], var);     // -x
-    if (!(hide & 8)) hfacex(&t[1], &t[3], &bt[1], &bt[3], lt[1], lt[3], lb[1], lb[3], side, 0, sv0, 15, sv1, col, Lf6[3], var);      // +x
-    if (!(hide & 32)) quads += gfx_emit_f4(&bt[3], &bt[2], &bt[1], &bt[0], gfx_grade_flat(lit(col, Lf6[5] - 20)), 1);
-}
-
-// bangs over the forehead and strands down the temples, for the cuts that have them
-static void hair_flaps(const Bore *b) {
-    int st = hair_style;
-    if (b->look[LK_HAT] == 5) return;                               // a helmet covers it all
-    int bangs = (st == 1 || st == 2 || st == 7 || st == 9 || st == 11 || st == 13 || st == 14);
-    int temples = (st == 2 || st == 9 || st == 11 || st == 5);
-    u16 col = b->col[5];
-    int hw = 2 * hs_, hh = 2 * hs_, hd = 2 * hs_;
-    int top = -(hy_ + hh) * VOX;                                    // the top of the head
-    if (bangs) {
-        int X0 = (hx_ - 3) * VOX + 3, X1 = X0 + hw * VOX - 6, Z = (hz_ + hd - 2) * VOX + 5;
-        int Y1 = top + VOX * 11 / 16;
-        SVECTOR a, bb, c, d;
-        setVector(&a, X1, top - 2, Z); setVector(&bb, X0, top - 2, Z); setVector(&c, X1, Y1, Z + 2); setVector(&d, X0, Y1, Z + 2);
-        head_pt(b, &a); head_pt(b, &bb); head_pt(b, &c); head_pt(b, &d);
-        { int L = hair_corner_light(hx_ + hs_, hy_ + hh, hz_ + hd); hface(&a, &bb, &c, &d, L, L, L - 10, L - 10, &tx_fringe, 0, 0, 15, 15, col, 0, 0, ONE, 0); }
-    }
-    if (temples) {
-        int Z0 = (hz_ - 2) * VOX + 2, Z1 = Z0 + hd * VOX - 4, Y1 = top + VOX * 14 / 16;
-        for (int side = 0; side < 2; side++) {
-            int X = side ? (hx_ + hw - 3) * VOX + 4 : (hx_ - 3) * VOX - 4;
-            SVECTOR a, bb, c, d;
-            if (side) { setVector(&a, X, top - 2, Z0); setVector(&bb, X, top - 2, Z1); setVector(&c, X + 2, Y1, Z0); setVector(&d, X + 2, Y1, Z1); }
-            else      { setVector(&a, X, top - 2, Z1); setVector(&bb, X, top - 2, Z0); setVector(&c, X - 2, Y1, Z1); setVector(&d, X - 2, Y1, Z0); }
-            head_pt(b, &a); head_pt(b, &bb); head_pt(b, &c); head_pt(b, &d);
-            { int L = hair_corner_light(side ? hx_ + hw : hx_, hy_ + hh, hz_ + hs_); hface(&a, &bb, &c, &d, L, L, L - 10, L - 10, &tx_tips, 0, 0, 15, 15, col, side ? ONE : -ONE, 0, 0, -4); }
-        }
-    }
-}
-
 static int group_of(u8 v, int x) {
     int sh = v >> 4;
     if (sh == 3) return x < W / 2 ? G_LLEG : G_RLEG;
@@ -355,6 +253,8 @@ static void head_box_xf(const Bore *b, int *x0, int *x1, int *y0, int *y1, int *
     head_xf(b, &cx, &cy, &cz);
     *x0 = cx - hw; *x1 = cx + hw; *y0 = cy - hh; *y1 = cy + hh; *z0 = cz - hd; *z1 = cz + hd;
 }
+
+#include "hairmesh.inc"
 
 // ---- the face art on the +z side ----
 static void face_sprites(const Bore *b) {
@@ -741,10 +641,10 @@ static void pc_disp(int X, int y, int Z, int *dx, int *dz, int *drop) {   // the
             int v = PV(cx, y, cz);
             if (v && (v >> 4) != 1 && (v >> 4) != 2 && (v >> 4) != 3) {
                 solid++;
-                if ((v & 15) != 5) nonhair++;
+                if (!ISHAIR(v)) nonhair++;
                 if (k & 1) px++; else mx++;
                 if (k & 2) pz++; else mz++;
-                { int a = PV(cx, y + 1, cz); if (a && (a & 15) == 5) above++; }
+                { int a = PV(cx, y + 1, cz); if (a && ISHAIR(a)) above++; }
             }
         }
         int ddx = 0, ddz = 0, ddr = 0;
@@ -772,7 +672,7 @@ static int pc_top(int X, int y, int Z) {   // the top rounding of a grid point: 
     return pc_tr[y + 1][Z][X];
 }
 void voxel_prepare(Bore *b) {
-    int n = 0, nd = 0;
+    int n = 0, nd = 0, hx, hy, hz, hs; head_box(b, &hx, &hy, &hz, &hs);
     memset(pv, 0, sizeof pv); memset(pc_ok, 0, sizeof pc_ok);
     for (int y = 0; y < H; y++) for (int z = 0; z < D; z++) memcpy(&PV(0, y, z), b->vox[y][z], W);
     u8 gl[H * D * W]; int ng[G_N]; memset(ng, 0, sizeof ng);   // each block's group, worked out once (the cells go in group order)
@@ -786,6 +686,11 @@ void voxel_prepare(Bore *b) {
             if (gl[i] != grp) continue;
             u8 v = PV(x, y, z);
             int slot = v & 15, sh = v >> 4, hide = 0, m = 0, in = 0;
+            if ((slot == 5 || slot == 13) && (grp == G_HEAD || grp == G_BODY)) {   // hair: the hair-style blocks are drawn as pieces (hairmesh.inc), the head's own blocks the style or a beard recoloured go back to skin (a beard is pieces too); fur stays blocks
+                int ih = x >= hx && x < hx + 2 * hs && z >= hz && z < hz + 2 * hs && y >= hy && y < hy + 2 * hs;
+                if (ih) { v = 1; slot = 1; sh = 0; }
+                else if (slot == 13) continue;
+            }
             if (sh >= 4 && sh <= 11) m = wMask2[sh - 4];
             else if (sh == 1 || sh == 2 || sh == 3) in = 1;
             if (in) {
@@ -803,8 +708,8 @@ void voxel_prepare(Bore *b) {
                 if (CUBE(x, y - 1, z) || y == 0) hide |= 32;
                 #undef CUBE
             }
-            int is_hair = (slot == 5 && !in && (grp == G_BODY || grp == G_HEAD));
-            if (is_hair) { int a = PV(x, y + 1, z); if (a && (a & 15) == 5) hide |= 16; }
+            int is_hair = (ISHAIR(v) && !in && (grp == G_BODY || grp == G_HEAD));
+            if (is_hair) { int a = PV(x, y + 1, z); if (a && ISHAIR(a)) hide |= 16; }
             SVECTOR cc[8];
             int x0 = (x - 3) * VOX, x1 = x0 + VOX, y0 = -(y + 1) * VOX, y1 = -y * VOX, z0 = (z - 2) * VOX, z1 = z0 + VOX;
             int inset = (sh == 1) ? 7 : (sh == 2) ? 9 : (sh == 3) ? 4 : 0;
@@ -1014,10 +919,6 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     int tprep0 = gfx_hb();
     // the head and the hair mass
     head_box(b, &hx_, &hy_, &hz_, &hs_);
-    hair_cx = (hx_ + hs_ - 3) * VOX; hair_cy = -(hy_ + hs_) * VOX - VOX / 3; hair_cz = (hz_ + hs_ - 2) * VOX;
-    hair_style = b->look[LK_HSTYLE];
-    hair_curly = (hair_style == 5 || hair_style == 14);
-    if (++hl_gen == 0) { memset(hl_stamp, 0, sizeof hl_stamp); memset(bl_stamp, 0, sizeof bl_stamp); hl_gen = 1; }
     { int tp = b->look[LK_X_TOPPAT] % NPAT, bp = b->look[LK_X_BOTPAT] % NPAT, tone = b->look[LK_X_PATTONE] & 1;
       cur_toppat = tp ? tp * 2 + tone : -1; cur_botpat = bp ? bp * 2 + tone : -1; }
     wear_gen++;
@@ -1034,7 +935,6 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
         int x = c[0], y = c[1], z = c[2], v = c[3], hide = c[4], fl = c[6];
         if (c[5] != grp) { grp = c[5]; gfx_set_object_m(&gm[grp]); cam_cull = (grp == G_BODY || grp == G_HEAD) ? cull0 : 0; }
         int slot = v & 15, sh = v >> 4, m = (sh >= 4 && sh <= 11) ? wMask2[sh - 4] : 0;
-        if (fl & 1) { hair_block(b, x, y, z, m, hide, b->col[slot], cw); continue; }
         block(cw, m, hide, slot, b->col[slot], kind_of(slot), (fl & 2) ? -2 : x, z);
     }
     gfx_set_object_m(&gm[G_BODY]);
@@ -1046,7 +946,7 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     gfx_set_zbias(6);                                            // the face art and the bangs lie on the blocks: pull them in front
     vox_t_block += gfx_hb() - tcells0;
     { int t0 = gfx_hb(); face_sprites(b);
-    if (hair_style != 3) hair_flaps(b); vox_t_hair += gfx_hb() - t0; }
+    hair_draw(b); vox_t_hair += gfx_hb() - t0; }
     gfx_set_zbias(0);
     { PROF_BEGIN(); extra_parts(b, hx_, hy_, hz_, hs_);
     wear_draw(b); PROF_END(7); }
@@ -1102,7 +1002,7 @@ void voxel_lod_build(const Bore *b, LodBore *m) {
         int cnt[9] = { 0 }, n = 0, tot = 0;
         for (int y = cy * 2; y < cy * 2 + 2; y++) for (int z = cz * 2; z < cz * 2 + 2; z++) for (int x = xa[cx]; x < xb[cx]; x++) {
             int v = b->vox[y][z][x]; tot++;
-            if (v) { int s = v & 15; if (s < 1) s = 1; if (s > 8) s = 8; cnt[s]++; n++; }
+            if (v) { int s = v & 15; if (s == 13) s = 5; if (s < 1) s = 1; if (s > 8) s = 8; cnt[s]++; n++; }
         }
         int best = 0, bn = 0;
         for (int s = 1; s <= 8; s++) if (cnt[s] >= bn && cnt[s]) { bn = cnt[s]; best = s; }

@@ -5,7 +5,7 @@
 static const u16 skinTones[NSKIN] = { RGB(30,23,17), RGB(24,16,10), RGB(19,12,7), RGB(13,8,5), RGB(14,26,10), RGB(10,19,29), RGB(22,13,27), RGB(31,17,19),
     RGB(31,27,22), RGB(29,21,15), RGB(27,19,12), RGB(23,15,9), RGB(20,15,9), RGB(16,10,6), RGB(10,6,4), RGB(7,4,3),
     RGB(31,26,6), RGB(31,14,6), RGB(28,6,6), RGB(8,25,24), RGB(20,28,12), RGB(16,16,30), RGB(18,18,20), RGB(28,28,29) };
-static const u16 hairTones[NSW] = { RGB(5,3,2), RGB(14,8,4), RGB(27,21,6), RGB(28,8,4), RGB(21,21,22), RGB(10,22,12), RGB(8,12,28), RGB(30,14,22) };
+static const u16 hairTones[NSW] = { RGB(5,3,2), RGB(15,8,4), RGB(28,22,9), RGB(25,9,4), RGB(21,21,22), RGB(10,22,12), RGB(8,12,28), RGB(30,14,22) };   // black, brown, blonde, auburn, grey, then the dyes
 static const u16 topTones[NSW]  = { RGB(8,20,22), RGB(28,8,6), RGB(30,24,6), RGB(10,24,8), RGB(8,10,26), RGB(22,10,26), RGB(30,30,30), RGB(5,5,8) };
 static const u16 eyeTones[NSW]  = { RGB(3,3,6), RGB(12,7,3), RGB(15,13,5), RGB(6,17,8), RGB(7,13,26), RGB(15,17,19), RGB(24,5,5), RGB(17,8,24) };   // dark, brown, hazel, green, blue, grey, red, violet
 static const u16 botTones[NSW]  = { RGB(8,9,20), RGB(5,5,8), RGB(18,12,6), RGB(14,15,16), RGB(24,20,12), RGB(8,16,8), RGB(26,6,6), RGB(30,30,30) };
@@ -38,7 +38,10 @@ static const u32 stMaskShape[AG_N]={   // every age gets a real choice of bodies
     13|SHB(SH_CHUBBY)|SHB(SH_PEAR)|SHB(SH_LANKY)|SHB(SH_STOCKY)|SHB(SH_HUNCH)|SHB(SH_POT)|SHB(SH_MUSCLE)|SHB(SH_PETITE)|SHB(SH_BARREL)|SHB(SH_DIGI)|SHB(SH_RUNNER)|SHKID,
     SHALL, SHALL, SHALL };
 static const u8 stMaskEars[AG_N]={3,7,7,7,7};
-static const u16 stMaskHair[AG_N]={9,11|0x1F0|0x6E00,15|0x1F0|0x7E00,15|0x1F0|0x7E00,15|0x1F0|0x7E00};   // bits 9-14: BOB PONYTAIL PIGTAILS MOHAWK PIXIE CURLS (children: no MOHAWK)
+#define HNEW 0x3FF8000u   // the hair styles added for the PS1 (bits 15-25: BUZZ SIDE PART SLICKED BRAIDS WAVY HORSESHOE THINNING MESSY TOP KNOT CURTAINS MULLET)
+static const u32 stMaskHair[AG_N]={9,11|0x1F0|0x6E00|(1u<<15)|(1u<<16)|(1u<<18)|(1u<<22)|(1u<<23),(15|0x1F0|0x7E00|HNEW)&~((1u<<20)|(1u<<21)),15|0x1F0|0x7E00|HNEW,15|0x1F0|0x7E00|HNEW};   // bits 9-14: BOB PONYTAIL PIGTAILS MOHAWK PIXIE CURLS (children: no MOHAWK); HORSESHOE and THINNING from adult
+// what the block builder draws for each style (the grid keeps hair as blocks for the crowd's low model; the PS1 draws the real thing, hairmesh.inc)
+static const u8 hairVox[NHAIR]={0,1,2,3,4,5,6,7,8,9,10,11,12,13,14, 0,0,0,11,2,3,3,0,8,1,2};
 static inline int shapeMask(void){ int m=(int)stMaskShape[stage]; if(!sUnlock) m&=~4; else if(stage<AG_TEEN) m|=(int)SHHUM; else m|=(int)SHB(SH_SPIDER); return m; }   // BIG HEAD, and V-SHAPE / CURVY / SOFT / POWER / LONG LEGS below teen, are only on offer with the debug code
 static const u8 stSwatches[AG_N]={4,6,8,8,8};       // how many colours of each row are on offer
 #define BX0 ((W-BXW)/2)
@@ -103,10 +106,16 @@ static u16 toneBy(u16 c,int e){   // a tone slider: darker to the left, lighter 
     if(e>0){ int r=c&31,g=(c>>5)&31,b=(c>>10)&31; return RGB(r+(31-r)*e/8,g+(31-g)*e/8,b+(31-b)*e/8); }
     return c;
 }
+static u16 hairAge(u16 c){   // the hair colour by age: a baby's is pale and fine, an elder's goes grey (the natural colours; a dye stays)
+    int r=c&31,g=(c>>5)&31,b=(c>>10)&31;
+    if(stage==AG_ELDER&&look[LK_HCOL]<5) return RGB((r*38+22*62)/100,(g*38+22*62)/100,(b*38+23*62)/100);
+    if(stage==AG_BABY) return RGB((r*70+28*30)/100,(g*70+24*30)/100,(b*70+16*30)/100);
+    return c;
+}
 static void setColors(void) {
     base[1]=toneBy(skinTones[look[LK_SKIN]],slideEffS(look[LK_TONE]));   // skin tone
     base[2]=RGB(31,31,31); base[3]=RGB(3,3,6);
-    base[4]=RGB(29,12,16);    base[5]=toneBy(hairTones[look[LK_HCOL]],slideEffS(look[LK_HTONE]));
+    base[4]=RGB(29,12,16);    base[5]=hairAge(toneBy(hairTones[look[LK_HCOL]],slideEffS(look[LK_HTONE])));
     base[6]=toneBy(topTones[look[LK_TOP]],slideEffS(look[LK_TTONE])); base[7]=toneBy(botTones[look[LK_BOT]],slideEffS(look[LK_BTONE])); base[8]=RGB(31,30,16);
     for (int i=1;i<9;i++){ sT[i]=base[i]; sL[i]=shade(base[i],12); sR[i]=shade(base[i],9); }
     for (int i=0;i<NWP;i++){ int s=9+i; base[s]=wpAvg[i]; sT[s]=base[s]; sL[s]=shade(base[s],12); sR[s]=shade(base[s],9);
@@ -246,8 +255,8 @@ static void hairW(int x,int y,int z,int xp,int xm,int zp,int zm){   // one hair 
     int nx=xp+xm, nz=zp+zm, m=0;
     if(nx+nz==1) m=xp?10:zp?12:xm?5:3;
     else if(nx==1&&nz==1) m=1<<((xp?1:0)+(zp?2:0));
-    for(int i=0;i<8;i++) if(wMask[i]==m&&m){ vox[y][z][x]=(u8)(5|((4+i)<<4)); return; }
-    vox[y][z][x]=5;
+    for(int i=0;i<8;i++) if(wMask[i]==m&&m){ vox[y][z][x]=(u8)(13|((4+i)<<4)); return; }
+    vox[y][z][x]=13;   // slot 13: a hair-style block (the PS1 draws the hair as pieces: voxel.c; the crowd model reads it as hair colour)
 }
 static void hairFlush(int hx,int hz,int hw,int hd,int ylo,int yhi,int back,int sides){   // hair that grows ON the head: recolour the head's own blocks (never the face row) so the silhouette does not widen
     for(int y=ylo;y<=yhi;y++){ if(y<0||y>=BXH) continue;
@@ -272,7 +281,7 @@ static void sporeParts(int tx,int ty,int hx,int hy,int hz,int hw,int hh,int top)
     // the tail and the horns are sprites now (drawTail / drawHorns): their length and size are sliders, and they cost no blocks
     if(back==1){                                                 // SPIKES: a ridge of wedges down the back, in the hair colour
         for(int x=tx;x<tx+2;x++){ vw(x,ty+1,0,5,x==tx+1,x==tx,0,1); if(!tail) vw(x,ty,0,5,x==tx+1,x==tx,0,1); }
-        if(look[LK_HSTYLE]!=2&&hz>0) for(int x=hx;x<hx+hw;x++) vw(x,hy+hh-1,hz-1,5,x==hx+hw-1,x==hx,0,1);   // and up the back of the head (LONG hair is there already)
+        if(hairVox[look[LK_HSTYLE]%NHAIR]!=2&&hz>0) for(int x=hx;x<hx+hw;x++) vw(x,hy+hh-1,hz-1,5,x==hx+hw-1,x==hx,0,1);   // and up the back of the head (LONG hair is there already)
     }   // (WINGS are a sprite now: drawWings)
     (void)horns;
 }
@@ -322,7 +331,7 @@ static void buildLook(void){
     int hw=2*hs, hh=2*hs, hd=2*hs;
     doPart(1,0,hs,hx,hy,hz);                                     // head
     // ears are sprites now (drawEars in drawScene), not blocks
-    int st=look[LK_HSTYLE], top=(BXH-(hy+hh)>=1)?hy+hh:hy+hh-1;    // hair: a cap on the head, or in place of its top layer when the head touches the ceiling
+    int st=hairVox[look[LK_HSTYLE]%NHAIR], top=(BXH-(hy+hh)>=1)?hy+hh:hy+hh-1;    // hair: a cap on the head, or in place of its top layer when the head touches the ceiling
     if(st!=3){
         // HAIR: grows ON the head, not around it. Hair that only recolours the head's own blocks (hairF) keeps the silhouette the head's width, so nothing wraps the skull like a helmet;
         // only what really hangs or puffs out (long, bob, afro, ponytail ...) sticks out, and it ends in slopes instead of square walls. The face row (front) is never touched.
@@ -335,22 +344,22 @@ static void buildLook(void){
             for(int y=top-1;y>=hy-1&&y>=0;y--) for(int x=hx;x<hx+hw;x++) hairW(x,y,zb,y==hy-1&&x==hx+hw-1,y==hy-1&&x==hx,0,y==hy-1); }
         if(st==2&&zb<0) for(int x=hx;x<hx+hw;x++)for(int y=hy-1;y<top;y++) hairW(x,y,hz,0,0,0,0);
         if(st==4){ if(room&&top+1<BXH) for(int z=hz;z<hz+hd;z++)for(int x=hx;x<hx+hw;x++) if(((x+z)&1)==0) hairW(x,top+1,z,x==hx+hw-1,x==hx,z==hz+hd-1,z==hz);   // SPIKY: points up out of the top
-                   vw(hx-1,y1,hz,5,0,1,0,1); vw(hx+hw,y1,hz,5,1,0,0,1); if(zb>=0) for(int x=hx;x<hx+hw;x+=hw-1) vw(x,y1,zb,5,x==hx+hw-1,x==hx,0,1); }
+                   vw(hx-1,y1,hz,13,0,1,0,1); vw(hx+hw,y1,hz,13,1,0,0,1); if(zb>=0) for(int x=hx;x<hx+hw;x+=hw-1) vw(x,y1,zb,13,x==hx+hw-1,x==hx,0,1); }
         if(st==5){ hairFlush(hx,hz,hw,hd,y1,y1,1,1); if(y2>=hy) hairFlush(hx,hz,hw,hd,y2,y2,1,1);                              // AFRO: a round puff - full on top, a rim at the sides and back, tapering down behind
-            if(room&&top+1<BXH){ for(int z=hz;z<hz+hd;z++)for(int x=hx;x<hx+hw;x++){ vb(x,top,z,5); hairW(x,top+1,z,x==hx+hw-1,x==hx,z==hz+hd-1,z==hz); } }
+            if(room&&top+1<BXH){ for(int z=hz;z<hz+hd;z++)for(int x=hx;x<hx+hw;x++){ vb(x,top,z,13); hairW(x,top+1,z,x==hx+hw-1,x==hx,z==hz+hd-1,z==hz); } }
             for(int z=hz;z<hz+hd;z++){ hairW(hx-1,y1,z,0,1,0,0); hairW(hx+hw,y1,z,1,0,0,0); }
             if(zb>=0){ for(int x=hx-1;x<=hx+hw;x++) hairW(x,y1,zb,x==hx+hw,x==hx-1,0,1); for(int x=hx;x<hx+hw;x++) if(y2>=0) hairW(x,y2,zb,0,0,0,1); } }
-        if(st==6){ for(int z=hz;z<hz+hd;z++)for(int x=hx;x<hx+hw;x++) vb(x,top,z,5); }                                          // FLAT TOP: square on top, the sides stay skin (a fade)
-        if(st==7){ for(int y=top-1;y>=hy-1&&y>=0;y--) hairW(hx+hw,y,hz,0,0,0,0); vw(hx+hw,hy-2,hz,5,0,0,0,0); }                  // SIDE TAIL: down one side
+        if(st==6){ for(int z=hz;z<hz+hd;z++)for(int x=hx;x<hx+hw;x++) vb(x,top,z,13); }                                          // FLAT TOP: square on top, the sides stay skin (a fade)
+        if(st==7){ for(int y=top-1;y>=hy-1&&y>=0;y--) hairW(hx+hw,y,hz,0,0,0,0); vw(hx+hw,hy-2,hz,13,0,0,0,0); }                  // SIDE TAIL: down one side
         if(st==8&&zb>=0){ for(int x=xc;x<xc+2;x++) hairW(x,y1,zb,x==xc+1,x==xc,0,1); }                                           // BUN: a knot at the back
         if(st==9){   // BOB: hugs the head, and a panel behind it down to the chin that curls in at the bottom (no wall in front, no wings at the sides)
             hairFlush(hx,hz,hw,hd,y1,y1,1,1); if(y2>=hy) hairFlush(hx,hz,hw,hd,y2,y2,1,1);
             if(zb>=0) for(int y=top-1;y>=hy&&y>=0;y--) for(int x=hx;x<hx+hw;x++) hairW(x,y,zb,y==hy&&x==hx+hw-1,y==hy&&x==hx,0,y==hy); }
         if(st==10&&zb>=0){   // PONYTAIL: a tied knot at the back of the head, and the tail hanging from it
-            int ex=xc; for(int x=ex;x<ex+2;x++){ for(int y=top-1;y>=hy-1&&y>=0;y--) hairW(x,y,zb,0,0,0,0); vw(x,hy-2,zb,5,0,0,0,1); } }
+            int ex=xc; for(int x=ex;x<ex+2;x++){ for(int y=top-1;y>=hy-1&&y>=0;y--) hairW(x,y,zb,0,0,0,0); vw(x,hy-2,zb,13,0,0,0,1); } }
         if(st==11){   // PIGTAILS: a bunch out of each side at the back, with a block between it and the head
             for(int sd=0;sd<2;sd++){ int xs=sd?hx+hw:hx-1, xo=sd?hx+hw+1:hx-2;
-                hairW(xs,y1,hz,0,0,0,0); hairW(xo,y1,hz,0,0,0,0); hairW(xo,y2,hz,0,0,0,0); vw(xo,top-3,hz,5,sd,!sd,0,0); } }
+                hairW(xs,y1,hz,0,0,0,0); hairW(xo,y1,hz,0,0,0,0); hairW(xo,y2,hz,0,0,0,0); vw(xo,top-3,hz,13,sd,!sd,0,0); } }
         if(st==12){   // MOHAWK: a strip down the middle (over the top and down the nape), the sides stay bare
             if(hw>2) for(int z=hz;z<hz+hd;z++)for(int x=hx;x<hx+hw;x++) if(x<xc||x>xc+1) vb(x,top,z,room?0:1);
             if(room&&top+1<BXH) for(int z=hz;z<hz+hd;z++)for(int x=xc;x<xc+2;x++) hairW(x,top+1,z,x==xc+1,x==xc,z==hz+hd-1,z==hz);
@@ -400,7 +409,7 @@ static void buildLook(void){
         for(int x=0;x<W;x++)for(int z=0;z<D;z++){ if(ty-1<0||(vox[ty-1][z][x]&15)!=1) continue;
             if(ts==1||ts==3){ if((vox[ty][z][x]&15)==1) vox[ty][z][x]=(u8)((vox[ty][z][x]&0xF0)|6); }        // LONG SLEEVE / HOODIE: forearms in the top colour
             if(ts==2&&ty+1<H&&(vox[ty+1][z][x]&15)==6) vox[ty+1][z][x]=(u8)((vox[ty+1][z][x]&0xF0)|1); }      // TANK: bare shoulders
-        if(ts==3&&hz>0&&look[LK_HSTYLE]!=2){ for(int x=hx;x<hx+hw;x++)for(int y=hy;y<top;y++) vb(x,y,hz-1,6); }   // HOODIE: the hood hangs behind the head
+        if(ts==3&&hz>0&&hairVox[look[LK_HSTYLE]%NHAIR]!=2){ for(int x=hx;x<hx+hw;x++)for(int y=hy;y<top;y++) vb(x,y,hz-1,6); }   // HOODIE: the hood hangs behind the head
         for(int y=0;y<L&&y<ty;y++)for(int z=0;z<D;z++)for(int x=0;x<W;x++){ u8 v=vox[y][z][x]; if((v&15)!=7) continue;
             if(bs==1&&y>0&&y<L-1) vox[y][z][x]=(u8)((v&0xF0)|1);                                                   // SHORTS: bare shins
             if(bs==3&&!(y==0&&look[LK_SHOE])) vox[y][z][x]=(u8)((v&0xF0)|1);                                       // BARE bottom: skin from the hips down (shoes, if any, stay on)

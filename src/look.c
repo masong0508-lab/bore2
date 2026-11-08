@@ -23,7 +23,7 @@ static const char *const muzNm[4]={"NONE","SNOUT","MUZZLE","BEAK"};
 static const char *const ftailNm[4]={"NONE","FOX","CAT","BUNNY"};
 #define NEAR_ALL 9
 static const char *const earNm[NEAR_ALL]={"NONE","SMALL","BIG","ELF","LONG ELF","TINY","STICK-OUT","DROOPY","HUGE"};
-static const char *const hairNm[NHAIR]={"CROP","BOWL","LONG","BALD","SPIKY","AFRO","FLAT TOP","SIDE TAIL","BUN","BOB","PONYTAIL","PIGTAILS","MOHAWK","PIXIE","CURLS"};
+static const char *const hairNm[NHAIR]={"CROP","BOWL","LONG","BALD","SPIKY","AFRO","FLAT TOP","SIDE TAIL","BUN","BOB","PONYTAIL","PIGTAILS","MOHAWK","PIXIE","CURLS","BUZZ","SIDE PART","SLICKED","BRAIDS","WAVY","HORSESHOE","THINNING","MESSY","TOP KNOT","CURTAINS","MULLET"};
 static const char *const hatNm[6]={"NONE","CAP","BEANIE","BAND","FEZ","HELMET"};
 static const char *const hatColNm[6]={"AS THE TOP","AS THE BOTTOM","WHITE","BLACK","RED","GOLD"};
 static const char *const beardNm[3]={"NONE","BEARD","LONG BEARD"};
@@ -305,7 +305,11 @@ void look_random(Bore *b) {
         if (lkSlide(id)) { b->look[id] = (u8)slideVal(rnd8() % 5 + rnd8() % 5); continue; }
         int v = 0;
         for (int t = 0; t < 20; t++) {
+#ifdef HAIR_AB15   // (A/B test builds: the dice give the old 15 styles only, so a build with the new hair and one without meet the very same people)
+            v = rnd8() % (id == LK_HSTYLE ? 15 : lk_cnt(id));
+#else
             v = rnd8() % lk_cnt(id);
+#endif
             if (id == LK_EARS && v >= 3 && (rnd8() & 3)) v = 1 + (rnd8() & 1);   // (elf ears and the like now and then)
             if (isPart(id) && (rnd8() & 1)) v = 0;
             if ((id == LK_PATTERN || id == LK_FEARS || id == LK_MUZZLE || id == LK_FTAIL) && (rnd8() % 3)) v = 0;
