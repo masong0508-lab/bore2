@@ -903,7 +903,7 @@ static void life_update(int steps) {
           {   // (test builds, AUTO_CITY with AUTO_LOTS=n (the n-th block of each kind, 0 the nearest; AUTO_LOTS_K=k: just target k): a tour of lots for the shots, docs/lots_*.png. Every 300 frames the next target: a taxi to the n-th block of that kind
               // counting out from the capital, the Sim held on a tile of it, the camera set. 0 house inside, 1 house yard, 2 shop inside, 3 park, 4 street overview, 5 cottage, 6 two-storey,
               // 7 diner, 8 cafe, 9 town houses, 10 gym, 11 school, 12 clinic, 13 library. Same blocks in every build: the lot kinds come from the map, not from the generators.)
-            static const struct { s8 lot; u8 in; s16 pitch, dist; } tg[] = { { LOT_HOUSE, 1, 640, 1300 }, { LOT_HOUSE, 0, 520, 2300 }, { LOT_SHOP, 1, 640, 1500 }, { LOT_PARK, 0, 600, 2500 }, { LOT_HOUSE, 0, 760, 3700 },
+            static const struct { s8 lot; u8 in; s16 pitch, dist; } tg[] = { { LOT_HOUSE, 1, 700, 2300 }, { LOT_HOUSE, 0, 560, 2000 }, { LOT_SHOP, 1, 700, 2300 }, { LOT_PARK, 0, 650, 3300 }, { LOT_HOUSE, 0, 780, 4400 },
                 { LOT_COTTAGE, 1, 640, 1200 }, { LOT_TWO, 1, 640, 1300 }, { LOT_DINER, 1, 640, 1500 }, { LOT_CAFE, 1, 640, 1500 }, { LOT_TOWN, 1, 640, 1300 }, { LOT_GYM, 1, 640, 1500 }, { LOT_SCHOOL, 1, 640, 1600 }, { LOT_CLINIC, 1, 640, 1500 }, { LOT_LIBRARY, 1, 640, 1600 } };
             static int k_ = -1, hx_, hz_;
             int k = fr_ / 300 - 1;
@@ -923,6 +923,9 @@ static void life_update(int steps) {
                     else if (tg[k].lot == LOT_HOUSE) { tx = BM_LOT0 + 6; ty = BM_LOT0 + 11; }
                     hx_ = ((bx - world_wbx) * BM_BLK + tx) * TILE + TILE / 2; hz_ = -(((by - world_wby) * BM_BLK + ty) * TILE + TILE / 2);
                     cam_pitch = tg[k].pitch; cam_dist = tg[k].dist; cam_yaw = 2600;
+#ifdef BORE_DC
+                    cam_dist = cam_dist * 2;   // (the Dreamcast's lens is tighter)
+#endif
                 }
             }
             if (k_ >= 0) { for (int i = 0; i < nsims; i++) { sims[i].x = hx_ + (i % 3) * 3; sims[i].z = hz_ - (i / 3) * 3; sims[i].path_n = 0; sims[i].lvl = 0; } cam_fx = hx_; cam_fz = hz_; }

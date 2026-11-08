@@ -1,0 +1,34 @@
+HOUSE        lots   249 items  10720 | overlap 0 door 42 lane 0 unreach floor 1928 item 2870 floating 18 | homes 249 loud 155 nobed 0 nowc 38 nokit 48 noway 0 floors/home 0.00 | offplot 159
+COTTAGE      lots   196 items   8381 | overlap 0 door 0 lane 0 unreach floor 612 item 719 floating 0 | homes 196 loud 65 nobed 24 nowc 43 nokit 87 noway 0 floors/home 0.00 | offplot 197
+TOWNHOUSES   lots    48 items   1340 | overlap 0 door 0 lane 0 unreach floor 131 item 0 floating 0 | homes 96 loud 34 nobed 8 nowc 0 nokit 25 noway 0 floors/home 0.00 | offplot 0
+TWO-STOREY   lots    73 items   2215 | overlap 0 door 0 lane 0 unreach floor 198 item 0 floating 4 | homes 73 loud 46 nobed 0 nowc 7 nokit 8 noway 0 floors/home 0.00 | offplot 0
+FLATS        lots    35 items   2877 | overlap 0 door 0 lane 0 unreach floor 647 item 0 floating 0 | homes 70 loud 57 nobed 0 nowc 0 nokit 21 noway 0 floors/home 0.00 | offplot 0
+SHOP         lots   108 items   1903 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 310 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+DINER        lots    61 items   1032 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+GYM          lots    29 items    412 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 46 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+OFFICE       lots    60 items    900 | overlap 0 door 0 lane 0 unreach floor 60 item 60 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+INN          lots    43 items    817 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+POOL         lots    20 items    433 | overlap 0 door 0 lane 0 unreach floor 284 item 90 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+SCHOOL       lots    17 items    459 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+ARCADE       lots    21 items    399 | overlap 0 door 0 lane 0 unreach floor 0 item 21 floating 42 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+OFFICE TOWER lots    54 items   5546 | overlap 0 door 0 lane 0 unreach floor 204 item 417 floating 136 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+HOTEL        lots    20 items   1707 | overlap 0 door 33 lane 33 unreach floor 1371 item 485 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+PARK         lots   489 items   6786 | overlap 0 door 0 lane 0 unreach floor 2 item 12 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+TOWN SQUARE  lots    24 items    360 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+SKATE PLAZA  lots     8 items    680 | overlap 0 door 0 lane 0 unreach floor 0 item 192 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+EMPTY LOT    lots   191 items    798 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+FARM         lots   105 items   2415 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+CAFE         lots    47 items    962 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+BAR          lots    58 items   1334 | overlap 0 door 0 lane 0 unreach floor 174 item 290 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+CINEMA       lots    16 items    560 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+SALON        lots    22 items    374 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+RESTAURANT   lots    25 items    625 | overlap 0 door 0 lane 0 unreach floor 0 item 25 floating 25 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+CLINIC       lots     6 items    120 | overlap 0 door 0 lane 6 unreach floor 0 item 12 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+LIBRARY      lots    12 items    348 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+SPA          lots     7 items    119 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 14 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+GALLERY      lots     8 items    144 | overlap 0 door 0 lane 0 unreach floor 0 item 16 floating 24 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+GAS STATION  lots    67 items   1675 | overlap 0 door 0 lane 0 unreach floor 0 item 67 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+CONVENIENCE  lots    75 items   1575 | overlap 0 door 0 lane 0 unreach floor 0 item 150 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+SPACE CENTRE lots     1 items     16 | overlap 0 door 1 lane 0 unreach floor 23 item 12 floating 1 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+OBSERVATORY  lots     3 items     33 | overlap 0 door 0 lane 3 unreach floor 0 item 0 floating 9 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+ALL          lots  2198 items  58065 | overlap 0 door 76 lane 42 unreach floor 5634 item 5438 floating 629 | homes 684 loud 357 nobed 32 nowc 88 nokit 189 noway 0 floors/home 1.89 | offplot 356

@@ -688,6 +688,7 @@ static int far_solid(int wx, int wy) {   // a cell outside the plot: open street
     const BInfo *b = &nb[sy + 1][sx + 1]; if (b->terrain == BT_SEA) return 1; if (!far_house(b)) return 0;
     int lx = wx - sx * SLC, ly = wy - sy * SLC, x0, z0, x1, z1; far_foot(b, &x0, &z0, &x1, &z1); return lx >= x0 && lx < x1 && ly >= z0 && ly < z1;
 }
+static int z_put(int x, int y, int ch, int rot);
 static int gen_two;   // (D36) the lot is a TWO-STOREY: the house gets its loft
 static void gen_house(void) {   // a roomy starter home from the lot's seed: bedroom + bathroom at the back, living room + kitchen/dining at the front, real doors between, furnished with space to walk
     u32 h = lot_seed * 2654435761u + 12345; int mir = (h >> 3) & 1, w = 11 + ((h >> 5) & 1), d = 9, x0 = ((h >> 7) & 1), y0 = 1, x1 = x0 + w, y1 = y0 + d;
@@ -716,6 +717,12 @@ static void gen_house(void) {   // a roomy starter home from the lot's seed: bed
         PUT(x0 + 5, ym, ID_STAIRS >> 2, ID_STAIRS & 3, 0);                  // the stairs (their landing: the loft's cell behind them)
         PUT(x0 + 1, y0, 4, 0, 4); PUT(x0, y0, 3, 0, 4); PUT(x0 + 3, y0 + 1, 3, 1, 4); PUT(x1 - 2, y0, 2, 1, 4);   // bed, lamp, rug, computer (rot | storey 1 << 2)
         roof_st = 2; }
+    {   // (D68) the yard, as the PS1's yard(): the path from the front door out through a gate in the fence, planters either side, trees in a pair, a lamp, the mailbox and a bin
+        for (int y = y1; y <= 12; y++) flr[y][MC(xd)] = 2;
+        for (int x = x0 + 1; x < x1; x++) if (x != xd) hwl[12][MC(x)] = 6;
+        z_put(MC(xd - 2), y1, 'Z', 0); z_put(MC(xd + 2), y1, 'Z', 0); z_put(MC(xd + 1), y1, 'l', 0);
+        z_put(MC(x0 + 1), y1 + 1, '3', 0); z_put(MC(x1 - 2), y1 + 1, '3', 0); z_put(MC(xd - 4), y1, 'p', 0); z_put(MC(xd + 4), y1, 'p', 0);
+        z_put(MC(xd + 2), y1 + 2, (char)0xE0, 0); z_put(MC(xd - 2), y1 + 2, 'Y', 0); }
     pcx = MC(xd); pcy = y1 + 1; door_cx = MC(xd); door_cy = y1; { static const int sp[3] = { 1, 4, 5 }; for (int k = 0; k < 3; k++) { spawn_x[k] = MC(x0 + sp[k]); spawn_y[k] = y1 - 3; } }
     #undef PUT
     #undef FL
@@ -746,7 +753,29 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
             for (int y = 5; y <= 6; y++) { z_put(1, y, 'M', 0); z_put(2, y, 'M', 0); }
             z_put(1, 8, '9', 3); z_put(2, 8, '9', 3); z_put(12, 0, 'Y', 0); z_put(12, 12, 'Y', 0); z_put(11, 0, 'Y', 0); z_put(0, 1, 'B', 0);
             door_cx = 0; door_cy = 6; for (int q = 0; q < 3; q++) { spawn_x[q] = 0; spawn_y[q] = 5 + q; } return; }
-        for (int i = 0; i < 14; i++) { int x = (int)((h >> (i * 2)) & 15) % 13, y = (int)((h >> (i * 2 + 1)) % 11) % 13; if (y > 10 || obj_at(x, y) >= 0) continue;
+        if (k == LOT_PARK || k == LOT_SQUARE) {   // (D68) a designed park, the PS1's five designs (src/lots.inc lot_park), mirrored half the time: the walk up from the gate, benches on the path side, trees in pairs, beds in rows, a bin and the flag at the gate
+            int pm = (int)(h & 1), v = (int)((h >> 2) % 5u), tp = (int)((h >> 6) & 1);
+            #define PKX(xx) (pm ? 12 - (xx) : (xx))
+            #define PK(xx, yy, cc) z_put(PKX(xx), (yy), (cc), 0)
+            #define PKF(xa, ya, xb, yb) for (int yy = (ya); yy <= (yb); yy++) for (int xx = (xa); xx <= (xb); xx++) flr[yy][PKX(xx)] = 2
+            PKF(6, 0, 6, 12);
+            if (v == 0) { PKF(0, 6, 12, 6); PKF(4, 4, 8, 8); PK(6, 6, '}'); PK(4, 4, 'N'); PK(8, 4, 'N'); PK(4, 8, 'N'); PK(8, 8, 'N');
+                for (int q = 0; q < 4; q++) { int sx = (q & 1) ? 10 : 2, sy = (q & 2) ? 10 : 2; PK(sx, sy, 'p'); PK(sx - 1, sy, 'Z'); PK(sx + 1, sy, 'Z'); }
+                PK(1, 5, '3'); PK(11, 5, '3'); PK(1, 7, '3'); PK(11, 7, '3'); }
+            else if (v == 1) { PKF(0, 6, 12, 6); PK(3, 3, '}'); PK(1, 7, 'N'); PK(4, 7, 'N'); PK(6, 4, 'N'); PK(8, 1, '3'); PK(10, 1, '3'); PK(9, 2, '3'); PK(11, 3, '3'); PK(8, 4, '3'); PK(0, 1, '3'); PK(0, 3, '3');
+                PKF(8, 8, 10, 10); PK(9, 9, 'K'); PK(11, 9, 'Y'); PK(11, 11, '3'); PK(1, 11, '3'); PK(2, 9, '3'); PK(1, 8, '3'); }
+            else if (v == 2) { PKF(1, 2, 5, 9); PKF(7, 6, 11, 6); PK(3, 2, '_'); PK(3, 9, '_'); PK(7, 4, 'N'); PK(7, 8, 'N');
+                for (int y = 1; y <= 11; y += 2) PK(11, y, '3'); PK(8, 1, '3'); PK(9, 1, '3'); PK(9, 9, 'K'); PK(10, 10, 'Y'); }
+            else if (v == 3) { for (int r = 0; r < 3; r++) { int y = 2 + r * 3; for (int x = 1; x <= 4; x++) { PK(x, y, 'p'); PK(12 - x, y, 'p'); } }
+                PK(6, 1, (char)0xE4); PK(5, 11, 'N'); PK(7, 11, 'N'); PK(0, 0, '3'); PK(12, 0, '3'); PK(0, 12, '3'); PK(12, 12, '3'); PK(0, 6, 'Z'); PK(12, 6, 'Z'); }
+            else { PKF(0, 6, 12, 6); PK(5, 5, 'N'); PK(7, 5, 'N'); PK(5, 7, 'N'); PK(7, 7, 'N');
+                PK(1, 1, '3'); PK(11, 1, '3'); PK(3, 2, '3'); PK(9, 2, '3'); PK(1, 11, '3'); PK(11, 11, '3'); PK(2, 9, '3'); PK(10, 9, '3'); PK(9, 4, 'K'); PK(3, 4, 'K'); if (tp) PK(6, 2, '}'); }
+            PK(5, 12, 'Y');
+            #undef PKX
+            #undef PK
+            #undef PKF
+        }
+        for (int i = 0; i < 14 && k != LOT_PARK && k != LOT_SQUARE; i++) { int x = (int)((h >> (i * 2)) & 15) % 13, y = (int)((h >> (i * 2 + 1)) % 11) % 13; if (y > 10 || obj_at(x, y) >= 0) continue;
             int pick = (int)((h >> (i + 3)) % 5);
             if (k == LOT_PARK || k == LOT_SQUARE) { if (pick == 0) PUTP(x, y, 0, 3, abs(x - 6) > abs(y - 6) ? 1 : 0);   // (D42, as the PS1: a bench lies along the walk by it, not at random)
                 else if (pick == 1) PUTP(x, y, 6, 1, 0); else if (pick == 2) PUTP(x, y, 6, 3, 0); else if (pick == 3) PUTP(x, y, 6, 2, 0); else PUTP(x, y, 3, 2, 0); }
@@ -773,6 +802,12 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
     if (learn) { for (int x = x0 + 1; x < x1 - 1; x++) PUTP(x, y0, 5, 2, 0); for (int y = y0 + 3; y < y1 - 1; y += 2) for (int x = x0 + 1; x < x1 - 1; x += 3) { PUTP(x, y, 1, 1, 0); PUTP(x, y + 1, 0, 0, 0); } }
     else if (food) { for (int y = y0 + 3; y < y1 - 1; y += 2) for (int x = x0 + 1; x < x1 - 1; x += 3) { PUTP(x, y, 1, 0, 0); PUTP(x + 1, y, 0, 0, 3); } PUTP(x1 - 1, y0, 2, 3, 0); }
     else if (care) { for (int x = x0 + 1; x < x1 - 1; x += 2) PUTP(x, y0, 4, 0, 0); PUTP(x1 - 1, y0 + 2, 4, 3, 0); PUTP(x0 + 1, y0 + 4, 3, 2, 0); }
+    else if (k == LOT_SHOP) {   // (D68) a shop as the PS1's lot_shop(): shelves along the back wall by what it sells, rows of stands either side of the aisle from the door (each joined to a side wall), the till and plants by the door
+        static const char *const back[5] = { "F7", "i`", "vv[R", "SiCb", "$(" }; static const char rows[5] = { '7', 'i', 'y', 'i', 'A' };
+        int kind = (int)(h % 5u), lay = (int)((h >> 5) & 1); const char *bk = back[kind]; int bn = (int)strlen(bk);
+        for (int x = x0; x < x1; x++) z_put(x, y0, bk[(x - x0) % bn], 0);
+        for (int side = 0; side < 2; side++) { int a = side ? 8 : x0, b = side ? x1 - 1 : 4; for (int x = a; x <= b; x++) { z_put(x, y0 + 2, rows[kind], 0); if (!lay) z_put(x, y0 + 4, rows[kind], 0); } }
+        z_put(x1 - 1, y1 - 1, 'y', 0); z_put(x1 - 2, y1 - 1, 'y', 0); z_put(x1 - 3, y1 - 1, 'I', 0); z_put(x0, y1 - 1, 'p', 0); z_put(x0 + 1, y1 - 1, 'l', 0); }
     else { for (int x = x0 + 1; x < x1 - 1; x += 2) { PUTP(x, y0, 1, 3, 0); } for (int x = x0 + 2; x < x1 - 1; x += 3) PUTP(x, y0 + 3, 3, 1, 0); PUTP(x0 + 1, y0 + 4, 2, 0, 1); PUTP(x1 - 1, y0 + 4, 2, 3, 3); PUTP(x0 + 1, y1 - 1, 3, 2, 0); }
     if (k == LOT_SHOP && ((h >> 5) & 3) < 2) z_put(x1 - 2, y1 - 2, 0xBE, 0);   // (D53) an electronics shop sells the Boreagotchi: its display dock (tap it)
     for (int q = 0; q < 3; q++) { spawn_x[q] = 5 + q; spawn_y[q] = y1 - 2; }
@@ -781,7 +816,11 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
 static void place_sims(void) { memset(slv, 0, sizeof slv); for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; int cx = i < 3 ? spawn_x[i] : door_cx + (i % 3) - 1, cy = i < 3 ? spawn_y[i] : door_cy + 1 + i / 3; if (cy > GN - 1) cy = GN - 1; m->x = m->tx = m->wx = cx * 16; m->y = m->ty = m->wy = cy * 16; m->act = -1; m->act_left = 0; } }
 static void lot_reset(void) {
     memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); ups_clear(); memset(slv, 0, sizeof slv); ed_lv = 0; nobj = 0; occ_ok = 0; pick = -1; mode = M_LIVE;   /* (funds are the household's: set by new_household, not reset on every lot you walk into) */ cat = 0; tool = 0; pal = 1;
-    gen_house(); nsim = 3; ctl = 0; cur_sim = 0; memset(ilim, 0, sizeof ilim); strcpy(sname[0], "Ashley Newbie"); strcpy(sname[1], "Ronald Bacon"); strcpy(sname[2], "Kit Farlow");
+    gen_house();
+#ifdef DS_LOT   /* test only: the shot rig shows lot kind DS_LOT (0 the starter house) with the seed DS_SEED */
+    if (DS_LOT) { memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(DS_LOT, 0x9E3779B9u * (u32)(DS_SEED)); }
+#endif
+    nsim = 3; ctl = 0; cur_sim = 0; memset(ilim, 0, sizeof ilim); strcpy(sname[0], "Ashley Newbie"); strcpy(sname[1], "Ronald Bacon"); strcpy(sname[2], "Kit Farlow");
     for (int i = 0; i < 3; i++) { Sim *m = &sims[i]; m->x = spawn_x[i] * 16; m->y = spawn_y[i] * 16; m->tx = m->x; m->ty = m->y; m->wx = m->x; m->wy = m->y; m->act = -1; m->act_left = 0; m->age = i == 0 ? 24 : i == 1 ? 31 : 9; m->soc = -1; m->tgt = 0;
         for (int n = 0; n < 6; n++) { m->need[n] = 90 - (n * 17 + i * 11) % 60; m->acc[n] = 0; } m->rel = 0; for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0; if (i) { m->skin = (u8)(i * 2); m->hair = (u8)(i); m->hcol = (u8)(i * 2); m->shirt = (u8)(i + 2); m->hair = (u8)(6 + i * 2); m->beard = (u8)(i == 1 ? 3 : i == 2 ? BEARDV : 0); m->fc = (u8)i; } }
 }
@@ -815,7 +854,11 @@ static void lot_enter(int bx, int by) {   // the lot you walk into: what you bui
         if (q->hasup) { memcpy(uflr, q->ufl, sizeof uflr); memcpy(uhwl, q->uhw, sizeof uhwl); memcpy(uvwl, q->uvw, sizeof uvwl); } else { ups_clear(); shell_to_floors(up_st); }
         nb_load(); LV = keep; return; }
     memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); ups_clear(); nobj = 0; occ_ok = 0; roof_st = up_st = 0;
-    if (bx >= 2000) gen_zone(bx, by); else { BInfo bi; bm_block(bx, by, &bi); if (bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) { gen_two = bi.lot == LOT_TWO; gen_house(); gen_two = 0; } else gen_public(bi.lot, bi.h); } nb_load(); LV = keep;
+    if (bx >= 2000) gen_zone(bx, by); else { BInfo bi; bm_block(bx, by, &bi);
+#ifdef DS_LOT
+ if (DS_LOT) { bi.lot = DS_LOT; bi.h = 0x9E3779B9u * (u32)(DS_SEED); }
+#endif
+ if (bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) { gen_two = bi.lot == LOT_TWO; gen_house(); gen_two = 0; } else gen_public(bi.lot, bi.h); } nb_load(); LV = keep;
 }
 static void lot_cross(void) {   // the sim you are playing left the lot's slot: the next lot becomes the middle one and everything slides back by one slot
     const Sim *m = &sims[ctl]; int dx = fdiv(m->x + 8, 16 * SLC), dy = fdiv(m->y + 8, 16 * SLC); if (!dx && !dy) return;
