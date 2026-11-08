@@ -264,3 +264,8 @@ See also ROADMAP.md and EXPANSION_PACKS.md. In order:
 - Test hooks (test builds only): SELECT steps the moods in Live, Create-a-Sim and holding SELECT on the title draws the contact sheet; START in Create-a-Sim shows Live's own model large.
 - 30 fps in melonDS (live, family, close). Old saves load (no save change).
 - Still open: hair on the 3D Live model is still the old blocks (the PS1's look.c hair differs); facial hair on the model is one block; the Boreagotchi's own pet faces are not touched (another helper); no real hardware test.
+
+
+**Done at D58 (`bore2_dsi_d58.nds`): the Boreagotchi's wip screens spliced in**
+- The `wip-gotchi` screens now run: twelve-icon handheld, a More page (family home with the memorial shelf, pet diary, awards, Blobdex, help, shop), the tree with portraits, CATCH and HIGH LOW, dress-up, touch buttons on every view. Test scenes 58 (More) and 59 (family home); `-DAUTOSC=n` opens a scene on entering Live (the runner's POKE did not take in this build). 30 fps in melonDS. Shot: `docs/ds_shots/d57_gotchi.png`.
+- Not yet on the DS: the PS1's title and hatching scenes, the guided first day, the day summary and the people on the tree page.
