@@ -1,0 +1,789 @@
+{
+"sprites": {
+"BOX_BODY": [
+"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+"kqqqqqqqqqqqqqqqqqqqqqqqqqqRqk",
+"kRRRRRRRRRRRRRRRRRRRRRRRRRRRqk",
+"kprrrrrrrrrrrrrrrrrrrrrrrrrRqk",
+"kprrrrrrrrrrrrrrrrrrrrrrrrrRqk",
+"kprrcprrcprrrrrrrrrrrcprrrrRqk",
+"kprrpcrrpcrrrrrrrrrrrpcrrrrRqk",
+"kprrrrrrrrrrrrrrrrrrrrrrrrrRqk",
+"kprrrrrrrrrrrrrrrrrrrrrrrrrRqk",
+"kprrrrrrrrrrrrrrrrrrrrrrrrrRqk",
+"kprrrrrrrcprrrrrrrrrrrrrrrrRqk",
+"kprrrrrrrpcrrrrrrrrrrrrrrcpRqk",
+"kprrrcprrrrrrrrrrrrrrrrrrpcRqk",
+"kprrrpcrrrrrrrrrrrrrcprrrrrRqk",
+"kRRRRRRRRRRRRRRRRRRRpcRRRRRRRk",
+"kqqqqqqqqqqqqqqqqqqqqqqqqqqqqk",
+"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+],
+"BOX_LID": [
+"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+"kppppppppppppppppppppppppppppRqk",
+"kprrrcrrrrcrrrrrrrrrrrrrcrrrrRqk",
+"kprrrrrrrrrrrrrrrrrrcrrrrrrrrRqk",
+"kRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRk",
+"kqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqk",
+"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+],
+"BOX_MOUTH": [
+"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+"kRRRRRRRRRRRRRRRRRRRRRRRRRRRRk",
+"kqqqqqqqqqqqqqqqqqqqqqqqqqqqqk",
+"kQQQQQQQQQQQQQQQQQQQQQQQQQQQQk",
+"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
+],
+"RIB_BODY": [
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo"
+],
+"RIB_LID": [
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo",
+"oyggGo"
+],
+"BOW": [
+"......................",
+"..oyyggoo.....oyyggoo.",
+".oyggggggo...oyggggggo",
+"oggggggggooooggggggggg",
+"oggGGGGggoygogggGGGGgg",
+"oggGooGggoygogggGooGgg",
+"oggGGGGggoggogggGGGGgg",
+".ogggggggogGoogggggggo",
+"..ooGGGoooooo.oogGGGo.",
+"........og..go........",
+"........og...g........",
+".......o......o......."
+],
+"TAIL_L": [
+"ogGo",
+"ogGo",
+"ogGo",
+".ogG",
+".ogG",
+".ogG",
+"ogGo",
+"ogGo",
+"ogGo",
+".ogG",
+".ogG",
+".ogG",
+"ogGo",
+"ogGo",
+".g.o",
+"..g."
+],
+"TAIL_R": [
+".ogG",
+".ogG",
+".ogG",
+"ogGo",
+"ogGo",
+"ogGo",
+".ogG",
+".ogG",
+".ogG",
+"ogGo",
+"ogGo",
+"ogGo",
+".ogG",
+".ogG",
+".o.G",
+"o.G."
+],
+"TOY_FRONT": [
+".........VVVV.........",
+"........Vvv..V........",
+"........V....V........",
+".........VvvV.........",
+".......kkkkkkkk.......",
+".....kkSsssssszkk.....",
+"....kwSsssssssszzk....",
+"...kwSsssssssssszzk...",
+"..kwNNNNNNNNNNNNNNzk..",
+"..kwNllllllllllllNzk..",
+".kSSNlLLLLLLLLLLLNzzk.",
+".kSSNlLLLLLLLLLLLNzzk.",
+".kSSNlLLLLLLLLLLLNzzk.",
+".kSSNlLLLLLLLLLLLNzzk.",
+".kSSNlLLLLLLLLLLLNzzk.",
+".kSSNlLLLLLLLLLLLNzzk.",
+".kSSNlLLLLLLLLLLLNzzk.",
+".kSSNlLLLLLLLLLLLNzzk.",
+".kSSNlLLLLLLLLLLLNzzk.",
+".kSSnnnnnnnnnnnnnnzzk.",
+".kSSsssssssssssssszzk.",
+".kSSyyggsyyggsyyggzzk.",
+".kssggggsggggsggggzzk.",
+".kssGGGGsGGGGsGGGGzzk.",
+"..ksoooosoooosoooozk..",
+"...kkzzzzzzzzzzzzkk...",
+".....kkzzzzzzzzkk.....",
+".......kkkkkkkk......."
+],
+"TOY_BACK": [
+".........VVVV.........",
+"........Vvv..V........",
+"........V....V........",
+".........VvvV.........",
+".......kkkkkkkk.......",
+".....kkSsssssszkk.....",
+"....kwSsssssssszzk....",
+"...kwSsssssssssszzk...",
+"..kwSssssSSSzsssszzk..",
+"..kwSssSSSSSSSzsszzk..",
+".kSSsssSSSSSSSSssszzk.",
+".kSSssSSSssssSSzsszzk.",
+".kSSssSSwwwwwwSSsszzk.",
+".kSSssSSwwwwwwSSsszzk.",
+".kSSszSSssssssSSzszzk.",
+".kSSssSSssssssSSsszzk.",
+".kSSssSSSsssssSzsszzk.",
+".kSSsszSSssssSSzsszzk.",
+".kSSsssSSSSSSSzssszzk.",
+".kSSssszzSSSSzzssszzk.",
+".kSSssssszzzzssssszzk.",
+".kSSssszzzzzzzzssszzk.",
+".kssssszzzzzzzzssszzk.",
+".ksssssssssssssssszzk.",
+"..ksssssssssssssszzk..",
+"...kkzzzzzzzzzzzzkk...",
+".....kkzzzzzzzzkk.....",
+".......kkkkkkkk......."
+],
+"EGG0": [
+".....####.....",
+"....#mmmm#....",
+"...#mmmmmm#...",
+"..#hhmmmmmm#..",
+"..#hmmmmoom#..",
+".#mhmmmmmmmm#.",
+".#mmmmmmmddd#.",
+".#mmoommmddd#.",
+".#mmoommmddd#.",
+".#mmmmmmmddd#.",
+".#mmmmmmmddd#.",
+".#mmmmmmoodd#.",
+".#mmmmmmoodd#.",
+".#mmoommmddd#.",
+"..#dddddddd#..",
+"...##dddd##...",
+".....####....."
+],
+"EGGS0": [
+"..###..",
+".#mmm#.",
+".#hmm#.",
+"#mhmom#",
+"#mmmdd#",
+"#momdd#",
+"#mmmdd#",
+".#dod#.",
+"..###.."
+],
+"EGG1": [
+".....####.....",
+"....#mmmm#....",
+"...#mmmmmm#...",
+"..#hhmmmmmm#..",
+"..#hmmmmmmm#..",
+".#mhmmmmmmmm#.",
+".#mooooooood#.",
+".#mmmmmmmddd#.",
+".#mmomomoddd#.",
+".#mmmmmmmddd#.",
+".#mmmmmmmddd#.",
+".#mooooooood#.",
+".#mmmmmmmddd#.",
+".#mmmmmmmddd#.",
+"..#dddddddd#..",
+"...##dddd##...",
+".....####....."
+],
+"EGGS1": [
+"..###..",
+".#mmm#.",
+".#hmm#.",
+"#mhmmm#",
+"#ooooo#",
+"#mmmdd#",
+"#moood#",
+".#ddd#.",
+"..###.."
+],
+"EGG2": [
+".....####.....",
+"....#mmmm#....",
+"...#mmmmmm#...",
+"..#hhmmmmmm#..",
+"..#hmmmmmmm#..",
+".#mhomomommm#.",
+".#mmmomomodd#.",
+".#mmmmmmmddd#.",
+".#mmmmmmmddd#.",
+".#omomomodod#.",
+".#momomomodo#.",
+".#mmmmmmmddd#.",
+".#mmmmmmmddd#.",
+".#mmmmmmmddd#.",
+"..#dddddddd#..",
+"...##dddd##...",
+".....####....."
+],
+"EGGS2": [
+"..###..",
+".#mmm#.",
+".#hmm#.",
+"#momom#",
+"#mmmdd#",
+"#ommdo#",
+"#mmodd#",
+".#ddd#.",
+"..###.."
+],
+"EGG3": [
+".....####.....",
+"....#mmmm#....",
+"...#mmmmmm#...",
+"..#hhmmmmmm#..",
+"..#hmmmmmmo#..",
+".#mhoommmmmm#.",
+".#mmoommmddd#.",
+".#mmmmmmmddd#.",
+".#mmmmmmoodd#.",
+".#mmmmmmoodd#.",
+".#mommmmmddd#.",
+".#mommmmmddd#.",
+".#mmmoommddd#.",
+".#mmmoommddd#.",
+"..#dddddddd#..",
+"...##dddd##...",
+".....####....."
+],
+"EGGS3": [
+"..###..",
+".#mmm#.",
+".#hmm#.",
+"#mhmmm#",
+"#momdd#",
+"#mmmdd#",
+"#mmmod#",
+".#dod#.",
+"..###.."
+],
+"CRACK1": [
+".......#......",
+"......#.......",
+".......#......",
+"......#.......",
+"..............",
+"..............",
+"..............",
+"..............",
+"..............",
+"..............",
+"..............",
+"..............",
+"..............",
+"..............",
+"..............",
+"..............",
+".............."
+],
+"CRACK2": [
+".......#......",
+"......#.......",
+".......#......",
+"......#.......",
+".......#......",
+"........#.....",
+".......#.#....",
+"......#...#...",
+"..............",
+"..............",
+"......#.......",
+".....#........",
+"......#.......",
+"..............",
+"..............",
+"..............",
+".............."
+],
+"CRACK3": [
+"..............",
+"..............",
+"..............",
+"..............",
+"..............",
+"........#.....",
+".........#.u..",
+"..........u...",
+".#.#.#.#.#.#.#",
+"#u#u#u#u#u#u#.",
+"..u.u.#.u.u.u.",
+".....#........",
+"......#.......",
+"..............",
+"..............",
+"..............",
+".............."
+],
+"EGGCUP": [
+"..#.#.#.#.#.#.",
+".#m#o#m#m#m##.",
+"..#mmmmmmmm#..",
+"...##mmmm##...",
+".....####....."
+],
+"SHARD0": [
+".##.",
+"#mh#",
+"#mm#",
+".##."
+],
+"SHARD1": [
+"##..",
+"#m#.",
+"#dm#",
+".###"
+],
+"SHARD2": [
+".###",
+"#hm#",
+".#d#",
+"..##"
+],
+"SHARD3": [
+"#.##",
+"#mm#",
+".#d#",
+"..#."
+],
+"SPK_S": [
+".y.",
+"yWy",
+".y."
+],
+"SPK_M": [
+"..y..",
+"..y..",
+"yyWyy",
+"..y..",
+"..y.."
+],
+"SPK_L": [
+"...y...",
+"...y...",
+".y.y.y.",
+"..yWy..",
+"yyWWWyy",
+"..yWy..",
+".y.y.y.",
+"...y...",
+"...y..."
+]
+},
+"palette": {
+"k": [
+24,
+14,
+36
+],
+"w": [
+255,
+255,
+255
+],
+"W": [
+246,
+248,
+255
+],
+"r": [
+226,
+64,
+96
+],
+"R": [
+186,
+40,
+76
+],
+"q": [
+138,
+26,
+60
+],
+"Q": [
+66,
+12,
+40
+],
+"p": [
+255,
+128,
+150
+],
+"c": [
+255,
+214,
+224
+],
+"y": [
+255,
+244,
+168
+],
+"g": [
+255,
+208,
+60
+],
+"G": [
+230,
+160,
+24
+],
+"o": [
+166,
+96,
+12
+],
+"v": [
+214,
+218,
+232
+],
+"V": [
+150,
+156,
+182
+],
+"N": [
+38,
+20,
+58
+],
+"n": [
+96,
+66,
+128
+]
+},
+"mapped": {
+"S": "shell, owner colour + 40",
+"s": "shell, owner colour",
+"z": "shell, owner colour * 0.6",
+"L": "LCD on (172,196,128) / off (58,72,70)",
+"l": "LCD shade on (150,176,108) / off (44,56,56)",
+"#": "pet ink",
+"m": "LCD green 78% + ink 22%",
+"d": "LCD green 52% + ink 48%",
+"o": "LCD green 28% + ink 72%",
+"h": "LCD green 45% + white 55%",
+"u": "(255,248,190)"
+},
+"font": {
+"A": [
+".###.",
+"#...#",
+"#...#",
+"#####",
+"#...#",
+"#...#",
+"#...#"
+],
+"B": [
+"####.",
+"#...#",
+"#...#",
+"####.",
+"#...#",
+"#...#",
+"####."
+],
+"C": [
+".###.",
+"#...#",
+"#....",
+"#....",
+"#....",
+"#...#",
+".###."
+],
+"D": [
+"####.",
+"#...#",
+"#...#",
+"#...#",
+"#...#",
+"#...#",
+"####."
+],
+"E": [
+"#####",
+"#....",
+"#....",
+"####.",
+"#....",
+"#....",
+"#####"
+],
+"F": [
+"#####",
+"#....",
+"#....",
+"####.",
+"#....",
+"#....",
+"#...."
+],
+"G": [
+".###.",
+"#...#",
+"#....",
+"#.###",
+"#...#",
+"#...#",
+".###."
+],
+"H": [
+"#...#",
+"#...#",
+"#...#",
+"#####",
+"#...#",
+"#...#",
+"#...#"
+],
+"I": [
+".###.",
+"..#..",
+"..#..",
+"..#..",
+"..#..",
+"..#..",
+".###."
+],
+"J": [
+"..###",
+"...#.",
+"...#.",
+"...#.",
+"...#.",
+"#..#.",
+".##.."
+],
+"K": [
+"#...#",
+"#..#.",
+"#.#..",
+"##...",
+"#.#..",
+"#..#.",
+"#...#"
+],
+"L": [
+"#....",
+"#....",
+"#....",
+"#....",
+"#....",
+"#....",
+"#####"
+],
+"M": [
+"#...#",
+"##.##",
+"#.#.#",
+"#.#.#",
+"#...#",
+"#...#",
+"#...#"
+],
+"N": [
+"#...#",
+"##..#",
+"#.#.#",
+"#..##",
+"#...#",
+"#...#",
+"#...#"
+],
+"O": [
+".###.",
+"#...#",
+"#...#",
+"#...#",
+"#...#",
+"#...#",
+".###."
+],
+"P": [
+"####.",
+"#...#",
+"#...#",
+"####.",
+"#....",
+"#....",
+"#...."
+],
+"Q": [
+".###.",
+"#...#",
+"#...#",
+"#...#",
+"#.#.#",
+"#..#.",
+".##.#"
+],
+"R": [
+"####.",
+"#...#",
+"#...#",
+"####.",
+"#.#..",
+"#..#.",
+"#...#"
+],
+"S": [
+".####",
+"#....",
+"#....",
+".###.",
+"....#",
+"....#",
+"####."
+],
+"T": [
+"#####",
+"..#..",
+"..#..",
+"..#..",
+"..#..",
+"..#..",
+"..#.."
+],
+"U": [
+"#...#",
+"#...#",
+"#...#",
+"#...#",
+"#...#",
+"#...#",
+".###."
+],
+"V": [
+"#...#",
+"#...#",
+"#...#",
+"#...#",
+"#...#",
+".#.#.",
+"..#.."
+],
+"W": [
+"#...#",
+"#...#",
+"#...#",
+"#.#.#",
+"#.#.#",
+"##.##",
+"#...#"
+],
+"X": [
+"#...#",
+"#...#",
+".#.#.",
+"..#..",
+".#.#.",
+"#...#",
+"#...#"
+],
+"Y": [
+"#...#",
+"#...#",
+".#.#.",
+"..#..",
+"..#..",
+"..#..",
+"..#.."
+],
+"Z": [
+"#####",
+"....#",
+"...#.",
+"..#..",
+".#...",
+"#....",
+"#####"
+],
+"!": [
+"..#..",
+"..#..",
+"..#..",
+"..#..",
+"..#..",
+".....",
+"..#.."
+],
+"-": [
+".....",
+".....",
+".....",
+"#####",
+".....",
+".....",
+"....."
+],
+"?": [
+".###.",
+"#...#",
+"....#",
+"...#.",
+"..#..",
+".....",
+"..#.."
+],
+".": [
+".....",
+".....",
+".....",
+".....",
+".....",
+"..#..",
+"..#.."
+],
+" ": [
+".....",
+".....",
+".....",
+".....",
+".....",
+".....",
+"....."
+]
+}
+}
