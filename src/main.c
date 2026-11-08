@@ -4911,11 +4911,11 @@ static void worlds_draw(void) {
         ui_icon_disc(MX + MS / 2, MY + MS / 2 - 8, 40, IC_DICE, UI_WHITE, UI_BLUE2);
         ui_textc(MX + MS / 2, MY + MS / 2 + 20, 1, "A NEW MAP EVERY TIME", UI_WHITE);
     }
-    ui_text(12, top + 124, 1, wo_sel == WO_RANDOM ? "FRESH DICE: TOWNS, ROADS" : "A SET WORLD: THE SAME MAP EVERY TIME", UI_SOFT);
+    ui_wrap(12, top + 124, 132, 3, wo_sel == WO_RANDOM ? "FRESH DICE: TOWNS, ROADS" : "A SET WORLD: THE SAME MAP EVERY TIME", UI_SOFT);
     if (sd) { const Settle *c = wo_painted == sd ? bm_set(bm_capital()) : 0; sprintf(b, "%d TOWNS, CAPITAL %s", bm_nset(), c ? c->name : "?"); ui_text(12, top + 138, 1, b, UI_INK); }
     else if (wo_name[0]) { snprintf(b, sizeof b, "CAPITAL: %s", wo_name); ui_text(12, top + 138, 1, b, UI_INK); }
     ui_badge(306 - ui_tw(1, wo_packed ? "TOWNS: PACKED" : "TOWNS: ROOMY") - 10, 8, wo_packed ? "TOWNS: PACKED" : "TOWNS: ROOMY", UI_WHITE, UI_BLUE2);
-    ui_hints(160, 214, "X PLAY|TRI TOWNS|SEL NAME CITY|L1 R1 TAB|O BACK", 1);
+    ui_hints(160, 214, "X PLAY|TRI TOWNS|SEL NAME|L1 R1 TAB|O BACK", 1);
 }
 
 static const char *const menuNm[] = { "STORY MODE", "CONTINUE", "CREATE A BORE", "JUKEBOX", "OPTIONS", "HOW TO PLAY" };
