@@ -2247,8 +2247,9 @@ static void mg_frame(int held, int down, int steps, int tx, int ty) { if (mg_ui 
 #define MG_AR 0x5241   // 'AR': the arcade's tickets, the fight record
 #define MG_AS 0x5341   // 'SA': the arcade's high-score tables, first-play bits, games played
 #define MG_SK 0x4B53   // 'SK': the board and the skate scores
+#define MG_CX 0x5843   // 'CX': what Create-a-Sim adds to each sim (hat, gender, trousers, traits, lifetime wish); after the Boreagotchi's block so an older ROM still reads that
 #define MG_FY 0x5946   // 'FY': who is whose among the sims (ids, parents, partner): the Boreagotchi tree shows them
-static void mg_reset(void) { has_board = on_board = 0; board_lift = 0; skate_score = skate_best = 0; arcade_tix = fight_wins = fight_champ = fight_best = 0; memset(fid, 0, sizeof fid); memset(fpar, 0, sizeof fpar); memset(fpt, 0, sizeof fpt); fid_next = 1; memset(ar_hs, 0, sizeof ar_hs); ar_pm = ar_plays = 0; mg_ui = 0; hs_heat = hs_day = hs_stolen = hs_logic = 0; gt_reset(); }
+static void mg_reset(void) { has_board = on_board = 0; board_lift = 0; skate_score = skate_best = 0; arcade_tix = fight_wins = fight_champ = fight_best = 0; memset(csx, 0, sizeof csx); memset(fid, 0, sizeof fid); memset(fpar, 0, sizeof fpar); memset(fpt, 0, sizeof fpt); fid_next = 1; memset(ar_hs, 0, sizeof ar_hs); ar_pm = ar_plays = 0; mg_ui = 0; hs_heat = hs_day = hs_stolen = hs_logic = 0; gt_reset(); }
 static int mg_pack(u8 *o) {
     int n = 0; u16 th[2]; s32 v[3];
     th[0] = MG_SK; th[1] = 12; v[0] = has_board; v[1] = (s32)skate_score; v[2] = (s32)skate_best; memcpy(o + n, th, 4); memcpy(o + n + 4, v, 12); n += 16;
@@ -2257,6 +2258,7 @@ static int mg_pack(u8 *o) {
     th[0] = MG_HT; th[1] = 16; { s32 w[4] = { hs_heat, hs_day, hs_stolen, hs_logic }; memcpy(o + n, th, 4); memcpy(o + n + 4, w, 16); n += 20; }
     th[0] = MG_FY; th[1] = SIM_MAX * 4; memcpy(o + n, th, 4); memcpy(o + n + 4, fid, SIM_MAX); memcpy(o + n + 4 + SIM_MAX, fpar, SIM_MAX * 2); memcpy(o + n + 4 + SIM_MAX * 3, fpt, SIM_MAX); n += 4 + SIM_MAX * 4;
     n += gt_pack(o + n, MGBUF_N - n);
+    if (n + 4 + (int)sizeof csx <= MGBUF_N) { th[0] = MG_CX; th[1] = (u16)sizeof csx; memcpy(o + n, th, 4); memcpy(o + n + 4, csx, sizeof csx); n += 4 + (int)sizeof csx; }
     return n; }
 static int mg_unpack(const u8 *p, int left) {
     mg_reset(); int n = 0;
@@ -2266,6 +2268,7 @@ static int mg_unpack(const u8 *p, int left) {
         else if (th[0] == MG_AS && th[1] == sizeof ar_hs + 4) { memcpy(ar_hs, p + n + 4, sizeof ar_hs); memcpy(&ar_pm, p + n + 4 + sizeof ar_hs, 2); memcpy(&ar_plays, p + n + 6 + sizeof ar_hs, 2); }
         else if (th[0] == MG_HT && th[1] == 16) { s32 w[4]; memcpy(w, p + n + 4, 16); hs_heat = CLAMP(w[0], 0, 100); hs_day = w[1] & 255; hs_stolen = w[2] & 0xFFFF; hs_logic = MAX(0, w[3]); }
         else if (th[0] == MG_FY && th[1] == SIM_MAX * 4) { memcpy(fid, p + n + 4, SIM_MAX); memcpy(fpar, p + n + 4 + SIM_MAX, SIM_MAX * 2); memcpy(fpt, p + n + 4 + SIM_MAX * 3, SIM_MAX); for (int i = 0; i < SIM_MAX; i++) if (fid[i] >= fid_next) fid_next = (u8)(fid[i] + 1); if (!fid_next) fid_next = 1; }
+        else if (th[0] == MG_CX && th[1] == sizeof csx) { memcpy(csx, p + n + 4, sizeof csx); for (int i = 0; i < SIM_MAX; i++) { Cx *c = &csx[i]; if (c->hat > 5) c->hat = 0; if (c->gen > 1) c->gen = 0; if (c->wish > 5) c->wish = 0; c->wdone &= 1; if (c->pants > 5) c->pants = 0; for (int k = 0; k < 3; k++) if (c->tr[k] > 12) c->tr[k] = 0; } }
         else if (th[0] == MG_GT) gt_unpack(p + n + 4, th[1]);
         else break;
         n += 4 + th[1]; }
