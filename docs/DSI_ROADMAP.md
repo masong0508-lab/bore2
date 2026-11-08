@@ -246,7 +246,7 @@ Music data: `python3 tools/dsmusic/mk_dsmusic.py assets/SONGS.BIN assets/songs.i
 ## D30 done
 Buy/CAS interface restyle and property system are finished. Still to test on real hardware: lot selling and ownership save round-trip.
 
-## What the DS needs next (updated Nov 1; newest ROM d54)
+## What the DS needs next (updated Nov 1; newest ROM d66)
 See also ROADMAP.md and EXPANSION_PACKS.md. In order:
 1. Finish the DS Boreagotchi: branch `wip-gotchi` (rules written in ds_games.c, new screens in ports/dsi/wip/ not spliced in): splice, add view names and icons, draw hats, build, test scenes, shots, 30 fps, make d55.
 2. BORTUA FIGHTER: branch `wip-ds-fight` (ds_fight.c, ds_fight_logic.h); then the arcade's fifth cabinet.
@@ -341,5 +341,5 @@ See also ROADMAP.md and EXPANSION_PACKS.md. In order:
 D64 (Boreagotchi v48, 3D frames a second; UI frames a second in brackets): handheld 28-30 (28-55 while hearts or stars fly), feed / game picker / training / goals / stats 30 (UI 52-60), BEAT / HOP / STACK / WHACK 29-30 (UI 29-30, redrawn every frame), unboxing 30, surprise 28-29. The d63 basket (the same toy) measured 30 (UI 52-57) in the same bench.
 Under 30: orbit (the still list is recorded again while the camera turns, 80 re-records) and the skate plaza (UI 43-56). The hair of D62 costs nothing measurable (live 30, close 30 with every Sim on WAVY). The basket row measured the L key (Home button) as well until D63's bench fix.
 
-## D65: streets, nothing off the plot (Nov 8)
-The DS's streets are not generated tiles: a lot is a 13 x 13 plot, and its street and pavement are drawn round it by `draw_world` (lamps and bins at fixed kerb positions), so nothing a lot's generator places can stand on a road. Two checks added: `occ_build` now drops anything a generator or a save put outside the plot (`ds_oob`), and a test build (`XTRA=-DDS_ROAD_AUDIT`, the counters `ds_chk` at the first Live frame) makes every lot of every town and city (3,837 lots, 61,960 things): 0 off the plot. The picture is the same as d64 (`docs/street_props_before_after.png`, bottom row). ROM: bore2_dsi_d65.nds. The shared definition of road / kerb / plot is the PS1's `world_tile_class`; the DS has no tile map to ask it of.
+## D66: streets, nothing off the plot (Nov 8)
+The DS's streets are not generated tiles: a lot is a 13 x 13 plot, and its street and pavement are drawn round it by `draw_world` (lamps and bins at fixed kerb positions), so nothing a lot's generator places can stand on a road. Two checks added: `occ_build` now drops anything a generator or a save put outside the plot (`ds_oob`), and a test build (`XTRA=-DDS_ROAD_AUDIT`, the counters `ds_chk` at the first Live frame) makes every lot of every town and city (3,837 lots, 61,960 things): 0 off the plot. The picture is the same as d64 (`docs/street_props_before_after.png`, bottom row). ROM: bore2_dsi_d66.nds (built on the UI-fonts stage 1 commit of d65). The shared definition of road / kerb / plot is the PS1's `world_tile_class`; the DS has no tile map to ask it of.
