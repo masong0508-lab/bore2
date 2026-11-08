@@ -13,7 +13,7 @@ int  arcade_price(int g);                    // cash at the door (none: the game
 void arcade_open(int g);                     // a cabinet's game (the floor opens at that cabinet) or AG_PRIZES (at the prize counter)
 int  arcade_update(int held, int pressed, int steps);   // 1 while it runs
 void arcade_draw(void);
-void arcade_save(void); void arcade_load(void);          // the saved block (save version 45 on)
+void arcade_save(void); void arcade_load(void);          // the saved block (save version 46 on)
 extern int arcade_tix;                                     // tickets in your pocket (saved with the life)
 // what is saved: the three best scores of each game (score in the low 17 bits, the initials in 5 bits each above), the prizes owned
 // and the achievements (bits), your tokens, games played, which games you have played

@@ -18,7 +18,7 @@ STUB_MAGIC = b"BSTB"            # (src/ovl.h: OVL_STUB) the first bytes of a stu
 # pack id: (title, [(file name, slot in sectors)])  -- the slots leave room to grow; the game's overlay arena is 80 KB
 PACKS = {
     "KINGDOM": ("THE LAND BOREFORE TIME", [("KINGDOM.OVL", 40)]),
-    "ARCADE":  ("BORTUA FIGHTER AND THE ARCADE", [("ARCADE.OVL", 24)]),
+    "ARCADE":  ("BORTUA FIGHTER AND THE ARCADE", [("ARCADE.OVL", 32), ("ARCADE2.OVL", 40)]),
     "GOTCHI":  ("BOREAGOTCHI!", [("GOTCHI.OVL", 40), ("GOTCHI.ART", 32)]),
     "PARTY":   ("PARTY PACK", [("PARTY.OVL", 8)]),
     "DJ":      ("DJ BOOTH", [("DJ.OVL", 16)]),

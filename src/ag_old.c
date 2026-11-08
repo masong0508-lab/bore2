@@ -3,7 +3,7 @@
 #include "arc_i.h"
 
 static int isq(int v) { int r = 0; while ((r + 1) * (r + 1) <= v) r++; return r; }
-static void hearts(int n, int max) { for (int i = 0; i < max; i++) { int x = 236 - (i + 1) * 9; R(x, 3, 7, 6, i < n ? 250 : 50, i < n ? 70 : 40, i < n ? 110 : 60); R(x + 1, 2, 2, 2, i < n ? 250 : 50, i < n ? 70 : 40, i < n ? 110 : 60); R(x + 4, 2, 2, 2, i < n ? 250 : 50, i < n ? 70 : 40, i < n ? 110 : 60); } }
+void hearts(int n, int max) { for (int i = 0; i < max; i++) { int x = 236 - (i + 1) * 9; R(x, 3, 7, 6, i < n ? 250 : 50, i < n ? 70 : 40, i < n ? 110 : 60); R(x + 1, 2, 2, 2, i < n ? 250 : 50, i < n ? 70 : 40, i < n ? 110 : 60); R(x + 4, 2, 2, 2, i < n ? 250 : 50, i < n ? 70 : 40, i < n ? 110 : 60); } }
 
 // ================= BORE BREAKER =================
 static u8 br[5][10]; static int bpx, bpw, bx, by, bvx, bvy, bheld, bleft, bwide, bslow, bbroken, brow0, bcol0;

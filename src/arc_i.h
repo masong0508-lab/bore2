@@ -57,4 +57,5 @@ void core_draw(void);
 void core_song(int g);                                           // the music of a game (-1: the floor's)
 void core_fx_tick(void); void core_fx_draw(void);
 extern int core_game, core_ft;
+void hearts(int n, int max);
 void bezel(int g); void scan(void);

@@ -255,7 +255,7 @@ static void mount_challenger(void) {   // back from a game of a challenge: the c
     if (arun.sim >= 0 && arun.sim < nsims) { Bore *b = &sims[arun.sim].bore; w->c[0] = b->col[1]; w->c[1] = b->col[5]; w->c[2] = b->col[6]; w->c[3] = b->col[7]; }
     arun.res = 0; arun.foe = 0; ch.on = 0; ch_cool = 1; ch_t = 700;
 }
-void arcade_open(int a) { arun.role = 77;
+void arcade_open(int a) {
     acc = 0; ft = 0; quit = 0; pe = 0; tsel = 1; on_core = 0; 
     walkers_init(); pmsg = 0; pcur = 0; ptab = 0; ag_np = 1; fx = 160; fy = 112; fdir = 1; fanim = 0;
        // (the music you had: given back when you leave)
@@ -265,7 +265,7 @@ void arcade_open(int a) { arun.role = 77;
     else if (a >= 100 && a < 100 + AG_NGAME) { int x, y; cab_xy(a - 100, &x, &y); fx = x + 16; fy = a < 107 ? 108 : 172; mode = M_FLOOR; }
     else mode = M_FLOOR;
     if (arun.res && mode == M_FLOOR) mount_challenger();
-    if (mode == M_FLOOR) core_song(-1); arun.role = 78;
+    if (mode == M_FLOOR) core_song(-1);
 }
 static void leave(void) {
     
@@ -324,7 +324,7 @@ static void tick(int hd, int pr) {
         break;
     }
 }
-int arcade_update(int hd, int pr, int steps) { arun.role = 79;
+int arcade_update(int hd, int pr, int steps) {
     if (on_core) {
         if (core_update(hd, pr, steps)) return 1;
         on_core = 0;   // the fight (or a challenge at it) is over: the floor again
@@ -390,7 +390,7 @@ static void draw_chal(void) {
     ui_textc(160, 142, 1, wk[ch.w].role == 2 ? "FAMILY TIME. EVERYONE WINS A LITTLE" : wk[ch.w].role == 1 ? "A RIVAL. WIN AND THEY SULK" : "A FRIENDLY GAME", UI_RGB(255, 200, 220));
     ui_hintbar(166, "X ACCEPT|O NOT NOW");
 }
-void arcade_draw(void) { arun.role = 80;
+void arcade_draw(void) {
     if (on_core) { core_draw(); return; }
     switch (mode) {
     case M_FLOOR: case M_CHAL: {
