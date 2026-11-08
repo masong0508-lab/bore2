@@ -450,7 +450,7 @@ static int shell(int lx, int ly, int x0, int y0, int x1, int y1, int fl, int wp,
 }
 static void lot_shop(int lx, int ly, unsigned h) {
     int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 9, kind = (int)(h % 5u);
-    static const u8 fls[5] = { 3, 1, 10, 6, 4 };
+    static const u8 fls[5] = { 3, 1, 6, 5, 4 };
     int dx = shell(lx, ly, x0, y0, x1, y1, fls[kind], pick_wp(h), 1);
     int ix0 = x0 + 1, iy0 = y0 + 1, ix1 = x1 - 1, iy1 = y1 - 1;
     gFree(ix1 - 1, iy1 - 1, 'y'); gFree(ix1, iy1 - 1, 'y'); gFree(ix1, iy1 - 2, 'I');                // the till
@@ -480,7 +480,7 @@ static void lot_shop(int lx, int ly, unsigned h) {
 }
 static void city_diner(int lx, int ly, unsigned h) {
     int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
-    gRoom(x0, y0, x1, y1, (h & 1) ? 3 : 2, NWP + (h & 2 ? 53 : (int)((h >> 9) % 89))); gPut(lx + 6, y1, 'D'); gPut(lx + 7, y1, 'D');
+    gRoom(x0, y0, x1, y1, (h & 1) ? 3 : 2, pick_wp(h)); gPut(lx + 6, y1, 'D'); gPut(lx + 7, y1, 'D');
     gBox(lx + 6, y1 + 1, lx + 7, MIN(ly + 12, MH - 2), FL_PAVING);
     gFree(x0 + 1, y0 + 1, 'F'); gFree(x0 + 2, y0 + 1, '/'); gFree(x0 + 3, y0 + 1, 'y'); gFree(x0 + 4, y0 + 1, 'y'); gFree(x0 + 5, y0 + 1, 'c'); gFree(x1 - 1, y0 + 1, 'T');
     for (int k = 0; k < 2; k++) { int tx = x0 + 2 + k * 4; gFree(tx, y0 + 4, 't'); gFree(tx - 1, y0 + 4, 'h'); gFree(tx + 1, y0 + 4, 'h'); }
@@ -499,7 +499,7 @@ static void city_gym(int lx, int ly, unsigned h) {
 }
 static void city_office(int lx, int ly, unsigned h) {   // where work is: the work marker
     int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
-    gRoom(x0, y0, x1, y1, 10, NWP + (h & 1 ? 61 : (int)((h >> 9) % 89))); gPut(lx + 6, y1, 'D'); gBox(lx + 6, y1 + 1, lx + 6, MIN(ly + 12, MH - 2), FL_PAVING);
+    gRoom(x0, y0, x1, y1, 3, pick_wp(h)); gPut(lx + 6, y1, 'D'); gBox(lx + 6, y1 + 1, lx + 6, MIN(ly + 12, MH - 2), FL_PAVING);
     for (int k = 0; k < 3; k++) { int dxk = x0 + 2 + k * 3; gFree(dxk, y0 + 2, 'd'); gFree(dxk, y0 + 3, 'h'); gFree(dxk, y0 + 1, '['); }
     gFree(x1 - 1, y1 - 1, 'x'); gFree(x0 + 1, y1 - 1, 'F'); gFree(x0 + 2, y1 - 1, 'c'); gFree(x0 + 1, y0 + 1, 'b'); gFree(x1 - 1, y0 + 1, 'T');
     gFree(x0 + 5, y1 - 2, 'x'); gFree(x1 - 1, y0 + 3, (h & 2) ? 'q' : 'p'); gPut(x0 + 3, y0, 'E'); gPut(x1 - 3, y0, 'E'); gFree(lx + 3, ly + 11, 'Z');
@@ -645,7 +645,7 @@ static void lot_library(int lx, int ly, unsigned h) {   // the stacks, a reading
 }
 static void lot_space(int lx, int ly, unsigned h) {   // the SPACE CENTRE: mission control (consoles, a briefing desk) and the launch pad with its rocket
     int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 6, wp = cwp(h >> 9);
-    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 10 : 6, wp, 1);
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 4 : 6, wp, 1);
     for (int x = x0 + 1; x <= x1 - 1; x += 2) { gFree(x, y0 + 1, (char)0xD9); gFree(x, y0 + 2, 'h'); }
     gFree(x0 + 1, y1 - 1, '['); gFree(x1 - 1, y1 - 1, '['); gFree(x0 + 5, y1 - 1, 'd');
     gBox(lx, ly + 8, lx + 12, ly + 12, FL_PAVING); gBox(lx + 4, ly + 9, lx + 8, ly + 12, FL_ROCK);
@@ -691,7 +691,7 @@ static void lot_empty(int lx, int ly, unsigned h) {   // nothing built yet: roug
 static void lot_farm(int lx, int ly, unsigned h) {   // rows of crops, a barn, a fence
     for (int y = ly + 1; y <= ly + 11; y += 2) gBox(lx + 1, y, lx + 6, y, FL_SOIL);
     for (int y = ly + 2; y <= ly + 10; y += 2) for (int x = lx + 1; x <= lx + 6; x += 2) gFree(x, y, (char)0xDB);   // (FARM LIFE: crop beds)
-    gRoom(lx + 8, ly + 1, lx + 12, ly + 6, 9, cwp(h >> 9));
+    gRoom(lx + 8, ly + 1, lx + 12, ly + 6, 4, cwp(h >> 9));
     gPut(lx + 10, ly + 6, 'D'); gFree(lx + 9, ly + 2, (char)0xDC); gFree(lx + 9, ly + 4, (char)0xDC); gFree(lx + 11, ly + 2, (char)0xDD); gFree(lx + 11, ly + 4, (char)0xDD); gFree(lx + 11, ly + 3, 'O');
     gLine(lx, ly + 12, lx + 12, ly + 12, 'w', 9); lifeMap[ly + 12][lx + 7] = '.';
     gFree(lx + 9, ly + 9, 'K'); gFree(lx + 11, ly + 10, TREE); gFree(lx + 8, ly + 11, (char)0xDE);
