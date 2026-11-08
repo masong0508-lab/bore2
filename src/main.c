@@ -1264,7 +1264,7 @@ static void map_island_draw(void) {   // the island on a card: you, the camp, th
 static int bus_pass_ok(void) { return day_count < bus_pass; }
 static void bus_trip(const Settle *st, int *fare, int *mins) {   // the ride to a town: by distance. The wait for the bus (one every 20 minutes) is on top
     int pbx = world_wbx + sim_tile_x(&sims[player]) / BM_BLK, pby = world_wby + sim_tile_y(&sims[player]) / BM_BLK, d = ABS(st->x - pbx) + ABS(st->y - pby);
-    *fare = bus_pass_ok() ? 0 : MIN(15, 3 + d / 40); *mins = 15 + MIN(150, d / 3) + ((clock_min % 20) < 4 ? 0 : 20 - clock_min % 20);
+    *fare = bus_pass_ok() ? 0 : tr_scale(&sims[player].tr, E_FARE, MIN(15, 3 + d / 40)); *mins = 15 + MIN(150, d / 3) + ((clock_min % 20) < 4 ? 0 : 20 - clock_min % 20);
 }
 static void map_open(void) {
     if (world_zone == ZONE_ISLAND) { map_island_open(); return; }
@@ -1309,7 +1309,7 @@ static void map_update(void) {
     }
     if (PRESSED(PAD_CROSS)) {
         if (cash < 20) { sim_note("A TAXI RIDE COSTS $20"); audio_voice(VOICE_NAH); return; }
-        cash -= 20;
+        cash -= tr_scale(&sims[player].tr, E_FARE, 20);
         const Settle *st = bm_set(map_sel);
         taxi_to_block(st->x, st->y, -1, -1, st->name);
         state = ST_LIFE;
@@ -1393,7 +1393,7 @@ static void dir_update(void) {
     if (PRESSED(PAD_CIRCLE)) { dir_fam = -1; return; }
     if (PRESSED(PAD_CROSS)) {                      // go and knock: a taxi to their front door
         if (cash < 20) { sim_note("A TAXI RIDE COSTS $20"); audio_voice(VOICE_NAH); return; }
-        cash -= 20;
+        cash -= tr_scale(&sims[player].tr, E_FARE, 20);
         char sur[NAME_LEN], b[40]; pop_surname(dir_fam, sur); snprintf(b, sizeof b, "THE %sS' HOUSE", sur);
         taxi_to_block(f->bx, f->by, 8, 1, b);
         int h = world_home_find(ZONE_CITY, f->bx, f->by, f->unit);
@@ -1525,7 +1525,7 @@ static void homes_update(void) {
     if (PRESSED(PAD_CROSS)) buyask_open(a->bx, a->by);                         // (move in, or own it as a property)
     if (PRESSED(PAD_SQUARE)) {                                                 // go and see it first
         if (cash < 20) { audio_voice(VOICE_NAH); return; }
-        cash -= 20; home_address(a->bx, a->by, ad); taxi_to_block(a->bx, a->by, -1, -1, ad); state = ST_LIFE;
+        cash -= tr_scale(&sims[player].tr, E_FARE, 20); home_address(a->bx, a->by, ad); taxi_to_block(a->bx, a->by, -1, -1, ad); state = ST_LIFE;
     }
 }
 static void homes_draw(void) {
@@ -1726,7 +1726,7 @@ static void nhood_update(void) {
     if (nh_first && PRESSED(PAD_TRIANGLE)) { sim_note("THE MAN BASE IT IS. HOME SWEET HOME"); state = ST_LIFE; return; }   // (stay in the old place)
     if (!nh_first && PRESSED(PAD_SQUARE)) {        // go and see it first
         if (cash < 20) { audio_voice(VOICE_NAH); return; }
-        cash -= 20; char ad[24]; home_address(nh_bx[nh_sel], nh_by[nh_sel], ad); taxi_to_block(nh_bx[nh_sel], nh_by[nh_sel], -1, -1, ad); state = ST_LIFE; return;
+        cash -= tr_scale(&sims[player].tr, E_FARE, 20); char ad[24]; home_address(nh_bx[nh_sel], nh_by[nh_sel], ad); taxi_to_block(nh_bx[nh_sel], nh_by[nh_sel], -1, -1, ad); state = ST_LIFE; return;
     }
     if (!nh_first && PRESSED(PAD_SELECT)) { homes_open(); return; }   // (the plain list)
     if (PRESSED(PAD_CROSS)) {
@@ -2115,14 +2115,15 @@ static void grow_tick(void) {   // (test builds: a family's life in two minutes:
 static void title_draw(void);
 enum { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_CROWD, O_LIVE, O_SPR, O_SHADOW, O_AO, O_WALLS, O_FPSCAP, O_DITHER, O_CAM, O_SHOWFPS,
        O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_CUTAWAY, O_ALONE, O_GHOSTS, O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_WIDE, O_TRAF, O_GOTCHI,
-       O_MASTER, O_MUSICV, O_SFX, O_TITLEMUS, O_GAMEMUS, O_SHUFFLE, O_NEEDS, O_DAYLEN, O_CLOCK, O_MSGT, O_THINK, O_SPEED, O_REALTIME, O_TEXT, O_N };   // (new ones go on the end: old saves hold the first O_GOTCHI + 1)
+       O_MASTER, O_MUSICV, O_SFX, O_TITLEMUS, O_GAMEMUS, O_SHUFFLE, O_NEEDS, O_DAYLEN, O_CLOCK, O_MSGT, O_THINK, O_SPEED, O_REALTIME, O_TEXT, O_CHEAT, O_N };   // (new ones go on the end: old saves hold the first O_GOTCHI + 1)
 #define O_N_V40 (O_GOTCHI + 1)
 #define O_N_V43 (O_SPEED + 1)                 // (version 44: REAL TIME)
 #define O_N_V48 (O_REALTIME + 1)              // (version 49: TEXT LOOK)
+#define O_N_V49 (O_TEXT + 1)                  // (version 50: CHEAT TRAITS)
 static const char *const optNm[O_N] = { "PRESET", "VIEW DISTANCE", "FULL DETAIL", "FAR BUILDINGS", "FAR TREES", "HAZE", "CROWD SIZE",
     "PEOPLE IN FULL 3D", "PEOPLE SPRITES", "SHADOWS", "FLOOR SHADING", "WALL LIGHT", "FRAME RATE", "DITHERING", "CAMERA", "SHOW FPS",
     "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC", "WALL VIEW", "YOUR BORE ALONE", "GHOSTS", "AGGRESSION", "WHO JOINS FIGHTS", "RAGE", "WHO LUNGES AT YOU", "PEACEMAKERS", "SCREEN SHAPE", "TRAFFIC CHEAT", "BOREAGOTCHI TIME",
-    "MASTER VOLUME", "MUSIC VOLUME", "SOUND VOLUME", "TITLE MUSIC", "GAME MUSIC", "SHUFFLE SONGS", "NEEDS", "DAY LENGTH", "CLOCK", "MESSAGE TIME", "THOUGHT BUBBLES", "SPEED HELPER", "REAL TIME", "TEXT LOOK" };
+    "MASTER VOLUME", "MUSIC VOLUME", "SOUND VOLUME", "TITLE MUSIC", "GAME MUSIC", "SHUFFLE SONGS", "NEEDS", "DAY LENGTH", "CLOCK", "MESSAGE TIME", "THOUGHT BUBBLES", "SPEED HELPER", "REAL TIME", "TEXT LOOK", "CHEAT TRAITS" };
 static const char *const optV[O_N][6] = {
     { "CUSTOM", "LOW", "MEDIUM", "HIGH", "ULTRA" }, { "NEAR: 40 M", "250 M", "500 M", "1 KM", "1.5 KM", "2 KM" },
     { "10 M", "12 M", "15 M", "17 M" }, { "TALL ONLY", "ALL", "WITH WINDOWS" }, { "OFF", "100 M", "200 M", "350 M" },
@@ -2135,16 +2136,16 @@ static const char *const optV[O_N][6] = {
     { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" },
     { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" }, { "OFF", "ON" }, { "4:3 NORMAL", "16:9 WIDE" }, { "OFF", "+10 CARS", "+30 CARS", "+60 CARS", "LUDICROUS" }, { "GAME CLOCK", "LIVE IN HAND", "OFF: THEY WAIT" },
     { "0" }, { "0" }, { "0" }, { "OFF", "ON" }, { "OFF", "ON" }, { "IN ORDER", "AT RANDOM" },
-    { "NEVER FALL", "SLOW", "NORMAL", "FAST" }, { "SHORT", "NORMAL", "LONG", "EPIC" }, { "24 HOUR", "12 HOUR" }, { "SHORT", "NORMAL", "LONG" }, { "OFF", "ON" }, { "OFF", "ON" }, { "OFF", "ON" }, { "FRIENDLY", "EXTRA CLEAR", "CAPITALS" } };
-static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3, 3, 6, 6, 6, 6, 2, 2, 5, 3, 11, 11, 11, 2, 2, 2, 4, 4, 2, 3, 2, 2, 2, 3 };
+    { "NEVER FALL", "SLOW", "NORMAL", "FAST" }, { "SHORT", "NORMAL", "LONG", "EPIC" }, { "24 HOUR", "12 HOUR" }, { "SHORT", "NORMAL", "LONG" }, { "OFF", "ON" }, { "OFF", "ON" }, { "OFF", "ON" }, { "FRIENDLY", "EXTRA CLEAR", "CAPITALS" }, { "OFF", "ON" } };
+static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3, 3, 6, 6, 6, 6, 2, 2, 5, 3, 11, 11, 11, 2, 2, 2, 4, 4, 2, 3, 2, 2, 2, 3, 2 };
 static const u8 presets[4][O_N] = {   // LOW, MEDIUM, HIGH, ULTRA (the graphics knobs; the frame rate, dithering, camera and the counter are left be)
     { 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0 }, { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 },
     { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1 }, { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 } };
 #define O_PRESET_LAST O_WALLS                 // (presets set O_VIEW .. O_WALLS)
-#define OPT_DEFAULTS { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1, 1, 2, 0, 0, 1, 1, 0, 0, 0,   10, 10, 10, 1, 1, 1, 2, 1, 0, 1, 1, 1, 0, 0 }
+#define OPT_DEFAULTS { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1, 1, 2, 0, 0, 1, 1, 0, 0, 0,   10, 10, 10, 1, 1, 1, 2, 1, 0, 1, 1, 1, 0, 0, 0 }
 static const u8 optDef[O_N] = OPT_DEFAULTS;
 static u8 opt[O_N] = OPT_DEFAULTS;   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
-static int opt_sel, opt_back, opt_tab;
+static int opt_sel, opt_back, opt_tab, cheat_ask;
 static void opts_apply(void);
 #ifdef AUTO_FLOAT
 void float_opts(const u8 *p, int n) { for (int i = 0; i < n && i < O_N; i++) opt[i] = p[i]; opts_apply(); }
@@ -2187,7 +2188,7 @@ static void opts_apply(void) {
     audio_volumes(opt[O_MASTER], opt[O_MUSICV], opt[O_SFX]); if (audio_jukebox_shuffle() != opt[O_SHUFFLE]) audio_jukebox_toggle_shuffle();
     { extern int sim_need_pct, sim_day_pct, sim_msg_t; static const u8 np[4] = { 0, 50, 100, 150 }, dp[4] = { 66, 100, 150, 250 }; static const short mt[3] = { 90, 180, 300 };
       sim_need_pct = np[opt[O_NEEDS] & 3]; sim_day_pct = dp[opt[O_DAYLEN] & 3]; sim_msg_t = mt[opt[O_MSGT] % 3]; sim_rt_set(opt[O_REALTIME] & 1); }
-    ui_clock12 = opt[O_CLOCK]; ui_thoughts = opt[O_THINK]; font_look = opt[O_TEXT] % 3;
+    ui_clock12 = opt[O_CLOCK]; ui_thoughts = opt[O_THINK]; font_look = opt[O_TEXT] % 3; sim_cheat_opt(opt[O_CHEAT] & 1);
     aging = opt[O_AGING]; old_age = opt[O_OLDAGE]; pop_aging = opt[O_TOWNAGE];
     cam_view = opt[O_CAM] % 3; cam_turn_rate = opt[O_CAMSPD] == 0 ? 24 : opt[O_CAMSPD] == 1 ? 40 : 64; cam_zoom_tilt = opt[O_ZOOMTILT]; wall_view = opt[O_CUTAWAY] % 3;
     crowd_lvl = 0; helper_apply();   // (the speed helper starts from everything as chosen)
@@ -2293,7 +2294,7 @@ static const char *const optTabNm[NOTAB] = { "GAME", "SCREEN", "SOUND", "CONTROL
 static const s8 optTabIc[NOTAB] = { IC_SPROUT, IC_EYE, IC_NOTE, IC_CAMERA, IC_SUN, IC_BOOK, IC_STAR, IC_HELP };
 #define OROWS 26
 static const s8 optTab[NOTAB][OROWS] = {   // (each page ends with -1; a new knob goes in its page and in the enum: nothing else)
-    { O_NEEDS, O_ALONE, O_GHOSTS, O_MSGT, O_THINK, OA_RESET, -1 },
+    { O_NEEDS, O_ALONE, O_GHOSTS, O_MSGT, O_THINK, O_CHEAT, OA_RESET, -1 },
     { OH_PIC, O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, OH_PEOPLE, O_CROWD, O_LIVE, O_SPR, OH_LIGHT, O_SHADOW, O_AO, O_WALLS, O_DITHER,
       OH_SHOW, O_WIDE, O_FPSCAP, O_SPEED, O_SHOWFPS, O_TEXT, OA_RESET, -1 },
     { O_MASTER, O_MUSICV, O_SFX, O_TITLEMUS, O_GAMEMUS, O_SHUFFLE, OA_RESET, -1 },
@@ -2331,7 +2332,8 @@ static const char *const optBlurb[O_N] = {   // (short and plain: one or two lin
 #else
     "The PlayStation has no clock: set yours. Sleep and work go fast, the clock stays real.",
 #endif
-    "Friendly round type, wide heavy letters for easy reading, or all capitals." };
+    "Friendly round type, wide heavy letters for easy reading, or all capitals.",
+    "On: the cheat traits work. No medals, high scores or awards while one does." };
 static const char *const optActNm[6] = { "RESET THIS PAGE", "SAVE GAME", "LOAD GAME", "RESET ALL OPTIONS", "SET THE CLOCK", "HOW TO PLAY" };
 static const char *const optActBlurb[6] = { "Puts every option on this page back to how the game came.", "Saves your life to the memory card. You pick the slot.", "Loads a saved life. You pick the slot.",
     "Puts every option in the game back to how it came. Press X twice.", "Sets the time and date that REAL TIME uses.", "Tips on the buttons, the camera, building and growing up." };
@@ -2344,7 +2346,7 @@ static int opt_kind(int i) {   // 0 a choice, 1 a slider, 2 a switch, 3 a button
     if (i >= OH) return 5;
     if (i >= OI) return 4;
     if (i >= OA) return 3;
-    if (i == O_AO || i == O_DITHER || i == O_SHOWFPS || i == O_TOWNAGE || i == O_ZOOMTILT || i == O_PEACE || i == O_TITLEMUS || i == O_GAMEMUS || i == O_SHUFFLE || i == O_THINK || i == O_SPEED || i == O_REALTIME || i == O_ALONE) return 2;
+    if (i == O_AO || i == O_DITHER || i == O_SHOWFPS || i == O_TOWNAGE || i == O_ZOOMTILT || i == O_PEACE || i == O_TITLEMUS || i == O_GAMEMUS || i == O_SHUFFLE || i == O_THINK || i == O_SPEED || i == O_REALTIME || i == O_ALONE || i == O_CHEAT) return 2;
     if (i == O_AGGRO || i == O_RAGE) return 1;
     if (i == O_CAMH || i == O_CAMSPD || i == O_MASTER || i == O_MUSICV || i == O_SFX || i == O_NEEDS || i == O_DAYLEN || i == O_MSGT) return 1;
     if (i == O_VIEW || i == O_DETAIL || i == O_TREES || i == O_HAZE || i == O_CROWD || i == O_LIVE || i == O_SPR) return 1;
@@ -2413,6 +2415,11 @@ static void opts_update(void) {
         if (!used && (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_TRIANGLE))) { state = opt_back; audio_ui(3); }
         return; }
 #endif
+    if (cheat_ask) {   // CHEAT TRAITS, the first time: an explicit yes
+        if (PRESSED(PAD_CROSS)) { tr_cheat_ok = 1; opt[O_CHEAT] = 1; opts_apply(); opt_live = 3; audio_voice(VOICE_YAHOO); cheat_ask = 0; }
+        else if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_TRIANGLE) || PRESSED(PAD_START)) { cheat_ask = 0; audio_ui(3); }
+        return;
+    }
     int nr = opt_rows(opt_tab);
     if (opt_sel >= nr) opt_sel = 0;
     if (NAVP(PAD_UP)) opt_move(-1);
@@ -2445,6 +2452,7 @@ static void opts_update(void) {
         }
     } else if (d && k < 3) {
         int n = optN[i], was = opt[i];
+        if (i == O_CHEAT && !opt[O_CHEAT] && !tr_cheat_ok) { cheat_ask = 1; audio_ui(4); return; }   // (the first time it asks)
         if (i == O_PRESET) {
             int p = opt[O_PRESET] + d; if (p < 1) p = 4; if (p > 4) p = 1;       // (CUSTOM is not picked: it is what you get by hand)
             opt[O_PRESET] = (u8)p; for (int q = O_VIEW; q <= O_PRESET_LAST; q++) opt[q] = presets[p - 1][q];   // (each row starts with the preset itself, like opt)
@@ -2540,6 +2548,12 @@ static void opts_draw(void) {
     }
     { char b[24]; int rr = 0, tot = 0; for (int q = 0; q < nr; q++) if (!opt_head(optTab[opt_tab][q])) { tot++; if (q <= opt_sel) rr++; }
       sprintf(b, "%d OF %d", rr, tot); ui_text(14, top + 160, 1, b, UI_SOFT); }
+    if (cheat_ask) {   // the first time: are you sure
+        ui_dim(); ui_card(36, 70, 248, 100);
+        ui_textc(160, 78, 2, "CHEAT TRAITS", UI_BADT);
+        ui_wrapc(46, 98, 228, 4, "THESE TRAITS ARE FAR TOO STRONG. WHILE ONE IS ACTIVE, NO MEDALS, HIGH SCORES OR AWARDS ARE GIVEN. SWITCH THEM ON?", UI_INK);
+        ui_hints(160, 148, "X YES, SWITCH ON|O NO", 1);
+    }
 }
 
 // ---- SET CLOCK (REAL TIME on a PlayStation, which has no clock chip): CLOCK.OVL (src/clock_ui.c) asks the time and the date
@@ -2585,9 +2599,10 @@ static void load_body(void) {
     if (save_ver >= 4) { int n = ld_u8(); for (int k = 0; k < n; k++) { int i = ld_u8(); char nm[18]; ld_str(nm, 17); bm_rename(i, nm); } }
     sim_season_lock = 0; sim_seasons_on = 1; bm_ovr_clear();
     if (save_ver >= 37) { sim_season_lock = ld_u8() % 5; sim_seasons_on = ld_u8() & 1; ovr_load(); }
-    { int o_n = save_ver >= 49 ? O_N : save_ver >= 44 ? O_N_V48 : save_ver >= 41 ? O_N_V43 : save_ver >= 21 ? O_N_V40 : save_ver >= 19 ? O_N_V40 - 1 : O_N_V40 - 2; ld_n(opt, save_ver >= 16 ? o_n : save_ver >= 15 ? o_n - 1 : save_ver >= 14 ? o_n - 6 : save_ver >= 11 ? o_n - 7 : o_n - 8); } if (save_ver < 19) opt[O_TRAF] = 0; if (save_ver < 21) opt[O_GOTCHI] = 0; if (save_ver < 16) opt[O_WIDE] = 0; if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1;
+    { int o_n = save_ver >= 50 ? O_N : save_ver >= 49 ? O_N_V49 : save_ver >= 44 ? O_N_V48 : save_ver >= 41 ? O_N_V43 : save_ver >= 21 ? O_N_V40 : save_ver >= 19 ? O_N_V40 - 1 : O_N_V40 - 2; ld_n(opt, save_ver >= 16 ? o_n : save_ver >= 15 ? o_n - 1 : save_ver >= 14 ? o_n - 6 : save_ver >= 11 ? o_n - 7 : o_n - 8); } if (save_ver < 19) opt[O_TRAF] = 0; if (save_ver < 21) opt[O_GOTCHI] = 0; if (save_ver < 16) opt[O_WIDE] = 0; if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1;
     if (save_ver < 41) { static const u8 mm[4] = { 0, 3, 6, 10 }; for (int k = O_MASTER; k < O_N; k++) opt[k] = optDef[k]; opt[O_MUSICV] = mm[opt[O_MUSIC] & 3]; }   // (version 41: the AUDIO and GAME pages; an older save's music level becomes a slider)
     if (save_ver < 44) opt[O_REALTIME] = 0;
+    if (save_ver < 50) opt[O_CHEAT] = 0;
     if (save_ver < 49) opt[O_TEXT] = 0;   // (version 49: TEXT LOOK: the friendly type)
     if (save_ver < 15) { opt[O_AGGRO] = 2; opt[O_AGWHO] = 0; opt[O_RAGE] = 0; opt[O_RAGEWHO] = 1; opt[O_PEACE] = 1; } opts_apply();   // (YOUR BORE ALONE came with version 11)
     loading("LOADING YOUR GAME", 30);
@@ -3264,7 +3279,7 @@ static void story_taxi(void) {   // where the story's chapter sends you, by taxi
     int bi = -1, bd = 1 << 30;
     for (int i = 0; i < pop_nplace; i++) if (pop_place[i].lot == lot) { int d = ABS(pop_place[i].bx - bx0) + ABS(pop_place[i].by - by0); if (d < bd) { bd = d; bi = i; } }
     if (bi < 0) { sim_note("SAN BOREAS HAS NO PLACE LIKE THAT"); audio_voice(VOICE_NAH); return; }
-    cash -= 20; state = ST_LIFE;
+    cash -= tr_scale(&sims[player].tr, E_FARE, 20); state = ST_LIFE;
     char nm[24]; const Place *p = &pop_place[bi]; bm_place_name(p->lot, bm_hash(p->bx, p->by, 3), nm);
     taxi_to_block(p->bx, p->by, -1, -1, nm);
 }

@@ -95,7 +95,7 @@ void gx_goals_roll(Toy *t) {   // a new day: the counts start again; a missed da
     if (dd || !(t->gflag & 128)) { memset(t->gp, 0, 6); t->gflag = 128; }
     t->gday = (u16)day_count;
 }
-static int cashup(Toy *t, int n) { if (owner(t) == player) { cash += n; return 1; } return 0; }
+static int cashup(Toy *t, int n) { if (owner(t) == player) { cash += tr_scale(&sims[player].tr, E_GOTCHI_GIFT, n); return 1; } return 0; }
 static void gpadd(Toy *t, int kind) {
     gx_goals_roll(t); if (t->gp[kind] < 250) t->gp[kind]++;
     for (int i = 0; i < 3; i++) if (gx_goal_type(t, i) == kind && t->gp[kind] == gTarget[kind] && !(t->gflag & (2 << i))) { t->gflag |= (u8)(2 << i); cashup(t, 10); gotchi_xp(t, 3); gx_fx = 2; strcpy(gmsg, "GOAL DONE! +$10"); gmsgOn = 1; }
