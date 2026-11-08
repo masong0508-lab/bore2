@@ -33,41 +33,43 @@ static void clock_read(void) {   // -> the transfer region's unixTime (0x02FFF01
 // overflows (a cascade: no tick is ever lost, even when an interrupt is late: the player catches up) and every note is placed by its tick, so nothing drifts.
 // The list: [delta ticks][event]...: a delta of 255 means 254 more ticks and another delta; an event is 0xFE (the loop point, nothing to do),
 // 0xFF (the end: on to `loop_off`, laps + 1), 0x80|slot (let that voice go) or slot|0x40 (cut it first) then instrument, Hz (16 bits), volume, pan.
-typedef struct { volatile unsigned gen, run, seq, loop_off, smp, tbl, vol, stereo; volatile unsigned laps, ticks, pos, pad[5]; } MusCtl;
-static MusCtl *mc; static unsigned m_gen, m_due, m_now; static int m_run; static const unsigned char *mp; static unsigned short m_last;
+typedef struct { volatile unsigned gen, run, seq, loop_off, smp, tbl, vol, stereo; volatile unsigned laps, ticks, pos, ack, pad[4]; } MusCtl;   // (ack: the `gen` this side has carried out, so the ARM9 knows the voices are silent before it overwrites the song)
+static MusCtl *mc; static unsigned m_gen, m_due, m_now, m_t0[10]; static int m_run; static const unsigned char *mp; static unsigned short m_last;
 static const unsigned char SLOTCH[10] = { 0, 1, 2, 3, 4, 5, 6, 7, 14, 15 };   // (the square-wave voices of the game's own sounds keep 8-13)
 static unsigned rd32(const unsigned char *p) { return p[0] | p[1] << 8 | p[2] << 16 | (unsigned)p[3] << 24; }
 static unsigned m_delta(void) { unsigned t = 0; for (;;) { unsigned d = *mp++; if (d == 255) { t += 254; continue; } return t + d; } }
-static void m_off(void) { for (int i = 0; i < 10; i++) SCHANNEL_CR(SLOTCH[i]) = 0; }
+static void m_off(void) { for (int i = 0; i < 10; i++) { SCHANNEL_CR(SLOTCH[i]) = 0; SCHANNEL_SOURCE(SLOTCH[i]) = 0; SCHANNEL_LENGTH(SLOTCH[i]) = 0; m_t0[i] = 0; } }   // (D77: every voice off, whatever it was doing; nothing is left to loop or hold)
+#define M_MAXHOLD 6130   // ticks (6 s): a note is one-shot and the longest sample is shorter; a voice still on after this is cut (guard against a held note)
 static void m_play(const unsigned char *e, int slot) {
     MusCtl *c = mc; int ch = SLOTCH[slot % 10]; unsigned in = e[0], hz = e[1] | e[2] << 8, vol = e[3], pan = e[4];
     unsigned v = vol * c->vol / 72; if (v > 127) v = 127;
     const unsigned char *ti = (const unsigned char *)c->tbl + in * 8; unsigned so = rd32(ti), sz = rd32(ti + 4);
-    SCHANNEL_CR(ch) = 0;                                   // (a note cuts the one before it on its voice)
+    SCHANNEL_CR(ch) = 0; m_t0[slot % 10] = 0;              // (a note cuts the one before it on its voice)
     if (v < 1 || !sz || hz < 256) return;
     unsigned tm = (16756991u + hz / 2) / hz; if (tm > 0xFFFF) tm = 0xFFFF;   // (the chip's own clock, 16756991 Hz: libnds' SOUND_FREQ uses 2^24, 0.12 % sharp)
     SCHANNEL_SOURCE(ch) = c->smp + so; SCHANNEL_REPEAT_POINT(ch) = 0; SCHANNEL_LENGTH(ch) = sz >> 2; SCHANNEL_TIMER(ch) = (unsigned short)(0x10000 - tm);
-    SCHANNEL_CR(ch) = SCHANNEL_ENABLE | SOUND_VOL(v) | SOUND_PAN(c->stereo ? pan : 64) | (2u << 29) | SOUND_ONE_SHOT;
+    SCHANNEL_CR(ch) = SCHANNEL_ENABLE | SOUND_VOL(v) | SOUND_PAN(c->stereo ? pan : 64) | (2u << 29) | SOUND_ONE_SHOT; m_t0[slot % 10] = m_now + 1;
 }
 void MusTimer(void) {
     MusCtl *c = mc; if (!c) return;
     if (c->gen != m_gen) {   // a command from the ARM9
-        m_gen = c->gen; m_off(); m_run = (int)c->run;
+        m_gen = c->gen; m_off(); m_run = (int)c->run; c->ack = m_gen;
         if (m_run) { mp = (const unsigned char *)c->seq; m_due = m_delta(); m_now = 0; m_last = TIMER_DATA(1); c->laps = 0; }
     }
     if (!m_run) return;
+    for (int i = 0; i < 10; i++) if (m_t0[i] && m_now - (m_t0[i] - 1) > M_MAXHOLD) { SCHANNEL_CR(SLOTCH[i]) = 0; m_t0[i] = 0; }   // (the guard)
     unsigned short cur = TIMER_DATA(1); m_now += (unsigned short)(cur - m_last); m_last = cur;   // (the ticks since last time: one, or more if an interrupt came late)
     c->ticks = m_now;
     while (m_due <= m_now) {
         int ev = *mp++;
         if (ev == 0xFF) { c->laps++; mp = (const unsigned char *)c->seq + c->loop_off; }
         else if (ev == 0xFE) { }
-        else if (ev & 0x80) SCHANNEL_CR(SLOTCH[(ev & 15) % 10]) = 0;
+        else if (ev & 0x80) { SCHANNEL_CR(SLOTCH[(ev & 15) % 10]) = 0; m_t0[(ev & 15) % 10] = 0; }
         else { m_play(mp, ev & 15); mp += 5; }
         m_due += m_delta();
     }
 }
-static void MusAddr(unsigned addr, void *u) { (void)u; mc = (MusCtl *)addr; }
+static void MusAddr(unsigned addr, void *u) { (void)u; mc = (MusCtl *)addr; fifoSendValue32(FIFO_USER_01, 0x4D555331u); }   // (D77: answers 'MUS1', so the ARM9 knows this ARM7 has the player)
 static void mus_setup(void) {
     fifoSetValue32Handler(FIFO_USER_01, MusAddr, 0);
     TIMER_DATA(1) = 0; TIMER_CR(1) = TIMER_ENABLE | TIMER_CASCADE;

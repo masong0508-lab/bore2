@@ -28,4 +28,4 @@ Check first: if /tmp/dsb, /tmp/libnds182, /tmp/crtls_old and /tmp/mb are there, 
 - ndstool from github devkitPro/ndstool -> /tmp/dsb/bin/ndstool.
 - melonDS core: build melonDS with cmake into /tmp/mb (libcore.a, teakra), then
   `g++ -std=c++17 -O2 -DARCHITECTURE_x86_64=1 -DGDBSTUB_ENABLED -I/tmp/melonDS/src -I/tmp/melonDS/src/teakra/include tools/dsemu/run.cpp /tmp/mb/src/libcore.a /tmp/mb/src/teakra/src/libteakra.a -lpthread -o /tmp/dsrun`
-- Runner extras: `BORE_SAV=file` keeps an 8 KB EEPROM save between runs; argv[4] is a touch/button script, argv[5] a list of frames to dump; `POKE=frame:addr:value,...` writes RAM at a frame (test hooks); `DBGMEM=addr,...` prints words every 30 frames (`DBGPC=1` adds both CPUs' PCs).
+- Runner extras (D77: `SPULOG=1` logs every sound-channel register change, `DBG7=addr,..` + `DBG7EVERY` print ARM7-side words): `BORE_SAV=file` keeps an 8 KB EEPROM save between runs; argv[4] is a touch/button script, argv[5] a list of frames to dump; `POKE=frame:addr:value,...` writes RAM at a frame (test hooks); `DBGMEM=addr,...` prints words every 30 frames (`DBGPC=1` adds both CPUs' PCs).

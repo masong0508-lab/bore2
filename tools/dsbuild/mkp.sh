@@ -3,7 +3,8 @@
 #   R=checkout (default: this script's repo), OUT=build dir (default /tmp/dsb/t), XTRA="-DDSTEST" for a test build
 set -e
 R=${R:-$(cd "$(dirname "$0")/../.." && pwd)}; OUT=${OUT:-/tmp/dsb/t}; C=/tmp/crtls_old
-mkdir -p "$OUT"; for f in ds.ld glue.o a7.bin; do [ -f "$OUT/$f" ] || cp /tmp/dsb/t/$f "$OUT/"; done
+mkdir -p "$OUT"; for f in ds.ld glue.o; do [ -f "$OUT/$f" ] || cp /tmp/dsb/t/$f "$OUT/"; done
+cp "$R/tools/dsbuild/a7.bin" "$OUT/a7.bin"   # D77: always the repo's ARM7 (the song player), never a stale copy from the toolchain tarball: d73-d76 shipped with the old one and played no music
 cd "$OUT"
 EXTRA="-I$R/ports/host/shim -I$R/src" /tmp/dsb/cc9.sh $R/ports/dsi/source/main.c bore_main.o
 EXTRA="-I$R/ports/host/shim -I$R/src" /tmp/dsb/cc9.sh $R/src/bigmap.c bore_map.o

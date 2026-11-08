@@ -634,9 +634,10 @@ static void snd_tick(void) {
 #define MUS_BUFSZ 0x4A000
 static u8 mus_buf[MUS_BUFSZ] __attribute__((aligned(32)));
 static u8 mus_dir[8192] __attribute__((aligned(32)));
-typedef struct { volatile u32 gen, run, seq, loop_off, smp, tbl, vol, stereo; volatile u32 laps, ticks, pos, pad[5]; } MusCtl;   // (the ARM7's view: first 32 bytes ours, last 32 its)
+typedef struct { volatile u32 gen, run, seq, loop_off, smp, tbl, vol, stereo; volatile u32 laps, ticks, pos, ack, pad[4]; } MusCtl;   // (the ARM7's view: first 32 bytes ours, last 32 its)
 static MusCtl mus_ctl __attribute__((aligned(32)));
-static int mus_ent, mus_laps, mus_next = -1, mus_play;
+static int mus_ent, mus_laps, mus_next = -1, mus_play, mus_ld = -1; static volatile u32 mus_hello, mus_armed;   // (mus_armed: the ARM7 has been told to play and not to stop)
+static void mus_hi(u32 v, void *u) { (void)u; if (v == 0x4D555331u) mus_hello = v; }   // (the ARM7 answers 'MUS1' when it has the song player)
 static u32 mus_base;
 static volatile const u32 MUS_LOC[4] __attribute__((used, aligned(4))) = { 0x41444D42u, 0, 0, 0x2E4D4442u };   // 'BMDA', the songs' ROM address (patched in), the size, '.BDM'
 static int cart_blk(u32 addr, u32 *dst) {   // 512 bytes of the cartridge at addr (a multiple of 512)
@@ -653,21 +654,34 @@ static void mus_init(void) {
     cart_read(mus_base, mus_dir, 4096); 
     mus_n = (int)rd32(mus_dir + 4); mus_ent = (int)rd32(mus_dir + 8); if (mus_n < 1 || mus_n > 64 || mus_ent != 96 || 16 + mus_n * mus_ent > (int)sizeof mus_dir) return;
     if (16 + mus_n * mus_ent > 4096) cart_read(mus_base + 4096, mus_dir + 4096, 4096);
-    mus_ctl.gen = mus_ctl.run = 0; DC_FlushRange(&mus_ctl, sizeof mus_ctl); fifoSendValue32(FIFO_USER_01, (u32)&mus_ctl);   // (the ARM7 player learns where its control block is)
+    mus_ctl.gen = mus_ctl.run = 0; mus_ctl.ack = 0; DC_FlushRange(&mus_ctl, sizeof mus_ctl); fifoSetValue32Handler(FIFO_USER_01, mus_hi, 0); fifoSendValue32(FIFO_USER_01, (u32)&mus_ctl);   // (the ARM7 player learns where its control block is)
+    for (int i = 0; i < 12 && !mus_hello; i++) swiWaitForVBlank();   // (D77: an ARM7 without the player never answers: then the synth tunes play, not silence)
+    if (!mus_hello) return;
     mus_ok = 1;
 }
 static const u8 *mus_e(int n) { return mus_dir + 16 + n * mus_ent; }
 static const char *mus_name(int n) { return n >= 0 && n < mus_n ? (const char *)mus_e(n) + 40 : ""; }
 static void mus_cmd(int run) { mus_ctl.run = (u32)run; mus_ctl.stereo = (u32)(o_pan != 0); mus_ctl.vol = (u32)(o_vol * o_mus); mus_ctl.gen++; DC_FlushRange(&mus_ctl, 32); }
-static void mus_stop(void) { if (mus_ok == 1) mus_cmd(0); mus_cur = -1; }
-static int mus_start(int n) {
-    mus_stop(); if (mus_ok != 1 || n < 0 || n >= mus_n) return 0;
-    const u8 *e = mus_e(n); u32 len = rd32(e + 4); if (len > MUS_BUFSZ) return 0;
-    cart_read(mus_base + rd32(e), mus_buf, len); DC_FlushRange(mus_buf, len);
-    mus_ctl.seq = (u32)mus_buf; mus_ctl.tbl = (u32)mus_buf + rd32(e + 8); mus_ctl.smp = (u32)mus_buf + rd32(e + 12); mus_ctl.loop_off = rd32(e + 20);
-    mus_laps = 0; mus_cur = n; mus_cmd(1); return 1;
+static void mus_stop(void) {   // D77: tells the ARM7 to silence every voice and waits until it says so (the song's buffer is overwritten next: voices still reading it were the long shrill tone)
+    if (mus_ok == 1 && mus_armed) { mus_armed = 0; mus_cmd(0); for (int i = 0; i < 120; i++) { DC_InvalidateRange((void *)&mus_ctl.laps, 32); if (mus_ctl.ack == mus_ctl.gen) break; swiDelay(8000); } }   // (up to ~60 ms)
+    mus_cur = -1; mus_ld = -1; }
+static u32 mus_ld_off, mus_ld_len;   // the song being read off the cartridge, a slice a pass (D77)
+static void mus_psg_off(void) { for (int i = 0; i < 4; i++) vset(i, 0, 0); }
+static int mus_start(int n) {   // D77: silence everything, then read the song a slice at a time (mus_tick): the whole read (up to 300 KB, a good half second on a cartridge) used to freeze the loop, and the click's square-wave voice rang on for all of it
+    mus_stop(); mus_ld = -1; if (mus_ok != 1 || n < 0 || n >= mus_n) return 0;
+    const u8 *e = mus_e(n); u32 len = rd32(e + 4); if (len > MUS_BUFSZ || !len) return 0;
+    mus_psg_off(); mus_ld = n; mus_ld_off = 0; mus_ld_len = (len + 511) & ~511u; if (mus_ld_len > MUS_BUFSZ) mus_ld_len = MUS_BUFSZ;
+    mus_laps = 0; mus_cur = n; return 1;
 }
-static void mus_tick(void) {   // once a frame: the volume as it is now, and has the song played through (Auto: on to the next)?
+static void mus_tick(void) {   // once a frame: load the next slice of a song being read; then the volume as it is now, and has the song played through (Auto: on to the next)?
+    if (mus_ld >= 0) {
+        const u8 *e = mus_e(mus_ld); u32 n = mus_ld_len - mus_ld_off; if (n > 16 * 512) n = 16 * 512;
+        cart_read(mus_base + rd32(e) + mus_ld_off, mus_buf + mus_ld_off, n); mus_ld_off += n;
+        if (mus_ld_off >= mus_ld_len) {
+            DC_FlushRange(mus_buf, mus_ld_len);
+            mus_ctl.seq = (u32)mus_buf; mus_ctl.tbl = (u32)mus_buf + rd32(e + 8); mus_ctl.smp = (u32)mus_buf + rd32(e + 12); mus_ctl.loop_off = rd32(e + 20);
+            mus_ld = -1; mus_armed = 1; mus_cmd(1); }
+        return; }
     u32 vs = (u32)(o_vol * o_mus), st = (u32)(o_pan != 0);
     if (mus_ctl.vol != vs || mus_ctl.stereo != st) { mus_ctl.vol = vs; mus_ctl.stereo = st; DC_FlushRange(&mus_ctl, 32); }
     DC_InvalidateRange((void *)&mus_ctl.laps, 32); mus_laps = (int)mus_ctl.laps;
