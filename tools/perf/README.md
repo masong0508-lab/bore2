@@ -47,3 +47,5 @@ How the city's frame time is measured (used for docs/PS1_PERFORMANCE.md). All of
 15. **Per-frame trace, panned freeze, clock** (`-DAB_TRACE=1`: `dbg_tr[1000][4]` = need/5, logic/2, world/3, people/2 of each life frame; `-DAB_FREEZE=N -DAB_PAN=4`: after the freeze the camera slides a tile every 160 emu frames; `AB_PAR="7=n"` with `AB_CFG`: the clock held at n x 6 minutes). A table the held-camera way: run each camera with `abcfg.py`, read `dbg_tr` from the RAM dump, and report the mean, the share over 786 hb, the share needing 4 or more vblanks ((need + 40) / 263) and the dearest frame after the first two.
 
 16. **`-DAB_TR1=1`** (with `AB_TRACE`): `dbg_tr` keeps only each frame's need (640 frames, 640 bytes) instead of 4 values for 1000 frames: a test build that carries new code needs the RAM. `trtable.py` reads either. `round5_floor_cells.patch` is the saved floor-baking experiment (PS1_PERFORMANCE.md, Round 5); `-DFB_OFF=1` turns it off in the same code.
+
+17. **Safe area**: `FULL=1 test/ds.sh ...` shows the whole 320x240 (DuckStation normally crops to 292x224). `-DSAFE_LINT=1` (or 2) logs text and boxes inside 8 px of an edge (`safe_n`, `safe_log`).

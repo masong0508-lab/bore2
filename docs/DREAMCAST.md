@@ -169,3 +169,6 @@ See also ROADMAP.md and EXPANSION_PACKS.md. The disc in the repo history is a fe
 
 ## Hair (Nov 2026)
 The PS1's new mesh hair (26 styles, `src/hairmesh.inc`) draws correctly under the Dreamcast GPU layer with VIVID on: Create-a-Sim and the street (docs/hair_dc_styles.png, docs/hair_dc_street.png; PS1: hair_ps1_styles.png, and hair_ps1_before_after.png: close, zoomed out, first person, old on top of new for each pair; first person shows no hair because your own head is not drawn). The Makefile was behind the PS1 source list and did not link; the missing files and overlays are in now (see PS1_PERFORMANCE.md, "Hair").
+
+## Nov 8 check (hair and discs)
+Disc rebuilt from main (`make disc`, 7.2 MB track 3). In flycast: title, city HUD and the Create-a-Sim hair tab work, new hair styles, beards and all dye colours draw (`docs/hair_dc_dye.png`; test build `AUTO="HAIR_AUTO=24 -DHAIR_DEV=400"`, tab keys on Dreamcast are `r2`). Not checked: packs shelf, arcade lot.

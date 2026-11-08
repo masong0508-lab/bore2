@@ -9,3 +9,8 @@ See also ROADMAP.md, EXPANSION_PACKS.md and PS1_PERFORMANCE.md (measured numbers
 6. Bus facing at stops, car pitch on real hills, gas-station and first-person vehicle shots.
 7. Clock card kept between frames (needs packet room).
 Always: more than 10 KB free past `_end` on 2 MB, Release builds only, old saves load.
+
+## Nov 8 update: hair, safe area, discs
+- **Hair**: AFRO, CURLS, TOP KNOT, THINNING, HORSESHOE, SIDE TAIL, BUN and the beards redrawn so each reads close and far (`docs/hair_ps1_styles.png`, all 26 styles front and three-quarter; `docs/hair_ps1_dye.png`, the 8 colours). Same piece counts, so fps and RAM are unchanged (`_end` 0x801fc5e4, about 14.5 KB free on 2 MB). Checked on 8 MB (`DS8MB=1`) and old saves (`test/oldsave.sh build`, `oldsave2.sh build "46 06393a1"`) still load. Test hooks: `-DHAIR_AUTO=24 -DHAIR_DEV=400` (every style then every colour, close camera).
+- **Safe area**: DuckStation crops the picture to 292x224. HUD, windows, bars and hint pills now sit 8 px in from every edge (life HUD, KINGDOM bars, create, build mode, arcade, fight, space, dog, Boreagotchi, pack screens). Check: `FULL=1 test/ds.sh ...` gives the whole 320x240; `-DSAFE_LINT=1` logs anything inside the margin.
+- **Not done**: Boreagotchi hatch from real play and the 21:00 summary shot; pre-lit box lists (Round 5 idea) were not measured, so still open; Dreamcast packs shelf and arcade lot were not reached in flycast.
