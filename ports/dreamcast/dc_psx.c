@@ -29,8 +29,14 @@ void dc_gte_rtps(int i) {
     // the divide: H / SZ in 0.16, saturating at 0x1FFFF when SZ <= H/2 (what the PS1's unsigned Newton-Raphson divider does)
     int32_t h = dc_gte.h, q;
     if (z * 2 > h) { q = (int32_t)((float)h * 131072.0f / (float)z + 0.5f); if (q > 0x1FFFF) q = 0x1FFFF; } else q = 0x1FFFF;
-    int64_t sx = ((int64_t)i0 * q + dc_gte.ofx) >> 16, sy = ((int64_t)i1 * q + dc_gte.ofy) >> 16;
-    int32_t xx = sx < -1024 ? -1024 : sx > 1023 ? 1023 : (int32_t)sx, yy = sy < -1024 ? -1024 : sy > 1023 ? 1023 : (int32_t)sy;
+    int32_t xx, yy;
+    if ((uint32_t)(i0 + 8192) < 16384u && (uint32_t)(i1 + 8192) < 16384u) {   // |i| < 8192 and q < 2^17: the products fit in 32 bits (the usual case): no 64-bit shifts
+        int32_t sx = (i0 * q + dc_gte.ofx) >> 16, sy = (i1 * q + dc_gte.ofy) >> 16;
+        xx = sx < -1024 ? -1024 : sx > 1023 ? 1023 : sx; yy = sy < -1024 ? -1024 : sy > 1023 ? 1023 : sy;
+    } else {
+        int64_t sx = ((int64_t)i0 * q + dc_gte.ofx) >> 16, sy = ((int64_t)i1 * q + dc_gte.ofy) >> 16;
+        xx = sx < -1024 ? -1024 : sx > 1023 ? 1023 : (int32_t)sx; yy = sy < -1024 ? -1024 : sy > 1023 ? 1023 : (int32_t)sy;
+    }
     dc_gte.sx[0] = dc_gte.sx[1]; dc_gte.sy[0] = dc_gte.sy[1]; dc_gte.sx[1] = dc_gte.sx[2]; dc_gte.sy[1] = dc_gte.sy[2];
     dc_gte.sx[2] = (int16_t)xx; dc_gte.sy[2] = (int16_t)yy;
 }

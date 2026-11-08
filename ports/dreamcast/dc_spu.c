@@ -156,38 +156,44 @@ static inline int16_t *rv(int base, int off) {
     return (int16_t *)spu_ram + o;
 }
 static inline int sat(int x) { return x > 32767 ? 32767 : x < -32768 ? -32768 : x; }
-static int rcA[32], rcV[32];
-static void reverb_cache(void) {   // the reverb registers only change at a tick: read them once per stretch
+static int rcA[32], rcV[32], rcM[4], rcD[4], rc_base, rc_ring, rc_wr, rc_vl, rc_vr;
+static void reverb_cache(void) {   // the reverb registers only change at a tick: read (and turned into ring offsets) once per stretch
     const volatile int16_t *R = (const volatile int16_t *)(dc_iobase + 0x1dc0);
-    for (int i = 0; i < 32; i++) { rcV[i] = (int)R[i]; rcA[i] = (int)(uint16_t)R[i] * 4; }
+    for (int i = 0; i < 32; i++) { rcV[i] = (int)R[i]; rcA[i] = ((int)(uint16_t)R[i] * 4) & 0x3ffff; }
+    for (int k = 0; k < 4; k++) rcM[k] = (rcA[k < 2 ? 10 + k : 16 + k] - 1) & 0x3ffff;      // taps 10, 11, 18, 19 minus one
+    rcD[0] = (rcA[26] - rcA[0]) & 0x3ffff; rcD[1] = (rcA[27] - rcA[0]) & 0x3ffff; rcD[2] = (rcA[28] - rcA[1]) & 0x3ffff; rcD[3] = (rcA[29] - rcA[1]) & 0x3ffff;
+    rc_base = (int)((uint32_t)R16(0x1a2) * 4) & 0x3ffff; rc_ring = 0x40000 - rc_base;
+    rc_wr = R16(0x1aa) & 0x80; rc_vl = vol16(R16(0x184)); rc_vr = vol16(R16(0x186));
 }
 static void reverb_step(int inL, int inR) {
-    int base = (int)((uint32_t)R16(0x1a2) * 4) & 0x3ffff;     // SPU_REVERB_ADDR, in halfwords
-    if (rev_cur < base) rev_cur = base;
-    int wr = R16(0x1aa) & 0x80;
+    int16_t *const ram = (int16_t *)spu_ram;
+    if (rev_cur < rc_base) rev_cur = rc_base;
+    const int cur = rev_cur, ring = rc_ring;
+#define P(off) (ram + ({ int o_ = cur + (off); (o_ >= 0x40000 ? o_ - ring : o_) & 0x3ffff; }))
 #define A(i) rcA[i]
 #define V(i) rcV[i]
     int Lin = (V(30) * inL) >> 15, Rin = (V(31) * inR) >> 15;
     int vIIR = V(2), vWALL = V(7);
-    if (wr) {
+    if (rc_wr) {
         int16_t *p;
-        int ls = *rv(base, A(10) - 1), rs = *rv(base, A(11) - 1), ld = *rv(base, A(18) - 1), rdd = *rv(base, A(19) - 1);
-        p = rv(base, A(10)); *p = (int16_t)sat((((Lin + ((*rv(base, A(16)) * vWALL) >> 15) - ls) * vIIR) >> 15) + ls);
-        p = rv(base, A(11)); *p = (int16_t)sat((((Rin + ((*rv(base, A(17)) * vWALL) >> 15) - rs) * vIIR) >> 15) + rs);
-        p = rv(base, A(18)); *p = (int16_t)sat((((Lin + ((*rv(base, A(25)) * vWALL) >> 15) - ld) * vIIR) >> 15) + ld);
-        p = rv(base, A(19)); *p = (int16_t)sat((((Rin + ((*rv(base, A(24)) * vWALL) >> 15) - rdd) * vIIR) >> 15) + rdd);
+        int ls = *P(rcM[0]), rs = *P(rcM[1]), ld = *P(rcM[2]), rdd = *P(rcM[3]);
+        p = P(A(10)); *p = (int16_t)sat((((Lin + ((*P(A(16)) * vWALL) >> 15) - ls) * vIIR) >> 15) + ls);
+        p = P(A(11)); *p = (int16_t)sat((((Rin + ((*P(A(17)) * vWALL) >> 15) - rs) * vIIR) >> 15) + rs);
+        p = P(A(18)); *p = (int16_t)sat((((Lin + ((*P(A(25)) * vWALL) >> 15) - ld) * vIIR) >> 15) + ld);
+        p = P(A(19)); *p = (int16_t)sat((((Rin + ((*P(A(24)) * vWALL) >> 15) - rdd) * vIIR) >> 15) + rdd);
     }
-    int Lo = (V(3) * *rv(base, A(12)) + V(4) * *rv(base, A(14)) + V(5) * *rv(base, A(20)) + V(6) * *rv(base, A(22))) >> 15;
-    int Ro = (V(3) * *rv(base, A(13)) + V(4) * *rv(base, A(15)) + V(5) * *rv(base, A(21)) + V(6) * *rv(base, A(23))) >> 15;
-    int d1 = A(0), d2 = A(1), a1 = V(8), a2 = V(9), t;
-    t = *rv(base, A(26) - d1); Lo = sat(Lo - ((a1 * t) >> 15)); if (wr) *rv(base, A(26)) = (int16_t)Lo; Lo = sat(((Lo * a1) >> 15) + t);
-    t = *rv(base, A(27) - d1); Ro = sat(Ro - ((a1 * t) >> 15)); if (wr) *rv(base, A(27)) = (int16_t)Ro; Ro = sat(((Ro * a1) >> 15) + t);
-    t = *rv(base, A(28) - d2); Lo = sat(Lo - ((a2 * t) >> 15)); if (wr) *rv(base, A(28)) = (int16_t)Lo; Lo = sat(((Lo * a2) >> 15) + t);
-    t = *rv(base, A(29) - d2); Ro = sat(Ro - ((a2 * t) >> 15)); if (wr) *rv(base, A(29)) = (int16_t)Ro; Ro = sat(((Ro * a2) >> 15) + t);
+    int Lo = (V(3) * *P(A(12)) + V(4) * *P(A(14)) + V(5) * *P(A(20)) + V(6) * *P(A(22))) >> 15;
+    int Ro = (V(3) * *P(A(13)) + V(4) * *P(A(15)) + V(5) * *P(A(21)) + V(6) * *P(A(23))) >> 15;
+    int a1 = V(8), a2 = V(9), t;
+    t = *P(rcD[0]); Lo = sat(Lo - ((a1 * t) >> 15)); if (rc_wr) *P(A(26)) = (int16_t)Lo; Lo = sat(((Lo * a1) >> 15) + t);
+    t = *P(rcD[1]); Ro = sat(Ro - ((a1 * t) >> 15)); if (rc_wr) *P(A(27)) = (int16_t)Ro; Ro = sat(((Ro * a1) >> 15) + t);
+    t = *P(rcD[2]); Lo = sat(Lo - ((a2 * t) >> 15)); if (rc_wr) *P(A(28)) = (int16_t)Lo; Lo = sat(((Lo * a2) >> 15) + t);
+    t = *P(rcD[3]); Ro = sat(Ro - ((a2 * t) >> 15)); if (rc_wr) *P(A(29)) = (int16_t)Ro; Ro = sat(((Ro * a2) >> 15) + t);
+#undef P
 #undef A
 #undef V
-    rev_outL = (Lo * vol16(R16(0x184))) >> 15; rev_outR = (Ro * vol16(R16(0x186))) >> 15;
-    if (++rev_cur >= 0x40000) rev_cur = base;
+    rev_outL = (Lo * rc_vl) >> 15; rev_outR = (Ro * rc_vr) >> 15;
+    if (++rev_cur >= 0x40000) rev_cur = rc_base;
 }
 
 // ---------------------------------------------------------------- the mixer

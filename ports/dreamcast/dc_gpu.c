@@ -262,7 +262,19 @@ static inline int tri_ok(int x0, int y0, int x1, int y1, int x2, int y2) {
 
 static int uv_exact;
 static void emit_one(int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr, int var);
+int dc_cull_n;   // (readout: primitives dropped before they reach the PowerVR)
 static void emit(int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr) {
+#ifndef DC_NOCULL
+    if (!off_screen) {   // wholly outside the 320x240 picture: nothing to draw (the PS1's GPU clips these away for free, the PowerVR bins them)
+        int mnx = x[0], mxx = x[0], mny = y[0], mxy = y[0];
+        for (int k = 1; k < n; k++) { int a = x[k], b = y[k]; if (a < mnx) mnx = a; if (a > mxx) mxx = a; if (b < mny) mny = b; if (b > mxy) mxy = b; }
+        int ox = ofs_x - area_x0, oy = ofs_y - area_y0;
+        if (mxx + ox < 0 || mnx + ox >= 320 || mxy + oy < 0 || mny + oy >= 240) { dc_cull_n++; return; }
+        if (n == 3 && !semi) {   // a flat triangle with no area: the PS1 draws nothing
+            if ((x[1] - x[0]) * (y[2] - y[0]) == (x[2] - x[0]) * (y[1] - y[0])) { dc_cull_n++; return; }
+        }
+    }
+#endif
     if (n == 4 && !off_screen) {   // the PS1 GPU skips a triangle wider than 1023 or taller than 511 pixels: a quad is two of them
         int a = tri_ok(x[0], y[0], x[1], y[1], x[2], y[2]), b = tri_ok(x[1], y[1], x[2], y[2], x[3], y[3]);
         if (!a && !b) return;
@@ -554,8 +566,9 @@ int DrawOTag(const uint32_t *ot) {
         cpu_sum += gfx_last_cpu; if (gfx_last_cpu > cpu_max) cpu_max = gfx_last_cpu;
         if (dc_frames % 100 == 0) {
             int dv = dc_vbl - last_vbl; last_vbl = dc_vbl;
-            dc_logf("f%d fps %d.%d cpu %d max %d hb | verts %d/%d/%d pages %d cells %d pvrfree %d | snd on %d peak %d\n", dc_frames, dv ? 6000 / dv : 0, dv ? (60000 / dv) % 10 : 0,
-                    cpu_sum / 100, cpu_max, vl_op.n, vl_pt.n, vl_tr.n, dc_tex_uploads, dc_tex_cells, (int)pvr_mem_available(), dc_spu_voices_on, dc_spu_peak);
+            dc_logf("f%d fps %d.%d cpu %d max %d hb | verts %d/%d/%d pages %d cells %d pvrfree %d | snd on %d peak %d cull %d\n", dc_frames, dv ? 6000 / dv : 0, dv ? (60000 / dv) % 10 : 0,
+                    cpu_sum / 100, cpu_max, vl_op.n, vl_pt.n, vl_tr.n, dc_tex_uploads, dc_tex_cells, (int)pvr_mem_available(), dc_spu_voices_on, dc_spu_peak, dc_cull_n);
+            dc_cull_n = 0;
             cpu_sum = cpu_max = 0;
         }
     }
