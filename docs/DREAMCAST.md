@@ -103,23 +103,67 @@ people-sprite rasteriser (software, into VRAM) was a big part of `emit`; it is a
 - PS1 check: `ports/dreamcast/ps1_check.sh` gives the same image with and without the Dreamcast edits (`_end` 0x801fc044, sha1 9cfdf4cec1aaaad0 on this tree).
 - Shadows: the game already draws a soft shadow under every person (`gfx_shadow`, subtract blend); no change needed.
 
-## Still to do
-- Side by side with DuckStation: pie menu, night, first person, far view, a park, roofs (shops, towers, flats). Not done.
-- Roofs: a fade cut-away; far roofs with fog; bigger overhangs.
-- The far buildings' window textures use the PS1 texture window (GP0 E2): not done in `dc_gpu.c` yet.
-- Steady 60 fps: sound on the AICA's own channels (reverb 8% + mixer), the game's own vertex count, SH-4 FIPR/FTRV maths for the GTE, a direct PVR path for the world
-  and people (people are still software-drawn into VRAM cells, then textures).
-- Upgrades not done: sub-pixel vertices (the game hands the GPU whole-pixel packets: needs `src/` changes), a real depth buffer (the PVR z is the painter's order, so
-  PVR fog by depth is not possible yet), full far view with fog, bigger crowds, smooth lighting, 16:9 (the game lays out its HUD and camera for 320x240).
-- Extras not done: bring Boreagotchi rewards back from the VMU, Dreamcast furniture set and outfits, translucent water/glass, night glow, unlockables gallery,
-  pads C and D and second players in the mini-games.
+## Round 4 (Nov 8): speed, furniture, outfits, gallery, night glow
+### Speed: honest table
+Method: the frozen street (`AUTO_CITY=1 -DAB_LOCK4=1 -DAB_FREEZE=150 -DDC_NOSPEED`), the same city frame every run, so only the code differs.
+CPU hblanks a frame (262 = 60 fps; this is the game's whole frame up to the flip, drawing included):
+| Step | CPU hblanks | vs start | opaque vertices |
+|---|---|---|---|
+| start of round 4 | 326 | | 1645 |
+| primitives wholly off screen or with no area dropped before the PowerVR (`dc_gpu.c`, `emit`) | 320 | -2% | 1247 |
+| 32-bit projection in the GTE when the products fit (`dc_psx.c`) | 313 | -4% | |
+| reverb with ring offsets worked out once per stretch, bit-exact (`dc_spu.c`; checked against the old code on 2.4 million random steps) | 309 | -5% | |
+That is about 48 fps before and 51 fps after if nothing else stalls (60 x 262 / hblanks). Free-running streets are not comparable run to run (the Sim takes another
+route): 46 fps average over 13 readings before, 48 after, with different scenes. Still NOT a steady 60.
+Profile now (busy time only): sound 26% (reverb 17%, mixer 9%), emit/emit_one/DrawOTag 21%, GTE 10%, the game itself the rest.
+Not done: sound on the AICA's own channels (a different ADPCM and reverb: a large job and the sound would change), SH-4 FIPR/FTRV for the GTE (the GTE
+is only 10% and the PS1 matrices are 16-bit fixed point: float would not be bit-exact), a direct PVR path for the world and the people.
+Tried and not kept: reverb at half rate again (saves about 3.5% but darkens the reverb; not judged by ear, so left out).
 
-## What the Dreamcast needs next (updated Nov 1)
+### Dreamcast furniture set (BORE_DC only, `src/items_dc.inc`)
+Six new items, letters 0xF7..0xFC, bought in build mode (FUN AND TECH: DREAMCAST, VMU ON A STAND, DC ARCADE CABINET; DECOR: SWIRL RUG, ORANGE and BLUE SWIRL LAMP).
+Left: the console and the VMU stand; right: the rug, the cabinet and the lamps (test build `-DDC_SHOWITEMS=1`, also `=2` for the other order).
+![furniture](dc_furniture.png)
+They are plain decor (the cabinet does not start a game). The PS1 build has none of them (`ITEMS_DC` is empty there).
+
+### Dreamcast outfits and the gallery
+Four outfits are appended to the OUTFIT list (WEAR tab) under BORE_DC: ORANGE SWIRL, BLUE SWIRL, ARCADE KID, JUMP PACK HERO (built from the PS1's own wear items;
+the PS1 outfit numbers do not move). OPTIONS > EXTRAS > DREAMCAST GALLERY lists the six items and four outfits: FOUND once you have built the item in a home or worn the outfit
+(kept for the session only: it is not saved; the real unlock list needs a place in the save). Shot: the gallery (items you placed are found; here the Sim had walked away, so only the lamp shows).
+![gallery](dc_gallery.png)
+
+### Night glow
+After dusk (the light's ambient below 72) every street lamp head and the two Dreamcast lamps get a warm (blue for the blue lamp) additive halo: a 16x16
+gradient in the atlas drawn as a blended sprite, fading in with the dusk (`items.c`, BORE_DC). Test build: `-DDC_NIGHT=22` fixes the clock at 22:00.
+![night](dc_night_glow.png)
+The halo is a 2D sprite over the picture (no depth test), so a lamp behind a wall can show its glow; people in front of a lamp are covered by it.
+
+### Controllers B, C, D
+`pad_read(port, ...)` now answers for ports 0..3 (it was port 0 only), so the arcade's two-player games, which read port 1, take a second player on controller B
+(plus the fight game as before). Nothing else in the game reads pads C and D. Not tested with a real second pad (the test emulator has one).
+
+### Checks
+`ports/dreamcast/ps1_check.sh` before and after this round (tree f93a938 against this one): `_end` 0x801fc234, image sha1 ae63c2837a8fd5e2, the same.
+
+## Still to do
+- Side by side with DuckStation (pie menu, night, first person, far view, a park, roofs): NOT done this round. The frozen AUTO_CITY test builds do not take input, and the
+  PS1 test build sits a different distance from the street than the Dreamcast one (the PS1 side needs the helper switched off through the disc's test patch); the pairs
+  need scripts that both sides follow. The older pair above (`dc_vs_ps1_city2.png`) is the last good one.
+- Boreagotchi rewards back from the VMU: not done. It needs a program on the VMU itself (the VMU only shows what the console draws), which the toolchain here cannot build.
+- Translucent water: not done (glass already blends on both PS1 and Dreamcast: it is a semi-transparent quad in `world.c`). Water is an opaque scrolling floor tile.
+- Pads C and D: only readable (`pad_read(2/3)`); no game uses them. 16:9: not done (the HUD, camera and culling are for 320x240). Sub-pixel vertices: not done
+  (every packet is whole pixels: it needs `src/` changes where packets are built). A real depth buffer and PVR fog by depth: not done; the game already fades colours with
+  depth (`gfx_set_fog`), so PVR fog would double it. Bigger crowds and detail radius: the OPTIONS already go to 64 people and radius 14; a bigger default costs speed.
+  Smooth lighting: not done.
+- The unlock list is not saved (see above). Roofs: a fade cut-away; far roofs with fog. The far buildings' window textures use the PS1 texture window (GP0 E2): not done in `dc_gpu.c`.
+- Steady 60 fps: see the speed table.
+
+## What the Dreamcast needs next (updated Nov 8)
 See also ROADMAP.md and EXPANSION_PACKS.md. The disc in the repo history is a few hours behind main: rebuild with the `build-dreamcast` workflow or `make disc`. In order:
-1. Speed toward 60 fps: sound on the AICA, a direct PVR path for the world and people, SH-4 FIPR/FTRV maths.
-2. Upgrades: sub-pixel vertices, depth buffer, far view with fog, bigger crowds, smooth lighting, 16:9.
-3. Side-by-side checks against DuckStation (pie menu, night, first person, far view, a park, roofs).
-4. Extras as placeholders first (COMING SOON in the EXTRAS tab), then real: VMU pet rewards back into the game, Dreamcast furniture set and outfits, water and glass, night glow, unlockables gallery, pads 3 and 4.
+1. Speed toward 60 fps: sound on the AICA, a direct PVR path for the world and people.
+2. Side-by-side checks against DuckStation with scripts both sides follow.
+3. Save the unlock list; Boreagotchi rewards (needs a VMU program); translucent water.
+4. Upgrades: sub-pixel vertices, 16:9, smooth lighting.
 5. Disc packs: put the PS1 packs on the disc as files (see EXPANSION_PACKS.md).
 6. Real hardware test.
 
