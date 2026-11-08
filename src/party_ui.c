@@ -66,51 +66,50 @@ static void row_special(int y, int i, int on) {
     static const char *const nm[R_N] = { "START THE PARTY", "OPEN HOUSE", "ASK EVERYONE I KNOW", "CLEAR THE LIST" };
     static const int ic[R_N] = { IC_PARTY, IC_DOOR, IC_PEOPLE, IC_TICK };
     char b[32]; strcpy(b, nm[i]);
-    ui_row(20, y, 188, 15, b, ic[i], on);
-    if (i == R_OPEN) ui_toggle(180, y + 2, party_open, on);
+    ui_row(20, y, 184, 17, b, ic[i], on);
+    if (i == R_OPEN) ui_toggle(176, y + 3, party_open, on);
 }
 void party_draw(void) {
     ui_backdrop();
     int t = ui_window(14, 8, 292, 224, lv == L_LIST ? "THE GUEST LIST" : "WHO IS COMING", IC_PARTY);
     char b[48];
-    sprintf(b, "%d / %d ASKED", invited(), PARTY_CAP); ui_badge(300 - ui_tw(1, b) - 10, 12, b, UI_WHITE, UI_BLUE2);
+    sprintf(b, "%d / %d ASKED", invited(), PARTY_CAP); ui_badge_r(298, 12, b, UI_WHITE, UI_BLUE2);
     // the right: what kind of night it will be
     ui_round(214, t + 2, 88, 150, 7, UI_WHITE, UI_PANEL, 0);
-    ui_textc(258, t + 6, 1, "THE NIGHT", UI_SOFT);
-    int r = rating(); ui_wrapc(216, t + 18, 84, 2, ratingNm[r], r >= 2 ? UI_GOODT : UI_INK);
+    ui_text_box(214, t + 5, 88, 12, TX_CENTER | TX_MID, 1, "THE NIGHT", UI_SOFT);
+    int r = rating(); ui_wrapc(216, t + 19, 84, 2, ratingNm[r], r >= 2 ? UI_GOODT : UI_INK);
     for (int i = 0; i < 3; i++) ui_icon(240 + i * 14, t + 44, IC_STAR, i < r ? UI_AMBER : UI_LINE);
-    sprintf(b, "%d THINGS ABOUT", score); ui_textc(258, t + 62, 1, b, UI_SOFT);
+    sprintf(b, "%d THINGS ABOUT", score); ui_text_box(214, t + 60, 88, 12, TX_CENTER | TX_MID, 1, b, UI_SOFT);
     ui_bar(222, t + 74, 72, 6, MIN(100, score * 8), UI_GREEN);
-    ui_wrap(218, t + 86, 82, 6, tipNm[r], UI_SOFT);
-    sprintf(b, "$%d", party_open ? 200 : 100); ui_badge(258 - (ui_tw(1, b) + 10) / 2, t + 138, b, UI_GREEN, UI_WHITE);
+    ui_wrapc(216, t + 86, 84, 6, tipNm[r], UI_SOFT);
+    sprintf(b, "$%d", party_open ? 200 : 100); ui_badge(258 - (ui_tw(1, b) + 10) / 2, t + 136, b, UI_GREEN, UI_WHITE);
     if (lv == L_LIST) {
         int n = rows();
         for (int k = 0; k < 7 && top + k < n; k++) {
             int i = top + k, y = t + 2 + k * 21;
             if (i < R_N) { row_special(y, i, i == sel); continue; }
             int g = i - R_N, on = grp_on(g), tot = pg_grp[g].n; char nm[40]; citizens_gname(g, nm);
-            ui_round(20, y, 188, 18, 5, i == sel ? UI_HILITE : UI_WHITE, i == sel ? UI_HILITE : UI_PANEL, 0);
-            ui_disc(30, y + 9, 9, on == tot ? UI_GREEN : on ? UI_AMBER : UI_LINE);
-            if (on == tot) ui_icon(24, y + 3, IC_TICK, UI_WHITE);
-            ui_textfit(40, y + 5, 112, nm, UI_INK);
-            sprintf(b, "%d/%d", on, tot); ui_badge(160, y + 3, b, on ? UI_BLUE : UI_LINE, on ? UI_WHITE : UI_SOFT);
+            ui_item(20, y, 184, 18, i == sel);
+            ui_disc(31, y + 9, 9, on == tot ? UI_GREEN : on ? UI_AMBER : UI_LINE);
+            if (on == tot) ui_icon(25, y + 3, IC_TICK, UI_WHITE);
+            sprintf(b, "%d/%d", on, tot); int bw = ui_badge_r(200, y + 3, b, on ? UI_BLUE : UI_LINE, on ? UI_WHITE : UI_SOFT);
+            ui_fit_box(42, y, 200 - bw - 46, 18, TX_LEFT | TX_MID, nm, UI_INK);
         }
-        if (top > 0) ui_text(112, t - 6, 1, "^", UI_SOFT);
-        if (top + 7 < n) ui_text(112, t + 150, 1, "v", UI_SOFT);
+        ui_scrollbar(208, t + 2, 146, top, 7, n);
         if (!pg_ng) ui_wrap(24, t + 110, 180, 4, "NOBODY ON THE LIST YET. MEET PEOPLE IN TOWN, OR OPEN THE HOUSE.", UI_SOFT);
         ui_hints(160, 214, "X PICK|RIGHT WHO'S IN IT|O CANCEL", 1);
     } else {
-        const PGroup *k = &pg_grp[grp]; char nm[40]; citizens_gname(grp, nm); ui_text(22, t + 1, 1, nm, UI_BLUE2);
+        const PGroup *k = &pg_grp[grp]; char nm[40]; citizens_gname(grp, nm); ui_text_box(22, t - 1, 180, 13, TX_LEFT | TX_MID, 1, nm, UI_BLUE2);
         for (int j = 0; j < 5 && mtop + j < k->n; j++) {
             int i = mtop + j, y = t + 14 + j * 24; const PGuest *m = &pg_mem[k->first + i]; char fn[24]; citizens_names(m->ref, fn);
-            ui_round(20, y, 188, 21, 5, i == msel ? UI_HILITE : UI_WHITE, i == msel ? UI_HILITE : UI_PANEL, 0);
-            ui_icon(26, y + 5, IC_SMILE, m->on ? UI_GREEN : UI_LINE);
-            ui_textfit(44, y + 6, 100, fn, UI_INK);
-            ui_badge(120, y + 5, m->known ? "FRIEND" : "STRANGER", m->known ? UI_BLUE : UI_LINE, m->known ? UI_WHITE : UI_SOFT);
-            ui_toggle(184, y + 5, m->on, i == msel);
+            ui_item(20, y, 188, 21, i == msel);
+            ui_icon(27, y + 4, IC_SMILE, m->on ? UI_GREEN : UI_LINE);
+            ui_fit_box(45, y, 70, 21, TX_LEFT | TX_MID, fn, UI_INK);
+            ui_badge(122, y + 5, m->known ? "FRIEND" : "STRANGER", m->known ? UI_BLUE : UI_LINE, m->known ? UI_WHITE : UI_SOFT);
+            ui_toggle(180, y + 5, m->on, i == msel);
         }
         ui_hints(160, 214, "X ASK|TRI WHOLE HOUSEHOLD|O BACK", 1);
     }
-    if (msg) { int w = ui_tw(1, msg) + 16; ui_round(160 - w / 2, 190, w, 16, 6, UI_WHITE, UI_PANEL, 0); ui_textc(160, 195, 1, msg, UI_INK); }
+    if (msg) ui_toast(190, msg);
 }
 __attribute__((section(".ovl_head"), used)) const OvlHead ovl_head = { OVL_MAGIC, party_open_ui, party_update, party_draw };

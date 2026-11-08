@@ -810,10 +810,11 @@ static void draw_hand(int lcdMode) {
     gfx_rect(80, 100, 160, 12, dark ? 70 : 150, dark ? 84 : 176, dark ? 62 : 108, 0);
     if (lcdMode == 0) { char nm[40]; gx_name(b, nm); sprintf(s, "%s THE %s", gx_given(b->nm), nm); gfx_text_raw(160 - gfx_text_w(1, s) / 2, 102, 1, s, 28, 44, 24); }
     // the needs, down the left: an icon, a word and a bar each (green, amber, red)
-    meter(20, 19, IC_FOOD, "FOOD", b->hun * 25); meter(20, 40, IC_SMILE, "FUN", b->hap * 25); meter(20, 61, IC_BED, "ENERGY", x->nrg); meter(20, 82, IC_DROP, "CLEAN", x->hyg);
+    int card = cp == 0 || cp == 6;   // (the big DAY ONE card covers the middle: the meters peeked out at its edges, MANNERS showed as "ers", so they wait until it is gone)
+    if (!card) { meter(20, 19, IC_FOOD, "FOOD", b->hun * 25); meter(20, 40, IC_SMILE, "FUN", b->hap * 25); meter(20, 61, IC_BED, "ENERGY", x->nrg); meter(20, 82, IC_DROP, "CLEAN", x->hyg); }
     // and down the right: bond, manners, the pet's wish, today's goals
-    meter(252, 19, IC_HEART, "BOND", b->bond); meter(252, 40, IC_STAR, "MANNERS", b->disc);
-    { int w = x->wish & 7; gfx_text_raw(252, 62, 1, "WISH", 252, 248, 255); if (w && b->stage > GS_EGG) { ui_icon_s(284, 61, wishIcon[w], 11, UI_RGB(255, 235, 140)); gfx_text_raw(252, 72, 1, gx_wish_name(w), 255, 235, 140); } else gfx_text_raw(252, 72, 1, "NONE", 190, 170, 220);
+    if (!card) meter(252, 19, IC_HEART, "BOND", b->bond); if (!card) meter(252, 40, IC_STAR, "MANNERS", b->disc);
+    if (!card) { int w = x->wish & 7; gfx_text_raw(252, 62, 1, "WISH", 252, 248, 255); if (w && b->stage > GS_EGG) { ui_icon_s(284, 61, wishIcon[w], 11, UI_RGB(255, 235, 140)); gfx_text_raw(252, 72, 1, gx_wish_name(w), 255, 235, 140); } else gfx_text_raw(252, 72, 1, "NONE", 190, 170, 220);
       gfx_text_raw(252, 84, 1, "GOALS", 252, 248, 255); int dn = gx_goals_done(t); for (int i = 0; i < 3; i++) { gfx_rect(252 + i * 16, 94, 14, 7, 30, 14, 46, 0); if (i < dn) gfx_rect(253 + i * 16, 95, 12, 5, 255, 214, 60, 0); } }
     if (lcdMode == 0) { if (gotchi_time == 1) ui_badge(252, 104, "LIVE", UI_RED, UI_WHITE); else if (gotchi_time == 2) ui_badge(252, 104, "PAUSED", UI_SOFT, UI_WHITE); }
     // the chips: its form, then what is going on inside (bad ones red, good ones green)

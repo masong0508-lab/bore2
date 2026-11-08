@@ -383,7 +383,7 @@ static void start_life(void) {
         a->rel[1] = m->rel[0] = 40; a->rel[2] = k->rel[0] = m->rel[2] = k->rel[1] = 30;
     }
     story_reset(); }
-#if !defined(AUTO_TEXT) && !defined(AUTO_PKLIFE) && !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_SUPER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY) && !defined(AUTO_GOTCHI) && !defined(AUTO_GFIRST) && !defined(AUTO_DJ) && !defined(AUTO_RESORT)
+#if !defined(AUTO_TEXT) && !defined(AUTO_PKLIFE) && !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_SUPER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY) && !defined(AUTO_GOTCHI) && !defined(AUTO_GFIRST) && !defined(AUTO_DJ) && !defined(AUTO_RESORT) && !defined(AUTO_SCREENS)
     nh_pending = life_mode == 0; cash = life_mode == 2 ? 1000 : wmFundsV[go_funds % 6]; mode_pending = life_mode; life_mode = 0;   // the family picks its home on THE NEIGHBORHOOD screen (The Sims: $20,000 to start), and life_update moves them in
 #endif
     life_started = 1;
@@ -1409,7 +1409,7 @@ static void dir_draw(void) {
     int nf = 0; while (nf < pop_famcap && pop_fam[nf].n) nf++;
     if (dir_fam < 0) {
         int top = ui_window(4, 4, 312, 232, "THE PEOPLE OF SAN BOREAS", IC_PEOPLE);
-        sprintf(b, "%d HOUSEHOLDS, %d PEOPLE", nf, dir_counts[0] + dir_counts[1] + dir_counts[2] + dir_counts[3] + dir_counts[4]); ui_text(12, top - 1, 1, b, UI_SOFT);
+        sprintf(b, "%d HOUSEHOLDS, %d PEOPLE", nf, dir_counts[0] + dir_counts[1] + dir_counts[2] + dir_counts[3] + dir_counts[4]); ui_text_box(12, top - 3, 296, 12, TX_LEFT | TX_MID, 1, b, UI_SOFT);
         {   // where everyone is now, as little coloured pills
             static const char *const nm[5] = { "ASLEEP", "HOME", "WORK", "SCHOOL", "OUT" };
             static const s8 ic[5] = { IC_BED, IC_HOUSE, IC_CASE, IC_BOOK, IC_CAR };
@@ -1427,18 +1427,19 @@ static void dir_draw(void) {
             int i = first + k, y = ly + k * 12, on = i == dir_sel; const Fam *f = &pop_fam[i];
             pop_surname(i, sur);
             const Settle *st = bm_set(f->set);
-            if (on) { ui_round(8, y - 2, 304, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(8, y, 2, 8, 38, 146, 222, 0); }
-            sprintf(b, "THE %sS", sur); ui_text(14, y, 1, b, on ? UI_BLUE2 : UI_INK);
-            ui_text(124, y, 1, pop_kind_name(f->kind), UI_SOFT);
-            sprintf(b, "%d", pop_alive(i)); ui_text(222, y, 1, b, UI_INK);
-            ui_text(236, y, 1, st ? st->name : "?", UI_SOFT);
+            if (on) { ui_round(10, y - 2, 290, 13, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(10, y, 2, 9, 38, 146, 222, 0); }
+            sprintf(b, "THE %sS", sur); ui_fit_box(16, y - 2, 104, 13, TX_LEFT | TX_MID, b, on ? UI_BLUE2 : UI_INK);
+            ui_fit_box(124, y - 2, 92, 13, TX_LEFT | TX_MID, pop_kind_name(f->kind), UI_SOFT);
+            sprintf(b, "%d", pop_alive(i)); ui_text_box(200, y - 2, 28, 13, TX_RIGHT | TX_MID, 1, b, UI_INK);
+            ui_fit_box(238, y - 2, 60, 13, TX_LEFT | TX_MID, st ? st->name : "?", UI_SOFT);
         }
+        ui_scrollbar(304, ly - 2, 13 * 12, first, rows, nf);
         const Fam *f = &pop_fam[dir_sel]; const Settle *st = bm_set(f->set);
         bm_street(f->set, f->bx, f->by, f->unit, addr);
         gfx_rect(10, 212, 300, 1, 200, 210, 222, 0);
         ui_icon(12, 215, IC_HOUSE, UI_BLUE);
-        sprintf(b, "%s, %s", addr, st ? st->name : ""); ui_text(28, 218, 1, b, UI_BLUE2);
-        ui_hints(310, 215, "X SEE THEM|O BACK", 2);
+        sprintf(b, "%s, %s", addr, st ? st->name : ""); ui_fit_box(28, 214, 160, 14, TX_LEFT | TX_MID, b, UI_BLUE2);
+        ui_hints(302, 215, "X SEE THEM|O BACK", 2);
         return;
     }
     const Fam *f = &pop_fam[dir_fam]; const Settle *st = bm_set(f->set);
@@ -1446,25 +1447,25 @@ static void dir_draw(void) {
     sprintf(b, "THE %sS", sur);
     int top = ui_window(4, 4, 312, 232, b, IC_HOUSE);
     bm_street(f->set, f->bx, f->by, f->unit, addr);
-    sprintf(b, "%s - %s, %s", pop_kind_name(f->kind), addr, st ? st->name : ""); ui_text(12, top - 1, 1, b, UI_SOFT);
+    sprintf(b, "%s - %s, %s", pop_kind_name(f->kind), addr, st ? st->name : ""); ui_fit_box(12, top - 3, 296, 12, TX_LEFT | TX_MID, b, UI_SOFT);
     for (int k = 0; k < f->n && k < 6; k++) {
         int p = f->first + k, y = top + 12 + k * 28, on = k == dir_msel;
         static const char *const ag[5] = { "BABY", "CHILD", "TEEN", "ADULT", "ELDER" };
         if (on) { ui_round(8, y - 3, 304, 27, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(8, y, 2, 20, 38, 146, 222, 0); }
         ui_icon_disc(22, y + 9, 18, IC_ARROW, on ? UI_BLUE : UI_RGB(150, 166, 186), UI_WHITE);
         pop_first(p, fn);
-        sprintf(b, "%s %s", fn, sur); ui_text(36, y, 1, b, on ? UI_BLUE2 : UI_INK);
-        sprintf(b, "%s, %s", ag[pop_per[p].stage % 5], pop_trait_name(pop_per[p].trait)); ui_text(310 - ui_tw(1, b), y, 1, b, UI_SOFT);
+        sprintf(b, "%s %s", fn, sur); ui_fit_box(36, y - 1, 150, 11, TX_LEFT | TX_MID, b, on ? UI_BLUE2 : UI_INK);
+        sprintf(b, "%s, %s", ag[pop_per[p].stage % 5], pop_trait_name(pop_per[p].trait)); ui_text_box(160, y - 1, 140, 11, TX_RIGHT | TX_MID, 1, b, UI_SOFT);
         char jb[48], db[48]; pop_job_name(p, jb); pop_doing(p, db);
         int dw = ui_tw(1, db);
-        if (36 + ui_tw(1, jb) + 8 > 310 - dw) { char *c = strchr(jb, ','); if (c) *c = 0; }   // (no room for both: the job without its place)
-        ui_text(36, y + 11, 1, jb, UI_RGB(26, 96, 160));
-        ui_text(310 - dw, y + 11, 1, db, UI_RGB(40, 130, 60));
+        if (36 + ui_tw(1, jb) + 8 > 300 - dw) { char *c = strchr(jb, ','); if (c) *c = 0; }   // (no room for both: the job without its place)
+        ui_text_box(36, y + 11, 200, 11, TX_LEFT | TX_MID, 1, jb, UI_RGB(26, 96, 160));
+        ui_text_box(160, y + 11, 140, 11, TX_RIGHT | TX_MID, 1, db, UI_RGB(40, 130, 60));
     }
     gfx_rect(10, 212, 300, 1, 200, 210, 222, 0);
     ui_icon(12, 215, IC_CAR, UI_BLUE);
     ui_hints(28, 215, "X TAXI TO THEIR HOUSE $20", 0);
-    ui_hints(310, 215, "O BACK", 2);
+    ui_hints(302, 215, "O BACK", 2);
 }
 
 // ---- HOMES: the homes for sale near you (houses, cottages, two-storeys, empty lots) and the one you have ----
@@ -3220,20 +3221,18 @@ static void pie_update(void) {
         if (pie_cit) { if (citizens_pie_do(pie_sel)) { pie_n = citizens_pie_more(pie_opt); pie_sel = 0; if (pie_n > 1) state = ST_PIE; } } else sim_pie_do(pie_sel); }
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_TRIANGLE)) state = ST_LIFE;
 }
-static void pie_draw(void) {
+static void pie_draw(void) {   // (the same panel as OPTIONS: a card with a slim header naming who or what it is, the choices round a hub, the hints bar under them)
     life_draw();
-    int cx = 160, cy = 94, R = pie_n > 4 ? 60 : 50;   // (a little up: the hint bar sits clear of the name card)
-    { const char *t = pie_cit ? citizens_pie_title() : sim_pie_title();   // the centre: who or what it is, on a round badge
-      ui_shadow(cx - 9, cy - 9, 18, 18, 6); ui_icon_disc(cx, cy, 20, pie_cit ? IC_CHAT : IC_ARROW, UI_BLUE, UI_WHITE);
-      int w = ui_tw(1, t) + 12; ui_round(cx - w / 2, cy + 12, w, 13, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_textc(cx, cy + 15, 1, t, UI_WHITE); }
+    const char *t = pie_cit ? citizens_pie_title() : sim_pie_title(); char sb[40];
+    int top = ui_window_s(40, 22, 240, 158, font_shaped(t, sb, sizeof sb)), cx = 160, cy = top + 60, RX = pie_n > 4 ? 68 : 56, RY = pie_n > 4 ? 46 : 38;
+    ui_icon_disc(cx, cy, 24, pie_cit ? IC_CHAT : IC_ARROW, UI_BLUE, UI_WHITE);
     for (int i = 0; i < pie_n; i++) {
-        int a = (i * 4096 / pie_n) & 4095, x = cx + ((isin(a) * R) >> 12), y = cy - ((icos(a) * R * 3 / 4) >> 12);
-        int w = ui_tw(1, pie_opt[i]) + 16, sel = i == pie_sel;
-        ui_shadow(x - w / 2, y - 7, w, 15, 6);
-        ui_round(x - w / 2, y - 7, w, 15, 6, sel ? UI_RGB(70, 176, 238) : UI_WHITE, sel ? UI_BLUE2 : UI_RGB(230, 236, 244), 0);
-        ui_textc(x, y - 3, 1, pie_opt[i], sel ? UI_WHITE : UI_INK);
+        int a = (i * 4096 / pie_n) & 4095, x = cx + ((isin(a) * RX) >> 12), y = cy - ((icos(a) * RY) >> 12);
+        int w = MIN(ui_tw(1, pie_opt[i]) + 18, 112), sel = i == pie_sel;
+        ui_round(x - w / 2, y - 8, w, 16, 6, sel ? UI_RGB(70, 176, 238) : UI_WHITE, sel ? UI_BLUE2 : UI_RGB(226, 232, 242), 0);
+        ui_text_box(x - w / 2, y - 8, w, 16, TX_CENTER | TX_MID, 1, pie_opt[i], sel ? UI_WHITE : UI_INK);
     }
-    ui_hintbar(153, "DPAD PICK|X DO IT|O NEVER MIND");
+    ui_hints(160, 164, "DPAD PICK|X DO IT|O NEVER MIND", 1);
 }
 
 
@@ -3442,8 +3441,8 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
         int raw[13] = { s->skill_cook, s->skill_body, s->skill_fun, s->skill_logic, s->skill_char, s->skill_creat, s->skill_mech, s->skill_farm, s->skill_band[0], s->skill_band[1], s->skill_band[2], s->skill_band[3], s->skill_band[4] };
         static const u32 skCol[8] = { UI_RGB(236, 160, 40), UI_RGB(220, 90, 70), UI_RGB(70, 176, 238), UI_RGB(120, 90, 210), UI_RGB(236, 110, 160), UI_RGB(60, 190, 150), UI_RGB(130, 140, 150), UI_RGB(110, 180, 70) };
         ui_section(12, y0, 294, "SKILLS");
-        for (int i = 0; i < 13; i++) { int col = i < 7 ? 0 : 1, row = i < 7 ? i : i - 7, x = col ? 164 : 12, y = y0 + 11 + row * 9, lv = wants_skill_level(raw[i]);
-            ui_text(x, y, 1, i < 8 ? skNm[i] : band_skill_name[i - 8], UI_INK); ui_bar(x + (col ? 94 : 68), y + 1, col ? 42 : 56, 6, lv * 10, i < 8 ? skCol[i] : UI_RED); sprintf(b, "%d", lv); ui_text(x + (col ? 142 : 128), y, 1, b, UI_SOFT); }
+        for (int i = 0; i < 13; i++) { int col = i < 7 ? 0 : 1, row = i < 7 ? i : i - 7, x = col ? 160 : 12, y = y0 + 11 + row * 9, lv = wants_skill_level(raw[i]);
+            ui_fit_box(x, y - 1, col ? 80 : 66, 9, TX_LEFT | TX_MID, i < 8 ? skNm[i] : band_skill_name[i - 8], UI_INK); ui_bar(x + (col ? 84 : 68), y + 1, col ? 40 : 56, 6, lv * 10, i < 8 ? skCol[i] : UI_RED); sprintf(b, "%d", lv); ui_text_box(x + (col ? 128 : 128), y - 1, 12, 9, TX_RIGHT | TX_MID, 1, b, UI_SOFT); }
         ui_section(12, y0 + 74, 294, "PERSONALITY");
         for (int i = 0; i < TR_N; i++) { int y = y0 + 85 + i * 10;
             ui_text(12, y, 1, look_trait_name(i), UI_INK); ui_pips(108, y, s->bore.tr[i], 10, UI_BLUE); }
@@ -3855,30 +3854,32 @@ static void catalog_next_cat(void) {   // R3: jump to the next tab
     int idx[96], cat = item_cat(items_at(build_item));
     for (int g = 1; g <= NCAT; g++) { int nc = (cat + g) % NCAT; if (cat_list(nc, idx)) { build_item = idx[0]; return; } }
 }
-static void draw_catalog(void) {
+static void draw_catalog(void) {   // (the same panel as OPTIONS: a slim header with the tab's name, the tabs as a row of pills, the rows, a scroll bar and "n of m")
+    static const s8 catIc[NCAT] = { IC_SOFA, IC_BRICK, IC_FOOD, IC_PLAY, IC_TREE, IC_SPROUT, IC_FAST, IC_HEART, IC_PARTY, IC_STAR };
     int idx[96], cat = item_cat(items_at(build_item)), n = cat_list(cat, idx), p = 0;
     char b[24];
     for (int k = 0; k < n; k++) if (idx[k] == build_item) p = k;
-    int top = ui_window_s(196, 4, 120, 168, catNm[cat]);
-    for (int c = 0; c < NCAT; c++) ui_disc(220 + c * 11, top + 2, 6, c == cat ? UI_BLUE : UI_LINE);   // which of the tabs
-    int first = CLAMP(p - 5, 0, MAX(0, n - 10));
-    for (int k = first; k < n && k < first + 10; k++) {
-        char ch = items_at(idx[k]); int y = top + 10 + (k - first) * 12, sel = k == p, cost = items_cost(ch);
-        if (sel) { ui_round(199, y - 2, 111, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(199, y, 2, 8, 38, 146, 222, 0); }
-        ui_text(206, y, 1, items_name(ch), sel ? UI_BLUE2 : UI_INK);
-        sprintf(b, "%d", cost); ui_text(308 - ui_tw(1, b), y, 1, b, cost > cash ? UI_BADT : UI_GOODT);
+    int top = ui_window_s(196, 4, 116, 168, catNm[cat]);
+    { int x = 202; for (int c = 0; c < NCAT; c++) { if (c == cat) { ui_round(x, top + 1, 24, 12, 5, UI_BLUE, UI_BLUE2, 0); ui_icon(x + 6, top + 1, catIc[c], UI_WHITE); x += 27; } else { ui_disc(x + 3, top + 7, 6, UI_LINE); x += 9; } } }   // (the tabs: the chosen one wide, with its picture)
+    int first = CLAMP(p - 4, 0, MAX(0, n - 9));
+    for (int k = first; k < n && k < first + 9; k++) {
+        char ch = items_at(idx[k]); int y = top + 16 + (k - first) * 12, sel = k == p, cost = items_cost(ch);
+        if (sel) { ui_round(199, y, 104, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(199, y + 2, 2, 8, 38, 146, 222, 0); }
+        sprintf(b, "%d", cost); int pw = ui_tw(1, b); ui_text_box(199, y, 98, 12, TX_RIGHT | TX_MID, 1, b, cost > cash ? UI_BADT : UI_GOODT);
+        ui_fit_box(205, y, 98 - pw - 10, 12, TX_LEFT | TX_MID, items_name(ch), sel ? UI_BLUE2 : UI_INK);
     }
-    sprintf(b, "%d OF %d", p + 1, n); ui_textc(256, top + 135, 1, b, UI_SOFT);
+    ui_scrollbar(305, top + 16, 108, first, 9, n);
+    sprintf(b, "%d OF %d", p + 1, n); ui_text_box(199, top + 126, 104, 14, TX_CENTER | TX_MID, 1, b, UI_SOFT);
 }
 static void draw_pick_list(const char *title, int count, int sel, const char *(*nm)(int)) {   // floors and wallpapers: seven at a time, the pick in the middle
     char b[24];
-    int top = ui_window_s(196, 4, 120, 116, title);
+    int top = ui_window_s(196, 4, 116, 116, title);
     for (int k = -3; k <= 3; k++) {
-        int i = (sel + k + count * 4) % count, y = top + 4 + (k + 3) * 12;
-        if (!k) { ui_round(199, y - 2, 111, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(199, y, 2, 8, 38, 146, 222, 0); }
-        ui_text(204, y, 1, nm(i), !k ? UI_BLUE2 : UI_SOFT);
+        int i = (sel + k + count * 4) % count, y = top + 2 + (k + 3) * 12;
+        if (!k) { ui_round(199, y, 110, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(199, y + 2, 2, 8, 38, 146, 222, 0); }
+        ui_fit_box(205, y, 100, 12, TX_LEFT | TX_MID, nm(i), !k ? UI_BLUE2 : UI_SOFT);
     }
-    sprintf(b, "%d OF %d", sel + 1, count); ui_textc(256, top + 87, 1, b, UI_SOFT);
+    sprintf(b, "%d OF %d", sel + 1, count); ui_text_box(199, top + 86, 110, 12, TX_CENTER | TX_MID, 1, b, UI_SOFT);
 }
 static int build_intro, build_last_frame = -99; static long build_last_cash, build_delta; static int build_delta_t;   // the BUILD MODE banner; the running +$ / -$
 static int build_tile_state(void) {   // what X would do on the tile under the cursor: 0 not allowed (red), 1 go ahead (green), 2 take away or replace (orange)
@@ -4046,12 +4047,12 @@ static void build_draw(void) {
     gfx_set_identity();
     { int x0 = build_x * TILE, z1 = -build_y * TILE, yy = -4 - build_lvl * WALL_FULL; SVECTOR a, b, c, d;
       setVector(&a, x0, yy, z1); setVector(&b, x0 + TILE, yy, z1); setVector(&c, x0, yy, z1 - TILE); setVector(&d, x0 + TILE, yy, z1 - TILE);
-      int pulse = 150 + (isin((frame * 120) & 4095) >> 6), st = build_tile_state();   // green: go ahead. orange: it would take away what is there. red: not allowed (not your lot, no money, in the way)
+      int pulse = 190, st = build_tile_state();   // green: go ahead. orange: it would take away what is there. red: not allowed (not your lot, no money, in the way)
       if (build_tool == BT_ROOF) st = 1;
       int cr = st == 0 ? 230 : st == 2 ? pulse + 30 : 50, cg = st == 0 ? 70 : st == 2 ? 150 : pulse, cb = st == 0 ? 60 : st == 2 ? 40 : 80;
       gfx_quad_f(&a, &b, &c, &d, cr / 2 + 20, cg / 2 + 20, cb / 2 + 20, 0);   // (the tile, tinted)
       { int L_ = TILE / 4, T_ = 10, X0 = x0, X1 = x0 + TILE, Zh = z1, Zl = z1 - TILE, y2 = yy - 3;   // four corner brackets round it, breathing a little
-        int e = (isin((frame * 120) & 4095) >> 9);   // (in and out: -8..8)
+        int e = 0;   // (steady: no breathing)
         build_bar(X0 - e, Zh + e, L_, T_, y2, cr, cg, cb);          build_bar(X0 - e, Zh + e, T_, L_, y2, cr, cg, cb);
         build_bar(X1 - L_ + e, Zh + e, L_, T_, y2, cr, cg, cb);     build_bar(X1 - T_ + e, Zh + e, T_, L_, y2, cr, cg, cb);
         build_bar(X0 - e, Zl + T_ - e, L_, T_, y2, cr, cg, cb);     build_bar(X0 - e, Zl + L_ - e, T_, L_, y2, cr, cg, cb);
@@ -4076,12 +4077,12 @@ static void build_draw(void) {
         static const s8 toolIc[NTOOL] = { IC_SOFA, IC_ROOM, IC_BRICK, IC_DOOR, IC_TILES, IC_BRUSH, IC_HOUSE };
         char b[64];
         ui_card(8, 8, 186, 52);
-        for (int i = 0; i < NTOOL; i++) { int on = i == build_tool; ui_icon_disc(19 + i * 20, 19, 18, toolIc[i], on ? UI_BLUE : UI_RGB(222, 230, 240), on ? UI_WHITE : UI_BLUE2); }
-        sprintf(b, "$%ld", cash); ui_text(188 - ui_tw(1, b), 14, 1, b, UI_GOODT);
-        if (build_delta_t > 0 && build_delta) { char d_[20]; sprintf(d_, build_delta < 0 ? "-$%ld" : "+$%ld", build_delta < 0 ? -build_delta : build_delta);   // the last buy or sale, beside the money
-            ui_text(188 - ui_tw(1, b) - 6 - ui_tw(1, d_), 14, 1, d_, build_delta < 0 ? UI_BADT : UI_GOODT); }
-        ui_text(14, 31, 1, toolNm[build_tool], UI_BLUE2);
-        sprintf(b, "STOREY %d OF %d", build_lvl + 1, NLEVELS); ui_text(188 - ui_tw(1, b), 31, 1, b, UI_SOFT);
+        for (int i = 0; i < NTOOL; i++) { int on = i == build_tool; ui_icon_disc(19 + i * 18, 19, 17, toolIc[i], on ? UI_BLUE : UI_RGB(222, 230, 240), on ? UI_WHITE : UI_BLUE2); }
+        sprintf(b, "$%ld", cash); ui_text_box(136, 10, 52, 18, TX_RIGHT | TX_MID, 1, b, UI_GOODT);
+        ui_text_box(14, 31, 90, 12, TX_LEFT | TX_MID, 1, toolNm[build_tool], UI_BLUE2);
+        if (build_delta_t > 0 && build_delta) { char d_[20]; sprintf(d_, build_delta < 0 ? "-$%ld" : "+$%ld", build_delta < 0 ? -build_delta : build_delta);   // the last buy or sale, where the storey is for a moment
+            ui_text_box(100, 31, 88, 12, TX_RIGHT | TX_MID, 1, d_, build_delta < 0 ? UI_BADT : UI_GOODT); }
+        else { sprintf(b, "STOREY %d OF %d", build_lvl + 1, NLEVELS); ui_text_box(100, 31, 88, 12, TX_RIGHT | TX_MID, 1, b, UI_SOFT); }
         if (build_msg_t > 0) strcpy(b, build_msg);
         else if (!build_ok(build_x, build_y)) strcpy(b, home_city || nprops ? "NOT YOUR LOT" : "BUY A HOME TO BUILD HERE");
         else if (build_carry) sprintf(b, "MOVING %s (TRI TURNS)", items_name(build_carry));
@@ -4095,24 +4096,24 @@ static void build_draw(void) {
         else if (build_tool == BT_FLOOR) sprintf(b, "%s  $10 A TILE", world_floor_name(build_fl));
         else if (build_tool == BT_PAINT) sprintf(b, "%s", world_wall_name(build_wp));
         else sprintf(b, "%s ROOF, %s PITCH", world_roof_style_name(world_roof_style), world_roof_pitch_name(world_roof_pitch));
-        ui_text(14, 44, 1, b, build_msg_t > 0 && build_msg_ok ? UI_GOODT : build_msg_t > 0 || !build_ok(build_x, build_y) ? UI_BADT : UI_INK);
+        ui_fit_box(14, 44, 176, 12, TX_LEFT | TX_MID, b, build_msg_t > 0 && build_msg_ok ? UI_GOODT : build_msg_t > 0 || !build_ok(build_x, build_y) ? UI_BADT : UI_INK);
         if (build_tool == BT_BUY) { draw_catalog();
             char ic_ = items_at(build_item), t_[40]; int cst = items_cost(ic_);   // the pick on its own card: its price, what it sells back for, and whether you can afford it
             ui_card(196, 174, 116, 28);
-            ui_text(203, 178, 1, items_name(ic_), UI_INK);
-            sprintf(t_, "$%d", cst); ui_text(203, 190, 1, t_, cst > cash ? UI_BADT : UI_GOODT);
-            if (cst > cash) ui_text(308 - ui_tw(1, "CAN'T AFFORD"), 190, 1, "CAN'T AFFORD", UI_BADT);
-            else { sprintf(t_, "SELLS $%d", cst * 3 / 4); ui_text(308 - ui_tw(1, t_), 190, 1, t_, UI_SOFT); } }
+            ui_fit_box(203, 176, 104, 12, TX_LEFT | TX_MID, items_name(ic_), UI_INK);
+            sprintf(t_, "$%d", cst); ui_text_box(203, 188, 50, 12, TX_LEFT | TX_MID, 1, t_, cst > cash ? UI_BADT : UI_GOODT);
+            if (cst > cash) ui_text_box(240, 188, 68, 12, TX_RIGHT | TX_MID, 1, "CAN'T AFFORD", UI_BADT);
+            else { sprintf(t_, "SELLS $%d", cst * 3 / 4); ui_text_box(240, 188, 68, 12, TX_RIGHT | TX_MID, 1, t_, UI_SOFT); } }
         else if (build_tool == BT_ROOM) { draw_pick_list("ROOM WALLS", NWALLS, build_wp, world_wall_name);
-            int top = ui_window_s(196, 126, 120, 30, "ROOM FLOOR (R3)"); ui_text(204, top + 2, 1, world_floor_name(build_fl), UI_INK); }
+            int top = ui_window_s(196, 126, 120, 30, "ROOM FLOOR (R3)"); ui_text_box(204, top, 104, 12, TX_LEFT | TX_MID, 1, world_floor_name(build_fl), UI_INK); }
         else if (build_tool == BT_WALL) draw_pick_list("WALLS  $50", NWALLS, build_wp, world_wall_name);
         else if (build_tool == BT_DOOR) draw_pick_list("DOORS, WINDOWS", 4, build_open & 3, open_name);
         else if (build_tool == BT_FLOOR) draw_pick_list("FLOORS  $10", NFLOORS, build_fl, world_floor_name);
         else if (build_tool == BT_PAINT) draw_pick_list("WALLPAPER", NWALLS, build_wp, world_wall_name);
         else { int top = ui_window_s(196, 4, 120, 62, "THE ROOF");
-               ui_text(204, top + 2, 1, world_roof_style_name(world_roof_style), UI_INK);
-               ui_text(204, top + 14, 1, world_roof_pitch_name(world_roof_pitch), UI_SOFT);
-               ui_text(204, top + 26, 1, world_roof_col_name(world_roof_col), UI_SOFT); }
+               ui_text_box(204, top, 104, 12, TX_LEFT | TX_MID, 1, world_roof_style_name(world_roof_style), UI_INK);
+               ui_text_box(204, top + 13, 104, 12, TX_LEFT | TX_MID, 1, world_roof_pitch_name(world_roof_pitch), UI_SOFT);
+               ui_text_box(204, top + 26, 104, 12, TX_LEFT | TX_MID, 1, world_roof_col_name(world_roof_col), UI_SOFT); }
         ui_card(8, 204, 304, 28);
         if (build_tool == BT_ROOF) { ui_hints(160, 205, "X STYLE|SQ PITCH|L1 R1 COLOUR|SEL TOOL", 1); ui_hints(160, 217, "L2 R2 STOREY|O DONE", 1); }
         else if (build_tool == BT_ROOM) { ui_hints(160, 205, room_on ? "X BUILD IT|O LET GO|L1 R1 WALLS|R3 FLOOR" : "X FIRST CORNER|L1 R1 WALLS|R3 FLOOR", 1);
@@ -4121,7 +4122,7 @@ static void build_draw(void) {
                ui_hints(160, 217, build_tool == BT_BUY ? "TRI TURN|SEL TOOL|L2 R2 STOREY|O DONE" : "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
         if (build_intro > 0) { int sl = build_intro > 80 ? (build_intro - 80) * 14 : build_intro < 12 ? (12 - build_intro) * 14 : 0;   // BUILD MODE: slides in, stays, slides out
             ui_shadow(30, 92 - sl, 136, 30, 8); ui_round(30, 92 - sl, 136, 30, 8, UI_RGB(70, 176, 238), UI_BLUE2, 0);
-            ui_textc(98, 97 - sl, 2, "BUILD MODE", UI_WHITE); ui_textc(98, 112 - sl, 1, "O WHEN YOU ARE DONE", UI_WHITE); }
+            ui_text_box(30, 94 - sl, 136, 16, TX_CENTER | TX_MID, 2, "BUILD MODE", UI_WHITE); ui_text_box(30, 110 - sl, 136, 11, TX_CENTER | TX_MID, 1, "O WHEN YOU ARE DONE", UI_WHITE); }
     }
 }
 
@@ -4316,6 +4317,77 @@ static void ui_test_tick(int steps) {
     for (int i = 0; i < 10; i++) if (K[i].c == c) { auto_btn = K[i].bit; if (c != 'o' && c != 's' && c != 'e') { R->sent++; sent_at[tk & 3] = 1; } break; }
 }
 #endif
+static void ne_open(int fresh); static void wm_open_mode(int m);
+#ifdef AUTO_SCREENS
+// (test builds, AUTO_SCREENS=n: every overlay and pack screen in turn, n frames each, by themselves; test/fonts2_tour.sh makes the pad script that shoots them and turns the pages)
+static int scr_load, scr_slot = -1;
+#include "../test/fonts2_order.h"   // (scr_order[]: the screen of each slot, written by test/fonts2_tour.py)
+static void scr_tick(void) {
+    static int t0 = -1;
+    if (t0 < 0) { if (state == ST_LIFE && life_started && frame > 20) t0 = VSync(-1); else return; }
+    int vt = VSync(-1) - t0, k = vt / AUTO_SCREENS, ph = vt % AUTO_SCREENS;   // (counted in vblanks, so the 30 and 60 fps screens last the same)
+    if (k != scr_slot) {
+        scr_slot = k; scr_load = 0;
+        if (ovl || state == ST_ARCADE || state == ST_REALM || state == ST_GOTCHI || state == ST_PARTY || state == ST_DJ || state == ST_SUPER || state == ST_DOG || state == ST_PRISON || state == ST_SPACE) { ovl = 0; audio_jukebox_stop(); ovl_leave(); }
+        state = ST_LIFE; cash = 90000;
+        extern void band_test_setup(int lv);
+        switch (k < (int)sizeof scr_order ? scr_order[k] : 255) {
+        case 0: scr_load = 1; break;
+        case 1: sim_want_party = 1; break;
+        case 2: band_test_setup(5); sim_want_super = 1; break;
+        case 3: sim_want_dog = 1; break;
+        case 4: sim_crime(CR_ASSAULT, 60); sim_crime(CR_ASSAULT, 20); sim_crime(CR_RESIST, 10); rap_sheet = 3; sim_want_prison = 3; break;
+        case 5: sim_want_space = 1; space_tech[0] = 2; space_tech[1] = 1; space_tech[2] = 2; break;
+        case 6: sim_want_resort = 1; break;
+        case 7: sim_want_resort = 2; break;
+        case 8: sim_want_resort = 5; break;
+        case 9: sim_want_resort = 6; break;
+        case 10: sim_want_resort = 9; break;
+        case 11: sim_want_resort = 10; break;
+        case 12: sim_want_resort = 11; break;
+        case 13: sim_want_resort = 12; break;
+        case 14: dj_xp = 300; sim_want_dj = 1; break;
+        case 15: gotchi_buy(player); sim_want_gotchi = 2; break;
+        case 16: sim_want_gotchi = 1; break;
+        case 17: sim_want_gotchi = 4; break;
+        case 18: sim_crime(CR_ASSAULT, 60); sim_crime(CR_ASSAULT, 20); sim_crime(CR_RESIST, 10); rap_sheet = 3; sim_arrest(0); break;
+        case 20: menu_sel = 0; state = ST_PAUSE; break;
+        case 21: prev_state = ST_LIFE; help_page = 0; state = ST_HELP; break;
+        case 22: prev_state = ST_LIFE; help_page = 2; state = ST_HELP; break;
+        case 23: travel_sel = 0; state = ST_TRAVEL; break;
+        case 24: state = ST_STORY; break;
+        case 25: panel_tab = 0; state = ST_PANEL; break;
+        case 26: map_t = -1; state = ST_MAP; break;
+        case 27: dir_open(); state = ST_DIR; break;
+        case 28: jobs_board = 1; jobs_open(); sub_back = ST_LIFE; state = ST_JOBS; break;
+        case 29: hm_tab = 0; homes_open(); break;
+        case 30: craft_sel = 0; craft_msg_t = 0; state = ST_CRAFT; break;
+        case 31: slots_open(0, ST_LIFE); break;
+        case 32: nhood_open(0); break;
+        case 33: worlds_open(0); break;
+        case 34: worlds_open(1); break;
+        case 35: name_open(dog_edit.name, 12, "NAME YOUR DOG", 0); break;
+        case 36: sp_join = 1; sc_t = 0; state = ST_SPICK; break;
+        case 37: wm_open_mode(0); break;
+        case 38: mode_open(); break;
+        case 39: ne_open(1); break;
+        case 40: confirm_open("START OVER?", "YOUR LIFE IS NOT SAVED. THIS CANNOT BE UNDONE.", 0); break;
+        case 41: sw_open(ST_LIFE); break;
+        case 42: prev_state = ST_LIFE; state = ST_JUKEBOX; break;
+        case 43: state = ST_OVER; break;
+        case 44: rts_open(ST_LIFE, 1); break;
+        case 45: sim_want_arcade = 101; break;
+        case 46: if ((ovl = ovl_load("KINGDOM.OVL"))) { ovl->open(0); state = ST_REALM; } break;
+        case 47: sim_want_arcade = AG_PRIZES + 1; break;
+        case 48: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD; build_tool = BT_BUY; break;
+        case 49: build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD; build_tool = BT_FLOOR; break;
+        case 50: { static const char *const o[8] = { "TALK", "JOKE", "TEASE", "FLIRT", "HUG", "COMPLIMENT", "WHAT IS IT?", "NEVER MIND" }; for (int i = 0; i < 8; i++) strcpy(pie_opt[i], o[i]); pie_cit = 1; pie_n = 8; pie_sel = 2; state = ST_PIE; } break;
+        case 51: { static const char *const o[3] = { "SIT", "USE", "SELL" }; for (int i = 0; i < 3; i++) strcpy(pie_opt[i], o[i]); pie_cit = 0; pie_n = 3; pie_sel = 1; state = ST_PIE; } break;
+        default: break;
+        }
+    }
+}
+#endif
 static int title_t;
 static void title_update(void) {
     title_t++;
@@ -4343,7 +4415,7 @@ static void title_update(void) {
 #endif
         return; }
 #endif
-#if defined(AUTO_TEXT) || defined(AUTO_PKLIFE) || defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM) || defined(AUTO_GOTCHI) || defined(AUTO_GFIRST) || defined(AUTO_DJ) || defined(AUTO_SUPER)
+#if defined(AUTO_TEXT) || defined(AUTO_PKLIFE) || defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM) || defined(AUTO_GOTCHI) || defined(AUTO_GFIRST) || defined(AUTO_DJ) || defined(AUTO_SUPER) || defined(AUTO_SCREENS)
     if (title_t == 30) {
 #ifdef CIT_PEOPLE
         pop_people = CIT_PEOPLE; pop_famsize = 2;   // (test builds: a bigger SAN BOREAS, PEOPLE 5 = PACKED, BIG households)
@@ -5180,20 +5252,21 @@ static void loading_draw(const char *what, int pct) {   // The Sims 4's way: a b
     ui_icon_s(142, 20, IC_ARROW, 36, UI_RGB(255, 204, 48));
     { int w = gfx_text_w(3, "BORE 2"); gfx_text_raw(162 - w / 2, 66, 3, "BORE 2", 40, 60, 110); gfx_text_raw(160 - w / 2, 64, 3, "BORE 2", 255, 255, 255); }
     ui_card(60, 124, 200, 40);
-    ui_text(70, 131, 1, what, UI_INK);
-    { char b[8]; sprintf(b, "%d%%", pct); ui_text(250 - ui_tw(1, b), 131, 1, b, UI_SOFT); }
+    ui_text_box(70, 128, 150, 14, TX_LEFT | TX_MID, 1, what, UI_INK);
+    { char b[8]; sprintf(b, "%d%%", pct); ui_text_box(200, 128, 50, 14, TX_RIGHT | TX_MID, 1, b, UI_SOFT); }
     ui_bar(70, 146, 180, 9, pct, UI_BLUE);
     { static int tip = -1, tip_t; int now = VSync(-1); if (tip < 0 || now - tip_t > 300) { tip = (tip + 1 + (now & 3)) % (int)(sizeof tips / sizeof *tips); tip_t = now; }
-      const char *t = tips[tip]; int w = ui_tw(1, t) + 40;
+      const char *t = tips[tip]; int tp = ui_tw(1, "TIP") + 7, w = ui_tw(1, t) + tp + 20;   // (the pill is measured: TIP, a gap of 7, the text)
       if (w > 290) {   // (too long for the safe area on one line: two, split at the space nearest the middle)
           char l1[48], l2[48]; int n = (int)strlen(t), cut = n / 2; while (cut > 0 && t[cut] != ' ') cut--; if (cut <= 0) cut = n / 2;
           memcpy(l1, t, cut); l1[cut] = 0; strcpy(l2, t + cut + (t[cut] == ' '));
-          w = MAX(ui_tw(1, l1), ui_tw(1, l2)) + 40;
-          ui_round(160 - w / 2, 178, w, 27, 6, UI_RGB(24, 70, 130), UI_RGB(24, 70, 130), 0);
-          ui_text(160 - w / 2 + 6, 184, 1, "TIP", UI_RGB(255, 210, 90)); ui_text(160 - w / 2 + 30, 182, 1, l1, UI_WHITE); ui_text(160 - w / 2 + 30, 193, 1, l2, UI_WHITE);
+          w = MAX(ui_tw(1, l1), ui_tw(1, l2)) + tp + 20; int x = 160 - w / 2;
+          ui_round(x, 176, w, 31, 6, UI_RGB(24, 70, 130), UI_RGB(24, 70, 130), 0);
+          ui_text_box(x + 8, 176, tp, 31, TX_LEFT | TX_MID, 1, "TIP", UI_RGB(255, 210, 90));
+          ui_text_box(x + 8 + tp, 176, w - tp - 16, 16, TX_LEFT | TX_BOTTOM, 1, l1, UI_WHITE); ui_text_box(x + 8 + tp, 191, w - tp - 16, 16, TX_LEFT | TX_TOP, 1, l2, UI_WHITE);
       } else {
-      ui_round(160 - w / 2, 180, w, 15, 6, UI_RGB(24, 70, 130), UI_RGB(24, 70, 130), 0);
-      ui_text(160 - w / 2 + 6, 184, 1, "TIP", UI_RGB(255, 210, 90)); ui_text(160 - w / 2 + 30, 184, 1, t, UI_WHITE); } }
+          int x = 160 - w / 2; ui_round(x, 178, w, 19, 6, UI_RGB(24, 70, 130), UI_RGB(24, 70, 130), 0);
+          ui_text_box(x + 8, 178, tp, 19, TX_LEFT | TX_MID, 1, "TIP", UI_RGB(255, 210, 90)); ui_text_box(x + 8 + tp, 178, w - tp - 16, 19, TX_LEFT | TX_MID, 1, t, UI_WHITE); } }
 }
 void loading(const char *what, int pct) { loading_draw(what, pct); gfx_flip(); DrawSync(0); }
 
@@ -5291,6 +5364,9 @@ int main(void) {
 #ifdef AUTO_UI
         ui_test_tick(steps);
 #endif
+#ifdef AUTO_SCREENS
+        scr_tick();
+#endif
 #ifdef AUTO_PHONE
         phone_tick();
 #endif
@@ -5331,6 +5407,9 @@ int main(void) {
                 [ST_SCARD] = 6, [ST_WMAKE] = 2, [ST_MODE] = 1, [ST_NHED] = 2, [ST_CUT] = 6, [ST_SWITCH] = 0 };
             ui_accent = state < (int)sizeof acc ? acc[state] : 0;
         }
+#ifdef AUTO_SCREENS
+        if (scr_load) { loading_draw("MAKING THE CITY", 60); gfx_flip(); continue; }
+#endif
         switch (state) {
             case ST_TITLE:
 #ifdef AUTO_CUT

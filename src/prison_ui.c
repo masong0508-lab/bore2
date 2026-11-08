@@ -167,33 +167,33 @@ static int court_update(int pr) {
 static void court_draw(void) {
     gfx_set_clear(24, 16, 10); char b[48];
     ui_round(0, 0, 320, 240, 0, UI_RGB(70, 46, 28), UI_RGB(34, 22, 14), 0);
-    ui_round(100, 14, 120, 40, 6, UI_RGB(120, 80, 44), UI_RGB(70, 44, 24), 0); ui_text(160 - ui_tw(1, "THE JUDGE") / 2, 22, 1, "THE JUDGE", UI_WHITE);   // the bench
-    ui_round(146, 32, 28, 10, 3, UI_RGB(230, 200, 150), UI_RGB(190, 150, 100), 0);
+    ui_round(100, 10, 120, 40, 6, UI_RGB(120, 80, 44), UI_RGB(70, 44, 24), 0); ui_text_box(100, 13, 120, 14, TX_CENTER | TX_MID, 1, "THE JUDGE", UI_WHITE);   // the bench
+    ui_round(146, 30, 28, 10, 3, UI_RGB(230, 200, 150), UI_RGB(190, 150, 100), 0);
     for (int i = 0; i < 6; i++) ui_round(14 + i * 12, 20 + (i & 1) * 6, 9, 14, 3, UI_RGB(150, 160, 190), UI_RGB(90, 100, 130), 0);   // the jury
-    ui_round(256, 22, 48, 22, 4, UI_RGB(110, 76, 42), UI_RGB(68, 44, 24), 0); ui_text(262, 30, 1, "WITNESS", UI_WHITE);
-    ui_round(100, 66, 120, 14, 4, UI_RGB(40, 40, 70), UI_RGB(24, 24, 44), 0);
-    int top = ui_window(30, 86, 260, 146, "THE COURT", IC_LOCK);
+    ui_round(250, 16, 58, 22, 4, UI_RGB(110, 76, 42), UI_RGB(68, 44, 24), 0); ui_text_box(250, 16, 58, 22, TX_CENTER | TX_MID, 1, "WITNESS", UI_WHITE);
+    ui_round(100, 54, 120, 10, 4, UI_RGB(40, 40, 70), UI_RGB(24, 24, 44), 0);
+    int top = ui_window(30, 72, 260, 160, "THE COURT", IC_LOCK);
     if (phase == P_ARREST) {
         static const char *const how[4] = { "THE POLICE TOOK YOU DOWN.", "YOU GAVE YOURSELF UP.", "THE POLICE CAME WITH A WARRANT.", "A TIP-OFF BROUGHT THE POLICE." };
-        ui_text(40, top + 2, 1, how[arrest_how & 3], UI_INK); ui_text(40, top + 16, 1, "THE CHARGES:", UI_BLUE2);
-        for (int i = 0; i < 3; i++) if (chg[i][0]) ui_text(48, top + 28 + i * 11, 1, chg[i], UI_INK);
-        ui_wrap(40, top + 64, 240, 4, framed ? "NOTHING IS ON YOUR RECORD. BUT THEY FOUND A CHARGE ANYWAY. CAN YOU PROVE IT?" : "YOUR CRIMES ARE ON THE BOOKS. A LAWYER AND A PLEA MAY CHANGE THE ENDING.", UI_SOFT);
-        ui_hints(280, top + 108, "X TO THE LAWYER", 2); return; }
+        ui_text_box(40, top, 240, 12, TX_LEFT | TX_MID, 1, how[arrest_how & 3], UI_INK); ui_text_box(40, top + 16, 240, 12, TX_LEFT | TX_MID, 1, "THE CHARGES:", UI_BLUE2);
+        for (int i = 0; i < 3; i++) if (chg[i][0]) ui_text_box(50, top + 30 + i * 12, 230, 12, TX_LEFT | TX_MID, 1, chg[i], UI_INK);
+        ui_wrap(40, top + 70, 240, 4, framed ? "NOTHING IS ON YOUR RECORD. BUT THEY FOUND A CHARGE ANYWAY. CAN YOU PROVE IT?" : "YOUR CRIMES ARE ON THE BOOKS. A LAWYER AND A PLEA MAY CHANGE THE ENDING.", UI_SOFT);
+        ui_hints(160, top + 122, "X TO THE LAWYER", 1); return; }
     if (phase == P_LAWYER || phase == P_PLEA) {
-        ui_text(40, top + 2, 1, phase == P_LAWYER ? "CHOOSE A LAWYER" : "HOW DO YOU PLEAD?", UI_BLUE2);
-        { int cnt = phase == P_LAWYER ? nl : 3, rh = phase == P_LAWYER ? 11 : 14;
-          for (int i = 0; i < cnt; i++) { int y = top + 16 + i * rh; if (i == sel) ui_round(36, y - 2, 248, rh, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
-            ui_text(44, y, 1, phase == P_LAWYER ? LNM[LID(i)] : PNM[i], i == sel ? UI_BLUE2 : UI_INK); } }
-        ui_wrap(40, top + 86, 240, 2, phase == P_LAWYER ? LDESC[LID(sel)] :
+        ui_text_box(40, top, 150, 12, TX_LEFT | TX_MID, 1, phase == P_LAWYER ? "CHOOSE A LAWYER" : "HOW DO YOU PLEAD?", UI_BLUE2);
+        { int cnt = phase == P_LAWYER ? nl : 3, rh = phase == P_LAWYER ? 12 : 14;
+          for (int i = 0; i < cnt; i++) { int y = top + 14 + i * rh; if (i == sel) ui_round(36, y, 248, rh, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
+            ui_row_lr(44, y, 232, rh, phase == P_LAWYER ? LNM[LID(i)] : PNM[i], i == sel ? UI_BLUE2 : UI_INK, i == sel ? UI_BLUE2 : UI_GOODT); } }
+        ui_wrap(40, top + 14 + 7 * 12 + 4, 240, 2, phase == P_LAWYER ? LDESC[LID(sel)] :
             (sel == 0 ? "FIGHT IT. EVIDENCE, JURY AND LAWYER DECIDE." : sel == 1 ? "A SHORTER SENTENCE. NO DEATH PENALTY. NO TRIAL." : "40% IT WORKS. IF NOT, MORE TROUBLE."), UI_SOFT);
-        sprintf(b, "CASH $%d", (int)cash); ui_text(280 - ui_tw(1, b), top + 2, 1, b, UI_GOODT);
-        ui_text(40, top + 106, 1, logl[0], UI_RED); ui_hints(280, top + 108, "UP DOWN PICK|X DECIDE", 2); return; }
-    if (phase == P_TRIAL) { ui_text(40, top + 2, 1, "THE TRIAL", UI_BLUE2); for (int i = 0; i < 5; i++) if (tl[i][0] && i < 4) ui_text(40, top + 16 + i * 12, 1, tl[i], i == tstep - 1 ? UI_INK : UI_SOFT); ui_hints(280, top + 108, "X NEXT", 2); return; }
+        sprintf(b, "CASH $%d", (int)cash); ui_text_box(150, top, 130, 12, TX_RIGHT | TX_MID, 1, b, UI_GOODT);
+        ui_text_box(40, top + 14 + 7 * 12 + 4 + 26, 240, 12, TX_LEFT | TX_MID, 1, logl[0], UI_RED); ui_hints(160, top + 122, "UP DOWN PICK|X DECIDE", 1); return; }
+    if (phase == P_TRIAL) { ui_text_box(40, top, 240, 12, TX_LEFT | TX_MID, 1, "THE TRIAL", UI_BLUE2); for (int i = 0; i < 5; i++) if (tl[i][0] && i < 4) ui_text_box(40, top + 16 + i * 14, 240, 12, TX_LEFT | TX_MID, 1, tl[i], i == tstep - 1 ? UI_INK : UI_SOFT); ui_hints(160, top + 122, "X NEXT", 1); return; }
     if (phase == P_VERDICT) {
-        ui_text(160 - ui_tw(2, vtxt) / 2, top + 6, 2, vtxt, verdict == 0 ? UI_GREEN : UI_RED);
-        for (int i = 0; i < 4; i++) if (tl[i][0]) ui_text(40, top + 32 + i * 10, 1, tl[i], UI_SOFT);
-        ui_text(40, top + 76, 1, tl[4], UI_INK);
-        ui_hints(280, top + 108, verdict == 0 ? "X WALK FREE" : "X TAKEN AWAY", 2); }
+        ui_text_box(30, top + 2, 260, 16, TX_CENTER | TX_MID, 2, vtxt, verdict == 0 ? UI_GREEN : UI_RED);
+        for (int i = 0; i < 4; i++) if (tl[i][0]) ui_text_box(40, top + 26 + i * 13, 240, 12, TX_LEFT | TX_MID, 1, tl[i], UI_SOFT);
+        ui_text_box(40, top + 84, 240, 12, TX_LEFT | TX_MID, 1, tl[4], UI_INK);
+        ui_hints(160, top + 122, verdict == 0 ? "X WALK FREE" : "X TAKEN AWAY", 1); }
 }
 int prison_update(int hd, int pr, int steps) {
     if (heisting) return heist_update(hd, pr, steps);
@@ -205,7 +205,7 @@ int prison_update(int hd, int pr, int steps) {
     if (pr & PAD_CROSS) { act(menu[sel]); build_menu(); }
     return 1;
 }
-static void bar(int x, int y, const char *nm, int v, u32 c) { ui_text(x, y, 1, nm, UI_INK); ui_bar(x + 66, y + 2, 64, 6, v, c); }
+static void bar(int x, int y, const char *nm, int v, u32 c) { ui_text_box(x, y - 1, 66, 12, TX_LEFT | TX_MID, 1, nm, UI_INK); ui_bar(x + 70, y + 2, 64, 6, v, c); }
 void prison_draw(void) {
     if (heisting) { heist_draw(); return; }
     if (phase < P_CELL) { court_draw(); return; }
@@ -223,20 +223,22 @@ void prison_draw(void) {
     ui_round(8, 172, 148, 42, 6, UI_RGB(30, 30, 36), UI_RGB(14, 14, 18), 0);
     ui_wrap(13, 175, 138, 3, logl[0], UI_WHITE);
     int top = ui_window(160, 4, 156, 232, phase == P_ROW ? "DEATH ROW" : "THE CELL", IC_LOCK);
-    if (phase == P_ROW) sprintf(b, "%d DAYS LEFT", execd); else if (sentence <= 0) sprintf(b, "FREE"); else sprintf(b, "DAY %d OF %d", MIN(day + 1, sentence), sentence); ui_text(166, top, 1, b, UI_INK); ui_text(300 - ui_tw(1, SLOT[slot]), top, 1, SLOT[slot], UI_BLUE2);
+    if (phase == P_ROW) sprintf(b, "%d DAYS LEFT", execd); else if (sentence <= 0) sprintf(b, "FREE"); else sprintf(b, "DAY %d OF %d", MIN(day + 1, sentence), sentence); ui_text_box(166, top - 2, 70, 12, TX_LEFT | TX_MID, 1, b, UI_INK); ui_text_box(236, top - 2, 70, 12, TX_RIGHT | TX_MID, 1, SLOT[slot], UI_BLUE2);
     bar(166, top + 12, "HEALTH", health, health > 50 ? UI_GREEN : health > 25 ? UI_AMBER : UI_RED);
     bar(166, top + 23, "RESPECT", respect, UI_BLUE); bar(166, top + 34, "HEAT", heat, heat > 70 ? UI_RED : UI_AMBER);
     bar(166, top + 45, "BEHAVIOUR", behav, UI_GREEN); bar(166, top + 56, "ESCAPE", plan, UI_RGB(170, 90, 210));
-    sprintf(b, "EARNED $%d   RECORD %d", earned, rap_sheet); ui_text(166, top + 68, 1, b, UI_GOODT);
+    sprintf(b, "EARNED $%d   RECORD %d", earned, rap_sheet); ui_text_box(166, top + 66, 140, 12, TX_LEFT | TX_MID, 1, b, UI_GOODT);
     if (over) {
         ui_wrap(166, top + 90, 140, 6, outcome == 0 ? "YOUR TIME IS UP. THE GATE OPENS. YOU CARRY OUT WHAT YOU EARNED AND LEARNED." : outcome == 1 ? "THE BOARD SAYS YES. YOU WALK OUT EARLY, WITH A RECORD." :
                 outcome == 2 ? "OVER THE FENCE AND GONE! THE RECORD GROWS. KEEP YOUR HEAD DOWN." : outcome == 3 ? "THE INFIRMARY PATCHED YOU UP. YOU ARE FREE, BATTERED." : outcome == 5 ? "THE LIGHTS GO OUT. A NEW LIFE BEGINS ELSEWHERE." : outcome == 6 ? "THE APPEAL WON. THE COURT WAS WRONG. YOU WALK OUT." : "NOT GUILTY. THE COURT LETS YOU GO.", UI_SOFT);
-        ui_hints(152, 218, "X LEAVE", 2); return;
+        ui_hints(82, 218, "X LEAVE", 1); return;
     }
-    for (int i = 0; i < mn; i++) { int y = top + 82 + i * 11; int on = i == sel;
-        if (on) { ui_round(164, y - 1, 148, 11, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); }
-        ui_text(170, y, 1, menu[i] >= R_APPEAL ? RNM[menu[i] - R_APPEAL] : ANM[menu[i]], on ? UI_BLUE2 : UI_INK); }
-    ui_wrap(11, 202, 140, 1, menu[sel] >= R_APPEAL ? RHINT[menu[sel] - R_APPEAL] : AHINT[menu[sel]], UI_SOFT);
-    ui_hints(152, 218, "UP DOWN PICK|X DO IT", 2);
+    { int rh = mn > 11 ? 11 : 13, first = MAX(0, MIN(sel - 5, mn - 11)); if (mn > 11) rh = 12; int shown = MIN(mn, first + (mn > 11 ? 11 : mn));
+      if (mn <= 11) first = 0;
+      for (int i = first; i < shown; i++) { int y = top + 80 + (i - first) * rh; int on = i == sel;
+        if (on) { ui_round(164, y, 148, rh, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(164, y + 2, 2, rh - 4, 38, 146, 222, 0); }
+        ui_row_lr(170, y, 138, rh, menu[i] >= R_APPEAL ? RNM[menu[i] - R_APPEAL] : ANM[menu[i]], on ? UI_BLUE2 : UI_INK, on ? UI_BLUE2 : UI_GOODT); } }
+    ui_wrapc(11, 203, 140, 1, menu[sel] >= R_APPEAL ? RHINT[menu[sel] - R_APPEAL] : AHINT[menu[sel]], UI_SOFT);
+    ui_hints(82, 218, "UP DOWN PICK|X DO IT", 1);
 }
 __attribute__((section(".ovl_head"), used)) const OvlHead ovl_head = { OVL_MAGIC, prison_open, prison_update, prison_draw };

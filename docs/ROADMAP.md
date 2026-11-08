@@ -88,3 +88,7 @@ About 31-52 fps in the city in the emulator. 60 needs under 262 hblanks per fram
 - `build-ds` : the DS ROM bore2_dsi_<commit>.nds.
 - `build-dreamcast` : the Dreamcast disc bore2_dc.gdi (+ .elf).
 The DS and Dreamcast ones were written but NOT run yet (no way to run Actions from the build session): if one fails, open its log; the likely causes are the apt package names, the restore script, or the Dreamcast make needing files the disc step expects. Each unpacks its saved toolchain from the `ds-toolchain` / `dc-toolchain` branch.
+
+## Text pass 2 (fonts and centred text on the overlays)
+- [x] Party, super, dog, prison, underworld, space, farm, sky and sea, paradise, loading TIP pill, people list, build catalogue and tabs, pie menu, panel skills: centred, no clipping, no blink. Shots `docs/fonts2_*.png`; tour `test/fonts2_tour.py` (`AUTO_SCREENS`).
+- [ ] Left: DJ, the arcade/realm packs, DS, and a shot of the Boreagotchi DAY ONE card (the tour does not reach it).

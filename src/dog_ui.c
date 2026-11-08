@@ -95,22 +95,21 @@ void dog_draw(void) {
       gfx_shadow(&p, 150);
       items_draw_dog(bx, bz, (2048 + 380 + turn / 4) & 4095, 0, &ed, anim * 20); }
     int top = ui_window(162, 8, 150, 224, TABNM[tab], TABIC[tab]);
-    const Row *rows = TABR[tab]; int n = TABN[tab], first = MAX(0, row - 7), shown = MIN(n, first + 9); char b[40];
-    for (int i = first; i < shown; i++) {
-        const Row *r = &rows[i]; int y = top + (i - first) * 19, sel = i == row;
-        if (sel) { ui_round(166, y - 1, 142, 19, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(166, y + 2, 2, 13, 38, 146, 222, 0); }
-        ui_text(172, y + 1, 1, r->label, sel ? UI_BLUE2 : UI_INK);
-        if (sel && r->kind != K_DONE) { ui_text(288, y + 1, 1, "<", UI_BLUE); ui_text(298, y + 1, 1, ">", UI_BLUE); }
-        if (r->kind == K_SLIDER) ui_slider(172, y + 9, 128, ed.look[r->id], 9, sel);
-        else if (r->kind == K_PIPS) ui_pips(172, y + 10, ed.tr[r->id], 10, UI_AMBER);
+    const Row *rows = TABR[tab]; int n = TABN[tab], first = MAX(0, row - 7), shown = MIN(n, first + 8); char b[40];
+    for (int i = first; i < shown; i++) {   // (rows 21 apart: the name on the top line, the slider or the pips on their own line under it, so they never touch)
+        const Row *r = &rows[i]; int y = top + (i - first) * 22, sel = i == row, two = r->kind == K_SLIDER || r->kind == K_PIPS || r->kind == K_COLOUR;
+        if (sel) { ui_round(166, y - 1, 142, 22, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(166, y + 3, 2, 14, 38, 146, 222, 0); }
+        if (two) ui_text(172, y + 1, 1, r->label, sel ? UI_BLUE2 : UI_INK); else ui_text_box(172, y - 1, 100, 22, TX_LEFT | TX_MID, 1, r->label, sel ? UI_BLUE2 : UI_INK);
+        if (sel && r->kind != K_DONE) { ui_text_box(284, y - 1, 8, 22, TX_CENTER | TX_MID, 1, "<", UI_BLUE); ui_text_box(294, y - 1, 8, 22, TX_CENTER | TX_MID, 1, ">", UI_BLUE); }
+        if (r->kind == K_SLIDER) ui_slider(172, y + 12, 128, ed.look[r->id], 9, sel);
+        else if (r->kind == K_PIPS) ui_pips(172, y + 12, ed.tr[r->id], 10, UI_AMBER);
         else if (r->kind == K_COLOUR) { int cr, cg, cb; dog_pal(ed.look[r->id], &cr, &cg, &cb);
-            ui_round(172, y + 9, 100, 8, 3, UI_RGB(cr, cg, cb), UI_RGB(cr * 3 / 4, cg * 3 / 4, cb * 3 / 4), 0); ui_text(176, y + 9, 1, dog_pal_name[ed.look[r->id] % DOG_NPAL], (cr + cg + cb) > 380 ? UI_INK : UI_WHITE); }
-        else if (r->kind == K_CHOICE) { const char *v = r->id == DL_BREED ? dog_breed_name[ed.look[DL_BREED] % DOG_NBREED] : r->names[ed.look[r->id] % r->n]; ui_text(282 - ui_tw(1, v), y + 1, 1, v, UI_SOFT); }
-        else if (r->kind == K_NAME) ui_text(236 - ui_tw(1, ed.name) / 2, y + 1, 1, ed.name, UI_BLUE2);
-        else if (r->kind == K_DONE) ui_text(172, y + 1, 1, "", UI_INK);
+            ui_round(172, y + 10, 128, 11, 3, UI_RGB(cr, cg, cb), UI_RGB(cr * 3 / 4, cg * 3 / 4, cb * 3 / 4), 0); ui_text_box(172, y + 10, 128, 11, TX_CENTER | TX_MID, 1, dog_pal_name[ed.look[r->id] % DOG_NPAL], (cr + cg + cb) > 380 ? UI_INK : UI_WHITE); }
+        else if (r->kind == K_CHOICE) { const char *v = r->id == DL_BREED ? dog_breed_name[ed.look[DL_BREED] % DOG_NBREED] : r->names[ed.look[r->id] % r->n]; ui_text_box(172, y - 1, 104, 22, TX_RIGHT | TX_MID, 1, v, UI_SOFT); }
+        else if (r->kind == K_NAME) ui_text_box(172, y - 1, 104, 22, TX_RIGHT | TX_MID, 1, ed.name, UI_BLUE2);
     }
-    if (tab == 4) { sprintf(b, "TRAIT POINTS %d / 30", tr_total()); ui_text(172, top + 7 * 19 + 2, 1, b, UI_SOFT); }
-    if (msg) { int w = ui_tw(1, msg) + 16; ui_round(160 - w / 2, 190, w, 16, 6, UI_WHITE, UI_PANEL, 0); ui_textc(160, 195, 1, msg, UI_INK); }
+    if (tab == 4) { sprintf(b, "TRAIT POINTS %d / 30", tr_total()); ui_text_box(166, top + 8 * 22 - 2, 142, 14, TX_CENTER | TX_MID, 1, b, UI_SOFT); }
+    if (msg) { int w = ui_tw(1, msg) + 16; ui_round(160 - w / 2, 190, w, 16, 6, UI_WHITE, UI_PANEL, 0); ui_text_box(160 - w / 2, 190, w, 16, TX_CENTER | TX_MID, 1, msg, UI_INK); }
     ui_hints(6, 190, "L2 R2 TURN", 0); ui_hints(6, 204, "SQ RANDOM|TRI RESET", 0); ui_hints(6, 218, tab == 4 ? "L1 R1 TAB|X TYPE NAME|START KEEP|O LEAVE" : "L1 R1 TAB|START KEEP|O LEAVE", 0);
 }
 __attribute__((section(".ovl_head"), used)) const OvlHead ovl_head = { OVL_MAGIC, dog_open, dog_update, dog_draw };
