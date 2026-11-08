@@ -280,3 +280,8 @@ See also ROADMAP.md and EXPANSION_PACKS.md. In order:
 - Hats are drawn on the pets as on the PS1: bow, top hat, shades, scarf, flower, crown, party hat, in red, blue and gold dots (`g_creature` + `gdots_draw`). Shot: `docs/ds_shots/d60_hats.png` (test scene 56).
 - The handheld icon names fit now (MEDS, CALL instead of cut-off MEDICINE, ATTENTION). Old saves load (no save change).
 - Still not on the DS: the PS1's title screen, hatching scene, guided first day, day summary and the people line on the tree page (the DS Sim has no partner/parent fields yet).
+
+**Done at D61 (`bore2_dsi_d61.nds`): beards on the Live model are real beards (partial)**
+- Beards 2-5 on the 3D Live model are now several pieces: a moustache with drooping ends, a goatee chin, a full jaw with cheeks up to the ears and round the mouth, and a long beard in three steps (the mouth stays visible). The Create-a-Sim head's own beards (`beard3d`) are also in pieces. Shot: `docs/ds_shots/d61_beards.png` (goatee and long, test build `-DBEARDV=n`, hold START in Create-a-Sim).
+- Old saves load (no save change). Same model cache key, so no extra cost per frame.
+- Still open: Live hair vs the PS1's `look.c` hair; step 3 (token machine, wall leaderboard, medals, 2P, save/reload test of the AR/SA blocks) was not started.

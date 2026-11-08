@@ -1,3 +1,6 @@
+#ifndef BEARDV
+#define BEARDV 0   /* test builds: -DBEARDV=n gives Kit that beard */
+#endif
 // BORE 2 for the DSi, step D1: the neighbourhood.
 // Bottom screen: the 2D neighbourhood map. Tap a lot with the stylus (or use the D-pad) to pick it.
 // Top screen: that lot in 3D. L/R change town, A/B zoom, START re-rolls the world.
@@ -717,7 +720,7 @@ static void lot_reset(void) {
     memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); ups_clear(); memset(slv, 0, sizeof slv); ed_lv = 0; nobj = 0; occ_ok = 0; pick = -1; mode = M_LIVE;   /* (funds are the household's: set by new_household, not reset on every lot you walk into) */ cat = 0; tool = 0; pal = 1;
     gen_house(); nsim = 3; ctl = 0; cur_sim = 0; memset(ilim, 0, sizeof ilim); strcpy(sname[0], "Ashley Newbie"); strcpy(sname[1], "Ronald Bacon"); strcpy(sname[2], "Kit Farlow");
     for (int i = 0; i < 3; i++) { Sim *m = &sims[i]; m->x = spawn_x[i] * 16; m->y = spawn_y[i] * 16; m->tx = m->x; m->ty = m->y; m->wx = m->x; m->wy = m->y; m->act = -1; m->act_left = 0; m->age = i == 0 ? 24 : i == 1 ? 31 : 9; m->soc = -1; m->tgt = 0;
-        for (int n = 0; n < 6; n++) { m->need[n] = 90 - (n * 17 + i * 11) % 60; m->acc[n] = 0; } m->rel = 0; for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0; if (i) { m->skin = (u8)(i * 2); m->hair = (u8)(i); m->hcol = (u8)(i * 2); m->shirt = (u8)(i + 2); m->hair = (u8)(6 + i * 2); m->beard = (u8)(i == 1 ? 3 : 0); m->fc = (u8)i; } }
+        for (int n = 0; n < 6; n++) { m->need[n] = 90 - (n * 17 + i * 11) % 60; m->acc[n] = 0; } m->rel = 0; for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0; if (i) { m->skin = (u8)(i * 2); m->hair = (u8)(i); m->hcol = (u8)(i * 2); m->shirt = (u8)(i + 2); m->hair = (u8)(6 + i * 2); m->beard = (u8)(i == 1 ? 3 : i == 2 ? BEARDV : 0); m->fc = (u8)i; } }
 }
 
 typedef struct { int bx, by, nobj, pcx, pcy, dcx, dcy; u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1]; Obj objs[400]; u8 roof, up, hasup; u8 ufl[UPN][GN][GN], uhw[UPN][GN + 1][GN], uvw[UPN][GN][GN + 1]; } LotSave;
@@ -2530,9 +2533,15 @@ static void hair3d(int st, u16 hc, int hw, int ht) {   // the head is x +-hw, z 
 }
 static void beard3d(int bd, u16 hc, u16 sk, int hw, int hz) {
     if (bd == 1) fq(-hw + 60, 60, hw - 60, 560, hz + 4, lit(sk, 10));
-    if (bd >= 4) { bx(-hw - 20, bd == 5 ? -650 : -60, -hz + 40, hw + 20, 520, hz + 70, hc); }
-    if (bd == 2 || bd == 3) fq(-260, 540, 260, 650, hz + 8, hc);
-    if (bd == 3) bx(-170, 20, hz - 80, 170, 480, hz + 70, hc);
+    if (bd >= 4) {   // (D61) a full beard in pieces: the jaw, sideburns up to the ears, a moustache over the lip, and a chin that narrows (long: three steps)
+        bx(-hw - 20, -60, -hz + 40, hw + 20, 470, hz + 70, hc);
+        bx(-hw - 20, 330, -hz + 40, -hw + 150, 760, hz - 160, hc); bx(hw - 150, 330, -hz + 40, hw + 20, 760, hz - 160, hc);
+        fq(-300, 470, 300, 580, hz + 78, shade(hc, 5)); fq(-hw + 120, 140, hw - 120, 470, hz + 76, hc);
+        if (bd == 5) { bx(-hw + 60, -420, -hz + 120, hw - 60, -60, hz + 90, hc); bx(-hw + 260, -700, -hz + 220, hw - 260, -420, hz + 100, hc); bx(-hw + 440, -900, -hz + 340, hw - 440, -700, hz + 110, hc); }
+        else bx(-hw + 200, -240, -hz + 120, hw - 200, -60, hz + 90, hc);
+    }
+    if (bd == 2 || bd == 3) { fq(-260, 540, 260, 650, hz + 8, hc); fq(-320, 470, -200, 650, hz + 9, hc); fq(200, 470, 320, 650, hz + 9, hc); fq(-90, 500, 90, 560, hz + 10, shade(hc, 6)); }
+    if (bd == 3) { bx(-170, 20, hz - 80, 170, 480, hz + 70, hc); bx(-100, -140, hz - 40, 100, 20, hz + 80, hc); }
 }
 static int sq_q, fq4[SIM_MAX], sb_sc = 100;
 ITCM_CODE static void sb(int ox, int oz, int lx0, int lu0, int lz0, int lx1, int lu1, int lz1, u16 c) {   // a part in the sim's own frame (z = front), turned to face where it walks
@@ -2623,7 +2632,17 @@ static void sim3d(int i, int yaw) {
         case EX_BORED: sb(x, z, -mw / 3 + 8, my, f, mw * 2 / 3 + 8, my + lp - 4, f + 6, LPc); break;
         case EX_SLEEP: sb(x, z, -mw / 2, my + 2, f, mw / 2, my + 14, f + 5, C15(17, 6, 7)); break;
         default: sb(x, z, -mw, my, f, mw, my + lp, f + 6, LPc); sb(x, z, -mw + 6, my + 15, f, mw - 6, my + 22, f + 5, LPh); }
-      if (m->beard) sb(x, z, -hw + 8, hb, f - 4, hw - 8, ey - 60, f + 8, m->beard == 1 ? lit(sk, 10) : hc); }
+      if (m->beard == 1) sb(x, z, -hw + 8, hb, f - 4, hw - 8, ey - 60, f + 8, lit(sk, 10));   // stubble
+      else if (m->beard) {   // (D61) real beards in pieces round the mouth: moustache with drooping ends, goatee chin, full jaw with cheeks, long beard in steps
+        u16 bc = shade(hc, 8); int bd = m->beard, my2 = ey - 100 + (50 - P[1]) / 3;
+        sb(x, z, -mw - 18, my2 + 20, f, mw + 18, my2 + 46, f + 9, bc);   // the moustache
+        sb(x, z, -mw - 26, my2 - 4, f, -mw - 12, my2 + 24, f + 8, bc); sb(x, z, mw + 12, my2 - 4, f, mw + 26, my2 + 24, f + 8, bc);   // its ends droop
+        if (bd == 3) { sb(x, z, -mw / 2, hb, f - 4, mw / 2, my2 - 6, f + 10, bc); sb(x, z, -mw / 4, hb - 30, f - 2, mw / 4, hb, f + 8, bc); }   // goatee
+        if (bd >= 4) {
+            sb(x, z, -hw + 6, hb, f - 4, hw - 6, my2 - 12, f + 8, bc);   // the jaw under the mouth
+            sb(x, z, -hw + 4, my2 - 12, f - 4, -mw - 26, ey + 10, f + 8, bc); sb(x, z, mw + 26, my2 - 12, f - 4, hw - 4, ey + 10, f + 8, bc);   // the cheeks, up to the ears
+            sb(x, z, -mw - 26, my2 - 12, f, -mw + 4, my2 + 4, f + 9, bc); sb(x, z, mw - 4, my2 - 12, f, mw + 26, my2 + 4, f + 9, bc);   // round the corners of the mouth
+            if (bd == 5) { sb(x, z, -hw + 30, hb - 70, f - 6, hw - 30, hb, f + 10, bc); sb(x, z, -hw + 80, hb - 140, f - 8, hw - 80, hb - 70, f + 10, bc); sb(x, z, -hw + 130, hb - 200, f - 10, hw - 130, hb - 140, f + 10, bc); } } } }
     }
     if (se) { se->used = gf_serial; if (!cached) { se->n = gx_full ? 0 : gxn; if (gx_full) sml_full++; if (se->n > sml_maxn) sml_maxn = se->n; DC_FlushRange(se->w, (u32)se->n * 4); gxb = sb_; gxn = sn_; gxh = sh_; gxk = sk_; gx_cap = sc_; gx_mat = sm_; gx_nrm = snm_; gx_col = scl_; gx_full = 0; gy_off = ogy; x = ox; z = oz; sq_q = oq; }
         if (ride) em_R = sk_Rm;   // (D44) side on to the board (skate_frame turns it)
@@ -2910,7 +2929,7 @@ static void draw_title(void) {
 static void new_household(void) {
     zone = 0; isl_wood = isl_stone = isl_leaves = isl_spear = isl_shells = 0; isl_food = 3; isl_secrets = 0; farm_reset();
     st_days = st_born = st_died = 0; nown = 0; home_bx = home_by = -1; funds = 3500; life_reset(); rt_jump = 1; mg_reset();
-    lot_seed = (u32)minutes * 7919u + 17; lot_reset(); lot_bx = -1; lot_by = -1; Sim *m = &sims[0]; m->skin = (u8)(minutes % 6); m->hair = (u8)(minutes % 12); m->hcol = (u8)(minutes % 6); m->shirt = (u8)(minutes % 6); m->beard = 0; m->fc = 0;
+    lot_seed = (u32)minutes * 7919u + 17; lot_reset(); lot_bx = -1; lot_by = -1; Sim *m = &sims[0]; m->skin = (u8)(minutes % 6); m->hair = (u8)(minutes % 12); m->hcol = (u8)(minutes % 6); m->shirt = (u8)(minutes % 6); m->beard = BEARDV; m->fc = 0;
     for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0;
 }
 static void title_touch(int tx, int ty) {
