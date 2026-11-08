@@ -72,7 +72,7 @@ int main(void) {
     int wok = 0;
     for (int w = 1; w <= WISH_N; w++) {
         memset(tr_wdone, 0, sizeof tr_wdone);
-        static TrState t; tr_clear(&t); rewards = 0;
+        static TrState t; tr_clear(&t); memset(tr_ev_a, 0, sizeof tr_ev_a); rewards = 0;
         const WishDef *d = &tr_wish[w];
         int good = d->ev > 0 && d->ev < EV_N && d->thr > 0 && d->rk > 0 && tr_wish_name[w][0] && tr_wish_desc[w][0];
         tr_wish_pick(&t, w);

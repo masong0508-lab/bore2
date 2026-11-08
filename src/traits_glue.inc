@@ -11,16 +11,17 @@ static int char_lvl(const Sim *s) { return CLAMP(SKL(s->skill_char) + tr_add(s->
 static int luck_roll(Sim *s, int base) { int ok = (int)(look_rand() % 100) < tr_chance(s->tr, E_LUCK, base); if (ok && base < 50) tr_ev(s->tr, EV_LUCKY, 1); return ok; }   // E_LUCK
 void tr_reward(TrState *t, int kind, int arg, int wish) {   // a lifetime wish is done: its reward changes something real
     Sim *s = &sims[player]; for (int i = 0; i < nsims; i++) if (sims[i].tr == t) s = &sims[i];
-    char b[40];
+    char b[40]; static const char *const what[] = { "+$%d", "NEW TRAIT", "NEW OUTFIT", "+%d MEALS", "BUS PASS +%d DAYS", "+%d TOKENS", "WANTS +%d" };
     switch (kind) {
-        case RK_CASH: cash += arg; snprintf(b, sizeof b, "LIFETIME WISH DONE! +$%d", arg); break;
-        case RK_TRAIT: tr_give(t, arg); snprintf(b, sizeof b, "LIFETIME WISH DONE! NEW TRAIT"); break;
-        case RK_OUTFIT: look_theme(&s->bore, arg); look_build(&s->bore); snprintf(b, sizeof b, "LIFETIME WISH DONE! NEW OUTFIT"); break;
-        case RK_FOOD: groceries += arg; snprintf(b, sizeof b, "LIFETIME WISH DONE! +%d MEALS", arg); break;
-        case RK_BUS: bus_pass = MAX(bus_pass, day_count) + arg; snprintf(b, sizeof b, "LIFETIME WISH DONE! BUS PASS +%d DAYS", arg); break;
-        case RK_TOKENS: arc.tok = (u16)MIN(9999, arc.tok + arg); snprintf(b, sizeof b, "LIFETIME WISH DONE! +%d TOKENS", arg); break;
-        default: s->asp_pts = MIN(ASP_MAX, s->asp_pts + arg); snprintf(b, sizeof b, "LIFETIME WISH DONE! WANTS +%d", arg); break;
+        case RK_CASH: cash += arg; break;
+        case RK_TRAIT: tr_give(t, arg); break;
+        case RK_OUTFIT: look_theme(&s->bore, arg); look_build(&s->bore); break;
+        case RK_FOOD: groceries += arg; break;
+        case RK_BUS: bus_pass = MAX(bus_pass, day_count) + arg; break;
+        case RK_TOKENS: arc.tok = (u16)MIN(9999, arc.tok + arg); break;
+        default: s->asp_pts = MIN(ASP_MAX, s->asp_pts + arg); break;
     }
+    { char f[24]; snprintf(f, sizeof f, "WISH DONE! %s", what[CLAMP(kind - 1, 0, 6)]); snprintf(b, sizeof b, f, arg); }
     (void)wish; sim_note(b); sim_moodlet(s, ML_PROUD); audio_voice(VOICE_WIN);
 }
 static int need_fall(Sim *s, int n, int r, int np) {   // E_DEC_*: the fall of need n this step. r: the plain rate, np: the NEEDS option. In 16ths with the rest carried, so 3 a step can still change by 10%
