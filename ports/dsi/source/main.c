@@ -6,7 +6,12 @@
 // Top screen: that lot in 3D. L/R change town, A/B zoom, START re-rolls the world.
 // Fixed point only; the world is bigmap.c, shared with the PS1 build (nothing of it is stored).
 #define PMN 28
-static int o_rep = 1, o_hint = 1, o_gtime, o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song, o_need = 2, o_day = 1, o_msgt = 1, o_tmus = 1, o_gmus = 1, o_shuf = 1, o_look = 1, o_detl, prof_full, fast_cpu, o_tex = 1, o_rt, rt_mon = -1, rt_md, rt_jump = 1;   // (o_rt: Options > Game > Real time; the real month (0 Jan) and day; 1: put the clock straight to the real one, nothing played through)
+#ifdef DS_CHEATDEF
+#define CHEAT_DEF 1   // (shot builds: cheat traits on)
+#else
+#define CHEAT_DEF 0
+#endif
+static int o_rep = 1, o_hint = 1, o_gtime, o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song, o_need = 2, o_day = 1, o_msgt = 1, o_tmus = 1, o_gmus = 1, o_shuf = 1, o_look = 1, o_detl, prof_full, fast_cpu, o_tex = 1, o_rt, rt_mon = -1, rt_md, rt_jump = 1, o_cheat = CHEAT_DEF, op_cc;   // (o_rt: Options > Game > Real time; the real month (0 Jan) and day; 1: put the clock straight to the real one, nothing played through)
 
 // ---- the options: one table (name, the choices, the value, the tab it lives on, its default). Saved in table order, so new ones are only ever added at the end.
 typedef struct { const char *name, *vals; int *v; unsigned char tab, def; } Opt;
@@ -34,6 +39,7 @@ static const Opt OPT[] = {
     { "Boreagotchi time", "Game clock|LIVE|Off", &o_gtime, 2, 0 },   // (D53: how the pets live: on the game clock, LIVE (real time while you hold the toy too), or off)   // (D44: the clock is the DS's own: time of day, weekday, season by the month; sleep and work stay quick)
     // (D70) the new Options screen: hold-to-repeat speed, the button hints bar, and the page you left it on (the last one is saved so Options opens where you were)
     { "Hold repeat", "Slow|Normal|Fast", &o_rep, 255, 1 }, { "Hints bar", "Off|On", &o_hint, 255, 1 }, { "Options page", "0|1|2|3|4|5|6|7", &o_tab, 255, 0 },
+    { "Cheat traits", "Off|On", &o_cheat, 2, CHEAT_DEF },   // (D73) very strong traits for slots 7 to 10; no medals or high scores while one is on
 };
 #define OPT_OLD 36   // options saved in the save's first 40 bytes (the rest go in the 'OX' block)
 static void open_opts(void); static void opt_enter(void);
@@ -558,6 +564,8 @@ static int st_days, st_born, st_died;   // lifetime stats
 static TrState dtr[SIM_MAX];   // (D73) each household member's traits (the 6 slots + 4 that unlock), beside sims[]
 static s8 trg_mp[SIM_MAX], trg_mf[SIM_MAX]; static u8 trg_ah[SIM_MAX], trg_ak[SIM_MAX]; static int trg_pl = -1, trg_lastf = -1; static u32 trg_rs = 12345;
 static void trg_ev(int ev, int n), trg_evs(int ev, int v), trg_tick(int frames), trg_died(int k), trg_newsim(int i), trg_act_end(int i, int an), trg_arrive(int i), trg_reset_all(void);
+static void trg_cheat_set(int on); static int tp_open; static void tp_draw(void), tp_top(void), tp_slots_draw(void), tp_wishpage_draw(void), tp_random(void), tp_keys(u32 down), tp_commit(void), tp_begin(void), tp_random_wish(void), trg_page(int i), trg_title(char *d, const char *s, int mx);
+static int tp_touch(int tx, int ty), tp_slots_touch(int tx, int ty), tp_wishpage_touch(int tx, int ty), trg_wdone_n(void); static const char *trg_tname(int id);
 static int trg_loaded, trg_cheat_now(void), trg_pack(u8 *o), trg_unpack(const u8 *p, int len); static void trg_migrate(void), trg_begin(void), trg_after_load(void);
 static u32 trg_rnd(void) { trg_rs = trg_rs * 1664525u + 1013904223u; return trg_rs >> 8; }
 static void trg_fsync(void) { trg_lastf = funds; }
@@ -2191,8 +2199,8 @@ static void life_panel(void) {   // the top screen's second page: job, aspiratio
         rect(14, 118 + k * 13, 8, 8, C15(8, 22, 8)); text_box(23, 116 + k * 13, 160, 12, FS_BODY, TXT, AL_L, t); sprintf(t, "+%d", WPT[L->wk[k]]); text_box(190, 116 + k * 13, 56, 12, FS_NUM, C15(31, 31, 20), AL_R, t); }
     if (L->fear) { text_box(11, 152, 40, 12, FS_BODY, C15(31, 14, 12), AL_L, "Fear:"); text_box(48, 152, 150, 12, FS_BODY, TXT, AL_L, FNM[L->fear]); }
     if (dog_have) { sprintf(t, "Rex: %s", dog.hun > 50 ? "happy" : dog.hun > 20 ? "peckish" : "hungry!"); text_box(150, 163, 98, 12, FS_BODY, TXT, AL_L, t); }
-    { const Cx *c = &csx[ctl]; if (c->wish) { sprintf(t, "Wish: %s%s", WSN[c->wish - 1], c->wdone ? " (done)" : ""); text_box(11, 163, 138, 12, FS_BODY, c->wdone ? C15(20, 31, 20) : TXT, AL_L, t); }   // (D67) what Create-a-Sim picked
-      if (c->tr[0]) { char u[40]; u[0] = 0; for (int k = 0; k < 3; k++) if (c->tr[k]) { if (k) strcat(u, ", "); strcat(u, TRN[c->tr[k] - 1]); } text_box(11, 174, 236, 9, FS_SMALL, C15(24, 28, 31), AL_L, u); } }
+    { const TrState *tt = &dtr[ctl]; if (tt->wish && !(tt->f & TF_AUTO)) { char n[26]; trg_title(n, tr_wish_name[tt->wish], 26); sprintf(t, "Wish: %s", n); text_box(11, 163, 138, 12, FS_BODY, TXT, AL_L, t); }   // (D73) the wish and the first traits
+      { char u[60]; u[0] = 0; for (int k = 0, c = 0; k < TR_SLOTS && c < 3; k++) if (tt->tid[k]) { char n[20]; trg_title(n, trg_tname(tt->tid[k]), 20); if (c) strcat(u, ", "); strcat(u, n); c++; } text_box(11, 174, 236, 9, FS_SMALL, C15(24, 28, 31), AL_L, u); } }
 }
 static u16 offbuf[256 * 192] __attribute__((aligned(32)));   // (D37) a 2D screen is drawn here and copied over in one go: no half-drawn screen is ever shown
 static int ob_owner;   // 1: offbuf holds the Live HUD (so only the bands it used need clearing); anything else that shows a whole screen sets it to 0
@@ -2220,7 +2228,7 @@ static void status_vals(int clear) {   // (D39) what changes by the minute on th
     { char tm[12], rest[24]; const char *dn = DAYN[(minutes / 1440) % 7]; sprintf(tm, "%d:%02d", h12, mn % 60); sprintf(rest, "%s  %s", mn / 60 >= 12 ? "PM" : "AM", SEASN[fm_season()]);   // (D65: the day, the clock in the NUMBER font, then AM/PM and the season)
       int x = 79, y = box_mid(41, 10, FS_BODY) - 1; text(x, y, FS_BODY, C15(24, 28, 31), dn); x += tw(FS_BODY, dn) + 6; text(x, y, FS_NUM, TXT, tm); x += tw(FS_NUM, tm) + 5; text(x, y, FS_BODY, C15(24, 28, 31), rest); }
     text_box(76, 53, 40, 10, FS_BODY, C15(31, 31, 20), AL_L, "Funds"); sprintf(t, "%d", funds); text_box(112, 53, 64, 10, FS_NUM, C15(31, 31, 20), AL_L, t); if (o_pm) { sprintf(t, "%dfps %dq", fps_now, polys_last / 2); text_box(176, 53, 72, 10, FS_SMALL, polys_last > 2900 ? C15(31, 12, 8) : C15(24, 28, 31), AL_R, t); }
-    if (info_pg == 1) return;
+    if (info_pg >= 1) return;
     if (zone != Z_ISLAND) thought_bubble(m);
     for (int k = 0; k < 6; k++) { int cx = 14 + (k & 1) * 120, cy = 94 + (k >> 1) * 30;
         rect(cx + 3, cy + 3, 8, 8, need_col(m->need[k])); rect(cx + 18, cy + 7, 84, 8, C15(2, 6, 14)); rect(cx + 19, cy + 8, 82 * m->need[k] / 100, 6, need_col(m->need[k])); }
@@ -2230,6 +2238,7 @@ static void draw_top_status(void) {   // the top screen while you live: the sim'
     if (on_board && cur_sim == ctl) { skate_top(); return; }   // (D44) riding: the score and the combo
     scr = offbuf; backdrop(); const Sim *m = &sims[cur_sim];
     char t[48];
+    if (info_pg == 2) { face(8, 8, 56, m); panel(70, 6, 180, 60, sname[cur_sim]); text_box(76, 26, 36, 9, FS_BODY, TXT, AL_L, "Mood"); sprintf(t, "%s %d", STGN[stage_of(m->age)], m->age); text_box(184, 26, 64, 9, FS_BODY, C15(31, 31, 20), AL_R, t); status_vals(0); trg_page(cur_sim); return; }   // (D73) the traits page: any housemate
     if (cur_sim == ctl) {
         face(8, 8, 56, m);
         panel(70, 6, 180, 60, sname[ctl]);
@@ -3007,10 +3016,10 @@ static void cas_random(void) {   // "Create a random Sim": everything the creato
     m->skin = (u8)(cas_rand() % 6); m->hair = (u8)(cas_rand() % NHAIRD); m->hcol = (u8)(cas_rand() % 6); m->shirt = (u8)(cas_rand() % 6); m->fc = (u8)(cas_rand() % 6); m->cc[0] = m->cc[1] = m->cc[2] = 0;
     m->beard = (u8)(csx[0].gen && cas_rand() % 3 == 0 ? 1 + cas_rand() % 5 : 0); csx[0].hat = (u8)(cas_rand() % 4 == 0 ? 1 + cas_rand() % 5 : 0); csx[0].pants = (u8)(cas_rand() % 6);
     for (int q = 0; q < PMN; q++) m->pm[q] = (u8)(50 + (int)(cas_rand() % 25) - 12);
-    cas_fit((int)(cas_rand() % 3)); m->pm[14] = (u8)(csx[0].gen ? 56 : 44); cas_tr_random(); csx[0].wish = (u8)(1 + cas_rand() % 5); csx[0].wdone = 0; cas_rname(); cas_note = 0; }
+    cas_fit((int)(cas_rand() % 3)); m->pm[14] = (u8)(csx[0].gen ? 56 : 44); tp_random(); tp_random_wish(); cas_rname(); cas_note = 0; }
 static void cas_enter(void) {   // a new Sim: Basics, with the welcome pop-up
     memset(csx, 0, sizeof csx); cas_rn = (u32)minutes * 2654435761u + 12345u; csx[0].gen = (u8)(cas_rand() & 1); sims[0].pm[14] = (u8)(csx[0].gen ? 56 : 44); cas_rname();
-    cas_step = CS_BASICS; cas_sub = 0; cas_page = 0; cas_sp = 0; cas_sg = 0; cas_feat = 0; cas_mult = 1; cas_pop = 1; cas_kb = cas_kbc = 0; cas_mixo = 0; cas_note = 0; cas_tgt = 0; cas_done = 0; cas_cd = 13500; cas_cy = -2750; }
+    cas_step = CS_BASICS; cas_sub = 0; cas_page = 0; cas_sp = 0; cas_sg = 0; cas_feat = 0; cas_mult = 1; cas_pop = 1; cas_kb = cas_kbc = 0; cas_mixo = 0; cas_note = 0; cas_tgt = 0; cas_done = 0; cas_cd = 13500; cas_cy = -2750; tp_begin(); }
 static void cas_setsub(int s) {
     cas_sub = s; cas_page = 0; cas_sp = 0; cas_mixo = 0;
     if (cas_step == CS_HAIR && s == 1) { cas_tgt = 1; cas_load_rgb(); } if (cas_step == CS_OUTFIT && s == 2) { cas_tgt = 2; cas_load_rgb(); }
@@ -3127,23 +3136,13 @@ static void cas_draw_step(void) {
         if (cas_sub == 0) cas_tiles3(m->cc[2] ? -1 : m->shirt, SHIRTN, 6, 3); else if (cas_sub == 1) cas_tiles3(csx[0].pants, PANTN, 6, 4); else cas_colpage(0);
     } else if (cas_step == CS_TRAITS) {
         static const char *const sn[2] = { "Traits", "Life wish" }; cas_hdr("Traits"); cas_subtabs(2, sn);
-        if (cas_sub == 0) {
-            for (int i = 0; i < 3; i++) { int t = csx[0].tr[i]; rect(45 + i * 54, 41, 52, 22, PANB); rect(46 + i * 54, 42, 50, 20, t ? C15(8, 22, 10) : C15(10, 14, 24)); text_box(46 + i * 54, 42, 50, 20, t ? FS_BODY : FS_HEAD, t ? TXT : C15(18, 22, 28), AL_C, t ? TRN[t - 1] : "?"); }
-            cbtn(208, 41, 43, 22, "Random", 0, FS_BODY);
-            for (int t = 1; t <= 12; t++) { int c = (t - 1) & 1, r = (t - 1) >> 1, x = 45 + c * 104, y = 67 + r * 15, on = cas_tr_at(t) != 0, ok = cas_tr_ok(t);
-                rect(x, y, 102, 14, on ? C15(8, 22, 10) : C15(8, 15, 27)); rect(x + 3, y + 2, 10, 10, on ? C15(31, 31, 31) : C15(2, 5, 14)); rect(x + 4, y + 3, 8, 8, ok ? C15(28, 31, 31) : C15(12, 14, 18));
-                if (on) { rect(x + 5, y + 6, 2, 2, C15(6, 20, 6)); rect(x + 7, y + 7, 2, 2, C15(6, 20, 6)); rect(x + 9, y + 4, 2, 4, C15(6, 20, 6)); }
-                text_box(x + 15, y, 86, 14, FS_BODY, ok ? TXT : C15(21, 24, 29), AL_L, TRN[t - 1]); }
-        } else {
-            for (int k = 0; k < 5; k++) { int y = 42 + k * 23, on = csx[0].wish == k + 1; rect(45, y, 206, 21, on ? C15(31, 31, 31) : C15(2, 5, 14)); rect(46, y + 1, 204, 19, on ? C15(8, 24, 8) : C15(8, 15, 27)); rect(50, y + 5, 11, 11, C15(2, 5, 14)); rect(51, y + 6, 9, 9, C15(28, 31, 31)); if (on) rect(53, y + 8, 5, 5, C15(8, 22, 8));
-                text_box(64, y, 184, 21, FS_HEAD, TXT, AL_L, WSN[k]); }
-        }
+        if (cas_sub == 0) tp_slots_draw(); else tp_wishpage_draw();
     } else {   // Done: the summary to look over
         cas_hdr("Your Sim"); text_box(45, 24, 206, 20, FS_TITLE, TXT, AL_C, sname[0]);
         rect(47, 50, 60, 60, PANB); face_hat = csx[0].hat; face_bg = C15(13, 17, 26); face(49, 52, 56, m); face_hat = face_bg = -1;
         text_box(112, 46, 138, 11, FS_SMALL, C15(22, 28, 31), AL_L, "Traits");
-        for (int k = 0; k < 3; k++) { int t = csx[0].tr[k]; text_box(112, 57 + k * 13, 138, 13, FS_BODY, t ? TXT : C15(18, 22, 28), AL_L, t ? TRN[t - 1] : "-"); }
-        text_box(112, 98, 138, 11, FS_SMALL, C15(22, 28, 31), AL_L, "Life wish"); text_box(112, 109, 138, 13, FS_BODY, csx[0].wish ? TXT : C15(18, 22, 28), AL_L, csx[0].wish ? WSN[csx[0].wish - 1] : "-");
+        for (int k = 0, c = 0; k < TR_SLOTS && c < 6; k++) { int id = dtr[0].tid[k]; if (!id) continue; char n[22]; trg_title(n, trg_tname(id), 22); text_box(112 + (c & 1) * 70, 57 + (c >> 1) * 13, 70, 13, FS_SMALL, TXT, AL_L, n); c++; }
+        text_box(112, 98, 138, 11, FS_SMALL, C15(22, 28, 31), AL_L, "Life wish"); { char n[26]; if (dtr[0].wish) trg_title(n, tr_wish_name[dtr[0].wish], 26); else strcpy(n, "-"); text_box(112, 109, 138, 13, FS_BODY, dtr[0].wish ? TXT : C15(18, 22, 28), AL_L, n); }
         text_box(45, 114, 62, 11, FS_SMALL, C15(22, 28, 31), AL_C, HAIRN[m->hair % NHAIRD]);
         text_box(45, 132, 206, 24, FS_BODY, C15(24, 28, 31), AL_C, "Tap a tab on the left to change anything.");
     }
@@ -3182,6 +3181,7 @@ static int cas_pop_touch(int tx, int ty) {
 static void draw_cas(void) {
     scr = scr_sub;
     if (cas_kb) { cas_draw_kb(); if (cas_pop) cas_draw_pop(); return; }
+    if (tp_open) { tp_draw(); return; }
     backdrop();
     for (int i = 0; i < CS_N; i++) { int on = cas_step == i, y = 2 + i * 31; rect(2, y, 36, 29, on ? C15(31, 31, 31) : C15(2, 5, 14)); rect(3, y + 1, 34, 27, on ? C15(8, 26, 8) : C15(4, 10, 24)); rect(3, y + 1, 34, 1, on ? C15(18, 31, 18) : C15(9, 16, 30)); cas_icon(14, y + 3, i, on); text_box(2, y + 16, 36, 11, FS_BODY, on ? C15(2, 6, 2) : TXT, AL_C, CSN[i]); }
     cas_draw_step();
@@ -3192,6 +3192,7 @@ static void draw_cas(void) {
 static void cas_touch(int tx, int ty) {
     if (cas_pop) { cas_pop_touch(tx, ty); return; }
     if (cas_kb) { cas_kb_touch(tx, ty); return; }
+    if (tp_open) { tp_touch(tx, ty); return; }
     Sim *m = &sims[0]; cas_drag = 0;
     for (int i = 0; i < CS_N; i++) if (hit(2, 2 + i * 31, 36, 29, tx, ty)) { if (i != cas_step) cas_goto(i); return; }
     if (hit(41, 165, 70, 24, tx, ty)) { if (cas_step) cas_goto(cas_step - 1); else cas_pop = 2; return; }
@@ -3236,17 +3237,12 @@ static void cas_touch(int tx, int ty) {
         return; }
     if (cas_step == CS_TRAITS) {
         int s = cas_subhit(2, tx, ty); if (s >= 0) { if (s != cas_sub) cas_setsub(s); return; }
-        if (cas_sub == 0) {
-            if (hit(208, 41, 43, 22, tx, ty)) { cas_tr_random(); cas_note = 0; }
-            for (int t = 1; t <= 12; t++) if (hit(45 + ((t - 1) & 1) * 104, 67 + ((t - 1) >> 1) * 15, 102, 14, tx, ty)) { cas_tr_tap(t); cas_note = 1; cas_notei = t - 1; }
-        } else for (int k = 0; k < 5; k++) if (hit(45, 42 + k * 23, 206, 21, tx, ty)) { csx[0].wish = (u8)(k + 1); csx[0].wdone = 0; cas_note = 2; cas_notei = k; }
+        if (cas_sub == 0) tp_slots_touch(tx, ty); else tp_wishpage_touch(tx, ty);
         return; }
 }
 static void cas_top(void) {   // the top screen's overlay: the name, and (Traits) what the trait or the wish is
     hud_clear(); int w = tw(2, sname[0]) + 16; panel(4, 4, w, 20, 0); text_box(4, 4, w, 20, FS_HEAD, TXT, AL_C, sname[0]);   // (top left: the Sim is in the middle, whole or close)
-    if (cas_step == CS_TRAITS && cas_note) {
-        const char *a = cas_note == 1 ? TRN[cas_notei] : WSN[cas_notei], *b = cas_note == 1 ? TRD[cas_notei] : WSD[cas_notei];
-        panel(24, 138, 208, 48, 0); rect(26, 140, 204, 16, PANH); text_box(26, 140, 204, 16, FS_HEAD, TXT, AL_C, a); text_box(26, 158, 204, 24, FS_BODY, TXT, AL_C, b); }
+    if (cas_step == CS_TRAITS) tp_top();
 }
 static int slot_sel;
 static void house_icon(int x, int y, int sz, u16 c) {
@@ -3309,7 +3305,7 @@ static void apply_opts(void) {
       for (int q = 0; q < 128; q++) { int t = q * 2; shin[q] = (u8)(sp == 2 ? (t > 200 ? 255 : t > 150 ? 110 : 0) : (t * t / 255) * t / 255); }
       for (int q = 0; q < 32; q++) GFX_SHININESS = (u32)shin[q * 4] | (u32)shin[q * 4 + 1] << 8 | (u32)shin[q * 4 + 2] << 16 | (u32)shin[q * 4 + 3] << 24;
       gx_spec = sp == 0 ? 0 : sp == 1 ? (RGB15(6, 6, 5) | BIT(15)) : (RGB15(9, 9, 8) | BIT(15)); }
-    speed = o_spd + 1; snd_apply(); o_dirty = 0;
+    speed = o_spd + 1; snd_apply(); o_dirty = 0; if (tr_cheat_opt != (u8)o_cheat) trg_cheat_set(o_cheat);   // (D73)
 }
 // ---- (D70) OPTIONS: eight pages as touch tabs down the left of the bottom screen, big rows, the help for the chosen row on the top screen.
 // Pages: GAME SCREEN SOUND CONTROLS TIME SAVE EXTRAS ABOUT. To add a row: add it to OPT above (at the end) and put its name in OPL below. Rows starting with @ are buttons.
@@ -3332,12 +3328,13 @@ static const OpD OPD[] = {
     { "Real time", "Uses the real date and time of your DS." }, { "Boreagotchi time", "Game clock. LIVE keeps real time. Off pauses the pets." },
     { "Autosave", "Saves the game when a day ends." }, { "Save space", "Safe is the normal size. Max uses more of the save chip." },
     { "@Save now", "Writes your game to the save chip right now." }, { "@Reset all", "Puts every option back how it was. Tap twice." },
+    { "Cheat traits", "Very strong traits for slots 7 to 10. No medals or high scores while one is on." },
     { "Frame rate", "Steady 30 is smooth. Up to 60 is faster when it can be." }, { "Turbo CPU", "Auto uses the fast processor of a DSi." },
     { "Detail", "Auto picks the detail from your DS." }, { "Poly meter", "Shows frames a second on the screen." },
 };
 static const char *const OPN[8] = { "GAME", "SCREEN", "SOUND", "CONTROLS", "TIME", "SAVE", "EXTRAS", "ABOUT" };
 static const char *const OPL[8] = {
-    "Sim style|Roofs|Traffic|Needs speed|Message time|Ground check",
+    "Sim style|Roofs|Traffic|Needs speed|Message time|Ground check|Cheat traits",
     "3D look|Brightness|Sky|Anti-alias|Outlines|Outline color|Shadows|Lighting|Textures|Item detail|Fog|Fog range|Draw distance",
     "Master volume|Music volume|Effects volume|Music source|Music track|Song|Shuffle songs|Title music|Game music|Tap clicks|Chimes|Stereo",
     "Hold repeat|Hints bar|Camera|Map spin",
@@ -3372,6 +3369,7 @@ static int op_change(int i, int dir) {   // dir -1 / +1 (d-pad, arrows), 2 a tap
     int c = opt_cnt(i), v = *OPT[i].v, nv = v;
     if (dir == 2) nv = (v + 1) % c; else if (op_clamp_type(i)) { nv = v + dir; if (nv < 0 || nv >= c) return 0; } else nv = (v + dir + c) % c;
     if (nv == v) return 0;
+    if (OPT[i].v == &o_cheat && nv == 1 && !tr_cheat_ok) { if (op_cc > 0) { tr_cheat_ok = 1; op_cc = 0; } else { op_cc = 150; say("No medals or high scores. Tap again to turn on"); return 0; } }   // (D73: asked once)
     *OPT[i].v = nv; o_dirty = 1; return 1;
 }
 static void op_reset(int all) {
@@ -3426,7 +3424,7 @@ static void op_keys(int held, int down) {   // d-pad with hold-to-repeat, A chan
 }
 static void op_tick(int held) {   // a stylus held on an arrow repeats it; the reset question times out; a toast that ends is wiped
     if (op_hdir) { if (!(held & KEY_TOUCH)) op_hdir = 0; else if ((int)(vbl_n - op_hnext) >= 0 && op_hrow < op_n && op_ix[op_hrow] >= 0) { op_hcnt++; op_hnext = vbl_n + (u32)op_rep_iv(op_hcnt); if (op_change(op_ix[op_hrow], op_hdir)) { ui_snd(UI_MOVE); op_rd = 1; } } }
-    if (op_conf > 0) { op_conf--; if (!op_conf) op_rd = 1; }
+    if (op_conf > 0) { op_conf--; if (!op_conf) op_rd = 1; } if (op_cc > 0) op_cc--;
     static int lm; if ((msg_t > 0) != lm) { lm = msg_t > 0; op_rd = 1; }
 }
 static void op_arrow(int cx, int cy, int dir, u16 c) { for (int k = 0; k < 5; k++) rect(dir < 0 ? cx - 2 + k : cx + 2 - k, cy - k, 1, 2 * k + 1, c); }   // a small triangle pointing left (dir<0) or right
@@ -3531,6 +3529,7 @@ static void draw_title(void) {
 }
 #include "ds_games.c"   // (D44) the PS1's mini-games
 #include "ds_trgame.h"  // (D73) the traits: who has which, the counters, the save block
+#include "ds_trui.h"    // (D73) the trait and wish pickers, the traits page
 static void new_household(void) {
     zone = 0; isl_wood = isl_stone = isl_leaves = isl_spear = isl_shells = 0; isl_food = 3; isl_secrets = 0; farm_reset();
     st_days = st_born = st_died = 0; nown = 0; home_bx = home_by = -1; funds = 3500; life_reset(); rt_jump = 1; mg_reset();
@@ -3563,7 +3562,7 @@ static void menu_do(int k) {   // (D70) the Live menu's choice k (touch or A): o
         else if (k == 3) { if (!sav_ok()) say("No save chip found"); else say(sav_write() ? "Game saved" : "Save failed"); }
         else if (k == 4) open_opts();
         else if (k == 5) { if (sav_ok() && lot_bx >= 0) sav_write(); set_mode(M_TITLE); sav_probe(); }
-        else if (k == 6) jobui = 1; else if (k == 7) juke = 1; else if (k == 8) { info_pg ^= 1; life_ver++; }
+        else if (k == 6) jobui = 1; else if (k == 7) juke = 1; else if (k == 8) { info_pg = (info_pg + 1) % 3; life_ver++; }
 }
 static void live_touch(int tx, int ty) {
     if (mg_ui) return;   // (D46: the mini-game reads the stylus itself)
@@ -3701,10 +3700,11 @@ int main(void) {
             int redraw = forced;   // (D67) Create-a-Sim: touch, the shoulder buttons for Back / Next, the camera sliding to the part being worked on
             if (down & KEY_TOUCH) { cas_touch(tp.px, tp.py); redraw = 1; } else if ((held & KEY_TOUCH) && cas_drag) { cas_drag_at(tp.px, tp.py); redraw = 1; }
             if (!(held & KEY_TOUCH)) cas_drag = 0;
-            if (!cas_pop && !cas_kb) { if (down & KEY_R) { if (cas_step < CS_N - 1) cas_goto(cas_step + 1); redraw = 1; } if (down & KEY_L) { if (cas_step) cas_goto(cas_step - 1); redraw = 1; } }
+            if (tp_open && !cas_pop && !cas_kb && (down & (KEY_A | KEY_B | KEY_L | KEY_R | KEY_UP | KEY_DOWN))) { tp_keys(down); redraw = 1; }
+            if (!cas_pop && !cas_kb && !tp_open) { if (down & KEY_R) { if (cas_step < CS_N - 1) cas_goto(cas_step + 1); redraw = 1; } if (down & KEY_L) { if (cas_step) cas_goto(cas_step - 1); redraw = 1; } }
             if (cas_pop == 1 && (down & (KEY_A | KEY_B))) { cas_pop = 0; redraw = 1; }
             if (redraw || cas_drag) { draw_cas(); scr = hud; cas_top(); }
-            if (cas_done) { int dn = cas_done; cas_done = 0; if (dn == 2) set_mode(M_TITLE); else { cas_name(); set_mode(M_MAP); } dirty = 1; }
+            if (cas_done) { int dn = cas_done; cas_done = 0; if (dn == 2) set_mode(M_TITLE); else { cas_name(); tp_commit(); set_mode(M_MAP); } dirty = 1; }
             { int td, ty; cas_cam(&td, &ty); if (cas_step == CS_LOOKS && td > 10000) td += (cas_mult - 1) * 3000; int d1 = td - cas_cd, d2 = ty - cas_cy; cas_cd += d1 / 5 + (d1 > 0) - (d1 < 0); cas_cy += d2 / 5 + (d2 > 0) - (d2 < 0); }
             yaw = sinLerp(frames * 70) / 2; pitch = 0; dist = cas_cd;
         } else if (mode == M_MAP) {
@@ -3746,6 +3746,9 @@ int main(void) {
                 else if (sc >= 20 && sc < 23) { o_detl = sc - 20; o_dirty = 1; }
                 else if (sc >= 30 && sc < 33) { o_roof = sc - 30; o_dirty = 1; }
                 else if (sc >= 60 && sc < 70) { test_ex = sc == 69 ? 0 : sc - 59; life_ver++; }   // (60-68: every face in that mood, 69: as the game decides; 100: the sheet)
+                else if (sc == 140) { for (int q = 1; q < nsim; q++) dtr[q].f = TF_AUTO | TF_PEND; info_pg = 2; cur_sim = 1; life_ver++; ui_ver++; }   // (D73: 140 the traits page of the second housemate, 141 the first, 142 a move-in with its toast)
+                else if (sc == 141) { for (int q = 1; q < nsim; q++) dtr[q].f = TF_AUTO | TF_PEND; info_pg = 2; cur_sim = nsim > 2 ? 2 : 1; life_ver++; ui_ver++; }
+                else if (sc == 142) { trg_quiet = 0; new_sim(26, 2, 3, 1, 2, "Morgan Vale", 9 * 16, 9 * 16); info_pg = 2; cur_sim = nsim - 1; life_ver++; ui_ver++; }
                 else if (sc == 71 || sc == 72) mg_test_save(sc);   // (D62: 71 writes a save with scores and family links, 72 loads it)
                 else if (sc == 70) { live_pitch = 2000; live_dist = 1800; yaw_t = live_yaw = 4096 + 600; }   // (70: face height camera)
                 else if ((sc >= 40 && sc < 60) || (sc >= 73 && sc < 80) || (sc >= 80 && sc < 116)) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
@@ -3769,7 +3772,8 @@ int main(void) {
             if (menu_open && !popup) { int r = ui_rep(held, down, vbl_n), ms = menu_sel;   // (D70) the menu by the d-pad: a 4 x 3 grid, A picks
                 if (r & KEY_LEFT) ms = ms % 4 ? ms - 1 : ms + 3; if (r & KEY_RIGHT) ms = ms % 4 < 3 ? ms + 1 : ms - 3; if (r & KEY_UP) ms = ms >= 4 ? ms - 4 : ms + 8; if (r & KEY_DOWN) ms = ms < 8 ? ms + 4 : ms - 8;
                 if (ms != menu_sel) { menu_sel = ms; ui_snd(UI_MOVE); } if (down & KEY_A) { menu_open = 0; ui_snd(UI_OK); menu_do(menu_sel); down &= ~KEY_A; } }
-            if (!juke && !menu_open && !jobui && !popup && (held & KEY_LEFT)) { yaw_t -= 120; live_yaw = yaw_t; } if (held & KEY_RIGHT) { yaw_t += 120; live_yaw = yaw_t; }
+            if (info_pg == 2 && !juke && !menu_open && !jobui && !popup && !mg_ui) { int dl = ((down & KEY_RIGHT) ? 1 : 0) - ((down & KEY_LEFT) ? 1 : 0); if (dl) { cur_sim = (cur_sim + dl + nsim) % nsim; life_ver++; ui_ver++; ui_snd(UI_MOVE); } }   // (D73) the traits page: the pad changes housemate
+            else { if (!juke && !menu_open && !jobui && !popup && (held & KEY_LEFT)) { yaw_t -= 120; live_yaw = yaw_t; } if (held & KEY_RIGHT) { yaw_t += 120; live_yaw = yaw_t; } }
             if (held & KEY_UP) { if (live_pitch < 7600) live_pitch += 50; } if (held & KEY_DOWN) { if (live_pitch > 1800) live_pitch -= 50; } }
             if ((down & KEY_SELECT) && !mg_ui) { cam_free ^= 1; if (!cam_free) { live_yaw = yaw_t = 4096; live_pitch = 4300; } }
 #ifdef DSTEST

@@ -60,6 +60,9 @@ static void trg_cheat_set(int on) { tr_cheat_opt = (u8)on; for (int i = 0; i < S
 static void trg_reset_all(void) {   // a new household
     memset(dtr, 0, sizeof dtr); memset(tr_ev_a, 0, sizeof tr_ev_a); memset(tr_wdone, 0, sizeof tr_wdone); memset(tr_wait, 0, sizeof tr_wait); tr_unl = 0; tr_earned = 0; memset(tr_recent, 0, sizeof tr_recent); trg_dist = 0; trg_pl = -1; trg_quiet = 3; trg_loaded = 0;
     memset(trg_mp, 0, sizeof trg_mp); memset(trg_mf, 0, sizeof trg_mf); trg_fsync();
+#ifdef DS_CHEATDEF
+    tr_unl = 2;   // (shot builds: two extra slots open, to show the cheat slots)
+#endif
 }
 static void trg_begin(void) {   // the household is made (Create-a-Sim is done, or a game starts): sim 0 keeps the traits picked (if any), the others get theirs from their personality
     trf_init(); memset(dtr, 0, sizeof dtr); for (int i = 1; i < nsim; i++) dtr[i].f = TF_AUTO | TF_PEND;
