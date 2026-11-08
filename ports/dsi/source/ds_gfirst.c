@@ -3,6 +3,9 @@
 // rocks, cracks, flashes, the shell flies and the baby steps out). Art: the PS1's src/gotchi_first_art.h (see ds_gegg.h). The PS1 draws on 320 x 240; here the two screens are ONE canvas,
 // 256 x 384 (the top screen over the bottom one): gvo is the canvas row at the top of the screen being drawn (0 or 192), every picture is drawn once for each screen from the same
 // numbers, so a beam, a ring or a toy can fly from the box on the touch screen up to the top one. Times are 60 a second (giT, ghT), whatever the frame rate.
+#ifdef DSTEST
+static volatile u32 gfp[4];   // test builds: cycles (bus clock) of the sky and of the picture, per screen
+#endif
 static int gvo, gf_sx = 64, gf_sy = 4, gf_semi, gf_sq, gf_cx0, gf_cy0, gf_cx1 = 256, gf_cy1 = 192;   // the canvas row of this screen; the pixel's size (16ths across, pixels down); see-through; lean in whole pixels; the clip box
 static u8 gfm[128][3];                                                                                // the colour of each key of the art
 static const u8 gShellPal[7][3] = { { 214, 58, 120 }, { 40, 92, 214 }, { 226, 112, 24 }, { 126, 64, 200 }, { 20, 150, 140 }, { 196, 40, 44 }, { 218, 160, 10 } };   // the toy's shell colours (the PS1's PAL rows 1-7)
@@ -278,11 +281,19 @@ static void gf_hatch(void) {
 // ---- which screen draws what ----
 static int gf_first(void) { return gview == GV_TITLE || gview == GV_INTRO || gview == GV_HATCH; }
 static void gf_screen(int bottom) {   // the first-run view on the top screen (0) or the touch screen (1): the sky, then the picture for that screen
-    gvo = bottom ? 192 : 0; gf_semi = 0; gf_sq = 0; gf_noclip(); gf_sky();
+    gvo = bottom ? 192 : 0; gf_semi = 0; gf_sq = 0; gf_noclip();
+#ifdef DSTEST
+    u32 c0 = TIMER_DATA(0) | ((u32)TIMER_DATA(1) << 16); gf_sky(); gfp[bottom] = (TIMER_DATA(0) | ((u32)TIMER_DATA(1) << 16)) - c0; c0 = TIMER_DATA(0) | ((u32)TIMER_DATA(1) << 16);
+#else
+    gf_sky();
+#endif
     if (gview == GV_TITLE) gf_title();
     else if (gview == GV_HATCH) gf_hatch();
     else if (gisub == 1) gf_unbox(giT);
     else if (gisub == 2) gf_eggcard();
     else if (bottom) gf_shop_bottom(); else gf_shop_top();
+#ifdef DSTEST
+    gfp[2 + bottom] = (TIMER_DATA(0) | ((u32)TIMER_DATA(1) << 16)) - c0;
+#endif
     gvo = 0; gf_clip(0, 0, 256, 192);
 }
