@@ -9,11 +9,12 @@ typedef uint8_t u8; typedef uint16_t u16; typedef uint32_t u32; typedef int8_t s
 #include "common.h"
 #endif
 #include "traits_data.h"
+#include <stddef.h>
 
 #define TR_SLOTS 10      // slots 1..6 (index 0..5) are the normal ones, 7..10 (index 6..9) unlock with progress (tr_unl); any kind of trait goes in any open slot, a cheat only in 7..10
 #define TR_PICK TR_SLOTS
 #define TR_NLEN 15
-// TrState.f: TF_AUTO: the traits were assigned from the personality (a household member: not editable, no counters, no wish); TF_PEND: assign again (a new member, a new life stage, a new slot);
+// TrState.f: TF_AUTO: the traits were assigned from the personality (a household member: not editable by hand; it counts its own events, wins earned traits and has a personal wish like anyone); TF_PEND: assign again (a new member, a new life stage, a new slot);
 // bits 4..6: the life stage (AG_*) the slot count follows
 enum { TF_CHEAT = 1, TF_CHON = 2, TF_BASE = 4, TF_AUTO = 8, TF_STAGE = 16 * 7, TF_PEND = 128 };
 typedef struct {
@@ -22,15 +23,19 @@ typedef struct {
     u8  ch[6]; s8 cm[6];         // the cheat traits' effects (kept apart: the OPTIONS switch takes them out of fx and puts them back)
     u8  wish, wbase, title, f;   // lifetime wish 1..WISH_N (0 none), its counter at the start, the last wish done, flags
     u16 skp[9]; u8 skr[9]; u8 ageacc; u8 nacc[7]; s8 mc;   // skill gain watch, the aging and need-fall remainders
+    // (version 52: everyone in the household keeps their own progress; these two come last so an older state (offsetof(TrState, ev) bytes) loads as its first part)
+    u8  ev[EV_N];                // this Bore's lifetime counters (saturate at 255): what the earned traits and the wish count
+    u8  wd[8];                   // this Bore's wishes done (a bit each)
 } TrState;
+#define TR_SIZE_V51 offsetof(TrState, ev)
 
-extern u8 tr_ev_a[EV_N];          // lifetime counters (saturate at 255), one family-wide set: the Bores that have traits count into it
+int  tr_ev_mem(int ev);           // 1: a member who is not the player can count this event (what a Bore does itself, its own skills), so a personal wish may ask for it
+int  tr_wd_count(const TrState *t);   // wishes this Bore has done
 extern u8 tr_wait[10];            // won earned and prize traits (a bit each, TR_NEARN + TR_NRWD in all) that found every slot full: they come into the next free slot
 void tr_regive(TrState *t);       // an earned trait or a waiting prize that could not be given before (a slot freed or unlocked)
 extern u8 tr_unl;                // unlocked extra slots 0..TR_NUNL (slots 7..10): the household's, saved
 extern u8 tr_cheat_opt;          // OPTIONS > GAME > CHEAT TRAITS: 1 on
 extern u8 tr_cheat_ok;           // the confirm was said yes once
-extern u8 tr_wdone[8];           // wishes done (a bit each), this family
 extern u32 tr_earned;
 extern u16 tr_recent[8];         // the traits picked last (creator: RECENT)
 extern u16 tr_ed_pick[TR_PICK];  // the creator's picks while it runs
@@ -68,6 +73,7 @@ int  tr_wish_prog(const TrState *t, int *need);                    // the wish's
 void tr_wish_pick(TrState *t, int w);
 // the game provides these (sim.c; a host test stubs them)
 void tr_toast(const char *s);
+void tr_won(TrState *t, int r);       // an earned trait came in (r 1), or found no slot (r -1): the game says it, with the Bore's name when it is not the one you play
 void tr_reward(TrState *t, int kind, int arg, int wish);
 // ---- traits_auto.c (CREATE.OVL, the host test): a household member's traits from their personality
 typedef struct { u8 bar[5]; u8 sign, asp, stage; u32 seed; } TrPers;   // the 5 personality bars (NEAT OUTGOING ACTIVE PLAYFUL NICE, 0..10), the star sign 0..11, the aspiration, the life stage, the id seed
@@ -76,3 +82,5 @@ int  tr_cat_of(int id);
 u32  tr_name_seed(const char *first, const char *last);
 void tr_rebuild(TrState *t);                                                      // every effect again, from the ids (cheats apart)
 int  tr_auto_pick(const TrPers *p, const u16 *inherit, int ninh, u16 *tid, int nslots);   // fills the empty slots below nslots (tid[10], the kept ones stay); returns how many it added
+int  tr_auto_wish(const TrPers *p, const TrState *t);                            // a member's personal wish: the one their personality pulls to most (that they can count themselves and have not done), 0 none
+extern const u8 *(*tr_cheat_fn)(int id);                                          // CREATE.OVL sets it: the effects of a cheat trait (their table is not resident)

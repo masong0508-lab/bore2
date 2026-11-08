@@ -2,7 +2,7 @@
 # traits_test.sh: make the data, build the host test against src/traits.c, run it, then check every hook is read somewhere in the game.
 HERE=$(cd "$(dirname "$0")" && pwd); R="$HERE/.."
 python3 "$R/tools/make_traits.py" > /dev/null || exit 1
-gcc -O1 -Wall -DTR_HOST -DTR_BIG -o /tmp/traits_test "$HERE/traits_test.c" "$R/src/traits.c" "$R/src/traits_auto.c" || exit 1
+gcc -O1 -Wall -DTR_HOST -DTR_BIG -o /tmp/traits_test "$HERE/traits_test.c" "$R/src/traits.c" "$R/src/traits_auto.c" "$R/src/persona.c" || exit 1
 /tmp/traits_test; RC=$?
 echo; echo "== is each hook read by the game? (a hook name used in src outside traits*, or its family base)"
 MISS=0

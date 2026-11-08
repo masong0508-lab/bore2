@@ -2572,7 +2572,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
           sv_u8(act); sv_u16(MIN(s->act_t, 65535)); sv_u8(s->act_x); sv_u8(s->act_y); sv_u8(s->act_var); }
         sv_u8(s->tr != &tr_null); if (s->tr != &tr_null) { sv_u16(sizeof(TrState)); sv_rle(s->tr, sizeof(TrState)); for (int k = 0; k < TR_SLOTS; k++) sv_str(tr_names_of(s->tr)[k], TR_NLEN - 1); }   // (version 51: the names too)   // (version 50: the traits, their summed effects, the counters and the wish)
     }
-    sv_u8(tr_cheat_ok); sv_n(tr_wdone, 8); sv_u32(tr_earned); sv_n(tr_ev_a, EV_N); sv_u8(tr_unl); sv_n(tr_wait, 10);   // (version 51: the household's unlocked slots, the prizes waiting)
+    sv_u8(tr_cheat_ok); sv_u32(tr_earned); sv_u8(tr_unl); sv_n(tr_wait, 10);   // (version 51: the household's unlocked slots, the prizes waiting; version 52: the counters and the wishes done are in each Bore's own TrState)
 }
 __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after sim_init; the faces are built here)
     int n = ld_u8(), pl = ld_u8();
@@ -2614,12 +2614,13 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
         for (int k = 0; k < 6; k++) { s->ml[k].id = (u8)ld_u8(); s->ml[k].val = (s8)ld_u8(); s->ml[k].t = (u16)ld_u16(); }
         s->uid = (u8)ld_u8(); ld_n(s->par, 2); s->partner = (u8)ld_u8(); s->age_days = (u8)ld_u8(); s->bday = (u8)ld_u8(); s->away = (u8)ld_u8(); s->grade = (u8)ld_u8(); s->homework = (u8)ld_u8();
         s->action = ld_u8(); s->act_t = ld_u16(); s->act_x = (s8)ld_u8(); s->act_y = (s8)ld_u8(); s->act_var = (u8)ld_u8();
-        s->tr = &tr_null; if (save_ver >= 50 && ld_u8()) { s->tr = tr_alloc(); if (ld_u16() == sizeof(TrState)) ld_rle(s->tr, sizeof(TrState)); else ld_fail(); if (save_ver >= 51 && s->tr != &tr_null) for (int k = 0; k < TR_SLOTS; k++) ld_str(tr_names_of(s->tr)[k], TR_NLEN - 1); }
+        s->tr = &tr_null; if (save_ver >= 50 && ld_u8()) { s->tr = tr_alloc(); { int sz = ld_u16(); if (sz == (int)sizeof(TrState) || (save_ver < 52 && sz == (int)TR_SIZE_V51)) ld_rle(s->tr, (size_t)sz); else ld_fail(); } if (save_ver >= 51 && s->tr != &tr_null) for (int k = 0; k < TR_SLOTS; k++) ld_str(tr_names_of(s->tr)[k], TR_NLEN - 1); }
         if (s->action >= ACT_GATHER + 1) s->action = ACT_NONE;
         s->gait.sit = (s->action == ACT_SIT || s->action == ACT_WC); s->gait.sleep = (s->action == ACT_SLEEP);
     }
+    u8 old_ev[EV_N] = { 0 }, old_wd[8] = { 0 };
     { char old_pn[5][TR_NLEN] = { { 0 } };
-      if (save_ver >= 50) { tr_cheat_ok = (u8)ld_u8(); ld_n(tr_wdone, 8); tr_earned = ld_u32(); ld_n(tr_ev_a, EV_N); if (save_ver >= 51) { tr_unl = (u8)MIN(ld_u8(), TR_NUNL); ld_n(tr_wait, 10); } else ld_n(old_pn, sizeof old_pn); }
+      if (save_ver >= 50) { tr_cheat_ok = (u8)ld_u8(); if (save_ver < 52) ld_n(old_wd, 8); tr_earned = ld_u32(); if (save_ver < 52) ld_n(old_ev, EV_N); if (save_ver >= 51) { tr_unl = (u8)MIN(ld_u8(), TR_NUNL); ld_n(tr_wait, 10); } else ld_n(old_pn, sizeof old_pn); }
       if (save_ver == 50 && pl >= 0 && pl < nsims && sims[pl].tr != &tr_null) memcpy(tr_names_of(sims[pl].tr), old_pn, sizeof old_pn);   // (version 50: five names, the player's)
       if (save_ver >= 50) for (int i = 0; i < nsims; i++) if (sims[i].tr != &tr_null) {   // the life stage the slots follow; an older save's won traits keep the slots they had (7..10 open as far as they need)
           TrState *t = sims[i].tr; tr_stage_set(t, sims[i].bore.stage);
@@ -2628,5 +2629,6 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     tr_cash_prev = -1; for (int i = 0; i < nsims; i++) tr_cheat_refresh(sims[i].tr, tr_cheat_opt);   // (the cheat effects follow the OPTIONS switch, whatever the save had)
     player = CLAMP(pl, 0, MAX(0, nsims - 1));
     if (nsims && sims[player].tr == &tr_null) { sims[player].tr = tr_alloc(); tr_cheat_refresh(sims[player].tr, tr_cheat_opt); }   // (the player can always win traits)
+    if (save_ver >= 50 && save_ver < 52 && nsims && sims[player].tr != &tr_null) { memcpy(sims[player].tr->ev, old_ev, sizeof old_ev); memcpy(sims[player].tr->wd, old_wd, sizeof old_wd); }   // (before 52 the counters and the wishes done were the family's, and only the played Bore counted into them)
 }
 void sim_proud(Sim *s) { sim_moodlet(s, ML_PROUD); }

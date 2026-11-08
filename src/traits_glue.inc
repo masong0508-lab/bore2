@@ -7,6 +7,12 @@
 #include <stddef.h>
 
 void tr_toast(const char *s) { sim_note(s); }
+void tr_won(TrState *t, int r) {   // an earned trait came in (1) or has no free slot (-1)
+    Sim *s = &sims[player]; for (int i = 0; i < nsims; i++) if (sims[i].tr == t) s = &sims[i];
+    char b[40];
+    if (r > 0) { if (s == &sims[player]) sim_note("YOU WON A NEW TRAIT!"); else { snprintf(b, sizeof b, "%s WON A NEW TRAIT!", s->bore.first); sim_note(b); } }
+    else { static u8 told; if (told != 1) { told = 1; sim_note("TRAIT WON! FREE A SLOT FOR IT"); } }
+}
 static int char_lvl(const Sim *s) { return CLAMP(SKL(s->skill_char) + tr_add(s->tr, E_CHARM), 0, 20); }   // E_CHARM: the charisma it acts with
 static int luck_roll(Sim *s, int base) { int ok = (int)(look_rand() % 100) < tr_chance(s->tr, E_LUCK, base); if (ok && base < 50) tr_ev(s->tr, EV_LUCKY, 1); return ok; }   // E_LUCK
 void tr_reward(TrState *t, int kind, int arg, int wish) {   // a lifetime wish is done: its reward changes something real
@@ -21,7 +27,7 @@ void tr_reward(TrState *t, int kind, int arg, int wish) {   // a lifetime wish i
         case RK_TOKENS: arc.tok = (u16)MIN(9999, arc.tok + arg); break;
         default: s->asp_pts = MIN(ASP_MAX, s->asp_pts + arg); break;
     }
-    { char f[24]; snprintf(f, sizeof f, "WISH DONE! %s", full ? "TRAIT WAITS FOR A SLOT" : what[CLAMP(kind - 1, 0, 6)]); snprintf(b, sizeof b, f, arg); }
+    { char f[40]; if (s == &sims[player]) snprintf(f, sizeof f, "WISH DONE! %s", full ? "TRAIT WAITS FOR A SLOT" : what[CLAMP(kind - 1, 0, 6)]); else snprintf(f, sizeof f, "%s: WISH DONE! %s", s->bore.first, full ? "NO SLOT" : what[CLAMP(kind - 1, 0, 6)]); snprintf(b, sizeof b, f, arg); }
     (void)wish; sim_note(b); sim_moodlet(s, ML_PROUD); audio_voice(VOICE_WIN);
 }
 static int need_fall(Sim *s, int n, int r, int np) {   // E_DEC_*: the fall of need n this step. r: the plain rate, np: the NEEDS option. In 16ths with the rest carried, so 3 a step can still change by 10%
@@ -47,11 +53,15 @@ static __attribute__((noinline)) int trait_mood(const Sim *s) {   // the mood po
 }
 u8 tr_pend_flag; u16 tr_pend_cool;   // a member needs traits assigned (CREATE.OVL, open(3)): main.c runs it when it is quiet
 static void tr_pend_set(void) { if (!tr_pend_flag) { tr_pend_flag = 1; if (tr_pend_cool < 24) tr_pend_cool = 24; } }   // (a short wait, so every member scanned in the same 8 steps is assigned in one load)
-static void tr_scan(Sim *s) {   // every 8th step, each Bore: a new member gets a state and is marked for assigning, a new life stage re-assigns, a name missing is filled
+int tr_names_missing(const TrState *t) {   // an assigned trait whose name is not in tr_pnm yet (the names are in CREATE.OVL: they are filled when a page that shows them opens)
+    if (t == &tr_null) return 0;
+    for (int k = 0; k < TR_SLOTS; k++) if (t->tid[k] && (t->tid[k] < TR_FIRST_EARN || t->tid[k] >= TR_FIRST_CHEAT) && !tr_names_of(t)[k][0]) return 1;
+    return 0;
+}
+static void tr_scan(Sim *s) {   // every 8th step, each Bore: a new member gets a state and is marked for assigning, a new life stage re-assigns
     if (s->tr == &tr_null) { TrState *t = tr_alloc(); if (t == &tr_null) return; s->tr = t; tr_stage_set(t, s->bore.stage); t->f |= TF_AUTO | TF_PEND; tr_pend_set(); return; }
     TrState *t = s->tr; int st = s->bore.stage;
     if (tr_stage_get(t) != st) { tr_stage_set(t, st); if (t->f & TF_AUTO) t->f |= TF_PEND; }
-    if (!(t->f & TF_PEND)) for (int k = 0; k < TR_SLOTS; k++) if (t->tid[k] && (t->tid[k] < TR_FIRST_EARN || t->tid[k] >= TR_FIRST_CHEAT) && !tr_names_of(t)[k][0]) { t->f |= TF_PEND; break; }
     if (t->f & TF_PEND) tr_pend_set();
 }
 static const u8 actHook[ACT_GATHER + 1] = { 0, E_ACT_EAT, 0, E_ACT_SLEEP, E_ACT_SHOWER, E_ACT_SIT, E_ACT_FUN, E_ACT_TALK, 0, 0, E_ACT_COFFEE, E_ACT_READ, E_ACT_RUN, E_ACT_PHONE, 0, 0, E_ACT_SWIM, 0, 0 };
@@ -64,20 +74,20 @@ static void need_gains(Sim *s, const int *snap) {   // E_GAIN_*, E_ACT_*: what a
 static int skl_of(int raw) { return SKL(raw); }
 static const u16 skOff[9] = { offsetof(Sim, skill_cook), offsetof(Sim, skill_body), offsetof(Sim, skill_fun), offsetof(Sim, skill_logic), offsetof(Sim, skill_char), offsetof(Sim, skill_creat), offsetof(Sim, skill_mech), offsetof(Sim, skill_farm), offsetof(Sim, skill_band) };
 static __attribute__((noinline)) void tr_watch(Sim *s, int si) {   // every 8th step: skill gains scaled (E_SK_*), the skill levels and the game's own numbers counted for the wishes
-    TrState *t = s->tr;
+    TrState *t = s->tr; int quiet = si != player && !(t->f & TF_BASE);   // (a member's first look takes what they came with quietly: it is not won)
     for (int k = 0; k < 9; k++) {
         int *pp = (int *)((char *)s + skOff[k]), raw = *pp;
         if (k == 8) { raw = 0; for (int b = 0; b < BS_N; b++) raw += s->skill_band[b]; }
         int d = raw - (int)t->skp[k], p = tr_pct(t, E_SK0 + k);
         if (d > 0 && d < 400 && p) { if (p < -100) p = -100; int tot = d * p + (int)t->skr[k] * (p < 0 ? -1 : 1); int x = tot / 100; t->skr[k] = (u8)ABS(tot % 100); if (x) { *pp += x; if (k < 8 && *pp < 0) *pp = 0; raw += x; } }
         t->skp[k] = (u16)MIN(raw, 65535);
-        if (k < 8) tr_ev_set(t, EV_SK_COOK + k, skl_of(raw));
+        if (k < 8) { if (quiet) tr_ev_quiet(t, EV_SK_COOK + k, skl_of(raw)); else tr_ev_set(t, EV_SK_COOK + k, skl_of(raw)); }
     }
-    { int b = 0; for (int k = 0; k < BS_N; k++) b = MAX(b, skl_of(s->skill_band[k])); tr_ev_set(t, EV_BANDLV, b); }
-    tr_ev_set(t, EV_DAYS, day_count / 5);
-    if (si != player) return;
-    if (t != &tr_null && !(t->f & TF_AUTO)) {   // the extra slots: the household's, from the wishes done and the job level
-        int wd = 0; for (int k = 0; k < 8; k++) wd += __builtin_popcount(tr_wdone[k]);
+    { int b = 0; for (int k = 0; k < BS_N; k++) b = MAX(b, skl_of(s->skill_band[k])); if (quiet) tr_ev_quiet(t, EV_BANDLV, b); else tr_ev_set(t, EV_BANDLV, b); }
+    if (quiet) tr_ev_quiet(t, EV_DAYS, day_count / 5); else tr_ev_set(t, EV_DAYS, day_count / 5);
+    if (si != player) { t->f |= TF_BASE; return; }
+    {   // the extra slots: the household's, from the wishes everyone has done and the job level
+        int wd = 0; for (int j = 0; j < nsims; j++) wd += tr_wd_count(sims[j].tr);
         int n = tr_unl_check(wd, job_level);
         if (n) { char b[32]; snprintf(b, sizeof b, "TRAIT SLOT %d UNLOCKED!", TR_BASE + tr_unl); sim_note(b); audio_voice(VOICE_WIN);
                  for (int j = 0; j < nsims; j++) if (sims[j].tr != &tr_null && (sims[j].tr->f & TF_AUTO)) { sims[j].tr->f |= TF_PEND; tr_pend_set(); } }
@@ -109,6 +119,36 @@ TrState *tr_alloc(void) {   // a pool state no Sim uses (a Bore that left frees 
         if (!used) { tr_clear(p); return p; } }
     return &tr_null;
 }
-void tr_new_life(void) { memset(tr_pool, 0, sizeof tr_pool); memset(tr_ev_a, 0, sizeof tr_ev_a); memset(tr_pnm, 0, sizeof tr_pnm); tr_unl = 0; memset(tr_wait, 0, sizeof tr_wait); tr_pend_flag = 0; tr_pend_cool = 0; tr_stage_p = 0; tr_staged = 0; tr_cash_prev = -1; memset(tr_wdone, 0, sizeof tr_wdone); tr_earned = 0; }
+void tr_new_life(void) { memset(tr_pool, 0, sizeof tr_pool); memset(tr_pnm, 0, sizeof tr_pnm); tr_unl = 0; memset(tr_wait, 0, sizeof tr_wait); tr_pend_flag = 0; tr_pend_cool = 0; tr_stage_p = 0; tr_staged = 0; tr_cash_prev = -1; tr_earned = 0; }
 void sim_cheat_opt(int on) { tr_cheat_opt = (u8)on; for (int i = 0; i < nsims; i++) tr_cheat_refresh(sims[i].tr, on); }
 void tr_take_stage(Sim *s) { if (!tr_staged) { if (s->tr == &tr_null) s->tr = tr_alloc(); } else { tr_staged = 0; if (tr_stage_p) { s->tr = tr_stage_p; tr_stage_p = 0; tr_cheat_refresh(s->tr, tr_cheat_opt); } } if (s->tr != &tr_null) tr_stage_set(s->tr, s->bore.stage); }
+// ---- a member's traits, assigned from their personality (traits_auto.c, resident: no disc load, no hitch). main.c calls this when it is quiet (tr_pend_flag). The names go in later (CREATE.OVL, tr_names_fill). ----
+static const Sim *tr_par_of(const Sim *s, int k) { int u = s->par[k]; if (!u) return 0; for (int i = 0; i < nsims; i++) if (sims[i].uid == u && sims[i].tr != &tr_null) return &sims[i]; return 0; }
+void tr_pers_of(const Sim *s, const Sim *const pa[2], TrPers *p) {   // the personality the mapping reads: a child's bars lean to the parents' in the household
+    int np = (pa[0] != 0) + (pa[1] != 0);
+    for (int b = 0; b < TR_N; b++) { int v = s->bore.tr[b], sum = 0; for (int q = 0; q < 2; q++) if (pa[q]) sum += pa[q]->bore.tr[b];
+        p->bar[b] = (u8)(s->bore.stage < AG_ADULT && np ? (v * 2 + sum * 2 / np) / 4 : v); if (p->bar[b] > 10) p->bar[b] = 10; }
+    p->sign = (u8)look_sign_of(&s->bore); p->asp = s->bore.asp; p->stage = s->bore.stage; p->seed = tr_name_seed(s->bore.first, s->bore.last);
+}
+void tr_assign_run(void) {
+    static u16 inh[2 * TR_SLOTS];
+    for (int pass = 0; pass < 2; pass++) for (int i = 0; i < nsims; i++) {   // pass 0: those with no parent waiting to be assigned; pass 1: the rest (a child takes after its parents)
+        Sim *s = &sims[i]; TrState *t = s->tr; if (t == &tr_null || !(t->f & TF_PEND)) continue;
+        const Sim *pa[2] = { tr_par_of(s, 0), tr_par_of(s, 1) };
+        if (pass == 0 && ((pa[0] && (pa[0]->tr->f & TF_PEND)) || (pa[1] && (pa[1]->tr->f & TF_PEND)))) continue;
+        int added = 0, had = 0; for (int k = 0; k < TR_SLOTS; k++) had += t->tid[k] != 0;
+        if (t->f & TF_AUTO) {
+            TrPers p; tr_pers_of(s, pa, &p);
+            int ninh = 0; for (int q = 0; q < 2; q++) if (pa[q] && s->bore.stage < AG_ADULT) for (int k = 0; k < TR_SLOTS; k++) { int id = pa[q]->tr->tid[k]; if (id && id < TR_FIRST_EARN) inh[ninh++] = (u16)id; }
+            added = tr_auto_pick(&p, inh, ninh, t->tid, tr_nslots(s->bore.stage));
+            tr_rebuild(t);
+            if (!t->wish && s->bore.stage >= AG_CHILD) tr_wish_pick(t, tr_auto_wish(&p, t));   // their own wish, from their personality
+        }
+        t->f &= (u8)~TF_PEND;
+        if (added && (day_count || clock_min > 8 * 60 + 30)) { char b[40]; if (had) snprintf(b, sizeof b, "%s GOT %s", s->bore.first, added > 1 ? "NEW TRAITS" : "A NEW TRAIT"); else snprintf(b, sizeof b, "%s GOT %d TRAITS", s->bore.first, added); sim_note(b); }
+        goto more;   // (one member a frame: the pick costs a few milliseconds)
+    }
+more:
+    tr_pend_flag = 0;
+    for (int i = 0; i < nsims; i++) if (sims[i].tr != &tr_null && (sims[i].tr->f & TF_PEND)) tr_pend_flag = 1;   // (a won trait that needs its effects made again, while this ran)
+}

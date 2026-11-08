@@ -9,12 +9,14 @@
 #define TR_BIG
 #endif
 #include "../src/traits.h"
+#include "../src/persona.h"
 #include <stdio.h>
 #include <string.h>
 
 static int toasts, rewards, last_rk;
 void tr_toast(const char *s) { (void)s; toasts++; }
 void tr_reward(TrState *t, int kind, int arg, int wish) { (void)t; (void)arg; (void)wish; rewards++; last_rk = kind; }
+static int won_n, won_last; void tr_won(TrState *t, int r) { (void)t; won_n++; won_last = r; }
 
 static int probe(const TrState *t, int h) {   // the number the hook changes, through the game's accessor; returns (new - baseline)
     switch (tr_mode[h]) {
@@ -71,8 +73,7 @@ int main(void) {
     // the wishes: each has a real counter, a goal, a reward; completing it pays once
     int wok = 0;
     for (int w = 1; w <= WISH_N; w++) {
-        memset(tr_wdone, 0, sizeof tr_wdone);
-        static TrState t; tr_clear(&t); tr_stage_set(&t, 3); memset(tr_ev_a, 0, sizeof tr_ev_a); rewards = 0;
+        static TrState t; tr_clear(&t); tr_stage_set(&t, 3); rewards = 0;
         const WishDef *d = &tr_wish[w];
         int good = d->ev > 0 && d->ev < EV_N && d->thr > 0 && d->rk > 0 && tr_wish_name[w][0] && tr_wish_desc[w][0];
         tr_wish_pick(&t, w);
@@ -80,7 +81,7 @@ int main(void) {
         if (tr_ev_abs[d->ev]) tr_ev_set(&t, d->ev, d->thr - 1 > 0 ? d->thr - 1 : 0); else tr_ev(&t, d->ev, d->thr - 1);
         if (d->thr > 1 && rewards) good = 0;               // not done one short of the goal
         if (tr_ev_abs[d->ev]) tr_ev_set(&t, d->ev, d->thr); else tr_ev(&t, d->ev, 1);
-        if (rewards != 1 || !(tr_wdone[w >> 3] & (1 << (w & 7)))) good = 0;
+        if (rewards != 1 || !(t.wd[w >> 3] & (1 << (w & 7)))) good = 0;
         tr_ev(&t, d->ev, 5);                                  // and once only
         if (rewards != 1) good = 0;
         if (d->rk == RK_TRAIT && (d->ra < TR_FIRST_RWD || d->ra >= TR_FIRST_RWD + TR_NRWD)) good = 0;
@@ -110,15 +111,15 @@ int main(void) {
         tr_unl = 0;
     }
     {   // a won trait goes into the first free open slot; full: -1; a locked slot is not used; an auto member counts nothing
-        static TrState t; tr_clear(&t); tr_stage_set(&t, 3); tr_unl = 0; memset(tr_ev_a, 0, sizeof tr_ev_a);
+        static TrState t; tr_clear(&t); tr_stage_set(&t, 3); tr_unl = 0;
         for (int k = 0; k < 6; k++) t.tid[k] = (u16)(1 + k);
         CHK(gr_ok, gr_tot, tr_give(&t, TR_FIRST_EARN) == -1 && t.tid[6] == 0, "a won trait must not use a locked slot");
         tr_unl = 1; CHK(gr_ok, gr_tot, tr_give(&t, TR_FIRST_EARN) == 1 && t.tid[6] == TR_FIRST_EARN, "a won trait into the unlocked slot 7");
         CHK(gr_ok, gr_tot, tr_give(&t, TR_FIRST_EARN) == 0, "no second copy");
-        static TrState a; tr_clear(&a); a.f |= TF_AUTO; tr_stage_set(&a, 3); memset(tr_ev_a, 0, sizeof tr_ev_a);
-        tr_ev(&a, EV_COOKED, 50); CHK(gr_ok, gr_tot, tr_ev_a[EV_COOKED] == 0 && !a.tid[0], "an assigned member neither counts nor wins");
+        static TrState a; tr_clear(&a); a.f |= TF_AUTO; tr_stage_set(&a, 3);
+        tr_ev(&a, EV_COOKED, 50); CHK(gr_ok, gr_tot, a.ev[EV_COOKED] == 50 && t.ev[EV_COOKED] == 0, "an assigned member counts its own events, not the others'");
         // a won trait that found every slot full waits (tr_wait) and comes in when a slot opens: not before, and once
-        static TrState w; tr_clear(&w); tr_stage_set(&w, 3); tr_unl = 0; memset(tr_wait, 0, sizeof tr_wait); memset(tr_ev_a, 0, sizeof tr_ev_a);
+        static TrState w; tr_clear(&w); tr_stage_set(&w, 3); tr_unl = 0; memset(tr_wait, 0, sizeof tr_wait);
         for (int k = 0; k < 6; k++) w.tid[k] = (u16)(1 + k);
         tr_ev(&w, tr_earn[0].ev, tr_earn[0].thr);
         CHK(gr_ok, gr_tot, tr_wait[0] & 1 && w.tid[6] == 0, "a full Bore keeps the won trait waiting");
@@ -179,19 +180,119 @@ int main(void) {
         u16 ch2[TR_SLOTS] = { 0 }; tr_auto_pick(&(TrPers){ { 5, 5, 5, 5, 5 }, 0, 5, 1, 4242u }, par, 6, ch2, 3);
         CHK(ag_ok, ag_tot, !memcmp(ch, ch2, sizeof ch), "inheritance is deterministic");
     }
-    bad += (sl_tot - sl_ok) + (un_tot - un_ok) + (au_tot - au_ok) + (cp_tot - cp_ok) + (ef_tot - ef_ok) + (rt_tot - rt_ok) + (gr_tot - gr_ok) + (ag_tot - ag_ok);
+    // ---- a town person's personality, and the household's own state (docs/TRAITS.md, "Town people" and "Everyone has their own") ----
+    int pe_ok = 0, pe_tot = 0, st_ok = 0, st_tot = 0, hh_ok = 0, hh_tot = 0;
+    {   // persona_of: from the id alone, the same every time; five bars that add up to 25, between 0 and 10; the sign is what the bars say (so the Bore made on move-in reads the same sign); kids want GROW UP
+        int signn[12] = { 0 }; static u8 seenb[4096][5]; int nb = 0;
+        for (u32 seed = 1; seed <= 60000; seed++) for (int stage = 1; stage <= 3; stage += 2) {
+            Persona a, b; persona_of(seed * 2654435761u, stage, &a); persona_of(seed * 2654435761u, stage, &b);
+            int sum = 0, rng = 1; for (int i = 0; i < 5; i++) { sum += a.bar[i]; rng &= a.bar[i] <= 10; }
+            CHK(pe_ok, pe_tot, !memcmp(&a, &b, sizeof a), "persona not stable for %u", seed);
+            CHK(pe_ok, pe_tot, sum == 25 && rng, "bars %d %d %d %d %d (sum %d)", a.bar[0], a.bar[1], a.bar[2], a.bar[3], a.bar[4], sum);
+            CHK(pe_ok, pe_tot, persona_sign(a.bar) == a.sign && a.sign < 12, "sign %d is not what the bars say (%d)", a.sign, persona_sign(a.bar));
+            CHK(pe_ok, pe_tot, stage < 2 ? a.asp == 5 : a.asp < 5, "aspiration %d at stage %d", a.asp, stage);
+            CHK(pe_ok, pe_tot, a.ltw < 4, "ltw");
+            if (stage == 3) { signn[a.sign]++; int have = 0; for (int k = 0; k < nb; k++) if (!memcmp(seenb[k], a.bar, 5)) { have = 1; break; } if (!have && nb < 4096) memcpy(seenb[nb++], a.bar, 5); }
+        }
+        int minn = 1 << 30; for (int i = 0; i < 12; i++) if (signn[i] < minn) minn = signn[i];
+        CHK(pe_ok, pe_tot, minn > 60000 / 12 / 2, "every sign appears (the rarest %d of 60000)", minn);
+        CHK(pe_ok, pe_tot, nb > 150, "people differ inside a sign: %d different bar sets", nb);
+        printf("persona: 60000 ids x 2 stages stable; the rarest sign %d of 60000; %d different bar sets\n", minn, nb);
+    }
+    {   // the same person, the same traits: in town (their personality straight from the id) and on move-in (the Bore made from it: bars copied, the sign read back from the bars, the aspiration)
+        for (u32 seed = 7; seed < 2007; seed++) {
+            Persona p; persona_of(seed * 40503u, 3, &p);
+            TrPers town = { { p.bar[0], p.bar[1], p.bar[2], p.bar[3], p.bar[4] }, p.sign, p.asp, 3, seed * 977u };
+            u8 bore_tr[5]; for (int i = 0; i < 5; i++) bore_tr[i] = p.bar[i];             // cit_persona: the Bore's bars
+            TrPers move = { { bore_tr[0], bore_tr[1], bore_tr[2], bore_tr[3], bore_tr[4] }, (u8)persona_sign(bore_tr), p.asp, 3, seed * 977u };   // tr_pers_of: the sign read back (look_sign_of)
+            u16 a[TR_SLOTS] = { 0 }, b[TR_SLOTS] = { 0 };
+            tr_auto_pick(&town, 0, 0, a, 6); tr_auto_pick(&move, 0, 0, b, 6);
+            CHK(st_ok, st_tot, !memcmp(a, b, sizeof a) && a[5], "town and move-in traits differ for %u", seed);
+            TrState t; tr_clear(&t); tr_stage_set(&t, 3); t.f |= TF_AUTO; int w1 = tr_auto_wish(&town, &t), w2 = tr_auto_wish(&move, &t);
+            CHK(st_ok, st_tot, w1 == w2 && w1 > 0 && tr_ev_mem(tr_wish[w1].ev), "town and move-in wish differ for %u (%d %d)", seed, w1, w2);
+        }
+        // the very same person built twice by different routes lands on the same set of 6 traits for each of 12 signs x 5 aspirations
+        for (int sg = 0; sg < 12; sg++) for (int asp = 0; asp < 5; asp++) {
+            TrPers t1 = { { 0 }, (u8)sg, (u8)asp, 3, 99u + (u32)sg }; for (int i = 0; i < 5; i++) t1.bar[i] = pers_sign_tr[sg][i];
+            u8 br[5]; for (int i = 0; i < 5; i++) br[i] = pers_sign_tr[sg][i];
+            CHK(st_ok, st_tot, persona_sign(br) == sg, "sign %d table is not nearest to itself", sg);
+        }
+    }
+    {   // a household of eight: every member has their own state, counters, earned traits and wish
+        static TrState hh[8]; u16 inh[2]; (void)inh; tr_unl = 0; memset(tr_wait, 0, sizeof tr_wait);
+        static const u8 stg[8] = { 3, 3, 2, 1, 4, 3, 3, 1 };
+        u16 first_wish[8];
+        for (int m = 0; m < 8; m++) {
+            TrState *t = &hh[m]; tr_clear(t); t->f |= TF_AUTO; tr_stage_set(t, stg[m]);
+            Persona p; persona_of(0x1234567u + (u32)m * 7919u, stg[m], &p);
+            TrPers tp = { { p.bar[0], p.bar[1], p.bar[2], p.bar[3], p.bar[4] }, p.sign, p.asp, (u8)stg[m], tr_name_seed("MEM", "BER") + (u32)m };
+            tr_auto_pick(&tp, 0, 0, t->tid, tr_nslots(stg[m])); tr_rebuild(t);
+            if (stg[m] >= 1) tr_wish_pick(t, tr_auto_wish(&tp, t));
+            first_wish[m] = t->wish;
+            int ns = tr_nslots(stg[m]), n = 0; for (int k = 0; k < TR_SLOTS; k++) n += t->tid[k] != 0;
+            CHK(hh_ok, hh_tot, n == ns, "member %d has %d traits, wanted %d", m, n, ns);
+            CHK(hh_ok, hh_tot, stg[m] < 1 || (t->wish && tr_ev_mem(tr_wish[t->wish].ev)), "member %d has no countable personal wish", m);
+        }
+        int diff = 0; for (int m = 1; m < 8; m++) diff += memcmp(hh[m].tid, hh[0].tid, sizeof hh[0].tid) != 0;
+        CHK(hh_ok, hh_tot, diff >= 6, "members have their own trait sets (%d of 7 differ from the first)", diff);
+        // counters are each member's own
+        for (int m = 0; m < 8; m++) tr_ev(&hh[m], EV_COOKED, m + 1);
+        for (int m = 0; m < 8; m++) CHK(hh_ok, hh_tot, hh[m].ev[EV_COOKED] == m + 1, "member %d counter %d, wanted %d", m, hh[m].ev[EV_COOKED], m + 1);
+        // an earned trait: the one who reaches the count wins it (taking the weakest assigned trait's place), nobody else
+        int goal_i = -1; for (int i = 0; i < TR_NEARN; i++) if (tr_earn[i].ev == EV_COOKED && tr_sname(i)[0]) { goal_i = i; break; }
+        if (goal_i >= 0) {
+            int thr = tr_earn[goal_i].thr, id = TR_FIRST_EARN + goal_i; won_n = 0;
+            for (int m = 0; m < 8; m++) for (int k = 0; k < TR_SLOTS; k++) hh[m].tid[k] = hh[m].tid[k] == (u16)id ? 0 : hh[m].tid[k];   // (not one of them already has it from the personality)
+            for (int m = 0; m < 8; m++) { tr_rebuild(&hh[m]); int ns = tr_nslots(stg[m]); for (int k = 0; k < ns; k++) if (!hh[m].tid[k]) { u16 tmp[TR_SLOTS]; memcpy(tmp, hh[m].tid, sizeof tmp); (void)tmp; } }
+            u16 keep[TR_SLOTS]; memcpy(keep, hh[2].tid, sizeof keep); u16 last_reg = 0; int lk = -1; { int ns = tr_nslots(stg[2]); for (int k = ns - 1; k >= 0; k--) if (hh[2].tid[k] && hh[2].tid[k] < TR_FIRST_EARN) { last_reg = hh[2].tid[k]; lk = k; break; } }
+            tr_ev(&hh[2], EV_COOKED, thr);   // member 2 (a teen) cooks enough
+            int has2 = 0; for (int k = 0; k < TR_SLOTS; k++) has2 |= hh[2].tid[k] == id;
+            int others = 0; for (int m = 0; m < 8; m++) if (m != 2) for (int k = 0; k < TR_SLOTS; k++) others |= hh[m].tid[k] == id;
+            CHK(hh_ok, hh_tot, has2 && !others, "the earned trait goes to the member who earned it (has %d, others %d)", has2, others);
+            CHK(hh_ok, hh_tot, !(hh[2].f & TF_PEND) || lk >= 0, "a full member takes the weakest trait's place and is marked to rebuild");
+            CHK(hh_ok, hh_tot, won_n >= 1 && won_last == 1, "the win was told");
+            // after the game's rebuild the effects hold the new trait and not the old one
+            if (lk >= 0) { CHK(hh_ok, hh_tot, hh[2].tid[lk] == id && last_reg != id, "the weakest assigned trait (slot %d) was replaced", lk); tr_rebuild(&hh[2]); hh[2].f &= (u8)~TF_PEND;
+              int moved = 0; for (int k = 0; k < 3; k++) if (tr_small[goal_i][k]) moved |= probe(&hh[2], tr_small[goal_i][k]) != 0;
+              CHK(hh_ok, hh_tot, moved, "the earned trait's effect is on after the rebuild"); }
+            (void)keep;
+            memcpy(hh[2].tid, keep, sizeof keep); tr_rebuild(&hh[2]);   // back as it was for the rest
+        }
+        // a personal wish: done by the member whose it is, paid once, the next one is chosen from the personality and is a new one
+        { int m = 0; TrState *t = &hh[m]; int w = t->wish; rewards = 0;
+          if (w) {
+              const WishDef *d = &tr_wish[w]; int already = t->ev[d->ev];
+              if (tr_ev_abs[d->ev]) tr_ev_set(t, d->ev, d->thr); else tr_ev(t, d->ev, d->thr - (already - t->wbase > 0 ? already - t->wbase : 0) + 1);
+              CHK(hh_ok, hh_tot, rewards == 1, "a member's wish pays once (%d)", rewards);
+              CHK(hh_ok, hh_tot, (t->wd[w >> 3] >> (w & 7) & 1) && !t->wish && (t->f & TF_PEND), "the member's wish is marked done and the next one waits for the personality");
+              int others = 0; for (int o = 1; o < 8; o++) others |= (hh[o].wd[w >> 3] >> (w & 7)) & 1;
+              CHK(hh_ok, hh_tot, !others, "nobody else's wish was done");
+              Persona p; persona_of(0x1234567u, stg[0], &p); TrPers tp = { { p.bar[0], p.bar[1], p.bar[2], p.bar[3], p.bar[4] }, p.sign, p.asp, (u8)stg[0], 0 };
+              int nw2 = tr_auto_wish(&tp, t); CHK(hh_ok, hh_tot, nw2 != w && nw2 > 0, "the next wish (%d) is a new one (done %d)", nw2, w);
+          } }
+        // the whole household's progress: every state is its own bytes; a copy of all of them (what the save keeps, rle packed per member) is identical
+        { static TrState back[8]; memcpy(back, hh, sizeof hh); int same = !memcmp(back, hh, sizeof hh); CHK(hh_ok, hh_tot, same, "save round trip");
+          for (int m = 0; m < 8; m++) { static TrState old; memset(&old, 0, sizeof old); memcpy(&old, &hh[m], TR_SIZE_V51);   // an old (version 50 or 51) save keeps only the first part: the counters start at zero
+            CHK(hh_ok, hh_tot, !memcmp(old.tid, hh[m].tid, sizeof old.tid) && old.ev[EV_COOKED] == 0, "an old state loads as the first part"); } }
+        CHK(hh_ok, hh_tot, sizeof(TrState) == TR_SIZE_V51 + EV_N + 8 && TR_SIZE_V51 == 180, "TrState is the old 180 bytes + counters + wishes (%d, %d)", (int)sizeof(TrState), (int)TR_SIZE_V51);
+        printf("household: 8 members, own traits (%d differ), own counters, earned and personal wish checked\n", diff);
+    }
+    bad += (pe_tot - pe_ok) + (st_tot - st_ok) + (hh_tot - hh_ok) + (sl_tot - sl_ok) + (un_tot - un_ok) + (au_tot - au_ok) + (cp_tot - cp_ok) + (ef_tot - ef_ok) + (rt_tot - rt_ok) + (gr_tot - gr_ok) + (ag_tot - ag_ok);
     printf("\n%-10s %6s %6s\n", "group", "traits", "pass");
     for (int g = 0; g < 4; g++) printf("%-10s %6d %6d\n", gn[g], tot[g], ok[g]);
     printf("%-10s %6d %6d   (reaching the count grants the trait)\n", "earn-run", etot, eok);
     printf("%-10s %6d %6d   (counter, goal, reward once)\n", "wishes", WISH_N, wok);
     printf("%-10s %6d %6d   (6 slots, 1/3/4 for the young, unlocked from TEEN)\n", "slots", sl_tot, sl_ok);
     printf("%-10s %6d %6d   (in order, wishes and job level, no repeat)\n", "unlocks", un_tot, un_ok);
-    printf("%-10s %6d %6d   (a won trait: first open slot, never a locked one, assigned members count nothing)\n", "won-slots", gr_tot, gr_ok);
+    printf("%-10s %6d %6d   (a won trait: first open slot, never a locked one, each member counts their own)\n", "won-slots", gr_tot, gr_ok);
     printf("%-10s %6d %6d   (same person, same traits; full; SOCIAL for the sociable; people differ)\n", "assign", au_tot, au_ok);
     printf("%-10s %6d %6d   (no opposites, no duplicates, 3 per category at most, no cheats)\n", "compat", cp_tot, cp_ok);
     printf("%-10s %6d %6d   (every assigned trait moves a number through the game's accessor)\n", "wired", ef_tot, ef_ok);
     printf("%-10s %6d %6d   (the ids alone give the same effects: what the save keeps)\n", "roundtrip", rt_tot, rt_ok);
     printf("%-10s %6d %6d   (growing up keeps and adds; a child inherits one or two)\n", "growth", ag_tot, ag_ok);
+    printf("%-10s %6d %6d   (a town person's personality: the same from the id, five bars add up to 25, the sign is the bars', all 12 signs, kids GROW UP)\n", "persona", pe_tot, pe_ok);
+    printf("%-10s %6d %6d   (the same person gives the same traits in town and the day they move in)\n", "same-trait", st_tot, st_ok);
+    printf("%-10s %6d %6d   (8 members: own state, own counters, own earned traits, own wish, save round trip)\n", "household", hh_tot, hh_ok);
     int fail = bad + (etot - eok) + (WISH_N - wok);
     printf("%s: %d failures\n", fail ? "FAIL" : "PASS", fail);
     return fail != 0;

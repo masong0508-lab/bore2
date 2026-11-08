@@ -30,6 +30,7 @@ static const OvlHead *ovl;   // the overlay that is in (KINGDOM.OVL, ARCADE.OVL)
 #include "island.h"
 #include "save.h"
 #include "mcard.h"
+#include "persona.h"
 #include "story.h"
 #include "skate.h"
 #include "traffic.h"
@@ -658,7 +659,7 @@ static void hud_life(void) {
     }
     if (story_id && story_ch < 5 && world_zone != ZONE_ISLAND) {   // the story: this chapter's next task, under the want
         char t[48]; if (story_hud(t)) { int w = ui_tw(1, t) + 22; ui_card(312 - w, 56, w, 14); ui_icon(316 - w, 57, IC_BOOK, UI_BLUE2); ui_text(330 - w, 59, 1, t, UI_INK); } }
-    { extern int citizens_card_on(void); feed_draw(citizens_card_on() ? 86 : 38); }   // (under the person card when it shows)
+    { extern int citizens_card_on(void); feed_draw(citizens_card_on() ? 108 : 38); }   // (under the person card when it shows)
     if (venue_t && VSync(-1) - venue_t < 240) venue_draw(); else venue_t = 0;
     if (world_zone == ZONE_ISLAND) {   // the castaway's stores, and the secrets found
         int x = 218, y = 57; static const s8 ic[4] = { IC_WOOD, IC_STONE, IC_SPROUT, IC_FOOD };
@@ -779,7 +780,7 @@ static void life_update(int steps) {
     if (dog_want_name) { dog_want_name = 0; name_open(dog_edit.name, 12, "NAME YOUR DOG", 0); return; }   // (the dog maker's typing screen; then it comes back)
     if (dog_resume && !sim_want_dog) { dog_resume = 0; sim_want_dog = 3; }
     if (sim_want_resort) { static const char *const pf_[3] = { "PARADISE.OVL", "FARM.OVL", "SKYSEA.OVL" }; int w_ = sim_want_resort - 1, a_ = w_ & 3; sim_want_resort = 0; if ((ovl = ovl_load(pf_[(w_ >> 2) % 3]))) { ovl->open(a_); state = ST_SPACE; } return; }   // (ISLAND PARADISE: a file of its own on the disc)
-    if (tr_pend_flag && !tr_pend_cool && nsims) { tr_pend_flag = 0; tr_pend_cool = 600; if ((ovl = ovl_load("CREATE.OVL"))) { ovl->open(3); state = ST_SPACE; } return; }   // (a new housemate, a birthday or an unlocked slot: their traits are assigned from their personality, CREATE.OVL open(3))
+    if (tr_pend_flag && !tr_pend_cool && nsims) tr_assign_run();   // (a new housemate, a birthday, an unlocked slot or a won trait: their traits are assigned from their personality, one member a frame, resident: no disc load, no hitch)
     if (sim_want_space) { sim_want_space = 0; if ((ovl = ovl_load("SPACE.OVL"))) { ovl->open(0); state = ST_SPACE; } return; }
     if (sim_want_prison) { int n = sim_want_prison; sim_want_prison = 0; if ((ovl = ovl_load("PRISON.OVL"))) { ovl->open(n); state = ST_PRISON; } return; }   // (HARD TIME: its own file on the disc)
     if (sim_want_dog) { int rs = sim_want_dog == 3; sim_want_dog = 0; if ((ovl = ovl_load("DOG.OVL"))) { ovl->open(rs); state = ST_DOG; } return; }   // (CREATE A DOG: its own file on the disc)
@@ -1456,7 +1457,7 @@ static void dir_draw(void) {
         ui_icon_disc(22, y + 9, 18, IC_ARROW, on ? UI_BLUE : UI_RGB(150, 166, 186), UI_WHITE);
         pop_first(p, fn);
         sprintf(b, "%s %s", fn, sur); ui_fit_box(36, y - 1, 150, 11, TX_LEFT | TX_MID, b, on ? UI_BLUE2 : UI_INK);
-        sprintf(b, "%s, %s", ag[pop_per[p].stage % 5], pop_trait_name(pop_per[p].trait)); ui_text_box(160, y - 1, 140, 11, TX_RIGHT | TX_MID, 1, b, UI_SOFT);
+        { Persona pe_; persona_of(pop_per[p].seed, pop_per[p].stage, &pe_); sprintf(b, "%s, %s", ag[pop_per[p].stage % 5], look_sign_name(pe_.sign)); } ui_text_box(160, y - 1, 140, 11, TX_RIGHT | TX_MID, 1, b, UI_SOFT);
         char jb[48], db[48]; pop_job_name(p, jb); pop_doing(p, db);
         int dw = ui_tw(1, db);
         if (36 + ui_tw(1, jb) + 8 > 300 - dw) { char *c = strchr(jb, ','); if (c) *c = 0; }   // (no room for both: the job without its place)
@@ -3384,6 +3385,7 @@ static const char *const panelTab[6] = { "MOOD", "WANTS", "SKILLS", "PEOPLE", "J
 static void panel_update(void) {
     if (PRESSED(PAD_R1) || NAVP(PAD_RIGHT)) panel_tab = (panel_tab + 1) % 6;
     if (PRESSED(PAD_L1) || NAVP(PAD_LEFT)) panel_tab = (panel_tab + 5) % 6;
+    if (panel_tab == 5) { int nm = 0; for (int i = 0; i < nsims; i++) nm |= tr_names_missing(sims[i].tr); if (nm) { loading("TRAIT NAMES", 50); if ((ovl = ovl_load("CREATE.OVL"))) { ovl->open(3); ovl = 0; ovl_leave(); } } }   // (the names of assigned traits are in CREATE.OVL: they are read in once, behind a loading frame, when the page that shows them opens)
     if (panel_tab == 5 && PRESSED(PAD_CROSS)) { if ((ovl = ovl_load("CREATE.OVL"))) { ovl->open(2); state = ST_SPACE; } else audio_voice(VOICE_NAH); return; }   // (the full list of traits and wishes: the page in CREATE.OVL)
     if (PRESSED(PAD_SELECT)) sw_open(ST_PANEL);
     if (PRESSED(PAD_CIRCLE)) state = ST_PAUSE;
@@ -3504,13 +3506,10 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
             else if (k < ns) { ui_round(x + 3, y, 9, 9, 3, UI_CARD2, UI_CARD2, 0); ui_textfit(x + 16, y, 128, "OPEN SLOT", UI_SOFT); }
             else { ui_icon(x, y - 2, IC_LOCK, UI_LINE); ui_textfit(x + 16, y, 128, k < TR_BASE ? "WHEN OLDER" : st < TR_UNL_STAGE || k - TR_BASE < tr_unl ? "WHEN A TEEN" : tr_unl_text[k - TR_BASE], UI_SOFT); }
         }
-        if (au) { ui_section(12, y0 + 84, 294, "NOT EDITABLE");
-          ui_text(12, y0 + 98, 1, "THEIR TRAITS COME FROM THEIR PERSONALITY", UI_SOFT);
-          ui_hints(160, y0 + 118, "X ALL TRAITS|L1 R1 TAB", 1); }
-        else { int need = 0, pr = tr_wish_prog(tt, &need); ui_section(12, y0 + 84, 294, "LIFETIME WISH");
+        { int need = 0, pr = tr_wish_prog(tt, &need); ui_section(12, y0 + 84, 294, au ? "THEIR WISH (FROM THEIR PERSONALITY)" : "LIFETIME WISH");
           if (need) { ui_bar(12, y0 + 98, 200, 9, MIN(100, 100 * pr / need), UI_GREEN); sprintf(b, "%d OF %d", MIN(pr, need), need); ui_text(220, y0 + 98, 1, b, UI_INK); }
-          else ui_text(12, y0 + 98, 1, "NO WISH CHOSEN YET", UI_SOFT);
-          ui_hints(160, y0 + 118, "X ALL TRAITS AND WISHES|L1 R1 TAB", 1); }
+          else ui_text(12, y0 + 98, 1, au ? (st < AG_CHILD ? "NO WISH UNTIL THEY ARE A CHILD" : "NO WISH RIGHT NOW") : "NO WISH CHOSEN YET", UI_SOFT);
+          ui_hints(160, y0 + 118, au ? "X ALL TRAITS|L1 R1 TAB" : "X ALL TRAITS AND WISHES|L1 R1 TAB", 1); }
     } else if (kid) {   // SCHOOL: the grade, today at school, the homework, the report card
         int g = s->grade, sd = clock_day < 5 && day_count > 0;   // (no school on the day you move in)
         u32 gc = g >= 85 ? UI_GREEN : g >= 70 ? UI_RGB(70, 176, 238) : g >= 55 ? UI_AMBER : UI_RED;
@@ -4506,8 +4505,9 @@ static void title_update(void) {
 #endif
         life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 #ifdef AUTO_TR   // (test builds: AUTO_TR bits: 1 three wishes done, 2 job level 5, 4 ten wishes done, 8 a teenager moves in, 16 slot 7 unlocked by hand)
-        { if (AUTO_TR & 1) tr_wdone[0] |= 0x0e; if (AUTO_TR & 4) { tr_wdone[0] |= 0xfe; tr_wdone[1] |= 0x07; } if (AUTO_TR & 2) job_level = 5; if (AUTO_TR & 16) tr_unl = 1;
-          if (AUTO_TR & 8) { Bore b; look_default(&b); b.stage = AG_TEEN; look_random(&b); sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); } }
+        { u8 *wd_ = sims[player].tr->wd; if (AUTO_TR & 1) wd_[0] |= 0x0e; if (AUTO_TR & 4) { wd_[0] |= 0xfe; wd_[1] |= 0x07; } if (AUTO_TR & 2) job_level = 5; if (AUTO_TR & 16) tr_unl = 1;
+          if (AUTO_TR & 8) { Bore b; look_default(&b); b.stage = AG_TEEN; look_random(&b); sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); }
+          if (AUTO_TR & 32) for (int k = 0; k < 7; k++) { Bore b; look_default(&b); b.stage = (u8)(k == 0 ? AG_ELDER : k == 3 ? AG_CHILD : k == 5 ? AG_BABY : k == 4 ? AG_TEEN : AG_ADULT); look_random(&b); sim_add(&b, sim_tile_x(&sims[player]) + (k & 3), sim_tile_y(&sims[player]) + 1 + (k >> 2), 1); } }   // (32: a household of eight)
 #endif
 #ifdef CIT_KNOWN
         { int n = 0; for (int p = 0; p < pop_nper; p += CIT_KNOWN) { pop_per[p].met = 1; pop_per[p].rel = (s8)(10 + n % 70); n++; } pop_known_rebuild(); }   // (test builds: every CIT_KNOWNth person in SAN BOREAS knows you already)

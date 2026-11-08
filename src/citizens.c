@@ -12,6 +12,7 @@
 #include "crowd.h"
 #include "pop.h"
 #include "bigmap.h"
+#include "persona.h"
 
 #define LIVE_MAX  6                 // civilians drawn live in 3D at once (the nearest); everyone else is a sprite of the same model
 int cit_live_max = LIVE_MAX, cit_maxdraw = 64, cit_sprite_rate = 1;   // (the options menu: live ones, the crowd's size, sprite refresh 0 slow 1 normal 2 fast)
@@ -81,6 +82,9 @@ static int party_on, party_left, party_cx, party_cy, party_in, party_spx, party_
 #define PARTY_MAX 60
 static u8 party_g[PARTY_MAX], party_sx[PARTY_MAX], party_sy[PARTY_MAX];
 static int tick, pl_hp = 100, pl_cd, cur = -1, fight_on, moved_flag;
+#ifdef AUTO_CARD
+int dbg_cardname;
+#endif
 static u32 crng = 0x9E3779B9u;
 static char pie_title[NAME_LEN + 2];
 static u8 pie_code[8]; static int pie_c = -1;
@@ -165,7 +169,14 @@ COLD static const char *chat_line(const Cit *c) {
 }
 
 // ---- bodies ----------------------------------------------------------------------------------------
-COLD static void cit_bore(Bore *b, const Cit *c) {   // the same person, every time, from the seed (b may already own its face textures)
+static void cit_persona(Bore *b, u32 seed) {   // their personality, from their seed alone (persona.c): the same in town, on their card and the day they move in
+    Persona p; persona_of(seed, b->stage, &p);
+    for (int i = 0; i < TR_N; i++) b->tr[i] = p.bar[i];
+    b->asp = p.asp; b->ltw = p.ltw;
+}
+COLD static void cit_bore0(Bore *b, const Cit *c);
+COLD static void cit_bore(Bore *b, const Cit *c) { cit_bore0(b, c); cit_persona(b, c->seed); }   // the same person, every time, from the seed (b may already own its face textures)
+COLD static void cit_bore0(Bore *b, const Cit *c) {
     memset(b->look, 0, sizeof b->look);
     b->stage = c->stage;
     if (c->pid != NOPID) { const u8 *lk = pop_custom_look(c->pid, b->first, b->last);   // one of yours who moved out: their own looks and names
@@ -1664,6 +1675,10 @@ COLD void citizens_update(int steps) {   // (built small: the work is in step_on
 #endif
     (void)calls0;
     cur = find_target_l(lv, nlv);   // (a party guest who came in from another zone this frame is on the list from the next)
+#ifdef AUTO_CARD   // (test builds: the person nearest to you is the one the card shows; AUTO_CARD & 2: at frame AUTO_CARD_AT they move in with you (the shots of the same person in town and in the household))
+    { static int n_; n_++; if (cur < 0) { int bd = 1 << 30; for (int j = 0; j < nlv; j++) { const Cit *c = &cits[lv[j]]; int dx = (c->x - sims[player].x) >> 4, dz = (c->z - sims[player].z) >> 4, d = dx * dx + dz * dz; if (c->zone == world_zone && c->mode != CM_GONE && d < bd) { bd = d; cur = lv[j]; } } }
+      if ((AUTO_CARD & 2) && n_ == AUTO_CARD_AT && cur >= 0 && nsims < MAX_SIMS) { char tb[80]; sprintf(tb, "%s %s", cits[cur].first, cits[cur].last); dbg_cardname = tb[0]; marry_as(&cits[cur], 0); cur = -1; } }
+#endif
     fight_on = 0; { int ch = 0, co = 0; for (int j = 0; j < nlv; j++) { const Cit *c = &cits[lv[j]]; if (c->zone == world_zone && c->mode == CM_CHASE) { fight_on = 1; ch++; co += c->cop; } } dbg_rage[0] = ch; dbg_rage[1] = co; }
     for (int i = 0; i < nsims; i++) if (sims[i].rage) fight_on = 1;
     dbg_rage[2] = pl_hp; dbg_rage[3] = heat;
@@ -1800,27 +1815,38 @@ static void bar(int x, int y, int w, int v, int r, int g, int b) {
     gfx_rect(x + 1, y + 1, (w - 2) * CLAMP(v, 0, 100) / 100, 2, r, g, b, 0);
 }
 int citizens_card_on(void) { return !(world_zone == ZONE_HOME && !home_guests) && cur >= 0; }   // (main: the notes go under it)
+void citizens_persona_text(u32 seed, int stage, char *l1, char *l2) {   // "ARIES, FORTUNE" and "OUTGOING 9, NEAT 2": the person's personality for a card (from the seed, nothing stored)
+    Persona p; persona_of(seed, stage, &p);
+    int i1 = 0, i2 = -1;
+    for (int k = 1; k < TR_N; k++) if (ABS(p.bar[k] - 5) > ABS(p.bar[i1] - 5)) i1 = k;
+    for (int k = 0; k < TR_N; k++) if (k != i1 && (i2 < 0 || ABS(p.bar[k] - 5) > ABS(p.bar[i2] - 5))) i2 = k;
+    sprintf(l1, "%s, %s", look_sign_name(p.sign), look_asp_name(p.asp));
+    sprintf(l2, "%s %d, %s %d", look_trait_name(i1), p.bar[i1], look_trait_name(i2), p.bar[i2]);
+}
 COLD void citizens_hud(void) {
     if (world_zone == ZONE_HOME && !home_guests) return;
     const int X = 8, Y = 37;                                       // (on the left, under the household: the notes go under it)
     if (cur >= 0) {
         const Cit *c = &cits[cur];
-        char t[40]; sprintf(t, "%s %s", c->first, c->last);   // a white card (The Sims 4's): who they are, how they are to you
-        ui_card(X, Y, 136, 45);                                    // (four lines: the name, who they are, how they are to you, what they do)
+        char t[40], l1[40], l2[40]; sprintf(t, "%s %s", c->first, c->last);   // a white card (The Sims 4's): who they are, how they are to you
+        citizens_persona_text(c->seed, c->stage, l1, l2);
+        ui_card(X, Y, 150, 67);                                    // (the name, their personality: sign and wish, the two strongest bars, no traits yet; how they are to you, what they do)
         ui_icon_disc(X + 12, Y + 11, 16, IC_CHAT, UI_BLUE, UI_WHITE);
         ui_text(X + 24, Y + 3, 1, t, UI_INK);
-        if (c->pid != NOPID) { sprintf(t, "%s, %s", stage_nm(c->stage), pop_trait_name(pop_per[c->pid].trait)); if (ui_tw(1, t) > 108) strcpy(t, pop_trait_name(pop_per[c->pid].trait)); }
-        else sprintf(t, "%s", stage_nm(c->stage));
+        sprintf(t, "%s, %s", stage_nm(c->stage), l1); if (ui_tw(1, t) > 122) strcpy(t, l1);
         ui_text(X + 24, Y + 12, 1, t, UI_SOFT);
-        ui_text(X + 6, Y + 22, 1, rel_name(c->rel), UI_RGB(40, 150, 50));
-        ui_bar(X + 70, Y + 22, 60, 4, c->rel > 0 ? c->rel : 0, UI_GREEN);
-        ui_bar(X + 70, Y + 27, 60, 4, c->rom, UI_RGB(236, 100, 160));
+        ui_text(X + 6, Y + 22, 1, l2, UI_INK);
+        ui_text(X + 6, Y + 31, 1, "NO TRAITS YET: THEY COME", UI_RGB(150, 100, 30));
+        ui_text(X + 6, Y + 39, 1, "WHEN THEY MOVE IN", UI_RGB(150, 100, 30));
+        ui_text(X + 6, Y + 48, 1, rel_name(c->rel), UI_RGB(40, 150, 50));
+        ui_bar(X + 70, Y + 48, 74, 3, c->rel > 0 ? c->rel : 0, UI_GREEN);
+        ui_bar(X + 70, Y + 52, 74, 3, c->rom, UI_RGB(236, 100, 160));
         { char jb[40]; const char *d = (c->pid != NOPID && c->mplace != NOPID && c->mode == CM_IDLE) ? pop_job_name(c->pid, jb) : activity(c);
           if (d != jb) { strncpy(jb, d, 39); jb[39] = 0; }
-          if (ui_tw(1, jb) > 126) { char *k = strchr(jb, ','); if (k) *k = 0; }
-          ui_text(X + 6, Y + 34, 1, jb, UI_BLUE2); }
+          if (ui_tw(1, jb) > 138) { char *k = strchr(jb, ','); if (k) *k = 0; }
+          ui_text(X + 6, Y + 57, 1, jb, UI_BLUE2); }
     }
-    if (fight_on || pl_hp < 100) { int hy = cur >= 0 ? Y + 47 : Y; ui_card(X, hy, 70, 11); ui_bar(X + 4, hy + 2, 62, 7, pl_hp, pl_hp > 50 ? UI_GREEN : pl_hp > 25 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70)); }
+    if (fight_on || pl_hp < 100) { int hy = cur >= 0 ? Y + 69 : Y; ui_card(X, hy, 70, 11); ui_bar(X + 4, hy + 2, 62, 7, pl_hp, pl_hp > 50 ? UI_GREEN : pl_hp > 25 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70)); }
     if (fight_on) ui_hintbar(146, "X PUNCH");
 }
 

@@ -465,8 +465,8 @@ static const char* const aspNm[AS_N]={"FORTUNE","KNOWLEDGE","POPULARITY","PLEASU
 #define TR_POINTS 25   // personality points to share out
 static const char* const trNm[TR_N]={"NEAT","OUTGOING","ACTIVE","PLAYFUL","NICE"};
 static const char* const signNm[12]={"ARIES","TAURUS","GEMINI","CANCER","LEO","VIRGO","LIBRA","SCORPIO","SAGITTARIUS","CAPRICORN","AQUARIUS","PISCES"};
-static const u8 signTr[12][TR_N]={ {5,8,6,3,3},{5,5,3,8,4},{4,7,8,3,3},{6,3,6,4,6},{4,10,4,4,3},{9,2,6,3,5},
-                                   {2,8,2,6,7},{6,5,8,3,3},{2,3,9,7,4},{7,4,8,2,4},{4,4,4,7,6},{5,3,4,4,9} };   // each adds up to 25
+#include "persona.h"
+#define signTr pers_sign_tr   // (the twelve signs' bars: persona.c, so a town person's personality and a Bore's agree)
 static u8 pAsp=AS_FORTUNE, pLtw=0, pTr[TR_N]={5,8,6,3,3};   // starts as an ARIES who wants FORTUNE
 static inline int aspNow(void){ return stage<AG_TEEN?AS_GROW:pAsp; }
 static inline int trOf(int t){ return pTr[t]; }
