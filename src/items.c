@@ -1139,6 +1139,34 @@ static void farm_extras(char ch, int mx, int my, int t) {
     }
     gfx_set_identity();
 }
+#ifdef BORE_DC
+// NIGHT GLOW (Dreamcast): at night a soft warm halo around each street lamp's head and the Dreamcast lamps, added over the picture (a small
+// radial gradient in the atlas, drawn as an additive sprite). Nothing changes by day, and the PS1 build has none of this.
+static TexRef dc_glow_tex; static int dc_glow_state;
+static void dc_glow(int wx, int wy, int wz, int r, int g, int b) {
+    if (!dc_glow_state) {
+        static u16 G[16 * 16];
+        for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) {
+            int dx = 2 * x - 15, dy = 2 * y - 15, d2 = dx * dx + dy * dy;   // 0..225 at the edge
+            int v = d2 >= 225 ? 0 : (225 - d2) * (225 - d2) / 1630;         // 0..31, falling off smoothly
+            G[y * 16 + x] = (u16)(0x8000 | v | (v << 5) | (v << 10));
+        }
+        dc_glow_tex = atlas_add(16, 16, G); dc_glow_state = 1;
+    }
+    SVECTOR p; setVector(&p, wx, wy, wz);
+    int sx, sy, sz; if (!gfx_project(&p, &sx, &sy, &sz) || sz < 80) return;
+    int w = 84000 / sz; if (w < 8) return; if (w > 96) w = 96;
+    gfx_sprite_blend(sx - w / 2, sy - w / 2, w, w, (u16)((dc_glow_tex.tpage & ~0x60) | 0x20), 0, dc_glow_tex.u, dc_glow_tex.v, 16, 16, r, g, b);
+}
+static void dc_lamp_glow(char ch, int r, int ox, int oz) {
+    if (gfx_light_amb() >= 72) return;
+    int night = (72 - gfx_light_amb()) * 14; if (night > 255) night = 255;   // (fades in with the dusk)
+    int u, v;
+    if (ch == '"') { rotPt(r, 4, 1, &u, &v); dc_glow(ox + u * IUNIT, -23 * IZ, -(oz + v * IUNIT), 150 * night / 255, 110 * night / 255, 40 * night / 255); }
+    else if (ch == (char)0xFB) { rotPt(r, 4, 4, &u, &v); dc_glow(ox + u * IUNIT, -13 * IZ, -(oz + v * IUNIT), 150 * night / 255, 80 * night / 255, 16 * night / 255); }
+    else if (ch == (char)0xFC) { rotPt(r, 4, 4, &u, &v); dc_glow(ox + u * IUNIT, -13 * IZ, -(oz + v * IUNIT), 30 * night / 255, 90 * night / 255, 160 * night / 255); }
+}
+#endif
 void items_draw(char ch, int mx, int my, int rot, int along, int t) {
     if (ch == 'P') return;
     shade6_update(t);
@@ -1170,5 +1198,8 @@ void items_draw(char ch, int mx, int my, int rot, int along, int t) {
     if (ch == (char)0xDB) n = 1;                                              // (FARM LIFE: a bed draws only its soil; what grows in it is the farm's own state)
     else if (ch == (char)0xDD && fm_cows <= ((my >> 1) & 1)) n = 1;           // (a stall: the cow is there only when you own one for it)
     for (int i = 0; i < n; i++) draw_box(&b[i], box_ref[base + i], r, ox, oz, t);
+#ifdef BORE_DC
+    if (ch == '"' || ch == (char)0xFB || ch == (char)0xFC) dc_lamp_glow(ch, r, ox, oz);
+#endif
     if (ch == (char)0xDB || ch == (char)0xDC) farm_extras(ch, mx, my, t);
 }

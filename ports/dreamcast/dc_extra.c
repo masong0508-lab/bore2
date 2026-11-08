@@ -131,6 +131,9 @@ void dc_extra_frame(void) {
     { extern int dbg_sv[16], dbg_st[8], dbg_opt[2], dbg_cells[6]; extern void dc_logf(const char *f, ...);   // (test builds: the save test's readouts)
       if (tick % 200 == 0) { dc_logf("save:"); for (int i = 0; i < 16; i++) dc_logf(" %d", dbg_sv[i]); dc_logf(" | opt %x | stream", dbg_opt[0]); for (int i = 0; i < 8; i++) dc_logf(" %d", dbg_st[i]); dc_logf(" | song %d\n", dbg_cells[2]); } }
 #endif
+#ifdef DC_NIGHT
+    { extern int clock_min; clock_min = DC_NIGHT * 60; }   // (a test build: it is always that hour)
+#endif
 #ifdef DC_SHOWITEMS
     if (tick == 200 && nsims > 0) {   // (a test build: the Dreamcast furniture set in a row in front of you)
         int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), put = 0; extern void dc_logf(const char *f, ...);
