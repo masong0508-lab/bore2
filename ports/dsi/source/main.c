@@ -2075,10 +2075,10 @@ static void life_panel(void) {   // the top screen's second page: job, aspiratio
     sprintf(t, "Aspiration: %d stars", L->pts / 1500); text_box(11, 101, 146, 12, FS_BODY, C15(31, 31, 20), AL_L, t); rect(158, 102, 84, 8, C15(2, 6, 14)); rect(159, 103, 82 * (L->pts % 1500) / 1500, 6, C15(31, 26, 6));
     for (int k = 0; k < 3; k++) { if (!L->wk[k]) continue; if (L->wk[k] == WN_CASH) sprintf(t, "Have $%d", L->wa[k]); else strcpy(t, WNM[L->wk[k]]);
         rect(14, 118 + k * 13, 8, 8, C15(8, 22, 8)); text_box(23, 116 + k * 13, 160, 12, FS_BODY, TXT, AL_L, t); sprintf(t, "+%d", WPT[L->wk[k]]); text_box(190, 116 + k * 13, 56, 12, FS_NUM, C15(31, 31, 20), AL_R, t); }
-    if (L->fear) { text_box(11, 150, 40, 12, FS_BODY, C15(31, 14, 12), AL_L, "Fear:"); text_box(48, 150, 150, 12, FS_BODY, TXT, AL_L, FNM[L->fear]); }
-    if (dog_have) { sprintf(t, "Rex: %s", dog.hun > 50 ? "happy" : dog.hun > 20 ? "peckish" : "hungry!"); text_box(150, 162, 98, 12, FS_BODY, TXT, AL_L, t); }
-    { const Cx *c = &csx[ctl]; if (c->wish) { sprintf(t, "Wish: %s%s", WSN[c->wish - 1], c->wdone ? " (done)" : ""); text_box(11, 162, 138, 12, FS_BODY, c->wdone ? C15(20, 31, 20) : TXT, AL_L, t); }   // (D67) what Create-a-Sim picked
-      if (c->tr[0]) { char u[40]; u[0] = 0; for (int k = 0; k < 3; k++) if (c->tr[k]) { if (k) strcat(u, ", "); strcat(u, TRN[c->tr[k] - 1]); } text_box(11, 173, 236, 10, FS_SMALL, C15(24, 28, 31), AL_L, u); } }
+    if (L->fear) { text_box(11, 152, 40, 12, FS_BODY, C15(31, 14, 12), AL_L, "Fear:"); text_box(48, 152, 150, 12, FS_BODY, TXT, AL_L, FNM[L->fear]); }
+    if (dog_have) { sprintf(t, "Rex: %s", dog.hun > 50 ? "happy" : dog.hun > 20 ? "peckish" : "hungry!"); text_box(150, 163, 98, 12, FS_BODY, TXT, AL_L, t); }
+    { const Cx *c = &csx[ctl]; if (c->wish) { sprintf(t, "Wish: %s%s", WSN[c->wish - 1], c->wdone ? " (done)" : ""); text_box(11, 163, 138, 12, FS_BODY, c->wdone ? C15(20, 31, 20) : TXT, AL_L, t); }   // (D67) what Create-a-Sim picked
+      if (c->tr[0]) { char u[40]; u[0] = 0; for (int k = 0; k < 3; k++) if (c->tr[k]) { if (k) strcat(u, ", "); strcat(u, TRN[c->tr[k] - 1]); } text_box(11, 174, 236, 9, FS_SMALL, C15(24, 28, 31), AL_L, u); } }
 }
 static u16 offbuf[256 * 192] __attribute__((aligned(32)));   // (D37) a 2D screen is drawn here and copied over in one go: no half-drawn screen is ever shown
 static void off_show(u16 *dst) { DC_FlushRange(offbuf, sizeof offbuf); dmaCopy(offbuf, dst, sizeof offbuf); scr = dst; }

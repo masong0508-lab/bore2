@@ -28,7 +28,8 @@ Detail for each port: DSI_ROADMAP.md (DS), DREAMCAST.md (Dreamcast), PS1_PERFORM
 - [x] Boreagotchi PS1 text overlaps fixed (commit 9b4fc5c). Test hook -DAUTO_GVIEWS and test/gviews.sh step through every screen; the disc image does not rebuild when only an overlay changes, the script forces it.
 
 ## 2. DS
-Newest ROM: bore2_dsi_d66.nds (d65 plus the streets round: nothing off the plot, same 3D picture). Everything is melonDS-only (no real DS or DSi tried).
+Newest ROM: bore2_dsi_d67.nds (d66 plus the new Create-a-Sim in the way of The Sims 3 for the 3DS). Everything is melonDS-only (no real DS or DSi tried).
+- [x] D67 Create-a-Sim like The Sims 3 (3DS): six steps (Basics, Looks, Hair, Outfit, Traits, Done), name keyboard, Looks pads and sliders, 26 hair styles, dye and paint, hats, 12 traits, 5 lifetime wishes, summary and confirm; 3D Sim on a stand with a camera that follows the step. Old saves load (new 'CX' block). Notes docs/CAS_SIMS3DS_DS_NOTES.md, shots docs/ds_shots/cas_*.png. Left: Capture Face, outfit categories, shoes, eye colours, real DS.
 - [x] D65 fonts and centred text: five 1-bit faces (BODY, HEAD, SMALL, NUM, TITLE) with a font-select API, a measure-then-centre helper (`text_box`, `fit_font`) used on every screen, plumbob, thought bubble, mood words, toasts, playful phrasing; dyslexia-safe glyphs (serifed I, slashed zero). Before | after shots docs/ds_shots/fonts_*.png. Text only, 30 fps as D64, old saves load. Left: real DS, a few Boreagotchi sub-screens on hand offsets, arcade in-game text beyond Breaker, align with the PS1 docs/FONTS.md. See docs/DSI_ROADMAP.md.
 - [ ] Skate plaza is not a steady 30 (26-30 in spots).
 - [ ] Textures on bought furniture and the Map's house picture.
