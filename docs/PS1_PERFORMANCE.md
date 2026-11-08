@@ -1,5 +1,26 @@
 # PS1 speed and streaming: where it stands
 
+## Round 5 (Nov 8): block baking tried on the ground, measured, not kept
+**Short answer: 30 fps is not reachable by baking, and a solid 25 is not either. Nothing from the bake is in the build.** The experiment is saved as `tools/perf/round5_floor_cells.patch` (a diff of `src/world.c`; apply it with patch, build with `-DFB_OFF=1` for the old path in the same code).
+
+What was built (8 MB only): the city's ground storey cut into cells of 4 x 4 tiles. Each cell is baked once (one cell a frame) into a list of its corners (shared corners once, hill heights baked in) and its quads (a tile, or a 2x2 block, as four corner indices), and marks the tiles it takes so the old loops skip them. A frame runs a visible cell's corners straight from the cell through the GTE (three at a time), then walks the quads with the same tests as before: quads behind the eye still go to the cutter, off-screen ones are dropped by a screen-side test, the shades come from the existing floor-light cache. Water, indoors and tiles under a roof stay on the old path. Re-bake keys: `world_stamp`, `bld_gen`, window x/y, zone, `gh_gen`. 2 MB: off (no RAM for it).
+
+Measured (helper off, `AB_LOCK4`, first 600 life frames, 8 MB, `abcfg.py ... 2 1`):
+
+| camera, 8 MB | mean hb before | after | late (4+ vblanks) before / after |
+|---|---|---|---|
+| Sims | 756 | 738 | 46% / 35% |
+| zoomed in | 924 | 922 | 100% / 100% |
+| zoomed out | 906 | 862 | 97% / 92% |
+| first person | 781 | 800 (worse) | 69% / 69% |
+
+2 MB: unchanged by design (the pool does not fit, and the code alone is 3 KB where 2 MB has 1.5 KB to give above the 10 KB floor). Pixel comparison of frozen frames was not done, because the result was not worth keeping.
+
+Why it gains so little. (1) The world is not floor-bound: the profile after baking is as flat as before. Floors were about 60 hb of the 760. (2) The PlayStation has no data cache: every read of a corner, a quad record or a transformed vertex costs 5 or 6 cycles. A replay loop that reads 25 words a quad is about 260 cycles a quad whatever is baked, and an off-screen quad still costs about 100. The old path is about 1400 cycles a quad, so each visible quad does win, but only about 70 floor quads are drawn a frame. (3) The other kinds of geometry would gain the same order: walls (37 prims), items (96) and roofs have more work per prim but many more dynamic cases (cut-away walls, see-through buildings, doors, animated items). A full bake of everything might take 100 to 130 hb off the Sims camera at best (mean about 670 to 690): that keeps a 20 solid (786) with room for a bigger crowd or longer view, but is far from 524 (30 fps), and 25 is not a locked rate (2.4 vblanks).
+Learned, for the next try: (a) `setVector` is a macro that evaluates its first argument three times, so `setVector(&v[n++], ...)` is wrong; (b) quads behind the eye must be dropped before the cutter, and only the ones the loops would have tried may reach it (a first version sent 130 a frame there and cost 90 hb); (c) the gain is largest zoomed out (44 hb, most floor in view) and negative in first person, where nearly everything is cut anyway; (d) a test build with under about 5.5 KB free past `_end` hangs at boot.
+Test tool added: `-DAB_TR1=1` (with `AB_TRACE`: keeps only each frame's need, 640 frames; 3.4 KB less RAM in a test build; `trtable.py` reads either layout).
+What is left: the cutter (95 hb) and the items' boxes are the biggest flat parts. The one structural idea still standing is the street's fixed furniture (benches, lamps, bins, trees) as pre-lit world-space box lists per block, 8 MB only, one GTE batch per block. Free RAM on a plain 2 MB build is unchanged (11.5 KB).
+
 ## Round 4 (Nov 8): measured, tried, nothing kept yet
 Tool added: `tools/perf/trtable.py RAM ELF` (held-camera row from an `AB_TRACE` + `AB_LOCK4` run: fps, mean hb, over 786, late, worst; `FROM=n TO=m` picks frames, e.g. a frozen stretch). Run each camera with `abcfg.py` (arg 4 = 1 turns the helper off).
 

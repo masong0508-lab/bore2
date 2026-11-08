@@ -45,3 +45,5 @@ How the city's frame time is measured (used for docs/PS1_PERFORMANCE.md). All of
 14. **Where the street's things stand** (`placecheck.py RAM ELF`, any AUTO_CITY run): things on the road (asphalt, lines, crossings), things on the
    kerb-side pavement, tall things side by side.
 15. **Per-frame trace, panned freeze, clock** (`-DAB_TRACE=1`: `dbg_tr[1000][4]` = need/5, logic/2, world/3, people/2 of each life frame; `-DAB_FREEZE=N -DAB_PAN=4`: after the freeze the camera slides a tile every 160 emu frames; `AB_PAR="7=n"` with `AB_CFG`: the clock held at n x 6 minutes). A table the held-camera way: run each camera with `abcfg.py`, read `dbg_tr` from the RAM dump, and report the mean, the share over 786 hb, the share needing 4 or more vblanks ((need + 40) / 263) and the dearest frame after the first two.
+
+16. **`-DAB_TR1=1`** (with `AB_TRACE`): `dbg_tr` keeps only each frame's need (640 frames, 640 bytes) instead of 4 values for 1000 frames: a test build that carries new code needs the RAM. `trtable.py` reads either. `round5_floor_cells.patch` is the saved floor-baking experiment (PS1_PERFORMANCE.md, Round 5); `-DFB_OFF=1` turns it off in the same code.

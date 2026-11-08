@@ -3,12 +3,13 @@
 # prints: frames, fps (each frame takes at least 3 vblanks), mean need (hb), % over 786 hb, % late (4+ vblanks), worst after the first two
 import os, struct, subprocess, sys
 ram, elf = sys.argv[1], sys.argv[2]
-d = open(ram, 'rb').read(); S = {}
-for l in subprocess.check_output(['/opt/mipsel/bin/mipsel-none-elf-nm', elf]).decode().splitlines():
+d = open(ram, 'rb').read(); S = {}; Z = {}
+for l in subprocess.check_output(['/opt/mipsel/bin/mipsel-none-elf-nm', '-S', elf]).decode().splitlines():
     p = l.split()
-    if len(p) == 3: S[p[2]] = int(p[0], 16) & 0x1fffff
-a = S['dbg_tr']; n = struct.unpack('<i', d[S['dbg_life_n']:S['dbg_life_n'] + 4])[0]; n = min(n, 1000)
-fr = [d[a + 4 * i] * 5 for i in range(n)]
+    if len(p) == 4: S[p[3]] = int(p[0], 16) & 0x1fffff; Z[p[3]] = int(p[1], 16)
+W, N = (1, 640) if Z['dbg_tr'] == 640 else (4, 1000)   # (4 bytes a frame, or 1 byte and 640 frames with -DAB_TR1)
+a = S['dbg_tr']; n = struct.unpack('<i', d[S['dbg_life_n']:S['dbg_life_n'] + 4])[0]; n = min(n, N)
+fr = [d[a + W * i] * 5 for i in range(n)]
 # city frames only: skip the life's start (first 40) and any frames with no cost recorded
 fr = [x for x in fr[int(os.environ.get('FROM', 40)):int(os.environ.get('TO', 100000))] if x > 0]
 m = sum(fr) / len(fr)

@@ -200,7 +200,14 @@ static void helper_apply(void);
 static int det_opt = 12;                                      // the FULL DETAIL option's range (the range in use dips under it when frames run long)
 #ifdef AUTO_CITY
 #ifdef AB_TRACE
-u8 dbg_tr[1000][4];
+#ifdef AB_TR1
+#define TRW 1
+#define TRN 640   // (AB_TR1: only each frame's need is kept: 3 KB less RAM, for a test build that has to fit beside new code)
+#else
+#define TRW 4
+#define TRN 1000
+#endif
+u8 dbg_tr[TRN][TRW];
 static int cit_spare_hb_(void) { extern int cit_spare_hb; return cit_spare_hb; }
 #endif
 int dbg_slow[16][8];   // (test builds only)
@@ -5191,7 +5198,11 @@ int main(void) {
             avg_hh16 += gfx_prof[4] - (avg_hh16 >> 4); hist_cpu[MIN(4, t_cpu / 262)]++;
             { extern int cit_spare_hb; int nd = t_cpu - cit_spare_hb; dbg_end_hist[MIN(23, MAX(0, nd) / 50)]++; dbg_need_last = nd + (hb_now() - t_cpu - t_frame0); }   // (the need, and the stats' own time up to here)
 #ifdef AB_TRACE
-            { extern u8 dbg_tr[1000][4]; extern int dbg_life_n; if (dbg_life_n < 1000) { int nd_ = t_cpu - cit_spare_hb_(); u8 *e_ = dbg_tr[dbg_life_n]; e_[0] = (u8)MIN(255, MAX(0, nd_) / 5); e_[1] = (u8)MIN(255, t_logic / 2); e_[2] = (u8)MIN(255, t_world / 3); e_[3] = (u8)MIN(255, t_sims / 2); } }   // (test builds: every frame's need /5, logic /2, world /3, people /2)
+            { extern u8 dbg_tr[TRN][TRW]; extern int dbg_life_n; if (dbg_life_n < TRN) { int nd_ = t_cpu - cit_spare_hb_(); u8 *e_ = dbg_tr[dbg_life_n]; e_[0] = (u8)MIN(255, MAX(0, nd_) / 5);
+#if TRW == 4
+ e_[1] = (u8)MIN(255, t_logic / 2); e_[2] = (u8)MIN(255, t_world / 3); e_[3] = (u8)MIN(255, t_sims / 2);
+#endif
+ } }   // (test builds: every frame's need /5, logic /2, world /3, people /2)
 #endif
             if (!dbg_life_n) dbg_life_vb0 = VSync(-1); dbg_life_n++; dbg_life_vb = VSync(-1) - dbg_life_vb0; dbg_sum_cpu += t_cpu; for (int k = 0; k < 8; k++) dbg_sum_prof[k] += gfx_prof[k];
             { extern int world_hb_l0, world_hb_up, world_hb_roofs, world_hb_sky1; dbg_sum_w[0] += world_hb_l0; dbg_sum_w[1] += world_hb_up; dbg_sum_w[2] += world_hb_roofs; dbg_sum_w[3] += world_hb_sky1; { extern int far_hb[3]; dbg_sum_w[4] += far_hb[0]; dbg_sum_w[5] += far_hb[1]; dbg_sum_w[6] += far_hb[2]; } }

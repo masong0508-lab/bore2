@@ -1,0 +1,154 @@
+diff --git a/src/world.c b/src/world.c
+index e3dce26..e7d41d6 100644
+--- a/src/world.c
++++ b/src/world.c
+@@ -2367,7 +2367,7 @@ static __attribute__((noinline)) void flc_emit(u32 sh, int four, const XV *A, co
+ }
+ static inline u32 flc_pack(int s0, int s1, int s2, int s3) { return (u32)(s0 & 255) | ((u32)(s1 & 255) << 8) | ((u32)(s2 & 255) << 16) | ((u32)(s3 & 255) << 24); }
+ static int floor_Lup(void) { static int Lfr = -1, Lup; if (Lfr != frame_t) { Lfr = frame_t; Lup = gfx_light(0, -ONE, 0); } return Lup; }   // (the floor's light: once a frame)
+-static void floor_tile(int mx, int my) {
++static __attribute__((noinline)) void floor_tile(int mx, int my) {
+     int fl = dfl[my][mx] % NFLOORS;
+     const TexRef *t = &fl_tex[fl];
+     int x0 = mx * TILE, x1 = x0 + TILE, zN = -my * TILE, zS = zN - TILE;
+@@ -2532,7 +2532,7 @@ static void nat_ground(u8 (*done)[MW], int x0, int x1, int y0, int y1) {   // th
+     gfx_floor_pass = 0;
+ }
+ 
+-static void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), all the same floor: one quad
++static __attribute__((noinline)) void floor_block(int mx, int my) {   // the 2x2 tiles at (mx,my) (even), all the same floor: one quad
+     int fl = dfl[my][mx] % NFLOORS;
+     const TexRef *t = &fl_tex4[fl];
+     int x0 = mx * TILE, x1 = x0 + 2 * TILE, zN = -my * TILE, zS = zN - 2 * TILE;
+@@ -2819,6 +2819,89 @@ static inline void lift_to(int L) { if (gfx_lift != L) { gfx_lift = L; gfx_set_i
+ static __attribute__((noinline)) int item_lift(int mx, int my, int lvl) {
+     return lvl ? world_gh_c(mx, my) : world_gh(mx * TILE + TILE / 2, -(my * TILE + TILE / 2));
+ }
++// ---- BAKED GROUND CELLS (round 5, 8 MB). The ground storey of the city is cut into cells of 4 x 4 tiles on the map's even grid. What a
++// cell draws does not change until the map, its buildings, the window or the heights do: which tiles are a quad of their own and which
++// four make a 2x2 block's quad (the rule draw_layer's loops use), and where their corners stand (on the hills). That is worked out once
++// (fb_build, a cell a frame at most) into a compact list of the corners the cell's quads use (shared corners once) and the quads as four
++// indices each, and the tiles it takes are marked in fb_cov (the old loops leave them). A frame then runs a visible cell's corners through
++// the GTE three at a time straight from the cell (none built, none moved twice) and walks its quads: the same tests as the loops, a quad
++// close to the eye is still cut by the old path, and the shades still come from the floor-light cache (flc). Tiles the cell does not
++// take (water, indoors, under a roof) stay with the old loops. 2 MB: not used ----
++#define FB_C 4
++#define FB_G (FB_C + 1)
++#define FB_NX (MW / FB_C)
++#define FB_N (FB_NX * (MH / FB_C))
++typedef struct { u8 i[4], x, y, blk, pad; } FbQ;
++typedef struct { SVECTOR v[FB_G * FB_G] SVEC_ALIGN; FbQ q[FB_C * FB_C]; u8 nv, nq, pad[2]; } FbCell;
++static FbCell *fb_pool; static u8 (*fb_cov)[MW]; static int fb_up, fb_act;
++static u8 fb_has[FB_N]; static u32 fb_key[6] = { 0xffffffffu };
++int dbg_fb_cells, dbg_fb_quads, dbg_fb_built;
++static COLD void fb_build(FbCell *c, int cx, int cy, int hills) {
++    int X0 = cx * FB_C, Y0 = cy * FB_C; u8 vi[FB_G * FB_G]; memset(vi, 255, sizeof vi); c->nv = c->nq = 0;
++    for (int j = 0; j < FB_C; j += 2) for (int i = 0; i < FB_C; i += 2) {
++        int mx = X0 + i, my = Y0 + j, f0 = dfl[my][mx];
++        int ok = f0 != FL_WATER && !FL_NO4(f0) && dfl[my][mx + 1] == f0 && dfl[my + 1][mx] == f0 && dfl[my + 1][mx + 1] == f0;
++        int n = 0, ox[4], oy[4], sz[4];
++        if (ok) { if (!bld[my][mx] && !bld[my + 1][mx + 1]) { ox[0] = i; oy[0] = j; sz[0] = 2; n = 1; } }
++        else for (int t = 0; t < 4; t++) { int tx = mx + (t & 1), ty = my + (t >> 1); if (!bld[ty][tx] && dfl[ty][tx] != FL_WATER) { ox[n] = i + (t & 1); oy[n] = j + (t >> 1); sz[n] = 1; n++; } }
++        for (int q = 0; q < n; q++) {
++            FbQ *Q = &c->q[c->nq++]; Q->x = (u8)ox[q]; Q->y = (u8)oy[q]; Q->blk = (u8)(sz[q] == 2);
++            for (int k = 0; k < 4; k++) {
++                int gx = ox[q] + (k & 1) * sz[q], gy = oy[q] + (k >> 1) * sz[q], g = gy * FB_G + gx;
++                if (vi[g] == 255) { int h = hills ? gh_c(X0 + gx, Y0 + gy) : 0; SVECTOR *V = &c->v[c->nv]; vi[g] = c->nv++; V->vx = (short)((X0 + gx) * TILE); V->vy = (short)-h; V->vz = (short)-((Y0 + gy) * TILE); }
++                Q->i[k] = vi[g];
++            }
++            for (int dy = 0; dy < sz[q]; dy++) for (int dx = 0; dx < sz[q]; dx++) fb_cov[Y0 + oy[q] + dy][X0 + ox[q] + dx] = 1;
++        }
++    }
++}
++// draws the baked cells' quads; tvF/tvT: the views the loops test with
++static COLD __attribute__((noinline)) void fb_replay(const TileView *tvF, const TileView *tvT, int hm) {
++    fb_act = 0;
++    if (!ram8) return;
++    if (!fb_up) { fb_up = 1; fb_pool = (FbCell *)xalloc(FB_N * sizeof(FbCell)); fb_cov = (u8 (*)[MW])xalloc(MH * MW); }
++    if (!fb_pool || !fb_cov) return;
++    int hills = world_hills_on();
++    { u32 k[6] = { (u32)world_stamp, bld_gen, (u32)world_wbx, (u32)world_wby, (u32)world_zone, gh_gen }; int same = 1;
++      for (int i = 0; i < 6; i++) if (k[i] != fb_key[i]) { same = 0; fb_key[i] = k[i]; }
++      if (!same) { memset(fb_has, 0, sizeof fb_has); memset(fb_cov, 0, MH * MW); } }
++    extern s16 bfs_par[MH][MW]; XV *xv = (XV *)&bfs_par[MH / 2][0];   // (lent, as `done` is: the second half)
++    int budget = 1;
++    lift_to(0);
++    fb_act = 1;
++    for (int cy = ry0 / FB_C; cy <= ry1 / FB_C; cy++) for (int cx = rx0 / FB_C; cx <= rx1 / FB_C; cx++) {
++        int X0 = cx * FB_C, Y0 = cy * FB_C, id = cy * FB_NX + cx;
++        { int vx, vy, vz; tile_view(tvF, X0 + FB_C / 2 - 1, Y0 + FB_C / 2 - 1, &vx, &vy, &vz);   // (the cell's middle, on the ground; margins: the loops' block margin and the cell's reach)
++          if (vz < -TILE * 6 || ABS(vx) > (vz * 3) / 4 + TILE * 6 || ABS(vy) > (vz * 5) / 8 + TILE * 7 + hm) continue; }
++        FbCell *c = &fb_pool[id];
++        if (!fb_has[id]) { if (budget <= 0) continue; budget--; fb_build(c, cx, cy, hills); fb_has[id] = 1; dbg_fb_built++; }
++        dbg_fb_cells++;
++        gfx_xform(c->v, xv, c->nv);
++        int inside = X0 >= rx0 && X0 + FB_C - 1 <= rx1 && Y0 >= ry0 && Y0 + FB_C - 1 <= ry1;
++        for (int n = 0; n < c->nq; n++) {
++            const FbQ *Q = &c->q[n];
++            int mx = X0 + Q->x, my = Y0 + Q->y, blk = Q->blk;
++            if (!inside && (mx < rx0 || mx > rx1 || my < ry0 || my > ry1)) continue;
++            const XV *A = &xv[Q->i[0]], *B = &xv[Q->i[1]], *C = &xv[Q->i[2]], *Dd = &xv[Q->i[3]];
++            if (MIN(MIN(A->z, B->z), MIN(C->z, Dd->z)) < Z_NEAR) {   // (behind the eye or on it: the cutter's)
++                if (MAX(MAX(A->z, B->z), MAX(C->z, Dd->z)) < NC_Z) continue;   // (all behind its plane: it draws nothing)
++                int vx, vy, vz, r = blk ? 380 : 200;   // (a ball round the quad's middle, on the ground; the view's edges lean out 0.696 and 0.522 a unit of depth; the hills lift it up to hm)
++                if (blk) tile_view(tvF, mx, my, &vx, &vy, &vz); else tile_view(tvT, mx, my, &vx, &vy, &vz);
++                if (vz < Z_NEAR - r - 20 || ABS(vx) > ((vz * 89) >> 7) + r * 5 / 4 + 40 || ABS(vy) > ((vz * 67) >> 7) + r * 5 / 4 + hm + 40) continue;
++                gfx_floor_pass = 1; if (blk) floor_block(mx, my); else floor_tile(mx, my); gfx_floor_pass = 0; continue;
++            }
++            if (xv_outcode(A->x, A->y) & xv_outcode(B->x, B->y) & xv_outcode(C->x, C->y) & xv_outcode(Dd->x, Dd->y)) continue;   // (off the screen)
++            gfx_floor_pass = 1;
++            if (nc_need4(A, B, C, Dd)) { if (blk) floor_block(mx, my); else floor_tile(mx, my); gfx_floor_pass = 0; continue; }
++            { int fl = dfl[my][mx] % NFLOORS, sl = flc_slot(mx, my), tg = flc_tag[sl];
++              if ((tg & 0x3f) == flc_want(mx, my, blk)) {
++                  const TexRef *t = blk ? &fl_tex4[fl] : &fl_tex[fl];
++                  flc_emit(flc_sh[sl], tg >> 6, A, B, C, Dd, (u32)t->tpage << 16, t->u, t->v, blk ? 31 : 7); dbg_fb_quads++;
++              } else { if (blk) floor_block(mx, my); else floor_tile(mx, my); } }
++            gfx_floor_pass = 0;
++        }
++    }
++}
+ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, int focus) {
+     // the camera's forward on the ground (unit, 4096), to decide which walls stand between it and the focus
+     int cdx = cam.at.vx - cam.eye.vx, cdz = cam.at.vz - cam.eye.vz;
+@@ -2834,17 +2917,21 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
+     tile_view_init(&tvT, TILE / 2, -WALL_FULL / 2, -TILE / 2);      // a tile's centre, half a wall up
+     // 2x2 blocks of one floor draw as a single quad
+     for (int my = ey0; my <= ey1; my++) memset(&done[my][ex0], 0, ex1 - ex0 + 1);
++    const u8 *fbc = 0;                                  // (the ground a baked cell draws: one byte a tile, 1)
+     if (!shell) { PROF_BEGIN();
++#ifndef FB_OFF
++    if (!lvl && world_zone == ZONE_CITY && world_wbx >= 0 && gh_live && !nat_on && flc_on) { fb_replay(&tvF, &tvT, hm); if (fb_act) fbc = &fb_cov[0][0]; }
++#endif
+     for (int my = y0; my <= y1; my += 2) {
+       int bx0 = x0, bx1 = x1; tile_row_span(&tvF, my, TILE * 2 + 64, TILE * 3 + 64, TILE * 4 + hm + 64, &bx0, &bx1);   // (only the blocks the view can reach)
+       if (((bx0 - x0) & 1) && bx0 <= bx1) bx0++;
+       for (int mx = bx0; mx <= bx1; mx += 2) {
++        if (fbc && fbc[my * MW + mx]) continue;                       // (a baked cell has it)
+         int ok = (mx + 1 < MW && my + 1 < MH);
+         int f0 = dfl[my][mx];
+         if (ok) ok = f0 != FL_WATER && !FL_NO4(f0) && dfl[my][mx + 1] == f0 && dfl[my + 1][mx] == f0 && dfl[my + 1][mx + 1] == f0 && !(nat_on && !lvl && nat_floor(f0));
+         if (ok && lvl) ok = dm[my][mx] != ' ' && dm[my][mx + 1] != ' ' && dm[my + 1][mx] != ' ' && dm[my + 1][mx + 1] != ' ';
+         if (ok && ((bld[my][mx] && !b_see[bld[my][mx]]) || (bld[my + 1][mx + 1] && !b_see[bld[my + 1][mx + 1]]))) { done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 2; continue; }   // inside someone else's building: under its roof
+-        done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 0;
+         if (!ok) continue;
+         int vx, vy, vz; tile_view(&tvF, mx, my, &vx, &vy, &vz);
+         if (vz < -TILE * 2) continue;
+@@ -2879,7 +2966,8 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
+             if (lvl) fascia(mx, my);
+             continue;
+         }
+-        if (done[my][mx] && c == '.' && !lvl) continue;              // floor already drawn, nothing on it
++        int dn = done[my][mx] | (fbc ? fbc[my * MW + mx] : 0);
++        if (dn && c == '.' && !lvl) continue;              // floor already drawn, nothing on it
+         { int b = bld[my][mx];                                       // inside a building you are not in: its roof hides the rooms (only its walls show)
+           if (b && !b_see[b] && !is_wall(c) && c != 'D' && !world_roof_show) continue; }
+         // frustum: the tile centre in view space (a wall tile fits a ball of 340 round it; things on a tile can stand taller)
+@@ -2888,7 +2976,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
+           if (vz < -TILE - pm) continue;
+           if (ABS(vx) > (vz * 3) / 4 + TILE * 2 + pm) continue;
+           if (ABS(vy) > (vz * 5) / 8 + TILE * 3 + pm + hm) continue; }
+-        if (!done[my][mx]) { PROF_BEGIN(); lift_to(lvl && hm ? gh_c(mx, my) : 0); gfx_floor_pass = !lvl; floor_tile(mx, my); gfx_floor_pass = 0; PROF_END(0); }
++        if (!dn) { PROF_BEGIN(); lift_to(lvl && hm ? gh_c(mx, my) : 0); gfx_floor_pass = !lvl; floor_tile(mx, my); gfx_floor_pass = 0; PROF_END(0); }
+         if (lvl) { lift_to(hm ? gh_c(mx, my) : 0); fascia(mx, my); if (c == '.') continue; }
+         if (is_wall(c)) {
+             lift_to(hm ? gh_c(mx, my) : 0);
