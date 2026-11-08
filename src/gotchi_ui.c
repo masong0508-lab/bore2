@@ -157,20 +157,29 @@ static void creature(const Blob *b, const Kin *k, int fr, int d, int ox, int moo
     }
 }
 #include "gotchi_first_art.h"
-// the egg art (src/gotchi_first_art.h, made by tools/make_gotchi_first.py): one design in three sizes, FS_EGG_N patterns (the last is the rare one: gold stars)
-static const char *const *const fsEgg[FS_EGG_N] = { FS_EGGB0, FS_EGGB1, FS_EGGB2, FS_EGGB3, FS_EGGB4, FS_EGGB5, FS_EGGB6 },       // 14 x 17 and 2 rows of shadow: the hatching
-    *const *const fsEggL[FS_EGG_N] = { FS_EGGL0, FS_EGGL1, FS_EGGL2, FS_EGGL3, FS_EGGL4, FS_EGGL5, FS_EGGL6 },                      // 10 x 12 and 1 row of shadow: a dot each on the 32 x 16 LCD
-    *const *const fsEggS[FS_EGG_N] = { FS_EGGS0, FS_EGGS1, FS_EGGS2, FS_EGGS3, FS_EGGS4, FS_EGGS5, FS_EGGS6 };                      // 8 x 9: inside the toy's LCD
+// the egg art (src/gotchi_first_art.h, made by tools/make_gotchi_first.py): one design in three sizes (0 the hatching 14 x 17, 1 the LCD's dots 10 x 12, 2 inside the toy's LCD 8 x 9, each with its
+// ground shadow), FS_EGG_N patterns (the last is the rare one: gold stars) and cracks; egg_make puts one together in a buffer (a few hundred bytes of data in place of every egg in full)
+static const unsigned char *const fsPat[3][FS_EGG_N] = { { FS_EGGB_P0, FS_EGGB_P1, FS_EGGB_P2, FS_EGGB_P3, FS_EGGB_P4, FS_EGGB_P5, FS_EGGB_P6 }, { FS_EGGL_P0, FS_EGGL_P1, FS_EGGL_P2, FS_EGGL_P3, FS_EGGL_P4, FS_EGGL_P5, FS_EGGL_P6 },
+    { FS_EGGS_P0, FS_EGGS_P1, FS_EGGS_P2, FS_EGGS_P3, FS_EGGS_P4, FS_EGGS_P5, FS_EGGS_P6 } };
+static const char *const *const fsEggBase[3] = { FS_EGGB, FS_EGGL, FS_EGGS };
+static const u8 fsEggH[3] = { FS_EGGB_H, FS_EGGL_H, FS_EGGS_H }, fsEggW[3] = { FS_EGGB_W, FS_EGGL_W, FS_EGGS_W };
+static const unsigned char *const fsCrk[2] = { FS_CRACKB, FS_CRACKL }, *const fsCrkN[2] = { FS_CRACKB_N, FS_CRACKL_N };
+static char eggBuf[FS_EGGB_H][FS_EGGB_W + 1]; static const char *eggRow[FS_EGGB_H];
+static const char *const *egg_make(int kind, int pat, int crack) {   // the plain egg, its pattern (runs of spots over body, shade and highlight), its cracks (cells, stage by stage)
+    for (int j = 0; j < fsEggH[kind]; j++) { memcpy(eggBuf[j], fsEggBase[kind][j], fsEggW[kind] + 1); eggRow[j] = eggBuf[j]; }
+    for (const unsigned char *p = fsPat[kind][pat]; p[1]; p += 2) for (int i = 0; i < (p[1] & 127); i++) { char *c = &eggBuf[p[0] >> 4][(p[0] & 15) + i]; if (*c == 'm' || *c == 'd' || *c == 'h') *c = (p[1] & 128) ? 'g' : 'o'; }
+    if (crack && kind < 2) for (int n = 0; n < fsCrkN[kind][crack]; n++) { char *c = &eggBuf[fsCrk[kind][n * 2] >> 4][fsCrk[kind][n * 2] & 15]; *c = (*c == 'o' || *c == 'g') ? 'u' : (char)fsCrk[kind][n * 2 + 1]; }   // (a crack through a spot is light)
+    return eggRow;
+}
 static const char eggKeys[] = "#mdhoulg";   // an egg sprite's keys; on the dots they are the values 16 up (egg_rgb makes the colours)
 static int egg_pat(const Blob *b, const Kin *k) { return (b->sp >= 16 || k->mut) ? FS_EGG_N - 1 : b->sp % (FS_EGG_N - 1); }   // the kind picks the pattern, the rare ones are gold
 static void egg_dots(const char *const *r, int w, int h, int x, int y, int tilt) {   // a sprite onto the dots; its top leans by tilt dots, the foot stays
     for (int j = 0; j < h; j++) { int sh = tilt * (h - 1 - j) / (h - 1); for (int i = 0; i < w; i++) if (r[j][i] != '.') P(x + i + sh, y + j, 16 + (int)(strchr(eggKeys, r[j][i]) - eggKeys)); }
 }
 static void egg(const Blob *b, const Kin *k, int fr) {   // centred on the LCD (cols 11 to 20, rows 2 to 14), a slow wobble now and then, faster once it cracks (age 15, 17, 19)
-    static const s8 wb[8] = { 2, 3, 2, 0, -2, -3, -2, 0 };
+    static const s8 wb[8] = { 1, 2, 1, 0, -1, -2, -1, 0 };
     int cr = b->age >= 19 ? 3 : b->age >= 17 ? 2 : b->age >= 15 ? 1 : 0, per = cr ? 12 : 24, ph = ((fr % per) + per) % per, tilt = ph >= per - 8 ? wb[ph - (per - 8)] : 0;
-    egg_dots(fsEggL[egg_pat(b, k)], FS_EGGL0_W, FS_EGGL0_H, 11, 2, tilt);
-    if (cr) egg_dots(cr == 1 ? FS_CRACKL1 : cr == 2 ? FS_CRACKL2 : FS_CRACKL3, FS_CRACKL1_W, FS_CRACKL1_H, 11, 2, tilt);
+    egg_dots(egg_make(1, egg_pat(b, k), cr), FS_EGGL_W, FS_EGGL_H, 11, 2, tilt);
     if (b->sp >= 16 || k->mut) star((fr & 2) ? 26 : 5, (fr & 2) ? 4 : 6, 16 + 7);
 }
 static const Xt *xof(const Blob *b) { for (int k = 0; k < GT_MAX; k++) if (b >= gtoy[k].b && b < gtoy[k].b + GB_N) return &gtoy[k].x[b - gtoy[k].b]; return 0; }
@@ -1157,7 +1166,7 @@ static void art_show(int i) {
     atlas_vram_load(0, 256, 128, 128, px); art_page = i;
 }
 static void gtile(int sp, int stage, int form, int col, int x, int y, int mood, int look, const char *lab) {
-    Blob b; Kin k; memset(&b, 0, sizeof b); memset(&k, 0, sizeof k); b.on = 1; b.stage = (u8)stage; b.sp = (u8)sp; b.form = (u8)form; b.hun = b.hap = 4; b.age = stage == GS_EGG ? 3 : 16; k.col = (u8)col;
+    Blob b; Kin k; memset(&b, 0, sizeof b); memset(&k, 0, sizeof k); b.on = 1; b.stage = (u8)stage; b.sp = (u8)sp; b.form = (u8)form; b.hun = b.hap = 4; b.age = stage == GS_EGG ? 3 : 16; k.col = (u8)(stage == GS_EGG && !col ? 3 : col);
     if (mood == MD_SLEEP) b.fl |= GF_SLEEP; ui_round(x - 2, y - 2, 68, 36, 5, UI_RGB(52, 24, 70), UI_RGB(30, 12, 44), 0); scene(&b, &k, anim / 20, look, mood); lcd_bg(x, y, 64, 32, 0); dots_all(x, y, 2); if (lab) chip(x + 32, y + 38, lab, UI_BLUE2, UI_WHITE);
 }
 static void strip_species(int a, int n, const int *sp, int stage) { for (int i = 0; i < n; i++) { int x = 22 + i * (276 / n) + (276 / n - 68) / 2; gtile(sp[i], stage, 0, (sp[i] + 1) % 8, x, a, MD_NORM, 0, gx_species(sp[i])); } }
@@ -1290,7 +1299,7 @@ void gotchi_draw(void) {
         if (k < (int)(sizeof q / sizeof q[0])) { view = q[k].v; sub = q[k].sub; trn = 0; gach |= GACH_TUTOFF | GACH_INTRO; msgT = 0; titleT = 0; iT = hT = q[k].t; bi = view == V_HATCH ? 5 : 6; hSlot = 5; gsum_c = 5; gsum_p = 2; gsum_h = 1; if (view == V_DAY) bi = 0; if (view == V_HAND) { gach = 0x2A5 | GACH_INTRO | (u32)sub << 16; sub = 0; bi = 6; }
             if (view == V_GUIDE) guidepage = q[k].sub;
             if (q[k].x) { Toy *tx = tt(); static const u8 ag[8] = { 2, 5, 3, 3, 3, 8, 12, 1 };   /* (the egg shots: every slot an egg, its own pattern and colour; slot 6 a rare one) */
-                for (int i = 0; i < GB_N; i++) if (tx->b[i].on) { Blob *e = &tx->b[i]; e->stage = GS_EGG; e->sp = (u8)(i == 6 ? 16 : i); e->age = ag[i]; tx->k[i].col = (u8)(i % 7 + 1); tx->k[i].mut = (u8)(i == 6); }
+                for (int i = 0; i < GB_N; i++) if (tx->b[i].on) { Blob *e = &tx->b[i]; e->stage = GS_EGG; e->poop = 0; tx->x[i].wish = 0; e->sp = (u8)(i == 6 ? 16 : i); e->age = ag[i]; tx->k[i].col = (u8)(i % 7 + 1); tx->k[i].mut = (u8)(i == 6); }
                 if (q[k].x & 7) bi = (q[k].x & 7) - 1; if (q[k].a) tx->b[bi].age = (u16)(q[k].a - 1); }
             if (view == V_HATCH && q[k].t >= 88) cb()->stage = GS_BABY; }
         else return;
