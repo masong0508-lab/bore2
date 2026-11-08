@@ -3,7 +3,7 @@
 #   ovl.py keep OUT.c NM obj...                     what the overlays need from BORE2.EXE, as a table that keeps it through -gc-sections
 #   ovl.py link OUT.OVL MAIN.elf GCC NM OBJCOPY obj...  link one overlay at the crowd arena's OVL_AT against BORE2.EXE's symbols
 import subprocess, sys, re, os
-OVL_AT, ROOM, ARENA = 73728, 192704 - 73728, 156096
+OVL_AT, ARENA = 73728, 156096; ROOM = ARENA - OVL_AT   # (the real room: crowd.c ARENA_BYTES; this said 192704 - OVL_AT, more than there is)
 def syms(nm, objs, kind):
     out = set()
     for o in objs:
@@ -31,7 +31,7 @@ elif cmd == 'link':
         p = l.split()
         if len(p) == 3 and p[2] == 'arena_mem': base = int(p[0], 16) & 0xffffffff
     if base is None: sys.exit('ovl.py: no arena_mem in ' + elf)
-    low = os.path.basename(out).startswith('GOTCHI')   # (the toy's screens need no realm land: it loads at the start of the arena, with all of its 152 KB)
+    low = os.path.basename(out).startswith(("GOTCHI", "CREATE"))   # (the toy and the creator need no realm land: they load at the start of the arena, with all of its 152 KB)
     at = base + (0 if low else OVL_AT); room = ARENA if low else ROOM
     ld = out + '.ld'
     open(ld, 'w').write('''MEMORY { OVL (rwx) : ORIGIN = 0x%08x, LENGTH = %d }

@@ -17,7 +17,7 @@ for p in "40 9a7e273" "41 ad56fbc"; do set -- $p; V=$1; C=$2; W=/tmp/oldsave_w$V
   fi
   DSCARD=$CARD bash "$HERE/ds.sh" "$B/bore2_lite.cue" oldsave_l$V 2900 "$HERE/oldsave_load.txt" > /dev/null
   echo "== version $V loaded (the screens: /tmp/dsd/oldsave_l$V.png):"
-  ELF=$B/bore2.elf python3 "$HERE/ramsym.py" /tmp/ds_oldsave_l${V}_ram.bin save_ver cash home_city home_bx home_by nprops nsims fm_hens:1:B fm_n:4:B fm_stock:4:H job_level opt:46:B
+  ELF=$B/bore2.elf python3 "$HERE/ramsym.py" /tmp/ds_oldsave_l${V}_ram.bin save_ver cash home_city home_bx home_by nprops nsims fm_hens:1:B fm_n:4:B fm_stock:4:H job_level opt:46:B tr_unl:1:B tr_pend_flag:1:B tr_pool:10:H tr_pool+180:10:H tr_pool+360:10:H
   W0=$(ELF=$B/bore2.elf python3 "$HERE/ramsym.py" /tmp/ds_oldsave_l${V}_ram.bin world_wbx world_wby home_bx home_by | tr -d '[]' | awk '{ print $2 }' | tr '\n' ' ')
   set -- $W0; ELF=$B/bore2.elf python3 "$HERE/ramsym.py" /tmp/ds_oldsave_l${V}_ram.bin lifeMap+$(( ((($4 - $2) * 18 + 11) * 81) + ($3 - $1) * 18 + 11 )):1:B | sed 's/$/  (78: the gnome is there)/'
 done

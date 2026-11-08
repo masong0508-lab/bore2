@@ -62,7 +62,7 @@ foreach(o kingdom arcade arcade2 gotchi party dj super dog prison space paradise
 	elseif(o STREQUAL cut)
 		add_library(ovl_${o} OBJECT src/cutscene.c)
 	elseif(o STREQUAL create)
-		add_library(ovl_${o} OBJECT src/create_ui.c src/traits_ui.c)
+		add_library(ovl_${o} OBJECT src/create_ui.c src/traits_ui.c src/traits_auto.c)
 	elseif(o STREQUAL clock)
 		add_library(ovl_${o} OBJECT src/clock_ui.c)
 	elseif(o STREQUAL arcade2)

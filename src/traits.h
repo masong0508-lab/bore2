@@ -25,6 +25,8 @@ typedef struct {
 } TrState;
 
 extern u8 tr_ev_a[EV_N];          // lifetime counters (saturate at 255), one family-wide set: the Bores that have traits count into it
+extern u8 tr_wait[10];            // won earned and prize traits (a bit each, TR_NEARN + TR_NRWD in all) that found every slot full: they come into the next free slot
+void tr_regive(TrState *t);       // an earned trait or a waiting prize that could not be given before (a slot freed or unlocked)
 extern u8 tr_unl;                // unlocked extra slots 0..TR_NUNL (slots 7..10): the household's, saved
 extern u8 tr_cheat_opt;          // OPTIONS > GAME > CHEAT TRAITS: 1 on
 extern u8 tr_cheat_ok;           // the confirm was said yes once

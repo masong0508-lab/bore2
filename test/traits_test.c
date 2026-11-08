@@ -117,6 +117,13 @@ int main(void) {
         CHK(gr_ok, gr_tot, tr_give(&t, TR_FIRST_EARN) == 0, "no second copy");
         static TrState a; tr_clear(&a); a.f |= TF_AUTO; tr_stage_set(&a, 3); memset(tr_ev_a, 0, sizeof tr_ev_a);
         tr_ev(&a, EV_COOKED, 50); CHK(gr_ok, gr_tot, tr_ev_a[EV_COOKED] == 0 && !a.tid[0], "an assigned member neither counts nor wins");
+        // a won trait that found every slot full waits (tr_wait) and comes in when a slot opens: not before, and once
+        static TrState w; tr_clear(&w); tr_stage_set(&w, 3); tr_unl = 0; memset(tr_wait, 0, sizeof tr_wait); memset(tr_ev_a, 0, sizeof tr_ev_a);
+        for (int k = 0; k < 6; k++) w.tid[k] = (u16)(1 + k);
+        tr_ev(&w, tr_earn[0].ev, tr_earn[0].thr);
+        CHK(gr_ok, gr_tot, tr_wait[0] & 1 && w.tid[6] == 0, "a full Bore keeps the won trait waiting");
+        tr_regive(&w); CHK(gr_ok, gr_tot, w.tid[6] == 0 && (tr_wait[0] & 1), "still waiting while the slots are shut");
+        tr_unl = 2; tr_regive(&w); CHK(gr_ok, gr_tot, w.tid[6] == TR_FIRST_EARN && !(tr_wait[0] & 1), "it comes in when slot 7 opens");
         tr_unl = 0;
     }
     {   // the personality -> traits mapping

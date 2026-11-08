@@ -779,6 +779,7 @@ static void life_update(int steps) {
     if (dog_want_name) { dog_want_name = 0; name_open(dog_edit.name, 12, "NAME YOUR DOG", 0); return; }   // (the dog maker's typing screen; then it comes back)
     if (dog_resume && !sim_want_dog) { dog_resume = 0; sim_want_dog = 3; }
     if (sim_want_resort) { static const char *const pf_[3] = { "PARADISE.OVL", "FARM.OVL", "SKYSEA.OVL" }; int w_ = sim_want_resort - 1, a_ = w_ & 3; sim_want_resort = 0; if ((ovl = ovl_load(pf_[(w_ >> 2) % 3]))) { ovl->open(a_); state = ST_SPACE; } return; }   // (ISLAND PARADISE: a file of its own on the disc)
+    if (tr_pend_flag && !tr_pend_cool && nsims) { tr_pend_flag = 0; tr_pend_cool = 600; if ((ovl = ovl_load("CREATE.OVL"))) { ovl->open(3); state = ST_SPACE; } return; }   // (a new housemate, a birthday or an unlocked slot: their traits are assigned from their personality, CREATE.OVL open(3))
     if (sim_want_space) { sim_want_space = 0; if ((ovl = ovl_load("SPACE.OVL"))) { ovl->open(0); state = ST_SPACE; } return; }
     if (sim_want_prison) { int n = sim_want_prison; sim_want_prison = 0; if ((ovl = ovl_load("PRISON.OVL"))) { ovl->open(n); state = ST_PRISON; } return; }   // (HARD TIME: its own file on the disc)
     if (sim_want_dog) { int rs = sim_want_dog == 3; sim_want_dog = 0; if ((ovl = ovl_load("DOG.OVL"))) { ovl->open(rs); state = ST_DOG; } return; }   // (CREATE A DOG: its own file on the disc)
@@ -3493,18 +3494,20 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
             ui_icon(12, 199, IC_BABY, UI_RGB(236, 120, 160)); ui_text(28, 201, 1, b, UI_RGB(200, 70, 120)); }
         else { ui_icon(12, 199, IC_HEART, UI_RED);
             ui_text(28, 201, 1, "CHAT, JOKE AND HUG TO MAKE FRIENDS. 50 IS A FRIEND.", UI_SOFT); }
-    } else if (panel_tab == 5) {   // TRAITS: the chosen ones, the won ones, the lifetime wish
-        const TrState *tt = s->tr; int n = 0;
-        ui_section(12, y0, 294, "TRAITS");
-        for (int k = 0; k < TR_PICK; k++) if (tt->tid[k]) { int x = n % 2 ? 164 : 12, y = y0 + 14 + (n / 2) * 13; ui_icon(x, y - 2, tt->tid[k] >= TR_FIRST_CHEAT ? IC_BOLT : IC_SMILE, tt->tid[k] >= TR_FIRST_CHEAT ? UI_RED : UI_BLUE);
-            ui_text(x + 16, y, 1, tr_pn[k], tt->tid[k] >= TR_FIRST_CHEAT ? UI_BADT : UI_INK); n++; }
-        if (!n) ui_text(12, y0 + 14, 1, "NONE CHOSEN. YOU PICK THEM WHEN YOU MAKE A BORE.", UI_SOFT);
-        { int m = 0; ui_section(12, y0 + 54, 294, "WON");
-          for (int k = TR_PICK; k < TR_SLOTS; k++) if (tt->tid[k]) m++;
-          ui_icon(12, y0 + 66, IC_STAR, UI_AMBER);
-          if (m) { sprintf(b, "%d WON. X SHOWS THEM", m); ui_text(28, y0 + 68, 1, b, UI_INK); }
-          else ui_text(28, y0 + 68, 1, "DO THINGS MANY TIMES TO WIN MORE", UI_SOFT); }
-        { int need, pr = tr_wish_prog(tt, &need); ui_section(12, y0 + 84, 294, "LIFETIME WISH");
+    } else if (panel_tab == 5) {   // TRAITS: the ten slots (six always, four that open with progress), the lifetime wish
+        const TrState *tt = s->tr; int st = s->bore.stage, ns = tr_nslots(st), au = tt->f & TF_AUTO;
+        ui_section(12, y0, 294, au ? "TRAITS: FROM THEIR PERSONALITY" : "TRAITS");
+        for (int k = 0; k < TR_SLOTS; k++) {
+            int x = k < 5 ? 12 : 164, y = y0 + 14 + (k % 5) * 13, id = tt->tid[k], ch = id >= TR_FIRST_CHEAT;
+            if (id) { const char *nm = tr_names_of(tt)[k]; ui_icon(x, y - 2, ch ? IC_BOLT : id >= TR_FIRST_EARN ? IC_STAR : IC_SMILE, ch ? UI_RED : id >= TR_FIRST_EARN ? UI_AMBER : UI_BLUE);
+                      ui_textfit(x + 16, y, 128, nm[0] ? nm : "A WON TRAIT", ch ? UI_BADT : UI_INK); }
+            else if (k < ns) { ui_round(x + 3, y, 9, 9, 3, UI_CARD2, UI_CARD2, 0); ui_textfit(x + 16, y, 128, "OPEN SLOT", UI_SOFT); }
+            else { ui_icon(x, y - 2, IC_LOCK, UI_LINE); ui_textfit(x + 16, y, 128, k < TR_BASE ? "WHEN OLDER" : st < TR_UNL_STAGE || k - TR_BASE < tr_unl ? "WHEN A TEEN" : tr_unl_text[k - TR_BASE], UI_SOFT); }
+        }
+        if (au) { ui_section(12, y0 + 84, 294, "NOT EDITABLE");
+          ui_text(12, y0 + 98, 1, "THEIR TRAITS COME FROM THEIR PERSONALITY", UI_SOFT);
+          ui_hints(160, y0 + 118, "X ALL TRAITS|L1 R1 TAB", 1); }
+        else { int need = 0, pr = tr_wish_prog(tt, &need); ui_section(12, y0 + 84, 294, "LIFETIME WISH");
           if (need) { ui_bar(12, y0 + 98, 200, 9, MIN(100, 100 * pr / need), UI_GREEN); sprintf(b, "%d OF %d", MIN(pr, need), need); ui_text(220, y0 + 98, 1, b, UI_INK); }
           else ui_text(12, y0 + 98, 1, "NO WISH CHOSEN YET", UI_SOFT);
           ui_hints(160, y0 + 118, "X ALL TRAITS AND WISHES|L1 R1 TAB", 1); }
@@ -4456,6 +4459,10 @@ static void title_update(void) {
         pop_people = CIT_PEOPLE; pop_famsize = 2;   // (test builds: a bigger SAN BOREAS, PEOPLE 5 = PACKED, BIG households)
 #endif
         life_started = 0; start_life(); cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
+#ifdef AUTO_TR   // (test builds: AUTO_TR bits: 1 three wishes done, 2 job level 5, 4 ten wishes done, 8 a teenager moves in, 16 slot 7 unlocked by hand)
+        { if (AUTO_TR & 1) tr_wdone[0] |= 0x0e; if (AUTO_TR & 4) { tr_wdone[0] |= 0xfe; tr_wdone[1] |= 0x07; } if (AUTO_TR & 2) job_level = 5; if (AUTO_TR & 16) tr_unl = 1;
+          if (AUTO_TR & 8) { Bore b; look_default(&b); b.stage = AG_TEEN; look_random(&b); sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); } }
+#endif
 #ifdef CIT_KNOWN
         { int n = 0; for (int p = 0; p < pop_nper; p += CIT_KNOWN) { pop_per[p].met = 1; pop_per[p].rel = (s8)(10 + n % 70); n++; } pop_known_rebuild(); }   // (test builds: every CIT_KNOWNth person in SAN BOREAS knows you already)
 #ifdef CIT_LIFE

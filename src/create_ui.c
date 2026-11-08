@@ -87,9 +87,9 @@ static int t, step, cat, row, seen, dirty, modal, msel, sumsel, inlife, user, cu
 static const Cat *curcat(void) { return &stp[step].c[cat]; }
 static const Rw *currow(void) { return &curcat()->r[row]; }
 static void go(int s, int c) { step = s < 0 ? 0 : s >= NSTEP ? NSTEP - 1 : s; cat = c; row = 0; seen |= 1 << step; user = 0; hold = 0; if (step == SUMMARY) sumsel = 6; }
-static int page;   // 1: not the creator: the TRAITS page of the Life panel (open(2))
+static int page;   // 1: not the creator: the TRAITS page of the Life panel (open(2)); 2: open(3), the household's traits are assigned and it leaves
 static void cr_open(int a) {
-    page = a == 2; if (page) { tr_page_open(); return; }
+    page = a == 2 ? 1 : a == 3 ? 2 : 0; if (page == 2) { tr_auto_run(); return; } if (page) { tr_page_open(); return; }
     inlife = a; t = step = cat = row = dirty = modal = msel = user = cur_turn = hold = hdir = 0; seen = 1; sumsel = 6;
     c_dist = camT[0][0]; c_fy = camT[0][1]; c_pitch = camT[0][2]; cas_step = 0;
     cas_pick = &tr_cas; tr_cas.open(a);   // (the traits and wish pickers: traits_ui.c)
@@ -162,6 +162,7 @@ static int modal_update(int pr) {
     return 1;
 }
 static int cr_update(int held, int pr, int steps) {
+    if (page == 2) return 0;   // (open(3) did its work when it opened)
     if (page) return tr_page_update(held, pr);
     t++; if (steps < 1) steps = 1;
     if (cas_go >= 0) { go(cas_go, 0); cas_go = -1; }

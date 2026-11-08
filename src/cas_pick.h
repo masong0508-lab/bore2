@@ -12,3 +12,4 @@ extern const CasPick tr_cas;                                               // tr
 void tr_page_open(void);                                                // the Life panel's TRAITS page (CREATE.OVL open(2))
 int tr_page_update(int held, int pressed);                                  // 0: leave
 void tr_page_draw(void);
+void tr_auto_run(void);                                                    // CREATE.OVL open(3): assign the pending household members' traits from their personality (traits_ui.c)

@@ -3,7 +3,7 @@
 # Each old commit gets a worktree in /tmp/oldsave_w<VER>, a test build (AUTO_CITY + AUTO_OLD) that makes a life and saves it to slot 1 of a memory card
 # file (DSCARD), then BUILD (a plain Release build directory of today's game, with bore2_lite.cue) boots on that card and CONTINUE loads slot 1.
 # The old build and worktree are deleted after (disk). The cards stay in /tmp/oldsave_card<VER>.mcd: delete one to make that save again.
-# Commits: v41 578dc62, v42 2e86539, v43 bcd8579, v44 b889bbe, v45 3c2d4f1, v46 06393a1.
+# Commits: v50 59b5752 (the traits engine, before slots 6/10), v41 578dc62, v42 2e86539, v43 bcd8579, v44 b889bbe, v45 3c2d4f1, v46 06393a1.
 HERE=$(cd "$(dirname "$0")" && pwd); B=$(realpath "$1"); shift
 for p in "$@"; do set -- $p; V=$1; C=$2; W=/tmp/oldsave_w$V; O=/tmp/oldsave_b$V; CARD=/tmp/oldsave_card$V.mcd
   if [ ! -f $CARD ]; then
@@ -18,5 +18,5 @@ for p in "$@"; do set -- $p; V=$1; C=$2; W=/tmp/oldsave_w$V; O=/tmp/oldsave_b$V;
   fi
   DSCARD=$CARD bash "$HERE/ds.sh" "$B/bore2_lite.cue" oldsave_l$V 2900 "$HERE/oldsave_load.txt" > /dev/null
   echo "== version $V loaded (the screens: /tmp/dsd/oldsave_l$V.png):"
-  ELF=$B/bore2.elf python3 "$HERE/ramsym.py" /tmp/ds_oldsave_l${V}_ram.bin save_ver cash home_city home_bx home_by nprops nsims fm_hens:1:B fm_n:4:B fm_stock:4:H job_level opt:46:B arcade_tix arc+24:1:I arc+64:1:I arc+176:1:H gtoy:2:B gtoy+4:1:H
+  ELF=$B/bore2.elf python3 "$HERE/ramsym.py" /tmp/ds_oldsave_l${V}_ram.bin save_ver cash home_city home_bx home_by nprops nsims fm_hens:1:B fm_n:4:B fm_stock:4:H job_level opt:46:B arcade_tix arc+24:1:I arc+64:1:I arc+176:1:H gtoy:2:B gtoy+4:1:H tr_unl:1:B tr_pend_flag:1:B tr_pool:10:H tr_pool+180:10:H tr_pool+360:10:H
 done

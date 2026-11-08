@@ -3,7 +3,7 @@
 #include "traits.h"
 #include <string.h>
 #include <stdio.h>
-u8 tr_cheat_opt = 0, tr_cheat_ok, tr_wdone[8], tr_unl; u32 tr_earned;
+u8 tr_cheat_opt = 0, tr_cheat_ok, tr_wdone[8], tr_unl; u32 tr_earned; u8 tr_wait[10];
 u16 tr_recent[8], tr_ed_pick[TR_PICK]; u8 tr_ed_wish, tr_staged;   // the creator's picks (CREATE.OVL), and the traits chosen last
 
 u8 tr_ev_a[EV_N]; char tr_pnm[TR_NPOOL][TR_SLOTS][TR_NLEN];
@@ -42,10 +42,15 @@ int tr_give(TrState *t, int id) {
     for (k = 0; k < TR_SLOTS; k++) if (t->tid[k] == id) return 0;
     int ns = tr_nslots(tr_stage_get(t));
     for (k = 0; k < ns && k < TR_SLOTS; k++) if (!t->tid[k]) break;
-    if (k >= ns || k >= TR_SLOTS) return -1;
+    if (k >= ns || k >= TR_SLOTS) { tr_wait[i >> 3] |= (u8)(1 << (i & 7)); return -1; }
+    tr_wait[i >> 3] &= (u8)~(1 << (i & 7));
     t->tid[k] = (u16)id;
     for (int e = 0; e < 3; e++) tr_fx_add(t, tr_small[i][e], (s8)tr_small[i][3 + e]);
     return 1;
+}
+void tr_regive(TrState *t) {
+    if (t == &tr_null || (t->f & TF_AUTO)) return;
+    for (int i = 0; i < TR_NEARN + TR_NRWD; i++) if (tr_wait[i >> 3] >> (i & 7) & 1) tr_give(t, i < TR_NEARN ? TR_FIRST_EARN + i : TR_FIRST_RWD + i - TR_NEARN);
 }
 int tr_wish_prog(const TrState *t, int *need) {
     int w = t->wish; if (!w) return 0;
