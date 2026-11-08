@@ -10,7 +10,7 @@ const GInfo gi[AG_NGAME] = {
     { "WHACK-A-BORE", "WAK", "D-PAD PICKS A HOLE. X WHACKS", "GOLD BORES PAY MORE. NO BOMBS", "MI CORA ZONE", 1, 40, 0, 120, 220, 90 },
     { "HIGH STRIKER", "STR", "X STOPS THE METER", "HIT THE SWEET SPOT. RING THE BELL", "HOT DAMN", 1, 400, 0, 250, 120, 40 },
     { "BORE BLOCKS", "BLK", "D-PAD MOVE. X TURN. UP DROPS", "FILL LINES. THE FLOOR RISES", "WHISTLER MAN", 1, 600, 0, 170, 90, 250 },
-    { "STAR BORE", "SHM", "D-PAD FLY. X SHOOT. O BOMB", "SHOOT THE FLEET. BEAT THE BOSS", "AIM AND SHOOT", 2, 2000, 0, 250, 80, 170 },
+    { "STAR BORE", "SHM", "D-PAD FLY. X SHOOT. O BOMB", "SHOOT THE FLEET. BEAT THE BOSS", "AIM AND SHOOT", 2, 2000, 1, 250, 80, 170 },
     { "TURBO BORE", "RAC", "LEFT RIGHT STEER. X GAS. O NITRO", "BEAT THE CLOCK. DODGE THE TRAFFIC", "EMERGENCY ON THE DANCE FLOOR", 2, 3000, 0, 250, 220, 50 },
     { "MUNCH MAZE", "MZE", "D-PAD TURNS. EAT EVERY DOT", "BIG DOTS MAKE GHOSTS SCARED", "THE CYNICAL SYNDICATION", 1, 2000, 0, 250, 230, 60 },
     { "HOOPS", "HOO", "LEFT RIGHT MOVE. X STOPS THE METER", "SINK IT. KEEP A STREAK. GET HOT", "GOTTCHO BARRACHO", 1, 40, 0, 250, 130, 60 },
@@ -80,7 +80,7 @@ void medal(int b) {
 // ---- a cabinet's flow ----
 enum { C_RULES, C_PLAY, C_OVER, C_INIT };
 int core_game, core_ft; static int cm, acc, rules_t, over_t, tix, hrank, newbest, didwin, ini_c; static char ini[4];
-void core_song(int g) { return; int s = g >= 0 ? audio_song_find(gi[g].song) : audio_song_find("HOT DAMN"); if (s >= 0 && s + 1 != arun.cur) { audio_jukebox_play(s); arun.cur = (u8)(s + 1); } }
+void core_song(int g) { int s = g >= 0 ? audio_song_find(gi[g].song) : audio_song_find("HOT DAMN"); if (s >= 0 && s + 1 != arun.cur) { audio_jukebox_play(s); arun.cur = (u8)(s + 1); } }
 void need_add(Sim *s, int n, int v) { s->need[n] = CLAMP(s->need[n] + (v << 10), 0, 100 << 10); }
 static void begin_game(void) {   // the token is in
     ag_pts = 0; ag_t = 0; ag_lives = 3; ag_combo = 0; ag_best = 0; ag_perf = 1; ag_level = 1; ag_shake = 0; tix = 0; memset(pt, 0, sizeof pt); memset(pp, 0, sizeof pp);

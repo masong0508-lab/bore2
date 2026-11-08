@@ -6,7 +6,7 @@
 int arcade_tix, fight_wins, fight_champ, fight_best;
 ArcSave arc; ArcRun arun;
 int arcade_game_at(int x, int y) { return (x * 3 + y * 2) % AG_NGAME; }
-const char *arcade_game_name(int g) { return g == AG_PRIZES ? "THE PRIZES" : "AN ARCADE GAME"; }
+const char *arcade_game_name(int g) { return g == AG_PRIZES ? "THE PRIZES" : "THE ARCADE"; }
 int arcade_price(int g) { return 0; }
 const char *arcade_file(int g) { return g == AG_FIGHTER || g >= AG_PRIZES ? "ARCADE.OVL" : "ARCADE2.OVL"; }
 const char *arcade_chain(int *arg) { int c = arun.chain; arun.chain = 0; *arg = arun.g; return c ? (c == 1 ? "ARCADE.OVL" : "ARCADE2.OVL") : 0; }

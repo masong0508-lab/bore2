@@ -23,6 +23,9 @@ void brk_start(void) { ag_level = 1; bbroken = 0; bwall(); bpw = 36; bpx = 102; 
 int brk_tick(int hd, int pr, int h2, int p2) {
     if (hd & PAD_LEFT) bpx -= 6; if (hd & PAD_RIGHT) bpx += 6;
     bpw = bwide > 0 ? 58 : 36; if (bwide > 0) bwide--; if (bslow > 0) bslow--; bpx = CLAMP(bpx, 20, 220 - bpw);
+#ifdef BORE_DS
+    if (dsag_tx >= 0) bpx = CLAMP(dsag_tx * 240 / 256 - bpw / 2, 20, 220 - bpw);   // (the DS: the stylus on the pad slides the paddle)
+#endif
     for (int i = 0; i < 4; i++) if (bpu[i].on) {
         bpu[i].y += 2;
         if (bpu[i].y >= 138 && bpu[i].y <= 148 && bpu[i].x + 12 >= bpx && bpu[i].x <= bpx + bpw) {
@@ -75,6 +78,9 @@ static struct { s16 x, y; u8 k, on, sw; } cit[8]; static int ckx, cstar, cmag, c
 void cat_start(void) { memset(cit, 0, sizeof cit); ckx = 106; cstar = 0; csq = 0; ag_lives = 3; cmiss = 0; }
 int cat_tick(int hd, int pr, int h2, int p2) {
     int t = ag_t, sp = 5 + ag_level; if (hd & PAD_LEFT) ckx -= sp; if (hd & PAD_RIGHT) ckx += sp; ckx = CLAMP(ckx, 4, 208);
+#ifdef BORE_DS
+    if (dsag_tx >= 0) ckx = CLAMP(dsag_tx * 240 / 256 - 14, 4, 208);
+#endif
     ag_level = 1 + t / 360; if (cstar > 0) cstar--; if (csq > 0) csq--;
     int every = MAX(5, 14 - t / 120);
     if (t % every == 0) for (int i = 0; i < 8; i++) if (!cit[i].on) { int r = ar8(); cit[i].on = 1; cit[i].x = (s16)(8 + ar8() % 216); cit[i].y = 14; cit[i].sw = (u8)(ar8() & 7);

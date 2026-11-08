@@ -1879,7 +1879,7 @@ static int sim_pie_open_(char opt[8][24]) {
         act = ACT_NONE;
     }
     if (pie_place && (c == 'y' || c == 'I' || c == 'x')) act = ACT_NONE;   // (the till, the desk bell: what the place does, not a phone)
-    if (pie_place && pie_pi.lot == LOT_ARCADE && c == '!') { char b_[28]; int g_ = arcade_game_at(mx, my); snprintf(b_, sizeof b_, "PLAY %s $%d", arcade_game_name(g_), arcade_price(g_)); OPT(b_, PC_PLAY) act = ACT_NONE; }
+    if (pie_place && pie_pi.lot == LOT_ARCADE && c == '!') { char b_[28]; int g_ = arcade_game_at(mx, my); snprintf(b_, sizeof b_, "ENTER THE ARCADE"); (void)g_; OPT(b_, PC_PLAY) act = ACT_NONE; }
     if (pie_place && pie_pi.lot == LOT_ARCADE && c == 'y') { char b_[28]; snprintf(b_, sizeof b_, "PRIZES (%d TICKETS)", arcade_tix); OPT(b_, PC_PRIZES) }
     switch ((u8)c) {   // the BOREAGOTCHI! pack's objects
         case 0xBE: OPT("OPEN THE BASKET", PC_GOT_OPEN) OPT("THE TOY BOX", PC_GOT_BOX) act = ACT_NONE; break;

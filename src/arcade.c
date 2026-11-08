@@ -265,10 +265,12 @@ void arcade_open(int a) {
     else if (a >= 100 && a < 100 + AG_NGAME) { int x, y; cab_xy(a - 100, &x, &y); fx = x + 16; fy = a < 107 ? 108 : 172; mode = M_FLOOR; }
     else mode = M_FLOOR;
     if (arun.res && mode == M_FLOOR) mount_challenger();
+    if (!arun.prev) arun.prev = (u8)(audio_jukebox_current() + 2); arun.cur = 0;   // (the music you had: given back when you leave)
     if (mode == M_FLOOR) core_song(-1);
 }
 static void leave(void) {
     
+    if (arun.prev >= 2) audio_jukebox_play(arun.prev - 2); else if (arun.prev == 1) audio_jukebox_stop();
     arun.prev = arun.cur = 0; arun.foe = 0; quit = 1;
 }
 static void go_game(int g, int foe) {   // to a cabinet: this overlay holds BORTUA FIGHTER; ARCADE2.OVL the rest

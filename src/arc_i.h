@@ -1,4 +1,7 @@
 // arc_i: what the arcade's files share (the games are in ag_*.c, the floor and the till in arcade.c)
+#ifdef BORE_DS
+#include "ds_arc_i.h"   // (the DS builds the same games against its own drawing calls: ports/dsi/source/ds_agames.c)
+#else
 #pragma GCC optimize ("Os")
 #pragma once
 #include "arcade.h"
@@ -59,3 +62,4 @@ void core_fx_tick(void); void core_fx_draw(void);
 extern int core_game, core_ft;
 void hearts(int n, int max);
 void bezel(int g); void scan(void);
+#endif
