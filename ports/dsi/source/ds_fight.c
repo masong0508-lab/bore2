@@ -132,12 +132,13 @@ static void fg_bar(int x, int w, int hp, int trail, int right) {   // a life bar
     rect(x - 1, 21, w + 2, 10, C15(2, 2, 5)); int tw_ = w * trail / 100, hw_ = w * hp / 100;
     if (right) { rect(x + w - tw_, 22, tw_, 8, C15(27, 5, 4)); rect(x + w - hw_, 22, hw_, 8, C15(31, 27, 5)); } else { rect(x, 22, tw_, 8, C15(27, 5, 4)); rect(x, 22, hw_, 8, C15(31, 27, 5)); }
 }
-static void fg_big(int y, int s, u16 c, const char *t) { int x = 128 - tw(s, t) / 2; text(x + 2, y + 2, s, C15(4, 4, 6), t); text(x, y, s, c, t); }
+static void fg_big(int y, int s, u16 c, const char *t) {   // (D65) the big words in the TITLE face (HEAD for 1), fitted and centred, with a drop shadow
+    int f = fit_font(s >= 2 ? FS_TITLE : FS_HEAD, 244, t); if (!f) f = FS_SMALL; int x = 128 - tw(f, t) / 2; text(x + 2, y + 2, f, C15(4, 4, 6), t); text(x, y, f, c, t); }
 static void fg_hud(void) {
     fg_bar(6, 108, F[0].hp, F[0].trail, 0); fg_bar(142, 108, F[1].hp, F[1].trail, 1);
-    text_fit(6, 8, 1, 108, TXT, sname[you_i]); { const char *on = fight_2p ? sname[opp_i] : ladder[stage].nm; text(250 - tw(1, on), 8, 1, TXT, on); }
+    text_fit(6, 8, 2, 108, TXT, sname[you_i]); { const char *on = fight_2p ? sname[opp_i] : ladder[stage].nm; int f = fit_font(FS_HEAD, 108, on); if (!f) f = FS_SMALL; text(250 - tw(f, on), 8, f, TXT, on); }
     for (int k = 0; k < 2; k++) { rect(8 + k * 12, 34, 8, 8, k < F[0].wins ? C15(31, 22, 3) : C15(8, 8, 12)); rect(240 - k * 12, 34, 8, 8, k < F[1].wins ? C15(31, 22, 3) : C15(8, 8, 12)); }
-    char t[8]; snprintf(t, sizeof t, "%d", secs); rect(112, 4, 32, 30, C15(3, 3, 8)); text(128 - tw(2, t) / 2, 12, 2, secs <= 5 ? C15(31, 10, 8) : C15(31, 27, 5), t);
+    char t[8]; snprintf(t, sizeof t, "%d", secs); rect(112, 4, 32, 30, C15(3, 3, 8)); text_box(112, 4, 32, 30, FS_TITLE, secs <= 5 ? C15(31, 10, 8) : C15(31, 27, 5), AL_C, t);
     { char s[24]; snprintf(s, sizeof s, fight_2p ? "TWO PLAYERS" : stage == 8 ? "FINAL STAGE" : "STAGE %d OF 9", stage + 1); text(128 - tw(1, s) / 2, 46, 1, C15(24, 26, 31), s); }
 }
 static void fight_top(void) {
@@ -147,13 +148,13 @@ static void fight_top(void) {
     case FS_PICK: {
         panel(4, 4, 248, 184, "BORTUA FIGHTER"); static const char *const lab[4] = { "FIGHTER", "STYLE", "CAMERA", "OPPONENT" };
         for (int r = 0; r < 4; r++) { int y = 24 + r * 27, sel = r == pick_row; rect(12, y, 232, 25, sel ? C15(31, 31, 20) : PANB); rect(13, y + 1, 230, 23, sel ? C15(24, 28, 31) : PAN);
-            text(18, y + 3, 1, sel ? C15(2, 7, 20) : C15(20, 24, 28), lab[r]); static char ob[40]; if (r == 3) snprintf(ob, sizeof ob, fight_2p ? "PLAYER 2: %s" : "THE CPU LADDER", fight_2p ? sname[opp_i] : "");
-            const char *v = r == 0 ? sname[you_i] : r == 1 ? styleNm[style] : r == 2 ? camNm[fight_2p ? CAM_SIDE : cam_mode] : ob; text_fit(18, y + 13, 1, 180, sel ? C15(2, 7, 20) : TXT, v);
-            if (sel) { text(214, y + 13, 1, C15(4, 8, 24), "<"); text(228, y + 13, 1, C15(4, 8, 24), ">"); } }
+            text_box(13, y + 1, 200, 10, FS_SMALL, sel ? C15(2, 7, 20) : C15(20, 24, 28), AL_L, lab[r]); static char ob[40]; if (r == 3) snprintf(ob, sizeof ob, fight_2p ? "PLAYER 2: %s" : "THE CPU LADDER", fight_2p ? sname[opp_i] : "");
+            const char *v = r == 0 ? sname[you_i] : r == 1 ? styleNm[style] : r == 2 ? camNm[fight_2p ? CAM_SIDE : cam_mode] : ob; text_box(13, y + 11, 190, 13, FS_HEAD, sel ? C15(2, 7, 20) : TXT, AL_L, v);
+            if (sel) { text_box(204, y + 11, 18, 13, FS_HEAD, C15(4, 8, 24), AL_C, "<"); text_box(224, y + 11, 18, 13, FS_HEAD, C15(4, 8, 24), AL_C, ">"); } }
         text_fit(12, 136, 1, 232, C15(31, 25, 6), fight_2p ? "ONE DS, TWO PLAYERS. BEST OF THREE" : styleTx[style]); { char b[40]; snprintf(b, sizeof b, "POWER %d   BEST STAGE %d", F[0].pw, fight_best); if (!fight_2p) text(12, 152, 1, TXT, b); }
         text(12, 170, 1, C15(20, 24, 28), "A FIGHT   B WALK AWAY"); break; }
     case FS_VS: { panel(4, 4, 248, 184, fight_2p ? "TWO PLAYERS" : stage == 8 ? "FINAL STAGE" : "NEXT OPPONENT"); char b[24]; snprintf(b, sizeof b, "STAGE %d OF 9", stage + 1); if (!fight_2p) ctext(128, 28, 1, C15(31, 25, 6), b);
-        ctext(128, 56, 2, C15(31, 10, 8), "VS"); text_fit(12, 92, 1, 232, TXT, sname[you_i]); ctext(128, 112, 1, C15(20, 24, 28), "against"); fg_big(128, 1, C15(31, 31, 22), fight_2p ? sname[opp_i] : ladder[stage].nm);
+        ctext(128, 56, 5, C15(31, 10, 8), "VS"); text_fit(12, 92, 1, 232, TXT, sname[you_i]); ctext(128, 112, 1, C15(20, 24, 28), "against"); fg_big(128, 1, C15(31, 31, 22), fight_2p ? sname[opp_i] : ladder[stage].nm);
         if (fight_2p) { text(12, 142, 1, C15(24, 26, 31), "P1: D-PAD  L PUNCH  R KICK"); text(12, 154, 1, C15(24, 26, 31), "P2: Y A X B  TOUCH PUNCH KICK"); text(12, 166, 1, C15(24, 26, 31), "BACK: GUARD  L+R OR SELECT: THROW"); }
         else { char q[40]; snprintf(q, sizeof q, "\"%s\"", ladder[stage].intro); text_fit(12, 150, 1, 232, C15(24, 26, 31), q); } text(12, 178, 1, C15(20, 24, 28), "A FIGHT   B WALK AWAY"); break; }
     case FS_RESULT: { int won = F[0].wins >= 2; fg_hud(); fg_big(80, 2, won || fight_2p ? C15(31, 27, 8) : C15(25, 10, 8), fight_2p ? (won ? "PLAYER 1 WINS" : "PLAYER 2 WINS") : won ? "YOU WIN!" : "YOU LOSE");

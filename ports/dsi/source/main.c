@@ -175,7 +175,7 @@ static void map_chip(int px_, int py_) {   // a tap on the strip under the map
         if (hit(229, 178, 25, 14, px_, py_)) ne_on = 1; else if (hit(202, 178, 25, 14, px_, py_)) open_opts();
         else if (hit(56, 178, 38, 14, px_, py_)) map_enter = 1;
         else if (hit(96, 178, 62, 14, px_, py_)) prop_trade();
-        else if (hit(2, 178, 52, 14, px_, py_) && lot_owned(sel_x, sel_y) && !is_home(sel_x, sel_y)) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot live at sea"); else { home_bx = sel_x; home_by = sel_y; say("Moved in: your new home"); map_enter = 1; } }   // (the old home stays yours, as a property)
+        else if (hit(2, 178, 52, 14, px_, py_) && lot_owned(sel_x, sel_y) && !is_home(sel_x, sel_y)) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot live at sea"); else { home_bx = sel_x; home_by = sel_y; say("Welcome home! Your new place"); map_enter = 1; } }   // (the old home stays yours, as a property)
         return; }
     for (int i = 0; i < 7; i++) if (hit(2 + i * 36, 162, 34, 13, px_, py_)) ne_tool = i;
     if (hit(2, 177, 110, 13, px_, py_)) { if (ne_tool == 0) ne_lot_i = (ne_lot_i + 1) % (int)sizeof NELOT; else if (ne_tool == 1) ne_g_i = (ne_g_i + 1) % 6; else if (ne_tool == 2) ne_road ^= 1; }
@@ -778,8 +778,8 @@ static void prop_trade(void) {   // Buy or Sell on the Map
         if (is_home(sel_x, sel_y)) say("Your home: move out first");
         else if (lot_bx == sel_x && lot_by == sel_y) say("You are on it: leave first");
         else if (nown < 2) say("Keep at least one lot");
-        else { funds += lot_sell_price(&b); own_remove(sel_x, sel_y); for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == sel_x && lsv[i].by == sel_y) { lsv[i] = lsv[--lsv_n]; if (lsv_next >= lsv_n) lsv_next = 0; break; } say("Lot sold"); }
-    } else { int pr = lot_price(&b); if (!pr) say("Not for sale"); else if (pop_at(sel_x, sel_y, 0)) say("A family lives here"); else if (funds < pr) say("Not enough funds"); else if (nown >= OWN_MAX) say("Too many lots"); else { funds -= pr; own_add(sel_x, sel_y); say("Lot bought"); } }
+        else { funds += lot_sell_price(&b); own_remove(sel_x, sel_y); for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == sel_x && lsv[i].by == sel_y) { lsv[i] = lsv[--lsv_n]; if (lsv_next >= lsv_n) lsv_next = 0; break; } say("Sold! Cha-ching!"); }
+    } else { int pr = lot_price(&b); if (!pr) say("Not for sale"); else if (pop_at(sel_x, sel_y, 0)) say("A family lives here"); else if (funds < pr) say("Your wallet says no!"); else if (nown >= OWN_MAX) say("Too many lots"); else { funds -= pr; own_add(sel_x, sel_y); say("Yours now! Home sweet lot"); } }
 }
 static void lot_enter(int bx, int by) {   // the lot you walk into: what you built there last time, or a new home from its own seed
     if (lot_bx >= 0 && (lot_bx != bx || lot_by != by)) life_ev(ctl, WN_VISIT, 0);
@@ -947,15 +947,15 @@ static int fp_free(int x, int y, int w, int h, int skip) {   // (D35) every cell
 }
 static void place_here(void) {
     const Item *it = &ITEMS[pick];
-    if (pick == 48) { if (dog_have) say("You already have a dog"); else if (funds < it->price) say("Not enough funds"); else { funds -= it->price; dog_have = 1; dog_reset(); life_ver++; ui_ver++; say("Welcome home, Rex!"); life_ev(ctl, WN_BUY, 0); } pick = -1; return; }   // (the puppy is the dog, not a thing)
+    if (pick == 48) { if (dog_have) say("You already have a dog"); else if (funds < it->price) say("Your wallet says no!"); else { funds -= it->price; dog_have = 1; dog_reset(); life_ver++; ui_ver++; say("Welcome home, Rex! Woof!"); life_ev(ctl, WN_BUY, 0); } pick = -1; return; }   // (the puppy is the dog, not a thing)
     int w = prot & 1 ? it->fl : it->fw, h = prot & 1 ? it->fw : it->fl;
     if (pcx + w > GN || pcy + h > GN) { say("Not enough room"); return; }
     if (LV) for (int j = pcy; j < pcy + h; j++) for (int i = pcx; i < pcx + w; i++) if (!uflr[LV - 1][j][i]) { say("Build a floor there first"); return; }
     if (pick == ID_STAIRS && LV >= UPN) { say("No storey above the top one"); return; }   // (the PS1's words)
     if (!fp_free(pcx, pcy, w, h, -1)) { say("Something is there"); return; }
     if (nobj >= 400) { say("Lot is full"); return; }
-    if (funds < it->price) { say("Not enough funds"); pick = -1; return; }
-    funds -= it->price; objs[nobj].x = (u8)pcx; objs[nobj].y = (u8)pcy; objs[nobj].c = (u8)(pick >> 2); objs[nobj].i = (u8)(pick & 3); objs[nobj].rot = (u8)(prot | LV << 2); nobj++; occ_ok = 0; say("Bought"); ui_ver++; life_ev(ctl, WN_BUY, 0);
+    if (funds < it->price) { say("Your wallet says no!"); pick = -1; return; }
+    funds -= it->price; objs[nobj].x = (u8)pcx; objs[nobj].y = (u8)pcy; objs[nobj].c = (u8)(pick >> 2); objs[nobj].i = (u8)(pick & 3); objs[nobj].rot = (u8)(prot | LV << 2); nobj++; occ_ok = 0; say("Bought! Nice choice"); ui_ver++; life_ev(ctl, WN_BUY, 0);
     if (pick == ID_STAIRS) { uflr[LV][pcy][pcx] = 0; say("Stairs: build a floor above, behind them"); }   // the cell over the flight becomes its stairwell
 }
 static int floor_ok(int L, int x, int y) {   // (D36) an upper floor needs something under it, or a floor beside it on its own storey (the PS1's rule); a stairwell stays open
@@ -975,7 +975,7 @@ static void ui_down(int tx, int ty) {
         for (int k = 0; k < NTAB; k++) if (hit(2, 20 + k * 14, 56, 14, tx, ty)) { cat = k; bpage = 0; ui_ver++; }
         { int pages = tab_pages(); if (hit(204, 19, 24, 12, tx, ty)) { bpage = (bpage + pages - 1) % pages; ui_ver++; } if (hit(230, 19, 24, 12, tx, ty)) { bpage = (bpage + 1) % pages; ui_ver++; } }
         for (int k = 0; k < 6; k++) { int q = bpage * 6 + k, x, y; if (q >= tab_n[cat]) break; int id = tab_id[cat][q]; buy_card_pos(k, &x, &y);
-            if (hit(x, y, 96, 42, tx, ty)) { if (funds >= ITEMS[id].price) { drag = 1; drag_item = id; dsx = tx; dsy = ty; } else say("Not enough funds"); } }
+            if (hit(x, y, 96, 42, tx, ty)) { if (funds >= ITEMS[id].price) { drag = 1; drag_item = id; dsx = tx; dsy = ty; } else say("Your wallet says no!"); } }
     } else if (mode == M_BUY) {
         int c = lot_touch(tx, ty);
         if (c >= 0) { pcx = c % GN; pcy = c / GN; drag = 2; return; }
@@ -991,7 +991,7 @@ static void ui_down(int tx, int ty) {
             if (tool == 0 || tool == 2) { drag = 3; build_apply(c); }
             else if (tool == 1) { u8 *e = edge_at(tx, ty); if (e) { wall_val = *e ? 0 : pal; *e = (u8)wall_val; drag = 4; ui_ver++; } }
             else if (tool == 3) { int o = obj_at(x, y); if (o >= 0) { if (OBJ_ID(&objs[o]) == ID_STAIRS) say("Stairs stay put"); else { drag = 5; move_obj = o; } } }   // (the PS1 cannot pick stairs up either)
-            else if (tool == 4) { int o = obj_at(x, y); if (o >= 0) { int sx = objs[o].x, sy = objs[o].y, st = OBJ_ID(&objs[o]) == ID_STAIRS; funds += IT_OF(&objs[o])->price / 2; objs[o] = objs[--nobj]; occ_ok = 0; say("Sold"); ui_ver++;
+            else if (tool == 4) { int o = obj_at(x, y); if (o >= 0) { int sx = objs[o].x, sy = objs[o].y, st = OBJ_ID(&objs[o]) == ID_STAIRS; funds += IT_OF(&objs[o])->price / 2; objs[o] = objs[--nobj]; occ_ok = 0; say("Sold! Cha-ching!"); ui_ver++;
                 if (st && LV < UPN) { u8 (*up)[GN] = FLv(LV + 1); int f = sx > 0 ? up[sy][sx - 1] : 0; if (!f && sx < GN - 1) f = up[sy][sx + 1]; if (!f && sy > 0) f = up[sy - 1][sx]; if (!f && sy < GN - 1) f = up[sy + 1][sx]; up[sy][sx] = (u8)f; } } } }   // (selling stairs closes their stairwell, if there is floor round it)
     }
 }
@@ -1616,7 +1616,7 @@ static void farm_midnight(void) {   // the PS1's farm_midnight: the crops grow w
     if (fm_cows && (fm_fed & 2)) { int v = fm_pm + fm_cows * (1 + (fm_skl(ctl) >= 6)); fm_pm = (u16)(v > 40 ? 40 : v); }
     fm_fed = 0;
 }
-static int fm_pay(int v) { if (funds < v) { say("Not enough funds"); return 0; } funds -= v; return 1; }
+static int fm_pay(int v) { if (funds < v) { say("Your wallet says no!"); return 0; } funds -= v; return 1; }
 static void fm_work(int i, int o, int t, int need, int amt) {   // the PS1's begin_action at the thing: walk over and work there a while
     Sim *m = &sims[i]; if (o < 0 || o >= nobj) return; m->tx = objs[o].x * 16; m->ty = objs[o].y * 16; m->act = need; m->act_amt = amt; m->face = t; m->act_obj = o; m->act_left = 0;
 }
@@ -1992,10 +1992,10 @@ static void job_take(int j) {
 }
 static void job_work(void) {
     Life *L = &life[ctl]; static char b[44]; int hr = (minutes / 60) % 24, dw = (minutes / 1440) % 7, dn = (minutes / 1440) % 250 + 1;
-    if (!L->job) { say("Get a job first"); return; }
-    if (dw >= 5) { say("No shift at weekends"); return; }
+    if (!L->job) { say("Get a job first: Menu > Job"); return; }
+    if (dw >= 5) { say("Weekend! No shift today"); return; }
     if (hr < 6 || hr > 15) { say("Shifts start 6am to 3pm"); return; }
-    if (L->worked == dn) { say("Already worked today"); return; }
+    if (L->worked == dn) { say("You worked today. Rest up!"); return; }
     const Sim *m = &sims[ctl]; int perf = (m->need[0] + m->need[1] + m->need[2] + m->need[5]) / 4, good = perf >= 45, pay = job_pay(L), old = minutes;
     L->worked = (u8)dn; L->shifts++; if (!o_rt) minutes += 360;   // (Real time: the shift goes by in a blink, the clock stays real)
     static const u8 NPCT[4] = { 0, 50, 100, 150 };   // (a shift tires them as the Needs speed says)
@@ -2023,7 +2023,7 @@ static void job_touch(int tx, int ty) {
     if (hit(204, 22, 40, 14, tx, ty)) { jobui = 0; return; }
     Life *L = &life[ctl]; if (stage_of(sims[ctl].age) < 3) return;
     if (!L->job) { for (int k = 0; k < JOBN; k++) if (hit(14 + (k & 1) * 118, 56 + (k >> 1) * 36, 112, 30, tx, ty)) { job_take(k); jobui = 0; } return; }
-    if (hit(14, 108, 112, 28, tx, ty)) { job_work(); jobui = 0; } else if (hit(130, 108, 112, 28, tx, ty)) { L->job = 0; L->lvl = L->prog = L->strike = 0; life_ver++; say("You quit"); jobui = 0; }
+    if (hit(14, 108, 112, 28, tx, ty)) { job_work(); jobui = 0; } else if (hit(130, 108, 112, 28, tx, ty)) { L->job = 0; L->lvl = L->prog = L->strike = 0; life_ver++; say("You quit. Time for a nap?"); jobui = 0; }
 }
 static void juke_draw(void) {
     char t[56]; panel(6, 20, 244, 164, "Jukebox"); chip(204, 22, 40, 14, "X", 0);
@@ -2202,19 +2202,19 @@ static void new_sim(int age, u8 skin, u8 hair, u8 hcol, u8 shirt, const char *nm
 }
 static void apply_soc(int ai, int tgt, int id) {
     Sim *a = &sims[ai]; int cit = tgt <= -2, sb, rel; Sim *o = 0; CRel *cr = 0; Cit *ct = 0;
-    if (cit) { ct = &cits[-2 - tgt]; cr = crel(ct->id); sb = ct->stage; rel = cr->rel; if (cr->talks >= 4) { if (ai == ctl) say("Too busy to talk"); return; } cr->talks++; ct->stop = 100; }
-    else { o = &sims[tgt]; sb = stage_of(o->age); rel = o->rel; if (ilim[ai][tgt] >= 6) { if (ai == ctl) say("Not in the mood"); return; } ilim[ai][tgt]++; ilim[tgt][ai]++; }
+    if (cit) { ct = &cits[-2 - tgt]; cr = crel(ct->id); sb = ct->stage; rel = cr->rel; if (cr->talks >= 4) { if (ai == ctl) say("Busy right now. Try later"); return; } cr->talks++; ct->stop = 100; }
+    else { o = &sims[tgt]; sb = stage_of(o->age); rel = o->rel; if (ilim[ai][tgt] >= 6) { if (ai == ctl) say("Not feeling chatty today"); return; } ilim[ai][tgt]++; ilim[tgt][ai]++; }
     if (!soc_ok(id, stage_of(a->age), sb, rel, cit)) return;
     int d = SREL[id]; a->need[3] = cl100(a->need[3] + SSOC[id]); a->need[1] = cl100(a->need[1] + SFUN[id]);
     if (o) { o->need[3] = cl100(o->need[3] + SSOC[id]); o->need[1] = cl100(o->need[1] + SFUN[id]); }
     if (id == S_FEED) o->need[0] = cl100(o->need[0] + 60); if (id == S_TUCK) o->need[2] = cl100(o->need[2] + 60);
-    if (id == S_KISS && o && !fpt[ai] && !fpt[tgt] && ai != tgt) { int fa = fam_id(ai), fo = fam_id(tgt); fpt[ai] = (u8)fo; fpt[tgt] = (u8)fa; if (ai == ctl) say("A new partner!"); }   // (D62) a kiss makes a pair (the family tree shows them)
+    if (id == S_KISS && o && !fpt[ai] && !fpt[tgt] && ai != tgt) { int fa = fam_id(ai), fo = fam_id(tgt); fpt[ai] = (u8)fo; fpt[tgt] = (u8)fa; if (ai == ctl) say("Ooh, a new partner!"); }   // (D62) a kiss makes a pair (the family tree shows them)
     if (id == S_BABY) { if (nsim >= SIM_MAX) { if (ai == ctl) say("Household is full"); return; } if (pop_per + pop_born >= DS_POP_MAX) { if (ai == ctl) say("City is full (2000)"); return; }
         int bx2 = a->x + 16, by2 = a->y; for (int k = 0; k < nobj; k++) if (objs[k].c == 5 && objs[k].i == 0) { bx2 = objs[k].x * 16; by2 = objs[k].y * 16; break; }
         static const char *const BN[8] = { "Bo", "Remy", "Pip", "Juno", "Tate", "Wren", "Otis", "Fern" }; char nm[20]; sprintf(nm, "%s %s", BN[(minutes / 7 + nsim) % 8], strrchr(sname[ai], ' ') ? strrchr(sname[ai], ' ') + 1 : "B");
-        new_sim(0, (minutes & 1) ? a->skin : o->skin, (u8)((minutes + nsim) % 12), (minutes & 2) ? a->hcol : o->hcol, (u8)(minutes % 6), nm, bx2, by2); pop_born++; st_born++; { int bi = nsim - 1, fa = fam_id(ai), fo = fam_id(tgt); fam_id(bi); fpar[bi][0] = (u8)fa; fpar[bi][1] = (u8)fo; if (!fpt[ai] && !fpt[tgt]) { fpt[ai] = (u8)fo; fpt[tgt] = (u8)fa; } } life_ev(ai, WN_BABY, 0); if (ai == ctl) say("A baby is born!"); }
+        new_sim(0, (minutes & 1) ? a->skin : o->skin, (u8)((minutes + nsim) % 12), (minutes & 2) ? a->hcol : o->hcol, (u8)(minutes % 6), nm, bx2, by2); pop_born++; st_born++; { int bi = nsim - 1, fa = fam_id(ai), fo = fam_id(tgt); fam_id(bi); fpar[bi][0] = (u8)fa; fpar[bi][1] = (u8)fo; if (!fpt[ai] && !fpt[tgt]) { fpt[ai] = (u8)fo; fpt[tgt] = (u8)fa; } } life_ev(ai, WN_BABY, 0); if (ai == ctl) say("It is a baby! Congrats!"); }
     if (id == S_INVITE) { if (nsim >= SIM_MAX) { if (ai == ctl) say("Household is full"); return; } char nm[20]; cit_name(ct, nm);
-        new_sim(sb == 3 ? 15 : sb == 4 ? 28 : 65, ct->skin, (u8)((ct->id >> 3) % NHAIRD), ct->hair, ct->shirt, nm, a->x, a->y); cr->taken = 1; ct->on = 0; if (ai == ctl) say("Moved in!"); return; }
+        new_sim(sb == 3 ? 15 : sb == 4 ? 28 : 65, ct->skin, (u8)((ct->id >> 3) % NHAIRD), ct->hair, ct->shirt, nm, a->x, a->y); cr->taken = 1; ct->on = 0; if (ai == ctl) say("Moved in! Say hello"); return; }
     if (cit) { int r = (int)cr->rel + d; cr->rel = (u8)(r < 0 ? 0 : r > 10 ? 10 : r); } else { int r = o->rel + d; o->rel = r < 0 ? 0 : r > 10 ? 10 : r; r = a->rel + d; a->rel = r < 0 ? 0 : r > 10 ? 10 : r; }
     { int nr = cit ? cr->rel : o->rel; life_ev(ai, WN_CHAT, 0); if (nr >= 3) life_ev(ai, WN_FRIEND, 0); }
     if (ai == ctl && id != S_BABY) say(SOCN[id]);
@@ -2346,7 +2346,7 @@ static void day_roll(void) {
     st_days++; memset(ilim, 0, sizeof ilim); farm_midnight(); gt_day(); for (int k = 0; k < 64; k++) crt[k].talks = 0;
     for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; int s0 = stage_of(m->age); if (m->age < 99) m->age++; int s1 = stage_of(m->age); if (s0 != s1) { static char bf[40]; sprintf(bf, "%s is now a %s", sname[i], STGN[s1]); say(bf); } }
     for (int i = 0; i < nsim; i++) if (sims[i].age >= 80 && nsim > 1) { int alive = 0; for (int q = 0; q < nsim; q++) if (q != i && stage_of(sims[q].age) > 0) alive++; if (alive && (int)(hsh((u32)(minutes + i * 77)) % 100) < (sims[i].age - 79) * 7) { sim_die(i); break; } }
-    if (o_auto && mode == M_LIVE && sav_ok() && lot_bx >= 0) { if (sav_write()) say("Game saved"); }
+    if (o_auto && mode == M_LIVE && sav_ok() && lot_bx >= 0) { if (sav_write()) say("Saved. Sweet dreams!"); }
     sfx(4);
 }
 static const int SFX_[4] = { 0, 1, 0, -1 }, SFY_[4] = { 1, 0, -1, 0 };   // a flight's front (its open side) by its turn; it rises away from it
@@ -2389,7 +2389,7 @@ static int next_cell(int sx, int sy, int gx, int gy, int *nx, int *ny) {   // br
 static void dog_reset(void) { const Sim *m = &sims[ctl]; dog.x = dog.wx = dog.tx = fdiv(m->x + 8, 16) * 16 + 16; dog.y = dog.wy = dog.ty = fdiv(m->y + 8, 16) * 16; dog.hun = 80; dog.fx = 1; dog.fz = 0; if (obj_solid(dog.x / 16, dog.y / 16)) { dog.x = dog.wx = dog.tx = fdiv(m->x + 8, 16) * 16; } }
 static void dog_step(int frames) {
     if (!dog_have) return;
-    if ((frames % 500) == 0 && dog.hun > 0) { dog.hun--; if (dog.hun == 20) say("Rex is hungry"); }
+    if ((frames % 500) == 0 && dog.hun > 0) { dog.hun--; if (dog.hun == 20) say("Rex is hungry! Woof!"); }
     if (dog.x == dog.tx && dog.y == dog.ty && ((frames * 7 + 3) % 90) == 0) { const Sim *m = &sims[ctl]; int cx = fdiv(m->x + 8, 16) + (int)(hsh((u32)frames) % 7) - 3, cy = fdiv(m->y + 8, 16) + (int)(hsh((u32)frames * 3 + 1) % 7) - 3; if (!obj_solid(cx, cy)) { dog.tx = cx * 16; dog.ty = cy * 16; } }
     if (dog.x != dog.tx || dog.y != dog.ty) {
         if ((dog.x & 15) == 0 && (dog.y & 15) == 0 && dog.wx == dog.x && dog.wy == dog.y) { int nx, ny; if (next_cell(fdiv(dog.x + 8, 16), fdiv(dog.y + 8, 16), fdiv(dog.tx + 8, 16), fdiv(dog.ty + 8, 16), &nx, &ny)) { dog.wx = nx * 16; dog.wy = ny * 16; } else { dog.tx = dog.x; dog.ty = dog.y; return; } }
@@ -2429,7 +2429,7 @@ static void ghost_draw(void) {
 }
 static int arrive(int i) {   // at the thing: start doing it (0: nothing to do after all)
     Sim *m = &sims[i];
-    if (m->act == 80) { if (isl_food > 0) { isl_food--; m->act = 0; m->act_amt = 70; m->face = 150; life_ver++; } else { if (i == ctl) say("Nothing to eat. No food: pick berries, fish"); m->act = -1; return 0; } }   // (the castaway's meal: from what was gathered)
+    if (m->act == 80) { if (isl_food > 0) { isl_food--; m->act = 0; m->act_amt = 70; m->face = 150; life_ver++; } else { if (i == ctl) say("Tummy rumbles... try berries or fish"); m->act = -1; return 0; } }   // (the castaway's meal: from what was gathered)
     m->act_left = m->face;
     if (m->act >= 100) { if (m->tgt >= 0) { Sim *o = &sims[m->tgt]; o->act_left = m->face; o->act = 3 + 100; o->act_amt = 0; } m->act = 3; apply_soc(i, m->tgt, m->soc); }
     return 1;
@@ -2469,7 +2469,7 @@ static void sims_step(int frames) {
           if (np && ((frames + i * 9) % np) == 0) for (int n = 0; n < 6; n++) if (m->need[n] > 4 && n != 3) m->need[n]--;
           if (np && ((frames + i * 9) % (np * 2)) == 0 && m->need[3] > 4) m->need[3]--; }
         if (((frames + i * 9) % 70) == 5 && !m->act_left) {
-            if (m->need[2] <= 6) { m->need[2] = 35; m->need[1] = cl100(m->need[1] - 15); if (i == ctl) say("Passed out!"); life_fear(i, FR_PASS); }
+            if (m->need[2] <= 6) { m->need[2] = 35; m->need[1] = cl100(m->need[1] - 15); if (i == ctl) say("Zzz... passed out!"); life_fear(i, FR_PASS); }
             if (m->need[4] <= 6) { m->need[4] = 60; m->need[5] = cl100(m->need[5] - 25); m->need[1] = cl100(m->need[1] - 10); if (i == ctl) say("Oh no, an accident!"); life_fear(i, FR_WET); } }
     }
     LV = 0; dog_step(frames); ghost_step(frames); LV = keep_lv; if ((frames & 63) == 0) life_tick();
@@ -3009,7 +3009,7 @@ static void title_touch(int tx, int ty) {
     if (hit(98, 130, 28, 22, tx, ty)) slot_sel = 0;
     if (hit(130, 130, 28, 22, tx, ty)) opt_on = 1;
     if (hit(162, 130, 28, 22, tx, ty)) { if (slot_sel == 0 && sav_have >= 0) { u8 z[sizeof(SavHdr)]; memset(z, 0, sizeof z); for (int k = 0; k < 2; k++) { cardWriteEeprom((u32)(k * SAV_STRIDE), z, sizeof z, sav_type); memset(sav_sh[k], 0, sizeof z); } sav_have = -1; sav_seq = 0; } new_household(); say("Cleared"); slot_sel = 0; }
-    if (hit(194, 130, 36, 22, tx, ty)) { if (slot_sel == 0) { if (sav_have >= 0 && sav_apply()) { say("Game loaded"); } else if (sav_have >= 0) { say("Save is damaged"); new_household(); }
+    if (hit(194, 130, 36, 22, tx, ty)) { if (slot_sel == 0) { if (sav_have >= 0 && sav_apply()) { say("Welcome back!"); } else if (sav_have >= 0) { say("Save is damaged"); new_household(); }
             if (lot_bx >= 2000) { city_spawn(); nb_ok = 1; set_mode(M_LIVE); } else set_mode(M_MAP); }   // (D37: saved on a trip, you are back there; the Map has no zones)
         else { new_household(); cas_tab = 0; cas_page = 0; slot_sel = 0; set_mode(M_CAS); } }
 }
@@ -3030,9 +3030,9 @@ static void live_touch(int tx, int ty) {
     if (farm_ui) { farm_touch(tx, ty); return; }
     if (juke) { juke_touch(tx, ty); return; }
     if (popup == 4) {
-        if (hit(64, 118, 60, 20, tx, ty)) { Sim *m = &sims[ctl]; m->need[1] = cl100(m->need[1] + (dog.hun > 20 ? 25 : 8)); m->need[3] = cl100(m->need[3] + 8); say("Rex wags his tail"); life_ev(ctl, WN_PET, 0); life_ev(ctl, WN_FUN, 0); popup = 0; }
+        if (hit(64, 118, 60, 20, tx, ty)) { Sim *m = &sims[ctl]; m->need[1] = cl100(m->need[1] + (dog.hun > 20 ? 25 : 8)); m->need[3] = cl100(m->need[3] + 8); say("Rex wags his tail. Good boy!"); life_ev(ctl, WN_PET, 0); life_ev(ctl, WN_FUN, 0); popup = 0; }
         else if (hit(132, 118, 60, 20, tx, ty)) { Sim *m = &sims[ctl]; m->need[1] = cl100(m->need[1] + 35); m->need[2] = cl100(m->need[2] - 8); say("Playing fetch"); life_ev(ctl, WN_PET, 0); life_ev(ctl, WN_FUN, 0); popup = 0; }
-        else if (hit(64, 142, 60, 20, tx, ty)) { if (funds >= 5) { funds -= 5; dog.hun = 100; say("Rex is fed"); } else say("Not enough funds"); popup = 0; }
+        else if (hit(64, 142, 60, 20, tx, ty)) { if (funds >= 5) { funds -= 5; dog.hun = 100; say("Rex is fed. Yum!"); } else say("Your wallet says no!"); popup = 0; }
         else if (hit(132, 142, 60, 20, tx, ty)) popup = 0;
         return; }
     if (popup) {
@@ -3042,7 +3042,7 @@ static void live_touch(int tx, int ty) {
                 else if (cd >= 100) farm_do(cd, ctl, popup_i);   // (D38) the farm
                 else if (cd < 81) { m->tx = ob->x * 16; m->ty = ob->y * 16; m->act = cd; m->act_amt = 0; m->face = cd < 80 ? gather_len(cd - 60) : 1; m->act_obj = popup_i; m->act_left = 0; }   // (gather, or the castaway's meal: walk there, then do it)
                 else if (cd == 81) craft_ui = 1; else if (cd == 82) raft_sail(); else if (cd == 83) travel_ui = 1;
-                else if (cd == 86) { int g_ = arcade_game_at(ob->x, ob->y), pr_ = ag_price(g_); if (funds < pr_) say("Not enough funds"); else { funds -= pr_; ag_open(g_); } }   // (D46)
+                else if (cd == 86) { int g_ = arcade_game_at(ob->x, ob->y), pr_ = ag_price(g_); if (funds < pr_) say("Your wallet says no!"); else { funds -= pr_; ag_open(g_); } }   // (D46)
                 else if (cd == 87) ag_open(99);
                 else if (cd >= 90 && cd <= 96) gt_furn(cd);   // (D53) the Boreagotchi things
                 else if (cd == 85) { objs[popup_i] = objs[--nobj]; occ_ok = 0; has_board = 1; say("A skateboard! Menu > Board rides it"); skate_on(); }   // (D44: the PS1's PICKBOARD)

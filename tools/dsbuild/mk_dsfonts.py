@@ -71,9 +71,11 @@ def build(spec):
                     if v == "#": im.putpixel((6 + q, top + r), 1)
             bb = im.getbbox(); adv = len(art[0]) + 1
         if not bb:
+            if ch == ' ': adv = {'BODY': 5, 'HEAD': 5, 'SMALL': 4, 'NUM': 6, 'TITLE': 6}[name]   # roomy word gaps: easier to read
             rows.append([0] * H); meta.append((adv, 0, 0)); continue
         x0 = bb[0]; w = bb[2] - bb[0]
         if ch != ' ' and adv - (x0 - 6 + w) > 2 and name != 'NUM': adv = x0 - 6 + w + 2   # no wide gap after W, m ...
+        if ch in 'WVYTAwvy' and name != 'NUM' and adv - (x0 - 6 + w) > 1: adv = x0 - 6 + w + 1   # the diagonal letters tuck in a pixel
         assert w <= 16, (name, ch, w)
         rr = []
         for r in range(H):

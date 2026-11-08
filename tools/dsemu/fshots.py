@@ -25,6 +25,14 @@ SC = {   # name: (script, frame)
     "life": (LIVE + MENU + chipm(8), 600),
     "travel": (LIVE + MENU + chipm(9), 600),
 }
+SC40 = {   # needs a -DDSTEST -DAUTO_SCENE=40 build: the keys held at frame 420 pick the scene (X+Y 43 = the first game, X+Y+L 47 = the prize counter)
+    "arc_intro": (LIVE + ";420-440:c00:-1,-1", 470),
+    "arc_play": (LIVE + ";420-440:c00:-1,-1;500-503:1:-1,-1;560-640:10:-1,-1", 700),
+    "arc_prizes": (LIVE + ";420-440:e00:-1,-1", 500),
+    "skate": (LIVE + ";420-440:4:-1,-1", 520),        # SELECT held: scene 40 (a -DAUTO_SCENE=40 build)
+    "heist": (LIVE + ";420-440:4:-1,-1", 520),        # the same with a -DAUTO_SCENE=48 build: scene 48, the Underworld
+}
+SC.update(SC40)
 def shot(rom, out, name):
     script, fr = SC[name]
     ppm = os.path.join(out, name + ".ppm")

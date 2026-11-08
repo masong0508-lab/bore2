@@ -516,8 +516,8 @@ static void ar_top(void) {
     if (ag_phase == 0) {
         int pg = (ag_rt / 100) % 2;
         if (pg == 0) { ctext(128, 40, 5, K8(agCol[ag][0], agCol[ag][1], agCol[ag][2]), agName[ag]); ctext(128, 80, 1, TXT, agHow1[ag]); ctext(128, 96, 1, TXT, agHow2[ag]);
-            sprintf(b, "PLAY $%d", ag_price(ag)); ctext(128, 128, 1, K8(255, 190, 40), b); ctext(128, 146, 1, K8(170, 210, 250), (ag_rt / 15) & 1 ? "PRESS A TO START" : ""); }
-        else { ctext(128, 40, 2, TXT, agName[ag]); ar_scores(ag, 72); }
+            sprintf(b, "PLAY $%d", ag_price(ag)); ctext(128, 128, 1, K8(255, 190, 40), b); ctext(128, 146, 1, K8(170, 210, 250), "PRESS A TO START"); }   // (D65: it blinked on and off twice a second; it stays put now)
+        else { ctext(128, 40, 5, TXT, agName[ag]); ar_scores(ag, 72); }
     } else if (ag_phase == 3) {
         ctext(128, 30, 5, K8(255, 190, 40), "NEW RECORD!"); sprintf(b, "SCORE %d", ag_pts); ctext(128, 56, 1, TXT, b);
         for (int i = 0; i < 3; i++) { char c[2] = { ag_ini[i], 0 }; int x = 84 + i * 28; rect(8 + x, 16 + 70, 22, 30, i == ag_ic ? K8(250, 200, 60) : K8(60, 70, 110)); rect(8 + x + 1, 16 + 71, 20, 28, K8(10, 10, 30)); text_box(8 + x, 16 + 70, 22, 30, FS_TITLE, TXT, AL_C, c); }
@@ -1884,7 +1884,7 @@ static void gtop_goals(void) {   // TODAY: three goals, the streak, the last sev
     rect(8, 122, 240, 30, C15(24, 16, 4)); rect(9, 123, 238, 28, C15(8, 7, 14)); sprintf(s, "STREAK  %d DAYS", t->streak); text(16, 127, 1, C15(31, 26, 7), s); sprintf(s, "BEST  %d", t->best); text(16, 139, 1, C15(20, 24, 28), s);
     sprintf(s, "ALL THREE: +$%d", 20 + 10 * MIN(t->streak + ((t->gflag & 1) ? 0 : 1), 10)); gchip(120, 130, s, C15(29, 22, 5), C15(4, 3, 2));
     text(14, 160, 1, C15(20, 24, 28), "LAST 7 DAYS"); for (int i = 0; i < 7; i++) { int on = (t->ghist >> (6 - i)) & 1; gdisc(106 + i * 18, 164, 13, on ? C15(10, 26, 10) : C15(10, 8, 14)); if (on) text(103 + i * 18, 160, 1, TXT, "+"); }
-    gdisc(230, 160, 13, (t->gflag & 1) ? C15(29, 22, 5) : C15(12, 10, 16)); text(214, 170, 1, C15(20, 24, 28), "TODAY");
+    gdisc(230, 160, 13, (t->gflag & 1) ? C15(29, 22, 5) : C15(12, 10, 16)); text(222, 178, 1, C15(20, 24, 28), "TODAY");
     text(14, 176, 1, C15(20, 24, 28), "NEW GOALS EVERY MORNING."); }
 static void gtop_intro(void) {   // first run: the shop card, the unboxing, the egg
     char s[64];
