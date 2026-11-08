@@ -1663,10 +1663,10 @@ static void gwrap(int x, int y, int w, u16 c, const char *s) {   // two lines at
 typedef struct { const char *title; u8 strip; const char *tip[3]; } GPage;
 static const GPage gpg[GNP] = {   // the PS1's guide (gotchi_ui.c gp[]), the same words
     { "MEET THE TOY", 0, { "A TINY PET ON A KEYCHAIN. IT LOVES YOU BACK.", "$5000 AT ELECTRONICS SHOPS.", "EVERYONE CAN OWN ONE. EIGHT PETS EACH." } },
-    { "THE HANDHELD", 1, { "D-PAD PICKS, A USES. L R SWAP PETS.", "BELL LIT UP? A PET NEEDS YOU. HURRY!", "HUNGRY PETS BEEP EVEN WHEN YOU'RE BUSY." } },
+    { "THE HANDHELD", 1, { "D-PAD PICKS, A USES. L R SWAP PETS. X FEEDS.", "SELECT DOES WHAT IT NEEDS MOST. TAP ICONS TOO.", "TRAIN SKILLS, DO THREE GOALS A DAY (TODAY)." } },
     { "EIGHT PETS PER TOY", 2, { "THE BASKET HOLDS EIGHT. A NEW EGG IS $150.", "16 KINDS: CATS, ROBOTS, GHOSTS, ALIENS...", "HEARTS SHOW HOW CLOSE YOU TWO ARE." } },
     { "GROWING UP", 3, { "EGG, BABY, CHILD, TEEN, ADULT. ~2 DAYS.", "YOUR CARE DECIDES WHAT IT BECOMES.", "GROWN-UPS FILL THE BLOBDEX. GET THEM ALL!" } },
-    { "PLAY, FRIENDS AND EGGS", 4, { "WIN WHICH WAY OR COPY ME TO CHEER IT UP.", "PLAYDATES CHEER BOTH. Y = BATTLE.", "BEST FRIENDS MAY LEAVE A SURPRISE EGG." } },
+    { "PLAY, FRIENDS AND EGGS", 4, { "EIGHT GAMES TRAIN AND CHEER IT UP.", "PLAYDATES CHEER BOTH. Y = BATTLE.", "BEST FRIENDS MAY LEAVE A SURPRISE EGG." } },
     { "HIJINKS: YOU AND THE PET", 5, { "LIVE MODE: REAL TIME. YOU MAY FORGET TO EAT!", "SAD OR STARVING? YOUR PETS FEEL IT TOO.", "SHARE YOUR LUNCH, OR GET A NUZZLE FOR FUN." } },
     { "MOODS AND CARE SKILL", 6, { "PETS CHANGE YOUR MOOD: PROUD PARENT, BUDDY...", "NEGLECT THEM AND YOU WORRY. LOSE ONE: OUCH.", "CARE SKILL GROWS: LESS HUNGER, LESS SICK." } },
     { "BUILD AND BUY THINGS", 7, { "THE GOTCH. TAB: NINE THINGS FOR HOME.", "DOCK OPENS THE BASKET. CABINET: BLOBDEX.", "BOWL, LAMP, BED CARE FOR ALL PETS AT ONCE." } },
@@ -2265,7 +2265,8 @@ static void mg_test(int sc) {
         if (sc == 73) { t->b[0].hun = 1; t->b[0].poop = 1; }
         if (sc == 74) { gsub = 1; gview = GV_FEED; } if (sc == 75) { gsub = 7; gview = GV_PLAYPICK; } if (sc == 76) { gsub = 2; gview = GV_TRAIN; } if (sc == 77) { ggoals_roll(t); gview = GV_GOALS; }
         if (sc == 78) { gsub = 0; gview = GV_STATS; } if (sc == 79) { gsub = 2; gview = GV_STATS; } }
-    if (sc >= 90 && sc <= 99) { gt_tbase(sc == 98); gbest[7] = 30; Toy *t = gtt();
+    if (sc == 98) { funds += 8000; gt_reset(); gbuy(ctl); gt_open_a(1); }   // a toy fresh from the shop: the unboxing, then the first-day lessons
+    if (sc >= 90 && sc <= 99 && sc != 98) { gt_tbase(0); gbest[7] = 30; Toy *t = gtt();
         if (sc == 90) { gsub = 1; gview = GV_STATS; } if (sc == 91) { gsub = 3; gview = GV_STATS; gdiary(GD_HATCH, t->b[0].nm); gdiary(GD_WISH, t->b[0].nm); gdiary(GD_TRAIN | (1 << 5), t->b[0].nm); gdiary(GD_BEST | (7 << 5), t->b[0].nm); }
         if (sc == 92) { gtrainMode = 0; gstart_game(4); } if (sc == 93) gstart_game(5); if (sc == 94) gstart_game(6); if (sc == 95) gstart_game(7);
         if (sc == 96) { gview = GV_INTRO; gisub = 0; } if (sc == 97) { gview = GV_INTRO; gisub = 2; gcb()->stage = GS_EGG; }
@@ -2298,9 +2299,13 @@ static void mg_test(int sc) {
 }
 volatile int test_sres;   // (test builds) the result of the save/load test scenes
 static void mg_test_save(int sc) {   // 71: fill in the arcade scores, the fight record, the family links and write the save; 72: read it back (run again with the same BORE_SAV file)
-    if (sc == 71) { arcade_tix = 77; fight_wins = 5; fight_champ = 1; fight_best = 9; ar_hs[0][0] = 1234u | (1u << 17) | (2u << 22) | (3u << 27); ar_hs[5][1] = 777u; ar_hs[AG_NGAME - 1][2] = 4242u; ar_plays = 31; ar_pm = 5;
+    if (sc == 71) { mg_test(73); for (int q = 0; q < 3; q++) gdiary(GD_TRAIN | (1 << 5), gtt()->b[0].nm); arcade_tix = 77; fight_wins = 5; fight_champ = 1; fight_best = 9; ar_hs[0][0] = 1234u | (1u << 17) | (2u << 22) | (3u << 27); ar_hs[5][1] = 777u; ar_hs[AG_NGAME - 1][2] = 4242u; ar_plays = 31; ar_pm = 5;
         fam_id(0); fam_id(1); fam_id(2); fpt[0] = fid[1]; fpt[1] = fid[0]; fpar[2][0] = fid[0]; fpar[2][1] = fid[1]; test_sres = sav_write() + 100; }
-    if (sc == 72) { test_sres = sav_apply() + 200; }
+    if (sc == 72) { test_sres = sav_apply() + 200; gt_open_a(1); gview = GV_BASKET; gbi = 2;
+#ifdef LOAD_VIEW
+        gview = LOAD_VIEW; gbi = 0; gti = (int)(gtoy_of(ctl) - gtoy); gsub = LOAD_VIEW == GV_STATS ? 2 : 7;
+#endif
+    }   // (D64) and look at the family that came back
 }
 #endif
 // ---- the ramps drawn as the PS1 draws them (items.c ramp_draw): the run's own curve, sides only at its ends; a few quads instead of the model's stacked boxes ----
