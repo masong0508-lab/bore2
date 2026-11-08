@@ -278,14 +278,14 @@ void tr_page_draw(void) {
             if (id >= TR_FIRST_EARN && id < TR_FIRST_RWD) { const EarnDef *e = &tr_earn[id - TR_FIRST_EARN]; snprintf(b, sizeof b, "WON BY: %s, %d", tr_ev_name[e->ev], e->thr); ui_wrap(158, y0 + 62, 148, 2, b, UI_SOFT); }
             else if (id >= TR_FIRST_RWD && !ch) ui_text(158, y0 + 62, 1, "A LIFETIME WISH PRIZE", UI_GOLDT);
             else if (ch) ui_text(158, y0 + 62, 1, "CHEAT: NO MEDALS OR SCORES", UI_BADT); }
-        ui_section(10, y0 + 90, 296, "NEXT TO WIN");
+        ui_section(10, y0 + 82, 296, "NEXT TO WIN");
         for (int shown = 0; shown < 3; shown++) {   // the three earned traits nearest to being won
             int best = -1, bp = -1;
             for (int i = 0; i < TR_NEARN; i++) { if (!tr_sname(i)[0] || shown_has(i)) continue; int id = TR_FIRST_EARN + i, own = 0; for (int k = 0; k < TR_SLOTS; k++) own |= t->tid[k] == id; if (own) continue;
                 int p = 100 * tr_ev_a[tr_earn[i].ev] / (tr_earn[i].thr ? tr_earn[i].thr : 1); if (p > bp) { bp = p; best = i; } }
             if (best < 0) break;
-            { int y = y0 + 102 + shown * 17; const EarnDef *e = &tr_earn[best]; ui_textfit(10, y, 110, tr_sname(best), UI_INK); ui_bar(124, y + 1, 120, 7, MIN(100, bp), UI_GREEN);
-              snprintf(b, sizeof b, "%d/%d", MIN(tr_ev_a[e->ev], e->thr), e->thr); ui_text(250, y, 1, b, UI_SOFT); ui_textfit(10, y + 8, 230, tr_ev_name[e->ev], UI_SOFT); }
+            { int y = y0 + 94 + shown * 24; const EarnDef *e = &tr_earn[best]; ui_textfit(10, y, 110, tr_sname(best), UI_INK); ui_bar(124, y + 2, 120, 7, MIN(100, bp), UI_GREEN);
+              snprintf(b, sizeof b, "%d/%d", MIN(tr_ev_a[e->ev], e->thr), e->thr); ui_text(250, y, 1, b, UI_SOFT); ui_textfit(10, y + 12, 230, tr_ev_name[e->ev], UI_SOFT); }
             seen_mark(best);
         }
     } else {
@@ -298,10 +298,10 @@ void tr_page_draw(void) {
         if (nw) { int w = wl[wsel]; const WishDef *d = &tr_wish[w]; int dn = tr_wdone[w >> 3] >> (w & 7) & 1;
             ui_section(138, y0 - 2, 168, tr_wish_name[w]); ui_wrap(140, y0 + 12, 164, 3, tr_wish_desc[w], UI_INK);
             snprintf(b, sizeof b, "GOAL %d: %s", d->thr, tr_ev_name[d->ev]); ui_wrap(140, y0 + 46, 164, 2, b, UI_SOFT);
-            prize(d, b, sizeof b); ui_textfit(140, y0 + 68, 164, b, UI_GOLDT);
-            if (dn) ui_badge_i(140, y0 + 84, IC_TICK, "DONE", UI_GREEN, UI_WHITE);
-            else { int need, pr; if (t->wish == w) { pr = tr_wish_prog(t, &need); ui_text(140, y0 + 84, 1, "YOUR WISH NOW", UI_GOLDT); } else { need = d->thr; pr = tr_ev_a[d->ev]; ui_text(140, y0 + 84, 1, "X CHOOSES THIS WISH", UI_BLUE2); }
-                ui_bar(140, y0 + 98, 120, 8, MIN(100, 100 * pr / (need ? need : 1)), UI_GREEN); snprintf(b, sizeof b, "%d/%d", MIN(pr, need), need); ui_text(266, y0 + 97, 1, b, UI_INK); } }
+            prize(d, b, sizeof b); ui_textfit(140, y0 + 74, 164, b, UI_GOLDT);
+            if (dn) ui_badge_i(140, y0 + 90, IC_TICK, "DONE", UI_GREEN, UI_WHITE);
+            else { int need, pr; if (t->wish == w) { pr = tr_wish_prog(t, &need); ui_text(140, y0 + 90, 1, "YOUR WISH NOW", UI_GOLDT); } else { need = d->thr; pr = tr_ev_a[d->ev]; ui_text(140, y0 + 90, 1, "X CHOOSES THIS WISH", UI_BLUE2); }
+                ui_bar(140, y0 + 104, 120, 8, MIN(100, 100 * pr / (need ? need : 1)), UI_GREEN); snprintf(b, sizeof b, "%d/%d", MIN(pr, need), need); ui_text(266, y0 + 103, 1, b, UI_INK); } }
     }
     ui_hints(160, top + 194, pg_tab ? "X CHOOSE|L1 R1 TAB|O BACK" : "UP DOWN LOOK|L1 R1 TAB|O BACK", 1);
 }

@@ -119,8 +119,7 @@ the three earned traits that are nearest, and the wish list with a bar for each 
 
 ## Save
 
-`VERSION 50` (src/save.c). After each Sim: the size of `TrState` and `TrState` itself, run-length packed (`sv_rle`). After all Sims: `tr_cheat_ok`, `tr_wdone[8]`, `tr_earned`.
-Names of the chosen traits are inside, so loading needs no disc read. Older saves load with empty traits; the cheat effects follow the OPTIONS switch after every load.
+`VERSION 50` (src/save.c). After each Sim: a flag, and when it is 1 the size of `TrState` and `TrState` itself, run-length packed (`sv_rle`). After all Sims: `tr_cheat_ok`, `tr_wdone[8]`, `tr_earned`, the counters `tr_ev_a[EV_N]` and the chosen traits' names `tr_pn` (so loading needs no disc read). Older saves load with empty traits; the cheat effects follow the OPTIONS switch after every load.
 `TrState` may only change together with a new `VERSION` (the size is checked; a different size fails the load).
 Tested with `test/oldsave.sh` and `test/oldsave2.sh`.
 
@@ -137,7 +136,27 @@ Tested with `test/oldsave.sh` and `test/oldsave2.sh`.
 6. The cheat switch: effect on, off (back to baseline), on again.
 7. Greps that every hook (or its family base) is read in the game source outside the traits files.
 
-Result (this build): see ROADMAP.md.
+Result (this build): PASS, 0 failures, 0 hooks not wired.
+
+| group | traits | pass |
+|---|---|---|
+| regular | 600 | 600 |
+| earned | 51 | 51 |
+| prizes | 24 | 24 |
+| cheat | 351 | 351 |
+| earn-run | 51 | 51 |
+| wishes | 61 | 61 |
+
+## RAM (PS1, 2 MB)
+
+- Only a Bore made in the creator (and the player) has a `TrState`: `Sim.tr` is a pointer into `tr_pool[2]`, or at `tr_null` (zero, never written; every writer checks it). The counters, wish bits and names are one family-wide set (`tr_ev_a`, `tr_wdone`, `tr_pn`), so a family holds at most 2 Bores with traits.
+- The earned and prize trait names are not resident; they are in CREATE.OVL's big table.
+- Free past `_end`: 8,960 bytes. `origin/main` alone had 4,544 (a build with under about 5.5 KB hangs at boot, see docs/PS1_PERFORMANCE.md). The room came from `-mno-check-zero-division` on the main program (CMakeLists.txt: no divide-by-zero trap code at each `/` and `%`; 11.6 KB, and a little faster). That is the only build flag changed.
+- Below the 10 KB rule by about 1 KB. Further room if wanted: `citizens.c` built -Os (3.2 KB, costs crowd speed), or the earned/wish check moved into an overlay (about 2.7 KB, but then awards only show when the page is opened).
+
+## Shots
+
+`docs/traits_cat_*.png` (every category, PS1), `traits_all/picked/foryou/recent.png` (views), `traits_cheats.png`, `traits_wishes.png`, `traits_wishes_body.png`, `traits_life.png` (Life panel), `traits_page.png`, `traits_page_wish.png`, `traits_dc.png` (Dreamcast).
 
 ## Adding things
 

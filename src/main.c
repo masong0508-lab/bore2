@@ -3496,18 +3496,18 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
     } else if (panel_tab == 5) {   // TRAITS: the chosen ones, the won ones, the lifetime wish
         const TrState *tt = s->tr; int n = 0;
         ui_section(12, y0, 294, "TRAITS");
-        for (int k = 0; k < TR_PICK; k++) if (tt->tid[k]) { int y = y0 + 12 + n * 12; ui_icon(12, y - 2, tt->tid[k] >= TR_FIRST_CHEAT ? IC_BOLT : IC_SMILE, tt->tid[k] >= TR_FIRST_CHEAT ? UI_RED : UI_BLUE);
-            ui_text(28, y, 1, tr_pn[k], tt->tid[k] >= TR_FIRST_CHEAT ? UI_BADT : UI_INK); n++; }
-        if (!n) ui_text(12, y0 + 12, 1, "NONE CHOSEN. YOU PICK THEM WHEN YOU MAKE A BORE.", UI_SOFT);
-        { int m = 0; ui_section(12, y0 + 76, 294, "WON");
+        for (int k = 0; k < TR_PICK; k++) if (tt->tid[k]) { int x = n % 2 ? 164 : 12, y = y0 + 14 + (n / 2) * 13; ui_icon(x, y - 2, tt->tid[k] >= TR_FIRST_CHEAT ? IC_BOLT : IC_SMILE, tt->tid[k] >= TR_FIRST_CHEAT ? UI_RED : UI_BLUE);
+            ui_text(x + 16, y, 1, tr_pn[k], tt->tid[k] >= TR_FIRST_CHEAT ? UI_BADT : UI_INK); n++; }
+        if (!n) ui_text(12, y0 + 14, 1, "NONE CHOSEN. YOU PICK THEM WHEN YOU MAKE A BORE.", UI_SOFT);
+        { int m = 0; ui_section(12, y0 + 54, 294, "WON");
           for (int k = TR_PICK; k < TR_SLOTS; k++) if (tt->tid[k]) m++;
-          ui_icon(12, y0 + 86, IC_STAR, UI_AMBER);
-          if (m) { sprintf(b, "%d WON. X SHOWS THEM", m); ui_text(28, y0 + 88, 1, b, UI_INK); }
-          else ui_text(12, y0 + 88, 1, "DO THINGS MANY TIMES TO WIN MORE", UI_SOFT); }
-        { int need, pr = tr_wish_prog(tt, &need); ui_section(12, y0 + 128, 294, "LIFETIME WISH");
-          if (need) { ui_bar(12, y0 + 141, 200, 9, MIN(100, 100 * pr / need), UI_GREEN); sprintf(b, "%d OF %d", MIN(pr, need), need); ui_text(220, y0 + 141, 1, b, UI_INK); }
-          else ui_text(12, y0 + 141, 1, "NO WISH CHOSEN YET", UI_SOFT);
-          ui_hints(160, y0 + 156, "X ALL TRAITS AND WISHES|L1 R1 TAB", 1); }
+          ui_icon(12, y0 + 66, IC_STAR, UI_AMBER);
+          if (m) { sprintf(b, "%d WON. X SHOWS THEM", m); ui_text(28, y0 + 68, 1, b, UI_INK); }
+          else ui_text(28, y0 + 68, 1, "DO THINGS MANY TIMES TO WIN MORE", UI_SOFT); }
+        { int need, pr = tr_wish_prog(tt, &need); ui_section(12, y0 + 84, 294, "LIFETIME WISH");
+          if (need) { ui_bar(12, y0 + 98, 200, 9, MIN(100, 100 * pr / need), UI_GREEN); sprintf(b, "%d OF %d", MIN(pr, need), need); ui_text(220, y0 + 98, 1, b, UI_INK); }
+          else ui_text(12, y0 + 98, 1, "NO WISH CHOSEN YET", UI_SOFT);
+          ui_hints(160, y0 + 118, "X ALL TRAITS AND WISHES|L1 R1 TAB", 1); }
     } else if (kid) {   // SCHOOL: the grade, today at school, the homework, the report card
         int g = s->grade, sd = clock_day < 5 && day_count > 0;   // (no school on the day you move in)
         u32 gc = g >= 85 ? UI_GREEN : g >= 70 ? UI_RGB(70, 176, 238) : g >= 55 ? UI_AMBER : UI_RED;
