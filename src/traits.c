@@ -1,8 +1,10 @@
 // traits.c: see traits.h. Plain C, no game headers: the host test (test/traits_test.c) runs this very file.
+#define TR_DEFS
 #include "traits.h"
 #include <string.h>
 #include <stdio.h>
 u8 tr_cheat_opt = 0, tr_cheat_ok, tr_wdone[8]; u32 tr_earned;
+u16 tr_recent[8], tr_ed_pick[TR_PICK]; u8 tr_ed_wish, tr_staged;   // the creator's picks (CREATE.OVL), and the traits chosen last
 
 void tr_clear(TrState *t) { memset(t, 0, sizeof *t); }
 void tr_fx_add(TrState *t, int hook, int tier) { if (hook <= 0 || hook >= E_N) return; int v = t->fx[hook] + tier; t->fx[hook] = (s8)CLAMP(v, -127, 127); }
@@ -49,10 +51,12 @@ static void check(TrState *t, int ev) {
         if (p >= need && !(tr_wdone[w >> 3] & (1 << (w & 7)))) {
             tr_wdone[w >> 3] |= (u8)(1 << (w & 7)); t->title = (u8)w; t->wish = 0;
             tr_reward(t, tr_wish[w].rk, tr_wish[w].ra, w);
+            for (int k = 1; k < WISH_N; k++) { int n = (w + k - 1) % WISH_N + 1; if (!(tr_wdone[n >> 3] & (1 << (n & 7)))) { tr_wish_pick(t, n); break; } }   // the next wish waits
         }
     }
 }
 int tr_ev(TrState *t, int ev, int n) { if (ev <= 0 || ev >= EV_N) return 0; int v = t->ev[ev] + n; t->ev[ev] = (u8)(v > 255 ? 255 : v); check(t, ev); return t->ev[ev]; }
+void tr_ev_quiet(TrState *t, int ev, int v) { if (ev > 0 && ev < EV_N) t->ev[ev] = (u8)(v > 255 ? 255 : v < 0 ? 0 : v); }
 void tr_ev_set(TrState *t, int ev, int v) { if (ev <= 0 || ev >= EV_N) return; if (v > 255) v = 255; if (v > t->ev[ev]) { t->ev[ev] = (u8)v; check(t, ev); } }
 
 int tr_scale_f(const TrState *t, int e, int v) { int p = t->fx[e] * tr_unit[e]; if (p < -100) p = -100; return v * (100 + p) / 100; }

@@ -369,7 +369,7 @@ static void start_life(void) {
     sim_init();
     int px, py; world_find('P', &px, &py); if (px < 0) { px = 5; py = 12; }
     if (life_story) story_household(life_story, px, py); else {   // a story: its own people (you play its lead)
-    sim_add(&edit, px, py, 0); look_own_face(&sims[0].bore);     // (you, with faces of your own: the creator keeps its own)
+    sim_add(&edit, px, py, 0); look_own_face(&sims[0].bore); tr_take_stage(&sims[0]);     // (you, with faces of your own: the creator keeps its own; and the traits it picked)
     // two housemates from the dice
     Bore b; look_default(&b); b.stage = AG_ADULT; look_random(&b); sim_add(&b, px + 2, py + 1, 1);
     strcpy(sims[1].bore.first, "MOSS"); sims[1].grump = 1;   // MOSS will not have a thing floating overhead. Do not ask.
@@ -3379,15 +3379,16 @@ static void sw_draw(void) {
     ui_hints(160, top + 198, "X PLAY THEM|SQ WAIT OR FREE WILL|O BACK", 1);
 }
 // ---- the Bore panel: MOOD / WANTS / SKILLS / PEOPLE / JOB tabs (the Sims 2 panel) ----
-static const char *const panelTab[5] = { "MOOD", "WANTS", "SKILLS", "PEOPLE", "JOB" };
+static const char *const panelTab[6] = { "MOOD", "WANTS", "SKILLS", "PEOPLE", "JOB", "TRAITS" };
 static void panel_update(void) {
-    if (PRESSED(PAD_R1) || NAVP(PAD_RIGHT)) panel_tab = (panel_tab + 1) % 5;
-    if (PRESSED(PAD_L1) || NAVP(PAD_LEFT)) panel_tab = (panel_tab + 4) % 5;
+    if (PRESSED(PAD_R1) || NAVP(PAD_RIGHT)) panel_tab = (panel_tab + 1) % 6;
+    if (PRESSED(PAD_L1) || NAVP(PAD_LEFT)) panel_tab = (panel_tab + 5) % 6;
+    if (panel_tab == 5 && PRESSED(PAD_CROSS)) { if ((ovl = ovl_load("CREATE.OVL"))) { ovl->open(2); state = ST_SPACE; } else audio_voice(VOICE_NAH); return; }   // (the full list of traits and wishes: the page in CREATE.OVL)
     if (PRESSED(PAD_SELECT)) sw_open(ST_PANEL);
     if (PRESSED(PAD_CIRCLE)) state = ST_PAUSE;
     if (PRESSED(PAD_START)) state = ST_LIFE;
 }
-static const s8 panelIc[5] = { IC_SMILE, IC_STAR, IC_BOOK, IC_HEART, IC_CASE };
+static const s8 panelIc[6] = { IC_SMILE, IC_STAR, IC_BOOK, IC_HEART, IC_CASE, IC_BOLT };
 static void panel_draw(void) {   // the Bore panel: who they are and how they feel up top, then five tabs
     menu_bg(0);
     Sim *s = &sims[player];
@@ -3409,12 +3410,13 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
     ui_text(42 + ui_tw(1, mood) + 8, top + 11, 1, look_asp_name(s->bore.asp), UI_SOFT);
     ui_meter(176, top + 11, 130, m);
     int kid = s->bore.stage == AG_CHILD || s->bore.stage == AG_TEEN;   // (a kid's fifth tab is SCHOOL)
-    for (int i = 0; i < 5; i++) {   // the tabs: a picture and a word, the open one blue
+    for (int i = 0, x = 10; i < 6; i++) {   // the tabs: a picture and a word, the open one blue and wide (the others: the picture)
         const char *tn = i == 4 && kid ? "SCHOOL" : panelTab[i];
-        int x = 10 + i * 60, on = i == panel_tab, w = 15 + ui_tw(1, tn), x0 = x + (59 - w) / 2;
-        ui_round(x, top + 25, 59, 17, 6, on ? UI_RGB(70, 176, 238) : UI_RGB(238, 243, 249), on ? UI_BLUE2 : UI_RGB(222, 229, 238), 0);
+        int on = i == panel_tab, tw = on ? 72 : 44, w = 15 + ui_tw(1, tn), x0 = x + (tw - 1 - (on ? w : 12)) / 2;
+        ui_round(x, top + 25, tw - 1, 17, 6, on ? UI_RGB(70, 176, 238) : UI_RGB(238, 243, 249), on ? UI_BLUE2 : UI_RGB(222, 229, 238), 0);
         ui_icon(x0, top + 27, i == 4 && kid ? IC_BOOK : panelIc[i], on ? UI_WHITE : UI_BLUE);
-        ui_text(x0 + 15, top + 30, 1, tn, on ? UI_WHITE : UI_INK);
+        if (on) ui_text(x0 + 15, top + 30, 1, tn, UI_WHITE);
+        x += tw;
     }
     int y0 = top + 50;
     if (panel_tab == 0) {   // MOOD: every motive, and what is lifting or dragging the mood
@@ -3491,6 +3493,19 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
             ui_icon(12, 199, IC_BABY, UI_RGB(236, 120, 160)); ui_text(28, 201, 1, b, UI_RGB(200, 70, 120)); }
         else { ui_icon(12, 199, IC_HEART, UI_RED);
             ui_text(28, 201, 1, "CHAT, JOKE AND HUG TO MAKE FRIENDS. 50 IS A FRIEND.", UI_SOFT); }
+    } else if (panel_tab == 5) {   // TRAITS: the chosen ones, the won ones, the lifetime wish
+        const TrState *tt = &s->tr; int n = 0;
+        ui_section(12, y0, 294, "TRAITS");
+        for (int k = 0; k < TR_PICK; k++) if (tt->tid[k]) { int y = y0 + 12 + n * 12; ui_icon(12, y - 2, tt->tid[k] >= TR_FIRST_CHEAT ? IC_BOLT : IC_SMILE, tt->tid[k] >= TR_FIRST_CHEAT ? UI_RED : UI_BLUE);
+            ui_text(28, y, 1, tt->tn[k], tt->tid[k] >= TR_FIRST_CHEAT ? UI_BADT : UI_INK); n++; }
+        if (!n) ui_text(12, y0 + 12, 1, "NONE CHOSEN. YOU PICK THEM WHEN YOU MAKE A BORE.", UI_SOFT);
+        { int m = 0; ui_section(12, y0 + 76, 294, "WON");
+          for (int k = TR_PICK; k < TR_SLOTS; k++) if (tt->tid[k]) { int x = m % 2 ? 164 : 12, y = y0 + 88 + (m / 2) * 12; ui_icon(x, y - 2, IC_STAR, UI_AMBER); ui_textfit(x + 16, y, 128, tr_small_name(tt->tid[k]), UI_INK); m++; }
+          if (!m) ui_text(12, y0 + 88, 1, "DO THINGS MANY TIMES TO WIN MORE", UI_SOFT); }
+        { int need, pr = tr_wish_prog(tt, &need); ui_section(12, y0 + 128, 294, "LIFETIME WISH");
+          if (need) { ui_bar(12, y0 + 141, 200, 9, MIN(100, 100 * pr / need), UI_GREEN); sprintf(b, "%d OF %d", MIN(pr, need), need); ui_text(220, y0 + 141, 1, b, UI_INK); }
+          else ui_text(12, y0 + 141, 1, "NO WISH CHOSEN YET", UI_SOFT);
+          ui_hints(160, y0 + 156, "X ALL TRAITS AND WISHES|L1 R1 TAB", 1); }
     } else if (kid) {   // SCHOOL: the grade, today at school, the homework, the report card
         int g = s->grade, sd = clock_day < 5 && day_count > 0;   // (no school on the day you move in)
         u32 gc = g >= 85 ? UI_GREEN : g >= 70 ? UI_RGB(70, 176, 238) : g >= 55 ? UI_AMBER : UI_RED;
@@ -3610,6 +3625,9 @@ static void name_draw(void) {
 // where the studio camera looks (cas_*); this file draws the studio and the Bore, and runs the name keyboard it asks for.
 static void create_open(int from) {   // the studio is made (world_gen_studio): ask the questions
     prev_state = from; cas_go = -1;
+#ifdef AUTO_CHEAT
+    tr_cheat_ok = 1; sim_cheat_opt(1);   // (test builds: the cheat traits on)
+#endif
     if (!(ovl = ovl_load("CREATE.OVL"))) { world_restore(); state = from == ST_LIFE ? ST_LIFE : ST_MENU; return; }
     ovl->open(from == ST_LIFE); state = ST_CREATE;
 }

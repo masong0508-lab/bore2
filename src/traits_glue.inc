@@ -71,7 +71,8 @@ static __attribute__((noinline)) void tr_watch(Sim *s, int si) {   // every 8th 
     int el = 0, hat = 0; { Toy *g = gotchi_toy(si); if (g) { for (int k = 0; k < GB_N; k++) if (g->b[k].on && g->b[k].stage == GS_ELDER) el = 1; hat = g->hatched; } }
     int v[EV_PET - EV_DAYS + 1] = { 0, (int)MIN(tr_earned / 500, 255u), (int)CLAMP(cash / 1000, 0, 255), job_level, fr + citizens_friends(), nsims, dist, fight_wins, fight_champ,
         arc.plays, arcade_tix / 10, pk_ext[PKX_PARTY], home_city + nprops, col_lvl, space_done, __builtin_popcount(veh_own), s->partner ? 1 : 0, hat, el, pet_kind ? 1 : 0 };
-    for (int k = EV_EARNED; k <= EV_PET; k++) tr_ev_set(t, k, v[k - EV_DAYS]);
+    if (t->f & TF_BASE) { for (int k = EV_EARNED; k <= EV_PET; k++) tr_ev_set(t, k, v[k - EV_DAYS]); }
+    else { for (int k = EV_EARNED; k <= EV_PET; k++) tr_ev_quiet(t, k, v[k - EV_DAYS]); t->f |= TF_BASE; }   // (what a life starts with is not won)
     tr_ev_set(t, EV_PAYDAYS, story_paid);
 }
 static long tr_cash_prev = -1;
@@ -87,3 +88,4 @@ static void tr_cash_watch(void) {   // E_INCOME, E_SPEND: whatever changed the m
 static int tr_ev_player(int ev) { return nsims ? tr_ev(&sims[player].tr, ev, 1) : 0; }
 void tr_new_life(void) { tr_cash_prev = -1; memset(tr_wdone, 0, sizeof tr_wdone); tr_earned = 0; }
 void sim_cheat_opt(int on) { tr_cheat_opt = (u8)on; for (int i = 0; i < nsims; i++) tr_cheat_refresh(&sims[i].tr, on); }
+void tr_take_stage(Sim *s) { if (!tr_staged) return; tr_staged = 0; if (s != &sims[MAX_SIMS - 1]) { s->tr = sims[MAX_SIMS - 1].tr; tr_clear(&sims[MAX_SIMS - 1].tr); } tr_cheat_refresh(&s->tr, tr_cheat_opt); }

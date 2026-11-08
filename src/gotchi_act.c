@@ -325,6 +325,7 @@ int gx_egg_of(Toy *t, int slot, int mom, int dad) {   // an egg: kind, colour, t
 static int abit(int i) { return i < 16 ? i : i + 5; }   // (the first sixteen awards are bits 0-15, the tutorial owns 16-20, the newer ones 21 up)
 int gx_has(int i) { return (gach >> abit(i)) & 1; }
 void gx_award(int bit) {
+    if (nsims && tr_cheating(&sims[player].tr)) return;   // (a cheat trait: no awards)
     int ab = abit(bit); if (gach & (1u << ab)) return; gach |= 1u << ab;
     if (!gotchi_toy(player)) return; int g = 50 + bit * 10; cash += g; char b[48]; sprintf(b, "BOREAGOTCHI AWARD! +$%d", g); sim_note(b); sim_gotchi_mood(player, 2);
 }

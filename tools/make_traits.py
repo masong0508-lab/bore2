@@ -33,7 +33,7 @@ STYLES = {
 
 CATS = ['BODY', 'MIND', 'SOCIAL', 'ROMANCE', 'WORK', 'MONEY', 'FOOD', 'HOME', 'OUTDOORS', 'CREATIVE', 'FUN', 'NIGHT AND DAY', 'PETS', 'LUCK', 'FIGHTING', 'EARNED']
 CAT_SHORT = ['BODY', 'MIND', 'SOCIAL', 'ROMANCE', 'WORK', 'MONEY', 'FOOD', 'HOME', 'OUTDOORS', 'CREATIVE', 'FUN', 'NIGHT/DAY', 'PETS', 'LUCK', 'FIGHT', 'EARNED']
-CAT_ICON = ['IC_HEART', 'IC_BOOK', 'IC_CHAT', 'IC_HEART', 'IC_BRIEF', 'IC_COIN', 'IC_FOOD', 'IC_HOUSE', 'IC_SUN', 'IC_STAR', 'IC_SMILE', 'IC_MOON', 'IC_PAW', 'IC_STAR', 'IC_BOLT', 'IC_STAR']
+CAT_ICON = ['IC_BOLT', 'IC_BOOK', 'IC_CHAT', 'IC_HEART', 'IC_CASE', 'IC_MONEY', 'IC_FOOD', 'IC_HOUSE', 'IC_SUN', 'IC_BRUSH', 'IC_PARTY', 'IC_BED', 'IC_SMILE', 'IC_DICE', 'IC_HAMMER', 'IC_STAR']
 CHEAT_SUBS = ['NEEDS', 'SKILLS', 'MONEY', 'WORK', 'SOCIAL', 'MOOD', 'TRAVEL', 'GAMES', 'LIFE', 'MIXES']
 
 # ---------------------------------------------------------------- the hooks
@@ -189,7 +189,7 @@ EVENTS = [
  ('SK_COOK', 'COOKING LEVEL', 'poll'), ('SK_BODY', 'BODY LEVEL', 'poll'), ('SK_FUN', 'FUN LEVEL', 'poll'), ('SK_LOGIC', 'LOGIC LEVEL', 'poll'),
  ('SK_CHAR', 'CHARISMA LEVEL', 'poll'), ('SK_CREAT', 'CREATIVITY LEVEL', 'poll'), ('SK_MECH', 'MECHANICAL LEVEL', 'poll'), ('SK_FARM', 'FARMING LEVEL', 'poll'),
 ]
-EVN = {e[0]: i + 1 for i, e in enumerate(EVENTS)}   # EV_x = index (0 is EV_NONE)
+EVN = {e[0]: i + 1 for i, e in enumerate(EVENTS)}   # EV_x = index (0 is EV_NIL)
 
 THEMES = "PICKONE NOTHINGON PIRATE ASTRONAUT CHEF SKATER ROCKER WIZARD KNIGHT COWBOY DIVER FAIRY CLOWN SUPERHERO DETECTIVE SAILOR ATHLETE VIKING BEACHDAY SNOWDAY PARTYANIMAL SPOOKY SANTA EXPLORER ROYALTY GAMER ROCKSTAR GARDENER BUILDER DOCTOR POLICE SCHOLAR HIPSTER SAMURAI DJ BAKER CAMPER MAGICIAN ORANGESWIRL BLUESWIRL ARCADEKID JUMPPACKHERO".split()
 def theme(n): return THEMES.index(n)
@@ -240,7 +240,7 @@ Arcade Regular|ARCPLAYS|30|ARC_SCORE+3,ARC_TIX+3
 Party Host|PARTIES|3|CROWD+2,GAIN_SOCIAL+2
 Home Owner|HOME|1|DEC_COMFY-3,INDOORS+2
 Scholar Mind|COLLEGE|2|SK_LOGIC+3,GRADE+3
-Star Gazer Earned|SPACE|3|SK_MECH+3,MOOD_BASE+1
+Space Cadet|SPACE|3|SK_MECH+3,MOOD_BASE+1
 Road Warrior|VEHICLES|3|VEH_SPEED+3,FUEL_USE-3
 Soulmate Found|PARTNER|1|LOVE_MOOD+3,MOOD_BASE+1
 Egg Keeper|HATCHED|3|GOTCHI_XP+4,PET_JOY+2
@@ -352,6 +352,7 @@ ADJ_SYN = ['Total', 'Whole', 'Full', 'Prime', 'Rounded', 'Twin', 'Dual', 'Blend'
 ADJ_QUIRK = ['Happy', 'Proud', 'Cheery', 'Jolly', 'Merry', 'Daft', 'Loud', 'Brave', 'Wild', 'Lucky', 'Sly', 'Bold']
 ADJ_C = [['Super', 'Turbo', 'Hyper'], ['Mega', 'Ultra', 'Grand'], ['God', 'Infinite', 'Absolute']]
 NAME_MAX = 14
+NEUTRAL = ['Red', 'Blue', 'Green', 'Pink', 'Gold', 'Silver', 'Odd', 'Old', 'New', 'Big', 'Tiny', 'Busy', 'Sunny', 'Rainy', 'Windy', 'Snowy', 'Dusty', 'Salty', 'Sweet', 'Spicy', 'Crisp', 'Plain', 'Fancy', 'Round', 'Flat', 'Tall', 'Short', 'Calm', 'Cosy', 'Cool', 'Warm', 'Hot', 'Wet', 'Dry', 'Lone', 'Wee', 'Neat', 'Proud', 'Humble', 'Silent', 'Noisy', 'Mellow', 'Spry', 'Zesty', 'Lively', 'Nifty', 'Handy', 'Jazzy', 'Peppy', 'Breezy']
 
 def mag(h, tier, sign=+1):
     """tier 1..4 -> magnitude, sign +1 boost (the good direction), -1 cost (the bad direction)"""
@@ -430,6 +431,7 @@ def make_regular(target=600):
             elif v == 'q':
                 s, sm = side_for(h, 1); ef = [(h, mag(h, 2, -1)), (s, sm)]
                 nm = [a + ' ' + h['bn'][0] for a in rng.sample(ADJ_QUIRK, 6)] + [a + ' ' + h['bn'][1 % len(h['bn'])] for a in rng.sample(ADJ_QUIRK, 6)]
+            nm = nm + [a + ' ' + n for n in (h['gn'] + h['bn'] + [w for x in h['gn'] + h['bn'] for w in x.split()]) for a in rng.sample(NEUTRAL, 14)]   # (more to try when the first ones are taken or too long)
             out.append(dict(kind='reg', cat=h['cat'], sub=SUBS[h['cat']].index(h['sub']), eff=[(e[0]['id'], e[1]) for e in ef], names=nm))
     return out
 
@@ -498,24 +500,26 @@ def build():
     for h in HOOKS:
         for t in range(3):
             adj = ADJ_C[t]
-            nm = [a + ' ' + h['cn'] for a in adj] + [a + ' ' + h['cn'] for a in ADJ_C[(t + 1) % 3]]
+            nouns = [h['cn']] + h['cn'].split()[:1] + h['cn'].split()[-1:]
+            EXTRA_C = [['Plus', 'Prime', 'Pro', 'Max', 'Neo', 'Ace', 'Elite', 'Boost', 'Power', 'Rapid', 'Slick', 'Sweet'], ['Giga', 'Titan', 'Cosmic', 'Royal', 'Epic', 'Alpha', 'Atomic', 'Rocket', 'Laser', 'Neon', 'Jumbo', 'Mighty'], ['Omega', 'Divine', 'Eternal', 'Legend', 'Hack', 'Boss', 'Cheat', 'Wizard', 'Genie', 'Mythic', 'Cosmic God', 'Final']]
+            nm = [a + ' ' + n for n in nouns for a in adj + ADJ_C[(t + 1) % 3] + EXTRA_C[t]]
             cheats.append(dict(kind='cheat', id=cid, name=G.uniq(nm), cat=csub_of(h), sub=0, eff=[(h['id'], h['cheat'][t] * (1 if h['cheat'][t] > 0 else 1))], hook=h['code']))
             cid += 1
     MIXES = [
-     ('God Mode Fighter', 'FIGHT_DMG+80,FIGHT_DEF-20,FIGHT_REGEN+100'), ('Immortal', 'AGE_SPEED-20,DEC_REST-20,DEC_CLEAN-20'),
+     ('God Fighter', 'FIGHT_DMG+80,FIGHT_DEF-20,FIGHT_REGEN+100'), ('Immortal', 'AGE_SPEED-20,DEC_REST-20,DEC_CLEAN-20'),
      ('Never Hungry', 'DEC_FOOD-20,DEC_WC-20,DEC_CLEAN-20'), ('Never Tired', 'DEC_REST-20,DEC_FUN-20,DEC_COMFY-20'),
      ('Perfect Needs', 'DEC_SOCIAL-20,DEC_FUN-20,DEC_COMFY-20'), ('Midas Touch', 'INCOME+90,SPEND-20,SHOP_DISC-20'),
-     ('Free Everything', 'SPEND-20,SHOP_DISC-20,FARE-20'), ('The Big Boss', 'JOB_PAY+100,JOB_PROMO+100,JOB_STRIKE-20'),
+     ('Free Stuff', 'SPEND-20,SHOP_DISC-20,FARE-20'), ('The Big Boss', 'JOB_PAY+100,JOB_PROMO+100,JOB_STRIKE-20'),
      ('Speed Demon', 'WALK_SPEED+40,VEH_SPEED+60,FUEL_USE-20'), ('Instant Genius', 'SK_LOGIC+120,SK_CREAT+120,SK_CHAR+120'),
-     ('Instant Athlete', 'SK_BODY+120,ACT_RUN+60,FIGHT_BELT+10'), ('Instant Polymath', 'SK_COOK+120,SK_MECH+120,SK_FARM+120'),
-     ('Instant Rockstar', 'SK_MUSIC+120,SK_FUN+120,SK_CHAR+120'), ('Arcade King', 'ARC_SCORE+100,ARC_TIX+100,LUCK+34'),
+     ('Sprint Star', 'SK_BODY+120,ACT_RUN+60,FIGHT_BELT+10'), ('Polymath', 'SK_COOK+120,SK_MECH+120,SK_FARM+120'),
+     ('Rock God', 'SK_MUSIC+120,SK_FUN+120,SK_CHAR+120'), ('Arcade King', 'ARC_SCORE+100,ARC_TIX+100,LUCK+34'),
      ('Lucky Star', 'LUCK+34,LOOT+100,SPARK+34'), ('Beloved By All', 'REL_GAIN+100,CHARM+10,CHAT_OK+34'),
      ('Heartthrob', 'ROMANCE+100,FLIRT_OK+34,HUG_OK+34'), ('Pure Sunshine', 'MOOD_BASE+50,MOOD_MIN+20,ML_BAD-20'),
      ('Zen Master', 'MOOD_MIN+20,ML_BAD-20,MOOD_PULL+100'), ('Weatherproof', 'COLD_TOL+50,HEAT_TOL+50,RAIN_TOL+50'),
      ('Fearless', 'FEAR_WATER+50,FEAR_DARK+50,FEAR_HEIGHT+50'), ('Beastmaster', 'PET_FOOD-20,PET_JOY+50,GOTCHI_XP+100'),
-     ('Teacher Pet Deluxe', 'GRADE+100,ASP_GAIN+100,ASP_KEEP-20'), ('Perfect Sleeper', 'ACT_SLEEP+100,GAIN_REST+100,DEC_REST-20'),
+     ('Star Pupil', 'GRADE+100,ASP_GAIN+100,ASP_KEEP-20'), ('Dream Sleeper', 'ACT_SLEEP+100,GAIN_REST+100,DEC_REST-20'),
      ('Gourmet God', 'ACT_EAT+100,GAIN_FOOD+100,SK_COOK+120'), ('Party Machine', 'CROWD+50,GAIN_SOCIAL+100,DEC_SOCIAL-20'),
-     ('Home Sweet Home', 'DEC_COMFY-20,GAIN_COMFY+100,INDOORS+50'), ('Explorer King', 'WALK_SPEED+40,OUTDOORS+50,COLD_TOL+50'),
+     ('Sweet Home', 'DEC_COMFY-20,GAIN_COMFY+100,INDOORS+50'), ('Explorer King', 'WALK_SPEED+40,OUTDOORS+50,COLD_TOL+50'),
      ('Cash And Carry', 'INCOME+90,LOOT+100,SPEND-20'), ('Total Cheat', 'INCOME+90,DEC_FOOD-20,SK_LOGIC+120'),
     ]
     for nm, eff in MIXES:
@@ -584,7 +588,7 @@ def main():
     A('#define E_SK0 E_SK_COOK        // + skill 0..8 (cook body fun logic char creat mech farm music)')
     A('#define E_PAY0 E_PAY_FACTORY   // + career 0..14 (places.h CAR_)')
     A('enum {')
-    A('    EV_NONE,')
+    A('    EV_NIL,')
     for e in EVENTS: A('    EV_%s,' % e[0])
     A('    EV_N };')
     A('#define TR_NREG 600')
@@ -602,7 +606,10 @@ def main():
     A('enum { RK_NONE, RK_CASH, RK_TRAIT, RK_OUTFIT, RK_FOOD, RK_BUS, RK_TOKENS, RK_ASP };')
     # resident small tables
     A('// ---- resident: each hook\'s unit (percent or points per tier) and mode')
-    A('static const u8 tr_unit[E_N] = { 0, %s };' % ', '.join(str(h['unit']) for h in HOOKS))
+    A('extern const u8 tr_unit[E_N];   // (one copy, in traits.c)')
+    A('#ifdef TR_DEFS')
+    A('const u8 tr_unit[E_N] = { 0, %s };' % ', '.join(str(h['unit']) for h in HOOKS))
+    A('#endif')
     A('static const u8 tr_mode[E_N] = { 0, %s };' % ', '.join(str(h['mode']) for h in HOOKS))
     A('typedef struct { u8 ev, thr, rk; u16 ra; } WishDef;')
     A('static const WishDef tr_wish[WISH_N + 1] = { { 0, 0, 0, 0 },')
@@ -663,9 +670,13 @@ def main():
         t = all_traits.get(i)
         A('    %s "\\0"' % c_str(t['name'].upper() if t else ''))
     A('    ;')
+    reg = sorted([i for i in range(1, K['FIRST_EARN']) if i in all_traits], key=lambda i: all_traits[i]['name'].upper())
+    chs = sorted([t['id'] for t in cheats], key=lambda i: all_traits[i]['name'].upper())
+    A('static const u16 tr_sorted[TR_NREG] = { %s };   // the regular traits by name' % ', '.join(str(i) for i in reg))
+    A('static const u16 tr_csorted[TR_NCHEAT] = { %s };   // the cheats by name' % ', '.join(str(i) for i in chs))
     A('static const char *const tr_catname[TR_NCAT] = { %s };' % ', '.join(c_str(c) for c in CAT_SHORT))
     A('static const char *const tr_catlong[TR_NCAT] = { %s };' % ', '.join(c_str(c) for c in CATS))
-    A('static const char *const tr_caticon[TR_NCAT] = { %s };   // (names of ui.h icons)' % ', '.join(c_str(c) for c in CAT_ICON))
+    A('#define TR_ICONS %s   // (ui.h icons, by category)' % ', '.join(CAT_ICON))
     A('static const char *const tr_subname[TR_NCAT][8] = {')
     for ci in range(len(CATS)):
         subs = SUBS.get(ci, []) if ci != 15 else K['esub']

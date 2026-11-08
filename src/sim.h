@@ -126,6 +126,7 @@ int  sim_pie_open(char opt[8][24]);       // X: the pie menu for what is in fron
 void sim_pie_do(int i);                    // the option picked
 const char *sim_pie_title(void);           // whose / what menu it is
 void tr_new_life(void);                 // sim_init: a new life starts the wishes and the cash watch again
+void tr_take_stage(Sim *s);             // a new Bore from the creator: its traits (staged in sims[MAX_SIMS - 1].tr by CREATE.OVL)
 void sim_cheat_opt(int on);             // OPTIONS: CHEAT TRAITS On/Off, refreshes every Sim
 int  sim_traits(const Sim *s, const char *out[3]);   // Sims 3 traits read off the personality: how many (up to 3)
 const char *sim_moodlet_name(int id);

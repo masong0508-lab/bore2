@@ -9,6 +9,7 @@
 #include "ui.h"
 #include "audio.h"
 #include "ovl.h"
+#include "cas_pick.h"
 #include <psxgpu.h>
 #include <psxpad.h>
 #include <stdio.h>
@@ -80,16 +81,18 @@ static const s16 camT[6][3] = { { 660, 190, 360 }, { 420, 292, 170 }, { 480, 280
 // pickers exist) and then owns the rows of that step: update(tab, held, pressed) is called every frame instead of the rows below, and draw(tab, x, y, w, h)
 // draws inside the panel's content box (x, y, w, h, under the tabs). Tabs, BACK, NEXT, START and the camera stay here. While it is 0 the placeholder rows
 // (five trait bars, a wish and a life goal, all in E) show. See docs/CAS_SIMS3DS_WORKFLOW.md section 9.
-typedef struct { void (*update)(int tab, int held, int pressed); void (*draw)(int tab, int x, int y, int w, int h); } CasPick;
 extern const CasPick *cas_pick;   // (defined in main.c, 0 until the traits engine sets it)
 static int t, step, cat, row, seen, dirty, modal, msel, sumsel, inlife, user, cur_turn, hold, hdir, c_dist, c_fy, c_pitch;
 
 static const Cat *curcat(void) { return &stp[step].c[cat]; }
 static const Rw *currow(void) { return &curcat()->r[row]; }
 static void go(int s, int c) { step = s < 0 ? 0 : s >= NSTEP ? NSTEP - 1 : s; cat = c; row = 0; seen |= 1 << step; user = 0; hold = 0; if (step == SUMMARY) sumsel = 6; }
+static int page;   // 1: not the creator: the TRAITS page of the Life panel (open(2))
 static void cr_open(int a) {
+    page = a == 2; if (page) { tr_page_open(); return; }
     inlife = a; t = step = cat = row = dirty = modal = msel = user = cur_turn = hold = hdir = 0; seen = 1; sumsel = 6;
     c_dist = camT[0][0]; c_fy = camT[0][1]; c_pitch = camT[0][2]; cas_step = 0;
+    cas_pick = &tr_cas; tr_cas.open(a);   // (the traits and wish pickers: traits_ui.c)
     modal = 3;   // (The Sims 3 opens on a welcome card: one tick)
 }
 static int row_cam(void) {
@@ -155,10 +158,11 @@ static int modal_update(int pr) {
     if (modal == 3) { if (pr & (PAD_CROSS | PAD_CIRCLE | PAD_START)) { modal = 0; audio_voice(VOICE_AGREE); } return 1; }   // the welcome card
     if (pr & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) msel ^= 1;
     if (pr & PAD_CIRCLE) { modal = 0; return 1; }
-    if (pr & PAD_CROSS) { if (msel == 0) return modal == 1 ? 2 : 0; modal = 0; }
+    if (pr & PAD_CROSS) { if (msel == 0) { if (modal == 1 && cas_pick) cas_pick->commit(inlife); return modal == 1 ? 2 : 0; } modal = 0; }
     return 1;
 }
 static int cr_update(int held, int pr, int steps) {
+    if (page) return tr_page_update(held, pr);
     t++; if (steps < 1) steps = 1;
     if (cas_go >= 0) { go(cas_go, 0); cas_go = -1; }
     if (modal) return modal_update(pr);
@@ -283,7 +287,7 @@ static void draw_summary(void) {
             case 2: v = look_option_name(LK_HSTYLE, E.look[LK_HSTYLE]); break;
             case 3: v = look_option_name(LK_X_THEME, E.look[LK_X_THEME]); break;
             case 4: { int c = 0; for (int k = LK_X_HEAD; k <= LK_X_NECK; k++) c += E.look[k] != 0; c += E.look[LK_X_BACK] != 0; c += E.look[LK_X_HAND] != 0; c += E.look[LK_X_WAIST] != 0; sprintf(b, "%d ITEMS", c); v = b; } break;
-            default: v = look_sign_name(look_sign_of(&E));
+            default: v = cas_pick ? cas_pick->sum(b) : look_sign_name(look_sign_of(&E));
         }
         if (sel) { ui_round(CX0, ry - 1, CW, 16, 5, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(CX0, ry + 2, 2, 10, 38, 146, 222, 0); }
         ui_icon(CX0 + 4, ry, stp[i].icon, sel ? UI_BLUE : UI_SOFT);
@@ -310,6 +314,7 @@ static void draw_modal(void) {
 }
 static void cr_draw(void) {
     char b[40];
+    if (page) { tr_page_draw(); return; }
     // the name card, and what the pad does
     sprintf(b, "%s %s", E.first, E.last);
     ui_card(22, 16, 124, 32);
@@ -327,7 +332,7 @@ static void cr_draw(void) {
         chips();
         if (step == 5 && cas_pick) cas_pick->draw(cat, CX0, RY0, CW, 142); else draw_rows();
         const Rw *r = currow();
-        ui_hints(CX0 + CW / 2, 208, r->k == K_FIRST || r->k == K_LAST ? "X TYPE|TRI NEW" : r->k == K_RAND ? "X ROLL|L1 R1 TAB" : "L1 R1 TAB", 1);
+        ui_hints(CX0 + CW / 2, 208, step == 5 && cas_pick ? cas_pick->hint(cat) : r->k == K_FIRST || r->k == K_LAST ? "X TYPE|TRI NEW" : r->k == K_RAND ? "X ROLL|L1 R1 TAB" : "L1 R1 TAB", 1);
     }
 #ifdef CAS_DBG
     { sprintf(b, "D%d F%d X%d P%d T%d", cas_dist, cas_fy, cas_fx, cas_pitch, cas_turn); ui_text(24, 60, 1, b, UI_WHITE); }
