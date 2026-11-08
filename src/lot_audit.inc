@@ -119,7 +119,8 @@ static void lot_audit(int lx, int ly, int kind) {
                 if (l && m[y][x] == ' ') continue; if (c == 'W' || c == ' ' || (l && c == 'E')) continue;
                 int f = fl[y][x]; fmask |= 1u << (f & 31); if (f == 7 || f == 8 || f == 9 || f == 10 || f == 12) loud = 1; } }
         lot_aud.homes++; lot_aud_k[kind].homes++;
-        if (!bed) { lot_aud.nobed++; lot_aud_k[kind].nobed++; } if (!wc) { lot_aud.nowc++; lot_aud_k[kind].nowc++; } if (!kit) { lot_aud.nokit++; lot_aud_k[kind].nokit++; }
+        int vac = occ_blk[hm->unit].vacant;   // (an empty home keeps its boxes and nothing else)
+        if (!vac && !bed) { lot_aud.nobed++; lot_aud_k[kind].nobed++; } if (!vac && !wc) { lot_aud.nowc++; lot_aud_k[kind].nowc++; } if (!vac && !kit) { lot_aud.nokit++; lot_aud_k[kind].nokit++; }
         if (loud) { lot_aud.loud++; lot_aud_k[kind].loud++; }
         { int n = 0; for (unsigned v = fmask; v; v >>= 1) n += v & 1; lot_aud.floors_sum += n; }
         if (hm->dy + 1 < MH && !au_gr[hm->dy + 1][hm->dx]) { lot_aud.path++; lot_aud_k[kind].path++; }

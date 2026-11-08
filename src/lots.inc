@@ -1,3 +1,7 @@
+// the calm palette: homes and shops draw floors and walls from short lists (no factory stripes, hazard plate or grating indoors)
+static int cfl(unsigned h) { static const u8 t[9] = { 4, 1, 0, 2, 3, 5, 6, 11, 13 }; return t[h % 9u]; }
+static int cwp(unsigned h) { static const u8 t[12] = { 10, 18, 20, 21, 22, 41, 42, 43, 48, 58, 87, 41 }; return NWP + t[h % 12u]; }
+static int pick_wp(unsigned h) { unsigned d = city_h((blk_bx >> 2) * 5 + (blk_by >> 2), 77); return NWP + NWX + (int)(((h >> 16) % 4u) ? (d % NWPNEW) : ((d >> 8) + (h >> 20)) % NWPNEW); }   // (the outer wall follows the district: brick, siding, stucco, shingle, beadboard or stone, 1 in 4 a neighbour's mix)
 
 // ---- furnishing a room for its people ----
 // the storey being built on: the ground (the map) or one of the storeys above (the generators write through these)
@@ -179,6 +183,12 @@ static void fz_layout(int roles, const Beds *bd, const Occ *o) {
     fz_pput(0, 0, 'p'); fz_pput(RW - 1, 0, 'p'); if (area >= 30) fz_pput(bedEnd, 0, 'p');   // the touches: plants in the front corners
     if (roles & (R_BED | R_STUDY)) { fz_pput(bedEnd, 0, 'p'); if (area >= 9) fz_pput(RW / 2, back - 1 > 1 ? back - 1 : back, 'r'); }
 }
+static void fz_need(const char *has, char c) {   // a home must have its toilet, fridge and bed: if the layout left one out, it goes on the first free wall tile that is not in the doorway
+    for (int y = fz_y0; y <= fz_y1; y++) for (int x = fz_x0; x <= fz_x1; x++) if (sm[y][x] && strchr(has, sm[y][x])) return;
+    for (int y = fz_y0; y <= fz_y1; y++) for (int x = fz_x0; x <= fz_x1; x++) {
+        if (sm[y][x] != '.' || (ABS(x - fz_ix) + ABS(y - fz_iy)) < 2 || !fz_free(x, y)) continue;
+        if (sm[y - 1][x] == 'W' || sm[y + 1][x] == 'W' || sm[y][x - 1] == 'W' || sm[y][x + 1] == 'W') { sm[y][x] = c; return; } }
+}
 static void furnish_at(int x0, int y0, int x1, int y1, int ix, int iy, int ox, int oy, const Occ *o, unsigned h) {   // (ix,iy): the tile just inside the door; (ox,oy): the way in
     fz_frame(x0, y0, x1, y1, ix, iy, ox, oy, h);
     int st = fz_rnd(MAX(1, rgn));
@@ -189,6 +199,7 @@ static void furnish_at(int x0, int y0, int x1, int y1, int ix, int iy, int ox, i
     }
     Beds bd = beds_of(o);
     fz_layout(R_ALL | ((x1 - x0 + 1) * (y1 - y0 + 1) >= 60 ? R_GRAND : 0), &bd, o);
+    fz_need("T", 'T'); fz_need("F", 'F'); fz_need("S<", 'S');
     fz_reach();
     fz_nres = 0;
 }
@@ -200,7 +211,7 @@ static void furnish_plan(int X0, int Y0, int X1, int Y1, int dx, const Occ *o, u
     int Wt = X1 - X0 + 1, Dt = Y1 - Y0 + 1;
     if (o->vacant || Wt < 7 || Dt < 7) { furnish_at(X0, Y0, X1, Y1, dx, Y1, 0, -1, o, h); return; }
     fz_h = h | 1;
-    int wpi = NWP + (int)((h >> 5) % 89), br = Dt >= 11 ? 5 : Dt >= 9 ? 4 : 3, wy = Y0 + br;
+    int wpi = cwp(h >> 5), br = Dt >= 11 ? 5 : Dt >= 9 ? 4 : 3, wy = Y0 + br;
     int k = Wt >= 11 ? 3 : 2;
     int cuts[3], rx0[3], rx1[3];                                                      // the back rooms' spans
     { int rw = (Wt - (k - 1)) / k, extra = (Wt - (k - 1)) - rw * k, x = X0;
@@ -210,7 +221,7 @@ static void furnish_plan(int X0, int Y0, int X1, int Y1, int dx, const Occ *o, u
     for (int i = 0; i < k - 1; i++) for (int y = Y0; y < wy; y++) { sm[y][cuts[i]] = 'W'; swp[y][cuts[i]] = (u8)wpi; }
     int ddx[3];
     for (int i = 0; i < k; i++) { ddx[i] = (rx0[i] + rx1[i]) / 2; sm[wy][ddx[i]] = 'D'; }   // a door to each room
-    for (int i = 0; i < k; i++) { int fl = (int)((fz_rnd(14))); for (int y = Y0; y < wy; y++) for (int x = rx0[i]; x <= rx1[i]; x++) sfl[y][x] = (u8)fl; }
+    for (int i = 0; i < k; i++) { int fl = cfl(fz_rnd(9)); for (int y = Y0; y < wy; y++) for (int x = rx0[i]; x <= rx1[i]; x++) sfl[y][x] = (u8)fl; }
     // who sleeps where
     Beds all = beds_of(o); int roles[3] = { 0, 0, 0 }; Beds rb[3]; memset(rb, 0, sizeof rb);
     int bathAt = fz_rnd(k);                                                           // which room is the bathroom
@@ -244,56 +255,55 @@ static void furnish_plan(int X0, int Y0, int X1, int Y1, int dx, const Occ *o, u
     fz_nres = 0;
 }
 static void furnish(int x0, int y0, int x1, int y1, int dx, int dy, const Occ *o, unsigned h) { furnish_at(x0, y0, x1, y1, dx, y1, 0, -1, o, h); (void)dy; }   // the door in the south wall
-static void yard(int lx, int ly, int dx, int dy, int vacant, unsigned h) {   // the front yard: trees, planters, the bin, and a sign if it is for sale
-    gFree(dx - 2, dy + 1, (h & 1) ? 'Z' : 'p'); gFree(dx + 2, dy + 1, 'Z');
-    gFree(lx + (int)((h >> 3) % 3u), ly + (int)((h >> 5) % 2u), TREE); gFree(lx + 12 - (int)((h >> 7) % 3u), ly + (int)((h >> 9) % 3u), TREE);
-    if ((h >> 11) & 1) gFree(lx + 12, ly + 9, TREE);
-    if (vacant) gFree(dx + 2, dy + 2, '8'); else gFree(dx + 3, dy + 3, 'Y');
-    if (!vacant) {   // the front garden: a lamp by the path, a mailbox at the street, flowers, a gnome or a bird bath, a picket fence with a gate, trees
-        unsigned g = h >> 13;
-        gFree(dx + 3, dy + 1, 'l'); if ((g & 1) && dx - 3 >= lx) gFree(dx - 3, dy + 1, 'N');
-        for (int k = -6; k <= 6; k += 2) { int x = dx + k; if (ABS(k) <= 3 || x < lx || x > lx + 12) continue; unsigned r = (g >> (k + 6)) & 3u; gFree(x, dy + 1, r == 0 ? (char)0xE2 : r == 1 ? '*' : r == 2 ? 'p' : 'Z'); }
-        if ((g >> 5) & 1) gFree(lx + 12, ly + (int)((g >> 7) % 3u), ((g >> 9) & 1) ? '3' : '6');
-        if (dy + 1 < ly + 11) gFree(dx + 1, MIN(ly + 11, dy + 5), (char)0xE0);                                   // the mailbox, by the path near the street
-        if ((g >> 10) & 1) gFree(dx - 1, dy + 2, (char)0xE3); else if ((g >> 11) & 1) gFree(dx + 4, dy + 2, (char)0xE4);   // a gnome, or a bird bath
-        if ((g >> 12) & 1) gFree(lx + 1, dy + 3, (char)0xEA);                                                  // a barbecue
-        if ((g >> 14) % 5u < 3 && dy + 4 <= ly + 11) {                                                          // a picket fence across the front, a gate at the path
-            for (int x = lx; x <= lx + 12; x++) if (ABS(x - dx) > 1) gFree(x, dy + 4, (char)0xDF);
-            for (int x = lx + 1; x <= lx + 11; x += 2) if (ABS(x - dx) > 2 && ((g >> 16) & 1)) gFree(x, dy + 3, (char)0xE1);   // (and a hedge behind it)
-        }
-        if ((g >> 17) % 4u == 0 && dy + 1 < ly + 12) for (int y = dy + 1; y <= MIN(ly + 12, MH - 2); y++) floorMap[y][dx] = FL_PATIO;   // a brick path
-        else if ((g >> 19) % 5u == 0 && dy + 1 < ly + 12) for (int y = dy + 1; y <= MIN(ly + 12, MH - 2); y++) floorMap[y][dx] = FL_GRAVEL;
+static int PLx, PLy;                                                         // the lot being dressed: nothing outside its 13 x 13 (and nothing on the kerb row or column) is touched
+static void pf(int x, int y, char c) { if (x > PLx && x <= PLx + 12 && y > PLy && y <= PLy + 12) gFree(x, y, c); }
+static void yard(int lx, int ly, int dx, int dy, int vacant, unsigned h) {   // the front yard: a fenced garden with a gate on the path, flanking planters and beds, a lamp and a mailbox; a sale sign if for sale
+    PLx = lx; PLy = ly; int n = ly + 12 - dy;                                // rows between the door and the road
+    pf(dx - 2, dy + 1, 'Z'); pf(dx + 2, dy + 1, 'Z');
+    pf(lx + 1 + (int)((h >> 3) % 2u), ly + 1, TREE); pf(lx + 11 - (int)((h >> 7) % 2u), ly + 1, TREE);
+    if (vacant) { pf(dx + 2, dy + 2, '8'); return; }
+    unsigned g = h >> 13;
+    pf(dx + 1, dy + 1, 'l');                                                  // a lamp by the path
+    for (int k = 4; k <= 6; k += 2) { char c = (g & 1) ? (char)0xE2 : 'p'; pf(dx - k, dy + 1, c); pf(dx + k, dy + 1, c); }   // beds either side, matched
+    if (n >= 3) {                                                             // a fence across the front with a gate at the path: a hedge or pickets for the whole lot
+        int fy = ly + 11; char fc = ((g >> 1) & 1) ? (char)0xE1 : (char)0xDF;
+        for (int x = lx + 1; x <= lx + 11; x++) if (ABS(x - dx) > 1) pf(x, fy, fc);
+        pf(dx + 2, ly + 12, (char)0xE0);                                      // the mailbox by the gate
+        if ((g >> 2) & 1) pf(dx - 2, ly + 12, 'N');                           // and a bin
     }
+    if (n >= 2 && ((g >> 3) & 3u) == 0) pf(dx - 3, dy + 2, (char)0xE3);       // now and then a gnome
+    for (int y = dy + 1; y <= MIN(ly + 12, MH - 2); y++) floorMap[y][dx] = (u8)(((g >> 5) & 3u) == 0 ? FL_GRAVEL : ((g >> 5) & 3u) == 1 ? FL_PATIO : FL_PAVING);   // the path
 }
 
-static void backyard(int lx, int ly, int hx, int hy, int w, int dy, unsigned h) {   // behind the home (the lot's north): a pool, a garden, a patio or a lawn, and a fence round the lot
-    int rows = hy - ly; unsigned g = h >> 11; int kind = (int)(g % 6u);
+static void backyard(int lx, int ly, int hx, int hy, int w, int dy, unsigned h) {   // behind the home (the lot's north): a pool, a garden, a patio with a barbecue or a lawn, fenced on the back and the sides that leave a way round
+    PLx = lx; PLy = ly; int rows = hy - ly - 1; unsigned g = h >> 11; int kind = (int)(g % 5u);
+    int by = ly + 1, x0 = lx + 2 + (int)((g >> 4) % 2u);
     if (rows >= 3) {
-        int by = ly + 1, x0 = lx + 1 + (int)((g >> 4) % 3u);
         if (kind == 0 && rows >= 5) {                       // a swimming pool: water in a ring of pool tile, loungers and plants beside it
-            int pw = 5 + (int)((g >> 6) & 1), ph = rows >= 6 ? 4 : 3;
-            for (int y = by - 1; y <= by + ph; y++) for (int x = x0 - 1; x <= x0 + pw; x++) { if (y < ly || y >= hy - 1 || x < lx + 1 || x > lx + 11) continue; floorMap[y][x] = (u8)((y == by - 1 || y == by + ph || x == x0 - 1 || x == x0 + pw) ? FL_PATIO : FL_WATER); }
-            gFree(x0 + pw + 1, by, 'Z'); gFree(lx + 1, ly, TREE); gFree(lx + 11, ly, TREE);
-        } else if (kind == 1) {                             // a flower and vegetable garden
-            for (int y = by; y < hy - 1; y++) for (int x = lx + 1; x <= lx + 11; x++) { unsigned r = (g >> ((x + y) & 15)) & 7u; if (r == 0) gFree(x, y, 'p'); else if (r == 1) gFree(x, y, 'Z'); else if (r == 2) gFree(x, y, '*'); }
-            gFree(lx + 2, ly, TREE); gFree(lx + 10, ly, TREE);
-        } else if (kind == 2) {                             // a patio with a barbecue
-            for (int y = by; y <= MIN(by + 1, hy - 2); y++) for (int x = x0; x <= x0 + 4; x++) floorMap[y][x] = FL_PATIO;
-            gFree(x0 + 1, by, (char)0xEA); gFree(lx + 11, ly, TREE); gFree(lx + 1, ly + 1, TREE);
-        } else {                                            // a lawn and trees
-            gFree(lx + 1 + (int)(g % 3u), ly + (int)((g >> 3) % 2u), TREE); gFree(lx + 8 + (int)((g >> 5) % 3u), ly + (int)((g >> 7) % 2u), TREE);
-            if ((g >> 9) & 1) gFree(lx + 5, ly + 1, 'Z');
+            int pw = 5, ph = rows >= 6 ? 4 : 3; x0 = lx + 3;
+            for (int y = by; y <= by + ph + 1 && y < hy - 1; y++) for (int x = x0 - 1; x <= x0 + pw; x++) { if (x < lx + 1 || x > lx + 11) continue; floorMap[y][x] = (u8)((y == by || y == by + ph + 1 || x == x0 - 1 || x == x0 + pw) ? FL_PATIO : FL_WATER); }
+            pf(x0 + pw + 1, by + 1, 'Z'); pf(lx + 1, by, TREE); pf(lx + 11, by, TREE);
+        } else if (kind == 1) {                             // a flower and vegetable garden in rows
+            for (int y = by + 1; y < hy - 1; y += 2) for (int x = lx + 2; x <= lx + 10; x += 2) pf(x, y, (y & 2) ? 'p' : (char)0xE2);
+            pf(lx + 1, by, TREE); pf(lx + 11, by, TREE);
+        } else if (kind == 2) {                             // a patio with a barbecue and a table
+            for (int y = by + 1; y <= by + 2 && y < hy - 1; y++) for (int x = x0; x <= x0 + 4; x++) floorMap[y][x] = FL_PATIO;
+            pf(x0 + 1, by + 1, (char)0xEA); pf(x0 + 3, by + 2, 't'); pf(lx + 11, by, TREE); pf(lx + 1, by, TREE);
+        } else {                                            // a lawn, trees in a pair and a bird bath
+            pf(lx + 2, by, TREE); pf(lx + 10, by, TREE); pf(lx + 6, by + 1, (char)0xE4);
         }
     }
-    if ((g >> 12) % 5u < 3) {                               // a picket fence round the back and the sides (the front's own fence is in yard())
-        for (int x = lx; x <= lx + 12; x++) gFree(x, ly, (char)0xDF);
-        for (int y = ly + 1; y <= MIN(dy + 2, ly + 11); y++) { gFree(lx, y, (char)0xDF); gFree(lx + 12, y, (char)0xDF); }
+    int sl = hx - lx >= 3, sr = lx + 12 - (hx + w - 1) >= 3;   // a fence on the back, and down a side only where a way round the house stays open beside it
+    if (rows >= 2 && ((g >> 12) % 5u < 3) && (sl || sr)) {
+        char fc = ((g >> 15) & 1) ? (char)0xE1 : (char)0xDF;
+        for (int x = lx + 1; x <= lx + 11; x++) pf(x, ly + 1, fc);
+        if (sl) for (int y = ly + 2; y < hy; y++) pf(lx + 1, y, fc);
+        if (sr) for (int y = ly + 2; y < hy; y++) pf(lx + 11, y, fc);
     }
-    (void)hx; (void)w;
+    (void)dy;
 }
 // ---- the homes ----
 static int reg_home(int x0, int y0, int x1, int y1, int dx, int dy);
-static int pick_wp(unsigned h) { return ((h >> 16) % 5u) == 0 ? NWP + NWX + (int)((h >> 20) % NWPNEW) : NWP + (int)((h >> 13) % 89); }   // (one home in five: brick, siding, stucco, shingle, beadboard or stone)
 static void city_house(int lx, int ly, unsigned h) {
     int grand = ((h >> 24) & 3) == 0;                                       // one in four is a MANSION: the whole lot, rooms and an arch, a fountain out front
     int sz = (int)((h >> 26) & 15);                                          // how big: mansions run from 11x10 up to a rare 13x12 ESTATE (1 in 16); big houses 9..12 wide, 7..10 deep
@@ -301,7 +311,7 @@ static void city_house(int lx, int ly, unsigned h) {
     int hh = grand ? (sz == 0 ? 12 : sz < 5 ? 10 : 11) : 7 + (int)((h >> 5) % 4);
     int hx = lx + (13 - w) / 2, hy = grand ? ly : ly + 1 + (int)((h >> 7) % 2);
     if (!grand && hy + hh - 1 > ly + 10) hy = ly + 11 - hh;
-    int fl = (int)((h >> 9) % 14), wp = pick_wp(h);
+    int fl = cfl(h >> 9), wp = pick_wp(h);
     gRoom(hx, hy, hx + w - 1, hy + hh - 1, fl, wp);
     int dx = grand ? hx + w / 2 + (int)((h >> 20) % 3u) - 1 : hx + 2 + (int)((h >> 20) % (unsigned)(w - 4)), dy = hy + hh - 1;
     gPut(dx, dy, 'D');
@@ -318,7 +328,7 @@ static void city_house(int lx, int ly, unsigned h) {
     fz_upx = fz_holex = -1;
     for (int l = 1; l < ns; l++) {                                                          // the upper floors: the same walls and windows, a suite, a study or a games room, a lounge
         if (!storey(l)) break;
-        sRoom(hx, hy, hx + w - 1, hy + hh - 1, (int)(city_h((int)h + l, 5) % 14), wp);
+        sRoom(hx, hy, hx + w - 1, hy + hh - 1, cfl(city_h((int)h + l, 5)), wp);
         for (int x = hx + 2; x < hx + w - 2; x += 3) { sm[hy][x] = 'E'; sm[hy + hh - 1][x] = 'E'; }
         for (int y = hy + 2; y < hy + hh - 2; y += 3) { sm[y][hx] = 'E'; sm[y][hx + w - 1] = 'E'; }
         fz_holex = (l & 1) ? stA : stB; fz_holey = sty;
@@ -336,7 +346,7 @@ static void city_cottage(int lx, int ly, unsigned h) {   // a small home: one ro
     int w = 7 + (int)((h >> 4) & 1), hh = 6 + (int)((h >> 5) & 1);
     int hx = lx + 3 - (int)((h >> 6) & 1), hy = ly + 3 + (int)((h >> 7) & 1);
     if ((h >> 8) & 1) hy = ly + 11 - hh;                                       // (half of them stand at the front of the lot: a big backyard behind)
-    int fl = (int)((h >> 9) % 14), wp = pick_wp(h);
+    int fl = cfl(h >> 9), wp = pick_wp(h);
     gRoom(hx, hy, hx + w - 1, hy + hh - 1, fl, wp);
     int dx = hx + w / 2, dy = hy + hh - 1;
     gPut(dx, dy, 'D'); city_path(dx, dy, ly);
@@ -351,7 +361,7 @@ static void city_town(int lx, int ly, unsigned h) {   // two homes sharing the w
     int hy = ly + 1;
     for (int u = 0; u < 2; u++) {
         unsigned hu = city_h((int)(h & 0xFFFF) + u * 31, u + 9);
-        int ax = lx + 6 * u, fl = (int)((hu >> 9) % 14), wp = NWP + (int)((hu >> 13) % 89);
+        int ax = lx + 6 * u, fl = cfl(hu >> 9), wp = cwp(hu >> 13);
         gRoom(ax, hy, ax + 6, hy + 8, fl, wp);
         int dx = ax + 3, dy = hy + 8;
         gPut(dx, dy, 'D'); city_path(dx, dy, ly);
@@ -364,7 +374,7 @@ static void city_town(int lx, int ly, unsigned h) {   // two homes sharing the w
 }
 static void city_two(int lx, int ly, unsigned h) {   // a two-storey house: the household downstairs; a loft (spare beds, a desk) up the stairs
     int hx = lx + 2, hy = ly + 1;
-    int fl = (int)((h >> 9) % 14), wp = NWP + (int)((h >> 13) % 89), fl2 = (int)((h >> 17) % 14), wp2 = NWP + (int)((h >> 3) % 89);
+    int fl = cfl(h >> 9), wp = cwp(h >> 13), fl2 = cfl(h >> 17), wp2 = cwp(h >> 3);
     gRoom(hx, hy, hx + 8, hy + 7, fl, wp);
     int dx = hx + 4, dy = hy + 7;
     gPut(dx, dy, 'D'); city_path(dx, dy, ly);
@@ -441,7 +451,7 @@ static int shell(int lx, int ly, int x0, int y0, int x1, int y1, int fl, int wp,
 static void lot_shop(int lx, int ly, unsigned h) {
     int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 9, kind = (int)(h % 5u);
     static const u8 fls[5] = { 3, 1, 10, 6, 4 };
-    int dx = shell(lx, ly, x0, y0, x1, y1, fls[kind], NWP + (int)((h >> 9) % 89), 1);
+    int dx = shell(lx, ly, x0, y0, x1, y1, fls[kind], pick_wp(h), 1);
     int ix0 = x0 + 1, iy0 = y0 + 1, ix1 = x1 - 1, iy1 = y1 - 1;
     gFree(ix1 - 1, iy1 - 1, 'y'); gFree(ix1, iy1 - 1, 'y'); gFree(ix1, iy1 - 2, 'I');                // the till
     switch (kind) {
@@ -495,7 +505,7 @@ static void city_office(int lx, int ly, unsigned h) {   // where work is: the wo
     gFree(x0 + 5, y1 - 2, 'x'); gFree(x1 - 1, y0 + 3, (h & 2) ? 'q' : 'p'); gPut(x0 + 3, y0, 'E'); gPut(x1 - 3, y0, 'E'); gFree(lx + 3, ly + 11, 'Z');
 }
 static void lot_inn(int lx, int ly, unsigned h) {   // three rooms off a hall, the lobby by the door
-    int x0 = lx, y0 = ly + 1, x1 = lx + 12, y1 = ly + 11, fl = (int)((h >> 5) % 14), fl2 = (int)((h >> 9) % 14), wp = NWP + (int)((h >> 13) % 89);
+    int x0 = lx, y0 = ly + 1, x1 = lx + 12, y1 = ly + 11, fl = cfl(h >> 5), fl2 = cfl(h >> 9), wp = cwp(h >> 13);
     gRoom(x0, y0, x1, y1, fl2, wp);
     gBox(x0 + 1, y0 + 1, x1 - 1, y0 + 4, fl);
     gLine(x0, y0 + 5, x1, y0 + 5, 'W', wp); gLine(x0 + 4, y0, x0 + 4, y0 + 5, 'W', wp); gLine(x0 + 8, y0, x0 + 8, y0 + 5, 'W', wp);
@@ -526,14 +536,14 @@ static void lot_pool(int lx, int ly, unsigned h) {   // the community pool: a ti
 }
 static void lot_school(int lx, int ly, unsigned h) {   // a classroom, and a playground out front
     int x0 = lx, y0 = ly + 1, x1 = lx + 12, y1 = ly + 8;
-    int dx = shell(lx, ly, x0, y0, x1, y1, (int)((h >> 5) % 14), NWP + (int)((h >> 9) % 89), 0);
+    int dx = shell(lx, ly, x0, y0, x1, y1, cfl(h >> 5), pick_wp(h), 0);
     for (int r = 0; r < 2; r++) for (int c = 0; c < 4; c++) { int x = x0 + 2 + c * 3, y = y0 + 3 + r * 2; if (x == dx) continue; gFree(x, y, 'd'); gFree(x, y + 1, 'h'); }
     gFree(x0 + 5, y0 + 1, 'd'); gFree(x0 + 6, y0 + 1, '['); gFree(x0 + 1, y0 + 1, 'b'); gFree(x0 + 2, y0 + 1, 'b'); gFree(x1 - 1, y0 + 1, 'n'); gFree(x1 - 2, y0 + 1, 'p');
     gFree(lx + 1, ly + 10, '_'); gFree(lx + 4, ly + 11, 'N'); gFree(lx + 9, ly + 10, 'K'); gFree(lx + 12, ly + 10, 'a'); gFree(lx + 11, ly + 12, 'Y'); gFree(lx + 2, ly + 12, TREE);
 }
 static void lot_arcade(int lx, int ly, unsigned h) {
     int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
-    shell(lx, ly, x0, y0, x1, y1, 7, NWP + (int)((h >> 9) % 89), 0);
+    shell(lx, ly, x0, y0, x1, y1, 7, pick_wp(h), 0);
     for (int x = x0 + 1; x <= x1 - 1; x++) gFree(x, y0 + 1, '!');
     gFree(x0 + 1, y0 + 3, '!'); gFree(x0 + 1, y0 + 4, '!'); gFree(x1 - 1, y0 + 3, 'j'); gFree(x1 - 1, y0 + 5, 'V');
     gFree(x0 + 4, y0 + 4, '?'); gFree(x0 + 1, y1 - 1, 'C'); gFree(x1 - 2, y1 - 1, 'y'); gFree(x1 - 1, y1 - 1, 'c'); gFree(x0 + 6, y0 + 4, 'U');
@@ -542,7 +552,7 @@ static void lot_arcade(int lx, int ly, unsigned h) {
 // ---- more places to go: a cafe, a bar, a cinema, a salon, a restaurant, a clinic, a library, a spa, an art gallery ----
 static void lot_cafe(int lx, int ly, unsigned h) {   // the counter and its machines along the back, little tables, armchairs by the window
     int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
-    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 4 : 0, NWP + (int)((h >> 9) % 89), 1);
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 4 : 0, pick_wp(h), 1);
     gFree(x0 + 1, y0 + 1, 'c'); gFree(x0 + 2, y0 + 1, 'c'); gFree(x0 + 3, y0 + 1, 'y'); gFree(x0 + 4, y0 + 1, 'y'); gFree(x0 + 5, y0 + 1, 'F'); gFree(x0 + 6, y0 + 1, '-');
     for (int k = 0; k < 2; k++) { int tx = k ? x1 - 3 : x0 + 2; gFree(tx, y0 + 4, 't'); gFree(tx - 1, y0 + 4, 'h'); gFree(tx + 1, y0 + 4, 'h'); }
     gFree(x1 - 1, y0 + 1, 'b'); gFree(x1 - 2, y0 + 1, '['); gFree(x0 + 1, y1 - 1, ';'); gFree(x0 + 2, y1 - 1, 'l'); gFree(x1 - 1, y1 - 1, ';'); gFree(x1 - 2, y1 - 1, 'p');
@@ -552,7 +562,7 @@ static void lot_cafe(int lx, int ly, unsigned h) {   // the counter and its mach
 static void lot_gas(int lx, int ly, unsigned h) {   // a gas station: the shop at the back, the forecourt in front with its pump islands and the air and water, a sign by the road
     int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 5;
     gBox(lx, ly + 6, lx + 12, ly + 12, FL_ASPHALT);                                   // the forecourt
-    int dx = shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 6 : 3, NWP + (int)((h >> 9) % 89), 1);
+    int dx = shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 6 : 3, pick_wp(h), 1);
     gBox(dx, y1 + 1, dx, ly + 7, FL_PAVING);
     gFree(x0 + 1, y0 + 1, 'F'); gFree(x0 + 2, y0 + 1, 'F'); gFree(x0 + 3, y0 + 1, 'c'); for (int x = x0 + 4; x <= x0 + 6; x++) gFree(x, y0 + 1, '7'); gFree(x1 - 1, y0 + 1, ':');
     gFree(x1 - 1, y1 - 1, 'y'); gFree(x1 - 2, y1 - 1, 'y'); gFree(x1 - 1, y1 - 2, 'I'); gFree(x0 + 1, y1 - 1, '7'); gFree(x0 + 2, y1 - 1, '7');   // the till, a rack by the door
@@ -562,7 +572,7 @@ static void lot_gas(int lx, int ly, unsigned h) {   // a gas station: the shop a
 }
 static void lot_conv(int lx, int ly, unsigned h) {   // a corner store: shelves in aisles, the fridges along the wall, the till by the door, a bench and a bin outside
     int x0 = lx + 2, y0 = ly + 3, x1 = lx + 10, y1 = ly + 9;
-    int dx = shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 10 : 4, NWP + (int)((h >> 9) % 89), 1);
+    int dx = shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 6 : 4, pick_wp(h), 1);
     int ix0 = x0 + 1, iy0 = y0 + 1, ix1 = x1 - 1, iy1 = y1 - 1;
     for (int x = ix0; x <= ix1; x++) gFree(x, iy0, (x & 1) ? 'F' : '7');
     for (int x = ix0 + 1; x <= ix1 - 2; x++) if (x != dx && x != dx - 1) { gFree(x, iy0 + 2, '7'); gFree(x, iy0 + 3, '7'); }
@@ -572,7 +582,7 @@ static void lot_conv(int lx, int ly, unsigned h) {   // a corner store: shelves 
 }
 static void lot_bar(int lx, int ly, unsigned h) {   // the counter and its stools, the back bar behind, a little stage, a booth, the jukebox
     int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
-    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 4 : 13, NWP + (int)((h >> 9) % 89), 0);
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 4 : 13, pick_wp(h), 0);
     gFree(x0 + 1, y0 + 1, 'F'); gFree(x0 + 5, y0 + 1, 'c');                                        // the back bar (room to stand between)
     for (int x = x0 + 1; x <= x0 + 5; x++) { gFree(x, y0 + 2, 'y'); gFree(x, y0 + 3, 'h'); }       // the counter, the stools
     gFree(x1 - 1, y0 + 1, '$'); gFree(x1 - 2, y0 + 1, '('); gFree(x1 - 3, y0 + 1, 'A');             // the stage
@@ -583,7 +593,7 @@ static void lot_bar(int lx, int ly, unsigned h) {   // the counter and its stool
 }
 static void lot_cinema(int lx, int ly, unsigned h) {   // the screen across the back, two rows of seats facing it (a low wall behind each), the lobby by the door
     int x0 = lx, y0 = ly, x1 = lx + 12, y1 = ly + 11;
-    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 2 : 13, NWP + (int)((h >> 9) % 89), 0);
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 2 : 13, pick_wp(h), 0);
     for (int x = x0 + 3; x <= x1 - 3; x++) gFree(x, y0 + 1, 'v');                                  // the screen: a wall of screens
     gFree(x0 + 2, y0 + 1, 'A'); gFree(x1 - 2, y0 + 1, 'A');
     for (int r = 0; r < 2; r++) { int y = y0 + 3 + r * 3; for (int x = x0 + 2; x <= x1 - 2; x++) gFree(x, y, ';'); gLine(x0 + 2, y + 1, x1 - 2, y + 1, 'w', 13); }
@@ -594,7 +604,7 @@ static void lot_cinema(int lx, int ly, unsigned h) {   // the screen across the 
 }
 static void lot_salon(int lx, int ly, unsigned h) {   // mirrors along the back with a chair at each, the basins, the front desk, the waiting chairs
     int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
-    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 5 : 3, NWP + (int)((h >> 9) % 89), 1);
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 5 : 3, pick_wp(h), 1);
     for (int k = 0; k < 3; k++) { int x = x0 + 1 + k * 2; gFree(x, y0 + 1, '`'); gFree(x, y0 + 2, 'h'); }
     gFree(x0 + 7, y0 + 1, '-'); gFree(x0 + 8, y0 + 1, '-'); gFree(x1 - 1, y0 + 1, 'i');
     gFree(x1 - 2, y1 - 2, 'y'); gFree(x1 - 1, y1 - 2, 'y');
@@ -603,7 +613,7 @@ static void lot_salon(int lx, int ly, unsigned h) {   // mirrors along the back 
 }
 static void lot_restaurant(int lx, int ly, unsigned h) {   // the kitchen behind a low wall at the back, tables laid for two, the host's stand by the door
     int x0 = lx, y0 = ly + 1, x1 = lx + 12, y1 = ly + 10;
-    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 4 : 1, NWP + (int)((h >> 9) % 89), 1);
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 4 : 1, pick_wp(h), 1);
     gBox(x0 + 1, y0 + 1, x1 - 1, y0 + 2, 3);
     gFree(x0 + 1, y0 + 1, 'F'); gFree(x0 + 2, y0 + 1, '/'); gFree(x0 + 3, y0 + 1, '/'); gFree(x0 + 4, y0 + 1, '-'); gFree(x0 + 5, y0 + 1, 'y'); gFree(x1 - 1, y0 + 1, 'F');
     gLine(x0 + 1, y0 + 3, x1 - 4, y0 + 3, 'w', 13);                                               // the pass (open at the right end)
@@ -613,7 +623,7 @@ static void lot_restaurant(int lx, int ly, unsigned h) {   // the kitchen behind
     gFree(lx + 3, ly + 12, 'Z'); gFree(lx + 9, ly + 12, 'Z');
 }
 static void lot_clinic(int lx, int ly, unsigned h) {   // two exam rooms at the back, the waiting room and the reception by the door
-    int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 10, wp = NWP + (int)((h >> 9) % 89);
+    int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 10, wp = cwp(h >> 9);
     shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 6 : 11, wp, 0);
     gLine(x0, y0 + 4, x1, y0 + 4, 'W', wp); gLine(x0 + 5, y0, x0 + 5, y0 + 4, 'W', wp);
     gPut(x0 + 2, y0 + 4, 'D'); gPut(x0 + 8, y0 + 4, 'D');
@@ -625,7 +635,7 @@ static void lot_clinic(int lx, int ly, unsigned h) {   // two exam rooms at the 
 }
 static void lot_library(int lx, int ly, unsigned h) {   // the stacks, a reading table, computers, armchairs and lamps, the front desk
     int x0 = lx, y0 = ly + 1, x1 = lx + 12, y1 = ly + 10;
-    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 1 : 4, NWP + (int)((h >> 9) % 89), 0);
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 1 : 4, pick_wp(h), 0);
     for (int r = 0; r < 2; r++) for (int x = x0 + 1; x <= x0 + 5; x++) gFree(x, y0 + 1 + r * 2, 'b');
     for (int x = x1 - 5; x <= x1 - 1; x++) gFree(x, y0 + 1, 'b');
     gFree(x1 - 4, y0 + 4, 't'); gFree(x1 - 5, y0 + 4, 'h'); gFree(x1 - 3, y0 + 4, 'h');
@@ -634,7 +644,7 @@ static void lot_library(int lx, int ly, unsigned h) {   // the stacks, a reading
     gFree(lx + 2, ly + 12, 'N'); gFree(lx + 10, ly + 12, 'Z');
 }
 static void lot_space(int lx, int ly, unsigned h) {   // the SPACE CENTRE: mission control (consoles, a briefing desk) and the launch pad with its rocket
-    int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 6, wp = NWP + (int)((h >> 9) % 89);
+    int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 6, wp = cwp(h >> 9);
     shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 10 : 6, wp, 1);
     for (int x = x0 + 1; x <= x1 - 1; x += 2) { gFree(x, y0 + 1, (char)0xD9); gFree(x, y0 + 2, 'h'); }
     gFree(x0 + 1, y1 - 1, '['); gFree(x1 - 1, y1 - 1, '['); gFree(x0 + 5, y1 - 1, 'd');
@@ -642,14 +652,14 @@ static void lot_space(int lx, int ly, unsigned h) {   // the SPACE CENTRE: missi
     gFree(lx + 6, ly + 10, (char)0xD8); gFree(lx + 2, ly + 9, 'O'); gFree(lx + 10, ly + 9, 'O');
 }
 static void lot_obs(int lx, int ly, unsigned h) {   // the OBSERVATORY: the public scopes (a hobby scope, then a research telescope and a dome for the certified), a radio dish out the back
-    int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9, wp = NWP + (int)((h >> 9) % 89);
+    int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9, wp = cwp(h >> 9);
     shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 4 : 5, wp, 0);
     gFree(x0 + 2, y0 + 2, (char)0xD4); gFree(x0 + 5, y0 + 2, (char)0xD5); gFree(x1 - 2, y0 + 2, (char)0xD6);
     gFree(x0 + 1, y0 + 5, 'b'); gFree(x0 + 1, y0 + 6, 'b'); gFree(x1 - 1, y0 + 5, '['); gFree(x1 - 1, y0 + 6, 'h'); gFree(x0 + 4, y1 - 1, 'y');
     gFree(lx + 2, ly + 11, (char)0xD7); gFree(lx + 10, ly + 11, (char)0xD3); gFree(lx + 6, ly + 11, 'N');
 }
 static void lot_spa(int lx, int ly, unsigned h) {   // the massage room, a sauna's showers, two hot tubs, a fountain, the front desk
-    int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 10, wp = NWP + (int)((h >> 9) % 89);
+    int x0 = lx + 1, y0 = ly + 1, x1 = lx + 11, y1 = ly + 10, wp = cwp(h >> 9);
     shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 6 : 5, wp, 0);
     gLine(x0 + 5, y0, x0 + 5, y0 + 4, 'W', wp); gLine(x0, y0 + 4, x0 + 5, y0 + 4, 'W', wp); gPut(x0 + 3, y0 + 4, 'D');
     gFree(x0 + 1, y0 + 1, 'S'); gFree(x0 + 3, y0 + 1, 'S'); gFree(x0 + 1, y0 + 3, 'p'); gFree(x0 + 4, y0 + 3, 'l');
@@ -660,7 +670,7 @@ static void lot_spa(int lx, int ly, unsigned h) {   // the massage room, a sauna
 }
 static void lot_gallery(int lx, int ly, unsigned h) {   // paintings round the walls, sculptures, a fountain, benches, the desk
     int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
-    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 7 : 4, NWP + (int)((h >> 9) % 89), 1);
+    shell(lx, ly, x0, y0, x1, y1, (h & 1) ? 7 : 4, pick_wp(h), 1);
     for (int x = x0 + 1; x <= x1 - 1; x += 2) gFree(x, y0 + 1, ')');
     gFree(x0 + 1, y0 + 3, ')'); gFree(x0 + 1, y0 + 5, ')'); gFree(x1 - 1, y0 + 3, ')'); gFree(x1 - 1, y0 + 5, ')');
     gFree(x0 + 3, y0 + 4, '*'); gFree(x1 - 3, y0 + 4, '*'); gFree(x0 + 5, y0 + 4, '}');
@@ -681,7 +691,7 @@ static void lot_empty(int lx, int ly, unsigned h) {   // nothing built yet: roug
 static void lot_farm(int lx, int ly, unsigned h) {   // rows of crops, a barn, a fence
     for (int y = ly + 1; y <= ly + 11; y += 2) gBox(lx + 1, y, lx + 6, y, FL_SOIL);
     for (int y = ly + 2; y <= ly + 10; y += 2) for (int x = lx + 1; x <= lx + 6; x += 2) gFree(x, y, (char)0xDB);   // (FARM LIFE: crop beds)
-    gRoom(lx + 8, ly + 1, lx + 12, ly + 6, 9, NWP + (int)((h >> 9) % 89));
+    gRoom(lx + 8, ly + 1, lx + 12, ly + 6, 9, cwp(h >> 9));
     gPut(lx + 10, ly + 6, 'D'); gFree(lx + 9, ly + 2, (char)0xDC); gFree(lx + 9, ly + 4, (char)0xDC); gFree(lx + 11, ly + 2, (char)0xDD); gFree(lx + 11, ly + 4, (char)0xDD); gFree(lx + 11, ly + 3, 'O');
     gLine(lx, ly + 12, lx + 12, ly + 12, 'w', 9); lifeMap[ly + 12][lx + 7] = '.';
     gFree(lx + 9, ly + 9, 'K'); gFree(lx + 11, ly + 10, TREE); gFree(lx + 8, ly + 11, (char)0xDE);
@@ -693,7 +703,7 @@ static void stairs_up(int l, int st, int x, const int *ys, int nys) {   // fligh
 }
 static void lot_apart(int lx, int ly, unsigned h, int st) {   // two flats a storey either side of a stair hall (two wide: the stairs take one side); the ground floor's open onto the street
     int x0 = lx, x1 = lx + 12, y0 = ly + 1, y1 = ly + 10, hx = lx + 5;   // the hall: hx (the way through) and hx + 1 (the stairs)
-    int flh = (int)((h >> 3) % 14), wpo = NWP + (int)((h >> 7) % 89);
+    int flh = cfl(h >> 3), wpo = cwp(h >> 7);
     int ys[2] = { y0 + 3, y0 + 6 };
     for (int l = 0; l < st; l++) {
         if (!storey(l)) break;
@@ -707,7 +717,7 @@ static void lot_apart(int lx, int ly, unsigned h, int st) {   // two flats a sto
         for (int side = 0; side < 2; side++) {
             int fx0 = side ? hx + 3 : x0 + 1, fx1 = side ? x1 - 1 : hx - 2, fy0 = y0 + 1, fy1 = y1 - 1, u = l * 2 + side;
             unsigned hu = city_h((int)(h & 0xFFFF) + l * 7 + side, l * 3 + side + 11);
-            int ffl = (int)((hu >> 9) % 14);
+            int ffl = cfl(hu >> 9);
             for (int y = fy0; y <= fy1; y++) for (int x = fx0; x <= fx1; x++) sfl[y][x] = (u8)ffl;
             blk_unit = u;
             if (l == 0) {                                  // the street door
@@ -728,7 +738,7 @@ static void lot_apart(int lx, int ly, unsigned h, int st) {   // two flats a sto
 }
 static void lot_tower(int lx, int ly, unsigned h, int st) {   // an office tower: a lobby, then floor after floor of desks
     int x0 = lx + 1, x1 = lx + 11, y0 = ly + 1, y1 = ly + 10, sx = x1 - 2;
-    int fl = (int)((h >> 3) % 14), wp = NWP + (int)((h >> 7) % 89), fl2 = (int)((h >> 11) % 14);
+    int fl = cfl(h >> 3), wp = cwp(h >> 7), fl2 = cfl(h >> 11);
     int ys[2] = { y0 + 2, y0 + 5 };
     for (int l = 0; l < st; l++) {
         if (!storey(l)) break;
@@ -756,7 +766,7 @@ static void lot_tower(int lx, int ly, unsigned h, int st) {   // an office tower
 }
 static void lot_hotel(int lx, int ly, unsigned h, int st) {   // a hotel: a corridor (two wide) through each floor, rooms either side, the lobby at the front
     int x0 = lx, x1 = lx + 12, y0 = ly, y1 = ly + 12;
-    int fl = (int)((h >> 3) % 14), fl2 = (int)((h >> 9) % 14), wp = NWP + (int)((h >> 13) % 89);
+    int fl = cfl(h >> 3), fl2 = cfl(h >> 9), wp = cwp(h >> 13);
     int xs[2] = { x0 + 3, x0 + 9 };
     for (int l = 0; l < st; l++) {
         if (!storey(l)) break;
