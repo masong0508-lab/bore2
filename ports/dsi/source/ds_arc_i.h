@@ -36,14 +36,15 @@ typedef unsigned char u8; typedef signed char s8; typedef short s16; typedef uns
 void dsag_rect(int x, int y, int w, int h, u32 c, int semi);
 void dsag_disc(int cx, int cy, int r, u32 c);
 void dsag_text(int x, int y, int sz, const char *s, u32 c);
+void dsag_textc(int cx, int y, int sz, const char *s, u32 c);
 void dsag_cue(int k);
 extern int dsag_tx, dsag_tap;   // where the stylus is on the pad (0..255), or -1; the hole tapped (WHACK), or -1
 #define RC(x, y, w, h, c) dsag_rect(x, y, w, h, c, 0)
 #define RA(x, y, w, h, c) dsag_rect(x, y, w, h, c, 1)
 #define DSC(cx, cy, r, c) dsag_disc(cx, cy, r, c)
 #define TX(x, y, s, c) dsag_text(x, y, 1, s, c)
-#define TXC(cx, y, s, c) dsag_text((cx) - (int)strlen(s) * 3, y, 1, s, c)
-#define TXB(cx, y, s, c) dsag_text((cx) - (int)strlen(s) * 6, y, 2, s, c)
+#define TXC(cx, y, s, c) dsag_textc(cx, y, 1, s, c)    // (D65) measured, not strlen * 3: centred on cx for whatever the font makes of it
+#define TXB(cx, y, s, c) dsag_textc(cx, y, 2, s, c)
 #define ar8 dsag_ar8
 #define cue dsag_cue
 #define part dsag_part

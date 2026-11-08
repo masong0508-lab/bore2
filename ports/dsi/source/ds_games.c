@@ -343,7 +343,7 @@ static void tk_name(int i, char *out) { int t = k.tk[i & 3], n = k.tkn[i & 3]; i
 static unsigned skate_sig(void) { int bl = (k.st == KS_GRIND || k.st == KS_MANUAL) ? (k.bal >> 9) + 100 : 0; return (unsigned)((k.popt > 0) * 3 + k.ntr * 7 + (unsigned)(k.pool >> 3) * 11 + k.mult * 13 + bl * 17 + (k.st == KS_AIR) * 19 + (unsigned)skate_score * 23); }   // (only what the top screen shows, coarsely: it is redrawn whole)
 static void skate_top(void) {   // the top screen while you ride: the score, the combo, the balance, what just happened, the buttons
     scr = offbuf; backdrop(); char b[64];
-    panel(6, 6, 244, 34, "Skate"); sprintf(b, "Score %ld", skate_score); text(14, 24, 2, C15(31, 31, 20), b); sprintf(b, "Best combo %ld", skate_best); text(246 - tw(1, b), 26, 1, C15(24, 28, 31), b);
+    panel(6, 6, 244, 34, "Skate"); sprintf(b, "Score %ld", skate_score); text_box(9, 24, 130, 14, FS_HEAD, C15(31, 31, 20), AL_L, b); sprintf(b, "Best combo %ld", skate_best); text_box(110, 24, 136, 14, FS_BODY, C15(24, 28, 31), AL_R, b);
     panel(6, 44, 244, 62, 0);
     if (k.ntr) { int n = MIN(k.ntr, 3); b[0] = 0; for (int i = k.ntr - n; i < k.ntr; i++) { char t[24]; tk_name(i, t); if (b[0]) strcat(b, " + "); strcat(b, t); }
         text_fit(128 - MIN(tw(1, b), 232) / 2, 52, 1, 232, TXT, b); sprintf(b, "%ld X %d", k.pool, MAX(k.mult, 1)); text(128 - tw(2, b) / 2, 66, 2, C15(16, 26, 31), b); }
@@ -352,8 +352,8 @@ static void skate_top(void) {   // the top screen while you ride: the score, the
         rect(x - 2, y - 2, w + 4, 10, C15(31, 31, 31)); rect(x, y, w, 6, C15(8, 10, 16)); rect(x + w / 2 - 12, y, 24, 6, C15(15, 26, 14)); rect(x, y, 14, 6, C15(29, 11, 9)); rect(x + w - 14, y, 14, 6, C15(29, 11, 9)); rect(x + w / 2 + p - 2, y - 2, 4, 10, C15(4, 5, 8)); }
     if (k.popt) { panel(40, 110, 176, 36, 0); text(128 - tw(2, k.popa) / 2, 116, 2, k.popok ? C15(14, 30, 14) : C15(31, 10, 8), k.popa); if (k.popb[0]) text(128 - tw(1, k.popb) / 2, 132, 1, C15(24, 28, 31), k.popb); }
     panel(6, 150, 244, 38, 0);
-    if (k.st == KS_AIR) { text(12, 157, 1, TXT, "Y flip   B grab (hold)   L R spin"); text(12, 171, 1, TXT, "X grind   D-pad picks the trick"); }
-    else { text(12, 157, 1, TXT, "A ollie (hold: higher)   Y manual"); text(12, 171, 1, TXT, "X grind   B off   D-pad rides"); }
+    if (k.st == KS_AIR) { text_box(9, 151, 238, 18, FS_BODY, TXT, AL_L, "Y flip   B grab (hold)   L R spin"); text_box(9, 169, 238, 18, FS_BODY, TXT, AL_L, "X grind   D-pad picks the trick"); }
+    else { text_box(9, 151, 238, 18, FS_BODY, TXT, AL_L, "A ollie (hold: higher)   Y manual"); text_box(9, 169, 238, 18, FS_BODY, TXT, AL_L, "X grind   B off   D-pad rides"); }
 }
 
 // ==== ARCADE (src/arcade.c): the cabinets' games and the prize counter, as the PS1's. The thirteen games are the PS1's own code (ds_agames.c, built from src/ag_*.c); the field is the PS1's 240 x 160,
@@ -386,13 +386,20 @@ void dsag_rect(int x, int y, int w, int h, u32 c, int semi) {   // the field's o
     for (int j = 0; j < h; j++) { u16 *p = scr + (y + j) * 256 + x; for (int i = 0; i < w; i++) p[i] = (u16)(((p[i] & 0x7BDE) >> 1) + cc) | 0x8000; }
 }
 void dsag_disc(int cx, int cy, int r, u32 c) { if (cx + r < 0 || cx - r > 240 || cy + r < 0 || cy - r > 160) return; ellf(8 + dsag_ox + cx, 16 + dsag_oy + cy, r, r, c8(c)); }
-void dsag_text(int x, int y, int sz, const char *s, u32 c) {   // (the PS1's button names become the DS's: X is A, O is B, TRI is X, SQ is Y; letters a pixel closer so a line fits the field)
-    if (y < -8 || y > 160) return; char b[48]; int n = 0;
+static void dsag_fixb(const char *s, char *b) {   // (the PS1's button names become the DS's: X is A, O is B, TRI is X, SQ is Y)
+    int n = 0;
     for (const char *p = s; *p && n < 44;) { if ((p == s || p[-1] == ' ') && (p[1] == 0 || p[1] == ' ' || p[1] == '.' || p[1] == ',')) { if (*p == 'X') { b[n++] = 'A'; p++; continue; } if (*p == 'O') { b[n++] = 'B'; p++; continue; } }
         if ((p == s || p[-1] == ' ') && !strncmp(p, "TRI", 3) && (p[3] == 0 || p[3] == ' ')) { b[n++] = 'X'; p += 3; continue; }
         if ((p == s || p[-1] == ' ') && !strncmp(p, "SQ", 2) && (p[2] == 0 || p[2] == ' ')) { b[n++] = 'Y'; p += 2; continue; }
         b[n++] = *p++; }
-    b[n] = 0; t_tight = 1; text(8 + dsag_ox + x, 16 + dsag_oy + y + 2, sz, c8(c), b); t_tight = 0; }
+    b[n] = 0; }
+static void dsag_put(int x, int y, int sz, int room, u32 c, const char *b) {   // (D65) BODY (HEAD for sz 2) if it fits the room, else the smaller font; the PS1's y is the top of the capitals
+    if (y < -8 || y > 160) return; int f = fit_font(sz >= 2 ? FS_HEAD : FS_BODY, room, b); if (!f) f = FS_SMALL;
+    text(8 + dsag_ox + x, 16 + dsag_oy + y + (th(f) - 1) / 2 - 1, f, c8(c), b); }
+void dsag_text(int x, int y, int sz, const char *s, u32 c) { char b[48]; dsag_fixb(s, b); dsag_put(x, y, sz, 240 - (x < 0 ? 0 : x), c, b); }
+void dsag_textc(int cx, int y, int sz, const char *s, u32 c) {   // centred on cx (measured) and kept inside the field
+    char b[48]; dsag_fixb(s, b); int f = fit_font(sz >= 2 ? FS_HEAD : FS_BODY, 238, b); if (!f) f = FS_SMALL; int w = tw(f, b), x = cx - w / 2; if (x < 1) x = 1; if (x + w > 239) x = 239 - w;
+    if (y < -8 || y > 160) return; text(8 + dsag_ox + x, 16 + dsag_oy + y + (th(f) - 1) / 2 - 1, f, c8(c), b); }
 static int cue_gap;
 void dsag_cue(int k) {
     if (cue_gap > 0 && k != 3) return; cue_gap = 6;
@@ -490,7 +497,7 @@ static int ag_update(int hd, int pr, int steps, int quit) {   // 1 while it runs
     return 1;
 }
 // ---- the picture: the field on the top screen, the pad and the buttons on the bottom ----
-static void ctext(int cx, int y, int s, u16 c, const char *t) { text(cx - tw(s, t) / 2, y, s, c, t); }
+static void ctext(int cx, int y, int s, u16 c, const char *t) { int f = fit_font(s, 244, t); if (!f) f = FS_SMALL; text(cx - tw(f, t) / 2, y, f, c, t); }   // (D65) centred by measure, the font stepped down if it is too wide
 static void ar_scores(int g, int y0) {
     char b[40], n[4]; ctext(128, y0, 1, K8(255, 190, 40), "HIGH SCORES");
     for (int i = 0; i < 3; i++) { ini_str(ar_hs[g][i], n); if (SC_(ar_hs[g][i])) snprintf(b, sizeof b, "%d  %s  %d", i + 1, n, SC_(ar_hs[g][i])); else snprintf(b, sizeof b, "%d  ---  0", i + 1); ctext(128, y0 + 18 + i * 16, 1, i == 0 ? K8(255, 190, 40) : TXT, b); }
@@ -500,25 +507,25 @@ static void ar_top(void) {
     if (mg_ui == 2) {
         panel(8, 8, 240, 160, "The Prize Counter");
         for (int i = 0; i < NPRZ; i++) { int y = 26 + i * 13, s = i == ag_psel; rect(14, y, 228, 12, s ? K8(226, 242, 254) : PANB); rect(15, y + 1, 226, 10, s ? C15(24, 28, 31) : PAN);
-            text(20, y + 3, 1, s ? C15(2, 7, 20) : TXT, prz[i].nm); sprintf(b, "%d tix", prz[i].cost); text(236 - tw(1, b), y + 3, 1, arcade_tix >= prz[i].cost ? (s ? C15(2, 14, 4) : C15(14, 30, 14)) : C15(31, 12, 10), b); }
+            text_box(16, y + 1, 150, 10, FS_BODY, s ? C15(2, 7, 20) : TXT, AL_L, prz[i].nm); sprintf(b, "%d tix", prz[i].cost); text_box(150, y + 1, 90, 10, FS_BODY, arcade_tix >= prz[i].cost ? (s ? C15(2, 14, 4) : C15(14, 30, 14)) : C15(31, 12, 10), AL_R, b); }
         sprintf(b, "You have %d tickets", arcade_tix); ctext(128, 158, 1, C15(24, 28, 31), b); if (ag_msg[0]) ctext(128, 176, 1, C15(31, 14, 12), ag_msg);
         return; }
     rect(6, 14, 244, 164, K8(agCol[ag][0] / 3, agCol[ag][1] / 3, agCol[ag][2] / 3 + 20));
-    rect(8, 1, 240, 12, K8(60, 30, 110)); ctext(128, 4, 1, K8(agCol[ag][0], agCol[ag][1], agCol[ag][2]), agName[ag]);
+    rect(8, 1, 240, 12, K8(60, 30, 110)); text_box(8, 1, 240, 12, FS_HEAD, K8(agCol[ag][0], agCol[ag][1], agCol[ag][2]), AL_C, agName[ag]);
     dsag_rect(0, 0, 240, 160, 0x120404u, 0);
     if (ag_phase == 0) {
         int pg = (ag_rt / 100) % 2;
-        if (pg == 0) { ctext(128, 40, 2, K8(agCol[ag][0], agCol[ag][1], agCol[ag][2]), agName[ag]); ctext(128, 80, 1, TXT, agHow1[ag]); ctext(128, 96, 1, TXT, agHow2[ag]);
+        if (pg == 0) { ctext(128, 40, 5, K8(agCol[ag][0], agCol[ag][1], agCol[ag][2]), agName[ag]); ctext(128, 80, 1, TXT, agHow1[ag]); ctext(128, 96, 1, TXT, agHow2[ag]);
             sprintf(b, "PLAY $%d", ag_price(ag)); ctext(128, 128, 1, K8(255, 190, 40), b); ctext(128, 146, 1, K8(170, 210, 250), (ag_rt / 15) & 1 ? "PRESS A TO START" : ""); }
         else { ctext(128, 40, 2, TXT, agName[ag]); ar_scores(ag, 72); }
     } else if (ag_phase == 3) {
-        ctext(128, 30, 2, K8(255, 190, 40), "NEW RECORD!"); sprintf(b, "SCORE %d", ag_pts); ctext(128, 56, 1, TXT, b);
-        for (int i = 0; i < 3; i++) { char c[2] = { ag_ini[i], 0 }; int x = 84 + i * 28; rect(8 + x, 16 + 70, 22, 30, i == ag_ic ? K8(250, 200, 60) : K8(60, 70, 110)); rect(8 + x + 1, 16 + 71, 20, 28, K8(10, 10, 30)); text(8 + x + 5, 16 + 77, 2, TXT, c); }
+        ctext(128, 30, 5, K8(255, 190, 40), "NEW RECORD!"); sprintf(b, "SCORE %d", ag_pts); ctext(128, 56, 1, TXT, b);
+        for (int i = 0; i < 3; i++) { char c[2] = { ag_ini[i], 0 }; int x = 84 + i * 28; rect(8 + x, 16 + 70, 22, 30, i == ag_ic ? K8(250, 200, 60) : K8(60, 70, 110)); rect(8 + x + 1, 16 + 71, 20, 28, K8(10, 10, 30)); text_box(8 + x, 16 + 70, 22, 30, FS_TITLE, TXT, AL_C, c); }
         ctext(128, 128, 1, K8(170, 210, 250), "UP DOWN PICKS. A NEXT");
     } else {
         if (ag_shake > 0) { dsag_ox = (ag_shake & 1) * 3 - 1; dsag_oy = ((ag_shake >> 1) & 1) * 2; }
         ds_ag_fn[ag].draw(); dsag_fx_draw(); dsag_ox = dsag_oy = 0;
-        if (ag_phase == 2) { rect(56, 68, 144, 80, K8(10, 12, 30)); rect(58, 70, 140, 76, K8(20, 22, 44)); ctext(128, 76, 2, K8(250, 210, 40), "GAME OVER");
+        if (ag_phase == 2) { rect(56, 68, 144, 80, K8(10, 12, 30)); rect(58, 70, 140, 76, K8(20, 22, 44)); ctext(128, 76, 5, K8(250, 210, 40), "GAME OVER");
             sprintf(b, "SCORE %d", ag_pts); ctext(128, 100, 1, TXT, b); sprintf(b, "+%d TICKETS", ag_tix); ctext(128, 116, 1, C15(14, 30, 14), b); if (ag_hrank >= 0) ctext(128, 130, 1, K8(255, 190, 40), ag_hrank == 0 ? "NEW BEST!" : "HIGH SCORE!"); }
     }
     sprintf(b, "TICKETS %d", arcade_tix); ctext(128, 181, 1, K8(200, 210, 240), b);
@@ -530,7 +537,7 @@ static const struct { s16 x, y, w, h; u8 id; const char *t; } BTN[] = {
     { 52, 54, 44, 30, 3, "UP" }, { 8, 86, 44, 36, 1, "LEFT" }, { 96, 86, 44, 36, 2, "RIGHT" }, { 52, 124, 44, 30, 4, "DOWN" },
     { 176, 54, 44, 30, 7, "X" }, { 148, 86, 44, 36, 8, "Y" }, { 204, 86, 44, 36, 5, "A" }, { 176, 124, 44, 30, 6, "B" } };
 static void ar_bottom(void) {
-    scr = offbuf; char b[32]; rect(0, 0, 256, 192, K8(24, 16, 54)); rect(0, 0, 256, 16, K8(60, 30, 110)); ctext(128, 4, 1, K8(90, 230, 240), mg_ui == 2 ? "THE PRIZE COUNTER" : agName[ag]);
+    scr = offbuf; char b[32]; rect(0, 0, 256, 192, K8(24, 16, 54)); rect(0, 0, 256, 16, K8(60, 30, 110)); text_box(0, 0, 256, 16, FS_HEAD, K8(90, 230, 240), AL_C, mg_ui == 2 ? "THE PRIZE COUNTER" : agName[ag]);
     if (mg_ui == 2) {
         const Prize *p = &prz[ag_psel]; chip(8, 24, 116, 44, "Up", 0); chip(132, 24, 116, 44, "Down", 0);
         rect(8, 76, 240, 70, PANB); rect(9, 77, 238, 68, PAN); ctext(128, 86, 2, C15(2, 7, 20), p->nm); sprintf(b, "%d tickets", p->cost); ctext(128, 108, 1, arcade_tix >= p->cost ? C15(2, 14, 4) : C15(31, 12, 10), b); ctext(128, 124, 1, TXT, p->say);
@@ -651,25 +658,25 @@ static void hs_top(void) {
     for (int i = 0; i < 6; i++) rect(10 + i * 40, 150 - (i * 37) % 50, 24, 60, K8(24, 24, 46));   // a skyline at night
     panel(8, 8, 240, 176, "Underworld"); int top = 38;
     if (hp == H_LIST) {
-        text(16, top, 1, C15(20, 24, 28), "PICK A RIDE. ANY NIGHT."); sprintf(b, "HEAT %d", hs_heat); text(240 - tw(1, b), top, 1, hs_heat > 50 ? C15(31, 12, 10) : C15(14, 30, 14), b);
-        text(16, top + 18, 2, TXT, hTNM[hsel]); sprintf(b, "%s   $%d", hTWH[hsel], hTVAL[hsel]); text(16, top + 40, 1, C15(14, 30, 14), b);
-        sprintf(b, "SECURITY %d  WANTED %d  YOUR LOGIC %d", hTDF[hsel], hTST[hsel], hlg()); text(16, top + 56, 1, C15(24, 28, 31), b);
+        text_fit(16, top, 1, 226, C15(20, 24, 28), "PICK A RIDE. ANY NIGHT."); sprintf(b, "HEAT %d", hs_heat); text(242 - tw(1, b), top, 1, hs_heat > 50 ? C15(31, 12, 10) : C15(14, 30, 14), b);
+        text(16, top + 18, 2, TXT, hTNM[hsel]); sprintf(b, "%s   $%d", hTWH[hsel], hTVAL[hsel]); text_fit(16, top + 40, 1, 226, C15(14, 30, 14), b);
+        sprintf(b, "SECURITY %d  WANTED %d  YOUR LOGIC %d", hTDF[hsel], hTST[hsel], hlg()); text_fit(16, top + 56, 1, 226, C15(24, 28, 31), b);
         text_fit(16, top + 74, 1, 224, C15(20, 24, 28), hsel >= 5 ? "KEPT: HOT. SKY AND SEA CAN TAKE IT OUT." : "A CAR OR BIKE: THE CHOP SHOP, FOR CASH.");
-        if (hs_stolen & (1 << hsel)) text(16, top + 90, 1, C15(31, 25, 6), "YOU KEEP ONE OF THESE ALREADY.");
-        text(16, top + 108, 1, C15(31, 12, 10), hline); return; }
+        if (hs_stolen & (1 << hsel)) text_fit(16, top + 90, 1, 226, C15(31, 25, 6), "YOU KEEP ONE OF THESE ALREADY.");
+        text_fit(16, top + 108, 1, 226, C15(31, 12, 10), hline); return; }
     if (hp == H_GATE || hp == H_CHASE) {
-        if (hp == H_GATE) { text(16, top, 1, TXT, hTNM[htgt]); sprintf(b, "GATE %d OF 3: %s", hgate + 1, hGNM[hgate]); text(16, top + 14, 1, C15(24, 28, 31), b); text(16, top + 28, 1, C15(20, 24, 28), hGHINT[hgate]); }
-        else { text(16, top, 1, C15(31, 12, 10), "THE GETAWAY"); sprintf(b, "CORNER %d OF %d", hround + 1, hstars + 1); text(16, top + 14, 1, C15(24, 28, 31), b); text(16, top + 28, 1, C15(20, 24, 28), hline2); }
+        if (hp == H_GATE) { text_fit(16, top, 1, 226, TXT, hTNM[htgt]); sprintf(b, "GATE %d OF 3: %s", hgate + 1, hGNM[hgate]); text_fit(16, top + 14, 1, 226, C15(24, 28, 31), b); text_fit(16, top + 28, 1, 226, C15(20, 24, 28), hGHINT[hgate]); }
+        else { text_fit(16, top, 1, 226, C15(31, 12, 10), "THE GETAWAY"); sprintf(b, "CORNER %d OF %d", hround + 1, hstars + 1); text_fit(16, top + 14, 1, 226, C15(24, 28, 31), b); text_fit(16, top + 28, 1, 226, C15(20, 24, 28), hline2); }
         rect(16, top + 50, 224, 16, K8(200, 206, 214)); rect(16 + hzone * 224 / 100, top + 50, hzw * 224 / 100, 16, K8(255, 235, 120)); rect(14 + hmark * 224 / 100, top + 46, 5, 24, K8(60, 70, 200));
         for (int i = 0; i < 5; i++) { rect(16 + i * 16, top + 84, 12, 12, i < hstars ? K8(236, 170, 30) : K8(110, 110, 130)); }
-        text(16, top + 108, 1, TXT, hline); return; }
-    if (hp == H_CHOICE) { text(16, top, 1, TXT, "YOU'RE IN. NOW WHAT?"); text(16, top + 24, 1, C15(24, 28, 31), htgt >= 5 ? "KEEP IT. IT IS HOT." : "SELL IT TO THE CHOP SHOP"); text(16, top + 42, 1, C15(24, 28, 31), "FENCE IT FOR CASH"); return; }
-    text_fit(16, top + 6, 1, 224, TXT, hline); text_fit(16, top + 28, 1, 224, C15(20, 24, 28), hline2); sprintf(b, "FUNDS $%d   HEAT %d", funds, hs_heat); text(16, top + 60, 1, C15(14, 30, 14), b);
+        text_fit(16, top + 108, 1, 226, TXT, hline); return; }
+    if (hp == H_CHOICE) { text_fit(16, top, 1, 226, TXT, "YOU'RE IN. NOW WHAT?"); text_fit(16, top + 24, 1, 226, C15(24, 28, 31), htgt >= 5 ? "KEEP IT. IT IS HOT." : "SELL IT TO THE CHOP SHOP"); text_fit(16, top + 42, 1, 226, C15(24, 28, 31), "FENCE IT FOR CASH"); return; }
+    text_fit(16, top + 6, 1, 224, TXT, hline); text_fit(16, top + 28, 1, 224, C15(20, 24, 28), hline2); sprintf(b, "FUNDS $%d   HEAT %d", funds, hs_heat); text_fit(16, top + 60, 1, 226, C15(14, 30, 14), b);
 }
 static void hs_bottom(void) {
-    scr = offbuf; rect(0, 0, 256, 192, K8(14, 14, 34)); rect(0, 0, 256, 16, K8(30, 20, 50)); ctext(128, 4, 1, K8(200, 190, 250), "UNDERWORLD");
+    scr = offbuf; rect(0, 0, 256, 192, K8(14, 14, 34)); rect(0, 0, 256, 16, K8(30, 20, 50)); text_box(0, 0, 256, 16, FS_HEAD, K8(200, 190, 250), AL_C, "UNDERWORLD");
     if (hp == H_LIST) {
-        for (int i = 0; i < HT_N; i++) { int y = 18 + i * 14, s = i == hsel; rect(8, y, 240, 13, s ? K8(226, 242, 254) : PANB); rect(9, y + 1, 238, 11, s ? C15(24, 28, 31) : PAN); char b[40]; sprintf(b, "%s", hTNM[i]); text(14, y + 6, 1, s ? C15(2, 7, 20) : TXT, b); sprintf(b, "$%d", hTVAL[i]); text(242 - tw(1, b), y + 6, 1, s ? C15(2, 14, 4) : C15(14, 30, 14), b); }
+        for (int i = 0; i < HT_N; i++) { int y = 18 + i * 14, s = i == hsel; rect(8, y, 240, 13, s ? K8(226, 242, 254) : PANB); rect(9, y + 1, 238, 11, s ? C15(24, 28, 31) : PAN); char b[40]; sprintf(b, "%s", hTNM[i]); text_box(10, y + 1, 150, 11, FS_BODY, s ? C15(2, 7, 20) : TXT, AL_L, b); sprintf(b, "$%d", hTVAL[i]); text_box(150, y + 1, 94, 11, FS_NUM, s ? C15(2, 14, 4) : C15(14, 30, 14), AL_R, b); }
         chip(8, 162, 116, 26, "Case it", 1); chip(132, 162, 116, 26, "Leave", 0); return; }
     if (hp == H_GATE || hp == H_CHASE) { chip(8, 26, 240, 130, "NOW!", 1); return; }
     if (hp == H_CHOICE) { chip(8, 26, 240, 60, htgt >= 5 ? "Keep it (hot)" : "Sell to the chop shop", hsel == 0); chip(8, 96, 240, 60, "Fence it for cash", hsel == 1); return; }

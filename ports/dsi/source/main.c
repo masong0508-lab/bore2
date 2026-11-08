@@ -62,20 +62,48 @@ static void rect(int x, int y, int w, int h, u16 c) {
     u32 cc = (u32)c | ((u32)c << 16);
     for (int j = 0; j < h; j++) { u16 *p = scr + (y + j) * 256 + x; int i = 0, n = w; if (x & 1) { p[0] = c; i = 1; n--; } u32 *q = (u32 *)(p + i); for (int k = 0; k < n / 2; k++) q[k] = cc; if (n & 1) p[i + n - 1] = c; }
 }
-#include "font8.h"
+#include "ds_fonts.h"   // (D65) tools/dsbuild/mk_dsfonts.py: BODY, HEAD, SMALL, NUM, TITLE
+// ---- text (D65): five fonts; the s argument of text() / tw() / text_c() ... picks one. Same roles as the PS1's docs/FONTS.md: HEAD bold, BODY clean, SMALL labels, NUM money and clock, TITLE the fun big face.
+enum { FS_BODY = 1, FS_HEAD = 2, FS_SMALL = 3, FS_NUM = 4, FS_TITLE = 5 };
+enum { AL_C = 0, AL_L = -1, AL_R = 1 };
 static int t_tight;   // (D35) 1: the letters one pixel closer (long names on the shop's cards)
-static int tw(int s, const char *t) {   // the width of a string in pixels
-    int w = 0; for (; *t; t++) { int c = (unsigned char)*t; if (c < 32 || c > 126) continue; int m = 0; for (int r = 0; r < 8; r++) { int v = FONT8[c - 32][r]; for (int x = 7; x >= 0; x--) if (v >> (7 - x) & 1) { if (x + 1 > m) m = x + 1; } } w += (c == 32 ? 4 : m + 1) + (s >= 2) - t_tight; }
-    return w;
+static int fnt_sel = FS_BODY;
+static void font_select(int f) { fnt_sel = (f >= 1 && f <= 5) ? f : FS_BODY; }   // the font-select API: text_u() and text_cu() use the selected font
+static const DsFont *fnt(int s) { if (s < 1) s = 1; if (s > 5) s = 5; return &DSFONT[s - 1]; }
+static int th(int s) { return fnt(s)->fcap; }   // the cap height: what looks like "the height" of a line
+static int tw(int s, const char *t) {   // the width of a string in pixels, from the pen to the last ink
+    const DsFont *f = fnt(s); int w = 0, lastgap = 0;
+    for (; *t; t++) { int c = (unsigned char)*t; if (c < 32 || c > 126) continue; c -= 32; w += f->adv[c] - t_tight; lastgap = f->adv[c] - (f->xoff[c] + f->w[c]); }
+    return w - (lastgap > 0 ? lastgap - t_tight : 0);
 }
-static void text(int x, int y, int s, u16 c, const char *t) {   // s 1: normal, s 2: bold; a soft shadow under it
-    int dark = ((c & 31) + ((c >> 5) & 31) + ((c >> 10) & 31)) > 45; u16 sh = C15(0, 2, 8);
-    for (; *t; t++) { int ch = (unsigned char)*t; if (ch < 32 || ch > 126) continue; int m = 0;
-        for (int r = 0; r < 8; r++) { int v = FONT8[ch - 32][r]; for (int q = 0; q < 8; q++) if (v >> (7 - q) & 1) { if (q + 1 > m) m = q + 1; } }
-        for (int r = 0; r < 8; r++) { int v = FONT8[ch - 32][r]; for (int q = 0; q < 8; q++) if (v >> (7 - q) & 1) {
-            if (dark) { px(x + q + 1, y + r - 1, sh); if (s >= 2) px(x + q + 2, y + r - 1, sh); }
-            px(x + q, y + r - 2, c); if (s >= 2) px(x + q + 1, y + r - 2, c); } }
-        x += (ch == 32 ? 4 : m + 1) + (s >= 2) - t_tight; }
+// y of text(): the middle row of the capitals is y + 1 in every font, so a call can swap fonts and stay in place
+static void text(int x, int y, int s, u16 c, const char *t) {   // a soft shadow under it (a dark outline for TITLE)
+    const DsFont *f = fnt(s); int dark = ((c & 31) + ((c >> 5) & 31) + ((c >> 10) & 31)) > 45; u16 sh = C15(0, 2, 8);
+    int row0 = y + 1 - f->fcap / 2 + f->fcap - 1 - (f->fb - 1);
+    for (int pass = (s == FS_TITLE ? 0 : 1); pass < 2; pass++) { int pen = x;
+        for (const char *p = t; *p; p++) { int ch = (unsigned char)*p; if (ch < 32 || ch > 126) continue; ch -= 32;
+            const u16 *rw = f->rows + ch * f->fh; int w = f->w[ch], gx = pen + f->xoff[ch];
+            for (int r = 0; r < f->fh; r++) { unsigned v = rw[r]; if (!v) continue; int yy = row0 + r;
+                for (int q = 0; q < w; q++) if (v >> (15 - q) & 1) {
+                    if (pass == 0) { px(gx + q - 1, yy, sh); px(gx + q + 1, yy, sh); px(gx + q, yy - 1, sh); px(gx + q, yy + 1, sh); }
+                    else { if (dark && s != FS_TITLE) px(gx + q + 1, yy + 1, sh); px(gx + q, yy, c); } } }
+            pen += f->adv[ch] - t_tight; } }
+}
+// ---- measure, then centre (D65): one place does the sums, so a label sits in the middle of its box whatever it says ----
+static const u8 FS_SMALLER[6] = { 0, 3, 1, 0, 3, 2 };   // the next smaller font: HEAD -> BODY -> SMALL; NUM -> SMALL; TITLE -> HEAD
+static int fit_font(int s, int w, const char *t) {   // the biggest font from s down that fits w (0 if none)
+    while (s) { if (tw(s, t) <= w) return s; s = FS_SMALLER[s]; } return 0; }
+static void text_c(int cx, int cy, int s, u16 c, const char *t) { text(cx - tw(s, t) / 2, cy - 1, s, c, t); }   // centred on (cx, cy): cy is the middle row of the capitals
+static void text_r(int rx, int cy, int s, u16 c, const char *t) { text(rx - tw(s, t), cy - 1, s, c, t); }       // its right edge at rx
+static void text_u(int x, int y, u16 c, const char *t) { text(x, y, fnt_sel, c, t); }
+static void text_cu(int cx, int cy, u16 c, const char *t) { text_c(cx, cy, fnt_sel, c, t); }
+static int box_mid(int y, int h, int s) { return y + (h - th(s) + 1) / 2 + (th(s) - 1) / 2; }   // the middle row of the capitals for a line centred in a box y..y+h
+static void text_box(int x, int y, int w, int h, int s, u16 c, int al, const char *t) {   // t in the box: measured, the font stepped down if it is too wide, cut with a dot as the last resort, then centred both ways (al AL_L / AL_R: 3 px in from that side)
+    int pad = al == AL_C ? 1 : 3, f = fit_font(s, w - 2 * pad, t); char b[48];
+    if (!f) { f = s; while (FS_SMALLER[f]) f = FS_SMALLER[f]; int n = (int)strlen(t); if (n > 44) n = 44; memcpy(b, t, (size_t)n); b[n] = 0;
+        while (n > 1 && tw(f, b) > w - 2 * pad) { n--; b[n] = 0; if (n > 2) b[n - 1] = '.'; } t = b; }
+    int tx = al == AL_L ? x + pad : al == AL_R ? x + w - pad - tw(f, t) : x + (w - tw(f, t)) / 2;
+    text(tx, box_mid(y, h, f) - 1, f, c, t);
 }
 
 // ---------- the map ----------
@@ -140,14 +168,14 @@ static void ne_cell(int bx, int by) {   // the tool on one block, the same chang
     }
 }
 static void chip(int x, int y, int w, int h, const char *t, int on) {
-    rect(x, y, w, h, on ? C15(31, 31, 20) : C15(2, 4, 12)); rect(x + 1, y + 1, w - 2, h - 2, on ? C15(10, 24, 10) : C15(6, 12, 26)); text(x + w / 2 - tw(1, t) / 2, y + (h > 16 ? h / 2 - 4 : 3), 1, C15(31, 31, 31), t);
+    rect(x, y, w, h, on ? C15(31, 31, 20) : C15(2, 4, 12)); rect(x + 1, y + 1, w - 2, h - 2, on ? C15(10, 24, 10) : C15(6, 12, 26)); text_box(x, y, w, h, h > 17 ? FS_HEAD : FS_BODY, C15(31, 31, 31), AL_C, t);   // (D65) measured and centred in the chip, whatever it says
 }
 static void map_chip(int px_, int py_) {   // a tap on the strip under the map
     if (!ne_on) {
-        if (hit(229, 175, 25, 15, px_, py_)) ne_on = 1; else if (hit(202, 175, 25, 15, px_, py_)) open_opts();
-        else if (hit(102, 175, 38, 15, px_, py_)) map_enter = 1;
-        else if (hit(142, 175, 58, 15, px_, py_)) prop_trade();
-        else if (hit(48, 175, 52, 15, px_, py_) && lot_owned(sel_x, sel_y) && !is_home(sel_x, sel_y)) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot live at sea"); else { home_bx = sel_x; home_by = sel_y; say("Moved in: your new home"); map_enter = 1; } }   // (the old home stays yours, as a property)
+        if (hit(229, 178, 25, 14, px_, py_)) ne_on = 1; else if (hit(202, 178, 25, 14, px_, py_)) open_opts();
+        else if (hit(56, 178, 38, 14, px_, py_)) map_enter = 1;
+        else if (hit(96, 178, 62, 14, px_, py_)) prop_trade();
+        else if (hit(2, 178, 52, 14, px_, py_) && lot_owned(sel_x, sel_y) && !is_home(sel_x, sel_y)) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot live at sea"); else { home_bx = sel_x; home_by = sel_y; say("Moved in: your new home"); map_enter = 1; } }   // (the old home stays yours, as a property)
         return; }
     for (int i = 0; i < 7; i++) if (hit(2 + i * 36, 162, 34, 13, px_, py_)) ne_tool = i;
     if (hit(2, 177, 110, 13, px_, py_)) { if (ne_tool == 0) ne_lot_i = (ne_lot_i + 1) % (int)sizeof NELOT; else if (ne_tool == 1) ne_g_i = (ne_g_i + 1) % 6; else if (ne_tool == 2) ne_road ^= 1; }
@@ -194,24 +222,23 @@ static void draw_map(void) {
     char t[48];
     if (!ne_on) {
         int own_ = lot_owned(sel_x, sel_y), price = lot_price(&b), fm, pp = pop_at(sel_x, sel_y, &fm), home = is_home(sel_x, sel_y), mv = own_ && !home;
-        sprintf(t, "%.15s", bm_lot_name(b.lot)); text(4, 163, 1, C15(31, 31, 22), t);
-        if (own_) { rect(150, 162, home ? 44 : 64, 10, home ? C15(31, 24, 2) : C15(8, 26, 31)); text(154, 163, 1, C15(8, 4, 0), home ? "HOME" : "PROPERTY"); }
-        else if (price && pp) text(150, 163, 1, C15(20, 22, 28), "Family home");   // (someone lives there: not for sale)
-        else if (price) { sprintf(t, "FOR SALE  %d", price); text(150, 163, 1, C15(31, 24, 10), t); }
-        else text(150, 163, 1, C15(20, 22, 28), "Not for sale");
-        if (pp && !own_) { sprintf(t, "%d bores", pp); (void)fm; text(4, 174, 1, C15(20, 24, 28), t); }
-        else { sprintf(t, mv ? "%.6s" : "%.12s", s->name); text(4, 174, 1, C15(20, 24, 28), t); }
-        if (mv) { sprintf(t, "%d,%d", sel_x, sel_y); text(4, 184, 1, C15(16, 18, 24), t); chip(48, 175, 52, 15, "Move in", 0); }
-        else { sprintf(t, "%d,%d  %d/%d", sel_x, sel_y, pop_per + pop_born, DS_POP_MAX); text(4, 184, 1, C15(16, 18, 24), t); }
-        chip(102, 175, 38, 15, "Visit", 0);
-        if (own_) { char sb[24]; sprintf(sb, "Sell %d", lot_sell_price(&b)); chip(142, 175, 58, 15, sb, 0); }
-        else if (price && !pp) { char bb[24]; sprintf(bb, "Buy %d", price); chip(142, 175, 58, 15, bb, funds >= price); }
-        chip(202, 175, 25, 15, "Opt", 0); chip(229, 175, 25, 15, "Edit", 0);
+        sprintf(t, "%.15s", bm_lot_name(b.lot)); text_box(2, 159, 146, 11, FS_HEAD, C15(31, 31, 22), AL_L, t);   // (D65) row A: the lot and what it is; row B (small): the town, who lives there, where; row C: the buttons
+        if (own_) { int tw_ = home ? 44 : 64; rect(150, 160, tw_, 10, home ? C15(31, 24, 2) : C15(8, 26, 31)); text_box(150, 160, tw_, 10, FS_BODY, C15(8, 4, 0), AL_C, home ? "HOME" : "PROPERTY"); }
+        else if (price && pp) text_box(150, 159, 104, 11, FS_BODY, C15(20, 22, 28), AL_L, "Family home");   // (someone lives there: not for sale)
+        else if (price) { sprintf(t, "FOR SALE  %d", price); text_box(150, 159, 104, 11, FS_BODY, C15(31, 24, 10), AL_L, t); }
+        else text_box(150, 159, 104, 11, FS_BODY, C15(20, 22, 28), AL_L, "Not for sale");
+        if (pp && !own_) sprintf(t, "%.14s   %d bores   %d,%d", s->name, pp, sel_x, sel_y); else sprintf(t, "%.14s   %d,%d   pop %d/%d", s->name, sel_x, sel_y, pop_per + pop_born, DS_POP_MAX); (void)fm; (void)mv;
+        text_box(2, 170, 252, 9, FS_SMALL, C15(24, 27, 31), AL_L, t);
+        if (mv) chip(2, 179, 52, 12, "Move in", 0);
+        chip(56, 179, 38, 12, "Visit", 0);
+        if (own_) { char sb[24]; sprintf(sb, "Sell %d", lot_sell_price(&b)); chip(96, 179, 62, 12, sb, 0); }
+        else if (price && !pp) { char bb[24]; sprintf(bb, "Buy %d", price); chip(96, 179, 62, 12, bb, funds >= price); }
+        chip(202, 179, 25, 12, "Opt", 0); chip(229, 179, 25, 12, "Edit", 0);
     } else {
         for (int i = 0; i < 7; i++) chip(2 + i * 36, 162, 34, 13, NETN[i], ne_tool == i);
         const char *v = ne_tool == 0 ? bm_lot_name(NELOT[ne_lot_i]) : ne_tool == 1 ? NEGN[ne_g_i] : ne_tool == 2 ? (ne_road ? "Add road" : "Remove road") : 0;
-        if (v) chip(2, 177, 110, 13, v, 0); else text(4, 179, 1, C15(24, 28, 31), "Drag across the map");
-        text(118, 179, 1, C15(24, 28, 31), v ? "tap = next" : "");
+        if (v) chip(2, 177, 110, 13, v, 0); else text_box(2, 177, 200, 13, FS_BODY, C15(24, 28, 31), AL_L, "Drag across the map");
+        if (v) text_box(114, 177, 94, 13, FS_SMALL, C15(24, 28, 31), AL_L, "tap = next");
         chip(212, 177, 40, 13, "Done", 0);
     }
 }
@@ -773,10 +800,21 @@ static void lot_cross(void) {   // the sim you are playing left the lot's slot: 
 static void bar(int x, int y, int w, int v, u16 c) { rect(x, y, w, 6, C15(4, 4, 6)); rect(x + 1, y + 1, (w - 2) * v / 100, 4, c); }
 static void button(int x, int y, int w, int h, const char *t, u16 c, int on) {
     rect(x, y, w, h, on ? C15(31, 31, 20) : C15(2, 2, 4)); rect(x + 1, y + 1, w - 2, h - 2, on ? c : shade(c, 4));
-    text(x + 4, y + h / 2 - 2, 1, on ? C15(2, 2, 4) : C15(31, 31, 31), t);
+    text_box(x, y, w, h, FS_BODY, on ? C15(2, 2, 4) : C15(31, 31, 31), AL_C, t);   // (D65) centred (it was 4 px from the left)
 }
 static int hit(int x, int y, int w, int h, int tx, int ty) { return tx >= x && tx < x + w && ty >= y && ty < y + h; }
-static void text_fit(int x, int y, int s, int w, u16 c, const char *t) {   // (D35) as much of t as fits in w pixels: the letters closer first, then cut short with a dot
+static void plumbob(int x, int y) {   // (D65) the little green diamond: it marks a toast, a thought and a want
+    static const u8 PB[5][5] = { { 0, 0, 2, 0, 0 }, { 0, 2, 1, 1, 0 }, { 2, 1, 1, 1, 3 }, { 0, 3, 1, 3, 0 }, { 0, 0, 3, 0, 0 } };
+    static const u16 PC[4] = { 0, C15(10, 30, 10), C15(22, 31, 20), C15(3, 17, 6) };
+    for (int j = 0; j < 5; j++) for (int i = 0; i < 5; i++) if (PB[j][i]) px(x + i, y + j, PC[PB[j][i]]);
+}
+static void toast(int cx, int y, const char *m) {   // (D65) a notification toast: a dark rim, a warm fill, a plumbob, the words centred in what is left; it keeps inside the screen
+    int s = fit_font(FS_BODY, 226, m); if (!s) s = FS_SMALL; int w = tw(s, m) + 24; if (w > 252) w = 252; int x = cx - w / 2; if (x < 2) x = 2; if (x + w > 254) x = 254 - w;
+    rect(x, y, w, 13, C15(2, 2, 4)); rect(x + 1, y + 1, w - 2, 11, C15(26, 10, 6)); rect(x + 1, y + 1, w - 2, 1, C15(30, 17, 11)); plumbob(x + 4, y + 4);
+    text_box(x + 11, y, w - 12, 13, s, C15(31, 31, 31), AL_C, m);
+}
+static void text_fit(int x, int y, int s, int w, u16 c, const char *t) {   // (D35, D65) t in w pixels: the next smaller font first (BODY -> SMALL), then the letters closer, then cut short with a dot
+    { int f = fit_font(s, w, t); if (f) { text(x, y, f, c, t); return; } while (FS_SMALLER[s]) s = FS_SMALLER[s]; }
     if (tw(s, t) <= w) { text(x, y, s, c, t); return; }
     t_tight = 1; if (tw(s, t) <= w) { text(x, y, s, c, t); t_tight = 0; return; }
     char b[40]; int n = (int)strlen(t); if (n > 38) n = 38; memcpy(b, t, (size_t)n); b[n] = 0;
@@ -857,40 +895,40 @@ static void draw_ui(void) {
     for (int i = 0; i < 4; i++) chip(i * 52 + 1, 1, 50, 15, tn[i], mode == i);
     char t[40];
     if (mode == M_BUY || mode == M_BUILD) { sprintf(t, "Floor %d", ed_lv + 1); chip(210, 1, 45, 15, t, ed_lv > 0); }   // (D36) the storey Buy and Build work on
-    rect(0, 172, 160, 20, C15(2, 4, 12)); rect(1, 173, 158, 18, C15(5, 12, 26)); coin(5, 176); sprintf(t, "%d", funds); text(15, 177, 1, C15(31, 31, 20), t);
-    clk(t, minutes % 1440); text(160 - tw(1, t) - 6, 177, 1, C15(24, 28, 31), t);
-    if (msg_t > 0) { int w = tw(1, msg) + 12; rect(80 - w / 2 + 40, 160, w, 12, C15(2, 2, 4)); rect(80 - w / 2 + 41, 161, w - 2, 10, C15(26, 10, 6)); text(80 - w / 2 + 46, 163, 1, C15(31, 31, 31), msg); }
-    { const char *cc[7] = { "<", ">", "^", "v", "+", "-", "Rst" }; for (int k = 0; k < 7; k++) { int cx = 164 + (k < 4 ? k * 22 : (k - 4) * 29), cy = k < 4 ? 164 : 178; rect(cx, cy, k < 4 ? 20 : 27, 12, C15(2, 4, 12)); rect(cx + 1, cy + 1, k < 4 ? 18 : 25, 10, C15(8, 16, 28)); text(cx + 4, cy + 2, 1, TXT, cc[k]); } }
+    rect(0, 172, 160, 20, C15(2, 4, 12)); rect(1, 173, 158, 18, C15(5, 12, 26)); coin(5, 178); sprintf(t, "%d", funds); text_box(16, 173, 68, 18, FS_NUM, C15(31, 31, 20), AL_L, t);   // (D65: money and the clock in the NUMBER font, centred in the bar)
+    clk(t, minutes % 1440); text_box(84, 173, 74, 18, FS_NUM, C15(24, 28, 31), AL_R, t);
+    if (msg_t > 0) toast(120, 158, msg);
+    { const char *cc[7] = { "<", ">", "^", "v", "+", "-", "Rst" }; for (int k = 0; k < 7; k++) { int cx = 164 + (k < 4 ? k * 22 : (k - 4) * 29), cy = k < 4 ? 164 : 178; rect(cx, cy, k < 4 ? 20 : 27, 12, C15(2, 4, 12)); rect(cx + 1, cy + 1, k < 4 ? 18 : 25, 10, C15(8, 16, 28)); text_box(cx, cy, k < 4 ? 20 : 27, 12, FS_BODY, TXT, AL_C, cc[k]); } }
     if (mode == M_BUY && pick < 0) {
         for (int k = 0; k < NTAB; k++) { int on = cat == k, y = 20 + k * 14; rect(2, y, 56, 14, on ? C15(31, 31, 31) : C15(2, 4, 12)); rect(3, y + 1, 54, 12, on ? C15(8, 26, 8) : C15(10, 14, 24)); rect(3, y + 1, 54, 1, on ? C15(20, 31, 20) : C15(16, 20, 30));
-            cat_icon(5, y + 1, TABICON[k], on ? C15(31, 31, 31) : C15(24, 28, 31)); text_fit(19, y + 5, 1, 38, on ? C15(2, 6, 2) : TXT, TABS[k]); }
+            cat_icon(5, y + 1, TABICON[k], on ? C15(31, 31, 31) : C15(24, 28, 31)); text_box(19, y + 1, 39, 12, FS_BODY, on ? C15(2, 6, 2) : TXT, AL_L, TABS[k]); }
         int pages = tab_pages(); if (bpage >= pages) bpage = 0;
-        rect(60, 19, 142, 12, C15(2, 4, 12)); text_fit(64, 22, 1, 104, TXT, TABN[cat]); sprintf(t, "%d/%d", bpage + 1, pages); text(198 - tw(1, t), 22, 1, C15(31, 31, 20), t);
+        rect(60, 19, 142, 12, C15(2, 4, 12)); text_box(61, 19, 108, 12, FS_HEAD, TXT, AL_L, TABN[cat]); sprintf(t, "%d/%d", bpage + 1, pages); text_box(150, 19, 51, 12, FS_NUM, C15(31, 31, 20), AL_R, t);
         chip(204, 19, 24, 12, "<", 0); chip(230, 19, 24, 12, ">", 0);
         for (int k = 0; k < 6; k++) { int q = bpage * 6 + k; if (q >= tab_n[cat]) break; int id = tab_id[cat][q]; const Item *it = &ITEMS[id]; int x, y; buy_card_pos(k, &x, &y);
             int can = funds >= it->price, lift = drag == 1 && drag_item == id;
             rect(x, y, 96, 42, lift ? C15(31, 31, 20) : C15(2, 4, 12)); rect(x + 1, y + 1, 94, 40, can ? C15(28, 31, 31) : C15(18, 20, 24));
-            rect(x + 1, y + 1, 94, 11, can ? C15(8, 18, 31) : C15(10, 12, 18)); text_fit(x + 4, y + 4, 1, 88, TXT, it->name);
+            rect(x + 1, y + 1, 94, 11, can ? C15(8, 18, 31) : C15(10, 12, 18)); text_box(x + 1, y + 1, 94, 11, FS_HEAD, TXT, AL_L, it->name);
             rect(x + 3, y + 14, 32, 25, C15(20, 26, 31)); rect(x + 6, y + 34, 26, 3, C15(14, 20, 27)); draw_mini(x + 4, y + 15, 30, 22, id);   // a little stage with a shadow
-            rect(x + 38, y + 14, 55, 13, can ? C15(4, 18, 6) : C15(22, 6, 6)); rect(x + 39, y + 15, 53, 11, can ? C15(8, 24, 8) : C15(28, 10, 10)); coin(x + 41, y + 17); sprintf(t, "%d", it->price); text(x + 51, y + 18, 1, TXT, t);
-            if (it->fw * it->fl > 1) { sprintf(t, "%dx%d", it->fw, it->fl); text(x + 38, y + 31, 1, C15(8, 12, 22), t); age_txt(t, it->mask); text_fit(x + 58, y + 31, 1, 36, C15(8, 12, 22), t); }
-            else { age_txt(t, it->mask); text(x + 38, y + 31, 1, can ? C15(8, 12, 22) : C15(22, 6, 6), can ? t : "Too dear"); } }
+            rect(x + 38, y + 14, 55, 13, can ? C15(4, 18, 6) : C15(22, 6, 6)); rect(x + 39, y + 15, 53, 11, can ? C15(8, 24, 8) : C15(28, 10, 10)); coin(x + 41, y + 17); sprintf(t, "%d", it->price); text_box(x + 50, y + 14, 42, 13, FS_NUM, TXT, AL_L, t);
+            if (it->fw * it->fl > 1) { sprintf(t, "%dx%d", it->fw, it->fl); text_box(x + 36, y + 28, 22, 12, FS_SMALL, C15(8, 12, 22), AL_L, t); age_txt(t, it->mask); text_box(x + 58, y + 28, 36, 12, FS_SMALL, C15(8, 12, 22), AL_L, t); }
+            else { age_txt(t, it->mask); text_box(x + 36, y + 28, 58, 12, FS_SMALL, can ? C15(8, 12, 22) : C15(22, 6, 6), AL_L, can ? t : "Too dear"); } }
     } else if (mode == M_BUY) {
         plan(1); const Item *it = &ITEMS[pick];
-        rect(160, 20, 94, 140, C15(2, 4, 12)); rect(161, 21, 92, 138, C15(28, 31, 31)); rect(161, 21, 92, 14, C15(8, 18, 31)); text_fit(165, 25, 1, 86, TXT, it->name);
+        rect(160, 20, 94, 140, C15(2, 4, 12)); rect(161, 21, 92, 138, C15(28, 31, 31)); rect(161, 21, 92, 14, C15(8, 18, 31)); text_box(161, 21, 92, 14, FS_HEAD, TXT, AL_L, it->name);
         rect(165, 38, 84, 42, C15(20, 26, 31)); rect(170, 72, 74, 4, C15(14, 20, 27)); draw_mini(167, 40, 80, 36, pick);
-        coin(166, 84); sprintf(t, "%d", it->price); text(176, 85, 1, C15(8, 12, 22), t); if (it->fw * it->fl > 1) { sprintf(t, "%dx%d", prot & 1 ? it->fl : it->fw, prot & 1 ? it->fw : it->fl); text(224, 85, 1, C15(8, 12, 22), t); }
+        coin(166, 83); sprintf(t, "%d", it->price); text_box(176, 80, 46, 12, FS_NUM, C15(8, 12, 22), AL_L, t); if (it->fw * it->fl > 1) { sprintf(t, "%dx%d", prot & 1 ? it->fl : it->fw, prot & 1 ? it->fw : it->fl); text_box(210, 80, 42, 12, FS_SMALL, C15(8, 12, 22), AL_R, t); }
         chip(166, 96, 82, 20, "Place", 1); chip(166, 118, 82, 20, "Turn", 0); chip(166, 140, 82, 18, "Back", 0);
     } else if (mode == M_BUILD) {
         plan(1);
         static char rl[16]; static const char *const RN[4] = { "Auto", "Flat", "Gable", "Hip" }; sprintf(rl, "Roof: %s", RN[roof_st]);
         const char *tl2[6] = { "Floor", "Wall", "Erase", "Move", "Sell", rl };
         for (int i = 0; i < 6; i++) button(164, 22 + i * 14, 88, 13, tl2[i], C15(24, 14, 8), tool == i);
-        if (ed_lv) { sprintf(t, "Floor %d of %d", ed_lv + 1, UPN + 1); text(164, 110, 1, C15(8, 12, 22), t); }
+        if (ed_lv) { sprintf(t, "Floor %d of %d", ed_lv + 1, UPN + 1); text_box(162, 106, 92, 12, FS_BODY, C15(8, 12, 22), AL_L, t); }
         int n = tool == 0 ? 5 : tool == 1 ? 6 : 0;
         for (int i = 0; i < n; i++) { rect(164 + i * 15, 124, 14, 15, pal == i + 1 ? 0xFFFF : C15(2, 2, 4)); rect(166 + i * 15, 126, 10, 11, tool == 0 ? FLOORC[i] : WALLC[i]); }
-        text(164, 144, 1, C15(20, 24, 28), tool == 1 ? "Drag along edges" : tool == 3 ? "Drag furniture" : tool == 4 ? "Tap furniture" : tool == 5 ? "Tap to change" : "Drag to paint");
-        if (tool == 5) text(164, 154, 1, C15(20, 24, 28), "See Options>Roofs"); else if (ed_lv) text(164, 154, 1, C15(20, 24, 28), "Stairs: Buy>Special");
+        text_box(162, 141, 92, 11, FS_BODY, C15(20, 24, 28), AL_L, tool == 1 ? "Drag along edges" : tool == 3 ? "Drag furniture" : tool == 4 ? "Tap furniture" : tool == 5 ? "Tap to change" : "Drag to paint");
+        if (tool == 5) text_box(162, 152, 92, 11, FS_BODY, C15(20, 24, 28), AL_L, "See Options>Roofs"); else if (ed_lv) text_box(162, 152, 92, 11, FS_BODY, C15(20, 24, 28), AL_L, "Stairs: Buy>Special");
     }
 }
 static int lot_touch(int tx, int ty) {   // a stylus tap on the plan: the cell (or -1)
@@ -1679,23 +1717,23 @@ static void farm_draw(void) {
     static const char *const TN[3] = { "Build", "Market", "Contracts" }; char b[56];
     panel(6, 20, 244, 168, "Farm Life"); chip(204, 22, 40, 14, "X", 0);
     for (int k = 0; k < 3; k++) chip(12 + k * 64, 40, 60, 14, TN[k], k == farm_tab);
-    sprintf(b, "$%d", funds); text(198 - tw(1, b), 25, 1, C15(16, 31, 16), b);
+    sprintf(b, "$%d", funds); text_box(110, 22, 90, 16, FS_NUM, C15(16, 31, 16), AL_R, b);
     int n = fl_rows();
     for (int r = 0; r < n; r++) { int y = 58 + r * 14; u16 bg = r == fl_sel ? C15(8, 16, 28) : (r & 1) ? C15(5, 11, 24) : C15(6, 13, 26); rect(12, y, 232, 13, bg);
         if (farm_tab == 0) {
-            if (r == FB_N) { sprintf(b, "Collect  %d days = $%d", fl_days(), fl_rate() * fl_days()); text(18, y + 3, 1, C15(16, 31, 16), b); continue; }
-            int own = (fm_built >> r) & 1; text(18, y + 3, 1, own ? C15(16, 31, 16) : TXT, FBNM[r]);
-            if (own) text(204, y + 3, 1, C15(16, 31, 16), "Built"); else { sprintf(b, "$%d", FBCOST[r]); text(238 - tw(1, b), y + 3, 1, funds >= FBCOST[r] ? TXT : C15(31, 12, 10), b); }
-        } else if (farm_tab == 1) { int c = fm_have(r); sprintf(b, "%s  x%d", FMN[r], c); text(18, y + 3, 1, c ? TXT : C15(18, 20, 24), b);
-            sprintf(b, "$%d each", FGPR[r] * (100 + fl_stand()) / 100); text(238 - tw(1, b), y + 3, 1, C15(16, 31, 16), b);
-        } else { int k, q; fl_contract(r, &k, &q); int dn = (fm_cdone >> r) & 1; sprintf(b, "%d %s", q, FMN[k]); text(18, y + 3, 1, dn ? C15(16, 31, 16) : fm_have(k) >= q ? C15(20, 28, 31) : TXT, b);
-            if (dn) text(212, y + 3, 1, C15(16, 31, 16), "Done"); else { sprintf(b, "Pays $%d", q * FGPR[k] * 18 / 10); text(238 - tw(1, b), y + 3, 1, C15(16, 31, 16), b); } } }
+            if (r == FB_N) { sprintf(b, "Collect  %d days = $%d", fl_days(), fl_rate() * fl_days()); text_box(15, y, 220, 13, FS_BODY, C15(16, 31, 16), AL_L, b); continue; }
+            int own = (fm_built >> r) & 1; text_box(15, y, 150, 13, FS_BODY, own ? C15(16, 31, 16) : TXT, AL_L, FBNM[r]);
+            if (own) text_box(150, y, 94, 13, FS_BODY, C15(16, 31, 16), AL_R, "Built"); else { sprintf(b, "$%d", FBCOST[r]); text_box(150, y, 94, 13, FS_NUM, funds >= FBCOST[r] ? TXT : C15(31, 12, 10), AL_R, b); }
+        } else if (farm_tab == 1) { int c = fm_have(r); sprintf(b, "%s  x%d", FMN[r], c); text_box(15, y, 130, 13, FS_BODY, c ? TXT : C15(18, 20, 24), AL_L, b);
+            sprintf(b, "$%d each", FGPR[r] * (100 + fl_stand()) / 100); text_box(130, y, 114, 13, FS_BODY, C15(16, 31, 16), AL_R, b);
+        } else { int k, q; fl_contract(r, &k, &q); int dn = (fm_cdone >> r) & 1; sprintf(b, "%d %s", q, FMN[k]); text_box(15, y, 130, 13, FS_BODY, dn ? C15(16, 31, 16) : fm_have(k) >= q ? C15(20, 28, 31) : TXT, AL_L, b);
+            if (dn) text_box(150, y, 94, 13, FS_BODY, C15(16, 31, 16), AL_R, "Done"); else { sprintf(b, "Pays $%d", q * FGPR[k] * 18 / 10); text_box(130, y, 114, 13, FS_BODY, C15(16, 31, 16), AL_R, b); } } }
     int by = 158; rect(12, by, 232, 26, C15(4, 9, 20));
     const char *l2;   // (the PS1's red line under the hint: what the last tap did, here in place of the hint while it shows)
-    if (farm_tab == 0) { sprintf(b, "Farm level %d  $%d a day", fm_skl(ctl), fl_rate()); text(18, by + 3, 1, C15(20, 28, 31), b); l2 = fl_sel >= 0 && fl_sel < FB_N ? FBHINT[fl_sel] : "The farm earns every day. Come back and collect."; }
-    else if (farm_tab == 1) { text_fit(18, by + 3, 1, 222, C15(20, 28, 31), fl_stand() ? "The farm stand adds 25% to every sale" : "Build a farm stand for better prices"); l2 = "Tap a row: sells all of that one."; }
-    else { text(18, by + 3, 1, C15(20, 28, 31), "New buyers every day"); l2 = "They pay about twice the market price."; }
-    if (msg_t > 0 && msg) text_fit(18, by + 14, 1, 222, C15(31, 22, 10), msg); else text_fit(18, by + 14, 1, 222, TXT, l2);
+    if (farm_tab == 0) { sprintf(b, "Farm level %d  $%d a day", fm_skl(ctl), fl_rate()); text_box(15, by, 226, 13, FS_BODY, C15(20, 28, 31), AL_L, b); l2 = fl_sel >= 0 && fl_sel < FB_N ? FBHINT[fl_sel] : "The farm earns every day. Come back and collect."; }
+    else if (farm_tab == 1) { text_box(15, by, 226, 13, FS_BODY, C15(20, 28, 31), AL_L, fl_stand() ? "The farm stand adds 25% to every sale" : "Build a farm stand for better prices"); l2 = "Tap a row: sells all of that one."; }
+    else { text_box(15, by, 226, 13, FS_BODY, C15(20, 28, 31), AL_L, "New buyers every day"); l2 = "They pay about twice the market price."; }
+    if (msg_t > 0 && msg) text_box(15, by + 12, 226, 13, FS_BODY, C15(31, 22, 10), AL_L, msg); else text_box(15, by + 12, 226, 13, FS_BODY, TXT, AL_L, l2);
 }
 static void farm_touch(int tx, int ty) {
     if (hit(204, 22, 40, 14, tx, ty)) { farm_ui = 0; return; }
@@ -1791,9 +1829,9 @@ static void travel_draw(void) {   // where to: the PS1's rows, the locked ones g
     char t[48]; panel(6, 20, 244, 164, "Where to?"); chip(204, 22, 40, 14, "X", 0);
     for (int r = 0; r < 5; r++) { int y = 42 + r * 27, z = r == 0 ? Z_CITY : r == 4 ? -1 : r, open_ = z < 0 || zone_open(z), here = (r == 0 && zone == Z_CITY && lot_bx == home_bx && lot_by == home_by) || (r > 0 && r < 4 && zone == z);
         rect(12, y, 232, 25, open_ ? C15(5, 12, 26) : C15(10, 12, 18)); rect(12, y, 232, 1, C15(10, 18, 30));
-        text(18, y + 5, 1, open_ ? TXT : C15(20, 22, 26), r == 0 ? "Home" : r == 4 ? "San Boreas" : ZNAME[z]);
-        if (r == 4) { sprintf(t, "%d towns: the Map, a taxi anywhere", bm_nset()); text(18, y + 15, 1, C15(22, 26, 31), t); }
-        else text(18, y + 15, 1, here ? C15(16, 31, 16) : open_ ? C15(22, 26, 31) : C15(31, 14, 12), here ? "You are here" : r == 0 ? "Your house in San Boreas" : open_ ? blurb[z] : lock[z]); }
+        text_box(15, y + 1, 150, 12, FS_HEAD, open_ ? TXT : C15(20, 22, 26), AL_L, r == 0 ? "Home" : r == 4 ? "San Boreas" : ZNAME[z]);
+        if (r == 4) { sprintf(t, "%d towns: the Map, a taxi anywhere", bm_nset()); text_box(15, y + 12, 226, 12, FS_BODY, C15(22, 26, 31), AL_L, t); }
+        else text_box(15, y + 12, 226, 12, FS_BODY, here ? C15(16, 31, 16) : open_ ? C15(22, 26, 31) : C15(31, 14, 12), AL_L, here ? "You are here" : r == 0 ? "Your house in San Boreas" : open_ ? blurb[z] : lock[z]); }
 }
 static void travel_touch(int tx, int ty) {
     if (hit(204, 22, 40, 14, tx, ty)) { travel_ui = 0; return; }
@@ -1804,11 +1842,11 @@ static void travel_touch(int tx, int ty) {
 }
 static void craft_draw(void) {
     char t[56]; panel(6, 20, 244, 164, "Craft"); chip(204, 22, 40, 14, "X", 0);
-    sprintf(t, "Wood %d Stone %d Leaves %d Food %d", isl_wood, isl_stone, isl_leaves, isl_food); text(12, 40, 1, C15(31, 31, 20), t);
+    sprintf(t, "Wood %d Stone %d Leaves %d Food %d", isl_wood, isl_stone, isl_leaves, isl_food); text_box(9, 36, 190, 14, FS_BODY, C15(31, 31, 20), AL_L, t);
     for (int k = 0; k < 6; k++) { const Craft *c = &CRAFTS[k]; int y = 52 + k * 21, can = isl_can(k);
-        rect(12, y, 232, 19, can ? C15(5, 12, 26) : C15(10, 12, 18)); text(18, y + 3, 1, can ? TXT : C15(20, 22, 26), c->nm);
+        rect(12, y, 232, 19, can ? C15(5, 12, 26) : C15(10, 12, 18)); text_box(15, y, 80, 19, FS_HEAD, can ? TXT : C15(20, 22, 26), AL_L, c->nm);
         if (c->stone) sprintf(t, "%dW %dS %dL", c->wood, c->stone, c->leaves); else if (c->leaves) sprintf(t, "%dW %dL", c->wood, c->leaves); else sprintf(t, "%d wood", c->wood);
-        text(98, y + 3, 1, C15(22, 26, 31), t); text_fit(98, y + 12, 1, 96, C15(18, 22, 28), c->blurb); chip(198, y + 2, 42, 15, (k == 3 && isl_spear) ? "Have" : (k == 5 && has_ch(0x8B) >= 0) ? "Made" : "Make", can); }
+        text_box(95, y, 100, 10, FS_SMALL, C15(22, 26, 31), AL_L, t); text_box(95, y + 9, 100, 10, FS_SMALL, C15(18, 22, 28), AL_L, c->blurb); chip(198, y + 2, 42, 15, (k == 3 && isl_spear) ? "Have" : (k == 5 && has_ch(0x8B) >= 0) ? "Made" : "Make", can); }
 }
 static void craft_touch(int tx, int ty) {
     if (hit(204, 22, 40, 14, tx, ty)) { craft_ui = 0; return; }
@@ -1816,7 +1854,7 @@ static void craft_touch(int tx, int ty) {
 }
 static void panel(int x, int y, int w, int h, const char *title) {
     rect(x + 1, y, w - 2, h, PANB); rect(x, y + 1, w, h - 2, PANB); rect(x + 2, y + 2, w - 4, h - 4, PAN);
-    if (title) { rect(x + 2, y + 2, w - 4, 16, PANH); text(x + 10, y + 5, 2, TXT, title); }
+    if (title) { rect(x + 2, y + 2, w - 4, 16, PANH); text_box(x + 5, y + 2, w - 40, 16, FS_HEAD, TXT, AL_L, title); }   // (D65) centred up and down in the header
 }
 static void backdrop(void) {
     rect(0, 0, 256, 192, BG_L);
@@ -1972,14 +2010,14 @@ static void job_work(void) {
 }
 static void job_draw(void) {
     const Life *L = &life[ctl]; char t[56]; panel(8, 20, 240, 152, "Career"); chip(204, 22, 40, 14, "X", 0);
-    if (stage_of(sims[ctl].age) < 3) { text(20, 60, 1, TXT, "Too young to work."); return; }
-    if (!L->job) { text(16, 42, 1, TXT, "Pick a job (6am-3pm, Mon-Fri)");
+    if (stage_of(sims[ctl].age) < 3) { text_box(14, 50, 228, 20, FS_BODY, TXT, AL_C, "Too young to work."); return; }
+    if (!L->job) { text_box(12, 38, 232, 12, FS_HEAD, TXT, AL_L, "Pick a job (6am-3pm, Mon-Fri)");
         for (int k = 0; k < JOBN; k++) { sprintf(t, "%s $%d", JOBNM[k], JOBPAY[k] * 10); chip(14 + (k & 1) * 118, 56 + (k >> 1) * 36, 112, 30, t, 0); } return; }
-    sprintf(t, "%s (%s)", JOBLV[L->job - 1][L->lvl], JOBNM[L->job - 1]); text(16, 42, 1, TXT, t);
-    sprintf(t, "Level %d of 5   Pay $%d a shift", L->lvl + 1, job_pay(L)); text(16, 56, 1, TXT, t);
-    text(16, 72, 1, TXT, "Promotion"); rect(84, 71, 100, 8, C15(2, 6, 14)); rect(85, 72, 98 * L->prog / 3, 6, C15(8, 26, 8));
-    sprintf(t, "Strikes %d of 2   Shifts %d", L->strike, L->shifts); text(16, 86, 1, TXT, t);
-    chip(14, 108, 112, 28, "Go to work", 1); chip(130, 108, 112, 28, "Quit job", 0); text(16, 146, 1, C15(22, 26, 31), "Eat and rest first for a good shift.");
+    sprintf(t, "%s (%s)", JOBLV[L->job - 1][L->lvl], JOBNM[L->job - 1]); text_box(12, 38, 232, 12, FS_HEAD, TXT, AL_L, t);
+    sprintf(t, "Level %d of 5   Pay $%d a shift", L->lvl + 1, job_pay(L)); text_box(12, 52, 232, 12, FS_BODY, TXT, AL_L, t);
+    text_box(12, 67, 70, 10, FS_BODY, TXT, AL_L, "Promotion"); rect(84, 67, 100, 10, C15(2, 6, 14)); rect(85, 68, 98 * L->prog / 3, 8, C15(8, 26, 8));
+    sprintf(t, "Strikes %d of 2   Shifts %d", L->strike, L->shifts); text_box(12, 82, 232, 12, FS_BODY, TXT, AL_L, t);
+    chip(14, 108, 112, 28, "Go to work", 1); chip(130, 108, 112, 28, "Quit job", 0); text_box(12, 142, 232, 14, FS_BODY, C15(22, 26, 31), AL_L, "Eat and rest first for a good shift.");
 }
 static void job_touch(int tx, int ty) {
     if (hit(204, 22, 40, 14, tx, ty)) { jobui = 0; return; }
@@ -1989,11 +2027,11 @@ static void job_touch(int tx, int ty) {
 }
 static void juke_draw(void) {
     char t[56]; panel(6, 20, 244, 164, "Jukebox"); chip(204, 22, 40, 14, "X", 0);
-    if (mus_ok != 1 || mus_n < 1) { text(16, 60, 1, TXT, "Songs are not available here."); text(16, 74, 1, TXT, "The synth tunes are playing."); return; }
-    sprintf(t, "Now: %.30s", mus_cur >= 0 ? mus_name(mus_cur) : "-"); text(14, 40, 1, C15(31, 31, 20), t);
+    if (mus_ok != 1 || mus_n < 1) { text_box(12, 54, 232, 14, FS_BODY, TXT, AL_L, "Songs are not available here."); text_box(12, 70, 232, 14, FS_BODY, TXT, AL_L, "The synth tunes are playing."); return; }
+    sprintf(t, "Now: %.30s", mus_cur >= 0 ? mus_name(mus_cur) : "-"); text_box(10, 36, 190, 14, FS_BODY, C15(31, 31, 20), AL_L, t);
     int per = 6, pages = (mus_n + per - 1) / per; if (juke_pg >= pages) juke_pg = 0;
     for (int k = 0; k < per; k++) { int n = juke_pg * per + k; if (n >= mus_n) break; sprintf(t, "%d %.26s", n + 1, mus_name(n)); chip(12, 52 + k * 16, 232, 14, t, n == mus_cur); }
-    chip(12, 152, 40, 24, "<", 0); chip(56, 152, 40, 24, ">", 0); chip(100, 152, 44, 24, "Next", 0); chip(148, 152, 52, 24, "Mix", 0); sprintf(t, "%d/%d", juke_pg + 1, pages); text(208, 160, 1, TXT, t);
+    chip(12, 152, 40, 24, "<", 0); chip(56, 152, 40, 24, ">", 0); chip(100, 152, 44, 24, "Next", 0); chip(148, 152, 52, 24, "Mix", 0); sprintf(t, "%d/%d", juke_pg + 1, pages); text_box(202, 152, 46, 24, FS_NUM, TXT, AL_C, t);
 }
 static void juke_touch(int tx, int ty) {
     if (hit(204, 22, 40, 14, tx, ty)) { juke = 0; return; }
@@ -2007,24 +2045,36 @@ static void juke_touch(int tx, int ty) {
 static void life_panel(void) {   // the top screen's second page: job, aspiration, wants, fear, the dog
     const Life *L = &life[ctl]; char t[56]; panel(6, 72, 244, 114, "Life");
     if (L->job) sprintf(t, "Job: %.14s  L%d  $%d", JOBLV[L->job - 1][L->lvl], L->lvl + 1, job_pay(L)); else strcpy(t, "Job: none (menu > Job)");
-    text(14, 92, 1, TXT, t);
-    sprintf(t, "Aspiration: %d stars", L->pts / 1500); text(14, 104, 1, C15(31, 31, 20), t); rect(158, 104, 84, 8, C15(2, 6, 14)); rect(159, 105, 82 * (L->pts % 1500) / 1500, 6, C15(31, 26, 6));
+    text_box(11, 88, 236, 12, FS_BODY, TXT, AL_L, t);
+    sprintf(t, "Aspiration: %d stars", L->pts / 1500); text_box(11, 101, 146, 12, FS_BODY, C15(31, 31, 20), AL_L, t); rect(158, 102, 84, 8, C15(2, 6, 14)); rect(159, 103, 82 * (L->pts % 1500) / 1500, 6, C15(31, 26, 6));
     for (int k = 0; k < 3; k++) { if (!L->wk[k]) continue; if (L->wk[k] == WN_CASH) sprintf(t, "Have $%d", L->wa[k]); else strcpy(t, WNM[L->wk[k]]);
-        rect(14, 118 + k * 13, 8, 8, C15(8, 22, 8)); text(26, 118 + k * 13, 1, TXT, t); sprintf(t, "+%d", WPT[L->wk[k]]); text(210, 118 + k * 13, 1, C15(31, 31, 20), t); }
-    if (L->fear) { text(14, 158, 1, C15(31, 14, 12), "Fear:"); text(52, 158, 1, TXT, FNM[L->fear]); }
-    if (dog_have) { sprintf(t, "Rex: %s", dog.hun > 50 ? "happy" : dog.hun > 20 ? "peckish" : "hungry!"); text(14, 172, 1, TXT, t); }
+        rect(14, 118 + k * 13, 8, 8, C15(8, 22, 8)); text_box(23, 116 + k * 13, 160, 12, FS_BODY, TXT, AL_L, t); sprintf(t, "+%d", WPT[L->wk[k]]); text_box(190, 116 + k * 13, 56, 12, FS_NUM, C15(31, 31, 20), AL_R, t); }
+    if (L->fear) { text_box(11, 152, 40, 12, FS_BODY, C15(31, 14, 12), AL_L, "Fear:"); text_box(48, 152, 150, 12, FS_BODY, TXT, AL_L, FNM[L->fear]); }
+    if (dog_have) { sprintf(t, "Rex: %s", dog.hun > 50 ? "happy" : dog.hun > 20 ? "peckish" : "hungry!"); text_box(11, 166, 200, 12, FS_BODY, TXT, AL_L, t); }
 }
 static u16 offbuf[256 * 192] __attribute__((aligned(32)));   // (D37) a 2D screen is drawn here and copied over in one go: no half-drawn screen is ever shown
 static void off_show(u16 *dst) { DC_FlushRange(offbuf, sizeof offbuf); dmaCopy(offbuf, dst, sizeof offbuf); scr = dst; }
+static const char *mood_word(int v) { return v >= 85 ? "Ecstatic" : v >= 65 ? "Happy" : v >= 45 ? "Fine" : v >= 30 ? "Cranky" : v >= 15 ? "Gloomy" : "Miserable"; }   // (D65) the Sims' mood words
+static void thought_bubble(const Sim *m) {   // (D65) the sim's thought, in the Needs header: a bubble with a plumbob: what it wants most (the lowest need), or that life is good
+    int lo = 0; for (int k = 1; k < 6; k++) if (m->need[k] < m->need[lo]) lo = k;
+    static const char *const WANT[6] = { "I'm starving!", "So bored...", "I need a nap", "Let's chat!", "Gotta go!", "I need a bath" };
+    int low = m->need[lo] < 40; const char *ph = low ? WANT[lo] : mood(m) >= 75 ? "Life is good!" : "Just chilling";
+    int w = tw(FS_BODY, ph) + 24, x = 246 - w; rect(66, 75, 181, 14, PANH);
+    rect(x + 1, 75, w - 2, 14, 0xFFFF); rect(x, 76, w, 12, 0xFFFF); rect(x + 1, 75, w - 2, 1, C15(2, 5, 14)); rect(x + 1, 88, w - 2, 1, C15(2, 5, 14)); rect(x - 1, 77, 1, 10, C15(2, 5, 14)); rect(x + w, 77, 1, 10, C15(2, 5, 14));
+    rect(x - 4, 83, 3, 3, 0xFFFF); rect(x - 7, 86, 2, 2, 0xFFFF);   // the thought's little dots
+    plumbob(x + 4, 79); text_box(x + 10, 75, w - 12, 14, FS_BODY, low ? C15(20, 3, 3) : C15(2, 8, 4), AL_C, ph);
+}
 static void status_vals(int clear) {   // (D39) what changes by the minute on the Live top screen (mood, clock, funds, needs): redrawn on its own, straight on the screen, not the whole screen
     if ((on_board || mg_ui) && cur_sim == ctl) return;   // (D44: the skate screen is up; D46: a game)
     const Sim *m = &sims[cur_sim]; char t[48];
-    rect(112, 26, 70, 9, C15(24, 28, 31)); rect(113, 27, 68 * mood(m) / 100, 7, need_col(mood(m)));
+    rect(112, 26, 70, 9, C15(24, 28, 31)); rect(113, 27, 68 * mood(m) / 100, 7, need_col(mood(m))); text_box(112, 26, 70, 9, FS_SMALL, C15(1, 4, 10), AL_C, mood_word(mood(m)));
     if (clear) { rect(78, 41, 170, 10, PAN); rect(78, 53, 170, 10, PAN); }
     int mn = minutes % 1440, h12 = (mn / 60) % 12 ? (mn / 60) % 12 : 12;
-    sprintf(t, "%s %d:%02d %s  %s", DAYN[(minutes / 1440) % 7], h12, mn % 60, mn / 60 >= 12 ? "PM" : "AM", SEASN[fm_season()]); text(78, 42, 1, TXT, t);
-    sprintf(t, "Funds %d", funds); text(78, 54, 1, C15(31, 31, 20), t); if (o_pm) { sprintf(t, "%dfps %dq", fps_now, polys_last / 2); text(172, 54, 1, polys_last > 2900 ? C15(31, 12, 8) : C15(24, 28, 31), t); }
+    { char tm[12], rest[24]; const char *dn = DAYN[(minutes / 1440) % 7]; sprintf(tm, "%d:%02d", h12, mn % 60); sprintf(rest, "%s  %s", mn / 60 >= 12 ? "PM" : "AM", SEASN[fm_season()]);   // (D65: the day, the clock in the NUMBER font, then AM/PM and the season)
+      int x = 79, y = box_mid(41, 10, FS_BODY) - 1; text(x, y, FS_BODY, C15(24, 28, 31), dn); x += tw(FS_BODY, dn) + 6; text(x, y, FS_NUM, TXT, tm); x += tw(FS_NUM, tm) + 5; text(x, y, FS_BODY, C15(24, 28, 31), rest); }
+    text_box(76, 53, 40, 10, FS_BODY, C15(31, 31, 20), AL_L, "Funds"); sprintf(t, "%d", funds); text_box(112, 53, 64, 10, FS_NUM, C15(31, 31, 20), AL_L, t); if (o_pm) { sprintf(t, "%dfps %dq", fps_now, polys_last / 2); text_box(176, 53, 72, 10, FS_SMALL, polys_last > 2900 ? C15(31, 12, 8) : C15(24, 28, 31), AL_R, t); }
     if (info_pg == 1) return;
+    if (zone != Z_ISLAND) thought_bubble(m);
     for (int k = 0; k < 6; k++) { int cx = 14 + (k & 1) * 120, cy = 94 + (k >> 1) * 30;
         rect(cx + 3, cy + 3, 8, 8, need_col(m->need[k])); rect(cx + 18, cy + 7, 84, 8, C15(2, 6, 14)); rect(cx + 19, cy + 8, 82 * m->need[k] / 100, 6, need_col(m->need[k])); }
 }
@@ -2036,21 +2086,21 @@ static void draw_top_status(void) {   // the top screen while you live: the sim'
     if (cur_sim == ctl) {
         face(8, 8, 56, m);
         panel(70, 6, 180, 60, sname[ctl]);
-        text(78, 28, 1, TXT, "Mood"); sprintf(t, "%s %d", STGN[stage_of(m->age)], m->age); text(190, 28, 1, C15(31, 31, 20), t);
+        text_box(76, 26, 36, 9, FS_BODY, TXT, AL_L, "Mood"); sprintf(t, "%s %d", STGN[stage_of(m->age)], m->age); text_box(184, 26, 64, 9, FS_BODY, C15(31, 31, 20), AL_R, t);
         if (info_pg == 1) { status_vals(0); life_panel(); return; }
         panel(6, 72, 244, 114, "Needs");
-        if (zone == Z_ISLAND) { int n = 0; for (int k = 0; k < SEC_N; k++) n += (isl_secrets >> k) & 1; sprintf(t, "W%d S%d L%d Food %d  %d/8", isl_wood, isl_stone, isl_leaves, isl_food, n); text(70, 77, 1, C15(31, 31, 20), t); }   // (D37: wood, stone, leaves, food, secrets)
+        if (zone == Z_ISLAND) { int n = 0; for (int k = 0; k < SEC_N; k++) n += (isl_secrets >> k) & 1; sprintf(t, "W%d S%d L%d Food %d  %d/8", isl_wood, isl_stone, isl_leaves, isl_food, n); text_box(66, 74, 180, 14, FS_BODY, C15(31, 31, 20), AL_R, t); }   // (D37: wood, stone, leaves, food, secrets)
         static const int order[6] = { 0, 1, 2, 3, 4, 5 };
         for (int k = 0; k < 6; k++) { int n = order[k], cx = 14 + (k & 1) * 120, cy = 94 + (k >> 1) * 30;
-            rect(cx, cy, 14, 14, C15(18, 24, 31)); text(cx + 18, cy, 1, TXT, NEEDN[n]); }
+            rect(cx, cy, 14, 14, C15(18, 24, 31)); text_box(cx + 17, cy - 4, 86, 10, FS_BODY, TXT, AL_L, NEEDN[n]); }
         status_vals(0);
     } else {
         char tt[40]; sprintf(tt, "%s - %s %d", sname[cur_sim], STGN[stage_of(m->age)], m->age); panel(6, 6, 244, 180, tt);
         face(16, 30, 64, m);
-        for (int k = 0; k < 4; k++) { rect(94 + k * 38, 30, 32, 32, C15(18, 24, 31)); text(106 + k * 38, 40, 2, PANB, "?"); }
+        for (int k = 0; k < 4; k++) { rect(94 + k * 38, 30, 32, 32, C15(18, 24, 31)); text_box(94 + k * 38, 30, 32, 32, FS_HEAD, PANB, AL_C, "?"); }
         panel(94, 70, 148, 60, 0);
-        panel(94, 136, 148, 40, 0); text(102, 150, 1, TXT, "-"); text(110, 150, 1, TXT, relname(m->rel));
-        sprintf(t, "%d", mood(m)); text(16, 100, 1, TXT, "MOOD"); rect(16, 110, 64, 8, C15(24, 28, 31)); rect(17, 111, 62 * mood(m) / 100, 6, need_col(mood(m)));
+        panel(94, 136, 148, 40, 0); sprintf(t, "- %s", relname(m->rel)); text_box(98, 136, 140, 40, FS_BODY, TXT, AL_L, t);
+        sprintf(t, "%d", mood(m)); text_box(14, 96, 66, 12, FS_BODY, TXT, AL_L, "MOOD"); rect(16, 110, 64, 8, C15(24, 28, 31)); rect(17, 111, 62 * mood(m) / 100, 6, need_col(mood(m)));
     }
 }
 static void hud_clear(void) { u32 *q = (u32 *)hud; for (int i = 0; i < 256 * 192 / 2; i++) q[i] = 0; }
@@ -2078,40 +2128,40 @@ static void draw_hud(void) {
     rect(2, 2, 26, 26, PANB); rect(3, 3, 24, 24, C15(14, 22, 28)); rect(8, 12, 14, 10, C15(26, 14, 10)); rect(6, 8, 18, 5, C15(24, 6, 6)); rect(13, 16, 4, 6, C15(8, 8, 10));   // MAP: a little house
     for (int i = 0; i < nsim; i++) { int x = 132 + i * 21; rect(x, 2, 20, 27, i == ctl ? C15(31, 31, 12) : PANB); rect(x + 1, 3, 18, 25, C15(14, 22, 28)); face(x + 2, 4, 16, &sims[i]); rect(x + 1, 24, 18, 4, C15(2, 6, 14)); rect(x + 1, 24, 18 * mood(&sims[i]) / 100, 4, need_col(mood(&sims[i]))); }   // the household
     rect(0, 158, 34, 34, PANB); face(2, 160, 30, &sims[ctl]);
-    rect(36, 168, 24, 22, PANB); rect(37, 169, 22, 20, PAN); text(42, 176, 1, TXT, speed == 1 ? ">" : speed == 2 ? ">>" : ">>>");
-    rect(62, 168, 30, 22, PANB); rect(63, 169, 28, 20, cam_on ? C15(8, 26, 8) : PAN); text(66, 176, 1, TXT, "Cam");
-    if (cam_on) { const char *cb[6] = { cam_pan ? "Pan" : "Turn", "In", "Out", cam_free ? "Free" : "Follow", "Reset", "Done" }; for (int k = 0; k < 6; k++) { rect(216, 36 + k * 22, 38, 20, PANB); rect(217, 37 + k * 22, 36, 18, k == 0 && cam_pan ? C15(8, 26, 8) : PANH); text(220, 43 + k * 22, 1, TXT, cb[k]); } text(70, 40, 1, TXT, "Drag to look round"); }
+    rect(36, 168, 24, 22, PANB); rect(37, 169, 22, 20, PAN); text_box(37, 169, 22, 20, FS_HEAD, TXT, AL_C, speed == 1 ? ">" : speed == 2 ? ">>" : ">>>");
+    rect(62, 168, 30, 22, PANB); rect(63, 169, 28, 20, cam_on ? C15(8, 26, 8) : PAN); text_box(63, 169, 28, 20, FS_BODY, TXT, AL_C, "Cam");
+    if (cam_on) { const char *cb[6] = { cam_pan ? "Pan" : "Turn", "In", "Out", cam_free ? "Free" : "Follow", "Reset", "Done" }; for (int k = 0; k < 6; k++) { rect(216, 36 + k * 22, 38, 20, PANB); rect(217, 37 + k * 22, 36, 18, k == 0 && cam_pan ? C15(8, 26, 8) : PANH); text_box(217, 37 + k * 22, 36, 18, FS_BODY, TXT, AL_C, cb[k]); } text_box(30, 34, 180, 14, FS_BODY, TXT, AL_C, "Drag to look round"); }
     rect(104, 178, 48, 14, PANB); rect(105, 179, 46, 13, PAN); for (int i = 0; i < 3; i++) rect(118 + i * 8, 184, 4, 4, TXT);
-    if (on_board) { rect(196, 168, 58, 22, PANB); rect(197, 169, 56, 20, C15(24, 8, 8)); text(203, 176, 1, TXT, "Get Off"); }   // (D44)
+    if (on_board) { rect(196, 168, 58, 22, PANB); rect(197, 169, 56, 20, C15(24, 8, 8)); text_box(197, 169, 56, 20, FS_BODY, TXT, AL_C, "Get Off"); }   // (D44)
     if (menu_open) { static const char *const mn[12] = { "Buy", "Build", "Map", "Save", "Options", "Title", "Job", "Songs", "Life", "Travel", "Games", "Heist" }; panel(8, 38, 240, 140, "Menu"); for (int i = 0; i < 12; i++) chip(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, mn[i], i == 9 && zone); }
     if (popup == 1) {
         const Item *it = IT_OF(&objs[popup_i]); const char *nm = it->name;   // (D35: wide, for the PS1's words; D37: up to three choices; D38: up to eight, in two columns)
         if (popup_n <= 3) { int top = 150 - popup_n * 24;
-            rect(36, top, 184, 30 + popup_n * 24, PANB); rect(37, top + 1, 182, 28 + popup_n * 24, PAN); if (tw(2, nm) <= 168) text(44, top + 6, 2, TXT, nm); else text_fit(44, top + 6, 1, 168, TXT, nm);
-            for (int k = 0; k < popup_n; k++) { int y = top + 26 + k * 24; rect(42, y, 116, 22, C15(8, 20, 8)); text_fit(47, y + 8, 1, 108, TXT, popup_lab[k]); }
-            rect(162, top + 2 + popup_n * 24, 52, 22, C15(24, 8, 8)); text(168, top + 10 + popup_n * 24, 1, TXT, "Cancel");
+            rect(36, top, 184, 30 + popup_n * 24, PANB); rect(37, top + 1, 182, 28 + popup_n * 24, PAN); text_box(38, top + 1, 180, 24, FS_HEAD, TXT, AL_L, nm);
+            for (int k = 0; k < popup_n; k++) { int y = top + 26 + k * 24; rect(42, y, 116, 22, C15(8, 20, 8)); text_box(42, y, 116, 22, FS_BODY, TXT, AL_C, popup_lab[k]); }
+            rect(162, top + 2 + popup_n * 24, 52, 22, C15(24, 8, 8)); text_box(162, top + 2 + popup_n * 24, 52, 22, FS_BODY, TXT, AL_C, "Cancel");
         } else { int rows = (popup_n + 1) / 2, top = 156 - rows * 24;
-            rect(4, top, 248, 30 + rows * 24, PANB); rect(5, top + 1, 246, 28 + rows * 24, PAN); text_fit(12, top + 6, tw(2, nm) <= 170 ? 2 : 1, 170, TXT, nm);
-            rect(196, top + 3, 50, 18, C15(24, 8, 8)); text(202, top + 9, 1, TXT, "Cancel");
-            for (int k = 0; k < popup_n; k++) { int x = 9 + (k & 1) * 121, y = top + 26 + (k >> 1) * 24; rect(x, y, 117, 22, popup_code[k] == FC_NOORDER ? C15(10, 12, 14) : C15(8, 20, 8)); text_fit(x + 4, y + 8, 1, 110, TXT, popup_lab[k]); } }
+            rect(4, top, 248, 30 + rows * 24, PANB); rect(5, top + 1, 246, 28 + rows * 24, PAN); text_box(8, top + 2, 184, 22, FS_HEAD, TXT, AL_L, nm);
+            rect(196, top + 3, 50, 18, C15(24, 8, 8)); text_box(196, top + 3, 50, 18, FS_BODY, TXT, AL_C, "Cancel");
+            for (int k = 0; k < popup_n; k++) { int x = 9 + (k & 1) * 121, y = top + 26 + (k >> 1) * 24; rect(x, y, 117, 22, popup_code[k] == FC_NOORDER ? C15(10, 12, 14) : C15(8, 20, 8)); text_box(x, y, 117, 22, FS_BODY, TXT, AL_C, popup_lab[k]); } }
     } else if (popup == 5) {   // (D36) at the top of a flight
-        rect(36, 100, 184, 56, PANB); rect(37, 101, 182, 54, PAN); text(44, 106, 2, TXT, "Stairs");
-        rect(42, 126, 116, 24, C15(8, 20, 8)); text(47, 135, 1, TXT, "Go Down"); rect(162, 126, 52, 24, C15(24, 8, 8)); text(168, 135, 1, TXT, "Cancel");
+        rect(36, 100, 184, 56, PANB); rect(37, 101, 182, 54, PAN); text_box(38, 101, 180, 22, FS_HEAD, TXT, AL_L, "Stairs");
+        rect(42, 126, 116, 24, C15(8, 20, 8)); text_box(42, 126, 116, 24, FS_BODY, TXT, AL_C, "Go Down"); rect(162, 126, 52, 24, C15(24, 8, 8)); text_box(162, 126, 52, 24, FS_BODY, TXT, AL_C, "Cancel");
     } else if (popup == 4) {
-        rect(56, 96, 144, 72, PANB); rect(57, 97, 142, 70, PAN); text(64, 102, 2, TXT, "Rex"); { char t2[24]; sprintf(t2, "Hunger %d", dog.hun); text(110, 106, 1, TXT, t2); }
+        rect(56, 96, 144, 72, PANB); rect(57, 97, 142, 70, PAN); text_box(60, 99, 136, 16, FS_HEAD, TXT, AL_L, "Rex"); { char t2[24]; sprintf(t2, "Hunger %d", dog.hun); text_box(60, 99, 136, 16, FS_BODY, TXT, AL_R, t2); }
         chip(64, 118, 60, 20, "Pet", 0); chip(132, 118, 60, 20, "Play", 0); chip(64, 142, 60, 20, "Feed $5", 0); chip(132, 142, 60, 20, "Cancel", 0);
     } else if (popup >= 2) {
         char nm[40]; int tg = popup == 2 ? popup_i : -2 - popup_i, rel; if (popup == 2) { sprintf(nm, "%s - %s %d", sname[popup_i], STGN[stage_of(sims[popup_i].age)], sims[popup_i].age); rel = sims[popup_i].rel; }
         else { char n2[24]; cit_name(&cits[popup_i], n2); sprintf(nm, "%s - %s", n2, STGN[cits[popup_i].stage]); rel = crel(cits[popup_i].id)->rel; }
         int n = soc_list(tg);
-        rect(20, 56, 216, 124, PANB); rect(21, 57, 214, 122, PAN); rect(21, 57, 214, 14, PANH); rect(20, 56, 2, 2, 0); rect(234, 56, 2, 2, 0); text(26, 61, 1, TXT, nm); rect(212, 60, 22, 14, C15(24, 8, 8)); text(219, 64, 1, TXT, "X");
-        sprintf(nm, "%s", relname(rel)); text(26, 73, 1, C15(24, 28, 31), nm);
-        for (int k = 0; k < n; k++) { int x = 26 + (k & 1) * 104, y = 82 + (k >> 1) * 22; rect(x, y, 100, 20, PANB); rect(x + 1, y + 1, 98, 18, soc_pick[k] == S_INVITE || soc_pick[k] == S_BABY ? C15(8, 20, 8) : PANH); text(x + 6, y + 6, 1, TXT, SOCN[soc_pick[k]]); }
-        if (!n) text(26, 100, 1, TXT, "Nothing to do together"); }
+        rect(20, 56, 216, 124, PANB); rect(21, 57, 214, 122, PAN); rect(21, 57, 214, 14, PANH); rect(20, 56, 2, 2, 0); rect(234, 56, 2, 2, 0); text_box(21, 57, 188, 14, FS_BODY, TXT, AL_L, nm); rect(213, 58, 20, 12, C15(24, 8, 8)); text_box(213, 58, 20, 12, FS_BODY, TXT, AL_C, "X");
+        sprintf(nm, "%s", relname(rel)); text_box(21, 71, 214, 11, FS_SMALL, C15(24, 28, 31), AL_L, nm);
+        for (int k = 0; k < n; k++) { int x = 26 + (k & 1) * 104, y = 82 + (k >> 1) * 22; rect(x, y, 100, 20, PANB); rect(x + 1, y + 1, 98, 18, soc_pick[k] == S_INVITE || soc_pick[k] == S_BABY ? C15(8, 20, 8) : PANH); text_box(x + 1, y + 1, 98, 18, FS_BODY, TXT, AL_C, SOCN[soc_pick[k]]); }
+        if (!n) text_box(21, 88, 214, 24, FS_BODY, TXT, AL_C, "Nothing to do together"); }
     if (jobui) job_draw();
     if (juke) juke_draw();
     if (travel_ui) travel_draw(); else if (craft_ui) craft_draw(); else if (farm_ui) farm_draw();
-    if (msg_t > 0 && !jobui && !juke && !travel_ui && !craft_ui && !farm_ui) { rect(70, 40, 116, 14, PANB); text(76, 45, 1, TXT, msg); }
+    if (msg_t > 0 && !jobui && !juke && !travel_ui && !craft_ui && !farm_ui) toast(128, 40, msg);
 }
 // ---- picking: a stylus tap on the 3D lot -> the cell under it (the view is a camera we know, so we undo it) ----
 static int pick_cell_h(int sx, int sy, int hgt, int *cx, int *cy) {   // the cell where the stylus ray meets the plane hgt world units above the ground
@@ -2761,35 +2811,35 @@ static void draw_cas(void) {   // the bottom screen: icon tabs down the left, th
     scr = scr_sub; backdrop();
     const char *tn[9] = { "Hair", "Color", "Face", "Beard", "Skin", "Shirt", "Pad", "Paint", "More" };
     panel(0, 4, 56, 184, 0);
-    for (int i = 0; i < 9; i++) { int on = cas_tab == i, y = 7 + i * 20; rect(5, y, 48, 18, on ? C15(31, 31, 31) : C15(2, 5, 14)); rect(6, y + 1, 46, 16, on ? C15(8, 26, 8) : C15(4, 10, 24)); rect(6, y + 1, 46, 1, on ? C15(18, 31, 18) : C15(9, 16, 30)); cas_icon(8, y + 3, i, on); text(21, y + 5, 1, on ? C15(2, 6, 2) : TXT, tn[i]); }
+    for (int i = 0; i < 9; i++) { int on = cas_tab == i, y = 7 + i * 20; rect(5, y, 48, 18, on ? C15(31, 31, 31) : C15(2, 5, 14)); rect(6, y + 1, 46, 16, on ? C15(8, 26, 8) : C15(4, 10, 24)); rect(6, y + 1, 46, 1, on ? C15(18, 31, 18) : C15(9, 16, 30)); cas_icon(8, y + 3, i, on); text_box(18, y, 36, 18, FS_BODY, on ? C15(2, 6, 2) : TXT, AL_L, tn[i]); }
     static const char *ttl[9] = { "Hair Styles", "Hair Color", "Face", "Facial Hair", "Skin Tone", "Shirt", "Edit Face", "Paint", "More" };
     panel(62, 4, 190, 142, ttl[cas_tab]);
     Sim tmp = sims[0];
     if (cas_tab == 6) {   // drag a dot on the pad: it moves two things at once (like the Edit Mouth screen)
-        for (int i = 0; i < 8; i++) { int fx = 66 + (i & 3) * 46, fy = 21 + (i >> 2) * 14; rect(fx, fy, 44, 12, cas_feat == i ? C15(10, 30, 10) : C15(4, 10, 24)); text(fx + 22 - tw(1, FEATN[i]) / 2, fy + 2, 1, TXT, FEATN[i]); }
+        for (int i = 0; i < 8; i++) { int fx = 66 + (i & 3) * 46, fy = 21 + (i >> 2) * 14; rect(fx, fy, 44, 12, cas_feat == i ? C15(10, 30, 10) : C15(4, 10, 24)); text_box(fx, fy, 44, 12, FS_BODY, TXT, AL_C, FEATN[i]); }
         rect(PADX - 2, PADY - 2, PADW + 4, PADH + 4, PANB); rect(PADX, PADY, PADW, PADH, C15(30, 31, 31)); rect(PADX + PADW / 2, PADY, 1, PADH, C15(22, 26, 30)); rect(PADX, PADY + PADH / 2, PADW, 1, C15(22, 26, 30));
         int a = cas_feat * 2, dx = PADX + tmp.pm[a] * PADW / 100, dy = PADY + (100 - tmp.pm[a + 1]) * PADH / 100;
         rect(dx - 5, dy - 5, 11, 11, C15(3, 8, 24)); rect(dx - 3, dy - 3, 7, 7, C15(10, 18, 31));
-        text(190, 56, 1, TXT, "Drag the"); text(190, 66, 1, TXT, "dot"); text(190, 82, 1, C15(22, 28, 31), FEATX[cas_feat]); text(190, 92, 1, C15(22, 28, 31), "left-right"); text(190, 106, 1, C15(22, 28, 31), FEATY[cas_feat]); text(190, 116, 1, C15(22, 28, 31), "up-down");
-        rect(190, 128, 56, 14, C15(24, 10, 10)); text(200, 131, 1, TXT, "Reset");
+        text_box(187, 50, 62, 10, FS_BODY, TXT, AL_L, "Drag the"); text_box(187, 60, 62, 10, FS_BODY, TXT, AL_L, "dot"); text_box(187, 78, 62, 10, FS_BODY, C15(22, 28, 31), AL_L, FEATX[cas_feat]); text_box(187, 88, 62, 10, FS_BODY, C15(22, 28, 31), AL_L, "left-right"); text_box(187, 102, 62, 10, FS_BODY, C15(22, 28, 31), AL_L, FEATY[cas_feat]); text_box(187, 112, 62, 10, FS_BODY, C15(22, 28, 31), AL_L, "up-down");
+        rect(190, 128, 56, 14, C15(24, 10, 10)); text_box(190, 128, 56, 14, FS_BODY, TXT, AL_C, "Reset");
     } else if (cas_tab == 7) {   // paint: pick what to colour, then drag three sliders
         const char *tg[3] = { "Skin", "Hair", "Shirt" };
-        for (int i = 0; i < 3; i++) { rect(66 + i * 50, 24, 48, 16, cas_tgt == i ? C15(10, 30, 10) : C15(4, 10, 24)); text(72 + i * 50, 28, 1, TXT, tg[i]); }
+        for (int i = 0; i < 3; i++) { rect(66 + i * 50, 24, 48, 16, cas_tgt == i ? C15(10, 30, 10) : C15(4, 10, 24)); text_box(66 + i * 50, 24, 48, 16, FS_BODY, TXT, AL_C, tg[i]); }
         u16 col[3] = { C15(31, 8, 8), C15(8, 28, 8), C15(10, 14, 31) }; const char *cn[3] = { "R", "G", "B" };
-        for (int k = 0; k < 3; k++) { int y = 52 + k * 24; text(68, y + 2, 1, TXT, cn[k]); rect(80, y, 128, 14, PANB); rect(82, y + 2, 124, 10, C15(2, 5, 12)); rect(82, y + 2, cas_rgb[k] * 124 / 31, 10, col[k]); rect(80 + cas_rgb[k] * 124 / 31, y - 2, 5, 18, C15(31, 31, 31)); }
-        rect(214, 52, 34, 34, PANB); rect(216, 54, 30, 30, C15(cas_rgb[0], cas_rgb[1], cas_rgb[2]) | BIT(15)); rect(214, 96, 34, 14, C15(24, 10, 10)); text(218, 99, 1, TXT, "Reset");
-        text(68, 128, 1, C15(22, 28, 31), "Drag a bar for any colour");
+        for (int k = 0; k < 3; k++) { int y = 52 + k * 24; text_box(64, y, 15, 14, FS_HEAD, TXT, AL_C, cn[k]); rect(80, y, 128, 14, PANB); rect(82, y + 2, 124, 10, C15(2, 5, 12)); rect(82, y + 2, cas_rgb[k] * 124 / 31, 10, col[k]); rect(80 + cas_rgb[k] * 124 / 31, y - 2, 5, 18, C15(31, 31, 31)); }
+        rect(214, 52, 34, 34, PANB); rect(216, 54, 30, 30, C15(cas_rgb[0], cas_rgb[1], cas_rgb[2]) | BIT(15)); rect(214, 96, 34, 14, C15(24, 10, 10)); text_box(214, 96, 34, 14, FS_BODY, TXT, AL_C, "Reset");
+        text_box(64, 123, 186, 12, FS_BODY, C15(22, 28, 31), AL_L, "Drag a bar for any colour");
     } else if (cas_tab == 8) {   // every slider: Face or Body, six per page
-        for (int i = 0; i < 2; i++) { rect(66 + i * 44, 22, 42, 13, cas_sg == i ? C15(10, 30, 10) : C15(4, 10, 24)); text(70 + i * 44, 25, 1, TXT, i ? "Body" : "Face"); }
-        rect(156, 22, 44, 13, C15(24, 10, 10)); text(162, 25, 1, TXT, "Reset");
-        rect(204, 22, 44, 13, cas_mult > 1 ? C15(31, 14, 4) : C15(14, 8, 24)); { char cb[8] = "Max x1"; cb[5] = (char)('0' + cas_mult); text(208, 25, 1, TXT, cb); }
-        rect(206, 6, 20, 12, C15(8, 26, 8)); text(212, 9, 1, TXT, "<"); rect(228, 6, 20, 12, C15(8, 26, 8)); text(234, 9, 1, TXT, ">");
+        for (int i = 0; i < 2; i++) { rect(66 + i * 44, 22, 42, 13, cas_sg == i ? C15(10, 30, 10) : C15(4, 10, 24)); text_box(66 + i * 44, 22, 42, 13, FS_BODY, TXT, AL_C, i ? "Body" : "Face"); }
+        rect(156, 22, 44, 13, C15(24, 10, 10)); text_box(156, 22, 44, 13, FS_BODY, TXT, AL_C, "Reset");
+        rect(204, 22, 44, 13, cas_mult > 1 ? C15(31, 14, 4) : C15(14, 8, 24)); { char cb[8] = "Max x1"; cb[5] = (char)('0' + cas_mult); text_box(204, 22, 44, 13, FS_BODY, TXT, AL_C, cb); }
+        rect(206, 6, 20, 12, C15(8, 26, 8)); text_box(206, 6, 20, 12, FS_BODY, TXT, AL_C, "<"); rect(228, 6, 20, 12, C15(8, 26, 8)); text_box(228, 6, 20, 12, FS_BODY, TXT, AL_C, ">");
         for (int k = 0; k < 6; k++) { int q = sl_idx(k); if (q < 0) continue; int y = 40 + k * 17, v = tmp.pm[q];
-            text(66, y + 3, 1, TXT, sl_name(k)); rect(124, y, 100, 13, PANB); rect(125, y + 1, 98, 11, C15(2, 5, 12)); rect(125, y + 1, v * 98 / 100, 11, C15(6, 18, 28)); rect(125 + 49, y + 1, 1, 11, C15(10, 14, 22));
+            text_box(63, y, 60, 13, FS_BODY, TXT, AL_L, sl_name(k)); rect(124, y, 100, 13, PANB); rect(125, y + 1, 98, 11, C15(2, 5, 12)); rect(125, y + 1, v * 98 / 100, 11, C15(6, 18, 28)); rect(125 + 49, y + 1, 1, 11, C15(10, 14, 22));
             rect(121 + v * 98 / 100, y - 2, 6, 17, C15(31, 31, 31)); rect(122 + v * 98 / 100, y - 1, 4, 15, C15(10, 26, 10));
-            char nb[8]; int nn = v - 50; nb[0] = nn < 0 ? '-' : '+'; nn = nn < 0 ? -nn : nn; nb[1] = (char)('0' + nn / 10); nb[2] = (char)('0' + nn % 10); nb[3] = 0; text(228, y + 3, 1, C15(22, 28, 31), nb); }
+            char nb[8]; int nn = v - 50; nb[0] = nn < 0 ? '-' : '+'; nn = nn < 0 ? -nn : nn; nb[1] = (char)('0' + nn / 10); nb[2] = (char)('0' + nn % 10); nb[3] = 0; text_box(224, y, 28, 13, FS_BODY, C15(22, 28, 31), AL_C, nb); }
     } else {
-        if (CAS_N[cas_tab] > 6) { rect(206, 6, 20, 12, C15(8, 26, 8)); text(212, 9, 1, TXT, "<"); rect(228, 6, 20, 12, C15(8, 26, 8)); text(234, 9, 1, TXT, ">"); { char pg[8]; sprintf(pg, "%d/%d", cas_page + 1, (CAS_N[cas_tab] + 5) / 6); text(176, 8, 1, TXT, pg); } }
+        if (CAS_N[cas_tab] > 6) { rect(206, 6, 20, 12, C15(8, 26, 8)); text_box(206, 6, 20, 12, FS_BODY, TXT, AL_C, "<"); rect(228, 6, 20, 12, C15(8, 26, 8)); text_box(228, 6, 20, 12, FS_BODY, TXT, AL_C, ">"); { char pg[8]; sprintf(pg, "%d/%d", cas_page + 1, (CAS_N[cas_tab] + 5) / 6); text_box(150, 6, 54, 12, FS_NUM, TXT, AL_R, pg); } }
         for (int k = 0; k < 6; k++) { int idx = k + (CAS_N[cas_tab] > 6 ? cas_page * 6 : 0); if (idx >= CAS_N[cas_tab]) continue;
             int x = 68 + (k % 3) * 60, y = 24 + (k / 3) * 58;
             int on = (cas_tab == 0 ? tmp.hair : cas_tab == 1 ? tmp.hcol : cas_tab == 2 ? tmp.fc : cas_tab == 3 ? tmp.beard : cas_tab == 4 ? tmp.skin : tmp.shirt) == idx;
@@ -2798,11 +2848,11 @@ static void draw_cas(void) {   // the bottom screen: icon tabs down the left, th
             Sim v = tmp; if (cas_tab == 0) v.hair = (u8)idx; else if (cas_tab == 1) { v.hcol = (u8)idx; v.cc[1] = 0; } else if (cas_tab == 2) v.fc = (u8)idx; else if (cas_tab == 3) v.beard = (u8)idx; else if (cas_tab == 4) { v.skin = (u8)idx; v.cc[0] = 0; } else { v.shirt = (u8)idx; v.cc[2] = 0; }
             face(x + 9, y + 2, 36, &v);
             const char *nm = cas_tab == 0 ? HAIRN[idx] : cas_tab == 2 ? FACEN[idx] : cas_tab == 3 ? BEARDN[idx] : 0;
-            if (nm) text(x + 27 - tw(1, nm) / 2, y + 42, 1, PANB, nm); } }
+            if (nm) text_box(x + 3, y + 39, 48, 12, FS_BODY, PANB, AL_C, nm); } }
     rect(62, 152, 190, 34, PANB); rect(64, 154, 186, 30, PAN);
-    chip(66, 158, 14, 22, "<", 0); { char fn[20]; sprintf(fn, "%.9s", CFN[cas_fn % 24]); rect(82, 158, 56, 22, C15(31, 31, 31)); rect(83, 159, 54, 20, C15(2, 5, 14)); text(110 - tw(1, fn) / 2, 165, 1, TXT, fn); }
+    chip(66, 158, 14, 22, "<", 0); { char fn[20]; sprintf(fn, "%.9s", CFN[cas_fn % 24]); rect(82, 158, 56, 22, C15(31, 31, 31)); rect(83, 159, 54, 20, C15(2, 5, 14)); text_box(83, 159, 54, 20, FS_HEAD, TXT, AL_C, fn); }
     chip(140, 158, 14, 22, ">", 0); chip(156, 158, 14, 22, "?", 0);
-    rect(174, 156, 76, 26, C15(31, 31, 31)); rect(175, 157, 74, 24, C15(8, 22, 8)); rect(175, 157, 74, 1, C15(18, 31, 18)); text(212 - tw(2, "Play") / 2, 163, 2, TXT, "Play");
+    rect(174, 156, 76, 26, C15(31, 31, 31)); rect(175, 157, 74, 24, C15(8, 22, 8)); rect(175, 157, 74, 1, C15(18, 31, 18)); text_box(175, 157, 74, 24, FS_HEAD, TXT, AL_C, "Play");
 }
 static void cas_apply_rgb(void) { sims[0].cc[cas_tgt] = C15(cas_rgb[0], cas_rgb[1], cas_rgb[2]) | BIT(15); }
 static void cas_drag_at(int tx, int ty) {   // a stylus drag on the pad or a slider
@@ -2904,11 +2954,11 @@ static int opt_pg;   // page within the tab (6 rows each)
 static const u8 TABX[5] = { 10, 80, 134, 188, 246 };   // tab chip edges
 static void draw_opt(void) {   // the Options screen (bottom): tabs along the top; tap a row to change it (right half forwards, left half back)
     scr = scr_sub; backdrop(); { static char pt[48]; if (o_tab == 1 && mus_cur >= 0) { sprintf(pt, "Playing: %.30s", mus_name(mus_cur)); panel(6, 4, 244, 156, pt); } else panel(6, 4, 244, 156, "Options"); }
-    for (int t = 0; t < 4; t++) { int x = TABX[t], w = TABX[t + 1] - x - 4; rect(x, 22, w, 15, o_tab == t ? C15(31, 31, 31) : C15(2, 4, 12)); rect(x + 1, 23, w - 2, 13, o_tab == t ? C15(8, 18, 31) : C15(10, 14, 22)); text(x + w / 2 - tw(1, OPTAB[t]) / 2, 26, 1, TXT, OPTAB[t]); }
+    for (int t = 0; t < 4; t++) { int x = TABX[t], w = TABX[t + 1] - x - 4; rect(x, 22, w, 15, o_tab == t ? C15(31, 31, 31) : C15(2, 4, 12)); rect(x + 1, 23, w - 2, 13, o_tab == t ? C15(8, 18, 31) : C15(10, 14, 22)); text_box(x, 22, w, 15, FS_BODY, TXT, AL_C, OPTAB[t]); }
     int idx[40], n = opt_list(o_tab, idx), pages = (n + 5) / 6; if (opt_pg >= pages) opt_pg = 0;
     for (int k = 0; k < 6; k++) { int q = opt_pg * 6 + k; if (q >= n) break; int i = idx[q], y = 40 + k * 19; char b[16];
-        rect(10, y, 236, 17, C15(5, 12, 26)); rect(10, y, 236, 1, C15(10, 18, 30)); text(16, y + 5, 1, TXT, OPT[i].name);
-        rect(130, y + 2, 112, 13, !OPT[i].v ? C15(24, 10, 10) : *OPT[i].v != OPT[i].def ? C15(8, 26, 8) : C15(10, 14, 22)); { const char *v = OPT[i].v ? opt_tok(i, *OPT[i].v, b) : "tap"; text(186 - tw(1, v) / 2, y + 5, 1, TXT, v); } }
+        rect(10, y, 236, 17, C15(5, 12, 26)); rect(10, y, 236, 1, C15(10, 18, 30)); text_box(13, y, 116, 17, FS_BODY, TXT, AL_L, OPT[i].name);
+        rect(130, y + 2, 112, 13, !OPT[i].v ? C15(24, 10, 10) : *OPT[i].v != OPT[i].def ? C15(8, 26, 8) : C15(10, 14, 22)); { const char *v = OPT[i].v ? opt_tok(i, *OPT[i].v, b) : "tap"; text_box(130, y + 2, 112, 13, FS_BODY, TXT, AL_C, v); } }
     { char pg[20]; sprintf(pg, "Page %d/%d >", opt_pg + 1, pages); chip(10, 166, 76, 22, pg, 0); } chip(186, 166, 60, 22, "Back", 0);
 }
 static void opt_touch(int tx, int ty) {
@@ -2931,20 +2981,20 @@ static void draw_title(void) {
     scr = hud; backdrop(); draw_logo(78, 3, 2, 3); panel(8, 64, 240, 120, "Household Occupants");
     const Sim *m = &sims[0]; rect(110, 86, 36, 36, C15(31, 31, 31)); face(112, 88, 32, m);
     const char *nm = sname[0]; char t[40]; char fnm[20], lnm[20]; { const char *sp = strchr(sname[0], ' '); if (sp) { snprintf(fnm, sizeof fnm, "%.*s", (int)(sp - sname[0]), sname[0]); snprintf(lnm, sizeof lnm, "%s", sp + 1); } else { snprintf(fnm, sizeof fnm, "%s", sname[0]); lnm[0] = 0; } }
-    text(128 - tw(1, fnm) / 2, 124, 1, TXT, fnm); text(128 - tw(1, lnm) / 2, 134, 1, TXT, lnm);
-    house_icon(34, 146, 20, C15(30, 18, 12)); sprintf(t, "%d", funds); text(30, 168, 1, TXT, t);
-    rect(112, 146, 20, 18, C15(31, 31, 31)); rect(114, 148, 16, 3, C15(28, 8, 8)); text(106, 168, 1, TXT, "1 day");
+    text_c(128, 129, FS_HEAD, TXT, fnm); text_c(128, 140, FS_BODY, C15(24, 28, 31), lnm);   // (D65) first name above last name, both centred under the face
+    house_icon(34, 146, 20, C15(30, 18, 12)); sprintf(t, "%d", funds); text_c(44, 172, FS_NUM, TXT, t);
+    rect(112, 146, 20, 18, C15(31, 31, 31)); rect(114, 148, 16, 3, C15(28, 8, 8)); text_c(122, 172, FS_BODY, TXT, "1 day");
     rect(194, 146, 20, 20, C15(31, 31, 31)); rect(196, 148, 16, 16, C15(22, 26, 31)); rect(204, 150, 1, 7, C15(2, 4, 12)); rect(204, 157, 5, 1, C15(2, 4, 12));
-    { clk(t, minutes % 1440); text(186, 168, 1, TXT, t); } (void)nm;
+    { clk(t, minutes % 1440); text_c(204, 172, FS_NUM, TXT, t); } (void)nm;
     if (opt_on) { draw_opt(); return; }
     scr = scr_sub; rect(0, 0, 256, 192, C15(3, 3, 4));
-    rect(16, 40, 224, 118, PANB); rect(18, 42, 220, 114, C15(8, 16, 28)); rect(18, 42, 220, 16, PANH); text(26, 45, 2, TXT, "Start/Load profile");
+    rect(16, 40, 224, 118, PANB); rect(18, 42, 220, 114, C15(8, 16, 28)); rect(18, 42, 220, 16, PANH); text_box(20, 42, 216, 16, FS_HEAD, TXT, AL_L, "Start/Load profile");
     for (int i = 0; i < 3; i++) { int x = 26 + i * 70, y = 66; rect(x - 2, y - 2, 68, 60, slot_sel == i ? C15(31, 31, 31) : C15(2, 4, 12)); rect(x, y, 64, 56, i == 0 ? C15(10, 24, 8) : C15(6, 12, 26));
         if (i == 0) house_icon(x + 12, y + 4, 40, C15(31, 31, 31)); else plumb_icon(x + 8, y + 0, 48, C15(28, 31, 31));
-        { const char *lb = i == 0 ? (sav_have >= 0 ? "Continue" : "New game") : "New sim"; rect(x, y + 42, 64, 14, C15(2, 4, 12)); text(x + 32 - tw(1, lb) / 2, y + 45, 1, TXT, lb); } }
+        { const char *lb = i == 0 ? (sav_have >= 0 ? "Continue" : "New game") : "New sim"; rect(x, y + 42, 64, 14, C15(2, 4, 12)); text_box(x, y + 42, 64, 14, FS_BODY, TXT, AL_C, lb); } }
     chip(98, 130, 28, 22, "<", 0); chip(130, 130, 28, 22, "Opt", 0); chip(162, 130, 28, 22, "Del", 0); chip(194, 130, 36, 22, "OK", 0);
-    text(24, 128 - 0, 1, TXT, ""); { static char sb[40]; if (sav_have >= 0) sprintf(sb, "Saved: day %d, %d born, %d lost", st_days, st_born, st_died); const char *st = sav_ok() ? (sav_have >= 0 ? sb : "No saved game yet") : "No save chip found"; if (msg_t <= 0) text(24, 166, 1, C15(22, 26, 31), st); }
-    if (msg_t > 0) text(24, 166, 1, C15(31, 20, 12), msg);
+    { static char sb[40]; if (sav_have >= 0) sprintf(sb, "Saved: day %d, %d born, %d lost", st_days, st_born, st_died); const char *st = sav_ok() ? (sav_have >= 0 ? sb : "No saved game yet") : "No save chip found"; if (msg_t <= 0) text_box(16, 160, 224, 24, FS_BODY, C15(22, 26, 31), AL_C, st); }
+    if (msg_t > 0) toast(128, 166, msg);
 }
 #include "ds_games.c"   // (D44) the PS1's mini-games
 static void new_household(void) {
@@ -3080,7 +3130,7 @@ int main(void) {
             if (down & KEY_TOUCH) cas_touch(tp.px, tp.py); else if ((held & KEY_TOUCH) && cas_drag) cas_drag_at(tp.px, tp.py);
             if (!(held & KEY_TOUCH)) cas_drag = 0;
             if (forced || (down & KEY_TOUCH) || cas_drag) draw_cas();
-            { static int hn = -9; int hk = cas_fn * 16 + cas_ln; if (forced || hk != hn || down & KEY_TOUCH) { hn = hk; scr = hud; hud_clear(); int w = tw(2, sname[0]) + 24; panel(128 - w / 2, 6, w, 22, 0); text(128 - tw(2, sname[0]) / 2, 11, 2, TXT, sname[0]); } }
+            { static int hn = -9; int hk = cas_fn * 16 + cas_ln; if (forced || hk != hn || down & KEY_TOUCH) { hn = hk; scr = hud; hud_clear(); int w = tw(2, sname[0]) + 24; panel(128 - w / 2, 6, w, 22, 0); text_box(128 - w / 2, 6, w, 22, FS_HEAD, TXT, AL_C, sname[0]); } }
             if (cas_done) { cas_done = 0; set_mode(M_MAP); dirty = 1; }
             yaw = sinLerp(frames * 70) / 2; pitch = 0; dist = (cas_tab == 8 && cas_sg) || (cas_tab == 6 && cas_feat == 7) ? 19000 + (cas_mult - 1) * 6000 : 4700;
         } else if (mode == M_MAP) {
@@ -3104,7 +3154,7 @@ int main(void) {
             if (enter && !ne_on) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot build at sea"); else { if (!nown) own_add(sel_x, sel_y); if (home_bx < 0 && lot_owned(sel_x, sel_y)) { home_bx = sel_x; home_by = sel_y; } if (lot_bx != sel_x || lot_by != sel_y) { Sim keep = sims[0]; lot_save(); zone = 0; lot_seed = (u32)(sel_x * 73856093 ^ sel_y * 19349663); lot_reset(); sims[0].skin = keep.skin; sims[0].hair = keep.hair; sims[0].hcol = keep.hcol; sims[0].shirt = keep.shirt; sims[0].beard = keep.beard; sims[0].fc = keep.fc; memcpy(sims[0].pm, keep.pm, PMN); memcpy(sims[0].cc, keep.cc, 6); lot_enter(sel_x, sel_y); place_sims(); city_spawn(); } else if (!nb_ok) { nb_load(); city_spawn(); } nb_ok = 1; cur_sim = 0; set_mode(M_LIVE); forced = 1; lastsig = ~lastsig; } }
             if (forced) dirty = 1;
             if (dirty) { scr = offbuf; draw_map(); off_show(scr_sub); dirty = 0; }
-            if (msg_t > 0) text(4, 150, 1, C15(31, 20, 12), msg);
+            if (msg_t > 0) toast(128, 146, msg);
             yaw += (o_spin == 0 ? 0 : o_spin == 1 ? 40 : o_spin == 2 ? 80 : 170); pitch = 3200;
         } else if (mode == M_LIVE) {
             LV = slv[ctl];
@@ -3269,7 +3319,7 @@ int main(void) {
 #ifdef DSTEST
             for (int k = 0; k < 12; k++) { prof_ms[k] = (int)(prof_t[k] / 33514); prof_t[k] = 0; }
 #endif
-            if (o_pm && mode != M_LIVE && mode != M_TITLE && mode != M_CAS) { u16 *keep = scr; scr = hud; char t[32]; rect(0, 182, 92, 10, C15(2, 2, 4)); sprintf(t, "%d fps %d quads", fps_now, polys_last / 2); text(2, 184, 1, TXT, t); scr = keep; } } }
+            if (o_pm && mode != M_LIVE && mode != M_TITLE && mode != M_CAS) { u16 *keep = scr; scr = hud; char t[32]; rect(0, 182, 92, 10, C15(2, 2, 4)); sprintf(t, "%d fps %d quads", fps_now, polys_last / 2); text_box(0, 182, 92, 10, FS_SMALL, TXT, AL_C, t); scr = keep; } } }
         ui_n++; gframes = frames; swiWaitForVBlank(); frames += steps;
     }
     return 0;
