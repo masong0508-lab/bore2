@@ -904,7 +904,7 @@ static const char *gev_do(Toy *t, int slot, int kind, int ok) {   // the reactio
     case 3: if (ok) { if (!(x->wish & 7)) x->wish = (u8)(1 + gr() % 6); gup(&b->hap, 4, 1); gup(&x->nrg, 100, 15); gxp(t, 2); return "YOU WISHED ON A STAR. IT FEELS HOPEFUL"; } return "THE STAR FADED";
     case 4: if (ok) { gup(&b->bond, 100, 3); gxp(t, 2); gtouch(t, b); return "THUNDER! YOU HELD IT CLOSE. SO BRAVE"; } gup(&b->hap, 4, -1); return "THUNDER! IT HID, SCARED";
     default: if (ok) { int c = 8 + gr() % 12 + ch; gcash(t, c); gup(&b->hap, 4, 1); snprintf(em, sizeof em, "A VISITOR GAVE A GIFT. +$%d", c);
-                       if (!(gr() % 25)) { for (int e = 0; e < GB_N; e++) if (!t->b[e].on) { gegg(t, e); return "A VISITOR LEFT A MYSTERY EGG!"; } } return em; } return "THE VISITOR WAVED AND WENT";
+                       if (!(gr() % 25)) { for (int e = 0; e < GB_N; e++) if (!t->b[e].on) { gegg(t, e); t->b[e].form = 128; return "A VISITOR LEFT A MYSTERY EGG!"; } } return em; } return "THE VISITOR WAVED AND WENT";
     } }
 static int gurgent(const Toy *t, int s) {   // what a pet needs most: 0 nothing, 1 medicine, 2 clean, 4 scold a fib, 5 food, 6 lights out, 7 a game, 8 a bath, 9 a nap
     const Blob *b = &t->b[s]; const Xt *x = &t->x[s]; if (!b->on || b->stage == GS_EGG) return 0;
@@ -944,7 +944,7 @@ static void gtick(Toy *t, Blob *b) {   // one game minute of one creature (D64: 
     else { b->fl &= (u8)~GF_CALL; b->needT = 0; if (!sl && b->hun >= 3 && b->hap >= 3 && b->age % (p == GP_GENTLE ? 90 : 120) == 0 && b->bond < 100) b->bond++; }
     static const u16 grow[5] = { 0, 240, 720, 1440, 0 };
     if (b->stage < GS_ADULT && b->age >= grow[b->stage]) {
-        b->stage++; b->age = 0;
+        b->stage++; b->age = 0; if (b->stage == GS_CHILD) b->form &= 127;   // (the mystery egg's mark, form bit 7 on an egg, stays through the baby)
         if (b->stage == GS_TEEN) b->form = b->miss <= 2 ? 0 : 1;
         if (b->stage == GS_ADULT) {
             b->form = (b->miss <= 1 && b->bond >= 80 && b->disc >= 50) ? 3 : (b->snk > b->meal && b->snk >= 6) ? 2 : (b->miss <= 2 && b->disc >= 50) ? 0 : 1;
@@ -992,7 +992,7 @@ static const char *gscold(Toy *t, Blob *b) {
     int cl = b->pers == GP_CLEVER ? 10 : 0;
     if (b->fl & GF_FAKE) { b->fl &= (u8)~GF_FAKE; gtouch(t, b); gup(&b->disc, 100, 25 + cl); gxp(t, 3); return "IT KNOWS BETTER NOW. DISCIPLINE UP"; }
     if (b->hap) b->hap--; return "IT DID NOTHING WRONG. IT IS SAD NOW"; }
-static int gpower(const Blob *b) { return (b->hun + b->hap) * 3 + b->disc / 8 + b->stage * 6 + b->bond / 10 - b->miss * 2 - (b->fl & GF_SICK ? 10 : 0) + (b->form == 0 || b->form == 3 ? 4 : 0); }
+static int gpower(const Blob *b) { return (b->hun + b->hap) * 3 + b->disc / 8 + b->stage * 6 + b->bond / 10 - b->miss * 2 - (b->fl & GF_SICK ? 10 : 0) + ((b->form & 127) == 0 || b->form == 3 ? 4 : 0); }
 static void gx_award(int bit);
 static const char *gmeet(Toy *t, int a, Toy *u, int c, int battle) {   // (D55) a playdate or battle, in the family or with a housemate's pet
     Blob *x = &t->b[a], *y = &u->b[c];
@@ -1244,7 +1244,8 @@ static void g_egg(const Blob *b, int fr) {   // (D69) centred on the LCD (cols 1
     static const s8 wb[8] = { 1, 2, 1, 0, -1, -2, -1, 0 };
     int cr = b->age >= 19 ? 3 : b->age >= 17 ? 2 : b->age >= 15 ? 1 : 0, per = cr ? 12 : 24, ph = ((fr % per) + per) % per, tilt = ph >= per - 8 ? wb[ph - (per - 8)] : 0;
     geggcol = b->col & 7; gegg_dots(gegg_make(1, gegg_pat(b), cr), FS_EGGL_W, FS_EGGL_H, 11, 2, tilt);
-    if (b->mut) { int x = (fr & 2) ? 26 : 5, y = (fr & 2) ? 4 : 6; gP(x, y, 23); gP(x - 1, y, 23); gP(x + 1, y, 23); gP(x, y - 1, 23); gP(x, y + 1, 23); }   // (the rare one twinkles)
+    if (b->form & 128) { int a = (fr >> 2) & 1; for (int q = 0; q < 2; q++) { int x = q ? (a ? 7 : 24) : (a ? 25 : 6), y = q ? (a ? 12 : 5) : (a ? 4 : 11), v = q ? 23 : 21; gP(x, y, v); gP(x - 1, y, v); gP(x + 1, y, v); gP(x, y - 1, v); gP(x, y + 1, v); } }   // (the mystery egg twinkles in the night sky: two stars, in turn)
+    else if (b->mut) { int x = (fr & 2) ? 26 : 5, y = (fr & 2) ? 4 : 6; gP(x, y, 23); gP(x - 1, y, 23); gP(x + 1, y, 23); gP(x, y - 1, 23); gP(x, y + 1, 23); }   // (the rare one twinkles)
 }
 static void g_scene(const Blob *b, int fr, int look) {
     for (int y = 0; y < 16; y++) for (int x = 0; x < 32; x++) gdot[y][x] = 0;
@@ -1735,10 +1736,10 @@ static int gmood_of(const Blob *b, const Xt *x) {   // 0 plain, 1 happy, 2 dance
 static void gformchip(const Blob *b, int x, int y) {
     static const u16 fc[4] = { C15(29, 22, 5), C15(18, 14, 8), C15(7, 23, 26), C15(27, 8, 22) };
     const char *s; u16 bg = C15(9, 14, 26), ink = TXT;
-    if (b->stage == GS_EGG) { s = "EGG"; bg = C15(28, 20, 4); ink = C15(4, 3, 2); } else if (b->stage == GS_BABY) { s = "BABY"; bg = C15(6, 20, 8); } else if (b->stage == GS_CHILD) s = "CHILD";
+    if (b->stage == GS_EGG) { s = (b->form & 128) ? "MYSTERY" : "EGG"; bg = C15(28, 20, 4); ink = C15(4, 3, 2); } else if (b->stage == GS_BABY) { s = "BABY"; bg = C15(6, 20, 8); } else if (b->stage == GS_CHILD) s = "CHILD";
     else if (b->stage == GS_TEEN) { s = b->form ? "SLOUCHY" : "ANGSTY"; bg = b->form ? C15(18, 14, 8) : C15(8, 10, 24); } else if (b->stage == GS_ELDER) { s = "ELDER"; bg = C15(16, 16, 19); } else { s = gformNm[b->form & 3]; bg = fc[b->form & 3]; if ((b->form & 3) == 0) ink = C15(4, 3, 2); }
     gchip(x, y, s, bg, ink); }
-static int gform_w(const Blob *b) { const char *s = b->stage == GS_EGG ? "EGG" : b->stage == GS_BABY ? "BABY" : b->stage == GS_CHILD ? "CHILD" : b->stage == GS_TEEN ? (b->form ? "SLOUCHY" : "ANGSTY") : b->stage == GS_ELDER ? "ELDER" : gformNm[b->form & 3]; return tw(1, s) + 11; }
+static int gform_w(const Blob *b) { const char *s = b->stage == GS_EGG ? ((b->form & 128) ? "MYSTERY" : "EGG") : b->stage == GS_BABY ? "BABY" : b->stage == GS_CHILD ? "CHILD" : b->stage == GS_TEEN ? (b->form ? "SLOUCHY" : "ANGSTY") : b->stage == GS_ELDER ? "ELDER" : gformNm[b->form & 3]; return tw(1, s) + 11; }
 static void gtoy_pic(int x, int y, int egg_on) {   // (D69) a little toy on a card: the PS1's toy art (the shell in its owner's colour, the LCD with the egg, buttons)
     gf_setup(gf_shell(), gcb()->col, 1); gvo = 0; gf_noclip(); gf_toy(x + 20, y + 9, 32, 2, 1, egg_on, 0); }
 static void gcard(int pg) {   // the first day's welcome and closing cards, over the LCD
@@ -2238,7 +2239,11 @@ static void gt_tbase(int tut) {   // (D64) a toy with a grown-up (slot 0, wishin
     gt_open_a(1); gview = GV_HAND; gti = (int)(t - gtoy); gbi = 0; gisel = 0; gmsgT = 0; gmsg = 0; ghpend = 0; gsum_pend = 0; }
 static Toy *gt_ebase(void) {   // (D69) a toy with eight eggs of different kinds and colours (the last one rare); the handheld open on the first
     funds += 8000; gt_reset(); gbuy(ctl); Toy *t = gtoy_of(ctl);
-    for (int i = 0; i < GB_N; i++) { if (i) gegg(t, i); Blob *b = &t->b[i]; b->stage = GS_EGG; b->sp = (u8)i; b->col = (u8)(i % 7 + 1); b->mut = (u8)(i == 7); b->age = 3; b->hun = b->hap = 4; gxinit(t, i); }
+    for (int i = 0; i < GB_N; i++) { if (i) gegg(t, i); Blob *b = &t->b[i]; b->stage = GS_EGG; b->sp = (u8)i; b->col = (u8)(i % 7 + 1); b->mut = (u8)(i == 7); b->age = 3;
+#ifdef MYS
+        b->form = 128;
+#endif
+        b->hun = b->hap = 4; gxinit(t, i); }
     t->cared = 40; gach |= 0x180000u; gt_open_a(1); gview = GV_HAND; gti = (int)(t - gtoy); gbi = 0; gisel = 0; gmsgT = 0; gmsg = 0; ghpend = 0; gsum_pend = 0; return t; }
 static void mg_test(int sc) {
     if (sc >= 101 && sc <= 115) {   // (D69) the redrawn eggs (build with -DAUTO_SCENE=100, hold keys): 101-106 the six patterns, 107 the rare one, 108-110 the three crack stages, 111 basket, 112 home, 113 tree, 114 day card, 115 guide (eggs)

@@ -1,7 +1,5 @@
 #ifndef GF_DMAMIN
 #define GF_DMAMIN 12
-#else
-#define GFT(k) ((void)0)
 #endif
 // ds_gfirst.c (D69): the PS1's BOREAGOTCHI! first-run screens on the DS: the title with gold lettering and a shine, the sky of twinkling stars with a shooting star, the shop card, the
 // gift box that drops, squashes, shakes, loses its ribbon and pops (confetti, sparkles, beams) while the toy rises out of it and its LCD turns on, the egg card, and the hatching (the egg
@@ -11,6 +9,9 @@
 #ifdef DSTEST
 static volatile u32 gfp[16];
 #define GFT(k) do { if (!gvo) gfp[8 + (k)] = (TIMER_DATA(0) | ((u32)TIMER_DATA(1) << 16)); } while (0)   // test builds: cycles (bus clock) of the sky and of the picture, per screen
+#endif
+#ifndef GFT
+#define GFT(k) ((void)0)
 #endif
 static int gvo, gf_sx = 64, gf_sy = 4, gf_semi, gf_sq, gf_cx0, gf_cy0, gf_cx1 = 256, gf_cy1 = 192;   // the canvas row of this screen; the pixel's size (16ths across, pixels down); see-through; lean in whole pixels; the clip box
 static u8 gfm[128][3];                                                                                // the colour of each key of the art
@@ -23,6 +24,7 @@ static void gf_setup(int shell, int ink, int lcd) {   // the owner's colour for 
     gf_key('S', MIN(255, sh[0] + 40), MIN(255, sh[1] + 40), MIN(255, sh[2] + 40)); gf_key('s', sh[0], sh[1], sh[2]); gf_key('z', sh[0] * 6 / 10, sh[1] * 6 / 10, sh[2] * 6 / 10);
     if (lcd) { gf_key('L', 172, 196, 128); gf_key('l', 150, 176, 108); } else { gf_key('L', 58, 72, 70); gf_key('l', 44, 56, 56); }
     for (const char *e = "#mdhu"; *e; e++) { u8 o[3]; gegg_rgb(ink, (int)(strchr(geggKeys, *e) - geggKeys), o); gf_key(*e, o[0], o[1], o[2]); }   // the egg's colours from the pet's (the same as on the LCD dots)
+    for (int k = 8; k < 10; k++) { u8 o[3]; gegg_rgb(ink, k, o); gf_key(geggKeys[k], o[0], o[1], o[2]); }   // (the mystery egg's night)
     { u8 o[3]; gegg_rgb(ink, 3, o); gf_key('~', o[0], o[1], o[2]); }   // (the egg's spots are '~' here: 'o' stays the ribbon's dark orange)
 }
 static void gf_clip(int x0, int y0, int x1, int y1) { gf_cx0 = x0; gf_cy0 = y0; gf_cx1 = x1; gf_cy1 = y1; }
@@ -280,7 +282,7 @@ static void gf_hatch(void) {
     // (the light inside grows, then the flash: added to the LCD, the egg and the shell's bits by changing their colours, not by a pass over the screen)
     GFT(0);
     int lum = (h >= 52 && h < 88 ? MIN(14, (h - 52) / 3 + 2) : 0) + (h >= 84 && h < 96 ? (h < 88 ? (h - 84) * 28 : 110 - (h - 88) * 14) : 0);
-    if (lum > 0) for (const char *e = "#mdhu~l"; *e; e++) { u8 *m = gfm[(int)*e]; m[0] = (u8)MIN(255, m[0] + lum); m[1] = (u8)MIN(255, m[1] + lum); m[2] = (u8)MIN(255, m[2] + lum * 9 / 10); }
+    if (lum > 0) for (const char *e = "#mdhu~lxX"; *e; e++) { u8 *m = gfm[(int)*e]; m[0] = (u8)MIN(255, m[0] + lum); m[1] = (u8)MIN(255, m[1] + lum); m[2] = (u8)MIN(255, m[2] + lum * 9 / 10); }
     const int lx = 24, ly = 20, lw = 208, lh = 108, ex0 = lx + (lw - FS_EGGB_W * 5) / 2;
     if (gvo == 0) {   // the toy (top screen): its shell, the dark frame, the LCD with its lines, three gold buttons
         // (nothing is drawn twice: the shell's gradient only where the frame does not cover it, the frame only round the LCD, the LCD last)
