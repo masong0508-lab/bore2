@@ -1,10 +1,16 @@
+#ifndef GF_DMAMIN
+#define GF_DMAMIN 12
+#else
+#define GFT(k) ((void)0)
+#endif
 // ds_gfirst.c (D69): the PS1's BOREAGOTCHI! first-run screens on the DS: the title with gold lettering and a shine, the sky of twinkling stars with a shooting star, the shop card, the
 // gift box that drops, squashes, shakes, loses its ribbon and pops (confetti, sparkles, beams) while the toy rises out of it and its LCD turns on, the egg card, and the hatching (the egg
 // rocks, cracks, flashes, the shell flies and the baby steps out). Art: the PS1's src/gotchi_first_art.h (see ds_gegg.h). The PS1 draws on 320 x 240; here the two screens are ONE canvas,
 // 256 x 384 (the top screen over the bottom one): gvo is the canvas row at the top of the screen being drawn (0 or 192), every picture is drawn once for each screen from the same
 // numbers, so a beam, a ring or a toy can fly from the box on the touch screen up to the top one. Times are 60 a second (giT, ghT), whatever the frame rate.
 #ifdef DSTEST
-static volatile u32 gfp[4];   // test builds: cycles (bus clock) of the sky and of the picture, per screen
+static volatile u32 gfp[16];
+#define GFT(k) do { if (!gvo) gfp[8 + (k)] = (TIMER_DATA(0) | ((u32)TIMER_DATA(1) << 16)); } while (0)   // test builds: cycles (bus clock) of the sky and of the picture, per screen
 #endif
 static int gvo, gf_sx = 64, gf_sy = 4, gf_semi, gf_sq, gf_cx0, gf_cy0, gf_cx1 = 256, gf_cy1 = 192;   // the canvas row of this screen; the pixel's size (16ths across, pixels down); see-through; lean in whole pixels; the clip box
 static u8 gfm[128][3];                                                                                // the colour of each key of the art
@@ -21,7 +27,14 @@ static void gf_setup(int shell, int ink, int lcd) {   // the owner's colour for 
 }
 static void gf_clip(int x0, int y0, int x1, int y1) { gf_cx0 = x0; gf_cy0 = y0; gf_cx1 = x1; gf_cy1 = y1; }
 static void gf_noclip(void) { gf_clip(0, gvo, 256, gvo + 192); }
-static void gf_fill(int x, int y, int w, int h, u16 c) { rect(x, y - gvo, w, h, c); }
+static void gf_fill(int x, int y, int w, int h, u16 c) {   // a box of one colour: wide ones by DMA (a row of the middle, in whole cache lines; the ends by the CPU after it), which is about three times quicker than the CPU on main memory
+    y -= gvo; if (w < 64) { rect(x, y, w, h, c); return; }
+    if (x < 0) { w += x; x = 0; } if (y < 0) { h += y; y = 0; } if (x + w > 256) w = 256 - x; if (y + h > 192) h = 192 - y; if (w <= 0 || h <= 0) return;
+    int a0 = (x + 15) & ~15, a1 = (x + w) & ~15; if (a1 - a0 < 32) { rect(x, y, w, h, c); return; }
+    u32 cc = (u32)c | ((u32)c << 16);
+    for (int j = 0; j < h; j++) { u16 *row = scr + (y + j) * 256; DC_InvalidateRange(row + a0, (a1 - a0) * 2); dmaFillWords(cc, row + a0, (u32)(a1 - a0) * 2);
+        for (int i = x; i < a0; i++) row[i] = c; for (int i = a1; i < x + w; i++) row[i] = c; }
+}
 static void gf_round(int x, int y, int w, int h, u16 c) { gf_fill(x + 2, y, w - 4, h, c); gf_fill(x + 1, y + 1, w - 2, h - 2, c); gf_fill(x, y + 2, w, h - 4, c); }   // a box with its corners cut
 // light added to what is there (5-bit numbers): saturating for the small bright things, quick and unchecked for the faint glows that only ever lie on the dark sky
 static void gf_addsat(int x, int y, int w, int h, int ar, int ag, int ab) {
@@ -68,11 +81,13 @@ static void gf_toy(int x, int y, int sx16, int sy, int front, int lcd, int etilt
 static u32 gf_h(u32 a) { a ^= a << 13; a ^= a >> 17; a ^= a << 5; return a * 2654435761u; }
 static int gf_wave(int t, int per, int amp) { return isin((t * 4096 / per) & 4095) * amp >> 12; }
 static int gf_ease(int p, int n) { p = CLAMP(p, 0, n); int q = 256 - p * 256 / n; return 256 - q * q / 256; }   // 0..256, quick then slow
-static void gf_disc(int cx, int cy, int r, int ar, int ag, int ab, int sat) {   // a chunky circle of added light
-    int st = MAX(3, r / 10);
-    for (int dy = -r; dy < r; dy += st) { int a = dy + st / 2, hw = g_isq(MAX(0, r * r - a * a)); if (cy + dy + st <= gvo || cy + dy >= gvo + 192) continue; if (sat) gf_addsat(cx - hw, cy + dy, hw * 2, st, ar, ag, ab); else gf_addq(cx - hw, cy + dy, hw * 2, st, ar, ag, ab); }
-}
-static void gf_glow(int cx, int cy, int r, int ar, int ag, int ab) { for (int k = 0; k < 3; k++) gf_disc(cx, cy, r - k * r / 4, ar, ag, ab, 0); }   // a soft glow: three rings of faint light (5-bit numbers)
+// glows are not drawn on top: a glow is a few discs of faint light that gf_sky() puts into the very rows it fills (no second pass over the screen: main memory is the slow part). They are
+// listed before gf_sky() runs (gf_lights, per scene) and added up where they overlap.
+static int gf_isq(int n) { int r = 0, b = 1 << 14; if (n <= 0) return 0; while (b > n) b >>= 2; while (b) { if (n >= r + b) { n -= r + b; r = (r >> 1) + b; } else r >>= 1; b >>= 2; } return r; }   // (a square root with no divide)
+typedef struct { s16 cx, cy, r, st, inv; u8 ar, ag, ab; s16 hw[24]; } GfDisc;   // (st: the strip's height, inv: 65536 / st: no divisions in the row loop, the ARM9 has none)   // (hw: the half width of each strip, found when first needed)
+static GfDisc gfD[14]; static int gfDn;
+static void gf_disc(int cx, int cy, int r, int ar, int ag, int ab) { if (gfDn < 14 && r > 0 && (ar | ag | ab)) { GfDisc *d = &gfD[gfDn++]; d->cx = (s16)cx; d->cy = (s16)cy; d->r = (s16)r; d->st = (s16)MAX(3, r / 10); d->inv = (s16)(65535 / d->st + 1); d->ar = (u8)ar; d->ag = (u8)ag; d->ab = (u8)ab; for (int k = 0; k < 24; k++) d->hw[k] = -1; } }
+static void gf_glow(int cx, int cy, int r, int ar, int ag, int ab) { for (int k = 0; k < 3; k++) gf_disc(cx, cy, r - k * r / 4, ar, ag, ab); }   // a soft glow: three rings of faint light (5-bit numbers)
 static void gf_flash(int v) { if (v > 0) { int a = MIN(31, (v + 4) >> 3); gf_addsat(0, gvo, 256, 192, a, a, a * 9 / 10); } }
 static void gf_line(int x0, int y0, int x1, int y1, u16 c) {
     int dx = x1 > x0 ? x1 - x0 : x0 - x1, dy = y1 > y0 ? y1 - y0 : y0 - y1, sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, e = dx - dy;
@@ -117,13 +132,39 @@ static void gf_tc(int cx, int y, int f, u16 c, const char *s) { text(cx - tw(f, 
 static void gf_title_case(char *s) { int up = 1; for (char *p = s; *p; p++) { if (*p == ' ') { up = 1; continue; } if (up) { up = 0; if (p[0] == 'T' && p[1] == 'H' && p[2] == 'E' && p[3] == ' ') { p[0] = 't'; p[1] = 'h'; p[2] = 'e'; p += 2; continue; } } else if (*p >= 'A' && *p <= 'Z') *p = (char)(*p + 32); } }   // BISCUIT THE RED SNAIL -> Biscuit the Red Snail
 
 // ---- the sky: a deep violet gradient (dithered: the DS has 5 bits a colour), a slow glow in each screen, three layers of stars that drift and twinkle, now and then a shooting star ----
+static int gfOcc[4];   // x0, y0, x1, y1 on the screen: a picture that will cover this box (the sky leaves it out)
+static u8 gfRow[384][3]; static int gfRowOk;   // the gradient's colour on each canvas row (found once)
 static void gf_sky(void) {
+    if (!gfRowOk) { gfRowOk = 1; for (int cy = 0; cy < 384; cy++) { int r, g, b; if (cy < 180) { r = 26 + 4 * cy / 180; g = 12 + 4 * cy / 180; b = 62 + 12 * cy / 180; } else { int k = cy - 180; r = 30 - 25 * k / 204; g = 16 - 12 * k / 204; b = 74 - 46 * k / 204; } gfRow[cy][0] = (u8)r; gfRow[cy][1] = (u8)g; gfRow[cy][2] = (u8)b; } }
     static const u8 BAY[2][2] = { { 0, 2 }, { 3, 1 } };
-    for (int y = 0; y < 192; y++) { int cy = y + gvo, r, g, b;
-        if (cy < 180) { r = 26 + 4 * cy / 180; g = 12 + 4 * cy / 180; b = 62 + 12 * cy / 180; } else { int k = cy - 180; r = 30 - 25 * k / 204; g = 16 - 12 * k / 204; b = 74 - 46 * k / 204; }
-        u16 p[2]; for (int xx = 0; xx < 2; xx++) { int t = BAY[y & 1][xx]; p[xx] = C15(MIN(31, (r / 2 + t) >> 2), MIN(31, (g / 2 + t) >> 2), MIN(31, (b / 2 + t) >> 2)); }
-        u32 w = (u32)p[0] | ((u32)p[1] << 16), *q = (u32 *)(scr + y * 256); for (int i = 0; i < 128; i++) q[i] = w; }
-    { int cx = 128 + (isin(ganim * 3 & 4095) >> 6), cy = gvo + 96 + (icos(ganim * 2 & 4095) >> 7); gf_disc(cx, cy, 88, 1, 0, 1, 0); gf_disc(cx, cy, 56, 0, 0, 1, 0); }
+    DC_InvalidateRange(scr, 256 * 192 * 2);   // (the rows are written by DMA, round the cache)
+#ifdef DSTEST
+    u32 gt0 = TIMER_DATA(0) | ((u32)TIMER_DATA(1) << 16);
+#endif
+    { int cx = 128 + (isin(ganim * 3 & 4095) >> 6), cy = gvo + 96 + (icos(ganim * 2 & 4095) >> 7); gf_disc(cx, cy, 88, 1, 0, 1); gf_disc(cx, cy, 56, 0, 0, 1); }   // (the slow glow of each screen)
+    // the rows in strips of four: the discs' edges are found once for a strip (their half widths at its middle), the segments (a span and the light on it) are reused for its four rows; each row fills its segments with
+    // the dither of its own gradient colour plus that light. (No division and no sorting in the row loop: the ARM9 has no divide, and main memory is slow enough as it is.)
+    for (int g4 = 0; g4 < 48; g4++) {
+        int mid = gvo + g4 * 4 + 2, xs[2 * 14 + 2], nx = 0, dd[14], dx0[14], dx1[14], nd = 0, sa[34], sb[34], sr[34], sg[34], sbl[34], ns = 0; xs[nx++] = 0; xs[nx++] = 256;
+        for (int i = 0; i < gfDn; i++) { const GfDisc *d = &gfD[i]; int a = mid - d->cy; if (a <= -d->r || a >= d->r) continue; int hw = gf_isq(d->r * d->r - a * a), x0 = (d->cx - hw) & ~1, x1 = (d->cx + hw + 1) & ~1; if (x0 < 0) x0 = 0; if (x1 > 256) x1 = 256; if (x1 <= x0) continue;
+            dd[nd] = i; dx0[nd] = x0; dx1[nd++] = x1; xs[nx++] = x0; xs[nx++] = x1; }
+        for (int i = 1; i < nx; i++) { int v = xs[i], j = i; while (j > 0 && xs[j - 1] > v) { xs[j] = xs[j - 1]; j--; } xs[j] = v; }
+        for (int i = 0; i + 1 < nx; i++) { int xa = xs[i], xb = xs[i + 1]; if (xb <= xa) continue; int ar = 0, ag = 0, ab = 0;
+            for (int k = 0; k < nd; k++) if (xa >= dx0[k] && xb <= dx1[k]) { const GfDisc *d = &gfD[dd[k]]; ar += d->ar; ag += d->ag; ab += d->ab; }
+            if (ns && sr[ns - 1] == ar && sg[ns - 1] == ag && sbl[ns - 1] == ab) { sb[ns - 1] = xb; continue; }   // (the same light as the span before: one span)
+            sa[ns] = xa; sb[ns] = xb; sr[ns] = ar; sg[ns] = ag; sbl[ns++] = ab; }
+        for (int y = g4 * 4; y < g4 * 4 + 4; y++) { int cy = y + gvo, r = gfRow[cy][0] >> 1, g = gfRow[cy][1] >> 1, b = gfRow[cy][2] >> 1; const u8 *bay = BAY[y & 1];
+            for (int k = 0; k < ns; k++) { u16 p[2];
+                for (int xx = 0; xx < 2; xx++) { int t = bay[xx]; p[xx] = C15(MIN(31, ((r + t) >> 2) + sr[k]), MIN(31, ((g + t) >> 2) + sg[k]), MIN(31, ((b + t) >> 2) + sbl[k])); }
+                u32 w = (u32)p[0] | ((u32)p[1] << 16);
+                for (int part = 0; part < 2; part++) { int xa = sa[k], xb = sb[k];   // (a picture that covers the middle of the screen: only the sky outside it is drawn)
+                    if (y >= gfOcc[1] && y < gfOcc[3]) { if (part == 0) xb = MIN(xb, gfOcc[0]); else xa = MAX(xa, gfOcc[2]); } else if (part) break;
+                    int n = (xb - xa) >> 1; u32 *q = (u32 *)(scr + y * 256 + xa); if (n <= 0) continue;
+                    if (n < GF_DMAMIN) { for (int j = 0; j < n; j++) q[j] = w; } else dmaFillWords(w, q, (u32)n * 4); } } } }
+#ifdef DSTEST
+    gfp[6 + (gvo ? 1 : 0)] = (TIMER_DATA(0) | ((u32)TIMER_DATA(1) << 16)) - gt0;
+    gfp[4 + (gvo ? 1 : 0)] = gfp[6 + (gvo ? 1 : 0)];
+#endif
     static const u8 tint[3][3] = { { 214, 204, 255 }, { 255, 240, 180 }, { 170, 232, 255 } };
     for (int i = 0; i < 40; i++) {
         u32 h = gf_h((u32)(i * 77 + 5)); int lay = i < 20 ? 0 : i < 32 ? 1 : 2, sp = lay == 0 ? 14 : lay == 1 ? 9 : 6;
@@ -156,7 +197,6 @@ static void gf_lcdtile(int x, int y, int sp, int col, int fr) {   // a pet on a 
 }
 static void gf_title(void) {
     int y = 22 + gf_wave(ganim, 110, 2), w = gf_banner_w(3, "BOREAGOTCHI!"), x0 = 128 - w / 2; char s[48];
-    gf_glow(128, y + 12, 90, 1, 1, 0);
     { int sh = x0 - 60 + (ganim * 3) % 420; gf_banner(128, y, 3, "BOREAGOTCHI!", sh > x0 - 10 && sh < x0 + w ? sh : -1); }
     gf_spark(x0 - 8, y + 10, ((ganim >> 4) & 1) * 2); gf_spark(x0 + w + 8, y + 14, (((ganim >> 4) + 1) & 1) * 2); gf_spark(128 + gf_wave(ganim, 200, 100), y - 8, 0);
     gf_tc(128, 60, FS_BODY, C15(23, 25, 31), "The pocket pet that needs you");
@@ -175,7 +215,7 @@ static void gf_shop_top(void) {
     for (int i = 0; i < 4; i++) { int y = 24 + i * 32; rect(120, y, 128, 29, PANB); rect(121, y + 1, 126, 27, PAN); rect(125, y + 10, 8, 8, C15(10, 26, 10)); gwrapn(138, y + 5, 106, 3, TXT, bl[i]); }
 }
 static void gf_shop_bottom(void) {
-    gf_glow(128, 192 + 70, 70, 1, 1, 0); gf_spark(40, 192 + 44, (ganim >> 4) & 1); gf_spark(216, 192 + 64, ((ganim >> 4) + 1) & 1); gf_spark(60, 192 + 100, ((ganim >> 5) & 1)); gf_spark(200, 192 + 24, ((ganim >> 5) + 1) & 1);
+    gf_spark(40, 192 + 44, (ganim >> 4) & 1); gf_spark(216, 192 + 64, ((ganim >> 4) + 1) & 1); gf_spark(60, 192 + 100, ((ganim >> 5) & 1)); gf_spark(200, 192 + 24, ((ganim >> 5) + 1) & 1);
     gf_tc(128, 192 + 28, FS_HEAD, C15(31, 26, 8), "Thank you!"); gf_tc(128, 192 + 48, FS_BODY, TXT, "Your toy came with"); gf_tc(128, 192 + 62, FS_BODY, TXT, "its first egg."); gf_tc(128, 192 + 92, FS_BODY, C15(23, 25, 31), "Tap Next to open the box.");
 }
 
@@ -187,13 +227,11 @@ static void gf_unbox(int t) {
     if (t < 14) yo = -342 + t * t * 342 / 196; else if (t < 18) { pw = 78; ph = 3; } else if (t < 30) yo = -(isin((t - 18) * 2048 / 12) * 10 >> 12);
     if (t >= 30 && t < GUB_POP) { int a = MIN(5, 1 + (t - 30) / 10); dx = ((t >> 1) & 1) ? a : -a; hop = t % 14 < 3 ? 3 : 0; }
     int bw = 30 * pw >> 4, bx = CX - bw / 2 + dx, top = GY + yo - 17 * ph, lidy = top - 6 * ph;
-    { int gl = pop ? 3 + (u < 40 ? 4 : 0) : t >= 40 ? (t - 40) / 9 : 0; if (gl) gf_glow(CX, 192, pop ? 96 : 64, (gl * 3 + 4) >> 3, (gl * 2 + 4) >> 3, (gl + 4) >> 3); }
     if (pop && u < 44) { int r0 = 24 + u * 5; gf_rays(CX, MY, 14, r0, r0 + 120 * (44 - u) / 44, u * 8, 255, 232, 120); }
     gf_scale(1); gf_sx = pw; gf_sy = ph;
     GSPR(BOX_MOUTH, bx, top - 4 * ph, 0, 0);
     if (pop && u > 2) {   // the toy rises out of the box, turns right round and settles on the top screen
         int p = u - 2, e = gf_ease(p, 44), c = icos(e * 16), w16 = 48 * ABS(c) / 4096 + 6, y0 = top - 20, ty = y0 - (y0 - 62) * e / 256 + (e == 256 ? gf_wave(ganim, 90, 3) : 0), tw_ = 22 * w16 >> 4;
-        if (e < 256) gf_glow(CX, ty + 40, 44, 1, 1, 0);
         gf_toy(CX - tw_ / 2, ty, w16, 3, c >= 0, t >= 126, ((ganim >> 5) & 3) == 0 ? gf_wave(ganim, 14, 3) : 0); gf_scale(1); gf_sx = pw; gf_sy = ph; }
     GSPR(BOX_BODY, bx, top, 0, 0);
     { int rw = t < 72 ? pw : t < 82 ? pw * (82 - t) / 10 : 0; if (rw > 0) { int x = CX - (6 * rw >> 4) / 2 + dx; int a = gf_sx; gf_sx = rw; GSPR(RIB_BODY, x, top, 0, 0); if (!pop) GSPR(RIB_LID, x, lidy - hop, 0, 0); gf_sx = a; } }
@@ -227,7 +265,6 @@ static void gf_unbox(int t) {
 static void gf_eggcard(void) {
     gf_setup(gf_shell(), gcb()->col, 1); gf_noclip(); gf_semi = 0;
     int ty = 24 + gf_wave(ganim, 120, 3);
-    gf_glow(128, ty + 70, 100, 2, 1, 0);
     gf_toy(73, ty, 80, 5, 1, 1, ((ganim >> 5) & 3) == 0 ? gf_wave(ganim, 14, 4) : 0);
     gf_spark(34, ty + 20, (ganim >> 4) & 1); gf_spark(224, ty + 52, ((ganim >> 4) + 1) & 1); gf_spark(44, ty + 126, ((ganim >> 5) & 1)); gf_spark(214, ty + 112, ((ganim >> 5) + 1) & 1);
     gf_round(8, 192 + 8, 240, 128, K8(255, 214, 70)); gf_round(10, 192 + 10, 236, 124, K8(40, 18, 64));
@@ -240,24 +277,29 @@ static void gf_eggcard(void) {
 static const struct { u8 s, e, amp; } gHRock[5] = { { 8, 20, 6 }, { 30, 44, 8 }, { 52, 60, 12 }, { 62, 70, 14 }, { 72, 84, 16 } };
 static void gf_hatch(void) {
     Blob *b = gcb(); int h = ghT; const u8 *sh = gShellPal[gf_shell() % 7]; gf_setup(gf_shell(), b->col, 1); gf_semi = 0; gf_noclip();
+    // (the light inside grows, then the flash: added to the LCD, the egg and the shell's bits by changing their colours, not by a pass over the screen)
+    GFT(0);
+    int lum = (h >= 52 && h < 88 ? MIN(14, (h - 52) / 3 + 2) : 0) + (h >= 84 && h < 96 ? (h < 88 ? (h - 84) * 28 : 110 - (h - 88) * 14) : 0);
+    if (lum > 0) for (const char *e = "#mdhu~l"; *e; e++) { u8 *m = gfm[(int)*e]; m[0] = (u8)MIN(255, m[0] + lum); m[1] = (u8)MIN(255, m[1] + lum); m[2] = (u8)MIN(255, m[2] + lum * 9 / 10); }
     const int lx = 24, ly = 20, lw = 208, lh = 108, ex0 = lx + (lw - FS_EGGB_W * 5) / 2;
     if (gvo == 0) {   // the toy (top screen): its shell, the dark frame, the LCD with its lines, three gold buttons
-        gf_glow(128, 82, 118, 1, 1, 2);
+        // (nothing is drawn twice: the shell's gradient only where the frame does not cover it, the frame only round the LCD, the LCD last)
         for (int y = 4; y < 160; y += 2) { int k = (y - 4) * 256 / 156, r = MIN(255, sh[0] + 40) * (256 - k) / 256 + sh[0] * 6 / 10 * k / 256, g = MIN(255, sh[1] + 40) * (256 - k) / 256 + sh[1] * 6 / 10 * k / 256, bl = MIN(255, sh[2] + 40) * (256 - k) / 256 + sh[2] * 6 / 10 * k / 256;
-            int ins = y < 14 ? 14 - y : y > 148 ? y - 148 : 0; gf_fill(8 + ins, y, 240 - 2 * ins, 2, K8(r, g, bl)); }
-        gf_round(16, 12, 224, 124, K8(54, 26, 74)); gf_fill(20, 14, 216, 3, C15(10, 8, 12));
+            int ins = y < 14 ? 14 - y : y > 148 ? y - 148 : 0; u16 cs = K8(r, g, bl);
+            if (y >= 12 && y + 2 <= 136) { gf_fill(8 + ins, y, 16 - 8 - ins, 2, cs); gf_fill(240, y, 8 - ins, 2, cs); } else gf_fill(8 + ins, y, 240 - 2 * ins, 2, cs); }
+        { u16 fr = K8(54, 26, 74); gf_round(16, 12, 224, 8, fr); gf_round(16, 128, 224, 8, fr); gf_fill(16, 20, 8, 108, fr); gf_fill(232, 20, 8, 108, fr); gf_fill(20, 14, 216, 3, C15(10, 8, 12)); }
         for (int i = 0; i < 3; i++) { int cx = 100 + i * 28; gf_round(cx - 6, 142, 13, 13, K8(255, 205, 60)); gf_fill(cx - 3, 144, 3, 3, K8(255, 246, 170)); }
-        for (int y = ly; y < ly + lh; y += 2) { int k = (y - ly) * 8 / lh; gf_fill(lx, y, lw, 2, K8(182 - k * 3, 206 - k * 3, 138 - k * 2)); }
-        for (int y = ly + 5; y < ly + lh; y += 6) gf_fill(lx, y, lw, 1, K8(156, 182, 116));
+        for (int y = ly; y < ly + lh; y++) { int k = (y - ly) * 8 / lh, sl = y >= ly + 5 && (y - ly - 5) % 6 == 0;   // (the LCD: a gradient of eight steps with a dark line every six rows)
+            gf_fill(lx, y, lw, 1, sl ? K8(MIN(255, 156 + lum), MIN(255, 182 + lum), MIN(255, 116 + lum * 9 / 10)) : K8(MIN(255, 182 - k * 3 + lum), MIN(255, 206 - k * 3 + lum), MIN(255, 138 - k * 2 + lum * 9 / 10))); }
     }
+    GFT(1);
     gf_clip(lx, ly, lx + lw, ly + lh);
     int rock = 0, hopy = 0; for (int i = 0; i < 5; i++) if (h >= gHRock[i].s && h < gHRock[i].e) rock = gf_wave(h - gHRock[i].s, (gHRock[i].e - gHRock[i].s) / 3, gHRock[i].amp);
     if (h >= 62 && h < 84 && (h % 8) < 3) hopy = -(h % 8 + 1) * 2;
     int stage = h >= 72 ? 3 : h >= 52 ? 2 : h >= 34 ? 1 : 0, ey = ly + (lh - (FS_EGGB_H - 2) * 5 - 10) / 2 + hopy, pat = gegg_pat(b);   // (5 px a dot, the LCD's own scale: 14 x 17 and its shadow, in the middle)
-    if (h >= 52 && h < 88) { int v = MIN(14, (h - 52) / 3 + 2); gf_rect(lx, ly, lw, lh, v, v, v * 9 / 10, 1); }   // (the LCD brightens as the light inside grows)
     if (h < 88) { const char *const *er = gf_egg(0, pat, stage); gf_sx = 80; gf_sy = 5; gf_sq = 1;
         gf_spr(er + FS_EGGB_H - 2, FS_EGGB_W, 2, ex0, ey - hopy + (FS_EGGB_H - 2) * 5, 0, 0); gf_spr(er, FS_EGGB_W, FS_EGGB_H - 2, ex0, ey, rock, 0); gf_sq = 0; }   // (the shadow stays on the ground when it hops)
-    if (h >= 84 && h < 96) { int v = h < 88 ? (h - 84) * 28 : 110 - (h - 88) * 14; gf_rect(lx, ly, lw, lh, MIN(255, v), MIN(255, v), MIN(255, v * 9 / 10), 1); }
+    GFT(2);
     if (h >= 88) {   // the baby hops out of the shell; the shell's bits and the light fly
         int u = h - 88, hy = u < 22 ? -(isin(u * 2048 / 22) * 16 >> 12) : 0;
         gf_sx = 80; gf_sy = 5; gf_spr(FS_EGGCUP, FS_EGGCUP_W, FS_EGGCUP_H, ex0, ey - hopy + (FS_EGGB_H - FS_EGGCUP_H) * 5, 0, 0);
@@ -266,8 +308,10 @@ static void gf_hatch(void) {
         for (int i = 0; i < 12; i++) { u32 q = gf_h((u32)(i * 17 + 3)); int vx = (int)(q % 61) - 30, vy = -(30 + (int)((q >> 8) % 36)), x = 122 + vx * u / 4, y = 74 + vy * u / 6 + u * u / 14; gf_sx = 80; gf_sy = 5; gf_spr(gfShards[i & 3], gfShardW[i & 3], gfShardH[i & 3], x, y, 0, ((u >> 2) + i) & 1); }
         for (int i = 0; i < 6; i++) { int ph = (u * 2 + i * 31) % 50; if (u > 6 && ph < 36) gf_spark(lx + 22 + (int)(gf_h((u32)(i * 29 + 1)) % (u32)(lw - 44)), ly + 16 + (int)(gf_h((u32)(i * 19 + 5)) % 60), ph < 20 ? 1 : 0); }
     }
+    GFT(3);
     gf_noclip();
     if (h >= 84 && h < 96) { int v = h < 88 ? (h - 84) * 28 : 110 - (h - 88) * 14; gf_flash(v / 2); }   // (a flash that spills over both screens)
+    GFT(4);
     // the words (on the touch screen)
     { char s[56], nm[40]; const int by = 192 + 22;
       if (h < 52) gf_tc(128, by + 10, FS_BODY, TXT, "Something is moving inside...");
@@ -278,10 +322,22 @@ static void gf_hatch(void) {
     }
 }
 
+// ---- the lights: every glow of the picture, listed before the sky is drawn (the sky's rows carry them) ----
+static void gf_lights(void) {
+    gfDn = 0; gfOcc[0] = gfOcc[1] = gfOcc[2] = gfOcc[3] = 0;
+    if (gview == GV_TITLE) gf_glow(128, 22 + gf_wave(ganim, 110, 2) + 12, 90, 1, 1, 0);
+    else if (gview == GV_HATCH) { if (gvo == 0) { gf_glow(128, 82, 118, 1, 1, 2); gfOcc[0] = 8; gfOcc[1] = 14; gfOcc[2] = 248; gfOcc[3] = 148; } }
+    else if (gisub == 1) { int t = giT, pop = t >= GUB_POP, u = t - GUB_POP, gl = pop ? 3 + (u < 40 ? 4 : 0) : t >= 40 ? (t - 40) / 9 : 0;
+        if (gl) gf_glow(128, 192, pop ? 96 : 64, (gl * 3 + 4) >> 3, (gl * 2 + 4) >> 3, (gl + 4) >> 3);
+        if (pop && u > 2) { int e = gf_ease(u - 2, 44), y0 = 332 - 68 - 20; if (e < 256) gf_glow(128, y0 - (y0 - 62) * e / 256 + 40, 44, 1, 1, 0); } }   // (the toy's own light while it rises)
+    else if (gisub == 2) gf_glow(128, 24 + gf_wave(ganim, 120, 3) + 70, 100, 2, 1, 0);
+    else gf_glow(128, 192 + 70, 70, 1, 1, 0);
+}
+
 // ---- which screen draws what ----
 static int gf_first(void) { return gview == GV_TITLE || gview == GV_INTRO || gview == GV_HATCH; }
 static void gf_screen(int bottom) {   // the first-run view on the top screen (0) or the touch screen (1): the sky, then the picture for that screen
-    gvo = bottom ? 192 : 0; gf_semi = 0; gf_sq = 0; gf_noclip();
+    gvo = bottom ? 192 : 0; gf_semi = 0; gf_sq = 0; gf_noclip(); gf_lights();
 #ifdef DSTEST
     u32 c0 = TIMER_DATA(0) | ((u32)TIMER_DATA(1) << 16); gf_sky(); gfp[bottom] = (TIMER_DATA(0) | ((u32)TIMER_DATA(1) << 16)) - c0; c0 = TIMER_DATA(0) | ((u32)TIMER_DATA(1) << 16);
 #else
