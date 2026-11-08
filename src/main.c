@@ -731,7 +731,7 @@ static void life_update(int steps) {
     if (sim_want_dj) { sim_want_dj = 0; if ((ovl = ovl_load("DJ.OVL"))) { ovl->open(0); state = ST_DJ; } return; }   // (the DJ booth: a file of its own on the disc)
     if (sim_want_party) { sim_want_party = 0; if ((ovl = ovl_load("PARTY.OVL"))) { ovl->open(0); state = ST_PARTY; } return; }   // (the PARTY pack: the guest list, a file of its own on the disc)
     if (sim_want_gotchi) { int g_ = sim_want_gotchi - 1; sim_want_gotchi = 0; if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(g_); state = ST_GOTCHI; } return; }   // (the BOREAGOTCHI! pack: a file of its own on the disc)
-    if (sim_want_arcade) { int g_ = sim_want_arcade - 1; sim_want_arcade = 0; arun.role = 70; if ((ovl = ovl_load(arcade_file(g_)))) { arun.role = 71; ovl->open(g_); state = ST_ARCADE; } return; }   // (an arcade cabinet, the prize counter)
+    if (sim_want_arcade) { int g_ = sim_want_arcade - 1; sim_want_arcade = 0; if ((ovl = ovl_load(arcade_file(g_)))) { ovl->open(g_); state = ST_ARCADE; } return; }   // (an arcade cabinet, the prize counter)
     if (sim_want_jobs) { sim_want_jobs = 0; jobs_board = 1; jobs_open(); sub_back = ST_LIFE; state = ST_JOBS; return; }   // (the computer's JOB BOARD)
     if (story_card()) { sc_t = 0; state = ST_SCARD; audio_voice(VOICE_FINISHED); return; }   // a chapter begins, or one is done
     Sim *s = &sims[player];

@@ -22,7 +22,6 @@ Anything not finished ships as a proper placeholder, never as a half-working scr
 | BAND + DJ (DS) | two-deck mixer on the DS | not started |
 | DREAMCAST EXTRAS | VMU pet rewards, Dreamcast furniture and outfits, water and glass, night glow, gallery, pads 3-4 | partly in EXTRAS tab |
 | REAL WORLD | REAL TIME clock (done), real weather and holidays (idea) | clock done |
-| FAMILY TREE 2 | generations, inheritance and memorials for the people (not only pets) | idea |
 | HIGH FIDELITY (DS/DSi) | DSi-only extras: more memory, bigger crowds, camera skin colours | idea |
 
 ## Per-port plan
