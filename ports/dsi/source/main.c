@@ -465,6 +465,8 @@ static const char *msg = "";
 typedef struct { int x, y, tx, ty, wx, wy, need[6], acc[6], act, act_left, act_amt, act_obj, face, rel, dirn, age, soc, tgt; u8 skin, hair, hcol, shirt, beard, fc, pm[PMN]; u16 cc[3]; } Sim;   // x, y in 1/16 cells; needs 0..100: hunger, fun, energy, social, bladder, hygiene
 #define SIM_MAX 6
 static Sim sims[SIM_MAX]; static int cur_sim, nsim = 3, ctl, minutes = 11 * 60 + 40;
+static u8 fid[SIM_MAX], fpar[SIM_MAX][2], fpt[SIM_MAX], fid_next = 1;   // (D62) who is whose: a stable id per sim, its two parents' ids, its partner's id (0: none). Its own save block ('FY'); old saves have none
+static int fam_id(int i) { if (!fid[i]) { fid[i] = fid_next++; if (!fid_next) fid_next = 1; } return fid[i]; }
 static u8 slv[SIM_MAX];   // (D36) the storey each sim is on
 static char sname[SIM_MAX][20] = { "Ashley Newbie", "Ronald Bacon", "Kit Farlow" };
 static const char *const STGN[6] = { "Baby", "Toddler", "Child", "Teen", "Adult", "Elder" };   // the life stages: 0-2, 3-5, 6-12, 13-17, 18-59, 60+ years (a year is a day on the clock)
@@ -2155,10 +2157,11 @@ static void apply_soc(int ai, int tgt, int id) {
     int d = SREL[id]; a->need[3] = cl100(a->need[3] + SSOC[id]); a->need[1] = cl100(a->need[1] + SFUN[id]);
     if (o) { o->need[3] = cl100(o->need[3] + SSOC[id]); o->need[1] = cl100(o->need[1] + SFUN[id]); }
     if (id == S_FEED) o->need[0] = cl100(o->need[0] + 60); if (id == S_TUCK) o->need[2] = cl100(o->need[2] + 60);
+    if (id == S_KISS && o && !fpt[ai] && !fpt[tgt] && ai != tgt) { int fa = fam_id(ai), fo = fam_id(tgt); fpt[ai] = (u8)fo; fpt[tgt] = (u8)fa; if (ai == ctl) say("A new partner!"); }   // (D62) a kiss makes a pair (the family tree shows them)
     if (id == S_BABY) { if (nsim >= SIM_MAX) { if (ai == ctl) say("Household is full"); return; } if (pop_per + pop_born >= DS_POP_MAX) { if (ai == ctl) say("City is full (2000)"); return; }
         int bx2 = a->x + 16, by2 = a->y; for (int k = 0; k < nobj; k++) if (objs[k].c == 5 && objs[k].i == 0) { bx2 = objs[k].x * 16; by2 = objs[k].y * 16; break; }
         static const char *const BN[8] = { "Bo", "Remy", "Pip", "Juno", "Tate", "Wren", "Otis", "Fern" }; char nm[20]; sprintf(nm, "%s %s", BN[(minutes / 7 + nsim) % 8], strrchr(sname[ai], ' ') ? strrchr(sname[ai], ' ') + 1 : "B");
-        new_sim(0, (minutes & 1) ? a->skin : o->skin, (u8)((minutes + nsim) % 12), (minutes & 2) ? a->hcol : o->hcol, (u8)(minutes % 6), nm, bx2, by2); pop_born++; st_born++; life_ev(ai, WN_BABY, 0); if (ai == ctl) say("A baby is born!"); }
+        new_sim(0, (minutes & 1) ? a->skin : o->skin, (u8)((minutes + nsim) % 12), (minutes & 2) ? a->hcol : o->hcol, (u8)(minutes % 6), nm, bx2, by2); pop_born++; st_born++; { int bi = nsim - 1, fa = fam_id(ai), fo = fam_id(tgt); fam_id(bi); fpar[bi][0] = (u8)fa; fpar[bi][1] = (u8)fo; if (!fpt[ai] && !fpt[tgt]) { fpt[ai] = (u8)fo; fpt[tgt] = (u8)fa; } } life_ev(ai, WN_BABY, 0); if (ai == ctl) say("A baby is born!"); }
     if (id == S_INVITE) { if (nsim >= SIM_MAX) { if (ai == ctl) say("Household is full"); return; } char nm[20]; cit_name(ct, nm);
         new_sim(sb == 3 ? 15 : sb == 4 ? 28 : 65, ct->skin, (u8)((ct->id >> 3) % NHAIRD), ct->hair, ct->shirt, nm, a->x, a->y); cr->taken = 1; ct->on = 0; if (ai == ctl) say("Moved in!"); return; }
     if (cit) { int r = (int)cr->rel + d; cr->rel = (u8)(r < 0 ? 0 : r > 10 ? 10 : r); } else { int r = o->rel + d; o->rel = r < 0 ? 0 : r > 10 ? 10 : r; r = a->rel + d; a->rel = r < 0 ? 0 : r > 10 ? 10 : r; }
@@ -2173,7 +2176,7 @@ static void start_soc(int ai, int tgt, int id) {
 static void sim_die(int k) { st_died++;   // an elder passes away: a statue marks the spot and the household closes up
     Sim *m = &sims[k]; int cx = fdiv(m->x + 8, 16), cy = fdiv(m->y + 8, 16); static char bf[40]; sprintf(bf, "%s passed away", sname[k]); say(bf); ghost_add(m);
     if (cx >= 0 && cy >= 0 && cx < GN && cy < GN && nobj < 400) { objs[nobj].x = (u8)cx; objs[nobj].y = (u8)cy; objs[nobj].c = (u8)((PS1ID[0x83] - 1) >> 2); objs[nobj].i = (u8)((PS1ID[0x83] - 1) & 3); objs[nobj].rot = (u8)(slv[k] << 2); nobj++; occ_ok = 0; }
-    for (int i = k; i < nsim - 1; i++) { sims[i] = sims[i + 1]; life[i] = life[i + 1]; slv[i] = slv[i + 1]; memcpy(sname[i], sname[i + 1], 20); } nsim--; life_ver++;
+    for (int i = k; i < nsim - 1; i++) { sims[i] = sims[i + 1]; life[i] = life[i + 1]; slv[i] = slv[i + 1]; memcpy(sname[i], sname[i + 1], 20); fid[i] = fid[i + 1]; fpar[i][0] = fpar[i + 1][0]; fpar[i][1] = fpar[i + 1][1]; fpt[i] = fpt[i + 1]; } nsim--; fid[nsim] = fpt[nsim] = fpar[nsim][0] = fpar[nsim][1] = 0; life_ver++;
     if (ctl == k) ctl = 0; else if (ctl > k) ctl--; if (stage_of(sims[ctl].age) == 0) for (int i = 0; i < nsim; i++) if (stage_of(sims[i].age) > 0) { ctl = i; break; }
     cur_sim = ctl; memset(ilim, 0, sizeof ilim); ui_ver++; }
 
@@ -2286,8 +2289,9 @@ static int sav_apply(void) {   // 1 = loaded
     if (c.lot_bx >= 0) { lot_enter(c.lot_bx, c.lot_by); sel_x = c.lot_bx < 2000 ? c.lot_bx : home_bx; sel_y = c.lot_bx < 2000 ? c.lot_by : home_by; for (int i = 0; i < SIM_MAX; i++) slv[i] = lvs[i] <= UPN ? lvs[i] : 0; }
     return 1;
 }
+static void gt_day(void);
 static void day_roll(void) {
-    st_days++; memset(ilim, 0, sizeof ilim); farm_midnight(); for (int k = 0; k < 64; k++) crt[k].talks = 0;
+    st_days++; memset(ilim, 0, sizeof ilim); farm_midnight(); gt_day(); for (int k = 0; k < 64; k++) crt[k].talks = 0;
     for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; int s0 = stage_of(m->age); if (m->age < 99) m->age++; int s1 = stage_of(m->age); if (s0 != s1) { static char bf[40]; sprintf(bf, "%s is now a %s", sname[i], STGN[s1]); say(bf); } }
     for (int i = 0; i < nsim; i++) if (sims[i].age >= 80 && nsim > 1) { int alive = 0; for (int q = 0; q < nsim; q++) if (q != i && stage_of(sims[q].age) > 0) alive++; if (alive && (int)(hsh((u32)(minutes + i * 77)) % 100) < (sims[i].age - 79) * 7) { sim_die(i); break; } }
     if (o_auto && mode == M_LIVE && sav_ok() && lot_bx >= 0) { if (sav_write()) say("Game saved"); }
@@ -3104,7 +3108,7 @@ int main(void) {
             LV = slv[ctl];
 #ifdef DSTEST
 #ifdef AUTO_SCENE
-            { static int at_n, fired; if (!fired && ++at_n >= 10 && (held & (KEY_X | KEY_Y | KEY_L | KEY_R | KEY_SELECT))) { fired = 1; test_scene = AUTO_SCENE +((held & KEY_X) != 0) + 2 * ((held & KEY_Y) != 0) + 4 * ((held & KEY_L) != 0) + 8 * ((held & KEY_R) != 0); } }   // (the keys held then add 1 X, 2 Y, 4 L, 8 R)   // (when the emulator's poke does not reach: a build that opens that scene itself)
+            { static int at_n, fired; if (!fired && ++at_n >= 10 && (held & (KEY_X | KEY_Y | KEY_L | KEY_R | KEY_SELECT))) { fired = 1; down &= ~(KEY_X | KEY_Y | KEY_L | KEY_R | KEY_SELECT); test_scene = AUTO_SCENE +((held & KEY_X) != 0) + 2 * ((held & KEY_Y) != 0) + 4 * ((held & KEY_L) != 0) + 8 * ((held & KEY_R) != 0); } }   // (the keys held then add 1 X, 2 Y, 4 L, 8 R)   // (when the emulator's poke does not reach: a build that opens that scene itself)
 #endif
             if (test_scene) { int sc = test_scene; test_scene = 0;   // (test builds only: the emulator runner pokes a scene number here to measure it: 1 island, 2 farm, 3 busy street, 4 Strange Town)
                 if (sc == 1) travel_go(Z_ISLAND); else if (sc == 4) travel_go(Z_TOWN);
@@ -3116,6 +3120,7 @@ int main(void) {
                 else if (sc >= 20 && sc < 23) { o_detl = sc - 20; o_dirty = 1; }
                 else if (sc >= 30 && sc < 33) { o_roof = sc - 30; o_dirty = 1; }
                 else if (sc >= 60 && sc < 70) { test_ex = sc == 69 ? 0 : sc - 59; life_ver++; }   // (60-68: every face in that mood, 69: as the game decides; 100: the sheet)
+                else if (sc == 71 || sc == 72) mg_test_save(sc);   // (D62: 71 writes a save with scores and family links, 72 loads it)
                 else if (sc == 70) { live_pitch = 2000; live_dist = 1800; yaw_t = live_yaw = 4096 + 600; }   // (70: face height camera)
                 else if ((sc >= 40 && sc < 60) || (sc >= 80 && sc < 90)) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
 #endif

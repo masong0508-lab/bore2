@@ -34,6 +34,7 @@ SC = {   # name: (script, pokes {frame: scene}, measure from, to, screenshot fra
     "more":   (LIVE, {400: 58}, 500, 800, 780),
     "home":   (LIVE, {400: 59}, 500, 800, 780),   # (D54) its family tree
     "shop":   (LIVE, {400: 51}, 500, 800, 780),
+    "gtseq":  (LIVE + ";520-523:1:-1,-1", {400: 50}, 450, 800, 780),   # (D62) the toy: title, hatching, day summary
     "fight":  (LIVE + ";385-396:400:-1,-1;450-455:1:-1,-1;520-525:1:-1,-1" + "".join(";%d-%d:%x:-1,-1" % (800 + 40 * q, 819 + 40 * q, [0x1, 0x11, 0x2, 0x21, 0x4, 0x80][q % 6]) for q in range(30)), {}, 700, 1900, 1880),   # (D59) BORTUA FIGHTER vs the CPU: pick, VS, then punching and kicking (build with XTRA=-DAUTO_SCENE=88: X held at frame 385 opens scene 89)
     "fight2p": (LIVE + ";385-396:400:-1,-1;430-432:80:-1,-1;440-442:80:-1,-1;450-452:80:-1,-1;460-462:10:-1,-1;480-482:1:-1,-1;520-522:1:-1,-1;700-770:10:-1,-1;700-770:800:-1,-1" + "".join(";%d-%d:%x:-1,-1" % (780 + 40 * q, 790 + 40 * q, [0x200, 0x100, 0x1, 0x2, 0x400, 0x40][q % 6]) for q in range(30)), {}, 700, 1900, 1880),   # (D59) the same with two players on one DS
     "close":  (LIVE, {400: 6}, 700, 1000, 980),
@@ -54,6 +55,11 @@ for name in want:
     if os.environ.get("BENCH_SHOT"): shot = int(os.environ["BENCH_SHOT"]); b = max(b, shot + 1)
     env = dict(os.environ, DBGMEM=",".join(mem))
     pokes = dict(pokes); pokes.update(EXTRA) if name != "map" else None
+    if os.environ.get("BENCH_AUTO"):   # (D62) the POKE does not reach in this build: the ROM was built with -DAUTO_SCENE=<base> and the scene's low four bits are held as X Y L R at frame 385
+        base = int(os.environ["BENCH_AUTO"]); sc_ = pokes.get(400, 0)
+        if sc_ and (sc_ & ~15) != base: print("%-7s skipped (scene %d is not in the build's AUTO_SCENE=%d group)" % (name, sc_, base)); continue
+        if sc_: script += ";385-396:%x:-1,-1" % ((0x400 if sc_ & 1 else 0) | (0x800 if sc_ & 2 else 0) | (0x200 if sc_ & 4 else 0) | (0x100 if sc_ & 8 else 0))
+        pokes = {}
     if pokes: env["POKE"] = ",".join("%d:%s:%x" % (f, syms["test_scene"], v) for f, v in pokes.items())
     ppm = os.path.join(out, name + ".ppm")
     r = subprocess.run(["/tmp/dsrun", rom, str(b + 1), ppm, script, str(shot)], capture_output=True, text=True, env=env)

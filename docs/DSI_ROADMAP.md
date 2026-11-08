@@ -291,3 +291,30 @@ See also ROADMAP.md and EXPANSION_PACKS.md. In order:
 - Old saves load: the DS's old 12 style numbers keep their numbers (0-11) and the 14 new ones are 12-25 (the `hair` byte was already a byte). The 2D portraits and the Map's rounded model draw a new style as the nearest old one (plus a bun or knot). Create-a-Sim's Hair tab has 5 pages (`<` `>`, "1/5"); names are short so they fit the tile.
 - The cached model grew (worst case WAVY on every sim: 1931 of 3200 words, `SML_W` 2400 -> 3200). 30 fps in melonDS (live, close, family with every sim on WAVY).
 - Not on the DS: hats (the DS Sims have no hat slot yet; nothing to hide), the PS1's strand/curl/fringe textures (plain shaded faces), the PS1's gradient per face. Test hooks: `-DHAIRCYC=n`, `-DHAIRALL=n`.
+
+**Done at D63 (`bore2_dsi_d63.nds`): Boreagotchi on the DS gets the PS1's new screens**
+- **Title and attract screen** when the toy is opened (three kinds go by, "N OF YOUR PETS WANT YOU", A or Play, or it moves on by itself). **Hatching scene** (egg wobbles, cracks, flash, shell bits, "IT HATCHED!" with name, colour and generation; the creaks, the crack and the hello are sounds; Skip or Say hello). It plays the next time you open the toy (or at once if it is open). **Day summary** ("Goodnight. Your day": cares, games, hatched, the pets with their Zs, a gentle line, the diary note) shown once after each midnight. **First-day tips** on the handheld's top screen (what the pet needs next; "Tips off" on the touch screen; they end by themselves after 10 cares; a bit in the awards word). Shot: `docs/ds_shots/d63_gotchi_new_screens.png`.
+- **The twelve icons were mislabelled** (the labels were the old ten-icon list: LIGHT sat where PLAY is, and "Gues." / "Repe." were read past the end of the list). Now FEED PLAY LIGHT MEDS CLEAN SCOLD / PET STATS TREE VISIT DRESS MORE, with their own pictures. Other cut-off names fixed: food names go on two lines (RICE BALL, MISO SOUP, ICE CREAM, BERRY PIE, GRILLED FISH), the basket tiles show the kind in full on two lines, the tips fit.
+- **People on the tree page:** the DS Sims got a minimal family link: a stable id, two parent ids and a partner id per Sim, in its own save block `'FY'` (arrays `fid`, `fpar`, `fpt` in main.c). A kiss makes a pair, a baby sets its two parents (and pairs them). The tree page shows "Ashley: PARTNER Ronald KID Kit". Old saves have no `'FY'` block and load with no links (tested: a d61 save loads in d63 with its scores intact; `tools` scripts below).
+- **Home page 20 -> 30 fps** (it redrew the whole room every frame; now only when a pet's picture changes). Hatching refreshes every 4th frame (30 fps).
+- Save tests (test builds, `-DAUTO_SCENE=64`: X+Y+L writes, R reads): the AR/SA blocks (tickets, fight record, all high-score tables, plays) and the 'FY' block come back from a BORE_SAV file; a save written by d61 loads in d63. Test scenes: 50 (title, hatching, day), 71/72 (save, load); the scene keys are no longer a button press for the game's own screens.
+- Still not on the DS: moodlets of the pets, the PS1's scripted first-day guide pages with pictures (the DS has the tips and its own guide pages), pets on the Live lot.
+
+## fps per scene in melonDS (D60, D61, D62; each ROM built as a test build, scene-bench `tools/dsemu/bench.py`)
+`BENCH_AUTO=<base> python3 tools/dsemu/bench.py rom elf outdir scenes...` runs with a ROM built `-DDSTEST -DAUTO_SCENE=<base>` (the POKE of `test_scene` does not reach; the bench holds the scene's X/Y/L/R keys at frame 385 instead). Numbers are min-max (average) 3D frames a second.
+| scene | d60 | d61 | d62 |
+|---|---|---|---|
+| map | 30 | 30 | 30 |
+| live (3 sims in a house) | 30 | 30 | 30 |
+| buy / build | 30 | 30 | 30 |
+| orbit (camera turning) | 27-30 (29.5) | 27-30 (29.5) | 28-30 (29.3) |
+| island / farm / street / town | 30 | 30 | 30 |
+| close / horizon | 30 | 30 | 30 |
+| skate plaza | 29-30 (29.7) | 29-30 (29.7) | 29-30 (29.7) |
+| shop dock | 29-30 (29.8) | 29-30 (29.8) | 29-30 (29.8) |
+| toy box / guide pages | 29-30 | 29-30 | 29-30 |
+| basket (LIVE time) | 28-30 (29.0) | 29-30 (29.4) | 28-30 (28.8) |
+| family / tree / more | 30 | 30 | 30 |
+| family home | **20** | **20** | **20** (30 at D63) |
+| fight / fight 2P | 29-30 | 29-30 | 29-30 |
+Under 30: orbit (the still list is recorded again while the camera turns, 80 re-records) and the skate plaza (UI 43-56). The hair of D62 costs nothing measurable (live 30, close 30 with every Sim on WAVY). The basket row measured the L key (Home button) as well until D63's bench fix.
