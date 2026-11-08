@@ -76,6 +76,12 @@ static const s16 camT[6][3] = { { 660, 190, 360 }, { 420, 292, 170 }, { 480, 280
 #define RH 24
 #define NVIS 6
 
+// HOOK(traits): the PERSONALITY step (index 5) has two tabs, TRAITS and WISH. The traits engine fills in `cas_pick` (from its own file, once its
+// pickers exist) and then owns the rows of that step: update(tab, held, pressed) is called every frame instead of the rows below, and draw(tab, x, y, w, h)
+// draws inside the panel's content box (x, y, w, h, under the tabs). Tabs, BACK, NEXT, START and the camera stay here. While it is 0 the placeholder rows
+// (five trait bars, a wish and a life goal, all in E) show. See docs/CAS_SIMS3DS_WORKFLOW.md section 9.
+typedef struct { void (*update)(int tab, int held, int pressed); void (*draw)(int tab, int x, int y, int w, int h); } CasPick;
+extern const CasPick *cas_pick;   // (defined in main.c, 0 until the traits engine sets it)
 static int t, step, cat, row, seen, dirty, modal, msel, sumsel, inlife, user, cur_turn, hold, hdir, c_dist, c_fy, c_pitch;
 
 static const Cat *curcat(void) { return &stp[step].c[cat]; }
@@ -84,6 +90,7 @@ static void go(int s, int c) { step = s < 0 ? 0 : s >= NSTEP ? NSTEP - 1 : s; ca
 static void cr_open(int a) {
     inlife = a; t = step = cat = row = dirty = modal = msel = user = cur_turn = hold = hdir = 0; seen = 1; sumsel = 6;
     c_dist = camT[0][0]; c_fy = camT[0][1]; c_pitch = camT[0][2]; cas_step = 0;
+    modal = 3;   // (The Sims 3 opens on a welcome card: one tick)
 }
 static int row_cam(void) {
     if (step == SUMMARY) return CAM_BODY;
@@ -145,6 +152,7 @@ static void tab_move(int d) {   // L1 / R1: the next category, and past the last
 }
 
 static int modal_update(int pr) {
+    if (modal == 3) { if (pr & (PAD_CROSS | PAD_CIRCLE | PAD_START)) { modal = 0; audio_voice(VOICE_AGREE); } return 1; }   // the welcome card
     if (pr & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) msel ^= 1;
     if (pr & PAD_CIRCLE) { modal = 0; return 1; }
     if (pr & PAD_CROSS) { if (msel == 0) return modal == 1 ? 2 : 0; modal = 0; }
@@ -163,6 +171,7 @@ static int cr_update(int held, int pr, int steps) {
     } else {
         int d = !!(pr & PAD_RIGHT) - !!(pr & PAD_LEFT);
         if (!d) { int h = !!(held & PAD_RIGHT) - !!(held & PAD_LEFT); if (h && h == hdir) { if (++hold > 18 && !(hold & 3)) d = h; } else hold = 0; hdir = h; } else { hdir = d; hold = 0; }
+        if (step == 5 && cas_pick) { cas_pick->update(cat, held, pr); d = 0; pr &= ~(PAD_UP | PAD_DOWN | PAD_TRIANGLE | PAD_SQUARE | PAD_CROSS); }   // (HOOK(traits): the engine takes the rows)
         if (pr & PAD_UP) { row = (row + n - 1) % n; user = 0; }
         if (pr & PAD_DOWN) { row = (row + 1) % n; user = 0; }
         const Rw *r = currow();
@@ -214,6 +223,7 @@ static void value_line(const Rw *r, int y, int sel) {
     if (k == K_SLIDE) { ui_slider(CX0 + 14, y + 1, CW - 30, (E.look[r->id] + 4) % 9, 9, sel); return; }
     if (k == K_TRAIT) { int v = E.tr[r->id - LK_TRAIT0]; for (int i = 0; i < 10; i++) { u32 c = i < v ? UI_AMBER : UI_CARD2; gfx_rect(CX0 + 14 + i * 9, y + 2, 7, 7, (int)(c & 255), (int)(c >> 8 & 255), (int)(c >> 16 & 255), 0); } return; }
     if (k == K_COL) {
+        y++;   // (the picked swatch's frame starts a pixel lower, clear of the label)
         int cnt = look_count(r->id), cur = E.look[r->id], n = cnt < 7 ? cnt : 7, st = cnt <= 7 ? 0 : cur - 3;
         if (st < 0) st = 0; if (st > cnt - n) st = cnt - n;
         int x0 = mid - (n * 13) / 2;
@@ -284,6 +294,15 @@ static void draw_summary(void) {
 }
 static void draw_modal(void) {
     ui_dim();
+    if (modal == 3) {   // WELCOME: what this is, one button
+        int top = ui_window(40, 62, 240, 120, "WELCOME", IC_STAR);
+        ui_textc(160, top + 6, 1, inlife ? "MAKE YOUR BORE NEW." : "MAKE A BORE TO LIVE IN YOUR TOWN.", UI_INK);
+        ui_textc(160, top + 20, 1, "7 STEPS: BASICS, LOOKS, HAIR,", UI_SOFT);
+        ui_textc(160, top + 32, 1, "CLOTHES, STYLE, PERSONALITY, DONE.", UI_SOFT);
+        ui_textc(160, top + 44, 1, "TRI ROLLS THE DICE ANY TIME.", UI_SOFT);
+        ui_button(112, top + 62, 96, 18, "LET'S GO", IC_TICK, 1);
+        return;
+    }
     int top = ui_window(40, 74, 240, 96, modal == 1 ? "ALL DONE?" : "LEAVE?", IC_HELP);
     ui_wrapc(52, top + 4, 216, 2, modal == 1 ? (inlife ? "KEEP THIS NEW LOOK FOR YOUR BORE?" : "KEEP THIS BORE AND GO ON?") : "THIS BORE WILL NOT BE KEPT.", UI_INK);
     ui_button(52, top + 34, 104, 18, modal == 1 ? "YES, KEEP IT" : "YES, LEAVE", IC_TICK, msel == 0);
@@ -305,7 +324,8 @@ static void cr_draw(void) {
     rail();
     if (step == SUMMARY) draw_summary();
     else {
-        chips(); draw_rows();
+        chips();
+        if (step == 5 && cas_pick) cas_pick->draw(cat, CX0, RY0, CW, 142); else draw_rows();
         const Rw *r = currow();
         ui_hints(CX0 + CW / 2, 208, r->k == K_FIRST || r->k == K_LAST ? "X TYPE|TRI NEW" : r->k == K_RAND ? "X ROLL|L1 R1 TAB" : "L1 R1 TAB", 1);
     }

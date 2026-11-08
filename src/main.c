@@ -114,6 +114,7 @@ static void camera_input(int steps) {
 static const char *const camViewNm[3] = { "THE SIMS CAMERA", "CAMERA BEHIND YOU", "FIRST PERSON" };
 
 // ---- the household ----
+const void *cas_pick;         // CREATE.OVL's hook for the traits engine's pickers (docs/CAS_SIMS3DS_WORKFLOW.md section 9)
 Bore cas_edit;                 // the creature on the creator's table (CREATE.OVL edits it too)
 #define edit cas_edit
 #define title_bore (sims[MAX_SIMS - 1].bore)   // (the title's Bore borrows the last sim slot: no life is on while the title shows)
@@ -3559,6 +3560,9 @@ static void create_draw(void) {
 #define HAIR_PITCH 80
 #endif
     { dist = HAIR_DEV; cam_fx = bx - HAIR_FX; cam_fy = -HAIR_FY; pitch = HAIR_PITCH; }
+#endif
+#ifdef BORE_DC
+    dist = dist * 8 / 5;   // (the Dreamcast's projection shows the studio about twice as big)
 #endif
     cam.at.vx = cam_fx; cam.at.vy = cam_fy; cam.at.vz = cam_fz;
     cam.eye.vx = cam_fx - ((isin(yaw) * ((dist * icos(pitch)) >> 12)) >> 12);
