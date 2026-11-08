@@ -17,10 +17,10 @@ static int lv, sel, top, msel, mtop, grp, anim, msgT, score;
 static const char *msg;
 static const char *const ratingNm[4] = { "A QUIET NIGHT", "A NICE PARTY", "A GREAT PARTY", "A LEGENDARY PARTY" };
 static const char *const tipNm[4] = {
-    "NO PARTY THINGS NEARBY. SEE THE PARTY TAB IN BUILD MODE.",
-    "A GOOD START. MORE THINGS MEAN LONGER PARTIES AND GIFTS.",
-    "NOW IT FEELS LIKE A PARTY. GUESTS WILL REMEMBER IT.",
-    "THE ONE THEY TALK ABOUT. A MOOD BOOST FOR THE HOUSE." };
+    "NO PARTY THINGS NEAR. ADD SOME IN BUILD MODE.",
+    "A GOOD START. MORE THINGS, LONGER PARTIES.",
+    "NOW IT FEELS LIKE A PARTY. GUESTS WILL REMEMBER.",
+    "THE ONE THEY TALK ABOUT. A HOUSE MOOD BOOST." };
 enum { R_START, R_OPEN, R_ALL, R_CLEAR, R_N };
 
 static void say(const char *s) { msg = s; msgT = 150; }
@@ -81,7 +81,7 @@ void party_draw(void) {
     for (int i = 0; i < 3; i++) ui_icon(240 + i * 14, t + 44, IC_STAR, i < r ? UI_AMBER : UI_LINE);
     sprintf(b, "%d THINGS ABOUT", score); ui_textc(258, t + 62, 1, b, UI_SOFT);
     ui_bar(222, t + 74, 72, 6, MIN(100, score * 8), UI_GREEN);
-    ui_wrap(218, t + 86, 82, 8, tipNm[r], UI_SOFT);
+    ui_wrap(218, t + 86, 82, 6, tipNm[r], UI_SOFT);
     sprintf(b, "$%d", party_open ? 200 : 100); ui_badge(258 - (ui_tw(1, b) + 10) / 2, t + 138, b, UI_GREEN, UI_WHITE);
     if (lv == L_LIST) {
         int n = rows();

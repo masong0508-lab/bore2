@@ -358,7 +358,7 @@ void ui_section(int x, int y, int w, const char *t) {
     if (w > tw) gfx_rect(x + tw, y + 3, w - tw, 1, cr(UI_LINE), cg(UI_LINE), cb(UI_LINE), 0);
 }
 void ui_bubble(int cx, int y, const char *s, u32 c) {
-    int w = ui_tw(1, s) + 10, x = cx - w / 2;
+    int w = ui_tw(1, s) + 10, x = cx - w / 2; if (x < 3) x = 3; if (x + w > 317) x = 317 - w;   // (kept on the screen)
     ui_round(x - 1, y - 13, w + 2, 14, 4, UI_RGB(150, 162, 180), UI_RGB(150, 162, 180), 0);   // a thin edge, so it reads on a white wall
     ui_round(x, y - 12, w, 12, 4, UI_WHITE, UI_RGB(234, 239, 246), 0);
     gfx_rect(cx - 3, y, 6, 1, 150, 162, 180, 0); gfx_rect(cx - 2, y, 4, 1, 234, 239, 246, 0);

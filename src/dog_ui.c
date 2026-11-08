@@ -105,7 +105,7 @@ void dog_draw(void) {
         else if (r->kind == K_PIPS) ui_pips(176, y + 10, ed.tr[r->id], 10, UI_AMBER);
         else if (r->kind == K_COLOUR) { int cr, cg, cb; dog_pal(ed.look[r->id], &cr, &cg, &cb);
             ui_round(176, y + 9, 100, 8, 3, UI_RGB(cr, cg, cb), UI_RGB(cr * 3 / 4, cg * 3 / 4, cb * 3 / 4), 0); ui_text(180, y + 9, 1, dog_pal_name[ed.look[r->id] % DOG_NPAL], (cr + cg + cb) > 380 ? UI_INK : UI_WHITE); }
-        else if (r->kind == K_CHOICE) { const char *v = r->id == DL_BREED ? dog_breed_name[ed.look[DL_BREED] % DOG_NBREED] : r->names[ed.look[r->id] % r->n]; ui_text(240 - ui_tw(1, v) / 2, y + 1, 1, v, UI_SOFT); }
+        else if (r->kind == K_CHOICE) { const char *v = r->id == DL_BREED ? dog_breed_name[ed.look[DL_BREED] % DOG_NBREED] : r->names[ed.look[r->id] % r->n]; ui_text(286 - ui_tw(1, v), y + 1, 1, v, UI_SOFT); }
         else if (r->kind == K_NAME) ui_text(240 - ui_tw(1, ed.name) / 2, y + 1, 1, ed.name, UI_BLUE2);
         else if (r->kind == K_DONE) ui_text(176, y + 1, 1, "", UI_INK);
     }

@@ -231,12 +231,12 @@ void prison_draw(void) {
     if (over) {
         ui_wrap(166, top + 90, 140, 6, outcome == 0 ? "YOUR TIME IS UP. THE GATE OPENS. YOU CARRY OUT WHAT YOU EARNED AND LEARNED." : outcome == 1 ? "THE BOARD SAYS YES. YOU WALK OUT EARLY, WITH A RECORD." :
                 outcome == 2 ? "OVER THE FENCE AND GONE! THE RECORD GROWS. KEEP YOUR HEAD DOWN." : outcome == 3 ? "THE INFIRMARY PATCHED YOU UP. YOU ARE FREE, BATTERED." : outcome == 5 ? "THE LIGHTS GO OUT. A NEW LIFE BEGINS ELSEWHERE." : outcome == 6 ? "THE APPEAL WON. THE COURT WAS WRONG. YOU WALK OUT." : "NOT GUILTY. THE COURT LETS YOU GO.", UI_SOFT);
-        ui_hints(152, 222, "X LEAVE", 2); return;
+        ui_hints(152, 218, "X LEAVE", 2); return;
     }
     for (int i = 0; i < mn; i++) { int y = top + 82 + i * 11; int on = i == sel;
         if (on) { ui_round(164, y - 1, 148, 11, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); }
         ui_text(170, y, 1, menu[i] >= R_APPEAL ? RNM[menu[i] - R_APPEAL] : ANM[menu[i]], on ? UI_BLUE2 : UI_INK); }
     ui_wrap(11, 202, 140, 1, menu[sel] >= R_APPEAL ? RHINT[menu[sel] - R_APPEAL] : AHINT[menu[sel]], UI_SOFT);
-    ui_hints(152, 222, "UP DOWN PICK|X DO IT", 2);
+    ui_hints(152, 218, "UP DOWN PICK|X DO IT", 2);
 }
 __attribute__((section(".ovl_head"), used)) const OvlHead ovl_head = { OVL_MAGIC, prison_open, prison_update, prison_draw };

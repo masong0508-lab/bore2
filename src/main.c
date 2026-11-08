@@ -921,6 +921,27 @@ static void life_draw(void) {
 #ifdef AUTO_SPACE
     { static int o5; if (++o5 == 40) { sim_want_space = 1; space_tech[0] = 2; space_tech[1] = 1; space_tech[2] = 2; } }
 #endif
+#ifdef AUTO_PKSCR
+    { static int pk_c; if (++pk_c == 90) {   // (test builds: a pack screen picked by the pad, held by the script: up 1, down 2, left 4, right 8, L2 16, R2 32; see test/pkscr.sh)
+        int c = (HELD(PAD_UP) ? 1 : 0) | (HELD(PAD_DOWN) ? 2 : 0) | (HELD(PAD_LEFT) ? 4 : 0) | (HELD(PAD_RIGHT) ? 8 : 0) | (HELD(PAD_L2) ? 16 : 0) | (HELD(PAD_R2) ? 32 : 0);
+        extern void band_test_setup(int lv);
+        cash += 90000; arc.tok = 40;
+        if (c == 1) { if ((ovl = ovl_load("KINGDOM.OVL"))) { ovl->open(0); state = ST_REALM; return; } }
+        else if (c >= 2 && c <= 15) sim_want_arcade = c - 1;
+        else if (c == 16) sim_want_arcade = AG_PRIZES + 1;
+        else if (c == 34) sim_want_arcade = 101;
+        else if (c == 17) { gotchi_buy(player); sim_want_gotchi = 2; }
+        else if (c == 18) sim_want_gotchi = 4;
+        else if (c == 19) { band_test_setup(5); sim_want_super = 1; }
+        else if (c == 20) { sim_crime(CR_ASSAULT, 60); sim_crime(CR_ASSAULT, 20); sim_crime(CR_RESIST, 10); rap_sheet = 3; sim_arrest(0); }
+        else if (c == 21) sim_want_prison = 3;
+        else if (c == 22) sim_want_party = 1;
+        else if (c == 23) { sim_want_space = 1; space_tech[0] = 2; space_tech[1] = 1; space_tech[2] = 2; }
+        else if (c == 24) sim_want_dog = 1;
+        else if (c == 25) { dj_xp = 300; sim_want_dj = 1; }
+        else if (c >= 26 && c <= 33) sim_want_resort = c == 26 ? 1 : c == 27 ? 2 : c == 28 ? 5 : c == 29 ? 6 : c == 30 ? 9 : c == 31 ? 10 : c == 32 ? 11 : 12;
+    } }
+#endif
 #ifdef AUTO_PRISON
     { static int o4; if (++o4 == 40) { sim_crime(CR_ASSAULT, 60); sim_crime(CR_ASSAULT, 20); sim_crime(CR_ASSAULT, 20); sim_crime(CR_RESIST, 10); sim_crime(CR_RESIST, 10); rap_sheet = 4; sim_arrest(0); } }
 #endif

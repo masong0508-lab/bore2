@@ -152,7 +152,7 @@ static int find_water(int *ox, int *oz) {
     return 0;
 }
 static void spawn_boat(int c) {
-    int sx, sz; if (!find_water(&sx, &sz)) { say("NO WATER IN THIS PLACE. TRY THE CITY OR THE ISLAND."); return; }
+    int sx, sz; if (!find_water(&sx, &sz)) { say("NO WATER HERE. TRY THE CITY OR THE ISLAND."); return; }
     cur = c; px = sx; pz = sz; yaw = 0; for (int a = 0; a < 4096; a += 512) if (is_sea(px + (isin(a) * 1600 >> 12), pz + (icos(a) * 1600 >> 12))) { yaw = a; break; }
     roll = pitch = 0; spd = 0; thr = 0; py = 0;
     nh = 1; hx[0] = px; hz[0] = pz; px += isin(yaw) * 500 >> 12; pz += icos(yaw) * 500 >> 12;
@@ -493,7 +493,7 @@ void skysea_draw(void) {
         if (mode == M_BOAT && near_dock() >= 0 && ABS(spd) < 60) ui_text(160, 200, 1, "TRIANGLE: HARBOUR  O: GET OFF", UI_WHITE);
         if (mode == M_WRECK) { ui_textc(160, 30, 1, line, UI_WHITE); ui_textc(160, 44, 1, line2, UI_WHITE); }
         if (ctr > 0) ui_textc(160, 180, 1, line, UI_WHITE);
-        ui_hints(160, 226, mode == M_BOAT ? "X GAS|SQ BRAKE|PAD STEER" : mode == M_AIR ? "X THRUST|SQ LESS|TRI CHUTE|R1 JUMP" : mode == M_WRECK ? "X SKIP" : "PAD STEER", 1);
+        ui_hints(160, 218, mode == M_BOAT ? "X GAS|SQ BRAKE|PAD STEER" : mode == M_AIR ? "X THRUST|SQ LESS|TRI CHUTE|R1 JUMP" : mode == M_WRECK ? "X SKIP" : "PAD STEER", 1);
         return; }
     gfx_set_clear(110, 190, 240);
     ui_round(0, 0, 320, 240, 0, UI_RGB(140, 210, 255), UI_RGB(60, 150, 210), 0); ui_round(0, 150, 320, 90, 0, UI_RGB(30, 130, 190), UI_RGB(20, 90, 150), 0);

@@ -90,7 +90,7 @@ void band_load(int ver) {
     ld_n(band.set, BAND_SET); band.pad = ver >= 26 ? (u8)(ld_u8() & 1) : 0;
 }
 
-#ifdef AUTO_SUPER
+#if defined(AUTO_SUPER) || defined(AUTO_PKSCR)
 void band_test_setup(int lv) {   // (test builds) the family as a band, every skill at level lv (0..10), a setlist of the first songs
     band.made = 1; band.fame = 70;
     for (int i = 0; i < nsims && i < BAND_MAX; i++) { int k = band_add(1, sims[i].uid); if (k < 0) continue; static const u8 rs[8] = { RL_FRONT, RL_LEADG, RL_KEYS, RL_DRUMS, RL_BASS, RL_DANCER, RL_LEADER, RL_SYNTH }; band.m[k].role[0] = rs[i & 7]; if (i == 0) band.m[k].role[1] = RL_LEADV;

@@ -170,7 +170,7 @@ static void floor_draw(void) {
     for (int y = 6; y < 48; y += 6) K(0, y, 320, 1, UI_RGB(22, 10, 40));
     int fl = (ft >> 5) & 1;
     K(0, 46, 320, 2, UI_RGB(240, 60, 200)); KA(0, 48, 320, 3, UI_RGB(120, 20, 100));                   // the neon rail
-    ui_textc(160, 3, 2, "BORE ARCADE", fl ? UI_RGB(255, 120, 230) : UI_RGB(120, 250, 255));
+    ui_textc(160, 6, 2, "BORE ARCADE", fl ? UI_RGB(255, 120, 230) : UI_RGB(120, 250, 255));
     // the wall's leaderboard: one game at a time, its three best
     { int g = (ft / 120) % AG_NGAME; K(70, 20, 180, 24, UI_RGB(8, 8, 24)); K(70, 20, 180, 1, UI_RGB(90, 230, 250)); K(70, 43, 180, 1, UI_RGB(250, 90, 220));
       ui_text(74, 22, 1, gi[g].nm, UI_RGB(gi[g].r, gi[g].g, gi[g].b));
@@ -196,8 +196,8 @@ static void floor_draw(void) {
         if (w->st == 2) { up = (w->t >> 2) & 1; }
         int dir = 0; { int cx, cy; cab_xy(w->cab, &cx, &cy); dir = w->st == 2 ? 0 : (w->x < 160 ? 1 : -1); (void)cy; }
         person(w->x, w->y, w->c, w->anim, mv, up, dir, jump);
-        if (w->st == 3 && w->t < 36) ui_bubble(w->x, w->y - 28, w->mood == 1 ? bub_good[w->who & 3] : bub_bad[w->who % 3], UI_RGB(255, 255, 255));
-        if (w->st == 6 || w->st == 7) { ui_bubble(w->x, w->y - 28, w->role == 2 ? "PLAY ME!" : w->role == 1 ? "BET YOU CAN'T" : "CHALLENGE!", UI_RGB(255, 235, 150)); }
+        if (w->st == 3 && w->t < 36) ui_bubble(w->x, w->y - 28, w->mood == 1 ? bub_good[w->who & 3] : bub_bad[w->who % 3], UI_RGB(40, 50, 70));
+        if (w->st == 6 || w->st == 7) { ui_bubble(w->x, w->y - 28, w->role == 2 ? "PLAY ME!" : w->role == 1 ? "BET YOU CAN'T" : "CHALLENGE!", UI_RGB(190, 90, 0)); }
     }
     core_fx_draw();
 }
@@ -342,7 +342,7 @@ int arcade_update(int hd, int pr, int steps) {
 // ---- the picture ----
 static void draw_prize(void) {
     gfx_set_clear(20, 6, 30); K(0, 0, 320, 240, UI_RGB(40, 12, 56));
-    K(0, 0, 320, 20, UI_RGB(150, 40, 120)); gfx_textc(160, 3, 2, "THE PRIZE COUNTER", 255, 255, 255);
+    K(0, 0, 320, 22, UI_RGB(150, 40, 120)); gfx_textc(160, 8, 2, "THE PRIZE COUNTER", 255, 255, 255);
     for (int t = 0; t < 4; t++) { int x = 8 + t * 78; ui_round(x, 24, 74, 16, 5, t == ptab ? UI_RGB(250, 190, 60) : UI_RGB(70, 40, 100), t == ptab ? UI_RGB(240, 140, 30) : UI_RGB(50, 24, 80), 0); ui_textc(x + 37, 28, 1, t == 3 ? "PETS EGGS" : pcat[t], t == ptab ? UI_INK : UI_WHITE); }
     int n = pcount(ptab);
     for (int k = 0; k < n; k++) { int i = pidx(ptab, k), y = 46 + k * 22, s = k == pcur, own = prz[i].bit && (arc.prz & (1u << prz[i].bit));
@@ -359,7 +359,7 @@ static void draw_prize(void) {
     ui_hintbar(218, "L R PAGE|U D PICK|X SWAP|O BACK");
 }
 static void draw_token(void) {
-    gfx_set_clear(24, 16, 4); K(0, 0, 320, 240, UI_RGB(52, 36, 10)); K(0, 0, 320, 20, UI_RGB(220, 160, 30)); gfx_textc(160, 3, 2, "THE TOKEN MACHINE", 70, 40, 0);
+    gfx_set_clear(24, 16, 4); K(0, 0, 320, 240, UI_RGB(52, 36, 10)); K(0, 0, 320, 22, UI_RGB(220, 160, 30)); gfx_textc(160, 8, 2, "THE TOKEN MACHINE", 70, 40, 0);
     ui_round(50, 34, 220, 28, 8, UI_RGB(20, 14, 6), UI_RGB(10, 8, 2), 0);
     { char s[48]; snprintf(s, sizeof s, "TOKENS %d      CASH $%ld", arc.tok, cash); ui_textc(160, 44, 1, s, UI_AMBER); }
     for (int i = 0; i < 3; i++) { int y = 76 + i * 34, s = i == tsel; ui_round(50, y, 220, 30, 8, s ? UI_RGB(255, 236, 150) : UI_RGB(90, 64, 18), s ? UI_RGB(240, 190, 50) : UI_RGB(60, 42, 8), 0);
@@ -370,14 +370,14 @@ static void draw_token(void) {
     ui_hintbar(218, "U D PICK|X BUY|O BACK");
 }
 static void draw_board(void) {
-    gfx_set_clear(4, 8, 24); K(0, 0, 320, 240, UI_RGB(10, 16, 44)); K(0, 0, 320, 20, UI_RGB(60, 90, 200));
+    gfx_set_clear(4, 8, 24); K(0, 0, 320, 240, UI_RGB(10, 16, 44)); K(0, 0, 320, 23, UI_RGB(60, 90, 200));
     if (pcur < AG_NGAME) {
-        const GInfo *a = &gi[pcur]; gfx_textc(160, 3, 2, "HIGH SCORES", 255, 255, 255);
+        const GInfo *a = &gi[pcur]; gfx_textc(160, 8, 2, "HIGH SCORES", 255, 255, 255);
         gfx_textc(160, 36, 2, a->nm, a->r, a->g, a->b);
         for (int i = 0; i < 3; i++) { char s[32], n[4]; ini_str(arc.hs[pcur][i], n); if (SC(arc.hs[pcur][i])) snprintf(s, sizeof s, "%d   %s   %d", i + 1, n, SC(arc.hs[pcur][i])); else snprintf(s, sizeof s, "%d   ---   ", i + 1); gfx_textc(160, 78 + i * 26, 2, s, i == 0 ? 250 : 220, i == 0 ? 210 : 220, i == 0 ? 60 : 230); }
         { int n = 0; for (int g = 0; g < AG_NGAME; g++) if (arc.pm & (1 << g)) n++; char s[40]; snprintf(s, sizeof s, "GAMES TRIED %d OF %d. PLAYED %d TIMES", n, AG_NGAME, arc.plays); ui_textc(160, 170, 1, s, UI_RGB(170, 200, 250)); }
     } else {
-        gfx_textc(160, 3, 2, "MEDALS", 255, 255, 255);
+        gfx_textc(160, 8, 2, "MEDALS", 255, 255, 255);
         for (int i = 0; i < 20; i++) { int x = 12 + (i & 1) * 154, y = 28 + (i >> 1) * 17, on = (arc.ach >> i) & 1; ui_round(x, y, 148, 15, 4, on ? UI_RGB(250, 210, 60) : UI_RGB(30, 40, 80), on ? UI_RGB(240, 150, 30) : UI_RGB(20, 28, 60), 0); ui_text(x + 6, y + 4, 1, medal_nm[i], on ? UI_INK : UI_RGB(130, 140, 180)); }
     }
     ui_hintbar(218, "L R PAGE|O BACK");
@@ -401,8 +401,8 @@ void arcade_draw(void) {
         if (mode == M_FLOOR) {
             if (c >= 0) snprintf(s, sizeof s, "X PLAY %s", gi[c].nm); else if (k == 0) snprintf(s, sizeof s, "X BUY TOKENS"); else if (k == 1) snprintf(s, sizeof s, "X HIGH SCORES AND MEDALS"); else if (k == 2) snprintf(s, sizeof s, "X THE PRIZE COUNTER");
             for (int i = 0; i < 6; i++) if ((wk[i].st == 7 || wk[i].st == 6) && ABS(wk[i].x - fx) < 36 && ABS(wk[i].y - fy) < 14 && ch.on) snprintf(s, sizeof s, "X ANSWER %s", ch.nm);
-            K(0, 224, 320, 16, UI_RGB(10, 6, 24)); ui_textc(160, 228, 1, s[0] ? s : "D-PAD WALK. O LEAVE", s[0] ? UI_AMBER : UI_RGB(170, 170, 210));
-            if (pmsg_t > 0 && pmsg) ui_textc(160, 212, 1, pmsg, UI_RED);
+            K(0, 216, 320, 24, UI_RGB(10, 6, 24)); ui_textc(160, 220, 1, s[0] ? s : "D-PAD WALK. O LEAVE", s[0] ? UI_AMBER : UI_RGB(170, 170, 210));
+            if (pmsg_t > 0 && pmsg) ui_textc(160, 205, 1, pmsg, UI_RED);
         }
         if (mode == M_CHAL) draw_chal();
         break; }

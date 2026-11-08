@@ -853,7 +853,7 @@ static void guide_strip(int k, int y) {
               for (int i = 0; i < 5; i++) { Blob b; Kin kk; memset(&b, 0, sizeof b); memset(&kk, 0, sizeof kk); b.on = 1; b.sp = (u8)cyc; b.stage = st[i]; b.hun = b.hap = 4; b.age = 16; int x = 24 + i * 55; ui_round(x - 1, y - 1, 52, 28, 4, UI_RGB(52, 24, 70), UI_RGB(30, 12, 44), 0); scene(&b, &kk, anim / 20, 0, MD_NORM); gfx_rect(x, y, 50, 26, 172, 196, 128, 0); dots_draw(x - 7, y - 3, 2, 0, 16, 0, 32); chip(x + 25, y + 31, nm[i], UI_GREEN, UI_WHITE); } break; }
     case 4: gtile(cyc, GS_ADULT, 0, 1, 40, y, MD_NORM, 1, 0); gtile((cyc + 5) % 16, GS_ADULT, 0, 2, 212, y, MD_NORM, -1, 0); ui_icon_s(144, y + 4, IC_HEART, 24, (anim / 15) & 1 ? UI_RED : UI_BADT); ui_textc(156, y + 34, 1, "PLAYDATE", UI_INK); break;
     case 5: ui_icon_disc(60, y + 14, 30, IC_SMILE, UI_BLUE, UI_WHITE); ui_text(36, y + 36, 1, "YOU: TUMMY", UI_INK); gtile(cyc, GS_ADULT, 0, 3, 214, y, MD_NORM, -1, 0);
-            ui_textc(150, y + 2, 1, "SHARE LUNCH", UI_GOLDT); ui_textc(150, y + 36, 1, "YOU STARVE, IT STARVES", UI_BADT); ui_icon_s(138, y + 14, IC_ARROW, 20, UI_GOLDT); break;
+            ui_textc(150, y + 2, 1, "SHARE LUNCH", UI_GOLDT); ui_textc(150, y + 36, 1, "IT STARVES TOO", UI_BADT); ui_icon_s(138, y + 14, IC_ARROW, 20, UI_GOLDT); break;
     case 6: { static const char *const m[6] = { "IT HATCHED! +16", "PROUD PARENT +14", "BLOB BUDDY +10", "WORRIED -8", "HOOKED ON THE TOY -8", "MISSING MY BLOB -15" };
               for (int i = 0; i < 6; i++) ui_badge(26 + (i & 1) * 138, y + (i >> 1) * 18, m[i], i < 3 ? UI_GREEN : UI_RED, UI_WHITE); break; }
     case 7: { static const char *const o[9] = { "DOCK $120", "SHELF $180", "CABINET $300", "PLUSH $60", "BALL $40", "BED $90", "BOWL $40", "LAMP $70", "TROPHY $200" };
