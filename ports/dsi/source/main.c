@@ -280,7 +280,7 @@ static inline void gx_v(int x, int y, int z) {   // one vertex: the shortest com
     gx_id(0x23); gxb[gxn++] = xy; gxb[gxn++] = (u32)(z & 0xFFFF);
 done: gx_lx = x; gx_ly = y; gx_lz = z; gx_lv = 1; }
 static void gx_cam(int dist, int pitch, int yaw, int cx, int cy, int cz) {   // (D39) the projection, the camera, the lights and the material into the list (the CPU must not write to the GPU while a frame is being sent)
-    int ymax = mulf32(4096 * 3 / 4, tanLerp(degreesToAngle(40) >> 1)), xmax = mulf32(ymax, 256 * 4096 / 192), nr = 4096 * 3 / 4, fr = 4096 * gx_far;   // (D40: the far plane goes with the view: 14 to 22 units)
+    int nr = dist >= 10240 ? 4096 * 3 / 4 : dist * 3 / 10 < 700 ? 700 : dist * 3 / 10, ymax = mulf32(nr, tanLerp(degreesToAngle(40) >> 1)), xmax = mulf32(ymax, 256 * 4096 / 192), fr = 4096 * gx_far;   // (D55: zoomed in, the near plane stays in front of the sim: the camera was nearer than 0.75 and the faces were cut into shards)   // (D40: the far plane goes with the view: 14 to 22 units)
     gx_c1(0x10, 0); gx_c0(0x15); gx_id(0x18); u32 *o = &gxb[gxn]; memset(o, 0, 64);
     o[0] = (u32)divf32(2 * nr, 2 * xmax); o[5] = (u32)divf32(2 * nr, 2 * ymax); o[10] = (u32)-divf32(fr + nr, fr - nr); o[11] = (u32)-4096; o[14] = (u32)-divf32(2 * mulf32(fr, nr), fr - nr); gxn += 16;
     gx_c1(0x10, 2); gx_c0(0x15); gx_c1(0x10, 1);
@@ -1811,6 +1811,22 @@ static void ellf(int cx, int cy, int rx, int ry, u16 c) {   // a filled oval
     if (rx < 1 || ry < 1) return;
     for (int y = -ry; y <= ry; y++) { int hw = isq(rx * rx * (ry * ry - y * y) / (ry * ry)); rect(cx - hw, cy + y, 2 * hw + 1, 1, c); }
 }
+enum { EX_NEU, EX_HAPPY, EX_SAD, EX_ANGRY, EX_TIRED, EX_BORED, EX_SCARED, EX_LOVE, EX_SLEEP, EX_N };   // (D55) the faces' moods
+static inline u16 br0(u16 hc) { return shade(hc, 6); }
+#ifdef DSTEST
+volatile int test_ex;   // (test builds only: 1..9 forces every face's mood (0 is the game's own), 101 draws the contact sheet of all of them)
+#endif
+static int expr_of(const Sim *m) {   // the face's mood from what the sim does and how its needs stand (portraits and the 3D model agree)
+#ifdef DSTEST
+    if (test_ex >= 1 && test_ex <= EX_N) return test_ex - 1;
+#endif
+    int i = (int)(m - sims); if (i < 0 || i >= nsim) return EX_NEU;
+    if (m->act == 2 && m->tx == m->x && m->ty == m->y) return EX_SLEEP;
+    if (m->act >= 100 && m->soc >= 0) { if (m->soc == 2 || m->soc == 6 || m->soc == 7 || m->soc == 8) return EX_LOVE; if (m->soc == 5) return EX_ANGRY; }
+    int s = 0; for (int n = 0; n < 6; n++) s += m->need[n]; s /= 6;
+    if (m->need[0] < 16) return EX_ANGRY; if (m->need[4] < 14) return EX_SCARED; if (m->need[2] < 22) return EX_TIRED; if (m->need[1] < 22) return EX_BORED;
+    return s < 38 ? EX_SAD : s > 64 ? EX_HAPPY : EX_NEU;
+}
 static void face(int x, int y, int sz, const Sim *m) {   // a head and shoulders portrait: flat colours, small crisp details
     int u = sz / 16; if (u < 1) u = 1; int cx = x + sz / 2;
     u16 sk = skin_of(m), hc = hair_of(m), sh = shirt_of(m), skd = shade(sk, 6);
@@ -1832,11 +1848,18 @@ static void face(int x, int y, int sz, const Sim *m) {   // a head and shoulders
         if (st == 10) rect(hx, hy + 2 * u, 2 * hw, u, hc);
         if (st == 11) { rect(hx - 3 * u, hy + 3 * u, 3 * u, 7 * u, hc); rect(hx + 2 * hw, hy + 3 * u, 3 * u, 7 * u, hc); }
         if (st == 3) { rect(hx - u, hy + 3 * u, 2 * u, 9 * u, hc); rect(hx + 2 * hw - u, hy + 3 * u, 2 * u, 9 * u, hc); } }
-    int ey = hy + (m->fc == 2 ? 4 : 3) * u + u + (m->pm[3] - 50) * u / 40; int er = m->fc == 3 ? 2 : 1;
-    rect(cx - 3 * u, ey, 2 * u, u * er, C15(31, 31, 31)); rect(cx + u, ey, 2 * u, u * er, C15(31, 31, 31));
-    rect(cx - 2 * u, ey, u, u * er, C15(5, 3, 2)); rect(cx + u + u / 2, ey, u, u * er, C15(5, 3, 2));
-    if (m->fc == 4) { rect(cx - 3 * u, ey, 2 * u, u / 2 + 1, skd); rect(cx + u, ey, 2 * u, u / 2 + 1, skd); }
-    rect(cx - 3 * u, ey - u, 2 * u, 1, shade(hc, 6)); rect(cx + u, ey - u, 2 * u, 1, shade(hc, 6));
+    int ex = expr_of(m), ey = hy + (m->fc == 2 ? 4 : 3) * u + u + (m->pm[3] - 50) * u / 40, er = m->fc == 3 ? 2 : 1; if (ex == EX_SCARED) er++;
+    const u16 EW = C15(31, 31, 31), EP = C15(5, 3, 2), LP = C15(22, 7, 8), PK = C15(31, 11, 16); const int th = u > 1 ? u / 2 : 1;
+    int bt = (m->pm[6] - 50) / 30, rise = 0; if (ex == EX_SAD || ex == EX_TIRED) bt += u; else if (ex == EX_ANGRY) bt -= u; else if (ex == EX_SCARED) { bt += u; rise = u; } else if (ex == EX_HAPPY || ex == EX_LOVE) rise = u > 1 ? u / 2 : 0;
+    for (int sd = 0; sd < 2; sd++) { int x0 = sd ? cx + u : cx - 3 * u, pxx = sd ? x0 : x0 + u;   // the eyes (pupils look to the middle), the brow over each
+        if (ex == EX_SLEEP) { rect(x0, ey + er * u - th, 2 * u, th, C15(5, 3, 3)); if (u > 1) { px(x0, ey + er * u - th - 1, C15(5, 3, 3)); px(x0 + 2 * u - 1, ey + er * u - th - 1, C15(5, 3, 3)); } }
+        else { if (ex == EX_TIRED || ex == EX_BORED) { if (u > 1) { rect(x0, ey, 2 * u, u * er, EW); rect(x0, ey, 2 * u, (u * er + 1) / 2 + (ex == EX_TIRED ? 1 : 0), skd); } rect(pxx, ey + (u > 1 ? u * er / 2 : 0), u, u > 1 ? (u * er + 1) / 2 : 1, EP); if (ex == EX_TIRED) rect(x0, ey + u * er + 1, 2 * u, 1, shade(skd, 6)); }
+            else { rect(x0, ey, 2 * u, u * er, EW); u16 pc = ex == EX_LOVE ? C15(30, 5, 10) : EP; int pw = ex == EX_SCARED && u > 1 ? u / 2 + 1 : u, ph = er > 1 && ex != EX_SCARED ? 2 * u : pw; rect(sd ? x0 : x0 + 2 * u - pw, ey + (er * u - ph) / 2, pw, ph, pc);
+                if (ex == EX_LOVE && u > 1) px(sd ? x0 : x0 + 2 * u - 1, ey + (er * u - ph) / 2, EW);
+                if (ex == EX_ANGRY && u > 1) rect(x0, ey, 2 * u, 1, skd); }
+            if (m->fc == 4 && ex != EX_TIRED && ex != EX_BORED) rect(x0, ey, 2 * u, u / 2 + 1, skd); }
+        int by = ey - u - rise - (u > 1 ? (m->pm[7] - 50) / 25 : 0), yo = by, yi = by - bt; rect(sd ? x0 + u : x0, yo, u, th, br0(hc)); rect(sd ? x0 : x0 + u, yi, u, th, br0(hc));
+        if (ex == EX_LOVE || (ex == EX_HAPPY && u > 1)) rect(sd ? x0 + u : x0 - u / 2, ey + 2 * u, u + (u > 1 ? u / 2 : 0), u > 1 ? u / 2 + 1 : 1, PK); }
     rect(cx - u / 2, ey + 2 * u, u, 2 * u, skd);
     if (m->fc == 5) for (int k = 0; k < 3; k++) { px(cx - 3 * u + k * u, ey + 3 * u, shade(sk, 5)); px(cx + u + k * u, ey + 3 * u, shade(sk, 5)); }
     int my = ey + 5 * u;
@@ -1844,7 +1867,17 @@ static void face(int x, int y, int sz, const Sim *m) {   // a head and shoulders
     if (m->beard >= 4) rect(hx, my - 2 * u, 2 * hw, hy + ht - my + 2 * u + (m->beard == 5 ? 3 * u : 0), shade(hc, 8));
     if (m->beard == 2 || m->beard == 3) rect(cx - 3 * u, my - u, 6 * u, u, shade(hc, 8));
     if (m->beard == 3) rect(cx - u, my + u, 2 * u, 2 * u, shade(hc, 8));
-    { int mw = 3 * u * (50 + m->pm[0]) / 100; if (mw < 2) mw = 2; rect(cx - mw / 2, my + (50 - m->pm[1]) * u / 40, mw, u, C15(22, 7, 8)); }
+    { int mw = 3 * u * (50 + m->pm[0]) / 100, my2 = my + (50 - m->pm[1]) * u / 40; if (mw < 3) mw = 3; if (ex == EX_HAPPY || ex == EX_LOVE || ex == EX_SAD) { if (mw < 4 * u) mw = 4 * u; }   // the mouth by mood
+        int x0 = cx - mw / 2;
+        switch (ex) {
+        case EX_HAPPY: case EX_LOVE: rect(x0 + u, my2, mw - 2 * u, u, LP); rect(x0, my2 - u, u, u, LP); rect(x0 + mw - u, my2 - u, u, u, LP); if (u > 1 && mw >= 4 * u) rect(x0 + u, my2 - th, mw - 2 * u, th, EW); break;
+        case EX_SAD: rect(x0 + u, my2, mw - 2 * u, u, LP); rect(x0, my2 + u, u, u, LP); rect(x0 + mw - u, my2 + u, u, u, LP); if (u > 1) px(hx + u + 1, ey + 3 * u + u / 2, C15(14, 22, 31)); break;
+        case EX_ANGRY: rect(x0, my2, mw, u, C15(14, 3, 5)); rect(x0, my2 + (u > 1 ? u : 0), u, 1, C15(14, 3, 5)); rect(x0 + mw - u, my2 + (u > 1 ? u : 0), u, 1, C15(14, 3, 5)); break;
+        case EX_TIRED: rect(cx - u, my2, 2 * u, 2 * u, C15(8, 1, 2)); rect(cx - u, my2, 2 * u, 1, LP); if (u > 1) rect(cx - u, my2 + 2 * u - 1, 2 * u, 1, LP); break;
+        case EX_BORED: rect(x0 + u, my2, mw * 2 / 3, u, LP); break;
+        case EX_SCARED: rect(cx - u, my2 - u / 2, 2 * u + (u > 1 ? 0 : 1), 2 * u, C15(8, 1, 2)); if (u > 1) { rect(cx - u, my2 - u / 2, 2 * u, 1, LP); rect(cx - u, my2 + 3 * u / 2 - 1, 2 * u, 1, LP); } break;
+        case EX_SLEEP: rect(cx - u, my2, 2 * u, u, shade(LP, 6)); if (u > 1) { int zx = hx + 2 * hw + u, zy = hy - u; rect(zx, zy, 3, 1, EW); px(zx + 2, zy + 1, EW); px(zx + 1, zy + 2, EW); rect(zx, zy + 3, 3, 1, EW); } break;
+        default: rect(x0 + (mw > 3 ? u / 2 : 0), my2, mw, u, LP); } }
 }
 static int mood(const Sim *m) { int s = 0; for (int n = 0; n < 6; n++) s += m->need[n]; return s / 6; }
 static u16 need_col(int v) { return v > 55 ? C15(8, 26, 8) : v > 28 ? C15(28, 24, 6) : C15(30, 8, 6); }
@@ -2507,7 +2540,7 @@ ITCM_CODE static void sb(int ox, int oz, int lx0, int lu0, int lz0, int lx1, int
 #define SML_N 24
 #define SML_W 2400
 typedef struct { u32 key, used; int n; u32 w[SML_W]; } SimL;
-static SimL sml[SML_N] __attribute__((aligned(32))); static int sml_next; static volatile int sml_miss; static u32 gf_serial = 8;
+static SimL sml[SML_N] __attribute__((aligned(32))); static int sml_next; static volatile int sml_miss, sml_maxn, sml_full; static u32 gf_serial = 8;
 static void sim_emit(const SimL *e, int x, int y, int z, int q) {   // into the list being recorded: push, turn by q quarters and move to x,y,z, the model, pop
     static const s8 RC[4][4] = { { 1, 0, 0, 1 }, { 0, -1, 1, 0 }, { -1, 0, 0, -1 }, { 0, 1, -1, 0 } };   // (m00 m02 m20 m22: as sb() turns a part)
     if (gxn + e->n + 40 > gx_cap) { gx_full = 1; return; }
@@ -2529,11 +2562,12 @@ static void sim3d(int i, int yaw) {
     int hw = 100 + (P[8] - 50) / 2, ht = 200 + (P[9] - 50) / 2, lh = 320 + (P[22] - 50) * 2 + (P[26] - 50) * 3, base = 630 + (P[15] - 50) * 2 + (P[22] - 50) * 2 + (P[26] - 50) * 5,
         sw = 135 + (P[14] - 50), at = 50 + (P[21] - 50) / 2, lt = 90 + (P[23] - 50) / 2, bz = 85 + (P[24] - 50) * 2, al = 250 + (P[20] - 50) * 2, hb = base + 30;
     int sw_l = mv ? sinLerp(gframes * 1100 + i * 700) * 70 / 4096 : 0;
+    int fx_e = lod ? 0 : expr_of(m), fx_b = lod || fx_e == EX_SLEEP ? 0 : (gframes + i * 41) % 130 < 5, fx_t = !lod && (m->act >= 100 || m->act == 3) && ((gframes >> 3) & 1);   // (D55) mood, blink, talking: part of the cached model's key
     SimL *se = 0; int cached = 0, ox = x, oz = z, oq = sq_q, ogy = gy_off; u32 *sb_ = 0; int sn_ = 0, sh_ = 0, sk_ = 0, sc_ = 0; u32 sm_ = 0, snm_ = 0, scl_ = 0;
     if (gxb && dpass == 2) {   // (D39) the cached model: the key is everything its shape and colours come from
         if (mv) sw_l = sinLerp((s16)(((gframes * 1100 + i * 700) & 32767) & ~4095)) * 70 / 4096;   // (the stride in eight steps)
         u32 key = 2166136261u; for (int q = 0; q < PMN; q++) key = (key ^ (u32)P[q]) * 16777619u;
-        key = (key ^ (u32)(stg | lod << 3 | (u32)m->hair << 4 | (u32)m->beard << 9 | (u32)lit_on << 13)) * 16777619u; key = (key ^ ((u32)sk | (u32)hc << 16)) * 16777619u; key = (key ^ ((u32)sh | (u32)pants << 16)) * 16777619u; key = (key ^ (u32)(sw_l + 1000)) * 16777619u;
+        key = (key ^ (u32)(fx_e | fx_b << 4 | fx_t << 5 | 1 << 6)) * 16777619u; key = (key ^ (u32)(stg | lod << 3 | (u32)m->hair << 4 | (u32)m->beard << 9 | (u32)lit_on << 13)) * 16777619u; key = (key ^ ((u32)sk | (u32)hc << 16)) * 16777619u; key = (key ^ ((u32)sh | (u32)pants << 16)) * 16777619u; key = (key ^ (u32)(sw_l + 1000)) * 16777619u;
         for (int q = 0; q < SML_N; q++) if (sml[q].key == key && sml[q].n) { se = &sml[q]; cached = 1; break; }
         if (!se) { for (int t = 0; t < SML_N; t++) { se = &sml[sml_next]; sml_next = (sml_next + 1) % SML_N; if (se->used + 2 < gf_serial) break; }   // (never one the frame being sent still uses)
             se->key = key; se->n = 0; sml_miss++;
@@ -2559,22 +2593,42 @@ static void sim3d(int i, int yaw) {
         if (st == 2) for (int k = -1; k <= 1; k++) sb(x, z, k * 66 - 24, hu + 55, -24, k * 66 + 24, hu + 165, 24, hc);
         if (st == 7) sb(x, z, -24, hu + 55, -hw, 24, hu + 200, hw, hc);
         if (st == 4) { sb(x, z, -hw - 28, hu - 300, -hw - 28, -hw + 10, hu - 40, hw, hc); sb(x, z, hw - 10, hu - 300, -hw - 28, hw + 28, hu - 40, hw, hc); } } }
-    if (!lod) { int ex = 40 + (P[2] - 50) / 2, ey = hb + ht * 55 / 100, es = 28 + (P[16] - 50) / 4, f = hw;
-      for (int sd = -1; sd <= 1; sd += 2) { int c0 = sd * ex;
-        sb(x, z, c0 - es - 4, ey - 24, f, c0 + es + 4, ey + 26, f + 6, C15(31, 31, 31)); sb(x, z, c0 - 14, ey - 22, f + 4, c0 + 14, ey + 24, f + 10, C15(7, 5, 3)); sb(x, z, c0 - 6, ey - 12, f + 8, c0 + 6, ey + 12, f + 12, C15(1, 1, 2));
-        sb(x, z, c0 - es - 6, ey + 34 + (P[7] - 50) / 3, f, c0 + es + 6, ey + 48 + (P[7] - 50) / 3, f + 7, shade(hc, 7)); }
+    if (!lod) { int ex = 40 + (P[2] - 50) / 2, ey = hb + ht * 55 / 100, es = 28 + (P[16] - 50) / 4, f = hw, xe = fx_e, shut = xe == EX_SLEEP || fx_b;   // (D55) the face: mood, blink, talking
+      const u16 WH = C15(31, 31, 31), DK = C15(8, 1, 2), LPc = C15(21, 7, 8), LPh = C15(26, 12, 12); int eh = xe == EX_SCARED ? 12 : 0, bt = (P[6] - 50) / 4, rise = 0;
+      if (xe == EX_SAD || xe == EX_TIRED) bt += 14; else if (xe == EX_ANGRY) bt -= 16; else if (xe == EX_SCARED) { bt += 12; rise = 14; } else if (xe == EX_HAPPY || xe == EX_LOVE) rise = 8;
+      for (int sd = -1; sd <= 1; sd += 2) { int c0 = sd * ex, xi0 = sd < 0 ? c0 : c0 - es - 6, xi1 = sd < 0 ? c0 + es + 6 : c0, xo0 = sd < 0 ? c0 - es - 6 : c0, xo1 = sd < 0 ? c0 : c0 + es + 6;   // (inner and outer halves of the brow)
+        if (shut) { sb(x, z, c0 - es - 4, ey - 6, f, c0 + es + 4, ey + 8, f + 6, shade(sk, 7)); sb(x, z, c0 - es - 2, ey - 6, f + 6, c0 + es + 2, ey + 2, f + 8, C15(3, 2, 2)); }
+        else { sb(x, z, c0 - es - 4, ey - 24 - eh, f, c0 + es + 4, ey + 26 + eh, f + 6, WH);
+            u16 ic = xe == EX_LOVE ? C15(30, 5, 10) : m->hcol == 5 ? C15(8, 14, 28) : C15(7, 5, 3);
+            sb(x, z, c0 - 14, ey - 22, f + 4, c0 + 14, ey + 24, f + 10, ic); sb(x, z, c0 - (xe == EX_SCARED ? 4 : 6), ey - (xe == EX_SCARED ? 6 : 12), f + 8, c0 + (xe == EX_SCARED ? 4 : 6), ey + (xe == EX_SCARED ? 6 : 12), f + 12, C15(1, 1, 2));
+            sb(x, z, c0 - 14, ey + 6, f + 10, c0 - 6, ey + 14, f + 13, WH);   // the glint
+            if (xe == EX_TIRED || xe == EX_BORED) sb(x, z, c0 - es - 5, ey + 2, f, c0 + es + 5, ey + 28, f + 15, shade(sk, 8));   // the lid, half down
+            else if (xe == EX_ANGRY) { sb(x, z, xi0 - (sd < 0 ? 4 : 0), ey + 2, f, xi1 + (sd < 0 ? 0 : 4), ey + 30, f + 15, shade(sk, 8)); sb(x, z, xo0, ey + 14, f, xo1, ey + 28, f + 15, shade(sk, 8)); }
+            if (xe == EX_TIRED) sb(x, z, c0 - es, ey - 38, f, c0 + es, ey - 28, f + 3, shade(sk, 6));   // a bag under the eye
+            if (xe == EX_SAD) sb(x, z, c0 + sd * (es - 6), ey - 66, f, c0 + sd * (es - 6) + 8, ey - 30, f + 4, C15(14, 22, 31)); }   // a tear
+        { int by = ey + 36 + (P[7] - 50) / 3 + rise; sb(x, z, xo0, by, f, xo1, by + 14, f + 7, shade(hc, 7)); sb(x, z, xi0, by + bt, f, xi1, by + bt + 14, f + 7, shade(hc, 7)); }
+        if (xe == EX_LOVE) sb(x, z, c0 - es, ey - 62, f, c0 + es, ey - 40, f + 3, C15(31, 14, 17)); }   // blush
       sb(x, z, -16 - (P[4] - 50) / 4, ey - 70, f, 16 + (P[4] - 50) / 4, ey - 6, f + 28 + (P[5] - 50) / 4, shade(sk, 8));
-      int mw = 36 + (P[0] - 50) / 2, my = ey - 100 + (50 - P[1]) / 3; sb(x, z, -mw, my, f, mw, my + 16 + (P[17] - 50) / 6, f + 6, C15(21, 7, 8)); sb(x, z, -mw + 6, my + 15, f, mw - 6, my + 22, f + 5, C15(26, 12, 12));
+      int mw = 36 + (P[0] - 50) / 2, my = ey - 100 + (50 - P[1]) / 3, lp = 16 + (P[17] - 50) / 6;   // the mouth by mood (talking opens it)
+      if (fx_t && xe != EX_SLEEP && xe != EX_SCARED && xe != EX_TIRED) { sb(x, z, -mw * 2 / 3, my - 14, f, mw * 2 / 3, my + lp, f + 5, DK); sb(x, z, -mw * 2 / 3, my + lp - 2, f, mw * 2 / 3, my + lp + 4, f + 7, LPc); sb(x, z, -mw * 2 / 3, my - 18, f, mw * 2 / 3, my - 12, f + 7, LPc); }
+      else switch (xe) {
+        case EX_HAPPY: case EX_LOVE: sb(x, z, -mw, my + 8, f, mw, my + 24, f + 4, DK); sb(x, z, -mw + 10, my + 10, f + 4, mw - 10, my + 24, f + 7, WH); sb(x, z, -mw + 10, my, f, mw - 10, my + 10, f + 6, LPc); sb(x, z, -mw - 6, my + 8, f, -mw + 12, my + 26, f + 6, LPc); sb(x, z, mw - 12, my + 8, f, mw + 6, my + 26, f + 6, LPc); break;
+        case EX_SAD: sb(x, z, -mw + 8, my + 4, f, mw - 8, my + 4 + lp, f + 6, LPc); sb(x, z, -mw, my - 10, f, -mw + 14, my + 12, f + 6, LPc); sb(x, z, mw - 14, my - 10, f, mw, my + 12, f + 6, LPc); break;
+        case EX_ANGRY: sb(x, z, -mw, my + 2, f, mw, my + 14, f + 6, C15(14, 3, 5)); sb(x, z, -mw + 6, my + 8, f + 6, mw - 6, my + 12, f + 8, WH); sb(x, z, -mw, my - 6, f, -mw + 10, my + 4, f + 6, C15(14, 3, 5)); sb(x, z, mw - 10, my - 6, f, mw, my + 4, f + 6, C15(14, 3, 5)); break;
+        case EX_TIRED: case EX_SCARED: { int ww = xe == EX_SCARED ? mw * 2 / 3 : mw / 2, hh = xe == EX_SCARED ? 22 : 26; sb(x, z, -ww, my - hh, f, ww, my + 20, f + 5, DK); sb(x, z, -ww - 6, my - hh - 4, f, ww + 6, my - hh + 4, f + 7, LPc); sb(x, z, -ww - 6, my + 16, f, ww + 6, my + 24, f + 7, LPc); sb(x, z, -ww - 6, my - hh, f, -ww, my + 20, f + 7, LPc); sb(x, z, ww, my - hh, f, ww + 6, my + 20, f + 7, LPc); break; }
+        case EX_BORED: sb(x, z, -mw / 3 + 8, my, f, mw * 2 / 3 + 8, my + lp - 4, f + 6, LPc); break;
+        case EX_SLEEP: sb(x, z, -mw / 2, my + 2, f, mw / 2, my + 14, f + 5, C15(17, 6, 7)); break;
+        default: sb(x, z, -mw, my, f, mw, my + lp, f + 6, LPc); sb(x, z, -mw + 6, my + 15, f, mw - 6, my + 22, f + 5, LPh); }
       if (m->beard) sb(x, z, -hw + 8, hb, f - 4, hw - 8, ey - 60, f + 8, m->beard == 1 ? lit(sk, 10) : hc); }
     }
-    if (se) { se->used = gf_serial; if (!cached) { se->n = gx_full ? 0 : gxn; DC_FlushRange(se->w, (u32)se->n * 4); gxb = sb_; gxn = sn_; gxh = sh_; gxk = sk_; gx_cap = sc_; gx_mat = sm_; gx_nrm = snm_; gx_col = scl_; gx_full = 0; gy_off = ogy; x = ox; z = oz; sq_q = oq; }
+    if (se) { se->used = gf_serial; if (!cached) { se->n = gx_full ? 0 : gxn; if (gx_full) sml_full++; if (se->n > sml_maxn) sml_maxn = se->n; DC_FlushRange(se->w, (u32)se->n * 4); gxb = sb_; gxn = sn_; gxh = sh_; gxk = sk_; gx_cap = sc_; gx_mat = sm_; gx_nrm = snm_; gx_col = scl_; gx_full = 0; gy_off = ogy; x = ox; z = oz; sq_q = oq; }
         if (ride) em_R = sk_Rm;   // (D44) side on to the board (skate_frame turns it)
         if (se->n) sim_emit(se, ox, -ogy + ground_lift(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), slv[i]) - (ride ? board_lift * 12 / 5 + 80 - sk_cr : 0), oz, oq); em_R = 0; polys += 120;
         if (ride) skate_draw_board(-ogy + ground_lift(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), 0)); }
     if (i == ctl) { int py = (hb + ht + 190) * sb_sc / 100; sb_sc = 100; sq_q = 0; bx(x - 40, py, z - 40, x + 40, py + 120, z + 40, C15(6, 30, 6)); bx(x - 30, py - 90, z - 30, x + 30, py, z + 30, C15(5, 22, 5)); }
 }
 // ---- Create-a-Sim: the head on the top screen, the choices on the bottom ----
-static int cas_body;   // 1 when the Body sliders are showing: the camera pulls back to show the whole figure
+static int cas_body, cas_ex_hold;   // 1 when the Body sliders are showing: the camera pulls back to show the whole figure
 static void draw_head(int yaw) {
     (void)yaw; const Sim *m = &sims[0]; u16 sk = skin_of(m), hc = hair_of(m), sh = shirt_of(m); int p[PMN]; eff_pm(m->pm, p);
     int hw = (m->fc == 1 ? 780 : 700) + (p[8] - 50) * 4, ht = (m->fc == 2 ? 1700 : 1500) + (p[9] - 50) * 6, hz = 700;
@@ -2595,17 +2649,36 @@ static void draw_head(int yaw) {
     if (ch > 0) bx(-hwj * 8 / 10, -ch, -hz * 8 / 10, hwj * 8 / 10, 40, hz * 8 / 10, sk);   // long chin
     { int es = 100 + (p[12] - 50) * 2, eh = ht * 4 / 10 + (p[13] - 50) * 4, ez = ht * 15 / 100 + (p[12] - 50) * 3;
       bx(-hw - es, eh - ez, -90, -hw, eh + ez, 160, shade(sk, 7)); bx(hw, eh - ez, -90, hw + es, eh + ez, 160, shade(sk, 7)); }   // ears
-    int eu = ht * 6 / 10 + (p[3] - 50) * 5, er = (m->fc == 3 ? 100 : 70) + (p[16] - 50), ew = 150 + (p[16] - 50) * 2, zb = m->beard >= 4 ? 80 : 0;   // eyes
-    for (int sd = -1; sd <= 1; sd += 2) { int c = sd * (280 + (p[2] - 50) * 3);
-        fq(c - ew, eu - er, c + ew, eu + er, hz + 2, C15(31, 31, 31)); fq(c - 55, eu - er, c + 55, eu + er, hz + 4, C15(9, 6, 3)); fq(c - 28, eu - er + 15, c + 28, eu + er - 15, hz + 6, C15(2, 1, 2));
+    int xe = (cas_tab == 6 || cas_tab == 8 || cas_ex_hold) ? EX_NEU : (int)((vbl_n / 200) % EX_N); if (cas_tab == 0 || cas_tab == 2 || cas_tab == 3) xe = xe == EX_SLEEP ? EX_HAPPY : xe;   // (D55) the head shows the moods in turn while you pick, and stays neutral while you edit a feature
+#ifdef DSTEST
+    if (test_ex >= 1 && test_ex <= EX_N) xe = test_ex - 1;
+#endif
+    int blink = xe != EX_SLEEP && (vbl_n % 170) < 7;
+    int eu = ht * 6 / 10 + (p[3] - 50) * 5, er = (m->fc == 3 ? 125 : 88) + (p[16] - 50), ew = 185 + (p[16] - 50) * 2, zb = m->beard >= 4 ? 80 : 0;   // eyes
+    if (xe == EX_SCARED) er += 40;
+    int btl = (p[6] - 50) * 2, brise = 0; if (xe == EX_SAD || xe == EX_TIRED) btl -= 130; else if (xe == EX_ANGRY) btl += 150; else if (xe == EX_SCARED) { btl -= 110; brise = 110; } else if (xe == EX_HAPPY || xe == EX_LOVE) brise = 40;
+    for (int sd = -1; sd <= 1; sd += 2) { int c = sd * (280 + (p[2] - 50) * 3), xo = c + sd * 170, xi = c - sd * 170;
+        fq(c - ew, eu - er, c + ew, eu + er, hz + 2, C15(31, 31, 31)); fq(c - 70, eu - er, c + 70, eu + er, hz + 4, xe == EX_LOVE ? C15(30, 5, 10) : C15(9, 6, 3)); fq(c - 36, eu - er + 18, c + 36, eu + er - 18, hz + 6, C15(2, 1, 2));
         fq(c - 40, eu + er - 45, c - 8, eu + er - 12, hz + 8, C15(31, 31, 31));
-        if (m->fc == 4) fq(c - ew, eu, c + ew, eu + er, hz + 8, shade(sk, 7));                                     // sleepy lids
-        { int ub = eu + er + 90 + (p[7] - 50) * 3, tl2 = (p[6] - 50) * 2, xo = c + sd * 170, xi = c - sd * 170; qd(xi, -(ub - tl2), hz + 3, xo, -(ub + tl2), hz + 3, xo, -(ub + 70 + tl2), hz + 3, xi, -(ub + 70 - tl2), hz + 3, shade(hc, 7)); }   // brow (tilt and height)
+        if (m->fc == 4 && xe != EX_TIRED) fq(c - ew, eu, c + ew, eu + er, hz + 8, shade(sk, 7));                    // sleepy lids
+        if (xe == EX_TIRED || xe == EX_BORED) { fq(c - ew - 6, eu, c + ew + 6, eu + er + 6, hz + 9, shade(sk, 7)); fq(c - ew, eu - 6, c + ew, eu + 6, hz + 10, shade(sk, 5)); fq(c - ew, eu - er - 40, c + ew, eu - er - 10, hz + 3, shade(sk, 6)); }   // the lid half down, a bag under the eye
+        else if (xe == EX_ANGRY) { qd(xo + sd * 6, -(eu + er + 6), hz + 9, xi, -(eu - er / 2), hz + 9, xi, -(eu + er + 6), hz + 9, xo + sd * 6, -(eu + er + 6), hz + 9, shade(sk, 7)); }   // the lid slanted, low at the inside
+        if (blink || xe == EX_SLEEP) { fq(c - ew - 8, eu - er - 8, c + ew + 8, eu + er + 8, hz + 11, sk); fq(c - ew, eu - 8, c + ew, eu + 8, hz + 12, C15(3, 2, 2)); }
+        if (xe == EX_SAD) fq(c + sd * 110 - 12, eu - er - 190, c + sd * 110 + 12, eu - er - 60, hz + 5, C15(14, 22, 31));   // a tear
+        if (xe == EX_LOVE) fq(c - 130, eu - er - 230, c + 130, eu - er - 130, hz + 3, C15(31, 14, 17));   // the blush
+        { int ub = eu + er + 90 + (p[7] - 50) * 3 + brise, tl2 = btl; qd(xi, -(ub - tl2), hz + 3, xo, -(ub + tl2), hz + 3, xo, -(ub + 70 + tl2), hz + 3, xi, -(ub + 70 - tl2), hz + 3, shade(hc, 7)); }   // brow (tilt and height)
         if (m->fc == 5) for (int k = 0; k < 5; k++) fq(c - 130 + k * 55, eu - 250 - (k & 1) * 50, c - 100 + k * 55, eu - 220 - (k & 1) * 50, hz + 3, shade(sk, 5)); }
     { int nw2 = 90 + (p[4] - 50) * 2, np = 110 + (p[5] - 50) * 3; bx(-nw2, eu - 380, hz - 20, nw2, eu - 60, hz + np, shade(sk, 8)); }   // nose
     beard3d(m->beard, shade(hc, 9), sk, hw, hz);
-    { int mw = 200 + (p[0] - 50) * 3, mv = ht * 2 / 10 + (p[1] - 50) * 5, lp = 70 + (p[17] - 50);   // lips
-      fq(-mw, mv, mw, mv + lp, hz + 3 + zb, C15(21, 7, 8)); fq(-mw + 20, mv - lp * 7 / 10, mw - 20, mv, hz + 3 + zb, C15(26, 11, 11)); fq(-mw, mv + 10, mw, mv + 25, hz + 5 + zb, C15(5, 1, 2)); }
+    { int mw = 200 + (p[0] - 50) * 3, mv = ht * 2 / 10 + (p[1] - 50) * 5, lp = 70 + (p[17] - 50), z = hz + 3 + zb; const u16 LP = C15(21, 7, 8), LH = C15(26, 11, 11), DK = C15(8, 1, 2), WH = C15(31, 31, 31);   // the mouth by mood
+      switch (xe) {
+      case EX_HAPPY: case EX_LOVE: fq(-mw, mv - 30, mw, mv + lp, z, DK); fq(-mw + 40, mv + lp - 80, mw - 40, mv + lp, z + 1, WH); fq(-mw, mv + lp, mw, mv + lp + 45, z + 2, LP); fq(-mw - 50, mv + 40, -mw + 50, mv + lp + 80, z + 2, LP); fq(mw - 50, mv + 40, mw + 50, mv + lp + 80, z + 2, LP); fq(-mw + 40, mv - 60, mw - 40, mv - 30, z + 2, LH); break;
+      case EX_SAD: fq(-mw + 30, mv + 20, mw - 30, mv + 20 + lp, z, LP); fq(-mw - 40, mv - 70, -mw + 60, mv + 40, z, LP); fq(mw - 60, mv - 70, mw + 40, mv + 40, z, LP); break;
+      case EX_ANGRY: fq(-mw, mv, mw, mv + 50, z, C15(14, 3, 5)); fq(-mw + 40, mv + 25, mw - 40, mv + 50, z + 1, WH); fq(-mw - 20, mv - 50, -mw + 50, mv + 20, z, C15(14, 3, 5)); fq(mw - 50, mv - 50, mw + 20, mv + 20, z, C15(14, 3, 5)); break;
+      case EX_TIRED: case EX_SCARED: { int ww = xe == EX_SCARED ? mw * 55 / 100 : mw * 40 / 100, hh = xe == EX_SCARED ? 110 : 130; fq(-ww, mv - hh, ww, mv + hh / 2, z, DK); fq(-ww - 25, mv + hh / 2, ww + 25, mv + hh / 2 + 30, z + 1, LP); fq(-ww - 25, mv - hh - 30, ww + 25, mv - hh, z + 1, LP); fq(-ww - 25, mv - hh, -ww, mv + hh / 2, z + 1, LP); fq(ww, mv - hh, ww + 25, mv + hh / 2, z + 1, LP); break; }
+      case EX_BORED: fq(-mw / 3 + 40, mv, mw * 2 / 3 + 40, mv + lp - 20, z, LP); break;
+      case EX_SLEEP: fq(-mw / 2, mv + 10, mw / 2, mv + 50, z, C15(17, 6, 7)); break;
+      default: fq(-mw, mv, mw, mv + lp, z, LP); fq(-mw + 20, mv - lp * 7 / 10, mw - 20, mv, z, LH); fq(-mw, mv + 10, mw, mv + 25, z + 2, C15(5, 1, 2)); } }
     hair3d(m->hair, hc, hw, ht);
 }
 static const int CAS_N[9] = { 12, 6, 6, 6, 6, 6, 0, 0, 0 };
@@ -2953,6 +3026,11 @@ int main(void) {
         if (mode == M_TITLE) {
             if (down & KEY_TOUCH) title_touch(tp.px, tp.py);
             if (mode == M_TITLE && (forced || (down & KEY_TOUCH) || msg_t > 0)) draw_title();
+#ifdef DSTEST
+            static int sh_done; if ((held & KEY_SELECT) && !sh_done) { sh_done = 1; int sv = test_ex; scr = hud; rect(0, 0, 256, 192, C15(14, 20, 28)); Sim t = sims[0];
+                for (int k = 0; k < EX_N; k++) { test_ex = k + 1; face(2 + k * 28, 2, 26, &t); face(2 + k * 28, 32, 16, &t); face(2 + (k % 5) * 50, 54 + (k / 5) * 68, 48, &t); }
+                test_ex = sv; }
+#endif
             yaw = 0; pitch = 0; dist = 6000;
         } else if (mode == M_CAS) {
             if (down & KEY_TOUCH) cas_touch(tp.px, tp.py); else if ((held & KEY_TOUCH) && cas_drag) cas_drag_at(tp.px, tp.py);
@@ -2996,6 +3074,8 @@ int main(void) {
                 else if (sc >= 10 && sc < 13) { o_look = sc - 10; o_dirty = 1; }   // (10-12: Classic, Rich, Toon)
                 else if (sc >= 20 && sc < 23) { o_detl = sc - 20; o_dirty = 1; }
                 else if (sc >= 30 && sc < 33) { o_roof = sc - 30; o_dirty = 1; }
+                else if (sc >= 60 && sc < 70) { test_ex = sc == 69 ? 0 : sc - 59; life_ver++; }   // (60-68: every face in that mood, 69: as the game decides; 100: the sheet)
+                else if (sc == 70) { live_pitch = 2000; live_dist = 1800; yaw_t = live_yaw = 4096 + 600; }   // (70: face height camera)
                 else if (sc >= 40 && sc < 60) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
 #endif
             if (cam_on) {   // stylus camera: drag to orbit/tilt (or pan), buttons for zoom, follow, reset, done
@@ -3024,6 +3104,9 @@ int main(void) {
                 else { minutes += 1440 - minutes % 1440 + 360; day_roll(); } }
             if ((down & KEY_START) && (held & KEY_L) && (held & KEY_R)) { static int fk; int want = 0xDB + (fk++ & 3); menu_open = 0;   // (test builds only: the popup of the next farm thing in turn: crop bed, coop, cow, stand)
                 for (int q = 0; q < nobj; q++) if (ID2CH[OBJ_ID(&objs[q])] == want) { popup = 1; popup_i = q; popup_n = obj_acts(q, popup_lab, popup_code); break; } }
+#endif
+#ifdef DSTEST
+            { if (down & KEY_SELECT) test_ex = test_ex % EX_N + 1; if (down & KEY_START) test_ex = 0; if (held & KEY_X) { if (live_dist > 3500) live_dist -= 40; } }   // (test builds: SELECT steps through the moods, START lets the game decide, X zooms right in on the faces)
 #endif
             if (!on_board && !mg_ui) { if (held & KEY_X) { if (live_dist > 3500) live_dist -= 80; } if (held & KEY_Y) { if (live_dist < 16000) live_dist += 80; } }
             live_yaw += (yaw_t - live_yaw) / 4; if (yaw_t - live_yaw > -4 && yaw_t - live_yaw < 4) live_yaw = yaw_t;
@@ -3114,6 +3197,13 @@ int main(void) {
             glLight(0, RGB15(27, 25, 21), floattov10(0.45f), floattov10(-0.55f), floattov10(-0.70f)); glLight(1, RGB15(7, 10, 17), floattov10(-0.7f), floattov10(0.1f), floattov10(0.7f)); }
         glBegin(GL_QUADS);
         tx_want = -1; far_lod = 0;   // (D55: no pattern may be left over from the Map's lot: it came through as a big checker on the Create-a-Sim head)
+#ifdef DSTEST
+        if (mode == M_CAS && (down & KEY_SELECT)) test_ex = test_ex % EX_N + 1;
+        if (mode == M_CAS && (held & KEY_START)) {   // (test builds: hold START in Create-a-Sim to see Live's own sim model large; SELECT steps the moods)
+            Sim *s0 = &sims[0]; s0->x = s0->tx = s0->wx = (GN - 1) * 8; s0->y = s0->ty = s0->wy = (GN - 1) * 8; fq4[0] = 0; s0->act = -1;
+            glTranslatef32(0, 650, 0); glScalef32(4 * 4096, 4 * 4096, 4 * 4096); glTranslatef32(0, -713, 0); sim3d(0, 0); }
+        else
+#endif
         if (mode == M_CAS) draw_head(yaw);
         else if (mode == M_MAP) { BInfo b; bm_block(sel_x, sel_y, &b); draw_lot(&b, yaw); }
         glEnd();
