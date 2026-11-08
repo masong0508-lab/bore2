@@ -3113,6 +3113,7 @@ int main(void) {
         if (lit_on) { glMaterialf(GL_SPECULAR, RGB15(0, 0, 0)); glMaterialf(GL_EMISSION, RGB15(0, 0, 0));
             glLight(0, RGB15(27, 25, 21), floattov10(0.45f), floattov10(-0.55f), floattov10(-0.70f)); glLight(1, RGB15(7, 10, 17), floattov10(-0.7f), floattov10(0.1f), floattov10(0.7f)); }
         glBegin(GL_QUADS);
+        tx_want = -1; far_lod = 0;   // (D55: no pattern may be left over from the Map's lot: it came through as a big checker on the Create-a-Sim head)
         if (mode == M_CAS) draw_head(yaw);
         else if (mode == M_MAP) { BInfo b; bm_block(sel_x, sel_y, &b); draw_lot(&b, yaw); }
         glEnd();
