@@ -67,7 +67,7 @@ static int land(Fz *a, Fz *o, int mv) {   // a blow's active frames: 1 = it conn
     if (guard) { int back = bwrap((ang + 128) - o->yaw); if (back > 70 || back < -70) guard = 0; }   // (a guard covers the front)
     int S = fsin(ang), C = fcos(ang);
     if (guard) { o->st = BS_BLOCK; o->t = 8; o->kx = S * m->kb * 5 >> 8; o->kz = C * m->kb * 5 >> 8; a->ev |= EV_BLOCK; return 1; }
-    int dmg = m->dmg * a->pw / 100;
+    int dmg = m->dmg * a->pw / 100; if (!fight_2p && o == &F[0]) dmg = trf_fight_hurt(&dtr[ctl], dmg);   // (D73: E_FIGHT_DEF)
     if (o->st == BS_ATK && o->t < mvs[o->mv].start) { dmg = dmg * 3 / 2; call = "COUNTER!"; callT = 40; }
     if (o->st == BS_HIT) { o->combo++; numcall(" HITS", o->combo + 1); } else o->combo = 0;
     o->hp = o->hp > dmg ? o->hp - dmg : 0;
@@ -266,7 +266,7 @@ static void set_stats(void) {
     static const s8 spw[4] = { 0, 18, -10, 0 }, ssp[4] = { 0, -2, 3, 1 };
     F[0].pw = 100 + spw[style] + belt * 4 + body; F[0].sp = 16 + ssp[style]; F[0].d = 0;
     const Who *w = &ladder[stage]; F[1].pw = w->pw; F[1].sp = w->sp; F[1].d = MIN(9, w->d + (style == 3 ? 0 : 0));
-    if (fight_2p) { F[0].pw = F[1].pw = 100; F[0].sp = F[1].sp = 16; F[0].d = F[1].d = 0; }
+    if (fight_2p) { F[0].pw = F[1].pw = 100; F[0].sp = F[1].sp = 16; F[0].d = F[1].d = 0; } else F[0].pw = trf_fight_pw(&dtr[ctl], F[0].pw);   // (D73: E_FIGHT_DMG)
 }
 static void round_begin(void) {
     freset(&F[0], -900, 0, 64); freset(&F[1], 900, 0, 192);
@@ -401,14 +401,14 @@ static int fight_update(int held, int pressed, int steps) {
         cam_follow(0);
         if (ft >= 170) {
             if (winner == 0) voice(V_YAHOO); else if (winner == 1) voice(V_NAH);
-            if (F[0].wins >= 2 || F[1].wins >= 2) { fs = FS_RESULT; ft = 0; if (F[0].wins >= 2 && !fight_2p) { fight_last_wins++; if (fight_wins < 9999) fight_wins++; if (stage + 1 > fight_best) fight_best = stage + 1; } }
+            if (F[0].wins >= 2 || F[1].wins >= 2) { fs = FS_RESULT; ft = 0; if (F[0].wins >= 2 && !fight_2p) { fight_last_wins++; if (fight_wins < 9999) fight_wins++; if (stage + 1 > fight_best && !trg_cheat_now()) fight_best = stage + 1; } }
             else { round_n++; round_begin(); }
         }
         return 1;
     case FS_RESULT: ft += steps; F[0].cnt += steps; F[1].cnt += steps; cam_follow(0);
         if (ft > 40 && (pressed & PAD_CROSS)) {
             if (fight_2p) match_begin();
-            else if (F[0].wins >= 2) { if (stage == 8) { fight_champ = 1; fs = FS_CHAMP; ft = 0; voice(V_WIN); } else { stage++; build_them(stage); set_stats(); fs = FS_VS; ft = 0; } }
+            else if (F[0].wins >= 2) { if (stage == 8) { if (!trg_cheat_now()) fight_champ = 1; fs = FS_CHAMP; ft = 0; voice(V_WIN); } else { stage++; build_them(stage); set_stats(); fs = FS_VS; ft = 0; } }
             else if (funds >= 2) { funds -= 2; match_begin(); }   // CONTINUE: another $2
             else { fs = FS_OVER; ft = 0; }
         }

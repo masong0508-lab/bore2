@@ -116,7 +116,7 @@ static void combo_bank(void) {
     k.landt = 0; if (!k.ntr) return;
     long tot = k.pool * MAX(k.mult, 1);
     if (k.mult >= 1 || k.pool > 25) {
-        skate_score += tot; if (tot > skate_best) skate_best = tot;
+        skate_score += tot; if (tot > skate_best && !trg_cheat_now()) skate_best = tot;
         char a[40], b[24]; sprintf(a, "+%ld", tot); sprintf(b, k.mult > 1 ? "%d TRICK COMBO" : "LANDED", k.mult); sk_pop(a, b, 1);
         sk_tricks += k.mult;
         if (tot >= 2000) voice(V_YAHOO);
@@ -326,6 +326,7 @@ static void skate_frame(int held, int down, int steps) {
 #ifdef DSTEST
     u32 t0_ = prof_now();
 #endif
+    { int vs = trf_veh(&dtr[ctl]); steps += vs; if (steps < 0) steps = 0; }   // (D73: E_VEH_SPEED, a step more or one fewer)
     for (int t = 0; t < steps && on_board; t++) { skate_step(east, -south); k.held = h; }
 #ifdef DSTEST
     { extern volatile int sk_cyc; sk_cyc += (int)(prof_now() - t0_); }
@@ -461,7 +462,7 @@ static int ag_tix_calc(int g, int pts) {   // the PS1's: par-based, the combo, a
     t = CLAMP(t, 0, 80); if (!(ar_pm & (1 << g))) { t += 10; ar_pm |= (u16)(1 << g); } return t;
 }
 static void ag_over_now(void) {
-    ag_phase = 2; ag_acc = 0; ag_over = 0; ag_tix = ag_tix_calc(ag, ag_pts); ag_hrank = hs_rank(ag, ag_pts); if (ar_plays < 60000) ar_plays++;
+    ag_phase = 2; ag_acc = 0; ag_over = 0; ag_pts = trf_arc_score(&dtr[ctl], ag_pts); ag_tix = trf_arc_tix(&dtr[ctl], ag_tix_calc(ag, ag_pts)); ag_hrank = trg_cheat_now() ? -1 : hs_rank(ag, ag_pts); if (ar_plays < 60000) ar_plays++;
     voice(ag_tix >= 12 ? V_YAHOO : V_LAUGH);
 }
 static void ag_ini_begin(void) { const char *f = sname[ctl]; for (int i = 0; i < 3; i++) { char c = f[i]; ag_ini[i] = (char)((c >= 'A' && c <= 'Z') ? c : (c >= 'a' && c <= 'z') ? c - 32 : 'A' + i); } ag_ini[3] = 0; ag_ic = 0; }
@@ -753,7 +754,7 @@ static const u16 gxpAt[6] = { 0, 30, 100, 250, 500, 900 };
 static const char *const glvNm[6] = { "NEW PARENT", "CARING", "ATTENTIVE", "BLOB WHISPERER", "BREEDER", "GOTCHI MASTER" };
 static int glevel(const Toy *t) { int l = 0; for (int i = 1; i < 6; i++) if (t->xp >= gxpAt[i]) l = i; return l; }
 static int gnext_xp(const Toy *t) { int l = glevel(t); return l >= 5 ? 0 : gxpAt[l + 1]; }
-static void gxp(Toy *t, int n) { int l0 = glevel(t); t->xp = (u16)MIN(60000, t->xp + n); t->cared++; if (glevel(t) > l0) { static char b[40]; snprintf(b, sizeof b, "Blob care level %d!", glevel(t)); say(b); } }
+static void gxp(Toy *t, int n) { int si_ = gsim_of(t); if (si_ >= 0) { n = trf_gxp(&dtr[si_], n); if (si_ == ctl) trg_ev(EV_CARES, 1); } int l0 = glevel(t); t->xp = (u16)MIN(60000, t->xp + n); t->cared++; if (glevel(t) > l0) { static char b[40]; snprintf(b, sizeof b, "Blob care level %d!", glevel(t)); say(b); } }
 // the owner's stats (the PS1's sim_gotchi_*): mood -100..100, food 0..100; fun and food given
 static int gstat(int si, int what) { if (si < 0 || si >= nsim) return 0; return what == 0 ? (mood(&sims[si]) - 50) * 2 : sims[si].need[0]; }
 static void gfun(int si, int n) { if (si >= 0 && si < nsim) sims[si].need[1] = cl100(sims[si].need[1] + n); }
@@ -1030,7 +1031,7 @@ static void gfamily(Toy *t, int si) {   // once an hour: mates with an egg of lo
         if (x->stage == GS_ADULT && x->mate && x->bond >= 60) { Blob *y = gby_id(t, x->mate);
             if (y && y->stage == GS_ADULT && y->bond >= 60 && x->id < y->id && !(gr() & 7)) { int has = 0; for (int q = 0; q < GB_N; q++) if (t->b[q].on && t->b[q].stage == GS_EGG && t->b[q].mom == x->id) has = 1;
                 if (!has && gbreed(t, x, y, x->id, y->id) && si == ctl) say("Love left an egg in the basket"); } }
-        if (x->stage >= GS_CHILD && !(x->fl & GF_SLEEP) && x->bond >= 50 && x->hap >= 3 && si >= 0 && !(gr() % 14)) { int g = 20 + gr() % 40; if (si == ctl) { static char gb[48]; funds += g; snprintf(gb, sizeof gb, "Your Boreagotchi brought a gift: $%d", g); say(gb); } gfun(si, 4); gdiary(GD_GIFT, x->nm); }   // (D55) a gift for its owner
+        if (x->stage >= GS_CHILD && !(x->fl & GF_SLEEP) && x->bond >= 50 && x->hap >= 3 && si >= 0 && (int)(gr() % 100u) < trf_luck_pct(&dtr[si], 7)) { int g = trf_gift(&dtr[si], 20 + gr() % 40); if (si == ctl) { static char gb[48]; funds += g; trg_ev(EV_LUCKY, 1); snprintf(gb, sizeof gb, "Your Boreagotchi brought a gift: $%d", g); say(gb); } gfun(si, 4); gdiary(GD_GIFT, x->nm); }   // (D55) a gift for its owner
         if (x->stage > GS_EGG && x->mom) for (int j = i + 1; j < GB_N; j++) { Blob *y = &t->b[j]; if (y->on && y->stage > GS_EGG && y->mom == x->mom && !(gr() & 3)) { if (x->hap < 4) x->hap++; if (y->hap < 4) y->hap++; if (x->bond < 99) x->bond++; if (y->bond < 99) y->bond++; } } } }
 // ---- (D55) accessories, awards (the PS1's sixteen), playdates between families ----
 static const char *const gaccNm[NACC] = { "NOTHING", "BOW", "TOP HAT", "SHADES", "SCARF", "FLOWER", "CROWN", "PARTY HAT" };
@@ -1048,7 +1049,7 @@ static int gscore(void) {
     int s = 0, n = 0; for (int k = 0; k < GT_MAX; k++) if (gtoy[k].own) { const Toy *t = &gtoy[k]; s += t->xp / 2 + t->hatched * 5 + t->wins * 2 + t->plays; for (int i = 0; i < GLN; i++) if (t->ln[i].id) s += gdepth(t, t->ln[i].id, 0) * 8 + ((t->ln[i].nm & 128) ? 5 : 0); }
     for (int i = 0; i < NACH; i++) n += ghas(i); return s + n * 25 + gdex_count() * 3; }
 static void gx_award(int bit) {
-    if (ghas(bit)) return; gach |= 1u << (bit < 16 ? bit : bit + 5); Toy *t = gtoy_of(ctl); if (!t) return; int g = 50 + bit * 10; funds += g; { static char b[48]; snprintf(b, sizeof b, "Boreagotchi award! +$%d", g); say(b); } gfun(ctl, 6); gdiary(GD_AWARD, bit); gfxk = 4; }
+    if (ghas(bit) || trg_cheat_now()) return; gach |= 1u << (bit < 16 ? bit : bit + 5); Toy *t = gtoy_of(ctl); if (!t) return; int g = 50 + bit * 10; funds += g; { static char b[48]; snprintf(b, sizeof b, "Boreagotchi award! +$%d", g); say(b); } gfun(ctl, 6); gdiary(GD_AWARD, bit); gfxk = 4; }
 static void gx_check(void) {
     int sum = 0, big = 0, ad = 0, star = 0, any = 0, deep = 0, kids = 0, gone = 0;
     for (int k = 0; k < GT_MAX; k++) if (gtoy[k].own) { const Toy *t = &gtoy[k]; any = 1; sum += t->plays; if (t->hatched) gx_award(0); if (glevel(t) >= 5) gx_award(15);
@@ -2206,8 +2207,9 @@ static void mg_frame(int held, int down, int steps, int tx, int ty) { if (mg_ui 
 #define MG_AS 0x5341   // 'SA': the arcade's high-score tables, first-play bits, games played
 #define MG_SK 0x4B53   // 'SK': the board and the skate scores
 #define MG_CX 0x5843   // 'CX': what Create-a-Sim adds to each sim (hat, gender, trousers, traits, lifetime wish); after the Boreagotchi's block so an older ROM still reads that
+#define MG_TR 0x5254   // 'TR': the traits (D73): every sim's slots and wish, the family's counters, wishes done, unlocked slots
 #define MG_FY 0x5946   // 'FY': who is whose among the sims (ids, parents, partner): the Boreagotchi tree shows them
-static void mg_reset(void) { has_board = on_board = 0; board_lift = 0; skate_score = skate_best = 0; arcade_tix = fight_wins = fight_champ = fight_best = 0; memset(csx, 0, sizeof csx); memset(fid, 0, sizeof fid); memset(fpar, 0, sizeof fpar); memset(fpt, 0, sizeof fpt); fid_next = 1; memset(ar_hs, 0, sizeof ar_hs); ar_pm = ar_plays = 0; mg_ui = 0; hs_heat = hs_day = hs_stolen = hs_logic = 0; gt_reset(); }
+static void mg_reset(void) { has_board = on_board = 0; board_lift = 0; skate_score = skate_best = 0; arcade_tix = fight_wins = fight_champ = fight_best = 0; memset(csx, 0, sizeof csx); memset(fid, 0, sizeof fid); memset(fpar, 0, sizeof fpar); memset(fpt, 0, sizeof fpt); fid_next = 1; memset(ar_hs, 0, sizeof ar_hs); ar_pm = ar_plays = 0; mg_ui = 0; hs_heat = hs_day = hs_stolen = hs_logic = 0; gt_reset(); trg_reset_all(); }
 static int mg_pack(u8 *o) {
     int n = 0; u16 th[2]; s32 v[3];
     th[0] = MG_SK; th[1] = 12; v[0] = has_board; v[1] = (s32)skate_score; v[2] = (s32)skate_best; memcpy(o + n, th, 4); memcpy(o + n + 4, v, 12); n += 16;
@@ -2217,6 +2219,7 @@ static int mg_pack(u8 *o) {
     th[0] = MG_FY; th[1] = SIM_MAX * 4; memcpy(o + n, th, 4); memcpy(o + n + 4, fid, SIM_MAX); memcpy(o + n + 4 + SIM_MAX, fpar, SIM_MAX * 2); memcpy(o + n + 4 + SIM_MAX * 3, fpt, SIM_MAX); n += 4 + SIM_MAX * 4;
     n += gt_pack(o + n, MGBUF_N - n);
     if (n + 4 + (int)sizeof csx <= MGBUF_N) { th[0] = MG_CX; th[1] = (u16)sizeof csx; memcpy(o + n, th, 4); memcpy(o + n + 4, csx, sizeof csx); n += 4 + (int)sizeof csx; }
+    if (n + 4 + 300 <= MGBUF_N) { int l = trg_pack(o + n + 4); th[0] = MG_TR; th[1] = (u16)l; memcpy(o + n, th, 4); n += 4 + l; }
     return n; }
 static int mg_unpack(const u8 *p, int left) {
     mg_reset(); int n = 0;
@@ -2227,6 +2230,7 @@ static int mg_unpack(const u8 *p, int left) {
         else if (th[0] == MG_HT && th[1] == 16) { s32 w[4]; memcpy(w, p + n + 4, 16); hs_heat = CLAMP(w[0], 0, 100); hs_day = w[1] & 255; hs_stolen = w[2] & 0xFFFF; hs_logic = MAX(0, w[3]); }
         else if (th[0] == MG_FY && th[1] == SIM_MAX * 4) { memcpy(fid, p + n + 4, SIM_MAX); memcpy(fpar, p + n + 4 + SIM_MAX, SIM_MAX * 2); memcpy(fpt, p + n + 4 + SIM_MAX * 3, SIM_MAX); for (int i = 0; i < SIM_MAX; i++) if (fid[i] >= fid_next) fid_next = (u8)(fid[i] + 1); if (!fid_next) fid_next = 1; }
         else if (th[0] == MG_CX && th[1] == sizeof csx) { memcpy(csx, p + n + 4, sizeof csx); for (int i = 0; i < SIM_MAX; i++) { Cx *c = &csx[i]; if (c->hat > 5) c->hat = 0; if (c->gen > 1) c->gen = 0; if (c->wish > 5) c->wish = 0; c->wdone &= 1; if (c->pants > 5) c->pants = 0; for (int k = 0; k < 3; k++) if (c->tr[k] > 12) c->tr[k] = 0; } }
+        else if (th[0] == MG_TR) trg_unpack(p + n + 4, th[1]);
         else if (th[0] == MG_GT) gt_unpack(p + n + 4, th[1]);
         else break;
         n += 4 + th[1]; }
