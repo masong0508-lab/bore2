@@ -8,7 +8,7 @@ The PS1 game's own code (`../../src`) on a Dreamcast platform layer. What works 
 - `dc_spu.c` the PS1 SPU in software, mixed to the AICA. `dc_audio_*.h` let `audio.c` run unchanged (generated from `src/audio.h`).
 - `dc_cd.c` the PS1 CD calls on the disc's ISO9660. `dc_vmu.c` memory card calls on the VMU. `dc_plat.c` pad, RAM, overlays.
 - `dc_extra.c` Dreamcast-only: the VMU screen, the OPTIONS > EXTRAS tab. `dc_prof.c` a sampling profiler for test builds.
-- `mkdisc.py` builds the GD-ROM image. `test/` scripts: `newlife.txt`, `dcopts.txt`, `dcgallery.txt` (build with `-DDC_OPTS_TEST=500 -DDC_SHOWITEMS=1`), `vmuls.py` (list a VMU image, draw its icons), `profsym.py`.
+- `mkdisc.py` builds the GD-ROM image. `test/` scripts: `newlife.txt`, `dcopts.txt`, `dcgallery.txt` (build with `-DDC_OPTS_TEST=500 -DDC_SHOWITEMS=1`), `roadaudit.sh` (the road test: nothing may stand on a road tile; fails if it does), `vmuls.py` (list a VMU image, draw its icons), `profsym.py`.
 
 ## Build
 ```

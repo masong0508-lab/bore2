@@ -122,7 +122,7 @@ Tried and not kept: reverb at half rate again (saves about 3.5% but darkens the 
 
 ### Dreamcast furniture set (BORE_DC only, `src/items_dc.inc`)
 Six new items, letters 0xF7..0xFC, bought in build mode (FUN AND TECH: DREAMCAST, VMU ON A STAND, DC ARCADE CABINET; DECOR: SWIRL RUG, ORANGE and BLUE SWIRL LAMP).
-Left: the console and the VMU stand; right: the rug, the cabinet and the lamps (test build `-DDC_SHOWITEMS=1`, also `=2` for the other order).
+Left: the six in a row (test build `-DDC_SHOWITEMS=1`), right: the other order (`=2`). They now stand on a shop floor, the nearest free plot floor to the Sim (the first picture of this set had them in the street at a crossing: the hook put them on the row below the Sim, wherever that was; see "Streets" below). The lamp shades sit on a collar and narrow to the top.
 ![furniture](dc_furniture.png)
 They are plain decor (the cabinet does not start a game). The PS1 build has none of them (`ITEMS_DC` is empty there).
 
@@ -172,3 +172,10 @@ The PS1's new mesh hair (26 styles, `src/hairmesh.inc`) draws correctly under th
 
 ## Nov 8 check (hair and discs)
 Disc rebuilt from main (`make disc`, 7.2 MB track 3). In flycast: title, city HUD and the Create-a-Sim hair tab work, new hair styles, beards and all dye colours draw (`docs/hair_dc_dye.png`; test build `AUTO="HAIR_AUTO=24 -DHAIR_DEV=400"`, tab keys on Dreamcast are `r2`). Not checked: packs shelf, arcade lot.
+
+## Streets: nothing on a road (Nov 8)
+The picture the user sent twice (a swirl rug, a console, lamps and the cabinet standing on a crossing, `dc_furniture.png` as it was) was this port's own test hook, not the generator: `-DDC_SHOWITEMS` set the six furniture items down on the row south of the Sim, and the test Sim stands on a crossing. Fixed in `dc_extra.c`: it takes `world_tile_class` (`src/world.c`, the one definition of road / kerb / plot every port now uses), looks in the window's two middle blocks for the nearest run of free plot floor (lawn, plaza, patio first, then any floor, never a road, never the pavement), puts the items there and holds the Sim behind them. New picture: `docs/dc_furniture.png`. Same crossing before and after (and the PS1 and the DS): `docs/street_props_before_after.png` (top row: Dreamcast, old test hook on the left; the crossing is clear on the right).
+- The road test: `ports/dreamcast/test/roadaudit.sh` (a test build `-DROAD_AUDIT=1`, headless in flycast, about a minute): every block of every town and city, every highway and a grid of open country (1955 windows, 31,296 blocks, 589,477 things) is checked against the definition; it fails if anything stands on a road tile or the painted streets and the map's road bits disagree. Before the fix: 1 thing on a road (a bench in a house's yard that slipped to the road's edge), 1 purged. After: 0 / 0 / 0, PASS, and 0 even with the clean-up off (`-DROAD_NOPURGE=1`). The PS1 build has no room for the sweep (AUTO_CITY alone leaves under 5 KB past `_end`), so the shared code is tested here.
+- Lamps: `items_dc.inc` gives both swirl lamps a collar under the shade and a shade that narrows to the top (5 boxes, BORE_DC only).
+- PS1 check: `src/world.c` changed (shared): `street_purge` replaces `street_clean`; `ps1_check.sh` before (upstream c6f7119) `_end` 0x801fd238, sha1 bbfd8590ebb46df6; after `_end` 0x801fd3b0 (11,344 bytes free on 2 MB), so the PS1 image did change here, by 376 bytes of code. The DC-only files (`items_dc.inc`, `dc_extra.c`) do not reach the PS1.
+- Disc: `bore2_dc_streets.zip` (gdi + 3 tracks, 5.6 MB).
