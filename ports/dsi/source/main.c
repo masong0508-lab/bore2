@@ -502,7 +502,7 @@ static const char *const FACEN[6] = { "Classic", "Round", "Long", "Big Eyes", "S
 static int st_days, st_born, st_died;   // lifetime stats
 
 // ---- sound: the ARM7 plays the DS's square-wave voices; the game sends notes to them. Four voices: lead, bass, pad (the music) and one for effects.
-static int vid[4], snd_on, snd_dirty = 1, song = -2, sstep, stick, sfx_n = -1, sfx_i, sfx_t;
+static int vid[4], snd_on, snd_dirty = 1, song = -2, sstep, stick, sfx_n = -1, sfx_i, sfx_t, sfx_sh;
 static const u16 MB[12] = { 1635, 1732, 1835, 1945, 2060, 2183, 2312, 2450, 2596, 2750, 2914, 3087 };
 static int mfreq(int m) { return MB[m % 12] * (1 << (m / 12 - 1)) / 100; }
 static const u8 SONGL[4][32] = {
@@ -522,7 +522,8 @@ static void vset(int v, int m, int vol) { if (!snd_on || vid[v] < 0) return; if 
 static int mvol(int base) { return base * o_vol * o_mus / 100; }
 static void sfx(int n) {
     if (!snd_on || !o_sfx || !o_vol || (n == 0 && !o_ckl) || (n >= 3 && n <= 5 && !o_chm)) return;
-    if (sfx_n >= 0 && n == 0) return; sfx_n = n; sfx_i = 0; sfx_t = 0; }
+    if (sfx_n >= 0 && n == 0) return; sfx_n = n; sfx_i = 0; sfx_t = 0; sfx_sh = 0; }
+static void sfx_p(int n, int sh) { sfx(n); if (sfx_n == n) sfx_sh = sh; }   // (D64) a pet's voice: the same jingle a few semitones up or down
 static void snd_apply(void) { snd_dirty = 1; }
 static int mus_ok = -1, mus_cur = -1, mus_n; static void mus_init(void), mus_stop(void), mus_tick(void); static int mus_start(int);
 static void snd_tick(void) {
@@ -546,7 +547,7 @@ static void snd_tick(void) {
         if (stick == 0) { int nl = SONGL[song][sstep]; vset(0, nl, mvol(60)); if (!(sstep & 3)) { int nb = SONGB[song][(sstep >> 2) & 7]; vset(1, nb, mvol(55)); vset(2, nb + 12 + 7, mvol(22)); } }
         else if (stick == f * 2 / 3) vset(0, SONGL[song][sstep], mvol(34)); else if (stick == f - 1 && SONGL[song][sstep]) vset(0, 0, 0);
         if (++stick >= f) { stick = 0; sstep = (sstep + 1) & 31; } }
-    if (sfx_n >= 0) { int m = SFXN[sfx_n][sfx_i]; if (!m) { vset(3, 0, 0); sfx_n = -1; } else { if (sfx_t == 0) vset(3, m, o_vol * o_sfx * 90 / 100); if (++sfx_t >= SFXD[sfx_n][sfx_i]) { sfx_i++; sfx_t = 0; } } }
+    if (sfx_n >= 0) { int m = SFXN[sfx_n][sfx_i]; if (m) { m += sfx_sh; if (m < 12) m = 12; if (m > 108) m = 108; } if (!SFXN[sfx_n][sfx_i]) { vset(3, 0, 0); sfx_n = -1; } else { if (sfx_t == 0) vset(3, m, o_vol * o_sfx * 90 / 100); if (++sfx_t >= SFXD[sfx_n][sfx_i]) { sfx_i++; sfx_t = 0; } } }
 }
 
 // ---- THE SONGS: the PS1 game's jukebox on the DS, with no streaming. tools/dsmusic turns every song into a note list plus its instruments' samples
@@ -2213,6 +2214,7 @@ static void fm_pack(FarmSave *f) { memset(f, 0, sizeof *f); memcpy(f->b, fm_n, 4
 static void fm_unpack(const FarmSave *f) { memcpy(fm_n, f->b, 4); memcpy(fm_g, f->b + 4, 4); memcpy(fm_dry, f->b + 8, 4); const u8 *v = f->b + 12;
     fm_wet = v[0]; fm_hens = v[1] > 6 ? 6 : v[1]; fm_cows = v[2] > 3 ? 3 : v[2]; fm_fed = v[3]; fm_fert = v[4]; fm_fz = v[5]; fm_pest = v[6]; fm_up = v[7]; fm_wc = v[8]; fm_ordk = v[9] % 6; fm_ordq = v[10]; fm_ordt = v[11]; fm_fair = v[12]; fm_cdone = v[13]; fm_cday = v[14];
     for (int k = 0; k < 4; k++) { if (fm_n[k] > 8) fm_n[k] = 8; fm_stock[k] = f->w[k]; } fm_egg = f->w[4]; fm_milk = f->w[5]; fm_pe = f->w[6]; fm_pm = f->w[7]; fm_built = f->w[8]; fm_last = f->w[9]; memcpy(fsk, f->sk, sizeof fsk); }
+#define MGBUF_N 4096   // (D64) the mini-games' save blocks (the Boreagotchi's v48 extras need the room)
 static int sav_pack(int big) {   // returns the packed size in sav_buf (header included), or 0 if even the basics do not fit
     if (lot_bx >= 0) lot_save();
     SavCore c; memset(&c, 0, sizeof c); c.seed = seed; c.minutes = minutes; c.funds = funds; c.nsim = nsim; c.ctl = ctl; c.cur_sim = cur_sim; c.cur_set = cur_set; c.lot_bx = lot_bx; c.lot_by = lot_by; c.days = st_days; c.born = st_born; c.died = st_died;
@@ -2220,7 +2222,7 @@ static int sav_pack(int big) {   // returns the packed size in sav_buf (header i
     int n = 0; u8 *r = sav_raw; memset(r, 0, sizeof sav_raw);
     #define PUT(p, l) do { memcpy(r + n, (p), (size_t)(l)); n += (l); } while (0)
     PUT(&c, (int)sizeof c); PUT(sname, (int)sizeof sname); PUT(sims, (int)sizeof sims); PUT(crt, (int)sizeof crt);
-    u8 mgbuf[3000]; int mgsz = mg_pack(mgbuf);   // (D48: the mini-games' blocks, as big as they are)
+    static u8 mgbuf[MGBUF_N]; int mgsz = mg_pack(mgbuf);   // (D48: the mini-games' blocks, as big as they are)
     int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4) - (4 + (int)sizeof(LifeSave)) - (4 + NOPT - OPT_OLD) - 8 - (4 + SIM_MAX) - 20 - (4 + (int)sizeof(FarmSave)) - mgsz, base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
     int order[LSV_N], no = 0; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) order[no++] = i; for (int i = 0; i < lsv_n; i++) if (!(lsv[i].bx == lot_bx && lsv[i].by == lot_by)) order[no++] = i;
     for (int q = 0; q < no; q++) { const LotSave *L = &lsv[order[q]]; int m = n; SavLot h = { (s16)L->bx, (s16)L->by, (s16)L->pcx, (s16)L->pcy, (s16)L->dcx, (s16)L->dcy, (u16)(L->nobj | (L->roof << 12) | (L->up << 14)) };
@@ -3122,7 +3124,7 @@ int main(void) {
                 else if (sc >= 60 && sc < 70) { test_ex = sc == 69 ? 0 : sc - 59; life_ver++; }   // (60-68: every face in that mood, 69: as the game decides; 100: the sheet)
                 else if (sc == 71 || sc == 72) mg_test_save(sc);   // (D62: 71 writes a save with scores and family links, 72 loads it)
                 else if (sc == 70) { live_pitch = 2000; live_dist = 1800; yaw_t = live_yaw = 4096 + 600; }   // (70: face height camera)
-                else if ((sc >= 40 && sc < 60) || (sc >= 80 && sc < 90)) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
+                else if ((sc >= 40 && sc < 60) || (sc >= 73 && sc < 80) || (sc >= 80 && sc < 100)) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
 #endif
             if (cam_on) {   // stylus camera: drag to orbit/tilt (or pan), buttons for zoom, follow, reset, done
                 if (down & KEY_TOUCH) { cam_drag = 0; if (hit(216, 36, 38, 20, tp.px, tp.py)) { cam_pan ^= 1; forced = 1; } else if (hit(216, 58, 38, 20, tp.px, tp.py)) cam_drag = 1;
