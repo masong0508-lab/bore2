@@ -3192,7 +3192,7 @@ int main(void) {
                 else if (sc >= 60 && sc < 70) { test_ex = sc == 69 ? 0 : sc - 59; life_ver++; }   // (60-68: every face in that mood, 69: as the game decides; 100: the sheet)
                 else if (sc == 71 || sc == 72) mg_test_save(sc);   // (D62: 71 writes a save with scores and family links, 72 loads it)
                 else if (sc == 70) { live_pitch = 2000; live_dist = 1800; yaw_t = live_yaw = 4096 + 600; }   // (70: face height camera)
-                else if ((sc >= 40 && sc < 60) || (sc >= 73 && sc < 80) || (sc >= 80 && sc < 100)) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
+                else if ((sc >= 40 && sc < 60) || (sc >= 73 && sc < 80) || (sc >= 80 && sc < 116)) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
 #endif
             if (cam_on) {   // stylus camera: drag to orbit/tilt (or pan), buttons for zoom, follow, reset, done
                 if (down & KEY_TOUCH) { cam_drag = 0; if (hit(216, 36, 38, 20, tp.px, tp.py)) { cam_pan ^= 1; forced = 1; } else if (hit(216, 58, 38, 20, tp.px, tp.py)) cam_drag = 1;

@@ -1236,11 +1236,15 @@ static void g_creature(const Blob *b, int fr, int d, int ox) {
         case 7: gP(cx, top - 4, 2); gRC(cx - 1, top - 3, cx + 1, top - 3, 3); gRC(cx - 2, top - 2, cx + 2, top - 2, 2); gRC(cx - 2, top - 1, cx + 2, top - 1, 3); break;
     } }
 }
-static void g_egg(const Blob *b, int fr) {
-    int bob = fr & 1, cy = 10 - bob; gELL(16, cy, 4, 5, 1);
-    switch (b->sp & 3) { case 0: gP(14, cy - 2, 0); gP(18, cy, 0); gP(15, cy + 2, 0); gP(17, cy - 3, 0); break; case 1: gRC(13, cy - 1, 19, cy - 1, 0); gRC(13, cy + 2, 19, cy + 2, 0); break;
-        case 2: for (int x = 12; x < 21; x++) gP(x, cy + ((x & 1) ? 0 : 1), 0); break; default: gELL(14, cy - 1, 1, 1, 0); gELL(18, cy + 2, 1, 1, 0); break; }
-    if (b->age >= 15) { gLN(16, cy - 5, 14, cy - 2, 0); gLN(14, cy - 2, 17, cy, 0); gLN(17, cy, 15, cy + 3, 0); }
+#include "ds_gegg.h"   // (D69) the PS1's redrawn eggs
+static void gegg_dots(const char *const *r, int w, int h, int x, int y, int tilt) {   // a sprite onto the dots; its top leans by tilt dots, the foot stays
+    for (int j = 0; j < h; j++) { int sh = tilt * (h - 1 - j) / (h - 1); for (int i = 0; i < w; i++) if (r[j][i] != '.') gP(x + i + sh, y + j, 16 + (int)(strchr(geggKeys, r[j][i]) - geggKeys)); }
+}
+static void g_egg(const Blob *b, int fr) {   // (D69) centred on the LCD (cols 11 to 20, rows 2 to 14), a slow wobble now and then, faster once it cracks (age 15, 17, 19)
+    static const s8 wb[8] = { 1, 2, 1, 0, -1, -2, -1, 0 };
+    int cr = b->age >= 19 ? 3 : b->age >= 17 ? 2 : b->age >= 15 ? 1 : 0, per = cr ? 12 : 24, ph = ((fr % per) + per) % per, tilt = ph >= per - 8 ? wb[ph - (per - 8)] : 0;
+    geggcol = b->col & 7; gegg_dots(gegg_make(1, gegg_pat(b), cr), FS_EGGL_W, FS_EGGL_H, 11, 2, tilt);
+    if (b->mut) { int x = (fr & 2) ? 26 : 5, y = (fr & 2) ? 4 : 6; gP(x, y, 23); gP(x - 1, y, 23); gP(x + 1, y, 23); gP(x, y - 1, 23); gP(x, y + 1, 23); }   // (the rare one twinkles)
 }
 static void g_scene(const Blob *b, int fr, int look) {
     for (int y = 0; y < 16; y++) for (int x = 0; x < 32; x++) gdot[y][x] = 0;
@@ -1276,7 +1280,9 @@ static const char *const gicon[15][7] = {
 static int gdots_plain;   // 1: one ink only (a silhouette, a memorial)
 static void gdots_draw(int x, int y, int s, u16 c) {   // the LCD's dots onto the screen: runs of one ink joined into one box (D60: 2 red, 3 blue, 4 gold for the hats)
     static const u16 acc[5] = { 0, 0, C15(27, 6, 8), C15(8, 16, 27), C15(27, 19, 1) };
-    for (int j = 0; j < 16; j++) for (int i = 0; i < 32;) { int v = gdot[j][i]; if (!v) { i++; continue; } int k = i; while (k < 32 && gdot[j][k] == v) k++; rect(x + i * s, y + j * s, (k - i) * s - (s > 2), s - (s > 2), v > 1 && v < 5 && !gdots_plain ? acc[v] : c); i = k; } }
+    for (int j = 0; j < 16; j++) for (int i = 0; i < 32;) { int v = gdot[j][i]; if (!v) { i++; continue; } int k = i; while (k < 32 && gdot[j][k] == v) k++;
+        if (v >= 16) { rect(x + i * s, y + j * s, (k - i) * s, s, gegg_c(geggcol, v - 16)); i = k; continue; }   // (D69) an egg: its own colours, square dots, no gap
+        rect(x + i * s, y + j * s, (k - i) * s - (s > 2), s - (s > 2), v > 1 && v < 5 && !gdots_plain ? acc[v] : c); i = k; } }
 #define LCD_BG C15(21, 24, 16)
 #define LCD_INK C15(3, 5, 3)
 static void gt_open_basket(int si) { Toy *t = gtoy_of(si); if (!t) { gsay(si == ctl ? "NO BOREAGOTCHI YET. A SHOP SELLS THEM" : "THEY HAVE NO TOY YET"); return; } gti = (int)(t - gtoy); gview = GV_BASKET; gbi = t->sel < GB_N ? t->sel : 0; gmsgT = 0; gmsg = 0; }
@@ -1681,7 +1687,7 @@ static const GPage gpg[GNP] = {   // the PS1's guide (gotchi_ui.c gp[]), the sam
     { "WHAT'S NEW", 8, { "NEW: FAMILY TREE, COUPLES, EGGS OF LOVE.", "NEW: NATURES, COLOURS, ELDERS, MEMORIAL.", "NEW: SIBLINGS PLAY, PARENTS CARE." } },
 };
 static void gtile(int x, int y, int sp, int stage, int look, int sc) {   // a pet on a little LCD
-    Blob bb; memset(&bb, 0, sizeof bb); bb.on = 1; bb.sp = (u8)(sp % GSP_N); bb.stage = (u8)stage; bb.hun = bb.hap = 4; bb.age = (u16)(stage == GS_EGG ? 0 : 16); g_scene(&bb, ganim / 20, look);
+    Blob bb; memset(&bb, 0, sizeof bb); bb.on = 1; bb.sp = (u8)(sp % GSP_N); bb.stage = (u8)stage; bb.hun = bb.hap = 4; bb.age = (u16)(stage == GS_EGG ? 3 : 16); bb.col = (u8)(stage == GS_EGG ? 3 : 0); g_scene(&bb, ganim / 20, look);   // (D69: a guide's egg is a gold one)
     rect(x, y, 32 * sc + 2, 16 * sc + 2, LCD_BG); gdots_draw(x + 1, y + 1, sc, LCD_INK); }
 static void guide_strip(int k) {   // the picture under each page, on the touch screen
     int y = 26, cyc = (ganim / 120) % GSP_N; rect(6, y - 4, 244, 112, C15(12, 8, 18)); char b[32];
@@ -1919,13 +1925,16 @@ static void gcell(int x, int y, int w, int h, int sel) { rect(x, y, w, h, sel ? 
 static void gtline(int x0, int y0, int x1, int y1) {   // a line of the tree: down from a parent, across, down to the child
     int ym = (y0 + y1) / 2, a = MIN(x0, x1), w = ABS(x1 - x0) + 1; u16 c = C15(14, 16, 24);
     rect(x0, y0, 1, ym - y0 + 1, c); rect(a, ym, w, 1, c); rect(x1, ym, 1, y1 - ym + 1, c); }
+static const Toy *gtree_t;   // (D69) the toy whose tree is drawn: a line that is still an egg is drawn as its egg
 static void gtree_card(const Ln *o, int x, int y, int hl) {   // one relative: a little LCD with its name under it
-    if (!o || !o->id) return; Blob bb; memset(&bb, 0, sizeof bb); bb.on = 1; bb.stage = GS_ADULT; bb.sp = o->sp; bb.hun = bb.hap = 4; g_scene(&bb, 0, 0);
+    if (!o || !o->id) return; Blob bb; memset(&bb, 0, sizeof bb); bb.on = 1; bb.stage = GS_ADULT; bb.sp = o->sp; bb.hun = bb.hap = 4; bb.col = o->col & 7;
+    if (gtree_t && !(o->nm & 128)) for (int i = 0; i < GB_N; i++) { const Blob *e = &gtree_t->b[i]; if (e->on && e->id == o->id && e->stage == GS_EGG) { bb.stage = GS_EGG; bb.age = 3; bb.mut = e->mut; } }
+    g_scene(&bb, 0, 0);
     int gone = (o->nm & 128) != 0; rect(x - 1, y - 1, 46, 22, hl ? C15(31, 25, 6) : C15(9, 7, 11)); rect(x, y, 44, 20, LCD_BG); gdots_draw(x + 6, y + 2, 1, gone ? C15(14, 14, 14) : gcolInk[o->col & 7]);
     text_fit(x, y + 23, 1, 44, gone ? C15(18, 18, 18) : TXT, ggiv[o->nm & 31]); if (gone) text(x + 37, y + 1, 1, C15(31, 31, 31), "+"); }
 static void gtree_people(const Toy *t, int y);
 static void gtop_tree(void) {
-    Toy *t = gtt(); const Ln *me = &t->ln[gtree]; char b2[80];
+    Toy *t = gtt(); const Ln *me = &t->ln[gtree]; char b2[80]; gtree_t = t;
     if (!me->id) { text_fit(12, 60, 1, 232, TXT, "THIS PET HAS NO FAMILY RECORD YET."); text_fit(12, 76, 1, 232, C15(20, 24, 28), "EGGS FROM A PAIR START A TREE."); return; }
     static const int gpx[4] = { 6, 54, 158, 206 }; const int mx = 30, fx = 182, ux = 106, y0 = 24, y1 = 59, y2 = 94, y3 = 129;
     const Ln *m = gln_of(t, me->mom), *f = gln_of(t, me->dad), *gp[4] = { m ? gln_of(t, m->mom) : 0, m ? gln_of(t, m->dad) : 0, f ? gln_of(t, f->mom) : 0, f ? gln_of(t, f->dad) : 0 };
@@ -2267,7 +2276,20 @@ static void gt_tbase(int tut) {   // (D64) a toy with a grown-up (slot 0, wishin
     for (int i = 0; i < 3; i++) { Blob *b = &t->b[i]; gfresh(b, i * 3 + 1); b->stage = stg[i]; b->form = (u8)(i == 0 ? 3 : 0); b->age = (u16)(i * 40); b->bond = (u8)(60 - i * 15); b->hun = 3; b->hap = 3; b->col = (u8)(i + 2); gnewid(t, b, 0, 0); gdex_see(b->sp, b->form); gxinit(t, i); t->x[i].nrg = 80; t->x[i].hyg = 70; }
     t->b[0].disc = 60; t->x[0].sk[0] = 40; t->x[0].sk[1] = 22; t->x[0].sk[2] = 63; t->x[0].wish = 1 | 8; t->cared = 40; if (!tut) gach |= 0x180000u; else { gach &= ~0x1F0000u; t->cared = 0; }
     gt_open_a(1); gview = GV_HAND; gti = (int)(t - gtoy); gbi = 0; gisel = 0; gmsgT = 0; gmsg = 0; ghpend = 0; gsum_pend = 0; }
+static Toy *gt_ebase(void) {   // (D69) a toy with eight eggs of different kinds and colours (the last one rare); the handheld open on the first
+    funds += 8000; gt_reset(); gbuy(ctl); Toy *t = gtoy_of(ctl);
+    for (int i = 0; i < GB_N; i++) { if (i) gegg(t, i); Blob *b = &t->b[i]; b->stage = GS_EGG; b->sp = (u8)i; b->col = (u8)(i % 7 + 1); b->mut = (u8)(i == 7); b->age = 3; b->hun = b->hap = 4; gxinit(t, i); }
+    t->cared = 40; gach |= 0x180000u; gt_open_a(1); gview = GV_HAND; gti = (int)(t - gtoy); gbi = 0; gisel = 0; gmsgT = 0; gmsg = 0; ghpend = 0; gsum_pend = 0; return t; }
 static void mg_test(int sc) {
+    if (sc >= 101 && sc <= 115) {   // (D69) the redrawn eggs (build with -DAUTO_SCENE=100, hold keys): 101-106 the six patterns, 107 the rare one, 108-110 the three crack stages, 111 basket, 112 home, 113 tree, 114 day card, 115 guide (eggs)
+        Toy *t = gt_ebase(); Blob *b = &t->b[0];
+        if (sc <= 106) { b->sp = (u8)(sc - 101); b->col = (u8)(sc - 101 + 1); }
+        if (sc == 107) { b->mut = 1; b->col = 3; }
+        if (sc >= 108 && sc <= 110) { b->sp = 3; b->col = 2; b->age = (u16)(sc == 108 ? 15 : sc == 109 ? 17 : 19); }
+        if (sc == 111) { gview = GV_BASKET; } if (sc == 112) { gview = GV_HOME; gsub = 1; }
+        if (sc == 113) { mg_test(57); Toy *u = gtt(); for (int j = 0; j < GLN; j++) if (u->ln[j].id == u->b[6].id) gtree = j; }
+        if (sc == 114) { for (int i = 2; i < GB_N; i++) { Blob *p = &t->b[i]; if (i < 5) { p->stage = (u8)(i - 1); p->age = 40; } } gsum_c = 5; gsum_p = 2; gsum_h = 1; gview = GV_DAY; }
+        if (sc == 115) { gt_open_a(3); gguide = 2; } }
     if (sc >= 73 && sc <= 79) { gt_tbase(0); Toy *t = gtt(); gbest[0] = 55; gbest[2] = 95; gbest[4] = 78; gbest[7] = 30; t->gp[0] = 3; t->gp[1] = 1; t->streak = 2; t->best = 4; t->ghist = 0x35; t->gflag = 0;
         if (sc == 73) { t->b[0].hun = 1; t->b[0].poop = 1; }
         if (sc == 74) { gsub = 1; gview = GV_FEED; } if (sc == 75) { gsub = 7; gview = GV_PLAYPICK; } if (sc == 76) { gsub = 2; gview = GV_TRAIN; } if (sc == 77) { ggoals_roll(t); gview = GV_GOALS; }
