@@ -8,10 +8,13 @@
 
 #ifdef BORE_DC
 #include <string.h>
-// Dreamcast pad: the PS1 button names in the texts become the Dreamcast's (X = A, O = B, SQ / SQUARE = X, TRI / TRIANGLE = Y), whole words only
-static int dc_wc(int c) { return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '\'' || c == '$' || c == '%'; }
+// Dreamcast pad: the PS1 button names in the texts become the Dreamcast's (X = A, O = B, SQ / SQUARE = X, TRI / TRIANGLE = Y), whole words only.
+// A word is letters (either case: the friendly case has made "OPEN" into "Open", and that O is not a button), digits and ' $ %. The button is first a
+// placeholder byte (1 A, 2 B, 3 X, 4 Y), so the friendly case leaves it alone (it must not become a lower case "a") and a second pass cannot map it again
+// (SQUARE -> X -> A); font_case counts it as a word; the placeholders become the letters at the very end (dc_fin).
+static int dc_wc(int c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '\'' || c == '$' || c == '%'; }
 static const char *dc_btn(const char *s, char *buf) {
-    static const struct { const char *from, *to; } m[] = { { "CROSS", "A" }, { "CIRCLE", "B" }, { "SQUARE", "X" }, { "TRIANGLE", "Y" }, { "SQ", "X" }, { "TRI", "Y" }, { "X", "A" }, { "O", "B" } };
+    static const struct { const char *from; char to; } m[] = { { "CROSS", 1 }, { "CIRCLE", 2 }, { "SQUARE", 3 }, { "TRIANGLE", 4 }, { "SQ", 3 }, { "TRI", 4 }, { "X", 1 }, { "O", 2 } };
     int o = 0, hit = 0;
     for (const char *p = s; *p;) {
         int prev = p > s ? p[-1] : ' ';
@@ -23,7 +26,7 @@ static const char *dc_btn(const char *s, char *buf) {
                 int nx = p[l];
                 if (dc_wc(nx) || nx == '.' || nx == '-' || nx == ':') continue;
                 if (o + 2 >= 600) return s;
-                buf[o++] = m[k].to[0]; p += l; hit = 1; break;
+                buf[o++] = m[k].to; p += l; hit = 1; break;
             }
             if (k < 8) continue;
         }
@@ -33,9 +36,17 @@ static const char *dc_btn(const char *s, char *buf) {
     if (!hit) return s;
     buf[o] = 0; return buf;
 }
-#define DC_BTN(s) char dcb_[600]; s = dc_btn(s, dcb_)
+static const char *dc_fin(const char *s, char *buf) {   // the placeholders as the letters
+    int o = 0, hit = 0;
+    for (const char *p = s; *p; p++) { if (o + 1 >= 600) return s; if ((u8)*p >= 1 && (u8)*p <= 4) { buf[o++] = "ABXY"[*p - 1]; hit = 1; } else buf[o++] = *p; }
+    if (!hit) return s;
+    buf[o] = 0; return buf;
+}
+#define DC_BTN(s) char dcb_[600], dcf_[600]; s = dc_btn(s, dcb_)
+#define DC_FIN(s) s = dc_fin(s, dcf_)
 #else
 #define DC_BTN(s)
+#define DC_FIN(s)
 #endif
 
 #define NG 94                                   // '!' .. '~'
@@ -122,16 +133,26 @@ int font_case(const char *s, char *out, int n) {
         int c = (u8)s[i];
         if (c >= 'a' && c <= 'z') { has_lower = 1; break; }
         if (c >= 'A' && c <= 'Z' && (i == 0 || !((s[i - 1] >= 'A' && s[i - 1] <= 'Z') || s[i - 1] == '\''))) nw++;
+#ifdef BORE_DC
+        if (c >= 1 && c <= 4) nw++;   // (a pad button: a word, as the PS1's X and O are)
+#endif
         if ((c == '.' || c == '?' || c == '!') && s[i + 1] == ' ' && i + 2 < len) sent_p = 1;
     }
     if (has_lower || !nw) return 0;
-    int keyed = (s[0] == 'X' || s[0] == 'O') && s[1] == ' ';           // a pad hint ("X PLAY BORTUA FIGHTER"): a command with names in it: Title Case unless it is long
+#ifdef BORE_DC
+    int keyed = (s[0] == 'X' || s[0] == 'O' || s[0] == 1 || s[0] == 2) && s[1] == ' ';
+#else
+    int keyed = (s[0] == 'X' || s[0] == 'O') && s[1] == ' ';
+#endif           // a pad hint ("X PLAY BORTUA FIGHTER"): a command with names in it: Title Case unless it is long
     int sentence = keyed ? (nw >= 7 || sent_p) : (nw >= 4 || sent_p);
     int cap_next = 1, last_digit = 0, changed = 0;
     for (int i = 0; i < len;) {
         int c = (u8)s[i];
         if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) {     // a separator
             out[i] = (char)c;
+#ifdef BORE_DC
+            if (c >= 1 && c <= 4) cap_next = 0;   // (a pad button is a word: what follows it is not the first word)
+#endif
             if (((c == '.' || c == '?' || c == '!') && (s[i + 1] == ' ' || !s[i + 1]))) cap_next = 1;
             i++; continue;
         }
@@ -173,7 +194,7 @@ const char *font_shaped(const char *s, char *buf, int n) { return font_look == L
 
 static inline const u8 *glyph_of(const Fnt *f, int c) { return c > 32 && c < 127 ? f->g[c - 33] : 0; }
 int font_w(int style, const char *s) {
-    DC_BTN(s); style = stl(style); char cb[SHAPE_N]; s = shape(style, s, cb, SHAPE_N);
+    DC_BTN(s); style = stl(style); char cb[SHAPE_N]; s = shape(style, s, cb, SHAPE_N); DC_FIN(s);
     const Fnt *f = &fnt[style]; int w = 0;
     for (; *s; s++) {
         int c = (u8)*s; const u8 *g = glyph_of(f, c);
@@ -185,7 +206,7 @@ int font_w(int style, const char *s) {
 }
 int font_ink_w(int style, const char *s) {                  // advance width less the space after the last glyph
     DC_BTN(s); style = stl(style); char cb[SHAPE_N]; s = shape(style, s, cb, SHAPE_N);
-    const Fnt *f = &fnt[style]; int w = font_w(style, s), n = (int)strlen(s);
+    const Fnt *f = &fnt[style]; int w = font_w(style, s); DC_FIN(s); int n = (int)strlen(s);   // (the width first: a button is still its placeholder, so it is not mapped twice)
     while (n > 0 && s[n - 1] == ' ') { w -= f->space; n--; }
     if (n > 0) { const u8 *g = glyph_of(f, (u8)s[n - 1]); if (g && g[2]) { int tail = g[3] - (f->off[(u8)s[n - 1] - 33] + g[2]); if (tail > 0 && tail < 3) w -= tail; } }
     return w;
@@ -197,7 +218,7 @@ static void draw_glyph(const Fnt *f, const u8 *g, int off, int x, int y, int zoo
 }
 void font_text(int style, int x, int y, const char *s, int r, int g, int b) {
     if (!ready) return;
-    DC_BTN(s); style = stl(style); char cb[SHAPE_N]; s = shape(style, s, cb, SHAPE_N);
+    DC_BTN(s); style = stl(style); char cb[SHAPE_N]; s = shape(style, s, cb, SHAPE_N); DC_FIN(s);
     const Fnt *f = &fnt[style];
     for (; *s; s++) {
         int c = (u8)*s; const u8 *gl = glyph_of(f, c);
@@ -218,7 +239,7 @@ void font_debug(void) { }
 int font_w_zoom(int zoom, const char *s) { return font_w(FS_FUN, s) * zoom; }
 void font_text_zoom(int x, int y, int zoom, const char *s, int r, int g, int b) {
     if (!ready) return;
-    DC_BTN(s); const Fnt *f = &fnt[FS_FUN];
+    DC_BTN(s); DC_FIN(s); const Fnt *f = &fnt[FS_FUN];
     y -= f->top * zoom;
     for (; *s; s++) {
         int c = (u8)*s; const u8 *gl = glyph_of(f, c);

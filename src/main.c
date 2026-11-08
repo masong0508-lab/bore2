@@ -4356,6 +4356,52 @@ static void ui_test_tick(int steps) {
 }
 #endif
 static void ne_open(int fresh); static void wm_open_mode(int m);
+#ifdef AUTO_GLYPHS
+// (test builds, AUTO_GLYPHS=1: the glyph chart, test/glyph_check.sh. Pages of 10 vblanks. A white sync square at (8, 8) and the page number as 7 white/black
+//  squares after it. page = look * 37 + q: q 0..35: style = q / 6, variant = (q / 3) & 1, third = q % 3 (32 of the 94 printable ASCII characters, 8 x 4 cells
+//  of 34 x 52 from (8, 22)); q 36: shipped strings. variant 0: each character alone; 1: after a Z, so a lone O or X is not a pad button on the Dreamcast.)
+#define GL_PAGES 111
+static void glyph_chart(void) {
+    static int t0 = -1; if (t0 < 0) t0 = VSync(-1);
+    int pg = (VSync(-1) - t0) / 10; if (pg >= GL_PAGES) pg = GL_PAGES - 1;
+    int look = pg / 37, q = pg % 37;
+    gfx_rect(0, 0, 320, 240, 0, 0, 0, 0);
+    font_look = look; font_raw = q < 36;
+    gfx_rect(8, 8, 6, 6, 255, 255, 255, 0);
+    for (int i = 0; i < 7; i++) if ((pg >> i) & 1) gfx_rect(16 + i * 8, 8, 6, 6, 255, 255, 255, 0);
+    if (q < 36) {
+        int st = q / 6, var = (q / 3) & 1, third = q % 3;
+        for (int i = 0; i < 32; i++) {
+            int c = 33 + third * 32 + i; if (c > 126) break;
+            char b[3]; b[0] = 'Z'; b[1] = (char)c; b[2] = 0;
+            font_text(st, 8 + (i % 8) * 34 + 2, 22 + (i / 8) * 52 + 14, var ? b : b + 1, 255, 255, 255);
+        }
+    } else {   // (the shipped strings, each drawn twice: the left copy as ui_textfit does it (font_shaped first, then font_text), the right copy straight to font_text, 160 px on:
+               //  the two must be the same picture. Line 7 is raw, the pad's buttons as the Dreamcast names them (the PS1 draws what they become: compared across the two builds))
+        static const char *const GW[] = { "OPEN SLOT", "OPEN OPEN OXEN BOX", "I'M AN OLD BORE", "X PLAY BORTUA FIGHTER", "7:45 AM TV DJ XP", "XOXO OK OPEX: O1 X2", "Open Slot x o a", "", "HOLD X TO RUN, O TO STOP" };
+        static const char *const HW[] = { "OPEN SLOT", "OPEN OXEN BOX", "O IS FOR OLD" };
+        char sb[160]; const char *t;
+        for (int i = 0; i < 9; i++) {
+            const char *w = GW[i];
+            if (i == 7) {
+                font_raw = 1;
+#ifdef BORE_DC
+                w = "O X SQ TRI CROSS CIRCLE";
+#else
+                w = "B A X Y A B";
+#endif
+            }
+            t = font_shaped(w, sb, sizeof sb); font_text(font_style_of(1), 8, 20 + i * 11, t, 255, 255, 255); font_text(font_style_of(1), 168, 20 + i * 11, w, 255, 255, 255);
+            font_raw = 0;
+        }
+        for (int i = 0; i < 3; i++) { t = font_shaped(HW[i], sb, sizeof sb); font_text(FS_HEAD, 8, 126 + i * 12, t, 255, 255, 255); font_text(FS_HEAD, 168, 126 + i * 12, HW[i], 255, 255, 255); }
+        t = font_shaped("OPEN SLOT", sb, sizeof sb); font_text(FS_FUN, 8, 168, t, 255, 255, 255); font_text(FS_FUN, 168, 168, "OPEN SLOT", 255, 255, 255);
+        font_text(FS_NUM, 8, 188, "OX 0123 7:45 OPEN", 255, 255, 255); font_text(FS_NUM, 168, 188, "OX 0123 7:45 OPEN", 255, 255, 255);
+        font_text(FS_BIG, 8, 205, "OPEN", 255, 255, 255); font_text(FS_BIG, 168, 205, "OPEN", 255, 255, 255);
+    }
+    font_raw = 0;
+}
+#endif
 #ifdef AUTO_SCREENS
 // (test builds, AUTO_SCREENS=n: every overlay and pack screen in turn, n frames each, by themselves; test/fonts2_tour.sh makes the pad script that shoots them and turns the pages)
 static int scr_load, scr_slot = -1;
@@ -5451,6 +5497,9 @@ int main(void) {
         }
 #ifdef AUTO_SCREENS
         if (scr_load) { loading_draw("MAKING THE CITY", 60); gfx_flip(); continue; }
+#endif
+#ifdef AUTO_GLYPHS
+        if (font_ready()) { glyph_chart(); gfx_flip(); continue; }
 #endif
         switch (state) {
             case ST_TITLE:
