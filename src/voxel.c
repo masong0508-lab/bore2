@@ -54,7 +54,8 @@ static void hair_textures(void) {
             if (k == 2) { if (y > ln[x] - (x & 1) * 2) tp = 1; else v += 6; }                                                       // the tips
             if (k == 3) { int l = 6 + ln[x] / 2 + ((x & 1) ? 0 : 3); if (y > l) tp = 1; v += y < 3 ? 12 : 0; }                    // bangs
             if (k == 1) { int dx = x - 8, dy = y - 8, d = dx * dx + dy * dy; v = 120 + cb[x] / 2 + tr() % 7 - 3 + (d < 14 ? 12 : 0) - (((x * 3 + y * 5) % 7) == 0 ? 10 : 0); }   // the crown's whorl
-            if (k == 4) { int cx = x & 3, cy = y & 3, r2 = (cx - 1) * (cx - 1) + (cy - 1) * (cy - 1); v = 126 - r2 * 5 + ((cx + cy < 2) ? 14 : 0) + tr() % 7 - 3 + cb[x] / 2; }   // curls
+            if (k == 4) { int row = y / 5, cx = (x + (row & 1) * 3) % 5, cy = y % 5, r2 = (cx - 2) * (cx - 2) + (cy - 2) * (cy - 2);   // curls: rounded bumps, each row offset by half a curl, every curl its own brightness
+                          v = 150 - r2 * 13 + ((cx + cy < 4) ? 12 : 0) + (((x + (row & 1) * 3) / 5 * 7 + row * 11) % 5) * 5 - 10 + tr() % 7 - 3; }
             tbuf[y * 16 + x] = tp ? 0 : gv(v);
         }
         TexRef *t = k == 0 ? &tx_side : k == 1 ? &tx_crown : k == 2 ? &tx_tips : k == 3 ? &tx_fringe : &tx_curl;

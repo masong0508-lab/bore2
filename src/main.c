@@ -3518,8 +3518,23 @@ static void create_draw(void) {
     int bx = 4 * TILE + TILE / 2, bz = -(5 * TILE + TILE / 2);              // the Bore stands on the rug
     cam_fx = bx - (close ? 190 : 230); cam_fy = close ? -290 : -200; cam_fz = bz;   // the focus sits right of the Bore: it shows in the left half, beside the card
     int yaw = 2048, pitch = close ? 260 : 380, dist = close ? 560 : 820;
+#ifdef HAIR_AUTO   // (test builds: every hair style in turn (HAIR_AUTO frames each) in the first colour, then every colour on style LONG, a beard on the last: no keys needed)
+    { static int hf, lastk = -1; if (create_tab != 2) hf = 0; int k = hf++ / HAIR_AUTO, ns = NHAIR, nc = look_count(LK_HCOL);
+      edit.stage = AG_ADULT; edit.look[LK_HAT] = 0; edit.look[LK_BEARD] = 0;
+      if (k < ns) { edit.look[LK_HSTYLE] = (u8)k; edit.look[LK_HCOL] = 1; }
+      else if (k < ns + nc) { edit.look[LK_HSTYLE] = 2; edit.look[LK_HCOL] = (u8)(k - ns); }
+      else if (k < ns + nc + 2) { edit.look[LK_HSTYLE] = 0; edit.look[LK_HCOL] = 1; edit.look[LK_BEARD] = (u8)(k - ns - nc + 1); }
+      else { edit.look[LK_HSTYLE] = (u8)(k - ns - nc - 2) % ns; edit.look[LK_HCOL] = 4; }   // (then the greys: the same styles, aged by the colour)
+      if (k != lastk) { lastk = k; look_build(&edit); }
+      create_turn = HAIR_TURN; }
+#endif
 #ifdef HAIR_DEV   // (test builds: the camera right up to the head, for pictures of the hair)
-    { dist = HAIR_DEV; cam_fx = bx - 85; cam_fy = -285; pitch = 80; }
+#ifndef HAIR_FX
+#define HAIR_FX 85
+#define HAIR_FY 285
+#define HAIR_PITCH 80
+#endif
+    { dist = HAIR_DEV; cam_fx = bx - HAIR_FX; cam_fy = -HAIR_FY; pitch = HAIR_PITCH; }
 #endif
     cam.at.vx = cam_fx; cam.at.vy = cam_fy; cam.at.vz = cam_fz;
     cam.eye.vx = cam_fx - ((isin(yaw) * ((dist * icos(pitch)) >> 12)) >> 12);

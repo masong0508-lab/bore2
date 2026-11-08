@@ -34,11 +34,11 @@ static const HP hp_long[] = { RING(10), CROWN(12, 7), HPP(-35, 35, 8, 18, 30, 37
     HPP(34, 38, 6, 70, -34, 14, 0, 4, HM | HNT | HNF | HNB, 0), HPP(-38, 38, 10, 70, -42, -34, 0, 5, HNF, 0), HPP(-38, 38, 70, 104, -48, -41, 0, 7, HNF | HBH | HTP, 0) };
 static const HP hp_spiky[] = { RING(10), HPP(-9, 9, -40, -3, -9, 9, 6, 0, HC, 0), HPP(-26, -10, -34, -3, 8, 24, 6, 0, HC | HM, 0), HPP(-26, -10, -34, -3, -24, -8, 6, 0, HC | HM, 0),
     HPP(-34, -24, -14, 4, -8, 8, 0, 3, HM | HNT, 0), NAPE(24) };
-static const HP hp_afro[] = { HPP(-40, 40, -34, -6, -40, 38, 12, 6, HC, 1), HPP(-46, 46, -14, 28, -46, 10, 6, 8, HNF, 1), HPP(-38, 38, -6, 10, -34, 38, 0, 0, 0, 1),
-    HPP(-42, 42, 26, 42, -46, -8, 0, 10, HNF | HDK, 1) };
+static const HP hp_afro[] = { HPP(-30, 30, -56, -36, -34, 30, 11, 0, HC, 1), HPP(-44, 44, -38, 12, -50, 36, 6, 0, 0, 1), HPP(-47, 47, 12, 32, -50, 8, 0, 6, HNF, 1),
+    HPP(-42, 42, 32, 48, -48, -10, 0, 12, HNF | HDK, 1) };   // a big round puff: a dome on a wide block, hanging over the ears and the nape
 static const HP hp_flat[] = { HPP(-34, 34, -22, 8, -34, 34, 0, 2, HC, 0), HPP(-34, 34, 8, 24, -35, -14, 0, 4, HNF | HDK, 0), BURN(18) };
-static const HP hp_sidetail[] = { RING(10), CROWN(11, 7), NAPE(24), HPP(34, 46, 2, 14, -10, 8, 3, 0, HNB, 0), HPP(36, 46, 12, 62, -9, 7, 0, 5, HNB | HTP, 0) };
-static const HP hp_bun[] = { RING(10), CROWN(11, 7), NAPE(24), HPP(-14, 14, -32, -6, -34, -8, 5, 3, HC, 1), HPP(-15, 15, -10, -6, -35, -7, 0, 0, HC | HLT, 0) };
+static const HP hp_sidetail[] = { RING(10), CROWN(11, 7), NAPE(24), HPP(33, 50, -2, 16, -12, 12, 4, 0, HNB | HLT, 0), HPP(35, 50, 14, 74, -11, 11, 0, 7, HNB | HTP, 0) };
+static const HP hp_bun[] = { RING(10), CROWN(11, 7), NAPE(24), HPP(-17, 17, -40, -6, -38, -6, 7, 4, HC, 1), HPP(-18, 18, -12, -7, -39, -5, 0, 0, HC | HLT, 0) };
 static const HP hp_bob[] = { CROWN(12, 7), RING(12), HPP(-34, 34, 6, 15, 32, 39, 0, 0, 0, 2),
     HPP(34, 38, 4, 58, -36, 24, 0, 6, HM | HNT | HTP, 0), HPP(-38, 38, 10, 58, -42, -34, 0, 7, HNF | HTP, 0) };
 static const HP hp_pony[] = { RING(10), CROWN(12, 7), NAPE(22), HPP(-8, 8, -4, 12, -46, -34, 2, 2, HLT, 0), HPP(-9, 9, 10, 66, -52, -40, 0, 4, HBH | HTP, 0) };
@@ -46,24 +46,27 @@ static const HP hp_pigs[] = { RING(10), CROWN(12, 7), NAPE(22), HPP(36, 46, -2, 
 static const HP hp_mohawk[] = { HPP(-8, 8, -3, 6, -35, 35, 0, 0, 0, 0), HPP(-6, 6, -34, -3, 17, 31, 3, 0, HC, 0), HPP(-6, 6, -40, -3, -7, 7, 3, 0, HC, 0), HPP(-6, 6, -34, -3, -31, -17, 3, 0, HC, 0),
     HPP(-8, 8, 6, 28, -37, -12, 0, 4, HNF, 0) };
 static const HP hp_pixie[] = { RING(9), CROWN(10, 6), HPP(-30, 26, -2, 13, 29, 38, 3, 0, 0, 2), HPP(34, 37, 0, 26, -8, 18, 0, 3, HM | HNT | HNB, 0), HPP(-14, 14, 8, 30, -37, -12, 0, 4, HNF | HDK, 0) };
-static const HP hp_curls[] = { HPP(-36, 36, -22, 4, -36, 36, 8, 4, HC, 1), HPP(-40, 40, -4, 14, -40, 30, 0, 6, 0, 1), HPP(-38, 38, 12, 34, -42, -8, 0, 6, HNF, 1), HPP(34, 42, 4, 28, -14, 16, 0, 5, HM | HNT, 1) };
+static const HP hp_curls[] = { HPP(-34, 34, -34, -14, -36, 34, 9, 0, HC, 1), HPP(-40, 40, -16, 12, -42, 37, 5, 0, 0, 1), HPP(-41, 41, 12, 36, -44, -4, 0, 8, HNF, 1), HPP(34, 43, 6, 30, -16, 18, 0, 6, HM | HNT, 1) };
 static const HP hp_side[] = { RING(11), CROWN(12, 6), HPP(-31, 8, -16, -10, -22, 35, 3, 0, HC | HLT, 0), HPP(-32, 14, -4, 13, 29, 38, 3, 0, 0, 2), NAPE(26), BURN(24) };
 static const HP hp_slick[] = { RING(8), CROWN(14, 8), HPP(-34, 34, 6, 38, -41, -33, 0, 6, HNF, 0), HPP(-31, 31, -20, -3, -34, -8, 4, 0, HC | HLT, 0) };
 static const HP hp_braids[] = { RING(10), CROWN(11, 7), NAPE(20), HPP(32, 42, 4, 20, -6, 10, 2, 2, HM, 0), HPP(34, 42, 20, 36, -5, 9, 2, 2, HM | HLT, 0), HPP(32, 42, 36, 52, -6, 10, 2, 2, HM, 0), HPP(34, 40, 52, 62, -4, 8, 0, 4, HM | HTP, 0) };
 static const HP hp_wavy[] = { RING(10), CROWN(12, 7), HPP(-35, 35, 8, 18, 30, 37, 0, 0, 0, 2),
     HPP(34, 38, 6, 28, -34, 14, 0, 0, HM | HNT | HNF | HNB, 0), HPP(34, 41, 28, 48, -32, 14, 0, 0, HM | HNT | HNF | HNB, 0), HPP(34, 38, 48, 68, -30, 12, 0, 4, HM | HNT | HNF | HNB | HTP, 0),
     HPP(-38, 38, 10, 40, -42, -34, 0, 0, HNF, 0), HPP(-41, 41, 40, 68, -45, -36, 0, 4, HNF | HBH, 0), HPP(-38, 38, 68, 98, -48, -40, 0, 7, HNF | HBH | HTP, 0) };
-static const HP hp_horse[] = { HPP(-14, 14, -3, 9, 30, 36, 2, 0, 0, 2), HPP(-34, 34, 4, 34, -37, -12, 0, 5, HNF, 0), HPP(34, 37, 4, 30, -34, 10, 0, 3, HM | HNT | HNB, 0) };
-static const HP hp_thin[] = { HPP(-27, 27, -6, -3, -27, 27, 3, 0, HC | HLT, 0), HPP(-34, 34, 4, 30, -37, -12, 0, 5, HNF, 0), HPP(34, 37, 4, 28, -30, 10, 0, 3, HM | HNT | HNB, 0), HPP(-24, 6, -5, -2, -14, 30, 1, 0, HC | HLT, 0) };
+static const HP hp_horse[] = { HPP(-12, 12, -3, 8, 30, 36, 2, 0, 0, 2), HPP(-36, 36, -2, 34, -39, -10, 0, 6, HNF, 0), HPP(33, 39, -2, 30, -36, 12, 0, 4, HM | HNT | HNB, 0) };
+static const HP hp_thin[] = { HPP(-26, 26, -3, 0, -26, 26, 3, 0, HC, 2), HPP(-34, 34, 2, 30, -37, -12, 0, 5, HNF, 0), HPP(34, 37, 2, 28, -30, 10, 0, 3, HM | HNT | HNB, 0), HPP(-22, 4, -5, -3, -12, 28, 1, 0, HC | HLT, 0) };   // (a thin mat on the crown and one comb-over, the sides kept)
 static const HP hp_messy[] = { RING(11), CROWN(12, 5), HPP(-20, -6, -22, -10, -4, 16, 3, 0, HC, 0), HPP(8, 26, -20, -8, -14, 8, 3, 0, HC, 0), HPP(30, 42, -8, 4, -6, 10, 2, 0, HM | HNB, 0), HPP(-30, 22, -2, 14, 29, 39, 3, 0, 0, 2), NAPE(24) };
-static const HP hp_knot[] = { HPP(-34, 34, -3, 8, -34, 34, 0, 0, 0, 0), NAPE(22), HPP(-12, 12, -36, -3, -12, 12, 4, 0, HC, 1), HPP(-14, 14, -14, -10, -14, 14, 0, 0, HC | HLT, 0) };
+static const HP hp_knot[] = { RING(10), CROWN(10, 6), NAPE(22), BURN(20), HPP(-12, 12, -30, -12, -12, 12, 4, 3, HC, 1), HPP(-10, 10, -14, -10, -10, 10, 0, 0, HC | HLT, 0) };   // (a close cut with a round knot on top, a tie round its foot)
 static const HP hp_curt[] = { CROWN(12, 7), HPP(-35, -2, -3, 16, 31, 38, 0, 3, 0, 2), HPP(2, 35, -3, 16, 31, 38, 0, 3, 0, 2), HPP(-35, 35, -3, 8, -35, 33, 0, 0, 0, 0), EARS(32, -34, 24), HPP(-37, 37, 8, 34, -39, -32, 0, 5, HNF, 0) };
 static const HP hp_mullet[] = { RING(10), CROWN(12, 7), HPP(34, 37, 4, 22, -20, 18, 0, 3, HM | HNT | HNF | HNB, 0), HPP(-37, 37, 10, 70, -44, -34, 0, 6, HNF | HTP | HBH, 0) };
 static const HP hp_baby[] = { HPP(-12, 12, -9, -3, -12, 12, 4, 0, HC, 0), HPP(-5, 5, -15, -9, 2, 12, 2, 0, HC, 0) };
 
 // beards (the jaw, the cheeks; the long one hangs on the chest): pieces too, drawn whatever the hair
-static const HP hp_beard[] = { HPP(-34, 34, 34, 68, 24, 36, 0, 4, HDK, 0), HPP(34, 36, 20, 62, -4, 30, 0, 3, HM | HNT | HNF | HNB | HDK, 0) };
-static const HP hp_lbeard[] = { HPP(-34, 34, 34, 68, 24, 36, 0, 4, HDK, 0), HPP(34, 36, 20, 62, -4, 30, 0, 3, HM | HNT | HNF | HNB | HDK, 0), HPP(-26, 26, 66, 94, 20, 39, 0, 9, HTP | HDK, 0) };
+#define BEARD_JAW  HPP(-33, 33, 43, 70, 22, 36, 2, 5, HDK, 0)                              // the jaw and chin, stepped in at its upper edge
+#define BEARD_STASH HPP(-18, 18, 35, 43, 30, 38, 0, 2, HDK, 0)                              // the moustache
+#define BEARD_CHEEK HPP(34, 37, 24, 62, -4, 30, 5, 3, HM | HNT | HNF | HNB | HDK, 0)         // the sideburns running down into the jaw
+static const HP hp_beard[] = { BEARD_JAW, BEARD_STASH, BEARD_CHEEK };
+static const HP hp_lbeard[] = { BEARD_JAW, BEARD_STASH, BEARD_CHEEK, HPP(-26, 26, 66, 96, 20, 39, 0, 9, HTP | HDK, 0) };
 
 typedef struct { const HP *p; u8 n; } HStyle;
 #define HS(a) { a, (u8)(sizeof(a) / sizeof(HP)) }
@@ -136,7 +139,7 @@ static void hair_draw(const Bore *b) {
         hair_piece(p, 0, cx, cy, cz, hw, zbh, i);
         if (p->fl & HM) hair_piece(p, 1, cx, cy, cz, hw, zbh, i + 3);
     }
-    if (bd && b->stage > AG_CHILD) for (int i = 0; i < (bd == 2 ? 3 : 2); i++) {
+    if (bd && b->stage > AG_CHILD) for (int i = 0; i < (bd == 2 ? 4 : 3); i++) {
         const HP *p = &(bd == 2 ? hp_lbeard : hp_beard)[i];
         hair_piece(p, 0, cx, cy, cz, hw, zbh, i);
         if (p->fl & HM) hair_piece(p, 1, cx, cy, cz, hw, zbh, i + 3);
