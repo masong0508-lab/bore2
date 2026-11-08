@@ -143,7 +143,7 @@ The halo is a 2D sprite over the picture (no depth test), so a lamp behind a wal
 (plus the fight game as before). Nothing else in the game reads pads C and D. Not tested with a real second pad (the test emulator has one).
 
 ### Checks
-`ports/dreamcast/ps1_check.sh` before and after this round (tree f93a938 against this one): `_end` 0x801fc234, image sha1 ae63c2837a8fd5e2, the same.
+`ports/dreamcast/ps1_check.sh` on the tree before this round's last two commits (cd53150) and on the tree after them: `_end` 0x801fc544, image sha1 2b03311fea2830e6, the same. (Also the same on f93a938 against the first two commits: `_end` 0x801fc234, sha1 ae63c2837a8fd5e2.)
 
 ## Still to do
 - Side by side with DuckStation (pie menu, night, first person, far view, a park, roofs): NOT done this round. The frozen AUTO_CITY test builds do not take input, and the
