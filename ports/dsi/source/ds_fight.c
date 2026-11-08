@@ -34,7 +34,7 @@ static void build_them(int st) {   // the opponent: a Bore of the household in a
     if (fight_2p) { flook_of(&flk[1], opp_i); return; }
     const Who *w = &ladder[st]; FLook *o = &flk[1]; unsigned h = w->seed * 2654435761u + 7;
     for (int q = 0; q < PMN; q++) { h = h * 1103515245u + 12345u; o->P[q] = 50 + (int)((h >> 16) % 31) - 15; }
-    o->sk = SKINC[(h >> 8) % 6]; o->hair = (u8)((w->seed * 5) % 12); o->beard = (u8)(w->seed % 3 == 0 ? 1 : 0);
+    o->sk = SKINC[(h >> 8) % 6]; o->hair = (u8)((w->seed * 5) % NHAIRD); o->beard = (u8)(w->seed % 3 == 0 ? 1 : 0);
     o->sh = w->top; o->pants = w->bot; o->hc = w->hair;
     if (st == 8) { o->sk = C15(24, 25, 28); o->hc = C15(19, 20, 24); o->sh = C15(26, 26, 30); o->pants = C15(15, 16, 20); o->hair = 5; o->beard = 0; }
 }
@@ -102,14 +102,7 @@ static void fighter3(int i) {
     glPushMatrix(); glTranslatef32(0, base, 0); if (p.tilt) glRotateZi(p.tilt * 8); if (p.nod) glRotateXi(p.nod * 8); glTranslatef32(0, -base, 0);   // the neck: the head nods and tilts
     sb(0, 0, -40, base, -40, 40, base + 40, 40, skd);
     sb(0, 0, -hw, hb, -hw, hw, hb + ht, hw, sk); sb(0, 0, -hw - 16, hb + ht * 35 / 100, -22, -hw, hb + ht * 65 / 100, 40, skd); sb(0, 0, hw, hb + ht * 35 / 100, -22, hw + 16, hb + ht * 65 / 100, 40, skd);
-    { int st = k->hair, hu = hb + ht;
-      if (st != 5) { sb(0, 0, -hw - 22, hu - 70, -hw - 22, hw + 22, hu + 55, hw + 22, hc); sb(0, 0, -hw - 22, hu - 150, -hw - 22, hw + 22, hu - 60, -20, hc);
-        if (st != 6 && st != 7 && st != 10) sb(0, 0, -hw - 8, hu - 62, hw - 12, hw + 8, hu - 20, hw + 26, shade(hc, 9));
-        if (st == 3 || st == 1 || st == 11 || st == 9) sb(0, 0, -hw - 22, hu - 330, -hw - 22, hw + 22, hu - 150, -20, hc);
-        if (st == 8) sb(0, 0, -hw - 85, hu - 100, -hw - 85, hw + 85, hu + 180, hw + 60, hc);
-        if (st == 2) for (int q = -1; q <= 1; q++) sb(0, 0, q * 66 - 24, hu + 55, -24, q * 66 + 24, hu + 165, 24, hc);
-        if (st == 7) sb(0, 0, -24, hu + 55, -hw, 24, hu + 200, hw, hc);
-        if (st == 4) { sb(0, 0, -hw - 28, hu - 300, -hw - 28, -hw + 10, hu - 40, hw, hc); sb(0, 0, hw - 10, hu - 300, -hw - 28, hw + 28, hu - 40, hw, hc); } } }
+    hair_pieces(k->hair, 4, 0, 0, sq_q, sb_sc, hw, hw, hb + ht, ht, hc);   // (D62) the PS1's hair pieces
     { int ex = 40 + (P[2] - 50) / 2, ey = hb + ht * 55 / 100, es = 28 + (P[16] - 50) / 4, ff = hw;   // the face
       for (int sd = -1; sd <= 1; sd += 2) { int c0 = sd * ex;
         sb(0, 0, c0 - es - 4, ey - 24, ff, c0 + es + 4, ey + 26, ff + 6, C15(31, 31, 31)); sb(0, 0, c0 - 14, ey - 22, ff + 4, c0 + 14, ey + 24, ff + 10, C15(7, 5, 3)); sb(0, 0, c0 - 6, ey - 12, ff + 8, c0 + 6, ey + 12, ff + 12, C15(1, 1, 2));
