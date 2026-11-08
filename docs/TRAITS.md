@@ -19,6 +19,7 @@ This page is for whoever works on the engine, the lists or a port. Everything he
 | `docs/traits.json` | made. The same data as text, for tools and ports. |
 | `src/traits.h`, `src/traits.c` | the engine. Plain C, no game headers: the host test compiles `traits.c` itself. |
 | `src/traits_glue.inc` | included into `sim.c`. The parts that need the game: need falls, mood, the skill / cash / need watchers, wish prizes. |
+| `src/traits_auto.c` | the personality -> traits mapping (`tr_auto_pick`), the clash rule, `tr_rebuild`. Plain C like traits.c; the host test runs it. In CREATE.OVL (PS1) and `OVLS` (Dreamcast). |
 | `src/traits_ui.c` | the pickers and the Life panel page. Linked into CREATE.OVL (PS1) and the game (Dreamcast, `OVLS`). |
 | `src/cas_pick.h` | the hook between CREATE.OVL's PERSONALITY step and `traits_ui.c`. |
 | `test/traits_test.c`, `test/traits_test.sh` | the host test. |
@@ -80,7 +81,7 @@ Regular traits (600) have an id 1..600, a name (up to 14 letters, all different)
 (The full list of groups per category: `categories` in traits.json.)
 
 **Earned traits** (ids 601..656, 51 made): won by doing something many times. Every one has a counter (`EV_*`) and a count: HOME COOK after 25 meals, FOOD CRITIC after 20 meals out, PARTY ANIMAL after
-parties, STAR PUPIL, SWIMMER and so on. They come into slots 5 to 9 of the Bore and show a toast. **Prize traits** (ids 657..680, 24 made) are what some wishes give.
+parties, STAR PUPIL, SWIMMER and so on. They come into the first open slot (or wait for one, see Slots) and show a toast. **Prize traits** (ids 657..680, 24 made) are what some wishes give.
 
 **Cheat traits** (ids 701..1051, 351 made): 3 strengths for each of the 107 hooks (SUPER, MEGA, GOD) and 30 mixed ones (IMMORTAL, MIDAS TOUCH, TOTAL CHEAT). They have their own groups
 (NEEDS, SKILLS, MONEY, WORK, SOCIAL, MOOD, TRAVEL, GAMES, LIFE, MIXES). A cheat trait's effects are kept apart (`TrState.ch/cm`) so the OPTIONS switch can take them out of `fx` and put them back.
@@ -100,11 +101,76 @@ A wish counts from the moment it is chosen (`wbase`), is done once (`tr_wdone`, 
 - Random never picks one.
 - While a Bore with a cheat trait is played (`tr_cheating()`), `medal()` and `hs_put()` in arc_core.c give nothing. Add the same one-line check to any new award, high score, medal or leaderboard.
 
+## Slots (6 + 4)
+
+| slots | who | rule |
+|---|---|---|
+| 1 to 6 | every grown-up (ADULT, ELDER) | always open. BABY has 1, CHILD 3, TEEN 4 (`tr_stage_slots`, `tr_nslots(stage)`). |
+| 7 to 10 | TEEN and up | open one after the other with real progress, **for the whole household** (`tr_unl`, 0 to 4, saved) |
+
+Any kind of trait goes in any open slot: picked in the creator, won (earned), or a wish prize. A won trait takes the first open slot; if none is open it waits (`tr_wait`, saved) and comes in when a slot opens or is freed (`tr_regive`, tried when a slot unlocks and every few seconds).
+A won trait stays for good; a picked one can be taken off in the creator.
+
+**Unlock conditions** (in this order; `UNLOCKS` in make_traits.py, checked every 8th step for the player, `tr_unl_check`):
+
+| slot | condition | text on the locked slot |
+|---|---|---|
+| 7 | 1 lifetime wish done | FINISH 1 WISH |
+| 8 | 3 wishes done | FINISH 3 WISHES |
+| 9 | job level 5 (the top) | REACH JOB LEVEL 5 |
+| 10 | 10 wishes done | FINISH 10 WISHES |
+
+A locked slot shows its text (creator PICKED list, Life panel, page). Opening one shows the toast `TRAIT SLOT n UNLOCKED!` and marks every assigned member to get the new slot filled.
+**Cheat traits** use slots 7 to 10 only, and only when OPTIONS > CHEAT TRAITS is on (they are never put in 1 to 6). So a new life cannot use cheats until slot 7 is open.
+
+## Family: traits from the personality
+
+Only the player and a Bore made in the creator are picked by hand. Everybody else in the household (someone from town who moves in, a spouse, a roommate, an adopted child, a baby that is born, the first family) gets traits **automatically** from the personality they already have.
+All of them come through `sim_add`, so one watcher covers every path: every 8th step `tr_scan` (traits_glue.inc) gives a Bore with no state one (`TF_AUTO | TF_PEND`), notices a new life stage (a birthday) and a new unlocked slot. When something is pending, `main.c` loads CREATE.OVL and calls `open(3)` (`tr_auto_run`, traits_ui.c), which fills the slots and leaves (one short load, like opening a page; also run when the Life panel opens). The toast says `NAME GOT 6 TRAITS`.
+
+- **Editable?** No. Assigned traits are shown (Life panel TRAITS tab, the page with LEFT and RIGHT for each housemate) but not edited. A creator re-make of such a Bore throws the traits away and assigns them again from the (maybe changed) personality.
+- **Effects**: same hooks, `Sim.tr` of that Bore. They have no counters, no wish and win no earned traits (`TF_AUTO`).
+- **Deterministic**: the same person (name, bars, sign, aspiration, stage) always gives the same traits; nothing but the ids is stored, and `tr_rebuild` makes the effects from them (so the save only keeps ids and names).
+- **Growing up**: at a birthday the slots grow; `tr_auto_pick` keeps what they have and fills the new slots. A new unlocked slot does the same for the grown-ups.
+- **Children and babies** take after the parents who live in the household: their bars are (2 x own + both parents) / 4, and up to 2 of the parents' regular traits get +40 so they are likely to be chosen.
+- **Residents** of town who never move in keep no trait state.
+
+### The mapping (`tr_auto_pick`, data in `docs/traits.json` > `personality`)
+
+Inputs (all on the `Bore`): the 5 bars NEAT, OUTGOING, ACTIVE, PLAYFUL, NICE (0 to 10, 5 is the middle), the star sign (`look_sign_of`), the aspiration, the life stage, and the id seed = FNV hash of first and last name.
+For each of the 15 categories:
+
+`category score = sum(pull[cat][bar] x (bar - 5)) + 4 x aspiration bonus[cat] + 3 x sign element bonus[cat]`
+
+| category | NEAT | OUTGOING | ACTIVE | PLAYFUL | NICE |
+|---|---|---|---|---|---|
+| BODY | 1 | 0 | 4 | 0 | 0 |
+| MIND | 1 | -2 | -1 | 0 | 0 |
+| SOCIAL | 0 | 3 | 0 | 1 | 2 |
+| ROMANCE | 0 | 2 | 0 | 1 | 2 |
+| WORK | 2 | 0 | 1 | -2 | 0 |
+| MONEY | 1 | 0 | 0 | -1 | -2 |
+| FOOD | 0 | 0 | -1 | 1 | 1 |
+| HOME | 3 | -2 | -1 | 0 | 1 |
+| OUTDOORS | -1 | 1 | 3 | 1 | 0 |
+| CREATIVE | -1 | 0 | -1 | 2 | 0 |
+| FUN | -1 | 1 | 0 | 3 | 0 |
+| NIGHT AND DAY | -1 | 2 | 0 | 1 | 0 |
+| PETS | 0 | 0 | 0 | 1 | 3 |
+| LUCK | -1 | 0 | 0 | 2 | 1 |
+| FIGHTING | 0 | 0 | 3 | 0 | -3 |
+
+Aspiration bonus: FORTUNE MONEY 3, WORK 2, LUCK 1; KNOW MIND 3, WORK 2, CREATIVE 1; POP SOCIAL 3, FUN 2, NIGHT 2; PLEASURE FOOD 3, FUN 2, ROMANCE 2, NIGHT 1; HOME HOME 3, FOOD 2, PETS 2, ROMANCE 1; GROW UP MIND 2, BODY 1, FUN 1.
+Sign element (sign index mod 4): fire (ARIES LEO SAGITTARIUS) FIGHTING 2, OUTDOORS 2, BODY 1; earth (TAURUS VIRGO CAPRICORN) MONEY 2, HOME 2, WORK 1; air (GEMINI LIBRA AQUARIUS) SOCIAL 2, CREATIVE 2, MIND 1; water (CANCER SCORPIO PISCES) ROMANCE 2, PETS 1, CREATIVE 1, LUCK 1.
+
+`trait score = 4 x category score + jitter(seed, trait id) (0 to 23)`, +40 if a parent has it. Regular traits are all candidates; earned and prize traits are candidates at `2 x category score` (category of their first effect) and only when that is 60 or more (a strong personality). Cheats never.
+Then, for each open slot in order, the best candidate that **does not clash** with anything already in (the creator's clash rule: same main hook, or one raises what the other lowers), is not a duplicate, and keeps the category at 3 or less is taken. So a very sociable person gets SOCIAL, ROMANCE and NIGHT traits, an active one BODY, OUTDOORS and FIGHTING, a neat homebody HOME, WORK and MIND (test: 96%, 96%, 87% of the strong cases).
+
 ## Creator (CREATE A BORE, PERSONALITY step)
 
 Two tabs, TRAITS and WISH, both in `traits_ui.c`, called through `cas_pick.h`.
 
-- 3 slots, 5 for adults and elders (the last two are free to leave empty).
+- Slots: 6 for adults and elders, 4 for teens, 3 for children, 1 for babies, plus the unlocked 7 to 10 (see Slots). The PICKED list (SQUARE) shows all ten slots: a trait, EMPTY, or the shut slot with its condition. X on a slot takes its trait off.
 - TRAITS: a strip of 15 category icons (LEFT and RIGHT), a list with a name, a tick for picked and a lock for a clash, the slots, and the effect of the chosen trait in plain words.
   **SQUARE** changes the list: by category, ALL (600, a to z), PICKED, FOR YOU (traits that go with the picks), RECENT, CHEATS (10 groups, red).
   **TRIANGLE** turns on a helper: jump by first letter (UP and DOWN), then a filter by kind of effect (NEEDS, SKILLS, MOOD, SOCIAL, LOVE, WORK, MONEY, TRAVEL, WEATHER, FEARS, PETS, GAMES, FIGHT, LUCK, AGE). The first row of a list is RANDOM.
@@ -114,14 +180,16 @@ Two tabs, TRAITS and WISH, both in `traits_ui.c`, called through `cas_pick.h`.
 
 ## The Life panel
 
-The BORE panel has a sixth tab, **TRAITS**: the chosen traits (cheats in red), the won ones, the wish bar. X opens the page (CREATE.OVL, `open(2)`): every trait with what it does,
-the three earned traits that are nearest, and the wish list with a bar for each (X chooses a new wish).
+The BORE panel has a sixth tab, **TRAITS**: the ten slots in two columns (a trait, OPEN SLOT, or a lock with the condition text) and the wish bar. X opens the page (CREATE.OVL, `open(2)`): the ten slots with what each trait does,
+the three earned traits that are nearest, and the wish list with a bar for each (X chooses a new wish). LEFT and RIGHT on the page show each housemate: their slots, their traits, their star sign and strongest bars (no wish and no earned traits for them).
 
 ## Save
 
-`VERSION 50` (src/save.c). After each Sim: a flag, and when it is 1 the size of `TrState` and `TrState` itself, run-length packed (`sv_rle`). After all Sims: `tr_cheat_ok`, `tr_wdone[8]`, `tr_earned`, the counters `tr_ev_a[EV_N]` and the chosen traits' names `tr_pn` (so loading needs no disc read). Older saves load with empty traits; the cheat effects follow the OPTIONS switch after every load.
+`VERSION 51` (src/save.c; 50 loads: see below). After each Sim: a flag, and when it is 1 the size of `TrState` and `TrState` itself, run-length packed (`sv_rle`), then the ten slot names (so loading needs no disc read). After all Sims: `tr_cheat_ok`, `tr_wdone[8]`, `tr_earned`, the counters `tr_ev_a[EV_N]`, `tr_unl` and `tr_wait[10]`. Older saves load with empty traits; the cheat effects follow the OPTIONS switch after every load.
+**Version 50 saves** (slots 5+5, only 2 Bores with state): the states load as they are (a Bore's old picks and won traits keep their slots; slots 7 to 10 needed by a won trait are opened), the five names go to the player, the unlocks are computed from the wishes done and the job level on the first look, and every other Bore gets assigned traits within a second of the first frame. `TrState` did not change size.
+A member's `TrState.f`: `TF_AUTO` assigned, `TF_PEND` assign again, bits 4 to 6 the life stage the slots follow.
 `TrState` may only change together with a new `VERSION` (the size is checked; a different size fails the load).
-Tested with `test/oldsave.sh` and `test/oldsave2.sh`.
+Tested with `test/oldsave.sh` and `test/oldsave2.sh` (`"50 59b5752"` makes a version 50 save).
 
 ## TEST
 

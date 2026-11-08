@@ -46,12 +46,13 @@ static __attribute__((noinline)) int trait_mood(const Sim *s) {   // the mood po
     return m;
 }
 u8 tr_pend_flag; u16 tr_pend_cool;   // a member needs traits assigned (CREATE.OVL, open(3)): main.c runs it when it is quiet
+static void tr_pend_set(void) { if (!tr_pend_flag) { tr_pend_flag = 1; if (tr_pend_cool < 24) tr_pend_cool = 24; } }   // (a short wait, so every member scanned in the same 8 steps is assigned in one load)
 static void tr_scan(Sim *s) {   // every 8th step, each Bore: a new member gets a state and is marked for assigning, a new life stage re-assigns, a name missing is filled
-    if (s->tr == &tr_null) { TrState *t = tr_alloc(); if (t == &tr_null) return; s->tr = t; tr_stage_set(t, s->bore.stage); t->f |= TF_AUTO | TF_PEND; tr_pend_flag = 1; return; }
+    if (s->tr == &tr_null) { TrState *t = tr_alloc(); if (t == &tr_null) return; s->tr = t; tr_stage_set(t, s->bore.stage); t->f |= TF_AUTO | TF_PEND; tr_pend_set(); return; }
     TrState *t = s->tr; int st = s->bore.stage;
     if (tr_stage_get(t) != st) { tr_stage_set(t, st); if (t->f & TF_AUTO) t->f |= TF_PEND; }
     if (!(t->f & TF_PEND)) for (int k = 0; k < TR_SLOTS; k++) if (t->tid[k] && (t->tid[k] < TR_FIRST_EARN || t->tid[k] >= TR_FIRST_CHEAT) && !tr_names_of(t)[k][0]) { t->f |= TF_PEND; break; }
-    if (t->f & TF_PEND) tr_pend_flag = 1;
+    if (t->f & TF_PEND) tr_pend_set();
 }
 static const u8 actHook[ACT_GATHER + 1] = { 0, E_ACT_EAT, 0, E_ACT_SLEEP, E_ACT_SHOWER, E_ACT_SIT, E_ACT_FUN, E_ACT_TALK, 0, 0, E_ACT_COFFEE, E_ACT_READ, E_ACT_RUN, E_ACT_PHONE, 0, 0, E_ACT_SWIM, 0, 0 };
 static void need_gains(Sim *s, const int *snap) {   // E_GAIN_*, E_ACT_*: what an action put into a need this step, scaled
@@ -79,7 +80,7 @@ static __attribute__((noinline)) void tr_watch(Sim *s, int si) {   // every 8th 
         int wd = 0; for (int k = 0; k < 8; k++) wd += __builtin_popcount(tr_wdone[k]);
         int n = tr_unl_check(wd, job_level);
         if (n) { char b[32]; snprintf(b, sizeof b, "TRAIT SLOT %d UNLOCKED!", TR_BASE + tr_unl); sim_note(b); audio_voice(VOICE_WIN);
-                 for (int j = 0; j < nsims; j++) if (sims[j].tr != &tr_null && (sims[j].tr->f & TF_AUTO)) { sims[j].tr->f |= TF_PEND; tr_pend_flag = 1; } }
+                 for (int j = 0; j < nsims; j++) if (sims[j].tr != &tr_null && (sims[j].tr->f & TF_AUTO)) { sims[j].tr->f |= TF_PEND; tr_pend_set(); } }
         if (n || !((walk_tick >> 3) & 63)) tr_regive(t);
     }
     int fr = 0; for (int j = 0; j < nsims; j++) if (j != si && s->rel[j] >= 50) fr++;

@@ -9,11 +9,11 @@ for p in "$@"; do set -- $p; V=$1; C=$2; W=/tmp/oldsave_w$V; O=/tmp/oldsave_b$V;
   if [ ! -f $CARD ]; then
     [ -d $W ] || { git -C "$HERE/.." worktree add -f --detach $W $C > /dev/null && python3 "$HERE/oldhook2.py" $W/src/main.c $V; }
     cmake -S $W -B $O -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=/opt/psn00bsdk/lib/libpsn00b/cmake/sdk.cmake \
-          -DPSN00BSDK_TC=/opt/psn00bsdk "-DCMAKE_C_FLAGS=-DAUTO_CITY=1 -DAUTO_OLD=1" > /dev/null 2>&1
+          -DPSN00BSDK_TC=/opt/psn00bsdk "-DCMAKE_C_FLAGS=-DAUTO_CITY=1 -DAUTO_OLD=1 -DPLACE_MAX=1300" > /dev/null 2>&1
     ninja -C $O iso_lite 2>&1 | grep -E "error|FAILED" | head -5
     [ -f $O/bore2_lite.cue ] || { echo "version $V: build failed"; continue; }
     echo "2500 shot" > /tmp/oldsave_s.txt; DSCARD=$CARD bash "$HERE/ds.sh" $O/bore2_lite.cue oldsave_m$V 2600 /tmp/oldsave_s.txt > /dev/null
-    echo "== version $V saved:"; ELF=$O/bore2.elf python3 "$HERE/ramsym.py" /tmp/ds_oldsave_m${V}_ram.bin dbg_old:16 opt:46:B
+    echo "== version $V saved:"; ELF=$O/bore2.elf python3 "$HERE/ramsym.py" /tmp/ds_oldsave_m${V}_ram.bin dbg_old:16 opt:46:B tr_unl:1:B tr_pool:10:H tr_pool+180:10:H tr_pool+360:10:H
     rm -rf $O; git -C "$HERE/.." worktree remove --force $W
   fi
   DSCARD=$CARD bash "$HERE/ds.sh" "$B/bore2_lite.cue" oldsave_l$V 2900 "$HERE/oldsave_load.txt" > /dev/null
