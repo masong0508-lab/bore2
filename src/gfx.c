@@ -677,10 +677,10 @@ void gfx_sprite_blend(int x, int y, int w, int h, u16 tpage, u16 clut, int u, in
     setSemiTrans(q, 1);
     ui_add(q);
 }
-// the BORE font: scale 1 = s, 2 = m, 3+ = l
-// scale 1 is the smooth interface type now (the medium font shrunk: font size 3), not the old 5-pixel one
-static inline int tscale(int scale) { return scale == 1 ? 4 : scale; }
-int gfx_text_w(int scale, const char *s) { return font_w(tscale(scale) - 1, s); }
+// the text: scale 1 = the body style, 2 = the heading style, 3 and up = the big one (font.h has the six styles; the *_s calls take one)
+int gfx_text_w(int scale, const char *s) { return font_w(font_style_of(scale), s); }
+int gfx_text_ws(int style, const char *s) { return font_w(style, s); }
+int gfx_text_wi(int style, const char *s) { return font_ink_w(style, s); }
 int ui_light;   // text is going onto a white card (ui.c): light colours come out dark (white as ink, gold as blue, the rest deeper)
 extern int font_sub;
 #ifdef SAFE_LINT
@@ -701,14 +701,13 @@ void safe_note(int kind, int x, int y, int w, int h, const char *t) {
 #else
 #define SAFE_TEXT(x, y, s)
 #endif
-void gfx_text_raw(int x, int y, int scale, const char *s, int r, int g, int b) {   // light colours added to the picture, dark ones taken from it
+static void text_raw_s(int style, int x, int y, const char *s, int r, int g, int b) {   // light colours added to the picture, dark ones taken from it
     SAFE_TEXT(x, y, s);
     int lum = (r * 77 + g * 150 + b * 29) >> 8;
-    scale = tscale(scale);
-    if (lum < 140) { font_sub = 1; font_text(x, y, scale - 1, s, 255 - r, 255 - g, 255 - b); font_sub = 0; }   // (on white: exactly this colour)
-    else font_text(x, y, scale - 1, s, r, g, b);
+    if (lum < 140) { font_sub = 1; font_text(style, x, y, s, 255 - r, 255 - g, 255 - b); font_sub = 0; }   // (on white: exactly this colour)
+    else font_text(style, x, y, s, r, g, b);
 }
-void gfx_text(int x, int y, int scale, const char *s, int r, int g, int b) {
+static void text_s(int style, int x, int y, const char *s, int r, int g, int b) {
     if (ui_light) {
         int mx = MAX(r, MAX(g, b)), mn = MIN(r, MIN(g, b));
         if (mx >= 140) {
@@ -717,9 +716,30 @@ void gfx_text(int x, int y, int scale, const char *s, int r, int g, int b) {
             else { r = r * 9 / 20; g = g * 9 / 20; b = b * 9 / 20; }                                 // a light colour, deepened
         }
     }
-    gfx_text_raw(x, y, scale, s, r, g, b);
+    text_raw_s(style, x, y, s, r, g, b);
 }
-void gfx_textc(int cx, int y, int scale, const char *s, int r, int g, int b) { gfx_text(cx - gfx_text_w(scale, s) / 2, y, scale, s, r, g, b); }
+void gfx_text_raw(int x, int y, int scale, const char *s, int r, int g, int b) { text_raw_s(font_style_of(scale), x, y, s, r, g, b); }
+void gfx_text(int x, int y, int scale, const char *s, int r, int g, int b) { text_s(font_style_of(scale), x, y, s, r, g, b); }
+void gfx_textc(int cx, int y, int scale, const char *s, int r, int g, int b) { int st = font_style_of(scale); text_s(st, cx - font_ink_w(st, s) / 2, y, s, r, g, b); }
+void gfx_text_s(int style, int x, int y, const char *s, int r, int g, int b) { text_s(style, x, y, s, r, g, b); }
+void gfx_text_raw_s(int style, int x, int y, const char *s, int r, int g, int b) { text_raw_s(style, x, y, s, r, g, b); }
+void gfx_textc_s(int style, int cx, int y, const char *s, int r, int g, int b) { text_s(style, cx - font_ink_w(style, s) / 2, y, s, r, g, b); }
+// the centring helper: the text is measured (its ink, not the space after it), then placed in the box x, y, w, h; flags: TX_LEFT / TX_CENTER / TX_RIGHT
+// with TX_TOP / TX_MID / TX_BOTTOM (vertical: the capitals are centred, the baseline sits cap rows under their top). Text wider than the box starts at its left edge.
+void gfx_text_box(int style, int x, int y, int w, int h, int flags, const char *s, int r, int g, int b) {
+    int iw = font_ink_w(style, s), cap = font_cap(style);
+    int tx = (flags & 3) == TX_CENTER ? x + (w - iw) / 2 : (flags & 3) == TX_RIGHT ? x + w - iw : x;
+    if (iw > w) tx = x;
+    int ty = (flags & 12) == TX_MID ? y + (h - cap) / 2 : (flags & 12) == TX_BOTTOM ? y + h - cap : y;
+    text_s(style, tx, ty, s, r, g, b);
+}
+void gfx_text_box_raw(int style, int x, int y, int w, int h, int flags, const char *s, int r, int g, int b) {   // (no white-card colour mapping)
+    int iw = font_ink_w(style, s), cap = font_cap(style);
+    int tx = (flags & 3) == TX_CENTER ? x + (w - iw) / 2 : (flags & 3) == TX_RIGHT ? x + w - iw : x;
+    if (iw > w) tx = x;
+    int ty = (flags & 12) == TX_MID ? y + (h - cap) / 2 : (flags & 12) == TX_BOTTOM ? y + h - cap : y;
+    text_raw_s(style, tx, ty, s, r, g, b);
+}
 
 
 // ------------------------------------------------------------------ people as sprites (render-to-texture)

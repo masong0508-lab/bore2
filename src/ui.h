@@ -30,6 +30,11 @@ void ui_init(void);                                            // the icons into
 int  ui_tw(int size, const char *s);                           // its width
 void ui_text(int x, int y, int size, const char *s, u32 c);    // size 1 the interface's type, 2 big
 void ui_textc(int cx, int y, int size, const char *s, u32 c);
+// sizes: 1 body, 2 heading, 3 big, 4 numbers (money, clock), 5 fun title. y is the top of the capitals (ui_cap(size) rows tall).
+int  ui_cap(int size);
+void ui_text_box(int x, int y, int w, int h, int flags, int size, const char *s, u32 c);   // measured, then placed in the box: flags TX_CENTER | TX_MID ... (gfx.h)
+void ui_text_base(int x, int base, int size, const char *s, u32 c);   // y is the baseline, so different sizes on a line line up
+void ui_textr(int rx, int y, int size, const char *s, u32 c);         // right-aligned: the text ends at rx
 void ui_round(int x, int y, int w, int h, int r, u32 top, u32 bot, int semi);   // a rounded box, shaded top to bottom
 void ui_shadow(int x, int y, int w, int h, int r);             // its soft shadow (call first)
 void ui_card(int x, int y, int w, int h);                      // a white card with its shadow

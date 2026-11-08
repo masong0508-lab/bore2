@@ -60,7 +60,8 @@ void audio_voice(int v) { audio_voicep(v, 256); }
 static u32 seqbuf[(SEQ_MAX + 4096) / 4];   // (the sequence block, or two for the DJ; at its end the decks' unpacking windows)
 #define SEQ_RING(d) ((u8 *)seqbuf + 36864 + (d) * 4096)
 static CdlLOC songs_loc;
-static int cd_ok, cd_up;   // (cd_up: the drive answered at start-up)
+static int cd_ok, cd_up, cd_tried;   // (cd_up: the drive answered at start-up)
+static int cd_start(void) { if (!cd_tried) { cd_tried = 1; if (CdInit()) cd_up = 1; } return cd_up; }   // (the drive starts at the first read: the font sheets come off the disc before audio_init)
 static struct { u32 sector, seq_sectors, smp_sectors, smp_bytes; } sidx[NSONGS];
 
 // ---- the sequencer (all of this is read inside the timer interrupt) ----
@@ -257,7 +258,7 @@ int audio_jukebox_shuffle(void) { return shuffle; }
 int audio_cd_ok(void) { return cd_ok; }
 
 int audio_cd_load(const char *name, void *dst, int room) {   // a whole file from the disc into RAM (an overlay); 0 if it is not there or does not fit
-    if (!cd_up) return 0;
+    if (!cd_start()) return 0;
     char path[24]; snprintf(path, sizeof path, "\\%s;1", name);
     CdlFILE f; if (!CdSearchFile(&f, path)) return 0;
     int secs = (int)((f.size + 2047) / 2048); if (secs * 2048 > room) return 0;
@@ -266,7 +267,7 @@ int audio_cd_load(const char *name, void *dst, int room) {   // a whole file fro
     return CdReadSync(0, 0) >= 0;
 }
 int audio_cd_part(const char *name, u32 sector, int count, void *dst) {   // some sectors from inside a file (one picture of a big art file at a time)
-    if (!cd_up) return 0;
+    if (!cd_start()) return 0;
     char path[24]; snprintf(path, sizeof path, "\\%s;1", name);
     CdlFILE f; if (!CdSearchFile(&f, path)) return 0;
     CdlLOC loc; CdIntToPos(CdPosToInt(&f.pos) + (int)sector, &loc);
@@ -275,7 +276,7 @@ int audio_cd_part(const char *name, u32 sector, int count, void *dst) {   // som
     return CdReadSync(0, 0) >= 0;
 }
 int audio_cd_peek(const char *name, void *dst) {   // the first 2048 bytes of a file on the disc (is a pack really there?); 0 if it cannot be read
-    if (!cd_up) return 0;
+    if (!cd_start()) return 0;
     char path[24]; snprintf(path, sizeof path, "\\%s;1", name);
     CdlFILE f; if (!CdSearchFile(&f, path)) return 0;
     if (!CdControl(CdlSetloc, &f.pos, 0)) return 0;
@@ -567,8 +568,7 @@ void audio_init(void) {
     music_silence();
     cd_ok = 0;
     song_base = spu_next;
-    if (CdInit()) {
-        cd_up = 1;
+    if (cd_start()) {
         // the voice clips: VOICES.BIN (u32 count, then {u32 offset, u32 size, u32 rate} per clip, then the ADPCM data) straight into
         // sound memory as it is, through the sequence buffer a piece at a time; each clip plays from where it landed
         CdlFILE vf;

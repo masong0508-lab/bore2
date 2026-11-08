@@ -104,6 +104,15 @@ extern int ui_light;   // (ui.c) text onto a white card: light colours come out 
 void gfx_text(int x, int y, int scale, const char *s, int r, int g, int b);
 void gfx_text_raw(int x, int y, int scale, const char *s, int r, int g, int b);   // (no white-card mapping: the colour as given)     // the SDK font, scaled (upper case)
 int  gfx_text_w(int scale, const char *s);
+// styles (font.h: FS_BODY, FS_READ, FS_HEAD, FS_NUM, FS_FUN, FS_BIG) and the centring helper
+enum { TX_LEFT = 0, TX_CENTER = 1, TX_RIGHT = 2, TX_TOP = 0, TX_MID = 4, TX_BOTTOM = 8 };
+int  gfx_text_ws(int style, const char *s);       // advance width in a style
+int  gfx_text_wi(int style, const char *s);       // the ink's width (no trailing space): what to centre
+void gfx_text_s(int style, int x, int y, const char *s, int r, int g, int b);        // y = the top of the capitals
+void gfx_text_raw_s(int style, int x, int y, const char *s, int r, int g, int b);
+void gfx_textc_s(int style, int cx, int y, const char *s, int r, int g, int b);
+void gfx_text_box(int style, int x, int y, int w, int h, int flags, const char *s, int r, int g, int b);       // measure, then place in the box: TX_CENTER | TX_MID centres both ways
+void gfx_text_box_raw(int style, int x, int y, int w, int h, int flags, const char *s, int r, int g, int b);
 void gfx_textc(int cx, int y, int scale, const char *s, int r, int g, int b);   // centred on cx
 void gfx_sprite(int x, int y, int w, int h, u16 tpage, u16 clut, int u, int v, int tw, int th, int shade, int semi);   // a 2D textured quad
 void gfx_sprite_c(int x, int y, int w, int h, u16 tpage, int u, int v, int tw, int th, int r, int g, int b);   // tinted (128 = as painted)

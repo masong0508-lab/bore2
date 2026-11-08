@@ -53,7 +53,7 @@ $(TARGET): $(OBJS)
 
 # the disc: IP.BIN (KOS makeip), 1ST_READ.BIN (the ELF as a plain binary, not scrambled: a GD-ROM image), the PS1 game's sound files
 disc: $(O)/bore2_dc.gdi
-$(O)/bore2_dc.gdi: $(TARGET) ../../assets/SONGS.BIN ../../assets/voices.bin ../../assets/GOTCHI.ART mkdisc.py
+$(O)/bore2_dc.gdi: $(TARGET) ../../assets/SONGS.BIN ../../assets/voices.bin ../../assets/FONTS.BIN ../../assets/GOTCHI.ART mkdisc.py
 	sh-elf-objcopy -O binary -R .stack $(TARGET) $(O)/1ST_READ.BIN
 	$(KOS_BASE)/utils/makeip/makeip -f -g "BORE 2" -c "BORE 2 TEAM" $(O)/IP.BIN > /dev/null
-	python3 mkdisc.py $(O) $(O)/IP.BIN 1ST_READ.BIN=$(O)/1ST_READ.BIN SONGS.BIN=../../assets/SONGS.BIN VOICES.BIN=../../assets/voices.bin GOTCHI.ART=../../assets/GOTCHI.ART
+	python3 mkdisc.py $(O) $(O)/IP.BIN 1ST_READ.BIN=$(O)/1ST_READ.BIN SONGS.BIN=../../assets/SONGS.BIN VOICES.BIN=../../assets/voices.bin FONTS.BIN=../../assets/FONTS.BIN GOTCHI.ART=../../assets/GOTCHI.ART

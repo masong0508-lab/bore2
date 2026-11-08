@@ -298,16 +298,31 @@ static void feed_push(const char *t) {
     strncpy(feed[0], t, 31); feed[0][31] = 0; feed_t[0] = VSync(-1) | 1;
 }
 static void feed_poll(void) { extern char note_q[4][32]; extern int note_qn; for (int i = 0; i < note_qn; i++) feed_push(note_q[i]); note_qn = 0; }   // every sim_note lands here
-static void feed_draw(int y) {   // the notifications stack on the left, newest on top; each slides away after a few seconds
+// the notification toasts, after the Sims: a white card with a round coloured icon (green tick: good news, red: a problem, blue: news), slid in from the left, held,
+// slid out; the wording picks the icon. (The text is measured, the card fits it, the text is centred in the card's height.)
+static int toast_kind(const char *t) {
+    static const char *const bad[] = { "NO ", "NOT ", "CAN'T", "TOO ", "BROKE", "NEED", "LOCKED", "FULL", "FAIL", "OH NO", "HUNGRY", "TIRED", "BUSY", "STINK", "SAD", "LOST", "MISS", "LATE", "CLOSED" };
+    static const char *const good[] = { "+$", "PAID", "PAYDAY", "PROMOT", "DONE", "GOT ", "BOUGHT", "SAVED", "WELCOME", "NICE", "LEVEL", "NEW ", "WIN", "WON", "FOUND", "GOAL", "HAPPY", "GREAT", "FRIEND", "LOVE", "BIRTHDAY", "+" };
+    for (unsigned k = 0; k < sizeof bad / sizeof *bad; k++) if (strstr(t, bad[k])) return 1;
+    for (unsigned k = 0; k < sizeof good / sizeof *good; k++) if (strstr(t, good[k])) return 0;
+    return 2;
+}
+static void feed_draw(int y) {   // the notifications stack on the left, newest on top; each slides in, rests a few seconds, and slides away
     int now = VSync(-1);
     for (int i = 0; i < NFEED; i++) {
         if (!feed_t[i]) continue;
         int age = now - feed_t[i];
         if (age > FEED_VB || age < 0) { feed_t[i] = 0; continue; }
-        int w = ui_tw(1, feed[i]) + 14, x = 8 - (age > FEED_VB - 24 ? (age - (FEED_VB - 24)) * (w + 8) / 24 : 0);   // (out to the left at the end)
-        ui_card(x, y, w, 13); gfx_rect(x + 1, y + 2, 2, 9, 38, 146, 222, 0);
-        ui_text(x + 6, y + 3, 1, feed[i], UI_INK);
-        y += 16;
+        char sb[40]; const char *t = font_shaped(feed[i], sb, sizeof sb);
+        int k = toast_kind(feed[i]);
+        int w = ui_tw(1, t) + 28, x = 8;
+        if (age < 10) x = 8 - (10 - age) * (w + 8) / 10;                                               // (in from the left, quickly)
+        else if (age > FEED_VB - 24) x = 8 - (age - (FEED_VB - 24)) * (w + 8) / 24;                    // (out to the left at the end)
+        static const u32 kc[3] = { UI_RGB(70, 190, 90), UI_RGB(226, 84, 70), UI_RGB(48, 150, 226) };
+        ui_card(x, y, w, 15);
+        ui_disc(x + 9, y + 7, 11, kc[k]); ui_icon(x + 3, y + 1, k == 0 ? IC_TICK : k == 1 ? IC_HELP : IC_CHAT, UI_WHITE);
+        ui_text_box(x + 18, y, w - 20, 15, TX_LEFT | TX_MID, 1, t, UI_INK);
+        y += 17;
     }
 }
 
@@ -348,7 +363,7 @@ static void start_life(void) {
         a->rel[1] = m->rel[0] = 40; a->rel[2] = k->rel[0] = m->rel[2] = k->rel[1] = 30;
     }
     story_reset(); }
-#if !defined(AUTO_PKLIFE) && !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_SUPER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY) && !defined(AUTO_GOTCHI) && !defined(AUTO_GFIRST) && !defined(AUTO_DJ) && !defined(AUTO_RESORT)
+#if !defined(AUTO_TEXT) && !defined(AUTO_PKLIFE) && !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_SUPER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY) && !defined(AUTO_GOTCHI) && !defined(AUTO_GFIRST) && !defined(AUTO_DJ) && !defined(AUTO_RESORT)
     nh_pending = life_mode == 0; cash = life_mode == 2 ? 1000 : wmFundsV[go_funds % 6]; mode_pending = life_mode; life_mode = 0;   // the family picks its home on THE NEIGHBORHOOD screen (The Sims: $20,000 to start), and life_update moves them in
 #endif
     life_started = 1;
@@ -598,8 +613,8 @@ static void hud_life(void) {
     ui_card(216, 9, 96, 28);
     { char t_[12]; clock_fmt(t_, clock_min, 0); sprintf(b, "%s %s", sim_day_name(clock_day), t_); }
     ui_text(222, 12, 2, b, UI_INK);
-    if (ui_clock12) ui_text(222 + ui_tw(2, b) + 2, 19, 1, clock_min / 60 % 24 < 12 ? "AM" : "PM", UI_SOFT);
-    sprintf(b, "$%ld", cash); ui_text(222, 26, 1, b, UI_RGB(40, 150, 50));
+    if (ui_clock12) ui_text_base(222 + ui_tw(2, b) + 3, 12 + ui_cap(2), 1, clock_min / 60 % 24 < 12 ? "AM" : "PM", UI_SOFT);   // (on the time's baseline)
+    sprintf(b, "$%ld", cash); ui_text(222, 25, 4, b, UI_RGB(40, 150, 50));   // (money in the number type)
     { static const u32 SC[4] = { UI_RGB(236, 120, 170), UI_RGB(236, 170, 30), UI_RGB(214, 110, 30), UI_RGB(80, 150, 220) };   // the season, and its festival on the last day
       int se = sim_season(), fe = sim_festival(); { const char *sn = fe ? sim_festival_name(se) : sim_season_name(se); ui_badge(160 - (ui_tw(1, sn) + 10) / 2, 8, sn, fe ? UI_AMBER : SC[se], UI_WHITE); }
       { int wx = world_zone == ZONE_ISLAND ? 0 : sim_weather();   // the weather: rain in streaks, hail in white pellets, snow in thick flakes (out of doors, and lighter through a window)
@@ -2065,13 +2080,14 @@ static void grow_tick(void) {   // (test builds: a family's life in two minutes:
 static void title_draw(void);
 enum { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_CROWD, O_LIVE, O_SPR, O_SHADOW, O_AO, O_WALLS, O_FPSCAP, O_DITHER, O_CAM, O_SHOWFPS,
        O_AGING, O_OLDAGE, O_TOWNAGE, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_MUSIC, O_CUTAWAY, O_ALONE, O_GHOSTS, O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_WIDE, O_TRAF, O_GOTCHI,
-       O_MASTER, O_MUSICV, O_SFX, O_TITLEMUS, O_GAMEMUS, O_SHUFFLE, O_NEEDS, O_DAYLEN, O_CLOCK, O_MSGT, O_THINK, O_SPEED, O_REALTIME, O_N };   // (new ones go on the end: old saves hold the first O_GOTCHI + 1)
+       O_MASTER, O_MUSICV, O_SFX, O_TITLEMUS, O_GAMEMUS, O_SHUFFLE, O_NEEDS, O_DAYLEN, O_CLOCK, O_MSGT, O_THINK, O_SPEED, O_REALTIME, O_TEXT, O_N };   // (new ones go on the end: old saves hold the first O_GOTCHI + 1)
 #define O_N_V40 (O_GOTCHI + 1)
 #define O_N_V43 (O_SPEED + 1)                 // (version 44: REAL TIME)
+#define O_N_V48 (O_REALTIME + 1)              // (version 49: TEXT LOOK)
 static const char *const optNm[O_N] = { "PRESET", "VIEW DISTANCE", "FULL DETAIL", "FAR BUILDINGS", "FAR TREES", "HAZE", "CROWD SIZE",
     "PEOPLE IN FULL 3D", "PEOPLE SPRITES", "SHADOWS", "FLOOR SHADING", "WALL LIGHT", "FRAME RATE", "DITHERING", "CAMERA", "SHOW FPS",
     "LIFESPAN", "OLD AGE", "THE TOWN GROWS UP", "CAMERA HEIGHT", "TURN SPEED", "ZOOM TILTS", "MUSIC", "WALL VIEW", "YOUR BORE ALONE", "GHOSTS", "AGGRESSION", "WHO JOINS FIGHTS", "RAGE", "WHO LUNGES AT YOU", "PEACEMAKERS", "SCREEN SHAPE", "TRAFFIC CHEAT", "BOREAGOTCHI TIME",
-    "MASTER VOLUME", "MUSIC VOLUME", "SOUND VOLUME", "TITLE MUSIC", "GAME MUSIC", "SHUFFLE SONGS", "NEEDS", "DAY LENGTH", "CLOCK", "MESSAGE TIME", "THOUGHT BUBBLES", "SPEED HELPER", "REAL TIME" };
+    "MASTER VOLUME", "MUSIC VOLUME", "SOUND VOLUME", "TITLE MUSIC", "GAME MUSIC", "SHUFFLE SONGS", "NEEDS", "DAY LENGTH", "CLOCK", "MESSAGE TIME", "THOUGHT BUBBLES", "SPEED HELPER", "REAL TIME", "TEXT LOOK" };
 static const char *const optV[O_N][6] = {
     { "CUSTOM", "LOW", "MEDIUM", "HIGH", "ULTRA" }, { "NEAR: 40 M", "250 M", "500 M", "1 KM", "1.5 KM", "2 KM" },
     { "10 M", "12 M", "15 M", "17 M" }, { "TALL ONLY", "ALL", "WITH WINDOWS" }, { "OFF", "100 M", "200 M", "350 M" },
@@ -2084,8 +2100,8 @@ static const char *const optV[O_N][6] = {
     { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" },
     { "OFF", "20%", "40%", "60%", "80%", "100%" }, { "EVERYONE", "CIVILIANS", "POLICE", "FAMILY", "CIVILIANS + POLICE", "FAMILY + POLICE" }, { "OFF", "ON" }, { "4:3 NORMAL", "16:9 WIDE" }, { "OFF", "+10 CARS", "+30 CARS", "+60 CARS", "LUDICROUS" }, { "GAME CLOCK", "LIVE IN HAND", "OFF: THEY WAIT" },
     { "0" }, { "0" }, { "0" }, { "OFF", "ON" }, { "OFF", "ON" }, { "IN ORDER", "AT RANDOM" },
-    { "NEVER FALL", "SLOW", "NORMAL", "FAST" }, { "SHORT", "NORMAL", "LONG", "EPIC" }, { "24 HOUR", "12 HOUR" }, { "SHORT", "NORMAL", "LONG" }, { "OFF", "ON" }, { "OFF", "ON" }, { "OFF", "ON" } };
-static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3, 3, 6, 6, 6, 6, 2, 2, 5, 3, 11, 11, 11, 2, 2, 2, 4, 4, 2, 3, 2, 2, 2 };
+    { "NEVER FALL", "SLOW", "NORMAL", "FAST" }, { "SHORT", "NORMAL", "LONG", "EPIC" }, { "24 HOUR", "12 HOUR" }, { "SHORT", "NORMAL", "LONG" }, { "OFF", "ON" }, { "OFF", "ON" }, { "OFF", "ON" }, { "FRIENDLY", "EXTRA CLEAR", "CAPITALS" } };
+static const u8 optN[O_N] = { 5, 6, 4, 3, 4, 3, 4, 4, 3, 3, 2, 2, 3, 2, 3, 2, 4, 2, 2, 4, 3, 2, 4, 3, 3, 3, 6, 6, 6, 6, 2, 2, 5, 3, 11, 11, 11, 2, 2, 2, 4, 4, 2, 3, 2, 2, 2, 3 };
 static const char *const optBlurb[O_N] = {
     "LOW, MEDIUM, HIGH OR ULTRA SETS THEM ALL", "HOW FAR SAN BOREAS GOES BEFORE THE SKY", "WHERE ROOMS, WALLS AND THINGS ARE DRAWN IN FULL",
     "THE TOWNS PAST THE MAP: TALL ONES, ALL, OR WINDOWS TOO", "TREES PAST THE NEAR DETAIL, OUT TO", "THE AIR BETWEEN YOU AND THE HORIZON",
@@ -2116,13 +2132,14 @@ static const char *const optBlurb[O_N] = {
 #ifdef BORE_DC
     "THE DREAMCAST'S OWN CLOCK AND DATE. SLEEP AND WORK GO FAST, THE CLOCK STAYS REAL" };
 #else
-    "THE PS1 HAS NO CLOCK: SET YOURS. SLEEP AND WORK GO FAST, THE CLOCK STAYS REAL" };
+    "THE PS1 HAS NO CLOCK: SET YOURS. SLEEP AND WORK GO FAST, THE CLOCK STAYS REAL",
 #endif
+    "FRIENDLY: ROUND TYPE. EXTRA CLEAR: WIDER, HEAVIER LETTERS, FOR EASY READING. CAPITALS: THE TEXT AS WRITTEN" };
 static const u8 presets[4][O_N] = {   // LOW, MEDIUM, HIGH, ULTRA (the graphics knobs; the frame rate, dithering, camera and the counter are left be)
     { 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0 }, { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 },
     { 3, 3, 2, 2, 2, 1, 3, 3, 1, 2, 1, 1 }, { 4, 5, 3, 2, 3, 2, 3, 3, 2, 2, 1, 1 } };
 #define O_PRESET_LAST O_WALLS                 // (presets set O_VIEW .. O_WALLS)
-#define OPT_DEFAULTS { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1, 1, 2, 0, 0, 1, 1, 0, 0, 0,   10, 10, 10, 1, 1, 1, 2, 1, 0, 1, 1, 1, 0 }
+#define OPT_DEFAULTS { 2, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 0, 0, 2, 1, 1, 2, 1, 1, 3, 0, 1, 1, 2, 0, 0, 1, 1, 0, 0, 0,   10, 10, 10, 1, 1, 1, 2, 1, 0, 1, 1, 1, 0, 0 }
 static const u8 optDef[O_N] = OPT_DEFAULTS;
 static u8 opt[O_N] = OPT_DEFAULTS;   // HIGH: a kilometre of view; NORMAL lives; the Sims camera, high
 static int opt_sel, opt_back, opt_tab;
@@ -2168,7 +2185,7 @@ static void opts_apply(void) {
     audio_volumes(opt[O_MASTER], opt[O_MUSICV], opt[O_SFX]); if (audio_jukebox_shuffle() != opt[O_SHUFFLE]) audio_jukebox_toggle_shuffle();
     { extern int sim_need_pct, sim_day_pct, sim_msg_t; static const u8 np[4] = { 0, 50, 100, 150 }, dp[4] = { 66, 100, 150, 250 }; static const short mt[3] = { 90, 180, 300 };
       sim_need_pct = np[opt[O_NEEDS] & 3]; sim_day_pct = dp[opt[O_DAYLEN] & 3]; sim_msg_t = mt[opt[O_MSGT] % 3]; sim_rt_set(opt[O_REALTIME] & 1); }
-    ui_clock12 = opt[O_CLOCK]; ui_thoughts = opt[O_THINK];
+    ui_clock12 = opt[O_CLOCK]; ui_thoughts = opt[O_THINK]; font_look = opt[O_TEXT] % 3;
     aging = opt[O_AGING]; old_age = opt[O_OLDAGE]; pop_aging = opt[O_TOWNAGE];
     cam_view = opt[O_CAM] % 3; cam_turn_rate = opt[O_CAMSPD] == 0 ? 24 : opt[O_CAMSPD] == 1 ? 40 : 64; cam_zoom_tilt = opt[O_ZOOMTILT]; wall_view = opt[O_CUTAWAY] % 3;
     crowd_lvl = 0; helper_apply();   // (the speed helper starts from everything as chosen)
@@ -2272,7 +2289,7 @@ static const char *const optTabNm[NOTAB] = { "GRAPHICS", "PEOPLE", "LIGHT", "CAM
 static const s8 optTabIc[NOTAB] = { IC_EYE, IC_PEOPLE, IC_SUN, IC_CAMERA, IC_BOLT, IC_NOTE, IC_SPROUT, IC_STAR, IC_GEAR };
 static const s8 optTab[NOTAB][8] = { { O_PRESET, O_VIEW, O_DETAIL, O_FARB, O_TREES, O_HAZE, O_SPEED, -1 }, { O_CROWD, O_LIVE, O_SPR, -1 },
                                      { O_SHADOW, O_AO, O_WALLS, O_DITHER, -1 }, { O_CAM, O_CAMH, O_CAMSPD, O_ZOOMTILT, O_CUTAWAY, -1 },
-                                     { O_WIDE, O_FPSCAP, O_SHOWFPS, O_CLOCK, O_MSGT, O_THINK, -1 },
+                                     { O_WIDE, O_FPSCAP, O_SHOWFPS, O_CLOCK, O_MSGT, O_THINK, O_TEXT, -1 },
                                      { O_MASTER, O_MUSICV, O_SFX, O_TITLEMUS, O_GAMEMUS, O_SHUFFLE, -1 },
                                      { O_NEEDS, O_DAYLEN, O_REALTIME, O_AGING, O_OLDAGE, O_TOWNAGE, O_ALONE, O_GHOSTS },
                                      { O_AGGRO, O_AGWHO, O_RAGE, O_RAGEWHO, O_PEACE, O_TRAF, O_GOTCHI, -1 },
@@ -2294,7 +2311,7 @@ static const char *opt_val(int i, char *b) {   // what the knob says now
     return optV[i][opt[i] % optN[i]];
 }
 static int opt_default_group(int i) { return i == O_MASTER || i == O_MUSICV || i == O_SFX || i == O_TITLEMUS || i == O_GAMEMUS || i == O_SHUFFLE || i == O_MUSIC ? 1 :
-                                             i <= O_PRESET_LAST || i == O_FPSCAP || i == O_DITHER || i == O_SHOWFPS || i == O_WIDE || i == O_CLOCK || i == O_MSGT || i == O_THINK || i == O_SPEED ? 0 : 2; }
+                                             i <= O_PRESET_LAST || i == O_FPSCAP || i == O_DITHER || i == O_SHOWFPS || i == O_WIDE || i == O_CLOCK || i == O_MSGT || i == O_THINK || i == O_SPEED || i == O_TEXT ? 0 : 2; }
 static int opt_rows(int t) { int n = 0; while (n < 8 && optTab[t][n] >= 0) n++; return n; }
 static int opt_flash;                                            // a RESET button's "done"
 static void title_music_resume(void) { if (opt[O_TITLEMUS]) audio_jukebox_play(0); }   // (back at the title: its song again)
@@ -2457,9 +2474,10 @@ static void load_body(void) {
     if (save_ver >= 4) { int n = ld_u8(); for (int k = 0; k < n; k++) { int i = ld_u8(); char nm[18]; ld_str(nm, 17); bm_rename(i, nm); } }
     sim_season_lock = 0; sim_seasons_on = 1; bm_ovr_clear();
     if (save_ver >= 37) { sim_season_lock = ld_u8() % 5; sim_seasons_on = ld_u8() & 1; ovr_load(); }
-    { int o_n = save_ver >= 44 ? O_N : save_ver >= 41 ? O_N_V43 : save_ver >= 21 ? O_N_V40 : save_ver >= 19 ? O_N_V40 - 1 : O_N_V40 - 2; ld_n(opt, save_ver >= 16 ? o_n : save_ver >= 15 ? o_n - 1 : save_ver >= 14 ? o_n - 6 : save_ver >= 11 ? o_n - 7 : o_n - 8); } if (save_ver < 19) opt[O_TRAF] = 0; if (save_ver < 21) opt[O_GOTCHI] = 0; if (save_ver < 16) opt[O_WIDE] = 0; if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1;
+    { int o_n = save_ver >= 49 ? O_N : save_ver >= 44 ? O_N_V48 : save_ver >= 41 ? O_N_V43 : save_ver >= 21 ? O_N_V40 : save_ver >= 19 ? O_N_V40 - 1 : O_N_V40 - 2; ld_n(opt, save_ver >= 16 ? o_n : save_ver >= 15 ? o_n - 1 : save_ver >= 14 ? o_n - 6 : save_ver >= 11 ? o_n - 7 : o_n - 8); } if (save_ver < 19) opt[O_TRAF] = 0; if (save_ver < 21) opt[O_GOTCHI] = 0; if (save_ver < 16) opt[O_WIDE] = 0; if (save_ver < 11) opt[O_ALONE] = 1; if (save_ver < 14) opt[O_GHOSTS] = 1;
     if (save_ver < 41) { static const u8 mm[4] = { 0, 3, 6, 10 }; for (int k = O_MASTER; k < O_N; k++) opt[k] = optDef[k]; opt[O_MUSICV] = mm[opt[O_MUSIC] & 3]; }   // (version 41: the AUDIO and GAME pages; an older save's music level becomes a slider)
     if (save_ver < 44) opt[O_REALTIME] = 0;
+    if (save_ver < 49) opt[O_TEXT] = 0;   // (version 49: TEXT LOOK: the friendly type)
     if (save_ver < 15) { opt[O_AGGRO] = 2; opt[O_AGWHO] = 0; opt[O_RAGE] = 0; opt[O_RAGEWHO] = 1; opt[O_PEACE] = 1; } opts_apply();   // (YOUR BORE ALONE came with version 11)
     loading("LOADING YOUR GAME", 30);
     bm_new(seed); world_new_seed(seed);
@@ -4165,6 +4183,21 @@ static void help_draw(void) {   // three pages of tips, each with its picture
 }
 
 // ---- title and menu ----
+#ifdef AUTO_TEXT
+static void text_tick(void) {   // (test builds. AUTO_TEXT=1: the life starts and the pad does the rest. AUTO_TEXT=2: the pie menu on a housemate, then the arcade floor, then the prize counter, by themselves)
+#if AUTO_TEXT == 2
+    static int ph, tt; tt++;
+    if (ph == 0 && state == ST_LIFE && life_started && tt >= 90 && nsims > 1) { Sim *me = &sims[player], *o = &sims[player ? 0 : 1]; tt = 0; ph = 1;
+        sim_player_cancel_sim(me); sim_player_cancel_sim(o); o->x = me->x + TILE; o->z = me->z; o->path_n = 0; me->yaw = 1024; o->yaw = 3072;
+        pie_cit = 0; pie_n = sim_pie_open(pie_opt); if (pie_n > 1) { pie_sel = 0; state = ST_PIE; } }
+    else if (ph == 1 && tt >= 70) { state = ST_LIFE; tt = 0; ph = 2; }
+    else if (ph == 2 && tt >= 40) { sim_want_arcade = 101; tt = 0; ph = 3; }
+    else if (ph == 3 && tt >= 120) { ovl = 0; ovl_leave(); state = ST_LIFE; tt = 0; ph = 4; }
+    else if (ph == 4 && tt >= 40) { sim_want_arcade = AG_PRIZES + 1; tt = 0; ph = 5; }
+    else if (ph == 5 && tt >= 120) { ovl = 0; ovl_leave(); state = ST_LIFE; tt = 0; ph = 6; }
+#endif
+}
+#endif
 static int title_t;
 static void title_update(void) {
     title_t++;
@@ -4188,7 +4221,7 @@ static void title_update(void) {
 #if defined(AUTO_WEAR) || defined(AUTO_FACE)
     if (title_t == 30) { world_backup(); prev_state = ST_MENU; create_tab = 4; create_row = 0; state = ST_CREATE; world_gen_studio(); return; }
 #endif
-#if defined(AUTO_PKLIFE) || defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM) || defined(AUTO_GOTCHI) || defined(AUTO_GFIRST) || defined(AUTO_DJ) || defined(AUTO_SUPER)
+#if defined(AUTO_TEXT) || defined(AUTO_PKLIFE) || defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM) || defined(AUTO_GOTCHI) || defined(AUTO_GFIRST) || defined(AUTO_DJ) || defined(AUTO_SUPER)
     if (title_t == 30) {
 #ifdef CIT_PEOPLE
         pop_people = CIT_PEOPLE; pop_famsize = 2;   // (test builds: a bigger SAN BOREAS, PEOPLE 5 = PACKED, BIG households)
@@ -4233,7 +4266,7 @@ static void title_draw(void) {
     if (state == ST_TITLE) {   // the tagline on a card, and what to press
         ui_card(66, 196, 188, 36);
         ui_textc(160, 201, 1, "THE VOXEL LIFE, NOW IN FULL 3D", UI_BLUE2);
-        if ((title_t / 20) & 1) ui_hints(160, 214, "START PLAY", 1);
+        ui_hints(160, 214, "START PLAY", 1);   // (steady: it used to blink)
     }
 }
 // ---- THE WORLDS (STORY MODE): which SAN BOREAS to live in. Fresh dice, one of the presets, one you roll yourself on CREATE A
@@ -5127,6 +5160,9 @@ int main(void) {
 #endif
 #ifdef AUTO_SCENE
         scene_tick();
+#endif
+#ifdef AUTO_TEXT
+        text_tick();
 #endif
 #ifdef AUTO_PHONE
         phone_tick();

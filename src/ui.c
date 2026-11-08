@@ -2,6 +2,7 @@
 #include "ui.h"
 #include "gfx.h"
 #include "atlas.h"
+#include "font.h"
 
 // ---- the icons: 12 x 12, '#' ink, '+' a softer shade, '.' clear. Drawn white and tinted when shown ----
 static const char *const icons[IC_N][12] = {
@@ -87,9 +88,10 @@ static u32 mix(u32 a, u32 b, int t, int n) {   // a .. b at t of n
     if (t == n) return b & 0xffffff;
     return UI_RGB(cr(a) + (cr(b) - cr(a)) * t / n, cg(a) + (cg(b) - cg(a)) * t / n, cb(a) + (cb(b) - cb(a)) * t / n);
 }
-// size 1 is the interface's own smooth type (font size 3: the medium font shrunk, not the old 5-pixel one); 2 the medium
-static inline int fsz(int size) { return size; }   // (gfx maps 1 to the smooth type itself)
-int  ui_tw(int size, const char *s) { return gfx_text_w(fsz(size), s); }
+// the sizes: 1 the body type, 2 the heading type, 3 the big type, 4 the number type (money, the clock), 5 the fun title type (font.h)
+static inline int ustyle(int size) { return size <= 1 ? font_style_of(1) : size == 2 ? (font_look == LOOK_READABLE ? FS_HEAD : FS_HEAD) : size == 3 ? FS_BIG : size == 4 ? FS_NUM : FS_FUN; }
+int  ui_tw(int size, const char *s) { return gfx_text_ws(ustyle(size), s); }
+int  ui_cap(int size) { return font_cap(ustyle(size)); }       // the capitals' height: the text's y is their top, its baseline is ui_cap below it
 // ---- where text may go: the light panels drawn this frame (cards, windows, pale boxes). Dark ink only reads on one of them, so
 // dark text that lands on the bare scene gets a pale pill of its own behind it, and text that runs out of its panel is noted
 // (test builds: UI_LINT keeps a list, so the layouts can be fixed) ----
@@ -123,17 +125,27 @@ static void text_place(int x, int y, int size, const char *s, u32 c) {
             if (!start) { ui_round(x - 4, y - 2, w + 8, 12, 4, UI_CARD, UI_CARD2, 0); }   // (the bare scene: a pill to read it on)
         }
     }
-    gfx_text_raw(x, y, fsz(size), s, cr(c), cg(c), cb(c));
+    gfx_text_raw_s(ustyle(size), x, y, s, cr(c), cg(c), cb(c));
 }
 void ui_text(int x, int y, int size, const char *s, u32 c) { text_place(x, y, size, s, c); }
 void ui_textfit(int x, int y, int w, const char *s, u32 c) {   // one line in at most w pixels: too long, it ends with ...
+    char sb[160]; s = font_shaped(s, sb, sizeof sb);
     if (ui_tw(1, s) <= w) { text_place(x, y, 1, s, c); return; }
     ui_lint_note(2, s);
     char b[64]; int n = (int)strlen(s); if (n > 60) n = 60;
     do { n--; while (n > 0 && s[n - 1] == ' ') n--; memcpy(b, s, n); strcpy(b + n, "..."); } while (n > 0 && ui_tw(1, b) > w);
     text_place(x, y, 1, b, c);
 }
-void ui_textc(int cx, int y, int size, const char *s, u32 c) { text_place(cx - ui_tw(size, s) / 2, y, size, s, c); }
+void ui_textc(int cx, int y, int size, const char *s, u32 c) { text_place(cx - gfx_text_wi(ustyle(size), s) / 2, y, size, s, c); }
+// the centring helpers: the text is measured, then placed. flags: TX_LEFT / TX_CENTER / TX_RIGHT with TX_TOP / TX_MID / TX_BOTTOM (gfx.h)
+void ui_text_box(int x, int y, int w, int h, int flags, int size, const char *s, u32 c) {
+    int st = ustyle(size), iw = gfx_text_wi(st, s), cap = font_cap(st);
+    int tx = (flags & 3) == TX_CENTER ? x + (w - iw) / 2 : (flags & 3) == TX_RIGHT ? x + w - iw : x; if (iw > w) tx = x;
+    int ty = (flags & 12) == TX_MID ? y + (h - cap) / 2 : (flags & 12) == TX_BOTTOM ? y + h - cap : y;
+    text_place(tx, ty, size, s, c);
+}
+void ui_text_base(int x, int base, int size, const char *s, u32 c) { text_place(x, base - ui_cap(size), size, s, c); }   // y is the baseline: two sizes on one line sit on the same line this way
+void ui_textr(int rx, int y, int size, const char *s, u32 c) { text_place(rx - gfx_text_wi(ustyle(size), s), y, size, s, c); }   // right edge at rx
 
 static const u8 rin4[4] = { 2, 1, 0, 0 }, rin6[6] = { 4, 2, 1, 1, 0, 0 };
 void ui_round(int x, int y, int w, int h, int r, u32 top, u32 bot, int semi) {
@@ -245,12 +257,13 @@ void ui_slider(int x, int y, int w, int v, int n, int sel) {
     ui_disc(kx, y + 4, 8, UI_WHITE);
 }
 void ui_badge(int x, int y, const char *s, u32 bg, u32 ink) {
-    int w = ui_tw(1, s) + 10;
+    int w = gfx_text_wi(ustyle(1), s) + 10;
     ui_round(x, y, w, 12, 4, mix(bg, UI_WHITE, 1, 4), bg, 0);
-    ui_text(x + 5, y + 2, 1, s, ink);
+    ui_text_box(x, y, w, 12, TX_CENTER | TX_MID, 1, s, ink);
 }
 static int wrap_do(int x, int y, int w, int lines, const char *s, u32 c, int draw) {   // (draw 2: each line centred on x + w / 2)   // the words, broken onto lines that fit w; the lines used
-    char line[96]; int n = 0;
+    char line[96], sb[256]; int n = 0;
+    s = font_shaped(s, sb, sizeof sb);   // (the case is decided for the whole text, not line by line)
     while (*s && n < lines) {
         int len = 0, fit = 0;
         while (s[len] && len < 95) {   // the longest run of whole words that fits
@@ -285,10 +298,10 @@ void ui_backdrop(void) {
     gfx_grad(0, 0, SCREEN_W, SCREEN_H, UI_RGB(210, 224, 240), UI_RGB(210, 224, 240), UI_RGB(170, 190, 214), UI_RGB(170, 190, 214), 0);
 }
 int ui_badge_i(int x, int y, int icon, const char *s, u32 bg, u32 ink) {
-    int w = ui_tw(1, s) + 23;
+    int w = gfx_text_wi(ustyle(1), s) + 23;
     ui_round(x, y, w, 12, 4, mix(bg, UI_WHITE, 1, 4), bg, 0);
     ui_icon(x + 4, y, icon, ink);
-    ui_text(x + 18, y + 2, 1, s, ink);
+    ui_text_box(x + 18, y, w - 23, 12, TX_LEFT | TX_MID, 1, s, ink);
     return w;
 }
 // ---- the pad's buttons, the way the console shows them: the four shapes in their colours on a dark round button, the rest as
@@ -300,13 +313,13 @@ static int key_of(const char *w, int n) {
     for (int i = 0; i < NKEY; i++) if ((int)strlen(keyNm[i]) == n && !memcmp(keyNm[i], w, n)) return i;
     return -1;
 }
-static int key_w(int k) { return k < 4 ? 13 : ui_tw(1, keyShow[k]) + 6; }
+static int key_w(int k) { if (k < 4) return 13; font_raw = 1; int w = ui_tw(1, keyShow[k]) + 6; font_raw = 0; return w; }
 static int key_draw(int x, int y, int k) {
     static const u32 kc[4] = { UI_RGB(130, 180, 250), UI_RGB(255, 112, 112), UI_RGB(80, 222, 172), UI_RGB(250, 136, 226) };
     if (k < 4) { ui_disc(x + 6, y + 6, 13, UI_RGB(52, 60, 76)); ui_icon(x, y, IC_BX + k, kc[k]); return 13; }
     int w = key_w(k);
     ui_round(x, y + 1, w, 11, 4, UI_RGB(76, 86, 104), UI_RGB(46, 54, 70), 0);
-    ui_text(x + 3, y + 3, 1, keyShow[k], UI_WHITE);
+    font_raw = 1; ui_text(x + 3, y + 3, 1, keyShow[k], UI_WHITE); font_raw = 0;
     return w;
 }
 int ui_key(int x, int y, const char *k) { int i = key_of(k, strlen(k)); return i < 0 ? 0 : key_draw(x, y, i); }
@@ -376,11 +389,11 @@ void ui_section(int x, int y, int w, const char *t) {
     if (w > tw) gfx_rect(x + tw, y + 3, w - tw, 1, cr(UI_LINE), cg(UI_LINE), cb(UI_LINE), 0);
 }
 void ui_bubble(int cx, int y, const char *s, u32 c) {
-    int w = ui_tw(1, s) + 10, x = cx - w / 2; if (x < 9) x = 9; if (x + w > 311) x = 311 - w; if (y < 21) y = 21;   // (kept in the safe area)
+    int w = gfx_text_wi(ustyle(1), s) + 10, x = cx - w / 2; if (x < 9) x = 9; if (x + w > 311) x = 311 - w; if (y < 21) y = 21;   // (kept in the safe area)
     ui_round(x - 1, y - 13, w + 2, 14, 4, UI_RGB(150, 162, 180), UI_RGB(150, 162, 180), 0);   // a thin edge, so it reads on a white wall
     ui_round(x, y - 12, w, 12, 4, UI_WHITE, UI_RGB(234, 239, 246), 0);
     gfx_rect(cx - 3, y, 6, 1, 150, 162, 180, 0); gfx_rect(cx - 2, y, 4, 1, 234, 239, 246, 0);
     gfx_rect(cx - 2, y + 1, 4, 1, 150, 162, 180, 0); gfx_rect(cx - 1, y + 1, 2, 1, 234, 239, 246, 0);
     gfx_rect(cx - 1, y + 2, 2, 1, 150, 162, 180, 0);
-    ui_text(x + 5, y - 10, 1, s, c);
+    ui_text_box(x, y - 12, w, 12, TX_CENTER | TX_MID, 1, s, c);
 }
