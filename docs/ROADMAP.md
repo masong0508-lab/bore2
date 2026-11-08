@@ -6,7 +6,7 @@ Detail for each port: DSI_ROADMAP.md (DS), DREAMCAST.md (Dreamcast), PS1_PERFORM
 
 ## Saved but not finished (work in progress branches on GitHub)
 - [ ] `wip-ds-fight`: DS fight game (BORTUA FIGHTER): new files ds_fight.c, ds_fight_logic.h, mk_dsfight.py. Finish it, test in melonDS, make the next dNN ROM, add the arcade's fifth cabinet.
-- [ ] `wip-arcade`: PS1 arcade rework (src/arcade.c, arcade_res.c, audio.c, CMakeLists.txt). New games and cabinets, partly done. Finish, test in DuckStation, check RAM (more than 10 KB free past _end on 2 MB), bump the save VERSION, merge save.c with the Boreagotchi change.
+- [x] ARCADE pack (PS1): done in main. 14 games (5 reworked, 9 new), floor, prize counter, challenges, high scores, medals, ARCADE2.OVL slot, save v46. Left: see docs/EXPANSION_PACKS.md.
 
 ## 1. PS1 (do first, small and visible)
 - [ ] Floor textures swim near the camera: the last speed round loosened the texture-warp cutting. Put the strict setting back for normal play (a loose one only as the speed helper's last step, far from the camera). Check with a frozen frame, moving a tile at a time.
@@ -23,7 +23,7 @@ Newest ROM: bore2_dsi_d54.nds. Everything is melonDS-only (no real DS or DSi tri
 - [ ] BORTUA FIGHTER (see wip-ds-fight).
 - [ ] Band and DJ: needs a two-deck audio path first.
 - [ ] `wip-gotchi`: DS Boreagotchi rules are written in ds_games.c (never built); the new screens are in ports/dsi/wip/ui_update.c, ui_top.c, ui_bottom.c, not spliced in. Splice in, add view names and icons, draw hats, build, fix errors, test scenes, shots, 30 fps, make d55. Missing before that work: new foods and games, family home, accessories, awards, diary, playdates, grandparents on the tree, the Toy Box and the shop. Fix the clipped labels on the family page (docs/gotchi_ds_tree.png).
-- [ ] New arcade games on the DS after the PS1 ones are done.
+- [x] New arcade games on the DS: all 13 PS1 games run on the DS (d57), 30 fps. Left: Bortua Fighter, two-player, challenges.
 - [ ] A DSi-type ROM for the extra memory and CPU (cannot be tested here).
 - [ ] Try on a real DS or DSi.
 
@@ -37,7 +37,7 @@ About 31-52 fps in the city in the emulator. 60 needs under 262 hblanks per fram
 - [ ] Try on a real Dreamcast.
 
 ## 4. Arcade (PS1, then DS)
-- [ ] Improve the 5 cabinets, add 8 or more new games, a bigger arcade lot with a prize counter and wall leaderboard, townsfolk who play and challenge you, rewards that reach skills and mood. See wip-arcade.
+- [x] Improve the 5 cabinets, add 9 new games, arcade lot, prize counter, rewards (PS1 done; DS has the games, scores and prizes). Left: DS lot extras (token machine, wall board, townsfolk).
 
 ## 5. Held for later
 - [ ] Missy's voice-over and FMV.

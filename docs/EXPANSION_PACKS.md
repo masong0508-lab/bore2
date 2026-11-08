@@ -3,7 +3,7 @@
 ## How packs work today (PS1)
 The PS1 disc already has a pack system (tools/packs.py, release/README.md). Every pack is an overlay plus its art, padded to a fixed
 slot. The BASE disc holds a stub in each slot (the pack's card says NOT ADDED / COMING SOON); a `.ppf` patch fills one slot. Packs
-work alone, in any order. Today: KINGDOM, ARCADE (Bortua Fighter), GOTCHI (Boreagotchi), SUPER, PRISON (crime, law, heist), PARTY, SPACE,
+work alone, in any order. Today: KINGDOM, ARCADE (14 cabinets, prize counter), GOTCHI (Boreagotchi), SUPER, PRISON (crime, law, heist), PARTY, SPACE,
 DOG, DJ, PARADISE, FARM, SKYSEA.
 
 ## Status of every pack (PS1)
@@ -54,9 +54,9 @@ Anything not finished ships as a proper placeholder, never as a half-working scr
 ## Placeholders to add now (finish later as packs)
 | Name | What it will be | Where it stands |
 |---|---|---|
-| ARCADE 2 | 8+ new cabinets, a bigger arcade lot, prize list, two-player games | branch `wip-arcade` |
+| ARCADE | DONE (PS1, in main): 14 games (9 new), bigger lot, prize counter, token machine, wall board, challenges, high scores, medals. ARCADE2.OVL is the games slot. DS d57: 13 games, scores, prizes | left: DS two-player, DS challenges, DS lot extras |
 | GOTCHI 2 | the new Boreagotchi UI, content and families | PS1 done in main; DS in branch `wip-gotchi` |
-| FIGHT (DS) | BORTUA FIGHTER on the DS | branch `wip-ds-fight` |
+| FIGHT (DS) | BORTUA FIGHTER on the DS | branch `wip-ds-fight`: rules run, the 3D picture is broken (fighters draw as black pieces), not shipped |
 | BAND + DJ (DS) | two-deck mixer on the DS | not started |
 | DREAMCAST EXTRAS | VMU pet rewards, Dreamcast furniture and outfits, water and glass, night glow, gallery, pads 3-4 | partly in EXTRAS tab |
 | REAL WORLD | REAL TIME clock (done), real weather and holidays (idea) | placeholder card and reserved slot (REALWRLD.OVL) |
