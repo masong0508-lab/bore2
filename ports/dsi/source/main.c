@@ -56,9 +56,11 @@ int ram8 = 0; void *xalloc(unsigned n) { (void)n; return 0; } int dbg_miss[4]; v
 // ---------- the bottom screen: a 256 x 256 16-bit bitmap ----------
 static u16 *scr, *scr_sub, *hud;
 #define C15(r, g, b) (RGB15(r, g, b) | BIT(15))
-static void px(int x, int y, u16 c) { if ((unsigned)x < 256 && (unsigned)y < 192) scr[y * 256 + x] = c; }
+static u32 dr_mask;   // (D70) the bands of 16 rows drawn into since it was last cleared: bit k is rows 16k..16k+15; draw_hud() copies and clears only those
+static inline void dr_mark(int y, int h) { int a = y >> 4, b = (y + h - 1) >> 4; if (a < 0) a = 0; if (b > 11) b = 11; if (b >= a) dr_mask |= ((2u << b) - 1) & ~((1u << a) - 1); }
+static void px(int x, int y, u16 c) { if ((unsigned)x < 256 && (unsigned)y < 192) { scr[y * 256 + x] = c; dr_mask |= 1u << (y >> 4); } }
 static void rect(int x, int y, int w, int h, u16 c) {
-    if (x < 0) { w += x; x = 0; } if (y < 0) { h += y; y = 0; } if (x + w > 256) w = 256 - x; if (y + h > 192) h = 192 - y; if (w <= 0 || h <= 0) return;
+    if (x < 0) { w += x; x = 0; } if (y < 0) { h += y; y = 0; } if (x + w > 256) w = 256 - x; if (y + h > 192) h = 192 - y; if (w <= 0 || h <= 0) return; dr_mark(y, h);
     u32 cc = (u32)c | ((u32)c << 16);
     for (int j = 0; j < h; j++) { u16 *p = scr + (y + j) * 256 + x; int i = 0, n = w; if (x & 1) { p[0] = c; i = 1; n--; } u32 *q = (u32 *)(p + i); for (int k = 0; k < n / 2; k++) q[k] = cc; if (n & 1) p[i + n - 1] = c; }
 }
@@ -81,12 +83,12 @@ static void text(int x, int y, int s, u16 c, const char *t) {   // a soft shadow
     const DsFont *f = fnt(s); int dark = ((c & 31) + ((c >> 5) & 31) + ((c >> 10) & 31)) > 45; u16 sh = C15(0, 2, 8);
     int row0 = y + 1 - f->fcap / 2 + f->fcap - 1 - (f->fb - 1);
     if (s != FS_TITLE && x >= 1 && y >= 3 + f->fcap && row0 >= 1 && row0 + f->fh + 2 < 192) { int ww = tw(s, t) + f->fh; if (x + ww + 3 < 256) {   // (D70) all inside the screen: no bounds test on each pixel
-        u16 *base = scr; int pen = x;
+        u16 *base = scr; int pen = x; dr_mark(row0, f->fh + 2);
         for (const char *p = t; *p; p++) { int ch = (unsigned char)*p; if (ch < 32 || ch > 126) continue; ch -= 32;
             const u16 *rw = f->rows + ch * f->fh; int w = f->w[ch], gx = pen + f->xoff[ch];
             for (int r = 0; r < f->fh; r++) { unsigned v = rw[r]; if (!v) continue; u16 *d = base + (row0 + r) * 256 + gx;
-                if (dark) for (int q = 0; q < w; q++) { if (v >> (15 - q) & 1) { d[q + 257] = sh; } }
-                for (int q = 0; q < w; q++) if (v >> (15 - q) & 1) d[q] = c; }
+                if (dark) { unsigned m = v; while (m) { int q = __builtin_clz(m) - 16; m &= ~(0x8000u >> q); d[q + 257] = sh; } }
+                { unsigned m = v; while (m) { int q = __builtin_clz(m) - 16; m &= ~(0x8000u >> q); d[q] = c; } } }
             pen += f->adv[ch] - t_tight; }
         return; } }
     for (int pass = (s == FS_TITLE ? 0 : 1); pass < 2; pass++) { int pen = x;
@@ -281,8 +283,11 @@ volatile int test_scene
     ; volatile int prof_ms[12]; static u32 prof_t[12], prof_last;   // (test builds only: where the ARM9's time goes, ms a second: steps, 2D and logic, moving list, still signature and list, DMA, the rest)
 static inline u32 prof_now(void) { u16 lo = TIMER_DATA(0); u16 hi = TIMER_DATA(1); if (TIMER_DATA(0) < lo) hi = TIMER_DATA(1); return ((u32)hi << 16) | lo; }
 #define PROF(k) do { u32 _n = prof_now(); prof_t[k] += _n - prof_last; prof_last = _n; } while (0)
+u32 dbg_pt[3]; volatile int dbg_ui[4], dbg_mb[8], dbg_log[48][6], dbg_logn;   // dbg_log: passes of 3+ vblanks: vblank, steps, the HUD and the status draw in ticks   // (D70) ticks (33.5 MHz) of the last draw_hud pieces, draw_top_status, draw_ui; and the micro-bench of rect, text_box, face, chip
+#define DBGT(k, ...) do { u32 _a = prof_now(); __VA_ARGS__; dbg_ui[k] = (int)(prof_now() - _a); } while (0)
 #else
 #define PROF(k) do {} while (0)
+#define DBGT(k, ...) do { __VA_ARGS__; } while (0)
 #endif
 static int dpass;          // (D39) 0: draw everything (straight to the GPU), 1: the still part only (recorded once), 2: what moves only (every frame)
 static u32 gx_base, gx_spec; static int gx_far = 12; static u32 *gxb; static int gxn, gxh, gxk = 4, gx_cap, gx_full, gx_lx, gx_ly, gx_lz, gx_lv; static u32 gx_mat, gx_nrm, gx_col, gx_attr;
@@ -1646,7 +1651,7 @@ static u32 still_sig(int yaw, int part) {   // (D39) everything a still list dep
 
 // ============ the Sims-style game: LIVE (status on the top screen, the lot and its icons on the bottom, touch to play) ============
 static const char *const NEEDN[6] = { "Hunger", "Fun", "Energy", "Social", "Bladder", "Hygiene" };
-static int menu_open, popup, popup_i, speed = 1, yaw_t = 4096, live_yaw = 4096, live_dist = 12000, camx, camz, cas_tab, cas_done, cas_stage, cas_page;
+static int menu_sel, menu_open, popup, popup_i, speed = 1, yaw_t = 4096, live_yaw = 4096, live_dist = 12000, camx, camz, cas_tab, cas_done, cas_stage, cas_page;
 enum { CS_BASICS, CS_LOOKS, CS_HAIR, CS_OUTFIT, CS_TRAITS, CS_DONE, CS_N };   // (D67) Create-a-Sim's six steps, as The Sims 3 has them
 static int cas_step, cas_sub;
 
@@ -1921,12 +1926,13 @@ static void craft_touch(int tx, int ty) {
     for (int k = 0; k < 6; k++) if (hit(198, 54 + k * 21, 42, 15, tx, ty)) { isl_make(k); return; }
 }
 static void panel(int x, int y, int w, int h, const char *title) {
-    rect(x + 1, y, w - 2, h, PANB); rect(x, y + 1, w, h - 2, PANB); rect(x + 2, y + 2, w - 4, h - 4, PAN);
+    rect(x + 1, y, w - 2, 2, PANB); rect(x + 1, y + h - 2, w - 2, 2, PANB); rect(x, y + 1, 2, h - 2, PANB); rect(x + w - 2, y + 1, 2, h - 2, PANB); rect(x + 2, y + 2, w - 4, h - 4, PAN);   // (D70) no pixel is drawn twice: it was 3 times the memory writes
     if (title) { rect(x + 2, y + 2, w - 4, 16, PANH); text_box(x + 5, y + 2, w - 40, 16, FS_HEAD, TXT, AL_L, title); }   // (D65) centred up and down in the header
 }
 static void backdrop_y(int y0, int y1);
 static void backdrop(void) { backdrop_y(0, 192); }
-static void backdrop_y(int y0, int y1) {   // (D70) three row patterns built once, then a row is a copy of one of them: about ten times quicker than 100 little rects
+static void backdrop_y(int y0, int y1) {   // (D70) the paper with dots
+    if (y1 > y0) dr_mark(y0, y1 - y0);   // (three row patterns built once, then a row is a copy of one of them)
     static u16 rw[3][256]; static int ok;
     if (!ok) { ok = 1; for (int x = 0; x < 256; x++) rw[0][x] = rw[1][x] = rw[2][x] = BG_L;
         for (int x = 0; x < 256; x += 32) for (int k = 0; k < 4; k++) { rw[1][x + 6 + k] = C15(22, 28, 31); rw[2][(x + 16 + 6 + k) & 255] = C15(22, 28, 31); } }
@@ -2138,7 +2144,12 @@ static void life_panel(void) {   // the top screen's second page: job, aspiratio
       if (c->tr[0]) { char u[40]; u[0] = 0; for (int k = 0; k < 3; k++) if (c->tr[k]) { if (k) strcat(u, ", "); strcat(u, TRN[c->tr[k] - 1]); } text_box(11, 174, 236, 9, FS_SMALL, C15(24, 28, 31), AL_L, u); } }
 }
 static u16 offbuf[256 * 192] __attribute__((aligned(32)));   // (D37) a 2D screen is drawn here and copied over in one go: no half-drawn screen is ever shown
-static void off_show(u16 *dst) { DC_FlushRange(offbuf, sizeof offbuf); dmaCopy(offbuf, dst, sizeof offbuf); scr = dst; }
+static int ob_owner;   // 1: offbuf holds the Live HUD (so only the bands it used need clearing); anything else that shows a whole screen sets it to 0
+static void off_show(u16 *dst) { DC_FlushRange(offbuf, sizeof offbuf); dmaCopy(offbuf, dst, sizeof offbuf); scr = dst; ob_owner = 0; }
+static void off_show_bands(u16 *dst, u32 mask) {   // (D70) only the bands of 16 rows in mask
+    for (int b = 0; b < 12; b++) if (mask >> b & 1) { int n = b; while (n < 12 && (mask >> n & 1)) n++; u16 *src = offbuf + b * 16 * 256; u32 len = (u32)(n - b) * 16 * 256 * 2; DC_FlushRange(src, len); dmaCopy(src, dst + b * 16 * 256, len); b = n; }
+    scr = dst;
+}
 static const char *mood_word(int v) { return v >= 85 ? "Ecstatic" : v >= 65 ? "Happy" : v >= 45 ? "Fine" : v >= 30 ? "Cranky" : v >= 15 ? "Gloomy" : "Miserable"; }   // (D65) the Sims' mood words
 static void thought_bubble(const Sim *m) {   // (D65) the sim's thought, in the Needs header: a bubble with a plumbob: what it wants most (the lowest need), or that life is good
     int lo = 0; for (int k = 1; k < 6; k++) if (m->need[k] < m->need[lo]) lo = k;
@@ -2188,7 +2199,7 @@ static void draw_top_status(void) {   // the top screen while you live: the sim'
         sprintf(t, "%d", mood(m)); text_box(14, 96, 66, 12, FS_BODY, TXT, AL_L, "MOOD"); rect(16, 110, 64, 8, C15(24, 28, 31)); rect(17, 111, 62 * mood(m) / 100, 6, need_col(mood(m)));
     }
 }
-static void hud_clear(void) { u32 *q = (u32 *)hud; for (int i = 0; i < 256 * 192 / 2; i++) q[i] = 0; }
+static void hud_clear(void) { u32 *q = (u32 *)hud; for (int i = 0; i < 256 * 192 / 2; i++) q[i] = 0; ob_owner = 0; }
 enum { S_CHAT, S_PLAY, S_HUG, S_JOKE, S_TEASE, S_ARGUE, S_FLIRT, S_KISS, S_BABY, S_FEED, S_TEACH, S_TUCK, S_ADVICE, S_INVITE, S_N };
 static const char *const SOCN[S_N] = { "Chat", "Play", "Hug", "Joke", "Tease", "Argue", "Flirt", "Kiss", "Try for Baby", "Feed", "Teach", "Tuck In", "Advice", "Invite Home" };
 static const signed char SREL[S_N] = { 1, 1, 1, 1, -1, -2, 1, 2, 1, 0, 1, 0, 1, 0 };
@@ -2207,8 +2218,8 @@ static int soc_pick[8];
 static int soc_list(int tgt) { int sa = stage_of(sims[ctl].age), sb, rel, cit = tgt <= -2, n = 0;
     if (cit) { const Cit *c = &cits[-2 - tgt]; sb = c->stage; rel = crel(c->id)->rel; } else { sb = stage_of(sims[tgt].age); rel = sims[tgt].rel; }
     for (int id = 0; id < S_N && n < 8; id++) if (soc_ok(id, sa, sb, rel, cit)) soc_pick[n++] = id; return n; }
-static void draw_hud(void) {
-    scr = offbuf; memset(offbuf, 0, sizeof offbuf);
+static void draw_hud_i(void) {
+    scr = offbuf;
     if (mg_ui) { mg_bottom(); return; }   // (D46)
     rect(2, 2, 26, 26, PANB); rect(3, 3, 24, 24, C15(14, 22, 28)); rect(8, 12, 14, 10, C15(26, 14, 10)); rect(6, 8, 18, 5, C15(24, 6, 6)); rect(13, 16, 4, 6, C15(8, 8, 10));   // MAP: a little house
     for (int i = 0; i < nsim; i++) { int x = 132 + i * 21; rect(x, 2, 20, 27, i == ctl ? C15(31, 31, 12) : PANB); rect(x + 1, 3, 18, 25, C15(14, 22, 28)); face(x + 2, 4, 16, &sims[i]); rect(x + 1, 24, 18, 4, C15(2, 6, 14)); rect(x + 1, 24, 18 * mood(&sims[i]) / 100, 4, need_col(mood(&sims[i]))); }   // the household
@@ -2218,7 +2229,10 @@ static void draw_hud(void) {
     if (cam_on) { const char *cb[6] = { cam_pan ? "Pan" : "Turn", "In", "Out", cam_free ? "Free" : "Follow", "Reset", "Done" }; for (int k = 0; k < 6; k++) { rect(216, 36 + k * 22, 38, 20, PANB); rect(217, 37 + k * 22, 36, 18, k == 0 && cam_pan ? C15(8, 26, 8) : PANH); text_box(217, 37 + k * 22, 36, 18, FS_BODY, TXT, AL_C, cb[k]); } text_box(30, 34, 180, 14, FS_BODY, TXT, AL_C, "Drag to look round"); }
     rect(104, 178, 48, 14, PANB); rect(105, 179, 46, 13, PAN); for (int i = 0; i < 3; i++) rect(118 + i * 8, 184, 4, 4, TXT);
     if (on_board) { rect(196, 168, 58, 22, PANB); rect(197, 169, 56, 20, C15(24, 8, 8)); text_box(197, 169, 56, 20, FS_BODY, TXT, AL_C, "Get Off"); }   // (D44)
-    if (menu_open) { static const char *const mn[12] = { "Buy", "Build", "Map", "Save", "Options", "Title", "Job", "Songs", "Life", "Travel", "Games", "Heist" }; panel(8, 38, 240, 140, "Menu"); for (int i = 0; i < 12; i++) chip(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, mn[i], i == 9 && zone); }
+    if (menu_open) { static const char *const mn[12] = { "Buy", "Build", "Map", "Save", "Options", "Title", "Job", "Songs", "Life", "Travel", "Games", "Heist" };   // (D70) no big panel behind (it cost 8 ms to draw): the chips alone, a title strip and the hints bar
+        rect(14, 40, 226, 16, PANB); rect(15, 41, 224, 14, PANH); text_box(15, 41, 224, 14, FS_HEAD, TXT, AL_C, "Menu");
+        for (int i = 0; i < 12; i++) chip(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, mn[i], i == 9 && zone);
+        ui_focus(14 + (menu_sel % 4) * 58, 60 + (menu_sel / 4) * 36, 54, 30); ui_hints(168, "Pad:Move|A:Pick|B:Close"); }
     if (popup == 1) {
         const Item *it = IT_OF(&objs[popup_i]); const char *nm = it->name;   // (D35: wide, for the PS1's words; D37: up to three choices; D38: up to eight, in two columns)
         if (popup_n <= 3) { int top = 150 - popup_n * 24;
@@ -2248,6 +2262,16 @@ static void draw_hud(void) {
     if (travel_ui) travel_draw(); else if (craft_ui) craft_draw(); else if (farm_ui) farm_draw();
     if (msg_t > 0 && !jobui && !juke && !travel_ui && !craft_ui && !farm_ui) toast(128, 40, msg);
 }
+static void ob_zero(u16 *p, u32 n) { DC_InvalidateRange(p, n); dmaFillWords(0, p, n); }   // (D70) clear by DMA: about three times quicker than the CPU, which is slow on main memory
+static u32 hud_prev, hud_show_m = 0xFFF; static int ui_heavy;   // ui_heavy: this pass drew a screen of 2D: the 3D frame waits for the next pass, so the pass still fits in a frame (D70)
+static void draw_hud(void) {   // (D70) clears and copies only the bands of rows the HUD uses (now and last time): the HUD is mostly empty, and a whole screen cost more than a frame
+    int full = mg_ui || ob_owner != 1; scr = offbuf;
+    u32 clr = full ? 0xFFFu : hud_prev;
+    DBGT(2, for (int b = 0; b < 12; b++) if (clr >> b & 1) { int n = b; while (n < 12 && (clr >> n & 1)) n++; ob_zero(offbuf + b * 16 * 256, (u32)(n - b) * 16 * 256 * 2); b = n; });
+    dr_mask = 0; DBGT(3, draw_hud_i());
+    hud_show_m = full ? 0xFFFu : (hud_prev | dr_mask); hud_prev = mg_ui ? 0xFFFu : dr_mask; if (mg_ui) hud_show_m = 0xFFFu;
+}
+static void hud_show(void) { off_show_bands(hud, hud_show_m); ob_owner = 1; }
 // ---- picking: a stylus tap on the 3D lot -> the cell under it (the view is a camera we know, so we undo it) ----
 static int pick_cell_h(int sx, int sy, int hgt, int *cx, int *cy) {   // the cell where the stylus ray meets the plane hgt world units above the ground
     float c = cosLerp(live_yaw) / 4096.0f, s = sinLerp(live_yaw) / 4096.0f, cp = cosLerp(pitch) / 4096.0f, sp = sinLerp(pitch) / 4096.0f;
@@ -3422,7 +3446,7 @@ static void op_draw_top(void) {
     { u32 sg = msg_t > 0 ? (u32)(uintptr_t)msg | 1u : 0; if (op_sg[13] != sg) { op_sg[13] = sg; backdrop_y(159, 178); if (msg_t > 0) toast(128, 162, msg); } }
 }
 #ifdef DSTEST
-volatile int dbg_op[2];   // ticks (33.5 MHz) of the last Options draw: bottom screen, top screen
+volatile int dbg_op[2];   // dbg_ui: ticks of the last draw_hud, draw_top_status, draw_ui (+ off_show)   // ticks (33.5 MHz) of the last Options draw: bottom screen, top screen
 static void op_draw(void) { u32 a = prof_now(); op_draw_sub(); u32 b = prof_now(); op_draw_top(); u32 c = prof_now(); dbg_op[0] = (int)(b - a); dbg_op[1] = (int)(c - b); op_rd = 0; }
 #else
 static void op_draw(void) { op_draw_sub(); op_draw_top(); op_rd = 0; }
@@ -3448,7 +3472,8 @@ static void draw_title(void) {
         if (i == 0) house_icon(x + 12, y + 4, 40, C15(31, 31, 31)); else plumb_icon(x + 8, y + 0, 48, C15(28, 31, 31));
         { const char *lb = i == 0 ? (sav_have >= 0 ? "Continue" : "New game") : "New sim"; rect(x, y + 42, 64, 14, C15(2, 4, 12)); text_box(x, y + 42, 64, 14, FS_BODY, TXT, AL_C, lb); } }
     chip(98, 130, 28, 22, "<", 0); chip(130, 130, 28, 22, "Opt", 0); chip(162, 130, 28, 22, "Del", 0); chip(194, 130, 36, 22, "OK", 0);
-    { static char sb[40]; if (sav_have >= 0) sprintf(sb, "Saved: day %d, %d born, %d lost", st_days, st_born, st_died); const char *st = sav_ok() ? (sav_have >= 0 ? sb : "No saved game yet") : "No save chip found"; if (msg_t <= 0) text_box(16, 160, 224, 24, FS_BODY, C15(22, 26, 31), AL_C, st); }
+    { static char sb[40]; if (sav_have >= 0) sprintf(sb, "Saved: day %d, %d born, %d lost", st_days, st_born, st_died); const char *st = sav_ok() ? (sav_have >= 0 ? sb : "No saved game yet") : "No save chip found"; if (msg_t <= 0) text_box(16, 158, 224, 20, FS_BODY, C15(22, 26, 31), AL_C, st); }
+    ui_hints(179, "Pad:Choose|A:OK|Y:Options");
     if (msg_t > 0) toast(128, 166, msg);
 }
 #include "ds_games.c"   // (D44) the PS1's mini-games
@@ -3475,6 +3500,16 @@ static void set_mode(int m) {
     if (m != M_LIVE) mg_ui = 0;
     mode = m;
     if (m == M_LIVE) { lcdMainOnBottom(); } else { lcdMainOnTop(); scr = hud; hud_clear(); }
+}
+static void menu_do(int k) {   // (D70) the Live menu's choice k (touch or A): one place, so both do the same
+        if (k == 11) { if (stage_of(sims[ctl].age) < 3) say("Teens and up"); else hs_open(); return; }   // (D47: the underworld)
+        if (k == 10) { gm_open(); return; }   // (D48: the Games menu: the skateboard (D44) and the Boreagotchi)
+        if (k == 9) { travel_ui = 1; return; }
+        if (k == 0) { set_mode(M_BUY); pick = -1; } else if (k == 1) set_mode(M_BUILD); else if (k == 2) set_mode(M_MAP);
+        else if (k == 3) { if (!sav_ok()) say("No save chip found"); else say(sav_write() ? "Game saved" : "Save failed"); }
+        else if (k == 4) open_opts();
+        else if (k == 5) { if (sav_ok() && lot_bx >= 0) sav_write(); set_mode(M_TITLE); sav_probe(); }
+        else if (k == 6) jobui = 1; else if (k == 7) juke = 1; else if (k == 8) { info_pg ^= 1; life_ver++; }
 }
 static void live_touch(int tx, int ty) {
     if (mg_ui) return;   // (D46: the mini-game reads the stylus itself)
@@ -3508,15 +3543,7 @@ static void live_touch(int tx, int ty) {
           else for (int k = 0; k < n; k++) if (hit(26 + (k & 1) * 104, 82 + (k >> 1) * 22, 100, 20, tx, ty)) { start_soc(ctl, tg, soc_pick[k]); popup = 0; break; } }
         return; }
     if (menu_open) { menu_open = 0; int k = -1; for (int i = 0; i < 12; i++) if (hit(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, tx, ty)) k = i;
-        if (k == 11) { if (stage_of(sims[ctl].age) < 3) say("Teens and up"); else hs_open(); return; }   // (D47: the underworld)
-        if (k == 10) { gm_open(); return; }   // (D48: the Games menu: the skateboard (D44) and the Boreagotchi)
-        if (k == 9) { travel_ui = 1; return; }
-        if (k == 0) { set_mode(M_BUY); pick = -1; } else if (k == 1) set_mode(M_BUILD); else if (k == 2) set_mode(M_MAP);
-        else if (k == 3) { if (!sav_ok()) say("No save chip found"); else say(sav_write() ? "Game saved" : "Save failed"); }
-        else if (k == 4) open_opts();
-        else if (k == 5) { if (sav_ok() && lot_bx >= 0) sav_write(); set_mode(M_TITLE); sav_probe(); }
-        else if (k == 6) jobui = 1; else if (k == 7) juke = 1; else if (k == 8) { info_pg ^= 1; life_ver++; }
-        return; }
+        ui_snd(k >= 0 ? UI_OK : UI_BACK); menu_do(k); return; }
     if (hit(2, 2, 26, 26, tx, ty)) { set_mode(M_MAP); return; }
     if (hit(104, 178, 48, 14, tx, ty)) { menu_open = 1; return; }
     if (on_board) { if (hit(196, 168, 58, 22, tx, ty)) { skate_off(); say("Off the board"); } return; }   // (D44: riding, the lot takes no taps)
@@ -3589,9 +3616,12 @@ int main(void) {
         { static int done; if (!done && mode == M_LIVE) { done = 1; ds_road_audit(); } }
 #endif
         int steps; { static u32 lastv; u32 v = vbl_n; steps = (int)(v - lastv); lastv = v; if (steps < 1) steps = 1; if (steps > 4) steps = 4; }   // (D39) game steps this pass: one a vblank
-        scanKeys(); int held = keysHeld(), down = keysDown(); touchPosition tp = {0}; if (held & KEY_TOUCH) touchRead(&tp);
+        ui_heavy = 0; scanKeys(); int held = keysHeld(), down = keysDown(); touchPosition tp = {0}; if (held & KEY_TOUCH) touchRead(&tp);
         { u32 ld = lat_down; lat_down = 0; down |= (int)ld; if (down & KEY_TOUCH) lat_press = 0; else if (lat_press && lat_got) { lat_press = 0; down |= KEY_TOUCH; tp.px = (u16)lat_tx; tp.py = (u16)lat_ty; } }
 #ifdef DSTEST
+        { static u32 pt_top, pt_mid, pt_end; extern u32 dbg_pt[3]; pt_top = dbg_pt[0]; pt_mid = dbg_pt[1]; pt_end = dbg_pt[2];
+          if (steps >= 3 && dbg_logn < 48) { dbg_log[dbg_logn][0] = (int)vbl_n; dbg_log[dbg_logn][1] = steps; dbg_log[dbg_logn][2] = dbg_ui[0]; dbg_log[dbg_logn][3] = (int)(pt_mid - pt_top); dbg_log[dbg_logn][4] = (int)(pt_end - pt_mid); dbg_log[dbg_logn][5] = dbg_ui[1]; dbg_logn++; }
+          dbg_pt[0] = prof_now(); }
         { int pc = __builtin_popcount((u32)down & UI_MASK); if (pc) { ui_proc += pc; ui_cur = ui_t0 ? ui_t0 : vbl_n; ui_t0 = 0; } ui_stp[steps > 4 ? 4 : steps]++; }
 #endif
         { static int tb_mode = -1, tb_wait;   // (D34) a new screen takes no touch until the stylus that opened it is lifted: a tap held over the switch to the Map no longer picks the block under it
@@ -3601,7 +3631,10 @@ int main(void) {
         unsigned sig = 0; int forced = (mode != lastmode); lastmode = mode;
         if (mode == M_TITLE) {
             if (opt_on) { op_tick(held); if (down & KEY_TOUCH) op_touch(tp.px, tp.py); if (opt_on) op_keys(held, down); }   // (D70) Options: touch and buttons both
-            else if (down & KEY_TOUCH) title_touch(tp.px, tp.py);
+            else { if (down & KEY_TOUCH) title_touch(tp.px, tp.py);
+                { int r = ui_rep(held, down, vbl_n), ns = slot_sel; if (r & (KEY_LEFT | KEY_UP)) ns = ns > 0 ? ns - 1 : 0; if (r & (KEY_RIGHT | KEY_DOWN)) ns = ns < 2 ? ns + 1 : 2;   // (D70) the title by buttons too: choose, A starts, Y opens Options
+                  if (ns != slot_sel) { slot_sel = ns; ui_snd(UI_MOVE); title_rd = 1; }
+                  if (down & KEY_Y) { ui_snd(UI_OK); opt_enter(); } else if (down & KEY_A) { ui_snd(UI_OK); title_touch(200, 140); } } }
             if (mode == M_TITLE && opt_on) { if (forced) op_full = 3; if (op_rd || forced) op_draw(); }
             else if (mode == M_TITLE && (forced || (down & KEY_TOUCH) || msg_t > 0 || title_rd)) { title_rd = 0; draw_title(); }
 #ifdef DSTEST
@@ -3673,12 +3706,15 @@ int main(void) {
                     else if (cam_drag == 3) { if (cam_pan) { int c = cosLerp(live_yaw), sn = sinLerp(live_yaw); cam_free = 1; camx += (-ddx * c + ddy * sn) * cam_deff / 4096 / 160; camz += (-ddx * sn - ddy * c) * cam_deff / 4096 / 160; }
                         else { live_yaw += ddx * 60; yaw_t = live_yaw; live_pitch += ddy * 30; if (live_pitch < 1800) live_pitch = 1800; if (live_pitch > 7600) live_pitch = 7600; } } }
             } else if (down & KEY_TOUCH) live_touch(tp.px, tp.py);
-            if ((down & KEY_B) && (menu_open || popup || jobui || juke || travel_ui || craft_ui || farm_ui)) { menu_open = popup = jobui = juke = travel_ui = craft_ui = farm_ui = 0; down &= ~KEY_B; }   // (D44: that B is not the board's)
-            else if ((down & KEY_START) && !jobui && !juke && !popup && !mg_ui) menu_open ^= 1;            if (juke) { if (down & KEY_DOWN) juke_pg++; if (down & KEY_UP && juke_pg > 0) juke_pg--; if (down & KEY_RIGHT) { int c = mus_cur < 0 ? 0 : mus_cur; o_song = (c + 1) % (mus_n > 0 ? mus_n : 1) + 1; } }
+            if ((down & KEY_B) && (menu_open || popup || jobui || juke || travel_ui || craft_ui || farm_ui)) { menu_open = popup = jobui = juke = travel_ui = craft_ui = farm_ui = 0; down &= ~KEY_B; ui_snd(UI_BACK); }   // (D44: that B is not the board's)
+            else if ((down & KEY_START) && !jobui && !juke && !popup && !mg_ui) { menu_open ^= 1; ui_snd(menu_open ? UI_OK : UI_BACK); }            if (juke) { if (down & KEY_DOWN) juke_pg++; if (down & KEY_UP && juke_pg > 0) juke_pg--; if (down & KEY_RIGHT) { int c = mus_cur < 0 ? 0 : mus_cur; o_song = (c + 1) % (mus_n > 0 ? mus_n : 1) + 1; } }
             if (mg_ui) mg_frame(held, down, steps, tp.px, tp.py);   // (D46) a mini-game has the buttons and the stylus
             else if (on_board) { if (!menu_open && !popup && !jobui && !juke && !travel_ui && !craft_ui && !farm_ui) skate_frame(held, down, steps); }   // (D44) riding: the buttons are the board's
             else {
             if (down & KEY_L) yaw_t -= 4096; if (down & KEY_R) yaw_t += 4096;
+            if (menu_open && !popup) { int r = ui_rep(held, down, vbl_n), ms = menu_sel;   // (D70) the menu by the d-pad: a 4 x 3 grid, A picks
+                if (r & KEY_LEFT) ms = ms % 4 ? ms - 1 : ms + 3; if (r & KEY_RIGHT) ms = ms % 4 < 3 ? ms + 1 : ms - 3; if (r & KEY_UP) ms = ms >= 4 ? ms - 4 : ms + 8; if (r & KEY_DOWN) ms = ms < 8 ? ms + 4 : ms - 8;
+                if (ms != menu_sel) { menu_sel = ms; ui_snd(UI_MOVE); } if (down & KEY_A) { menu_open = 0; ui_snd(UI_OK); menu_do(menu_sel); down &= ~KEY_A; } }
             if (!juke && !menu_open && !jobui && !popup && (held & KEY_LEFT)) { yaw_t -= 120; live_yaw = yaw_t; } if (held & KEY_RIGHT) { yaw_t += 120; live_yaw = yaw_t; }
             if (held & KEY_UP) { if (live_pitch < 7600) live_pitch += 50; } if (held & KEY_DOWN) { if (live_pitch > 1800) live_pitch -= 50; } }
             if ((down & KEY_SELECT) && !mg_ui) { cam_free ^= 1; if (!cam_free) { live_yaw = yaw_t = 4096; live_pitch = 4300; } }
@@ -3702,7 +3738,7 @@ int main(void) {
             { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)((on_board ? skate_sig() * 977 + 5 : 0) + (mg_ui ? mg_sig() * 983 + 3 : 0) + cur_sim * 7 + ctl * 3 + (minutes / 1440) * 13 + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_secrets * 23) * 31 * zone + o_pm * 977 + info_pg * 43 + life_ver * 53 + sims[cur_sim].age * 59 + (cur_sim != ctl ? minutes * 7 + funds : 0)); a = a * 31 + (unsigned)sims[cur_sim].rel;
               static unsigned tv; unsigned av = (unsigned)(minutes * 13 + funds + (o_pm ? polys_last / 64 + fps_now * 977 : 0) + mood(&sims[cur_sim]) * 5); for (int n = 0; n < 6; n++) av = av * 31 + (unsigned)sims[cur_sim].need[n];   // (D39: the values alone are redrawn on their own)
               unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + farm_ui * 97 + (popup || farm_ui ? fm_sig() * 107 : 0) + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + on_board * 113 + (mg_ui ? mg_bsig() * 127 + 1 : 0) + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
-              if (forced) { ts = ~a; hs = ~b; } if (mode == M_LIVE) { if (a != ts) { draw_top_status(); off_show(scr_sub); ts = a; tv = av; } else if (av != tv) { scr = scr_sub; status_vals(1); tv = av; } if (b != hs) { draw_hud(); off_show(hud); hs = b; } } }   // (D35: not after a menu chip has just left Live, or the Live icons stayed over Buy's 3D view)
+              if (forced) { ts = ~a; hs = ~b; } if (mode == M_LIVE) { if (a != ts) { DBGT(1, draw_top_status(); off_show(scr_sub)); ts = a; tv = av; ui_heavy = 1; } else if (av != tv) { scr = scr_sub; status_vals(1); tv = av; } if (b != hs) { DBGT(0, draw_hud(); hud_show()); ui_heavy = 1; hs = b; } } }   // (D35: not after a menu chip has just left Live, or the Live icons stayed over Buy's 3D view)
         } else {   // BUY / BUILD: the live lot on the top screen, the catalogue or plan on the bottom (drag to place, paint, draw walls, move)
             LV = ed_lv;
             if (down & KEY_TOUCH) ui_down(tp.px, tp.py); else if (held & KEY_TOUCH) ui_hold(tp.px, tp.py);
@@ -3730,14 +3766,14 @@ int main(void) {
             for (int t = 0; t < steps; t++) sims_step(frames + t);
             if (mode != M_MAP) {
                 sig = (unsigned)(mode * 7 + cat * 13 + pick * 17 + bpage * 19 + pcx * 31 + pcy * 37 + prot * 41 + tool * 43 + pal * 47 + funds * 59 + nobj * 61 + (msg_t > 0) * 71 + forced + ui_ver * 79 + drag * 83 + (unsigned)(size_t)msg);
-                if (sig != lastsig) { scr = offbuf; backdrop(); draw_ui(); off_show(scr_sub); lastsig = sig; } }
+                if (sig != lastsig) { DBGT(2, scr = offbuf; draw_ui(); off_show(scr_sub)); lastsig = sig; } }
             yaw = bb_yaw; pitch = bb_pitch; dist = bb_dist * (o_cam == 0 ? 85 : o_cam == 1 ? 100 : 125) / 100;
         }
         { static int skyh = -1; int hh = (minutes / 60) % 24; if ((o_sky == 4 || o_rt) && hh != skyh) o_dirty = 1; skyh = hh; }
         if (down & KEY_TOUCH) sfx(0);
         snd_tick();
         { static int lm = -9; if (mus_cur != lm) { lm = mus_cur; if (mode == M_LIVE && mus_cur >= 0) { static char nb[48]; sprintf(nb, "Now playing: %.22s", mus_name(mus_cur)); say(nb); } } }
-        PROF(1);
+        PROF(1); dbg_pt[1] = prof_now();
         { static int lm = -1; if ((mode == M_TITLE || mode == M_CAS) != lm) { lm = mode == M_TITLE || mode == M_CAS; o_dirty = 1; } }
         if (o_dirty) apply_opts();
         if (sky_on) sky_update(pitch);
@@ -3747,7 +3783,7 @@ int main(void) {
         if (is_lot) {   // (D39) the lot: a new frame is written whenever the last one has been taken; the vblank interrupt sends it on the beat
             gf_on = 1;
             { int want = mode == M_LIVE ? slv[ctl] * WHF : (mode == M_BUY || mode == M_BUILD) ? ed_lv * WHF : 0; cam_y += (want - cam_y) / 6; if (want - cam_y > -8 && want - cam_y < 8) cam_y = want; }   // (D36) the camera rises to the storey
-            if (gf_ready < 0) {
+            if (gf_ready < 0 && !ui_heavy) {
                 static u32 st_sig = 1, w_sig = 1; static int st_n, st_polys, st_k, w_n, w_polys, w_k; static u8 st_mode = 255, f_st[2], f_w[2];
                 int b = gf_fly == 0 ? 1 : 0; GFrm *f = &gfr[b]; f->ns = 0; gf_serial++;
                 polys = 0; lit_on = o_lit;
@@ -3810,7 +3846,7 @@ int main(void) {
 #ifdef DSTEST
         if (ui_cur) { int l = (int)(vbl_n - ui_cur); ui_lat_sum += l; ui_lat_n++; if (l > ui_lat_max) ui_lat_max = l; ui_cur = 0; }
 #endif
-        ui_n++; gframes = frames; swiWaitForVBlank(); frames += steps;
+        dbg_pt[2] = prof_now(); ui_n++; gframes = frames; swiWaitForVBlank(); frames += steps;
     }
     return 0;
 }
