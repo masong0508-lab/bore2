@@ -100,5 +100,5 @@ The DS and Dreamcast ones were written but NOT run yet (no way to run Actions fr
 
 ## Text pass 2 (fonts and centred text on the overlays)
 - [x] Party, super, dog, prison, underworld, space, farm, sky and sea, paradise, loading TIP pill, people list, build catalogue and tabs, pie menu, panel skills: centred, no clipping, no blink. Shots `docs/fonts2_*.png`; tour `test/fonts2_tour.py` (`AUTO_SCREENS`).
-- [ ] Left: DJ, the arcade/realm packs, DS, and a shot of the Boreagotchi DAY ONE card (the tour does not reach it).
+- [ ] Left: DJ, the arcade/realm packs, DS. (The Boreagotchi DAY ONE card was shot on screen: no stray "ars" at the right edge, `docs/gotchi_dayone_card.png`, from `test/gseq.sh`.)
 - DS D71: Boreagotchi first-run art, redrawn and mystery eggs ported from the PS1 (bore2_dsi_d71.nds; see DSI_ROADMAP.md).
