@@ -12,7 +12,7 @@ def sub(f, i, n):   # the sub-tab i of n (row y 30)
 NEXT = (219, 177); BACK = (76, 177)
 SC = {}
 def add(name, taps, fr): SC[name] = (START + taps, fr)
-add("cas_01_welcome", "", 105)
+add("cas_01_welcome", "", 96)
 add("cas_02_basics", "", 160)
 add("cas_03_first_name", tap(130, 91, 33), 180)
 add("cas_04_last_name", tap(130, 91, 33) + tap(145, 224, 156) , 200)
@@ -31,7 +31,7 @@ add("cas_16_outfit_bottom", tab(130, "outfit") + sub(150, 1, 3) + tap(170, 60, 1
 add("cas_17_outfit_mix", tab(130, "outfit") + sub(150, 2, 3) + tap(170, 90, 106), 250)
 add("cas_18_traits", tab(130, "traits") + tap(150, 80, 74) + tap(160, 80, 89) + tap(170, 80, 134) + tap(180, 80, 104), 230)
 add("cas_19_wish", tab(130, "traits") + sub(150, 1, 2) + tap(170, 120, 111), 230)
-add("cas_20_summary", tab(130, "done"), 230)
+add("cas_20_summary", tab(130, "traits") + tap(140, 80, 74) + tap(150, 80, 89) + tap(160, 190, 134) + sub(170, 1, 2) + tap(180, 120, 111) + tab(200, "hair") + sub(210, 3, 4) + tap(220, 200, 100) + tab(235, "done"), 280)
 add("cas_21_ready", tab(130, "done") + tap(160, *NEXT), 200)
 add("cas_22_leave", tap(130, *BACK), 160)
 def shot(rom, out, name):

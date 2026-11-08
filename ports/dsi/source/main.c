@@ -1896,11 +1896,11 @@ static int expr_of(const Sim *m) {   // the face's mood from what the sim does a
     if (m->need[0] < 16) return EX_ANGRY; if (m->need[4] < 14) return EX_SCARED; if (m->need[2] < 22) return EX_TIRED; if (m->need[1] < 22) return EX_BORED;
     return s < 38 ? EX_SAD : s > 64 ? EX_HAPPY : EX_NEU;
 }
-static int face_hat = -1;   // (D67) Create-a-Sim's tiles draw a copy of the sim with a hat of their own: -1 = the sim's own
+static int face_hat = -1, face_bg = -1;   // (D67) Create-a-Sim's tiles: a hat of their own, and a mid-blue ground so white hair and black hair both show   // (D67) Create-a-Sim's tiles draw a copy of the sim with a hat of their own: -1 = the sim's own
 static void face(int x, int y, int sz, const Sim *m) {   // a head and shoulders portrait: flat colours, small crisp details
     int u = sz / 16; if (u < 1) u = 1; int cx = x + sz / 2;
     u16 sk = skin_of(m), hc = hair_of(m), sh = shirt_of(m), skd = shade(sk, 6);
-    rect(x, y, sz, sz, C15(22, 22, 24));
+    rect(x, y, sz, sz, face_bg >= 0 ? (u16)face_bg : C15(22, 22, 24));
     rect(x + u, y + 13 * u, 14 * u, sz - 13 * u, sh); rect(x + u, y + 13 * u, 14 * u, u, shade(sh, 6));          // shoulders
     rect(cx - 2 * u, y + 11 * u, 4 * u, 3 * u, skd);                                                            // neck
     int hw = (m->fc == 1 ? 5 : 4) * u, ht = (m->fc == 2 ? 10 : 9) * u, hx = cx - hw, hy = y + 2 * u + (m->fc == 2 ? 0 : u);
@@ -2075,10 +2075,10 @@ static void life_panel(void) {   // the top screen's second page: job, aspiratio
     sprintf(t, "Aspiration: %d stars", L->pts / 1500); text_box(11, 101, 146, 12, FS_BODY, C15(31, 31, 20), AL_L, t); rect(158, 102, 84, 8, C15(2, 6, 14)); rect(159, 103, 82 * (L->pts % 1500) / 1500, 6, C15(31, 26, 6));
     for (int k = 0; k < 3; k++) { if (!L->wk[k]) continue; if (L->wk[k] == WN_CASH) sprintf(t, "Have $%d", L->wa[k]); else strcpy(t, WNM[L->wk[k]]);
         rect(14, 118 + k * 13, 8, 8, C15(8, 22, 8)); text_box(23, 116 + k * 13, 160, 12, FS_BODY, TXT, AL_L, t); sprintf(t, "+%d", WPT[L->wk[k]]); text_box(190, 116 + k * 13, 56, 12, FS_NUM, C15(31, 31, 20), AL_R, t); }
-    if (L->fear) { text_box(11, 152, 40, 12, FS_BODY, C15(31, 14, 12), AL_L, "Fear:"); text_box(48, 152, 150, 12, FS_BODY, TXT, AL_L, FNM[L->fear]); }
-    if (dog_have) { sprintf(t, "Rex: %s", dog.hun > 50 ? "happy" : dog.hun > 20 ? "peckish" : "hungry!"); text_box(150, 161, 98, 12, FS_BODY, TXT, AL_L, t); }
-    { const Cx *c = &csx[ctl]; if (c->wish) { sprintf(t, "Wish: %s%s", WSN[c->wish - 1], c->wdone ? " (done)" : ""); text_box(11, 161, 138, 12, FS_BODY, c->wdone ? C15(20, 31, 20) : TXT, AL_L, t); }   // (D67) what Create-a-Sim picked
-      if (c->tr[0]) { char u[40]; u[0] = 0; for (int k = 0; k < 3; k++) if (c->tr[k]) { if (k) strcat(u, ", "); strcat(u, TRN[c->tr[k] - 1]); } text_box(11, 171, 236, 11, FS_SMALL, C15(24, 28, 31), AL_L, u); } }
+    if (L->fear) { text_box(11, 150, 40, 12, FS_BODY, C15(31, 14, 12), AL_L, "Fear:"); text_box(48, 150, 150, 12, FS_BODY, TXT, AL_L, FNM[L->fear]); }
+    if (dog_have) { sprintf(t, "Rex: %s", dog.hun > 50 ? "happy" : dog.hun > 20 ? "peckish" : "hungry!"); text_box(150, 162, 98, 12, FS_BODY, TXT, AL_L, t); }
+    { const Cx *c = &csx[ctl]; if (c->wish) { sprintf(t, "Wish: %s%s", WSN[c->wish - 1], c->wdone ? " (done)" : ""); text_box(11, 162, 138, 12, FS_BODY, c->wdone ? C15(20, 31, 20) : TXT, AL_L, t); }   // (D67) what Create-a-Sim picked
+      if (c->tr[0]) { char u[40]; u[0] = 0; for (int k = 0; k < 3; k++) if (c->tr[k]) { if (k) strcat(u, ", "); strcat(u, TRN[c->tr[k] - 1]); } text_box(11, 173, 236, 10, FS_SMALL, C15(24, 28, 31), AL_L, u); } }
 }
 static u16 offbuf[256 * 192] __attribute__((aligned(32)));   // (D37) a 2D screen is drawn here and copied over in one go: no half-drawn screen is ever shown
 static void off_show(u16 *dst) { DC_FlushRange(offbuf, sizeof offbuf); dmaCopy(offbuf, dst, sizeof offbuf); scr = dst; }
@@ -2783,6 +2783,7 @@ static void draw_head(int yaw) {
     bx(-hp, yb - 400, -430, hp, yb, bz, pants);                                   // hips
     bx(-hp, yb - 400 - lh, -lt, -40, yb - 400, lt, pants); bx(40, yb - 400 - lh, -lt, hp, yb - 400, lt, pants);   // legs
     bx(-hp, yb - 560 - lh, -lt, -40, yb - 400 - lh, lt + 250, C15(4, 4, 6)); bx(40, yb - 560 - lh, -lt, hp, yb - 400 - lh, lt + 250, C15(4, 4, 6));   // shoes
+    { int fy = yb - 560 - lh; bx(-1700, fy - 160, -1700, 1700, fy, 1700, C15(27, 29, 31)); bx(-1900, fy - 340, -1900, 1900, fy - 160, 1900, C15(19, 23, 29)); }   // (D67) the round white stand of the 3DS's creator
     bx(-nw, -330 - nl, -nw, nw, 20, nw, shade(sk, 7));                            // neck
     int hwj = hw + (p[10] - 50) * 3, ch = (p[11] - 50) * 6;
     bx(-hw, 0, -hz, hw, ht, hz, sk);                                              // head
@@ -2939,10 +2940,10 @@ static void cas_drag_at(int tx, int ty) {   // a stylus drag on the pad, a slide
 // ---- the six steps ----
 static void cas_tiles3(int cur, const char *const *names, int n, int kind) {   // six picks, 3 x 2, each a portrait (kind 0 face / 1 beard / 2 hat / 3 shirt) or trousers (4)
     for (int k = 0; k < 6 && k < n; k++) { int x = 45 + (k % 3) * 69, y = 42 + (k / 3) * 58; cas_tile(x, y, 66, 56, cur == k);
-        Sim v = sims[0]; face_hat = csx[0].hat;
+        Sim v = sims[0]; face_hat = csx[0].hat; face_bg = C15(13, 17, 26);
         if (kind == 0) v.fc = (u8)k; else if (kind == 1) v.beard = (u8)k; else if (kind == 2) face_hat = k; else if (kind == 3) { v.shirt = (u8)k; v.cc[2] = 0; }
         if (kind == 4) cas_pants_pic(x + 18, y + 6, 30, 32, PANTC[k]); else face(x + 15, y + 3, 36, &v);
-        face_hat = -1; text_box(x + 3, y + 41, 60, 13, FS_BODY, PANB, AL_C, names[k]); } }
+        face_hat = -1; face_bg = -1; text_box(x + 3, y + 41, 60, 13, FS_BODY, PANB, AL_C, names[k]); } }
 static int cas_tiles3_hit(int tx, int ty) { for (int k = 0; k < 6; k++) if (hit(45 + (k % 3) * 69, 42 + (k / 3) * 58, 66, 56, tx, ty)) return k; return -1; }
 static void cas_draw_step(void) {
     Sim *m = &sims[0];
@@ -2981,9 +2982,9 @@ static void cas_draw_step(void) {
     } else if (cas_step == CS_HAIR) {
         static const char *const sn[4] = { "Style", "Colour", "Beard", "Hat" }; char t[24];
         if (cas_sub == 0) { sprintf(t, "Hair %d/%d", cas_page + 1, (NHAIRD + 7) / 8); cas_hdr(t); cas_pager((NHAIRD + 7) / 8); } else cas_hdr("Hair"); cas_subtabs(4, sn);
-        if (cas_sub == 0) { face_hat = csx[0].hat;
+        if (cas_sub == 0) { face_hat = csx[0].hat; face_bg = C15(13, 17, 26);
             for (int k = 0; k < 8; k++) { int idx = cas_page * 8 + k; if (idx >= NHAIRD) break; int x = 45 + (k % 4) * 52, y = 42 + (k / 4) * 57; cas_tile(x, y, 50, 55, m->hair == idx); Sim v = *m; v.hair = (u8)idx; face(x + 7, y + 3, 36, &v); text_box(x + 2, y + 41, 46, 12, FS_SMALL, PANB, AL_C, HAIRN[idx]); }
-            face_hat = -1; }
+            face_hat = -1; face_bg = -1; }
         else if (cas_sub == 1) cas_colpage(0);
         else if (cas_sub == 2) cas_tiles3(m->beard, BEARDN, 6, 1);
         else cas_tiles3(csx[0].hat, HATN, 6, 2);
@@ -2998,14 +2999,14 @@ static void cas_draw_step(void) {
             for (int t = 1; t <= 12; t++) { int c = (t - 1) & 1, r = (t - 1) >> 1, x = 45 + c * 104, y = 67 + r * 15, on = cas_tr_at(t) != 0, ok = cas_tr_ok(t);
                 rect(x, y, 102, 14, on ? C15(8, 22, 10) : C15(8, 15, 27)); rect(x + 3, y + 2, 10, 10, on ? C15(31, 31, 31) : C15(2, 5, 14)); rect(x + 4, y + 3, 8, 8, ok ? C15(28, 31, 31) : C15(12, 14, 18));
                 if (on) { rect(x + 5, y + 6, 2, 2, C15(6, 20, 6)); rect(x + 7, y + 7, 2, 2, C15(6, 20, 6)); rect(x + 9, y + 4, 2, 4, C15(6, 20, 6)); }
-                text_box(x + 15, y, 86, 14, FS_BODY, ok ? TXT : C15(15, 18, 24), AL_L, TRN[t - 1]); }
+                text_box(x + 15, y, 86, 14, FS_BODY, ok ? TXT : C15(21, 24, 29), AL_L, TRN[t - 1]); }
         } else {
             for (int k = 0; k < 5; k++) { int y = 42 + k * 23, on = csx[0].wish == k + 1; rect(45, y, 206, 21, on ? C15(31, 31, 31) : C15(2, 5, 14)); rect(46, y + 1, 204, 19, on ? C15(8, 24, 8) : C15(8, 15, 27)); rect(50, y + 5, 11, 11, C15(2, 5, 14)); rect(51, y + 6, 9, 9, C15(28, 31, 31)); if (on) rect(53, y + 8, 5, 5, C15(8, 22, 8));
                 text_box(64, y, 184, 21, FS_HEAD, TXT, AL_L, WSN[k]); }
         }
     } else {   // Done: the summary to look over
         cas_hdr("Your Sim"); text_box(45, 24, 206, 20, FS_TITLE, TXT, AL_C, sname[0]);
-        rect(47, 50, 60, 60, PANB); face_hat = csx[0].hat; face(49, 52, 56, m); face_hat = -1;
+        rect(47, 50, 60, 60, PANB); face_hat = csx[0].hat; face_bg = C15(13, 17, 26); face(49, 52, 56, m); face_hat = face_bg = -1;
         text_box(112, 46, 138, 11, FS_SMALL, C15(22, 28, 31), AL_L, "Traits");
         for (int k = 0; k < 3; k++) { int t = csx[0].tr[k]; text_box(112, 57 + k * 13, 138, 13, FS_BODY, t ? TXT : C15(18, 22, 28), AL_L, t ? TRN[t - 1] : "-"); }
         text_box(112, 98, 138, 11, FS_SMALL, C15(22, 28, 31), AL_L, "Life wish"); text_box(112, 109, 138, 13, FS_BODY, csx[0].wish ? TXT : C15(18, 22, 28), AL_L, csx[0].wish ? WSN[csx[0].wish - 1] : "-");
@@ -3048,7 +3049,7 @@ static void draw_cas(void) {
     scr = scr_sub;
     if (cas_kb) { cas_draw_kb(); if (cas_pop) cas_draw_pop(); return; }
     backdrop();
-    for (int i = 0; i < CS_N; i++) { int on = cas_step == i, y = 2 + i * 31; rect(2, y, 36, 29, on ? C15(31, 31, 31) : C15(2, 5, 14)); rect(3, y + 1, 34, 27, on ? C15(8, 26, 8) : C15(4, 10, 24)); rect(3, y + 1, 34, 1, on ? C15(18, 31, 18) : C15(9, 16, 30)); cas_icon(14, y + 3, i, on); text_box(2, y + 16, 36, 11, FS_SMALL, on ? C15(2, 6, 2) : TXT, AL_C, CSN[i]); }
+    for (int i = 0; i < CS_N; i++) { int on = cas_step == i, y = 2 + i * 31; rect(2, y, 36, 29, on ? C15(31, 31, 31) : C15(2, 5, 14)); rect(3, y + 1, 34, 27, on ? C15(8, 26, 8) : C15(4, 10, 24)); rect(3, y + 1, 34, 1, on ? C15(18, 31, 18) : C15(9, 16, 30)); cas_icon(14, y + 3, i, on); text_box(2, y + 16, 36, 11, FS_BODY, on ? C15(2, 6, 2) : TXT, AL_C, CSN[i]); }
     cas_draw_step();
     cbtn(41, 165, 70, 24, cas_step ? "< Back" : "< Title", 0, FS_HEAD); cbtn(184, 165, 70, 24, cas_step == CS_DONE ? "Play!" : "Next >", cas_step == CS_DONE ? 1 : 0, FS_HEAD);
     { char t[12]; sprintf(t, "%d / %d", cas_step + 1, CS_N); text_box(112, 165, 70, 24, FS_NUM, TXT, AL_C, t); }
