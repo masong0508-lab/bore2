@@ -1286,20 +1286,19 @@ void gotchi_draw(void) {
         if (k < (int)sizeof vl && n % 60 == 1) {
             for (int q = 0; q < G_N; q++) *gvp[q] = 0;   /* (every variable of the list starts at 0) */
             view = vl[k]; gach = 0x2A5 | GACH_TUTOFF | GACH_INTRO; msg = 0; memset(par, 0, sizeof par);
-            if (k >= 22 && k <= 28) { static void (*const st[7])(void) = { start_look, start_copy, start_catch, start_hilo, start_beat, start_hop, start_stack }; st[k - 22](); }
-            if (k == 57 || k == 58) start_whack();
+            if ((k >= 22 && k <= 28) || k >= 57) { start_game(k >= 57 ? 7 : k - 22); view = vl[k]; }   /* (the real start: one copy of each start_ function) */
             for (const GvE *e = gvr; e->v != 255; e++) if (e->k == 255 || e->k == k) *gvp[e->v] = e->x;
             Toy *m = my_toy();
             if (k == 16 && m) { gotchi_diary(GD_BEST | 7 << 5, m->k[0].id); gotchi_diary(GD_TRAIN | 1 << 5, m->k[1].id); gotchi_diary(GD_BEST | 4 << 5, m->k[2].id); }
             if (k == 20 && m) { m->gday = (u16)day_count; m->gflag = 128; memset(m->gp, 0, 6); m->gp[gx_goal_type(m, 0)] = 99; m->gp[gx_goal_type(m, 1)] = 1; m->streak = 3; m->best = 5; m->ghist = 0x6B; }
             if (k == 26) bRes[0] = 1;
-            if (k == 28) { for (int i = 0; i < 6; i++) { sL[i] = 104 + (i % 3) * 3; sW[i] = 52 - i * 4; } sCw = sW[5]; }
+            if (k == 28) { static const u8 tw[12] = { 104, 107, 110, 104, 107, 110, 52, 48, 44, 40, 36, 32 }; for (int i = 0; i < 6; i++) { sL[i] = tw[i]; sW[i] = tw[6 + i]; } sCw = sW[5]; }
             if (k == 37) { gsum_c = 5; gsum_p = 2; gsum_h = 1; }
             if (k >= 38 && k <= 44) gach = 0x2A5 | GACH_INTRO | (u32)(k - 38) << 16;
             if (k >= 45) { evCool = 99999;
                 if (m) { Xt *x0 = &m->x[0]; x0->nrg = 70; x0->hyg = 80; x0->wish = 3; m->b[0].hun = 4; m->b[0].hap = 4; m->b[0].fl = 0; m->b[0].poop = 0; m->x[1].nrg = 10; m->x[1].hyg = 15; m->x[1].wish = 6 | 24; m->b[1].poop = 0; m->b[2].fl = 0; m->b[2].hun = 4; m->b[2].hap = 1; m->x[2].lone = 15; m->x[2].hyg = 60; }
                 evHit = k <= 49 ? 5 : 0;
-                if (k == 52) { emit(1, 140, 56, 10); emit(0, 160, 56, 6); emit(3, 180, 56, 6); emit(4, 160, 50, 14); emit(2, 150, 70, 6); }
+                if (k == 52) { static const u8 em[5][4] = { { 1, 140, 56, 10 }, { 0, 160, 56, 6 }, { 3, 180, 56, 6 }, { 4, 160, 50, 14 }, { 2, 150, 70, 6 } }; for (int i = 0; i < 5; i++) emit(em[i][0], em[i][1], em[i][2], em[i][3]); }
                 if (k == 56 && m) treeId = m->k[0].id;
                 if (k >= 57) { wMax = 0; for (int i = 0; i < 9; i++) wH[i] = (u8)(i % 5 == 3 ? 3 : i % 3 == 0 ? 2 : 1); } }
         }
