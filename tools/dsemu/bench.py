@@ -30,7 +30,9 @@ SC = {   # name: (script, pokes {frame: scene}, measure from, to, screenshot fra
     "guide3": (LIVE, {400: 54}, 500, 800, 780),
     "livebasket": (LIVE, {400: 55}, 500, 800, 780),
     "family": (LIVE, {400: 56}, 500, 800, 780),   # (D54) a family in the basket
-    "tree":   (LIVE, {400: 57}, 500, 800, 780),   # (D54) its family tree
+    "tree":   (LIVE, {400: 57}, 500, 800, 780),
+    "more":   (LIVE, {400: 58}, 500, 800, 780),
+    "home":   (LIVE, {400: 59}, 500, 800, 780),   # (D54) its family tree
     "shop":   (LIVE, {400: 51}, 500, 800, 780),
     "close":  (LIVE, {400: 6}, 700, 1000, 980),
     "horizon": (LIVE, {400: 5}, 700, 1300, 1280),

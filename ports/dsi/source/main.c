@@ -235,7 +235,11 @@ typedef struct { GSeg s[48]; int ns; } GFrm;
 static GFrm gfr[2]; static volatile int gf_ready = -1, gf_fly = -1, gf_busy, gf_on, gf_shown; static int gf_ss;   // (gf_ss: where the piece being written began)
 
 #ifdef DSTEST
-volatile int test_scene; volatile int prof_ms[12]; static u32 prof_t[12], prof_last;   // (test builds only: where the ARM9's time goes, ms a second: steps, 2D and logic, moving list, still signature and list, DMA, the rest)
+volatile int test_scene
+#ifdef AUTOSC
+    = AUTOSC
+#endif
+    ; volatile int prof_ms[12]; static u32 prof_t[12], prof_last;   // (test builds only: where the ARM9's time goes, ms a second: steps, 2D and logic, moving list, still signature and list, DMA, the rest)
 static inline u32 prof_now(void) { u16 lo = TIMER_DATA(0); u16 hi = TIMER_DATA(1); if (TIMER_DATA(0) < lo) hi = TIMER_DATA(1); return ((u32)hi << 16) | lo; }
 #define PROF(k) do { u32 _n = prof_now(); prof_t[k] += _n - prof_last; prof_last = _n; } while (0)
 #else
