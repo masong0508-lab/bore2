@@ -1,6 +1,6 @@
 # TRAITS AND LIFETIME WISHES
 
-600 regular traits, 51 earned traits, 24 prize traits, 351 cheat traits and 61 lifetime wishes. All of them are data made by one script and run by one small engine.
+600 regular traits, 51 earned traits, 24 prize traits, 351 cheat traits and 61 lifetime wishes, in 6 slots (4 more unlock) for every Bore, and assigned to the whole household from their personality. All of them are data made by one script and run by one small engine.
 This page is for whoever works on the engine, the lists or a port. Everything here is portable: the PS1 and the Dreamcast build the same files.
 
 ## The idea in four lines
@@ -204,27 +204,42 @@ Tested with `test/oldsave.sh` and `test/oldsave2.sh` (`"50 59b5752"` makes a ver
 6. The cheat switch: effect on, off (back to baseline), on again.
 7. Greps that every hook (or its family base) is read in the game source outside the traits files.
 
+8. Slots: the counts by life stage and with 1 to 4 unlocked; the unlock conditions in order (wishes, job level), no repeat; a won trait goes in the first open slot, never a shut one, waits when full (`tr_wait`) and comes in when a slot opens; an assigned member counts and wins nothing.
+9. Assigned traits, for 12 signs x 6 aspirations x 24 bar sets (1,728 people, each at 3, 6 and 10 slots): the same person gives the same traits twice, every slot is filled, no two traits clash, none twice, at most 3 per category, no cheats; every assigned trait moves a number through the game's own accessor; rebuilding the effects from the ids alone gives the same effects (that is what the save keeps); the very sociable, the very active and the neat homebodies get the categories they pull to (at least 85%); different people get different sets; growing up keeps the old traits and adds; a child takes one or two of a parent's traits, deterministically.
+
 Result (this build): PASS, 0 failures, 0 hooks not wired.
 
-| group | traits | pass |
+| group | cases | pass |
 |---|---|---|
-| regular | 600 | 600 |
+| regular traits | 600 | 600 |
 | earned | 51 | 51 |
 | prizes | 24 | 24 |
 | cheat | 351 | 351 |
 | earn-run | 51 | 51 |
 | wishes | 61 | 61 |
+| slots | 10 | 10 |
+| unlocks | 16 | 16 |
+| won-slots (waiting prizes too) | 7 | 7 |
+| assign (determinism, full, who gets what, differ) | 10,372 | 10,372 |
+| compat (no opposites) | 5,184 | 5,184 |
+| wired (effect moves a number) | 5,184 | 5,184 |
+| roundtrip (ids -> effects) | 5,184 | 5,184 |
+| growth and inheritance | 3 | 3 |
+
+In the console (PS1 builds, DuckStation): `test/oldsave.sh build` (versions 40 and 41) and `test/oldsave2.sh build "50 59b5752"` (a version 50 save) load in the new build and give the members their traits; `test/oldsave2.sh build "51 <commit>"` saves and loads a version 51 life with the same trait sets after the load. `test/trait6_*.txt` are the pad scripts of the shots (test builds `-DAUTO_TEXT=1 -DAUTO_TR=n`, `-DAUTO_CAS=5`).
 
 ## RAM (PS1, 2 MB)
 
-- Only a Bore made in the creator (and the player) has a `TrState`: `Sim.tr` is a pointer into `tr_pool[2]`, or at `tr_null` (zero, never written; every writer checks it). The counters, wish bits and names are one family-wide set (`tr_ev_a`, `tr_wdone`, `tr_pn`), so a family holds at most 2 Bores with traits.
-- The earned and prize trait names are not resident; they are in CREATE.OVL's big table.
-- Free past `_end`: 32,112 bytes after the wallpapers moved to WALLS.BIN (8,960 right after the engine landed). `origin/main` alone had 4,544 (a build with under about 5.5 KB hangs at boot, see docs/PS1_PERFORMANCE.md). The room came from `-mno-check-zero-division` on the main program (CMakeLists.txt: no divide-by-zero trap code at each `/` and `%`; 11.6 KB, and a little faster). That is the only build flag changed.
-- Below the 10 KB rule by about 1 KB. Further room if wanted: `citizens.c` built -Os (3.2 KB, costs crowd speed), or the earned/wish check moved into an overlay (about 2.7 KB, but then awards only show when the page is opened).
+- `Sim.tr` points into `tr_pool[9]` (every household member and the creator's staged Bore, 180 bytes each) or at `tr_null` (zero, never written; every writer checks it). The ten slot names of each state are `tr_pnm[9][10][15]` (1,350 bytes), so the Life panel needs no disc read. The counters, wish bits and unlocks are one family-wide set (`tr_ev_a`, `tr_wdone`, `tr_unl`, `tr_wait`); only the player (and a Bore made in the creator) counts into them.
+- The mapping, the big tables and every name are in CREATE.OVL, which now loads at the start of the crowd's arena (like GOTCHI.OVL: it needs no realm land) with 150 KB of room; at the old place there were 82 KB and the overlay is 88 KB. `tools/ovl.py` had the room wrong (118,976 instead of 82,368 bytes, so it let an overlay that cannot load pass): fixed.
+- Free past `_end`: 26,832 bytes (32,112 before this change: pool 1,080 + names 1,350 + code and tables about 2.8 KB). The rule is 10 KB, the target 12.
+- Speed (frozen street, `AUTO_CITY AB_LOCK4 AB_FREEZE=150`, 5,200 frames, before and after): world 351 and 354 hb, mean cpu 578 and 581 hb, sims 138 and 138, fps from the need 19.82 and 19.82. No change.
+- Old saves and 8 MB: the 8 MB disc boots to the mode menu; the Dreamcast build (`traits_auto` in `OVLS`) builds and shows the panel and the page (`docs/traits6_dc_*.png`).
 
 ## Shots
 
 `docs/traits_cat_*.png` (every category, PS1), `traits_all/picked/foryou/recent.png` (views), `traits_cheats.png`, `traits_wishes.png`, `traits_wishes_body.png`, `traits_life.png` (Life panel), `traits_page.png`, `traits_page_wish.png`, `traits_dc.png` (Dreamcast).
+Slots and the family: `traits6_creator_slots.png` (the creator, picked traits in six slots), `traits6_creator_locked.png` (slots 7 to 10 shut, with their conditions), `traits6_life_panel.png` (the Life panel's ten slots), `traits6_page_you.png`, `traits6_member_page.png` (a housemate's traits, star sign and bars), `traits6_member_child.png` (a child: 3 slots, the rest shut), `traits6_movein_toast.png` (A NEW BORE MOVED IN, then MOSS GOT 8 TRAITS), `traits6_dc_panel.png` and `traits6_dc_page.png` (Dreamcast).
 
 ## Adding things
 
