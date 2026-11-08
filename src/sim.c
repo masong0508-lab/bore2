@@ -2534,7 +2534,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
     sv_u8(veh_own); sv_u8(veh_sel); for (int t = 0; t < VEH_N; t++) sv_u16((u16)veh_fuel[t]); traffic_save();   // (version 18: the vehicles)
     realm_save();   // (version 15: KINGDOM MODE's realm)
     sv_n(pk_data, sizeof pk_data);   // (version 39: what a pack keeps)
-    sv_n(pk_ext, PKX_LIVE); { u8 z[8] = { 0 }; for (int i = 0; i < PKX_RES / 8; i++) sv_n(z, 8); }   // (version 46: the packs' goals, and room kept for the packs to come: see docs/EXPANSION_PACKS.md)
+    sv_n(pk_ext, PKX_LIVE); { u8 z[8] = { 0 }; for (int i = 0; i < PKX_RES / 8; i++) sv_n(z, 8); }   // (version 47: the packs' goals, and room kept for the packs to come: see docs/EXPANSION_PACKS.md)
     for (int i = 0; i < nsims; i++) {
         const Sim *s = &sims[i]; const Bore *b = &s->bore;
         sv_n(b->look, LK_COUNT); sv_u8(b->stage); sv_u8(b->asp); sv_u8(b->ltw); sv_n(b->tr, TR_N); sv_str(b->first, NAME_LEN - 1); sv_str(b->last, NAME_LEN - 1);

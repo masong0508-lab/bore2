@@ -34,7 +34,6 @@ PACKS = {
 # on a disc made today, and no other pack moves. No patch is made for them until they have a real file.  Each has save room too: sim.h, PKX_RES.
 RESERVED = {
     "REALWORLD": ("REAL WORLD",           [("REALWRLD.OVL", 12)]),
-    "FAMTREE2":  ("FAMILY TREE 2",        [("FAMTREE2.OVL", 12)]),
     "SPEEDCITY": ("SPEED CITY",           [("SPEEDCTY.OVL", 24)]),
     "BIGSCREEN": ("BIG SCREEN",           [("BIGSCREN.OVL", 20)]),
     "MAGIC":     ("MAGIC AND MYTH",       [("MAGICMYT.OVL", 28)]),

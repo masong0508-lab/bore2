@@ -31,7 +31,6 @@
 			<file name="CUT.OVL" type="data" source="${CMAKE_BINARY_DIR}/CUT.OVL" />
 			<file name="CLOCK.OVL" type="data" source="${CMAKE_BINARY_DIR}/CLOCK.OVL" />
 			<file name="REALWRLD.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/REALWRLD.OVL" />
-			<file name="FAMTREE2.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/FAMTREE2.OVL" />
 			<file name="SPEEDCTY.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/SPEEDCTY.OVL" />
 			<file name="BIGSCREN.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/BIGSCREN.OVL" />
 			<file name="MAGICMYT.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/MAGICMYT.OVL" />

@@ -4139,7 +4139,7 @@ enum { WO_RANDOM, WO_PRE1, WO_PRE2, WO_PRE3, WO_CREATE, WO_CASTAWAY, WO_MORE, WO
 static const u32 wo_preset[3] = { 0x0B0E2001u, 0x51A7E5EDu, 0x7A11C0DEu };
 static const char *const wo_cap[3] = { "MAPLE SHORES", "SUNNY HOLLOW", "PINE BAY" };   // the set worlds' names
 static int gotchi_shelf;   // the BOREAGOTCHI! guide opened from the expansion shelf (not in a life)
-static u8 pk_have[26]; static int pk_i;   // (pk_shelf: a pack's PAGE (PKINFO.OVL) is open from the shelf, not from a life)
+static u8 pk_have[25]; static int pk_i;   // (pk_shelf: a pack's PAGE (PKINFO.OVL) is open from the shelf, not from a life)
 static int wo_sel, wo_t, wo_more, wo_msel, wo_packed; static char wo_name[18];   // (wo_name: the capital named by the player, "" as made)
 static u32 wo_seed, wo_painted, wo_custom = 0x00C0FFEEu;
 static void paint_world(u32 seed) {                 // SAN BOREAS from above for that seed (the land, the highways, the towns), into the map's picture
@@ -4311,12 +4311,12 @@ static void wm_draw(void) {
     ui_hints(160, 214, wm_mode == 2 ? "LR CHANGE|SQ SURPRISE ME|START OR O BACK TO THE EDITOR" : "LR CHANGE|SQ SURPRISE ME|START PLAY|O BACK", 1);
 }
 
-#define WO_NMORE 26
+#define WO_NMORE 25
 // the island creator, the base game's missions, the six older packs and THE LAND BOREFORE TIME (the GBA game's seven), then thirteen packs still to come
 static const char *const moreNm[WO_NMORE] = { "ISLAND CREATOR", "STORY MISSIONS", "BORE-OUT MAN!", "BOREZIES!", "WORLD WAR BORE", "BORTUA FIGHTER", "BOREAGOTCHI!", "BOREPILOGUE", "THE LAND BOREFORE TIME",
-    "SEASONS", "ISLAND PARADISE", "SUPERSTAR", "CRIME AND LAW", "FARM LIFE", "SKY AND SEA", "SPEED CITY", "BIG SCREEN", "YOUR IDEA", "MAGIC AND MYTH", "FAMILY FUN", "WILD WEST", "SPACE AGE", "CREATE A DOG", "DJ BOOTH", "REAL WORLD", "FAMILY TREE 2" };
+    "SEASONS", "ISLAND PARADISE", "SUPERSTAR", "CRIME AND LAW", "FARM LIFE", "SKY AND SEA", "SPEED CITY", "BIG SCREEN", "YOUR IDEA", "MAGIC AND MYTH", "FAMILY FUN", "WILD WEST", "SPACE AGE", "CREATE A DOG", "DJ BOOTH", "REAL WORLD" };
 static const char *const moreCard[WO_NMORE] = { "ISLAND|CREATOR", "STORY|MISSIONS", "BORE-OUT|MAN!", "BOREZIES!", "WORLD|WAR BORE", "BORTUA|FIGHTER", "BORE-|AGOTCHI!", "BORE-|PILOGUE", "THE LAND|BOREFORE|TIME",
-    "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "CRIME|AND LAW", "FARM|LIFE", "SKY AND|SEA", "SPEED|CITY", "BIG|SCREEN", "YOUR|IDEA", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE", "CREATE|A DOG", "DJ|BOOTH", "REAL|WORLD", "FAMILY|TREE 2" };
+    "SEASONS", "ISLAND|PARADISE", "SUPER-|STAR", "CRIME|AND LAW", "FARM|LIFE", "SKY AND|SEA", "SPEED|CITY", "BIG|SCREEN", "YOUR|IDEA", "MAGIC AND|MYTH", "FAMILY|FUN", "WILD|WEST", "SPACE|AGE", "CREATE|A DOG", "DJ|BOOTH", "REAL|WORLD" };
 static const char *const moreBlurb[WO_NMORE] = {
     "STRANDED! VERY SMALL TO VERY BIG. COAST, JUNGLE, HILLS", "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. A SPACE-HOP ARCADE GAME.",
     "THE TOWN GOES UNDEAD. BOARD UP THE WINDOWS, SHARE THE CANNED BEANS.", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. RALLY THE STREET!", "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!",
@@ -4328,7 +4328,7 @@ static const char *const moreBlurb[WO_NMORE] = {
     "A SPACEPORT FAR OUT. STUDY HARD. LOOK UP.", "RAISE A DOG FROM A PUP. THE PET SHOP SELLS ONE.", "SPIN DECKS AT THE BOOTH. HOME AND CLUBS.", "REAL WEATHER AND HOLIDAYS.", "GENERATIONS AND INHERITANCE." };
 #define EX_PLAYABLE(i) ((i) == 0 || (i) == 1 || (i) == 5 || (i) == 6 || (i) == 8 || (i) == 9 || (i) == 10 || (i) == 11 || (i) == 12 || (i) == 13 || (i) == 14 || (i) == 19 || (i) == 21 || (i) == 22 || (i) == 23)
 // the packs that are patches (tools/packs.py): the file each card needs on the disc (0: part of the base game, or not made yet)
-static const char *const packFile[WO_NMORE] = { 0, 0, 0, 0, 0, "ARCADE.OVL", "GOTCHI.OVL", 0, "KINGDOM.OVL", 0, "PARADISE.OVL", "SUPER.OVL", "PRISON.OVL", "FARM.OVL", "SKYSEA.OVL", 0, 0, 0, 0, "PARTY.OVL", 0, "SPACE.OVL", "DOG.OVL", "DJ.OVL", 0, 0 };
+static const char *const packFile[WO_NMORE] = { 0, 0, 0, 0, 0, "ARCADE.OVL", "GOTCHI.OVL", 0, "KINGDOM.OVL", 0, "PARADISE.OVL", "SUPER.OVL", "PRISON.OVL", "FARM.OVL", "SKYSEA.OVL", 0, 0, 0, 0, "PARTY.OVL", 0, "SPACE.OVL", "DOG.OVL", "DJ.OVL", 0 };
 // 0: not looked at yet, 1: on the disc, 2: not installed (a stub, or no file)
 // ---- PICK A MODE: the three ways in ----
 static int md_sel, md_t;

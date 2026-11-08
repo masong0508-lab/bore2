@@ -10,6 +10,7 @@ by itself, and still runs on a normal 2 MB PlayStation.
 
 For a real PlayStation or PCSX-ReARMed, burn or open `bore2.cue` + `bore2.bin` from `cmake --build build --target iso`.
 Every push to GitHub builds both: open Actions, the newest green run, and download **BORE2_chd** or **bore2_disc** under Artifacts.
+The run also uploads **BORE2-base** (no packs), **BORE2-full** (every pack) and **BORE2-packs** (one .ppf for each pack; they go on in any order). The EXPANSIONS shelf has a page for every pack, with five goals each.
 
 STORY MODE opens PICK A WORLD: RANDOM WORLD (fresh dice), three set worlds (MAPLE SHORES, SUNNY HOLLOW, PINE BAY: the same map every
 time, the capital named for the world), CREATE A WORLD (its own screen: pick the LIFE (SAN BOREAS, CASTAWAY or RAGS TO RICHES), the LAND (MAINLAND, ISLANDS, ONE BIG ISLAND, CONTINENT, LAKES), SEA level, CLIMATE (desert to jungle), HILLS (flat to mountains), the CAPITAL SIZE (tiny to giant), how many CITIES (0-8), TOWNS (0-20) and VILLAGES (0-32), up to 61 places, PEOPLE (few to PACKED: up to 1,748 households, twice the usual 874), HOUSEHOLDS (small to huge families), how built up, the capital's name and the map number; for a castaway, the island's SIZE, COAST, JUNGLE and HILLS too. The map redraws as you turn each dial; SQUARE is SURPRISE ME, START plays. Saves keep the dials: version 9), CASTAWAY ISLAND (the family begins

@@ -24,7 +24,7 @@ extern int dj_xp;
 enum { K_BASE, K_PACK, K_SOON };
 typedef struct { const char *nm; u8 kind, pk, ic; const char *what, *how, *slot, *item; } Card;
 // one per card of the shelf (main.c: moreNm), in the shelf's order. pk: the pack's number (0-11 are on the disc; 12 and up are kept for packs to come)
-static const Card C[26] = {
+static const Card C[25] = {
     { "ISLAND CREATOR", K_BASE, 255, IC_SUN, "", "", "", "" },
     { "STORY MISSIONS", K_BASE, 255, IC_BOOK, "", "", "", "" },
     { "BORE-OUT MAN!", K_SOON, 18, IC_STAR, "THE SPACE-HOP ARCADE GAME FROM THE GBA. A DESK JOCKEY BECOMES AN ASTRONAUT: A NEW CABINET AT THE ARCADE, WITH TICKETS AND A TABLE OF HIGH SCORES.", "", "BOREOUT.OVL", "NONE" },
@@ -50,7 +50,6 @@ static const Card C[26] = {
     { "CREATE A DOG", K_PACK, 7, IC_HEART, "MAKE YOUR OWN DOG: BREED, SIZE, EARS, TAIL, COLOURS AND FIVE TRAITS. IT FOLLOWS YOU ABOUT AND NEEDS FEEDING. THE PET SHOP SELLS ONE.", "PAUSE, CREATE A DOG.", "DOG.OVL", "" },
     { "DJ BOOTH", K_PACK, 8, IC_NOTE, "TWO DECKS AND EIGHT TRACKS: CUE, MIX, ECHO, KILL, BRAKE, DROP AND SCRATCH. NEW TRICKS OPEN AS YOUR HIDDEN SKILL GROWS.", "THE DJ BOOTH, AT HOME AND AT CLUBS.", "DJ.OVL", "" },
     { "REAL WORLD", K_SOON, 12, IC_PIN, "REAL WEATHER AND REAL HOLIDAYS ON TOP OF THE REAL TIME CLOCK (OPTIONS, GAME, REAL TIME: ALREADY IN). THE DATE ON THE CLOCK BRINGS ITS HOLIDAY.", "", "REALWRLD.OVL", "F7" },
-    { "FAMILY TREE 2", K_SOON, 13, IC_BABY, "GENERATIONS AND INHERITANCE FOR THE PEOPLE, NOT ONLY PETS: A FAMILY TREE, TRAITS PASSED DOWN, GRANDPARENTS AND MEMORIALS.", "", "FAMTREE2.OVL", "F8" },
 };
 static const u8 CARD_OF[12] = { 8, 5, 6, 11, 12, 19, 21, 22, 23, 10, 13, 14 };   // the card of each of the twelve packs on the disc
 static const char *const PFILE[12] = { "KINGDOM.OVL", "ARCADE.OVL", "GOTCHI.OVL", "SUPER.OVL", "PRISON.OVL", "PARTY.OVL", "SPACE.OVL", "DOG.OVL", "DJ.OVL", "PARADISE.OVL", "FARM.OVL", "SKYSEA.OVL" };
@@ -100,7 +99,7 @@ static int mode, card, lsel, live, anim, have[12], msgT; static char line[48];  
 void pki_open(int a) {
     anim = 0; msgT = 0; line[0] = 0; live = a == 255; lsel = 0;
     for (int i = 0; i < 12; i++) have[i] = -1;   // (found out one a frame, the one on show first: each is a look at the disc)
-    if (a == 255) mode = 0; else { mode = 1; card = a % 26; }
+    if (a == 255) mode = 0; else { mode = 1; card = a % 25; }
 }
 static int claim(int pk) {
     int pay = 0, n = 0, all = 1;
