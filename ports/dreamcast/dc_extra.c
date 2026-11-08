@@ -10,6 +10,7 @@
 #include "sim.h"
 #include "gotchi.h"
 #include "world.h"
+#include "bigmap.h"
 
 // ---------------------------------------------------------------- a 3x5 font for the VMU screen
 static const uint16_t f35[40] = {   // 0-9, A-Z, ':', ' ', '-', '.' ; 15 bits, rows top to bottom, 3 bits each (left = 4)
@@ -135,23 +136,27 @@ void dc_extra_frame(void) {
     { extern int clock_min; clock_min = DC_NIGHT * 60; }   // (a test build: it is always that hour)
 #endif
 #ifdef DC_SHOWITEMS
+    static int show_x, show_z, show_on;
     if (tick == 200 && nsims > 0) {   // (a test build: the Dreamcast furniture set in a row on the nearest free yard, never on the street or the pavement)
         extern void dc_logf(const char *f, ...);
         Sim *p = &sims[player]; int px = sim_tile_x(p), py = sim_tile_y(p), put = 0, bx = -1, by = -1, bd = 1 << 20;
-        for (int y = 1; y < MH - 3; y++) for (int x = 1; x < MW - 7; x++) {   // 6 free tiles of a plot in a row, a free row above (where you stand) and below
-            int ok = 1;
+        for (int y = BM_BLK + 2; y < 3 * BM_BLK - 3; y++) for (int x = BM_BLK + 2; x < 3 * BM_BLK - 7; x++) {   // 6 free tiles of a plot in a row, a free row above (where you stand) and below; in the window's two middle blocks, so it does not slide
+            int ok = 1, out = 0;
             for (int r = 0; r < 3 && ok; r++) for (int k = 0; k < 6 && ok; k++) { int xx = x + k, yy = y + r, f = floorMap[yy][xx];
-                ok = lifeMap[yy][xx] == '.' && world_tile_class(xx, yy) == TC_PLOT && f != FL_WATER && !FL_IS_ROAD(f) && f != FL_PAVING; }
+                ok = lifeMap[yy][xx] == '.' && world_tile_class(xx, yy) == TC_PLOT && f != FL_WATER && !FL_IS_ROAD(f);   // (a plot's ground: never the street, never the pavement)
+                out += f == FL_GRASS || f == FL_PAVING || f == FL_PATIO || f == FL_SAND; }
             if (!ok) continue;
-            int d = (x + 3 > px ? x + 3 - px : px - x - 3) + (y > py ? y - py : py - y); if (d < bd) { bd = d; bx = x; by = y; }
+            int d = (x + 3 > px ? x + 3 - px : px - x - 3) + (y > py ? y - py : py - y) + (out < 18 ? 100 : 0);   // (a lawn, plaza or patio first, then any floor)
+            if (d < bd) { bd = d; bx = x; by = y; }
         }
         if (bx >= 0) {
             for (int k = 0; k < 6; k++) { lifeMap[by + 1][DC_SHOWITEMS == 2 ? bx + 5 - k : bx + k] = (char)(0xF7 + k); put++; }
-            p->lvl = 0; p->x = (bx + 3) * TILE + TILE / 2; p->z = -(by * TILE + TILE / 2);   // (you stand on the yard behind the row, so the camera sees it)
+            show_x = (bx + 3) * TILE + TILE / 2; show_z = -(by * TILE + TILE / 2); show_on = 1;   // (you stand on the yard behind the row, so the camera sees it)
         }
         dc_logf("items placed %d at %d,%d (you were at %d,%d)\n", put, bx, by + 1, px, py);
         world_touched();
     }
+    if (show_on && nsims > 0) { Sim *p = &sims[player]; p->lvl = 0; p->x = show_x; p->z = show_z; }   // (held there: the test Sim does not wander off)
 #endif
     extern int dc_opt_vmuscreen;
     if (saving || (tick % 30) || !dc_opt_vmuscreen) return;   // (twice a second is plenty for the VMU)

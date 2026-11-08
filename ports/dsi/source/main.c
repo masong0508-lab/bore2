@@ -3091,6 +3091,19 @@ static void vb_latch(void) {   // every vblank, remember fresh presses, so a qui
     if ((k & KEY_TOUCH) && lat_press && !lat_got) { touchPosition t; touchRead(&t); if (t.px || t.py) { lat_tx = t.px; lat_ty = t.py; lat_got = 1; } }   // (D35: was touchReadXY(&t), which in libnds 1.8.2 takes no argument and returns the struct: t stayed garbage, so a tap shorter than one pass of the main loop landed at a random place)
 }
 
+#ifdef DS_ROAD_AUDIT
+// A test build (XTRA=-DDS_ROAD_AUDIT): when the first lot goes live, every lot of every town and city is made and its things checked against the plot
+// (13 x 13 cells; the street and its pavement are outside it, in draw_world). ds_chk: 0 lots, 1 things, 2 things off the plot, 3 done.
+int ds_chk[4];
+static void ds_road_audit(void) {
+    for (int i = 0; i < bm_nset(); i++) { const Settle *st = bm_set(i); int r = st->r + 1;
+        for (int by = st->y - r; by <= st->y + r; by++) for (int bx = st->x - r; bx <= st->x + r; bx++) {
+            if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) continue;
+            lot_enter(bx, by); ds_chk[0]++; ds_chk[1] += nobj;
+            for (int k = 0; k < nobj; k++) if (objs[k].x >= GN || objs[k].y >= GN) ds_chk[2]++; } }
+    ds_chk[3] = 1;
+}
+#endif
 int main(void) {
     irqEnable(IRQ_VBLANK); irqSet(IRQ_VBLANK, vb_latch); powerOn(POWER_ALL_2D | POWER_3D_CORE | POWER_MATRIX);
     videoSetMode(MODE_5_3D | DISPLAY_BG3_ACTIVE);
@@ -3111,6 +3124,9 @@ int main(void) {
 #endif
     while (1) {
         PROF(5);
+#ifdef DS_ROAD_AUDIT
+        { static int done; if (!done && mode == M_LIVE) { done = 1; ds_road_audit(); } }
+#endif
         int steps; { static u32 lastv; u32 v = vbl_n; steps = (int)(v - lastv); lastv = v; if (steps < 1) steps = 1; if (steps > 4) steps = 4; }   // (D39) game steps this pass: one a vblank
         scanKeys(); int held = keysHeld(), down = keysDown(); touchPosition tp = {0}; if (held & KEY_TOUCH) touchRead(&tp);
         { u32 ld = lat_down; lat_down = 0; down |= (int)ld; if (down & KEY_TOUCH) lat_press = 0; else if (lat_press && lat_got) { lat_press = 0; down |= KEY_TOUCH; tp.px = (u16)lat_tx; tp.py = (u16)lat_ty; } }
