@@ -3720,7 +3720,12 @@ static const char *const catSet[NCAT - 1] = {
     "=LJXM159GB",
     "\276\277\300\301\302\303\304\305\306",
     "\307\310\311\312\313\314\315\316" };
+#ifdef BORE_DC
+static int item_cat(char ch) { if ((u8)ch >= 0xF7 && (u8)ch <= 0xFC) return (u8)ch == 0xF9 || (u8)ch >= 0xFB ? 4 : 3; /* (the Dreamcast set: tech, and decor) */
+                               if ((u8)ch > 0x81 && (u8)ch < 0x90) return -1; for (int c = 0; c < NCAT - 1; c++) if (strchr(catSet[c], ch)) return c; return NCAT - 1; }
+#else
 static int item_cat(char ch) { if ((u8)ch > 0x81 && (u8)ch < 0x90) return -1; /* (the cake, the gravestone and the island's own are never bought) */ for (int c = 0; c < NCAT - 1; c++) if (strchr(catSet[c], ch)) return c; return NCAT - 1; }
+#endif
 static int cat_list(int cat, int *idx) {   // the tab's items, cheapest first
     int n = 0; for (int i = 0; i < items_count() && n < 96; i++) if (item_cat(items_at(i)) == cat) idx[n++] = i;
     for (int i = 1; i < n; i++) { int v = idx[i], c = items_cost(items_at(v)), j = i - 1; while (j >= 0 && items_cost(items_at(idx[j])) > c) { idx[j + 1] = idx[j]; j--; } idx[j + 1] = v; }

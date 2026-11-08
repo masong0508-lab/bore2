@@ -13,6 +13,11 @@
 #include "items_farm.inc"     // FARM LIFE: crop bed, coop, cow, stand (tools/make_items_farm.py)
 #include "items_space.inc"    // the telescopes, rocket and console (tools/make_items_space.py)
 #include "items_bed.inc"      // the beds, cribs and nursery things (tools/make_items_q.py)
+#ifdef BORE_DC
+#include "items_dc.inc"       // the Dreamcast furniture set (console, VMU stand, swirl rug, arcade cabinet, lamps)
+#else
+#define ITEMS_DC
+#endif
 
 // ---- the sound pack, the phone and the DeadSet: boxes made for BORE 2 (the GBA drew them as pixel art) ----
 static const u16 pRad[5] = { RGB(6,6,8), RGB(20,20,22), RGB(28,28,30), RGB(30,24,4), RGB(12,12,14) };
@@ -340,6 +345,7 @@ static ItemDef defs[] = {   // (not const: items_init sets some of them to life 
     ITEMS_FARM
     ITEMS_HOME
     ITEMS_BED
+    ITEMS_DC
 };
 #define NDEFS ((int)(sizeof(defs) / sizeof(defs[0])))
 _Static_assert(sizeof(defs) / sizeof(defs[0]) < 255, "def_ix holds a def + 1 in a byte");

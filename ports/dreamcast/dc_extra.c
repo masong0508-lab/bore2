@@ -9,6 +9,7 @@
 #include "common.h"
 #include "sim.h"
 #include "gotchi.h"
+#include "world.h"
 
 // ---------------------------------------------------------------- a 3x5 font for the VMU screen
 static const uint16_t f35[40] = {   // 0-9, A-Z, ':', ' ', '-', '.' ; 15 bits, rows top to bottom, 3 bits each (left = 4)
@@ -129,6 +130,14 @@ void dc_extra_frame(void) {
 #ifdef AUTO_SAVE
     { extern int dbg_sv[16], dbg_st[8], dbg_opt[2], dbg_cells[6]; extern void dc_logf(const char *f, ...);   // (test builds: the save test's readouts)
       if (tick % 200 == 0) { dc_logf("save:"); for (int i = 0; i < 16; i++) dc_logf(" %d", dbg_sv[i]); dc_logf(" | opt %x | stream", dbg_opt[0]); for (int i = 0; i < 8; i++) dc_logf(" %d", dbg_st[i]); dc_logf(" | song %d\n", dbg_cells[2]); } }
+#endif
+#ifdef DC_SHOWITEMS
+    if (tick == 200 && nsims > 0) {   // (a test build: the Dreamcast furniture set in a row in front of you)
+        int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), put = 0; extern void dc_logf(const char *f, ...);
+        for (int k = 0; k < 6; k++) { int x = DC_SHOWITEMS == 2 ? px + 3 - k : px - 3 + k, y = py + 1; if (x > 0 && y > 0 && x < MW && y < MH) { lifeMap[y][x] = (char)(0xF7 + k); put++; } }
+        dc_logf("items placed %d at %d,%d\n", put, px, py);
+        world_touched();
+    }
 #endif
     extern int dc_opt_vmuscreen;
     if (saving || (tick % 30) || !dc_opt_vmuscreen) return;   // (twice a second is plenty for the VMU)
