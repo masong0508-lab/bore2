@@ -1086,6 +1086,9 @@ static void life_draw(void) {
 // panels over it (no clear, no world: 60 frames a second, not the city's 20). live: the world just changed (a picture option): draw it afresh
 static int bg_n, bg_state = -1;
 static void menu_bg(int live) {
+#ifdef BORE_DC
+    live = 1;   // (the Dreamcast's picture is built afresh every frame, and at 50 fps: nothing is kept)
+#endif
     if (live || bg_n < 2) { life_draw(); ui_dim(); bg_n = live ? 0 : bg_n + 1; }
     else { gfx_keep = 1; ui_still = 1; }
 }
