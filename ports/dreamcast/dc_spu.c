@@ -273,10 +273,12 @@ static void mix(int16_t *out, int frames) {
     dc_spu_peak = 0; dc_spu_voices_on = 0;
     for (int f = 0; f < frames;) {
         int n = frames - f; if (n > 512) n = 512;
-        if (tick_hz) { int left = (RATE - tick_acc + tick_hz - 1) / tick_hz; if (left < 1) left = 1; if (n > left) n = left; }
+        // the clock runs in half-rate samples (22.05 kHz, what the voices are mixed at): a stretch of an odd number of output frames
+        // would mix one half-rate sample too many (the voices ran 0.1 % sharp); now every stretch is a whole number of them
+        if (tick_hz) { int left = ((RATE / 2 - tick_acc + tick_hz - 1) / tick_hz) * 2; if (left < 2) left = 2; if (n > left) n = left; }
         mix_seg(out + f * 2, n);
         f += n;
-        if (tick_hz) { tick_acc += tick_hz * n; if (tick_acc >= RATE) { tick_acc -= RATE; cb_timer2(); events_run(); } }
+        if (tick_hz) { tick_acc += tick_hz * ((n + 1) >> 1); if (tick_acc >= RATE / 2) { tick_acc -= RATE / 2; cb_timer2(); events_run(); } }
     }
 }
 
