@@ -31,7 +31,7 @@ static int need_fall(Sim *s, int n, int r, int np) {   // E_DEC_*: the fall of n
     int r16 = r * np * 16 / 100 * (100 + p) / 100 + s->tr.nacc[n];
     s->tr.nacc[n] = (u8)(r16 & 15); return r16 >> 4;
 }
-static int trait_mood(const Sim *s) {   // the mood points from traits: flat, by the time, the place, the weather, the company
+static __attribute__((noinline)) int trait_mood(const Sim *s) {   // the mood points from traits: flat, by the time, the place, the weather, the company
     const TrState *t = &s->tr; int m = tr_add(t, E_MOOD_BASE), night = is_night(), out = sim_outdoors(s);
     m += tr_add(t, night ? E_NIGHT_MOOD : E_DAY_MOOD);
     m += tr_add(t, out ? E_OUTDOORS : E_INDOORS);
@@ -51,27 +51,28 @@ static void need_gains(Sim *s, const int *snap) {   // E_GAIN_*, E_ACT_*: what a
         int p = tr_pct(&s->tr, E_GAIN0 + i) + (ah ? tr_pct(&s->tr, ah) : 0); if (!p) continue; if (p < -100) p = -100;
         s->need[i] = snap[i] + d * (100 + p) / 100; }
 }
-static void tr_watch(Sim *s, int si) {   // every 8th step: skill gains scaled (E_SK_*), the skill levels and the game's own numbers counted for the wishes
-    TrState *t = &s->tr; int raw[9] = { s->skill_cook, s->skill_body, s->skill_fun, s->skill_logic, s->skill_char, s->skill_creat, s->skill_mech, s->skill_farm, 0 };
-    { int b = 0; for (int k = 0; k < BS_N; k++) b += s->skill_band[k]; raw[8] = b; }
-    int *ptr[9] = { &s->skill_cook, &s->skill_body, &s->skill_fun, &s->skill_logic, &s->skill_char, &s->skill_creat, &s->skill_mech, &s->skill_farm, &s->skill_band[0] };
+static int skl_of(int raw) { return SKL(raw); }
+static const u16 skOff[9] = { offsetof(Sim, skill_cook), offsetof(Sim, skill_body), offsetof(Sim, skill_fun), offsetof(Sim, skill_logic), offsetof(Sim, skill_char), offsetof(Sim, skill_creat), offsetof(Sim, skill_mech), offsetof(Sim, skill_farm), offsetof(Sim, skill_band) };
+static __attribute__((noinline)) void tr_watch(Sim *s, int si) {   // every 8th step: skill gains scaled (E_SK_*), the skill levels and the game's own numbers counted for the wishes
+    TrState *t = &s->tr;
     for (int k = 0; k < 9; k++) {
-        int d = raw[k] - (int)t->skp[k], p = tr_pct(t, E_SK0 + k);
-        if (d > 0 && d < 400 && p) { if (p < -100) p = -100; int tot = d * p + (int)t->skr[k] * (p < 0 ? -1 : 1); int x = tot / 100; t->skr[k] = (u8)ABS(tot % 100); if (x) { *ptr[k] += x; if (k < 8 && *ptr[k] < 0) *ptr[k] = 0; raw[k] += x; } }
-        t->skp[k] = (u16)MIN(raw[k], 65535);
+        int *pp = (int *)((char *)s + skOff[k]), raw = *pp;
+        if (k == 8) { raw = 0; for (int b = 0; b < BS_N; b++) raw += s->skill_band[b]; }
+        int d = raw - (int)t->skp[k], p = tr_pct(t, E_SK0 + k);
+        if (d > 0 && d < 400 && p) { if (p < -100) p = -100; int tot = d * p + (int)t->skr[k] * (p < 0 ? -1 : 1); int x = tot / 100; t->skr[k] = (u8)ABS(tot % 100); if (x) { *pp += x; if (k < 8 && *pp < 0) *pp = 0; raw += x; } }
+        t->skp[k] = (u16)MIN(raw, 65535);
+        if (k < 8) tr_ev_set(t, EV_SK_COOK + k, skl_of(raw));
     }
-    for (int k = 0; k < 8; k++) tr_ev_set(t, EV_SK_COOK + k, SKL(raw[k]));
-    { int b = 0; for (int k = 0; k < BS_N; k++) b = MAX(b, SKL(s->skill_band[k])); tr_ev_set(t, EV_BANDLV, b); }
+    { int b = 0; for (int k = 0; k < BS_N; k++) b = MAX(b, skl_of(s->skill_band[k])); tr_ev_set(t, EV_BANDLV, b); }
     tr_ev_set(t, EV_DAYS, day_count / 5);
     if (si != player) return;
     int fr = 0; for (int j = 0; j < nsims; j++) if (j != si && s->rel[j] >= 50) fr++;
-    tr_ev_set(t, EV_JOBLV, job_level); tr_ev_set(t, EV_PAYDAYS, story_paid); tr_ev_set(t, EV_FIGHTS, fight_wins); tr_ev_set(t, EV_CHAMP, fight_champ);
-    tr_ev_set(t, EV_ARCPLAYS, arc.plays); tr_ev_set(t, EV_TIX, arcade_tix / 10); tr_ev_set(t, EV_PARTIES, pk_ext[PKX_PARTY]); tr_ev_set(t, EV_HOME, home_city + nprops);
-    tr_ev_set(t, EV_COLLEGE, col_lvl); tr_ev_set(t, EV_SPACE, space_done); tr_ev_set(t, EV_VEHICLES, __builtin_popcount(veh_own)); tr_ev_set(t, EV_PET, pet_kind ? 1 : 0);
-    tr_ev_set(t, EV_FRIENDS, fr + citizens_friends()); tr_ev_set(t, EV_FAMILY, nsims); tr_ev_set(t, EV_PARTNER, s->partner ? 1 : 0);
-    { int z = 0; for (int k = 0; k < 4; k++) z += story_visit[k] ? 1 : 0; tr_ev_set(t, EV_DISTRICTS, z); }
-    tr_ev_set(t, EV_EARNED, (int)MIN(tr_earned / 500, 255u)); tr_ev_set(t, EV_CASH, (int)CLAMP(cash / 1000, 0, 255));
-    { Toy *g = gotchi_toy(si); if (g) { int el = 0; for (int k = 0; k < GB_N; k++) if (g->b[k].on && g->b[k].stage == GS_ELDER) el = 1; tr_ev_set(t, EV_HATCHED, g->hatched); tr_ev_set(t, EV_GELDER, el); } }
+    int dist = 0; for (int k = 0; k < 4; k++) dist += story_visit[k] ? 1 : 0;
+    int el = 0, hat = 0; { Toy *g = gotchi_toy(si); if (g) { for (int k = 0; k < GB_N; k++) if (g->b[k].on && g->b[k].stage == GS_ELDER) el = 1; hat = g->hatched; } }
+    int v[EV_PET - EV_DAYS + 1] = { 0, (int)MIN(tr_earned / 500, 255u), (int)CLAMP(cash / 1000, 0, 255), job_level, fr + citizens_friends(), nsims, dist, fight_wins, fight_champ,
+        arc.plays, arcade_tix / 10, pk_ext[PKX_PARTY], home_city + nprops, col_lvl, space_done, __builtin_popcount(veh_own), s->partner ? 1 : 0, hat, el, pet_kind ? 1 : 0 };
+    for (int k = EV_EARNED; k <= EV_PET; k++) tr_ev_set(t, k, v[k - EV_DAYS]);
+    tr_ev_set(t, EV_PAYDAYS, story_paid);
 }
 static long tr_cash_prev = -1;
 static void tr_cash_watch(void) {   // E_INCOME, E_SPEND: whatever changed the money since the last look, more or less of it

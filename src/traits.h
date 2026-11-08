@@ -13,7 +13,7 @@ typedef uint8_t u8; typedef uint16_t u16; typedef uint32_t u32; typedef int8_t s
 #define TR_SLOTS 10      // 0..4 chosen in the creator (3, five for adults and elders), 5..9 earned or won
 #define TR_PICK 5
 #define TR_NLEN 15
-enum { TF_CHEAT = 1 };
+enum { TF_CHEAT = 1, TF_CHON = 2 };
 typedef struct {
     u16 tid[TR_SLOTS];
     s8  fx[E_N];                 // the sum of every effect's tier, by hook

@@ -615,10 +615,12 @@ def main():
         else: A('    { 0, 0 },')
     A('};')
     A('static const u8 tr_ev_abs[EV_N] = { 0, %s };   // 1: the counter is a level or a state read off the game (progress = its value), 0: a count of events' % ', '.join('1' if e[2] == 'poll' else '0' for e in EVENTS))
-    A('static const char tr_sname[TR_NEARN + TR_NRWD][15] = {   // earned and reward trait names (resident, for the toast and the Life page)')
-    for t in earned + [None] * (K['NEARN'] - len(earned)) + rewards + [None] * (K['NRWD'] - len(rewards)):
-        A('    %s,' % c_str(t['name'].upper() if t else ''))
-    A('};')
+    names = [(t['name'].upper() if t else '') for t in earned + [None] * (K['NEARN'] - len(earned)) + rewards + [None] * (K['NRWD'] - len(rewards))]
+    pool = ''; offs = []
+    for n in names: offs.append(len(pool)); pool += n + '|'
+    A('static const char tr_spool[] = "%s";   // earned and reward trait names, packed (resident, for the toast and the Life page)' % pool.replace('|', '\\0'))
+    A('static const u16 tr_soff[TR_NEARN + TR_NRWD] = { %s };' % ', '.join(str(o) for o in offs))
+    A('#define tr_sname(i) (tr_spool + tr_soff[i])')
     A('// the earned and reward traits\' effects (hook, tier) x3: resident, so a trait can be won in the middle of the game')
     A('static const u8 tr_small[TR_NEARN + TR_NRWD][6] = {')
     sm = earned + [None] * (K['NEARN'] - len(earned)) + rewards + [None] * (K['NRWD'] - len(rewards))

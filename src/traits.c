@@ -12,14 +12,16 @@ void tr_apply_id(TrState *t, int id, const u8 *hooks, const s8 *tiers) {
         if (!hooks[i]) continue;
         if (!cheat) { tr_fx_add(t, hooks[i], tiers[i]); continue; }
         int k = 0; while (k < 6 && t->ch[k]) k++;
-        if (k < 6) { t->ch[k] = hooks[i]; t->cm[k] = tiers[i]; if (tr_cheat_opt) tr_fx_add(t, hooks[i], tiers[i]); }
+        if (k < 6) { t->ch[k] = hooks[i]; t->cm[k] = tiers[i]; if (tr_cheat_opt) { tr_fx_add(t, hooks[i], tiers[i]); t->f |= TF_CHON; } }
     }
     if (cheat) t->f |= TF_CHEAT;
 }
-void tr_cheat_refresh(TrState *t, int now_on) {   // the effects are added or taken off again (a cheat trait's part is in ch / cm)
+void tr_cheat_refresh(TrState *t, int now_on) {   // the effects are added or taken off again (a cheat trait's part is in ch / cm); TF_CHON: they are in fx now
+    if (now_on == !!(t->f & TF_CHON)) return;
+    if (now_on) t->f |= TF_CHON; else t->f &= (u8)~TF_CHON;
     for (int k = 0; k < 6; k++) if (t->ch[k]) tr_fx_add(t, t->ch[k], now_on ? t->cm[k] : -t->cm[k]);
 }
-const char *tr_small_name(int id) { int i = id >= TR_FIRST_RWD ? TR_NEARN + id - TR_FIRST_RWD : id - TR_FIRST_EARN; return i >= 0 && i < TR_NEARN + TR_NRWD ? tr_sname[i] : ""; }
+const char *tr_small_name(int id) { int i = id >= TR_FIRST_RWD ? TR_NEARN + id - TR_FIRST_RWD : id - TR_FIRST_EARN; return i >= 0 && i < TR_NEARN + TR_NRWD ? tr_sname(i) : ""; }
 int tr_give(TrState *t, int id) {
     int i = id >= TR_FIRST_RWD ? TR_NEARN + id - TR_FIRST_RWD : id - TR_FIRST_EARN, k;
     if (i < 0 || i >= TR_NEARN + TR_NRWD) return 0;
@@ -39,7 +41,7 @@ int tr_wish_prog(const TrState *t, int *need) {
 void tr_wish_pick(TrState *t, int w) { t->wish = (u8)(w > 0 && w <= WISH_N && !(tr_wdone[w >> 3] & (1 << (w & 7))) ? w : 0); t->wbase = t->wish ? t->ev[tr_wish[t->wish].ev] : 0; }
 static void check(TrState *t, int ev) {
     for (int i = 0; i < TR_NEARN; i++) if (tr_earn[i].ev == ev && t->ev[ev] >= tr_earn[i].thr) {
-        if (tr_give(t, TR_FIRST_EARN + i)) { char b[40]; snprintf(b, sizeof b, "NEW TRAIT: %s", tr_sname[i]); tr_toast(b); }
+        if (tr_give(t, TR_FIRST_EARN + i)) { char b[40]; snprintf(b, sizeof b, "NEW TRAIT: %s", tr_sname(i)); tr_toast(b); }
     }
     int w = t->wish;
     if (w && tr_wish[w].ev == ev) {

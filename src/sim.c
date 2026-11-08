@@ -2570,7 +2570,9 @@ __attribute__((optimize("Os"))) void sim_save(void) {
         sv_u8(s->uid); sv_n(s->par, 2); sv_u8(s->partner); sv_u8(s->age_days); sv_u8(s->bday); sv_u8(s->away); sv_u8(s->grade); sv_u8(s->homework);
         { int act = s->action; if (act == ACT_WALK || act == ACT_TRAVEL || act == ACT_STAIRS || act == ACT_TALK || act == ACT_CARE || act == ACT_RUN) act = ACT_NONE;   // (what they were doing, if it stays put: asleep, eating, at work...)
           sv_u8(act); sv_u16(MIN(s->act_t, 65535)); sv_u8(s->act_x); sv_u8(s->act_y); sv_u8(s->act_var); }
+        sv_u16(sizeof(TrState)); sv_rle(&s->tr, sizeof(TrState));   // (version 50: the traits, their summed effects, the counters and the wish)
     }
+    sv_u8(tr_cheat_ok); sv_n(tr_wdone, 8); sv_u32(tr_earned);
 }
 __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after sim_init; the faces are built here)
     int n = ld_u8(), pl = ld_u8();
@@ -2612,9 +2614,12 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
         for (int k = 0; k < 6; k++) { s->ml[k].id = (u8)ld_u8(); s->ml[k].val = (s8)ld_u8(); s->ml[k].t = (u16)ld_u16(); }
         s->uid = (u8)ld_u8(); ld_n(s->par, 2); s->partner = (u8)ld_u8(); s->age_days = (u8)ld_u8(); s->bday = (u8)ld_u8(); s->away = (u8)ld_u8(); s->grade = (u8)ld_u8(); s->homework = (u8)ld_u8();
         s->action = ld_u8(); s->act_t = ld_u16(); s->act_x = (s8)ld_u8(); s->act_y = (s8)ld_u8(); s->act_var = (u8)ld_u8();
+        tr_clear(&s->tr); if (save_ver >= 50) { if (ld_u16() == sizeof(TrState)) ld_rle(&s->tr, sizeof(TrState)); else ld_fail(); }
         if (s->action >= ACT_GATHER + 1) s->action = ACT_NONE;
         s->gait.sit = (s->action == ACT_SIT || s->action == ACT_WC); s->gait.sleep = (s->action == ACT_SLEEP);
     }
+    if (save_ver >= 50) { tr_cheat_ok = (u8)ld_u8(); ld_n(tr_wdone, 8); tr_earned = ld_u32(); }
+    tr_cash_prev = -1; for (int i = 0; i < nsims; i++) tr_cheat_refresh(&sims[i].tr, tr_cheat_opt);   // (the cheat effects follow the OPTIONS switch, whatever the save had)
     player = CLAMP(pl, 0, MAX(0, nsims - 1));
 }
 void sim_proud(Sim *s) { sim_moodlet(s, ML_PROUD); }

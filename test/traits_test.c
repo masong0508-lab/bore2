@@ -32,8 +32,8 @@ int main(void) {
     for (int id = 1; id <= TR_MAXID; id++) {
         const u8 *e = tr_eff[id];
         if (id > TR_NREG && id < TR_FIRST_EARN) continue;
-        if (id >= TR_FIRST_EARN && id < TR_FIRST_RWD && id - TR_FIRST_EARN >= 0 && tr_sname[id - TR_FIRST_EARN][0] == 0) continue;   // spare slot
-        if (id >= TR_FIRST_RWD && id < TR_FIRST_CHEAT && tr_sname[TR_NEARN + id - TR_FIRST_RWD][0] == 0) continue;
+        if (id >= TR_FIRST_EARN && id < TR_FIRST_RWD && id - TR_FIRST_EARN >= 0 && tr_sname(id - TR_FIRST_EARN)[0] == 0) continue;   // spare slot
+        if (id >= TR_FIRST_RWD && id < TR_FIRST_RWD + TR_NRWD && tr_sname(TR_NEARN + id - TR_FIRST_RWD)[0] == 0) continue;
         if (id > TR_FIRST_RWD + TR_NRWD - 1 && id < TR_FIRST_CHEAT) continue;
         int g = id <= TR_NREG ? 0 : id < TR_FIRST_RWD ? 1 : id < TR_FIRST_CHEAT ? 2 : 3;
         tot[g]++;
@@ -57,7 +57,7 @@ int main(void) {
     // the earned traits: reaching the count in the game's own counter grants the trait and changes its effect
     int eok = 0, etot = 0;
     for (int i = 0; i < TR_NEARN; i++) {
-        if (!tr_sname[i][0]) continue;
+        if (!tr_sname(i)[0]) continue;
         etot++;
         static TrState t; tr_clear(&t);
         tr_ev(&t, tr_earn[i].ev, tr_earn[i].thr - 1 > 0 ? tr_earn[i].thr - 1 : 0);
@@ -66,7 +66,7 @@ int main(void) {
         int has = 0; for (int k = 5; k < TR_SLOTS; k++) if (t.tid[k] == TR_FIRST_EARN + i) has = 1;
         int moved = 0; for (int h = 1; h < E_N; h++) if (t.fx[h]) moved = 1;
         // (other earned traits on the same counter may come at the same count: the one asked for must be among them or the slots full)
-        if ((has || tr_earn[i].thr <= 1) && moved) eok++; else printf("FAIL earned %s: counter %s %d (has %d moved %d had %d)\n", tr_sname[i], tr_ev_name[tr_earn[i].ev], tr_earn[i].thr, has, moved, had);
+        if ((has || tr_earn[i].thr <= 1) && moved) eok++; else printf("FAIL earned %s: counter %s %d (has %d moved %d had %d)\n", tr_sname(i), tr_ev_name[tr_earn[i].ev], tr_earn[i].thr, has, moved, had);
     }
     // the wishes: each has a real counter, a goal, a reward; completing it pays once
     int wok = 0;
