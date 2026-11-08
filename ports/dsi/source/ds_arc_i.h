@@ -37,7 +37,7 @@ void dsag_rect(int x, int y, int w, int h, u32 c, int semi);
 void dsag_disc(int cx, int cy, int r, u32 c);
 void dsag_text(int x, int y, int sz, const char *s, u32 c);
 void dsag_cue(int k);
-extern int dsag_tx;   // where the stylus is on the pad (0..255), or -1
+extern int dsag_tx, dsag_tap;   // where the stylus is on the pad (0..255), or -1; the hole tapped (WHACK), or -1
 #define RC(x, y, w, h, c) dsag_rect(x, y, w, h, c, 0)
 #define RA(x, y, w, h, c) dsag_rect(x, y, w, h, c, 1)
 #define DSC(cx, cy, r, c) dsag_disc(cx, cy, r, c)

@@ -433,7 +433,7 @@ static int gframes, cam_on, cam_pan, cam_free, live_pitch = 4300, cam_deff = 900
 static void sim3d(int i, int yaw);
 static int has_board, on_board, board_lift; static long skate_score, skate_best; static const int *em_R; static int sk_x3, sk_z3, sk_cr, sk_Rm[9];   // (D44) the skateboard: owned, ridden, the rider's height (PS1 units); em_R: a free turn for the rider's model
 static void skate_draw_board(int ground); static void skate_top(void); static unsigned skate_sig(void); static void skate_on(void), skate_off(void); static void skate_frame(int held, int down, int steps);
-static int mg_ui, mg_ver, arcade_tix, fight_wins, fight_champ, fight_best; static unsigned mg_sig(void), mg_bsig(void); static void mg_top(void), mg_bottom(void), mg_frame(int held, int down, int steps, int tx, int ty); static void ag_open(int g), hs_open(void), gm_open(void), gt_minute(void); static int arcade_game_at(int x, int y), in_arcade(void);
+static int mg_ui, mg_ver, arcade_tix, fight_wins, fight_champ, fight_best; static unsigned mg_sig(void), mg_bsig(void); static void mg_top(void), mg_bottom(void), mg_frame(int held, int down, int steps, int tx, int ty); static void ag_open(int g), hs_open(void), gm_open(void), gt_minute(void); static int arcade_game_at(int x, int y), in_arcade(void), ag_price(int g); static const char *ag_title(int g);
 #define MG_SAVE 256   // (D45 on) the most the mini-games' save blocks take, after the farm's
 static int mg_pack(u8 *o); static int mg_unpack(const u8 *p, int left); static void mg_reset(void);
 typedef struct { u8 x, y, c, i, rot; } Obj;
@@ -1706,7 +1706,7 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     else if (c == 0x8B) { AC("Sail Across", 82); AC("Not Now", 84); }
     else if (c == '@' || c == '+') AC(IT_OF(&objs[o])->lab, 83);
     else if (c == 'B') AC("Ride the Board", 85);   // (D44)
-    else if (c == '!' && in_arcade()) { static char pl[28]; int g_ = arcade_game_at(objs[o].x, objs[o].y); snprintf(pl, sizeof pl, "%s $%d", g_ == 1 ? "Bore Breaker" : g_ == 2 ? "Snack Catch" : g_ == 3 ? "Whack-a-Bore" : "High Striker", g_ == 1 ? 2 : 1); AC(pl, 86); }   // (D46: a cabinet)
+    else if (c == '!' && in_arcade()) { static char pl[28]; int g_ = arcade_game_at(objs[o].x, objs[o].y); snprintf(pl, sizeof pl, "%s $%d", ag_title(g_), ag_price(g_)); AC(pl, 86); }   // (D46: a cabinet)
     else if (c == 'y' && in_arcade()) { static char pz[28]; snprintf(pz, sizeof pz, "Prizes (%d tickets)", arcade_tix); AC(pz, 87); }   // (D46: the prize counter)
     else if (c >= 0xBE && c <= 0xC5 && c != 0xC1 && c != 0xC2) {   // (D53) the Boreagotchi things (the PS1's pie choices)
         if (c == 0xBE && in_shop() && !gtoy_of_(ctl)) AC("Boreagotchi $5000", 96);
@@ -2203,7 +2203,7 @@ static int sav_pack(int big) {   // returns the packed size in sav_buf (header i
     int n = 0; u8 *r = sav_raw; memset(r, 0, sizeof sav_raw);
     #define PUT(p, l) do { memcpy(r + n, (p), (size_t)(l)); n += (l); } while (0)
     PUT(&c, (int)sizeof c); PUT(sname, (int)sizeof sname); PUT(sims, (int)sizeof sims); PUT(crt, (int)sizeof crt);
-    u8 mgbuf[2800]; int mgsz = mg_pack(mgbuf);   // (D48: the mini-games' blocks, as big as they are)
+    u8 mgbuf[3000]; int mgsz = mg_pack(mgbuf);   // (D48: the mini-games' blocks, as big as they are)
     int budget = (big ? 2 * SAV_STRIDE : SAV_STRIDE) - (int)sizeof(SavHdr) - (4 + nown * 4) - (4 + (int)sizeof(LifeSave)) - (4 + NOPT - OPT_OLD) - 8 - (4 + SIM_MAX) - 20 - (4 + (int)sizeof(FarmSave)) - mgsz, base = n, best = n, nl = 0, cl = rle(r, n, sav_buf + sizeof(SavHdr), budget); if (cl < 0) return 0;
     int order[LSV_N], no = 0; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) order[no++] = i; for (int i = 0; i < lsv_n; i++) if (!(lsv[i].bx == lot_bx && lsv[i].by == lot_by)) order[no++] = i;
     for (int q = 0; q < no; q++) { const LotSave *L = &lsv[order[q]]; int m = n; SavLot h = { (s16)L->bx, (s16)L->by, (s16)L->pcx, (s16)L->pcy, (s16)L->dcx, (s16)L->dcy, (u16)(L->nobj | (L->roof << 12) | (L->up << 14)) };
@@ -2948,7 +2948,7 @@ static void live_touch(int tx, int ty) {
                 else if (cd >= 100) farm_do(cd, ctl, popup_i);   // (D38) the farm
                 else if (cd < 81) { m->tx = ob->x * 16; m->ty = ob->y * 16; m->act = cd; m->act_amt = 0; m->face = cd < 80 ? gather_len(cd - 60) : 1; m->act_obj = popup_i; m->act_left = 0; }   // (gather, or the castaway's meal: walk there, then do it)
                 else if (cd == 81) craft_ui = 1; else if (cd == 82) raft_sail(); else if (cd == 83) travel_ui = 1;
-                else if (cd == 86) { int g_ = arcade_game_at(ob->x, ob->y), pr_ = g_ == 1 ? 2 : 1; if (funds < pr_) say("Not enough funds"); else { funds -= pr_; ag_open(g_); } }   // (D46)
+                else if (cd == 86) { int g_ = arcade_game_at(ob->x, ob->y), pr_ = ag_price(g_); if (funds < pr_) say("Not enough funds"); else { funds -= pr_; ag_open(g_); } }   // (D46)
                 else if (cd == 87) ag_open(99);
                 else if (cd >= 90 && cd <= 96) gt_furn(cd);   // (D53) the Boreagotchi things
                 else if (cd == 85) { objs[popup_i] = objs[--nobj]; occ_ok = 0; has_board = 1; say("A skateboard! Menu > Board rides it"); skate_on(); }   // (D44: the PS1's PICKBOARD)
@@ -3065,6 +3065,9 @@ int main(void) {
         } else if (mode == M_LIVE) {
             LV = slv[ctl];
 #ifdef DSTEST
+#ifdef AUTO_SCENE
+            { static int at_n, fired; if (!fired && ++at_n >= 10 && (held & (KEY_X | KEY_Y | KEY_L | KEY_R | KEY_SELECT))) { fired = 1; test_scene = AUTO_SCENE +((held & KEY_X) != 0) + 2 * ((held & KEY_Y) != 0) + 4 * ((held & KEY_L) != 0) + 8 * ((held & KEY_R) != 0); } }   // (the keys held then add 1 X, 2 Y, 4 L, 8 R)   // (when the emulator's poke does not reach: a build that opens that scene itself)
+#endif
             if (test_scene) { int sc = test_scene; test_scene = 0;   // (test builds only: the emulator runner pokes a scene number here to measure it: 1 island, 2 farm, 3 busy street, 4 Strange Town)
                 if (sc == 1) travel_go(Z_ISLAND); else if (sc == 4) travel_go(Z_TOWN);
                 else if (sc == 2) { memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(LOT_FARM, 1); occ_ok = 0; for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (7 + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 11 * 16; sims[q].act = -1; } }
@@ -3076,7 +3079,7 @@ int main(void) {
                 else if (sc >= 30 && sc < 33) { o_roof = sc - 30; o_dirty = 1; }
                 else if (sc >= 60 && sc < 70) { test_ex = sc == 69 ? 0 : sc - 59; life_ver++; }   // (60-68: every face in that mood, 69: as the game decides; 100: the sheet)
                 else if (sc == 70) { live_pitch = 2000; live_dist = 1800; yaw_t = live_yaw = 4096 + 600; }   // (70: face height camera)
-                else if (sc >= 40 && sc < 60) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
+                else if ((sc >= 40 && sc < 60) || (sc >= 80 && sc < 90)) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)
 #endif
             if (cam_on) {   // stylus camera: drag to orbit/tilt (or pan), buttons for zoom, follow, reset, done
                 if (down & KEY_TOUCH) { cam_drag = 0; if (hit(216, 36, 38, 20, tp.px, tp.py)) { cam_pan ^= 1; forced = 1; } else if (hit(216, 58, 38, 20, tp.px, tp.py)) cam_drag = 1;

@@ -356,16 +356,58 @@ static void skate_top(void) {   // the top screen while you ride: the score, the
     else { text(12, 157, 1, TXT, "A ollie (hold: higher)   Y manual"); text(12, 171, 1, TXT, "X grind   B off   D-pad rides"); }
 }
 
-// ==== ARCADE (src/arcade.c): the cabinets' games and the prize counter, as the PS1's. The field is the PS1's 240 x 160, drawn 1:1 on the top screen; the bottom is the touch pad ====
-enum { AG_FIGHTER, AG_BREAKER, AG_CATCH, AG_WHACK, AG_STRIKER, AG_NGAME, AG_PRIZES = 99 };
+// ==== ARCADE (src/arcade.c): the cabinets' games and the prize counter, as the PS1's. The thirteen games are the PS1's own code (ds_agames.c, built from src/ag_*.c); the field is the PS1's 240 x 160,
+// drawn 1:1 on the top screen; the bottom is the stylus pad and the buttons. BORTUA FIGHTER's cabinet comes with the fight (wip-ds-fight) ====
+enum { AG_FIGHTER, AG_BREAKER, AG_CATCH, AG_WHACK, AG_STRIKER, AG_BLOCKS, AG_SHMUP, AG_RACER, AG_MAZE, AG_HOOPS, AG_SKEE, AG_HOCKEY, AG_RHYTHM, AG_CLAW, AG_NGAME, AG_PRIZES = 99 };
 enum { PD_L = 1, PD_R = 2, PD_U = 4, PD_D = 8, PD_X = 16, PD_O = 32, PD_ST = 64 };
+#define PADB_UP 16
+#define PADB_RIGHT 32
+#define PADB_DOWN 64
+#define PADB_LEFT 128
+#define PADB_START 8
+#define PADB_TRI 4096
+#define PADB_CIR 8192
+#define PADB_CRO 16384
+#define PADB_SQU 32768
 #define K8(r, g, b) C15((r) >> 3, (g) >> 3, (b) >> 3)
-#define FIGHT_READY 0   // (the fight cabinet comes with the fight)
-static const char *const agName[AG_NGAME] = { "BORTUA FIGHTER", "BORE BREAKER", "SNACK CATCH", "WHACK-A-BORE", "HIGH STRIKER" };
-static const u8 agPrice[AG_NGAME] = { 2, 2, 1, 1, 1 };
-static const char *const agHow1[AG_NGAME] = { "", "MOVE THE PADDLE: D-PAD OR STYLUS", "MOVE THE BASKET: D-PAD OR STYLUS", "TAP A HOLE, OR D-PAD AND A", "TAP STOP, OR PRESS A" };
-static const char *const agHow2[AG_NGAME] = { "", "SERVE WITH A. CLEAR THE WALL", "CATCH SNACKS, DODGE ROCKS", "WHACK THE BORE WHEN IT POPS UP", "FIVE SWINGS: RING THE BELL" };
-static int arcade_game_at(int x, int y) { int g = (x * 3 + y * 2) % AG_NGAME; if (g == AG_FIGHTER && !FIGHT_READY) g = 1 + (x + y) % 4; return g; }
+typedef struct { void (*start)(void); int (*tick)(int, int, int, int); void (*draw)(void); } DSGame;
+extern const DSGame ds_ag_fn[AG_NGAME];
+extern int ag_pts, ag_t, ag_lives, ag_combo, ag_best, ag_perf, ag_np, ag_foe, ag_shake, ag_level;
+void dsag_fx_reset(void), dsag_fx_tick(void), dsag_fx_draw(void);
+int dsag_tx = -1, dsag_tap = -1;
+static int dsag_ox, dsag_oy;
+static u16 c8(u32 c) { return C15((c & 255) >> 3, ((c >> 8) & 255) >> 3, ((c >> 16) & 255) >> 3); }
+void dsag_rect(int x, int y, int w, int h, u32 c, int semi) {   // the field's own pixels (0..239, 0..159); nothing leaves the field
+    if (x < 0) { w += x; x = 0; } if (y < 0) { h += y; y = 0; } if (x + w > 240) w = 240 - x; if (y + h > 160) h = 160 - y; if (w <= 0 || h <= 0) return;
+    u16 cc = c8(c); x += 8 + dsag_ox; y += 16 + dsag_oy;
+    if (!semi) { rect(x, y, w, h, cc); return; }
+    if (x < 0) { w += x; x = 0; } if (y < 0) { h += y; y = 0; } if (x + w > 256) w = 256 - x; if (y + h > 192) h = 192 - y; if (w <= 0 || h <= 0) return;
+    cc = (u16)((cc & 0x7BDE) >> 1);
+    for (int j = 0; j < h; j++) { u16 *p = scr + (y + j) * 256 + x; for (int i = 0; i < w; i++) p[i] = (u16)(((p[i] & 0x7BDE) >> 1) + cc) | 0x8000; }
+}
+void dsag_disc(int cx, int cy, int r, u32 c) { if (cx + r < 0 || cx - r > 240 || cy + r < 0 || cy - r > 160) return; ellf(8 + dsag_ox + cx, 16 + dsag_oy + cy, r, r, c8(c)); }
+void dsag_text(int x, int y, int sz, const char *s, u32 c) {   // (the PS1's button names become the DS's: X is A, O is B, TRI is X, SQ is Y; letters a pixel closer so a line fits the field)
+    if (y < -8 || y > 160) return; char b[48]; int n = 0;
+    for (const char *p = s; *p && n < 44;) { if ((p == s || p[-1] == ' ') && (p[1] == 0 || p[1] == ' ' || p[1] == '.' || p[1] == ',')) { if (*p == 'X') { b[n++] = 'A'; p++; continue; } if (*p == 'O') { b[n++] = 'B'; p++; continue; } }
+        if ((p == s || p[-1] == ' ') && !strncmp(p, "TRI", 3) && (p[3] == 0 || p[3] == ' ')) { b[n++] = 'X'; p += 3; continue; }
+        if ((p == s || p[-1] == ' ') && !strncmp(p, "SQ", 2) && (p[2] == 0 || p[2] == ' ')) { b[n++] = 'Y'; p += 2; continue; }
+        b[n++] = *p++; }
+    b[n] = 0; t_tight = 1; text(8 + dsag_ox + x, 16 + dsag_oy + y + 2, sz, c8(c), b); t_tight = 0; }
+static int cue_gap;
+void dsag_cue(int k) {
+    if (cue_gap > 0 && k != 3) return; cue_gap = 6;
+    switch (k) { case 0: sfx(1); break; case 1: sfx(0); break; case 2: sfx(6); break; case 3: sfx(5); break; default: sfx(2); break; }
+}
+static const char *const agName[AG_NGAME] = { "BORTUA FIGHTER", "BORE BREAKER", "SNACK CATCH", "WHACK-A-BORE", "HIGH STRIKER", "BORE BLOCKS", "STAR BORE", "TURBO BORE", "MUNCH MAZE", "HOOPS", "SKEE-BORE", "AIR HOCKEY", "BEAT BORE", "CLAW GRAB" };
+static const char *const agTitle[AG_NGAME] = { "Bortua Fighter", "Bore Breaker", "Snack Catch", "Whack-a-Bore", "High Striker", "Bore Blocks", "Star Bore", "Turbo Bore", "Munch Maze", "Hoops", "Skee-Bore", "Air Hockey", "Beat Bore", "Claw Grab" };
+static const u8 agPrice[AG_NGAME] = { 2, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 2, 1, 1 };
+static const u16 agPar[AG_NGAME] = { 60, 120, 60, 40, 400, 600, 2000, 3000, 2000, 40, 260, 160, 6000, 12 };
+static const u8 agCol[AG_NGAME][3] = { { 230, 60, 70 }, { 60, 200, 250 }, { 250, 170, 50 }, { 120, 220, 90 }, { 250, 120, 40 }, { 170, 90, 250 }, { 250, 80, 170 }, { 250, 220, 50 }, { 250, 230, 60 }, { 250, 130, 60 }, { 90, 220, 160 }, { 90, 160, 255 }, { 250, 90, 220 }, { 255, 120, 190 } };
+static const char *const agHow1[AG_NGAME] = { "", "SLIDE THE STYLUS: THE PADDLE FOLLOWS", "SLIDE THE STYLUS: THE BASKET FOLLOWS", "TAP A HOLE, OR D-PAD AND A", "TAP A: STOP THE METER", "D-PAD MOVE. A TURNS. UP DROPS", "D-PAD FLY. A SHOOT. B BOMB", "LEFT RIGHT STEER. A GAS. B NITRO", "D-PAD TURNS. EAT EVERY DOT", "LEFT RIGHT MOVE. A STOPS THE METER", "LEFT RIGHT AIM. HOLD A, LET GO", "D-PAD MOVES YOUR MALLET", "D-PAD OR A B X Y ON THE LINE", "LEFT RIGHT MOVE. A DROPS" };
+static const char *const agHow2[AG_NGAME] = { "", "BREAK THE WALL. CATCH POWER-UPS", "CATCH SNACKS. DODGE ROCKS", "GOLD BORES PAY MORE. NO BOMBS", "HIT THE SWEET SPOT. RING THE BELL", "FILL LINES. THE FLOOR RISES", "SHOOT THE FLEET. BEAT THE BOSS", "BEAT THE CLOCK. DODGE THE TRAFFIC", "BIG DOTS MAKE GHOSTS SCARED", "SINK IT. KEEP A STREAK. GET HOT", "ROLL FOR THE HIGH RINGS", "FIRST TO SEVEN", "KEEP THE GROOVE UP. BUILD A COMBO", "GRAB A PLUSH AND BRING IT HOME" };
+static int arcade_game_at(int x, int y) { return 1 + (x * 3 + y * 2) % (AG_NGAME - 1); }   // (no fighter yet: 1..13)
+static const char *ag_title(int g) { return agTitle[g % AG_NGAME]; }
+static int ag_price(int g) { return agPrice[g % AG_NGAME]; }
 #ifdef DSTEST
 static int ag_testlot;
 #endif
@@ -374,80 +416,48 @@ static int in_arcade(void) { BInfo b; blk(lot_bx, lot_by, &b);
     if (ag_testlot) return 1;
 #endif
     return b.lot == LOT_ARCADE; }
-static u32 a_rng = 0x9E3779B9u;
-static int r8(void) { a_rng = a_rng * 1103515245u + 12345u; return (int)((a_rng >> 16) & 255); }
-static int ag, ag_phase, ag_acc, ag_pts, ag_tix, ag_t, ag_lives, ag_psel, ag_tx = -1, ag_tap = -1, ag_dirty;
+// the high-score tables ('SA' in the save): per game three of { score (17 bits), three initials (5 bits each, 1 = A) }, the first-play bits, the games played
+#define SC_(e) ((int)((e) & 0x1FFFF))
+static u32 ar_hs[AG_NGAME][3]; static u16 ar_pm, ar_plays;
+static void ini_str(u32 e, char *o) { for (int i = 0; i < 3; i++) { int v = (int)((e >> (17 + i * 5)) & 31); o[i] = (char)(v >= 1 && v <= 26 ? 'A' + v - 1 : '-'); } o[3] = 0; }
+static int hs_rank(int g, int sc) { for (int i = 0; i < 3; i++) if (sc > SC_(ar_hs[g][i])) return i; return -1; }
+static void hs_put(int g, int k, int sc, const char *ini) {
+    for (int i = 2; i > k; i--) ar_hs[g][i] = ar_hs[g][i - 1];
+    u32 e = (u32)MIN(sc, 0x1FFFF); for (int i = 0; i < 3; i++) { int c = ini[i]; e |= (u32)((c >= 'A' && c <= 'Z' ? c - 'A' + 1 : 0) << (17 + i * 5)); } ar_hs[g][k] = e;
+}
+static int ag, ag_phase, ag_acc, ag_tix, ag_psel, ag_dirty, ag_rt, ag_hrank, ag_ic, ag_over; static char ag_ini[4];
 static const char *ag_msg = "";
-static u8 ab_br[4][10]; static int ab_left, ab_px, ab_bx, ab_by, ab_vx, ab_vy, ab_held;   // BORE BREAKER
-static s16 ac_ix[6], ac_iy[6]; static u8 ac_ik[6], ac_on[6]; static int ac_bk;               // SNACK CATCH
-static int aw_sel, aw_mole, aw_mt, aw_gap, aw_hit;                                           // WHACK-A-BORE
-static int as_tr, as_pos, as_dir, as_stop;                                                   // HIGH STRIKER
+static int ag_held_id;
 static void ag_start(void) {
-    ag_pts = 0; ag_tix = 0; ag_t = 0; ag_lives = 3;
-    switch (ag) {
-    case AG_BREAKER: for (int r = 0; r < 4; r++) for (int c = 0; c < 10; c++) ab_br[r][c] = 1; ab_left = 40; ab_px = 102; ab_held = 1; break;
-    case AG_CATCH: memset(ac_on, 0, sizeof ac_on); ac_bk = 106; break;
-    case AG_WHACK: aw_sel = 4; aw_mole = -1; aw_gap = 10; aw_hit = 0; break;
-    case AG_STRIKER: as_tr = 0; as_pos = 0; as_dir = 1; as_stop = 0; break;
-    }
+    ag_pts = 0; ag_t = 0; ag_lives = 3; ag_combo = 0; ag_best = 0; ag_perf = 1; ag_level = 1; ag_shake = 0; ag_np = 1; ag_tix = 0; dsag_fx_reset(); dsag_ox = dsag_oy = 0;
+    ds_ag_fn[ag].start();
 }
-static int ag_tick(int hd, int pr) {   // one 30 Hz tick of the game; 0 when it is over (arcade.c tick)
-    if (pr & PD_ST) return 0;
-    switch (ag) {
-    case AG_BREAKER:
-        if (hd & PD_L) ab_px -= 5; if (hd & PD_R) ab_px += 5; if (ag_tx >= 0) ab_px = ag_tx * 240 / 256 - 18; ab_px = CLAMP(ab_px, 20, 184);
-        if (ab_held) { ab_bx = ab_px + 16; ab_by = 138; if (pr & PD_X) { ab_held = 0; ab_vx = (r8() & 1) ? 2 : -2; ab_vy = -3; } }
-        else {
-            ab_bx += ab_vx; ab_by += ab_vy;
-            if (ab_bx < 20) { ab_bx = 20; ab_vx = -ab_vx; } if (ab_bx > 216) { ab_bx = 216; ab_vx = -ab_vx; } if (ab_by < 13) { ab_by = 13; ab_vy = -ab_vy; }
-            if (ab_vy > 0 && ab_by >= 140 && ab_by <= 146 && ab_bx + 4 >= ab_px && ab_bx <= ab_px + 36) { ab_vy = -3; ab_vx = CLAMP((ab_bx + 2 - (ab_px + 18)) / 5, -3, 3); if (!ab_vx) ab_vx = (r8() & 1) ? 1 : -1; ab_by = 138; sfx(0); }
-            else if (ab_by >= 160) { ag_lives--; ab_held = 1; voice(V_NAH); }
-            { int c = (ab_bx + 2 - 20) / 20, r = (ab_by + 2 - 24) / 9; if (ab_bx + 2 >= 20 && ab_by + 2 >= 24 && r < 4 && c < 10 && ab_br[r][c]) { ab_br[r][c] = 0; ab_left--; ag_pts++; ab_vy = -ab_vy; sfx(1); } }
-        }
-        if (ag_lives <= 0 || ab_left <= 0) { ag_tix = ag_pts / 2 + (ab_left == 0 ? 8 : 0); return 0; }
-        return 1;
-    case AG_CATCH:
-        if (hd & PD_L) ac_bk -= 6; if (hd & PD_R) ac_bk += 6; if (ag_tx >= 0) ac_bk = ag_tx * 240 / 256 - 14; ac_bk = CLAMP(ac_bk, 4, 208);
-        if (ag_t % 12 == 0) for (int i = 0; i < 6; i++) if (!ac_on[i]) { ac_on[i] = 1; ac_ix[i] = (s16)(8 + r8() % 216); ac_iy[i] = 14; ac_ik[i] = (u8)((r8() % 4 == 0) ? 2 : (r8() & 1)); break; }
-        for (int i = 0; i < 6; i++) if (ac_on[i]) {
-            ac_iy[i] = (s16)(ac_iy[i] + 3 + ag_t / 200);
-            if (ac_iy[i] >= 134 && ac_iy[i] <= 146 && ac_ix[i] + 8 >= ac_bk && ac_ix[i] <= ac_bk + 28) { ac_on[i] = 0; if (ac_ik[i] == 2) { ag_lives--; voice(V_GROAN); } else { ag_pts++; sfx(1); } }
-            else if (ac_iy[i] >= 160) ac_on[i] = 0; }
-        if (++ag_t >= 600 || ag_lives <= 0) { ag_tix = ag_pts / 2; return 0; }
-        return 1;
-    case AG_WHACK:
-        if ((pr & PD_L) && aw_sel % 3 > 0) aw_sel--; if ((pr & PD_R) && aw_sel % 3 < 2) aw_sel++;
-        if ((pr & PD_U) && aw_sel > 2) aw_sel -= 3; if ((pr & PD_D) && aw_sel < 6) aw_sel += 3;
-        if (ag_tap >= 0) { aw_sel = ag_tap; pr |= PD_X; ag_tap = -1; }
-        if (aw_mole < 0) { if (--aw_gap <= 0) { aw_mole = r8() % 9; aw_mt = 26 - MIN(12, ag_pts); } }
-        else if (--aw_mt <= 0) { aw_mole = -1; aw_gap = 6 + (r8() & 7); }
-        if (aw_hit > 0) aw_hit--;
-        if (pr & PD_X) { if (aw_mole == aw_sel) { ag_pts++; aw_mole = -1; aw_gap = 5 + (r8() & 7); aw_hit = 6; sfx(1); } }
-        if (++ag_t >= 900) { ag_tix = ag_pts * 2 / 3; return 0; }
-        return 1;
-    case AG_STRIKER:
-        if (as_stop) { if (--as_stop == 0) { if (++as_tr >= 5) { ag_tix = ag_pts / 45; return 0; } as_pos = 0; as_dir = 1; } return 1; }
-        if (pr & PD_X) { ag_pts += as_pos; as_stop = 30; if (as_pos >= 95) voice(V_YEHA); else sfx(0); return 1; }
-        as_pos += as_dir * (4 + as_tr * 2); if (as_pos >= 100) { as_pos = 100; as_dir = -1; } if (as_pos <= 0) { as_pos = 0; as_dir = 1; }
-        return 1;
-    }
-    return 0;
-}
-typedef struct { const char *nm; u16 cost; s8 fun, food, social; const char *say; } Prize;
+typedef struct { const char *nm; u16 cost; s8 fun, food, social; int cash; const char *say; } Prize;
 static const Prize prz[] = {
-    { "CANDY", 10, 5, 15, 0, "SUGAR RUSH!" }, { "BOUNCY BALL", 25, 15, 0, 5, "BOING BOING BOING" }, { "PLUSH TEDDY", 60, 25, 0, 10, "IT HAS A TINY HAT" },
-    { "MEGA TROPHY", 150, 30, 0, 30, "NUMBER ONE!" }, { "GOLDEN TICKET", 400, 10, 0, 0, "TRADED IN FOR $500!" } };
+    { "CANDY", 10, 5, 15, 0, 0, "SUGAR RUSH!" }, { "SODA POP", 15, 8, 20, 0, 0, "FIZZY!" }, { "BOUNCY BALL", 25, 15, 0, 5, 0, "BOING BOING BOING" },
+    { "SPARKLER", 40, 18, 0, 8, 0, "PRETTY LIGHTS" }, { "PLUSH TEDDY", 60, 25, 0, 10, 0, "IT HAS A TINY HAT" }, { "BOARD GAME", 90, 22, 0, 25, 0, "GAME NIGHT!" },
+    { "PARTY HAT", 120, 20, 0, 30, 0, "LOOKING FESTIVE" }, { "MEGA TROPHY", 150, 30, 0, 30, 0, "NUMBER ONE!" }, { "GIANT PLUSH", 250, 40, 0, 20, 0, "BIGGER THAN YOU" },
+    { "GOLDEN TICKET", 400, 10, 0, 0, 500, "TRADED IN FOR $500!" } };
 #define NPRZ ((int)(sizeof prz / sizeof prz[0]))
 static void need_add(Sim *s, int n, int v) { s->need[n] = cl100(s->need[n] + v); }
-static void ag_open(int g) { ag = g; ag_phase = 0; ag_acc = 0; ag_psel = 0; ag_msg = ""; ag_tx = ag_tap = -1; mg_ui = g == AG_PRIZES ? 2 : 1; mg_ver++; }
-static void ag_finish(void) {   // a game over: the tickets, a little fun, a little sleepier
+static void ag_open(int g) { ag = g; ag_phase = 0; ag_acc = 0; ag_psel = 0; ag_msg = ""; ag_rt = 0; dsag_tx = dsag_tap = -1; ag_held_id = 0; mg_ui = g == AG_PRIZES ? 2 : 1; mg_ver++; }
+static void ag_finish(void) {   // a game over: the tickets, fun, a little sleepier
     Sim *s = &sims[ctl]; static char b[48];
     arcade_tix = MIN(9999, arcade_tix + ag_tix);
-    need_add(s, 1, 18 + ag_tix); need_add(s, 2, -3); life_ev(ctl, WN_FUN, 0);
+    need_add(s, 1, MIN(45, 16 + ag_tix / 2)); need_add(s, 2, -3); life_ev(ctl, WN_FUN, 0);
     snprintf(b, sizeof b, "+%d tickets (%d)", ag_tix, arcade_tix); say(b);
     voice(ag_tix >= 8 ? V_YAHOO : ag_tix ? V_LAUGH : V_NAH);
 }
-static int ag_update(int hd, int pr, int steps) {   // 1 while it runs (arcade_update)
+static int ag_tix_calc(int g, int pts) {   // the PS1's: par-based, the combo, a clean run, a first play bonus
+    int t = pts * 12 / agPar[g]; if (t > 30) t = 30 + (t - 30) / 2; t += ag_best / 4; if (ag_perf && pts > agPar[g] / 2) t += 6;
+    t = CLAMP(t, 0, 80); if (!(ar_pm & (1 << g))) { t += 10; ar_pm |= (u16)(1 << g); } return t;
+}
+static void ag_over_now(void) {
+    ag_phase = 2; ag_acc = 0; ag_over = 0; ag_tix = ag_tix_calc(ag, ag_pts); ag_hrank = hs_rank(ag, ag_pts); if (ar_plays < 60000) ar_plays++;
+    voice(ag_tix >= 12 ? V_YAHOO : V_LAUGH);
+}
+static void ag_ini_begin(void) { const char *f = sname[ctl]; for (int i = 0; i < 3; i++) { char c = f[i]; ag_ini[i] = (char)((c >= 'A' && c <= 'Z') ? c : (c >= 'a' && c <= 'z') ? c - 32 : 'A' + i); } ag_ini[3] = 0; ag_ic = 0; }
+static int ag_update(int hd, int pr, int steps, int quit) {   // 1 while it runs (arcade_update)
     if (ag == AG_PRIZES) {
         if (pr & PD_U) ag_psel = (ag_psel + NPRZ - 1) % NPRZ;
         if (pr & PD_D) ag_psel = (ag_psel + 1) % NPRZ;
@@ -456,111 +466,114 @@ static int ag_update(int hd, int pr, int steps) {   // 1 while it runs (arcade_u
             const Prize *p = &prz[ag_psel];
             if (arcade_tix < p->cost) { ag_msg = "NOT ENOUGH TICKETS YET"; voice(V_NAH); return 1; }
             Sim *s = &sims[ctl]; arcade_tix -= p->cost; static char b[48];
-            need_add(s, 1, p->fun); need_add(s, 0, p->food); need_add(s, 3, p->social);
-            if (ag_psel == NPRZ - 1) funds += 500;
+            need_add(s, 1, p->fun); need_add(s, 0, p->food); need_add(s, 3, p->social); funds += p->cash;
             snprintf(b, sizeof b, "%s", p->say); say(b); voice(V_YAHOO); life_ev(ctl, WN_FUN, 0);
             return 0;
         }
         return 1;
     }
-    if (ag_phase == 0) { if (pr & PD_X) { ag_phase = 1; ag_start(); } if (pr & PD_O) { funds += agPrice[ag]; return 0; } return 1; }   // (backing out: the money back)
-    if (ag_phase == 2) { ag_acc += steps; if (ag_acc > 40 && (pr & (PD_X | PD_O))) { ag_finish(); return 0; } return 1; }
+    if (ag_phase == 0) { ag_rt += steps; if (pr & PD_X) { ag_phase = 1; ag_start(); } if (pr & PD_O) { funds += ag_price(ag); return 0; } return 1; }   // (backing out: the money back)
+    if (ag_phase == 2) { ag_acc += steps; ag_over++; if (ag_acc > 40 && (pr & (PD_X | PD_O))) { ag_finish(); if (ag_hrank >= 0) { ag_phase = 3; ag_ini_begin(); return 1; } return 0; } return 1; }
+    if (ag_phase == 3) {
+        if (pr & PD_U) ag_ini[ag_ic] = (char)(ag_ini[ag_ic] == 'Z' ? 'A' : ag_ini[ag_ic] + 1);
+        if (pr & PD_D) ag_ini[ag_ic] = (char)(ag_ini[ag_ic] == 'A' ? 'Z' : ag_ini[ag_ic] - 1);
+        if ((pr & PD_L) && ag_ic > 0) ag_ic--; if ((pr & PD_R) && ag_ic < 2) ag_ic++;
+        if (pr & PD_X) { if (ag_ic < 2) ag_ic++; else { hs_put(ag, ag_hrank, ag_pts, ag_ini); return 0; } }
+        if (pr & PD_O) { if (ag_ic > 0) ag_ic--; else { hs_put(ag, ag_hrank, ag_pts, ag_ini); return 0; } }
+        return 1;
+    }
+    if (quit) { ag_over_now(); ag_tix = 0; ag_hrank = -1; return 1; }   // (quitting: no tickets)
     ag_acc += steps;
-    while (ag_acc >= 2) { ag_acc -= 2; int k = ag_tick(hd, pr); pr = 0; ag_dirty = 1; if (!k) { ag_phase = 2; ag_acc = 0; break; } }
+    while (ag_acc >= 2) { ag_acc -= 2; if (cue_gap > 0) cue_gap--;
+        int k = ds_ag_fn[ag].tick(hd, pr, 0, 0); pr = 0; ag_t++; dsag_fx_tick(); ag_dirty = 1; if (!k) { ag_over_now(); break; } }
     return 1;
 }
 // ---- the picture: the field on the top screen, the pad and the buttons on the bottom ----
-#define AX(x) (8 + (x))
-#define AY(y) (16 + (y))
-static void aR(int x, int y, int w, int h, u16 c) { rect(AX(x), AY(y), w, h, c); }
-static void aD(int cx, int cy, int r, u16 c) { ellf(AX(cx), AY(cy), r, r, c); }
 static void ctext(int cx, int y, int s, u16 c, const char *t) { text(cx - tw(s, t) / 2, y, s, c, t); }
+static void ar_scores(int g, int y0) {
+    char b[40], n[4]; ctext(128, y0, 1, K8(255, 190, 40), "HIGH SCORES");
+    for (int i = 0; i < 3; i++) { ini_str(ar_hs[g][i], n); if (SC_(ar_hs[g][i])) snprintf(b, sizeof b, "%d  %s  %d", i + 1, n, SC_(ar_hs[g][i])); else snprintf(b, sizeof b, "%d  ---  0", i + 1); ctext(128, y0 + 18 + i * 16, 1, i == 0 ? K8(255, 190, 40) : TXT, b); }
+}
 static void ar_top(void) {
-    scr = offbuf; char b[40]; rect(0, 0, 256, 192, K8(16, 10, 34));
+    scr = offbuf; char b[40]; rect(0, 0, 256, 192, K8(16, 10, 34)); dsag_ox = dsag_oy = 0;
     if (mg_ui == 2) {
         panel(8, 8, 240, 160, "The Prize Counter");
-        for (int i = 0; i < NPRZ; i++) { int y = 32 + i * 24, s = i == ag_psel; rect(14, y - 2, 228, 22, s ? K8(226, 242, 254) : PANB); rect(15, y - 1, 226, 20, s ? C15(24, 28, 31) : PAN);
-            text(22, y + 5, 1, s ? C15(2, 7, 20) : TXT, prz[i].nm); sprintf(b, "%d tix", prz[i].cost); text(236 - tw(1, b), y + 5, 1, arcade_tix >= prz[i].cost ? C15(14, 30, 14) : C15(31, 12, 10), b); }
-        sprintf(b, "You have %d tickets", arcade_tix); ctext(128, 156, 1, C15(24, 28, 31), b); if (ag_msg[0]) ctext(128, 180, 1, C15(31, 14, 12), ag_msg);
+        for (int i = 0; i < NPRZ; i++) { int y = 26 + i * 13, s = i == ag_psel; rect(14, y, 228, 12, s ? K8(226, 242, 254) : PANB); rect(15, y + 1, 226, 10, s ? C15(24, 28, 31) : PAN);
+            text(20, y + 3, 1, s ? C15(2, 7, 20) : TXT, prz[i].nm); sprintf(b, "%d tix", prz[i].cost); text(236 - tw(1, b), y + 3, 1, arcade_tix >= prz[i].cost ? (s ? C15(2, 14, 4) : C15(14, 30, 14)) : C15(31, 12, 10), b); }
+        sprintf(b, "You have %d tickets", arcade_tix); ctext(128, 158, 1, C15(24, 28, 31), b); if (ag_msg[0]) ctext(128, 176, 1, C15(31, 14, 12), ag_msg);
         return; }
-    rect(8, 1, 240, 13, K8(60, 30, 110)); ctext(128, 4, 1, K8(90, 230, 240), agName[ag]);
-    aR(0, 0, 240, 160, K8(4, 4, 18));
-    if (ag_phase == 0) { ctext(128, 50, 2, K8(255, 210, 50), agName[ag]); ctext(128, 100, 1, TXT, agHow1[ag]); ctext(128, 116, 1, TXT, agHow2[ag]); }
-    else {
-        char s[24];
-        #define HUD2(a, n, bb, m) do { snprintf(s, sizeof s, "%s %d", a, n); text(AX(4), AY(2) + 2, 1, TXT, s); snprintf(s, sizeof s, "%s %d", bb, m); text(AX(236) - tw(1, s), AY(2) + 2, 1, K8(255, 190, 40), s); } while (0)
-        switch (ag) {
-        case AG_BREAKER: { static const u8 rc[4][3] = { { 250, 50, 50 }, { 250, 146, 32 }, { 226, 226, 32 }, { 50, 210, 80 } };
-            HUD2("SCORE", ag_pts, "LIVES", ag_lives);
-            for (int r = 0; r < 4; r++) for (int c = 0; c < 10; c++) if (ab_br[r][c]) aR(20 + c * 20 + 1, 24 + r * 9 + 1, 18, 7, K8(rc[r][0], rc[r][1], rc[r][2]));
-            aR(ab_px, 144, 36, 5, K8(32, 226, 240)); aR(ab_px, 144, 36, 1, K8(255, 255, 255)); aR(ab_bx, ab_by, 4, 4, K8(255, 255, 255));
-            if (ab_held && ag_phase == 1) ctext(AX(120), AY(110), 1, K8(170, 210, 250), "A SERVES");
-            break; }
-        case AG_CATCH:
-            HUD2("SNACKS", ag_pts, "LIVES", ag_lives); snprintf(s, sizeof s, "TIME %d", MAX(0, 600 - ag_t) / 30); ctext(AX(120), AY(2) + 2, 1, K8(170, 210, 250), s);
-            for (int i = 0; i < 6; i++) if (ac_on[i]) { if (ac_ik[i] == 2) aR(ac_ix[i], ac_iy[i], 8, 8, K8(110, 110, 120)); else aD(ac_ix[i] + 4, ac_iy[i] + 4, 4, ac_ik[i] ? K8(250, 210, 32) : K8(250, 80, 160)); }
-            aR(ac_bk, 142, 28, 8, K8(192, 112, 32)); aR(ac_bk, 142, 28, 2, K8(250, 176, 64));
-            break;
-        case AG_WHACK:
-            HUD2("HITS", ag_pts, "TIME", MAX(0, 900 - ag_t) / 30);
-            for (int i = 0; i < 9; i++) { int cx = 60 + (i % 3) * 60, cy = 44 + (i / 3) * 38;
-                aD(cx, cy + 6, 16, K8(8, 8, 16)); aD(cx, cy + 4, 15, K8(40, 24, 16));
-                if (i == aw_mole) { aD(cx, cy - 4, 11, K8(160, 96, 48)); aR(cx - 5, cy - 7, 3, 3, K8(255, 255, 255)); aR(cx + 3, cy - 7, 3, 3, K8(255, 255, 255)); aR(cx - 3, cy + 1, 7, 2, K8(8, 8, 16)); }
-                if (i == aw_sel) { aR(cx - 19, cy - 17, 38, 1, K8(250, 210, 40)); aR(cx - 19, cy + 19, 38, 1, K8(250, 210, 40)); aR(cx - 19, cy - 17, 1, 37, K8(250, 210, 40)); aR(cx + 18, cy - 17, 1, 37, K8(250, 210, 40)); } }
-            if (aw_hit > 0) ctext(AX(120), AY(140), 2, K8(250, 210, 40), "BONK!");
-            break;
-        case AG_STRIKER:
-            HUD2("POINTS", ag_pts, "SWING", MIN(as_tr + 1, 5));
-            aR(106, 22, 28, 120, K8(48, 48, 80)); aR(108, 24, 24, 116, K8(16, 16, 32));
-            { int h = as_pos * 116 / 100; aR(108, 140 - h, 24, h, as_pos >= 95 ? K8(250, 210, 32) : as_pos >= 60 ? K8(250, 112, 32) : K8(48, 192, 80)); }
-            aD(120, 17, 5, K8(250, 210, 40));
-            if (as_stop) ctext(AX(120), AY(146), 2, TXT, as_pos >= 95 ? "DING!" : as_pos >= 60 ? "NOT BAD" : "WEAK!");
-            break;
-        }
-        #undef HUD2
-        if (ag_phase == 2) { rect(48, 50, 160, 76, K8(10, 12, 30)); rect(50, 52, 156, 72, K8(20, 22, 44)); ctext(128, 60, 2, K8(250, 210, 40), "GAME OVER");
-            sprintf(b, "SCORE %d", ag_pts); ctext(128, 88, 1, TXT, b); sprintf(b, "+%d TICKETS", ag_tix); ctext(128, 104, 1, C15(14, 30, 14), b); }
+    rect(6, 14, 244, 164, K8(agCol[ag][0] / 3, agCol[ag][1] / 3, agCol[ag][2] / 3 + 20));
+    rect(8, 1, 240, 12, K8(60, 30, 110)); ctext(128, 4, 1, K8(agCol[ag][0], agCol[ag][1], agCol[ag][2]), agName[ag]);
+    dsag_rect(0, 0, 240, 160, 0x120404u, 0);
+    if (ag_phase == 0) {
+        int pg = (ag_rt / 100) % 2;
+        if (pg == 0) { ctext(128, 40, 2, K8(agCol[ag][0], agCol[ag][1], agCol[ag][2]), agName[ag]); ctext(128, 80, 1, TXT, agHow1[ag]); ctext(128, 96, 1, TXT, agHow2[ag]);
+            sprintf(b, "PLAY $%d", ag_price(ag)); ctext(128, 128, 1, K8(255, 190, 40), b); ctext(128, 146, 1, K8(170, 210, 250), (ag_rt / 15) & 1 ? "PRESS A TO START" : ""); }
+        else { ctext(128, 40, 2, TXT, agName[ag]); ar_scores(ag, 72); }
+    } else if (ag_phase == 3) {
+        ctext(128, 30, 2, K8(255, 190, 40), "NEW RECORD!"); sprintf(b, "SCORE %d", ag_pts); ctext(128, 56, 1, TXT, b);
+        for (int i = 0; i < 3; i++) { char c[2] = { ag_ini[i], 0 }; int x = 84 + i * 28; rect(8 + x, 16 + 70, 22, 30, i == ag_ic ? K8(250, 200, 60) : K8(60, 70, 110)); rect(8 + x + 1, 16 + 71, 20, 28, K8(10, 10, 30)); text(8 + x + 5, 16 + 77, 2, TXT, c); }
+        ctext(128, 128, 1, K8(170, 210, 250), "UP DOWN PICKS. A NEXT");
+    } else {
+        if (ag_shake > 0) { dsag_ox = (ag_shake & 1) * 3 - 1; dsag_oy = ((ag_shake >> 1) & 1) * 2; }
+        ds_ag_fn[ag].draw(); dsag_fx_draw(); dsag_ox = dsag_oy = 0;
+        if (ag_phase == 2) { rect(56, 68, 144, 80, K8(10, 12, 30)); rect(58, 70, 140, 76, K8(20, 22, 44)); ctext(128, 76, 2, K8(250, 210, 40), "GAME OVER");
+            sprintf(b, "SCORE %d", ag_pts); ctext(128, 100, 1, TXT, b); sprintf(b, "+%d TICKETS", ag_tix); ctext(128, 116, 1, C15(14, 30, 14), b); if (ag_hrank >= 0) ctext(128, 130, 1, K8(255, 190, 40), ag_hrank == 0 ? "NEW BEST!" : "HIGH SCORE!"); }
     }
-    sprintf(b, "TICKETS %d", arcade_tix); ctext(128, 182, 1, K8(200, 210, 240), b);
+    sprintf(b, "TICKETS %d", arcade_tix); ctext(128, 181, 1, K8(200, 210, 240), b);
 }
 #define AQ_X 196
-#define AQ_Y 170
+#define AQ_Y 164
+// the bottom screen's buttons while a game runs: the strip (8,22,240,26), the D-pad, the four face buttons, Quit
+static const struct { s16 x, y, w, h; u8 id; const char *t; } BTN[] = {
+    { 52, 54, 44, 30, 3, "UP" }, { 8, 86, 44, 36, 1, "LEFT" }, { 96, 86, 44, 36, 2, "RIGHT" }, { 52, 124, 44, 30, 4, "DOWN" },
+    { 176, 54, 44, 30, 7, "X" }, { 148, 86, 44, 36, 8, "Y" }, { 204, 86, 44, 36, 5, "A" }, { 176, 124, 44, 30, 6, "B" } };
 static void ar_bottom(void) {
     scr = offbuf; char b[32]; rect(0, 0, 256, 192, K8(24, 16, 54)); rect(0, 0, 256, 16, K8(60, 30, 110)); ctext(128, 4, 1, K8(90, 230, 240), mg_ui == 2 ? "THE PRIZE COUNTER" : agName[ag]);
     if (mg_ui == 2) {
-        for (int i = 0; i < NPRZ; i++) { int y = 22 + i * 27, s = i == ag_psel; rect(8, y, 240, 25, s ? K8(250, 210, 40) : PANB); rect(9, y + 1, 238, 23, s ? C15(24, 28, 31) : PAN); text(16, y + 9, 1, s ? C15(2, 7, 20) : TXT, prz[i].nm); sprintf(b, "%d tix", prz[i].cost); text(240 - tw(1, b), y + 9, 1, arcade_tix >= prz[i].cost ? (s ? C15(2, 14, 4) : C15(14, 30, 14)) : C15(31, 12, 10), b); }
-        chip(8, 162, 116, 26, "Swap", 1); chip(132, 162, 116, 26, "Never mind", 0); return; }
-    if (ag_phase == 0) { sprintf(b, "Play $%d", agPrice[ag]); chip(14, 70, 108, 54, b, 1); chip(134, 70, 108, 54, "Money back", 0); ctext(128, 34, 1, TXT, agHow1[ag]); ctext(128, 48, 1, TXT, agHow2[ag]); return; }
+        const Prize *p = &prz[ag_psel]; chip(8, 24, 116, 44, "Up", 0); chip(132, 24, 116, 44, "Down", 0);
+        rect(8, 76, 240, 70, PANB); rect(9, 77, 238, 68, PAN); ctext(128, 86, 2, C15(2, 7, 20), p->nm); sprintf(b, "%d tickets", p->cost); ctext(128, 108, 1, arcade_tix >= p->cost ? C15(2, 14, 4) : C15(31, 12, 10), b); ctext(128, 124, 1, TXT, p->say);
+        chip(8, 154, 116, 32, "Swap", 1); chip(132, 154, 116, 32, "Never mind", 0); return; }
+    if (ag_phase == 0) { sprintf(b, "Play $%d", ag_price(ag)); chip(14, 70, 108, 54, b, 1); chip(134, 70, 108, 54, "Money back", 0); ctext(128, 34, 1, TXT, agHow1[ag]); ctext(128, 48, 1, TXT, agHow2[ag]); return; }
     if (ag_phase == 2) { chip(30, 60, 196, 70, "Done", 1); return; }
-    chip(AQ_X, AQ_Y, 56, 18, "Quit", 0);
-    switch (ag) {
-    case AG_BREAKER: case AG_CATCH:
-        rect(8, 22, 240, 100, K8(40, 28, 90)); rect(10, 24, 236, 96, K8(30, 20, 70)); ctext(128, 66, 1, K8(170, 190, 250), "Slide the stylus here");
-        if (ag == AG_BREAKER) chip(8, 130, 150, 40, "Serve (A)", ab_held); break;
-    case AG_WHACK:
-        for (int i = 0; i < 9; i++) { int x = 8 + (i % 3) * 80, y = 22 + (i / 3) * 46; rect(x, y, 76, 42, i == aw_sel ? K8(250, 210, 40) : K8(60, 40, 110)); rect(x + 2, y + 2, 72, 38, i == aw_sel ? K8(90, 60, 30) : K8(30, 20, 60)); }
-        break;
-    case AG_STRIKER: chip(8, 24, 240, 130, "STOP (A)", 1); break;
-    }
+    if (ag_phase == 3) { chip(8, 24, 116, 44, "Up", 0); chip(132, 24, 116, 44, "Down", 0); chip(8, 76, 116, 50, "Back", 0); chip(132, 76, 116, 50, ag_ic < 2 ? "Next" : "OK", 1); ctext(128, 140, 1, TXT, "A OR OK TO SAVE ON THE LAST"); return; }
+    chip(AQ_X, AQ_Y, 56, 22, "Quit", 0);
+    if (ag == AG_WHACK) { for (int i = 0; i < 9; i++) { int x = 8 + (i % 3) * 64, y = 22 + (i / 3) * 46; rect(x, y, 60, 42, K8(60, 40, 110)); rect(x + 2, y + 2, 56, 38, K8(30, 20, 60)); } ctext(100, 166, 1, TXT, "TAP A HOLE"); return; }
+    rect(8, 22, 240, 26, K8(40, 28, 90)); rect(10, 24, 236, 22, K8(30, 20, 70)); ctext(128, 31, 1, K8(170, 190, 250), "SLIDE THE STYLUS HERE");
+    for (int i = 0; i < 8; i++) chip(BTN[i].x, BTN[i].y, BTN[i].w, BTN[i].h, BTN[i].t, ag_held_id == BTN[i].id);
 }
-static unsigned ar_bsig(void) { return (unsigned)(mg_ui * 3 + ag_phase * 5 + ag * 7 + (mg_ui == 1 && ag == AG_WHACK ? aw_sel * 11 : 0) + ag_psel * 13 + ab_held * 17 + (arcade_tix > 0) * 23); }
+static unsigned ar_bsig(void) { return (unsigned)(mg_ui * 3 + ag_phase * 5 + ag * 7 + ag_psel * 13 + ag_ic * 19 + ag_held_id * 29 + (arcade_tix > 0) * 23); }
 static void ar_frame(int held, int down, int steps, int tx, int ty) {
-    int hd = 0, pr = 0, tch = held & KEY_TOUCH, td = down & KEY_TOUCH; ag_tx = -1; ag_dirty = 0;
-    if (held & KEY_LEFT) hd |= PD_L; if (held & KEY_RIGHT) hd |= PD_R; if (held & KEY_UP) hd |= PD_U; if (held & KEY_DOWN) hd |= PD_D; if (held & KEY_A) hd |= PD_X;
-    if (down & KEY_LEFT) pr |= PD_L; if (down & KEY_RIGHT) pr |= PD_R; if (down & KEY_UP) pr |= PD_U; if (down & KEY_DOWN) pr |= PD_D; if (down & KEY_A) pr |= PD_X; if (down & KEY_B) pr |= PD_O; if (down & KEY_START) pr |= PD_ST;
+    int hd = 0, pr = 0, tch = held & KEY_TOUCH, td = down & KEY_TOUCH; dsag_tx = -1; ag_dirty = 0;
+    if (held & KEY_LEFT) hd |= PADB_LEFT; if (held & KEY_RIGHT) hd |= PADB_RIGHT; if (held & KEY_UP) hd |= PADB_UP; if (held & KEY_DOWN) hd |= PADB_DOWN;
+    if (held & KEY_A) hd |= PADB_CRO; if (held & KEY_B) hd |= PADB_CIR; if (held & KEY_X) hd |= PADB_TRI; if (held & KEY_Y) hd |= PADB_SQU;
+    if (down & KEY_LEFT) pr |= PADB_LEFT; if (down & KEY_RIGHT) pr |= PADB_RIGHT; if (down & KEY_UP) pr |= PADB_UP; if (down & KEY_DOWN) pr |= PADB_DOWN;
+    if (down & KEY_A) pr |= PADB_CRO; if (down & KEY_B) pr |= PADB_CIR; if (down & KEY_X) pr |= PADB_TRI; if (down & KEY_Y) pr |= PADB_SQU; if (down & KEY_START) pr |= PADB_START;
+    int fl = 0;   // the menu keys (PD_*) from the same presses
+    if (pr & PADB_LEFT) fl |= PD_L; if (pr & PADB_RIGHT) fl |= PD_R; if (pr & PADB_UP) fl |= PD_U; if (pr & PADB_DOWN) fl |= PD_D; if (pr & PADB_CRO) fl |= PD_X; if (pr & PADB_CIR) fl |= PD_O; if (pr & PADB_START) fl |= PD_ST;
+    int id = 0;
     if (mg_ui == 2) {
-        if (td) { for (int i = 0; i < NPRZ; i++) if (hit(8, 22 + i * 27, 240, 25, tx, ty)) ag_psel = i; if (hit(8, 162, 116, 26, tx, ty)) pr |= PD_X; if (hit(132, 162, 116, 26, tx, ty)) pr |= PD_O; }
-    } else if (ag_phase == 0) { if (td) { if (hit(14, 70, 108, 54, tx, ty)) pr |= PD_X; if (hit(134, 70, 108, 54, tx, ty)) pr |= PD_O; } }
-    else if (ag_phase == 2) { if (td) pr |= PD_X; }
+        if (td) { if (hit(8, 24, 116, 44, tx, ty)) fl |= PD_U; if (hit(132, 24, 116, 44, tx, ty)) fl |= PD_D; if (hit(8, 154, 116, 32, tx, ty)) fl |= PD_X; if (hit(132, 154, 116, 32, tx, ty)) fl |= PD_O; }
+    } else if (ag_phase == 0) { if (td) { if (hit(14, 70, 108, 54, tx, ty)) fl |= PD_X; if (hit(134, 70, 108, 54, tx, ty)) fl |= PD_O; } }
+    else if (ag_phase == 2) { if (td) fl |= PD_X; }
+    else if (ag_phase == 3) { if (td) { if (hit(8, 24, 116, 44, tx, ty)) fl |= PD_U; if (hit(132, 24, 116, 44, tx, ty)) fl |= PD_D; if (hit(8, 76, 116, 50, tx, ty)) fl |= PD_O; if (hit(132, 76, 116, 50, tx, ty)) fl |= PD_X; } }
     else {
-        if (td && hit(AQ_X, AQ_Y, 56, 18, tx, ty)) pr |= PD_ST;
-        if (ag == AG_BREAKER || ag == AG_CATCH) { if (tch && hit(8, 22, 240, 100, tx, ty)) ag_tx = tx; if (ag == AG_BREAKER && td && hit(8, 130, 150, 40, tx, ty)) pr |= PD_X; }
-        else if (ag == AG_WHACK) { if (td) for (int i = 0; i < 9; i++) if (hit(8 + (i % 3) * 80, 22 + (i / 3) * 46, 76, 42, tx, ty)) ag_tap = i; }
-        else if (ag == AG_STRIKER) { if (td && hit(8, 24, 240, 130, tx, ty)) pr |= PD_X; }
+        if (tch) {
+            if (hit(AQ_X, AQ_Y, 56, 22, tx, ty)) { if (td) fl |= PD_ST; }
+            else if (ag == AG_WHACK) { if (td) for (int i = 0; i < 9; i++) if (hit(8 + (i % 3) * 64, 22 + (i / 3) * 46, 60, 42, tx, ty)) dsag_tap = i; }
+            else {
+                if (hit(8, 22, 240, 26, tx, ty)) { dsag_tx = tx; id = 9; }
+                for (int i = 0; i < 8; i++) if (hit(BTN[i].x, BTN[i].y, BTN[i].w, BTN[i].h, tx, ty)) id = BTN[i].id;
+                static const int bit[10] = { 0, PADB_LEFT, PADB_RIGHT, PADB_UP, PADB_DOWN, PADB_CRO, PADB_CIR, PADB_TRI, PADB_SQU, 0 };
+                hd |= bit[id]; if (id != ag_held_id) pr |= bit[id];
+            }
+        }
+        if (id != ag_held_id) { ag_held_id = id; mg_ver++; }
     }
-    int old = ag_phase, op = ag_psel;
-    if (!ag_update(hd, pr, steps)) { mg_ui = 0; mg_ver++; return; }
-    if (ag_dirty || pr || old != ag_phase || op != ag_psel || ag_tx >= 0) mg_ver++;
+    int old = ag_phase, op = ag_psel, oi = ag_ic, play = ag_phase == 1 && mg_ui == 1;
+    if (!(play ? ag_update(hd, pr & ~PADB_START, steps, (fl & PD_ST) != 0) : ag_update(0, fl, steps, 0))) { mg_ui = 0; mg_ver++; return; }
+    if (ag_phase == 0 && ag_rt % 15 < 2) mg_ver++;
+    if (ag_dirty || fl || old != ag_phase || op != ag_psel || oi != ag_ic || dsag_tx >= 0) mg_ver++;
 }
 
 // ==== THE UNDERWORLD (src/heist_ui.c): GRAND THEFT. Pick a ride, sneak through three gates (a gauge each), run for it if the alarm went; keep it or fence it. Heat cools with the days ====
@@ -1304,12 +1317,14 @@ static void mg_frame(int held, int down, int steps, int tx, int ty) { if (mg_ui 
 // ==== the mini-games' saves: blocks after the farm's, each { magic, size, data }; a save from before has none (all at their start) ====
 #define MG_HT 0x5448   // 'HT': the underworld's heat, kept boats and aircraft, logic
 #define MG_AR 0x5241   // 'AR': the arcade's tickets, the fight record
+#define MG_AS 0x5341   // 'SA': the arcade's high-score tables, first-play bits, games played
 #define MG_SK 0x4B53   // 'SK': the board and the skate scores
-static void mg_reset(void) { has_board = on_board = 0; board_lift = 0; skate_score = skate_best = 0; arcade_tix = fight_wins = fight_champ = fight_best = 0; mg_ui = 0; hs_heat = hs_day = hs_stolen = hs_logic = 0; gt_reset(); }
+static void mg_reset(void) { has_board = on_board = 0; board_lift = 0; skate_score = skate_best = 0; arcade_tix = fight_wins = fight_champ = fight_best = 0; memset(ar_hs, 0, sizeof ar_hs); ar_pm = ar_plays = 0; mg_ui = 0; hs_heat = hs_day = hs_stolen = hs_logic = 0; gt_reset(); }
 static int mg_pack(u8 *o) {
     int n = 0; u16 th[2]; s32 v[3];
     th[0] = MG_SK; th[1] = 12; v[0] = has_board; v[1] = (s32)skate_score; v[2] = (s32)skate_best; memcpy(o + n, th, 4); memcpy(o + n + 4, v, 12); n += 16;
     th[0] = MG_AR; th[1] = 16; { s32 w[4] = { arcade_tix, fight_wins, fight_champ, fight_best }; memcpy(o + n, th, 4); memcpy(o + n + 4, w, 16); n += 20; }
+    th[0] = MG_AS; th[1] = sizeof ar_hs + 4; memcpy(o + n, th, 4); memcpy(o + n + 4, ar_hs, sizeof ar_hs); memcpy(o + n + 4 + sizeof ar_hs, &ar_pm, 2); memcpy(o + n + 6 + sizeof ar_hs, &ar_plays, 2); n += 8 + (int)sizeof ar_hs;
     th[0] = MG_HT; th[1] = 16; { s32 w[4] = { hs_heat, hs_day, hs_stolen, hs_logic }; memcpy(o + n, th, 4); memcpy(o + n + 4, w, 16); n += 20; }
     n += gt_pack(o + n);
     return n; }
@@ -1318,6 +1333,7 @@ static int mg_unpack(const u8 *p, int left) {
     while (n + 4 <= left) { u16 th[2]; memcpy(th, p + n, 4); if (n + 4 + th[1] > left) break;
         if (th[0] == MG_SK && th[1] == 12) { s32 v[3]; memcpy(v, p + n + 4, 12); has_board = v[0] & 1; skate_score = v[1] < 0 ? 0 : v[1]; skate_best = v[2] < 0 ? 0 : v[2]; }
         else if (th[0] == MG_AR && th[1] == 16) { s32 w[4]; memcpy(w, p + n + 4, 16); arcade_tix = CLAMP(w[0], 0, 9999); fight_wins = MAX(0, w[1]); fight_champ = w[2] & 1; fight_best = MAX(0, w[3]); }
+        else if (th[0] == MG_AS && th[1] == sizeof ar_hs + 4) { memcpy(ar_hs, p + n + 4, sizeof ar_hs); memcpy(&ar_pm, p + n + 4 + sizeof ar_hs, 2); memcpy(&ar_plays, p + n + 6 + sizeof ar_hs, 2); }
         else if (th[0] == MG_HT && th[1] == 16) { s32 w[4]; memcpy(w, p + n + 4, 16); hs_heat = CLAMP(w[0], 0, 100); hs_day = w[1] & 255; hs_stolen = w[2] & 0xFFFF; hs_logic = MAX(0, w[3]); }
         else if (th[0] == MG_GT) gt_unpack(p + n + 4, th[1]);
         else break;
@@ -1340,7 +1356,8 @@ static void mg_test(int sc) {
     if (sc >= 52 && sc <= 55) { funds += 8000; gt_reset(); for (int q = 0; q < nsim && q < 3; q++) { gbuy(q); Toy *t = gtoy_of(q); for (int i = 0; i < (q ? 3 : 5); i++) { gegg(t, i); Blob *b = &t->b[i]; b->stage = (u8)(1 + (i + q) % 4); b->hun = (u8)(1 + i % 4); b->hap = (u8)(i == 2 ? 0 : 3); } t->xp = (u16)(q * 80); }
         for (int f = 0; f < 4; f++) gdex_see(0, f);
         if (sc == 52) gt_open_a(0); else if (sc == 53) { gt_open_a(3); gguide = 5; } else if (sc == 54) { gt_open_a(3); gguide = 3; } else { gt_open_a(1); o_gtime = 1; } }
-    if (sc >= 43 && sc <= 47) { arcade_tix = 37; funds += 5000; ag_open(sc == 47 ? AG_PRIZES : sc - 42); }   // (test builds) 40: this lot becomes the skate plaza, your Bore on the board at its west side
+    if (sc >= 43 && sc <= 47) { arcade_tix = 37; funds += 5000; ag_open(sc == 47 ? AG_PRIZES : sc - 42); }
+    if (sc >= 80 && sc <= 88) { arcade_tix = 37; funds += 5000; ag_open(sc - 75); }   // (test builds) 60..71: games 5..13+   // (test builds) 40: this lot becomes the skate plaza, your Bore on the board at its west side
     if (sc == 40 || sc == 41) { memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(LOT_SKATE, 1); occ_ok = 0; funds += 5000;
         for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = 0; sims[q].y = sims[q].ty = sims[q].wy = (5 + q) * 16; sims[q].act = -1; }
         sims[ctl].x = sims[ctl].tx = sims[ctl].wx = (sc == 41 ? 3 : 1) * 16; sims[ctl].y = sims[ctl].ty = sims[ctl].wy = (sc == 41 ? 3 : 7) * 16; fq4[ctl] = 1; has_board = 1; skate_on(); }

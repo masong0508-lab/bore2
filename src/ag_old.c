@@ -125,6 +125,9 @@ static struct { s8 k; s16 t; } wh[9]; static int wsel, whit, wgap, whit_at;
 void wak_start(void) { memset(wh, 0, sizeof wh); wsel = 4; whit = 0; wgap = 10; ag_lives = 3; }
 int wak_tick(int hd, int pr, int h2, int p2) {
     if ((pr & PAD_LEFT) && wsel % 3 > 0) wsel--; if ((pr & PAD_RIGHT) && wsel % 3 < 2) wsel++; if ((pr & PAD_UP) && wsel > 2) wsel -= 3; if ((pr & PAD_DOWN) && wsel < 6) wsel += 3;
+#ifdef BORE_DS
+    if (dsag_tap >= 0) { wsel = dsag_tap; pr |= PAD_CROSS; dsag_tap = -1; }   // (the DS: a tap on a hole)
+#endif
     int t = ag_t, up = 0; for (int i = 0; i < 9; i++) if (wh[i].k) up++;
     int maxup = t > 600 ? 3 : t > 300 ? 2 : 1;
     if (--wgap <= 0 && up < maxup) { int h = ar8() % 9, r = ar8(); if (!wh[h].k) { wh[h].k = (s8)(r < 30 ? 3 : r < 50 ? 2 : 1); wh[h].t = (s16)MAX(9, 26 - t / 60 - (wh[h].k == 2 ? 6 : 0)); wgap = MAX(3, 12 - t / 150 + (ar8() & 3)); } }
