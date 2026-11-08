@@ -44,5 +44,6 @@ New tagged block `TR` in the save, about 243 bytes. Old d70/d71/d72 saves load (
 - Host (`ds_traits_test.c`, same engine and accessors as the ROM): 78 of 78 supported hooks move a DS number; 633 offered traits, 0 fail; 79 checks, 0 failed.
 - melonDS: a d72 save (written by a d72 test ROM) loads in d73 (result 401); a new save reloads with an identical trait checksum.
 
-## Not yet (PS1 save 52 design)
+## D74: ported (per-member counters, wishes, personality-derived picks)
+D74 gives every DS housemate their own ev[]/wd[] and a personal wish (trf_auto_wish), the household unlock count sums everyone's wishes, and the save appends a marker-2 block (d73 saves still load: test_sres 401). Shot: docs/ds_shots/traits7_d74_load.png. Original note follows.
 The PS1 now gives every town person a personality from their id (`src/persona.c`), assigns traits on joining and keeps counters, earned traits and a wish per member. The DS port (d73) still has the older design: household members get traits from personality but win no earned traits and have no personal wish; townie cards show no personality. Port `persona.c` and the per-member counters (`ev`, `wd`) in ds_trgame.h; the data mapping is identical. Planned as d74.

@@ -120,6 +120,15 @@ static int trf_auto_pick(const TrPers *p, const u16 *inherit, int ninh, u16 *tid
     }
     return added;
 }
+static const char *const TRG_SIGN[12] = { "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces" };
+static const char *const TRG_BAR[5] = { "Neat", "Outgoing", "Active", "Playful", "Nice" };
+static int trf_auto_wish(const TrPers *p, const TrState *t) {   // (D74) the wish this person's personality pulls to most, of those the DS offers and a Sim can count themselves
+    int cs[15], best = 0, bv = -99999; trf_init();
+    for (int c = 0; c < 15; c++) { int v = 0; for (int b = 0; b < 5; b++) v += tr_pk[c][b] * ((int)p->bar[b] - 5); cs[c] = v + 4 * tr_pasp[p->asp % 6][c] + 3 * tr_psign[(p->sign % 12) & 3][c]; }
+    for (int w = 1; w <= WISH_N; w++) { int ev = tr_wish[w].ev; if (!trf_won(w) || !tr_ev_mem(ev) || !trf_evok[ev] || ((t->wd[w >> 3] >> (w & 7)) & 1)) continue;
+        if (tr_ev_abs[ev] && t->ev[ev] >= tr_wish[w].thr) continue; int v = 4 * cs[tr_wish_cat[w] % 15] + (int)(trf_mix(p->seed, 1000u + (u32)w) % 24u); if (v > bv) { bv = v; best = w; } }
+    return best;
+}
 // the DS's Sims have no personality bars of their own: they come from the name (deterministic, like the star sign), and a child's from its parents' (see trg_pers in main.c)
 static void trf_pers_from_name(const char *first, const char *last, int ds_stage, TrPers *p) {
     u32 sd = tr_name_seed(first, last);

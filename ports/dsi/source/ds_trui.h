@@ -109,7 +109,7 @@ static void tp_draw(void) {
     if (tp_open == 2) {
         tpw_chips(); tp_btn(2, 0, 42, 24, "Back", 0, FS_BODY); text_box(48, 0, 206, 24, FS_HEAD, TXT, AL_L, "Pick a life wish"); text_box(2, 26, 250, 24, FS_BODY, TP_GREY, AL_L, "One wish at a time. Done wishes unlock slots.");
         tp_draw_chips(52, tp_wcat, tpw_n, tpw_id, tpw_nm, tpw_c);
-        for (int r = 0; r < 4; r++) { int y = 78 + r * 24, i = tp_wtop + r; if (i >= tp_wn) break; int w = tp_wl[i], on = tp_T()->wish == w, dn = tr_wdone[w >> 3] >> (w & 7) & 1, sel = i == tp_wsel; char n[28]; trg_title(n, tr_wish_name[w], 28);
+        for (int r = 0; r < 4; r++) { int y = 78 + r * 24, i = tp_wtop + r; if (i >= tp_wn) break; int w = tp_wl[i], on = tp_T()->wish == w, dn = tp_T()->wd[w >> 3] >> (w & 7) & 1, sel = i == tp_wsel; char n[28]; trg_title(n, tr_wish_name[w], 28);
             rect(2, y, 224, 22, sel ? C15(31, 31, 31) : PANB); rect(3, y + 1, 222, 20, on ? C15(8, 22, 10) : dn ? C15(11, 15, 22) : C15(8, 15, 27)); text_box(8, y + 1, 160, 20, FS_BODY, dn ? TP_GREY : TXT, AL_L, n);
             text_box(150, y + 1, 72, 20, FS_SMALL, on ? C15(31, 26, 20) : sel ? C15(24, 31, 24) : TP_GREY, AL_R, on ? "Your wish" : dn ? "Done" : sel ? "Tap: pick" : ""); }
         cbtn(228, 78, 28, 46, "^", tp_wtop > 0 ? 0 : -1, FS_HEAD); cbtn(228, 128, 28, 46, "v", tp_wtop + 4 < tp_wn ? 0 : -1, FS_HEAD);
@@ -216,8 +216,6 @@ static void tp_top(void) {   // hud is the screen: called after the name plate
 // ---- the Life screen's traits page: a housemate's ten slots (the top screen, info page 2) ----
 static void tp_begin(void) { memset(dtr[0].tid, 0, sizeof dtr[0].tid); dtr[0].wish = 0; dtr[0].wbase = 0; trf_rebuild(&dtr[0]); tp_open = 0; tp_view = TV_ALL; tp_cat = 0; tp_kind = -1; tp_az = tp_flt = 0; tp_sel = -1; tp_pop = 0; tp_cs = 0; }
 static void tp_random_wish(void) { int n = 0, pick = 0; for (int w = 1; w <= WISH_N; w++) if (trf_won(w)) { n++; if (cas_rand() % (u32)n == 0) pick = w; } tp_pick_wish(pick); }
-static const char *const TRG_SIGN[12] = { "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces" };
-static const char *const TRG_BAR[5] = { "Neat", "Outgoing", "Active", "Playful", "Nice" };
 static void trg_page(int i) {
     const TrState *t = &dtr[i]; int ns = tr_nslots(trf_stage(stage_of(sims[i].age))); char b[56];
     panel(6, 72, 244, 114, "Traits");
@@ -226,8 +224,8 @@ static void trg_page(int i) {
         sprintf(b, "%d", k + 1); text_box(x, y, 10, 12, FS_SMALL, TP_GREY, AL_R, b); text_box(x + 13, y, 106, 12, tw(FS_BODY, tx) > 104 ? FS_SMALL : FS_BODY, col, AL_L, tx); (void)st; }
     TrPers p; trg_pers(i, &p); int a = 0, c = 1; for (int q = 1; q < 5; q++) if (p.bar[q] > p.bar[a]) a = q; for (int q = 0; q < 5; q++) if (q != a && p.bar[q] >= p.bar[c == a ? 0 : c] ) c = q; (void)c;
     sprintf(b, "%s. Most %s", TRG_SIGN[p.sign % 12], TRG_BAR[a]); text_box(10, 158, 236, 12, FS_SMALL, C15(24, 28, 31), AL_L, b);
-    if (!(t->f & TF_AUTO) && t->wish) { int need = 0, pr = tr_wish_prog(t, &need); char n[28]; trg_title(n, tr_wish_name[t->wish], 28); sprintf(b, "Wish: %s", n); text_box(10, 170, 120, 12, FS_SMALL, C15(31, 31, 20), AL_L, b); rect(134, 172, 108, 8, C15(2, 6, 14)); if (need) rect(135, 173, 106 * pr / need, 6, C15(8, 26, 8)); }
-    else if (t->f & TF_AUTO) text_box(10, 170, 160, 12, FS_SMALL, TP_GREY, AL_L, "Traits come from who they are."); else text_box(10, 170, 160, 12, FS_SMALL, TP_GREY, AL_L, "No wish picked.");
+    if (t->wish) { int need = 0, pr = tr_wish_prog(t, &need); char n[28]; trg_title(n, tr_wish_name[t->wish], 28); sprintf(b, "Wish: %s", n); text_box(10, 170, 120, 12, FS_SMALL, C15(31, 31, 20), AL_L, b); rect(134, 172, 108, 8, C15(2, 6, 14)); if (need) rect(135, 173, 106 * pr / need, 6, C15(8, 26, 8)); }
+    else if (t->f & TF_AUTO) text_box(10, 170, 160, 12, FS_SMALL, TP_GREY, AL_L, "No wish right now."); else text_box(10, 170, 160, 12, FS_SMALL, TP_GREY, AL_L, "No wish picked.");
     text_box(150, 170, 98, 12, FS_SMALL, TP_GREY, AL_R, "Pad: < > housemate");
 }
 #endif

@@ -2199,7 +2199,7 @@ static void life_panel(void) {   // the top screen's second page: job, aspiratio
         rect(14, 118 + k * 13, 8, 8, C15(8, 22, 8)); text_box(23, 116 + k * 13, 160, 12, FS_BODY, TXT, AL_L, t); sprintf(t, "+%d", WPT[L->wk[k]]); text_box(190, 116 + k * 13, 56, 12, FS_NUM, C15(31, 31, 20), AL_R, t); }
     if (L->fear) { text_box(11, 152, 40, 12, FS_BODY, C15(31, 14, 12), AL_L, "Fear:"); text_box(48, 152, 150, 12, FS_BODY, TXT, AL_L, FNM[L->fear]); }
     if (dog_have) { sprintf(t, "Rex: %s", dog.hun > 50 ? "happy" : dog.hun > 20 ? "peckish" : "hungry!"); text_box(150, 163, 98, 12, FS_BODY, TXT, AL_L, t); }
-    { const TrState *tt = &dtr[ctl]; if (tt->wish && !(tt->f & TF_AUTO)) { char n[26]; trg_title(n, tr_wish_name[tt->wish], 26); sprintf(t, "Wish: %s", n); text_box(11, 163, 138, 12, FS_BODY, TXT, AL_L, t); }   // (D73) the wish and the first traits
+    { const TrState *tt = &dtr[ctl]; if (tt->wish) { char n[26]; trg_title(n, tr_wish_name[tt->wish], 26); sprintf(t, "Wish: %s", n); text_box(11, 163, 138, 12, FS_BODY, TXT, AL_L, t); }   // (D73) the wish and the first traits
       { char u[60]; u[0] = 0; for (int k = 0, c = 0; k < TR_SLOTS && c < 3; k++) if (tt->tid[k]) { char n[20]; trg_title(n, trg_tname(tt->tid[k]), 20); if (c) strcat(u, ", "); strcat(u, n); c++; } text_box(11, 174, 236, 9, FS_SMALL, C15(24, 28, 31), AL_L, u); } }
 }
 static u16 offbuf[256 * 192] __attribute__((aligned(32)));   // (D37) a 2D screen is drawn here and copied over in one go: no half-drawn screen is ever shown
@@ -2315,6 +2315,9 @@ static void draw_hud_i(void) {
         int n = soc_list(tg);
         rect(20, 56, 216, 124, PANB); rect(21, 57, 214, 122, PAN); rect(21, 57, 214, 14, PANH); rect(20, 56, 2, 2, 0); rect(234, 56, 2, 2, 0); text_box(21, 57, 188, 14, FS_BODY, TXT, AL_L, nm); rect(213, 58, 20, 12, C15(24, 8, 8)); text_box(213, 58, 20, 12, FS_BODY, TXT, AL_C, "X");
         sprintf(nm, "%s", relname(rel)); text_box(21, 71, 214, 11, FS_SMALL, C15(24, 28, 31), AL_L, nm);
+        if (popup != 2) { char n3[24], f3[16], l3[16]; cit_name(&cits[popup_i], n3); { const char *sp = strchr(n3, ' '); int q = sp ? (int)(sp - n3) : (int)strlen(n3); if (q > 15) q = 15; memcpy(f3, n3, (size_t)q); f3[q] = 0; strncpy(l3, sp ? sp + 1 : "", 15); l3[15] = 0; }
+            TrPers pp; trf_pers_from_name(f3, l3, cits[popup_i].stage, &pp); int a3 = 0; for (int q = 1; q < 5; q++) if (pp.bar[q] > pp.bar[a3]) a3 = q;
+            sprintf(nm, "%s, most %s. No traits yet", TRG_SIGN[pp.sign % 12], TRG_BAR[a3]); text_box(92, 71, 143, 11, FS_SMALL, C15(31, 24, 10), AL_R, nm); }   // (D74) a town person's personality (from their name, as when they move in); traits come when they move in
         for (int k = 0; k < n; k++) { int x = 26 + (k & 1) * 104, y = 82 + (k >> 1) * 22; rect(x, y, 100, 20, PANB); rect(x + 1, y + 1, 98, 18, soc_pick[k] == S_INVITE || soc_pick[k] == S_BABY ? C15(8, 20, 8) : PANH); text_box(x + 1, y + 1, 98, 18, FS_BODY, TXT, AL_C, SOCN[soc_pick[k]]); }
         if (!n) text_box(21, 88, 214, 24, FS_BODY, TXT, AL_C, "Nothing to do together"); }
     if (jobui) job_draw();
@@ -3750,9 +3753,9 @@ int main(void) {
                 else if (sc == 141) { for (int q = 1; q < nsim; q++) dtr[q].f = TF_AUTO | TF_PEND; info_pg = 2; cur_sim = nsim > 2 ? 2 : 1; life_ver++; ui_ver++; }
                 else if (sc == 142) { trg_quiet = 0; new_sim(26, 2, 3, 1, 2, "Morgan Vale", 9 * 16, 9 * 16); info_pg = 2; cur_sim = nsim - 1; life_ver++; ui_ver++; }
                 else if (sc == 143 || sc == 144) {   // (D73: 143 gives traits and wishes and writes the save, 144 reads it back; test_sres 300 + write/apply result, trg_sig the trait state's checksum: the two must match)
-                    if (sc == 143) { trf_init(); { int k = 0, w = 1; for (int id = 1; id <= TR_MAXID && k < 6; id += 37) if (trf_on(id)) dtr[0].tid[k++] = (u16)id; while (w < WISH_N && !trf_won(w)) w++; dtr[0].wish = (u8)w; } tr_unl = 2; tr_wdone[0] = 6; tr_earned = 5; tr_recent[0] = dtr[0].tid[1]; test_sres = 300 + sav_write(); }
+                    if (sc == 143) { trf_init(); { int k = 0, w = 1; for (int id = 1; id <= TR_MAXID && k < 6; id += 37) if (trf_on(id)) dtr[0].tid[k++] = (u16)id; while (w < WISH_N && !trf_won(w)) w++; dtr[0].wish = (u8)w; } tr_unl = 2; dtr[0].wd[0] = 6; tr_earned = 5; tr_recent[0] = dtr[0].tid[1]; test_sres = 300 + sav_write(); }
                     else test_sres = 400 + sav_apply();
-                    { u32 h = 2166136261u; for (int z = 0; z < nsim && z < SIM_MAX; z++) { for (int k = 0; k < TR_SLOTS; k++) h = (h ^ dtr[z].tid[k]) * 16777619u; h = (h ^ dtr[z].wish) * 16777619u; } for (int z = 0; z < 8; z++) h = (h ^ tr_wdone[z]) * 16777619u; h = (h ^ tr_unl) * 16777619u; h = (h ^ tr_earned) * 16777619u; trg_sig = h; } }
+                    { u32 h = 2166136261u; for (int z = 0; z < nsim && z < SIM_MAX; z++) { for (int k = 0; k < TR_SLOTS; k++) h = (h ^ dtr[z].tid[k]) * 16777619u; h = (h ^ dtr[z].wish) * 16777619u; } for (int z = 0; z < 8; z++) h = (h ^ dtr[0].wd[z]) * 16777619u; h = (h ^ tr_unl) * 16777619u; h = (h ^ tr_earned) * 16777619u; trg_sig = h; } }
                 else if (sc == 71 || sc == 72) mg_test_save(sc);   // (D62: 71 writes a save with scores and family links, 72 loads it)
                 else if (sc == 70) { live_pitch = 2000; live_dist = 1800; yaw_t = live_yaw = 4096 + 600; }   // (70: face height camera)
                 else if ((sc >= 40 && sc < 60) || (sc >= 73 && sc < 80) || (sc >= 80 && sc < 116)) mg_test(sc); }   // (D45 on: the mini-games' test scenes, ds_games.c)   // (30-32: Roofs Cutaway, Always, Hide)   // (20-22: Detail Auto, DS, DSi)

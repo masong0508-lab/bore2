@@ -6,6 +6,7 @@
 #include <string.h>
 #define TR_HOST
 #include "../source/ds_trfx.h"
+void tr_won(TrState *t, int i) { (void)t; (void)i; }
 void tr_toast(const char *s) { (void)s; }
 static int rew_n, rew_k;
 void tr_reward(TrState *t, int kind, int arg, int wish) { (void)t; (void)arg; (void)wish; rew_n++; rew_k = kind; }
