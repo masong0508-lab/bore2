@@ -3816,7 +3816,10 @@ int main(void) {
         if (down & KEY_TOUCH) sfx(0);
         snd_tick();
         { static int lm = -9; if (mus_cur != lm) { lm = mus_cur; if (mode == M_LIVE && mus_cur >= 0) { static char nb[48]; sprintf(nb, "Now playing: %.22s", mus_name(mus_cur)); say(nb); } } }
-        PROF(1); dbg_pt[1] = prof_now();
+        PROF(1);
+#ifdef DSTEST
+        dbg_pt[1] = prof_now();
+#endif
         { static int lm = -1; if ((mode == M_TITLE || mode == M_CAS) != lm) { lm = mode == M_TITLE || mode == M_CAS; o_dirty = 1; } }
         if (o_dirty) apply_opts();
         if (sky_on) sky_update(pitch);
@@ -3889,7 +3892,10 @@ int main(void) {
 #ifdef DSTEST
         if (ui_cur) { int l = (int)(vbl_n - ui_cur); ui_lat_sum += l; ui_lat_n++; if (l > ui_lat_max) ui_lat_max = l; ui_cur = 0; }
 #endif
-        dbg_pt[2] = prof_now(); ui_n++; gframes = frames; swiWaitForVBlank(); frames += steps;
+#ifdef DSTEST
+        dbg_pt[2] = prof_now();
+#endif
+        ui_n++; gframes = frames; swiWaitForVBlank(); frames += steps;
     }
     return 0;
 }
