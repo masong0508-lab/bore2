@@ -494,9 +494,9 @@ static void cursor_draw(void) {
     box(x0, -4, z1, x1, -1, z1 + 6, c); box(x0, -4, z0 - 6, x1, -1, z0, c); box(x0, -4, z1, x0 + 6, -1, z0, c); box(x1 - 6, -4, z1, x1, -1, z0, c);
 }
 static void panel_goods(int y) {
-    ui_round(4, y, 312, 30, 8, UI_CARD, UI_CARD2, 0);
-    for (int g = 0; g < 8; g++) { int x = 10 + (g & 3) * 77, yy = y + 3 + (g >> 2) * 13; char b[24]; snprintf(b, sizeof b, "%s %d", khGood[g], R.goods[g]);
-        ui_disc(x + 4, yy + 5, 7, goodCol[g]); ui_textfit(x + 11, yy, 64, b, UI_INK); }
+    ui_round(8, y, 304, 30, 8, UI_CARD, UI_CARD2, 0);
+    for (int g = 0; g < 8; g++) { int x = 12 + (g & 3) * 73, yy = y + 3 + (g >> 2) * 13; char b[24]; snprintf(b, sizeof b, "%s %d", khGood[g], R.goods[g]);
+        ui_disc(x + 4, yy + 5, 7, goodCol[g]); ui_textfit(x + 11, yy, 60, b, UI_INK); }
 }
 void realm_draw(void) {
     gfx_set_clear(150, 196, 236); gfx_sky(0xecc496u, 0xf0e0c8u);
@@ -534,11 +534,11 @@ void realm_draw(void) {
     }
     gfx_set_fog(0, 0);
     // the HUD
-    { char b[64]; ui_round(4, 4, 312, 18, 7, UI_RGB(30, 40, 70), UI_RGB(18, 24, 48), 0);
-      snprintf(b, sizeof b, "DAY %ld   NUBBINS %d   WORKING %d   TIME X%d", khDay(R.day), S.pop, S.emp, spd == 0 ? 1 : spd == 1 ? 4 : 16); ui_text(12, 7, 1, b, UI_WHITE);
-      char c[64]; khCost(c, &S, hand.mode); ui_round(4, 24, 312, 16, 6, UI_CARD, UI_CARD2, 0); ui_textfit(10, 26, 300, c, UI_BLUE2); }
-    { int cx, cy; char b[64]; if (cursor_cell(&cx, &cy)) { khInfo(&S, cx, cy, b); ui_round(4, 196, 312, 16, 6, UI_CARD, UI_CARD2, 0); ui_textfit(10, 198, 300, b, UI_INK); } }
-    { char h[40]; khHeld(&S, h); if (h[0]) { char b[56]; snprintf(b, sizeof b, "CARRYING: %s", h); ui_badge(8, 44, b, UI_AMBER, UI_INK); } }
+    { char b[64]; ui_round(8, 8, 304, 18, 7, UI_RGB(30, 40, 70), UI_RGB(18, 24, 48), 0);
+      snprintf(b, sizeof b, "DAY %ld   NUBBINS %d   WORKING %d   TIME X%d", khDay(R.day), S.pop, S.emp, spd == 0 ? 1 : spd == 1 ? 4 : 16); ui_text(16, 11, 1, b, UI_WHITE);
+      char c[64]; khCost(c, &S, hand.mode); ui_round(8, 28, 304, 16, 6, UI_CARD, UI_CARD2, 0); ui_textfit(14, 30, 292, c, UI_BLUE2); }
+    { int cx, cy; char b[64]; if (cursor_cell(&cx, &cy)) { khInfo(&S, cx, cy, b); ui_round(8, 196, 304, 16, 6, UI_CARD, UI_CARD2, 0); ui_textfit(14, 198, 292, b, UI_INK); } }
+    { char h[40]; khHeld(&S, h); if (h[0]) { char b[56]; snprintf(b, sizeof b, "CARRYING: %s", h); ui_badge(8, 48, b, UI_AMBER, UI_INK); } }
     if (panel == 1) panel_goods(156);
     if (panel == 2 && mis < NMIS) {   // the mission
         const Mis *m = &miss[mis]; int top = ui_window(30, 46, 260, 140, m->nm, IC_STAR);

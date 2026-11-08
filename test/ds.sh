@@ -5,6 +5,7 @@ C=$1; N=$2; F=${3:-900}; S=$4
 mkdir -p /tmp/dsd /tmp/dsr; rm -rf /tmp/dsd/$N
 cp -f $C /tmp/dsr/$N.cue; cp -f $(dirname $C)/$(grep -o '"[^"]*"' $C | tr -d '"') /tmp/dsr/$N.bin
 sed -i "s/FILE \"[^\"]*\"/FILE \"$N.bin\"/" /tmp/dsr/$N.cue
+[ -n "$FULL" ] && export DSCROP=None DSRAW=1   # FULL=1: the whole 320x240 frame (the default crop is 292x224: 8 rows lost top and bottom)
 [ -n "$S" ] && export DSSCRIPT=$(realpath $S)
 DSRAM=/tmp/ds_${N}_ram.bin timeout 900 /home/claude/tools/ds/b/bin/duckstation-regtest -log info -frames $F -dumpdir /tmp/dsd -dumpinterval ${DI:-100000} /tmp/dsr/$N.cue 2>&1 | head -c 30000000 > /tmp/ds_$N.log
 python3 -c "

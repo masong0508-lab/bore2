@@ -483,13 +483,13 @@ void skysea_draw(void) {
     if (mode >= M_BOAT && mode <= M_WRECK) {
         scene();
         // the HUD
-        ui_round(4, 4, 150, 44, 6, UI_RGB(14, 18, 34), UI_RGB(30, 36, 60), 0);
-        if (mode == M_BOAT) { sprintf(b, "%s  %d KNOTS", CNM[cur], ABS(spd) / 5); ui_text(10, 8, 1, b, UI_WHITE); hud_bar(10, 20, 60, fuel, BT[cur].fuel * 2, UI_RGB(240, 200, 60)); hud_bar(10, 31, 60, hull, BT[cur].hull * 2, UI_RGB(80, 200, 100)); ui_text(76, 19, 1, "FUEL", UI_SOFT); ui_text(76, 30, 1, "HULL", UI_SOFT); hud_bar(108, 20, 40, temp, 130, temp > 100 ? UI_RGB(240, 70, 50) : UI_RGB(240, 150, 60)); ui_text(114, 30, 1, "HEAT", UI_SOFT); hud_bar(10, 41, 138, thr + 30, 130, UI_RGB(80, 160, 240)); }
-        else if (mode == M_AIR) { sprintf(b, "%s  %d  ALT %d", CNM[cur], spd / 5, MAX(0, py - MAX(0, gh(px, pz)))); ui_text(10, 8, 1, b, UI_WHITE); hud_bar(10, 20, 60, fuel, AT[cur - NB].fuel * 2 + 1, UI_RGB(240, 200, 60)); hud_bar(10, 31, 60, hull, AT[cur - NB].hull * 2, UI_RGB(80, 200, 100)); ui_text(76, 19, 1, "FUEL", UI_SOFT); ui_text(76, 30, 1, "HULL", UI_SOFT); hud_bar(10, 41, 138, thr, 100, UI_RGB(80, 160, 240)); if (spd < AT[cur - NB].stall * 16 && AT[cur - NB].stall) ui_text(100, 8, 1, "STALL!", UI_BADT); }
-        else { ui_text(10, 8, 1, chute_on ? "PARACHUTE" : "FALLING!", UI_WHITE); sprintf(b, "ALT %d", MAX(0, cy_ - MAX(0, gh(cx, cz_)))); ui_text(10, 20, 1, b, UI_WHITE); }
-        sprintf(b, "$%d", (int)cash); ui_text(316 - ui_tw(1, b), 6, 1, b, UI_GOODT);
-        if (hot) ui_text(316 - ui_tw(1, "HOT CRAFT"), 18, 1, "HOT CRAFT", UI_BADT);
-        if (mode == M_BOAT && jtype) { int dx = (jx - px) / 8, dz = (jz - pz) / 8; sprintf(b, jtype == 2 ? "FISH %d/%d  %s" : "JOB  %dM  %ds", jtype == 2 ? fish : isq(dx * dx + dz * dz) * 8 * SC / 213, jtype == 2 ? BT[cur].hold : jt / 60, jtype == 2 ? (fcast ? "..." : "STOP IN THE RING") : ""); ui_text(10, 52, 1, b, UI_WHITE); }
+        ui_round(8, 8, 150, 44, 6, UI_RGB(14, 18, 34), UI_RGB(30, 36, 60), 0);
+        if (mode == M_BOAT) { sprintf(b, "%s  %d KNOTS", CNM[cur], ABS(spd) / 5); ui_text(14, 12, 1, b, UI_WHITE); hud_bar(14, 24, 60, fuel, BT[cur].fuel * 2, UI_RGB(240, 200, 60)); hud_bar(14, 35, 60, hull, BT[cur].hull * 2, UI_RGB(80, 200, 100)); ui_text(80, 23, 1, "FUEL", UI_SOFT); ui_text(80, 34, 1, "HULL", UI_SOFT); hud_bar(112, 24, 40, temp, 130, temp > 100 ? UI_RGB(240, 70, 50) : UI_RGB(240, 150, 60)); ui_text(118, 34, 1, "HEAT", UI_SOFT); hud_bar(14, 45, 138, thr + 30, 130, UI_RGB(80, 160, 240)); }
+        else if (mode == M_AIR) { sprintf(b, "%s  %d  ALT %d", CNM[cur], spd / 5, MAX(0, py - MAX(0, gh(px, pz)))); ui_text(14, 12, 1, b, UI_WHITE); hud_bar(14, 24, 60, fuel, AT[cur - NB].fuel * 2 + 1, UI_RGB(240, 200, 60)); hud_bar(14, 35, 60, hull, AT[cur - NB].hull * 2, UI_RGB(80, 200, 100)); ui_text(80, 23, 1, "FUEL", UI_SOFT); ui_text(80, 34, 1, "HULL", UI_SOFT); hud_bar(14, 45, 138, thr, 100, UI_RGB(80, 160, 240)); if (spd < AT[cur - NB].stall * 16 && AT[cur - NB].stall) ui_text(104, 12, 1, "STALL!", UI_BADT); }
+        else { ui_text(14, 12, 1, chute_on ? "PARACHUTE" : "FALLING!", UI_WHITE); sprintf(b, "ALT %d", MAX(0, cy_ - MAX(0, gh(cx, cz_)))); ui_text(14, 24, 1, b, UI_WHITE); }
+        sprintf(b, "$%d", (int)cash); ui_text(312 - ui_tw(1, b), 10, 1, b, UI_GOODT);
+        if (hot) ui_text(312 - ui_tw(1, "HOT CRAFT"), 22, 1, "HOT CRAFT", UI_BADT);
+        if (mode == M_BOAT && jtype) { int dx = (jx - px) / 8, dz = (jz - pz) / 8; sprintf(b, jtype == 2 ? "FISH %d/%d  %s" : "JOB  %dM  %ds", jtype == 2 ? fish : isq(dx * dx + dz * dz) * 8 * SC / 213, jtype == 2 ? BT[cur].hold : jt / 60, jtype == 2 ? (fcast ? "..." : "STOP IN THE RING") : ""); ui_text(14, 56, 1, b, UI_WHITE); }
         if (mode == M_BOAT && near_dock() >= 0 && ABS(spd) < 60) ui_text(160, 200, 1, "TRIANGLE: HARBOUR  O: GET OFF", UI_WHITE);
         if (mode == M_WRECK) { ui_textc(160, 30, 1, line, UI_WHITE); ui_textc(160, 44, 1, line2, UI_WHITE); }
         if (ctr > 0) ui_textc(160, 180, 1, line, UI_WHITE);

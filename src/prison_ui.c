@@ -220,8 +220,8 @@ void prison_draw(void) {
     for (int i = 0; i < 6; i++) ui_round(12 + i * 22, 6, 6, 160, 2, UI_RGB(120, 124, 132), UI_RGB(60, 62, 70), 0);   // the bars
     ui_round(6, 4, 140, 6, 2, UI_RGB(120, 124, 132), UI_RGB(60, 62, 70), 0); ui_round(6, 160, 140, 6, 2, UI_RGB(120, 124, 132), UI_RGB(60, 62, 70), 0);
     char b[48];
-    ui_round(6, 172, 150, 42, 6, UI_RGB(30, 30, 36), UI_RGB(14, 14, 18), 0);
-    ui_wrap(11, 175, 140, 3, logl[0], UI_WHITE);
+    ui_round(8, 172, 148, 42, 6, UI_RGB(30, 30, 36), UI_RGB(14, 14, 18), 0);
+    ui_wrap(13, 175, 138, 3, logl[0], UI_WHITE);
     int top = ui_window(160, 4, 156, 232, phase == P_ROW ? "DEATH ROW" : "THE CELL", IC_LOCK);
     if (phase == P_ROW) sprintf(b, "%d DAYS LEFT", execd); else if (sentence <= 0) sprintf(b, "FREE"); else sprintf(b, "DAY %d OF %d", MIN(day + 1, sentence), sentence); ui_text(166, top, 1, b, UI_INK); ui_text(300 - ui_tw(1, SLOT[slot]), top, 1, SLOT[slot], UI_BLUE2);
     bar(166, top + 12, "HEALTH", health, health > 50 ? UI_GREEN : health > 25 ? UI_AMBER : UI_RED);

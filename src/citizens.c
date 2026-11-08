@@ -1802,7 +1802,7 @@ static void bar(int x, int y, int w, int v, int r, int g, int b) {
 int citizens_card_on(void) { return !(world_zone == ZONE_HOME && !home_guests) && cur >= 0; }   // (main: the notes go under it)
 COLD void citizens_hud(void) {
     if (world_zone == ZONE_HOME && !home_guests) return;
-    const int X = 4, Y = 37;                                       // (on the left, under the household: the notes go under it)
+    const int X = 8, Y = 37;                                       // (on the left, under the household: the notes go under it)
     if (cur >= 0) {
         const Cit *c = &cits[cur];
         char t[40]; sprintf(t, "%s %s", c->first, c->last);   // a white card (The Sims 4's): who they are, how they are to you

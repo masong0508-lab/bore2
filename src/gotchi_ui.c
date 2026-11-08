@@ -552,7 +552,7 @@ static void draw_basket(void) {
 // ---- the handheld ----
 static void body(int c) {
     const u8 *sh = PAL[1 + c % 7]; u32 top = UI_RGB(MIN(255, sh[0] + 40), MIN(255, sh[1] + 40), MIN(255, sh[2] + 40)), bot = UI_RGB(sh[0] * 6 / 10, sh[1] * 6 / 10, sh[2] * 6 / 10);
-    ui_round(12, 7, 296, 226, 26, bot, bot, 0); ui_round(14, 8, 292, 222, 26, top, UI_RGB(sh[0], sh[1], sh[2]), 0);
+    ui_round(12, 8, 296, 224, 26, bot, bot, 0); ui_round(14, 9, 292, 220, 26, top, UI_RGB(sh[0], sh[1], sh[2]), 0);
     ui_round(24, 11, 272, 6, 3, UI_RGB(255, 255, 255), UI_RGB(255, 255, 255), 1);
     ui_disc(160, 8, 16, UI_RGB(190, 192, 205)); ui_disc(160, 8, 7, UI_RGB(20, 10, 40));   // the keyring
 }
@@ -765,7 +765,7 @@ static void draw_tree(void) {
             const char *r = q->uid == me->partner ? " PARTNER " : (q->par[0] == me->uid || q->par[1] == me->uid) ? " KID " : (q->uid == me->par[0] || q->uid == me->par[1]) ? " PARENT " : 0;
             if (r && strlen(w) + strlen(r) + strlen(q->bore.first) < 60 && nk < 6) { strcat(w, r); strcat(w, q->bore.first); nk++; } }
         ui_textfit(26, top + 179, 268, w, UI_SOFT); } }
-    ui_hints(160, 214, "ARROWS PICK|X CENTRE|O BACK", 1);
+    ui_hints(160, 219, "ARROWS PICK|X CENTRE|O BACK", 1);
 }
 // ---- the family home: the family in its room, the memorials on the shelf, and the room yours to dress ----
 static void draw_home(void) {

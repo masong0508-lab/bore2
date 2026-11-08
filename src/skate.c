@@ -395,5 +395,5 @@ void skate_hud(void) {
         ui_textc(160, 107 - fall, 2, k.popa, k.popok ? UI_GOODT : UI_BADT);
         if (k.popb[0]) ui_textc(160, 122 - fall, 1, k.popb, UI_SOFT);
     }
-    sprintf(b, "SCORE %ld", skate_score); { int w = ui_tw(1, b) + 14; ui_card(316 - w, 162, w, 14); ui_text(323 - w, 165, 1, b, UI_INK); }
+    sprintf(b, "SCORE %ld", skate_score); { int w = ui_tw(1, b) + 14; ui_card(312 - w, 162, w, 14); ui_text(319 - w, 165, 1, b, UI_INK); }
 }

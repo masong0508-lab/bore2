@@ -65,7 +65,7 @@ int space_update(int hd, int pr, int steps) {
     return 1;
 }
 static void panel(void) {
-    char b[48]; int top = ui_window(150, 6, 164, 228, "SPACE AGE", IC_STAR);
+    char b[48]; int top = ui_window(148, 8, 164, 224, "SPACE AGE", IC_STAR);
     sprintf(b, "CASH $%d", (int)cash); ui_text(156, top, 1, b, UI_GOODT);
     for (int t = 0; t < 3; t++) { ui_text(156, top + 14 + t * 11, 1, TNM[t], UI_INK); for (int i = 0; i < 4; i++) ui_round(220 + i * 18, top + 14 + t * 11, 15, 7, 2, i < space_tech[t] ? UI_RGB(60, 170, 230) : UI_RGB(200, 206, 214), i < space_tech[t] ? UI_RGB(30, 110, 190) : UI_RGB(170, 176, 186), 0); }
     ui_text(156, top + 48, 1, space_cert_name(space_cert()), UI_BLUE2);
@@ -78,13 +78,13 @@ void space_draw(void) {
     if (st != S_FLY) { int rx = 70, ry = 70; ui_round(rx - 8, ry, 16, 60, 6, UI_RGB(235, 235, 245), UI_RGB(160, 165, 190), 0); ui_round(rx - 4, ry - 12, 8, 16, 4, UI_RGB(230, 60, 60), UI_RGB(160, 30, 30), 0);
         ui_round(rx - 16, ry + 40, 8, 22, 3, UI_RGB(60, 120, 220), UI_RGB(30, 70, 150), 0); ui_round(rx + 8, ry + 40, 8, 22, 3, UI_RGB(60, 120, 220), UI_RGB(30, 70, 150), 0);
         ui_round(rx - 4, ry + 14, 8, 8, 4, UI_RGB(120, 190, 250), UI_RGB(60, 120, 200), 0); }
-    if (st == S_MAIN) { panel(); int top = 6 + 24 + 76; static const char *const mm[5] = { "MISSIONS", "UPGRADE HULL", "UPGRADE ENGINE", "UPGRADE GUIDANCE", "LEAVE" };
+    if (st == S_MAIN) { panel(); int top = 8 + 24 + 76; static const char *const mm[5] = { "MISSIONS", "UPGRADE HULL", "UPGRADE ENGINE", "UPGRADE GUIDANCE", "LEAVE" };
         for (int i = 0; i < 5; i++) { int y = top + i * 14; if (i == sel) ui_round(154, y - 2, 156, 13, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
             if (i >= 1 && i <= 3) { int lv = space_tech[i - 1]; sprintf(b, lv >= 4 ? "%s  MAX" : "%s  $%d", mm[i] + 8, UCOST[lv]); ui_text(160, y, 1, b, i == sel ? UI_BLUE2 : UI_INK); }
             else ui_text(160, y, 1, mm[i], i == sel ? UI_BLUE2 : UI_INK); }
         if (sel >= 1 && sel <= 3) ui_wrap(156, top + 76, 150, 2, THINT[sel - 1], UI_SOFT);
         ui_text(156, top + 96, 1, line, UI_RED); ui_hints(310, 218, "X PICK|O LEAVE", 2); return; }
-    if (st == S_MISS) { panel(); int top = 6 + 24 + 76;
+    if (st == S_MISS) { panel(); int top = 8 + 24 + 76;
         for (int i = 0; i < NM; i++) { int y = top + i * 12; int lock = tsum() < MNEED[i] || space_cert() < MCERT[i]; if (i == msel) ui_round(154, y - 2, 156, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0);
             ui_text(160, y, 1, MNM[i], lock ? UI_SOFT : i == msel ? UI_BLUE2 : UI_INK); if (space_done >> i & 1) ui_text(300, y, 1, "*", UI_GOODT); }
         sprintf(b, "FUEL $%d  PAYS $%d", MFUEL[msel] * (100 - space_tech[1] * 9) / 100, MPAY[msel]); ui_text(156, top + 76, 1, b, UI_INK);
@@ -95,10 +95,10 @@ void space_draw(void) {
         int ry = 140 - stage * 10 + (tmr > 0 ? (anim & 2) : 0); ui_round(70 - 8, ry, 16, 50, 6, UI_RGB(235, 235, 245), UI_RGB(160, 165, 190), 0); ui_round(66, ry - 12, 8, 14, 4, UI_RGB(230, 60, 60), UI_RGB(160, 30, 30), 0);
         if (boom && tmr > 0) { ui_round(40, ry - 10, 60, 60, 30, UI_RGB(255, 220, 80), UI_RGB(255, 80, 20), 0); }
         else ui_round(66, ry + 50, 8, 18 + (anim & 7), 4, UI_RGB(255, 230, 120), UI_RGB(255, 100, 30), 0);
-        int top = ui_window(150, 6, 164, 228, MNM[msel], IC_STAR); sprintf(b, "BURN %d OF %d", stage + 1, MSTG[msel]); ui_text(156, top, 1, b, UI_INK);
+        int top = ui_window(148, 8, 164, 224, MNM[msel], IC_STAR); sprintf(b, "BURN %d OF %d", stage + 1, MSTG[msel]); ui_text(156, top, 1, b, UI_INK);
         ui_round(156, top + 20, 150, 14, 4, UI_RGB(200, 206, 214), UI_RGB(170, 176, 186), 0);
         ui_round(156 + zone * 150 / 100, top + 20, zw * 150 / 100, 14, 4, UI_RGB(255, 235, 120), UI_RGB(240, 190, 40), 0); ui_round(154 + mark * 150 / 100, top + 16, 5, 22, 2, UI_RGB(60, 70, 200), UI_RGB(30, 40, 140), 0);
         ui_wrap(156, top + 48, 150, 3, line, boom ? UI_RED : UI_INK); sprintf(b, "PERFECT %d  ROUGH %d", burns, rough); ui_text(156, top + 80, 1, b, UI_SOFT); ui_hints(310, 218, "X BURN", 2); return; }
-    { int top = ui_window(150, 6, 164, 228, res ? "LANDED" : "LOST", IC_STAR); ui_wrap(156, top + 4, 150, 3, line, res ? UI_GREEN : UI_RED); ui_wrap(156, top + 40, 150, 3, line2, UI_SOFT); sprintf(b, "CASH $%d", (int)cash); ui_text(156, top + 80, 1, b, UI_GOODT); ui_hints(310, 218, "X BACK", 2); }
+    { int top = ui_window(148, 8, 164, 224, res ? "LANDED" : "LOST", IC_STAR); ui_wrap(156, top + 4, 150, 3, line, res ? UI_GREEN : UI_RED); ui_wrap(156, top + 40, 150, 3, line2, UI_SOFT); sprintf(b, "CASH $%d", (int)cash); ui_text(156, top + 80, 1, b, UI_GOODT); ui_hints(310, 218, "X BACK", 2); }
 }
 __attribute__((section(".ovl_head"), used)) const OvlHead ovl_head = { OVL_MAGIC, space_open, space_update, space_draw };

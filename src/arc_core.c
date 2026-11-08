@@ -183,7 +183,7 @@ void bezel(int g) {
     K(0, 0, SCREEN_W, SCREEN_H, UI_RGB(r / 10 + 8, gg / 10 + 6, b / 10 + 14));
     K(0, 0, SCREEN_W, 17, UI_RGB(r / 2, gg / 2, b / 2)); K(0, 0, SCREEN_W, 2, UI_RGB(r, gg, b)); K(0, 15, SCREEN_W, 2, UI_RGB(r, gg, b));
     ui_textc(160, 8, 1, a->nm, UI_WHITE);
-    { char s[16]; snprintf(s, sizeof s, "TOKENS %d", arc.tok); ui_text(6, 8, 1, s, UI_AMBER); snprintf(s, sizeof s, "TIX %d", arcade_tix); ui_text(314 - ui_tw(1, s), 8, 1, s, UI_GREEN); }
+    { char s[16]; snprintf(s, sizeof s, "TOKENS %d", arc.tok); ui_text(10, 9, 1, s, UI_AMBER); snprintf(s, sizeof s, "TIX %d", arcade_tix); ui_text(310 - ui_tw(1, s), 9, 1, s, UI_GREEN); }
     K(FX(0) - 3, FY(0) - 3, 306, 206, UI_RGB(r, gg, b));   // the screen's glowing edge
 }
 void scan(void) { for (int y = FY(0); y < FY(160); y += 3) KA(FX(0), y, 300, 1, 0); }

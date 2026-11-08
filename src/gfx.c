@@ -553,7 +553,14 @@ void gfx_rect(int x, int y, int w, int h, int r, int g, int b, int semi) {
     ui_add(t);
 }
 void gfx_rect_c(int x, int y, int w, int h, u16 c, int semi) { gfx_rect(x, y, w, h, R8(c), G8(c), B8(c), semi); }
+#ifdef SAFE_LINT
+void safe_note(int kind, int x, int y, int w, int h, const char *t);
+#define SAFE_BOX(x, y, w, h) safe_note(2, x, y, w, h, 0)
+#else
+#define SAFE_BOX(x, y, w, h)
+#endif
 void gfx_grad(int x, int y, int w, int h, u32 c0, u32 c1, u32 c2, u32 c3, int semi) {   // a 2D box shaded corner to corner (TL TR BL BR, 0xBBGGRR)
+    if (w > 20 && h > 6) SAFE_BOX(x, y, w, h);
     POLY_G4 *q = (POLY_G4 *)gfx_alloc(sizeof(POLY_G4));
     if (!q) return;
     setPolyG4(q);
@@ -676,7 +683,26 @@ static inline int tscale(int scale) { return scale == 1 ? 4 : scale; }
 int gfx_text_w(int scale, const char *s) { return font_w(tscale(scale) - 1, s); }
 int ui_light;   // text is going onto a white card (ui.c): light colours come out dark (white as ink, gold as blue, the rest deeper)
 extern int font_sub;
+#ifdef SAFE_LINT
+// (test builds: 2D things outside the safe area, 8 pixels in from every edge, where a TV's overscan may hide them: kind 1 text, 2 a rect or card)
+short safe_log[200][6]; char safe_txt[200][12]; int safe_n; extern int gfx_frame_no;
+void safe_note(int kind, int x, int y, int w, int h, const char *t) {
+    #if SAFE_LINT < 2
+    static int fr = -1; if (fr != gfx_frame_no) { fr = gfx_frame_no; safe_n = 0; }   // (the log holds the last frame drawn; SAFE_LINT=2: everything, for the whole run)
+#endif
+    extern int safe_off; if (gfx_wide || safe_off) return;
+    if (x >= 8 && y >= 8 && x + w <= 312 && y + h <= 232) return;
+    if (w >= 300 && h >= 200) return;   // (a whole-screen backdrop)
+    if (kind == 2 && (x <= 0 || y <= 0 || x + w >= SCREEN_W || y + h >= SCREEN_H)) return;   // (a backdrop that bleeds off the screen is meant to)
+    for (int i = 0; i < safe_n; i++) if (safe_log[i][0] == kind && safe_log[i][1] == x && safe_log[i][2] == y && safe_log[i][3] == w && safe_log[i][4] == h) return;
+    if (safe_n < 200) { safe_log[safe_n][0] = kind; safe_log[safe_n][1] = x; safe_log[safe_n][2] = y; safe_log[safe_n][3] = w; safe_log[safe_n][4] = h; safe_log[safe_n][5] = (short)gfx_frame_no; if (t) { strncpy(safe_txt[safe_n], t, 11); safe_txt[safe_n][11] = 0; } else safe_txt[safe_n][0] = 0; safe_n++; }
+}
+#define SAFE_TEXT(x, y, s) safe_note(1, x, y, gfx_text_w(1, s), 8, s)
+#else
+#define SAFE_TEXT(x, y, s)
+#endif
 void gfx_text_raw(int x, int y, int scale, const char *s, int r, int g, int b) {   // light colours added to the picture, dark ones taken from it
+    SAFE_TEXT(x, y, s);
     int lum = (r * 77 + g * 150 + b * 29) >> 8;
     scale = tscale(scale);
     if (lum < 140) { font_sub = 1; font_text(x, y, scale - 1, s, 255 - r, 255 - g, 255 - b); font_sub = 0; }   // (on white: exactly this colour)

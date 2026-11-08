@@ -170,7 +170,7 @@ static void floor_draw(void) {
     for (int y = 6; y < 48; y += 6) K(0, y, 320, 1, UI_RGB(22, 10, 40));
     int fl = (ft >> 5) & 1;
     K(0, 46, 320, 2, UI_RGB(240, 60, 200)); KA(0, 48, 320, 3, UI_RGB(120, 20, 100));                   // the neon rail
-    ui_textc(160, 6, 2, "BORE ARCADE", fl ? UI_RGB(255, 120, 230) : UI_RGB(120, 250, 255));
+    ui_textc(160, 9, 2, "BORE ARCADE", fl ? UI_RGB(255, 120, 230) : UI_RGB(120, 250, 255));
     // the wall's leaderboard: one game at a time, its three best
     { int g = (ft / 120) % AG_NGAME; K(70, 20, 180, 24, UI_RGB(8, 8, 24)); K(70, 20, 180, 1, UI_RGB(90, 230, 250)); K(70, 43, 180, 1, UI_RGB(250, 90, 220));
       ui_text(74, 22, 1, gi[g].nm, UI_RGB(gi[g].r, gi[g].g, gi[g].b));
@@ -179,7 +179,7 @@ static void floor_draw(void) {
     K(258, 20, 54, 24, UI_RGB(8, 8, 24)); ui_textc(285, 22, 1, "TICKETS", UI_GREEN); { char s[12]; snprintf(s, sizeof s, "%d", arcade_tix); ui_textc(285, 32, 1, s, UI_WHITE); }
     int nc = near_cab();
     for (int i = 0; i < AG_NGAME; i++) { int x, y; cab_xy(i, &x, &y); cab_draw(i, x, y, i == nc); }
-    kiosk_token(8, 190); kiosk_score(132, 190); kiosk_prize(248, 192);
+    kiosk_token(10, 190); kiosk_score(132, 190); kiosk_prize(244, 192);
     KA(0, 124, 320, 1, UI_RGB(240, 60, 200)); KA(0, 188, 320, 1, UI_RGB(90, 230, 250));
     // people, back to front
     Walk *ord[7]; int n = 0; for (int i = 0; i < 6; i++) ord[n++] = &wk[i];
@@ -342,8 +342,8 @@ int arcade_update(int hd, int pr, int steps) {
 // ---- the picture ----
 static void draw_prize(void) {
     gfx_set_clear(20, 6, 30); K(0, 0, 320, 240, UI_RGB(40, 12, 56));
-    K(0, 0, 320, 22, UI_RGB(150, 40, 120)); gfx_textc(160, 8, 2, "THE PRIZE COUNTER", 255, 255, 255);
-    for (int t = 0; t < 4; t++) { int x = 8 + t * 78; ui_round(x, 24, 74, 16, 5, t == ptab ? UI_RGB(250, 190, 60) : UI_RGB(70, 40, 100), t == ptab ? UI_RGB(240, 140, 30) : UI_RGB(50, 24, 80), 0); ui_textc(x + 37, 28, 1, t == 3 ? "PETS EGGS" : pcat[t], t == ptab ? UI_INK : UI_WHITE); }
+    K(0, 0, 320, 22, UI_RGB(150, 40, 120)); gfx_textc(160, 9, 2, "THE PRIZE COUNTER", 255, 255, 255);
+    for (int t = 0; t < 4; t++) { int x = 10 + t * 76; ui_round(x, 24, 72, 16, 5, t == ptab ? UI_RGB(250, 190, 60) : UI_RGB(70, 40, 100), t == ptab ? UI_RGB(240, 140, 30) : UI_RGB(50, 24, 80), 0); ui_textc(x + 36, 28, 1, t == 3 ? "PETS EGGS" : pcat[t], t == ptab ? UI_INK : UI_WHITE); }
     int n = pcount(ptab);
     for (int k = 0; k < n; k++) { int i = pidx(ptab, k), y = 46 + k * 22, s = k == pcur, own = prz[i].bit && (arc.prz & (1u << prz[i].bit));
         ui_round(10, y, 190, 20, 5, s ? UI_RGB(226, 242, 254) : UI_RGB(60, 30, 90), s ? UI_HILITE : UI_RGB(46, 20, 70), 0);

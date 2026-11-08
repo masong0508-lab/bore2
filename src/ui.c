@@ -152,11 +152,19 @@ void ui_round(int x, int y, int w, int h, int r, u32 top, u32 bot, int semi) {
         if (i == rr - 1) { u32 c0 = mix(top, bot, rr, h), c1 = mix(top, bot, h - rr, h); gfx_grad(x, y + rr, w, h - 2 * rr, c0, c0, c1, c1, semi); }
     }
 }
+#ifdef SAFE_LINT
+int safe_off;   // (a card's drop shadow may reach 2 pixels past the card: the lint does not count it)
+#define SAFE_OFF(v) (safe_off = (v))
+#else
+#define SAFE_OFF(v)
+#endif
 void ui_shadow(int x, int y, int w, int h, int r) {
+    SAFE_OFF(1);
     gfx_ui_blend(2);                                              // subtract: the scene darkens under it
     ui_round(x + 2, y + 3, w, h, r, UI_RGB(46, 46, 52), UI_RGB(46, 46, 52), 1);
     ui_round(x + 1, y + 1, w, h, r, UI_RGB(30, 30, 34), UI_RGB(30, 30, 34), 1);
     gfx_ui_blend(1);
+    SAFE_OFF(0);
 }
 void ui_card(int x, int y, int w, int h) {
     ui_shadow(x, y, w, h, 6);
@@ -186,6 +194,8 @@ static const u32 acc_top[8] = { UI_RGB(70, 176, 238), UI_RGB(56, 190, 170), UI_R
 static const u32 acc_bot[8] = { UI_BLUE2, UI_RGB(20, 130, 120), UI_RGB(50, 140, 40), UI_RGB(206, 106, 20), UI_RGB(110, 60, 180), UI_RGB(196, 50, 110), UI_RGB(186, 130, 10), UI_RGB(70, 86, 116) };
 int ui_window(int x, int y, int w, int h, const char *title, int icon) {
     u32 at = acc_top[ui_accent & 7], ab = acc_bot[ui_accent & 7];
+    { int x1 = x + w, y1 = y + h;   // (inside the safe area: a TV's overscan hides the outer 8 pixels, so a window is pulled in to 8 from every edge)
+      if (x < 8) x = 8; if (y < 8) y = 8; if (x1 > 312) x1 = 312; if (y1 > 232) y1 = 232; w = x1 - x; h = y1 - y; }
     ui_card(x, y, w, h);
     // the header: a blue band across the top, round at its upper corners
     ui_round(x + 1, y + 1, w - 2, 18, 6, at, ab, 0);
@@ -300,6 +310,7 @@ static int key_draw(int x, int y, int k) {
     return w;
 }
 int ui_key(int x, int y, const char *k) { int i = key_of(k, strlen(k)); return i < 0 ? 0 : key_draw(x, y, i); }
+static int hgap = 10;   // (the space between two hints: squeezed when a line would not fit the safe area)
 static int hints_do(int x, int y, const char *s, int draw) {
     int x0 = x; char w[32];
     while (*s) {
@@ -314,21 +325,28 @@ static int hints_do(int x, int y, const char *s, int draw) {
         int n = MIN((int)(e - s), 31); memcpy(w, s, n); w[n] = 0;
         if (n) { if (draw) ui_text(x + 1, y + 3, 1, w, UI_INK); x += ui_tw(1, w) + 1; }
         s = *e ? e + 1 : e;
-        if (*s) x += 10;
+        if (*s) x += hgap;
     }
     return x - x0;
 }
 int ui_hints(int x, int y, const char *spec, int align) {
-    int w = hints_do(0, 0, spec, 0);
-    hints_do(align == 1 ? x - w / 2 : align == 2 ? x - w : x, y, spec, 1);
+    hgap = 10; int w = hints_do(0, 0, spec, 0);
+    if (w > 304) { hgap = 5; w = hints_do(0, 0, spec, 0); }
+    int x0 = align == 1 ? x - w / 2 : align == 2 ? x - w : x;
+    if (x0 + w > 312) x0 = 312 - w;   // (inside the safe area: a TV's overscan hides the outer 8 pixels)
+    if (x0 < 8) x0 = 8;
+    hints_do(x0, y, spec, 1); hgap = 10;
     return w;
 }
 void ui_hintbar(int y, const char *spec) {
-    int w = hints_do(0, 0, spec, 0) + 14;
+    hgap = 10; int w = hints_do(0, 0, spec, 0) + 14;
+    if (w > 304) { hgap = 5; w = hints_do(0, 0, spec, 0) + 14; }
     ui_card(160 - w / 2, y, w, 17);
-    hints_do(160 - w / 2 + 7, y + 2, spec, 1);
+    hints_do(160 - w / 2 + 7, y + 2, spec, 1); hgap = 10;
 }
 int ui_window_s(int x, int y, int w, int h, const char *title) {
+    { int x1 = x + w, y1 = y + h;   // (pulled in to the safe area, as ui_window)
+      if (x < 8) x = 8; if (y < 8) y = 8; if (x1 > 312) x1 = 312; if (y1 > 232) y1 = 232; w = x1 - x; h = y1 - y; }
     ui_card(x, y, w, h);
     { u32 at = acc_top[ui_accent & 7], ab = acc_bot[ui_accent & 7];
     ui_round(x + 1, y + 1, w - 2, 15, 6, at, ab, 0);
@@ -358,7 +376,7 @@ void ui_section(int x, int y, int w, const char *t) {
     if (w > tw) gfx_rect(x + tw, y + 3, w - tw, 1, cr(UI_LINE), cg(UI_LINE), cb(UI_LINE), 0);
 }
 void ui_bubble(int cx, int y, const char *s, u32 c) {
-    int w = ui_tw(1, s) + 10, x = cx - w / 2; if (x < 3) x = 3; if (x + w > 317) x = 317 - w;   // (kept on the screen)
+    int w = ui_tw(1, s) + 10, x = cx - w / 2; if (x < 9) x = 9; if (x + w > 311) x = 311 - w; if (y < 21) y = 21;   // (kept in the safe area)
     ui_round(x - 1, y - 13, w + 2, 14, 4, UI_RGB(150, 162, 180), UI_RGB(150, 162, 180), 0);   // a thin edge, so it reads on a white wall
     ui_round(x, y - 12, w, 12, 4, UI_WHITE, UI_RGB(234, 239, 246), 0);
     gfx_rect(cx - 3, y, 6, 1, 150, 162, 180, 0); gfx_rect(cx - 2, y, 4, 1, 234, 239, 246, 0);

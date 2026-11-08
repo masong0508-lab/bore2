@@ -501,19 +501,19 @@ static void fighter_draw(int i) {
     if (!f->fall && f->y < 1800) { VECTOR sp = { pos.vx, 0, pos.vz }; gfx_shadow(&sp, 70 - MM(f->y) / 8); }
 }
 static void bar(int x, int w, int hp, int trail, int right) {   // a life bar: the red trail, the yellow life
-    gfx_rect(x - 1, 21, w + 2, 10, 10, 10, 20, 0);
+    gfx_rect(x - 1, 25, w + 2, 10, 10, 10, 20, 0);
     int tw = w * trail / 100, hw = w * hp / 100;
-    if (right) { gfx_rect(x + w - tw, 22, tw, 8, 220, 40, 30, 0); gfx_rect(x + w - hw, 22, hw, 8, 250, 214, 40, 0); }
-    else { gfx_rect(x, 22, tw, 8, 220, 40, 30, 0); gfx_rect(x, 22, hw, 8, 250, 214, 40, 0); }
+    if (right) { gfx_rect(x + w - tw, 26, tw, 8, 220, 40, 30, 0); gfx_rect(x + w - hw, 26, hw, 8, 250, 214, 40, 0); }
+    else { gfx_rect(x, 26, tw, 8, 220, 40, 30, 0); gfx_rect(x, 26, hw, 8, 250, 214, 40, 0); }
 }
 static void hud(void) {
     const char *yn = you()->first;
     bar(10, 124, F[0].hp, F[0].trail, 0); bar(186, 124, F[1].hp, F[1].trail, 1);
-    ui_round(4, 4, 136, 15, 5, UI_RGB(20, 22, 44), UI_RGB(10, 12, 30), 0); ui_text(10, 6, 1, yn, UI_WHITE);
-    ui_round(180, 4, 136, 15, 5, UI_RGB(20, 22, 44), UI_RGB(10, 12, 30), 0); ui_text(310 - ui_tw(1, ladder[stage].nm), 6, 1, ladder[stage].nm, UI_WHITE);
-    for (int k = 0; k < 2; k++) { ui_disc(14 + k * 12, 38, 8, k < F[0].wins ? UI_AMBER : UI_RGB(40, 40, 60)); ui_disc(306 - k * 12, 38, 8, k < F[1].wins ? UI_AMBER : UI_RGB(40, 40, 60)); }
+    ui_round(8, 8, 132, 15, 5, UI_RGB(20, 22, 44), UI_RGB(10, 12, 30), 0); ui_text(14, 10, 1, yn, UI_WHITE);
+    ui_round(180, 8, 132, 15, 5, UI_RGB(20, 22, 44), UI_RGB(10, 12, 30), 0); ui_text(306 - ui_tw(1, ladder[stage].nm), 10, 1, ladder[stage].nm, UI_WHITE);
+    for (int k = 0; k < 2; k++) { ui_disc(18 + k * 12, 42, 8, k < F[0].wins ? UI_AMBER : UI_RGB(40, 40, 60)); ui_disc(302 - k * 12, 42, 8, k < F[1].wins ? UI_AMBER : UI_RGB(40, 40, 60)); }
     char t[8]; snprintf(t, sizeof t, "%d", secs);
-    ui_round(144, 2, 32, 30, 8, UI_RGB(20, 22, 44), UI_RGB(10, 12, 30), 0); gfx_textc(160, 10, 2, t, secs <= 5 ? 255 : 250, secs <= 5 ? 80 : 214, secs <= 5 ? 60 : 40);
+    ui_round(144, 8, 32, 30, 8, UI_RGB(20, 22, 44), UI_RGB(10, 12, 30), 0); gfx_textc(160, 16, 2, t, secs <= 5 ? 255 : 250, secs <= 5 ? 80 : 214, secs <= 5 ? 60 : 40);
     { char s[24]; snprintf(s, sizeof s, "STAGE %d", stage + 1); ui_textc(160, 222, 1, stage == 8 ? "FINAL STAGE" : s, UI_RGB(200, 210, 240)); }
 }
 static void sparks(void) {

@@ -284,10 +284,10 @@ static void draw_action_card(const Sim *s) {   // what the Bore is doing, with i
     if (s->action == ACT_NONE || s->action == ACT_WALK) return;
     const char *nm = act_label(s);
     int w = MAX(ui_tw(1, nm) + 14, 90);
-    ui_card(4, 158, w, 17);
-    ui_text(10, 161, 1, nm, UI_INK);
-    if (s->action == ACT_WORK) ui_bar(9, 169, w - 10, 4, MIN(100, job_worked * 100 / job_shift_len()), UI_GREEN);   // (the shift so far)
-    else if (act_total > 0 && act_total < 9999) ui_bar(9, 169, w - 10, 4, CLAMP(100 - s->act_t * 100 / act_total, 0, 100), UI_BLUE);
+    ui_card(8, 158, w, 17);
+    ui_text(14, 161, 1, nm, UI_INK);
+    if (s->action == ACT_WORK) ui_bar(13, 169, w - 10, 4, MIN(100, job_worked * 100 / job_shift_len()), UI_GREEN);   // (the shift so far)
+    else if (act_total > 0 && act_total < 9999) ui_bar(13, 169, w - 10, 4, CLAMP(100 - s->act_t * 100 / act_total, 0, 100), UI_BLUE);
 }
 #define NFEED 3
 #define FEED_VB 330                                     // a note shows this long (vblanks: five and a half seconds, whatever the frame rate)
@@ -304,7 +304,7 @@ static void feed_draw(int y) {   // the notifications stack on the left, newest 
         if (!feed_t[i]) continue;
         int age = now - feed_t[i];
         if (age > FEED_VB || age < 0) { feed_t[i] = 0; continue; }
-        int w = ui_tw(1, feed[i]) + 14, x = 4 - (age > FEED_VB - 24 ? (age - (FEED_VB - 24)) * (w + 8) / 24 : 0);   // (out to the left at the end)
+        int w = ui_tw(1, feed[i]) + 14, x = 8 - (age > FEED_VB - 24 ? (age - (FEED_VB - 24)) * (w + 8) / 24 : 0);   // (out to the left at the end)
         ui_card(x, y, w, 13); gfx_rect(x + 1, y + 2, 2, 9, 38, 146, 222, 0);
         ui_text(x + 6, y + 3, 1, feed[i], UI_INK);
         y += 16;
@@ -475,7 +475,7 @@ static void venue_draw(void) {
     else if (!open_) sprintf(sub, "CLOSED TILL %s", hour_name(place_opens_at(venue.lot), h));
     else if (place_opens_at(venue.lot) == 0 && place_closes_at(venue.lot) == 24) strcpy(sub, "OPEN ALL DAY");
     else sprintf(sub, "OPEN TILL %s", hour_name(place_closes_at(venue.lot), h));
-    int tw_ = MAX(ui_tw(1, venue.name), ui_tw(1, sub)), ic = tw_ + 34 <= 140, w = tw_ + (ic ? 34 : 14), x = 316 - w, y = story_id && story_ch < 5 && world_zone != ZONE_ISLAND ? 73 : 57;   // (on the right, under the want and the story)
+    int tw_ = MAX(ui_tw(1, venue.name), ui_tw(1, sub)), ic = tw_ + 34 <= 140, w = tw_ + (ic ? 34 : 14), x = 312 - w, y = story_id && story_ch < 5 && world_zone != ZONE_ISLAND ? 73 : 57;   // (on the right, under the want and the story)
     ui_card(x, y, w, 27);
     if (ic) ui_icon_disc(x + 13, y + 13, 20, lotIc[venue.lot % LOT_N], UI_BLUE, UI_WHITE);
     ui_text(x + (ic ? 27 : 7), y + 4, 1, venue.name, UI_INK);
@@ -537,7 +537,7 @@ static void hud_life(void) {
     // the household, top left: round portraits, a ring in each one's mood colour, the one you play ringed blue with the gold arrow
     for (int i = 0; i < nsims; i++) {
         const Sim *o = &sims[i];
-        int x = 17 + i * 24, y = 21, me = i == player, mm = o->mood;
+        int x = 21 + i * 24, y = 21, me = i == player, mm = o->mood;
         u32 ring = me ? UI_BLUE : o->away ? UI_RGB(176, 186, 200) : mm > 15 ? UI_GREEN : mm > -15 ? UI_RGB(236, 176, 40) : UI_RGB(228, 84, 70);
         ui_disc(x, y, 23, UI_WHITE); ui_disc(x, y, 21, ring); ui_disc(x, y, 17, o->away ? UI_RGB(222, 228, 236) : UI_RGB(234, 240, 248));
         if (o->away) ui_icon(x - 6, y - 6, IC_BOOK, UI_RGB(112, 126, 146));   // at school till 3
@@ -554,9 +554,9 @@ static void hud_life(void) {
     {   // (kept from frame to frame while no bar moves: see gfx_keep_begin)
         u32 k = 0x5bd1e995u + (u32)gfx_wide; for (int n = 0; n < NEED_N; n++) k = k * 131u + (u32)sim_need_val(s, n) + 1u;
         if (!gfx_keep_begin(0, k | 1u)) {
-            ui_card(4, 178, 166, 52);
+            ui_card(8, 178, 162, 52);
             for (int n = 0; n < NEED_N; n++) {
-                int v = sim_need_val(s, n), cx = 10 + (n >> 2) * 80, cy = 183 + (n & 3) * 11;
+                int v = sim_need_val(s, n), cx = 14 + (n >> 2) * 78, cy = 183 + (n & 3) * 11;
                 int r, g, bb; need_rgb(v, &r, &g, &bb);
                 ui_icon(cx, cy - 1, nic[n], v < 20 ? UI_RGB(220, 60, 50) : UI_SOFT);
                 ui_bar(cx + 14, cy + 1, 60, 7, v, UI_RGB(r, g, bb));
@@ -576,16 +576,16 @@ static void hud_life(void) {
         u32 k = 0x1b873593u + (u32)gfx_wide + (u32)(mood[0] << 8) + (u32)(veh_on << 20) + (u32)(hint[0] ? 1 << 22 : 0) + (u32)(lv << 24) + (u32)(100 * s->asp_pts / ASP_MAX) * 4099u;
         k = hkey(hkey(hkey(hkey(k, s->bore.first), mood), b), hint[0] ? hint : vh);
         if (!gfx_keep_begin(1, k | 1u)) {
-            ui_card(174, 178, 142, 52);
-            ui_disc(192, 196, 28, moodc); ui_disc(192, 196, 24, UI_RGB(250, 252, 255));
-            draw_face_k(184, 188, m, 1);
-            ui_text(210, 182, 2, s->bore.first, UI_INK);
-            ui_text(210, 197, 1, mood, moodt);
-            ui_text(212 + ui_tw(1, mood) + 4, 197, 1, b, UI_SOFT);
-            ui_bar(210, 207, 100, 5, 100 * s->asp_pts / ASP_MAX, UI_RGB(aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2]));   // (the aspiration meter, under the mood)
-            if (hint[0]) { char hb_[48]; sprintf(hb_, "X %s", hint); ui_round(180, 215, 132, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(185, 217, 1, hb_, UI_WHITE); }
-            else if (veh_on) { ui_round(150, 215, 162, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(155, 217, 1, vh, UI_WHITE); }   // (at the wheel: what it is, and the fuel)
-            else ui_hints(246, 214, "SEL PHONE", 1);
+            ui_card(178, 178, 134, 52);
+            ui_disc(196, 196, 28, moodc); ui_disc(196, 196, 24, UI_RGB(250, 252, 255));
+            draw_face_k(188, 188, m, 1);
+            ui_text(214, 182, 2, s->bore.first, UI_INK);
+            ui_text(214, 197, 1, mood, moodt);
+            ui_text(216 + ui_tw(1, mood) + 4, 197, 1, b, UI_SOFT);
+            ui_bar(214, 207, 94, 5, 100 * s->asp_pts / ASP_MAX, UI_RGB(aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2]));   // (the aspiration meter, under the mood)
+            if (hint[0]) { char hb_[48]; sprintf(hb_, "X %s", hint); ui_round(184, 215, 124, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_textfit(189, 217, 114, hb_, UI_WHITE); }
+            else if (veh_on) { ui_round(154, 215, 154, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_textfit(159, 217, 144, vh, UI_WHITE); }   // (at the wheel: what it is, and the fuel)
+            else ui_hints(244, 214, "SEL PHONE", 1);
             gfx_keep_end(1);
         }
     }
@@ -595,13 +595,13 @@ static void hud_life(void) {
         else { ui_disc(160, 120, 5, UI_RGB(40, 40, 40)); ui_disc(160, 120, 3, UI_WHITE); } }
     HM(4)
     // the clock and the money, top right
-    ui_card(220, 9, 96, 28);
+    ui_card(216, 9, 96, 28);
     { char t_[12]; clock_fmt(t_, clock_min, 0); sprintf(b, "%s %s", sim_day_name(clock_day), t_); }
-    ui_text(226, 12, 2, b, UI_INK);
-    if (ui_clock12) ui_text(226 + ui_tw(2, b) + 2, 19, 1, clock_min / 60 % 24 < 12 ? "AM" : "PM", UI_SOFT);
-    sprintf(b, "$%ld", cash); ui_text(226, 26, 1, b, UI_RGB(40, 150, 50));
+    ui_text(222, 12, 2, b, UI_INK);
+    if (ui_clock12) ui_text(222 + ui_tw(2, b) + 2, 19, 1, clock_min / 60 % 24 < 12 ? "AM" : "PM", UI_SOFT);
+    sprintf(b, "$%ld", cash); ui_text(222, 26, 1, b, UI_RGB(40, 150, 50));
     { static const u32 SC[4] = { UI_RGB(236, 120, 170), UI_RGB(236, 170, 30), UI_RGB(214, 110, 30), UI_RGB(80, 150, 220) };   // the season, and its festival on the last day
-      int se = sim_season(), fe = sim_festival(); { const char *sn = fe ? sim_festival_name(se) : sim_season_name(se); ui_badge(160 - (ui_tw(1, sn) + 10) / 2, 7, sn, fe ? UI_AMBER : SC[se], UI_WHITE); }
+      int se = sim_season(), fe = sim_festival(); { const char *sn = fe ? sim_festival_name(se) : sim_season_name(se); ui_badge(160 - (ui_tw(1, sn) + 10) / 2, 8, sn, fe ? UI_AMBER : SC[se], UI_WHITE); }
       { int wx = world_zone == ZONE_ISLAND ? 0 : sim_weather();   // the weather: rain in streaks, hail in white pellets, snow in thick flakes (out of doors, and lighter through a window)
         int ou = sim_outdoors(s);
         if (wx == 1) for (int i = 0; i < (ou ? 90 : 30); i++) { int x = (i * 37 + frame * 3) % 340 - 10, y = (i * 53 + frame * (14 + i % 5)) % 240 - 8; gfx_rect_c(x, y, 1, 9, RGB(14, 20, 31), 1); gfx_rect_c(x + 1, y, 1, 7, RGB(20, 26, 31), 1); }
@@ -613,20 +613,20 @@ static void hud_life(void) {
           for (int i = 0; i < n; i++) { int sp = 1 + (i % 3), x = (i * 53 + frame * (fe ? 0 : 1) / 2 * (i & 1 ? 1 : -1) + isin((frame * 9 + i * 400) & 4095) / 140 + 320 * 4) % 320, y = (i * 41 + frame * sp / 2) % 230 - 4;
               ui_disc(x, y, 5, fe ? SC[i & 3] ^ (u32)(i * 0x331) : PC[se]); } } }
     HM(5)
-    { int ic = sim_speed <= 1 ? IC_PLAY : IC_FAST; ui_icon_disc(305, 29, 12, ic, sim_speed >= 3 ? UI_RGB(236, 150, 40) : UI_BLUE, UI_WHITE); }
-    { int day_ = clock_min >= 360 && clock_min < 1200; ui_icon(286, 24, IC_SUN, day_ ? UI_RGB(236, 170, 30) : UI_RGB(120, 140, 200)); }
+    { int ic = sim_speed <= 1 ? IC_PLAY : IC_FAST; ui_icon_disc(301, 29, 12, ic, sim_speed >= 3 ? UI_RGB(236, 150, 40) : UI_BLUE, UI_WHITE); }
+    { int day_ = clock_min >= 360 && clock_min < 1200; ui_icon(282, 24, IC_SUN, day_ ? UI_RGB(236, 170, 30) : UI_RGB(120, 140, 200)); }
     {   // the want, under the clock
         char t[32]; wants_text(s, (frame / 240) & 3, t);
         int w = ui_tw(1, t) + 22;
-        ui_card(316 - w, 40, w, 14); ui_icon(320 - w, 41, IC_STAR, UI_RGB(236, 170, 30)); ui_text(334 - w, 43, 1, t, UI_INK);
+        ui_card(312 - w, 40, w, 14); ui_icon(316 - w, 41, IC_STAR, UI_RGB(236, 170, 30)); ui_text(330 - w, 43, 1, t, UI_INK);
         if (wants_flash_t > 0 && state == ST_LIFE) { int fw = ui_tw(2, wants_flash) + 16; ui_card(160 - fw / 2, 86, fw, 18); ui_textc(160, 89, 2, wants_flash, wants_flash[0] == 'W' ? UI_RGB(40, 150, 50) : UI_RGB(200, 60, 50)); wants_flash_t--; }
     }
     if (story_id && story_ch < 5 && world_zone != ZONE_ISLAND) {   // the story: this chapter's next task, under the want
-        char t[48]; if (story_hud(t)) { int w = ui_tw(1, t) + 22; ui_card(316 - w, 56, w, 14); ui_icon(320 - w, 57, IC_BOOK, UI_BLUE2); ui_text(334 - w, 59, 1, t, UI_INK); } }
+        char t[48]; if (story_hud(t)) { int w = ui_tw(1, t) + 22; ui_card(312 - w, 56, w, 14); ui_icon(316 - w, 57, IC_BOOK, UI_BLUE2); ui_text(330 - w, 59, 1, t, UI_INK); } }
     { extern int citizens_card_on(void); feed_draw(citizens_card_on() ? 86 : 38); }   // (under the person card when it shows)
     if (venue_t && VSync(-1) - venue_t < 240) venue_draw(); else venue_t = 0;
     if (world_zone == ZONE_ISLAND) {   // the castaway's stores, and the secrets found
-        int x = 222, y = 57; static const s8 ic[4] = { IC_WOOD, IC_STONE, IC_SPROUT, IC_FOOD };
+        int x = 218, y = 57; static const s8 ic[4] = { IC_WOOD, IC_STONE, IC_SPROUT, IC_FOOD };
         const int v[4] = { isl_wood, isl_stone, isl_leaves, isl_food };
         static const u32 icc[4] = { UI_RGB(150, 100, 50), UI_RGB(120, 124, 132), UI_RGB(70, 160, 70), UI_RGB(220, 120, 40) };
         ui_card(x, y, 94, 40);
@@ -2918,9 +2918,9 @@ static void pause_draw(void) {   // one short column: the game itself (the rest 
     static const s8 ic[NPAUSE] = { IC_PLAY, IC_ARROW, IC_HAMMER, IC_SPROUT, IC_HEART, IC_NOTE, IC_HEART, IC_STAR, IC_ADD, IC_GEAR, IC_HELP, IC_BOOK, IC_SPROUT, IC_DOOR };
     life_draw();
     ui_dim();
-    int top = ui_window(70, 4, 180, 228, "PAUSED", IC_PAUSE);
-    for (int i = 0; i < NPAUSE; i++) ui_button(78, top + i * 14, 164, 13, pauseNm[i], ic[i], i == menu_sel);
-    ui_hints(160, top + NPAUSE * 14 + 3, "SEL PHONE|O BACK", 1);
+    int top = ui_window(70, 8, 180, 224, "PAUSED", IC_PAUSE);
+    for (int i = 0; i < NPAUSE; i++) ui_button(78, top + i * 13, 164, 12, pauseNm[i], ic[i], i == menu_sel);
+    ui_hints(160, top + NPAUSE * 13 + 3, "SEL PHONE|O BACK", 1);
 }
 
 // ---- THE PHONE (SELECT): The Sims' cell phone. Twelve apps on a grid; the family's list for playing as someone else ----
@@ -3232,7 +3232,7 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
     u32 moodc = m > 15 ? UI_GREEN : m > -15 ? UI_AMBER : UI_RED, moodt = m > 15 ? UI_GOODT : m > -15 ? UI_GOLDT : UI_BADT;
     ui_disc(24, top + 10, 24, moodc); ui_disc(24, top + 10, 20, UI_RGB(250, 252, 255));
     draw_face_k(16, top + 2, m, 1);
-    sprintf(b, "%s - %s", sim_life_text(s, 1), look_asp_name(s->bore.asp)); ui_text(42, top, 1, b, UI_SOFT);
+    sprintf(b, "%s", sim_life_text(s, 1)); ui_text(42, top, 1, b, UI_SOFT);
     {   // growing up: the next birthday
         int L = sim_stage_len(s->bore.stage), x = 42 + ui_tw(1, b) + 8;
         if (s->bday) ui_badge_i(x, top - 2, IC_CAKE, "BIRTHDAY TODAY!", UI_RGB(255, 186, 40), UI_WHITE);
@@ -3240,7 +3240,8 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
     }
     const char *mood = m > 50 ? "STOKED" : m > 15 ? "HAPPY" : m > -15 ? "FINE" : m > -50 ? "SAD" : "MISERABLE";
     ui_text(42, top + 11, 1, mood, moodt);
-    ui_meter(120, top + 11, 186, m);
+    ui_text(42 + ui_tw(1, mood) + 8, top + 11, 1, look_asp_name(s->bore.asp), UI_SOFT);
+    ui_meter(176, top + 11, 130, m);
     int kid = s->bore.stage == AG_CHILD || s->bore.stage == AG_TEEN;   // (a kid's fifth tab is SCHOOL)
     for (int i = 0; i < 5; i++) {   // the tabs: a picture and a word, the open one blue
         const char *tn = i == 4 && kid ? "SCHOOL" : panelTab[i];
@@ -3534,42 +3535,42 @@ static void create_draw(void) {
     gfx_shadow(&p, 70);
     // the card: the tab on a blue header, its rows, the buttons at the foot
     static const s8 createIc[NTAB] = { IC_PEOPLE, IC_SMILE, IC_BRUSH, IC_SHIRT, IC_STAR, IC_SPROUT, IC_ARROW };
-    int top = ui_window(166, 4, 150, 232, look_tab_name[create_tab], createIc[create_tab]);
-    int first = MAX(0, create_row - 7), shown = MIN(n, first + 9);
+    int top = ui_window(162, 8, 150, 224, look_tab_name[create_tab], createIc[create_tab]);
+    int first = MAX(0, create_row - 6), shown = MIN(n, first + 8);
     for (int i = first; i < shown; i++) {
         const LookRow *r = &rows[i]; int y = top + (i - first) * 19;
         int sel = i == create_row;
-        if (sel) { ui_round(170, y - 1, 142, 19, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(170, y + 2, 2, 13, 38, 146, 222, 0); }
-        ui_text(176, y + 1, 1, r->label, sel ? UI_BLUE2 : UI_INK);
-        if (sel) { ui_text(292, y + 1, 1, "<", UI_BLUE); ui_text(302, y + 1, 1, ">", UI_BLUE); }
+        if (sel) { ui_round(166, y - 1, 142, 19, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(166, y + 2, 2, 13, 38, 146, 222, 0); }
+        ui_text(172, y + 1, 1, r->label, sel ? UI_BLUE2 : UI_INK);
+        if (sel) { ui_text(288, y + 1, 1, "<", UI_BLUE); ui_text(298, y + 1, 1, ">", UI_BLUE); }
         char val[24] = "";
         if (r->kind == ROW_AGE) strcpy(val, look_stage_name(edit.stage));
         else if (r->id == LK_ASP) strcpy(val, look_asp_name(edit.asp));
         else if (r->id == LK_LTW) sprintf(val, "GOAL %d", edit.ltw + 1);
-        else if (r->id >= LK_TRAIT0 && r->id < LK_TRAIT0 + 5) ui_pips(176, y + 10, edit.tr[r->id - LK_TRAIT0], 10, UI_AMBER);
-        else if (r->kind == ROW_SLIDER) ui_slider(176, y + 9, 128, (edit.look[r->id] + 4) % 9, 9, sel);
+        else if (r->id >= LK_TRAIT0 && r->id < LK_TRAIT0 + 5) ui_pips(172, y + 10, edit.tr[r->id - LK_TRAIT0], 10, UI_AMBER);
+        else if (r->kind == ROW_SLIDER) ui_slider(172, y + 9, 128, (edit.look[r->id] + 4) % 9, 9, sel);
         else if (r->kind == ROW_COLOUR) {
             int cnt = look_count(r->id), sp = cnt > 12 ? 8 : 11, sw = sp - 2;
             for (int k = 0; k < cnt && k < 16; k++) {
-                if (k == edit.look[r->id]) gfx_rect(176 + k * sp - 2, y + 7, sw + 4, 12, 26, 112, 190, 0);
-                gfx_rect_c(176 + k * sp, y + 9, sw, 8, look_option_colour(r->id, k), 0);
+                if (k == edit.look[r->id]) gfx_rect(172 + k * sp - 2, y + 7, sw + 4, 12, 26, 112, 190, 0);
+                gfx_rect_c(172 + k * sp, y + 9, sw, 8, look_option_colour(r->id, k), 0);
             }
         }
         else { const char *nm = look_option_name(r->id, edit.look[r->id]); if (nm) strncpy(val, nm, 23); }
-        if (val[0]) ui_text(176, y + 10, 1, val, sel ? UI_BLUE2 : UI_SOFT);
+        if (val[0]) ui_text(172, y + 10, 1, val, sel ? UI_BLUE2 : UI_SOFT);
     }
-    for (int t = 0; t < NTAB; t++) ui_disc(220 + t * 9, 204, 6, t == create_tab ? UI_BLUE : UI_LINE);   // which tab of the seven
-    ui_hints(241, 205, "L1 R1 TAB|TRI DICE", 1);
-    ui_hints(241, 217, prev_state == ST_LIFE ? "SQ NAME|START DONE" : "SQ NAME|START LIVE", 1);
+    for (int t = 0; t < NTAB; t++) ui_disc(216 + t * 9, 200, 6, t == create_tab ? UI_BLUE : UI_LINE);   // which tab of the seven
+    ui_hints(237, 201, "L1 R1 TAB|TRI DICE", 1);
+    ui_hints(237, 213, prev_state == ST_LIFE ? "SQ NAME|START DONE" : "SQ NAME|START LIVE", 1);
     // the Bore's name card, and the title
     char nm[32]; sprintf(nm, "%s %s", edit.first, edit.last);
     int big = ui_tw(2, nm) <= 140, w = MAX(big ? ui_tw(2, nm) : ui_tw(1, nm), 100) + 14;
-    ui_card(6, 6, w, 31);
-    ui_text(12, big ? 9 : 11, big ? 2 : 1, nm, UI_INK);
-    char sb[48]; sprintf(sb, "%s, %s", look_stage_name(edit.stage), look_sign_name(look_sign_of(&edit))); ui_text(12, 25, 1, sb, UI_SOFT);
+    ui_card(8, 8, w, 31);
+    ui_text(14, big ? 11 : 13, big ? 2 : 1, nm, UI_INK);
+    char sb[48]; sprintf(sb, "%s, %s", look_stage_name(edit.stage), look_sign_name(look_sign_of(&edit))); ui_text(14, 27, 1, sb, UI_SOFT);
     { const char *t = "CREATE A BORE"; int tw_ = ui_tw(1, t) + 30;
-      ui_shadow(6, 214, tw_, 18, 6); ui_round(6, 214, tw_, 18, 6, UI_RGB(70, 176, 238), UI_BLUE2, 0);
-      ui_icon(11, 217, IC_STAR, UI_WHITE); ui_text(26, 220, 1, t, UI_WHITE); }
+      ui_shadow(8, 212, tw_, 18, 6); ui_round(8, 212, tw_, 18, 6, UI_RGB(70, 176, 238), UI_BLUE2, 0);
+      ui_icon(13, 215, IC_STAR, UI_WHITE); ui_text(28, 218, 1, t, UI_WHITE); }
 }
 
 // ---- build mode ----
@@ -3753,9 +3754,9 @@ static void draw_catalog(void) {
     int first = CLAMP(p - 5, 0, MAX(0, n - 10));
     for (int k = first; k < n && k < first + 10; k++) {
         char ch = items_at(idx[k]); int y = top + 10 + (k - first) * 12, sel = k == p, cost = items_cost(ch);
-        if (sel) { ui_round(199, y - 2, 114, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(199, y, 2, 8, 38, 146, 222, 0); }
+        if (sel) { ui_round(199, y - 2, 111, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(199, y, 2, 8, 38, 146, 222, 0); }
         ui_text(204, y, 1, items_name(ch), sel ? UI_BLUE2 : UI_INK);
-        sprintf(b, "%d", cost); ui_text(311 - ui_tw(1, b), y, 1, b, cost > cash ? UI_BADT : UI_GOODT);
+        sprintf(b, "%d", cost); ui_text(308 - ui_tw(1, b), y, 1, b, cost > cash ? UI_BADT : UI_GOODT);
     }
     sprintf(b, "%d OF %d", p + 1, n); ui_textc(256, top + 135, 1, b, UI_SOFT);
 }
@@ -3764,7 +3765,7 @@ static void draw_pick_list(const char *title, int count, int sel, const char *(*
     int top = ui_window_s(196, 4, 120, 116, title);
     for (int k = -3; k <= 3; k++) {
         int i = (sel + k + count * 4) % count, y = top + 4 + (k + 3) * 12;
-        if (!k) { ui_round(199, y - 2, 114, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(199, y, 2, 8, 38, 146, 222, 0); }
+        if (!k) { ui_round(199, y - 2, 111, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(199, y, 2, 8, 38, 146, 222, 0); }
         ui_text(204, y, 1, nm(i), !k ? UI_BLUE2 : UI_SOFT);
     }
     sprintf(b, "%d OF %d", sel + 1, count); ui_textc(256, top + 87, 1, b, UI_SOFT);
@@ -3964,13 +3965,13 @@ static void build_draw(void) {
     {   // the tools as round buttons, the status card, the catalog on the right, the buttons along the foot
         static const s8 toolIc[NTOOL] = { IC_SOFA, IC_ROOM, IC_BRICK, IC_DOOR, IC_TILES, IC_BRUSH, IC_HOUSE };
         char b[64];
-        ui_card(4, 4, 190, 52);
-        for (int i = 0; i < NTOOL; i++) { int on = i == build_tool; ui_icon_disc(15 + i * 20, 15, 18, toolIc[i], on ? UI_BLUE : UI_RGB(222, 230, 240), on ? UI_WHITE : UI_BLUE2); }
-        sprintf(b, "$%ld", cash); ui_text(188 - ui_tw(1, b), 10, 1, b, UI_GOODT);
+        ui_card(8, 8, 186, 52);
+        for (int i = 0; i < NTOOL; i++) { int on = i == build_tool; ui_icon_disc(19 + i * 20, 19, 18, toolIc[i], on ? UI_BLUE : UI_RGB(222, 230, 240), on ? UI_WHITE : UI_BLUE2); }
+        sprintf(b, "$%ld", cash); ui_text(188 - ui_tw(1, b), 14, 1, b, UI_GOODT);
         if (build_delta_t > 0 && build_delta) { char d_[20]; sprintf(d_, build_delta < 0 ? "-$%ld" : "+$%ld", build_delta < 0 ? -build_delta : build_delta);   // the last buy or sale, beside the money
-            ui_text(188 - ui_tw(1, b) - 6 - ui_tw(1, d_), 10, 1, d_, build_delta < 0 ? UI_BADT : UI_GOODT); }
-        ui_text(10, 27, 1, toolNm[build_tool], UI_BLUE2);
-        sprintf(b, "STOREY %d OF %d", build_lvl + 1, NLEVELS); ui_text(188 - ui_tw(1, b), 27, 1, b, UI_SOFT);
+            ui_text(188 - ui_tw(1, b) - 6 - ui_tw(1, d_), 14, 1, d_, build_delta < 0 ? UI_BADT : UI_GOODT); }
+        ui_text(14, 31, 1, toolNm[build_tool], UI_BLUE2);
+        sprintf(b, "STOREY %d OF %d", build_lvl + 1, NLEVELS); ui_text(188 - ui_tw(1, b), 31, 1, b, UI_SOFT);
         if (build_msg_t > 0) strcpy(b, build_msg);
         else if (!build_ok(build_x, build_y)) strcpy(b, home_city || nprops ? "NOT YOUR LOT" : "BUY A HOME TO BUILD HERE");
         else if (build_carry) sprintf(b, "MOVING %s (TRI TURNS)", items_name(build_carry));
@@ -3984,14 +3985,14 @@ static void build_draw(void) {
         else if (build_tool == BT_FLOOR) sprintf(b, "%s  $10 A TILE", world_floor_name(build_fl));
         else if (build_tool == BT_PAINT) sprintf(b, "%s", world_wall_name(build_wp));
         else sprintf(b, "%s ROOF, %s PITCH", world_roof_style_name(world_roof_style), world_roof_pitch_name(world_roof_pitch));
-        ui_text(10, 40, 1, b, build_msg_t > 0 && build_msg_ok ? UI_GOODT : build_msg_t > 0 || !build_ok(build_x, build_y) ? UI_BADT : UI_INK);
+        ui_text(14, 44, 1, b, build_msg_t > 0 && build_msg_ok ? UI_GOODT : build_msg_t > 0 || !build_ok(build_x, build_y) ? UI_BADT : UI_INK);
         if (build_tool == BT_BUY) { draw_catalog();
             char ic_ = items_at(build_item), t_[40]; int cst = items_cost(ic_);   // the pick on its own card: its price, what it sells back for, and whether you can afford it
-            ui_card(196, 174, 120, 28);
+            ui_card(196, 174, 116, 28);
             ui_text(203, 178, 1, items_name(ic_), UI_INK);
             sprintf(t_, "$%d", cst); ui_text(203, 190, 1, t_, cst > cash ? UI_BADT : UI_GOODT);
-            if (cst > cash) ui_text(311 - ui_tw(1, "CAN'T AFFORD"), 190, 1, "CAN'T AFFORD", UI_BADT);
-            else { sprintf(t_, "SELLS $%d", cst * 3 / 4); ui_text(311 - ui_tw(1, t_), 190, 1, t_, UI_SOFT); } }
+            if (cst > cash) ui_text(308 - ui_tw(1, "CAN'T AFFORD"), 190, 1, "CAN'T AFFORD", UI_BADT);
+            else { sprintf(t_, "SELLS $%d", cst * 3 / 4); ui_text(308 - ui_tw(1, t_), 190, 1, t_, UI_SOFT); } }
         else if (build_tool == BT_ROOM) { draw_pick_list("ROOM WALLS", NWALLS, build_wp, world_wall_name);
             int top = ui_window_s(196, 126, 120, 30, "ROOM FLOOR (R3)"); ui_text(204, top + 2, 1, world_floor_name(build_fl), UI_INK); }
         else if (build_tool == BT_WALL) draw_pick_list("WALLS  $50", NWALLS, build_wp, world_wall_name);
@@ -4002,12 +4003,12 @@ static void build_draw(void) {
                ui_text(204, top + 2, 1, world_roof_style_name(world_roof_style), UI_INK);
                ui_text(204, top + 14, 1, world_roof_pitch_name(world_roof_pitch), UI_SOFT);
                ui_text(204, top + 26, 1, world_roof_col_name(world_roof_col), UI_SOFT); }
-        ui_card(4, 206, 312, 30);
-        if (build_tool == BT_ROOF) { ui_hints(160, 204, "X STYLE|SQ PITCH|L1 R1 COLOUR|SEL TOOL", 1); ui_hints(160, 216, "L2 R2 STOREY|O DONE", 1); }
-        else if (build_tool == BT_ROOM) { ui_hints(160, 204, room_on ? "X BUILD IT|O LET GO|L1 R1 WALLS|R3 FLOOR" : "X FIRST CORNER|L1 R1 WALLS|R3 FLOOR", 1);
-               ui_hints(160, 216, "SQ DOOR|TRI UNDO|SEL TOOL|L2 R2 STOREY|O DONE", 1); }
-        else { ui_hints(160, 204, build_tool == BT_BUY ? "L1 R1 PICK|R3 TAB|X BUY OR MOVE|SQ SELL" : build_tool == BT_DOOR ? "L1 R1 PICK|X PUT IN|SQ TAKE OUT" : build_tool == BT_WALL ? "L1 R1 PICK|X PLACE, HOLD TO DRAW|SQ ERASE" : build_tool == BT_PAINT ? "L1 R1 PICK|X PAINT|TRI PAPER ROOM" : build_tool == BT_FLOOR ? "L1 R1 PICK|X PLACE|TRI FILL ROOM|SQ ERASE" : "L1 R1 PICK|X PLACE|SQ ERASE", 1);
-               ui_hints(160, 216, build_tool == BT_BUY ? "TRI TURN|SEL TOOL|L2 R2 STOREY|O DONE" : "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
+        ui_card(8, 204, 304, 28);
+        if (build_tool == BT_ROOF) { ui_hints(160, 205, "X STYLE|SQ PITCH|L1 R1 COLOUR|SEL TOOL", 1); ui_hints(160, 217, "L2 R2 STOREY|O DONE", 1); }
+        else if (build_tool == BT_ROOM) { ui_hints(160, 205, room_on ? "X BUILD IT|O LET GO|L1 R1 WALLS|R3 FLOOR" : "X FIRST CORNER|L1 R1 WALLS|R3 FLOOR", 1);
+               ui_hints(160, 217, "SQ DOOR|TRI UNDO|SEL TOOL|L2 R2 STOREY|O DONE", 1); }
+        else { ui_hints(160, 205, build_tool == BT_BUY ? "L1 R1 PICK|R3 TAB|X BUY OR MOVE|SQ SELL" : build_tool == BT_DOOR ? "L1 R1 PICK|X PUT IN|SQ TAKE OUT" : build_tool == BT_WALL ? "L1 R1 PICK|X PLACE, HOLD TO DRAW|SQ ERASE" : build_tool == BT_PAINT ? "L1 R1 PICK|X PAINT|TRI PAPER ROOM" : build_tool == BT_FLOOR ? "L1 R1 PICK|X PLACE|TRI FILL ROOM|SQ ERASE" : "L1 R1 PICK|X PLACE|SQ ERASE", 1);
+               ui_hints(160, 217, build_tool == BT_BUY ? "TRI TURN|SEL TOOL|L2 R2 STOREY|O DONE" : "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
         if (build_intro > 0) { int sl = build_intro > 80 ? (build_intro - 80) * 14 : build_intro < 12 ? (12 - build_intro) * 14 : 0;   // BUILD MODE: slides in, stays, slides out
             ui_shadow(30, 92 - sl, 136, 30, 8); ui_round(30, 92 - sl, 136, 30, 8, UI_RGB(70, 176, 238), UI_BLUE2, 0);
             ui_textc(98, 97 - sl, 2, "BUILD MODE", UI_WHITE); ui_textc(98, 112 - sl, 1, "O WHEN YOU ARE DONE", UI_WHITE); }
@@ -4776,22 +4777,22 @@ static void ne_draw(void) {
     dio_look(ne_cx, ne_cy, 0);
     gfx_sky(0xEBBE8C, 0xF0E6D7);
     dio_draw(ne_cx, ne_cy, ne_brush, ne_t);
-    { int x = 4;   // the tools
-      for (int i = 0; i < NT_N; i++) { int w = ui_tw(1, neTool[i]) + 8, on = i == ne_tool; ui_round(x, 3, w, 12, 3, on ? UI_BLUE : UI_PANEL, on ? UI_BLUE2 : UI_PANEL, 0); ui_text(x + 4, 5, 1, neTool[i], on ? UI_WHITE : UI_SOFT); x += w + 3; } }
+    { int x = 8;   // the tools
+      for (int i = 0; i < NT_N; i++) { int w = ui_tw(1, neTool[i]) + 8, on = i == ne_tool; ui_round(x, 8, w, 12, 3, on ? UI_BLUE : UI_PANEL, on ? UI_BLUE2 : UI_PANEL, 0); ui_text(x + 4, 10, 1, neTool[i], on ? UI_WHITE : UI_SOFT); x += w + 3; } }
     char b[64];
     gfx_rect(0, 175, 320, 52, 14, 18, 28, 0);
-    ui_round(4, 177, 312, 13, 3, UI_PANEL, UI_PANEL, 0);
-    if (ne_msgt) ui_text(9, 180, 1, ne_msg, UI_BADT);
-    else if (ne_tool == NT_GROUND) { const u8 *c = tc[ne_g]; gfx_rect(9, 179, 9, 9, c[0], c[1], c[2], 0); sprintf(b, "<  %s  >   L2 R2", neGnd[ne_g]); ui_text(23, 180, 1, b, UI_INK); }
-    else if (ne_tool == NT_BUILD) { sprintf(b, "<  %s  >   L2 R2", ne_lot_name(neLots[ne_b])); ui_text(9, 180, 1, b, UI_INK); }
-    else if (ne_tool == NT_ROAD) ui_text(9, 180, 1, ne_r ? "<  TAKE UP ROAD  >   L2 R2" : "<  LAY ROAD  >   L2 R2", UI_INK);
-    else ui_text(9, 180, 1, neHelp[ne_tool], UI_INK);
+    ui_round(8, 177, 304, 13, 3, UI_PANEL, UI_PANEL, 0);
+    if (ne_msgt) ui_text(13, 180, 1, ne_msg, UI_BADT);
+    else if (ne_tool == NT_GROUND) { const u8 *c = tc[ne_g]; gfx_rect(13, 179, 9, 9, c[0], c[1], c[2], 0); sprintf(b, "<  %s  >   L2 R2", neGnd[ne_g]); ui_text(27, 180, 1, b, UI_INK); }
+    else if (ne_tool == NT_BUILD) { sprintf(b, "<  %s  >   L2 R2", ne_lot_name(neLots[ne_b])); ui_text(13, 180, 1, b, UI_INK); }
+    else if (ne_tool == NT_ROAD) ui_text(13, 180, 1, ne_r ? "<  TAKE UP ROAD  >   L2 R2" : "<  LAY ROAD  >   L2 R2", UI_INK);
+    else ui_text(13, 180, 1, neHelp[ne_tool], UI_INK);
     { BInfo c; bm_block(ne_cx, ne_cy, &c);
       const Settle *s = c.set != 255 ? bm_set(c.set) : 0;
-      sprintf(b, "%d,%d  %s  %s", ne_cx, ne_cy, neGnd[c.terrain % 6], s ? s->name : "OPEN COUNTRY"); gfx_text(4, 191, 1, b, 220, 226, 240);
-      sprintf(b, "%s%s", c.lot == LOT_WILD ? "" : ne_lot_name(c.lot), (c.road & 3) ? (c.lot == LOT_WILD ? "STREET" : "  +STREET") : ""); gfx_text(316 - gfx_text_w(1, b), 191, 1, b, 255, 214, 120); }
-    sprintf(b, "HOMES %d  PEOPLE %d  PLACES %d  PARKS %d", ne_st[0], ne_st[0] * 3, ne_st[1], ne_st[2]); gfx_text(4, 200, 1, b, 160, 230, 170);
-    sprintf(b, "ROADS %d  LAND %d%%  EDITS %d  SEASON %s", ne_st[3], ne_st[4] * 100 / 2209, bm_ovr_n(), wm_season ? sim_season_name(wm_season - 1) : "TURNS"); gfx_text(4, 209, 1, b, 160, 230, 170);
+      sprintf(b, "%d,%d  %s  %s", ne_cx, ne_cy, neGnd[c.terrain % 6], s ? s->name : "OPEN COUNTRY"); gfx_text(8, 191, 1, b, 220, 226, 240);
+      sprintf(b, "%s%s", c.lot == LOT_WILD ? "" : ne_lot_name(c.lot), (c.road & 3) ? (c.lot == LOT_WILD ? "STREET" : "  +STREET") : ""); gfx_text(312 - gfx_text_w(1, b), 191, 1, b, 255, 214, 120); }
+    sprintf(b, "HOMES %d  PEOPLE %d  PLACES %d  PARKS %d", ne_st[0], ne_st[0] * 3, ne_st[1], ne_st[2]); gfx_text(8, 200, 1, b, 160, 230, 170);
+    sprintf(b, "ROADS %d  LAND %d%%  EDITS %d  SEASON %s", ne_st[3], ne_st[4] * 100 / 2209, bm_ovr_n(), wm_season ? sim_season_name(wm_season - 1) : "TURNS"); gfx_text(8, 209, 1, b, 160, 230, 170);
     ui_hints(160, 212, "X USE|SQ BRUSH|L1 R1 TOOL|TRI TOWN|START MENU", 1);
     if (ne_menu) {
         ui_dim();
@@ -4927,8 +4928,8 @@ static void worlds_draw(void) {
         ui_textc(MX + MS / 2, MY + MS / 2 + 20, 1, "A NEW MAP EVERY TIME", UI_WHITE);
     }
     ui_wrap(12, top + 124, 132, 3, wo_sel == WO_RANDOM ? "FRESH DICE: TOWNS, ROADS" : "A SET WORLD: THE SAME MAP EVERY TIME", UI_SOFT);
-    if (sd) { const Settle *c = wo_painted == sd ? bm_set(bm_capital()) : 0; sprintf(b, "%d TOWNS, CAPITAL %s", bm_nset(), c ? c->name : "?"); ui_text(12, top + 138, 1, b, UI_INK); }
-    else if (wo_name[0]) { snprintf(b, sizeof b, "CAPITAL: %s", wo_name); ui_text(12, top + 138, 1, b, UI_INK); }
+    if (sd) { const Settle *c = wo_painted == sd ? bm_set(bm_capital()) : 0; sprintf(b, "%d TOWNS, CAPITAL %s", bm_nset(), c ? c->name : "?"); ui_wrap(12, top + 150, 134, 2, b, UI_INK); }
+    else if (wo_name[0]) { snprintf(b, sizeof b, "CAPITAL: %s", wo_name); ui_wrap(12, top + 150, 134, 2, b, UI_INK); }
     ui_badge(306 - ui_tw(1, wo_packed ? "TOWNS: PACKED" : "TOWNS: ROOMY") - 10, 8, wo_packed ? "TOWNS: PACKED" : "TOWNS: ROOMY", UI_WHITE, UI_BLUE2);
     ui_hints(160, 214, "X PLAY|TRI TOWNS|SEL NAME|L1 R1 TAB|O BACK", 1);
 }
@@ -4985,8 +4986,15 @@ static void loading_draw(const char *what, int pct) {   // The Sims 4's way: a b
     ui_bar(70, 146, 180, 9, pct, UI_BLUE);
     { static int tip = -1, tip_t; int now = VSync(-1); if (tip < 0 || now - tip_t > 300) { tip = (tip + 1 + (now & 3)) % (int)(sizeof tips / sizeof *tips); tip_t = now; }
       const char *t = tips[tip]; int w = ui_tw(1, t) + 40;
+      if (w > 290) {   // (too long for the safe area on one line: two, split at the space nearest the middle)
+          char l1[48], l2[48]; int n = (int)strlen(t), cut = n / 2; while (cut > 0 && t[cut] != ' ') cut--; if (cut <= 0) cut = n / 2;
+          memcpy(l1, t, cut); l1[cut] = 0; strcpy(l2, t + cut + (t[cut] == ' '));
+          w = MAX(ui_tw(1, l1), ui_tw(1, l2)) + 40;
+          ui_round(160 - w / 2, 178, w, 27, 6, UI_RGB(24, 70, 130), UI_RGB(24, 70, 130), 0);
+          ui_text(160 - w / 2 + 6, 184, 1, "TIP", UI_RGB(255, 210, 90)); ui_text(160 - w / 2 + 30, 182, 1, l1, UI_WHITE); ui_text(160 - w / 2 + 30, 193, 1, l2, UI_WHITE);
+      } else {
       ui_round(160 - w / 2, 180, w, 15, 6, UI_RGB(24, 70, 130), UI_RGB(24, 70, 130), 0);
-      ui_text(160 - w / 2 + 6, 184, 1, "TIP", UI_RGB(255, 210, 90)); ui_text(160 - w / 2 + 30, 184, 1, t, UI_WHITE); }
+      ui_text(160 - w / 2 + 6, 184, 1, "TIP", UI_RGB(255, 210, 90)); ui_text(160 - w / 2 + 30, 184, 1, t, UI_WHITE); } }
 }
 void loading(const char *what, int pct) { loading_draw(what, pct); gfx_flip(); DrawSync(0); }
 
