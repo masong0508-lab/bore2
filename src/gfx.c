@@ -38,7 +38,11 @@ int isqrt(int v) {
     return (int)r;
 }
 // a sampling profiler: the music timer (480 Hz) notes where the CPU was; the L3 readout lists the busiest 256-byte stretches of code
-#define PH_N 1800
+#if defined(AUTO_CITY) || defined(PROF_FULL)
+#define PH_N 1800   // (test builds: the histogram over the first 460 KB of code)
+#else
+#define PH_N 16     // (plain Release: 3.5 KB given back to the game; the L3 list then covers the first 4 KB only. Build with -DPROF_FULL=1 for the real thing)
+#endif
 u16 prof_hist[PH_N]; int prof_on, prof_total;
 void prof_sample(void) {
     if (!prof_on) return;
