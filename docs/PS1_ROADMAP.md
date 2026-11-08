@@ -1,7 +1,7 @@
-# PS1: what it needs next (updated Nov 1)
+# PS1: what it needs next (updated Nov 8)
 See also ROADMAP.md, EXPANSION_PACKS.md and PS1_PERFORMANCE.md (measured numbers).
-1. Put the strict texture-warp cutting back: floor textures swim slightly near the camera after the last speed round.
-2. City 20 fps -> 25 on the Sims, zoomed-in and zoomed-out cameras (first person is 27): about 130 hb of a 650 hb frame. Ideas: 8 MB pre-built block geometry, a cheaper tile loop (about 290 hb), a cheaper player model (about 85 hb), hide blocks behind buildings.
+1. (Done Nov 8) Strict texture-warp cutting is back; the speed helper keeps a locked 20 (30 only after a long clean spell); housemate route searches wait for lighter frames; smooth dawn and dusk. See PS1_PERFORMANCE.md, "Round 3".
+2. Still late: 3 to 4% of Sims-camera frames run over 3 vblanks (10 to 15% with 8 MB's bigger crowd, zoomed in). The profile is flat; the cutter is 95 hb (155 zoomed in). Ideas, best first: pre-built block geometry on 8 MB; fewer cutter pieces by sharing corners between floor tiles; the household's three full models (87 hb); the townsfolk planner's spikes (240 hb); a 30 fps first person needs 100 hb less.
 3. Arcade rework from branch `wip-arcade`; finish, test, bump the save VERSION, merge with the Boreagotchi save change.
 4. Placeholders (COMING SOON cards, reserved slots and ids) for everything unfinished, see EXPANSION_PACKS.md.
 5. Test old saves on a real memory card (Boreagotchi v45, REAL TIME v44).
