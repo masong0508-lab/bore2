@@ -85,17 +85,36 @@ int font_line(int style) { return fnt[stl(style)].line; }
 int font_cap(int style) { return fnt[stl(style)].cap; }
 
 // ---- case: the game's text is written in capitals; in the friendly look a few words become Title Case, longer text Sentence case ----
-static int lstr(const char *list, const char *w, int n) {      // is w (n letters, upper case) a word of the space-separated list?
-    for (const char *p = list; *p;) {
-        const char *e = p; while (*e && *e != ' ') e++;
-        if ((int)(e - p) == n && !memcmp(p, w, (size_t)n)) return 1;
-        p = *e ? e + 1 : e;
+static const char L_SMALL[] = "A AN AND AS AT BUT BY FOR IN OF ON OR THE TO UP IF IS IT ME MY NO SO US WE BE DO GO HE OFF OUT";
+static const char L_ACRO[] = "TV DJ OK PM ID XP HP PC CD DS GBA VMU FPS ATM NPC BMX UFO DIY LED USB GPS SUV VIP BBQ WC MC CPU RAM VMS HQ PS2 UD LR LRUD ABC RIP MB KB PS1";
+static const char L_PROPER[] = "BORE BORES BOREAS SAN DIXIE DIPPINN MISSY BOREBOY BOREAGOTCHI PLAYSTATION DREAMCAST SIMS MAPLE SHORES SUNNY HOLLOW PINE BAY STRANGE TOWN BYTE BARN GADGET GARAGE BLEEP BLOOP ZAP ELECTRONICS MON TUE WED THU FRI SAT SUN MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY SATURDAY SUNDAY JANUARY FEBRUARY MARCH APRIL JUNE JULY AUGUST SEPTEMBER OCTOBER NOVEMBER DECEMBER DIPPER MAN HI YO OH AH";
+// is w (n letters, upper case) a word of the space-separated list? (the words are hashed into one small table the first time: a scan of the lists
+// for every word of every text was nearly half of a menu's frame)
+static u16 lh[256]; static u8 lh_ok;
+static const char *const LISTS[3] = { L_SMALL, L_ACRO, L_PROPER };
+static unsigned wh(const char *w, int n) { unsigned h = 5381; for (int i = 0; i < n; i++) h = h * 33 + (u8)w[i]; return h; }
+static void lh_build(void) {
+    lh_ok = 1;
+    for (int li = 0; li < 3; li++)
+        for (const char *p = LISTS[li]; *p;) {
+            const char *e = p; while (*e && *e != ' ') e++;
+            unsigned h = (wh(p, (int)(e - p)) + (unsigned)li * 77) & 255;
+            while (lh[h]) h = (h + 1) & 255;
+            lh[h] = (u16)(((li + 1) << 12) | (int)(p - LISTS[li]));
+            p = *e ? e + 1 : e;
+        }
+}
+static int lstr(const char *list, const char *w, int n) {
+    if (!lh_ok) lh_build();
+    int li = list == L_SMALL ? 0 : list == L_ACRO ? 1 : 2;
+    unsigned h = (wh(w, n) + (unsigned)li * 77) & 255;
+    for (int g = 0; lh[h] && g < 256; g++, h = (h + 1) & 255) {
+        if ((lh[h] >> 12) != li + 1) continue;
+        const char *p = LISTS[li] + (lh[h] & 0xfff);
+        if (!memcmp(p, w, (size_t)n) && (p[n] == ' ' || !p[n])) return 1;
     }
     return 0;
 }
-static const char L_SMALL[] = "A AN AND AS AT BUT BY FOR IN OF ON OR THE TO UP IF IS IT ME MY NO SO US WE BE DO GO HE OFF OUT";
-static const char L_ACRO[] = "TV DJ OK PM ID XP HP PC CD DS GBA VMU FPS ATM NPC BMX UFO DIY LED USB GPS SUV VIP BBQ WC MC CPU RAM VMS HQ PS2 UD LR LRUD ABC RIP";
-static const char L_PROPER[] = "BORE BORES BOREAS SAN DIXIE DIPPINN MISSY BOREBOY BOREAGOTCHI PLAYSTATION DREAMCAST SIMS MAPLE SHORES SUNNY HOLLOW PINE BAY STRANGE TOWN BYTE BARN GADGET GARAGE BLEEP BLOOP ZAP ELECTRONICS MON TUE WED THU FRI SAT SUN MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY SATURDAY SUNDAY JANUARY FEBRUARY MARCH APRIL JUNE JULY AUGUST SEPTEMBER OCTOBER NOVEMBER DECEMBER DIPPER MAN HI YO OH AH";
 int font_case(const char *s, char *out, int n) {
     int len = (int)strlen(s), nw = 0, has_lower = 0, sent_p = 0;
     if (len >= n) return 0;

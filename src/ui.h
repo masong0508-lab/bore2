@@ -53,6 +53,8 @@ int  ui_wrap(int x, int y, int w, int lines, const char *s, u32 c);   // words b
 int  ui_wrap_n(int w, const char *s);
 void ui_textfit(int x, int y, int w, const char *s, u32 c);   // one line at most w wide (else it ends ...)
 int  ui_wrapc(int x, int y, int w, int lines, const char *s, u32 c);   // ... each line centred in w                          // how many lines that would take
+extern int ui_still;                                           // 1: the backdrop is kept from the last frames (no shadows, no dimming this frame)
+void ui_scrollbar(int x, int y, int h, int first, int shown, int total);   // a list's scroll bar (3 px wide)
 void ui_dim(void);                                             // darken the scene behind a menu
 void ui_backdrop(void);                                        // the soft blue behind a full-screen window
 void ui_icon_s(int x, int y, int icon, int size, u32 c);       // an icon drawn size x size (24, 36: big and chunky)

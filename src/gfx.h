@@ -120,6 +120,7 @@ void gfx_sprite_blend(int x, int y, int w, int h, u16 tpage, u16 clut, int u, in
 void gfx_set_clear(int r, int g, int b);
 int gfx_ui_pre(int x);   // a 3D screen x, made ready for the 2D overlay (WIDESCREEN squeezes the overlay)
 extern int gfx_wide;   // 1: WIDESCREEN (16:9): the 3D picture is drawn squeezed 3:4 across, for a screen that stretches it back
+extern int gfx_keep;   // 1: this frame only repaints panels over the last picture (no clear, no world): a menu's still backdrop, 60 frames a second
 extern int gfx_noshadow, gfx_min_vsyncs;   // (options: no soft shadows; the fewest vblanks a frame takes)
 void gfx_set_dither(int on);
 void gfx_sky(u32 top, u32 bottom);           // a full-screen gradient behind everything (0xBBGGRR)

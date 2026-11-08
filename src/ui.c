@@ -170,7 +170,9 @@ int safe_off;   // (a card's drop shadow may reach 2 pixels past the card: the l
 #else
 #define SAFE_OFF(v)
 #endif
+int ui_still;   // 1 while a menu repaints over its kept backdrop: the shadows and the dimming were painted in already (they would pile up)
 void ui_shadow(int x, int y, int w, int h, int r) {
+    if (ui_still) return;
     SAFE_OFF(1);
     gfx_ui_blend(2);                                              // subtract: the scene darkens under it
     ui_round(x + 2, y + 3, w, h, r, UI_RGB(46, 46, 52), UI_RGB(46, 46, 52), 1);
@@ -288,6 +290,7 @@ int ui_wrap(int x, int y, int w, int lines, const char *s, u32 c) { return wrap_
 int ui_wrap_n(int w, const char *s) { return wrap_do(0, 0, w, 9, s, 0, 0); }
 int ui_wrapc(int x, int y, int w, int lines, const char *s, u32 c) { return wrap_do(x, y, w, lines, s, c, 2); }
 void ui_dim(void) {
+    if (ui_still) return;
     gfx_ui_blend(2);
     gfx_rect(0, 0, SCREEN_W, SCREEN_H, 70, 70, 76, 1);             // the scene, a good deal darker
     gfx_ui_blend(1);
@@ -396,4 +399,12 @@ void ui_bubble(int cx, int y, const char *s, u32 c) {
     gfx_rect(cx - 2, y + 1, 4, 1, 150, 162, 180, 0); gfx_rect(cx - 1, y + 1, 2, 1, 234, 239, 246, 0);
     gfx_rect(cx - 1, y + 2, 2, 1, 150, 162, 180, 0);
     ui_text_box(x, y - 12, w, 12, TX_CENTER | TX_MID, 1, s, c);
+}
+
+// a scroll bar for a list: the track, and a thumb as long as the part shown (nothing when it all fits)
+void ui_scrollbar(int x, int y, int h, int first, int shown, int total) {
+    if (total <= shown) return;
+    gfx_rect(x, y, 3, h, 214, 222, 232, 0);
+    int th = MAX(10, h * shown / total), ty = y + (h - th) * first / MAX(1, total - shown);
+    gfx_rect(x, ty, 3, th, cr(UI_BLUE), cg(UI_BLUE), cb(UI_BLUE), 0);
 }

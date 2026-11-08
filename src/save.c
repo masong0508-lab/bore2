@@ -87,6 +87,7 @@ static void icon(u8 *sec, u16 *pal) {   // a little green voxel cube: 16 x 16, 4
         sec[y * 8 + x / 2] |= (u8)(c << ((x & 1) * 4));
     }
 }
+int save_format(void) { return VERSION; }   // (what the options' ABOUT page says)
 static const u8 magic[8] = { 'B', 'O', 'R', 'E', '2', 'S', 'V', VERSION };
 
 static SaveInfo info_out;

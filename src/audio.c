@@ -55,6 +55,21 @@ void audio_voicep(int v, int pitch) {   // a voice at a pitch (256 = as recorded
     next_clip = (next_clip + 1) % CLIP_N;
 }
 void audio_voice(int v) { audio_voicep(v, 256); }
+void audio_ui(int k) {   // the menus' little sounds, from the voices at a high pitch and a low volume: 0 move, 1 page, 2 confirm, 3 back, 4 no, 5 change a value
+    static const u8 vc[6] = { VOICE_AGREE, VOICE_AGREE, VOICE_FINISHED, VOICE_DISAGREE, VOICE_NAH, VOICE_AGREE };
+    static const u16 pt[6] = { 1700, 1250, 760, 900, 520, 1450 }, vl[6] = { 0x1000, 0x1400, 0x1c00, 0x1400, 0x1800, 0x1400 };
+    if (k < 0 || k > 5 || !spu_ok || !voice_addr[vc[k]]) return;
+    int v = vc[k], ch = CLIP_CH0 + next_clip;
+    SpuSetKey(0, 1 << ch);
+    { int f = (int)(getSPUSampleRate(voice_rate[v]) * pt[k] >> 8); SPU_CH_FREQ(ch) = f > 0x3fff ? 0x3fff : f < 0x100 ? 0x100 : f; }
+    SPU_CH_ADDR(ch) = getSPUAddr(voice_addr[v]);
+    SPU_CH_VOL_L(ch) = vl[k] * sfx_gain >> 8;
+    SPU_CH_VOL_R(ch) = vl[k] * sfx_gain >> 8;
+    SPU_CH_ADSR1(ch) = 0x00ff;
+    SPU_CH_ADSR2(ch) = 0x0000;
+    SpuSetKey(1, 1 << ch);
+    next_clip = (next_clip + 1) % CLIP_N;
+}
 
 // ---- the song file (SONGS.BIN): a one-sector index, then per song its sequence sectors and its sample sectors ----
 static u32 seqbuf[(SEQ_MAX + 4096) / 4];   // (the sequence block, or two for the DJ; at its end the decks' unpacking windows)

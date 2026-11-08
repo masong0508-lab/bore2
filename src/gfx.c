@@ -22,6 +22,7 @@ char *gfx_pk_next, *gfx_pk_end;   // the packet cursor and its limit (the end, l
 u32 *gfx_ot_cur;                   // this frame's ordering table
 int gfx_zbias, gfx_fog_on, gfx_zbase, gfx_ot_max = OT_NEAR - 1;
 int gfx_wide;
+int gfx_keep;
 int gfx_min_vsyncs = 1;   // (the options menu: 2 a steady 30 FPS, 3 a steady 20)
 void gfx_set_dither(int on) { db[0].draw.dtd = db[1].draw.dtd = (u8)(on ? 1 : 0); }
 #define db_next gfx_pk_next
@@ -145,7 +146,7 @@ void gfx_flip(void) {
 #ifdef AB_LOCK4
     const int gfx_min_vsyncs = 4;   // (test builds: every frame takes 4 vblanks, so every frame runs 3 game steps whatever it costs: two builds see the very same
 #endif                              //  city frame by frame, and what a change costs or saves shows in the frames' own times without the route drifting)
-    { static int flip_vb; while (gfx_min_vsyncs > 1 && VSync(-1) - flip_vb < gfx_min_vsyncs - 1) VSync(0);   // (a steady 30 or 20: never sooner)
+    { static int flip_vb; int mv_ = gfx_keep ? 1 : gfx_min_vsyncs; while (mv_ > 1 && VSync(-1) - flip_vb < mv_ - 1) VSync(0);   // (a steady 30 or 20: never sooner)
       VSync(0); flip_vb = VSync(-1); }
     db_active ^= 1;
     db_next = db[db_active].p;
@@ -157,6 +158,7 @@ void gfx_flip(void) {
         if (f) { f[1] = 0x01000000u; f[0] = (1u << 24) | (db[db_active].ot[OT_LEN - 1] & 0xffffff); db[db_active].ot[OT_LEN - 1] = (u32)f & 0xffffff; }
     }
     setRGB0(&db[db_active].draw, clear_r, clear_g, clear_b);
+    db[db_active].draw.isbg = !gfx_keep;   // (the frame just built: a menu's still frames paint over the last picture, they do not clear it)
     PutDrawEnv(&db[db_active].draw);
     PutDispEnv(&db[db_active].disp);
     SetDispMask(1);
