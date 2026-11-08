@@ -41,11 +41,11 @@ static int upload_sample(const void *data, int size) {
 static const short volTab[11] = { 0, 8, 17, 28, 42, 60, 84, 114, 150, 198, 256 };
 static int sfx_gain = 256, master_v = 0x3fff;
 
-void audio_voice(int v) {
+void audio_voicep(int v, int pitch) {   // a voice at a pitch (256 = as recorded, 512 an octave up: the Boreagotchi pets squeak and growl with it)
     if (!spu_ok || v < 0 || v >= VOICE_N || !voice_addr[v]) return;
     int ch = CLIP_CH0 + next_clip;
     SpuSetKey(0, 1 << ch);
-    SPU_CH_FREQ(ch) = getSPUSampleRate(voice_rate[v]);
+    { int f = (int)(getSPUSampleRate(voice_rate[v]) * pitch >> 8); SPU_CH_FREQ(ch) = f > 0x3fff ? 0x3fff : f < 0x100 ? 0x100 : f; }
     SPU_CH_ADDR(ch) = getSPUAddr(voice_addr[v]);
     SPU_CH_VOL_L(ch) = 0x2fff * sfx_gain >> 8;
     SPU_CH_VOL_R(ch) = 0x2fff * sfx_gain >> 8;
@@ -54,6 +54,7 @@ void audio_voice(int v) {
     SpuSetKey(1, 1 << ch);
     next_clip = (next_clip + 1) % CLIP_N;
 }
+void audio_voice(int v) { audio_voicep(v, 256); }
 
 // ---- the song file (SONGS.BIN): a one-sector index, then per song its sequence sectors and its sample sectors ----
 static u32 seqbuf[(SEQ_MAX + 4096) / 4];   // (the sequence block, or two for the DJ; at its end the decks' unpacking windows)

@@ -11,7 +11,7 @@
 #define GSP_N 20
 #define GFORMS 6
 #define GL_N 36
-#define GD_N 16
+#define GD_N 32
 #define GOTCHI_PRICE 5000
 #define GOTCHI_EGG 150
 enum { GS_EGG, GS_BABY, GS_CHILD, GS_TEEN, GS_ADULT, GS_ELDER };
@@ -19,15 +19,21 @@ enum { GF_SICK = 1, GF_SLEEP = 2, GF_DARK = 4, GF_CALL = 8, GF_FAKE = 16, GF_TAN
 enum { GM_BUDDY, GM_HATCH, GM_PROUD, GM_WORRY, GM_MISS, GM_HOOKED, GM_SHARED };   // the moods it gives its owner
 enum { GP_SHY, GP_BOLD, GP_GREEDY, GP_LAZY, GP_PLAYFUL, GP_GENTLE, GP_CHEEKY, GP_CLEVER };
 enum { GMU_SPARKLE = 1, GMU_SPOTS = 2, GMU_HALO = 4 };   // rare mutations, passed down
-enum { GD_HATCH = 1, GD_GROW, GD_ADULT, GD_PASS, GD_GIFT, GD_BDAY, GD_TANTRUM, GD_ILL, GD_EGG, GD_PLAY, GD_MUT, GD_CARED, GD_BOND, GD_VISIT, GD_AWARD, GD_DAY };   // a diary kind is the verb (bits 0-4) and, for growing up, the new stage or form (bits 5-7)
+enum { GD_HATCH = 1, GD_GROW, GD_ADULT, GD_PASS, GD_GIFT, GD_BDAY, GD_TANTRUM, GD_ILL, GD_EGG, GD_PLAY, GD_MUT, GD_CARED, GD_BOND, GD_VISIT, GD_AWARD, GD_DAY,
+       GD_WISH, GD_TRAIN, GD_BEST, GD_FRIEND, GD_MISS, GD_EVENT, GD_STREAK };   // a diary kind is the verb (bits 0-4) and, for growing up, the new stage or form (bits 5-7)
 typedef struct { u8 on, stage, form, sp, nm, hun, hap, disc, wt, poop, fl, miss, needT, bond, snk, meal, gen; u16 age; } Blob;
 typedef struct { u8 pers, col, mut, taste, acc, mate, id, bday; } Kin;          // taste: liked food (high nibble), disliked (low); mate: slot + 1
 typedef struct { u8 id, sp, nm, fc, pg, mom, dad, mut; } Line;                  // fc: form | col << 3 | 64 passed on | 128 alive; pg: pers | gen << 3
 typedef struct { u16 day; u8 kind, id; } Diary;
-typedef struct { u8 uid, own, sel, pad; u16 xp, hatched, wins, cared; u8 room, deco, accs, p2; u16 plays; Kin k[GB_N]; Blob b[GB_N]; } Toy;
+typedef struct { u8 nrg, hyg, wish, sk[3], bd, lone, bff, fnd; } Xt;           // the NEW needs and depth (save v48): energy and cleanness 0..100; a wish (bits 0-2 what: 1 food 2 play 3 bath 4 train 5 cuddle 6 nap; bits 3-7 hours old);
+                                                                                // skills SPEED BRAINS CHARM 0..100; birthdays; hours since anyone cared; best friend (slot + 1) and how close
+typedef struct { u8 uid, own, sel, pad; u16 xp, hatched, wins, cared; u8 room, deco, accs, p2; u16 plays; Kin k[GB_N]; Blob b[GB_N]; Xt x[GB_N];
+                 u8 gp[6], streak, best, gflag, ghist; u16 gday, gwon; } Toy;   // gp: today's care counts (meal play bath train cuddle wish); streak: days in a row all goals were met; ghist: the last seven days, a bit each
 extern Toy gtoy[GT_MAX];
 extern Line gline[GL_N];
 extern Diary gdiary[GD_N];
+extern u8 gtal[GL_N];                      // each line's talent: bits 0-1 which skill (1 speed 2 brains 3 charm), bits 2-7 how good /4
+extern u8 gbest[8];                        // the best mini-game scores (0..100), one per game
 extern u32 gach;                           // achievements won (one bit each)
 #define GACH_TUT   0x70000u                 // gach bits 16..18: how far the first-day tutorial went (0 start .. 5); bit 19: tutorial done or skipped; bit 20: the unboxing was seen
 #define GACH_TUTOFF 0x80000u
@@ -50,6 +56,8 @@ int   gotchi_next_xp(const Toy *t);        // xp for the next level (0: the top)
 int   gotchi_needs(const Blob *b);
 int   gotchi_egg(Toy *t, int slot);        // a new egg in an empty slot (paid by the caller)
 void  gotchi_xp(Toy *t, int n);
+void  gotchi_hatch(Toy *t, int slot);     // the egg hatches now (the first-day script warms it up)
+void  gotchi_xinit(Toy *t, int slot);     // fresh energy, cleanness and nothing else (an old save, a new egg)
 void  gotchi_mood(const Toy *t, int kind);
 void  gotchi_diary(int kind, int id);
 // families

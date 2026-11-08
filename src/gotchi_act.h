@@ -4,8 +4,8 @@
 
 #define NFOOD 12
 #define NACC 8
-#define NGAME 4
-#define NACH 16
+#define NGAME 7
+#define NACH 20
 const char *gx_species(int sp);
 const char *gx_given(int nm);
 const char *gx_pers(int p);
@@ -25,6 +25,7 @@ const char *gx_room(int r);
 void  gx_name(const Blob *b, char *out);                 // "SUPER FROG"
 const char *gx_want(const Blob *b);                      // what it is asking for
 void  gx_diary(const Diary *d, char *out);               // one line of the diary
+void  gx_diary_mem(const Diary *d, char *out);           // the same without the name (a pet's own memories)
 // actions: each returns what to say
 const char *gx_feed(Toy *t, int slot, int food);
 const char *gx_lunch(Toy *t, int slot);
@@ -33,7 +34,24 @@ const char *gx_medicine(Toy *t, int slot);
 const char *gx_clean(Toy *t, int slot);
 const char *gx_scold(Toy *t, int slot);
 const char *gx_pet(Toy *t, int slot);                    // cuddle: calms a tantrum, a nuzzle cheers the owner
-const char *gx_game_end(Toy *t, int slot, int won, int game);
+const char *gx_play_check(Toy *t, int slot, int train);   // 0 when it can play or train now, else why not
+const char *gx_game_result(Toy *t, int slot, int game, int pct, int train);   // a game or a training round is over: pct 0..100 becomes a grade, stats, skill, cash and the best score
+extern int gx_grade;                                      // the last grade, 0 D .. 4 S
+const char *gx_bath(Toy *t, int slot);
+int   gx_event_roll(Toy *t, int slot);                    // a surprise: 1 fly 2 coin 3 star 4 storm 5 visitor (0: none)
+const char *gx_event_do(Toy *t, int slot, int kind, int ok);
+// needs, moods, wishes, skills, goals
+int   gx_mood(const Toy *t, int slot);                    // 0..100 from hunger, fun, energy, cleanness and bond
+const char *gx_mood_word(int m);
+int   gx_moodlets(const Toy *t, int slot, const char **o, u8 *good);   // up to three short words (bad first)
+const char *gx_wish_name(int w);
+const char *gx_skill(int i); const char *gx_talent(int tal); const char *gx_stage_note(int st); int gx_game_skill(int g);
+int   gx_urgent2(const Toy *t, int slot);                 // gx_urgent plus 8 a bath, 9 a nap
+void  gx_goals_roll(Toy *t);                              // a new day starts the counts again; a missed day ends the streak
+int   gx_goal_type(const Toy *t, int i); int gx_goal_target(int type); int gx_goal_have(const Toy *t, int i); int gx_goals_done(const Toy *t); const char *gx_goal_name(int type);
+const char *gx_pending(void);                             // "GOAL DONE" text waiting to be shown (once)
+int   gx_fxs(void);                                       // an effect to show: 1 wish 2 goal 3 all goals 4 new best 5 surprise (once)
+int   gx_has(int award);
 const char *gx_meet(Toy *t, int a, Toy *u, int c, int battle);   // a playdate or a battle (u may be t; may be a housemate's toy)
 const char *gx_dress(Toy *t, int slot, int acc);
 const char *gx_quick_feed(Toy *t, int slot);   // one press: its favourite (or a safe free food); a snack when full but sad

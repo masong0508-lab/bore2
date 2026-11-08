@@ -684,7 +684,7 @@ static void life_update(int steps) {
 #ifdef AUTO_GOTCHI
     { static int ag; if (++ag == 40) {
         for (int k = 0; k < nsims && k < 3; k++) { gotchi_buy(k); Toy *t = gotchi_toy(k); static const u8 st[8] = { 4, 4, 3, 4, 2, 1, 0, 4 }, fm[8] = { 0, 3, 1, 2, 0, 0, 0, 1 };
-            for (int i = 0; i < (k == 0 ? 8 : k == 1 ? 5 : 2); i++) { gotchi_egg(t, i); Blob *b = &t->b[i]; b->sp = (u8)((i * 2 + k * 3 + (AUTO_GOTCHI & 1)) % 16); b->stage = st[i]; b->form = fm[i]; b->hun = 3; b->hap = 4; b->bond = (u8)(i * 14); b->age = 16; b->poop = (u8)(i == 1 && k == 0); if (i == 2) b->hun = 0;
+            for (int i = 0; i < (k == 0 ? 8 : k == 1 ? 5 : 2); i++) { gotchi_egg(t, i); Blob *b = &t->b[i]; b->sp = (u8)((i * 2 + k * 3 + (AUTO_GOTCHI & 1)) % 16); b->stage = st[i]; b->form = fm[i]; b->hun = 3; b->hap = 4; b->bond = (u8)(i * 14); b->age = 16; b->poop = (u8)(i == 1 && k == 0); if (i == 2) b->hun = 0; t->x[i].nrg = (u8)(95 - i * 9); t->x[i].hyg = (u8)(100 - i * 11); t->x[i].sk[i % 3] = (u8)(10 + i * 8); if (i == 4) t->x[i].wish = 3 | 8; t->x[i].bd = (u8)(i & 3);
                 if (st[i] == 4) gotchi_dex_see(b->sp, b->form); } }
         for (int k = 0; k < 40; k += 3) gotchi_dex_see(k / 4, k & 3);
         { Toy *t0 = gotchi_toy(0); if (t0) {   // (a family to look at: a pair, their young, two grandparents who passed on, a rare mutant, a hat)
