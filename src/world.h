@@ -52,6 +52,8 @@ void isl_dials_default(void);
 void world_isl_preview(u32 seed, u16 *px);            // that seed's island from above, 128 x 128 pixels
 void world_new_seed(u32 seed);                   // a new life: a new world
 u32  world_seed(void);                           // this world's seed (the memory card)
+enum { TC_PLOT, TC_KERB, TC_ROAD };               // one definition of what a tile is: a lot or open ground, the pavement beside a street, the street itself (lanes, line, crossings)
+int  world_tile_class(int tx, int ty);           // ... of that tile of the city window: nothing may stand on TC_ROAD
 void world_open_at(int bx, int by);              // build the window round that block
 int  world_stream(int ptx, int pty, int *dtx, int *dty);   // keep it round the player's tile: 1 if it moved (everything shifts by -dtx, -dty tiles)
 int  world_stream_now(int ptx, int pty, int *dtx, int *dty, int now);   // now 0: the move may wait for a frame with time to spare (world_stream_want)

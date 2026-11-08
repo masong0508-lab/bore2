@@ -1664,8 +1664,70 @@ COLD __attribute__((noinline)) static void street_clean(int ox, int oy) {   // (
     for (int y = oy; y < oy + BM_BLK; y++) for (int x = ox; x < ox + BM_BLK; x++) { char c = lifeMap[y][x];
         if ((c == '"' || c == 'Y') && FL_IS_ROAD(floorMap[y][x]) && !(wallMap[y][x] & 0x80)) { lifeMap[y][x] = '.'; wallMap[y][x] = 0; } }
 }
+// ---- ONE definition of road, kerb and plot (the generator, the clean-up, the test hooks and the ports all ask this) ----
+// A block's street strip is its tiles 0..BM_LOT0-1 along the top (bit 0 of its road bits) and down the left (bit 1); in a town the pavement
+// is the row and the column at BM_LOT0; everything else is the plot (a lot, a yard, open country). The roads are the map's own bits
+// (blk_roads, with the big places' inner streets gone), never read back from what was painted.
+COLD static void blk_street(int bx, int by, int *rd, int *town, int *rv) {   // rv: a river block's bridge: 1 down the left edge, 2 along the top (it carries the street over the water whatever the block's road bits say)
+    BInfo b; bm_block(bx, by, &b); *rd = blk_roads(bx, by); *town = b.set != 255 && b.terrain != BT_SEA;
+    *rv = b.lot == LOT_RIVER ? ((b.road & BR_MEGA) ? 2 : 1) : 0;
+}
+static inline int tile_class(int rd, int town, int rv, int lx, int ly) {
+    if (((rd & 1) && ly < BM_LOT0) || ((rd & 2) && lx < BM_LOT0)) return TC_ROAD;
+    if (rv == 1 && lx < BM_LOT0 && ly >= BM_LOT0 + 2 && ly <= BM_LOT0 + 8) return TC_ROAD;   // (the bridge: lot_river's asphalt)
+    if (rv == 2 && ly < BM_LOT0 && lx >= BM_LOT0 + 2 && lx <= BM_LOT0 + 8) return TC_ROAD;
+    if (town && ((ly == BM_LOT0 && lx >= BM_LOT0) || (lx == BM_LOT0 && ly >= BM_LOT0))) return TC_KERB;
+    return TC_PLOT;
+}
+COLD int world_tile_class(int tx, int ty) {   // that tile of the city window: TC_ROAD (lanes, the line, crossings), TC_KERB (the pavement) or TC_PLOT
+    if (world_zone != ZONE_CITY || world_wbx < 0 || tx < 0 || ty < 0 || tx >= MW || ty >= MH) return TC_PLOT;
+    int rd, town, rv; blk_street(world_wbx + tx / BM_BLK, world_wby + ty / BM_BLK, &rd, &town, &rv);
+    return tile_class(rd, town, rv, tx % BM_BLK, ty % BM_BLK);
+}
+#ifdef ROAD_AUDIT
+// A test build (-DROAD_AUDIT=1): every block made is checked against that definition, and the window is swept over every town, highway
+// and a grid of open country when the first one opens (ra_sweep). Counters in dbg_ra: 0 blocks, 1 props, 2 props on a road tile, 3 walls
+// on one, 4 road floor on the street strip where the map has no street (the forecourts are in the plot: not counted), 5 street strip not
+// painted road, 6 windows swept, 8 sweep finished.
+int dbg_ra[16], dbg_raw[16][8]; u8 dbg_rach[256]; static int ra_busy, ra_shown, ra_nw;   // (dbg_raw: the first offenders: kind, block x, y, tile x, y, the lot, the floor, the letter)
+static void ra_block(int wx, int wy) {
+    int bx = world_wbx + wx, by = world_wby + wy, rd, town, rv; blk_street(bx, by, &rd, &town, &rv);
+    dbg_ra[0]++;
+    for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) {
+        int mx = wx * BM_BLK + x, my = wy * BM_BLK + y, tc = tile_class(rd, town, rv, x, y); char c = lifeMap[my][mx]; int f = floorMap[my][mx];
+        int strip = x < BM_LOT0 || y < BM_LOT0;
+        if (strip && tc == TC_ROAD && !FL_IS_ROAD(f)) dbg_ra[5]++;
+        if (strip && tc != TC_ROAD && FL_IS_ROAD(f)) { dbg_ra[4]++; if (ra_nw < 16 && (dbg_ra[4] % 100) == 1) { int *r = dbg_raw[ra_nw++]; BInfo bi; bm_block(bx, by, &bi); r[0] = 1; r[1] = bx; r[2] = by; r[3] = x; r[4] = y; r[5] = bi.lot; r[6] = f; r[7] = c; } }
+        if (c == '.' || c == ' ' || c == 0) continue;
+        if (is_wall(c)) { if (tc == TC_ROAD) dbg_ra[3]++; continue; }
+        dbg_ra[1]++;
+        if (tc == TC_ROAD) {
+            dbg_ra[2]++; if (dbg_rach[(u8)c] < 255) dbg_rach[(u8)c]++;
+            if (ra_shown < 4 && ra_nw < 16) { ra_shown++; int *r = dbg_raw[ra_nw++]; BInfo bi; bm_block(bx, by, &bi); r[0] = 2; r[1] = bx; r[2] = by; r[3] = x; r[4] = y; r[5] = bi.lot; r[6] = f; r[7] = c; }
+        }
+    }
+}
+static void ra_win(int bx, int by) { world_open_at(bx + 2, by + 2); dbg_ra[6]++; }
+static void ra_sweep(int hx, int hy) {
+    ra_busy = 1;
+    for (int i = 0; i < bm_nset(); i++) { const Settle *s = bm_set(i); int r = s->r + 1;
+        for (int y = (s->y - r) & ~3; y <= s->y + r; y += 4) for (int x = (s->x - r) & ~3; x <= s->x + r; x += 4) if (x >= 0 && y >= 0 && x < BM_N && y < BM_N) ra_win(x, y); }
+    for (int i = 0; i < bm_nseg(); i++) { int c, a, b, v; bm_seg(i, &c, &a, &b, &v); if (a > b) { int t = a; a = b; b = t; }
+        for (int k = a & ~3; k <= b; k += 4) { int x = v ? c & ~3 : k, y = v ? k : c & ~3; if (x >= 0 && y >= 0 && x < BM_N && y < BM_N) ra_win(x, y); } }
+    for (int y = 0; y < BM_N; y += 64) for (int x = 0; x < BM_N; x += 64) ra_win(x, y);   // (and the open country: one window in sixteen both ways)
+    dbg_ra[8] = 1;
+    printf("RA done: windows %d blocks %d props %d ON-ROAD %d walls-on-road %d roadfloor-off-strip %d strip-not-road %d\n", dbg_ra[6], dbg_ra[0], dbg_ra[1], dbg_ra[2], dbg_ra[3], dbg_ra[4], dbg_ra[5]);
+    for (int c = 0; c < 256; c++) if (dbg_rach[c]) printf("RA   '%c'(%02x) x%d\n", c >= 32 && c < 127 ? c : '?', c, dbg_rach[c]);
+    ra_busy = 0; world_open_at(hx, hy);
+}
+#endif
 static void gen_block0(int wx, int wy);
-COLD static void gen_block(int wx, int wy) { gen_block0(wx, wy); street_clean(wx * BM_BLK, wy * BM_BLK); }
+COLD static void gen_block(int wx, int wy) {
+    gen_block0(wx, wy); street_clean(wx * BM_BLK, wy * BM_BLK);
+#ifdef ROAD_AUDIT
+    ra_block(wx, wy);
+#endif
+}
 COLD static void gen_block0(int wx, int wy) {
     int bx = world_wbx + wx, by = world_wby + wy, ox = wx * BM_BLK, oy = wy * BM_BLK;
     BInfo b; bm_block(bx, by, &b);
@@ -1887,6 +1949,9 @@ COLD void world_open_at(int cbx, int cby) {          // the window round block (
     for (int y = 0; y < MH; y++) lifeMap[y][MW] = 0;
     for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) gen_block(wx, wy);
     ao_dirty = 1; roof_dirty = 1;
+#ifdef ROAD_AUDIT
+    if (!ra_busy && !dbg_ra[8]) ra_sweep(cbx, cby);
+#endif
 }
 // The move can wait: as you step into an edge block the window's own edge is still 16 tiles off. It waits for a frame with the time to
 // spare before its vblank (main: world_stream_spare, after the frame is drawn), and goes in the update anyway when you are within 5 tiles
