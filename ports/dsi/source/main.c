@@ -605,13 +605,17 @@ static void snd_tick(void) {
 }
 
 // ---- THE SONGS: the PS1 game's jukebox on the DS, with no streaming. tools/dsmusic turns every song into a note list plus its instruments' samples
-// (IMA-ADPCM), and tools/dsbuild/addmusic.py appends it to the ROM. The song you hear is read off the cartridge into RAM, and each note is one of the
-// sound chip's sample channels. If the cartridge cannot be read (a loader that only gives us the game's code), the synth tunes play instead.
+// (IMA-ADPCM), and tools/dsbuild/addmusic.py appends it to the ROM. The song you hear is read off the cartridge into RAM and handed to the ARM7
+// (tools/dsbuild/arm7/main7.c), which plays it with its own 1022.76 Hz timer on ten sample channels: the tempo and the grid of the notes do not depend on
+// how long this loop's passes take (D72; before, the notes were counted off in passes, one frame short each, and put on video frames).
+// If the cartridge cannot be read (a loader that only gives us the game's code), the synth tunes play instead.
 #define MUS_BUFSZ 0x4A000
 static u8 mus_buf[MUS_BUFSZ] __attribute__((aligned(32)));
 static u8 mus_dir[8192] __attribute__((aligned(32)));
-static int mus_ent, mus_laps, m_hd, m_cnt, m_ch[16], mus_next = -1, mus_play;
-static u32 mus_base; static const u8 *mp; static u32 m_loop, m_smp, m_tbl;
+typedef struct { volatile u32 gen, run, seq, loop_off, smp, tbl, vol, stereo; volatile u32 laps, ticks, pos, pad[5]; } MusCtl;   // (the ARM7's view: first 32 bytes ours, last 32 its)
+static MusCtl mus_ctl __attribute__((aligned(32)));
+static int mus_ent, mus_laps, mus_next = -1, mus_play;
+static u32 mus_base;
 static volatile const u32 MUS_LOC[4] __attribute__((used, aligned(4))) = { 0x41444D42u, 0, 0, 0x2E4D4442u };   // 'BMDA', the songs' ROM address (patched in), the size, '.BDM'
 static int cart_blk(u32 addr, u32 *dst) {   // 512 bytes of the cartridge at addr (a multiple of 512)
     u32 rc = *(vu32 *)0x027FFE60; if (!rc) rc = 0x00586000;
@@ -623,37 +627,29 @@ static void cart_read(u32 addr, void *dst, u32 len) { u32 *d = (u32 *)dst; for (
 static u32 rd32(const u8 *p) { return p[0] | p[1] << 8 | p[2] << 16 | (u32)p[3] << 24; }
 static void mus_init(void) {
     mus_ok = 0; static u32 blk[128]; const volatile u32 *loc = MUS_LOC; if (loc[0] != 0x41444D42u || !loc[1] || loc[3] != 0x2E4D4442u) return;   // (addmusic.py wrote where the songs start)
-    mus_base = loc[1]; cart_blk(mus_base, blk); if (memcmp(blk, "BDM1", 4)) return;
+    mus_base = loc[1]; cart_blk(mus_base, blk); if (memcmp(blk, "BDM2", 4)) return;
     cart_read(mus_base, mus_dir, 4096); 
     mus_n = (int)rd32(mus_dir + 4); mus_ent = (int)rd32(mus_dir + 8); if (mus_n < 1 || mus_n > 64 || mus_ent != 96 || 16 + mus_n * mus_ent > (int)sizeof mus_dir) return;
     if (16 + mus_n * mus_ent > 4096) cart_read(mus_base + 4096, mus_dir + 4096, 4096);
+    mus_ctl.gen = mus_ctl.run = 0; DC_FlushRange(&mus_ctl, sizeof mus_ctl); fifoSendValue32(FIFO_USER_01, (u32)&mus_ctl);   // (the ARM7 player learns where its control block is)
     mus_ok = 1;
 }
 static const u8 *mus_e(int n) { return mus_dir + 16 + n * mus_ent; }
 static const char *mus_name(int n) { return n >= 0 && n < mus_n ? (const char *)mus_e(n) + 40 : ""; }
-static void mus_stop(void) { for (int i = 0; i < 16; i++) { if (m_ch[i] >= 0) soundKill(m_ch[i]); m_ch[i] = -1; } mus_cur = -1; }
+static void mus_cmd(int run) { mus_ctl.run = (u32)run; mus_ctl.stereo = (u32)(o_pan != 0); mus_ctl.vol = (u32)(o_vol * o_mus); mus_ctl.gen++; DC_FlushRange(&mus_ctl, 32); }
+static void mus_stop(void) { if (mus_ok == 1) mus_cmd(0); mus_cur = -1; }
 static int mus_start(int n) {
     mus_stop(); if (mus_ok != 1 || n < 0 || n >= mus_n) return 0;
     const u8 *e = mus_e(n); u32 len = rd32(e + 4); if (len > MUS_BUFSZ) return 0;
     cart_read(mus_base + rd32(e), mus_buf, len); DC_FlushRange(mus_buf, len);
-    m_tbl = rd32(e + 8); m_smp = rd32(e + 12); m_loop = rd32(e + 20); mp = mus_buf; m_hd = 0; m_cnt = 0; mus_laps = 0; mus_cur = n; return 1;
+    mus_ctl.seq = (u32)mus_buf; mus_ctl.tbl = (u32)mus_buf + rd32(e + 8); mus_ctl.smp = (u32)mus_buf + rd32(e + 12); mus_ctl.loop_off = rd32(e + 20);
+    mus_laps = 0; mus_cur = n; mus_cmd(1); return 1;
 }
-static void mus_tick(void) {   // once a frame: play the notes that are due
-    int vs = o_vol * o_mus;
-    for (int guard = 0; guard < 400; guard++) {
-        if (!m_hd) { int d = *mp++; if (d == 255) { m_cnt = 254; m_hd = 2; } else { m_cnt = d; m_hd = 1; } }
-        if (m_cnt > 0) { m_cnt--; if (m_cnt) return; }
-        if (m_hd == 2) { m_hd = 0; continue; }
-        m_hd = 0; int ev = *mp++;
-        if (ev == 0xFF) { mus_laps++; if (o_song == 0 && mus_cur != 0) { mus_cur = -1; return; } mp = mus_buf + m_loop; continue; }
-        if (ev == 0xFE) continue;
-        if (ev & 0x80) { int sl = ev & 15; if (m_ch[sl] >= 0) { soundKill(m_ch[sl]); m_ch[sl] = -1; } continue; }
-        int sl = ev & 15, kill = ev & 0x40, in = mp[0], hz = mp[1] | mp[2] << 8, vol = mp[3], pan = mp[4]; mp += 5;
-        if (kill && m_ch[sl] >= 0) { soundKill(m_ch[sl]); m_ch[sl] = -1; }
-        int v = vol * vs / 72; if (v > 127) v = 127; if (v < 1) { m_ch[sl] = -1; continue; }
-        const u8 *ti = mus_buf + m_tbl + in * 8; u32 so = rd32(ti), sz = rd32(ti + 4);
-        m_ch[sl] = sz ? soundPlaySample(mus_buf + m_smp + so, SoundFormat_ADPCM, sz, (u16)hz, (u8)v, o_pan ? (u8)pan : 64, false, 0) : -1;
-    }
+static void mus_tick(void) {   // once a frame: the volume as it is now, and has the song played through (Auto: on to the next)?
+    u32 vs = (u32)(o_vol * o_mus), st = (u32)(o_pan != 0);
+    if (mus_ctl.vol != vs || mus_ctl.stereo != st) { mus_ctl.vol = vs; mus_ctl.stereo = st; DC_FlushRange(&mus_ctl, 32); }
+    DC_InvalidateRange((void *)&mus_ctl.laps, 32); mus_laps = (int)mus_ctl.laps;
+    if (mus_laps > 0 && o_song == 0 && mus_cur != 0) mus_cur = -1;
 }
 static const char *clk(char *b, int mn) { int h = (mn / 60) % 24, m = mn % 60, h12 = h % 12 ? h % 12 : 12; if (o_c24) sprintf(b, "%02d:%02d", h, m); else sprintf(b, "%d:%02d %s", h12, m, h >= 12 ? "pm" : "am"); return b; }
 static void say(const char *m) { static const u8 MT[3] = { 45, 90, 150 }; msg = m; msg_t = MT[o_msgt % 3];   // (Options > Game > Message time)

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """BORE 2 DS music: every jukebox song from assets/SONGS.BIN, as a note list the DS sound chip plays (no streaming).
 For each song: its instruments' samples (decoded from the PS1 chip's ADPCM, re-encoded as the DS's IMA-ADPCM) and a flat, time-ordered list of
-note events with the voices already shared out (the DS has 16 sound channels, a few of them kept for the game's own sounds).
-Output: assets/dsmusic.bin (appended to the .nds by tools/dsbuild/addmusic.py; read from the cartridge by ports/dsi/source/music.h).
+note events with the voices already shared out (the DS has 16 sound channels; the music takes ten, the game's own square voices keep 8-13).
+BDM2 (D72): the event times are in ticks of the ARM7's music timer (TICK_HZ = 33513982 / 64 / 512 = 1022.76 Hz, 0.98 ms), not video frames: the
+ARM7 plays the list by itself (tools/dsbuild/arm7/main7.c), so the tempo and the grid do not depend on the game's frame rate (docs/MUSIC_TIMING.md).
+Output: assets/dsmusic.bin (appended to the .nds by tools/dsbuild/addmusic.py; read from the cartridge by ports/dsi/source/main.c).
 usage: mk_dsmusic.py assets/SONGS.BIN assets/songs.inc assets/dsmusic.bin"""
 import struct, sys, re, ctypes, collections
 L = ctypes.CDLL('/tmp/adpcm.so')
-MIXR = 18157; FPS = 59.8261; VOICES = 9
+MIXR = 18157; TICK_HZ = 33513982.0 / 64 / 512; VOICES = 10   # (D72: ticks of the ARM7 music timer; ten sample channels)
 def unlzss(comp, n):
     out = bytearray(); i = 0
     while len(out) < n:
@@ -93,7 +95,7 @@ for si in range(nsong):
     out = bytearray()
     seqev = []
     for ri, t, tch, inn, bs, nt, vol in notes_raw:
-        f = int(round(t * FPS))
+        f = int(round(t * TICK_HZ))
         if nt == 127:
             v = chan_voice.get(tch)
             if v is not None and vch[v] == tch and voice_end[v] > t: seqev.append((f, 1, v)); voice_end[v] = -1
@@ -118,8 +120,8 @@ for si in range(nsong):
         chan_voice[tch] = v; vch[v] = tch; voice_end[v] = t + dur; voice_t[v] = t
         seqev.append((f, 0, v | (kill << 6), inn, hz, dv, pan))
     seqev.sort(key=lambda e: (e[0], e[1] == 0))
-    lf = int(round(loop_row * rowsec * FPS)); total = max(int(round(len(prow) * rowsec * FPS)), lf + 1)
-    # encode: a delta byte (frames since the last record; 255 = wait 254, nothing else), then the event: a note (slot | 0x40 to cut the one
+    lf = int(round(loop_row * rowsec * TICK_HZ)); total = max(int(round(len(prow) * rowsec * TICK_HZ)), lf + 1)
+    # encode: a delta byte (ticks since the last record; 255 = wait 254, nothing else), then the event: a note (slot | 0x40 to cut the one
     # before it, instrument, Hz, volume, pan), 0x80|slot = let go, 0xFE = the loop point, 0xFF = the end (back to the loop point)
     cur = 0; lb = None; marked = False
     def wait(to):
@@ -162,7 +164,7 @@ for s in songs:
     dirb += struct.pack('<IIIIIIIHBB', s['pos'], s['len'], s['off_tbl'], s['off_smp'], len(s['smp']), s['loop_off'], len(s['seq']), s['ninst'], s['fx'], 0)
     dirb += struct.pack('<II', s['loop_frame'], s['frames']) + nm + ar
 ENT = len(dirb) // len(songs)
-head = struct.pack('<4sIII', b'BDM1', len(songs), ENT, 16)
+head = struct.pack('<4sIII', b'BDM2', len(songs), ENT, 16)
 out = bytearray(head) + dirb
 assert len(out) <= base, (len(out), base)
 out += bytes(base - len(out)); out += blob

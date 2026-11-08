@@ -388,3 +388,8 @@ No press was dropped (seen = acted on) in any scene. The 3D stays 30 in every `b
 - **fps** (melonDS, UI passes a second; 3D is not shown in these scenes): shop card 54, unboxing 25-31, hatching 20-30 (the flash), title 20-54. Not a flat 30 yet.
 - **Shots** (both screens): `docs/ds_shots/gotchi_first_*.png`, `egg_*.png`, `egg_mystery_*.png`. Test rig: `tools/dsemu/gotchi_shots.py` with `-DDSTEST -DAUTO_SCENE=96` (shop 96, egg card 97, unbox 98), `=48` (scene 50 hatch) and `=100` (eggs 101-115; add `-DMYS` for mystery eggs).
 - **Left:** title and hatching under a steady 30 UI passes; the PS1's sound cues are simple jingles; no real DS tried.
+
+## D72: the music keeps time (Nov 8; `bore2_dsi_d72.nds`)
+- Cause of the "very sped up / loose" songs: the ARM9 stepped the song once per main-loop pass and rounded every gap to whole frames (each gap one frame short), so a fast song ran sped up and a 30 fps scene made it slow and uneven. Also libnds SOUND_FREQ (2^24) is 0.12 % sharp against the chip's 16756991 Hz.
+- Now the ARM7 plays the songs (`tools/dsbuild/arm7/main7.c`): timer 0 at 1022.76 Hz, timer 1 counts its overflows (a late interrupt catches up, no tick is lost). `assets/dsmusic.bin` is BDM2 (note list in ticks, 10 voices, `tools/dsmusic/mk_dsmusic.py`); the ARM9 hands over a MusCtl block and a song number only. Frame rate no longer touches tempo.
+- Check: melonDS AUDOUT on the title song, onset fit peaks at tempo scale 1.00. See `docs/MUSIC_TIMING.md`.
