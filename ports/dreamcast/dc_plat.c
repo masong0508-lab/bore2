@@ -47,8 +47,10 @@ static uint16_t latch = 0xffff; static int poll_on;
 void pad_init(void) {}
 void pad_poll_on(int on) { poll_on = on; }
 int pad_read(int port, u8 *out) {
-    if (port != 0) { memset(out, 0xff, 8); out[0] = 0xff; return 0; }
-    int ax, ay; uint16_t b = dc_btn(&ax, &ay);
+    // controllers B, C, D are the PS1's second player (the arcade's 2-player games read port 1) and the extra players of BORE_DC code; 0 when nothing is plugged in
+    if (port < 0 || port > 3) { memset(out, 0xff, 8); out[0] = 0xff; return 0; }
+    if (port != 0) { maple_device_t *c = maple_enum_dev(port, 0); if (!c || !(c->info.functions & MAPLE_FUNC_CONTROLLER)) { memset(out, 0xff, 8); out[0] = 0xff; return 0; } }
+    int ax, ay; uint16_t b = dc_btn_port(port, &ax, &ay);
     out[0] = 0; out[1] = 0x41; out[2] = (u8)b; out[3] = (u8)(b >> 8);
     out[4] = out[5] = out[6] = out[7] = 128;
     return 1;

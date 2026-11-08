@@ -2283,8 +2283,8 @@ static void opts_update(void) {   // (the Dreamcast: a tenth tab, DREAMCAST, aft
     if (opt_flash > 0) opt_flash--;
     if (PRESSED(PAD_L1)) { opt_tab = (opt_tab + NOTAB) % (NOTAB + 1); opt_sel = 0; }
     if (PRESSED(PAD_R1)) { opt_tab = (opt_tab + 1) % (NOTAB + 1); opt_sel = 0; }
-    if (opt_tab == NOTAB) { extern void dc_opts_update(unsigned short, unsigned short); dc_opts_update(btn, btn_prev);
-        if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_TRIANGLE)) state = opt_back;
+    if (opt_tab == NOTAB) { extern int dc_opts_update(unsigned short, unsigned short); int used = dc_opts_update(btn, btn_prev);   // (used: O closed the gallery)
+        if (!used && (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START) || PRESSED(PAD_TRIANGLE))) state = opt_back;
         return; }
 #else
 static void opts_update(void) {
@@ -5075,6 +5075,9 @@ int main(void) {
 #endif
 #ifdef AUTO_HOME
         home_tick();
+#endif
+#if defined(BORE_DC) && defined(DC_OPTS_TEST)
+        if (frame == DC_OPTS_TEST && state == ST_LIFE) { opt_back = ST_LIFE; opt_tab = NOTAB; opt_sel = 0; state = ST_OPTS; }   // (a test build: the Dreamcast's options tab opens by itself)
 #endif
 #ifdef AUTO_ISLE
         isle_tick();

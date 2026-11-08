@@ -82,6 +82,12 @@ static const Theme themes[] = {
     { "BAKER", { "CHEF HAT", 0, 0, 0, "DONUT", "APRON", 0, 0, 0, 0 }, 10, 3, 20 },
     { "CAMPER", { "BUCKET HAT", 0, 0, "BEDROLL", "LANTERN", "POUCH", 0, "WATCH", 0, "RAIN BOOTS" }, 4, 14, 15 },
     { "MAGICIAN", { "TOP HAT", "MASQUERADE MASK", "BOW TIE", "CAPE", "MAGIC WAND", 0, 0, 0, 0, 0 }, 13, 0, 0 },
+#ifdef BORE_DC   // (the Dreamcast's own outfits: appended, so the PS1's outfit numbers stay as they are)
+    { "ORANGE SWIRL", { "BASEBALL CAP", "VR VISOR", 0, 0, "GAME PAD", 0, 0, "SMART WATCH", "ROBOT BUDDY", "HIGH TOPS" }, 1, 11, 0 },
+    { "BLUE SWIRL", { "HEADPHONES", "FUNKY SHADES", 0, 0, "MEGAPHONE", 0, 0, "SWEATBANDS", 0, "ROLLER SKATES" }, 7, 1, 2 },
+    { "ARCADE KID", { "BACKWARDS CAP", "3D GLASSES", 0, 0, "GAME PAD", 0, "STUDS", "SWEATBANDS", 0, "HIGH TOPS" }, 5, 10, 9 },
+    { "JUMP PACK HERO", { "PROPELLER CAP", "SUPERHERO MASK", 0, "ROCKET PACK", 0, "CHAMPION BELT", 0, "SWEATBANDS", "HAMSTER", "ROCKET BOOTS" }, 6, 1, 0 },
+#endif
 };
 #define NTHEME ((int)(sizeof themes / sizeof themes[0]))
 static int wear_find(const char *const *names, int n, const char *want) { if (!want) return 0; for (int i = 0; i < n; i++) if (!strcmp(names[i], want)) return i; return 0; }

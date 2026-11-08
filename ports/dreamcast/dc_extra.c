@@ -151,31 +151,69 @@ void dc_extra_frame(void) {
 extern int dc_vivid, dc_filter;
 int dc_opt_rumble = 1, dc_opt_vmuscreen = 1;
 extern void dc_grade_changed(void);
-enum { DO_COLOUR, DO_TEX, DO_RUMBLE, DO_VMU, DO_N };
-static const char *const dnm[DO_N] = { "COLOURS", "TEXTURES", "JUMP PACK", "VMU SCREEN" };
-static const char *const dval[DO_N][2] = { { "CLASSIC PS1", "VIVID" }, { "SHARP", "SMOOTH" }, { "OFF", "ON" }, { "OFF", "ON" } };
+enum { DO_COLOUR, DO_TEX, DO_RUMBLE, DO_VMU, DO_GALLERY, DO_N };
+static const char *const dnm[DO_N] = { "COLOURS", "TEXTURES", "JUMP PACK", "VMU SCREEN", "DREAMCAST GALLERY" };
+static const char *const dval[DO_N][2] = { { "CLASSIC PS1", "VIVID" }, { "SHARP", "SMOOTH" }, { "OFF", "ON" }, { "OFF", "ON" }, { "OPEN", "OPEN" } };
 static const char *const dblurb[DO_N] = { "VIVID: RICHER, BRIGHTER COLOURS. CLASSIC: THE PLAYSTATION'S OWN",
     "SMOOTH: TEXTURES FILTERED (BILINEAR). SHARP: CRISP PIXELS AS ON THE PS1", "THE JUMP PACK SHAKES FOR THE DOORBELL, THE PHONE, FIGHTS AND LANDINGS",
-    "YOUR BORE'S FACE, MOOD, CLOCK AND NEEDS ON THE VMU" };
-static int dsel;
+    "YOUR BORE'S FACE, MOOD, CLOCK AND NEEDS ON THE VMU", "THE FURNITURE AND OUTFITS ONLY THE DREAMCAST HAS, AND WHICH YOU HAVE FOUND" };
+static int dsel, gal, gsel, gtop;
 static int *dvar(int i) { return i == DO_COLOUR ? &dc_vivid : i == DO_TEX ? &dc_filter : i == DO_RUMBLE ? &dc_opt_rumble : &dc_opt_vmuscreen; }
-void dc_opts_update(unsigned short btn, unsigned short prev) {
+// the gallery: the Dreamcast set (found = built in a home: kept for the session, and seen on the map now) and the Dreamcast outfits (found = worn by the Bore you play)
+typedef struct { const char *nm, *how; int ch; const char *outfit; } GItem;
+static const GItem gal_items[] = {
+    { "DREAMCAST", "BUILD: FUN AND TECH", 0xF7, 0 }, { "VMU ON A STAND", "BUILD: FUN AND TECH", 0xF8, 0 }, { "SWIRL RUG", "BUILD: DECOR, PLANTS", 0xF9, 0 },
+    { "DC ARCADE CABINET", "BUILD: FUN AND TECH", 0xFA, 0 }, { "ORANGE SWIRL LAMP", "BUILD: DECOR, PLANTS", 0xFB, 0 }, { "BLUE SWIRL LAMP", "BUILD: DECOR, PLANTS", 0xFC, 0 },
+    { "ORANGE SWIRL OUTFIT", "WEAR TAB: OUTFIT", 0, "ORANGE SWIRL" }, { "BLUE SWIRL OUTFIT", "WEAR TAB: OUTFIT", 0, "BLUE SWIRL" },
+    { "ARCADE KID OUTFIT", "WEAR TAB: OUTFIT", 0, "ARCADE KID" }, { "JUMP PACK HERO OUTFIT", "WEAR TAB: OUTFIT", 0, "JUMP PACK HERO" } };
+#define NGAL ((int)(sizeof gal_items / sizeof gal_items[0]))
+static uint32_t gal_found;   // bit per entry: found this session
+static void gal_scan(void) {
+    for (int i = 0; i < NGAL; i++) {
+        const GItem *g = &gal_items[i];
+        if (g->ch) { for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if ((unsigned char)lifeMap[y][x] == g->ch) { gal_found |= 1u << i; y = MH; break; } }
+        else if (nsims > 0 && player >= 0 && player < nsims) { int t = look_theme_named(g->outfit); if (t && sims[player].bore.look[LK_X_THEME] == t) gal_found |= 1u << i; }
+    }
+}
+int dc_opts_update(unsigned short btn, unsigned short prev) {   // 1: the press of O was used (it closes the gallery)
 #define DP(b) (!(btn & (b)) && (prev & (b)))
+    if (gal) {
+        if (DP(PAD_UP)) gsel = (gsel + NGAL - 1) % NGAL;
+        if (DP(PAD_DOWN)) gsel = (gsel + 1) % NGAL;
+        if (gsel < gtop) gtop = gsel; if (gsel > gtop + 6) gtop = gsel - 6;
+        if (DP(PAD_CIRCLE) || DP(PAD_TRIANGLE)) { gal = 0; return 1; }
+        return 0;
+    }
     if (DP(PAD_UP)) dsel = (dsel + DO_N - 1) % DO_N;
     if (DP(PAD_DOWN)) dsel = (dsel + 1) % DO_N;
     if (DP(PAD_LEFT) || DP(PAD_RIGHT) || DP(PAD_CROSS)) {
+        if (dsel == DO_GALLERY) { if (DP(PAD_CROSS)) { gal = 1; gsel = gtop = 0; gal_scan(); } return 0; }
         int *v = dvar(dsel); *v = !*v;
         if (dsel == DO_COLOUR) dc_grade_changed();
     }
 #undef DP
+    return 0;
 }
 void dc_opts_draw(int top) {
+    if (gal) {
+        int have = 0; for (int i = 0; i < NGAL; i++) have += (gal_found >> i) & 1;
+        char hd[32]; sprintf(hd, "FOUND %d OF %d", have, NGAL);
+        ui_text(110, top + 2, 1, hd, UI_BLUE2);
+        for (int r = 0; r < 7 && gtop + r < NGAL; r++) {
+            int i = gtop + r, y = top + 14 + r * 24, sel = i == gsel, f = (gal_found >> i) & 1;
+            if (sel) ui_round(104, y, 202, 23, 6, UI_RGB(226, 242, 254), UI_HILITE, 0);
+            ui_text(110, y + 2, 1, gal_items[i].nm, f ? UI_INK : UI_SOFT);
+            ui_text(300 - ui_tw(1, f ? "FOUND" : "NOT YET"), y + 2, 1, f ? "FOUND" : "NOT YET", f ? UI_BLUE2 : UI_SOFT);
+            if (sel) ui_text(110, y + 12, 1, gal_items[i].how, UI_SOFT);
+        }
+        return;
+    }
     for (int r = 0; r < DO_N; r++) {
-        int y = top + r * 26, sel = r == dsel; const char *v = dval[r][*dvar(r) & 1];
+        int y = top + r * 26, sel = r == dsel; const char *v = dval[r][*(r == DO_GALLERY ? &(int){ 0 } : dvar(r)) & 1];
         if (sel) { ui_round(104, y, 202, 24, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); }
         ui_text(110, y + 3, 1, dnm[r], sel ? UI_BLUE2 : UI_INK);
-        ui_text(300 - ui_tw(1, v), y + 3, 1, v, UI_BLUE2);
-        if (sel) ui_text(110, y + 13, 1, "LEFT RIGHT TO CHANGE", UI_SOFT);
+        if (r != DO_GALLERY) ui_text(300 - ui_tw(1, v), y + 3, 1, v, UI_BLUE2);
+        if (sel) ui_text(110, y + 13, 1, r == DO_GALLERY ? "A TO OPEN" : "LEFT RIGHT TO CHANGE", UI_SOFT);
     }
     ui_round(104, top + 166, 202, 32, 6, UI_RGB(234, 240, 248), UI_RGB(224, 231, 240), 0);
     ui_icon(110, top + 176, IC_HELP, UI_BLUE);
