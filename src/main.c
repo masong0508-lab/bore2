@@ -284,10 +284,10 @@ static void draw_action_card(const Sim *s) {   // what the Bore is doing, with i
     if (s->action == ACT_NONE || s->action == ACT_WALK) return;
     const char *nm = act_label(s);
     int w = MAX(ui_tw(1, nm) + 14, 90);
-    ui_card(8, 158, w, 17);
-    ui_text(14, 161, 1, nm, UI_INK);
-    if (s->action == ACT_WORK) ui_bar(13, 169, w - 10, 4, MIN(100, job_worked * 100 / job_shift_len()), UI_GREEN);   // (the shift so far)
-    else if (act_total > 0 && act_total < 9999) ui_bar(13, 169, w - 10, 4, CLAMP(100 - s->act_t * 100 / act_total, 0, 100), UI_BLUE);
+    ui_card(8, 156, w, 19);
+    ui_text(14, 159, 1, nm, UI_INK);   // (the bar is below the tails of g, p and y)
+    if (s->action == ACT_WORK) ui_bar(13, 170, w - 10, 4, MIN(100, job_worked * 100 / job_shift_len()), UI_GREEN);   // (the shift so far)
+    else if (act_total > 0 && act_total < 9999) ui_bar(13, 170, w - 10, 4, CLAMP(100 - s->act_t * 100 / act_total, 0, 100), UI_BLUE);
 }
 #define NFEED 3
 #define FEED_VB 330                                     // a note shows this long (vblanks: five and a half seconds, whatever the frame rate)
@@ -595,9 +595,9 @@ static void hud_life(void) {
             ui_disc(196, 196, 28, moodc); ui_disc(196, 196, 24, UI_RGB(250, 252, 255));
             draw_face_k(188, 188, m, 1);
             ui_text(214, 182, 2, s->bore.first, UI_INK);
-            ui_text(214, 197, 1, mood, moodt);
-            ui_text(216 + ui_tw(1, mood) + 4, 197, 1, b, UI_SOFT);
-            ui_bar(214, 207, 94, 5, 100 * s->asp_pts / ASP_MAX, UI_RGB(aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2]));   // (the aspiration meter, under the mood)
+            ui_text(214, 196, 1, mood, moodt);
+            ui_text(216 + ui_tw(1, mood) + 4, 196, 1, b, UI_SOFT);
+            ui_bar(214, 208, 94, 5, 100 * s->asp_pts / ASP_MAX, UI_RGB(aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2]));   // (the aspiration meter, under the mood)
             if (hint[0]) { char hb_[48]; sprintf(hb_, "X %s", hint); ui_round(184, 215, 124, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_textfit(189, 217, 114, hb_, UI_WHITE); }
             else if (veh_on) { ui_round(154, 215, 154, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_textfit(159, 217, 144, vh, UI_WHITE); }   // (at the wheel: what it is, and the fuel)
             else ui_hints(244, 214, "SEL PHONE", 1);
@@ -654,7 +654,7 @@ static void hud_life(void) {
     cheer_poll(); cheer_draw();
     citizens_hud();
     { static int hint_vb = -1; if (hint_vb < 0) hint_vb = VSync(-1);   // (the controls, for the first few seconds of play only)
-      if (VSync(-1) - hint_vb < 480) ui_hintbar(150, "L1 R1 TURN|L2 R2 ZOOM|X USE|SQ RUN"); }
+      if (state == ST_LIFE && VSync(-1) - hint_vb < 480) ui_hintbar(150, "L1 R1 TURN|L2 R2 ZOOM|X USE|SQ RUN"); }
     if (show_fps) { extern int vox_t_hair, vox_t_block, vox_t_face, vox_n_hair, vox_n_block;
         gfx_rect(2, 57, 316, 86, 0, 0, 0, 0);
         { extern int gfx_last_wait; sprintf(b, "%d FPS  %d PRIMS %dK SHED%d GW%d%s", fps_val, gfx_last_prims, gfx_last_bytes >> 10, shed_lvl, gfx_last_wait, gfx_last_overflow ? " FULL!" : ""); } gfx_text(6, 60, 1, b, 120, 255, 120);
@@ -3816,7 +3816,7 @@ static void draw_catalog(void) {
     for (int k = first; k < n && k < first + 10; k++) {
         char ch = items_at(idx[k]); int y = top + 10 + (k - first) * 12, sel = k == p, cost = items_cost(ch);
         if (sel) { ui_round(199, y - 2, 111, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(199, y, 2, 8, 38, 146, 222, 0); }
-        ui_text(204, y, 1, items_name(ch), sel ? UI_BLUE2 : UI_INK);
+        ui_text(206, y, 1, items_name(ch), sel ? UI_BLUE2 : UI_INK);
         sprintf(b, "%d", cost); ui_text(308 - ui_tw(1, b), y, 1, b, cost > cash ? UI_BADT : UI_GOODT);
     }
     sprintf(b, "%d OF %d", p + 1, n); ui_textc(256, top + 135, 1, b, UI_SOFT);
@@ -4190,11 +4190,23 @@ static void text_tick(void) {   // (test builds. AUTO_TEXT=1: the life starts an
     if (ph == 0 && state == ST_LIFE && life_started && tt >= 90 && nsims > 1) { Sim *me = &sims[player], *o = &sims[player ? 0 : 1]; tt = 0; ph = 1;
         sim_player_cancel_sim(me); sim_player_cancel_sim(o); o->x = me->x + TILE; o->z = me->z; o->path_n = 0; me->yaw = 1024; o->yaw = 3072;
         pie_cit = 0; pie_n = sim_pie_open(pie_opt); if (pie_n > 1) { pie_sel = 0; state = ST_PIE; } }
-    else if (ph == 1 && tt >= 70) { state = ST_LIFE; tt = 0; ph = 2; }
-    else if (ph == 2 && tt >= 40) { sim_want_arcade = 101; tt = 0; ph = 3; }
+    else if (ph == 1 && tt >= 70) { sim_pie_do(0); state = ST_LIFE; tt = 0; ph = 2; }   // (the first choice: they talk, and the words show over their heads)
+    else if (ph == 2 && tt >= 90) { sim_want_arcade = 101; tt = 0; ph = 3; }
     else if (ph == 3 && tt >= 120) { ovl = 0; ovl_leave(); state = ST_LIFE; tt = 0; ph = 4; }
     else if (ph == 4 && tt >= 40) { sim_want_arcade = AG_PRIZES + 1; tt = 0; ph = 5; }
     else if (ph == 5 && tt >= 120) { ovl = 0; ovl_leave(); state = ST_LIFE; tt = 0; ph = 6; }
+#endif
+#if AUTO_TEXT == 3
+    static int tt, ph3;   // (AUTO_TEXT=3: build mode, the job board and the pause menu, by themselves)
+    if (state == ST_LIFE && life_started && !ph3) { ph3 = 1; tt = 0; }
+    if (ph3) {
+        tt++;
+        if (ph3 == 1 && tt >= 30) { build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]); room_on = 0; build_msg_t = 0; state = ST_BUILD; ph3 = 2; tt = 0; }
+        else if (ph3 == 2 && tt >= 60) { state = ST_LIFE; ph3 = 3; tt = 0; }
+        else if (ph3 == 3 && tt >= 30) { jobs_board = 1; jobs_open(); sub_back = ST_LIFE; state = ST_JOBS; ph3 = 4; tt = 0; }
+        else if (ph3 == 4 && tt >= 40) { state = ST_LIFE; ph3 = 5; tt = 0; }
+        else if (ph3 == 5 && tt >= 30) { state = ST_PAUSE; ph3 = 6; tt = 0; }
+    }
 #endif
 }
 #endif
