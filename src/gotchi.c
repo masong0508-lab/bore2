@@ -17,10 +17,12 @@ int gotchi_time;
 static u32 dex[9];   // 0..127: sp * 6 + form seen; 128..: sp * 8 + colour seen
 static u32 grng = 0x1234567u;
 u16 gt_h, gt_done;
+u8 gsum_pend, gsum_c, gsum_p, gsum_h;
+static u16 d_cared, d_plays, d_hatched; static int d_ok, d_sum = -1;   // what the day started with (the 21:00 summary is the difference)
 static u8 dn;                                        // diary entries written (it wraps round GD_N)
 static int gr(void) { grng = grng * 1103515245u + 12345u; return (int)((grng >> 16) & 255); }
 
-void gotchi_reset(void) { gt_h = gt_done = 0; memset(gtoy, 0, sizeof gtoy); memset(gline, 0, sizeof gline); memset(gdiary, 0, sizeof gdiary); memset(dex, 0, sizeof dex); gach = 0; dn = 0; }
+void gotchi_reset(void) { gt_h = gt_done = 0; gsum_pend = 0; d_ok = 0; d_sum = -1; memset(gtoy, 0, sizeof gtoy); memset(gline, 0, sizeof gline); memset(gdiary, 0, sizeof gdiary); memset(dex, 0, sizeof dex); gach = 0; dn = 0; }
 static int dbit(int i, int set) { u32 *w = &dex[i >> 5]; if (set) *w |= 1u << (i & 31); return (*w >> (i & 31)) & 1; }   // dex[] then cdex[] are one run of bits
 void gotchi_dex_see(int sp, int form) { dbit(sp * GFORMS + form, 1); }
 int gotchi_dex_has(int sp, int form) { return dbit(sp * GFORMS + form, 0); }
@@ -72,7 +74,7 @@ int gotchi_buy(int simi) {
     int k = -1; for (int i = 0; i < GT_MAX; i++) if (!gtoy[i].own || gotchi_sim_of(&gtoy[i]) < 0) { k = i; break; }
     if (k < 0) return 0;
     Toy *t = &gtoy[k]; memset(t, 0, sizeof *t); t->own = 1; t->uid = sims[simi].uid; t->room = (u8)(gr() % 6);
-    fresh(t, 0, gr()); return 1;
+    fresh(t, 0, gr()); if (simi == player) { d_cared = d_plays = d_hatched = 0; d_ok = 1; } return 1;
 }
 int gotchi_egg(Toy *t, int slot) { if (slot < 0 || slot >= GB_N || t->b[slot].on) return 0; fresh(t, slot, gr()); return 1; }
 
@@ -114,10 +116,10 @@ static void tick(Toy *t, int slot) {
         if (b->stage == GS_ADULT) {
             b->form = (b->miss <= 1 && b->bond >= 80 && b->disc >= 50) ? 3 : (b->snk > b->meal && b->snk >= 6) ? 2 : (b->wt >= 22 && b->miss <= 3) ? 5 : (b->miss <= 2 && b->disc >= 50 && b->wt <= 14) ? 4 : (b->miss <= 2 && b->disc >= 50) ? 0 : 1;
             gotchi_dex_see(b->sp, b->form); { Line *l = gotchi_line(k->id); if (l) l->fc = (u8)((l->fc & 0xF8) | b->form); }
-            gotchi_diary(GD_ADULT, k->id);
+            gotchi_diary(GD_ADULT | b->form << 5, k->id);
             if (b->form == 0 || b->form == 3 || b->form == 4) { gotchi_mood(t, GM_PROUD); sim_note(b->form == 3 ? "A RARE STAR FORM! WHAT A PROUD PARENT" : "A SUPER BORE! WHAT A PROUD PARENT"); }
             else sim_note("YOUR BOREAGOTCHI GREW UP");
-        } else { if (b->stage == GS_ELDER) sim_note("A BOREAGOTCHI IS GROWING OLD. TREASURE IT"); gotchi_diary(GD_GROW, k->id); }
+        } else { if (b->stage == GS_ELDER) sim_note("A BOREAGOTCHI IS GROWING OLD. TREASURE IT"); gotchi_diary(GD_GROW | b->stage << 5, k->id); }
         b->miss = 0;
     }
     if (b->stage == GS_ELDER && b->age >= 1440 + b->bond * 6 + (b->form == 3 ? 720 : 0) + lv * 40) { pass_on(t, slot, 0); return; }
@@ -136,6 +138,9 @@ static void kin_care(Toy *t) {
 static int kinok(int si) { return sim_gotchi_stat(si, 1) >= 20 && sim_gotchi_stat(si, 0) > -40; }   // is that Bore up to caring for anyone?
 static void pets_minute(void) {
     if (clock_min % 60 == 0) gt_h++;
+    { Toy *me = gotchi_toy(player);   // a gentle end of day: what was done, written in the diary and shown once on the toy
+      if (me && clock_min == 6 * 60) { d_cared = me->cared; d_plays = me->plays; d_hatched = me->hatched; d_ok = 1; d_sum = -1; }
+      if (me && d_ok && clock_min == 21 * 60 && d_sum != clock_day) { d_sum = clock_day; gsum_c = (u8)MIN(255, me->cared - d_cared); gsum_p = (u8)MIN(255, me->plays - d_plays); gsum_h = (u8)MIN(255, me->hatched - d_hatched); gsum_pend = 1; gotchi_diary(GD_DAY, gsum_c); } }
     for (int k = 0; k < GT_MAX; k++) {
         Toy *t = &gtoy[k]; if (!t->own) continue; int si = gotchi_sim_of(t); if (si < 0) continue;
         for (int i = 0; i < GB_N; i++) {
@@ -158,8 +163,9 @@ static void pets_minute(void) {
 }
 void gotchi_minute(void) {
     if (gotchi_time != 2) pets_minute();
-    static int beep; Toy *me = gotchi_toy(player);
-    if (gotchi_time != 2 && me && gotchi_calling(me) && ++beep >= 60) { beep = 0; sim_note("YOUR BOREAGOTCHI IS BEEPING"); }
+    static int beep; Toy *me = gotchi_toy(player);   // (it does not nag: one beep per three game hours, never in the night, and not for a fib)
+    if (!me || !gotchi_calling(me)) beep = 0;
+    else if (gotchi_time != 2 && ++beep >= 180 && !night()) { beep = 0; sim_note("YOUR BOREAGOTCHI WANTS YOU"); }
 }
 void gotchi_live(int steps) {
     if (gotchi_time != 1) return; static int a, b; a += steps; b += steps;

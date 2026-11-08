@@ -36,6 +36,8 @@ const char *gx_pet(Toy *t, int slot);                    // cuddle: calms a tant
 const char *gx_game_end(Toy *t, int slot, int won, int game);
 const char *gx_meet(Toy *t, int a, Toy *u, int c, int battle);   // a playdate or a battle (u may be t; may be a housemate's toy)
 const char *gx_dress(Toy *t, int slot, int acc);
+const char *gx_quick_feed(Toy *t, int slot);   // one press: its favourite (or a safe free food); a snack when full but sad
+int   gx_urgent(const Blob *b);                // what it needs most: 0 nothing 1 meds 2 clean 3 cuddle 4 scold 5 food 6 lights out 7 a game
 // families (the rules that are not needed while you are in the city: they catch up on the hours when the toy is opened)
 int   gx_kin(int a, int c);                  // are these two line ids close family (parent, child, sibling, grandparent)? then no eggs
 int   gx_children(int id, int *out, int max);   // line ids of its children

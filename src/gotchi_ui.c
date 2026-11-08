@@ -14,10 +14,12 @@
 #include "ovl.h"
 #include <psxgpu.h>
 
-enum { V_BOX, V_BASKET, V_HAND, V_DEX, V_DEXD, V_FEED, V_PLAYPICK, V_LOOK, V_COPY, V_CATCH, V_HILO, V_FRIEND, V_STATS, V_GUIDE, V_TREE, V_HOME, V_DIARY, V_AWARD, V_MORE, V_DRESS };
+enum { V_BOX, V_BASKET, V_HAND, V_DEX, V_DEXD, V_FEED, V_PLAYPICK, V_LOOK, V_COPY, V_CATCH, V_HILO, V_FRIEND, V_STATS, V_GUIDE, V_TREE, V_HOME, V_DIARY, V_AWARD, V_MORE, V_DRESS, V_TITLE, V_INTRO, V_HATCH, V_DAY };
 enum { MD_NORM, MD_HAPPY, MD_DANCE, MD_SLEEP, MD_SICK, MD_HUNGRY, MD_BORED, MD_ANGRY };
 static int view, from_box, ti, bi, isel, anim, msgT, dexsel, dexf, bxsel, sub, mgT, mgN, mgWon, mgRound, mgDir, danceT, treeSel, treeId, homeSel, listTop;
 static const char *msg; static int dexback, guidepage, guideback, backv;
+#define TRN 12
+static int trn, trdir, actT, actK, hT, hSlot, quick, lastGame, titleT, iT, moreTop;   // trn: a screen slides in (12 frames); actT/actK: what it is doing now (eating, bubbles); hT: the hatching scene's clock; quick: opened straight onto the pet
 static u8 seq[6], sidx;
 static u32 lrng;
 static int rr(void) { lrng = lrng * 1103515245u + 12345u; return (int)((lrng >> 16) & 255); }
@@ -127,6 +129,7 @@ static void egg(const Blob *b, const Kin *k, int fr) {
 static int mood_of(const Blob *b) {
     if (!b->on || b->stage == GS_EGG) return MD_NORM;
     if (danceT > 0) return MD_DANCE;
+    if (actT > 0 && !(b->fl & GF_SLEEP)) return MD_HAPPY;
     if (b->fl & GF_SLEEP) return MD_SLEEP;
     if (b->fl & GF_SICK) return MD_SICK;
     if (b->fl & GF_TANTRUM) return MD_ANGRY;
@@ -143,6 +146,11 @@ static void scene(const Blob *b, const Kin *k, int fr, int look, int mood) {
     if (mood == MD_DANCE) ox = ((fr >> 1) & 1) ? 4 : -4; else if (mood == MD_ANGRY) ox = (fr & 1) * 2 - 1; else if (mood == MD_SLEEP) ox = 0;
     if (b->stage == GS_EGG) egg(b, k, fr); else creature(b, k, fr, d, ox, mood);
     for (int i = 0; i < b->poop && i < 3; i++) blit(bPoop, 4, 27 - (i & 1) * 4, 11 - (i >> 1) * 4, 1);
+    if (actT > 0 && b->stage > GS_EGG) {   // what it is doing: eating, or in a cloud of bubbles
+        if (actK == 1) { blit(bBowl, 5, 3, 9 + ((fr >> 1) & 1), 4); P(10 + (fr & 3), 6 - (fr & 1), 4); P(12, 4, 4); }
+        else if (actK == 2) for (int i = 0; i < 5; i++) { int yy = 14 - ((actT / 2 + i * 3) % 14); P(4 + i * 6 + (i & 1), yy, 3); P(5 + i * 6 + (i & 1), yy, 3); }
+        else if (actK == 3) { star(6, 4 + (fr & 1), 4); star(26, 6 - (fr & 1), 4); }
+    }
     switch (mood) {
     case MD_HAPPY: blit(bHeart, 4, 24, 5 - (fr & 3), 2); if (fr & 1) blit(bHeart, 4, 2, 3 + (fr & 2), 2); break;
     case MD_DANCE: blit(bNote, 5, 24 + (fr & 1), 2 + ((fr >> 1) & 1), 3); blit(bNote, 5, 3 - (fr & 1), 3 - ((fr >> 1) & 1), 2); break;
@@ -169,6 +177,11 @@ static void lcd_bg(int x, int y, int w, int h, int dark) { gfx_rect(x, y, w, h, 
 
 // ---- the icons ----
 #define NICON 12
+#define NMORE 7
+// the order on the toy: daily care first (FEED PLAY CLEAN LIGHT MEDS PET), then SCOLD and the rest. isel is a place on the toy, iconMap says which action it is
+static const u8 iconMap[NICON] = { 0, 1, 4, 2, 3, 6, 5, 7, 8, 9, 10, 11 };
+static const u8 urgIcon[8] = { 12, 3, 4, 6, 5, 0, 2, 1 };   // the icon that lights up for what a pet needs most (gx_urgent)
+static const char *const urgTxt[8] = { "", "SICK! SELECT GIVES MEDS", "A MESS! L2 CLEANS IT UP", "A TANTRUM. PET IT TO CALM IT", "IT IS FIBBING. SCOLD IT", "HUNGRY! TRI FEEDS IT", "SLEEPY. R2 SWITCHES THE LIGHT OFF", "BORED. SQ PLAYS A GAME" };
 static const char *const iconNm[NICON] = { "FEED", "PLAY", "LIGHT", "MEDS", "CLEAN", "SCOLD", "PET", "STATS", "FAMILY", "VISIT", "DRESS", "MORE" };
 static const char *const iconHint[NICON] = { "MEALS, SNACKS, YOUR LUNCH. IT HAS FAVOURITES", "FOUR GAMES TO CHEER IT UP AND TRAIN IT", "LIGHTS OUT HELPS IT SLEEP. ON IN THE DAY",
     "CURES THE SICK. NOT FOR A HEALTHY PET", "FLUSH THE MESS BEFORE IT MAKES THEM ILL", "ONLY FOR FIBS AND TANTRUMS", "CUDDLE IT. CALMS TANTRUMS. CHEERS YOU UP", "NEEDS, PERSONALITY, TASTES, AGE",
@@ -215,12 +228,35 @@ static void guide_open(int back) {   // (the pictures are read a page at a time 
     guidepage = 0; guideback = back; view = V_GUIDE;
 }
 static void goto_dex(int back) { dexback = back; dexsel = 0; view = V_DEX; }
+static Toy *my_toy(void) { return gotchi_toy(player); }
+static void go_hand(void) {   // (back to your own pet's toy, whichever toy was being looked at)
+    Toy *m = my_toy(); if (!m) { view = V_BOX; return; }
+    if (tt() != m) { ti = (int)(m - gtoy); bi = m->sel < GB_N ? m->sel : 0; }
+    if (!cb()->on) bi = living(tt(), bi, 1);
+    from_box = 0; view = V_HAND; msgT = 0;
+}
+static int hatch_scan(void) {   // a pet of yours that has just hatched (it is a baby of under ten minutes): the hatching scene plays once for it
+    Toy *m = my_toy(); if (!m || m->hatched == 0) return -1;
+    for (int i = 0; i < GB_N; i++) { const Blob *b = &m->b[i]; if (b->on && b->stage == GS_BABY && b->age <= 10) return i; }
+    return -1;
+}
+static void start_hatch(int slot) { ti = (int)(my_toy() - gtoy); bi = slot; tt()->sel = (u8)slot; hSlot = slot; hT = 0; cb()->age = 12; view = V_HATCH; }
+static void enter_hand(void) { quick = 1; go_hand(); int hs = hatch_scan(); if (hs >= 0) start_hatch(hs); else if (gsum_pend) { gsum_pend = 0; view = V_DAY; } }
+static int tut_page(void) {   // the first-day tutorial: which page is up (-1: none). Page 0 is for the egg, 1..4 when something has hatched
+    if ((gach & GACH_TUTOFF) || view != V_HAND || !mine()) return -1; int pg = (int)((gach & GACH_TUT) >> 16);
+    if (pg == 0 || (pg < 5 && cb()->stage >= GS_BABY)) return pg; return -1;
+}
+static void tut_next(int skip) { int pg = (int)((gach & GACH_TUT) >> 16) + 1; if (skip || pg >= 5) gach |= GACH_TUTOFF; gach = (gach & ~GACH_TUT) | (u32)pg << 16; }
 void gotchi_open(int arg) {
-    lrng = 0xB0BE5u + (u32)clock_min * 7; anim = 0; msgT = 0; msg = 0; dexsel = 0; bxsel = player; isel = 0; from_box = 0; sub = 0; danceT = 0; treeId = 0; gx_check();
+    lrng = 0xB0BE5u + (u32)clock_min * 7; anim = 0; msgT = 0; msg = 0; dexsel = 0; bxsel = player; isel = 0; from_box = 0; sub = 0; danceT = 0; treeId = 0; trn = 0; actT = 0; quick = 0; gx_check();
     if (arg == 3) { guide_open(-1); return; }
     if (arg == 2) { goto_dex(-1); return; }
-    if (arg == 1 && gotchi_toy(player)) { open_basket(player); return; }
-    view = V_BOX; from_box = 1;
+    Toy *m = my_toy();
+    if (m && !(gach & GACH_TUTOFF) && m->cared >= 10) gach |= GACH_TUTOFF | GACH_INTRO;   // (a toy from before the tutorial: no lessons)
+    if (arg == 1 && m && !(gach & GACH_INTRO) && gotchi_count(m) == 1 && m->b[0].on && m->b[0].stage == GS_EGG && m->cared == 0) {   // a toy fresh from the shop: card, unboxing, the egg
+        ti = (int)(m - gtoy); bi = 0; sub = 0; iT = 0; view = V_INTRO; return; }
+    if (m) { quick = 1; ti = (int)(m - gtoy); bi = m->sel < GB_N && m->b[m->sel].on ? m->sel : living(m, 0, 1); from_box = 0; titleT = 0; if (arg == 1) enter_hand(); else view = V_TITLE; }
+    else { view = V_BOX; from_box = 1; }
 }
 
 // ---- the games ----
@@ -232,24 +268,51 @@ static void start_catch(void) { view = V_CATCH; cx_ = 0; cScore = cBad = cN = cT
 static void start_hilo(void) { view = V_HILO; mgRound = 0; mgWon = 0; hiNum = 1 + rr() % 9; hiGuess = 0; hiNext = 0; mgT = 0; }
 static void finish_game(int won, int g) { view = V_HAND; say(gx_game_end(tt(), bi, won, g)); cue(won ? VOICE_WIN : VOICE_NAH); if (won) danceT = 150; }
 
+static void fx(int kind, int voice) { actT = 55; actK = kind; if (voice >= 0) cue(voice); }
+static int blocked(const Blob *b, int sleepOk) {
+    if (b->stage == GS_EGG) { say("IT IS STILL AN EGG. GIVE IT A MINUTE"); return 1; }
+    if (!sleepOk && (b->fl & GF_SLEEP)) { say("SHHH. IT IS ASLEEP"); return 1; }
+    return 0;
+}
+static void a_feed(void) { Toy *t = tt(); int c0 = t->cared; if (blocked(cb(), 0)) return; const char *m = gx_quick_feed(t, bi); say(m); if (t->cared != c0) fx(1, VOICE_YAHOO); else cue(VOICE_NAH); }
+static void a_clean(void) {   // a mess first, else medicine for a cold
+    Toy *t = tt(); Blob *b = cb(); int c0 = t->cared; if (blocked(b, 1)) return;
+    say(b->poop || !(b->fl & GF_SICK) ? gx_clean(t, bi) : gx_medicine(t, bi)); if (t->cared != c0) fx(2, VOICE_FINISHED);
+}
+static void a_light(void) { Blob *b = cb(); const char *m = gx_light(tt(), bi); say(m); cue((b->fl & GF_DARK) ? VOICE_SNORE : VOICE_AGREE); }
+static void start_game(int g) { sub = g; lastGame = g; if (g == 0) start_look(); else if (g == 1) start_copy(); else if (g == 2) start_catch(); else start_hilo(); }
+static void a_play(void) { if (blocked(cb(), 0)) return; start_game((lastGame + 1) % NGAME); }
+static void a_pet(void) { Toy *t = tt(); int c0 = t->cared; say(gx_pet(t, bi)); if (t->cared != c0) fx(3, VOICE_YEHA); else cue(VOICE_AGREE); }
+static void a_smart(void) {   // SELECT: whatever it needs most
+    Blob *b = cb(); Toy *t = tt(); if (blocked(b, 1)) return;
+    switch (gx_urgent(b)) {
+    case 1: { int c0 = t->cared; say(gx_medicine(t, bi)); if (t->cared != c0) fx(3, VOICE_FINISHED); break; }
+    case 2: a_clean(); break;
+    case 3: case 0: a_pet(); break;
+    case 4: say(gx_scold(t, bi)); cue(VOICE_DISAGREE); break;
+    case 5: a_feed(); break;
+    case 6: a_light(); break;
+    default: a_play(); break;
+    }
+}
 static void use_icon(void) {
-    Blob *b = cb(); Toy *t = tt(); int sl = (b->fl & GF_SLEEP) != 0;
-    if (b->stage == GS_EGG && isel != 7 && isel != 8 && isel != 11) { say("IT IS STILL AN EGG. GIVE IT A MINUTE"); return; }
-    if (sl && isel != 2 && isel != 7 && isel != 3 && isel != 8 && isel != 11 && isel != 10) { say("SHHH. IT IS ASLEEP"); return; }
-    switch (isel) {
+    Blob *b = cb(); Toy *t = tt(); int sl = (b->fl & GF_SLEEP) != 0, a = iconMap[isel];
+    if (b->stage == GS_EGG && a != 7 && a != 8 && a != 11) { say("IT IS STILL AN EGG. GIVE IT A MINUTE"); return; }
+    if (sl && a != 2 && a != 7 && a != 3 && a != 8 && a != 11 && a != 10) { say("SHHH. IT IS ASLEEP"); return; }
+    switch (a) {
     case 0: sub = 0; listTop = 0; view = V_FEED; break;
     case 1: sub = 0; view = V_PLAYPICK; break;
-    case 2: say(gx_light(t, bi)); break;
-    case 3: say(gx_medicine(t, bi)); if (!(b->fl & GF_SICK)) cue(VOICE_FINISHED); break;
-    case 4: say(gx_clean(t, bi)); break;
-    case 5: say(gx_scold(t, bi)); break;
-    case 6: say(gx_pet(t, bi)); cue(VOICE_YEHA); break;
+    case 2: a_light(); break;
+    case 3: { int c0 = t->cared; say(gx_medicine(t, bi)); if (t->cared != c0) fx(3, VOICE_FINISHED); else cue(VOICE_NAH); break; }
+    case 4: { int c0 = t->cared; say(gx_clean(t, bi)); if (t->cared != c0) fx(2, VOICE_FINISHED); break; }
+    case 5: { const char *m = gx_scold(t, bi); say(m); cue(m[0] == 'I' && m[1] == 'T' && m[3] == 'K' ? VOICE_AGREE : VOICE_CRY); break; }
+    case 6: a_pet(); break;
     case 7: sub = 0; view = V_STATS; break;
     case 8: treeId = ck()->id; treeSel = 0; view = V_TREE; break;
     case 9: { int n = 0; for (int k = 0; k < GT_MAX; k++) if (gtoy[k].own) for (int i = 0; i < GB_N; i++) if ((k != ti || i != bi) && gtoy[k].b[i].on && gtoy[k].b[i].stage > GS_EGG) n++;
               if (!n) { say("YOU NEED ANOTHER PET, HATCHED, TO PLAY WITH"); return; } sub = 0; view = V_FRIEND; break; }
     case 10: sub = ck()->acc; view = V_DRESS; break;
-    default: sub = 0; view = V_MORE; break;
+    default: sub = 0; moreTop = 0; view = V_MORE; break;
     }
 }
 // the friends list: every hatched pet but this one, this toy's first, then the housemates'
@@ -261,7 +324,7 @@ static void fr_build(void) {
 
 // ---- update ----
 int gotchi_update(int hd, int pr, int steps) {
-    int v0 = view; gotchi_live(steps); anim += steps; if (danceT > 0) danceT -= steps; if (msgT > 0) { msgT -= steps; if (msgT <= 0) { msgT = 0; msg = 0; } }
+    int v0 = view, pr0 = pr; gotchi_live(steps); anim += steps; if (trn > 0) trn--; if (actT > 0) actT -= steps; if (danceT > 0) danceT -= steps; if (msgT > 0) { msgT -= steps; if (msgT <= 0) { msgT = 0; msg = 0; } }
     switch (view) {
     case V_BOX: {
         int idx[GT_MAX], n = box_list(idx); if (!n) return 0;
@@ -269,7 +332,7 @@ int gotchi_update(int hd, int pr, int steps) {
         if (pr & PAD_TRIANGLE) goto_dex(V_BOX);
         if (pr & PAD_SQUARE) { view = V_AWARD; sub = 0; backv = V_BOX; }
         if (pr & PAD_SELECT) guide_open(V_BOX);
-        if (pr & PAD_CIRCLE) return 0;
+        if (pr & PAD_CIRCLE) { if (quick && my_toy()) { go_hand(); break; } return 0; }
         if (pr & PAD_CROSS) { open_basket(bxsel); if (view == V_BASKET) from_box = 1; }
         break; }
     case V_BASKET: {
@@ -280,7 +343,7 @@ int gotchi_update(int hd, int pr, int steps) {
         if (pr & PAD_TRIANGLE) goto_dex(V_BASKET);
         if (pr & PAD_SQUARE) { view = V_HOME; homeSel = 0; backv = V_BASKET; }
         if (pr & PAD_SELECT) guide_open(V_BASKET);
-        if (pr & PAD_CIRCLE) { if (from_box) { view = V_BOX; from_box = 1; } else return 0; }
+        if (pr & PAD_CIRCLE) { if (from_box) { view = V_BOX; from_box = 1; } else if (quick && my_toy()) go_hand(); else return 0; }
         if (pr & PAD_CROSS) {
             if (!mine()) { say("THAT IS NOT YOUR TOY. YOU CAN ONLY LOOK"); break; }
             if (!t->b[bi].on) { if (cash < GOTCHI_EGG) { say("A NEW EGG COSTS $150"); cue(VOICE_NAH); } else { cash -= GOTCHI_EGG; gotchi_egg(t, bi); say("A NEW EGG! KEEP IT CLOSE"); cue(VOICE_YAHOO); } }
@@ -288,14 +351,23 @@ int gotchi_update(int hd, int pr, int steps) {
         }
         break; }
     case V_HAND: {
-        Toy *t = tt();
+        Toy *t = tt(); int cp = tut_page();
+        if (cp >= 0) {   // the first-day tutorial: X goes on, O or START skips it
+            if (pr & PAD_CROSS) { tut_next(0); cue(VOICE_AGREE); } else if (pr & (PAD_CIRCLE | PAD_START)) { tut_next(1); say("TUTORIAL SKIPPED. HELP IS IN MORE"); }
+            break; }
         if (pr & PAD_RIGHT) isel = (isel + 1) % NICON; if (pr & PAD_LEFT) isel = (isel + NICON - 1) % NICON;
         if (pr & (PAD_UP | PAD_DOWN)) isel = (isel + 6) % NICON;
         if (pr & PAD_R1) bi = living(t, bi, 1); if (pr & PAD_L1) bi = living(t, bi, -1);
         t->sel = (u8)bi;
-        if (pr & PAD_CIRCLE) { view = V_BASKET; msgT = 0; }
+        if (pr & PAD_CIRCLE) { if (quick) return 0; view = V_BASKET; msgT = 0; }
         if (pr & PAD_CROSS) use_icon();
+        else if (pr & PAD_TRIANGLE) a_feed();           // one press: the common things, with sensible choices
+        else if (pr & PAD_SQUARE) a_play();
+        else if (pr & PAD_L2) a_clean();
+        else if (pr & PAD_R2) a_light();
+        else if (pr & PAD_SELECT) a_smart();
         { static int lm; int m = mood_of(cb()); if (m != lm) { if (m == MD_HUNGRY) cue(VOICE_HUNGRY); else if (m == MD_SICK) cue(VOICE_NEED); else if (m == MD_ANGRY) cue(VOICE_ANGRY); lm = m; } }
+        { int hs = hatch_scan(); if (hs >= 0 && view == V_HAND) start_hatch(hs); }
         break; }
     case V_FEED: {
         if (pr & PAD_RIGHT) { sub = (sub + 1) % 3; listTop = 0; } if (pr & PAD_LEFT) { sub = (sub + 2) % 3; listTop = 0; }
@@ -346,7 +418,8 @@ int gotchi_update(int hd, int pr, int steps) {
         break; }
     case V_STATS:
         if (pr & (PAD_CROSS | PAD_RIGHT | PAD_DOWN)) { if (++sub >= 3) view = V_HAND; }
-        if (pr & (PAD_CIRCLE | PAD_LEFT | PAD_UP)) { if (sub > 0) sub--; else view = V_HAND; }
+        if (pr & (PAD_LEFT | PAD_UP)) { if (sub > 0) sub--; }
+        if (pr & PAD_CIRCLE) view = V_HAND;
         break;
     case V_DRESS:
         if (pr & PAD_RIGHT) sub = (sub + 1) % NACC; if (pr & PAD_LEFT) sub = (sub + NACC - 1) % NACC;
@@ -354,9 +427,24 @@ int gotchi_update(int hd, int pr, int steps) {
         if (pr & PAD_CROSS) { const char *m = gx_dress(tt(), bi, sub); say(m); if (m[0] == 'L') { cue(VOICE_YAHOO); danceT = 80; } else if (m[0] == 'N') cue(VOICE_NAH); }
         break;
     case V_MORE:
-        if (pr & PAD_DOWN) sub = (sub + 1) % 5; if (pr & PAD_UP) sub = (sub + 4) % 5; if (pr & PAD_CIRCLE) view = V_HAND;
-        if (pr & PAD_CROSS) { backv = V_MORE; if (sub == 0) { view = V_HOME; homeSel = 0; } else if (sub == 1) view = V_DIARY; else if (sub == 2) { view = V_AWARD; sub = 0; } else if (sub == 3) goto_dex(V_MORE); else guide_open(V_MORE); }
+        if (pr & PAD_DOWN) sub = (sub + 1) % NMORE; if (pr & PAD_UP) sub = (sub + NMORE - 1) % NMORE; if (pr & PAD_CIRCLE) view = V_HAND;
+        moreTop = CLAMP(sub - 2, 0, NMORE - 5);
+        if (pr & PAD_CROSS) { backv = V_MORE; int w = sub; sub = 0;
+            if (w == 0) { view = V_BASKET; msgT = 0; } else if (w == 1) { view = V_BOX; from_box = 1; } else if (w == 2) { view = V_HOME; homeSel = 0; } else if (w == 3) view = V_DIARY;
+            else if (w == 4) view = V_AWARD; else if (w == 5) goto_dex(V_MORE); else guide_open(V_MORE); }
         break;
+    case V_TITLE: titleT += steps; if ((pr & (PAD_CROSS | PAD_CIRCLE | PAD_START)) || titleT > 140) enter_hand(); break;
+    case V_INTRO:   // 0 the shop card, 1 the box, 2 the egg
+        iT += steps; if (sub == 1 && iT >= 40 && iT - steps < 40) cue(VOICE_YAHOO); if (sub == 1 && iT >= 75 && iT - steps < 75) cue(VOICE_WIN);
+        if (pr & PAD_START) { gach |= GACH_INTRO; enter_hand(); break; }
+        if (pr & PAD_CROSS) { if (sub == 0) { sub = 1; iT = 0; } else if (sub == 1) { if (iT < 110) iT = 110; else { sub = 2; iT = 0; } } else { gach |= GACH_INTRO; enter_hand(); } }
+        if (sub == 1 && iT > 220) { sub = 2; iT = 0; }
+        break;
+    case V_HATCH:
+        hT += steps; { static const u8 at[4] = { 24, 52, 84, 112 }; static const u8 vo[4] = { VOICE_YEHA, VOICE_YEHA, VOICE_WIN, VOICE_YAHOO }; for (int i = 0; i < 4; i++) if (hT >= at[i] && hT - steps < at[i]) cue(vo[i]); }
+        if (hT > 130 && (pr & (PAD_CROSS | PAD_CIRCLE))) { char b[56]; sprintf(b, "HELLO %s! FEED IT SOON", gx_given(cb()->nm)); view = V_HAND; isel = 0; say(b); danceT = 60; }
+        break;
+    case V_DAY: if (pr & (PAD_CROSS | PAD_CIRCLE)) go_hand(); break;
     case V_GUIDE:
         if (pr & (PAD_R1 | PAD_RIGHT | PAD_CROSS)) guidepage = (guidepage + 1) % 14; if (pr & (PAD_L1 | PAD_LEFT)) guidepage = (guidepage + 13) % 14;
         if (pr & PAD_CIRCLE) { if (guideback < 0) return 0; view = guideback; }
@@ -372,7 +460,7 @@ int gotchi_update(int hd, int pr, int steps) {
         break;
     case V_TREE: case V_DIARY: case V_AWARD: case V_HOME: break;
     }
-    if (view != v0) pr = 0;
+    if (view != v0) { trn = TRN; trdir = (pr0 & PAD_CIRCLE) ? -1 : 1; pr = 0; }
     if (view == V_TREE) { extern void tree_input(int pr); tree_input(pr); }
     else if (view == V_AWARD) { if (pr & PAD_DOWN) sub = (sub + 1) % NACH; if (pr & PAD_UP) sub = (sub + NACH - 1) % NACH; if (pr & PAD_CIRCLE) view = backv; }
     else if (view == V_DIARY) { if (pr & PAD_CIRCLE) view = V_MORE; }
@@ -475,10 +563,10 @@ static void lit_icon(int i, int cx, int y, int on, int lit) {
     icon_bits(i, cx - 9, y + 3 + hop, 2, on ? 0x6A3C2E : lit ? 0x1C3C70 : 0xC890F0);
     int tw = gfx_text_w(1, iconNm[i]); gfx_text_raw(cx - tw / 2, y + 19 + hop, 1, iconNm[i], on ? 60 : 210, on ? 40 : 190, on ? 100 : 240);
 }
-static const u8 iconMap[NICON] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
 static void bar3(int x, int y, const char *l, int v, int r, int g, int bl) {   // a labelled stat bar with its number, on the body
     char n[16]; sprintf(n, "%d", v); gfx_text_raw(x, y, 1, l, 252, 248, 255); gfx_rect(x, y + 10, 32, 6, 30, 14, 46, 0); gfx_rect(x + 1, y + 11, 30 * CLAMP(v, 0, 100) / 100, 4, r, g, bl, 0); gfx_text_raw(x + 35, y + 9, 1, n, 255, 255, 255);
 }
+static void draw_coach(int pg);
 static void draw_hand(int lcdMode) {
     Toy *t = tt(); Blob *b = cb(); Kin *k = ck(); int dark = (b->fl & GF_SLEEP) && (b->fl & GF_DARK), md = mood_of(b); char s[64];
     sky(); body(owner_color(t));
@@ -491,10 +579,12 @@ static void draw_hand(int lcdMode) {
     bar3(260, 22, "DISCIP", b->disc, 90, 200, 255); gfx_text_raw(260, 52, 1, "AGE", 252, 248, 255); gfx_text_raw(260, 63, 1, gx_stage(b->stage), 255, 235, 140);
     sprintf(s, "%dG", b->wt); gfx_text_raw(260, 82, 1, "WEIGHT", 252, 248, 255); gfx_text_raw(260, 93, 1, s, 255, 235, 140);
     chip(100, 119, gx_pers(k->pers), UI_RGB(120, 70, 180), UI_WHITE); formchip(b, 160, 119); if (k->mate) ui_badge(196, 119, "PAIRED", UI_RED, UI_WHITE); else if (b->gen) { sprintf(s, "GEN %d", b->gen + 1); ui_badge(204, 119, s, UI_AMBER, UI_INK); }
-    for (int i = 0; i < NICON; i++) lit_icon(i, 54 + (i % 6) * 42, i < 6 ? 135 : 166, i == isel && lcdMode == 0, i == 6 && (b->fl & GF_CALL));
-    ui_round(20, 197, 280, 13, 6, UI_RGB(255, 255, 255), UI_RGB(206, 222, 250), 0); ui_textfit(26, 200, 268, lcdMode == 0 ? iconHint[isel] : "", UI_INK);
+    int urg = lcdMode == 0 ? gx_urgent(b) : 0;   // the icon it needs lights up
+    for (int i = 0; i < NICON; i++) lit_icon(iconMap[i], 54 + (i % 6) * 42, i < 6 ? 135 : 166, i == isel && lcdMode == 0, urg && iconMap[i] == urgIcon[urg]);
+    ui_round(20, 197, 280, 13, 6, UI_RGB(250, 252, 255), UI_RGB(206, 222, 250), 0); if (urg) ui_textfit(26, 200, 268, urgTxt[urg], UI_BADT); else ui_textfit(26, 200, 268, lcdMode == 0 ? iconHint[iconMap[isel]] : "", UI_INK);   // (what it needs, else what the icon does)
     ui_round(20, 211, 280, 20, 8, UI_RGB(24, 10, 40), UI_RGB(12, 4, 24), 0);
-    if (msg) ui_wrapc(26, 213, 268, 2, msg, UI_WHITE); else if (lcdMode == 0) ui_hints(160, 217, "X USE|L1 R1 PET|O BASKET", 1);
+    if (msg) ui_wrapc(26, 213, 268, 2, msg, UI_WHITE); else if (lcdMode == 0) ui_hints(160, 217, ((anim >> 7) & 1) ? (quick ? "SEL SMART CARE|L1 R1 PET|O LEAVE" : "SEL SMART CARE|L1 R1 PET|O BASKET") : "X USE|TRI FEED|SQ PLAY|L2 CLEAN|R2 LIGHT", 1);
+    if (lcdMode == 0 && tut_page() >= 0) draw_coach(tut_page());
 }
 static void bar_msg(const char *s) { ui_wrapc(26, 213, 268, 2, s, UI_WHITE); }   // the line along the bottom (the games set it every frame)
 static void strip(const char *s) { gfx_rect(80, 100, 160, 12, 150, 176, 108, 0); ltc(160, 102, s); }                   // a line of the LCD's own, along its foot
@@ -517,7 +607,7 @@ static void draw_stats(void) {
         sprintf(s, "%d AWARDS OF %d", ({ int c = 0; for (int i = 0; i < NACH; i++) c += (gach >> i) & 1; c; }), NACH); lt(84, 98, s);
     }
     { char p[16]; sprintf(p, "%d / 3", sub + 1); lt(214, 20, p); }
-    ui_hints(160, 217, "X MORE|O BACK", 1);
+    ui_hints(160, 217, "X NEXT PAGE|O BACK", 1);
 }
 static void tab(int x, int w, const char *l, int on) { ui_round(x, 22, w, 12, 5, on ? UI_BLUE : UI_CARD2, on ? UI_BLUE2 : UI_CARD2, 0); ui_textc(x + w / 2, 24, 1, l, on ? UI_WHITE : UI_INK); }
 static void draw_feed(void) {
@@ -586,9 +676,10 @@ static void draw_dress(void) {
     sprintf(s, "%d / %d", sub + 1, NACC); lt(210, 16, s); ui_hints(160, 217, "X WEAR|LR PICK|O BACK", 1);
 }
 static void draw_more(void) {
-    draw_hand(1); lcd_panel(); static const char *const it[5] = { "FAMILY HOME", "PET DIARY", "AWARDS", "BLOBDEX", "HELP PAGES" };
-    ltc(160, 20, "MORE"); for (int i = 0; i < 5; i++) { ui_round(90, 34 + i * 15, 140, 13, 5, i == sub ? UI_BLUE : UI_CARD2, i == sub ? UI_BLUE2 : UI_CARD2, 0); ui_textc(160, 37 + i * 15, 1, it[i], i == sub ? UI_WHITE : UI_INK); }
-    ui_hints(160, 217, "X OPEN|O BACK", 1);
+    draw_hand(1); lcd_panel(); static const char *const it[NMORE] = { "ALL PETS", "TOY BOX", "FAMILY HOME", "PET DIARY", "AWARDS", "BLOBDEX", "HELP PAGES" };
+    ltc(160, 20, "MORE"); for (int j = 0; j < 5; j++) { int i = moreTop + j; ui_round(90, 34 + j * 15, 140, 13, 5, i == sub ? UI_BLUE : UI_CARD2, i == sub ? UI_BLUE2 : UI_CARD2, 0); ui_textc(160, 37 + j * 15, 1, it[i], i == sub ? UI_WHITE : UI_INK); }
+    if (moreTop > 0) lt(232, 36, "^"); if (moreTop + 5 < NMORE) lt(232, 94, "v");
+    ui_hints(160, 217, "X OPEN|UD PICK|O BACK", 1);
 }
 // ---- the blobdex: a grid of kinds (a dark shape until you have met it), and a page for each ----
 static int dex_best(int sp, int *col) {   // the best form seen (-1: none), and a colour seen
@@ -668,6 +759,12 @@ static void draw_tree(void) {
     { const Line *l = gotchi_line(tn[treeSel].id); char s[80]; int by = top + 158;
       ui_round(20, by, 280, 18, 6, UI_PANEL, UI_PANEL, 0);
       if (l) { static const char *const rw[4] = { "GRANDPARENT", "PARENT", "", "CHILD" }; int rn = tn[treeSel].row; sprintf(s, "%s %s %s  GEN %d  %s", rn == 2 ? (tn[treeSel].id == treeId ? "THIS PET" : "SIBLING") : rw[rn], gx_given(l->nm), gx_species(l->sp), (l->pg >> 3) + 1, (l->fc & 64) ? "(PASSED ON)" : gx_pers(l->pg & 7)); ui_textfit(26, by + 5, 270, s, UI_INK); } }
+    { int o = gotchi_sim_of(tt()); if (o >= 0) {   // the people of the family, on the same tree page: partner, kids, parents (the base game's relations)
+        char w[64]; const Sim *me = &sims[o]; strcpy(w, sims[o].bore.first); strcat(w, ":"); int nk = 0;
+        for (int j = 0; j < nsims; j++) { const Sim *q = &sims[j]; if (j == o || !me->uid) continue;
+            const char *r = q->uid == me->partner ? " PARTNER " : (q->par[0] == me->uid || q->par[1] == me->uid) ? " KID " : (q->uid == me->par[0] || q->uid == me->par[1]) ? " PARENT " : 0;
+            if (r && strlen(w) + strlen(r) + strlen(q->bore.first) < 60 && nk < 6) { strcat(w, r); strcat(w, q->bore.first); nk++; } }
+        ui_textfit(26, top + 179, 268, w, UI_SOFT); } }
     ui_hints(160, 214, "ARROWS PICK|X CENTRE|O BACK", 1);
 }
 // ---- the family home: the family in its room, the memorials on the shelf, and the room yours to dress ----
@@ -700,7 +797,7 @@ static void draw_home(void) {
 static void draw_diary(void) {
     sky(); ui_accent = 6; int top = ui_window(14, 8, 292, 224, "PET DIARY", IC_BOOK); ui_accent = 0; int p = gotchi_diary_pos(), shown = 0;
     for (int i = 1; i <= GD_N && shown < 13; i++) { const Diary *d = &gdiary[((p - i) % GD_N + GD_N) % GD_N]; if (!d->kind || i > p) continue; char s[80]; gx_diary(d, s);
-        ui_round(20, top + 2 + shown * 14, 280, 13, 4, shown & 1 ? UI_PANEL : UI_WHITE, shown & 1 ? UI_PANEL : UI_WHITE, 0); ui_textfit(25, top + 5 + shown * 14, 270, s, d->kind == GD_PASS ? UI_BADT : d->kind == GD_AWARD ? UI_GOLDT : UI_INK); shown++; }
+        ui_round(20, top + 2 + shown * 14, 280, 13, 4, shown & 1 ? UI_PANEL : UI_WHITE, shown & 1 ? UI_PANEL : UI_WHITE, 0); ui_textfit(25, top + 5 + shown * 14, 270, s, (d->kind & 31) == GD_PASS ? UI_BADT : (d->kind & 31) == GD_AWARD || (d->kind & 31) == GD_DAY ? UI_GOLDT : UI_INK); shown++; }
     if (!shown) ui_wrapc(30, top + 60, 260, 3, "NOTHING WRITTEN YET. HATCH AN EGG AND LIFE GOES IN THE DIARY.", UI_SOFT);
     ui_hints(160, 214, "O BACK", 1);
 }
@@ -718,7 +815,7 @@ static void draw_award(void) {
 typedef struct { const char *title; s8 img; u8 strip; const char *tip[3]; } GPage;
 static const GPage gp[NGP] = {
     { "MEET THE TOY", 0, 0, { "A TINY PET ON A KEYCHAIN. IT LOVES YOU BACK.", "$5000 AT ELECTRONICS AND GAMES SHOPS.", "EVERYONE CAN OWN ONE. EIGHT PETS EACH." } },
-    { "THE HANDHELD", 1, 1, { "D-PAD PICKS AN ICON, X USES IT. L1 R1 SWAP PETS.", "THE HINT BAR TELLS YOU WHAT EACH ICON DOES.", "BELL LIT UP? A PET NEEDS YOU. HURRY!" } },
+    { "THE HANDHELD", 1, 1, { "D-PAD PICKS AN ICON, X USES IT. L1 R1 SWAP PETS.", "ONE PRESS: TRI FEEDS, SQ PLAYS, L2 CLEANS, R2 LIGHTS. SELECT DOES WHAT IS URGENT.", "AN ICON LIT UP? THE BAR SAYS WHAT IT NEEDS." } },
     { "EIGHT PETS PER TOY", 2, 2, { "THE BASKET HOLDS EIGHT. A NEW EGG IS $150.", "20 KINDS: CATS, ROBOTS, GHOSTS, DRAGONS...", "HEARTS SHOW HOW CLOSE YOU TWO ARE." } },
     { "GROWING UP", 3, 3, { "EGG, BABY, CHILD, TEEN, ADULT, THEN ELDER.", "YOUR CARE DECIDES WHICH OF SIX FORMS IT BECOMES.", "GROWN-UPS FILL THE BLOBDEX. GET THEM ALL!" } },
     { "PLAY, FRIENDS AND EGGS", 4, 4, { "FOUR GAMES CHEER IT UP AND TRAIN IT.", "PLAYDATES CHEER BOTH. SQUARE = BATTLE.", "VISIT A HOUSEMATE'S PETS TOO." } },
@@ -787,17 +884,124 @@ static void draw_guide(void) {
     for (int k = 0; k < NGP; k++) ui_disc(160 - (NGP - 1) * 5 + k * 10, 204, 6, k == guidepage ? UI_BLUE : UI_LINE);
     { char b[16]; sprintf(b, "%d OF %d", guidepage + 1, NGP); ui_text(24, 216, 1, b, UI_SOFT); } ui_hints(160, 214, "L1 R1 PAGE|O BACK", 1);
 }
+// ---- the first-day tutorial: five short pages (the egg, care, one-press care, growing up, families) ----
+static const struct { const char *t, *x; s8 ic; } tp[5] = {
+    { "WELCOME", "THIS EGG IS YOURS. IT HATCHES IN A FEW GAME MINUTES, EVEN WHILE YOU PLAY BORE. A NOTE TELLS YOU WHEN IT WANTS YOU.", -1 },
+    { "LOOKING AFTER IT", "WHEN A PET NEEDS YOU, THE RIGHT ICON LIGHTS UP AND THE BAR TELLS YOU WHY. HUNGRY, MESSY, SICK, SLEEPY OR BORED. MISS TOO MANY CALLS AND IT GROWS UP SLOUCHY.", 0 },
+    { "ONE PRESS CARE", "TRI FEEDS IT. SQ PLAYS A GAME. L2 CLEANS UP. R2 SWITCHES THE LIGHT. SELECT DOES WHATEVER IT NEEDS MOST. X OPENS THE FULL ICONS.", -1 },
+    { "GROWING UP", "BABY, CHILD, TEEN, THEN GROWN-UP. GOOD CARE, GAMES AND MANNERS MAKE SUPER AND STAR FORMS. EVERY FORM YOU FIND GOES IN THE BLOBDEX.", 7 },
+    { "FAMILIES", "GROWN-UPS WITH BIG HEARTS FALL IN LOVE AND LAY EGGS. THE EGG INHERITS KIND, COLOUR AND RARE LOOKS. THE FAMILY ICON SHOWS THE TREE. MORE: FAMILY HOME.", 8 },
+};
+static void draw_coach(int pg) {
+    ui_round(25, 13, 270, 102, 11, UI_BLUE, UI_BLUE, 0); ui_round(27, 15, 266, 98, 9, UI_RGB(250, 252, 255), UI_RGB(214, 226, 250), 0);
+    ui_badge(34, 20, tp[pg].t, UI_BLUE2, UI_WHITE); { char n[12]; sprintf(n, "%d OF 5", pg + 1); ui_text(256, 22, 1, n, UI_SOFT); }
+    ui_wrap(34, 38, 252, 5, tp[pg].x, UI_INK); ui_hints(160, 97, "X NEXT|O SKIP", 1);
+    if (tp[pg].ic >= 0) for (int i = 0; i < NICON; i++) if (iconMap[i] == tp[pg].ic) {   // an arrow down onto the icon
+        int cx = 54 + (i % 6) * 42, y0 = (i < 6 ? 135 : 166) - 3 - ((anim >> 3) & 1) * 2; for (int r = 0; r < 7; r++) { gfx_rect(cx - 7 + r, y0 - 8 + r, 14 - 2 * r, 1, 255, 205, 40, 0); }
+        gfx_rect(cx - 2, y0 - 14, 4, 6, 255, 205, 40, 0); }
+}
+
+// ---- the toy's title and attract screen: the kinds go by while you wait ----
+static void draw_title(void) {
+    sky(); const char *t = "BOREAGOTCHI!"; int y = 22 + ((anim >> 5) & 1);
+    ui_textc(162, y + 2, 2, t, UI_RGB(20, 8, 40)); ui_textc(160, y, 2, t, UI_RGB(255, 214, 70));
+    tshadowc(160, 56, "THE POCKET PET THAT NEEDS YOU", 190, 200, 255);
+    for (int i = 0; i < 3; i++) { Blob b; Kin k; memset(&b, 0, sizeof b); memset(&k, 0, sizeof k); b.on = 1; b.stage = GS_ADULT; b.hun = b.hap = 4; b.sp = (u8)((anim / 90 + i * 5 + 1) % 16); k.col = (u8)((anim / 90 + i) % 7 + 1);
+        int x0 = 28 + i * 100, y0 = 84 + (i == 1 ? -6 : 0); lcd_tile(&b, &k, x0, y0, anim / 20 + i, 0); ui_textc(x0 + 32, y0 + 38, 1, gx_species(b.sp), UI_WHITE); }
+    { Toy *m = my_toy(); char s[48]; if (m) { int c = gotchi_calling(m); if (c) sprintf(s, "%d OF YOUR PETS WANT YOU", c); else strcpy(s, "ALL QUIET. YOUR PETS ARE FINE"); chip(160, 150, s, c ? UI_RED : UI_GREEN, UI_WHITE); } }
+    if ((anim >> 5) & 1) tshadowc(160, 178, "PRESS X", 255, 255, 255);
+    ui_hints(160, 210, "X PLAY|O LEAVE", 1);
+}
+// ---- first run: the shop card, the unboxing, the egg ----
+static void toy_pic(int x, int y, int egg_on) {   // a little toy on a card: body, LCD with the egg, buttons
+    ui_round(x, y, 84, 74, 12, UI_RGB(150, 90, 210), UI_RGB(80, 36, 130), 0); ui_round(x + 2, y + 2, 80, 8, 4, UI_RGB(250, 252, 255), UI_RGB(250, 252, 255), 1);
+    ui_round(x + 8, y + 10, 68, 36, 5, UI_RGB(52, 24, 70), UI_RGB(30, 12, 44), 0); gfx_rect(x + 10, y + 12, 64, 32, 172, 196, 128, 0);
+    if (egg_on) { Blob e; Kin k; memset(&e, 0, sizeof e); memset(&k, 0, sizeof k); e.on = 1; e.sp = 1; scene(&e, &k, anim / 20, 0, MD_NORM); dots_draw(x + 10, y + 12, 2, 0, 16, 0, 32); }
+    ui_disc(x + 24, y + 58, 10, UI_RGB(255, 205, 60)); ui_disc(x + 42, y + 62, 10, UI_RGB(255, 205, 60)); ui_disc(x + 60, y + 58, 10, UI_RGB(255, 205, 60));
+}
+static void draw_intro(void) {
+    sky();
+    if (sub == 0) {
+        int top = ui_window(14, 8, 292, 224, "ELECTRONICS SHOP", IC_CASE);
+        ui_round(24, top + 4, 104, 140, 8, UI_RGB(255, 214, 70), UI_RGB(240, 170, 30), 0); toy_pic(34, top + 12, 1);
+        ui_textc(76, top + 94, 1, "BOREAGOTCHI!", UI_INK); ui_textc(76, top + 106, 1, "20 KINDS INSIDE", UI_INK); ui_badge(40, top + 122, "$5000  PAID", UI_GREEN, UI_WHITE);
+        static const char *const bl[4] = { "TWENTY KINDS TO COLLECT. FOUR ARE RARE.", "FEED, PLAY, CLEAN AND TUCK IT IN.", "BOND, LAY EGGS, RAISE A FAMILY.", "ONE TOY PER BORE. EIGHT PETS EACH." };
+        for (int i = 0; i < 4; i++) { int y = top + 6 + i * 32; ui_round(136, y, 160, 29, 6, UI_WHITE, UI_PANEL, 0); ui_icon_s(141, y + 9, IC_TICK, 11, UI_GREEN); ui_wrap(157, y + 4, 136, 3, bl[i], UI_INK); }
+        ui_wrapc(30, top + 150, 260, 2, "THANK YOU! YOUR TOY CAME WITH ITS FIRST EGG.", UI_SOFT);
+        ui_hints(160, 210, "X UNBOX IT|START SKIP", 1); return; }
+    if (sub == 1) {
+        int t = iT, bx = 100, by = 120, rise = CLAMP((t - 45) * 2, 0, 80);
+        if (t < 40) tshadowc(160, 30, "SOMETHING IS INSIDE...", 255, 255, 255); else if (t < 75) tshadowc(160, 30, "OPEN IT!", 255, 235, 140); else tshadowc(160, 30, "TA-DA!", 255, 214, 70);
+        ui_round(bx, by - 10, 120, 80, 6, UI_RGB(150, 100, 50), UI_RGB(110, 70, 36), 0);   // the box: its inside, the toy rising, then its front and the lid
+        if (t > 44) toy_pic(118, by + 40 - rise, t > 60);
+        ui_round(bx, by + 18, 120, 52, 4, UI_RGB(214, 150, 80), UI_RGB(170, 112, 56), 0); gfx_rect(bx + 54, by + 18, 12, 52, 255, 205, 60, 0); ui_textc(bx + 60, by + 54, 1, "BOREAGOTCHI!", UI_WHITE);
+        { int lx = bx - 4 + (t < 40 ? ((t >> 1) & 1) * 4 - 2 : MIN(80, (t - 40) * 2)), ly = by - 22 - (t < 40 ? 0 : MIN(40, (t - 40) * 2));
+          ui_round(lx, ly, 128, 18, 4, UI_RGB(230, 168, 96), UI_RGB(190, 130, 66), 0); gfx_rect(lx + 58, ly, 12, 18, 255, 205, 60, 0); }
+        if (t >= 75) for (int i = 0; i < 26; i++) { u32 h = hsh(i * 31 + 7); int x = (int)(h % 320), y = (int)(((h >> 8) % 200) - 40 + (t - 75) * (2 + (int)(h >> 20) % 3)) % 230;
+            gfx_rect(x, y, 4, 4, 90 + (int)(h & 127), 90 + (int)((h >> 5) & 127), 120 + (int)((h >> 11) & 127), 0); }
+        ui_hints(160, 210, "X NEXT|START SKIP", 1); return; }
+    body(owner_color(tt())); ui_round(72, 14, 176, 102, 10, UI_RGB(54, 26, 74), UI_RGB(26, 10, 40), 0); lcd_bg(80, 18, 160, 80, 0); scene(cb(), ck(), anim / 20, 0, MD_NORM); dots_all(80, 18, 5);
+    ui_round(24, 124, 272, 76, 10, UI_RGB(24, 10, 40), UI_RGB(12, 4, 24), 0); tshadowc(160, 130, "IT CAME WITH AN EGG!", 255, 235, 140);
+    ui_wrapc(32, 146, 256, 4, "KEEP IT WARM. IT HATCHES IN A FEW GAME MINUTES. THEN FEED IT, PLAY WITH IT AND WATCH IT GROW. I WILL SHOW YOU HOW.", UI_WHITE); ui_hintbar(208, "X START CARING");
+}
+// ---- hatching: the egg wobbles and cracks, a flash, shell bits fly, the baby is there ----
+static void draw_hatch(void) {
+    sky(); Blob *b = cb(); Kin *k = ck(); int h = hT;
+    ui_round(46, 14, 228, 128, 14, UI_RGB(54, 26, 74), UI_RGB(26, 10, 40), 0); lcd_bg(54, 22, 212, 112, 0);
+    if (h < 90) { Blob g = *b; g.stage = GS_EGG; g.age = (u16)(h > 30 ? 15 : 3); scene(&g, k, h / 6, 0, MD_NORM); int sh = h < 24 ? 0 : ((h / 2) % 3 - 1) * (h < 70 ? 3 : 6); dots_draw(64 + sh, 30, 6, 0, 16, 0, 32); }
+    else { scene(b, k, (h - 90) / 8, 0, h > 110 ? MD_HAPPY : MD_NORM); int t = MIN(h - 90, 70);
+        if (t < 60) for (int i = 0; i < 6; i++) { int dx = (i - 3) * (t + 6) / 3 + (i & 1), yy = 10 - t / 3 + (t * t) / (60 + i * 8); P(16 + dx, yy, 1); P(17 + dx, yy, 1); }
+        dots_draw(64, 30, 6, 0, 16, 0, 32); }
+    if (h >= 84 && h < 96) gfx_rect(54, 22, 212, 112, 255, 255, 255, h < 90 ? 0 : 1);
+    { char s[56], nm[40]; if (h < 52) tshadowc(160, 152, "SOMETHING IS MOVING INSIDE...", 255, 255, 255); else if (h < 90) tshadowc(160, 152, "IT IS CRACKING!", 255, 235, 140);
+      else if (h < 112) tshadowc(160, 152, "...", 255, 255, 255);
+      else { tshadowc(160, 150, "IT HATCHED!", 255, 214, 70); gx_name(b, nm); sprintf(s, "%s THE %s", gx_given(b->nm), nm); tshadowc(160, 168, s, 255, 255, 255);
+             if (k->mut || b->sp >= 16) tshadowc(160, 184, "A RARE ONE!", 255, 130, 200); else { sprintf(s, "%s, %s. GEN %d", gx_colour(k->col), gx_pers(k->pers), b->gen + 1); tshadowc(160, 184, s, 190, 200, 255); } }
+      if (h > 130) ui_hintbar(204, "X SAY HELLO"); }
+}
+// ---- the end of the day, gently ----
+static void draw_day(void) {
+    sky(); ui_accent = 2; int top = ui_window(14, 8, 292, 224, "GOODNIGHT. YOUR DAY", IC_STAR); ui_accent = 0; Toy *t = tt(); char s[48];
+    static const char *const lb[3] = { "CARES", "GAMES", "HATCHED" }; int v[3] = { gsum_c, gsum_p, gsum_h };
+    for (int i = 0; i < 3; i++) { int x = 24 + i * 94; ui_round(x, top + 2, 86, 44, 8, UI_WHITE, UI_PANEL, 0); sprintf(s, "%d", v[i]); ui_textc(x + 43, top + 8, 2, s, UI_BLUE2); ui_textc(x + 43, top + 32, 1, lb[i], UI_SOFT); }
+    int n = 0, c = 0, sl = 0; for (int i = 0; i < GB_N; i++) { const Blob *b = &t->b[i]; if (!b->on) continue; n++; c += gotchi_needs(b) && !(b->fl & GF_SLEEP); sl += (b->fl & GF_SLEEP) != 0; }
+    for (int i = 0, j = 0; i < GB_N; i++) if (t->b[i].on) { mini_tile(&t->b[i], &t->k[i], 22 + j * 36, top + 56, 30, 0); if (t->b[i].fl & GF_SLEEP) gfx_text_raw(40 + j * 36, top + 54, 1, "Z", 220, 220, 255); j++; }
+    ui_wrapc(30, top + 84, 260, 3, !n ? "NO PETS YET." : c ? "SOME PETS STILL NEED YOU. A LITTLE CARE TONIGHT MAKES A HAPPIER MORNING." : gsum_c ? "A GENTLE DAY. EVERYONE IS FED, HAPPY AND READY FOR BED." : "A QUIET DAY. THEY MISSED YOU A LITTLE. SAY HELLO TOMORROW.", UI_INK);
+    sprintf(s, "%d PETS, %d ASLEEP, %d CALLING", n, sl, c); ui_textc(160, top + 120, 1, s, UI_SOFT);
+    ui_wrapc(30, top + 140, 260, 2, "THE DAY IS WRITTEN IN THE PET DIARY.", UI_SOFT);
+    ui_hints(160, 214, "X CONTINUE", 1);
+}
+// ---- a slide between screens: the new one pushes in from the side, a bright edge leads it ----
+static void curtain(void) {
+    if (trn <= 0) return; int q = 256 - trn * 256 / TRN; q = 256 - (256 - q) * (256 - q) / 256; int w = 320 * (256 - q) / 256; if (w <= 0) return;
+    int x = trdir > 0 ? 0 : 320 - w; gfx_rect(x, 0, w, 240, 22, 12, 52, 0);
+    for (int y = 0; y < 240; y += 24) gfx_rect(x, y, w, 2, 36, 22, 78, 0);
+    gfx_rect(trdir > 0 ? w - 4 : 320 - w, 0, 4, 240, 190, 170, 255, 0);
+}
 void gotchi_draw(void) {
 #ifdef AUTO_GVIEWS
-    { static int n; static const u8 vl[] = { V_BOX, V_BASKET, V_HAND, V_DEX, V_DEXD, V_FEED, V_PLAYPICK, V_FRIEND, V_STATS, V_GUIDE, V_TREE, V_HOME, V_DIARY, V_AWARD, V_MORE, V_DRESS, V_TREE, V_LOOK, V_COPY, V_CATCH, V_HILO, V_TREE, V_TREE };
-      int k = n++ / 60; if (k < (int)sizeof vl && n % 60 == 1) { view = vl[k]; sub = (k == 9) ? 0 : 1; bi = 0; isel = 0; treeId = 0; treeSel = k == 16 ? 1 : k == 21 ? 4 : k == 22 ? 5 : 0; dexsel = 17; dexf = 1; gach = 0x2A5; homeSel = 3; if (view == V_LOOK) start_look(); if (view == V_COPY) start_copy(); if (view == V_CATCH) start_catch(); if (view == V_HILO) start_hilo(); } }
+    { static int n; static const u8 vl[] = { V_BOX, V_BASKET, V_HAND, V_DEX, V_DEXD, V_FEED, V_PLAYPICK, V_FRIEND, V_STATS, V_GUIDE, V_TREE, V_HOME, V_DIARY, V_AWARD, V_MORE, V_DRESS, V_TREE, V_LOOK, V_COPY, V_CATCH, V_HILO, V_TREE, V_TREE,
+        V_TITLE, V_INTRO, V_INTRO, V_INTRO, V_INTRO, V_HATCH, V_HATCH, V_HATCH, V_HATCH, V_DAY, V_HAND, V_HAND, V_HAND, V_HAND, V_HAND, V_HAND, V_MORE, V_TREE };
+      int k = n++ / 60; if (k < (int)sizeof vl && n % 60 == 1) { view = vl[k]; sub = (k == 9) ? 0 : 1; bi = 0; isel = 0; treeId = 0; treeSel = k == 16 ? 1 : k == 21 ? 4 : k == 22 ? 5 : 0; dexsel = 17; dexf = 1; gach = 0x2A5 | GACH_TUTOFF | GACH_INTRO; trn = 0; actT = 0; homeSel = 3; if (view == V_LOOK) start_look(); if (view == V_COPY) start_copy(); if (view == V_CATCH) start_catch(); if (view == V_HILO) start_hilo();
+        if (k >= 23) {   // the new screens: the shot comes 59 frames after the switch, so the clocks are set that far back
+            int j = k - 23; titleT = 0; moreTop = 0; static const s16 itm[4] = { 0, 1, 41, 0 }, htm[4] = { -19, 16, 41, 81 };
+            if (j >= 1 && j <= 4) { sub = j == 1 ? 0 : j == 4 ? 2 : 1; iT = itm[j - 1 + (j == 1 ? 0 : 0)]; if (j == 2) iT = 1; if (j == 3) iT = 41; }
+            if (j >= 5 && j <= 8) { bi = 5; hSlot = 5; hT = htm[j - 5]; }
+            if (j == 9) { gsum_c = 5; gsum_p = 2; gsum_h = 1; }
+            if (j >= 10 && j <= 14) { gach = 0x2A5 | GACH_INTRO | (u32)(j - 10) << 16; bi = 0; }
+            if (j == 15) bi = 4;
+            if (j == 16) { sub = 6; moreTop = 2; }
+            if (j == 17) { sub = 1; bi = 0; treeId = 0; treeSel = 0; }
+        } } }
 #endif
     switch (view) {
     case V_BOX: draw_box(); break; case V_BASKET: draw_basket(); break; case V_HAND: draw_hand(0); break; case V_FEED: draw_feed(); break;
     case V_PLAYPICK: draw_playpick(); break; case V_LOOK: draw_look(); break; case V_COPY: draw_copy(); break; case V_CATCH: draw_catch(); break; case V_HILO: draw_hilo(); break;
     case V_FRIEND: draw_friend(); break; case V_STATS: draw_stats(); break; case V_GUIDE: draw_guide(); break; case V_DEX: draw_dex(); break; case V_DEXD: draw_dexd(); break;
-    case V_TREE: draw_tree(); break; case V_HOME: draw_home(); break; case V_DIARY: draw_diary(); break; case V_AWARD: draw_award(); break; case V_MORE: draw_more(); break; default: draw_dress(); break;
+    case V_TREE: draw_tree(); break; case V_HOME: draw_home(); break; case V_DIARY: draw_diary(); break; case V_AWARD: draw_award(); break; case V_MORE: draw_more(); break;
+    case V_TITLE: draw_title(); break; case V_INTRO: draw_intro(); break; case V_HATCH: draw_hatch(); break; case V_DAY: draw_day(); break; default: draw_dress(); break;
     }
+    curtain();
 }
 #include "ovl.h"
 __attribute__((section(".ovl_head"), used)) const OvlHead ovl_head = { OVL_MAGIC, gotchi_open, gotchi_update, gotchi_draw };

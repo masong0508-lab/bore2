@@ -19,7 +19,7 @@ enum { GF_SICK = 1, GF_SLEEP = 2, GF_DARK = 4, GF_CALL = 8, GF_FAKE = 16, GF_TAN
 enum { GM_BUDDY, GM_HATCH, GM_PROUD, GM_WORRY, GM_MISS, GM_HOOKED, GM_SHARED };   // the moods it gives its owner
 enum { GP_SHY, GP_BOLD, GP_GREEDY, GP_LAZY, GP_PLAYFUL, GP_GENTLE, GP_CHEEKY, GP_CLEVER };
 enum { GMU_SPARKLE = 1, GMU_SPOTS = 2, GMU_HALO = 4 };   // rare mutations, passed down
-enum { GD_HATCH = 1, GD_GROW, GD_ADULT, GD_PASS, GD_GIFT, GD_BDAY, GD_TANTRUM, GD_ILL, GD_EGG, GD_PLAY, GD_MUT, GD_CARED, GD_BOND, GD_VISIT, GD_AWARD };
+enum { GD_HATCH = 1, GD_GROW, GD_ADULT, GD_PASS, GD_GIFT, GD_BDAY, GD_TANTRUM, GD_ILL, GD_EGG, GD_PLAY, GD_MUT, GD_CARED, GD_BOND, GD_VISIT, GD_AWARD, GD_DAY };   // a diary kind is the verb (bits 0-4) and, for growing up, the new stage or form (bits 5-7)
 typedef struct { u8 on, stage, form, sp, nm, hun, hap, disc, wt, poop, fl, miss, needT, bond, snk, meal, gen; u16 age; } Blob;
 typedef struct { u8 pers, col, mut, taste, acc, mate, id, bday; } Kin;          // taste: liked food (high nibble), disliked (low); mate: slot + 1
 typedef struct { u8 id, sp, nm, fc, pg, mom, dad, mut; } Line;                  // fc: form | col << 3 | 64 passed on | 128 alive; pg: pers | gen << 3
@@ -29,6 +29,10 @@ extern Toy gtoy[GT_MAX];
 extern Line gline[GL_N];
 extern Diary gdiary[GD_N];
 extern u32 gach;                           // achievements won (one bit each)
+#define GACH_TUT   0x70000u                 // gach bits 16..18: how far the first-day tutorial went (0 start .. 5); bit 19: tutorial done or skipped; bit 20: the unboxing was seen
+#define GACH_TUTOFF 0x80000u
+#define GACH_INTRO 0x100000u
+extern u8 gsum_pend, gsum_c, gsum_p, gsum_h;   // the end-of-day summary waits to be shown (1): cares, games and hatches that day
 extern int sim_want_gotchi;
 extern int gotchi_time;                    // 0 the game clock, 1 LIVE in hand (the toy runs on real time while you hold it), 2 off (they wait)
 

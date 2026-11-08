@@ -337,7 +337,7 @@ static void start_life(void) {
         a->rel[1] = m->rel[0] = 40; a->rel[2] = k->rel[0] = m->rel[2] = k->rel[1] = 30;
     }
     story_reset(); }
-#if !defined(AUTO_PKLIFE) && !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_SUPER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY) && !defined(AUTO_GOTCHI) && !defined(AUTO_DJ) && !defined(AUTO_RESORT)
+#if !defined(AUTO_PKLIFE) && !defined(AUTO_CITY) && !defined(AUTO_PARTY) && !defined(AUTO_SUPER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_SCENE) && !defined(AUTO_PHONE) && !defined(AUTO_ISLE) && !defined(AUTO_HOME) && !defined(AUTO_GROW) && !defined(AUTO_SAVE) && !defined(AUTO_TOWER) && !defined(AUTO_FLOAT) && !defined(AUTO_STREAM) && !defined(AUTO_STORY) && !defined(AUTO_GOTCHI) && !defined(AUTO_GFIRST) && !defined(AUTO_DJ) && !defined(AUTO_RESORT)
     nh_pending = life_mode == 0; cash = life_mode == 2 ? 1000 : wmFundsV[go_funds % 6]; mode_pending = life_mode; life_mode = 0;   // the family picks its home on THE NEIGHBORHOOD screen (The Sims: $20,000 to start), and life_update moves them in
 #endif
     life_started = 1;
@@ -699,6 +699,9 @@ static void life_update(int steps) {
             world_touched(); sim_gotchi_mood(player, 2); sim_gotchi_mood(player, 1); sim_note("A BOREAGOTCHI HATCHED!");
             if (AUTO_GOTCHI == 22) { int i; for (i = 0; i < items_count(); i++) if ((u8)items_at(i) == 0xBE) break; build_item = i; build_x = px; build_y = py; build_tool = 0; room_on = 0; build_msg_t = 0; state = ST_BUILD; }
             if (AUTO_GOTCHI == 24) opts_dbg(5, 5, ST_LIFE); } } }
+#endif
+#ifdef AUTO_GFIRST
+    { static int af; if (++af == 40) { gotchi_buy(player); sim_want_gotchi = 2; } }   // (test builds: a toy fresh from the shop, straight into the first run)
 #endif
 #ifdef AUTO_SUPER
     { static int as_; if (++as_ == 40) {   // (test builds: a band of the family, skilled by AUTO_SUPER, straight into the band screens)
@@ -4085,7 +4088,7 @@ static void title_update(void) {
 #if defined(AUTO_WEAR) || defined(AUTO_FACE)
     if (title_t == 30) { world_backup(); prev_state = ST_MENU; create_tab = 4; create_row = 0; state = ST_CREATE; world_gen_studio(); return; }
 #endif
-#if defined(AUTO_PKLIFE) || defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM) || defined(AUTO_GOTCHI) || defined(AUTO_DJ) || defined(AUTO_SUPER)
+#if defined(AUTO_PKLIFE) || defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM) || defined(AUTO_GOTCHI) || defined(AUTO_GFIRST) || defined(AUTO_DJ) || defined(AUTO_SUPER)
     if (title_t == 30) {
 #ifdef CIT_PEOPLE
         pop_people = CIT_PEOPLE; pop_famsize = 2;   // (test builds: a bigger SAN BOREAS, PEOPLE 5 = PACKED, BIG households)
@@ -4320,7 +4323,7 @@ static const char *const moreCard[WO_NMORE] = { "ISLAND|CREATOR", "STORY|MISSION
 static const char *const moreBlurb[WO_NMORE] = {
     "STRANDED! VERY SMALL TO VERY BIG. COAST, JUNGLE, HILLS", "TEN LIVES WITH A STORY TO TELL. PICK ONE!", "A DESK JOCKEY BECOMES AN ASTRONAUT. A SPACE-HOP ARCADE GAME.",
     "THE TOWN GOES UNDEAD. BOARD UP THE WINDOWS, SHARE THE CANNED BEANS.", "THE EASTERN ARMY CUT DOWN YOUR HEDGE. RALLY THE STREET!", "PLAY IT AT THE ARCADE CABINET IN SAN BOREAS!",
-    "RAISE EIGHT PIXEL PETS PER TOY. X: THE GUIDE!", "GROWN-UPS ONLY: RETIRE, WRITE YOUR WILL, LEAVE A LEGACY.", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
+    "A POCKET PET TOY: FEED, PLAY, BOND, HATCH EGGS, RAISE FAMILIES. $5000 AT ELECTRONICS SHOPS. X: THE GUIDE", "GROWN-UPS ONLY: RETIRE, WRITE YOUR WILL, LEAVE A LEGACY.", "WAKE A GIANT: PAUSE, STORY, KINGDOM MODE IN A LIFE!",
     "THE YEAR TURNS. X TURNS THE PACK ON OR OFF.", "A PRIVATE ISLAND: BEACH BARS, BOATS, A LONG HOLIDAY.", "FORM A BAND AND PLAY GIGS! PAUSE, SUPERSTAR BAND",
     "BREAK THE LAW AND FIND OUT.", "THE RANCH LEDGER: BARN, SILO, ORCHARD, BEES, A FARM STAND AND CONTRACTS.", "BOATS, BALLOONS, SEAPLANES AND VOYAGES. SAIL AND SOAR!",
     "RACE THE STREETS: GARAGES, TUNING, A CITY GRAND PRIX.", "MOVIE SETS, PREMIERES, AND A RED CARPET OF YOUR OWN.", "SOMETHING NEW. TELL US WHAT YOU WANT NEXT!",
@@ -4821,9 +4824,9 @@ static void worlds_draw(void) {
         { int st = wo_msel == 9 ? (sim_seasons_on ? 1 : 3) : !EX_PLAYABLE(wo_msel) ? 4 : pk_have[wo_msel];
           ui_round(10, top + 152, 300, 42, 5, UI_PANEL, UI_LINE, 0);
           ui_textc(160, top + 156, 1, moreNm[wo_msel], UI_BLUE2);
-          { char bb[128]; snprintf(bb, sizeof bb, "%s%s", st == 4 ? "COMING SOON! " : "", st == 2 ? "NOT ON THIS DISC. PATCH IT ON WITH ITS BORE2 PACK .PPF" : moreBlurb[wo_msel]);
+          { char bb[128]; snprintf(bb, sizeof bb, "%s%s", st == 4 || (st == 2 && wo_msel == 6) ? "COMING SOON! " : "", st == 2 ? (wo_msel == 6 ? "A POCKET PET TOY WITH 20 KINDS, EGGS AND FAMILIES. PATCH ITS PACK ON TO PLAY" : "NOT ON THIS DISC. PATCH IT ON WITH ITS BORE2 PACK .PPF") : moreBlurb[wo_msel]);
             ui_wrapc(16, top + 166, 288, 3, bb, EX_PLAYABLE(wo_msel) && st != 2 ? UI_INK : UI_SOFT); } }
-        ui_hints(160, 218, wo_msel == 0 ? "X OPEN THE CREATOR|ARROWS MOVE|O BACK" : wo_msel == 1 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 6 ? "X THE GUIDE|ARROWS MOVE|O BACK" : wo_msel == 9 ? "X ON OR OFF|ARROWS MOVE|O BACK" : "X ABOUT IT|ARROWS MOVE|O BACK", 1);
+        ui_hints(160, 218, wo_msel == 0 ? "X OPEN THE CREATOR|ARROWS MOVE|O BACK" : wo_msel == 1 ? "X PICK A STORY|ARROWS MOVE|O BACK" : wo_msel == 6 ? (pk_have[6] == 2 ? "ARROWS MOVE|O BACK" : "X THE GUIDE|ARROWS MOVE|O BACK") : wo_msel == 9 ? "X ON OR OFF|ARROWS MOVE|O BACK" : "X ABOUT IT|ARROWS MOVE|O BACK", 1);
         return;
     }
     // the tabs

@@ -19,7 +19,7 @@ STUB_MAGIC = b"BSTB"            # (src/ovl.h: OVL_STUB) the first bytes of a stu
 PACKS = {
     "KINGDOM": ("THE LAND BOREFORE TIME", [("KINGDOM.OVL", 40)]),
     "ARCADE":  ("BORTUA FIGHTER AND THE ARCADE", [("ARCADE.OVL", 32), ("ARCADE2.OVL", 40)]),
-    "GOTCHI":  ("BOREAGOTCHI!", [("GOTCHI.OVL", 40), ("GOTCHI.ART", 32)]),
+    "GOTCHI":  ("BOREAGOTCHI!", [("GOTCHI.OVL", 48), ("GOTCHI.ART", 32)]),
     "PARTY":   ("PARTY PACK", [("PARTY.OVL", 8)]),
     "DJ":      ("DJ BOOTH", [("DJ.OVL", 16)]),
     "SUPER":   ("SUPERSTAR", [("SUPER.OVL", 28)]),
@@ -43,7 +43,7 @@ RESERVED = {
     "WWBORE":    ("WORLD WAR BORE",       [("WWBORE.OVL", 20)]),
     "BOREPILOG": ("BOREPILOGUE",          [("BOREPILG.OVL", 12)]),
 }
-MAX_SLOT = 40                    # sectors: the overlay arena's room is a little over 80 KB
+MAX_SLOT = 40                    # sectors: the overlay arena's room is a little over 80 KB (GOTCHI loads at the start of the arena: 76 sectors)
 
 def stub(pack, fname, sectors):
     head = STUB_MAGIC + struct.pack("<I", sectors) + (pack + ":" + fname).encode().ljust(24, b"\0")
@@ -57,7 +57,7 @@ def cmd_slots(bd):
             for side in ("slot_full", "slot_base"): open(os.path.join(bd, side, fname), "wb").write(stub(pid, fname, sectors))
     for pid, (title, files) in PACKS.items():
         for fname, sectors in files:
-            assert sectors <= MAX_SLOT
+            assert sectors <= (76 if pid == "GOTCHI" else MAX_SLOT)
             real = open(os.path.join(bd, fname), "rb").read()
             if len(real) > sectors * 2048: sys.exit("%s is %d bytes: its slot (%d sectors) is too small" % (fname, len(real), sectors))
             open(os.path.join(bd, "slot_full", fname), "wb").write(real.ljust(sectors * 2048, b"\0"))

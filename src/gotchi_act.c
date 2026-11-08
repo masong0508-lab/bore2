@@ -52,11 +52,15 @@ const char *gx_want(const Blob *b) {
     return b->hun == 0 ? "IT IS HUNGRY" : (b->fl & GF_TANTRUM) ? "TANTRUM! CUDDLE OR SCOLD IT" : b->hap == 0 ? "IT IS BORED" : b->poop ? "IT MADE A MESS" : (b->fl & GF_SICK) ? "IT FEELS SICK" :
            ((b->fl & GF_SLEEP) && !(b->fl & GF_DARK)) ? "TURN THE LIGHT OFF" : (b->fl & GF_FAKE) ? "IT IS FIBBING. SCOLD IT" : "ALL GOOD";
 }
-void gx_diary(const Diary *d, char *out) {
+void gx_diary(const Diary *d, char *out) {   // the diary tells it as a story: who, what kind, what happened
     static const char *const vb[16] = { "", "HATCHED", "GREW UP A BIT", "BECAME A GROWN-UP", "PASSED ON. REMEMBERED", "BROUGHT A GIFT", "HAD A BIRTHDAY", "HAD A TANTRUM", "WAS ILL", "IS A NEW EGG", "HAD A PLAYDATE", "IS A RARE MUTANT", "WAS LOOKED AFTER BY MUM OR DAD", "FELL IN LOVE", "VISITED A HOUSEMATE", "" };
-    const Line *l = gotchi_line(d->id); char w[24];
-    if (d->kind == GD_AWARD) { sprintf(out, "%s %02d  AWARD: %s", dayNm[(d->day / 24) % 7], d->day % 24, achNm[d->id % NACH]); return; }
-    strcpy(w, l ? giv[l->nm & 31] : "A PET"); sprintf(out, "%s %02d  %s %s", dayNm[(d->day / 24) % 7], d->day % 24, w, vb[d->kind & 15]);
+    int kd = d->kind & 31, sg = d->kind >> 5; const Line *l = gotchi_line(d->id); char w[32], t[40]; sprintf(t, "%s %02d  ", dayNm[(d->day / 24) % 7], d->day % 24);
+    if (kd == GD_AWARD) { sprintf(out, "%sAWARD: %s", t, achNm[d->id % NACH]); return; }
+    if (kd == GD_DAY) { sprintf(out, "%sGOODNIGHT. %d CARES TODAY", t, d->id); return; }
+    if (l) sprintf(w, "%s THE %s", giv[l->nm & 31], spNm[l->sp % GSP_N]); else strcpy(w, "A PET");
+    if (kd == GD_GROW) { sprintf(out, "%s%s %s", t, w, sg == GS_CHILD ? "IS A CHILD NOW" : sg == GS_TEEN ? "IS A TEEN NOW" : sg == GS_ELDER ? "IS GETTING OLD" : "GREW UP A BIT"); return; }
+    if (kd == GD_ADULT) { sprintf(out, "%s%s GREW UP: A %s ADULT", t, w, formNm[sg % GFORMS]); return; }
+    sprintf(out, "%s%s %s", t, w, vb[kd & 15]);
 }
 
 // ---- actions ----
@@ -135,6 +139,22 @@ const char *gx_dress(Toy *t, int slot, int acc) {
     Kin *k = &t->k[slot]; if (t->b[slot].stage == GS_EGG) return "AN EGG HAS NO HEAD YET";
     if (acc && !(t->accs & (1 << acc))) { if (cash < accCost[acc]) return "NOT ENOUGH CASH"; cash -= accCost[acc]; t->accs |= (u8)(1 << acc); }
     k->acc = (u8)acc; up(&t->b[slot].hap, 4, 1); gotchi_xp(t, 1); return acc ? "LOOKING GOOD!" : "ALL NATURAL";
+}
+
+
+// ---- one-press care: what to give, without opening a list ----
+static int liked(const Kin *k, int f) { return (k->taste & 15) != f || k->pers == GP_GREEDY; }
+const char *gx_quick_feed(Toy *t, int slot) {   // its favourite if it is free or cheap, else the first free food it does not hate; a snack when it is full but sad
+    Blob *b = &t->b[slot]; Kin *k = &t->k[slot]; int snack = b->hun >= 4 && b->hap < 4, base = snack ? 6 : 0, f = -1, fav = k->taste >> 4;
+    if (fav >= base && fav < base + 6 && gx_food_cost(fav) <= 5 && gx_food_cost(fav) <= cash) f = fav;
+    for (int i = 0; i < 6 && f < 0; i++) if (gx_food_cost(base + i) == 0 && liked(k, base + i)) f = base + i;
+    if (f < 0) f = base;
+    return gx_feed(t, slot, f);
+}
+int gx_urgent(const Blob *b) {   // what a pet needs most: 0 nothing, 1 medicine, 2 clean, 3 cuddle, 4 scold a fib, 5 food, 6 lights out, 7 a game
+    if (!b->on || b->stage == GS_EGG) return 0;
+    if (b->fl & GF_SICK) return 1; if (b->poop) return 2; if (b->fl & GF_TANTRUM) return 3; if ((b->fl & GF_FAKE) && !(b->fl & GF_SLEEP)) return 4;
+    if ((b->fl & GF_SLEEP) && !(b->fl & GF_DARK)) return 6; if (b->fl & GF_SLEEP) return 0; if (b->hun == 0 || b->hun < 3) return 5; if (b->hap < 2) return 7; return 0;
 }
 
 // ---- families ----

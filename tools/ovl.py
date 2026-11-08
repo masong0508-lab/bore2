@@ -3,7 +3,7 @@
 #   ovl.py keep OUT.c NM obj...                     what the overlays need from BORE2.EXE, as a table that keeps it through -gc-sections
 #   ovl.py link OUT.OVL MAIN.elf GCC NM OBJCOPY obj...  link one overlay at the crowd arena's OVL_AT against BORE2.EXE's symbols
 import subprocess, sys, re, os
-OVL_AT, ROOM = 73728, 192704 - 73728
+OVL_AT, ROOM, ARENA = 73728, 192704 - 73728, 156096
 def syms(nm, objs, kind):
     out = set()
     for o in objs:
@@ -31,7 +31,8 @@ elif cmd == 'link':
         p = l.split()
         if len(p) == 3 and p[2] == 'arena_mem': base = int(p[0], 16) & 0xffffffff
     if base is None: sys.exit('ovl.py: no arena_mem in ' + elf)
-    at = base + OVL_AT
+    low = os.path.basename(out).startswith('GOTCHI')   # (the toy's screens need no realm land: it loads at the start of the arena, with all of its 152 KB)
+    at = base + (0 if low else OVL_AT); room = ARENA if low else ROOM
     ld = out + '.ld'
     open(ld, 'w').write('''MEMORY { OVL (rwx) : ORIGIN = 0x%08x, LENGTH = %d }
 SECTIONS {
@@ -41,17 +42,17 @@ SECTIONS {
   .bss : { *(.bss .bss.*) *(.sbss .sbss.*) *(COMMON) } > OVL
   /DISCARD/ : { *(.MIPS.abiflags) *(.reginfo) *(.comment) *(.gnu.attributes) *(.pdr) *(.mdebug.*) }
 }
-''' % (at, ROOM))
+''' % (at, room))
     e = out + '.elf'
     r = subprocess.run([gcc, '-nostdlib', '-static', '-G0', '-T', ld, '-Wl,--just-symbols=' + elf, '-Wl,--wrap=memcpy', '-Wl,--wrap=memmove', '-Wl,--no-warn-rwx-segments', '-o', e] + objs + ['-lgcc'], capture_output=True, text=True)
     if r.returncode: sys.exit(r.stderr)
     subprocess.check_call([objcopy, '-O', 'binary', e, out])
     n = os.path.getsize(out)
-    if (n + 2047) // 2048 * 2048 > ROOM: sys.exit('ovl.py: %s is %d bytes, the room is %d' % (out, n, ROOM))
+    if (n + 2047) // 2048 * 2048 > room: sys.exit('ovl.py: %s is %d bytes, the room is %d' % (out, n, room))
     end = at   # (the end of the overlay's own sections, its zeroed data too)
     ro = nm.replace('-nm', '-readelf')
     for l in subprocess.run([ro, '-S', '-W', e], capture_output=True, text=True).stdout.splitlines():
         m = re.search(r'\]\s+(\.\S+)\s+\S+\s+([0-9a-f]{8})\s+[0-9a-f]+\s+([0-9a-f]+)', l)
         if m and m.group(1) in ('.text', '.rodata', '.data', '.bss'): end = max(end, int(m.group(2), 16) + int(m.group(3), 16))
-    if end - at > ROOM - 64: sys.exit('ovl.py: %s needs %d bytes with its data, the room is %d' % (out, end - at, ROOM))
+    if end - at > room - 64: sys.exit('ovl.py: %s needs %d bytes with its data, the room is %d' % (out, end - at, room))
     print('%s: %d bytes at 0x%08x' % (os.path.basename(out), n, at))
