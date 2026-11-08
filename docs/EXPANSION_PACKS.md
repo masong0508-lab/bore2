@@ -71,3 +71,22 @@ Anything not finished ships as a proper placeholder, never as a half-working scr
 1. Placeholders for every row above (small).
 2. Finish `wip-arcade`, `wip-gotchi`, `wip-ds-fight`.
 3. Dreamcast extras, then Band and DJ on the DS.
+
+## Screenshots (PS1, docs/packs/)
+Taken in DuckStation from the merged build (the emulator shows 292 x 224 of the 320 x 240 picture). `<pack>_card.png` is the pack's page on the EXPANSIONS shelf of the full disc (what it holds, how to open it, the five goals); `<pack>_main.png` is its main screen. The shelf with every pack a stub: `shelf_base_disc.png`.
+Made with `-DAUTO_PKLIFE=1 -DAUTO_PKSCR=1` (main.c: the script holds pad buttons for a code, the hook opens that pack's screen after 90 life frames; codes in main.c, the driver idea in test/ds.sh).
+
+| Pack | Card | Main screen |
+|---|---|---|
+| KINGDOM | packs/kingdom_card.png | packs/kingdom_main.png |
+| ARCADE | packs/arcade_card.png | packs/arcade_main.png (the lot), packs/arcade_prizes.png |
+| GOTCHI | packs/gotchi_card.png | packs/gotchi_main.png, packs/gotchi_guide.png |
+| SUPER | packs/super_card.png | packs/super_main.png |
+| PRISON | packs/prison_card.png | packs/prison_main.png, packs/prison_heist.png |
+| PARTY | packs/party_card.png | packs/party_main.png |
+| SPACE | packs/space_card.png | packs/space_main.png |
+| DOG | packs/dog_card.png | packs/dog_main.png |
+| DJ | packs/dj_card.png | packs/dj_main.png |
+| PARADISE | packs/paradise_card.png | packs/paradise_main.png |
+| FARM | packs/farm_card.png | packs/farm_main.png |
+| SKYSEA | packs/skysea_card.png | packs/skysea_main.png |

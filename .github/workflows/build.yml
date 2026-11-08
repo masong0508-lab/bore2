@@ -47,13 +47,46 @@ jobs:
         with: { name: bore2_disc, path: "build/bore2.*" }
       - name: Upload the base disc (no packs)
         uses: actions/upload-artifact@v4
-        with: { name: BORE2-base, path: "out/BORE2-base.chd" }
+        with: { name: BORE2-base, path: "out/BORE2-base.chd", if-no-files-found: error }
       - name: Upload the full disc (every pack)
         uses: actions/upload-artifact@v4
-        with: { name: BORE2-full, path: "out/BORE2-full.chd" }
-      - name: Upload every pack patch on its own
+        with: { name: BORE2-full, path: "out/BORE2-full.chd", if-no-files-found: error }
+      - name: Upload pack KINGDOM
         uses: actions/upload-artifact@v4
-        with: { name: "BORE2-packs", path: "out/packs/*.ppf" }
+        with: { name: "BORE2-pack-KINGDOM", path: "out/packs/BORE2-KINGDOM.ppf", if-no-files-found: error }
+      - name: Upload pack ARCADE
+        uses: actions/upload-artifact@v4
+        with: { name: "BORE2-pack-ARCADE", path: "out/packs/BORE2-ARCADE.ppf", if-no-files-found: error }
+      - name: Upload pack GOTCHI
+        uses: actions/upload-artifact@v4
+        with: { name: "BORE2-pack-GOTCHI", path: "out/packs/BORE2-GOTCHI.ppf", if-no-files-found: error }
+      - name: Upload pack SUPER
+        uses: actions/upload-artifact@v4
+        with: { name: "BORE2-pack-SUPER", path: "out/packs/BORE2-SUPER.ppf", if-no-files-found: error }
+      - name: Upload pack PRISON
+        uses: actions/upload-artifact@v4
+        with: { name: "BORE2-pack-PRISON", path: "out/packs/BORE2-PRISON.ppf", if-no-files-found: error }
+      - name: Upload pack PARTY
+        uses: actions/upload-artifact@v4
+        with: { name: "BORE2-pack-PARTY", path: "out/packs/BORE2-PARTY.ppf", if-no-files-found: error }
+      - name: Upload pack SPACE
+        uses: actions/upload-artifact@v4
+        with: { name: "BORE2-pack-SPACE", path: "out/packs/BORE2-SPACE.ppf", if-no-files-found: error }
+      - name: Upload pack DOG
+        uses: actions/upload-artifact@v4
+        with: { name: "BORE2-pack-DOG", path: "out/packs/BORE2-DOG.ppf", if-no-files-found: error }
+      - name: Upload pack DJ
+        uses: actions/upload-artifact@v4
+        with: { name: "BORE2-pack-DJ", path: "out/packs/BORE2-DJ.ppf", if-no-files-found: error }
+      - name: Upload pack PARADISE
+        uses: actions/upload-artifact@v4
+        with: { name: "BORE2-pack-PARADISE", path: "out/packs/BORE2-PARADISE.ppf", if-no-files-found: error }
+      - name: Upload pack FARM
+        uses: actions/upload-artifact@v4
+        with: { name: "BORE2-pack-FARM", path: "out/packs/BORE2-FARM.ppf", if-no-files-found: error }
+      - name: Upload pack SKYSEA
+        uses: actions/upload-artifact@v4
+        with: { name: "BORE2-pack-SKYSEA", path: "out/packs/BORE2-SKYSEA.ppf", if-no-files-found: error }
       - uses: actions/upload-artifact@v4
         with:
           name: BORE2_release
