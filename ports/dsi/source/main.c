@@ -6,7 +6,7 @@
 // Top screen: that lot in 3D. L/R change town, A/B zoom, START re-rolls the world.
 // Fixed point only; the world is bigmap.c, shared with the PS1 build (nothing of it is stored).
 #define PMN 28
-static int o_gtime, o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song, o_need = 2, o_day = 1, o_msgt = 1, o_tmus = 1, o_gmus = 1, o_shuf = 1, o_look = 1, o_detl, prof_full, fast_cpu, o_tex = 1, o_rt, rt_mon = -1, rt_md, rt_jump = 1;   // (o_rt: Options > Game > Real time; the real month (0 Jan) and day; 1: put the clock straight to the real one, nothing played through)
+static int o_rep = 1, o_hint = 1, o_gtime, o_roof, o_aa = 1, o_out, o_shd = 1, o_det = 1, o_fps30, o_bri = 4, o_sky, o_chk = 1, o_spin = 2, o_turbo, o_cam = 1, o_spd, o_page, opt_on, o_dirty = 1, o_lit = 1, o_sty, o_pm, o_fog, o_smax, o_ocol, o_dd = 1, o_fogd = 1, o_trf = 3, o_vol = 7, o_mus = 6, o_sfx = 8, o_trk, o_ckl = 1, o_chm = 1, o_pan = 1, o_auto = 1, o_c24, o_tab, lit_on, lit_sgn = -1, o_msrc, o_song, o_need = 2, o_day = 1, o_msgt = 1, o_tmus = 1, o_gmus = 1, o_shuf = 1, o_look = 1, o_detl, prof_full, fast_cpu, o_tex = 1, o_rt, rt_mon = -1, rt_md, rt_jump = 1;   // (o_rt: Options > Game > Real time; the real month (0 Jan) and day; 1: put the clock straight to the real one, nothing played through)
 
 // ---- the options: one table (name, the choices, the value, the tab it lives on, its default). Saved in table order, so new ones are only ever added at the end.
 typedef struct { const char *name, *vals; int *v; unsigned char tab, def; } Opt;
@@ -32,14 +32,14 @@ static const Opt OPT[] = {
     { "Textures", "Off|On", &o_tex, 0, 1 },   // (D43: the PS1's patterns on the ground, floors, walls and roofs)
     { "Real time", "Off|On", &o_rt, 2, 0 },
     { "Boreagotchi time", "Game clock|LIVE|Off", &o_gtime, 2, 0 },   // (D53: how the pets live: on the game clock, LIVE (real time while you hold the toy too), or off)   // (D44: the clock is the DS's own: time of day, weekday, season by the month; sleep and work stay quick)
+    // (D70) the new Options screen: hold-to-repeat speed, the button hints bar, and the page you left it on (the last one is saved so Options opens where you were)
+    { "Hold repeat", "Slow|Normal|Fast", &o_rep, 255, 1 }, { "Hints bar", "Off|On", &o_hint, 255, 1 }, { "Options page", "0|1|2|3|4|5|6|7", &o_tab, 255, 0 },
 };
 #define OPT_OLD 36   // options saved in the save's first 40 bytes (the rest go in the 'OX' block)
-static void open_opts(void);
+static void open_opts(void); static void opt_enter(void);
 #define NOPT ((int)(sizeof OPT / sizeof OPT[0]))
-static const char *const OPTAB[4] = { "Graphics", "Audio", "Game", "System" };
 static int opt_cnt(int i) { int n = 1; for (const char *p = OPT[i].vals; *p; p++) if (*p == '|') n++; return n; }
 static const char *opt_tok(int i, int n, char *b) { const char *p = OPT[i].vals; while (n-- > 0) { while (*p && *p != '|') p++; if (*p) p++; } int k = 0; while (*p && *p != '|' && k < 15) b[k++] = *p++; b[k] = 0; return b; }
-static int opt_list(int tab, int *idx) { int n = 0; for (int i = 0; i < NOPT; i++) if (OPT[i].tab == tab && !(!OPT[i].v && OPT[i].def == 255)) idx[n++] = i; for (int i = 0; i < NOPT; i++) if (OPT[i].tab == tab && !OPT[i].v && OPT[i].def == 255) idx[n++] = i; return n; }   // (Reset all goes last)
 #include <nds.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -80,6 +80,15 @@ static int tw(int s, const char *t) {   // the width of a string in pixels, from
 static void text(int x, int y, int s, u16 c, const char *t) {   // a soft shadow under it (a dark outline for TITLE)
     const DsFont *f = fnt(s); int dark = ((c & 31) + ((c >> 5) & 31) + ((c >> 10) & 31)) > 45; u16 sh = C15(0, 2, 8);
     int row0 = y + 1 - f->fcap / 2 + f->fcap - 1 - (f->fb - 1);
+    if (s != FS_TITLE && x >= 1 && y >= 3 + f->fcap && row0 >= 1 && row0 + f->fh + 2 < 192) { int ww = tw(s, t) + f->fh; if (x + ww + 3 < 256) {   // (D70) all inside the screen: no bounds test on each pixel
+        u16 *base = scr; int pen = x;
+        for (const char *p = t; *p; p++) { int ch = (unsigned char)*p; if (ch < 32 || ch > 126) continue; ch -= 32;
+            const u16 *rw = f->rows + ch * f->fh; int w = f->w[ch], gx = pen + f->xoff[ch];
+            for (int r = 0; r < f->fh; r++) { unsigned v = rw[r]; if (!v) continue; u16 *d = base + (row0 + r) * 256 + gx;
+                if (dark) for (int q = 0; q < w; q++) { if (v >> (15 - q) & 1) { d[q + 257] = sh; } }
+                for (int q = 0; q < w; q++) if (v >> (15 - q) & 1) d[q] = c; }
+            pen += f->adv[ch] - t_tight; }
+        return; } }
     for (int pass = (s == FS_TITLE ? 0 : 1); pass < 2; pass++) { int pen = x;
         for (const char *p = t; *p; p++) { int ch = (unsigned char)*p; if (ch < 32 || ch > 126) continue; ch -= 32;
             const u16 *rw = f->rows + ch * f->fh; int w = f->w[ch], gx = pen + f->xoff[ch];
@@ -552,8 +561,8 @@ static const u8 SONGL[4][32] = {
     { 0, 0, 67, 0, 0, 0, 71, 0, 0, 0, 74, 0, 0, 0, 71, 0, 0, 0, 64, 0, 0, 0, 67, 0, 0, 0, 71, 0, 0, 0, 0, 0 } };
 static const u8 SONGB[4][8] = { { 48, 55, 53, 55, 48, 57, 53, 55 }, { 45, 40, 43, 40, 45, 41, 43, 40 }, { 43, 50, 48, 50, 43, 52, 50, 47 }, { 40, 40, 43, 38, 40, 40, 45, 43 } };
 static const u8 SONGF[4] = { 12, 16, 9, 22 };   // frames per step
-static const u8 SFXN[7][6] = { { 84, 0 }, { 72, 79, 84, 0 }, { 48, 45, 0 }, { 72, 76, 79, 84, 0 }, { 79, 84, 88, 0 }, { 72, 76, 79, 84, 88, 0 }, { 91, 96, 0 } };
-static const u8 SFXD[7][6] = { { 2 }, { 4, 4, 9 }, { 6, 12 }, { 4, 4, 4, 12 }, { 8, 8, 16 }, { 4, 4, 4, 4, 14 }, { 2, 3 } };
+static const u8 SFXN[10][6] = { { 84, 0 }, { 72, 79, 84, 0 }, { 48, 45, 0 }, { 72, 76, 79, 84, 0 }, { 79, 84, 88, 0 }, { 72, 76, 79, 84, 88, 0 }, { 91, 96, 0 }, { 86, 0 }, { 79, 88, 0 }, { 84, 74, 0 } };   // (D70) 7 move, 8 confirm, 9 back
+static const u8 SFXD[10][6] = { { 2 }, { 4, 4, 9 }, { 6, 12 }, { 4, 4, 4, 12 }, { 8, 8, 16 }, { 4, 4, 4, 4, 14 }, { 2, 3 }, { 1 }, { 2, 5 }, { 2, 5 } };
 static void snd_init(void) {
     soundEnable(); static const u8 dc[4] = { DutyCycle_25, DutyCycle_50, DutyCycle_12, DutyCycle_50 };
     for (int i = 0; i < 4; i++) vid[i] = soundPlayPSG((DutyCycle)dc[i], 8 * 440, 0, 64); snd_on = 1;
@@ -561,8 +570,8 @@ static void snd_init(void) {
 static void vset(int v, int m, int vol) { if (!snd_on || vid[v] < 0) return; if (!m || vol <= 0) { soundSetVolume(vid[v], 0); return; } soundSetFreq(vid[v], (u16)(8 * mfreq(m))); soundSetVolume(vid[v], (u8)(vol > 127 ? 127 : vol)); }
 static int mvol(int base) { return base * o_vol * o_mus / 100; }
 static void sfx(int n) {
-    if (!snd_on || !o_sfx || !o_vol || (n == 0 && !o_ckl) || (n >= 3 && n <= 5 && !o_chm)) return;
-    if (sfx_n >= 0 && n == 0) return; sfx_n = n; sfx_i = 0; sfx_t = 0; sfx_sh = 0; }
+    if (!snd_on || !o_sfx || !o_vol || ((n == 0 || n >= 7) && !o_ckl) || (n >= 3 && n <= 5 && !o_chm)) return;
+    if (sfx_n >= 0 && (n == 0 || n == 7)) return; sfx_n = n; sfx_i = 0; sfx_t = 0; sfx_sh = 0; }
 static void sfx_p(int n, int sh) { sfx(n); if (sfx_n == n) sfx_sh = sh; }   // (D64) a pet's voice: the same jingle a few semitones up or down
 static void snd_apply(void) { snd_dirty = 1; }
 static int mus_ok = -1, mus_cur = -1, mus_n; static void mus_init(void), mus_stop(void), mus_tick(void); static int mus_start(int);
@@ -834,6 +843,50 @@ static void text_fit(int x, int y, int s, int w, u16 c, const char *t) {   // (D
     while (n > 1) { b[n - 1] = '.'; b[n] = 0; if (tw(s, b) <= w) break; n--; }
     text(x, y, s, c, b); t_tight = 0;
 }
+// ---- the UI kit (D70): one set of parts for every menu, so they look and answer alike ----
+// Touch targets are at least 24 px; the back button is always at the bottom right (BK_*); the hints bar says which buttons do what; B = touch BACK.
+#define BK_X 184
+#define BK_Y 162
+#define BK_W 64
+#define BK_H 24
+enum { UI_MOVE = 7, UI_OK = 8, UI_BACK = 9 };   // sfx numbers: a soft tick for moving, two notes up for a choice, two notes down for back
+static void ui_snd(int n) { sfx(n); }
+static void ui_back_btn(void) { rect(BK_X, BK_Y, BK_W, BK_H, C15(2, 2, 4)); rect(BK_X + 1, BK_Y + 1, BK_W - 2, BK_H - 2, C15(24, 8, 8)); rect(BK_X + 1, BK_Y + 1, BK_W - 2, 1, C15(30, 16, 14)); text_box(BK_X, BK_Y, BK_W, BK_H, FS_HEAD, C15(31, 31, 31), AL_C, "Back"); }
+static int ui_back_hit(int tx, int ty) { return tx >= BK_X - 4 && tx < BK_X + BK_W + 4 && ty >= BK_Y - 4 && ty < BK_Y + BK_H + 4; }
+static void ui_button(int x, int y, int w, int h, const char *t, int style) {   // style 0 blue, 1 green (on), 2 red, 3 grey (cannot)
+    static const u16 UBF[4] = { C15(6, 12, 26), C15(8, 22, 8), C15(24, 8, 8), C15(10, 12, 15) }, UBT[4] = { C15(14, 20, 31), C15(18, 29, 14), C15(30, 16, 14), C15(15, 17, 20) };
+    rect(x, y, w, h, C15(2, 2, 4)); rect(x + 1, y + 1, w - 2, h - 2, UBF[style]); rect(x + 1, y + 1, w - 2, 1, UBT[style]);
+    text_box(x, y, w, h, h > 17 ? FS_HEAD : FS_BODY, style == 3 ? C15(22, 24, 27) : C15(31, 31, 31), AL_C, t);
+}
+static void ui_focus(int x, int y, int w, int h) { u16 c = C15(31, 31, 8); rect(x - 1, y - 1, w + 2, 2, c); rect(x - 1, y + h - 1, w + 2, 2, c); rect(x - 1, y - 1, 2, h + 2, c); rect(x + w - 1, y - 1, 2, h + 2, c); }   // the yellow ring round the chosen thing (d-pad)
+// the hints bar: spec "KEY:Label|KEY:Label": a little key cap and a word; it is skipped when Options > Controls > Hints bar is Off
+static void ui_hints(int y, const char *spec) {
+    if (!o_hint) return;
+    rect(0, y, 256, 13, C15(2, 3, 8)); rect(0, y, 256, 1, C15(10, 14, 22));
+    char key[8][8], lab[8][16]; int n = 0; const char *p = spec;
+    while (*p && n < 8) { int k = 0, l = 0; while (*p && *p != ':' && k < 7) key[n][k++] = *p++; key[n][k] = 0; if (*p == ':') p++; while (*p && *p != '|' && l < 15) lab[n][l++] = *p++; lab[n][l] = 0; if (*p == '|') p++; n++; }
+    int tot = 0; for (int i = 0; i < n; i++) tot += tw(FS_SMALL, key[i]) + 7 + 3 + tw(FS_SMALL, lab[i]) + 8; tot -= 8;
+    int x = (256 - tot) / 2; if (x < 4) x = 4;
+    for (int i = 0; i < n; i++) { int kw = tw(FS_SMALL, key[i]) + 7; rect(x, y + 2, kw, 9, C15(24, 27, 31)); rect(x + 1, y + 3, kw - 2, 7, C15(14, 18, 26)); text_box(x, y + 2, kw, 9, FS_SMALL, C15(31, 31, 31), AL_C, key[i]);
+        x += kw + 3; text_box(x - 1, y, tw(FS_SMALL, lab[i]) + 8, 13, FS_SMALL, C15(25, 28, 31), AL_L, lab[i]); x += tw(FS_SMALL, lab[i]) + 8; }
+}
+// wrapped text: breaks at spaces so every line fits w; returns the lines drawn (at most maxl); the line height is lh
+static int ui_wrap(int x, int y, int w, int lh, int maxl, int s, u16 c, const char *t) {
+    int n = 0; char ln[64];
+    while (*t && n < maxl) { int len = 0, best = 0; while (t[len] && len < 62) { ln[len] = t[len]; ln[len + 1] = 0; if (t[len] == ' ') best = len; if (tw(s, ln) > w) break; len++; }
+        if (!t[len]) best = len; else { if (best <= 0) best = len ? len : 1; }
+        memcpy(ln, t, (size_t)best); ln[best] = 0; text(x, y + n * lh, s, c, ln); n++; t += best; while (*t == ' ') t++; }
+    return n;
+}
+// held keys that act now: the first press at once, then a pause, then repeats that speed up (every 8, 4, 2, 1 vblanks); o_rep scales it. d = the four d-pad keys
+static u32 rep_next[4], rep_cnt[4];
+static int ui_rep(int held, int down, u32 now) {
+    static const u32 K[4] = { KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT }; int out = 0; int sc = o_rep == 0 ? 3 : o_rep == 1 ? 2 : 1;   // Slow, Normal, Fast: the pause and the step in vblanks / 2
+    for (int i = 0; i < 4; i++) {
+        if (down & (int)K[i]) { out |= (int)K[i]; rep_cnt[i] = 0; rep_next[i] = now + (u32)(8 * sc + 4); }
+        else if (held & (int)K[i]) { if ((int)(now - rep_next[i]) >= 0) { out |= (int)K[i]; rep_cnt[i]++; int iv = rep_cnt[i] < 4 ? 8 : rep_cnt[i] < 10 ? 4 : rep_cnt[i] < 24 ? 2 : 1; iv = (iv * sc + 1) / 2; if (iv < 1) iv = 1; rep_next[i] = now + (u32)iv; } } }
+    return out;
+}
 // ---- the shop (D35): the PS1's ten tabs, six cards a page, cheapest first, as the PS1 lists them ----
 static u8 tab_id[NTAB][64]; static int tab_n[NTAB], bpage;
 static void tabs_init(void) {
@@ -883,7 +936,7 @@ static void plan(int ghost) {
 }
 static int drag, drag_card, dsx, dsy, drag_item, wall_val, move_obj = -1, ui_ver, last_tx, last_ty;
 static const u16 BG_L = C15(18, 25, 31), PAN = C15(8, 16, 28), PANB = C15(2, 7, 20), PANH = C15(5, 12, 26), TXT = C15(31, 31, 31);
-static void panel(int x, int y, int w, int h, const char *title); static void backdrop(void);
+static void panel(int x, int y, int w, int h, const char *title); static void backdrop(void); static void backdrop_y(int y0, int y1);
 static void cat_icon(int x, int y, int i, u16 c) {   // a 12x12 pictogram for each shop tab
     switch (i) {
         case 0: rect(x + 2, y, 3, 9, c); rect(x + 2, y + 5, 9, 3, c); rect(x + 2, y + 8, 2, 4, c); rect(x + 9, y + 8, 2, 4, c); break;   // a chair
@@ -1871,9 +1924,13 @@ static void panel(int x, int y, int w, int h, const char *title) {
     rect(x + 1, y, w - 2, h, PANB); rect(x, y + 1, w, h - 2, PANB); rect(x + 2, y + 2, w - 4, h - 4, PAN);
     if (title) { rect(x + 2, y + 2, w - 4, 16, PANH); text_box(x + 5, y + 2, w - 40, 16, FS_HEAD, TXT, AL_L, title); }   // (D65) centred up and down in the header
 }
-static void backdrop(void) {
-    rect(0, 0, 256, 192, BG_L);
-    for (int y = 0; y < 192; y += 16) for (int x = (y / 16 & 1) * 16; x < 256; x += 32) rect(x + 6, y + 6, 4, 4, C15(22, 28, 31));
+static void backdrop_y(int y0, int y1);
+static void backdrop(void) { backdrop_y(0, 192); }
+static void backdrop_y(int y0, int y1) {   // (D70) three row patterns built once, then a row is a copy of one of them: about ten times quicker than 100 little rects
+    static u16 rw[3][256]; static int ok;
+    if (!ok) { ok = 1; for (int x = 0; x < 256; x++) rw[0][x] = rw[1][x] = rw[2][x] = BG_L;
+        for (int x = 0; x < 256; x += 32) for (int k = 0; k < 4; k++) { rw[1][x + 6 + k] = C15(22, 28, 31); rw[2][(x + 16 + 6 + k) & 255] = C15(22, 28, 31); } }
+    for (int y = y0; y < y1; y++) { int r = y & 15; const u32 *a = (const u32 *)rw[r >= 6 && r < 10 ? 1 + ((y >> 4) & 1) : 0]; u32 *d = (u32 *)(scr + y * 256); for (int i = 0; i < 128; i++) d[i] = a[i]; }
 }
 int isq(int v); u16 lit(u16 c, int k);
 static void ellf(int cx, int cy, int rx, int ry, u16 c) {   // a filled oval
@@ -3177,27 +3234,199 @@ static void apply_opts(void) {
       gx_spec = sp == 0 ? 0 : sp == 1 ? (RGB15(6, 6, 5) | BIT(15)) : (RGB15(9, 9, 8) | BIT(15)); }
     speed = o_spd + 1; snd_apply(); o_dirty = 0;
 }
-static int opt_pg;   // page within the tab (6 rows each)
-static const u8 TABX[5] = { 10, 80, 134, 188, 246 };   // tab chip edges
-static void draw_opt(void) {   // the Options screen (bottom): tabs along the top; tap a row to change it (right half forwards, left half back)
-    scr = scr_sub; backdrop(); { static char pt[48]; if (o_tab == 1 && mus_cur >= 0) { sprintf(pt, "Playing: %.30s", mus_name(mus_cur)); panel(6, 4, 244, 156, pt); } else panel(6, 4, 244, 156, "Options"); }
-    for (int t = 0; t < 4; t++) { int x = TABX[t], w = TABX[t + 1] - x - 4; rect(x, 22, w, 15, o_tab == t ? C15(31, 31, 31) : C15(2, 4, 12)); rect(x + 1, 23, w - 2, 13, o_tab == t ? C15(8, 18, 31) : C15(10, 14, 22)); text_box(x, 22, w, 15, FS_BODY, TXT, AL_C, OPTAB[t]); }
-    int idx[40], n = opt_list(o_tab, idx), pages = (n + 5) / 6; if (opt_pg >= pages) opt_pg = 0;
-    for (int k = 0; k < 6; k++) { int q = opt_pg * 6 + k; if (q >= n) break; int i = idx[q], y = 40 + k * 19; char b[16];
-        rect(10, y, 236, 17, C15(5, 12, 26)); rect(10, y, 236, 1, C15(10, 18, 30)); text_box(13, y, 116, 17, FS_BODY, TXT, AL_L, OPT[i].name);
-        rect(130, y + 2, 112, 13, !OPT[i].v ? C15(24, 10, 10) : *OPT[i].v != OPT[i].def ? C15(8, 26, 8) : C15(10, 14, 22)); { const char *v = OPT[i].v ? opt_tok(i, *OPT[i].v, b) : "tap"; text_box(130, y + 2, 112, 13, FS_BODY, TXT, AL_C, v); } }
-    { char pg[20]; sprintf(pg, "Page %d/%d >", opt_pg + 1, pages); chip(10, 166, 76, 22, pg, 0); } chip(186, 166, 60, 22, "Back", 0);
+// ---- (D70) OPTIONS: eight pages as touch tabs down the left of the bottom screen, big rows, the help for the chosen row on the top screen.
+// Pages: GAME SCREEN SOUND CONTROLS TIME SAVE EXTRAS ABOUT. To add a row: add it to OPT above (at the end) and put its name in OPL below. Rows starting with @ are buttons.
+typedef struct { const char *n, *d; } OpD;
+static const OpD OPD[] = {
+    { "Sim style", "How people look: Classic, Sims 3 or Chunky." }, { "Roofs", "Cutaway shows the room you are in. Always keeps roofs on. Hide takes them off." },
+    { "Traffic", "How many cars drive on the streets." }, { "Needs speed", "How fast needs go down. Never fall keeps them full." }, { "Message time", "How long a message stays on the screen." },
+    { "Ground check", "Checks the ground under things. Best left on." }, { "3D look", "Classic is plain. Rich adds a sky and haze. Toon adds outlines." },
+    { "Brightness", "Makes both screens lighter or darker." }, { "Sky", "The colour of the sky. Auto follows the time of day." }, { "Anti-alias", "Smooths rough edges. Off is a little faster." },
+    { "Outlines", "Draws a dark line round things." }, { "Outline color", "The colour of those lines." }, { "Shadows", "Soft shadows under things." }, { "Lighting", "Light and shade on things." },
+    { "Textures", "Patterns on the ground, walls and roofs." }, { "Item detail", "Detailed things look nicer but need more speed." }, { "Fog", "A thick haze in the distance." },
+    { "Fog range", "How near the haze starts." }, { "Draw distance", "How far you can see. Near is faster." },
+    { "Master volume", "How loud everything is." }, { "Music volume", "How loud the music is." }, { "Effects volume", "How loud clicks and sounds are." },
+    { "Music source", "Songs plays the real tunes. Synth plays small beeps." }, { "Music track", "Pick a synth tune, or Auto." }, { "Song", "Pick a song, or Auto." },
+    { "Shuffle songs", "Play songs in order, or at random." }, { "Title music", "Music on the title screen." }, { "Game music", "Music while you play." },
+    { "Tap clicks", "A click when you touch the screen." }, { "Chimes", "Little tunes for good and bad news." }, { "Stereo", "Spread puts sounds to the left and right." },
+    { "Hold repeat", "How fast a held button repeats. Hold LEFT or RIGHT to change fast." }, { "Hints bar", "Shows which buttons do what." },
+    { "Camera", "How close the camera sits." }, { "Map spin", "How fast the map turns." },
+    { "Clock", "Show the time with 12 or 24 hours." }, { "Game speed", "How fast time passes in the game." }, { "Day length", "How long a game day lasts." },
+    { "Real time", "Uses the real date and time of your DS." }, { "Boreagotchi time", "Game clock. LIVE keeps real time. Off pauses the pets." },
+    { "Autosave", "Saves the game when a day ends." }, { "Save space", "Safe is the normal size. Max uses more of the save chip." },
+    { "@Save now", "Writes your game to the save chip right now." }, { "@Reset all", "Puts every option back how it was. Tap twice." },
+    { "Frame rate", "Steady 30 is smooth. Up to 60 is faster when it can be." }, { "Turbo CPU", "Auto uses the fast processor of a DSi." },
+    { "Detail", "Auto picks the detail from your DS." }, { "Poly meter", "Shows frames a second on the screen." },
+};
+static const char *const OPN[8] = { "GAME", "SCREEN", "SOUND", "CONTROLS", "TIME", "SAVE", "EXTRAS", "ABOUT" };
+static const char *const OPL[8] = {
+    "Sim style|Roofs|Traffic|Needs speed|Message time|Ground check",
+    "3D look|Brightness|Sky|Anti-alias|Outlines|Outline color|Shadows|Lighting|Textures|Item detail|Fog|Fog range|Draw distance",
+    "Master volume|Music volume|Effects volume|Music source|Music track|Song|Shuffle songs|Title music|Game music|Tap clicks|Chimes|Stereo",
+    "Hold repeat|Hints bar|Camera|Map spin",
+    "Clock|Game speed|Day length|Real time|Boreagotchi time",
+    "Autosave|Save space|@Save now|@Reset all",
+    "Frame rate|Turbo CPU|Detail|Poly meter",
+    "" };
+#define OP_ROWS 6   // rows on view
+static int op_sel, op_top, op_n, op_ix[32], op_conf, op_hdir, op_hrow, op_hcnt, op_rd = 1, title_rd;
+static u32 op_hnext, op_sg[24]; static int op_full;   // op_full: 1 bottom screen from scratch, 2 top screen from scratch
+static const char *op_nm[32];
+static int opt_find(const char *n, int len) { for (int i = 0; i < NOPT; i++) if ((int)strlen(OPT[i].name) == len && !strncmp(OPT[i].name, n, (size_t)len)) return i; return -1; }
+static void op_build(void) {
+    op_n = 0; const char *p = OPL[o_tab];
+    while (*p && op_n < 32) { const char *e = p; while (*e && *e != '|') e++; int len = (int)(e - p);
+        if (*p == '@') { op_ix[op_n] = -1 - (p[1] == 'R'); op_nm[op_n++] = p + 1; }   // -1 Save now, -2 Reset all
+        else { int i = opt_find(p, len); if (i >= 0) { op_ix[op_n] = i; op_nm[op_n++] = OPT[i].name; } }
+        p = *e ? e + 1 : e; }
+    if (op_sel >= op_n) op_sel = op_n ? op_n - 1 : 0;
+    if (op_sel < 0) op_sel = 0;
+    if (op_top > op_sel) op_top = op_sel;
+    if (op_sel >= op_top + OP_ROWS) op_top = op_sel - OP_ROWS + 1;
+    if (op_top < 0) op_top = 0;
 }
-static void opt_touch(int tx, int ty) {
-    int idx[40], n = opt_list(o_tab, idx), pages = (n + 5) / 6;
-    for (int t = 0; t < 4; t++) if (hit(TABX[t], 22, TABX[t + 1] - TABX[t] - 4, 15, tx, ty)) { o_tab = t; opt_pg = 0; return; }
-    if (hit(10, 166, 76, 22, tx, ty)) { opt_pg = (opt_pg + 1) % pages; return; }
-    if (hit(186, 166, 60, 22, tx, ty)) { opt_on = 0; if (opt_ret >= 0) { int m = opt_ret; opt_ret = -1; set_mode(m); } return; }
-    for (int k = 0; k < 6; k++) { int q = opt_pg * 6 + k; if (q >= n || !hit(10, 40 + k * 19, 236, 17, tx, ty)) continue; int i = idx[q];
-        if (!OPT[i].v) { for (int j = 0; j < NOPT; j++) if (OPT[j].v && OPT[j].tab < 3 && (OPT[i].def == 255 || OPT[j].tab == OPT[i].def) && OPT[j].v != &o_smax) *OPT[j].v = OPT[j].def; }
-        else *OPT[i].v = tx < 130 ? (*OPT[i].v + opt_cnt(i) - 1) % opt_cnt(i) : (*OPT[i].v + 1) % opt_cnt(i);
-        o_dirty = 1; }
+static const char *op_rname(int q, char *b) { if (op_ix[q] >= 0) return OPT[op_ix[q]].name; const char *s = op_nm[q]; int k = 0; while (s[k] && s[k] != '|' && k < 20) { b[k] = s[k]; k++; } b[k] = 0; return b; }
+static const char *op_desc(int q) {
+    char b[24], key[26]; const char *nm = op_rname(q, b); if (op_ix[q] < 0) { key[0] = '@'; strcpy(key + 1, nm); nm = key; }
+    for (unsigned k = 0; k < sizeof OPD / sizeof OPD[0]; k++) if (!strcmp(OPD[k].n, nm)) return OPD[k].d;
+    return ""; }
+static int op_clamp_type(int i) { int c = opt_cnt(i); return c >= 9 && c <= 20; }   // volumes and brightness stop at the ends; the rest wrap round
+static int op_change(int i, int dir) {   // dir -1 / +1 (d-pad, arrows), 2 a tap on the row (always forward and round); returns 1 if the value moved
+    int c = opt_cnt(i), v = *OPT[i].v, nv = v;
+    if (dir == 2) nv = (v + 1) % c; else if (op_clamp_type(i)) { nv = v + dir; if (nv < 0 || nv >= c) return 0; } else nv = (v + dir + c) % c;
+    if (nv == v) return 0;
+    *OPT[i].v = nv; o_dirty = 1; return 1;
 }
+static void op_reset(int all) {
+    if (!all) { for (int q = 0; q < op_n; q++) if (op_ix[q] >= 0 && OPT[op_ix[q]].v) *OPT[op_ix[q]].v = OPT[op_ix[q]].def; }
+    else for (int i = 0; i < NOPT; i++) if (OPT[i].v && OPT[i].v != &o_smax && OPT[i].v != &o_tab) *OPT[i].v = OPT[i].def;
+    o_dirty = 1; snd_apply();
+}
+static int op_changed(int *tot) { int n = 0, t = 0; for (int q = 0; q < op_n; q++) if (op_ix[q] >= 0 && OPT[op_ix[q]].v) { t++; if (*OPT[op_ix[q]].v != OPT[op_ix[q]].def) n++; } *tot = t; return n; }
+static void opt_enter(void) { opt_on = 1; if (o_tab < 0 || o_tab > 7) o_tab = 0; op_sel = op_top = 0; op_conf = op_hdir = 0; op_build(); op_full = 3; op_rd = 1; }
+static void op_back(void) { opt_on = 0; op_hdir = 0; ui_snd(UI_BACK); if (opt_ret >= 0) { int m = opt_ret; opt_ret = -1; set_mode(m); } else title_rd = 1; }
+static void op_page(int k) { k = (k + 8) % 8; if (k == o_tab) return; o_tab = k; op_sel = op_top = 0; op_conf = op_hdir = 0; op_build(); memset(op_sg + 1, 0, sizeof(u32) * 9); if (op_n < OP_ROWS) op_full |= 1; op_rd = 1; ui_snd(UI_MOVE); }
+static void op_select(int q) { if (q < 0 || q >= op_n) return; if (q != op_sel) { op_sel = q; ui_snd(UI_MOVE); } if (op_sel < op_top) op_top = op_sel; if (op_sel >= op_top + OP_ROWS) op_top = op_sel - OP_ROWS + 1; op_rd = 1; }
+static int op_can_save(void) { return sav_ok() && opt_ret >= 0 && lot_bx >= 0; }
+static void op_action(int q) {
+    if (op_ix[q] == -1) { if (!sav_ok()) say("No save chip found"); else if (!op_can_save()) say("Start a game first"); else { say(sav_write() ? "Game saved" : "Save failed"); ui_snd(UI_OK); } }
+    else if (op_conf > 0) { op_reset(1); op_conf = 0; say("All options reset"); ui_snd(UI_OK); }
+    else { op_conf = 90; ui_snd(UI_MOVE); say("Tap again to reset all"); }
+    op_rd = 1;
+}
+static void op_use(int q, int dir) {   // A, a tap, or an arrow on row q
+    if (op_ix[q] < 0) { if (dir == 2) op_action(q); return; }
+    if (op_change(op_ix[q], dir)) { ui_snd(dir == 2 ? UI_OK : UI_MOVE); if (OPT[op_ix[q]].v == &o_sfx || OPT[op_ix[q]].v == &o_vol) sfx(1); }
+    op_rd = 1;
+}
+static int op_rep_iv(int n) { int sc = o_rep == 0 ? 3 : o_rep == 1 ? 2 : 1; int iv = n < 4 ? 8 : n < 10 ? 4 : n < 24 ? 2 : 1; iv = (iv * sc + 1) / 2; return iv < 1 ? 1 : iv; }
+static void op_reset_page(void) {
+    if (op_conf > 0) { op_reset(0); op_conf = 0; say("Page reset"); ui_snd(UI_OK); } else { op_conf = 90; ui_snd(UI_MOVE); say("Tap again to reset this page"); }
+    op_rd = 1;
+}
+static void op_touch(int tx, int ty) {
+    if (ui_back_hit(tx, ty)) { op_back(); return; }
+    if (tx < 50) { int k = ty / 24; if (k < 8) op_page(k); return; }
+    if (o_tab == 7) return;
+    if (hit(52, 162, 76, 24, tx, ty)) { op_reset_page(); return; }
+    if (hit(130, 162, 24, 24, tx, ty)) { int t = op_top - 3; if (t < 0) t = 0; op_top = t; if (op_sel >= op_top + OP_ROWS) op_sel = op_top + OP_ROWS - 1; ui_snd(UI_MOVE); op_rd = 1; return; }
+    if (hit(156, 162, 24, 24, tx, ty)) { int t = op_top + 3, mx = op_n - OP_ROWS; if (mx < 0) mx = 0; if (t > mx) t = mx; op_top = t; if (op_sel < op_top) op_sel = op_top; ui_snd(UI_MOVE); op_rd = 1; return; }
+    for (int k = 0; k < OP_ROWS; k++) { int q = op_top + k; if (q >= op_n || !hit(52, 3 + k * 26, 196, 24, tx, ty)) continue;
+        op_select(q); int dir = 2; if (op_ix[q] >= 0) { if (tx < 164 && tx >= 140) dir = -1; else if (tx >= 224) dir = 1; }
+        if (op_ix[q] >= 0 && dir != 2) { op_hdir = dir; op_hrow = q; op_hcnt = 0; op_hnext = vbl_n + 20; }
+        op_use(q, dir); return; }
+}
+static void op_keys(int held, int down) {   // d-pad with hold-to-repeat, A change, B back, L R pages, SELECT reset page
+    int r = ui_rep(held, down, vbl_n);
+    if (down & (KEY_B | KEY_START)) { op_back(); return; }
+    if (down & KEY_L) { op_page(o_tab - 1); return; }
+    if (down & KEY_R) { op_page(o_tab + 1); return; }
+    if (o_tab == 7) return;
+    if (down & (KEY_SELECT | KEY_X)) op_reset_page();
+    if (r & KEY_UP) op_select(op_sel - 1);
+    if (r & KEY_DOWN) op_select(op_sel + 1);
+    if (op_sel < op_n) { if (r & KEY_LEFT) op_use(op_sel, -1); if (r & KEY_RIGHT) op_use(op_sel, 1); if (down & KEY_A) op_use(op_sel, 2); }
+}
+static void op_tick(int held) {   // a stylus held on an arrow repeats it; the reset question times out; a toast that ends is wiped
+    if (op_hdir) { if (!(held & KEY_TOUCH)) op_hdir = 0; else if ((int)(vbl_n - op_hnext) >= 0 && op_hrow < op_n && op_ix[op_hrow] >= 0) { op_hcnt++; op_hnext = vbl_n + (u32)op_rep_iv(op_hcnt); if (op_change(op_ix[op_hrow], op_hdir)) { ui_snd(UI_MOVE); op_rd = 1; } } }
+    if (op_conf > 0) { op_conf--; if (!op_conf) op_rd = 1; }
+    static int lm; if ((msg_t > 0) != lm) { lm = msg_t > 0; op_rd = 1; }
+}
+static void op_arrow(int cx, int cy, int dir, u16 c) { for (int k = 0; k < 5; k++) rect(dir < 0 ? cx - 2 + k : cx + 2 - k, cy - k, 1, 2 * k + 1, c); }   // a small triangle pointing left (dir<0) or right
+// The two screens are drawn straight into video memory, one part at a time: a part is drawn again only when what it shows has changed (op_sg keeps a number for each),
+// so a key press redraws one or two rows, not 192 lines. (A whole 96 KB screen in main memory plus a copy took 17 ms: more than a frame.)
+// op_sg, op_full: 1 bottom screen from scratch, 2 top screen from scratch
+static void op_row(int k) {
+    int q = op_top + k, y = 3 + k * 26, sel = q == op_sel; char nb[24], vb[16];
+    rect(52, y, 196, 24, C15(2, 4, 12)); rect(53, y + 1, 194, 22, sel ? C15(12, 22, 31) : C15(6, 12, 26)); rect(53, y + 1, 194, 1, sel ? C15(20, 28, 31) : C15(9, 16, 29));
+    if (op_ix[q] >= 0) { int i = op_ix[q], v = *OPT[i].v, c = opt_cnt(i), cl = op_clamp_type(i), ch = v != OPT[i].def; u16 dim = C15(4, 7, 14), on = C15(3, 7, 16);
+        text_box(54, y, 86, 24, FS_BODY, TXT, AL_L, OPT[i].name);
+        rect(140, y + 2, 24, 20, cl && v == 0 ? dim : on); op_arrow(152, y + 12, -1, cl && v == 0 ? C15(10, 12, 16) : C15(28, 30, 31));
+        rect(164, y + 2, 58, 20, ch ? C15(5, 17, 8) : C15(2, 5, 13)); text_box(164, y + 2, 58, 20, FS_BODY, TXT, AL_C, opt_tok(i, v, vb));
+        rect(224, y + 2, 24, 20, cl && v == c - 1 ? dim : on); op_arrow(236, y + 12, 1, cl && v == c - 1 ? C15(10, 12, 16) : C15(28, 30, 31)); }
+    else ui_button(54, y + 2, 192, 20, op_rname(q, nb), op_ix[q] == -1 ? (op_can_save() ? 0 : 3) : (op_conf > 0 ? 2 : 0));
+    if (sel) ui_focus(52, y, 196, 24);
+}
+static void op_draw_sub(void) {
+    scr = scr_sub;
+    if (op_full & 1) { backdrop(); memset(op_sg, 0, sizeof op_sg); ui_back_btn(); op_full &= ~1; }
+    if (op_sg[0] != 1u + (u32)o_tab) { op_sg[0] = 1u + (u32)o_tab; for (int k = 0; k < 8; k++) { int y = k * 24, on = k == o_tab; rect(0, y, 50, 24, on ? C15(31, 31, 31) : C15(2, 4, 12)); rect(1, y + 1, on ? 52 : 48, 22, on ? C15(8, 18, 31) : C15(6, 10, 22)); text_box(0, y, on ? 52 : 50, 24, FS_BODY, TXT, AL_C, OPN[k]); } }
+    if (o_tab == 7) {
+        static const char *const L[] = { "BORE 2 for Nintendo DS", "Build D70", "", "Touch and buttons both work.", "A change    B back", "L R switch pages", "Hold a key to repeat it.", "Tap an arrow and hold it too.", "SELECT resets the page." };
+        if (!op_sg[1]) { op_sg[1] = 1; rect(54, 3, 194, 156, PANB); rect(56, 5, 190, 152, PAN); rect(52, 162, 128, 24, C15(18, 25, 31));
+            for (int i = 0; i < 9; i++) if (L[i][0]) text(62, 12 + i * 16, i == 0 ? FS_HEAD : FS_BODY, i < 2 ? C15(31, 31, 20) : C15(26, 29, 31), L[i]); }
+        return;
+    }
+    for (int k = 0; k < OP_ROWS; k++) { int q = op_top + k; if (q >= op_n) break; u32 sg = 0x80000000u | (u32)q << 20 | (q == op_sel) << 19 | (u32)(op_ix[q] >= 0 ? *OPT[op_ix[q]].v : op_ix[q] == -1 ? op_can_save() : op_conf > 0) << 8 | (u32)op_ix[q] & 0xFF;
+        if (op_sg[1 + k] != sg) { op_sg[1 + k] = sg; op_row(k); } }
+    { u32 sg = 0x80000000u | (u32)op_top << 8 | (u32)op_n; if (op_sg[8] != sg) { op_sg[8] = sg; rect(250, 3, 4, 156, C15(2, 4, 12));
+        if (op_n > OP_ROWS) { int th_ = 156 * OP_ROWS / op_n; if (th_ < 10) th_ = 10; int ty_ = 3 + (156 - th_) * op_top / (op_n - OP_ROWS); rect(250, ty_, 4, th_, C15(24, 28, 31)); } } }
+    { int tl = op_top > 0, bt = op_top + OP_ROWS < op_n; u32 sg = 0x80000000u | (u32)tl | (u32)bt << 1 | (u32)(op_conf > 0) << 2; if (op_sg[9] != sg) { op_sg[9] = sg;
+        rect(52, 162, 128, 24, C15(18, 25, 31)); ui_button(52, 162, 76, 24, op_conf > 0 ? "Sure? Tap" : "Reset page", op_conf > 0 ? 2 : 3);
+        ui_button(130, 162, 24, 24, "", tl ? 0 : 3); ui_button(156, 162, 24, 24, "", bt ? 0 : 3);
+        for (int k = 0; k < 5; k++) { rect(142 - k, 170 + k, 2 * k + 1, 1, tl ? C15(31, 31, 31) : C15(18, 20, 24)); rect(168 - (4 - k), 170 + k, 2 * (4 - k) + 1, 1, bt ? C15(31, 31, 31) : C15(18, 20, 24)); } } }
+}
+static u32 op_psig(void) {   // what the preview shows: its own numbers
+    if (o_tab == 1) return (u32)sky_now() | (u32)o_out << 3 | (u32)o_ocol << 4 | (u32)o_look << 7 | (u32)o_bri << 10 | 1u << 20;
+    if (o_tab == 2) return (u32)o_vol | (u32)o_mus << 4 | (u32)o_sfx << 8 | 2u << 20;
+    if (o_tab == 4) return (u32)(minutes % 1440) | (u32)(o_day & 3) << 11 | (u32)o_spd << 13 | (u32)o_c24 << 15 | 4u << 20;
+    if (o_tab == 7) return 7u << 20;
+    int tot, n = op_changed(&tot); return (u32)n | (u32)tot << 8 | (u32)o_tab << 16 | 1u << 24;
+}
+static void op_draw_top(void) {
+    scr = hud; char t[48], b[24];
+    if (op_full & 2) { backdrop(); memset(op_sg + 10, 0, sizeof(u32) * 12); op_full &= ~2; ui_hints(179, "A:Change|B:Back|L R:Page|SEL:Reset"); }
+    { u32 sg = 0x80000000u | (u32)o_tab << 8 | (u32)op_sel << 2 | (op_n > 0); if (op_sg[10] != sg) { op_sg[10] = sg;
+        rect(4, 4, 248, 22, PANB); rect(6, 6, 244, 18, PANH); sprintf(t, "OPTIONS  >  %s", OPN[o_tab]); text_box(8, 6, 190, 18, FS_HEAD, TXT, AL_L, t);
+        if (o_tab != 7 && op_n > 0) { sprintf(t, "%d / %d", op_sel + 1, op_n); text_box(196, 6, 52, 18, FS_BODY, C15(24, 28, 31), AL_R, t); } } }
+    { int q = op_sel; u32 sg = 0x80000000u | (u32)o_tab << 8 | (u32)q | (u32)(o_tab != 7 && q < op_n && op_ix[q] >= 0 ? *OPT[op_ix[q]].v + 1 : 0) << 16; if (op_sg[11] != sg) { op_sg[11] = sg;
+        rect(4, 30, 248, 72, PANB); rect(6, 32, 244, 68, PAN);
+        if (o_tab == 7) { text(12, 38, FS_HEAD, TXT, "About"); ui_wrap(12, 58, 232, 13, 3, FS_BODY, C15(25, 28, 31), "Pick a page on the left. Each page has rows. Tap a row or use the arrows to change it."); }
+        else if (q < op_n) { text(12, 37, FS_HEAD, TXT, op_rname(q, b));
+            if (op_ix[q] >= 0) { char vb[16], db[16]; const Opt *o = &OPT[op_ix[q]]; sprintf(t, "Now: %s", opt_tok(op_ix[q], *o->v, vb)); text(12, 52, FS_BODY, C15(31, 31, 18), t);
+                if (*o->v != o->def) { sprintf(t, "Normal: %s", opt_tok(op_ix[q], o->def, db)); text_box(130, 44, 116, 14, FS_SMALL, C15(22, 27, 31), AL_R, t); } }
+            ui_wrap(12, 68, 232, 13, 3, FS_BODY, C15(25, 28, 31), op_desc(q)); } } }
+    { u32 sg = op_psig(); if (op_sg[12] != sg) { op_sg[12] = sg; rect(4, 106, 248, 52, PANB); rect(6, 108, 244, 48, C15(5, 11, 22));   // the preview box: what the page is doing, shown live
+        if (o_tab == 1) { static const u16 SKY[4] = { C15(14, 20, 31), C15(31, 18, 12), C15(3, 4, 10), C15(14, 28, 22) }; static const char *const SKN[4] = { "Day", "Sunset", "Night", "Mint" }, *const LKN[3] = { "Classic", "Rich", "Toon" };
+            int sn = sky_now(); rect(8, 110, 110, 44, SKY[sn]); rect(8, 140, 110, 14, C15(10, 22, 8));
+            if (o_out || o_look == 2) { static const u16 OC[4] = { C15(2, 2, 5), C15(0, 0, 0), C15(31, 31, 31), C15(31, 12, 20) }; rect(49, 113, 36, 36, o_out ? OC[o_ocol & 3] : C15(3, 3, 6)); }
+            rect(51, 115, 32, 32, C15(14, 22, 28)); face(51, 115, 32, &sims[0]);
+            sprintf(t, "Sky: %s", SKN[sn & 3]); text(124, 114, FS_BODY, TXT, t); sprintf(t, "Look: %s", LKN[o_look % 3]); text(124, 128, FS_BODY, TXT, t);
+            sprintf(t, "Light: %+d", o_bri - 4); text(124, 142, FS_BODY, TXT, t); }
+        else if (o_tab == 2) { static const char *const nm[3] = { "Master", "Music", "Effects" }; const int *vv[3] = { &o_vol, &o_mus, &o_sfx };
+            for (int k = 0; k < 3; k++) { text(12, 114 + k * 14, FS_BODY, TXT, nm[k]); for (int j = 0; j < 10; j++) rect(80 + j * 16, 112 + k * 14, 13, 10, j < *vv[k] ? (k == 0 ? C15(10, 26, 10) : k == 1 ? C15(10, 20, 31) : C15(31, 24, 8)) : C15(3, 6, 14)); } }
+        else if (o_tab == 4) { static const char *const DL[4] = { "Short", "Normal", "Long", "Epic" }; clk(t, minutes % 1440); text_c(60, 132, FS_NUM, C15(31, 31, 20), t);
+            sprintf(t, "Day: %s", DL[o_day & 3]); text(120, 116, FS_BODY, TXT, t); sprintf(t, "Speed: %dx", o_spd + 1); text(120, 134, FS_BODY, TXT, t); }
+        else if (o_tab == 7) { text(12, 114, FS_BODY, TXT, "BORE 2 on DS"); text(12, 132, FS_BODY, C15(25, 28, 31), "Made for touch and buttons."); }
+        else { int tot, n = op_changed(&tot); sprintf(t, "%d of %d changed from normal", n, tot); text(12, 114, FS_BODY, TXT, t); text(12, 132, FS_BODY, C15(25, 28, 31), n ? "Green values are changed." : "All rows are at normal."); } } }
+    { u32 sg = msg_t > 0 ? (u32)(uintptr_t)msg | 1u : 0; if (op_sg[13] != sg) { op_sg[13] = sg; backdrop_y(159, 178); if (msg_t > 0) toast(128, 162, msg); } }
+}
+#ifdef DSTEST
+volatile int dbg_op[2];   // ticks (33.5 MHz) of the last Options draw: bottom screen, top screen
+static void op_draw(void) { u32 a = prof_now(); op_draw_sub(); u32 b = prof_now(); op_draw_top(); u32 c = prof_now(); dbg_op[0] = (int)(b - a); dbg_op[1] = (int)(c - b); op_rd = 0; }
+#else
+static void op_draw(void) { op_draw_sub(); op_draw_top(); op_rd = 0; }
+#endif
 #include "logo_rects.h"
 static void draw_logo(int x0, int y0, int num, int den) {   // the BORE 2 logo, scaled num/den
     for (int i = 0; i < LOGO_N; i++) { int x = x0 + LOGO_R[i].x * num / den, y = y0 + LOGO_R[i].y * num / den;
@@ -3213,7 +3442,6 @@ static void draw_title(void) {
     rect(112, 146, 20, 18, C15(31, 31, 31)); rect(114, 148, 16, 3, C15(28, 8, 8)); text_c(122, 172, FS_BODY, TXT, "1 day");
     rect(194, 146, 20, 20, C15(31, 31, 31)); rect(196, 148, 16, 16, C15(22, 26, 31)); rect(204, 150, 1, 7, C15(2, 4, 12)); rect(204, 157, 5, 1, C15(2, 4, 12));
     { clk(t, minutes % 1440); text_c(204, 172, FS_NUM, TXT, t); } (void)nm;
-    if (opt_on) { draw_opt(); return; }
     scr = scr_sub; rect(0, 0, 256, 192, C15(3, 3, 4));
     rect(16, 40, 224, 118, PANB); rect(18, 42, 220, 114, C15(8, 16, 28)); rect(18, 42, 220, 16, PANH); text_box(20, 42, 216, 16, FS_HEAD, TXT, AL_L, "Start/Load profile");
     for (int i = 0; i < 3; i++) { int x = 26 + i * 70, y = 66; rect(x - 2, y - 2, 68, 60, slot_sel == i ? C15(31, 31, 31) : C15(2, 4, 12)); rect(x, y, 64, 56, i == 0 ? C15(10, 24, 8) : C15(6, 12, 26));
@@ -3231,16 +3459,15 @@ static void new_household(void) {
     for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0; memset(csx, 0, sizeof csx);
 }
 static void title_touch(int tx, int ty) {
-    if (opt_on) { opt_touch(tx, ty); return; }
     for (int i = 0; i < 3; i++) if (hit(26 + i * 70, 66, 64, 56, tx, ty)) slot_sel = i;
     if (hit(98, 130, 28, 22, tx, ty)) slot_sel = 0;
-    if (hit(130, 130, 28, 22, tx, ty)) opt_on = 1;
+    if (hit(130, 130, 28, 22, tx, ty)) opt_enter();
     if (hit(162, 130, 28, 22, tx, ty)) { if (slot_sel == 0 && sav_have >= 0) { u8 z[sizeof(SavHdr)]; memset(z, 0, sizeof z); for (int k = 0; k < 2; k++) { cardWriteEeprom((u32)(k * SAV_STRIDE), z, sizeof z, sav_type); memset(sav_sh[k], 0, sizeof z); } sav_have = -1; sav_seq = 0; } new_household(); say("Cleared"); slot_sel = 0; }
     if (hit(194, 130, 36, 22, tx, ty)) { if (slot_sel == 0) { if (sav_have >= 0 && sav_apply()) { say("Welcome back!"); } else if (sav_have >= 0) { say("Save is damaged"); new_household(); }
             if (lot_bx >= 2000) { city_spawn(); nb_ok = 1; set_mode(M_LIVE); } else set_mode(M_MAP); }   // (D37: saved on a trip, you are back there; the Map has no zones)
         else { new_household(); cas_enter(); slot_sel = 0; set_mode(M_CAS); } }
 }
-static void open_opts(void) { opt_ret = mode; set_mode(M_TITLE); opt_on = 1; }
+static void open_opts(void) { opt_ret = mode; set_mode(M_TITLE); opt_enter(); }
 static void set_mode(int m) {
     if ((m == M_BUY || m == M_BUILD) && lot_bx >= 0 && !lot_owned(lot_bx, lot_by)) { say("Not your lot: buy it on the Map"); return; }
     if ((m == M_BUY || m == M_BUILD) && mode == M_LIVE) ed_lv = slv[ctl];   // (D36) Buy and Build start on your sim's storey
@@ -3373,8 +3600,10 @@ int main(void) {
         const Settle *s = bm_set(cur_set); msg_t = msg_t > 0 ? msg_t - 1 : 0; occ_check();
         unsigned sig = 0; int forced = (mode != lastmode); lastmode = mode;
         if (mode == M_TITLE) {
-            if (down & KEY_TOUCH) title_touch(tp.px, tp.py);
-            if (mode == M_TITLE && (forced || (down & KEY_TOUCH) || msg_t > 0)) draw_title();
+            if (opt_on) { op_tick(held); if (down & KEY_TOUCH) op_touch(tp.px, tp.py); if (opt_on) op_keys(held, down); }   // (D70) Options: touch and buttons both
+            else if (down & KEY_TOUCH) title_touch(tp.px, tp.py);
+            if (mode == M_TITLE && opt_on) { if (forced) op_full = 3; if (op_rd || forced) op_draw(); }
+            else if (mode == M_TITLE && (forced || (down & KEY_TOUCH) || msg_t > 0 || title_rd)) { title_rd = 0; draw_title(); }
 #ifdef DSTEST
             static int sh_done; if ((held & KEY_SELECT) && !sh_done) { sh_done = 1; int sv = test_ex; scr = hud; rect(0, 0, 256, 192, C15(14, 20, 28)); Sim t = sims[0];
                 for (int k = 0; k < EX_N; k++) { test_ex = k + 1; face(2 + k * 28, 2, 26, &t); face(2 + k * 28, 32, 16, &t); face(2 + (k % 5) * 50, 54 + (k / 5) * 68, 48, &t); }
