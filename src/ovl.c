@@ -9,7 +9,7 @@
 #include <string.h>
 extern void *const ovl_keep_tab[];   // (ovl_keep.c, made by tools/ovl.py: every symbol of BORE2.EXE an overlay uses, so the linker keeps it)
 static const struct { const char *file, *name; } packNm[] = { { "KINGDOM.OVL", "THE LAND BOREFORE TIME" }, { "ARCADE.OVL", "BORTUA FIGHTER" }, { "ARCADE2.OVL", "BORTUA FIGHTER" }, { "GOTCHI.OVL", "BOREAGOTCHI!" }, { "PARTY.OVL", "FAMILY FUN" },
-    { "DJ.OVL", "DJ BOOTH" }, { "SUPER.OVL", "SUPERSTAR" }, { "DOG.OVL", "CREATE A DOG" }, { "PRISON.OVL", "CRIME AND LAW" }, { "SPACE.OVL", "SPACE AGE" }, { "PARADISE.OVL", "ISLAND PARADISE" }, { "FARM.OVL", "FARM LIFE" }, { "SKYSEA.OVL", "SKY AND SEA" } };
+    { "DJ.OVL", "DJ BOOTH" }, { "SUPER.OVL", "SUPERSTAR" }, { "DOG.OVL", "CREATE A DOG" }, { "PRISON.OVL", "CRIME AND LAW" }, { "SPACE.OVL", "SPACE AGE" }, { "PARADISE.OVL", "ISLAND PARADISE" }, { "FARM.OVL", "FARM LIFE" }, { "SKYSEA.OVL", "SKY AND SEA" }, { "CREATE.OVL", "CREATE A BORE" } };
 const char *ovl_pack_name(const char *file) { for (unsigned i = 0; i < sizeof packNm / sizeof packNm[0]; i++) if (!strcmp(packNm[i].file, file)) return packNm[i].name; return file; }
 int ovl_installed(const char *file) {   // the first sector of the file: a real overlay starts "BOVL", a stub of the base disc "BSTB"
     extern int audio_cd_peek(const char *name, void *dst);

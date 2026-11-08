@@ -31,6 +31,7 @@
 			<file name="DJ.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_base/DJ.OVL" />
 			<file name="CUT.OVL" type="data" source="${CMAKE_BINARY_DIR}/CUT.OVL" />
 			<file name="CLOCK.OVL" type="data" source="${CMAKE_BINARY_DIR}/CLOCK.OVL" />
+			<file name="CREATE.OVL" type="data" source="${CMAKE_BINARY_DIR}/CREATE.OVL" />
 			<file name="REALWRLD.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_base/REALWRLD.OVL" />
 			<file name="SPEEDCTY.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_base/SPEEDCTY.OVL" />
 			<file name="BIGSCREN.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_base/BIGSCREN.OVL" />

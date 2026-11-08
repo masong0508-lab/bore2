@@ -7,7 +7,7 @@ TARGET = $(O)/bore2_dc.elf
 SRC = ../../src
 GAME = main gfx atlas look voxel items world sim wants citizens font fmt save crowd bigmap pop far ui places home island nature \
        story skate traffic gotchi band dog ghost realm_res arcade_res audio arc_core ag_old ag_new1 ag_new2
-OVLS = realm arcade fight gotchi_ui gotchi_act party_ui dj_ui super_ui dog_ui prison_ui heist_ui space_ui paradise_ui farm_ui skysea_ui cutscene arc2 clock_ui pack_ui
+OVLS = realm arcade fight gotchi_ui gotchi_act party_ui dj_ui super_ui dog_ui prison_ui heist_ui space_ui paradise_ui farm_ui skysea_ui cutscene arc2 clock_ui create_ui pack_ui
 PLAT = dc_psx dc_gpu dc_plat dc_spu dc_cd dc_vmu dc_extra dc_prof
 OBJS = $(addprefix $(O)/,$(addsuffix .o,$(GAME) $(OVLS) $(PLAT)))
 KOS_CFLAGS += -DBORE_DC -Ipsx -I. -I$(SRC) -I../../assets -w -std=gnu11 -MMD \
@@ -37,6 +37,7 @@ $(O)/arc2.o: KOS_CFLAGS += -Dovl_head=ovl_head_arcade2 -Dag_fn=ag_fn_games
 $(O)/arc_core.o: KOS_CFLAGS += -Dag_fn=ag_fn_merged
 $(O)/arcade.o: KOS_CFLAGS += -Dag_fn=ag_fn_fight   # (each overlay has its own table on the PS1; here dc_plat.c merges them into ag_fn)
 $(O)/clock_ui.o: KOS_CFLAGS += -Dovl_head=ovl_head_clock
+$(O)/create_ui.o: KOS_CFLAGS += -Dovl_head=ovl_head_create
 $(O)/pack_ui.o: KOS_CFLAGS += -Dovl_head=ovl_head_pkinfo
 
 all: $(TARGET)

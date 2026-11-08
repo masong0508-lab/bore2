@@ -114,7 +114,8 @@ static void camera_input(int steps) {
 static const char *const camViewNm[3] = { "THE SIMS CAMERA", "CAMERA BEHIND YOU", "FIRST PERSON" };
 
 // ---- the household ----
-static Bore edit;              // the creature on the creator's table
+Bore cas_edit;                 // the creature on the creator's table (CREATE.OVL edits it too)
+#define edit cas_edit
 #define title_bore (sims[MAX_SIMS - 1].bore)   // (the title's Bore borrows the last sim slot: no life is on while the title shows)
 static int frame;
 static int t_vb;
@@ -133,7 +134,7 @@ static int sub_back = ST_LIFE;
 enum { PH_CALL, PH_PIZZA, PH_PARTY, PH_MAP, PH_TRAVEL, PH_JOBS, PH_HOMES, PH_PEOPLE, PH_FAMILY, PH_ADOPT, PH_MUSIC, PH_GOALS, PH_TEXT, PH_PHOTO, PH_GAMES, PH_N };   // the phone's apps
 static int pk_shelf, ph_sel; void phone_open(void);              // (the phone: below)                       // where O goes back to from the phone's screens (the phone itself)
 #define BACK_TO() (PRESSED(PAD_START) ? ST_LIFE : sub_back)
-static int create_tab, create_row, create_from, create_turn;
+int cas_fx = 230, cas_fy = 200, cas_dist = 820, cas_pitch = 380, cas_turn, cas_step, cas_go = -1, cas_rs;   // the creator's studio camera, the Bore's turn, the step it is on, where to jump, the right stick (CREATE.OVL sets and reads them)
 static int build_tool, build_item, build_x = 8, build_y = 8, build_fl = 1, build_wp = 1, build_lvl, build_peek;
 static int build_open, room_on, room_ax, room_ay;   // the DOORS tool's pick; the ROOM tool's first corner
 enum { BT_BUY, BT_ROOM, BT_WALL, BT_DOOR, BT_FLOOR, BT_PAINT, BT_ROOF, NTOOL };   // build mode's tools
@@ -174,7 +175,7 @@ static void wm_open(void);
 static void wm_apply(void);
 static void wm_check_dials(void);
 static int wm_used;
-static void create_draw(void);
+static void create_draw(void); static void create_open(int from);
 static void nhood_open(int first);   // THE NEIGHBORHOOD: 48 lots to pick a home from (first: a new life, before they have one)
 static void buyask_open(int bx, int by);   // BUY IT HOW?: move in, or own it as a property
 static void homes_open(void);
@@ -2945,7 +2946,7 @@ static void pause_update(void) {
             case 6: sim_want_dog = 2; state = ST_LIFE; break;   // (YOUR DOG: the dog maker, a file of its own on the disc)
             case 7: { TexRef te = edit.tex_eye, tm = edit.tex_mouth; edit = sims[player].bore; edit.tex_eye = te; edit.tex_mouth = tm; look_build(&edit); }   // (the creator draws on its own faces)
                     if (!world_backup()) { sim_note("NO ROOM FOR THE STUDIO JUST NOW. TRY AT HOME"); state = ST_LIFE; break; }
-                    create_tab = 0; create_row = 0; prev_state = ST_LIFE; state = ST_CREATE; world_gen_studio(); break;
+                    world_gen_studio(); create_open(ST_LIFE); break;
             case 8: { Bore b; look_default(&b); b.stage = (u8)(AG_CHILD + look_rand() % 3); look_random(&b);
                       sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); sim_note("A NEW BORE MOVED IN"); audio_voice(VOICE_MOVE_YES); state = ST_LIFE; } break;
             case 3: if ((ovl = ovl_load("KINGDOM.OVL"))) { ovl->open(0); state = ST_REALM; } else state = ST_LIFE; break;
@@ -3486,93 +3487,70 @@ static void name_draw(void) {
       ui_button(140, y, 144, 18, "DONE", IC_TICK, on && nk_c >= 4); }
     ui_hints(160, top + 152, "X TYPE|SQ DELETE|START DONE|O CANCEL", 1);
 }
-static void create_named(void) {   // "FIRST LAST" back into the creator's Bore
-    char t[24]; strcpy(t, nk_text);
-    char *sp = strchr(t, ' ');
-    if (sp) { *sp = 0; strncpy(edit.last, sp + 1, NAME_LEN - 1); edit.last[NAME_LEN - 1] = 0; }
-    strncpy(edit.first, t, NAME_LEN - 1); edit.first[NAME_LEN - 1] = 0;
+// CREATE A BORE is CREATE.OVL (src/create_ui.c): the seven steps, the category tabs, the dice, the summary. It edits `edit` and sets
+// where the studio camera looks (cas_*); this file draws the studio and the Bore, and runs the name keyboard it asks for.
+static void create_open(int from) {   // the studio is made (world_gen_studio): ask the questions
+    prev_state = from; cas_go = -1;
+    if (!(ovl = ovl_load("CREATE.OVL"))) { world_restore(); state = from == ST_LIFE ? ST_LIFE : ST_MENU; return; }
+    ovl->open(from == ST_LIFE); state = ST_CREATE;
 }
-static char create_nm[24];
-static void create_update(void) {
+static void create_update(int steps) {
+    int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev;
+    if (!ovl) { state = ST_MENU; return; }
 #ifdef AUTO_FACE
     {   // (test builds: every face part in turn, a third of a second each, face on)
-        static int t0 = -1, last = -1, cat = AUTO_FACE, item = 0; static const u8 ids[9] = { LK_EYES, LK_MOUTH, LK_BROW, LK_NOSE, LK_CHEEK, LK_GLASS, LK_X_MAKEUP, LK_X_LIPS, LK_EARS };
+        static int t0 = -1, last = -1, cat = 0, item = 0; static const u8 ids[9] = { LK_EYES, LK_MOUTH, LK_BROW, LK_NOSE, LK_CHEEK, LK_GLASS, LK_X_MAKEUP, LK_X_LIPS, LK_EARS };
         if (t0 < 0) t0 = VSync(-1);
         int k_ = (VSync(-1) - t0) / 20;
         if (k_ != last && cat < 9) { last = k_;
             if (++item >= look_count(ids[cat])) { edit.look[ids[cat]] = ids[cat] == LK_EYES ? 1 : 0; cat++; item = 1; }
-            if (cat < 9) { edit.look[ids[cat]] = (u8)item; if (ids[cat] == LK_X_MAKEUP) edit.look[LK_EYES] = 1; look_build(&edit); create_tab = 1; create_row = 0;
-                create_turn = ids[cat] == LK_EARS ? ((k_ & 1) ? 150 : 0) : 0; } }
-        return;
+            if (cat < 9) { edit.look[ids[cat]] = (u8)item; if (ids[cat] == LK_X_MAKEUP) edit.look[LK_EYES] = 1; look_build(&edit); cas_go = 1; } }
+        hd_ = pr_ = 0;
     }
 #endif
 #ifdef AUTO_WEAR
-    {   // (test builds: every outfit in turn, a little over half a second each, turning slowly)
+    {   // (test builds: every outfit in turn, a little over half a second each)
         static int t0 = -1, last = -1;
         if (t0 < 0) t0 = VSync(-1);
         int k_ = (VSync(-1) - t0) / 40;
         if (k_ != last) { last = k_; int t = 2 + k_ % (look_count(LK_X_THEME) - 2);
-            edit.look[LK_X_THEME] = (u8)t; look_theme(&edit, t); look_build(&edit); create_tab = 4; create_row = 0; create_turn = (k_ & 1) ? 2400 : 400; }
-        return;
+            edit.look[LK_X_THEME] = (u8)t; look_theme(&edit, t); look_build(&edit); cas_go = 3; }
+        hd_ = pr_ = 0;
     }
 #endif
-    const LookRow *rows; int n = look_tab_rows(create_tab, &rows);
-    if (PRESSED(PAD_L1)) { create_tab = (create_tab + NTAB - 1) % NTAB; create_row = 0; }
-    if (PRESSED(PAD_R1)) { create_tab = (create_tab + 1) % NTAB; create_row = 0; }
-    if (PRESSED(PAD_UP)) create_row = (create_row + n - 1) % n;
-    if (PRESSED(PAD_DOWN)) create_row = (create_row + 1) % n;
-    int dir = 0;
-    if (PRESSED(PAD_LEFT)) dir = -1;
-    if (PRESSED(PAD_RIGHT) || PRESSED(PAD_CROSS)) dir = 1;
-    if (dir) {
-        const LookRow *r = &rows[create_row];
-        if (r->kind == ROW_AGE) { int st = edit.stage; do st = (st + AG_N + dir) % AG_N; while (st == AG_BABY); edit.stage = (u8)st; look_fix(&edit); look_build(&edit); }   // (a baby cannot be played)
-        else if (r->id == LK_ASP) edit.asp = (u8)((edit.asp + AS_PICK + dir) % AS_PICK);
-        else if (r->id == LK_LTW) edit.ltw = (u8)((edit.ltw + 4 + dir) % 4);
-        else if (r->id >= LK_TRAIT0 && r->id < LK_TRAIT0 + 5) { int t = r->id - LK_TRAIT0; int v = edit.tr[t] + dir; edit.tr[t] = (u8)CLAMP(v, 0, 10); }
-        else {
-            int cnt = look_count(r->id), v = edit.look[r->id];
-            for (int k = 0; k < cnt; k++) { v = (v + cnt + dir) % cnt; if (look_allowed(&edit, r->id, v)) break; }
-            edit.look[r->id] = (u8)v;
-            if (r->id == LK_X_THEME) look_theme(&edit, v);   // (an outfit: dressed all at once)
-            look_build(&edit);
-        }
-        audio_voice(VOICE_AGREE);
-    }
-    if (PRESSED(PAD_TRIANGLE)) { look_random(&edit); audio_voice(VOICE_LAUGH); }
-    if (PRESSED(PAD_SQUARE)) { snprintf(create_nm, sizeof create_nm, "%s %s", edit.first, edit.last); name_open(create_nm, 23, "NAME YOUR BORE: FIRST AND LAST", create_named); return; }
-    if (HELD(PAD_L2)) create_turn -= 40;
-    if (HELD(PAD_R2)) create_turn += 40;
-    if (analog) create_turn += rs_x / 3;
-    if (PRESSED(PAD_START) || PRESSED(PAD_SELECT)) {
-        world_restore();
+    cas_rs = analog ? rs_x : 0;
+    int r = ovl->update(hd_, pr_, steps);
+    if (r == 1) return;
+    if (r >= 3) { name_open(r == 3 ? edit.first : edit.last, NAME_LEN - 1, r == 3 ? "ENTER FIRST NAME" : "ENTER LAST NAME", 0); return; }
+    world_restore();
+    if (prev_state == ST_LIFE) ovl_leave(); else crowd_reset();
+    ovl = 0;
+    if (r == 2) {
         if (prev_state == ST_LIFE) { Sim *me = &sims[player]; if (me->bore.stage != edit.stage) { me->age_days = 0; me->bday = 0; }
             TexRef te = me->bore.tex_eye, tm = me->bore.tex_mouth; me->bore = edit; me->bore.tex_eye = te; me->bore.tex_mouth = tm; look_build(&me->bore);   // (on the Bore's own faces)
             crowd_forget(CROWD_MAX + player); state = ST_LIFE; }
         else { mode_open(); }   // (a new Bore from the title: on to PICK A MODE)
         audio_voice(VOICE_YAHOO);
     }
-    if (PRESSED(PAD_CIRCLE)) { world_restore(); state = prev_state == ST_LIFE ? ST_LIFE : ST_MENU; }
+    else state = prev_state == ST_LIFE ? ST_LIFE : ST_MENU;
 }
 static void create_draw(void) {
-    const LookRow *rows; int n = look_tab_rows(create_tab, &rows);
     // the studio: a little parlour with the Bore in the middle
     gfx_set_clear(14, 16, 24);
     gfx_set_ambient(86, 100);
     gfx_sky(0x6a5040u, 0xb09070u);                                           // a warm backdrop behind the windows
-    int close = (create_tab == 1 || create_tab == 2);                       // closer for the face and the hair
     int bx = 4 * TILE + TILE / 2, bz = -(5 * TILE + TILE / 2);              // the Bore stands on the rug
-    cam_fx = bx - (close ? 190 : 230); cam_fy = close ? -290 : -200; cam_fz = bz;   // the focus sits right of the Bore: it shows in the left half, beside the card
-    int yaw = 2048, pitch = close ? 260 : 380, dist = close ? 560 : 820;
+    cam_fx = bx - cas_fx; cam_fy = -cas_fy; cam_fz = bz;                     // (CREATE.OVL moves these: it shows in the left half, beside the panel)
+    int yaw = 2048, pitch = cas_pitch, dist = cas_dist;
 #ifdef HAIR_AUTO   // (test builds: every hair style in turn (HAIR_AUTO frames each) in the first colour, then every colour on style LONG, a beard on the last: no keys needed)
-    { static int hf, lastk = -1; if (create_tab != 2) hf = 0; int k = hf++ / HAIR_AUTO, ns = NHAIR, nc = look_count(LK_HCOL);
+    { static int hf, lastk = -1; if (cas_step != 2) hf = 0; int k = hf++ / HAIR_AUTO, ns = NHAIR, nc = look_count(LK_HCOL);
       edit.stage = AG_ADULT; edit.look[LK_HAT] = 0; edit.look[LK_BEARD] = 0;
       if (k < ns) { edit.look[LK_HSTYLE] = (u8)k; edit.look[LK_HCOL] = 1; }
       else if (k < ns + nc) { edit.look[LK_HSTYLE] = 2; edit.look[LK_HCOL] = (u8)(k - ns); }
       else if (k < ns + nc + 2) { edit.look[LK_HSTYLE] = 0; edit.look[LK_HCOL] = 1; edit.look[LK_BEARD] = (u8)(k - ns - nc + 1); }
       else { edit.look[LK_HSTYLE] = (u8)(k - ns - nc - 2) % ns; edit.look[LK_HCOL] = 4; }   // (then the greys: the same styles, aged by the colour)
       if (k != lastk) { lastk = k; look_build(&edit); }
-      create_turn = HAIR_TURN; }
+      cas_turn = HAIR_TURN; }
 #endif
 #ifdef HAIR_DEV   // (test builds: the camera right up to the head, for pictures of the hair)
 #ifndef HAIR_FX
@@ -3592,46 +3570,9 @@ static void create_draw(void) {
     world_draw(4, 5, frame, 1);
     VECTOR p; setVector(&p, bx, 0, bz);
     Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (frame * 90) & 4095; g.amp = 0;
-    voxel_draw(&edit, &p, (2048 - create_turn) & 4095, &g);   // (the face to the camera at create_turn 0)
+    voxel_draw(&edit, &p, (2048 - cas_turn) & 4095, &g);   // (the face to the camera at cas_turn 0)
     gfx_shadow(&p, 70);
-    // the card: the tab on a blue header, its rows, the buttons at the foot
-    static const s8 createIc[NTAB] = { IC_PEOPLE, IC_SMILE, IC_BRUSH, IC_SHIRT, IC_STAR, IC_SPROUT, IC_ARROW };
-    int top = ui_window(162, 8, 150, 224, look_tab_name[create_tab], createIc[create_tab]);
-    int first = MAX(0, create_row - 6), shown = MIN(n, first + 8);
-    for (int i = first; i < shown; i++) {
-        const LookRow *r = &rows[i]; int y = top + (i - first) * 19;
-        int sel = i == create_row;
-        if (sel) { ui_round(166, y - 1, 142, 19, 6, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(166, y + 2, 2, 13, 38, 146, 222, 0); }
-        ui_text(172, y + 1, 1, r->label, sel ? UI_BLUE2 : UI_INK);
-        if (sel) { ui_text(288, y + 1, 1, "<", UI_BLUE); ui_text(298, y + 1, 1, ">", UI_BLUE); }
-        char val[24] = "";
-        if (r->kind == ROW_AGE) strcpy(val, look_stage_name(edit.stage));
-        else if (r->id == LK_ASP) strcpy(val, look_asp_name(edit.asp));
-        else if (r->id == LK_LTW) sprintf(val, "GOAL %d", edit.ltw + 1);
-        else if (r->id >= LK_TRAIT0 && r->id < LK_TRAIT0 + 5) ui_pips(172, y + 10, edit.tr[r->id - LK_TRAIT0], 10, UI_AMBER);
-        else if (r->kind == ROW_SLIDER) ui_slider(172, y + 9, 128, (edit.look[r->id] + 4) % 9, 9, sel);
-        else if (r->kind == ROW_COLOUR) {
-            int cnt = look_count(r->id), sp = cnt > 12 ? 8 : 11, sw = sp - 2;
-            for (int k = 0; k < cnt && k < 16; k++) {
-                if (k == edit.look[r->id]) gfx_rect(172 + k * sp - 2, y + 7, sw + 4, 12, 26, 112, 190, 0);
-                gfx_rect_c(172 + k * sp, y + 9, sw, 8, look_option_colour(r->id, k), 0);
-            }
-        }
-        else { const char *nm = look_option_name(r->id, edit.look[r->id]); if (nm) strncpy(val, nm, 23); }
-        if (val[0]) ui_text(172, y + 10, 1, val, sel ? UI_BLUE2 : UI_SOFT);
-    }
-    for (int t = 0; t < NTAB; t++) ui_disc(216 + t * 9, 200, 6, t == create_tab ? UI_BLUE : UI_LINE);   // which tab of the seven
-    ui_hints(237, 201, "L1 R1 TAB|TRI DICE", 1);
-    ui_hints(237, 213, prev_state == ST_LIFE ? "SQ NAME|START DONE" : "SQ NAME|START LIVE", 1);
-    // the Bore's name card, and the title
-    char nm[32]; sprintf(nm, "%s %s", edit.first, edit.last);
-    int big = ui_tw(2, nm) <= 140, w = MAX(big ? ui_tw(2, nm) : ui_tw(1, nm), 100) + 14;
-    ui_card(8, 8, w, 31);
-    ui_text(14, big ? 11 : 13, big ? 2 : 1, nm, UI_INK);
-    char sb[48]; sprintf(sb, "%s, %s", look_stage_name(edit.stage), look_sign_name(look_sign_of(&edit))); ui_text(14, 27, 1, sb, UI_SOFT);
-    { const char *t = "CREATE A BORE"; int tw_ = ui_tw(1, t) + 30;
-      ui_shadow(8, 212, tw_, 18, 6); ui_round(8, 212, tw_, 18, 6, UI_RGB(70, 176, 238), UI_BLUE2, 0);
-      ui_icon(13, 215, IC_STAR, UI_WHITE); ui_text(28, 218, 1, t, UI_WHITE); }
+    if (ovl) ovl->draw();
 }
 
 // ---- build mode ----
@@ -4230,8 +4171,12 @@ static void title_update(void) {
 #ifdef AUTO_STORY
     if (title_t == 30) { life_story = AUTO_STORY; worlds_go(0x5EED1234u, 0); return; }
 #endif
-#if defined(AUTO_WEAR) || defined(AUTO_FACE)
-    if (title_t == 30) { world_backup(); prev_state = ST_MENU; create_tab = 4; create_row = 0; state = ST_CREATE; world_gen_studio(); return; }
+#if defined(AUTO_WEAR) || defined(AUTO_FACE) || defined(AUTO_CAS)   // (test builds: straight into CREATE A BORE; AUTO_CAS=n starts at step n, 0 BASICS .. 6 SUMMARY)
+    if (title_t == 30) { world_backup(); world_gen_studio(); create_open(ST_MENU);
+#ifdef AUTO_CAS
+        cas_go = AUTO_CAS;
+#endif
+        return; }
 #endif
 #if defined(AUTO_TEXT) || defined(AUTO_PKLIFE) || defined(AUTO_PARTY) || defined(AUTO_CITY) || defined(AUTO_STREAM) || defined(AUTO_GOTCHI) || defined(AUTO_GFIRST) || defined(AUTO_DJ) || defined(AUTO_SUPER)
     if (title_t == 30) {
@@ -5039,7 +4984,7 @@ static void menu_update(void) {
 #endif
                 mode_open(); break;
             case 1: slots_open(0, ST_MENU); break;
-            case 2: if (!world_backup()) { audio_voice(VOICE_NAH); break; } prev_state = ST_MENU; create_tab = 0; create_row = 0; state = ST_CREATE; world_gen_studio(); break;
+            case 2: if (!world_backup()) { audio_voice(VOICE_NAH); break; } world_gen_studio(); create_open(ST_MENU); break;
             case 3: prev_state = ST_MENU; state = ST_JUKEBOX; break;
             case 4: opts_open(ST_MENU); break;
             case 5: prev_state = ST_MENU; help_page = 0; state = ST_HELP; break;
@@ -5222,7 +5167,7 @@ int main(void) {
 #endif
                 title_update(); title_draw(); break;
             case ST_MENU: menu_update(); menu_draw(); break;
-            case ST_CREATE: create_update(); create_draw(); break;
+            case ST_CREATE: create_update(steps); if (state == ST_CREATE) create_draw(); else if (state == ST_NAME) name_draw(); else if (state == ST_LIFE) life_draw(); break;
             case ST_LIFE:
 #ifdef AUTO_PARTY
                 { static int ap; if (++ap == 120) { cash += 100; throw_party(); } if (ap == 200) { extern int prof_on; prof_on = 1; }

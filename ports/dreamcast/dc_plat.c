@@ -72,14 +72,14 @@ void wmove(void *dst, const void *src, u32 n) { memmove(dst, src, n); }
 
 // ---------------------------------------------------------------- the overlays: all linked in; "loading" one hands back its table
 extern const OvlHead ovl_head_kingdom, ovl_head_arcade, ovl_head_gotchi, ovl_head_party, ovl_head_dj, ovl_head_super, ovl_head_dog,
-    ovl_head_prison, ovl_head_space, ovl_head_paradise, ovl_head_farm, ovl_head_skysea, ovl_head_cut, ovl_head_arcade2, ovl_head_clock, ovl_head_pkinfo;
+    ovl_head_prison, ovl_head_space, ovl_head_paradise, ovl_head_farm, ovl_head_skysea, ovl_head_cut, ovl_head_arcade2, ovl_head_clock, ovl_head_create, ovl_head_pkinfo;
 static const struct { const char *file, *name; const OvlHead *h; } ovls[] = {
     { "KINGDOM.OVL", "THE LAND BOREFORE TIME", &ovl_head_kingdom }, { "ARCADE.OVL", "BORTUA FIGHTER", &ovl_head_arcade },
     { "GOTCHI.OVL", "BOREAGOTCHI!", &ovl_head_gotchi }, { "PARTY.OVL", "FAMILY PARTY", &ovl_head_party }, { "DJ.OVL", "DJ BOOTH", &ovl_head_dj },
     { "SUPER.OVL", "SUPERSTAR", &ovl_head_super }, { "DOG.OVL", "CREATE A DOG", &ovl_head_dog }, { "PRISON.OVL", "CRIME AND LAW", &ovl_head_prison },
     { "SPACE.OVL", "SPACE AGE", &ovl_head_space }, { "PARADISE.OVL", "ISLAND PARADISE", &ovl_head_paradise }, { "FARM.OVL", "FARM LIFE", &ovl_head_farm },
     { "SKYSEA.OVL", "SKY AND SEA", &ovl_head_skysea }, { "CUT.OVL", "CUTSCENE", &ovl_head_cut },
-    { "ARCADE2.OVL", "BORTUA FIGHTER", &ovl_head_arcade2 }, { "CLOCK.OVL", "SET CLOCK", &ovl_head_clock }, { "PKINFO.OVL", "PACKS", &ovl_head_pkinfo },
+    { "ARCADE2.OVL", "BORTUA FIGHTER", &ovl_head_arcade2 }, { "CLOCK.OVL", "SET CLOCK", &ovl_head_clock }, { "CREATE.OVL", "CREATE A BORE", &ovl_head_create }, { "PKINFO.OVL", "PACKS", &ovl_head_pkinfo },
 };
 // ARCADE.OVL holds the fighter's AGFn, ARCADE2.OVL the other games'; arc_core.c is one copy here and reads the merged table
 #include "arc_i.h"
