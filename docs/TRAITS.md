@@ -247,3 +247,13 @@ Slots and the family: `traits6_creator_slots.png` (the creator, picked traits in
 - A hook: add a line to `HOOKS_TXT`, read it in the game with the right accessor, run the test (it fails until the game reads it).
 - A wish: add a line to `WISH_TXT`; its counter must be an `EV_*` in `EVENTS`, raised with `tr_ev` or polled in `tr_watch`.
 - Never change the order of `E_*` or `EV_*` without a new save version: the effects are saved as numbers.
+
+
+## Town people and everyone's own state (save 52, Nov 8)
+
+- **Town personality**: `src/persona.c` (`persona_of(seed, stage)`). Every townie, town person and shop worker has a personality made from their id (the citizen or pop seed) alone, nothing stored: a star sign's five bars plus up to three 1-point moves (the sign stays what the bars say), an aspiration (GROW UP below TEEN) and a life want. The townie card shows sign, aspiration, the two strongest bars and "NO TRAITS YET: THEY COME WHEN THEY MOVE IN". `cit_bore` copies exactly this onto the Bore on every path (move-in, wedding, a moved-out Bore returning), so the traits they get match who you met. Citizens of the island and starter town (slots 0..49) get a new seed each boot, so their whole identity (look, name, personality) is new each boot; people from SAN BOREAS (pop.c) are stable.
+- **Traits only on joining**: `traits_auto.c` is resident (tables `tr_core`, `tr_corecat` in traits_data.h), `tr_assign_run` (traits_glue.inc) assigns one member a frame: no CREATE.OVL load, no hitch. Names are read in once, behind a loading frame, when the Life panel TRAITS tab or the page opens.
+- **Per member**: `TrState` now has `ev[55]` (own counters) and `wd[8]` (own wishes done). Everyone (up to 8, pool of 9) counts their own events and skills, wins earned traits (a full member's weakest assigned trait is replaced, no waiting) and has a personal wish chosen from their personality (`tr_auto_wish`, only wishes a member can count). The unlocked slots stay the household's; wishes done by anyone count towards them.
+- **Save 52**: v50/v51 load (180-byte state = first part, family counters go to the played Bore).
+- **Tests**: `sh test/traits_test.sh` groups persona (600,002), same-trait (4,060), household (44), all others unchanged: PASS. Console: oldsave.sh (v40, v41), oldsave2.sh (v50, v51) load; DS8MB=1 boots; frozen street 580.7 vs 578.8 mean cpu hb a frame, world 307 vs 306 (unchanged). Dreamcast builds. Free RAM 14,832 bytes past `_end`.
+- Shots: `docs/traits7_townie_card.png`, `traits7_housemate_page.png`, `traits7_household_page.png`. Left: a same-person-after-move-in shot (the AUTO_CARD=3 hook did not trigger the move-in), the DS port.

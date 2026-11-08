@@ -1677,7 +1677,7 @@ COLD void citizens_update(int steps) {   // (built small: the work is in step_on
     cur = find_target_l(lv, nlv);   // (a party guest who came in from another zone this frame is on the list from the next)
 #ifdef AUTO_CARD   // (test builds: the person nearest to you is the one the card shows; AUTO_CARD & 2: at frame AUTO_CARD_AT they move in with you (the shots of the same person in town and in the household))
     { static int n_; n_++; if (cur < 0) { int bd = 1 << 30; for (int j = 0; j < nlv; j++) { const Cit *c = &cits[lv[j]]; int dx = (c->x - sims[player].x) >> 4, dz = (c->z - sims[player].z) >> 4, d = dx * dx + dz * dz; if (c->zone == world_zone && c->mode != CM_GONE && d < bd) { bd = d; cur = lv[j]; } } }
-      if ((AUTO_CARD & 2) && n_ == AUTO_CARD_AT && cur >= 0 && nsims < MAX_SIMS) { char tb[80]; sprintf(tb, "%s %s", cits[cur].first, cits[cur].last); dbg_cardname = tb[0]; marry_as(&cits[cur], 0); cur = -1; } }
+      if ((AUTO_CARD & 2) && n_ >= AUTO_CARD_AT && !dbg_cardname && cur >= 0 && nsims < MAX_SIMS) { char tb[80]; sprintf(tb, "%s %s", cits[cur].first, cits[cur].last); dbg_cardname = tb[0]; marry_as(&cits[cur], 0); cur = -1; } }
 #endif
     fight_on = 0; { int ch = 0, co = 0; for (int j = 0; j < nlv; j++) { const Cit *c = &cits[lv[j]]; if (c->zone == world_zone && c->mode == CM_CHASE) { fight_on = 1; ch++; co += c->cop; } } dbg_rage[0] = ch; dbg_rage[1] = co; }
     for (int i = 0; i < nsims; i++) if (sims[i].rage) fight_on = 1;
