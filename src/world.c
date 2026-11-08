@@ -231,6 +231,29 @@ __attribute__((noinline)) static void gRoom(int x0, int y0, int x1, int y1, int 
         if (x == x0 || x == x1 || y == y0 || y == y1) { lifeMap[y][x] = 'W'; wallMap[y][x] = (u8)wp; } }
 }
 __attribute__((noinline)) static void gLine(int x0, int y0, int x1, int y1, char c, int wp) { for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) { lifeMap[y][x] = c; wallMap[y][x] = (u8)wp; } }
+// ---- ONE definition of road, kerb and plot (the generator, the clean-up, the test hooks and the ports all ask this) ----
+// A block's street strip is its tiles 0..BM_LOT0-1 along the top (bit 0 of its road bits) and down the left (bit 1); in a town the pavement
+// is the row and the column at BM_LOT0; everything else is the plot (a lot, a yard, open country). A river block's bridge is road too. The roads
+// are the map's own bits (blk_roads, with the big places' inner streets gone), never read back from what was painted. Nothing stands on a road:
+// street_purge takes off whatever a generator (or a kept tile) left on one, once, after every block.
+typedef struct { u8 x0, y0, x1, y1; } RR;   // a rectangle of a block's tiles, inclusive
+__attribute__((noinline)) static int road_rects(int rd, int rv, RR *r) {   // the street(s) of a block: its road bits' strips, and a river block's bridge (the lot_river asphalt)
+    int n = 0;
+    if (rd & 1) { r[n].x0 = 0; r[n].y0 = 0; r[n].x1 = BM_BLK - 1; r[n++].y1 = BM_LOT0 - 1; }
+    if (rd & 2) { r[n].x0 = 0; r[n].y0 = 0; r[n].x1 = BM_LOT0 - 1; r[n++].y1 = BM_BLK - 1; }
+    if (rv == 1) { r[n].x0 = 0; r[n].y0 = BM_LOT0 + 2; r[n].x1 = BM_LOT0 - 1; r[n++].y1 = BM_LOT0 + 8; }
+    if (rv == 2) { r[n].x0 = BM_LOT0 + 2; r[n].y0 = 0; r[n].x1 = BM_LOT0 + 8; r[n++].y1 = BM_LOT0 - 1; }
+    return n;
+}
+#if defined(BORE_DC) || defined(ROAD_AUDIT)
+static int tile_class(int rd, int town, int rv, int lx, int ly) {   // TC_ROAD, TC_KERB (the town's pavement row and column) or TC_PLOT
+    RR r[4]; int n = road_rects(rd, rv, r);
+    for (int i = 0; i < n; i++) if (lx >= r[i].x0 && lx <= r[i].x1 && ly >= r[i].y0 && ly <= r[i].y1) return TC_ROAD;
+    if (town && ((ly == BM_LOT0 && lx >= BM_LOT0) || (lx == BM_LOT0 && ly >= BM_LOT0))) return TC_KERB;
+    return TC_PLOT;
+}
+#endif
+static int gcur_ox, gcur_oy, gcur_n; static RR gcur_r[4];   // the block being made (gen_block0): its origin and its street rectangles (none: outside a block)
 static void gPut(int x, int y, char c) { lifeMap[y][x] = c; }
 __attribute__((noinline)) static void gFree(int x, int y, char c) { if (x >= 0 && y >= 0 && x < MW && y < MH && lifeMap[y][x] == '.') lifeMap[y][x] = c; }
 
@@ -802,7 +825,7 @@ static void yard(int lx, int ly, int dx, int dy, int vacant, unsigned h) {   // 
     if (vacant) gFree(dx + 2, dy + 2, '8'); else gFree(dx + 3, dy + 3, 'Y');
     if (!vacant) {   // the front garden: a lamp by the path, a mailbox at the street, flowers, a gnome or a bird bath, a picket fence with a gate, trees
         unsigned g = h >> 13;
-        gFree(dx + 3, dy + 1, 'l'); if (g & 1) gFree(dx - 3, dy + 1, 'N');
+        gFree(dx + 3, dy + 1, 'l'); if ((g & 1) && dx - 3 >= lx) gFree(dx - 3, dy + 1, 'N');
         for (int k = -6; k <= 6; k += 2) { int x = dx + k; if (ABS(k) <= 3 || x < lx || x > lx + 12) continue; unsigned r = (g >> (k + 6)) & 3u; gFree(x, dy + 1, r == 0 ? (char)0xE2 : r == 1 ? '*' : r == 2 ? 'p' : 'Z'); }
         if ((g >> 5) & 1) gFree(lx + 12, ly + (int)((g >> 7) % 3u), ((g >> 9) & 1) ? '3' : '6');
         if (dy + 1 < ly + 11) gFree(dx + 1, MIN(ly + 11, dy + 5), (char)0xE0);                                   // the mailbox, by the path near the street
@@ -1660,26 +1683,17 @@ COLD __attribute__((noinline)) static void kerb_clear(int ox, int oy) {   // the
         lifeMap[y][x] = '.'; wallMap[y][x] = 0;
     }
 }
-// ---- ONE definition of road, kerb and plot (the generator, the clean-up, the test hooks and the ports all ask this) ----
-// A block's street strip is its tiles 0..BM_LOT0-1 along the top (bit 0 of its road bits) and down the left (bit 1); in a town the pavement
-// is the row and the column at BM_LOT0; everything else is the plot (a lot, a yard, open country). The roads are the map's own bits
-// (blk_roads, with the big places' inner streets gone), never read back from what was painted.
+#if defined(BORE_DC) || defined(ROAD_AUDIT)
 COLD static void blk_street(int bx, int by, int *rd, int *town, int *rv) {   // rv: a river block's bridge: 1 down the left edge, 2 along the top (it carries the street over the water whatever the block's road bits say)
     BInfo b; bm_block(bx, by, &b); *rd = blk_roads(bx, by); *town = b.set != 255 && b.terrain != BT_SEA;
     *rv = b.lot == LOT_RIVER ? ((b.road & BR_MEGA) ? 2 : 1) : 0;
-}
-static inline int tile_class(int rd, int town, int rv, int lx, int ly) {
-    if (((rd & 1) && ly < BM_LOT0) || ((rd & 2) && lx < BM_LOT0)) return TC_ROAD;
-    if (rv == 1 && lx < BM_LOT0 && ly >= BM_LOT0 + 2 && ly <= BM_LOT0 + 8) return TC_ROAD;   // (the bridge: lot_river's asphalt)
-    if (rv == 2 && ly < BM_LOT0 && lx >= BM_LOT0 + 2 && lx <= BM_LOT0 + 8) return TC_ROAD;
-    if (town && ((ly == BM_LOT0 && lx >= BM_LOT0) || (lx == BM_LOT0 && ly >= BM_LOT0))) return TC_KERB;
-    return TC_PLOT;
 }
 COLD int world_tile_class(int tx, int ty) {   // that tile of the city window: TC_ROAD (lanes, the line, crossings), TC_KERB (the pavement) or TC_PLOT
     if (world_zone != ZONE_CITY || world_wbx < 0 || tx < 0 || ty < 0 || tx >= MW || ty >= MH) return TC_PLOT;
     int rd, town, rv; blk_street(world_wbx + tx / BM_BLK, world_wby + ty / BM_BLK, &rd, &town, &rv);
     return tile_class(rd, town, rv, tx % BM_BLK, ty % BM_BLK);
 }
+#endif
 #ifdef ROAD_AUDIT
 // A test build (-DROAD_AUDIT=1): every block made is checked against that definition, and the window is swept over every town, highway
 // and a grid of open country when the first one opens (ra_sweep). Counters in dbg_ra: 0 blocks, 1 props, 2 props on a road tile, 3 walls
@@ -1703,7 +1717,12 @@ static void ra_block(int wx, int wy) {
         }
     }
 }
-static void ra_win(int bx, int by) { world_open_at(bx + 2, by + 2); dbg_ra[6]++; }
+#ifndef RA_PARTS
+#define RA_PARTS 1      /* -DRA_PARTS=4 -DRA_PART=n: the sweep in four runs (each does every fourth window), the counts add up */
+#define RA_PART 0
+#endif
+static int ra_seq;
+static void ra_win(int bx, int by) { if ((ra_seq++ % RA_PARTS) != RA_PART) return; world_open_at(bx + 2, by + 2); dbg_ra[6]++; }
 static void ra_sweep(int hx, int hy) {
     ra_busy = 1;
     for (int i = 0; i < bm_nset(); i++) { const Settle *s = bm_set(i); int r = s->r + 1;
@@ -1712,19 +1731,22 @@ static void ra_sweep(int hx, int hy) {
         for (int k = a & ~3; k <= b; k += 4) { int x = v ? c & ~3 : k, y = v ? k : c & ~3; if (x >= 0 && y >= 0 && x < BM_N && y < BM_N) ra_win(x, y); } }
     for (int y = 0; y < BM_N; y += 64) for (int x = 0; x < BM_N; x += 64) ra_win(x, y);   // (and the open country: one window in sixteen both ways)
     dbg_ra[8] = 1;
-    printf("RA done: windows %d blocks %d props %d ON-ROAD %d walls-on-road %d roadfloor-off-strip %d strip-not-road %d\n", dbg_ra[6], dbg_ra[0], dbg_ra[1], dbg_ra[2], dbg_ra[3], dbg_ra[4], dbg_ra[5]);
-    for (int c = 0; c < 256; c++) if (dbg_rach[c]) printf("RA   '%c'(%02x) x%d\n", c >= 32 && c < 127 ? c : '?', c, dbg_rach[c]);
+#ifdef BORE_DC
+    {   // (the Dreamcast build has the RAM to say it: the PS1 test build has not, it is read from a RAM dump with tools/perf/roadaudit.py)
+        extern void dc_logf(const char *f, ...);
+        dc_logf("RA done: windows %d blocks %d props %d ON-ROAD %d walls-on-road %d roadfloor-off-strip %d strip-not-road %d | generators left on a road (purged) %d\n",
+                dbg_ra[6], dbg_ra[0], dbg_ra[1], dbg_ra[2], dbg_ra[3], dbg_ra[4], dbg_ra[5], dbg_ra[9]);
+        for (int c = 0; c < 256; c++) if (dbg_rapurge[c] || dbg_rach[c]) dc_logf("RA   letter %02x '%c': purged %d, still on a road %d\n", c, c >= 32 && c < 127 ? c : '?', dbg_rapurge[c], dbg_rach[c]);
+    }
+#endif
     ra_busy = 0; world_open_at(hx, hy);
 }
 #endif
 static void gen_block0(int wx, int wy);
 // What may stand on a street tile: nothing (the bus stop's pole is on the pavement). Whatever a generator, an older version's kept tiles or a
 // save put there is taken off, once, after the block is made: the one rule that holds, instead of each generator keeping clear of the road.
-COLD __attribute__((noinline)) static void street_purge(int wx, int wy) {
-    int rd, town, rv; blk_street(world_wbx + wx, world_wby + wy, &rd, &town, &rv);
-    if (!(rd & 3) && !rv) return;
-    for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) {
-        if (tile_class(rd, town, rv, x, y) != TC_ROAD) continue;
+COLD __attribute__((noinline)) static void street_purge(int wx, int wy) {   // (the street rectangles gen_block0 kept for the block just made)
+    for (int i = 0; i < gcur_n; i++) for (int y = gcur_r[i].y0; y <= gcur_r[i].y1; y++) for (int x = gcur_r[i].x0; x <= gcur_r[i].x1; x++) {
         int mx = wx * BM_BLK + x, my = wy * BM_BLK + y; char c = lifeMap[my][mx]; if (c == '.' || c == ' ' || c == 0) continue;
 #ifdef ROAD_AUDIT
         dbg_ra[9]++; if (dbg_rapurge[(u8)c] < 255) dbg_rapurge[(u8)c]++;   // (what the generators put on the road: the purge counts it)
@@ -1735,7 +1757,7 @@ COLD __attribute__((noinline)) static void street_purge(int wx, int wy) {
     }
 }
 COLD static void gen_block(int wx, int wy) {
-    gen_block0(wx, wy); street_purge(wx, wy);
+    gen_block0(wx, wy); street_purge(wx, wy); gcur_n = 0;
 #ifdef ROAD_AUDIT
     ra_block(wx, wy);
 #endif
@@ -1751,6 +1773,7 @@ COLD static void gen_block0(int wx, int wy) {
     for (int k = 0; k < NUP; k++) { Level *L = lv_get(k); if (L) for (int y = 0; y < BM_BLK; y++) memset(&L->map[oy + y][ox], ' ', BM_BLK); }
     int mg = b.lot != LOT_RIVER && (b.road & BR_MEGA), mpart = BR_PART(b.road), mkind = BR_KIND(b.road);
     int rd = b.road & 7; if (mg) { if (mpart & 1) rd &= ~2; if (mpart & 2) rd &= ~1; }   // (inside a big place the streets between its blocks are gone)
+    gcur_ox = ox; gcur_oy = oy; gcur_n = road_rects(rd & 3, b.lot == LOT_RIVER ? ((b.road & BR_MEGA) ? 2 : 1) : 0, gcur_r);   // (from here the generators' props keep off the street)
     const int SW = BM_LOT0, SC = SW / 2;   // the street: five tiles wide, a lane of two each way and the line down the middle
     if (rd & 1) { gBox(ox, oy, ox + BM_BLK - 1, oy + SW - 1, FL_ASPHALT); gBox(ox + SW, oy + SC, ox + BM_BLK - 1, oy + SC, FL_LINE_H); }
     if (rd & 2) { gBox(ox, oy, ox + SW - 1, oy + BM_BLK - 1, FL_ASPHALT); gBox(ox + SC, oy + SW, ox + SC, oy + BM_BLK - 1, FL_LINE_V); }

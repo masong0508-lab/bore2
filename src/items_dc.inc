@@ -28,16 +28,19 @@ static const u16 pLampO[4] = { RGB(8,8,10), RGB(30,15,3), RGB(31,24,8), RGB(12,1
 MAT(mLampPole, pLampO, 1, 1, "d")
 MAT(mLampBase, pLampO, 1, 1, "a")
 MAT(mLampShadeO, pLampO, 4, 4, "bcbc", "cbcb", "bcbc", "cbcb")
-static const IBox bxLampO[3] = { {2,2,6,6,0,1,{&mLampBase,&mLampBase,&mLampBase,&mLampBase,&mLampBase}}, {3,3,5,5,1,11,{&mLampPole,&mLampPole,&mLampPole,&mLampPole,&mLampPole}},
-                                 {2,2,6,6,11,16,{&mLampShadeO,&mLampShadeO,&mLampShadeO,&mLampShadeO,&mLampShadeO}} };
+// the shade sits on a collar on the pole and narrows towards the top (a lamp shade, not a floating cube); the lamp's bright box is the shade's own texture
+static const IBox bxLampO[5] = { {2,2,6,6,0,1,{&mLampBase,&mLampBase,&mLampBase,&mLampBase,&mLampBase}}, {3,3,5,5,1,10,{&mLampPole,&mLampPole,&mLampPole,&mLampPole,&mLampPole}},
+                                 {2,2,6,6,10,11,{&mLampBase,&mLampBase,&mLampBase,&mLampBase,&mLampBase}},
+                                 {1,1,7,7,11,13,{&mLampShadeO,&mLampShadeO,&mLampShadeO,&mLampShadeO,&mLampShadeO}}, {2,2,6,6,13,16,{&mLampShadeO,&mLampShadeO,&mLampShadeO,&mLampShadeO,&mLampShadeO}} };
 static const u16 pLampB[4] = { RGB(8,8,10), RGB(8,14,28), RGB(14,26,31), RGB(12,12,14) };
 MAT(mLampShadeB, pLampB, 4, 4, "bcbc", "cbcb", "bcbc", "cbcb")
-static const IBox bxLampB[3] = { {2,2,6,6,0,1,{&mLampBase,&mLampBase,&mLampBase,&mLampBase,&mLampBase}}, {3,3,5,5,1,11,{&mLampPole,&mLampPole,&mLampPole,&mLampPole,&mLampPole}},
-                                 {2,2,6,6,11,16,{&mLampShadeB,&mLampShadeB,&mLampShadeB,&mLampShadeB,&mLampShadeB}} };
+static const IBox bxLampB[5] = { {2,2,6,6,0,1,{&mLampBase,&mLampBase,&mLampBase,&mLampBase,&mLampBase}}, {3,3,5,5,1,10,{&mLampPole,&mLampPole,&mLampPole,&mLampPole,&mLampPole}},
+                                 {2,2,6,6,10,11,{&mLampBase,&mLampBase,&mLampBase,&mLampBase,&mLampBase}},
+                                 {1,1,7,7,11,13,{&mLampShadeB,&mLampShadeB,&mLampShadeB,&mLampShadeB,&mLampShadeB}}, {2,2,6,6,13,16,{&mLampShadeB,&mLampShadeB,&mLampShadeB,&mLampShadeB,&mLampShadeB}} };
 #define ITEMS_DC \
     { (char)0xF7, "DREAMCAST", bxDcConsole, 2, 0, 0, F_ROT, 300 },   \
     { (char)0xF8, "VMU ON A STAND", bxVmuStand, 3, 0, 0, F_ROT, 120 },   \
     { (char)0xF9, "SWIRL RUG", bxSwRug, 1, 0, 0, F_FLAT, 90 },   \
     { (char)0xFA, "DC ARCADE CABINET", bxDcArcade, 4, 0, 0, F_ROT, 1200 },   \
-    { (char)0xFB, "ORANGE SWIRL LAMP", bxLampO, 3, 0, 0, 0, 110 },   \
-    { (char)0xFC, "BLUE SWIRL LAMP", bxLampB, 3, 0, 0, 0, 110 },
+    { (char)0xFB, "ORANGE SWIRL LAMP", bxLampO, 5, 0, 0, 0, 110 },   \
+    { (char)0xFC, "BLUE SWIRL LAMP", bxLampB, 5, 0, 0, 0, 110 },
