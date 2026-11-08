@@ -5,6 +5,9 @@
 #include "items.h"
 #include "tex.h"
 #include "wallart.h"
+#ifdef WALLS_DISC
+#include "audio.h"
+#endif
 #include "bigmap.h"
 #include "mem8.h"
 #include "pop.h"
@@ -205,12 +208,17 @@ void world_init(void) {
         wp_top[i] = look_wp_avg(i);
     }
     for (int i = 0; i < NWX; i++) {   // the KHLVH set is pre-shaded 12/16 for the left face: lift it back
+#ifdef WALLS_DISC   // PS1: the finished 8 x 24 textures are the disc file WALLS.BIN (tools/make_walls.py, lift done): the indices and palettes (22.7 KB) are not in RAM
+        if (i % 32 == 0) { int n = MIN(32, NWX - i); if (!audio_cd_part("WALLS.BIN", (u32)(i / 4), (n + 3) / 4, TB)) for (int k = 0; k < 32 * 256; k++) TB[k] = 0x4210; }   // (32 of them, 16 KB: the upper half exactly; a file that cannot be read leaves grey walls)
+        wp_tex[NWP + i] = atlas_add(8, 24, TB + (i % 32) * 256);
+#else
         for (int y = 0; y < 24; y++) for (int x = 0; x < 8; x++) {
             u16 c = wxPal[wxPalOff[i] + wxIdx[i][x][y]];
             int r = MIN(31, C_R(c) * 16 / 12), g = MIN(31, C_G(c) * 16 / 12), b = MIN(31, C_B(c) * 16 / 12);
             u16 o = RGB(r, g, b); TB[y * 8 + x] = o ? o : 0x8000;
         }
         wp_tex[NWP + i] = atlas_add(8, 24, TB);
+#endif
         wp_top[NWP + i] = wxAvg[i];
     }
     for (int i = 0; i < NWPNEW; i++) {

@@ -11,6 +11,7 @@ project(
 psn00bsdk_add_executable(bore2 GPREL
 	src/main.c src/gfx.c src/atlas.c src/look.c src/voxel.c src/items.c src/world.c src/sim.c src/traits.c src/wants.c src/citizens.c src/audio.c src/font.c src/fmt.c src/pad.c src/mcard.c src/save.c src/crowd.c src/mem8.c src/bigmap.c src/pop.c src/far.c src/ui.c src/places.c src/home.c src/island.c src/nature.c src/story.c src/skate.c src/traffic.c src/gotchi.c src/band.c src/dog.c src/ghost.c src/ovl.c src/realm_res.c src/arcade_res.c ${CMAKE_BINARY_DIR}/ovl_keep.c)
 target_include_directories(bore2 PRIVATE src assets)
+target_compile_definitions(bore2 PRIVATE WALLS_DISC=1)   # (src/world.c: the wallpapers are the disc file WALLS.BIN, 22.7 KB less resident)
 if(NOT BORE_OPT)
 	set(BORE_OPT -O2)
 endif()
@@ -114,7 +115,7 @@ psn00bsdk_add_cd_image(
 	iso
 	bore2
 	iso.xml
-	DEPENDS ${CMAKE_SOURCE_DIR}/assets/FONTS.BIN bore2 system.cnf overlays slots ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/ARCADE2.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/SUPER.OVL ${CMAKE_BINARY_DIR}/DOG.OVL ${CMAKE_BINARY_DIR}/PRISON.OVL ${CMAKE_BINARY_DIR}/SPACE.OVL ${CMAKE_BINARY_DIR}/PARADISE.OVL ${CMAKE_BINARY_DIR}/FARM.OVL ${CMAKE_BINARY_DIR}/SKYSEA.OVL ${CMAKE_BINARY_DIR}/CUT.OVL ${CMAKE_BINARY_DIR}/CLOCK.OVL ${CMAKE_BINARY_DIR}/CREATE.OVL ${CMAKE_BINARY_DIR}/PKINFO.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
+	DEPENDS ${CMAKE_SOURCE_DIR}/assets/FONTS.BIN ${CMAKE_SOURCE_DIR}/assets/WALLS.BIN bore2 system.cnf overlays slots ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/ARCADE2.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/SUPER.OVL ${CMAKE_BINARY_DIR}/DOG.OVL ${CMAKE_BINARY_DIR}/PRISON.OVL ${CMAKE_BINARY_DIR}/SPACE.OVL ${CMAKE_BINARY_DIR}/PARADISE.OVL ${CMAKE_BINARY_DIR}/FARM.OVL ${CMAKE_BINARY_DIR}/SKYSEA.OVL ${CMAKE_BINARY_DIR}/CUT.OVL ${CMAKE_BINARY_DIR}/CLOCK.OVL ${CMAKE_BINARY_DIR}/CREATE.OVL ${CMAKE_BINARY_DIR}/PKINFO.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
 )
 
 # the disc as one file: BORE2.chd (DuckStation, SwanStation and the libretro PlayStation cores open it)
@@ -130,7 +131,7 @@ psn00bsdk_add_cd_image(
 	iso_base
 	bore2_base
 	iso_base.xml
-	DEPENDS ${CMAKE_SOURCE_DIR}/assets/FONTS.BIN bore2 system.cnf overlays slots
+	DEPENDS ${CMAKE_SOURCE_DIR}/assets/FONTS.BIN ${CMAKE_SOURCE_DIR}/assets/WALLS.BIN bore2 system.cnf overlays slots
 )
 add_custom_command(
 	OUTPUT  ${CMAKE_BINARY_DIR}/BORE2-base.chd
@@ -153,7 +154,7 @@ psn00bsdk_add_cd_image(
 	iso_lite
 	bore2_lite
 	iso_lite.xml
-	DEPENDS ${CMAKE_SOURCE_DIR}/assets/FONTS.BIN bore2 system.cnf overlays slots ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/ARCADE2.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/SUPER.OVL ${CMAKE_BINARY_DIR}/DOG.OVL ${CMAKE_BINARY_DIR}/PRISON.OVL ${CMAKE_BINARY_DIR}/SPACE.OVL ${CMAKE_BINARY_DIR}/PARADISE.OVL ${CMAKE_BINARY_DIR}/FARM.OVL ${CMAKE_BINARY_DIR}/SKYSEA.OVL ${CMAKE_BINARY_DIR}/CUT.OVL ${CMAKE_BINARY_DIR}/CLOCK.OVL ${CMAKE_BINARY_DIR}/CREATE.OVL ${CMAKE_BINARY_DIR}/PKINFO.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
+	DEPENDS ${CMAKE_SOURCE_DIR}/assets/FONTS.BIN ${CMAKE_SOURCE_DIR}/assets/WALLS.BIN bore2 system.cnf overlays slots ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/ARCADE2.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/SUPER.OVL ${CMAKE_BINARY_DIR}/DOG.OVL ${CMAKE_BINARY_DIR}/PRISON.OVL ${CMAKE_BINARY_DIR}/SPACE.OVL ${CMAKE_BINARY_DIR}/PARADISE.OVL ${CMAKE_BINARY_DIR}/FARM.OVL ${CMAKE_BINARY_DIR}/SKYSEA.OVL ${CMAKE_BINARY_DIR}/CUT.OVL ${CMAKE_BINARY_DIR}/CLOCK.OVL ${CMAKE_BINARY_DIR}/CREATE.OVL ${CMAKE_BINARY_DIR}/PKINFO.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART
 )
 
 # the quick disc with every pack a stub (what the base game looks like without patches), for testing
@@ -161,5 +162,5 @@ psn00bsdk_add_cd_image(
 	iso_lite_base
 	bore2_lite_base
 	iso_lite_base.xml
-	DEPENDS ${CMAKE_SOURCE_DIR}/assets/FONTS.BIN bore2 system.cnf overlays slots
+	DEPENDS ${CMAKE_SOURCE_DIR}/assets/FONTS.BIN ${CMAKE_SOURCE_DIR}/assets/WALLS.BIN bore2 system.cnf overlays slots
 )

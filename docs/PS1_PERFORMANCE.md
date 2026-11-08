@@ -1,5 +1,8 @@
 # PS1 speed and streaming: where it stands
 
+## RAM round (Nov 8): the wallpapers moved to the disc
+Plain Release, 2 MB: `_end` 0x1f8290, **32,112 bytes free past `_end`** (it was 0x1fdd00, 8,960 free after the traits engine). The 89 KHLVH wallpapers (indices 17,088 + palettes 5,676 + a table, 22.7 KB resident) are now the disc file `WALLS.BIN` (`tools/make_walls.py` reads `src/wallart.h`; the lift x16/12 is done in the file; 512 bytes a wallpaper, 47,104 bytes, last file before the disc's end padding so no pack slot moves). `world_init` reads 32 of them at a time (8 sectors) into the atlas scratch's upper half and uploads from there (`WALLS_DISC`, defined for the PS1 target in CMakeLists.txt; Dreamcast and the other ports keep the arrays). A read that fails leaves grey walls. Boot-only: no change to the city frame. Checked: a checksum of the loaded block in a DuckStation run equals the file's. Names and averages (`wxName`, `wxAvg`) stay resident. Packs order test: all good; GOTCHI.OVL 152,136 of 155,648 (slot) / 156,096 (arena).
+
 ## Round 5 (Nov 8): block baking tried on the ground, measured, not kept
 **Short answer: 30 fps is not reachable by baking, and a solid 25 is not either. Nothing from the bake is in the build.** The experiment is saved as `tools/perf/round5_floor_cells.patch` (a diff of `src/world.c`; apply it with patch, build with `-DFB_OFF=1` for the old path in the same code).
 

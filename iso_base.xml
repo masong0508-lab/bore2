@@ -43,6 +43,7 @@
 			<file name="BOREPILG.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_base/BOREPILG.OVL" />
 			<file name="PKINFO.OVL" type="data" source="${CMAKE_BINARY_DIR}/PKINFO.OVL" />
 			<file name="GOTCHI.ART" type="data" source="${CMAKE_BINARY_DIR}/slot_base/GOTCHI.ART" />
+			<file name="WALLS.BIN" type="data" source="${PROJECT_SOURCE_DIR}/assets/WALLS.BIN" />
 			<dummy sectors="512"/>
 		</directory_tree>
 	</track>

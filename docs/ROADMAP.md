@@ -79,7 +79,7 @@ About 31-52 fps in the city in the emulator. 60 needs under 262 hblanks per fram
 - PS1: PSn00bSDK, DuckStation regtest (`test/ds.sh`), `tools/perf/*`.
 
 ## Rules to keep
-- Keep more than 10 KB free past `_end` on a 2 MB PS1; check 8 MB too.
+- Keep more than 10 KB free past `_end` on a 2 MB PS1; check 8 MB too. (Now 32,112 bytes free, `_end` 0x1f8290: the wallpapers are the disc file WALLS.BIN, docs/PS1_PERFORMANCE.md.)
 - PS1 test builds must be Release.
 - Commit and push with `git pull --rebase` first.
 - Old saves must keep loading (bump VERSION in src/save.c for new blocks).
