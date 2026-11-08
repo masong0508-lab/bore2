@@ -25,8 +25,8 @@ static const u16 p_g_glass[2]={RGB(19,25,28),RGB(22,27,30)};
 MAT(g_glass,p_g_glass,2,2,"ab","ba")
 static const u16 p_g_lcd[2]={RGB(19,23,14),RGB(4,6,3)};
 MAT(g_lcd,p_g_lcd,8,8,"aaaaaaaa","aabbbbaa","abbaabba","abbbbbba","abbaabba","abbbbbba","aabbbbaa","aaaaaaaa")
-static const u16 p_g_egg[3]={RGB(29,12,22),RGB(31,26,6),RGB(8,14,28)};
-MAT(g_egg,p_g_egg,8,8,"aaaaaaaa","aabaaaaa","abbbaacc","aabaaccc","aaaaaacc","aaaaaaaa","aabaabaa","aaaaaaaa")
+static const u16 p_g_egg[6]={RGB(21,24,16),RGB(11,3,6),RGB(29,23,22),RGB(28,18,20),RGB(31,31,30),RGB(24,6,13)};
+MAT(g_egg,p_g_egg,8,8,"aabbbbaa","abccccba","abecccba","befccfdb","bcffffdb","bccffcdb","abcdddba","aabbbbaa")
 static const IBox bxGot0[6]={{1,1,7,7,0,2,{&g_purple,&g_purple,&g_purple,&g_purple,&g_purple}},{2,2,6,6,2,9,{&g_egg,&g_egg,&g_egg,&g_egg,&g_egg}},{3,3,5,5,9,11,{&g_pink,&g_pink,&g_pink,&g_pink,&g_pink}},{3,6,5,7,4,8,{&g_lcd,&g_dark,&g_dark,&g_dark,&g_dark}},{3,6,4,7,3,4,{&g_yellow,&g_yellow,&g_yellow,&g_yellow,&g_yellow}},{4,6,5,7,3,4,{&g_yellow,&g_yellow,&g_yellow,&g_yellow,&g_yellow}}};
 static const IBox bxGot1[8]={{0,5,8,7,0,14,{&g_wood,&g_wood,&g_wood,&g_wood,&g_wood}},{0,2,8,7,3,4,{&g_wood,&g_wood,&g_wood,&g_wood,&g_wood}},{0,2,8,7,8,9,{&g_wood,&g_wood,&g_wood,&g_wood,&g_wood}},{0,2,8,7,13,14,{&g_wood,&g_wood,&g_wood,&g_wood,&g_wood}},{1,3,3,5,4,7,{&g_pink,&g_pink,&g_pink,&g_pink,&g_pink}},{5,3,7,5,4,7,{&g_blue,&g_blue,&g_blue,&g_blue,&g_blue}},{2,3,4,5,9,12,{&g_yellow,&g_yellow,&g_yellow,&g_yellow,&g_yellow}},{5,3,7,5,9,12,{&g_green,&g_green,&g_green,&g_green,&g_green}}};
 static const IBox bxGot2[5]={{0,2,8,7,0,16,{&g_wood,&g_wood,&g_wood,&g_wood,&g_wood}},{1,7,7,8,2,14,{&g_glass,&g_glass,&g_glass,&g_glass,&g_glass}},{2,3,4,5,3,7,{&g_pink,&g_pink,&g_pink,&g_pink,&g_pink}},{4,3,6,5,8,11,{&g_blue,&g_blue,&g_blue,&g_blue,&g_blue}},{0,2,8,7,16,17,{&g_gold,&g_gold,&g_gold,&g_gold,&g_gold}}};

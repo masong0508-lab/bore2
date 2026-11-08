@@ -128,7 +128,7 @@ static void tick(Toy *t, int slot) {
     else { b->fl &= (u8)~GF_CALL; b->needT = 0; if (!sl && b->hun >= 3 && b->hap >= 3 && b->age % (p == GP_GENTLE ? 90 : 120) == 0 && b->bond < 100) b->bond++; }
     static const u16 grow[5] = { 0, 240, 720, 1440, 2880 };
     if (b->stage < GS_ELDER && b->age >= grow[b->stage]) {
-        b->stage++; b->age = 0;
+        b->stage++; b->age = 0; if (b->stage == GS_CHILD) b->form &= 127;   // (the mystery egg's mark, form bit 7 on an egg, stays through the baby and is dropped here)
         if (b->stage == GS_TEEN) b->form = b->miss <= 2 ? 0 : 1;
         if (b->stage == GS_ADULT) {
             b->form = (b->miss <= 1 && b->bond >= 80 && b->disc >= 50) ? 3 : (b->snk > b->meal && b->snk >= 6) ? 2 : (b->wt >= 22 && b->miss <= 3) ? 5 : (b->miss <= 2 && b->disc >= 50 && b->wt <= 14) ? 4 : (b->miss <= 2 && b->disc >= 50) ? 0 : 1;

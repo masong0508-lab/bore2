@@ -11,8 +11,15 @@ for n, (a, b) in mats.items():
     out.append('MAT(g_%s,p_g_%s,2,2,"ab","ba")' % (n, n))
 out.append('static const u16 p_g_lcd[2]={RGB(19,23,14),RGB(4,6,3)};')
 out.append('MAT(g_lcd,p_g_lcd,8,8,"aaaaaaaa","aabbbbaa","abbaabba","abbbbbba","abbaabba","abbbbbba","aabbbbaa","aaaaaaaa")')
-out.append('static const u16 p_g_egg[3]={RGB(29,12,22),RGB(31,26,6),RGB(8,14,28)};')
-out.append('MAT(g_egg,p_g_egg,8,8,"aaaaaaaa","aabaaaaa","abbbaacc","aabaaccc","aaaaaacc","aaaaaaaa","aabaabaa","aaaaaaaa")')
+# the egg on the toy's LCD, from the same data as the game's eggs (tools/make_gotchi_first.py: the 8x9 LCD egg, heart pattern, pink, one row out): a the LCD, b outline, c body, d shade, e highlight, f spots
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import make_gotchi_first as GF
+EGG_INK = (214, 58, 120)   # the pink of the PAL row 1 in src/gotchi_ui.c
+ek = {'#': 'b', 'm': 'c', 'd': 'd', 'h': 'e', 'o': 'f', '.': 'a'}
+pal = [GF.LCD_ON] + [GF.egg_rgb(EGG_INK, k) for k in '#mdho']
+out.append('static const u16 p_g_egg[6]={%s};' % ','.join('RGB(%d,%d,%d)' % tuple(c >> 3 for c in col) for col in pal))
+out.append('MAT(g_egg,p_g_egg,8,8,%s)' % ','.join('"%s"' % ''.join(ek[c] for c in r) for r in GF.item_tex()))
 M = lambda n: n
 def B(x0,y0,x1,y1,z0,z1,m,top=None):
     mm = ['&g_%s' % (top or m)] + ['&g_%s' % m]*4

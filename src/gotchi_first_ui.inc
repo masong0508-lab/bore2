@@ -6,7 +6,7 @@ static int f_ease(int p, int n) { p = CLAMP(p, 0, n); int q = 256 - p * 256 / n;
 static int f_wave(int t, int per, int amp) { return isin((t * 4096 / per) & 4095) * amp >> 12; }
 static void f_toy(int x, int y, int sx16, int sy, int front, int lcd, int etilt) {   // the toy (x, y its corner); the egg shows in its LCD
     int a = fsx, b = fsy; fsx = sx16; fsy = sy;
-    if (front) { SPR(TOY_FRONT, x, y, 0, 0); if (lcd) { fsq = 1; f_spr(egg_make(2, egg_pat(cb(), ck()), 0), FS_EGGS_W, FS_EGGS_H, x + (7 * sx16 >> 4), y + 10 * sy, etilt, 0); fsq = 0; } } else SPR(TOY_BACK, x, y, 0, 0);   // (the LCD is 12 x 11 art pixels: the egg 8 x 9 sits in the middle of it)
+    if (front) { SPR(TOY_FRONT, x, y, 0, 0); if (lcd) { fsq = 1; f_spr(egg_make(2, egg_pat(cb(), ck()), 0), FS_EGGS_W, FS_EGGS_H, x + (7 * sx16 >> 4), y + 10 * sy, etilt, 0); fsq = 0; if (cb()->form & 128) f_spark(x + (15 * sx16 >> 4), y + (11 - ((anim >> 3) & 1) * 2) * sy, (anim >> 4) & 1); } } else SPR(TOY_BACK, x, y, 0, 0);   // (the LCD is 12 x 11 art pixels: the egg 8 x 9 sits in the middle of it)
     fsx = a; fsy = b;
 }
 static void f_rays(int cx, int cy, int n, int r0, int r1, int rot, int cr, int cg, int cb, int sz) {   // beams of light from a point (thin lines, three wide; sz 0: all but every other one)
@@ -139,12 +139,13 @@ static void draw_hatch(void) {
         for (int i = 0; i < 12; i++) { u32 q = hsh(i * 17 + 3); int vx = (int)(q % 61) - 30, vy = -(30 + (int)((q >> 8) % 36)), x = 154 + vx * u / 4, y = 74 + vy * u / 6 + u * u / 14; fsx = 80; fsy = 5; f_spr(fsShard[i & 3], fsShardW[i & 3], fsShardH[i & 3], x, y, 0, ((u >> 2) + i) & 1); }
         for (int i = 0; i < 6; i++) { int ph = (u * 2 + i * 31) % 50; if (u > 6 && ph < 36) f_spark(lx + 22 + (int)(hsh(i * 29 + 1) % (lw - 44)), ly + 16 + (int)(hsh(i * 19 + 5) % 60), ph < 20 ? 1 : 0); }
     }
+    if (pat == FS_EGG_MYS && h < 88) for (int i = 0; i < 4; i++) { int ph = (h * 2 + i * 23) % 56; if (ph < 30) f_spark(lx + 30 + i * 46 + (int)(hsh(i + 7) % 12), ly + 26 + (i & 1) * 44 + (int)(hsh(i + 2) % 16), ph < 15 ? 1 : 0); }   // (the mystery egg twinkles)
     f_noclip();
     { char s[56], nm[40];
       if (h < 52) tshadowc(160, 170, "SOMETHING IS MOVING INSIDE...", 255, 255, 255);
       else if (h < 88) { int w = f_banner_w(2, "IT IS CRACKING!"); f_banner(160, 166 + ((h >> 2) & 1), 2, "IT IS CRACKING!", -1); (void)w; }
       else if (h < 112) { int k2 = h - 88; f_banner(160, 164 + (k2 < 6 ? (6 - k2) * 2 : 0), 3, "POP!", -1); }
       else if (h >= 112) { int k2 = h - 112; f_banner(160, 164 + (k2 < 6 ? (6 - k2) : 0), 2, "IT HATCHED!", k2 > 12 ? 100 + (anim * 4) % 200 : -1); gx_name(b, nm); sprintf(s, "%s THE %s", gx_given(b->nm), nm); tshadowc(160, 184, s, 255, 255, 255);
-             if (k->mut || b->sp >= 16) tshadowc(160, 195, "A RARE ONE!", 255, 130, 200); else { sprintf(s, "%s, %s. GEN %d", gx_colour(k->col), gx_pers(k->pers), b->gen + 1); tshadowc(160, 195, s, 190, 200, 255); } }
+             if (k->mut || b->sp >= 16) tshadowc(160, 195, "A RARE ONE!", 255, 130, 200); else if (pat == FS_EGG_MYS) tshadowc(160, 195, "FROM A MYSTERY EGG!", 255, 220, 90); else { sprintf(s, "%s, %s. GEN %d", gx_colour(k->col), gx_pers(k->pers), b->gen + 1); tshadowc(160, 195, s, 190, 200, 255); } }
       if (h > 130) f_prompt("X SAY HELLO"); }
 }

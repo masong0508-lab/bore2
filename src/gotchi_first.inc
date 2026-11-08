@@ -1,15 +1,16 @@
 // gotchi_first.inc - the BOREAGOTCHI! screens' sky and the first run's pixel-art helpers (included by gotchi_ui.c; its art is gotchi_first_art.h,
 // made by tools/make_gotchi_first.py). A sprite is drawn as runs of boxes: scaled in 16ths across and whole pixels down, tilted (a row-by-row slide:
 // a wobble), flipped, clipped to a box (the LCD), in the colours of the keys: the toy's shell, the LCD and the egg's ink are set by f_setup.
-static u8 fm[128][3];
+static u8 fm[96][3];   // the colour of each key (a character from # to z)
 static int fsx = 64, fsy = 4, fsemi, fsq, fcx0, fcy0, fcx1 = 320, fcy1 = 240;   // the pixel's size (16ths across, pixels down), see-through, the clip box
-static void f_key(int k, int r, int g, int b) { fm[k & 127][0] = (u8)r; fm[k & 127][1] = (u8)g; fm[k & 127][2] = (u8)b; }
+static void f_key(int k, int r, int g, int b) { u8 *m = fm[(k & 127) - 32]; m[0] = (u8)r; m[1] = (u8)g; m[2] = (u8)b; }
+static void f_eggcols(int ink) { for (const char *e = "#mdhouxX"; *e; e++) { u8 o[3]; egg_rgb(ink % 8, (int)(strchr(eggKeys, *e) - eggKeys), o); f_key(*e, o[0], o[1], o[2]); } }   // the egg's colours from the pet's (the same as on the LCD dots)
 static void f_setup(int shell, int ink, int lcd) {   // the owner's colour for the shell, a pet colour for the egg's ink, the LCD on (1) or off (0)
     for (int i = 0; i < FS_PAL_N; i++) f_key(FS_PAL[i][0], FS_PAL[i][1], FS_PAL[i][2], FS_PAL[i][3]);
     const u8 *sh = PAL[1 + shell % 7];
     f_key('S', MIN(255, sh[0] + 40), MIN(255, sh[1] + 40), MIN(255, sh[2] + 40)); f_key('s', sh[0], sh[1], sh[2]); f_key('z', sh[0] * 6 / 10, sh[1] * 6 / 10, sh[2] * 6 / 10);
     if (lcd) { f_key('L', 172, 196, 128); f_key('l', 150, 176, 108); } else { f_key('L', 58, 72, 70); f_key('l', 44, 56, 56); }
-    for (const char *e = "#mdhou"; *e; e++) { u8 o[3]; egg_rgb(ink % 8, (int)(strchr(eggKeys, *e) - eggKeys), o); f_key(*e, o[0], o[1], o[2]); }   // the egg's colours from the pet's (the same as on the LCD dots)
+    f_eggcols(ink);
 }
 static void f_clip(int x0, int y0, int x1, int y1) { fcx0 = x0; fcy0 = y0; fcx1 = x1; fcy1 = y1; }
 static void f_noclip(void) { f_clip(0, 0, 320, 240); }
@@ -24,7 +25,7 @@ static void f_spr(const char *const *rows, int w, int h, int x, int y, int tilt,
         for (int i = 0; i < w;) {
             int c = flip ? r[w - 1 - i] : r[i]; if (c == '.') { i++; continue; }
             int k = i + 1; while (k < w && (flip ? r[w - 1 - k] : r[k]) == c) k++;
-            const u8 *m = fm[c & 127]; f_rect(x + sh + (i * fsx >> 4), yy, ((k * fsx >> 4) - (i * fsx >> 4)), fsy, m[0], m[1], m[2], fsemi); i = k;
+            const u8 *m = fm[(c & 127) - 32]; f_rect(x + sh + (i * fsx >> 4), yy, ((k * fsx >> 4) - (i * fsx >> 4)), fsy, m[0], m[1], m[2], fsemi); i = k;
         }
     }
 }
@@ -37,6 +38,10 @@ static void f_spark(int cx, int cy, int size) {   // a twinkle: 0 small, 1 middl
     int sx = fsx, sy = fsy, se = fsemi; f_scale(2); fsemi = 1; f_add();
     if (size == 0) f_spr(FS_SPK_S, 3, 3, cx - 3, cy - 3, 0, 0); else if (size == 1) f_spr(FS_SPK_M, 5, 5, cx - 5, cy - 5, 0, 0); else f_spr(FS_SPK_L, 7, 9, cx - 7, cy - 9, 0, 0);
     fsx = sx; fsy = sy; fsemi = se;
+}
+static void f_glyph(int kind, int x, int y, int ink, int pat) {   // a little egg for the diary and the tree, a dot a pixel: 0 an egg (pattern pat), 1 a mystery egg, 2 a hatching egg (9 pixels tall at most)
+    f_eggcols(ink); f_key('g', 255, 208, 60); fsx = 16; fsy = 1; fsq = 0;   // (the next sprite sets its own size)
+    f_spr(egg_make(2, kind == 1 ? FS_EGG_MYS : pat, kind == 2 ? 3 : 0), FS_EGGS_W, FS_EGGS_H, x, y, 0, 0);
 }
 static void f_disc(int cx, int cy, int r, int cr, int cg, int cb) {   // a chunky circle, added to what is under it
     f_add(); int st = MAX(3, r / 10);

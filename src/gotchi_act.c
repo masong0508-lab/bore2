@@ -46,7 +46,7 @@ const char *gx_game(int g) { return gameNm[g % NGAME]; }
 const char *gx_room(int r) { return roomNm[r % 6]; }
 void gx_name(const Blob *b, char *out) {
     out[0] = 0; if (b->stage == GS_ELDER) strcpy(out, "OLD "); else if (b->stage == GS_ADULT) { strcpy(out, formNm[b->form % GFORMS]); strcat(out, " "); } else if (b->stage == GS_TEEN) strcpy(out, b->form ? "SLOUCHY " : "ANGSTY ");
-    strcat(out, b->stage == GS_EGG ? "EGG" : spNm[b->sp % GSP_N]); if (b->stage == GS_BABY) strcat(out, " BABY");
+    strcat(out, b->stage == GS_EGG ? ((b->form & 128) ? "MYSTERY EGG" : "EGG") : spNm[b->sp % GSP_N]); if (b->stage == GS_BABY) strcat(out, " BABY");
 }
 const char *gx_want(const Blob *b) {
     if (b->stage == GS_EGG) return "STILL AN EGG";
@@ -59,6 +59,7 @@ void gx_diary(const Diary *d, char *out) {   // the diary tells it as a story: w
     int kd = d->kind & 31, sg = d->kind >> 5; const Line *l = gotchi_line(d->id); char w[32], t[40]; sprintf(t, "%s %02d  ", dayNm[(d->day / 24) % 7], d->day % 24);
     if (kd == GD_AWARD) { sprintf(out, "%sAWARD: %s", t, achNm[d->id % NACH]); return; }
     if (kd == GD_DAY) { sprintf(out, "%sGOODNIGHT. %d CARES TODAY", t, d->id); return; }
+    if (kd == GD_EGG && sg) { sprintf(out, "%sA VISITOR LEFT A MYSTERY EGG", t); return; }
     if (l) sprintf(w, "%s THE %s", giv[l->nm & 31], spNm[l->sp % GSP_N]); else strcpy(w, "A PET");
     if (kd == GD_BEST) { sprintf(out, "%s%s BEAT ITS BEST AT %s", t, w, gameNm[sg]); return; }
     if (kd == GD_TRAIN && sg) { sprintf(out, "%s%s TRAINED ITS %s", t, w, gx_skill(sg - 1)); return; }
@@ -216,7 +217,7 @@ static void friend2(Toy *t, int i, int j, int n) {   // two pets of one toy grow
     if (c->bff != i + 1) { if (c->fnd < 8 || !c->bff) { c->bff = (u8)(i + 1); c->fnd = 1; } } else if (c->fnd < 100) { c->fnd = (u8)MIN(100, c->fnd + n); }
     if (a->bff == j + 1 && c->bff == i + 1 && a->fnd >= 10 && a->fnd - n < 10) gotchi_diary(GD_FRIEND, t->k[i].id);
 }
-static int power(const Blob *b, const Kin *k) { return (b->hun + b->hap) * 3 + b->disc / 8 + b->stage * 5 + b->bond / 10 - b->miss * 2 - (b->fl & GF_SICK ? 10 : 0) + (b->form == 0 || b->form == 3 || b->form == 4 ? 4 : 0) + (k->pers == GP_BOLD ? 5 : 0); }
+static int power(const Blob *b, const Kin *k) { return (b->hun + b->hap) * 3 + b->disc / 8 + b->stage * 5 + b->bond / 10 - b->miss * 2 - (b->fl & GF_SICK ? 10 : 0) + ((b->form & 127) == 0 || b->form == 3 || b->form == 4 ? 4 : 0) + (k->pers == GP_BOLD ? 5 : 0); }
 const char *gx_meet(Toy *t, int a, Toy *u, int c, int battle) {
     Blob *x = &t->b[a], *y = &u->b[c]; Kin *kx = &t->k[a], *ky = &u->k[c];
     if (x != y && x->on && y->on && x->stage > GS_EGG && y->stage > GS_EGG && !((x->fl | y->fl) & GF_SLEEP) && (t->x[a].nrg < 10 || u->x[c].nrg < 10)) return "TOO TIRED TO PLAY. LET THEM REST";
@@ -274,7 +275,7 @@ const char *gx_event_do(Toy *t, int slot, int kind, int ok) {   // the reaction 
     case 3: if (ok) { if (!(x->wish & 7)) x->wish = (u8)(1 + rr() % 6); up(&b->hap, 4, 1); up(&x->nrg, 100, 15); gotchi_xp(t, 2); return "YOU WISHED ON A STAR. IT FEELS HOPEFUL"; } return "THE STAR FADED";
     case 4: if (ok) { up(&b->bond, 100, 3); b->fl &= (u8)~GF_TANTRUM; gotchi_xp(t, 2); tch(t, slot); return "THUNDER! YOU HELD IT CLOSE. SO BRAVE"; } up(&b->hap, 4, -1); return "THUNDER! IT HID, SCARED";
     default: if (ok) { int c = 8 + rr() % 12 + ch; cashup(t, c); up(&b->hap, 4, 1); sprintf(em, "A VISITOR GAVE A GIFT. +$%d", c);
-                       if (!(rr() % 25)) { for (int e = 0; e < GB_N; e++) if (!t->b[e].on) { gotchi_egg(t, e); return "A VISITOR LEFT A MYSTERY EGG!"; } } return em; } return "THE VISITOR WAVED AND WENT";
+                       if (!(rr() % 25)) { for (int e = 0; e < GB_N; e++) if (!t->b[e].on) { gotchi_egg(t, e); t->b[e].form = 128; gotchi_diary(GD_EGG | 1 << 5, t->k[e].id); return "A VISITOR LEFT A MYSTERY EGG!"; } } return em; } return "THE VISITOR WAVED AND WENT";
     }
 }
 // ---- one-press care: what to give, without opening a list ----

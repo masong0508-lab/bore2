@@ -741,9 +741,13 @@ static void life_update(int steps) {
         }
         else {   // (the guide's pictures: the toy's things about the house, the catalog, the options)
             int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), put = 0; static const u8 ch[9] = { 0xBE, 0xBF, 0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6 };
-            for (int r = 1; r < 8 && put < 9; r++) for (int dy = -r; dy <= r && put < 9; dy++) for (int dx = -r; dx <= r && put < 9; dx++) { if (ABS(dx) != r && ABS(dy) != r) continue; int x = px + dx, y = py + dy; if (x > 0 && y > 0 && x < MW && y < MH && lifeMap[y][x] == '.' && ((x + y) & 1) == 0) lifeMap[y][x] = (char)ch[put++]; }
+            if (AUTO_GOTCHI != 21 && AUTO_GOTCHI != 23) for (int r = 1; r < 8 && put < 9; r++) for (int dy = -r; dy <= r && put < 9; dy++) for (int dx = -r; dx <= r && put < 9; dx++) { if (ABS(dx) != r && ABS(dy) != r) continue; int x = px + dx, y = py + dy; if (x > 0 && y > 0 && x < MW && y < MH && lifeMap[y][x] == '.' && ((x + y) & 1) == 0) lifeMap[y][x] = (char)ch[put++]; }
             world_touched(); sim_gotchi_mood(player, 2); sim_gotchi_mood(player, 1); sim_note("A BOREAGOTCHI HATCHED!");
             if (AUTO_GOTCHI == 22) { int i; for (i = 0; i < items_count(); i++) if ((u8)items_at(i) == 0xBE) break; build_item = i; build_x = px; build_y = py; build_tool = 0; room_on = 0; build_msg_t = 0; state = ST_BUILD; }
+            if (AUTO_GOTCHI == 23 || AUTO_GOTCHI == 21) {   // (the toy's dock, the thing with the 8x8 egg: close up on the floor (23), or in build mode with the cursor on it (21); test/gegg_prop.txt)
+                put = 0; for (int r = 1; r < 8 && put < 3; r++) for (int dy = -r; dy <= r && put < 3; dy++) for (int dx = -r; dx <= r && put < 3; dx++) { int x = px + dx, y = py + dy; if ((ABS(dx) != r && ABS(dy) != r) || x < 1 || y < 1 || x >= MW || y >= MH) continue; if (lifeMap[y][x] == '.' && ((x + y) & 1) == 0) lifeMap[y][x] = (char)0xBE, put++; }
+                world_touched(); cam_dist = 900; cam_pitch = 620;
+                if (AUTO_GOTCHI == 21) { int i; for (i = 0; i < items_count(); i++) if ((u8)items_at(i) == 0xBE) break; build_item = i; build_x = px - 2; build_y = py + 2; build_tool = 0; room_on = 0; build_msg_t = 0; state = ST_BUILD; } }
             if (AUTO_GOTCHI == 24) opts_dbg(5, 5, ST_LIFE); } } }
 #endif
 #ifdef AUTO_GFIRST

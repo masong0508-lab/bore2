@@ -159,20 +159,21 @@ static void creature(const Blob *b, const Kin *k, int fr, int d, int ox, int moo
 #include "gotchi_first_art.h"
 // the egg art (src/gotchi_first_art.h, made by tools/make_gotchi_first.py): one design in three sizes (0 the hatching 14 x 17, 1 the LCD's dots 10 x 12, 2 inside the toy's LCD 8 x 9, each with its
 // ground shadow), FS_EGG_N patterns (the last is the rare one: gold stars) and cracks; egg_make puts one together in a buffer (a few hundred bytes of data in place of every egg in full)
-static const unsigned char *const fsPat[3][FS_EGG_N] = { { FS_EGGB_P0, FS_EGGB_P1, FS_EGGB_P2, FS_EGGB_P3, FS_EGGB_P4, FS_EGGB_P5, FS_EGGB_P6 }, { FS_EGGL_P0, FS_EGGL_P1, FS_EGGL_P2, FS_EGGL_P3, FS_EGGL_P4, FS_EGGL_P5, FS_EGGL_P6 },
-    { FS_EGGS_P0, FS_EGGS_P1, FS_EGGS_P2, FS_EGGS_P3, FS_EGGS_P4, FS_EGGS_P5, FS_EGGS_P6 } };
+static const unsigned char *const fsPat[3][FS_EGG_N + 1] = { { FS_EGGB_P0, FS_EGGB_P1, FS_EGGB_P2, FS_EGGB_P3, FS_EGGB_P4, FS_EGGB_P5, FS_EGGB_P6, FS_EGGB_P7 }, { FS_EGGL_P0, FS_EGGL_P1, FS_EGGL_P2, FS_EGGL_P3, FS_EGGL_P4, FS_EGGL_P5, FS_EGGL_P6, FS_EGGL_P7 },
+    { FS_EGGS_P0, FS_EGGS_P1, FS_EGGS_P2, FS_EGGS_P3, FS_EGGS_P4, FS_EGGS_P5, FS_EGGS_P6, FS_EGGS_P7 } };
 static const char *const *const fsEggBase[3] = { FS_EGGB, FS_EGGL, FS_EGGS };
 static const u8 fsEggH[3] = { FS_EGGB_H, FS_EGGL_H, FS_EGGS_H }, fsEggW[3] = { FS_EGGB_W, FS_EGGL_W, FS_EGGS_W };
-static const unsigned char *const fsCrk[2] = { FS_CRACKB, FS_CRACKL }, *const fsCrkN[2] = { FS_CRACKB_N, FS_CRACKL_N };
+static const unsigned char *const fsCrk[3] = { FS_CRACKB, FS_CRACKL, FS_CRACKS }, *const fsCrkN[3] = { FS_CRACKB_N, FS_CRACKL_N, FS_CRACKS_N };
 static char eggBuf[FS_EGGB_H][FS_EGGB_W + 1]; static const char *eggRow[FS_EGGB_H];
 static const char *const *egg_make(int kind, int pat, int crack) {   // the plain egg, its pattern (runs of spots over body, shade and highlight), its cracks (cells, stage by stage)
     for (int j = 0; j < fsEggH[kind]; j++) { memcpy(eggBuf[j], fsEggBase[kind][j], fsEggW[kind] + 1); eggRow[j] = eggBuf[j]; }
-    for (const unsigned char *p = fsPat[kind][pat]; p[1]; p += 2) for (int i = 0; i < (p[1] & 127); i++) { char *c = &eggBuf[p[0] >> 4][(p[0] & 15) + i]; if (*c == 'm' || *c == 'd' || *c == 'h') *c = (p[1] & 128) ? 'g' : 'o'; }
-    if (crack && kind < 2) for (int n = 0; n < fsCrkN[kind][crack]; n++) { char *c = &eggBuf[fsCrk[kind][n * 2] >> 4][fsCrk[kind][n * 2] & 15]; *c = (*c == 'o' || *c == 'g') ? 'u' : (char)fsCrk[kind][n * 2 + 1]; }   // (a crack through a spot is light)
+    if (pat == FS_EGG_MYS) for (int j = 0; j < fsEggH[kind]; j++) for (char *c = eggBuf[j]; *c; c++) *c = *c == 'm' ? 'x' : *c == 'd' ? 'X' : *c;   // (the night: body x, shade X; the pattern's runs are the question mark and the stars)
+    for (const unsigned char *p = fsPat[kind][pat]; p[1]; p += 2) for (int i = 0; i < (p[1] & 31); i++) { char *c = &eggBuf[p[0] >> 4][(p[0] & 15) + i]; if (strchr("mdhxX", *c)) *c = "oxXug"[p[1] >> 5]; }   // (a run's key: bits 5-7)
+    if (crack) for (int n = 0; n < fsCrkN[kind][crack]; n++) { char *c = &eggBuf[fsCrk[kind][n * 2] >> 4][fsCrk[kind][n * 2] & 15]; *c = strchr("ogxX", *c) ? 'u' : (char)fsCrk[kind][n * 2 + 1]; }   // (a crack through a spot is light)
     return eggRow;
 }
-static const char eggKeys[] = "#mdohulg";   // an egg sprite's keys; on the dots they are the values 16 up (egg_rgb makes the colours)
-static int egg_pat(const Blob *b, const Kin *k) { return (b->sp >= 16 || k->mut) ? FS_EGG_N - 1 : b->sp % (FS_EGG_N - 1); }   // the kind picks the pattern, the rare ones are gold
+static const char eggKeys[] = "#mdohulgxX";   // an egg sprite's keys; on the dots they are the values 16 up (egg_rgb makes the colours)
+static int egg_pat(const Blob *b, const Kin *k) { return (b->form & 128) ? FS_EGG_MYS : (b->sp >= 16 || k->mut) ? FS_EGG_N - 1 : b->sp % (FS_EGG_N - 1); }   // the kind picks the pattern, the rare ones are gold; a visitor's mystery egg (form bit 7 on an egg: no new save field) has its own
 static void egg_dots(const char *const *r, int w, int h, int x, int y, int tilt) {   // a sprite onto the dots; its top leans by tilt dots, the foot stays
     for (int j = 0; j < h; j++) { int sh = tilt * (h - 1 - j) / (h - 1); for (int i = 0; i < w; i++) if (r[j][i] != '.') P(x + i + sh, y + j, 16 + (int)(strchr(eggKeys, r[j][i]) - eggKeys)); }
 }
@@ -180,7 +181,8 @@ static void egg(const Blob *b, const Kin *k, int fr) {   // centred on the LCD (
     static const s8 wb[8] = { 1, 2, 1, 0, -1, -2, -1, 0 };
     int cr = b->age >= 19 ? 3 : b->age >= 17 ? 2 : b->age >= 15 ? 1 : 0, per = cr ? 12 : 24, ph = ((fr % per) + per) % per, tilt = ph >= per - 8 ? wb[ph - (per - 8)] : 0;
     egg_dots(egg_make(1, egg_pat(b, k), cr), FS_EGGL_W, FS_EGGL_H, 11, 2, tilt);
-    if (b->sp >= 16 || k->mut) star((fr & 2) ? 26 : 5, (fr & 2) ? 4 : 6, 16 + 7);
+    if (b->form & 128) { int a = (fr >> 2) & 1; star(a ? 25 : 6, a ? 4 : 11, 16 + 5); star(a ? 7 : 24, a ? 12 : 5, 16 + 7); }   // (the mystery egg twinkles in the night sky: two stars, in turn)
+    else if (b->sp >= 16 || k->mut) star((fr & 2) ? 26 : 5, (fr & 2) ? 4 : 6, 16 + 7);
 }
 static const Xt *xof(const Blob *b) { for (int k = 0; k < GT_MAX; k++) if (b >= gtoy[k].b && b < gtoy[k].b + GB_N) return &gtoy[k].x[b - gtoy[k].b]; return 0; }
 static int mood_of(const Blob *b) {
@@ -224,7 +226,7 @@ static void scene(const Blob *b, const Kin *k, int fr, int look, int mood) {
 static const u8 PAL[10][3] = { { 28, 44, 24 }, { 214, 58, 120 }, { 40, 92, 214 }, { 226, 112, 24 }, { 126, 64, 200 }, { 20, 150, 140 }, { 196, 40, 44 }, { 218, 160, 10 }, { 54, 44, 90 }, { 214, 222, 234 } };
 static const u8 INKV[5][3] = { { 0, 0, 0 }, { 0, 0, 0 }, { 214, 50, 70 }, { 48, 96, 214 }, { 220, 160, 18 } };
 static void egg_rgb(int ink, int key, u8 *o) {   // an egg's colour for a key (an index in eggKeys), from the pet's colour (PAL row): a cream body leaning to it, a shade, spots, a dark outline of it
-    static const u8 mx[4][2] = { { 0, 42 }, { 74, 26 }, { 48, 52 }, { 0, 92 } }, fx[4][3] = { { 255, 255, 240 }, { 255, 250, 190 }, { 150, 176, 108 }, { 255, 208, 60 } }, cr[3] = { 240, 238, 206 };
+    static const u8 mx[4][2] = { { 0, 42 }, { 74, 26 }, { 48, 52 }, { 0, 92 } }, fx[6][3] = { { 255, 255, 240 }, { 255, 250, 190 }, { 150, 176, 108 }, { 255, 208, 60 }, { 46, 38, 108 }, { 30, 24, 78 } }, cr[3] = { 240, 238, 206 };
     const u8 *in = PAL[ink % 10]; for (int i = 0; i < 3; i++) o[i] = key < 4 ? (u8)((cr[i] * mx[key][0] + in[i] * mx[key][1]) / 100) : fx[key - 4][i];
 }
 // the dots onto the screen: runs of one ink are joined into one box, a thin gap under each row gives the LCD its lines
@@ -447,7 +449,7 @@ static void use_icon(void) {
     }
 }
 // the friends list: every hatched pet but this one, this toy's first, then the housemates'
-static int fr_t[GT_MAX * GB_N], fr_s[GT_MAX * GB_N], fr_n;
+static u8 fr_t[GT_MAX * GB_N], fr_s[GT_MAX * GB_N]; static int fr_n;   // (the friends list: a toy and a slot each, bytes)
 static void fr_build(void) {
     fr_n = 0; for (int pass = 0; pass < 2; pass++) for (int k = 0; k < GT_MAX; k++) { if (!gtoy[k].own || (pass == 0) != (k == ti)) continue;
         for (int i = 0; i < GB_N; i++) if (gtoy[k].b[i].on && gtoy[k].b[i].stage > GS_EGG && (k != ti || i != bi)) { fr_t[fr_n] = k; fr_s[fr_n++] = i; } }
@@ -694,7 +696,7 @@ static void tshadowc(int cx, int y, const char *s, int r, int g, int b) { tshado
 static void chip(int cx, int y, const char *s, u32 bg, u32 ink) { int w = ui_tw(1, s) + 10; ui_badge(cx - w / 2, y, s, bg, ink); }
 static const u32 fcol[GFORMS] = { UI_RGB(236, 176, 40), UI_RGB(150, 112, 70), UI_RGB(60, 190, 210), UI_RGB(220, 70, 180), UI_RGB(230, 90, 50), UI_RGB(240, 150, 170) };
 static void formchip(const Blob *b, int cx, int y) {
-    if (b->stage == GS_EGG) chip(cx, y, "EGG", UI_AMBER, UI_INK);
+    if (b->stage == GS_EGG) chip(cx, y, (b->form & 128) ? "MYSTERY" : "EGG", UI_AMBER, UI_INK);
     else if (b->stage == GS_BABY) chip(cx, y, "BABY", UI_GREEN, UI_WHITE);
     else if (b->stage == GS_CHILD) chip(cx, y, "CHILD", UI_BLUE, UI_WHITE);
     else if (b->stage == GS_TEEN) chip(cx, y, b->form ? "SLOUCHY" : "ANGSTY", b->form ? UI_RGB(150, 112, 70) : UI_BLUE2, UI_WHITE);
@@ -710,7 +712,7 @@ static void mini_tile(const Blob *b, const Kin *k, int x, int y, int w, int dim)
     scene(b, k, 0, 0, MD_NORM); gfx_rect(x, y, w, 18, dim ? 150 : 172, dim ? 158 : 196, dim ? 150 : 128, 0); dots_draw(x + (w - 24) / 2, y + 1, 1, 0, 16, 4, 28);
 }
 #include "gotchi_first.inc"
-static int line_is_egg(int id) { for (int t = 0; t < GT_MAX; t++) if (gtoy[t].own) for (int i = 0; i < GB_N; i++) if (gtoy[t].b[i].on && gtoy[t].k[i].id == id) return gtoy[t].b[i].stage == GS_EGG;
+static int line_is_egg(int id) { for (int t = 0; t < GT_MAX; t++) if (gtoy[t].own) for (int i = 0; i < GB_N; i++) if (gtoy[t].b[i].on && gtoy[t].k[i].id == id) return gtoy[t].b[i].stage == GS_EGG ? 1 + (gtoy[t].b[i].form >> 7) : 0;   // 0 not an egg, 1 an egg, 2 a mystery egg
     return 0; }
 static void kin_blob(Blob *b, Kin *k, const Line *l) {   // a creature made from a line record (a memorial, a relative in the tree)
     memset(b, 0, sizeof *b); memset(k, 0, sizeof *k); b->on = 1; b->stage = GS_ADULT; b->sp = l->sp; b->form = (u8)((l->fc & 7) % GFORMS); b->hun = b->hap = 4; k->col = (u8)((l->fc >> 3) & 7); k->mut = l->mut; k->pers = l->pg & 7; b->nm = l->nm;
@@ -779,7 +781,7 @@ static void meter(int x, int y, int icon, const char *l, int pct) {   // an icon
 }
 static int chipL(int x, int y, const char *s, u32 bg, u32 ink) { ui_badge(x, y, s, bg, ink); return x + ui_tw(1, s) + 13; }
 static int formchipL(const Blob *b, int x, int y) {
-    if (b->stage == GS_EGG) return chipL(x, y, "EGG", UI_AMBER, UI_INK); if (b->stage == GS_BABY) return chipL(x, y, "BABY", UI_GREEN, UI_WHITE); if (b->stage == GS_CHILD) return chipL(x, y, "CHILD", UI_BLUE, UI_WHITE);
+    if (b->stage == GS_EGG) return chipL(x, y, (b->form & 128) ? "MYSTERY" : "EGG", UI_AMBER, UI_INK); if (b->stage == GS_BABY) return chipL(x, y, "BABY", UI_GREEN, UI_WHITE); if (b->stage == GS_CHILD) return chipL(x, y, "CHILD", UI_BLUE, UI_WHITE);
     if (b->stage == GS_TEEN) return chipL(x, y, b->form ? "SLOUCHY" : "ANGSTY", b->form ? UI_RGB(150, 112, 70) : UI_BLUE2, UI_WHITE); if (b->stage == GS_ELDER) return chipL(x, y, "ELDER", UI_RGB(130, 130, 150), UI_WHITE);
     return chipL(x, y, gx_form(b->form), fcol[b->form % GFORMS], (b->form % GFORMS) == 0 ? UI_INK : UI_WHITE);
 }
@@ -1072,7 +1074,7 @@ static void draw_tree(void) {
             int ym = (y0 + y1) / 2; gfx_rect(x0 - 1, y0, 2, ym - y0, 150, 160, 190, 0); gfx_rect(MIN(x0, x1) - 1, ym, ABS(x1 - x0) + 2, 2, 150, 160, 190, 0); gfx_rect(x1 - 1, ym, 2, y1 - ym, 150, 160, 190, 0); }
     }
     for (int i = 0; i < ntn; i++) {
-        const Line *l = gotchi_line(tn[i].id); if (!l) continue; Blob b; Kin k; kin_blob(&b, &k, l); if ((l->fc & 128) && line_is_egg(l->id)) { b.stage = GS_EGG; b.age = 0; } int sel = i == treeSel, alive = l->fc & 128, gone = (l->fc & 64) != 0, row = tn[i].row, x = tn[i].x, y = sy + ry[row] + 4;
+        const Line *l = gotchi_line(tn[i].id); if (!l) continue; Blob b; Kin k; kin_blob(&b, &k, l); int ie = (l->fc & 128) ? line_is_egg(l->id) : 0; if (ie) { b.stage = GS_EGG; b.age = 0; b.form = (u8)(ie > 1 ? 128 : 0); } int sel = i == treeSel, alive = l->fc & 128, gone = (l->fc & 64) != 0, row = tn[i].row, x = tn[i].x, y = sy + ry[row] + 4;
         int self = tn[i].id == treeId; int w = self ? 68 : 44;
         if (self) { ui_round(x - 36, y - 4, 72, 55, 7, UI_HILITE, UI_HILITE, 0); }
         if (sel) ui_round(x - w / 2 - 3, y - 3, w + 6, self ? 53 : 36, 6, UI_BLUE, UI_BLUE, 0);
@@ -1080,6 +1082,7 @@ static void draw_tree(void) {
         else mini_tile(&b, &k, x - 18, y, 36, gone);
         ui_textfit(x - w / 2, y + (self ? 36 : 20), w, gx_given(l->nm), gone ? UI_SOFT : UI_INK);
         if (gone) ui_icon_s(x + (self ? 24 : 10), y - 2, IC_STAR, 10, UI_AMBER);
+        if (ie) { ui_disc(x - (self ? 31 : 16), y + 4, 12, UI_RGB(255, 255, 255)); f_glyph(ie > 1, x - (self ? 35 : 20), y - 1, k.col, l->sp % 6); }   // the egg badge: a little egg (a mystery egg's own) on a round white tag
     }
     { const Line *l = gotchi_line(tn[treeSel].id); char s[80]; int by = top + 158;
       ui_round(20, by, 280, 18, 6, UI_PANEL, UI_PANEL, 0);
@@ -1122,7 +1125,9 @@ static void draw_home(void) {
 static void draw_diary(void) {
     sky(); ui_accent = 6; int top = ui_window(14, 8, 292, 224, "PET DIARY", IC_BOOK); ui_accent = 0; int p = gotchi_diary_pos(), shown = 0;
     for (int i = 1; i <= GD_N && shown < 13; i++) { const Diary *d = &gdiary[((p - i) % GD_N + GD_N) % GD_N]; if (!d->kind || i > p) continue; char s[80]; gx_diary(d, s);
-        ui_round(20, top + 2 + shown * 14, 280, 13, 4, shown & 1 ? UI_PANEL : UI_WHITE, shown & 1 ? UI_PANEL : UI_WHITE, 0); ui_textfit(25, top + 5 + shown * 14, 270, s, (d->kind & 31) == GD_PASS ? UI_BADT : (d->kind & 31) == GD_AWARD || (d->kind & 31) == GD_DAY ? UI_GOLDT : UI_INK); shown++; }
+        ui_round(20, top + 2 + shown * 14, 280, 13, 4, shown & 1 ? UI_PANEL : UI_WHITE, shown & 1 ? UI_PANEL : UI_WHITE, 0);
+        { int kd = d->kind & 31; const Line *dl = gotchi_line(d->id); if (kd == GD_HATCH || kd == GD_EGG) f_glyph(kd == GD_HATCH ? 2 : d->kind >> 5, 25, top + 3 + shown * 14, dl ? (dl->fc >> 3) & 7 : 3, dl ? dl->sp % 6 : 0); }   // (a little egg for a new egg, a mystery egg's own, a hatching egg for a hatching)
+        ui_textfit(38, top + 5 + shown * 14, 257, s, (d->kind & 31) == GD_PASS ? UI_BADT : (d->kind & 31) == GD_AWARD || (d->kind & 31) == GD_DAY ? UI_GOLDT : UI_INK); shown++; }
     if (!shown) ui_wrapc(30, top + 60, 260, 3, "NOTHING WRITTEN YET. HATCH AN EGG AND LIFE GOES IN THE DIARY.", UI_SOFT);
     ui_hints(160, 214, "O BACK", 1);
 }
@@ -1246,39 +1251,57 @@ static void curtain(void) {
 }
 void gotchi_draw(void) {
 #ifdef AUTO_GVIEWS
-    {   // test hook: every screen in turn, a shot 59 frames after each switch (so the clocks are set that far ahead)
-        static int n; static const u8 vl[] = { V_BOX, V_BASKET, V_HAND, V_DEX, V_DEXD, V_FEED, V_PLAYPICK, V_FRIEND, V_STATS, V_STATS, V_STATS, V_STATS, V_STATS, V_GUIDE, V_TREE, V_HOME, V_DIARY, V_AWARD, V_MORE, V_DRESS,
+    {   // test hook: every screen in turn, a shot 59 frames after each switch (so the clocks are set that far ahead). The set-ups are data: {step, variable, value} lines on the screen's own variables
+        static int n;
+        static const u8 vl[] = { V_BOX, V_BASKET, V_HAND, V_DEX, V_DEXD, V_FEED, V_PLAYPICK, V_FRIEND, V_STATS, V_STATS, V_STATS, V_STATS, V_STATS, V_GUIDE, V_TREE, V_HOME, V_DIARY, V_AWARD, V_MORE, V_DRESS,
             V_GOALS, V_TRAIN, V_LOOK, V_COPY, V_CATCH, V_HILO, V_BEAT, V_HOP, V_STACK, V_TITLE, V_INTRO, V_INTRO, V_INTRO, V_HATCH, V_HATCH, V_HATCH, V_HATCH, V_DAY,
             V_HAND, V_HAND, V_HAND, V_HAND, V_HAND, V_HAND, V_HAND,   /* the first day: pages 0..6 */
             V_HAND, V_HAND, V_HAND, V_HAND, V_HAND, V_HAND, V_HAND, V_HAND, V_HAND, V_BASKET, V_MORE, V_TREE, V_WHACK, V_WHACK };   /* surprises, moods, particles, the new game */
+#define GVL(X) X(view, view) X(sub, sub) X(bi, bi) X(isel, isel) X(treeId, treeId) X(treeSel, treeSel) X(dexsel, dexsel) X(dexf, dexf) X(trn, trn) X(actT, actT) X(homeSel, homeSel) X(evK, evK) X(trainMode, trainMode) \
+    X(titleT, titleT) X(moreTop, moreTop) X(msgT, msgT) X(danceT, danceT) X(tutN, tutN) X(evCool, evCool) X(mgT, mgT) X(bTm, bTm) X(bPerf, bPerf) X(bGood, bGood) X(bCombo, bCombo) X(bJudge, bJudge) X(bJT, bJT) X(bT, bT) \
+    X(bR0, bRes[0]) X(bR1, bRes[1]) X(bR2, bRes[2]) X(hX0, hOx[0]) X(hX1, hOx[1]) X(hT1, hOt[0]) X(hNext, hNext) X(hClear, hClear) X(hDone, hDone) X(hHits, hHits) X(hSpawn, hSpawn) X(hY, hY) X(hVy, hVy) X(sLv, sLv) X(sCx, sCx) X(sPerf, sPerf) \
+    X(iT, iT) X(hSlot, hSlot) X(hT, hT) X(evT, evT) X(evHit, evHit) X(guidepage, guidepage) X(wN, wN) X(wSt, wSt) X(wW, wW) X(wT, wT) X(wHole, wHole) X(wMess, wMess) X(wPts, wPts) X(wHit, wHit) X(wMiss, wMiss) X(wRes, wRes) X(wRT, wRT) X(wMood, wMood) X(wMT, wMT)
+#define GE_(a, b) G_##a,
+#define GP_(a, b) &b,
+        enum { GVL(GE_) G_N };
+        static int *const gvp[] = { GVL(GP_) };
+        typedef struct { u8 k, v; s16 x; } GvE;
+#define E(k, v, x) { k, G_##v, x },
+        static const GvE gvr[] = {   // (step 255: every step)
+            E(255, sub, 1) E(255, dexsel, 17) E(255, dexf, 1) E(255, homeSel, 3) E(255, tutN, -1) E(255, evCool, 30000)
+            E(8, sub, 0) E(9, sub, 1) E(10, sub, 2) E(11, sub, 3) E(12, sub, 4) E(13, sub, 0) E(13, guidepage, 4)
+            E(26, bTm, 70) E(26, bPerf, 3) E(26, bGood, 2) E(26, bCombo, 4) E(26, bR0, 1) E(26, bR1, 2) E(26, bR2, 1) E(26, bJudge, 1) E(26, bJT, 99) E(26, bT, 18)
+            E(27, hX0, 190 * 16) E(27, hT1, 1) E(27, hX1, 246 * 16) E(27, hNext, 2) E(27, hClear, 4) E(27, hDone, 4) E(27, hHits, 1) E(27, hSpawn, 999) E(27, hY, 20 * 16) E(27, hVy, 10)
+            E(28, sLv, 6) E(28, sCx, 120 * 16) E(28, sPerf, 2)
+            E(30, sub, 0) E(30, iT, 1) E(31, iT, 41) E(32, sub, 2) E(32, iT, 1)
+            E(33, bi, 5) E(33, hSlot, 5) E(33, hT, -19) E(34, bi, 5) E(34, hSlot, 5) E(34, hT, 16) E(35, bi, 5) E(35, hSlot, 5) E(35, hT, 41) E(36, bi, 5) E(36, hSlot, 5) E(36, hT, 81)
+            E(38, bi, 6) E(39, bi, 6) E(40, bi, 5) E(41, bi, 5) E(42, bi, 5) E(43, bi, 5) E(44, bi, 5)
+            E(45, evK, 1) E(45, evT, 150) E(46, evK, 2) E(46, evT, 250) E(47, evK, 3) E(47, evT, 200) E(48, evK, 4) E(48, evT, 200) E(49, evK, 5) E(49, evT, 250)
+            E(50, bi, 1) E(51, bi, 2) E(53, bi, 3) E(55, sub, 7) E(55, moreTop, 3)
+            E(57, wN, 6) E(57, wHole, 2) E(57, wRes, 1) E(58, wN, 9) E(58, wHole, 1) E(58, wMess, 1) E(58, wRes, 5)
+            E(57, wSt, 1) E(58, wSt, 1) E(57, wW, 500) E(58, wW, 500) E(57, wT, 470) E(58, wT, 470) E(57, wPts, 7) E(58, wPts, 7) E(57, wHit, 5) E(58, wHit, 5) E(57, wMiss, 1) E(58, wMiss, 1)
+            E(57, wRT, 9999) E(58, wRT, 9999) E(57, wMood, MD_HAPPY) E(58, wMood, MD_HAPPY) E(57, wMT, 9999) E(58, wMT, 9999) E(57, mgT, 0) E(58, mgT, 0) E(26, mgT, 0) E(27, mgT, 0) E(28, mgT, 0)
+            { 0, 255, 0 } };
         int k = n++ / 60;
         if (k < (int)sizeof vl && n % 60 == 1) {
-            view = vl[k]; sub = 1; bi = 0; isel = 0; treeId = 0; treeSel = 0; dexsel = 17; dexf = 1; gach = 0x2A5 | GACH_TUTOFF | GACH_INTRO; trn = 0; actT = 0; homeSel = 3; evK = 0; trainMode = 0; titleT = 0; moreTop = 0;
-            memset(par, 0, sizeof par); msgT = 0; msg = 0; danceT = 0; tutN = -1; evCool = 99999; Toy *tx = tt(); (void)tx;
-            if (k >= 8 && k <= 12) sub = k - 8;
-            if (k == 13) { sub = 0; guidepage = 4; } if (k == 14) treeSel = 0;
-            if (k == 20) { Toy *m = my_toy(); if (m) { m->gday = (u16)day_count; m->gflag = 128; memset(m->gp, 0, 6); m->gp[gx_goal_type(m, 0)] = 99; m->gp[gx_goal_type(m, 1)] = 1; m->streak = 3; m->best = 5; m->ghist = 0x6B; } }
-            if (k == 21) sub = 1;
-            if (k == 16) { Toy *m = my_toy(); if (m) { gotchi_diary(GD_BEST | 7 << 5, m->k[0].id); gotchi_diary(GD_TRAIN | 1 << 5, m->k[1].id); gotchi_diary(GD_BEST | 4 << 5, m->k[2].id); } }
-            if (k == 22) start_look(); if (k == 23) start_copy(); if (k == 24) start_catch(); if (k == 25) start_hilo();
-            if (k == 26) { start_beat(); mgT = 0; bTm = 70; bPerf = 3; bGood = 2; bCombo = 4; bRes[0] = 1; bRes[1] = 2; bRes[2] = 1; bJudge = 1; bJT = 99; bT = 18; }
-            if (k == 27) { start_hop(); mgT = 0; hOx[0] = 190 * 16; hOt[0] = 1; hOx[1] = 246 * 16; hOt[1] = 0; hNext = 2; hClear = 4; hDone = 4; hHits = 1; hSpawn = 999; hY = 20 * 16; hVy = 10; }
-            if (k == 28) { start_stack(); mgT = 0; sLv = 6; for (int i = 0; i < 6; i++) { sL[i] = 104 + (i % 3) * 3; sW[i] = 52 - i * 4; } sCw = sW[5]; sCx = 120 * 16; sPerf = 2; }
-            if (k >= 30 && k <= 32) { sub = k == 30 ? 0 : k == 31 ? 1 : 2; iT = k == 31 ? 41 : 1; }
-            if (k >= 33 && k <= 36) { bi = 5; hSlot = 5; static const s16 htm[4] = { -19, 16, 41, 81 }; hT = htm[k - 33]; }
+            for (int q = 0; q < G_N; q++) *gvp[q] = 0;   /* (every variable of the list starts at 0) */
+            view = vl[k]; gach = 0x2A5 | GACH_TUTOFF | GACH_INTRO; msg = 0; memset(par, 0, sizeof par);
+            if (k >= 22 && k <= 28) { static void (*const st[7])(void) = { start_look, start_copy, start_catch, start_hilo, start_beat, start_hop, start_stack }; st[k - 22](); }
+            if (k == 57 || k == 58) start_whack();
+            for (const GvE *e = gvr; e->v != 255; e++) if (e->k == 255 || e->k == k) *gvp[e->v] = e->x;
+            Toy *m = my_toy();
+            if (k == 16 && m) { gotchi_diary(GD_BEST | 7 << 5, m->k[0].id); gotchi_diary(GD_TRAIN | 1 << 5, m->k[1].id); gotchi_diary(GD_BEST | 4 << 5, m->k[2].id); }
+            if (k == 20 && m) { m->gday = (u16)day_count; m->gflag = 128; memset(m->gp, 0, 6); m->gp[gx_goal_type(m, 0)] = 99; m->gp[gx_goal_type(m, 1)] = 1; m->streak = 3; m->best = 5; m->ghist = 0x6B; }
+            if (k == 26) bRes[0] = 1;
+            if (k == 28) { for (int i = 0; i < 6; i++) { sL[i] = 104 + (i % 3) * 3; sW[i] = 52 - i * 4; } sCw = sW[5]; }
             if (k == 37) { gsum_c = 5; gsum_p = 2; gsum_h = 1; }
-            if (k >= 38 && k <= 44) { gach = 0x2A5 | GACH_INTRO | (u32)(k - 38) << 16; bi = (k <= 39) ? 6 : 5; }
-            if (k >= 45) { Toy *m = my_toy(); bi = 0; evCool = 99999;
+            if (k >= 38 && k <= 44) gach = 0x2A5 | GACH_INTRO | (u32)(k - 38) << 16;
+            if (k >= 45) { evCool = 99999;
                 if (m) { Xt *x0 = &m->x[0]; x0->nrg = 70; x0->hyg = 80; x0->wish = 3; m->b[0].hun = 4; m->b[0].hap = 4; m->b[0].fl = 0; m->b[0].poop = 0; m->x[1].nrg = 10; m->x[1].hyg = 15; m->x[1].wish = 6 | 24; m->b[1].poop = 0; m->b[2].fl = 0; m->b[2].hun = 4; m->b[2].hap = 1; m->x[2].lone = 15; m->x[2].hyg = 60; }
-                if (k >= 45 && k <= 49) { evK = k - 44; evT = k == 45 ? 150 : 250; evHit = 5; if (k == 47) evT = 200; if (k == 48) evT = 200; }
-                if (k == 50) bi = 1;                 /* tired and smelly */
-                if (k == 51) { bi = 2; }             /* lonely and bored */
-                if (k == 52) { bi = 0; emit(1, 140, 56, 10); emit(0, 160, 56, 6); emit(3, 180, 56, 6); emit(4, 160, 50, 14); emit(2, 150, 70, 6); }
-                if (k == 53) bi = 3;
-                if (k == 54) { bi = 0; }             /* basket */
-                if (k == 55) { sub = 7; moreTop = 3; }
-                if (k == 57 || k == 58) { start_whack(); mgT = 0; wN = k == 57 ? 6 : 9; wSt = 1; wW = 500; wT = 470; wHole = k == 57 ? 2 : 1; wMess = k == 58; wPts = 7; wHit = 5; wMiss = 1; wRes = k == 57 ? 1 : 5; wRT = 9999; wMood = MD_HAPPY; wMT = 9999; for (int i = 0; i < wN; i++) wH[i] = (u8)(i % 5 == 3 ? 3 : i % 3 == 0 ? 2 : 1); }
-                if (k == 56) { Toy *m2 = my_toy(); if (m2) { treeId = m2->k[0].id; } treeSel = 0; } }
+                evHit = k <= 49 ? 5 : 0;
+                if (k == 52) { emit(1, 140, 56, 10); emit(0, 160, 56, 6); emit(3, 180, 56, 6); emit(4, 160, 50, 14); emit(2, 150, 70, 6); }
+                if (k == 56 && m) treeId = m->k[0].id;
+                if (k >= 57) { wMax = 0; for (int i = 0; i < 9; i++) wH[i] = (u8)(i % 5 == 3 ? 3 : i % 3 == 0 ? 2 : 1); } }
         }
     }
 #endif
@@ -1296,8 +1319,9 @@ void gotchi_draw(void) {
         if (k < (int)(sizeof q / sizeof q[0])) { view = q[k].v; sub = q[k].sub; trn = 0; gach |= GACH_TUTOFF | GACH_INTRO; msgT = 0; titleT = 0; iT = hT = q[k].t; bi = view == V_HATCH ? 5 : 6; hSlot = 5; gsum_c = 5; gsum_p = 2; gsum_h = 1; if (view == V_DAY) bi = 0; if (view == V_HAND) { gach = 0x2A5 | GACH_INTRO | (u32)sub << 16; sub = 0; bi = 6; }
             if (view == V_GUIDE) guidepage = q[k].sub;
             if (q[k].x) { Toy *tx = tt(); static const u8 ag[8] = { 2, 5, 3, 3, 3, 8, 12, 1 };   /* (the egg shots: every slot an egg, its own pattern and colour; slot 6 a rare one) */
-                for (int i = 0; i < GB_N; i++) if (tx->b[i].on) { Blob *e = &tx->b[i]; e->stage = GS_EGG; e->poop = 0; tx->x[i].wish = 0; e->sp = (u8)(i == 6 ? 16 : i); e->age = ag[i]; tx->k[i].col = (u8)(i % 7 + 1); tx->k[i].mut = (u8)(i == 6); }
-                if (q[k].x & 7) bi = (q[k].x & 7) - 1; if (q[k].a) tx->b[bi].age = (u16)(q[k].a - 1); }
+                for (int i = 0; i < GB_N; i++) if (tx->b[i].on) { Blob *e = &tx->b[i]; e->stage = GS_EGG; e->poop = 0; tx->x[i].wish = 0; e->sp = (u8)(i == 6 ? 16 : i); e->age = ag[i]; tx->k[i].col = (u8)(i % 7 + 1); tx->k[i].mut = (u8)(i == 6); e->form = (u8)(i == 7 ? 128 : 0); }
+                if (q[k].x & 15) bi = (q[k].x & 15) - 1; if (q[k].a) tx->b[bi].age = (u16)(q[k].a - 1); }
+            static int dsd; if (view == V_DIARY && !dsd++) { Toy *m = my_toy(); gotchi_diary(GD_HATCH, m->k[5].id); gotchi_diary(GD_EGG, m->k[1].id); gotchi_diary(GD_EGG | 1 << 5, m->k[7].id); gotchi_diary(GD_GROW | GS_CHILD << 5, m->k[3].id); gotchi_diary(GD_BEST | 2 << 5, m->k[2].id); gotchi_diary(GD_HATCH, m->k[0].id); }
             if (view == V_HATCH && q[k].t >= 88) cb()->stage = GS_BABY; }
         else return;
     }
