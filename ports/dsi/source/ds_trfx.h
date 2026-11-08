@@ -13,6 +13,7 @@
 #define TR_BIG
 #include "traits.c"        // the PS1's engine, as it is (-I src): one translation unit with the DS game, so the data is there once
 #include "traits_auto.c"
+#include "persona.c"       // (D76) the PS1's persona_of / persona_town_seed: a townie's personality from the world seed and their unique id
 
 // DS need index (0 hunger, 1 fun, 2 energy, 3 social, 4 bladder, 5 hygiene) -> the PS1's hook
 static const u8 TRF_DEC[6] = { E_DEC_FOOD, E_DEC_FUN, E_DEC_REST, E_DEC_SOCIAL, E_DEC_WC, E_DEC_CLEAN };
@@ -129,7 +130,13 @@ static int trf_auto_wish(const TrPers *p, const TrState *t) {   // (D74) the wis
         if (tr_ev_abs[ev] && t->ev[ev] >= tr_wish[w].thr) continue; int v = 4 * cs[tr_wish_cat[w] % 15] + (int)(trf_mix(p->seed, 1000u + (u32)w) % 24u); if (v > bv) { bv = v; best = w; } }
     return best;
 }
-// the DS's Sims have no personality bars of their own: they come from the name (deterministic, like the star sign), and a child's from its parents' (see trg_pers in main.c)
+// (D76) a person's personality from their own seed (persona_town_seed(world seed, unique id)): the same call the PS1 makes for a crowd townie (citizens.c cit_persona)
+static void trf_pers_from_seed(u32 sd, int ds_stage, TrPers *p) {
+    Persona q; int st = trf_stage(ds_stage); persona_of(sd, st, &q);
+    for (int b = 0; b < 5; b++) p->bar[b] = q.bar[b];
+    p->sign = q.sign; p->asp = q.asp; p->stage = (u8)st; p->seed = sd;
+}
+// the DS's Sims made before D76 (and Create-a-Sim ones) have no personality seed: theirs comes from the name: they come from the name (deterministic, like the star sign), and a child's from its parents' (see trg_pers in main.c)
 static void trf_pers_from_name(const char *first, const char *last, int ds_stage, TrPers *p) {
     u32 sd = tr_name_seed(first, last);
     for (int b = 0; b < 5; b++) p->bar[b] = (u8)(trf_mix(sd, 100u + (u32)b) % 11u);

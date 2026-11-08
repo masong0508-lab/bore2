@@ -228,4 +228,16 @@ static void trg_page(int i) {
     else if (t->f & TF_AUTO) text_box(10, 170, 160, 12, FS_SMALL, TP_GREY, AL_L, "No wish right now."); else text_box(10, 170, 160, 12, FS_SMALL, TP_GREY, AL_L, "No wish picked.");
     text_box(150, 170, 98, 12, FS_SMALL, TP_GREY, AL_R, "Pad: < > housemate");
 }
+// ---- (D76) the Life screen's wish page (info page 3): a housemate's wish, its prize and progress, and the wishes they have done ----
+static void trg_wishpage(int i) {
+    const TrState *t = &dtr[i]; char b[64], n[28]; int done = 0, tot = 0; panel(6, 72, 244, 114, "Wishes");
+    for (int w = 1; w <= WISH_N; w++) if (trf_won(w)) { tot++; if ((t->wd[w >> 3] >> (w & 7)) & 1) done++; }
+    if (t->wish) { int need = 0, pr = tr_wish_prog(t, &need); char d[48], pz[40]; trg_title(n, tr_wish_name[t->wish], 28); trg_title(d, tr_wish_desc[t->wish], 48); tp_prize(t->wish, pz, 40);
+        text_box(10, 86, 236, 14, FS_HEAD, C15(31, 31, 20), AL_L, n); text_box(10, 101, 236, 12, FS_BODY, TXT, AL_L, d); text_box(10, 113, 236, 12, FS_BODY, C15(24, 31, 26), AL_L, pz);
+        rect(10, 129, 150, 9, C15(2, 6, 14)); if (need) rect(11, 130, 148 * pr / need, 7, C15(8, 26, 8)); text_box(164, 127, 84, 12, FS_SMALL, TP_GREY, AL_L, need ? "Progress" : "Not started"); }
+    else text_box(10, 90, 236, 14, FS_BODY, TP_GREY, AL_L, (t->f & TF_AUTO) ? "No wish right now." : "No wish picked.");
+    sprintf(b, "Done: %d of %d", done, tot); text_box(10, 143, 120, 12, FS_SMALL, C15(24, 28, 31), AL_L, b);
+    { int shown = 0; for (int w = WISH_N; w >= 1 && shown < 2; w--) if (trf_won(w) && ((t->wd[w >> 3] >> (w & 7)) & 1)) { trg_title(n, tr_wish_name[w], 28); text_box(10, 156 + shown * 12, 236, 12, FS_SMALL, TP_GREY, AL_L, n); shown++; } }
+    text_box(150, 143, 98, 12, FS_SMALL, TP_GREY, AL_R, "Pad: < > housemate");
+}
 #endif

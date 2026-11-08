@@ -43,12 +43,17 @@ void tr_reward(TrState *t, int kind, int arg, int wish) {   // a lifetime wish i
 }
 
 // ---- who has which traits ----
-static void trg_pers(int i, TrPers *p) {   // a Sim's personality, from the name (as the PS1's from its Bore); a child's from its parents'
+static void trg_pers1(int i, int st, TrPers *p) {   // one Sim's own personality: from their seed (D76: a townie's card, a baby), else from the name (old saves, Create-a-Sim)
+    if (psd[i]) { trf_pers_from_seed(psd[i], st, p); return; }
     char f[20], l[20]; const char *s = sname[i], *sp = strrchr(s, ' ');
     if (sp) { int n = (int)(sp - s); if (n > 19) n = 19; memcpy(f, s, (size_t)n); f[n] = 0; strncpy(l, sp + 1, 19); l[19] = 0; } else { strncpy(f, s, 19); f[19] = 0; l[0] = 0; }
-    trf_pers_from_name(f, l, stage_of(sims[i].age), p);
+    trf_pers_from_name(f, l, st, p);
+}
+static u32 trg_seed_of(int i) { if (psd[i]) return psd[i]; TrPers p; trg_pers1(i, 4, &p); return p.seed; }
+static void trg_pers(int i, TrPers *p) {   // a Sim's personality (as the PS1's from its Bore); a child's from its parents'
+    trg_pers1(i, stage_of(sims[i].age), p);
     int pa = -1, pb = -1; for (int j = 0; j < nsim; j++) if (j != i) { if (fpar[i][0] && fid[j] == fpar[i][0]) pa = j; if (fpar[i][1] && fid[j] == fpar[i][1]) pb = j; }
-    if (pa >= 0 && pb >= 0) { TrPers q, r; for (int k = 0; k < 2; k++) { int j = k ? pb : pa; char f2[20], l2[20]; const char *s2 = sname[j], *s3 = strrchr(s2, ' '); if (s3) { int n = (int)(s3 - s2); if (n > 19) n = 19; memcpy(f2, s2, (size_t)n); f2[n] = 0; strncpy(l2, s3 + 1, 19); l2[19] = 0; } else { strncpy(f2, s2, 19); f2[19] = 0; l2[0] = 0; } trf_pers_from_name(f2, l2, 4, k ? &r : &q); }
+    if (pa >= 0 && pb >= 0) { TrPers q, r; trg_pers1(pa, 4, &q); trg_pers1(pb, 4, &r);
         for (int b = 0; b < 5; b++) { int v = (q.bar[b] + r.bar[b]) / 2 + ((int)p->bar[b] - 5) / 2; p->bar[b] = (u8)(v < 0 ? 0 : v > 10 ? 10 : v); }
         p->asp = (p->seed & 1) ? q.asp : r.asp; }
 }

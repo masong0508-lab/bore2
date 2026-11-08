@@ -514,6 +514,7 @@ static const char *msg = "";
 typedef struct { int x, y, tx, ty, wx, wy, need[6], acc[6], act, act_left, act_amt, act_obj, face, rel, dirn, age, soc, tgt; u8 skin, hair, hcol, shirt, beard, fc, pm[PMN]; u16 cc[3]; } Sim;   // x, y in 1/16 cells; needs 0..100: hunger, fun, energy, social, bladder, hygiene
 #define SIM_MAX 6
 static Sim sims[SIM_MAX]; static int cur_sim, nsim = 3, ctl, minutes = 11 * 60 + 40;
+static u32 trg_seed_of(int i); static u32 psd[SIM_MAX];   // (D76) a Sim's personality seed (a townie who moved in: the one their card showed; a baby: from its parents). 0: from the name (old saves, Create-a-Sim). Save block 'PS'
 static u8 fid[SIM_MAX], fpar[SIM_MAX][2], fpt[SIM_MAX], fid_next = 1;   // (D62) who is whose: a stable id per sim, its two parents' ids, its partner's id (0: none). Its own save block ('FY'); old saves have none
 static int fam_id(int i) { if (!fid[i]) { fid[i] = fid_next++; if (!fid_next) fid_next = 1; } return fid[i]; }
 // ---- (D67) what Create-a-Sim adds to a Sim, kept beside it (the Sim struct is saved whole, so it stays as it was): a hat, gender, trousers, three traits, a lifetime wish. Its own save block 'CX'; old saves have none (all zero) ----
@@ -564,7 +565,7 @@ static int st_days, st_born, st_died;   // lifetime stats
 static TrState dtr[SIM_MAX];   // (D73) each household member's traits (the 6 slots + 4 that unlock), beside sims[]
 static s8 trg_mp[SIM_MAX], trg_mf[SIM_MAX]; static u8 trg_ah[SIM_MAX], trg_ak[SIM_MAX]; static int trg_pl = -1, trg_lastf = -1; static u32 trg_rs = 12345;
 static void trg_ev(int ev, int n), trg_evs(int ev, int v), trg_tick(int frames), trg_died(int k), trg_newsim(int i), trg_act_end(int i, int an), trg_arrive(int i), trg_reset_all(void);
-static void trg_cheat_set(int on); static int tp_open; static void tp_draw(void), tp_top(void), tp_slots_draw(void), tp_wishpage_draw(void), tp_random(void), tp_keys(u32 down), tp_commit(void), tp_begin(void), tp_random_wish(void), trg_page(int i), trg_title(char *d, const char *s, int mx);
+static void trg_cheat_set(int on); static int tp_open; static void tp_draw(void), tp_top(void), tp_slots_draw(void), tp_wishpage_draw(void), tp_random(void), tp_keys(u32 down), tp_commit(void), tp_begin(void), tp_random_wish(void), trg_page(int i), trg_wishpage(int i), trg_title(char *d, const char *s, int mx);
 static int tp_touch(int tx, int ty), tp_slots_touch(int tx, int ty), tp_wishpage_touch(int tx, int ty), trg_wdone_n(void); static const char *trg_tname(int id);
 volatile unsigned trg_sig; static int trg_loaded, trg_cheat_now(void), trg_pack(u8 *o), trg_unpack(const u8 *p, int len); static void trg_migrate(void), trg_begin(void), trg_after_load(void);
 static u32 trg_rnd(void) { trg_rs = trg_rs * 1664525u + 1013904223u; return trg_rs >> 8; }
@@ -1293,7 +1294,7 @@ ITCM_CODE static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, 
 #define NCAR 12
 #define CITN (o_trf * (prof_full ? 8 : 4))                          // (D40: twice the crowd with the DSi's detail)
 #define CARN (o_trf == 3 ? (prof_full ? 12 : 8) : o_trf * 3)
-typedef struct { int x, y, dir, stop; u8 on, stage, skin, shirt, hair, pants; u16 id; } Cit;
+typedef struct { int x, y, dir, stop; u8 on, stage, skin, shirt, hair, pants; u16 id; u32 ps; } Cit;
 typedef struct { u16 id; u8 rel, talks, taken; } CRel;
 typedef struct { int x, y, dx, dy; u16 col; } Car;
 static Cit cits[NCIT]; static CRel crt[64]; static Car cars[NCAR];
@@ -1304,12 +1305,16 @@ static CRel *crel(u16 id) { int h = id & 63; for (int k = 0; k < 64; k++) { CRel
 static void cit_name(const Cit *c, char *o) { sprintf(o, "%s %s", FNAMES[c->id % 12], LNAMES[(c->id / 12) % 8]); }
 static int cit_street(int x, int y) { int lx = ((x % SLC) + SLC) % SLC, ly = ((y % SLC) + SLC) % SLC; return (lx == 13 || lx == 17 || ly == 13 || ly == 17 || (lx >= 13 && ly >= 13)) && !far_solid(x, y); }   // (D40: the pavements, and across the road only at the corners; it was the whole street, lanes too)
 static int cit_vis(const Cit *c) { int hr = (minutes / 60) % 24; return c->on && hr >= 6 && hr < 23 && ((hr * 5 + c->id) % 7) < 5; }   // asleep indoors at night, out and about by day
-volatile unsigned town_sig, town_sig_seed = 777;   // (test readouts)
+volatile unsigned town_sig, town_sig_seed = 777, pers_sig, pers_dist, pers_dup;   // (test readouts)
 static u8 town_legacy;   // (D75) 1: a save from before D75: its townies are made from the place alone, as they were (their relations and who moved in are kept by that id). Anything else: the save's world seed goes in as well, so another save has other people
+static u32 pers_key(const Cit *q) {   // (test builds) a townie's personality as one number: bars, sign, aspiration (from their seed; an old save's from the name)
+    TrPers p; if (q->ps) trf_pers_from_seed(q->ps, q->stage, &p); else { char n[24], f[16], l[16]; cit_name(q, n); const char *sp = strchr(n, ' '); int k = sp ? (int)(sp - n) : (int)strlen(n); if (k > 15) k = 15; memcpy(f, n, (size_t)k); f[k] = 0; strncpy(l, sp ? sp + 1 : "", 15); l[15] = 0; trf_pers_from_name(f, l, q->stage, &p); }
+    u32 k = 0; for (int b = 0; b < 5; b++) k = k * 11 + p.bar[b]; return (k * 12 + p.sign) * 6 + p.asp; }
 static void city_spawn(void) {
     int sl[9], ns = 0; for (int j = 0; j < 9; j++) if (nb[j / 3][j % 3].set != 255 && nb[j / 3][j % 3].terrain != BT_SEA) sl[ns++] = j;
     for (int k = 0; k < NCIT; k++) { Cit *c = &cits[k]; c->on = 0; c->stop = 0; if (!ns) continue; int j = (k < 6 && nb[1][1].set != 255) ? 4 : sl[k % ns], sy = j / 3 - 1, sx = j % 3 - 1;
-        u32 h = hsh((u32)(lot_bx + sx) * 73856093u ^ (u32)(lot_by + sy) * 19349663u ^ (u32)k * 83492791u ^ (town_legacy ? 0u : hsh((u32)seed ^ 0x70574E49u))); c->id = (u16)((h >> 8) | 1); if (crel(c->id)->taken) continue;
+        u32 h = hsh((u32)(lot_bx + sx) * 73856093u ^ (u32)(lot_by + sy) * 19349663u ^ (u32)k * 83492791u ^ (town_legacy ? 0u : hsh((u32)seed ^ 0x70574E49u))); c->id = (u16)((h >> 8) | 1); c->ps = town_legacy ? 0u : persona_town_seed((u32)seed, c->id); if (crel(c->id)->taken) continue;   // (D76: their personality seed from the world seed and their unique id, as the PS1; an old save: 0, from the name)
+       
         int r = (int)(h % 100); c->stage = (u8)(r < 16 ? 2 : r < 30 ? 3 : r < 86 ? 4 : 5);
         int lx = (h >> 8) & 1 ? 17 : 13, ly = (int)((h >> 12) % 18);   // (D40: on a pavement, not in a lane) if ((h >> 20) & 1) { int t = lx; lx = ly; ly = t; }
         int cx = sx * SLC + lx, cy = sy * SLC + ly; if (far_solid(cx, cy)) continue;
@@ -2240,6 +2245,7 @@ static void draw_top_status(void) {   // the top screen while you live: the sim'
     if (on_board && cur_sim == ctl) { skate_top(); return; }   // (D44) riding: the score and the combo
     scr = offbuf; backdrop(); const Sim *m = &sims[cur_sim];
     char t[48];
+    if (info_pg == 3) { face(8, 8, 56, m); panel(70, 6, 180, 60, sname[cur_sim]); text_box(76, 26, 36, 9, FS_BODY, TXT, AL_L, "Mood"); sprintf(t, "%s %d", STGN[stage_of(m->age)], m->age); text_box(184, 26, 64, 9, FS_BODY, C15(31, 31, 20), AL_R, t); status_vals(0); trg_wishpage(cur_sim); return; }   // (D76) the wish page: any housemate
     if (info_pg == 2) { face(8, 8, 56, m); panel(70, 6, 180, 60, sname[cur_sim]); text_box(76, 26, 36, 9, FS_BODY, TXT, AL_L, "Mood"); sprintf(t, "%s %d", STGN[stage_of(m->age)], m->age); text_box(184, 26, 64, 9, FS_BODY, C15(31, 31, 20), AL_R, t); status_vals(0); trg_page(cur_sim); return; }   // (D73) the traits page: any housemate
     if (cur_sim == ctl) {
         face(8, 8, 56, m);
@@ -2318,7 +2324,7 @@ static void draw_hud_i(void) {
         rect(20, 56, 216, 124, PANB); rect(21, 57, 214, 122, PAN); rect(21, 57, 214, 14, PANH); rect(20, 56, 2, 2, 0); rect(234, 56, 2, 2, 0); text_box(21, 57, 188, 14, FS_BODY, TXT, AL_L, nm); rect(213, 58, 20, 12, C15(24, 8, 8)); text_box(213, 58, 20, 12, FS_BODY, TXT, AL_C, "X");
         sprintf(nm, "%s", relname(rel)); text_box(21, 71, 214, 11, FS_SMALL, C15(24, 28, 31), AL_L, nm);
         if (popup != 2) { char n3[24], f3[16], l3[16]; cit_name(&cits[popup_i], n3); { const char *sp = strchr(n3, ' '); int q = sp ? (int)(sp - n3) : (int)strlen(n3); if (q > 15) q = 15; memcpy(f3, n3, (size_t)q); f3[q] = 0; strncpy(l3, sp ? sp + 1 : "", 15); l3[15] = 0; }
-            TrPers pp; trf_pers_from_name(f3, l3, cits[popup_i].stage, &pp); int a3 = 0; for (int q = 1; q < 5; q++) if (pp.bar[q] > pp.bar[a3]) a3 = q;
+            TrPers pp; if (cits[popup_i].ps) trf_pers_from_seed(cits[popup_i].ps, cits[popup_i].stage, &pp); else trf_pers_from_name(f3, l3, cits[popup_i].stage, &pp); int a3 = 0; for (int q = 1; q < 5; q++) if (pp.bar[q] > pp.bar[a3]) a3 = q;
             sprintf(nm, "%s, most %s. No traits yet", TRG_SIGN[pp.sign % 12], TRG_BAR[a3]); text_box(92, 71, 143, 11, FS_SMALL, C15(31, 24, 10), AL_R, nm); }   // (D74) a town person's personality (from their name, as when they move in); traits come when they move in
         for (int k = 0; k < n; k++) { int x = 26 + (k & 1) * 104, y = 82 + (k >> 1) * 22; rect(x, y, 100, 20, PANB); rect(x + 1, y + 1, 98, 18, soc_pick[k] == S_INVITE || soc_pick[k] == S_BABY ? C15(8, 20, 8) : PANH); text_box(x + 1, y + 1, 98, 18, FS_BODY, TXT, AL_C, SOCN[soc_pick[k]]); }
         if (!n) text_box(21, 88, 214, 24, FS_BODY, TXT, AL_C, "Nothing to do together"); }
@@ -2372,7 +2378,7 @@ static int pick_obj(int sx, int sy) {   // (D35) the item under the stylus, near
 static int cl100(int v) { return v < 0 ? 0 : v > 100 ? 100 : v; }
 static void new_sim(int age, u8 skin, u8 hair, u8 hcol, u8 shirt, const char *nm, int x, int y) {
     if (nsim >= SIM_MAX) return; Sim *m = &sims[nsim]; memset(m, 0, sizeof *m); m->x = m->tx = m->wx = x; m->y = m->ty = m->wy = y; m->act = -1; m->soc = -1; m->age = age; m->skin = skin; m->hair = hair; m->hcol = hcol; m->shirt = shirt; m->fc = (u8)(nsim % 6);
-    memset(&life[nsim], 0, sizeof(Life)); memset(&csx[nsim], 0, sizeof(Cx)); slv[nsim] = (u8)LV; for (int n = 0; n < 6; n++) m->need[n] = 70; for (int q = 0; q < PMN; q++) m->pm[q] = 50; strncpy(sname[nsim], nm, 19); sname[nsim][19] = 0; nsim++; ui_ver++; trg_newsim(nsim - 1);
+    memset(&life[nsim], 0, sizeof(Life)); memset(&csx[nsim], 0, sizeof(Cx)); slv[nsim] = (u8)LV; for (int n = 0; n < 6; n++) m->need[n] = 70; for (int q = 0; q < PMN; q++) m->pm[q] = 50; strncpy(sname[nsim], nm, 19); sname[nsim][19] = 0; psd[nsim] = 0; nsim++; ui_ver++; trg_newsim(nsim - 1);
 }
 static void apply_soc(int ai, int tgt, int id) {
     Sim *a = &sims[ai]; int cit = tgt <= -2, sb, rel; Sim *o = 0; CRel *cr = 0; Cit *ct = 0;
@@ -2388,9 +2394,9 @@ static void apply_soc(int ai, int tgt, int id) {
     if (id == S_BABY) { if (nsim >= SIM_MAX) { if (ai == ctl) say("Household is full"); return; } if (pop_per + pop_born >= DS_POP_MAX) { if (ai == ctl) say("City is full (2000)"); return; }
         int bx2 = a->x + 16, by2 = a->y; for (int k = 0; k < nobj; k++) if (objs[k].c == 5 && objs[k].i == 0) { bx2 = objs[k].x * 16; by2 = objs[k].y * 16; break; }
         static const char *const BN[8] = { "Bo", "Remy", "Pip", "Juno", "Tate", "Wren", "Otis", "Fern" }; char nm[20]; sprintf(nm, "%s %s", BN[(minutes / 7 + nsim) % 8], strrchr(sname[ai], ' ') ? strrchr(sname[ai], ' ') + 1 : "B");
-        new_sim(0, (minutes & 1) ? a->skin : o->skin, (u8)((minutes + nsim) % 12), (minutes & 2) ? a->hcol : o->hcol, (u8)(minutes % 6), nm, bx2, by2); pop_born++; st_born++; { int bi = nsim - 1, fa = fam_id(ai), fo = fam_id(tgt); fam_id(bi); fpar[bi][0] = (u8)fa; fpar[bi][1] = (u8)fo; if (!fpt[ai] && !fpt[tgt]) { fpt[ai] = (u8)fo; fpt[tgt] = (u8)fa; } } life_ev(ai, WN_BABY, 0); if (ai == ctl) say("It is a baby! Congrats!"); }
+        new_sim(0, (minutes & 1) ? a->skin : o->skin, (u8)((minutes + nsim) % 12), (minutes & 2) ? a->hcol : o->hcol, (u8)(minutes % 6), nm, bx2, by2); pop_born++; st_born++; { int bi = nsim - 1, fa = fam_id(ai), fo = fam_id(tgt); fam_id(bi); psd[bi] = persona_mix(trg_seed_of(ai), trg_seed_of(tgt) + (u32)minutes * 2u + 1u) | 1u; fpar[bi][0] = (u8)fa; fpar[bi][1] = (u8)fo; if (!fpt[ai] && !fpt[tgt]) { fpt[ai] = (u8)fo; fpt[tgt] = (u8)fa; } } life_ev(ai, WN_BABY, 0); if (ai == ctl) say("It is a baby! Congrats!"); }
     if (id == S_INVITE) { if (nsim >= SIM_MAX) { if (ai == ctl) say("Household is full"); return; } char nm[20]; cit_name(ct, nm);
-        new_sim(sb == 3 ? 15 : sb == 4 ? 28 : 65, ct->skin, (u8)((ct->id >> 3) % NHAIRD), ct->hair, ct->shirt, nm, a->x, a->y); cr->taken = 1; ct->on = 0; if (ai == ctl) say("Moved in! Say hello"); return; }
+        new_sim(sb == 3 ? 15 : sb == 4 ? 28 : 65, ct->skin, (u8)((ct->id >> 3) % NHAIRD), ct->hair, ct->shirt, nm, a->x, a->y); psd[nsim - 1] = ct->ps; cr->taken = 1; ct->on = 0; if (ai == ctl) say("Moved in! Say hello"); return; }
     if (cit) { int r = (int)cr->rel + d; cr->rel = (u8)(r < 0 ? 0 : r > 10 ? 10 : r); } else { int r = o->rel + d; o->rel = r < 0 ? 0 : r > 10 ? 10 : r; r = a->rel + d; a->rel = r < 0 ? 0 : r > 10 ? 10 : r; }
     { int nr = cit ? cr->rel : o->rel; life_ev(ai, WN_CHAT, 0); if (nr >= 3) life_ev(ai, WN_FRIEND, 0);
       if (ai == ctl) { trg_ev(EV_CHATS, 1); if (id == S_JOKE) trg_ev(EV_JOKES, 1); if (id == S_HUG) trg_ev(EV_HUGS, 1); if (id == S_FLIRT || id == S_KISS) trg_ev(EV_FLIRTS, 1); if (id == S_FEED || id == S_TUCK || id == S_TEACH) trg_ev(EV_CARES, 1); if (id == S_ADVICE || id == S_HUG || id == S_FEED || id == S_TUCK) trg_ev(EV_KIND, 1); } }
@@ -2404,7 +2410,7 @@ static void start_soc(int ai, int tgt, int id) {
 static void sim_die(int k) { st_died++;   // an elder passes away: a statue marks the spot and the household closes up
     Sim *m = &sims[k]; int cx = fdiv(m->x + 8, 16), cy = fdiv(m->y + 8, 16); static char bf[40]; sprintf(bf, "%s passed away", sname[k]); say(bf); ghost_add(m);
     if (cx >= 0 && cy >= 0 && cx < GN && cy < GN && nobj < 400) { objs[nobj].x = (u8)cx; objs[nobj].y = (u8)cy; objs[nobj].c = (u8)((PS1ID[0x83] - 1) >> 2); objs[nobj].i = (u8)((PS1ID[0x83] - 1) & 3); objs[nobj].rot = (u8)(slv[k] << 2); nobj++; occ_ok = 0; }
-    for (int i = k; i < nsim - 1; i++) { sims[i] = sims[i + 1]; life[i] = life[i + 1]; slv[i] = slv[i + 1]; memcpy(sname[i], sname[i + 1], 20); fid[i] = fid[i + 1]; fpar[i][0] = fpar[i + 1][0]; fpar[i][1] = fpar[i + 1][1]; fpt[i] = fpt[i + 1]; csx[i] = csx[i + 1]; dtr[i] = dtr[i + 1]; } memset(&csx[nsim - 1], 0, sizeof(Cx)); memset(&dtr[nsim - 1], 0, sizeof dtr[0]); nsim--; trg_died(k); fid[nsim] = fpt[nsim] = fpar[nsim][0] = fpar[nsim][1] = 0; life_ver++;
+    for (int i = k; i < nsim - 1; i++) { sims[i] = sims[i + 1]; life[i] = life[i + 1]; slv[i] = slv[i + 1]; memcpy(sname[i], sname[i + 1], 20); fid[i] = fid[i + 1]; psd[i] = psd[i + 1]; fpar[i][0] = fpar[i + 1][0]; fpar[i][1] = fpar[i + 1][1]; fpt[i] = fpt[i + 1]; csx[i] = csx[i + 1]; dtr[i] = dtr[i + 1]; } memset(&csx[nsim - 1], 0, sizeof(Cx)); memset(&dtr[nsim - 1], 0, sizeof dtr[0]); nsim--; trg_died(k); psd[nsim] = 0; fid[nsim] = fpt[nsim] = fpar[nsim][0] = fpar[nsim][1] = 0; life_ver++;
     if (ctl == k) ctl = 0; else if (ctl > k) ctl--; if (stage_of(sims[ctl].age) == 0) for (int i = 0; i < nsim; i++) if (stage_of(sims[i].age) > 0) { ctl = i; break; }
     cur_sim = ctl; memset(ilim, 0, sizeof ilim); ui_ver++; }
 
@@ -3568,7 +3574,7 @@ static void menu_do(int k) {   // (D70) the Live menu's choice k (touch or A): o
         else if (k == 3) { if (!sav_ok()) say("No save chip found"); else say(sav_write() ? "Game saved" : "Save failed"); }
         else if (k == 4) open_opts();
         else if (k == 5) { if (sav_ok() && lot_bx >= 0) sav_write(); set_mode(M_TITLE); sav_probe(); }
-        else if (k == 6) jobui = 1; else if (k == 7) juke = 1; else if (k == 8) { info_pg = (info_pg + 1) % 3; life_ver++; }
+        else if (k == 6) jobui = 1; else if (k == 7) juke = 1; else if (k == 8) { info_pg = (info_pg + 1) % 4; life_ver++; }
 }
 static void live_touch(int tx, int ty) {
     if (mg_ui) return;   // (D46: the mini-game reads the stylus itself)
@@ -3755,12 +3761,26 @@ int main(void) {
                 else if (sc == 140) { for (int q = 1; q < nsim; q++) dtr[q].f = TF_AUTO | TF_PEND; info_pg = 2; cur_sim = 1; life_ver++; ui_ver++; }   // (D73: 140 the traits page of the second housemate, 141 the first, 142 a move-in with its toast)
                 else if (sc == 141) { for (int q = 1; q < nsim; q++) dtr[q].f = TF_AUTO | TF_PEND; info_pg = 2; cur_sim = nsim > 2 ? 2 : 1; life_ver++; ui_ver++; }
                 else if (sc == 142) { trg_quiet = 0; new_sim(26, 2, 3, 1, 2, "Morgan Vale", 9 * 16, 9 * 16); info_pg = 2; cur_sim = nsim - 1; life_ver++; ui_ver++; }
+                else if (sc >= 156 && sc <= 158) {   // (D76) 156: the player's own traits page (info page 2, sim 0), 157: a housemate's wish page (info page 3), 158: the same with a wish done
+                    trf_init(); if (sc == 156) { int k = 0; for (int id = 1; id <= TR_MAXID && k < 6; id += 37) if (trf_on(id)) dtr[0].tid[k++] = (u16)id; int w = 1; while (w < WISH_N && !trf_won(w)) w++; dtr[0].wish = (u8)w; tr_unl = 2; cur_sim = 0; info_pg = 2; }
+                    else { trg_quiet = 0; if (nsim < 2) new_sim(26, 2, 3, 1, 2, "Morgan Vale", 9 * 16, 9 * 16); dtr[1].f = TF_AUTO | TF_PEND; trg_assign(1, 0); if (sc == 158) { int n = 0; for (int w = 1; w <= WISH_N && n < 3; w++) if (trf_won(w) && w != dtr[1].wish) { dtr[1].wd[w >> 3] |= (u8)(1 << (w & 7)); n++; } } cur_sim = 1; info_pg = 3; }
+                    life_ver++; ui_ver++; }
                 else if (sc == 149) { for (int k = 0; k < NCIT; k++) if (cits[k].on && cit_vis(&cits[k])) { popup = 3; popup_i = k; break; } if (!popup) for (int k = 0; k < NCIT; k++) if (cits[k].on) { popup = 3; popup_i = k; break; } life_ver++; ui_ver++; }   // (D75: 149 a townie's pop-up: name, sign, strongest bar)
                 else if (sc >= 150 && sc <= 155) { static const char *const NM[5] = { "Ruby Hart", "Jonah Hart", "Ada Hart", "Ned Hart", "Opal Hart" }; static const u8 AG[5] = { 8, 15, 33, 47, 71 }; trg_quiet = 0; for (int q = nsim; q < 6; q++) new_sim(AG[q - 1], (u8)q % 6, (u8)q % 3, (u8)q % 4, (u8)q % 6, NM[q - 1], (9 + q) * 16, 9 * 16); for (int q = 1; q < nsim; q++) dtr[q].f = TF_AUTO | TF_PEND; info_pg = 2; cur_sim = sc - 149 < nsim ? sc - 149 : nsim - 1; life_ver++; ui_ver++; }   // (D75: 150..155 a household of six, the traits page of housemate 1..5 (X, Y, X+Y, L, L+X, L+Y with AUTO_SCENE=149))
+                else if (sc == 160 || sc == 161) {   // (D76) 160: a townie moves in (as S_INVITE does) and the save is written, pers_sig = the Sim's personality (and test_sres 700 + 1 if it is the town card's one); 161: the save is read back, pers_sig = the same Sim's personality again
+                    if (sc == 160) { city_spawn(); Cit *ct = 0; for (int k = 0; k < NCIT; k++) if (cits[k].on) { ct = &cits[k]; break; } char nm[20]; cit_name(ct, nm); new_sim(28, ct->skin, 1, ct->hair, ct->shirt, nm, 9 * 16, 9 * 16); psd[nsim - 1] = ct->ps; dtr[nsim - 1].f = TF_AUTO | TF_PEND; trg_assign(nsim - 1, 0);
+                        TrPers a, b; trf_pers_from_seed(ct->ps, ct->stage, &a); trg_pers(nsim - 1, &b); int same = 1; for (int q = 0; q < 5; q++) if (a.bar[q] != b.bar[q]) same = 0; if (a.sign != b.sign) same = 0; u32 k = 0; for (int q = 0; q < 5; q++) k = k * 11 + b.bar[q]; pers_sig = (k * 12 + b.sign) * 6 + b.asp; test_sres = 700 + same; sav_write(); }
+                    else { test_sres = 800 + sav_apply(); TrPers b; trg_pers(nsim - 1, &b); u32 k = 0; for (int q = 0; q < 5; q++) k = k * 11 + b.bar[q]; pers_sig = (k * 12 + b.sign) * 6 + b.asp; } }
+                else if (sc == 159) {   // (D76) 24 townies with the SAME name (ids 5 + 96 z) and their personalities: pers_sig a checksum of all, pers_dist how many differ (a bar tuple, sign, aspiration), pers_dup how many share a name with the first
+                    city_spawn(); static u32 seen[NCIT]; int nd = 0, dup = 0; u32 h = 2166136261u; char n0[24], n1[24];
+                    for (int z = 0; z < NCIT; z++) { Cit *q = &cits[z]; q->id = (u16)(5 + 96 * z); q->ps = persona_town_seed((u32)seed, q->id); cit_name(&cits[0], n0); cit_name(q, n1); if (!strcmp(n0, n1)) dup++;
+                        u32 k = pers_key(q); int f = 0; for (int y = 0; y < nd; y++) if (seen[y] == k) f = 1; if (!f) seen[nd++] = k; h = (h ^ k) * 16777619u; }
+                    pers_sig = h; pers_dist = (unsigned)nd; pers_dup = (unsigned)dup; test_sres = 600 + (int)(sav_write() != 0); }
                 else if (sc >= 145 && sc <= 148) {   // (D75: the townies are the same people. 145: spawn them and write the save; 146: read it back and spawn them again; 147: the same as 145 for an old save (their ids as before D75); 148: spawn them for the seed in town_sig_seed. town_sig is a checksum of their ids, looks and names)
                     if (sc == 146) test_sres = 500 + sav_apply();
                     if (sc == 147) town_legacy = 1; if (sc == 148) { seed = (int)town_sig_seed; bm_new((u32)seed); }
                     city_spawn(); { u32 h = 2166136261u; char nb[24]; for (int z = 0; z < NCIT; z++) { const Cit *q = &cits[z]; h = (h ^ q->id) * 16777619u; h = (h ^ (u32)(q->skin | q->shirt << 4 | q->hair << 8 | q->pants << 12 | q->stage << 16)) * 16777619u; cit_name(q, nb); for (const char *t = nb; *t; t++) h = (h ^ (u8)*t) * 16777619u; } town_sig = h; }
+                    { static u32 seen2[NCIT]; int nd = 0; u32 h = 2166136261u; for (int z = 0; z < NCIT; z++) { u32 k = pers_key(&cits[z]); int f = 0; for (int y = 0; y < nd; y++) if (seen2[y] == k) f = 1; if (!f) seen2[nd++] = k; h = (h ^ k) * 16777619u; } pers_sig = h; pers_dist = (unsigned)nd; }
                     if (sc == 145) test_sres = 300 + sav_write(); }
                 else if (sc == 143 || sc == 144) {   // (D73: 143 gives traits and wishes and writes the save, 144 reads it back; test_sres 300 + write/apply result, trg_sig the trait state's checksum: the two must match)
                     if (sc == 143) { trf_init(); { int k = 0, w = 1; for (int id = 1; id <= TR_MAXID && k < 6; id += 37) if (trf_on(id)) dtr[0].tid[k++] = (u16)id; while (w < WISH_N && !trf_won(w)) w++; dtr[0].wish = (u8)w; } tr_unl = 2; dtr[0].wd[0] = 6; tr_earned = 5; tr_recent[0] = dtr[0].tid[1]; test_sres = 300 + sav_write(); }
@@ -3789,7 +3809,7 @@ int main(void) {
             if (menu_open && !popup) { int r = ui_rep(held, down, vbl_n), ms = menu_sel;   // (D70) the menu by the d-pad: a 4 x 3 grid, A picks
                 if (r & KEY_LEFT) ms = ms % 4 ? ms - 1 : ms + 3; if (r & KEY_RIGHT) ms = ms % 4 < 3 ? ms + 1 : ms - 3; if (r & KEY_UP) ms = ms >= 4 ? ms - 4 : ms + 8; if (r & KEY_DOWN) ms = ms < 8 ? ms + 4 : ms - 8;
                 if (ms != menu_sel) { menu_sel = ms; ui_snd(UI_MOVE); } if (down & KEY_A) { menu_open = 0; ui_snd(UI_OK); menu_do(menu_sel); down &= ~KEY_A; } }
-            if (info_pg == 2 && !juke && !menu_open && !jobui && !popup && !mg_ui) { int dl = ((down & KEY_RIGHT) ? 1 : 0) - ((down & KEY_LEFT) ? 1 : 0); if (dl) { cur_sim = (cur_sim + dl + nsim) % nsim; life_ver++; ui_ver++; ui_snd(UI_MOVE); } }   // (D73) the traits page: the pad changes housemate
+            if (info_pg >= 2 && !juke && !menu_open && !jobui && !popup && !mg_ui) { int dl = ((down & KEY_RIGHT) ? 1 : 0) - ((down & KEY_LEFT) ? 1 : 0); if (dl) { cur_sim = (cur_sim + dl + nsim) % nsim; life_ver++; ui_ver++; ui_snd(UI_MOVE); } }   // (D73) the traits page: the pad changes housemate
             else { if (!juke && !menu_open && !jobui && !popup && (held & KEY_LEFT)) { yaw_t -= 120; live_yaw = yaw_t; } if (held & KEY_RIGHT) { yaw_t += 120; live_yaw = yaw_t; } }
             if (held & KEY_UP) { if (live_pitch < 7600) live_pitch += 50; } if (held & KEY_DOWN) { if (live_pitch > 1800) live_pitch -= 50; } }
             if ((down & KEY_SELECT) && !mg_ui) { cam_free ^= 1; if (!cam_free) { live_yaw = yaw_t = 4096; live_pitch = 4300; } }

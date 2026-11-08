@@ -92,6 +92,11 @@ int main(void) {
     for (int c = 0; c < 15; c++) printf("  cat %2d %-12s %d\n", c, tr_catname[c], cat[c]);
     OK(nfail == 0, "%d offered traits do not move a DS number", nfail);
     printf("traits: %d offered, %d fail\n", noff, nfail);
+    // (D76) a townie's personality from the world seed and their unique id: 24 townies of one name (ids 5 + 96 z) differ, and the same call gives the same people again (and the PS1's persona_of bars)
+    { int dist = 0, same = 1; u32 key[24]; for (int w = 1; w <= 50; w++) { int d = 0; for (int z = 0; z < 24; z++) { TrPers p, p2; u32 sd = persona_town_seed((u32)w * 7919u, (u32)(5 + 96 * z)); trf_pers_from_seed(sd, 4, &p); trf_pers_from_seed(sd, 4, &p2);
+                u32 k = 0; for (int b = 0; b < 5; b++) { k = k * 11 + p.bar[b]; if (p.bar[b] != p2.bar[b]) same = 0; } key[z] = (k * 12 + p.sign) * 6 + p.asp; int f = 0; for (int y = 0; y < z; y++) if (key[y] == key[z]) f = 1; d += !f; }
+            dist += d; OK(d >= 22, "world %d: only %d of 24 same-name townies differ", w, d); }
+        OK(same, "the same seed gave two personalities"); printf("same-name townies: %.2f of 24 differ on average (50 worlds)\n", dist / 50.0); }
     printf("\n%d checks, %d failed\n", checks, fails);
     return fails != 0;
 }
