@@ -803,8 +803,10 @@ static int pick_stroll(const Sim *s, int *ox, int *oy) {
     *ox = bx; *oy = by; return 1;
 }
 static int think_tok;   // (one of the household makes a real decision a step: two who come free at once are a 60th of a second apart, not one frame's spike)
+int sim_load_hi;   // (main.c: the last frame was a heavy one: a housemate's new decision, which may start a route search of 150 to 400 hb, waits for a lighter frame)
 static void ai_think(Sim *s) {
     if (s->action != ACT_NONE || s->path_i < s->path_n) return;
+    { static u8 wait_[MAX_SIMS]; int m_ = (int)(s - sims); if (m_ != player && m_ < MAX_SIMS) { if (sim_load_hi && wait_[m_] < 90) { wait_[m_]++; return; } wait_[m_] = 0; } }   // (at most 90 steps, a second and a half: nobody notices a housemate pausing a moment)
     if (!s->wander_t) { if (think_tok) return; think_tok = 1; }
     if (s->bore.stage == AG_BABY) {   // a baby: asleep in its crib at night (or when tired), otherwise sat on the floor playing
         if (is_night() || (s->need[N_REST] >> 10) < 35) baby_to_bed(s);

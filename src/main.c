@@ -199,6 +199,10 @@ static void helper_apply(void);
                                          // 0..3: how far a long run of slow frames has pulled in the view distance and the crowd
 static int det_opt = 12;                                      // the FULL DETAIL option's range (the range in use dips under it when frames run long)
 #ifdef AUTO_CITY
+#ifdef AB_TRACE
+u8 dbg_tr[1000][4];
+static int cit_spare_hb_(void) { extern int cit_spare_hb; return cit_spare_hb; }
+#endif
 int dbg_slow[16][8];   // (test builds only)
 #endif
 int dbg_slow_n;
@@ -946,8 +950,14 @@ static void life_draw(void) {
     if (world_zone == ZONE_CITY || world_zone == ZONE_HOME || world_zone == ZONE_TOWN) { int wx = sim_weather(); world_season_skin(sim_season(), sim_season() == 3 ? 2 : wx == 1 || wx == 2 ? 1 : 0); { extern int far_season, far_wet; far_season = sim_season(); far_wet = wx == 1 || wx == 2; } }
     // the day-night sky and light
     int t = clock_min;
-    int day = (t > 360 && t < 1200) ? 255 : (t >= 1200 && t < 1320) ? 255 - (t - 1200) * 2 : (t >= 300 && t <= 360) ? (t - 300) * 4 : 20;
-    day = CLAMP(day, 20, 255);
+#ifdef AB_CFG
+    { extern volatile u8 ab_par[20]; if (ab_par[11]) t = ab_par[11] * 6; }   // (test builds: the sky and light at one fixed time of day, AB_PAR="7=n" = n * 6 minutes, for before / after shots)
+#endif
+    // (the light eases in and out: dawn 5:00 to 6:30, dusk 19:30 to 22:00, on a smooth curve, so no step in the sky or the shading and no sudden change of what the baked floor light is keyed on; the horizon warms in the middle of each)
+    int day, warm = 0;
+    { int x = t >= 1170 ? 256 - (t - 1170) * 256 / 150 : (t - 300) * 256 / 90; x = CLAMP(x, 0, 256); if (t > 390 && t < 1170) x = 256;
+      int sm = (x * x * (768 - 2 * x)) >> 16; day = 20 + ((235 * sm) >> 8); warm = (sm * (256 - sm)) >> 8;   // (warm: 0 at full day and full night, 64 at the middle)
+    }
     gfx_set_clear((20 * 8 * day) >> 8, (26 * 8 * day) >> 8, (31 * 8 * day) >> 8);
     gfx_set_ambient(54 + (day * 36 >> 8), 48 + (day * 60 >> 8));
     {   // the sky: deep blue up top down to a warm haze at the horizon, dimmed by the night
@@ -961,6 +971,9 @@ static void life_draw(void) {
         { int wx = world_zone == ZONE_ISLAND ? 0 : sim_weather(); if (wx) { int k = wx == 3 ? 10 : 12;   // weather greys the sky and dims the day
               tr = (tr * (16 - k) + ((wx == 3 ? 170 : 90) * day >> 8) * k) / 16; tg = (tg * (16 - k) + ((wx == 3 ? 176 : 98) * day >> 8) * k) / 16; tb = (tb * (16 - k) + ((wx == 3 ? 190 : 112) * day >> 8) * k) / 16;
               br = (br * (16 - k) + ((wx == 3 ? 200 : 120) * day >> 8) * k) / 16; bg = (bg * (16 - k) + ((wx == 3 ? 205 : 126) * day >> 8) * k) / 16; bb = (bb * (16 - k) + ((wx == 3 ? 214 : 138) * day >> 8) * k) / 16; } }
+        if (warm && !(world_zone != ZONE_ISLAND && sim_weather())) { int k = warm * 3;   // (the horizon goes gold and rose at dawn and dusk: up to about 3/4 at the middle; the top of the sky only a little)
+            br += (((250 * day >> 8) - br) * k) >> 8; bg += (((140 * day >> 8) - bg) * k) >> 8; bb += (((90 * day >> 8) - bb) * k) >> 8;
+            tr += (((150 * day >> 8) - tr) * warm) >> 8; tg += (((120 * day >> 8) - tg) * warm) >> 8; tb += (((170 * day >> 8) - tb) * warm) >> 8; }
         u32 top = (u32)tr | ((u32)tg << 8) | ((u32)tb << 16), hor = (u32)br | ((u32)bg << 8) | ((u32)bb << 16);
         { extern u32 world_horizon; extern int world_far_range; world_horizon = hor; world_far_range = (world_zone == ZONE_CITY && far_view) ? 60 : 34; }
         if (world_zone == ZONE_CITY && far_view) far_sky(top, hor);   // the sky meets the land at the real horizon
@@ -2131,13 +2144,14 @@ static void helper_apply(void) {
     int c = ((opt[O_CROWD] & 3) + 1) * 16 >> crowd_lvl; cit_maxdraw = c < 8 ? 8 : c;
     cit_live_cap = crowd_lvl >= 2 ? 1 : 99; cit_fresh_max = crowd_lvl >= 1 ? 1 : 2; cit_stale_n = crowd_lvl >= 1 ? 12 : 6;   // (a render that does not fit costs ~140 hb: a frame past its vblank)
 }
+static int mode30, h_lock = 3;   // (the speed helper's frame-rate target: 30 only when the frames have held it for a long spell, else a locked 20; h_lock = the vblanks every frame takes at least)
 int dbg_hl[6];   // (test readouts: steps given up, given back, frames aiming at 30, the ladder's step and the crowd's step, summed)
 COLD static void helper_frame(void) {
     extern int world_detail_r, gfx_last_wait, cit_spare_hb;
 #ifdef AB_CFG
     { extern volatile u8 ab_cfg[8]; if (ab_cfg[7]) { if (shed_lvl != ab_cfg[7] - 1) { shed_lvl = ab_cfg[7] - 1; helper_apply(); } return; } }   // (test builds: the far view's step held where the disc image says, 1 = as chosen .. 5 = lite .. 6 = none)
 #endif
-    static int mode30 = 1, avg = 600 << 4, hist, since, mode_n, last_s, meas_s, meas_a;
+    static int avg = 600 << 4, hist, since, mode_n, last_s, meas_s, meas_a, win_n, win_over, dwell, late_w;   // (mode30 is file-wide: 0 = holding 20 (3 vblanks a frame, locked), 1 = holding 30)
     static short cost[24], quiet[24];
     int floor_r = det_opt - 8; if (floor_r < 5) floor_r = 5; if (floor_r > det_opt) floor_r = det_opt;
     int R = det_opt - floor_r, kmax = FSH + R + 2;   // (the ladder: the far view's steps 0..3, 4 = lite, [FSH = gone here when FAR_FIRST], the range, the crowd's two, [gone last otherwise])
@@ -2148,16 +2162,21 @@ COLD static void helper_frame(void) {
 #else
     int k = shed_lvl >= FSH ? kmax : shed_lvl < 4 ? shed_lvl : crowd_lvl ? 4 + R + crowd_lvl : 4 + det_opt - world_detail_r;
 #endif
+    const int auto30 = opt[O_FPSCAP] == 1;   // (STEADY 30: 30 where it holds, else 20; STEADY 20 never tries 30; AS FAST AS IT CAN keeps its own count)
+    if (!auto30) mode30 = 0;
     int T = mode30 && opt[O_FPSCAP] != 2 ? 524 : 786;
     int need = t_cpu - cit_spare_hb + (gfx_last_wait > 0 ? gfx_last_wait : 0);
+    { extern int sim_load_hi; sim_load_hi = need > (mode30 ? 380 : 580); }   // (a heavy frame: housemates put a new decision, and its route search, off to a lighter one)
     if (gfx_last_overflow && need < T + 20) need = T + 20;   // (the packet buffer filled up: things were left undrawn, so count it as slow)
     avg += need - (avg >> 4); int A = avg >> 4;              // (the mean, over about 16 frames)
-    int over = need > T - 14; hist = (hist << 1) | over; since++;
+    late_w += (need > T - 14 ? 1024 : 0) - (late_w >> 6);   // (late_w / 655 = the % of the last ~64 frames that ran, or nearly ran, past the target)
+    int over = need > T - (mode30 ? 14 : 60); hist = (hist << 1) | over; since++; dwell++;
     if (meas_s && since == 32) { int d = A - meas_a; if (d < 4) d = 4; cost[meas_s] = (short)(cost[meas_s] ? (cost[meas_s] + d) / 2 : d); meas_s = 0; }   // (what the step given back costs)
     if (last_s && since == 900 && quiet[last_s] > 240) quiet[last_s] = (short)(quiet[last_s] / 2);   // (it held)
     int ch = 0;
     // (one slow frame alone is a spike, a route search or a block coming into the window: giving detail up does not help it)
-    if ((__builtin_popcount(hist & 0xffff) >= 3 || A > T - 30) && k < kmax && (k < kmax - 1 || A > T + 30) && since >= (A > T + 60 ? 2 : 6)) {   // (the very last step, the far view gone, only when the frames really are slow: a lite far view at 27 is worth more than none at 30)   // give a step up (every other frame when far over)
+    const int kl = mode30 ? MIN(kmax - 1, 4) : kmax;   // (holding 30 only ever gives up the far view's steps: if that is not enough it is back to 20)
+    if ((__builtin_popcount(hist & 0xffff) >= (mode30 ? 3 : 2) || A > T - (mode30 ? 30 : 140) || (!mode30 && late_w > 1900)) && k < kl && (k < kmax - 1 || A > T + 30) && since >= (A > T + 60 ? 2 : 6)) {   // (the very last step, the far view gone, only when the frames really are slow: a lite far view at 27 is worth more than none at 30)   // give a step up (every other frame when far over)
         if (last_s == k + 1 && since < 300) quiet[k + 1] = (short)MIN(2400, (quiet[k + 1] ? quiet[k + 1] : 120) * 2);   // (it was given back too soon)
         k++; ch = 1; hist = 0; meas_s = 0; dbg_hl[0]++;
     } else if (k > 0) {   // give one back, after a quiet spell, if what it costs fits
@@ -2168,12 +2187,13 @@ COLD static void helper_frame(void) {
         int far_k = kmax;
 #endif
         int c = cost[k] ? cost[k] : k == far_k ? 90 : k <= 4 ? 40 : 15;
-        if (since >= q && __builtin_popcount(hist) <= 1 && A + c < T - 60) { meas_s = last_s = k; meas_a = A; k--; ch = 1; dbg_hl[1]++; }
+        if (since >= q && __builtin_popcount(hist) <= 1 && A + c < T - (mode30 ? 60 : 190) && late_w < 700) { meas_s = last_s = k; meas_a = A; k--; ch = 1; dbg_hl[1]++; }
     }
-    if (opt[O_FPSCAP] != 2) {   // 30 or 20: back to 20 when even everything given up does not hold 30; 30 again once the frames clearly fit it
-        if (mode30) { if (k == kmax && A > 524 - 24) { if (++mode_n >= 60) { mode30 = 0; mode_n = 0; } } else mode_n = 0; }
-        else { if (A < 524 - 60) { if (++mode_n >= 240) { mode30 = 1; mode_n = 0; } } else mode_n = 0; }
-    }
+    if (auto30) {   // 30 or a locked 20, and not a flip between them: 30 is tried only after a long clean spell (256 frames with at most 2 over 500 hb, at least 600 frames since the last change) and left again as soon as it cannot hold even with the far view given up
+        if (mode30) { if (k >= kl && (__builtin_popcount(hist) >= 3 || A > 504)) { if (++mode_n >= 6) { mode30 = 0; mode_n = 0; dwell = 0; win_n = win_over = 0; hist = 0; } } else mode_n = 0; }
+        else { win_n++; win_over += need > 500; if (win_n >= 256) { if (win_over <= 2 && dwell >= 600 && A < 440) { mode30 = 1; mode_n = 0; dwell = 0; hist = 0; } win_n = win_over = 0; } }
+        h_lock = mode30 ? 2 : 3;
+    } else h_lock = opt[O_FPSCAP] == 2 ? 3 : 1;
     #ifdef FAR_FIRST
     if (ch) { shed_lvl = MIN(k, FSH); world_detail_r = det_opt - CLAMP(k - FSH, 0, R); crowd_lvl = CLAMP(k - FSH - R, 0, 2); helper_apply(); since = 0; }
 #else
@@ -5137,7 +5157,8 @@ int main(void) {
         if (state == ST_LIFE && opt[O_SPEED]) {   // a frame that ran past two screen refreshes: the full-detail range draws in a tile (back out once things are quiet)
 #endif
             helper_frame();
-        }
+            if (opt[O_FPSCAP] == 1) gfx_min_vsyncs = h_lock;   // (a locked rate while the helper has one: no frame ends a vblank sooner, so 20 does not flicker with 30)
+        } else if (opt[O_FPSCAP] == 1) gfx_min_vsyncs = 2;   // (the helper is off or this is not the city: 30 or what the frames take, as before)
 #ifdef AUTO_CITY
         { extern int dbg_slow[16][8], dbg_slow_n, cit_spare_hb; if (state == ST_LIFE && t_cpu - cit_spare_hb > 785) { int *d = dbg_slow[dbg_slow_n++ & 15];   // (test builds: what the slow frames spent their time on)
             d[0] = t_cpu; d[1] = t_cpu - cit_spare_hb; d[2] = t_logic; d[3] = t_world; d[4] = t_sims; d[5] = t_hud + t_bub; d[6] = gfx_prof[3]; d[7] = frame; } }
@@ -5145,6 +5166,9 @@ int main(void) {
         if (state == ST_LIFE) { avg_cpu16 += t_cpu - (avg_cpu16 >> 4); avg_world16 += t_world - (avg_world16 >> 4);   // (the test readouts)
             avg_hh16 += gfx_prof[4] - (avg_hh16 >> 4); hist_cpu[MIN(4, t_cpu / 262)]++;
             { extern int cit_spare_hb; int nd = t_cpu - cit_spare_hb; dbg_end_hist[MIN(23, MAX(0, nd) / 50)]++; dbg_need_last = nd + (hb_now() - t_cpu - t_frame0); }   // (the need, and the stats' own time up to here)
+#ifdef AB_TRACE
+            { extern u8 dbg_tr[1000][4]; extern int dbg_life_n; if (dbg_life_n < 1000) { int nd_ = t_cpu - cit_spare_hb_(); u8 *e_ = dbg_tr[dbg_life_n]; e_[0] = (u8)MIN(255, MAX(0, nd_) / 5); e_[1] = (u8)MIN(255, t_logic / 2); e_[2] = (u8)MIN(255, t_world / 3); e_[3] = (u8)MIN(255, t_sims / 2); } }   // (test builds: every frame's need /5, logic /2, world /3, people /2)
+#endif
             if (!dbg_life_n) dbg_life_vb0 = VSync(-1); dbg_life_n++; dbg_life_vb = VSync(-1) - dbg_life_vb0; dbg_sum_cpu += t_cpu; for (int k = 0; k < 8; k++) dbg_sum_prof[k] += gfx_prof[k];
             { extern int world_hb_l0, world_hb_up, world_hb_roofs, world_hb_sky1; dbg_sum_w[0] += world_hb_l0; dbg_sum_w[1] += world_hb_up; dbg_sum_w[2] += world_hb_roofs; dbg_sum_w[3] += world_hb_sky1; { extern int far_hb[3]; dbg_sum_w[4] += far_hb[0]; dbg_sum_w[5] += far_hb[1]; dbg_sum_w[6] += far_hb[2]; } }
             { extern int gfx_profn[8]; for (int k = 0; k < 8; k++) dbg_sum_pn[k] += gfx_profn[k]; }

@@ -2189,8 +2189,13 @@ static void nc_piece(const NV *p0, const NV *p1, const NV *p2, const NV *p3, int
     }
     if (warp && depth > 0) { static int fr_ = -1, cnt_; if (fr_ != frame_t) { fr_ = frame_t; cnt_ = 0; } if (++cnt_ > NC_BUDGET) warp = 0; }
     if ((big || warp) && depth < NC_DEPTH) {
-        int ls = MAX(ABS(p1->x - p0->x) + ABS(p1->y - p0->y) + ABS(p1->z - p0->z), ABS(p2->x - p3->x) + ABS(p2->y - p3->y) + ABS(p2->z - p3->z));
-        int lt = MAX(ABS(p3->x - p0->x) + ABS(p3->y - p0->y) + ABS(p3->z - p0->z), ABS(p2->x - p1->x) + ABS(p2->y - p1->y) + ABS(p2->z - p1->z));
+        int ls, lt;
+        if (big) {   // (too big for the GPU: cut across the longer side)
+            ls = MAX(ABS(p1->x - p0->x) + ABS(p1->y - p0->y) + ABS(p1->z - p0->z), ABS(p2->x - p3->x) + ABS(p2->y - p3->y) + ABS(p2->z - p3->z));
+            lt = MAX(ABS(p3->x - p0->x) + ABS(p3->y - p0->y) + ABS(p3->z - p0->z), ABS(p2->x - p1->x) + ABS(p2->y - p1->y) + ABS(p2->z - p1->z));
+        } else {     // (the texture warp: cut across the way the depth changes, so a piece's depth range shrinks fastest: fewer pieces for the same accuracy)
+            ls = ABS(p1->z - p0->z) + ABS(p2->z - p3->z); lt = ABS(p3->z - p0->z) + ABS(p2->z - p1->z);
+        }
         NV m0, m1;
         if (ls >= lt) { nc_mid(&m0, p0, p1); nc_mid(&m1, p3, p2); nc_piece(p0, &m0, &m1, p3, depth + 1); nc_piece(&m0, p1, p2, &m1, depth + 1); }
         else { nc_mid(&m0, p0, p3); nc_mid(&m1, p1, p2); nc_piece(p0, p1, &m1, &m0, depth + 1); nc_piece(&m0, &m1, p2, p3, depth + 1); }
