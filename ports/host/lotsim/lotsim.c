@@ -140,7 +140,7 @@ static void dump(int lot, int bx, int by) {
 
 static void dump_reach(void) {
     int lx = BM_BLK + BM_LOT0, ly = BM_BLK + BM_LOT0;
-    for (int y = ly - 1; y <= ly + 13; y++) { for (int x = lx - 1; x <= lx + 13; x++) putchar(au_reach[y][x] ? 'r' : au_in[y][x] ? 'i' : '.'); putchar('\n'); }
+    for (int y = ly - 1; y <= ly + 13; y++) { for (int x = lx - 1; x <= lx + 13; x++) putchar(au_reach[y][x] ? 'r' : lifeMap[y][x] == '.' ? 'u' : au_in[y][x] ? 'i' : '.'); putchar('\n'); }
 }
 int main(int argc, char **argv) {
     if (argc < 3) { fprintf(stderr, "usage: lotsim dump|png|audit SEED ...\n"); return 1; }

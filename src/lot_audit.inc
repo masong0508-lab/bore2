@@ -19,7 +19,7 @@ static int au_isw(char c) { return c == 'W' || c == 'w' || c == 'E' || c == 'e' 
 static int au_free(char c, int f) { return f != FL_WATER && (c == '.' || c == 'D' || c == '|' || (items_is_item(c) && !items_blocking(c))); }
 static int au_furn(char c) { return c != '.' && c != ' ' && c != 0 && !au_isw(c) && c != 'D' && c != 'P' && items_is_item(c) && items_blocking(c); }
 static int au_flat(char c) { return c != '.' && c != ' ' && items_is_item(c) && !items_blocking(c) && c != 'D' && c != 'P' && c != 'x' && c != 'B'; }
-static int au_table(char c) { return c == 't' || c == (char)0x95 || c == (char)0x9A || c == (char)0xA1 || c == (char)0xA4 || c == 'y'; }
+static int au_table(char c) { return c == 't' || c == (char)0x95 || c == (char)0x9A || c == (char)0xA1 || c == (char)0xA4 || c == 'y' || c == 'd'; }   // (a desk with its chair is a table set: a workstation can stand in the room)
 static void au_foot_tile(char c, int x, int y, int r, int da, int db, int *tx, int *ty) { (void)c;
     *tx = x + (r == 0 ? da : r == 1 ? db : r == 2 ? -da : -db); *ty = y + (r == 0 ? db : r == 1 ? -da : r == 2 ? -db : da); }
 static int au_facing(char (*m)[MW + 1], u8 (*wp)[MW], int x, int y) {   // as world_item_facing: a turn the player chose, else away from the wall (towards the open side)

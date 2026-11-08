@@ -189,6 +189,7 @@ static void fz_need(const char *has, char c) {   // a home must have its toilet,
         if (sm[y][x] != '.' || (ABS(x - fz_ix) + ABS(y - fz_iy)) < 2 || !fz_free(x, y)) continue;
         if (sm[y - 1][x] == 'W' || sm[y + 1][x] == 'W' || sm[y][x - 1] == 'W' || sm[y][x + 1] == 'W') { sm[y][x] = c; return; } }
 }
+static int fz_no_bath;                            // 1: the bathroom is a room of its own, not this layout's corner
 static void furnish_at(int x0, int y0, int x1, int y1, int ix, int iy, int ox, int oy, const Occ *o, unsigned h) {   // (ix,iy): the tile just inside the door; (ox,oy): the way in
     fz_frame(x0, y0, x1, y1, ix, iy, ox, oy, h);
     int st = fz_rnd(MAX(1, rgn));
@@ -198,9 +199,10 @@ static void furnish_at(int x0, int y0, int x1, int y1, int ix, int iy, int ox, i
         fz_nres = 0; return;
     }
     Beds bd = beds_of(o);
-    fz_layout(R_ALL | ((x1 - x0 + 1) * (y1 - y0 + 1) >= 60 ? R_GRAND : 0), &bd, o);
-    fz_need("T", 'T'); fz_need("F", 'F'); fz_need("S<", 'S');
+    fz_layout((fz_no_bath ? R_ALL & ~R_BATH : R_ALL) | ((x1 - x0 + 1) * (y1 - y0 + 1) >= 60 ? R_GRAND : 0), &bd, o);
     fz_reach();
+    if (!fz_no_bath) fz_need("T", 'T');
+    fz_need("F", 'F'); fz_need("S<", 'S');
     fz_nres = 0;
 }
 // A BIG HOME is built as rooms: a front room (living, kitchen, dining; split in two in a mansion), and behind a wall with a door to each
@@ -357,18 +359,25 @@ static void city_house(int lx, int ly, unsigned h) {
     if (!grand) backyard(lx, ly, hx, hy, w, dy, h * 2246822519u);
     if (grand) { gFree(dx - 3, dy + 2, '}'); gFree(dx + 3, dy + 2, '}'); gFree(hx + 1, dy + 1, 'Z'); gFree(hx + w - 2, dy + 1, 'Z'); gFree(dx - 4, dy + 1, TREE); gFree(dx + 4, dy + 1, TREE); }
 }
-static void city_cottage(int lx, int ly, unsigned h) {   // a small home: one room, everything within reach of the bed
-    int w = 7 + (int)((h >> 4) & 1), hh = 6 + (int)((h >> 5) & 1);
-    int hx = lx + 3 - (int)((h >> 6) & 1), hy = ly + 3 + (int)((h >> 7) & 1);
+static void city_cottage(int lx, int ly, unsigned h) {   // a small home: a bathroom in the back corner behind a door of its own, and one room for everything else
+    int w = 8 + (int)((h >> 4) & 1), hh = 7 + (int)((h >> 5) & 1);
+    int hx = lx + 2 + (int)((h >> 6) & 1), hy = ly + 2 + (int)((h >> 7) & 1);
     if ((h >> 8) & 1) hy = ly + 11 - hh;                                       // (half of them stand at the front of the lot: a big backyard behind)
     int fl = cfl(h >> 9), wp = pick_wp(h);
     gRoom(hx, hy, hx + w - 1, hy + hh - 1, fl, wp);
     int dx = hx + w / 2, dy = hy + hh - 1;
     gPut(dx, dy, 'D'); city_path(dx, dy, ly);
-    gPut(hx + 2, hy, 'E'); gPut(hx + w - 3, hy, 'E'); gPut(hx, hy + 2, 'E'); gPut(hx + w - 1, hy + 2, 'E');
+    gPut(hx + 2, hy, 'E'); gPut(hx + w - 3, hy, 'E'); gPut(hx, hy + 3, 'E'); gPut(hx + w - 1, hy + 3, 'E');
     int x0 = hx + 1, y0 = hy + 1, x1 = hx + w - 2, y1 = hy + hh - 2;
     int u = reg_home(x0, y0, x1, y1, dx, dy);
-    furnish(x0, y0, x1, y1, dx, dy, occ_of(u), h * 2246822519u);
+    int right = (int)((h >> 10) & 1), cx0 = right ? x1 - 2 : x0, cx1 = cx0 + 2, wx = right ? cx0 - 1 : cx1 + 1, bdx = cx0 + 1, wpi = cwp(h >> 12);   // the bath cell: 3 wide, 2 deep, its wall to the room and a door in the middle of it
+    for (int y = y0; y <= y0 + 2; y++) { sm[y][wx] = 'W'; swp[y][wx] = (u8)wpi; }
+    for (int x = MIN(cx0, wx); x <= MAX(cx1, wx); x++) { sm[y0 + 2][x] = 'W'; swp[y0 + 2][x] = (u8)wpi; }
+    sm[y0 + 2][bdx] = 'D'; for (int y = y0; y <= y0 + 1; y++) for (int x = cx0; x <= cx1; x++) { sm[y][x] = 'W'; sfl[y][x] = (u8)cfl(h >> 14); }
+    fz_nres = 2; fz_res[0][0] = (u8)bdx; fz_res[0][1] = (u8)(y0 + 3); fz_res[1][0] = (u8)bdx; fz_res[1][1] = (u8)(y0 + 4);
+    fz_no_bath = 1; furnish(x0, y0, x1, y1, dx, dy, occ_of(u), h * 2246822519u); fz_no_bath = 0; fz_nres = 0;
+    for (int y = y0; y <= y0 + 1; y++) for (int x = cx0; x <= cx1; x++) sm[y][x] = '.';
+    if (!occ_of(u)->vacant) { sm[y0][cx0] = 'T'; sm[y0][cx1] = '-'; if (hh > 7 && ((h >> 15) & 1)) sm[y0 + 1][cx1] = ','; }   // the toilet and the sink in the back corners, the lane from the door between them clear
     yard(lx, ly, dx, dy, occ_of(u)->vacant, h >> 5);
     backyard(lx, ly, hx, hy, w, dy, h * 2654435761u);
 }
@@ -514,8 +523,8 @@ static void city_diner(int lx, int ly, unsigned h) {
 static void city_gym(int lx, int ly, unsigned h) {
     int x0 = lx + 1, y0 = ly + 2, x1 = lx + 11, y1 = ly + 9;
     gRoom(x0, y0, x1, y1, 7, NWP + 61); gPut(lx + 6, y1, 'D'); gBox(lx + 6, y1 + 1, lx + 6, MIN(ly + 12, MH - 2), FL_PAVING);
-    for (int x = x0 + 1; x <= x0 + 5; x += 2) gFree(x, y0 + 1, 'm');
-    gFree(x0 + 1, y0 + 4, ']'); gFree(x0 + 3, y0 + 4, ']'); if (h & 1) gFree(x0 + 5, y0 + 4, ']'); gFree(x0 + 1, y0 + 6, 'Q');
+    for (int x = x0 + 1; x <= x0 + 5; x++) gFree(x, y0 + 1, 'm');                      // the treadmills in a row along the back wall, the benches in a row off the side wall
+    for (int x = x0 + 1; x <= x0 + 3 + (int)(h & 1); x++) gFree(x, y0 + 4, ']'); gFree(x0 + 1, y0 + 6, 'Q'); gFree(x0 + 1, y0 + 7, 'Q');
     gFree(x1 - 1, y0 + 1, 'H'); gFree(x1 - 2, y0 + 1, 'H'); gFree(x1 - 3, y0 + 1, 'T'); gFree(x1 - 1, y1 - 1, 'F'); gFree(x1 - 3, y1 - 1, 'R');
     if (h & 2) gFree(x1 - 1, y0 + 4, '_');
     gPut(x0 + 3, y0, 'E'); gPut(x1 - 3, y0, 'E'); gFree(lx + 3, ly + 11, 'Y'); gFree(lx + 9, ly + 11, 'Z');
@@ -790,7 +799,7 @@ static void lot_tower(int lx, int ly, unsigned h, int st) {   // an office tower
 static void lot_hotel(int lx, int ly, unsigned h, int st) {   // a hotel: a corridor (two wide) through each floor, rooms either side, the lobby at the front
     int x0 = lx, x1 = lx + 12, y0 = ly, y1 = ly + 12;
     int fl = cfl(h >> 3), fl2 = cfl(h >> 9), wp = cwp(h >> 13);
-    int xs[2] = { x0 + 3, x0 + 9 };
+    int xs[2] = { x0 + 4, x0 + 8 };      // (stairs and their plant stand between the doors' lanes, not in one)
     for (int l = 0; l < st; l++) {
         if (!storey(l)) break;
         sRoom(x0, y0, x1, y1, fl2, wp);
