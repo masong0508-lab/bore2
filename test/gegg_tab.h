@@ -46,3 +46,4 @@
 {V_HATCH,0,40,0x88}, // hatch t40 mystery egg
 {V_HATCH,0,76,0x88}, // hatch t76 mystery egg
 {V_HATCH,0,120,0x88}, // hatch t120 from a mystery egg
+{V_BOX,0,0,0x88}, // toy box: pets, the mystery egg in amber
