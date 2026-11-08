@@ -86,12 +86,17 @@ endforeach()
 configure_file(${CMAKE_SOURCE_DIR}/assets/GOTCHI.ART ${CMAKE_BINARY_DIR}/GOTCHI.ART COPYONLY)
 add_custom_target(overlays DEPENDS ${CMAKE_BINARY_DIR}/KINGDOM.OVL ${CMAKE_BINARY_DIR}/ARCADE.OVL ${CMAKE_BINARY_DIR}/ARCADE2.OVL ${CMAKE_BINARY_DIR}/GOTCHI.OVL ${CMAKE_BINARY_DIR}/PARTY.OVL ${CMAKE_BINARY_DIR}/DJ.OVL ${CMAKE_BINARY_DIR}/SUPER.OVL ${CMAKE_BINARY_DIR}/DOG.OVL ${CMAKE_BINARY_DIR}/PRISON.OVL ${CMAKE_BINARY_DIR}/SPACE.OVL ${CMAKE_BINARY_DIR}/PARADISE.OVL ${CMAKE_BINARY_DIR}/FARM.OVL ${CMAKE_BINARY_DIR}/SKYSEA.OVL ${CMAKE_BINARY_DIR}/CUT.OVL ${CMAKE_BINARY_DIR}/CLOCK.OVL ${CMAKE_BINARY_DIR}/GOTCHI.ART)
 
+# (the slots are made again whenever an overlay changes: each .OVL is a dependency, not only the target)
+foreach(o kingdom arcade arcade2 gotchi party dj super dog prison space paradise farm skysea cut clock)
+	string(TOUPPER ${o} O)
+	list(APPEND SLOT_SRC ${CMAKE_BINARY_DIR}/${O}.OVL)
+endforeach()
 # THE PACKS (tools/packs.py): every overlay (and the art) padded to its fixed slot. The FULL disc has the real files in the slots,
 # the BASE disc a stub in each; the patches (BORE2-<PACK>.ppf) are the difference, one per pack, and go on in any order.
 add_custom_command(
 	OUTPUT  ${CMAKE_BINARY_DIR}/slot_full/KINGDOM.OVL ${CMAKE_BINARY_DIR}/slot_base/KINGDOM.OVL
 	COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/packs.py slots ${CMAKE_BINARY_DIR}
-	DEPENDS overlays ${CMAKE_SOURCE_DIR}/tools/packs.py ${CMAKE_BINARY_DIR}/GOTCHI.ART
+	DEPENDS overlays ${CMAKE_SOURCE_DIR}/tools/packs.py ${CMAKE_BINARY_DIR}/GOTCHI.ART ${SLOT_SRC}
 )
 add_custom_target(slots DEPENDS ${CMAKE_BINARY_DIR}/slot_full/KINGDOM.OVL)
 
