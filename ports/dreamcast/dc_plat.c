@@ -70,19 +70,27 @@ void wmove(void *dst, const void *src, u32 n) { memmove(dst, src, n); }
 
 // ---------------------------------------------------------------- the overlays: all linked in; "loading" one hands back its table
 extern const OvlHead ovl_head_kingdom, ovl_head_arcade, ovl_head_gotchi, ovl_head_party, ovl_head_dj, ovl_head_super, ovl_head_dog,
-    ovl_head_prison, ovl_head_space, ovl_head_paradise, ovl_head_farm, ovl_head_skysea, ovl_head_cut;
+    ovl_head_prison, ovl_head_space, ovl_head_paradise, ovl_head_farm, ovl_head_skysea, ovl_head_cut, ovl_head_arcade2, ovl_head_clock, ovl_head_pkinfo;
 static const struct { const char *file, *name; const OvlHead *h; } ovls[] = {
     { "KINGDOM.OVL", "THE LAND BOREFORE TIME", &ovl_head_kingdom }, { "ARCADE.OVL", "BORTUA FIGHTER", &ovl_head_arcade },
     { "GOTCHI.OVL", "BOREAGOTCHI!", &ovl_head_gotchi }, { "PARTY.OVL", "FAMILY PARTY", &ovl_head_party }, { "DJ.OVL", "DJ BOOTH", &ovl_head_dj },
     { "SUPER.OVL", "SUPERSTAR", &ovl_head_super }, { "DOG.OVL", "CREATE A DOG", &ovl_head_dog }, { "PRISON.OVL", "CRIME AND LAW", &ovl_head_prison },
     { "SPACE.OVL", "SPACE AGE", &ovl_head_space }, { "PARADISE.OVL", "ISLAND PARADISE", &ovl_head_paradise }, { "FARM.OVL", "FARM LIFE", &ovl_head_farm },
     { "SKYSEA.OVL", "SKY AND SEA", &ovl_head_skysea }, { "CUT.OVL", "CUTSCENE", &ovl_head_cut },
+    { "ARCADE2.OVL", "BORTUA FIGHTER", &ovl_head_arcade2 }, { "CLOCK.OVL", "SET CLOCK", &ovl_head_clock }, { "PKINFO.OVL", "PACKS", &ovl_head_pkinfo },
 };
+// ARCADE.OVL holds the fighter's AGFn, ARCADE2.OVL the other games'; arc_core.c is one copy here and reads the merged table
+#include "arc_i.h"
+#undef ag_fn
+extern const AGFn ag_fn_fight[AG_NGAME], ag_fn_games[AG_NGAME];
+AGFn ag_fn_merged[AG_NGAME];
+static void ag_merge(void) { for (int i = 0; i < AG_NGAME; i++) ag_fn_merged[i] = i ? ag_fn_games[i] : ag_fn_fight[0]; }
 const char *ovl_pack_name(const char *file) { for (unsigned i = 0; i < sizeof ovls / sizeof ovls[0]; i++) if (!strcmp(ovls[i].file, file)) return ovls[i].name; return file; }
 int ovl_installed(const char *file) { for (unsigned i = 0; i < sizeof ovls / sizeof ovls[0]; i++) if (!strcmp(ovls[i].file, file)) return 1; return !strcmp(file, "GOTCHI.ART"); }
 const OvlHead *ovl_load(const char *file) {
     for (unsigned i = 0; i < sizeof ovls / sizeof ovls[0]; i++) if (!strcmp(ovls[i].file, file)) {
         u32 n; u8 *base = (u8 *)crowd_scratch(&n) + OVL_AT; crowd_reset(); memset(base, 0, (int)n - OVL_AT);   // (the arena is the overlay's, as on the PS1)
+        if (ovls[i].h == &ovl_head_arcade || ovls[i].h == &ovl_head_arcade2) ag_merge();
         return ovls[i].h;
     }
     return 0;
@@ -99,3 +107,5 @@ u32 dc_rtc_min(void) {
     if (now - vb >= 30 || now < vb) { vb = now; time_t t = rtc_unix_secs(); m = t > 946684800 ? (u32)((t - 946684800) / 60) : 0; }
     return m;
 }
+
+GPU_VideoMode GetVideoMode(void) { return MODE_NTSC; }

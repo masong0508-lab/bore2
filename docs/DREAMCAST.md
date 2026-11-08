@@ -122,3 +122,6 @@ See also ROADMAP.md and EXPANSION_PACKS.md. The disc in the repo history is a fe
 4. Extras as placeholders first (COMING SOON in the EXTRAS tab), then real: VMU pet rewards back into the game, Dreamcast furniture set and outfits, water and glass, night glow, unlockables gallery, pads 3 and 4.
 5. Disc packs: put the PS1 packs on the disc as files (see EXPANSION_PACKS.md).
 6. Real hardware test.
+
+## Hair (Nov 2026)
+The PS1's new mesh hair (26 styles, `src/hairmesh.inc`) draws correctly under the Dreamcast GPU layer with VIVID on: Create-a-Sim and the street (docs/hair_dc_styles.png, docs/hair_dc_street.png; PS1: hair_ps1_styles.png, and hair_ps1_before_after.png: close, zoomed out, first person, old on top of new for each pair; first person shows no hair because your own head is not drawn). The Makefile was behind the PS1 source list and did not link; the missing files and overlays are in now (see PS1_PERFORMANCE.md, "Hair").

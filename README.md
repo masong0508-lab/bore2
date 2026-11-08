@@ -133,7 +133,7 @@ radio (CHILL WAVE). (`audio.c` can also stream sound off the disc, kept for late
 ## Folders
 - `src/` the game (C). `look_port.inc` is the GBA creature code ported by `tools/port_look.py`.
 - `assets/` voices, the songs (`SONGS.BIN`), the song list.
-- `tools/` porting, hair texture and audio tools; `xaenc.c` (XA encoder using libpsxav); `lrrun.c` (headless emulator runner for screenshots).
+- `tools/` porting, audio tools; `xaenc.c` (XA encoder using libpsxav); `lrrun.c` (headless emulator runner for screenshots).
 - `test/` scripts used to take emulator screenshots and measure FPS.
 
 ## Known gaps
