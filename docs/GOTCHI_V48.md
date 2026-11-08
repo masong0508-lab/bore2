@@ -15,3 +15,18 @@ Shots: docs/gotchi_v48_1.png to docs/gotchi_v48_5.png (12 screens a sheet, from 
 - Save: VERSION 48. Per pet adds Xt; per toy adds goals; diary is 32 lines. Older saves get default values.
 - Disc: the GOTCHI.OVL slot grew from 48 to 72 sectors (tools/packs.py), so the disc layout changed; old PPF packs do not fit.
 - RAM (2 MB): 11,720 bytes free past _end (nothing resident changed for WHACK; the 11,864 above was another count). 8 MB boots. GOTCHI.OVL 132,028 bytes of 156,096 (was 127,944). Test hooks: -DAUTO_WHACK=n plays WHACK by itself (n frames of reaction), AUTO_GVIEWS shoots it twice (a bug, then a mess).
+
+## First-run art (title, OPEN IT!, egg card, hatching)
+
+Shots: before docs/gotchi_first_before_1.png and _2.png; after docs/gotchi_first_after_1.png to _3.png (one tile per step, real 292x224 crop). Portable art notes: docs/GOTCHI_FIRST_ART.md.
+
+- Title: pixel BOREAGOTCHI! lettering (gold slope, dark rim, shine sweep), three LCD pet tiles, neat button bar.
+- Starfield (all Boreagotchi sky screens): two gradients, a slow glow, 32 stars in 3 layers that drift and twinkle, a shooting star now and then.
+- Shop card: new handheld toy art (egg-shaped, keyring, LCD with egg, three gold buttons), text moved down, nothing overlaps.
+- OPEN IT!: a big shaded gift box with a bow and a "BOREAGOTCHI!" label. It drops in, squashes, hops, shakes with the bow wiggling and a glow leaking out, the ribbon unwraps, then POP: flash, lid flies off, light beams, ring, confetti, sparkles. The toy rises and turns, the LCD turns on and shows the egg.
+- Egg card: the toy beside four short lines (it came with an egg, keep it warm, it hatches soon, feed and play, I will show you how).
+- Hatching: a toy frame with an LCD (green palette), egg at 6x with spots, wobble windows, a glow, cracks that grow, a flash, shell pieces fly, the bottom shell stays, the baby appears with sparkles and hearts. Banners: SOMETHING IS MOVING INSIDE... / IT IS CRACKING! / POP! / IT HATCHED!
+- Sounds: cue tables ubCue[] and hCue[] in gotchi_ui.c (pitched voices: jingle on landing, rattle on shakes, pop at the burst, chime on the reveal, rising notes in the hatch). Still pitched voices only, no new samples.
+- Code: src/gotchi_first.inc (sky, sprite and banner helpers), src/gotchi_first_ui.inc (screens), src/gotchi_first_art.h and docs/gotchi_first_art.json (made by tools/make_gotchi_first.py). Timeline: UB_POP 86, UB_DONE 130, UB_END 330 (60 Hz ticks).
+- Test hook: build with -DAUTO_GOTCHI=0 -DAUTO_GSEQ and run test/gseq.sh TAG (steps listed in test/gseq_tab.h); it writes docs/gotchi_first_TAG_N.png. A readout of the largest 2D packet use per step is in the script's last comment (peak 17,088 of 59,392 bytes).
+- Size: GOTCHI.OVL 149,156 bytes (+2,632 bss = 151,788 of 156,096). The slot grew from 72 to 76 sectors, so the disc layout changed again; old PPF packs do not fit. Resident RAM: 11,688 bytes free past _end on 2 MB (was 11,720, 32 bytes more for the include and cue glue). Save format unchanged (still VERSION 48; old saves load).
