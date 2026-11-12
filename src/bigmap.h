@@ -81,3 +81,40 @@ const char *bm_street(int set, int bx, int by, int unit, char *out);   // "214 M
 const char *bm_place_name(int lot, u32 h, char *out);   // "BOREMART", "THE SLEEPY INN"
 const char *bm_state_name(void);      // "SAN BOREAS"
 u32 bm_hash(int a, int b, u32 s);
+
+// ---- THE TOWN PLAN (worlds made with bm_gen 7 on; docs/HOUSING_DESIGN.md). Older worlds keep their towns: every block of theirs
+// faces south and has no neighbourhood. A town is laid out from its main crossing (the top-left corner of its square's block: the
+// highways come in there). Avenues run on every 4th line both ways from it; the 4 x 4 blocks between them are one NEIGHBOURHOOD
+// of one kind, which sets its streets and what stands on its lots. bm_block() gives the streets and the lots; these give the rest. ----
+enum { NK_NONE,                       // not a block of a planned town (open country, the sea, a world from before the plan)
+       NK_CORE,                       // the city centre: towers, offices, hotels, flats, shops; the full grid of streets
+       NK_MAIN,                       // shopping streets, with flats and terraces behind; the full grid
+       NK_CIVIC,                      // a big park in the middle, the school, library, clinic and pool beside it; the full grid
+       NK_URBAN,                      // terraces and flats: a street on every 2nd row, one cross street
+       NK_SUBURB,                     // detached houses: a street on every 2nd row only, the lots back to back
+       NK_ESTATE,                     // mansions on every 2nd lot, garden lots between; streets as a suburb's
+       NK_GREEN };                    // farms, woods or a common, a few cottages on the avenues; no streets inside
+enum { LF_NONE, LF_SOUTH, LF_NORTH }; // which way a lot fronts: onto the street along the next block down, or onto its own block's street
+enum { HT_NONE, HT_COMPACT, HT_RANCH, HT_L, HT_BOX, HT_TWO, HT_TERRACE, HT_MANSION };   // the house on a home lot
+enum { RF_SIDE, RF_FRONT, RF_HIP };   // its roof: a gable with the ridge along the street, a gable turned to the street, hipped
+// A lot's plan. Every tile is a tile of the block (0 .. BM_BLK-1; the lot is BM_LOT0 .. BM_BLK-1 both ways), already turned for
+// the facing, walls included. For a lot that is not a home (type HT_NONE) only `face` is set, the rest is 0.
+typedef struct {
+    u8 face;                          // LF_: the door's side. LF_NONE: no street to front on (only where the player took one away: build it as LF_SOUTH)
+    u8 type;                          // HT_
+    u8 x0, y0, x1, y1;                // the body. HT_TERRACE: the first of the two homes
+    u8 wx0, wy0, wx1, wy1;            // the wing, x1 0 if none. HT_L: the garage wing, 2 tiles back from the front wall, sharing the body's
+                                      // side wall (the two overlap by that one column). HT_TERRACE: the second home (it shares the first's side wall)
+    u8 dx, dy;                        // the front door, in the body's front wall (the path runs from it straight to the street)
+    u8 d2x;                           // HT_TERRACE: the second home's door (same row), else 0
+    u8 drv;                           // the driveway's west column (it is 2 wide), 0 if none. It runs from the lot's street edge to the first
+                                      // wall in its way (the garage end of a ranch, the wing of an L), or beside the house to the body's back line
+    u8 yard;                          // the front yard's depth: rows between the lot's street edge and the front wall (the slow wave along the street)
+    u8 mir;                           // 1: mirrored (the garage, driveway and door on the west side instead of the east)
+    u8 roof;                          // RF_
+    u8 pal;                           // the neighbourhood's palette 0..7 (two wall materials, two roof colours)...
+    u8 wall, rcol;                    // ... and which of its two walls and two roof colours this house has (0 or 1 each)
+} LotPlan;
+int  bm_nb(int bx, int by);           // NK_: the kind of the neighbourhood that block lies in
+int  bm_lot_face(int bx, int by);     // LF_: LF_SOUTH if the block below has a street along its top, else LF_NORTH if this block has one, else LF_NONE
+void bm_lot_plan(int bx, int by, const BInfo *b, LotPlan *p);   // b: that block, from bm_block()

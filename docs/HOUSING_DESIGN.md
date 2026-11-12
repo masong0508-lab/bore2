@@ -110,10 +110,52 @@ The near generator, the far view, the map and the DS port all ask it, so they ag
 ## 6. Checks
 
 - `ports/host/lotsim`: the lot audit (overlap, doors, reach) must stay clean, also for north-facing lots.
-- `ports/host` town-plan picture: before and after, for a city, a town and a village.
+- `ports/host/townmap`: `make check` (worlds of versions 2 to 6 come out block for block as before), `./townmap stats SEED 7`
+  (lots, homes, places against the caps, streets, green, landlocked lots, landmarks, the plan's own rules), `make pics`.
 - Road audit (Dreamcast test build): nothing on a street tile.
 - Counts per world: homes and places stay under the game's caps.
 - PS1: more than 12 KB free past `_end` on 2 MB; old saves load; speed does not drop.
+
+## 7. Stage 1 as built (`src/bigmap.c`, the plan engine; new lives still start as version 6 until stage 2)
+
+Pictures, the same world as version 6 (left) and 7 (right): `docs/plan7_city.png`, `docs/plan7_town.png`, `docs/plan7_village.png`.
+
+**The API** (`src/bigmap.h`): `bm_nb(bx, by)` the neighbourhood kind, `bm_lot_face(bx, by)` the facing, `bm_lot_plan(bx, by, &b, &plan)` the house.
+`bm_block()` gives the streets and the lot as before.
+
+**How a town is laid out**
+- From its main crossing: the top-left corner of the square's block. The highways come in on those two lines, so they are avenues.
+  Avenues are the lines `dx % 4 == 0` and `dy % 4 == 0` from the square (not map columns), so every town has the same heart.
+- A neighbourhood's kind comes from its ring and its SECTOR (one of 8 wedges of the town, turned by the town's place), not from dice per
+  neighbourhood. A town gets a shopping side, a green wedge, an estate side. Table `g7ring`.
+- A village (and the spaceport's town) is all one kind (SUBURB with the village list): cottages inside, farms on its outer blocks
+  (beyond 3/4 of its radius), one lot for sale, no corner shops or parks beyond its landmark cross.
+- One big place at most per neighbourhood, always its middle four blocks: a plaza or campus (CORE), a mall (MAIN), a park (CIVIC always;
+  URBAN, SUBURB and GREEN sometimes). In a suburb the park cuts the inner street into two dead ends.
+- Lots are stepped through lists (`g7pool`) by `dx + 7 * dy`, so neighbours along a street and across it differ.
+- PACKED towns: terraces where the suburbs were, suburbs where the green was.
+
+**Where it differs from sections 2 to 4, and why**
+- MAIN has streets on rows 0 and 2 (all cross streets); CIVIC is laid out as URBAN. Not the full grid: shops then front both sides of an
+  avenue, and the middle of the city was still one big grid otherwise. CORE and the landmark blocks keep the full grid.
+- CORE is the four neighbourhoods at the crossing plus those with ring under 52 (6 in the default capital).
+- ESTATE front yard is 3 to 4, not 5 to 6, and the mansion is 11-12 x 8-9, not 11-13 x 10-12: the lot is 13 deep and its last row stays clear.
+- The front yard depth counts from the lot's street edge (its first row is the pavement). Deep houses pull the yard in so the body fits.
+- Bodies keep off the block's pavement column when the block has a street on its left; a terrace pair is then 6 + 7 wide.
+- Many more blocks are green than the first draft had: the game holds about 1000 to 1234 households, so a world needs about 1250 home
+  units, not 2100. The room went to GREEN and ESTATE neighbourhoods and middle parks (houses further apart).
+- Road bit 4 (only the block's top-left corner is paved) is now set where the heart's last two streets meet at a corner. Stage 2 must paint it.
+- No school in a suburb's middle (the landmarks and CIVIC have the schools); the code had to stay small.
+- A farm or park may have no street (LF_NONE). Everything else always has one.
+
+**Stage 2 must honour**
+- `bm_lot_face`: 4 lots in 10 face NORTH (door on the north wall, path to the block's own pavement row). Every generator needs a turned form.
+- The pavement row and column only where the block has that street; a pavement on the far side of each street too (the pictures show both).
+- A river block's bridge only where the block has the street that crosses (`road & 2` for a west-east river, `& 1` for north-south).
+- LOT_WILD inside a town is now common (grounds between mansions, woods, the fringe): dress it by `bm_nb` (ESTATE: lawn and trees).
+- LOT_EMPTY should be the tidy lot for sale. LOT_FARM on a block with no street is a field.
+- RAM (PS1, 2 MB): `_end` 0x801fc900 before, 0x801fcff0 now (the plan inside `bm_block`: 1776 bytes; 12,304 free). The linker drops the three
+  API functions until the game calls them: with them `_end` is 0x801fd5e8 (1528 more; 10,776 free), so stage 2 has to move about 2 KB out first.
 
 ## Sources
 

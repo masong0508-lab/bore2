@@ -14,3 +14,6 @@ ports/host/lotsim/lotsim
 ports/host/lotsim/lotsim_old
 ports/host/lotsim/items_tab.h
 ports/host/lotsim/old_gen.inc
+ports/host/townmap/townmap
+ports/host/townmap/townmap_old
+ports/host/townmap/old/

@@ -315,6 +315,69 @@ static int landmark(const Settle *s, int dx, int dy) {   // what every town has 
     for (int i = 0; i < n; i++) if (lm[i][0] == dx && lm[i][1] == dy) return lm[i][2];
     return -1;
 }
+// ---- THE TOWN PLAN (bm_gen 7 on; docs/HOUSING_DESIGN.md) ----
+// A town is laid out from its main crossing, the top-left corner of its square's block (the highways come in there). (dx, dy) is a block's
+// place from the square, i = dx & 3 and j = dy & 3 its column and row in its NEIGHBOURHOOD: the 4 x 4 blocks between two avenues each way.
+// A neighbourhood is of one kind (NK_): by how far out it lies and by the SECTOR of the town it is in (a shopping side, a green wedge...),
+// so a kind is a district, not a throw of the dice per block.
+static const u8 g7ring[5][8] = {   // a neighbourhood's kind: its ring (a row), its sector turned by the town's dice (a column)
+    { NK_MAIN,   NK_URBAN,  NK_SUBURB, NK_CIVIC,  NK_MAIN,   NK_URBAN,  NK_CIVIC,  NK_SUBURB },   // a city: round the core
+    { NK_SUBURB, NK_GREEN,  NK_SUBURB, NK_ESTATE, NK_SUBURB, NK_GREEN,  NK_SUBURB, NK_SUBURB },   // further out
+    { NK_GREEN,  NK_SUBURB, NK_GREEN,  NK_ESTATE, NK_GREEN,  NK_SUBURB, NK_GREEN,  NK_ESTATE },   // its edge
+    { NK_SUBURB, NK_URBAN,  NK_CIVIC,  NK_SUBURB, NK_GREEN,  NK_SUBURB, NK_SUBURB, NK_SUBURB },   // a town: round its main streets
+    { NK_GREEN,  NK_SUBURB, NK_GREEN,  NK_ESTATE, NK_GREEN,  NK_SUBURB, NK_GREEN,  NK_SUBURB } }; // its edge
+static int nb_kind(const Settle *s, int dx, int dy, u32 *hp) {   // the kind of the neighbourhood block (dx, dy) of that town is in (*hp: the neighbourhood's own dice)
+    int nx = dx >> 2, ny = dy >> 2, mx = nx * 8 + 3, my = ny * 8 + 3, q = (mx * mx + my * my) * 64 / (s->r * s->r), row, k;   // (q: the ring at its middle, as bm_block0's)
+    if (hp) *hp = bm_hash(nx + s->x, ny + s->y, wseed ^ 0x7A11u);
+    if (s->kind == ST_CITY) { if (!(nx | ny) || q < 52) return NK_CORE; row = q < 115 ? 0 : q < 190 ? 1 : 2; }
+    else if (s->kind == ST_TOWN) { if (!(nx | ny)) return NK_MAIN; row = q < 100 ? 3 : 4; }
+    else return NK_SUBURB;                                         // (a village, the spaceport's town: cottages; its farms are its outer blocks, see g7_block)
+    k = g7ring[row][((mx < 0) + (my < 0) * 2 + (ABS(mx) < ABS(my)) * 4 + s->x + s->y * 3 + (int)wseed) & 7];
+    if (packed() && k >= NK_SUBURB) k = k == NK_SUBURB ? NK_URBAN : NK_SUBURB;   // (PACKED towns: terraces where the houses were, houses out to the edge)
+    return k;
+}
+// what stands on the lots: lists (a length, then the lots), stepped through along a street so two neighbours are never the same
+enum { P_HSUB, P_HVIL = P_HSUB + 6, P_HURB = P_HVIL + 7, P_EST = P_HURB + 7, P_GRF = P_EST + 3, P_GRW = P_GRF + 6, P_COM = P_GRW + 6, P_OFF = P_COM + 12,
+       P_FLT = P_OFF + 6, P_CIV = P_FLT + 5, P_CNR = P_CIV + 7, P_PRK = P_CNR + 7, P_EMP = P_PRK + 2, P_END = P_EMP + 2 };
+static const u8 g7pool[] = {
+    5, LOT_HOUSE, LOT_TWO, LOT_HOUSE, LOT_COTTAGE, LOT_HOUSE,                         // P_HSUB: a suburb's homes
+    6, LOT_COTTAGE, LOT_HOUSE, LOT_COTTAGE, LOT_TWO, LOT_COTTAGE, LOT_HOUSE,          // P_HVIL: a village's
+    6, LOT_TOWN, LOT_TWO, LOT_TOWN, LOT_APART, LOT_TOWN, LOT_TWO,                                        // P_HURB: terraces and flats
+    2, LOT_HOUSE, LOT_WILD,                                                           // P_EST: a mansion, its grounds, a mansion ...
+    5, LOT_FARM, LOT_WILD, LOT_COTTAGE, LOT_FARM, LOT_WILD,                           // P_GRF: farms
+    5, LOT_WILD, LOT_WILD, LOT_COTTAGE, LOT_WILD, LOT_WILD,                           // P_GRW: woods
+    11, LOT_SHOP, LOT_CAFE, LOT_RESTAURANT, LOT_BAR, LOT_SHOP, LOT_SALON, LOT_CINEMA, LOT_DINER, LOT_ARCADE, LOT_GALLERY, LOT_SPA,   // P_COM: a shopping street
+    5, LOT_TOWER, LOT_OFFICE, LOT_TOWER, LOT_HOTEL, LOT_OFFICE,                       // P_OFF: business
+    4, LOT_APART, LOT_TOWER, LOT_HOTEL, LOT_OFFICE,                                   // P_FLT: flats downtown, among the offices
+    6, LOT_SCHOOL, LOT_LIBRARY, LOT_CLINIC, LOT_POOL, LOT_GYM, LOT_GALLERY,           // P_CIV: round the park
+    6, LOT_CONV, LOT_CAFE, LOT_GAS, LOT_DINER, LOT_SHOP, LOT_BAR,                     // P_CNR: the corner shop
+    1, LOT_PARK, 1, LOT_EMPTY };
+typedef char g7pool_ok[sizeof g7pool == P_END ? 1 : -1];
+static const u8 g7row[8][4] = {    // a kind's list for each row of the neighbourhood (NK_CORE first; the last: a GREEN of woods)
+    { P_OFF, P_COM, P_FLT, P_COM }, { P_COM, P_HURB, P_OFF, P_COM }, { P_HURB, P_CIV, P_CIV, P_HURB }, { P_HURB, P_HURB, P_HURB, P_HURB },
+    { P_HSUB, P_HSUB, P_HSUB, P_HSUB }, { P_EST, P_EST, P_EST, P_EST }, { P_GRF, P_GRF, P_GRF, P_GRF }, { P_GRW, P_GRW, P_GRW, P_GRW } };
+static const u8 g7st[8] = { 0, 0xFF, 0xF5, 0x55, 0x55, 0x15, 0x15, 0x11 };   // a kind's own streets: bit j: along the top of its row j; bit 4 + i: down the left of its column i (0: the avenues)
+static const u8 g7cen[4] = { 17, 6, 2, 4 };   // the heart (the landmarks) keeps the full grid: the blocks with dx*dx + 2*dy*dy up to this (a city, a town, a village's cross, the spaceport)
+__attribute__((noinline)) static int g7_in(int x, int y, int c) { return x * x + 2 * y * y <= c; }
+__attribute__((noinline)) static void g7_block(const Settle *s, int bx, int by, BInfo *b) {   // a block of a planned town that is not a landmark: its streets and its lot
+    u32 nh; int dx = bx - s->x, dy = by - s->y, i = dx & 3, j = dy & 3, kind = nb_kind(s, dx, dy, &nh), m = g7st[kind], C = g7cen[s->kind & 3];
+    #define G7CEN(x, y) g7_in(x, y, C)
+    int c0 = G7CEN(dx, dy), t = ((m >> j) & 1) | c0 | G7CEN(dx, dy - 1), l = ((m >> (4 + i)) & 1) | c0 | G7CEN(dx - 1, dy);
+    b->road = (u8)(t | l << 1 | ((t | l) || !G7CEN(dx - 1, dy - 1) ? 0 : 4));   // (4: only the corner is paved, where the heart's last streets turn)
+    // the street it fronts on: the one along the top of the next block down (if that is town land), else its own
+    int ts = (((m >> (j + 1)) & 1) | c0 | G7CEN(dx, dy + 1)) && dx * dx + (dy + 1) * (dy + 1) <= s->r * s->r && bm_terrain(bx, by + 1) != BT_SEA;
+    #undef G7CEN
+    int off = g7row[kind - 1 + (kind == NK_GREEN && (nh & 0x800))][j];
+    if (s->kind >= ST_VILLAGE) { if (off == P_HSUB) off = (dx * dx + dy * dy) * 16 >= s->r * s->r * 9 ? P_GRF : dx == 2 && dy == 1 ? P_EMP : P_HVIL; }   // a village: cottages, a lot for sale, and farms round its edge
+    else if (kind >= NK_URBAN) {                                   // where the people of a town live:
+        if (i == (int)(nh & 1) * 3 && !j) { if (kind <= NK_SUBURB) off = P_CNR; }                    // a corner shop on an avenue corner
+        else if (i == 1 + (int)((nh >> 3) & 1) && j == 1) { if (kind < NK_GREEN) off = P_PRK; }     // a pocket park in the middle
+        else if (i == (int)((nh >> 7) & 3) && j == (int)((nh >> 9) & 3) && (ts | t)) off = P_EMP;   // one tidy lot for sale
+    }
+    int lot = g7pool[off + 1 + (dx + 7 * dy + 1024) % g7pool[off]];
+    if (!(ts | t) && !((0x110001u >> lot) & 1)) lot = LOT_WILD;    // no street to front on: nothing is built there (a farm, a park or the woods stay)
+    b->lot = (u8)lot;
+}
 static void bm_block0(int bx, int by, BInfo *b) {
     b->terrain = (u8)bm_terrain(bx, by);
     b->h = bm_hash(bx, by, wseed ^ 0xB10Cu);
@@ -331,6 +394,7 @@ static void bm_block0(int bx, int by, BInfo *b) {
         int dx = bx - s->x, dy = by - s->y, q = (dx * dx + dy * dy) * 256 / (s->r * s->r);
         int lm = landmark(s, dx, dy);
         if (lm >= 0) { b->lot = (u8)lm; return; }
+        if (bm_gen >= 7) { g7_block(s, bx, by, b); return; }   // (worlds from now on: the town plan)
         if (bm_gen >= 6 && q >= 90) {   // out from the centre the streets thin out: an avenue every fourth line, the rest by a throw of the dice per line, and some of those stop short (a cul-de-sac, a lane)
             int pct = q < 170 ? 62 : 42;
             int n = !(by % 4) || (int)(bm_hash(7, by, wseed ^ 0xA11Au) % 100u) < pct, w = !(bx % 4) || (int)(bm_hash(bx, 7, wseed ^ 0xB22Bu) % 100u) < pct;
@@ -391,12 +455,18 @@ static int mega_kind(int gx, int gy, int si) {   // -1: not a group; else MK_ (a
     if (gx == cgx && gy == cgy && si == csi) return ck;
     cgx = gx; cgy = gy; csi = si; ck = -1;
     const Settle *s = &sets[si]; if (s->kind >= ST_VILLAGE) return ck;
-    u32 h = bm_hash(gx, gy, wseed ^ 0x3E6Au);
-    if ((int)(h % 100u) >= (s->kind == ST_CITY ? (packed() ? 11 : 26) : (packed() ? 6 : 16))) return ck;
+    u32 h = bm_hash(gx, gy, wseed ^ 0x3E6Au); int k7 = -1;
+    if (bm_gen >= 7) {   // (the town plan: one big place at most, in the middle of a neighbourhood, by its kind: a plaza or a campus downtown, a mall on the shopping streets, a park anywhere)
+        static const u8 mk7[8] = { 0, 45 | MK_PLAZA << 6, 38 | MK_MALL << 6, 63 | MK_PARK << 6, 16 | MK_PARK << 6, 26 | MK_PARK << 6, 0, 20 | MK_PARK << 6 };   // (by NK_: how likely, of 64, and what)
+        int kind = nb_kind(s, gx - s->x, gy - s->y, 0), m = mk7[kind];
+        if ((int)(h & 63) >= (m & 63)) return ck;
+        k7 = kind == NK_CORE && (h & 0x100) ? MK_CAMPUS : m >> 6;
+    } else if ((int)(h % 100u) >= (s->kind == ST_CITY ? (packed() ? 11 : 26) : (packed() ? 6 : 16))) return ck;
     for (int k = 0; k < 4; k++) {
         int x = gx + (k & 1), y = gy + (k >> 1); BInfo t; bm_block0(x, y, &t);
         if (t.set != si || t.terrain == BT_SEA || landmark(s, x - s->x, y - s->y) >= 0 || river_at(x, y, si)) return ck;
     }
+    if (k7 >= 0) return ck = k7;
     int k = (int)((h >> 8) % 100u);
     ck = s->kind == ST_CITY ? (packed() ? (k < 8 ? MK_PARK : k < 40 ? MK_MALL : k < 68 ? MK_PLAZA : MK_CAMPUS) : (k < 50 ? MK_PARK : k < 66 ? MK_MALL : k < 82 ? MK_PLAZA : MK_CAMPUS)) : (k < 50 ? MK_PARK : MK_MALL);
     return ck;
@@ -417,13 +487,70 @@ static void bm_block1(int bx, int by, BInfo *b) {
     if (b->terrain == BT_SEA || bm_gen < 4) return;   // (rivers and mega places: worlds made from this version on)
     int rv = river_at(bx, by, b->set);
     if (rv) { b->lot = LOT_RIVER; if (rv == 2) b->road |= BR_MEGA; else b->road &= (u8)~BR_MEGA; return; }
-    if (b->set == 255 || b->lot == LOT_WILD) return;
-    int k = mega_kind(bx & ~1, by & ~1, b->set);
+    if (b->set == 255) return;
+    int gx = bx & ~1, gy = by & ~1, part = (bx & 1) | ((by & 1) << 1);
+    if (bm_gen >= 7) {   // (the town plan: the middle four blocks of a neighbourhood)
+        const Settle *s = &sets[b->set]; int i = (bx - s->x) & 3, j = (by - s->y) & 3;
+        if (!((i ^ (i >> 1)) & (j ^ (j >> 1)) & 1)) return;
+        part = (i >> 1) | (j & 2); gx = bx - (i >> 1); gy = by - (j >> 1);
+    } else if (b->lot == LOT_WILD) return;
+    int k = mega_kind(gx, gy, b->set);
     if (k < 0) return;
-    int part = (bx & 1) | ((by & 1) << 1);
     b->road = (u8)((b->road & 7) | BR_MEGA | (part << 4) | (k << 6));
     b->lot = (u8)(k == MK_PARK ? LOT_PARK : pick(b->h >> 4, k == MK_MALL ? mallMix : k == MK_CAMPUS ? campusMix : plazaMix));
     if (k == MK_MALL && part == 0) b->lot = LOT_SHOP;
+}
+// ---- the town plan's answers for the ones that build and draw a lot (bigmap.h) ----
+int bm_nb(int bx, int by) {
+    BInfo b; if (bm_gen < 7) return NK_NONE;
+    bm_block(bx, by, &b); if (b.set == 255) return NK_NONE;
+    const Settle *s = &sets[b.set]; return nb_kind(s, bx - s->x, by - s->y, 0);
+}
+static int g7_face(int bx, int by, const BInfo *b) {
+    BInfo t;
+    if (b->lot != LOT_RIVER && (b->road & BR_MEGA) && !(BR_PART(b->road) & 2)) return LF_SOUTH;   // (the back row of a big place opens onto its court)
+    bm_block(bx, by + 1, &t);
+    return (t.road & 1) ? LF_SOUTH : (b->road & 1) ? LF_NORTH : LF_NONE;
+}
+int bm_lot_face(int bx, int by) { BInfo b; if (bm_gen < 7) return LF_SOUTH; bm_block(bx, by, &b); return g7_face(bx, by, &b); }
+// A lot is planned looking at it from its street: u across (0 the lot's west column), t back from the street (0 the row at the street's edge).
+static void g7_rect(u8 *r, int a, int b, int ta, int tb, int M, int north) {   // that rectangle as block tiles (x0, y0, x1, y1): mirrored (M: the last column plus the first) and turned for the facing
+    if (M) { int t = M - b; b = M - a; a = t; }
+    r[0] = (u8)(BM_LOT0 + a); r[2] = (u8)(BM_LOT0 + b);
+    if (north) { r[1] = (u8)(BM_LOT0 + ta); r[3] = (u8)(BM_LOT0 + tb); } else { r[1] = (u8)(BM_BLK - 1 - tb); r[3] = (u8)(BM_BLK - 1 - ta); }
+}
+void bm_lot_plan(int bx, int by, const BInfo *b, LotPlan *p) {
+    // by HT_: the body's width and depth, its ways (1: a tile wider by the dice, 2: a tile deeper, 8: the driveway runs up to its garage end, 16: no driveway;
+    // otherwise the driveway is beside the house), the door's place along the front (0: the middle), how far its wing reaches past the body
+    static const u8 ht[8][5] = { { 0 }, { 7, 6, 3, 0, 0 }, { 11, 5, 11, 4, 0 }, { 8, 7, 8, 5, 3 }, { 9, 7, 3, 6, 0 }, { 9, 8, 0, 0, 0 }, { 7, 9, 16, 0, 6 }, { 11, 8, 19, 0, 0 } };
+    static const u8 yd[8] = { 2 | 2 << 4, 1 | 1 << 4, 1 | 1 << 4, 1 | 1 << 4, 1 | 1 << 4, 3, 3 | 1 << 4, 3 };   // by NK_: the front yard's least depth, and how much of the wave (0 1 2 1 along the street) it takes (a shift)
+    int dx = bx, dy = by, kind = NK_NONE, ty; u32 nh = 0, h = b->h;
+    memset(p, 0, sizeof *p); p->face = LF_SOUTH;
+    if (bm_gen >= 7) {
+        p->face = (u8)g7_face(bx, by, b);
+        if (b->set != 255) { const Settle *s = &sets[b->set]; dx -= s->x; dy -= s->y; kind = nb_kind(s, dx, dy, &nh); }
+    }
+    dx += 1024; dy += 1024;                                        // (the steps along and across the streets: never negative)
+    if (b->lot == LOT_COTTAGE) ty = HT_COMPACT; else if (b->lot == LOT_TWO) ty = HT_TWO; else if (b->lot == LOT_TOWN) ty = HT_TERRACE;
+    else if (b->lot != LOT_HOUSE) return;
+    else if (bm_gen < 7) ty = ((h >> 24) & 3) ? HT_BOX : HT_MANSION;   // (an older world's: one in four is a mansion)
+    else ty = kind == NK_ESTATE ? HT_MANSION : HT_RANCH + (dx + dy) % 3;   // a ranch, an L, a box, a ranch ... along the street
+    const u8 *T = ht[ty];
+    int north = p->face == LF_NORTH, um = (b->road >> 1) & 1;      // (um: a street down the block's left: the lot's first column is its pavement)
+    int w = T[0] + (int)(T[2] & 1 & (h >> 3)), d = T[1] + (int)((T[2] >> 1) & 1 & (h >> 5));
+    if (ty == HT_TERRACE) w -= um;
+    int x = (dx + 2 * (dy + !north)) & 3, f = (yd[kind] & 15) + ((x == 3 ? 1 : x) >> (yd[kind] >> 4));   // the yard: a slow wave along the street, the same on both its sides
+    if (f + d > 12) f = 12 - d;                                    // (the lot is 13 deep, and its last row stays clear)
+    int tw = w + T[4], beside = !(T[2] & 24), u0 = um + ((beside ? 11 : 13) - um - tw) / 2, u1 = u0 + w - 1;
+    int mir = (dx ^ dy) & 1, M = mir ? 12 + um : 0, du = u0 + (T[3] ? T[3] : w / 2), dv = (T[2] & 16) ? -1 : beside ? 11 : u0 + tw - 3;
+    p->type = (u8)ty; p->yard = (u8)f; p->mir = (u8)mir;
+    p->roof = (u8)((dx + 2 * dy) % 3); p->pal = (u8)((nh >> 12) & 7); p->wall = (u8)(((dx + 1) >> 1) & 1); p->rcol = (u8)((dx >> 1) & 1);
+    g7_rect(&p->x0, u0, u1, f, f + d - 1, M, north);
+    if (T[4]) g7_rect(&p->wx0, u1, u1 + T[4], f + (ty == HT_L ? 2 : 0), f + d - 1, M, north);
+    p->dy = north ? p->y0 : p->y1;
+    p->dx = (u8)(BM_LOT0 + (mir ? M - du : du));
+    if (ty == HT_TERRACE) p->d2x = (u8)(BM_LOT0 + (mir ? M - 9 : 9));
+    if (dv >= 0) p->drv = (u8)(BM_LOT0 + (mir ? M - dv - 1 : dv));
 }
 int bm_storeys(const BInfo *b) {
     if (b->lot == LOT_TWO) return 2;
