@@ -2,6 +2,25 @@
 
 How the city's frame time is measured (used for docs/PS1_PERFORMANCE.md). All of it runs in the test emulator, headless.
 
+**The test emulator** (`/home/claude/tools/ds/b/bin/duckstation-regtest`, the path `test/ds.sh` and everything here calls). After a new machine:
+`tools/perf/restore.sh` unpacks the built one from the `ps1-toolchain` branch (and installs the compiler and PSn00bSDK in `/opt/psn00bsdk` if they are
+missing, with `/opt/mipsel` as a link to it). `tools/perf/build_runner.sh` builds it from source instead:
+- DuckStation `a003832e33bb66857a5d9fe2d0ca11e9463771ed` (2023-04-29), the regression runner only, headless (no Qt, GL, Vulkan, SDL, audio output).
+  The first build's commit was never written down; `regtest_host.cpp` is the same file from e5039055 (2023-01-17) to 5b980daf (2023-08-15), and the
+  frozen-street readout (`AUTO_CITY AB_LOCK4 AB_FREEZE=150`, 5200 frames) gives the documented numbers on this one (world 357 hb, 19.81 fps from the need).
+- Three patches to `src/duckstation-regtest/regtest_host.cpp`, in this order (`patch -p1 -d src/duckstation-regtest < ...`): `regtest_base.patch`
+  (written again in November 2026 from what the two later patches show of it: the first one was lost), `regtest_pcsample.patch`, `regtest_card_wav.patch`.
+  The base: `DSSCRIPT=<file>` with lines `FRAME button` (held 8 frames; b = cross, a = circle, y = square, x = triangle, l r l2 r2 l3 r3, start, select,
+  up down left right) and `FRAME shot` (saved as `frame_<100000 + emulator frame>.png`); FRAME counts from the `GAMESTART` line of the log (the first frame
+  after 20 with the CPU in RAM at 0x10000 or above: that is the BIOS's own shell starting, frame 34 with this BIOS, about 700 frames before the game's
+  code runs; the scripts' times have always counted from there). `DSRAM=<file>`: the RAM at the end (2 MB, or 8 MB with `DS8MB=1`, which also turns the
+  8 MB on). `DSCROP=None` and `DSRAW=1` (what `FULL=1 test/ds.sh` sets): nothing cropped, and saved pixel for pixel (320x240). `PCLOG` lines every 100 frames.
+- OpenBIOS: `pcsx-redux/nugget` (pcsx-redux's `src/mips`) `821a3ff0248a85bb0330221794f3b9556c078a6e` (2026-10-18), `make -C openbios PREFIX=mipsel-none-elf`,
+  copied to `bios/openbios.bin` beside the runner (it takes the BIOS it finds there). Do not take a newer one without testing `test/oldsave2.sh`: with
+  nugget f044c6b (2026-11-11, pcsx-redux efd0eb17; it needs `OPENBIOS_SHELL=shell` to build) the version 50 test build crashed while loading and the runner hung.
+- Baseline on this runner (today's main, `-DAUTO_CITY=1 -DAB_LOCK4=1`, `city.txt`, 5200 frames, 2 MB): 950 life frames, mean cpu 706 hb, world 397 hb,
+  19.36 fps from the need. Frozen street (`-DAB_FREEZE=150` too): 951 frames, mean cpu 582 hb, world 357 hb, 19.81 fps from the need.
+
 1. **Test build**: `cmake -S . -B /tmp/c_cut -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=/opt/psn00bsdk/lib/libpsn00b/cmake/sdk.cmake -DPSN00BSDK_TC=/opt/psn00bsdk -DCMAKE_C_FLAGS=-DAUTO_CITY=1`
    (`AUTO_CITY` starts a life in SAN BOREAS by itself, the same seed every run. It must be a Release build, or the boot runs out of memory.)
 2. **Profiler patch** for the DuckStation regtest runner (`regtest_pcsample.patch`, applied to `src/duckstation-regtest/regtest_host.cpp`):

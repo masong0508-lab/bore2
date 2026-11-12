@@ -1,0 +1,56 @@
+--- a/regtest_host.cpp
++++ b/regtest_host.cpp
+@@ -12,6 +12,10 @@
+ #include "core/host_display.h"
+ #include "core/host_settings.h"
+ #include "core/system.h"
++#include "core/bus.h"
++#include "core/cpu_core.h"
++#include "core/controller.h"
++#include "core/pad.h"
+ #include "frontend-common/common_host.h"
+ #include "frontend-common/game_list.h"
+ #include "frontend-common/input_manager.h"
+@@ -99,6 +103,9 @@
+   si.SetBoolValue("Logging", "LogToConsole", true);
+   si.SetBoolValue("Main", "ApplyGameSettings", false); // don't want game settings interfering
+   si.SetBoolValue("BIOS", "PatchFastBoot", true);      // no point validating the bios intro..
++  if (getenv("DS8MB")) si.SetBoolValue("Console", "Enable8MBRAM", true);                    // (DS8MB=1: 8 MB of RAM)
++  if (getenv("DSCROP")) si.SetStringValue("Display", "CropMode", getenv("DSCROP"));          // (DSCROP=None: nothing cropped; the default, Overscan, loses 8 rows top and bottom)
++  if (getenv("DSRAW")) si.SetStringValue("Display", "AspectRatio", "PAR 1:1");               // (DSRAW=1: frames saved pixel for pixel, not squeezed to 292 wide)
+ 
+   // disable all sources
+   for (u32 i = 0; i < static_cast<u32>(InputSourceType::Count); i++)
+@@ -578,13 +585,32 @@
+ 
+   Log_InfoPrintf("Running for %d frames...", s_frames_to_run);
+ 
++  {   // (the block keeps these out of the way of the gotos to cleanup)
++  struct Ev { int f, b; }; std::vector<Ev> evs; std::vector<int> shots; int off = -1; const int off0 = 1 << 24;   // (script times wait at off0 until the game starts)
++  {   // DSSCRIPT=<file>: lines "FRAME button" (held 8 frames) and "FRAME shot"; FRAME counts from the game's start (GAMESTART below)
++    static const char* names[16] = {"b", "y", "select", "start", "up", "down", "left", "right", "a", "x", "l", "r", "l2", "r2", "l3", "r3"};   // (as tools/lrrun.c: b = cross, a = circle, y = square, x = triangle)
++    static const int map[16] = {14, 15, 0, 3, 4, 6, 7, 5, 13, 12, 10, 11, 8, 9, 1, 2};   // (AnalogController::Button)
++    FILE* sf = getenv("DSSCRIPT") ? fopen(getenv("DSSCRIPT"), "r") : nullptr; char ln[160]; while (sf && fgets(ln, sizeof(ln), sf)) { int fr; char b[32]; if (sscanf(ln, "%d %31s", &fr, b) == 2) {
++        if (!strcmp(b, "shot")) shots.push_back(fr + off0);
++        else for (int i = 0; i < 16; i++) if (!strcmp(b, names[i])) evs.push_back({fr + off0, map[i]}); } }
++    if (sf) fclose(sf);
++  }
++  int held_until[32] = {0};
+   for (u32 frame = 0; frame < s_frames_to_run; frame++)
+   {
++    if (off < 0) { u32 pc = CPU::g_state.regs.pc; if ((pc & 0x1fffffff) >= 0x10000 && (pc & 0x1fffffff) < 0x100000 && frame > 20) { off = frame; fprintf(stderr, "GAMESTART %u\n", frame);
++      for (auto& e : evs) e.f += off - off0; for (int& sh : shots) sh += off - off0; } }
++    for (auto& e : evs) if (e.f == (int)frame) held_until[e.b] = frame + 8;
++    if (Controller* c = Pad::GetController(0)) for (int i = 0; i < 16; i++) c->SetBindState(i, (int)frame < held_until[i] ? 1.0f : 0.0f);
++    for (int sh : shots) if (sh == (int)frame) g_host_display->WriteDisplayTextureToFile(RegTestHost::GetFrameDumpFilename(100000 + frame));
+     System::RunFrame();
+     Host::RenderDisplay(false);
+     System::UpdatePerformanceCounters();
++    if ((frame % 100) == 0) fprintf(stderr, "PCLOG %u pc=%08x ra=%08x\n", frame, CPU::g_state.regs.pc, CPU::g_state.regs.ra);
+   }
++  { FILE* f = fopen(getenv("DSRAM") ? getenv("DSRAM") : "/tmp/ds_ram.bin", "wb"); if (f) { fwrite(Bus::g_ram, 1, getenv("DS8MB") ? 8*1024*1024 : 2*1024*1024, f); fclose(f); } }
+ 
++  }
+   Log_InfoPrintf("All done, shutting down system.");
+   System::ShutdownSystem(false);
+ 
