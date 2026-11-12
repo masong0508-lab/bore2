@@ -85,6 +85,23 @@ Scale: a tile is about 1.2 m. A block is 18 tiles (21.6 m). A street is 5 tiles 
 - Neighbours never share a type and roof form. Type, mirror (garage left or right) and roof form step along the street by a fixed rule, so two alike never touch.
 - A neighbourhood keeps one palette: 2 wall materials and 2 roof colours.
 
+## 4b. Inside: rooms, not rows of furniture
+
+Furniture used to be strung along the walls in runs. Each room is now built from **groups** placed for what the room is for
+(room-layout practice: focal point, conversation group, clearances).
+
+- Every room has a **focal point** and the furniture faces it.
+- **Living room**: the TV (or fireplace, or the big window) on one wall. The sofa faces it 2-3 tiles away, a coffee table between, an armchair at a right angle, a rug under the group, a lamp or plant in a corner. Seats face each other or sit at right angles, never all in a line along one wall.
+- **Dining**: the table in the middle of its zone with a chair on each side, a clear tile all round. It sits between the kitchen and the living group.
+- **Kitchen**: one L or one straight run on the wall: fridge at an end, then counter, sink, counter, stove. A free tile in front of all of it. The kitchen is next to the dining table.
+- **Bedroom**: the bed's head against the wall opposite the door (or the longest free wall). A nightstand on each side of a double bed, one beside a single. The wardrobe or dresser on another wall with a free tile in front. A desk and chair under the window in a child's or teen's room.
+- **Bathroom**: toilet, sink and bath or shower along the walls, the sink nearest the door, a mirror over the sink. One free tile in front of each.
+- **Study**: desk and chair facing the room or the window, bookcase behind or beside, an armchair with a lamp.
+- **Hall and doors**: the tile inside every door and a path between all doors stay clear (at least 1 tile wide).
+- Things that belong together are placed together (table + chairs, bed + nightstands, sofa + coffee table + TV, desk + chair). Nothing stands alone in the middle without a partner.
+- Each room has one floor and one wallpaper. Wet rooms (kitchen, bath) get tile.
+- A big front room is split into zones (living | dining | kitchen) in that order from the door side to the garage side, not mixed.
+
 ## 5. One plan, every view
 
 `bm_lot_plan()` works out a lot's facing, house type, body, wing, door and driveway from the block alone.
@@ -110,3 +127,4 @@ The near generator, the far view, the map and the DS port all ask it, so they ag
 - Floor planning principles: https://build-construct.com/architecture/floor-planning-principles-of-functional-space-layout-and-room-arrangement-in-residential-design/
 - Anti-monotony code (Carol Stream): https://codelibrary.amlegal.com/codes/carolstream/latest/carolstream_il/0-0-0-1774
 - Functional landscape (WSU): https://wpcdn.web.wsu.edu/extension/uploads/sites/57/2014/03/Functional-Landscape.pdf
+- Room layouts: https://build-construct.com/architecture/room-layouts-furniture-arrangement-traffic-patterns-and-space-optimization-strategies/
