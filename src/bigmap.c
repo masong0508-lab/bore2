@@ -522,7 +522,7 @@ static void g7_rect(u8 *r, int a, int b, int ta, int tb, int M, int north) {   /
 void bm_lot_plan(int bx, int by, const BInfo *b, LotPlan *p) {
     // by HT_: the body's width and depth, its ways (1: a tile wider by the dice, 2: a tile deeper, 8: the driveway runs up to its garage end, 16: no driveway;
     // otherwise the driveway is beside the house), the door's place along the front (0: the middle), how far its wing reaches past the body
-    static const u8 ht[8][5] = { { 0 }, { 7, 6, 3, 0, 0 }, { 11, 5, 11, 4, 0 }, { 8, 7, 8, 5, 3 }, { 9, 7, 3, 6, 0 }, { 9, 8, 0, 0, 0 }, { 7, 9, 16, 0, 6 }, { 11, 8, 19, 0, 0 } };
+    static const u8 ht[8][5] = { { 0 }, { 8, 7, 3, 0, 0 }, { 11, 5, 11, 4, 0 }, { 8, 7, 8, 5, 3 }, { 9, 7, 3, 6, 0 }, { 9, 8, 0, 0, 0 }, { 7, 9, 16, 0, 6 }, { 11, 8, 19, 0, 0 } };
     static const u8 yd[8] = { 2 | 2 << 4, 1 | 1 << 4, 1 | 1 << 4, 1 | 1 << 4, 1 | 1 << 4, 3, 3 | 1 << 4, 3 };   // by NK_: the front yard's least depth, and how much of the wave (0 1 2 1 along the street) it takes (a shift)
     int dx = bx, dy = by, kind = NK_NONE, ty; u32 nh = 0, h = b->h;
     memset(p, 0, sizeof *p); p->face = LF_SOUTH;
