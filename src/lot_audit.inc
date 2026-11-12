@@ -5,7 +5,7 @@
 //   unreach_floor a floor tile (indoors or in a yard) you cannot get to from the street (walled in by furniture, walls, a fence with no gate)
 //   unreach_item  a thing with no walkable tile beside it that you can get to (nobody can use it)
 //   floating      furniture indoors that touches no wall and is not part of a cluster that does (or a dining / counter / pool-table set),
-//                 or a rug with nothing within two tiles
+//                 (a seat with its rug beside it is a living group: it may stand out in the room, facing the telly), or a rug with nothing within two tiles
 //   loud          a home with a factory floor (concrete, steel, grate, hazard stripes, oil) under it
 //   nobed / nowc / nokit   a home without a bed, a toilet, or a fridge
 //   path          a home's front door the street cannot reach
@@ -76,10 +76,11 @@ static void au_level(int l, char (*m)[MW + 1], u8 (*fl)[MW], u8 (*wp)[MW], char 
         for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int a = x + i, b = y + j; if (a < x0 || a > x1 || b < y0 || b > y1 || sup[b][a] || !au_furn(m[b][a]) || !au_in[b][a]) continue; sup[b][a] = 1; q[t++] = (short)(b * MW + a); } }
     for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) { char c = m[y][x];
         if (au_furn(c) && au_in[y][x] && !sup[y][x] && !seen[y][x]) {      // a cluster nobody supports: a dining set, a pool table or a counter's island is allowed
-            int n = 0, tab = 0, chair = 0, same = 0; char c0 = c; h = t = 0; q[t++] = (short)(y * MW + x); seen[y][x] = 1;
+            int n = 0, tab = 0, chair = 0, same = 0, rug = 0; char c0 = c; h = t = 0; q[t++] = (short)(y * MW + x); seen[y][x] = 1;
             while (h < t) { int p = q[h++], cx = p % MW, cy = p / MW; n++; char cc = m[cy][cx]; if (cc == c0) same++; if (au_table(cc)) tab++; if (cc == 'h' || cc == (char)0x92 || cc == ';' || cc == 'C' || cc == (char)0x90) chair++;
+                if (m[cy][cx - 1] == 'r' || m[cy][cx + 1] == 'r' || m[cy - 1][cx] == 'r' || m[cy + 1][cx] == 'r') rug = 1;
                 for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int a = cx + i, b = cy + j; if (a < x0 || a > x1 || b < y0 || b > y1 || seen[b][a] || sup[b][a] || !au_furn(m[b][a]) || !au_in[b][a]) continue; seen[b][a] = 1; q[t++] = (short)(b * MW + a); } }
-            if (!(tab && n >= 2 && chair >= (n >= 3 ? 2 : 1)) && !(tab && n >= 4) && !(n >= 3 && same * 3 >= n * 2)) { lot_aud.floating += n; K->floating += n; }
+            if (!(tab && n >= 2 && chair >= (n >= 3 ? 2 : 1)) && !(tab && n >= 4) && !(n >= 3 && same * 3 >= n * 2) && !(chair && rug)) { lot_aud.floating += n; K->floating += n; }
         }
         if (c == 'r' || c == (char)0xF9) { int near = 0; for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) { int a = x + i, b = y + j; if (a >= 0 && b >= 0 && a < MW && b < MH && au_furn(m[b][a]) && au_in[b][a]) near = 1; }
             if (!near && au_in[y][x]) { lot_aud.floating++; K->floating++; } }
