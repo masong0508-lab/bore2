@@ -39,7 +39,7 @@ int tr_cat_of(int id) {   // the trait's category 0..14 (an earned or prize trai
 #ifdef TR_BIG
     return tr_cat[id] & 15;
 #else
-    return id < TR_FIRST_EARN ? tr_corecat[id] : 0;
+    return id < TR_FIRST_EARN ? (tr_corecat[id >> 1] >> ((id & 1) * 4)) & 15 : 0;
 #endif
 }
 static void cat_scores(const TrPers *p, int *cs) {   // what this person pulls towards, by category (the personality's whole effect on the mapping)

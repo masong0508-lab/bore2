@@ -666,7 +666,9 @@ def main():
         ef = t['eff'] + [(0, 0)] * (3 - len(t['eff']))
         A('    { %s, %s },' % (', '.join(str(e[0]) for e in ef), ', '.join(str(e[1] & 255) for e in ef)))
     A('};')
-    A('static const u8 tr_corecat[TR_FIRST_EARN] = { %s };   // regular trait category' % ', '.join(str(all_traits[i]['cat'] if i in all_traits else 0) for i in range(0, K['FIRST_EARN'])))
+    _cc = [all_traits[i]['cat'] if i in all_traits else 0 for i in range(0, K['FIRST_EARN'])]
+    if len(_cc) % 2: _cc.append(0)
+    A('static const u8 tr_corecat[(TR_FIRST_EARN + 1) / 2] = { %s };   // regular trait category, a nibble each (id even: low)' % ', '.join(str(_cc[i] | (_cc[i + 1] << 4)) for i in range(0, len(_cc), 2)))
     A('static const s8 tr_pk[15][5] = {   // personality bars (NEAT OUTGOING ACTIVE PLAYFUL NICE) -> category pull, x (bar - 5)')
     for ci in range(15): A('    { %s },   // %s' % (', '.join(str(x) for x in PK[ci]), CATS[ci]))
     A('};')

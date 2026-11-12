@@ -43,11 +43,12 @@ static Home homes[ZONE_N][MAXHOMES]; static int nhomes[ZONE_N];
 int world_home_count(int zone) { return nhomes[zone % ZONE_N]; }
 const Home *world_home(int zone, int i) { return (i >= 0 && i < nhomes[zone % ZONE_N]) ? &homes[zone % ZONE_N][i] : 0; }
 static int blk_bx = 0xFFFF, blk_by = 0xFFFF, blk_unit;   // the open world's block being made (its homes are numbered 0, 1, ...)
+static int reg_north;   // set by the generator while it builds a north-facing home (world version 7)
 static int reg_home(int x0, int y0, int x1, int y1, int dx, int dy) {   // the generator that is building a home tells us where it is (in the zone being made)
     int z = world_zone % ZONE_N, u = blk_unit++;
     if (nhomes[z] >= MAXHOMES) return u;
     Home *h = &homes[z][nhomes[z]++]; h->x0 = (u8)x0; h->y0 = (u8)y0; h->x1 = (u8)x1; h->y1 = (u8)y1; h->dx = (u8)dx; h->dy = (u8)dy;
-    h->bx = (u16)blk_bx; h->by = (u16)blk_by; h->unit = (u8)u;
+    h->bx = (u16)blk_bx; h->by = (u16)blk_by; h->unit = (u8)u; h->fn = (u8)reg_north;
     return u;
 }
 int world_home_find(int zone, int bx, int by, int unit) {
@@ -767,7 +768,7 @@ int world_own_lot(int tx, int ty) {   // that tile of the window is on the famil
 int world_own_door(int *tx, int *ty) {   // where to stand on getting home: by the front door (an empty lot: its middle). 0: not in the window
     int wx, wy; if (!own_in_window(&wx, &wy)) return 0;
     int ox = wx * BM_BLK, oy = wy * BM_BLK;
-    if (own.home) { *tx = ox + own.hdx; *ty = oy + own.hdy + 1; } else { *tx = ox + BM_LOT0 + 6; *ty = oy + BM_LOT0 + 6; }
+    if (own.home) { *tx = ox + own.hdx; { int hi_ = world_home_find(ZONE_CITY, own.bx, own.by, 0); *ty = oy + own.hdy + (hi_ >= 0 ? home_out(&homes[ZONE_CITY][hi_]) : 1); } } else { *tx = ox + BM_LOT0 + 6; *ty = oy + BM_LOT0 + 6; }
     return 1;
 }
 int world_own_block(int *wx, int *wy) { return own_in_window(wx, wy); }

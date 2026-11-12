@@ -38,8 +38,9 @@ void world_switch(int z);                        // keeps the current zone's til
 void world_reset_all(void);                      // a new life: every zone is generated afresh
 
 // the homes the generators build (houses, cottages, townhouses, two-storeys): where a household lives
-typedef struct { u8 x0, y0, x1, y1; u8 dx, dy; u16 bx, by; u8 unit; } Home;   // the floor inside the walls (tiles), and the door tile (on the south wall; outside is dy + 1); in the open world, its block and which home of the block it is
+typedef struct { u8 x0, y0, x1, y1; u8 dx, dy; u16 bx, by; u8 unit, fn; } Home;   // the floor inside the walls (tiles), and the door tile (on the south wall, or the north wall when fn is 1: outside is dy + 1, or dy - 1 when fn); in the open world, its block and which home of the block it is
 #define MAXHOMES 64
+static inline int home_out(const Home *h) { return h->fn ? -1 : 1; }   // which way is outside the door (+1 south, -1 north)
 int world_home_count(int zone);
 const Home *world_home(int zone, int i);
 int world_home_find(int zone, int bx, int by, int unit);   // the open world: the home of that block's unit, if it is in the window (-1)

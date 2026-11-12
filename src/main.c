@@ -1417,7 +1417,7 @@ static void dir_update(void) {
         char sur[NAME_LEN], b[40]; pop_surname(dir_fam, sur); snprintf(b, sizeof b, "THE %sS' HOUSE", sur);
         taxi_to_block(f->bx, f->by, 8, 1, b);
         int h = world_home_find(ZONE_CITY, f->bx, f->by, f->unit);
-        if (h >= 0) { const Home *hm = world_home(ZONE_CITY, h); put_household(hm->dx, hm->dy + 1); }
+        if (h >= 0) { const Home *hm = world_home(ZONE_CITY, h); put_household(hm->dx, hm->dy + home_out(hm)); }
         state = ST_LIFE; dir_fam = -1;
     }
 }
@@ -1521,7 +1521,7 @@ static void prop_go(int i) {   // a taxi there, free (it is yours): by its front
     int bx = props[i].bx, by = props[i].by; char ad[24]; home_address(bx, by, ad);
     taxi_to_block(bx, by, BM_LOT0 + 6, BM_LOT0 + 6, ad);
     int hi = world_home_find(ZONE_CITY, bx, by, 0);
-    if (hi >= 0) { const Home *h = world_home(ZONE_CITY, hi); put_household(h->dx, h->dy + 1); }
+    if (hi >= 0) { const Home *h = world_home(ZONE_CITY, hi); put_household(h->dx, h->dy + home_out(h)); }
 }
 static void props_move_yes(void) { if (prop_move_in(hm_sel - 1)) state = ST_LIFE; }   // (life_update moves the family in)
 static void props_sell_yes(void) { prop_sell(hm_sel - 1); if (hm_sel > nprops) hm_sel = nprops; }

@@ -123,7 +123,7 @@ static void lot_audit(int lx, int ly, int kind) {
         if (!vac && !bed) { lot_aud.nobed++; lot_aud_k[kind].nobed++; } if (!vac && !wc) { lot_aud.nowc++; lot_aud_k[kind].nowc++; } if (!vac && !kit) { lot_aud.nokit++; lot_aud_k[kind].nokit++; }
         if (loud) { lot_aud.loud++; lot_aud_k[kind].loud++; }
         { int n = 0; for (unsigned v = fmask; v; v >>= 1) n += v & 1; lot_aud.floors_sum += n; }
-        if (hm->dy + 1 < MH && !au_gr[hm->dy + 1][hm->dx]) { lot_aud.path++; lot_aud_k[kind].path++; }
+        if (hm->dy + home_out(hm) >= 0 && hm->dy + home_out(hm) < MH && !au_gr[hm->dy + home_out(hm)][hm->dx]) { lot_aud.path++; lot_aud_k[kind].path++; }
     }
 }
 #ifndef LOT_AUDIT_NOPRINT

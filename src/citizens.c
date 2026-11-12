@@ -210,14 +210,16 @@ static void build_lod(Cit *c) {
 
 // ---- homes and households -----------------------------------------------------------------------------
 static const Home *home_of(const Cit *c) { return c->hh == NONE ? 0 : world_home(c->zone, hh[c->hh].home); }
+static int in_lane(const Home *hm, int y) { return hm->fn ? y <= hm->dy + 1 : y >= hm->dy - 1; }   // the rows from the door inwards that stay clear
 static void door_geo(const Home *hm, int *x, int *zf, int *zd, int *zi) {   // the door: where you stand outside it, in it, and just inside
     *x = hm->dx * TILE + TILE / 2;
-    *zf = -((hm->dy + 1) * TILE + TILE / 2); *zd = -(hm->dy * TILE + TILE / 2); *zi = -((hm->dy - 1) * TILE + TILE / 2);
+    int fo = home_out(hm);
+    *zf = -((hm->dy + fo) * TILE + TILE / 2); *zd = -(hm->dy * TILE + TILE / 2); *zi = -((hm->dy - fo) * TILE + TILE / 2);
 }
 COLD static void inside_spot(const Home *hm, int *x, int *z) {   // somewhere free on the floor
     for (int t = 0; t < 40; t++) {
         int tx = hm->x0 + rn(hm->x1 - hm->x0 + 1), ty = hm->y0 + rn(hm->y1 - hm->y0 + 1);
-        if (ty >= hm->dy - 1 && tx == hm->dx) continue;       // keep the lane inside the door open
+        if (in_lane(hm, ty) && tx == hm->dx) continue;       // keep the lane inside the door open
         if (world_at(tx, ty) == '.' && world_walkable(tx, ty)) { *x = tx * TILE + TILE / 2; *z = -(ty * TILE + TILE / 2); return; }
     }
     int a, b, c2; door_geo(hm, x, &a, &b, &c2); *z = c2;
@@ -232,7 +234,7 @@ COLD static void sleep_spot(const Cit *c, const Home *hm, int *x, int *z) {   //
         k += cap;
     }
     int need = want_ - k; k = 0;
-    for (int y = hm->y0; y <= hm->y1 && y < hm->dy - 1; y++) for (int xx = hm->x0; xx <= hm->x1; xx++)
+    for (int y = hm->y0; y <= hm->y1 && !in_lane(hm, y); y++) for (int xx = hm->x0; xx <= hm->x1; xx++)
         if (world_at(xx, y) == '.' && world_walkable(xx, y)) { if (k++ == need) { *x = xx * TILE + TILE / 2; *z = -(y * TILE + TILE / 2); return; } }
     inside_spot(hm, x, z);
 }
@@ -339,7 +341,7 @@ COLD static void place_initial(Cit *c, int px, int pz) {   // where they are rig
     c->yaw = (u16)rn(4096); c->mode = CM_IDLE; c->t = (u16)(10 + rn(200)); c->say_t = 0; c->sub = 0; c->st = 0; c->gait.sleep = 0;
     if (!hm) { place_street(c, px, pz, MW / 2, MH / 2, MW / 2 - 3); return; }
     int w = want(c), x, z;
-    if (w == 0) place_street(c, px, pz, hm->dx, hm->dy + 3, 8);
+    if (w == 0) place_street(c, px, pz, hm->dx, hm->dy + 3 * home_out(hm), 8);
     else if (w == 1) { inside_spot(hm, &x, &z); c->x = (s16)x; c->z = (s16)z; }
     else { sleep_spot(c, hm, &x, &z); c->x = (s16)x; c->z = (s16)z; c->mode = CM_SLEEP; c->sub = 1; c->gait.sleep = 1; c->yaw = 1024; }
     if (w == 0 && !c->x) { int a, b, d, e; door_geo(hm, &a, &b, &d, &e); c->x = (s16)a; c->z = (s16)b; }
@@ -1004,7 +1006,7 @@ static int scripted(Cit *c, int tx, int tz, int spd, int n) {   // straight to a
 static int sit_item(char ch) { return ch == 'T' || ch == 'C' || ch == 'h' || ch == 'U' || ch == '%' || ch == ';' || ch == (char)0x90 || ch == (char)0x91 || ch == (char)0x92 || ch == (char)0xA8; }
 static int free_floor(const Home *hm, int x, int y) {   // a tile of the home's floor a body can stand on, off the lane inside the door
     if (x < hm->x0 || x > hm->x1 || y < hm->y0 || y > hm->y1) return 0;
-    if (x == hm->dx && y >= hm->dy - 1) return 0;
+    if (x == hm->dx && in_lane(hm, y)) return 0;
     return world_walkable(x, y);
 }
 COLD static int find_item(const Home *hm, const char *letters, int *ix, int *iy, int *sx, int *sy) {   // one of those things in the home, and the tile to stand on to use it
@@ -1074,7 +1076,7 @@ COLD static int start_visit(Cit *c) {   // a neighbour in the same zone, a short
     }
     if (!n) return 0;
     int h = cand[rn(n)]; const Home *o = world_home(hh[h].zone, hh[h].home);
-    c->vh = (u8)h; c->ix = o->dx; c->iy = (u8)(o->dy + 1);
+    c->vh = (u8)h; c->ix = o->dx; c->iy = (u8)(o->dy + home_out(o));
     c->mode = CM_VISIT; c->sub = 0; c->st = 0; c->wv = 0; CP(4, 1);
     return 1;
 }
@@ -1366,14 +1368,14 @@ COLD static int step_rest(Cit *c, int i, int n, int dx, int dz, int d2, const Ho
         if (!hm) { c->mode = CM_IDLE; break; }
         int gx, zf, zd, zi; door_geo(hm, &gx, &zf, &zd, &zi);
         int spd = c->stage == AG_ELDER ? 3 : 5;
-        if (c->sub == 0) { if (nav(c, hm->dx, hm->dy + 1, spd, 0, n)) c->sub = 1; }
+        if (c->sub == 0) { if (nav(c, hm->dx, hm->dy + home_out(hm), spd, 0, n)) c->sub = 1; }
         else if (c->sub == 1) { if (scripted(c, gx, zd, 3, n)) c->sub = 2; }
         else if (scripted(c, gx, zi, 3, n)) { c->mode = CM_IDLE; c->t = (u16)(20 + rn(100)); }
         used = g_used; break; }
     case CM_LEAVE: {    // across the floor to the door, out through it, and off
         if (!hm) { c->mode = CM_IDLE; break; }
         int gx, zf, zd, zi; door_geo(hm, &gx, &zf, &zd, &zi);
-        if (c->sub == 0) { if (nav(c, hm->dx, hm->dy - 1, 3, 1, n)) c->sub = 1; }
+        if (c->sub == 0) { if (nav(c, hm->dx, hm->dy - home_out(hm), 3, 1, n)) c->sub = 1; }
         else if (c->sub == 1) { if (scripted(c, gx, zd, 3, n)) c->sub = 2; }
         else if (scripted(c, gx, zf, 3, n)) { c->mode = CM_IDLE; c->t = (u16)rn(40); }
         used = g_used; break; }
