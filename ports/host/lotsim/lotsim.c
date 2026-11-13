@@ -230,7 +230,7 @@ int main(int argc, char **argv) {
                         if (b.lot == LOT_APART && l != hm->unit / 2) continue;       // (a flat is on its own storey)
                         for (int y = hm->y0; y <= hm->y1; y++) for (int x = hm->x0; x <= hm->x1; x++) { unsigned char c = (unsigned char)m[y][x]; if (c != '.' && c != ' ' && c != 'W' && c != 'E' && c != 'D') cnt[c]++; } }
                     #define HAS(ch) (cnt[(unsigned char)(ch)] > was[(unsigned char)(ch)])
-                    { int miss[8] = { !HAS('F'), !HAS('T'), !(HAS('S') || HAS('<')), !HAS('H'), !(HAS('C') || HAS('U') || HAS('h')), !(HAS('v') || HAS('R') || HAS('A') || HAS('b') || HAS('q')), !HAS('t'), !HAS('/') };
+                    { int miss[8] = { !HAS('F'), !HAS('T'), !(HAS('S') || HAS('<') || HAS((char)0xF6) || HAS((char)0xEC) || HAS((char)0xEB)), !HAS('H'), !(HAS('C') || HAS('U') || HAS('h')), !(HAS('v') || HAS('R') || HAS('A') || HAS('b') || HAS('q')), !HAS('t'), !HAS('/') };
                       for (int q = 0; q < 8; q++) lack[q] += miss[q];
                       if (getenv("LACK")) for (int q = 0; q < 8; q++) if (miss[q] && ((atoi(getenv("LACK")) >> q) & 1)) printf("lack %d %s %d %d unit %d\n", q, lotname(b.lot), bx, by, hm->unit); } } } }
         printf("homes lived in %ld\n", homesN);

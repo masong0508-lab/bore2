@@ -142,6 +142,8 @@ __attribute__((noinline)) static void mirror7(int ox, int oy, int n0, int ground
             for (int x = x0; x <= x1; x++) { char t = L->map[a][x]; L->map[a][x] = L->map[c][x]; L->map[c][x] = t; u8 u = L->fl[a][x]; L->fl[a][x] = L->fl[c][x]; L->fl[c][x] = u; u = L->wp[a][x]; L->wp[a][x] = L->wp[c][x]; L->wp[c][x] = u; } }
     }
     for (int y = r5; y <= r17; y++) for (int x = x0; x <= x1; x++) { u8 w = wallMap[y][x]; if ((w & 0x80) && !(w & 1)) wallMap[y][x] = (u8)(w ^ 2); }   // (an item turned to the north looks south now, and back)
+    for (int k = 0; k < NUP; k++) { Level *L = lv_get(k); if (!L) continue;                  // (the storeys' things turn too: a bed upstairs had its foot to the wall)
+        for (int y = r5; y <= r17; y++) for (int x = x0; x <= x1; x++) { u8 w = L->wp[y][x]; if ((w & 0x80) && !(w & 1)) L->wp[y][x] = (u8)(w ^ 2); } }
     for (int i = 0; i < nw; i++) {                                                          // the street row as it was; the far row is the lot's back: ground (what the lot put there stays)
         lifeMap[r5][x0 + i] = sl[i]; floorMap[r5][x0 + i] = sf[i]; wallMap[r5][x0 + i] = sw[i];
         if (floorMap[r17][x0 + i] == FL_PAVING && i) floorMap[r17][x0 + i] = (u8)ground;

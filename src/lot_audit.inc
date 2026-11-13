@@ -58,7 +58,8 @@ static void au_level(int l, char (*m)[MW + 1], u8 (*fl)[MW], u8 (*wp)[MW], char 
     for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) { char c = m[y][x]; int fw, fL; if (!au_furn(c) || !items_foot(c, &fw, &fL)) continue;
         int r = au_facing(m, wp, x, y) & 3;
         for (int da = 0; da < fw; da++) for (int db = 0; db < fL; db++) { if (!(da | db)) continue; int tx, ty; au_foot_tile(c, x, y, r, da, db, &tx, &ty);
-            if (tx < 0 || ty < 0 || tx >= MW || ty >= MH || m[ty][tx] != '.' || cov[ty][tx]) { lot_aud.overlap++; K->overlap++; } else cov[ty][tx] = 1; } }
+            if (tx < 0 || ty < 0 || tx >= MW || ty >= MH || (m[ty][tx] != '.' && !au_flat(m[ty][tx])) || cov[ty][tx]) {   // (a rug may lie under a bed's foot)
+                lot_aud.overlap++; K->overlap++; } else cov[ty][tx] = 1; } }
     // 4. things: reached, against a wall or in a cluster that is
     static unsigned char sup[MH][MW], seen[MH][MW]; memset(sup, 0, sizeof sup); memset(seen, 0, sizeof seen);
     h = t = 0;
@@ -66,7 +67,10 @@ static void au_level(int l, char (*m)[MW + 1], u8 (*fl)[MW], u8 (*wp)[MW], char 
         if (au_furn(c)) { lot_aud.items++; K->items++;
             int ok = 0; static const signed char ox[4] = { 1, -1, 0, 0 }, oy[4] = { 0, 0, 1, -1 };
             for (int k = 0; k < 4; k++) { int a = x + ox[k], b = y + oy[k]; if (a >= 0 && b >= 0 && a < MW && b < MH && au_reach[b][a] && !cov[b][a]) ok = 1; }
-            if (!ok) { int fw, fL; if (items_foot(c, &fw, &fL)) for (int k = 0; k < 4 && !ok; k++) { int a = x + ox[k], b = y + oy[k]; (void)a; (void)b; } }
+            if (!ok) { int fw, fL; if (items_foot(c, &fw, &fL)) {   // a long thing: it is reached from beside any tile it covers
+                int r = au_facing(m, wp, x, y) & 3;
+                for (int da = 0; da < fw; da++) for (int db = 0; db < fL; db++) { if (!(da | db)) continue; int tx, ty; au_foot_tile(c, x, y, r, da, db, &tx, &ty);
+                    for (int k = 0; k < 4; k++) { int a = tx + ox[k], b = ty + oy[k]; if (a >= 0 && b >= 0 && a < MW && b < MH && au_reach[b][a] && !cov[b][a]) ok = 1; } } } }
             if (!ok) { lot_aud.unreach_item++; K->unreach_item++; }
             if (!au_in[y][x]) continue;                                  // (out of doors: the yard's things are checked by where they are, not by a wall)
             for (int k = 0; k < 4; k++) { int a = x + ox[k], b = y + oy[k]; if (a >= 0 && b >= 0 && a < MW && b < MH && au_isw(m[b][a])) { sup[y][x] = 1; } }

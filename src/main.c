@@ -454,6 +454,10 @@ static void draw_sims(void) {
             else if (bc == 'z') to = -items_height('S') + 40;                              // (the tent: as ever)
             else to = -(((bc == CH_CRIB || bc == CH_BASS || bc == CH_CRAD) ? 4 * IZ : 0) + lying_drop(&s->bore));
             p.vy = (to * sm) >> 12; s->gait.bed = bed;
+            if (bed) { int bw, bl; if (items_foot(bc, &bw, &bl)) {   // (a bed two tiles long, or two wide: they lie in the middle of it, not on the first tile)
+                int r_ = world_item_facing(s->act_x, s->act_y) & 3, fa = bw > 1 ? TILE / 2 : 0, fb = bl > 1 ? TILE / 2 : 0;   // across (da) and along (db) the bed, half a tile
+                int dx = (r_ == 0 ? fa : r_ == 1 ? fb : r_ == 2 ? -fa : -fb), dy = (r_ == 0 ? fb : r_ == 1 ? -fa : r_ == 2 ? -fb : fa);
+                p.vx += (dx * sm) >> 12; p.vz -= (dy * sm) >> 12; } }
         } else s->gait.bed = 0;
         if (s->action == ACT_SIT || s->action == ACT_WC || (s->action == ACT_EAT && s->gait.sit)) p.vy = -items_height(world_at(s->act_x, s->act_y)) / 2 + 10;
         if (s->action == ACT_SWIM) p.vy = 30 + (isin((frame * 60) & 4095) >> 9);   // afloat, bobbing
@@ -1966,7 +1970,41 @@ static void isle_tick(void) {   // (test builds: CASTAWAY ISLAND: its map, gathe
 
 #ifdef AUTO_PHONE
 int auto_btn, auto_hold;
-static void phone_tick(void) {   // (test builds: the HUD, the phone and its apps, a call, the pause menu, THE MAN BASE and the desert town to the horizon)
+#ifdef AUTO_VIEWS
+#if AUTO_VIEWS == 2
+#include "../test/views_city.h"   // (test builds: the 3D audit shots, 2: the city; the plan is a table of { frame, op, arg, pitch, dist, yaw })
+#else
+#include "../test/views_plan.h"   // (1: the showroom)
+#endif
+static void views_tick(void) {
+    extern int sim_debug_goto(char c, int lot);
+    static int t0 = -1, k;
+    if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); story_paid = 1; job_level = 2; }
+    int t = VSync(-1) - t0;
+    while (views_plan[k].op && t >= views_plan[k].at) {
+        const VPlan *e = &views_plan[k];
+        switch (e->op) {
+            case 't': travel_go(e->a); break;
+            case 'g': sim_debug_goto((char)e->a, -1); break;
+            case 'R': {   // a showroom: the letters of views_room[a], 3 tiles apart, 6 to a row, from tile (4, 4); each faces the camera (rot 0) or, past the middle, rot b
+                extern void world_touched(void);
+                const char *L = views_room[e->a]; int n = (int)strlen(L);
+                for (int y = VIEW_OY - 2; y < VIEW_OY + 2 + 3 * ((n + 5) / 6); y++) for (int x = VIEW_OX - 2; x < VIEW_OX + 22; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = 2; wallMap[y][x] = 0; }
+                for (int k = 0; k < n; k++) { int x = VIEW_OX + 3 * (k % 6), y = VIEW_OY + 3 * (k / 6); lifeMap[y][x] = L[k]; wallMap[y][x] = (u8)(0x80 | (e->b & 3)); }
+                world_touched(); } break;
+            case 'H': { extern int auto_hold; static const u16 hm[7] = { 0, PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_UP | PAD_RIGHT, PAD_DOWN | PAD_LEFT }; auto_hold = hm[e->a]; } break;
+            case 'p': { Sim *me = &sims[player]; me->x = e->a * TILE + TILE / 2; me->z = -(e->b * TILE + TILE / 2); me->lvl = 0; me->path_n = 0; me->action = ACT_NONE; } break;
+            default: break;
+        }
+        cam_pitch = e->pitch; cam_dist = e->dist; cam_yaw = e->yaw;
+        k++;
+    }
+}
+#endif
+static void phone_tick(void) {
+#ifdef AUTO_VIEWS
+    views_tick(); return;
+#endif   // (test builds: the HUD, the phone and its apps, a call, the pause menu, THE MAN BASE and the desert town to the horizon)
     static int t0 = -1, k;
     if (t0 < 0) { if (state != ST_LIFE || !life_started || frame < 30) return; t0 = VSync(-1); }
     static const struct { s16 at; char op; s16 arg; } plan[] = {

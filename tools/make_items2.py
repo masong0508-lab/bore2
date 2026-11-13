@@ -2,7 +2,9 @@
 """BORE 2's furniture pack: new objects as textured boxes in the GBA item format (IBox / MAT), written to src/items_more.inc.
 Units: a, b across the tile (0..8, 32 world units each; +b is the FRONT, the side that faces open floor), z up in 24-unit steps
 (a Bore is about 16 tall, a wall 21). Each box: (a0, b0, a1, b1, z0, z1, mat) or (..., [front, +a, back, -a, top] mats)."""
-import os
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from item_fit import fit2   # (the size fixes: docs/OBJECT_SCALE.md)
 
 PAL = {   # name: (r, g, b) in 0..31
     'black': (4, 4, 6), 'char': (8, 8, 10), 'grey': (16, 16, 18), 'silver': (22, 23, 25), 'white': (29, 29, 28), 'cream': (29, 27, 22),
@@ -75,7 +77,7 @@ def mk(code, name, cost, flags, boxes): ITEMS.append((code, name, cost, flags, b
 mk(0x90, 'LOVESEAT', 380, 'F_ROT', [(0,2,8,7,0,3,S('blue')),(0,1,8,3,3,9,S('blue')),(0,2,1,7,3,6,S('navy')),(7,2,8,7,3,6,S('navy'))])
 mk(0x91, 'RECLINER', 450, 'F_ROT', [(1,2,7,7,0,3,S('red')),(1,1,7,3,3,10,S('red')),(0,2,1,7,0,6,S('dark')),(7,2,8,7,0,6,S('dark'))])
 mk(0x92, 'BAR STOOL', 70, '0', [(3,3,5,5,0,6,S('silver')),(2,2,6,6,6,8,S('red'))])
-mk(0x93, 'FOUR POSTER BED', 1000, 'F_ROT', [(0,0,8,8,0,3,S('wood')),(1,1,7,7,3,5,S('white')),(1,1,7,3,5,6,S('pink'))] + corners(3,16,S('dark')))
+mk(0x93, 'FOUR POSTER BED', 1000, 'F_ROT|F_L2|F_W2', [(0,0,8,8,0,3,S('wood')),(1,1,7,7,3,5,S('white')),(1,1,7,3,5,6,S('pink'))] + corners(3,16,S('dark')))
 mk(0x94, 'HAMMOCK', 200, 'F_ROT', [(0,3,1,5,0,12,S('wood')),(7,3,8,5,0,12,S('wood')),(1,2,7,6,4,6,S('cream'))])
 mk(0x95, 'COFFEE TABLE', 150, '0', [(1,2,7,6,3,4,S('oak')),(1,2,2,3,0,3,S('dark')),(6,2,7,3,0,3,S('dark')),(1,5,2,6,0,3,S('dark')),(6,5,7,6,0,3,S('dark'))])
 mk(0x96, 'NIGHTSTAND', 120, 'F_ROT', [(1,2,7,7,0,6,S('wood')),(3,3,5,5,6,7,S('gold')),(2,2,6,6,7,10,S('cream'))])
@@ -221,8 +223,9 @@ def emit():
     defs = []
     for i, (ch, name, cost, flags, boxes) in enumerate(ITEMS):
         bx = []
+        boxes = fit2(name, boxes)
         for (a0, b0, a1, b1, z0, z1, m) in boxes:
-            assert 0 <= a0 < a1 <= 8 and 0 <= b0 < b1 <= 8 and z0 < z1, (name, a0, b0, a1, b1, z0, z1)
+            assert 0 <= a0 < a1 <= 16 and 0 <= b0 < b1 <= 16 and z0 < z1, (name, a0, b0, a1, b1, z0, z1)
             ms = m if isinstance(m, list) else [m] * 5
             bx.append('{%d,%d,%d,%d,%d,%d,{%s}}' % (a0, b0, a1, b1, z0, z1, ','.join('&' + x for x in ms)))
         out.append('static const IBox bxMore%d[%d]={%s};\n' % (i, len(bx), ','.join(bx)))
