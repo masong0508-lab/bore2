@@ -294,7 +294,7 @@ static int fp_bath;                                                             
 static int fp_geo(int X0, int Y0, int X1, int Y1, int *kk, int *wyy, int *cuts, int *rx0, int *rx1, int *ddx) {   // the back rooms' spans, their doors and the wall in front of them (0: too small to divide)
     int Wt = X1 - X0 + 1, Dt = Y1 - Y0 + 1; if (Wt < 7 || Dt < 6) return 0;
     unsigned g = (fz_geo | 1) * 1103515245u + 12345u; int br = Dt >= 11 ? 5 : Dt >= 9 ? 4 : Dt >= 7 ? 3 : 2;
-    int bw = br >= 3 ? 2 : 3, k = Wt >= 8 + bw ? 3 : 2, rest = Wt - (k - 1) - bw, x = X0;      // the bathroom is narrow (two wide; three where the rooms are only two deep), the bedrooms get the width
+    int bw = br >= 3 && bm_gen < 7 ? 2 : 3, k = Wt >= 8 + bw ? 3 : 2, rest = Wt - (k - 1) - bw, x = X0;      // the bathroom is narrow (two wide; three where the rooms are only two deep), the bedrooms get the width
     fp_bath = ((g >> 16) & 1) ? k - 1 : 0;
     for (int i = 0; i < k; i++) { int w = i == fp_bath ? bw : k == 2 ? rest : (rest + (i == 1)) / 2; rx0[i] = x; rx1[i] = x + w - 1; x += w + 1; if (i < k - 1) cuts[i] = rx1[i] + 1; ddx[i] = (rx0[i] + rx1[i]) / 2; }
     if (Dt < 7) { ddx[0] = rx1[0]; ddx[k - 1] = rx0[k - 1]; }    // (rooms two deep: the doors flank the dividing wall, so the back wall of each room is free for its things)
