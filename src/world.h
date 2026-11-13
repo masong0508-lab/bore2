@@ -102,6 +102,7 @@ int world_hills_on(void);
 void world_gh_reset(void);
 extern int world_lvl;                            // the storey world_at / world_walkable read (the Bore being moved, the build cursor)
 extern int world_view_lvl;                       // storeys above this are not drawn (the Sims 2 floor view)
+extern int world_reserve;                        // packet bytes world_draw leaves for what comes after it (RESERVE_PEOPLE + RESERVE_UI; the title needs less)
 extern int world_roof_show;                      // 1: the roof over the focused building shows too (build mode's roof tool)
 extern int world_roof_style, world_roof_col, world_roof_pitch;   // HIP / GABLE / FLAT, the shingle colour, LOW / MID / STEEP
 #define NROOF_STYLE 3

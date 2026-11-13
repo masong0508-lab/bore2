@@ -166,6 +166,7 @@ void gfx_flip(void) {
 }
 
 void gfx_set_reserve(int bytes) { alloc_reserve = bytes; gfx_pk_end = db[db_active].p + PACKET_LEN - 64 - bytes - (bytes < RESERVE_PEOPLE ? KEEP_BYTES : 0); }   // (the kept pieces' room, KEEP_BYTES, is the last of the buffer: the world's and the land's limits do not count it, everyone after them does)
+int gfx_room(void) { return (int)(gfx_pk_end - db_next); }   // (bytes left before the limit, the reserve counted out)
 int gfx_bytes_used(void) { return (int)(db_next - db[db_active].p); }
 void *gfx_alloc(int bytes) {
     char *p = db_next;

@@ -2935,12 +2935,13 @@ COLD static void ground_win(int hz) {   // hz: the far view is on, so the corner
         q[0] = (5u << 24) | (*ot & 0xffffff); *ot = (u32)q & 0xffffff; gfx_frame_prims++;
     }
 }
+int world_reserve = RESERVE_PEOPLE + RESERVE_UI;   // (what world_draw keeps back from the room: a screen with few people and little interface lowers it)
 void world_draw(int fx, int fy, int t, int cutaway) {
     gh_cache_clear(fx, fy);
     gh_live = world_zone == ZONE_CITY && world_wbx >= 0 && gh_cok && gh_cwx == world_wbx && gh_cwy == world_wby;
     gfx_lift_fn = world_gh;
     gfx_set_identity(); world_dbg_walls = 0;
-    gfx_set_reserve(RESERVE_PEOPLE + RESERVE_UI);   // the world may not use up the room the people need
+    gfx_set_reserve(world_reserve);   // the world may not use up the room the people need
     frame_t = t;
     if (ao_dirty) { int h = gfx_hb(); ao_update(); h = gfx_hb() - h; if (h > dbg_ao_hb) dbg_ao_hb = h; }
     if (roof_dirty) { int h = gfx_hb(); roof_rebuild(); h = gfx_hb() - h; if (h > dbg_roof_hb) dbg_roof_hb = h; }

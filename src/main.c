@@ -199,6 +199,7 @@ static void mode_open(void);
 static void ne_from_settings(void);
 static void ne_draw(void);
 static void dio_look(int bx, int by, int snap);
+static int dio_ewin;
 static void dio_draw(int curx, int cury, int brush, int tick);
 static void dio_post(int bx, int by, int r, int g, int b, int tall);
 static void ovr_save(void);
@@ -1807,13 +1808,20 @@ static void nhood_update(void) {
         buyask_open(nh_bx[nh_sel], nh_by[nh_sel]);     // (move in, or own it as a property)
     }
 }
+#ifdef AUTO_NHOOD
+int nhs_land; unsigned short nhs_log[256][8]; int nhs_n_;
+#endif
+#define NH_RES_UI    10240   // (bytes of the packet buffer the card, the label and the hints always get: measured with 48 lots, the longest strings)
+#define NH_RES_POSTS 5120    // (and the 48 posts, a lot each, and yours)
 static void nhood_draw(void) {   // the neighborhood as a 3D model on the left (a post on every lot), the picked lot's card on the right
     char b[48], ad[24];
     const Settle *ns = bm_set(nh_set);
     if (nh_n) {
-        dio_look(nh_bx[nh_sel] + 3, nh_by[nh_sel], nh_t <= 1);
+        dio_ewin = 1; dio_look(nh_bx[nh_sel] + 3, nh_by[nh_sel], nh_t <= 1); dio_ewin = 0;
         gfx_sky(0xEBBE8C, 0xF0E6D7);
+        gfx_set_reserve(NH_RES_UI + NH_RES_POSTS);   // (the model may not take the posts' room or the card's: they always fit, so the screen is the same every frame)
         dio_draw(0, 0, 0, nh_t);
+        gfx_set_reserve(NH_RES_UI);
         for (int pass = 0; pass < 2; pass++) for (int i = 0; i < nh_n; i++) {   // every lot a post: green a furnished home, gold an empty lot, grey sold (the picked one last, tall and flashing)
             if ((i == nh_sel) != pass) continue;
             int empty = nh_lot[i] == LOT_EMPTY, sold = !home_for_sale(nh_bx[i], nh_by[i]);
@@ -1822,7 +1830,11 @@ static void nhood_draw(void) {   // the neighborhood as a 3D model on the left (
         }
         if (home_city) dio_post(home_bx, home_by, 70, 140, 255, 130);   // yours
         for (int k = 0; k < nprops; k++) dio_post(props[k].bx, props[k].by, 150, 110, 240, 110);   // (and your properties)
+        gfx_set_reserve(0);
     } else { gfx_set_clear(188, 204, 222); gfx_camera_update(); ui_backdrop(); }
+#ifdef AUTO_NHOOD
+    nhs_land = gfx_bytes_used();   // (test builds: what the model took, then the whole frame, and the last frame's drops, per frame in nhs_log)
+#endif
     gfx_rect(0, 206, 320, 34, 14, 18, 28, 0);
     ui_badge(8, 8, "THE NEIGHBORHOOD", UI_WHITE, UI_BLUE2);
     int top = ui_window(194, 4, 122, 200, ns ? ns->name : "SAN BOREAS", IC_HOUSE);
@@ -1847,6 +1859,9 @@ static void nhood_draw(void) {   // the neighborhood as a 3D model on the left (
         ui_disc(PX + 54, ky + 3, 7, UI_RGB(236, 176, 40)); ui_text(PX + 62, ky, 1, "EMPTY", UI_INK);
     }
     ui_hints(160, 212, nh_first ? "DPAD PICK|X MOVE IN|TRI THE MAN BASE" : "X BUY|SQ SEE $20|SEL LIST|TRI MINE|O BACK", 1);
+#ifdef AUTO_NHOOD
+    { extern int gfx_overflow, dio_bytes0; unsigned short *l = nhs_log[nhs_n_++ & 255]; l[4] = (unsigned short)dio_bytes0; l[0] = (unsigned short)nhs_land; l[1] = (unsigned short)gfx_bytes_used(); l[2] = (unsigned short)gfx_overflow; l[3] = (unsigned short)nh_t; }
+#endif
 }
 
 // ---- CRAFT: what the castaways can make at the campfire from what they have gathered ----
@@ -4594,6 +4609,7 @@ static void title_update(void) {
 #endif
     if (PRESSED(PAD_START) || PRESSED(PAD_CROSS)) { state = ST_MENU; menu_sel = 0; audio_voice(VOICE_YAHOO); }
 }
+#define TITLE_RES (34 * 1024)
 static void title_draw(void) {
     gfx_set_clear(10, 8, 30);
     gfx_set_ambient(96, 86);
@@ -4605,7 +4621,7 @@ static void title_draw(void) {
     camera_apply(fx, -220, fz);
     gfx_set_fog(2000, 5000);
     world_view_lvl = NUP; world_roof_show = 0;
-    world_draw(tx, ty, title_t, 1);
+    world_reserve = TITLE_RES; world_draw(tx, ty, title_t, 1); world_reserve = RESERVE_PEOPLE + RESERVE_UI;   // (the room gets all but what the logo, the Bore and the card take: at the people's share it lost pieces now and then as the camera swung)
     VECTOR p; setVector(&p, fx, 0, fz);
     Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (title_t * 120) & 4095; g.amp = 4096;
     voxel_draw(&title_bore, &p, (title_t * 9) & 4095, &g);
@@ -4943,31 +4959,33 @@ static void dio_fill(void) {
     }
     dio_dirty = 0;
 }
+static int dio_fhsnap, dio_ewin;
 static void dio_look(int bx, int by, int snap) {   // aim at that block; the window follows when it nears an edge
+    if (dio_ewin && !snap) { dio_ax += CLAMP((bx * 256 + 128 - dio_ax) / 4, -192, 192); dio_ay += CLAMP((by * 256 + 128 - dio_ay) / 4, -192, 192); bx = dio_ax >> 8; by = dio_ay >> 8; }   // (a screen that hops far: the window follows the camera as it flies, not the place it is flying to, or the camera looks off the model's edge)
     if (snap || bx - dio_ox < 5 || bx - dio_ox > DW - 6 || by - dio_oy < 4 || by - dio_oy > DD - 3) { dio_ox = bx - DW / 2; dio_oy = by - 8; dio_dirty = 1; }
-    if (snap) { dio_ax = bx * 256 + 128; dio_ay = by * 256 + 128; }
-    else { dio_ax += (bx * 256 + 128 - dio_ax) / 4; dio_ay += (by * 256 + 128 - dio_ay) / 4; }
+    if (snap) { dio_ax = bx * 256 + 128; dio_ay = by * 256 + 128; dio_fhsnap = 1; }
+    else if (!dio_ewin) { dio_ax += (bx * 256 + 128 - dio_ax) / 4; dio_ay += (by * 256 + 128 - dio_ay) / 4; }
 }
 #define DVC(r, c) ((u32)((dio_vc[r][c] & 31) << 3) | ((u32)(((dio_vc[r][c] >> 5) & 31) << 3) << 8) | ((u32)(((dio_vc[r][c] >> 10) & 31) << 3) << 16))
-static int dio_fh;   // the focus's ground height
+static int dio_fh;   // the focus's ground height (it eases; on a snap it jumps, or the first frames start from whatever the last screen left)
 static void dio_cam(void) {
     int fx = (dio_ax - dio_ox * 256) * DC / 256, fz = -((dio_ay - dio_oy * 256) * DC / 256), cp = icos(dio_pitch), sp = isin(dio_pitch);
     int horiz = (dio_dist * cp) >> 12, up = (dio_dist * sp) >> 12;
     int cc = CLAMP((dio_ax - dio_ox * 256) / 256, 0, DW - 1), rr = CLAMP((dio_ay - dio_oy * 256) / 256, 0, DD - 1);
-    dio_fh += ((dio_hv[rr][cc] + dio_hv[rr + 1][cc + 1]) / 2 - dio_fh) / 4;
+    { int tg = (dio_hv[rr][cc] + dio_hv[rr + 1][cc + 1]) / 2; if (dio_fhsnap) { dio_fh = tg; dio_fhsnap = 0; } else dio_fh += (tg - dio_fh) / 4; }
     cam.at.vx = fx; cam.at.vy = -dio_fh; cam.at.vz = fz;
     cam.eye.vx = fx - ((isin(dio_yaw) * horiz) >> 12); cam.eye.vz = fz - ((icos(dio_yaw) * horiz) >> 12); cam.eye.vy = -dio_fh - up;
     gfx_camera_update();
 }
-static int dio_zx;
+static int dio_zx, dio_zl;   // (dio_zl: 1 = a detail laid over another flat thing on the ground: a marking on a street, a drive on a lawn. The PS1's table buckets are 4 units, so the layers are 2 apart: ground 0, flat 2, flat on flat 4, standing things 6)
 static __attribute__((noinline)) void dq(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, int dx, int dy, int dz, int r, int g, int b) {
     SVECTOR a, bb, c, d; setVector(&a, ax, ay, az); setVector(&bb, bx, by, bz); setVector(&c, cx, cy, cz); setVector(&d, dx, dy, dz);
-    gfx_set_zbias((ay == by && by == cy && cy == dy ? 2 : 4) + dio_zx);   // (flat things on the ground sort over it; standing things over those)
+    gfx_set_zbias((ay == by && by == cy && cy == dy ? 2 + 2 * dio_zl : 6) + 4 * dio_zx);   // (flat things on the ground sort over it; details on those; standing things over all)
     gfx_quad_f(&a, &bb, &c, &d, CLAMP(r, 0, 255), CLAMP(g, 0, 255), CLAMP(b, 0, 255), 0);
 }
 static __attribute__((noinline)) void dtri(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, int r, int g, int b) {
     SVECTOR a, bb, c; setVector(&a, ax, ay, az); setVector(&bb, bx, by, bz); setVector(&c, cx, cy, cz);
-    gfx_set_zbias(4 + dio_zx);
+    gfx_set_zbias(6 + 4 * dio_zx);
     gfx_tri_f(&a, &bb, &c, CLAMP(r, 0, 255), CLAMP(g, 0, 255), CLAMP(b, 0, 255), 0);
 }
 #define Z_(r, f) (-((r) * DC + (f)))   // the model's z for block row r, f units south of its north edge
@@ -5001,39 +5019,84 @@ static void dio_bld_look(int l, int *bh, const u8 **body, const u8 **roof, int *
         default: break;
     }
 }
-static __attribute__((noinline)) void d_house(int c, int r, int x0, int hy, int v, int near, int right) {   // a gabled house on its lawn; hy: the ground under it
+static __attribute__((noinline)) void d_house(int c, int r, int x0, int hy, int v, int near, int right, int deco) {   // a gabled house on its lawn; hy: the ground under it
     static const u8 wall[6][3] = { { 240, 226, 186 }, { 196, 214, 232 }, { 238, 208, 128 }, { 244, 244, 238 }, { 232, 186, 178 }, { 184, 196, 178 } };
     static const u8 rf[5][3] = { { 168, 74, 58 }, { 84, 84, 92 }, { 70, 110, 80 }, { 78, 96, 140 }, { 122, 82, 56 } };
     const u8 *wc = wall[v % 6], *rc = rf[(v >> 3) % 5];
     int zn = Z_(r, 46), zs = Z_(r, 100), hx0 = x0 + 52, hx1 = x0 + 118, wh = 30, rh = 26, zc = (zn + zs) / 2, y0 = -hy;
-    dq(x0 + 40, y0 - 1, Z_(r, 40), x0 + DC - 8, y0 - 1, Z_(r, 40), x0 + 40, y0 - 1, Z_(r, 116), x0 + DC - 8, y0 - 1, Z_(r, 116), 118, 184, 84);   // the lawn
-    if (near) dq(hx0 + 8, y0 - 2, Z_(r, 40), hx0 + 26, y0 - 2, Z_(r, 40), hx0 + 8, y0 - 2, zn, hx0 + 26, y0 - 2, zn, 182, 180, 172);               // the drive, up to the street
-    dq(hx0, y0 - wh, zs, hx1, y0 - wh, zs, hx0, y0, zs, hx1, y0, zs, wc[0] * 230 >> 8, wc[1] * 230 >> 8, wc[2] * 230 >> 8);                      // the front wall
-    if (right) { dq(hx1, y0 - wh, zn, hx1, y0 - wh, zs, hx1, y0, zn, hx1, y0, zs, wc[0] * 180 >> 8, wc[1] * 180 >> 8, wc[2] * 180 >> 8); if (near) dtri(hx1, y0 - wh, zn, hx1, y0 - wh, zs, hx1, y0 - wh - rh, zc, wc[0] * 190 >> 8, wc[1] * 190 >> 8, wc[2] * 190 >> 8); }
-    else { dq(hx0, y0 - wh, zn, hx0, y0 - wh, zs, hx0, y0, zn, hx0, y0, zs, wc[0] * 150 >> 8, wc[1] * 150 >> 8, wc[2] * 150 >> 8); if (near) dtri(hx0, y0 - wh, zn, hx0, y0 - wh, zs, hx0, y0 - wh - rh, zc, wc[0] * 160 >> 8, wc[1] * 160 >> 8, wc[2] * 160 >> 8); }
-    dq(hx0 - 6, y0 - wh, zs - 6, hx1 + 6, y0 - wh, zs - 6, hx0 - 6, y0 - wh - rh, zc, hx1 + 6, y0 - wh - rh, zc, rc[0] * 205 >> 8, rc[1] * 205 >> 8, rc[2] * 205 >> 8);   // the roof's two slopes
-    dq(hx0 - 6, y0 - wh - rh, zc, hx1 + 6, y0 - wh - rh, zc, hx0 - 6, y0 - wh, zn + 6, hx1 + 6, y0 - wh, zn + 6, rc[0] * 250 >> 8, rc[1] * 250 >> 8, rc[2] * 250 >> 8);
-    if (near) {
+    if (deco) {   // (the second pass, while the frame has room: the drive, the gables, the windows and door, the chimney)
+        dio_zl = 1; dq(hx0 + 8, y0 - 2, Z_(r, 40), hx0 + 26, y0 - 2, Z_(r, 40), hx0 + 8, y0 - 2, zn, hx0 + 26, y0 - 2, zn, 182, 180, 172); dio_zl = 0;   // the drive, up to the street
+        if (right) dtri(hx1, y0 - wh, zn, hx1, y0 - wh, zs, hx1, y0 - wh - rh, zc, wc[0] * 190 >> 8, wc[1] * 190 >> 8, wc[2] * 190 >> 8);
+        else dtri(hx0, y0 - wh, zn, hx0, y0 - wh, zs, hx0, y0 - wh - rh, zc, wc[0] * 160 >> 8, wc[1] * 160 >> 8, wc[2] * 160 >> 8);
         dq(hx0 + 8, y0 - 20, zs, hx0 + 20, y0 - 20, zs, hx0 + 8, y0 - 8, zs, hx0 + 20, y0 - 8, zs, 150, 196, 236);                              // two windows and the door
         dq(hx1 - 20, y0 - 20, zs, hx1 - 8, y0 - 20, zs, hx1 - 20, y0 - 8, zs, hx1 - 8, y0 - 8, zs, 150, 196, 236);
         dq(hx0 + 28, y0 - 18, zs, hx0 + 38, y0 - 18, zs, hx0 + 28, y0, zs, hx0 + 38, y0, zs, 122, 82, 52);
         int cx = hx0 + 14 + (v & 15); dq(cx, y0 - wh - rh - 4, zc + 5, cx + 10, y0 - wh - rh - 4, zc + 5, cx, y0 - wh - rh - 4, zc - 5, cx + 10, y0 - wh - rh - 4, zc - 5, 150, 90, 78);   // a chimney
+        return;
     }
+    (void)near;
+    dq(x0 + 40, y0 - 1, Z_(r, 40), x0 + DC - 8, y0 - 1, Z_(r, 40), x0 + 40, y0 - 1, Z_(r, 116), x0 + DC - 8, y0 - 1, Z_(r, 116), 118, 184, 84);   // the lawn
+    dq(hx0, y0 - wh, zs, hx1, y0 - wh, zs, hx0, y0, zs, hx1, y0, zs, wc[0] * 230 >> 8, wc[1] * 230 >> 8, wc[2] * 230 >> 8);                      // the front wall
+    if (right) { dq(hx1, y0 - wh, zn, hx1, y0 - wh, zs, hx1, y0, zn, hx1, y0, zs, wc[0] * 180 >> 8, wc[1] * 180 >> 8, wc[2] * 180 >> 8); }
+    else { dq(hx0, y0 - wh, zn, hx0, y0 - wh, zs, hx0, y0, zn, hx0, y0, zs, wc[0] * 150 >> 8, wc[1] * 150 >> 8, wc[2] * 150 >> 8); }
+    dq(hx0 - 6, y0 - wh, zs - 6, hx1 + 6, y0 - wh, zs - 6, hx0 - 6, y0 - wh - rh, zc, hx1 + 6, y0 - wh - rh, zc, rc[0] * 205 >> 8, rc[1] * 205 >> 8, rc[2] * 205 >> 8);   // the roof's two slopes
+    dq(hx0 - 6, y0 - wh - rh, zc, hx1 + 6, y0 - wh - rh, zc, hx0 - 6, y0 - wh, zn + 6, hx1 + 6, y0 - wh, zn + 6, rc[0] * 250 >> 8, rc[1] * 250 >> 8, rc[2] * 250 >> 8);
 }
-static __attribute__((noinline)) void d_road(int c, int r, int bits) {
+static __attribute__((noinline)) void d_road(int c, int r, int bits, int deco) {   // deco 0: the tarmac; 1: the pavement and the line down the middle
     static const u8 asp[3] = { 72, 72, 80 }, paveC[3] = { 196, 194, 186 };
     int x0 = c * DC, x1 = x0 + DC, RW = 34;
     if (bits & 1) {   // the street along the block's north edge
         int h0 = dio_hv[r][c], h1 = dio_hv[r][c + 1], g0 = d_h(c, r, 0, RW), g1 = d_h(c, r, DC, RW), p0 = d_h(c, r, 0, RW + 8), p1 = d_h(c, r, DC, RW + 8);
-        dq(x0, -h0 - 2, Z_(r, 0), x1, -h1 - 2, Z_(r, 0), x0, -g0 - 2, Z_(r, RW), x1, -g1 - 2, Z_(r, RW), asp[0], asp[1], asp[2]);
-        dq(x0, -g0 - 2, Z_(r, RW), x1, -g1 - 2, Z_(r, RW), x0, -p0 - 2, Z_(r, RW + 8), x1, -p1 - 2, Z_(r, RW + 8), paveC[0], paveC[1], paveC[2]);
-        int m0 = d_h(c, r, 0, RW / 2), m1 = d_h(c, r, DC, RW / 2); dq(x0, -m0 - 3, Z_(r, RW / 2 - 1), x1, -m1 - 3, Z_(r, RW / 2 - 1), x0, -m0 - 3, Z_(r, RW / 2 + 1), x1, -m1 - 3, Z_(r, RW / 2 + 1), 226, 200, 70);
+        if (!deco) dq(x0, -h0 - 2, Z_(r, 0), x1, -h1 - 2, Z_(r, 0), x0, -g0 - 2, Z_(r, RW), x1, -g1 - 2, Z_(r, RW), asp[0], asp[1], asp[2]);
+        else {
+            dq(x0, -g0 - 2, Z_(r, RW), x1, -g1 - 2, Z_(r, RW), x0, -p0 - 2, Z_(r, RW + 8), x1, -p1 - 2, Z_(r, RW + 8), paveC[0], paveC[1], paveC[2]);
+            int m0 = d_h(c, r, 0, RW / 2), m1 = d_h(c, r, DC, RW / 2); dio_zl = 1; dq(x0, -m0 - 3, Z_(r, RW / 2 - 1), x1, -m1 - 3, Z_(r, RW / 2 - 1), x0, -m0 - 3, Z_(r, RW / 2 + 1), x1, -m1 - 3, Z_(r, RW / 2 + 1), 226, 200, 70); dio_zl = 0;
+        }
     }
     if (bits & 2) {   // ... and along its west edge
         int h0 = dio_hv[r][c], h1 = dio_hv[r + 1][c], g0 = d_h(c, r, RW, 0), g1 = d_h(c, r, RW, DC), p0 = d_h(c, r, RW + 8, 0), p1 = d_h(c, r, RW + 8, DC);
-        dq(x0, -h0 - 2, Z_(r, 0), x0 + RW, -g0 - 2, Z_(r, 0), x0, -h1 - 2, Z_(r, DC), x0 + RW, -g1 - 2, Z_(r, DC), asp[0], asp[1], asp[2]);
-        dq(x0 + RW, -g0 - 2, Z_(r, 0), x0 + RW + 8, -p0 - 2, Z_(r, 0), x0 + RW, -g1 - 2, Z_(r, DC), x0 + RW + 8, -p1 - 2, Z_(r, DC), paveC[0], paveC[1], paveC[2]);
-        int m0 = d_h(c, r, RW / 2, 0), m1 = d_h(c, r, RW / 2, DC); dq(x0 + RW / 2 - 1, -m0 - 3, Z_(r, 0), x0 + RW / 2 + 1, -m0 - 3, Z_(r, 0), x0 + RW / 2 - 1, -m1 - 3, Z_(r, DC), x0 + RW / 2 + 1, -m1 - 3, Z_(r, DC), 226, 200, 70);
+        if (!deco) dq(x0, -h0 - 2, Z_(r, 0), x0 + RW, -g0 - 2, Z_(r, 0), x0, -h1 - 2, Z_(r, DC), x0 + RW, -g1 - 2, Z_(r, DC), asp[0], asp[1], asp[2]);
+        else {
+            dq(x0 + RW, -g0 - 2, Z_(r, 0), x0 + RW + 8, -p0 - 2, Z_(r, 0), x0 + RW, -g1 - 2, Z_(r, DC), x0 + RW + 8, -p1 - 2, Z_(r, DC), paveC[0], paveC[1], paveC[2]);
+            int m0 = d_h(c, r, RW / 2, 0), m1 = d_h(c, r, RW / 2, DC); dio_zl = 1; dq(x0 + RW / 2 - 1, -m0 - 3, Z_(r, 0), x0 + RW / 2 + 1, -m0 - 3, Z_(r, 0), x0 + RW / 2 - 1, -m1 - 3, Z_(r, DC), x0 + RW / 2 + 1, -m1 - 3, Z_(r, DC), 226, 200, 70); dio_zl = 0;
+        }
+    }
+}
+#define DIO_CELL_MAX 800   // the most a block's trimmings can take (bytes)
+int dio_bytes0;      // (what the essentials took, for the tests)
+static void dio_cell(int r, int c, int fc, int fr, int pass) {   // one block of the model. pass 0: what must be there (the ground, the streets' tarmac, every building's body); pass 1: the trimmings (trees, windows, doors, chimneys, pavements, lines), nearest the focus first, only while the frame has room
+    {
+        const DCell *k = &dio_c[r][c]; int t = k->t % 6, l = k->l, x0 = c * DC, v = k->v;
+        if (t == BT_SEA) return;
+        int dist = MAX(ABS(c - fc), ABS(r - fr)), near = dist <= 5;
+        int hy = d_h(c, r, DC / 2, DC / 2);
+        if (k->r & 3) d_road(c, r, k->r & 3, pass);
+        if (l == LOT_WILD || l == LOT_RIVER) {
+            if (l == LOT_RIVER) { if (!pass) dq(x0, -dio_hv[r][c] - 3, Z_(r, 0), x0 + DC, -dio_hv[r][c + 1] - 3, Z_(r, 0), x0, -dio_hv[r + 1][c] - 3, Z_(r, DC), x0 + DC, -dio_hv[r + 1][c + 1] - 3, Z_(r, DC), 70, 130, 222); return; }
+            if (!pass || dist > 9) return;
+            int nt = t == BT_FOREST ? 4 : t == BT_GRASS ? ((v & 3) == 0) + ((v & 12) == 0) : t == BT_ROCKY ? (v % 3 == 0) : 0;
+            for (int i = 0; i < nt; i++) { int fx = 24 + (((v >> 1) * (i + 3) * 37) & 63) + i * 14, fz = 30 + (((v >> 2) * (i + 5) * 53) & 63) + (i & 1) * 20; if (fx > DC - 18) fx = DC - 18; if (fz > DC - 18) fz = DC - 18;
+                if ((k->r & 1) && fz < 44) fz += 40; if ((k->r & 2) && fx < 44) fx += 40; d_tree(x0 + fx, -d_h(c, r, fx, fz), Z_(r, fz), t == BT_ROCKY ? 40 : 66 + (v & 15), t == BT_ROCKY ? 18 : 24, (v & 7) * 3 - 8, 0); }
+            return;
+        }
+        if (l == LOT_PARK || l == LOT_SQUARE || l == LOT_SKATE) {
+            static const u8 pk[3] = { 96, 172, 84 }, sq[3] = { 206, 202, 188 }, sk[3] = { 120, 120, 128 };
+            const u8 *pc = l == LOT_PARK ? pk : l == LOT_SQUARE ? sq : sk;
+            if (!pass) dq(x0 + 40, -hy - 1, Z_(r, 40), x0 + DC - 8, -hy - 1, Z_(r, 40), x0 + 40, -hy - 1, Z_(r, DC - 8), x0 + DC - 8, -hy - 1, Z_(r, DC - 8), pc[0], pc[1], pc[2]);
+            if (l == LOT_PARK) { if (!pass) { dio_zl = 1; dq(x0 + 70, -hy - 2, Z_(r, 70), x0 + 110, -hy - 2, Z_(r, 70), x0 + 70, -hy - 2, Z_(r, 100), x0 + 110, -hy - 2, Z_(r, 100), 70, 140, 222); dio_zl = 0; }   // a pond
+                if (pass) for (int i = 0; i < 4; i++) { int fx = 50 + i * 26, fz = 52 + ((i * 41 + v) & 63); d_tree(x0 + fx, -hy, Z_(r, fz), 70, 24, i * 4 - 6, 0); } }
+            return;
+        }
+        if (l == LOT_EMPTY) { if (pass) return; dq(x0 + 40, -hy - 1, Z_(r, 40), x0 + DC - 8, -hy - 1, Z_(r, 40), x0 + 40, -hy - 1, Z_(r, DC - 8), x0 + DC - 8, -hy - 1, Z_(r, DC - 8), 168, 140, 96);
+                       dq(x0 + 70, -hy - 22, Z_(r, 70), x0 + 76, -hy - 22, Z_(r, 70), x0 + 70, -hy, Z_(r, 70), x0 + 76, -hy, Z_(r, 70), 250, 226, 60); return; }
+        if (l == LOT_FARM) { if (pass) return; for (int i = 0; i < 4; i++) dq(x0 + 40, -hy - 1, Z_(r, 40 + i * 28), x0 + DC - 8, -hy - 1, Z_(r, 40 + i * 28), x0 + 40, -hy - 1, Z_(r, 62 + i * 28), x0 + DC - 8, -hy - 1, Z_(r, 62 + i * 28), i & 1 ? 196 : 150, i & 1 ? 164 : 190, i & 1 ? 84 : 80); return; }
+        int bh, kind; const u8 *body, *roof; dio_bld_look(l, &bh, &body, &roof, &kind);
+        if (kind == 0) { if (!pass) d_house(c, r, x0, hy, v, 0, c < DW / 2, 0); else if (near) { d_house(c, r, x0, hy, v, 1, c < DW / 2, 1); d_tree(x0 + 30, -d_h(c, r, 30, 120), Z_(r, 120), 54, 20, 0, 0); d_tree(x0 + DC - 14, -d_h(c, r, DC - 14, 60), Z_(r, 60), 60, 22, 6, 0); } return; }
+        { int bx0 = x0 + 46, bx1 = x0 + DC - 16, zn = Z_(r, 46), zs = Z_(r, DC - 18), y0 = -hy, y1 = -hy - bh * 14 / 10;
+          if (!pass) { dq(x0 + 40, y0 - 1, Z_(r, 40), x0 + DC - 8, y0 - 1, Z_(r, 40), x0 + 40, y0 - 1, Z_(r, DC - 8), x0 + DC - 8, y0 - 1, Z_(r, DC - 8), 150, 150, 156);   // its paving
+            d_box(bx0, bx1, zn, zs, y0, y1, c < DW / 2, body, roof); }
+          else if (kind == 1 && near) { int ns = (bh * 14 / 10) / 22; for (int i = 0; i < ns; i++) { int wy = y0 - 8 - i * 22; dq(bx0 + 4, wy - 9, zs, bx1 - 4, wy - 9, zs, bx0 + 4, wy, zs, bx1 - 4, wy, zs, 70, 100, 150); } }
+          else if (kind == 2 && near) { static const u8 aw[3] = { 214, 70, 60 }; dq(bx0 + 4, y0 - 26, zs - 8, bx1 - 4, y0 - 26, zs - 8, bx0 + 4, y0 - 18, zs, bx1 - 4, y0 - 18, zs, aw[0], aw[1], aw[2]); } }
     }
 }
 static void dio_draw(int curx, int cury, int brush, int tick) {   // the model; a cursor over brush x brush blocks at (curx, cury) (brush 0: none)
@@ -5054,39 +5117,14 @@ static void dio_draw(int curx, int cury, int brush, int tick) {   // the model; 
         for (int r = 0; r < DD; r++) { SKQ(0, Z_(r, 0), -dio_hv[r][0], 0, Z_(r, DC), -dio_hv[r + 1][0]); SKQ(DW * DC, Z_(r, 0), -dio_hv[r][DW], DW * DC, Z_(r, DC), -dio_hv[r + 1][DW]); }
         #undef SKQ
     }
-    for (int r = 0; r < DD; r++) for (int c = 0; c < DW; c++) {
-        const DCell *k = &dio_c[r][c]; int t = k->t % 6, l = k->l, x0 = c * DC, v = k->v;
-        if (t == BT_SEA) continue;
-        int dist = MAX(ABS(c - fc), ABS(r - fr)), near = dist <= 5, full = gfx_prims_left() > 7000;
-        int hy = d_h(c, r, DC / 2, DC / 2);
-        if (k->r & 3) d_road(c, r, k->r & 3);
-        if (l == LOT_WILD || l == LOT_RIVER) {
-            if (l == LOT_RIVER) { dq(x0, -dio_hv[r][c] - 3, Z_(r, 0), x0 + DC, -dio_hv[r][c + 1] - 3, Z_(r, 0), x0, -dio_hv[r + 1][c] - 3, Z_(r, DC), x0 + DC, -dio_hv[r + 1][c + 1] - 3, Z_(r, DC), 70, 130, 222); continue; }
-            if (!full || dist > 9) continue;
-            int nt = t == BT_FOREST ? 4 : t == BT_GRASS ? ((v & 3) == 0) + ((v & 12) == 0) : t == BT_ROCKY ? (v % 3 == 0) : 0;
-            for (int i = 0; i < nt; i++) { int fx = 24 + (((v >> 1) * (i + 3) * 37) & 63) + i * 14, fz = 30 + (((v >> 2) * (i + 5) * 53) & 63) + (i & 1) * 20; if (fx > DC - 18) fx = DC - 18; if (fz > DC - 18) fz = DC - 18;
-                if ((k->r & 1) && fz < 44) fz += 40; if ((k->r & 2) && fx < 44) fx += 40; d_tree(x0 + fx, -d_h(c, r, fx, fz), Z_(r, fz), t == BT_ROCKY ? 40 : 66 + (v & 15), t == BT_ROCKY ? 18 : 24, (v & 7) * 3 - 8, 0); }
-            continue;
-        }
-        if (l == LOT_PARK || l == LOT_SQUARE || l == LOT_SKATE) {
-            static const u8 pk[3] = { 96, 172, 84 }, sq[3] = { 206, 202, 188 }, sk[3] = { 120, 120, 128 };
-            const u8 *pc = l == LOT_PARK ? pk : l == LOT_SQUARE ? sq : sk;
-            dq(x0 + 40, -hy - 1, Z_(r, 40), x0 + DC - 8, -hy - 1, Z_(r, 40), x0 + 40, -hy - 1, Z_(r, DC - 8), x0 + DC - 8, -hy - 1, Z_(r, DC - 8), pc[0], pc[1], pc[2]);
-            if (l == LOT_PARK) { dq(x0 + 70, -hy - 2, Z_(r, 70), x0 + 110, -hy - 2, Z_(r, 70), x0 + 70, -hy - 2, Z_(r, 100), x0 + 110, -hy - 2, Z_(r, 100), 70, 140, 222);   // a pond
-                if (full) for (int i = 0; i < 4; i++) { int fx = 50 + i * 26, fz = 52 + ((i * 41 + v) & 63); d_tree(x0 + fx, -hy, Z_(r, fz), 70, 24, i * 4 - 6, 0); } }
-            continue;
-        }
-        if (l == LOT_EMPTY) { dq(x0 + 40, -hy - 1, Z_(r, 40), x0 + DC - 8, -hy - 1, Z_(r, 40), x0 + 40, -hy - 1, Z_(r, DC - 8), x0 + DC - 8, -hy - 1, Z_(r, DC - 8), 168, 140, 96);
-                       dq(x0 + 70, -hy - 22, Z_(r, 70), x0 + 76, -hy - 22, Z_(r, 70), x0 + 70, -hy, Z_(r, 70), x0 + 76, -hy, Z_(r, 70), 250, 226, 60); continue; }
-        if (l == LOT_FARM) { for (int i = 0; i < 4; i++) dq(x0 + 40, -hy - 1, Z_(r, 40 + i * 28), x0 + DC - 8, -hy - 1, Z_(r, 40 + i * 28), x0 + 40, -hy - 1, Z_(r, 62 + i * 28), x0 + DC - 8, -hy - 1, Z_(r, 62 + i * 28), i & 1 ? 196 : 150, i & 1 ? 164 : 190, i & 1 ? 84 : 80); continue; }
-        int bh, kind; const u8 *body, *roof; dio_bld_look(l, &bh, &body, &roof, &kind);
-        if (kind == 0) { d_house(c, r, x0, hy, v, near && full, c < DW / 2); if (full && near) { d_tree(x0 + 30, -d_h(c, r, 30, 120), Z_(r, 120), 54, 20, 0, 0); d_tree(x0 + DC - 14, -d_h(c, r, DC - 14, 60), Z_(r, 60), 60, 22, 6, 0); } continue; }
-        { int bx0 = x0 + 46, bx1 = x0 + DC - 16, zn = Z_(r, 46), zs = Z_(r, DC - 18), y0 = -hy, y1 = -hy - bh * 14 / 10;
-          dq(x0 + 40, y0 - 1, Z_(r, 40), x0 + DC - 8, y0 - 1, Z_(r, 40), x0 + 40, y0 - 1, Z_(r, DC - 8), x0 + DC - 8, y0 - 1, Z_(r, DC - 8), 150, 150, 156);   // its paving
-          d_box(bx0, bx1, zn, zs, y0, y1, c < DW / 2, body, roof);
-          if (kind == 1 && near) { int ns = (bh * 14 / 10) / 22; for (int i = 0; i < ns; i++) { int wy = y0 - 8 - i * 22; dq(bx0 + 4, wy - 9, zs, bx1 - 4, wy - 9, zs, bx0 + 4, wy, zs, bx1 - 4, wy, zs, 70, 100, 150); } }
-          else if (kind == 2) { static const u8 aw[3] = { 214, 70, 60 }; dq(bx0 + 4, y0 - 26, zs - 8, bx1 - 4, y0 - 26, zs - 8, bx0 + 4, y0 - 18, zs, bx1 - 4, y0 - 18, zs, aw[0], aw[1], aw[2]); } }
+    for (int r = 0; r < DD; r++) for (int c = 0; c < DW; c++) dio_cell(r, c, fc, fr, 0);
+    dio_bytes0 = gfx_bytes_used();
+    for (int d = 0; d <= DW; d++) for (int r = MAX(0, fr - d); r <= MIN(DD - 1, fr + d); r++) for (int c = MAX(0, fc - d); c <= MIN(DW - 1, fc + d); c++) {   // (the trimmings, ring by ring out from the focus: when the room runs out the far ones go, the same ones every frame)
+        if (MAX(ABS(c - fc), ABS(r - fr)) != d) continue;
+        if (gfx_room() < DIO_CELL_MAX) goto trimmed;
+        dio_cell(r, c, fc, fr, 1);
     }
+    trimmed:
     dio_zx = 1;
     if (brush > 0 && curx >= dio_ox && cury >= dio_oy && curx < dio_ox + DW && cury < dio_oy + DD) {   // the cursor: a glowing patch of ground and four posts
         int n = brush, hh = n / 2, c = curx - dio_ox, r = cury - dio_oy, p = 200 + (isin((tick * 140) & 4095) >> 6);
