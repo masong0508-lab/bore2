@@ -2189,6 +2189,7 @@ static void tile_row_span(const TileView *tv, int my, int tz, int kx, int ky, in
 }
 static u8 bld[MH][MW];
 #define NBLD 251
+static u8 b_lod[NBLD];                           // (version 7: a house or block of flats past 9 tiles keeps its upper storeys as one box: see lod_up)
 static u8 b_see[NBLD];                            // (see_through: the buildings looked into this frame)
 static int rx0, rx1, ry0, ry1, ex0, ex1, ey0, ey1;
 static inline int in_range(int x, int y);
@@ -2254,7 +2255,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
         int inR = mx >= rx0 && mx <= rx1 && my >= ry0 && my <= ry1;
         if (!inR && !in_range(mx, my)) continue;                     // past the range (a building cut by it is drawn whole)
         if (shell || !inR) {                                         // a storey seen from outside, or a far part of a building: its outside walls only
-            if (shell && bld[my][mx] && b_see[bld[my][mx]]) continue;
+            if (shell && bld[my][mx] && (b_see[bld[my][mx]] || b_lod[bld[my][mx]])) continue;
             if (shell && cut_all && cut_here(mx, my) && (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12) < -TILE / 4) continue;   // (over walls cut low: it would float)
             if (!lvl && !is_wall(c)) continue;
             if (!tile_seen(&tvT, mx, my)) continue;
@@ -2788,6 +2789,24 @@ static void far_quad(int ax, int ay, int az, int bx, int by, int bz, int cx, int
     SVECTOR a, b, c, d; setVector(&a, ax, ay, az); setVector(&b, bx, by, bz); setVector(&c, cx, cy, cz); setVector(&d, dx, dy, dz);
     gfx_quad_f(&a, &b, &c, &d, MIN(255, (R8(col) * L) >> 7), MIN(255, (G8(col) * L) >> 7), MIN(255, (B8(col) * L) >> 7), 1);
 }
+static void lod_up(int b) {   // the storeys of a building that is past 9 tiles: a box of walls with a band of windows each (what far_box makes of a whole building)
+    int x0 = b_x0[b] * TILE, x1 = (b_x1[b] + 1) * TILE, zN = -b_y0[b] * TILE, zS = -(b_y1[b] + 1) * TILE;
+    { int HT = (b_top[b] + 1) * WALL_FULL, cx = (x0 + x1) / 2, cz = (zN + zS) / 2, rad = MAX(x1 - x0, zN - zS) * 3 / 4 + HT / 2; if (!gfx_visible(cx, -HT / 2, cz, rad + 600)) return; }   // (off the screen: not even transformed)
+    u16 wc = b_wall[b] ? b_wall[b] : RGB(24, 22, 19), glass = RGB(6, 9, 14);
+    int LS = CLAMP(gfx_light(0, 0, -ONE), 40, 220), LN = CLAMP(gfx_light(0, 0, ONE), 40, 220), LW = CLAMP(gfx_light(-ONE, 0, 0), 40, 220), LE = CLAMP(gfx_light(ONE, 0, 0), 40, 220);
+    lift_to(world_zone == ZONE_CITY && world_wbx >= 0 ? gh_c(b_x0[b], b_y0[b]) : 0);
+    for (int l = 1; l <= b_top[b]; l++) {
+        int yb = -(l * WALL_FULL), yt = yb - WALL_FULL, ya = yb - 360, yw = yb - 170, I = 60, O = 6;
+        far_quad(x0, yt, zS, x1, yt, zS, x0, yb, zS, x1, yb, zS, wc, LS);
+        far_quad(x1, yt, zN, x0, yt, zN, x1, yb, zN, x0, yb, zN, wc, LN);
+        far_quad(x0, yt, zN, x0, yt, zS, x0, yb, zN, x0, yb, zS, wc, LW);
+        far_quad(x1, yt, zS, x1, yt, zN, x1, yb, zS, x1, yb, zN, wc, LE);
+        far_quad(x0 + I, ya, zS - O, x1 - I, ya, zS - O, x0 + I, yw, zS - O, x1 - I, yw, zS - O, glass, LS + 40);
+        far_quad(x1 - I, ya, zN + O, x0 + I, ya, zN + O, x1 - I, yw, zN + O, x0 + I, yw, zN + O, glass, LN + 40);
+        far_quad(x0 - O, ya, zN - I, x0 - O, ya, zS + I, x0 - O, yw, zN - I, x0 - O, yw, zS + I, glass, LW + 40);
+        far_quad(x1 + O, ya, zS + I, x1 + O, ya, zN - I, x1 + O, yw, zS + I, x1 + O, yw, zN - I, glass, LE + 40);
+    }
+}
 static void far_box(int b, int windows) {
     int x0 = b_x0[b] * TILE, x1 = (b_x1[b] + 1) * TILE, zN = -b_y0[b] * TILE, zS = -(b_y1[b] + 1) * TILE;
     int st = b_top[b] + 1, HT = st * WALL_FULL, cx = (x0 + x1) / 2, cz = (zN + zS) / 2, rad = MAX(x1 - x0, zN - zS) * 3 / 4 + HT / 2;
@@ -3012,11 +3031,17 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     ex0 = rx0; ex1 = rx1; ey0 = ry0; ey1 = ry1;
     int focus = (fx >= 0 && fy >= 0 && fx < MW && fy < MH) ? bld[fy][fx] : 0;
     see_through(focus, fx, fy);
+    int etx_ = cam.eye.vx / TILE, ety_ = -cam.eye.vz / TILE, eh_ = -cam.eye.vy / TILE; if (eh_ < 0) eh_ = -eh_;
     for (int b = 1; b <= nbld; b++) {               // buildings the range cuts through are drawn whole
-        if (b_x0[b] == 255) { b_str[b] = 0; continue; }
+        if (b_x0[b] == 255) { b_str[b] = 0; b_lod[b] = 0; continue; }
         int inside = b_x0[b] >= rx0 && b_x1[b] <= rx1 && b_y0[b] >= ry0 && b_y1[b] <= ry1;
         int touch = b_x1[b] >= rx0 && b_x0[b] <= rx1 && b_y1[b] >= ry0 && b_y0[b] <= ry1;
         b_str[b] = (u8)(touch && !inside);
+        b_lod[b] = 0;
+        if (bm_gen >= 7 && world_zone == ZONE_CITY && world_wbx >= 0 && !world_view_lvl && b_top[b] >= 1 && b_top[b] <= 3 && touch && !b_see[b] && (b_x1[b] - b_x0[b] + 1) * (b_y1[b] - b_y0[b] + 1) <= 200) {
+            int dx_ = MAX(MAX(b_x0[b] - fx, fx - b_x1[b]), 0), dy_ = MAX(MAX(b_y0[b] - fy, fy - b_y1[b]), 0);   // (tiles from the nearest wall)
+            int ex_ = MAX(MAX(b_x0[b] - etx_, etx_ - b_x1[b]), 0), ey_ = MAX(MAX(b_y0[b] - ety_, ety_ - b_y1[b]), 0);   // (and from the camera: zoomed out, it is the eye's distance that counts)
+            b_lod[b] = (u8)(dx_ * dx_ + dy_ * dy_ > 9 * 9 || ex_ * ex_ + ey_ * ey_ + eh_ * eh_ > 22 * 22); }
         if (b_str[b]) { ex0 = MIN(ex0, b_x0[b]); ex1 = MAX(ex1, b_x1[b]); ey0 = MIN(ey0, b_y0[b]); ey1 = MAX(ey1, b_y1[b]); }
     }
     ex0 &= ~1; ey0 &= ~1;
@@ -3039,6 +3064,9 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         }
         dm = lifeMap; dfl = floorMap; dwp = wallMap; world_lvl = 0;
         dbg_noao = keep_ao;
+        gfx_set_identity();
+        for (int b = 1; b <= nbld; b++) if (b_x0[b] != 255 && b_lod[b]) lod_up(b);   // (the far houses' upper storeys, as boxes)
+        lift_to(0);
     }
     world_hb_up = gfx_hb() - h1_; world_up_walls = gfx_prof[1] - pw0_; world_up_wprims = gfx_profn[1] - pn0_; world_up_fl = gfx_prof[0] - pf0_;
     { PROF_BEGIN(); int h0 = gfx_hb(); roofs_draw(fx, fy); world_hb_roofs = gfx_hb() - h0; PROF_END(3); }
