@@ -161,7 +161,7 @@ void crowd_claim(void) {   // the arena is something else's (an overlay's code) 
 void crowd_reset(void) {
     crowd_logo_ok = 0;
 #ifndef BORE_DC
-    gfx_pk_arena_base = (char *)arena_mem + ARENA_TOTAL - ARENA_PK;   // (the next frame's buffers: the arena's end is theirs)
+    gfx_pk_arena((char *)arena_mem + ARENA_TOTAL - ARENA_PK);   // (the next frame's buffers: the arena's end is theirs)
 #endif
     for (int i = 0; i < CROWD_MAX; i++) { m_off[i] = -1; face_of[i] = 255; }
     for (int i = 0; i < SPR_MAX; i++) { spr[i].ok = 0; spr[i].shelf = -1; spr[i].meas = 0; }

@@ -38,6 +38,7 @@ u32  *gfx_ot(void);
 int   gfx_prims_left(void);
 #ifndef BORE_DC
 extern char *gfx_pk_arena_base;   // non-zero: the two packet buffers (PACKET_ARENA each) are there, from the next frame on
+void  gfx_pk_arena(char *base);   // (crowd.c: the arena holds only people from here on: the buffers move there, the frame under way too when it is still empty)
 void  gfx_pk_static(void);        // the arena is needed: the buffers are their own again at once (the frame in progress starts again)
 #endif
 int   gfx_room(void);   // (bytes of packet buffer left to this part of the frame: the end, less the reserve)

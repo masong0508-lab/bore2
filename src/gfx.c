@@ -156,6 +156,14 @@ static void pk_pick(int b) {   // buffer b (idle: its last picture is done) take
     db[b].p = want; pk_len[b] = n;
     keep_key[b][0] = keep_key[b][1] = 0; keep_last[b][0] = keep_last[b][1] = 0;   // (the kept pieces were in the old place)
 }
+void gfx_pk_arena(char *base) {   // the arena is the crowd's: buffers go there (the frame under way too, if it has not drawn anything yet: a new life's first frame should not have the small buffer's room)
+    gfx_pk_arena_base = base;
+    if (base && !ui_head && db_next - db[db_active].p <= 16 && keep_cur < 0 && db[db_active].p != base + db_active * PACKET_ARENA) {
+        pk_pick(db_active); ClearOTagR(db[db_active].ot, OT_LEN);
+        alloc_reserve = 0; db_next = db[db_active].p; gfx_pk_end = db[db_active].p + PKL(db_active) - 64 - KEEP_BYTES; gfx_ot_cur = db[db_active].ot;
+        gfx_overflow = 0; frame_flush_pkt();
+    }
+}
 void gfx_pk_static(void) {   // the arena is wanted for something else, now: both buffers go back to their own memory, and the frame being built starts again
     gfx_pk_arena_base = 0;
     if (db[0].p == pk_stat[0] && db[1].p == pk_stat[1]) return;
@@ -167,7 +175,7 @@ void gfx_pk_static(void) {   // the arena is wanted for something else, now: bot
 }
 #endif
 #ifdef PK_STAT
-int gfx_state_tag, pk_st[64], pk_stn[64];
+int gfx_state_tag, pk_st[64], pk_stn[64], pk_sto[64];
 #endif
 #if defined(AUTO_CITY) || defined(AUTO_NHOOD)
 int dbg_pk_frames, dbg_pk_ovf, dbg_pk_ovf_n, dbg_pk_hi;
@@ -184,7 +192,7 @@ void gfx_flip(void) {
     gfx_last_bytes = (int)(db_next - db[db_active].p); gfx_last_prims = gfx_frame_prims; gfx_frame_prims = 0;
     if (gfx_last_bytes > gfx_peak_bytes) gfx_peak_bytes = gfx_last_bytes;
 #ifdef PK_STAT
-    { extern int gfx_state_tag, pk_st[64], pk_stn[64]; int t_ = gfx_state_tag & 63; pk_stn[t_]++; if (gfx_last_bytes > pk_st[t_]) pk_st[t_] = gfx_last_bytes; }   // (test builds: the most packet bytes a frame of each game state used)
+    { extern int gfx_state_tag, pk_st[64], pk_stn[64], pk_sto[64]; int t_ = gfx_state_tag & 63; pk_stn[t_]++; pk_sto[t_] += gfx_overflow; if (gfx_last_bytes > pk_st[t_]) pk_st[t_] = gfx_last_bytes; }   // (test builds: the most packet bytes a frame of each game state used)
 #endif
     gfx_last_overflow = gfx_overflow;
 #if defined(AUTO_CITY) || defined(AUTO_NHOOD)
