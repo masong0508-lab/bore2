@@ -950,6 +950,9 @@ static void life_update(int steps) {
 #ifdef BORE_DC
                     cam_dist = cam_dist * 2;   // (the Dreamcast's lens is tighter)
 #endif
+#ifdef AUTO_LOTS_TOP
+                    if (tg[k].in) { cam_pitch = 940; cam_dist = AUTO_LOTS_TOP; }   // (AUTO_LOTS_TOP=dist: indoors from nearly straight above, to judge a home's rooms: docs/rooms7_dc_*.png)
+#endif
                 }
             }
             if (k_ >= 0) { for (int i = 0; i < nsims; i++) { sims[i].x = hx_ + (i % 3) * 3; sims[i].z = hz_ - (i / 3) * 3; sims[i].path_n = 0; sims[i].lvl = 0; } cam_fx = hx_; cam_fz = hz_; }

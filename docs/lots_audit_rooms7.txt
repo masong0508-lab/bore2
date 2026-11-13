@@ -46,12 +46,12 @@ SHOP         lots   108 items   2994 | overlap 0 door 0 lane 0 unreach floor 0 i
 DINER        lots    61 items   1032 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
 GYM          lots    29 items    499 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
 OFFICE       lots    60 items    900 | overlap 0 door 0 lane 0 unreach floor 60 item 60 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
-INN          lots    43 items    817 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+INN          lots    43 items   1075 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
 POOL         lots    20 items    433 | overlap 0 door 0 lane 0 unreach floor 284 item 90 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
 SCHOOL       lots    17 items    459 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
 ARCADE       lots    21 items    399 | overlap 0 door 0 lane 0 unreach floor 0 item 21 floating 42 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
 OFFICE TOWER lots    54 items   5546 | overlap 0 door 0 lane 0 unreach floor 204 item 417 floating 136 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
-HOTEL        lots    20 items   1707 | overlap 0 door 0 lane 0 unreach floor 1263 item 437 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+HOTEL        lots    20 items   2046 | overlap 0 door 0 lane 0 unreach floor 1100 item 500 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
 PARK         lots   489 items   9520 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
 TOWN SQUARE  lots    24 items    360 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
 SKATE PLAZA  lots     8 items    680 | overlap 0 door 0 lane 0 unreach floor 0 item 192 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
@@ -70,7 +70,7 @@ GAS STATION  lots    67 items   1675 | overlap 0 door 0 lane 0 unreach floor 0 i
 CONVENIENCE  lots    75 items   1575 | overlap 0 door 0 lane 0 unreach floor 0 item 75 floating 0 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
 SPACE CENTRE lots     1 items     16 | overlap 0 door 1 lane 0 unreach floor 23 item 12 floating 1 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
 OBSERVATORY  lots     3 items     33 | overlap 0 door 0 lane 3 unreach floor 0 item 0 floating 9 | homes 0 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
-ALL          lots  2198 items  57491 | overlap 0 door 1 lane 9 unreach floor 2445 item 1935 floating 256 | homes 684 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 2.54 | offplot 8
+ALL          lots  2198 items  58088 | overlap 0 door 1 lane 9 unreach floor 2282 item 1998 floating 256 | homes 684 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 2.54 | offplot 8
 
 WHAT THE HOMES HOLD (./lotsim census 1), before
 homes lived in 647

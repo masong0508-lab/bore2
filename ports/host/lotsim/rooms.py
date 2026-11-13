@@ -14,7 +14,7 @@ HOMES = [
     (930, 69, '1,0,0,0,0,0', 'HOUSE: one adult'),
     (938, 70, '2,0,1,0,1,1', 'HOUSE: a couple, a teen, a baby'),
     (930, 70, '2,1,1,1,1,0', 'MANSION: a couple, a kid, a teen, an elder'),
-    (931, 72, '2,0,0,0,1,0', 'MANSION: a couple'),
+    (414, 505, '2,0,0,0,1,0', 'MANSION with an upstairs: a couple'),
     (931, 66, '0,0,0,2,1,0', 'COTTAGE: an elder couple'),
     (934, 66, '1,1,0,0,0,0', 'COTTAGE: a parent and a kid'),
     (689, 133, '2,2,0,0,1,0', 'TWO-STOREY: a couple, two kids'),

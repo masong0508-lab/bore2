@@ -313,6 +313,10 @@ static void furnish_plan(int X0, int Y0, int X1, int Y1, int dx, const Occ *o, u
         fz_y0 = wy + 1; fz_need("F", 'F'); fz_need("vRAbq", 'v'); fz_need("CUh", 'C'); fz_y0 = Y0; fz_y1 = wy - 1; fz_need("T", 'T'); fz_need("S<", 'S'); fz_y1 = Y1; }
     fz_nres = 0;
 }
+static void fz_guest(int x0, int y0, int x1, int y1, int iy, int oy, unsigned h, int wc) {   // a room to let (an inn's, a hotel's; its door in the middle of a wall): the bed and its nightstands, a wardrobe, the telly; its own toilet in some
+    Beds b; memset(&b, 0, sizeof b); b.abeds = 1;
+    fz_nres = 0; fz_frame(x0, y0, x1, y1, x0 + 1, iy, 0, oy, h); fz_room(R_BED, &b, &occ_any); fz_one('v'); if (wc) fz_one('T');
+}
 static void furnish(int x0, int y0, int x1, int y1, int dx, int dy, const Occ *o, unsigned h) { furnish_at(x0, y0, x1, y1, dx, y1, 0, -1, o, h); (void)dy; }   // the door in the south wall
 static int PLx, PLy;                                                         // the lot being dressed: nothing outside its 13 x 13 (and nothing on the kerb row or column) is touched
 static void pf(int x, int y, char c) { if (x > PLx && x <= PLx + 12 && y > PLy && y <= PLy + 12) gFree(x, y, c); }
@@ -585,7 +589,7 @@ static void lot_inn(int lx, int ly, unsigned h) {   // three rooms off a hall, t
     gLine(x0, y0 + 5, x1, y0 + 5, 'W', wp); gLine(x0 + 4, y0, x0 + 4, y0 + 5, 'W', wp); gLine(x0 + 8, y0, x0 + 8, y0 + 5, 'W', wp);
     for (int r = 0; r < 3; r++) {
         int rx = x0 + 1 + r * 4; gPut(rx + 1, y0 + 5, 'D'); gPut(rx + 1, y0, 'E');
-        gFree(rx, y0 + 1, 'S'); gFree(rx + 2, y0 + 1, (h >> r) & 1 ? 'i' : 'l'); gFree(rx + 2, y0 + 4, (h >> (r + 3)) & 1 ? 'p' : 'v');
+        fz_guest(rx, y0 + 1, rx + 2, y0 + 4, y0 + 4, -1, h >> r, 0);
     }
     int dx = lx + 6; gPut(dx, y1, 'D'); gPut(dx - 3, y1, 'E'); gPut(dx + 3, y1, 'E');
     gBox(dx, y1 + 1, dx, MIN(ly + 12, MH - 2), FL_PAVING);
@@ -855,9 +859,7 @@ static void lot_hotel(int lx, int ly, unsigned h, int st) {   // a hotel: a corr
                 if (l == 0 && side && r == 1) continue;     // the lobby
                 sm[side ? y0 + 7 : y0 + 4][rx + 1] = 'D';
                 unsigned hr = city_h((int)(h & 0xFFF) + r * 5 + side + l * 11, r);
-                int by = side ? ry1 : ry0, fy = side ? ry0 : ry1;
-                sFree(rx, by, 'S'); sFree(rx + 2, by, (hr & 1) ? 'i' : 'l'); sFree(rx + 2, fy, (hr & 2) ? 'v' : 'p');
-                if (side && (hr & 4)) { sFree(rx, fy, 'T'); }
+                fz_guest(rx, ry0, rx + 2, ry1, side ? ry0 : ry1, side ? 1 : -1, hr, side && (hr & 4));
             }
         }
         if (l + 1 < st) { int x = xs[l & 1]; sm[y0 + 6][x] = '|'; sm[y0 + 6][x - 1] = 'p'; }   // up: the stairs rise west (a plant blocks the top end down here)
