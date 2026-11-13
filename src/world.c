@@ -2419,7 +2419,7 @@ static void roof_region(int x0, int y0, int x1, int y1) {
             if (bm_gen >= 7) {                  // version 7: a home's roof comes from the town plan (its form, and its neighbourhood's two roof colours)
                 int gx = (world_wbx * BM_BLK + b_x0[b]) / BM_BLK, gy = (world_wby * BM_BLK + b_y0[b]) / BM_BLK; BInfo pb; LotPlan pp;
                 bm_block(gx, gy, &pb); bm_lot_plan(gx, gy, &pb, &pp);
-                if (pp.type != HT_NONE) { b_sty[b] = (u8)(pp.roof == RF_HIP || pp.type == HT_MANSION ? 0 : 1); b_col[b] = (u8)((pp.pal + pp.rcol * 3) % NROOF_COL); b_pit[b] = (u8)(pp.type <= HT_RANCH ? 1 : 2); }
+                if (pp.type != HT_NONE) { b_sty[b] = (u8)(pp.roof == RF_HIP || pp.type == HT_MANSION ? 0 : 1); b_col[b] = (u8)((pp.pal + pp.rcol * 3) % NROOF_COL); b_pit[b] = (u8)(pp.type <= HT_RANCH ? 1 : 2); if (pp.roof == RF_FRONT && (pp.type == HT_COMPACT || pp.type == HT_BOX || pp.type == HT_TWO)) b_pit[b] |= 16; }   // (16: the gable turned to the street: the ridge runs back from it)
             }
         } else { b_sty[b] = (u8)world_roof_style; b_col[b] = (u8)world_roof_col; b_pit[b] = (u8)world_roof_pitch; }
     }
@@ -2458,7 +2458,7 @@ static void roof_region(int x0, int y0, int x1, int y1) {
                 while (x - lf - 1 >= 0 && M_(y, x - lf - 1)) lf++;
                 while (x + rt + 1 < MW && M_(y, x + rt + 1)) rt++;
                 int across_y = MIN(up, dn) + 1, across_x = MIN(lf, rt) + 1;
-                Dd[y][x] = (u8)((up + dn) <= (lf + rt) ? across_y : across_x);
+                Dd[y][x] = (u8)(!(b_pit[bld[y][x]] & 16) && (up + dn) <= (lf + rt) ? across_y : across_x);   // (a front gable: always the ridge along the depth)
             } else Dd[y][x] = 0;                                  // FLAT
         }
         // the corners: the lowest of the four tiles round each (capped: wide buildings level off). On the box's edge: 0
@@ -2675,7 +2675,7 @@ static void roofs_draw(int fx, int fy) {
             if (!in_range(x, y)) continue;
             int b = bld[y][x];
             if (b && b_see[b] && !world_fp && (!world_roof_show || l > world_view_lvl)) { if (!world_roof_show) continue; }   // the building you are in (or look through) shows its rooms (first person: its roof is the ceiling)
-            if (b != cur_b) { cur_b = b; pitch = roofPitch[b_pit[b] % NROOF_PITCH]; rc = roofCol[b_col[b] % NROOF_COL]; rc_sty = b_sty[b]; rc_pitch = pitch; }
+            if (b != cur_b) { cur_b = b; pitch = roofPitch[(b_pit[b] & 15) % NROOF_PITCH]; rc = roofCol[b_col[b] % NROOF_COL]; rc_sty = b_sty[b]; rc_pitch = pitch; }
             int flat = rc_sty == 2 && b && b_top[b] == l;
             if (flat) lift_to(world_zone == ZONE_CITY && world_wbx >= 0 ? gh_c(b_x0[b], b_y0[b]) : 0);
             if (flat) {                // a flat roof: the building's whole top in one slab (drawn from its first tile)
@@ -2770,7 +2770,7 @@ static void far_box(int b, int windows) {
     const u8 *rc = roofCol[b_col[b] % NROOF_COL]; u16 rcol = RGB(rc[0] >> 3, rc[1] >> 3, rc[2] >> 3);
     if (b_sty[b] == 2) { u16 roof = RGB(16, 16, 17); far_quad(x0, -HT - 8, zN, x1, -HT - 8, zN, x0, -HT - 8, zS, x1, -HT - 8, zS, roof, CLAMP(gfx_light(0, -ONE, 0), 60, 220)); }
     else {                                                                   // a hip roof: four slopes up to a point (or a ridge)
-        int ph = MIN(x1 - x0, zN - zS) / 2 * roofPitch[b_pit[b] % NROOF_PITCH] / TILE;
+        int ph = MIN(x1 - x0, zN - zS) / 2 * roofPitch[(b_pit[b] & 15) % NROOF_PITCH] / TILE;
         SVECTOR a, bb, c; int Lr = CLAMP(gfx_light(0, -ONE * 3 / 4, -ONE / 2), 50, 230);
         int r = MIN(255, (R8(rcol) * Lr) >> 7), g = MIN(255, (G8(rcol) * Lr) >> 7), bl = MIN(255, (B8(rcol) * Lr) >> 7);
         setVector(&c, cx, -HT - ph, cz);

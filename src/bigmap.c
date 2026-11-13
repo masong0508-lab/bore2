@@ -359,13 +359,23 @@ static const u8 g7row[8][4] = {    // a kind's list for each row of the neighbou
 static const u8 g7st[8] = { 0, 0xFF, 0xF5, 0x55, 0x55, 0x15, 0x15, 0x11 };   // a kind's own streets: bit j: along the top of its row j; bit 4 + i: down the left of its column i (0: the avenues)
 static const u8 g7cen[4] = { 17, 6, 2, 4 };   // the heart (the landmarks) keeps the full grid: the blocks with dx*dx + 2*dy*dy up to this (a city, a town, a village's cross, the spaceport)
 __attribute__((noinline)) static int g7_in(int x, int y, int c) { return x * x + 2 * y * y <= c; }
+// A suburb's street can end short (a lane to a dead end with a green at its end) or bend at its end (it meets the avenue a row on). ft: 1 ends before the east
+// avenue, 2 before the west one, 3 bends east, 4 bends west. Only the row-2 street's last column changes, and a bend adds the left street of one block.
+static int g7_top(int m, int ft, int i, int j) {
+    int t = (m >> j) & 1;
+    if (j == 2) { if (ft == 1 || ft == 3) { if (i == 3) t = 0; } else if (ft == 2 || ft == 4) { if (i == 0) t = 0; } }
+    else if (j == 3) { if (ft == 3 && i == 3) t = 1; else if (ft == 4 && i == 0) t = 1; }
+    return t;
+}
+static int g7_left(int m, int ft, int i, int j) { return ((m >> (4 + i)) & 1) | (j == 2 && ((ft == 3 && i == 3) || (ft == 4 && i == 1))); }
 __attribute__((noinline)) static void g7_block(const Settle *s, int bx, int by, BInfo *b) {   // a block of a planned town that is not a landmark: its streets and its lot
     u32 nh; int dx = bx - s->x, dy = by - s->y, i = dx & 3, j = dy & 3, kind = nb_kind(s, dx, dy, &nh), m = g7st[kind], C = g7cen[s->kind & 3];
     #define G7CEN(x, y) g7_in(x, y, C)
-    int c0 = G7CEN(dx, dy), t = ((m >> j) & 1) | c0 | G7CEN(dx, dy - 1), l = ((m >> (4 + i)) & 1) | c0 | G7CEN(dx - 1, dy);
+    int ft = (kind == NK_SUBURB || kind == NK_ESTATE) && s->kind < ST_VILLAGE ? (int)((nh >> 16) & 7) - 3 : 0;   // (this neighbourhood's street feature, 1..4: a dead end at its east end, at its west end, a bend east, a bend west; half have none)
+    int c0 = G7CEN(dx, dy), t = g7_top(m, ft, i, j) | c0 | G7CEN(dx, dy - 1), l = g7_left(m, ft, i, j) | c0 | G7CEN(dx - 1, dy);
     b->road = (u8)(t | l << 1 | ((t | l) || !G7CEN(dx - 1, dy - 1) ? 0 : 4));   // (4: only the corner is paved, where the heart's last streets turn)
     // the street it fronts on: the one along the top of the next block down (if that is town land), else its own
-    int ts = (((m >> (j + 1)) & 1) | c0 | G7CEN(dx, dy + 1)) && dx * dx + (dy + 1) * (dy + 1) <= s->r * s->r && bm_terrain(bx, by + 1) != BT_SEA;
+    int ts = ((j == 3 ? (m >> 4) & 1 : g7_top(m, ft, i, j + 1)) | c0 | G7CEN(dx, dy + 1)) && dx * dx + (dy + 1) * (dy + 1) <= s->r * s->r && bm_terrain(bx, by + 1) != BT_SEA;
     #undef G7CEN
     int off = g7row[kind - 1 + (kind == NK_GREEN && (nh & 0x800))][j];
     if (s->kind >= ST_VILLAGE) { if (off == P_HSUB) off = (dx * dx + dy * dy) * 16 >= s->r * s->r * 9 ? P_GRF : dx == 2 && dy == 1 ? P_EMP : P_HVIL; }   // a village: cottages, a lot for sale, and farms round its edge
@@ -375,7 +385,7 @@ __attribute__((noinline)) static void g7_block(const Settle *s, int bx, int by, 
         else if (i == (int)((nh >> 7) & 3) && j == (int)((nh >> 9) & 3) && (ts | t)) off = P_EMP;   // one tidy lot for sale
     }
     int lot = g7pool[off + 1 + (dx + 7 * dy + 1024) % g7pool[off]];
-    if (!(ts | t) && !((0x110001u >> lot) & 1)) lot = LOT_WILD;    // no street to front on: nothing is built there (a farm, a park or the woods stay)
+    if (!(ts | t) && !((0x110001u >> lot) & 1)) lot = ft > 0 ? LOT_PARK : LOT_WILD;    // no street to front on: nothing is built there (a farm, a park or the woods stay; where a street ends short, a green)
     b->lot = (u8)lot;
 }
 static void bm_block0(int bx, int by, BInfo *b) {
@@ -540,8 +550,11 @@ void bm_lot_plan(int bx, int by, const BInfo *b, LotPlan *p) {
     int w = T[0] + (int)(T[2] & 1 & (h >> 3)), d = T[1] + (int)((T[2] >> 1) & 1 & (h >> 5));
     if (ty == HT_TERRACE) w -= um;
     int x = (dx + 2 * (dy + !north)) & 3, f = (yd[kind] & 15) + ((x == 3 ? 1 : x) >> (yd[kind] >> 4));   // the yard: a slow wave along the street, the same on both its sides
+    if (bm_gen >= 7 && kind != NK_ESTATE && ((h >> 23) & 1)) f++;   // (version 7: some houses a row further back, so a street's fronts are not a straight line)
     if (f + d > 12) f = 12 - d;                                    // (the lot is 13 deep, and its last row stays clear)
-    int tw = w + T[4], beside = !(T[2] & 24), u0 = um + ((beside ? 11 : 13) - um - tw) / 2, u1 = u0 + w - 1;
+    int tw = w + T[4], beside = !(T[2] & 24), lim = beside ? 11 : 13, u0 = um + (lim - um - tw) / 2, u1;
+    if (bm_gen >= 7 && ty != HT_TERRACE) { u0 += (int)((h >> 20) % 5u) - 2; u0 = CLAMP(u0, um, lim - tw); }   // (the house is not always in the lot's middle: up to two tiles either way where there is room)
+    u1 = u0 + w - 1;
     int mir = (dx ^ dy) & 1, M = mir ? 12 + um : 0, du = u0 + (T[3] ? T[3] : w / 2), dv = (T[2] & 16) ? -1 : beside ? 11 : u0 + tw - 3;
     p->type = (u8)ty; p->yard = (u8)f; p->mir = (u8)mir;
     p->roof = (u8)((dx + 2 * dy) % 3); p->pal = (u8)((nh >> 12) & 7); p->wall = (u8)(((dx + 1) >> 1) & 1); p->rcol = (u8)((dx >> 1) & 1);

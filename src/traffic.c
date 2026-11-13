@@ -106,6 +106,38 @@ int veh_shot_f;
 #endif
 extern void items_draw_bus(int x, int z, int yaw, int y);
 #endif
+// ---- parked cars (world version 7): a car stands on some homes' drives, worked out from the town plan (nothing is stored: the same lot always has the same car) ----
+typedef struct { s16 x, z, yaw; u8 t, c; } PCar;
+static PCar pcar[20]; static int pcar_n, pcar_key[6] = { -1 };
+extern int bm_edit_stamp;
+static void pcars_build(int cbx, int cby) {
+    pcar_n = 0;
+    for (int wy = MAX(0, cby - 1); wy <= MIN(3, cby + 1); wy++) for (int wx = MAX(0, cbx - 1); wx <= MIN(3, cbx + 1); wx++) {
+        int gx = world_wbx + wx, gy = world_wby + wy; BInfo b; LotPlan q;
+        bm_block(gx, gy, &b); bm_lot_plan(gx, gy, &b, &q);
+        if (q.type == HT_NONE || !q.drv || pcar_n >= 20) continue;
+        u32 h = bm_hash(gx, gy, 0xCA85u); if ((h & 7) >= 5) continue;                          // (five homes in eight)
+        int n = q.face == LF_NORTH, y0 = n ? 22 - q.y1 : q.y0, y1 = n ? 22 - q.y0 : q.y1, wy1 = n ? 22 - q.wy0 : q.wy1;
+        int garage = q.wx1 || q.type == HT_RANCH, top = q.wx1 ? wy1 + 1 : q.type == HT_RANCH ? y1 + 1 : y0;   // (as the generator's drive: to the garage's front, or beside the house)
+        if (18 - top < 4) continue;
+        int c = garage ? top * TILE + (TILE * 15) / 8 : 18 * TILE - (TILE * 5) / 2;               // (centre row in 1/256 tiles, seen from the south: against the garage, or by the street)
+        if (n) c = 23 * TILE - c;
+        PCar *p = &pcar[pcar_n++];
+        p->x = (s16)((wx * BM_BLK + q.drv + 1) * TILE); p->z = (s16)-(wy * BM_BLK * TILE + c);
+        p->yaw = (s16)(((h >> 8) & 3) == 0 ? (n ? 2048 : 0) : (n ? 0 : 2048));                      // (mostly nose in)
+        { static const u8 ty_[8] = { 2, 2, 2, 3, 4, 5, 5, 2 }; p->t = ty_[(h >> 12) & 7]; p->c = (u8)((h >> 16) % 6u); }
+    }
+}
+static void pcars_draw(void) {
+    if (bm_gen < 7) return;
+    int px = ptx(), py = pty(), cbx = CLAMP(px / BLK, 0, 3), cby = CLAMP(py / BLK, 0, 3);
+    if (pcar_key[0] != world_wbx || pcar_key[1] != world_wby || pcar_key[2] != cbx || pcar_key[3] != cby || pcar_key[4] != bm_edit_stamp || pcar_key[5] != bm_gen) {
+        pcar_key[0] = world_wbx; pcar_key[1] = world_wby; pcar_key[2] = cbx; pcar_key[3] = cby; pcar_key[4] = bm_edit_stamp; pcar_key[5] = bm_gen; pcars_build(cbx, cby); }
+    int shown = 0;
+    for (int i = 0; i < pcar_n && shown < 6; i++) { const PCar *p = &pcar[i];
+        if (ABS(p->x / TILE - px) + ABS(-p->z / TILE - py) > 15) continue;
+        items_draw_vehicle(p->x, p->z, p->yaw, 0, p->t, p->c, 0); shown++; }
+}
 void traffic_draw(void) {
     if (world_zone != ZONE_CITY || world_wbx < 0) return;
 #ifdef VEH_SHOT
@@ -121,6 +153,7 @@ void traffic_draw(void) {
         int x = p->x - bx_() * TILE, y = p->y - by_() * TILE;
         if (ABS(x / TILE - px) + ABS(y / TILE - py) > 18) continue;
         items_draw_vehicle(x, -y, p->yaw, 0, t, veh_colour(t), 0); }
+    pcars_draw();
 }
 void traffic_park(int t, int x, int z, int yaw) {
     if (t < 0 || t >= VEH_N || world_zone != ZONE_CITY || world_wbx < 0) return;
