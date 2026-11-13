@@ -703,6 +703,10 @@ enum { Z_CITY, Z_BASE, Z_ISLAND, Z_TOWN, Z_N };
 static int zone; static void zone_block(int bx, int by, BInfo *b); static void gen_zone(int bx, int by);   // (D37) the zone you are in, and its lots
 #define RING_MAX 3
 static BInfo nbf[RING_MAX * 2 + 1][RING_MAX * 2 + 1];   // (D40) the lots round, out to three slots each way (the ring past the 3x3 is only drawn)
+static LotPlan nlp[RING_MAX * 2 + 1][RING_MAX * 2 + 1];   // (D79) world version 7: the town plan of each of those lots (docs/DS_TOWN7.md), indexed like nbf
+static u8 nrd[RING_MAX * 2 + 2][RING_MAX * 2 + 2];       // (D79) the streets of the blocks dx, dy = -3..4 round the lot (road bits: 1 along its top, 2 down its left, 4 its corner)
+static void nb7_load(void); static int far_foot7(const BInfo *b, const LotPlan *p, int *x0, int *z0, int *x1, int *z1);
+static int t7(void) { return bm_gen >= 7 && !zone && lot_bx >= 0 && lot_bx < 2000; }   // (D79) the lot you are on is in a world made by the town plan
 static void nb_load(void) {
     for (int dy = -RING_MAX; dy <= RING_MAX; dy++) for (int dx = -RING_MAX; dx <= RING_MAX; dx++) { int x = lot_bx + dx, y = lot_by + dy; BInfo *b = &nbf[dy + RING_MAX][dx + RING_MAX];
         if (dx >= -1 && dx <= 1 && dy >= -1 && dy <= 1) continue;
@@ -711,14 +715,15 @@ static void nb_load(void) {
     if (x >= 2000) { zone_block(x, y, &nb[dy][dx]); nb_pop[dy][dx] = 0; nb_fam[dy][dx] = 0; continue; }
     if (x < 0 || y < 0 || x >= BM_N || y >= BM_N) { memset(&nb[dy][dx], 0, sizeof(BInfo)); nb[dy][dx].terrain = BT_SEA; nb_pop[dy][dx] = 0; nb_fam[dy][dx] = 0; }
     else { bm_block(x, y, &nb[dy][dx]); int f; nb_pop[dy][dx] = (u8)pop_at(x, y, &f); nb_fam[dy][dx] = (u8)f; } }
-    for (int dy = 0; dy < 3; dy++) for (int dx = 0; dx < 3; dx++) nbf[dy + RING_MAX - 1][dx + RING_MAX - 1] = nb[dy][dx]; }
+    for (int dy = 0; dy < 3; dy++) for (int dx = 0; dx < 3; dx++) nbf[dy + RING_MAX - 1][dx + RING_MAX - 1] = nb[dy][dx];
+    if (t7()) nb7_load(); }
 static void city_spawn(void); static void city_shift(int dx, int dy);
 static int far_house(const BInfo *b) { return b->terrain != BT_SEA && b->lot >= LOT_HOUSE && b->lot != LOT_PARK && b->lot != LOT_SQUARE && b->lot != LOT_SKATE && b->lot != LOT_EMPTY && b->lot != LOT_RIVER; }
 static void far_foot(const BInfo *b, int *x0, int *z0, int *x1, int *z1) { int w = 10 + (int)(b->h & 3) * 2, d = 8 + (int)((b->h >> 2) & 3) * 2, t0 = 4 + (24 - w) / 2 / 2 * 2 - 4; *x0 = t0 / 2; *x1 = (t0 + w + 1) / 2; *z0 = 2; *z1 = (4 + d + 1) / 2; }
 static int far_solid(int wx, int wy) {   // a cell outside the plot: open street and grass, except the sea and the buildings of the lots round it
     int sx = fdiv(wx, SLC), sy = fdiv(wy, SLC); if (sx == 0 && sy == 0) return 0; if (sx < -1 || sx > 1 || sy < -1 || sy > 1) return 1;
     const BInfo *b = &nb[sy + 1][sx + 1]; if (b->terrain == BT_SEA) return 1; if (!far_house(b)) return 0;
-    int lx = wx - sx * SLC, ly = wy - sy * SLC, x0, z0, x1, z1; far_foot(b, &x0, &z0, &x1, &z1); return lx >= x0 && lx < x1 && ly >= z0 && ly < z1;
+    int lx = wx - sx * SLC, ly = wy - sy * SLC, x0, z0, x1, z1; if (t7()) far_foot7(b, &nlp[sy + RING_MAX][sx + RING_MAX], &x0, &z0, &x1, &z1); else far_foot(b, &x0, &z0, &x1, &z1); return lx >= x0 && lx < x1 && ly >= z0 && ly < z1;
 }
 static int z_put(int x, int y, int ch, int rot);
 static int gen_two;   // (D36) the lot is a TWO-STOREY: the house gets its loft
