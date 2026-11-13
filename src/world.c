@@ -1386,7 +1386,7 @@ int world_room_score(int mx, int my) {
 }
 
 // ---- drawing ----
-static int frame_t;
+static int frame_t, nc_tick;   // (nc_tick: one a world_draw)
 // the floor's contact shading: how many walls stand round each floor corner, worked out when the map changes
 static u8 ao[MH + 1][MW + 1];
 int world_stamp;
@@ -1427,12 +1427,19 @@ static XV cc_tmp[8]; static int cc_tmpi;
 #define NC_Z 56                         // the cutting plane's depth (the GPU's own drop is Z_NEAR, 40)
 #define NC_NEAR_FP 520                  // first person: a quad whose nearest corner is closer than this goes this way too
 #define NC_NEAR_TP 2600                 // third person: close and running away from the eye goes this way too (the floor and walls near you)
-#define NC_BUDGET 320                   // pieces a frame may be split into past the first cut (keeps a crowded view from costing a frame)
+#define NC_ROOM 6144                    // ...and none while the packet buffer has less than this left (a cut piece is 52 bytes: a frame near the limit stops cutting before it drops anything)
+#define NC_BUDGET 400                   // pieces a frame may be split into past the first cut (keeps a crowded view from costing a frame)
 #ifdef AB_CFG
 extern volatile u8 ab_par[20];
 #define AB_PAR(k, d) (ab_par[4 + (k)] ? ab_par[4 + (k)] : (d))
 #else
 #define AB_PAR(k, d) (d)
+#endif
+#ifndef NC_E2
+#define NC_E2 AB_PAR(8, 12)               // a piece over NC_BIG px is cut until its px x (depth change / nearest depth) is under this (12: about 3 px at the worst place)
+#endif
+#ifndef NC_BIG
+#define NC_BIG 90
 #endif
 #define NC_WDIV AB_PAR(0, 6)
 #define NC_WW AB_PAR(1, 44)
@@ -1448,24 +1455,41 @@ int nc_loose;                           // 1 only on the speed helper's last ste
 #define NC_LOOSE_Z 1100                 // the speed helper's very last step cuts less (1/4 deeper, 96 x 72 px), but only for pieces at least this far from the eye
 #define NC_BIGW 880                     // a piece wider or taller than this (px) is cut in two
 #define NC_BIGH 460
-#define NC_DEPTH 5                      // a quad is split at most this many times
+#ifndef NC_UVR
+#define NC_UVR 128
+#endif
+#ifndef NC_DEPTH
+#define NC_DEPTH 8                      // a quad is split at most this many times (a wall right in front of the camera needs more than five: the title room)
+#endif
 #define NXY(v) ((u32)(u16)(v)->x | ((u32)(u16)(v)->y << 16))
 typedef struct { int x, y, z, u, v, r, g, b, sx, sy; } NV;   // a corner: view-space position, texel, colour; and where it lands on the screen
 // (worked out once, when the corner is made, if it is in front of the cutting plane: a piece cut in two keeps its corners' places, so each is
 // projected once however often the pieces round it are split; it used to be every piece, every corner, two divisions each)
 static __attribute__((noinline)) void nc_proj(NV *o) {   // (the GTE's projection, H = 230, step for step: n = H / z in 16.16, then the offset plus x * n rounded DOWN. A plain C division rounds toward zero, which put every corner left of the middle a pixel off from the GTE's own: a cut piece beside an uncut quad swam against it, and a crack opened between them)
     if (o->z >= NC_Z) { int n = ((230 << 17) / o->z + 1) >> 1; if (n > 0x1ffff) n = 0x1ffff; o->sx = CENTER_X + ((o->x * n) >> 16); o->sy = CENTER_Y + ((o->y * n) >> 16); } }
+#ifdef NC_STAT
+int dbg_nc[64];
+#endif
 static NV nq_c[4]; static int nq_tex, nq_cull; static u32 nq_tp, nq_cl;
 #ifndef AB_SKIP
 #define AB_SKIP 0   // (test builds: a bit mask that leaves prim types out, to find which one draws a flaw: 1 wall faces, 2 wall tops, 4 pieces from nc_put, 8 no cutting/splitting at all)
 #endif
+static __attribute__((noinline)) int nc_need_big(const XV *a, const XV *b, const XV *c, const XV *d, int z, int dz) {   // (a quad that is big on the screen and only a little slanted: kept out of the inline test)
+    int ex = MAX(MAX(a->x, b->x), MAX(c->x, d->x)) - MIN(MIN(a->x, b->x), MIN(c->x, d->x));
+    int ey = MAX(MAX(a->y, b->y), MAX(c->y, d->y)) - MIN(MIN(a->y, b->y), MIN(c->y, d->y));
+    return MAX(ex, ey) > NC_BIG && dz * MAX(ex, ey) > NC_E2 * z;
+}
 static inline int nc_need4(const XV *a, const XV *b, const XV *c, const XV *d) {   // 1: this quad goes the careful way
     if (AB_SKIP & 8) return 0;
     int z = MIN(MIN(a->z, b->z), MIN(c->z, d->z));
     if (z < Z_NEAR) return 1;
     if (world_fp) return z < NC_NEAR_FP;
     if (z >= NC_NEAR_TP) return 0;
-    return MAX(MAX(a->z, b->z), MAX(c->z, d->z)) - z > z / 6;   // (third person: only a quad that runs away from the eye swims)
+    // third person: a quad that runs away from the eye swims; so does a big one that is only a little slanted (the flat warp's error is about its size on the screen
+    // times how much its depth changes as a share of its nearest depth, over 4: past NC_E2 a big one is cut as well, the title room's wall)
+    int dz = MAX(MAX(a->z, b->z), MAX(c->z, d->z)) - z;
+    if (dz > z / 6) return 1;
+    return dz > 0 && nc_need_big(a, b, c, d, z, dz);
 }
 static void nc_lerp(NV *o, const NV *p, const NV *q, int t) {
     o->x = p->x + (((q->x - p->x) * t) >> 12); o->y = p->y + (((q->y - p->y) * t) >> 12); o->z = p->z + (((q->z - p->z) * t) >> 12);
@@ -1489,10 +1513,14 @@ static int nc_clip(const NV *const *in, NV *out) {   // the polygon (4 corners r
     return n;
 }
 static inline u32 nc_rgb(const NV *n) { return (u32)CLAMP(n->r, 0, 255) | ((u32)CLAMP(n->g, 0, 255) << 8) | ((u32)CLAMP(n->b, 0, 255) << 16); }
-static inline u32 nc_uv(const NV *n) { return (u32)CLAMP(n->u, 0, 255) | ((u32)CLAMP(n->v, 0, 255) << 8); }
+static int nq_u0, nq_u1, nq_v0, nq_v1;   // (the quad's own texel range: a cut piece never reads past it, so it cannot pick up the next texture in the page)
+static inline u32 nc_uv(const NV *n) { return (u32)CLAMP((n->u + NC_UVR) >> 8, nq_u0, nq_u1) | ((u32)CLAMP((n->v + NC_UVR) >> 8, nq_v0, nq_v1) << 8); }   // (the texel is carried in 8.8: a piece cut in two halves its corners' texels without losing the half)
 // one primitive: a, b, c, d in the order the GPU strips them (a b / c d), the corners' view-space data alongside
 static void nc_put(const XV *a, const XV *b, const XV *c, const XV *d, const NV *na, const NV *nb, const NV *nc, const NV *nd) {
     if (AB_SKIP & 4) return;
+#ifdef NC_STAT
+    { static int fr_ = -1, n_; if (fr_ != nc_tick) { fr_ = nc_tick; n_ = 0; dbg_nc[4]++; } if (++n_ > dbg_nc[3]) dbg_nc[3] = n_; dbg_nc[5]++; }
+#endif
     if (nq_cull && (b->x - a->x) * (d->y - a->y) - (d->x - a->x) * (b->y - a->y) <= 0) return;   // facing away
     u32 c0 = nc_rgb(na), c1 = nc_rgb(nb), c2 = nc_rgb(nc), c3 = nc_rgb(nd);
     int tex_ = nq_tex;
@@ -1530,9 +1558,17 @@ static void nc_piece(const NV *p0, const NV *p1, const NV *p2, const NV *p3, int
     if (nq_tex) {
         if (world_fp) warp = zhi * 2 > zlo * 3 && zlo < NC_NEAR_FP && (sw > 64 || sh > 48);
         else if (nc_loose && zlo >= NC_LOOSE_Z) warp = zhi - zlo > zlo / 4 && zlo < NC_NEAR_TP && (sw > 96 || sh > 72);
-        else warp = zhi - zlo > zlo / NC_WDIV && zlo < NC_NEAR_TP && (sw > NC_WW || sh > NC_WH);
+        else warp = zlo < NC_NEAR_TP && ((zhi - zlo > zlo / NC_WDIV && (sw > NC_WW || sh > NC_WH)) || (MAX(sw, sh) > NC_BIG && (zhi - zlo) * MAX(sw, sh) > NC_E2 * zlo));
     }
-    if (warp && depth > 0) { static int fr_ = -1, cnt_; if (fr_ != frame_t) { fr_ = frame_t; cnt_ = 0; } if (++cnt_ > NC_BUDGET) warp = 0; }
+    if (warp && depth > 0) { static int fr_ = -1, cnt_; if (fr_ != nc_tick) { fr_ = nc_tick; cnt_ = 0; } if (++cnt_ > NC_BUDGET || gfx_room() < NC_ROOM) { warp = 0;
+#ifdef NC_STAT
+        dbg_nc[1]++;
+#endif
+    } }
+#ifdef NC_STAT
+    if (warp && depth >= NC_DEPTH) dbg_nc[2]++;
+    if (!(big || warp) || depth >= NC_DEPTH) dbg_nc[0]++;
+#endif
     if ((big || warp) && depth < NC_DEPTH) {
         int ls, lt;
         if (big) {   // (too big for the GPU: cut across the longer side)
@@ -1565,10 +1601,12 @@ static void nc_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const 
         n->x = ((m->m[0][0] * x + m->m[0][1] * y + m->m[0][2] * z) >> 12) + m->t[0];
         n->y = ((m->m[1][0] * x + m->m[1][1] * y + m->m[1][2] * z) >> 12) + m->t[1];
         n->z = ((m->m[2][0] * x + m->m[2][1] * y + m->m[2][2] * z) >> 12) + m->t[2];
-        n->u = (int)(uv[i] & 255); n->v = (int)((uv[i] >> 8) & 255);
+        n->u = (int)(uv[i] & 255) << 8; n->v = (int)((uv[i] >> 8) & 255) << 8;
         n->r = (int)(col[i] & 255); n->g = (int)((col[i] >> 8) & 255); n->b = (int)((col[i] >> 16) & 255);
         nc_proj(n);
     }
+    nq_u0 = nq_v0 = 255; nq_u1 = nq_v1 = 0;
+    for (int i = 0; i < 4; i++) { int u_ = nq_c[i].u >> 8, v_ = nq_c[i].v >> 8; if (u_ < nq_u0) nq_u0 = u_; if (u_ > nq_u1) nq_u1 = u_; if (v_ < nq_v0) nq_v0 = v_; if (v_ > nq_v1) nq_v1 = v_; }
     nq_tex = tex; nq_cull = cull; nq_tp = (u32)tpage << 16; nq_cl = (u32)clut << 16;
     if (nq_c[0].z < NC_Z && nq_c[1].z < NC_Z && nq_c[2].z < NC_Z && nq_c[3].z < NC_Z) return;
     nc_piece(&nq_c[0], &nq_c[1], &nq_c[3], &nq_c[2], 0);
@@ -2959,7 +2997,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     gfx_lift_fn = world_gh;
     gfx_set_identity(); world_dbg_walls = 0;
     gfx_set_reserve(world_reserve);   // the world may not use up the room the people need
-    frame_t = t;
+    frame_t = t; nc_tick++;
     if (ao_dirty) { int h = gfx_hb(); ao_update(); h = gfx_hb() - h; if (h > dbg_ao_hb) dbg_ao_hb = h; }
     if (roof_dirty) { int h = gfx_hb(); roof_rebuild(); h = gfx_hb() - h; if (h > dbg_roof_hb) dbg_roof_hb = h; }
     else if (rq_n) {                                 // the blocks that came into the window (far off): in the frames' spare time

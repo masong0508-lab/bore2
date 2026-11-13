@@ -1983,6 +1983,8 @@ int auto_btn, auto_hold;
 #ifdef AUTO_VIEWS
 #if AUTO_VIEWS == 2
 #include "../test/views_city.h"   // (test builds: the 3D audit shots, 2: the city; the plan is a table of { frame, op, arg, pitch, dist, yaw })
+#elif AUTO_VIEWS == 3
+#include "../test/views_home.h"   // (3: the starting home)
 #else
 #include "../test/views_plan.h"   // (1: the showroom)
 #endif
@@ -4609,6 +4611,9 @@ static void scr_tick(void) {
 static int title_t;
 static void title_update(void) {
     title_t++;
+#ifdef TITLE_FIX
+    { static int st_; if (PRESSED(PAD_RIGHT)) st_++; if (PRESSED(PAD_LEFT)) st_--; title_t = TITLE_FIX + st_ * 40; }   // (test builds: the title room's camera held, moved by the pad: the same view from any two builds)
+#endif
 #ifdef AUTO_CELLS
     if (title_t == 30) {   // (test builds: how many cells a Bore needs, over thousands of Bores: rolled, every shape with every hair, dressed up)
         extern int dbg_cells[6]; Bore *b = crowd_temp_bore();
