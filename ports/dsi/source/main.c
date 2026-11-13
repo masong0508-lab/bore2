@@ -903,6 +903,9 @@ static void prop_trade(void) {   // Buy or Sell on the Map
         else { funds += lot_sell_price(&b); own_remove(sel_x, sel_y); for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == sel_x && lsv[i].by == sel_y) { lsv[i] = lsv[--lsv_n]; if (lsv_next >= lsv_n) lsv_next = 0; break; } say("Sold! Cha-ching!"); }
     } else { int pr = shop_lot(lot_price(&b)); if (!pr) say("Not for sale"); else if (pop_at(sel_x, sel_y, 0)) say("A family lives here"); else if (funds < pr) say("Your wallet says no!"); else if (nown >= OWN_MAX) say("Too many lots"); else { funds -= pr; own_add(sel_x, sel_y); say("Yours now! Home sweet lot"); } }
 }
+#ifdef DS_TOUR
+int tour_ovr;   // (test) the lot kind the tour builds on the next lot_enter (0: what the map has)
+#endif
 static void lot_enter(int bx, int by) {   // the lot you walk into: what you built there last time, or a new home from its own seed
     if (lot_bx >= 0 && (lot_bx != bx || lot_by != by)) life_ev(ctl, WN_VISIT, 0);
     lot_bx = bx; lot_by = by; lot_dn = bm_gen >= 7 && bx >= 0 && bx < 2000 && bm_lot_face(bx, by) == LF_NORTH ? -1 : 1; lot_seed = (u32)(bx * 73856093 ^ by * 19349663); pick = -1; memset(slv, 0, sizeof slv); ed_lv = 0; int keep = LV; LV = 0;
@@ -913,6 +916,9 @@ static void lot_enter(int bx, int by) {   // the lot you walk into: what you bui
     if (bx >= 2000) gen_zone(bx, by); else { BInfo bi; bm_block(bx, by, &bi);
 #ifdef DS_LOT
  if (DS_LOT) { bi.lot = DS_LOT; bi.h = 0x9E3779B9u * (u32)(DS_SEED); }
+#endif
+#ifdef DS_TOUR
+ if (tour_ovr) { bi.lot = tour_ovr; }
 #endif
  LotPlan pl7; int g7 = bm_gen >= 7; if (g7) bm_lot_plan(bx, by, &bi, &pl7);   // (D79) world version 7: the town plan builds the home, and a lot that fronts north is turned over
  if (g7 && pl7.type && bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) { gen_two = bi.lot == LOT_TWO; gen_home7(&pl7, hsh(lot_seed), bi.terrain, bm_nb(bx, by)); gen_two = 0; }
@@ -3741,20 +3747,106 @@ static void ds_road_audit(void) {
     ds_chk[3] = 1;
 }
 #endif
+#ifdef DS_TOUR
+#ifndef DS_TOUR_CAM
+#define DS_TOUR_CAM 7000
+#endif
+#ifndef DS_TOUR_DIST
+#define DS_TOUR_DIST 15800
+#endif
+#ifndef DS_TOUR_YAW
+#define DS_TOUR_YAW (4096 * 2)
+#endif
+#ifndef DS_TOUR_SY
+#define DS_TOUR_SY 6
+#endif
+#ifndef DS_TOUR_ONE
+#define DS_TOUR_ONE 10
+#endif
+// (D80) test build -DDS_TOUR: from the first live frame a new lot every 40 vblanks, one per (house type, facing, neighbourhood kind); the camera is high over it and every sim stands in its middle.
+// tour_bx/by/ty/face/kind list them (DBGMEM); shoot at frame 60 + 40 k + 30. DS_TOUR_CAM = pitch (default 7000).
+int tour_n, tour_k, tour_bx[64], tour_by[64], tour_ty[64], tour_face[64], tour_kind[64];
+static void ds_tour(void) {
+    static int built; static u32 last;
+    if (mode != M_LIVE) return;
+    if (!built) { built = 1; static u8 seen[10][3][10];
+#ifdef DS_TOUR_PUB
+        { for (int q = 0; q < 30 && DS_TOUR_PUB + q < LOT_N; q++) { tour_bx[tour_n] = 495; tour_by[tour_n] = 414; tour_n++; } last = vbl_n; return; }
+#endif
+#ifdef DS_TOUR_BX
+        { static const int LB[][2] = { DS_TOUR_BX }; for (unsigned q = 0; q < sizeof LB / sizeof LB[0]; q++) { tour_bx[tour_n] = LB[q][0]; tour_by[tour_n] = LB[q][1]; tour_n++; } last = vbl_n; return; }
+#endif
+        for (int by = 380; by < 470 && tour_n < 64; by++) for (int bx = 480; bx < 570 && tour_n < 64; bx++) { BInfo b; bm_block(bx, by, &b); LotPlan pl; bm_lot_plan(bx, by, &b, &pl); if (!pl.type) continue; int kd = bm_nb(bx, by); if (kd > 9 || pl.type > 9 || pl.face > 2) continue;
+            if (seen[pl.type][pl.face][DS_TOUR_ONE == 10 ? kd : 0]) continue; seen[pl.type][pl.face][DS_TOUR_ONE == 10 ? kd : 0] = 1; tour_bx[tour_n] = bx; tour_by[tour_n] = by; tour_ty[tour_n] = pl.type; tour_face[tour_n] = pl.face; tour_kind[tour_n] = kd; tour_n++; }
+        last = vbl_n; return; }
+    if (tour_k < tour_n && vbl_n - last >= 40) { last = vbl_n; int k = tour_k++;
+#ifdef DS_TOUR_PUB
+        tour_ovr = DS_TOUR_PUB + k;
+#endif
+        lot_enter(tour_bx[k], tour_by[k]); LV = 0;
+        for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; m->x = m->tx = m->wx = 6 * 16; m->y = m->ty = m->wy = DS_TOUR_SY * 16; m->act = -1; }
+        live_pitch = DS_TOUR_CAM; live_dist = DS_TOUR_DIST; yaw_t = live_yaw = DS_TOUR_YAW; cam_free = 0; }
+}
+#endif
 #ifdef DS_T7_AUDIT
 // A test build (XTRA=-DDS_T7_AUDIT): when the first lot goes live, the plan homes of a stretch of the map are made (as lot_enter makes them, both facings) and checked:
 // t7a[0] homes, [1] missing a bed, [2] a toilet, [3] a fridge, [4] two things on one cell, [5] a thing off the plot, [6] the street not reachable from the front door,
 // [7] a thing with no reachable cell beside it, [8] done; t7a_n[type][face] the homes of each kind; t7a_at[k][2] the first lot that failed check k.
 int t7a[9], t7a_n[10][3], t7a_at[8][2], t7a_dbg[8], t7a_map[GN * GN], t7a_hw[(GN + 1) * GN], t7a_vw[GN * (GN + 1)];
 static void t7a_fail(int k, int bx, int by) { if (t7a_at[k][0] == 0) { t7a_at[k][0] = bx; t7a_at[k][1] = by; } }
+// (D80) the stricter audit: t7b[k] counts the homes failing check k, t7b_at[k] the first lot that did.
+// [0] a house thing with no floor under it (floating), [1] a room (free floor) the front door cannot reach, [2] a door with a thing on either side, [3] a thing across an inner wall,
+// [4] a room of 4+ cells with nothing in it, [5] a room under a sixth furnished (3+ cells of 12+), [6] the straight walk from the door to the street blocked, [7] stairs with no free landing up there,
+// [8] a loft thing with no loft floor, [9] five of one thing in a row, [10] fewer beds than the home has (or none), [11] a bed, toilet or fridge indoors with nothing beside it, kept for the future
+int t7b[12], t7b_at[12][2], t7b_fill[8], t7b_fn;   // t7b_fill: the furnished share of each home's rooms, in tenths, summed (and t7b_fn the rooms counted), for a look
+static void t7b_fail(int k, int bx, int by) { t7b[k]++; if (t7b_at[k][0] == 0) { t7b_at[k][0] = bx; t7b_at[k][1] = by; } }
+static int t7b_house_id(int id) { return (id >= 0 && id <= 11) || id == 13 || (id >= 15 && id <= 23) || id == 28 || id == 29 || id == 30 || id == 33 || id == 35 || id == 36 || id == 40 || id == 51 || id == 72 || id == 73 || id == 95 || id == 96 || id == 100 || id == 101 || id == 104 || id == 106 || id == 107 || id == 117 || (id >= 120 && id <= 123) || (id >= 177 && id <= 189); }
+static int t7b_bed_id(int id) { return id == 16 || id == 20 || id == 177 || id == 178 || id == 179 || id == 188; }
+static void ds_t7_audit2(int bx, int by) {
+    static u8 sol[GN][GN], seen[GN][GN], rm[GN][GN], lsol[GN][GN]; static int qx[GN * GN], qy[GN * GN];
+    memset(sol, 0, sizeof sol); memset(lsol, 0, sizeof lsol); int beds = 0, bedcells = 0;
+    for (int k = 0; k < nobj; k++) { const Obj *o = &objs[k]; int id = OBJ_ID(o), w, h; obj_fp(o, &w, &h); int lv = (o->rot >> 2) & 3, flat = IT_OF(o)->kind == 1;
+        if (t7b_bed_id(id)) { beds++; bedcells += w * h; }
+        for (int y = o->y; y < o->y + h; y++) for (int x = o->x; x < o->x + w; x++) { if (x >= GN || y >= GN) continue;
+            if (lv) { lsol[y][x] = 1; if (!uflr[0][y][x]) t7b_fail(8, bx, by); } else if (!flat) sol[y][x] = 1;
+            if (!lv && t7b_house_id(id) && (flr[y][x] < 1 || flr[y][x] > 4)) t7b_fail(0, bx, by);
+            if (!lv) { if (x + 1 < o->x + w && vwl[y][x + 1]) t7b_fail(3, bx, by); if (y + 1 < o->y + h && hwl[y + 1][x]) t7b_fail(3, bx, by); } } }
+    if (!beds) t7b_fail(10, bx, by);
+    // doors: nothing solid on either side
+    for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) { if (hwl[y][x] == 5) { if ((y < GN && sol[y][x]) || (y > 0 && sol[y - 1][x])) t7b_fail(2, bx, by); } if (vwl[y][x] == 5) { if ((x < GN && sol[y][x]) || (x > 0 && sol[y][x - 1])) t7b_fail(2, bx, by); } }
+    for (int x = 0; x < GN; x++) if (hwl[GN][x] == 5 && sol[GN - 1][x]) t7b_fail(2, bx, by);
+    // every free floor cell of the home reachable from the front doors
+    memset(seen, 0, sizeof seen); int h = 0, t = 0; static const int DX[4] = { 1, -1, 0, 0 }, DY[4] = { 0, 0, 1, -1 };
+    { int wy = hwl[door_cy][door_cx] == 5 ? door_cy : door_cy + 1; for (int x = 0; x < GN; x++) if (wy > 0 && wy < GN && hwl[wy][x] == 5) for (int q = 0; q < 2; q++) { int iy = wy - q; if (!seen[iy][x] && !sol[iy][x]) { seen[iy][x] = 1; qx[t] = x; qy[t++] = iy; } } }
+    while (h < t) { int x = qx[h], y = qy[h++]; for (int d = 0; d < 4; d++) { int nx = x + DX[d], ny = y + DY[d]; if (nx < 0 || ny < 0 || nx >= GN || ny >= GN || seen[ny][nx] || sol[ny][nx]) continue;
+        int w = nx > x ? vwl[y][nx] : nx < x ? vwl[y][x] : ny > y ? hwl[ny][x] : hwl[y][x]; if (w && w != 5) continue; seen[ny][nx] = 1; qx[t] = nx; qy[t++] = ny; } }
+    memset(rm, 0, sizeof rm); int nr = 0, bare = 0, lost = 0;
+    for (int y0 = 0; y0 < GN; y0++) for (int x0 = 0; x0 < GN; x0++) { if (rm[y0][x0] || flr[y0][x0] < 1 || flr[y0][x0] > 4) continue; nr++; int a = 0, cells = 0, th = 0, tt = 0, open = 0, unr = 0; qx[tt] = x0; qy[tt++] = y0; rm[y0][x0] = (u8)nr;
+        while (th < tt) { int x = qx[th], y = qy[th++]; a++; if (sol[y][x]) cells++; else if (!seen[y][x]) unr++; for (int d = 0; d < 4; d++) { int nx = x + DX[d], ny = y + DY[d];
+            int w = nx > x ? (nx <= GN ? vwl[y][nx] : 0) : nx < x ? vwl[y][x] : ny > y ? hwl[ny][x] : hwl[y][x]; if (!w && (nx < 0 || ny < 0 || nx >= GN || ny >= GN || !flr[ny][nx] || flr[ny][nx] == 5)) open = 1;
+            if (nx < 0 || ny < 0 || nx >= GN || ny >= GN || rm[ny][nx] || flr[ny][nx] < 1 || flr[ny][nx] > 4 || w) continue; rm[ny][nx] = (u8)nr; qx[tt] = nx; qy[tt++] = ny; } }
+        if (open) continue;   // (a patio in the back yard is no room: it is open to the lawn)
+        if (unr) lost = 1; if (a >= 4 && !cells) t7b_fail(4, bx, by); if (a >= 12 && cells * 6 < a) bare++; if (a >= 4) { t7b_fill[0] += cells * 10 / a; t7b_fn++; } }
+    if (lost) t7b_fail(1, bx, by);
+    if (bare) t7b_fail(5, bx, by);
+    // the walk from the front door to the street, straight
+    { int dy = door_cy; if (dy < 0 || dy > GN || door_cx < 0 || door_cx >= GN) t7b_fail(6, bx, by);
+      else { int north = dy < GN && flr[dy][door_cx] >= 1 && flr[dy][door_cx] <= 4, blocked = 0;   // (the house is south of its front wall: the yard and the street are north)
+          if (north) { for (int y = dy - 1; y >= 0; y--) if (sol[y][door_cx]) blocked = 1; } else { for (int y = dy; y < GN; y++) if (sol[y][door_cx]) blocked = 1; }
+          if (blocked) t7b_fail(6, bx, by); } }
+    // five of one thing in a row
+    for (int y = 0; y < GN; y++) for (int x = 0; x + 4 < GN; x++) { int id = -1, run = 0; for (int q = 0; q < 5; q++) { int found = -1; for (int k = 0; k < nobj; k++) if (!((objs[k].rot >> 2) & 3) && objs[k].x == x + q && objs[k].y == y && IT_OF(&objs[k])->kind != 1) found = OBJ_ID(&objs[k]); if (found < 0 || (q && found != id)) break; id = found; run++; } if (run == 5 && id != 26 && id != 14 && id != 167) { t7b_fail(9, bx, by); } }
+    // stairs: a free cell in the loft beside them (the landing)
+    for (int k = 0; k < nobj; k++) if (OBJ_ID(&objs[k]) == 189 && !((objs[k].rot >> 2) & 3)) { int ok = 0; for (int d = 0; d < 4; d++) { int nx = objs[k].x + DX[d], ny = objs[k].y + DY[d]; if (nx >= 0 && ny >= 0 && nx < GN && ny < GN && uflr[0][ny][nx] && !lsol[ny][nx]) ok = 1; } if (!ok) t7b_fail(7, bx, by); }
+}
 static void ds_t7_audit(void) {
     static u8 seen[GN][GN]; static int qx[GN * GN], qy[GN * GN];
     for (int by = 380; by < 470; by++) for (int bx = 480; bx < 570; bx++) {
         BInfo b; bm_block(bx, by, &b); LotPlan pl; bm_lot_plan(bx, by, &b, &pl); if (!pl.type) continue;
-        lot_enter(bx, by); LV = 0; t7a[0]++; if (pl.type < 10) t7a_n[pl.type][pl.face & 3]++;
+        lot_enter(bx, by); LV = 0; t7a[0]++; ds_t7_audit2(bx, by); if (pl.type < 10) t7a_n[pl.type][pl.face & 3]++;
         int bed = 0, wc = 0, fr = 0; static u8 once[GN][GN][4]; memset(once, 0, sizeof once); int dup = 0, off = 0;
         for (int k = 0; k < nobj; k++) { const Obj *o = &objs[k]; int id = OBJ_ID(o); if (o->x >= GN || o->y >= GN) { off++; continue; } int st = (o->rot >> 2) & 3;
-            if (id == 16) bed = 1; if (id == 18) wc = 1; if (id == 11) fr = 1; if (once[o->y][o->x][st]) dup++; once[o->y][o->x][st] = 1; }
+            if (id == 16 || id == 177 || id == 178 || id == 179 || id == 188 || id == 20) bed = 1; if (id == 18) wc = 1; if (id == 11) fr = 1; if (IT_OF(o)->kind != 1) { int fw, fh; obj_fp(o, &fw, &fh); for (int yy = o->y; yy < o->y + fh && yy < GN; yy++) for (int xx = o->x; xx < o->x + fw && xx < GN; xx++) { if (once[yy][xx][st]) dup++; once[yy][xx][st] = 1; } } }   // (D80: by footprint; a rug is flat and things stand on it)
         if (!bed) { t7a[1]++; t7a_fail(1, bx, by); } if (!wc) { t7a[2]++; t7a_fail(2, bx, by); } if (!fr) { t7a[3]++; t7a_fail(3, bx, by); } if (dup) { t7a[4]++; t7a_fail(4, bx, by); } if (off) { t7a[5]++; t7a_fail(5, bx, by); }
         memset(seen, 0, sizeof seen); occ_ok = 0; int h = 0, t = 0, sx = door_cx, sy = door_cy; if (sx < 0 || sy < 0 || sx >= GN || sy >= GN) { t7a[6]++; t7a_fail(6, bx, by); continue; }
         seen[sy][sx] = 1; qx[t] = sx; qy[t++] = sy; int street = 0;
@@ -3805,6 +3897,9 @@ int main(void) {
           for (int q = 0; q < 6; q++) if (!mdone[q] && (int)vbl_n >= MF[q]) { mdone[q] = 1; o_song = 5 + 7 * q; }
 #endif
         }
+#endif
+#ifdef DS_TOUR
+        ds_tour();
 #endif
 #ifdef DS_T7_AUDIT
         { static int done7; if (!done7 && mode == M_LIVE) { done7 = 1; ds_t7_audit(); } }
