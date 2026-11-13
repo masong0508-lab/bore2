@@ -5,6 +5,8 @@
 #   - music on the title (sample mode), in the city (after entering the game), and after 6 song switches (o_song poked at frames 150..900)
 #   - at each switch every sample voice goes off at once, music returns, no loud burst, no voice held longer than the 6 s guard
 #   - synth mode (o_msrc = 1): audio is heard, no sample voice is used
+# D79: the runner's POKE does not reach the game (the emulated ARM9 data cache holds its own copy of o_song), so the 6 song switches never happened and the test said FAILED (6) on d78 too.
+#   HOOK1=1 ROM=<build with XTRA="-DDSTEST -DDS_MUSIC_TEST=1"> makes the build switch the songs itself; ROM2=<build with -DDS_MUSIC_TEST=2> does the synth part. (HOOK1 set: the POKE becomes a harmless write.)
 # usage: OUT=/tmp/ds77 tools/dsbuild/mkp.sh; bash ports/dsi/test/ds_music.sh [rom] [elf] [dsrun]      (the dsrun needs SPULOG: relink with the g++ line in tools/dsbuild/README.md)
 ROM=${1:-/tmp/ds77/bore.nds}; ELF=${2:-${ROM%.nds}.elf}; RUN=${3:-/tmp/dsrun}; D=$(dirname "$ROM"); H=$(dirname "$0")
 sym() { llvm-nm "$ELF" | grep " $1\$" | cut -d' ' -f1; }
@@ -15,9 +17,9 @@ GO="100-103:0:212,140;200-203:1:-1,-1;300-303:1:-1,-1;400-403:1:-1,-1"
 SW=150,300,450,600,750,900
 P=""; n=5; for f in ${SW//,/ }; do P="$P,$f:$OS:$(printf %x $n)"; n=$((n+7)); done; P=${P#,}
 rm -f $D/m.sav
-BORE_SAV=$D/m.sav POKE=$P DBGMEM=$MH SPULOG=1 AUDOUT=$D/m_s.wav $RUN $ROM 1100 $D/m.ppm "$GO" > $D/m_s.log 2>&1
+BORE_SAV=$D/m.sav POKE=${HOOK1:+0:0:0}${HOOK1:-$P} DBGMEM=$MH SPULOG=1 AUDOUT=$D/m_s.wav $RUN $ROM 1100 $D/m.ppm "$GO" > $D/m_s.log 2>&1
 python3 -I $H/ds_music_check.py $D/m_s.log $D/m_s.wav $SW $CH sample 1100 || FAIL=1
 rm -f $D/m.sav
-BORE_SAV=$D/m.sav POKE=20:$OM:1 DBGMEM=$MH SPULOG=1 AUDOUT=$D/m_y.wav $RUN $ROM 400 $D/m.ppm "" > $D/m_y.log 2>&1
+BORE_SAV=$D/m.sav POKE=20:$OM:1 DBGMEM=$MH SPULOG=1 AUDOUT=$D/m_y.wav $RUN ${ROM2:-$ROM} 400 $D/m.ppm "" > $D/m_y.log 2>&1
 python3 -I $H/ds_music_check.py $D/m_y.log $D/m_y.wav "" $CH synth 400 || FAIL=1
 exit ${FAIL:-0}

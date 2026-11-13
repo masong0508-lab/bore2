@@ -439,7 +439,7 @@ static u16 seas(u16 c) {   // (D50) the grass as the season makes it, as the PS1
     int r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31, tr, tg, tb, f; if (s == 0) { tr = 9; tg = 27; tb = 8; f = 8; } else if (s == 2) { tr = 24; tg = 15; tb = 6; f = 11; } else { tr = 29; tg = 30; tb = 31; f = 15; }
     r += (tr - r) * f / 16; g += (tg - g) * f / 16; b += (tb - b) * f / 16; return (u16)(r | g << 5 | b << 10 | 0x8000); }
 static u32 hsh(u32 a); static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise, u16 rc, u16 wc); static const u16 ROOFC[6];
-static void draw_lot(const BInfo *b, int yaw) {
+static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl, the town plan's home for the lot, when the world is version 7)
     u32 h = b->h; int k = b->lot;
     u16 grass = b->terrain == BT_DESERT ? C15(24, 20, 10) : b->terrain == BT_ROCKY ? C15(13, 13, 13) : b->terrain == BT_BEACH ? C15(26, 24, 14) : C15(11, 20, 8);
     if (b->terrain == BT_SEA) { grass = C15(5, 12, 24); } else if (b->terrain == BT_GRASS || b->terrain == BT_FOREST) grass = seas(grass);
@@ -453,13 +453,18 @@ static void draw_lot(const BInfo *b, int yaw) {
     u16 walls[6] = { C15(26, 22, 16), C15(24, 14, 10), C15(22, 24, 26), C15(26, 26, 18), C15(16, 22, 14), C15(24, 20, 22) };
     u16 wall = walls[(h >> 8) % 6];
     if (k >= LOT_SHOP && k != LOT_PARK) wall = k == LOT_TOWER || k == LOT_OFFICE || k == LOT_HOTEL ? C15(16, 20, 26) : C15(27, 12, 10);
-    int X0 = tl(x0), X1 = tl(x0 + w), Z0 = tl(z0), Z1 = tl(z0 + d), Y = -(hh * T);
+    int X0 = tl(x0), X1 = tl(x0 + w), Z0 = tl(z0), Z1 = tl(z0 + d), Y = -(hh * T), nth = 0, p7 = pl && pl->type && k <= LOT_APART;
+    if (p7) { X0 = tl(2 * (pl->x0 - BM_LOT0)); X1 = tl(2 * (pl->x1 - BM_LOT0 + 1)); Z0 = tl(2 * (pl->y0 - BM_LOT0)); Z1 = tl(2 * (pl->y1 - BM_LOT0 + 1)); nth = pl->face == LF_NORTH;
+        if (pl->wx1 && pl->type == HT_L) { int wa = pl->wx0 - BM_LOT0, wb = pl->wx1 - BM_LOT0 + 1; if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; block(tl(2 * wa), tl(2 * (pl->wy0 - BM_LOT0)), tl(2 * wb), tl(2 * (pl->wy1 - BM_LOT0 + 1)), 0, -2 * T, C15(18, 18, 20), C15(20, 20, 22)); }
+        if (pl->drv) ground(tl(2 * (pl->drv - BM_LOT0)), nth ? tl(0) : Z1, tl(2 * (pl->drv - BM_LOT0 + 2)), nth ? Z0 : tl(26), -26, C15(20, 20, 20));
+        int sw = nth ? 0 : 26 * T; (void)sw; }
     block(X0, Z0, X1, Z1, 0, Y, wall, wall);
-    { int wn = (X1 - X0) / 5; for (int r = 0; r < st; r++) for (int k = 0; k < 3; k++) { int wx = X0 + wn * (1 + k * 2 - (k == 1 && r == 0 ? 0 : 0)); if (r == 0 && k == 1) { block(wx, Z1, wx + wn * 7 / 10, Z1 + 14, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); continue; } block(wx, Z1, wx + wn * 7 / 10, Z1 + 14, -T * (1 + r * 2) , -T * (2 + r * 2), C15(17, 24, 31), C15(17, 24, 31)); } }   // front door and windows
+    { int wn = (X1 - X0) / 5; for (int r = 0; r < st; r++) for (int k = 0; k < 3; k++) { int wx = X0 + wn * (1 + k * 2 - (k == 1 && r == 0 ? 0 : 0)); if (r == 0 && k == 1) { block(wx, nth ? Z0 - 14 : Z1, wx + wn * 7 / 10, nth ? Z0 : Z1 + 14, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); continue; } block(wx, nth ? Z0 - 14 : Z1, wx + wn * 7 / 10, nth ? Z0 : Z1 + 14, -T * (1 + r * 2) , -T * (2 + r * 2), C15(17, 24, 31), C15(17, 24, 31)); } }   // front door and windows
     block((X0 + X1) / 2 + T, Z0 + T / 2, (X0 + X1) / 2 + T * 3 / 2, Z0 + T, Y, Y - T * 3 / 2, C15(12, 6, 5), C15(12, 6, 5));   // a chimney
     { u32 rh = hsh(h ^ 0x500Fu); int sty = st >= 3 || k > LOT_APART ? 1 : 2 + ((rh >> 2) & 1); static const s16 PIT[3] = { 110, 170, 250 };   // (D42: the map's picture has the lot's real roof)
       roof_shape(X0 - T / 3, Z0 - T / 3, X1 + T / 3, Z1 + T / 3, Y, sty, PIT[1 + ((rh >> 8) & 1)], ROOFC[(rh >> 4) % 6], wall); }
-    if (k <= LOT_APART) {   // a fence and a pool behind, or a garden
+    if (p7) { for (int i = 0; i < 2; i++) tree(tl(2 * (pl->x0 - BM_LOT0) / 2 + 3 + i * 9), nth ? tl(26 - 3) : tl(3), T * 2); }   // (the plan's yard: a tree or two behind)
+    else if (k <= LOT_APART) {   // a fence and a pool behind, or a garden
         int bk = (int)((h >> 12) % 6);
         if (bk == 0) ground(tl(x0 + 1), tl(z0 + d + 2), tl(x0 + w - 1), tl(z0 + d + 6), -24, C15(6, 18, 28));
         else if (bk == 1) for (int i = 0; i < 3; i++) tree(tl(x0 + 2 + i * 3), tl(z0 + d + 4), T);
@@ -3790,6 +3795,17 @@ int main(void) {
 #ifdef DS_ROAD_AUDIT
         { static int done; if (!done && mode == M_LIVE) { done = 1; ds_road_audit(); } }
 #endif
+#ifdef DS_MUSIC_TEST
+        // (D79) test builds for ports/dsi/test/ds_music.sh: the POKE of the test runner does not reach the game (the emulated ARM9 data cache keeps its own copy), so the build
+        // changes the song itself: DS_MUSIC_TEST=1 at vblanks 150, 300 ... 900 (songs 5, 12, 19 ...), DS_MUSIC_TEST=2 the synth tunes from the first vblank
+        { static u8 mdone[7]; static const int MF[6] = { 150, 300, 450, 600, 750, 900 };
+#if DS_MUSIC_TEST == 2
+          if (!mdone[6] && vbl_n >= 1) { mdone[6] = 1; o_msrc = 1; }
+#else
+          for (int q = 0; q < 6; q++) if (!mdone[q] && (int)vbl_n >= MF[q]) { mdone[q] = 1; o_song = 5 + 7 * q; }
+#endif
+        }
+#endif
 #ifdef DS_T7_AUDIT
         { static int done7; if (!done7 && mode == M_LIVE) { done7 = 1; ds_t7_audit(); } }
 #endif
@@ -4044,7 +4060,7 @@ int main(void) {
 #endif
         if (mode == M_CAS) draw_head(yaw);
         else if (fight_on) fight_3d();
-        else if (mode == M_MAP) { BInfo b; bm_block(sel_x, sel_y, &b); draw_lot(&b, yaw); }
+        else if (mode == M_MAP) { BInfo b; bm_block(sel_x, sel_y, &b); { LotPlan pl7; LotPlan *pp = 0; if (bm_gen >= 7) { bm_lot_plan(sel_x, sel_y, &b, &pl7); pp = &pl7; } draw_lot(&b, yaw, pp); } }
         glEnd();
         polys_last = polys; gf_shown++;
         glFlush(0);

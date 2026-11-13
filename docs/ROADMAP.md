@@ -44,6 +44,7 @@ Detail for each port: DSI_ROADMAP.md (DS), DREAMCAST.md (Dreamcast), PS1_PERFORM
 - [x] Every home has a shower and a stove now; all the beds a household needs are placed. Audit and census: `docs/lots_audit_rooms7.txt`.
 - [x] Picture tool: `ports/host/lotsim/rooms.py` (12 homes top-down, before and after). `./lotsim census SEED` counts what homes hold.
 - [x] DS d78: the starter house by the same rules (`bore2_dsi_d78.nds`; a d77 save loads).
+- [x] DS d79: world version 7 (the town plan) on the DS: homes from the plan (7 types, both facings), yards, hedges, street trees, far view from the plan, rooms by the 4c groups; new lives are gen 7, a d78 save keeps its (gen 3) town (`bore2_dsi_d79.nds`; see DS_TOWN7.md). Left: shots of every type, upper-storey audit.
 - [ ] Left: narrow flats are still cramped; 184 small homes have no dining table; desks under windows; a tree can stand inside a mansion (yard code).
 
 ## 1. PS1 (do first, small and visible)
