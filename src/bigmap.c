@@ -371,7 +371,7 @@ static int g7_left(int m, int ft, int i, int j) { return ((m >> (4 + i)) & 1) | 
 __attribute__((noinline)) static void g7_block(const Settle *s, int bx, int by, BInfo *b) {   // a block of a planned town that is not a landmark: its streets and its lot
     u32 nh; int dx = bx - s->x, dy = by - s->y, i = dx & 3, j = dy & 3, kind = nb_kind(s, dx, dy, &nh), m = g7st[kind], C = g7cen[s->kind & 3];
     #define G7CEN(x, y) g7_in(x, y, C)
-    int ft = (kind == NK_SUBURB || kind == NK_ESTATE) && s->kind < ST_VILLAGE ? (int)((nh >> 16) & 7) - 3 : 0;   // (this neighbourhood's street feature, 1..4: a dead end at its east end, at its west end, a bend east, a bend west; half have none)
+    int ft = (kind == NK_SUBURB || kind == NK_ESTATE) && s->kind < ST_VILLAGE && ((nh >> 16) & 7) >= 3 ? 1 + (int)(((nh >> 16) & 7) - 3) % 4 : 0;   // (this neighbourhood's street feature, 1..4: a dead end at its east end, at its west end, a bend east, a bend west; three in eight have none)
     int c0 = G7CEN(dx, dy), t = g7_top(m, ft, i, j) | c0 | G7CEN(dx, dy - 1), l = g7_left(m, ft, i, j) | c0 | G7CEN(dx - 1, dy);
     b->road = (u8)(t | l << 1 | ((t | l) || !G7CEN(dx - 1, dy - 1) ? 0 : 4));   // (4: only the corner is paved, where the heart's last streets turn)
     // the street it fronts on: the one along the top of the next block down (if that is town land), else its own

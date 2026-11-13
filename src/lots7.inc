@@ -17,6 +17,7 @@ __attribute__((noinline)) static void yard7(int ox, int oy, const LotPlan *q, in
     PLx = ox + BM_LOT0; PLy = oy + BM_LOT0;
     int n = oy + 16 - hy1, g = (int)(h >> 13), ry = oy + BM_BLK - 1;                   // rows between the front wall and the last row (n >= 0)
     int hedge = kind == NK_SUBURB || kind == NK_ESTATE || kind == NK_GREEN, dv = q->drv ? ox + q->drv : 0;
+    int hv = hedge ? (g >> 8) & 3 : 0; char fc = hv == 2 ? (char)0xDF : (char)0xE1; if (hv == 3) hedge = 0;   // (the front: a hedge on half the lots, a picket fence on one in four, one in four open lawn)
     if (dv) {                                                                          // the drive: two tiles of concrete, to the garage (the wing's front, the front wall) or back beside the house
         int top = q->wx1 ? oy + q->wy1 + 1 : q->type == HT_RANCH ? hy1 + 1 : hy;
         for (int y = top; y <= ry; y++) { floorMap[y][dv] = FL_PAVING; floorMap[y][dv + 1] = FL_PAVING; }
@@ -30,9 +31,9 @@ __attribute__((noinline)) static void yard7(int ox, int oy, const LotPlan *q, in
     if (n >= 3) {
         if (!hedge || (g & 2)) pf(dx - 2, oy + 16, (char)0xE0);                        // the mailbox at the gap
         else pf(dx + 2, oy + 16, (char)0xE0);
-        if (hedge) for (int x = PLx + 1; x <= PLx + 12; x++) if (ABS(x - dx) > 1 && (!dv || x < dv || x > dv + 1)) pf(x, oy + 16, (char)0xE1);   // a low hedge across the front, a gap at the walk and the drive
+        if (hedge) for (int x = PLx + 1; x <= PLx + 12; x++) if (ABS(x - dx) > 1 && (!dv || x < dv || x > dv + 1)) pf(x, oy + 16, fc);   // a low hedge (or fence) across the front, a gap at the walk and the drive
     }
-    if (hedge) for (int s = 0; s < 2; s++) {                                           // hedges down the sides, where there is room round the house
+    if (hedge && hv < 2) for (int s = 0; s < 2; s++) {                                 // hedges down the sides, where there is room round the house
         int c = s ? PLx + 11 : PLx + 1;
         if (dv && (c == dv || c == dv + 1)) continue;
         for (int y = PLy + 1; y <= oy + 15; y++) pf(c, y, (char)0xE1);
@@ -164,7 +165,12 @@ static void empty7(int lx, int ly, unsigned h) {   // a lot for sale: mown, tidy
 static void field7(int lx, int ly, unsigned h) {   // a farm lot with no street to front on: a field, rows of crops across the whole lot
     for (int y = ly + 1; y <= ly + 11; y += 2) gBox(lx + 1, y, lx + 11, y, FL_SOIL);
     for (int y = ly + 2; y <= ly + 10; y += 2) for (int x = lx + 1; x <= lx + 11; x += 2) gFree(x, y, (char)0xDB);
-    gFree(lx + 12, ly + 1, TREE); (void)h;
+    for (int y = ly + 1; y <= ly + 11; y++) { if (y == ly + 6) continue; gFree(lx, y, (char)0xE1); gFree(lx + 12, y, (char)0xE1); }   // a hedgerow down both sides, a gap for the cart track
+    gFree(lx + 12, ly + 1, TREE); gFree(lx, ly + 12, TREE);
+    int k = (int)((h >> 5) & 3);                                                          // a field's own trimmings: a stand by the track, a hen coop and a cow, or nothing
+    if (k == 0) gFree(lx + 1, ly + 12, (char)0xDE);
+    else if (k == 1) { gFree(lx + 11, ly + 12, (char)0xDC); gFree(lx + 9, ly + 12, (char)0xDD); }
+    else if (k == 2) gFree(lx + 6, ly + 12, (char)0xDD);
 }
 static void estate7(int ox, int oy, unsigned h) {   // the grounds between mansions: lawn, trees in a loose grid, a path across, now and then a pond
     int lx = ox + BM_LOT0, ly = oy + BM_LOT0;
