@@ -7,7 +7,7 @@ static const u16 pDpTb[3]={RGB(8,4,2),RGB(21,13,6),RGB(27,19,10)};
 MAT(mDTbLeg,pDpTb,1,1,"a")
 MAT(mDTbEdge,pDpTb,1,1,"b")
 MAT(mDTbTop,pDpTb,8,8,"aaaaaaaa","abbbbbba","abccccba","abbbbbba","abccccba","abbbbbba","abbbbbba","aaaaaaaa")
-static const IBox bxDTable[5]={{0,1,1,2,0,6,{&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg}},{7,1,8,2,0,6,{&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg}},{0,6,1,7,0,6,{&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg}},{7,6,8,7,0,6,{&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg}},{0,1,8,7,6,8,{&mDTbEdge,&mDTbEdge,&mDTbEdge,&mDTbEdge,&mDTbTop}}};
+static const IBox bxDTable[5]={{0,0,1,1,0,6,{&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg}},{7,0,8,1,0,6,{&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg}},{0,7,1,8,0,6,{&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg}},{7,7,8,8,0,6,{&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg,&mDTbLeg}},{0,0,8,8,6,8,{&mDTbEdge,&mDTbEdge,&mDTbEdge,&mDTbEdge,&mDTbTop}}};
 static const u16 pDpCh[4]={RGB(8,4,2),RGB(20,12,6),RGB(27,6,6),RGB(30,13,11)};
 MAT(mDChLeg,pDpCh,1,1,"a")
 MAT(mDChWood,pDpCh,1,1,"b")
@@ -56,4 +56,4 @@ static const u16 pDpKc[6]={RGB(8,8,10),RGB(24,24,26),RGB(16,17,20),RGB(8,18,29),
 MAT(mDKcF,pDpKc,8,8,"aaaaaaaa","abbbbbba","abbbbbba","abbbbbba","abbaabba","abbbbbba","abbbbbba","aaaaaaaa")
 MAT(mDKcS,pDpKc,1,1,"b")
 MAT(mDKcT,pDpKc,8,8,"aaaaaaaa","accccdda","accccdda","accccdda","abbbbbba","abeeebba","abbbbbba","aaaaaaaa")
-static const IBox bxDCounter[1]={{0,1,8,7,0,8,{&mDKcF,&mDKcS,&mDKcS,&mDKcS,&mDKcT}}};
+static const IBox bxDCounter[1]={{0,0,8,8,0,8,{&mDKcF,&mDKcS,&mDKcS,&mDKcS,&mDKcT}}};

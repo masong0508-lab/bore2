@@ -23,8 +23,8 @@ How big a thing is in the game, against a person. Made with `tools/object_scale.
 | grandfather clock | 0.5 x 0.4 x 1.9 m | 1 x 1 | 0.56 x 0.56 m | 1.91 m (it was 2.3 m: through the ceiling) |
 | sofa | 2.0 x 0.9 x 0.85 m | 1 x 1 (one module, rows of them) | 1.13 x 1.13 m | 1.06 m |
 | loveseat, armchair | 1.4 x 0.9 / 0.9 x 0.9 | 1 x 1 | 1.13 x 0.85 m | 0.95 m |
-| dining table | 1.2 x 1.2 x 0.75 m | 1 x 1 | 1.13 x 0.85 m | 0.85 m |
-| counter | 1.0 x 0.6 x 0.9 m | 1 x 1 | 1.13 x 0.85 m | 0.85 m |
+| dining table | 1.2 x 1.2 x 0.75 m | 1 x 1 | 1.13 x 1.13 m (was 0.85 deep) | 0.85 m |
+| counter | 1.0 x 0.6 x 0.9 m | 1 x 1 | 1.13 x 1.13 m (was 0.85 deep) | 0.85 m |
 | fridge | 0.7 x 0.7 x 1.8 m | 1 x 1 | 0.85 x 0.85 m | 1.70 m |
 | toilet | 0.4 x 0.7 x 0.8 m | 1 x 1 | 0.56 x 0.85 m | 0.85 m |
 | bath | 1.7 x 0.7 x 0.55 m | 1 x 1 | 1.13 x 0.85 m | 0.85 m |
@@ -122,11 +122,11 @@ Notes.
 | 71 | AQUARIUM | 1x1 | 0.75 x 0.62 | 0.85 x 0.71 | 15 | 1.59 |
 | 72 | RUG | 1x1 | 1.00 x 1.00 | 1.13 x 1.13 | 1 | 0.11 |
 | 73 | CAMPFIRE | 1x1 | 0.75 x 0.75 | 0.85 x 0.85 | 8 | 0.85 |
-| 74 | DINING TABLE | 1x1 | 1.00 x 0.75 | 1.13 x 0.85 | 8 | 0.85 |
+| 74 | DINING TABLE | 1x1 | 1.00 x 1.00 | 1.13 x 1.13 | 8 | 0.85 |
 | 75 | CACTUS | 1x1 | 0.50 x 0.25 | 0.56 x 0.28 | 14 (life) | 1.48 |
 | 76 | TV | 1x1 | 0.75 x 0.75 | 0.85 x 0.85 | 12 (life) | 1.27 |
 | 78 | WORK MARKER | 1x1 | 0.75 x 0.75 | 0.85 x 0.85 | 1 | 0.11 |
-| 79 | COUNTER | 1x1 | 1.00 x 0.75 | 1.13 x 0.85 | 8 | 0.85 |
+| 79 | COUNTER | 1x1 | 1.00 x 1.00 | 1.13 x 1.13 | 8 | 0.85 |
 | 7A | TENT | 1x1 | 1.00 x 1.00 | 1.13 x 1.13 | 11 (life) | 1.17 |
 | 7B | DOLLHOUSE | 1x1 | 0.75 x 0.62 | 0.85 x 0.71 | 10 | 1.06 |
 | 7C | STAIRS | 1x1 | 0.50 x 0.75 | 0.56 x 0.85 | 4 | 0.42 |
