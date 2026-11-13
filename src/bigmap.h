@@ -119,3 +119,6 @@ const char *bm_nb_name(int bx, int by, char *out);   // the neighbourhood's name
 int  bm_nb(int bx, int by);           // NK_: the kind of the neighbourhood that block lies in
 int  bm_lot_face(int bx, int by);     // LF_: LF_SOUTH if the block below has a street along its top, else LF_NORTH if this block has one, else LF_NONE
 void bm_lot_plan(int bx, int by, const BInfo *b, LotPlan *p);   // b: that block, from bm_block()
+// What every map, model and far view draws of a lot's building comes from these two (the world's own generators are checked against them: ports/host/lotsim `plan` and `foot`).
+int  bm_lot_home(int bx, int by, const BInfo *b, LotPlan *p);   // a home lot's plan: the town plan in a version 7 town, else the body its old generator (city_house ...) builds. 0 if the lot is not a home
+int  bm_lot_foot(int bx, int by, const BInfo *b, u8 *f, LotPlan *pp);        // the building on the lot, as block tiles f[0..3] = x0 y0 x1 y1 (walls included, turned for the lot's facing; a home with a wing or a second half: the lot of both); f[4] 1 if it is a home. 0: nothing built there (a park, a field, a pool, an empty lot). pp (or 0): the lot's plan as far as it goes (its face for every lot in a planned town, the whole plan for a home)

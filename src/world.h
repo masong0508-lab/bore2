@@ -1,6 +1,7 @@
 // world: the BORE lot (40x40 tiles of floor, walls and items) in 3D.
 #pragma once
 #include "common.h"
+#include "bigmap.h"
 
 extern char lifeMap[MH][MW + 1];     // the map letters (BORE): '.' floor, 'W' wall, 'w' low wall, 'D' door, items...
 extern u8   floorMap[MH][MW];        // floor style per tile
@@ -111,6 +112,11 @@ extern int world_roof_style, world_roof_col, world_roof_pitch;   // HIP / GABLE 
 const char *world_roof_style_name(int s);
 const char *world_roof_col_name(int c);
 const char *world_roof_pitch_name(int p);
+// What the maps, the town model and the far view draw of a building, from the same rules the world builds it by (bigmap.h bm_lot_foot gives ft and pl)
+void world_roof_of(int bx, int by, const BInfo *b, const u8 *ft, const LotPlan *pl, u8 *sty, u8 *col, u8 *pit);   // sty: 0 hip, 1 gable (ridge along the longer side), 2 flat, 3 gable turned to the street (ridge along the depth)
+int  world_roof_rise(int pit, int half);   // how high the roof rises over half its width (world units)
+const u8 *world_roof_rgb(int col);        // a roof colour (NROOF_COL of them): 3 bytes r g b
+void world_plan_wall_rgb(int k, u8 *rgb);  // the colour of a neighbourhood's wall material k = (pal * 2 + wall) % 6 (the town plan's two walls a palette)
 char world_at_l(int l, int mx, int my);          // any storey (' ' = open air on the upper floors)
 char *world_cell(int l, int mx, int my);         // build mode: the tile itself on storey l
 u8  *world_floor_cell(int l, int mx, int my);

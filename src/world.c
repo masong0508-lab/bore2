@@ -2370,7 +2370,27 @@ static u8 rbox[NLEVELS][4];
 int dbg_rr_hb, dbg_rr_n, dbg_rr_blk, dbg_ws[8];
 // the roofs and buildings of the box [x0..x1] x [y0..y1] (the whole map, or a block that has just come in)
 static u32 bld_gen;                                    // (bumped whenever the buildings are worked out again: what keys on bld[][] knows)
-static void roof_region(int x0, int y0, int x1, int y1) {
+// The roof a building gets: one rule for the map's roofs (roof_region), the far view and the town models. sty: 0 hip, 1 gable (the ridge along the longer side), 2 flat, 3 a gable turned
+// to the street (the ridge along the depth); col: a roofCol; pit: 1 or 2 (roofPitch). x y: the building's north-west corner tile in the whole map, w d: its size in tiles, top: its storeys above the
+// ground one; gx gy: the block it stands on (version 7: a home's roof comes from the town plan: its form, and its neighbourhood's two roof colours).
+COLD static void roof_pick(int x, int y, int w, int d, int top, int gx, int gy, const LotPlan *known, u8 *sty, u8 *col, u8 *pit) {
+    u32 h = bm_hash(x, y, wsalt ^ 0x500Fu);
+    *sty = (u8)(top >= 2 || (w >= 11 && d >= 9 && (h & 3) == 0) ? 2 : (h >> 2) & 1);   // towers and big blocks: flat roofs
+    *col = (u8)((h >> 4) % NROOF_COL); *pit = (u8)(1 + ((h >> 8) & 1));
+    if (bm_gen >= 7) {
+        BInfo pb; LotPlan q; const LotPlan *pq = known; if (!pq) { bm_block(gx, gy, &pb); bm_lot_plan(gx, gy, &pb, &q); pq = &q; }
+        const LotPlan pp = *pq;
+        if (pp.type != HT_NONE) { *sty = (u8)(pp.roof == RF_HIP || pp.type == HT_MANSION ? 0 : pp.roof == RF_FRONT && (pp.type == HT_COMPACT || pp.type == HT_BOX || pp.type == HT_TWO) ? 3 : 1);
+            *col = (u8)((pp.pal + pp.rcol * 3) % NROOF_COL); *pit = (u8)(pp.type <= HT_RANCH ? 1 : 2); }
+    }
+}
+COLD void world_roof_of(int bx, int by, const BInfo *b, const u8 *ft, const LotPlan *pl, u8 *sty, u8 *col, u8 *pit) {   // (the building at ft on that block: bm_lot_foot's walls and plan)
+    roof_pick(bx * BM_BLK + ft[0], by * BM_BLK + ft[1], ft[2] - ft[0] + 1, ft[3] - ft[1] + 1, bm_storeys(b) - 1, bx, by, pl && pl->pal != 255 ? pl : 0, sty, col, pit);   // (an old home's plan has no palette: the world looks the lot up itself)
+}
+int world_roof_rise(int pit, int half) { return half * roofPitch[(pit & 15) % NROOF_PITCH] / TILE; }   // how high a roof rises over half its width (world units; half in units)
+const u8 *world_roof_rgb(int col) { return roofCol[col % NROOF_COL]; }
+COLD void world_plan_wall_rgb(int k, u8 *rgb) { u16 c = wp_top[NWP + NWX + k % NWPNEW]; rgb[0] = (u8)R8(c); rgb[1] = (u8)G8(c); rgb[2] = (u8)B8(c); }   // the colour of a neighbourhood's wall material k (the plan's (pal * 2 + wall) % 6)
+COLD static void roof_region(int x0, int y0, int x1, int y1) {
     bld_gen++;
     int t0 = gfx_hb(); dbg_rr_n++;
     u8 (*out)[MW] = (u8 (*)[MW])bfs_par; u16 *q = bfs_q;
@@ -2451,15 +2471,9 @@ static void roof_region(int x0, int y0, int x1, int y1) {
     for (int b = 1; b <= nbld; b++) {                            // each building's roof
         if (b_x0[b] == 255) continue;
         if (world_zone == ZONE_CITY && world_wbx >= 0) {
-            u32 h = bm_hash(world_wbx * BM_BLK + b_x0[b], world_wby * BM_BLK + b_y0[b], wsalt ^ 0x500Fu);
-            int w = b_x1[b] - b_x0[b] + 1, d = b_y1[b] - b_y0[b] + 1;
-            b_sty[b] = (u8)(b_top[b] >= 2 || (w >= 11 && d >= 9 && (h & 3) == 0) ? 2 : (h >> 2) & 1);   // towers and big blocks: flat roofs
-            b_col[b] = (u8)((h >> 4) % NROOF_COL); b_pit[b] = (u8)(1 + ((h >> 8) & 1));
-            if (bm_gen >= 7) {                  // version 7: a home's roof comes from the town plan (its form, and its neighbourhood's two roof colours)
-                int gx = (world_wbx * BM_BLK + b_x0[b]) / BM_BLK, gy = (world_wby * BM_BLK + b_y0[b]) / BM_BLK; BInfo pb; LotPlan pp;
-                bm_block(gx, gy, &pb); bm_lot_plan(gx, gy, &pb, &pp);
-                if (pp.type != HT_NONE) { b_sty[b] = (u8)(pp.roof == RF_HIP || pp.type == HT_MANSION ? 0 : 1); b_col[b] = (u8)((pp.pal + pp.rcol * 3) % NROOF_COL); b_pit[b] = (u8)(pp.type <= HT_RANCH ? 1 : 2); if (pp.roof == RF_FRONT && (pp.type == HT_COMPACT || pp.type == HT_BOX || pp.type == HT_TWO)) b_pit[b] |= 16; }   // (16: the gable turned to the street: the ridge runs back from it)
-            }
+            u8 sty, col, pit; int gx = (world_wbx * BM_BLK + b_x0[b]) / BM_BLK, gy = (world_wby * BM_BLK + b_y0[b]) / BM_BLK;
+            roof_pick(world_wbx * BM_BLK + b_x0[b], world_wby * BM_BLK + b_y0[b], b_x1[b] - b_x0[b] + 1, b_y1[b] - b_y0[b] + 1, b_top[b], gx, gy, 0, &sty, &col, &pit);
+            b_sty[b] = sty == 3 ? 1 : sty; b_col[b] = col; b_pit[b] = (u8)(sty == 3 ? pit | 16 : pit);   // (16: the gable turned to the street: the ridge runs back from it)
         } else { b_sty[b] = (u8)world_roof_style; b_col[b] = (u8)world_roof_col; b_pit[b] = (u8)world_roof_pitch; }
     }
     b_sty[0] = (u8)world_roof_style; b_col[0] = (u8)world_roof_col; b_pit[0] = (u8)world_roof_pitch;
@@ -3087,7 +3101,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
               if (!gfx_visible(cx, -hh / 2, cz, rr)) continue; }
             if (use_far) { const u8 *rc = roofCol[b_col[b] % NROOF_COL];
                 far_box_world(b_x0[b] * TILE, -b_y0[b] * TILE, (b_x1[b] + 1) * TILE, -(b_y1[b] + 1) * TILE, b_top[b] + 1,
-                              b_wall[b] ? b_wall[b] : RGB(24, 22, 19), b_sty[b] != 2, RGB(rc[0] >> 3, rc[1] >> 3, rc[2] >> 3)); }
+                              b_wall[b] ? b_wall[b] : RGB(24, 22, 19), b_sty[b] == 2 ? 0 : b_sty[b] == 0 ? 1 : (b_pit[b] & 16) ? 3 : 2, 1 + ((b_pit[b] & 15) >= 2), RGB(rc[0] >> 3, rc[1] >> 3, rc[2] >> 3)); }
             else far_box(b, d2 < 22 * 22);
         }
         world_hb_sky1 = gfx_hb() - sky_h0;

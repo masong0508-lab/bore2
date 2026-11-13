@@ -197,26 +197,18 @@ static void cell_rgb(int t, int *r, int *g, int *b) {
 // ================================================================== every town's buildings (worked out once a world)
 typedef struct { u32 bx : 10, by : 10, lot : 6, col : 4, pad : 2; } FB;   // (4 bytes: the storeys are in fb_sto, a byte each)
 #define FB_MAX 2400
-static FB fb[FB_MAX]; static u8 fb_sto[FB_MAX], fb_ft[FB_MAX][4]; static int nfb;   // (fb_ft: each building's footprint x0 y0 x1 y1 in block tiles: its lot's fixed one, or in world version 7 the town plan's body)
-#define FSTO(f) fb_sto[(f) - fb]
+#define FT_PUT(d, s) { u32 v_ = (s)[0] | (s)[1] << 5 | (s)[2] << 10 | (u32)(s)[3] << 15; (d)[0] = (u8)v_; (d)[1] = (u8)(v_ >> 8); (d)[2] = (u8)(v_ >> 16); }
+#define FT_GET(d, s) { u32 v_ = (s)[0] | (s)[1] << 8 | (u32)(s)[2] << 16; (d)[0] = v_ & 31; (d)[1] = v_ >> 5 & 31; (d)[2] = v_ >> 10 & 31; (d)[3] = v_ >> 15 & 31; }
+static FB fb[FB_MAX]; static u8 fb_sto[FB_MAX], fb_ft[FB_MAX][3]; static int nfb;   // (fb_ft: each building's walls x0 y0 x1 y1 in block tiles, 5 bits each (FT_PUT, FT_GET), from bm_lot_foot: the town plan's body of a home, else its lot's)
+#define FSTO(f) (fb_sto[(f) - fb] & 7)               // (fb_sto: the storeys in bits 0-2, the roof's form in 3-4 (world_roof_of's sty: 0 hip, 1 gable, 2 flat, 3 front gable), its colour in 5-7; pad: bit 0 a steep roof)
+#define FROOF(f) ((fb_sto[(f) - fb] >> 3) & 3)
 static u16 fb_lo[64], fb_hi[64];             // each town's run in fb
 #define FBC_MAX 900
 static u16 fbc_cx[FBC_MAX], fbc_cy[FBC_MAX], fbc_lo[FBC_MAX], fbc_hi[FBC_MAX]; static u8 fbc_sto[FBC_MAX]; static int nfbc;   // (a cell's tallest building in fbc_sto: a cell too far for even that to show is passed over whole)   // the runs by cell (4x4 blocks)
 static u16 fbs_lo[64], fbs_hi[64];           // each town's cells
-static const u8 has_bld[LOT_N] = { 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0 };
-// each lot's building, block-relative tiles (x0, y0, x1, y1) and roof (0 flat, 1 pitched)
-static const u8 foot[LOT_N][5] = {
-    { 0, 0, 0, 0, 0 },   { 5, 5, 13, 12, 1 }, { 5, 5, 11, 11, 1 }, { 3, 5, 15, 12, 1 }, { 5, 4, 13, 12, 1 }, { 4, 4, 15, 15, 0 },
-    { 4, 4, 15, 13, 0 }, { 4, 5, 14, 12, 0 }, { 4, 4, 15, 14, 0 }, { 4, 4, 15, 14, 0 }, { 4, 4, 14, 14, 1 }, { 4, 4, 9, 8, 0 },
-    { 3, 4, 15, 15, 0 }, { 4, 4, 14, 13, 0 }, { 4, 4, 14, 14, 0 }, { 3, 3, 15, 15, 0 }, { 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0 },   { 0, 0, 0, 0, 0 },   { 6, 6, 11, 10, 1 },
-    { 4, 5, 14, 12, 0 }, { 4, 5, 14, 12, 0 }, { 3, 3, 15, 14, 0 }, { 4, 5, 14, 12, 0 }, { 3, 4, 15, 13, 0 }, { 4, 4, 14, 13, 0 },   // cafe bar cinema salon restaurant clinic
-    { 3, 4, 15, 13, 0 }, { 4, 4, 14, 13, 0 }, { 4, 5, 14, 12, 0 },
-    { 4, 4, 14, 9, 0 }, { 4, 5, 14, 11, 0 }, { 0, 0, 0, 0, 0 } };                                                                 // library spa gallery
 static const u8 wallc[10][3] = { { 226, 214, 190 }, { 176, 96, 76 }, { 236, 234, 226 }, { 214, 190, 150 }, { 160, 160, 164 },
                                  { 180, 200, 214 }, { 186, 206, 170 }, { 226, 180, 180 }, { 120, 140, 160 }, { 150, 120, 96 } };
-static const u8 roofc[4][3] = { { 150, 60, 50 }, { 70, 80, 110 }, { 90, 70, 60 }, { 60, 110, 70 } };
-void far_new_world(void) {
+COLD void far_new_world(void) {
     nfb = 0; nfbc = 0;
     int ns = bm_nset();
     for (int i = 0; i < ns && i < 64; i++) {
@@ -225,31 +217,28 @@ void far_new_world(void) {
         for (int by = s->y - s->r; by <= s->y + s->r; by++) for (int bx = s->x - s->r; bx <= s->x + s->r; bx++) {
             int dx = bx - s->x, dy = by - s->y; if (dx * dx + dy * dy > s->r * s->r) continue;
             BInfo b; bm_block(bx, by, &b);
-            if (b.set != i || b.lot >= LOT_N || !has_bld[b.lot] || nfb >= FB_MAX) continue;
+            u8 ft[5]; LotPlan pl;
+            if (b.set != i || nfb >= FB_MAX || !bm_lot_foot(bx, by, &b, ft, &pl)) continue;   // (what stands on the lot: the walls the world builds, a home's from the town plan, a place turned over when it faces north)
             FB *f = &fb[nfb++];
-            f->bx = bx; f->by = by; f->lot = b.lot; fb_sto[f - fb] = (u8)bm_storeys(&b);
-            memcpy(fb_ft[f - fb], foot[b.lot], 4);
-            if (bm_gen >= 7) {                                       // the town plan: the body of a home (a terrace or an L with its second half), a place turned over when it faces north
-                LotPlan pl; bm_lot_plan(bx, by, &b, &pl); u8 *ft = fb_ft[f - fb];
-                if (pl.type) { ft[0] = pl.x0; ft[1] = pl.y0; ft[2] = pl.x1; ft[3] = pl.y1;
-                    if (pl.wx1) { if (pl.wx0 < ft[0]) ft[0] = pl.wx0; if (pl.wx1 > ft[2]) ft[2] = pl.wx1; if (pl.type == HT_TERRACE) { if (pl.wy0 < ft[1]) ft[1] = pl.wy0; if (pl.wy1 > ft[3]) ft[3] = pl.wy1; } } }
-                else if (pl.face == LF_NORTH && !(b.road & BR_MEGA)) { u8 a = (u8)(22 - ft[3]), c = (u8)(22 - ft[1]); ft[1] = a; ft[3] = c; }
-            }
+            f->bx = bx; f->by = by; f->lot = b.lot; FT_PUT(fb_ft[f - fb], ft);
+            u8 sty, rcol, pit; world_roof_of(bx, by, &b, ft, &pl, &sty, &rcol, &pit);   // (the world's own roof rule: its form and colour)
+            fb_sto[f - fb] = (u8)(MIN(bm_storeys(&b), 7) | sty << 3 | rcol << 5);
             f->col = b.lot == LOT_TOWER ? 8 : (b.h >> 20) % 8u;
-            f->pad = (b.h >> 9) & 3;
+            if (ft[4] && bm_gen >= 7 && b.set != 255) f->col = 10 + (pl.pal * 2 + pl.wall) % 6;   // (a plan home: its neighbourhood's two wall materials)
+            f->pad = pit == 2;
         }
         fb_hi[i] = (u16)nfb;
         // in cell order (a cell's buildings together: the view takes or leaves a whole cell at once)
         for (int a = fb_lo[i] + 1; a < nfb; a++) {
-            FB t = fb[a]; u8 ts = fb_sto[a], tf[4]; memcpy(tf, fb_ft[a], 4); u32 kt = ((u32)(t.by >> 2) << 10) | (t.bx >> 2); int b = a - 1;
-            while (b >= fb_lo[i] && (((u32)(fb[b].by >> 2) << 10) | (fb[b].bx >> 2)) > kt) { fb[b + 1] = fb[b]; fb_sto[b + 1] = fb_sto[b]; memcpy(fb_ft[b + 1], fb_ft[b], 4); b--; }
-            fb[b + 1] = t; fb_sto[b + 1] = ts; memcpy(fb_ft[b + 1], tf, 4);
+            FB t = fb[a]; u8 ts = fb_sto[a], tf[3]; memcpy(tf, fb_ft[a], 3); u32 kt = ((u32)(t.by >> 2) << 10) | (t.bx >> 2); int b = a - 1;
+            while (b >= fb_lo[i] && (((u32)(fb[b].by >> 2) << 10) | (fb[b].bx >> 2)) > kt) { fb[b + 1] = fb[b]; fb_sto[b + 1] = fb_sto[b]; memcpy(fb_ft[b + 1], fb_ft[b], 3); b--; }
+            fb[b + 1] = t; fb_sto[b + 1] = ts; memcpy(fb_ft[b + 1], tf, 3);
         }
         fbs_lo[i] = (u16)nfbc;
         for (int a = fb_lo[i]; a < nfb; ) {
             int cx = fb[a].bx >> 2, cy = fb[a].by >> 2, b = a;
             while (b < nfb && (fb[b].bx >> 2) == cx && (fb[b].by >> 2) == cy) b++;
-            if (nfbc < FBC_MAX) { int mx_ = 0; for (int q = a; q < b; q++) if (fb_sto[q] > mx_) mx_ = fb_sto[q];
+            if (nfbc < FBC_MAX) { int mx_ = 0; for (int q = a; q < b; q++) if ((fb_sto[q] & 7) > mx_) mx_ = fb_sto[q] & 7;
                 fbc_cx[nfbc] = (u16)cx; fbc_cy[nfbc] = (u16)cy; fbc_lo[nfbc] = (u16)a; fbc_hi[nfbc] = (u16)b; fbc_sto[nfbc] = (u8)mx_; nfbc++; }
             a = b;
         }
@@ -577,7 +566,9 @@ static void far_card(int x0, int z0, int x1, int z1, int top, const u8 *wc) {   
     int zw = ((o[0].z + o[3].z) >> 1) << 4;
     face_f4(&o[0], &o[1], &o[2], &o[3], lit(wc, L, haze_f(zw)), far_slot(zw));
 }
-static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int pitched, const u8 *rc, int windows) {
+// rs: the roof: 0 flat, 1 hip (four slopes up to a point), 2 gable with its ridge along the longer side, 3 gable with its ridge north to south (turned to the street); pit: 1 or 2 (how steep)
+static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int rs, int pit, const u8 *rc, int windows) {
+    int pitched = rs != 0;
     int top = -(sto * WALL_FULL + (pitched ? 0 : 40));
     int ex = feye.vx, ey = feye.vy + far_lift, ez = feye.vz;
     { int dx = ABS((x0 + x1) / 2 - ex), dz = ABS((z0 + z1) / 2 - ez);
@@ -600,18 +591,30 @@ static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int p
     if (ex > x1) WALL(7, 5, 3, 1, Le, widz)                     // east: SE NE
     #undef WALL
     if (ey >= top) return;                                       // (looking up at it: no roof to see)
-    if (pitched) {                                               // four slopes up to a point
-        SVECTOR ap SVEC_ALIGN; ap.vx = sc16((x0 + x1) / 2 - ex); ap.vz = sc16((z0 + z1) / 2 - ez); ap.vy = sc16(top - MIN(x1 - x0, z0 - z1) / 3 - ey); ap.pad = 0;
-        XV A; gfx_xform(&ap, &A, 1); if (!xv_good(&A)) return;
+    if (pitched) {                                               // the roof: a hip (four slopes up to a point, the ridge only a point) or a gable (two slopes up to a ridge, the walls at its ends carried up to it)
+        int hip = rs == 1, alongx = rs == 2 && z0 - z1 <= x1 - x0, rise = world_roof_rise(pit, MIN(x1 - x0, z0 - z1) / 2);
+        SVECTOR rp[2] SVEC_ALIGN; XV R[2];
+        int rx0 = alongx || hip ? x0 : (x0 + x1) / 2, rz0 = alongx || hip ? (z0 + z1) / 2 : z0, rx1 = alongx || hip ? x1 : (x0 + x1) / 2, rz1 = alongx || hip ? (z0 + z1) / 2 : z1;
+        if (hip) { rx0 = rx1 = (x0 + x1) / 2; }
+        rp[0].vx = sc16(rx0 - ex); rp[0].vz = sc16(rz0 - ez); rp[1].vx = sc16(rx1 - ex); rp[1].vz = sc16(rz1 - ez);
+        rp[0].vy = rp[1].vy = sc16(top - rise - ey); rp[0].pad = rp[1].pad = 0;
+        gfx_xform(rp, R, 2); if (!xv_good(&R[0]) || !xv_good(&R[1])) return;
         const XV *ring[4] = { &o[4], &o[5], &o[7], &o[6] };     // NW NE SE SW
         static const u8 sh[4] = { 6, 7, 8, 7 };
-        for (int k = 0; k < 4; k++) {
-            const XV *p0 = ring[k], *p1 = ring[(k + 1) & 3];
-            if ((p1->x - p0->x) * (A.y - p0->y) - (A.x - p0->x) * (p1->y - p0->y) <= 0) continue;   // facing away
-            u32 col = lit(rc, Lroof * sh[k] / 7, hf);
-            u32 *p = pk(4); if (!p) return;
-            p[1] = 0x20000000u | col; p[2] = FXY(p0->x, p0->y); p[3] = FXY(p1->x, p1->y); p[4] = FXY(A.x, A.y);
-            lk(p, 4, slot);
+        for (int k = 0; k < 4; k++) {                           // the north, east, south, west sides: a slope (a gable's long ones) or a triangle (a hip's, a gable's end)
+            const XV *p0 = ring[k], *p1 = ring[(k + 1) & 3]; int slope = !hip && (alongx ? !(k & 1) : (k & 1));
+            XV M; M.x = (R[0].x + R[1].x) / 2; M.y = (R[0].y + R[1].y) / 2;
+            const XV *ap = slope ? &M : (k == 0 || k == 3 ? &R[0] : &R[1]);
+            if ((p1->x - p0->x) * (ap->y - p0->y) - (ap->x - p0->x) * (p1->y - p0->y) <= 0) continue;   // facing away
+            if (slope) {
+                int sw = alongx ? k == 2 : k == 3;   // (the base edge and the ridge, both running the same way)
+                face_f4(sw ? p1 : p0, sw ? p0 : p1, &R[0], &R[1], lit(rc, Lroof * sh[k] / 7, hf), slot);
+            } else {
+                u32 col = hip ? lit(rc, Lroof * sh[k] / 7, hf) : lit(wc, k == 0 ? Ln : k == 2 ? Ls : k == 1 ? Le : Lw, hf);
+                u32 *p = pk(4); if (!p) return;
+                p[1] = 0x20000000u | col; p[2] = FXY(p0->x, p0->y); p[3] = FXY(p1->x, p1->y); p[4] = FXY(ap->x, ap->y);
+                lk(p, 4, slot);
+            }
         }
     } else {
         static const u8 flat[3] = { 120, 118, 114 };
@@ -633,16 +636,18 @@ static void far_dot(int x0, int z0, int x1, int z1, int sto, const u8 *wc) {   /
     lk(p, 5, far_slot(zw));
 }
 static void far_building(const FB *f, int x0, int z0, int x1, int z1) {
-    int pitched = foot[f->lot][4] && FSTO(f) <= 2;
+    int rs = FROOF(f) == 2 || FSTO(f) > 2 ? 0 : FROOF(f) == 0 ? 1 : FROOF(f) == 1 ? 2 : 3;   // (world_roof_of's flat, hip, gable, front gable)
+    u8 wcol[3]; const u8 *wc = wallc[f->col % 10], *rcol = world_roof_rgb(fb_sto[f - fb] >> 5);
+    if (f->col >= 10) { world_plan_wall_rgb(f->col - 10, wcol); wc = wcol; }
     far_lift = world_gh_lot((x0 + x1) / 2, (z0 + z1) / 2);
-    far_box(x0, z0, x1, z1, FSTO(f), wallc[f->col % 10], pitched, roofc[f->pad & 3], f->lot != LOT_HOUSE && f->lot != LOT_COTTAGE);
+    far_box(x0, z0, x1, z1, FSTO(f), wc, rs, 1 + f->pad, rcol, f->lot != LOT_HOUSE && f->lot != LOT_COTTAGE);
     far_lift = 0;
 }
 // the map's own buildings past the detail (world.c's skyline), drawn the same way
-void far_box_world(int x0, int z0, int x1, int z1, int sto, u16 wall15, int pitched, u16 roof15) {
+void far_box_world(int x0, int z0, int x1, int z1, int sto, u16 wall15, int rs, int pit, u16 roof15) {
     u8 wc[3] = { (u8)R8(wall15), (u8)G8(wall15), (u8)B8(wall15) }, rc[3] = { (u8)R8(roof15), (u8)G8(roof15), (u8)B8(roof15) };
     far_lift = world_gh_lot((x0 + x1) / 2, (z0 + z1) / 2);
-    far_box(x0, z0, x1, z1, sto, wc, pitched && sto <= 2, rc, sto >= 2);
+    far_box(x0, z0, x1, z1, sto, wc, sto <= 2 ? rs : 0, pit, rc, sto >= 2);
     far_lift = 0;
 }
 static void draw_buildings(void) {
@@ -660,7 +665,7 @@ static void draw_buildings(void) {
           for (int k = fbc_lo[c]; k < fbc_hi[c]; k++) {
             const FB *f = &fb[k];
             if (f->bx >= world_wbx && f->bx < world_wbx + MW / BM_BLK && f->by >= world_wby && f->by < world_wby + MH / BM_BLK) continue;   // (the map draws its own)
-            const u8 *ft = fb_ft[k];
+            u8 ft[4]; FT_GET(ft, fb_ft[k]);
             int tx0 = f->bx * BM_BLK + ft[0] - fwx0, ty0 = f->by * BM_BLK + ft[1] - fwy0, tx1 = f->bx * BM_BLK + ft[2] - fwx0, ty1 = f->by * BM_BLK + ft[3] - fwy0;
             int x0 = tx0 * TILE, x1 = tx1 * TILE, z0 = -ty0 * TILE, z1 = -ty1 * TILE;
             int cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;

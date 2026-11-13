@@ -577,6 +577,51 @@ void bm_lot_plan(int bx, int by, const BInfo *b, LotPlan *p) {
     if (ty == HT_TERRACE) p->d2x = (u8)(BM_LOT0 + (mir ? M - 9 : 9));
     if (dv >= 0) p->drv = (u8)(BM_LOT0 + (mir ? M - dv - 1 : dv));
 }
+// ---- the building on a lot, for every map, model and far view (each lot kind's walls as its generator in src/lots.inc builds them: lot tiles x0 y0 x1 y1, facing south) ----
+static const u8 lfoot[LOT_N][4] = {
+    [LOT_SHOP] = { 1, 1, 11, 9 }, [LOT_DINER] = { 1, 2, 11, 9 }, [LOT_GYM] = { 1, 2, 11, 9 }, [LOT_OFFICE] = { 1, 2, 11, 9 }, [LOT_INN] = { 0, 1, 12, 11 },
+    [LOT_SCHOOL] = { 0, 1, 12, 8 }, [LOT_ARCADE] = { 1, 2, 11, 9 }, [LOT_TOWER] = { 1, 1, 11, 10 }, [LOT_HOTEL] = { 0, 0, 12, 12 }, [LOT_APART] = { 0, 1, 12, 10 },
+    [LOT_CAFE] = { 1, 2, 11, 9 }, [LOT_BAR] = { 1, 2, 11, 9 }, [LOT_CINEMA] = { 0, 0, 12, 11 }, [LOT_SALON] = { 1, 2, 11, 9 }, [LOT_RESTAURANT] = { 0, 1, 12, 10 },
+    [LOT_CLINIC] = { 1, 1, 11, 10 }, [LOT_LIBRARY] = { 0, 1, 12, 10 }, [LOT_SPA] = { 1, 1, 11, 10 }, [LOT_GALLERY] = { 1, 2, 11, 9 }, [LOT_GAS] = { 1, 1, 11, 5 },
+    [LOT_CONV] = { 2, 3, 10, 9 }, [LOT_FARM] = { 8, 1, 12, 6 }, [LOT_SPACE] = { 1, 1, 11, 6 }, [LOT_OBS] = { 1, 2, 11, 9 } };
+COLD int bm_lot_home(int bx, int by, const BInfo *b, LotPlan *p) {
+    if (b->lot != LOT_HOUSE && b->lot != LOT_COTTAGE && b->lot != LOT_TOWN && b->lot != LOT_TWO) return 0;
+    if (bm_gen >= 7 && b->set != 255 && b->terrain != BT_SEA) { bm_lot_plan(bx, by, b, p); return p->type != 0; }
+    unsigned h = b->h; int lx = BM_LOT0, ly = BM_LOT0;   // (an older world's homes, and any home outside a planned town: city_house, city_cottage, city_town, city_two)
+    memset(p, 0, sizeof *p); p->face = LF_SOUTH;
+    if (b->lot == LOT_HOUSE) {
+        int grand = ((h >> 24) & 3) == 0, sz = (int)((h >> 26) & 15);
+        int w = grand ? (sz == 0 ? 13 : sz < 5 ? 11 : sz < 9 ? 12 : 13) : 9 + (int)((h >> 3) % 4), hh = grand ? (sz == 0 ? 12 : sz < 5 ? 10 : 11) : 8 + (int)((h >> 5) % 3);
+        int hx = lx + (13 - w) / 2, hy = grand ? ly : ly + 1 + (int)((h >> 7) % 2);
+        if (!grand && hy + hh - 1 > ly + 10) hy = ly + 11 - hh;
+        p->type = grand ? HT_MANSION : HT_BOX; p->x0 = (u8)hx; p->y0 = (u8)hy; p->x1 = (u8)(hx + w - 1); p->y1 = (u8)(hy + hh - 1);
+        p->dx = (u8)(grand ? hx + w / 2 + (int)((h >> 20) % 3u) - 1 : hx + 2 + (int)((h >> 20) % (unsigned)(w - 4)));
+    } else if (b->lot == LOT_COTTAGE) {
+        int w = 8 + (int)((h >> 4) & 1), hh = 7 + (int)((h >> 5) & 1), hx = lx + 2 + (int)((h >> 6) & 1), hy = ly + 2 + (int)((h >> 7) & 1);
+        if ((h >> 8) & 1) hy = ly + 11 - hh;
+        p->type = HT_COMPACT; p->x0 = (u8)hx; p->y0 = (u8)hy; p->x1 = (u8)(hx + w - 1); p->y1 = (u8)(hy + hh - 1); p->dx = (u8)(hx + w / 2);
+    } else if (b->lot == LOT_TOWN) {
+        p->type = HT_TERRACE; p->x0 = (u8)lx; p->y0 = (u8)(ly + 1); p->x1 = (u8)(lx + 6); p->y1 = (u8)(ly + 9);
+        p->wx0 = (u8)(lx + 6); p->wy0 = p->y0; p->wx1 = (u8)(lx + 12); p->wy1 = p->y1; p->dx = (u8)(lx + 3); p->d2x = (u8)(lx + 9);
+    } else { p->type = HT_TWO; p->x0 = (u8)(lx + 2); p->y0 = (u8)(ly + 1); p->x1 = (u8)(lx + 10); p->y1 = (u8)(ly + 8); p->dx = (u8)(lx + 6); }
+    p->dy = p->y1; p->yard = (u8)(BM_BLK - 1 - p->y1); p->roof = (u8)((h >> 9) % 3); p->pal = 255;   // (pal 255: no neighbourhood's colours)
+    return 1;
+}
+COLD int bm_lot_foot(int bx, int by, const BInfo *b, u8 *f, LotPlan *pp) {
+    LotPlan p0, *p = pp ? pp : &p0; f[4] = 0;
+    if (bm_lot_home(bx, by, b, p)) {
+        f[0] = p->x0; f[1] = p->y0; f[2] = p->x1; f[3] = p->y1; f[4] = 1;
+        if (p->wx1) { if (p->wx0 < f[0]) f[0] = p->wx0; if (p->wx1 > f[2]) f[2] = p->wx1; if (p->type == HT_TERRACE) { if (p->wy0 < f[1]) f[1] = p->wy0; if (p->wy1 > f[3]) f[3] = p->wy1; } }
+        return 1;
+    }
+    int g7 = bm_gen >= 7 && b->set != 255 && b->terrain != BT_SEA;
+    if (g7) bm_lot_plan(bx, by, b, p); else { memset(p, 0, sizeof *p); p->face = LF_SOUTH; }
+    if (b->lot >= LOT_N || !lfoot[b->lot][2]) return 0;
+    if (g7 && b->lot == LOT_FARM && p->face == LF_NONE) return 0;   // (a field: crops and hedgerows, no barn)
+    for (int i = 0; i < 4; i++) f[i] = (u8)(lfoot[b->lot][i] + BM_LOT0);
+    if (g7 && p->face == LF_NORTH && !(b->road & BR_MEGA)) { u8 a = (u8)(2 * BM_LOT0 + 12 - f[3]), c = (u8)(2 * BM_LOT0 + 12 - f[1]); f[1] = a; f[3] = c; }   // (a lot that faces north is built looking south, then turned over: rows 5 .. 17)
+    return 1;
+}
 int bm_storeys(const BInfo *b) {
     if (b->lot == LOT_TWO) return 2;
     if (b->lot == LOT_APART) return b->set != 255 && sets[b->set].kind == ST_CITY && (b->h >> 27) < 20 ? 3 + (int)((b->h >> 12) % (bm_gen >= 4 ? 4u : 3u)) : 2 + (int)((b->h >> 12) & 1);
