@@ -191,7 +191,7 @@ static void rooms_dump(int lot, int bx, int by) {
 }
 int main(int argc, char **argv) {
     if (argc < 3) { fprintf(stderr, "usage: lotsim dump|png|audit SEED ...\n"); return 1; }
-    unsigned seed = (unsigned)strtoul(argv[2], 0, 0); bm_gen = getenv("GEN") ? atoi(getenv("GEN")) : 6; bm_dials_default(); bm_new(seed); wsalt = seed;
+    unsigned seed = (unsigned)strtoul(argv[2], 0, 0); bm_gen = getenv("GEN") ? atoi(getenv("GEN")) : 7; bm_dials_default(); bm_new(seed); wsalt = seed;
     if (!strcmp(argv[1], "sets")) { for (int i = 0; i < bm_nset(); i++) { const Settle *t = bm_set(i); printf("%d kind %d at %d %d r %d\n", i, t->kind, t->x, t->y, t->r); } return 0; }
     if (!strcmp(argv[1], "kinds")) { int i = atoi(argv[3]); const Settle *t = bm_set(i); for (int by = t->y - t->r; by <= t->y + t->r; by++) for (int bx = t->x - t->r; bx <= t->x + t->r; bx++) { BInfo b; bm_block(bx, by, &b); if (b.set != i) continue; LotPlan pl; bm_lot_plan(bx, by, &b, &pl); if (pl.type) printf("%d %d nb %d lot %s type %d face %d drv %d\n", bx, by, bm_nb(bx, by), bm_lot_name(b.lot), pl.type, pl.face, pl.drv); } return 0; }
     if (!strcmp(argv[1], "dense")) { int i = atoi(argv[3]), want = atoi(argv[4]); const Settle *t = bm_set(i); for (int by = t->y - t->r + 1; by < t->y + t->r; by++) for (int bx = t->x - t->r + 1; bx < t->x + t->r; bx++) { int n = 0, sto = 0; for (int j = -1; j <= 1; j++) for (int k = -1; k <= 1; k++) { BInfo b; bm_block(bx + k, by + j, &b); if (b.set != i) { n = -99; continue; } if (b.lot >= LOT_HOUSE && b.lot <= LOT_TWO) { n++; if (b.lot == LOT_TWO) sto++; } } if (n == want) printf("%d %d homes %d two-storey %d\n", bx, by, n, sto); } return 0; }
@@ -241,7 +241,7 @@ int main(int argc, char **argv) {
     }
     if (!strcmp(argv[1], "at")) {       // lotsim at SEED BX BY: that block as text, storey by storey, each beside what the audit could walk to (r), could not (u: floor, i: indoors), and its verdict
         int bx = atoi(argv[3]), by = atoi(argv[4]); int lot = make_block(bx, by, 0); int lx = BM_BLK + BM_LOT0, ly = BM_BLK + BM_LOT0;
-        lot_audit(lx, ly, lot); printf("block %d,%d  %s\n", bx, by, lotname(lot)); audit_line(stdout, "this lot", &lot_aud);
+        lot_audit(lx, ly, lot); { BInfo bb_; bm_block(bx, by, &bb_); printf("terrain %d set %d\n", bb_.terrain, bb_.set); } printf("block %d,%d  %s\n", bx, by, lotname(lot)); audit_line(stdout, "this lot", &lot_aud);
         for (int l = 0; l < NUP; l++) { char (*m)[MW + 1] = l ? (lv_get(l - 1) ? lv_get(l - 1)->map : 0) : lifeMap; if (!m) continue;
             u8 (*fl)[MW] = l ? lv_get(l - 1)->fl : floorMap, (*wp)[MW] = l ? lv_get(l - 1)->wp : wallMap;
             au_level(l, m, fl, wp, l == 0 ? 0 : l == 1 ? lifeMap : lv_get(l - 2)->map, lx, ly, lx + 12, ly + 12, lot);
