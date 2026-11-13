@@ -722,7 +722,7 @@ static int far_solid(int wx, int wy) {   // a cell outside the plot: open street
 }
 static int z_put(int x, int y, int ch, int rot);
 static int gen_two;   // (D36) the lot is a TWO-STOREY: the house gets its loft
-static void gen_house(void) {   // a roomy starter home from the lot's seed: bedroom + bathroom at the back, living room + kitchen/dining at the front, real doors between, furnished with space to walk
+static void gen_house(void) {   // a roomy starter home from the lot's seed: bedroom + bathroom at the back, living room + kitchen/dining at the front, real doors between, each room furnished as a room (groups, not rows)
     u32 h = lot_seed * 2654435761u + 12345; int mir = (h >> 3) & 1, w = 11 + ((h >> 5) & 1), d = 9, x0 = ((h >> 7) & 1), y0 = 1, x1 = x0 + w, y1 = y0 + d;
     int ym = y0 + 4, xm = x0 + 7, xk = x0 + 7, xd = x0 + 3; u8 ow = (u8)(1 + ((h >> 9) & 3)), iw = 4;
     #define MC(xx) (mir ? x0 + x1 - 1 - (xx) : (xx))
@@ -737,17 +737,26 @@ static void gen_house(void) {   // a roomy starter home from the lot's seed: bed
     hwl[ym][MC(x0 + 2)] = 5; hwl[ym][MC(xm + 1)] = 5;                       // bedroom door, bathroom door
     hwl[y1][MC(xd)] = 5;                                                    // the front door
     #define PUT(xx, yy, cc, ii, rr) do { objs[nobj].x = (u8)MC(xx); objs[nobj].y = (u8)(yy); objs[nobj].c = (cc); objs[nobj].i = (ii); objs[nobj].rot = (u8)(mir && ((rr) & 1) ? (rr) ^ 2 : (rr)); nobj++; } while (0)
-    PUT(x0, y0, 4, 0, 0); PUT(x0 + 1, y0, 3, 0, 0); PUT(xm - 1, y0, 1, 1, 0); PUT(x0 + 3, y0 + 2, 3, 1, 0); PUT(xm - 1, ym - 1, 3, 2, 0); PUT(x0, ym - 1, 3, 3, 0);   // bed, lamp, desk+computer, rug, plant, statue
-    PUT(xm, y0, 4, 2, 0); PUT(xm + 1, y0, 4, 3, 0); PUT(x1 - 1, y0, 4, 1, 0); PUT(x1 - 1, ym - 1, 3, 2, 0);                                                        // toilet, sink, bathtub, plant
-    PUT(x0, ym + 2, 2, 0, 1); PUT(x0 + 3, ym + 2, 0, 2, 3); PUT(x0 + 2, ym + 2, 1, 2, 0); PUT(x0 + 2, y1 - 1, 0, 1, 2); PUT(x0, y1 - 1, 3, 2, 0); PUT(x0, ym, 3, 0, 0); PUT(x0 + 5, y1 - 1, 3, 1, 0);   // tv, sofa, coffee table, armchair, plant, lamp, rug
-    PUT(xk, ym, 2, 3, 0); PUT(xk + 1, ym, 1, 3, 0); PUT(xk + 2, ym, 1, 3, 0); PUT(xk + 2, ym + 3, 1, 0, 0); PUT(xk + 1, ym + 3, 0, 0, 1); PUT(xk + 3, ym + 3, 0, 0, 3);   // fridge, counters, dining table and two chairs
-    PUT(x0 + 5, y0 + 3, 2, 2, 1);                                           // a stereo
+    // (D78) ROOMS, NOT ROWS (docs/HOUSING_DESIGN.md 4b, as the PS1's src/lots.inc): each room is built from groups round what it is for, every piece turned the way it is used
+    #define PI(xx, yy, id, rr) PUT(xx, yy, (id) >> 2, (id) & 3, rr)
+    // the bedroom: the bed's head on the back wall, a nightstand either side, a rug at its foot; the wardrobe on the side wall; the desk, its chair and the computer on the other; a plant by the door
+    PI(x0 + 3, y0, 100, 0); PI(x0 + 4, y0, 16, 0); PI(x0 + 5, y0, 100, 0); PI(x0 + 4, y0 + 1, 13, 0);
+    PI(x0, y0 + 1, 101, 1); PI(x0, y0, 12, 0);
+    PI(xm - 1, y0 + 2, 5, 3); PI(xm - 2, y0 + 2, 0, 1); PI(xm - 1, y0 + 3, 9, 3); PI(x0, ym - 1, 14, 0);
+    // the bathroom: the bath and the toilet down the far wall, the sink nearest the door with the mirror by it
+    PI(x1 - 1, y0, 17, 3); PI(x1 - 1, y0 + 2, 18, 3); PI(xm, y0 + 2, 19, 1); PI(xm, y0 + 1, 33, 1); PI(x1 - 1, ym - 1, 14, 0);
+    // the living room: the telly on the side wall (the stereo beside it, a lamp in the corner), a rug, the coffee table, the sofa facing it, an armchair at a right angle; books and a plant on the back wall
+    PI(x0, ym + 2, 8, 1); PI(x0, ym + 3, 10, 1); PI(x0, y1 - 1, 12, 0); PI(x0 + 1, ym + 2, 13, 0); PI(x0 + 2, ym + 2, 6, 0); PI(x0 + 3, ym + 2, 2, 3); PI(x0 + 3, ym + 1, 2, 3); PI(x0 + 2, ym + 3, 1, 2);
+    PI(x0 + 5, ym, 22, 0); PI(x0 + 6, ym, 14, 0);
+    // the kitchen: one run down the end wall (fridge, counter, stove, sink), the tiles before it clear; the dining table beside it, a chair on each side (the bathroom's door stays clear)
+    PI(x1 - 1, ym, 11, 3); PI(x1 - 1, ym + 1, 7, 3); PI(x1 - 1, ym + 2, 28, 3); PI(x1 - 1, ym + 3, 30, 3);
+    PI(xk + 1, ym + 3, 4, 0); PI(xk + 1, ym + 2, 0, 0); PI(xk + 1, ym + 4, 0, 2); PI(xk, ym + 3, 0, 1);
     if (gen_two) {   // the loft: a floor over the back rooms, walls round it, stairs up from the living room (they rise to the back), a bed, a lamp and a rug up there
         for (int yy = y0; yy < ym; yy++) for (int xx = x0; xx < x1; xx++) uflr[0][yy][MC(xx)] = 2;
         for (int xx = x0; xx < x1; xx++) { uhwl[0][y0][MC(xx)] = ow; uhwl[0][ym][MC(xx)] = ow; } for (int yy = y0; yy < ym; yy++) { uvwl[0][yy][ME(x0)] = ow; uvwl[0][yy][ME(x1)] = ow; }
         uhwl[0][ym][MC(x0 + 5)] = 0;                                         // (the top of the stairs: open)
         PUT(x0 + 5, ym, ID_STAIRS >> 2, ID_STAIRS & 3, 0);                  // the stairs (their landing: the loft's cell behind them)
-        PUT(x0 + 1, y0, 4, 0, 4); PUT(x0, y0, 3, 0, 4); PUT(x0 + 3, y0 + 1, 3, 1, 4); PUT(x1 - 2, y0, 2, 1, 4);   // bed, lamp, rug, computer (rot | storey 1 << 2)
+        PI(x0 + 1, y0, 16, 4); PI(x0, y0, 100, 4); PI(x0 + 1, y0 + 1, 13, 4); PI(x1 - 3, y0, 5, 4); PI(x1 - 2, y0, 9, 4); PI(x1 - 3, y0 + 1, 0, 2 | 4);   // the bed and its nightstand, a rug at its foot; the desk, its chair and the computer (rot | storey 1 << 2)
         roof_st = 2; }
     {   // (D68) the yard, as the PS1's yard(): the path from the front door out through a gate in the fence, planters either side, trees in a pair, a lamp, the mailbox and a bin
         for (int y = y1; y <= 12; y++) flr[y][MC(xd)] = 2;
@@ -756,6 +765,7 @@ static void gen_house(void) {   // a roomy starter home from the lot's seed: bed
         z_put(MC(x0 + 1), y1 + 1, '3', 0); z_put(MC(x1 - 2), y1 + 1, '3', 0); z_put(MC(xd - 4), y1, 'p', 0); z_put(MC(xd + 4), y1, 'p', 0);
         z_put(MC(xd + 2), y1 + 2, (char)0xE0, 0); z_put(MC(xd - 2), y1 + 2, 'Y', 0); }
     pcx = MC(xd); pcy = y1 + 1; door_cx = MC(xd); door_cy = y1; { static const int sp[3] = { 1, 4, 5 }; for (int k = 0; k < 3; k++) { spawn_x[k] = MC(x0 + sp[k]); spawn_y[k] = y1 - 3; } }
+    #undef PI
     #undef PUT
     #undef FL
 }

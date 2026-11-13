@@ -102,6 +102,51 @@ Furniture used to be strung along the walls in runs. Each room is now built from
 - Each room has one floor and one wallpaper. Wet rooms (kitchen, bath) get tile.
 - A big front room is split into zones (living | dining | kitchen) in that order from the door side to the garage side, not mixed.
 
+## 4c. What was built (rooms round 7, `src/lots.inc`)
+
+Pictures: `docs/rooms7_before.png`, `docs/rooms7_after.png` (the same 12 homes, drawn top-down by `ports/host/lotsim/rooms.py`; the red wedge is the side a thing faces).
+In the game: `docs/rooms7_ps1_*.png`, `docs/rooms7_dc_*.png`, DS `docs/ds_shots/rooms7_*.png`. Numbers: `docs/lots_audit_rooms7.txt`.
+
+**What was wrong before** (seen in the "before" sheet):
+- A bedroom was one row on the back wall: bed, dresser, toy box, bunk. The rest of the room was empty.
+- A front room had the sofa on one wall and the telly on the far wall, 6 to 8 tiles away. The fridge and a counter stood apart between two doors.
+- Most homes had no dining table and no stove. Pianos, guitars and easels were dotted along the front wall.
+- A one-room home was one ring: bed, dresser, shower, toilet, fridge, all side by side. The toilet stood in the open room.
+- Nothing was turned on purpose: a chair or a sofa faced where chance put it.
+
+**How a room is made now:**
+- A **group** is a few things that belong together, drawn against a wall, each piece turned the way it is used, with the tiles it must keep clear.
+- A **recipe** lists the groups a kind of room gets, and the walls to try for each, in order. Groups and recipes are small tables, not code.
+- A group is only put where it fits, where the room stays in one piece, and where everything in the room can still be reached. If not, the next wall is tried, then a smaller group.
+- Groups go down in two passes: first what a group must have, later its extras (second sofa, armchair, nightstand, lamp). So an extra never takes the place of a need.
+- The room is read from its door. The living end is the bigger side of the door, the kitchen end the smaller side.
+
+**Per room:**
+- **Living group**: telly on a wall, a rug, a coffee table, the sofa facing the telly 2 to 3 tiles away. Extras: second sofa, an armchair at a right angle, hifi or books or a fire beside the telly, a lamp or plant in the corner. Small rooms: telly, rug, sofa.
+- **Dining set**: table with a chair on three sides and a way round it; two tables and four chairs for a household of four or more. Small rooms: a small table on a wall with two chairs, or one chair.
+- **Kitchen run**: fridge, stove, sink side by side on one wall, clear tiles in front. Extras: microwave or coffee maker, a counter. The run is at the kitchen end, the dining set beside it.
+- **Bedroom**: bed head on the wall opposite the door (or the next free wall), a nightstand each side, a rug at the foot, a dresser or wardrobe on another wall. Cot beside the parents. Bunks and a toy box for kids, a desk and chair; a desk with a computer for a teen.
+- **Bathroom**: toilet and shower down the wall away from the door, sink and mirror nearest the door, tiled floor. In a divided house it is a narrow room (2 wide) at one end of the back row, so the bedrooms get the width.
+- **One-room homes** (cottage, townhouse, two-storey, flat): a bathroom is walled off with its own door in a back corner (right across a narrow flat). Bed in the alcove beside it, kitchen below the bathroom, living group at the other side.
+- **Study**: desk, chair, computer, bookcases, an armchair with a lamp. **Games room / gym** (mansions): as before, spread on the walls.
+- **Inn and hotel rooms**: bed with two nightstands and a rug, a wardrobe, the telly.
+- **Mansion upstairs**: same recipes (bedroom, study or games room, bathroom, a lounge with the living group).
+- **DS** (`gen_house`, ROM d78): the same rules laid out by hand for its one house plan. A d77 save loads in d78.
+
+**What every home has now** (world seed 1, 647 lived-in homes; before -> after):
+- Homes with no shower: 453 -> 0. No stove: 509 -> 0. No dining table: 611 -> 184. No bed, toilet, fridge: 0 -> 0.
+- Beds asked for by the households: 900 beds, 310 bunks, 81 cots. Before, 703 / 287 / 52 were placed (the rest were dropped when a wall was full). Now 968 / 308 / 81 (the extra beds are guest beds).
+- Hobby and fun things are about as many as before (piano, guitar, easel, chess, aquarium, computer). Fewer bookcases, hifis, dressers, lamps and plants: the rooms are fuller with the things above.
+
+**Limits:**
+- Flats are 3 and 4 tiles wide. A 3-wide flat with three sleepers has little room: 2 homes of 647 have no seat.
+- 184 homes have no dining table (small one-room homes).
+- No bathtubs and almost no counters now: there is rarely a free wall for them.
+- Desks are not put under windows. Zones are not split by floor colour.
+- An oak can stand inside a mansion's back room (the yard code plants it there; not part of this round).
+
+**Saves:** the save VERSION is unchanged. A home the player owns is stored tile by tile, so it keeps its rooms. Any other home is made fresh when you walk in, so in an old save it is furnished the new way.
+
 ## 5. One plan, every view
 
 `bm_lot_plan()` works out a lot's facing, house type, body, wing, door and driveway from the block alone.
