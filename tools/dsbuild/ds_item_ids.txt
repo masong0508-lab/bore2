@@ -24,7 +24,7 @@
 22 ds:22 Books
 23 ds:23 Rocker
 24 ds:24 Picket Fence
-25 ds:25 Street Lamp
+25 ds:25 Lamp Post
 26 ds:26 Hedge
 27 ds:27 Flower Bed
 28 ds:28 Stove

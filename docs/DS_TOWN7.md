@@ -29,3 +29,10 @@ docs/ds_shots/plan7_suburb_street.png, plan7_suburb_top.png, plan7_town_centre.p
 
 ## Left
 - Upper-storey (loft) audit; ds_oldsave.sh with a real d78 build; the lot picture for terrace and L shapes has not been looked at in the emulator.
+
+## D80
+- Room engine (ds_town7.h, h7_pl / h7_ok): things go in by what they are and how big the item table says, against a wall, turned the way they are used; every put keeps all free cells reachable from the front door and a free side for every thing, or is taken back. Strict audit (t7b, 11 checks) all 0 on 186 homes.
+- Roofs from the plan (plan_roof in main.c, the PS1's roof_region): hip for RF_HIP and mansions, gable otherwise, colour (pal + rcol * 3) % 6, pitch 170 for compact and ranch, 250 for the rest. Used in the lot, the Map picture and the far lots. Old (gen 3) towns keep the dice.
+- Lawn rule as the PS1's gen_block: in a gen 7 world a home (cottage .. two-storey) and a park are lawn even in a sandy town (live lot ground, far lots, Map picture).
+- ds_items.h regenerated from the PS1 item table (object scale: four poster 2 x 2, nightstand, wardrobe, clock, bunk heights).
+- Test hooks: -DDS_TOUR (+ -DDS_TOUR_ROOF to show roofs), -DDS_ACT_TEST (every item used by a sim: 170 used, 8 decor reached with no effect, 11 refused by age), -DDS_ACT_HOMES (every thing in every plan home reached from the front door); tools/dsemu/fuzz.py (random keys and touches, stall detector), lotdump.py.
