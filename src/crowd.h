@@ -15,6 +15,7 @@
 void crowd_init(void);            // after audio_init (takes over the voice blob's RAM)
 void crowd_reset(void);
 void crowd_flush(void);           // every sprite dropped (their VRAM was drawn over)
+void crowd_claim(void);           // (ovl.c: after the crowd_reset that makes room for an overlay: the packet buffers stay out of the arena until ovl_leave's crowd_reset)
 void *crowd_scratch(u32 *bytes);  // the arena as scratch, for a new life's setup (before crowd_reset)           // forget every stored model and sprite (a new life)
 void crowd_faces(int id, Bore *b);    // give person id a face texture slot: call BEFORE building them into b (look_build bakes into it)
 int  crowd_store(int id, const Bore *b);   // keep a compact copy of b's prepared model for id (0: no room)

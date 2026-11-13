@@ -1338,7 +1338,7 @@ void gotchi_draw(void) {
     curtain();
 #ifdef AUTO_GSEQ
     gfx_rect(14, 8, 3, 3, ((gseq_k + 1) & 31) * 8, (((gseq_k + 1) >> 5) & 31) * 8, 8, 0);
-    { static short gseq_pk[64]; int used = PACKET_LEN - gfx_prims_left(); if (gseq_k >= 0 && gseq_k < 64 && used > gseq_pk[gseq_k]) gseq_pk[gseq_k] = (short)used; (void)gseq_pk; }   /* (the packet bytes each step used: tools/ramsym.py gseq_pk) */
+    { static short gseq_pk[64]; int used = gfx_bytes_used(); if (gseq_k >= 0 && gseq_k < 64 && used > gseq_pk[gseq_k]) gseq_pk[gseq_k] = (short)used; (void)gseq_pk; }   /* (the packet bytes each step used: tools/ramsym.py gseq_pk) */
 #endif
 }
 #include "ovl.h"

@@ -21,13 +21,13 @@ const OvlHead *ovl_load(const char *file) {
     if (!ovl_keep_tab[0]) return 0;
     u32 n; int at = (strcmp(file, "GOTCHI.OVL") && strcmp(file, "CREATE.OVL")) ? OVL_AT : 0;   // (the toy and the creator need no realm land below them: they load at the start of the arena)
     u8 *base = (u8 *)crowd_scratch(&n) + at; int room = (int)n - at;
-    crowd_reset();                                           // (the crowd's models are let go: the code goes where they were)
+    crowd_reset(); crowd_claim();                            // (the crowd's models are let go: the code goes where they were; the packet buffers stay out of it)
     memset(base, 0, room);                                   // (the overlay's zeroed data comes zeroed)
-    if (!audio_cd_load(file, base, room)) { sim_note("THE DISC COULD NOT BE READ. TRY AGAIN"); citizens_rebuild(); return 0; }
+    if (!audio_cd_load(file, base, room)) { sim_note("THE DISC COULD NOT BE READ. TRY AGAIN"); crowd_reset(); citizens_rebuild(); return 0; }
     FlushCache();                                            // (new code: the CPU must not run what its cache remembers)
     const OvlHead *h = (const OvlHead *)base;
-    if (h->magic == OVL_STUB) { snprintf(pk_msg, sizeof pk_msg, "%s IS NOT INSTALLED", ovl_pack_name(file)); sim_note(pk_msg); citizens_rebuild(); return 0; }
-    if (h->magic != OVL_MAGIC) { sim_note("THAT PART OF THE DISC IS DAMAGED"); citizens_rebuild(); return 0; }
+    if (h->magic == OVL_STUB) { snprintf(pk_msg, sizeof pk_msg, "%s IS NOT INSTALLED", ovl_pack_name(file)); sim_note(pk_msg); crowd_reset(); citizens_rebuild(); return 0; }
+    if (h->magic != OVL_MAGIC) { sim_note("THAT PART OF THE DISC IS DAMAGED"); crowd_reset(); citizens_rebuild(); return 0; }
     return h;
 }
 void ovl_leave(void) { crowd_reset(); citizens_rebuild(); }

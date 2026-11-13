@@ -5775,6 +5775,9 @@ int main(void) {
             { extern int world_detail_r; dbg_sum_shed += shed_lvl; dbg_sum_r += world_detail_r; }
             dbg_sum_part[0] += t_upd; dbg_sum_part[1] += t_logic; dbg_sum_part[2] += t_world; dbg_sum_part[3] += t_sims; dbg_sum_part[4] += t_bub; dbg_sum_part[5] += t_hud;
             for (int k = 0; k < 8; k++) avg_prof16[k] += gfx_prof[k] - (avg_prof16[k] >> 4); }
+#ifdef PK_STAT
+        { extern int gfx_state_tag; gfx_state_tag = state; }
+#endif
         gfx_flip();
     }
     return 0;

@@ -17,7 +17,12 @@
 #ifdef BORE_DC
 #define PACKET_LEN (160*1024)   // (Dreamcast: 16 MB, and the PowerVR takes whatever the world sends: the roofs, drawn last, no longer run out of room at full detail)
 #else
-#define PACKET_LEN (58*1024)    // per buffer (was 74, then 66: the stack, the SDK heap and the CD buffers need real room past _end, or the boot crashes).  The busiest frames measured use under 54 KB: a party (people and the HUD 31 KB), a low camera turning to the horizon (the world 35 KB)
+#ifndef PACKET_ARENA
+#define PACKET_ARENA (72*1024)  // per buffer while the crowd's arena holds only people (the street, a home, the title, the maps): the packet buffers are the arena's end then (gfx_pk_arena_base, crowd.c); an overlay, a fight or a new life's set-up takes the arena, and the buffers go back to their own PACKET_LEN
+#endif
+#ifndef PACKET_LEN
+#define PACKET_LEN (32*1024)    // per buffer (was 74, then 66: the stack, the SDK heap and the CD buffers need real room past _end, or the boot crashes).  The busiest frames measured use under 54 KB: a party (people and the HUD 31 KB), a low camera turning to the horizon (the world 35 KB)
+#endif
 #endif
 #define RESERVE_PEOPLE (26*1024)   // kept back from the world so the people always fit (a party peaks near 35 KB with the HUD)
 #define RESERVE_UI     (12*1024)   // kept back from the people so bubbles, text and the HUD always fit
@@ -31,6 +36,10 @@ void  gfx_flip(void);
 void *gfx_alloc(int bytes);
 u32  *gfx_ot(void);
 int   gfx_prims_left(void);
+#ifndef BORE_DC
+extern char *gfx_pk_arena_base;   // non-zero: the two packet buffers (PACKET_ARENA each) are there, from the next frame on
+void  gfx_pk_static(void);        // the arena is needed: the buffers are their own again at once (the frame in progress starts again)
+#endif
 int   gfx_room(void);   // (bytes of packet buffer left to this part of the frame: the end, less the reserve)
 int   gfx_bytes_used(void);   // (packet bytes used so far this frame)
 int   gfx_keep_begin(int slot, u32 key);   // a piece of the 2D overlay kept from frame to frame: 1 it is in place (draw nothing), 0 draw it, then gfx_keep_end(slot)

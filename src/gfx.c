@@ -7,8 +7,20 @@ typedef struct {
     DISPENV disp;
     DRAWENV draw;
     u32     ot[OT_LEN];
+#ifdef BORE_DC
     char    p[PACKET_LEN];
+#else
+    char   *p;                      // the packet buffer: PACKET_LEN bytes of pk_stat, or PACKET_ARENA bytes in the crowd's arena (gfx_pk_arena)
+#endif
 } DB;
+#ifdef BORE_DC
+#define PKL(b) PACKET_LEN
+#else
+static char pk_stat[2][PACKET_LEN] __attribute__((aligned(4)));   // (the buffers of every mode that has the arena: the overlays, a new life's set-up, a fight)
+static int  pk_len[2] = { PACKET_LEN, PACKET_LEN };
+#define PKL(b) pk_len[b]
+char *gfx_pk_arena_base;   // (set by the crowd while the arena holds only people: 2 x PACKET_ARENA bytes from here are the packet buffers)
+#endif
 
 static DB   db[2];
 static int  db_active = 0;
@@ -113,7 +125,10 @@ void gfx_init(void) {
     PutDrawEnv(&db[0].draw);
     ClearOTagR(db[0].ot, OT_LEN);
     ClearOTagR(db[1].ot, OT_LEN);
-    db_next = db[0].p; gfx_pk_end = db[0].p + PACKET_LEN - 64 - KEEP_BYTES; gfx_ot_cur = db[0].ot;
+    #ifndef BORE_DC
+    db[0].p = pk_stat[0]; db[1].p = pk_stat[1];
+#endif
+    db_next = db[0].p; gfx_pk_end = db[0].p + PKL(0) - 64 - KEEP_BYTES; gfx_ot_cur = db[0].ot;
     ui_head = ui_tail = 0;
     setRECT(&screen_clip, 0, 0, SCREEN_W, SCREEN_H);
 
@@ -128,6 +143,35 @@ void gfx_init(void) {
     light_to_object();
 }
 
+static u32 keep_key[2][2]; static u32 *keep_last[2][2];   // (below: the kept 2D pieces)
+static int keep_cur = -1;
+static void frame_flush_pkt(void) {
+    u32 *f = (u32 *)gfx_alloc(8);   // (the frame starts by flushing the GPU's texture cache: the sprite cells were drawn into since it last saw them)
+    if (f) { f[1] = 0x01000000u; f[0] = (1u << 24) | (db[db_active].ot[OT_LEN - 1] & 0xffffff); db[db_active].ot[OT_LEN - 1] = (u32)f & 0xffffff; }
+}
+#ifndef BORE_DC
+static void pk_pick(int b) {   // buffer b (idle: its last picture is done) takes the place the crowd wants: PACKET_ARENA bytes in the arena, or its own static ones
+    char *want = gfx_pk_arena_base ? gfx_pk_arena_base + b * PACKET_ARENA : pk_stat[b]; int n = gfx_pk_arena_base ? PACKET_ARENA : PACKET_LEN;
+    if (db[b].p == want) return;
+    db[b].p = want; pk_len[b] = n;
+    keep_key[b][0] = keep_key[b][1] = 0; keep_last[b][0] = keep_last[b][1] = 0;   // (the kept pieces were in the old place)
+}
+void gfx_pk_static(void) {   // the arena is wanted for something else, now: both buffers go back to their own memory, and the frame being built starts again
+    gfx_pk_arena_base = 0;
+    if (db[0].p == pk_stat[0] && db[1].p == pk_stat[1]) return;
+    DrawSync(0);
+    pk_pick(0); pk_pick(1); keep_cur = -1;
+    ClearOTagR(db[0].ot, OT_LEN); ClearOTagR(db[1].ot, OT_LEN);
+    ui_head = ui_tail = 0; alloc_reserve = 0; db_next = db[db_active].p; gfx_pk_end = db[db_active].p + PKL(db_active) - 64 - KEEP_BYTES; gfx_ot_cur = db[db_active].ot;
+    gfx_overflow = 0; frame_flush_pkt();
+}
+#endif
+#ifdef PK_STAT
+int gfx_state_tag, pk_st[64], pk_stn[64];
+#endif
+#if defined(AUTO_CITY) || defined(AUTO_NHOOD)
+int dbg_pk_frames, dbg_pk_ovf, dbg_pk_ovf_n, dbg_pk_hi;
+#endif
 int gfx_frame_no;   // (frames flipped: the interface's panels are counted afresh each frame)
 void gfx_flip(void) {
     gfx_frame_no++;
@@ -139,7 +183,14 @@ void gfx_flip(void) {
     }
     gfx_last_bytes = (int)(db_next - db[db_active].p); gfx_last_prims = gfx_frame_prims; gfx_frame_prims = 0;
     if (gfx_last_bytes > gfx_peak_bytes) gfx_peak_bytes = gfx_last_bytes;
-    gfx_last_overflow = gfx_overflow; gfx_overflow = 0;
+#ifdef PK_STAT
+    { extern int gfx_state_tag, pk_st[64], pk_stn[64]; int t_ = gfx_state_tag & 63; pk_stn[t_]++; if (gfx_last_bytes > pk_st[t_]) pk_st[t_] = gfx_last_bytes; }   // (test builds: the most packet bytes a frame of each game state used)
+#endif
+    gfx_last_overflow = gfx_overflow;
+#if defined(AUTO_CITY) || defined(AUTO_NHOOD)
+    { extern int dbg_pk_frames, dbg_pk_ovf, dbg_pk_ovf_n, dbg_pk_hi; dbg_pk_frames++; if (gfx_overflow) { dbg_pk_ovf++; dbg_pk_ovf_n += gfx_overflow; } if (gfx_last_bytes > dbg_pk_hi) dbg_pk_hi = gfx_last_bytes; }   // (test builds: frames that dropped primitives, and how many)
+#endif
+    gfx_overflow = 0;
     for (int i = 0; i < 8; i++) { gfx_prof_last[i] = gfx_prof[i]; gfx_prof[i] = 0; gfx_profn_last[i] = gfx_profn[i]; gfx_profn[i] = 0; }
     { int h0 = VSync(1); gfx_last_cpu = h0; DrawSync(0); gfx_last_wait = VSync(1) - h0; }   // how long the GPU was still busy with the last frame
     { extern void atlas_flush_deferred(void); atlas_flush_deferred(); }   // (the textures that waited for this moment)
@@ -149,14 +200,14 @@ void gfx_flip(void) {
     { static int flip_vb; int mv_ = gfx_keep ? 1 : gfx_min_vsyncs; while (mv_ > 1 && VSync(-1) - flip_vb < mv_ - 1) VSync(0);   // (a steady 30 or 20: never sooner)
       VSync(0); flip_vb = VSync(-1); }
     db_active ^= 1;
+#ifndef BORE_DC
+    pk_pick(db_active);   // (the buffer about to be built moves to the arena, or back: the other one is the picture just sent, it moves next frame)
+#endif
     db_next = db[db_active].p;
-    alloc_reserve = 0; gfx_pk_end = db[db_active].p + PACKET_LEN - 64 - KEEP_BYTES; gfx_ot_cur = db[db_active].ot;
+    alloc_reserve = 0; gfx_pk_end = db[db_active].p + PKL(db_active) - 64 - KEEP_BYTES; gfx_ot_cur = db[db_active].ot;
     ui_head = ui_tail = 0;
     ClearOTagR(db[db_active].ot, OT_LEN);
-    {   // the frame starts by flushing the GPU's texture cache: the sprite cells were drawn into since it last saw them
-        u32 *f = (u32 *)gfx_alloc(8);
-        if (f) { f[1] = 0x01000000u; f[0] = (1u << 24) | (db[db_active].ot[OT_LEN - 1] & 0xffffff); db[db_active].ot[OT_LEN - 1] = (u32)f & 0xffffff; }
-    }
+    frame_flush_pkt();
     setRGB0(&db[db_active].draw, clear_r, clear_g, clear_b);
     db[db_active].draw.isbg = !gfx_keep;   // (the frame just built: a menu's still frames paint over the last picture, they do not clear it)
     PutDrawEnv(&db[db_active].draw);
@@ -165,7 +216,7 @@ void gfx_flip(void) {
     DrawOTag(db[1 - db_active].ot + (OT_LEN - 1));
 }
 
-void gfx_set_reserve(int bytes) { alloc_reserve = bytes; gfx_pk_end = db[db_active].p + PACKET_LEN - 64 - bytes - (bytes < RESERVE_PEOPLE ? KEEP_BYTES : 0); }   // (the kept pieces' room, KEEP_BYTES, is the last of the buffer: the world's and the land's limits do not count it, everyone after them does)
+void gfx_set_reserve(int bytes) { alloc_reserve = bytes; gfx_pk_end = db[db_active].p + PKL(db_active) - 64 - bytes - (bytes < RESERVE_PEOPLE ? KEEP_BYTES : 0); }   // (the kept pieces' room, KEEP_BYTES, is the last of the buffer: the world's and the land's limits do not count it, everyone after them does)
 int gfx_room(void) { return (int)(gfx_pk_end - db_next); }   // (bytes left before the limit, the reserve counted out)
 int gfx_bytes_used(void) { return (int)(db_next - db[db_active].p); }
 void *gfx_alloc(int bytes) {
@@ -175,7 +226,7 @@ void *gfx_alloc(int bytes) {
     return p;
 }
 u32 *gfx_ot(void) { return gfx_ot_cur; }   // (the frame's table, or a person's while it is rendered into a sprite)
-int  gfx_prims_left(void) { return (int)(db[db_active].p + PACKET_LEN - db_next); }
+int  gfx_prims_left(void) { return (int)(db[db_active].p + PKL(db_active) - db_next); }
 
 // ------------------------------------------------------------------ camera
 static void cross(const SVECTOR *a, const SVECTOR *b, VECTOR *o) {
@@ -518,26 +569,26 @@ static void ui_add(void *prim) {
 // is made: its packets must be the whole of what was allocated and one run of the chain, or it is never kept.
 #define KEEP_SLOTS 2
 static const short keep_off[KEEP_SLOTS + 1] = { 0, 2048, 5120 };   // the needs' card (1.6 KB most), the Bore's card (2 KB most)
-static u32 keep_key[2][KEEP_SLOTS]; static u32 *keep_last[2][KEEP_SLOTS]; static u8 keep_bad[KEEP_SLOTS];
-static int keep_cur = -1, keep_ovf; static char *keep_sv_next, *keep_sv_end; static u32 keep_k, *keep_tail0;
+static u8 keep_bad[KEEP_SLOTS];
+static int keep_ovf; static char *keep_sv_next, *keep_sv_end; static u32 keep_k, *keep_tail0;
 int gfx_keep_begin(int slot, u32 key) {   // 1: it is in place and linked, draw nothing. 0: draw it, then gfx_keep_end(slot)
 #ifdef BORE_DC
     return 0;
 #endif
     if (keep_bad[slot] || keep_cur >= 0 || !ui_tail) return 0;
-    int b = db_active; char *rs = db[b].p + PACKET_LEN - 64 - KEEP_BYTES + keep_off[slot];
+    int b = db_active; char *rs = db[b].p + PKL(b) - 64 - KEEP_BYTES + keep_off[slot];
     if (keep_key[b][slot] == key && keep_last[b][slot]) {
         u32 *last = keep_last[b][slot]; setaddr(ui_tail, rs); ui_tail = last; setaddr(last, 0xffffff);
         return 1;
     }
     keep_key[b][slot] = 0; keep_last[b][slot] = 0;
     keep_cur = slot; keep_sv_next = db_next; keep_sv_end = gfx_pk_end; keep_k = key; keep_tail0 = ui_tail; keep_ovf = gfx_overflow;
-    db_next = rs; gfx_pk_end = db[b].p + PACKET_LEN - 64 - KEEP_BYTES + keep_off[slot + 1];
+    db_next = rs; gfx_pk_end = db[b].p + PKL(b) - 64 - KEEP_BYTES + keep_off[slot + 1];
     return 0;
 }
 void gfx_keep_end(int slot) {
     if (keep_cur != slot) return;
-    keep_cur = -1; int b = db_active; char *rs = db[b].p + PACKET_LEN - 64 - KEEP_BYTES + keep_off[slot];
+    keep_cur = -1; int b = db_active; char *rs = db[b].p + PKL(b) - 64 - KEEP_BYTES + keep_off[slot];
     int bytes = (int)(db_next - rs), ok = bytes > 0 && gfx_overflow == keep_ovf && ui_tail;
     db_next = keep_sv_next; gfx_pk_end = keep_sv_end;
     if (ok) { ok = ((*keep_tail0 & 0xffffff) == ((u32)rs & 0xffffff)); u32 *q = (u32 *)rs; int tot = 0;   // (the chain from the piece's first packet to the tail: all of it, and only it)

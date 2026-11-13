@@ -5,7 +5,16 @@
 #include "mem8.h"
 
 #define ARENA_BYTES 156096   // (the people's models; it used to be the voice clips' memory, which are on the disc now)
-static u8 arena_mem[ARENA_BYTES] __attribute__((aligned(4)));
+#ifdef BORE_DC
+#define ARENA_TOTAL ARENA_BYTES
+#else
+#ifndef CROWD_MIN
+#define CROWD_MIN (40*1024)   // the people's models in the street (11 models took 4 KB to 19 KB in the busiest streets)
+#endif
+#define ARENA_PK (2 * PACKET_ARENA)   // (at the arena's end: the packet buffers of the modes that leave the arena to the crowd)
+#define ARENA_TOTAL (ARENA_BYTES > CROWD_MIN + ARENA_PK ? ARENA_BYTES : CROWD_MIN + ARENA_PK)
+#endif
+static u8 arena_mem[ARENA_TOTAL] __attribute__((aligned(4)));
 
 // ---- the compact model ----------------------------------------------------------------------------------------------
 #define NW 26                                   // the s16 fields of a Bore from w_headx to w_rgx (they sit together)
@@ -137,9 +146,23 @@ void crowd_flush(void) {                        // every sprite thrown away (the
 }
 void *crowd_arena(void) { return arena_mem; }   // (no claim on it: see crowd_logo_ok)
 int crowd_logo_ok;   // (main.c: the title logo's rectangles are in the arena's first bytes; anyone who takes the arena puts that out)
-void *crowd_scratch(u32 *bytes) { crowd_logo_ok = 0; *bytes = ARENA_BYTES; return arena_mem; }   // (a new life only: the arena before any model is stored)
+void *crowd_scratch(u32 *bytes) {
+    crowd_logo_ok = 0; *bytes = ARENA_BYTES;
+#ifndef BORE_DC
+    if (gfx_pk_arena_base) gfx_pk_static();   // (the packet buffers live in the arena's end while the crowd has it: they move out first)
+#endif
+    return arena_mem;
+}
+void crowd_claim(void) {   // the arena is something else's (an overlay's code) until the next crowd_reset
+#ifndef BORE_DC
+    gfx_pk_static();
+#endif
+}   // (a new life only: the arena before any model is stored)
 void crowd_reset(void) {
     crowd_logo_ok = 0;
+#ifndef BORE_DC
+    gfx_pk_arena_base = (char *)arena_mem + ARENA_TOTAL - ARENA_PK;   // (the next frame's buffers: the arena's end is theirs)
+#endif
     for (int i = 0; i < CROWD_MAX; i++) { m_off[i] = -1; face_of[i] = 255; }
     for (int i = 0; i < SPR_MAX; i++) { spr[i].ok = 0; spr[i].shelf = -1; spr[i].meas = 0; }
     for (int k = 0; k < NFACE; k++) face_owner[k] = -1;
@@ -147,7 +170,10 @@ void crowd_reset(void) {
     ar_top = 0;
 }
 void crowd_init(void) {
-    ar = arena_mem; ar_size = ARENA_BYTES;
+    ar = arena_mem; ar_size = ARENA_TOTAL;
+#ifndef BORE_DC
+    ar_size = ARENA_TOTAL - ARENA_PK;
+#endif
     if (ram8) { u8 *big = (u8 *)xalloc(1024 * 1024); if (big) { ar = big; ar_size = 1024 * 1024; } }   // 8 MB: a store big enough that nobody's model is ever let go
     crowd_reset();
 }
