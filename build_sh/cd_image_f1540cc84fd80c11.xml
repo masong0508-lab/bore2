@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<iso_project>
+	<track type="data">
+		<identifiers
+			system        ="PLAYSTATION"
+			volume        ="BORE2"
+			volume_set    ="BORE2"
+			publisher     ="DIPPINN"
+			data_preparer ="PSN00BSDK 0.24"
+			application   ="PLAYSTATION"
+			copyright     ="README.TXT;1"
+		/>
+		<directory_tree>
+			<file name="SYSTEM.CNF" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/system.cnf" />
+			<file name="BORE2.EXE"  type="data" source="bore2.exe" />
+			<file name="SONGS.BIN"  type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/assets/SONGS.BIN" />
+			<file name="VOICES.BIN" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/assets/voices.bin" />
+			<file name="FONTS.BIN" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/assets/FONTS.BIN" />
+			<file name="KINGDOM.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/KINGDOM.OVL" />
+			<file name="ARCADE.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/ARCADE.OVL" />
+			<file name="ARCADE2.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/ARCADE2.OVL" />
+			<file name="GOTCHI.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/GOTCHI.OVL" />
+			<file name="PARTY.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/PARTY.OVL" />
+			<file name="SUPER.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/SUPER.OVL" />
+			<file name="DOG.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/DOG.OVL" />
+			<file name="PRISON.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/PRISON.OVL" />
+			<file name="SPACE.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/SPACE.OVL" />
+			<file name="PARADISE.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/PARADISE.OVL" />
+			<file name="FARM.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/FARM.OVL" />
+			<file name="SKYSEA.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/SKYSEA.OVL" />
+			<file name="DJ.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/DJ.OVL" />
+			<file name="CUT.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/CUT.OVL" />
+			<file name="CLOCK.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/CLOCK.OVL" />
+			<file name="CREATE.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/CREATE.OVL" />
+			<file name="REALWRLD.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/REALWRLD.OVL" />
+			<file name="SPEEDCTY.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/SPEEDCTY.OVL" />
+			<file name="BIGSCREN.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/BIGSCREN.OVL" />
+			<file name="MAGICMYT.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/MAGICMYT.OVL" />
+			<file name="WILDWEST.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/WILDWEST.OVL" />
+			<file name="BOREOUT.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/BOREOUT.OVL" />
+			<file name="BOREZIES.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/BOREZIES.OVL" />
+			<file name="WWBORE.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/WWBORE.OVL" />
+			<file name="BOREPILG.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/BOREPILG.OVL" />
+			<file name="PKINFO.OVL" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/PKINFO.OVL" />
+			<file name="GOTCHI.ART" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/build_sh/slot_full/GOTCHI.ART" />
+			<file name="WALLS.BIN" type="data" source="/home/claude/bore2/.claude/worktrees/agent-a61b45a0baccf5e3d/assets/WALLS.BIN" />
+			<dummy sectors="512"/>
+		</directory_tree>
+	</track>
+</iso_project>

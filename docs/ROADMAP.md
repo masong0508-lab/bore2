@@ -30,6 +30,12 @@ Detail for each port: DSI_ROADMAP.md (DS), DREAMCAST.md (Dreamcast), PS1_PERFORM
 - [x] **PS1:** measured exact (480 Hz interrupt, rows 0..2 ms late, no drift, 8.02 ticks a vblank in a 20 fps city); no change. `tools/music_audit.py` audits every song (intended vs engine tempo, drift, loose notes), plots and renders WAVs.
 - [ ] Left: the HERE TODAY MIDI songs sit on a 12.5 ms grid (rounding baked in); DC not captured in flycast; GOTTCHO BARRACHO (ORIGINAL) pitch clamps.
 
+## 0e. Proper housing (Nov 13: world version 7, save version 54; `docs/HOUSING_DESIGN.md` 7 and 8)
+- [x] Town plan: avenues and neighbourhoods by ring and sector, streets by kind, lots by kind and place, lot facing (stage 1, `bm_nb`, `bm_lot_face`, `bm_lot_plan`).
+- [x] Homes built from the plan, spaced, with yards, drives, hedges, sheds; 4 lots in 10 face north (built south, turned over); `Home.fn` so people use a north door; far view and near agree.
+- [x] New lives are version 7; saves of version 53 and older keep their towns (versions 2 to 6 unchanged: `ports/host/townmap make check`; old saves loaded in the emulator).
+- [ ] Left: parked cars, bridges only where the street crosses, wild/empty lot dressing by neighbourhood, roof form from the plan, map labels; DS and Dreamcast ports (`Home.fn`, `bm_gen = 7`).
+
 ## 0d. Rooms, not rows (Nov 12, all ports; `docs/HOUSING_DESIGN.md` 4c, `docs/rooms7_*.png`)
 - [x] Homes are furnished from groups round a focal point (living group facing the telly, dining set, kitchen run, bed with nightstands, a real bathroom), every piece turned on purpose. Tables, not code: the PS1 program got 264 bytes smaller.
 - [x] One-room homes get a walled bathroom. Divided houses get a narrow bathroom and wider bedrooms. Inn and hotel rooms and mansion upstairs use the same groups.

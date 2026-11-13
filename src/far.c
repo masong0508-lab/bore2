@@ -197,7 +197,7 @@ static void cell_rgb(int t, int *r, int *g, int *b) {
 // ================================================================== every town's buildings (worked out once a world)
 typedef struct { u32 bx : 10, by : 10, lot : 6, col : 4, pad : 2; } FB;   // (4 bytes: the storeys are in fb_sto, a byte each)
 #define FB_MAX 2400
-static FB fb[FB_MAX]; static u8 fb_sto[FB_MAX]; static int nfb;
+static FB fb[FB_MAX]; static u8 fb_sto[FB_MAX], fb_ft[FB_MAX][4]; static int nfb;   // (fb_ft: each building's footprint x0 y0 x1 y1 in block tiles: its lot's fixed one, or in world version 7 the town plan's body)
 #define FSTO(f) fb_sto[(f) - fb]
 static u16 fb_lo[64], fb_hi[64];             // each town's run in fb
 #define FBC_MAX 900
@@ -228,15 +228,22 @@ void far_new_world(void) {
             if (b.set != i || b.lot >= LOT_N || !has_bld[b.lot] || nfb >= FB_MAX) continue;
             FB *f = &fb[nfb++];
             f->bx = bx; f->by = by; f->lot = b.lot; fb_sto[f - fb] = (u8)bm_storeys(&b);
+            memcpy(fb_ft[f - fb], foot[b.lot], 4);
+            if (bm_gen >= 7) {                                       // the town plan: the body of a home (a terrace or an L with its second half), a place turned over when it faces north
+                LotPlan pl; bm_lot_plan(bx, by, &b, &pl); u8 *ft = fb_ft[f - fb];
+                if (pl.type) { ft[0] = pl.x0; ft[1] = pl.y0; ft[2] = pl.x1; ft[3] = pl.y1;
+                    if (pl.wx1) { if (pl.wx0 < ft[0]) ft[0] = pl.wx0; if (pl.wx1 > ft[2]) ft[2] = pl.wx1; if (pl.type == HT_TERRACE) { if (pl.wy0 < ft[1]) ft[1] = pl.wy0; if (pl.wy1 > ft[3]) ft[3] = pl.wy1; } } }
+                else if (pl.face == LF_NORTH && !(b.road & BR_MEGA)) { u8 a = (u8)(22 - ft[3]), c = (u8)(22 - ft[1]); ft[1] = a; ft[3] = c; }
+            }
             f->col = b.lot == LOT_TOWER ? 8 : (b.h >> 20) % 8u;
             f->pad = (b.h >> 9) & 3;
         }
         fb_hi[i] = (u16)nfb;
         // in cell order (a cell's buildings together: the view takes or leaves a whole cell at once)
         for (int a = fb_lo[i] + 1; a < nfb; a++) {
-            FB t = fb[a]; u8 ts = fb_sto[a]; u32 kt = ((u32)(t.by >> 2) << 10) | (t.bx >> 2); int b = a - 1;
-            while (b >= fb_lo[i] && (((u32)(fb[b].by >> 2) << 10) | (fb[b].bx >> 2)) > kt) { fb[b + 1] = fb[b]; fb_sto[b + 1] = fb_sto[b]; b--; }
-            fb[b + 1] = t; fb_sto[b + 1] = ts;
+            FB t = fb[a]; u8 ts = fb_sto[a], tf[4]; memcpy(tf, fb_ft[a], 4); u32 kt = ((u32)(t.by >> 2) << 10) | (t.bx >> 2); int b = a - 1;
+            while (b >= fb_lo[i] && (((u32)(fb[b].by >> 2) << 10) | (fb[b].bx >> 2)) > kt) { fb[b + 1] = fb[b]; fb_sto[b + 1] = fb_sto[b]; memcpy(fb_ft[b + 1], fb_ft[b], 4); b--; }
+            fb[b + 1] = t; fb_sto[b + 1] = ts; memcpy(fb_ft[b + 1], tf, 4);
         }
         fbs_lo[i] = (u16)nfbc;
         for (int a = fb_lo[i]; a < nfb; ) {
@@ -653,7 +660,7 @@ static void draw_buildings(void) {
           for (int k = fbc_lo[c]; k < fbc_hi[c]; k++) {
             const FB *f = &fb[k];
             if (f->bx >= world_wbx && f->bx < world_wbx + MW / BM_BLK && f->by >= world_wby && f->by < world_wby + MH / BM_BLK) continue;   // (the map draws its own)
-            const u8 *ft = foot[f->lot];
+            const u8 *ft = fb_ft[k];
             int tx0 = f->bx * BM_BLK + ft[0] - fwx0, ty0 = f->by * BM_BLK + ft[1] - fwy0, tx1 = f->bx * BM_BLK + ft[2] - fwx0, ty1 = f->by * BM_BLK + ft[3] - fwy0;
             int x0 = tx0 * TILE, x1 = tx1 * TILE, z0 = -ty0 * TILE, z1 = -ty1 * TILE;
             int cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;

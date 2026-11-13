@@ -371,7 +371,7 @@ static void start_life(void) {
 #if defined(AUTO_CITY) || defined(AUTO_PARTY)
         seed = 0x5EED1234u;                                    // (test builds: the same world every run, so runs compare)
 #endif
-        bm_gen = 6; bm_new(seed); world_new_seed(seed);
+        bm_gen = 7; bm_new(seed); world_new_seed(seed);
         loading("PEOPLING SAN BOREAS", 45);
         u32 sb; void *sc = crowd_scratch(&sb); pop_new(seed, sc, sb);
         loading("RAISING THE SKYLINE", 60);
@@ -970,6 +970,13 @@ static void life_update(int steps) {
             }
             if (k_ >= 0) { for (int i = 0; i < nsims; i++) { sims[i].x = hx_ + (i % 3) * 3; sims[i].z = hz_ - (i / 3) * 3; sims[i].path_n = 0; sims[i].lvl = 0; } cam_fx = hx_; cam_fz = hz_; }
           }
+#elif defined(AUTO_AT_BX)
+          {   // (test builds, AUTO_CITY with AUTO_AT_BX/BY=block, AUTO_AT_TX/TY=tile in it, AUTO_AT_PITCH/DIST: stand there and look, for the world version 7 shots docs/plan7_*)
+            static int at_ = 0, hx_, hz_;
+            if (fr_ >= 60 && !at_) { at_ = 1; taxi_to_block(AUTO_AT_BX, AUTO_AT_BY, AUTO_AT_TX, AUTO_AT_TY, "TEST");
+                hx_ = ((AUTO_AT_BX - world_wbx) * BM_BLK + AUTO_AT_TX) * TILE + TILE / 2; hz_ = -(((AUTO_AT_BY - world_wby) * BM_BLK + AUTO_AT_TY) * TILE + TILE / 2); }
+            if (at_) { cam_pitch = AUTO_AT_PITCH; cam_dist = AUTO_AT_DIST; cam_yaw = 2600; for (int i = 0; i < nsims; i++) { sims[i].x = hx_ + (i % 3) * 3; sims[i].z = hz_ - (i / 3) * 3; sims[i].path_n = 0; sims[i].lvl = 0; } cam_fx = hx_; cam_fz = hz_; }
+          }
 #elif defined(AUTO_TOWER)
           if (fr_ >= 120 && !(done_ & 1)) { done_ |= 1; const Settle *cp = bm_set(bm_capital()); taxi_to_block(cp->x + AUTO_TOWER, cp->y + 2, 8, 1, "TEST"); }
           if (fr_ > 120) { cam_pitch = 760; cam_dist = 3600; cam_yaw = 2048 + 300; }
@@ -982,7 +989,7 @@ static void life_update(int steps) {
             if (fr_ > 120 && s->action == ACT_NONE) { int ph = ((fr_ - 120) / 700) & 3; int v = 9 * steps; if (ph == 0) s->x += v; else if (ph == 1) s->z -= v; else if (ph == 2) s->x -= v; else s->z += v; }
             cam_pitch = 470; cam_dist = 3200; cam_yaw = (fr_ * 3) & 4095;
           }
-#elif !defined(AUTO_TOWER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_PROP) && !defined(AUTO_LE) && !defined(AUTO_LOTS)
+#elif !defined(AUTO_AT_BX) && !defined(AUTO_TOWER) && !defined(AUTO_PLACES) && !defined(AUTO_TOUR) && !defined(AUTO_PROP) && !defined(AUTO_LE) && !defined(AUTO_LOTS)
 #ifdef CIT_STAND
           if (fr_ > 240 && fr_ < CIT_STAND && s->action == ACT_NONE) s->x += 11 * steps;   // (test builds: a stroll, then stand about on the street)
 #else
@@ -2625,7 +2632,7 @@ static void save_body(void) {
 }
 static void load_body(void) {
     u32 seed = ld_u32();
-    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 38 ? 6 : save_ver >= 31 ? 5 : save_ver >= 17 ? 4 : 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
+    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 54 ? 7 : save_ver >= 38 ? 6 : save_ver >= 31 ? 5 : save_ver >= 17 ? 4 : 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
     bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2;
     traffic_level = 2; if (save_ver >= 19) traffic_level = ld_u8() % 5;
     if (save_ver >= 7) { bm_land = ld_u8() % BL_N; bm_sea = ld_u8() % 5; bm_clim = ld_u8() % 5; bm_hills = ld_u8() % 5;
@@ -4634,7 +4641,7 @@ static void worlds_open(int more) {   // 0: NEIGHBORHOODS, 1: the EXPANSIONS she
 #endif
 }
 static void worlds_go(u32 seed, int mode) {
-    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 6; bm_packed = wo_packed; wo_name_for(seed); strcpy(life_cap, wo_name); start_life();
+    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 7; bm_packed = wo_packed; wo_name_for(seed); strcpy(life_cap, wo_name); start_life();
     cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 }
 // ---- CREATE A WORLD: make your own. What kind of life, then dials for the land (or the castaway's island), the map as you turn them ----
@@ -5082,7 +5089,7 @@ static void ne_stat(const BInfo *b, int sg) {
     if (b->road & 3) ne_st[3] += sg; if (b->terrain != BT_SEA) ne_st[4] += sg;
 }
 static void ne_rebuild(void) {   // the base map from the dials (the changes stay on it) and the town's numbers
-    wm_apply(); bm_gen = 6; bm_packed = wo_packed; bm_rename_clear(); bm_rename(0, nh_name); bm_new(nh_seed);
+    wm_apply(); bm_gen = 7; bm_packed = wo_packed; bm_rename_clear(); bm_rename(0, nh_name); bm_new(nh_seed);
     const Settle *c = bm_set(0); ne_capx = c ? c->x : BM_N / 2; ne_capy = c ? c->y : BM_N / 2;
     memset(ne_st, 0, sizeof ne_st);
     for (int y = -23; y <= 23; y++) for (int x = -23; x <= 23; x++) { BInfo b; bm_block(ne_capx + x, ne_capy + y, &b); ne_stat(&b, 1); }
@@ -5248,7 +5255,7 @@ static void worlds_update(void) {
     if (PRESSED(PAD_DOWN)) wo_sel = (wo_sel + 1) % 4;
     if (PRESSED(PAD_TRIANGLE)) { wo_packed ^= 1; wo_painted = 0; audio_voice(VOICE_FINISHED); }   // TOWNS: ROOMY or PACKED
     if (PRESSED(PAD_SELECT)) { name_open(wo_name, 17, "NAME YOUR CAPITAL CITY", worlds_named); return; }
-    bm_gen = 6; bm_packed = wo_packed;
+    bm_gen = 7; bm_packed = wo_packed;
     bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2; traffic_load(0);   // (a set world with its own dials)
     bm_ovr_clear();
     u32 sd = wo_seed_of(wo_sel); if (sd) paint_world(sd);

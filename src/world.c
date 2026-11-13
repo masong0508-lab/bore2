@@ -582,6 +582,7 @@ static Occ occ_blk[12]; static int occ_on;            // the households of the b
 static const Occ occ_any = { 2, 0, 0, 0, 1, 0, 0 };
 static const Occ *occ_of(int unit) { return occ_on ? &occ_blk[unit % 12] : &occ_any; }
 #include "lots.inc"   // the lot designer: styles, rooms, yards, places (built Os like the rest of the generators; also built by the host simulator, ports/host/lotsim)
+#include "lots7.inc"   // world version 7: homes built from the town plan, lots turned to face north
 
 // what stands on lot (i,j): the landmarks are fixed, the rest of the 5x5 grid is a hand-placed mix of homes so no two neighbours match
 // ---- homes for the island and the town: the same generators, on free ground ----
@@ -986,6 +987,7 @@ COLD static void gen_block(int wx, int wy) {
 COLD static void gen_block0(int wx, int wy) {
     int bx = world_wbx + wx, by = world_wby + wy, ox = wx * BM_BLK, oy = wy * BM_BLK;
     BInfo b; bm_block(bx, by, &b);
+    LotPlan pl; int g7 = bm_gen >= 7 && b.set != 255 && b.terrain != BT_SEA; if (g7) bm_lot_plan(bx, by, &b, &pl); else pl.face = LF_SOUTH;   // (version 7: this lot's plan, and which way it faces)
     static const u8 tfl[6] = { FL_WATER, FL_SAND, FL_GRASS, FL_GRASS, FL_SAND, FL_ROCK };
     int ground = tfl[b.terrain];
     if (b.set != 255 && b.terrain != BT_SEA) ground = (b.terrain == BT_DESERT || b.terrain == BT_BEACH) ? FL_SAND : FL_GRASS;
@@ -996,6 +998,7 @@ COLD static void gen_block0(int wx, int wy) {
     int rd = b.road & 7; if (mg) { if (mpart & 1) rd &= ~2; if (mpart & 2) rd &= ~1; }   // (inside a big place the streets between its blocks are gone)
     gcur_ox = ox; gcur_oy = oy; gcur_n = road_rects(rd & 3, b.lot == LOT_RIVER ? ((b.road & BR_MEGA) ? 2 : 1) : 0, gcur_r);   // (from here the generators' props keep off the street)
     const int SW = BM_LOT0, SC = SW / 2;   // the street: five tiles wide, a lane of two each way and the line down the middle
+    if (g7 && (b.road & 4)) gBox(ox, oy, ox + SW - 1, oy + SW - 1, FL_ASPHALT);   // (the corner where the heart's last streets turn)
     if (rd & 1) { gBox(ox, oy, ox + BM_BLK - 1, oy + SW - 1, FL_ASPHALT); gBox(ox + SW, oy + SC, ox + BM_BLK - 1, oy + SC, FL_LINE_H); }
     if (rd & 2) { gBox(ox, oy, ox + SW - 1, oy + BM_BLK - 1, FL_ASPHALT); gBox(ox + SC, oy + SW, ox + SC, oy + BM_BLK - 1, FL_LINE_V); }
     if ((rd & 3) == 1) gBox(ox, oy + SC, ox + SW - 1, oy + SC, FL_LINE_H);
@@ -1016,7 +1019,8 @@ COLD static void gen_block0(int wx, int wy) {
         }
     }
     if (b.set != 255 && b.terrain != BT_SEA) {           // in town: a pavement along the street
-        gBox(ox + BM_LOT0, oy + BM_LOT0, ox + BM_BLK - 1, oy + BM_LOT0, FL_PAVING); gBox(ox + BM_LOT0, oy + BM_LOT0, ox + BM_LOT0, oy + BM_BLK - 1, FL_PAVING);
+        if (!g7 || (rd & 1)) gBox(ox + BM_LOT0, oy + BM_LOT0, ox + BM_BLK - 1, oy + BM_LOT0, FL_PAVING);   // (version 7: only where the block has the street)
+        if (!g7 || (rd & 2)) gBox(ox + BM_LOT0, oy + BM_LOT0, ox + BM_LOT0, oy + BM_BLK - 1, FL_PAVING);
     }
     if (b.set != 255 && b.terrain != BT_SEA && !mg) {   // bus stops along the pavement: the bigger the place, the more of them (a city has two on every street side, a town one on most, a village one here and there)
         int k = bm_set(b.set)->kind, nr = k == ST_CITY ? 2 : k == ST_TOWN ? ((b.h & 3) != 0) : (((b.h >> 2) % 3) == 0), nc = k == ST_CITY ? 2 : k == ST_TOWN ? ((b.h & 12) != 0) : (((b.h >> 4) % 4) == 0);
@@ -1043,7 +1047,9 @@ COLD static void gen_block0(int wx, int wy) {
 #ifdef AUTO_HOUSES
     if (b.lot != LOT_WILD && b.lot != LOT_SQUARE && b.lot != LOT_PARK && b.lot != LOT_RIVER) b.lot = LOT_HOUSE;   // (test builds: every lot a house)
 #endif
-    switch (b.lot) {
+    int hn0 = nhomes[world_zone % ZONE_N], pln = g7 && pl.face == LF_NORTH && !mg && b.lot != LOT_WILD && b.lot != LOT_RIVER;   // (pln: the lot is built looking south and turned over after)
+    if (g7 && (b.lot == LOT_HOUSE || b.lot == LOT_COTTAGE || b.lot == LOT_TOWN || b.lot == LOT_TWO)) house7(lx, ly, h, &b, &pl);
+    else switch (b.lot) {
         case LOT_HOUSE:   city_house(lx, ly, h); break;
         case LOT_COTTAGE: city_cottage(lx, ly, h); break;
         case LOT_TOWN:    city_town(lx, ly, h); break;
@@ -1081,8 +1087,11 @@ COLD static void gen_block0(int wx, int wy) {
         default: break;
     }
     occ_on = 0; blk_bx = blk_by = 0xFFFF;
+    if (pln) mirror7(ox, oy, hn0, ground);
+    if (g7) { if (blk_roads(bx, by + 1) & 1) for (int x = ox + BM_LOT0; x < ox + BM_BLK; x++) { floorMap[oy + BM_BLK - 1][x] = FL_PAVING; if (lifeMap[oy + BM_BLK - 1][x] == '3' || lifeMap[oy + BM_BLK - 1][x] == '6') lifeMap[oy + BM_BLK - 1][x] = '.'; }   // (the far side's pavement, where the next block has its street)
+              if (blk_roads(bx + 1, by) & 2) for (int y = oy + BM_LOT0; y < oy + BM_BLK; y++) floorMap[y][ox + BM_BLK - 1] = FL_PAVING; }
     if (b.set == 255 || b.lot == LOT_WILD) wild(ox, oy, &b, bx, by);   // (open country, and the green gaps left in a town)
-    if (b.set != 255 && b.terrain != BT_SEA && bm_gen >= 6 && !mine && (b.lot == LOT_HOUSE || b.lot == LOT_COTTAGE || b.lot == LOT_TOWN || b.lot == LOT_TWO || b.lot == LOT_APART || b.lot == LOT_SCHOOL || b.lot == LOT_LIBRARY || b.lot == LOT_CLINIC || b.lot == LOT_GALLERY)) {
+    if (b.set != 255 && b.terrain != BT_SEA && bm_gen >= 6 && !g7 && !mine && (b.lot == LOT_HOUSE || b.lot == LOT_COTTAGE || b.lot == LOT_TOWN || b.lot == LOT_TWO || b.lot == LOT_APART || b.lot == LOT_SCHOOL || b.lot == LOT_LIBRARY || b.lot == LOT_CLINIC || b.lot == LOT_GALLERY)) {
         for (int y = oy + BM_LOT0 + 1; y < oy + BM_BLK; y++) for (int x = ox + BM_LOT0 + 1; x < ox + BM_BLK; x++) {   // landscaping: trees along the pavement and one here and there in the yards, never against a wall (so doors and paths stay clear)
             if (floorMap[y][x] != FL_GRASS || lifeMap[y][x] != '.') continue;
             int busy = 0; for (int j = -1; j <= 1 && !busy; j++) for (int i = -1; i <= 1; i++) { char c = lifeMap[y + j][x + i]; if (c != '.' && c != '3' && c != '6') { busy = 1; break; } if (floorMap[y + j][x + i] == FL_PAVING && (j || i) && (x != ox + BM_LOT0 + 1 && y != oy + BM_LOT0 + 1)) { busy = 1; break; } }
@@ -1092,6 +1101,7 @@ COLD static void gen_block0(int wx, int wy) {
             if (edge ? (r < 140 && ((x + y) & 1) == 0) : r < 36) lifeMap[y][x] = r % 5 == 0 ? '6' : '3';
         }
     }
+    if (g7 && !mg) trees7(ox, oy, rd);
     if (b.set != 255 && b.terrain != BT_SEA) {                      // the pavement kept clear; street lamps along it by the corner, half way and at the far crossing; a bin now and then
         kerb_clear(ox, oy);
         if (rd & 1) { kerb_lamp(ox + 6, oy + BM_LOT0, 0); kerb_lamp(ox + 11, oy + BM_LOT0, 0); kerb_lamp(ox + BM_BLK - 1, oy + BM_LOT0, 0); }

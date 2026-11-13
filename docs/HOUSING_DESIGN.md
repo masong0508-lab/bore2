@@ -201,6 +201,27 @@ Pictures, the same world as version 6 (left) and 7 (right): `docs/plan7_city.png
 - LOT_EMPTY should be the tidy lot for sale. LOT_FARM on a block with no street is a field.
 - RAM (PS1, 2 MB): `_end` 0x801fc900 before, 0x801fcff0 now (the plan inside `bm_block`: 1776 bytes; 12,304 free). The linker drops the three
   API functions until the game calls them: with them `_end` is 0x801fd5e8 (1528 more; 10,776 free), so stage 2 has to move about 2 KB out first.
+## 8. Stage 2 as built (`src/lots7.inc`, `world.c gen_block0`, `far.c`; new lives are world version 7, save version 54)
+- **Built south, turned north.** `house7` builds every plan-driven home as if it looked south; a lot whose plan faces north is then turned over by `mirror7`
+  (rows 5..17 of the lot, the ground, floor, wall and every storey, the north/south bits of turned items, the lot's `Home`s with `Home.fn = 1`; the street row
+  keeps its pavement). Every other kind of lot with a north plan (shops, parks, places) goes through the same mirror. `LF_NONE` lots are built south.
+- **`Home.fn`, `home_out(hm)`** (+1 south, -1 north): the door's outside. Used by everything that walked "dy + 1" (people leaving, arriving, visiting, sleeping,
+  `put_household`, `world_own_door`, the lot audit). People walk out of a north door.
+- Houses from `LotPlan`: body, L garage wing (a solid block with its door on the drive), porch, path, two-tile concrete drive (to the garage door in a ranch's
+  front wall, to the wing, or back along the house), planters, lamp, mailbox, low hedge across the front with a gap at the walk (suburb, estate, green; open fronts
+  in the centre), hedges down the sides, a yard tree on the side away from the drive, a shed in the back corner (back yards 4 rows or more), the old back yard
+  (pool, garden, patio, lawn). Terraces are two homes with their own doors. Wall material comes from the neighbourhood palette (two materials a neighbourhood).
+  The roof is the engine's, from the walls (the plan's `roof`/`rcol` are not used yet).
+- Street trees: one every four tiles along a street's pavement, on open grass. Pavement only where the block has the street; the far side's pavement where the
+  next block has its street; the 5x5 corner for road bit 4.
+- `far.c`: each far building keeps its footprint (`fb_ft`, 4 bytes) from the plan (a home's body, a terrace or an L with its second half, a place turned over for
+  a north face), so near and far agree. 9.6 KB.
+- Cottage body is 8x7 to 9x8 now (the room needs it); the estate mansion stays 11-12 x 8-9 (deeper made the back rooms fail the audit).
+- Tools: `ports/host/lotsim` `GEN=7 ./lotsim audit|at|area|kinds|sets SEED ...` (`area` draws a stretch of blocks as a picture: `docs/plan7_tiles_town.png`);
+  `docs/lots_audit_gen7.txt`; PS1 shots `docs/plan7_ps1_*.png` (an `AUTO_CITY` build with `AUTO_AT_BX/BY/TX/TY/PITCH/DIST` stands at a place).
+- **Not done:** a parked car on the drive (cars are traffic, not map items), bridge-only-where-the-street-crosses, LOT_WILD/LOT_EMPTY dressing by neighbourhood
+  (the old `wild()`/`lot_empty` are used), roof form and colour from the plan, the map screen's neighbourhood labels, DS and Dreamcast shots.
+- **RAM (PS1):** `_end` 0x801fbe48 (16,824 free; main before: 0x801f71c0).
 
 ## Sources
 

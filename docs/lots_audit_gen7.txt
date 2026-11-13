@@ -1,0 +1,50 @@
+# the lot audit (src/lot_audit.inc) of every block of every settlement, world version 6 (before) and 7 (the town plan: houses built from LotPlan, north-facing lots turned over).
+# ports/host/lotsim: GEN=7 ./lotsim audit SEED. About 4 lots in 10 face north in version 7. noway (a front door the street cannot reach), overlap, nobed, nowc and nokit are 0 in both; the door and lane counts are the room furnishing's (the mansion's back rooms).
+
+== seed 0x5EED1234, world version 6
+HOUSE        lots   267 items   8720 | overlap 0 door 0 lane 0 unreach floor 352 item 224 floating 0 | homes 267 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 8
+COTTAGE      lots   216 items   6119 | overlap 0 door 0 lane 0 unreach floor 123 item 44 floating 0 | homes 216 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+TOWNHOUSES   lots    68 items   2254 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 136 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+TWO-STOREY   lots    91 items   3871 | overlap 0 door 0 lane 0 unreach floor 21 item 0 floating 4 | homes 91 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+FLATS        lots    44 items   3335 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 88 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+ALL          lots  2217 items  59414 | overlap 0 door 1 lane 12 unreach floor 2149 item 1875 floating 246 | homes 798 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 2.52 | offplot 8
+
+== seed 0x5EED1234, world version 7
+HOUSE        lots   410 items  12146 | overlap 0 door 3 lane 13 unreach floor 325 item 237 floating 1 | homes 410 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+COTTAGE      lots   300 items   8125 | overlap 0 door 0 lane 0 unreach floor 120 item 1 floating 0 | homes 300 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+TOWNHOUSES   lots    82 items   2449 | overlap 0 door 0 lane 0 unreach floor 0 item 4 floating 0 | homes 164 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+TWO-STOREY   lots   180 items   6685 | overlap 0 door 0 lane 0 unreach floor 28 item 0 floating 11 | homes 180 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+FLATS        lots    30 items   2421 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 60 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+ALL          lots  1894 items  55900 | overlap 0 door 4 lane 23 unreach floor 2764 item 1856 floating 254 | homes 1114 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 2.24 | offplot 0
+
+== seed 1234, world version 6
+HOUSE        lots   226 items   7324 | overlap 0 door 0 lane 0 unreach floor 267 item 187 floating 0 | homes 226 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 4
+COTTAGE      lots   185 items   5342 | overlap 0 door 0 lane 0 unreach floor 110 item 41 floating 0 | homes 185 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+TOWNHOUSES   lots    50 items   1635 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 100 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+TWO-STOREY   lots    92 items   3866 | overlap 0 door 0 lane 0 unreach floor 16 item 0 floating 5 | homes 92 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+FLATS        lots    46 items   3388 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 92 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+ALL          lots  2279 items  58733 | overlap 0 door 1 lane 16 unreach floor 2046 item 1787 floating 228 | homes 695 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 2.56 | offplot 4
+
+== seed 1234, world version 7
+HOUSE        lots   429 items  12877 | overlap 0 door 7 lane 9 unreach floor 343 item 318 floating 1 | homes 429 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+COTTAGE      lots   299 items   8020 | overlap 0 door 0 lane 0 unreach floor 109 item 4 floating 0 | homes 299 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+TOWNHOUSES   lots    78 items   2216 | overlap 0 door 0 lane 0 unreach floor 0 item 1 floating 0 | homes 156 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+TWO-STOREY   lots   171 items   6541 | overlap 0 door 0 lane 0 unreach floor 33 item 0 floating 8 | homes 171 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+FLATS        lots    33 items   2781 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 66 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+ALL          lots  1970 items  57597 | overlap 0 door 8 lane 22 unreach floor 2941 item 2037 floating 308 | homes 1121 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 2.27 | offplot 0
+
+== seed 777, world version 6
+HOUSE        lots   217 items   6981 | overlap 0 door 0 lane 0 unreach floor 254 item 193 floating 0 | homes 217 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 12
+COTTAGE      lots   215 items   6070 | overlap 0 door 0 lane 0 unreach floor 132 item 45 floating 0 | homes 215 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+TOWNHOUSES   lots    47 items   1577 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 94 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+TWO-STOREY   lots    83 items   3555 | overlap 0 door 0 lane 0 unreach floor 22 item 0 floating 3 | homes 83 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+FLATS        lots    36 items   2947 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 72 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+ALL          lots  2258 items  57928 | overlap 0 door 1 lane 15 unreach floor 1489 item 1558 floating 245 | homes 681 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 2.54 | offplot 12
+
+== seed 777, world version 7
+HOUSE        lots   412 items  12375 | overlap 0 door 6 lane 10 unreach floor 308 item 299 floating 0 | homes 412 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+COTTAGE      lots   306 items   8376 | overlap 0 door 0 lane 0 unreach floor 113 item 3 floating 0 | homes 306 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+TOWNHOUSES   lots    72 items   2012 | overlap 0 door 0 lane 0 unreach floor 0 item 3 floating 0 | homes 144 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+TWO-STOREY   lots   160 items   5896 | overlap 0 door 0 lane 0 unreach floor 28 item 0 floating 11 | homes 160 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+FLATS        lots    26 items   2160 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 52 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
+ALL          lots  1911 items  55673 | overlap 0 door 7 lane 20 unreach floor 2495 item 1843 floating 288 | homes 1074 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 2.24 | offplot 0
