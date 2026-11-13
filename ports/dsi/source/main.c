@@ -693,7 +693,7 @@ static void say(const char *m) { static const u8 MT[3] = { 45, 90, 150 }; msg = 
     if (strstr(m, "Bought") || strstr(m, "Sold")) sfx(1); else if (strstr(m, "saved") || strstr(m, "loaded")) sfx(3); else if (strstr(m, "is now a")) sfx(5);
     else if (strstr(m, "Cannot") || strstr(m, "full") || strstr(m, "Not ") || strstr(m, "Too ") || strstr(m, "failed") || strstr(m, "No ") || strstr(m, "damaged")) sfx(2); }
 static int obj_at(int x, int y) { if (x < 0 || y < 0 || x >= GN || y >= GN) return -1; if (!occ_ok) occ_build(); return (occ[LV][y][x] & 0x7FFF) - 1; }   // the object covering that cell (of the storey LV)
-static int spawn_x[3], spawn_y[3];
+static int spawn_x[3], spawn_y[3]; static int lot_dn = 1;   // (D79) +1: the front door looks south, -1: north (a lot that fronts a street to its north)
 
 // ---------- the open street world (D16): the lot you live on is the middle of a 3x3 patch of lot slots; walk off it and the next lot is there ----------
 #define SLC 18                         // a slot is 18 cells (36 tiles): the lot (13 cells), a pavement, a 3-cell road, a pavement
@@ -774,6 +774,7 @@ static void gen_house(void) {   // a roomy starter home from the lot's seed: bed
     #undef PUT
     #undef FL
 }
+#include "ds_town7.h"
 // ---- FARM LIFE (D38): the PS1's farm (sim.c: farm_midnight, the crop bed / hen coop / cow / farm stand choices) and its ledger (farm_ui.c). One farm for the household, as on the PS1 ----
 static u8 fm_n[4], fm_g[4], fm_dry[4], fm_wet, fm_hens, fm_cows, fm_fed, fm_fert, fm_fz, fm_pest, fm_up, fm_wc, fm_ordk, fm_ordq, fm_ordt, fm_fair, fm_cdone, fm_cday = 255;
 static u16 fm_stock[4], fm_egg, fm_milk, fm_pe, fm_pm, fm_built, fm_last, fsk[SIM_MAX];   // (fm_built / fm_last / fm_cdone / fm_cday: the ledger's pk_data 16-21; fsk: each Bore's farming skill, the PS1's skill_farm)
@@ -860,7 +861,7 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
     for (int q = 0; q < 3; q++) { spawn_x[q] = 5 + q; spawn_y[q] = y1 - 2; }
     #undef PUTP
 }
-static void place_sims(void) { memset(slv, 0, sizeof slv); for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; int cx = i < 3 ? spawn_x[i] : door_cx + (i % 3) - 1, cy = i < 3 ? spawn_y[i] : door_cy + 1 + i / 3; if (cy > GN - 1) cy = GN - 1; m->x = m->tx = m->wx = cx * 16; m->y = m->ty = m->wy = cy * 16; m->act = -1; m->act_left = 0; } }
+static void place_sims(void) { memset(slv, 0, sizeof slv); for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; int cx = i < 3 ? spawn_x[i] : door_cx + (i % 3) - 1, cy = i < 3 ? spawn_y[i] : lot_dn > 0 ? door_cy + 1 + i / 3 : door_cy - 1 - i / 3; if (cy > GN - 1) cy = GN - 1; if (cy < 0) cy = 0; m->x = m->tx = m->wx = cx * 16; m->y = m->ty = m->wy = cy * 16; m->act = -1; m->act_left = 0; } }
 static void lot_reset(void) {
     memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); ups_clear(); memset(slv, 0, sizeof slv); ed_lv = 0; nobj = 0; occ_ok = 0; pick = -1; mode = M_LIVE;   /* (funds are the household's: set by new_household, not reset on every lot you walk into) */ cat = 0; tool = 0; pal = 1;
     gen_house();
@@ -896,7 +897,7 @@ static void prop_trade(void) {   // Buy or Sell on the Map
 }
 static void lot_enter(int bx, int by) {   // the lot you walk into: what you built there last time, or a new home from its own seed
     if (lot_bx >= 0 && (lot_bx != bx || lot_by != by)) life_ev(ctl, WN_VISIT, 0);
-    lot_bx = bx; lot_by = by; lot_seed = (u32)(bx * 73856093 ^ by * 19349663); pick = -1; memset(slv, 0, sizeof slv); ed_lv = 0; int keep = LV; LV = 0;
+    lot_bx = bx; lot_by = by; lot_dn = bm_gen >= 7 && bx >= 0 && bx < 2000 && bm_lot_face(bx, by) == LF_NORTH ? -1 : 1; lot_seed = (u32)(bx * 73856093 ^ by * 19349663); pick = -1; memset(slv, 0, sizeof slv); ed_lv = 0; int keep = LV; LV = 0;
     for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == bx && lsv[i].by == by) { LotSave *q = &lsv[i]; nobj = q->nobj; pcx = q->pcx; pcy = q->pcy; door_cx = q->dcx; door_cy = q->dcy; roof_st = q->roof; up_st = q->up; memcpy(flr, q->flr, sizeof flr); memcpy(hwl, q->hwl, sizeof hwl); memcpy(vwl, q->vwl, sizeof vwl); memcpy(objs, q->objs, sizeof objs); occ_ok = 0;
         if (q->hasup) { memcpy(uflr, q->ufl, sizeof uflr); memcpy(uhwl, q->uhw, sizeof uhwl); memcpy(uvwl, q->uvw, sizeof uvwl); } else { ups_clear(); shell_to_floors(up_st); }
         nb_load(); LV = keep; return; }
@@ -905,7 +906,9 @@ static void lot_enter(int bx, int by) {   // the lot you walk into: what you bui
 #ifdef DS_LOT
  if (DS_LOT) { bi.lot = DS_LOT; bi.h = 0x9E3779B9u * (u32)(DS_SEED); }
 #endif
- if (bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) { gen_two = bi.lot == LOT_TWO; gen_house(); gen_two = 0; } else gen_public(bi.lot, bi.h); } nb_load(); LV = keep;
+ LotPlan pl7; int g7 = bm_gen >= 7; if (g7) bm_lot_plan(bx, by, &bi, &pl7);   // (D79) world version 7: the town plan builds the home, and a lot that fronts north is turned over
+ if (g7 && pl7.type && bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) { gen_two = bi.lot == LOT_TWO; gen_home7(&pl7, hsh(lot_seed), bi.terrain, bm_nb(bx, by)); gen_two = 0; }
+ else { if (bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) { gen_two = bi.lot == LOT_TWO; gen_house(); gen_two = 0; } else gen_public(bi.lot, bi.h); if (g7 && pl7.face == LF_NORTH) flip7(); } } nb_load(); LV = keep;
 }
 static void lot_cross(void) {   // the sim you are playing left the lot's slot: the next lot becomes the middle one and everything slides back by one slot
     const Sim *m = &sims[ctl]; int dx = fdiv(m->x + 8, 16 * SLC), dy = fdiv(m->y + 8, 16 * SLC); if (!dx && !dy) return;
@@ -1332,7 +1335,9 @@ static const char *const LNAMES[8] = { "Park", "Reyes", "Ford", "Nash", "Cole", 
 static u32 hsh(u32 a) { a ^= a >> 16; a *= 0x7feb352dU; a ^= a >> 15; a *= 0x846ca68bU; a ^= a >> 16; return a; }
 static CRel *crel(u16 id) { int h = id & 63; for (int k = 0; k < 64; k++) { CRel *c = &crt[(h + k) & 63]; if (c->id == id) return c; if (!c->id) { c->id = id; return c; } } return &crt[h]; }
 static void cit_name(const Cit *c, char *o) { sprintf(o, "%s %s", FNAMES[c->id % 12], LNAMES[(c->id / 12) % 8]); }
-static int cit_street(int x, int y) { int lx = ((x % SLC) + SLC) % SLC, ly = ((y % SLC) + SLC) % SLC; return (lx == 13 || lx == 17 || ly == 13 || ly == 17 || (lx >= 13 && ly >= 13)) && !far_solid(x, y); }   // (D40: the pavements, and across the road only at the corners; it was the whole street, lanes too)
+static int cit_street(int x, int y) { int lx = ((x % SLC) + SLC) % SLC, ly = ((y % SLC) + SLC) % SLC;
+    if (t7()) { int sx = fdiv(x, SLC), sy = fdiv(y, SLC); if (sx < -1 || sx > 1 || sy < -1 || sy > 1) return 0; int S = st_s(sx, sy), E = st_e(sx, sy), C = st_c(sx, sy); return (lx <= 12 ? ly >= 13 && S && (ly == 13 || ly == 17) : ly <= 12 ? E && (lx == 13 || lx == 17) : C != 0) && !far_solid(x, y); }
+    return (lx == 13 || lx == 17 || ly == 13 || ly == 17 || (lx >= 13 && ly >= 13)) && !far_solid(x, y); }   // (D40: the pavements, and across the road only at the corners; it was the whole street, lanes too)
 static int cit_vis(const Cit *c) { int hr = (minutes / 60) % 24; return c->on && hr >= 6 && hr < 23 && ((hr * 5 + c->id) % 7) < 5; }   // asleep indoors at night, out and about by day
 volatile unsigned town_sig, town_sig_seed = 777, pers_sig, pers_dist, pers_dup;   // (test readouts)
 static u8 town_legacy;   // (D75) 1: a save from before D75: its townies are made from the place alone, as they were (their relations and who moved in are kept by that id). Anything else: the save's world seed goes in as well, so another save has other people
@@ -1347,10 +1352,12 @@ static void city_spawn(void) {
         int r = (int)(h % 100); c->stage = (u8)(r < 16 ? 2 : r < 30 ? 3 : r < 86 ? 4 : 5);
         int lx = (h >> 8) & 1 ? 17 : 13, ly = (int)((h >> 12) % 18);   // (D40: on a pavement, not in a lane) if ((h >> 20) & 1) { int t = lx; lx = ly; ly = t; }
         int cx = sx * SLC + lx, cy = sy * SLC + ly; if (far_solid(cx, cy)) continue;
+        if (t7()) { int ok = 0; for (int t = 0; t < 8 && !ok; t++) { int a = (int)((h >> (t + 8)) & 1) ? 17 : 13, b = (int)((h >> (t * 3)) % 18), px = t & 1 ? b : a, py = t & 1 ? a : b; cx = sx * SLC + px; cy = sy * SLC + py; if (cit_street(cx, cy)) ok = 1; } if (!ok) continue; }
         c->x = cx * 16; c->y = cy * 16; c->dir = (int)((h >> 24) & 3); c->skin = (u8)((h >> 5) % 6); c->shirt = (u8)((h >> 9) % 6); c->hair = (u8)((h >> 13) % 6); c->pants = (u8)((h >> 17) % 4); c->on = 1; }
     for (int k = 0; k < NCAR; k++) { Car *c = &cars[k]; if (!ns) { c->x = c->y = -9999; c->dx = c->dy = 0; continue; } u32 h = hsh((u32)k * 977u + (u32)lot_bx * 31u + (u32)lot_by * 7u); int j = (int)((k >> 1) % 3) - 1, hz = k & 1, fw = (int)((k >> 2) & 1); int at = (int)(h % (SLC * 3 * 16)) - SLC * 16;
         if (hz) { c->y = (fw ? 16 : 14) * 16 + j * SLC * 16; c->x = at; c->dx = fw ? 1 : -1; c->dy = 0; } else { c->x = (fw ? 16 : 14) * 16 + j * SLC * 16; c->y = at; c->dx = 0; c->dy = fw ? 1 : -1; }
-        { static const u16 cc[6] = { C15(28, 6, 6), C15(8, 12, 28), C15(28, 26, 6), C15(10, 24, 10), C15(26, 26, 28), C15(4, 4, 6) }; c->col = cc[h % 6]; } }
+        { static const u16 cc[6] = { C15(28, 6, 6), C15(8, 12, 28), C15(28, 26, 6), C15(10, 24, 10), C15(26, 26, 28), C15(4, 4, 6) }; c->col = cc[h % 6]; }
+        if (t7()) { int on = 1; for (int q = -1; q <= 1; q++) if (hz ? !st_s(q, j) : !st_e(j, q)) on = 0; if (!on) c->dx = c->dy = 0; } }   // (D79: a car only where the street runs the whole way)
 }
 static void city_step(int frames) {
     static const int DXs[4] = { 1, 0, -1, 0 }, DYs[4] = { 0, 1, 0, -1 };
@@ -1375,7 +1382,7 @@ static void draw_city(void) {
         block(x - 90 * sc / 100, z - 50 * sc / 100, x + 90 * sc / 100, z + 50 * sc / 100, -300 * sc / 100, -590 * sc / 100, SH[c->shirt], SH[c->shirt]);
         block(x - 60 * sc / 100, z - 60 * sc / 100, x + 60 * sc / 100, z + 60 * sc / 100, -590 * sc / 100, -800 * sc / 100, SK[c->skin], c->stage == 5 ? C15(25, 25, 26) : HR[c->hair]); }
     gy_off = 0;
-    for (int k = 0; k < CARN; k++) { const Car *c = &cars[k]; if (polys > 2950) break;   // (D49: a car with a hood, a set-back glass cabin and a roof, lamps at the right end, a dark skirt over the wheels, facing the way it drives)
+    for (int k = 0; k < CARN; k++) { const Car *c = &cars[k]; if (polys > 2950) break; if (!c->dx && !c->dy) continue;   // (D49: a car with a hood, a set-back glass cabin and a roof, lamps at the right end, a dark skirt over the wheels, facing the way it drives)
         int ax = c->dx != 0, sg = (ax ? c->dx : c->dy) < 0 ? -1 : 1, x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, la = 300, lb = 140;   // (along its way, across)
 #define CARB(a0, b0, a1, b1, y0, y1, w, r) do { int A0 = sg * (a0), A1 = sg * (a1); if (ax) block(x + A0, z + (b0), x + A1, z + (b1), y0, y1, w, r); else block(x + (b0), z + A0, x + (b1), z + A1, y0, y1, w, r); } while (0)
         u16 col = c->col, glass = C15(13, 19, 25);
@@ -1386,7 +1393,7 @@ static void draw_city(void) {
         CARB(-la, -lb + 24, -la + 12, lb - 24, -60, -100, C15(28, 5, 4), C15(28, 5, 4)); }
 #undef CARB
 }
-static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw) {   // a neighbour's lot: flat ground, a plain house or a few trees (cheap: the polygon budget is the DS's limit)
+static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotPlan *pl) {   // a neighbour's lot: flat ground, a plain house or a few trees (cheap: the polygon budget is the DS's limit)
     u32 h = b->h; int k = b->lot; if (far_lod) pop = 0;
     u16 grass = b->terrain == BT_DESERT ? C15(24, 20, 10) : b->terrain == BT_ROCKY ? C15(13, 13, 13) : b->terrain == BT_BEACH ? C15(26, 24, 14) : seas(C15(11, 20, 8));
     tx_want = b->terrain == BT_DESERT || b->terrain == BT_BEACH ? TX_SAND : b->terrain == BT_ROCKY ? TX_GRAVEL : TX_GRASS; ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), -20, grass); tx_want = -1;
@@ -1395,12 +1402,16 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw) {   // a n
     int st = bm_storeys(b); int hh = 2 * st + (st == 1 ? 2 : 0);
     u16 walls[6] = { C15(26, 22, 16), C15(24, 14, 10), C15(22, 24, 26), C15(26, 26, 18), C15(16, 22, 14), C15(24, 20, 22) }; u16 wall = walls[(h >> 8) % 6];
     if (k >= LOT_SHOP) wall = k == LOT_TOWER || k == LOT_OFFICE || k == LOT_HOTEL ? C15(16, 20, 26) : C15(27, 12, 10);
-    int X0 = ox + tl(x0), X1 = ox + tl(x0 + w), Z0 = oz + tl(z0), Z1 = oz + tl(z0 + d), Y = -(hh * T);
+    int X0 = ox + tl(x0), X1 = ox + tl(x0 + w), Z0 = oz + tl(z0), Z1 = oz + tl(z0 + d), Y = -(hh * T), nth = 0;
+    if (pl) { nth = pl->face == LF_NORTH; if (pl->type) { int a, c, e, f; far_foot7(b, pl, &a, &e, &c, &f); int bx1 = pl->x1 - BM_LOT0 + 1, by0 = pl->y0 - BM_LOT0, by1 = pl->y1 - BM_LOT0 + 1; (void)c; (void)f; X0 = ox + tl(2 * (pl->x0 - BM_LOT0)); X1 = ox + tl(2 * bx1); Z0 = oz + tl(2 * by0); Z1 = oz + tl(2 * by1);
+            if (pl->wx1) { int wa = pl->wx0 - BM_LOT0, wb = pl->wx1 - BM_LOT0 + 1, wz0 = pl->wy0 - BM_LOT0, wz1 = pl->wy1 - BM_LOT0 + 1; if (pl->type == HT_L) { if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; block(ox + tl(2 * wa), oz + tl(2 * wz0), ox + tl(2 * wb), oz + tl(2 * wz1), 0, -2 * T, C15(18, 18, 20), C15(20, 20, 22)); } else { if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; X0 = X0 < ox + tl(2 * wa) ? X0 : ox + tl(2 * wa); X1 = X1 > ox + tl(2 * wb) ? X1 : ox + tl(2 * wb); } }
+            if (!far_lod && pl->drv) ground(ox + tl(2 * (pl->drv - BM_LOT0)), oz + tl(nth ? 0 : 2 * (pl->y1 - BM_LOT0 + 1)), ox + tl(2 * (pl->drv - BM_LOT0 + 2)), oz + tl(nth ? 2 * (pl->y0 - BM_LOT0) : 26), -26, C15(20, 20, 20)); }
+        else if (nth) { Z0 = oz + tl(26 - z0 - d); Z1 = oz + tl(26 - z0); } }
     tx_want = k > LOT_APART ? TX_WINDOWS : TX_CLAPBOARD; block(X0, Z0, X1, Z1, 0, Y, wall, wall); tx_want = -1;   // (D43: shops and towers show storeys of windows)
-    if (!far_lod) { int wn = (X1 - X0) / 5; block(X0 + wn * 2, Z1, X0 + wn * 2 + wn * 7 / 10, Z1 + 14, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); block(X0 + wn, Z1, X0 + wn + wn * 7 / 10, Z1 + 14, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); block(X0 + wn * 3, Z1, X0 + wn * 3 + wn * 7 / 10, Z1 + 14, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); }
+    if (!far_lod) { int wn = (X1 - X0) / 5, zf = nth ? Z0 - 14 : Z1, zg = nth ? Z0 : Z1 + 14; block(X0 + wn * 2, zf, X0 + wn * 2 + wn * 7 / 10, zg, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); block(X0 + wn, zf, X0 + wn + wn * 7 / 10, zg, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); block(X0 + wn * 3, zf, X0 + wn * 3 + wn * 7 / 10, zg, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); }
     { u32 rh = hsh(h ^ 0x500Fu); int sty = st >= 3 || k > LOT_APART ? 1 : 2 + ((rh >> 2) & 1); static const s16 PIT[3] = { 110, 170, 250 };   // (D42) hip, gable or flat, a colour and a pitch per building
       roof_shape(X0 - T / 3, Z0 - T / 3, X1 + T / 3, Z1 + T / 3, Y, sty, PIT[1 + ((rh >> 8) & 1)], ROOFC[(rh >> 4) % 6], wall); }
-    for (int i = 0; i < pop && i < 3; i++) person(ox + tl(4 + i * 3), oz + tl(z0 + d + 3), C15(6 + i * 4, 10, 25 - i * 3), yaw);   // the bores who live there
+    for (int i = 0; i < pop && i < 3; i++) person(ox + tl(4 + i * 3), nth ? oz + tl(1) : oz + tl(z0 + d + 3), C15(6 + i * 4, 10, 25 - i * 3), yaw);   // the bores who live there
 }
 static u16 land_col(int t) { return t == BT_BEACH || t == BT_DESERT ? C15(26, 23, 15) : t == BT_ROCKY ? C15(14, 16, 12) : t == BT_FOREST ? seas(C15(8, 17, 6)) : seas(C15(11, 20, 8)); }   // (D37; D50: by the season)
 static void lamp_kerb(int x, int z, int dx, int dz) {   // (D40, as the PS1's kerb_lamp) a street lamp on the pavement at the kerb, its arm out over the street (dx, dz: towards the road)
@@ -1418,9 +1429,39 @@ static void slot_street(int ox, int oz) {   // (D40) a far slot's own streets (a
     ground(tl(ox), tl(oz + 26), tl(ox + 26), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox), tl(oz + 34), tl(ox + 36), tl(oz + 36), -24, C15(22, 22, 22));
     ground(tl(ox + 26), tl(oz), tl(ox + 28), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz), tl(ox + 36), tl(oz + 34), -24, C15(22, 22, 22));
 }
+static void st7(int sx, int sy, int ox, int oz, int pass) {   // (D79) one slot's streets by the town plan: south side, east side, south-east corner (pass 0 asphalt, 1 pavement)
+    int S = st_s(sx, sy), E = st_e(sx, sy), C = st_c(sx, sy), cH = C & 1, cV = (C >> 1) & 1; if (C && !cH && !cV) cH = cV = 1;
+    const u16 AS = C15(7, 7, 9), PV = C15(22, 22, 22);
+    if (pass == 0) {
+        if (S) ground(tl(ox), tl(oz + 28), tl(ox + 26), tl(oz + 34), 0, AS);
+        if (E) ground(tl(ox + 28), tl(oz), tl(ox + 34), tl(oz + 26), 0, AS);
+        if (cH) ground(tl(ox + 26), tl(oz + 28), tl(ox + 36), tl(oz + 34), 0, AS);
+        if (cV) ground(tl(ox + 28), tl(oz + 26), tl(ox + 34), tl(oz + 36), 0, AS);
+    } else {
+        if (S) { ground(tl(ox), tl(oz + 26), tl(ox + 26), tl(oz + 28), -24, PV); ground(tl(ox), tl(oz + 34), tl(ox + 26), tl(oz + 36), -24, PV); }
+        if (E) { ground(tl(ox + 26), tl(oz), tl(ox + 28), tl(oz + 26), -24, PV); ground(tl(ox + 34), tl(oz), tl(ox + 36), tl(oz + 26), -24, PV); }
+        if (cH && cV) { ground(tl(ox + 26), tl(oz + 26), tl(ox + 28), tl(oz + 28), -24, PV); ground(tl(ox + 34), tl(oz + 26), tl(ox + 36), tl(oz + 28), -24, PV); ground(tl(ox + 26), tl(oz + 34), tl(ox + 28), tl(oz + 36), -24, PV); ground(tl(ox + 34), tl(oz + 34), tl(ox + 36), tl(oz + 36), -24, PV); }
+        else if (cH) { ground(tl(ox + 26), tl(oz + 26), tl(ox + 36), tl(oz + 28), -24, PV); ground(tl(ox + 26), tl(oz + 34), tl(ox + 36), tl(oz + 36), -24, PV); }
+        else if (cV) { ground(tl(ox + 26), tl(oz + 26), tl(ox + 28), tl(oz + 36), -24, PV); ground(tl(ox + 34), tl(oz + 26), tl(ox + 36), tl(oz + 36), -24, PV); }
+    }
+}
+static void world7(void) {   // (D79) the 3x3 patch of slots with the streets the plan gives them (a suburb's inner blocks have none: lawn, trees and the next back yard)
+    tx_want = TX_ASPHALT; for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) st7(i, j, 36 * i, 36 * j, 0);
+    tx_want = TX_PAVING; for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) st7(i, j, 36 * i, 36 * j, 1);
+    tx_want = -1;
+    if (st_s(0, 0)) for (int x = 0; x < 26; x += 6) ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -30, C15(28, 26, 8));
+    if (st_e(0, 0)) for (int x = 0; x < 26; x += 6) ground(tl(31) - 14, tl(x), tl(31) + 14, tl(x) + T * 2, -30, C15(28, 26, 8));
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { if (nb[j + 1][i + 1].terrain == BT_SEA) continue; int ox = 36 * i, oz = 36 * j, S = st_s(i, j), E = st_e(i, j), C = st_c(i, j);
+        if (S) { lamp_kerb(tl(ox + 14), tl(oz + 28) - 30, 0, 1); lamp_kerb(tl(ox + 4), tl(oz + 34) + 30, 0, -1); }
+        else if (nb[j + 1][i + 1].set != 255 && polys < 2300) tree(tl(ox + 8 + (i & 1) * 9), tl(oz + 31), T * 2);   // (the green strip between two back yards)
+        if (E) { lamp_kerb(tl(ox + 28) - 30, tl(oz + 4), 1, 0); lamp_kerb(tl(ox + 34) + 30, tl(oz + 14), -1, 0); }
+        else if (nb[j + 1][i + 1].set != 255 && polys < 2300) tree(tl(ox + 31), tl(oz + 8 + (j & 1) * 9), T * 2);
+        if (C & 3) bin_at(tl(ox + 26) + 70, tl(oz + 26) + 70); }
+}
 static void draw_world(int yaw) {   // LIVE: all round the lot, the lots next door, the streets and the land (a 3x3 patch of slots)
     if (zone == Z_ISLAND) { ground(tl(-40), tl(-40), tl(76), tl(76), 90, C15(25, 22, 14)); return; }   // (the island: sand between the lots, the sea is the neighbours')
     tx_want = zone == Z_TOWN ? TX_SAND : TX_GRASS; ground(tl(-40), tl(-40), tl(76), tl(76), 90, zone == Z_TOWN ? C15(24, 21, 13) : seas(C15(7, 16, 6))); tx_want = TX_ASPHALT;
+    if (t7()) { world7(); return; }
     for (int j = -1; j <= 1; j++) { int o = 36 * j;   // roads both ways
         ground(tl(-36), tl(28 + o), tl(72), tl(34 + o), 0, C15(7, 7, 9)); ground(tl(28 + o), tl(-36), tl(34 + o), tl(72), 0, C15(7, 7, 9)); }
     tx_want = TX_PAVING; for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int ox = 36 * i, oz = 36 * j;   // pavements in the stretches between the roads
@@ -1435,14 +1476,14 @@ static u16 horizon_col(void) { return zone == Z_ISLAND ? C15(5, 12, 24) : zone =
 static void draw_far_all(int yaw) {   // last, so the lot, the sims and the citizens always get the polygons first
     for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { if (!i && !j) continue; const BInfo *b = &nb[j + 1][i + 1];
         if (b->terrain == BT_SEA) { ground(tl(36 * i), tl(36 * j), tl(36 * i + 36), tl(36 * j + 36), -8, C15(5, 12, 24)); continue; }
-        if (polys > 2700) continue; far_lot(b, 36 * i * T, 36 * j * T, nb_pop[j + 1][i + 1], yaw); }
+        if (polys > 2700) continue; far_lot(b, 36 * i * T, 36 * j * T, nb_pop[j + 1][i + 1], yaw, t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0); }
     // (D40) THE FAR RING: the slots past the 3x3, each drawn round its own corner (a matrix move: no 16-bit overflow): plain houses, streets, the land; then the
     // horizon, one big quad scaled up four times, under everything out to the far plane. The haze fades it all into the sky, so nothing pops in.
     far_lod = 1;
     for (int r = 2; r <= ring_r; r++) for (int j = -r; j <= r; j++) for (int i = -r; i <= r; i++) { if (abs(i) != r && abs(j) != r) continue; const BInfo *b = &nbf[j + RING_MAX][i + RING_MAX];
         gx_push(36 * i * T, 0, 36 * j * T);
         if (b->terrain == BT_SEA) ground(tl(0), tl(0), tl(36), tl(36), -8, C15(5, 12, 24));
-        else { ground(tl(0), tl(0), tl(36), tl(36), 90, land_col(b->terrain)); if (!zone || zone == Z_TOWN) slot_street(0, 0); far_lot(b, 0, 0, 0, yaw); }
+        else { ground(tl(0), tl(0), tl(36), tl(36), 90, land_col(b->terrain)); if (t7()) { st7(i, j, 0, 0, 0); st7(i, j, 0, 0, 1); } else if (!zone || zone == Z_TOWN) slot_street(0, 0); far_lot(b, 0, 0, 0, yaw, t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0); }
         gx_pop(); }
     far_lod = 0;
     if (gxb) { int X = (gx_far + 9) * 1024; if (X > 32000) X = 32000; gx_c0(0x11); gx_id(0x1B); gxb[gxn++] = 4 * 4096; gxb[gxn++] = 4096; gxb[gxn++] = 4 * 4096; gx_lv = 0; ground(-X, -X, X, X, 180, horizon_col()); gx_c1(0x12, 1); gx_lv = 0; }
@@ -1686,8 +1727,8 @@ static void draw_build(int yaw) {   // (D39) dpass 1: the still part (recorded o
     int ltx = nb[1][1].terrain == BT_BEACH || nb[1][1].terrain == BT_DESERT || zone == Z_ISLAND || zone == Z_TOWN ? TX_SAND : nb[1][1].terrain == BT_ROCKY ? TX_GRAVEL : TX_GRASS;
     if (st) { gx_pid(1); tx_want = ltx; ground(tl(0), tl(0), tl(GN * 2), tl(GN * 2), 0, lawn);   // the lawn (sand on a beach): one quad and big darker squares (every polygon counts on the DS)
         if (o_chk) for (int z = 0; z < GN; z += 2) for (int x = 0; x < GN; x += 2) if (((x + z) / 2) & 1) { int e = x + 2 > GN ? GN : x + 2, f = z + 2 > GN ? GN : z + 2; ground(tl(x * 2), tl(z * 2), tl(e * 2), tl(f * 2), -20, shade(lawn, 7)); }
-        if (!zone) ground(tl(0), tl(26) - 30, tl(GN * 2), tl(26), -20, C15(14, 24, 10));   // a low hedge line along the back of the plot (no more posts sticking out)
-        tx_want = TX_PAVING; if (!zone) block(tl(door_cx * 2) + T / 2, tl(door_cy * 2 + 1), tl(door_cx * 2 + 2) - T / 2, tl(26), 0, -26, C15(19, 18, 16), C15(23, 22, 20)); tx_want = -1; }   // a path from the front door to the pavement
+        if (!zone && !t7()) ground(tl(0), tl(26) - 30, tl(GN * 2), tl(26), -20, C15(14, 24, 10));   // a low hedge line along the back of the plot (no more posts sticking out)
+        tx_want = TX_PAVING; if (!zone && !t7()) block(tl(door_cx * 2) + T / 2, tl(door_cy * 2 + 1), tl(door_cx * 2 + 2) - T / 2, tl(26), 0, -26, C15(19, 18, 16), C15(23, 22, 20)); tx_want = -1; }   // a path from the front door to the pavement
     if (dpass == 2) PROF(10);
     int top = top_lv(), vl = view_lv(), show = show_lv(); if (dpass == 2) PROF(9);
     for (int L = show; L >= 0; L--) {   // (from the storey you look at down: the DS draws at most 2048 polygons, and what is sent last is what it drops)
@@ -2479,7 +2520,7 @@ static void fm_unpack(const FarmSave *f) { memcpy(fm_n, f->b, 4); memcpy(fm_g, f
 #define MGBUF_N 4096   // (D64) the mini-games' save blocks (the Boreagotchi's v48 extras need the room)
 static int sav_pack(int big) {   // returns the packed size in sav_buf (header included), or 0 if even the basics do not fit
     if (lot_bx >= 0) lot_save();
-    SavCore c; memset(&c, 0, sizeof c); c.opt[39] = 0x5E; c.seed = seed;   // (D75: opt[36..39] were never used: 0x5E says the townies are made from the world seed too)
+    SavCore c; memset(&c, 0, sizeof c); c.opt[39] = 0x5E; c.opt[38] = bm_gen >= 7 ? 7 : 0; c.seed = seed;   // (D79: opt[38] 7: a world of the town plan (a d78 save has 0 there and keeps its old towns, bm_gen 3))   // (D75: opt[36..39] were never used: 0x5E says the townies are made from the world seed too)
      c.minutes = minutes; c.funds = funds; c.nsim = nsim; c.ctl = ctl; c.cur_sim = cur_sim; c.cur_set = cur_set; c.lot_bx = lot_bx; c.lot_by = lot_by; c.days = st_days; c.born = st_born; c.died = st_died;
     for (int i = 0; i < NOPT && i < OPT_OLD; i++) if (OPT[i].v) c.opt[i] = (u8)*OPT[i].v;
     int n = 0; u8 *r = sav_raw; memset(r, 0, sizeof sav_raw);
@@ -2542,7 +2583,7 @@ static int sav_apply(void) {   // 1 = loaded
     if (n + 20 <= rl) { s16 zs[10]; memcpy(zs, sav_raw + n, 20); if (zs[0] == 0x4E5A && zs[1] == 16 && zs[2] >= 0 && zs[2] < Z_N) { zone = zs[2]; isl_wood = zs[3]; isl_stone = zs[4]; isl_leaves = zs[5]; isl_food = zs[6]; isl_spear = zs[7]; isl_shells = zs[8]; isl_secrets = (u16)zs[9]; n += 20; } }   // (D37)
     farm_reset(); if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x4D46 && th[1] == sizeof(FarmSave) && n + 4 + (int)sizeof(FarmSave) <= rl) { FarmSave f; memcpy(&f, sav_raw + n + 4, sizeof f); fm_unpack(&f); n += 4 + (int)sizeof f; } }   // (D38; before: no farm)
     n += mg_unpack(sav_raw + n, rl - n);   // (D44 on; before: none of it)
-    town_legacy = c.opt[39] != 0x5E; seed = c.seed; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
+    town_legacy = c.opt[39] != 0x5E; seed = c.seed; bm_gen = c.opt[38] == 7 ? 7 : 3; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
     st_days = c.days; st_born = c.born; st_died = c.died; minutes = c.minutes; funds = c.funds; nsim = c.nsim; ctl = c.ctl; cur_sim = c.cur_sim >= 0 && c.cur_sim < nsim ? c.cur_sim : ctl;
     for (int i = 0; i < NOPT && i < OPT_OLD; i++) if (OPT[i].v && c.opt[i] < opt_cnt(i)) *OPT[i].v = c.opt[i];
     for (int i = OPT_OLD; i < NOPT; i++) if (OPT[i].v) *OPT[i].v = ox_have && i - OPT_OLD < ox_n && ox[i - OPT_OLD] < opt_cnt(i) ? ox[i - OPT_OLD] : OPT[i].def;   // (a save from before D33: the new ones at their defaults)
@@ -2578,7 +2619,7 @@ static int obj_solid(int cx, int cy) { if (cx < 0 || cy < 0 || cx >= GN || cy >=
 static int edge_open(int ax, int ay, int bx2, int by) {   // can a sim step between two neighbouring cells? walls block, doors do not
     int ina = ax >= 0 && ay >= 0 && ax < GN && ay < GN, inb = bx2 >= 0 && by >= 0 && bx2 < GN && by < GN;
     if (LV && (!ina || !inb)) return 0;   // (upstairs: the plot is all there is)
-    if (!ina || !inb) { if (ina == inb || zone) return 1; return !(by != ay && (ay == GN - 1 || by == GN - 1) && bx2 != door_cx && ax != door_cx) ? 1 : 0; }   // out of the plot: open, but the back fence has one gap, at the path
+    if (!ina || !inb) { if (ina == inb || zone || bm_gen >= 7) return 1; return !(by != ay && (ay == GN - 1 || by == GN - 1) && bx2 != door_cx && ax != door_cx) ? 1 : 0; }   // out of the plot: open, but the back fence has one gap, at the path
     int w; u8 (*hw)[GN] = HWv(LV); u8 (*vw)[GN + 1] = VWv(LV);
     if (bx2 > ax) w = vw[ay][ax + 1]; else if (bx2 < ax) w = vw[ay][ax]; else if (by > ay) w = hw[ay + 1][ax]; else w = hw[ay][ax];
     return w == 0 || w == 5;
@@ -3573,6 +3614,7 @@ static void draw_title(void) {
 #include "ds_trui.h"    // (D73) the trait and wish pickers, the traits page
 static void new_household(void) {
     zone = 0; isl_wood = isl_stone = isl_leaves = isl_spear = isl_shells = 0; isl_food = 3; isl_secrets = 0; farm_reset();
+    if (bm_gen != 7) { bm_gen = 7; seed = seed * 1103515245u + 12345 + minutes; town_legacy = 0; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; cur_set = bm_capital(); town_pick(cur_set); }   // (D79: a new life after an old save is a new world of the plan)
     st_days = st_born = st_died = 0; nown = 0; home_bx = home_by = -1; funds = 3500; life_reset(); rt_jump = 1; mg_reset();
     lot_seed = (u32)minutes * 7919u + 17; lot_reset(); lot_bx = -1; lot_by = -1; Sim *m = &sims[0]; m->skin = (u8)(minutes % 6); m->hair = (u8)(minutes % NHAIRD); m->hcol = (u8)(minutes % 6); m->shirt = (u8)(minutes % 6); m->beard = BEARDV; m->fc = 0;
     for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0; memset(csx, 0, sizeof csx); trg_begin();
@@ -3697,8 +3739,11 @@ int main(void) {
     glInit(); glEnable(GL_TEXTURE_2D);
     vramSetBankA(VRAM_A_LCD); for (int k = 0; k < NDSTEX; k++) for (int i = 0; i < 64; i++) VRAM_A[k * 64 + i] = DSTEX[k][i]; vramSetBankA(VRAM_A_TEXTURE);   // (D43) the textures, 128 bytes each at the start of bank A
     glEnable(GL_ANTIALIAS); glClearColor(14, 20, 31, 31); glClearPolyID(63); glClearDepth(0x7FFF); glViewport(0, 0, 255, 191); REG_BG0CNT = BG_PRIORITY(1);
-    snd_init(); tabs_init(); for (int c = 0; c < 256; c++) if (PS1ID[c]) ID2CH[PS1ID[c] - 1] = (u8)c; bm_dials_default(); bm_new(seed); pop_build();
+    snd_init(); tabs_init(); for (int c = 0; c < 256; c++) if (PS1ID[c]) ID2CH[PS1ID[c] - 1] = (u8)c; bm_dials_default(); bm_gen = 7; bm_new(seed); pop_build();   // (D79: new lives are world version 7, the town plan)
     cur_set = bm_capital(); town_pick(cur_set);
+#ifdef DS_AT_BX
+    sel_x = DS_AT_BX; sel_y = DS_AT_BY;   // (test builds: the lot the shot rig starts on)
+#endif
     lot_reset(); funds = 3500; sims[0].skin = 2; sims[0].hair = 4; sims[0].hcol = 0; sims[0].shirt = 0; mode = M_TITLE; sav_probe(); lcdMainOnTop(); hud_clear();
     int yaw = 0, dist = 13000, frames = 0, dirty = 1; unsigned lastsig = 0; int lastmode = -1;
 #ifdef DSTEST
@@ -3750,7 +3795,7 @@ int main(void) {
             yaw = sinLerp(frames * 70) / 2; pitch = 0; dist = cas_cd;
         } else if (mode == M_MAP) {
             if (down & (KEY_L | KEY_R)) { cur_set = (cur_set + ((down & KEY_R) ? 1 : bm_nset() - 1)) % bm_nset(); town_pick(cur_set); dirty = 1; }
-            if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; town_legacy = 0; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; nown = 0; life_reset(); nb_ok = 0; lot_bx = -1; cur_set = bm_capital(); town_pick(cur_set); dirty = 1; }
+            if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; town_legacy = 0; bm_gen = 7; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; nown = 0; life_reset(); nb_ok = 0; lot_bx = -1; cur_set = bm_capital(); town_pick(cur_set); dirty = 1; }
             if (down & KEY_LEFT) { sel_x--; dirty = 1; } if (down & KEY_RIGHT) { sel_x++; dirty = 1; }
             if (down & KEY_UP) { sel_y--; dirty = 1; } if (down & KEY_DOWN) { sel_y++; dirty = 1; }
             if (held & KEY_X) { if (dist > 3000) dist -= 60; } if (held & KEY_Y) { if (dist < 16000) dist += 60; }
@@ -3782,6 +3827,7 @@ int main(void) {
                 else if (sc == 2) { memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); nobj = 0; gen_public(LOT_FARM, 1); occ_ok = 0; for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (7 + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 11 * 16; sims[q].act = -1; } }
                 else if (sc == 3) { for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (door_cx + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 13 * 16; sims[q].act = -1; } live_pitch = 2200; yaw_t = live_yaw = 4096 * 2; live_dist = 14000; }
                 else if (sc == 6) { live_pitch = 2600; live_dist = 4200; yaw_t = live_yaw = 4096 + 600; }   // (6: close up on the house, to see the patterns)
+                else if (sc >= 170 && sc <= 175) { static const int PI_[6] = { 7000, 7000, 5200, 3600, 7000, 5200 }, DI_[6] = { 15800, 15800, 15800, 9000, 15800, 15800 }; live_pitch = PI_[sc - 170]; live_dist = DI_[sc - 170]; yaw_t = live_yaw = sc <= 173 ? 4096 * 2 : 4096; cam_free = 0; }   // (D79 shots: 170-172 looking north from the south, 173-175 the other way; high, middle and close)
                 else if (sc == 5) { live_pitch = 1800; live_dist = 16000; yaw_t = live_yaw = 4096 * 2 + 1500; }   // (5: the horizon)
                 else if (sc >= 10 && sc < 13) { o_look = sc - 10; o_dirty = 1; }   // (10-12: Classic, Rich, Toon)
                 else if (sc >= 20 && sc < 23) { o_detl = sc - 20; o_dirty = 1; }

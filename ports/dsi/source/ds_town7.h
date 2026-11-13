@@ -149,3 +149,20 @@ static void gen_home7(const LotPlan *p0, u32 h, int terrain, int kind) {   // a 
     h7_spawn(dxc, by1, 0);
     if (north) flip7();
 }
+// ---- the neighbourhood: plans and streets of the lots round (nb_load calls this) ----
+static void nb7_load(void) {
+    for (int dy = -RING_MAX; dy <= RING_MAX + 1; dy++) for (int dx = -RING_MAX; dx <= RING_MAX + 1; dx++) {
+        int x = lot_bx + dx, y = lot_by + dy; BInfo t; const BInfo *b;
+        if (dx <= RING_MAX && dy <= RING_MAX) b = &nbf[dy + RING_MAX][dx + RING_MAX];
+        else { if (x < 0 || y < 0 || x >= BM_N || y >= BM_N) { nrd[dy + RING_MAX][dx + RING_MAX] = 0; continue; } bm_block(x, y, &t); b = &t; }
+        int rd = b->road & 7; if (b->lot != LOT_RIVER && (b->road & BR_MEGA)) { int mp = BR_PART(b->road); if (mp & 1) rd &= ~2; if (mp & 2) rd &= ~1; }
+        nrd[dy + RING_MAX][dx + RING_MAX] = (u8)(b->terrain == BT_SEA ? 0 : rd);
+        if (dx <= RING_MAX && dy <= RING_MAX) { LotPlan *p = &nlp[dy + RING_MAX][dx + RING_MAX]; if (b->terrain == BT_SEA || x < 0 || y < 0 || x >= BM_N || y >= BM_N) { memset(p, 0, sizeof *p); p->face = LF_SOUTH; } else bm_lot_plan(x, y, b, p); } }
+}
+static int st_s(int sx, int sy) { return nrd[sy + RING_MAX + 1][sx + RING_MAX] & 1; }          // a street along the slot's south side
+static int st_e(int sx, int sy) { return (nrd[sy + RING_MAX][sx + RING_MAX + 1] >> 1) & 1; }   // ... and its east side
+static int st_c(int sx, int sy) { return nrd[sy + RING_MAX + 1][sx + RING_MAX + 1]; }          // what is paved at its south-east corner (1 east-west, 2 north-south, 4 only the corner)
+static int far_foot7(const BInfo *b, const LotPlan *p, int *x0, int *z0, int *x1, int *z1) {   // the building's cells on its plot (x1, z1 exclusive)
+    if (p->type) { *x0 = p->x0 - BM_LOT0; *x1 = p->x1 - BM_LOT0 + 1; *z0 = p->y0 - BM_LOT0; *z1 = p->y1 - BM_LOT0 + 1;
+        if (p->wx1) { int a = p->wx0 - BM_LOT0, c = p->wx1 - BM_LOT0 + 1, e = p->wy0 - BM_LOT0, f = p->wy1 - BM_LOT0 + 1; if (a < *x0) *x0 = a; if (c > *x1) *x1 = c; if (e < *z0) *z0 = e; if (f > *z1) *z1 = f; } return 1; }
+    far_foot(b, x0, z0, x1, z1); if (p->face == LF_NORTH) { int a = 13 - *z1, c = 13 - *z0; *z0 = a; *z1 = c; } return 0; }
