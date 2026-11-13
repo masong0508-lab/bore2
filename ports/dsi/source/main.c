@@ -702,6 +702,9 @@ static int fdiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 enum { Z_CITY, Z_BASE, Z_ISLAND, Z_TOWN, Z_N };
 static int zone; static void zone_block(int bx, int by, BInfo *b); static void gen_zone(int bx, int by);   // (D37) the zone you are in, and its lots
 #define RING_MAX 3
+#ifndef POLY7
+#define POLY7 2450   // (D79) gen 7 draws the far land only while the frame is under this many quads (the far lots are the first thing to go: the frame rate holds at 30)
+#endif
 static BInfo nbf[RING_MAX * 2 + 1][RING_MAX * 2 + 1];   // (D40) the lots round, out to three slots each way (the ring past the 3x3 is only drawn)
 static LotPlan nlp[RING_MAX * 2 + 1][RING_MAX * 2 + 1];   // (D79) world version 7: the town plan of each of those lots (docs/DS_TOWN7.md), indexed like nbf
 static u8 nrd[RING_MAX * 2 + 2][RING_MAX * 2 + 2];       // (D79) the streets of the blocks dx, dy = -3..4 round the lot (road bits: 1 along its top, 2 down its left, 4 its corner)
@@ -1476,13 +1479,14 @@ static u16 horizon_col(void) { return zone == Z_ISLAND ? C15(5, 12, 24) : zone =
 static void draw_far_all(int yaw) {   // last, so the lot, the sims and the citizens always get the polygons first
     for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { if (!i && !j) continue; const BInfo *b = &nb[j + 1][i + 1];
         if (b->terrain == BT_SEA) { ground(tl(36 * i), tl(36 * j), tl(36 * i + 36), tl(36 * j + 36), -8, C15(5, 12, 24)); continue; }
-        if (polys > 2700) continue; far_lot(b, 36 * i * T, 36 * j * T, nb_pop[j + 1][i + 1], yaw, t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0); }
+        if (polys > (t7() ? POLY7 : 2700)) continue; far_lot(b, 36 * i * T, 36 * j * T, nb_pop[j + 1][i + 1], yaw, t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0); }
     // (D40) THE FAR RING: the slots past the 3x3, each drawn round its own corner (a matrix move: no 16-bit overflow): plain houses, streets, the land; then the
     // horizon, one big quad scaled up four times, under everything out to the far plane. The haze fades it all into the sky, so nothing pops in.
     far_lod = 1;
     for (int r = 2; r <= ring_r; r++) for (int j = -r; j <= r; j++) for (int i = -r; i <= r; i++) { if (abs(i) != r && abs(j) != r) continue; const BInfo *b = &nbf[j + RING_MAX][i + RING_MAX];
-        gx_push(36 * i * T, 0, 36 * j * T);
+        gx_push(36 * i * T, 0, 36 * j * T); int skip7 = t7() && polys > POLY7;
         if (b->terrain == BT_SEA) ground(tl(0), tl(0), tl(36), tl(36), -8, C15(5, 12, 24));
+        else if (skip7) ground(tl(0), tl(0), tl(36), tl(36), 90, land_col(b->terrain));
         else { ground(tl(0), tl(0), tl(36), tl(36), 90, land_col(b->terrain)); if (t7()) { st7(i, j, 0, 0, 0); st7(i, j, 0, 0, 1); } else if (!zone || zone == Z_TOWN) slot_street(0, 0); far_lot(b, 0, 0, 0, yaw, t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0); }
         gx_pop(); }
     far_lod = 0;
