@@ -115,7 +115,11 @@ static void camera_apply(int fx, int fy, int fz) {
 #endif
     { int k_ = (on_board || veh_on || sims[player].gait.run) ? 3 : 6; cam_fx += (fx - cam_fx) / k_; cam_fy += (fy - cam_fy) / k_; cam_fz += (fz - cam_fz) / k_; }   // (a rider: kept up with)
     cam_pitch = CLAMP(cam_pitch, 150, 1000);
+#ifdef AUTO_AT_TAB
+    cam_dist = CLAMP(cam_dist, 600, 7000);   // (the shot list may pull out further than play does)
+#else
     cam_dist = CLAMP(cam_dist, 600, 3600);
+#endif
     int cp = icos(cam_pitch), sp = isin(cam_pitch);
     int horiz = (cam_dist * cp) >> 12, up = (cam_dist * sp) >> 12;
     cam.at.vx = cam_fx; cam.at.vy = cam_fy; cam.at.vz = cam_fz;
@@ -370,6 +374,9 @@ static void start_life(void) {
         bm_rename_clear(); if (life_cap[0]) { bm_rename(0, life_cap); life_cap[0] = 0; }   // (a capital named on PICK A WORLD)   // (a preset world, or one made on the CREATE A WORLD screen)
 #if defined(AUTO_CITY) || defined(AUTO_PARTY)
         seed = 0x5EED1234u;                                    // (test builds: the same world every run, so runs compare)
+#ifdef AUTO_SEED
+        seed = AUTO_SEED;                                      // (-DAUTO_SEED=0x..u: another test world, for the road audit over several seeds)
+#endif
 #endif
         bm_gen = 7; bm_new(seed); world_new_seed(seed);
         loading("PEOPLING SAN BOREAS", 45);
@@ -973,9 +980,26 @@ static void life_update(int steps) {
 #elif defined(AUTO_AT_BX)
           {   // (test builds, AUTO_CITY with AUTO_AT_BX/BY=block, AUTO_AT_TX/TY=tile in it, AUTO_AT_PITCH/DIST: stand there and look, for the world version 7 shots docs/plan7_*)
             static int at_ = 0, hx_, hz_;
+#ifdef AUTO_AT_TAB   // (-DAUTO_AT_TAB='"file.inc"' -DAUTO_AT_STEP=n: a list of places { bx, by, tx, ty, pitch, dist, yaw } in that file, one every n frames from frame 60; the Dreamcast shots docs/plan7_dc_*)
+            static const s16 at_tab[][7] = {
+#include "test/plan7_places.inc"   /* (found through the Dreamcast Makefile's -I.) */
+            };
+            static int at_k = -1, at_pitch, at_dist, at_yaw;
+            { int k = (fr_ - 60) / AUTO_AT_STEP; if (fr_ >= 60 && k != at_k && k < (int)(sizeof at_tab / sizeof at_tab[0])) { at_k = k; at_ = 1;
+                taxi_to_block(at_tab[k][0], at_tab[k][1], at_tab[k][2], at_tab[k][3], "TEST");
+                hx_ = ((at_tab[k][0] - world_wbx) * BM_BLK + at_tab[k][2]) * TILE + TILE / 2; hz_ = -(((at_tab[k][1] - world_wby) * BM_BLK + at_tab[k][3]) * TILE + TILE / 2);
+                at_pitch = at_tab[k][4]; at_dist = at_tab[k][5]; at_yaw = at_tab[k][6]; } }
+#define AUTO_AT_PITCH at_pitch
+#define AUTO_AT_DIST at_dist
+#else
             if (fr_ >= 60 && !at_) { at_ = 1; taxi_to_block(AUTO_AT_BX, AUTO_AT_BY, AUTO_AT_TX, AUTO_AT_TY, "TEST");
                 hx_ = ((AUTO_AT_BX - world_wbx) * BM_BLK + AUTO_AT_TX) * TILE + TILE / 2; hz_ = -(((AUTO_AT_BY - world_wby) * BM_BLK + AUTO_AT_TY) * TILE + TILE / 2); }
-            if (at_) { cam_pitch = AUTO_AT_PITCH; cam_dist = AUTO_AT_DIST; cam_yaw = 2600; for (int i = 0; i < nsims; i++) { sims[i].x = hx_ + (i % 3) * 3; sims[i].z = hz_ - (i / 3) * 3; sims[i].path_n = 0; sims[i].lvl = 0; } cam_fx = hx_; cam_fz = hz_; }
+#endif
+            if (at_) { cam_pitch = AUTO_AT_PITCH; cam_dist = AUTO_AT_DIST; cam_yaw = 2600;
+#ifdef AUTO_AT_TAB
+                cam_yaw = at_yaw;
+#endif
+ for (int i = 0; i < nsims; i++) { sims[i].x = hx_ + (i % 3) * 3; sims[i].z = hz_ - (i / 3) * 3; sims[i].path_n = 0; sims[i].lvl = 0; } cam_fx = hx_; cam_fz = hz_; }
           }
 #elif defined(AUTO_TOWER)
           if (fr_ >= 120 && !(done_ & 1)) { done_ |= 1; const Settle *cp = bm_set(bm_capital()); taxi_to_block(cp->x + AUTO_TOWER, cp->y + 2, 8, 1, "TEST"); }
