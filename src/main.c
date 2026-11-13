@@ -215,7 +215,7 @@ static void ne_from_settings(void);
 static void ne_draw(void);
 static void dio_look(int bx, int by, int snap);
 static int dio_ewin;
-static void dio_draw(int curx, int cury, int brush, int tick);
+static COLD void dio_draw(int curx, int cury, int brush, int tick);
 static void dio_post(int bx, int by, int r, int g, int b, int tall);
 static void ovr_save(void);
 static void ovr_load(void);
@@ -5002,12 +5002,28 @@ static const u8 neLots[] = { LOT_WILD, LOT_HOUSE, LOT_COTTAGE, LOT_TOWN, LOT_TWO
 #define DW 16                  // blocks across the model, and deep
 #define DD 13
 typedef struct { u8 t, l, r, s, h, v; } DCell;   // h: elevation points (0 the sea); v: a block's own dice
+typedef struct { u8 ft[4], rf, wk, wx0, wx1, dx, dv, l, v; } DBld;   // what stands on a lot (dio_bld): ft the walls in block tiles (0: nothing), rf: home 7, north 6, roof colour 3-5, steep 2, form 0-1; wk: wall 0-2 (7: not a plan's), storeys 3-5; wx: a wing; dx: the door, dv: the drive
 static DCell dio_c[DD][DW];
 static short dio_hv[DD + 1][DW + 1];   // the ground's height at every corner of a block (units): the corner's four blocks averaged
 static u16 dio_vc[DD + 1][DW + 1];     // ... and its colour, lit from the north-west
 static int dio_ox, dio_oy, dio_dirty = 1, dio_ax, dio_ay, dio_pitch = 520, dio_dist = 1500, dio_yaw;   // the window's north-west block; the camera's focus (blocks / 256)
 static const u8 dTc[6][3] = { { 46, 110, 198 }, { 234, 216, 158 }, { 104, 170, 72 }, { 70, 130, 58 }, { 214, 176, 104 }, { 140, 132, 122 } };
-static void dio_fill(void) {
+static COLD __attribute__((noinline)) void dio_bld(int r, int c, DBld *d) {   // what stands on that block of the window, worked out from the same plan the world is built by (bm_lot_foot, world_roof_of), when it is drawn: no table kept
+    BInfo b; bm_block(dio_ox + c, dio_oy + r, &b);
+    memset(d, 0, sizeof *d); d->wk = 7; d->l = b.lot; d->v = (u8)(b.h >> 8);
+    if (b.terrain == BT_SEA || b.set == 255 || b.lot >= LOT_N) return;
+    u8 ft[5]; LotPlan pl; memset(&pl, 0, sizeof pl);
+    if (!bm_lot_foot(dio_ox + c, dio_oy + r, &b, ft, &pl)) return;
+    u8 sty, rcol, pit; int plan = ft[4] && bm_gen >= 7 && pl.type;
+    if (plan) { ft[0] = pl.x0; ft[1] = pl.y0; ft[2] = pl.x1; ft[3] = pl.y1; if (pl.type == HT_TERRACE && pl.wx1) { ft[0] = MIN(ft[0], pl.wx0); ft[2] = MAX(ft[2], pl.wx1); } }
+    memcpy(d->ft, ft, 4);
+    world_roof_of(dio_ox + c, dio_oy + r, &b, ft, plan ? &pl : 0, &sty, &rcol, &pit);
+    int north = pl.face == LF_NORTH && !(b.road & BR_MEGA);
+    d->rf = (u8)(ft[4] << 7 | north << 6 | (rcol & 7) << 3 | (pit - 1) << 2 | sty);
+    d->wk = (u8)(MIN(bm_storeys(&b), 7) << 3 | (plan ? (pl.pal * 2 + pl.wall) % 6 : 7));
+    if (plan) { d->dx = pl.dx; d->dv = pl.drv; if (pl.type == HT_L && pl.wx1) { d->wx0 = pl.wx0; d->wx1 = pl.wx1; } }
+}
+static COLD void dio_fill(void) {
     for (int r = 0; r < DD; r++) for (int c = 0; c < DW; c++) {
         BInfo b; bm_block(dio_ox + c, dio_oy + r, &b);
         DCell *k = &dio_c[r][c]; k->t = b.terrain; k->l = b.lot; k->r = b.road; k->s = b.set; k->h = (u8)MIN(255, bm_hill(dio_ox + c, dio_oy + r) / 18 + (b.terrain == BT_SEA ? 0 : 1)); k->v = (u8)(b.h >> 8);
@@ -5065,12 +5081,6 @@ static int d_h(int c, int r, int fx, int fz) {   // the ground's height at (fx, 
     int top = dio_hv[r][c] + (dio_hv[r][c + 1] - dio_hv[r][c]) * fx / DC, bot = dio_hv[r + 1][c] + (dio_hv[r + 1][c + 1] - dio_hv[r + 1][c]) * fx / DC;
     return top + (bot - top) * fz / DC;
 }
-static __attribute__((noinline)) void d_box(int x0, int x1, int zn, int zs, int y0, int y1, int side_c, const u8 *body, const u8 *roof) {   // a block-shaped building: flat roof, south and (east or west) wall
-    dq(x0, y1, zn, x1, y1, zn, x0, y1, zs, x1, y1, zs, roof[0], roof[1], roof[2]);
-    dq(x0, y1, zs, x1, y1, zs, x0, y0, zs, x1, y0, zs, body[0] * 220 >> 8, body[1] * 220 >> 8, body[2] * 220 >> 8);
-    if (side_c) dq(x1, y1, zn, x1, y1, zs, x1, y0, zn, x1, y0, zs, body[0] * 170 >> 8, body[1] * 170 >> 8, body[2] * 170 >> 8);
-    else dq(x0, y1, zn, x0, y1, zs, x0, y0, zn, x0, y0, zs, body[0] * 150 >> 8, body[1] * 150 >> 8, body[2] * 150 >> 8);
-}
 static __attribute__((noinline)) void d_tree(int x, int y, int z, int h, int rad, int shade, int lean) {   // a cone of leaves (three faces)
     int r1 = rad * 7 / 8, r2 = rad / 2, gr = 60 + shade, gg = 124 + shade, gb = 52 + shade / 2; (void)lean;
     int ax = x, az = z, ay = y - h;
@@ -5079,72 +5089,103 @@ static __attribute__((noinline)) void d_tree(int x, int y, int z, int h, int rad
     dtri(ax, ay, az, p2x, y, p2z, p0x, y, p0z, gr, gg, gb);
     dtri(ax, ay, az, p1x, y, p1z, p2x, y, p2z, gr * 3 / 4, gg * 3 / 4, gb * 3 / 4);
 }
-static void dio_bld_look(int l, int *bh, const u8 **body, const u8 **roof, int *kind) {   // kind: 0 a house (gabled), 1 a tall block (windows), 2 a shop/civic (flat)
-    static const u8 home[3] = { 238, 206, 160 }, shop[3] = { 214, 220, 240 }, shopR[3] = { 90, 110, 190 }, tow[3] = { 168, 184, 210 }, towR[3] = { 98, 106, 130 }, civ[3] = { 236, 228, 212 }, civR[3] = { 150, 124, 170 }, apt[3] = { 214, 170, 140 }, aptR[3] = { 120, 100, 96 };
-    *body = shop; *roof = shopR; *bh = 40; *kind = 2;
-    switch (l) {
-        case LOT_HOUSE: *kind = 0; *bh = 32; *body = home; break; case LOT_COTTAGE: *kind = 0; *bh = 26; *body = home; break;
-        case LOT_TOWN: *kind = 0; *bh = 34; *body = home; break; case LOT_TWO: *kind = 0; *bh = 48; *body = home; break;
-        case LOT_APART: *kind = 1; *bh = 90; *body = apt; *roof = aptR; break;
-        case LOT_TOWER: *kind = 1; *bh = 150; *body = tow; *roof = towR; break; case LOT_OFFICE: *kind = 1; *bh = 78; *body = tow; *roof = towR; break; case LOT_HOTEL: *kind = 1; *bh = 118; *body = tow; *roof = towR; break;
-        case LOT_SCHOOL: case LOT_LIBRARY: case LOT_GALLERY: case LOT_CLINIC: case LOT_CINEMA: *body = civ; *roof = civR; *bh = 48; break;
-        default: break;
+// ---- what stands on a lot, from the same plan the world is built by (bm_lot_foot, world_roof_of): the walls where they are, off-centre, set back, a home's wing and drive, the roof's form and colours ----
+#define DT(t) ((t) * 80 / 9)                      // a tile of the block in model units (a block is BM_BLK = 18 tiles, DC units)
+#define DS1 28                                    // a storey's height
+static COLD __attribute__((noinline)) void dQ(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, int dx, int dy, int dz, const u8 *c, int sh) {   // a quad in the colour c * sh / 256
+    dq(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, c[0] * sh >> 8, c[1] * sh >> 8, c[2] * sh >> 8);
+}
+static COLD __attribute__((noinline)) void d_roof(int x0, int x1, int zn, int zs, int yt, int sty, int pit, const u8 *rc, const u8 *wc, int east) {   // the roof on a box (x0 .. x1, zs .. zn, the walls up to yt): the faces the camera (south, looking north) can see
+    static const u8 flat[3] = { 128, 126, 122 };
+    int w = x1 - x0, d = zn - zs, zm = (zn + zs) / 2, ex = east ? x1 : x0;
+    if (sty == 2) { dQ(x0, yt - 2, zn, x1, yt - 2, zn, x0, yt - 2, zs, x1, yt - 2, zs, flat, 256); return; }
+    int ya = yt - world_roof_rise(pit, MIN(w, d) / 2), alongx = sty != 3 && d <= w, hip = sty == 0, m = hip ? MIN(w, d) / 2 : 0, xm = (x0 + x1) / 2;
+    int za = alongx ? zm : zn - m, zb = alongx ? zm : zs + m, xa = alongx ? x0 + m : xm, xb = alongx ? x1 - m : xm;   // (the ridge's two ends)
+    if (alongx) {   // the ridge runs east-west (a hip's runs between its two corners): a slope to the south, the end that shows
+        dQ(xa, ya, zm, xb, ya, zm, x0, yt, zs, x1, yt, zs, rc, 215);
+        if (hip) dtri(ex, yt, zs, ex, yt, zn, east ? xb : xa, ya, zm, rc[0] * 165 >> 8, rc[1] * 165 >> 8, rc[2] * 165 >> 8); else dtri(ex, yt, zs, ex, yt, zn, ex, ya, zm, wc[0] * 190 >> 8, wc[1] * 190 >> 8, wc[2] * 190 >> 8);
+    } else {        // the ridge runs north-south
+        dQ(xm, ya, za, xm, ya, zb, ex, yt, zn, ex, yt, zs, rc, 165);
+        if (hip) dtri(x0, yt, zs, x1, yt, zs, xm, ya, zb, rc[0] * 215 >> 8, rc[1] * 215 >> 8, rc[2] * 215 >> 8); else dtri(x0, yt, zs, x1, yt, zs, xm, ya, zs, wc[0] * 190 >> 8, wc[1] * 190 >> 8, wc[2] * 190 >> 8);
     }
 }
-static __attribute__((noinline)) void d_house(int c, int r, int x0, int hy, int v, int near, int right, int deco) {   // a gabled house on its lawn; hy: the ground under it
-    static const u8 wall[6][3] = { { 240, 226, 186 }, { 196, 214, 232 }, { 238, 208, 128 }, { 244, 244, 238 }, { 232, 186, 178 }, { 184, 196, 178 } };
-    static const u8 rf[5][3] = { { 168, 74, 58 }, { 84, 84, 92 }, { 70, 110, 80 }, { 78, 96, 140 }, { 122, 82, 56 } };
-    const u8 *wc = wall[v % 6], *rc = rf[(v >> 3) % 5];
-    int zn = Z_(r, 46), zs = Z_(r, 100), hx0 = x0 + 52, hx1 = x0 + 118, wh = 30, rh = 26, zc = (zn + zs) / 2, y0 = -hy;
-    if (deco) {   // (the second pass, while the frame has room: the drive, the gables, the windows and door, the chimney)
-        dio_zl = 1; dq(hx0 + 8, y0 - 2, Z_(r, 40), hx0 + 26, y0 - 2, Z_(r, 40), hx0 + 8, y0 - 2, zn, hx0 + 26, y0 - 2, zn, 182, 180, 172); dio_zl = 0;   // the drive, up to the street
-        if (right) dtri(hx1, y0 - wh, zn, hx1, y0 - wh, zs, hx1, y0 - wh - rh, zc, wc[0] * 190 >> 8, wc[1] * 190 >> 8, wc[2] * 190 >> 8);
-        else dtri(hx0, y0 - wh, zn, hx0, y0 - wh, zs, hx0, y0 - wh - rh, zc, wc[0] * 160 >> 8, wc[1] * 160 >> 8, wc[2] * 160 >> 8);
-        dq(hx0 + 8, y0 - 20, zs, hx0 + 20, y0 - 20, zs, hx0 + 8, y0 - 8, zs, hx0 + 20, y0 - 8, zs, 150, 196, 236);                              // two windows and the door
-        dq(hx1 - 20, y0 - 20, zs, hx1 - 8, y0 - 20, zs, hx1 - 20, y0 - 8, zs, hx1 - 8, y0 - 8, zs, 150, 196, 236);
-        dq(hx0 + 28, y0 - 18, zs, hx0 + 38, y0 - 18, zs, hx0 + 28, y0, zs, hx0 + 38, y0, zs, 122, 82, 52);
-        int cx = hx0 + 14 + (v & 15); dq(cx, y0 - wh - rh - 4, zc + 5, cx + 10, y0 - wh - rh - 4, zc + 5, cx, y0 - wh - rh - 4, zc - 5, cx + 10, y0 - wh - rh - 4, zc - 5, 150, 90, 78);   // a chimney
+static COLD __attribute__((noinline)) void dV(int xa, int xb, int ya, int yb, int za, int zb, const u8 *c, int sh) {   // an upright rectangle (x or z the same at both ends), ya its top, yb its foot; colour c * sh / 256
+    dq(xa, ya, za, xb, ya, zb, xa, yb, za, xb, yb, zb, c[0] * sh >> 8, c[1] * sh >> 8, c[2] * sh >> 8);
+}
+static COLD __attribute__((noinline)) void d_bld(int c, int r, const DBld *k, int hy, int east, int deco) {   // a building on its lot: body (and a home's garage wing), roof, and (deco) its door, windows and drive. hy: the ground under it
+    int home = k->rf >> 7, north = (k->rf >> 6) & 1, sto = (k->wk >> 3) & 7, X = c * DC, x0 = X + DT(k->ft[0]), x1 = X + DT(k->ft[2] + 1), zn = Z_(r, DT(k->ft[1])), zs = Z_(r, DT(k->ft[3] + 1)), y0 = -hy, wh = sto * DS1;
+    u8 wc[3]; const u8 *rc = world_roof_rgb((k->rf >> 3) & 7); int wk = k->wk & 7, l = k->l;
+    if (home && wk != 7) world_plan_wall_rgb(wk, wc);
+    else if (home) { static const u8 wall[6][3] = { { 240, 226, 186 }, { 196, 214, 232 }, { 238, 208, 128 }, { 244, 244, 238 }, { 232, 186, 178 }, { 184, 196, 178 } }; memcpy(wc, wall[k->v % 6], 3); }
+    else { static const u8 shop[3] = { 214, 220, 240 }, tow[3] = { 168, 184, 210 }, civ[3] = { 236, 228, 212 }, apt[3] = { 214, 170, 140 };
+           memcpy(wc, l == LOT_APART ? apt : (l == LOT_TOWER || l == LOT_OFFICE || l == LOT_HOTEL) ? tow : (l == LOT_SCHOOL || l == LOT_LIBRARY || l == LOT_GALLERY || l == LOT_CLINIC || l == LOT_CINEMA) ? civ : shop, 3); }
+    if (deco) {   // (the second pass, while the frame has room: the door, two windows, the drive)
+        static const u8 dc[2][3] = { { 150, 196, 236 }, { 122, 82, 52 } }, vc[3] = { 182, 180, 172 };
+        if (!north || !home) {   // (the front wall faces the camera: two windows, and a home's door)
+            for (int i = 0; i < 3; i++) {
+                int xa = i == 0 ? x0 + DT(2) : i == 1 ? x1 - DT(3) : X + DT(k->dx);
+                if (i == 2 ? home : sto <= 2 && l != LOT_FARM) dV(xa, xa + DT(1), i == 2 ? y0 - 18 : y0 - wh + 10, i == 2 ? y0 : y0 - wh + 22, zs, zs, dc[i == 2], 256);
+            }
+        }
+        if (home && k->dv) {   // the drive: from the street edge to the first wall in its way (the body's front, the wing's) or beside the house to its back
+            int dxa = X + DT(k->dv), a = north ? BM_LOT0 : BM_BLK, b, f0 = k->ft[0], f1 = k->ft[1], f2 = k->ft[2], f3 = k->ft[3];
+            int ob = k->dv + 1 >= f0 && k->dv <= f2, ow = k->wx1 && k->dv + 1 >= k->wx0 && k->dv <= k->wx1;
+            b = north ? (ob ? f1 : ow ? f1 + 2 : f3 + 1) : (ob ? f3 + 1 : ow ? f3 - 1 : f1);
+            dio_zl = 1; dQ(dxa, y0 - 2, Z_(r, DT(MIN(a, b))), dxa + DT(2), y0 - 2, Z_(r, DT(MIN(a, b))), dxa, y0 - 2, Z_(r, DT(MAX(a, b))), dxa + DT(2), y0 - 2, Z_(r, DT(MAX(a, b))), vc, 256); dio_zl = 0;
+        }
         return;
     }
-    (void)near;
-    dq(x0 + 40, y0 - 1, Z_(r, 40), x0 + DC - 8, y0 - 1, Z_(r, 40), x0 + 40, y0 - 1, Z_(r, 116), x0 + DC - 8, y0 - 1, Z_(r, 116), 118, 184, 84);   // the lawn
-    dq(hx0, y0 - wh, zs, hx1, y0 - wh, zs, hx0, y0, zs, hx1, y0, zs, wc[0] * 230 >> 8, wc[1] * 230 >> 8, wc[2] * 230 >> 8);                      // the front wall
-    if (right) { dq(hx1, y0 - wh, zn, hx1, y0 - wh, zs, hx1, y0, zn, hx1, y0, zs, wc[0] * 180 >> 8, wc[1] * 180 >> 8, wc[2] * 180 >> 8); }
-    else { dq(hx0, y0 - wh, zn, hx0, y0 - wh, zs, hx0, y0, zn, hx0, y0, zs, wc[0] * 150 >> 8, wc[1] * 150 >> 8, wc[2] * 150 >> 8); }
-    dq(hx0 - 6, y0 - wh, zs - 6, hx1 + 6, y0 - wh, zs - 6, hx0 - 6, y0 - wh - rh, zc, hx1 + 6, y0 - wh - rh, zc, rc[0] * 205 >> 8, rc[1] * 205 >> 8, rc[2] * 205 >> 8);   // the roof's two slopes
-    dq(hx0 - 6, y0 - wh - rh, zc, hx1 + 6, y0 - wh - rh, zc, hx0 - 6, y0 - wh, zn + 6, hx1 + 6, y0 - wh, zn + 6, rc[0] * 250 >> 8, rc[1] * 250 >> 8, rc[2] * 250 >> 8);
+    if (home && k->wx1) {   // the garage wing of an L: a low block beside the body, set back two rows from the front, flat roofed
+        int wx0 = X + DT(k->wx0), wx1 = X + DT(k->wx1 + 1), wn = north ? Z_(r, DT(k->ft[1] + 2)) : zn, ws = north ? zs : Z_(r, DT(k->ft[3] - 1)), gh = wh * 4 / 5, sx = east ? wx1 : wx0;
+        dV(wx0, wx1, y0 - gh, y0, ws, ws, wc, 215);
+        if (east ? k->wx0 > k->ft[0] : k->wx1 < k->ft[2]) dV(sx, sx, y0 - gh, y0, wn, ws, wc, east ? 170 : 140);
+        dQ(wx0, y0 - gh - 2, wn, wx1, y0 - gh - 2, wn, wx0, y0 - gh - 2, ws, wx1, y0 - gh - 2, ws, rc, 180);
+    }
+    dV(x0, x1, y0 - wh, y0, zs, zs, wc, 230);                                              // the south wall
+    dV(east ? x1 : x0, east ? x1 : x0, y0 - wh, y0, zn, zs, wc, east ? 175 : 145);         // the side that shows
+    d_roof(x0, x1, zn, zs, y0 - wh, sto >= 3 ? 2 : k->rf & 3, 1 + ((k->rf >> 2) & 1), rc, wc, east);
 }
-static __attribute__((noinline)) void d_road(int c, int r, int bits, int deco) {   // deco 0: the tarmac; 1: the pavement and the line down the middle
-    static const u8 asp[3] = { 72, 72, 80 }, paveC[3] = { 196, 194, 186 };
-    int x0 = c * DC, x1 = x0 + DC, RW = 34;
-    if (bits & 1) {   // the street along the block's north edge
-        int h0 = dio_hv[r][c], h1 = dio_hv[r][c + 1], g0 = d_h(c, r, 0, RW), g1 = d_h(c, r, DC, RW), p0 = d_h(c, r, 0, RW + 8), p1 = d_h(c, r, DC, RW + 8);
-        if (!deco) dq(x0, -h0 - 2, Z_(r, 0), x1, -h1 - 2, Z_(r, 0), x0, -g0 - 2, Z_(r, RW), x1, -g1 - 2, Z_(r, RW), asp[0], asp[1], asp[2]);
-        else {
-            dq(x0, -g0 - 2, Z_(r, RW), x1, -g1 - 2, Z_(r, RW), x0, -p0 - 2, Z_(r, RW + 8), x1, -p1 - 2, Z_(r, RW + 8), paveC[0], paveC[1], paveC[2]);
-            int m0 = d_h(c, r, 0, RW / 2), m1 = d_h(c, r, DC, RW / 2); dio_zl = 1; dq(x0, -m0 - 3, Z_(r, RW / 2 - 1), x1, -m1 - 3, Z_(r, RW / 2 - 1), x0, -m0 - 3, Z_(r, RW / 2 + 1), x1, -m1 - 3, Z_(r, RW / 2 + 1), 226, 200, 70); dio_zl = 0;
-        }
+static COLD __attribute__((noinline)) void d_strip(int o, int c, int r, int u0, int u1, int v0, int v1, int lift, const u8 *col) {   // a flat strip on the ground of block (c, r): u along a street, v across it (o 0: a street along the block's top, u east; o 1: down its left, u south), the heights from the land
+    int X = c * DC, v[4] = { v0, v0, v1, v1 }, u[4] = { u0, u1, u0, u1 }, p[12];
+    for (int i = 0; i < 4; i++) { int w = CLAMP(v[i], 0, DC); p[i * 3] = X + (o ? v[i] : u[i]); p[i * 3 + 1] = -d_h(c, r, o ? w : u[i], o ? u[i] : w) - lift; p[i * 3 + 2] = Z_(r, o ? u[i] : v[i]); }
+    dq(p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], col[0], col[1], col[2]);
+}
+static COLD __attribute__((noinline)) void d_road(int c, int r, int rd, int nt, int lt, int deco) {   // rd: &1 a street along the block's top, &2 down its left, &4 only the corner paved. deco 0: the tarmac; 1: the pavements (a tile, on the lot's side, and the far side of the street) and the lines down the middle. nt, lt: the block above / to the left is a town block (the pavement carries on into it)
+    static const u8 asp[3] = { 72, 72, 80 }, pv[3] = { 196, 194, 186 }, ln[3] = { 226, 200, 70 };
+    int RW = DT(5), P = DT(6), Q = DT(1);
+    if (rd & 4) { if (!deco) d_strip(0, c, r, 0, RW, 0, RW, 2, asp); return; }
+    for (int o = 0; o < 2; o++) {
+        if (!((rd >> o) & 1)) continue;
+        if (!deco) { dio_zl = 0; d_strip(o, c, r, 0, DC, 0, RW, 2, asp); continue; }
+        dio_zl = 1;   // (the pavements and the lines lie on the tarmac or the lawn: a layer above)
+        d_strip(o, c, r, RW, DC, RW, P, 2, pv);
+        if (o ? lt : nt) d_strip(o, c, r, RW, DC, -Q, 0, 2, pv);   // (the last row of the lot above, the last column of the one to the left)
+        d_strip(o, c, r, (o ? rd & 1 : rd & 2) ? RW : 0, DC, RW / 2 - 1, RW / 2 + 1, 3, ln);
     }
-    if (bits & 2) {   // ... and along its west edge
-        int h0 = dio_hv[r][c], h1 = dio_hv[r + 1][c], g0 = d_h(c, r, RW, 0), g1 = d_h(c, r, RW, DC), p0 = d_h(c, r, RW + 8, 0), p1 = d_h(c, r, RW + 8, DC);
-        if (!deco) dq(x0, -h0 - 2, Z_(r, 0), x0 + RW, -g0 - 2, Z_(r, 0), x0, -h1 - 2, Z_(r, DC), x0 + RW, -g1 - 2, Z_(r, DC), asp[0], asp[1], asp[2]);
-        else {
-            dq(x0 + RW, -g0 - 2, Z_(r, 0), x0 + RW + 8, -p0 - 2, Z_(r, 0), x0 + RW, -g1 - 2, Z_(r, DC), x0 + RW + 8, -p1 - 2, Z_(r, DC), paveC[0], paveC[1], paveC[2]);
-            int m0 = d_h(c, r, RW / 2, 0), m1 = d_h(c, r, RW / 2, DC); dio_zl = 1; dq(x0 + RW / 2 - 1, -m0 - 3, Z_(r, 0), x0 + RW / 2 + 1, -m0 - 3, Z_(r, 0), x0 + RW / 2 - 1, -m1 - 3, Z_(r, DC), x0 + RW / 2 + 1, -m1 - 3, Z_(r, DC), 226, 200, 70); dio_zl = 0;
-        }
-    }
+    dio_zl = 0;
 }
 #define DIO_CELL_MAX 800   // the most a block's trimmings can take (bytes)
 int dio_bytes0;      // (what the essentials took, for the tests)
-static void dio_cell(int r, int c, int fc, int fr, int pass) {   // one block of the model. pass 0: what must be there (the ground, the streets' tarmac, every building's body); pass 1: the trimmings (trees, windows, doors, chimneys, pavements, lines), nearest the focus first, only while the frame has room
+static COLD __attribute__((noinline)) void d_ground(int c, int r, int x0, int z0, int x1, int z1, int cr, int cg, int cb) {   // a patch of the lot's ground (tiles x0 .. x1 - 1, z0 .. z1 - 1 of the block)
+    const u8 col[3] = { (u8)cr, (u8)cg, (u8)cb };
+    d_strip(0, c, r, DT(x0), DT(x1), DT(z0), DT(z1), 1, col);
+}
+static COLD __attribute__((noinline)) void dio_cell(int r, int c, int fc, int fr, int pass) {   // one block of the model. pass 0: what must be there (the ground, the streets' tarmac, every building's body); pass 1: the trimmings (trees, windows, doors, drives, pavements, lines), nearest the focus first, only while the frame has room
     {
         const DCell *k = &dio_c[r][c]; int t = k->t % 6, l = k->l, x0 = c * DC, v = k->v;
         if (t == BT_SEA) return;
         int dist = MAX(ABS(c - fc), ABS(r - fr)), near = dist <= 5;
-        int hy = d_h(c, r, DC / 2, DC / 2);
-        if (k->r & 3) d_road(c, r, k->r & 3, pass);
+        int hy = d_h(c, r, DC / 2, DC / 2), rd = k->r & 7, mg = l != LOT_RIVER && (k->r & BR_MEGA);
+        if (mg) { if (BR_PART(k->r) & 1) rd &= ~2; if (BR_PART(k->r) & 2) rd &= ~1; }   // (inside a big place the streets between its blocks are gone)
+        if (rd) d_road(c, r, rd, r > 0 && dio_c[r - 1][c].s != 255, c > 0 && dio_c[r][c - 1].s != 255, pass);
         if (l == LOT_WILD || l == LOT_RIVER) {
-            if (l == LOT_RIVER) { if (!pass) dq(x0, -dio_hv[r][c] - 3, Z_(r, 0), x0 + DC, -dio_hv[r][c + 1] - 3, Z_(r, 0), x0, -dio_hv[r + 1][c] - 3, Z_(r, DC), x0 + DC, -dio_hv[r + 1][c + 1] - 3, Z_(r, DC), 70, 130, 222); return; }
+            if (l == LOT_RIVER) {   // the water with a pavement walk down each bank; the street along the edge crosses it as a bridge (version 7: only where it is)
+                if (pass) return;
+                int vert = k->r & BR_MEGA, br = bm_gen < 7 || (vert ? k->r & 1 : k->r & 2), s0 = br ? BM_LOT0 : 0;
+                if (vert) { d_ground(c, r, 5, s0, 7, BM_BLK, 196, 194, 186); d_ground(c, r, 14, s0, 16, BM_BLK, 196, 194, 186); d_ground(c, r, 7, s0, 14, BM_BLK, 70, 130, 222); }
+                else { d_ground(c, r, s0, 5, BM_BLK, 7, 196, 194, 186); d_ground(c, r, s0, 14, BM_BLK, 16, 196, 194, 186); d_ground(c, r, s0, 7, BM_BLK, 14, 70, 130, 222); }
+                return;
+            }
             if (!pass || dist > 9) return;
             int nt = t == BT_FOREST ? 4 : t == BT_GRASS ? ((v & 3) == 0) + ((v & 12) == 0) : t == BT_ROCKY ? (v % 3 == 0) : 0;
             for (int i = 0; i < nt; i++) { int fx = 24 + (((v >> 1) * (i + 3) * 37) & 63) + i * 14, fz = 30 + (((v >> 2) * (i + 5) * 53) & 63) + (i & 1) * 20; if (fx > DC - 18) fx = DC - 18; if (fz > DC - 18) fz = DC - 18;
@@ -5154,24 +5195,36 @@ static void dio_cell(int r, int c, int fc, int fr, int pass) {   // one block of
         if (l == LOT_PARK || l == LOT_SQUARE || l == LOT_SKATE) {
             static const u8 pk[3] = { 96, 172, 84 }, sq[3] = { 206, 202, 188 }, sk[3] = { 120, 120, 128 };
             const u8 *pc = l == LOT_PARK ? pk : l == LOT_SQUARE ? sq : sk;
-            if (!pass) dq(x0 + 40, -hy - 1, Z_(r, 40), x0 + DC - 8, -hy - 1, Z_(r, 40), x0 + 40, -hy - 1, Z_(r, DC - 8), x0 + DC - 8, -hy - 1, Z_(r, DC - 8), pc[0], pc[1], pc[2]);
-            if (l == LOT_PARK) { if (!pass) { dio_zl = 1; dq(x0 + 70, -hy - 2, Z_(r, 70), x0 + 110, -hy - 2, Z_(r, 70), x0 + 70, -hy - 2, Z_(r, 100), x0 + 110, -hy - 2, Z_(r, 100), 70, 140, 222); dio_zl = 0; }   // a pond
+            if (!pass) d_ground(c, r, BM_LOT0, BM_LOT0, BM_BLK, BM_BLK, pc[0], pc[1], pc[2]);
+            if (l == LOT_PARK) { if (!pass) { dio_zl = 1; d_ground(c, r, 8, 8, 12, 11, 70, 140, 222); dio_zl = 0; }   // a pond
                 if (pass) for (int i = 0; i < 4; i++) { int fx = 50 + i * 26, fz = 52 + ((i * 41 + v) & 63); d_tree(x0 + fx, -hy, Z_(r, fz), 70, 24, i * 4 - 6, 0); } }
             return;
         }
-        if (l == LOT_EMPTY) { if (pass) return; dq(x0 + 40, -hy - 1, Z_(r, 40), x0 + DC - 8, -hy - 1, Z_(r, 40), x0 + 40, -hy - 1, Z_(r, DC - 8), x0 + DC - 8, -hy - 1, Z_(r, DC - 8), 168, 140, 96);
-                       dq(x0 + 70, -hy - 22, Z_(r, 70), x0 + 76, -hy - 22, Z_(r, 70), x0 + 70, -hy, Z_(r, 70), x0 + 76, -hy, Z_(r, 70), 250, 226, 60); return; }
-        if (l == LOT_FARM) { if (pass) return; for (int i = 0; i < 4; i++) dq(x0 + 40, -hy - 1, Z_(r, 40 + i * 28), x0 + DC - 8, -hy - 1, Z_(r, 40 + i * 28), x0 + 40, -hy - 1, Z_(r, 62 + i * 28), x0 + DC - 8, -hy - 1, Z_(r, 62 + i * 28), i & 1 ? 196 : 150, i & 1 ? 164 : 190, i & 1 ? 84 : 80); return; }
-        int bh, kind; const u8 *body, *roof; dio_bld_look(l, &bh, &body, &roof, &kind);
-        if (kind == 0) { if (!pass) d_house(c, r, x0, hy, v, 0, c < DW / 2, 0); else if (near) { d_house(c, r, x0, hy, v, 1, c < DW / 2, 1); d_tree(x0 + 30, -d_h(c, r, 30, 120), Z_(r, 120), 54, 20, 0, 0); d_tree(x0 + DC - 14, -d_h(c, r, DC - 14, 60), Z_(r, 60), 60, 22, 6, 0); } return; }
-        { int bx0 = x0 + 46, bx1 = x0 + DC - 16, zn = Z_(r, 46), zs = Z_(r, DC - 18), y0 = -hy, y1 = -hy - bh * 14 / 10;
-          if (!pass) { dq(x0 + 40, y0 - 1, Z_(r, 40), x0 + DC - 8, y0 - 1, Z_(r, 40), x0 + 40, y0 - 1, Z_(r, DC - 8), x0 + DC - 8, y0 - 1, Z_(r, DC - 8), 150, 150, 156);   // its paving
-            d_box(bx0, bx1, zn, zs, y0, y1, c < DW / 2, body, roof); }
-          else if (kind == 1 && near) { int ns = (bh * 14 / 10) / 22; for (int i = 0; i < ns; i++) { int wy = y0 - 8 - i * 22; dq(bx0 + 4, wy - 9, zs, bx1 - 4, wy - 9, zs, bx0 + 4, wy, zs, bx1 - 4, wy, zs, 70, 100, 150); } }
-          else if (kind == 2 && near) { static const u8 aw[3] = { 214, 70, 60 }; dq(bx0 + 4, y0 - 26, zs - 8, bx1 - 4, y0 - 26, zs - 8, bx0 + 4, y0 - 18, zs, bx1 - 4, y0 - 18, zs, aw[0], aw[1], aw[2]); } }
+        if (l == LOT_EMPTY) { if (pass) return; d_ground(c, r, BM_LOT0, BM_LOT0, BM_BLK, BM_BLK, 168, 140, 96);
+                       { static const u8 sc[3] = { 250, 226, 60 }; dV(x0 + 70, x0 + 76, -hy - 22, -hy, Z_(r, 70), Z_(r, 70), sc, 256); } return; }
+        DBld bd; const DBld *d = &bd; dio_bld(r, c, &bd);   // (the pool, the farm, a building: what stands there)
+        if (l == LOT_POOL && !d->ft[2]) {   // the community pool: a fenced paved deck round the water
+            if (pass) return; d_ground(c, r, BM_LOT0, BM_LOT0, BM_BLK, BM_BLK, 190, 188, 180);
+            int a = (d->rf >> 6) & 1 ? 10 : 8; dio_zl = 1; d_ground(c, r, 8, a, 15, a + 5, 70, 140, 222); dio_zl = 0; return;
+        }
+        if (l == LOT_FARM) {   // rows of crops across the lot (a field: all of it; a farm: the left of it, and the barn on the right)
+            if (!pass) { d_ground(c, r, BM_LOT0 + 1, BM_LOT0 + 1, BM_BLK, BM_BLK, 150, 190, 80); int x1_ = d->ft[2] ? 12 : BM_BLK;
+                for (int i = 0; i < 6; i++) { dio_zl = 1; d_ground(c, r, BM_LOT0 + 1, BM_LOT0 + 1 + 2 * i, x1_, BM_LOT0 + 2 + 2 * i, 150, 120, 66); dio_zl = 0; } }
+            if (!d->ft[2]) return;
+        }
+        if (!d->ft[2]) return;   // (nothing built there)
+        int home = d->rf >> 7;
+        if (!pass) {   // the lot's ground: lawn round a home, paving round a place
+            if (l != LOT_FARM) d_ground(c, r, BM_LOT0, BM_LOT0, BM_BLK, BM_BLK, home ? 118 : 150, home ? 184 : 150, home ? 84 : 156);
+            d_bld(c, r, d, hy, c < fc, 0);
+        } else if (near || !home) {
+            d_bld(c, r, d, hy, c < fc, 1);
+            if (home) { int e = d->dv ? d->dv < 9 : d->dx < 11, tx = e ? 16 : 7, tz = (d->rf >> 6) & 1 ? 7 : 15; d_tree(x0 + DT(tx), -d_h(c, r, DT(tx), DT(tz)), Z_(r, DT(tz)), 54, 20, 0, 0); }   // (a yard tree on the side away from the drive)
+            else if (((d->wk >> 3) & 7) >= 3) { static const u8 wn_[3] = { 70, 100, 150 }; int ns = (d->wk >> 3) & 7; for (int i = 1; i < ns; i++) dV(x0 + DT(d->ft[0] + 1), x0 + DT(d->ft[2]), -hy - i * DS1 - 9, -hy - i * DS1, Z_(r, DT(d->ft[3] + 1)), Z_(r, DT(d->ft[3] + 1)), wn_, 256); }
+        }
     }
 }
-static void dio_draw(int curx, int cury, int brush, int tick) {   // the model; a cursor over brush x brush blocks at (curx, cury) (brush 0: none)
+static COLD void dio_draw(int curx, int cury, int brush, int tick) {   // the model; a cursor over brush x brush blocks at (curx, cury) (brush 0: none)
     if (dio_dirty) dio_fill();
     dio_cam();
     gfx_set_identity();
@@ -5672,6 +5725,11 @@ int main(void) {
             int bb = -1, ax = 0, ay = 0;
             for (int i = 0; i < bm_nset(); i++) { const Settle *c0 = bm_set(i); int h = bm_hill(c0->x, c0->y); if (h > bb && c0->kind != ST_SPACEPORT) { bb = h; ax = c0->x; ay = c0->y; } }
             world_open_at(ax, ay); Sim *s = &sims[player]; s->lvl = 0; s->x = ((ax - world_wbx) * BM_BLK + 9) * TILE + TILE / 2 + AUTO_HILL * 700; s->z = -(((ay - world_wby) * BM_BLK + 9) * TILE + TILE / 2); } }
+#endif
+#ifdef AUTO_NHOOD_BX
+        { static int t_; if (state == ST_LIFE) t_++;   // (test builds, with AUTO_CITY: the moving-in screen's model on block AUTO_NHOOD_BX, AUTO_NHOOD_BY, its camera AUTO_NHOOD_PITCH / DIST / YAW (the docs/town7_* pictures))
+          if (t_ == 200) { nhood_open(0); nh_bx[0] = AUTO_NHOOD_BX; nh_by[0] = AUTO_NHOOD_BY; nh_n = 1; nh_sel = 0; BInfo b_; bm_block(nh_bx[0], nh_by[0], &b_); nh_lot[0] = b_.lot; nh_price[0] = home_price(nh_bx[0], nh_by[0]); }
+          if (t_ >= 200 && state == ST_NHOOD) { dio_pitch = AUTO_NHOOD_PITCH; dio_dist = AUTO_NHOOD_DIST; dio_yaw = AUTO_NHOOD_YAW; } }
 #endif
 #ifdef AUTO_NHED
         { static int t_; t_++; if (t_ == 50) { if (AUTO_NHED == 1) nh_new(0); else if (AUTO_NHED == 2) wm_open_mode(0); else if (AUTO_NHED == 3) wm_open_mode(1); else if (AUTO_NHED == 4) worlds_open(1); else if (AUTO_NHED == 5) { worlds_open(0); wo_tab = 1; nh_scan(); } else if (AUTO_NHED == 7) { wm_hills = 4; wm_land = 0; wm_apply(); bm_ovr_clear(); life_story = 0; worlds_go(0, 0); } else if (AUTO_NHED == 6) { nh_new(0); wo_custom = nh_seed; wm_open_mode(2); } } }   // (test builds: straight into the editor, or one of the new screens)
