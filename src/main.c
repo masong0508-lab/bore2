@@ -983,15 +983,16 @@ static void life_update(int steps) {
 #elif defined(AUTO_AT_BX)
           {   // (test builds, AUTO_CITY with AUTO_AT_BX/BY=block, AUTO_AT_TX/TY=tile in it, AUTO_AT_PITCH/DIST: stand there and look, for the world version 7 shots docs/plan7_*)
             static int at_ = 0, hx_, hz_;
-#ifdef AUTO_AT_TAB   // (-DAUTO_AT_TAB='"file.inc"' -DAUTO_AT_STEP=n: a list of places { bx, by, tx, ty, pitch, dist, yaw } in that file, one every n frames from frame 60; the Dreamcast shots docs/plan7_dc_*)
+#ifdef AUTO_AT_TAB   // (-DAUTO_AT_TAB='"file.inc"' -DAUTO_AT_STEP=n: a list of places { bx, by, tx, ty, pitch, dist, yaw } in that file, one every n vblanks from vblank 90; the Dreamcast shots docs/plan7_dc_*)
             static const s16 at_tab[][7] = {
 #include "test/plan7_places.inc"   /* (found through the Dreamcast Makefile's -I.) */
             };
             static int at_k = -1, at_pitch, at_dist, at_yaw;
-            { int k = (fr_ - 60) / AUTO_AT_STEP; if (fr_ >= 60 && k != at_k && k < (int)(sizeof at_tab / sizeof at_tab[0])) { at_k = k; at_ = 1;
+            { int vb_ = (int)VSync(-1), k = (vb_ - 90) / AUTO_AT_STEP; if (vb_ >= 90 && k != at_k && k < (int)(sizeof at_tab / sizeof at_tab[0])) { at_k = k; at_ = 1;
                 taxi_to_block(at_tab[k][0], at_tab[k][1], at_tab[k][2], at_tab[k][3], "TEST");
                 hx_ = ((at_tab[k][0] - world_wbx) * BM_BLK + at_tab[k][2]) * TILE + TILE / 2; hz_ = -(((at_tab[k][1] - world_wby) * BM_BLK + at_tab[k][3]) * TILE + TILE / 2);
                 at_pitch = at_tab[k][4]; at_dist = at_tab[k][5]; at_yaw = at_tab[k][6]; } }
+            if (at_k >= 0 && fr_ % 90 == 0) { char nb_[28]; sprintf(nb_, "SHOT %d AT %d,%d", at_k, at_tab[at_k][0], at_tab[at_k][1]); sim_note(nb_); }   // (the shot's number and block on screen, so a picture says what it is)
             if (at_k >= 0) { hx_ = ((at_tab[at_k][0] - world_wbx) * BM_BLK + at_tab[at_k][2]) * TILE + TILE / 2; hz_ = -(((at_tab[at_k][1] - world_wby) * BM_BLK + at_tab[at_k][3]) * TILE + TILE / 2); }   // (every frame: the window moves a moment after the taxi)
 #define AUTO_AT_PITCH at_pitch
 #define AUTO_AT_DIST at_dist
