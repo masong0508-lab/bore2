@@ -960,6 +960,7 @@ static void ra_sweep(int hx, int hy) {
         extern void dc_logf(const char *f, ...);
         dc_logf("RA done: windows %d blocks %d props %d ON-ROAD %d walls-on-road %d roadfloor-off-strip %d strip-not-road %d | generators left on a road (purged) %d\n",
                 dbg_ra[6], dbg_ra[0], dbg_ra[1], dbg_ra[2], dbg_ra[3], dbg_ra[4], dbg_ra[5], dbg_ra[9]);
+        for (int i = 0; i < ra_nw; i++) dc_logf("RA   first offender kind %d: block %d,%d tile %d,%d lot %d floor %d letter %02x\n", dbg_raw[i][0], dbg_raw[i][1], dbg_raw[i][2], dbg_raw[i][3], dbg_raw[i][4], dbg_raw[i][5], dbg_raw[i][6], dbg_raw[i][7]);
         for (int c = 0; c < 256; c++) if (dbg_rapurge[c] || dbg_rach[c]) dc_logf("RA   letter %02x '%c': purged %d, still on a road %d\n", c, c >= 32 && c < 127 ? c : '?', dbg_rapurge[c], dbg_rach[c]);
     }
 #endif

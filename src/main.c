@@ -992,6 +992,7 @@ static void life_update(int steps) {
                 taxi_to_block(at_tab[k][0], at_tab[k][1], at_tab[k][2], at_tab[k][3], "TEST");
                 hx_ = ((at_tab[k][0] - world_wbx) * BM_BLK + at_tab[k][2]) * TILE + TILE / 2; hz_ = -(((at_tab[k][1] - world_wby) * BM_BLK + at_tab[k][3]) * TILE + TILE / 2);
                 at_pitch = at_tab[k][4]; at_dist = at_tab[k][5]; at_yaw = at_tab[k][6]; } }
+            if (at_k >= 0) { hx_ = ((at_tab[at_k][0] - world_wbx) * BM_BLK + at_tab[at_k][2]) * TILE + TILE / 2; hz_ = -(((at_tab[at_k][1] - world_wby) * BM_BLK + at_tab[at_k][3]) * TILE + TILE / 2); }   // (every frame: the window moves a moment after the taxi)
 #define AUTO_AT_PITCH at_pitch
 #define AUTO_AT_DIST at_dist
 #else

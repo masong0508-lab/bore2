@@ -35,6 +35,8 @@ Detail for each port: DSI_ROADMAP.md (DS), DREAMCAST.md (Dreamcast), PS1_PERFORM
 - [x] Homes built from the plan, spaced, with yards, drives, hedges, sheds; 4 lots in 10 face north (built south, turned over); `Home.fn` so people use a north door; far view and near agree.
 - [x] New lives are version 7; saves of version 53 and older keep their towns (versions 2 to 6 unchanged: `ports/host/townmap make check`; old saves loaded in the emulator).
 - [ ] Left: parked cars, bridges only where the street crosses, wild/empty lot dressing by neighbourhood, roof form from the plan, map labels; DS and Dreamcast ports (`Home.fn`, `bm_gen = 7`).
+- [x] **Dreamcast on world 7** (docs/DREAMCAST.md, 'World version 7'): disc builds, 6 minute soak ok (CPU about 350 hb), houses and rooms shot in flycast (`docs/plan7_dc_*.png`), road test: nothing on a road in 3 worlds; `restore.sh` now also rebuilds `dcrun` (the prebuilt one printed no log).
+- [ ] Left (Dreamcast): `roadaudit` roadfloor-off-strip about 775 per world (a crossing's corner tile painted road on PARK / EMPTY lots, generator side); v53 save load on the Dreamcast build not tested; a wide street picture and the traits panel by script.
 
 ## 0d. Rooms, not rows (Nov 12, all ports; `docs/HOUSING_DESIGN.md` 4c, `docs/rooms7_*.png`)
 - [x] Homes are furnished from groups round a focal point (living group facing the telly, dining set, kitchen run, bed with nightstands, a real bathroom), every piece turned on purpose. Tables, not code: the PS1 program got 264 bytes smaller.
