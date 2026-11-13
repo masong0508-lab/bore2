@@ -19,3 +19,5 @@ ports/host/townmap/townmap_old
 ports/host/townmap/old/
 build_ac/
 build_sh/
+build_hash/
+build_spd/

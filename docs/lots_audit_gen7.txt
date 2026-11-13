@@ -48,3 +48,41 @@ TOWNHOUSES   lots    72 items   2012 | overlap 0 door 0 lane 0 unreach floor 0 i
 TWO-STOREY   lots   160 items   5896 | overlap 0 door 0 lane 0 unreach floor 28 item 0 floating 11 | homes 160 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
 FLATS        lots    26 items   2160 | overlap 0 door 0 lane 0 unreach floor 0 item 0 floating 0 | homes 52 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 0.00 | offplot 0
 ALL          lots  1911 items  55673 | overlap 0 door 7 lane 20 unreach floor 2495 item 1843 floating 288 | homes 1074 loud 0 nobed 0 nowc 0 nokit 0 noway 0 floors/home 2.24 | offplot 0
+
+# whole-world counts against the caps (ports/host/townmap stats SEED GEN [packed [capsz ncity ntown nvil]]): household units 999 (2 MB) / 1234 (8 MB), places 1800 (PLACE_MAX), far-view buildings 2400 (FB_MAX)
+== seed 0x5EED1234, world version 6
+home units 986 (households: 999 on 2 MB, 1234 on 8 MB)
+places 1256 of 1800
+far-view buildings 1518 of 2400
+== seed 0x5EED1234, world version 7
+home units 1266 (households: 999 on 2 MB, 1234 on 8 MB)
+places 660 of 1800
+far-view buildings 1662 of 2400
+== seed 1234, world version 6
+home units 883 (households: 999 on 2 MB, 1234 on 8 MB)
+places 1373 of 1800
+far-view buildings 1481 of 2400
+== seed 1234, world version 7
+home units 1287 (households: 999 on 2 MB, 1234 on 8 MB)
+places 714 of 1800
+far-view buildings 1727 of 2400
+== seed 777, world version 6
+home units 857 (households: 999 on 2 MB, 1234 on 8 MB)
+places 1391 of 1800
+far-view buildings 1499 of 2400
+== seed 777, world version 7
+home units 1208 (households: 999 on 2 MB, 1234 on 8 MB)
+places 698 of 1800
+far-view buildings 1672 of 2400
+== seed 1234, the biggest world (capital size 5, 8 cities, 20 towns, 32 villages), world version 6
+home units 3334 (households: 999 on 2 MB, 1234 on 8 MB)
+places 4715 of 1800  OVER THE CAP
+far-view buildings 5078 of 2400  OVER THE CAP
+== seed 1234, the biggest world (capital size 5, 8 cities, 20 towns, 32 villages), world version 7
+home units 4453 (households: 999 on 2 MB, 1234 on 8 MB)
+places 2523 of 1800  OVER THE CAP
+far-view buildings 5861 of 2400  OVER THE CAP
+
+# gen 6 against the old code (79c8c8f): lifeMap, floorMap and wallMap of the AUTO_CITY window (the capital's 5x5 blocks) read from the emulator's RAM, seeds 0x5EED1234 1234 777 99 0xC0FFEE: all 15 IDENTICAL
+# speed, frozen city at a suburb street (AUTO_AT 631,758, AB_LOCK4): world version 7 mean cpu 595 hb, world 449 (upper storeys 43); world version 6 mean cpu 566, world 416. Not the same blocks, but gen 7 is slower here, by about 30 hb.
+# frozen city centre (the old baseline spot): cpu 574, world 348 (baseline 573, 348)

@@ -155,3 +155,25 @@ static void trees7(int ox, int oy, int rd) {   // the street's trees at an even 
         if (rd & 2) { int x = ox + BM_LOT0 + 1, y = oy + 8 + 4 * i; if (lifeMap[y][x] == '.' && floorMap[y][x] == FL_GRASS && lifeMap[y][x + 1] == '.') lifeMap[y][x] = TREE; }
     }
 }
+static void empty7(int lx, int ly, unsigned h) {   // a lot for sale: mown, tidy, a sign at the front and a tree at each back corner
+    gFree(lx + 6, ly + 11, '8'); gFree(lx + 1, ly + 1, TREE); gFree(lx + 11, ly + 1, TREE);
+    if (h & 1) gFree(lx + 3, ly + 8, (char)0xE2);
+}
+static void field7(int lx, int ly, unsigned h) {   // a farm lot with no street to front on: a field, rows of crops across the whole lot
+    for (int y = ly + 1; y <= ly + 11; y += 2) gBox(lx + 1, y, lx + 11, y, FL_SOIL);
+    for (int y = ly + 2; y <= ly + 10; y += 2) for (int x = lx + 1; x <= lx + 11; x += 2) gFree(x, y, (char)0xDB);
+    gFree(lx + 12, ly + 1, TREE); (void)h;
+}
+static void estate7(int ox, int oy, unsigned h) {   // the grounds between mansions: lawn, trees in a loose grid, a path across, now and then a pond
+    int lx = ox + BM_LOT0, ly = oy + BM_LOT0;
+    for (int y = ly + 1; y <= ly + 12 && y < oy + BM_BLK; y++) for (int x = lx + 1; x < ox + BM_BLK; x++) {
+        if (floorMap[y][x] == FL_PAVING || lifeMap[y][x] != '.') continue;
+        if (((x - lx) & 3) == 2 && ((y - ly) & 3) == 2) lifeMap[y][x] = TREE;
+    }
+    int px = lx + 6 + (int)(h & 1);
+    for (int y = ly + 1; y <= ly + 11; y++) { floorMap[y][px] = FL_PATIO; if (lifeMap[y][px] != '.') lifeMap[y][px] = '.'; }
+    for (int x = lx + 1; x <= lx + 11; x++) { floorMap[ly + 6][x] = FL_PATIO; if (lifeMap[ly + 6][x] != '.') lifeMap[ly + 6][x] = '.'; }
+    if (((h >> 3) & 3) == 0) {                                                          // a pond in the middle, a ring of patio round it
+        for (int y = ly + 4; y <= ly + 8; y++) for (int x = lx + 4; x <= lx + 8; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = (u8)((y == ly + 4 || y == ly + 8 || x == lx + 4 || x == lx + 8) ? FL_PATIO : FL_WATER); }
+    }
+}

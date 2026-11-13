@@ -378,7 +378,10 @@ static void start_life(void) {
         seed = AUTO_SEED;                                      // (-DAUTO_SEED=0x..u: another test world, for the road audit over several seeds)
 #endif
 #endif
-        bm_gen = 7; bm_new(seed); world_new_seed(seed);
+#ifndef GEN_NEW
+#define GEN_NEW 7                                              // (a test build can start an older world version: -DGEN_NEW=6)
+#endif
+        bm_gen = GEN_NEW; bm_new(seed); world_new_seed(seed);
         loading("PEOPLING SAN BOREAS", 45);
         u32 sb; void *sc = crowd_scratch(&sb); pop_new(seed, sc, sb);
         loading("RAISING THE SKYLINE", 60);

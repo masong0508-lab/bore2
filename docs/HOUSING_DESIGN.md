@@ -219,8 +219,12 @@ Pictures, the same world as version 6 (left) and 7 (right): `docs/plan7_city.png
 - Cottage body is 8x7 to 9x8 now (the room needs it); the estate mansion stays 11-12 x 8-9 (deeper made the back rooms fail the audit).
 - Tools: `ports/host/lotsim` `GEN=7 ./lotsim audit|at|area|kinds|sets SEED ...` (`area` draws a stretch of blocks as a picture: `docs/plan7_tiles_town.png`);
   `docs/lots_audit_gen7.txt`; PS1 shots `docs/plan7_ps1_*.png` (an `AUTO_CITY` build with `AUTO_AT_BX/BY/TX/TY/PITCH/DIST` stands at a place).
-- **Not done:** a parked car on the drive (cars are traffic, not map items), bridge-only-where-the-street-crosses, LOT_WILD/LOT_EMPTY dressing by neighbourhood
-  (the old `wild()`/`lot_empty` are used), roof form and colour from the plan, the map screen's neighbourhood labels, DS and Dreamcast shots.
+- **Round 2 (PS1):** a river block has its bridge (asphalt, pavement, lamps, the road rectangle) only where the block has the crossing street (`river_br`: version 7,
+  road bit 2 for a west-east river, bit 1 for a north-south one); otherwise the water runs on to the block's edge. LOT_EMPTY is a mown lot with a sign and a tree at
+  each back corner (`empty7`); a LOT_FARM with no street (`LF_NONE`) is a field of crop rows (`field7`); LOT_WILD in an ESTATE neighbourhood is grounds (`estate7`: lawn, trees in a
+  loose grid, a path across, now and then a pond); other WILD blocks keep the open-country look. The map screens read `bm_block`'s road bits, so they show the new streets as they
+  are (the block map honours road bit 4; the diorama's `d_road` draws bits 1 and 2 only). Roofs stay the engine's, from the walls: the plan's `roof` and `rcol` are not used.
+- **Not done:** a parked car on the drive (cars are traffic, not map items), roof form and colour from the plan, neighbourhood labels on the map screen, DS and Dreamcast.
 - **RAM (PS1):** `_end` 0x801fbe48 (16,824 free; main before: 0x801f71c0).
 
 ## Sources

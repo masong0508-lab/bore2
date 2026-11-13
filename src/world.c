@@ -842,7 +842,8 @@ static void wild(int ox, int oy, const BInfo *b, int bx, int by) {   // the open
     }
 }
 // ---- a river across a town, and the big shared places (a park, a mall, a downtown plaza: four blocks made one) ----
-COLD static void lot_river(int ox, int oy, int vert, unsigned h) {   // the lot is a river with a walk down each bank; the street along the edge crosses it as a bridge
+static int river_br(const BInfo *b) { return bm_gen < 7 || ((b->road & BR_MEGA) ? (b->road & 1) : (b->road & 2)); }   // a river block's bridge: version 7 has one only where the block has the street that crosses (else the water runs on)
+COLD static void lot_river(int ox, int oy, int vert, unsigned h, int br) {   // the lot is a river with a walk down each bank; the street along the edge crosses it as a bridge
     int T = vert ? 0 : 1;   // (draw west-east, mirrored for north-south through x/y swap)
     const int SH = BM_LOT0 - 3, NB = BM_BLK - SH;   // (the river was drawn for a 16-tile block with a 3-tile street: slid over by the wider street)
     #define RX(a, b) (vert ? ox + (a) + SH : ox + (b) + SH)
@@ -851,7 +852,8 @@ COLD static void lot_river(int ox, int oy, int vert, unsigned h) {   // the lot 
         int fl = d <= 4 ? FL_PAVING : d <= 11 ? FL_WATER : d <= 13 ? FL_PAVING : FL_GRASS;
         for (int e = 3; e < NB; e++) floorMap[RY(d, e)][RX(d, e)] = (u8)fl;
     }
-    for (int e = -SH; e < 3; e++) for (int d = 5; d <= 11; d++) floorMap[RY(d, e)][RX(d, e)] = FL_ASPHALT;   // (under the street: the bridge)
+    if (!br) { for (int d = 3; d < NB; d++) { int fl = d <= 4 ? FL_PAVING : d <= 11 ? FL_WATER : d <= 13 ? FL_PAVING : FL_GRASS; for (int e = -SH; e < 3; e++) floorMap[RY(d, e)][RX(d, e)] = (u8)fl; } }   // (no street over it: the river runs on to the block's edge)
+    else for (int e = -SH; e < 3; e++) for (int d = 5; d <= 11; d++) floorMap[RY(d, e)][RX(d, e)] = FL_ASPHALT;   // (under the street: the bridge)
     for (int e = 4; e < NB; e += 4) {              // lamps and benches down both walks, planters, and trees on the far bank
         gFace(RX(3, e), RY(3, e), '"', vert ? 1 : 0); gFace(RX(13, e + 2), RY(13, e + 2), '"', vert ? 1 : 0);   // (the poles on the street's or the water's side)
         gFree(RX(4, e + 2), RY(4, e + 2), 'N'); gFree(RX(12, e), RY(12, e), 'N');
@@ -859,8 +861,8 @@ COLD static void lot_river(int ox, int oy, int vert, unsigned h) {   // the lot 
     }
     if (h & 1) gFree(RX(12, 9), RY(12, 9), 'Z'); if (h & 2) gFree(RX(4, 6), RY(4, 6), 'Z');
     if (h & 4) { gPut(RX(7, 9), RY(7, 9), 'K'); }      // (a rock in the stream, if a rock is 'K': the item the park uses)
-    for (int d = 5; d <= 11; d++) floorMap[RY(d, 3)][RX(d, 3)] = FL_PAVING;   // (the pavement beside the street crosses on the bridge too)
-    gFace(RX(4, 3), RY(4, 3), '"', vert ? 0 : 1); gFace(RX(12, 3), RY(12, 3), '"', vert ? 0 : 1);   // a lamp at each end of the bridge, on the pavement by the street
+    if (br) { for (int d = 5; d <= 11; d++) floorMap[RY(d, 3)][RX(d, 3)] = FL_PAVING;   // (the pavement beside the street crosses on the bridge too)
+    gFace(RX(4, 3), RY(4, 3), '"', vert ? 0 : 1); gFace(RX(12, 3), RY(12, 3), '"', vert ? 0 : 1); }   // a lamp at each end of the bridge, on the pavement by the street
     (void)T;
     #undef RX
     #undef RY
@@ -908,7 +910,7 @@ COLD __attribute__((noinline)) static void kerb_clear(int ox, int oy) {   // the
 #if defined(BORE_DC) || defined(ROAD_AUDIT)
 COLD static void blk_street(int bx, int by, int *rd, int *town, int *rv) {   // rv: a river block's bridge: 1 down the left edge, 2 along the top (it carries the street over the water whatever the block's road bits say)
     BInfo b; bm_block(bx, by, &b); *rd = blk_roads(bx, by); *town = b.set != 255 && b.terrain != BT_SEA;
-    *rv = b.lot == LOT_RIVER ? ((b.road & BR_MEGA) ? 2 : 1) : 0;
+    *rv = b.lot == LOT_RIVER ? ((b.road & BR_MEGA) ? 2 : 1) : 0; if (*rv && !river_br(&b)) *rv = 0;
 }
 COLD int world_tile_class(int tx, int ty) {   // that tile of the city window: TC_ROAD (lanes, the line, crossings), TC_KERB (the pavement) or TC_PLOT
     if (world_zone != ZONE_CITY || world_wbx < 0 || tx < 0 || ty < 0 || tx >= MW || ty >= MH) return TC_PLOT;
@@ -996,7 +998,7 @@ COLD static void gen_block0(int wx, int wy) {
     for (int k = 0; k < NUP; k++) { Level *L = lv_get(k); if (L) for (int y = 0; y < BM_BLK; y++) memset(&L->map[oy + y][ox], ' ', BM_BLK); }
     int mg = b.lot != LOT_RIVER && (b.road & BR_MEGA), mpart = BR_PART(b.road), mkind = BR_KIND(b.road);
     int rd = b.road & 7; if (mg) { if (mpart & 1) rd &= ~2; if (mpart & 2) rd &= ~1; }   // (inside a big place the streets between its blocks are gone)
-    gcur_ox = ox; gcur_oy = oy; gcur_n = road_rects(rd & 3, b.lot == LOT_RIVER ? ((b.road & BR_MEGA) ? 2 : 1) : 0, gcur_r);   // (from here the generators' props keep off the street)
+    gcur_ox = ox; gcur_oy = oy; gcur_n = road_rects(rd & 3, b.lot == LOT_RIVER && river_br(&b) ? ((b.road & BR_MEGA) ? 2 : 1) : 0, gcur_r);   // (from here the generators' props keep off the street)
     const int SW = BM_LOT0, SC = SW / 2;   // the street: five tiles wide, a lane of two each way and the line down the middle
     if (g7 && (b.road & 4)) gBox(ox, oy, ox + SW - 1, oy + SW - 1, FL_ASPHALT);   // (the corner where the heart's last streets turn)
     if (rd & 1) { gBox(ox, oy, ox + BM_BLK - 1, oy + SW - 1, FL_ASPHALT); gBox(ox + SW, oy + SC, ox + BM_BLK - 1, oy + SC, FL_LINE_H); }
@@ -1065,8 +1067,8 @@ COLD static void gen_block0(int wx, int wy) {
         case LOT_PARK:    lot_park(lx, ly, h); break;
         case LOT_SQUARE:  city_square(lx, ly); break;
         case LOT_SKATE:   city_skate(lx, ly); break;
-        case LOT_EMPTY:   lot_empty(lx, ly, h); break;
-        case LOT_FARM:    lot_farm(lx, ly, h); break;
+        case LOT_EMPTY:   if (g7) empty7(lx, ly, h); else lot_empty(lx, ly, h); break;
+        case LOT_FARM:    if (g7 && pl.face == LF_NONE) field7(lx, ly, h); else lot_farm(lx, ly, h); break;
         case LOT_APART:   lot_apart(lx, ly, h, st); break;
         case LOT_TOWER:   lot_tower(lx, ly, h, st); break;
         case LOT_HOTEL:   lot_hotel(lx, ly, h, st); break;
@@ -1083,14 +1085,15 @@ COLD static void gen_block0(int wx, int wy) {
         case LOT_CONV:    lot_conv(lx, ly, h); break;
         case LOT_SPACE:   lot_space(lx, ly, h); break;
         case LOT_OBS:     lot_obs(lx, ly, h); break;
-        case LOT_RIVER:   lot_river(ox, oy, b.road & BR_MEGA, h); break;
+        case LOT_RIVER:   lot_river(ox, oy, b.road & BR_MEGA, h, river_br(&b)); break;
         default: break;
     }
     occ_on = 0; blk_bx = blk_by = 0xFFFF;
     if (pln) mirror7(ox, oy, hn0, ground);
     if (g7) { if (blk_roads(bx, by + 1) & 1) for (int x = ox + BM_LOT0; x < ox + BM_BLK; x++) { floorMap[oy + BM_BLK - 1][x] = FL_PAVING; if (lifeMap[oy + BM_BLK - 1][x] == '3' || lifeMap[oy + BM_BLK - 1][x] == '6') lifeMap[oy + BM_BLK - 1][x] = '.'; }   // (the far side's pavement, where the next block has its street)
               if (blk_roads(bx + 1, by) & 2) for (int y = oy + BM_LOT0; y < oy + BM_BLK; y++) floorMap[y][ox + BM_BLK - 1] = FL_PAVING; }
-    if (b.set == 255 || b.lot == LOT_WILD) wild(ox, oy, &b, bx, by);   // (open country, and the green gaps left in a town)
+    if (g7 && b.lot == LOT_WILD && bm_nb(bx, by) == NK_ESTATE) estate7(ox, oy, h);
+    else if (b.set == 255 || b.lot == LOT_WILD) wild(ox, oy, &b, bx, by);   // (open country, and the green gaps left in a town)
     if (b.set != 255 && b.terrain != BT_SEA && bm_gen >= 6 && !g7 && !mine && (b.lot == LOT_HOUSE || b.lot == LOT_COTTAGE || b.lot == LOT_TOWN || b.lot == LOT_TWO || b.lot == LOT_APART || b.lot == LOT_SCHOOL || b.lot == LOT_LIBRARY || b.lot == LOT_CLINIC || b.lot == LOT_GALLERY)) {
         for (int y = oy + BM_LOT0 + 1; y < oy + BM_BLK; y++) for (int x = ox + BM_LOT0 + 1; x < ox + BM_BLK; x++) {   // landscaping: trees along the pavement and one here and there in the yards, never against a wall (so doors and paths stay clear)
             if (floorMap[y][x] != FL_GRASS || lifeMap[y][x] != '.') continue;
