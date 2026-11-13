@@ -10,6 +10,7 @@
 #include "items_party.inc"    // the PARTY pack (tools/make_items_party.py)
 #include "items_band.inc"     // the SUPERSTAR practice instruments (tools/make_items_band.py)
 #include "items_home.inc"     // the garden, pool and beach things (tools/make_items_home.py)
+#include "items_hedge.inc"    // the slim yard hedge and its pier (world 7 fronts, hand written)
 #include "items_farm.inc"     // FARM LIFE: crop bed, coop, cow, stand (tools/make_items_farm.py)
 #include "items_space.inc"    // the telescopes, rocket and console (tools/make_items_space.py)
 #include "items_bed.inc"      // the beds, cribs and nursery things (tools/make_items_q.py)
@@ -344,6 +345,7 @@ static ItemDef defs[] = {   // (not const: items_init sets some of them to life 
     ITEMS_SPACE
     ITEMS_FARM
     ITEMS_HOME
+    ITEMS_HEDGE
     ITEMS_BED
     ITEMS_DC
 };

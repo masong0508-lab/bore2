@@ -28,7 +28,9 @@ int  items_along(char ch);                               // 1: rails, ledges, be
 int  items_count(void);
 char items_at(int i);                                    // the i-th placeable letter (the build menu order)
 int  items_cost(char ch);
-// BORE 2's second furniture pack lives at 0x90..0xBD (tools/make_items2.py); 0x8E..0x8F are kept free
+// BORE 2's second furniture pack lives at 0x90..0xBD (tools/make_items2.py); 0x8E..0x8F: the world 7 yard hedge and its pier (items_hedge.inc, never for sale)
+#define CH_HEDGE7 ((char)0x8E)                           // a slim clipped hedge, half a tile thick, runs link along x or y
+#define CH_PIER7  ((char)0x8F)                           // its gate post / corner piece
 // the family's own things (letters past the old ASCII ones: the map has no plain letters left)
 #define CH_CRIB  ((char)0x81)                            // a baby sleeps in it
 #define CH_BED4  ((char)0xEB)                            // a four-poster bed

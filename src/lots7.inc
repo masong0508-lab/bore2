@@ -13,11 +13,18 @@ static void win7(int hx, int hy, int hx1, int hy1, int dx, int sideL, int sideR)
     if (sideL) gPut(hx, hy + (hy1 - hy) / 2, 'E'); if (sideR) gPut(hx1, hy + (hy1 - hy) / 2, 'E');
     if (dx - 2 > hx + 1) gPut(dx - 2, hy1, 'E'); if (dx + 2 < hx1 - 1) gPut(dx + 2, hy1, 'E');
 }
+static int shut7(int x, int y) { char c = lifeMap[y][x]; return c != '.' && c != 'D' && !(items_is_item(c) && !items_blocking(c)); }   // (a wall, a window or something you cannot walk through)
+static void hedge7(int x, int y, int ix, int iy, char c) {   // a hedge piece at (x, y) unless it would wall in the free tile behind it (ix, iy): the three other sides of that tile are shut already
+    if (lifeMap[y][x] == '.' && lifeMap[iy][ix] == '.' && shut7(ix + 1, iy) + shut7(ix - 1, iy) + shut7(ix, iy + 1) + shut7(ix, iy - 1) >= 3) return;
+    pf(x, y, c);
+}
 __attribute__((noinline)) static void yard7(int ox, int oy, const LotPlan *q, int hy, int hy1, int dx, int vacant, unsigned h, int kind) {   // the front: porch, path, planters, lamp, mailbox, hedges; the drive
     PLx = ox + BM_LOT0; PLy = oy + BM_LOT0;
     int n = oy + 16 - hy1, g = (int)(h >> 13), ry = oy + BM_BLK - 1;                   // rows between the front wall and the last row (n >= 0)
     int hedge = kind == NK_SUBURB || kind == NK_ESTATE || kind == NK_GREEN, dv = q->drv ? ox + q->drv : 0;
-    int hv = hedge ? (g >> 8) & 3 : 0; char fc = hv == 2 ? (char)0xDF : (char)0xE1; if (hv == 3) hedge = 0;   // (the front: a hedge on half the lots, a picket fence on one in four, one in four open lawn)
+    int hv = hedge ? (g >> 8) & 3 : 0, ns = (int)(q->pal & 3);                         // the front: one style to a neighbourhood (ns: 0 hedge and short side hedges, 1 hedge, 2 white pickets, 3 hedge on half the lots), a lawn on one lot in four
+    int fence = hedge && ns == 2, sides = hedge && ns == 0 && n >= 3, piers = hedge && ns != 2 && ns != 3;
+    if (hv == 3 || (ns == 3 && (hv & 1))) hedge = sides = piers = 0;
     if (dv) {                                                                          // the drive: two tiles of concrete, to the garage (the wing's front, the front wall) or back beside the house
         int top = q->wx1 ? oy + q->wy1 + 1 : q->type == HT_RANCH ? hy1 + 1 : hy;
         for (int y = top; y <= ry; y++) { floorMap[y][dv] = FL_PAVING; floorMap[y][dv + 1] = FL_PAVING; }
@@ -28,17 +35,21 @@ __attribute__((noinline)) static void yard7(int ox, int oy, const LotPlan *q, in
     if (vacant) { if (n >= 2) pf(dx + 2, hy1 + 2, '8'); return; }
     if (n >= 1) { pf(dx + 1, hy1 + 1, 'l'); pf(dx - 2, hy1 + 1, 'Z'); pf(dx + 2, hy1 + 1, 'Z'); }
     if (n >= 3) { char c = (g & 1) ? (char)0xE2 : 'p'; if (dx - 4 > PLx + 2) pf(dx - 4, hy1 + 1, c); if (dx + 4 < PLx + 10) pf(dx + 4, hy1 + 1, c); }
+    if (n >= 2 && kind != NK_CORE && kind != NK_MAIN) { int e = dv ? (dv - ox < 9) : (dx - ox < 11); pf(e ? ox + 16 : ox + 7, oy + 15, TREE); }   // a yard tree on the side away from the drive
     if (n >= 3) {
         if (!hedge || (g & 2)) pf(dx - 2, oy + 16, (char)0xE0);                        // the mailbox at the gap
         else pf(dx + 2, oy + 16, (char)0xE0);
-        if (hedge) for (int x = PLx + 1; x <= PLx + 12; x++) if (ABS(x - dx) > 1 && (!dv || x < dv || x > dv + 1)) pf(x, oy + 16, fc);   // a low hedge (or fence) across the front, a gap at the walk and the drive
+        if (hedge) for (int x = PLx + 1; x <= PLx + 12; x++) {                          // a slim hedge (or pickets) on the boundary row, a gap at the walk and the drive; piers at the corners and the gaps
+            if (ABS(x - dx) <= 1 || (dv && x >= dv && x <= dv + 1)) continue;
+            int pier = piers && (x == PLx + 1 || x == PLx + 12 || ABS(x - dx) == 2 || (dv && (x == dv - 1 || x == dv + 2)));
+            hedge7(x, oy + 16, x, oy + 15, fence ? (char)0xDF : pier ? CH_PIER7 : CH_HEDGE7);
+        }
     }
-    if (hedge && hv < 2) for (int s = 0; s < 2; s++) {                                 // hedges down the sides, where there is room round the house
-        int c = s ? PLx + 11 : PLx + 1;
+    if (sides) for (int s = 0; s < 2; s++) {                                           // short side hedges on the boundary columns, the front garden only (the back yard stays open)
+        int c = s ? PLx + 12 : PLx + 1;
         if (dv && (c == dv || c == dv + 1)) continue;
-        for (int y = PLy + 1; y <= oy + 15; y++) pf(c, y, (char)0xE1);
+        for (int y = hy1 + 1; y < oy + 16; y++) hedge7(c, y, s ? c - 1 : c + 1, y, CH_HEDGE7);
     }
-    if (n >= 2 && kind != NK_CORE && kind != NK_MAIN) { int e = dv ? (dv - ox < 9) : (dx - ox < 11); pf(e ? ox + 16 : ox + 7, oy + 15, TREE); }   // a yard tree on the side away from the drive
 }
 static void garage7(int ox, int oy, const LotPlan *q, int fl, int wp) {   // the garage wing (L houses): a solid block with its door to the drive
     (void)fl; int x0 = ox + q->wx0, x1 = ox + q->wx1, y0 = oy + q->wy0, y1 = oy + q->wy1;
@@ -165,7 +176,7 @@ static void empty7(int lx, int ly, unsigned h) {   // a lot for sale: mown, tidy
 static void field7(int lx, int ly, unsigned h) {   // a farm lot with no street to front on: a field, rows of crops across the whole lot
     for (int y = ly + 1; y <= ly + 11; y += 2) gBox(lx + 1, y, lx + 11, y, FL_SOIL);
     for (int y = ly + 2; y <= ly + 10; y += 2) for (int x = lx + 1; x <= lx + 11; x += 2) gFree(x, y, (char)0xDB);
-    for (int y = ly + 1; y <= ly + 11; y++) { if (y == ly + 6) continue; gFree(lx, y, (char)0xE1); gFree(lx + 12, y, (char)0xE1); }   // a hedgerow down both sides, a gap for the cart track
+    for (int y = ly + 1; y <= ly + 11; y++) { if (y % 3 == (ly + 6) % 3) continue; gFree(lx, y, CH_HEDGE7); gFree(lx + 12, y, CH_HEDGE7); }   // a slim hedgerow down both sides in short lengths, gaps for the cart track and the gates
     gFree(lx + 12, ly + 1, TREE); gFree(lx, ly + 12, TREE);
     int k = (int)((h >> 5) & 3);                                                          // a field's own trimmings: a stand by the track, a hen coop and a cow, or nothing
     if (k == 0) gFree(lx + 1, ly + 12, (char)0xDE);

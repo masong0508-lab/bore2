@@ -42,6 +42,8 @@ static int reg_home(int x0, int y0, int x1, int y1, int dx, int dy) {
     return u;
 }
 static u32 wsalt;
+#define CH_HEDGE7 ((char)0x8E)   /* (src/items.h) */
+#define CH_PIER7  ((char)0x8F)
 #include "items_tab.h"
 static int itf(int c) { for (unsigned i = 0; i < sizeof itab / sizeof itab[0]; i++) if (itab[i].c == (unsigned char)c) return itab[i].f; return -1; }
 int items_is_item(char c) { return itf(c) >= 0; }
@@ -237,6 +239,26 @@ int main(int argc, char **argv) {
         printf("# people %ld; beds wanted (beds_of): beds %ld, bunks %ld, cribs %ld\n", want[3], want[0], want[1], want[2]);
         printf("# homes without: a fridge %ld, a toilet %ld, a bed %ld, a shower %ld, a seat (sofa, beanbag, chair) %ld, fun (telly, radio, hifi, books, aquarium) %ld, a table %ld, a stove %ld\n", lack[0], lack[1], lack[2], lack[3], lack[4], lack[5], lack[6], lack[7]);
         for (int c = 0; c < 256; c++) if (cnt[c]) printf("%-18s %3d %6ld  %.2f a home\n", items_name((char)c), c, cnt[c], (double)cnt[c] / homesN);
+        return 0;
+    }
+    if (!strcmp(argv[1], "hedges")) {   // lotsim hedges SEED [BAD]: what the hedges, fences and walls at a lot's edge cost the homes' yards (HEDGE=1: per kind lines)
+        static unsigned char done[BM_N][BM_N]; long lots = 0, yard = 0, hed = 0, fence = 0, reach = 0, unreach = 0, onpath = 0, hedlot = 0; static long ku[LOT_N][4];
+        for (int i = 0; i < bm_nset(); i++) { const Settle *s = bm_set(i); int r = s->r + 1;
+            for (int by = s->y - r; by <= s->y + r; by++) for (int bx = s->x - r; bx <= s->x + r; bx++) {
+                if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N || done[by][bx]) continue; done[by][bx] = 1;
+                BInfo b; bm_block(bx, by, &b); if (b.set == 255 || b.terrain == BT_SEA || b.lot < LOT_HOUSE || b.lot > LOT_TWO) continue;
+                int lot = make_block(bx, by, 0); LotAud sv = lot_aud; int lx = BM_BLK + BM_LOT0, ly = BM_BLK + BM_LOT0;
+                lot_audit(lx, ly, lot); au_level(0, lifeMap, floorMap, wallMap, 0, lx, ly, lx + 12, ly + 12, lot); lot_aud = sv; lots++;
+                int h0 = 0;
+                for (int y = ly; y <= ly + 12; y++) for (int x = lx; x <= lx + 12; x++) { unsigned char c = (unsigned char)lifeMap[y][x]; int f = floorMap[y][x];
+                    int isH = c == 0xE1 || c == 0xB3 || c == 0x8E || c == 0x8F, isF = c == 0xDF || c == 0xB4;
+                    if (isH) { hed++; h0++; ku[lot][0]++; } if (isF) { fence++; ku[lot][1]++; }
+                    if ((isH || isF) && (f == FL_PAVING || f == FL_PATIO || f == FL_GRAVEL)) onpath++;
+                    if (au_in[y][x] || f == FL_WATER || au_isw((char)c)) continue; yard++; ku[lot][2]++;
+                    if (au_reach[y][x]) reach++; else if (c == '.') { unreach++; ku[lot][3]++; } }
+                if (h0) hedlot++; if (getenv("HEDGE") && getenv("HEDGE")[0] == '2' && (h0 || (getenv("HEDGE")[1] == 'a'))) { LotPlan pl; bm_lot_plan(bx, by, &b, &pl); printf("  lot %d %d %s nb %d type %d face %d hedge %d drv %d set %d pal %d\n", bx, by, lotname(lot), bm_nb(bx, by), pl.type, pl.face, h0, pl.drv, b.set, pl.pal); } } }
+        printf("hedges: house lots %ld (with hedge %ld) | yard tiles %ld, hedge tiles %ld (%.2f a lot, %.1f%% of yard), fence tiles %ld | reachable yard %ld, walled-in free yard tiles %ld, hedge/fence on path floors %ld\n", lots, hedlot, yard, hed, (double)hed / lots, 100.0 * hed / yard, fence, reach, unreach, onpath);
+        if (getenv("HEDGE")) for (int k = LOT_HOUSE; k <= LOT_TWO; k++) printf("  %-12s hedge %ld fence %ld yard %ld walled-in %ld\n", lotname(k), ku[k][0], ku[k][1], ku[k][2], ku[k][3]);
         return 0;
     }
     if (!strcmp(argv[1], "at")) {       // lotsim at SEED BX BY: that block as text, storey by storey, each beside what the audit could walk to (r), could not (u: floor, i: indoors), and its verdict
