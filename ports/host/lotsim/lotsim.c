@@ -128,7 +128,7 @@ static int make_block(int bx, int by, BInfo *bo) {   // block (bx,by) of the wor
     int ox = BM_BLK, oy = BM_BLK, lx = ox + BM_LOT0, ly = oy + BM_LOT0;
     int st = bm_storeys(&b);
     if (bm_gen >= 7 && b.set != 255) {   // world version 7: the plan, the homes from it, a north-facing lot turned over (as world.c gen_block0)
-        LotPlan pl; bm_lot_plan(bx, by, &b, &pl); int n0 = nhomes[ZONE_CITY], north = pl.face == LF_NORTH && b.lot != LOT_WILD && b.lot != LOT_RIVER;
+        LotPlan pl; bm_lot_plan(bx, by, &b, &pl); int n0 = nhomes[ZONE_CITY], north = pl.face == LF_NORTH && b.lot != LOT_WILD && b.lot != LOT_RIVER && !(b.lot != LOT_RIVER && (b.road & BR_MEGA));
         if (pl.face == LF_NORTH || (b.road & 1)) for (int x = ox + BM_LOT0; x < ox + BM_BLK; x++) if (north || (b.road & 1)) floorMap[oy + BM_LOT0][x] = FL_PAVING;   // (the street's pavement)
         if (b.road & 2) for (int y = oy + BM_LOT0; y < oy + BM_BLK; y++) floorMap[y][ox + BM_LOT0] = FL_PAVING;
         if (b.lot == LOT_HOUSE || b.lot == LOT_COTTAGE || b.lot == LOT_TOWN || b.lot == LOT_TWO) house7(lx, ly, b.h, &b, &pl); else if (b.lot == LOT_EMPTY) empty7(lx, ly, b.h); else if (b.lot == LOT_FARM && pl.face == LF_NONE) field7(lx, ly, b.h); else if (b.lot == LOT_WILD) { if (bm_nb(bx, by) == NK_ESTATE) estate7(ox, oy, b.h); } else lot_make(b.lot, lx, ly, b.h, st);
@@ -294,6 +294,43 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1], "rooms")) {    // lotsim rooms SEED BX BY: the lot of that block for rooms.py (OCC=adults,kids,teens,elders,couple,babies picks who lives there)
         int bx = atoi(argv[3]), by = atoi(argv[4]); int lot = make_block(bx, by, 0); occ_on = 0;
         lot_audit(BM_BLK + BM_LOT0, BM_BLK + BM_LOT0, lot); rooms_dump(lot, bx, by); audit_line(stdout, "AUDIT", &lot_aud); return 0;
+    }
+    if (!strcmp(argv[1], "plan")) {   // lotsim plan SEED: every home of the world against its plan (body, wing, door, drive): what the game's maps and views draw from
+        static unsigned char done[BM_N][BM_N]; int nh = 0, bbad = 0, dbad = 0, vbad = 0, fbad = 0;
+        for (int i = 0; i < bm_nset(); i++) { const Settle *s = bm_set(i); int r = s->r + 1;
+            for (int by = s->y - r; by <= s->y + r; by++) for (int bx = s->x - r; bx <= s->x + r; bx++) {
+                if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N || done[by][bx]) continue; done[by][bx] = 1;
+                BInfo b; bm_block(bx, by, &b); if (b.set == 255 || b.terrain == BT_SEA || (b.road & BR_MEGA)) continue;
+                LotPlan pl; bm_lot_plan(bx, by, &b, &pl); if (!pl.type || !(b.lot >= LOT_HOUSE && b.lot <= LOT_TWO)) continue;
+                make_block(bx, by, 0); nh++;
+                int ox = BM_BLK, oy = BM_BLK, x0 = 99, y0 = 99, x1 = -1, y1 = -1;
+                int ex0 = pl.x0, ey0 = pl.y0, ex1 = pl.x1, ey1 = pl.y1; if (pl.wx1) { if (pl.wx0 < ex0) ex0 = pl.wx0; if (pl.wx1 > ex1) ex1 = pl.wx1; if (pl.type == HT_TERRACE) { if (pl.wy0 < ey0) ey0 = pl.wy0; if (pl.wy1 > ey1) ey1 = pl.wy1; } }
+                for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) { char c = lifeMap[oy + y][ox + x]; if (!(c == 'W' || c == 'E' || c == 'D')) continue;
+                    if (x >= ex0 && x <= ex1 && y >= ey0 && y <= ey1) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+                    else if (c != 'D' && wallMap[oy + y][ox + x]) { fbad++; if (getenv("V")) printf("outside wall %d %d at %d,%d type %d\n", bx, by, x, y, pl.type); } }
+                if (x0 != ex0 || y0 != ey0 || x1 != ex1 || y1 != ey1) { bbad++; if (getenv("V")) printf("body %d %d type %d face %d: walls %d,%d..%d,%d plan %d,%d..%d,%d\n", bx, by, pl.type, pl.face, x0, y0, x1, y1, ex0, ey0, ex1, ey1); }
+                if (lifeMap[oy + pl.dy][ox + pl.dx] != 'D') { dbad++; if (getenv("V")) printf("door %d %d type %d: plan %d,%d has '%c'\n", bx, by, pl.type, pl.dx, pl.dy, lifeMap[oy + pl.dy][ox + pl.dx]); }
+                if (pl.drv) { int st = pl.face == LF_NORTH ? BM_LOT0 + 1 : BM_BLK - 2; if (floorMap[oy + st][ox + pl.drv] != FL_PAVING || floorMap[oy + st][ox + pl.drv + 1] != FL_PAVING) { vbad++; if (getenv("V")) printf("drive %d %d type %d face %d drv %d: floor %d %d\n", bx, by, pl.type, pl.face, pl.drv, floorMap[oy + st][ox + pl.drv], floorMap[oy + st][ox + pl.drv + 1]); } }
+            } }
+        printf("%d homes: body differs %d, door differs %d, drive differs %d, walls outside the plan %d\n", nh, bbad, dbad, vbad, fbad);
+        return 0;
+    }
+    if (!strcmp(argv[1], "foot")) {   // lotsim foot SEED: every building's real wall box against bm_lot_foot (what the maps, the town model and the far view draw); HOMES=1: the homes only (the sheds in their yards count here; `plan` is the exact check)
+        static int n[LOT_N], bad[LOT_N]; static unsigned char done[BM_N][BM_N];
+        for (int i = 0; i < bm_nset(); i++) { const Settle *s = bm_set(i); int r = s->r + 1;
+            for (int by = s->y - r; by <= s->y + r; by++) for (int bx = s->x - r; bx <= s->x + r; bx++) {
+                if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N || done[by][bx]) continue; done[by][bx] = 1;
+                BInfo b; bm_block(bx, by, &b); if (b.set == 255 || b.terrain == BT_SEA || b.lot == LOT_WILD || b.lot == LOT_RIVER) continue;
+                int lot = make_block(bx, by, 0); u8 e[5]; int want = bm_lot_foot(bx, by, &b, e, 0);
+                if (getenv("HOMES") ? !(lot >= LOT_HOUSE && lot <= LOT_TWO) : (lot >= LOT_HOUSE && lot <= LOT_TWO)) continue;
+                int x0 = 99, y0 = 99, x1 = -1, y1 = -1, ox = BM_BLK, oy = BM_BLK;
+                for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) { char c = lifeMap[oy + y][ox + x]; if (!(c == 'W' || c == 'E' || c == 'D')) continue; if (wallMap[oy + y][ox + x] == 0 && c != 'D') continue;
+                    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+                int has = x1 >= 0; n[lot]++;
+                if (want != has || (want && (x0 != e[0] || y0 != e[1] || x1 != e[2] || y1 != e[3]))) { bad[lot]++; if (getenv("V")) printf("%s %d %d road %d: walls %d,%d..%d,%d, bm_lot_foot %d,%d..%d,%d (%d)\n", lotname(lot), bx, by, b.road, x0, y0, x1, y1, e[0], e[1], e[2], e[3], want); }
+            } }
+        for (int l = 0; l < LOT_N; l++) if (n[l]) printf("%-14s %4d lots, %4d differ\n", lotname(l), n[l], bad[l]);
+        return 0;
     }
     if (!strcmp(argv[1], "audit")) {   // every block of every settlement (or the first N of each kind)
         int cap = argc > 3 ? atoi(argv[3]) : 0; static unsigned char done[BM_N][BM_N]; static int per[LOT_N];

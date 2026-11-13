@@ -157,7 +157,7 @@ __attribute__((noinline)) static void mirror7(int ox, int oy, int n0, int ground
     for (int k = 0; k < NUP; k++) { Level *L = lv_get(k); if (!L) continue;                  // (the storeys' things turn too: a bed upstairs had its foot to the wall)
         for (int y = r5; y <= r17; y++) for (int x = x0; x <= x1; x++) { u8 w = L->wp[y][x]; if ((w & 0x80) && !(w & 1)) L->wp[y][x] = (u8)(w ^ 2); } }
     for (int i = 0; i < nw; i++) {                                                          // the street row as it was; the far row is the lot's back: ground (what the lot put there stays)
-        lifeMap[r5][x0 + i] = sl[i]; floorMap[r5][x0 + i] = sf[i]; wallMap[r5][x0 + i] = sw[i];
+        if (sl[i] != 'W' && sl[i] != 'E') { lifeMap[r5][x0 + i] = sl[i]; floorMap[r5][x0 + i] = sf[i]; wallMap[r5][x0 + i] = sw[i]; }   // (a building that stood on the street row, the cinema's back wall: turned over it is the lot's path, not a wall across the street door)
         if (floorMap[r17][x0 + i] == FL_PAVING && i) floorMap[r17][x0 + i] = (u8)ground;
     }
     int z = world_zone % ZONE_N, Y = 2 * oy + BM_LOT0 + BM_BLK - 1;
