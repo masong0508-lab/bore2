@@ -2,13 +2,18 @@
 #pragma once
 #include "common.h"
 
+#ifdef BORE_DC
 #define OT_NEAR    4096           // the near table: view-space z >> OT_SHIFT (z up to 8192 units)
+#define OT_SHIFT   1              // view-space z >> OT_SHIFT = OT index (z up to 8192 units)
+#else
+#define OT_NEAR    2048           // PS1: the same 8192 units in buckets of 4 (it was 4096 buckets of 2: 16 KB of the two packet buffers; the nearest thing the world draws is under 2000 units away, the far world needs the range)
+#define OT_SHIFT   2
+#endif
 #define OT_LEN     (OT_NEAR + 256) // then the far world (far.c), back to front, and the ground and the sky behind it all
 #define OT_SKY        (OT_LEN - 1)
 #define OT_GROUND_FAR (OT_LEN - 2)
 #define OT_GROUND_WIN (OT_LEN - 3)
 #define OT_FAR_LAST   (OT_LEN - 4)
-#define OT_SHIFT   1              // view-space z >> OT_SHIFT = OT index (z up to 8192 units)
 #ifdef BORE_DC
 #define PACKET_LEN (160*1024)   // (Dreamcast: 16 MB, and the PowerVR takes whatever the world sends: the roofs, drawn last, no longer run out of room at full detail)
 #else

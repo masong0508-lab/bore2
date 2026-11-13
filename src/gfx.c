@@ -305,7 +305,7 @@ static inline int fog_scale(int otz) {   // 256 = as is
     return t >= 256 ? 64 : 256 - (t * 3 >> 2);
 }
 // taken off every primitive's depth: decals sit in front of what they are stuck on
-void gfx_set_zbias(int b) { zbias = b; }
+void gfx_set_zbias(int b) { zbias = (b << 1) >> OT_SHIFT; }   // (b in the old 2-unit buckets)
 int gfx_floor_pass;                       // set while drawing the floor: it goes to the very back (nothing is ever under it), so shadows can lie on it
 static inline int ot_index(int otz) {
     if (gfx_floor_pass) return OT_FLOOR;
