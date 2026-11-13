@@ -378,7 +378,7 @@ int items_height(char ch) {
 }
 
 // ---- the material cache: every Mat becomes one texture in the atlas ----
-#define MAXMAT 900
+#define MAXMAT 800   // (703 are made; was 900: 1.2 KB. A full table would remake a texture on every call: keep 90 or more of room)
 static const Mat *mat_key[MAXMAT];
 static TexRef mat_tex[MAXMAT];
 static int nmat;
@@ -419,7 +419,7 @@ static const struct { char ch; u8 px; } lifeSize[] = {
     { 'h', 9 }, { 'v', 12 }, { 'V', 6 }, { 'H', 18 },                                                                       // a chair 1 m, a TV on its stand 1.35 m, a lava lamp, a shower 2 m
     { '+', 22 }, { '"', 40 }, { 'k', 28 }, { 'a', 28 }, { 'g', 40 }, { '3', 36 }, { '6', 40 }, { 'u', 14 }, { 'z', 11 },
     { '%', 4 }, { '}', 20 }, { '>', 8 }, { '_', 28 }, { (char)0xB5, 11 }, { (char)0xE0, 11 }, { (char)0xB8, 8 }, { (char)0xB9, 24 } };   // a park bench 90 cm (it stood 45), a hot tub 90, a hoop 3 m, a mailbox 1.2 m, a trampoline 90, a swing set 2.6 m   // a bus stop 2.5 m, a street lamp 4.5 m, the flags, the trees 4 to 4.5 m
-static IBox lifeBox[192]; static int nlifeBox;
+static IBox lifeBox[144]; static int nlifeBox;   // (117 are used; was 192: 1.3 KB. A full one leaves the next item at its drawn size)
 static void life_size(void) {
     for (unsigned k = 0; k < sizeof lifeSize / sizeof lifeSize[0]; k++)
         for (int i = 0; i < NDEFS; i++) {
