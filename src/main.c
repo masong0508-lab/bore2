@@ -109,11 +109,23 @@ static void game_music_check(void);                            // (OPTIONS > AUD
 #ifdef AB_PAN
 int ab_pan_x = -1;   // (test builds with AB_FREEZE: the frozen city's camera slides along x by whole tiles, one every 40 frames, so a floor texture's swimming shows between shots)
 #endif
+static int cam_dt = 2, title_ph;   // (vblanks the last frame took: what the camera's following and the title's sway go by, not the frame count)
 static void camera_apply(int fx, int fy, int fz) {
 #ifdef AB_PAN
     if (ab_pan_x >= 0) { fx += ab_pan_x; cam_fx = fx; }   // (no smoothing: every build's camera stands exactly there)
 #endif
-    { int k_ = (on_board || veh_on || sims[player].gait.run) ? 3 : 6; cam_fx += (fx - cam_fx) / k_; cam_fy += (fy - cam_fy) / k_; cam_fz += (fz - cam_fz) / k_; }   // (a rider: kept up with)
+#ifdef CAM_OLD
+    { int k_ = (on_board || veh_on || sims[player].gait.run) ? 3 : 6; cam_fx += (fx - cam_fx) / k_; cam_fy += (fy - cam_fy) / k_; cam_fz += (fz - cam_fz) / k_; }   // (test builds: the old following, a share of the gap per drawn frame, for the before numbers)
+#else
+    {   // (the focus follows by a share of the gap for every VBLANK that passed, in 8.8. It was a sixth of the gap per drawn frame: a frame of 3 vblanks and
+        //  one of 2 moved the camera by different amounts, and the whole-unit division stalled short of the target: a judder in every walk)
+        static int ax_, ay_, az_; int f_ = (on_board || veh_on || sims[player].gait.run) ? 38 : 18;   // (a rider: kept up with)
+        if (cam_fx != (ax_ >> 8)) ax_ = cam_fx << 8; if (cam_fy != (ay_ >> 8)) ay_ = cam_fy << 8; if (cam_fz != (az_ >> 8)) az_ = cam_fz << 8;
+        for (int n_ = cam_dt; n_ > 0; n_--) { ax_ += (((fx << 8) - ax_) >> 4) * f_ >> 4; ay_ += (((fy << 8) - ay_) >> 4) * f_ >> 4; az_ += (((fz << 8) - az_) >> 4) * f_ >> 4; }
+        if (ABS((fx << 8) - ax_) < 384) ax_ = fx << 8; if (ABS((fy << 8) - ay_) < 384) ay_ = fy << 8; if (ABS((fz << 8) - az_) < 384) az_ = fz << 8;
+        cam_fx = ax_ >> 8; cam_fy = ay_ >> 8; cam_fz = az_ >> 8;
+    }
+#endif
     cam_pitch = CLAMP(cam_pitch, 150, 1000);
 #ifdef AUTO_AT_TAB
     cam_dist = CLAMP(cam_dist, 600, 7000);   // (the shot list may pull out further than play does)
@@ -127,6 +139,9 @@ static void camera_apply(int fx, int fy, int fz) {
     cam.eye.vz = cam_fz - ((icos(cam_yaw) * horiz) >> 12);
     cam.eye.vy = cam_fy - up;
     gfx_camera_update();
+#ifdef CAM_PROBE
+    { extern short dbg_cam[512][3]; extern int dbg_cam_n; if (dbg_cam_n < 512 && VSync(-1) > 1200) { dbg_cam[dbg_cam_n][0] = (short)VSync(-1); dbg_cam[dbg_cam_n][1] = (short)cam.eye.vx; dbg_cam[dbg_cam_n][2] = (short)cam.eye.vz; dbg_cam_n++; } }   // (test builds: where the camera was at each life frame, and when: the readout is tools/perf/camjudder.py)
+#endif
 }
 static void camera_input(int steps) {
     if (cam_view == 2) {   // first person: L2 R2 look down and up (L1 R1 and the d-pad turn: life_update)
@@ -257,6 +272,9 @@ int dbg_sum_far[6], dbg_miss[4], dbg_sum_miss[4], dbg_roads_hb, dbg_sum_roads;  
 #ifdef AUTO_CITY
 int dbg_lg_max[2], dbg_cit_hist[12], dbg_sim_hist[12], dbg_sum_ppl[4], dbg_rn[3];   // (test readouts: the townsfolk's and the household's worst frame, the townsfolk's cost a frame in 20-hb bins, the household's in 40-hb bins;
                                                                          //  summed: the crowd's drawing, its spare-time work, the household's drawing, the traffic's)
+#endif
+#ifdef CAM_PROBE
+short dbg_cam[512][3]; int dbg_cam_n;
 #endif
 int dbg_end_hist[24], dbg_per_hist[6], dbg_edge[12], dbg_vbs[4], dbg_need_last, dbg_gw[3];   // (test readouts: life frames by their need (the cost without the spare-time work), in 50-hb bins; by the vblanks they took)
 int dbg_life_n, dbg_life_vb, dbg_life_vb0, dbg_sum_cpu, dbg_sum_prof[8], dbg_sum_part[6], dbg_sum_lg[4], dbg_sum_w[8], dbg_sum_pn[8], dbg_sum_shed, dbg_sum_r;   // (test readouts over the whole stay in the city: frames, vblanks they took, their summed cost)
@@ -4612,7 +4630,7 @@ static int title_t;
 static void title_update(void) {
     title_t++;
 #ifdef TITLE_FIX
-    { static int st_; if (PRESSED(PAD_RIGHT)) st_++; if (PRESSED(PAD_LEFT)) st_--; title_t = TITLE_FIX + st_ * 40; }   // (test builds: the title room's camera held, moved by the pad: the same view from any two builds)
+    { static int st_; if (PRESSED(PAD_RIGHT)) st_++; if (PRESSED(PAD_LEFT)) st_--; title_t = TITLE_FIX + st_ * 40; title_ph = title_t * 2; }   // (test builds: the title room's camera held, moved by the pad: the same view from any two builds)
 #endif
 #ifdef AUTO_CELLS
     if (title_t == 30) {   // (test builds: how many cells a Bore needs, over thousands of Bores: rolled, every shape with every hair, dressed up)
@@ -4670,14 +4688,15 @@ static void title_draw(void) {
     int tx = 9, ty = 13;                                                     // the house's lounge
     int fx = tx * TILE + TILE / 2, fz = -(ty * TILE + TILE / 2);
     cam_fx = fx; cam_fy = -220; cam_fz = fz;
-    cam_yaw = (2048 + (isin((title_t * 3) & 4095) >> 3)) & 4095; cam_pitch = 420; cam_dist = 1500;
+    cam_yaw = (2048 + (isin(((title_ph * 3) >> 1) & 4095) >> 3)) & 4095;   // (by the vblanks that passed, two a frame at 30 FPS: a slow frame does not make the room stutter)
+    cam_pitch = 420; cam_dist = 1500;
     camera_apply(fx, -220, fz);
     gfx_set_fog(2000, 5000);
     world_view_lvl = NUP; world_roof_show = 0;
     world_reserve = TITLE_RES; world_draw(tx, ty, title_t, 1); world_reserve = RESERVE_PEOPLE + RESERVE_UI;   // (the room gets all but what the logo, the Bore and the card take: at the people's share it lost pieces now and then as the camera swung)
     VECTOR p; setVector(&p, fx, 0, fz);
-    Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (title_t * 120) & 4095; g.amp = 4096;
-    voxel_draw(&title_bore, &p, (title_t * 9) & 4095, &g);
+    Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (title_ph * 60) & 4095; g.amp = 4096;
+    voxel_draw(&title_bore, &p, ((title_ph * 9) >> 1) & 4095, &g);
     gfx_shadow(&p, 70);
     int logo = state == ST_TITLE || state == ST_MENU;   // (behind the options, the slots and the other screens the logo is left out: its 1057 rects used up the packet buffer, and the text on top was cut off)
 #ifdef WALLS_DISC
@@ -5595,6 +5614,7 @@ int main(void) {
               { extern int gfx_last_wait; dbg_gw[0] += gfx_last_wait; if (gfx_last_wait > 2) dbg_gw[1]++; if (gfx_last_wait > dbg_gw[2]) dbg_gw[2] = gfx_last_wait; } }   //  how long the flip waited for the GPU)
           was_life = state == ST_LIFE; }
         nav_update(now);
+        cam_dt = CLAMP(steps, 1, 6); title_ph += cam_dt;
         steps = CLAMP(steps, 1, 3);   // LAGFIX_APPLIED: fewer catch-up steps
         frame++;
         fps_frames++; if (now - fps_vb >= 60) { fps_val = fps_frames * 60 / (now - fps_vb); fps_frames = 0; fps_vb = now; }
