@@ -135,8 +135,11 @@ void crowd_flush(void) {                        // every sprite thrown away (the
     for (int i = 0; i < SPR_MAX; i++) { spr[i].ok = 0; spr[i].shelf = -1; }
     nsh = 0;
 }
-void *crowd_scratch(u32 *bytes) { *bytes = ARENA_BYTES; return arena_mem; }   // (a new life only: the arena before any model is stored)
+void *crowd_arena(void) { return arena_mem; }   // (no claim on it: see crowd_logo_ok)
+int crowd_logo_ok;   // (main.c: the title logo's rectangles are in the arena's first bytes; anyone who takes the arena puts that out)
+void *crowd_scratch(u32 *bytes) { crowd_logo_ok = 0; *bytes = ARENA_BYTES; return arena_mem; }   // (a new life only: the arena before any model is stored)
 void crowd_reset(void) {
+    crowd_logo_ok = 0;
     for (int i = 0; i < CROWD_MAX; i++) { m_off[i] = -1; face_of[i] = 255; }
     for (int i = 0; i < SPR_MAX; i++) { spr[i].ok = 0; spr[i].shelf = -1; spr[i].meas = 0; }
     for (int k = 0; k < NFACE; k++) face_owner[k] = -1;

@@ -29,5 +29,14 @@ for i in range(n):
             px.append(o if o else 0x8000)
     buf += struct.pack('<192H', *px) + bytes(128)
 buf += bytes(-len(buf) % 2048)
+# the title logo's rectangles (src/logo_rects.h, tools/make_logo.py) follow, 5 bytes each (x, y, w, h, colour): main.c reads them into the crowd's
+# arena while the title is up (LOGO_SEC = the sector they start at), so the 5.3 KB table is not resident on the PS1
+lg = open(os.path.join(HERE, '..', 'src', 'logo_rects.h')).read()
+rr = re.findall(r'\{(\d+),(\d+),(\d+),(\d+),(\d+)\}', lg.split('LOGO_R[')[1])
+assert len(rr) == int(re.search(r'#define LOGO_N (\d+)', lg).group(1))
+LOGO_SEC = len(buf) // 2048
+for r in rr: buf += bytes(int(v) for v in r)
+buf += bytes(-len(buf) % 2048)
+print('logo: %d rects from sector %d' % (len(rr), LOGO_SEC))
 open(out, 'wb').write(buf)
 print('WALLS.BIN: %d wallpapers, %d bytes' % (n, len(buf)))

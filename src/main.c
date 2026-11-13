@@ -1,9 +1,22 @@
 // BORE 2 - the sequel to BORE (GBA), on the PlayStation. True 3D: the voxel people, the rooms and the items are real geometry.
+#ifdef WALLS_DISC
+#define LOGO_R LOGO_R_unused   // (PS1: the rectangles are on the disc, in WALLS.BIN after the wallpapers; the table here is never used and not kept)
+#endif
 #include "logo_rects.h"
+#ifdef WALLS_DISC
+#undef LOGO_R
+#endif
 #include "common.h"
 #include "gfx.h"
 #include "pad.h"
 #include "crowd.h"
+#ifdef WALLS_DISC   // PS1: the title logo's 1057 rectangles are read from WALLS.BIN into the crowd's arena (nobody has models there at the title), 5.3 KB not resident
+typedef struct { u8 x, y, w, h, c; } LogoR;
+#define LOGO_SEC 23   // (the sector after the wallpapers: tools/make_walls.py prints it)
+extern int crowd_logo_ok;
+static u32 *logo_buf(void) { extern void *crowd_arena(void); return (u32 *)crowd_arena(); }
+#define LOGO_R ((const LogoR *)logo_buf())
+#endif
 #include "atlas.h"
 #include "look.h"
 #include "voxel.h"
@@ -4562,6 +4575,14 @@ static void title_draw(void) {
     voxel_draw(&title_bore, &p, (title_t * 9) & 4095, &g);
     gfx_shadow(&p, 70);
     int logo = state == ST_TITLE || state == ST_MENU;   // (behind the options, the slots and the other screens the logo is left out: its 1057 rects used up the packet buffer, and the text on top was cut off)
+#ifdef WALLS_DISC
+    if (logo && !crowd_logo_ok) {   // (first time, or the arena was used since: the disc into it. The music is stopped for the read, as it is when you quit to the title)
+        audio_jukebox_stop(); crowd_reset(); citizens_rebuild();
+        if (!audio_cd_part("WALLS.BIN", LOGO_SEC, (LOGO_N * 5 + 2047) / 2048, logo_buf())) memset(logo_buf(), 0, LOGO_N * 5);   // (unreadable: the logo is not drawn)
+        crowd_logo_ok = 1; title_music_resume();
+    }
+    if (logo && !((const LogoR *)logo_buf())[0].w) logo = 0;
+#endif
     for (int i = 0; logo && i < LOGO_N; i++) {   // the BORE 2 logo (tools/make_logo.py), drawn at 6/5 size
         int x = 70 + LOGO_R[i].x * 6 / 5, y = 4 + LOGO_R[i].y * 6 / 5;
         int w = 70 + (LOGO_R[i].x + LOGO_R[i].w) * 6 / 5 - x, h = 4 + (LOGO_R[i].y + LOGO_R[i].h) * 6 / 5 - y;
