@@ -1771,31 +1771,6 @@ static void nhood_pick_in(int cbx, int cby) {      // ... about a third empty, t
     int bd = 1 << 30;                              // start on the lot nearest the middle
     for (int i = 0; i < nh_n; i++) { int dx = nh_bx[i] - cbx, dy = nh_by[i] - cby, d = dx * dx + dy * dy + (nh_price[i] > cash + (home_city ? home_paid : 0) ? 1 << 20 : 0); if (d < bd) { bd = d; nh_sel = i; } }   // (one you can afford, if there is one)
 }
-static void nhood_paint(void) {                    // the blocks from above, 5 pixels each: the land, the streets, what stands on every lot
-    u16 *px = atlas_scratch();
-    static const u16 tcol[6] = { RGB(6, 13, 23), RGB(27, 25, 17), RGB(11, 20, 8), RGB(6, 14, 6), RGB(25, 21, 13), RGB(16, 16, 15) };
-    for (int by = 0; by < NH_B; by++) for (int bx = 0; bx < NH_B; bx++) {
-        BInfo b; bm_block(nh_x0 + bx, nh_y0 + by, &b);
-        u16 c = tcol[b.terrain % 6];
-        int l = b.lot;
-        if (b.terrain == BT_SEA) l = LOT_WILD;
-        if (l == LOT_HOUSE || l == LOT_COTTAGE || l == LOT_TWO || l == LOT_TOWN || l == LOT_APART) c = RGB(22, 11, 9);
-        else if (l == LOT_PARK || l == LOT_SKATE) c = RGB(9, 22, 9);
-        else if (l == LOT_SQUARE) c = RGB(24, 23, 20);
-        else if (l == LOT_EMPTY) c = RGB(22, 19, 11);
-        else if (l == LOT_FARM) c = RGB(20, 22, 8);
-        else if (l == LOT_SPACE || l == LOT_OBS) c = RGB(28, 28, 31);
-        else if (l != LOT_WILD && bm_is_place(l)) c = RGB(13, 16, 22);
-        for (int y = 0; y < NH_P; y++) for (int x = 0; x < NH_P; x++) {
-            u16 v = c;
-            if (b.terrain != BT_SEA && ((y == 0 && (b.road & 1)) || (x == 0 && (b.road & 2)) || (x == 0 && y == 0 && (b.road & 4)))) v = RGB(10, 10, 11);   // the streets
-            else if (l != LOT_WILD && l != LOT_PARK && l != LOT_EMPTY && b.terrain != BT_SEA && x >= 2 && x <= 3 && y >= 2 && y <= 3) v = (u16)((c & 0x7bde) >> 1);   // (a roof's middle: darker)
-            px[(by * NH_P + y) * 128 + bx * NH_P + x] = v | 0x8000;
-        }
-    }
-    atlas_vram_load(0, 256, 128, 128, px);
-    crowd_flush();
-}
 static void nhood_open(int first) {
     int cbx, cby;
     if (!first && world_zone == ZONE_CITY && world_wbx >= 0) { cbx = world_wbx + sim_tile_x(&sims[player]) / BM_BLK; cby = world_wby + sim_tile_y(&sims[player]) / BM_BLK; }
@@ -1817,7 +1792,6 @@ static void nhood_hop(int dx, int dy) {            // the nearest lot that way (
     if (best >= 0) { nh_sel = best; audio_voice(VOICE_FINISHED); }
 }
 static void nhood_update(void) {
-    if (nh_t < 0) nhood_paint();
     nh_t++;
     if (PRESSED(PAD_CIRCLE) && !nh_first) { state = BACK_TO(); return; }
     if (!nh_first && PRESSED(PAD_TRIANGLE)) { homes_open(); hm_tab = 1; return; }   // (MY PROPERTIES)
