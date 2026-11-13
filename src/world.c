@@ -1453,9 +1453,14 @@ int nc_loose;                           // 1 only on the speed helper's last ste
 typedef struct { int x, y, z, u, v, r, g, b, sx, sy; } NV;   // a corner: view-space position, texel, colour; and where it lands on the screen
 // (worked out once, when the corner is made, if it is in front of the cutting plane: a piece cut in two keeps its corners' places, so each is
 // projected once however often the pieces round it are split; it used to be every piece, every corner, two divisions each)
-static __attribute__((noinline)) void nc_proj(NV *o) { if (o->z >= NC_Z) { o->sx = CENTER_X + (o->x * 230) / o->z; o->sy = CENTER_Y + (o->y * 230) / o->z; } }   // (the GTE's projection: H = 230)
+static __attribute__((noinline)) void nc_proj(NV *o) {   // (the GTE's projection, H = 230, step for step: n = H / z in 16.16, then the offset plus x * n rounded DOWN. A plain C division rounds toward zero, which put every corner left of the middle a pixel off from the GTE's own: a cut piece beside an uncut quad swam against it, and a crack opened between them)
+    if (o->z >= NC_Z) { int n = ((230 << 17) / o->z + 1) >> 1; if (n > 0x1ffff) n = 0x1ffff; o->sx = CENTER_X + ((o->x * n) >> 16); o->sy = CENTER_Y + ((o->y * n) >> 16); } }
 static NV nq_c[4]; static int nq_tex, nq_cull; static u32 nq_tp, nq_cl;
+#ifndef AB_SKIP
+#define AB_SKIP 0   // (test builds: a bit mask that leaves prim types out, to find which one draws a flaw: 1 wall faces, 2 wall tops, 4 pieces from nc_put, 8 no cutting/splitting at all)
+#endif
 static inline int nc_need4(const XV *a, const XV *b, const XV *c, const XV *d) {   // 1: this quad goes the careful way
+    if (AB_SKIP & 8) return 0;
     int z = MIN(MIN(a->z, b->z), MIN(c->z, d->z));
     if (z < Z_NEAR) return 1;
     if (world_fp) return z < NC_NEAR_FP;
@@ -1487,11 +1492,14 @@ static inline u32 nc_rgb(const NV *n) { return (u32)CLAMP(n->r, 0, 255) | ((u32)
 static inline u32 nc_uv(const NV *n) { return (u32)CLAMP(n->u, 0, 255) | ((u32)CLAMP(n->v, 0, 255) << 8); }
 // one primitive: a, b, c, d in the order the GPU strips them (a b / c d), the corners' view-space data alongside
 static void nc_put(const XV *a, const XV *b, const XV *c, const XV *d, const NV *na, const NV *nb, const NV *nc, const NV *nd) {
+    if (AB_SKIP & 4) return;
     if (nq_cull && (b->x - a->x) * (d->y - a->y) - (d->x - a->x) * (b->y - a->y) <= 0) return;   // facing away
     u32 c0 = nc_rgb(na), c1 = nc_rgb(nb), c2 = nc_rgb(nc), c3 = nc_rgb(nd);
+    int tex_ = nq_tex;
+    if (AB_SKIP & 32) { static u32 hh_; hh_ = hh_ * 1664525u + 1013904223u; c0 = c1 = c2 = c3 = (hh_ >> 8) | 0x606060u; tex_ = 0; }   // (test: every piece one colour of its own)
     int otz = (a->z + b->z + c->z + d->z) >> 4;
     if (gfx_fog_on) { c0 = gfx_fog_apply(c0, otz); c1 = gfx_fog_apply(c1, otz); c2 = gfx_fog_apply(c2, otz); c3 = gfx_fog_apply(c3, otz); }
-    if (nq_tex) {
+    if (tex_) {
         u32 *q = xv_alloc(13); if (!q) return;
         q[1] = c0 | 0x3c000000u; q[2] = NXY(a); q[3] = nc_uv(na) | nq_cl;
         q[4] = c1;               q[5] = NXY(b); q[6] = nc_uv(nb) | nq_tp;
@@ -1539,6 +1547,7 @@ static void nc_piece(const NV *p0, const NV *p1, const NV *p2, const NV *p3, int
         return;
     }
     if (sw > NC_BIGW + 100 || sh > NC_BIGH + 40) return;                                       // (split as far as it goes and still too big: leave it)
+    if ((AB_SKIP & 16) && (x0 < -1024 || x1 > 1023 || y0 < -1024 || y1 > 1023)) return;
     XV v[5];
     for (int i = 0; i < n; i++) { v[i].x = (short)o[i]->sx; v[i].y = (short)o[i]->sy; v[i].z = o[i]->z; }
     if (n == 3) nc_put(&v[0], &v[1], &v[2], &v[2], o[0], o[1], o[2], o[2]);
@@ -1911,6 +1920,7 @@ static int wall_or_door(int mx, int my) { char c = world_at(mx, my); return is_w
 // a vertical face from (ax,az) to (bx,bz), from yTop (negative) down to yBot, textured with the wallpaper (u0..u1 of the tile's 8 columns)
 static void wface(const TexRef *t, int ax, int az, int bx, int bz, int yTop, int yBot, int h, int u0, int u1, int nx, int nz, int cut) {
     SVECTOR a, b, c, d;
+    if (AB_SKIP & 1) return;
     setVector(&a, ax, yTop, az); setVector(&b, bx, yTop, bz); setVector(&c, ax, yBot, az); setVector(&d, bx, yBot, bz);
     // the 24-row texture spans a full wall; a cut wall shows the bottom rows. The rows and the shading depend only on the face's
     // heights and direction: worked out once a frame for each kind (a few) instead of with six divisions per face
@@ -1943,6 +1953,7 @@ static void wface(const TexRef *t, int ax, int az, int bx, int bz, int yTop, int
     gfx_put_gt4(&xv[0], &xv[1], &xv[2], &xv[3], ct, ct, cb, cb, (u32)t->tpage << 16, 0, t->u + u0, v0, t->u + u1, v1);
 }
 static void wtop(u16 tc, int xa, int xb, int za, int zb, int y) {   // the top of a slab: za > zb
+    if (AB_SKIP & 2) return;
     SVECTOR a, b, c, d; int L = gfx_light(0, -ONE, 0);
     setVector(&a, xa, y, za); setVector(&b, xb, y, za); setVector(&c, xa, y, zb); setVector(&d, xb, y, zb);
     int r = (R8(tc) * L) >> 7, g = (G8(tc) * L) >> 7, bl = (B8(tc) * L) >> 7;

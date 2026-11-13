@@ -1035,6 +1035,9 @@ static void life_update(int steps) {
 #else
           if (fr_ > 100 && ab_cfg[4] == 1) { cam_pitch = 640; cam_dist = 1500; }   // (AB_CFG: the camera chosen holds the whole run; the plain route looks over the roofs from step 2000 whatever was asked)
 #endif
+#ifdef AB_PITCH
+          if (fr_ > 100) { cam_pitch = AB_PITCH; cam_dist = AB_DIST; }   // (test builds: the camera the pictures are taken from, held)
+#endif
 #ifdef AUTO_LOW
           if (fr_ > 600) { cam_pitch = AUTO_LOW; cam_dist = 2200; cam_yaw = (cam_yaw + 3 * steps) & 4095; }   // (a low camera turning round: the horizon)
 #endif
