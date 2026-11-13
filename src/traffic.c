@@ -29,6 +29,9 @@ static int lane_ok(int tx, int ty, int d) {   // drive on the right: east along 
     switch (d) { case 1: return ty % BLK == LB; case 3: return ty % BLK == LA; case 0: return tx % BLK == LA; default: return tx % BLK == LB; }
 }
 static int target(void) {
+#ifdef TRAF_OFF
+    return 0;   // (test builds: no moving traffic, for shots of the lots)
+#endif
 #ifdef TRAF_TEST
     traffic_level = 3; traffic_cheat = TRAF_TEST;
 #endif
@@ -134,8 +137,8 @@ static void pcars_draw(void) {
     if (pcar_key[0] != world_wbx || pcar_key[1] != world_wby || pcar_key[2] != cbx || pcar_key[3] != cby || pcar_key[4] != bm_edit_stamp || pcar_key[5] != bm_gen) {
         pcar_key[0] = world_wbx; pcar_key[1] = world_wby; pcar_key[2] = cbx; pcar_key[3] = cby; pcar_key[4] = bm_edit_stamp; pcar_key[5] = bm_gen; pcars_build(cbx, cby); }
     int shown = 0;
-    for (int i = 0; i < pcar_n && shown < 6; i++) { const PCar *p = &pcar[i];
-        if (ABS(p->x / TILE - px) + ABS(-p->z / TILE - py) > 15) continue;
+    for (int i = 0; i < pcar_n && shown < 5; i++) { const PCar *p = &pcar[i];
+        if (ABS(p->x / TILE - px) + ABS(-p->z / TILE - py) > 13) continue;
         items_draw_vehicle(p->x, p->z, p->yaw, 0, p->t, p->c, 0); shown++; }
 }
 void traffic_draw(void) {

@@ -1427,6 +1427,12 @@ static void map_draw(void) {   // the state on a card: the map on the left (the 
         int wx = world_wbx * BM_BLK + sim_tile_x(&sims[player]), wy = world_wby * BM_BLK + sim_tile_y(&sims[player]);
         int x = MX + wx * MS / (BM_N * BM_BLK), y = MY + wy * MS / (BM_N * BM_BLK);
         ui_disc(x, y, (map_t >> 3) & 1 ? 11 : 9, UI_WHITE); ui_disc(x, y, 7, UI_GREEN);
+        char nn[24]; const char *nb = bm_nb_name(world_wbx + sim_tile_x(&sims[player]) / BM_BLK, world_wby + sim_tile_y(&sims[player]) / BM_BLK, nn);
+        if (nb) {   // (world version 7: the neighbourhood you are in, on a green pill by the dot)
+            int w = ui_tw(1, nb) + 10, lx = x + 11, ly = CLAMP(y + 10, MY + 1, MY + MS - 13);
+            if (lx + w > MX + MS - 1) lx = MAX(x - 11 - w, MX + 1);
+            ui_shadow(lx, ly, w, 12, 4); ui_round(lx, ly, w, 12, 4, UI_RGB(76, 190, 104), UI_GREEN, 0); ui_text(lx + 5, ly + 2, 1, nb, UI_WHITE);
+        }
     }
     {   // the picked town: a ring, and its name on a blue pill
         const Settle *st = bm_set(map_sel); int x = MX + st->x * MS / BM_N, y = MY + st->y * MS / BM_N;
@@ -1855,7 +1861,7 @@ static void nhood_draw(void) {   // the neighborhood as a 3D model on the left (
     ui_textfit(PX + 26, top + 18, PW - 26, home_kind(nh_lot[i]), UI_INK);
     ui_textfit(PX + 26, top + 29, PW - 26, empty ? "BUILD ON IT" : "FURNISHED", empty ? UI_GOLDT : UI_GOODT);
     home_address(nh_bx[i], nh_by[i], ad); ui_textfit(PX + 2, top + 44, PW - 2, ad, UI_BLUE2);
-    { BInfo bi; bm_block(nh_bx[i], nh_by[i], &bi); const Settle *st = bi.set != 255 ? bm_set(bi.set) : 0; ui_textfit(PX + 2, top + 54, PW - 2, st ? st->name : "OPEN COUNTRY", UI_SOFT); }
+    { BInfo bi; bm_block(nh_bx[i], nh_by[i], &bi); const Settle *st = bi.set != 255 ? bm_set(bi.set) : 0; char nn[24]; const char *nb = bm_nb_name(nh_bx[i], nh_by[i], nn); ui_textfit(PX + 2, top + 54, PW - 2, nb ? nb : st ? st->name : "OPEN COUNTRY", UI_SOFT); }   // (the neighbourhood's name: world version 7)
     int can = cash + refund >= nh_price[i], sold = !home_for_sale(nh_bx[i], nh_by[i]);
     sprintf(b, "$%d", nh_price[i]); ui_text(PX, top + 70, 2, b, sold ? UI_SOFT : can ? UI_GOODT : UI_BADT);
     ui_text(PX, top + 88, 1, sold ? "SOLD!" : can ? "YOU CAN AFFORD IT" : "NOT ENOUGH MONEY", sold || !can ? UI_BADT : UI_SOFT);

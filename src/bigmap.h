@@ -115,6 +115,7 @@ typedef struct {
     u8 pal;                           // the neighbourhood's palette 0..7 (two wall materials, two roof colours)...
     u8 wall, rcol;                    // ... and which of its two walls and two roof colours this house has (0 or 1 each)
 } LotPlan;
+const char *bm_nb_name(int bx, int by, char *out);   // the neighbourhood's name ("MAPLE HEIGHTS") into out (24 bytes); 0 outside a planned town
 int  bm_nb(int bx, int by);           // NK_: the kind of the neighbourhood that block lies in
 int  bm_lot_face(int bx, int by);     // LF_: LF_SOUTH if the block below has a street along its top, else LF_NORTH if this block has one, else LF_NONE
 void bm_lot_plan(int bx, int by, const BInfo *b, LotPlan *p);   // b: that block, from bm_block()

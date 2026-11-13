@@ -516,6 +516,18 @@ int bm_nb(int bx, int by) {
     bm_block(bx, by, &b); if (b.set == 255) return NK_NONE;
     const Settle *s = &sets[b.set]; return nb_kind(s, bx - s->x, by - s->y, 0);
 }
+// A neighbourhood's name for the map screens: a word and a kind's ending ("MAPLE HEIGHTS", "OLD TOWN"), from the neighbourhood's own dice (0: not a planned town)
+const char *bm_nb_name(int bx, int by, char *out) {
+    static const char *const wd[16] = { "MAPLE", "OAK", "CEDAR", "WILLOW", "BIRCH", "ASPEN", "ELM", "PINE", "HOLLY", "IVY", "LARK", "ROBIN", "FOX", "HAZEL", "CLOVER", "POPPY" };
+    static const char *const en[8][4] = { { "", "", "", "" }, { "DOWNTOWN", "MIDTOWN", "CITY CENTRE", "UPTOWN" }, { "MARKET", "HIGH STREET", "THE SHOPS", "BAZAAR" }, { "CIVIC CENTRE", "PARKSIDE", "SCHOOL ROW", "THE GREEN" },
+        { "TERRACES", "OLD TOWN", "THE ROWS", "MEWS" }, { "HEIGHTS", "GROVE", "MEADOWS", "GARDENS" }, { "MANOR", "ESTATES", "HALL", "COURT" }, { "FARMS", "FIELDS", "WOODS", "COMMON" } };
+    BInfo b; u32 nh; if (bm_gen < 7) return 0;
+    bm_block(bx, by, &b); if (b.set == 255) return 0;
+    const Settle *s = &sets[b.set]; int k = nb_kind(s, bx - s->x, by - s->y, &nh) & 7, e = (int)((nh >> 24) & 3);
+    if (k == NK_CORE || k == NK_MAIN || k == NK_CIVIC) strcpy(out, en[k][e]);
+    else { strcpy(out, wd[(nh >> 20) & 15]); strcat(out, " "); strcat(out, en[k][e]); }
+    return out;
+}
 static int g7_face(int bx, int by, const BInfo *b) {
     BInfo t;
     if (b->lot != LOT_RIVER && (b->road & BR_MEGA) && !(BR_PART(b->road) & 2)) return LF_SOUTH;   // (the back row of a big place opens onto its court)
