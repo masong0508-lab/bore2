@@ -250,6 +250,7 @@ __attribute__((noinline)) static int road_rects(int rd, int rv, RR *r) {   // th
     int n = 0;
     if (rd & 1) { r[n].x0 = 0; r[n].y0 = 0; r[n].x1 = BM_BLK - 1; r[n++].y1 = BM_LOT0 - 1; }
     if (rd & 2) { r[n].x0 = 0; r[n].y0 = 0; r[n].x1 = BM_LOT0 - 1; r[n++].y1 = BM_BLK - 1; }
+    if (rd & 4) { r[n].x0 = 0; r[n].y0 = 0; r[n].x1 = BM_LOT0 - 1; r[n++].y1 = BM_LOT0 - 1; }   // (bit 4, version 7: the corner where the heart's last streets turn)
     if (rv == 1) { r[n].x0 = 0; r[n].y0 = BM_LOT0 + 2; r[n].x1 = BM_LOT0 - 1; r[n++].y1 = BM_LOT0 + 8; }
     if (rv == 2) { r[n].x0 = BM_LOT0 + 2; r[n].y0 = 0; r[n].x1 = BM_LOT0 + 8; r[n++].y1 = BM_LOT0 - 1; }
     return n;
@@ -909,7 +910,7 @@ COLD __attribute__((noinline)) static void kerb_clear(int ox, int oy) {   // the
 }
 #if defined(BORE_DC) || defined(ROAD_AUDIT)
 COLD static void blk_street(int bx, int by, int *rd, int *town, int *rv) {   // rv: a river block's bridge: 1 down the left edge, 2 along the top (it carries the street over the water whatever the block's road bits say)
-    BInfo b; bm_block(bx, by, &b); *rd = blk_roads(bx, by); *town = b.set != 255 && b.terrain != BT_SEA;
+    BInfo b; bm_block(bx, by, &b); *rd = blk_roads(bx, by); *town = b.set != 255 && b.terrain != BT_SEA; *rd = (*rd & 3) | ((bm_gen >= 7 && *town && (b.road & 4)) ? 4 : 0);
     *rv = b.lot == LOT_RIVER ? ((b.road & BR_MEGA) ? 2 : 1) : 0; if (*rv && !river_br(&b)) *rv = 0;
 }
 COLD int world_tile_class(int tx, int ty) {   // that tile of the city window: TC_ROAD (lanes, the line, crossings), TC_KERB (the pavement) or TC_PLOT
@@ -999,7 +1000,7 @@ COLD static void gen_block0(int wx, int wy) {
     for (int k = 0; k < NUP; k++) { Level *L = lv_get(k); if (L) for (int y = 0; y < BM_BLK; y++) memset(&L->map[oy + y][ox], ' ', BM_BLK); }
     int mg = b.lot != LOT_RIVER && (b.road & BR_MEGA), mpart = BR_PART(b.road), mkind = BR_KIND(b.road);
     int rd = b.road & 7; if (mg) { if (mpart & 1) rd &= ~2; if (mpart & 2) rd &= ~1; }   // (inside a big place the streets between its blocks are gone)
-    gcur_ox = ox; gcur_oy = oy; gcur_n = road_rects(rd & 3, b.lot == LOT_RIVER && river_br(&b) ? ((b.road & BR_MEGA) ? 2 : 1) : 0, gcur_r);   // (from here the generators' props keep off the street)
+    gcur_ox = ox; gcur_oy = oy; gcur_n = road_rects((rd & 3) | ((g7 && (b.road & 4)) ? 4 : 0), b.lot == LOT_RIVER && river_br(&b) ? ((b.road & BR_MEGA) ? 2 : 1) : 0, gcur_r);   // (from here the generators' props keep off the street)
     const int SW = BM_LOT0, SC = SW / 2;   // the street: five tiles wide, a lane of two each way and the line down the middle
     if (g7 && (b.road & 4)) gBox(ox, oy, ox + SW - 1, oy + SW - 1, FL_ASPHALT);   // (the corner where the heart's last streets turn)
     if (rd & 1) { gBox(ox, oy, ox + BM_BLK - 1, oy + SW - 1, FL_ASPHALT); gBox(ox + SW, oy + SC, ox + BM_BLK - 1, oy + SC, FL_LINE_H); }

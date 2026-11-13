@@ -227,6 +227,12 @@ Pictures, the same world as version 6 (left) and 7 (right): `docs/plan7_city.png
 - **Not done:** a parked car on the drive (cars are traffic, not map items), roof form and colour from the plan, neighbourhood labels on the map screen, DS and Dreamcast.
 - **RAM (PS1):** `_end` 0x801fbe48 (16,824 free; main before: 0x801f71c0).
 
+- **Speed (PS1, frozen city, like for like):** the extra cost at a suburb street is not per building. It follows the walls, upper storeys and roofs in view. Spaced suburbs cost the same
+  as gen 6 or less (7-home 3x3: gen 7 460 cpu / 246 world against 739 / 558; spot 640,758 486 vs 513; 630,764 494 vs 617). A view full of two-storey houses and terraces is dearer
+  (spot 636,760: 860 against 589; upper storeys 194 hb, roofs 156 hb): content-dependent. Mansions have an upstairs only half the time. Capping storeys in URBAN two-storey clusters is open.
+  A moving walk through the capital: gen 7 mean 641 hb, worst frame 1286; gen 6 mean 661, worst 1254. No generation hitch beyond gen 6.
+- **Road bit 4 corner:** the 5x5 corner asphalt is now one of `road_rects`' street rectangles, so `world_tile_class`, the purge and the generator agree (road audit 0 off-strip).
+
 ## Sources
 
 - Neighbourhood unit: https://en.wikipedia.org/wiki/Neighbourhood_unit
