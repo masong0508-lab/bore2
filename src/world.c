@@ -2408,7 +2408,7 @@ static void roof_region(int x0, int y0, int x1, int y1) {
             if (bm_gen >= 7) {                  // version 7: a home's roof comes from the town plan (its form, and its neighbourhood's two roof colours)
                 int gx = (world_wbx * BM_BLK + b_x0[b]) / BM_BLK, gy = (world_wby * BM_BLK + b_y0[b]) / BM_BLK; BInfo pb; LotPlan pp;
                 bm_block(gx, gy, &pb); bm_lot_plan(gx, gy, &pb, &pp);
-                if (pp.type != HT_NONE) { b_sty[b] = (u8)(pp.roof == RF_HIP || pp.type == HT_MANSION ? 0 : 1); b_col[b] = (u8)((pp.pal + pp.rcol * (1 + pp.pal % 3)) % NROOF_COL); b_pit[b] = (u8)(pp.type <= HT_RANCH ? 1 : 2); }
+                if (pp.type != HT_NONE) { b_sty[b] = (u8)(pp.roof == RF_HIP || pp.type == HT_MANSION ? 0 : 1); b_col[b] = (u8)((pp.pal + pp.rcol * 3) % NROOF_COL); b_pit[b] = (u8)(pp.type <= HT_RANCH ? 1 : 2); }
             }
         } else { b_sty[b] = (u8)world_roof_style; b_col[b] = (u8)world_roof_col; b_pit[b] = (u8)world_roof_pitch; }
     }
