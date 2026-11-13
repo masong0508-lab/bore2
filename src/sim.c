@@ -2620,7 +2620,7 @@ __attribute__((optimize("Os"))) void sim_load(const Bore *blank) {   // (after s
     }
     u8 old_ev[EV_N] = { 0 }, old_wd[8] = { 0 };
     { char old_pn[5][TR_NLEN] = { { 0 } };
-      if (save_ver >= 50) { tr_cheat_ok = (u8)ld_u8(); if (save_ver < 52) ld_n(old_wd, 8); tr_earned = ld_u32(); if (save_ver < 52) ld_n(old_ev, EV_N); if (save_ver >= 51) { tr_unl = (u8)MIN(ld_u8(), TR_NUNL); ld_n(tr_wait, 10); } else ld_n(old_pn, sizeof old_pn); }
+      if (save_ver >= 50) { tr_cheat_ok = (u8)ld_u8(); if (save_ver < 52) ld_n(old_wd, 8); tr_earned = ld_u32(); if (save_ver < 52) ld_n(old_ev, EV_N); if (save_ver >= 51) { { int u = ld_u8(); tr_unl = (u8)MIN(u, TR_NUNL); } ld_n(tr_wait, 10);   /* (MIN reads its arguments twice: read first) */ } else ld_n(old_pn, sizeof old_pn); }
       if (save_ver == 50 && pl >= 0 && pl < nsims && sims[pl].tr != &tr_null) memcpy(tr_names_of(sims[pl].tr), old_pn, sizeof old_pn);   // (version 50: five names, the player's)
       if (save_ver >= 50) for (int i = 0; i < nsims; i++) if (sims[i].tr != &tr_null) {   // the life stage the slots follow; an older save's won traits keep the slots they had (7..10 open as far as they need)
           TrState *t = sims[i].tr; tr_stage_set(t, sims[i].bore.stage);

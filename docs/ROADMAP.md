@@ -37,7 +37,7 @@ Detail for each port: DSI_ROADMAP.md (DS), DREAMCAST.md (Dreamcast), PS1_PERFORM
 - [ ] Left: parked cars, bridges only where the street crosses, wild/empty lot dressing by neighbourhood, roof form from the plan, map labels; DS and Dreamcast ports (`Home.fn`, `bm_gen = 7`).
 - [x] **Dreamcast on world 7** (docs/DREAMCAST.md, 'World version 7'): disc builds, 6 minute soak ok (CPU about 350 hb), houses and rooms shot in flycast (`docs/plan7_dc_*.png`), road test: nothing on a road in 3 worlds; `restore.sh` now also rebuilds `dcrun` (the prebuilt one printed no log).
 - [x] Dreamcast road test after the corner fix: 0 everywhere on 4 worlds (0x5EED1234, 1, 0xC0FFEE, 0x7A11CE).
-- [ ] **Dreamcast: loading a city life from the VMU says THE SAVE IS DAMAGED** (main and the build before world 7 alike; see DREAMCAST.md, 'Save round trip'). Needs the save / zone-pack owner: an `ld_rle` fill run overruns the 6480 byte map at the end of a level. Until then the Dreamcast v53 load test cannot pass.
+- [x] (fixed: `MIN(ld_u8(), ...)` in `sim_load` read the byte twice; PS1 too) **Dreamcast: loading a city life from the VMU says THE SAVE IS DAMAGED** (main and the build before world 7 alike; see DREAMCAST.md, 'Save round trip'). Needs the save / zone-pack owner: an `ld_rle` fill run overruns the 6480 byte map at the end of a level. Until then the Dreamcast v53 load test cannot pass.
 
 ## 0d. Rooms, not rows (Nov 12, all ports; `docs/HOUSING_DESIGN.md` 4c, `docs/rooms7_*.png`)
 - [x] Homes are furnished from groups round a focal point (living group facing the telly, dining set, kitchen run, bed with nightstands, a real bathroom), every piece turned on purpose. Tables, not code: the PS1 program got 264 bytes smaller.
