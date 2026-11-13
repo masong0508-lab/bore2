@@ -129,7 +129,7 @@ static int make_block(int bx, int by, BInfo *bo) {   // block (bx,by) of the wor
         LotPlan pl; bm_lot_plan(bx, by, &b, &pl); int n0 = nhomes[ZONE_CITY], north = pl.face == LF_NORTH && b.lot != LOT_WILD && b.lot != LOT_RIVER;
         if (pl.face == LF_NORTH || (b.road & 1)) for (int x = ox + BM_LOT0; x < ox + BM_BLK; x++) if (north || (b.road & 1)) floorMap[oy + BM_LOT0][x] = FL_PAVING;   // (the street's pavement)
         if (b.road & 2) for (int y = oy + BM_LOT0; y < oy + BM_BLK; y++) floorMap[y][ox + BM_LOT0] = FL_PAVING;
-        if (b.lot == LOT_HOUSE || b.lot == LOT_COTTAGE || b.lot == LOT_TOWN || b.lot == LOT_TWO) house7(lx, ly, b.h, &b, &pl); else lot_make(b.lot, lx, ly, b.h, st);
+        if (b.lot == LOT_HOUSE || b.lot == LOT_COTTAGE || b.lot == LOT_TOWN || b.lot == LOT_TWO) house7(lx, ly, b.h, &b, &pl); else if (b.lot == LOT_EMPTY) empty7(lx, ly, b.h); else if (b.lot == LOT_FARM && pl.face == LF_NONE) field7(lx, ly, b.h); else if (b.lot == LOT_WILD) { if (bm_nb(bx, by) == NK_ESTATE) estate7(ox, oy, b.h); } else lot_make(b.lot, lx, ly, b.h, st);
         if (north) mirror7(ox, oy, n0, FL_GRASS);
         if (getenv("SHOWFACE")) printf("face %d type %d\n", pl.face, pl.type);
     } else
@@ -194,6 +194,7 @@ int main(int argc, char **argv) {
     unsigned seed = (unsigned)strtoul(argv[2], 0, 0); bm_gen = getenv("GEN") ? atoi(getenv("GEN")) : 6; bm_dials_default(); bm_new(seed); wsalt = seed;
     if (!strcmp(argv[1], "sets")) { for (int i = 0; i < bm_nset(); i++) { const Settle *t = bm_set(i); printf("%d kind %d at %d %d r %d\n", i, t->kind, t->x, t->y, t->r); } return 0; }
     if (!strcmp(argv[1], "kinds")) { int i = atoi(argv[3]); const Settle *t = bm_set(i); for (int by = t->y - t->r; by <= t->y + t->r; by++) for (int bx = t->x - t->r; bx <= t->x + t->r; bx++) { BInfo b; bm_block(bx, by, &b); if (b.set != i) continue; LotPlan pl; bm_lot_plan(bx, by, &b, &pl); if (pl.type) printf("%d %d nb %d lot %s type %d face %d drv %d\n", bx, by, bm_nb(bx, by), bm_lot_name(b.lot), pl.type, pl.face, pl.drv); } return 0; }
+    if (!strcmp(argv[1], "dense")) { int i = atoi(argv[3]), want = atoi(argv[4]); const Settle *t = bm_set(i); for (int by = t->y - t->r + 1; by < t->y + t->r; by++) for (int bx = t->x - t->r + 1; bx < t->x + t->r; bx++) { int n = 0, sto = 0; for (int j = -1; j <= 1; j++) for (int k = -1; k <= 1; k++) { BInfo b; bm_block(bx + k, by + j, &b); if (b.set != i) { n = -99; continue; } if (b.lot >= LOT_HOUSE && b.lot <= LOT_TWO) { n++; if (b.lot == LOT_TWO) sto++; } } if (n == want) printf("%d %d homes %d two-storey %d\n", bx, by, n, sto); } return 0; }
     if (!strcmp(argv[1], "area")) {   // lotsim area SEED BX0 BY0 NX NY OUT.ppm: a stretch of blocks as a picture (6 px a tile), the streets painted as gen_block0 does (for looking at gen 7)
         int bx0 = atoi(argv[3]), by0 = atoi(argv[4]), nx = atoi(argv[5]), ny = atoi(argv[6]); int PW = nx * BM_BLK * 6, PH = ny * BM_BLK * 6;
         unsigned char *img = malloc((size_t)PW * PH * 3);

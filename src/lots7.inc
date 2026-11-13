@@ -90,7 +90,7 @@ __attribute__((noinline)) static void house7(int lx, int ly, unsigned h, const B
         }
         fz_nres = 0; roof_dirty = 1;
     } else {                                                                           // a ranch, an L, a box, a mansion: the front room and the back rooms
-        int grand = ty == HT_MANSION, ns = grand ? 2 : 1;
+        int grand = ty == HT_MANSION, ns = grand && ((h >> 6) & 1) ? 2 : 1;   // (half the mansions have an upstairs: every storey in view costs a frame)
         fz_geo = h * 2246822519u + 7u;
         int wy_ = iy0 + (iy1 - iy0 + 1 >= 11 ? 5 : (iy1 - iy0 + 1 >= 9 ? 4 : 3)), sty = wy_ + 2, stA = ix0 + 1, stB = ix1 - 1;
         if (ns > 1) {

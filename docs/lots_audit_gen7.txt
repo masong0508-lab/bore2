@@ -86,3 +86,14 @@ far-view buildings 5861 of 2400  OVER THE CAP
 # gen 6 against the old code (79c8c8f): lifeMap, floorMap and wallMap of the AUTO_CITY window (the capital's 5x5 blocks) read from the emulator's RAM, seeds 0x5EED1234 1234 777 99 0xC0FFEE: all 15 IDENTICAL
 # speed, frozen city at a suburb street (AUTO_AT 631,758, AB_LOCK4): world version 7 mean cpu 595 hb, world 449 (upper storeys 43); world version 6 mean cpu 566, world 416. Not the same blocks, but gen 7 is slower here, by about 30 hb.
 # frozen city centre (the old baseline spot): cpu 574, world 348 (baseline 573, 348)
+
+Speed round 3 (PS1, DuckStation, frozen city, like-for-like spots)
+- The +30 hb at a gen 7 suburb street is not a per-building cost. It follows content in view:
+  walls, upper storeys and roofs. Spaced suburbs (ranch/compact/L) cost the same or less than gen 6
+  (7-home 3x3: gen 7 460 cpu / 246 world, gen 6 739 / 558; spot 640,758: 486 vs 513; 630,764: 494 vs 617).
+- A view full of two-storey houses and terraces is dearer (spot 636,760: gen 7 860, gen 6 589;
+  upper storeys 194 + roofs 156 hb). Content-dependent. Mansions now have an upstairs only half
+  the time to ease this. Capping storeys in URBAN two-storey clusters is left open.
+- Moving walk through the capital (934 frames): gen 7 mean cpu 641, worst frame 1286 hb (people-heavy);
+  gen 6 mean 661, worst 1254 hb. No per-block generation hitch above gen 6.
+- PS1 _end 0x801fc3e8 = 15384 bytes free below 0x80200000.
