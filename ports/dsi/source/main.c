@@ -2524,7 +2524,11 @@ static void fm_unpack(const FarmSave *f) { memcpy(fm_n, f->b, 4); memcpy(fm_g, f
 #define MGBUF_N 4096   // (D64) the mini-games' save blocks (the Boreagotchi's v48 extras need the room)
 static int sav_pack(int big) {   // returns the packed size in sav_buf (header included), or 0 if even the basics do not fit
     if (lot_bx >= 0) lot_save();
-    SavCore c; memset(&c, 0, sizeof c); c.opt[39] = 0x5E; c.opt[38] = bm_gen >= 7 ? 7 : 0; c.seed = seed;   // (D79: opt[38] 7: a world of the town plan (a d78 save has 0 there and keeps its old towns, bm_gen 3))   // (D75: opt[36..39] were never used: 0x5E says the townies are made from the world seed too)
+    SavCore c; memset(&c, 0, sizeof c); c.opt[39] = 0x5E; c.opt[38] = bm_gen >= 7 ? 7 : 0;
+#ifdef DS_OLDSAVE
+    c.opt[38] = 0;   // (test builds: write the save as a d78 did, to see it load as a world of version 3)
+#endif
+ c.seed = seed;   // (D79: opt[38] 7: a world of the town plan (a d78 save has 0 there and keeps its old towns, bm_gen 3))   // (D75: opt[36..39] were never used: 0x5E says the townies are made from the world seed too)
      c.minutes = minutes; c.funds = funds; c.nsim = nsim; c.ctl = ctl; c.cur_sim = cur_sim; c.cur_set = cur_set; c.lot_bx = lot_bx; c.lot_by = lot_by; c.days = st_days; c.born = st_born; c.died = st_died;
     for (int i = 0; i < NOPT && i < OPT_OLD; i++) if (OPT[i].v) c.opt[i] = (u8)*OPT[i].v;
     int n = 0; u8 *r = sav_raw; memset(r, 0, sizeof sav_raw);
@@ -3732,6 +3736,34 @@ static void ds_road_audit(void) {
     ds_chk[3] = 1;
 }
 #endif
+#ifdef DS_T7_AUDIT
+// A test build (XTRA=-DDS_T7_AUDIT): when the first lot goes live, the plan homes of a stretch of the map are made (as lot_enter makes them, both facings) and checked:
+// t7a[0] homes, [1] missing a bed, [2] a toilet, [3] a fridge, [4] two things on one cell, [5] a thing off the plot, [6] the street not reachable from the front door,
+// [7] a thing with no reachable cell beside it, [8] done; t7a_n[type][face] the homes of each kind; t7a_at[k][2] the first lot that failed check k.
+int t7a[9], t7a_n[10][3], t7a_at[8][2], t7a_dbg[8], t7a_map[GN * GN], t7a_hw[(GN + 1) * GN], t7a_vw[GN * (GN + 1)];
+static void t7a_fail(int k, int bx, int by) { if (t7a_at[k][0] == 0) { t7a_at[k][0] = bx; t7a_at[k][1] = by; } }
+static void ds_t7_audit(void) {
+    static u8 seen[GN][GN]; static int qx[GN * GN], qy[GN * GN];
+    for (int by = 380; by < 470; by++) for (int bx = 480; bx < 570; bx++) {
+        BInfo b; bm_block(bx, by, &b); LotPlan pl; bm_lot_plan(bx, by, &b, &pl); if (!pl.type) continue;
+        lot_enter(bx, by); LV = 0; t7a[0]++; if (pl.type < 10) t7a_n[pl.type][pl.face & 3]++;
+        int bed = 0, wc = 0, fr = 0; static u8 once[GN][GN][4]; memset(once, 0, sizeof once); int dup = 0, off = 0;
+        for (int k = 0; k < nobj; k++) { const Obj *o = &objs[k]; int id = OBJ_ID(o); if (o->x >= GN || o->y >= GN) { off++; continue; } int st = (o->rot >> 2) & 3;
+            if (id == 16) bed = 1; if (id == 18) wc = 1; if (id == 11) fr = 1; if (once[o->y][o->x][st]) dup++; once[o->y][o->x][st] = 1; }
+        if (!bed) { t7a[1]++; t7a_fail(1, bx, by); } if (!wc) { t7a[2]++; t7a_fail(2, bx, by); } if (!fr) { t7a[3]++; t7a_fail(3, bx, by); } if (dup) { t7a[4]++; t7a_fail(4, bx, by); } if (off) { t7a[5]++; t7a_fail(5, bx, by); }
+        memset(seen, 0, sizeof seen); occ_ok = 0; int h = 0, t = 0, sx = door_cx, sy = door_cy; if (sx < 0 || sy < 0 || sx >= GN || sy >= GN) { t7a[6]++; t7a_fail(6, bx, by); continue; }
+        seen[sy][sx] = 1; qx[t] = sx; qy[t++] = sy; int street = 0;
+        { int wy = hwl[door_cy][door_cx] == 5 ? door_cy : door_cy + 1; for (int x = 0; x < GN; x++) if (wy > 0 && wy < GN && hwl[wy][x] == 5) for (int q = 0; q < 2; q++) { int iy = wy - q; if (!seen[iy][x]) { seen[iy][x] = 1; qx[t] = x; qy[t++] = iy; } } }   // (a terrace pair has two front doors on the same wall line)
+        while (h < t) { int x = qx[h], y = qy[h++]; static const int DX[4] = { 1, -1, 0, 0 }, DY[4] = { 0, 0, 1, -1 };
+            for (int d = 0; d < 4; d++) { int nx = x + DX[d], ny = y + DY[d]; if (!edge_open(x, y, nx, ny)) continue; if (nx < 0 || ny < 0 || nx >= GN || ny >= GN) { street = 1; continue; } if (seen[ny][nx] || obj_solid(nx, ny)) continue; seen[ny][nx] = 1; qx[t] = nx; qy[t++] = ny; } }
+        if (!street) { t7a[6]++; t7a_fail(6, bx, by); }
+        int bad = 0; for (int k = 0; k < nobj; k++) { const Obj *o = &objs[k]; if ((o->rot >> 2) & 3) continue; int id = OBJ_ID(o); if (!(id == 16 || id == 18 || id == 11 || id == 28 || id == 30 || id == 17) || o->x >= GN || o->y >= GN) continue; int ok = 0;
+            for (int d = 0; d < 4; d++) { static const int DX[4] = { 1, -1, 0, 0 }, DY[4] = { 0, 0, 1, -1 }; int nx = o->x + DX[d], ny = o->y + DY[d]; if (nx < 0 || ny < 0 || nx >= GN || ny >= GN) continue; if (seen[ny][nx] && edge_open(nx, ny, o->x, o->y)) ok = 1; }
+            if (!ok) { if (!bad && !t7a_dbg[0]) { t7a_dbg[0] = id; t7a_dbg[1] = o->x; t7a_dbg[2] = o->y; t7a_dbg[3] = t; t7a_dbg[4] = o->rot; t7a_dbg[5] = door_cx; t7a_dbg[6] = door_cy; for (int yy = 0; yy < GN; yy++) for (int xx = 0; xx < GN; xx++) { int v = seen[yy][xx] | (obj_solid(xx, yy) << 1); for (int q = 0; q < nobj; q++) if (objs[q].x == xx && objs[q].y == yy && !((objs[q].rot >> 2) & 3)) v |= (OBJ_ID(&objs[q]) + 1) << 4; t7a_map[yy * GN + xx] = v; } for (int yy = 0; yy <= GN; yy++) for (int xx = 0; xx < GN; xx++) t7a_hw[yy * GN + xx] = hwl[yy][xx]; for (int yy = 0; yy < GN; yy++) for (int xx = 0; xx <= GN; xx++) t7a_vw[yy * (GN + 1) + xx] = vwl[yy][xx]; } bad++; } }
+        if (bad) { t7a[7]++; t7a_fail(7, bx, by); } }
+    t7a[8] = 1;
+}
+#endif
 int main(void) {
     irqEnable(IRQ_VBLANK); irqSet(IRQ_VBLANK, vb_latch); powerOn(POWER_ALL_2D | POWER_3D_CORE | POWER_MATRIX);
     videoSetMode(MODE_5_3D | DISPLAY_BG3_ACTIVE);
@@ -3757,6 +3789,9 @@ int main(void) {
         PROF(5);
 #ifdef DS_ROAD_AUDIT
         { static int done; if (!done && mode == M_LIVE) { done = 1; ds_road_audit(); } }
+#endif
+#ifdef DS_T7_AUDIT
+        { static int done7; if (!done7 && mode == M_LIVE) { done7 = 1; ds_t7_audit(); } }
 #endif
         int steps; { static u32 lastv; u32 v = vbl_n; steps = (int)(v - lastv); lastv = v; if (steps < 1) steps = 1; if (steps > 4) steps = 4; }   // (D39) game steps this pass: one a vblank
         ui_heavy = 0; scanKeys(); int held = keysHeld(), down = keysDown(); touchPosition tp = {0}; if (held & KEY_TOUCH) touchRead(&tp);

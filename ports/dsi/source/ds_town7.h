@@ -39,13 +39,13 @@ static void kitD(int w, int d, int dc, int ow, int two) {    // a divided house 
         uhwl[0][h7_y0 + bd][h7x(cs)] = 0; h7_put(cs, bd, ID_STAIRS, 0);
         h7_put(1, 0, 16, 4); h7_put(0, 0, 100, 4); h7_put(1, 1, 13, 4); h7_put(w - 3, 0, 5, 4); h7_put(w - 2, 0, 9, 4); h7_put(w - 3, 1, 0, 2 | 4);   // up there: a bed and its nightstand, a rug at its foot, a desk, its computer and chair
         roof_st = 2; }
-    int bc = (wb + 1) / 2;   // the bedroom: the bed's head on the back wall, a nightstand either side, a rug at its foot; a wardrobe and a lamp on the side wall; the desk, its chair and computer on the other
+    int bc = wb == 5 ? 2 : (wb + 1) / 2;   // the bedroom: the bed's head on the back wall, a nightstand either side, a rug at its foot; a wardrobe and a lamp on the side wall; the desk, its chair and computer on the other
     h7_put(bc - 1, 0, 100, 0); h7_put(bc, 0, 16, 0); h7_put(bc + 1, 0, 100, 0); if (wb - 2 != bc) h7_put(bc, 1, 13, 0);
     h7_put(0, 1, 101, 1); h7_put(0, 0, 12, 0); h7_put(wb - 1, bd - 2, 5, 3); h7_put(wb - 2, bd - 2, 0, 1); h7_put(wb - 1, bd - 1, 9, 3); h7_put(0, bd - 1, 14, 0);
     h7_put(w - 1, 0, 17, 3); h7_put(w - 1, 2, 18, 3); h7_put(wb, bd - 2, 19, 1); h7_put(wb, bd - 3, 33, 1); if (bd >= 4) h7_put(w - 1, bd - 1, 14, 0);   // the bathroom: the bath and the toilet down the far wall, the sink by the door with its mirror
     int tvr = bd + (fd >= 5 ? 2 : 1);   // the living group: the telly on the side wall (the stereo and a lamp by it), a rug, the coffee table, the sofa facing the telly three tiles away, an armchair at a right angle
     h7_put(0, tvr, 8, 1); h7_put(0, tvr + 1, 10, 1); h7_put(0, last, 12, 0); h7_put(1, tvr, 13, 0); h7_put(2, tvr, 6, 0); h7_put(3, tvr, 2, 3); if (fd >= 5) h7_put(3, tvr - 1, 2, 3); h7_put(2, tvr + 1, 1, 2);
-    if (!two && kc0 - 2 >= 4) h7_put(kc0 - 2, bd, 22, 0); if (!two) h7_put(kc0 - 1, bd, 14, 0);
+    if (!two && kc0 - 2 >= 4) h7_put(kc0 - 2, bd, 22, 0); if (!two) h7_put(kc0 - 2, bd + 1, 14, 0);
     h7_put(w - 1, bd, 11, 3); h7_put(w - 1, bd + 1, 7, 3); h7_put(w - 1, bd + 2, 28, 3); h7_put(w - 1, bd + 3, 30, 3);   // the kitchen: one run down the end wall, the column before it clear
     int tc = w - 3, tr = bd + (fd >= 5 ? 3 : 2); if (dc == tc) tc = w - 4;   // the dining set beside it: the table with a chair on each side (not on the front door's tile)
     h7_put(tc, tr, 4, 0); h7_put(tc, tr - 1, 0, 0); h7_put(tc, tr + 1, 0, 2); if (tc - 1 >= 5) h7_put(tc - 1, tr, 0, 1);
@@ -59,11 +59,11 @@ static void kitR(int w, int d, int dc, int ow) {              // a long ranch (5
     h7_res(dc, last); h7_res(dc, last - 1); h7_res(3, d - 2); h7_res(4, d - 2); h7_res(w - 2, 2); h7_res(w - 2, 1);
     h7_put(0, 0, 101, 0); h7_put(1, 0, 100, 0); h7_put(2, 0, 16, 0); h7_put(3, 0, 100, 0); h7_put(2, 1, 13, 0);   // the bedroom: a wardrobe, the bed between its nightstands, a rug; the desk, its chair and computer on the side wall
     h7_put(0, d - 2, 5, 1); h7_put(1, d - 2, 0, 3); h7_put(0, d - 1, 9, 1);
-    h7_put(w - 1, 0, 18, 0); h7_put(w - 2, 0, 19, 0); h7_put(w - 1, 1, 17, 3);                                       // the bathroom
+    h7_put(w - 2, 0, 18, 0); h7_put(w - 1, 0, 14, 0); h7_put(w - 1, 1, 17, 3);   // the bathroom: 2 x 2, the toilet and the bath each beside the clear tile at the door (a corner fixture would have no free side), a plant in the corner
     int tv = 5;
     h7_put(4, 0, 12, 0); h7_put(tv, 0, 8, 0); h7_put(tv + 1, 0, 10, 0); h7_put(tv, 1, 13, 0); h7_put(tv, 2, 6, 0); h7_put(tv, 3, 2, 2); if (lw >= 3) h7_put(tv + 1, 2, 1, 3);   // the living group: the telly on the back wall, a rug, the coffee table, the sofa facing it, an armchair
     h7_put(w - 1, 2, 11, 3); h7_put(w - 1, 3, 28, 3); h7_put(w - 1, 4, 30, 3); if (d >= 6) h7_put(w - 1, 5, 7, 3);   // the kitchen run down the end wall
-    int tc = w - 3; h7_put(tc, 3, 4, 0); h7_put(tc, 2, 0, 0); h7_put(tc, 4, 0, 2); h7_put(tc - 1, 3, 0, 1);       // the dining set
+    int tc = w - 3; h7_put(tc, 3, 4, 0); if (d >= 6) { h7_put(tc, 2, 0, 0); h7_put(tc, 4, 0, 2); } h7_put(tc - 1, 3, 0, 1);       // the dining set (in a 5 deep ranch only one chair: with chairs above and below too the kitchen end would be shut in)
     if (d >= 6) h7_put(5, d - 1, 14, 0);
 }
 static void kitC(int w, int d, int dc, int ow) {              // a cottage or one home of a terrace: one main room, the bathroom walled off in the back corner, the bed in the alcove beside it
@@ -72,7 +72,7 @@ static void kitC(int w, int d, int dc, int ow) {              // a cottage or on
     for (int c = w - 2; c < w; c++) h7_hw(2, c, iw); for (int r = 0; r < 2; r++) h7_vw(r, w - 2, iw);
     h7_hw(2, w - 2, 5); h7_hw(d, dc, 5);
     h7_res(dc, last); h7_res(dc, last - 1); h7_res(w - 2, 2); h7_res(w - 2, 1);
-    h7_put(w - 1, 0, 18, 0); h7_put(w - 2, 0, 19, 0); h7_put(w - 1, 1, 17, 3);                                       // the bathroom
+    h7_put(w - 2, 0, 18, 0); h7_put(w - 1, 0, 14, 0); h7_put(w - 1, 1, 17, 3);   // the bathroom: 2 x 2, the toilet and the bath each beside the clear tile at the door (a corner fixture would have no free side), a plant in the corner
     h7_put(0, 0, 100, 0); h7_put(1, 0, 16, 0); h7_put(2, 0, 100, 0); h7_put(1, 1, 13, 0); if (w >= 8) h7_put(3, 0, 101, 0); h7_put(0, 1, 12, 0);   // the bed in its alcove between nightstands, a rug, a lamp, a wardrobe
     h7_put(w - 1, 2, 11, 3); h7_put(w - 1, 3, 7, 3); h7_put(w - 1, 4, 28, 3); h7_put(w - 1, 5, 30, 3);   // the kitchen run under the bathroom
     h7_put(0, tvr, 8, 1); h7_put(1, tvr, 13, 0); if (w >= 7) h7_put(2, tvr, 6, 0); h7_put(w >= 7 ? 3 : 2, tvr, 2, 3); if (w >= 7) h7_put(2, tvr + 1, 1, 2); h7_put(0, last, 12, 0);   // the living group
