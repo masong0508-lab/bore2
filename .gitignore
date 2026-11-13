@@ -17,3 +17,5 @@ ports/host/lotsim/old_gen.inc
 ports/host/townmap/townmap
 ports/host/townmap/townmap_old
 ports/host/townmap/old/
+build_ac/
+build_sh/
