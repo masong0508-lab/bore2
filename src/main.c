@@ -993,7 +993,8 @@ static void life_update(int steps) {
 #include "test/plan7_places.inc"   /* (found through the Dreamcast Makefile's -I.) */
             };
             static int at_k = -1, at_pitch, at_dist, at_yaw;
-            { int vb_ = (int)VSync(-1), k = (vb_ - 90) / AUTO_AT_STEP; if (vb_ >= 90 && k != at_k && k < (int)(sizeof at_tab / sizeof at_tab[0])) { at_k = k; at_ = 1;
+            static int at_v0 = -1; if (at_v0 < 0) at_v0 = (int)VSync(-1);   // (the places count from the first life frame, so a slower load does not skip the first ones)
+            { int vb_ = (int)VSync(-1) - at_v0 + 90, k = (vb_ - 90) / AUTO_AT_STEP; if (vb_ >= 90 && k != at_k && k < (int)(sizeof at_tab / sizeof at_tab[0])) { at_k = k; at_ = 1;
                 taxi_to_block(at_tab[k][0], at_tab[k][1], at_tab[k][2], at_tab[k][3], "TEST");
                 hx_ = ((at_tab[k][0] - world_wbx) * BM_BLK + at_tab[k][2]) * TILE + TILE / 2; hz_ = -(((at_tab[k][1] - world_wby) * BM_BLK + at_tab[k][3]) * TILE + TILE / 2);
                 at_pitch = at_tab[k][4]; at_dist = at_tab[k][5]; at_yaw = at_tab[k][6]; } }

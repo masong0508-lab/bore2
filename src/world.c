@@ -1092,6 +1092,7 @@ COLD static void gen_block0(int wx, int wy) {
     }
     occ_on = 0; blk_bx = blk_by = 0xFFFF;
     if (pln) mirror7(ox, oy, hn0, ground);
+    if (g7 && !mg && ground == FL_SAND && (b.lot == LOT_HOUSE || b.lot == LOT_COTTAGE || b.lot == LOT_TOWN || b.lot == LOT_TWO || b.lot == LOT_PARK)) for (int y = oy + BM_LOT0; y < oy + BM_BLK; y++) for (int x = ox + BM_LOT0; x < ox + BM_BLK; x++) if (floorMap[y][x] == FL_SAND) floorMap[y][x] = FL_GRASS;   // (version 7: a home's yard is a lawn even in a dry town: the town waters it)
     if (g7) { if (blk_roads(bx, by + 1) & 1) for (int x = ox + BM_LOT0; x < ox + BM_BLK; x++) { floorMap[oy + BM_BLK - 1][x] = FL_PAVING; if (lifeMap[oy + BM_BLK - 1][x] == '3' || lifeMap[oy + BM_BLK - 1][x] == '6') lifeMap[oy + BM_BLK - 1][x] = '.'; }   // (the far side's pavement, where the next block has its street)
               if (blk_roads(bx + 1, by) & 2) for (int y = oy + BM_LOT0; y < oy + BM_BLK; y++) floorMap[y][ox + BM_BLK - 1] = FL_PAVING; }
     if (g7 && b.lot == LOT_WILD && bm_nb(bx, by) == NK_ESTATE) estate7(ox, oy, h);
@@ -2404,6 +2405,14 @@ static void roof_region(int x0, int y0, int x1, int y1) {
             int w = b_x1[b] - b_x0[b] + 1, d = b_y1[b] - b_y0[b] + 1;
             b_sty[b] = (u8)(b_top[b] >= 2 || (w >= 11 && d >= 9 && (h & 3) == 0) ? 2 : (h >> 2) & 1);   // towers and big blocks: flat roofs
             b_col[b] = (u8)((h >> 4) % NROOF_COL); b_pit[b] = (u8)(1 + ((h >> 8) & 1));
+            if (bm_gen >= 7 && b_top[b] < 2) {                  // version 7: a home's roof comes from the town plan (its form, and its neighbourhood's two roof colours)
+                int gx = (world_wbx * BM_BLK + b_x0[b]) / BM_BLK, gy = (world_wby * BM_BLK + b_y0[b]) / BM_BLK; BInfo pb; LotPlan pp;
+                bm_block(gx, gy, &pb);
+                if (pb.set != 255 && pb.terrain != BT_SEA) {
+                    bm_lot_plan(gx, gy, &pb, &pp);
+                    if (pp.type != HT_NONE) { b_sty[b] = (u8)(pp.roof == RF_HIP || pp.type == HT_MANSION ? 0 : 1); b_col[b] = (u8)((pp.pal + pp.rcol * (1 + pp.pal % 3)) % NROOF_COL); b_pit[b] = (u8)(pp.type <= HT_RANCH ? 1 : 2); }
+                }
+            }
         } else { b_sty[b] = (u8)world_roof_style; b_col[b] = (u8)world_roof_col; b_pit[b] = (u8)world_roof_pitch; }
     }
     b_sty[0] = (u8)world_roof_style; b_col[0] = (u8)world_roof_col; b_pit[0] = (u8)world_roof_pitch;

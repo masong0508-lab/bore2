@@ -321,6 +321,14 @@ static int do_sum(void) {   // every block of every town (and round it), and a g
     printf("%08x %d blocks\n", h, n);
     return 0;
 }
+static int do_list(void) {   // every block of every settlement: set, bx, by, neighbourhood kind, lot, house type/roof/pal, face (for picking shots)
+    for (int si = 0; si < bm_nset(); si++) { const Settle *s = bm_set(si);
+        for (int by = s->y - s->r; by <= s->y + s->r; by++) for (int bx = s->x - s->r; bx <= s->x + s->r; bx++) {
+            BInfo b; bm_block(bx, by, &b); if (b.set != si || b.terrain == BT_SEA) continue;
+            LotPlan p; memset(&p, 0, sizeof p); if (is_home(b.lot)) plan_of(bx, by, &b, &p);
+            printf("B %d %d %d nb %d lot %s type %d roof %d pal %d face %d road %d\n", si, bx, by, bm_nb(bx, by), bm_lot_name(b.lot), p.type, p.roof, p.pal, p.face, b.road); } }
+    return 0;
+}
 int main(int argc, char **argv) {
     if (argc < 4) { fprintf(stderr, "usage: townmap pic SEED GEN WHICH OUT.ppm | stats SEED GEN [packed] | sum SEED GEN [packed]\n"); return 1; }
     unsigned seed = (unsigned)strtoul(argv[2], 0, 0); gen = atoi(argv[3]);
@@ -329,5 +337,6 @@ int main(int argc, char **argv) {
     bm_packed = argc > 4 && !strcmp(argv[4], "packed");
     if (argc > 5) { bm_capsz = atoi(argv[5]); if (argc > 8) { bm_ncity = atoi(argv[6]); bm_ntown = atoi(argv[7]); bm_nvil = atoi(argv[8]); } }   // (the dials: capital size, cities, towns, villages)
     bm_new(seed);
+    if (!strcmp(argv[1], "list")) return do_list();
     return !strcmp(argv[1], "stats") ? do_stats() : do_sum();
 }

@@ -1,5 +1,7 @@
 # Housing and town design (world version 7)
 
+Round 2 (roofs, lawns) is section 9 at the end.
+
 Why: towns looked random and packed. Every block had a street on all sides, one lot type was rolled per block
 (a gym beside a cottage beside a junk lot), one house in four was a mansion, and every house was the same box in the
 same spot of its block. This file turns real planning and house-design practice into rules the generator follows.
@@ -246,3 +248,11 @@ Pictures, the same world as version 6 (left) and 7 (right): `docs/plan7_city.png
 - Anti-monotony code (Carol Stream): https://codelibrary.amlegal.com/codes/carolstream/latest/carolstream_il/0-0-0-1774
 - Functional landscape (WSU): https://wpcdn.web.wsu.edu/extension/uploads/sites/57/2014/03/Functional-Landscape.pdf
 - Room layouts: https://build-construct.com/architecture/room-layouts-furniture-arrangement-traffic-patterns-and-space-optimization-strategies/
+
+## 9. Round 2 (roofs from the plan, lawns)
+- A home's roof comes from its plan (bm_lot_plan: roof, pal, rcol): hip or gable by the plan, colour from the neighbourhood palette, steeper pitch on two-storey, L, box and mansion. In roof_region (world.c), no new RAM. Version 7 only.
+- A home lot (and a park) in a sandy town gets a lawn instead of bare sand, so a street is not green on one lot and yellow on the next.
+- Picture: docs/gen7_roofs_lawns_before_after.png (left before, right after; blocks 410,464 411,464 413,464 of world 0x5EED1234).
+- Tooling: townmap list SEED GEN prints every block to choose shots from; AUTO_AT_TAB places count from the first life frame.
+- Known: the PS1 AUTO_CITY test build at the Object scale commit already overflows 2 MB RAM and crashes after about 100 frames; these shots use a copy with ARENA_BYTES cut (test only).
+- Not done: gables turned to the street (RF_FRONT), parked cars, neighbourhood names on the map screen (main.c), a storey cap in busy streets.
