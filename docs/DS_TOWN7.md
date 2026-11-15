@@ -60,3 +60,14 @@ Picture: docs/town_model_before_after.png (the moving-in screen's model, same bl
 - Not done: far-storey LOD (b_lod, lod_up); world_roof_of / world_roof_rgb / world_plan_wall_rgb (world.c is not in the DS build; the DS keeps its own plan_roof and wall table); texture quad cutting (the DS texture unit is hardware, no warp to fix); a hedged-estate shot; ds_music.sh (needs special builds).
 - Numbers (tools/dsemu/tb.sh): live 28.9 fps avg (26-30), street/town 28.6, 2470-2730 quads. Tests: ds_town7_audit PASS (178 homes, hedges on 59), ds_town.sh same as before, save round trip gen 7 -> 7 and DS_OLDSAVE -> 3, fuzz seeds 1-3 no stall.
 - Shots: docs/ds_shots/d81_*.png.
+
+## D82
+- Roof and wall parity with the PS1, mirrored in main.c (world.c is not in the DS build): roof_dice = roof_pick (hip / gable / flat / front gable, colour, pitch), plan homes take the LotPlan roof, the six neighbourhood wall materials (walls 7..12), far.c wall colours for far lots and the Map picture.
+- Roofs are cut per rectangle and per storey (cell_top, roof_draw): the L garage wing and the loft now have their own roofs. Mansion stairs moved to column 5 (the flight hit the door). The forced gable on two-storey homes is gone.
+- Audit: check 11 "loft unreachable"; the generator checks loft reachability (h7_okl). ds_town7_audit PASS, 178 homes.
+- Map lot picture: no stale close-up distance on entering the Map; the terrace shows both homes.
+- Decor things with no effect (lamp, rug, fence, lamp post, hedge, towels, puppy, dog bowl) now raise a need (mk_dsitems.py).
+- fps: next_cell() ran a full BFS over the 3x3 patch on every call; it now stops at the start (identical steps). sims_step 89 ms/s -> 13 ms/s. Benches 30.0 fps avg.
+- Far lots stay one box each; a window-band texture (no polygons) for non-house lots. Real storey LOD not needed. No texture warp: the DS texture unit is perspective-correct.
+- Tests: ds_flow.sh (buy/save/load, job), ds_items_test.sh (decor, 16 island/stairs things, every thing in every home), ds_oldsave.sh (real d78 ROM save -> gen 3), ds_music.sh PASS (SPULOG runner).
+- Shots: docs/ds_shots/d82_*.png.

@@ -21,8 +21,8 @@ static const Item ITEMS[NITEM] = {
     { "Computer", 900, 2, C15(20, 20, 22), 0, 3, 1, 1, 60, 0, 0, "Use Computer", 1, 50, 150 },   // 9 the DS model = PS1 '['
     { "Sound System", 900, 2, C15(6, 6, 8), 0, 3, 1, 1, 62, 0, 0, "Crank It", 1, 35, 120 },   // 10 the DS model = PS1 'A'
     { "Fridge", 600, 5, C15(28, 28, 30), 0, 2, 1, 1, 62, 0, 0, "Eat", 0, 70, 120 },   // 11 the DS model = PS1 'F'
-    { "Floor Lamp", 110, 4, C15(31, 28, 14), 0, 4, 1, 1, 63, 0, 0, "Look", 1, 3, 30 },   // 12 the DS model = PS1 'l'
-    { "Rug", 80, 0, C15(22, 8, 12), 1, 4, 1, 1, 63, 0, 0, "Look", 1, 3, 30 },   // 13 the DS model = PS1 'r'
+    { "Floor Lamp", 110, 4, C15(31, 28, 14), 0, 4, 1, 1, 63, 0, 0, "Admire", 1, 10, 40 },   // 12 the DS model = PS1 'l'
+    { "Rug", 80, 0, C15(22, 8, 12), 1, 4, 1, 1, 63, 0, 0, "Lounge", 2, 20, 90 },   // 13 the DS model = PS1 'r'
     { "Houseplant", 70, 3, C15(5, 18, 6), 2, 4, 1, 1, 63, 0, 0, "Water", 1, 10, 60 },   // 14 the DS model = PS1 'p'
     { "Statue", 700, 4, C15(24, 24, 22), 0, 4, 1, 1, 63, 0, 0, "Admire", 1, 15, 60 },   // 15 the DS model = PS1 0xAB
     { "Bed", 700, 2, C15(20, 24, 31), 0, 0, 1, 1, 62, 0, 0, "Sleep", 2, 90, 240 },   // 16 the DS model = PS1 'S'
@@ -33,9 +33,9 @@ static const Item ITEMS[NITEM] = {
     { "Toy Box", 120, 2, C15(31, 20, 6), 0, 3, 1, 1, 7, 0, 0, "Play", 1, 60, 120 },   // 21 the DS model = PS1 'n'
     { "Books", 250, 4, C15(18, 12, 6), 0, 1, 1, 1, 60, 0, 0, "Read", 1, 40, 120 },   // 22 the DS model
     { "Rocker", 300, 2, C15(22, 14, 10), 0, 0, 1, 1, 48, 0, 0, "Rock", 2, 40, 150 },   // 23 the DS model
-    { "Picket Fence", 40, 2, C15(28, 26, 20), 0, 5, 1, 1, 63, 0, 0, "Look", 1, 3, 30 },   // 24 the DS model = PS1 0xB4
-    { "Lamp Post", 120, 6, C15(6, 6, 8), 0, 5, 1, 1, 63, 0, 0, "Look", 1, 3, 30 },   // 25 the DS model = PS1 '"'
-    { "Hedge", 40, 2, C15(6, 18, 6), 0, 5, 1, 1, 63, 0, 0, "Look", 1, 3, 30 },   // 26 the DS model = PS1 0xB3
+    { "Picket Fence", 40, 2, C15(28, 26, 20), 0, 5, 1, 1, 63, 0, 0, "Lean", 1, 8, 40 },   // 24 the DS model = PS1 0xB4
+    { "Lamp Post", 120, 6, C15(6, 6, 8), 0, 5, 1, 1, 63, 0, 0, "Admire", 1, 8, 40 },   // 25 the DS model = PS1 '"'
+    { "Hedge", 40, 2, C15(6, 18, 6), 0, 5, 1, 1, 63, 0, 0, "Admire", 1, 8, 40 },   // 26 the DS model = PS1 0xB3
     { "Flower Bed", 50, 0, C15(28, 10, 14), 1, 5, 1, 1, 63, 0, 0, "Smell", 1, 10, 60 },   // 27 the DS model = PS1 0xB2
     { "Stove", 500, 3, C15(26, 26, 26), 0, 2, 1, 1, 60, 0, 0, "Cook", 0, 45, 120 },   // 28 the DS model = PS1 '/'
     { "Microwave", 160, 2, C15(26, 26, 28), 0, 2, 1, 1, 60, 0, 0, "Microwave", 0, 55, 60 },   // 29 the DS model = PS1 ':'
@@ -44,7 +44,7 @@ static const Item ITEMS[NITEM] = {
     { "Shower", 450, 6, C15(24, 28, 31), 0, 2, 1, 1, 62, 0, 0, "Shower", 5, 95, 120 },   // 32 the DS model = PS1 'H'
     { "Mirror", 200, 5, C15(22, 28, 31), 0, 2, 1, 1, 62, 0, 0, "Practice Speech", 1, 6, 40 },   // 33 the DS model = PS1 '`'
     { "Hot Tub", 2500, 2, C15(18, 10, 6), 0, 2, 1, 1, 56, 0, 0, "Soak", 5, 70, 150 },   // 34 the DS model = PS1 '>'
-    { "Towels", 40, 3, C15(8, 22, 28), 0, 2, 1, 1, 62, 0, 0, "Look", 1, 3, 30 },   // 35 the DS model
+    { "Towels", 40, 3, C15(8, 22, 28), 0, 2, 1, 1, 62, 0, 0, "Dry off", 5, 15, 40 },   // 35 the DS model
     { "Piano", 1200, 3, C15(4, 4, 6), 0, 3, 1, 1, 56, 0, 0, "Play Piano", 1, 70, 160 },   // 36 the DS model = PS1 '$'
     { "Pool Table", 900, 2, C15(4, 18, 8), 0, 3, 1, 1, 60, 0, 0, "Shoot Pool", 1, 60, 140 },   // 37 the DS model = PS1 0xA1
     { "Arcade Cabinet", 700, 6, C15(8, 8, 24), 0, 3, 1, 1, 60, 0, 0, "Play Arcade", 1, 80, 150 },   // 38 the DS model = PS1 '!'
@@ -57,9 +57,9 @@ static const Item ITEMS[NITEM] = {
     { "BBQ Grill", 350, 3, C15(6, 6, 8), 0, 5, 1, 1, 56, 0, 0, "Grill", 0, 60, 120 },   // 45 the DS model = PS1 0x9E
     { "Swing Set", 500, 5, C15(24, 8, 8), 0, 5, 1, 1, 62, 0, 0, "Swing", 1, 50, 100 },   // 46 the DS model = PS1 0xB9
     { "Fountain", 1800, 3, C15(22, 22, 22), 0, 4, 1, 1, 63, 0, 0, "Make a Wish", 1, 15, 60 },   // 47 the DS model = PS1 '}'
-    { "Puppy", 150, 1, C15(20, 13, 6), 0, 5, 1, 1, 63, 0, 0, "Look", 1, 3, 30 },   // 48 the DS model
+    { "Puppy", 150, 1, C15(20, 13, 6), 0, 5, 1, 1, 63, 0, 0, "Pet", 3, 30, 60 },   // 48 the DS model
     { "Dog Bed", 120, 1, C15(24, 10, 10), 0, 5, 1, 1, 63, 0, 0, "Nap", 2, 40, 120 },   // 49 the DS model
-    { "Dog Bowl", 40, 1, C15(26, 26, 28), 0, 5, 1, 1, 63, 0, 0, "Look", 1, 3, 30 },   // 50 the DS model
+    { "Dog Bowl", 40, 1, C15(26, 26, 28), 0, 5, 1, 1, 63, 0, 0, "Feed the dog", 1, 12, 40 },   // 50 the DS model
     { "Aquarium", 400, 3, C15(8, 22, 30), 0, 4, 1, 1, 63, 0, 0, "Feed the Fish", 1, 35, 100 },   // 51 the DS model = PS1 'q'
     { "Crate", 40, 11, C15(16, 10, 4), 0, 1, 1, 1, 62, 1, 0, "Look", 1, 5, 40 },   // 52 PS1 '#'
     { "Rail", 80, 3, C15(12, 12, 15), 0, 6, 1, 1, 62, 3, 1, "Look", 1, 5, 40 },   // 53 PS1 '='
