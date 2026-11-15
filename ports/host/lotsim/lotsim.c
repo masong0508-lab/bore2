@@ -276,6 +276,21 @@ int main(int argc, char **argv) {
                 putchar('\n'); } }
         return 0;
     }
+    if (!strcmp(argv[1], "hash")) {   // lotsim hash SEED: every lot of every settlement made (all storeys: tiles, floors, walls, the homes, the items) and hashed; GEN=n picks the world version. test/gen_compare.sh builds this file against two commits' src/ and compares
+        static unsigned char done[BM_N][BM_N]; unsigned long long hh = 14695981039346656037ull; long nb = 0;
+        #define HM(v) (hh = (hh ^ (unsigned long long)(unsigned char)(v)) * 1099511628211ull)
+        for (int i = 0; i < bm_nset(); i++) { const Settle *s = bm_set(i); int r = s->r + 1;
+            for (int by = s->y - r; by <= s->y + r; by++) for (int bx = s->x - r; bx <= s->x + r; bx++) {
+                if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N || done[by][bx]) continue; done[by][bx] = 1;
+                BInfo b; bm_block(bx, by, &b); if (b.set == 255 || b.terrain == BT_SEA) continue;
+                make_block(bx, by, 0); nb++; HM(bx); HM(bx >> 8); HM(by); HM(by >> 8);
+                for (int y = 0; y < 3 * BM_BLK; y++) for (int x = 0; x < 3 * BM_BLK; x++) { HM(lifeMap[y][x]); HM(floorMap[y][x]); HM(wallMap[y][x]);
+                    for (int l = 0; l < NUP; l++) if (lv_get(l)) { HM(lv_get(l)->map[y][x]); HM(lv_get(l)->fl[y][x]); HM(lv_get(l)->wp[y][x]); } }
+                HM(nhomes[ZONE_CITY]); for (int h = 0; h < nhomes[ZONE_CITY]; h++) { const Home *hm = &homes[ZONE_CITY][h]; HM(hm->x0); HM(hm->y0); HM(hm->x1); HM(hm->y1); HM(hm->dx); HM(hm->dy); HM(hm->unit); }
+            } }
+        printf("lots %ld hash %016llx\n", nb, hh);
+        return 0;
+    }
     if (!strcmp(argv[1], "dump")) {
         int kind = argc > 3 ? atoi(argv[3]) : LOT_HOUSE, idx = argc > 4 ? atoi(argv[4]) : 0, n = 0;
         for (int by = 0; by < BM_N; by++) for (int bx = 0; bx < BM_N; bx++) {
