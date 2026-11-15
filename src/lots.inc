@@ -109,7 +109,7 @@ static void fz_put(int x, int y, int c, int f) {                        // the t
 // stays in one piece and nothing in it is cut off; later (fz_extras) the pieces it can do without, one by one (ex: which), where they still
 // fit by the same rules: so a nightstand never takes the fridge's place, and a counter never walls the sofa in.
 static int fz_n0, fz_l0;                                                // the room's walkable floor and its cut-off things as they stand (-1: count again)
-static int fz_grp(const u8 *g, int a0, int a1, int ex) {                // 0: no place; else a + 2
+COLD static int fz_grp(const u8 *g, int a0, int a1, int ex) {                // 0: no place; else a + 2
     if (g == G_BEDF && !(gby == gax && -gbx == gay)) g = G_BEDFM;       // (a double bed spreads from its tile the way the foot turns it, to the right of its head: along the wall one way or the other)
     for (int a = a0; a <= a1 && a < gN; a++) {
         u16 mk[16]; u8 px[12], py[12]; int np = 0, nb = 0, pi; const u8 *p; memcpy(mk, fz_mk, sizeof mk);
@@ -256,17 +256,13 @@ static int fz_cell(int fit) {
     if (full) { memset(fz_mk, 0, sizeof fz_mk); if (gbx > 0) fz_x0 += 3; if (gbx < 0) fz_x1 -= 3; if (gby > 0) fz_y0 += 3; if (gby < 0) fz_y1 -= 3; }
     return 1;
 }
-static int fz_longfoot(int x, int y) {                  // (version 7) the foot of a long bed beside this tile, or the tile you stand on to get in: a need never goes there
+COLD static int fz_longfoot(int x, int y) {                  // (version 7) the foot of a long bed beside this tile, or the tile you stand on to get in: a need never goes there
     static const signed char dx[4] = { 0, 1, 0, -1 }, dy[4] = { 1, 0, -1, 0 };
     for (int k = 0; k < 4; k++) {
         int nx = x + dx[k], ny = y + dy[k];
         if (sm[ny][nx] == (char)0xF6) { int r = swp[ny][nx] & 3; if (nx + dx[r] == x && ny + dy[r] == y) return 1; }
         nx = x + 2 * dx[k]; ny = y + 2 * dy[k];
         if (sm[ny][nx] == (char)0xF6) { int r = swp[ny][nx] & 3; if (nx + 2 * dx[r] == x && ny + 2 * dy[r] == y) return 1; } }
-    for (int by = y - 3; by <= y + 3; by++) for (int bx = x - 3; bx <= x + 3; bx++) {   // (a double bed: the tiles it covers and the two in front of its foot)
-        if (bx < 0 || by < 0 || bx >= MW || by >= MH || sm[by][bx] != (char)0xEC) continue;
-        int r = swp[by][bx] & 3;
-        for (int da = 0; da < 2; da++) for (int db = 0; db < 4; db++) { if (!(da | db)) continue; if (bx + da * dy[r] + db * dx[r] == x && by - da * dx[r] + db * dy[r] == y) return 1; } }
     return 0;
 }
 static void fz_need(const char *has, char c) {   // a home must have its toilet, fridge and bed: if the layout left one out, it goes on the first free wall tile that is not in the doorway
@@ -275,19 +271,9 @@ static void fz_need(const char *has, char c) {   // a home must have its toilet,
         if (sm[y][x] != '.' || (ABS(x - fz_ix) + ABS(y - fz_iy)) < 2 || !fz_free(x, y) || (bm_gen >= 7 && fz_longfoot(x, y))) continue;
         if (sm[y - 1][x] == 'W' || sm[y + 1][x] == 'W' || sm[y][x - 1] == 'W' || sm[y][x + 1] == 'W') { sm[y][x] = c; return; } }
 }
-static void fz_fixbeds(int x0, int y0, int x1, int y1) {   // (version 7) a long bed whose foot tile is not bare floor in the room, or is walled in, goes back to the one-tile bed
+COLD static void fz_fixbeds(int x0, int y0, int x1, int y1) {   // (version 7) a long bed whose foot tile is not bare floor in the room, or is walled in, goes back to the one-tile bed
     static const signed char dx[4] = { 0, 1, 0, -1 }, dy[4] = { 1, 0, -1, 0 };
     for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
-        if (sm[y][x] == (char)0xEC) {   // (a double bed: its three other tiles and the two in front of its foot bare floor of the room, and a way to the foot)
-            int r = swp[y][x] & 3, bad = 0, open = 0;
-            for (int da = 0; da < 2; da++) for (int db = 0; db < 3; db++) { if (!(da | db)) continue;
-                int a = x + da * dy[r] + db * dx[r], b = y - da * dx[r] + db * dy[r];
-                if (a < x0 || a > x1 || b < y0 || b > y1 || (sm[b][a] != 0x7F && sm[b][a] != '.' && sm[b][a] != 'r')) bad = 1; }
-            for (int da = 0; da < 2 && !bad; da++) for (int k = 0; k < 4; k++) {
-                int fx = x + da * dy[r] + 2 * dx[r], fy = y - da * dx[r] + 2 * dy[r], a = fx + dx[k], b = fy + dy[k];
-                if (a < x0 || a > x1 || b < y0 || b > y1) continue; if (sm[b][a] == '.' || sm[b][a] == 'r' || sm[b][a] == 'D') open = 1; }
-            if (bad || !open) sm[y][x] = 'S';
-            continue; }
         if (sm[y][x] != (char)0xF6) continue;
         int r = swp[y][x] & 3, fx = x + dx[r], fy = y + dy[r], ok = fx >= x0 && fx <= x1 && fy >= y0 && fy <= y1 && (sm[fy][fx] == '.' || sm[fy][fx] == 'r');
         int open = 0;

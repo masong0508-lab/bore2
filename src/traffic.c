@@ -274,7 +274,7 @@ extern void items_draw_bus(int x, int z, int yaw, int y);
 typedef struct { s16 x, z, yaw; u8 t, c; } PCar;
 static PCar pcar[20]; static int pcar_n, pcar_key[6] = { -1 };
 extern int bm_edit_stamp;
-static int pcar_lot(int wx, int wy, PCar *p) {   // the car on the home lot at window block (wx, wy), 0 if none (the same dice as ever: five homes in eight)
+COLD static int pcar_lot(int wx, int wy, PCar *p) {   // the car on the home lot at window block (wx, wy), 0 if none (the same dice as ever: five homes in eight)
     int gx = world_wbx + wx, gy = world_wby + wy; BInfo b; LotPlan q;
     bm_block(gx, gy, &b); bm_lot_plan(gx, gy, &b, &q);
     if (q.type == HT_NONE || !q.drv) return 0;
@@ -296,8 +296,8 @@ static void pcars_build(int cbx, int cby) {
         if (pcar_n < 20 && pcar_lot(wx, wy, &pcar[pcar_n])) pcar_n++;
 }
 // a parked car is solid: the tiles it stands on (a quarter of the tile or more under it) are not walkable (world_covered asks, kept per block)
-static struct { s32 stamp; s8 ok, has; PCar p; } pcc[16]; static int pcc_wx = -9, pcc_wy = -9, pcc_gen = -1;   // (a block's car, by its window block; ok: asked already)
-int traffic_pcar_tile(int mx, int my) {
+static struct { s8 ok, has; PCar p; } pcc[16]; static int pcc_wx = -9, pcc_wy = -9, pcc_gen = -1;   // (a block's car, by its window block; ok: asked already)
+COLD int traffic_pcar_tile(int mx, int my) {
     if (bm_gen < 7 || world_zone != ZONE_CITY || world_wbx < 0 || mx < 0 || my < 0 || mx >= MW || my >= MH) return 0;
     int wx = mx / BM_BLK, wy = my / BM_BLK; if (wx > 3 || wy > 3) return 0;
     if (pcc_wx != world_wbx || pcc_wy != world_wby || pcc_gen != bm_edit_stamp) { pcc_wx = world_wbx; pcc_wy = world_wby; pcc_gen = bm_edit_stamp; memset(pcc, 0, sizeof pcc); }   // (the window moved, or a block was edited: the cars' places are window tiles)

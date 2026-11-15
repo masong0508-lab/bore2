@@ -140,7 +140,7 @@ __attribute__((noinline)) static void house7(int lx, int ly, unsigned h, const B
         backyard(lx, ly, hx, hy, w, hy1, h * 2246822519u);
     }
 }
-__attribute__((noinline)) static void mirror7(int ox, int oy, int n0, int ground) {   // a finished lot (rows 5..17, columns 5..17 of the block) turned over to face north
+COLD __attribute__((noinline)) static void mirror7(int ox, int oy, int n0, int ground) {   // a finished lot (rows 5..17, columns 5..17 of the block) turned over to face north
     int x0 = ox + BM_LOT0, x1 = ox + BM_BLK - 1, r5 = oy + BM_LOT0, r17 = oy + BM_BLK - 1, nw = x1 - x0 + 1;
     static char sl[13]; static u8 sf[13], sw[13];                                          // (the street row's tiles kept as they were)
     for (int i = 0; i < nw; i++) { sl[i] = lifeMap[r5][x0 + i]; sf[i] = floorMap[r5][x0 + i]; sw[i] = wallMap[r5][x0 + i]; }

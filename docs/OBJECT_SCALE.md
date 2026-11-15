@@ -254,3 +254,13 @@ Notes.
 | FA | DC ARCADE CABINET | 1x1 | 0.75 x 0.75 | 0.85 x 0.85 | 13 | 1.38 |
 | FB | ORANGE SWIRL LAMP | 1x1 | 0.75 x 0.75 | 0.85 x 0.85 | 16 | 1.70 |
 | FC | BLUE SWIRL LAMP | 1x1 | 0.75 x 0.75 | 0.85 x 0.85 | 16 | 1.70 |
+
+## Round H1 (PS1 + Dreamcast), what changed
+
+- **Dreamcast 3D scale bug (title looked 2x closer, slivers):** `dc_gte_rtps` divided H<<17 by SZ; the real GTE divides H<<16. Fixed in `ports/dreamcast/dc_psx.c`; the DC title now frames like the PS1 (`docs/h1_title_before.png`, `h1_title_after.png`, `h1_dc_tb.png`, `h1_dc_te.png`). `dc_gpu.c` also drops sub-0.7 px slivers and grows slanted opaque polygons by 0.33 px against PVR cracks.
+- **UV per world unit:** wall 8x24 texture per tile; roof 16 (PS1) / 32 (DC) texels per tile; road and floor 8 texels per tile. The `fl_tex4` block bake (32x32 per 2x2 tiles) sampled every other texel (2x coarse); now `(x>>1)&7`, so floors match walls (`docs/h1_uv_ab.png`).
+- **Frame pacing:** a 4-5 vblank frame advanced the life by only 3 steps (game time lost); `life_update` now gets the real elapsed steps (clamp 5; AB_LOCK4 keeps 3).
+- **Parked cars are solid:** `traffic_pcar_tile` (car rect, quarter-tile overlap) feeds `world_covered0`; cars never stand in front of a door column.
+- **Double bed 0xEC (gen 7):** couples get a 2x2 bed (`RC_BEDF`, groups `G_BEDF/G_BEDFM`, covered tiles held as 0x7F while the room is made); `mirror7` moves a 2x2 bed's tile when a lot is turned over; `bed_fix` (world.c, after each block is made) turns any 2x2 bed (0xEB/0xEC) whose far tiles meet a wall or thing back into the one-tile bed `S`: old saves load, no format change.
+- **RAM:** `PACKET_ARENA` 72 KB -> 72 KB - 1280 B to pay for the above; PS1 Release `_end` 0x801fae98.
+- **Not done:** street variety (curved/offset avenues, cul-de-sacs) and a HUD neighbourhood label: no RAM left under 0x801fb000 (360 B), and both need DS/DC parity and road-audit work.
