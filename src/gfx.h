@@ -17,12 +17,22 @@
 #ifdef BORE_DC
 #define PACKET_LEN (160*1024)   // (Dreamcast: 16 MB, and the PowerVR takes whatever the world sends: the roofs, drawn last, no longer run out of room at full detail)
 #else
-#ifndef PACKET_ARENA
-#define PACKET_ARENA (72*1024 - 2560)  // (2.5 KB less than 72 KB each: the new double bed, parked cars and bed fix took 2.2 KB of the 2 MB; the largest frame, the neighbourhood map, peaks at 61.5 KB) per buffer while the crowd's arena holds only people (the street, a home, the title, the maps): the packet buffers are the arena's end then (gfx_pk_arena_base, crowd.c); an overlay, a fight or a new life's set-up takes the arena, and the buffers go back to their own PACKET_LEN
-#endif
 #ifndef PACKET_LEN
-#define PACKET_LEN (32*1024)    // per buffer (was 74, then 66: the stack, the SDK heap and the CD buffers need real room past _end, or the boot crashes).  The busiest frames measured use under 54 KB: a party (people and the HUD 31 KB), a low camera turning to the horizon (the world 35 KB)
+#define PACKET_LEN (32*1024)    // per buffer, the small ones (they sit at the end of the crowd's arena, below): every mode that has the arena to itself (the overlays, a new life's set-up, a fight, the loading screens) draws with these. The busiest of those frames (Gotchi, 23.5 KB; 28 KB each overflowed there) use under 24 KB, of the 26.8 KB left after the kept 2D pieces (KEEP_BYTES) and the margin; the kept 2D pieces (KEEP_BYTES) are part of it
 #endif
+#define ARENA_BYTES 156096      // (crowd.c) the arena's room for an overlay or for set-up scratch: the largest overlay, GOTCHI.OVL, is 152 KB
+#ifndef CROWD_MIN
+#define CROWD_MIN (40*1024)     // the people's models in the street (11 models took 4 KB to 19 KB in the busiest streets): crowd.c's ar_size
+#endif
+#define ARENA_TOTAL (ARENA_BYTES + 2 * PACKET_LEN)   // the arena: the overlays' room, and past it the small packet buffers (they no longer have a 64 KB array of their own)
+#ifndef PACKET_ARENA
+#define PACKET_ARENA (76*1024)  // per buffer while the crowd has the arena (the street, a home, the title, the maps): the two buffers take the arena's end, past the CROWD_MIN bytes of models (the biggest frame, the neighbourhood map, peaks at 61.5 KB; it costs no RAM: the overlays' room is idle then)
+#endif
+#if CROWD_MIN + 2 * PACKET_ARENA > ARENA_TOTAL
+#error PACKET_ARENA does not fit in the arena
+#endif
+extern unsigned char arena_mem[];   // (crowd.c)
+#define PK_SMALL(b) ((char *)arena_mem + ARENA_TOTAL - 2 * PACKET_LEN + (b) * PACKET_LEN)
 #endif
 #define RESERVE_PEOPLE (26*1024)   // kept back from the world so the people always fit (a party peaks near 35 KB with the HUD)
 #define RESERVE_UI     (12*1024)   // kept back from the people so bubbles, text and the HUD always fit

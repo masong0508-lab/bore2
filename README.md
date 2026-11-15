@@ -148,7 +148,7 @@ Each Bore has 4 wants and 2 fears from their aspiration, age and personality. Do
 ## Memory
 The game fits the PS1's 2 MB with about 140 KB to spare. A Bore keeps room for 96 solid blocks (the most any rolled Bore used was 58),
 the creator's studio parks the live lot in a free storey slot instead of a copy of its own, a townsperson is built in the same
-scratch Bore the crowd unpacks into, the song buffer is exactly the biggest song (94 KB), and each packet buffer is 58 KB (see "Packet buffers and the stack" below).
+scratch Bore the crowd unpacks into, the song buffer is exactly the biggest song (94 KB), and the packet buffers share the crowd's arena (see "Packet buffers and the stack" below).
 
 ## Cutscenes (CUT.OVL)
 A film is data: camera keys (a smooth path with hard cuts), actor walks and poses (every pose is blended, so nobody pops), a prop path, subtitles, voice cues, fades and letterbox. It plays on a 60 Hz clock and is drawn from that clock alone, so a slow frame costs picture, never timing. Missy's opening ("TV SHOW & TELL") is the first film. Watch it from the locked Missy card in STORY MISSIONS (TRI). START, O or TRI skips. The engine is `src/cutscene.c`.
@@ -157,7 +157,7 @@ A film is data: camera keys (a smooth path with hard cuts), actor walks and pose
 R3 in the world (or SELECT in the Bore panel) opens a card with everyone in the household. X plays that person, SQUARE tells a housemate to wait (no free will) or lets them live again.
 
 ## Packet buffers and the stack
-The packet buffers are 58 KB each. At 66 KB the game was one byte from crashing at boot: the stack, the SDK heap and the CD buffers all need real room past `_end` (keep it under about 0x801F8000).
+The street's packet buffers are 76 KB each and live in the crowd's arena (the overlays' room, which the street leaves idle); the small ones every other mode uses (32 KB each) sit at the arena's end. Keep `_end` under about 0x801F8000 (0x801F255C now): the stack, the SDK heap and the CD buffers all need real room past it. See docs/PS1_PERFORMANCE.md, RAM round 4.
 
 ## Speed
 In SAN BOREAS, as soon as a frame runs long the full-detail range pulls in a tile (up to 4) (buildings past it are drawn as simple boxes) and goes back out when things are quiet, so the city holds 30 frames a second more often. Far-off roofs are drawn as bigger pieces.

@@ -10,13 +10,12 @@ typedef struct {
 #ifdef BORE_DC
     char    p[PACKET_LEN];
 #else
-    char   *p;                      // the packet buffer: PACKET_LEN bytes of pk_stat, or PACKET_ARENA bytes in the crowd's arena (gfx_pk_arena)
+    char   *p;                      // the packet buffer: PACKET_LEN bytes at the arena's very end (PK_SMALL), or PACKET_ARENA bytes in the crowd's arena (gfx_pk_arena)
 #endif
 } DB;
 #ifdef BORE_DC
 #define PKL(b) PACKET_LEN
 #else
-static char pk_stat[2][PACKET_LEN] __attribute__((aligned(4)));   // (the buffers of every mode that has the arena: the overlays, a new life's set-up, a fight)
 static int  pk_len[2] = { PACKET_LEN, PACKET_LEN };
 #define PKL(b) pk_len[b]
 char *gfx_pk_arena_base;   // (set by the crowd while the arena holds only people: 2 x PACKET_ARENA bytes from here are the packet buffers)
@@ -126,7 +125,7 @@ void gfx_init(void) {
     ClearOTagR(db[0].ot, OT_LEN);
     ClearOTagR(db[1].ot, OT_LEN);
     #ifndef BORE_DC
-    db[0].p = pk_stat[0]; db[1].p = pk_stat[1];
+    db[0].p = PK_SMALL(0); db[1].p = PK_SMALL(1);
 #endif
     db_next = db[0].p; gfx_pk_end = db[0].p + PKL(0) - 64 - KEEP_BYTES; gfx_ot_cur = db[0].ot;
     ui_head = ui_tail = 0;
@@ -151,8 +150,9 @@ static void frame_flush_pkt(void) {
 }
 #ifndef BORE_DC
 static void pk_pick(int b) {   // buffer b (idle: its last picture is done) takes the place the crowd wants: PACKET_ARENA bytes in the arena, or its own static ones
-    char *want = gfx_pk_arena_base ? gfx_pk_arena_base + b * PACKET_ARENA : pk_stat[b]; int n = gfx_pk_arena_base ? PACKET_ARENA : PACKET_LEN;
+    char *want = gfx_pk_arena_base ? gfx_pk_arena_base + b * PACKET_ARENA : PK_SMALL(b); int n = gfx_pk_arena_base ? PACKET_ARENA : PACKET_LEN;
     if (db[b].p == want) return;
+    if (b == 1 && gfx_pk_arena_base && db[0].p != gfx_pk_arena_base) return;   // (buffer 1's big place covers both small ones: it waits until buffer 0, whose place is clear of them, has moved, so no picture still being drawn is written over)
     db[b].p = want; pk_len[b] = n;
     keep_key[b][0] = keep_key[b][1] = 0; keep_last[b][0] = keep_last[b][1] = 0;   // (the kept pieces were in the old place)
 }
@@ -166,7 +166,7 @@ void gfx_pk_arena(char *base) {   // the arena is the crowd's: buffers go there 
 }
 void gfx_pk_static(void) {   // the arena is wanted for something else, now: both buffers go back to their own memory, and the frame being built starts again
     gfx_pk_arena_base = 0;
-    if (db[0].p == pk_stat[0] && db[1].p == pk_stat[1]) return;
+    if (db[0].p == PK_SMALL(0) && db[1].p == PK_SMALL(1)) return;
     DrawSync(0);
     pk_pick(0); pk_pick(1); keep_cur = -1;
     ClearOTagR(db[0].ot, OT_LEN); ClearOTagR(db[1].ot, OT_LEN);

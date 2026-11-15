@@ -13,7 +13,7 @@
 #include "bigmap.h"
 #include "citizens.h"
 
-#define NCAR 18
+#define NCAR 40   // (24 bytes a car; the traffic level's own table tops out at 18, the cheats go on to 40)
 #define BLK BM_BLK
 #define LNA (BM_LOT0 / 2 - 1)   // the street is five wide: a lane of two tiles each way and the line between. Cars drive on the lane lines (tile edges 1 and 4 of the strip), the middle of each lane
 #define LNB (BM_LOT0 - 1)

@@ -4,17 +4,14 @@
 #include "atlas.h"
 #include "mem8.h"
 
-#define ARENA_BYTES 156096   // (the people's models; it used to be the voice clips' memory, which are on the disc now)
 #ifdef BORE_DC
-#define ARENA_TOTAL ARENA_BYTES
+#define ARENA_BYTES 156096
+#define ARENA_TOTAL ARENA_BYTES   // (gfx.h has it for the PS1: the overlays' room, then the small packet buffers)
+u8 arena_mem[ARENA_TOTAL] __attribute__((aligned(4)));
 #else
-#ifndef CROWD_MIN
-#define CROWD_MIN (40*1024)   // the people's models in the street (11 models took 4 KB to 19 KB in the busiest streets)
-#endif
 #define ARENA_PK (2 * PACKET_ARENA)   // (at the arena's end: the packet buffers of the modes that leave the arena to the crowd)
-#define ARENA_TOTAL (ARENA_BYTES > CROWD_MIN + ARENA_PK ? ARENA_BYTES : CROWD_MIN + ARENA_PK)
+u8 arena_mem[ARENA_TOTAL] __attribute__((aligned(4)));
 #endif
-static u8 arena_mem[ARENA_TOTAL] __attribute__((aligned(4)));
 
 // ---- the compact model ----------------------------------------------------------------------------------------------
 #define NW 26                                   // the s16 fields of a Bore from w_headx to w_rgx (they sit together)
@@ -172,7 +169,7 @@ void crowd_reset(void) {
 void crowd_init(void) {
     ar = arena_mem; ar_size = ARENA_TOTAL;
 #ifndef BORE_DC
-    ar_size = ARENA_TOTAL - ARENA_PK;
+    ar_size = CROWD_MIN;
 #endif
     if (ram8) { u8 *big = (u8 *)xalloc(1024 * 1024); if (big) { ar = big; ar_size = 1024 * 1024; } }   // 8 MB: a store big enough that nobody's model is ever let go
     crowd_reset();

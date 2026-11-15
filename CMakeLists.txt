@@ -13,7 +13,7 @@ psn00bsdk_add_executable(bore2 GPREL
 target_include_directories(bore2 PRIVATE src assets)
 target_compile_definitions(bore2 PRIVATE WALLS_DISC=1)   # (src/world.c: the wallpapers are the disc file WALLS.BIN, 22.7 KB less resident)
 if(NOT BORE_OPT)
-	set(BORE_OPT -O2)
+	set(BORE_OPT -O2 -fno-inline-functions)   # (-fno-inline-functions: 6.7 KB of code less for the hot files, frozen street 563 hb before and after, moving city +1.5%; small functions still inline)
 endif()
 target_compile_options(bore2 PRIVATE -mno-check-zero-division -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-misleading-indentation -Wno-parentheses -Wno-strict-aliasing -fno-strict-aliasing)
 get_target_property(BORE_SRCS bore2 SOURCES)
