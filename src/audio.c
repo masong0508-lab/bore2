@@ -21,7 +21,7 @@
 #define ALLOC_START 0x1010
 static int spu_next = ALLOC_START, song_base;
 static int voice_addr[VOICE_N], voice_rate[VOICE_N];
-static int next_clip = 0;
+static int next_clip = 0, film_duck;           // film_duck 0..256: how far the film's cheers and shouts are pulled down while somebody speaks
 static int spu_ok;
 
 static void spu_write(int addr, const void *data, int size) {
@@ -47,12 +47,11 @@ void audio_voicep(int v, int pitch) {   // a voice at a pitch (256 = as recorded
     SpuSetKey(0, 1 << ch);
     { int f = (int)(getSPUSampleRate(voice_rate[v]) * pitch >> 8); SPU_CH_FREQ(ch) = f > 0x3fff ? 0x3fff : f < 0x100 ? 0x100 : f; }
     SPU_CH_ADDR(ch) = getSPUAddr(voice_addr[v]);
-    SPU_CH_VOL_L(ch) = 0x2fff * sfx_gain >> 8;
-    SPU_CH_VOL_R(ch) = 0x2fff * sfx_gain >> 8;
+    { int vl = (0x2fff * sfx_gain >> 8) * (256 - film_duck) >> 8; SPU_CH_VOL_L(ch) = vl; SPU_CH_VOL_R(ch) = vl; }
     SPU_CH_ADSR1(ch) = 0x00ff;
     SPU_CH_ADSR2(ch) = 0x0000;
     SpuSetKey(1, 1 << ch);
-    next_clip = (next_clip + 1) % CLIP_N;
+    next_clip = (next_clip + 1) % (CLIP_N - 1);       // (the last clip voice is the film's voice-over's)
 }
 void audio_voice(int v) { audio_voicep(v, 256); }
 void audio_ui(int k) {   // the menus' little sounds, from the voices at a high pitch and a low volume: 0 move, 1 page, 2 confirm, 3 back, 4 no, 5 change a value
@@ -68,7 +67,7 @@ void audio_ui(int k) {   // the menus' little sounds, from the voices at a high 
     SPU_CH_ADSR1(ch) = 0x00ff;
     SPU_CH_ADSR2(ch) = 0x0000;
     SpuSetKey(1, 1 << ch);
-    next_clip = (next_clip + 1) % CLIP_N;
+    next_clip = (next_clip + 1) % (CLIP_N - 1);
 }
 
 // ---- the song file (SONGS.BIN): a one-sector index, then per song its sequence sectors and its sample sectors ----
@@ -574,6 +573,51 @@ void audio_update(void) {
     if (songs[cur_song].stream) { st_feed(); if (st_done) audio_jukebox_next(); return; }
     if (dj_mode) return;
     if (dk[0].laps > 0 && cur_song != 0) audio_jukebox_next();       // a song moves on when it has played once (THE DIPPER MAN, the title song, loops)
+}
+
+// ---- THE FILM'S VOICE-OVER: FILMVOX.BIN (tools/make_film_voice.py) is read into the jukebox's part of sound memory when the film opens ----
+// u32 count, {u32 offset, u32 bytes, u32 rate, u32 steps} per line, then the SPU ADPCM; line i is subs[i] of cutscene.c. The jukebox is stopped
+// for the film (its samples are overwritten) and goes on again at the end. The lines play on their own voice (the last clip voice), above the cues.
+#define FILM_CH  (CLIP_CH0 + CLIP_N - 1)
+#define FILM_MAX 16
+static int film_addr[FILM_MAX], film_rate[FILM_MAX], film_steps[FILM_MAX], film_n = 0, film_song = -1, film_stn = -1;
+int audio_film_load(const char *name) {   // the number of lines now in sound memory (0: none, the film is silent)
+    film_n = 0; film_duck = 0;
+    if (!spu_ok || !cd_start()) return 0;
+    film_song = cur_song; film_stn = station;
+    audio_jukebox_stop();
+    char path[24]; snprintf(path, sizeof path, "\\%s;1", name);
+    CdlFILE f; if (!CdSearchFile(&f, path)) return 0;
+    if (song_base + (int)((f.size + 63) & ~63u) > REV_ADDR) return 0;
+    CdlLOC keep = songs_loc; songs_loc = f.pos;
+    int secs = (int)((f.size + 2047) / 2048), ok = 1, n = 0; u32 hdr[1 + 4 * FILM_MAX];
+    for (int s = 0; s < secs && ok; s += SEQ_MAX / 2048) {
+        int k = MIN(SEQ_MAX / 2048, secs - s);
+        if (!cd_read((u32)s, k, seqbuf)) { ok = 0; break; }
+        if (s == 0) { memcpy(hdr, seqbuf, sizeof hdr); n = (int)hdr[0]; }
+        spu_write(song_base + s * 2048, seqbuf, k * 2048);
+    }
+    songs_loc = keep;
+    if (!ok || n < 1 || n > FILM_MAX) return 0;
+    for (int i = 0; i < n; i++) { film_addr[i] = hdr[1 + i * 4 + 1] ? song_base + (int)hdr[1 + i * 4] : 0; film_rate[i] = (int)hdr[1 + i * 4 + 2]; film_steps[i] = (int)hdr[1 + i * 4 + 3]; }
+    film_n = n; return n;
+}
+int audio_film_steps(int i) { return i >= 0 && i < film_n ? film_steps[i] : 0; }   // a line's length in 60 Hz steps
+void audio_film_line(int i, int duck) {   // start line i (a silence if it has no sound); the film's other sounds go down by duck/256 while it speaks
+    film_duck = duck;
+    if (!spu_ok || i < 0 || i >= film_n || !film_addr[i]) return;
+    SpuSetKey(0, 1 << FILM_CH);
+    SPU_CH_FREQ(FILM_CH) = getSPUSampleRate(film_rate[i]);
+    SPU_CH_ADDR(FILM_CH) = getSPUAddr(film_addr[i]);
+    { int vl = 0x3800 * sfx_gain >> 8; SPU_CH_VOL_L(FILM_CH) = vl; SPU_CH_VOL_R(FILM_CH) = vl; }
+    SPU_CH_ADSR1(FILM_CH) = 0x00ff; SPU_CH_ADSR2(FILM_CH) = 0x0000;
+    SpuSetKey(1, 1 << FILM_CH);
+}
+void audio_film_end(void) {   // the film is over (or skipped): the voice stops and what was playing before plays again
+    if (!spu_ok) return;
+    SpuSetKey(0, 1 << FILM_CH); film_duck = 0;
+    if (film_n && film_stn >= 0) audio_station_play(film_stn); else if (film_n && film_song >= 0) audio_jukebox_play(film_song);
+    film_n = 0; film_song = film_stn = -1;
 }
 
 void audio_init(void) {

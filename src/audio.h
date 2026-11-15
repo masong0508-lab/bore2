@@ -9,6 +9,10 @@ void audio_init(void);
 int  audio_cd_part(const char *name, u32 sector, int count, void *dst);   // sectors from inside a disc file
 int  audio_cd_load(const char *name, void *dst, int room);   // a file off the disc into RAM (0: not there, or too big)
 void audio_voice(int v);
+int  audio_film_load(const char *name);   // the film's voice-over (FILMVOX.BIN) into sound memory; stops the jukebox. Returns the number of lines
+int  audio_film_steps(int i);
+void audio_film_line(int i, int duck);
+void audio_film_end(void);
 void audio_ui(int k);                     // a menu sound: 0 move, 1 page, 2 confirm, 3 back, 4 no, 5 value changed
 void audio_voicep(int v, int pitch);      // the same at a pitch (256 = normal)
 void audio_volumes(int master, int music, int sfx);   // the master, music and sound sliders (0..10)

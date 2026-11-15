@@ -115,7 +115,7 @@ static const Sub subs[] = {
     { T(276), T(300), 2, "TRY NOT TO BORE ME TONIGHT." },
     { T(302), T(334), 2, "SOMEBODY GET ME A DRINK." },
     { T(342), T(372), 3, "YOUR USUAL, MISS TELLER." },
-    { T(374), T(392), 2, "..." },
+    { T(374), T(392), 2, "HMM." },
     { T(396), T(418), 2, "NOT TONIGHT, DARLING." },
     { T(436), T(466), 1, "SHE IS BACK, FOLKS!" },
     { T(470), T(520), 2, "WATCH ME DANCE." } };
@@ -184,6 +184,18 @@ static int cheer_at(int t) {
     return v > 130 ? MAX(70, v - dt / 3) : v;
 }
 
+// the voice-over (FILMVOX.BIN: line i belongs to subs[i]): a line starts a moment after its subtitle does, and the subtitle stays up until the
+// line is spoken (never into the next subtitle)
+#define NSUBS ((int)(sizeof subs / sizeof subs[0]))
+#define VOX_LEAD 3
+static int vox_i, vox_n, vox_end;
+static int sub_t1(int i) {
+    int e = subs[i].t0 + VOX_LEAD + audio_film_steps(i) + 6, nx = i + 1 < NSUBS ? subs[i + 1].t0 - 1 : 0x7fff;
+    if (e > nx) e = nx; return e > subs[i].t1 ? e : subs[i].t1;
+}
+static int speaker_now(void) { for (int i = 0; i < NSUBS; i++) if (ft >= subs[i].t0 && ft < sub_t1(i)) return subs[i].who; return 0; }
+static void film_leave(void) { audio_film_end(); for (int i = 0; i < A_N; i++) look_release(act[i].b); }
+
 // ---- stepping ----
 #define FADE_IN T(12)
 void cut_open(int arg) {
@@ -191,6 +203,8 @@ void cut_open(int arg) {
     gal = arg == 9999; ft = arg > 1 && !gal ? arg : 0; cue_i = 0; lights = 0; skipped = 0; done_t = 0;
     while (cue_i < (int)(sizeof cues / sizeof cues[0]) && cues[cue_i].t < ft) cue_i++;
     for (int i = 0; i < A_N; i++) { act[i].amp = 0; act[i].phase = 0; act[i].lx = -99999; }
+    vox_n = gal ? 0 : audio_film_load("FILMVOX.BIN"); vox_end = 0;
+    for (vox_i = 0; vox_i < NSUBS && subs[vox_i].t0 + VOX_LEAD < ft; vox_i++) {}
     audio_voice(VOICE_NEED);
 }
 static void walk_pose(const Act *a, VPose *o) {   // a stride made from the phase: the hips swing, the knees fold behind, the arms counter-swing
@@ -218,15 +232,18 @@ static void poses_now(void) {
         a->pose.drop += (s16)(fsin(ft * 2 + i * 70) / 10);
     }
 }
-static int speaker_now(void) { for (unsigned i = 0; i < sizeof subs / sizeof subs[0]; i++) if (ft >= subs[i].t0 && ft < subs[i].t1) return subs[i].who; return 0; }
 
 int cut_update(int held, int pressed, int steps) {
     if (steps < 1) steps = 1;
-    if (pressed & (PAD_START | PAD_CIRCLE | PAD_TRIANGLE)) skipped = 1;
-    if (skipped) { done_t += steps; if (done_t > 18) { for (int i = 0; i < A_N; i++) look_release(act[i].b); return 0; } }
+    if ((pressed & (PAD_START | PAD_CIRCLE | PAD_TRIANGLE)) && !skipped) { skipped = 1; if (vox_n) { audio_film_end(); vox_n = 0; } }   // (a skip cuts the voice at once)
+    if (skipped) { done_t += steps; if (done_t > 18) { film_leave(); return 0; } }
     else ft += steps;
     while (cue_i < (int)(sizeof cues / sizeof cues[0]) && cues[cue_i].t <= ft) audio_voice(cues[cue_i++].v);
-    if (ft >= FILM_END + T(8)) { for (int i = 0; i < A_N; i++) look_release(act[i].b); return 0; }
+    if (vox_n && !skipped) {
+        if (vox_end && ft >= vox_end) { audio_film_line(-1, 0); vox_end = 0; }     // (the crowd comes back up)
+        while (vox_i < NSUBS && subs[vox_i].t0 + VOX_LEAD <= ft) { int i = vox_i++; if (audio_film_steps(i)) { audio_film_line(i, 150); vox_end = ft + audio_film_steps(i) + 12; } }
+    }
+    if (ft >= FILM_END + T(8)) { film_leave(); return 0; }
     lights += (256 - lights) * MIN(steps, 8) / 40;
     poses_now();
     return 1;
@@ -374,9 +391,9 @@ static void actor_draw(int i) {
 // ---- drawing ----
 static void subtitle_draw(void) {
     for (unsigned i = 0; i < sizeof subs / sizeof subs[0]; i++) {
-        const Sub *s = &subs[i]; if (ft < s->t0 || ft >= s->t1) continue;
+        const Sub *s = &subs[i]; if (ft < s->t0 || ft >= sub_t1(i)) continue;
         char buf[48]; int n = (ft - s->t0) / 2 + 1, L = (int)strlen(s->tx); if (n > L) n = L; memcpy(buf, s->tx, n); buf[n] = 0;
-        int fade = MIN(MIN(ft - s->t0, s->t1 - ft), 8);
+        int fade = MIN(MIN(ft - s->t0, sub_t1(i) - ft), 8);
         static const u32 nc[4] = { UI_WHITE, UI_RGB(255, 210, 80), UI_RGB(255, 120, 200), UI_RGB(120, 220, 140) };
         static const char *const nm[4] = { "", "CHAD", "MISSY", "INTERN" };
         int y = SCREEN_H - 62; int w = ui_tw(1, s->tx) + 24;
