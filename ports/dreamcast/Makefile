@@ -57,4 +57,4 @@ disc: $(O)/bore2_dc.gdi
 $(O)/bore2_dc.gdi: $(TARGET) ../../assets/SONGS.BIN ../../assets/voices.bin ../../assets/FONTS.BIN ../../assets/GOTCHI.ART mkdisc.py
 	sh-elf-objcopy -O binary -R .stack $(TARGET) $(O)/1ST_READ.BIN
 	$(KOS_BASE)/utils/makeip/makeip -f -g "BORE 2" -c "BORE 2 TEAM" $(O)/IP.BIN > /dev/null
-	python3 mkdisc.py $(O) $(O)/IP.BIN 1ST_READ.BIN=$(O)/1ST_READ.BIN SONGS.BIN=../../assets/SONGS.BIN VOICES.BIN=../../assets/voices.bin FILMVOX.BIN=../../assets/FILMVOX.BIN FONTS.BIN=../../assets/FONTS.BIN GOTCHI.ART=../../assets/GOTCHI.ART
+	python3 mkdisc.py $(O) $(O)/IP.BIN 1ST_READ.BIN=$(O)/1ST_READ.BIN SONGS.BIN=../../assets/SONGS.BIN VOICES.BIN=../../assets/voices.bin FILMVOX.BIN=../../assets/FILMVOX.BIN FILMSFX.BIN=../../assets/FILMSFX.BIN FILMMUS.BIN=../../assets/FILMMUS.BIN FONTS.BIN=../../assets/FONTS.BIN GOTCHI.ART=../../assets/GOTCHI.ART

@@ -13,6 +13,25 @@ int  audio_film_load(const char *name);   // the film's voice-over (FILMVOX.BIN)
 int  audio_film_steps(int i);
 void audio_film_line(int i, int duck);
 void audio_film_end(void);
+
+// ---- the film mixer (docs/FILM_MIX.md): voice-over, score, crowd and foley on one small bus mixer; any scene can use it ----
+enum { SFX_WHOOSH, SFX_IMPACT, SFX_GLASS, SFX_CLINK, SFX_STEP, SFX_DING, SFX_CHEER, SFX_APPLAUSE, SFX_WALLA, SFX_N };   // FILMSFX.BIN's samples, in this order (tools/make_film_mix.py reads this list); APPLAUSE and WALLA are loops (the crowd beds)
+enum { MX_SFX, MX_VOX, MX_BED, MX_MUSIC, MX_MASTER, MX_DUCK };       // cue ops
+// a cue: at film step t, op: SFX (id = SFX_*, lvl 0..255, pan -128..127 left..right, pan2 = where the pan ends, pit in half-semitones), VOX (id = VOICE_*, a voice clip: lvl, pan),
+// BED (id 0 murmur / 1 applause: lvl reached in `ramp` steps), MUSIC (the score's level), MASTER (everything's level: the fades), DUCK (lvl 1: the score and crowd go down before a line starts, 0: back)
+typedef struct { u16 t; u8 op, id, lvl; s8 pan, pan2, pit; u8 ramp; } MixCue;
+typedef struct { u8 gain; s8 pan; } MixLine;                         // a voice line's level (128 = 1.0) and place (-128..127)
+int  audio_cut_begin(const MixCue *tab, int n, const MixLine *lines, int nlines, int track, int t0);   // after audio_film_load: start the mix (track: FILMMUS.BIN's score, -1 none; t0: the film step it starts at). 0: no sound
+void audio_cut_tick(int ft, int steps);   // once per film update with the film's clock and the steps since the last one
+void audio_cut_fadeout(int steps);        // a skip: everything goes down in a few steps
+void cut_sfx(int id, int level, int pan);                            // a foley one-shot now: SFX_*, level 0..255, pan -128 (left) .. 127 (right)
+void cut_sfx_sweep(int id, int level, int pan, int pan_end, int pit);
+void cut_voice_clip(int v, int level, int pan);                      // a game voice clip (VOICE_*) on the shout bus
+void cut_music(int id);                   // the score's track from its start (-1: stop)
+void cut_music_at(int id, int step);
+void cut_music_level(int level, int steps);
+void cut_bed(int which, int level, int steps);                       // the crowd: 0 murmur, 1 applause
+void cut_master(int level, int steps);
 void audio_ui(int k);                     // a menu sound: 0 move, 1 page, 2 confirm, 3 back, 4 no, 5 value changed
 void audio_voicep(int v, int pitch);      // the same at a pitch (256 = normal)
 void audio_volumes(int master, int music, int sfx);   // the master, music and sound sliders (0..10)

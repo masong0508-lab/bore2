@@ -16,6 +16,8 @@
 			<file name="SONGS.BIN"  type="data" source="${PROJECT_SOURCE_DIR}/assets/SONGS.BIN" />
 			<file name="VOICES.BIN" type="data" source="${PROJECT_SOURCE_DIR}/assets/voices.bin" />
 			<file name="FILMVOX.BIN" type="data" source="${PROJECT_SOURCE_DIR}/assets/FILMVOX.BIN" />
+			<file name="FILMSFX.BIN" type="data" source="${PROJECT_SOURCE_DIR}/assets/FILMSFX.BIN" />
+			<file name="FILMMUS.BIN" type="data" source="${PROJECT_SOURCE_DIR}/assets/FILMMUS.BIN" />
 			<file name="FONTS.BIN" type="data" source="${PROJECT_SOURCE_DIR}/assets/FONTS.BIN" />
 			<file name="KINGDOM.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/KINGDOM.OVL" />
 			<file name="ARCADE.OVL" type="data" source="${CMAKE_BINARY_DIR}/slot_full/ARCADE.OVL" />

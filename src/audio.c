@@ -22,7 +22,7 @@
 static int spu_next = ALLOC_START, song_base;
 static int voice_addr[VOICE_N], voice_rate[VOICE_N];
 static int next_clip = 0, film_duck;           // film_duck 0..256: how far the film's cheers and shouts are pulled down while somebody speaks
-static int spu_ok;
+static int spu_ok, film_mix_on;   // film_mix_on: a film's mix is running (the film part of this file)
 
 static void spu_write(int addr, const void *data, int size) {
     SpuSetTransferMode(SPU_TRANSFER_BY_DMA);
@@ -187,8 +187,10 @@ static void deck_row(int di) {
     }
 }
 extern void prof_sample(void);
+static void mix_isr(void);
 static void seq_tick(void) {
     prof_sample();
+    if (film_mix_on) mix_isr();
     for (int di = 0; di < 2; di++) {
         Deck *d = &dk[di];
         if (!d->on) continue;
@@ -315,7 +317,7 @@ static int cd_read(u32 sector, int count, void *buf) {
 #define ST_CH    (2 * ST_IL)                           // a chunk: left then right (4 sectors)
 #define ST_NF    (SEQ_MAX / ST_CH)                     // chunks the FIFO holds (11: about 2.5 s at 32 kHz)
 static volatile int st_on, st_db, st_n, st_tail, st_done, st_under;
-static int st_head, st_reading, st_read, st_total, st_sector, st_rate;
+static int st_head, st_reading, st_read, st_total, st_sector, st_rate, st_base;   // st_base: where the two buffers sit in sound memory
 static void *st_old_irq, *st_old_dma;
 static void st_irq(void) {
     SPU_CTRL &= ~(1 << 6);                              // (the only way to acknowledge it: off now, on again once the buffer is filled)
@@ -327,7 +329,7 @@ static void st_irq(void) {
     st_db ^= 1;
     const u8 *ptr = (const u8 *)seqbuf + st_tail * ST_CH;
     st_tail = (st_tail + 1) % ST_NF; st_n--;
-    int addr = song_base + st_db * ST_CH;
+    int addr = st_base + st_db * ST_CH;
     SpuSetTransferStartAddr(addr);
     SPU_IRQ_ADDR = getSPUAddr(addr);                    // (the IRQ again when a voice starts on this buffer)
     SPU_CH_LOOP_ADDR(0) = getSPUAddr(addr); SPU_CH_LOOP_ADDR(1) = getSPUAddr(addr + ST_IL);
@@ -359,8 +361,8 @@ static void st_stop(void) {
     SPU_CH_ADDR(0) = SPU_CH_ADDR(1) = getSPUAddr(0x1000);   // (the dummy block: a stopped voice still reads, and must not trip the IRQ)
     if (st_reading) { CdReadSync(0, 0); st_reading = 0; }
 }
-static int st_start(int i) {                           // (after music_silence) 1: playing
-    st_sector = (int)sidx[i].sector; st_total = (int)sidx[i].smp_bytes; st_rate = songs[i].rate ? songs[i].rate : 32000;
+static int st_start_at(int sector, int chunks, int skip, int rate, int vol) {   // (after music_silence) 1: playing; a stream of `chunks` chunks at `sector` of songs_loc, from chunk `skip`, buffers at st_base
+    st_sector = sector + skip * (ST_CH / 2048); st_total = chunks - skip; st_rate = rate;
     st_head = st_tail = st_n = st_read = st_reading = 0; st_db = 1; st_done = 0; st_under = 0;
     for (int ch = 0; ch < MUS_CH; ch++) SPU_CH_ADDR(ch) = getSPUAddr(0x1000);
     int first = MIN(ST_NF, st_total);                  // the FIFO full before the first note
@@ -373,7 +375,7 @@ static int st_start(int i) {                           // (after music_silence) 
     ExitCriticalSection();
     st_irq(); SpuIsTransferCompleted(SPU_TRANSFER_WAIT);   // the first chunk into a buffer
     SPU_CTRL &= ~(1 << 6);                              // (no IRQ as the voices start on it: the second chunk is sent by hand below)
-    int addr = song_base + st_db * ST_CH, v = 0x3fff * music_vol / 320;
+    int addr = st_base + st_db * ST_CH, v = vol;
     SPU_KEY_OFF1 = 3;
     for (int c = 0; c < 2; c++) {
         SPU_CH_ADDR(c) = getSPUAddr(addr + c * ST_IL); SPU_CH_FREQ(c) = getSPUSampleRate(st_rate);
@@ -385,6 +387,7 @@ static int st_start(int i) {                           // (after music_silence) 
     st_irq();                                           // the second chunk into the other buffer; the IRQ armed on it
     return 1;
 }
+static int st_start(int i) { st_base = song_base; return st_start_at((int)sidx[i].sector, (int)sidx[i].smp_bytes, 0, songs[i].rate ? songs[i].rate : 32000, 0x3fff * music_vol / 320); }
 void audio_jukebox_stop(void) {
     st_stop();
     music_silence();
@@ -567,6 +570,7 @@ void audio_jukebox_next(void) {
     audio_jukebox_play(n);
 }
 void audio_update(void) {
+    if (film_mix_on && st_on) { st_feed(); if (st_done) st_stop(); return; }   // (a film's score streams from the disc)
     if (dj_mode) { dj_pump(); if (cur_song < 0) return; }
     if (cur_song < 0) return;
     play_frames++;
@@ -575,47 +579,246 @@ void audio_update(void) {
     if (dk[0].laps > 0 && cur_song != 0) audio_jukebox_next();       // a song moves on when it has played once (THE DIPPER MAN, the title song, loops)
 }
 
-// ---- THE FILM'S VOICE-OVER: FILMVOX.BIN (tools/make_film_voice.py) is read into the jukebox's part of sound memory when the film opens ----
-// u32 count, {u32 offset, u32 bytes, u32 rate, u32 steps} per line, then the SPU ADPCM; line i is subs[i] of cutscene.c. The jukebox is stopped
-// for the film (its samples are overwritten) and goes on again at the end. The lines play on their own voice (the last clip voice), above the cues.
+// ---- THE FILM'S SOUND: voice-over, score, crowd and foley on one small mixer (docs/FILM_MIX.md) ----
+// Files (tools/make_film_voice.py, tools/make_film_mix.py): FILMVOX.BIN (u32 count, {u32 offset, bytes, rate, steps} per line, then the SPU ADPCM; line i is subs[i] of cutscene.c) and FILMSFX.BIN
+// (the same header, {offset, bytes, rate, loop | steps << 1}: the SFX_* samples of audio.h) are read into the jukebox's part of sound memory when a film opens (the jukebox is stopped, its samples are
+// overwritten, and it plays again at the end); FILMMUS.BIN is a streamed score (the jukebox's streamer: 32 kHz stereo, 4 KB chunks) read off the disc while the film runs.
+// SPU voices in a film: 0,1 the score (the streamer's left and right); 2..5 the crowd beds (murmur left/right, applause left/right: loops); 6..13 foley (round robin); 14,15 spare;
+// 16..22 the game's voice clips (a cue plays one); 23 the voice-over. Sound memory: voices 215 KB + FILMVOX + FILMSFX + the streamer's two buffers (16 KB) stay below the reverb's work area.
+// Buses: VOX (the lines), MUS (the score), CROWD (the beds), FOLEY (cut_sfx), CUE (voice clips). Each has a gain that moves toward its target (a duck while somebody speaks: quick down, slow up;
+// a master fade at the start and end), so nothing jumps. A cue table (MixCue, one per film, tools/make_film_mix.py writes src/film_mix.inc) says what plays when.
 #define FILM_CH  (CLIP_CH0 + CLIP_N - 1)
 #define FILM_MAX 16
-static int film_addr[FILM_MAX], film_rate[FILM_MAX], film_steps[FILM_MAX], film_n = 0, film_song = -1, film_stn = -1;
-int audio_film_load(const char *name) {   // the number of lines now in sound memory (0: none, the film is silent)
-    film_n = 0; film_duck = 0;
-    if (!spu_ok || !cd_start()) return 0;
-    film_song = cur_song; film_stn = station;
-    audio_jukebox_stop();
+#define SFX_MAX  16
+#define BED_CH0  2
+#define FOLEY_CH0 6
+#define FOLEY_N  8
+enum { MBUS_VOX, MBUS_MUS, MBUS_CROWD, MBUS_FOLEY, MBUS_CUE, MBUS_N };
+static const short duck_to[MBUS_N] = { 256, 104, 140, 208, 118 };     // each bus's gain while somebody speaks (256 = 1): the score -7.8 dB, the crowd -5.2 dB, foley -1.8 dB, shouts -6.9 dB
+#ifndef MIX_SOLO
+#define MIX_SOLO 31                                                    // (test builds: -DMIX_SOLO=n plays one bus alone, for the stems of tools/film_mix_check.py; bit 0 VOX 1 MUS 2 CROWD 3 FOLEY 4 CUE)
+#endif
+#define V_VOX    0x2900                                                // the base volumes (SPU 0x4000 = 1)
+#define V_MUS    0x1a00
+#define V_BED    0x2200
+#define V_FOLEY  0x2400
+#define V_CUE    0x2000
+static int film_addr[FILM_MAX], film_rate[FILM_MAX], film_steps[FILM_MAX], film_n = 0, film_song = -1, film_stn = -1, film_end_addr;
+static int sfx_addr[SFX_MAX], sfx_rate[SFX_MAX], sfx_len[SFX_MAX], sfx_loop[SFX_MAX], sfx_n;
+static CdlLOC film_keep_loc, mus_loc; static int mus_ok, mus_tracks, mus_sector[4], mus_chunks[4], mus_rate[4];
+static volatile int bus_g[MBUS_N], speaking, pre_duck, mfade, mus_lvl, bed_lvl[2];          // 0..256: what the volumes use
+static volatile int g16[MBUS_N], m16, m_t, m_k, ml16, ml_t, ml_k, bd16[2], bd_t[2], bd_k[2], mix_tk;   // the same in 16.16 for the smoothing, the targets (0..256), the ticks a ramp has left; mix_tk: 480 Hz ticks since the film's mix began
+static int vlc[24], vrc[24];                                                                  // the volumes last written (an unchanged one is not written again)
+static struct { volatile u8 bus, on; volatile short lvl; volatile s8 pan, pan2; volatile int t0, dur; } mv[24];   // what each voice is doing in the mix (its volume and pan are worked out again every update)
+static int foley_rr, mix_now, line_g[FILM_MAX], line_pan[FILM_MAX], cur_line = -1;
+static const MixCue *mix_tab; static int mix_n, mix_i;
+static const short pan_cos[33] = { 256, 256, 255, 253, 251, 248, 245, 241, 237, 231, 226, 220, 213, 206, 198, 190, 181, 172, 162, 152, 142, 132, 121, 109, 98, 86, 74, 62, 50, 38, 25, 13, 0 };
+static const short pit_tab[24] = { 256, 264, 271, 279, 287, 296, 304, 313, 323, 332, 342, 352, 362, 373, 384, 395, 406, 418, 431, 443, 456, 470, 483, 497 };
+static void pan_gains(int pan, int *l, int *r) {   // pan -128 (left) .. 127 (right): constant power, 1.0 on each side at the centre
+    int a = (pan + 128) >> 3; if (a < 0) a = 0; if (a > 32) a = 32;
+    *l = pan_cos[a] * 362 >> 8; *r = pan_cos[32 - a] * 362 >> 8;
+}
+static int pitch_of(int rate, int pit) {   // the SPU's pitch word for a rate shifted by pit half-semitones
+    int p = pit < 0 ? -((-pit + 23) / 24) : pit / 24, k = pit - p * 24;
+    int f = getSPUSampleRate(rate) * pit_tab[k] >> 8;
+    f = p >= 0 ? f << p : f >> -p;
+    return f > 0x3fff ? 0x3fff : f < 0x40 ? 0x40 : f;
+}
+static void set_vol(int ch, int l, int r) { l = l > 0x3fff ? 0x3fff : l; r = r > 0x3fff ? 0x3fff : r; if (l != vlc[ch]) { vlc[ch] = l; SPU_CH_VOL_L(ch) = l; } if (r != vrc[ch]) { vrc[ch] = r; SPU_CH_VOL_R(ch) = r; } }
+static void mix_vol(int ch) {   // a voice's volume from its level, its bus, the master fade and the sliders
+    int b = mv[ch].bus, base = b == MBUS_CROWD ? V_BED : b == MBUS_FOLEY ? V_FOLEY : V_CUE, pan = mv[ch].pan;
+    if (mv[ch].dur > 0 && mv[ch].pan2 != pan) { int u = mix_tk - mv[ch].t0; u = u < 0 ? 0 : u > mv[ch].dur ? mv[ch].dur : u; pan = pan + (mv[ch].pan2 - pan) * u / mv[ch].dur; }
+    int l, r; pan_gains(pan, &l, &r);
+    int g = (mv[ch].lvl * bus_g[b] >> 8) * mfade >> 8; g = g * sfx_gain >> 8;
+    if (!((MIX_SOLO >> b) & 1)) g = 0;
+    int v = base * g >> 8, vl = v * l >> 8, vr = v * r >> 8;
+    set_vol(ch, vl, vr);
+}
+static void mus_vol(void) {   // the score: the streamer's left and right voices
+    int g = (mus_lvl * bus_g[MBUS_MUS] >> 8) * mfade >> 8, v = V_MUS * g >> 8; v = v * music_vol / 320;
+    if (!((MIX_SOLO >> MBUS_MUS) & 1)) v = 0;
+    if (v > 0x3fff) v = 0x3fff;
+    if (v != vlc[0]) { vlc[0] = vlc[1] = v; SPU_CH_VOL_L(0) = v; SPU_CH_VOL_R(1) = v; }
+}
+// The chip takes key-on and key-off writes once per sample (every 23 us): a second write to the same register before that replaces the first (and a voice keyed in the same breath as another is lost).
+// So the film's voices are keyed in batches: bits collect in key_on_p / key_off_p and keys_flush writes each register once and then waits a sample or two.
+static u32 key_on_p, key_off_p, bed_go;
+static void mix_wait(void) { for (volatile int i = 0; i < 400; i++) {} }
+static void keys_flush(void) {
+    if (key_off_p) { SPU_KEY_OFF1 = (u16)key_off_p; SPU_KEY_OFF2 = (u16)(key_off_p >> 16); key_off_p = 0; mix_wait(); }
+    if (key_on_p) { SPU_KEY_ON1 = (u16)key_on_p; SPU_KEY_ON2 = (u16)(key_on_p >> 16); key_on_p = 0; mix_wait(); }
+}
+static void film_clear(void) {
+    bed_go = key_on_p = key_off_p = 0;
+    memset(mv, 0, sizeof mv); sfx_n = 0; mix_tab = 0; mix_n = mix_i = 0; speaking = pre_duck = 0; film_mix_on = 0; cur_line = -1; mus_ok = 0; film_duck = 0;
+    for (int b = 0; b < MBUS_N; b++) { bus_g[b] = 256; g16[b] = 256 << 8; }
+    mfade = m16 = 0; m_t = 256; m_k = 0; mus_lvl = 256; ml16 = 256 << 8; ml_t = 256; ml_k = 0; bed_lvl[0] = bed_lvl[1] = bd16[0] = bd16[1] = bd_t[0] = bd_t[1] = 0; bd_k[0] = bd_k[1] = 0; mix_tk = 0;
+    for (int i = 0; i < 24; i++) vlc[i] = vrc[i] = -1;
+}
+static int load_file(const char *name, int base, int room, u32 *hdr, int hdr_words, int *bytes_out) {   // a disc file into sound memory at base (0: not there / too big)
     char path[24]; snprintf(path, sizeof path, "\\%s;1", name);
     CdlFILE f; if (!CdSearchFile(&f, path)) return 0;
-    if (song_base + (int)((f.size + 63) & ~63u) > REV_ADDR) return 0;
-    CdlLOC keep = songs_loc; songs_loc = f.pos;
-    int secs = (int)((f.size + 2047) / 2048), ok = 1, n = 0; u32 hdr[1 + 4 * FILM_MAX];
+    int secs = (int)((f.size + 2047) / 2048); if (base + secs * 2048 > room) return 0;
+    CdlLOC keep = songs_loc; songs_loc = f.pos; int ok = 1;
     for (int s = 0; s < secs && ok; s += SEQ_MAX / 2048) {
         int k = MIN(SEQ_MAX / 2048, secs - s);
         if (!cd_read((u32)s, k, seqbuf)) { ok = 0; break; }
-        if (s == 0) { memcpy(hdr, seqbuf, sizeof hdr); n = (int)hdr[0]; }
-        spu_write(song_base + s * 2048, seqbuf, k * 2048);
+        if (s == 0) memcpy(hdr, seqbuf, (size_t)hdr_words * 4);
+        spu_write(base + s * 2048, seqbuf, k * 2048);
     }
-    songs_loc = keep;
-    if (!ok || n < 1 || n > FILM_MAX) return 0;
-    for (int i = 0; i < n; i++) { film_addr[i] = hdr[1 + i * 4 + 1] ? song_base + (int)hdr[1 + i * 4] : 0; film_rate[i] = (int)hdr[1 + i * 4 + 2]; film_steps[i] = (int)hdr[1 + i * 4 + 3]; }
-    film_n = n; return n;
+    songs_loc = keep; *bytes_out = secs * 2048; return ok;
 }
-int audio_film_steps(int i) { return i >= 0 && i < film_n ? film_steps[i] : 0; }   // a line's length in 60 Hz steps
-void audio_film_line(int i, int duck) {   // start line i (a silence if it has no sound); the film's other sounds go down by duck/256 while it speaks
-    film_duck = duck;
+int audio_film_load(const char *name) {   // the number of lines now in sound memory (0: none, the film is silent). Also reads FILMSFX.BIN and the index of FILMMUS.BIN when there is room
+    film_clear();
+    if (!spu_ok || !cd_start()) return 0;
+    film_song = cur_song; film_stn = station;
+    audio_jukebox_stop();
+    u32 hdr[1 + 4 * FILM_MAX]; int bytes = 0;
+    if (!load_file(name, song_base, REV_ADDR, hdr, 1 + 4 * FILM_MAX, &bytes)) return 0;
+    int n = (int)hdr[0]; if (n < 1 || n > FILM_MAX) return 0;
+    for (int i = 0; i < n; i++) { film_addr[i] = hdr[1 + i * 4 + 1] ? song_base + (int)hdr[1 + i * 4] : 0; film_rate[i] = (int)hdr[1 + i * 4 + 2]; film_steps[i] = (int)hdr[1 + i * 4 + 3]; line_g[i] = 128; line_pan[i] = 0; }
+    film_n = n; film_end_addr = song_base + bytes;
+    u32 sh[1 + 4 * SFX_MAX]; int sb = 0;                              // the foley and crowd samples, after the lines
+    if (load_file("FILMSFX.BIN", film_end_addr, REV_ADDR - 2 * ST_CH, sh, 1 + 4 * SFX_MAX, &sb) && (int)sh[0] >= 1 && (int)sh[0] <= SFX_MAX) {
+        sfx_n = (int)sh[0];
+        for (int i = 0; i < sfx_n; i++) { sfx_addr[i] = sh[1 + i * 4 + 1] ? film_end_addr + (int)sh[1 + i * 4] : 0; sfx_rate[i] = (int)sh[1 + i * 4 + 2]; sfx_loop[i] = (int)(sh[1 + i * 4 + 3] & 1); sfx_len[i] = (int)(sh[1 + i * 4 + 3] >> 1); }
+        film_end_addr += sb;
+    }
+    CdlFILE mf;                                                         // the score: only its index is read now; the streamer reads the rest while the film plays
+    if (CdSearchFile(&mf, "\\FILMMUS.BIN;1") && film_end_addr + 2 * ST_CH <= REV_ADDR) {
+        CdlLOC keep = songs_loc; songs_loc = mf.pos;
+        if (cd_read(0, 1, seqbuf)) {
+            const u32 *ix = seqbuf;
+            if (ix[0] == 0x53554D46 && ix[1] >= 1 && ix[1] <= 4) { mus_tracks = (int)ix[1]; for (int t = 0; t < mus_tracks; t++) { mus_sector[t] = (int)ix[2 + t * 4]; mus_chunks[t] = (int)ix[3 + t * 4]; mus_rate[t] = (int)ix[4 + t * 4]; } mus_loc = mf.pos; mus_ok = 1; }
+        }
+        songs_loc = keep;
+    }
+    film_keep_loc = songs_loc;
+    return n;
+}
+static void line_vol(void);
+static void mix_isr(void) {   // the 480 Hz timer moves every gain and writes every volume of the film's mix, 2 ms at a time, so a duck or a fade has no steps in it (no zipper, no click)
+    mix_tk++;
+    int duck = speaking || pre_duck;
+    for (int b = 1; b < MBUS_N; b++) {                               // the ducks: 50 ms to go down, 0.4 s to come back
+        int d = ((duck ? duck_to[b] : 256) << 8) - g16[b], st = d / (d < 0 ? 24 : 180);
+        if (!st && d) st = d > 0 ? 1 : -1;
+        g16[b] += st; bus_g[b] = g16[b] >> 8;
+    }
+    if (m_k > 0) { m16 += ((m_t << 8) - m16) / m_k; m_k--; } mfade = m16 >> 8;
+    if (ml_k > 0) { ml16 += ((ml_t << 8) - ml16) / ml_k; ml_k--; } mus_lvl = ml16 >> 8;
+    for (int k = 0; k < 2; k++) { if (bd_k[k] > 0) { bd16[k] += ((bd_t[k] << 8) - bd16[k]) / bd_k[k]; bd_k[k]--; } bed_lvl[k] = bd16[k] >> 8; }
+    mus_vol(); line_vol();
+    for (int k = 0; k < 4; k++) if (mv[BED_CH0 + k].on) { mv[BED_CH0 + k].lvl = (short)bed_lvl[k >> 1]; mix_vol(BED_CH0 + k); }
+    for (int ch = FOLEY_CH0; ch < FOLEY_CH0 + FOLEY_N; ch++) if (mv[ch].on) mix_vol(ch);
+    for (int ch = CLIP_CH0; ch < FILM_CH; ch++) if (mv[ch].on) mix_vol(ch);
+}
+int audio_film_steps(int i) { return i >= 0 && i < film_n ? film_steps[i] : 0; }   // a line's length in 60 Hz film steps
+static void line_vol(void) {
+    if (cur_line < 0) return;
+    int l, r; pan_gains(line_pan[cur_line], &l, &r);
+    int g = (line_g[cur_line] * bus_g[MBUS_VOX] >> 7) * mfade >> 8; g = g * sfx_gain >> 8;
+    if (!(MIX_SOLO & 1)) g = 0;
+    int v = V_VOX * g >> 8, vl = v * l >> 8, vr = v * r >> 8;
+    set_vol(FILM_CH, vl, vr);
+}
+void audio_film_line(int i, int duck) {   // start line i (a silence if it has no sound); duck: somebody speaks (the score and crowd go down), 0: nobody
+    speaking = duck != 0; cur_line = -1;
     if (!spu_ok || i < 0 || i >= film_n || !film_addr[i]) return;
-    SpuSetKey(0, 1 << FILM_CH);
+    key_off_p |= 1u << FILM_CH; keys_flush();
     SPU_CH_FREQ(FILM_CH) = getSPUSampleRate(film_rate[i]);
     SPU_CH_ADDR(FILM_CH) = getSPUAddr(film_addr[i]);
-    { int vl = 0x3800 * sfx_gain >> 8; SPU_CH_VOL_L(FILM_CH) = vl; SPU_CH_VOL_R(FILM_CH) = vl; }
+    cur_line = i; line_vol();
     SPU_CH_ADSR1(FILM_CH) = 0x00ff; SPU_CH_ADSR2(FILM_CH) = 0x0000;
-    SpuSetKey(1, 1 << FILM_CH);
+    key_on_p |= 1u << FILM_CH; keys_flush();
 }
-void audio_film_end(void) {   // the film is over (or skipped): the voice stops and what was playing before plays again
+// ---- the mixer API (what the cue table calls, and what any scene may call) ----
+static void foley_play(int id, int lvl, int pan, int pan2, int pit) {
+    if (!spu_ok || !film_mix_on || id < 0 || id >= sfx_n || !sfx_addr[id] || sfx_loop[id]) return;
+    int ch = FOLEY_CH0 + foley_rr, f = pitch_of(sfx_rate[id], pit); foley_rr = (foley_rr + 1) % FOLEY_N;
+    if (mv[ch].on) { key_off_p |= 1u << ch; keys_flush(); }                 // (the oldest voice is taken over)
+    mv[ch].on = 0; mv[ch].bus = MBUS_FOLEY; mv[ch].lvl = (short)lvl; mv[ch].pan = (s8)pan; mv[ch].pan2 = (s8)pan2; mv[ch].t0 = mix_tk; mv[ch].on = 1;
+    mv[ch].dur = sfx_len[id] * 8 * getSPUSampleRate(sfx_rate[id]) / f + 1;
+    SPU_CH_FREQ(ch) = (u16)f; SPU_CH_ADDR(ch) = getSPUAddr(sfx_addr[id]);
+    mix_vol(ch);
+    SPU_CH_ADSR1(ch) = 0x00ff; SPU_CH_ADSR2(ch) = 0x0000;
+    key_on_p |= 1u << ch;
+}
+void cut_sfx(int id, int level, int pan) { foley_play(id, level, pan, pan, 0); keys_flush(); }   // a one-shot from FILMSFX.BIN (SFX_*): level 0..255, pan -128 (left) .. 127 (right)
+void cut_sfx_sweep(int id, int level, int pan, int pan_end, int pit) { foley_play(id, level, pan, pan_end, pit); keys_flush(); }   // the same, panning from pan to pan_end while it plays, pit in half-semitones
+void cut_voice_clip(int v, int level, int pan) {   // one of the game's voice clips (VOICE_*) on the CUE bus
+    if (!spu_ok || !film_mix_on || v < 0 || v >= VOICE_N || !voice_addr[v]) return;
+    int ch = CLIP_CH0 + next_clip; next_clip = (next_clip + 1) % (CLIP_N - 1);
+    key_off_p |= 1u << ch; keys_flush();
+    mv[ch].bus = MBUS_CUE; mv[ch].on = 1; mv[ch].lvl = (short)level; mv[ch].pan = mv[ch].pan2 = (s8)pan; mv[ch].dur = 0;
+    SPU_CH_FREQ(ch) = getSPUSampleRate(voice_rate[v]); SPU_CH_ADDR(ch) = getSPUAddr(voice_addr[v]);
+    mix_vol(ch);
+    SPU_CH_ADSR1(ch) = 0x00ff; SPU_CH_ADSR2(ch) = 0x0000;
+    key_on_p |= 1u << ch; keys_flush();
+}
+void cut_bed(int which, int level, int steps) { if (which >= 0 && which < 2) { bd_k[which] = 0; bd_t[which] = level; bd_k[which] = steps < 1 ? 8 : steps * 8; } }   // the crowd: 0 murmur, 1 applause; level 0..255 reached in steps
+void cut_master(int level, int steps) { m_k = 0; m_t = level; m_k = steps < 1 ? 8 : steps * 8; }                // a fade of everything (the start and the end of a film)
+void cut_music_level(int level, int steps) { ml_k = 0; ml_t = level; ml_k = steps < 1 ? 8 : steps * 8; }          // the score's own level (the duck is on top of it)
+static void mix_apply(const MixCue *c) {
+    switch (c->op) {
+    case MX_SFX:    foley_play(c->id, c->lvl, c->pan, c->pan2, c->pit); break;
+    case MX_VOX:    cut_voice_clip(c->id, c->lvl, c->pan); break;
+    case MX_BED:    cut_bed(c->id, c->lvl, c->ramp); break;
+    case MX_MUSIC:  cut_music_level(c->lvl, c->ramp); break;
+    case MX_MASTER: cut_master(c->lvl, c->ramp); break;
+    case MX_DUCK:   pre_duck = c->lvl; break;
+    }
+}
+void cut_music_at(int id, int step) {   // the score of track id from film step `step` (FILMMUS.BIN); -1 stops it
+    if (id < 0) { st_stop(); return; }
+    if (!spu_ok || !mus_ok || id >= mus_tracks) return;
+    st_stop();
+    int skip = (int)((long long)step * mus_rate[id] / 60 / (ST_IL * 28 / 16));
+    if (skip >= mus_chunks[id]) return;
+    songs_loc = mus_loc; st_base = film_end_addr;
+    { int rr = st_start_at(mus_sector[id], mus_chunks[id], skip, mus_rate[id], 0); if (!rr) songs_loc = film_keep_loc; }
+}
+void cut_music(int id) { cut_music_at(id, 0); }
+int audio_cut_begin(const MixCue *tab, int n, const MixLine *lines, int nlines, int track, int t0) {   // the film's mix starts (after audio_film_load): table, per-line gain and pan, the score's track (-1: none), the film step it starts at
+    if (!spu_ok || film_n < 1) return 0;
+    for (int i = 0; i < nlines && i < film_n; i++) { line_g[i] = lines[i].gain; line_pan[i] = lines[i].pan; }
+    SPU_REVERB_ON1 = 0; SPU_REVERB_ON2 = 0;
+    film_mix_on = 1; mix_tab = tab; mix_n = n; mix_i = 0; mix_now = t0;
+    mfade = m16 >> 8; if (t0 > 0) { m16 = 256 << 8; mfade = 256; }
+    while (mix_i < mix_n && tab[mix_i].t < t0) { const MixCue *c = &tab[mix_i++]; if (c->op == MX_BED || c->op == MX_MUSIC || c->op == MX_MASTER) mix_apply(c); }   // (a film started part way: the beds and the score are where they were)
+    if (t0 > 0) { m16 = m_t << 8; m_k = 0; mfade = m_t; ml16 = ml_t << 8; ml_k = 0; mus_lvl = ml_t; for (int k = 0; k < 2; k++) { bd16[k] = bd_t[k] << 8; bd_k[k] = 0; bed_lvl[k] = bd_t[k]; } }
+    if (track >= 0) { cut_music_at(track, t0); mix_wait(); }          // (first: the streamer points every music voice at a silent block)
+    mus_vol();
+    for (int k = 0; k < 4; k++) {                                    // the crowd beds: loops on voices 2..5, silent until a cue raises them (murmur then applause, left then right); keyed on at the first update
+        int id = k < 2 ? SFX_WALLA : SFX_APPLAUSE, ch = BED_CH0 + k;
+        if (id >= sfx_n || !sfx_addr[id]) continue;
+        mv[ch].bus = MBUS_CROWD; mv[ch].on = 1; mv[ch].lvl = 0; mv[ch].pan = mv[ch].pan2 = (s8)((k & 1) ? 72 : -72); mv[ch].dur = 0;
+        SPU_CH_VOL_L(ch) = 0; SPU_CH_VOL_R(ch) = 0;
+        SPU_CH_FREQ(ch) = (u16)pitch_of(sfx_rate[id], (k & 1) ? 1 : -1);   // (the two sides are a quarter-semitone apart and start at different places: they do not phase)
+        SPU_CH_ADDR(ch) = getSPUAddr(sfx_addr[id]);
+        SPU_CH_ADSR1(ch) = 0x00ff; SPU_CH_ADSR2(ch) = 0x0000;
+        bed_go |= 1u << ch;
+    }
+    return 1;
+}
+void audio_cut_tick(int ft, int steps) {   // every film update: the cues due, the bus gains, the volumes
+    if (!film_mix_on) return;
+    if (steps < 1) steps = 1;
+    mix_now = ft;
+    if (bed_go) { key_on_p |= bed_go; bed_go = 0; }                      // (the beds start together, one frame after the score)
+    while (mix_i < mix_n && mix_tab[mix_i].t <= ft) mix_apply(&mix_tab[mix_i++]);
+    for (int ch = FOLEY_CH0; ch < FOLEY_CH0 + FOLEY_N; ch++) if (mv[ch].on && mix_tk - mv[ch].t0 > mv[ch].dur + 48) mv[ch].on = 0;   // (the smoothing and the volumes are in mix_isr)
+    keys_flush();
+}
+void audio_cut_fadeout(int steps) { cut_master(0, steps); }   // (a skip) everything goes down in a few steps; audio_film_end then stops the voices
+void audio_film_end(void) {   // the film is over (or skipped): everything stops and what was playing before plays again
     if (!spu_ok) return;
-    SpuSetKey(0, 1 << FILM_CH); film_duck = 0;
+    if (film_mix_on) {
+        cut_music_at(-1, 0); songs_loc = film_keep_loc;
+        key_on_p = bed_go = 0; key_off_p = 0x00fffffc; keys_flush();     // voices 2..23 (the score's 0 and 1 are the streamer's)
+        for (int ch = 2; ch < 24; ch++) { SPU_CH_VOL_L(ch) = 0; SPU_CH_VOL_R(ch) = 0; }
+    }
+    film_duck = 0; film_mix_on = 0; cur_line = -1;
     if (film_n && film_stn >= 0) audio_station_play(film_stn); else if (film_n && film_song >= 0) audio_jukebox_play(film_song);
     film_n = 0; film_song = film_stn = -1;
 }
