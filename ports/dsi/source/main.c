@@ -314,9 +314,18 @@ static void gx_run(const u32 *b, int n) {   // send a list to the geometry FIFO 
 static GFrm *gf_rec;   // the frame whose moving list is being written (0: none)
 static void gf_add(const u32 *p, int n) { if (gf_rec && n > 0 && gf_rec->ns < 48) { gf_rec->s[gf_rec->ns].p = p; gf_rec->s[gf_rec->ns].n = n; gf_rec->ns++; } }
 static void gf_cut(void) { if (gf_rec) { gf_add(gxb + gf_ss, gxn - gf_ss); gf_ss = gxn; gxk = 4; } }   // end the piece written so far (the next command starts a fresh packed word)
+// ---- (D85) THOUGHT BUBBLES over heads, as the PS1's: the need a sim is thinking about, in a bubble over its head. They are hardware sprites (the main engine's OBJ layer, VRAM bank E): no polygons,
+// nothing redrawn in the HUD, and the position goes out with the 3D frame it belongs to (gf_kick), so a bubble keeps to its head. bub_calc() (below, before the vblank handler) works out which sims get one.
+#define BUB_MAX 4
+static u16 bub_oam[2][BUB_MAX][3]; static u8 bub_n[2], bub_vis;   // the OAM words of the frame being built / sent (two lists, as the 3D's)
+static void bub_apply(int b) {   // (from the vblank interrupt) the bubbles of the frame that goes out now
+    volatile u16 *o = (volatile u16 *)0x07000000; int n = bub_n[b];
+    for (int k = 0; k < BUB_MAX; k++) { if (k < n) { o[k * 4 + 1] = bub_oam[b][k][1]; o[k * 4 + 2] = bub_oam[b][k][2]; o[k * 4] = bub_oam[b][k][0]; } else o[k * 4] = 0x200; }
+    bub_vis = (u8)n; }
+static void bub_hide(void) { bub_n[0] = bub_n[1] = 0; if (bub_vis) { volatile u16 *o = (volatile u16 *)0x07000000; for (int k = 0; k < BUB_MAX; k++) o[k * 4] = 0x200; bub_vis = 0; } }
 static void gf_kick(u32 vb) {   // (from the vblank interrupt) the next frame, if one is ready and it is its turn
     if (!gf_on || gf_busy || gf_ready < 0 || (!o_fps30 && (vb & 1))) return;
-    gf_fly = gf_ready; gf_ready = -1; gf_shown++; gf_busy = 1;   // (the pieces one after another, waiting on each: a DMA-end interrupt chain hung the sound's FIFO in melonDS)
+    gf_fly = gf_ready; gf_ready = -1; gf_shown++; gf_busy = 1; bub_apply(gf_fly);   // (the pieces one after another, waiting on each: a DMA-end interrupt chain hung the sound's FIFO in melonDS)
     for (int k = 0; k < gfr[gf_fly].ns; k++) { const GSeg *g = &gfr[gf_fly].s[k]; DMA_SRC(0) = (u32)g->p; DMA_DEST(0) = 0x4000400; DMA_CR(0) = DMA_FIFO | (u32)g->n; while (DMA_CR(0) & DMA_BUSY) {} }
     gf_busy = 0; }
 static void gf_stop(void) { gf_on = 0; while (gf_busy) {} gf_ready = -1; }   // (before the CPU writes to the GPU itself: the title, Create-a-Sim and the Map)
@@ -3833,7 +3842,7 @@ static void set_mode(int m) {
     if (m != M_LIVE && on_board) skate_off();
     if (m != M_LIVE) mg_ui = 0;
     mode = m;
-    if (m == M_LIVE) { lcdMainOnBottom(); } else { lcdMainOnTop(); scr = hud; hud_clear(); }
+    if (m == M_LIVE) { lcdMainOnBottom(); } else { lcdMainOnTop(); scr = hud; hud_clear(); bub_hide(); }
 }
 static void menu_do(int k) {   // (D70) the Live menu's choice k (touch or A): one place, so both do the same
         if (k == 11) { if (stage_of(sims[ctl].age) < 3) say("Teens and up"); else hs_open(); return; }   // (D47: the underworld)
@@ -3906,6 +3915,92 @@ static volatile u32 lat_down; static volatile int lat_tx, lat_ty, lat_press, lat
 #define UI_MASK (KEY_A | KEY_B | KEY_X | KEY_Y | KEY_L | KEY_R | KEY_START | KEY_SELECT | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT | KEY_TOUCH)
 volatile int ui_seen, ui_proc, ui_lat_sum, ui_lat_max, ui_lat_n, ui_stp[5]; static volatile u32 ui_t0; static u32 ui_cur;
 #endif
+// ---- (D85) thought bubbles: the picture, the rules and the place.
+// WHAT: a sim's lowest need while it is under 26 (kept till 34, so it does not flicker at the line), as the PS1's think (need < 20 of 100, the most urgent one). The icons are the PS1's own 12 x 12
+// ones (src/ui.c: food, smile, zz, chat, drop, bubbles, heart), in their need's colour. Under 12 the bubble is red-edged and bobs. A kiss or a flirt shows a heart. A townsperson you have just
+// talked to shows a chat bubble; a friend (rel 3+) passing within 4 cells says hi with a heart, once in a while.
+// WHEN (not cluttering): a bubble pops up when the need falls under the line, stays a few seconds, then rests: the player's sim 5 s in 15 (urgent: 8 s in 12), the housemates 4 s in 30 (urgent 5 s
+// in 15), each house-mate a little later than the last. Nothing while it sleeps, talks or is busy with that very need. At most four on the screen (the player's first, then the nearest), none
+// over the HUD, the menu, a pop-up, a mini-game or another screen.
+static const char *const BIC[7][12] = {
+    { ".#..#..#....", ".#.#.#.#....", ".#####.###..", "..###..###..", "...#...###..", "...#....#...", "...#....#...", "...#....#...", "...#....#...", "............", "............", "............" },   // hunger: the PS1's food
+    { "...######...", "..#......#..", ".#..#..#..#.", ".#........#.", ".#.#....#.#.", ".#..####..#.", "..#......#..", "...######...", "............", "............", "............", "............" },   // fun: smile
+    { ".######.....", ".....##.....", "....##......", "...##.......", "..##..####..", ".######..#..", "........#...", ".......####.", "............", "............", "............", "............" },   // energy: zz
+    { ".##########.", "############", "##.#.#.#..##", "############", ".##########.", "..##........", ".##.........", "............", "............", "............", "............", "............" },   // social: chat
+    { ".....#......", "....###.....", "....###.....", "...#####....", "..##+####...", "..#+#####...", "..#######...", "...#####....", "....###.....", "............", "............", "............" },   // bladder: drop
+    { "....##......", "...#..#.....", "...#..#..##.", "....##..#..#", ".##......##.", "#..#........", "#..#...##...", ".##...#..#..", ".......##...", "............", "............", "............" },   // hygiene: bubbles
+    { "............", ".###....###.", "#####..#####", "############", "############", "############", ".##########.", "..########..", "...######...", "....####....", ".....##.....", "............" } };   // heart
+static const u16 BIK[7][2] = { { RGB15(26, 12, 3), RGB15(26, 12, 3) }, { RGB15(27, 17, 0), RGB15(27, 17, 0) }, { RGB15(7, 9, 26), RGB15(7, 9, 26) }, { RGB15(2, 21, 7), RGB15(2, 21, 7) },
+    { RGB15(26, 20, 0), RGB15(31, 29, 12) }, { RGB15(1, 21, 27), RGB15(1, 21, 27) }, { RGB15(30, 4, 9), RGB15(30, 4, 9) } };   // '#' and '+' of each: hunger orange, fun amber, energy blue, social green, bladder gold, hygiene cyan, heart red
+static void bub_init(void) {   // the sprites: 16 x 32 (a 16 x 16 bubble, two thought dots under it), 4 bits, 8 tiles each, kind k at tile 8k; palette k (and 8 + k: the red edge)
+    vramSetBankE(VRAM_E_MAIN_SPRITE);
+    volatile u16 *oam = (volatile u16 *)0x07000000; for (int k = 0; k < 128; k++) oam[k * 4] = 0x200;   // (all hidden)
+    volatile u16 *pal = (volatile u16 *)0x05000200; volatile u16 *gfx = (volatile u16 *)0x06400000;
+    for (int k = 0; k < 7; k++) for (int u = 0; u < 2; u++) { volatile u16 *p = pal + (u * 8 + k) * 16; p[0] = 0; p[1] = u ? RGB15(26, 3, 3) : RGB15(7, 9, 13); p[2] = u ? RGB15(31, 27, 27) : RGB15(31, 31, 31); p[3] = BIK[k][0]; p[4] = BIK[k][1]; }
+    for (int k = 0; k < 7; k++) {
+        u8 px[32][16]; memset(px, 0, sizeof px);
+        for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) { int dx = x < 15 - x ? x : 15 - x, dy = y < 15 - y ? y : 15 - y, v;
+            if (dx < 3 && dy < 3) { int q = dx + dy; v = q < 2 ? 0 : q == 2 ? 1 : 2; }   // (a round corner)
+            else v = (dx == 0 || dy == 0) ? 1 : 2;
+            px[y][x] = (u8)v; }
+        for (int y = 0; y < 12; y++) for (int x = 0; x < 12; x++) { char c = BIC[k][y][x]; if (c == '#') px[2 + y][2 + x] = 3; else if (c == '+') px[2 + y][2 + x] = 4; }
+        static const char *const TL[8] = { "..##..", ".#22#.", ".#22#.", "..##..", "", "......", ".##...", ".##..." };   // the thought dots: a round one under the bubble, a small one lower and to the side
+        for (int y = 0; y < 8; y++) for (int x = 0; TL[y][x]; x++) { char c = TL[y][x]; int X = 5 + x, Y = 16 + y; if (y >= 5) X = 3 + x; if (c == '#') px[Y][X] = 1; else if (c == '2') px[Y][X] = 2; }
+        u8 buf[256]; memset(buf, 0, sizeof buf);   // 2 tiles across, 4 down; a tile is 8 rows of 4 bytes
+        for (int y = 0; y < 32; y++) for (int x = 0; x < 16; x++) { int t = (y >> 3) * 2 + (x >> 3), o = t * 32 + (y & 7) * 4 + ((x & 7) >> 1); if (x & 1) buf[o] |= (u8)(px[y][x] << 4); else buf[o] |= px[y][x]; }
+        for (int i = 0; i < 128; i++) gfx[k * 128 + i] = (u16)(buf[i * 2] | buf[i * 2 + 1] << 8); }
+    REG_DISPCNT |= DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D_LAYOUT;
+}
+typedef struct { int wx, wz, y; int pr; s8 kind, urg; } BubC;
+static s8 bb_need[SIM_MAX]; static u32 bb_t0[SIM_MAX]; static u32 bb_cit0[NCIT], bb_citend[NCIT];
+static int crel_peek(u16 id) { int h = id & 63; for (int k = 0; k < 64; k++) { const CRel *c = &crt[(h + k) & 63]; if (c->id == id) return c->rel; if (!c->id) return 0; } return 0; }   // (a look, never a new entry: the save's table is left as it is)
+static int bub_blocked(int x, int y) {   // a bubble at x, y (16 x 25) over the HUD or a pop-up would hide it: where the HUD has something, none
+    int x1 = x + 16, y1 = y + 25;
+    if (x < 30 && y < 30) return 1;                                   // the Map button
+    if (x1 > 130 && y < 31 && x < 132 + nsim * 21) return 1;          // the household
+    if (x < 36 && y1 > 158) return 1; if (x < 94 && x1 > 36 && y1 > 168) return 1; if (x1 > 104 && x < 154 && y1 > 178) return 1;   // the player's face, the speed and camera buttons, the menu button
+    if (cam_on && x1 > 214) return 1; if (msg_t > 0 && y < 56 && y1 > 38) return 1;   // the camera's buttons, a toast
+    return 0; }
+static int bub_proj(int wx, int wz, int Y, int *sx, int *sy) {   // the stylus picking's camera (pick_obj), run the other way: a point of the lot to the screen
+    float c = cosLerp(live_yaw) / 4096.0f, s = sinLerp(live_yaw) / 4096.0f, cp = cosLerp(pitch) / 4096.0f, sp = sinLerp(pitch) / 4096.0f;
+    float X = (float)(wx - camx), Z = (float)(wz - camz), xa = X * c + Z * s, za = -X * s + Z * c, yb = (float)Y * cp - za * sp, zb = (float)Y * sp + za * cp - (float)cam_deff;
+    if (zb > -100.0f) return 0; *sx = (int)(128.0f + xa / -zb / (0.3640f * 1.3333f) * 128.0f); *sy = (int)(96.0f - yb / -zb / 0.3640f * 96.0f); return 1; }
+static void bub_calc(int b) {   // (every 3D frame in Live) which bubbles this frame, and where
+    BubC cand[24]; int nc = 0; bub_n[b] = 0;
+#ifdef NOBUB
+    return;   // (test builds: -DNOBUB is the d84 picture, for a before / after)
+#endif
+    if (mode != M_LIVE || mg_ui || on_board || menu_open || popup || jobui || juke || travel_ui || craft_ui || farm_ui || !nsim) return;
+    u32 now = vbl_n >> 1;   // (30 a second)
+    int top = show_lv();
+    for (int i = 0; i < nsim && i < SIM_MAX; i++) { const Sim *m = &sims[i]; if (slv[i] > top) continue;
+        int kind = -1, urg = 0, per, dur;
+        if (m->act >= 100 && (m->soc == 2 || m->soc == 6 || m->soc == 7 || m->soc == 8) ) { kind = 6; bb_need[i] = -2; per = 1; dur = 1; }   // a kiss, a hug, a flirt: a heart as long as it lasts
+        else { int lo = 0; for (int n = 1; n < 6; n++) if (m->need[n] < m->need[lo]) lo = n;
+            int line = bb_need[i] == lo ? 34 : 26, w = m->need[lo] < line ? lo : -1;
+            if (w < 0 || (m->act == 2 && m->tx == m->x && m->ty == m->y) || m->act >= 100 || (m->act_left > 0 && (m->act == w))) { bb_need[i] = -1; continue; }   // (fine, asleep, talking, or already seeing to it)
+            if (bb_need[i] != w) { bb_need[i] = (s8)w; bb_t0[i] = now + (i == ctl ? 0u : 40u + 70u * (u32)i); }   // a new thought: it pops up now (a housemate's a little later, each at its own time)
+            urg = m->need[w] < 12; per = i == ctl ? (urg ? 360 : 450) : (urg ? 450 : 900); dur = i == ctl ? (urg ? 240 : 150) : (urg ? 150 : 120);
+            if ((int)(now - bb_t0[i]) < 0 || (int)((now - bb_t0[i]) % (u32)per) >= dur) continue; kind = w; }
+        int sc = STSC[stage_of(m->age)], x = m->x * 2 * T / 16 - GN * T + T, z = m->y * 2 * T / 16 - GN * T + T;
+        cand[nc].wx = x; cand[nc].wz = z; cand[nc].y = ground_lift(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), slv[i]) + slv[i] * WHF - cam_y + 860 * sc / 100 + 70 + (urg && ((now >> 2) & 1) ? 12 : 0);
+        cand[nc].pr = i == ctl ? -1 : (x - camx) / 8 * ((x - camx) / 8) + (z - camz) / 8 * ((z - camz) / 8); cand[nc].kind = (s8)kind; cand[nc].urg = (s8)urg; nc++; }
+    for (int k = 0; k < CITN && nc < 22; k++) { const Cit *c = &cits[k]; if (!cit_vis(c)) continue;   // the townspeople
+        int kind = -1; int dx = c->x - sims[ctl].x, dy = c->y - sims[ctl].y;
+        if (c->stop > 0) kind = 3;
+        else if (dx > -64 && dx < 64 && dy > -64 && dy < 64 && crel_peek(c->id) >= 3) { if ((int)(now - bb_citend[k]) >= 0 && bb_cit0[k] + 90 <= now) { bb_cit0[k] = now; bb_citend[k] = now + 600; } if ((int)(now - bb_cit0[k]) < 90) kind = 6; }
+        if (kind < 0) continue;
+        int sc = STSC[c->stage], x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T;
+        cand[nc].wx = x; cand[nc].wz = z; cand[nc].y = ground_lift(fdiv(c->x + 8, 16), fdiv(c->y + 8, 16), 0) - cam_y + 800 * sc / 100 + 70; cand[nc].pr = (x - camx) / 8 * ((x - camx) / 8) + (z - camz) / 8 * ((z - camz) / 8) + 4000; cand[nc].kind = (s8)kind; cand[nc].urg = 0; nc++; }
+    int n = 0; u8 used[24]; memset(used, 0, sizeof used);
+    while (n < BUB_MAX) { int bi = -1; for (int k = 0; k < nc; k++) if (!used[k] && (bi < 0 || cand[k].pr < cand[bi].pr)) bi = k; if (bi < 0) break; used[bi] = 1;
+        int sx, sy; if (!bub_proj(cand[bi].wx, cand[bi].wz, cand[bi].y, &sx, &sy)) continue;
+        int x = sx - 8, y = sy - 25; if (x < 0 || x > 240 || y < 0 || y > 166 || bub_blocked(x, y)) continue;
+        for (int q = 0; q < n; q++) { int px = bub_oam[b][q][1] & 511, py = bub_oam[b][q][0] & 255; if (x > px - 16 && x < px + 16 && y > py - 16 && y < py + 16) { x = x < px ? px - 17 : px + 17; break; } }   // (two sims side by side: the second bubble moves aside, not over the first)
+        if (x < 0 || x > 240 || bub_blocked(x, y)) continue;
+        bub_oam[b][n][0] = (u16)((y & 255) | (2 << 14)); bub_oam[b][n][1] = (u16)((x & 511) | (2 << 14)); bub_oam[b][n][2] = (u16)(cand[bi].kind * 8 | (1 << 10) | ((cand[bi].kind + (cand[bi].urg ? 8 : 0)) << 12)); n++; }
+    bub_n[b] = (u8)n;
+}
 static void vb_latch(void) {   // every vblank, remember fresh presses, so a quick tap is never lost while a slow frame is being drawn
     vbl_n++; sky_vbl(); gf_kick(vbl_n); u32 k = keysCurrent(), n = k & ~lat_prev; lat_prev = k;
 #ifdef DSTEST
@@ -4139,7 +4234,7 @@ int main(void) {
     int bg = bgInitSub(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0); scr_sub = scr = bgGetGfxPtr(bg);
     int bgm = bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0); hud = bgGetGfxPtr(bgm); bgSetPriority(bgm, 0);
     if (isDSiMode()) setCpuClock(true); cpu_probe();   // (D40) is the CPU the DSi's fast one?
-    glInit(); glEnable(GL_TEXTURE_2D);
+    glInit(); glEnable(GL_TEXTURE_2D); bub_init();   // (D85) the bubbles' sprites
     vramSetBankA(VRAM_A_LCD); for (int k = 0; k < NDSTEX; k++) for (int i = 0; i < 64; i++) VRAM_A[k * 64 + i] = DSTEX[k][i]; vramSetBankA(VRAM_A_TEXTURE);   // (D43) the textures, 128 bytes each at the start of bank A
     glEnable(GL_ANTIALIAS); glClearColor(14, 20, 31, 31); glClearPolyID(63); glClearDepth(0x7FFF); glViewport(0, 0, 255, 191); REG_BG0CNT = BG_PRIORITY(1);
     snd_init(); tabs_init(); for (int c = 0; c < 256; c++) if (PS1ID[c]) ID2CH[PS1ID[c] - 1] = (u8)c; bm_dials_default(); bm_gen = 8; bm_new(seed); pop_build();   // (D79: new lives are world version 7, the town plan; D84: version 8, with its street variety)
@@ -4258,6 +4353,11 @@ int main(void) {
                 else if (sc == 3) { for (int q = 0; q < nsim; q++) { sims[q].x = sims[q].tx = sims[q].wx = (door_cx + q) * 16; sims[q].y = sims[q].ty = sims[q].wy = 13 * 16; sims[q].act = -1; } live_pitch = 2200; yaw_t = live_yaw = 4096 * 2; live_dist = 14000; }
                 else if (sc == 6) { live_pitch = 2600; live_dist = 4200; yaw_t = live_yaw = 4096 + 600; }   // (6: close up on the house, to see the patterns)
                 else if (sc >= 170 && sc <= 175) { static const int PI_[6] = { 7000, 7000, 5200, 3600, 7000, 5200 }, DI_[6] = { 15800, 15800, 15800, 9000, 15800, 15800 }; live_pitch = PI_[sc - 170]; live_dist = DI_[sc - 170]; yaw_t = live_yaw = sc <= 173 ? 4096 * 2 : 4096; cam_free = 0; }   // (D79 shots: 170-172 looking north from the south, 173-175 the other way; high, middle and close)
+                else if (sc >= 190 && sc <= 193) {   // (D85) the thought bubbles: 190 the player hungry (urgent), a housemate tired and one needing the loo; 191 the same in Strange Town; 192 a friend and a stopped townsperson beside the player; 193 everyone fine (no bubble)
+                    if (sc == 191) travel_go(Z_TOWN);
+                    if (sc == 193) { for (int q = 0; q < nsim; q++) for (int n = 0; n < 6; n++) sims[q].need[n] = 80; }
+                    else if (sc != 192) { sims[ctl].need[0] = 8; if (nsim > 1) sims[1].need[2] = 18; if (nsim > 2) sims[2].need[4] = 20; }
+                    if (sc == 192) { city_spawn(); int nn = 0; for (int k = 0; k < CITN && nn < 2; k++) { Cit *c = &cits[k]; c->on = 1; c->stage = 4; c->x = sims[ctl].x + (nn ? 48 : -40); c->y = sims[ctl].y + 24; c->id = (u16)(300 + k); crel(c->id)->rel = 5; if (nn) c->stop = 900; nn++; } minutes = 12 * 60; } }
                 else if (sc == 5) { live_pitch = 1800; live_dist = 16000; yaw_t = live_yaw = 4096 * 2 + 1500; }   // (5: the horizon)
                 else if (sc >= 10 && sc < 13) { o_look = sc - 10; o_dirty = 1; }   // (10-12: Classic, Rich, Toon)
                 else if (sc >= 20 && sc < 23) { o_detl = sc - 20; o_dirty = 1; }
@@ -4410,8 +4510,9 @@ int main(void) {
                 gxb = db; gxn = dn; gxh = dh; gxk = dk; gf_rec = f; gf_ss = gxn;
                 gf_add(gx_blb[b_k], b_n); f_b[b] = (u8)b_k; gf_add(gx_slb[st_k], st_n); f_st[b] = (u8)st_k; gf_add(gx_wlb[w_k], w_n); f_w[b] = (u8)w_k; st_polys += 0;
                 gx_c1(0x50, 0); gf_cut(); gf_rec = 0; DC_FlushRange(gx_dlb[b], (u32)gxn * 4); gx_end();
-                polys = pd + b_polys + st_polys + w_polys; polys_last = polys; gf_ready = b; PROF(4); }
+                polys = pd + b_polys + st_polys + w_polys; polys_last = polys; bub_calc(b); gf_ready = b; PROF(4); }
         } else if ((int)(vbl_n - next3d) >= 0) {   // the title, Create-a-Sim and the Map: straight to the GPU, as before
+        bub_hide();   // (D85: no sprite is left over from Live, a fight or a game)
         gf_stop(); u32 v3 = vbl_n; GFX_TEX_FORMAT = 0; imm_txp = -1;   // (D43: no texture left set by a list)
         polys = 0;
         glMatrixMode(GL_PROJECTION); glLoadIdentity(); if (fight_on) gluPerspectivef32(degreesToAngle(55), 256 * 4096 / 192, 450, 4096 * 4); else gluPerspectivef32(degreesToAngle(40), 256 * 4096 / 192, 4096 * 3 / 4, 4096 * 12);
