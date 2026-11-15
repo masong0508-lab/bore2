@@ -5863,7 +5863,7 @@ int main(void) {
           dbg_pt[4] = nsims; dbg_pt[5] = player; for (int k = 0; k < NEED_N; k++) dbg_pt[6 + k] = sims[player].need[k] >> 10;
           dbg_pt[14] = sims[player].mood; dbg_pt[15] = sims[player].action; dbg_pt[16] = job_level; dbg_pt[17] = job_worked; dbg_pt[18] = nprops; dbg_pt[19] = home_city;
           dbg_pt[20] = sims[player].x; dbg_pt[21] = sims[player].z; dbg_pt[22] = sims[player].lvl; dbg_pt[23] = sims[player].skill_cook; dbg_pt[24] = sims[player].skill_body; dbg_pt[25] = sims[player].skill_fun;
-          dbg_pt[26] = sims[player].skill_logic; dbg_pt[27] = sims[player].skill_char; dbg_pt[28] = sims[player].skill_creat; dbg_pt[29] = sims[player].skill_mech; dbg_pt[30] = sims[player].dead; dbg_pt[31] = sims[player].bore.stage; dbg_pt[32] = gfx_overflow; dbg_pt[33]++; }
+          dbg_pt[26] = sims[player].skill_logic; dbg_pt[27] = sims[player].skill_char; dbg_pt[28] = sims[player].skill_creat; dbg_pt[29] = sims[player].skill_mech; dbg_pt[30] = sims[player].dead; dbg_pt[31] = sims[player].bore.stage; dbg_pt[32] = gfx_overflow; dbg_pt[33]++; dbg_pt[34] = build_x; dbg_pt[35] = build_y; dbg_pt[36] = build_lvl; dbg_pt[37] = (int)sims[player].act_x; dbg_pt[38] = (int)sims[player].act_y; }
 #endif
         gfx_flip();
     }
