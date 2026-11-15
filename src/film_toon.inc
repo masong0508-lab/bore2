@@ -29,15 +29,17 @@ static inline P3 m_col(const M3 *m, int k) { return p3(m->m[0][k], m->m[1][k], m
 typedef struct { s16 y, r, z; } Ring;
 typedef struct { u8 nr; const Ring *r; } Shape;
 #define SHP(n, ...) static const Ring n##_r[] = { __VA_ARGS__ }; static const Shape n = { sizeof n##_r / sizeof n##_r[0], n##_r }
-SHP(SH_HEAD,  { -1024, 0, 0 }, { -800, 500, 0 }, { -450, 880, 0 }, { -40, 1024, 0 }, { 400, 980, 0 }, { 760, 780, 0 }, { 960, 420, 0 }, { 1024, 0, 0 });   // an egg: wide at the cheeks, a soft chin
-SHP(SH_HEADS, { -1024, 0, 0 }, { -800, 360, 0 }, { -450, 770, 0 }, { -40, 1010, 0 }, { 400, 990, 0 }, { 760, 790, 0 }, { 960, 430, 0 }, { 1024, 0, 0 });   // a sleeker chin (Missy)
+SHP(SH_HEAD,  { -1024, 0, 0 }, { -980, 260, 6 }, { -830, 560, 6 }, { -560, 800, 0 }, { -200, 950, 0 }, { 200, 1024, 0 }, { 600, 970, 0 }, { 880, 740, 0 }, { 1000, 380, 0 }, { 1024, 0, 0 });   // a head with a jaw: wide at the cheekbones and the cranium, a blunt chin (Chad)
+SHP(SH_HEADS, { -1024, 0, 0 }, { -960, 200, 6 }, { -800, 400, 6 }, { -520, 650, 0 }, { -180, 900, 0 }, { 200, 1010, 0 }, { 600, 980, 0 }, { 880, 760, 0 }, { 1000, 400, 0 }, { 1024, 0, 0 });   // a tapered chin, a narrower jaw (Missy)
+SHP(SH_HEADL, { -1024, 0, 0 }, { -980, 240, 6 }, { -820, 470, 6 }, { -540, 720, 0 }, { -200, 900, 0 }, { 200, 1010, 0 }, { 600, 960, 0 }, { 880, 730, 0 }, { 1000, 380, 0 }, { 1024, 0, 0 });   // a lean jaw (the Intern)
+#define IS_HEAD(sh) ((sh) == &SH_HEAD || (sh) == &SH_HEADS || (sh) == &SH_HEADL)
 SHP(SH_BLOB,  { -1024, 0, 0 }, { -520, 880, 0 }, { 520, 880, 0 }, { 1024, 0, 0 });                                                                          // a capsule: hands, feet, joints, ears
 SHP(SH_BALL,  { -1024, 0, 0 }, { -620, 760, 0 }, { 0, 1024, 0 }, { 620, 760, 0 }, { 1024, 0, 0 });
 SHP(SH_JNT,   { -1024, 0, 0 }, { 0, 1024, 0 }, { 1024, 0, 0 });                                                                                  // a joint: two cones, six sided
 SHP(SH_TUBE,  { -1024, 1024, 0 }, { 1024, 1024, 0 });
-SHP(SH_BARREL, { -1024, 800, 0 }, { -540, 950, 40 }, { 80, 1024, 60 }, { 640, 980, 0 }, { 1024, 640, 0 });                                                  // Chad: a big friendly barrel
-SHP(SH_WAIST, { -1024, 980, 0 }, { -420, 700, 0 }, { 120, 760, 0 }, { 700, 880, 30 }, { 1024, 520, 0 });                                                  // Missy: a narrow waist, a fitted jacket
-SHP(SH_BOX,   { -1024, 860, 0 }, { -300, 1000, 20 }, { 560, 1000, 0 }, { 1024, 700, 0 });                                                                  // the Intern's polo, a little boxy
+SHP(SH_BARREL, { -1024, 800, 0 }, { -540, 950, 40 }, { 80, 1024, 60 }, { 560, 1010, 0 }, { 880, 880, 0 }, { 1024, 520, 0 });                                                  // Chad: a big friendly barrel
+SHP(SH_WAIST, { -1024, 980, 0 }, { -420, 700, 0 }, { 120, 760, 0 }, { 700, 920, 30 }, { 1024, 560, 0 });                                                  // Missy: a narrow waist, a fitted jacket
+SHP(SH_BOX,   { -1024, 800, 0 }, { -300, 900, 10 }, { 560, 1000, 0 }, { 900, 900, 0 }, { 1024, 520, 0 });                                                                  // the Intern's polo, a little boxy
 SHP(SH_SKIRT, { -1024, 1024, 0 }, { 1024, 640, 0 });
 SHP(SH_DISC,  { -1024, 1024, 0 }, { 1024, 1024, 0 });                                                                                                     // a tray (flat)
 SHP(SH_CAP,   { -300, 1024, 0 }, { 200, 1000, 0 }, { 640, 820, 0 }, { 900, 520, 0 }, { 1024, 0, 0 });                                                     // the hair's dome: open below and round the front
@@ -51,6 +53,7 @@ typedef struct { u32 c[3]; s16 t0, t1; } Pal;     // 0xBBGGRR; the tone is 0 bel
 typedef struct { const Shape *sh; P3 c; M3 m; s16 hx, hy, hz, k0, k1; u8 ns, pal; s8 bias; u8 flag; s16 a0, span; } Inst;
 #define IF_NOOL 1      // no ink shell
 #define IF_FACE 2      // (reserved)
+#define IF_OFF 4       // wholly off the screen this drawing: neither the colour nor the ink is built
 #define MAXI 56
 static Inst il[MAXI]; static int nil_;
 static P3 g_L, g_R;                    // the key light and the rim light in body space (4096 = 1)
@@ -102,16 +105,48 @@ static void vis_inst_verts(const Inst *I, int grow, int nv, int ns, const s16 *s
 static inline int xcross(const XV *a, const XV *b, const XV *c) { return (b->x - a->x) * (c->y - a->y) - (c->x - a->x) * (b->y - a->y); }
 static inline int xoff(const XV *a, const XV *b, const XV *c, const XV *d) { return xv_outcode(a->x, a->y) & xv_outcode(b->x, b->y) & xv_outcode(c->x, c->y) & xv_outcode(d->x, d->y); }
 #define FRONT_POS 1
+static void inst_cull(Inst *I) {     // one corner through the GTE: a shape whose bounding ball is wholly off the picture (a close-up: the legs, the far arm) costs nothing
+    static SVECTOR cv SVEC_ALIGN; static XV q;
+    cv.vx = (short)I->c.x; cv.vy = (short)-I->c.y; cv.vz = (short)I->c.z; gfx_xform(&cv, &q, 1);
+    int R = I->hx + I->hy + I->hz + 16;
+    if (q.z + R < Z_NEAR) { I->flag |= IF_OFF; return; }
+    if (q.z < R + Z_NEAR) return;
+    int rs = R * 230 / q.z;
+    if (q.x + rs < 0 || q.x - rs >= SCREEN_W || q.y + rs < 0 || q.y - rs >= SCREEN_H) I->flag |= IF_OFF;
+}
+#ifdef FILM_PROF
+int film_ps[8];
+#define PS(k) do { int n_ = VSync(1); if (k >= 0) film_ps[k] += n_ - ps_t; ps_t = n_; } while (0)
+static int ps_t;
+#else
+#define PS(k)
+#endif
 static void inst_draw(const Inst *I, int ol) {
-    const Shape *sh = I->sh; int lod = g_lod, head = sh == &SH_HEAD || sh == &SH_HEADS;   // (a head keeps more sides: the face is drawn on its surface)
+    PS(-1);
+    if (I->flag & IF_OFF) return;
+    const Shape *sh = I->sh; int lod = g_lod, head = IS_HEAD(sh);   // (a head keeps more sides: the face is drawn on its surface)
     int nr = sh->nr, ns = head ? (lod == 2 ? 8 : lod == 1 ? 10 : I->ns) : lod == 2 ? MAX(4, I->ns / 2) : lod == 1 ? MAX(5, I->ns * 3 / 4) : I->ns, open = I->span < 4096;
     if (ol && !head && ns > 6) ns = ns * 2 / 3;       // (the ink behind needs fewer sides)
     int nv = ns + open;
-    s16 sn[13], cs[13], smn[12], cmn[12];
-    for (int j = 0; j < nv; j++) { int a = I->a0 + I->span * j / ns; sn[j] = (s16)t_sin(a); cs[j] = (s16)t_cos(a); }
-    for (int j = 0; j < ns; j++) { int a = I->a0 + (I->span * (2 * j + 1)) / (2 * ns); smn[j] = (s16)t_sin(a); cmn[j] = (s16)t_cos(a); }
+    s16 snl[13], csl[13], smnl[12], cmnl[12];
+    const s16 *sn = snl, *cs = csl, *smn = smnl, *cmn = cmnl;
+    if (I->span == 4096 && I->a0 == 0) {      // (a full ring: the sines of 3..12 sides, worked out once)
+        static s16 T_[13][4][13]; static u8 T_ok[13];
+        if (!T_ok[ns]) { T_ok[ns] = 1; for (int j = 0; j < ns; j++) { int a = 4096 * j / ns, b = 4096 * (2 * j + 1) / (2 * ns); T_[ns][0][j] = (s16)t_sin(a); T_[ns][1][j] = (s16)t_cos(a); T_[ns][2][j] = (s16)t_sin(b); T_[ns][3][j] = (s16)t_cos(b); } }
+        sn = T_[ns][0]; cs = T_[ns][1]; smn = T_[ns][2]; cmn = T_[ns][3];
+    } else {
+        s16 *a_ = snl, *b_ = csl, *c_ = smnl, *d_ = cmnl;
+        for (int j = 0; j < nv; j++) { int a = I->a0 + I->span * j / ns; a_[j] = (s16)t_sin(a); b_[j] = (s16)t_cos(a); }
+        for (int j = 0; j < ns; j++) { int a = I->a0 + (I->span * (2 * j + 1)) / (2 * ns); c_[j] = (s16)t_sin(a); d_[j] = (s16)t_cos(a); }
+    }
+    PS(0);
     vis_inst_verts(I, ol ? g_ol : 0, nv, ns, sn, cs, vbuf);
+    PS(1);
     gfx_xform(vbuf, xbuf, nr * nv);
+    PS(2);
+    u8 oc[128]; int orall = 0, andall = 255;       // (one outcode per corner, not four per face; bit 16: behind the near plane. A shape wholly off one side, or wholly behind, is dropped at once)
+    for (int k = 0, nvt = nr * nv; k < nvt; k++) { int o = xv_outcode(xbuf[k].x, xbuf[k].y) | (xbuf[k].z < Z_NEAR ? 16 : 0); oc[k] = (u8)o; orall |= o; andall &= o; }
+    if (andall) { PS(3); return; }
     const Pal *pl = &g_pal[I->pal];
     // the light in the instance's own frame
     P3 U = m_col(&I->m, 0), V = m_col(&I->m, 1), Wv = m_col(&I->m, 2);
@@ -127,12 +162,11 @@ static void inst_draw(const Inst *I, int ol) {
         for (int j = 0; j < ns; j++) {
             int j1 = open ? j + 1 : (j + 1 == ns ? 0 : j + 1);
             const XV *a = &xbuf[i * nv + j], *b = &xbuf[i * nv + j1], *c = &xbuf[(i + 1) * nv + j], *d = &xbuf[(i + 1) * nv + j1];
-            if (a->z < Z_NEAR || b->z < Z_NEAR || c->z < Z_NEAR || d->z < Z_NEAR) continue;
             int cr = p0 ? xcross(a, d, c) : xcross(a, b, c);
             if (!cr) continue;
             int front = FRONT_POS ? cr > 0 : cr < 0;
             if (ol ? front : !front) continue;
-            if (xoff(a, b, c, d)) continue;
+            if (orall) { int ia = i * nv + j, ib = i * nv + j1, ic = ia + nv, id_ = ib + nv; if (((oc[ia] | oc[ib] | oc[ic] | oc[id_]) & 16) || (oc[ia] & oc[ib] & oc[ic] & oc[id_])) continue; }
             u32 col;
             if (ol) col = g_ink;
             else {
@@ -144,4 +178,5 @@ static void inst_draw(const Inst *I, int ol) {
         }
     }
     gfx_set_zbias(0);
+    PS(ol ? 4 : 3);
 }

@@ -22,7 +22,7 @@ static int bang(int dx, int dz) {
 }
 static inline int smooth(int u) { return (u * u * (3 * 1024 - 2 * u)) >> 20; }   // u 0..1024 -> 0..1024
 #define T(d) ((d) * 6)                    // tenths of a second -> 60 Hz steps
-static int film_Lv[3] = { -1840, -2460, -2700 }, film_Rv[3] = { 2200, -1200, 3200 };   // the key light and the rim light, in the camera's space (x right, y down, z away)
+static int film_Lv[3] = { -1840, -2460, -2600 }, film_Rv[3] = { 2200, -1200, 3200 };   // the key light and the rim light, in the camera's space (x right, y down, z away)
 #include "film_toon.inc"
 #include "film_cast.inc"
 
@@ -33,15 +33,15 @@ static const FPose pq[Q_N] = {
  /* HANG   */ P(  60,  60,  120, 120,  140, 140,    0,   0,  50,  50,  30,  30,    0,   0,    0,   0,  0,  0),
  /* TALK   */ P(  80, 520,  120, 200,  160, 980,    0,  40,  50,  60,  30,  70,   20,  60,   40,   0,  0,  0),
  /* OPEN   */ P( 160, 160,  880, 880,  260, 260,    0,   0,  90,  90,  20,  20,  -40,   0,  -40,   0,  0,  0),
- /* WAVE   */ P(  60, 700,  120, 760,  140,1250,    0,   0,  50,  50,  30,  30,    0,   0,    0, 110,  0,  0),
+ /* WAVE   */ P(  60, 600,  120, 760,  140,1250,    0,   0,  50,  50,  30,  30,    0,   0,    0, 110,  0,  0),
  /* PRES   */ P( 950, 300,  420, 140,  200,1500,    0,  60,  60,  60,  40,  90,   40, -90,   30,   0,  0,  0),
  /* POINT  */ P( 100,1250,  600, 220,  1500,120,    0,   0,  50,  50,  30,  30,   30, 130,   30,   0,  0,  0),
  /* HIP    */ P(-120,-120,  520, 520, 1250,1250,    0,   0,  60,  60,  30,  30,    0,   0,    0,  80,  0,  0),
- /* CLAP   */ P( 700, 700, -330,-330,  520, 520,    0,   0,  40,  40,  40,  40,   20,   0,   40,   0,  0,  0),
+ /* CLAP   */ P( 600, 600, -330,-330,  520, 520,    0,   0,  40,  40,  40,  40,   20,   0,   40,   0,  0,  0),
  /* CHEER  */ P(2150,2150,  300, 300,  150, 150,  -60,  60, 140, 140, 180, 180,  -50,   0, -120,   0, 10, 24),
  /* RECOIL */ P( 450, 450,  720, 720,  800, 800, -120, 120,  90,  90, 260, 140, -240,   0,  -60,   0, 30,  0),
  /* SERVE  */ P( 600, 600,   30, 30,   780, 780,    0,   0,  40,  40,  30,  30,   40,   0,   90,   0,  0,  0),
- /* PUSH   */ P(  80,1000,  300, 260,  300, 140,    0,   0,  60,  60,  30,  30,   90,-130,   60,   0,  0,  0),
+ /* PUSH   */ P(  80,600,  300, 260,  300, 140,    0,   0,  60,  60,  30,  30,   90,-130,   60,   0,  0,  0),
  /* DANA   */ P(2000, 500,  250, 620,  200, 800,  180, -90, 120,  60, 150, 200,   40, 260,  -40, 110, 14,  0),
  /* DANB   */ P( 500,2000,  620, 250,  800, 200,  -90, 180,  60, 120, 200, 150,   40,-260,  -40,-110, 14,  0),
  /* TEMPT  */ P( 120, 200,  200, 560,  200,1300,    0,  60,  60,  60,  30,  60,  200,   0,  150,  80,  0,  0),
@@ -61,11 +61,11 @@ typedef struct { u16 t; s16 x, y, z; u8 mode; } GK;                          // 
 #define CK_(t,ex,ey,ez,ax,ay,az,c) { T(t), ex, ey, ez, ax, ay, az, c }
 static const CK cam_k[] = {
     // 1. the studio wakes up: a wide crane drifting in
-    CK_(0,    -1500, 1050, -2500,   100, 200, 0, 0),   CK_(25, -500, 700, -2150, 0, 210, 0, 0),   CK_(50, 300, 420, -1800, 0, 200, 0, 0),
+    CK_(0,    -1500, 1050, -2500,   100, 200, 0, 0),   CK_(25, -500, 600, -2150, 0, 210, 0, 0),   CK_(50, 300, 420, -1800, 0, 200, 0, 0),
     // 2. Chad bounds in from the left; the camera tracks him across
-    CK_(50,   -700, 250, -1250,  -1000, 230, 0, 1),    CK_(70, -520, 250, -1200, -650, 230, 0, 0),   CK_(105, -150, 245, -1000, -100, 235, 0, 0),
+    CK_(50,   -600, 250, -1250,  -600, 230, 0, 1),    CK_(70, -520, 250, -1200, -650, 230, 0, 0),   CK_(105, -150, 245, -600, -100, 235, 0, 0),
     // 3. the audience goes wild: a low sweep along the front row
-    CK_(105,  -950, 120, -820,  -1700, 190, -250, 1),  CK_(130, -950, 130, -300, -1700, 220, 250, 0),  CK_(150, -900, 140, 100, -1700, 230, 400, 0),
+    CK_(105,  -950, 120, -820,  -1600, 190, -250, 1),  CK_(130, -950, 130, -300, -1600, 220, 250, 0),  CK_(150, -900, 140, 100, -1600, 230, 400, 0),
     // 4. Chad, mid-shot, easing in
     CK_(150,  260, 270, -760,   -20, 265, 0, 1),       CK_(199, 90, 275, -640, -30, 270, 0, 0),
     // 5. Chad, an extreme close-up on the build to the name
@@ -81,16 +81,16 @@ static const CK cam_k[] = {
     // 10. the glass, close: then the camera falls with it
     CK_(385,  830, 240, -380,   850, 195, -215, 1),    CK_(395, 825, 235, -360, 850, 195, -215, 0),  CK_(405, 800, 200, -420, 800, 90, -215, 0),  CK_(420, 760, 150, -480, 790, 50, -215, 0),
     // 11. everyone reacts: a wide, then the swing round to Missy
-    CK_(420,  250, 360, -1700,  500, 230, 0, 1),       CK_(465, 430, 300, -1450, 700, 235, 0, 0),
+    CK_(420,  250, 360, -1600,  500, 230, 0, 1),       CK_(465, 430, 300, -1450, 600, 235, 0, 0),
     // 12. Missy, low and heroic against the sun: a sweeping orbit across her front, audience-left round to audience-right (after the flash cut)
     CK_(473,  610, 100, -540,   975, 300, -150, 1),    CK_(505, 470, 110, -250, 975, 305, -150, 0),  CK_(545, 640, 125, 250, 975, 300, -150, 0),
     // 13. the pull-back to the whole stage for the title
-    CK_(545,  200, 520, -2100,  400, 230, 0, 1),       CK_(600, 80, 700, -2500, 400, 230, 0, 0) };
+    CK_(545,  200, 520, -2100,  400, 230, 0, 1),       CK_(600, 80, 600, -2500, 400, 230, 0, 0) };
 
 #define WK_(t,x,z,y) { T(t), x, z, y }
 static const WK chad_w[] = { WK_(0,-1500,-60,64), WK_(50,-1500,-60,64), WK_(76,-130,-60,64), WK_(88,-120,-60,128), WK_(190,-120,-60,128), WK_(200,-100,-60,170), WK_(345,-100,-60,170), WK_(355,-100,-60,128) };
 static const WK missy_w[] = { WK_(0,975,-150,192), WK_(280,975,-150,192), WK_(292,975,-150,196), WK_(340,975,-150,184), WK_(385,975,-150,176), WK_(430,975,-150,176), WK_(470,975,-150,192) };
-static const WK intern_w[] = { WK_(0,1500,-1100,225), WK_(285,1500,-1100,225), WK_(318,1100,-700,225), WK_(336,740,-300,36), WK_(350,740,-300,36), WK_(372,1000,-760,2), WK_(520,1000,-760,2) };
+static const WK intern_w[] = { WK_(0,1500,-1100,225), WK_(285,1500,-1100,225), WK_(318,1100,-600,225), WK_(336,740,-300,36), WK_(350,740,-300,36), WK_(372,600,-760,2), WK_(520,600,-760,2) };
 
 #define QK_(t,q,b) { T(t), q, b }
 static const QK chad_q[] = { QK_(0,Q_HANG,1), QK_(50,Q_HANG,1), QK_(88,Q_PRES,18), QK_(110,Q_OPEN,20), QK_(140,Q_CHEER,18), QK_(150,Q_TALK,24), QK_(172,Q_PRES,20), QK_(200,Q_POINT,16),
@@ -101,7 +101,7 @@ static const QK missy_q[] = { QK_(0,Q_HANG,1), QK_(205,Q_HIP,22), QK_(228,Q_WAVE
                               QK_(524,Q_DANA,10), QK_(536,Q_WIN,12), QK_(560,Q_BOW,30) };
 static const QK intern_q[] = { QK_(0,Q_HANG,1), QK_(296,Q_SERVE,12), QK_(336,Q_SERVE,12), QK_(350,Q_HANG,20), QK_(420,Q_RECOIL,6), QK_(440,Q_CLAP,14), QK_(500,Q_CHEER,14) };
 
-static const GK glass_k[] = { { T(285), 300, 0, -1500, 0 }, { T(336), 786, 188, -237, 0 }, { T(350), 850, 192, -215, 0 }, { T(392), 850, 192, -215, 0 }, { T(403), 815, 192, -215, 0 }, { T(409), 788, 192, -215, 0 }, { T(424), 765, 0, -215, 1 } };
+static const GK glass_k[] = { { T(285), 300, 0, -1500, 0 }, { T(336), 786, 206, -237, 0 }, { T(350), 850, 192, -215, 0 }, { T(392), 850, 192, -215, 0 }, { T(403), 815, 192, -215, 0 }, { T(409), 788, 192, -215, 0 }, { T(424), 765, 0, -215, 1 } };
 #define GLASS_X 765
 #define GLASS_Z (-215)
 #define GLASS_APPEAR T(336)
@@ -129,7 +129,7 @@ static const struct { u16 t; u8 lvl; } cheers[] = { { T(0), 40 }, { T(100), 255 
 typedef struct { int x, z, yaw, lx, lz, amp, phase; FPose pose; } Act;
 static Act act[A_N];
 static int ft, cue_i, lights, skipped, done_t, gal, fh, last_fh;   // fh: the people's clock, held (a new drawing every HOLD steps)   // gal: the pose gallery and model sheet (tests: AUTO_CUT=9999, 9998)
-static int grade_keep;
+static int grade_keep, pose_t;
 
 // ---- evaluating the data at time t ----
 static int cr(int p0, int p1, int p2, int p3, int u) {   // Catmull-Rom, u 0..1024
@@ -181,11 +181,12 @@ extern int gfx_grade;
 static void film_leave(void) { audio_film_end(); gfx_grade = grade_keep; }
 
 // ---- stepping ----
-#define HOLD 5                        // the people move on fives of the 60 Hz steps: 12 drawings a second, like a cartoon shot on threes
+#define HOLD 1                        // the people are posed for every drawing (they used to move on fives: 12 a second, and a picture that moved 2 vblanks in 3 made the cadence stutter)
+#define BEAT 5                        // blinks and the flap of a mouth keep their old pace (every fifth step)
 #define FADE_IN T(12)
 void cut_open(int arg) {
     grade_keep = gfx_grade; gfx_grade = 0;               // (the game's warm/cool grade off: the film's colours are the ones drawn)
-    gal = arg >= 9998 ? arg : 0; ft = arg > 1 && !gal ? arg : 0; fh = ft - ft % HOLD; last_fh = -1; cue_i = 0; lights = 0; skipped = 0; done_t = 0;
+    gal = arg >= 9998 ? arg : 0; ft = arg > 1 && !gal ? arg : 0; fh = ft - ft % HOLD; last_fh = -1; pose_t = fh; cue_i = 0; lights = 0; skipped = 0; done_t = 0;
     while (cue_i < (int)(sizeof cues / sizeof cues[0]) && cues[cue_i].t < ft) cue_i++;
     for (int i = 0; i < A_N; i++) { act[i].amp = 0; act[i].phase = 0; act[i].lx = -99999; }
     vox_n = gal ? 0 : audio_film_load("FILMVOX.BIN"); vox_end = 0;
@@ -207,10 +208,11 @@ static void poses_now(void) {
     for (int i = 0; i < A_N; i++) {
         Act *a = &act[i]; int x, z, yaw; mark_at(tr[i].w, tr[i].nw, fh, &x, &z, &yaw);
         int d = a->lx == -99999 ? 0 : (int)(ABS(x - a->lx) + ABS(z - a->lz));
+        int dt = CLAMP(fh - pose_t, 1, 30), dn = d * 5 / dt;           // (the distance covered in five steps, whatever the gap since the last drawing)
         a->lx = x; a->lz = z; a->x = x; a->z = z; a->yaw = yaw;
         a->phase = (a->phase + d * 3 / 2) & 255;
-        int want = d > 0 ? CLAMP(d * 90, 0, 1024) : 0;
-        a->amp += (want - a->amp) / 6; if (!want && a->amp < 16) a->amp = 0;
+        int want = dn > 0 ? CLAMP(dn * 90, 0, 1024) : 0;
+        a->amp += (want - a->amp) * dt / 30; if (!want && a->amp < 16) a->amp = 0;
         FPose p; pose_at(tr[i].q, tr[i].nq, fh, &p);
         FPose w; walk_pose(a, &w); plerp(&a->pose, &p, &w, a->amp);
         a->pose.nod += (s16)(fsin(fh * 3 + i * 40) / 6);      // breathing
@@ -231,7 +233,7 @@ int cut_update(int held, int pressed, int steps) {
     if (ft >= FILM_END + T(8)) { film_leave(); return 0; }
     lights += (256 - lights) * MIN(steps, 8) / 40;
     fh = ft - ft % HOLD;
-    if (fh != last_fh) { last_fh = fh; poses_now(); }     // (a new drawing of the people)
+    if (fh != last_fh) { poses_now(); pose_t = last_fh = fh; }     // (a new drawing of the people)
     return 1;
 }
 
@@ -256,11 +258,15 @@ static void wq(int x0, int y0, int x1, int y1, int Z, int r, int g, int b, int b
 static void floor_draw(int tf) {
     gfx_floor_pass = 1;
     const int N = 400;
+    int ex = cam.eye.vx, ez = -cam.eye.vz, low = -cam.eye.vy < 330;
     for (int gz = -3; gz < 5; gz++) for (int gx = -5; gx < 5; gx++) {
         int x0 = gx * N, z0 = gz * N, ck = ((gx + gz) & 1) ? 0 : 1;
         int r = (200 + ck * 14) * lights >> 8, g = (226 + ck * 10) * lights >> 8, b = (247 + ck * 6) * lights >> 8;
-        SVECTOR p[4]; V3(&p[0], x0, 0, z0); V3(&p[1], x0 + N, 0, z0); V3(&p[2], x0, 0, z0 + N); V3(&p[3], x0 + N, 0, z0 + N);
-        gfx_quad_f(&p[0], &p[1], &p[2], &p[3], r, g, b, 0);
+        int m = (low && ABS(x0 + N / 2 - ex) < 640 && ABS(z0 + N / 2 - ez) < 640) ? 2 : 1, n = N / m;     // (a tile the camera skims over is cut in four: a quad that crosses the near plane is dropped whole, and a hole in the floor popped in for a drawing)
+        for (int iz = 0; iz < m; iz++) for (int ix = 0; ix < m; ix++) {
+            SVECTOR p[4]; V3(&p[0], x0 + ix * n, 0, z0 + iz * n); V3(&p[1], x0 + ix * n + n, 0, z0 + iz * n); V3(&p[2], x0 + ix * n, 0, z0 + iz * n + n); V3(&p[3], x0 + ix * n + n, 0, z0 + iz * n + n);
+            gfx_quad_f(&p[0], &p[1], &p[2], &p[3], r, g, b, 0);
+        }
     }
     gfx_floor_pass = 0;
     (void)tf;
@@ -291,7 +297,7 @@ static void backdrop_draw(int tf) {
         wall_disc(cx, cy, Z - 3, 128, 120 * lights >> 8, 208 * lights >> 8, 246 * lights >> 8, 4);
     }
     for (int k = 0; k < 4; k++) {   // light shafts from the rig: a wide pale one with a narrow bright core
-        int xt = -1500 + k * 1000 + fsin(tf / 3 + k * 50) / 6, xb = xt + 420 + fsin(tf / 4 + k * 70) / 4, tw = 70, bw = 250;
+        int xt = -1500 + k * 600 + fsin(tf / 3 + k * 50) / 6, xb = xt + 420 + fsin(tf / 4 + k * 70) / 4, tw = 70, bw = 250;
         SVECTOR a, bb, c, d;
         V3(&a, xt - tw, 900, Z - 8); V3(&bb, xt + tw, 900, Z - 8); V3(&c, xb - bw, 0, Z - 8); V3(&d, xb + bw, 0, Z - 8); gfx_set_zbias(8);
         gfx_quad_f(&a, &bb, &c, &d, 196 * lights >> 8, 232 * lights >> 8, 254 * lights >> 8, 0);
@@ -333,7 +339,7 @@ static void oct4(int x, int zc, int yc, int rd, int r, int g, int b, int bias) {
 static void crowd_draw(int tf) {
     static const u8 hair[6][3] = { { 60, 36, 28 }, { 230, 90, 50 }, { 250, 214, 90 }, { 40, 40, 70 }, { 200, 90, 160 }, { 90, 60, 150 } };
     static const u8 shirt[6][3] = { { 255, 120, 150 }, { 255, 200, 60 }, { 90, 220, 140 }, { 90, 170, 255 }, { 190, 130, 255 }, { 255, 140, 70 } };
-    int ch = cheer_at(tf); tf -= tf % 3;
+    int ch = cheer_at(tf);
     const int kk = lights;
     for (int row = 0; row < 2; row++) {
         int x = -1500 - row * 190, base = row * 90;
@@ -342,7 +348,7 @@ static void crowd_draw(int tf) {
         for (int i = 0; i < 9; i++) {
             int z = -780 + i * 200 + ((row * 53) & 63) - 30, h = (row * 5 + i * 3) % 6;
             if (!gfx_visible(x, -(base + 150), -z, 130)) continue;
-            int bob = ABS(fsin(tf / 2 + i * 31 + row * 17)) * ch >> 10, y0 = base + bob, bw = 100, bh = 92, rd = 52, yc = y0 + bh + rd - 6;
+            int bob = ABS(fsin(tf / 2 + i * 31 + row * 17)) * ch >> 10, y0 = base + bob, bw = 128, bh = 128, rd = 38, yc = y0 + bh + rd + 4;      // (grown-ups: a head a sixth of the height, shoulders, a neck)
             const u8 *sh = shirt[(i + row * 2) % 6], *hr = hair[h];
             pl4(x, z - bw / 2, y0 + bh, z + bw / 2, y0 + bh, z - bw / 2, y0 + 4, z + bw / 2, y0 + 4, sh[0] * kk >> 8, sh[1] * kk >> 8, sh[2] * kk >> 8, 4);
             if (ch > 90) {   // hands up
@@ -351,16 +357,17 @@ static void crowd_draw(int tf) {
                     pl4(x, zz - 8, y0 + bh + 60 + up, zz + 8, y0 + bh + 60 + up, zz - 8, y0 + bh - 20, zz + 8, y0 + bh - 20, sh[0] * kk >> 8, sh[1] * kk >> 8, sh[2] * kk >> 8, 6);
                     pl4(x, zz - 11, y0 + bh + 80 + up, zz + 11, y0 + bh + 80 + up, zz - 11, y0 + bh + 56 + up, zz + 11, y0 + bh + 56 + up, 252 * kk >> 8, 206 * kk >> 8, 170 * kk >> 8, 8); }
             }
-            oct4(x, z, yc, rd + 4, 36 * kk >> 8, 16 * kk >> 8, 40 * kk >> 8, 8);      // the head: ink, then skin
+            pl4(x, z - 11, yc - rd + 8, z + 11, yc - rd + 8, z - 12, y0 + bh - 4, z + 12, y0 + bh - 4, 238 * kk >> 8, 190 * kk >> 8, 160 * kk >> 8, 7);    // the neck
+            oct4(x, z, yc, rd + 3, 36 * kk >> 8, 16 * kk >> 8, 40 * kk >> 8, 8);      // the head: ink, then skin
             oct4(x, z, yc, rd, 255 * kk >> 8, 214 * kk >> 8, 182 * kk >> 8, 10);
             pl4(x, z - rd * 5 / 10, yc + rd * 12 / 10, z + rd * 5 / 10, yc + rd * 12 / 10, z - rd * 105 / 100, yc + rd * 20 / 100, z + rd * 105 / 100, yc + rd * 20 / 100, hr[0] * kk >> 8, hr[1] * kk >> 8, hr[2] * kk >> 8, 12);
             for (int s = 0; s < 2; s++) { int zz = z + (s ? 1 : -1) * rd * 38 / 100;
-                pl4(x, zz - 8, yc + 2 + 9, zz + 8, yc + 2 + 9, zz - 8, yc - 18, zz + 8, yc - 18, 40 * kk >> 8, 24 * kk >> 8, 70 * kk >> 8, 14);                // the big eye
-                pl4(x, zz - 6, yc + 9, zz + 1, yc + 9, zz - 6, yc + 1, zz + 1, yc + 1, 255 * kk >> 8, 255 * kk >> 8, 255 * kk >> 8, 16);                    // its highlight
+                pl4(x, zz - 5, yc + 2 + 6, zz + 5, yc + 2 + 6, zz - 5, yc - 9, zz + 5, yc - 9, 40 * kk >> 8, 24 * kk >> 8, 70 * kk >> 8, 14);                // the big eye
+                pl4(x, zz - 4, yc + 6, zz + 0, yc + 6, zz - 4, yc + 1, zz + 0, yc + 1, 255 * kk >> 8, 255 * kk >> 8, 255 * kk >> 8, 16);                    // its highlight
                 int zc = z + (s ? 1 : -1) * rd * 66 / 100;
-                pl4(x, zc - 9, yc - 12, zc + 9, yc - 12, zc - 9, yc - 22, zc + 9, yc - 22, 255 * kk >> 8, 140 * kk >> 8, 150 * kk >> 8, 12); }              // the cheek
-            if (ch > 90) pl4(x, z - 9, yc - 22, z + 9, yc - 22, z - 7, yc - 38, z + 7, yc - 38, 150 * kk >> 8, 30 * kk >> 8, 50 * kk >> 8, 14);      // a shout
-            else pl4(x, z - 8, yc - 26, z + 8, yc - 26, z - 6, yc - 31, z + 6, yc - 31, 150 * kk >> 8, 30 * kk >> 8, 50 * kk >> 8, 14);
+                pl4(x, zc - 7, yc - 10, zc + 7, yc - 10, zc - 7, yc - 17, zc + 7, yc - 17, 255 * kk >> 8, 176 * kk >> 8, 170 * kk >> 8, 12); }              // the cheek
+            if (ch > 90) pl4(x, z - 8, yc - 17, z + 8, yc - 17, z - 6, yc - 27, z + 6, yc - 27, 150 * kk >> 8, 30 * kk >> 8, 50 * kk >> 8, 14);      // a shout
+            else pl4(x, z - 7, yc - 19, z + 7, yc - 19, z - 5, yc - 22, z + 5, yc - 22, 150 * kk >> 8, 30 * kk >> 8, 50 * kk >> 8, 14);
         }
     }
 }
@@ -369,7 +376,7 @@ static int glass_at(int t, int *o) {   // o: x y z; 0 if not there
     const int n = sizeof glass_k / sizeof glass_k[0]; int i = 0; for (int j = 0; j < n - 1; j++) if (glass_k[j].t <= t) i = j;
     const GK *a = &glass_k[i], *b = &glass_k[i + 1];
     if (i == 0) {   // on the tray: follows the intern's hand
-        const Act *n_ = &act[A_INTERN]; o[0] = n_->x + (fsin(n_->yaw) * 78 >> 8); o[2] = n_->z + (fcos(n_->yaw) * 78 >> 8); o[1] = 188; return 1;
+        const Act *n_ = &act[A_INTERN]; o[0] = n_->x + (fsin(n_->yaw) * 78 >> 8); o[2] = n_->z + (fcos(n_->yaw) * 78 >> 8); o[1] = 206; return 1;
     }
     int u = CLAMP((t - a->t) * 1024 / (b->t - a->t), 0, 1024);
     if (i == 5) {   // pushed over the edge: falls
@@ -413,8 +420,8 @@ static void expr_now(int who, Expr *e, int *blink) {
     int k = 0; for (unsigned j = 0; j < sizeof emo / sizeof emo[0]; j++) if (emo[j].who == who && emo[j].t <= ft) k = (int)j;
     e->mouth = emo[k].mouth; e->eyes = emo[k].eyes; e->brow = emo[k].brow; e->blush = emo[k].blush; e->sweat = emo[k].sweat; e->gx = e->gy = 0;
     int sp = speaking(who);
-    if (sp >= 0) { static const u8 flap[8] = { 2, 1, 0, 2, 1, 2, 0, 1 }; e->mouth = flap[(fh / HOLD * 3 + sp * 5) & 7]; if (e->eyes == E_HAPPY) e->eyes = E_OPEN; }
-    *blink = ((fh / HOLD + who * 11) % 31) == 0;
+    if (sp >= 0) { static const u8 flap[8] = { 2, 1, 0, 2, 1, 2, 0, 1 }; e->mouth = flap[(fh / BEAT * 3 + sp * 5) & 7]; if (e->eyes == E_HAPPY) e->eyes = E_OPEN; }
+    *blink = ((fh / BEAT + who * 11) % 31) == 0;
 }
 static void actor_draw(int i) {
     Act *a = &act[i];
@@ -543,8 +550,15 @@ static void plate(int in, int out, const char *l1, const char *l2, const char *s
     int sw = ui_tw(1, sub) + 24; gfx_rect(160 - sw / 2, y0 + 104, sw, 14, 22, 30, 110, 0); gfx_rect(160 - sw / 2, y0 + 104, sw, 2, 255, 255, 255, 0);
     ui_textc(160, y0 + 107, 1, sub, UI_WHITE);
 }
+#ifdef FILM_PROF      // test builds: a log of the film's cost per drawing (hblanks of CPU in each part, packet bytes, overflow); read from a RAM dump with test/ramsym.py
+u16 film_log[600][7]; u8 film_ps_log[600][5]; int film_log_n; static int fp[8];
+#define PROF(i) (fp[i] = VSync(1))
+#else
+#define PROF(i)
+#endif
 void cut_draw(void) {
     if (gal) { gallery_draw(); return; }
+    PROF(0);
     int f1 = ft - FL1, f2 = ft - FL2, fl = -1, fw = 0;
     if (f1 >= 0 && f1 < FL_COVER) { fl = f1; fw = 0; } else if (f2 >= 0 && f2 < FL_COVER) { fl = f2; fw = 1; }
     gfx_set_clear(150, 215, 245); gfx_set_fog(0, 0);
@@ -558,15 +572,15 @@ void cut_draw(void) {
     gfx_camera_update();
     gfx_set_identity();
     { int dx = c[0] - c[3], dy = c[1] - c[4], dz = c[2] - c[5]; int d2 = dx * dx + dy * dy + dz * dz;   // the ink is heavier in a close-up
-      g_wpx = d2 < 700 * 700 ? 22 : d2 < 1200 * 1200 ? 17 : 13; }
+      g_wpx = d2 < 600 * 600 ? 22 : d2 < 1200 * 1200 ? 17 : 13; }
     int hero = ft >= FL2 + FL_COVER && ft < T(545);
     g_rim = 1; g_rimc = hero ? BGR(255, 246, 214) : BGR(196, 236, 255);
-    floor_draw(ft);
-    backdrop_draw(ft); desk_draw(); crowd_draw(ft);
+    floor_draw(ft); PROF(1);
+    backdrop_draw(ft); desk_draw(); PROF(2); crowd_draw(ft); PROF(3);
     g_noink = ft > T(556);                                        // (the last pull-back: the people small, a plate over them, no room for ink)
     gfx_set_reserve(ft < T(46) || ft > T(556) ? RESERVE_PLATE : RESERVE_FILM);
     for (int i = 0; i < A_N; i++) actor_draw(i);
-    gfx_set_reserve(0);
+    gfx_set_reserve(0); PROF(4);
     gfx_set_identity(); glass_draw(fh);
     // the lens: speed lines on the beats, a flash, the flare, the letterbox sliding in, the fade in and out, then the words
     for (unsigned k = 0; k < sizeof line_w / sizeof line_w[0]; k++) if (ft >= line_w[k].a && ft < line_w[k].b) {
@@ -596,5 +610,12 @@ void cut_draw(void) {
     if (skipped) fa = MAX(fa, MIN(255, done_t * 14));
     if (fa > 0) { gfx_ui_blend(2); gfx_rect(0, 0, SCREEN_W, SCREEN_H, fa, fa, fa, 1); gfx_ui_blend(1); }
     if (ft > T(30) && ft < T(60) && !skipped) ui_text(250, 8 + 24, 1, "START SKIP", UI_SOFT);
+#ifdef FILM_PROF
+    PROF(5);
+    { extern int gfx_last_wait, gfx_overflow; extern int film_pf[4]; u16 *l = film_log[film_log_n++ % 600]; u8 *q = (u8 *)&l[2];
+      l[0] = (u16)ft; l[1] = (u16)(fp[5] - fp[0]); q[0] = (u8)MIN(255, (fp[2] - fp[0]) / 4); q[1] = (u8)MIN(255, (fp[3] - fp[2]) / 4); for (int k = 0; k < 4; k++) q[2 + k] = (u8)MIN(255, film_pf[k] / 4);
+      { extern int film_ps[8]; for (int k = 0; k < 5; k++) { film_ps_log[(film_log_n - 1) % 600][k] = (u8)MIN(255, film_ps[k] / 4); film_ps[k] = 0; } }
+      l[5] = (u16)(gfx_bytes_used() >> 4 | (gfx_overflow ? 0x8000 : 0)); l[6] = (u16)MIN(65535, gfx_last_wait); film_pf[0] = film_pf[1] = film_pf[2] = film_pf[3] = 0; }
+#endif
 }
 __attribute__((section(".ovl_head"), used)) const OvlHead ovl_head = { OVL_MAGIC, cut_open, cut_update, cut_draw };
