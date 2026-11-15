@@ -580,7 +580,7 @@ COLD int citizens_pie_open(char opt[8][24]) {
     return pie_build(c, opt);
 }
 void citizens_door_marks(void) { for (int i = 0; i < NCIT; i++) { const Cit *c = &cits[i]; if (c->zone != world_zone || c->mode == CM_GONE || c->mode == CM_KO) continue; world_door_mark(c->x / TILE, (-c->z) / TILE); } }
-int citizens_walkers(s16 *xy, int max, int cx, int cz) {   // (the traffic gives way to them) where everyone out in the city is, within 28 tiles of (cx, cz): x, z pairs
+COLD int citizens_walkers(s16 *xy, int max, int cx, int cz) {   // (the traffic gives way to them) where everyone out in the city is, within 28 tiles of (cx, cz): x, z pairs
     int n = 0;
     for (int i = 0; i < NCIT && n < max; i++) { const Cit *c = &cits[i]; if (c->zone != world_zone || c->mode == CM_GONE || c->mode == CM_KO || ABS(c->x - cx) + ABS(c->z - cz) > 28 * TILE) continue; xy[2 * n] = c->x; xy[2 * n + 1] = c->z; n++; }
     return n;

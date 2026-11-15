@@ -101,7 +101,7 @@ static void ghost_at(int i, int gx, int gy, int t, int *wx, int *wz) {   // wher
     *wx = gx * TILE + TILE / 2 + ((isin(a) * 3 * TILE) >> 12);
     *wz = -(gy * TILE + TILE / 2) - ((icos(b) * 3 * TILE) >> 12);
 }
-void ghost_tick(int steps, int t) {
+COLD void ghost_tick(int steps, int t) {
     if (!ghost_mode || !ghost_out()) return;
     int n = MIN(sim_grave_count(), GH_MAX);
     for (int i = 0; i < n; i++) {

@@ -806,7 +806,7 @@ COLD void items_draw_vehicle(int x, int z, int yaw, int y, int type, int ci, int
     switch (type) { case 0: veh_bike(ci, wph); break; case 1: veh_scooter(ci, wph); break; default: veh_car(type, ci, wph); }
     sk_k = 16; gfx_set_identity();
 }
-static void skate_model(void) {
+COLD static void skate_model(void) {
     const int BW = 34, Lf = 78, L = 112, T = 6, top = -30;
     sk_slab(BW, -Lf, top, Lf, top, T);                                     // the flat middle
     sk_slab(BW - 4, Lf, top, L, top - 15, T);                              // the nose kicks up

@@ -95,7 +95,7 @@ static void shelves_tidy(void) {                // empty shelves next to each ot
     }
     while (nsh && !shelf_n(nsh - 1)) nsh--;
 }
-static int new_shelf(int h) {                   // a shelf h tall: the best-fitting empty one (cut to size), else a new one at the end
+COLD static int new_shelf(int h) {                   // a shelf h tall: the best-fitting empty one (cut to size), else a new one at the end
     int best = -1;
     for (int k = 0; k < nsh; k++) if (sh[k].h >= h && !shelf_n(k) && (best < 0 || sh[k].h < sh[best].h)) best = k;
     if (best >= 0) {
