@@ -5863,6 +5863,9 @@ int main(void) {
 #ifdef AUTO_GLYPHS
         if (font_ready()) { glyph_chart(); gfx_flip(); continue; }
 #endif
+#ifdef AUTO_FILMS
+        { static int af, aw; if (state != ST_CUT && af < 20 && ++aw == 45) { aw = 0; if ((ovl = ovl_load("CUT.OVL"))) { ovl->open((af < 10 ? 1000 : 2000) + af % 10 + 1); af++; state = ST_CUT; } } }   // (test builds: the ten openings, then the ten endings, one after the other)
+#endif
         switch (state) {
             case ST_TITLE:
 #ifdef AUTO_CUT
