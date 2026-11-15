@@ -5220,7 +5220,7 @@ static COLD void dio_draw(int curx, int cury, int brush, int tick) {   // the mo
     dio_bytes0 = gfx_bytes_used();
     for (int d = 0; d <= DW; d++) for (int r = MAX(0, fr - d); r <= MIN(DD - 1, fr + d); r++) for (int c = MAX(0, fc - d); c <= MIN(DW - 1, fc + d); c++) {   // (the trimmings, ring by ring out from the focus: when the room runs out the far ones go, the same ones every frame)
         if (MAX(ABS(c - fc), ABS(r - fr)) != d) continue;
-        if (gfx_room() < DIO_CELL_MAX) goto trimmed;
+        if (gfx_room() < DIO_CELL_MAX + (brush > 0 ? brush * brush * 48 + 400 : 0)) goto trimmed;   // (the cursor's room is kept too)
         dio_cell(r, c, fc, fr, 1);
     }
     trimmed:
@@ -5352,7 +5352,9 @@ static void ne_draw(void) {
     static const u8 tc[6][3] = { { 44, 104, 196 }, { 236, 218, 156 }, { 100, 172, 78 }, { 52, 124, 58 }, { 214, 178, 102 }, { 146, 142, 136 } };
     dio_look(ne_cx, ne_cy, 0);
     gfx_sky(0xEBBE8C, 0xF0E6D7);
+    gfx_set_reserve(NH_RES_UI);   // (the model may not take the tools' and the texts' room: they always fit, as on the neighborhood screen)
     dio_draw(ne_cx, ne_cy, ne_brush, ne_t);
+    gfx_set_reserve(0);
     { int x = 8;   // the tools
       for (int i = 0; i < NT_N; i++) { int w = ui_tw(1, neTool[i]) + 8, on = i == ne_tool; ui_round(x, 8, w, 12, 3, on ? UI_BLUE : UI_PANEL, on ? UI_BLUE2 : UI_PANEL, 0); ui_text(x + 4, 10, 1, neTool[i], on ? UI_WHITE : UI_SOFT); x += w + 3; } }
     char b[64];
