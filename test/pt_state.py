@@ -17,3 +17,9 @@ if 'pk_stn' in S:
     n = arr('pk_stn', 64); o = arr('pk_sto', 64); b = arr('pk_st', 64)
     print('per screen frames/overflowed prims/peak bytes:', ' '.join('%s:%d/%d/%d' % (ST[i], n[i], o[i], b[i]) for i in range(len(ST)) if n[i]))
 print('all frames', arr('dbg_pk_frames', 1), 'frames with overflow', arr('dbg_pk_ovf', 1), 'prims dropped', arr('dbg_pk_ovf_n', 1), 'peak bytes', arr('dbg_pk_hi', 1))
+if os.environ.get('MAP'):   # MAP=r prints the lifeMap letters r tiles round the first Bore ('@' is the Bore), x to the right, y down: the plan for the pad script
+    r = int(os.environ['MAP']); px, py = d[20] // 256, (-d[21]) // 256; o = S['lifeMap'] - 0x80000000
+    print('Bore tile', px, py)
+    for y in range(max(0, py - r), min(80, py + r + 1)):
+        row = ram[o + y * 81:o + y * 81 + 80].decode('latin1')
+        print('%2d ' % y + ''.join('@' if (x, y) == (px, py) else row[x] for x in range(max(0, px - r), min(80, px + r + 1))))

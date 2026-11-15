@@ -4054,7 +4054,7 @@ static void draw_pick_list(const char *title, int count, int sel, const char *(*
         if (!k) { ui_round(199, y, 110, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(199, y + 2, 2, 8, 38, 146, 222, 0); }
         ui_fit_box(205, y, 100, 12, TX_LEFT | TX_MID, nm(i), !k ? UI_BLUE2 : UI_SOFT);
     }
-    sprintf(b, "%d OF %d", sel + 1, count); ui_text_box(199, top + 86, 110, 12, TX_CENTER | TX_MID, 1, b, UI_SOFT);
+    sprintf(b, "%d OF %d", sel + 1, count); ui_text_box(199, top + 83, 110, 12, TX_CENTER | TX_MID, 1, b, UI_SOFT);   // (was 86: the count sat on the card's bottom edge and the next card's top)
 }
 static int build_intro, build_last_frame = -99; static long build_last_cash, build_delta; static int build_delta_t;   // the BUILD MODE banner; the running +$ / -$
 static int build_tile_state(void) {   // what X would do on the tile under the cursor: 0 not allowed (red), 1 go ahead (green), 2 take away or replace (orange)
