@@ -335,7 +335,7 @@ static void gf_stop(void) { gf_on = 0; while (gf_busy) {} gf_ready = -1; }   // 
 #include "ds_tex.h"
 static int far_lod;
 static inline void gx_tex(int ax, int x, int y, int z) {   // the texture coordinate before a vertex (ax: 0 the ground, 1 a face along z, 2 a face along x)
-    int sc = ax == 0 ? x : ax == 1 ? z : x, tc = ax == 0 ? z : -y; gx_c1(0x22, (u32)(((sc * 199) >> 10) & 0xFFFF) | ((u32)((tc * 199) >> 10) << 16)); }
+    int sc = ax == 0 ? x : ax == 1 ? z : x, tc = ax == 0 ? z : -y; int sh = ax == 0 ? 10 : 11; gx_c1(0x22, (u32)(((sc * 199) >> sh) & 0xFFFF) | ((u32)((tc * 199) >> sh) << 16)); }   // (D86: a wall's pattern is twice as wide: one texel was about a pixel, and the stripes and bricks shimmered and tore)
 static inline int gx_txon(void) {   // the texture for the next quad (0: none); emits the change
     int w = far_lod || !o_tex ? -1 : tx_want; if (w != gx_txp) { gx_c1(0x2A, w < 0 ? 0 : (u32)(w * 16) | (1u << 16) | (1u << 17) | (7u << 26)); gx_txp = w; } return w >= 0; }
 static inline void gx_v(int x, int y, int z) {   // one vertex: the shortest command that sets it
@@ -403,7 +403,7 @@ ITCM_CODE static void qd(int x0, int y0, int z0, int x1, int y1, int z1, int x2,
       if (w != imm_txp) { GFX_TEX_FORMAT = w < 0 ? 0 : (u32)(w * 16) | (1u << 16) | (1u << 17) | (7u << 26); imm_txp = w; }
       if (w >= 0) { int ax; { s64 ux = x1 - x0, uy = y1 - y0, uz = z1 - z0, vx = x3 - x0, vy = y3 - y0, vz = z3 - z0, nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
                 if (nx < 0) nx = -nx; if (ny < 0) ny = -ny; if (nz < 0) nz = -nz; ax = ny >= nx && ny >= nz ? 0 : nx >= nz ? 1 : 2; }
-            #define ITX(x, y, z) { int sc_ = ax == 0 ? (x) : ax == 1 ? (z) : (x), tc_ = ax == 0 ? (z) : -(y); GFX_TEX_COORD = (u32)(((sc_ * 199) >> 10) & 0xFFFF) | ((u32)((tc_ * 199) >> 10) << 16); }
+            #define ITX(x, y, z) { int sc_ = ax == 0 ? (x) : ax == 1 ? (z) : (x), tc_ = ax == 0 ? (z) : -(y); int sh_ = ax == 0 ? 10 : 11; GFX_TEX_COORD = (u32)(((sc_ * 199) >> sh_) & 0xFFFF) | ((u32)((tc_ * 199) >> sh_) << 16); }
             ITX(x0, -y0, z0) glVertex3v16(x0, -y0, z0); ITX(x1, -y1, z1) glVertex3v16(x1, -y1, z1); ITX(x2, -y2, z2) glVertex3v16(x2, -y2, z2); ITX(x3, -y3, z3) glVertex3v16(x3, -y3, z3); polys += 2; return;
             #undef ITX
       } }
@@ -521,7 +521,7 @@ enum { M_MAP, M_LIVE, M_BUY, M_BUILD, M_CAS, M_TITLE };
 #include "ds_items.h"   // (D35) the catalogue: the DS's 52 items (ids 0-51, saved as c * 4 + i), then the PS1's others, in the PS1's ten tabs (tools/dsbuild/mk_dsitems.py)
 #define OBJ_ID(o) ((o)->c * 4 + (o)->i)
 #define IT_OF(o) (&ITEMS[OBJ_ID(o) < NITEM ? OBJ_ID(o) : 0])
-static const u16 FLOORC[5] = { C15(22, 16, 9), C15(26, 26, 24), C15(10, 16, 24), C15(14, 22, 12), C15(8, 8, 10) };
+static const u16 FLOORC[5] = { C15(22, 16, 9), C15(26, 26, 24), C15(10, 16, 24), C15(21, 15, 13), C15(8, 8, 10) };
 static const u16 WALLC[12] = { C15(30, 28, 22), C15(28, 20, 16), C15(20, 24, 30), C15(30, 30, 30), C15(13, 8, 5), C15(28, 24, 14), PWALL_LIST };   // (D82: 7 .. 12 are the PS1's six plan-home materials: BRICK, CLAPBOARD, STUCCO, SHINGLE WALL, BEADBOARD, STONE WALL; a plan home's outside walls)   // 5 = a door, 6 = a fence
 static int mark_x = -1, mark_y, mark_t;
 static void set_mode(int m);
@@ -1381,15 +1381,13 @@ ITCM_CODE static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, 
         u16 lf = C15(17, 11, 6), gold = C15(30, 26, 8); int lin = T * 7 / 2, lh2 = wh < lin ? wh : lin, hi = door_open;
         if (!vert) {
             block(x0, z0, x0 + ps, z1, -40, -wh, frame, shade(frame, 10)); block(x1 - ps, z0, x1, z1, -40, -wh, frame, shade(frame, 10));
-            if (wh > lin + T / 2) block(x0 + ps, z0, x1 - ps, z1, -lin, -wh, c, cap); block(x0 + ps, z0 + 2, x1 - ps, z1 - 2, -40, -45, shade(frame, 7), shade(frame, 9));
-            if (!hi) { block(x0 + ps, z0 + 4, x1 - ps, z1 - 4, -40, -lh2, lf, shade(lf, 10)); block(x0 + ps + 40, z0 - 4, x1 - ps - 40, z0, -T / 3, -lh2 + T / 3, shade(lf, 7), shade(lf, 8)); block(x0 + ps + 40, z1, x1 - ps - 40, z1 + 4, -T / 3, -lh2 + T / 3, shade(lf, 7), shade(lf, 8));
-                block(x1 - ps - 70, z1, x1 - ps - 40, z1 + 16, -T * 3 / 2, -T * 3 / 2 - 34, gold, gold); block(x1 - ps - 70, z0 - 16, x1 - ps - 40, z0, -T * 3 / 2, -T * 3 / 2 - 34, gold, gold); }
+            if (wh > lin + T / 2) block(x0 + ps, z0, x1 - ps, z1, -lin, -wh, c, cap); 
+            if (!hi) { block(x0 + ps, z0 + 4, x1 - ps, z1 - 4, -40, -lh2, lf, shade(lf, 10)); block(x1 - ps - 70, z0 - 16, x1 - ps - 40, z1 + 16, -T * 3 / 2, -T * 3 / 2 - 34, gold, gold); }
             else { block(x0 + ps, z0 - T * 9 / 10, x0 + ps + th, z0, -40, -lh2, lf, shade(lf, 10)); block(x0 + ps + th, z0 - T * 3 / 4, x0 + ps + th + 16, z0 - T * 3 / 4 + 30, -T * 3 / 2, -T * 3 / 2 - 34, gold, gold); }
         } else {
             block(x0, z0, x1, z0 + ps, -40, -wh, frame, shade(frame, 10)); block(x0, z1 - ps, x1, z1, -40, -wh, frame, shade(frame, 10));
-            if (wh > lin + T / 2) block(x0, z0 + ps, x1, z1 - ps, -lin, -wh, c, cap); block(x0 + 2, z0 + ps, x1 - 2, z1 - ps, -40, -45, shade(frame, 7), shade(frame, 9));
-            if (!hi) { block(x0 + 4, z0 + ps, x1 - 4, z1 - ps, -40, -lh2, lf, shade(lf, 10)); block(x0 - 4, z0 + ps + 40, x0, z1 - ps - 40, -T / 3, -lh2 + T / 3, shade(lf, 7), shade(lf, 8)); block(x1, z0 + ps + 40, x1 + 4, z1 - ps - 40, -T / 3, -lh2 + T / 3, shade(lf, 7), shade(lf, 8));
-                block(x1, z1 - ps - 70, x1 + 16, z1 - ps - 40, -T * 3 / 2, -T * 3 / 2 - 34, gold, gold); block(x0 - 16, z1 - ps - 70, x0, z1 - ps - 40, -T * 3 / 2, -T * 3 / 2 - 34, gold, gold); }
+            if (wh > lin + T / 2) block(x0, z0 + ps, x1, z1 - ps, -lin, -wh, c, cap); 
+            if (!hi) { block(x0 + 4, z0 + ps, x1 - 4, z1 - ps, -40, -lh2, lf, shade(lf, 10)); block(x0 - 16, z1 - ps - 70, x1 + 16, z1 - ps - 40, -T * 3 / 2, -T * 3 / 2 - 34, gold, gold); }
             else { block(x0 - T * 9 / 10, z0 + ps, x0, z0 + ps + th, -40, -lh2, lf, shade(lf, 10)); }
         }
         return; }
@@ -1927,7 +1925,7 @@ static void draw_build(int yaw) {   // (D39) dpass 1: the still part (recorded o
     if (dpass == 3) goto world;
     int ltx = lawn7 ? TX_GRASS : nb[1][1].terrain == BT_BEACH || nb[1][1].terrain == BT_DESERT || zone == Z_ISLAND || zone == Z_TOWN ? TX_SAND : nb[1][1].terrain == BT_ROCKY ? TX_GRAVEL : TX_GRASS;
     if (st) { gx_pid(1); tx_want = ltx; ground(tl(0), tl(0), tl(GN * 2), tl(GN * 2), 0, lawn);   // the lawn (sand on a beach): one quad and big darker squares (every polygon counts on the DS)
-        if (o_chk) for (int z = 0; z < GN; z += 2) for (int x = 0; x < GN; x += 2) if (((x + z) / 2) & 1) { int e = x + 2 > GN ? GN : x + 2, f = z + 2 > GN ? GN : z + 2; ground(tl(x * 2), tl(z * 2), tl(e * 2), tl(f * 2), -20, shade(lawn, 7)); }
+        if (o_chk) for (int z = 0; z < GN; z += 2) for (int x = 0; x < GN; x += 2) if (((x + z) / 2) & 1) { int e = x + 2 > GN ? GN : x + 2, f = z + 2 > GN ? GN : z + 2; if (flr[z][x] || flr[z][e - 1] || flr[f - 1][x] || flr[f - 1][e - 1]) continue; ground(tl(x * 2), tl(z * 2), tl(e * 2), tl(f * 2), -20, shade(lawn, 7)); }
         if (!zone && !t7()) ground(tl(0), tl(26) - 30, tl(GN * 2), tl(26), -20, C15(14, 24, 10));   // a low hedge line along the back of the plot (no more posts sticking out)
         tx_want = TX_PAVING; if (!zone && !t7()) block(tl(door_cx * 2) + T / 2, tl(door_cy * 2 + 1), tl(door_cx * 2 + 2) - T / 2, tl(26), 0, -26, C15(19, 18, 16), C15(23, 22, 20)); tx_want = -1; }   // a path from the front door to the pavement
     if (dpass == 2) PROF(10);
@@ -1941,9 +1939,10 @@ static void draw_build(int yaw) {   // (D39) dpass 1: the still part (recorded o
             for (int i = 0; i < nobj; i++) if (OBJ_LV(&objs[i]) == L && ID2CH[OBJ_ID(&objs[i])] == 0xDC) gx_pid(16 + i % 40), obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); }   // (the hens peck about: they move)
         if (it) for (int i = 0; i < nobj; i++) {   // then the items, nearest the camera first in budget terms: far ones are skipped when the DS runs out of polygons
             if (OBJ_LV(&objs[i]) != L) continue;
-            if (mode == M_LIVE) { int ox2 = tl(objs[i].x * 2) - camx, oz2 = tl(objs[i].y * 2) - camz; if (!on_board && abs(ox2) + abs(oz2) > 9000 && polys > 1800) continue; }
-            if (polys > (i >= yard_i0 ? 2900 : 2550)) continue;   // (D81: the yard's things come last in the list: the rooms leave them a share of the budget, so the hedges and planters are not what runs out)
-            gx_pid(16 + i % 40); obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); } }
+            if (mode == M_LIVE) { int ox2 = tl(objs[i].x * 2) - camx, oz2 = tl(objs[i].y * 2) - camz; if (!on_board && abs(ox2) + abs(oz2) > 9000 && polys > 3600) continue; }
+            if (polys > (i >= yard_i0 ? 4300 : 4200)) continue;
+            int lf_ = lod_force; if (polys > 3500) lod_force = 1;   // (D86: short of polygons a thing is one box, not dropped: the rooms were bare)   // (D81: the yard's things come last in the list: the rooms leave them a share of the budget, so the hedges and planters are not what runs out)
+            gx_pid(16 + i % 40); obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); lod_force = lf_; } }
     gy_off = 0; lod_force = 0; if (dpass == 2) PROF(6);
 world:
     if (wd) { gx_pid(3); if (mode == M_LIVE) draw_world(yaw); else {   // (D36: the street round the plot after the house, so the house is never what the DS's polygon list drops)

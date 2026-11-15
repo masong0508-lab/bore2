@@ -410,3 +410,9 @@ No press was dropped (seen = acted on) in any scene. The 3D stays 30 in every `b
 - Tested in melonDS: 3D 30 fps flat, ds_flow, ds_items_test, ds_traffic, ds_oldsave (d84 save loads) all PASS. Test scenes 190-193 (bench.py `bub_*`).
 - Shots: `docs/ds_shots/bubbles_before_*.png`, `bubbles_after_*.png`, `bubbles_d85_house.png`.
 - Left: not tried on real hardware; icons are small on the top-down view.
+
+## D86 homes furnished and clean (ROM bore2_dsi_d86.nds)
+- Rooms were bare: doors cost about 100 polygons each, so the items pass was over budget and every thing was skipped. Doors slimmed, item budget raised, and a thing is now one box (not dropped) when polygons run short.
+- Green patches in rooms: the darker lawn squares (y -20) z-fought with the floors (y -40); squares over floors are no longer drawn. Green rush-mat floor colour made a warm rose.
+- Wall stripes/seams: wall textures twice as wide (a texel was about a pixel).
+- melonDS: 30 fps, about 4650 of 6144 vertices. Shots: docs/ds_shots/d86_home_before.png, d86_home_after.png. Not run: ds_oldsave, ds_flow.
