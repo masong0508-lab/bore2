@@ -957,7 +957,7 @@ int items_hit(char ch, int rot, int along, int cu, int cv, int r) {
 static int is_ramp_c(char c);
 // ---- the pet (a dog or a cat, about knee high) and the city bus ----
 static const u8 petCol[6][3] = { { 150, 100, 60 }, { 52, 48, 54 }, { 238, 234, 226 }, { 226, 140, 50 }, { 142, 142, 152 }, { 206, 172, 120 } };
-void items_draw_pet(int x, int z, int yaw, int y, int kind, int ci, int phase) {
+COLD void items_draw_pet(int x, int z, int yaw, int y, int kind, int ci, int phase) {
     int r = petCol[ci % 6][0], g = petCol[ci % 6][1], b = petCol[ci % 6][2], dk = 40;
     VECTOR p; setVector(&p, x, y, z); gfx_set_object(&p, yaw & 4095); sk_k = 16;
     int sw = (isin(phase & 4095) * 14) >> 12, wag = (isin((phase * 2) & 4095) * 10) >> 12;   // the legs swing; the tail wags
@@ -1009,7 +1009,7 @@ void items_draw_bus(int x, int z, int yaw, int y) {   // the city bus; yaw is th
 static void dbx(int x0, int x1, int y0, int y1, int z0, int z1, const int *c) { sk_box(x0, x1, y0, y1, z0, z1, c[0], c[1], c[2]); }
 static void dpal(int i, int *c) { dog_pal(i, &c[0], &c[1], &c[2]); }
 static void dshade(const int *c, int k, int *o) { for (int i = 0; i < 3; i++) o[i] = MIN(255, c[i] * k / 16); }
-void items_draw_dog(int x, int z, int yaw, int y, const DogLook *dl, int phase) {
+COLD void items_draw_dog(int x, int z, int yaw, int y, const DogLook *dl, int phase) {
     const u8 *l = dl->look;
     int c1[3], c2[3], cp[3], cn[3], ce[3], cl[3], ch[3], co[3], d1[3], dk[3] = { 24, 22, 26 }, wh[3] = { 244, 244, 240 }, gd[3] = { 232, 190, 60 }, pk[3] = { 236, 110, 130 };
     dpal(l[DL_C1], c1); dpal(l[DL_C2], c2); dpal(l[DL_PATC], cp); dpal(l[DL_NOSEC], cn); { static const u8 ec[8] = { 2, 1, 15, 13, 14, 11, 9, 0 }; dpal(ec[l[DL_EYEC] & 7], ce); }

@@ -62,7 +62,7 @@ static void hair_textures(void) {
         *t = atlas_add(16, 16, tbuf);
     }
 }
-void voxel_init(void) {
+COLD void voxel_init(void) {
     hair_textures();
     // skin: an even tone with the faintest grain
     for (int i = 0; i < 256; i++) { int v = (124 + (tr() % 9) - 4) >> 3; tbuf[i] = RGB(v, v, v); }
@@ -489,7 +489,7 @@ void voxel_corners(const Bore *b, int i, SVECTOR *out) {
     const s8 *d = b->cell[i].d;
     for (int k = 0; k < 8; k++, d += 3) { int nx, ny, nz; nominal(b, i, k, &nx, &ny, &nz); out[k].vx = (s16)(nx + d[0]); out[k].vy = (s16)(ny + d[1]); out[k].vz = (s16)(nz + d[2]); out[k].pad = 0; }
 }
-static void shape_body(Bore *b) {
+COLD static void shape_body(Bore *b) {
     int hx, hy, hz, hs; head_box(b, &hx, &hy, &hz, &hs);
     int baby = b->stage == AG_BABY, kid = b->stage <= AG_CHILD;
     int base = baby ? 0 : kid ? 1 : 2;                   // how strongly the adult shaping applies (babies stay round and simple)
@@ -672,7 +672,7 @@ static int pc_top(int X, int y, int Z) {   // the top rounding of a grid point: 
     }
     return pc_tr[y + 1][Z][X];
 }
-void voxel_prepare(Bore *b) {
+COLD void voxel_prepare(Bore *b) {
     int n = 0, nd = 0, hx, hy, hz, hs; head_box(b, &hx, &hy, &hz, &hs);
     memset(pv, 0, sizeof pv); memset(pc_ok, 0, sizeof pc_ok);
     for (int y = 0; y < H; y++) for (int z = 0; z < D; z++) memcpy(&PV(0, y, z), b->vox[y][z], W);

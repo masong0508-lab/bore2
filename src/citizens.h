@@ -40,4 +40,5 @@ int  citizens_take(int pid, int at, int place);  // bring person pid to life: at
 void citizens_release(int slot);                 // they are wanted elsewhere: gone as soon as nobody is looking
 int  citizens_place_of(int slot);                // where a living one was brought to life: the place, or -1 for home
 int  citizens_send_buyer(int tx, int ty);       // FARM LIFE: someone near the farm stand at that tile comes to buy (1: sent)
+int  citizens_walkers(s16 *xy, int max, int cx, int cz);   // (the traffic) the people out in the city within 28 tiles of (cx, cz): x, z pairs (z negative south), how many
 void citizens_shift(int dtx, int dty);           // the window moved by that many tiles: everyone with it

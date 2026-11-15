@@ -162,7 +162,7 @@ static u16 skin_c(int i, u16 c, int season, int wet) {   // one floor colour as 
     if (wet == 1 && i >= FL_GRASS && i != FL_WATER) { r = r * 11 / 16; g = g * 12 / 16; b = b * 13 / 16; }   // rain-dark
     return RGB(r, g, b);
 }
-void world_season_skin(int season, int wet) {
+COLD void world_season_skin(int season, int wet) {
     int key = season * 4 + wet; if (key == skin_key) return; skin_key = key;
     for (int i = FL_GRASS; i < NFLOORS; i++) {
         const Tex *t = floor_tex(i); u16 sc[4]; int r = 0, g = 0, b = 0;
@@ -183,7 +183,7 @@ void world_season_skin(int season, int wet) {
 }
 #pragma GCC push_options
 #pragma GCC optimize ("Os")   // (making the lots, rooms and the island: once a block, built small to leave memory for the world)
-void world_init(void) {
+COLD void world_init(void) {
     nat_init();
     if (ram8) { Level *p = (Level *)xalloc(sizeof(Level) * NLVPOOL8); if (p) { lvpool = p; nlvpool = NLVPOOL8; xrelease(lvpool_small, sizeof lvpool_small); } }   // 8 MB: room for every storey anywhere (and the small pool goes back to the pot)
     for (int z = 0; z <= ZONE_N; z++) levels_clear(lvown[z]);
@@ -280,7 +280,7 @@ static void gUpstairs(void) {
     U->map[4][12] = 'S'; U->map[3][16] = 'b'; U->map[7][11] = 'l'; U->map[3][11] = 'C';
     roof_dirty = 1;
 }
-void world_gen(void) {
+COLD void world_gen(void) {
     ao_dirty = 1;   // THE MAN BASE, as the GBA game lays it out (mapGen)
     for (int y = 0; y < MH; y++) { for (int x = 0; x < MW; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = FL_GRASS; wallMap[y][x] = 0; } lifeMap[y][MW] = 0; }
     gLine(0, 0, MW - 1, 0, 'w', 13); gLine(0, MH - 1, MW - 1, MH - 1, 'w', 13); gLine(0, 0, 0, MH - 1, 'w', 13); gLine(MW - 1, 0, MW - 1, MH - 1, 'w', 13);
@@ -457,7 +457,7 @@ void world_isl_preview(u32 seed, u16 *px) {   // the castaway's island for that 
         px[Y * 128 + X] = c | 0x8000;
     }
 }
-void world_gen_island(void) {
+COLD void world_gen_island(void) {
     nhomes[ZONE_ISLAND] = 0;
     ao_dirty = 1;
     u32 S = wsalt * 2654435761u + 0x15ADu;
@@ -541,7 +541,7 @@ void world_gen_island(void) {
         if (c) lifeMap[y][x] = c;
     }
 }
-void world_gen_town(void) {   // Strange Town: a desert main street with a diner, a trailer, the lab and work
+COLD void world_gen_town(void) {   // Strange Town: a desert main street with a diner, a trailer, the lab and work
     nhomes[ZONE_TOWN] = 0;
     for (int y = 0; y < MH; y++) { for (int x = 0; x < MW; x++) { lifeMap[y][x] = '.'; floorMap[y][x] = FL_SAND; wallMap[y][x] = 0; } lifeMap[y][MW] = 0; }
     gLine(0, 0, MW - 1, 0, 'w', 13); gLine(0, MH - 1, MW - 1, MH - 1, 'w', 13); gLine(0, 0, 0, MH - 1, 'w', 13); gLine(MW - 1, 0, MW - 1, MH - 1, 'w', 13);
