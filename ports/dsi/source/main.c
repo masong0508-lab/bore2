@@ -440,8 +440,30 @@ static u16 seas(u16 c) {   // (D50) the grass as the season makes it, as the PS1
     int r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31, tr, tg, tb, f; if (s == 0) { tr = 9; tg = 27; tb = 8; f = 8; } else if (s == 2) { tr = 24; tg = 15; tb = 6; f = 11; } else { tr = 29; tg = 30; tb = 31; f = 15; }
     r += (tr - r) * f / 16; g += (tg - g) * f / 16; b += (tb - b) * f / 16; return (u16)(r | g << 5 | b << 10 | 0x8000); }
 static u32 hsh(u32 a); static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise, u16 rc, u16 wc); static const u16 ROOFC[6];
-static int plan_roof(const LotPlan *pl, int *sty, int *pit, int *col) {   // (D80) a home's roof from the town plan, as the PS1's roof_region does: hipped (or a mansion) or a gable, two colours a neighbourhood has, low for a compact or ranch and steep for the rest
-    if (!pl || !pl->type) return 0; *sty = pl->roof == RF_HIP || pl->type == HT_MANSION ? 3 : pl->roof == RF_FRONT && (pl->type == HT_COMPACT || pl->type == HT_BOX || pl->type == HT_TWO) ? 4 : 2;  /* D81: a front gable, as roof_pick */ *col = (pl->pal + pl->rcol * 3) % 6; *pit = pl->type <= HT_RANCH ? 1 : 2; return 1; }
+// (D82) THE PS1'S ROOF AND WALL RULES, mirrored (world.c is not in the DS build): roof_pick / world_roof_of (the form: hip, gable, front gable or flat, the colour, the pitch),
+// world_roof_rgb (ROOFC below), world_plan_wall_rgb (a neighbourhood's six materials: PWALL15 and PWTX) and far.c's wallc (FWALL15). The DS's sty: 1 flat, 2 gable, 3 hip, 4 front gable.
+#define PWALL_LIST C15(20, 11, 8), C15(26, 26, 22), C15(26, 22, 16), C15(17, 13, 9), C15(25, 24, 22), C15(14, 13, 12)
+static const u16 PWALL15[6] = { PWALL_LIST };   // BRICK, CLAPBOARD, STUCCO, SHINGLE WALL, BEADBOARD, STONE WALL: the average of each one's four colours (world.c wp_top)
+#define W8(r, g, b) C15((r) >> 3, (g) >> 3, (b) >> 3)
+static const u16 FWALL15[10] = { W8(226, 214, 190), W8(176, 96, 76), W8(236, 234, 226), W8(214, 190, 150), W8(160, 160, 164), W8(180, 200, 214), W8(186, 206, 170), W8(226, 180, 180), W8(120, 140, 160), W8(150, 120, 96) };   // far.c's wallc
+static void roof_dice(int x, int y, int w, int d, int top, const LotPlan *known, int *sty, int *pit, int *col) {   // roof_pick: x y the building's north-west tile in the whole map, w d its size in tiles, top its storeys over the ground one; known: its lot's plan (a home's roof comes from it)
+    u32 h = bm_hash(x, y, bm_seed() ^ 0x500Fu); int s = top >= 2 || (w >= 11 && d >= 9 && (h & 3) == 0) ? 2 : (int)((h >> 2) & 1);   // towers and big blocks: flat roofs
+    *col = (int)((h >> 4) % 6); *pit = 1 + (int)((h >> 8) & 1);
+    if (bm_gen >= 7 && known && known->type != HT_NONE) { const LotPlan *pp = known; s = pp->roof == RF_HIP || pp->type == HT_MANSION ? 0 : pp->roof == RF_FRONT && (pp->type == HT_COMPACT || pp->type == HT_BOX || pp->type == HT_TWO) ? 3 : 1;
+        *col = (pp->pal + pp->rcol * 3) % 6; *pit = pp->type <= HT_RANCH ? 1 : 2; }
+    *sty = s == 0 ? 3 : s == 1 ? 2 : s == 2 ? 1 : 4; }
+static int plan_roof(const LotPlan *pl, int *sty, int *pit, int *col) {   // a home's roof from the town plan alone (the plan branch of roof_dice)
+    if (!pl || !pl->type) return 0; roof_dice(0, 0, 0, 0, 0, pl, sty, pit, col); return 1; }
+static int roof_far7(int bx, int by, const BInfo *b, int *sty, int *pit, int *col, int *home, int *pwall) {   // world_roof_of through bm_lot_foot, what far.c does for every building it draws: 0 if nothing stands on the lot
+    u8 ft[5]; LotPlan pl; if (bx < 0 || bx >= BM_N || by < 0 || by >= BM_N || !bm_lot_foot(bx, by, b, ft, &pl)) return 0;
+    const LotPlan *pq = &pl; LotPlan q; if (bm_gen >= 7 && pl.pal == 255) { bm_lot_plan(bx, by, b, &q); pq = &q; }
+    roof_dice(bx * BM_BLK + ft[0], by * BM_BLK + ft[1], ft[2] - ft[0] + 1, ft[3] - ft[1] + 1, bm_storeys(b) - 1, pq, sty, pit, col);
+    *home = ft[4]; *pwall = ft[4] && bm_gen >= 7 && b->set != 255 && pq->type ? (pq->pal * 2 + pq->wall) % 6 : -1; return 1; }
+static u16 far_wall7(const BInfo *b, int pwall) { return pwall >= 0 ? PWALL15[pwall] : FWALL15[b->lot == LOT_TOWER ? 8 : (b->h >> 20) % 8u]; }   // far.c: a plan home's material, else the lot's hash (a tower 8)
+static u16 map_wall7(const BInfo *b, int home, int pwall) {   // the town model's walls (main.c d_bld): a plan home's material, an older home's by its dice, a block of flats, a tower, a civic building or a shop
+    static const u16 OLD[6] = { W8(240, 226, 186), W8(196, 214, 232), W8(238, 208, 128), W8(244, 244, 238), W8(232, 186, 178), W8(184, 196, 178) };
+    int l = b->lot; return pwall >= 0 ? PWALL15[pwall] : home ? OLD[(u8)(b->h >> 8) % 6] : l == LOT_APART ? W8(214, 170, 140) : (l == LOT_TOWER || l == LOT_OFFICE || l == LOT_HOTEL) ? W8(168, 184, 210) : (l == LOT_SCHOOL || l == LOT_LIBRARY || l == LOT_GALLERY || l == LOT_CLINIC || l == LOT_CINEMA) ? W8(236, 228, 212) : W8(214, 220, 240); }
+static int r7_bx = -1, r7_by = -1;   // the block the lot being drawn (far_lot, draw_lot) stands on
 static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl, the town plan's home for the lot, when the world is version 7)
     u32 h = b->h; int k = b->lot;
     int tr = pl && ((k >= LOT_HOUSE && k <= LOT_TWO) || k == LOT_PARK) ? BT_GRASS : b->terrain;   // (D80: lawn in a dry town for homes and parks)
@@ -459,6 +481,7 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
     u16 walls[6] = { C15(26, 22, 16), C15(24, 14, 10), C15(22, 24, 26), C15(26, 26, 18), C15(16, 22, 14), C15(24, 20, 22) };
     u16 wall = walls[(h >> 8) % 6];
     if (k >= LOT_SHOP && k != LOT_PARK) wall = k == LOT_TOWER || k == LOT_OFFICE || k == LOT_HOTEL ? C15(16, 20, 26) : C15(27, 12, 10);
+    int rs7 = 0, rp7 = 0, rc7 = 0, rh7 = 0, rw7 = -1, rf7 = r7_bx >= 0 && roof_far7(r7_bx, r7_by, b, &rs7, &rp7, &rc7, &rh7, &rw7); if (rf7) wall = map_wall7(b, rh7, rw7);   // (D82: the PS1's walls and roof for the lot's building)
     int X0 = tl(x0), X1 = tl(x0 + w), Z0 = tl(z0), Z1 = tl(z0 + d), Y = -(hh * T), nth = 0, p7 = pl && pl->type && k <= LOT_APART;
     if (p7) { X0 = tl(2 * (pl->x0 - BM_LOT0)); X1 = tl(2 * (pl->x1 - BM_LOT0 + 1)); Z0 = tl(2 * (pl->y0 - BM_LOT0)); Z1 = tl(2 * (pl->y1 - BM_LOT0 + 1)); nth = pl->face == LF_NORTH;
         if (pl->wx1 && pl->type == HT_L) { int wa = pl->wx0 - BM_LOT0, wb = pl->wx1 - BM_LOT0 + 1; if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; block(tl(2 * wa), tl(2 * (pl->wy0 - BM_LOT0)), tl(2 * wb), tl(2 * (pl->wy1 - BM_LOT0 + 1)), 0, -2 * T, C15(18, 18, 20), C15(20, 20, 22)); }
@@ -470,6 +493,7 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
     block((X0 + X1) / 2 + T, Z0 + T / 2, (X0 + X1) / 2 + T * 3 / 2, Z0 + T, Y, Y - T * 3 / 2, C15(12, 6, 5), C15(12, 6, 5));   // a chimney
     { u32 rh = hsh(h ^ 0x500Fu); int sty = st >= 3 || k > LOT_APART ? 1 : 2 + ((rh >> 2) & 1), pt = 1 + (int)((rh >> 8) & 1), cl = (int)((rh >> 4) % 6); static const s16 PIT[3] = { 110, 170, 250 };   // (D42: the map's picture has the lot's real roof)
       if (p7 && k <= LOT_APART) plan_roof(pl, &sty, &pt, &cl);   // (D80: the plan's roof, the same as in the lot)
+      if (rf7) { sty = rs7; pt = rp7; cl = rc7; }   // (D82: world_roof_of)
       roof_shape(X0 - T / 3, Z0 - T / 3, X1 + T / 3, Z1 + T / 3, Y, sty, PIT[pt], ROOFC[cl], wall); }
     if (p7) { for (int i = 0; i < 2; i++) tree(tl(2 * (pl->x0 - BM_LOT0) / 2 + 3 + i * 9), nth ? tl(26 - 3) : tl(3), T * 2); }   // (the plan's yard: a tree or two behind)
     else if (k <= LOT_APART) {   // a fence and a pool behind, or a garden
@@ -488,7 +512,7 @@ enum { M_MAP, M_LIVE, M_BUY, M_BUILD, M_CAS, M_TITLE };
 #define OBJ_ID(o) ((o)->c * 4 + (o)->i)
 #define IT_OF(o) (&ITEMS[OBJ_ID(o) < NITEM ? OBJ_ID(o) : 0])
 static const u16 FLOORC[5] = { C15(22, 16, 9), C15(26, 26, 24), C15(10, 16, 24), C15(14, 22, 12), C15(8, 8, 10) };
-static const u16 WALLC[6] = { C15(30, 28, 22), C15(28, 20, 16), C15(20, 24, 30), C15(30, 30, 30), C15(13, 8, 5), C15(28, 24, 14) };   // 5 = a door, 6 = a fence
+static const u16 WALLC[12] = { C15(30, 28, 22), C15(28, 20, 16), C15(20, 24, 30), C15(30, 30, 30), C15(13, 8, 5), C15(28, 24, 14), PWALL_LIST };   // (D82: 7 .. 12 are the PS1's six plan-home materials: BRICK, CLAPBOARD, STUCCO, SHINGLE WALL, BEADBOARD, STONE WALL; a plan home's outside walls)   // 5 = a door, 6 = a fence
 static int mark_x = -1, mark_y, mark_t;
 static void set_mode(int m);
 static int opt_ret = -1;   // where Back in Options returns to (-1 = the title)
@@ -1343,7 +1367,7 @@ ITCM_CODE static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, 
         }
         return; }
     if (o_det) block(x0 - 3, z0 - 3, x1 + 3, z1 + 3, -40, -40 - T / 7, base, shade(base, 9));                       // skirting board
-    { static const s8 WT[4] = { TX_CLAPBOARD, TX_BRICK, TX_STUCCO, TX_BEADBOARD }; tx_want = WT[(v - 1) & 3]; }   // (D43: the PS1's wall patterns, in the colour you painted)
+    { static const s8 WT[4] = { TX_CLAPBOARD, TX_BRICK, TX_STUCCO, TX_BEADBOARD }, PWT[6] = { TX_BRICK, TX_CLAPBOARD, TX_STUCCO, TX_SHINGLE_WALL, TX_BEADBOARD, TX_STONE_WALL }; tx_want = v >= 7 ? PWT[(v - 7) % 6] : WT[(v - 1) & 3]; }   // (D43: the PS1's wall patterns, in the colour you painted)
     block(x0, z0, x1, z1, -40 - T / 7, -wh, c, cap); tx_want = -1;                                                       // the wall, with a pale cap
     (void)vert; (void)th;
 }
@@ -1441,6 +1465,7 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
     int st = bm_storeys(b); int hh = 2 * st + (st == 1 ? 2 : 0);
     u16 walls[6] = { C15(26, 22, 16), C15(24, 14, 10), C15(22, 24, 26), C15(26, 26, 18), C15(16, 22, 14), C15(24, 20, 22) }; u16 wall = walls[(h >> 8) % 6];
     if (k >= LOT_SHOP) wall = k == LOT_TOWER || k == LOT_OFFICE || k == LOT_HOTEL ? C15(16, 20, 26) : C15(27, 12, 10);
+    int rs7 = 0, rp7 = 0, rc7 = 0, rh7 = 0, rw7 = -1, rf7 = r7_bx >= 0 && roof_far7(r7_bx, r7_by, b, &rs7, &rp7, &rc7, &rh7, &rw7); if (rf7) wall = far_wall7(b, rw7);   // (D82: far.c's wall colour and world_roof_of's roof for the lot's building)
     int X0 = ox + tl(x0), X1 = ox + tl(x0 + w), Z0 = oz + tl(z0), Z1 = oz + tl(z0 + d), Y = -(hh * T), nth = 0;
     if (pl) { nth = pl->face == LF_NORTH; if (pl->type) { int a, c, e, f; far_foot7(b, pl, &a, &e, &c, &f); int bx1 = pl->x1 - BM_LOT0 + 1, by0 = pl->y0 - BM_LOT0, by1 = pl->y1 - BM_LOT0 + 1; (void)c; (void)f; X0 = ox + tl(2 * (pl->x0 - BM_LOT0)); X1 = ox + tl(2 * bx1); Z0 = oz + tl(2 * by0); Z1 = oz + tl(2 * by1);
             if (pl->wx1) { int wa = pl->wx0 - BM_LOT0, wb = pl->wx1 - BM_LOT0 + 1, wz0 = pl->wy0 - BM_LOT0, wz1 = pl->wy1 - BM_LOT0 + 1; if (pl->type == HT_L) { if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; block(ox + tl(2 * wa), oz + tl(2 * wz0), ox + tl(2 * wb), oz + tl(2 * wz1), 0, -2 * T, C15(18, 18, 20), C15(20, 20, 22)); } else { if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; X0 = X0 < ox + tl(2 * wa) ? X0 : ox + tl(2 * wa); X1 = X1 > ox + tl(2 * wb) ? X1 : ox + tl(2 * wb); } }
@@ -1450,6 +1475,7 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
     if (!far_lod) { int wn = (X1 - X0) / 5, zf = nth ? Z0 - 14 : Z1, zg = nth ? Z0 : Z1 + 14; block(X0 + wn * 2, zf, X0 + wn * 2 + wn * 7 / 10, zg, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); block(X0 + wn, zf, X0 + wn + wn * 7 / 10, zg, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); block(X0 + wn * 3, zf, X0 + wn * 3 + wn * 7 / 10, zg, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); }
     { u32 rh = hsh(h ^ 0x500Fu); int sty = st >= 3 || k > LOT_APART ? 1 : 2 + ((rh >> 2) & 1), pt = 1 + (int)((rh >> 8) & 1), cl = (int)((rh >> 4) % 6); static const s16 PIT[3] = { 110, 170, 250 };   // (D42) hip, gable or flat, a colour and a pitch per building
       if (pl && pl->type && k <= LOT_APART) plan_roof(pl, &sty, &pt, &cl);   // (D80) the plan's roof
+      if (rf7) { sty = rs7; pt = rp7; cl = rc7; }   // (D82: world_roof_of)
       roof_shape(X0 - T / 3, Z0 - T / 3, X1 + T / 3, Z1 + T / 3, Y, sty, PIT[pt], ROOFC[cl], wall); }
     for (int i = 0; i < pop && i < 3; i++) person(ox + tl(4 + i * 3), nth ? oz + tl(1) : oz + tl(z0 + d + 3), C15(6 + i * 4, 10, 25 - i * 3), yaw);   // the bores who live there
 }
@@ -1516,7 +1542,7 @@ static u16 horizon_col(void) { return zone == Z_ISLAND ? C15(5, 12, 24) : zone =
 static void draw_far_all(int yaw) {   // last, so the lot, the sims and the citizens always get the polygons first
     for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { if (!i && !j) continue; const BInfo *b = &nb[j + 1][i + 1];
         if (b->terrain == BT_SEA) { ground(tl(36 * i), tl(36 * j), tl(36 * i + 36), tl(36 * j + 36), -8, C15(5, 12, 24)); continue; }
-        if (polys > (t7() ? POLY7 : 2700)) continue; far_lot(b, 36 * i * T, 36 * j * T, nb_pop[j + 1][i + 1], yaw, t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0); }
+        if (polys > (t7() ? POLY7 : 2700)) continue; r7_bx = !zone && lot_bx >= 0 && lot_bx < 2000 ? lot_bx + i : -1; r7_by = lot_by + j; far_lot(b, 36 * i * T, 36 * j * T, nb_pop[j + 1][i + 1], yaw, t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0); r7_bx = -1; }
     // (D40) THE FAR RING: the slots past the 3x3, each drawn round its own corner (a matrix move: no 16-bit overflow): plain houses, streets, the land; then the
     // horizon, one big quad scaled up four times, under everything out to the far plane. The haze fades it all into the sky, so nothing pops in.
     far_lod = 1;
@@ -1524,7 +1550,7 @@ static void draw_far_all(int yaw) {   // last, so the lot, the sims and the citi
         gx_push(36 * i * T, 0, 36 * j * T); int skip7 = t7() && polys > POLY7;
         if (b->terrain == BT_SEA) ground(tl(0), tl(0), tl(36), tl(36), -8, C15(5, 12, 24));
         else if (skip7) ground(tl(0), tl(0), tl(36), tl(36), 90, land_col(b->terrain));
-        else { ground(tl(0), tl(0), tl(36), tl(36), 90, land_col(b->terrain)); if (t7()) { st7(i, j, 0, 0, 0); st7(i, j, 0, 0, 1); } else if (!zone || zone == Z_TOWN) slot_street(0, 0); far_lot(b, 0, 0, 0, yaw, t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0); }
+        else { ground(tl(0), tl(0), tl(36), tl(36), 90, land_col(b->terrain)); if (t7()) { st7(i, j, 0, 0, 0); st7(i, j, 0, 0, 1); } else if (!zone || zone == Z_TOWN) slot_street(0, 0); r7_bx = !zone && lot_bx >= 0 && lot_bx < 2000 ? lot_bx + i : -1; r7_by = lot_by + j; far_lot(b, 0, 0, 0, yaw, t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0); r7_bx = -1; }
         gx_pop(); }
     far_lod = 0;
     if (gxb) { int X = (gx_far + 9) * 1024; if (X > 32000) X = 32000; gx_c0(0x11); gx_id(0x1B); gxb[gxn++] = 4 * 4096; gxb[gxn++] = 4096; gxb[gxn++] = 4 * 4096; gx_lv = 0; ground(-X, -X, X, X, 180, horizon_col()); gx_c1(0x12, 1); gx_lv = 0; }
@@ -1675,9 +1701,9 @@ static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise
     tx_want = -1; (void)c0;
 }
 typedef struct { s8 x0, y0, x1, y1, top; u8 sty, col, pit; } Bld;
-static Bld blds[12]; static int nbld;
+static Bld blds[12]; static int nbld; static u8 bld_id[GN][GN];   // (bld_id: the building, 1 up, each inside cell belongs to)
 static void bld_scan(void) {   // the enclosed buildings of the lot (cells the outside cannot reach without crossing a wall or a shut door), each with its box and top storey
-    static u8 out[GN + 2][GN + 2], id[GN][GN]; static u8 qx[(GN + 2) * (GN + 2)], qy[(GN + 2) * (GN + 2)]; memset(out, 0, sizeof out); memset(id, 0, sizeof id); nbld = 0;
+    static u8 out[GN + 2][GN + 2]; u8 (*id)[GN] = bld_id; static u8 qx[(GN + 2) * (GN + 2)], qy[(GN + 2) * (GN + 2)]; memset(out, 0, sizeof out); memset(bld_id, 0, sizeof bld_id); nbld = 0;
     int qh = 0, qt = 0;
     for (int y = 0; y < GN + 2; y++) for (int x = 0; x < GN + 2; x++) if (!x || !y || x == GN + 1 || y == GN + 1) { out[y][x] = 1; qx[qt] = (u8)x; qy[qt++] = (u8)y; }
     while (qh < qt) { int x = qx[qh], y = qy[qh++];   // (grid with a border: cell (x-1, y-1))
@@ -1701,6 +1727,10 @@ static void bld_scan(void) {   // the enclosed buildings of the lot (cells the o
         b->col = (u8)(zone == Z_ISLAND ? 2 : (h >> 4) % 6); b->pit = (u8)(1 + ((h >> 8) & 1));
         if (t7() && !roof_st && kind >= LOT_HOUSE && kind <= LOT_APART) { static int pk = -1; static LotPlan pp; if (pk != lot_bx * 4096 + lot_by) { pk = lot_bx * 4096 + lot_by; bm_lot_plan(lot_bx, lot_by, &bi, &pp); }   // (D80) a home's roof comes from the town plan: its form, its neighbourhood's two colours
             int sy, pt, cl; if (plan_roof(&pp, &sy, &pt, &cl)) { b->sty = (u8)sy; b->col = (u8)cl; b->pit = (u8)pt; } }
+        if (!zone && lot_bx >= 0 && lot_bx < 2000) { static int pk = -1; static LotPlan pp; static BInfo pbi; int sy, pt, cl;   // (D82) the PS1's roof rule (roof_pick): the dice of the building's place in the whole map, a home's form and colours from its plan
+            if (bm_gen >= 7 && pk != lot_bx * 4096 + lot_by) { pk = lot_bx * 4096 + lot_by; bm_block(lot_bx, lot_by, &pbi); bm_lot_plan(lot_bx, lot_by, &pbi, &pp); }
+            roof_dice(lot_bx * BM_BLK + BM_LOT0 + b->x0, lot_by * BM_BLK + BM_LOT0 + b->y0, w, dd, t, bm_gen >= 7 && pk == lot_bx * 4096 + lot_by ? &pp : 0, &sy, &pt, &cl);
+            if (!roof_st) b->sty = (u8)sy; b->col = (u8)cl; b->pit = (u8)pt; }
         if (zone == Z_ISLAND && b->sty == 1) b->sty = 2; }   // (the island's huts: thatch-brown gables)
 }
 static int bld_seen(const Bld *b) {   // (Cutaway) 0: a Bore of yours is inside, or you look at a storey under its top: no roof, so you see in
@@ -1711,12 +1741,19 @@ static int bld_seen(const Bld *b) {   // (Cutaway) 0: a Bore of yours is inside,
     return 1;
 }
 static u32 roof_bits(void) { bld_scan(); u32 m = 0; for (int i = 0; i < nbld; i++) if (bld_seen(&blds[i])) m |= 1u << i; return m; }
-static void roof_draw(int top) {
-    (void)top; bld_scan(); static const s16 PIT[3] = { 110, 170, 250 };
+static int cell_top(int x, int y) { for (int L = UPN; L > 0; L--) if (uflr[L - 1][y][x]) return L; return 0; }   // the highest storey with a floor on that cell
+static void roof_draw(int top) {   // (D82) a roof over each rectangle of the building that stands as high as its neighbours: an L's garage wing has its own roof (not the body's over the notch), a loft only covers its part
+    (void)top; bld_scan(); static const s16 PIT[3] = { 110, 170, 250 }; static u8 dn[GN][GN];
     for (int i = 0; i < nbld; i++) { const Bld *b = &blds[i]; if (!bld_seen(b)) continue;
-        int X0 = tl(b->x0 * 2) - T / 3, X1 = tl(b->x1 * 2 + 2) + T / 3, Z0 = tl(b->y0 * 2) - T / 3, Z1 = tl(b->y1 * 2 + 2) + T / 3, ry = -40 - WHF * (b->top + 1);
-        u16 wc = WALLC[0]; { int v = hwl[b->y0][b->x0]; if (v >= 1 && v <= 4) wc = WALLC[v - 1]; }
-        roof_shape(X0, Z0, X1, Z1, ry, b->sty, PIT[b->pit], ROOFC[b->col], wc); }
+        u16 wc = WALLC[0]; { int v = hwl[b->y0][b->x0]; if ((v >= 1 && v <= 4) || (v >= 7 && v <= 12)) wc = WALLC[v - 1]; }
+        for (int y = b->y0; y <= b->y1; y++) for (int x = b->x0; x <= b->x1; x++) dn[y][x] = 0;
+        for (int y = b->y0; y <= b->y1; y++) for (int x = b->x0; x <= b->x1; x++) { if (bld_id[y][x] != i + 1 || dn[y][x]) continue;
+            int lv = cell_top(x, y), w = 1, d = 1;
+            while (x + w <= b->x1 && bld_id[y][x + w] == i + 1 && !dn[y][x + w] && cell_top(x + w, y) == lv) w++;
+            for (;;) { if (y + d > b->y1) break; int ok = 1; for (int k = 0; k < w; k++) if (bld_id[y + d][x + k] != i + 1 || dn[y + d][x + k] || cell_top(x + k, y + d) != lv) ok = 0; if (!ok) break; d++; }
+            for (int j = 0; j < d; j++) for (int k = 0; k < w; k++) dn[y + j][x + k] = 1;
+            int X0 = tl(x * 2) - T / 3, X1 = tl((x + w) * 2) + T / 3, Z0 = tl(y * 2) - T / 3, Z1 = tl((y + d) * 2) + T / 3, ry = -40 - WHF * (lv + 1);
+            roof_shape(X0, Z0, X1, Z1, ry, b->sty, PIT[b->pit], ROOFC[b->col], wc); } }
 }
 static void draw_floors(int L) {   // floors as the biggest same-type rectangles: no seams for the edge anti-aliasing to show the grass through (upstairs: slabs, so a storey has a thickness)
     static u8 dn[GN][GN]; memset(dn, 0, sizeof dn); u8 (*fl)[GN] = FLv(L);
@@ -3846,7 +3883,11 @@ static void ds_tour(void) {
         for (int by = 380; by < 470 && tour_n < 64; by++) for (int bx = 480; bx < 570 && tour_n < 64; bx++) { BInfo b; bm_block(bx, by, &b); LotPlan pl; bm_lot_plan(bx, by, &b, &pl); if (!pl.type) continue; int kd = bm_nb(bx, by); if (kd > 9 || pl.type > 9 || pl.face > 2) continue;
             if (seen[pl.type][pl.face][DS_TOUR_ONE == 10 ? kd : 0]) continue; seen[pl.type][pl.face][DS_TOUR_ONE == 10 ? kd : 0] = 1; tour_bx[tour_n] = bx; tour_by[tour_n] = by; tour_ty[tour_n] = pl.type; tour_face[tour_n] = pl.face; tour_kind[tour_n] = kd; tour_n++; }
         last = vbl_n; return; }
+#ifdef DS_TOUR_KEY
+    if (tour_k < tour_n && (keysDown() & KEY_R)) { last = vbl_n; int k = tour_k++;   // (DS_TOUR_KEY: the next lot on a press of R, so a script decides when each is shot)
+#else
     if (tour_k < tour_n && vbl_n - last >= 40) { last = vbl_n; int k = tour_k++;
+#endif
 #ifdef DS_TOUR_PUB
         tour_ovr = DS_TOUR_PUB + k;
 #endif
@@ -3854,7 +3895,11 @@ static void ds_tour(void) {
         o_roof = 1;   // (roofs always: the lot is shown from outside)
 #endif
         lot_enter(tour_bx[k], tour_by[k]); LV = 0;
-        for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; m->x = m->tx = m->wx = 6 * 16; m->y = m->ty = m->wy = DS_TOUR_SY * 16; m->act = -1; }
+        { int tcx = 6, tcy = DS_TOUR_SY;
+#ifdef DS_TOUR_MID
+          { int a, c, e, f; if (lv_box(0, &a, &c, &e, &f)) { tcx = (a + e) / 2; tcy = (c + f) / 2 + DS_TOUR_MID; } }   // (DS_TOUR_MID: every sim in the middle of the house, so the camera looks at it; the number moves them along the lot)
+#endif
+          for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; m->x = m->tx = m->wx = tcx * 16; m->y = m->ty = m->wy = tcy * 16; m->act = -1; } }
 #ifdef DS_TOUR_ACT
         { int pk = -1; for (int q = 0; q < nobj && pk < 0; q++) { int id = OBJ_ID(&objs[q]); if (!((objs[q].rot >> 2) & 3) && (id == DS_TOUR_ACT || (DS_TOUR_ACT == 16 && (id == 178 || id == 188 || id == 177)))) pk = q; }
           if (pk >= 0) { for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; m->need[2] = 10; m->need[0] = 10; m->need[4] = 10; m->need[5] = 10; if (i) { m->x = m->tx = m->wx = 0; m->y = m->ty = m->wy = 0; } } sims[0].x = sims[0].tx = sims[0].wx = objs[pk].x * 16; sims[0].y = sims[0].ty = sims[0].wy = objs[pk].y * 16; start_act(&sims[0], pk, -1); } }
@@ -3871,9 +3916,9 @@ static void t7a_fail(int k, int bx, int by) { if (t7a_at[k][0] == 0) { t7a_at[k]
 // (D80) the stricter audit: t7b[k] counts the homes failing check k, t7b_at[k] the first lot that did.
 // [0] a house thing with no floor under it (floating), [1] a room (free floor) the front door cannot reach, [2] a door with a thing on either side, [3] a thing across an inner wall,
 // [4] a room of 4+ cells with nothing in it, [5] a room under a sixth furnished (3+ cells of 12+), [6] the straight walk from the door to the street blocked, [7] stairs with no free landing up there,
-// [8] a loft thing with no loft floor, [9] five of one thing in a row, [10] fewer beds than the home has (or none), [11] a bed, toilet or fridge indoors with nothing beside it, kept for the future
+// [8] a loft thing with no loft floor, [9] five of one thing in a row, [10] fewer beds than the home has (or none), [11] (D82) the loft: a free cell of the upper floor, or a thing up there, the landing cannot reach
 int t7b[12], t7b_at[12][2], t7b_fill[8], t7b_fn;   // t7b_fill: the furnished share of each home's rooms, in tenths, summed (and t7b_fn the rooms counted), for a look
-int t7h[5];
+int t7h[5], t7l[8];
 static void t7b_fail(int k, int bx, int by) { t7b[k]++; if (t7b_at[k][0] == 0) { t7b_at[k][0] = bx; t7b_at[k][1] = by; } }
 static int t7b_house_id(int id) { return (id >= 0 && id <= 11) || id == 13 || (id >= 15 && id <= 23) || id == 28 || id == 29 || id == 30 || id == 33 || id == 35 || id == 36 || id == 40 || id == 51 || id == 72 || id == 73 || id == 95 || id == 96 || id == 100 || id == 101 || id == 104 || id == 106 || id == 107 || id == 117 || (id >= 120 && id <= 123) || (id >= 177 && id <= 189); }
 static int t7b_bed_id(int id) { return id == 16 || id == 20 || id == 177 || id == 178 || id == 179 || id == 188; }
@@ -3914,6 +3959,17 @@ static void ds_t7_audit2(int bx, int by) {
     for (int y = 0; y < GN; y++) for (int x = 0; x + 4 < GN; x++) { int id = -1, run = 0; for (int q = 0; q < 5; q++) { int found = -1; for (int k = 0; k < nobj; k++) if (!((objs[k].rot >> 2) & 3) && objs[k].x == x + q && objs[k].y == y && IT_OF(&objs[k])->kind != 1) found = OBJ_ID(&objs[k]); if (found < 0 || (q && found != id)) break; id = found; run++; } if (run == 5 && id != 26 && id != 165 && id != 205 && id != 14 && id != 167) { t7b_fail(9, bx, by); } }
     // stairs: a free cell in the loft beside them (the landing)
     for (int k = 0; k < nobj; k++) if (OBJ_ID(&objs[k]) == 189 && !((objs[k].rot >> 2) & 3)) { int ok = 0; for (int d = 0; d < 4; d++) { int nx = objs[k].x + DX[d], ny = objs[k].y + DY[d]; if (nx >= 0 && ny >= 0 && nx < GN && ny < GN && uflr[0][ny][nx] && !lsol[ny][nx]) ok = 1; } if (!ok) t7b_fail(7, bx, by); }
+    { int fl = 0, st = 0; for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) fl |= uflr[0][y][x]; for (int k = 0; k < nobj; k++) st |= OBJ_ID(&objs[k]) == 189; if (fl && !st) t7b_fail(7, bx, by); }   // (D82) a loft with no stairs up to it
+    // (D82) the loft as a floor of its own: from the landing every free cell of the upper floor is reachable (walls cross only at doors), and every thing up there has a reachable free cell beside it
+    { static u8 ls[GN][GN]; memset(ls, 0, sizeof ls); int t = 0, h = 0, any = 0, lost = 0;
+      for (int k = 0; k < nobj; k++) if (OBJ_ID(&objs[k]) == 189 && !((objs[k].rot >> 2) & 3)) { int sw, sh; obj_fp(&objs[k], &sw, &sh); for (int yy = objs[k].y; yy < objs[k].y + sh; yy++) for (int xx = objs[k].x; xx < objs[k].x + sw; xx++) for (int d = 0; d < 4; d++) { int nx = xx + DX[d], ny = yy + DY[d]; if (nx >= 0 && ny >= 0 && nx < GN && ny < GN && uflr[0][ny][nx] && !lsol[ny][nx] && !ls[ny][nx]) { ls[ny][nx] = 1; qx[t] = nx; qy[t++] = ny; } } }   // (from any cell the flight stands on: a lot turned over has its stairs' origin at the other end)
+      while (h < t) { int x = qx[h], y = qy[h++]; for (int d = 0; d < 4; d++) { int nx = x + DX[d], ny = y + DY[d]; if (nx < 0 || ny < 0 || nx >= GN || ny >= GN || ls[ny][nx] || !uflr[0][ny][nx] || lsol[ny][nx]) continue;
+            int w = d == 0 ? uvwl[0][y][x + 1] : d == 1 ? uvwl[0][y][x] : d == 2 ? uhwl[0][y + 1][x] : uhwl[0][y][x]; if (w && w != 5) continue; ls[ny][nx] = 1; qx[t] = nx; qy[t++] = ny; } }
+      for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) { if (uflr[0][y][x]) any = 1; if (uflr[0][y][x] && !lsol[y][x] && !ls[y][x]) { lost = 1; if (!t7l[0]) { t7l[0] = 1; t7l[1] = x; t7l[2] = y; t7l[3] = bx; t7l[4] = by; } } }
+      for (int k = 0; k < nobj; k++) if (((objs[k].rot >> 2) & 3) && t7b_bed_id(OBJ_ID(&objs[k]))) { int w, hh, ok = 0; obj_fp(&objs[k], &w, &hh);
+            for (int y = objs[k].y - 1; y <= objs[k].y + hh && !ok; y++) for (int x = objs[k].x - 1; x <= objs[k].x + w && !ok; x++) { if (x < 0 || y < 0 || x >= GN || y >= GN) continue; if ((x < objs[k].x || x >= objs[k].x + w) && (y < objs[k].y || y >= objs[k].y + hh)) continue; if (ls[y][x]) ok = 1; }
+            if (!ok) { lost = 1; if (!t7l[0]) { t7l[0] = 2; t7l[1] = objs[k].x; t7l[2] = objs[k].y; t7l[3] = bx; t7l[4] = by; t7l[5] = OBJ_ID(&objs[k]); } } }
+      if (any && lost) t7b_fail(11, bx, by); }
 }
 static void ds_t7_audit(void) {
     static u8 seen[GN][GN]; static int qx[GN * GN], qy[GN * GN];
@@ -4240,7 +4296,7 @@ int main(void) {
 #endif
         if (mode == M_CAS) draw_head(yaw);
         else if (fight_on) fight_3d();
-        else if (mode == M_MAP) { BInfo b; bm_block(sel_x, sel_y, &b); { LotPlan pl7; LotPlan *pp = 0; if (bm_gen >= 7) { bm_lot_plan(sel_x, sel_y, &b, &pl7); pp = &pl7; } draw_lot(&b, yaw, pp); } }
+        else if (mode == M_MAP) { BInfo b; bm_block(sel_x, sel_y, &b); { LotPlan pl7; LotPlan *pp = 0; if (bm_gen >= 7) { bm_lot_plan(sel_x, sel_y, &b, &pl7); pp = &pl7; } r7_bx = sel_x; r7_by = sel_y; draw_lot(&b, yaw, pp); r7_bx = -1; } }
         glEnd();
         polys_last = polys; gf_shown++;
         glFlush(0);

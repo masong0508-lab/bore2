@@ -52,6 +52,17 @@ static int h7_ok(void) {                                  // is the home still a
         for (int y = o->y; y < o->y + hh && !ok; y++) for (int x = o->x; x < o->x + w && !ok; x++) for (int k = 0; k < 4; k++) { int nx = x + DX[k], ny = y + DY[k]; if (nx >= o->x && nx < o->x + w && ny >= o->y && ny < o->y + hh) continue; if (nx < xa || nx > xb || ny < ya || ny > yb || !seen[ny][nx] || !h7_step(x, y, nx, ny)) continue; ok = 1; break; }
         if (!ok) return 0; }
     return 1; }
+static int h7_okl(void) {                                 // (D82) the loft, as h7_ok for the ground floor: from the landing (the cells kept clear, g7u 2) every free cell of the upper floor is reachable and every bed up there has a free side
+    static u8 seen[GN][GN]; static u8 qx[GN * GN], qy[GN * GN]; static const int DX[4] = { 1, -1, 0, 0 }, DY[4] = { 0, 0, 1, -1 };
+    memset(seen, 0, sizeof seen); int h = 0, t = 0, tot = 0, got = 0;
+    for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) { if (uflr[0][y][x] && g7u[y][x] != 1) tot++; if (uflr[0][y][x] && g7u[y][x] == 2) { seen[y][x] = 1; qx[t] = (u8)x; qy[t++] = (u8)y; } }
+    while (h < t) { int x = qx[h], y = qy[h++]; got++; for (int k = 0; k < 4; k++) { int nx = x + DX[k], ny = y + DY[k]; if (nx < 0 || ny < 0 || nx >= GN || ny >= GN || seen[ny][nx] || !uflr[0][ny][nx] || g7u[ny][nx] == 1) continue;
+            int w = k == 0 ? uvwl[0][y][x + 1] : k == 1 ? uvwl[0][y][x] : k == 2 ? uhwl[0][y + 1][x] : uhwl[0][y][x]; if (w && w != 5) continue; seen[ny][nx] = 1; qx[t] = (u8)nx; qy[t++] = (u8)ny; } }
+    if (got != tot) return 0;
+    for (int i = h7_n0; i < nobj; i++) { const Obj *o = &objs[i]; if (!((o->rot >> 2) & 3) || IT_OF(o)->kind == 1) continue; int w, hh, ok = 0; obj_fp(o, &w, &hh);
+        for (int y = o->y; y < o->y + hh && !ok; y++) for (int x = o->x; x < o->x + w && !ok; x++) for (int k = 0; k < 4; k++) { int nx = x + DX[k], ny = y + DY[k]; if (nx >= o->x && nx < o->x + w && ny >= o->y && ny < o->y + hh) continue; if (nx < 0 || ny < 0 || nx >= GN || ny >= GN || !seen[ny][nx]) continue; ok = 1; break; }
+        if (!ok) return 0; }
+    return 1; }
 static void h7_pop(void) {                                // take the last thing back
     if (nobj <= 0) return; Obj *o = &objs[--nobj]; int w, h; obj_fp(o, &w, &h); int lv = (o->rot >> 2) & 3, flat = IT_OF(o)->kind == 1;
     for (int y = o->y; y < o->y + h; y++) for (int x = o->x; x < o->x + w; x++) { if (lv) g7u[y][x] = 0; else if (flat) g7f[y][x] = 0; else g7o[y][x] = 0; } occ_ok = 0; }
@@ -65,7 +76,7 @@ static int h7_pl(int id, int c, int r, int rot) {         // a thing with its to
         if (h7_lv) { if (!uflr[0][y][x] || g7u[y][x]) return 0; } else { if (flr[y][x] < 1 || flr[y][x] > 4 || g7o[y][x] || (flat && g7f[y][x])) return 0; } }
     for (int y = y0; y < y0 + h; y++) for (int x = x0; x < x0 + w; x++) { if (h7_lv) g7u[y][x] = 1; else if (flat) g7f[y][x] = 1; else g7o[y][x] = 1; }
     objs[nobj].x = (u8)x0; objs[nobj].y = (u8)y0; objs[nobj].c = (u8)(id >> 2); objs[nobj].i = (u8)(id & 3); objs[nobj].rot = (u8)ar; nobj++; occ_ok = 0;
-    if (!h7_lv && !h7_ok()) { h7_pop(); return 0; }
+    if ((!h7_lv && !h7_ok()) || (h7_lv && !h7_okl())) { h7_pop(); return 0; }
     return 1; }
 // a piece against wall s of room R (0 the back wall, 1 east, 2 the front, 3 west): a cells along it (from its west or north end), b out into the room; f its facing: 0 into the room, 1 along (+a), 2 at the wall, 3 along (-a)
 static int h7_rot(int s, int f) { static const int IN[4] = { 0, 3, 2, 1 }, AL[4] = { 1, 0, 1, 0 }; return f == 0 ? IN[s] : f == 2 ? IN[s] ^ 2 : f == 1 ? AL[s] : AL[s] ^ 2; }
@@ -216,14 +227,14 @@ static void kitD(int w, int d, int dc, int ow, int two) {    // a divided house 
     h7_res(dc, last); h7_res(dc, last - 1); h7_res(2, bd); h7_res(2, bd - 1); h7_res(wb + 1, bd); h7_res(wb + 1, bd - 1);
     int wb2 = mans ? 5 : -1;
     if (mans) { for (int r = 0; r < bd; r++) h7_vw(r, wb2, iw); h7_hw(bd, 6, 5); h7_res(6, bd); h7_res(6, bd - 1); }
-    int cs = kc0 - 1;
+    int cs = mans ? 5 : kc0 - 1;   // (D82: a mansion's door between hall and bedrooms is column 6: the flight beside it, not on it (the stairs were never placed there))
     R7 bedA = { 0, 0, (mans ? wb2 : wb) - 1, bd - 1 }, bedB = { wb2, 0, wb - 1, bd - 1 }, bath = { wb, 0, w - 1, bd - 1 }, kit = { kc0, bd, w - 1, last }, liv = { 0, bd, kc0 - 1, last }, loft = { 0, 0, w - 1, bd - 1 };
     if (two) {   // the flight up: from the living room's back row, rising to the back; the loft is a floor over the back rooms with walls round it
         h7_res(cs, bd + 1);
         for (int r = 0; r < bd; r++) for (int c = 0; c < w; c++) { int x = h7x(c), y = h7_y0 + r; uflr[0][y][x] = 2; }
         for (int c = 0; c < w; c++) { int x = h7x(c); uhwl[0][h7_y0][x] = (u8)ow; uhwl[0][h7_y0 + bd][x] = (u8)ow; }
         for (int r = 0; r < bd; r++) { uvwl[0][h7_y0 + r][h7_x0] = (u8)ow; uvwl[0][h7_y0 + r][h7_x1 + 1] = (u8)ow; }
-        uhwl[0][h7_y0 + bd][h7x(cs)] = 0; roof_st = 2; }
+        uhwl[0][h7_y0 + bd][h7x(cs)] = 0; }   // (D82: the roof is the plan's (Auto), not a forced gable)
     if (two) { h7_pl(I_STAIRS, cs, bd, 0); }
     h7_bedroom(&bedA, mans ? 2 : 3, 0, 14, 0);
     if (mans) h7_bedroom(&bedB, 2, 0, 14, 1);
@@ -258,7 +269,7 @@ static void gen_home7(const LotPlan *p0, u32 h, int terrain, int kind) {   // a 
     LotPlan q = *p0; int north = q.face == LF_NORTH, ty = q.type, mir = q.mir;
     if (north) { u8 a = (u8)(22 - q.y1), b = (u8)(22 - q.y0); q.y0 = a; q.y1 = b; q.dy = (u8)(22 - q.dy); if (q.wx1) { a = (u8)(22 - q.wy1); b = (u8)(22 - q.wy0); q.wy0 = a; q.wy1 = b; } }
     int bx0 = q.x0 - BM_LOT0, bx1 = q.x1 - BM_LOT0, by0 = q.y0 - BM_LOT0, by1 = q.y1 - BM_LOT0, dxc = q.dx - BM_LOT0, w = bx1 - bx0 + 1, d = by1 - by0 + 1;
-    int ow = 1 + ((q.pal * 2 + q.wall) & 3);
+    int ow = 7 + (q.pal * 2 + q.wall) % 6;   // (D82: the PS1's material for the neighbourhood: world_plan_wall_rgb((pal * 2 + wall) % 6))
     memset(g7o, 0, sizeof g7o); memset(g7f, 0, sizeof g7f); memset(g7u, 0, sizeof g7u); h7_rs = h * 2654435761u + 0x9E3779B9u; if (!h7_rs) h7_rs = 1; h7_beds(h, 1); h7_lv = 0; h7_y0 = by0; h7_mir = mir; h7_x0 = bx0; h7_x1 = bx1;
     int dv = q.drv ? q.drv - BM_LOT0 : -1;
     // the garage wing (L houses): a little walled room of its own, floor of concrete, its door to the drive
