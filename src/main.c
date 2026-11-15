@@ -760,6 +760,9 @@ static void life_update(int steps) {
     { static int done; extern int sim_debug_grave(void); if (!done && frame > 60 && home_is_here()) done = sim_debug_grave(); ghost_mode = 2; }
 #endif
     ghost_tick(steps, frame);
+    if (!(frame & 31) && bm_gen >= 7 && world_zone == ZONE_CITY && world_wbx >= 0 && state == ST_LIFE) {   // (world version 7: walking into another neighbourhood: its name on the feed)
+        static char nbl[24]; char nn[24]; const char *nb = bm_nb_name(world_wbx + sim_tile_x(&sims[player]) / BM_BLK, world_wby + sim_tile_y(&sims[player]) / BM_BLK, nn);
+        if (nb && strcmp(nb, nbl)) { sim_note(nb); strcpy(nbl, nb); } }
 #ifdef AUTO_REALM
     { static int ar; if (++ar == 40 && (ovl = ovl_load("KINGDOM.OVL"))) { ovl->open(0); state = ST_REALM; return; } }   // (test builds: straight into KINGDOM MODE)
 #endif
