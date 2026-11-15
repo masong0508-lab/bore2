@@ -36,4 +36,14 @@ Variety is made of what can be varied inside that: which block edges carry a str
 - Dreamcast roadaudit_seeds (5EED1234, 1, C0FFEE, 7A11CE): PASS, ON-ROAD 0 on all four.
 - PS1 Release `_end` 0x801f405c (limit 0x801fb000), signs included. Saves: version 55 reads as gen 8, 54 and older as before; DS ds_oldsave PASS (d78 save loads as gen 3), ds_flow save/load PASS on a gen 8 world.
 - DS: ROM bore2_dsi_d84.nds (a7.bin from tools/dsbuild), ds_town7_audit PASS (162 homes), ds_traffic PASS. No street signs on DS (no 3D street).
-- Pictures: docs/gen8_town_map.png (whole city, gen 8), docs/gen8_dc_*.png (Dreamcast, list ports/dreamcast/test/gen8_places.inc, -DAUTO_AT_G8=1). Limit: camera spots are not exactly on the turning heads and few cars show.
+- Pictures: docs/gen8_town_map.png (whole city, gen 8).
+
+## Dreamcast pictures of a head, a bend and a junction (round 3)
+Real places, found with `LISTEND=1 ports/host/townmap/townmap streets 0x5EED1234 8` (it now lists TEE as well as DEAD and BEND); tile 2,2 of the listed block is the middle of the corner square. A car is turning in each:
+- docs/gen8_dc_dead_end_head_413_463_car_turning.png: dead end, street from the south, a car turning round in the head.
+- docs/gen8_dc_dead_end_head_408_464_car_turning.png: dead end, street from the east, a car in the middle of its U-turn, another coming.
+- docs/gen8_dc_bend_414_465_car_turning.png: bend (arms east and south), a car turning round the corner, a bus coming (camera yaw 2048).
+- docs/gen8_dc_junction_tee_414_466_car_turning.png: tee (arms north, south, west), a car turning into the west arm.
+How: places are in `ports/dreamcast/test/gen8_places.inc`; one build per place, `-DAUTO_CITY=1 -DAUTO_AT_BX=0 -DAUTO_AT_TAB=1 -DAUTO_AT_STEP=200 -DAUTO_AT_G8=1 -DAUTO_AT_ONE=k` holds place k from game frame 0 (no vblank stepping, so nothing to mix up), then a shot every 100 frames in flycast and pick by eye.
+The earlier "jam in the head" came from the test: the sims stood in the street and every car waited for them; the list now says where they stand (dx, dy, off the street). With them aside, cars drive into the head, turn round and leave in all four pictures' runs (2300 frames each); no missing pieces.
+Limits: the head is the 5 x 5 corner square, so it looks like a street that ends squarely (no wider bulb); the test world is the flat yellow desert one, the HUD covers the bottom of the picture; one world (0x5EED1234) only.

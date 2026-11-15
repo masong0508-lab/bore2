@@ -1080,24 +1080,32 @@ static void life_update(int steps) {
           {   // (test builds, AUTO_CITY with AUTO_AT_BX/BY=block, AUTO_AT_TX/TY=tile in it, AUTO_AT_PITCH/DIST: stand there and look, for the world version 7 shots docs/plan7_*)
             static int at_ = 0, hx_, hz_;
 #ifdef AUTO_AT_TAB   // (-DAUTO_AT_TAB='"file.inc"' -DAUTO_AT_STEP=n: a list of places { bx, by, tx, ty, pitch, dist, yaw } in that file, one every n vblanks from vblank 90; the Dreamcast shots docs/plan7_dc_*)
-            static const s16 at_tab[][7] = {
+            static const s16 at_tab[][9] = {   /* (bx, by, tx, ty, pitch, dist, yaw, then optional: the sims stand dx, dy tiles off the spot, off the street, so no car has to wait for them) */
 #ifdef AUTO_AT_G8
 #include "test/gen8_places.inc"   /* (-DAUTO_AT_G8=1: another list, the version 8 bend and dead-end shots) */
 #else
 #include "test/plan7_places.inc"   /* (found through the Dreamcast Makefile's -I.) */
 #endif
             };
-            static int at_k = -1, at_pitch, at_dist, at_yaw;
+            static int at_k = -1, at_pitch, at_dist, at_yaw, at_ox, at_oy;
             static int at_v0 = -1; if (at_v0 < 0) at_v0 = (int)VSync(-1);   // (the places count from the first life frame, so a slower load does not skip the first ones)
-            { int vb_ = (int)VSync(-1) - at_v0 + 90, k = (vb_ - 90) / AUTO_AT_STEP; if (vb_ >= 90 && k != at_k && k < (int)(sizeof at_tab / sizeof at_tab[0])) { at_k = k; at_ = 1;
+            { int vb_ = (int)VSync(-1) - at_v0 + 90, k = (vb_ - 90) / AUTO_AT_STEP;
+#ifdef AUTO_AT_ONE
+                vb_ = fr_ + 90; k = AUTO_AT_ONE;   // (-DAUTO_AT_ONE=k: the one place k of the list, from game frame 0, held; the picture is the build, not the timing: docs/gen8_dc_*)
+#endif
+                 if (vb_ >= 90 && k != at_k && k < (int)(sizeof at_tab / sizeof at_tab[0])) { at_k = k; at_ = 1;
                 taxi_to_block(at_tab[k][0], at_tab[k][1], at_tab[k][2], at_tab[k][3], "TEST");
                 hx_ = ((at_tab[k][0] - world_wbx) * BM_BLK + at_tab[k][2]) * TILE + TILE / 2; hz_ = -(((at_tab[k][1] - world_wby) * BM_BLK + at_tab[k][3]) * TILE + TILE / 2);
-                at_pitch = at_tab[k][4]; at_dist = at_tab[k][5]; at_yaw = at_tab[k][6]; } }
+                at_pitch = at_tab[k][4]; at_dist = at_tab[k][5]; at_yaw = at_tab[k][6]; at_ox = at_tab[k][7]; at_oy = at_tab[k][8]; } }
             if (at_k >= 0 && fr_ % 90 == 0) { char nb_[28]; sprintf(nb_, "SHOT %d AT %d,%d", at_k, at_tab[at_k][0], at_tab[at_k][1]); sim_note(nb_); }   // (the shot's number and block on screen, so a picture says what it is)
             if (at_k >= 0) { hx_ = ((at_tab[at_k][0] - world_wbx) * BM_BLK + at_tab[at_k][2]) * TILE + TILE / 2; hz_ = -(((at_tab[at_k][1] - world_wby) * BM_BLK + at_tab[at_k][3]) * TILE + TILE / 2); }   // (every frame: the window moves a moment after the taxi)
 #define AUTO_AT_PITCH at_pitch
 #define AUTO_AT_DIST at_dist
+#define OFX_ (at_ox * TILE)
+#define OFZ_ (at_oy * TILE)
 #else
+#define OFX_ 0
+#define OFZ_ 0
             if (fr_ >= 60 && !at_) { at_ = 1; taxi_to_block(AUTO_AT_BX, AUTO_AT_BY, AUTO_AT_TX, AUTO_AT_TY, "TEST");
                 hx_ = ((AUTO_AT_BX - world_wbx) * BM_BLK + AUTO_AT_TX) * TILE + TILE / 2; hz_ = -(((AUTO_AT_BY - world_wby) * BM_BLK + AUTO_AT_TY) * TILE + TILE / 2); }
 #endif
@@ -1105,7 +1113,7 @@ static void life_update(int steps) {
 #ifdef AUTO_AT_TAB
                 cam_yaw = at_yaw;
 #endif
- for (int i = 0; i < nsims; i++) { sims[i].x = hx_ + (i % 3) * 3; sims[i].z = hz_ - (i / 3) * 3; sims[i].path_n = 0; sims[i].lvl = 0; } cam_fx = hx_; cam_fz = hz_; }
+ for (int i = 0; i < nsims; i++) { sims[i].x = hx_ + (i % 3) * 3 + OFX_; sims[i].z = hz_ - (i / 3) * 3 - OFZ_; sims[i].path_n = 0; sims[i].lvl = 0; } cam_fx = hx_; cam_fz = hz_; }
           }
 #elif defined(AUTO_TOWER)
           if (fr_ >= 120 && !(done_ & 1)) { done_ |= 1; const Settle *cp = bm_set(bm_capital()); taxi_to_block(cp->x + AUTO_TOWER, cp->y + 2, 8, 1, "TEST"); }
