@@ -227,6 +227,8 @@ for d in defs:
     bl = STAIRS if c == ord('|') else boxes.get(d['box'])
     if not bl: print('no boxes for', d['name'], d['box'], file=sys.stderr); continue
     bl = bl if c == ord('|') else bl[:d['n']]
+    if c in (0x8E, 0x8F):   # (D81) the slim hedge and its pier are one box each on the DS (a yard has twenty of them and the polygon budget is small): the body at the full height, the cap's top
+        b0 = bl[0]; bl = [[b0[0], b0[1], b0[2], b0[3], 0, 12 if c == 0x8E else 13, b0[6][:4] + [bl[1][6][4] if len(bl) > 1 else b0[6][4]]]] if c == 0x8E else [[2, 2, 6, 6, 0, 13, b0[6]]]
     top = max(1, max(b[5] for b in bl))
     if c in life:   # the PS1's life size: the art stretched or squashed to a real height
         px = life[c]; nb = []

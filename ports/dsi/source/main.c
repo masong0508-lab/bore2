@@ -244,7 +244,8 @@ static void draw_map(void) {
         else if (price && pp) text_box(150, 159, 104, 11, FS_BODY, C15(20, 22, 28), AL_L, "Family home");   // (someone lives there: not for sale)
         else if (price) { sprintf(t, "FOR SALE  %d", price); text_box(150, 159, 104, 11, FS_BODY, C15(31, 24, 10), AL_L, t); }
         else text_box(150, 159, 104, 11, FS_BODY, C15(20, 22, 28), AL_L, "Not for sale");
-        if (pp && !own_) sprintf(t, "%.14s   %d bores   %d,%d", s->name, pp, sel_x, sel_y); else sprintf(t, "%.14s   %d,%d   pop %d/%d", s->name, sel_x, sel_y, pop_per + pop_born, DS_POP_MAX); (void)fm; (void)mv;
+        char nbn_[24]; const char *tn_ = bm_nb_name(sel_x, sel_y, nbn_); if (!tn_) tn_ = s->name;   // (D81) a gen 7 town shows the neighbourhood's name (MAPLE HEIGHTS, OLD TOWN)
+        if (pp && !own_) sprintf(t, "%.17s  %d bores  %d,%d", tn_, pp, sel_x, sel_y); else sprintf(t, "%.17s  %d,%d  pop %d/%d", tn_, sel_x, sel_y, pop_per + pop_born, DS_POP_MAX); (void)fm; (void)mv;
         text_box(2, 170, 252, 9, FS_SMALL, C15(24, 27, 31), AL_L, t);
         if (mv) chip(2, 179, 52, 12, "Move in", 0);
         chip(56, 179, 38, 12, "Visit", 0);
@@ -440,7 +441,7 @@ static u16 seas(u16 c) {   // (D50) the grass as the season makes it, as the PS1
     r += (tr - r) * f / 16; g += (tg - g) * f / 16; b += (tb - b) * f / 16; return (u16)(r | g << 5 | b << 10 | 0x8000); }
 static u32 hsh(u32 a); static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise, u16 rc, u16 wc); static const u16 ROOFC[6];
 static int plan_roof(const LotPlan *pl, int *sty, int *pit, int *col) {   // (D80) a home's roof from the town plan, as the PS1's roof_region does: hipped (or a mansion) or a gable, two colours a neighbourhood has, low for a compact or ranch and steep for the rest
-    if (!pl || !pl->type) return 0; *sty = pl->roof == RF_HIP || pl->type == HT_MANSION ? 3 : 2; *col = (pl->pal + pl->rcol * 3) % 6; *pit = pl->type <= HT_RANCH ? 1 : 2; return 1; }
+    if (!pl || !pl->type) return 0; *sty = pl->roof == RF_HIP || pl->type == HT_MANSION ? 3 : pl->roof == RF_FRONT && (pl->type == HT_COMPACT || pl->type == HT_BOX || pl->type == HT_TWO) ? 4 : 2;  /* D81: a front gable, as roof_pick */ *col = (pl->pal + pl->rcol * 3) % 6; *pit = pl->type <= HT_RANCH ? 1 : 2; return 1; }
 static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl, the town plan's home for the lot, when the world is version 7)
     u32 h = b->h; int k = b->lot;
     int tr = pl && ((k >= LOT_HOUSE && k <= LOT_TWO) || k == LOT_PARK) ? BT_GRASS : b->terrain;   // (D80: lawn in a dry town for homes and parks)
@@ -451,6 +452,8 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
     ground(tl(-2), tl(0), tl(0), tl(LOTN * 2 + 2), 0, C15(8, 8, 9));     // and the left
     if (k == LOT_WILD || k == LOT_EMPTY || k == LOT_RIVER) { for (int i = 0; i < 5; i++) tree(tl(3 + (int)((h >> (i * 4)) & 15) * 2 % 22), tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 2 % 22), T * 2); return; }
     if (k == LOT_PARK || k == LOT_SQUARE || k == LOT_SKATE) { for (int i = 0; i < 9; i++) tree(tl(3 + (int)((h >> (i * 3)) & 7) * 3), tl(3 + (int)((h >> (i * 3 + 1)) & 7) * 3), T * 2); return; }
+    if (pl && bm_gen >= 7 && k == LOT_POOL) { ground(tl(2), tl(2), tl(24), tl(24), 2, C15(24, 24, 23)); ground(tl(6), tl(6), tl(20), tl(18), 3, C15(8, 20, 30)); return; }   // (D81: a pool lot is a paved deck, no building)
+    if (pl && bm_gen >= 7 && k == LOT_FARM && pl->face == LF_NONE) { for (int r = 1; r < 12; r += 2) ground(tl(2), tl(2 * r), tl(24), tl(2 * r + 2), 3, C15(14, 9, 5)); for (int r = 2; r < 11; r += 2) for (int c = 1; c < 12; c += 2) ground(tl(2 * c), tl(2 * r), tl(2 * c + 2), tl(2 * r + 2), 4, C15(20, 24, 6)); return; }   // (D81: a field: crop rows, no barn)
     int w = 10 + (int)(h & 3) * 2, d = 8 + (int)((h >> 2) & 3) * 2, x0 = 4 + (24 - w) / 2 / 2 * 2 - 4, z0 = 4;
     int st = bm_storeys(b); int hh = (k >= LOT_SHOP ? 2 : 2) * st + (st == 1 ? 2 : 0);
     u16 walls[6] = { C15(26, 22, 16), C15(24, 14, 10), C15(22, 24, 26), C15(26, 26, 18), C15(16, 22, 14), C15(24, 20, 22) };
@@ -461,6 +464,7 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
         if (pl->wx1 && pl->type == HT_L) { int wa = pl->wx0 - BM_LOT0, wb = pl->wx1 - BM_LOT0 + 1; if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; block(tl(2 * wa), tl(2 * (pl->wy0 - BM_LOT0)), tl(2 * wb), tl(2 * (pl->wy1 - BM_LOT0 + 1)), 0, -2 * T, C15(18, 18, 20), C15(20, 20, 22)); }
         if (pl->drv) ground(tl(2 * (pl->drv - BM_LOT0)), nth ? tl(0) : Z1, tl(2 * (pl->drv - BM_LOT0 + 2)), nth ? Z0 : tl(26), -26, C15(20, 20, 20));
         int sw = nth ? 0 : 26 * T; (void)sw; }
+    else if (pl && bm_gen >= 7 && pl->face == LF_NORTH && k > LOT_APART) { int a = tl(26) + tl(0) - Z1, c = tl(26) + tl(0) - Z0; Z0 = a; Z1 = c; nth = 1; }   // (D81: a north-facing building is turned over)
     block(X0, Z0, X1, Z1, 0, Y, wall, wall);
     { int wn = (X1 - X0) / 5; for (int r = 0; r < st; r++) for (int k = 0; k < 3; k++) { int wx = X0 + wn * (1 + k * 2 - (k == 1 && r == 0 ? 0 : 0)); if (r == 0 && k == 1) { block(wx, nth ? Z0 - 14 : Z1, wx + wn * 7 / 10, nth ? Z0 : Z1 + 14, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); continue; } block(wx, nth ? Z0 - 14 : Z1, wx + wn * 7 / 10, nth ? Z0 : Z1 + 14, -T * (1 + r * 2) , -T * (2 + r * 2), C15(17, 24, 31), C15(17, 24, 31)); } }   // front door and windows
     block((X0 + X1) / 2 + T, Z0 + T / 2, (X0 + X1) / 2 + T * 3 / 2, Z0 + T, Y, Y - T * 3 / 2, C15(12, 6, 5), C15(12, 6, 5));   // a chimney
@@ -491,7 +495,7 @@ static int opt_ret = -1;   // where Back in Options returns to (-1 = the title)
 static int cas_mult = 1;
 static void eff_pm(const u8 *pm, int *p) { for (int q = 0; q < PMN; q++) { int v = 50 + (pm[q] - 50) * cas_mult; p[q] = v; } }
 static u32 lot_seed = 1;
-static int camx, camz, door_cx, door_cy;
+static int camx, camz, door_cx, door_cy; static int yard_i0 = 0x7FFF;   // (D81: the first thing of a plan home's yard)
 static int gframes, cam_on, cam_pan, cam_free, live_pitch = 4300, cam_deff = 9000, bb_yaw = 3000, bb_pitch = 3900, bb_dist = 12500, cam_lx, cam_ly, cam_drag;
 static void sim3d(int i, int yaw);
 static int has_board, on_board, board_lift; static long skate_score, skate_best; static const int *em_R; static int sk_x3, sk_z3, sk_cr, sk_Rm[9];   // (D44) the skateboard: owned, ridden, the rider's height (PS1 units); em_R: a free turn for the rider's model
@@ -730,11 +734,12 @@ static void nb_load(void) {
     for (int dy = 0; dy < 3; dy++) for (int dx = 0; dx < 3; dx++) nbf[dy + RING_MAX - 1][dx + RING_MAX - 1] = nb[dy][dx];
     if (t7()) nb7_load(); }
 static void city_spawn(void); static void city_shift(int dx, int dy);
-static int far_house(const BInfo *b) { return b->terrain != BT_SEA && b->lot >= LOT_HOUSE && b->lot != LOT_PARK && b->lot != LOT_SQUARE && b->lot != LOT_SKATE && b->lot != LOT_EMPTY && b->lot != LOT_RIVER; }
+static int far_house(const BInfo *b) { return b->terrain != BT_SEA && b->lot >= LOT_HOUSE && b->lot != LOT_PARK && b->lot != LOT_SQUARE && b->lot != LOT_SKATE && b->lot != LOT_EMPTY && b->lot != LOT_RIVER && !(bm_gen >= 7 && b->lot == LOT_POOL); }   // (D81: a pool lot is a paved deck, no building)
+static int far_house7(const BInfo *b, const LotPlan *pl) { return far_house(b) && !(bm_gen >= 7 && b->lot == LOT_FARM && pl && pl->face == LF_NONE); }   // (D81: a field has crops and hedgerows, no barn)
 static void far_foot(const BInfo *b, int *x0, int *z0, int *x1, int *z1) { int w = 10 + (int)(b->h & 3) * 2, d = 8 + (int)((b->h >> 2) & 3) * 2, t0 = 4 + (24 - w) / 2 / 2 * 2 - 4; *x0 = t0 / 2; *x1 = (t0 + w + 1) / 2; *z0 = 2; *z1 = (4 + d + 1) / 2; }
 static int far_solid(int wx, int wy) {   // a cell outside the plot: open street and grass, except the sea and the buildings of the lots round it
     int sx = fdiv(wx, SLC), sy = fdiv(wy, SLC); if (sx == 0 && sy == 0) return 0; if (sx < -1 || sx > 1 || sy < -1 || sy > 1) return 1;
-    const BInfo *b = &nb[sy + 1][sx + 1]; if (b->terrain == BT_SEA) return 1; if (!far_house(b)) return 0;
+    const BInfo *b = &nb[sy + 1][sx + 1]; if (b->terrain == BT_SEA) return 1; if (!far_house7(b, t7() ? &nlp[sy + RING_MAX][sx + RING_MAX] : 0)) return 0;
     int lx = wx - sx * SLC, ly = wy - sy * SLC, x0, z0, x1, z1; if (t7()) far_foot7(b, &nlp[sy + RING_MAX][sx + RING_MAX], &x0, &z0, &x1, &z1); else far_foot(b, &x0, &z0, &x1, &z1); return lx >= x0 && lx < x1 && ly >= z0 && ly < z1;
 }
 static int z_put(int x, int y, int ch, int rot);
@@ -917,7 +922,7 @@ int tour_ovr;   // (test) the lot kind the tour builds on the next lot_enter (0:
 #endif
 static void lot_enter(int bx, int by) {   // the lot you walk into: what you built there last time, or a new home from its own seed
     if (lot_bx >= 0 && (lot_bx != bx || lot_by != by)) life_ev(ctl, WN_VISIT, 0);
-    lot_bx = bx; lot_by = by; lot_dn = bm_gen >= 7 && bx >= 0 && bx < 2000 && bm_lot_face(bx, by) == LF_NORTH ? -1 : 1; lot_seed = (u32)(bx * 73856093 ^ by * 19349663); pick = -1; memset(slv, 0, sizeof slv); ed_lv = 0; int keep = LV; LV = 0;
+    yard_i0 = 0x7FFF; lot_bx = bx; lot_by = by; lot_dn = bm_gen >= 7 && bx >= 0 && bx < 2000 && bm_lot_face(bx, by) == LF_NORTH ? -1 : 1; lot_seed = (u32)(bx * 73856093 ^ by * 19349663); pick = -1; memset(slv, 0, sizeof slv); ed_lv = 0; int keep = LV; LV = 0;
     for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == bx && lsv[i].by == by) { LotSave *q = &lsv[i]; nobj = q->nobj; pcx = q->pcx; pcy = q->pcy; door_cx = q->dcx; door_cy = q->dcy; roof_st = q->roof; up_st = q->up; memcpy(flr, q->flr, sizeof flr); memcpy(hwl, q->hwl, sizeof hwl); memcpy(vwl, q->vwl, sizeof vwl); memcpy(objs, q->objs, sizeof objs); occ_ok = 0;
         if (q->hasup) { memcpy(uflr, q->ufl, sizeof uflr); memcpy(uhwl, q->uhw, sizeof uhwl); memcpy(uvwl, q->uvw, sizeof uvwl); } else { ups_clear(); shell_to_floors(up_st); }
         nb_load(); LV = keep; return; }
@@ -1263,10 +1268,10 @@ static void obj3d_in(int x, int y, const Item *it, int rot, int ghost) {   // ev
     case 1: ob(0, 0, 80, 80, 0, 12, d); ob(8, 20, 72, 80, 12, 24, l); ob(0, 0, 80, 20, 12, 50, c); ob(0, 20, 12, 80, 12, 36, c); ob(68, 20, 80, 80, 12, 36, c); ob(24, 6, 56, 22, 24, 40, LC(28, 22, 8)); break;   // armchair with a cushion
     case 2: ob(0, 4, 80, 80, 0, 12, d); ob(4, 4, 76, 24, 12, 48, c); ob(4, 24, 40, 76, 12, 26, l); ob(40, 24, 76, 76, 12, 26, l); ob(0, 24, 10, 80, 12, 38, c); ob(70, 24, 80, 80, 12, 38, c); ob(8, 26, 24, 42, 26, 40, LC(28, 22, 8)); ob(56, 26, 72, 42, 26, 40, LC(10, 20, 26)); break;   // sofa with two pillows
     case 3: ob(0, 20, 80, 60, 20, 26, wd); ob(2, 22, 10, 30, 0, 20, d); ob(70, 22, 78, 30, 0, 20, d); ob(2, 50, 10, 58, 0, 20, d); ob(70, 50, 78, 58, 0, 20, d); break;   // bench
-    case 4: ob(4, 4, 76, 76, 28, 34, c); for (int k = 0; k < 4; k++) ob(k % 2 ? 62 : 10, k / 2 ? 62 : 10, k % 2 ? 70 : 18, k / 2 ? 70 : 18, 0, 28, d); ob(30, 30, 50, 50, 34, 38, LC(30, 30, 29)); ob(34, 34, 46, 46, 38, 40, LC(31, 22, 8)); break;   // dining table with a plate
+    case 4: ob(0, 0, 80, 80, 28, 34, c); for (int k = 0; k < 4; k++) ob(k % 2 ? 66 : 6, k / 2 ? 66 : 6, k % 2 ? 74 : 14, k / 2 ? 74 : 14, 0, 28, d); ob(30, 30, 50, 50, 34, 38, LC(30, 30, 29)); ob(34, 34, 46, 46, 38, 40, LC(31, 22, 8)); break;   // dining table with a plate
     case 5: ob(0, 8, 80, 72, 26, 32, c); ob(0, 8, 18, 72, 0, 26, d); ob(62, 8, 80, 72, 0, 26, d); ob(2, 10, 16, 40, 10, 18, dk); ob(46, 14, 66, 30, 32, 34, LC(28, 28, 22)); break;   // desk with drawers and paper
     case 6: ob(6, 14, 74, 66, 12, 17, c); for (int k = 0; k < 4; k++) ob(k % 2 ? 62 : 8, k / 2 ? 56 : 18, k % 2 ? 72 : 18, k / 2 ? 64 : 26, 0, 12, d); ob(30, 30, 50, 46, 17, 24, LC(8, 22, 10)); break;   // coffee table and a plant bowl
-    case 7: ob(0, 8, 80, 72, 0, 28, d); ob(0, 4, 80, 76, 28, 33, l); ob(8, 72, 36, 74, 6, 24, c); ob(44, 72, 72, 74, 6, 24, c); ob(16, 4, 28, 16, 33, 40, LC(20, 20, 22)); break;   // kitchen counter
+    case 7: ob(0, 0, 80, 80, 0, 28, d); ob(0, 0, 80, 80, 28, 33, l); ob(8, 80, 36, 82, 6, 24, c); ob(44, 80, 72, 82, 6, 24, c); ob(16, 4, 28, 16, 33, 40, LC(20, 20, 22)); break;   // kitchen counter
     case 8: ob(4, 30, 76, 54, 0, 14, wd); ob(8, 30, 72, 52, 14, 50, dk); ob(10, 52, 70, 54, 16, 48, LC(8, 16, 24)); ob(24, 54, 56, 56, 6, 10, LC(10, 10, 12)); break;   // tv on a stand
     case 9: ob(4, 4, 76, 40, 0, 20, d); ob(6, 4, 74, 40, 20, 24, c); ob(20, 6, 60, 12, 24, 52, dk); ob(22, 12, 58, 14, 26, 50, LC(6, 16, 28)); ob(16, 48, 64, 70, 20, 23, LC(14, 14, 16)); break;   // computer: desk, monitor, keyboard
     case 10: ob(4, 14, 76, 66, 0, 22, c); ob(10, 66, 36, 68, 4, 20, LC(10, 10, 12)); ob(44, 66, 70, 68, 4, 20, LC(10, 10, 12)); ob(14, 70, 32, 72, 8, 16, LC(16, 20, 28)); ob(50, 70, 66, 72, 8, 16, LC(16, 20, 28)); ob(8, 14, 72, 22, 22, 25, l); break;   // stereo with two speakers
@@ -1405,7 +1410,17 @@ static void draw_city(void) {
         block(x - 90 * sc / 100, z - 50 * sc / 100, x + 90 * sc / 100, z + 50 * sc / 100, -300 * sc / 100, -590 * sc / 100, SH[c->shirt], SH[c->shirt]);
         block(x - 60 * sc / 100, z - 60 * sc / 100, x + 60 * sc / 100, z + 60 * sc / 100, -590 * sc / 100, -800 * sc / 100, SK[c->skin], c->stage == 5 ? C15(25, 25, 26) : HR[c->hair]); }
     gy_off = 0;
-    for (int k = 0; k < CARN; k++) { const Car *c = &cars[k]; if (polys > 2950) break; if (!c->dx && !c->dy) continue;   // (D49: a car with a hood, a set-back glass cabin and a roof, lamps at the right end, a dark skirt over the wheels, facing the way it drives)
+    Car pk[7]; int npk = 0;   // (D81, src/traffic.c pcars_*) parked cars on some homes' drives, from the town plan: five homes in eight, nose in, near the lot only
+    if (t7() && mode == M_LIVE) for (int j = -1; j <= 1 && npk < 6; j++) for (int i = -1; i <= 1 && npk < 6; i++) {
+        const LotPlan *q = &nlp[j + RING_MAX][i + RING_MAX]; if (q->type == HT_NONE || !q->drv) continue;
+        u32 ph = bm_hash(lot_bx + i, lot_by + j, 0xCA85u); if ((ph & 7) >= 5) continue;
+        int nn = q->face == LF_NORTH, y0 = nn ? 22 - q->y1 : q->y0, y1 = nn ? 22 - q->y0 : q->y1, wy1 = nn ? 22 - q->wy0 : q->wy1;
+        int garage = q->wx1 || q->type == HT_RANCH, top = q->wx1 ? wy1 + 1 : q->type == HT_RANCH ? y1 + 1 : y0; if (18 - top < 4) continue;
+        int yc = garage ? ((top - BM_LOT0) * 16 + 30) : 168; if (nn) yc = 13 * 16 - yc;   // (centre row: against the garage, or by the street; seen from the south, then turned over)
+        int inn = ((ph >> 8) & 3) != 0, dir = (inn ? -1 : 1) * (nn ? -1 : 1);
+        static const u8 TCOL[6] = { 0, 1, 2, 3, 4, 5 }; (void)TCOL; static const u16 PC[6] = { C15(28, 5, 4), C15(6, 10, 26), C15(26, 26, 27), C15(5, 5, 7), C15(28, 24, 6), C15(8, 22, 10) };
+        Car *c = &pk[npk++]; c->x = i * SLC * 16 + (q->drv - BM_LOT0 + 1) * 16; c->y = j * SLC * 16 + yc; c->dx = 0; c->dy = dir; c->col = PC[(ph >> 16) % 6u]; }
+    for (int k = 0; k < CARN + npk; k++) { const Car *c = k < CARN ? &cars[k] : &pk[k - CARN]; if (polys > 2950) break; if (!c->dx && !c->dy) continue;   // (D49: a car with a hood, a set-back glass cabin and a roof, lamps at the right end, a dark skirt over the wheels, facing the way it drives)
         int ax = c->dx != 0, sg = (ax ? c->dx : c->dy) < 0 ? -1 : 1, x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, la = 300, lb = 140;   // (along its way, across)
 #define CARB(a0, b0, a1, b1, y0, y1, w, r) do { int A0 = sg * (a0), A1 = sg * (a1); if (ax) block(x + A0, z + (b0), x + A1, z + (b1), y0, y1, w, r); else block(x + (b0), z + A0, x + (b1), z + A1, y0, y1, w, r); } while (0)
         u16 col = c->col, glass = C15(13, 19, 25);
@@ -1421,7 +1436,7 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
     int tr = pl && ((k >= LOT_HOUSE && k <= LOT_TWO) || k == LOT_PARK) ? BT_GRASS : b->terrain;   // (D80: a home's yard and a park are lawn in a dry town, as the PS1)
     u16 grass = tr == BT_DESERT ? C15(24, 20, 10) : tr == BT_ROCKY ? C15(13, 13, 13) : tr == BT_BEACH ? C15(26, 24, 14) : seas(C15(11, 20, 8));
     tx_want = tr == BT_DESERT || tr == BT_BEACH ? TX_SAND : tr == BT_ROCKY ? TX_GRAVEL : TX_GRASS; ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), -20, grass); tx_want = -1;
-    if (!far_house(b)) { int n = (k == LOT_PARK || k == LOT_SQUARE) ? 4 : 2; for (int i = 0; i < n; i++) tree(ox + tl(3 + (int)((h >> (i * 4)) & 15) * 3 / 2 % 20), oz + tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 3 / 2 % 20), T * 2); return; }
+    if (!far_house7(b, pl)) { int n = (k == LOT_PARK || k == LOT_SQUARE) ? 4 : 2; for (int i = 0; i < n; i++) tree(ox + tl(3 + (int)((h >> (i * 4)) & 15) * 3 / 2 % 20), oz + tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 3 / 2 % 20), T * 2); return; }
     int w = 10 + (int)(h & 3) * 2, d = 8 + (int)((h >> 2) & 3) * 2, x0 = 4 + (24 - w) / 2 / 2 * 2 - 4, z0 = 4;
     int st = bm_storeys(b); int hh = 2 * st + (st == 1 ? 2 : 0);
     u16 walls[6] = { C15(26, 22, 16), C15(24, 14, 10), C15(22, 24, 26), C15(26, 26, 18), C15(16, 22, 14), C15(24, 20, 22) }; u16 wall = walls[(h >> 8) % 6];
@@ -1640,7 +1655,7 @@ static int lv_box(int L, int *x0, int *y0, int *x1, int *y1) {   // the outline 
 static int view_lv(void);
 static const u16 ROOFC[6] = { C15(24, 11, 8), C15(13, 14, 16), C15(19, 13, 8), C15(11, 16, 10), C15(9, 11, 17), C15(26, 22, 16) };   // the PS1's CLAY RED, SLATE, CEDAR, MOSS GREEN, NAVY, SANDSTONE
 static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise, u16 rc, u16 wc) {   // a roof over the box (eaves included), its foot at ry (up is negative)
-    int w = X1 - X0, d = Z1 - Z0, sh = w < d ? w : d, r = sh / 2; if (r > 6 * T) r = 6 * T;
+    int w = X1 - X0, d = Z1 - Z0, sh = sty == 4 ? w : w < d ? w : d, r = sh / 2; if (r > 6 * T) r = 6 * T;   // (D81: sty 4, a gable turned to the street: the ridge runs front to back)
     u16 fas = shade(rc, 5);
     if (sty == 1) {   // FLAT: the slab, a parapet round it, a box on top (the PS1's towers and big blocks)
         u16 tc = shade(C15(18, 18, 19), 8), pc = shade(wc, 7); tx_want = TX_GRAVEL;
@@ -1649,7 +1664,7 @@ static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise
         block(X0, Z0 + 40, X0 + 40, Z1 - 40, ry - 40, ry - 110, pc, shade(pc, 10)); block(X1 - 40, Z0 + 40, X1, Z1 - 40, ry - 40, ry - 110, pc, shade(pc, 10));
         tx_want = -1; if (w > 4 * T && d > 4 * T) { int cx = X0 + w * 2 / 3, cz = Z0 + d / 3; block(cx - T / 2, cz - T / 2, cx + T / 2, cz + T / 2, ry - 40, ry - 40 - T * 2 / 3, C15(20, 20, 21), C15(25, 25, 26)); }
         return; }
-    int RH_ = r * rise / 256, rtop = ry - RH_, along_x = w >= d, rx = along_x ? (sty == 3 ? r : 0) : r, rz = along_x ? r : (sty == 3 ? r : 0);
+    int RH_ = r * rise / 256, rtop = ry - RH_, along_x = w >= d, rx = sty == 4 ? r : along_x ? (sty == 3 ? r : 0) : r, rz = sty == 4 ? 0 : along_x ? r : (sty == 3 ? r : 0);
     tx_want = -1; block(X0, Z0, X1, Z1, ry + 40, ry, fas, fas); tx_want = TX_SHINGLE_WALL;   // (the eaves' thickness; then the slopes in the PS1's shingles)
     u16 c0 = rc, c1 = shade(rc, 6), ce = rx ? shade(rc, 7) : wc, cf = rz ? rc : wc;   // (gable ends are the walls' plaster)
     qd(X0, ry, Z0, X1, ry, Z0, X1 - rx, rtop, Z0 + rz, X0 + rx, rtop, Z0 + rz, cf);
@@ -1770,7 +1785,7 @@ static void draw_build(int yaw) {   // (D39) dpass 1: the still part (recorded o
         if (it) for (int i = 0; i < nobj; i++) {   // then the items, nearest the camera first in budget terms: far ones are skipped when the DS runs out of polygons
             if (OBJ_LV(&objs[i]) != L) continue;
             if (mode == M_LIVE) { int ox2 = tl(objs[i].x * 2) - camx, oz2 = tl(objs[i].y * 2) - camz; if (!on_board && abs(ox2) + abs(oz2) > 9000 && polys > 1800) continue; }
-            if (polys > 2900) continue;
+            if (polys > (i >= yard_i0 ? 2900 : 2550)) continue;   // (D81: the yard's things come last in the list: the rooms leave them a share of the budget, so the hedges and planters are not what runs out)
             gx_pid(16 + i % 40); obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); } }
     gy_off = 0; lod_force = 0; if (dpass == 2) PROF(6);
 world:
@@ -4119,7 +4134,10 @@ int main(void) {
             if (!on_board && !mg_ui) { if (held & KEY_X) { if (live_dist > 3500) live_dist -= 80; } if (held & KEY_Y) { if (live_dist < 16000) live_dist += 80; } }
             live_yaw += (yaw_t - live_yaw) / 4; if (yaw_t - live_yaw > -4 && yaw_t - live_yaw < 4) live_yaw = yaw_t;
             if (!mg_ui) for (int t = 0; t < steps; t++) { for (int k = 0; k < speed; k++) { sims_step((frames + t) * speed + k); city_step((frames + t) * speed + k); } lot_cross(); } PROF(0);   // (D39: by the vblanks gone by, so the game keeps its speed whatever the frame rate)
-            int tx = sims[cur_sim].x * 2 * T / 16 - GN * T + T, tz = sims[cur_sim].y * 2 * T / 16 - GN * T + T; if (!cam_free) { camx += (tx - camx) / 8; camz += (tz - camz) / 8; }
+            int tx = sims[cur_sim].x * 2 * T / 16 - GN * T + T, tz = sims[cur_sim].y * 2 * T / 16 - GN * T + T; if (!cam_free) { static int cxf, czf, lastv; int tk = (int)(vbl_n - (u32)lastv); lastv = (int)vbl_n; if (tk < 1) tk = 1; if (tk > 6) tk = 6;   // (D81, docs/WOBBLE.md) the follow goes by the ticks that passed, in 8.8: 18/256 of the gap a tick, snap when under 1.5 PS1 units (4 here)
+            if ((cxf >> 8) != camx || (czf >> 8) != camz) { cxf = camx << 8; czf = camz << 8; }
+            for (int k = 0; k < tk; k++) { int gx = (tx << 8) - cxf, gz = (tz << 8) - czf; if (abs(gx) < 4 * 256 && abs(gz) < 4 * 256) { cxf = tx << 8; czf = tz << 8; break; } cxf += (int)(((long long)gx * 18) >> 8); czf += (int)(((long long)gz * 18) >> 8); }
+            camx = cxf >> 8; camz = czf >> 8; }
             yaw = live_yaw; dist = live_dist * (o_cam == 0 ? 85 : o_cam == 1 ? 100 : 125) / 100; cam_deff = dist; pitch = live_pitch;
             { int hd = dist * cosLerp(pitch) >> 12, r = (hd + (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500)) >> 2; lod_ex = camx - (hd * sinLerp(yaw) >> 12); lod_ez = camz + (hd * cosLerp(yaw) >> 12); lod_r2 = on_board ? 0x3FFFFFFF : r * r; }   // (D51: riding the skate plaza, the lot is all drawn in full, so the lists are not recorded again as the camera follows the rider) (D38) the level of detail goes by the distance from the eye
             { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)((on_board ? skate_sig() * 977 + 5 : 0) + (mg_ui ? mg_sig() * 983 + 3 : 0) + cur_sim * 7 + ctl * 3 + (minutes / 1440) * 13 + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_secrets * 23) * 31 * zone + o_pm * 977 + info_pg * 43 + life_ver * 53 + sims[cur_sim].age * 59 + (cur_sim != ctl ? minutes * 7 + funds : 0)); a = a * 31 + (unsigned)sims[cur_sim].rel;

@@ -281,7 +281,7 @@ static void gen_home7(const LotPlan *p0, u32 h, int terrain, int kind) {   // a 
     else if (ty == HT_COMPACT) { int dcl = mir ? bx1 - dxc : dxc - bx0; kitC(w, d, dcl < 1 ? 1 : dcl, ow); }
     else { int dcl = mir ? bx1 - dxc : dxc - bx0; kitD(w, d, dcl < 1 ? 1 : dcl, ow, ty == HT_TWO || ty == HT_MANSION); }
     // ---- the yard (docs/HOUSING_DESIGN.md section 3): the walk from the door, a porch, planters and a lamp, a low hedge across the front with a gap at the walk and the drive, a mailbox, trees; the drive; the back yard
-    int fr = by1 + 1, n = 11 - by1;   // the first yard row; rows between the front wall and the hedge row (cell row 11)
+    yard_i0 = nobj; int fr = by1 + 1, n = 11 - by1;   // the first yard row; rows between the front wall and the hedge row (cell row 11)
     char TR = terrain == BT_FOREST || terrain == BT_ROCKY ? '6' : terrain == BT_DESERT ? 'u' : terrain == BT_BEACH ? 'g' : '3'; int TREE_ = h7_let(TR);
     for (int y = fr; y < GN; y++) if (!flr[y][dxc]) flr[y][dxc] = 5;
     if (n >= 2) for (int x = dxc - 1; x <= dxc + 1; x++) if (x >= 0 && x < GN && !flr[fr][x]) flr[fr][x] = 2;

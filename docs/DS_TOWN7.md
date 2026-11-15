@@ -49,3 +49,14 @@ Picture: docs/town_model_before_after.png (the moving-in screen's model, same bl
 - A far gable: two slopes up to a ridge along the longer side (sty 1) or north to south (sty 3), the two end walls carried up to it; a hip stays four slopes up to a point. Rise = half the short side * roofPitch / TILE (`world_roof_rise`).
 - The Map and lot-picking pictures: a plan home's wall is `world_plan_wall_rgb((pal * 2 + wall) % 6)`, its roof `world_roof_rgb(col)`.
 - Take lots7.inc's mirror7 change (cinema door).
+
+## D81 (brought up to what the PS1 and Dreamcast have, main at 323308b)
+- ds_items.h regenerated with the repo's generator (mk_dsitems.py now reads items_hedge.inc): new CLIPPED HEDGE (id 205, PS1 0x8E) and HEDGE PIER (206, 0x8F), one box each on the DS (greens of pHg, body 12 high, cap top colour), never for sale (tab 255). Dining table and counter fill their tile.
+- Yards (ds_town7.h): rules of HOUSING_DESIGN 11: style from q.pal & 3 (0 hedge, piers, short side hedges; 1 hedge, piers; 2 picket fence; 3 hedge on half the lots), lawn on some lots, hedge on cell row 11 except the walk (dxc +- 1) and the drive, piers at 1, 12, dxc +- 2, dv - 1, dv + 2, side hedges on cells 1 and 12 over rows by1 + 1 .. 10, none in the back yard, yard tree placed first, hedge7 pocket rule (h7_hedge). Fields (gen 7, no street) have crop rows and hedgerows with gaps (y % 3 == 0), no barn.
+- Roofs: front gables (RF_FRONT on compact, box, two-storey; roof_shape sty 4, ridge front to back). Parked cars on drives (five homes in eight, nose in, up to six, same rules as pcars_* in src/traffic.c). Off-centre homes, bent streets and dead ends came with the shared bigmap.c and need no DS code (audit 178 homes all 0).
+- Camera follow by elapsed vblanks in 8.8 (18/256 a tick, snap under 4 units = 1.5 PS1 units). The DS title is 2D, so there is no title sway to move to the clock.
+- Neighbourhood names (bm_nb_name) on the Map card; Map lot picture: no building on a pool (deck), crop rows on a field, north-facing buildings turned; far view: no barn on a field, no building on a pool.
+- Found on the way: the yard's things come last in the object list and ran out of polygon budget first (the rooms used it all), so yards were bare. Rooms now stop at 2550 quads, yard things go on to 2900.
+- Not done: far-storey LOD (b_lod, lod_up); world_roof_of / world_roof_rgb / world_plan_wall_rgb (world.c is not in the DS build; the DS keeps its own plan_roof and wall table); texture quad cutting (the DS texture unit is hardware, no warp to fix); a hedged-estate shot; ds_music.sh (needs special builds).
+- Numbers (tools/dsemu/tb.sh): live 28.9 fps avg (26-30), street/town 28.6, 2470-2730 quads. Tests: ds_town7_audit PASS (178 homes, hedges on 59), ds_town.sh same as before, save round trip gen 7 -> 7 and DS_OLDSAVE -> 3, fuzz seeds 1-3 no stall.
+- Shots: docs/ds_shots/d81_*.png.
