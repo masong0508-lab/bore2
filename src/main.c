@@ -1009,6 +1009,15 @@ static void life_update(int steps) {
             }
             if (k_ >= 0) { for (int i = 0; i < nsims; i++) { sims[i].x = hx_ + (i % 3) * 3; sims[i].z = hz_ - (i / 3) * 3; sims[i].path_n = 0; sims[i].lvl = 0; } cam_fx = hx_; cam_fz = hz_; }
           }
+#elif defined(AUTO_WALKAT)
+          {   // (test builds, AUTO_CITY with AUTO_WALKAT=1 and AUTO_AT_BX/BY=block, AUTO_AT_TX/TY=tile: a taxi there, then the same stroll east as the plain route, for frame-pacing runs on a chosen street)
+            if (fr_ >= 60 && !(done_ & 1)) { done_ |= 1; taxi_to_block(AUTO_AT_BX, AUTO_AT_BY, AUTO_AT_TX, AUTO_AT_TY, "TEST"); }
+            if (fr_ > 400 && s->action == ACT_NONE) s->x += 11 * steps;
+#ifdef AB_CFG
+            { extern volatile u8 ab_cfg[8]; if (fr_ > 100 && ab_cfg[4] == 1) { cam_pitch = 640; cam_dist = 1500; } }
+#endif
+            if (fr_ >= 400 && !(done_ & 2)) { done_ |= 2; extern int prof_on; prof_on = 1; }
+          }
 #elif defined(AUTO_AT_BX)
           {   // (test builds, AUTO_CITY with AUTO_AT_BX/BY=block, AUTO_AT_TX/TY=tile in it, AUTO_AT_PITCH/DIST: stand there and look, for the world version 7 shots docs/plan7_*)
             static int at_ = 0, hx_, hz_;
@@ -2355,8 +2364,12 @@ static void helper_apply(void) {
     int c = ((opt[O_CROWD] & 3) + 1) * 16 >> crowd_lvl; cit_maxdraw = c < 8 ? 8 : c;
     cit_live_cap = crowd_lvl >= 2 ? 1 : 99; cit_fresh_max = crowd_lvl >= 1 ? 1 : 2; cit_stale_n = crowd_lvl >= 1 ? 12 : 6;   // (a render that does not fit costs ~140 hb: a frame past its vblank)
 }
-static int mode30, h_lock = 3;   // (the speed helper's frame-rate target: 30 only when the frames have held it for a long spell, else a locked 20; h_lock = the vblanks every frame takes at least)
-int dbg_hl[6];   // (test readouts: steps given up, given back, frames aiming at 30, the ladder's step and the crowd's step, summed)
+static int mode30, mode15, h_lock = 3;   // (mode15: the frames' mean really is past 3 vblanks with nothing left to give up: a steady 15 (4 vblanks a frame) instead of a mix of 3, 4 and 5)   // (the speed helper's frame-rate target: 30 only when the frames have held it for a long spell, else a locked 20; h_lock = the vblanks every frame takes at least)
+int dbg_hl[6];
+int dbg_m15[8];
+#ifdef AB_BURN
+u8 dbg_vbt[2400];
+#endif   // (test readouts: steps given up, given back, frames aiming at 30, the ladder's step and the crowd's step, summed)
 COLD static void helper_frame(void) {
     extern int world_detail_r, gfx_last_wait, cit_spare_hb;
 #ifdef AB_CFG
@@ -2405,12 +2418,25 @@ COLD static void helper_frame(void) {
         else { win_n++; win_over += need > 500; if (win_n >= 256) { if (win_over <= 2 && dwell >= 600 && A < 440) { mode30 = 1; mode_n = 0; dwell = 0; hist = 0; } win_n = win_over = 0; } }
         h_lock = mode30 ? 2 : 3;
     } else h_lock = opt[O_FPSCAP] == 2 ? 3 : 1;
+    if (opt[O_FPSCAP] == 1 || opt[O_FPSCAP] == 2) {   // a steady 15 when 20 does not hold: only when the mean really is past 3 vblanks (not for a heavy stretch: 3 and 4 mixed beat 4 all the time) with the whole ladder given up, held 4 s; back to 20 after the mean has stayed well under for 3 s (the thresholds, 846 and 760 hb, are 86 apart: no flicker between them; under about 3.3 vblanks of cost a 3-vblank lock gives a better mean than 4 all the time)
+        static int in_n, out_n;
+        if (mode30) mode15 = 0;
+        else if (!mode15) { if (A > 786 + 60 && k >= kmax - 1) { if (++in_n >= 80) { mode15 = 1; in_n = out_n = 0; } } else if (in_n) in_n--; }
+        else { if (A < 786 - 26) { if (++out_n >= 48) { mode15 = 0; in_n = out_n = 0; } } else out_n = 0; }
+#ifdef AB_NO15
+        mode15 = 0;   // (test builds: the steady 15 off, to compare)
+#endif
+        if (mode15) h_lock = 4;
+    } else mode15 = 0;
     #ifdef FAR_FIRST
     if (ch) { shed_lvl = MIN(k, FSH); world_detail_r = det_opt - CLAMP(k - FSH, 0, R); crowd_lvl = CLAMP(k - FSH - R, 0, 2); helper_apply(); since = 0; }
 #else
     if (ch) { shed_lvl = k >= kmax ? FSH : MIN(k, 4); world_detail_r = det_opt - CLAMP(k - 4, 0, R); crowd_lvl = CLAMP(k - 4 - R, 0, 2); helper_apply(); since = 0; }
 #endif
-    dbg_hl[2] += T == 524; dbg_hl[3] += k; dbg_hl[4] += crowd_lvl;
+    dbg_hl[2] += T == 524; dbg_hl[3] += k; dbg_hl[4] += crowd_lvl; dbg_hl[5] += mode15;
+#ifdef AUTO_CITY
+    { extern int dbg_life_n; extern int dbg_m15[8]; static int was15_, nm_; if (mode15 != was15_ && nm_ < 8) dbg_m15[nm_++] = dbg_life_n; was15_ = mode15; }   // (test readouts: the life frames where the steady 15 began and ended)
+#endif
 }
 void cam_view_set(int v) {   // (L2 + R2 in play, and the options)
     cam_view = v; opt[O_CAM] = (u8)v; fp_pitch = 0;
@@ -5645,7 +5671,10 @@ int main(void) {
         t_frame0 = hb_now();
         read_pad();
         int now = VSync(-1), steps = now - t_vb; t_vb = now;
-        { static int was_life; if (was_life) { int k = MIN(5, MAX(0, steps)); dbg_per_hist[k]++;   // (test readouts: how many vblanks each life frame really took,
+        { static int was_life; if (was_life) { int k = MIN(5, MAX(0, steps)); dbg_per_hist[k]++;
+#ifdef AB_BURN
+              { extern u8 dbg_vbt[2400]; if (dbg_life_n < 2400) dbg_vbt[dbg_life_n] = (u8)k; }   // (test builds: every life frame's real vblanks)
+#endif   // (test readouts: how many vblanks each life frame really took,
               extern int gfx_last_cpu; int e = gfx_last_cpu; if (e > dbg_edge[k]) dbg_edge[k] = e; if (!dbg_edge[6 + k] || e < dbg_edge[6 + k]) dbg_edge[6 + k] = e;   //  and the latest / earliest flip each count saw;
               int vr = (e * 10 + 2624) / 2625, vn = (dbg_need_last * 10 + 4 * 10 + 2624) / 2625; if (vr < gfx_min_vsyncs) vr = gfx_min_vsyncs; if (vn < gfx_min_vsyncs) vn = gfx_min_vsyncs;
               dbg_vbs[0] += vn; dbg_vbs[1] += vr; if (vr > vn) dbg_vbs[2]++; if (vr < vn) dbg_vbs[3]++;   //  and the vblanks it would take from its need and from its flip: a like-for-like fps with AB_LOCK4;
@@ -5821,6 +5850,9 @@ int main(void) {
             }
             nav_used = nav_quiet = 0;
         }
+#ifdef AB_BURN
+        { extern int dbg_life_n; if (state == ST_LIFE && dbg_life_n >= AB_BURN_FROM && dbg_life_n < AB_BURN_TO) { int b0_ = hb_now(); while (hb_now() - b0_ < AB_BURN) { } } }   // (test builds: AB_BURN hb of nothing a life frame between life frames AB_BURN_FROM and AB_BURN_TO, a heavy street for the steady-15 rule)
+#endif
         t_cpu = hb_now() - t_frame0;
         if (state == ST_LIFE && world_stream_want) {   // the map window's move, waiting: now, if it fits before the vblank this frame reaches anyway
             int vb = (t_cpu + 40 + 262) / 263; if (vb < gfx_min_vsyncs) vb = gfx_min_vsyncs;
@@ -5832,8 +5864,8 @@ int main(void) {
         if (state == ST_LIFE && opt[O_SPEED]) {   // a frame that ran past two screen refreshes: the full-detail range draws in a tile (back out once things are quiet)
 #endif
             helper_frame();
-            if (opt[O_FPSCAP] == 1) gfx_min_vsyncs = h_lock;   // (a locked rate while the helper has one: no frame ends a vblank sooner, so 20 does not flicker with 30)
-        } else if (opt[O_FPSCAP] == 1) gfx_min_vsyncs = 2;   // (the helper is off or this is not the city: 30 or what the frames take, as before)
+            if (opt[O_FPSCAP] == 1) gfx_min_vsyncs = h_lock; else if (opt[O_FPSCAP] == 2) gfx_min_vsyncs = mode15 ? 4 : 3;   // (a locked rate while the helper has one: no frame ends a vblank sooner, so 20 does not flicker with 30)
+        } else if (opt[O_FPSCAP] == 1) gfx_min_vsyncs = 2; else if (opt[O_FPSCAP] == 2) gfx_min_vsyncs = 3;   // (the helper is off or this is not the city: 30 or what the frames take, as before)
 #ifdef AUTO_CITY
         { extern int dbg_slow[16][8], dbg_slow_n, cit_spare_hb; if (state == ST_LIFE && t_cpu - cit_spare_hb > 785) { int *d = dbg_slow[dbg_slow_n++ & 15];   // (test builds: what the slow frames spent their time on)
             d[0] = t_cpu; d[1] = t_cpu - cit_spare_hb; d[2] = t_logic; d[3] = t_world; d[4] = t_sims; d[5] = t_hud + t_bub; d[6] = gfx_prof[3]; d[7] = frame; } }

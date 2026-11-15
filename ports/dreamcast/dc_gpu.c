@@ -308,8 +308,17 @@ static void emit(int n, const int *x, const int *y, const uint32_t *col, const i
 // multiplies by at most 1. A primitive tinted above 128 is drawn at 1, then once more on top, added: the texture times the rest.
 // The primitives go straight into three buffers of PowerVR vertices (opaque, punch-through, translucent), with a polygon header
 // wherever the texture or the blend changes: at the end of the frame each buffer is one copy to the tile accelerator.
-extern int dc_filter;
+extern int dc_filter, dc_frames;
 static int hdr_put(VList *L, int tex, int blend);
+#ifndef DC_GROW
+#define DC_GROW 0.33f
+#endif
+#ifndef DC_GROW_BIG
+#define DC_GROW_BIG 1.6f
+#endif
+#ifndef DC_BIGPX
+#define DC_BIGPX 40.0f
+#endif
 static void emit_one(int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr, int var) {
     VList *L = semi ? &vl_tr : textured ? &vl_pt : &vl_op;
     if (n >= 3) {   // a sliver (a face seen edge-on: under 0.7 of a PS1 pixel across): the PS1's rasteriser leaves it out or makes a few dots, the PowerVR's draws a dotted hairline across the picture
@@ -361,7 +370,10 @@ static void emit_one(int n, const int *x, const int *y, const uint32_t *col, con
         // (a slanted opaque polygon, grown a third of a pixel: two faces that share an edge leave a hairline crack on the PowerVR where the edge falls between pixel
         //  centres, and what lies behind shows through as a dotted line (a blue one across the title room's wall top). Rectangles stay as they are: the interface.)
         float cx = 0, cy = 0; for (int k = 0; k < n; k++) { cx += fx[k]; cy += fy[k]; } cx /= n; cy /= n;
-        for (int k = 0; k < n; k++) { float dx = fx[k] - cx, dy = fy[k] - cy, d2 = dx * dx + dy * dy; if (d2 > 0.25f) { float inv = 0.33f / __builtin_sqrtf(d2); fx[k] += dx * inv; fy[k] += dy * inv; } }
+        float gr = DC_GROW;   // (a big piece of floor or wall is grown more: its neighbour is cut in different places, so the shared edge is a T-junction the PS1's integer corners leave up to a pixel off, and the dark picture behind showed through as a dotted line)
+        { float mxx = fx[0], mnx = fx[0], mxy = fy[0], mny = fy[0]; for (int k = 1; k < n; k++) { if (fx[k] > mxx) mxx = fx[k]; if (fx[k] < mnx) mnx = fx[k]; if (fy[k] > mxy) mxy = fy[k]; if (fy[k] < mny) mny = fy[k]; }
+          if (mxx - mnx > DC_BIGPX || mxy - mny > DC_BIGPX) gr = DC_GROW_BIG; }
+        for (int k = 0; k < n; k++) { float dx = fx[k] - cx, dy = fy[k] - cy, d2 = dx * dx + dy * dy; if (d2 > 0.25f) { float inv = gr / __builtin_sqrtf(d2); fx[k] += dx * inv; fy[k] += dy * inv; } }
     }
     hdr_put(L, ti, blend + filt * 16);
     pvr_vertex_t *o = &L->v[L->n];
