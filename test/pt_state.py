@@ -11,7 +11,7 @@ def arr(n, c, f='i'):
     return list(struct.unpack('<%d%s' % (c, f), ram[o:o + struct.calcsize('<' + f) * c]))
 ST = "TITLE MENU CREATE LIFE PAUSE BUILD JUKEBOX HELP TRAVEL STORY WANTS PIE PANEL MAP DIR OPTS JOBS OVER HOMES CRAFT PHONE SLOTS NHOOD WORLDS NAME SPICK SCARD WMAKE CONFIRM ARCADE REALM GOTCHI PARTY DJ SUPER DOG PRISON SPACE MODE NHED CUT SWITCH RTSET".split()
 d = arr('dbg_pt', 40)
-nm = "state clock_min day cash nsims player food wc rest clean comfy fun social room mood action job_lvl job_worked nprops home_city x z lvl s_cook s_body s_fun s_logic s_char s_creat s_mech dead stage ovf frames build_x build_y build_lvl act_x act_y".split()
+nm = "state clock_min day cash nsims player food wc rest clean comfy fun social room mood action job_lvl job_worked nprops home_city x z lvl s_cook s_body s_fun s_logic s_char s_creat s_mech dead stage ovf frames build_x build_y build_lvl act_x act_y lowest_need_of_all".split()
 print(' '.join('%s=%s' % (n, ST[v] if n == 'state' and 0 <= v < len(ST) else v) for n, v in zip(nm, d)))
 if 'pk_stn' in S:
     n = arr('pk_stn', 64); o = arr('pk_sto', 64); b = arr('pk_st', 64)
