@@ -73,6 +73,8 @@ void gfx_set_identity(void);                       // object space = world space
 
 // ---- lighting (one sun) ----
 int  gfx_light(int nx, int ny, int nz);       // local-space normal (units of 4096) under the current object yaw -> 0..255 (128 = unlit colour)
+extern int gfx_cel;                           // 0 off, 1 cel shading (three flat tones), 2 ink (the outline pass): see gfx_light
+int  gfx_cel_tone(int v);
 void gfx_set_ambient(int amb, int dif);       // the day-night cycle moves these
 void gfx_set_light_yaw(int yaw);              // the yaw gfx_light rotates normals by (gfx_set_object sets it; set it yourself after gfx_set_object_m)
 int  gfx_light_amb(void);

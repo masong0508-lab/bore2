@@ -120,6 +120,7 @@ static u32 slot_col_make(int slot, int i) {
 }
 static inline u32 slot_col(int slot, int L) { int i = CLAMP(L, 0, 255) >> 2; return lut_stamp[slot][i] == lut_gen ? slot_lut[slot][i] : slot_col_make(slot, i); }
 static void face4(const XV *a, const XV *b, const XV *c, const XV *d, int slot, int L0, int L1, int L2, int L3, int kind) {
+    if (gfx_cel) { L0 = L1 = L2 = L3 = gfx_cel_tone((L0 + L1 + L2 + L3) >> 2); kind = 0; }   // (a drawing: one flat tone to a face, no weave)
 
     if (kind >= 2) {
         const TexRef *t = kind == 2 ? &skin_tex : kind == 3 ? &cloth_tex : &pat_tex[0][0] + (kind - 4);   // 4.. = a pattern (pat_tex[p][tone])

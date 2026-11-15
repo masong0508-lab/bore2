@@ -300,11 +300,14 @@ int  gfx_light_amb(void) { return light_amb; }
 // the light's step: changes whenever anything gfx_light or the colour grade depend on does (the ambient and sun strength the day-night
 // cycle sets, the grade switch). The sun's direction is fixed. Caches of lit colours key on it (with yaw 0: the world's own axes)
 int  gfx_light_key(void) { extern int gfx_grade; return 1 + (light_amb & 511) + ((light_dif & 511) << 9) + ((gfx_grade & 1) << 18); }
+int gfx_cel;   // 0 off; 1 cel shading: the light comes in three hard tones; 2 ink: everything the darkest tone (the outline pass of a drawing, the film)
+int gfx_cel_tone(int v) { return gfx_cel == 2 ? 16 : v < 100 ? 84 : v < 165 ? 130 : 192; }
 int gfx_light(int nx, int ny, int nz) {
     int d = (nx * lx_obj + ny * ly_obj + nz * lz_obj) >> 12;   // -4096..4096
     if (d < 0) d = d / 6;                                                        // a little bounce light on the dark side
     int v = light_amb + ((light_dif * d) >> 12);
-    return CLAMP(v, 16, 255);
+    v = CLAMP(v, 16, 255);
+    return gfx_cel ? gfx_cel_tone(v) : v;
 }
 
 // ------------------------------------------------------------------ clipping (Cohen-Sutherland outcodes)

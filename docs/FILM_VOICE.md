@@ -28,3 +28,11 @@ would be a lossy MDEC copy of the same pictures at 15 fps, costing about 9 MB of
 
 ## Verified
 `DSWAV` (the test emulator's SPU dump) of a 4600-frame `-DAUTO_CUT=1` run: every one of the 13 lines is found in the dump by matched filtering, in order, within 65 ms of its place on the film's clock.
+
+## The look (cartoon, drawn in the real-time film)
+Flat colour and a limited palette for the sake of the style only (no grain, noise or dither): `gfx_cel` in `src/gfx.c` (1: the light in three hard tones, 2: ink, everything the darkest tone) is read by
+`gfx_light` and `voxel.c face4` (one flat tone to a face, no weave). The people are drawn twice (`actor_draw`): the outline pass (9% fatter, set back, ink) then the cel pass. They move on fives of the
+60 Hz steps (12 drawings a second, `HOLD`), the crowd and the wall lights on threes, the camera stays smooth. The floor is flat tiles with hard pools of light, the wall two flat bands a panel, colours
+8 steps a channel (`cq`). Speed lines (`line_w`) and white flash cuts (`beat_t`) on the beats, a soft additive glow, a swoosh behind the title cards.
+Main RAM with both the voice and the look: `_end` 0x801f5714 (was 0x801f515c), CUT.OVL 20.4 KB. Packets: no overflow; the film's frames cost 440 to 1040 hblanks (2 to 4 vblanks) in the test emulator, and the film runs on its clock, so a slow frame costs picture, never timing.
+`docs/film_anime_before_after.png`: left the plain film, right the cartoon one, same frames.

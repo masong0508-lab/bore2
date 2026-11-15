@@ -127,7 +127,7 @@ static const struct { u16 t; u8 lvl; } cheers[] = { { T(0), 40 }, { T(100), 255 
 enum { A_CHAD, A_MISSY, A_INTERN, A_N };
 typedef struct { Bore *b; int x, z, yaw, lx, lz, amp, phase; VPose pose; } Act;
 static Act act[A_N];
-static int ft, cue_i, lights, skipped, done_t, gal;   // gal: the pose gallery (a test: AUTO_CUT=9999)
+static int ft, cue_i, lights, skipped, done_t, gal, fh, last_fh;   // fh: the people's clock, held (a new drawing every HOLD steps)   // gal: the pose gallery (a test: AUTO_CUT=9999)
 
 #define BORE_AT(i) ((Bore *)((((u32)crowd_scratch(&(u32){0}) + 7) & ~7u) + (i) * ((sizeof(Bore) + 7) & ~7u)))
 static void build_cast(void) {
@@ -197,10 +197,11 @@ static int speaker_now(void) { for (int i = 0; i < NSUBS; i++) if (ft >= subs[i]
 static void film_leave(void) { audio_film_end(); for (int i = 0; i < A_N; i++) look_release(act[i].b); }
 
 // ---- stepping ----
+#define HOLD 5                        // the people move on fives of the 60 Hz steps: 12 drawings a second, like a cartoon shot on threes
 #define FADE_IN T(12)
 void cut_open(int arg) {
     build_cast();
-    gal = arg == 9999; ft = arg > 1 && !gal ? arg : 0; cue_i = 0; lights = 0; skipped = 0; done_t = 0;
+    gal = arg == 9999; ft = arg > 1 && !gal ? arg : 0; fh = ft - ft % HOLD; last_fh = -1; cue_i = 0; lights = 0; skipped = 0; done_t = 0;
     while (cue_i < (int)(sizeof cues / sizeof cues[0]) && cues[cue_i].t < ft) cue_i++;
     for (int i = 0; i < A_N; i++) { act[i].amp = 0; act[i].phase = 0; act[i].lx = -99999; }
     vox_n = gal ? 0 : audio_film_load("FILMVOX.BIN"); vox_end = 0;
@@ -220,16 +221,16 @@ static void poses_now(void) {
         { missy_w, sizeof missy_w / sizeof missy_w[0], missy_q, sizeof missy_q / sizeof missy_q[0] },
         { intern_w, sizeof intern_w / sizeof intern_w[0], intern_q, sizeof intern_q / sizeof intern_q[0] } };
     for (int i = 0; i < A_N; i++) {
-        Act *a = &act[i]; int x, z, yaw; mark_at(tr[i].w, tr[i].nw, ft, &x, &z, &yaw);
+        Act *a = &act[i]; int x, z, yaw; mark_at(tr[i].w, tr[i].nw, fh, &x, &z, &yaw);
         int d = a->lx == -99999 ? 0 : (int)(ABS(x - a->lx) + ABS(z - a->lz));
         a->lx = x; a->lz = z; a->x = x; a->z = z; a->yaw = yaw;
         a->phase = (a->phase + d * 3 / 2) & 255;
         int want = d > 0 ? CLAMP(d * 90, 0, 1024) : 0;
         a->amp += (want - a->amp) / 6; if (!want && a->amp < 16) a->amp = 0;
-        VPose p; pose_at(tr[i].q, tr[i].nq, ft, &p);
+        VPose p; pose_at(tr[i].q, tr[i].nq, fh, &p);
         VPose w; walk_pose(a, &w); plerp(&a->pose, &p, &w, a->amp);
-        a->pose.nod += (s16)(fsin(ft * 3 + i * 40) / 6);      // breathing
-        a->pose.drop += (s16)(fsin(ft * 2 + i * 70) / 10);
+        a->pose.nod += (s16)(fsin(fh * 3 + i * 40) / 6);      // breathing
+        a->pose.drop += (s16)(fsin(fh * 2 + i * 70) / 10);
     }
 }
 
@@ -245,11 +246,15 @@ int cut_update(int held, int pressed, int steps) {
     }
     if (ft >= FILM_END + T(8)) { film_leave(); return 0; }
     lights += (256 - lights) * MIN(steps, 8) / 40;
-    poses_now();
+    fh = ft - ft % HOLD;
+    if (fh != last_fh) { last_fh = fh; poses_now(); }     // (a new drawing of the people)
     return 1;
 }
 
-// ---- the studio ----
+// ---- the studio, drawn as a cartoon: flat colour, a limited palette (8 steps a channel), hard bands of light ----
+static inline int cq(int v) { v = v < 0 ? 0 : v > 255 ? 255 : v; return (v >> 5) * 36; }
+static const u16 beat_t[] = { T(105), T(190), T(228), T(392), T(436), T(470), T(545) };      // the flash cuts
+static const struct { u16 a, b; } line_w[] = { { T(190), T(206) }, { T(226), T(240) }, { T(388), T(424) }, { T(436), T(452) }, { T(470), T(490) }, { T(545), T(558) } };   // the speed lines
 static const u8 palette[6][3] = { { 255, 60, 140 }, { 255, 170, 40 }, { 80, 220, 120 }, { 60, 170, 255 }, { 170, 90, 255 }, { 255, 90, 60 } };
 static inline void V3(SVECTOR *v, int x, int y, int z) { v->vx = (short)x; v->vy = (short)-y; v->vz = (short)-z; }
 static u32 shade(int r, int g, int b, int k) { r = r * k >> 8; g = g * k >> 8; b = b * k >> 8; return UI_RGB(MIN(r, 255), MIN(g, 255), MIN(b, 255)); }
@@ -262,29 +267,29 @@ static void floor_draw(int tf) {
     int lx[3] = { act[A_CHAD].x, 900, fsin(tf / 3) * 7 }, lz[3] = { act[A_CHAD].z, -190, fcos(tf / 4) * 5 + 200 };
     if (tf < T(190)) { lx[1] = fsin(tf / 2 + 40) * 6; lz[1] = fcos(tf / 3) * 4 + 100; }
     gfx_floor_pass = 1;
-    const int N = 400;
-    for (int gz = -3; gz < 4; gz++) for (int gx = -4; gx < 4; gx++) {
-        int cx[4], cz[4]; cx[0] = gx * N; cz[0] = gz * N; cx[1] = cx[0] + N; cz[1] = cz[0]; cx[2] = cx[0]; cz[2] = cz[0] + N; cx[3] = cx[1]; cz[3] = cz[2];
-        SVECTOR p[4]; u32 col[4];
-        for (int k = 0; k < 4; k++) {
-            V3(&p[k], cx[k], 0, cz[k]);
-            int r = 22 + (((gx + gz) & 1) ? 10 : 0), g = r, b = r + 22;
-            for (int l = 0; l < 3; l++) { int dx = cx[k] - lx[l], dz = cz[k] - lz[l]; int d2 = dx * dx + dz * dz; int i = MAX(0, 256 - d2 / 2300) * lights >> 8;
-                r += lc[l].r * i >> 9; g += lc[l].g * i >> 9; b += lc[l].b * i >> 9; }
-            col[k] = UI_RGB(MIN(r, 255), MIN(g, 255), MIN(b, 255));
-        }
-        gfx_quad_g(&p[0], &p[1], &p[2], &p[3], col[0], col[1], col[2], col[3], 0);
+    const int N = 200;
+    for (int gz = -6; gz < 8; gz++) for (int gx = -8; gx < 8; gx++) {
+        int x0 = gx * N, z0 = gz * N, cx = x0 + N / 2, cz = z0 + N / 2;
+        int r = 22 + (((gx + gz) & 1) ? 12 : 0), g = r, b = r + 24;
+        for (int l = 0; l < 3; l++) { int dx = cx - lx[l], dz = cz - lz[l]; int d2 = dx * dx + dz * dz; int i = MAX(0, 256 - d2 / 2300) * lights >> 8;
+            i = (i >> 6) * 85;                                       // the pools of light in four hard steps
+            r += lc[l].r * i >> 9; g += lc[l].g * i >> 9; b += lc[l].b * i >> 9; }
+        SVECTOR p[4]; V3(&p[0], x0, 0, z0); V3(&p[1], x0 + N, 0, z0); V3(&p[2], x0, 0, z0 + N); V3(&p[3], x0 + N, 0, z0 + N);
+        gfx_quad_f(&p[0], &p[1], &p[2], &p[3], cq(r), cq(g), cq(b), 0);
     }
     gfx_floor_pass = 0;
 }
 static void backdrop_draw(int tf) {
     const int Z = 1100, PW = 200, NP = 18;
+    tf -= tf % 3;                                                    // (the lights chase on threes)
     for (int i = 0; i < NP; i++) {
         int x0 = -1800 + i * PW + 6, x1 = x0 + PW - 12;
         int w = (isin(((i * 230 - tf * 11) & 4095)) >> 3) + 255;     // a chase running along the wall
-        int k = ((90 + (w * 165 >> 9)) * lights) >> 8; const u8 *c = palette[(i / 3 + tf / 150) % 6];
-        SVECTOR a, b, cc, d; V3(&a, x0, 760, Z); V3(&b, x1, 760, Z); V3(&cc, x0, 40, Z); V3(&d, x1, 40, Z);
-        gfx_quad_g(&a, &b, &cc, &d, shade(c[0], c[1], c[2], k / 3), shade(c[0], c[1], c[2], k / 3), shade(c[0], c[1], c[2], k), shade(c[0], c[1], c[2], k), 0);
+        int k = ((90 + (w * 165 >> 9)) * lights) >> 8; k = MIN(255, (k >> 6) * 64 + 40); const u8 *c = palette[(i / 3 + tf / 150) % 6];
+        SVECTOR a, b, cc, d, e, f;
+        V3(&a, x0, 760, Z); V3(&b, x1, 760, Z); V3(&cc, x0, 400, Z); V3(&d, x1, 400, Z); V3(&e, x0, 40, Z); V3(&f, x1, 40, Z);
+        gfx_quad_f(&a, &b, &cc, &d, cq(c[0] * k >> 8), cq(c[1] * k >> 8), cq(c[2] * k >> 8), 0);
+        gfx_quad_f(&cc, &d, &e, &f, cq(c[0] * k * 11 >> 12), cq(c[1] * k * 11 >> 12), cq(c[2] * k * 11 >> 12), 0);
     }
     SVECTOR a, b, c, d;   // the gold arch above and the black plinth below
     V3(&a, -1800, 830, Z - 10); V3(&b, 1800, 830, Z - 10); V3(&c, -1800, 760, Z - 10); V3(&d, 1800, 760, Z - 10);
@@ -312,7 +317,7 @@ static void desk_draw(void) {
     }
 }
 static void crowd_draw(int tf) {
-    int ch = cheer_at(tf);
+    int ch = cheer_at(tf); tf -= tf % 3;
     for (int row = 0; row < 3; row++) {
         int x = -1500 - row * 150, base = row * 70;
         SVECTOR a, b, c, d; V3(&a, x + 75, base, -850); V3(&b, x + 75, base, 850); V3(&c, x + 75, 0, -850); V3(&d, x + 75, 0, 850);
@@ -324,7 +329,7 @@ static void crowd_draw(int tf) {
             int k = (210 * lights) >> 8;
             SVECTOR p0, p1, p2, p3;
             V3(&p0, x, y0 + bh, z - bw / 2); V3(&p1, x, y0 + bh, z + bw / 2); V3(&p2, x, y0, z - bw / 2); V3(&p3, x, y0, z + bw / 2);
-            gfx_quad_f(&p0, &p1, &p2, &p3, rr * k >> 8, gg * k >> 8, bb * k >> 8, 0);
+            gfx_quad_f(&p0, &p1, &p2, &p3, cq(rr * k >> 8), cq(gg * k >> 8), cq(bb * k >> 8), 0);
             V3(&p0, x, y0 + bh + 62, z - 34); V3(&p1, x, y0 + bh + 62, z + 34); V3(&p2, x, y0 + bh, z - 34); V3(&p3, x, y0 + bh, z + 34);
             gfx_quad_f(&p0, &p1, &p2, &p3, 230 * k >> 8, 180 * k >> 8, 140 * k >> 8, 0);
             if (ch > 90) {   // hands up
@@ -380,11 +385,16 @@ static void actor_draw(int i) {
     VPose p = a->pose;
     int sp = speaker_now();
     if (sp == i + 1) {   // the one speaking nods and gestures
-        p.nod += (s16)(fsin(ft * 7) / 3); p.arm[1] += (s16)(fsin(ft * 5 + 30) * 2); p.tilt += (s16)(fsin(ft * 3) / 4);
+        p.nod += (s16)(fsin(fh * 7) / 3); p.arm[1] += (s16)(fsin(fh * 5 + 30) * 2); p.tilt += (s16)(fsin(fh * 3) / 4);
     }
-    Gait g; memset(&g, 0, sizeof g); g.pose = &p; g.clock = ft; g.seed = i * 5;
+    Gait g; memset(&g, 0, sizeof g); g.pose = &p; g.clock = fh; g.seed = i * 5;
     VECTOR pos = { a->x, 0, -a->z };
-    voxel_draw(a->b, &pos, a->yaw << 4, &g);
+    {   // the outline: the person again, a little fatter, in the darkest tone, set back so that only a rim of it shows
+        int dx = pos.vx - cam.eye.vx, dz = pos.vz - cam.eye.vz, l = ABS(dx) + ABS(dz) + 1;
+        VECTOR ip = { pos.vx + dx * 44 / l, 11, pos.vz + dz * 44 / l };
+        gfx_cel = 2; voxel_scale = 4096 * 109 / 100; voxel_draw(a->b, &ip, a->yaw << 4, &g); voxel_scale = 4096;
+    }
+    gfx_cel = 1; voxel_draw(a->b, &pos, a->yaw << 4, &g); gfx_cel = 0;
     VECTOR sh = { pos.vx, 0, pos.vz }; gfx_shadow(&sh, 70);
 }
 
@@ -415,10 +425,20 @@ static void gallery_draw(void) {   // six poses of the library at a time, front 
     }
     gfx_set_reserve(0);
 }
+// a swoosh: a leaning band of flat colour that wipes in from the left (in: steps since it began) and out to the right (out: steps left), a white edge above and a gold one below
+static void swoosh(int in, int out, int y0, int y1, int skew, int r, int g, int b) {
+    int u0 = CLAMP(in * 1024 / 14, 0, 1024), u1 = out >= 0 && out < 14 ? CLAMP(1024 - out * 1024 / 14, 0, 1024) : 0;
+    int xa = SCREEN_W * smooth(u1) >> 10, xb = SCREEN_W * smooth(u0) >> 10;     // the band runs from xa to xb
+    if (xb - xa < 4) return;
+    for (int y = y0; y < y1; y += 2) {
+        int off = (y - (y0 + y1) / 2) * skew / 40, a = xa + off, bb = xb + off; a = MAX(a, 0); bb = MIN(bb, SCREEN_W); if (bb - a < 2) continue;
+        int top = y < y0 + 4, bot = y >= y1 - 6;
+        if (top) gfx_rect(a, y, bb - a, 2, 255, 255, 255, 0); else if (bot) gfx_rect(a, y, bb - a, 2, 255, 190, 50, 0); else gfx_rect(a, y, bb - a, 2, r, g, b, 0);
+    }
+}
 void cut_draw(void) {
     if (gal) { gallery_draw(); return; }
     gfx_set_clear(10, 6, 20); gfx_set_fog(0, 0);
-    gfx_sky(0x180810u, 0x401828u);
     gfx_set_ambient(96, 112);
     int c[6]; cam_at(ft, c);
     int sway = ft < T(335) || ft > T(425) ? 1 : 2;   // a handheld drift (a little more when it is close in)
@@ -431,21 +451,42 @@ void cut_draw(void) {
     gfx_set_reserve(RESERVE_UI);
     for (int i = 0; i < A_N; i++) actor_draw(i);
     gfx_set_reserve(0);
-    gfx_set_identity(); glass_draw(ft);
-    // the lens: letterbox sliding in, a flash on the break, the fade in and out, then the words
+    gfx_set_identity(); glass_draw(fh);
+    // the lens: speed lines on the beats, a flash, a soft glow, the letterbox sliding in, the fade in and out, then the words
+    for (unsigned k = 0; k < sizeof line_w / sizeof line_w[0]; k++) if (ft >= line_w[k].a && ft < line_w[k].b) {
+        int seed = (ft / 6) * 7919 + k * 131;                    // (new lines every sixth of a second: on sixes)
+        int fade = MIN(MIN(ft - line_w[k].a, line_w[k].b - ft), 6);
+        for (int i = 0; i < 26; i++) {
+            u32 h = (u32)(seed + i * 2654435) * 2246822519u; h ^= h >> 15; h *= 3266489917u; h ^= h >> 13;
+            int a = h & 255, r0 = 70 + ((h >> 8) & 63) + (6 - fade) * 14, r1 = r0 + 50 + ((h >> 16) & 63), tx, ty;
+            int ux = fcos(a), uy = fsin(a), lum = 200 + ((h >> 24) & 55);
+            for (;;) { tx = 160 + ux * r1 * 4 / 3 / 256; ty = 120 + uy * r1 / 256; if ((tx >= 1 && tx < SCREEN_W - 1 && ty >= 24 && ty < SCREEN_H - 24) || r1 <= r0 + 6) break; r1 -= 8; }
+            int sx = 160 + ux * r0 * 4 / 3 / 256, sy = 120 + uy * r0 / 256;
+            gfx_line(sx, sy, tx, ty, lum, lum, lum); gfx_line(sx + 1, sy, tx + 1, ty, lum, lum, lum);
+        }
+    }
+    for (unsigned k = 0; k < sizeof beat_t / sizeof beat_t[0]; k++) if (ft >= beat_t[k] && ft < beat_t[k] + 5) {   // a flash cut on the beat
+        int f = 150 - (ft - beat_t[k]) * 30; gfx_ui_blend(1); gfx_rect(0, 0, SCREEN_W, SCREEN_H, f, f, f, 1); }
+    { int gl = (14 + (ABS(fsin(ft)) >> 5)) * lights >> 8;     // a soft glow from the lights above and the floor
+      gfx_ui_blend(1); gfx_grad(0, 0, SCREEN_W, 64, (u32)gl | (u32)(gl / 3) << 8 | (u32)(gl * 2 / 3) << 16, (u32)gl | (u32)(gl / 3) << 8 | (u32)(gl * 2 / 3) << 16, 0, 0, 1);
+      gfx_grad(0, SCREEN_H - 56, SCREEN_W, 56, 0, 0, (u32)(gl / 3) | (u32)(gl / 2) << 8 | (u32)gl << 16, (u32)(gl / 3) | (u32)(gl / 2) << 8 | (u32)gl << 16, 1); gfx_ui_blend(1); }
     int lb = MIN(24, MIN(ft / 2, (FILM_END + T(8) - ft) / 2 + 0)); if (lb < 0) lb = 0;
     gfx_rect(0, 0, SCREEN_W, lb, 0, 0, 0, 0); gfx_rect(0, SCREEN_H - lb, SCREEN_W, lb, 0, 0, 0, 0);
     if (ft >= GLASS_BREAK && ft < GLASS_BREAK + 8) { int f = 255 - (ft - GLASS_BREAK) * 30; gfx_ui_blend(1); gfx_rect(0, 0, SCREEN_W, SCREEN_H, f, f, f, 1); }
     subtitle_draw();
-    if (ft > T(2) && ft < T(46)) {   // the title card over the opening crane
+    if (ft > T(2) && ft < T(46)) {   // the title card over the opening crane: a swoosh sweeps in behind it
         int a = MIN(MIN(ft - T(2), T(46) - ft), 30) * 255 / 30;
-        const char *s = "TV SHOW & TELL"; int w = font_w_zoom(2, s);
-        font_text_zoom(160 - w / 2 + 2, 90 + 2, 2, s, 0, 0, 0);
-        font_text_zoom(160 - w / 2, 90, 2, s, 255 * a >> 8, 220 * a >> 8, 90 * a >> 8);
+        swoosh(ft - T(2), T(44) - ft, 70, 134, 40, 230, 40, 130);
+        const char *s = "TV SHOW & TELL"; int w = font_w_zoom(2, s), x = 160 - w / 2;
+        for (int k = 0; k < 6; k++) { static const s8 ox[6] = { -2, 2, 0, 0, 2, -2 }, oy[6] = { 0, 0, -2, 2, 2, 2 }; font_text_zoom(x + ox[k], 90 + oy[k], 2, s, 40 * a >> 8, 6 * a >> 8, 50 * a >> 8); }
+        font_text_zoom(x, 90, 2, s, 255 * a >> 8, 232 * a >> 8, 90 * a >> 8);
         ui_textc(160, 128, 1, "STARRING MISSY TELLER", a > 128 ? UI_WHITE : UI_SOFT);
     }
-    if (ft > T(560)) { const char *s = "MISSY TELLER"; int w = font_w_zoom(2, s); int a = MIN(ft - T(560), 30) * 255 / 30; font_text_zoom(160 - w / 2, 96, 2, s, 255 * a >> 8, 120 * a >> 8, 200 * a >> 8);
-                         ui_textc(160, 124, 1, "HERE TODAY...", a > 128 ? UI_WHITE : UI_SOFT); }
+    if (ft > T(560)) { const char *s = "MISSY TELLER"; int w = font_w_zoom(2, s); int a = MIN(ft - T(560), 30) * 255 / 30;
+        swoosh(ft - T(560), 99999, 82, 140, 40, 40, 110, 220);
+        for (int k = 0; k < 6; k++) { static const s8 ox[6] = { -2, 2, 0, 0, 2, -2 }, oy[6] = { 0, 0, -2, 2, 2, 2 }; font_text_zoom(160 - w / 2 + ox[k], 96 + oy[k], 2, s, 30 * a >> 8, 6 * a >> 8, 40 * a >> 8); }
+        font_text_zoom(160 - w / 2, 96, 2, s, 255 * a >> 8, 140 * a >> 8, 220 * a >> 8);
+        ui_textc(160, 124, 1, "HERE TODAY...", a > 128 ? UI_WHITE : UI_SOFT); }
     int fa = ft < FADE_IN ? 255 - ft * 255 / FADE_IN : ft > FILM_END ? MIN(255, (ft - FILM_END) * 255 / T(6)) : 0;
     if (skipped) fa = MAX(fa, MIN(255, done_t * 14));
     if (fa > 0) { gfx_ui_blend(2); gfx_rect(0, 0, SCREEN_W, SCREEN_H, fa, fa, fa, 1); gfx_ui_blend(1); }
