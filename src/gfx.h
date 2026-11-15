@@ -18,7 +18,7 @@
 #define PACKET_LEN (160*1024)   // (Dreamcast: 16 MB, and the PowerVR takes whatever the world sends: the roofs, drawn last, no longer run out of room at full detail)
 #else
 #ifndef PACKET_ARENA
-#define PACKET_ARENA (72*1024 - 1280)  // (1.25 KB less than 72 KB each: the new double bed, parked cars and bed fix took 2.2 KB of the 2 MB; the largest frame, the neighbourhood map, peaks at 61.5 KB) per buffer while the crowd's arena holds only people (the street, a home, the title, the maps): the packet buffers are the arena's end then (gfx_pk_arena_base, crowd.c); an overlay, a fight or a new life's set-up takes the arena, and the buffers go back to their own PACKET_LEN
+#define PACKET_ARENA (72*1024 - 2560)  // (2.5 KB less than 72 KB each: the new double bed, parked cars and bed fix took 2.2 KB of the 2 MB; the largest frame, the neighbourhood map, peaks at 61.5 KB) per buffer while the crowd's arena holds only people (the street, a home, the title, the maps): the packet buffers are the arena's end then (gfx_pk_arena_base, crowd.c); an overlay, a fight or a new life's set-up takes the arena, and the buffers go back to their own PACKET_LEN
 #endif
 #ifndef PACKET_LEN
 #define PACKET_LEN (32*1024)    // per buffer (was 74, then 66: the stack, the SDK heap and the CD buffers need real room past _end, or the boot crashes).  The busiest frames measured use under 54 KB: a party (people and the HUD 31 KB), a low camera turning to the horizon (the world 35 KB)

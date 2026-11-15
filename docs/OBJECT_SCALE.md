@@ -262,5 +262,5 @@ Notes.
 - **Frame pacing:** a 4-5 vblank frame advanced the life by only 3 steps (game time lost); `life_update` now gets the real elapsed steps (clamp 5; AB_LOCK4 keeps 3).
 - **Parked cars are solid:** `traffic_pcar_tile` (car rect, quarter-tile overlap) feeds `world_covered0`; cars never stand in front of a door column.
 - **Double bed 0xEC (gen 7):** couples get a 2x2 bed (`RC_BEDF`, groups `G_BEDF/G_BEDFM`, covered tiles held as 0x7F while the room is made); `mirror7` moves a 2x2 bed's tile when a lot is turned over; `bed_fix` (world.c, after each block is made) turns any 2x2 bed (0xEB/0xEC) whose far tiles meet a wall or thing back into the one-tile bed `S`: old saves load, no format change.
-- **RAM:** `PACKET_ARENA` 72 KB -> 72 KB - 1280 B to pay for the above; PS1 Release `_end` 0x801fae98.
+- **RAM:** `PACKET_ARENA` 72 KB -> 72 KB - 2560 B to pay for the above; PS1 Release `_end` 0x801fae98.
 - **Not done:** street variety (curved/offset avenues, cul-de-sacs) and a HUD neighbourhood label: no RAM left under 0x801fb000 (360 B), and both need DS/DC parity and road-audit work.
