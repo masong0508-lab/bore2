@@ -121,7 +121,7 @@ static const Sub subs[] = {
     { T(396), T(418), 2, "NOT TONIGHT, DARLING." },
     { T(436), T(466), 1, "SHE IS BACK, FOLKS!" },
     { T(470), T(520), 2, "WATCH ME DANCE." } };
-static const Cue cues[] = { { T(88), VOICE_YEHA }, { T(112), VOICE_LAUGH }, { T(150), VOICE_YAHOO }, { T(228), VOICE_FLIRT }, { T(350), VOICE_NEED }, { T(424), VOICE_SHRIEK }, { T(440), VOICE_YEHA }, { T(476), VOICE_WIN } };
+#include "film_mix.inc"      // the sound mix (tools/make_film_mix.py, docs/FILM_MIX.md): film_mix_open[] (what plays when: foley, crowd, shouts, ducks, fades), film_lines_open[] (each line's level and place)
 static const struct { u16 t; u8 lvl; } cheers[] = { { T(0), 40 }, { T(100), 255 }, { T(160), 110 }, { T(228), 255 }, { T(262), 120 }, { T(424), 40 }, { T(432), 255 }, { T(560), 255 } };
 #define FILM_END T(600)
 
@@ -236,11 +236,10 @@ void cut_open(int arg) {
     grade_keep = gfx_grade; gfx_grade = 0;               // (the game's warm/cool grade off: the film's colours are the ones drawn)
     mini = 0; gal = arg >= 9998 ? arg : 0; ft = arg > 1 && !gal && arg < 1000 ? arg : 0;
     if (arg >= 1000 && arg < 3000 && arg % 1000 > 0 && arg % 1000 < MF_N) { mini = arg / 1000; mini_id = arg % 1000; ft = 0; } fh = ft - ft % HOLD; last_fh = -1; pose_t = fh; cue_i = 0; lights = 0; skipped = 0; done_t = 0;
-    while (cue_i < (int)(sizeof cues / sizeof cues[0]) && cues[cue_i].t < ft) cue_i++;
     for (int i = 0; i < A_N; i++) { act[i].amp = 0; act[i].phase = 0; act[i].lx = -99999; }
     vox_n = gal || mini ? 0 : audio_film_load("FILMVOX.BIN"); vox_end = 0;
     for (vox_i = 0; vox_i < NSUBS && subs[vox_i].t0 + VOX_LEAD < ft; vox_i++) {}
-    if (!mini) audio_voice(VOICE_NEED);
+    if (!mini) { if (vox_n) audio_cut_begin(film_mix_open, (int)(sizeof film_mix_open / sizeof film_mix_open[0]), film_lines_open, (int)(sizeof film_lines_open / sizeof film_lines_open[0]), 0, ft); else audio_voice(VOICE_NEED); }   // (the score is track 0 of FILMMUS.BIN; the mini-films and the gallery keep the game voice)
 }
 static void walk_pose(const Act *a, FPose *o) {   // a stride made from the phase: the hips swing, the knees fold behind, the arms counter-swing
     int s = fsin(a->phase), s2 = fsin(a->phase + 64);
@@ -272,11 +271,11 @@ static void poses_now(void) {
 
 int cut_update(int held, int pressed, int steps) {
     if (steps < 1) steps = 1;
-    if ((pressed & (PAD_START | PAD_CIRCLE | PAD_TRIANGLE)) && !skipped) { skipped = 1; if (vox_n) { audio_film_end(); vox_n = 0; } }   // (a skip cuts the voice at once)
+    if ((pressed & (PAD_START | PAD_CIRCLE | PAD_TRIANGLE)) && !skipped) { skipped = 1; if (vox_n) { audio_cut_fadeout(10); vox_n = 0; } }   // (a skip: the sound goes down in 10 steps, then film_leave stops it)
     if (skipped) { done_t += steps; if (done_t > 18) { film_leave(); return 0; } }
     else ft += steps;
     if (mini) { static int mc; if (ft < 2) mc = 0; if (!mc && ft >= mini_flash_t()) { mc = 1; audio_voice(VOICE_YEHA); } if (mc == 1 && mini_k() >= 4) { mc = 2; audio_voice(VOICE_WIN); } }
-    else while (cue_i < (int)(sizeof cues / sizeof cues[0]) && cues[cue_i].t <= ft) audio_voice(cues[cue_i++].v);
+    else audio_cut_tick(ft, steps);     // (the mix: cues, ducks, fades)
     if (vox_n && !skipped) {
         if (vox_end && ft >= vox_end) { audio_film_line(-1, 0); vox_end = 0; }     // (the crowd comes back up)
         while (vox_i < NSUBS && subs[vox_i].t0 + VOX_LEAD <= ft) { int i = vox_i++; if (audio_film_steps(i)) { audio_film_line(i, 150); vox_end = ft + audio_film_steps(i) + 12; } }
