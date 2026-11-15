@@ -115,8 +115,8 @@ static const Pal pal_chad[P_N] = {
     PALX(BGR(150, 14, 38), BGR(228, 36, 68), BGR(255, 120, 140), 250, 3600), // bow tie
     PALX(BGR(170, 110, 20), BGR(255, 196, 50), BGR(255, 242, 160), 250, 3000) };   // gold
 static const Pal pal_missy[P_N] = {
-    PALX(BGR(234, 170, 164), BGR(255, 226, 204), 0, -500, 5000),
-    PALX(BGR(56, 24, 40), BGR(112, 54, 54), BGR(190, 110, 96), 200, 2500), // brown hair with a sheen
+    PALX(BGR(150, 90, 54), BGR(194, 130, 82), 0, -500, 5000),   // her own skin: the game's tan, (192,128,80), shaded from it
+    PALX(BGR(18, 10, 8), BGR(40, 24, 16), BGR(112, 78, 62), 200, 2500), // her own hair: near black, with a sheen
     PALX(BGR(92, 34, 150), BGR(152, 62, 208), BGR(204, 128, 240), 250, 3300), // the purple jacket
     PALX(BGR(34, 14, 58), BGR(62, 26, 98), BGR(104, 56, 152), 250, 3500),  // dark violet: skirt, boots, gloves
     PALX(BGR(170, 110, 20), BGR(255, 196, 50), BGR(255, 242, 160), 250, 3000), // gold
@@ -230,10 +230,10 @@ static void build_missy(const Joints *J, const FPose *p) {
     Inst *I;
     I = inst_add(&SH_CAP, hf_pt(J, 0, 6, -4), &J->HF, HS(52), HS(56), HS(52), 12, P_HAIR); if (I) { I->a0 = 700; I->span = 2700; I->bias = 2; }
     add_blob(&SH_BALL, hf_pt(J, 0, 38, -8), &J->HF, HS(46), HS(36), HS(44), 8, P_HAIR)->bias = 2;       // volume at the back of the crown
-    { P3 a = hf_pt(J, 0, 30, -30), b = hf_pt(J, 0, -150, -44); M3 m; ax_frame(pnorm(psub(b, a)), &m);
-      I = inst_add(&SH_LOCK, padd(a, pm(psub(b, a), 2048)), &m, HS(46), plen(a, b) / 2, HS(14), 8, P_HAIR); if (I) I->bias = 1; }   // the long fall down the back
+    { P3 a = hf_pt(J, 0, 30, -30), b = hf_pt(J, 0, -78, -40); M3 m; ax_frame(pnorm(psub(b, a)), &m);
+      I = inst_add(&SH_LOCK, padd(a, pm(psub(b, a), 2048)), &m, HS(48), plen(a, b) / 2, HS(14), 8, P_HAIR); if (I) I->bias = 1; }   // the bob (her own style), to the jaw
     for (int s = 0; s < 2; s++) {
-        P3 a = hf_pt(J, sgn[s] * 38, 30, -10), b = hf_pt(J, sgn[s] * 42, -110, 6); M3 m; ax_frame(pnorm(psub(b, a)), &m);
+        P3 a = hf_pt(J, sgn[s] * 38, 30, -10), b = hf_pt(J, sgn[s] * 44, -64, 2); M3 m; ax_frame(pnorm(psub(b, a)), &m);
         I = inst_add(&SH_LOCK, padd(a, pm(psub(b, a), 2048)), &m, HS(13), plen(a, b) / 2, HS(11), 6, P_HAIR); if (I) I->bias = 2;   // a lock over each shoulder
     }
     (void)p;
@@ -281,7 +281,7 @@ static void build_intern(const Joints *J, const FPose *p) {
 typedef struct { s16 ex, ey, ea, eb, my, mw, ny; u8 style; u32 iris, iris2, brow, cheek; } FaceK;
 static const FaceK face_k[A_N] = {
     { 23, 5, 10, 11, -31, 25, -10, 0, BGR(110, 64, 30), BGR(206, 130, 56), BGR(120, 70, 22), BGR(255, 180, 160) },     // Chad
-    { 17, 2, 9, 8, -29, 14, -12, 1, BGR(120, 60, 220), BGR(220, 150, 255), BGR(70, 30, 40), BGR(255, 180, 190) },     // Missy
+    { 17, 2, 9, 8, -29, 14, -12, 1, BGR(58, 34, 22), BGR(150, 100, 64), BGR(30, 16, 12), BGR(226, 128, 110) },     // Missy (her dark eyes, brows, a warm blush)
     { 23, 3, 10, 11, -31, 16, -11, 2, BGR(54, 110, 200), BGR(130, 190, 240), BGR(70, 44, 32), BGR(255, 176, 170) } };  // the Intern
 static void f_ring(int cx, int cy, int a, int b, int t0, int t1, int n, int th, u32 col, int bias) {   // a stroke along an ellipse (angles 4096 to a turn), th thick, drawn outside it
     for (int k = 0; k < n; k++) {
