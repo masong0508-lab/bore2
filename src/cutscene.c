@@ -565,10 +565,20 @@ static void mini_draw(void) {
     { int dx = c[0] - c[3], dy = c[1] - c[4], dz = c[2] - c[5]; int d2 = dx * dx + dy * dy + dz * dz; g_wpx = d2 < 700 * 700 ? 22 : d2 < 1200 * 1200 ? 17 : 13; }
     int hero = k == 2;
     g_rim = 1; g_rimc = hero ? BGR(255, 246, 214) : BGR(196, 236, 255);
-    floor_draw(ft); backdrop_draw(ft); crowd_draw(ft);
+#ifndef MX_NOFLOOR
+    floor_draw(ft);
+#endif
+#ifndef MX_NOBACK
+    backdrop_draw(ft);
+#endif
+#ifndef MX_NOCROWD
+    crowd_draw(ft);
+#endif
     g_noink = 0;
     gfx_set_reserve(RESERVE_PLATE);
+#ifndef MX_NOACT
     for (int i = 0; i < A_N; i++) actor_draw(i);
+#endif
     gfx_set_reserve(0);
     if (f2 >= 14 && f2 < 18) { int f = 255 - (f2 - 14) * 64; gfx_ui_blend(1); gfx_rect(0, 0, SCREEN_W, SCREEN_H, f, f, f, 1); }
     int lb = MIN(24, MIN(ft / 2, (total - ft) / 2)); if (lb < 0) lb = 0;

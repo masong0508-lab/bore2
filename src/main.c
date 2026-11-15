@@ -1166,7 +1166,7 @@ static void life_update(int steps) {
 
 static void big_flash(void) {   // the red / black / white cut on a big moment: half a second, at most once every 40 s, and any button ends it
     static int ft_ = -1, cool;
-    static const char *const W1[6] = { "", "PROMOTED", "I DO.", "NEW", "CHAPTER", "LEVEL" }, *const W2[6] = { "", "BOSS!", "FOREVER", "BABY!", "DONE!", "UP!" };
+    static const char *const W1[8] = { "", "PROMOTED", "I DO.", "NEW", "CHAPTER", "LEVEL", "NEW", "YOU ARE" }, *const W2[8] = { "", "BOSS!", "FOREVER", "BABY!", "DONE!", "UP!", "PRIZE!", "CHAMP!" };
     static int kind;
     if (sim_flash_req) { if (cool <= 0 && ft_ < 0) { kind = sim_flash_req; ft_ = 0; cool = 2400; } sim_flash_req = 0; }
     if (cool > 0) cool--;

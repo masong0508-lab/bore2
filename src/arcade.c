@@ -225,7 +225,7 @@ static void prize_buy(int i) {
     case 5: if (pet_kind) { pmsg = "YOU HAVE A PET ALREADY"; pmsg_t = 60; audio_voice(VOICE_NAH); return; } break;
     case 6: { Toy *t = gotchi_toy(player); if (t) { int e = -1; for (int k = 0; k < GB_N; k++) if (!t->b[k].on) { e = k; break; } if (e < 0) { pmsg = "NO ROOM IN THE TOY"; pmsg_t = 60; audio_voice(VOICE_NAH); return; } } } break;
     }
-    arcade_tix -= p->cost; if (p->bit) arc.prz |= 1u << p->bit;
+    arcade_tix -= p->cost; sim_flash_req = 6; if (p->bit) arc.prz |= 1u << p->bit;
     switch (p->kind) {
     case 1: need_add(s, N_FUN, 5); need_add(s, N_FOOD, 15); break;
     case 2: need_add(s, N_FUN, 15); need_add(s, N_SOCIAL, 4); s->skill_body += 40; break;

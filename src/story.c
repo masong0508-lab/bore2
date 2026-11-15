@@ -387,6 +387,14 @@ void story_card_draw(int kind, int t) {
     if (!story_id) return;
     const SStory *s = &stories[story_id]; char b[48];
     int done = kind == 2, end = story_ch >= 5, shown = done ? story_ch - 1 : story_ch;   // (a done card: the chapter just finished, and the next one under it)
+    if (t < 56) {   // the two-line pattern plate slashes in, holds, and slashes out before the card (the film's look)
+        char l1[16], l2[24]; int i = 0;
+        if (end && !done) { strcpy(l1, "THE"); strcpy(l2, "END"); }
+        else { sprintf(l1, "CHAPTER %d", shown + 1); if (done) strcpy(l2, "COMPLETE!"); else { const char *ti = stories[story_id].ch[shown].title; for (; ti[i] && i < 22; i++) l2[i] = ti[i] >= 'a' && ti[i] <= 'z' ? ti[i] - 32 : ti[i]; l2[i] = 0; } }
+        pl_plate(t, t > 40 ? t - 40 : -1, l1, l2, s->name, 70, s->col[0], s->col[1], s->col[2]);
+        return;
+    }
+    t -= 56;
     if (done) confetti(t); else cf_on = 0;
     const int CX = 22, CY = 20, CW = 276, CH = 200;
     ui_card(CX, CY, CW, CH);

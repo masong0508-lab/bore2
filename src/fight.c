@@ -434,7 +434,7 @@ int fight_update(int held, int pressed, int steps) {
         return 1;
     case FS_RESULT: ft += steps; F[0].cnt += steps; F[1].cnt += steps; cam_follow(0);
         if (ft > 40 && (pressed & PAD_CROSS)) {
-            if (F[0].wins >= 2) { if (stage == 8) { fight_champ = 1; fs = FS_CHAMP; ft = 0; audio_voice(VOICE_WIN); } else { stage++; build_them(stage); set_stats(); fs = FS_VS; ft = 0; } }
+            if (F[0].wins >= 2) { if (stage == 8) { fight_champ = 1; sim_flash_req = 7; fs = FS_CHAMP; ft = 0; audio_voice(VOICE_WIN); } else { stage++; build_them(stage); set_stats(); fs = FS_VS; ft = 0; } }
             else if (cash >= 2) { cash -= 2; match_begin(); }   // CONTINUE: another $2
             else { fs = FS_OVER; ft = 0; }
         }
