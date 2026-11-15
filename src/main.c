@@ -867,6 +867,9 @@ static void life_update(int steps) {
 #ifndef AUTO_RWAIT
 #define AUTO_RWAIT 40
 #endif
+#ifdef AUTO_SCARD
+    { static int as_; if (state == ST_LIFE && ++as_ == 200) { story_id = AUTO_SCARD; story_begin(); } }   // (test builds: a story starts in the life: the opening film, then the chapter card)
+#endif
 #if defined(AUTO_CARD) && defined(AUTO_CARD_ZONE)
     { static int ac_; if (++ac_ == 60) { story_paid = 1; job_level = 2; travel_go(AUTO_CARD_ZONE); } }   // (test builds: out among the crowd townies of the island (1) or the town (2), for the card shots)
 #endif
