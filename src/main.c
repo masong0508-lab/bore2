@@ -5644,6 +5644,12 @@ int main(void) {
           was_life = state == ST_LIFE; }
         nav_update(now);
         cam_dt = CLAMP(steps, 1, 6); title_ph += cam_dt;
+#ifdef AB_LOCK4
+        const int steps_raw = CLAMP(steps, 1, 3);   // (test builds: every frame runs 3 steps, so two builds see the same city)
+#else
+        const int steps_raw = CLAMP(steps, 1, 5);
+#endif
+        // (the life's logic keeps up with a frame of 4 or 5 vblanks: it ran only 3 of them, so the walkers lost a vblank of walking in every long frame, the game ran 3.7% slow and hitched)
         steps = CLAMP(steps, 1, 3);   // LAGFIX_APPLIED: fewer catch-up steps
         frame++;
         fps_frames++; if (now - fps_vb >= 60) { fps_val = fps_frames * 60 / (now - fps_vb); fps_frames = 0; fps_vb = now; }
@@ -5756,7 +5762,7 @@ int main(void) {
 #endif
                     life_draw(); break; } }   // (test builds: the city stands still after AB_FREEZE frames, still drawn: two builds' pictures can be laid over each other)
 #endif
-                { int t0 = hb_now(); life_update(steps); t_upd = hb_now() - t0; } life_draw(); break;
+                { int t0 = hb_now(); life_update(steps_raw); t_upd = hb_now() - t0; } life_draw(); break;
             case ST_PAUSE: pause_update(); pause_draw(); break;
             case ST_BUILD: build_update(); build_draw(); break;
             case ST_JUKEBOX: juke_update(); juke_draw(); break;

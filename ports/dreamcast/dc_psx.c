@@ -26,9 +26,10 @@ void dc_gte_rtps(int i) {
     dc_gte.ir[1] = i0; dc_gte.ir[2] = i1; dc_gte.ir[3] = i2;
     int32_t z = m2 < 0 ? 0 : m2 > 65535 ? 65535 : m2;
     dc_gte.sz[0] = dc_gte.sz[1]; dc_gte.sz[1] = dc_gte.sz[2]; dc_gte.sz[2] = dc_gte.sz[3]; dc_gte.sz[3] = (uint16_t)z;
-    // the divide: H / SZ in 0.16, saturating at 0x1FFFF when SZ <= H/2 (what the PS1's unsigned Newton-Raphson divider does)
+    // the divide: H / SZ in 0.16 (H << 16 / SZ), saturating at 0x1FFFF when SZ <= H/2 (what the PS1's unsigned Newton-Raphson divider does).
+    // (It was H << 17 / SZ, twice the PS1's: everything in 3D, the title room, the streets, was drawn twice as close as on the PlayStation)
     int32_t h = dc_gte.h, q;
-    if (z * 2 > h) { q = (int32_t)((float)h * 131072.0f / (float)z + 0.5f); if (q > 0x1FFFF) q = 0x1FFFF; } else q = 0x1FFFF;
+    if (z * 2 > h) { q = (int32_t)((float)h * 65536.0f / (float)z + 0.5f); if (q > 0x1FFFF) q = 0x1FFFF; } else q = 0x1FFFF;
     int32_t xx, yy;
     if ((uint32_t)(i0 + 8192) < 16384u && (uint32_t)(i1 + 8192) < 16384u) {   // |i| < 8192 and q < 2^17: the products fit in 32 bits (the usual case): no 64-bit shifts
         int32_t sx = (i0 * q + dc_gte.ofx) >> 16, sy = (i1 * q + dc_gte.ofy) >> 16;

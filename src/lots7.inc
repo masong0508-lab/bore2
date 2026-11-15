@@ -97,7 +97,7 @@ __attribute__((noinline)) static void house7(int lx, int ly, unsigned h, const B
                 Occ up = *o; up.adults = up.elders = up.babies = up.couple = 0; Beds ub = beds_of(&up);
                 fz_nres = 1; fz_res[0][0] = (u8)sx; fz_res[0][1] = (u8)(sy + 1);
                 fz_frame(ix0, iy0, ix1, iy1, sx, sy - 1, sx > ix0 + 3 ? -1 : 1, 0, h * 40503u);
-                fz_room(R_BED | R_STUDY, &ub, o); fz_reach(); fz_nres = 0; storey(0);
+                fz_room(R_BED | R_STUDY, &ub, o); fz_reach(); if (bm_gen >= 7) fz_fixbeds(fz_x0, fz_y0, fz_x1, fz_y1); fz_nres = 0; storey(0);
             }
         }
         fz_nres = 0; roof_dirty = 1;
@@ -153,9 +153,16 @@ __attribute__((noinline)) static void mirror7(int ox, int oy, int n0, int ground
         for (int k = 0; k < NUP; k++) { Level *L = lv_get(k); if (!L) continue;
             for (int x = x0; x <= x1; x++) { char t = L->map[a][x]; L->map[a][x] = L->map[c][x]; L->map[c][x] = t; u8 u = L->fl[a][x]; L->fl[a][x] = L->fl[c][x]; L->fl[c][x] = u; u = L->wp[a][x]; L->wp[a][x] = L->wp[c][x]; L->wp[c][x] = u; } }
     }
-    for (int y = r5; y <= r17; y++) for (int x = x0; x <= x1; x++) { u8 w = wallMap[y][x]; if ((w & 0x80) && !(w & 1)) wallMap[y][x] = (u8)(w ^ 2); }   // (an item turned to the north looks south now, and back)
-    for (int k = 0; k < NUP; k++) { Level *L = lv_get(k); if (!L) continue;                  // (the storeys' things turn too: a bed upstairs had its foot to the wall)
-        for (int y = r5; y <= r17; y++) for (int x = x0; x <= x1; x++) { u8 w = L->wp[y][x]; if ((w & 0x80) && !(w & 1)) L->wp[y][x] = (u8)(w ^ 2); } }
+    for (int k = -1; k < NUP; k++) { char (*M)[MW + 1]; u8 (*WP)[MW];
+        if (k < 0) { M = lifeMap; WP = wallMap; } else { Level *L = lv_get(k); if (!L) continue; M = L->map; WP = L->wp; }   // (the ground and the storeys: an item turned to the north looks south now, and back)
+        static u8 bx_[24], by_[24]; int nb = 0;
+        for (int y = r5; y <= r17; y++) for (int x = x0; x <= x1; x++) { u8 w = WP[y][x]; if (!((w & 0x80) && !(w & 1))) { if ((w & 0x80) && ((u8)M[y][x] == 0xEB || (u8)M[y][x] == 0xEC) && nb < 24) { bx_[nb] = (u8)x; by_[nb++] = (u8)y; } continue; }   // (a double bed turned over lies on the other side of its tile: below, its tile moves across)
+            if (((u8)M[y][x] == 0xEB || (u8)M[y][x] == 0xEC) && nb < 24) { bx_[nb] = (u8)x; by_[nb++] = (u8)y; }
+            WP[y][x] = (u8)(w ^ 2); }
+        for (int i = 0; i < nb; i++) { int x = bx_[i], y = by_[i], r = WP[y][x] & 3;   // (r now: the turn after the mirror)
+            int nx = x, ny = y; if (r & 1) ny += (r == 1 ? 1 : -1); else nx += (r == 0 ? -1 : 1);   // (shifted to the tile the bed now spreads from)
+            if (nx < x0 || nx > x1 || ny < r5 || ny > r17) continue;
+            char t = M[y][x]; M[y][x] = M[ny][nx]; M[ny][nx] = t; u8 u = WP[y][x]; WP[y][x] = WP[ny][nx]; WP[ny][nx] = u; } }
     for (int i = 0; i < nw; i++) {                                                          // the street row as it was; the far row is the lot's back: ground (what the lot put there stays)
         if (sl[i] != 'W' && sl[i] != 'E') { lifeMap[r5][x0 + i] = sl[i]; floorMap[r5][x0 + i] = sf[i]; wallMap[r5][x0 + i] = sw[i]; }   // (a building that stood on the street row, the cinema's back wall: turned over it is the lot's path, not a wall across the street door)
         if (floorMap[r17][x0 + i] == FL_PAVING && i) floorMap[r17][x0 + i] = (u8)ground;

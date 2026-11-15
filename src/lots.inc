@@ -48,7 +48,7 @@ static int fz_flood(void) {                           // the room's floor you ca
 static int fz_lost(int kill) {                        // (after fz_flood) the things nobody can get to: how many; kill: they go
     int n = 0;
     for (int y = fz_y0; y <= fz_y1; y++) for (int x = fz_x0; x <= fz_x1; x++) {
-        char c = sm[y][x]; if (fz_walk(c) || c == '|' || c == 'W' || c == 'E' || c == ' ') continue;
+        char c = sm[y][x]; if (fz_walk(c) || c == '|' || c == 'W' || c == 'E' || c == ' ' || c == 0x7F) continue;
         int ok = 0;
         for (int k = 0; k < 4; k++) { int a = x + ((k & 1) ? 0 : k - 1), b = y + ((k & 1) ? k - 2 : 0);
             if (a >= fz_x0 && a <= fz_x1 && b >= fz_y0 && b <= fz_y1 && fz_seen[b - fz_y0][a - fz_x0]) ok = 1; }
@@ -78,6 +78,8 @@ static char fz_sub[8];                                                  // a gro
 #define P(c, a, b, f) (u8)(c), (u8)((a) | ((b) << 4)), (u8)(f)          // a piece: what, where (a along, b out), its facing (0 into the room, 1 along, 2 at the wall, 3 back along; +OPT: only if it fits)
 static const u8 G_BED[]  = { P(2,0,0,OPT), P(1,1,0,0), P(3,2,0,OPT), P(4,1,1,OPT), P('.',1,1,0), 0 };                       // a bed, its head on the wall, a nightstand (or the toys) either side, its foot clear
 static const u8 G_BEDL[] = { P(2,0,0,OPT), P(1,1,0,0), P(3,2,0,OPT), P('.',1,1,0), P('.',1,2,0), P(4,1,2,OPT), 0 };                // (version 7) a bed two tiles long, its head on the wall, a nightstand either side; its foot tile and the one beyond it clear (you get in from the foot), a rug there
+static const u8 G_BEDF[] = { P(2,0,0,OPT), P(1,1,0,0), P(3,3,0,OPT), P(0x7F,2,0,0), P(0x7F,1,1,0), P(0x7F,2,1,0), P('.',1,2,0), P('.',2,2,0), P(4,1,2,OPT), 0 };   // (version 7) a double bed, two by two, its head on the wall (it takes the tiles 1 and 2 along it and the two rows out), a nightstand either side, its foot clear; a rug there
+static const u8 G_BEDFM[] = { P(2,0,0,OPT), P(1,2,0,0), P(3,3,0,OPT), P(0x7F,1,0,0), P(0x7F,1,1,0), P(0x7F,2,1,0), P('.',1,2,0), P('.',2,2,0), P(4,2,2,OPT), 0 };  // (the same for a bed that spreads the other way along the wall: it is placed at the far one of its two tiles. The pieces keep their numbers)
 static const u8 G_ONE[]  = { P(6,0,0,0), P('.',0,1,0), 0 };                                                    // one thing on a wall, the tile before it clear
 static const u8 G_DECO[] = { P(6,0,0,0), 0 };                                                                  // a plant or a lamp in a corner
 static const u8 G_DESK[] = { P('.',0,0,0), P('d',1,0,0), P('h',1,1,2), P(4,2,0,OPT), 0 };       // a desk, the chair at it, the computer beside (and a tile beside the desk to get at it)
@@ -95,8 +97,8 @@ static const u8 G_DIN6[] = { P('h',1,0,0), P('h',2,0,0), P('t',1,1,0), P('t',2,1
 static const u8 G_DIN[]  = { P('h',1,0,0), P('t',1,1,0), P('h',0,1,1), P('h',2,1,3), P('.',0,0,0), P('.',2,0,0), P('.',0,2,0), P('.',1,2,0), P('.',2,2,0), 0 };
 static const u8 G_D1[]   = { P('t',0,0,0), P('h',1,0,3), P('.',0,1,0), 0 };
 static const u8 G_D2[]   = { P('h',0,0,1), P('t',1,0,0), P('h',2,0,3), P('.',1,1,0), 0 };   // (a small table against the wall)
-enum { GI_BED, GI_BEDL, GI_ONE, GI_DECO, GI_DESK, GI_SINK, GI_READ, GI_K3, GI_L4, GI_L3, GI_L2, GI_DIN6, GI_DIN, GI_D2, GI_D1, GI_WC, GI_K2 };
-static const u8 *const fz_G[] = { G_BED, G_BEDL, G_ONE, G_DECO, G_DESK, G_SINK, G_READ, G_K3, G_L4, G_L3, G_L2, G_DIN6, G_DIN, G_D2, G_D1, G_WC, G_K2 };
+enum { GI_BED, GI_BEDL, GI_BEDF, GI_ONE, GI_DECO, GI_DESK, GI_SINK, GI_READ, GI_K3, GI_L4, GI_L3, GI_L2, GI_DIN6, GI_DIN, GI_D2, GI_D1, GI_WC, GI_K2 };
+static const u8 *const fz_G[] = { G_BED, G_BEDL, G_BEDF, G_ONE, G_DECO, G_DESK, G_SINK, G_READ, G_K3, G_L4, G_L3, G_L2, G_DIN6, G_DIN, G_D2, G_D1, G_WC, G_K2 };
 #undef P
 static void fz_put(int x, int y, int c, int f) {                        // the thing, turned
     int vx = (f & 1) ? gax : gbx, vy = (f & 1) ? gay : gby; if (f & 2) { vx = -vx; vy = -vy; }
@@ -108,6 +110,7 @@ static void fz_put(int x, int y, int c, int f) {                        // the t
 // fit by the same rules: so a nightstand never takes the fridge's place, and a counter never walls the sofa in.
 static int fz_n0, fz_l0;                                                // the room's walkable floor and its cut-off things as they stand (-1: count again)
 static int fz_grp(const u8 *g, int a0, int a1, int ex) {                // 0: no place; else a + 2
+    if (g == G_BEDF && !(gby == gax && -gbx == gay)) g = G_BEDFM;       // (a double bed spreads from its tile the way the foot turns it, to the right of its head: along the wall one way or the other)
     for (int a = a0; a <= a1 && a < gN; a++) {
         u16 mk[16]; u8 px[12], py[12]; int np = 0, nb = 0, pi; const u8 *p; memcpy(mk, fz_mk, sizeof mk);
         for (int pass = 0; pass < 2; pass++) {
@@ -119,6 +122,7 @@ static int fz_grp(const u8 *g, int a0, int a1, int ex) {                // 0: no
                 if (!fr) goto next;
                 if (!pass) continue;
                 if (c == '.') { fz_mk[y - fz_y0] |= (u16)(1 << (x - fz_x0)); continue; }
+                if (c == 0x7F) { fz_mk[y - fz_y0] |= (u16)(1 << (x - fz_x0)); sm[y][x] = 0x7F; px[np] = (u8)x; py[np++] = (u8)y; nb++; continue; }   // (the tile a double bed covers: nobody walks it, until the room is done and it is bare floor again)
                 fz_put(x, y, c, f); px[np] = (u8)x; py[np++] = (u8)y; if (c != 'r') nb++;
             }
             if (!pass && fz_n0 < 0) { fz_n0 = fz_flood(); fz_l0 = fz_lost(0); }
@@ -152,6 +156,7 @@ static void fz_extras(void) {                                           // the s
 }
 static const s8 RC_BED[]   = { ST(GI_BED, W_B | CEN | WIDE, 3, 0), ST(GI_BED, W_B | ALT | WIDE, -1, 15), ST(GI_BED, W_1B | ALT, -1, 15), ST(GI_BED, W_3B | ALT, -1, 15), ST(GI_BED, W_F | ALT, -1, 15), 127 };   // the head on the wall opposite the door, or the next best
 static const s8 RC_BEDL[]  = { ST(GI_BEDL, W_B | CEN | WIDE, 3, 0), ST(GI_BEDL, W_B | ALT | WIDE, -1, 15), ST(GI_BEDL, W_1B | ALT, -1, 15), ST(GI_BEDL, W_3B | ALT, -1, 15), ST(GI_BEDL, W_F | ALT, -1, 15), 127 };   // (the same walls as RC_BED, for the long bed)
+static const s8 RC_BEDF[]  = { ST(GI_BEDF, W_B | CEN | WIDE, 4, 0), ST(GI_BEDF, W_B | ALT | WIDE, -1, 15), ST(GI_BEDF, W_1B | ALT, -1, 15), ST(GI_BEDF, W_3B | ALT, -1, 15), 127 };   // (the double bed: the same walls as the single one, but not on the door's wall)
 static const s8 RC_ANY[]   = { ST(GI_ONE, W_1B, 0, 15), ST(GI_ONE, W_3B | ALT, 0, 15), ST(GI_ONE, W_FM | ALT, 0, 15), ST(GI_ONE, W_B | ALT, 0, 15), ST(GI_DECO, W_1B | ALT, 0, 15), ST(GI_DECO, W_FM | ALT, 0, 15), ST(GI_DECO, W_3B | ALT, 0, 15), 127 };   // one thing more: on a wall with a clear tile before it, or wherever it can still be got at
 static const s8 RC_HOB[]   = { ST(GI_ONE, W_FM, 1, 15), ST(GI_ONE, W_F | ALT, 1, 15), ST(GI_ONE, W_3F | ALT, 0, 15), ST(GI_ONE, W_B | ALT, 0, 15), ST(GI_ONE, W_1B | ALT, 0, 15), ST(GI_DECO, W_FM | ALT, 1, 15), ST(GI_DECO, W_3F | ALT, 0, 15), 127 };   // a hobby: by the front wall first (not where the telly's things go)
 static const s8 RC_DESK[]  = { ST(GI_DESK, W_3B, 0, 15), ST(GI_DESK, W_1B | ALT, 0, 15), ST(GI_DESK, W_FM | ALT, 0, 15), ST(GI_DESK, W_B | ALT, 0, 15), 127 };
@@ -194,9 +199,11 @@ static void fz_room(int roles, const Beds *bd, const Occ *o) {
     fz_tight = roles == R_BATH;
     if (roles & R_BATH) fz_do(RC_BATHR);
     if (roles & R_BED) {                                                // each bed with what goes beside it: the parents' nightstands and a rug at the foot, the cot next
+        int dbl = 0;
         static const char bk[5][4] = { { 0, 'S', '\x96', '\x96' }, { 2, '\x81', 0, 0 }, { 1, '<', 0, 0 }, { 3, 'S', 0, '\x96' }, { 5, 'S', '\x96', 0 } };
         for (int i = 0; i < 5; i++) for (int n = ((const u8 *)bd)[(int)bk[i][0]]; n > 0; n--) {
             fz_sub[1] = bk[i][1]; fz_sub[2] = bk[i][2]; fz_sub[3] = bk[i][3]; fz_sub[4] = i ? 0 : 'r';
+            if (bm_gen >= 7 && i == 0 && o->couple && !dbl) { dbl = 1; fz_sub[1] = '\xEC'; fz_do(RC_BEDF); if (fz_ok) continue; fz_sub[1] = 'S'; }   // (version 7: a couple sleep in a double bed where the room has the space; else the single one)
             if (bm_gen >= 7 && bk[i][1] == 'S') { fz_sub[1] = '\xF6'; fz_do(RC_BEDL); if (fz_ok) continue; fz_sub[1] = 'S'; }   // (version 7: a single bed, two tiles long, where the room has the length; else the one-tile bed)
             fz_do(RC_BED); }
     }
@@ -256,6 +263,10 @@ static int fz_longfoot(int x, int y) {                  // (version 7) the foot 
         if (sm[ny][nx] == (char)0xF6) { int r = swp[ny][nx] & 3; if (nx + dx[r] == x && ny + dy[r] == y) return 1; }
         nx = x + 2 * dx[k]; ny = y + 2 * dy[k];
         if (sm[ny][nx] == (char)0xF6) { int r = swp[ny][nx] & 3; if (nx + 2 * dx[r] == x && ny + 2 * dy[r] == y) return 1; } }
+    for (int by = y - 3; by <= y + 3; by++) for (int bx = x - 3; bx <= x + 3; bx++) {   // (a double bed: the tiles it covers and the two in front of its foot)
+        if (bx < 0 || by < 0 || bx >= MW || by >= MH || sm[by][bx] != (char)0xEC) continue;
+        int r = swp[by][bx] & 3;
+        for (int da = 0; da < 2; da++) for (int db = 0; db < 4; db++) { if (!(da | db)) continue; if (bx + da * dy[r] + db * dx[r] == x && by - da * dx[r] + db * dy[r] == y) return 1; } }
     return 0;
 }
 static void fz_need(const char *has, char c) {   // a home must have its toilet, fridge and bed: if the layout left one out, it goes on the first free wall tile that is not in the doorway
@@ -267,11 +278,22 @@ static void fz_need(const char *has, char c) {   // a home must have its toilet,
 static void fz_fixbeds(int x0, int y0, int x1, int y1) {   // (version 7) a long bed whose foot tile is not bare floor in the room, or is walled in, goes back to the one-tile bed
     static const signed char dx[4] = { 0, 1, 0, -1 }, dy[4] = { 1, 0, -1, 0 };
     for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
+        if (sm[y][x] == (char)0xEC) {   // (a double bed: its three other tiles and the two in front of its foot bare floor of the room, and a way to the foot)
+            int r = swp[y][x] & 3, bad = 0, open = 0;
+            for (int da = 0; da < 2; da++) for (int db = 0; db < 3; db++) { if (!(da | db)) continue;
+                int a = x + da * dy[r] + db * dx[r], b = y - da * dx[r] + db * dy[r];
+                if (a < x0 || a > x1 || b < y0 || b > y1 || (sm[b][a] != 0x7F && sm[b][a] != '.' && sm[b][a] != 'r')) bad = 1; }
+            for (int da = 0; da < 2 && !bad; da++) for (int k = 0; k < 4; k++) {
+                int fx = x + da * dy[r] + 2 * dx[r], fy = y - da * dx[r] + 2 * dy[r], a = fx + dx[k], b = fy + dy[k];
+                if (a < x0 || a > x1 || b < y0 || b > y1) continue; if (sm[b][a] == '.' || sm[b][a] == 'r' || sm[b][a] == 'D') open = 1; }
+            if (bad || !open) sm[y][x] = 'S';
+            continue; }
         if (sm[y][x] != (char)0xF6) continue;
         int r = swp[y][x] & 3, fx = x + dx[r], fy = y + dy[r], ok = fx >= x0 && fx <= x1 && fy >= y0 && fy <= y1 && (sm[fy][fx] == '.' || sm[fy][fx] == 'r');
         int open = 0;
         for (int k = 0; k < 4 && ok; k++) { int a = fx + dx[k], b = fy + dy[k]; if ((a == x && b == y) || a < x0 || a > x1 || b < y0 || b > y1) continue; if (sm[b][a] == '.' || sm[b][a] == 'r' || sm[b][a] == 'D') open = 1; }
         if (!ok || !open) sm[y][x] = 'S'; }
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) if (sm[y][x] == 0x7F) sm[y][x] = '.';   // (what a double bed covers is bare floor on the map: the bed's own footprint holds it)
 }
 static void furnish_at(int x0, int y0, int x1, int y1, int ix, int iy, int ox, int oy, const Occ *o, unsigned h) {   // a one-room home. (ix,iy): the tile just inside the door; (ox,oy): the way in
     fz_frame(x0, y0, x1, y1, ix, iy, ox, oy, h);
@@ -281,7 +303,7 @@ static void furnish_at(int x0, int y0, int x1, int y1, int ix, int iy, int ox, i
     if (!o->vacant) { fz_need("vRAbq", 'v'); fz_need("CUh", 'C'); }     // (every home: something to watch and somewhere to sit, in the room, not the bathroom)
     fz_x0 = x0; fz_y0 = y0; fz_x1 = x1; fz_y1 = y1; memset(fz_mk, 0, sizeof fz_mk);
     fz_reach();
-    if (!o->vacant) { fz_need("T", 'T'); fz_need("F", 'F'); fz_need("S<\xF6", 'S'); }
+    if (!o->vacant) { fz_need("T", 'T'); fz_need("F", 'F'); fz_need("S<\xF6\xEC", 'S'); }
     if (bm_gen >= 7) fz_fixbeds(x0, y0, x1, y1);
     fz_nres = 0;
 }
@@ -332,7 +354,7 @@ static void furnish_plan(int X0, int Y0, int X1, int Y1, int dx, const Occ *o, u
     fz_x0 = X0; fz_y0 = Y0; fz_x1 = X1; fz_y1 = Y1; memset(fz_mk, 0, sizeof fz_mk);
     fz_reach();
     if (!fz_upper && !o->vacant) {                                                    // a home has its fridge in the front room, and a toilet and a bed in the back
-        fz_y0 = wy + 1; fz_need("F", 'F'); fz_need("vRAbq", 'v'); fz_need("CUh", 'C'); fz_y0 = Y0; fz_y1 = wy - 1; fz_need("T", 'T'); fz_need("S<\xF6", 'S'); fz_y1 = Y1; }
+        fz_y0 = wy + 1; fz_need("F", 'F'); fz_need("vRAbq", 'v'); fz_need("CUh", 'C'); fz_y0 = Y0; fz_y1 = wy - 1; fz_need("T", 'T'); fz_need("S<\xF6\xEC", 'S'); fz_y1 = Y1; }
     fz_nres = 0;
     if (bm_gen >= 7) fz_fixbeds(X0, Y0, X1, Y1);
 }
@@ -492,7 +514,7 @@ static void city_two(int lx, int ly, unsigned h) {   // a two-storey house: the 
             Occ up = *o; up.adults = up.elders = up.babies = up.couple = 0; Beds ub = beds_of(&up);
             fz_nres = 1; fz_res[0][0] = (u8)sx; fz_res[0][1] = (u8)(sy + 1);
             fz_frame(x0, y0, x0 + 6, y0 + 5, sx, sy - 1, sx > x0 + 3 ? -1 : 1, 0, h * 40503u);
-            fz_room(R_BED | R_STUDY, &ub, o); fz_reach(); fz_nres = 0; storey(0);
+            fz_room(R_BED | R_STUDY, &ub, o); fz_reach(); if (bm_gen >= 7) fz_fixbeds(fz_x0, fz_y0, fz_x1, fz_y1); fz_nres = 0; storey(0);
         }
     }
     roof_dirty = 1;

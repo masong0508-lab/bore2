@@ -9,6 +9,7 @@
 #include "audio.h"
 #endif
 #include "bigmap.h"
+#include "traffic.h"
 #include "mem8.h"
 #include "pop.h"
 #include "far.h"
@@ -96,7 +97,7 @@ int dbg_noao, dbg_nograd;   // the floor shading needs working out again (world_
 u8 floorMap[MH][MW], wallMap[MH][MW];
 
 static TexRef fl_tex[NFLOORS];       // 8x8 (the water: 16x16, the pattern twice over, so it can scroll)
-static TexRef fl_tex4[NFLOORS];      // 32x32: four tiles' worth, the checker shade of the odd tiles baked in (2x2 blocks of floor draw as one quad)
+static TexRef fl_tex4[NFLOORS];      // 32x32: four tiles' worth (each tile's pattern 16 across, twice the texels, the same size as the single tile's), the checker shade of the odd tiles baked in (2x2 blocks of floor draw as one quad)
 #define PN_NOISE "01000200","00020010","20001000","00100020","01000100","00200001","10002000","00010200"
 // the outdoor floors BORE 2 adds: 16x16, 4 colours, hand drawn here
 static const Tex outTex[19] = {
@@ -171,8 +172,8 @@ COLD void world_season_skin(int season, int wet) {
         atlas_upload(&fl_tex[i], TB);
         if (!fl_tex4[i].tpage) { for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) { u16 c = sc[t->p[y][x] - '0']; r += C_R(c); g += C_G(c); b += C_B(c); } fl_avg[i] = RGB(r / 64, g / 64, b / 64); continue; }
         for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
-            u16 c = sc[t->p[y & 7][x & 7] - '0'];
-            int odd = ((x >> 3) + (y >> 3)) & 1, k = odd ? fl_odd[i] : 16;
+            u16 c = sc[t->p[(y >> 1) & 7][(x >> 1) & 7] - '0'];   // (a tile's pattern across 16 texels: the same size as the one-tile quad's 8 across 256 units; the checker's squares are tiles)
+            int odd = ((x >> 4) + (y >> 4)) & 1, k = odd ? fl_odd[i] : 16;
             u16 o = RGB(C_R(c) * k / 16, C_G(c) * k / 16, C_B(c) * k / 16);
             TB[y * 32 + x] = o ? o : 0x8000;
         }
@@ -195,8 +196,8 @@ COLD void world_init(void) {
         fl_tex[i] = atlas_add(sz, sz, TB);
         if (FL_NO4(i)) { fl_tex4[i].tpage = 0; continue; }   // (the one-tile-wide road markings never draw as a 2x2 block)
         for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
-            u16 c = fl_soft[i][t->p[y & 7][x & 7] - '0'];
-            int odd = ((x >> 3) + (y >> 3)) & 1, k = odd ? fl_odd[i] : 16;
+            u16 c = fl_soft[i][t->p[(y >> 1) & 7][(x >> 1) & 7] - '0'];
+            int odd = ((x >> 4) + (y >> 4)) & 1, k = odd ? fl_odd[i] : 16;
             u16 o = RGB(C_R(c) * k / 16, C_G(c) * k / 16, C_B(c) * k / 16);
             TB[y * 32 + x] = o ? o : 0x8000;
         }
@@ -982,8 +983,27 @@ COLD __attribute__((noinline)) static void street_purge(int wx, int wy) {   // (
 #endif
     }
 }
+COLD static void bed_fix(int wx, int wy) {   // a four-poster or double bed (2 x 2) whose far tiles meet a wall, a thing or another bed (a house saved when it was one tile): back to the one-tile bed
+    static const signed char dx[4] = { 0, 1, 0, -1 }, dy[4] = { 1, 0, -1, 0 };
+    int keep = world_lvl, ox = wx * BM_BLK, oy = wy * BM_BLK;
+    for (int l = 0; l <= NUP; l++) {
+        Level *Lv = l ? lv_get(l - 1) : 0; if (l && !Lv) continue;
+        char (*m)[MW + 1] = l ? Lv->map : lifeMap; world_lvl = l;
+        static u8 tx_[16], ty_[16]; int nt = 0;
+        for (int y = oy; y < oy + BM_BLK; y++) for (int x = ox; x < ox + BM_BLK; x++) {
+            if ((u8)m[y][x] != 0xEB && (u8)m[y][x] != 0xEC) continue;
+            int r = world_item_facing(x, y) & 3, ok = nt <= 12;
+            for (int da = 0; da < 2 && ok; da++) for (int db = 0; db < 2; db++) { if (!(da | db)) continue;
+                int a = x + da * dy[r] + db * dx[r], b = y - da * dx[r] + db * dy[r];
+                if (a < 0 || b < 0 || a >= MW || b >= MH || m[b][a] != '.') { ok = 0; break; } }
+            if (!ok) { m[y][x] = 'S'; continue; }
+            for (int da = 0; da < 2; da++) for (int db = 0; db < 2; db++) { if (!(da | db)) continue;
+                int a = x + da * dy[r] + db * dx[r], b = y - da * dx[r] + db * dy[r]; m[b][a] = 0x7F; tx_[nt] = (u8)a; ty_[nt++] = (u8)b; } }
+        while (nt--) m[ty_[nt]][tx_[nt]] = '.'; }
+    world_lvl = keep;
+}
 COLD static void gen_block(int wx, int wy) {
-    gen_block0(wx, wy); street_purge(wx, wy); gcur_n = 0;
+    gen_block0(wx, wy); bed_fix(wx, wy); street_purge(wx, wy); gcur_n = 0;
 #ifdef ROAD_AUDIT
     ra_block(wx, wy);
 #endif
@@ -1305,7 +1325,8 @@ int world_covered(int mx, int my) {
     if (!(cov_known[my][w] & bit)) { cov_known[my][w] |= bit; if (world_covered0(mx, my)) cov_val[my][w] |= bit; else cov_val[my][w] &= ~bit; }
     return (cov_val[my][w] & bit) != 0;
 }
-static int world_covered0(int mx, int my) {   // a tile under the far end of a long thing (a bed) from a neighbour's tile: the neighbour's tile owns it
+static int world_covered0(int mx, int my) {   // a tile under the far end of a long thing (a bed) from a neighbour's tile: the neighbour's tile owns it; or under a car parked on a drive
+    if (world_lvl <= 0 && world_zone == ZONE_CITY && bm_gen >= 7 && traffic_pcar_tile(mx, my)) return 1;
     for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
         if (!(dx | dy)) continue;
         int x = mx + dx, y = my + dy; if (x < 0 || y < 0 || x >= MW || y >= MH) continue;

@@ -274,23 +274,41 @@ extern void items_draw_bus(int x, int z, int yaw, int y);
 typedef struct { s16 x, z, yaw; u8 t, c; } PCar;
 static PCar pcar[20]; static int pcar_n, pcar_key[6] = { -1 };
 extern int bm_edit_stamp;
+static int pcar_lot(int wx, int wy, PCar *p) {   // the car on the home lot at window block (wx, wy), 0 if none (the same dice as ever: five homes in eight)
+    int gx = world_wbx + wx, gy = world_wby + wy; BInfo b; LotPlan q;
+    bm_block(gx, gy, &b); bm_lot_plan(gx, gy, &b, &q);
+    if (q.type == HT_NONE || !q.drv) return 0;
+    u32 h = bm_hash(gx, gy, 0xCA85u); if ((h & 7) >= 5) return 0;                          // (five homes in eight)
+    int n = q.face == LF_NORTH, y0 = n ? 22 - q.y1 : q.y0, y1 = n ? 22 - q.y0 : q.y1, wy1 = n ? 22 - q.wy0 : q.wy1;
+    int garage = q.wx1 || q.type == HT_RANCH, top = q.wx1 ? wy1 + 1 : q.type == HT_RANCH ? y1 + 1 : y0;   // (as the generator's drive: to the garage's front, or beside the house)
+    if (18 - top < 4) return 0;
+    if (bm_gen >= 7 && (q.dx == q.drv || q.dx == q.drv + 1 || (q.d2x && (q.d2x == q.drv || q.d2x == q.drv + 1)))) return 0;   // (a car never stands in the way of a front door)
+    int c = garage ? top * TILE + (TILE * 15) / 8 : 18 * TILE - (TILE * 5) / 2;               // (centre row in 1/256 tiles, seen from the south: against the garage, or by the street)
+    if (n) c = 23 * TILE - c;
+    p->x = (s16)((wx * BM_BLK + q.drv + 1) * TILE); p->z = (s16)-(wy * BM_BLK * TILE + c);
+    p->yaw = (s16)(((h >> 8) & 3) == 0 ? (n ? 2048 : 0) : (n ? 0 : 2048));                      // (mostly nose in)
+    p->t = VT[(h >> 12) & 7]; p->c = (u8)((h >> 16) % 6u);
+    return 1;
+}
 static void pcars_build(int cbx, int cby) {
     pcar_n = 0;
-    for (int wy = MAX(0, cby - 1); wy <= MIN(3, cby + 1); wy++) for (int wx = MAX(0, cbx - 1); wx <= MIN(3, cbx + 1); wx++) {
-        int gx = world_wbx + wx, gy = world_wby + wy; BInfo b; LotPlan q;
-        bm_block(gx, gy, &b); bm_lot_plan(gx, gy, &b, &q);
-        if (q.type == HT_NONE || !q.drv || pcar_n >= 20) continue;
-        u32 h = bm_hash(gx, gy, 0xCA85u); if ((h & 7) >= 5) continue;                          // (five homes in eight)
-        int n = q.face == LF_NORTH, y0 = n ? 22 - q.y1 : q.y0, y1 = n ? 22 - q.y0 : q.y1, wy1 = n ? 22 - q.wy0 : q.wy1;
-        int garage = q.wx1 || q.type == HT_RANCH, top = q.wx1 ? wy1 + 1 : q.type == HT_RANCH ? y1 + 1 : y0;   // (as the generator's drive: to the garage's front, or beside the house)
-        if (18 - top < 4) continue;
-        int c = garage ? top * TILE + (TILE * 15) / 8 : 18 * TILE - (TILE * 5) / 2;               // (centre row in 1/256 tiles, seen from the south: against the garage, or by the street)
-        if (n) c = 23 * TILE - c;
-        PCar *p = &pcar[pcar_n++];
-        p->x = (s16)((wx * BM_BLK + q.drv + 1) * TILE); p->z = (s16)-(wy * BM_BLK * TILE + c);
-        p->yaw = (s16)(((h >> 8) & 3) == 0 ? (n ? 2048 : 0) : (n ? 0 : 2048));                      // (mostly nose in)
-        p->t = VT[(h >> 12) & 7]; p->c = (u8)((h >> 16) % 6u);
-    }
+    for (int wy = MAX(0, cby - 1); wy <= MIN(3, cby + 1); wy++) for (int wx = MAX(0, cbx - 1); wx <= MIN(3, cbx + 1); wx++)
+        if (pcar_n < 20 && pcar_lot(wx, wy, &pcar[pcar_n])) pcar_n++;
+}
+// a parked car is solid: the tiles it stands on (a quarter of the tile or more under it) are not walkable (world_covered asks, kept per block)
+static struct { s32 stamp; s8 ok, has; PCar p; } pcc[16]; static int pcc_wx = -9, pcc_wy = -9, pcc_gen = -1;   // (a block's car, by its window block; ok: asked already)
+int traffic_pcar_tile(int mx, int my) {
+    if (bm_gen < 7 || world_zone != ZONE_CITY || world_wbx < 0 || mx < 0 || my < 0 || mx >= MW || my >= MH) return 0;
+    int wx = mx / BM_BLK, wy = my / BM_BLK; if (wx > 3 || wy > 3) return 0;
+    if (pcc_wx != world_wbx || pcc_wy != world_wby || pcc_gen != bm_edit_stamp) { pcc_wx = world_wbx; pcc_wy = world_wby; pcc_gen = bm_edit_stamp; memset(pcc, 0, sizeof pcc); }   // (the window moved, or a block was edited: the cars' places are window tiles)
+    int k = wy * 4 + wx;
+    if (!pcc[k].ok) { pcc[k].ok = 1; pcc[k].has = (s8)pcar_lot(wx, wy, &pcc[k].p); }
+    if (!pcc[k].has) return 0;
+    const PCar *p = &pcc[k].p; int t = p->t;
+    int hw = 188, hl = (t == 3 || t == 5) ? 470 : 420;                                          // (the model: 107 wide each side, 470 or 560 long, at the scale 28/16)
+    int x0 = mx * TILE, x1 = x0 + TILE, z0 = my * TILE, z1 = z0 + TILE, cz = -p->z;             // (the car's rect, the tile's, both in map units with y down)
+    int ox = MIN(x1, p->x + hw) - MAX(x0, p->x - hw), oz = MIN(z1, cz + hl) - MAX(z0, cz - hl);
+    return ox > 0 && oz > 0 && ox * oz >= TILE * TILE / 4;
 }
 static void pcars_draw(void) {
     if (bm_gen < 7) return;

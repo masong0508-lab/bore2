@@ -11,3 +11,4 @@ int  traffic_park_near(int type, int x, int z);       // is that vehicle parked 
 int  traffic_parked(int type);                        // is it parked somewhere?
 void traffic_save(void);
 void traffic_load(int ver);
+int  traffic_pcar_tile(int mx, int my);              // (world version 7) 1: a parked car on a home's drive stands on this window tile (it is not walkable)

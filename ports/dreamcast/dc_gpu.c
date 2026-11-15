@@ -312,6 +312,19 @@ extern int dc_filter;
 static int hdr_put(VList *L, int tex, int blend);
 static void emit_one(int n, const int *x, const int *y, const uint32_t *col, const int *u, const int *v, int textured, int tpage, int clut, int raw, int semi, int abr, int var) {
     VList *L = semi ? &vl_tr : textured ? &vl_pt : &vl_op;
+    if (n >= 3) {   // a sliver (a face seen edge-on: under 0.7 of a PS1 pixel across): the PS1's rasteriser leaves it out or makes a few dots, the PowerVR's draws a dotted hairline across the picture
+        int a0 = (x[1] - x[0]) * (y[2] - y[0]) - (y[1] - y[0]) * (x[2] - x[0]); if (a0 < 0) a0 = -a0;
+        int ar = a0, e2 = 0;
+        for (int k = 1; k < 3; k++) { int dx = x[k] - x[0], dy = y[k] - y[0]; int d = dx * dx + dy * dy; if (d > e2) e2 = d; }
+        { int dx = x[2] - x[1], dy = y[2] - y[1]; int d = dx * dx + dy * dy; if (d > e2) e2 = d; }
+        if (n == 4) {
+            int a1 = (x[2] - x[1]) * (y[3] - y[1]) - (y[2] - y[1]) * (x[3] - x[1]); if (a1 < 0) a1 = -a1; ar += a1;
+            for (int k = 2; k < 4; k++) { int dx = x[k] - x[1], dy = y[k] - y[1]; int d = dx * dx + dy * dy; if (d > e2) e2 = d; }
+            { int dx = x[3] - x[0], dy = y[3] - y[0]; int d = dx * dx + dy * dy; if (d > e2) e2 = d; }
+        }
+        if (ar > 0 && e2 > 16 && (int64_t)ar * ar * 100 < (int64_t)e2 * 49) return;   // (ar = twice the area: width = ar / longest edge < 0.7)
+        if (ar == 0) return;
+    }
     if (L->n + 6 + (semi || !textured ? 0 : 5) > L->cap || vl_tr.n + 6 > vl_tr.cap) return;
     int ti = textured ? tex_get(tpage, clut, var) : -1;
     if (textured && ti < 0) return;
@@ -344,6 +357,12 @@ static void emit_one(int n, const int *x, const int *y, const uint32_t *col, con
         if (n == 4 && fy[0] == fy[1] && fx[0] == fx[2] && fv[0] == fv[1] && fu[0] == fu[2] && (fx[1] - fx[0]) == (fu[1] - fu[0]) * SCALE) filt = 0;
     }
     if (textured) for (int k = 0; k < n; k++) { fu[k] *= (1.0f / 256.0f); fv[k] *= (1.0f / 256.0f); }
+    if (!semi && n >= 3 && !(n == 4 && ((fy[0] == fy[1] && fy[2] == fy[3] && fx[0] == fx[2] && fx[1] == fx[3]) || (fx[0] == fx[1] && fx[2] == fx[3] && fy[0] == fy[2] && fy[1] == fy[3])))) {
+        // (a slanted opaque polygon, grown a third of a pixel: two faces that share an edge leave a hairline crack on the PowerVR where the edge falls between pixel
+        //  centres, and what lies behind shows through as a dotted line (a blue one across the title room's wall top). Rectangles stay as they are: the interface.)
+        float cx = 0, cy = 0; for (int k = 0; k < n; k++) { cx += fx[k]; cy += fy[k]; } cx /= n; cy /= n;
+        for (int k = 0; k < n; k++) { float dx = fx[k] - cx, dy = fy[k] - cy, d2 = dx * dx + dy * dy; if (d2 > 0.25f) { float inv = 0.33f / __builtin_sqrtf(d2); fx[k] += dx * inv; fy[k] += dy * inv; } }
+    }
     hdr_put(L, ti, blend + filt * 16);
     pvr_vertex_t *o = &L->v[L->n];
     for (int k = 0; k < n; k++, o++) {
