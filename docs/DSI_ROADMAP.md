@@ -404,3 +404,9 @@ No press was dropped (seen = acted on) in any scene. The 3D stays 30 in every `b
 - Live 3D 28-30 fps (avg 29.8), UI 54-58, same as d72. ROM 7.04 MB.
 - Shots: `docs/ds_shots/traits_*.png`.
 - Left: the per-trait proof runs on the host (same engine and accessors), not as a probe inside the ROM; unsupported hooks (comfort, skills but farm, moodlets, many jobs) need DS systems first.
+
+## D85 thought bubbles (ROM bore2_dsi_d85.nds)
+- A sim's need (food, zz, loo, fun, chat, hygiene), a heart for a kiss or a friend passing, and a chat bubble for a townsperson you just talked to show above heads as main-engine OBJ sprites (VRAM E), positioned with the 3D frame (`bub_calc`, `bub_apply` in ports/dsi/source/main.c). Under 12 the bubble is red-edged and bobs. Shown in bursts so it does not clutter; hidden under the HUD and pop-ups. No save change.
+- Tested in melonDS: 3D 30 fps flat, ds_flow, ds_items_test, ds_traffic, ds_oldsave (d84 save loads) all PASS. Test scenes 190-193 (bench.py `bub_*`).
+- Shots: `docs/ds_shots/bubbles_before_*.png`, `bubbles_after_*.png`, `bubbles_d85_house.png`.
+- Left: not tried on real hardware; icons are small on the top-down view.

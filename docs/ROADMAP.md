@@ -98,7 +98,7 @@ About 31-52 fps in the city in the emulator. 60 needs under 262 hblanks per fram
 
 ## 5. Held for later
 - [ ] Missy's voice-over and FMV.
-- [ ] Thought bubbles on the DS.
+- [x] D85 thought bubbles on the DS: hardware sprites over the heads (need icon, heart, chat), 30 fps and old saves unchanged. See docs/DSI_ROADMAP.md.
 - [ ] DS stand-ins needed when sim.c comes into the DS port.
 - [ ] Crowd model build spikes (occasional slow frames).
 - [ ] Android emulator tests.
