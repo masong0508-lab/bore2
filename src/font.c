@@ -126,7 +126,22 @@ static int lstr(const char *list, const char *w, int n) {
     }
     return 0;
 }
+static int font_case_(const char *s, char *out, int n);
+// (the same text is shaped again and again: measured to centre it, then drawn, every frame. It is a pure function of the text, so the last answers are kept: a
+//  small table by length and ends of the text, checked by comparing the whole text. Texts under 48 letters; a longer one goes the long way as before)
+#define FCN 32
+static struct { u8 len, res; char in[48], out[48]; } fcc[FCN];
 int font_case(const char *s, char *out, int n) {
+    int len = (int)strlen(s);
+    if (len >= n) return 0;
+    if (len == 0 || len >= 48) return font_case_(s, out, n);
+    int k = (len * 7 + (u8)s[0] * 3 + (u8)s[len - 1] * 5 + (u8)s[len >> 1]) & (FCN - 1);
+    if (fcc[k].len == len && !memcmp(fcc[k].in, s, (size_t)len + 1)) { if (fcc[k].res) memcpy(out, fcc[k].out, (size_t)len + 1); return fcc[k].res; }
+    int r = font_case_(s, out, n);
+    fcc[k].len = (u8)len; fcc[k].res = (u8)r; memcpy(fcc[k].in, s, (size_t)len + 1); if (r) memcpy(fcc[k].out, out, (size_t)len + 1);
+    return r;
+}
+static int font_case_(const char *s, char *out, int n) {
     int len = (int)strlen(s), nw = 0, has_lower = 0, sent_p = 0;
     if (len >= n) return 0;
     for (int i = 0; i < len; i++) {

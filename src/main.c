@@ -361,7 +361,13 @@ static void feed_push(const char *t) {
 static void feed_poll(void) { extern char note_q[4][32]; extern int note_qn; for (int i = 0; i < note_qn; i++) feed_push(note_q[i]); note_qn = 0; }   // every sim_note lands here
 // the notification toasts, after the Sims: a white card with a round coloured icon (green tick: good news, red: a problem, blue: news), slid in from the left, held,
 // slid out; the wording picks the icon. (The text is measured, the card fits it, the text is centred in the card's height.)
-static int toast_kind(const char *t) {
+static int toast_kind_(const char *t);
+static int toast_kind(const char *t) {   // (the wording of a note does not change while it is on the screen: the answer is kept, a few at a time, instead of 40 searches a note a frame)
+    static struct { char t[32]; s8 k; } tk[6]; static int tn;
+    for (int i = 0; i < 6; i++) if (tk[i].k >= 0 && tk[i].t[0] && !strncmp(tk[i].t, t, 31)) return tk[i].k;
+    int k = toast_kind_(t); int i = tn++ % 6; strncpy(tk[i].t, t, 31); tk[i].t[31] = 0; tk[i].k = (s8)k; return k;
+}
+static int toast_kind_(const char *t) {
     static const char *const bad[] = { "NO ", "NOT ", "CAN'T", "TOO ", "BROKE", "NEED", "LOCKED", "FULL", "FAIL", "OH NO", "HUNGRY", "TIRED", "BUSY", "STINK", "SAD", "LOST", "MISS", "LATE", "CLOSED" };
     static const char *const good[] = { "+$", "PAID", "PAYDAY", "PROMOT", "DONE", "GOT ", "BOUGHT", "SAVED", "WELCOME", "NICE", "LEVEL", "NEW ", "WIN", "WON", "FOUND", "GOAL", "HAPPY", "GREAT", "FRIEND", "LOVE", "BIRTHDAY", "+" };
     for (unsigned k = 0; k < sizeof bad / sizeof *bad; k++) if (strstr(t, bad[k])) return 1;
