@@ -424,3 +424,80 @@ void ui_scrollbar(int x, int y, int h, int first, int shown, int total) {
     int th = MAX(10, h * shown / total), ty = y + (h - th) * first / MAX(1, total - shown);
     gfx_rect(x, ty, 3, th, cr(UI_BLUE), cg(UI_BLUE), cb(UI_BLUE), 0);
 }
+
+// ---- GRAPHIC PLATES: the film's look (docs/FILM_STYLE.md) for the rest of the game: pattern title plates, the red / black / white flash cut with speed lines and a halftone,
+// light shafts and ring panels. All flat 2D pieces, a few dozen of them, each a pure function of the step counter it is given (so nothing flickers) ----
+extern int font_sub;   // (font.c: 1 takes the glyph away from what is under it, 0 adds it)
+static inline int pl_sin(int a) { return isin((a & 255) << 4) >> 4; }
+static inline int pl_cos(int a) { return icos((a & 255) << 4) >> 4; }
+static inline int pl_smooth(int u) { return (u * u * (3 * 1024 - 2 * u)) >> 20; }
+void pl_swoosh(int in, int out, int y0, int y1, int skew, int r, int g, int b) {   // a leaning band of flat colour wipes in from the left (in: steps since it began) and out to the right (out: steps left), a white edge above, a gold one below
+    int u0 = CLAMP(in * 1024 / 14, 0, 1024), u1 = out >= 0 && out < 14 ? CLAMP(1024 - out * 1024 / 14, 0, 1024) : 0;
+    int xa = SCREEN_W * pl_smooth(u1) >> 10, xb = SCREEN_W * pl_smooth(u0) >> 10;
+    if (xb - xa < 4) return;
+    for (int y = y0; y < y1; y += 2) {
+        int off = (y - (y0 + y1) / 2) * skew / 40, a = xa + off, bb = xb + off; a = MAX(a, 0); bb = MIN(bb, SCREEN_W); if (bb - a < 2) continue;
+        int top = y < y0 + 4, bot = y >= y1 - 6;
+        if (top) gfx_rect(a, y, bb - a, 2, 255, 255, 255, 0); else if (bot) gfx_rect(a, y, bb - a, 2, 255, 190, 50, 0); else gfx_rect(a, y, bb - a, 2, r, g, b, 0);
+    }
+}
+void pl_otext(int x, int y, int zm, const char *s, int r, int g, int b, int th, int orr, int og, int ob) {   // type with a thick outline: ink (taken away) when orr < 0, else a coloured one (added)
+    static const s8 d[4][2] = { { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } };
+    int keep = font_sub;
+    font_sub = orr < 0;
+    for (int k = 0; k < 4; k++) font_text_zoom(x + d[k][0] * th, y + d[k][1] * th, zm, s, orr < 0 ? 255 : orr, orr < 0 ? 255 : og, orr < 0 ? 255 : ob);
+    if (orr < 0) font_text_zoom(x, y, zm, s, 255, 255, 255);
+    font_sub = 0; font_text_zoom(x, y, zm, s, r, g, b); font_sub = keep;
+}
+void pl_rays(int cx, int cy, int seed, int n, int r, int g, int b, int thick) {   // speed lines from a point, thick at the outer end
+    for (int i = 0; i < n; i++) {
+        u32 h = (u32)(seed + i * 2654435) * 2246822519u; h ^= h >> 15; h *= 3266489917u; h ^= h >> 13;
+        int a = h & 255, r0 = 40 + ((h >> 8) & 63), ux = pl_cos(a), uy = pl_sin(a);
+        int sx = cx + ux * r0 * 4 / 3 / 256, sy = cy + uy * r0 / 256, tx = cx + ux * 330 / 256 * 4 / 3, ty = cy + uy * 330 / 256;
+        for (int k = -thick; k <= thick; k++) gfx_line(sx + k, sy, tx + k * 3, ty, r, g, b);
+    }
+}
+void pl_dots(int x0, int y0, int w, int h, int step, int vert, int r, int g, int b) {   // a halftone field: dots that grow along the field (flat, clean, no noise)
+    for (int y = y0; y < y0 + h; y += step) for (int x = x0; x < x0 + w; x += step) {
+        int u = vert ? (y - y0) * 100 / h : (x - x0) * 100 / w, s = 1 + u * (step - 2) / 100;
+        gfx_rect(x + (step - s) / 2, y + (step - s) / 2, s, s, r, g, b, 0);
+    }
+}
+static int pl_zoom(int z, const char *s) { while (z > 1 && font_w_zoom(z, s) > SCREEN_W - 12) z--; return z; }
+void pl_flash(int f, const char *w1, const char *w2, int inset) {   // the red / black / white graphic cut: 2 steps white, 7 red with the words, speed lines and a halftone, 5 black and white, then 4 of white clearing (PL_FLASH_LEN steps of 60 Hz); the first 14 cover the whole picture
+    int shk = (f & 1) ? 2 : -2, z1 = pl_zoom(4, w1), z2 = pl_zoom(3, w2);
+    if (f >= 14) { int k = f - 14, c = 255 - k * 64; if (k < 4) { gfx_ui_blend(1); gfx_rect(0, 0, SCREEN_W, SCREEN_H, c, c, c, 1); } return; }   // (the white clearing: the picture shows through)
+    if (f < 2) { gfx_rect(0, 0, SCREEN_W, SCREEN_H, 255, 255, 255, 0); return; }
+    int red = f < 9;
+    if (red) gfx_rect(0, 0, SCREEN_W, SCREEN_H, 214, 18, 32, 0); else gfx_rect(0, 0, SCREEN_W, SCREEN_H, 8, 8, 12, 0);
+    pl_rays(160, 120, (f / 2) * 7919 + inset * 131, 34, red ? 20 : 255, red ? 8 : 255, red ? 12 : 255, 1);
+    if (red) pl_dots(0, 178, SCREEN_W, 58, 8, 1, 20, 4, 8); else pl_dots(0, 0, SCREEN_W, 50, 8, 0, 255, 255, 255);
+    if (inset) { gfx_rect(228, 54, 84, 62, 255, 255, 255, 0); gfx_rect(231, 57, 78, 56, 40, 176, 190, 0); pl_dots(231, 57, 78, 56, 6, 0, 8, 40, 60); }
+    int wa = font_w_zoom(z1, w1), wb = font_w_zoom(z2, w2), y1 = inset ? 84 : 66, y2 = inset ? 130 : 128;
+    if (red) { pl_otext(160 - wa / 2 + shk, y1, z1, w1, 255, 255, 255, 3, -1, 0, 0); pl_otext(160 - wb / 2 - shk, y2, z2, w2, 255, 255, 255, 3, -1, 0, 0); }
+    else { pl_otext(160 - wa / 2 - shk, y1, z1, w1, 255, 255, 255, 3, 214, 18, 32); pl_otext(160 - wb / 2 + shk, y2, z2, w2, 255, 255, 255, 3, 214, 18, 32); }
+}
+void pl_plate(int in, int out, const char *l1, const char *l2, const char *sub, int y0, int r, int g, int b) {   // a title plate: a slanted band slashes in, two lines of bold yellow type with a thick ink outline bounce in, a ribbon with the small line
+    pl_swoosh(in, out, y0, y0 + 100, 40, r, g, b);
+    if (in < 14 || (out >= 0 && out < 14)) return;
+    for (int x = -40; x < SCREEN_W; x += 26) gfx_line(x + 40, y0 + 4, x, y0 + 96, MIN(255, r + 44), MIN(255, g + 20), MIN(255, b + 11));   // diagonal stripes in the plate
+    int t = in - 14, bounce = t < 16 ? -(pl_cos(t * 14) * (16 - t) / 16) / 10 : 0, z1 = pl_zoom(3, l1), z2 = pl_zoom(3, l2);
+    pl_otext(160 - font_w_zoom(z1, l1) / 2, y0 + 12 + bounce, z1, l1, 255, 232, 70, 3, -1, 0, 0);
+    pl_otext(160 - font_w_zoom(z2, l2) / 2, y0 + 54 + bounce, z2, l2, 255, 232, 70, 3, -1, 0, 0);
+    if (sub && *sub) { int sw = ui_tw(1, sub) + 24; gfx_rect(160 - sw / 2, y0 + 104, sw, 14, 22, 30, 110, 0); gfx_rect(160 - sw / 2, y0 + 104, sw, 2, 255, 255, 255, 0); ui_textc(160, y0 + 107, 1, sub, UI_WHITE); }
+}
+void pl_shafts(int t) {   // light shafts from the top, slanted, additive: three wide pale ones with a bright core, drifting
+    gfx_ui_blend(1);
+    for (int k = 0; k < 3; k++) {
+        int xt = 30 + k * 120 + pl_sin(t / 3 + k * 50) / 12, xb = xt - 70 + pl_sin(t / 4 + k * 70) / 10, tw = 14, bw = 46;
+        for (int y = 0; y < 150; y += 6) { int u = y * 1024 / 150, x0 = xt + (xb - xt) * u / 1024, w = tw + (bw - tw) * u / 1024, c = 34 - 22 * u / 1024; gfx_rect(x0 - w, y, 2 * w, 6, c, c, c * 3 / 4, 1); }
+    }
+    gfx_ui_blend(1);
+}
+void pl_hexes(int t, int y, int h) {   // a row of white ring panels (hexagons drawn in lines), drifting one pixel every four steps
+    int sc = (t / 4) % 80;
+    for (int i = -1; i < 5; i++) {
+        int cx = i * 80 + sc, cy = y + h / 2 + (i & 1) * 10, rr = h / 2;
+        for (int k = 0; k < 6; k++) { int a0 = k * 43, a1 = (k + 1) * 43; gfx_line(cx + pl_cos(a0) * rr * 4 / 3 / 256, cy + pl_sin(a0) * rr / 256, cx + pl_cos(a1) * rr * 4 / 3 / 256, cy + pl_sin(a1) * rr / 256, 255, 255, 255); }
+    }
+}

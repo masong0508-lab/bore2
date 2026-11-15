@@ -204,6 +204,7 @@ static const char *const *cf_lab; static int cf_n; static void (*cf_pick)(int); 
 static void confirm_open(const char *title, const char *body, void (*yes)(void)) {
     cf_title = title; strncpy(cf_body, body, sizeof cf_body - 1); cf_body[sizeof cf_body - 1] = 0; cf_yes = yes; cf_back = state; cf_sel = 1; cf_t = 0; cf_n = 0; state = ST_CONFIRM;
 }
+static int film_go(int kind, int back);
 static void life_draw(void);
 static void menu_bg(int live);
 static void slots_open(int saving, int back);
@@ -915,7 +916,7 @@ static void life_update(int steps) {
     if (sim_want_gotchi) { int g_ = sim_want_gotchi - 1; sim_want_gotchi = 0; if ((ovl = ovl_load("GOTCHI.OVL"))) { ovl->open(g_); state = ST_GOTCHI; } return; }   // (the BOREAGOTCHI! pack: a file of its own on the disc)
     if (sim_want_arcade) { int g_ = sim_want_arcade - 1; sim_want_arcade = 0; if ((ovl = ovl_load(arcade_file(g_)))) { ovl->open(g_); state = ST_ARCADE; } return; }   // (an arcade cabinet, the prize counter)
     if (sim_want_jobs) { sim_want_jobs = 0; jobs_board = 1; jobs_open(); sub_back = ST_LIFE; state = ST_JOBS; return; }   // (the computer's JOB BOARD)
-    if (story_card()) { sc_t = 0; state = ST_SCARD; audio_voice(VOICE_FINISHED); return; }   // a chapter begins, or one is done
+    if (story_card()) { sc_t = 0; state = ST_SCARD; if (story_card() == 1 && story_ch == 0 && film_go(1, ST_SCARD)) return; audio_voice(VOICE_FINISHED); return; }   // a chapter begins, or one is done
     Sim *s = &sims[player];
     {   // YOUR BORE ALONE (borrowed from BORE on the GBA): the pad left alone a while, your Bore looks after itself like the rest of the
         // household (needs first, a chat now and then; never a fight or a proposal: those stay yours). Any button gives it back at once.
@@ -1163,6 +1164,16 @@ static void life_update(int steps) {
     if (isl_craft_asked) { isl_craft_asked = 0; craft_sel = 0; craft_msg_t = 0; state = ST_CRAFT; }   // the campfire: make something
 }
 
+static void big_flash(void) {   // the red / black / white cut on a big moment: half a second, at most once every 40 s, and any button ends it
+    static int ft_ = -1, cool;
+    static const char *const W1[6] = { "", "PROMOTED", "I DO.", "NEW", "CHAPTER", "LEVEL" }, *const W2[6] = { "", "BOSS!", "FOREVER", "BABY!", "DONE!", "UP!" };
+    static int kind;
+    if (sim_flash_req) { if (cool <= 0 && ft_ < 0) { kind = sim_flash_req; ft_ = 0; cool = 2400; } sim_flash_req = 0; }
+    if (cool > 0) cool--;
+    if (ft_ < 0) return;
+    if (ft_ >= PL_FLASH_LEN || (~btn & 0xffff & (PAD_CROSS | PAD_CIRCLE | PAD_START))) { ft_ = -1; return; }
+    pl_flash(ft_, W1[kind], W2[kind], kind & 1); ft_++;
+}
 static void life_draw(void) {
 #ifdef AUTO_DAY
     { static int once; if (++once == 30) { day_count = AUTO_DAY; clock_min = 12 * 60; } }
@@ -3528,13 +3539,22 @@ static void spick_update(void) {   // STORY MISSIONS: one story's card at a time
         life_story = sp_sel; worlds_go(0, sp_sel == STY_RAGS ? 2 : 0);   // (RAGS TO RICHES: $1,000 and no home)
     }
 }
+static u8 film_o, film_e, film_back;   // the story films: seen this story (RAM only, nothing saved); where the film returns to
+static int film_go(int kind, int back) {   // kind 1 opening, 2 ending
+    if (!story_id || (kind == 1 ? film_o : film_e)) return 0;
+    if (!(ovl = ovl_load("CUT.OVL"))) return 0;
+    if (kind == 1) film_o = 1; else film_e = 1;
+    film_back = (u8)back; ovl->open(kind * 1000 + story_id); state = ST_CUT; return 1;
+}
 static void scard_update(void) {
+    if (!story_id) film_o = film_e = 0;
     sc_t++;
     if (sc_t < 20) return;   // (a moment to read it)
     if (PRESSED(PAD_TRIANGLE)) { int l; while (story_card()) story_card_shown(); if (story_place(&l)) story_taxi(); state = ST_LIFE; return; }
-    if (PRESSED(PAD_CROSS) || PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { story_card_shown(); sc_t = 0; if (!story_card()) state = ST_LIFE; }
+    if (PRESSED(PAD_CROSS) || PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) { int fin = story_ch >= 5 && story_card() == 2; story_card_shown(); sc_t = 0; if (fin && film_go(2, ST_LIFE)) return; if (!story_card()) state = ST_LIFE; }
 }
-static void scard_draw(void) { life_draw(); ui_dim(); story_card_draw(story_card(), sc_t); }
+static void scard_draw(void) {   // (the flash cut can't cover a card)
+    sim_flash_req = 0; life_draw(); ui_dim(); story_card_draw(story_card(), sc_t); }
 static void story_update(void) {
     if (story_id && PRESSED(PAD_TRIANGLE)) { goals_old ^= 1; return; }
     if (PRESSED(PAD_R1)) { if ((ovl = ovl_load("PKINFO.OVL"))) { ovl->open(255); pk_shelf = 0; state = ST_SPACE; } else audio_voice(VOICE_NAH); return; }   // (PACK GOALS: the packs' goals and their rewards)
@@ -4777,6 +4797,7 @@ static void title_draw(void) {
     Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (title_ph * 60) & 4095; g.amp = 4096;
     voxel_draw(&title_bore, &p, ((title_ph * 9) >> 1) & 4095, &g);
     gfx_shadow(&p, 70);
+    if (state == ST_TITLE) { pl_shafts(title_ph); pl_hexes(title_ph, 90, 30); }   // (the film's look: light shafts from the top, a row of ring panels drifting; by the vblank clock, so it never stutters)
     int logo = state == ST_TITLE || state == ST_MENU;   // (behind the options, the slots and the other screens the logo is left out: its 1057 rects used up the packet buffer, and the text on top was cut off)
 #ifdef WALLS_DISC
     if (logo && !crowd_logo_ok) {   // (first time, or the arena was used since: the disc into it. The music is stopped for the read, as it is when you quit to the title)
@@ -4793,10 +4814,9 @@ static void title_draw(void) {
     }
     if (logo) { int w = gfx_text_w(1, "DIPPINN PRODUCTIONS"); gfx_text_raw(161 - w / 2, 113, 1, "DIPPINN PRODUCTIONS", 40, 30, 30); }
     if (logo) gfx_textc(160, 112, 1, "DIPPINN PRODUCTIONS", 230, 230, 236);
-    if (state == ST_TITLE) {   // the tagline on a card, and what to press
-        ui_card(66, 196, 188, 36);
-        ui_textc(160, 201, 1, "THE VOXEL LIFE, NOW IN FULL 3D", UI_BLUE2);
-        ui_hints(160, 214, "START PLAY", 1);   // (steady: it used to blink)
+    if (state == ST_TITLE) {   // the tagline on a pattern plate that slashes in once (then it holds still), and what to press
+        int in = MIN(title_t, 9999) - 24;
+        pl_plate(in, -1, "VOXEL LIFE", "IN 3D", in > 30 ? "START  PLAY" : "", 112, 106, 206, 239);   // (steady: the ribbon used to blink)
     }
 }
 // ---- THE WORLDS (STORY MODE): which SAN BOREAS to live in. Fresh dice, one of the presets, one you roll yourself on CREATE A
@@ -5870,7 +5890,7 @@ int main(void) {
 #endif
                     life_draw(); break; } }   // (test builds: the city stands still after AB_FREEZE frames, still drawn: two builds' pictures can be laid over each other)
 #endif
-                { int t0 = hb_now(); life_update(steps_raw); t_upd = hb_now() - t0; } life_draw(); break;
+                { int t0 = hb_now(); life_update(steps_raw); t_upd = hb_now() - t0; } life_draw(); if (state == ST_LIFE) big_flash(); break;
             case ST_PAUSE: pause_update(); pause_draw(); break;
             case ST_BUILD: build_update(); build_draw(); break;
             case ST_JUKEBOX: juke_update(); juke_draw(); break;
@@ -5901,7 +5921,7 @@ int main(void) {
             case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
             case ST_SUPER: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; audio_jukebox_stop(); ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_CUT: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps_raw))   // (the film's clock keeps true time through a slow frame: up to 5 vblanks, the voice never runs ahead of the picture)
-                ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_SPICK; sc_t = 0; title_draw(); } break; }
+                ovl->draw(); else { ovl = 0; ovl_leave(); if (film_back) { state = film_back; film_back = 0; sc_t = 0; life_draw(); } else { state = ST_SPICK; sc_t = 0; title_draw(); } } break; }
             case ST_DOG: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_SPACE: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; if (pk_shelf) { pk_shelf = 0; crowd_reset(); wo_painted = 0; state = ST_WORLDS; } else { ovl_leave(); state = ST_LIFE; life_draw(); } } break; }
             case ST_PRISON: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; if (sim_want_end) { sim_want_end = 0; pause_new_life(); } life_draw(); } break; }

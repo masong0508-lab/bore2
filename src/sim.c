@@ -115,7 +115,10 @@ int sim_tile_x(const Sim *s) { return s->x / TILE; }
 int sim_tile_y(const Sim *s) { return (-s->z) / TILE; }
 int sim_awake(const Sim *s) { return s->action != ACT_SLEEP; }
 char note_q[4][32]; int note_qn;   // the notes the feed has not shown yet (main takes them every frame)
+int sim_flash_req;   // a big moment for the red/black/white cut: 1 PROMOTED, 2 MARRIED, 3 A BABY, 4 CHAPTER DONE, 5 LEVEL
 void sim_note(const char *s) {
+    if (!strncmp(s, "PROMOTED", 8)) sim_flash_req = 1; else if (!strncmp(s, "MARRIED", 7)) sim_flash_req = 2; else if (!strncmp(s, "CHAPTER", 7) || !strncmp(s, "YOU WIN", 7)) sim_flash_req = 4;
+    else if (!strncmp(s, "A SEEDLING", 10) || !strncmp(s, "A STRANGE", 9) || !strncmp(s, "A SPECIAL", 9) || !strncmp(s, "WELCOME HOME", 12) || !strncmp(s, "THE BABY IS", 11)) sim_flash_req = 3; else if (!strncmp(s, "BLOB CARE LEVEL", 15)) sim_flash_req = 5;
     strncpy(last_note, s, 31); last_note[31] = 0; last_note_t = sim_msg_t;
     if (note_qn == 4) { memmove(note_q[0], note_q[1], 3 * 32); note_qn = 3; }
     strcpy(note_q[note_qn++], last_note);

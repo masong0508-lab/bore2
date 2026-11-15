@@ -72,3 +72,14 @@ void ui_pips(int x, int y, int v, int n, u32 c);               // n little block
 void ui_meter(int x, int y, int w, int m);                     // -100..100 out from the middle: green to the right, red to the left
 void ui_section(int x, int y, int w, const char *title);       // a section's name with a thin rule after it
 void ui_bubble(int cx, int y, const char *s, u32 c);           // a speech bubble; y is its bottom edge (the tail hangs below)
+
+// graphic plates (the film's look for the rest of the game): see the end of ui.c
+#define PL_FLASH_LEN 18
+void pl_swoosh(int in, int out, int y0, int y1, int skew, int r, int g, int b);
+void pl_otext(int x, int y, int zm, const char *s, int r, int g, int b, int th, int orr, int og, int ob);
+void pl_rays(int cx, int cy, int seed, int n, int r, int g, int b, int thick);
+void pl_dots(int x0, int y0, int w, int h, int step, int vert, int r, int g, int b);
+void pl_flash(int f, const char *w1, const char *w2, int inset);              // f: steps since it began (0..PL_FLASH_LEN-1): red / black / white, covers the picture
+void pl_plate(int in, int out, const char *l1, const char *l2, const char *sub, int y0, int r, int g, int b);   // in: steps since it began; out: steps left (-1: stays)
+void pl_shafts(int t);
+void pl_hexes(int t, int y, int h);
