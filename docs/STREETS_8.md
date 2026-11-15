@@ -30,3 +30,10 @@ Variety is made of what can be varied inside that: which block edges carry a str
 `bm_junction(bx, by, hn, vn)` gives the streets that meet at a block's north-west corner and their names (`bm_street_line`: one name per street line; an avenue that steps aside keeps its name; addresses use the same names).
 `draw_streetsigns` (main.c) finds the three nearest junctions within 13 tiles every 16 frames, projects the corner pole, and draws a green plate with the two names (the existing body font, capitals) as 2D text:
 5 to 9 sprites a plate, no VRAM or texture, nothing beyond 13 tiles or behind the camera. `-DSIGN_TEST` draws at any distance. DS: not done (the DS has no 3D street).
+
+## Round 2 results (d84)
+- Checks: townmap make check (gen 2 to 6) same; gen 2 to 7 sums identical to 5963b0a over 4 seeds, roomy and packed; townmap streets 0 orphans on 4 seeds; lotsim gen 8 audit as gen 7; trafsim 3 seeds gen 7 vs 8 equal except 3 "person in a car" readings in one gen 8 window (a car braking for a walker).
+- Dreamcast roadaudit_seeds (5EED1234, 1, C0FFEE, 7A11CE): PASS, ON-ROAD 0 on all four.
+- PS1 Release `_end` 0x801f405c (limit 0x801fb000), signs included. Saves: version 55 reads as gen 8, 54 and older as before; DS ds_oldsave PASS (d78 save loads as gen 3), ds_flow save/load PASS on a gen 8 world.
+- DS: ROM bore2_dsi_d84.nds (a7.bin from tools/dsbuild), ds_town7_audit PASS (162 homes), ds_traffic PASS. No street signs on DS (no 3D street).
+- Pictures: docs/gen8_town_map.png (whole city, gen 8), docs/gen8_dc_*.png (Dreamcast, list ports/dreamcast/test/gen8_places.inc, -DAUTO_AT_G8=1). Limit: camera spots are not exactly on the turning heads and few cars show.

@@ -1081,7 +1081,11 @@ static void life_update(int steps) {
             static int at_ = 0, hx_, hz_;
 #ifdef AUTO_AT_TAB   // (-DAUTO_AT_TAB='"file.inc"' -DAUTO_AT_STEP=n: a list of places { bx, by, tx, ty, pitch, dist, yaw } in that file, one every n vblanks from vblank 90; the Dreamcast shots docs/plan7_dc_*)
             static const s16 at_tab[][7] = {
+#ifdef AUTO_AT_G8
+#include "test/gen8_places.inc"   /* (-DAUTO_AT_G8=1: another list, the version 8 bend and dead-end shots) */
+#else
 #include "test/plan7_places.inc"   /* (found through the Dreamcast Makefile's -I.) */
+#endif
             };
             static int at_k = -1, at_pitch, at_dist, at_yaw;
             static int at_v0 = -1; if (at_v0 < 0) at_v0 = (int)VSync(-1);   // (the places count from the first life frame, so a slower load does not skip the first ones)
