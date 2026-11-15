@@ -5900,7 +5900,8 @@ int main(void) {
             case ST_SPICK: spick_update(); if (state == ST_SPICK) { if (sp_join) life_draw(); else title_draw(); ui_dim(); story_pick_draw(sp_sel, sc_t, sp_join); } else if (state == ST_WORLDS) worlds_draw(); else life_draw(); break;
             case ST_SCARD: scard_update(); if (state == ST_SCARD) scard_draw(); else life_draw(); break;
             case ST_SUPER: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; audio_jukebox_stop(); ovl_leave(); state = ST_LIFE; life_draw(); } break; }
-            case ST_CUT: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_SPICK; sc_t = 0; title_draw(); } break; }
+            case ST_CUT: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps_raw))   // (the film's clock keeps true time through a slow frame: up to 5 vblanks, the voice never runs ahead of the picture)
+                ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_SPICK; sc_t = 0; title_draw(); } break; }
             case ST_DOG: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; life_draw(); } break; }
             case ST_SPACE: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; if (pk_shelf) { pk_shelf = 0; crowd_reset(); wo_painted = 0; state = ST_WORLDS; } else { ovl_leave(); state = ST_LIFE; life_draw(); } } break; }
             case ST_PRISON: { int hd_ = ~btn & 0xffff, pr_ = hd_ & btn_prev; if (ovl && ovl->update(hd_, pr_, steps)) ovl->draw(); else { ovl = 0; ovl_leave(); state = ST_LIFE; if (sim_want_end) { sim_want_end = 0; pause_new_life(); } life_draw(); } break; }

@@ -10,12 +10,12 @@ SRC = open(os.path.join(HERE, '..', 'src', 'cutscene.c')).read()
 NAMES = {1: 'CHAD (the host)', 2: 'MISSY (the judge)', 3: 'the INTERN'}
 # what the geometry cannot say: things in the picture that are not one of the three people (written by hand from the stills; keyed by shot number)
 EXTRA = {1: 'the whole studio, the stage, the wall of lights (nobody on stage yet), the title card TV SHOW & TELL / Starring Missy Teller', 2: 'the audience at the edge of the frame', 3: 'the audience (front row)',
-         5: 'the judge\'s desk', 6: 'the judge\'s desk, the stage', 7: 'the tray with the drink glass', 8: 'the tray, the glass', 9: 'the glass (it falls and breaks)',
-         10: 'the audience reacts', 12: 'the whole stage, then the title card MISSY TELLER'}
+         6: 'the judge\'s desk', 7: 'the judge\'s desk, the stage', 8: 'the tray with the drink glass', 9: 'the tray, the glass', 10: 'the glass (it falls and breaks)',
+         11: 'the audience reacts', 13: 'the whole stage, then the title card MISSY TELLER'}
 
 
 # the geometry test is a guess: where the stills show otherwise (checked by eye), the list is written here
-WHO = {1: [], 7: [NAMES[2], NAMES[3] + ' (coming on at the left edge)'], 8: [NAMES[2] + ' (close)', NAMES[3] + ' (only the tray in hand)'], 9: [NAMES[2] + ' (close, face and hand)']}
+WHO = {1: [], 8: [NAMES[2], NAMES[3] + ' (coming on at the left edge)'], 9: [NAMES[2] + ' (close)', NAMES[3] + ' (only the tray in hand)'], 10: [NAMES[2] + ' (close, face and hand)']}
 
 
 def parse():

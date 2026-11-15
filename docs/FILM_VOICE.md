@@ -29,13 +29,13 @@ would be a lossy MDEC copy of the same pictures at 15 fps, costing about 9 MB of
 ## Verified
 `DSWAV` (the test emulator's SPU dump) of a 4600-frame `-DAUTO_CUT=1` run: every one of the 13 lines is found in the dump by matched filtering, in order, within 65 ms of its place on the film's clock.
 
-## The look (cartoon, drawn in the real-time film)
-Flat colour and a limited palette for the sake of the style only (no grain, noise or dither): `gfx_cel` in `src/gfx.c` (1: the light in three hard tones, 2: ink, everything the darkest tone) is read by
-`gfx_light` and `voxel.c face4` (one flat tone to a face, no weave). The people are drawn twice (`actor_draw`): the outline pass (9% fatter, set back, ink) then the cel pass. They move on fives of the
-60 Hz steps (12 drawings a second, `HOLD`), the crowd and the wall lights on threes, the camera stays smooth. The floor is flat tiles with hard pools of light, the wall two flat bands a panel, colours
-8 steps a channel (`cq`). Speed lines (`line_w`) and white flash cuts (`beat_t`) on the beats, a soft additive glow, a swoosh behind the title cards.
-Main RAM with both the voice and the look: `_end` 0x801f5714 (was 0x801f515c), CUT.OVL 20.4 KB. Packets: no overflow; the film's frames cost 440 to 1040 hblanks (2 to 4 vblanks) in the test emulator, and the film runs on its clock, so a slow frame costs picture, never timing.
-`docs/film_anime_before_after.png`: left the plain film, right the cartoon one, same frames.
+## The look (bright cartoon, drawn in the real-time film)
+The look is described, with measurements and the budget, in `docs/FILM_STYLE.md`: a clean cyan to white backdrop in flat bands, ring panels, light shafts, a chibi crowd, three redesigned people (soft shapes with ink shells, 3 flat tones and a rim tone, face decals with
+mouth shapes that follow the spoken line), pattern title plates, and two red / black / white flash cuts on "MISSY TELLER!" and "WATCH ME DANCE.". No grain, noise or dither. The subtitle windows and the voice cues are unchanged.
+The film now passes the game's true vblank count (up to 5) to `cut_update` (`ST_CUT` in `src/main.c`, it was clamped to 3): the picture is slower than 30 fps in the busiest seconds, and a clamp there made the film's clock (and so the picture) run behind the voice.
+Main RAM: `_end` 0x801f5784, CUT.OVL 60 KB (the slot has 82 KB). Packets: the film's frames use up to the whole 3D budget in the busiest shots; the people lose their ink first (`g_noink`, and the ink is drawn after the colour), never their colour.
+Frames cost 2 to 4 vblanks in the test emulator (22 fps on average).
+`docs/film_style_before_after.png`: the old film and the new one, same moments. `docs/film_characters.png`: the model sheet.
 
 ## The film as an MP4 (`tools/film_to_mp4.sh`)
 `tools/film_to_mp4.sh OUT.mp4` makes a watchable copy of the whole film (about 61 s, 640x480 = the emulator's full 320x240 at 2x nearest neighbour, 60 fps, H.264 + AAC, about 8 MB) and its storyboard.
@@ -43,8 +43,8 @@ It builds the `-DAUTO_CUT=1` disc, runs the test emulator with `FULL=1 DI=1` (ev
 (the film counts vblanks, so a slow frame repeats a picture and never moves the sound), so the frames are the film's clock; the emulator's NTSC frame is 59.817 Hz (263 lines x 3413 clocks), which is also what the 44.1 kHz
 audio per frame follows, and ffmpeg's `fps=60` filter turns that into constant 60 fps. `tools/film_frames.py` finds the film in the dump (the title cuts to black, the fade out ends in black), `tools/film_verify.py` finds
 all 13 voice lines in the dump by matched filtering (scores 0.68 to 0.97) and `film_to_mp4.sh` moves the sound by what it finds.
-Finding: in the dump the voice lines start 116 ms (7 frames) before their subtitle appears on the picture (the picture is on the film's clock: a camera cut at step 630 is on screen at frame FIRST + 630; the sound is not held back
+Finding: in the dump the voice lines start 116 ms (7 frames; 133 to 167 ms, 8 to 10 frames, with the heavier new look) before their subtitle appears on the picture (the picture is on the film's clock: a camera cut at step 630 is on screen at frame FIRST + 630; the sound is not held back
 by the 2 to 4 vblank frames). The MP4 delays the sound by that so voice and subtitle meet: measured again on the MP4's own audio, all 13 lines are within 17 ms of the subtitle's start + 3 steps (10 of them within 0.4 ms).
-On the real console the same 0.1 s lead exists. `tools/film_storyboard.py` writes a still per shot (12 shots, read from the camera keys of `src/cutscene.c`), `film_storyboard.png` (a contact sheet) and `film_storyboard.txt` (time, camera keys,
+On the real console the same 0.1 s lead exists. `tools/film_storyboard.py` writes a still per shot (13 shots, read from the camera keys of `src/cutscene.c`), `film_storyboard.png` (a contact sheet) and `film_storyboard.txt` (time, camera keys,
 who is in it, what is said): the brief for a hand-drawn FMV. Limits: a picture is a flip of the game's own renderer, 20 to 30 different pictures a second, not a smooth 60; the "Start Skip" hint shows top right; the "who is in it" lines come from the
-geometry plus a hand-written list for shots 1, 7, 8 and 9.
+geometry plus a hand-written list for shots 1, 8, 9 and 10.
