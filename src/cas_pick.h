@@ -13,3 +13,4 @@ void tr_page_open(void);                                                // the L
 int tr_page_update(int held, int pressed);                                  // 0: leave
 void tr_page_draw(void);
 void tr_names_fill(void);                                                  // CREATE.OVL open(3): the names of the household members' traits (the assignment itself is resident: traits_glue.inc tr_assign_run)
+const char *tr_ed_wish_text(void);                                    // traits_ui.c: the name of the wish chosen in the creator (the summary shows it)

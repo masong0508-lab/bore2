@@ -278,6 +278,9 @@ short dbg_cam[512][3]; int dbg_cam_n;
 #endif
 int dbg_end_hist[24], dbg_per_hist[6], dbg_edge[12], dbg_vbs[4], dbg_need_last, dbg_gw[3];   // (test readouts: life frames by their need (the cost without the spare-time work), in 50-hb bins; by the vblanks they took)
 int dbg_life_n, dbg_life_vb, dbg_life_vb0, dbg_sum_cpu, dbg_sum_prof[8], dbg_sum_part[6], dbg_sum_lg[4], dbg_sum_w[8], dbg_sum_pn[8], dbg_sum_shed, dbg_sum_r;   // (test readouts over the whole stay in the city: frames, vblanks they took, their summed cost)
+#ifdef PT_DBG
+int dbg_pt[40];   // (test/pt.py: what a player sees, mirrored each frame)
+#endif
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
 int dbg_shift_hb, dbg_shifts;
@@ -3807,6 +3810,9 @@ static void create_update(int steps) {
     }
     else state = prev_state == ST_LIFE ? ST_LIFE : ST_MENU;
 }
+#ifndef CAS_RES
+#define CAS_RES (21 * 1024)
+#endif
 static void create_draw(void) {
     // the studio: a little parlour with the Bore in the middle
     gfx_set_clear(14, 16, 24);
@@ -3843,7 +3849,7 @@ static void create_draw(void) {
     gfx_camera_update();
     gfx_set_fog(0, 0);
     world_view_lvl = 0; world_roof_show = 0;
-    world_draw(4, 5, frame, 1);
+    world_reserve = CAS_RES; world_draw(4, 5, frame, 1); world_reserve = RESERVE_PEOPLE + RESERVE_UI;   // (the studio: one Bore and the panels, so the room keeps what the street's people would have had: with the street's reserve the 32 KB buffer left the room nothing and the studio was missing)
     VECTOR p; setVector(&p, bx, 0, bz);
     Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (frame * 90) & 4095; g.amp = 0;
     voxel_draw(&edit, &p, (2048 - cas_turn) & 4095, &g);   // (the face to the camera at cas_turn 0)
@@ -5851,6 +5857,13 @@ int main(void) {
             for (int k = 0; k < 8; k++) avg_prof16[k] += gfx_prof[k] - (avg_prof16[k] >> 4); }
 #ifdef PK_STAT
         { extern int gfx_state_tag; gfx_state_tag = state; }
+#endif
+#ifdef PT_DBG   // (test builds, test/pt.py: a mirror of the state a player can see, read from the RAM dump: dbg_pt[0..] state, clock, cash, the first Bore's needs, mood, action, job, sims, props, lot; test/pt_state.py names them)
+        { extern int gfx_overflow; extern int clock_min, clock_day; dbg_pt[0] = state; dbg_pt[1] = clock_min; dbg_pt[2] = clock_day; dbg_pt[3] = (int)cash;
+          dbg_pt[4] = nsims; dbg_pt[5] = player; for (int k = 0; k < NEED_N; k++) dbg_pt[6 + k] = sims[player].need[k] >> 10;
+          dbg_pt[14] = sims[player].mood; dbg_pt[15] = sims[player].action; dbg_pt[16] = job_level; dbg_pt[17] = job_worked; dbg_pt[18] = nprops; dbg_pt[19] = home_city;
+          dbg_pt[20] = sims[player].x; dbg_pt[21] = sims[player].z; dbg_pt[22] = sims[player].lvl; dbg_pt[23] = sims[player].skill_cook; dbg_pt[24] = sims[player].skill_body; dbg_pt[25] = sims[player].skill_fun;
+          dbg_pt[26] = sims[player].skill_logic; dbg_pt[27] = sims[player].skill_char; dbg_pt[28] = sims[player].skill_creat; dbg_pt[29] = sims[player].skill_mech; dbg_pt[30] = sims[player].dead; dbg_pt[31] = sims[player].bore.stage; dbg_pt[32] = gfx_overflow; dbg_pt[33]++; }
 #endif
         gfx_flip();
     }

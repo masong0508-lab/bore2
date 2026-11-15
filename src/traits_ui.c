@@ -251,6 +251,7 @@ static void c_commit(int inlife) {
     int w = tr_ed_wish ? tr_ed_wish : 1;
     if (w != t->wish) tr_wish_pick(t, w);
 }
+const char *tr_ed_wish_text(void) { return tr_wish_name[tr_ed_wish ? tr_ed_wish : 1]; }   // (the summary's WISH line: the wish picked on the WISH tab, wish 1 when none is)
 const CasPick tr_cas = { c_open, c_update, c_draw, c_commit, c_sum, c_hint };
 
 // ---- open(3): the names of the traits the household's members were given (the assignment itself is resident: traits_glue.inc, tr_assign_run, no disc load). Runs once and leaves. ----

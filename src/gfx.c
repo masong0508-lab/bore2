@@ -177,7 +177,7 @@ void gfx_pk_static(void) {   // the arena is wanted for something else, now: bot
 #ifdef PK_STAT
 int gfx_state_tag, pk_st[64], pk_stn[64], pk_sto[64];
 #endif
-#if defined(AUTO_CITY) || defined(AUTO_NHOOD)
+#if defined(AUTO_CITY) || defined(AUTO_NHOOD) || defined(PT_DBG)
 int dbg_pk_frames, dbg_pk_ovf, dbg_pk_ovf_n, dbg_pk_hi;
 #endif
 int gfx_frame_no;   // (frames flipped: the interface's panels are counted afresh each frame)
@@ -195,7 +195,7 @@ void gfx_flip(void) {
     { extern int gfx_state_tag, pk_st[64], pk_stn[64], pk_sto[64]; int t_ = gfx_state_tag & 63; pk_stn[t_]++; pk_sto[t_] += gfx_overflow; if (gfx_last_bytes > pk_st[t_]) pk_st[t_] = gfx_last_bytes; }   // (test builds: the most packet bytes a frame of each game state used)
 #endif
     gfx_last_overflow = gfx_overflow;
-#if defined(AUTO_CITY) || defined(AUTO_NHOOD)
+#if defined(AUTO_CITY) || defined(AUTO_NHOOD) || defined(PT_DBG)
     { extern int dbg_pk_frames, dbg_pk_ovf, dbg_pk_ovf_n, dbg_pk_hi; dbg_pk_frames++; if (gfx_overflow) { dbg_pk_ovf++; dbg_pk_ovf_n += gfx_overflow; } if (gfx_last_bytes > dbg_pk_hi) dbg_pk_hi = gfx_last_bytes; }   // (test builds: frames that dropped primitives, and how many)
 #endif
     gfx_overflow = 0;

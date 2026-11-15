@@ -278,7 +278,7 @@ static void draw_summary(void) {
     sprintf(b, "%s %s", E.first, E.last);
     if (ui_tw(2, b) <= CW - 4) ui_textc(CX0 + CW / 2, y, 2, b, UI_INK); else ctext(CX0 + CW / 2, y + 3, CW - 4, b, UI_INK);
     sprintf(b, "%s, %s", look_stage_name(E.stage), look_sign_name(look_sign_of(&E))); ctext(CX0 + CW / 2, y + 17, CW, b, UI_SOFT);
-    sprintf(b, "WISH: %s", look_asp_name(E.asp)); ctext(CX0 + CW / 2, y + 27, CW, b, UI_BLUE2);
+    sprintf(b, "WISH: %s", cas_pick ? tr_ed_wish_text() : look_asp_name(E.asp)); ctext(CX0 + CW / 2, y + 27, CW, b, UI_BLUE2);
     gfx_rect(CX0, y + 38, CW, 1, 196, 206, 220, 0);
     for (int i = 0; i < 6; i++) {
         int ry = y + 42 + i * 17, sel = sumsel == i; const char *v = "";
