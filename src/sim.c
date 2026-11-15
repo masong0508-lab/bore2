@@ -168,6 +168,7 @@ void sim_gotchi_absorb(int i) {   // staring at the toy: the owner forgets to ea
 static void crime_midnight(void);
 static void farm_midnight(void);
 int sim_want_space, space_done; u8 space_tech[3]; int sim_want_resort; u8 pk_data[48]; u8 pk_ext[PKX_LIVE];
+int sim_want_home;   // (a Bore in need, far from home with nothing to use out here: main takes the household home by taxi)
 int dj_xp, dj_heat, sim_want_dj, sim_want_super, sim_want_bus, sim_want_dog, bus_pass, sim_want_prison, rap_sheet;   // sim_want_prison: a sentence in days (HARD TIME); rap_sheet: past arrests   // bus_pass: the pass is good while day_count < bus_pass
 int pet_kind, pet_col, pet_hun = 100, pet_x, pet_z, pet_yaw, pet_ph, pet_zone = -1;   // the pet (0 none, 1 dog, 2 cat): where it is, how hungry
 void sim_dj_hit(int tip) { cash += tip; if (nsims) sim_moodlet(&sims[player], ML_DJ_HIT); }
@@ -848,9 +849,14 @@ static void ai_think(Sim *s) {
         if (worst == N_REST && !is_night() && wv > 15) { worst = -1; }
         char ch = worst >= 0 ? need_item(worst) : 0;
         int ix, iy, tx, ty;
+#ifdef PT_DBG
+        { extern int dbg_ai[8]; int me_ = (int)(s - sims); if (me_ == player) { dbg_ai[0]++; dbg_ai[1] = worst; dbg_ai[2] = ch ? 1 : 0; int f1 = ch ? nearest_item(s, ch, &ix, &iy) : 0; dbg_ai[3] += !f1; if (f1) { int f2 = approach_tile(s, ix, iy, &tx, &ty); dbg_ai[4] += !f2; if (f2) { dbg_ai[5] += !start_walk(s, tx, ty, 0); } } } }   // (test: how often the lowest need had no item, no tile to stand on, or no way there)
+#endif
         if (ch && nearest_item(s, ch, &ix, &iy) && approach_tile(s, ix, iy, &tx, &ty) && start_walk(s, tx, ty, wv < 15 ? 2 : wv < 30 ? 1 : 0)) {
             s->act_x = ix; s->act_y = iy; s->action = ACT_WALK; s->act_t = 9999; return;
         }
+        // (nothing to use out here: the streets' houses are shells, and a stroll can end beyond the window, so the home's fridge and toilet are not on the map: a taxi home, once)
+        if (ch && wv < 35 && world_zone == ZONE_CITY && home_city && !sim_want_home && !world_own_lot(sim_tile_x(s), sim_tile_y(s))) { sim_want_home = 1; sim_say(s, "NEED TO GO HOME"); return; }
     }
     // social: find the player or another sim
     if ((s->need[N_SOCIAL] >> 10) < 40 && nsims > 1) {

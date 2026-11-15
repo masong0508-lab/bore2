@@ -279,7 +279,7 @@ short dbg_cam[512][3]; int dbg_cam_n;
 int dbg_end_hist[24], dbg_per_hist[6], dbg_edge[12], dbg_vbs[4], dbg_need_last, dbg_gw[3];   // (test readouts: life frames by their need (the cost without the spare-time work), in 50-hb bins; by the vblanks they took)
 int dbg_life_n, dbg_life_vb, dbg_life_vb0, dbg_sum_cpu, dbg_sum_prof[8], dbg_sum_part[6], dbg_sum_lg[4], dbg_sum_w[8], dbg_sum_pn[8], dbg_sum_shed, dbg_sum_r;   // (test readouts over the whole stay in the city: frames, vblanks they took, their summed cost)
 #ifdef PT_DBG
-int dbg_pt[40];   // (test/pt.py: what a player sees, mirrored each frame)
+int dbg_pt[40], dbg_ai[8];   // (test/pt.py: what a player sees, mirrored each frame; what the player Bore's own AI did about its lowest need)
 #endif
 static int show_fps = 0, fps_val, fps_frames, fps_vb, prims_last, t_world, t_sims, t_logic;
 static int travel_sel;
@@ -289,6 +289,7 @@ volatile u8 ab_par[20] = { 'A', 'B', 'P', 'R' };   // (test builds: 16 tuning by
 volatile u8 ab_cfg[8] = { 'A', 'B', 'C', 'F', 1, 2, 0, 0 };   // (test builds: camera 1..5, VIEW DISTANCE 0..5, helper off; patched in the disc image by tools/perf/abcfg.py)
 #endif
 static void taxi_to_block(int bx, int by, int tx, int ty, const char *where);
+static void home_go(void);
 static char pie_opt[8][24]; static int pie_n, pie_sel, pie_cit;   // the pie menu
 static int panel_tab;                                      // the Bore panel's tab
 static int jobs_sel, jobs_n, jobs_scroll, jobs_car[16], jobs_pl[16];   // the JOBS screen
@@ -854,6 +855,7 @@ static void life_update(int steps) {
     if (sim_want_space) { sim_want_space = 0; if ((ovl = ovl_load("SPACE.OVL"))) { ovl->open(0); state = ST_SPACE; } return; }
     if (sim_want_prison) { int n = sim_want_prison; sim_want_prison = 0; if ((ovl = ovl_load("PRISON.OVL"))) { ovl->open(n); state = ST_PRISON; } return; }   // (HARD TIME: its own file on the disc)
     if (sim_want_dog) { int rs = sim_want_dog == 3; sim_want_dog = 0; if ((ovl = ovl_load("DOG.OVL"))) { ovl->open(rs); state = ST_DOG; } return; }   // (CREATE A DOG: its own file on the disc)
+    if (sim_want_home) { sim_want_home = 0; if (world_zone == ZONE_CITY) home_go(); return; }   // (a Bore with a need and nothing to use out here: home by taxi)
     if (sim_want_bus) { sim_want_bus = 0; map_bus = 1; map_t = -1; state = ST_MAP; return; }   // (a bus stop: the bus map)
     if (sim_want_super) { sim_want_super = 0; if ((ovl = ovl_load("SUPER.OVL"))) { ovl->open(0); state = ST_SUPER; } return; }   // (SUPERSTAR: the band)
     if (sim_want_dj) { sim_want_dj = 0; if ((ovl = ovl_load("DJ.OVL"))) { ovl->open(0); state = ST_DJ; } return; }   // (the DJ booth: a file of its own on the disc)

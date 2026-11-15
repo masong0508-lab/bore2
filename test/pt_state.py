@@ -23,3 +23,4 @@ if os.environ.get('MAP'):   # MAP=r prints the lifeMap letters r tiles round the
     for y in range(max(0, py - r), min(80, py + r + 1)):
         row = ram[o + y * 81:o + y * 81 + 80].decode('latin1')
         print('%2d ' % y + ''.join('@' if (x, y) == (px, py) else row[x] for x in range(max(0, px - r), min(80, px + r + 1))))
+print('ai need branch (times, need, item char known, no item, no tile, no path):', arr('dbg_ai', 8)) if 'dbg_ai' in S else None

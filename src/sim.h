@@ -152,6 +152,7 @@ enum { CR_ASSAULT, CR_THEFT, CR_RESIST, CR_JAILBREAK, CR_N };   // the crimes on
 extern u8 crime_n[CR_N]; extern const char *const crime_nm[CR_N]; extern const u8 crime_sev[CR_N]; extern int crime_evid, crime_def, arrest_how, sim_want_end;
 int crime_total(void); int crime_points(void); void sim_crime(int kind, int evid); void sim_arrest(int how);
 extern int sim_want_dog;   // 1: open the dog maker
+extern int sim_want_home;   // a Bore in need, far from the home with no way to meet it: main (home_go) takes the household home
 extern int sim_want_bus, bus_pass, pet_kind, pet_col, pet_hun, pet_x, pet_z, pet_yaw, pet_ph, pet_zone;   // the bus pass (good while day_count < bus_pass) and the pet
 extern int sim_want_super, sim_want_party, sim_want_dj, dj_xp, dj_heat;   // (the DJ booth) its hidden skill, the set's heat
 void sim_dj_hit(int tip);
