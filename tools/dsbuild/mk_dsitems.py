@@ -16,7 +16,7 @@ R = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.
 SRC = os.path.join(R, 'src')
 OUT = os.path.join(R, 'ports', 'dsi', 'source', 'ds_items.h')
 IDS = os.path.join(R, 'tools', 'dsbuild', 'ds_item_ids.txt')   # (the ids a save keeps: PS1 letter -> DS id, only ever added to)
-PACKS = ['items_data', 'items_more', 'items_gotchi', 'items_party', 'items_band', 'items_space', 'items_farm', 'items_home', 'items_bed']
+PACKS = ['items_data', 'items_more', 'items_gotchi', 'items_party', 'items_band', 'items_space', 'items_farm', 'items_home', 'items_hedge', 'items_bed']
 
 def rd(p): return open(p, encoding='latin-1').read()
 items_c = rd(os.path.join(SRC, 'items.c'))
@@ -220,7 +220,7 @@ for o in OLD:
 missing = set()
 for d in defs:
     c, t = d['ch'], ps1_tab(d['ch'])
-    hidden = (t < 0 and 0x83 <= c <= 0x8D) or c in (ord('@'), ord('+'), ord('a'), ord('k'))   # (D37) the gravestone, the island's own things, the boat, the bus stop and the flags: never sold, placed by the game
+    hidden = (t < 0 and 0x83 <= c <= 0x8F) or c in (ord('@'), ord('+'), ord('a'), ord('k'))   # (D37) the gravestone, the island's own things, the boat, the bus stop and the flags: never sold, placed by the game
     if (t < 0 and not hidden) or (d['cost'] <= 0 and not hidden) or c in taken or c in LEAVE: continue
     if hidden: t = 255
     if c in (ord('@'), ord('+')): d = dict(d, cost=0)

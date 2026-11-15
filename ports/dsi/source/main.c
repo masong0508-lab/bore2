@@ -797,6 +797,7 @@ static const char *const SEASN[4] = { "Spring", "Summer", "Autumn", "Winter" };
 static void farm_reset(void) { memset(fm_n, 0, 4); memset(fm_g, 0, 4); memset(fm_dry, 0, 4); fm_wet = fm_hens = fm_cows = fm_fed = fm_fert = fm_fz = fm_pest = fm_up = fm_wc = fm_ordk = fm_ordq = fm_ordt = fm_fair = fm_cdone = 0; fm_cday = 255;
     memset(fm_stock, 0, sizeof fm_stock); fm_egg = fm_milk = fm_pe = fm_pm = fm_built = fm_last = 0; memset(fsk, 0, sizeof fsk); farm_ui = 0; }
 static int z_put(int x, int y, int ch, int rot); static void z_room(int x0, int y0, int x1, int y1, int fl, int wc);
+static int g7_field;   // (D81) 1 while a gen 7 field lot (no street, no barn) is built
 static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squares, farms and wild land outdoors; shops, diners, gyms, schools, clinics... as one open hall
     #define PUTP(xx, yy, cc, ii, rr) do { if (nobj < 400) { objs[nobj].x = (u8)(xx); objs[nobj].y = (u8)(yy); objs[nobj].c = (cc); objs[nobj].i = (ii); objs[nobj].rot = (u8)(rr); nobj++; occ_ok = 0; } } while (0)
     int outdoor = k == LOT_WILD || k == LOT_PARK || k == LOT_SQUARE || k == LOT_SKATE || k == LOT_EMPTY || k == LOT_RIVER || k == LOT_FARM;
@@ -841,7 +842,11 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
                 else if (pick == 1) PUTP(x, y, 6, 1, 0); else if (pick == 2) PUTP(x, y, 6, 3, 0); else if (pick == 3) PUTP(x, y, 6, 2, 0); else PUTP(x, y, 3, 2, 0); }
             else if (k == LOT_FARM) continue; else PUTP(x, y, pick & 1 ? 3 : 6, pick & 1 ? 2 : 2, 0); }
         if (k == LOT_SQUARE) PUTP(6, 6, 3, 3, 0);
-        if (k == LOT_FARM) {   // (D38) the PS1's lot_farm: rows of crop beds, a barn with the hen coops and the cows, a fence along the front with a gate
+        if (k == LOT_FARM && g7_field) {   // (D81) a field of a gen 7 town (no street to front on): crop rows across the lot, slim hedgerows down both sides with gaps (the PS1's field7), no barn
+            for (int y = 2; y <= 10; y += 2) for (int x = 1; x <= 11; x += 2) z_put(x, y, 0xDB, 0);
+            for (int y = 1; y <= 11; y++) { if (y % 3 == 0) continue; z_put(0, y, 0x8E, 1); z_put(12, y, 0x8E, 1); }
+            z_put(12, 1, '3', 0); z_put(0, 12, '3', 0); }
+        else if (k == LOT_FARM) {   // (D38) the PS1's lot_farm: rows of crop beds, a barn with the hen coops and the cows, a fence along the front with a gate
             for (int y = 2; y <= 10; y += 2) for (int x = 1; x <= 6; x += 2) z_put(x, y, 0xDB, 0);
             z_room(8, 1, 13, 7, 1, 2); hwl[7][10] = 5; z_put(9, 2, 0xDC, 0); z_put(9, 4, 0xDC, 0); z_put(11, 2, 0xDD, 0); z_put(11, 4, 0xDD, 0); z_put(10, 6, 0xDE, 0);
             for (int x = 0; x < GN; x++) if (x != 7) hwl[12][x] = 6; }
@@ -926,7 +931,7 @@ static void lot_enter(int bx, int by) {   // the lot you walk into: what you bui
 #endif
  LotPlan pl7; int g7 = bm_gen >= 7; if (g7) bm_lot_plan(bx, by, &bi, &pl7);   // (D79) world version 7: the town plan builds the home, and a lot that fronts north is turned over
  if (g7 && pl7.type && bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) { gen_two = bi.lot == LOT_TWO; gen_home7(&pl7, hsh(lot_seed), bi.terrain, bm_nb(bx, by)); gen_two = 0; }
- else { if (bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) { gen_two = bi.lot == LOT_TWO; gen_house(); gen_two = 0; } else gen_public(bi.lot, bi.h); if (g7 && pl7.face == LF_NORTH) flip7(); } } nb_load(); LV = keep;
+ else { if (bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) { gen_two = bi.lot == LOT_TWO; gen_house(); gen_two = 0; } else g7_field = g7 && bi.lot == LOT_FARM && pl7.face == LF_NONE; gen_public(bi.lot, bi.h); g7_field = 0; if (g7 && pl7.face == LF_NORTH) flip7(); } } nb_load(); LV = keep;
 }
 static void lot_cross(void) {   // the sim you are playing left the lot's slot: the next lot becomes the middle one and everything slides back by one slot
     const Sim *m = &sims[ctl]; int dx = fdiv(m->x + 8, 16 * SLC), dy = fdiv(m->y + 8, 16 * SLC); if (!dx && !dy) return;
@@ -3853,6 +3858,7 @@ static void t7a_fail(int k, int bx, int by) { if (t7a_at[k][0] == 0) { t7a_at[k]
 // [4] a room of 4+ cells with nothing in it, [5] a room under a sixth furnished (3+ cells of 12+), [6] the straight walk from the door to the street blocked, [7] stairs with no free landing up there,
 // [8] a loft thing with no loft floor, [9] five of one thing in a row, [10] fewer beds than the home has (or none), [11] a bed, toilet or fridge indoors with nothing beside it, kept for the future
 int t7b[12], t7b_at[12][2], t7b_fill[8], t7b_fn;   // t7b_fill: the furnished share of each home's rooms, in tenths, summed (and t7b_fn the rooms counted), for a look
+int t7h[5];
 static void t7b_fail(int k, int bx, int by) { t7b[k]++; if (t7b_at[k][0] == 0) { t7b_at[k][0] = bx; t7b_at[k][1] = by; } }
 static int t7b_house_id(int id) { return (id >= 0 && id <= 11) || id == 13 || (id >= 15 && id <= 23) || id == 28 || id == 29 || id == 30 || id == 33 || id == 35 || id == 36 || id == 40 || id == 51 || id == 72 || id == 73 || id == 95 || id == 96 || id == 100 || id == 101 || id == 104 || id == 106 || id == 107 || id == 117 || (id >= 120 && id <= 123) || (id >= 177 && id <= 189); }
 static int t7b_bed_id(int id) { return id == 16 || id == 20 || id == 177 || id == 178 || id == 179 || id == 188; }
@@ -3889,7 +3895,8 @@ static void ds_t7_audit2(int bx, int by) {
           if (north) { for (int y = dy - 1; y >= 0; y--) if (sol[y][door_cx]) blocked = 1; } else { for (int y = dy; y < GN; y++) if (sol[y][door_cx]) blocked = 1; }
           if (blocked) t7b_fail(6, bx, by); } }
     // five of one thing in a row
-    for (int y = 0; y < GN; y++) for (int x = 0; x + 4 < GN; x++) { int id = -1, run = 0; for (int q = 0; q < 5; q++) { int found = -1; for (int k = 0; k < nobj; k++) if (!((objs[k].rot >> 2) & 3) && objs[k].x == x + q && objs[k].y == y && IT_OF(&objs[k])->kind != 1) found = OBJ_ID(&objs[k]); if (found < 0 || (q && found != id)) break; id = found; run++; } if (run == 5 && id != 26 && id != 14 && id != 167) { t7b_fail(9, bx, by); } }
+    { int hh = 0, pp = 0; for (int k = 0; k < nobj; k++) { int id = OBJ_ID(&objs[k]); hh += id == 205; pp += id == 206; } t7h[0] += hh; t7h[1] += pp; t7h[2] += hh > 0; if (hh > 4 && !t7h[3]) { t7h[3] = bx; t7h[4] = by; } }   // (D81) hedge pieces, piers, lots with a hedge
+    for (int y = 0; y < GN; y++) for (int x = 0; x + 4 < GN; x++) { int id = -1, run = 0; for (int q = 0; q < 5; q++) { int found = -1; for (int k = 0; k < nobj; k++) if (!((objs[k].rot >> 2) & 3) && objs[k].x == x + q && objs[k].y == y && IT_OF(&objs[k])->kind != 1) found = OBJ_ID(&objs[k]); if (found < 0 || (q && found != id)) break; id = found; run++; } if (run == 5 && id != 26 && id != 165 && id != 205 && id != 14 && id != 167) { t7b_fail(9, bx, by); } }
     // stairs: a free cell in the loft beside them (the landing)
     for (int k = 0; k < nobj; k++) if (OBJ_ID(&objs[k]) == 189 && !((objs[k].rot >> 2) & 3)) { int ok = 0; for (int d = 0; d < 4; d++) { int nx = objs[k].x + DX[d], ny = objs[k].y + DY[d]; if (nx >= 0 && ny >= 0 && nx < GN && ny < GN && uflr[0][ny][nx] && !lsol[ny][nx]) ok = 1; } if (!ok) t7b_fail(7, bx, by); }
 }

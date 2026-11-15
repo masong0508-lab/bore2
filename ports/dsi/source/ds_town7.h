@@ -6,6 +6,7 @@
 // a dining set, a kitchen run with its clear tile, a bed with its nightstands, a bath along a wall), the tiles inside every door kept clear.
 static u8 g7o[GN][GN];                                    // cells taken (1) or kept clear (2) while a home is laid out
 static u8 g7f[GN][GN];                                    // cells with a flat thing (a rug) on them: other things may stand on it
+static u8 g7h[GN][GN];                                    // (D81) cells of the house body and wing
 static u8 g7u[GN][GN];                                    // the same for the loft (the storey above)
 static int h7_x0, h7_x1, h7_y0, h7_mir;                   // the home being laid out: its first and last column, its back row, mirrored (the plan's mirror: garage side west)
 static int h7_n0, h7_rw, h7_rd, h7_rdc, h7_lv;            // the home being furnished: its first thing, its width and depth, the front door's column, the storey (0 ground, 1 the loft)
@@ -17,6 +18,10 @@ static void h7_abs(int x, int y, int id, int rot) {       // a thing on a cell (
     if (id < 0 || x < 0 || y < 0 || x >= GN || y >= GN || nobj >= 400) return;
     if (!(rot & 12)) { if (g7o[y][x]) return; g7o[y][x] = 1; }
     objs[nobj].x = (u8)x; objs[nobj].y = (u8)y; objs[nobj].c = (u8)(id >> 2); objs[nobj].i = (u8)(id & 3); objs[nobj].rot = (u8)rot; nobj++; occ_ok = 0; }
+static int h7_shut(int x, int y) { return x >= 0 && y >= 0 && x < GN && y < GN && (g7o[y][x] == 1 || g7h[y][x]); }
+static void h7_hedge(int x, int y, int ix, int iy, int id, int rot) {   // a hedge piece unless it would wall in the free cell behind it (three other sides shut)
+    if (!g7o[y][x] && !g7h[iy][ix] && g7o[iy][ix] != 1 && h7_shut(ix + 1, iy) + h7_shut(ix - 1, iy) + h7_shut(ix, iy + 1) + h7_shut(ix, iy - 1) >= 3) return;
+    h7_abs(x, y, id, rot); }
 static void h7_res(int c, int r) { int x = h7x(c), y = h7_y0 + r; if (x >= 0 && y >= 0 && x < GN && y < GN && !g7o[y][x]) g7o[y][x] = 2; }
 static void h7_vw(int r, int v, int t) { int x = h7_mir ? h7_x1 + 1 - v : h7_x0 + v; if (h7_y0 + r >= 0 && h7_y0 + r < GN && x >= 0 && x <= GN) vwl[h7_y0 + r][x] = (u8)t; }
 static void h7_hw(int l, int c, int t) { int x = h7x(c); if (h7_y0 + l >= 0 && h7_y0 + l <= GN && x >= 0 && x < GN) hwl[h7_y0 + l][x] = (u8)t; }
@@ -287,12 +292,24 @@ static void gen_home7(const LotPlan *p0, u32 h, int terrain, int kind) {   // a 
         if (n >= 1) { h7_abs(dxc + 1, fr, h7_let('l'), 0); h7_abs(dxc - 2, fr, h7_let('Z'), 0); h7_abs(dxc + 2, fr, h7_let('Z'), 0); }
         if (n >= 3) { int fc = (h & 2) ? 0xE2 : 'p'; h7_abs(dxc - 4, fr, PS1ID[fc & 255] - 1, 0); h7_abs(dxc + 4, fr, PS1ID[fc & 255] - 1, 0); }
     }
+    // (D81) docs/HOUSING_DESIGN.md 11: one front style a neighbourhood (pal & 3), a lawn on some lots, slim hedges and piers on the front row
+    memset(g7h, 0, sizeof g7h);
+    for (int y = by0; y <= by1; y++) for (int x = bx0; x <= bx1; x++) if (x >= 0 && x < GN && y >= 0 && y < GN) g7h[y][x] = 1;
+    if (q.wx1) for (int y = q.wy0 - BM_LOT0; y <= q.wy1 - BM_LOT0; y++) for (int x = q.wx0 - BM_LOT0; x <= q.wx1 - BM_LOT0; x++) if (x >= 0 && x < GN && y >= 0 && y < GN) g7h[y][x] = 1;
     int hedge = kind == NK_SUBURB || kind == NK_ESTATE || kind == NK_GREEN;
+    int hv = hedge ? (int)((h >> 9) & 3) : 0, ns = q.pal & 3;
+    int fence = hedge && ns == 2, sides = hedge && ns == 0 && n >= 3, piers = hedge && ns != 2 && ns != 3;
+    if (hv == 3 || (ns == 3 && (hv & 1))) hedge = sides = piers = 0;
+    if (n >= 2 && kind != NK_CORE && kind != NK_MAIN) { int e = dv >= 0 ? dv < 4 : dxc < 6; h7_abs(e ? 11 : 2, 10, TREE_, 0); }   // a yard tree on the side away from the drive
     if (n >= 3) {
         h7_abs((h & 4) || !hedge ? dxc - 2 : dxc + 2, 11, h7_let((char)0xE0), 0);
-        if (hedge) for (int x = 1; x <= 12; x++) if (abs(x - dxc) > 1 && (dv < 0 || x < dv || x > dv + 1) && !(ty == HT_TERRACE && abs(x - (q.d2x - BM_LOT0)) <= 1)) h7_abs(x, 11, h7_let((char)0xE1), 0);
+        if (hedge) for (int x = 1; x <= 12; x++) {
+            if (abs(x - dxc) <= 1 || (dv >= 0 && x >= dv && x <= dv + 1) || (ty == HT_TERRACE && abs(x - (q.d2x - BM_LOT0)) <= 1)) continue;
+            int pier = piers && (x == 1 || x == 12 || abs(x - dxc) == 2 || (dv >= 0 && (x == dv - 1 || x == dv + 2)));
+            h7_hedge(x, 11, x, 10, h7_let(fence ? (char)0xDF : pier ? (char)0x8F : (char)0x8E), 0); }
     }
-    if (n >= 2 && kind != NK_CORE && kind != NK_MAIN) { int e = dv >= 0 ? dv < 4 : dxc < 6; h7_abs(e ? 11 : 2, 10, TREE_, 0); }   // a yard tree on the side away from the drive
+    if (sides) for (int sd = 0; sd < 2; sd++) { int c = sd ? 12 : 1; if (dv >= 0 && (c == dv || c == dv + 1)) continue;
+        for (int y = by1 + 1; y < 11; y++) h7_hedge(c, y, sd ? c - 1 : c + 1, y, h7_let((char)0x8E), 1); }
     if (ty == HT_MANSION) { h7_abs(bx0 + 1, fr + 1, TREE_, 0); h7_abs(bx1 - 1, fr + 1, TREE_, 0); }
     for (int i = 0; i < 3; i++) { int x = 3 + 4 * i; if (kind != NK_CORE && abs(x - dxc) > 1 && (dv < 0 || x < dv - 1 || x > dv + 2) && !flr[12][x]) h7_abs(x, 12, TREE_, 0); }   // the street's trees, one every four cells, on the verge
     if (by0 >= 2 && ty != HT_TERRACE) {   // the back yard: a patio at the back wall, then a barbecue, flower beds or swings

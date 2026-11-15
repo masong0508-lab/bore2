@@ -204,3 +204,5 @@
 202 ps1:6B Skate Flag
 203 ps1:40 Boat
 204 ps1:2B Bus Stop
+205 ps1:8E Clipped Hedge
+206 ps1:8F Hedge Pier
