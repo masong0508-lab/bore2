@@ -346,8 +346,8 @@ static int do_streets(void) {
             if (rd & 2) { int a = NODE(bx, by), c = NODE(bx, by + 1); uf[uf_f(a)] = uf_f(c); deg[a]++; deg[c]++; dir[a] |= 4; dir[c] |= 1; ne++; }
         }
         int main_ = uf_f(NODE(s->x, s->y)), orph = 0, dead = 0, bend = 0, tee = 0, cross = 0, lotless = 0, lots = 0, stranded = 0;
-        for (int i = 0; i < WW * WW; i++) if (deg[i]) { if (uf_f(i) != main_) { orph++; if (orph < 5) printf("  orphan node block %d,%d (dx %d dy %d)\n", x0 + i % WW, y0 + i / WW, x0 + i % WW - s->x, y0 + i / WW - s->y); } if (deg[i] == 1) dead++;
-            else if (deg[i] == 2 && dir[i] != 5 && dir[i] != 10) bend++; else if (deg[i] == 3) tee++; else if (deg[i] == 4) cross++; }
+        for (int i = 0; i < WW * WW; i++) if (deg[i]) { if (uf_f(i) != main_) { orph++; if (orph < 5) printf("  orphan node block %d,%d (dx %d dy %d)\n", x0 + i % WW, y0 + i / WW, x0 + i % WW - s->x, y0 + i / WW - s->y); } if (deg[i] == 1) { dead++; if (getenv("LISTEND")) printf("  DEAD set %d block %d,%d from %s\n", si, x0 + i % WW, y0 + i / WW, dir[i] & 8 ? "west" : dir[i] & 1 ? "north" : dir[i] & 2 ? "east" : "south"); }
+            else if (deg[i] == 2 && dir[i] != 5 && dir[i] != 10) { bend++; if (getenv("LISTEND")) printf("  BEND set %d block %d,%d dirs %d\n", si, x0 + i % WW, y0 + i / WW, dir[i]); } else if (deg[i] == 3) tee++; else if (deg[i] == 4) cross++; }
         for (int by = s->y - R + 1; by < s->y + R - 1; by++) for (int bx = s->x - R + 1; bx < s->x + R - 1; bx++) {
             BInfo b; bm_block(bx, by, &b); if (b.set != si || b.terrain == BT_SEA || b.lot == LOT_RIVER) continue; lots++;
             int f = bm_lot_face(bx, by); if (b.road & BR_MEGA) continue;

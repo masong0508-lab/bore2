@@ -551,6 +551,52 @@ static void draw_bubbles(void) {   // thoughts and notes over heads
     citizens_draw_bubbles();
 }
 
+// ---- street signs (version 8 towns): the names of the streets at the junctions nearest you, on a green plate at the corner pole. The junctions are looked for every 16 frames
+// (a handful of blocks round you), a plate is two text lines (the street along x over the one along y) drawn as the 2D text is, only within about 13 tiles and only while the pole is
+// in front of the camera: no texture memory, 5 to 9 sprites a plate, three plates at most. The SIGN_TEST hook (a test build) draws them at any distance.
+#define NSIGN 3
+static struct { s16 tx, ty; u8 k; char h[18], v[18]; } sgn[NSIGN]; static int sgn_n, sgn_t;
+static void signs_find(void) {
+    sgn_n = 0; if (bm_gen < 8 || world_zone != ZONE_CITY || world_wbx < 0 || state != ST_LIFE) return;
+    int px = sim_tile_x(&sims[player]), py = sim_tile_y(&sims[player]), pbx = px / BM_BLK, pby = py / BM_BLK, bd[NSIGN];
+    for (int j = pby - 1; j <= pby + 2; j++) for (int i = pbx - 1; i <= pbx + 2; i++) {
+        if (i < 0 || j < 0 || i >= MW / BM_BLK || j >= MH / BM_BLK) continue;
+        int tx = i * BM_BLK + BM_LOT0, ty = j * BM_BLK + BM_LOT0, d = (tx - px) * (tx - px) + (ty - py) * (ty - py);
+#ifndef SIGN_TEST
+        if (d > 13 * 13) continue;
+#endif
+        char hn[18], vn[18]; int k = bm_junction(world_wbx + i, world_wby + j, hn, vn); if (!k) continue;
+        int at = sgn_n < NSIGN ? sgn_n : -1; if (at < 0) { int w = 0; for (int q = 1; q < NSIGN; q++) if (bd[q] > bd[w]) w = q; if (d >= bd[w]) continue; at = w; } else sgn_n++;
+        bd[at] = d; sgn[at].tx = (s16)tx; sgn[at].ty = (s16)ty; sgn[at].k = (u8)k; strcpy(sgn[at].h, hn); strcpy(sgn[at].v, vn);
+    }
+}
+#ifdef AUTO_CITY
+int dbg_sg[6];
+#endif
+static void draw_streetsigns(void) {
+    if (bm_gen < 8 || world_zone != ZONE_CITY || world_wbx < 0 || state != ST_LIFE) return;
+    if (!(sgn_t++ & 15)) signs_find();
+    for (int n = 0; n < sgn_n; n++) {
+        VECTOR p; int wx = sgn[n].tx * TILE + TILE / 2, wz = -(sgn[n].ty * TILE + TILE / 2); setVector(&p, wx, -world_gh(wx, wz), wz);   // (the corner pole stands on the pavement tile just outside the lot's corner)
+        gfx_set_object(&p, 0);
+        SVECTOR top; setVector(&top, 0, -560, 0); int sx, sy, sz;
+        int vis = gfx_project(&top, &sx, &sy, &sz);
+#ifdef AUTO_CITY
+        dbg_sg[0] = sgn_n * 100 + vis; dbg_sg[1] = sz; dbg_sg[2] = sx; dbg_sg[3] = sy; dbg_sg[4] = sgn[n].tx; dbg_sg[5] = sgn[n].ty;
+#endif
+        if (!vis) continue;
+#ifndef SIGN_TEST
+        if (sz > 2300) continue;
+#endif
+        sx = gfx_ui_pre(sx);
+        const char *ln[2]; int nl = 0; if (sgn[n].k & 1) ln[nl++] = sgn[n].h; if (sgn[n].k & 2) ln[nl++] = sgn[n].v;
+        font_raw = 1; int w = 0; for (int i = 0; i < nl; i++) w = MAX(w, gfx_text_ws(FS_BODY, ln[i])); w += 6;
+        int h = nl * 9 + 3, x = sx - w / 2, y = sy - h;
+        gfx_rect(x - 1, y - 1, w + 2, h + 2, 236, 236, 230, 0); gfx_rect(x, y, w, h, 22, 110, 66, 0);   // (a white rim, a green plate)
+        font_raw = 1; for (int i = 0; i < nl; i++) gfx_text_s(FS_BODY, x + 3, y + 2 + i * 9, ln[i], 255, 255, 255); font_raw = 0;   // (capitals, as a street sign has them)
+        gfx_rect(sx, sy, 1, 4, 150, 150, 156, 0);                                                        // (the post under the plate)
+    }
+}
 static int venue_t, venue_bx = -1, venue_by = -1; static PlaceInfo venue;
 static void venue_watch(void) {   // walking onto a place: its name and its hours, for a few seconds (The Sims 4's lot name)
     PlaceInfo pi; const Sim *s = &sims[player];
@@ -1210,7 +1256,7 @@ static void life_draw(void) {
     world_doors_reset(); for (int i = 0; i < nsims; i++) world_door_mark(sim_tile_x(&sims[i]), sim_tile_y(&sims[i])); citizens_door_marks();
     { int t0 = hb_now(); world_draw(sim_tile_x(s), sim_tile_y(s), frame, wall_view == 1 || (wall_view == 0 && cam_view != 2)); t_world = hb_now() - t0;   // (WALL VIEW: AUTO cuts the walls between you and the camera, but not in first person; CUT AWAY always; FULL WALLS never)
       t0 = hb_now(); gfx_prim_count = 0; draw_sims(); if (pet_kind && pet_zone == world_zone) { if (pet_kind == 1) items_draw_dog(pet_x, pet_z, pet_yaw, -sims[player].lvl * WALL_FULL, &pet_dog, pet_ph); else items_draw_pet(pet_x, pet_z, pet_yaw, -sims[player].lvl * WALL_FULL, pet_kind, pet_col, pet_ph); } ghost_draw(cam_yaw, frame); t_sims = hb_now() - t0; }
-    { int t0 = hb_now(); draw_bubbles(); t_bub = hb_now() - t0; }
+    { int t0 = hb_now(); draw_bubbles(); draw_streetsigns(); t_bub = hb_now() - t0; }
     prims_last = gfx_prim_count;
     if (state != ST_OVER) { int t0 = hb_now(); hud_life(); t_hud = hb_now() - t0; }
 }

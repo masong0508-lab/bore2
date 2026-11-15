@@ -926,13 +926,15 @@ COLD int world_tile_class(int tx, int ty) {   // that tile of the city window: T
 // on one, 4 road floor on the street strip where the map has no street (the forecourts are in the plot: not counted), 5 street strip not
 // painted road, 6 windows swept, 8 sweep finished, 9 props the generators left on a road that street_purge took off (-DROAD_NOPURGE=1 leaves them, to see the test catch them).
 int dbg_ra[16], dbg_raw[16][8]; u8 dbg_rach[256], dbg_rapurge[256]; static int ra_busy, ra_shown, ra_nw;   // (dbg_raw: the first offenders: kind, block x, y, tile x, y, the lot, the floor, the letter)
+static int ra_bed[16][4], ra_nbed;   // (the family beds found: block x, y and the tile in it; the picture tool puts its camera there)
 static void ra_block(int wx, int wy) {
     int bx = world_wbx + wx, by = world_wby + wy, rd, town, rv; blk_street(bx, by, &rd, &town, &rv);
     dbg_ra[0]++;
+    for (int y = 0; y < BM_BLK && ra_nbed < 16; y++) for (int x = 0; x < BM_BLK; x++) if ((u8)lifeMap[wy * BM_BLK + y][wx * BM_BLK + x] == 0xEC) { int *r = ra_bed[ra_nbed++]; r[0] = bx; r[1] = by; r[2] = x; r[3] = y; break; }
     for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) {
         int mx = wx * BM_BLK + x, my = wy * BM_BLK + y, tc = tile_class(rd, town, rv, x, y); char c = lifeMap[my][mx]; int f = floorMap[my][mx];
         int strip = x < BM_LOT0 || y < BM_LOT0;
-        if (strip && tc == TC_ROAD && !FL_IS_ROAD(f)) dbg_ra[5]++;
+        if (strip && tc == TC_ROAD && !FL_IS_ROAD(f)) { dbg_ra[5]++; if (ra_nw < 16 && (dbg_ra[5] % 25) == 1) { int *r = dbg_raw[ra_nw++]; BInfo bi; bm_block(bx, by, &bi); r[0] = 3; r[1] = bx; r[2] = by; r[3] = x; r[4] = y; r[5] = bi.lot; r[6] = f; r[7] = bi.road; } }
         if (strip && tc != TC_ROAD && FL_IS_ROAD(f)) { dbg_ra[4]++; if (ra_nw < 16 && (dbg_ra[4] % 100) == 1) { int *r = dbg_raw[ra_nw++]; BInfo bi; bm_block(bx, by, &bi); r[0] = 1; r[1] = bx; r[2] = by; r[3] = x; r[4] = y; r[5] = bi.lot; r[6] = f; r[7] = c; } }
         if (c == '.' || c == ' ' || c == 0) continue;
         if (is_wall(c)) { if (tc == TC_ROAD) dbg_ra[3]++; continue; }
@@ -962,6 +964,7 @@ static void ra_sweep(int hx, int hy) {
         extern void dc_logf(const char *f, ...);
         dc_logf("RA done: windows %d blocks %d props %d ON-ROAD %d walls-on-road %d roadfloor-off-strip %d strip-not-road %d | generators left on a road (purged) %d\n",
                 dbg_ra[6], dbg_ra[0], dbg_ra[1], dbg_ra[2], dbg_ra[3], dbg_ra[4], dbg_ra[5], dbg_ra[9]);
+        for (int i = 0; i < ra_nbed; i++) { BInfo bi; bm_block(ra_bed[i][0], ra_bed[i][1], &bi); dc_logf("RA   family bed block %d,%d tile %d,%d lot %d\n", ra_bed[i][0], ra_bed[i][1], ra_bed[i][2], ra_bed[i][3], bi.lot); }
         for (int i = 0; i < ra_nw; i++) dc_logf("RA   first offender kind %d: block %d,%d tile %d,%d lot %d floor %d letter %02x\n", dbg_raw[i][0], dbg_raw[i][1], dbg_raw[i][2], dbg_raw[i][3], dbg_raw[i][4], dbg_raw[i][5], dbg_raw[i][6], dbg_raw[i][7]);
         for (int c = 0; c < 256; c++) if (dbg_rapurge[c] || dbg_rach[c]) dc_logf("RA   letter %02x '%c': purged %d, still on a road %d\n", c, c >= 32 && c < 127 ? c : '?', dbg_rapurge[c], dbg_rach[c]);
     }

@@ -369,6 +369,8 @@ static int g7_top(int m, int ft, int i, int j) {
     return t;
 }
 static int g7_left(int m, int ft, int i, int j) { return ((m >> (4 + i)) & 1) | (j == 2 && ((ft == 3 && i == 3) || (ft == 4 && i == 1))); }
+static void bm_block1(int bx, int by, BInfo *b);
+static int rd_real(const BInfo *b);
 // ---- STREET VARIETY (bm_gen 8 on) ----
 // A neighbourhood's streets are one of a table of shapes (a bit for each of its 12 inside H edges (the street along the top of a block, rows 1..3) and its 12 inside V
 // edges (down the left, columns 1..3)), turned over by two dice: lanes that end short in a head, bends and S jogs, a staircase that runs diagonally, a ring round the
@@ -432,9 +434,12 @@ __attribute__((noinline)) static void g8_block(const Settle *s, int bx, int by, 
     #define G8T(x, y) (g8_edge(s, 0, x, y) | G8CEN(x, y) | G8CEN(x, (y) - 1))
     #define G8L(x, y) (g8_edge(s, 1, x, y) | G8CEN(x, y) | G8CEN((x) - 1, y))
     int t = G8T(dx, dy), l = G8L(dx, dy), cn = 0;
-    if (!(t | l)) {   // (a street's end, or its bend: the corner square is paved, a turning head)
-        int w = G8T(dx - 1, dy) && set_at(bx - 1, by) == si && bm_terrain(bx - 1, by) != BT_SEA, n = G8L(dx, dy - 1) && set_at(bx, by - 1) == si && bm_terrain(bx, by - 1) != BT_SEA;
-        cn = w | n;
+    static u8 busy;   // (the question below asks for a neighbour's whole block, which asks about big places, which ask for these blocks: those inner questions need no heads)
+    if (!(t | l) && !busy) {   // (a street's end, or its bend: the corner square is paved, a turning head; only where the street that arrives is really there: the plan can have it cut by a big place or the edge of the town)
+        BInfo q; busy = 1;
+        if (G8T(dx - 1, dy) && set_at(bx - 1, by) == si) { bm_block1(bx - 1, by, &q); cn = q.set == si && q.terrain != BT_SEA && (rd_real(&q) & 1); }
+        if (!cn && G8L(dx, dy - 1) && set_at(bx, by - 1) == si) { bm_block1(bx, by - 1, &q); cn = q.set == si && q.terrain != BT_SEA && (rd_real(&q) & 2); }
+        busy = 0;
     }
     b->road = (u8)(t | l << 1 | cn << 2);
     int ts = G8T(dx, dy + 1) && dx * dx + (dy + 1) * (dy + 1) <= s->r * s->r && bm_terrain(bx, by + 1) != BT_SEA;
@@ -591,7 +596,7 @@ static void bm_block1(int bx, int by, BInfo *b) {
     } else if (b->lot == LOT_WILD) return;
     int k = mega_kind(gx, gy, b->set);
     if (k < 0) return;
-    b->road = (u8)((b->road & 7) | BR_MEGA | (part << 4) | (k << 6));
+    b->road = (u8)((b->road & (bm_gen >= 8 ? 3 : 7)) | BR_MEGA | (part << 4) | (k << 6));   // (version 8: no turning head inside a big place)
     b->lot = (u8)(k == MK_PARK ? LOT_PARK : pick(b->h >> 4, k == MK_MALL ? mallMix : k == MK_CAMPUS ? campusMix : plazaMix));
     if (k == MK_MALL && part == 0) b->lot = LOT_SHOP;
 }
@@ -726,9 +731,28 @@ const char *bm_lot_name(int lot) { return lotNm[lot % LOT_N]; }
 static const char *const stNm[24] = { "MAIN", "ELM", "OAK", "PINE", "MAPLE", "BIRCH", "CEDAR", "ASH", "WILLOW", "LAKE", "HILL", "PARK",
                                       "MILL", "CHURCH", "BRIDGE", "RIVER", "SPRING", "MARKET", "HIGH", "STATION", "DIPPER", "MOSS", "BORE", "YAWN" };
 static const char *const stSf[4] = { " ST", " AVE", " RD", " LN" };
+static const char *const stSf8[4] = { " ST", " RD", " LN", " WAY" };
+const char *bm_street_line(int set, int vert, int bx, int by, char *out) {   // version 8: the name of the street along the top (vert 0) or down the left (vert 1) of block (bx, by): one name a street line, an avenue that steps a block aside keeps its own
+    const Settle *s = &sets[set]; int dx = bx - s->x, dy = by - s->y, u = vert ? dy : dx, w = vert ? dx : dy, m = (w + 1) >> 2, r = w - 4 * m;
+    if ((r == -1 || r == 1) && g8_av(s, vert, m, u >> 2) == r) w = 4 * m;
+    u32 h = bm_hash(w, set * 2 + vert, wseed ^ 0x57EEu);
+    strcpy(out, stNm[h % 24u]); strcat(out, !(w & 3) ? ((h >> 8) & 1 ? " AVE" : " BLVD") : stSf8[(h >> 8) & 3]);
+    return out;
+}
+static int rd_real(const BInfo *b) { int rd = b->road & 3; if (b->lot != LOT_RIVER && (b->road & BR_MEGA)) { int p = BR_PART(b->road); if (p & 1) rd &= ~2; if (p & 2) rd &= ~1; } return rd; }
+int bm_junction(int bx, int by, char *hn, char *vn) {   // version 8: the streets that meet at block (bx, by)'s north-west corner (1: one along x, 2: one along y), their names into hn and vn (18 bytes each)
+    BInfo c, w, n; int k = 0; if (bm_gen < 8) return 0;
+    bm_block(bx, by, &c); if (c.set == 255 || c.terrain == BT_SEA) return 0;
+    bm_block(bx - 1, by, &w); bm_block(bx, by - 1, &n);
+    int rc = rd_real(&c), rw = w.set == c.set && w.terrain != BT_SEA ? rd_real(&w) : 0, rn = n.set == c.set && n.terrain != BT_SEA ? rd_real(&n) : 0;
+    if ((rc | rw) & 1) { bm_street_line(c.set, 0, (rc & 1) ? bx : bx - 1, by, hn); k |= 1; }
+    if ((rc | rn) & 2) { bm_street_line(c.set, 1, bx, (rc & 2) ? by : by - 1, vn); k |= 2; }
+    return k;
+}
 const char *bm_street(int set, int bx, int by, int unit, char *out) {
     int sx = set < nset ? sets[set].x : 0, sy = set < nset ? sets[set].y : 0;
     int num = 100 + ((bx - sx + 64) & 127) * 4 + unit * 2;
+    if (bm_gen >= 8 && set < nset) { char nm[20]; bm_street_line(set, 0, bx, by + (bm_lot_face(bx, by) == LF_SOUTH), nm); sprintf(out, "%d %s", num, nm); return out; }   // (version 8: the street the lot fronts, the one its sign says)
     u32 h = bm_hash(by - sy, set, wseed ^ 0x57EEu);
     sprintf(out, "%d %s%s", num, stNm[h % 24u], stSf[(h >> 8) & 3]);
     return out;

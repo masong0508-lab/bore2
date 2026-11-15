@@ -78,6 +78,8 @@ const Settle *bm_set(int i);
 int  bm_capital(void);
 int  bm_set_at(int bx, int by);       // the town that block is in (255: open country)                // BORE CITY's index
 const char *bm_street(int set, int bx, int by, int unit, char *out);   // "214 MAPLE ST"
+const char *bm_street_line(int set, int vert, int bx, int by, char *out);   // (version 8) the street along the top (vert 0) / down the left (vert 1) of that block: "MAPLE ST"
+int bm_junction(int bx, int by, char *hn, char *vn);   // (version 8) the streets meeting at that block's north-west corner: bit 0 one along x, bit 1 along y, their names (18 bytes each)
 const char *bm_place_name(int lot, u32 h, char *out);   // "BOREMART", "THE SLEEPY INN"
 const char *bm_state_name(void);      // "SAN BOREAS"
 u32 bm_hash(int a, int b, u32 s);
