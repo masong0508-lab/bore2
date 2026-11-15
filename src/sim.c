@@ -807,6 +807,16 @@ static int pick_stroll(const Sim *s, int *ox, int *oy) {
     if (bx < 0) return 0;
     *ox = bx; *oy = by; return 1;
 }
+#ifdef PT_DBG
+void sim_dbg_warp(void) {   // (test builds, L3: the player's Bore to the tile in front of its job's counter on the workplace lot, facing it)
+    Sim *s = &sims[player]; extern int job_none; const char *st = job_none ? "7`iy" : careers[job_car].station; static const short dd[4][2] = { { 0, 1 }, { 1, 0 }, { 0, -1 }, { -1, 0 } };
+    for (int y = 1; y < MH - 1; y++) for (int x = 1; x < MW - 1; x++) {
+        char c = lifeMap[y][x]; if (!c || !strchr(st, c)) continue; { PlaceInfo pi; if (job_none ? !(place_at(x, y, &pi) && pi.lot == LOT_SHOP) : !job_here(x, y, c)) continue; }
+        for (int d = 0; d < 4; d++) { int px = x - dd[d][0], py = y - dd[d][1]; if (!world_walkable(px, py)) continue;
+            s->x = px * TILE + TILE / 2; s->z = -(py * TILE + TILE / 2); s->yaw = d * 1024; s->path_n = s->path_i = 0; return; }
+    }
+}
+#endif
 static int think_tok;   // (one of the household makes a real decision a step: two who come free at once are a 60th of a second apart, not one frame's spike)
 int sim_load_hi;   // (main.c: the last frame was a heavy one: a housemate's new decision, which may start a route search of 150 to 400 hb, waits for a lighter frame)
 static void ai_think(Sim *s) {
@@ -845,8 +855,8 @@ static void ai_think(Sim *s) {
         for (int k = 0; k < 2; k++) if (nearest_item(s, wild[k], &ix, &iy) && approach_tile(s, ix, iy, &tx, &ty) && start_walk(s, tx, ty, wv < 15 ? 2 : 1)) {
             s->act_x = ix; s->act_y = iy; s->action = ACT_WALK; s->act_t = 9999; return; }
     }
-    if (wv < 45) {
-        if (worst == N_REST && !is_night() && wv > 15) { worst = -1; }
+    if (wv < 45 || ((worst == N_REST || worst == N_CLEAN) && wv < 52)) {   // (rest and cleanliness: a little earlier, they were let to hit zero: Stinky, Passed out)
+        if (worst == N_REST && !is_night() && wv > 25) { worst = -1; }
         char ch = worst >= 0 ? need_item(worst) : 0;
         int ix, iy, tx, ty;
 #ifdef PT_DBG

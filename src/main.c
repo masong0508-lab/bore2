@@ -942,7 +942,11 @@ static void life_update(int steps) {
     }
     if (PRESSED(PAD_CIRCLE) && !on_board) sim_player_cancel();
     if (PRESSED(PAD_TRIANGLE) && !on_board && !veh_on) { sim_speed = sim_speed % 3 + 1; }
+#ifdef PT_DBG
+    if (PRESSED(PAD_L3)) { extern void sim_dbg_warp(void); static int shopped; if (job_none && !shopped) { for (int i = 0; i < pop_nplace; i++) if (pop_place[i].lot == LOT_SHOP) { shopped = 1; taxi_to_block(pop_place[i].bx, pop_place[i].by, -1, -1, "A SHOP"); break; } } else sim_dbg_warp(); }
+#else
     if (PRESSED(PAD_L3)) show_fps ^= 1;
+#endif
 #ifdef AUTO_SWITCH
     { static int n_; n_ += steps; if (n_ > 200 && nsims < 3) { for (int k = 0; k < 3; k++) { Bore b; look_default(&b); b.stage = AG_ADULT; look_random(&b); sim_add(&b, sim_tile_x(&sims[player]), sim_tile_y(&sims[player]) + 1, 1); } }
       static int o_; if (n_ > 320 && !o_ && nsims > 1) { o_ = 1; sw_open(ST_LIFE); return; } }   // (test builds: the SWITCH SIM card)
@@ -1301,7 +1305,7 @@ static void taxi_to_block(int bx, int by, int tx, int ty, const char *where) {  
     if (world_zone != ZONE_CITY) world_switch(ZONE_CITY);
     world_open_at(bx, by);
     loading("TAKING A TAXI", 85); far_reset();                  // the land round you, out to the horizon
-    int px = (bx - world_wbx) * BM_BLK + (tx >= 0 ? tx : 9), py = (by - world_wby) * BM_BLK + (ty >= 0 ? ty : BM_LOT0 / 2);
+    int px = (bx - world_wbx) * BM_BLK + (tx >= 0 ? tx : 9), py = (by - world_wby) * BM_BLK + (ty >= 0 ? ty : BM_LOT0 - 1);   // (the kerb beside the lot: not the lane, where the traffic has to stop for you)
     put_household(px, py);
     citizens_enter(ZONE_CITY);
     char b[48]; snprintf(b, sizeof b, "WELCOME TO %s", where); sim_note(b);
