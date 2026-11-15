@@ -226,8 +226,9 @@ static void place_space(void) {   // the spaceport: the open country furthest fr
     if (bx < 0) return;
     Settle *s = &sets[nset]; s->x = (u16)bx; s->y = (u16)by; s->r = 5; s->kind = ST_SPACEPORT; sprintf(s->name, "CAPE %s", nmA[rr() % 16]); nset++;
 }
+static void g8_reset(void);
 void bm_new(u32 seed) {
-    ov_live = 0; bm_hill_reset();
+    ov_live = 0; bm_hill_reset(); g8_reset();
     wseed = seed ? seed : 1; rs = wseed ^ 0xA5A5A5A5u; nset = 0; nseg = 0;
     static const u8 capr[6] = { 6, 8, 11, 14, 18, 22 };
     place_set(ST_CITY, capr[bm_capsz % 6], BM_N / 2, BM_N / 2, 110);       // BORE CITY, near the middle (CAPITAL SIZE)
@@ -368,8 +369,92 @@ static int g7_top(int m, int ft, int i, int j) {
     return t;
 }
 static int g7_left(int m, int ft, int i, int j) { return ((m >> (4 + i)) & 1) | (j == 2 && ((ft == 3 && i == 3) || (ft == 4 && i == 1))); }
+// ---- STREET VARIETY (bm_gen 8 on) ----
+// A neighbourhood's streets are one of a table of shapes (a bit for each of its 12 inside H edges (the street along the top of a block, rows 1..3) and its 12 inside V
+// edges (down the left, columns 1..3)), turned over by two dice: lanes that end short in a head, bends and S jogs, a staircase that runs diagonally, a ring round the
+// middle four blocks, comb lanes off an avenue. The avenues step a block aside on some stretches (a stretch is one neighbourhood long); where displaced avenues meet,
+// and where an inside street meets a displaced avenue, edges are added so every street still joins the network (ports/host/townmap `streets` checks it).
+static const u32 g8tA[16] = { 0xf0, 0xf0, 0x70, 0xe0, 0x400870, 0x0200c3, 0x842421, 0x606696, 0x80c000, 0x060030, 0x070c00, 0x000c0c, 0x0c00f0, 0x400870, 0x606696, 0x0200c3 };   // suburb, estate
+static const u32 g8tB[8]  = { 0x0f00f0, 0x0f00f0, 0x0300f0, 0xc0c0f0, 0x060f0f, 0x606696, 0x0f00f0, 0x400870 };                                                          // urban, civic
+static const u32 g8tC[8]  = { 0, 0, 0x30, 0x030000, 0x0c00c0, 0, 0x30, 0 };                                                                                                 // green
+typedef struct { s16 nx, ny; u8 si, mask, part, kind, fl; u32 tp; } G8N;
+static G8N g8c[8];
+static void g8_reset(void) { memset(g8c, 0xFF, sizeof g8c); }
+static const G8N *g8nb(const Settle *s, int nx, int ny) {   // a neighbourhood's street shape (a small cache: asked for many times a block)
+    int si = (int)(s - sets); G8N *c = &g8c[(nx * 5 + ny * 3 + si) & 7];
+    if (c->si == si && c->nx == nx && c->ny == ny) return c;
+    u32 h; int k = nb_kind(s, nx * 4, ny * 4, &h);
+    c->si = (u8)si; c->nx = (s16)nx; c->ny = (s16)ny; c->kind = (u8)k; c->fl = (u8)((h >> 26) & 3);
+    c->mask = (u8)(s->kind >= ST_VILLAGE || k == NK_CORE || k == NK_MAIN);
+    c->part = 0;
+    for (int q = 0; q < 4 && !c->mask; q++) { int cx = s->x + nx * 4 + (q & 1) * 3, cy = s->y + ny * 4 + (q >> 1) * 3, ex = cx - s->x, ey = cy - s->y;   // (a neighbourhood the town's edge or the sea cuts: its streets as the plain plan has them, so no piece of street is left cut off)
+        if (ex * ex + ey * ey > s->r * s->r || bm_terrain(cx, cy) == BT_SEA) c->part = 1; }
+    c->tp = k == NK_GREEN ? g8tC[(h >> 12) & 7] : (k == NK_URBAN || k == NK_CIVIC) ? g8tB[(h >> 12) & 7] : g8tA[(h >> 12) & 15];
+    return c;
+}
+static int g8_in(const G8N *n, int o, int i, int j) {   // the neighbourhood's own street along the top (o 0) / down the left (o 1) of its block (i, j)
+    if (n->mask || n->part) return o ? (g7st[n->kind] >> (4 + i)) & 1 : (g7st[n->kind] >> j) & 1;
+    if (o) { if (!i) return 0; if (n->fl & 1) i = 4 - i; if (n->fl & 2) j = 3 - j; return (int)(n->tp >> (12 + (i - 1) * 4 + j)) & 1; }
+    if (!j) return 0;
+    if (n->fl & 1) i = 3 - i; if (n->fl & 2) j = 4 - j; return (int)(n->tp >> ((j - 1) * 4 + i)) & 1;
+}
+static int g8_nom(const Settle *s, int o, int dx, int dy) { const G8N *n = g8nb(s, dx >> 2, dy >> 2); return g8_in(n, o, dx & 3, dy & 3); }
+static int g8_av(const Settle *s, int o, int m, int a) {   // line m (nominal row / column 4m) of the avenues along x (o 0) or y (o 1), its stretch a: -1, 0 or +1 block aside
+    if (s->kind > ST_TOWN) return 0;
+    int k1 = o ? g8nb(s, m - 1, a)->mask : g8nb(s, a, m - 1)->mask; int k2 = o ? g8nb(s, m, a)->mask : g8nb(s, a, m)->mask;
+    if (k1 | k2) return 0;
+    unsigned r = bm_hash(m * 2 + o + s->x * 5, a + s->y * 3, wseed ^ 0x8A71u) % 12u;
+    if (r >= 6) return 0;
+    for (int q = 0; q < 4; q++) {   // (the stretch and the blocks its joins touch are all town land: else a piece of street could be cut off at the edge)
+        int u = 4 * a + (q & 1) * 5 - 1, w = 4 * m + (q >> 1) * 2 - 1, ex = (o ? w : u) + 0, ey = (o ? u : w);
+        if (ex * ex + ey * ey > s->r * s->r || bm_terrain(s->x + ex, s->y + ey) == BT_SEA) return 0; }
+    return r < 3 ? -1 : 1;
+}
+__attribute__((noinline)) static int g8_edge(const Settle *s, int o, int dx, int dy) {   // a street along the top (o 0) / down the left (o 1) of block (dx, dy) by the plan alone (u: along it, w: across)
+    int u = o ? dy : dx, w = o ? dx : dy, m = (w + 1) >> 2, r = w - 4 * m, ul = u & 3;
+    if (r != 2) { int off = g8_av(s, o, m, u >> 2); if (r == off) return 1; }
+    if (r == 0) {   // the nominal avenue line of a displaced stretch: only the pieces that join it to the avenues it meets
+        if (ul == 0 || ul == 3) {
+            int q = (u + 1) >> 2, c = g8_av(s, 1 - o, q, m - 1), d = g8_av(s, 1 - o, q, m), lo = c < d ? c : d, hi = c < d ? d : c;
+            if (lo > 0) lo = 0; if (hi < 0) hi = 0;
+            if (u >= 4 * q + lo && u < 4 * q + hi) return 1;
+        }
+        return 0;
+    }
+    int v = g8_nom(s, o, dx, dy);   // (inside: the neighbourhood's own street, joined across a displaced avenue)
+    if (ul == 3) { if (g8_av(s, 1 - o, (u + 1) >> 2, w >> 2) < 0) v = g8_nom(s, o, o ? dx : dx + 1, o ? dy + 1 : dy); }
+    else if (!ul) { if (g8_av(s, 1 - o, u >> 2, w >> 2) > 0) v = g8_nom(s, o, o ? dx : dx - 1, o ? dy - 1 : dy); }
+    return v;
+}
+__attribute__((noinline)) static void g8_block(const Settle *s, int bx, int by, BInfo *b, u32 nh, int kind, int j) {   // version 8: the streets of the plan with its variety, and the lot
+    int dx = bx - s->x, dy = by - s->y, C = g7cen[s->kind & 3], si = (int)(s - sets);
+    #define G8CEN(x, y) g7_in(x, y, C)
+    #define G8T(x, y) (g8_edge(s, 0, x, y) | G8CEN(x, y) | G8CEN(x, (y) - 1))
+    #define G8L(x, y) (g8_edge(s, 1, x, y) | G8CEN(x, y) | G8CEN((x) - 1, y))
+    int t = G8T(dx, dy), l = G8L(dx, dy), cn = 0;
+    if (!(t | l)) {   // (a street's end, or its bend: the corner square is paved, a turning head)
+        int w = G8T(dx - 1, dy) && set_at(bx - 1, by) == si && bm_terrain(bx - 1, by) != BT_SEA, n = G8L(dx, dy - 1) && set_at(bx, by - 1) == si && bm_terrain(bx, by - 1) != BT_SEA;
+        cn = w | n;
+    }
+    b->road = (u8)(t | l << 1 | cn << 2);
+    int ts = G8T(dx, dy + 1) && dx * dx + (dy + 1) * (dy + 1) <= s->r * s->r && bm_terrain(bx, by + 1) != BT_SEA;
+    #undef G8T
+    #undef G8L
+    #undef G8CEN
+    int off = g7row[kind - 1 + (kind == NK_GREEN && (nh & 0x800))][j], i = dx & 3;
+    if (s->kind >= ST_VILLAGE) { if (off == P_HSUB) off = (dx * dx + dy * dy) * 16 >= s->r * s->r * 9 ? P_GRF : dx == 2 && dy == 1 ? P_EMP : P_HVIL; }
+    else if (kind >= NK_URBAN) {
+        if (i == (int)(nh & 1) * 3 && !j) { if (kind <= NK_SUBURB) off = P_CNR; }
+        else if (i == 1 + (int)((nh >> 3) & 1) && j == 1) { if (kind < NK_GREEN) off = P_PRK; }
+        else if (i == (int)((nh >> 7) & 3) && j == (int)((nh >> 9) & 3) && (ts | t)) off = P_EMP;
+    }
+    int lot = g7pool[off + 1 + (dx + 7 * dy + 1024) % g7pool[off]];
+    if (!(ts | t) && !((0x110001u >> lot) & 1)) lot = kind != NK_GREEN && ((dx * 3 + dy * 5) & 3) ? LOT_PARK : LOT_WILD;   // (no street to front on: a green, mostly a park)
+    b->lot = (u8)lot;
+}
 __attribute__((noinline)) static void g7_block(const Settle *s, int bx, int by, BInfo *b) {   // a block of a planned town that is not a landmark: its streets and its lot
     u32 nh; int dx = bx - s->x, dy = by - s->y, i = dx & 3, j = dy & 3, kind = nb_kind(s, dx, dy, &nh), m = g7st[kind], C = g7cen[s->kind & 3];
+    if (bm_gen >= 8) { g8_block(s, bx, by, b, nh, kind, j); return; }
     #define G7CEN(x, y) g7_in(x, y, C)
     int ft = (kind == NK_SUBURB || kind == NK_ESTATE) && s->kind < ST_VILLAGE && ((nh >> 16) & 7) >= 3 ? 1 + (int)(((nh >> 16) & 7) - 3) % 4 : 0;   // (this neighbourhood's street feature, 1..4: a dead end at its east end, at its west end, a bend east, a bend west; three in eight have none)
     int c0 = G7CEN(dx, dy), t = g7_top(m, ft, i, j) | c0 | G7CEN(dx, dy - 1), l = g7_left(m, ft, i, j) | c0 | G7CEN(dx - 1, dy);

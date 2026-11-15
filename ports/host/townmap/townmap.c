@@ -329,6 +329,37 @@ static int do_list(void) {   // every block of every settlement: set, bx, by, ne
             printf("B %d %d %d nb %d lot %s type %d roof %d pal %d face %d road %d\n", si, bx, by, bm_nb(bx, by), bm_lot_name(b.lot), p.type, p.roof, p.pal, p.face, b.road); } }
     return 0;
 }
+// streets SEED GEN: every town's street graph on the block corners (a corner is a node, a block's top / left street an edge): the pieces not joined to the main crossing, the dead ends,
+// the bends and crossings, and the lots with a street of their own to front on that is not in the main piece (0 is the answer for the first and the last)
+static int uf[200 * 200];
+static int uf_f(int a) { while (uf[a] != a) { uf[a] = uf[uf[a]]; a = uf[a]; } return a; }
+static int do_streets(void) {
+    int bad = 0;
+    for (int si = 0; si < bm_nset(); si++) { const Settle *s = bm_set(si); int R = s->r + 3, WW = 2 * R + 1, x0 = s->x - R, y0 = s->y - R;
+        static u8 deg[200 * 200], dir[200 * 200]; memset(deg, 0, WW * WW); memset(dir, 0, WW * WW);
+        for (int i = 0; i < WW * WW; i++) uf[i] = i;
+        #define NODE(x, y) (((y) - y0) * WW + ((x) - x0))
+        int ne = 0;
+        for (int by = s->y - R + 1; by < s->y + R - 1; by++) for (int bx = s->x - R + 1; bx < s->x + R - 1; bx++) {
+            BInfo b; bm_block(bx, by, &b); if (b.set != si || b.terrain == BT_SEA) continue; int rd = roads(&b);
+            if (rd & 1) { int a = NODE(bx, by), c = NODE(bx + 1, by); uf[uf_f(a)] = uf_f(c); deg[a]++; deg[c]++; dir[a] |= 2; dir[c] |= 8; ne++; }
+            if (rd & 2) { int a = NODE(bx, by), c = NODE(bx, by + 1); uf[uf_f(a)] = uf_f(c); deg[a]++; deg[c]++; dir[a] |= 4; dir[c] |= 1; ne++; }
+        }
+        int main_ = uf_f(NODE(s->x, s->y)), orph = 0, dead = 0, bend = 0, tee = 0, cross = 0, lotless = 0, lots = 0, stranded = 0;
+        for (int i = 0; i < WW * WW; i++) if (deg[i]) { if (uf_f(i) != main_) { orph++; if (orph < 5) printf("  orphan node block %d,%d (dx %d dy %d)\n", x0 + i % WW, y0 + i / WW, x0 + i % WW - s->x, y0 + i / WW - s->y); } if (deg[i] == 1) dead++;
+            else if (deg[i] == 2 && dir[i] != 5 && dir[i] != 10) bend++; else if (deg[i] == 3) tee++; else if (deg[i] == 4) cross++; }
+        for (int by = s->y - R + 1; by < s->y + R - 1; by++) for (int bx = s->x - R + 1; bx < s->x + R - 1; bx++) {
+            BInfo b; bm_block(bx, by, &b); if (b.set != si || b.terrain == BT_SEA || b.lot == LOT_RIVER) continue; lots++;
+            int f = bm_lot_face(bx, by); if (b.road & BR_MEGA) continue;
+            if (f == LF_NONE) lotless++;
+            else { int c = f == LF_SOUTH ? NODE(bx, by + 1) : NODE(bx, by); if (deg[c] && uf_f(c) != main_) { stranded++; if (stranded < 4) printf("  stranded lot at %d,%d\n", bx, by); } }
+        }
+        printf("%-14s kind %d r %2d edges %3d  orphan nodes %d  dead ends %2d bends %2d tees %2d crossings %2d  blocks %d no-front %d stranded %d\n", s->name, s->kind, s->r, ne, orph, dead, bend, tee, cross, lots, lotless, stranded);
+        bad += orph + stranded;
+    }
+    printf("streets: %s\n", bad ? "ORPHANS OR STRANDED LOTS" : "ok");
+    return bad != 0;
+}
 int main(int argc, char **argv) {
     if (argc < 4) { fprintf(stderr, "usage: townmap pic SEED GEN WHICH OUT.ppm | stats SEED GEN [packed] | sum SEED GEN [packed]\n"); return 1; }
     unsigned seed = (unsigned)strtoul(argv[2], 0, 0); gen = atoi(argv[3]);
@@ -338,5 +369,6 @@ int main(int argc, char **argv) {
     if (argc > 5) { bm_capsz = atoi(argv[5]); if (argc > 8) { bm_ncity = atoi(argv[6]); bm_ntown = atoi(argv[7]); bm_nvil = atoi(argv[8]); } }   // (the dials: capital size, cities, towns, villages)
     bm_new(seed);
     if (!strcmp(argv[1], "list")) return do_list();
+    if (!strcmp(argv[1], "streets")) return do_streets();
     return !strcmp(argv[1], "stats") ? do_stats() : do_sum();
 }

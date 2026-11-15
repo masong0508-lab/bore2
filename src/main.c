@@ -408,7 +408,7 @@ static void start_life(void) {
 #endif
 #endif
 #ifndef GEN_NEW
-#define GEN_NEW 7                                              // (a test build can start an older world version: -DGEN_NEW=6)
+#define GEN_NEW 8                                              // (a test build can start an older world version: -DGEN_NEW=6)
 #endif
         bm_gen = GEN_NEW; bm_new(seed); world_new_seed(seed);
         loading("PEOPLING SAN BOREAS", 45);
@@ -2762,7 +2762,7 @@ static void save_body(void) {
 }
 static void load_body(void) {
     u32 seed = ld_u32();
-    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 54 ? 7 : save_ver >= 38 ? 6 : save_ver >= 31 ? 5 : save_ver >= 17 ? 4 : 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
+    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 55 ? 8 : save_ver >= 54 ? 7 : save_ver >= 38 ? 6 : save_ver >= 31 ? 5 : save_ver >= 17 ? 4 : 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
     bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2;
     traffic_level = 2; if (save_ver >= 19) traffic_level = ld_u8() % 5;
     if (save_ver >= 7) { bm_land = ld_u8() % BL_N; bm_sea = ld_u8() % 5; bm_clim = ld_u8() % 5; bm_hills = ld_u8() % 5;
@@ -4779,7 +4779,7 @@ static void worlds_open(int more) {   // 0: NEIGHBORHOODS, 1: the EXPANSIONS she
 #endif
 }
 static void worlds_go(u32 seed, int mode) {
-    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = 7; bm_packed = wo_packed; wo_name_for(seed); strcpy(life_cap, wo_name); start_life();
+    life_seed = seed; life_mode = mode; life_started = 0; bm_gen = GEN_NEW; bm_packed = wo_packed; wo_name_for(seed); strcpy(life_cap, wo_name); start_life();
     cam_yaw = 2600; cam_pitch = 640; cam_dist = 1500; state = ST_LIFE; frame = 0;
 }
 // ---- CREATE A WORLD: make your own. What kind of life, then dials for the land (or the castaway's island), the map as you turn them ----
@@ -5302,7 +5302,7 @@ static void ne_stat(const BInfo *b, int sg) {
     if (b->road & 3) ne_st[3] += sg; if (b->terrain != BT_SEA) ne_st[4] += sg;
 }
 static void ne_rebuild(void) {   // the base map from the dials (the changes stay on it) and the town's numbers
-    wm_apply(); bm_gen = 7; bm_packed = wo_packed; bm_rename_clear(); bm_rename(0, nh_name); bm_new(nh_seed);
+    wm_apply(); bm_gen = GEN_NEW; bm_packed = wo_packed; bm_rename_clear(); bm_rename(0, nh_name); bm_new(nh_seed);
     const Settle *c = bm_set(0); ne_capx = c ? c->x : BM_N / 2; ne_capy = c ? c->y : BM_N / 2;
     memset(ne_st, 0, sizeof ne_st);
     for (int y = -23; y <= 23; y++) for (int x = -23; x <= 23; x++) { BInfo b; bm_block(ne_capx + x, ne_capy + y, &b); ne_stat(&b, 1); }
@@ -5470,7 +5470,7 @@ static void worlds_update(void) {
     if (PRESSED(PAD_DOWN)) wo_sel = (wo_sel + 1) % 4;
     if (PRESSED(PAD_TRIANGLE)) { wo_packed ^= 1; wo_painted = 0; audio_voice(VOICE_FINISHED); }   // TOWNS: ROOMY or PACKED
     if (PRESSED(PAD_SELECT)) { name_open(wo_name, 17, "NAME YOUR CAPITAL CITY", worlds_named); return; }
-    bm_gen = 7; bm_packed = wo_packed;
+    bm_gen = GEN_NEW; bm_packed = wo_packed;
     bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2; traffic_load(0);   // (a set world with its own dials)
     bm_ovr_clear();
     u32 sd = wo_seed_of(wo_sel); if (sd) paint_world(sd);
