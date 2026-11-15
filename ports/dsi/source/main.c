@@ -748,7 +748,9 @@ static LotPlan nlp[RING_MAX * 2 + 1][RING_MAX * 2 + 1];   // (D79) world version
 static u8 nrd[RING_MAX * 2 + 2][RING_MAX * 2 + 2];       // (D79) the streets of the blocks dx, dy = -3..4 round the lot (road bits: 1 along its top, 2 down its left, 4 its corner)
 static void nb7_load(void); static int far_foot7(const BInfo *b, const LotPlan *p, int *x0, int *z0, int *x1, int *z1);
 static int t7(void) { return bm_gen >= 7 && !zone && lot_bx >= 0 && lot_bx < 2000; }   // (D79) the lot you are on is in a world made by the town plan
+static u8 pk_ok;   // (d83) the parked cars of the lots round this one are worked out (0: again)
 static void nb_load(void) {
+    pk_ok = 0;
     for (int dy = -RING_MAX; dy <= RING_MAX; dy++) for (int dx = -RING_MAX; dx <= RING_MAX; dx++) { int x = lot_bx + dx, y = lot_by + dy; BInfo *b = &nbf[dy + RING_MAX][dx + RING_MAX];
         if (dx >= -1 && dx <= 1 && dy >= -1 && dy <= 1) continue;
         if (lot_bx >= 2000) zone_block(x, y, b); else if (x < 0 || y < 0 || x >= BM_N || y >= BM_N) { memset(b, 0, sizeof(BInfo)); b->terrain = BT_SEA; } else bm_block(x, y, b); }
@@ -758,7 +760,10 @@ static void nb_load(void) {
     else { bm_block(x, y, &nb[dy][dx]); int f; nb_pop[dy][dx] = (u8)pop_at(x, y, &f); nb_fam[dy][dx] = (u8)f; } }
     for (int dy = 0; dy < 3; dy++) for (int dx = 0; dx < 3; dx++) nbf[dy + RING_MAX - 1][dx + RING_MAX - 1] = nb[dy][dx];
     if (t7()) nb7_load(); }
-static void city_spawn(void); static void city_shift(int dx, int dy);
+static void city_spawn(void); static void city_shift(int dx, int dy); static void car_step(int frames);
+#ifdef DSTEST
+static void car_audit(void);
+#endif
 static int far_house(const BInfo *b) { return b->terrain != BT_SEA && b->lot >= LOT_HOUSE && b->lot != LOT_PARK && b->lot != LOT_SQUARE && b->lot != LOT_SKATE && b->lot != LOT_EMPTY && b->lot != LOT_RIVER && !(bm_gen >= 7 && b->lot == LOT_POOL); }   // (D81: a pool lot is a paved deck, no building)
 static int far_house7(const BInfo *b, const LotPlan *pl) { return far_house(b) && !(bm_gen >= 7 && b->lot == LOT_FARM && pl && pl->face == LF_NONE); }   // (D81: a field has crops and hedgerows, no barn)
 static void far_foot(const BInfo *b, int *x0, int *z0, int *x1, int *z1) { int w = 10 + (int)(b->h & 3) * 2, d = 8 + (int)((b->h >> 2) & 3) * 2, t0 = 4 + (24 - w) / 2 / 2 * 2 - 4; *x0 = t0 / 2; *x1 = (t0 + w + 1) / 2; *z0 = 2; *z1 = (4 + d + 1) / 2; }
@@ -928,6 +933,18 @@ static void shell_to_floors(int up) {   // (D36) a lot saved before D36: its upp
     for (int L = 1; L <= up && L <= UPN; L++) { for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) uflr[L - 1][y][x] = 2;
         for (int x = x0; x < x1; x++) { uhwl[L - 1][y0][x] = 1; uhwl[L - 1][y1][x] = 1; } for (int y = y0; y < y1; y++) { uvwl[L - 1][y][x0] = 1; uvwl[L - 1][y][x1] = 1; } }
 }
+static void bed_fix7(void) {   // (d83) a saved lot from when the four poster / family / single bed were smaller: a bed (2 x 2 or 2 x 1) whose far cells meet a wall, a thing, the plot's edge or no floor goes back to the one-cell bed (the PS1's bed_fix)
+    for (int i = 0; i < nobj; i++) {
+        int id = OBJ_ID(&objs[i]); if (id != 177 && id != 178 && id != 188) continue;
+        int w, h, l = OBJ_LV(&objs[i]); if (l > UPN) continue; obj_fp(&objs[i], &w, &h); int ok = 1, x0 = objs[i].x, y0 = objs[i].y;
+        for (int y = y0; y < y0 + h && ok; y++) for (int x = x0; x < x0 + w && ok; x++) {
+            if (x >= GN || y >= GN) { ok = 0; break; }
+            if (!(l ? uflr[l - 1][y][x] : flr[y][x])) { ok = 0; break; }
+            if (x > x0 && (l ? uvwl[l - 1][y][x] : vwl[y][x])) { ok = 0; break; }
+            if (y > y0 && (l ? uhwl[l - 1][y][x] : hwl[y][x])) { ok = 0; break; }
+            for (int j = 0; j < nobj && ok; j++) { if (j == i || OBJ_LV(&objs[j]) != l || IT_OF(&objs[j])->kind == 1) continue; int w2, h2; obj_fp(&objs[j], &w2, &h2); if (x >= objs[j].x && x < objs[j].x + w2 && y >= objs[j].y && y < objs[j].y + h2) ok = 0; } }
+        if (!ok) { objs[i].c = (u8)(16 >> 2); objs[i].i = (u8)(16 & 3); } }
+    occ_ok = 0; }
 #define LSV_N 48   // lots remembered (and saved)
 static LotSave lsv[LSV_N]; static int lsv_n, lsv_next;
 static void lot_save(void) { if (lot_bx < 0) return; int k = -1; for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == lot_bx && lsv[i].by == lot_by) k = i; if (k < 0) { if (lsv_n < LSV_N) k = lsv_n++; else { for (int t = 0; t < LSV_N && lot_owned(lsv[lsv_next].bx, lsv[lsv_next].by); t++) lsv_next = (lsv_next + 1) % LSV_N; k = lsv_next; lsv_next = (lsv_next + 1) % LSV_N; } }
@@ -950,7 +967,7 @@ static void lot_enter(int bx, int by) {   // the lot you walk into: what you bui
     yard_i0 = 0x7FFF; lot_bx = bx; lot_by = by; lot_dn = bm_gen >= 7 && bx >= 0 && bx < 2000 && bm_lot_face(bx, by) == LF_NORTH ? -1 : 1; lot_seed = (u32)(bx * 73856093 ^ by * 19349663); pick = -1; memset(slv, 0, sizeof slv); ed_lv = 0; int keep = LV; LV = 0;
     for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == bx && lsv[i].by == by) { LotSave *q = &lsv[i]; nobj = q->nobj; pcx = q->pcx; pcy = q->pcy; door_cx = q->dcx; door_cy = q->dcy; roof_st = q->roof; up_st = q->up; memcpy(flr, q->flr, sizeof flr); memcpy(hwl, q->hwl, sizeof hwl); memcpy(vwl, q->vwl, sizeof vwl); memcpy(objs, q->objs, sizeof objs); occ_ok = 0;
         if (q->hasup) { memcpy(uflr, q->ufl, sizeof uflr); memcpy(uhwl, q->uhw, sizeof uhwl); memcpy(uvwl, q->uvw, sizeof uvwl); } else { ups_clear(); shell_to_floors(up_st); }
-        nb_load(); LV = keep; return; }
+        bed_fix7(); nb_load(); LV = keep; return; }
     memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); ups_clear(); nobj = 0; occ_ok = 0; roof_st = up_st = 0;
     if (bx >= 2000) gen_zone(bx, by); else { BInfo bi; bm_block(bx, by, &bi);
 #ifdef DS_LOT
@@ -1381,7 +1398,7 @@ ITCM_CODE static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, 
 #define CARN (o_trf == 3 ? (prof_full ? 12 : 8) : o_trf * 3)
 typedef struct { int x, y, dir, stop; u8 on, stage, skin, shirt, hair, pants; u16 id; u32 ps; } Cit;
 typedef struct { u16 id; u8 rel, talks, taken; } CRel;
-typedef struct { int x, y, dx, dy; u16 col; } Car;
+typedef struct { int x, y, dx, dy; u16 col; int px, py, ang; s16 s, L, wt; s8 sg, lj, tx, ty; u8 on, st, tn, tj; } Car;   // (d83) x, y: its centre in 1/16 cells; dx, dy: its way (0, 0: not on the road); st: 0 straight, 1 in a turn (sg +1 right, -1 left, from px, py, s of L); lj: its street's slot; tj: the junction it has claimed (+1), tx ty its slot; tn: 0 straight 1 right 2 left; wt: steps held up
 static Cit cits[NCIT]; static CRel crt[64]; static Car cars[NCAR];
 static const char *const FNAMES[12] = { "Mia", "Leo", "Zoe", "Max", "Ivy", "Sam", "Ana", "Kai", "Eli", "Ola", "Dex", "Una" };
 static const char *const LNAMES[8] = { "Park", "Reyes", "Ford", "Nash", "Cole", "Vega", "Hart", "Lund" };
@@ -1397,6 +1414,40 @@ static u8 town_legacy;   // (D75) 1: a save from before D75: its townies are mad
 static u32 pers_key(const Cit *q) {   // (test builds) a townie's personality as one number: bars, sign, aspiration (from their seed; an old save's from the name)
     TrPers p; if (q->ps) trf_pers_from_seed(q->ps, q->stage, &p); else { char n[24], f[16], l[16]; cit_name(q, n); const char *sp = strchr(n, ' '); int k = sp ? (int)(sp - n) : (int)strlen(n); if (k > 15) k = 15; memcpy(f, n, (size_t)k); f[k] = 0; strncpy(l, sp ? sp + 1 : "", 15); l[15] = 0; trf_pers_from_name(f, l, q->stage, &p); }
     u32 k = 0; for (int b = 0; b < 5; b++) k = k * 11 + p.bar[b]; return (k * 12 + p.sign) * 6 + p.asp; }
+// ---- (d83) the traffic: cars keep to their lane (right hand), turn on arcs (right R 1 cell, left R 3), stop at a line before a junction, claim the junction first come first served
+// (one way through at a time: cars going straight along the same street share it, a turning car has it alone), wait for people in the road and keep a gap; they come in at the patch's edge (24+ cells from the lot)
+static u8 hz_on[3], vt_on[3], jcnt[9], jax[9], jtn[9];
+static const s8 CDX[4] = { 1, 0, -1, 0 }, CDY[4] = { 0, 1, 0, -1 };
+static void car_lanes(void) { for (int k = 0; k < 3; k++) { int a = 1, b = 1; if (t7()) for (int q = -1; q <= 1; q++) { if (!st_s(q, k - 1)) a = 0; if (!st_e(k - 1, q)) b = 0; } hz_on[k] = (u8)a; vt_on[k] = (u8)b; } }
+static int car_lane(Car *c, u32 g, int edge) {   // puts the car on a lane picked by the dice g (hz: lane row, dir); edge: at the patch's edge where it comes in. 0: no such lane
+    int hz = (int)(g & 1), row = (int)((g >> 1) % 3u), fw = (int)((g >> 3) & 1); if (!(hz ? hz_on[row] : vt_on[row])) return 0;
+    int d = hz ? (fw ? 0 : 2) : (fw ? 1 : 3), ln = (row - 1) * SLC + (hz ? (fw ? 16 : 14) : (fw ? 14 : 16)); c->dx = CDX[d]; c->dy = CDY[d]; c->lj = (s8)(row - 1); c->st = 0; c->tj = 0; c->tn = 0; c->wt = 0; c->ang = d * 8192;
+    if (hz) { c->y = ln * 16; if (edge) c->x = fw ? -SLC * 16 : SLC * 2 * 16 - 1; } else { c->x = ln * 16; if (edge) c->y = fw ? -SLC * 16 : SLC * 2 * 16 - 1; } return 1; }
+static int car_d(const Car *c) { return c->dx > 0 ? 0 : c->dy > 0 ? 1 : c->dx < 0 ? 2 : 3; }
+static int car_near(const Car *c, int r) { for (int k = 0; k < CARN; k++) { const Car *q = &cars[k]; if (q == c || !q->on) continue; int a = q->x - c->x, b = q->y - c->y; if (a * a + b * b < r * r) return 1; } return 0; }
+static int car_inj(const Car *c) { int cx = c->x, cy = c->y; for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int x0 = (i * SLC + 13) * 16 - 40, y0 = (j * SLC + 13) * 16 - 40; if (cx >= x0 && cx <= x0 + 160 && cy >= y0 && cy <= y0 + 160) return 1; } return 0; }
+static int car_ent(int d, int i) { return d < 2 ? (i * SLC + 13) * 16 : -((i * SLC + 17) * 16); }   // where, along its way, a car's turn starts in the junction square of slot i (the square is the 5 x 5 cells 13..17)
+static int car_a(const Car *c, int d) { return d == 0 ? c->x : d == 1 ? c->y : d == 2 ? -c->x : -c->y; }
+static int car_person(int px, int py, int r) { for (int k = 0; k < CITN; k++) { const Cit *q = &cits[k]; if (!cit_vis(q)) continue; int a = q->x - px, b = q->y - py; if (a * a + b * b < r * r) return 1; }
+    for (int k = 0; k < nsim && k < SIM_MAX; k++) { int a = sims[k].x - px, b = sims[k].y - py; if (a * a + b * b < r * r) return 1; } return 0; }
+static int car_blocked(const Car *c) {   // something ahead: a person within a cell or two, or a car closer than a gap
+    int fx = cosLerp(c->ang), fy = sinLerp(c->ang);
+    for (int dd = 16; dd <= 32; dd += 16) { int px = c->x + ((fx * dd) >> 12), py = c->y + ((fy * dd) >> 12);
+        if (car_person(px, py, 13)) return 1;
+        for (int k = 0; k < CARN; k++) { const Car *q = &cars[k]; if (q == c || !q->on) continue; int a = q->x - px, b = q->y - py; if (a * a + b * b < 15 * 15) return 1; } }
+    return 0; }
+static void car_rel(Car *c) { if (!c->tj) return; int ji = c->tj - 1; if (jcnt[ji] > 0) jcnt[ji]--; if (!jcnt[ji]) jtn[ji] = 0; c->tj = 0; }
+static int car_claim(Car *c, int d, int i) {   // the junction square of this street's slot i ahead: may it go in? (and which way: tn)
+    int jx = d & 1 ? c->lj : i, jy = d & 1 ? i : c->lj, ji = (jy + 1) * 3 + (jx + 1), cx = (jx * SLC + 15) * 16, cy = (jy * SLC + 15) * 16;
+    int tn = 0; { u32 g = hsh((u32)(c - cars) * 2654435u + (u32)minutes * 31u + (u32)c->x * 7u + (u32)c->y); int r = (int)(g % 10);   // (a turn only where the street across runs on)
+        int nd = (d + 1) & 3, ld = (d + 3) & 3; int okr = (nd & 1 ? vt_on : hz_on)[(nd & 1) ? jx + 1 : jy + 1], okl = (ld & 1 ? vt_on : hz_on)[(ld & 1) ? jx + 1 : jy + 1];
+        if (r < 2 && okr) tn = 1; else if (r < 4 && okl) tn = 2; }
+    if (car_person(cx, cy, 29)) return 0;
+    if (jcnt[ji] && (jax[ji] != (d & 1) || tn || jtn[ji])) return 0;
+    { int ed = tn == 1 ? (d + 1) & 3 : tn == 2 ? (d + 3) & 3 : d, ex = cx + CDX[ed] * 56, ey = cy + CDY[ed] * 56; int ln = ed & 1 ? (ed == 1 ? 14 : 16) : (ed == 0 ? 16 : 14);   // (the way out must be clear for a car's length or two)
+        if (ed & 1) ex = (jx * SLC + ln) * 16; else ey = (jy * SLC + ln) * 16;
+        for (int k = 0; k < CARN; k++) { const Car *q = &cars[k]; if (q == c || !q->on || q->tj == ji + 1) continue; int a = q->x - ex, b = q->y - ey; if (a * a + b * b < 30 * 30) return 0; } }
+    jcnt[ji]++; jax[ji] = (u8)(d & 1); if (tn) jtn[ji] = 1; c->tj = (u8)(ji + 1); c->tx = (s8)jx; c->ty = (s8)jy; c->tn = (u8)tn; return 1; }
 static void city_spawn(void) {
     int sl[9], ns = 0; for (int j = 0; j < 9; j++) if (nb[j / 3][j % 3].set != 255 && nb[j / 3][j % 3].terrain != BT_SEA) sl[ns++] = j;
     for (int k = 0; k < NCIT; k++) { Cit *c = &cits[k]; c->on = 0; c->stop = 0; if (!ns) continue; int j = (k < 6 && nb[1][1].set != 255) ? 4 : sl[k % ns], sy = j / 3 - 1, sx = j % 3 - 1;
@@ -1407,10 +1458,12 @@ static void city_spawn(void) {
         int cx = sx * SLC + lx, cy = sy * SLC + ly; if (far_solid(cx, cy)) continue;
         if (t7()) { int ok = 0; for (int t = 0; t < 8 && !ok; t++) { int a = (int)((h >> (t + 8)) & 1) ? 17 : 13, b = (int)((h >> (t * 3)) % 18), px = t & 1 ? b : a, py = t & 1 ? a : b; cx = sx * SLC + px; cy = sy * SLC + py; if (cit_street(cx, cy)) ok = 1; } if (!ok) continue; }
         c->x = cx * 16; c->y = cy * 16; c->dir = (int)((h >> 24) & 3); c->skin = (u8)((h >> 5) % 6); c->shirt = (u8)((h >> 9) % 6); c->hair = (u8)((h >> 13) % 6); c->pants = (u8)((h >> 17) % 4); c->on = 1; }
-    for (int k = 0; k < NCAR; k++) { Car *c = &cars[k]; if (!ns) { c->x = c->y = -9999; c->dx = c->dy = 0; continue; } u32 h = hsh((u32)k * 977u + (u32)lot_bx * 31u + (u32)lot_by * 7u); int j = (int)((k >> 1) % 3) - 1, hz = k & 1, fw = (int)((k >> 2) & 1); int at = (int)(h % (SLC * 3 * 16)) - SLC * 16;
-        if (hz) { c->y = (fw ? 16 : 14) * 16 + j * SLC * 16; c->x = at; c->dx = fw ? 1 : -1; c->dy = 0; } else { c->x = (fw ? 16 : 14) * 16 + j * SLC * 16; c->y = at; c->dx = 0; c->dy = fw ? 1 : -1; }
-        { static const u16 cc[6] = { C15(28, 6, 6), C15(8, 12, 28), C15(28, 26, 6), C15(10, 24, 10), C15(26, 26, 28), C15(4, 4, 6) }; c->col = cc[h % 6]; }
-        if (t7()) { int on = 1; for (int q = -1; q <= 1; q++) if (hz ? !st_s(q, j) : !st_e(j, q)) on = 0; if (!on) c->dx = c->dy = 0; } }   // (D79: a car only where the street runs the whole way)
+    car_lanes(); memset(jcnt, 0, sizeof jcnt); memset(jtn, 0, sizeof jtn);
+    for (int k = 0; k < NCAR; k++) { Car *c = &cars[k]; memset(c, 0, sizeof *c); c->x = c->y = -9999; if (!ns || k >= CARN) continue;
+        u32 h = hsh((u32)k * 977u + (u32)lot_bx * 31u + (u32)lot_by * 7u);
+        for (int t = 0; t < 12 && !c->on; t++) { u32 g = hsh(h + (u32)t * 7919u); if (!car_lane(c, g, 0)) continue; int at = (int)((g >> 12) % (u32)(SLC * 3 * 16)) - SLC * 16;
+            if (c->dx) c->x = at; else c->y = at; if (car_inj(c) || car_near(c, 44)) { c->x = c->y = -9999; continue; } { static const u16 cc[6] = { C15(28, 6, 6), C15(8, 12, 28), C15(28, 26, 6), C15(10, 24, 10), C15(26, 26, 28), C15(4, 4, 6) }; c->col = cc[h % 6]; } c->on = 1; }
+        if (!c->on) c->dx = c->dy = 0; }
 }
 static void city_step(int frames) {
     static const int DXs[4] = { 1, 0, -1, 0 }, DYs[4] = { 0, 1, 0, -1 };
@@ -1418,12 +1471,77 @@ static void city_step(int frames) {
         if (!(c->x & 15) && !(c->y & 15)) { int cx = c->x / 16, cy = c->y / 16, d = c->dir; if (hsh((u32)(frames * 31 + k)) % 100 < 30) d = (d + (hsh((u32)frames + (u32)k) & 1 ? 1 : 3)) & 3;
             for (int t = 0; t < 4; t++) { int dd = (d + t) & 3; if (cit_street(cx + DXs[dd], cy + DYs[dd])) { c->dir = dd; break; } } }
         { int nx = c->x + DXs[c->dir], ny = c->y + DYs[c->dir]; if (!(c->x & 15) && !(c->y & 15) && !cit_street(c->x / 16 + DXs[c->dir], c->y / 16 + DYs[c->dir])) continue; c->x = nx; c->y = ny; } }
-    for (int k = 0; k < CARN; k++) { Car *c = &cars[k]; c->x += c->dx; c->y += c->dy; int lo = -SLC * 16, hi = SLC * 2 * 16; if (c->x < lo) c->x = hi - 1; if (c->x >= hi) c->x = lo; if (c->y < lo) c->y = hi - 1; if (c->y >= hi) c->y = lo; }
+    car_step(frames);
+#ifdef DSTEST
+    car_audit();
+#endif
+}
+#ifdef DSTEST
+volatile u32 car_flt[8];   // (test builds) steps in which: cars overlap, a straight car is off its lane, two cars with crossing ways are in one square, a car is held 600 steps, cars on the road (sum), steps
+static void car_audit(void) {
+    car_flt[7]++; for (int k = 0; k < CARN; k++) { const Car *c = &cars[k]; if (!c->on) continue; car_flt[6]++; int d = car_d(c);
+        if (!c->st) { int ln = (d & 1 ? c->x : c->y) - c->lj * SLC * 16; int w = d == 0 ? 16 : d == 1 ? 14 : d == 2 ? 14 : 16; if (ln != w * 16) car_flt[1]++; }
+        if (c->wt >= 600) car_flt[3]++;
+        for (int q = k + 1; q < CARN; q++) { const Car *e = &cars[q]; if (!e->on) continue; int a = e->x - c->x, b = e->y - c->y; if (a * a + b * b < 11 * 11) car_flt[0]++;
+            if (c->tj && c->tj == e->tj && ((d & 1) != (car_d(e) & 1) || c->st || e->st)) car_flt[2]++; } } }
+#endif
+static void car_step(int frames) {
+    for (int n = 0; n < CARN; n++) { Car *c = &cars[(n + frames) % CARN];
+        if (!c->on) { if (!(hsh((u32)(frames * 131 + n)) & 63)) { Car t; memset(&t, 0, sizeof t); if (car_lane(&t, hsh((u32)frames * 977u + (u32)n * 31u + 5u), 1) && !car_near(&t, 44)) { t.col = c->col; t.on = 1; *c = t; } } continue; }
+        int d = car_d(c); if (c->st) {   // in a turn: along the arc
+            int R = c->L == 25 ? 16 : 48, v = 2; if (car_blocked(c)) { if (++c->wt > 900) { car_rel(c); c->on = 0; } continue; } c->wt = 0;
+            c->s = (s16)(c->s + v); if (c->s >= c->L) { int nd = c->sg > 0 ? (d + 1) & 3 : (d + 3) & 3;
+                c->x = c->px + CDX[d] * R + (c->sg > 0 ? -CDY[d] : CDY[d]) * R; c->y = c->py + CDY[d] * R + (c->sg > 0 ? CDX[d] : -CDX[d]) * R; c->dx = CDX[nd]; c->dy = CDY[nd]; c->st = 0; c->tn = 0; c->ang = nd * 8192; c->lj = (s8)(nd & 1 ? c->tx : c->ty); continue; }
+            { int ph = c->s * 8192 / c->L, sn = sinLerp(ph), cs = cosLerp(ph), sd = c->sg > 0 ? 1 : -1;
+              c->x = c->px + ((R * sn >> 12)) * CDX[d] + ((R * (4096 - cs)) >> 12) * (-CDY[d]) * sd; c->y = c->py + ((R * sn >> 12)) * CDY[d] + ((R * (4096 - cs)) >> 12) * CDX[d] * sd; c->ang = (d * 8192 + sd * ph) & 32767; }
+            continue; }
+        { int a = car_a(c, d), v = 3, stop = 0;
+          if (c->tj) { int ia = d & 1 ? c->ty : c->tx; if (a > car_ent(d, ia) + 90) { car_rel(c); } }   // (it has left the square)
+          else { int ni = -9; for (int q = 0; q < 3; q++) { int i = d < 2 ? q - 1 : 1 - q; if (car_ent(d, i) >= a - 1) { ni = i; break; } }
+              if (ni != -9) { int line = car_ent(d, ni) - 20; if (a + v > line && a <= line + 3) { if (!car_claim(c, d, ni)) { stop = 1; if (a < line) { int m = line - a; if (m < v) v = m; } else v = 0; } } } }
+          if (c->tj && c->tn && !stop) { int ia = d & 1 ? c->ty : c->tx, e = car_ent(d, ia); if (a + v >= e) { v = e - a; if (v < 0) v = 0; if (a + v >= e) { c->st = (u8)(c->tn); c->sg = (s8)(c->tn == 1 ? 1 : -1); c->L = (s16)(c->tn == 1 ? 25 : 75); c->s = 0; c->px = c->x + CDX[d] * v; c->py = c->y + CDY[d] * v;
+ c->x = c->px; c->y = c->py; c->wt = 0; continue; } } }
+          if (!v || car_blocked(c)) { if (++c->wt > 900) { car_rel(c); c->on = 0; } continue; } c->wt = 0;
+          c->x += CDX[d] * v; c->y += CDY[d] * v; int lo = -SLC * 16, hi = SLC * 2 * 16;
+          if (c->x < lo || c->x >= hi || c->y < lo || c->y >= hi) { car_rel(c); c->on = 0; } } }   // (it drove out of the patch: it comes in again at the far edge, later)
 }
 static void city_shift(int dx, int dy) {
     for (int k = 0; k < NCIT; k++) { cits[k].x -= dx * SLC * 16; cits[k].y -= dy * SLC * 16; }
-    for (int k = 0; k < NCAR; k++) { cars[k].x -= dx * SLC * 16; cars[k].y -= dy * SLC * 16; int w = SLC * 3 * 16, lo = -SLC * 16; if (cars[k].x < lo) cars[k].x += w; if (cars[k].x >= lo + w) cars[k].x -= w; if (cars[k].y < lo) cars[k].y += w; if (cars[k].y >= lo + w) cars[k].y -= w; }
+    car_lanes(); memset(jcnt, 0, sizeof jcnt); memset(jtn, 0, sizeof jtn);
+    for (int k = 0; k < NCAR; k++) { Car *c = &cars[k]; if (!c->on) continue; int d = car_d(c); if (k >= CARN) { c->on = 0; continue; } if (c->st || c->tj || car_inj(c)) { c->on = 0; continue; }   // (a car in a junction when the lot changes: gone, it comes in again)
+        c->x -= dx * SLC * 16; c->y -= dy * SLC * 16; int w = SLC * 3 * 16, lo = -SLC * 16;
+        if (c->x < lo) c->x += w; if (c->x >= lo + w) c->x -= w; if (c->y < lo) c->y += w; if (c->y >= lo + w) c->y -= w;
+        c->lj = (s8)((((c->lj + 1 - (d & 1 ? dx : dy)) % 3) + 3) % 3 - 1); if (!((d & 1) ? vt_on : hz_on)[c->lj + 1]) c->on = 0; else if (car_inj(c)) c->on = 0; }
 }
+static void rblock(int x, int z, int cs, int sn, int a0, int b0, int a1, int b1, int y0, int y1, u16 wall, u16 roof) {   // (d83) a car's box turned (cs, sn: its heading, 4.12): a along it, b to its right
+#define RX(a, b) (x + (((a) * cs - (b) * sn) >> 12))
+#define RZ(a, b) (z + (((a) * sn + (b) * cs) >> 12))
+    u16 sw = shade(wall, 6);
+    qd(RX(a0, b0), y0, RZ(a0, b0), RX(a1, b0), y0, RZ(a1, b0), RX(a1, b0), y1, RZ(a1, b0), RX(a0, b0), y1, RZ(a0, b0), wall);
+    qd(RX(a1, b0), y0, RZ(a1, b0), RX(a1, b1), y0, RZ(a1, b1), RX(a1, b1), y1, RZ(a1, b1), RX(a1, b0), y1, RZ(a1, b0), sw);
+    qd(RX(a1, b1), y0, RZ(a1, b1), RX(a0, b1), y0, RZ(a0, b1), RX(a0, b1), y1, RZ(a0, b1), RX(a1, b1), y1, RZ(a1, b1), wall);
+    qd(RX(a0, b1), y0, RZ(a0, b1), RX(a0, b0), y0, RZ(a0, b0), RX(a0, b0), y1, RZ(a0, b0), RX(a0, b1), y1, RZ(a0, b1), sw);
+    qd(RX(a0, b0), y1, RZ(a0, b0), RX(a1, b0), y1, RZ(a1, b0), RX(a1, b1), y1, RZ(a1, b1), RX(a0, b1), y1, RZ(a0, b1), roof);
+#undef RX
+#undef RZ
+}
+static Car pkc[7]; static int npk_;
+static void pk_build(void) {   // (D81, src/traffic.c pcars_*) parked cars on some homes' drives, from the town plan: five homes in eight, nose in, near the lot only; (d83) solid: obj_solid asks pcar_solid
+    npk_ = 0; pk_ok = 1;
+    if (t7()) for (int j = -1; j <= 1 && npk_ < 6; j++) for (int i = -1; i <= 1 && npk_ < 6; i++) {
+        const LotPlan *q = &nlp[j + RING_MAX][i + RING_MAX]; if (q->type == HT_NONE || !q->drv) continue;
+        u32 ph = bm_hash(lot_bx + i, lot_by + j, 0xCA85u); if ((ph & 7) >= 5) continue;
+        int nn = q->face == LF_NORTH, y0 = nn ? 22 - q->y1 : q->y0, y1 = nn ? 22 - q->y0 : q->y1, wy1 = nn ? 22 - q->wy0 : q->wy1;
+        int garage = q->wx1 || q->type == HT_RANCH, top = q->wx1 ? wy1 + 1 : q->type == HT_RANCH ? y1 + 1 : y0; if (18 - top < 4) continue;
+        int yc = garage ? ((top - BM_LOT0) * 16 + 30) : 168; if (nn) yc = 13 * 16 - yc;   // (centre row: against the garage, or by the street; seen from the south, then turned over)
+        int inn = ((ph >> 8) & 3) != 0, dir = (inn ? -1 : 1) * (nn ? -1 : 1);
+        static const u8 TCOL[6] = { 0, 1, 2, 3, 4, 5 }; (void)TCOL; static const u16 PC[6] = { C15(28, 5, 4), C15(6, 10, 26), C15(26, 26, 27), C15(5, 5, 7), C15(28, 24, 6), C15(8, 22, 10) };
+        Car *c = &pkc[npk_++]; c->x = i * SLC * 16 + (q->drv - BM_LOT0 + 1) * 16; c->y = j * SLC * 16 + yc; c->dx = 0; c->dy = dir; c->col = PC[(ph >> 16) % 6u]; }
+}
+static int pcar_solid(int cx, int cy) {   // (d83) a car parked on a drive is not walkable: the cells a quarter or more of it stands on (never the front door's column)
+    if (mode != M_LIVE || !t7()) return 0; if (!pk_ok) pk_build(); if (cx == door_cx) return 0;
+    for (int k = 0; k < npk_; k++) { const Car *c = &pkc[k]; int ox = MIN(cx * 16 + 8, c->x + 4) - MAX(cx * 16 - 8, c->x - 4), oy = MIN(cy * 16 + 8, c->y + 7) - MAX(cy * 16 - 8, c->y - 7); if (ox > 0 && oy > 0 && ox * oy >= 64) return 1; }
+    return 0; }
 static void draw_city(void) {
     static const u16 SK[6] = { C15(30, 24, 20), C15(27, 20, 15), C15(22, 15, 10), C15(16, 10, 6), C15(11, 7, 4), C15(29, 22, 17) };
     static const u16 SH[6] = { C15(26, 26, 26), C15(24, 8, 8), C15(8, 14, 26), C15(8, 22, 10), C15(28, 22, 8), C15(16, 8, 22) };
@@ -1435,19 +1553,11 @@ static void draw_city(void) {
         block(x - 90 * sc / 100, z - 50 * sc / 100, x + 90 * sc / 100, z + 50 * sc / 100, -300 * sc / 100, -590 * sc / 100, SH[c->shirt], SH[c->shirt]);
         block(x - 60 * sc / 100, z - 60 * sc / 100, x + 60 * sc / 100, z + 60 * sc / 100, -590 * sc / 100, -800 * sc / 100, SK[c->skin], c->stage == 5 ? C15(25, 25, 26) : HR[c->hair]); }
     gy_off = 0;
-    Car pk[7]; int npk = 0;   // (D81, src/traffic.c pcars_*) parked cars on some homes' drives, from the town plan: five homes in eight, nose in, near the lot only
-    if (t7() && mode == M_LIVE) for (int j = -1; j <= 1 && npk < 6; j++) for (int i = -1; i <= 1 && npk < 6; i++) {
-        const LotPlan *q = &nlp[j + RING_MAX][i + RING_MAX]; if (q->type == HT_NONE || !q->drv) continue;
-        u32 ph = bm_hash(lot_bx + i, lot_by + j, 0xCA85u); if ((ph & 7) >= 5) continue;
-        int nn = q->face == LF_NORTH, y0 = nn ? 22 - q->y1 : q->y0, y1 = nn ? 22 - q->y0 : q->y1, wy1 = nn ? 22 - q->wy0 : q->wy1;
-        int garage = q->wx1 || q->type == HT_RANCH, top = q->wx1 ? wy1 + 1 : q->type == HT_RANCH ? y1 + 1 : y0; if (18 - top < 4) continue;
-        int yc = garage ? ((top - BM_LOT0) * 16 + 30) : 168; if (nn) yc = 13 * 16 - yc;   // (centre row: against the garage, or by the street; seen from the south, then turned over)
-        int inn = ((ph >> 8) & 3) != 0, dir = (inn ? -1 : 1) * (nn ? -1 : 1);
-        static const u8 TCOL[6] = { 0, 1, 2, 3, 4, 5 }; (void)TCOL; static const u16 PC[6] = { C15(28, 5, 4), C15(6, 10, 26), C15(26, 26, 27), C15(5, 5, 7), C15(28, 24, 6), C15(8, 22, 10) };
-        Car *c = &pk[npk++]; c->x = i * SLC * 16 + (q->drv - BM_LOT0 + 1) * 16; c->y = j * SLC * 16 + yc; c->dx = 0; c->dy = dir; c->col = PC[(ph >> 16) % 6u]; }
+    if (!pk_ok) pk_build(); Car *pk = pkc; int npk = (t7() && mode == M_LIVE) ? npk_ : 0;
     for (int k = 0; k < CARN + npk; k++) { const Car *c = k < CARN ? &cars[k] : &pk[k - CARN]; if (polys > 2950) break; if (!c->dx && !c->dy) continue;   // (D49: a car with a hood, a set-back glass cabin and a roof, lamps at the right end, a dark skirt over the wheels, facing the way it drives)
         int ax = c->dx != 0, sg = (ax ? c->dx : c->dy) < 0 ? -1 : 1, x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, la = 300, lb = 140;   // (along its way, across)
-#define CARB(a0, b0, a1, b1, y0, y1, w, r) do { int A0 = sg * (a0), A1 = sg * (a1); if (ax) block(x + A0, z + (b0), x + A1, z + (b1), y0, y1, w, r); else block(x + (b0), z + A0, x + (b1), z + A1, y0, y1, w, r); } while (0)
+        int turning = k < CARN && c->st, cs = 0, sn = 0; if (turning) { cs = cosLerp(c->ang); sn = sinLerp(c->ang); }
+#define CARB(a0, b0, a1, b1, y0, y1, w, r) do { if (turning) rblock(x, z, cs, sn, a0, b0, a1, b1, y0, y1, w, r); else { int A0 = sg * (a0), A1 = sg * (a1); if (ax) block(x + A0, z + (b0), x + A1, z + (b1), y0, y1, w, r); else block(x + (b0), z + A0, x + (b1), z + A1, y0, y1, w, r); } } while (0)
         u16 col = c->col, glass = C15(13, 19, 25);
         CARB(-la + 20, -lb + 12, la - 20, lb - 12, -8, -48, C15(5, 5, 7), C15(6, 6, 8));                                 // (the skirt and the wheels)
         CARB(-la, -lb, la, lb, -40, -140, col, shade(col, 10));                                                           // (the body)
@@ -2701,7 +2811,8 @@ static void start_act(Sim *m, int obj, int sim) {   // walk to it, then do it
     else if (OBJ_ID(&objs[obj]) == ID_STAIRS) { const Obj *o = &objs[obj]; m->tx = o->x * 16; m->ty = o->y * 16; m->act = 50; m->act_amt = 0; m->face = 1; m->act_obj = obj; }   // (up: to the foot of the flight)
     else { const Obj *o = &objs[obj]; const Item *a = IT_OF(o); if (!((a->mask >> stage_of(m->age)) & 1)) { say(stage_of(m->age) < 3 ? "Too young for that" : "Not for your age"); return; } m->tx = o->x * 16; m->ty = o->y * 16; m->act = a->need; m->act_amt = a->amt; m->face = a->dur; m->act_obj = obj; }
 }
-static int obj_solid(int cx, int cy) { if (cx < 0 || cy < 0 || cx >= GN || cy >= GN) return LV ? 1 : far_solid(cx, cy); if (LV && !uflr[LV - 1][cy][cx]) return 1; if (!occ_ok) occ_build(); return occ[LV][cy][cx] >> 15; }   // (upstairs: only the floor there is)
+static int pcar_solid(int cx, int cy);
+static int obj_solid(int cx, int cy) { if (cx < 0 || cy < 0 || cx >= GN || cy >= GN) return LV ? 1 : far_solid(cx, cy) || pcar_solid(cx, cy); if (LV && !uflr[LV - 1][cy][cx]) return 1; if (!occ_ok) occ_build(); return (occ[LV][cy][cx] >> 15) || (!LV && pcar_solid(cx, cy)); }   // (upstairs: only the floor there is; d83: a parked car is solid)
 static int edge_open(int ax, int ay, int bx2, int by) {   // can a sim step between two neighbouring cells? walls block, doors do not
     int ina = ax >= 0 && ay >= 0 && ax < GN && ay < GN, inb = bx2 >= 0 && by >= 0 && bx2 < GN && by < GN;
     if (LV && (!ina || !inb)) return 0;   // (upstairs: the plot is all there is)
@@ -3944,6 +4055,7 @@ static void t7a_fail(int k, int bx, int by) { if (t7a_at[k][0] == 0) { t7a_at[k]
 // [8] a loft thing with no loft floor, [9] five of one thing in a row, [10] fewer beds than the home has (or none), [11] (D82) the loft: a free cell of the upper floor, or a thing up there, the landing cannot reach
 int t7b[12], t7b_at[12][2], t7b_fill[8], t7b_fn;   // t7b_fill: the furnished share of each home's rooms, in tenths, summed (and t7b_fn the rooms counted), for a look
 int t7h[5], t7l[8];
+int t7b_fam[8][4], t7b_fam_n;
 static void t7b_fail(int k, int bx, int by) { t7b[k]++; if (t7b_at[k][0] == 0) { t7b_at[k][0] = bx; t7b_at[k][1] = by; } }
 static int t7b_house_id(int id) { return (id >= 0 && id <= 11) || id == 13 || (id >= 15 && id <= 23) || id == 28 || id == 29 || id == 30 || id == 33 || id == 35 || id == 36 || id == 40 || id == 51 || id == 72 || id == 73 || id == 95 || id == 96 || id == 100 || id == 101 || id == 104 || id == 106 || id == 107 || id == 117 || (id >= 120 && id <= 123) || (id >= 177 && id <= 189); }
 static int t7b_bed_id(int id) { return id == 16 || id == 20 || id == 177 || id == 178 || id == 179 || id == 188; }
@@ -3952,6 +4064,7 @@ static void ds_t7_audit2(int bx, int by) {
     memset(sol, 0, sizeof sol); memset(lsol, 0, sizeof lsol); int beds = 0, bedcells = 0;
     for (int k = 0; k < nobj; k++) { const Obj *o = &objs[k]; int id = OBJ_ID(o), w, h; obj_fp(o, &w, &h); int lv = (o->rot >> 2) & 3, flat = IT_OF(o)->kind == 1;
         if (t7b_bed_id(id)) { beds++; bedcells += w * h; }
+        if (id == 178 && !lv && t7b_fam_n < 8) { t7b_fam[t7b_fam_n][0] = bx; t7b_fam[t7b_fam_n][1] = by; t7b_fam[t7b_fam_n][2] = o->x; t7b_fam[t7b_fam_n][3] = o->y; t7b_fam_n++; }   // (d83: the first double beds, for a shot)
         for (int y = o->y; y < o->y + h; y++) for (int x = o->x; x < o->x + w; x++) { if (x >= GN || y >= GN) continue;
             if (lv) { lsol[y][x] = 1; if (!uflr[0][y][x]) t7b_fail(8, bx, by); } else if (!flat) sol[y][x] = 1;
             if (!lv && t7b_house_id(id) && (flr[y][x] < 1 || flr[y][x] > 4)) t7b_fail(0, bx, by);
