@@ -2113,20 +2113,19 @@ static void bld_scan(void) {   // the enclosed buildings of the lot (cells the o
             if (!roof_st) b->sty = (u8)sy; b->col = (u8)cl; b->pit = (u8)pt; }
         if (zone == Z_ISLAND && b->sty == 1) b->sty = 2; }   // (the island's huts: thatch-brown gables)
 }
-static int bld_seen(const Bld *b) {   // (Cutaway) 0: a Bore of yours is inside, or you look at a storey under its top: no roof, so you see in
+static int bld_seen(const Bld *b) {   // (Cutaway) only the *controlled* Sim can open this building's roof
     if (mode != M_LIVE) return mode == M_BUILD && tool == 5;
-    if (o_roof == 2) return 0; if (o_roof == 1) return 1;
-    /* Do not hide every multi-storey roof just because the controlled
-     * Sim is on the ground. Outdoor camera views keep full houses visible.
-     * Hide a particular roof only for someone actually inside its walls. */
-    /* Bounding rectangles include empty courtyards and the gaps inside an
-     * L-shaped home. A sim there is outdoors and must not cut its roof. */
-    int id = (int)(b - blds) + 1;
-    for (int q = 0; q < nsim; q++) {
-        int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16);
-        if (cx >= 0 && cy >= 0 && cx < GN && cy < GN && bld_id[cy][cx] == id) return 0;
+    if (o_roof == 2 || o_roof == 1) return ds_camera_roof_visible(o_roof, 0);
+    /* The cutaway belongs to the camera, not any household member.
+     * When an unselected Sim goes inside, the exterior must stay intact.
+     * Use actual enclosed cells, not the bounding box of L courtyards. */
+    int inside = 0, id = (int)(b - blds) + 1;
+    if (ctl >= 0 && ctl < nsim) {
+        int cx = fdiv(sims[ctl].x + 8, 16), cy = fdiv(sims[ctl].y + 8, 16);
+        inside = cx >= 0 && cy >= 0 && cx < GN && cy < GN &&
+                 bld_id[cy][cx] == id;
     }
-    return 1;
+    return ds_camera_roof_visible(o_roof, inside);
 }
 static u32 roof_bits(void) { bld_scan(); u32 m = 0; for (int i = 0; i < nbld; i++) if (bld_seen(&blds[i])) m |= 1u << i; return m; }
 static int cell_top(int x, int y) { for (int L = UPN; L > 0; L--) if (uflr[L - 1][y][x]) return L; return 0; }   // the highest storey with a floor on that cell
@@ -2191,13 +2190,14 @@ static int view_lv(void) { return mode == M_LIVE ? slv[ctl] : ed_lv; }   // the 
 static u8 ID2CH[NITEM];
 static int show_lv(void) {   // exterior keeps its upper floors even when the roof is Hidden; indoor players keep a cutaway
     int top = top_lv(), vl = view_lv(), in = 0;
-    if (mode == M_LIVE && top > 0 && o_roof != 1) {
-        /* A sim in an actual enclosed cell reveals the active storey.
-         * Courtyards, garages and the gap in an L's bounding box do not. */
-        for (int q = 0; q < nsim && !in; q++) {
-            int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16);
-            in = ds_cell_enclosed(&hwl[0][0], &vwl[0][0], GN, cx, cy);
-        }
+    if (mode == M_LIVE && top > 0 && o_roof != 1 &&
+        ctl >= 0 && ctl < nsim) {
+        /* Only the camera's controlled Sim can open a floor cutaway.
+         * Another household member indoors must not erase the building
+         * while the player is outside or visiting another wing. */
+        int cx = fdiv(sims[ctl].x + 8, 16);
+        int cy = fdiv(sims[ctl].y + 8, 16);
+        in = ds_cell_enclosed(&hwl[0][0], &vwl[0][0], GN, cx, cy);
     }
     return ds_visible_storey_top(top, vl, mode == M_LIVE, o_roof, in,
                                  mode == M_BUILD && tool == 5);
