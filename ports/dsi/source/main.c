@@ -264,7 +264,8 @@ static void town_pick(int si) {   // the nearest home inside that settlement (so
 }
 static void draw_map(void) {
     const Settle *s = bm_set(cur_set);
-    ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, map_x0 < 0);
+    if (map_x0 < 0 || map_y0 < 0)
+        ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 1);
     int x0 = map_x0, y0 = map_y0;
     for (int j = 0; j < MH; j++) for (int i = 0; i < MW; i++) {
         BInfo b; int bx = x0 + i, by = y0 + j;
