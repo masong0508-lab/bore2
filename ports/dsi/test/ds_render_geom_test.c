@@ -216,6 +216,28 @@ int main(void) {
       assert(low_count == 4 && previous == 24);
       assert(previous * 7 * 330 / 40 == 330 * 21 / 5);
     }
+    /* Third-person touch on a high/horizon view must not walk the Sim
+     * behind the camera. A 2D tap is valid only where its view ray hits
+     * the ground/upper-floor plane at a finite positive distance. */
+    { float t = -1.0f;
+      assert(ds_touch_plane_hit(100.0f, -0.5f, 0.0f, &t));
+      assert(t > 199.9f && t < 200.1f);
+      t = -7.0f;
+      assert(!ds_touch_plane_hit(100.0f, 0.5f, 0.0f, &t));
+      assert(t == -7.0f); /* no invalid hit writes a target cell */
+      assert(!ds_touch_plane_hit(100.0f, 0.0f, 0.0f, &t));
+      assert(!ds_touch_plane_hit(100.0f, 0.00001f, 0.0f, &t));
+      assert(!ds_touch_plane_hit(100.0f, -0.00001f, 0.0f, &t));
+      assert(!ds_touch_plane_hit(100.0f, -0.5f, 100.0f, &t));
+      assert(!ds_touch_plane_hit(1000.0f, -0.01f, 0.0f, &t));
+      assert(ds_touch_plane_hit(1000.0f, -0.05f, 0.0f, &t));
+      assert(t > 19999.0f && t < 20001.0f);
+      /* Upstairs: a downward ray can hit an upper floor in front,
+       * but not a ceiling farther behind the current eye. */
+      assert(ds_touch_plane_hit(0.0f, 0.75f, 400.0f, &t));
+      assert(t > 533.0f && t < 534.0f);
+      assert(!ds_touch_plane_hit(0.0f, -0.75f, 400.0f, &t));
+    }
     puts("ds_render_geom_test: PASS");
     return 0;
 }
