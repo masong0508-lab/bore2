@@ -3104,6 +3104,44 @@ static int next_cell(int sx, int sy, int gx, int gy, int *nx, int *ny) {   // br
     return 0;
     #undef CL
 }
+/* A single interaction target is a reachable FREE tile beside a solid
+ * item's footprint. Do not walk through a bed, fridge, crop bed or counter
+ * to perform its action. The route checker uses the same collision and wall
+ * rules as normal Sims. Old saves and the item catalog are unchanged. */
+static int act_stand(const Sim *m, int obj, int *tx, int *ty) {
+    if (obj < 0 || obj >= nobj) return 0;
+    int actor = (int)(m - sims);
+    if (actor < 0 || actor >= nsim) return 0;
+    const Obj *o = &objs[obj];
+    if (OBJ_LV(o) != slv[actor]) return 0;
+    int prev = LV, sx = fdiv(m->x + 8, 16), sy = fdiv(m->y + 8, 16);
+    LV = slv[actor];
+    int w, h; obj_fp(o, &w, &h);
+    if (w < 1 || h < 1) { LV = prev; return 0; }
+    int best = 0x7fffffff, bx = 0, by = 0, nx, ny;
+    /* Rugs and other walkable floor decorations can be used on their tile. */
+    if (IT_OF(o)->kind == 1 && !obj_solid(o->x, o->y)) {
+        if ((sx == o->x && sy == o->y) ||
+            next_cell(sx, sy, o->x, o->y, &nx, &ny)) {
+            *tx = o->x * 16; *ty = o->y * 16; LV = prev; return 1;
+        }
+    }
+    for (int y = (int)o->y - 1; y <= (int)o->y + h; y++)
+    for (int x = (int)o->x - 1; x <= (int)o->x + w; x++) {
+        int fx, fy;
+        if (!ds_action_neighbor(o->x, o->y, w, h, x, y, &fx, &fy)) continue;
+        if (x < -SLC || y < -SLC || x >= SLC * 2 || y >= SLC * 2) continue;
+        if (!edge_open(fx, fy, x, y) || obj_solid(x, y)) continue;
+        int score = abs(sx - x) + abs(sy - y);
+        if (score >= best) continue;
+        if ((sx != x || sy != y) && !next_cell(sx, sy, x, y, &nx, &ny)) continue;
+        best = score; bx = x; by = y;
+    }
+    LV = prev;
+    if (best == 0x7fffffff) return 0;
+    *tx = bx * 16; *ty = by * 16;
+    return 1;
+}
 // ---- the dog and the ghosts (D31) ----
 static void dog_reset(void) { const Sim *m = &sims[ctl]; dog.x = dog.wx = dog.tx = fdiv(m->x + 8, 16) * 16 + 16; dog.y = dog.wy = dog.ty = fdiv(m->y + 8, 16) * 16; dog.hun = 80; dog.fx = 1; dog.fz = 0; if (obj_solid(dog.x / 16, dog.y / 16)) { dog.x = dog.wx = dog.tx = fdiv(m->x + 8, 16) * 16; } }
 static void dog_step(int frames) {
