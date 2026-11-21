@@ -3075,12 +3075,8 @@ static int edge_open(int ax, int ay, int bx2, int by) {   // can a sim step betw
         /* A Gen 7/8 lot is not a portal through its exterior wall.
          * Check the actual boundary, including doors, before stepping
          * outside. Previously all planned-world boundary walls were ignored. */
-        int cx = ina ? ax : bx2, cy = ina ? ay : by, w = 0;
-        if (ax < 0 || bx2 < 0) w = VWv(LV)[cy][0];
-        else if (ax >= GN || bx2 >= GN) w = VWv(LV)[cy][GN];
-        else if (ay < 0 || by < 0) w = HWv(LV)[0][cx];
-        else if (ay >= GN || by >= GN) w = HWv(LV)[GN][cx];
-        if (w && w != 5) return 0;
+        if (!ds_plot_boundary_open(&HWv(LV)[0][0], &VWv(LV)[0][0],
+                                   GN, ax, ay, bx2, by)) return 0;
         if (zone || bm_gen >= 7) return 1;
         return !(by != ay && (ay == GN - 1 || by == GN - 1) && bx2 != door_cx && ax != door_cx) ? 1 : 0;
     }
