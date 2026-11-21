@@ -631,8 +631,9 @@ static u8 uflr[UPN][GN][GN], uhwl[UPN][GN + 1][GN], uvwl[UPN][GN][GN + 1];
 static int LV, ed_lv, cam_y;                   // the storey being worked on (walking, taps, the plan), the one Buy and Build edit, the camera's rise
 static void ups_clear(void); static int obj_solid(int cx, int cy);
 static u16 occ[UPN + 1][GN][GN]; static int occ_ok; static u32 occ_sum, occ_epoch;   // what stands on each cell of each storey: its object + 1 (bit 15: it blocks walking), rebuilt when the objects change
+static void obj_delete(int index); // keeps active object commands valid after the array shifts
 static int ds_oob;   // (test readout: things a generator put outside the plot, taken off)
-static void occ_build(void) { for (int i = 0; i < nobj; ) { if (objs[i].x >= GN || objs[i].y >= GN) { objs[i] = objs[--nobj]; ds_oob++; } else i++; }   /* (nothing stands off the 13 x 13 plot, where the street and its pavement are) */
+static void occ_build(void) { for (int i = 0; i < nobj; ) { if (objs[i].x >= GN || objs[i].y >= GN) { obj_delete(i); ds_oob++; } else i++; }   /* (nothing stands off the 13 x 13 plot, where the street and its pavement are) */
     memset(occ, 0, sizeof occ); for (int i = 0; i < nobj; i++) { int w, h, l = OBJ_LV(&objs[i]); if (l > UPN) continue; obj_fp(&objs[i], &w, &h); u16 v = (u16)((i + 1) | (IT_OF(&objs[i])->kind != 1 ? 0x8000 : 0)); for (int y = objs[i].y; y < objs[i].y + h && y < GN; y++) for (int x = objs[i].x; x < objs[i].x + w && x < GN; x++) occ[l][y][x] = v; } occ_ok = 1; occ_epoch++; }
 static void occ_check(void) { u32 sm = (u32)nobj * 2654435761u; const u8 *q = (const u8 *)objs; for (int i = 0; i < nobj * 5; i++) sm = sm * 31 + q[i]; if (sm != occ_sum) { occ_sum = sm; occ_ok = 0; } }   // (once a frame, so nothing that moves an object is missed)
 static u8 flr[GN][GN], hwl[GN + 1][GN], vwl[GN][GN + 1];     // floors (0 none, else 1..5), walls on the cell edges (0 none, else 1..4)
@@ -659,6 +660,32 @@ static const u8 TRE[12][2] = { {5, 0}, {5, 1}, {0, 1}, {0, 0}, {2, 0}, {2, 1}, {
 static const char *const WSN[5] = { "Swimming in Cash", "Climb the Ladder", "Landlord", "Big Family", "Fight Champion" };
 static const char *const WSD[5] = { "Have $20,000.", "Get promoted twice.", "Own 3 lots.", "Have 5 people at home.", "Win the Bortua ladder." };
 static u8 slv[SIM_MAX];   // (D36) the storey each sim is on
+/* Modifying a furnishing can invalidate a queued action. Cancel only
+ * commands which actually address that item; social actions have no item.
+ * No new Sim fields, heap allocations or save-layout changes. */
+static void obj_cancel_use(int index) {
+    for (int i = 0; i < nsim; ++i) {
+        Sim *m = &sims[i];
+        if (m->act < 0 || m->act >= 100 || m->act_obj != index) continue;
+        m->act = -1; m->act_left = 0; m->act_obj = -1;
+        m->tx = m->wx = m->x;
+        m->ty = m->wy = m->y;
+    }
+}
+static void obj_delete(int index) {
+    if (index < 0 || index >= nobj) return;
+    int last = nobj - 1;
+    obj_cancel_use(index);
+    for (int i = 0; i < nsim; ++i) {
+        Sim *m = &sims[i];
+        if (m->act < 0 || m->act >= 100 || m->act_obj < 0) continue;
+        m->act_obj = ds_action_reindex_after_delete(m->act_obj, index, last);
+    }
+    objs[index] = objs[last];
+    nobj = last;
+    occ_ok = 0;
+}
+
 static char sname[SIM_MAX][20] = { "Ashley Newbie", "Ronald Bacon", "Kit Farlow" };
 static const char *const STGN[6] = { "Baby", "Toddler", "Child", "Teen", "Adult", "Elder" };   // the life stages: 0-2, 3-5, 6-12, 13-17, 18-59, 60+ years (a year is a day on the clock)
 // ============ LIFE (D31): careers, wants and fears, the dog, ghosts, roofs and storeys ============
@@ -1317,7 +1344,7 @@ static void ui_down(int tx, int ty) {
             if (tool == 0 || tool == 2) { drag = 3; build_apply(c); }
             else if (tool == 1) { u8 *e = edge_at(tx, ty); if (e) { wall_val = *e ? 0 : pal; *e = (u8)wall_val; drag = 4; ui_ver++; } }
             else if (tool == 3) { int o = obj_at(x, y); if (o >= 0) { if (OBJ_ID(&objs[o]) == ID_STAIRS) say("Stairs stay put"); else { drag = 5; move_obj = o; } } }   // (the PS1 cannot pick stairs up either)
-            else if (tool == 4) { int o = obj_at(x, y); if (o >= 0) { int sx = objs[o].x, sy = objs[o].y, st = OBJ_ID(&objs[o]) == ID_STAIRS; funds += IT_OF(&objs[o])->price / 2; objs[o] = objs[--nobj]; occ_ok = 0; say("Sold! Cha-ching!"); ui_ver++;
+            else if (tool == 4) { int o = obj_at(x, y); if (o >= 0) { int sx = objs[o].x, sy = objs[o].y, st = OBJ_ID(&objs[o]) == ID_STAIRS; funds += IT_OF(&objs[o])->price / 2; obj_delete(o); say("Sold! Cha-ching!"); ui_ver++;
                 if (st && LV < UPN) { u8 (*up)[GN] = FLv(LV + 1); int f = sx > 0 ? up[sy][sx - 1] : 0; if (!f && sx < GN - 1) f = up[sy][sx + 1]; if (!f && sy > 0) f = up[sy - 1][sx]; if (!f && sy < GN - 1) f = up[sy + 1][sx]; up[sy][sx] = (u8)f; } } } }   // (selling stairs closes their stairwell, if there is floor round it)
     }
 }
@@ -1327,7 +1354,7 @@ static void ui_hold(int tx, int ty) {
     else if (drag == 2) { int c = lot_touch(tx, ty); if (c >= 0 && (c % GN != pcx || c / GN != pcy)) { pcx = c % GN; pcy = c / GN; } }
     else if (drag == 3) { int c = lot_touch(tx, ty); if (c >= 0) build_apply(c); }
     else if (drag == 4) { u8 *e = edge_at(tx, ty); if (e && *e != wall_val) { *e = (u8)wall_val; ui_ver++; } }
-    else if (drag == 5) { int c = lot_touch(tx, ty), w, h; if (c >= 0 && move_obj >= 0) { obj_fp(&objs[move_obj], &w, &h); if ((c % GN != objs[move_obj].x || c / GN != objs[move_obj].y) && fp_free(c % GN, c / GN, w, h, move_obj)) { objs[move_obj].x = (u8)(c % GN); objs[move_obj].y = (u8)(c / GN); occ_ok = 0; pcx = c % GN; pcy = c / GN; ui_ver++; } } }
+    else if (drag == 5) { int c = lot_touch(tx, ty), w, h; if (c >= 0 && move_obj >= 0) { obj_fp(&objs[move_obj], &w, &h); if ((c % GN != objs[move_obj].x || c / GN != objs[move_obj].y) && fp_free(c % GN, c / GN, w, h, move_obj)) { obj_cancel_use(move_obj); objs[move_obj].x = (u8)(c % GN); objs[move_obj].y = (u8)(c / GN); occ_ok = 0; pcx = c % GN; pcy = c / GN; ui_ver++; } } }
 }
 static void ui_up(void) {
     if (drag == 1) { pick = drag_item; prot = 0; ui_ver++; }                                   // a tap on a card: pick it, then drag on the plan
@@ -2413,7 +2440,7 @@ static void isl_done(int i, int k, int o) {   // a gathering finished (the PS1's
         here = ds_action_reached(objs[o].x, objs[o].y, w, h,
                                  fdiv(m->x + 8, 16), fdiv(m->y + 8, 16));
     }
-    #define GONE() do { if (here) { objs[o] = objs[--nobj]; occ_ok = 0; } } while (0)
+    #define GONE() do { if (here) obj_delete(o); } while (0)
     if (me) trg_ev(EV_GATHERS, 1);
     switch (k) {
         case G_WOOD: isl_wood++; if (me) say("+1 Wood"); break;
@@ -2447,7 +2474,7 @@ static int spot_near(int cx, int cy, int w, int hh, int *ox, int *oy) {   // a w
         if (ok && cost < best) { best = cost; *ox = x0; *oy = y0; } }
     return best < (1 << 30);
 }
-static void clear_ground(int x0, int y0, int w, int hh) { int n = 0; for (int y = y0; y < y0 + hh; y++) for (int x = x0; x < x0 + w; x++) { int o = obj_at(x, y); if (o >= 0 && wild_ch(ID2CH[OBJ_ID(&objs[o])])) { objs[o] = objs[--nobj]; occ_ok = 0; n++; } }
+static void clear_ground(int x0, int y0, int w, int hh) { int n = 0; for (int y = y0; y < y0 + hh; y++) for (int x = x0; x < x0 + w; x++) { int o = obj_at(x, y); if (o >= 0 && wild_ch(ID2CH[OBJ_ID(&objs[o])])) { obj_delete(o); n++; } }
     if (n) { static char t[40]; isl_wood += n; sprintf(t, "Cleared the ground: +%d wood", n); say(t); } }
 static void isl_make(int k) {   // the PS1's isl_make: the thing goes near the camp's fire (a hut is built round its bed; the raft goes on the shore)
     if (!isl_can(k)) { say("Not enough to make that"); return; }
@@ -2929,7 +2956,7 @@ static void start_soc(int ai, int tgt, int id) {
     }
     Sim *m = &sims[ai]; m->tx = tx; m->ty = ty; m->act = 3 + 100;
     m->tgt = tgt; m->soc = id; m->act_amt = 50;
-    m->face = 120; m->act_left = 0;
+    m->face = 120; m->act_left = 0; m->act_obj = -1;
 }
 static void sim_die(int k) { st_died++;   // an elder passes away: a statue marks the spot and the household closes up
     Sim *m = &sims[k]; int cx = fdiv(m->x + 8, 16), cy = fdiv(m->y + 8, 16); static char bf[40]; sprintf(bf, "%s passed away", sname[k]); say(bf); ghost_add(m);
@@ -3343,7 +3370,7 @@ static int arrive(int i) {   // at the thing: start doing it (0: nothing to do a
     }
     if (m->act == 80) { if (isl_food > 0) { isl_food--; m->act = 0; m->act_amt = 70; m->face = 150; life_ver++; } else { if (i == ctl) say("Tummy rumbles... try berries or fish"); m->act = -1; return 0; } }   // (the castaway's meal: from what was gathered)
     m->act_left = m->face; trg_arrive(i);
-    if (m->act >= 100) { if (m->tgt >= 0) { Sim *o = &sims[m->tgt]; o->act_left = m->face; o->act = 3 + 100; o->act_amt = 0; } m->act = 3; apply_soc(i, m->tgt, m->soc); }
+    if (m->act >= 100) { if (m->tgt >= 0) { Sim *o = &sims[m->tgt]; o->act_left = m->face; o->act = 3 + 100; o->act_amt = 0; o->act_obj = -1; } m->act = 3; apply_soc(i, m->tgt, m->soc); }
     return 1;
 }
 // ---- (D44) Real time: the DS's own clock (the ARM7 reads the clock chip into the transfer region every second: tools/dsbuild/arm7/main7.c).
@@ -4338,7 +4365,7 @@ static void popup_pick(int k) {   // (D82) a button of the thing's popup (touch,
                 else if (cd == 86) { int g_ = arcade_game_at(ob->x, ob->y), pr_ = ag_price(g_); if (funds < pr_) say("Your wallet says no!"); else { funds -= pr_; ag_open(g_); } }   // (D46)
                 else if (cd == 87) ag_open(99);
                 else if (cd >= 90 && cd <= 96) gt_furn(cd);   // (D53) the Boreagotchi things
-                else if (cd == 85) { objs[popup_i] = objs[--nobj]; occ_ok = 0; has_board = 1; say("A skateboard! Menu > Board rides it"); skate_on(); }   // (D44: the PS1's PICKBOARD)
+                else if (cd == 85) { obj_delete(popup_i); has_board = 1; say("A skateboard! Menu > Board rides it"); skate_on(); }   // (D44: the PS1's PICKBOARD)
 }
 static void live_touch(int tx, int ty) {
     if (mg_ui) return;   // (D46: the mini-game reads the stylus itself)
