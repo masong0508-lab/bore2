@@ -37,6 +37,11 @@ jobs:
         run: |
           OUT="$PWD/out-island" XTRA="-DDSTEST -DDS_ISL_TEST" bash tools/dsbuild/mkp.sh
           DSRUN=/tmp/dsrun bash ports/dsi/test/ds_island_smoke.sh "$PWD/out-island"
+      - name: Emulate furnished-home interaction routes
+        timeout-minutes: 8
+        run: |
+          OUT="$PWD/out-homes" XTRA="-DDSTEST -DDS_ACT_HOMES -DDS_ACT_HOMES_LIMIT=8" bash tools/dsbuild/mkp.sh
+          DSRUN=/tmp/dsrun bash ports/dsi/test/ds_homes_smoke.sh "$PWD/out-homes"
       - name: Upload DS gameplay screenshot
         if: always()
         uses: actions/upload-artifact@v4
@@ -45,6 +50,7 @@ jobs:
           path: |
             out/flow.ppm
             out-island/island.ppm
+            out-homes/homes.ppm
           if-no-files-found: ignore
       - name: Name it
         run: mkdir -p rom && cp out/bore.nds rom/bore2_dsi_${GITHUB_SHA::7}.nds && ls -la rom
