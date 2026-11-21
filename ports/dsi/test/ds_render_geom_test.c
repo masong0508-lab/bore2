@@ -10,6 +10,17 @@ static void floor_rect(int x, int y, int w, int h, int *v) {
 static int overlaps(int *a, int *b) {
     return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
 }
+static void room(unsigned char *hw, unsigned char *vw, int n,
+                 int x0, int y0, int x1, int y1) {
+    for (int x = x0; x < x1; ++x) {
+        hw[y0 * n + x] = 1;
+        hw[y1 * n + x] = 1;
+    }
+    for (int y = y0; y < y1; ++y) {
+        vw[y * (n + 1) + x0] = 1;
+        vw[y * (n + 1) + x1] = 1;
+    }
+}
 int main(void) {
     int living[4], kitchen[4], hall[4];
     floor_rect(1, 1, 5, 5, living);
@@ -62,6 +73,25 @@ int main(void) {
     assert(ds_street_ground_lift(14, 13, 1, 1, 4, 1) == 24);
     assert(ds_street_ground_lift(8, 8, 1, 1, 3, 1) == 0);
     assert(ds_street_ground_lift(8, 8, 1, 1, 3, 0) == 0);
+    /* The bounding box of two wings includes open air. The cutaway test
+     * must use actual wall containment, not a rectangle around both. */
+    unsigned char hw[9 * 8] = {0}, vw[8 * 9] = {0};
+    room(hw, vw, 8, 1, 1, 4, 4);
+    room(hw, vw, 8, 4, 4, 7, 7);
+    assert(ds_cell_enclosed(hw, vw, 8, 2, 2));
+    assert(ds_cell_enclosed(hw, vw, 8, 5, 5));
+    assert(!ds_cell_enclosed(hw, vw, 8, 5, 2));
+    assert(!ds_cell_enclosed(hw, vw, 8, 0, 0));
+    assert(!ds_cell_enclosed(hw, vw, 8, -1, 0));
+    /* Doors (5) count as a roofed entry; a fence (6) does not. */
+    hw[1 * 8 + 2] = 5;
+    assert(ds_cell_enclosed(hw, vw, 8, 2, 2));
+    hw[1 * 8 + 2] = 6;
+    assert(!ds_cell_enclosed(hw, vw, 8, 2, 2));
+    hw[1 * 8 + 2] = 1;
+    /* A missing end wall opens the entire room to outdoors. */
+    vw[2 * 9 + 1] = 0;
+    assert(!ds_cell_enclosed(hw, vw, 8, 2, 2));
     puts("ds_render_geom_test: PASS");
     return 0;
 }
