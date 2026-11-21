@@ -87,6 +87,8 @@ def main(argv=None):
                          "passed": False, "tested": 0, "differences": None}
                 try:
                     env = dict(os.environ, GEN=str(gen))
+                    if action == "plan":
+                        env["V"] = "1"  # include exact coords for walls reported outside plan
                     proc = subprocess.run(
                         [str(SIM), action, seed_text],
                         cwd=ROOT, env=env, text=True, capture_output=True,
