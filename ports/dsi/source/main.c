@@ -2009,10 +2009,28 @@ static void bld_scan(void) {   // the enclosed buildings of the lot (cells the o
         int big = kind >= LOT_SHOP && kind != LOT_PARK && kind != LOT_FARM;
         b->sty = (u8)(roof_st ? (roof_st == 1 ? 1 : roof_st == 2 ? 2 : 3) : (t >= 2 || (w >= 9 && dd >= 8 && (h & 3) == 0) || (big && (h & 1)) ? 1 : 2 + ((h >> 2) & 1)));   // (the PS1's dice: towers and big blocks flat, else hip or gable)
         b->col = (u8)(zone == Z_ISLAND ? 2 : (h >> 4) % 6); b->pit = (u8)(1 + ((h >> 8) & 1));
-        if (t7() && !roof_st && kind >= LOT_HOUSE && kind <= LOT_APART) { static int pk = -1; static LotPlan pp; if (pk != lot_bx * 4096 + lot_by) { pk = lot_bx * 4096 + lot_by; bm_lot_plan(lot_bx, lot_by, &bi, &pp); }   // (D80) a home's roof comes from the town plan: its form, its neighbourhood's two colours
+        if (t7() && !roof_st && kind >= LOT_HOUSE && kind <= LOT_APART) {
+            static int pk = -1, gen = -1, edit = -1;
+            static u32 sseed = ~0u; static LotPlan pp;
+            u32 now_seed = bm_seed();
+            if (pk != lot_bx * 4096 + lot_by || gen != bm_gen ||
+                edit != bm_edit_stamp || sseed != now_seed) {
+                pk = lot_bx * 4096 + lot_by; gen = bm_gen;
+                edit = bm_edit_stamp; sseed = now_seed;
+                bm_lot_plan(lot_bx, lot_by, &bi, &pp);
+            }   // (D80) a home's roof comes from the town plan: its form, its neighbourhood's two colours
             int sy, pt, cl; if (plan_roof(&pp, &sy, &pt, &cl)) { b->sty = (u8)sy; b->col = (u8)cl; b->pit = (u8)pt; } }
-        if (!zone && lot_bx >= 0 && lot_bx < 2000) { static int pk = -1; static LotPlan pp; static BInfo pbi; int sy, pt, cl;   // (D82) the PS1's roof rule (roof_pick): the dice of the building's place in the whole map, a home's form and colours from its plan
-            if (bm_gen >= 7 && pk != lot_bx * 4096 + lot_by) { pk = lot_bx * 4096 + lot_by; bm_block(lot_bx, lot_by, &pbi); bm_lot_plan(lot_bx, lot_by, &pbi, &pp); }
+        if (!zone && lot_bx >= 0 && lot_bx < 2000) {
+            static int pk = -1, gen = -1, edit = -1;
+            static u32 sseed = ~0u; static LotPlan pp; static BInfo pbi;
+            int sy, pt, cl; u32 now_seed = bm_seed();
+            if (bm_gen >= 7 && (pk != lot_bx * 4096 + lot_by ||
+                gen != bm_gen || edit != bm_edit_stamp || sseed != now_seed)) {
+                pk = lot_bx * 4096 + lot_by; gen = bm_gen;
+                edit = bm_edit_stamp; sseed = now_seed;
+                bm_block(lot_bx, lot_by, &pbi);
+                bm_lot_plan(lot_bx, lot_by, &pbi, &pp);
+            }
             roof_dice(lot_bx * BM_BLK + BM_LOT0 + b->x0, lot_by * BM_BLK + BM_LOT0 + b->y0, w, dd, t, bm_gen >= 7 && pk == lot_bx * 4096 + lot_by ? &pp : 0, &sy, &pt, &cl);
             if (!roof_st) b->sty = (u8)sy; b->col = (u8)cl; b->pit = (u8)pt; }
         if (zone == Z_ISLAND && b->sty == 1) b->sty = 2; }   // (the island's huts: thatch-brown gables)
@@ -2164,12 +2182,15 @@ world:
 }
 static u32 world_sig(void) {   // (D41) what the world round the lot depends on
     u32 h = 2166136261u; h = (h ^ (u32)(mode == M_LIVE)) * 16777619u; h = (h ^ (u32)zone) * 16777619u; h = (h ^ (u32)lot_bx) * 16777619u; h = (h ^ (u32)lot_by) * 16777619u; h = (h ^ (u32)nb_ok) * 16777619u;
+    h = (h ^ bm_seed()) * 16777619u;
+    h = (h ^ (u32)bm_gen) * 16777619u;
+    h = (h ^ (u32)bm_edit_stamp) * 16777619u;
     h = (h ^ (u32)(ring_r | gx_far << 4 | o_look << 10 | o_out << 12 | lit_on << 13 | o_det << 14 | o_chk << 15 | o_tex << 16)) * 16777619u;
     h = (h ^ (u32)fm_season()) * 16777619u; for (int j = 0; j < 3; j++) for (int i = 0; i < 3; i++) h = (h ^ nb_pop[j][i]) * 16777619u; return h; }
 static u32 still_sig(int yaw, int part) {   // (D39) everything a still list depends on: when this changes, it is recorded again (D41: part 0 the build, 1 the things)
     u32 h = 2166136261u + (u32)part;
     #define HM(v) h = (h ^ (u32)(v)) * 16777619u
-    HM(fm_season()); HM(mode); HM(zone); HM(lot_bx); HM(lot_by); HM(nb_ok); HM(nobj); HM(roof_st); HM(tool); HM(ed_lv); HM(view_lv()); HM(door_cx + door_cy * 32); HM(lit_on); HM(lit_sgn);
+    HM(fm_season()); HM(mode); HM(zone); HM(bm_seed()); HM(bm_gen); HM(bm_edit_stamp); HM(lot_bx); HM(lot_by); HM(nb_ok); HM(nobj); HM(roof_st); HM(tool); HM(ed_lv); HM(view_lv()); HM(door_cx + door_cy * 32); HM(lit_on); HM(lit_sgn);
     int show = show_lv(), top = top_lv(); HM(show); HM(top); if (part == 0) { HM(roof_bits()); HM(roof_st | lot_seed << 2); }
     HM(o_det | o_chk << 1 | o_shd << 2 | o_lit << 3 | o_roof << 4 | o_dd << 6 | o_sty << 8 | o_trf << 10 | o_look << 12 | o_out << 14 | ring_r << 16 | prof_full << 20 | o_tex << 22);
     { const u32 *w = (const u32 *)flr; for (unsigned k = 0; k < sizeof flr / 4; k++) HM(w[k]); }
