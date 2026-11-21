@@ -135,6 +135,28 @@ int main(void) {
     assert(ds_visible_storey_top(3, 1, 0, 0, 0, 0) == 1);
     assert(ds_visible_storey_top(3, 1, 0, 0, 0, 1) == 3);
     assert(ds_visible_storey_top(0, 0, 1, 2, 0, 0) == 0);
+    /* Mixed household positions must not trigger camera-wide cutaway.
+     * Another Bore is indoors; the *controlled* one is outside between
+     * the wings. Roof and upper floors stay visible until control moves
+     * to the person inside. */
+    { unsigned char ch[8 * 9] = {0}, cv[8 * 9] = {0};
+      int px[3] = {2, 5, 0}, py[3] = {2, 2, 0}, n = 8;
+      room(ch, cv, n, 1, 1, 4, 4);
+      assert(ds_cell_enclosed(ch, cv, n, px[0], py[0]));
+      assert(!ds_cell_enclosed(ch, cv, n, px[1], py[1]));
+      for (int camera = 0; camera < 2; ++camera) {
+          int inside = ds_cell_enclosed(ch, cv, n, px[camera], py[camera]);
+          assert(ds_camera_roof_visible(0, inside) == (camera == 1));
+          assert(ds_visible_storey_top(2, 0, 1, 0, inside, 0) ==
+                 (camera == 0 ? 0 : 2));
+          assert(ds_camera_roof_visible(1, inside) == 1);
+          assert(ds_camera_roof_visible(2, inside) == 0);
+          assert(ds_visible_storey_top(2, 0, 1, 1, inside, 0) == 2);
+      }
+      /* Camera outside with someone indoors never hides their building. */
+      assert(ds_camera_roof_visible(0,
+             ds_cell_enclosed(ch, cv, n, px[1], py[1])) == 1);
+    }
     puts("ds_render_geom_test: PASS");
     return 0;
 }
