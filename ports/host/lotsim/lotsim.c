@@ -322,7 +322,19 @@ int main(int argc, char **argv) {
                 int ex0 = pl.x0, ey0 = pl.y0, ex1 = pl.x1, ey1 = pl.y1; if (pl.wx1) { if (pl.wx0 < ex0) ex0 = pl.wx0; if (pl.wx1 > ex1) ex1 = pl.wx1; if (pl.type == HT_TERRACE) { if (pl.wy0 < ey0) ey0 = pl.wy0; if (pl.wy1 > ey1) ey1 = pl.wy1; } }
                 for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) { char c = lifeMap[oy + y][ox + x]; if (!(c == 'W' || c == 'E' || c == 'D')) continue;
                     if (x >= ex0 && x <= ex1 && y >= ey0 && y <= ey1) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-                    else if (c != 'D' && wallMap[oy + y][ox + x]) { fbad++; if (getenv("V")) printf("outside wall %d %d at %d,%d type %d\n", bx, by, x, y, pl.type); } }
+                    else if (c != 'D' && wallMap[oy + y][ox + x]) {
+                         // The plan outlines the primary house, but house7 can also
+                         // build a separate 2x2 backyard shed. Accept only the whole
+                         // shed at its known corner: malformed/orphan walls still fail.
+                         int sx = pl.drv && pl.drv < 9 ? 15 : 7;
+                         int sy = pl.face == LF_NORTH ? 15 : 6;
+                         int shed = pl.type != HT_MANSION && pl.type != HT_TERRACE &&
+                                    x >= sx && x < sx + 2 && y >= sy && y < sy + 2;
+                         if (shed) for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++)
+                             if (lifeMap[oy + sy + j][ox + sx + i] != 'W' ||
+                                 !wallMap[oy + sy + j][ox + sx + i]) shed = 0;
+                         if (!shed) { fbad++; if (getenv("V")) printf("outside wall %d %d at %d,%d type %d\n", bx, by, x, y, pl.type); }
+                     } }
                 if (x0 != ex0 || y0 != ey0 || x1 != ex1 || y1 != ey1) { bbad++; if (getenv("V")) printf("body %d %d type %d face %d: walls %d,%d..%d,%d plan %d,%d..%d,%d\n", bx, by, pl.type, pl.face, x0, y0, x1, y1, ex0, ey0, ex1, ey1); }
                 if (lifeMap[oy + pl.dy][ox + pl.dx] != 'D') { dbad++; if (getenv("V")) printf("door %d %d type %d: plan %d,%d has '%c'\n", bx, by, pl.type, pl.dx, pl.dy, lifeMap[oy + pl.dy][ox + pl.dx]); }
                 if (pl.drv) { int st = pl.face == LF_NORTH ? BM_LOT0 + 1 : BM_BLK - 2; if (floorMap[oy + st][ox + pl.drv] != FL_PAVING || floorMap[oy + st][ox + pl.drv + 1] != FL_PAVING) { vbad++; if (getenv("V")) printf("drive %d %d type %d face %d drv %d: floor %d %d\n", bx, by, pl.type, pl.face, pl.drv, floorMap[oy + st][ox + pl.drv], floorMap[oy + st][ox + pl.drv + 1]); } }
