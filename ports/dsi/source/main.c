@@ -4586,12 +4586,16 @@ static void ds_road_audit(void) {
 }
 #endif
 #ifdef DS_ACT_HOMES
+#ifndef DS_ACT_HOMES_LIMIT
+#define DS_ACT_HOMES_LIMIT 0 /* 0 means the full 90x90 map; CI uses a sample */
+#endif
 // (D80) test build -DDS_ACT_HOMES: in every plan home of a stretch of the map (both facings), sim 0 is sent to use each thing indoors, from the hall by the front door; it must get there.
 // ah[0] homes, [1] things tried, [2] never reached, [3] reached but not used, [4] refused (age), [5] done; ah_at[k] the first lot and the item of failure k as bx, by, id; ah_id[id] failures by item
 int ah[8], ah_at[3][3], ah_id[256];
 static void ds_act_homes(void) {
     static int stage; if (mode != M_LIVE || stage) return; stage = 1;
-    for (int by = 380; by < 470; by++) for (int bx = 480; bx < 570; bx++) {
+    for (int by = 380; by < 470 && (!DS_ACT_HOMES_LIMIT || ah[0] < DS_ACT_HOMES_LIMIT); by++)
+    for (int bx = 480; bx < 570 && (!DS_ACT_HOMES_LIMIT || ah[0] < DS_ACT_HOMES_LIMIT); bx++) {
         BInfo b; bm_block(bx, by, &b); LotPlan pl; bm_lot_plan(bx, by, &b, &pl); if (!pl.type) continue;
         lot_enter(bx, by); LV = 0; ah[0]++;
         int n = nobj;
