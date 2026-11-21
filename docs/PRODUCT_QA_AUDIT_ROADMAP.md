@@ -10,6 +10,12 @@ The [world-coherence CI gate](../test/world_coherence.py) and [DS town audit enf
 
 Evidence: [PS1 and host run](https://github.com/masong0508-lab/bore2/actions/runs/44956101766), [DS run](https://github.com/masong0508-lab/bore2/actions/runs/44955879489). **QA-009 is protected by an initial automated regression gate, not fully resolved:** native gameplay camera/roof/floor captures and shared world/lot render-state audits remain outstanding. Do not infer any change to the actual renderer or new hardware measurements from these tests.
 
+## DS rendering and emulator visual QA checkpoint — 2026-11-21 (PRs #4–#6)
+
+- **QA-009 partial source fix:** [PR #4](https://github.com/masong0508-lab/bore2/pull/4) (`2b0177d`) corrected DS lot-preview street masks, L-garage presentation and outdoor upper-floor visibility in Roofs: Hide. [PR #5](https://github.com/masong0508-lab/bore2/pull/5) (`180dd51`) prevents a *noncontrolled household member* from cutting away the camera's floors/roof. Host C99, DS ROM/gameplay/emulator and PS1 build CI all passed.
+- **OW-003 visual smoke gate:** [PR #6](https://github.com/masong0508-lab/bore2/pull/6) (`0749482`) adds [native DS roof screenshot replay and comparison](DS_VISUAL_ATLAS.md) in build-ds CI. The corrected [run 44958873981](https://github.com/masong0508-lab/bore2/actions/runs/44958873981) passed, capturing three generated houses at frames 345, 385 and 425, same seed/control/camera under Cutaway and Always. Changed gameplay RGB channels: **31,442; 35,403; 40,484**. Visual inspection confirmed the difference depicts roofs versus exposed furnished interiors, not just UI movement. An initial flawed timing captured two pre-tour frames; it was fixed before merging and is preserved in the PR conversation as test provenance.
+- **Evidence limit:** a successful screenshot *difference* check is not proof that all walls and floors align in every angle, all buildings match PS1/Dreamcast, or gameplay maintains 30 FPS on physical DS. QA-009 remains **PARTIALLY ADDRESSED / MORE COVERAGE REQUIRED**, and QA-004 stays a regression-watch item. Continue same-coordinate cross-view tests, old-save fixtures, native device validation and frame-time profiling.
+
 ## Severity and status
 
 | Severity | Meaning | Release rule |
