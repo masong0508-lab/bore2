@@ -25,6 +25,20 @@ jobs:
         run: tools/dsbuild/restore.sh
       - name: Build the ROM
         run: OUT=$PWD/out tools/dsbuild/mkp.sh
+      - name: Emulate purchase, save/load and job gameplay
+        timeout-minutes: 8
+        run: |
+          test -x /tmp/dsrun
+          test -f out/bore.elf
+          sudo ln -sf /usr/bin/llvm-nm-18 /usr/local/bin/llvm-nm
+          DSRUN=/tmp/dsrun bash ports/dsi/test/ds_flow.sh "$PWD/out"
+      - name: Upload DS gameplay screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_ds_gameplay_smoke
+          path: out/flow.ppm
+          if-no-files-found: ignore
       - name: Name it
         run: mkdir -p rom && cp out/bore.nds rom/bore2_dsi_${GITHUB_SHA::7}.nds && ls -la rom
       - uses: actions/upload-artifact@v4
