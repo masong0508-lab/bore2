@@ -110,4 +110,47 @@ static int ds_world_far_budget(int triangles)
 {
     return triangles <= DS_RENDER_FRAME_TRI_LIMIT - DS_RENDER_FAR_RESERVE;
 }
+/* The neighborhood plan uses road bits 1 (top), 2 (left), 4 (corner).
+ * Old worlds always drew both strips in this preview; preserve their look.
+ * For planned worlds, drawing invented roads makes the lot preview disagree
+ * with the playable streets and the neighborhood map. */
+static unsigned ds_preview_road_mask(unsigned road, int planned)
+{
+    return planned ? (road & 7u) : 3u;
+}
+
+/* Return the *exposed* half-open cell rectangle of an L-house garage wing,
+ * excluding the shared column of the main house. Both map preview and
+ * distant city render this exact rectangle; upper-floor/roof alignment does
+ * not depend on camera scale or lot facing. Coordinates are block tiles. */
+static int ds_l_garage_rect(int lot0, int body0, int body1,
+                            int wing0, int wing1, int wing_y0, int wing_y1,
+                            int *x0, int *z0, int *x1, int *z1)
+{
+    if (wing1 < wing0 || wing_y1 < wing_y0) return 0;
+    int a = wing0 - lot0, b = wing1 - lot0 + 1;
+    int c = body0 - lot0, d = body1 - lot0 + 1;
+    if (a < c) b = c;
+    else if (b > d) a = d;
+    else return 0;
+    *x0 = a; *x1 = b;
+    *z0 = wing_y0 - lot0; *z1 = wing_y1 - lot0 + 1;
+    return a < b && *z0 < *z1;
+}
+
+/* Roof Hide hides the roof mesh, *not the upper storeys of an outdoor
+ * house*. For an indoor Sim, both Hide and Cutaway continue to reveal the
+ * active floor; Always retains every floor. This decision must remain
+ * identical in static-list caching and in the actual draw pass. */
+static int ds_visible_storey_top(int top, int viewed, int live,
+                                  int roof_mode, int any_inside, int roof_tool)
+{
+    int show = viewed;
+    if (live && top > 0 && (roof_mode == 1 || !any_inside)) show = top;
+    if (roof_tool) show = top;
+    if (show > top) show = top;
+    if (show < viewed) show = viewed;
+    return show;
+}
+
 #endif
