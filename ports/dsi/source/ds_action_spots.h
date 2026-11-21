@@ -47,4 +47,13 @@ static int ds_plot_boundary_open(const unsigned char *hw,
     else if (ay >= n || by >= n) wall = hw[n * n + x];
     return wall == 0 || wall == 5;
 }
+/* Conversations cannot finish with someone several rooms or streets away.
+ * Positions are the same 1/16-cell coordinates used by Sim movement. */
+static int ds_social_close(int ax, int ay, int bx, int by)
+{
+    int dx = ax - bx, dy = ay - by;
+    if (dx < 0) dx = -dx;
+    if (dy < 0) dy = -dy;
+    return dx <= 16 && dy <= 16;
+}
 #endif
