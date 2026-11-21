@@ -1677,7 +1677,7 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
         /* A nearby public space should look like its actual use, not a
          * random grove. Only the nearest ring gets these tiny landmarks.
          * Keep older saved-world visuals and the distant low LOD unchanged. */
-        if (bm_gen >= 8 && !far_lod && polys < POLY7 - 80) {
+        if (bm_gen >= 8 && !far_lod && ds_world_detail_budget(polys + 80)) {
             if (k == LOT_FARM) {
                 /* Parallel crop beds with lanes: field lots have no barn. */
                 tx_want = TX_GRASS;
