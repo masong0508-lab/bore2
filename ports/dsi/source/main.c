@@ -3316,6 +3316,28 @@ static int arrive(int i) {   // at the thing: start doing it (0: nothing to do a
             return 0;
         }
     }
+    /* Commands can outlive an object removal, relocation or wall edit.
+     * Validate the CURRENT object and that we can reach its footprint
+     * before awarding needs, farm resources or scavenged treasures. */
+    if (m->act >= 0 && m->act < 100 && m->act != 50 && m->act != 51) {
+        int o = m->act_obj, reachable = 0;
+        if (o >= 0 && o < nobj && OBJ_LV(&objs[o]) == slv[i]) {
+            const Obj *ob = &objs[o]; int w, h, fx, fy;
+            int cx = fdiv(m->x + 8, 16), cy = fdiv(m->y + 8, 16);
+            obj_fp(ob, &w, &h);
+            if (ds_action_reached(ob->x, ob->y, w, h, cx, cy)) {
+                reachable = 1;
+                if (ds_action_neighbor(ob->x, ob->y, w, h, cx, cy, &fx, &fy))
+                    reachable = edge_open(cx, cy, fx, fy);
+            }
+        }
+        if (!reachable) {
+            m->act = -1; m->act_left = 0;
+            m->tx = m->wx = m->x; m->ty = m->wy = m->y;
+            if (i == ctl) say("That item moved or is unreachable");
+            return 0;
+        }
+    }
     if (m->act == 80) { if (isl_food > 0) { isl_food--; m->act = 0; m->act_amt = 70; m->face = 150; life_ver++; } else { if (i == ctl) say("Tummy rumbles... try berries or fish"); m->act = -1; return 0; } }   // (the castaway's meal: from what was gathered)
     m->act_left = m->face; trg_arrive(i);
     if (m->act >= 100) { if (m->tgt >= 0) { Sim *o = &sims[m->tgt]; o->act_left = m->face; o->act = 3 + 100; o->act_amt = 0; } m->act = 3; apply_soc(i, m->tgt, m->soc); }
@@ -4299,6 +4321,10 @@ static void menu_do(int k) {   // (D70) the Live menu's choice k (touch or A): o
         else if (k == 6) jobui = 1; else if (k == 7) juke = 1; else if (k == 8) { info_pg = (info_pg + 1) % 4; life_ver++; }
 }
 static void popup_pick(int k) {   // (D82) a button of the thing's popup (touch, and the island test): what it offers, done
+    if (k < 0 || k >= popup_n || k >= 8 || popup_i < 0 ||
+        popup_i >= nobj) {
+        popup = 0; say("That item is no longer here"); return;
+    }
     int cd = popup_code[k]; Sim *m = &sims[ctl]; const Obj *ob = &objs[popup_i]; popup = 0;
                 if (cd < 0) start_act(m, popup_i, -1);
                 else if (cd >= 100) farm_do(cd, ctl, popup_i);   // (D38) the farm
