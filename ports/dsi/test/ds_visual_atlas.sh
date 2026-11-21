@@ -17,7 +17,7 @@ test -x "$RUN" || { echo "Missing melonDS runner: $RUN" >&2; exit 2; }
 # DS_TOUR_MID places the controlled Sim inside the house, so Cutaway and
 # Always should produce *different actual 3D frames*, not just UI text.
 LIVE='100-103:0:212,140;200-203:1:-1,-1'
-SHOTS='265,305,345'
+SHOTS='345,385,425'
 for mode in cutaway always; do
     B="$D/rom-$mode"
     mkdir -p "$B"
@@ -33,7 +33,7 @@ for mode in cutaway always; do
     }
     # run.cpp's optional sixth argument accepts comma-separated frame
     # numbers and saves "<base>_<frame>.ppm". One replay per mode suffices.
-    if ! "$RUN" "$B/bore.nds" 390 "$D/$mode.ppm" "$LIVE" "$SHOTS" >"$D/emulate-$mode.log" 2>&1; then
+    if ! "$RUN" "$B/bore.nds" 480 "$D/$mode.ppm" "$LIVE" "$SHOTS" >"$D/emulate-$mode.log" 2>&1; then
         echo "$mode emulator failed:" >&2
         tail -90 "$D/emulate-$mode.log" >&2
         exit 2
@@ -49,7 +49,7 @@ import json
 import pathlib
 import sys
 root = pathlib.Path(sys.argv[1])
-frames = (265, 305, 345)
+frames = (345, 385, 425)
 header = b"P6\n256 384\n255\n"
 width, height = 256, 384
 screen_bytes = width * (height // 2) * 3
@@ -68,8 +68,8 @@ for frame in frames:
     changed_channels = sum(a != b for a, b in zip(views["cutaway"], views["always"]))
     results.append({"frame": frame, "changed_channels": changed_channels})
     print(f"atlas frame {frame}: {changed_channels} gameplay RGB channels differ")
-if max(r["changed_channels"] for r in results) < 300:
-    raise SystemExit("FAIL: cutaway and always screenshots indistinguishable; verify camera and tour")
+if sum(r["changed_channels"] >= 300 for r in results) < 2:
+    raise SystemExit("FAIL: fewer than two generated-home views show roof differences; check tour frame timing")
 summary = {"method": "melonDS native 256x384 PPM", "roof_modes": ["cutaway", "always"],
            "world_region": "DS_TOUR first three planned houses",
            "frames": results, "passed": True}
