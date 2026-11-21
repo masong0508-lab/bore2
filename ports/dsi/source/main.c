@@ -129,6 +129,42 @@ static void text_box(int x, int y, int w, int h, int s, u16 c, int al, const cha
 #include "ds_mapview.h"
 static int map_x0 = -1, map_y0 = -1;   // moving map viewport, not a fixed window on the capital
 static int cur_set, sel_x, sel_y, seed = 1234;
+extern int bm_edit_stamp;  // changed by the generator and the neighborhood editor
+static BInfo map_cells[MH][MW];  // memoized block info; avoid 640 world queries per cursor move
+static int map_cx = -1, map_cy = -1, map_cseed, map_cgen, map_cedit;
+static void map_cache_at(int left, int top) {
+    if (map_cx == left && map_cy == top && map_cseed == seed &&
+        map_cgen == bm_gen && map_cedit == bm_edit_stamp) return;
+    int dx = left - map_cx, dy = top - map_cy;
+    int same = map_cx >= 0 && map_cy >= 0 && map_cseed == seed &&
+               map_cgen == bm_gen && map_cedit == bm_edit_stamp;
+    if (same && dy == 0 && (dx == 1 || dx == -1)) {
+        for (int y = 0; y < MH; y++) {
+            if (dx == 1) {
+                memmove(map_cells[y], map_cells[y] + 1, (MW - 1) * sizeof(BInfo));
+                bm_block(left + MW - 1, top + y, &map_cells[y][MW - 1]);
+            } else {
+                memmove(map_cells[y] + 1, map_cells[y], (MW - 1) * sizeof(BInfo));
+                bm_block(left, top + y, &map_cells[y][0]);
+            }
+        }
+    } else if (same && dx == 0 && (dy == 1 || dy == -1)) {
+        if (dy == 1) {
+            memmove(map_cells, map_cells + 1, (MH - 1) * sizeof(map_cells[0]));
+            for (int x = 0; x < MW; x++)
+                bm_block(left + x, top + MH - 1, &map_cells[MH - 1][x]);
+        } else {
+            memmove(map_cells + 1, map_cells, (MH - 1) * sizeof(map_cells[0]));
+            for (int x = 0; x < MW; x++)
+                bm_block(left + x, top, &map_cells[0][x]);
+        }
+    } else {
+        for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++)
+            bm_block(left + x, top + y, &map_cells[y][x]);
+    }
+    map_cx = left; map_cy = top; map_cseed = seed;
+    map_cgen = bm_gen; map_cedit = bm_edit_stamp;
+}
 static u16 lot_rgb(const BInfo *b) {
     if (b->terrain == BT_SEA) return C15(4, 10, 22);
     if (b->lot == LOT_RIVER) return C15(8, 16, 28);
@@ -267,10 +303,10 @@ static void draw_map(void) {
     if (map_x0 < 0 || map_y0 < 0)
         ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 1);
     int x0 = map_x0, y0 = map_y0;
+    map_cache_at(x0, y0);
     for (int j = 0; j < MH; j++) for (int i = 0; i < MW; i++) {
-        BInfo b; int bx = x0 + i, by = y0 + j;
+        BInfo b = map_cells[j][i]; int bx = x0 + i, by = y0 + j;
         if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) { rect(i * 8, j * 8, 8, 8, 0); continue; }
-        bm_block(bx, by, &b);
         rect(i * 8, j * 8, 8, 8, lot_rgb(&b));
         if (b.terrain != BT_SEA) {   // the streets: along the top and left of the block
             if (b.road & 1) rect(i * 8, j * 8, 8, 1, C15(9, 9, 10));
