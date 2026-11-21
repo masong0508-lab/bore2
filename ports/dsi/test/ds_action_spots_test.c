@@ -119,6 +119,14 @@ int main(void) {
     assert(ds_action_reindex_after_delete(-1, 0, 4) == -1);
     assert(ds_action_reindex_after_delete(9, 0, 4) == -1);
     assert(ds_action_reindex_after_delete(0, -1, 4) == -1);
+    /* A household member's departure must never redirect a queued
+     * conversation to another member who moved into the same array slot. */
+    assert(ds_social_target_after_remove(0, 1, 3) == 0);
+    assert(ds_social_target_after_remove(1, 1, 3) == -1);
+    assert(ds_social_target_after_remove(2, 1, 3) == 1);
+    assert(ds_social_target_after_remove(-3, 1, 3) == -3);
+    assert(ds_social_target_after_remove(3, 1, 3) == -1);
+    assert(ds_social_target_after_remove(0, 3, 3) == -1);
     puts("ds_action_spots_test: PASS");
     return 0;
 }
