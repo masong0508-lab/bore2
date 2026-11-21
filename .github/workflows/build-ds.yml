@@ -5,17 +5,53 @@ on:
   workflow_dispatch:
   push:
     paths: ["ports/dsi/**", "tools/dsbuild/**", "src/bigmap.*", "src/common.h", "assets/dsmusic.bin", ".github/workflows/build-ds.yml"]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   rom:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Test DS neighborhood viewport (host C99)
+        run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_mapview_test.c -o /tmp/ds_mapview_test && /tmp/ds_mapview_test
+      - name: Test DS floor and roof geometry
+        run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_render_geom_test.c -o /tmp/ds_render_geom_test && /tmp/ds_render_geom_test
+      - name: Test DS furniture reachability and boundary walls
+        run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_action_spots_test.c -o /tmp/ds_action_spots_test && /tmp/ds_action_spots_test
       - name: Tools (clang, lld, python)
         run: sudo apt-get update && sudo apt-get install -y clang-18 lld-18 llvm-18 python3 xz-utils && sudo ln -sf /usr/bin/ld.lld-18 /usr/local/bin/ld.lld && sudo ln -sf /usr/bin/llvm-objcopy-18 /usr/local/bin/llvm-objcopy && sudo ln -sf /usr/bin/clang-18 /usr/local/bin/clang
       - name: Get the saved DS toolchain (branch ds-toolchain)
         run: tools/dsbuild/restore.sh
       - name: Build the ROM
         run: OUT=$PWD/out tools/dsbuild/mkp.sh
+      - name: Emulate purchase, save/load and job gameplay
+        timeout-minutes: 8
+        run: |
+          test -x /tmp/dsrun
+          test -f out/bore.elf
+          sudo ln -sf /usr/bin/llvm-nm-18 /usr/local/bin/llvm-nm
+          DSRUN=/tmp/dsrun bash ports/dsi/test/ds_flow.sh "$PWD/out"
+      - name: Emulate stairs and island interaction suite
+        timeout-minutes: 8
+        run: |
+          OUT="$PWD/out-island" XTRA="-DDSTEST -DDS_ISL_TEST" bash tools/dsbuild/mkp.sh
+          DSRUN=/tmp/dsrun bash ports/dsi/test/ds_island_smoke.sh "$PWD/out-island"
+      - name: Emulate furnished-home interaction routes
+        timeout-minutes: 8
+        run: |
+          OUT="$PWD/out-homes" XTRA="-DDSTEST -DDS_ACT_HOMES -DDS_ACT_HOMES_LIMIT=8" bash tools/dsbuild/mkp.sh
+          DSRUN=/tmp/dsrun bash ports/dsi/test/ds_homes_smoke.sh "$PWD/out-homes"
+      - name: Upload DS gameplay screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_ds_gameplay_smoke
+          path: |
+            out/flow.ppm
+            out-island/island.ppm
+            out-homes/homes.ppm
+          if-no-files-found: ignore
       - name: Name it
         run: mkdir -p rom && cp out/bore.nds rom/bore2_dsi_${GITHUB_SHA::7}.nds && ls -la rom
       - uses: actions/upload-artifact@v4
