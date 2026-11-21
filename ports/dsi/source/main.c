@@ -3090,11 +3090,43 @@ static int next_cell(int sx, int sy, int gx, int gy, int *nx, int *ny) {   // br
     static short dd[WN][WN]; static u16 qq[WN * WN]; static const int DX[4] = { 1, -1, 0, 0 }, DY[4] = { 0, 0, 1, -1 };
     #define CL(v) ((v) < -WO ? -WO : (v) >= WN - WO ? WN - WO - 1 : (v))
     gx = CL(gx); gy = CL(gy); sx = CL(sx); sy = CL(sy);
-    int go = gx >= 0 && gy >= 0 && gx < GN && gy < GN ? obj_at(gx, gy) : -1;   // (D80: the thing it is walking to: a bed 2 x 2 has its goal cell shut in by its own other cells, so those do not stop the way in)
-    memset(dd, -1, sizeof dd); int h = 0, t = 0; qq[t++] = (u16)((gy + WO) * WN + gx + WO); dd[gy + WO][gx + WO] = 0;
-    while (h < t && dd[sy + WO][sx + WO] < 0) { int cx = (int)(qq[h] % WN) - WO, cy = (int)(qq[h] / WN) - WO; h++; for (int k = 0; k < 4; k++) { int ax = cx + DX[k], ay = cy + DY[k];   // (D82: stop the moment the start is reached: every cell nearer than it is already set, so the step is the same)
-        if (ax < -WO || ay < -WO || ax >= WN - WO || ay >= WN - WO || dd[ay + WO][ax + WO] >= 0 || !edge_open(cx, cy, ax, ay)) continue;
-        if (obj_solid(ax, ay) && !(ax == sx && ay == sy) && !(go >= 0 && ax >= 0 && ay >= 0 && ax < GN && ay < GN && obj_at(ax, ay) == go)) continue; dd[ay + WO][ax + WO] = (short)(dd[cy + WO][cx + WO] + 1); qq[t++] = (u16)((ay + WO) * WN + ax + WO); } }
+    /* A Sim moves one cell at a time toward the same command. The previous
+     * search already visited every cell closer to its goal, so reuse those
+     * distances on subsequent steps. No extra 54x54 grid or heap memory. */
+    if (!occ_ok) occ_build();
+    static int cached_gx = 9999, cached_gy, cached_lv, cached_bx, cached_by;
+    static u32 cached_sig;
+    u32 sig = (u32)ui_ver * 2654435761u ^ occ_sum ^
+              (u32)nobj * 2246822519u ^ lot_seed ^
+              (u32)bm_gen * 17u ^ (u32)bm_edit_stamp * 37u;
+    int reuse = cached_gx == gx && cached_gy == gy &&
+                cached_lv == LV && cached_bx == lot_bx &&
+                cached_by == lot_by && cached_sig == sig &&
+                dd[sy + WO][sx + WO] >= 0;
+    if (!reuse) {
+        int go = gx >= 0 && gy >= 0 && gx < GN && gy < GN ? obj_at(gx, gy) : -1;
+        memset(dd, -1, sizeof dd);
+        int head = 0, tail = 0;
+        qq[tail++] = (u16)((gy + WO) * WN + gx + WO);
+        dd[gy + WO][gx + WO] = 0;
+        while (head < tail && dd[sy + WO][sx + WO] < 0) {
+            int cx = (int)(qq[head] % WN) - WO, cy = (int)(qq[head] / WN) - WO;
+            head++;
+            for (int k = 0; k < 4; k++) {
+                int ax = cx + DX[k], ay = cy + DY[k];
+                if (ax < -WO || ay < -WO || ax >= WN - WO || ay >= WN - WO ||
+                    dd[ay + WO][ax + WO] >= 0 ||
+                    !edge_open(cx, cy, ax, ay)) continue;
+                if (obj_solid(ax, ay) && !(ax == sx && ay == sy) &&
+                    !(go >= 0 && ax >= 0 && ay >= 0 && ax < GN && ay < GN &&
+                      obj_at(ax, ay) == go)) continue;
+                dd[ay + WO][ax + WO] = (short)(dd[cy + WO][cx + WO] + 1);
+                qq[tail++] = (u16)((ay + WO) * WN + ax + WO);
+            }
+        }
+        cached_gx = gx; cached_gy = gy; cached_lv = LV;
+        cached_bx = lot_bx; cached_by = lot_by; cached_sig = sig;
+    }
     if (dd[sy + WO][sx + WO] < 0) return 0;
     for (int k = 0; k < 4; k++) { int ax = sx + DX[k], ay = sy + DY[k]; if (ax < -WO || ay < -WO || ax >= WN - WO || ay >= WN - WO) continue; if (dd[ay + WO][ax + WO] >= 0 && dd[ay + WO][ax + WO] < dd[sy + WO][sx + WO] && edge_open(sx, sy, ax, ay)) { *nx = ax; *ny = ay; return 1; } }
     return 0;
