@@ -2,6 +2,7 @@
  * cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_action_spots_test.c -o /tmp/ds_action_spots_test && /tmp/ds_action_spots_test */
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "../source/ds_action_spots.h"
 static void spot(int ox, int oy, int w, int h, int x, int y,
                  int px, int py) {
@@ -52,6 +53,38 @@ int main(void) {
     assert(ds_social_close(-16, 0, 0, 0));
     assert(!ds_social_close(16, 16, 48, 16));
     assert(!ds_social_close(16, 16, 16, 48));
+    /* Stair approaches/landings must be reversible, for every facing,
+     * without stepping onto a non-existent floor or off the lot edge. */
+    for (int rot = 0; rot < 4; rot++) {
+        int ax, ay, bx, by, lv, rx, ry, sx, sy, downstairs;
+        assert(ds_stairs_points(6, 6, rot, 0, 3, 0, 13,
+                                &ax, &ay, &bx, &by, &lv));
+        assert(lv == 1);
+        assert((ax == 6) != (ay == 6));
+        assert((bx == 6) != (by == 6));
+        assert(abs(ax - 6) + abs(ay - 6) == 1);
+        assert(abs(bx - 6) + abs(by - 6) == 1);
+        assert(ds_stairs_points(6, 6, rot, 0, 3, 1, 13,
+                                &rx, &ry, &sx, &sy, &downstairs));
+        assert(downstairs == 0);
+        assert(rx == bx && ry == by);
+        assert(sx == ax && sy == ay);
+        assert(ds_stairs_points(6, 6, rot, 2, 3, 0, 13,
+                                &ax, &ay, &bx, &by, &lv));
+        assert(lv == 3);
+    }
+    { int ax, ay, bx, by, lv;
+      assert(!ds_stairs_points(0, 0, 0, 0, 3, 0, 13,
+                               &ax, &ay, &bx, &by, &lv));
+      assert(!ds_stairs_points(6, 6, 0, 3, 3, 0, 13,
+                               &ax, &ay, &bx, &by, &lv));
+      assert(!ds_stairs_points(6, 6, 0, -1, 3, 1, 13,
+                               &ax, &ay, &bx, &by, &lv));
+      assert(!ds_stairs_points(6, 6, 4, 0, 3, 1, 13,
+                               &ax, &ay, &bx, &by, &lv));
+      assert(!ds_stairs_points(6, 6, 0, 0, 3, 1, 2,
+                               &ax, &ay, &bx, &by, &lv));
+    }
     puts("ds_action_spots_test: PASS");
     return 0;
 }
