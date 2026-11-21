@@ -10,6 +10,7 @@ These living documents preserve the life-sim expansion research and the graphica
 - [Native DS/DSi Visual Atlas](DS_VISUAL_ATLAS.md) — tested in-emulator screenshots comparing three generated-house roofs and furnished interiors, with a reproducible CI gate (PR #6).
 - [DS/DSi Skate Ramp & Stair Geometry](DS_SKATE_GEOMETRY.md) — verified PR #7 curved ramps, stair LOD, map/skatepark parity, moved-ramp collisions and a 30-fps emulated skating route with native screenshot artifacts.
 - [PS1 Camera & Perspective](PS1_CAMERA_PERSPECTIVE.md) — merged PR #8 narrows the live third-person lens with scale-preserving dolly, synchronizes billboard projection, and records PS1/DC CI evidence and unverified native screenshot tasks.
+- [DS/DSi Live Touch Ray](DS_TOUCH_RAY.md) — merged PR #9 prevents rear-camera horizon taps selecting an invisible walking/object target; DS emulator and PS1 safeguards passed, dedicated tap screenshots still open.
 
 The existing checklist and per-port history remain authoritative for previously completed work. Reconcile discrepancies with the *latest commit and current tests*, not the date of an older unchecked item.
 
