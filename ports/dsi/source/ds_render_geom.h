@@ -88,4 +88,26 @@ static int ds_street_ground_lift(int lx, int ly, int south, int east,
     return ((h && (ly == 13 || ly == 17)) ||
             (v && (lx == 13 || lx == 17))) ? 24 : 0;
 }
+/* The DS rasterizer accepts at most 2048 polygons per frame. This
+ * renderer counts two triangles per quad although it emits one quad;
+ * 3800 counted triangles leave margin for sky/HUD and dynamic changes.
+ * Houses, floors and Sims come first. Decorations and distant lots degrade
+ * before they can starve the primary geometry. */
+enum { DS_RENDER_FRAME_TRI_LIMIT = 3800,
+       DS_RENDER_WORLD_RESERVE = 440,
+       DS_RENDER_NEAR_RESERVE = 200,
+       DS_RENDER_FAR_RESERVE = 90 };
+static int ds_item_over_budget(int triangles, int yard)
+{
+    return triangles > DS_RENDER_FRAME_TRI_LIMIT -
+           DS_RENDER_WORLD_RESERVE - (yard ? 80 : 0);
+}
+static int ds_world_detail_budget(int triangles)
+{
+    return triangles <= DS_RENDER_FRAME_TRI_LIMIT - DS_RENDER_NEAR_RESERVE;
+}
+static int ds_world_far_budget(int triangles)
+{
+    return triangles <= DS_RENDER_FRAME_TRI_LIMIT - DS_RENDER_FAR_RESERVE;
+}
 #endif
