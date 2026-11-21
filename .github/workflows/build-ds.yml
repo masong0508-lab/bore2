@@ -17,6 +17,8 @@ jobs:
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_mapview_test.c -o /tmp/ds_mapview_test && /tmp/ds_mapview_test
       - name: Test DS floor and roof geometry
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_render_geom_test.c -o /tmp/ds_render_geom_test && /tmp/ds_render_geom_test
+      - name: Test DS safe deletion confirmation
+        run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_confirm_test.c -o /tmp/ds_confirm_test && /tmp/ds_confirm_test
       - name: Test DS furniture reachability and boundary walls
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_action_spots_test.c -o /tmp/ds_action_spots_test && /tmp/ds_action_spots_test
       - name: Tools (clang, lld, python)
@@ -32,6 +34,9 @@ jobs:
           test -f out/bore.elf
           sudo ln -sf /usr/bin/llvm-nm-18 /usr/local/bin/llvm-nm
           DSRUN=/tmp/dsrun bash ports/dsi/test/ds_flow.sh "$PWD/out"
+      - name: Emulate safe title-screen save deletion
+        timeout-minutes: 6
+        run: DSRUN=/tmp/dsrun bash ports/dsi/test/ds_delete_smoke.sh "$PWD/out"
       - name: Emulate stairs and island interaction suite
         timeout-minutes: 8
         run: |
@@ -51,6 +56,8 @@ jobs:
             out/flow.ppm
             out-island/island.ppm
             out-homes/homes.ppm
+            out/title_one_tap.ppm
+            out/title_two_taps.ppm
           if-no-files-found: ignore
       - name: Name it
         run: mkdir -p rom && cp out/bore.nds rom/bore2_dsi_${GITHUB_SHA::7}.nds && ls -la rom
