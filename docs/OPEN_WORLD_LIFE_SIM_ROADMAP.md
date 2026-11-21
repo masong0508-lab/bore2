@@ -36,6 +36,14 @@ The distinctive BORE identity remains: direct 3D control, voxel people, original
 
 **Exit:** every selected seed passes documented geometry/route invariants; common lots are recognizably the same across maps and cameras; old-generation saves still produce their original towns.
 
+### Milestone 0 checkpoint — automated world-coherence gate merged (2026-11-21)
+
+**Completed safeguard, not the entire milestone:** [PR #3](https://github.com/masong0508-lab/bore2/pull/3), squash commit `63a2d2e`, installs [test/world_coherence.py](../test/world_coherence.py) as a blocking host test in the PS1 build workflow. Against world generations **7 and 8** and three seeds (`1`, `0x5EED1234`, `0xC0FFEE`), the checks covered **11,557 lot-check instances in 12 tests, 0 mismatches** for main-house bounds, planned doors/drives, and non-home building footprints shared with the map/far renderer. The underlying host audit now recognizes the existing complete 2×2 backyard sheds as intentional *secondary* structures; malformed or unexpected walls still fail. All six parser guard tests passed.
+
+The [DS/DSi neighborhood audit](../ports/dsi/test/ds_town7_audit.sh) now fails its exit status when it finds invalid geometry or cannot build/emulate. The handheld build workflow requires that audit. Its verified run checked **162 homes** with **zero** missing essential fixtures, overlapping objects, unreachable rooms, bad doors or stair/loft geometry. PS1 disc build and packaging also passed. [Host/PS1 CI evidence](https://github.com/masong0508-lab/bore2/actions/runs/44956101766) · [DS CI evidence](https://github.com/masong0508-lab/bore2/actions/runs/44955879489).
+
+**Still open:** canonical shared world facts across every renderer (OW-001), native-resolution map/near/far photo atlas (OW-003), interactive camera/occlusion validation (OW-004), all generated floor and collision edge cases, full hardware testing. This checkpoint adds **testing and audit correctness**, not a claim that gameplay graphics or all world-generation bugs were fixed.
+
 ## Milestone 1 — People with lives, not moving scenery (P1)
 
 - [ ] **OW-101 Stable citizen state:** home, household, location, needs, work or school commitment, personal schedule, relationships, relevant memories and current task remain consistent across travel, load and time skip.
