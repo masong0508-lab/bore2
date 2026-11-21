@@ -9,7 +9,7 @@ RUN=${DSRUN:-/tmp/dsrun}
 mkdir -p "$D"
 D=$(cd "$D" && pwd)
 test -x "$RUN" || { echo "Missing melonDS runner: $RUN" >&2; exit 2; }
-if ! OUT="$D" XTRA="-DDSTEST" bash "$R/tools/dsbuild/mkp.sh" >"$D/build.log" 2>&1; then
+if ! OUT="$D" XTRA="-DDSTEST -DAUTOSC=41" bash "$R/tools/dsbuild/mkp.sh" >"$D/build.log" 2>&1; then
     tail -80 "$D/build.log" >&2
     exit 2
 fi
@@ -18,11 +18,11 @@ for name in test_scene fps_now polys_last on_board sk_x3 sk_z3; do
     s=$(sym "$name"); test -n "$s" || { echo "Missing DS smoke symbol: $name" >&2; exit 2; }
 done
 M="$(sym fps_now),$(sym polys_last),$(sym on_board),$(sym sk_x3),$(sym sk_z3)"
-# scene=41: actual skate plaza and board. Hold screen-up to accelerate,
+# AUTOSC=41: activate the actual skate plaza automatically on the first\n# Live frame, not via a runtime memory poke that can silently fail.\n# Hold screen-up to accelerate,
 # steer, ollie over nearby obstacles and push off again.
 LIVE='100-103:0:212,140;200-203:1:-1,-1'
 ROUTE="$LIVE;475-650:40:-1,-1;651-710:50:-1,-1;711-730:41:-1,-1;731-875:40:-1,-1"
-if ! DBGMEM="$M" POKE="400:$(sym test_scene):29" "$RUN" "$D/bore.nds" 940 "$D/skate.ppm" "$ROUTE" "520,720,900" >"$D/skate.log" 2>&1; then
+if ! DBGMEM="$M" "$RUN" "$D/bore.nds" 940 "$D/skate.ppm" "$ROUTE" "520,720,900" >"$D/skate.log" 2>&1; then
     echo "Skate emulator failed:" >&2
     tail -70 "$D/skate.log" >&2
     exit 2
@@ -41,8 +41,10 @@ for line in (d / "skate.log").read_text(errors="replace").splitlines():
 if len(rows) < 10:
     raise SystemExit("FAIL: no sustained gameplay samples from actual emulator")
 active = [r for r in rows if r[3] == 1]
+print(f"Skate route diagnostics: {len(rows)} samples, {len(active)} board-active, "
+      f"first {rows[:5]}, last {rows[-5:]}")
 if len(active) < 9:
-    raise SystemExit("FAIL: skateboard not in use throughout the tested route")
+    raise SystemExit("FAIL: skate scene did not activate. Check AUTOSC and first Live frame")
 fps = [r[1] for r in active]
 triangles = [r[2] for r in active]
 x = [r[4] for r in active]
