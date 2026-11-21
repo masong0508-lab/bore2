@@ -52,6 +52,14 @@ The [DS/DSi neighborhood audit](../ports/dsi/test/ds_town7_audit.sh) now fails i
 
 **Still open:** OW-001 canonical shared facts across all renderers; OW-003 matching-location PS1/DS/Dreamcast map, near/far and first-person captures with coordinates; OW-004 all camera/occlusion edge cases; PS1 and Dreamcast native graphics/performance measurements and actual hardware. Do not mark all of Milestone 0 DONE.
 
+### Milestone 0 checkpoint — DS skate ramps, stairs and perspective coherence merged (2026-11-21)
+
+**Player-visible engine work:** [PR #7](https://github.com/masong0508-lab/bore2/pull/7) (squash `21d5793`) improves DS kicker/launch/quarter-pipe meshes from 2/3/4 to 3/4/5 surface chords; keeps actual stair-tread silhouettes at lower detail instead of a floor-tall opaque block; restores two PS1 fixed-facing kicker placements as correctly turned, rideable DS objects; and draws a coherent low-polygon skatepark across the neighborhood lot/map and distant view instead of trees/a generic crate. The skating collision surface cache now invalidates when Build mode moves or rotates obstacles, even when object count stays fixed. All changes preserve save structure and use the existing display-list/geometry caches. [Full code, repro and caveats](DS_SKATE_GEOMETRY.md).
+
+**Verified integration:** [DS CI run 44962316808](https://github.com/masong0508-lab/bore2/actions/runs/44962316808) passed C99 geometry tests, ROM, purchase/save/load, stair/island routes, furnished-home interactions, **162-home audit**, prior roof/cutaway atlas and new skating emulator route. The corrected `-DAUTOSC=41` replay remained on-board across **17 samples**, changed rider coordinates by **6,233 X / 6,490 Z units**, measured **30 fps min/mean/max** on that emulated run, and captured **three** manually checked 256×384 skatepark frames. The model's peak `polys_last` was **3,788 counted triangles** (below the test's 4,096 threshold), not an actual handheld GPU certification. The first attempt accidentally captured a house because its RAM-poked scene failed; the final test fixed that timing. [PS1 packaging and world-coherence CI](https://github.com/masong0508-lab/bore2/actions/runs/44962316836) also passed.
+
+**OW-004 partial, not complete:** still compare identical map/street/lot and actual riding perspectives across PS1, DS/DSi and Dreamcast. In particular measure close-up field-of-view distortion, floor/camera clipping, shadow/occlusion, stair access under all facings, and rider landing/grind results on physical hardware. The DS polygon and frame numbers reflect an emulator run only; leave the broad Milestone 0 checklist open.
+
 ## Milestone 1 — People with lives, not moving scenery (P1)
 
 - [ ] **OW-101 Stable citizen state:** home, household, location, needs, work or school commitment, personal schedule, relationships, relevant memories and current task remain consistent across travel, load and time skip.
