@@ -2902,10 +2902,34 @@ static void apply_soc(int ai, int tgt, int id) {
       if (ai == ctl) { trg_ev(EV_CHATS, 1); if (id == S_JOKE) trg_ev(EV_JOKES, 1); if (id == S_HUG) trg_ev(EV_HUGS, 1); if (id == S_FLIRT || id == S_KISS) trg_ev(EV_FLIRTS, 1); if (id == S_FEED || id == S_TUCK || id == S_TEACH) trg_ev(EV_CARES, 1); if (id == S_ADVICE || id == S_HUG || id == S_FEED || id == S_TUCK) trg_ev(EV_KIND, 1); } }
     if (ai == ctl && id != S_BABY) say(SOCN[id]);
 }
+/* The destination is a reachable CELL, not the exact fractional location
+ * of a moving person. Validate citizen IDs, world bounds and storeys before
+ * dereferencing; a later update can safely cancel if someone disappears. */
+static int social_goal(int ai, int tgt, int *tx, int *ty) {
+    int px, py;
+    if (ai < 0 || ai >= nsim) return 0;
+    if (tgt <= -2) {
+        int k = -2 - tgt;
+        if (k < 0 || k >= CITN || !cit_vis(&cits[k]) || slv[ai] != 0) return 0;
+        px = cits[k].x; py = cits[k].y;
+    } else {
+        if (tgt < 0 || tgt >= nsim || tgt == ai || slv[tgt] != slv[ai]) return 0;
+        px = sims[tgt].x; py = sims[tgt].y;
+    }
+    int cx = fdiv(px + 8, 16), cy = fdiv(py + 8, 16);
+    if (cx < -SLC || cy < -SLC || cx >= SLC * 2 || cy >= SLC * 2) return 0;
+    *tx = cx * 16; *ty = cy * 16;
+    return 1;
+}
 static void start_soc(int ai, int tgt, int id) {
-    Sim *m = &sims[ai]; int tx, ty;
-    if (tgt <= -2) { const Cit *c = &cits[-2 - tgt]; tx = fdiv(c->x + 8, 16) * 16; ty = fdiv(c->y + 8, 16) * 16; } else { tx = sims[tgt].x; ty = sims[tgt].y; }
-    m->tx = tx; m->ty = ty; m->act = 3 + 100; m->tgt = tgt; m->soc = id; m->act_amt = 50; m->face = 120; m->act_left = 0;
+    int tx, ty;
+    if (!social_goal(ai, tgt, &tx, &ty)) {
+        if (ai == ctl) say("That person isn't here");
+        return;
+    }
+    Sim *m = &sims[ai]; m->tx = tx; m->ty = ty; m->act = 3 + 100;
+    m->tgt = tgt; m->soc = id; m->act_amt = 50;
+    m->face = 120; m->act_left = 0;
 }
 static void sim_die(int k) { st_died++;   // an elder passes away: a statue marks the spot and the household closes up
     Sim *m = &sims[k]; int cx = fdiv(m->x + 8, 16), cy = fdiv(m->y + 8, 16); static char bf[40]; sprintf(bf, "%s passed away", sname[k]); say(bf); ghost_add(m);
@@ -3214,6 +3238,21 @@ static void ghost_draw(void) {
 }
 static int arrive(int i) {   // at the thing: start doing it (0: nothing to do after all)
     Sim *m = &sims[i];
+    if (m->act >= 100) {
+        int tx, ty;
+        if (!social_goal(i, m->tgt, &tx, &ty)) {
+            m->act = -1; m->act_left = 0;
+            m->tx = m->wx = m->x; m->ty = m->wy = m->y;
+            if (i == ctl) say("They've gone");
+            return 0;
+        }
+        if (!ds_social_close(m->x, m->y, tx, ty)) {
+            /* The friend moved while we approached: follow, don't chat
+             * across multiple rooms or through the whole neighborhood. */
+            m->tx = tx; m->ty = ty; m->act_left = 0;
+            return 0;
+        }
+    }
     if (m->act == 80) { if (isl_food > 0) { isl_food--; m->act = 0; m->act_amt = 70; m->face = 150; life_ver++; } else { if (i == ctl) say("Tummy rumbles... try berries or fish"); m->act = -1; return 0; } }   // (the castaway's meal: from what was gathered)
     m->act_left = m->face; trg_arrive(i);
     if (m->act >= 100) { if (m->tgt >= 0) { Sim *o = &sims[m->tgt]; o->act_left = m->face; o->act = 3 + 100; o->act_amt = 0; } m->act = 3; apply_soc(i, m->tgt, m->soc); }
@@ -3237,6 +3276,15 @@ static void rt_sync(void) {
 static void sims_step(int frames) {
     int keep_lv = LV;
     for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; LV = slv[i];   // (D36: each walks on its own storey)
+        if (m->act >= 100 && !m->act_left && ((frames + i * 13) & 7) == 0) {
+            int tx, ty;
+            if (!social_goal(i, m->tgt, &tx, &ty)) {
+                m->act = -1; m->tx = m->wx = m->x; m->ty = m->wy = m->y;
+                if (i == ctl) say("They've gone");
+            } else if (!ds_social_close(m->tx, m->ty, tx, ty)) {
+                m->tx = tx; m->ty = ty;
+            }
+        }
         if ((m->act == 50 || m->act == 51) && !m->act_left && m->x == m->tx && m->y == m->ty) { stairs_go(i, m->act_obj, m->act == 51); continue; }   // (already at the foot, or on the landing)
         if (m->act_left > 0) {
             for (int n = 0; n < 6; n++) if (n == (m->act >= 100 ? m->act - 100 : m->act)) { m->acc[n] += trf_gain(&dtr[i], n, trg_ah[i], m->act_amt); while (m->acc[n] >= m->face) { m->acc[n] -= m->face; if (m->need[n] < 100) m->need[n]++; } }
