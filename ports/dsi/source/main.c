@@ -1453,6 +1453,9 @@ static void obj3d_in(int x, int y, const Item *it, int rot, int ghost) {   // ev
 static void obj3d(int x, int y, const Item *it, int rot, int ghost) { ob_tx_ok = !pv_cap; obj3d_in(x, y, it, rot, ghost); ob_tx_ok = 0; }   // (D52)
 static int door_open;
 ITCM_CODE static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, int wh) {   // one wall piece (or a door) on a cell edge; vert: it runs along z
+    /* Saved/edited wall bytes must never index outside WALLC/PWT. Fall back
+     * to a conventional wall rather than corrupting geometry/materials. */
+    if (v < 1 || v > 12) v = 1;
     u16 c = WALLC[v - 1], cap = shade(c, 10), base = shade(c, 6), frame = C15(11, 7, 4); int th = T / 16, ps = T / 6;
     if (v == 6) {   // a fence: two posts and two rails on the cell edge (gardens, yards, paddocks)
         int fh = T * 7 / 10; u16 pc = shade(c, 7), rc = c;
