@@ -100,4 +100,14 @@ static void ds_action_progress(int *acc, int *need, int duration, int gain)
     if (points > space) points = space;
     *need = current + (int)points;
 }
+/* Object removal swaps the last catalog entry into the emptied slot.
+ * Commands aimed at the removed item cancel; commands aimed at the
+ * shifted last item follow its new index. -1 means no active target. */
+static int ds_action_reindex_after_delete(int index, int removed, int last)
+{
+    if (index < 0 || last < 0 || removed < 0 ||
+        removed > last || index > last) return -1;
+    if (index == removed) return -1;
+    return index == last ? removed : index;
+}
 #endif
