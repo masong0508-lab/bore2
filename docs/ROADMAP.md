@@ -7,6 +7,7 @@ These living documents preserve the life-sim expansion research and the graphica
 - [Living Open-World Life Simulation Roadmap](OPEN_WORLD_LIFE_SIM_ROADMAP.md) — player agency, believable citizens, neighborhoods, world coherence, emergent gameplay and milestones (OW-###).
 - [Product QA, Rendering and Stability Roadmap](PRODUCT_QA_AUDIT_ROADMAP.md) — prioritized defect candidates, severity, source evidence, reproduction matrix, platform performance and release checks (QA-###).
 - [Research and Product-Audit Notes, 2026-11-21](RESEARCH_AUDIT_NOTES_2026-11-21.md) — preserved rationale, comparison games, QA taxonomy, links and caveats about unverified issues.
+- [Native DS/DSi Visual Atlas](DS_VISUAL_ATLAS.md) — tested in-emulator screenshots comparing three generated-house roofs and furnished interiors, with a reproducible CI gate (PR #6).
 
 The existing checklist and per-port history remain authoritative for previously completed work. Reconcile discrepancies with the *latest commit and current tests*, not the date of an older unchecked item.
 
