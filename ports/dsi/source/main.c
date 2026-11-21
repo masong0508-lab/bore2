@@ -128,6 +128,7 @@ static void text_box(int x, int y, int w, int h, int s, u16 c, int al, const cha
 #define MH 20                 // blocks down (160 pixels; the text lines go below)
 #include "ds_mapview.h"
 #include "ds_render_geom.h"
+#include "ds_action_spots.h"
 static int map_x0 = -1, map_y0 = -1;   // moving map viewport, not a fixed window on the capital
 static int cur_set, sel_x, sel_y, seed = 1234;
 extern int bm_edit_stamp;  // changed by the generator and the neighborhood editor
@@ -2246,8 +2247,13 @@ static void farm_midnight(void) {   // the PS1's farm_midnight: the crops grow w
     fm_fed = 0;
 }
 static int fm_pay(int v) { if (funds < v) { say("Your wallet says no!"); return 0; } funds -= v; return 1; }
-static void fm_work(int i, int o, int t, int need, int amt) {   // the PS1's begin_action at the thing: walk over and work there a while
-    Sim *m = &sims[i]; if (o < 0 || o >= nobj) return; m->tx = objs[o].x * 16; m->ty = objs[o].y * 16; m->act = need; m->act_amt = amt; m->face = t; m->act_obj = o; m->act_left = 0;
+static int act_stand(const Sim *m, int obj, int *tx, int *ty);
+static void fm_work(int i, int o, int t, int need, int amt) {   // walk to a free, reachable cell by the crop bed / farm equipment
+    Sim *m = &sims[i]; int tx, ty;
+    if (o < 0 || o >= nobj) return;
+    if (!act_stand(m, o, &tx, &ty)) { if (i == ctl) say("No clear way to use that"); return; }
+    m->tx = tx; m->ty = ty; m->act = need; m->act_amt = amt;
+    m->face = t; m->act_obj = o; m->act_left = 0;
 }
 enum { FC_PLANT = 100, FC_HARV = 104, FC_SPRAY, FC_WATER, FC_EGGS = 110, FC_HEN, FC_FEEDH, FC_MILK, FC_COW, FC_FEEDC, FC_SELL = 120, FC_ORDER, FC_FAIR, FC_FERT, FC_UP, FC_EAT, FC_LEDGER, FC_NOORDER };
 static char fm_lab[8][28];
@@ -2401,7 +2407,12 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
 }
 static int gather_len(int k) { switch (k) { case G_WOOD: return 150; case G_STONE: return 120; case G_LEAVES: return 75; case G_BERRIES: return 60; case G_COCONUT: return 90; case G_FISH: return isl_spear ? 120 : 210; case G_DIG: return 180; case G_WRECK: return 150; case G_SHELL: return 15; default: return 100; } }   // (the PS1's, halved as the DS's actions are)
 static void isl_done(int i, int k, int o) {   // a gathering finished (the PS1's gather_done)
-    Sim *m = &sims[i]; static char t[48]; int here = o >= 0 && o < nobj && objs[o].x * 16 == m->x && objs[o].y * 16 == m->y, me = i == ctl;
+    Sim *m = &sims[i]; static char t[48]; int here = 0, me = i == ctl;
+    if (o >= 0 && o < nobj && OBJ_LV(&objs[o]) == slv[i]) {
+        int w, h; obj_fp(&objs[o], &w, &h);
+        here = ds_action_reached(objs[o].x, objs[o].y, w, h,
+                                 fdiv(m->x + 8, 16), fdiv(m->y + 8, 16));
+    }
     #define GONE() do { if (here) { objs[o] = objs[--nobj]; occ_ok = 0; } } while (0)
     if (me) trg_ev(EV_GATHERS, 1);
     switch (k) {
@@ -3033,17 +3044,46 @@ static void stairs_go(int i, int o, int down) {   // (D36) the sim at the foot (
     if (!ok) { if (i == ctl) say(down ? "Something is in the way down there" : "Build a floor where the stairs come out"); return; }
     slv[i] = (u8)tl_; m->x = m->tx = m->wx = tx * 16; m->y = m->ty = m->wy = ty * 16; m->act = -1; m->act_left = 0; sfx(0);
 }
-static void start_act(Sim *m, int obj, int sim) {   // walk to it, then do it
-    if (sim >= 0) { start_soc((int)(m - sims), sim, S_CHAT); }
-    else if (OBJ_ID(&objs[obj]) == ID_STAIRS) { const Obj *o = &objs[obj]; m->tx = o->x * 16; m->ty = o->y * 16; m->act = 50; m->act_amt = 0; m->face = 1; m->act_obj = obj; }   // (up: to the foot of the flight)
-    else { const Obj *o = &objs[obj]; const Item *a = IT_OF(o); if (!((a->mask >> stage_of(m->age)) & 1)) { say(stage_of(m->age) < 3 ? "Too young for that" : "Not for your age"); return; } m->tx = o->x * 16; m->ty = o->y * 16; m->act = a->need; m->act_amt = a->amt; m->face = a->dur; m->act_obj = obj; }
+static void start_act(Sim *m, int obj, int sim) {   // do the action beside furniture, not through it
+    if (sim >= 0) { start_soc((int)(m - sims), sim, S_CHAT); return; }
+    if (obj < 0 || obj >= nobj) return;
+    const Obj *o = &objs[obj]; int tx, ty;
+    if (OBJ_ID(o) == ID_STAIRS) {
+        m->tx = o->x * 16; m->ty = o->y * 16; m->act = 50;
+        m->act_amt = 0; m->face = 1; m->act_obj = obj; m->act_left = 0;
+        return;
+    }
+    const Item *a = IT_OF(o);
+    if (!((a->mask >> stage_of(m->age)) & 1)) {
+        if (m == &sims[ctl]) say(stage_of(m->age) < 3 ? "Too young for that" : "Not for your age");
+        return;
+    }
+    if (!act_stand(m, obj, &tx, &ty)) {
+        if (m == &sims[ctl]) say("No clear way to use that");
+        return;
+    }
+    m->tx = tx; m->ty = ty; m->act = a->need; m->act_amt = a->amt;
+    m->face = a->dur > 0 ? a->dur : 1; m->act_obj = obj; m->act_left = 0;
 }
 static int pcar_solid(int cx, int cy);
 static int obj_solid(int cx, int cy) { if (cx < 0 || cy < 0 || cx >= GN || cy >= GN) return LV ? 1 : far_solid(cx, cy) || pcar_solid(cx, cy); if (LV && !uflr[LV - 1][cy][cx]) return 1; if (!occ_ok) occ_build(); return (occ[LV][cy][cx] >> 15) || (!LV && pcar_solid(cx, cy)); }   // (upstairs: only the floor there is; d83: a parked car is solid)
 static int edge_open(int ax, int ay, int bx2, int by) {   // can a sim step between two neighbouring cells? walls block, doors do not
     int ina = ax >= 0 && ay >= 0 && ax < GN && ay < GN, inb = bx2 >= 0 && by >= 0 && bx2 < GN && by < GN;
     if (LV && (!ina || !inb)) return 0;   // (upstairs: the plot is all there is)
-    if (!ina || !inb) { if (ina == inb || zone || bm_gen >= 7) return 1; return !(by != ay && (ay == GN - 1 || by == GN - 1) && bx2 != door_cx && ax != door_cx) ? 1 : 0; }   // out of the plot: open, but the back fence has one gap, at the path
+    if (!ina || !inb) {
+        if (ina == inb) return 1;
+        /* A Gen 7/8 lot is not a portal through its exterior wall.
+         * Check the actual boundary, including doors, before stepping
+         * outside. Previously all planned-world boundary walls were ignored. */
+        int cx = ina ? ax : bx2, cy = ina ? ay : by, w = 0;
+        if (ax < 0 || bx2 < 0) w = VWv(LV)[cy][0];
+        else if (ax >= GN || bx2 >= GN) w = VWv(LV)[cy][GN];
+        else if (ay < 0 || by < 0) w = HWv(LV)[0][cx];
+        else if (ay >= GN || by >= GN) w = HWv(LV)[GN][cx];
+        if (w && w != 5) return 0;
+        if (zone || bm_gen >= 7) return 1;
+        return !(by != ay && (ay == GN - 1 || by == GN - 1) && bx2 != door_cx && ax != door_cx) ? 1 : 0;
+    }
     int w; u8 (*hw)[GN] = HWv(LV); u8 (*vw)[GN + 1] = VWv(LV);
     if (bx2 > ax) w = vw[ay][ax + 1]; else if (bx2 < ax) w = vw[ay][ax]; else if (by > ay) w = hw[ay + 1][ax]; else w = hw[ay][ax];
     return w == 0 || w == 5;
@@ -4076,7 +4116,15 @@ static void popup_pick(int k) {   // (D82) a button of the thing's popup (touch,
     int cd = popup_code[k]; Sim *m = &sims[ctl]; const Obj *ob = &objs[popup_i]; popup = 0;
                 if (cd < 0) start_act(m, popup_i, -1);
                 else if (cd >= 100) farm_do(cd, ctl, popup_i);   // (D38) the farm
-                else if (cd < 81) { m->tx = ob->x * 16; m->ty = ob->y * 16; m->act = cd; m->act_amt = 0; m->face = cd < 80 ? gather_len(cd - 60) : 1; m->act_obj = popup_i; m->act_left = 0; }   // (gather, or the castaway's meal: walk there, then do it)
+                else if (cd < 81) {
+                    int tx, ty;
+                    if (!act_stand(m, popup_i, &tx, &ty)) say("No clear way to reach that");
+                    else {
+                        m->tx = tx; m->ty = ty; m->act = cd; m->act_amt = 0;
+                        m->face = cd < 80 ? gather_len(cd - 60) : 1;
+                        m->act_obj = popup_i; m->act_left = 0;
+                    }
+                }
                 else if (cd == 81) craft_ui = 1; else if (cd == 82) raft_sail(); else if (cd == 83) travel_ui = 1;
                 else if (cd == 86) { int g_ = arcade_game_at(ob->x, ob->y), pr_ = ag_price(g_); if (funds < pr_) say("Your wallet says no!"); else { funds -= pr_; ag_open(g_); } }   // (D46)
                 else if (cd == 87) ag_open(99);
@@ -4122,7 +4170,16 @@ static void live_touch(int tx, int ty) {
     for (int k = 0; k < CITN && !vl; k++) { const Cit *c = &cits[k]; if (!cit_vis(c)) continue; int sx = fdiv(c->x + 8, 16), sy = fdiv(c->y + 8, 16); if (sx == cx && sy == cy) { popup = 3; popup_i = k; return; } }
     int o = pick_obj(tx, ty); if (o < 0) o = obj_at(cx, cy); if (o >= 0) { popup = 1; popup_i = o; popup_n = obj_acts(o, popup_lab, popup_code); return; }
     if (vl && cx >= 0 && cy >= 0 && cx < GN && cy < GN && !uflr[vl - 1][cy][cx]) { int st = stairs_below(vl, cx, cy); if (st >= 0) { popup = 5; popup_i = st; } return; }   // (D36) the top of a flight: Go Down; open air elsewhere
-    if (cx >= -SLC && cy >= -SLC && cx < SLC * 2 && cy < SLC * 2) { cur_sim = ctl; sims[ctl].tx = cx * 16; sims[ctl].ty = cy * 16; sims[ctl].act = -1; sims[ctl].act_left = 0; }
+    if (cx >= -SLC && cy >= -SLC && cx < SLC * 2 && cy < SLC * 2) {
+        int sx = fdiv(sims[ctl].x + 8, 16), sy = fdiv(sims[ctl].y + 8, 16);
+        int nx, ny;
+        if (obj_solid(cx, cy) ||
+            ((cx != sx || cy != sy) && !next_cell(sx, sy, cx, cy, &nx, &ny))) {
+            mark_t = 0; say("Can't walk there"); return;
+        }
+        cur_sim = ctl; sims[ctl].tx = cx * 16; sims[ctl].ty = cy * 16;
+        sims[ctl].act = -1; sims[ctl].act_left = 0;
+    }
 }
 
 void systemMsgHandler(int bytes, void *user_data);
