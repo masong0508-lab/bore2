@@ -84,6 +84,17 @@ int gfx_hb(void) { return VSync(1); }   // hblanks since the frame's VSync(0) (6
 int gfx_peak_bytes, gfx_world_peak; int gfx_last_cpu, gfx_last_wait, gfx_prim_count, gfx_frame_prims, gfx_last_prims, gfx_last_bytes, gfx_overflow, gfx_last_overflow;   // profiler: prims and packet bytes of the last frame, prims that did not fit
 
 Camera cam;
+/* The GTE's projection focal length is a camera setting, not a fixed
+ * literal: keep offscreen crowd/portrait sprite passes in the same lens
+ * as the world and reset to the historical lens after each frame. */
+static int gfx_focal = 230;
+void gfx_set_focal(int focal) {
+    if (focal < 200) focal = 200;
+    if (focal > 320) focal = 320;
+    if (gfx_focal == focal) return;
+    gfx_focal = focal;
+    gte_SetGeomScreen(focal);
+}
 static int obj_yaw;               // yaw of the current object (for lighting)
 static int lx_obj, ly_obj, lz_obj; // the sun, turned into the current object's space (set with the yaw)
 static void light_to_object(void);
@@ -133,7 +144,7 @@ void gfx_init(void) {
 
     InitGeom();
     gte_SetGeomOffset(CENTER_X, CENTER_Y);
-    gte_SetGeomScreen(230);          // a 70 degree field of view
+    gfx_focal = 230; gte_SetGeomScreen(gfx_focal);  // baseline lens for menus, first person and Dreamcast
     gte_SetBackColor(63, 63, 63);
 
     setVector(&cam.eye, 0, -1200, -1800);
@@ -222,6 +233,10 @@ void gfx_flip(void) {
     PutDispEnv(&db[db_active].disp);
     SetDispMask(1);
     DrawOTag(db[1 - db_active].ot + (OT_LEN - 1));
+    /* A third-person frame may use the more natural PS1 orbit lens.
+     * Menu/Build/CAS views must not inherit it on the next frame. All
+     * the queued primitives already contain their projected vertices. */
+    gfx_set_focal(230);
 }
 
 void gfx_set_reserve(int bytes) { alloc_reserve = bytes; gfx_pk_end = db[db_active].p + PKL(db_active) - 64 - bytes - (bytes < RESERVE_PEOPLE ? KEEP_BYTES : 0); }   // (the kept pieces' room, KEEP_BYTES, is the last of the buffer: the world's and the land's limits do not count it, everyone after them does)
@@ -842,11 +857,11 @@ int gfx_imp_begin(int cx, int cy, int cw, int ch, int ox, int oy, int zmid, int 
     imp_keep_ot = gfx_ot_cur; imp_keep_max = gfx_ot_max; imp_keep_base = gfx_zbase;
     gfx_ot_cur = ot; gfx_ot_max = IMP_OT - 1; gfx_zbase = (zmid >> OT_SHIFT) - IMP_OT / 2;
     imp_ot = ot; imp_scaled = hscale != 4096;
-    if (imp_scaled) gte_SetGeomScreen((230 * hscale) >> 12);
+    if (imp_scaled) gte_SetGeomScreen((gfx_focal * hscale) >> 12);
     return 1;
 }
 void gfx_imp_end(void) {
-    if (imp_scaled) gte_SetGeomScreen(230);
+    if (imp_scaled) gte_SetGeomScreen(gfx_focal);
     gfx_ot_cur = imp_keep_ot; gfx_ot_max = imp_keep_max; gfx_zbase = imp_keep_base;
     DrawOTag(imp_ot + IMP_OT - 1);
 }
