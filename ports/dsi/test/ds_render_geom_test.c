@@ -163,6 +163,14 @@ int main(void) {
       assert(ds_camera_roof_visible(0,
              ds_cell_enclosed(ch, cv, n, px[1], py[1])) == 1);
     }
+    /* Build can move a kicker in-place without changing nobj. The old
+     * cache keyed only on item count and world coordinates: physics
+     * could still treat its former tile as rideable. The occupancy
+     * generation is the actual invalidation contract. */
+    assert(!ds_skate_cache_changed(17, 17, 3u, 3u));
+    assert(ds_skate_cache_changed(17, 17, 4u, 3u));
+    assert(ds_skate_cache_changed(18, 17, 3u, 3u));
+    assert(ds_skate_cache_changed(17, 17, 0u, ~0u));
     /* PS1's '2' and '4' are fixed-facing kickers, not separate DS items.
      * Zone generation must keep them rideable by aliasing to the real
      * Kicker item while preserving the actor's upper-storey bits. */
