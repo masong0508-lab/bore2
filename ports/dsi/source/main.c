@@ -583,6 +583,38 @@ static void ds_l_garage_model(const LotPlan *pl, int ox, int oz,
                    PITCH[pit >= 0 && pit < 3 ? pit : 1], rc, wc);
     }
 }
+/* Both the neighborhood lot preview and distant city now depict the
+ * *actual kind* of place: a paved skate plaza, quarter banks, funbox and
+ * rail. Previously the map showed nine trees and the far view one crate.
+ * This is an inexpensive LOD silhouette, not duplicate playable geometry.
+ * The playable lot still uses the full collision-matched curved ramps. */
+static void ds_skate_preview(int ox, int oz)
+{
+    int x0 = ox + tl(2), x1 = ox + tl(24);
+    int zn = oz + tl(2), zin = oz + tl(6);
+    int zs = oz + tl(24), zsin = oz + tl(20);
+    int low = -26, high = -T * 5 / 2 - 26;
+    u16 concrete = C15(20, 20, 22), slope = C15(15, 17, 20);
+    tx_want = TX_PAVING;
+    ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26),
+           low, concrete);
+    tx_want = -1;
+    /* North and south quarter-pipe banks, continuous inclined faces. */
+    qd(x0, high, zn, x1, high, zn, x1, low, zin, x0, low, zin, slope);
+    qd(x0, low, zsin, x1, low, zsin, x1, high, zs, x0, high, zs, slope);
+    /* A recognizable raised funbox and the approach to its two ends. */
+    block(ox + tl(9), oz + tl(10), ox + tl(17), oz + tl(16),
+          low, -T / 2, C15(12, 14, 17), C15(23, 23, 25));
+    qd(ox + tl(6), low, oz + tl(11), ox + tl(9), -T / 2, oz + tl(11),
+       ox + tl(9), -T / 2, oz + tl(15), ox + tl(6), low, oz + tl(15),
+       C15(18, 19, 22));
+    qd(ox + tl(17), -T / 2, oz + tl(11), ox + tl(20), low, oz + tl(11),
+       ox + tl(20), low, oz + tl(15), ox + tl(17), -T / 2, oz + tl(15),
+       C15(18, 19, 22));
+    /* The metal grind rail must read as a narrow rail, not a skyscraper. */
+    block(ox + tl(6), oz + tl(7), ox + tl(14), oz + tl(7) + T / 7,
+          low, -T / 4, C15(10, 11, 12), C15(27, 27, 28));
+}
 static int r7_bx = -1, r7_by = -1;   // the block the lot being drawn (far_lot, draw_lot) stands on
 static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl, the town plan's home for the lot, when the world is version 7)
     u32 h = b->h; int k = b->lot;
@@ -599,7 +631,8 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
       if ((roads & 6) && !(roads & 1))
           ground(tl(-2), tl(-2), tl(0), tl(0), 0, C15(8, 8, 9)); }
     if (k == LOT_WILD || k == LOT_EMPTY || k == LOT_RIVER) { for (int i = 0; i < 5; i++) tree(tl(3 + (int)((h >> (i * 4)) & 15) * 2 % 22), tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 2 % 22), T * 2); return; }
-    if (k == LOT_PARK || k == LOT_SQUARE || k == LOT_SKATE) { for (int i = 0; i < 9; i++) tree(tl(3 + (int)((h >> (i * 3)) & 7) * 3), tl(3 + (int)((h >> (i * 3 + 1)) & 7) * 3), T * 2); return; }
+    if (k == LOT_SKATE) { ds_skate_preview(0, 0); return; }
+    if (k == LOT_PARK || k == LOT_SQUARE) { for (int i = 0; i < 9; i++) tree(tl(3 + (int)((h >> (i * 3)) & 7) * 3), tl(3 + (int)((h >> (i * 3 + 1)) & 7) * 3), T * 2); return; }
     if (pl && bm_gen >= 7 && k == LOT_POOL) { ground(tl(2), tl(2), tl(24), tl(24), 2, C15(24, 24, 23)); ground(tl(6), tl(6), tl(20), tl(18), 3, C15(8, 20, 30)); return; }   // (D81: a pool lot is a paved deck, no building)
     if (pl && bm_gen >= 7 && k == LOT_FARM && pl->face == LF_NONE) { for (int r = 1; r < 12; r += 2) ground(tl(2), tl(2 * r), tl(24), tl(2 * r + 2), 3, C15(14, 9, 5)); for (int r = 2; r < 11; r += 2) for (int c = 1; c < 12; c += 2) ground(tl(2 * c), tl(2 * r), tl(2 * c + 2), tl(2 * r + 2), 4, C15(20, 24, 6)); return; }   // (D81: a field: crop rows, no barn)
     int w = 10 + (int)(h & 3) * 2, d = 8 + (int)((h >> 2) & 3) * 2, x0 = 4 + (24 - w) / 2 / 2 * 2 - 4, z0 = 4;
@@ -1800,16 +1833,7 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
                 tree(ox + tl(21), oz + tl(21), T * 2);
                 return;
             }
-            if (k == LOT_SKATE) {
-                tx_want = TX_PAVING;
-                ground(ox + tl(2), oz + tl(2), ox + tl(24),
-                       oz + tl(24), -26, C15(20, 20, 22));
-                tx_want = -1;
-                block(ox + tl(5), oz + tl(10), ox + tl(9),
-                      oz + tl(16), -28, -T, C15(13, 16, 19),
-                      C15(22, 23, 25));
-                return;
-            }
+            if (k == LOT_SKATE) { ds_skate_preview(ox, oz); return; }
         }
         if (bm_gen >= 8 && k == LOT_FARM) return;
         int n = (k == LOT_PARK || k == LOT_SQUARE) ? 4 : 2;
