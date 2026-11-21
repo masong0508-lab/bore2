@@ -563,8 +563,14 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
     u16 grass = tr == BT_DESERT ? C15(24, 20, 10) : tr == BT_ROCKY ? C15(13, 13, 13) : tr == BT_BEACH ? C15(26, 24, 14) : C15(11, 20, 8);
     if (b->terrain == BT_SEA) { grass = C15(5, 12, 24); } else if (tr == BT_GRASS || tr == BT_FOREST) grass = seas(grass);
     for (int z = 0; z < LOTN; z++) for (int x = 0; x < LOTN; x++) ground(tl(x * 2), tl(z * 2), tl(x * 2 + 2), tl(z * 2 + 2), 0, (((x + z) & 1) && o_chk) ? shade(grass, 7) : grass);
-    ground(tl(-2), tl(-2), tl(LOTN * 2 + 2), tl(0), 0, C15(8, 8, 9));    // the street along the top
-    ground(tl(-2), tl(0), tl(0), tl(LOTN * 2 + 2), 0, C15(8, 8, 9));     // and the left
+    /* The map's lot picture must reflect this block's real planned
+     * streets, not paint both sides as road on every rural/urban lot.
+     * Older saves keep their original two-strip preview. */
+    { unsigned roads = ds_preview_road_mask(b->road, pl && bm_gen >= 7);
+      if (roads & 1) ground(tl(-2), tl(-2), tl(LOTN * 2 + 2), tl(0), 0, C15(8, 8, 9));
+      if (roads & 2) ground(tl(-2), tl(0), tl(0), tl(LOTN * 2 + 2), 0, C15(8, 8, 9));
+      if ((roads & 6) && !(roads & 1))
+          ground(tl(-2), tl(-2), tl(0), tl(0), 0, C15(8, 8, 9)); }
     if (k == LOT_WILD || k == LOT_EMPTY || k == LOT_RIVER) { for (int i = 0; i < 5; i++) tree(tl(3 + (int)((h >> (i * 4)) & 15) * 2 % 22), tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 2 % 22), T * 2); return; }
     if (k == LOT_PARK || k == LOT_SQUARE || k == LOT_SKATE) { for (int i = 0; i < 9; i++) tree(tl(3 + (int)((h >> (i * 3)) & 7) * 3), tl(3 + (int)((h >> (i * 3 + 1)) & 7) * 3), T * 2); return; }
     if (pl && bm_gen >= 7 && k == LOT_POOL) { ground(tl(2), tl(2), tl(24), tl(24), 2, C15(24, 24, 23)); ground(tl(6), tl(6), tl(20), tl(18), 3, C15(8, 20, 30)); return; }   // (D81: a pool lot is a paved deck, no building)
@@ -2155,20 +2161,18 @@ static void draw_walls(int L, int yaw) {   // thin walls (a skirting board, the 
 }
 static int view_lv(void) { return mode == M_LIVE ? slv[ctl] : ed_lv; }   // the storey you are looking at: the ones above it are cut away
 static u8 ID2CH[NITEM];
-static int show_lv(void) {   // the storeys drawn: the ones over the one you look at are cut away; Roofs: Always shows the whole house, and so does Cutaway when nobody is in it
-    int top = top_lv(), vl = view_lv(), show = vl;
-    if (mode == M_LIVE && top > 0 && o_roof != 2) {
-        /* Do not cut upper floors for a Sim standing outside in the
-         * bounding rectangle of a courtyard or an L-shaped house. */
-        int in = 0;
+static int show_lv(void) {   // exterior keeps its upper floors even when the roof is Hidden; indoor players keep a cutaway
+    int top = top_lv(), vl = view_lv(), in = 0;
+    if (mode == M_LIVE && top > 0 && o_roof != 1) {
+        /* A sim in an actual enclosed cell reveals the active storey.
+         * Courtyards, garages and the gap in an L's bounding box do not. */
         for (int q = 0; q < nsim && !in; q++) {
             int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16);
             in = ds_cell_enclosed(&hwl[0][0], &vwl[0][0], GN, cx, cy);
         }
-        if (o_roof == 1 || !in) show = top;
     }
-    if (mode == M_BUILD && tool == 5) show = top;   // (the Roof tool shows the whole house and its roof)
-    if (show > top) show = top; if (show < vl) show = vl; return show;
+    return ds_visible_storey_top(top, vl, mode == M_LIVE, o_roof, in,
+                                 mode == M_BUILD && tool == 5);
 }
 static int roof_seen(int top) {   // (D39, from roof_draw) 0: Cutaway hides the roof because someone is up there
     int x0, y0, x1, y1; if (!lv_box(top, &x0, &y0, &x1, &y1)) return 0;
