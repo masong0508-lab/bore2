@@ -42,6 +42,26 @@ int main(void) {
     assert(ds_roof_eave_clear(roof, 6, 1, 1, 2, 3, DS_ROOF_NORTH));
     assert(!ds_roof_eave_clear(roof, 6, 3, 3, 1, 2, DS_ROOF_WEST));
     assert(ds_roof_eave_clear(roof, 6, 3, 3, 1, 2, DS_ROOF_EAST));
+    /* Solid floors are 40 units high. Plain lawn and disconnected streets
+     * are 0, not a fictitious 20/24-unit invisible platform. */
+    unsigned char plot[13 * 13] = {0};
+    assert(ds_plot_ground_lift(plot, 13, 0, 0, 1) == 0);
+    assert(ds_plot_ground_lift(plot, 13, 2, 0, 1) == 20);
+    assert(ds_plot_ground_lift(plot, 13, 3, 1, 1) == 20);
+    assert(ds_plot_ground_lift(plot, 13, 2, 0, 0) == 0);
+    plot[1 * 13 + 3] = 1;
+    assert(ds_plot_ground_lift(plot, 13, 3, 1, 1) == 40);
+    assert(ds_plot_ground_lift(plot, 13, 2, 0, 1) == 0);
+    assert(ds_street_ground_lift(13, 4, 0, 1, 0, 1) == 24);
+    assert(ds_street_ground_lift(13, 4, 0, 0, 0, 1) == 0);
+    assert(ds_street_ground_lift(5, 13, 1, 0, 0, 1) == 24);
+    assert(ds_street_ground_lift(5, 13, 0, 0, 0, 1) == 0);
+    assert(ds_street_ground_lift(14, 14, 1, 1, 3, 1) == 0);
+    assert(ds_street_ground_lift(13, 14, 1, 1, 3, 1) == 24);
+    assert(ds_street_ground_lift(14, 14, 1, 1, 4, 1) == 0);
+    assert(ds_street_ground_lift(14, 13, 1, 1, 4, 1) == 24);
+    assert(ds_street_ground_lift(8, 8, 1, 1, 3, 1) == 0);
+    assert(ds_street_ground_lift(8, 8, 1, 1, 3, 0) == 0);
     puts("ds_render_geom_test: PASS");
     return 0;
 }
