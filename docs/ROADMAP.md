@@ -1,4 +1,15 @@
 # BORE 2: what to do next
+
+## Cross-cutting open-world and quality roadmaps (research captured 2026-11-21)
+
+These living documents preserve the life-sim expansion research and the graphical/bug audit. **Start here for new cross-port work**, then consult the specific PS1, DS and Dreamcast entries below. Proposed items are not marked complete until a current build, test and capture verify them.
+
+- [Living Open-World Life Simulation Roadmap](OPEN_WORLD_LIFE_SIM_ROADMAP.md) — player agency, believable citizens, neighborhoods, world coherence, emergent gameplay and milestones (OW-###).
+- [Product QA, Rendering and Stability Roadmap](PRODUCT_QA_AUDIT_ROADMAP.md) — prioritized defect candidates, severity, source evidence, reproduction matrix, platform performance and release checks (QA-###).
+- [Research and Product-Audit Notes, 2026-11-21](RESEARCH_AUDIT_NOTES_2026-11-21.md) — preserved rationale, comparison games, QA taxonomy, links and caveats about unverified issues.
+
+The existing checklist and per-port history remain authoritative for previously completed work. Reconcile discrepancies with the *latest commit and current tests*, not the date of an older unchecked item.
+
 Per port: PS1_ROADMAP.md, DSI_ROADMAP.md (end), DREAMCAST.md (end). Expansion packs and placeholders: EXPANSION_PACKS.md.
 
 Plain list, most important first. Tick a line when it is done.
