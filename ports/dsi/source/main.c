@@ -127,6 +127,7 @@ static void text_box(int x, int y, int w, int h, int s, u16 c, int al, const cha
 #define MW 32                 // blocks across the map window, 8 pixels each
 #define MH 20                 // blocks down (160 pixels; the text lines go below)
 #include "ds_mapview.h"
+#include "ds_render_geom.h"
 static int map_x0 = -1, map_y0 = -1;   // moving map viewport, not a fixed window on the capital
 static int cur_set, sel_x, sel_y, seed = 1234;
 extern int bm_edit_stamp;  // changed by the generator and the neighborhood editor
@@ -1183,7 +1184,7 @@ static int stairs_below(int L, int x, int y) { if (!L) return -1; int keep = LV;
 static void plan(int ghost) {
     u8 (*fl)[GN] = FLv(LV); u8 (*hw)[GN] = HWv(LV); u8 (*vw)[GN + 1] = VWv(LV);
     for (int y = 0; y < GN; y++) for (int x = 0; x < GN; x++) {
-        rect(PX + x * 12, PY + y * 12, 12, 12, fl[y][x] ? FLOORC[fl[y][x] - 1] : LV ? (((x + y) & 1) ? C15(4, 6, 10) : C15(5, 7, 12)) : (((x + y) & 1) ? C15(9, 18, 7) : C15(11, 20, 8)));
+        rect(PX + x * 12, PY + y * 12, 12, 12, fl[y][x] ? FLOORC[fl[y][x] <= 5 ? fl[y][x] - 1 : 0] : LV ? (((x + y) & 1) ? C15(4, 6, 10) : C15(5, 7, 12)) : (((x + y) & 1) ? C15(9, 18, 7) : C15(11, 20, 8)));
         if (LV && !fl[y][x] && stairs_below(LV, x, y) >= 0) { rect(PX + x * 12 + 2, PY + y * 12 + 2, 8, 8, C15(24, 18, 11)); rect(PX + x * 12 + 4, PY + y * 12 + 4, 4, 4, C15(4, 6, 10)); }   // the stairwell
         rect(PX + x * 12, PY + y * 12, 12, 1, C15(0, 0, 0) | 0); }
     for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) if (hw[y][x]) rect(PX + x * 12, PY + y * 12 - 1, 13, 3, WALLC[hw[y][x] - 1]);
@@ -1658,7 +1659,9 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
     u32 h = b->h; int k = b->lot; if (far_lod) pop = 0;
     int tr = pl && ((k >= LOT_HOUSE && k <= LOT_TWO) || k == LOT_PARK) ? BT_GRASS : b->terrain;   // (D80: a home's yard and a park are lawn in a dry town, as the PS1)
     u16 grass = tr == BT_DESERT ? C15(24, 20, 10) : tr == BT_ROCKY ? C15(13, 13, 13) : tr == BT_BEACH ? C15(26, 24, 14) : seas(C15(11, 20, 8));
-    tx_want = tr == BT_DESERT || tr == BT_BEACH ? TX_SAND : tr == BT_ROCKY ? TX_GRAVEL : TX_GRASS; ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), -20, grass); tx_want = -1;
+    /* Neighbouring lots share the live plot's grade (0), not the old -20:
+     * the old height buried walls/doors and left a step at lot boundaries. */
+    tx_want = tr == BT_DESERT || tr == BT_BEACH ? TX_SAND : tr == BT_ROCKY ? TX_GRAVEL : TX_GRASS; ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), 0, grass); tx_want = -1;
     if (!far_house7(b, pl)) {
         /* A nearby public space should look like its actual use, not a
          * random grove. Only the nearest ring gets these tiny landmarks.
@@ -1936,7 +1939,7 @@ static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise
     u16 fas = shade(rc, 5);
     if (sty == 1) {   // FLAT: the slab, a parapet round it, a box on top (the PS1's towers and big blocks)
         u16 tc = shade(C15(18, 18, 19), 8), pc = shade(wc, 7); tx_want = TX_GRAVEL;
-        block(X0, Z0, X1, Z1, ry + 30, ry - 40, fas, tc); tx_want = TX_STUCCO;
+        block(X0, Z0, X1, Z1, ry + 40, ry - 40, fas, tc); tx_want = TX_STUCCO;
         block(X0, Z0, X1, Z0 + 40, ry - 40, ry - 110, pc, shade(pc, 10)); block(X0, Z1 - 40, X1, Z1, ry - 40, ry - 110, pc, shade(pc, 10));
         block(X0, Z0 + 40, X0 + 40, Z1 - 40, ry - 40, ry - 110, pc, shade(pc, 10)); block(X1 - 40, Z0 + 40, X1, Z1 - 40, ry - 40, ry - 110, pc, shade(pc, 10));
         tx_want = -1; if (w > 4 * T && d > 4 * T) { int cx = X0 + w * 2 / 3, cz = Z0 + d / 3; block(cx - T / 2, cz - T / 2, cx + T / 2, cz + T / 2, ry - 40, ry - 40 - T * 2 / 3, C15(20, 20, 21), C15(25, 25, 26)); }
@@ -1988,7 +1991,13 @@ static int bld_seen(const Bld *b) {   // (Cutaway) 0: a Bore of yours is inside,
     if (mode != M_LIVE) return mode == M_BUILD && tool == 5;
     if (o_roof == 2) return 0; if (o_roof == 1) return 1;
     if (view_lv() < b->top) return 0;
-    for (int q = 0; q < nsim; q++) { int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16); if (cx >= b->x0 && cx <= b->x1 && cy >= b->y0 && cy <= b->y1) return 0; }
+    /* Bounding rectangles include empty courtyards and the gaps inside an
+     * L-shaped home. A sim there is outdoors and must not cut its roof. */
+    int id = (int)(b - blds) + 1;
+    for (int q = 0; q < nsim; q++) {
+        int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16);
+        if (cx >= 0 && cy >= 0 && cx < GN && cy < GN && bld_id[cy][cx] == id) return 0;
+    }
     return 1;
 }
 static u32 roof_bits(void) { bld_scan(); u32 m = 0; for (int i = 0; i < nbld; i++) if (bld_seen(&blds[i])) m |= 1u << i; return m; }
@@ -2003,8 +2012,17 @@ static void roof_draw(int top) {   // (D82) a roof over each rectangle of the bu
             while (x + w <= b->x1 && bld_id[y][x + w] == i + 1 && !dn[y][x + w] && cell_top(x + w, y) == lv) w++;
             for (;;) { if (y + d > b->y1) break; int ok = 1; for (int k = 0; k < w; k++) if (bld_id[y + d][x + k] != i + 1 || dn[y + d][x + k] || cell_top(x + k, y + d) != lv) ok = 0; if (!ok) break; d++; }
             for (int j = 0; j < d; j++) for (int k = 0; k < w; k++) dn[y + j][x + k] = 1;
-            int X0 = tl(x * 2) - T / 3, X1 = tl((x + w) * 2) + T / 3, Z0 = tl(y * 2) - T / 3, Z1 = tl((y + d) * 2) + T / 3, ry = -40 - WHF * (lv + 1);
-            roof_shape(X0, Z0, X1, Z1, ry, b->sty, PIT[b->pit], ROOFC[b->col], wc); } }
+            int X0, Z0, X1, Z1;
+            ds_floor_bounds(x, y, w, d, T, LOTN, &X0, &Z0, &X1, &Z1);
+            /* Eaves only on EXPOSED borders. Overhang on an internal
+             * join made two pitched roofs occupy the same depth plane. */
+            if (ds_roof_eave_clear(&bld_id[0][0], GN, x, y, w, d, DS_ROOF_WEST)) X0 -= T / 3;
+            if (ds_roof_eave_clear(&bld_id[0][0], GN, x, y, w, d, DS_ROOF_EAST)) X1 += T / 3;
+            if (ds_roof_eave_clear(&bld_id[0][0], GN, x, y, w, d, DS_ROOF_NORTH)) Z0 -= T / 3;
+            if (ds_roof_eave_clear(&bld_id[0][0], GN, x, y, w, d, DS_ROOF_SOUTH)) Z1 += T / 3;
+            int ry = -40 - WHF * (lv + 1);
+            roof_shape(X0, Z0, X1, Z1, ry, b->sty,
+                       PIT[b->pit < 3 ? b->pit : 1], ROOFC[b->col % 6], wc); } }
 }
 static void draw_floors(int L) {   // floors as the biggest same-type rectangles: no seams for the edge anti-aliasing to show the grass through (upstairs: slabs, so a storey has a thickness)
     static u8 dn[GN][GN]; memset(dn, 0, sizeof dn); u8 (*fl)[GN] = FLv(L);
@@ -2012,9 +2030,14 @@ static void draw_floors(int L) {   // floors as the biggest same-type rectangles
         while (x + w < GN && fl[y][x + w] == t && !dn[y][x + w]) w++;
         for (;;) { if (y + d >= GN) break; int ok = 1; for (int k = 0; k < w; k++) if (fl[y + d][x + k] != t || dn[y + d][x + k]) ok = 0; if (!ok) break; d++; }
         for (int j = 0; j < d; j++) for (int k = 0; k < w; k++) dn[y + j][x + k] = 1;
-        { static const s8 FT[5] = { TX_WOOD_DECK, TX_POOL_TILE, TX_SOIL, TX_GRAVEL, TX_PAVING }; tx_want = FT[(t - 1) % 5]; }   // (D43: wood, tiles, carpet, rush mat, slate)
-        if (!L) ground(tl(x * 2) - 4, tl(y * 2) - 4, tl((x + w) * 2) + 4, tl((y + d) * 2) + 4, -40, FLOORC[t - 1]);
-        else block(tl(x * 2) - 4, tl(y * 2) - 4, tl((x + w) * 2) + 4, tl((y + d) * 2) + 4, 30, -40, C15(24, 22, 19), FLOORC[t - 1]); }
+        { static const s8 FT[5] = { TX_WOOD_DECK, TX_POOL_TILE, TX_SOIL, TX_GRAVEL, TX_PAVING }; tx_want = FT[t >= 1 && t <= 5 ? t - 1 : 0]; }   // (D43: wood, tiles, carpet, rush mat, slate)
+        /* The old +/-4 overlap placed two different floor materials at the
+         * same depth along every threshold: visible flicker/bleed-through.
+         * Exact shared edges preserve watertight geometry without Z fights. */
+        int X0, Z0, X1, Z1, ci = (t >= 1 && t <= 5) ? t - 1 : 0;
+        ds_floor_bounds(x, y, w, d, T, LOTN, &X0, &Z0, &X1, &Z1);
+        if (!L) ground(X0, Z0, X1, Z1, -40, FLOORC[ci]);
+        else block(X0, Z0, X1, Z1, 30, -40, C15(24, 22, 19), FLOORC[ci]); }
     tx_want = -1;
 }
 static u32 *wsig;          // (D39) set: draw_walls only mixes which walls are cut down into *wsig (the still list's signature)
