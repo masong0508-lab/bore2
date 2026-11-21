@@ -1807,18 +1807,37 @@ static u16 horizon_col(void) { return zone == Z_ISLAND ? C15(5, 12, 24) : zone =
 static void draw_far_all(int yaw) {   // last, so the lot, the sims and the citizens always get the polygons first
     for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { if (!i && !j) continue; const BInfo *b = &nb[j + 1][i + 1];
         if (b->terrain == BT_SEA) { ground(tl(36 * i), tl(36 * j), tl(36 * i + 36), tl(36 * j + 36), -8, C15(5, 12, 24)); continue; }
-        if (polys > (t7() ? POLY7 : 2700)) continue; r7_bx = !zone && lot_bx >= 0 && lot_bx < 2000 ? lot_bx + i : -1; r7_by = lot_by + j; far_lot(b, 36 * i * T, 36 * j * T, nb_pop[j + 1][i + 1], yaw, t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0); r7_bx = -1; }
+        if (!ds_world_detail_budget(polys)) {
+            /* Always draw terrain rather than leave missing neighboring lots. */
+            if (ds_world_far_budget(polys))
+                ground(tl(36 * i), tl(36 * j), tl(36 * i + 26),
+                       tl(36 * j + 26), 0, land_col(b->terrain));
+            continue;
+        }
+        r7_bx = !zone && lot_bx >= 0 && lot_bx < 2000 ? lot_bx + i : -1;
+        r7_by = lot_by + j;
+        far_lot(b, 36 * i * T, 36 * j * T, nb_pop[j + 1][i + 1], yaw,
+                t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0);
+        r7_bx = -1;
+    }
     // (D40) THE FAR RING: the slots past the 3x3, each drawn round its own corner (a matrix move: no 16-bit overflow): plain houses, streets, the land; then the
     // horizon, one big quad scaled up four times, under everything out to the far plane. The haze fades it all into the sky, so nothing pops in.
     far_lod = 1;
-    for (int r = 2; r <= ring_r; r++) for (int j = -r; j <= r; j++) for (int i = -r; i <= r; i++) { if (abs(i) != r && abs(j) != r) continue; const BInfo *b = &nbf[j + RING_MAX][i + RING_MAX];
-        gx_push(36 * i * T, 0, 36 * j * T); int skip7 = t7() && polys > POLY7;
+    for (int r = 2; r <= ring_r; r++) for (int j = -r; j <= r; j++) for (int i = -r; i <= r; i++) {
+        if (abs(i) != r && abs(j) != r) continue;
+        /* Reserve FIFO room for matrix pop and horizon; never push past
+         * the DS hardware frame budget. */
+        if (!ds_world_far_budget(polys) || (gxb && gxn + 160 >= gx_cap)) goto far_ring_done;
+        const BInfo *b = &nbf[j + RING_MAX][i + RING_MAX];
+        gx_push(36 * i * T, 0, 36 * j * T);
+        int skip7 = t7() && polys > DS_RENDER_FRAME_TRI_LIMIT - DS_RENDER_NEAR_RESERVE;
         if (b->terrain == BT_SEA) ground(tl(0), tl(0), tl(36), tl(36), -8, C15(5, 12, 24));
         else if (skip7) ground(tl(0), tl(0), tl(36), tl(36), 90, land_col(b->terrain));
         else { ground(tl(0), tl(0), tl(36), tl(36), 90, land_col(b->terrain)); if (t7()) { st7(i, j, 0, 0, 0); st7(i, j, 0, 0, 1); } else if (!zone || zone == Z_TOWN) slot_street(0, 0); r7_bx = !zone && lot_bx >= 0 && lot_bx < 2000 ? lot_bx + i : -1; r7_by = lot_by + j; far_lot(b, 0, 0, 0, yaw, t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0); r7_bx = -1; }
         gx_pop(); }
+far_ring_done:
     far_lod = 0;
-    if (gxb) { int X = (gx_far + 9) * 1024; if (X > 32000) X = 32000; gx_c0(0x11); gx_id(0x1B); gxb[gxn++] = 4 * 4096; gxb[gxn++] = 4096; gxb[gxn++] = 4 * 4096; gx_lv = 0; ground(-X, -X, X, X, 180, horizon_col()); gx_c1(0x12, 1); gx_lv = 0; }
+    if (gxb && gxn + 24 < gx_cap) { int X = (gx_far + 9) * 1024; if (X > 32000) X = 32000; gx_c0(0x11); gx_id(0x1B); gxb[gxn++] = 4 * 4096; gxb[gxn++] = 4096; gxb[gxn++] = 4 * 4096; gx_lv = 0; ground(-X, -X, X, X, 180, horizon_col()); gx_c1(0x12, 1); gx_lv = 0; }
 }
 // ============ TRAVEL (D37): the PS1's zones, each a few DS lots laid out from the PS1's maps with the PS1's own things ============
 // SAN BOREAS is the big map (zone 0). THE MAN BASE (house, factory, rail park), CASTAWAY ISLAND (the camp, the jungle, the hills, the east beach and the
@@ -2117,8 +2136,10 @@ static void draw_build(int yaw) {   // (D39) dpass 1: the still part (recorded o
         if (it) for (int i = 0; i < nobj; i++) {   // then the items, nearest the camera first in budget terms: far ones are skipped when the DS runs out of polygons
             if (OBJ_LV(&objs[i]) != L) continue;
             if (mode == M_LIVE) { int ox2 = tl(objs[i].x * 2) - camx, oz2 = tl(objs[i].y * 2) - camz; if (!on_board && abs(ox2) + abs(oz2) > 9000 && polys > 3600) continue; }
-            if (polys > (i >= yard_i0 ? 4300 : 4200)) continue;
-            int lf_ = lod_force; if (polys > 3500) lod_force = 1;   // (D86: short of polygons a thing is one box, not dropped: the rooms were bare)   // (D81: the yard's things come last in the list: the rooms leave them a share of the budget, so the hedges and planters are not what runs out)
+            if (ds_item_over_budget(polys, i >= yard_i0)) continue;
+            int lf_ = lod_force;
+            if (polys > DS_RENDER_FRAME_TRI_LIMIT - DS_RENDER_WORLD_RESERVE - 240)
+                lod_force = 1; /* low-polygon model before skipping the object */   // (D86: short of polygons a thing is one box, not dropped: the rooms were bare)   // (D81: the yard's things come last in the list: the rooms leave them a share of the budget, so the hedges and planters are not what runs out)
             gx_pid(16 + i % 40); obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); lod_force = lf_; } }
     gy_off = 0; lod_force = 0; if (dpass == 2) PROF(6);
 world:
@@ -4693,8 +4714,18 @@ int main(void) {
                 u32 sg = still_sig(yaw, 1) ^ (u32)mode;
                 if ((sg != st_sig && !did) || st_mode != mode) { did = 1; int k = st_k ^ 1; if (gf_busy && f_st[gf_fly] == k) while (gf_busy) {}
                     polys = pd + b_polys; gx_begin(gx_slb[k], GXS_MAX); dpass = 4; draw_build(yaw); st_n = gx_end(); DC_FlushRange(gx_slb[k], (u32)st_n * 4); st_polys = polys - pd - b_polys; st_sig = sg; st_mode = (u8)mode; st_k = k; st_rec++; }
-                { u32 wg = world_sig(); if (wg != w_sig && (!did || w_n == 0)) { int k = w_k ^ 1; if (gf_busy && f_w[gf_fly] == k) while (gf_busy) {}   // (D41) the world: only when the lot or the view changes
-                    polys = 0; gx_begin(gx_wlb[k], GXW_MAX); dpass = 3; draw_build(yaw); w_n = gx_end(); DC_FlushRange(gx_wlb[k], (u32)w_n * 4); w_polys = polys; w_sig = wg; w_k = k; st_rec++; } }
+                { /* World LOD uses the COMBINED frame budget, not a
+                   * fresh zero in each cached display list. */
+                  int base_tris = pd + b_polys + st_polys;
+                  u32 wg = world_sig() ^ ((u32)(base_tris / 256) * 2654435761u);
+                  if (wg != w_sig && (!did || w_n == 0)) {
+                      int k = w_k ^ 1; if (gf_busy && f_w[gf_fly] == k) while (gf_busy) {}
+                      polys = base_tris; gx_begin(gx_wlb[k], GXW_MAX); dpass = 3;
+                      draw_build(yaw); w_n = gx_end();
+                      DC_FlushRange(gx_wlb[k], (u32)w_n * 4);
+                      w_polys = polys - base_tris; w_sig = wg; w_k = k; st_rec++;
+                  }
+                }
                 PROF(3); dpass = 0;
                 gxb = db; gxn = dn; gxh = dh; gxk = dk; gf_rec = f; gf_ss = gxn;
                 gf_add(gx_blb[b_k], b_n); f_b[b] = (u8)b_k; gf_add(gx_slb[st_k], st_n); f_st[b] = (u8)st_k; gf_add(gx_wlb[w_k], w_n); f_w[b] = (u8)w_k; st_polys += 0;
