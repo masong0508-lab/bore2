@@ -29,4 +29,37 @@ static int ds_roof_eave_clear(const unsigned char *occupied, int size,
     }
     return 1;
 }
+/* Stand on the surface that draw_build actually paints. The 2x2 checker
+ * is raised only if every cell in its patch is empty; all other grass is at
+ * height zero. Previously outdoor characters hovered 20 units above it. */
+static int ds_plot_ground_lift(const unsigned char *fl, int n, int x, int y,
+                               int checker)
+{
+    if (fl[y * n + x]) return 40;
+    if (!checker) return 0;
+    int bx = x & ~1, by = y & ~1;
+    if (!(((bx + by) / 2) & 1)) return 0;
+    int ex = bx + 1 < n ? bx + 1 : bx;
+    int ey = by + 1 < n ? by + 1 : by;
+    if (fl[by * n + bx] || fl[by * n + ex] ||
+        fl[ey * n + bx] || fl[ey * n + ex]) return 0;
+    return 20;
+}
+/* The planned grid draws streets only on selected edges. A missing road
+ * cannot support an imaginary raised sidewalk or floating pedestrian. */
+static int ds_street_ground_lift(int lx, int ly, int south, int east,
+                                 int corner, int planned)
+{
+    if (lx < 13 && ly < 13) return 0;
+    if (!planned) {
+        if ((lx >= 14 && lx <= 16) || (ly >= 14 && ly <= 16)) return 0;
+        return lx >= 13 || ly >= 13 ? 24 : 0;
+    }
+    if (lx <= 12) return south && (ly == 13 || ly == 17) ? 24 : 0;
+    if (ly <= 12) return east && (lx == 13 || lx == 17) ? 24 : 0;
+    int h = corner & 1, v = corner & 2;
+    if (corner && !h && !v) h = v = 1;
+    return ((h && (ly == 13 || ly == 17)) ||
+            (v && (lx == 13 || lx == 17))) ? 24 : 0;
+}
 #endif
