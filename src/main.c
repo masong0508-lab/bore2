@@ -8,6 +8,7 @@
 #endif
 #include "common.h"
 #include "gfx.h"
+#include "camera_lens.h"
 #include "pad.h"
 #include "crowd.h"
 #ifdef WALLS_DISC   // PS1: the title logo's 1057 rectangles are read from WALLS.BIN into the crowd's arena (nobody has models there at the title), 5.3 KB not resident
@@ -132,8 +133,14 @@ static void camera_apply(int fx, int fy, int fz) {
 #else
     cam_dist = CLAMP(cam_dist, 600, 3600);
 #endif
+    /* Dolly-lens coupling: make nearby stairs, pipes, people and rails
+     * less enlarged by perspective without making the focused Sim/house
+     * grow on screen. First-person and Dreamcast retain their old lens. */
+    int focal = bore_camera_focal(cam_view == 2);
+    int orbit_dist = bore_camera_distance(cam_dist, focal);
+    gfx_set_focal(focal);
     int cp = icos(cam_pitch), sp = isin(cam_pitch);
-    int horiz = (cam_dist * cp) >> 12, up = (cam_dist * sp) >> 12;
+    int horiz = (orbit_dist * cp) >> 12, up = (orbit_dist * sp) >> 12;
     cam.at.vx = cam_fx; cam.at.vy = cam_fy; cam.at.vz = cam_fz;
     cam.eye.vx = cam_fx - ((isin(cam_yaw) * horiz) >> 12);
     cam.eye.vz = cam_fz - ((icos(cam_yaw) * horiz) >> 12);
