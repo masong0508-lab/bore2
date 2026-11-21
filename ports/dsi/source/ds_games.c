@@ -69,10 +69,10 @@ static int ramp_prof(int kind, int n, int d) { int L = n * 64; d = CLAMP(d, 0, L
     { int R = n * 256, x = (d * 4 * 972) >> 10; return R - g_isq(R * R - x * x); } }
 static int ramp_localB(int r, int lx, int lv) { switch (r & 3) { case 0: return lv >> 2; case 1: return lx >> 2; case 2: return 64 - (lv >> 2); default: return 64 - (lx >> 2); } }
 typedef struct { s8 ok, idx, n, kind, r; u8 c; s16 h; } SkCell;   // (D51) what a cell is, worked out once (the physics asked for it ten times a step)
-static SkCell sk_cc[GN][GN]; static int sk_cc_key = -1;
+static SkCell sk_cc[GN][GN]; static int sk_cc_key = -1; static u32 sk_cc_epoch = ~0u;
 static int sk_deck_c(int c);
 static const SkCell *sk_cc_get(int mx, int my) {
-    int key = nobj * 977 + lot_bx * 31 + lot_by * 7 + zone * 3 + (occ_ok ? 0 : 1); if (key != sk_cc_key) { sk_cc_key = key; memset(sk_cc, 0, sizeof sk_cc); }
+    int key = nobj * 977 + lot_bx * 31 + lot_by * 7 + zone * 3 + (occ_ok ? 0 : 1); if (ds_skate_cache_changed(key, sk_cc_key, occ_epoch, sk_cc_epoch)) { sk_cc_key = key; sk_cc_epoch = occ_epoch; memset(sk_cc, 0, sizeof sk_cc); }
     SkCell *e = &sk_cc[my][mx]; if (e->ok) return e;
     int c = sk_ch(mx, my); e->c = (u8)c; e->ok = 1; e->kind = 0; e->idx = e->n = e->r = 0; e->h = 0;
     if (is_ramp_c(c)) { int kind = ramp_kind(c), r = sk_face(mx, my), idx, n; ramp_run(mx, my, kind, r, &idx, &n); e->kind = (s8)kind; e->r = (s8)r; e->idx = (s8)idx; e->n = (s8)n; }
