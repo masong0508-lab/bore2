@@ -3098,6 +3098,9 @@ static void stairs_go(int i, int o, int down) {   // move between the stair's ac
     m->y = m->ty = m->wy = dest_y * 16;
     m->act = -1; m->act_left = 0; sfx(0);
 }
+/* start_act checks the stair doorway before accepting an interaction;
+ * the complete wall collision implementation appears below. */
+static int edge_open(int ax, int ay, int bx2, int by);
 static void start_act(Sim *m, int obj, int sim) {   // do the action beside furniture, not through it
     if (sim >= 0) { start_soc((int)(m - sims), sim, S_CHAT); return; }
     if (obj < 0 || obj >= nobj) return;
