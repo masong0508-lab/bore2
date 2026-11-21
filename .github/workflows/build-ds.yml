@@ -50,6 +50,20 @@ jobs:
       - name: Audit generated DS homes, stairs, access and room geometry
         timeout-minutes: 8
         run: DSRUN=/tmp/dsrun bash ports/dsi/test/ds_town7_audit.sh
+      - name: Emulate skate plaza geometry, riding, FPS and polygon budget
+        timeout-minutes: 8
+        run: DSRUN=/tmp/dsrun bash ports/dsi/test/ds_skate_smoke.sh "$PWD/out-skate"
+      - name: Upload DS skate regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_ds_skate_visual
+          path: |
+            out-skate/skate_*.ppm
+            out-skate/skate_results.json
+            out-skate/skate.log
+            out-skate/build.log
+          if-no-files-found: warn
       - name: Capture generated-house roof and cutaway atlas at native DS resolution
         timeout-minutes: 10
         run: DSRUN=/tmp/dsrun bash ports/dsi/test/ds_visual_atlas.sh "$PWD/out-visual"

@@ -583,6 +583,38 @@ static void ds_l_garage_model(const LotPlan *pl, int ox, int oz,
                    PITCH[pit >= 0 && pit < 3 ? pit : 1], rc, wc);
     }
 }
+/* Both the neighborhood lot preview and distant city now depict the
+ * *actual kind* of place: a paved skate plaza, quarter banks, funbox and
+ * rail. Previously the map showed nine trees and the far view one crate.
+ * This is an inexpensive LOD silhouette, not duplicate playable geometry.
+ * The playable lot still uses the full collision-matched curved ramps. */
+static void ds_skate_preview(int ox, int oz)
+{
+    int x0 = ox + tl(2), x1 = ox + tl(24);
+    int zn = oz + tl(2), zin = oz + tl(6);
+    int zs = oz + tl(24), zsin = oz + tl(20);
+    int low = -26, high = -T * 5 / 2 - 26;
+    u16 concrete = C15(20, 20, 22), slope = C15(15, 17, 20);
+    tx_want = TX_PAVING;
+    ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26),
+           low, concrete);
+    tx_want = -1;
+    /* North and south quarter-pipe banks, continuous inclined faces. */
+    qd(x0, high, zn, x1, high, zn, x1, low, zin, x0, low, zin, slope);
+    qd(x0, low, zsin, x1, low, zsin, x1, high, zs, x0, high, zs, slope);
+    /* A recognizable raised funbox and the approach to its two ends. */
+    block(ox + tl(9), oz + tl(10), ox + tl(17), oz + tl(16),
+          low, -T / 2, C15(12, 14, 17), C15(23, 23, 25));
+    qd(ox + tl(6), low, oz + tl(11), ox + tl(9), -T / 2, oz + tl(11),
+       ox + tl(9), -T / 2, oz + tl(15), ox + tl(6), low, oz + tl(15),
+       C15(18, 19, 22));
+    qd(ox + tl(17), -T / 2, oz + tl(11), ox + tl(20), low, oz + tl(11),
+       ox + tl(20), low, oz + tl(15), ox + tl(17), -T / 2, oz + tl(15),
+       C15(18, 19, 22));
+    /* The metal grind rail must read as a narrow rail, not a skyscraper. */
+    block(ox + tl(6), oz + tl(7), ox + tl(14), oz + tl(7) + T / 7,
+          low, -T / 4, C15(10, 11, 12), C15(27, 27, 28));
+}
 static int r7_bx = -1, r7_by = -1;   // the block the lot being drawn (far_lot, draw_lot) stands on
 static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl, the town plan's home for the lot, when the world is version 7)
     u32 h = b->h; int k = b->lot;
@@ -599,7 +631,8 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
       if ((roads & 6) && !(roads & 1))
           ground(tl(-2), tl(-2), tl(0), tl(0), 0, C15(8, 8, 9)); }
     if (k == LOT_WILD || k == LOT_EMPTY || k == LOT_RIVER) { for (int i = 0; i < 5; i++) tree(tl(3 + (int)((h >> (i * 4)) & 15) * 2 % 22), tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 2 % 22), T * 2); return; }
-    if (k == LOT_PARK || k == LOT_SQUARE || k == LOT_SKATE) { for (int i = 0; i < 9; i++) tree(tl(3 + (int)((h >> (i * 3)) & 7) * 3), tl(3 + (int)((h >> (i * 3 + 1)) & 7) * 3), T * 2); return; }
+    if (k == LOT_SKATE) { ds_skate_preview(0, 0); return; }
+    if (k == LOT_PARK || k == LOT_SQUARE) { for (int i = 0; i < 9; i++) tree(tl(3 + (int)((h >> (i * 3)) & 7) * 3), tl(3 + (int)((h >> (i * 3 + 1)) & 7) * 3), T * 2); return; }
     if (pl && bm_gen >= 7 && k == LOT_POOL) { ground(tl(2), tl(2), tl(24), tl(24), 2, C15(24, 24, 23)); ground(tl(6), tl(6), tl(20), tl(18), 3, C15(8, 20, 30)); return; }   // (D81: a pool lot is a paved deck, no building)
     if (pl && bm_gen >= 7 && k == LOT_FARM && pl->face == LF_NONE) { for (int r = 1; r < 12; r += 2) ground(tl(2), tl(2 * r), tl(24), tl(2 * r + 2), 3, C15(14, 9, 5)); for (int r = 2; r < 11; r += 2) for (int c = 1; c < 12; c += 2) ground(tl(2 * c), tl(2 * r), tl(2 * c + 2), tl(2 * r + 2), 4, C15(20, 24, 6)); return; }   // (D81: a field: crop rows, no barn)
     int w = 10 + (int)(h & 3) * 2, d = 8 + (int)((h >> 2) & 3) * 2, x0 = 4 + (24 - w) / 2 / 2 * 2 - 4, z0 = 4;
@@ -1470,7 +1503,22 @@ static void obj3d_in(int x, int y, const Item *it, int rot, int ghost) {   // ev
     if (it->nbox) {   // (D35) a PS1 model: its own boxes, converted by tools/dsbuild/mk_dsitems.py (PS1 units: 10 across, 7 up)
         int fch = id == PS1ID[0xDB] - 1 ? 0xDB : id == PS1ID[0xDC] - 1 ? 0xDC : 0, nb = fch == 0xDB ? 1 : it->nbox;   // (D38: a crop bed is its soil and what the farm has growing; a coop has its hens)
         if (dpass == 2 && !pv_cap && !ghost) { if (fch == 0xDC && o_det && !lod_force && !(mode == M_LIVE && lod_far())) farm_extras(fch, x, y, IBOX[it->box0].z1 * 7); return; }   // (D39: the moving pass draws only the hens)
-        if (!pv_cap && (!o_det || lod_force || (mode == M_LIVE && lod_far()))) {   // far off: one box, as big as the model (D38: was the item's nominal height, so a crop bed stood like a crate)
+        if (!pv_cap && (!o_det || lod_force || (mode == M_LIVE && lod_far()))) {   // far off: keep gameplay-critical stair silhouette, simplify the rest
+            if (id == ID_STAIRS) {
+                /* A floor-height solid box looked like a vertical wall
+                 * instead of a staircase in Simple or distant views.
+                 * Four paired risers preserve the full stair landing
+                 * height and its true rotation for half the detail cost. */
+                for (int k = 0; k < nb; k += 2) {
+                    const IBx *a = &IBOX[it->box0 + k];
+                    const IBx *b = &IBOX[it->box0 + (k + 1 < nb ? k + 1 : k)];
+                    int x0 = MIN(a->a0, b->a0), x1 = MAX(a->a1, b->a1);
+                    int z0 = MIN(a->b0, b->b0), z1 = MAX(a->b1, b->b1);
+                    int h = MAX(a->z1, b->z1) * 7;
+                    ob2(x0 * 10, z0 * 10, x1 * 10, z1 * 10, 0, h, b->side, b->top);
+                }
+                return;
+            }
             if (fch == 0xDB) { const IBx *b = &IBOX[it->box0]; ob(0, 0, 80, 80, 0, b->z1 * 7, b->side); farm_extras(fch | 0x100, x, y, b->z1 * 7); return; }
             int top = 0, a0 = 80, b0 = 80, a1 = 0, b1 = 0; for (int k = 0; k < nb; k++) { const IBx *b = &IBOX[it->box0 + k]; if (b->z1 * 7 > top) top = b->z1 * 7; if (b->a0 < a0) a0 = b->a0; if (b->b0 < b0) b0 = b->b0; if (b->a1 > a1) a1 = b->a1; if (b->b1 > b1) b1 = b->b1; }
             ob(a0 * 10, b0 * 10, a1 * 10, b1 * 10, 0, top, c); return; }
@@ -1751,6 +1799,10 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
      * the old height buried walls/doors and left a step at lot boundaries. */
     tx_want = tr == BT_DESERT || tr == BT_BEACH ? TX_SAND : tr == BT_ROCKY ? TX_GRAVEL : TX_GRASS; ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), 0, grass); tx_want = -1;
     if (!far_house7(b, pl)) {
+        /* At any distance or world generation, a skate plaza must remain
+         * recognizable. Do not replace it with a random grove in far LOD;
+         * the shared low-polygon bank/funbox silhouette is deterministic. */
+        if (k == LOT_SKATE) { ds_skate_preview(ox, oz); return; }
         /* A nearby public space should look like its actual use, not a
          * random grove. Only the nearest ring gets these tiny landmarks.
          * Keep older saved-world visuals and the distant low LOD unchanged. */
@@ -1783,16 +1835,6 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
                 tree(ox + tl(21), oz + tl(5), T * 2);
                 tree(ox + tl(5), oz + tl(21), T * 2);
                 tree(ox + tl(21), oz + tl(21), T * 2);
-                return;
-            }
-            if (k == LOT_SKATE) {
-                tx_want = TX_PAVING;
-                ground(ox + tl(2), oz + tl(2), ox + tl(24),
-                       oz + tl(24), -26, C15(20, 20, 22));
-                tx_want = -1;
-                block(ox + tl(5), oz + tl(10), ox + tl(9),
-                      oz + tl(16), -28, -T, C15(13, 16, 19),
-                      C15(22, 23, 25));
                 return;
             }
         }
@@ -1936,6 +1978,10 @@ static void zone_block(int bx, int by, BInfo *b) {
 }
 static void blk(int bx, int by, BInfo *b) { if (bx >= ZB) zone_block(bx, by, b); else bm_block(bx, by, b); }
 static int z_put(int x, int y, int ch, int rot) {   // a PS1 thing by its letter, as the PS1's zone maps place them
+    /* '2' and '4' are PS1 fixed-facing kicker variants, not separate DS
+     * catalogue IDs. Map them onto the actual Kicker item with the same
+     * lip direction as PS1 so they render as a slope and are rideable. */
+    ch = ds_skate_ramp_alias(ch, &rot);
     int id = PS1ID[ch & 255] - 1, keep = LV; LV = (rot >> 2) & 3; int busy = id < 0 || nobj >= 400 || x < 0 || y < 0 || x >= GN || y >= GN || obj_at(x, y) >= 0; LV = keep; if (busy) return -1;
     objs[nobj].x = (u8)x; objs[nobj].y = (u8)y; objs[nobj].c = (u8)(id >> 2); objs[nobj].i = (u8)(id & 3); objs[nobj].rot = (u8)rot; nobj++; occ_ok = 0; return nobj - 1; }
 static void z_room(int x0, int y0, int x1, int y1, int fl, int wc) {   // a room: its floor, and walls round it on the cell edges

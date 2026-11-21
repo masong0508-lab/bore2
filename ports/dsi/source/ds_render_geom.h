@@ -146,6 +146,37 @@ static int ds_camera_roof_visible(int roof_mode, int camera_inside)
     return roof_mode == 1 || (roof_mode == 0 && !camera_inside);
 }
 
+/* A ramp model is also its skating collision surface. When Build mode
+ * moves/turns an item without changing the number of objects, the
+ * occupancy grid's generation changes; the cached skate surface must
+ * follow it or the rider may interact with an invisible old obstacle. */
+static int ds_skate_cache_changed(int key, int previous_key,
+                                  unsigned epoch, unsigned previous_epoch)
+{
+    return key != previous_key || epoch != previous_epoch;
+}
+
+/* Preserve PS1's three fixed-facings for kicker aliases. They aren't
+ * separate catalogue items on DS, so the zone loader turns them into the
+ * real Kicker item with the correct orientation. The regular Kicker still
+ * honours all four Buy/Build rotation choices. Keep upper-storey bits. */
+static int ds_skate_ramp_alias(int ch, int *rotation)
+{
+    if (ch == '2' || ch == '4') {
+        *rotation = (*rotation & ~3) | (ch == '2' ? 1 : 3);
+        return '1';
+    }
+    return ch;
+}
+
+/* Actual PS1 ramps have curved surfaces; two DS chords per kicker are too
+ * faceted and the board can visually float between physics sample points.
+ * These counts fit the DS cached height/normal buffers (max six chords). */
+static int ds_ramp_curve_segments(int kind)
+{
+    return kind == 2 ? 5 : kind == 1 ? 4 : 3;
+}
+
 /* Roof Hide hides the roof mesh, *not the upper storeys of an outdoor
  * house*. For an indoor Sim, both Hide and Cutaway continue to reveal the
  * active floor; Always retains every floor. This decision must remain

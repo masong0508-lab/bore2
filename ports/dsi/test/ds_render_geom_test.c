@@ -3,6 +3,12 @@
 #include <assert.h>
 #include <stdio.h>
 #include "../source/ds_render_geom.h"
+/* The real, generated DS catalogue: check the *actual* stair steps and
+ * the missing fixed-facing PS1 kicker aliases, not hand-picked fixtures. */
+typedef unsigned char u8;
+typedef unsigned short u16;
+#define C15(r,g,b) ((u16)((r) | ((g) << 5) | ((b) << 10)))
+#include "../source/ds_items.h"
 static void floor_rect(int x, int y, int w, int h, int *v) {
     ds_floor_bounds(x, y, w, h, 330, 13, &v[0], &v[1], &v[2], &v[3]);
     assert(v[0] < v[2] && v[1] < v[3]);
@@ -156,6 +162,59 @@ int main(void) {
       /* Camera outside with someone indoors never hides their building. */
       assert(ds_camera_roof_visible(0,
              ds_cell_enclosed(ch, cv, n, px[1], py[1])) == 1);
+    }
+    /* Build can move a kicker in-place without changing nobj. The old
+     * cache keyed only on item count and world coordinates: physics
+     * could still treat its former tile as rideable. The occupancy
+     * generation is the actual invalidation contract. */
+    assert(!ds_skate_cache_changed(17, 17, 3u, 3u));
+    assert(ds_skate_cache_changed(17, 17, 4u, 3u));
+    assert(ds_skate_cache_changed(18, 17, 3u, 3u));
+    assert(ds_skate_cache_changed(17, 17, 0u, ~0u));
+    /* PS1's '2' and '4' are fixed-facing kickers, not separate DS items.
+     * Zone generation must keep them rideable by aliasing to the real
+     * Kicker item while preserving the actor's upper-storey bits. */
+    assert(PS1ID['1'] != 0 && PS1ID['2'] == 0 && PS1ID['4'] == 0);
+    for (int q = 0; q < 4; ++q) {
+        int r = q | 4;
+        assert(ds_skate_ramp_alias('2', &r) == '1');
+        assert(r == (4 | 1));
+        r = q | 8;
+        assert(ds_skate_ramp_alias('4', &r) == '1');
+        assert(r == (8 | 3));
+        r = q;
+        assert(ds_skate_ramp_alias('1', &r) == '1' && r == q);
+        assert(ds_skate_ramp_alias('5', &r) == '5' && r == q);
+        assert(ds_skate_ramp_alias('9', &r) == '9' && r == q);
+    }
+    assert(ds_ramp_curve_segments(0) == 3);
+    assert(ds_ramp_curve_segments(1) == 4);
+    assert(ds_ramp_curve_segments(2) == 5);
+    for (int k = 0; k < 3; ++k) {
+        int seg = ds_ramp_curve_segments(k);
+        assert(seg > 2 && seg <= 6);  /* cached normals: [6] */
+        assert(seg + 1 <= 8);         /* cached heights: [8] */
+    }
+    /* The low-LOD staircase combines two real treads per box, not all
+     * eight into a featureless wall. The top meets exactly the upper
+     * storey's wall/floor elevation on DS (T=330, WHF=T*21/5). */
+    { const Item *st = &ITEMS[ID_STAIRS];
+      assert(st->nbox == 8 && st->fw == 1 && st->fl == 1);
+      assert(TABN[6][0] == 'S' && TABS[6][0] == 'S');
+      int previous = 0, low_count = 0;
+      for (int k = 0; k < st->nbox; k += 2) {
+          const IBx *a = &IBOX[st->box0 + k];
+          const IBx *b = &IBOX[st->box0 + k + 1];
+          int top = a->z1 > b->z1 ? a->z1 : b->z1;
+          int z0 = a->b0 < b->b0 ? a->b0 : b->b0;
+          int z1 = a->b1 > b->b1 ? a->b1 : b->b1;
+          assert(a->a0 == 0 && b->a1 == 8);
+          assert(z1 - z0 == 2 && z0 >= 0 && z1 <= 8);
+          assert(top > previous && top == 6 * (low_count + 1));
+          previous = top; ++low_count;
+      }
+      assert(low_count == 4 && previous == 24);
+      assert(previous * 7 * 330 / 40 == 330 * 21 / 5);
     }
     puts("ds_render_geom_test: PASS");
     return 0;
