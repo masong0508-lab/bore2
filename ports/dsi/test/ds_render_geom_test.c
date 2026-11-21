@@ -92,6 +92,16 @@ int main(void) {
     /* A missing end wall opens the entire room to outdoors. */
     vw[2 * 9 + 1] = 0;
     assert(!ds_cell_enclosed(hw, vw, 8, 2, 2));
+    /* The renderer counts two triangles per quad; reserve room for the
+     * world in the object pass, and degrade details before full capacity. */
+    assert(!ds_item_over_budget(3000, 0));
+    assert(!ds_item_over_budget(3350, 0));
+    assert(ds_item_over_budget(3361, 0));
+    assert(ds_item_over_budget(3310, 1));
+    assert(ds_world_detail_budget(3600));
+    assert(!ds_world_detail_budget(3601));
+    assert(ds_world_far_budget(3710));
+    assert(!ds_world_far_budget(3711));
     puts("ds_render_geom_test: PASS");
     return 0;
 }
