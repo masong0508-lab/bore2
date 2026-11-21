@@ -129,6 +129,7 @@ static void text_box(int x, int y, int w, int h, int s, u16 c, int al, const cha
 #include "ds_mapview.h"
 #include "ds_render_geom.h"
 #include "ds_action_spots.h"
+#include "ds_confirm.h"
 static int map_x0 = -1, map_y0 = -1;   // moving map viewport, not a fixed window on the capital
 static int cur_set, sel_x, sel_y, seed = 1234;
 extern int bm_edit_stamp;  // changed by the generator and the neighborhood editor
@@ -4055,6 +4056,9 @@ static void cas_top(void) {   // the top screen's overlay: the name, and (Traits
     if (cas_step == CS_TRAITS) tp_top();
 }
 static int slot_sel;
+static unsigned int title_del_stamp;
+static unsigned char title_del_armed;
+#define TITLE_DELETE_CONFIRM_FRAMES 180u
 static void house_icon(int x, int y, int sz, u16 c) {
     for (int i = 0; i < sz / 2; i++) rect(x + sz / 2 - i - 1, y + i, 2 * i + 2, 1, c);
     rect(x + sz / 8, y + sz / 2, sz * 3 / 4, sz / 2 - sz / 8, c); rect(x + sz * 2 / 5, y + sz * 3 / 4 - 1, sz / 5, sz / 4, C15(10, 22, 8));
@@ -4332,7 +4336,7 @@ static void draw_title(void) {
     for (int i = 0; i < 3; i++) { int x = 26 + i * 70, y = 66; rect(x - 2, y - 2, 68, 60, slot_sel == i ? C15(31, 31, 31) : C15(2, 4, 12)); rect(x, y, 64, 56, i == 0 ? C15(10, 24, 8) : C15(6, 12, 26));
         if (i == 0) house_icon(x + 12, y + 4, 40, C15(31, 31, 31)); else plumb_icon(x + 8, y + 0, 48, C15(28, 31, 31));
         { const char *lb = i == 0 ? (sav_have >= 0 ? "Continue" : "New game") : "New sim"; rect(x, y + 42, 64, 14, C15(2, 4, 12)); text_box(x, y + 42, 64, 14, FS_BODY, TXT, AL_C, lb); } }
-    chip(98, 130, 28, 22, "<", 0); chip(130, 130, 28, 22, "Opt", 0); chip(162, 130, 28, 22, "Del", 0); chip(194, 130, 36, 22, "OK", 0);
+    chip(98, 130, 28, 22, "<", 0); chip(130, 130, 28, 22, "Opt", 0); chip(162, 130, 28, 22, title_del_armed ? "Del?" : "Del", 0); chip(194, 130, 36, 22, "OK", 0);
     { static char sb[40]; if (sav_have >= 0) sprintf(sb, "Saved: day %d, %d born, %d lost", st_days, st_born, st_died); const char *st = sav_ok() ? (sav_have >= 0 ? sb : "No saved game yet") : "No save chip found"; if (msg_t <= 0) text_box(16, 158, 224, 20, FS_BODY, C15(22, 26, 31), AL_C, st); }
     ui_hints(179, "Pad:Choose|A:OK|Y:Options");
     if (msg_t > 0) toast(128, 166, msg);
@@ -4348,10 +4352,30 @@ static void new_household(void) {
     for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0; memset(csx, 0, sizeof csx); trg_begin();
 }
 static void title_touch(int tx, int ty) {
+    int del = hit(162, 130, 28, 22, tx, ty);
+    if (!del) title_del_armed = 0;
     for (int i = 0; i < 3; i++) if (hit(26 + i * 70, 66, 64, 56, tx, ty)) slot_sel = i;
     if (hit(98, 130, 28, 22, tx, ty)) slot_sel = 0;
     if (hit(130, 130, 28, 22, tx, ty)) opt_enter();
-    if (hit(162, 130, 28, 22, tx, ty)) { if (slot_sel == 0 && sav_have >= 0) { u8 z[sizeof(SavHdr)]; memset(z, 0, sizeof z); for (int k = 0; k < 2; k++) { cardWriteEeprom((u32)(k * SAV_STRIDE), z, sizeof z, sav_type); memset(sav_sh[k], 0, sizeof z); } sav_have = -1; sav_seq = 0; } new_household(); say("Cleared"); slot_sel = 0; }
+    if (del) {
+        if (slot_sel != 0 || sav_have < 0 || !sav_ok()) {
+            title_del_armed = 0; say("No saved game selected"); title_rd = 1; return;
+        }
+        if (!ds_confirm_twice((u32)vbl_n, &title_del_stamp,
+                              &title_del_armed, TITLE_DELETE_CONFIRM_FRAMES)) {
+            say("Tap Del again to erase save"); title_rd = 1; return;
+        }
+        /* Only after two distinct presses within the confirmation window:
+         * clear both journal headers, leaving payload bytes untouched. */
+        u8 z[sizeof(SavHdr)]; memset(z, 0, sizeof z);
+        for (int k = 0; k < 2; k++) {
+            cardWriteEeprom((u32)(k * SAV_STRIDE), z, sizeof z, sav_type);
+            memset(sav_sh[k], 0, sizeof z);
+        }
+        sav_have = -1; sav_seq = 0;
+        new_household(); say("Save erased"); slot_sel = 0; title_rd = 1;
+        return;
+    }
     if (hit(194, 130, 36, 22, tx, ty)) { if (slot_sel == 0) { if (sav_have >= 0 && sav_apply()) { say("Welcome back!"); } else if (sav_have >= 0) { say("Save is damaged"); new_household(); }
             if (lot_bx >= 2000) { city_spawn(); nb_ok = 1; set_mode(M_LIVE); } else set_mode(M_MAP); }   // (D37: saved on a trip, you are back there; the Map has no zones)
         else { new_household(); cas_enter(); slot_sel = 0; set_mode(M_CAS); } }
@@ -4362,6 +4386,7 @@ static void set_mode(int m) {
     if ((m == M_BUY || m == M_BUILD) && mode == M_LIVE) ed_lv = slv[ctl];   // (D36) Buy and Build start on your sim's storey
     if (m != M_LIVE && on_board) skate_off();
     if (m != M_LIVE) mg_ui = 0;
+    if (m != M_TITLE) title_del_armed = 0;
     mode = m;
     if (m == M_LIVE) { lcdMainOnBottom(); } else { lcdMainOnTop(); scr = hud; hud_clear(); bub_hide(); }
 }
@@ -4858,11 +4883,16 @@ int main(void) {
         const Settle *s = bm_set(cur_set); msg_t = msg_t > 0 ? msg_t - 1 : 0; occ_check();
         unsigned sig = 0; int forced = (mode != lastmode); lastmode = mode;
         if (mode == M_TITLE) {
+            if (title_del_armed &&
+                ds_confirm_expired((u32)vbl_n, title_del_stamp,
+                                   TITLE_DELETE_CONFIRM_FRAMES)) {
+                title_del_armed = 0; title_rd = 1;
+            }
             if (opt_on) { op_tick(held); if (down & KEY_TOUCH) op_touch(tp.px, tp.py); if (opt_on) op_keys(held, down); }   // (D70) Options: touch and buttons both
             else { if (down & KEY_TOUCH) title_touch(tp.px, tp.py);
                 { int r = ui_rep(held, down, vbl_n), ns = slot_sel; if (r & (KEY_LEFT | KEY_UP)) ns = ns > 0 ? ns - 1 : 0; if (r & (KEY_RIGHT | KEY_DOWN)) ns = ns < 2 ? ns + 1 : 2;   // (D70) the title by buttons too: choose, A starts, Y opens Options
-                  if (ns != slot_sel) { slot_sel = ns; ui_snd(UI_MOVE); title_rd = 1; }
-                  if (down & KEY_Y) { ui_snd(UI_OK); opt_enter(); } else if (down & KEY_A) { ui_snd(UI_OK); title_touch(200, 140); } } }
+                  if (ns != slot_sel) { slot_sel = ns; title_del_armed = 0; ui_snd(UI_MOVE); title_rd = 1; }
+                  if (down & KEY_Y) { title_del_armed = 0; ui_snd(UI_OK); opt_enter(); } else if (down & KEY_A) { ui_snd(UI_OK); title_touch(200, 140); } } }
             if (mode == M_TITLE && opt_on) { if (forced) op_full = 3; if (op_rd || forced) op_draw(); }
             else if (mode == M_TITLE && (forced || (down & KEY_TOUCH) || msg_t > 0 || title_rd)) { title_rd = 0; draw_title(); }
 #ifdef DSTEST
