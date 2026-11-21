@@ -102,6 +102,39 @@ int main(void) {
     assert(!ds_world_detail_budget(3601));
     assert(ds_world_far_budget(3710));
     assert(!ds_world_far_budget(3711));
+    /* The preview must not invent streets in gen 7/8 low-density towns:
+     * bits 0/1 are the real strips, bit 2 only the planned corner.
+     * Old-world previews retain the historic both-sides treatment. */
+    for (unsigned road = 0; road < 256; ++road) {
+        assert(ds_preview_road_mask(road, 1) == (road & 7u));
+        assert(ds_preview_road_mask(road, 0) == 3u);
+    }
+    assert(ds_preview_road_mask(0, 1) == 0);
+    assert(ds_preview_road_mask(1, 1) == 1);
+    assert(ds_preview_road_mask(2, 1) == 2);
+    assert(ds_preview_road_mask(4, 1) == 4);
+    /* Real L garages have a *separate* half-open wing rectangle in the
+     * lot picture and distant city: the body's shared column is excluded
+     * so the roof doesn't punch through the house on its common wall. */
+    { int x0, z0, x1, z1;
+      assert(ds_l_garage_rect(5, 8, 14, 6, 9, 7, 13, &x0, &z0, &x1, &z1));
+      assert(x0 == 1 && x1 == 3 && z0 == 2 && z1 == 9);
+      assert(ds_l_garage_rect(5, 8, 14, 13, 17, 7, 13, &x0, &z0, &x1, &z1));
+      assert(x0 == 10 && x1 == 13 && z0 == 2 && z1 == 9);
+      assert(!ds_l_garage_rect(5, 8, 14, 9, 12, 7, 13, &x0, &z0, &x1, &z1));
+      assert(!ds_l_garage_rect(5, 8, 14, 13, 12, 7, 13, &x0, &z0, &x1, &z1));
+    }
+    /* Roofs: Hide is not the same as deleting entire upper floors. An
+     * outdoor player sees all storeys under Cutaway, Always and Hide.
+     * Indoors, Hide and Cutaway still expose the room being played. */
+    for (int roof = 0; roof < 3; ++roof)
+        assert(ds_visible_storey_top(3, 0, 1, roof, 0, 0) == 3);
+    assert(ds_visible_storey_top(3, 0, 1, 0, 1, 0) == 0);
+    assert(ds_visible_storey_top(3, 0, 1, 1, 1, 0) == 3);
+    assert(ds_visible_storey_top(3, 0, 1, 2, 1, 0) == 0);
+    assert(ds_visible_storey_top(3, 1, 0, 0, 0, 0) == 1);
+    assert(ds_visible_storey_top(3, 1, 0, 0, 0, 1) == 3);
+    assert(ds_visible_storey_top(0, 0, 1, 2, 0, 0) == 0);
     puts("ds_render_geom_test: PASS");
     return 0;
 }
