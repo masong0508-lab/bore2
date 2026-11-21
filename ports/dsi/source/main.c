@@ -1188,8 +1188,8 @@ static void plan(int ghost) {
         rect(PX + x * 12, PY + y * 12, 12, 12, fl[y][x] ? FLOORC[fl[y][x] <= 5 ? fl[y][x] - 1 : 0] : LV ? (((x + y) & 1) ? C15(4, 6, 10) : C15(5, 7, 12)) : (((x + y) & 1) ? C15(9, 18, 7) : C15(11, 20, 8)));
         if (LV && !fl[y][x] && stairs_below(LV, x, y) >= 0) { rect(PX + x * 12 + 2, PY + y * 12 + 2, 8, 8, C15(24, 18, 11)); rect(PX + x * 12 + 4, PY + y * 12 + 4, 4, 4, C15(4, 6, 10)); }   // the stairwell
         rect(PX + x * 12, PY + y * 12, 12, 1, C15(0, 0, 0) | 0); }
-    for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) if (hw[y][x]) rect(PX + x * 12, PY + y * 12 - 1, 13, 3, WALLC[hw[y][x] - 1]);
-    for (int y = 0; y < GN; y++) for (int x = 0; x <= GN; x++) if (vw[y][x]) rect(PX + x * 12 - 1, PY + y * 12, 3, 13, WALLC[vw[y][x] - 1]);
+    for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) if (hw[y][x]) rect(PX + x * 12, PY + y * 12 - 1, 13, 3, WALLC[hw[y][x] <= 12 ? hw[y][x] - 1 : 0]);
+    for (int y = 0; y < GN; y++) for (int x = 0; x <= GN; x++) if (vw[y][x]) rect(PX + x * 12 - 1, PY + y * 12, 3, 13, WALLC[vw[y][x] <= 12 ? vw[y][x] - 1 : 0]);
     for (int i = 0; i < nobj; i++) { if (OBJ_LV(&objs[i]) != LV) continue; int w, h; obj_fp(&objs[i], &w, &h); rect(PX + objs[i].x * 12 + 2, PY + objs[i].y * 12 + 2, w * 12 - 4, h * 12 - 4, IT_OF(&objs[i])->col); }
     if (ghost) { int w = 1, h = 1; if (mode == M_BUY && pick >= 0) { const Item *it = &ITEMS[pick]; w = prot & 1 ? it->fl : it->fw; h = prot & 1 ? it->fw : it->fl; }
         int X = PX + pcx * 12, Y = PY + pcy * 12, gw = w * 12, gh = h * 12; rect(X, Y, gw, 1, 0xFFFF); rect(X, Y + gh - 1, gw, 1, 0xFFFF); rect(X, Y, 1, gh, 0xFFFF); rect(X + gw - 1, Y, 1, gh, 0xFFFF); }
@@ -3063,7 +3063,16 @@ static void day_roll(void) {
 }
 static const int SFX_[4] = { 0, 1, 0, -1 }, SFY_[4] = { 1, 0, -1, 0 };   // a flight's front (its open side) by its turn; it rises away from it
 static void stairs_go(int i, int o, int down) {   // (D36) the sim at the foot (or at the landing) changes storey
-    Sim *m = &sims[i]; const Obj *st = &objs[o]; int L = OBJ_LV(st), r = st->rot & 3, tx = down ? st->x + SFX_[r] : st->x - SFX_[r], ty = down ? st->y + SFY_[r] : st->y - SFY_[r], tl_ = down ? L : L + 1;
+    Sim *m = &sims[i];
+    /* A saved stair command can outlive the sale/rearrangement of its
+     * object. Never turn a stale index into a bad load or teleport. */
+    if (o < 0 || o >= nobj || OBJ_ID(&objs[o]) != ID_STAIRS) {
+        m->act = -1; m->act_left = 0;
+        m->tx = m->wx = m->x; m->ty = m->wy = m->y;
+        if (i == ctl) say("Stairs are no longer there");
+        return;
+    }
+    const Obj *st = &objs[o]; int L = OBJ_LV(st), r = st->rot & 3, tx = down ? st->x + SFX_[r] : st->x - SFX_[r], ty = down ? st->y + SFY_[r] : st->y - SFY_[r], tl_ = down ? L : L + 1;
     int keep = LV; LV = tl_; int ok = tx >= 0 && ty >= 0 && tx < GN && ty < GN && !obj_solid(tx, ty); LV = keep;
     if (!ok) { if (i == ctl) say(down ? "Something is in the way down there" : "Build a floor where the stairs come out"); return; }
     slv[i] = (u8)tl_; m->x = m->tx = m->wx = tx * 16; m->y = m->ty = m->wy = ty * 16; m->act = -1; m->act_left = 0; sfx(0);
