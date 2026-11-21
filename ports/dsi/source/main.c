@@ -1103,7 +1103,22 @@ static void lot_cross(void) {   // the sim you are playing left the lot's slot: 
     const Sim *m = &sims[ctl]; int dx = fdiv(m->x + 8, 16 * SLC), dy = fdiv(m->y + 8, 16 * SLC); if (!dx && !dy) return;
     int nx = lot_bx + dx, ny = lot_by + dy; if (zone) { BInfo zb_; zone_block(nx, ny, &zb_); if (zb_.terrain == BT_SEA) return; } else if (nx < 0 || ny < 0 || nx >= BM_N || ny >= BM_N) return;
     lot_save(); lot_enter(nx, ny);
-    for (int i = 0; i < nsim; i++) { Sim *s2 = &sims[i]; int ax = dx * SLC * 16, ay = dy * SLC * 16; s2->x -= ax; s2->y -= ay; s2->tx -= ax; s2->ty -= ay; s2->wx -= ax; s2->wy -= ay; }
+    /* Furniture and dialogue references refer to the PREVIOUS lot. On a
+     * seamless neighborhood crossing they must not resolve against an
+     * unrelated object or citizen slot in the next lot. Free walking
+     * commands remain intact so stepping between streets stays smooth. */
+    for (int i = 0; i < nsim; i++) {
+        Sim *s2 = &sims[i];
+        if (s2->act >= 0 || s2->act_left > 0) {
+            s2->act = -1; s2->act_left = 0; s2->act_obj = -1;
+            s2->tx = s2->wx = s2->x;
+            s2->ty = s2->wy = s2->y;
+        }
+        int ax = dx * SLC * 16, ay = dy * SLC * 16;
+        s2->x -= ax; s2->y -= ay;
+        s2->tx -= ax; s2->ty -= ay;
+        s2->wx -= ax; s2->wy -= ay;
+    }
     { int ax = dx * SLC * 16, ay = dy * SLC * 16; dog.x -= ax; dog.y -= ay; dog.tx -= ax; dog.ty -= ay; dog.wx -= ax; dog.wy -= ay; }
     city_shift(dx, dy); camx -= dx * 36 * T; camz -= dy * 36 * T; mark_x -= dx * SLC; mark_y -= dy * SLC; }
 static void bar(int x, int y, int w, int v, u16 c) { rect(x, y, w, 6, C15(4, 4, 6)); rect(x + 1, y + 1, (w - 2) * v / 100, 4, c); }
