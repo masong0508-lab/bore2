@@ -30,6 +30,12 @@ Evidence: [PS1 and host run](https://github.com/masong0508-lab/bore2/actions/run
 
 **Tests:** [PS1 disc/host run 44963154954](https://github.com/masong0508-lab/bore2/actions/runs/44963154954) **passed** build/packaging, existing world-coherence test, and native-C99 focal/dolly tests in both PS1 and Dreamcast variants, including near/far parallax. [Dreamcast disc run 44963102464](https://github.com/masong0508-lab/bore2/actions/runs/44963102464) **passed** for the modified shared rendering/camera source. These are source and compile checks **without a native PS1 playthrough or FPS measurement**. QA-002 is **PARTIALLY ADDRESSED** (FOV distortion only; affine UV warping and close clipping not proven), OW-004 **PARTIAL**, QA-009 **OPEN** for scene-specific roof/interior occlusion and cross-view parity. Follow-up capture matrix: [PS1_CAMERA_PERSPECTIVE.md](PS1_CAMERA_PERSPECTIVE.md).
 
+## DS camera/Live touch ray guard — verified 2026-11-21 (PR #9)
+
+[PR #9](https://github.com/masong0508-lab/bore2/pull/9) (squash `8d3d3a7`) fixes the **source-confirmed** DS/DSi Live 3D ray selection of a floor **behind** the active camera on near-horizon touch locations. The interaction engine now rejects nonforward/parallel/out-of-range ray-plane hits before setting a walk or item target. Build/Buy uses a separate 2D floor plan, so no incorrect claim of a Build/Buy ray mismatch. Host C99 tests check positive/reverse ray time, upper floors, horizon limits and no rejected-target write.
+
+[DS CI run 44963841329](https://github.com/masong0508-lab/bore2/actions/runs/44963841329) **passed** full ROM/emulator input, save, stair/island, 162-home, skate and roof atlas tests. [PS1/host run 44963841433](https://github.com/masong0508-lab/bore2/actions/runs/44963841433) **passed**. QA-009/OW-004 **PARTIAL**: this fixes an identified interaction source issue, but explicit above-horizon gameplay touch captures and complete camera/geometry occlusion testing remain open. [DS touch and camera evidence](DS_TOUCH_RAY.md).
+
 ## Severity and status
 
 | Severity | Meaning | Release rule |
