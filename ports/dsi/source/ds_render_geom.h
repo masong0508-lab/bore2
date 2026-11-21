@@ -146,6 +146,16 @@ static int ds_camera_roof_visible(int roof_mode, int camera_inside)
     return roof_mode == 1 || (roof_mode == 0 && !camera_inside);
 }
 
+/* A ramp model is also its skating collision surface. When Build mode
+ * moves/turns an item without changing the number of objects, the
+ * occupancy grid's generation changes; the cached skate surface must
+ * follow it or the rider may interact with an invisible old obstacle. */
+static int ds_skate_cache_changed(int key, int previous_key,
+                                  unsigned epoch, unsigned previous_epoch)
+{
+    return key != previous_key || epoch != previous_epoch;
+}
+
 /* Preserve PS1's three fixed-facings for kicker aliases. They aren't
  * separate catalogue items on DS, so the zone loader turns them into the
  * real Kicker item with the correct orientation. The regular Kicker still
