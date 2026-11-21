@@ -44,6 +44,14 @@ The [DS/DSi neighborhood audit](../ports/dsi/test/ds_town7_audit.sh) now fails i
 
 **Still open:** canonical shared world facts across every renderer (OW-001), native-resolution map/near/far photo atlas (OW-003), interactive camera/occlusion validation (OW-004), all generated floor and collision edge cases, full hardware testing. This checkpoint adds **testing and audit correctness**, not a claim that gameplay graphics or all world-generation bugs were fixed.
 
+### Milestone 0 checkpoint — DS graphics coherence and native screenshots merged (2026-11-21)
+
+**Real rendering fixes:** [PR #4](https://github.com/masong0508-lab/bore2/pull/4) (squash `2b0177d`) makes planned DS neighborhood lot previews respect actual street bits, preserves complete upper floors outdoors when *Roofs: Hide* is selected, and gives the lower L-house garage wing matching materials and a roof across preview/distant views. [PR #5](https://github.com/masong0508-lab/bore2/pull/5) (squash `180dd51`) ties roof and storey cutaways to the **controlled Sim**, not unselected household members; it also avoids redundant multi-Sim enclosure scans. Native host C99 geometry regression, DS build, purchase/save/load, stair/island/home interaction, 162-home audit, world coherence and PS1 disc build passed on the respective heads.
+
+**In-game visual evidence:** [PR #6](https://github.com/masong0508-lab/bore2/pull/6) (squash `0749482`) adds [the DS native screenshot atlas](DS_VISUAL_ATLAS.md). The verified [melonDS run](https://github.com/masong0508-lab/bore2/actions/runs/44958873981) captured **three** generated-home views in Cutaway and Always modes at frames 345/385/425, all at 256×384 native paired-screen resolution. Their gameplay-screen differences were **31,442 / 35,403 / 40,484 RGB channels**; the actual images were manually checked and show furnished interiors in Cutaway and roofs in Always. An earlier draft captured two pre-tour frames and was corrected before merge. The checked branch's DS ROM/test suite, host consistency and PS1 packaging jobs passed. The atlas is now a CI release gate, not a proof of exact visual parity across hardware.
+
+**Still open:** OW-001 canonical shared facts across all renderers; OW-003 matching-location PS1/DS/Dreamcast map, near/far and first-person captures with coordinates; OW-004 all camera/occlusion edge cases; PS1 and Dreamcast native graphics/performance measurements and actual hardware. Do not mark all of Milestone 0 DONE.
+
 ## Milestone 1 — People with lives, not moving scenery (P1)
 
 - [ ] **OW-101 Stable citizen state:** home, household, location, needs, work or school commitment, personal schedule, relationships, relevant memories and current task remain consistent across travel, load and time skip.
