@@ -80,4 +80,24 @@ static int ds_stairs_points(int x, int y, int rotation,
     *to_level = down ? lower_level : lower_level + 1;
     return 1;
 }
+/* Convert completed action progress to need points in constant time.
+ * Unlike a per-point while-loop, this cannot freeze a handheld when an
+ * older or damaged save has an unexpectedly large partial accumulator.
+ * The result preserves fractional progress without changing the save type. */
+static void ds_action_progress(int *acc, int *need, int duration, int gain)
+{
+    if (duration <= 0) duration = 1;
+    unsigned int old = *acc > 0 ? (unsigned int)*acc : 0u;
+    unsigned int inc = gain > 0 ? (unsigned int)gain : 0u;
+    /* int accumulators can each be at most INT_MAX; their unsigned sum
+     * is at most UINT_MAX-1, so no wrap is possible. */
+    unsigned int total = old + inc;
+    unsigned int d = (unsigned int)duration;
+    unsigned int points = total / d;
+    *acc = (int)(total % d);
+    int current = *need < 0 ? 0 : *need > 100 ? 100 : *need;
+    unsigned int space = (unsigned int)(100 - current);
+    if (points > space) points = space;
+    *need = current + (int)points;
+}
 #endif
