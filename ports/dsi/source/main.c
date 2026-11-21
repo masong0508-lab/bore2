@@ -556,6 +556,33 @@ static u16 far_wall7(const BInfo *b, int pwall) { return pwall >= 0 ? PWALL15[pw
 static u16 map_wall7(const BInfo *b, int home, int pwall) {   // the town model's walls (main.c d_bld): a plan home's material, an older home's by its dice, a block of flats, a tower, a civic building or a shop
     static const u16 OLD[6] = { W8(240, 226, 186), W8(196, 214, 232), W8(238, 208, 128), W8(244, 244, 238), W8(232, 186, 178), W8(184, 196, 178) };
     int l = b->lot; return pwall >= 0 ? PWALL15[pwall] : home ? OLD[(u8)(b->h >> 8) % 6] : l == LOT_APART ? W8(214, 170, 140) : (l == LOT_TOWER || l == LOT_OFFICE || l == LOT_HOTEL) ? W8(168, 184, 210) : (l == LOT_SCHOOL || l == LOT_LIBRARY || l == LOT_GALLERY || l == LOT_CLINIC || l == LOT_CINEMA) ? W8(236, 228, 212) : W8(214, 220, 240); }
+/* A planned L-house garage is a lower wing, not an unrelated dark slab.
+ * The lot preview and far city use the same exposed plan rectangle, colour
+ * and roof form. No eave crosses the shared wall with the taller house.
+ * At distant LOD it keeps a single flat shingle cap to save polygons. */
+static void ds_l_garage_model(const LotPlan *pl, int ox, int oz,
+                               int sty, int pit, int col, u16 wall, int distant)
+{
+    int x0, z0, x1, z1;
+    if (!pl || pl->type != HT_L ||
+        !ds_l_garage_rect(BM_LOT0, pl->x0, pl->x1, pl->wx0, pl->wx1,
+                           pl->wy0, pl->wy1, &x0, &z0, &x1, &z1)) return;
+    int X0 = ox + tl(2 * x0), X1 = ox + tl(2 * x1);
+    int Z0 = oz + tl(2 * z0), Z1 = oz + tl(2 * z1);
+    u16 wc = shade(wall, 7), rc = ROOFC[col % 6];
+    tx_want = -1;
+    block(X0, Z0, X1, Z1, 0, -2 * T, wc, rc);
+    if (!distant) {
+        static const s16 PITCH[3] = { 110, 170, 250 };
+        int eave = T / 3, west = pl->wx0 < pl->x0;
+        /* Lift the lower roof slightly over the garage's flat wall cap;
+         * otherwise two coplanar roof faces shimmer as the camera moves. */
+        roof_shape(X0 - (west ? eave : 0), Z0 - eave,
+                   X1 + (west ? 0 : eave), Z1 + eave,
+                   -2 * T - T / 16, sty,
+                   PITCH[pit >= 0 && pit < 3 ? pit : 1], rc, wc);
+    }
+}
 static int r7_bx = -1, r7_by = -1;   // the block the lot being drawn (far_lot, draw_lot) stands on
 static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl, the town plan's home for the lot, when the world is version 7)
     u32 h = b->h; int k = b->lot;
@@ -583,8 +610,7 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
     int rs7 = 0, rp7 = 0, rc7 = 0, rh7 = 0, rw7 = -1, rf7 = r7_bx >= 0 && roof_far7(r7_bx, r7_by, b, &rs7, &rp7, &rc7, &rh7, &rw7); if (rf7) wall = map_wall7(b, rh7, rw7);   // (D82: the PS1's walls and roof for the lot's building)
     int X0 = tl(x0), X1 = tl(x0 + w), Z0 = tl(z0), Z1 = tl(z0 + d), Y = -(hh * T), nth = 0, p7 = pl && pl->type && k <= LOT_APART;
     if (p7) { X0 = tl(2 * (pl->x0 - BM_LOT0)); X1 = tl(2 * (pl->x1 - BM_LOT0 + 1)); Z0 = tl(2 * (pl->y0 - BM_LOT0)); Z1 = tl(2 * (pl->y1 - BM_LOT0 + 1)); nth = pl->face == LF_NORTH;
-        if (pl->wx1 && pl->type == HT_L) { int wa = pl->wx0 - BM_LOT0, wb = pl->wx1 - BM_LOT0 + 1; if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; block(tl(2 * wa), tl(2 * (pl->wy0 - BM_LOT0)), tl(2 * wb), tl(2 * (pl->wy1 - BM_LOT0 + 1)), 0, -2 * T, C15(18, 18, 20), C15(20, 20, 22)); }
-        else if (pl->wx1) { int wa = pl->wx0 - BM_LOT0, wb = pl->wx1 - BM_LOT0 + 1; if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; X0 = X0 < tl(2 * wa) ? X0 : tl(2 * wa); X1 = X1 > tl(2 * wb) ? X1 : tl(2 * wb); }   // (D82: a terrace's second home: the picture shows both under one roof, as far_lot)
+        if (pl->wx1 && pl->type != HT_L) { int wa = pl->wx0 - BM_LOT0, wb = pl->wx1 - BM_LOT0 + 1; if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; X0 = X0 < tl(2 * wa) ? X0 : tl(2 * wa); X1 = X1 > tl(2 * wb) ? X1 : tl(2 * wb); }   // (D82: a terrace's second home: the picture shows both under one roof, as far_lot)
         if (pl->drv) ground(tl(2 * (pl->drv - BM_LOT0)), nth ? tl(0) : Z1, tl(2 * (pl->drv - BM_LOT0 + 2)), nth ? Z0 : tl(26), -26, C15(20, 20, 20));
         int sw = nth ? 0 : 26 * T; (void)sw; }
     else if (pl && bm_gen >= 7 && pl->face == LF_NORTH && k > LOT_APART) { int a = tl(26) + tl(0) - Z1, c = tl(26) + tl(0) - Z0; Z0 = a; Z1 = c; nth = 1; }   // (D81: a north-facing building is turned over)
@@ -594,7 +620,8 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
     { u32 rh = hsh(h ^ 0x500Fu); int sty = st >= 3 || k > LOT_APART ? 1 : 2 + ((rh >> 2) & 1), pt = 1 + (int)((rh >> 8) & 1), cl = (int)((rh >> 4) % 6); static const s16 PIT[3] = { 110, 170, 250 };   // (D42: the map's picture has the lot's real roof)
       if (p7 && k <= LOT_APART) plan_roof(pl, &sty, &pt, &cl);   // (D80: the plan's roof, the same as in the lot)
       if (rf7) { sty = rs7; pt = rp7; cl = rc7; }   // (D82: world_roof_of)
-      roof_shape(X0 - T / 3, Z0 - T / 3, X1 + T / 3, Z1 + T / 3, Y, sty, PIT[pt], ROOFC[cl], wall); }
+      roof_shape(X0 - T / 3, Z0 - T / 3, X1 + T / 3, Z1 + T / 3, Y, sty, PIT[pt], ROOFC[cl], wall);
+      if (p7 && pl->type == HT_L) ds_l_garage_model(pl, 0, 0, sty, pt, cl, wall, 0); }
     if (p7) { for (int i = 0; i < 2; i++) tree(tl(2 * (pl->x0 - BM_LOT0) / 2 + 3 + i * 9), nth ? tl(26 - 3) : tl(3), T * 2); }   // (the plan's yard: a tree or two behind)
     else if (k <= LOT_APART) {   // a fence and a pool behind, or a garden
         int bk = (int)((h >> 12) % 6);
@@ -1783,7 +1810,7 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
     int rs7 = 0, rp7 = 0, rc7 = 0, rh7 = 0, rw7 = -1, rf7 = r7_bx >= 0 && roof_far7(r7_bx, r7_by, b, &rs7, &rp7, &rc7, &rh7, &rw7); if (rf7) wall = far_wall7(b, rw7);   // (D82: far.c's wall colour and world_roof_of's roof for the lot's building)
     int X0 = ox + tl(x0), X1 = ox + tl(x0 + w), Z0 = oz + tl(z0), Z1 = oz + tl(z0 + d), Y = -(hh * T), nth = 0;
     if (pl) { nth = pl->face == LF_NORTH; if (pl->type) { int a, c, e, f; far_foot7(b, pl, &a, &e, &c, &f); int bx1 = pl->x1 - BM_LOT0 + 1, by0 = pl->y0 - BM_LOT0, by1 = pl->y1 - BM_LOT0 + 1; (void)c; (void)f; X0 = ox + tl(2 * (pl->x0 - BM_LOT0)); X1 = ox + tl(2 * bx1); Z0 = oz + tl(2 * by0); Z1 = oz + tl(2 * by1);
-            if (pl->wx1) { int wa = pl->wx0 - BM_LOT0, wb = pl->wx1 - BM_LOT0 + 1, wz0 = pl->wy0 - BM_LOT0, wz1 = pl->wy1 - BM_LOT0 + 1; if (pl->type == HT_L) { if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; block(ox + tl(2 * wa), oz + tl(2 * wz0), ox + tl(2 * wb), oz + tl(2 * wz1), 0, -2 * T, C15(18, 18, 20), C15(20, 20, 22)); } else { if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; X0 = X0 < ox + tl(2 * wa) ? X0 : ox + tl(2 * wa); X1 = X1 > ox + tl(2 * wb) ? X1 : ox + tl(2 * wb); } }
+            if (pl->wx1 && pl->type != HT_L) { int wa = pl->wx0 - BM_LOT0, wb = pl->wx1 - BM_LOT0 + 1; if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; X0 = X0 < ox + tl(2 * wa) ? X0 : ox + tl(2 * wa); X1 = X1 > ox + tl(2 * wb) ? X1 : ox + tl(2 * wb); }
             if (!far_lod && pl->drv) ground(ox + tl(2 * (pl->drv - BM_LOT0)), oz + tl(nth ? 0 : 2 * (pl->y1 - BM_LOT0 + 1)), ox + tl(2 * (pl->drv - BM_LOT0 + 2)), oz + tl(nth ? 2 * (pl->y0 - BM_LOT0) : 26), -26, C15(20, 20, 20)); }
         else if (nth) { Z0 = oz + tl(26 - z0 - d); Z1 = oz + tl(26 - z0); } }
     tx_want = k != LOT_HOUSE && k != LOT_COTTAGE ? TX_WINDOWS : TX_CLAPBOARD;   // (D82: far.c: a window band on every storey of all but a plain house and a cottage: the neighbour is one box, the band a texture) block(X0, Z0, X1, Z1, 0, Y, wall, wall); tx_want = -1;   // (D43: shops and towers show storeys of windows)
@@ -1791,7 +1818,8 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
     { u32 rh = hsh(h ^ 0x500Fu); int sty = st >= 3 || k > LOT_APART ? 1 : 2 + ((rh >> 2) & 1), pt = 1 + (int)((rh >> 8) & 1), cl = (int)((rh >> 4) % 6); static const s16 PIT[3] = { 110, 170, 250 };   // (D42) hip, gable or flat, a colour and a pitch per building
       if (pl && pl->type && k <= LOT_APART) plan_roof(pl, &sty, &pt, &cl);   // (D80) the plan's roof
       if (rf7) { sty = rs7; pt = rp7; cl = rc7; }   // (D82: world_roof_of)
-      roof_shape(X0 - T / 3, Z0 - T / 3, X1 + T / 3, Z1 + T / 3, Y, sty, PIT[pt], ROOFC[cl], wall); }
+      roof_shape(X0 - T / 3, Z0 - T / 3, X1 + T / 3, Z1 + T / 3, Y, sty, PIT[pt], ROOFC[cl], wall);
+      if (pl && pl->type == HT_L) ds_l_garage_model(pl, ox, oz, sty, pt, cl, wall, far_lod); }
     for (int i = 0; i < pop && i < 3; i++) person(ox + tl(4 + i * 3), nth ? oz + tl(1) : oz + tl(z0 + d + 3), C15(6 + i * 4, 10, 25 - i * 3), yaw);   // the bores who live there
 }
 static u16 land_col(int t) { return t == BT_BEACH || t == BT_DESERT ? C15(26, 23, 15) : t == BT_ROCKY ? C15(14, 16, 12) : t == BT_FOREST ? seas(C15(8, 17, 6)) : seas(C15(11, 20, 8)); }   // (D37; D50: by the season)
