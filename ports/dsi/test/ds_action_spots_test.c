@@ -45,6 +45,13 @@ int main(void) {
     assert(ds_plot_boundary_open(hwall, vwall, 13, 5, 0, 5, -1));
     assert(ds_plot_boundary_open(hwall, vwall, 13, 1, 1, 2, 1));
     assert(ds_plot_boundary_open(hwall, vwall, 13, -2, 1, -1, 1));
+    /* A social command must not trigger at the original location after
+     * the other person walks off. One-cell proximity is permitted. */
+    assert(ds_social_close(16, 16, 16, 16));
+    assert(ds_social_close(16, 16, 32, 32));
+    assert(ds_social_close(-16, 0, 0, 0));
+    assert(!ds_social_close(16, 16, 48, 16));
+    assert(!ds_social_close(16, 16, 16, 48));
     puts("ds_action_spots_test: PASS");
     return 0;
 }
