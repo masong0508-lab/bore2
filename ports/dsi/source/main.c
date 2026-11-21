@@ -1799,6 +1799,10 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
      * the old height buried walls/doors and left a step at lot boundaries. */
     tx_want = tr == BT_DESERT || tr == BT_BEACH ? TX_SAND : tr == BT_ROCKY ? TX_GRAVEL : TX_GRASS; ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), 0, grass); tx_want = -1;
     if (!far_house7(b, pl)) {
+        /* At any distance or world generation, a skate plaza must remain
+         * recognizable. Do not replace it with a random grove in far LOD;
+         * the shared low-polygon bank/funbox silhouette is deterministic. */
+        if (k == LOT_SKATE) { ds_skate_preview(ox, oz); return; }
         /* A nearby public space should look like its actual use, not a
          * random grove. Only the nearest ring gets these tiny landmarks.
          * Keep older saved-world visuals and the distant low LOD unchanged. */
@@ -1833,7 +1837,6 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
                 tree(ox + tl(21), oz + tl(21), T * 2);
                 return;
             }
-            if (k == LOT_SKATE) { ds_skate_preview(ox, oz); return; }
         }
         if (bm_gen >= 8 && k == LOT_FARM) return;
         int n = (k == LOT_PARK || k == LOT_SQUARE) ? 4 : 2;
