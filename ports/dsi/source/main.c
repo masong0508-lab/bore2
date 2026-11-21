@@ -2001,7 +2001,9 @@ static void bld_scan(void) {   // the enclosed buildings of the lot (cells the o
 static int bld_seen(const Bld *b) {   // (Cutaway) 0: a Bore of yours is inside, or you look at a storey under its top: no roof, so you see in
     if (mode != M_LIVE) return mode == M_BUILD && tool == 5;
     if (o_roof == 2) return 0; if (o_roof == 1) return 1;
-    if (view_lv() < b->top) return 0;
+    /* Do not hide every multi-storey roof just because the controlled
+     * Sim is on the ground. Outdoor camera views keep full houses visible.
+     * Hide a particular roof only for someone actually inside its walls. */
     /* Bounding rectangles include empty courtyards and the gaps inside an
      * L-shaped home. A sim there is outdoors and must not cut its roof. */
     int id = (int)(b - blds) + 1;
@@ -2074,8 +2076,16 @@ static int view_lv(void) { return mode == M_LIVE ? slv[ctl] : ed_lv; }   // the 
 static u8 ID2CH[NITEM];
 static int show_lv(void) {   // the storeys drawn: the ones over the one you look at are cut away; Roofs: Always shows the whole house, and so does Cutaway when nobody is in it
     int top = top_lv(), vl = view_lv(), show = vl;
-    if (mode == M_LIVE && top > 0 && o_roof != 2) { int x0, y0, x1, y1, in = 0; if (lv_box(0, &x0, &y0, &x1, &y1)) for (int q = 0; q < nsim; q++) { int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16); if (cx >= x0 && cx < x1 && cy >= y0 && cy < y1) in = 1; }
-        if (o_roof == 1 || !in) show = top; }
+    if (mode == M_LIVE && top > 0 && o_roof != 2) {
+        /* Do not cut upper floors for a Sim standing outside in the
+         * bounding rectangle of a courtyard or an L-shaped house. */
+        int in = 0;
+        for (int q = 0; q < nsim && !in; q++) {
+            int cx = fdiv(sims[q].x + 8, 16), cy = fdiv(sims[q].y + 8, 16);
+            in = ds_cell_enclosed(&hwl[0][0], &vwl[0][0], GN, cx, cy);
+        }
+        if (o_roof == 1 || !in) show = top;
+    }
     if (mode == M_BUILD && tool == 5) show = top;   // (the Roof tool shows the whole house and its roof)
     if (show > top) show = top; if (show < vl) show = vl; return show;
 }
