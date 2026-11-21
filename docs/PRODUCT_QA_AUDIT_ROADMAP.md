@@ -24,6 +24,12 @@ Evidence: [PS1 and host run](https://github.com/masong0508-lab/bore2/actions/run
 
 **QA-005 status: PARTIAL FIX + REPRODUCIBLE SMOKE** (no reproduced DS skate FPS dip on this route; other scenes and real console unverified). **QA-009: PARTIAL VISUAL WORLD-IDENTITY FIX**, still needs same-location per-port capture. **OW-004: PARTIAL**, not a global perspective correction. The first trial captured a house with `on_board=0`; corrected `AUTOSC=41` reliably enters the skatepark. Details, exact repro, evidence limits and next tasks: [DS_SKATE_GEOMETRY.md](DS_SKATE_GEOMETRY.md). Do not call old PS1/Dreamcast perspective or all grind/landing behavior fixed.
 
+## PS1 perspective lens / third-person projection checkpoint — 2026-11-21 (PR #8)
+
+[PR #8](https://github.com/masong0508-lab/bore2/pull/8) (squash `0a54fa9`) adjusts the **actual PS1 third-person renderer** from 230 px to 260 px GTE focal length (~69.6°→~63.2° horizontal FOV), with proportional camera dolly to keep the selected Sim/house approximately the same size. This targets the confirmed source-level cause of visibly exaggerated near/far scales on ramps, stairs, rails and character models. First-person and Dreamcast camera behavior are preserved; PS1 render-to-texture people now share the live world lens instead of an outdated 230-px constant.
+
+**Tests:** [PS1 disc/host run 44963154954](https://github.com/masong0508-lab/bore2/actions/runs/44963154954) **passed** build/packaging, existing world-coherence test, and native-C99 focal/dolly tests in both PS1 and Dreamcast variants, including near/far parallax. [Dreamcast disc run 44963102464](https://github.com/masong0508-lab/bore2/actions/runs/44963102464) **passed** for the modified shared rendering/camera source. These are source and compile checks **without a native PS1 playthrough or FPS measurement**. QA-002 is **PARTIALLY ADDRESSED** (FOV distortion only; affine UV warping and close clipping not proven), OW-004 **PARTIAL**, QA-009 **OPEN** for scene-specific roof/interior occlusion and cross-view parity. Follow-up capture matrix: [PS1_CAMERA_PERSPECTIVE.md](PS1_CAMERA_PERSPECTIVE.md).
+
 ## Severity and status
 
 | Severity | Meaning | Release rule |
