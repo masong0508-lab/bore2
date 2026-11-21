@@ -50,6 +50,20 @@ jobs:
       - name: Audit generated DS homes, stairs, access and room geometry
         timeout-minutes: 8
         run: DSRUN=/tmp/dsrun bash ports/dsi/test/ds_town7_audit.sh
+      - name: Capture generated-house roof and cutaway atlas at native DS resolution
+        timeout-minutes: 10
+        run: DSRUN=/tmp/dsrun bash ports/dsi/test/ds_visual_atlas.sh "$PWD/out-visual"
+      - name: Upload native DS visual atlas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_ds_visual_atlas
+          path: |
+            out-visual/*.ppm
+            out-visual/visual_atlas_results.json
+            out-visual/build-*.log
+            out-visual/emulate-*.log
+          if-no-files-found: warn
       - name: Upload DS gameplay screenshot
         if: always()
         uses: actions/upload-artifact@v4
