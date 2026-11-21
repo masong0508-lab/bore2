@@ -4,6 +4,23 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
+  world-coherence:
+    name: Generated-world map/lot coherence
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that the audit cannot silently pass on bad output
+        run: python3 -m unittest discover -s test -p 'test_world_coherence.py' -v
+      - name: Compare real lot walls, doors, drives and map/far footprints
+        run: python3 test/world_coherence.py --json-out world_coherence_results.json
+      - name: Keep seed-by-seed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-coherence-audit
+          path: world_coherence_results.json
+          if-no-files-found: warn
   disc:
     runs-on: ubuntu-22.04
     steps:
