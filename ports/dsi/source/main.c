@@ -126,6 +126,8 @@ static void text_box(int x, int y, int w, int h, int s, u16 c, int al, const cha
 // ---------- the map ----------
 #define MW 32                 // blocks across the map window, 8 pixels each
 #define MH 20                 // blocks down (160 pixels; the text lines go below)
+#include "ds_mapview.h"
+static int map_x0 = -1, map_y0 = -1;   // moving map viewport, not a fixed window on the capital
 static int cur_set, sel_x, sel_y, seed = 1234;
 static u16 lot_rgb(const BInfo *b) {
     if (b->terrain == BT_SEA) return C15(4, 10, 22);
@@ -202,16 +204,56 @@ static void map_chip(int px_, int py_) {   // a tap on the strip under the map
 #define DS_FAM_MAX 640                 // the most households (the PS1 has 874 to 1748); every home on the map belongs to one of them
 typedef struct { u16 bx, by; u8 fam, per; } PopB;
 static PopB popb[DS_FAM_MAX]; static int pop_nb, pop_fam, pop_per, pop_born;
-static void pop_build(void) {   // the homes nearest the capital (then the next town, and so on) fill the household list until the caps are hit
+/* Households for the DS's smaller memory budget. Old worlds retain their
+ * original population order (so existing saves keep their towns). Version 8
+ * visits all settlements at each radius before taking the next ring: smaller
+ * towns no longer turn into ghost towns when the capital consumes the cap. */
+static void pop_add(int bx, int by, int unique) {
+    if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N ||
+        pop_nb >= DS_FAM_MAX || pop_fam >= DS_FAM_MAX || pop_per >= DS_POP_MAX) return;
+    if (unique) for (int q = 0; q < pop_nb; q++)
+        if (popb[q].bx == bx && popb[q].by == by) return;
+    BInfo b; bm_block(bx, by, &b);
+    if (b.terrain == BT_SEA || b.lot < LOT_HOUSE || b.lot > LOT_APART) return;
+    int fam = bm_units(&b);
+    if (fam < 1) fam = 1;
+    if (fam > DS_FAM_MAX - pop_fam) fam = DS_FAM_MAX - pop_fam;
+    if (fam < 1) return;
+    int per = 0;
+    for (int f = 0; f < fam; f++) per += 1 + (int)((b.h >> (f & 15) * 2) & 3) % 4;
+    if (per > DS_POP_MAX - pop_per) per = DS_POP_MAX - pop_per;
+    if (per < fam) fam = per;
+    if (fam < 1) return;
+    popb[pop_nb].bx = (u16)bx; popb[pop_nb].by = (u16)by;
+    popb[pop_nb].fam = (u8)(fam > 255 ? 255 : fam);
+    popb[pop_nb].per = (u8)(per > 255 ? 255 : per);
+    pop_nb++; pop_fam += fam; pop_per += per;
+}
+static void pop_build(void) {
     pop_nb = pop_fam = pop_per = pop_born = 0;
-    for (int si = 0; si < bm_nset() && pop_per < DS_POP_MAX && pop_fam < DS_FAM_MAX; si++) { const Settle *st = bm_set(si); int r = st->r + 1; if (r > 14) r = 14;
-        for (int d = 0; d <= r && pop_per < DS_POP_MAX && pop_fam < DS_FAM_MAX; d++) for (int yy = -d; yy <= d; yy++) for (int xx = -d; xx <= d; xx++) {
-            if ((xx < 0 ? -xx : xx) != d && (yy < 0 ? -yy : yy) != d) continue;
-            int bx = st->x + xx, by = st->y + yy; if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N || pop_nb >= DS_FAM_MAX) continue;
-            BInfo b; bm_block(bx, by, &b); if (b.terrain == BT_SEA || b.lot < LOT_HOUSE || b.lot > LOT_APART) continue;
-            int fam = bm_units(&b); if (fam < 1) fam = 1; if (fam > DS_FAM_MAX - pop_fam) fam = DS_FAM_MAX - pop_fam; if (fam < 1) continue;
-            int per = 0; for (int f = 0; f < fam; f++) per += 1 + (int)((b.h >> (f & 15) * 2) & 3) % 4; if (per > DS_POP_MAX - pop_per) per = DS_POP_MAX - pop_per; if (per < fam) fam = per; if (fam < 1) continue;
-            popb[pop_nb].bx = (u16)bx; popb[pop_nb].by = (u16)by; popb[pop_nb].fam = (u8)(fam > 255 ? 255 : fam); popb[pop_nb].per = (u8)(per > 255 ? 255 : per); pop_nb++; pop_fam += fam; pop_per += per; } }
+    if (bm_gen < 8) {
+        /* Exact pre-v8 traversal, including its early-cap behavior. */
+        for (int si = 0; si < bm_nset() && pop_per < DS_POP_MAX && pop_fam < DS_FAM_MAX; si++) {
+            const Settle *st = bm_set(si); int r = st->r + 1; if (r > 14) r = 14;
+            for (int d = 0; d <= r && pop_per < DS_POP_MAX && pop_fam < DS_FAM_MAX; d++)
+                for (int yy = -d; yy <= d; yy++) for (int xx = -d; xx <= d; xx++) {
+                    if ((xx < 0 ? -xx : xx) != d && (yy < 0 ? -yy : yy) != d) continue;
+                    pop_add(st->x + xx, st->y + yy, 0);
+                }
+        }
+    } else {
+        /* Population can be packed, but it must be geographically spread. */
+        for (int d = 0; d <= 14 && pop_per < DS_POP_MAX && pop_fam < DS_FAM_MAX; d++) {
+            for (int si = 0; si < bm_nset() && pop_per < DS_POP_MAX && pop_fam < DS_FAM_MAX; si++) {
+                const Settle *st = bm_set(si); int r = st->r + 1; if (r > 14) r = 14;
+                if (d > r) continue;
+                for (int yy = -d; yy <= d; yy++) for (int xx = -d; xx <= d; xx++) {
+                    if ((xx < 0 ? -xx : xx) != d && (yy < 0 ? -yy : yy) != d) continue;
+                    pop_add(st->x + xx, st->y + yy, 1);
+                }
+            }
+        }
+    }
 }
 static int pop_at(int bx, int by, int *fam) { for (int i = 0; i < pop_nb; i++) if (popb[i].bx == bx && popb[i].by == by) { if (fam) *fam = popb[i].fam; return popb[i].per; } if (fam) *fam = 0; return 0; }
 static void town_pick(int si) {   // the nearest home inside that settlement (so a new life starts in a town, with a street and neighbours)
@@ -221,7 +263,9 @@ static void town_pick(int si) {   // the nearest home inside that settlement (so
         if (b.terrain != BT_SEA && b.set != 255 && b.lot >= LOT_HOUSE && b.lot <= LOT_APART) { sel_x = bx; sel_y = by; return; } }
 }
 static void draw_map(void) {
-    const Settle *s = bm_set(cur_set); int x0 = s->x - MW / 2, y0 = s->y - MH / 2;
+    const Settle *s = bm_set(cur_set);
+    ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, map_x0 < 0);
+    int x0 = map_x0, y0 = map_y0;
     for (int j = 0; j < MH; j++) for (int i = 0; i < MW; i++) {
         BInfo b; int bx = x0 + i, by = y0 + j;
         if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) { rect(i * 8, j * 8, 8, 8, 0); continue; }
@@ -4317,14 +4361,20 @@ int main(void) {
             { int td, ty; cas_cam(&td, &ty); if (cas_step == CS_LOOKS && td > 10000) td += (cas_mult - 1) * 3000; int d1 = td - cas_cd, d2 = ty - cas_cy; cas_cd += d1 / 5 + (d1 > 0) - (d1 < 0); cas_cy += d2 / 5 + (d2 > 0) - (d2 < 0); }
             yaw = sinLerp(frames * 70) / 2; pitch = 0; dist = cas_cd;
         } else if (mode == M_MAP) {
-            if (forced) dist = 13000;   // (D82: the title leaves dist at 6000: the lot picture was a close-up of one wall since d38)
-            if (down & (KEY_L | KEY_R)) { cur_set = (cur_set + ((down & KEY_R) ? 1 : bm_nset() - 1)) % bm_nset(); town_pick(cur_set); dirty = 1; }
-            if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; town_legacy = 0; bm_gen = 8; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; nown = 0; life_reset(); nb_ok = 0; lot_bx = -1; cur_set = bm_capital(); town_pick(cur_set); dirty = 1; }
-            if (down & KEY_LEFT) { sel_x--; dirty = 1; } if (down & KEY_RIGHT) { sel_x++; dirty = 1; }
-            if (down & KEY_UP) { sel_y--; dirty = 1; } if (down & KEY_DOWN) { sel_y++; dirty = 1; }
+            if (forced) { dist = 13000; ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 1); }
+            if (down & (KEY_L | KEY_R)) { cur_set = (cur_set + ((down & KEY_R) ? 1 : bm_nset() - 1)) % bm_nset(); town_pick(cur_set); ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 1); dirty = 1; }
+            if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; town_legacy = 0; bm_gen = 8; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; nown = 0; life_reset(); nb_ok = 0; lot_bx = -1; cur_set = bm_capital(); town_pick(cur_set); ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 1); dirty = 1; }
+            /* Repeat after the first key press, as in the menus. A world can be
+             * hundreds of blocks wide; walking one cell per press felt stuck. */
+            int nav = ui_rep(held, down, vbl_n);
+            if (nav & KEY_LEFT) { sel_x--; dirty = 1; } if (nav & KEY_RIGHT) { sel_x++; dirty = 1; }
+            if (nav & KEY_UP) { sel_y--; dirty = 1; } if (nav & KEY_DOWN) { sel_y++; dirty = 1; }
+            if (sel_x < 0) sel_x = 0; if (sel_y < 0) sel_y = 0;
+            if (sel_x >= BM_N) sel_x = BM_N - 1; if (sel_y >= BM_N) sel_y = BM_N - 1;
+            if (!(held & KEY_TOUCH)) ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 0);
             if (held & KEY_X) { if (dist > 3000) dist -= 60; } if (held & KEY_Y) { if (dist < 16000) dist += 60; }
             int enter = down & KEY_A, inmap = tp.py < MH * 8 && tp.px < MW * 8;
-            int nx = s->x - MW / 2 + tp.px / 8, ny = s->y - MH / 2 + tp.py / 8;
+            int nx = map_x0 + tp.px / 8, ny = map_y0 + tp.py / 8;
             if (down & KEY_TOUCH) {
                 if (tp.py >= MH * 8) { map_chip(tp.px, tp.py); dirty = 1; }
                 else if (inmap) {
@@ -4334,6 +4384,13 @@ int main(void) {
                 if (ne_on) { if (nx != ne_last_x || ny != ne_last_y) { sel_x = nx; sel_y = ny; ne_cell(nx, ny); ne_last_x = nx; ne_last_y = ny; dirty = 1; } }
                 else if (nx != sel_x || ny != sel_y) { sel_x = nx; sel_y = ny; dirty = 1; } }
             if (!(held & KEY_TOUCH)) ne_last_x = -1;
+            /* Don't move the map underneath an in-progress stylus stroke.
+             * Follow its final position once the stylus lifts. */
+            if (!(held & KEY_TOUCH)) {
+                int px0 = map_x0, py0 = map_y0;
+                ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 0);
+                if (px0 != map_x0 || py0 != map_y0) dirty = 1;
+            }
             if (map_enter) { enter = 1; map_enter = 0; }
             if (enter && !ne_on) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot build at sea"); else { if (!nown) own_add(sel_x, sel_y); if (home_bx < 0 && lot_owned(sel_x, sel_y)) { home_bx = sel_x; home_by = sel_y; } if (lot_bx != sel_x || lot_by != sel_y) { Sim keep = sims[0]; char kname[20]; memcpy(kname, sname[0], 20); lot_save(); zone = 0; lot_seed = (u32)(sel_x * 73856093 ^ sel_y * 19349663); lot_reset(); sims[0].skin = keep.skin; sims[0].hair = keep.hair; sims[0].hcol = keep.hcol; sims[0].shirt = keep.shirt; sims[0].beard = keep.beard; sims[0].fc = keep.fc; memcpy(sims[0].pm, keep.pm, PMN); memcpy(sims[0].cc, keep.cc, 6); memcpy(sname[0], kname, 20); lot_enter(sel_x, sel_y); place_sims(); city_spawn(); } else if (!nb_ok) { nb_load(); city_spawn(); } nb_ok = 1; cur_sim = 0; set_mode(M_LIVE); forced = 1; lastsig = ~lastsig; } }
             if (forced) dirty = 1;
