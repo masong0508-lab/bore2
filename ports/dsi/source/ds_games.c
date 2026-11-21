@@ -2321,7 +2321,7 @@ static void qd_c(const int (*p)[3], u16 c, u32 *nc) {   // a quad whose normal i
     if (!*nc || ((*nc >> 30) & 1) != (lit_sgn < 0)) *nc = qd_nrm(p) | (lit_sgn < 0 ? 0x40000000u : 0);
     qd_n(p[0][0], p[0][1], p[0][2], p[1][0], p[1][1], p[1][2], p[2][0], p[2][1], p[2][2], p[3][0], p[3][1], p[3][2], c, *nc & 0x3FFFFFFFu); }
 static s16 rp_hc[3][3][3][8]; static u8 rp_hok; static u32 rp_nt[3][3][3][6][4], rp_ns[3][3][3][6][4][2], rp_nb[4], rp_ncop[4];
-static int rp_seg(int kind) { return kind == 2 ? 4 : kind == 1 ? 3 : 2; }
+static int rp_seg(int kind) { return ds_ramp_curve_segments(kind); }   // 3/4/5 strips: better curvature without extra buffers or cached draw-list passes
 volatile int dbg_noramp;
 static void ramp3d(int x, int y, int ch, int r, int base) {
     if (dbg_noramp) return;
