@@ -177,6 +177,22 @@ static int ds_ramp_curve_segments(int kind)
     return kind == 2 ? 5 : kind == 1 ? 4 : 3;
 }
 
+/* An on-screen touch projects a 3D ray onto the viewed storey's
+ * horizontal surface. Only intersections IN FRONT of the camera are
+ * actionable. When the top of the view looks over the horizon, the
+ * previous code accepted t<0 and could select a cell behind the user.
+ * Reject nearly parallel rays and hits beyond the selectable scene.
+ * This is used only on touch; never in the per-frame render loop. */
+static int ds_touch_plane_hit(float origin_y, float ray_y,
+                              float surface_y, float *distance)
+{
+    if (ray_y > -0.0001f && ray_y < 0.0001f) return 0;
+    float t = (surface_y - origin_y) / ray_y;
+    if (!(t > 0.0f) || t > 64000.0f) return 0;
+    *distance = t;
+    return 1;
+}
+
 /* Roof Hide hides the roof mesh, *not the upper storeys of an outdoor
  * house*. For an indoor Sim, both Hide and Cutaway continue to reveal the
  * active floor; Always retains every floor. This decision must remain
