@@ -56,4 +56,28 @@ static int ds_social_close(int ax, int ay, int bx, int by)
     if (dy < 0) dy = -dy;
     return dx <= 16 && dy <= 16;
 }
+/* Return the true foot and landing of a stair on all four facings.
+ * Both endpoints must exist on the 13x13 plot, and the stair must have
+ * a floor above. Callers still test collision at the two endpoints. */
+static int ds_stairs_points(int x, int y, int rotation,
+                            int lower_level, int max_upper_level,
+                            int down, int size,
+                            int *from_x, int *from_y,
+                            int *to_x, int *to_y, int *to_level)
+{
+    static const int dx[4] = { 0, 1, 0, -1 };
+    static const int dy[4] = { 1, 0, -1, 0 };
+    if (rotation < 0 || rotation > 3 || lower_level < 0 ||
+        lower_level >= max_upper_level || max_upper_level < 1 ||
+        size < 3 || x < 0 || y < 0 || x >= size || y >= size) return 0;
+    int sign = down ? -1 : 1;
+    int ax = x + sign * dx[rotation], ay = y + sign * dy[rotation];
+    int bx = x - sign * dx[rotation], by = y - sign * dy[rotation];
+    if (ax < 0 || ay < 0 || ax >= size || ay >= size ||
+        bx < 0 || by < 0 || bx >= size || by >= size) return 0;
+    *from_x = ax; *from_y = ay;
+    *to_x = bx; *to_y = by;
+    *to_level = down ? lower_level : lower_level + 1;
+    return 1;
+}
 #endif
