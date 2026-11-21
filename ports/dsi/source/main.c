@@ -3376,14 +3376,8 @@ static void sims_step(int frames) {
         if ((m->act == 50 || m->act == 51) && !m->act_left && m->x == m->tx && m->y == m->ty) { stairs_go(i, m->act_obj, m->act == 51); continue; }   // (already at the foot, or on the landing)
         if (m->act_left > 0) {
             for (int n = 0; n < 6; n++) if (n == (m->act >= 100 ? m->act - 100 : m->act)) {
-                /* Never divide progress by a corrupt/zero duration: old
-                 * save data must not trap the DS in an endless while loop. */
-                int duration = m->face > 0 ? m->face : 1;
-                m->acc[n] += trf_gain(&dtr[i], n, trg_ah[i], m->act_amt);
-                while (m->acc[n] >= duration) {
-                    m->acc[n] -= duration;
-                    if (m->need[n] < 100) m->need[n]++;
-                }
+                ds_action_progress(&m->acc[n], &m->need[n], m->face,
+                                   trf_gain(&dtr[i], n, trg_ah[i], m->act_amt));
             }
             m->act_left--; if (m->act_left == 0) { int an = m->act; m->act = -1; trg_act_end(i, an); if (i == ctl) say("Done"); if (an >= 60 && an < 80) isl_done(i, an - 60, m->act_obj); if (an == 0) life_ev(i, WN_EAT, 0); else if (an == 1) life_ev(i, WN_FUN, 0); else if (an == 2 && m->act_amt >= 80) life_ev(i, WN_SLEEP, 0); else if (an == 5 && m->act_amt >= 70) life_ev(i, WN_SHOWER, 0); }
         } else if (m->x != m->tx || m->y != m->ty) {
