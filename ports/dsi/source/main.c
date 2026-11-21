@@ -2971,8 +2971,9 @@ static int pick_cell_h(int sx, int sy, int hgt, int *cx, int *cy) {   // the cel
     float ox = 0, oy = 0, oz = (float)cam_deff;
     float ay = dy * cp + dz * sp, az = -dy * sp + dz * cp, by = oy * cp + oz * sp, bz = -oy * sp + oz * cp;
     float ddx = dx * c - az * s, ddz = dx * s + az * c, oox = ox * c - bz * s + camx, ooz = ox * s + bz * c + camz;
-    if (ay > -0.0001f && ay < 0.0001f) return 0;
-    float t = ((float)(hgt - cam_y) - by) / ay; float hx = oox + t * ddx, hz = ooz + t * ddz;
+    float t;
+    if (!ds_touch_plane_hit(by, ay, (float)(hgt - cam_y), &t)) return 0;
+    float hx = oox + t * ddx, hz = ooz + t * ddz;
     *cx = (int)((hx / T + GN) / 2.0f + 200) - 200; *cy = (int)((hz / T + GN) / 2.0f + 200) - 200;
     return 1;
 }
