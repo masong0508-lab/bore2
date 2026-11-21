@@ -109,6 +109,16 @@ int main(void) {
       ds_action_progress(&acc, &need, 2147483647, 2147483647);
       assert(acc == 0 && need == 2);
     }
+    /* Swap-delete must not silently change an in-flight interaction
+     * into a different item. The last item shifts into the freed slot. */
+    assert(ds_action_reindex_after_delete(0, 0, 4) == -1);
+    assert(ds_action_reindex_after_delete(4, 0, 4) == 0);
+    assert(ds_action_reindex_after_delete(3, 0, 4) == 3);
+    assert(ds_action_reindex_after_delete(4, 4, 4) == -1);
+    assert(ds_action_reindex_after_delete(0, 4, 4) == 0);
+    assert(ds_action_reindex_after_delete(-1, 0, 4) == -1);
+    assert(ds_action_reindex_after_delete(9, 0, 4) == -1);
+    assert(ds_action_reindex_after_delete(0, -1, 4) == -1);
     puts("ds_action_spots_test: PASS");
     return 0;
 }
