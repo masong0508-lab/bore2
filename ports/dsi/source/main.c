@@ -1374,9 +1374,17 @@ static void farm_extras(int ch, int x, int y, int base) {   // (D38) the PS1's f
             ob(hx - 4, hz - 6, hx + 4, hz + 3, 0, 8 - pk, C15(30, 30, 29)); ob(hx - 2, hz + 2, hx + 2, hz + 6, 6 - pk, 10 - pk, C15(28, 6, 5)); } }
 }
 static u8 ID2CH[NITEM]; static void ramp3d(int x, int y, int ch, int r, int base);   // (D45)
-static int ground_lift(int cx, int cy, int L) {   // (D41, as the PS1's fix: everything stands on the ground under it) how high the ground is at a cell: a floor 40, the lawn 20 (the checker's top), a pavement 24, a road 0
-    if (L > 0) return 40; if (cx >= 0 && cy >= 0 && cx < GN && cy < GN) return flr[cy][cx] ? 40 : 20;
-    int lx = ((cx % SLC) + SLC) % SLC, ly = ((cy % SLC) + SLC) % SLC; if ((lx >= 14 && lx <= 16) || (ly >= 14 && ly <= 16)) return 0; if (lx >= 13 || ly >= 13) return 24; return 20; }
+static int ground_lift(int cx, int cy, int L) {   // base of people, objects and shadows: use the SAME visible terrain grade as the mesh
+    if (L > 0) return 40;
+    if (cx >= 0 && cy >= 0 && cx < GN && cy < GN)
+        return ds_plot_ground_lift(&flr[0][0], GN, cx, cy, o_chk);
+    int lx = ((cx % SLC) + SLC) % SLC, ly = ((cy % SLC) + SLC) % SLC;
+    int sx = fdiv(cx, SLC), sy = fdiv(cy, SLC);
+    if (t7() && sx >= -1 && sx <= 1 && sy >= -1 && sy <= 1)
+        return ds_street_ground_lift(lx, ly, st_s(sx, sy), st_e(sx, sy),
+                                     st_c(sx, sy), 1);
+    return ds_street_ground_lift(lx, ly, 1, 1, 3, 0);
+}
 static void obj3d_in(int x, int y, const Item *it, int rot, int ghost) {   // every item is a little model built from several boxes (coordinates 0..80 across the cell, heights in tenths of a quarter-tile)
     (void)ghost; tx_want = -1; int id = (int)(it - ITEMS); u16 c = it->col, d = shade(c, 6), l = shade(c, 10), wd = LC(16, 10, 5), dk = LC(3, 3, 4);
     { int ww = rot & 1 ? it->fl : it->fw, wl = rot & 1 ? it->fw : it->fl; ob_w = it->fw * 80; ob_l = it->fl * 80; ob_sx = (ww * 2 * T - T / 3) * 10 / (ww * 80); ob_sz = (wl * 2 * T - T / 3) * 10 / (wl * 80); }   // (a two-cell thing stretches to fill both)
