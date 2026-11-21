@@ -2973,10 +2973,26 @@ static void start_soc(int ai, int tgt, int id) {
     m->tgt = tgt; m->soc = id; m->act_amt = 50;
     m->face = 120; m->act_left = 0; m->act_obj = -1;
 }
-static void sim_die(int k) { st_died++;   // an elder passes away: a statue marks the spot and the household closes up
+static void sim_die(int k) {
+    if (k < 0 || k >= nsim || nsim <= 1) return;
+    st_died++;   // an elder passes away: a statue marks the spot and the household closes up
     Sim *m = &sims[k]; int cx = fdiv(m->x + 8, 16), cy = fdiv(m->y + 8, 16); static char bf[40]; sprintf(bf, "%s passed away", sname[k]); say(bf); ghost_add(m);
     if (cx >= 0 && cy >= 0 && cx < GN && cy < GN && nobj < 400) { objs[nobj].x = (u8)cx; objs[nobj].y = (u8)cy; objs[nobj].c = (u8)((PS1ID[0x83] - 1) >> 2); objs[nobj].i = (u8)((PS1ID[0x83] - 1) & 3); objs[nobj].rot = (u8)(slv[k] << 2); nobj++; occ_ok = 0; }
-    for (int i = k; i < nsim - 1; i++) { sims[i] = sims[i + 1]; life[i] = life[i + 1]; slv[i] = slv[i + 1]; memcpy(sname[i], sname[i + 1], 20); fid[i] = fid[i + 1]; psd[i] = psd[i + 1]; fpar[i][0] = fpar[i + 1][0]; fpar[i][1] = fpar[i + 1][1]; fpt[i] = fpt[i + 1]; csx[i] = csx[i + 1]; dtr[i] = dtr[i + 1]; } memset(&csx[nsim - 1], 0, sizeof(Cx)); memset(&dtr[nsim - 1], 0, sizeof dtr[0]); nsim--; trg_died(k); psd[nsim] = 0; fid[nsim] = fpt[nsim] = fpar[nsim][0] = fpar[nsim][1] = 0; life_ver++;
+    for (int i = k; i < nsim - 1; i++) { sims[i] = sims[i + 1]; life[i] = life[i + 1]; slv[i] = slv[i + 1]; memcpy(sname[i], sname[i + 1], 20); fid[i] = fid[i + 1]; psd[i] = psd[i + 1]; fpar[i][0] = fpar[i + 1][0]; fpar[i][1] = fpar[i + 1][1]; fpt[i] = fpt[i + 1]; csx[i] = csx[i + 1]; dtr[i] = dtr[i + 1]; } memset(&csx[nsim - 1], 0, sizeof(Cx)); memset(&dtr[nsim - 1], 0, sizeof dtr[0]); nsim--; trg_died(k);
+    /* Remove the deceased from all queued conversations before the
+     * compacted household array can make the old target index refer
+     * to somebody else. Already-completed conversations can finish
+     * their duration without looking up an obsolete target. */
+    for (int i = 0; i < nsim; i++) {
+        Sim *a = &sims[i];
+        if (a->act < 100 || a->act_left > 0) continue;
+        int next = ds_social_target_after_remove(a->tgt, k, nsim + 1);
+        if (next == -1 && a->tgt >= 0) {
+            a->act = -1; a->act_left = 0; a->tgt = -1;
+            a->tx = a->wx = a->x; a->ty = a->wy = a->y;
+        } else a->tgt = next;
+    }
+    psd[nsim] = 0; fid[nsim] = fpt[nsim] = fpar[nsim][0] = fpar[nsim][1] = 0; life_ver++;
     if (ctl == k) ctl = 0; else if (ctl > k) ctl--; if (stage_of(sims[ctl].age) == 0) for (int i = 0; i < nsim; i++) if (stage_of(sims[i].age) > 0) { ctl = i; break; }
     cur_sim = ctl; memset(ilim, 0, sizeof ilim); ui_ver++; }
 
