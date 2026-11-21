@@ -3061,7 +3061,6 @@ static void day_roll(void) {
     if (o_auto && mode == M_LIVE && sav_ok() && lot_bx >= 0) { if (sav_write()) say("Saved. Sweet dreams!"); }
     sfx(4);
 }
-static const int SFX_[4] = { 0, 1, 0, -1 }, SFY_[4] = { 1, 0, -1, 0 };   // a flight's front (its open side) by its turn; it rises away from it
 /* Failed stair commands must release their action, or an actor standing
  * at the foot/landing retries forever and never updates their needs. */
 static void stairs_cancel(int i, const char *why) {
@@ -3076,24 +3075,18 @@ static void stairs_go(int i, int o, int down) {   // move between the stair's ac
         stairs_cancel(i, "Stairs are no longer there"); return;
     }
     const Obj *st = &objs[o];
-    int L = OBJ_LV(st), r = st->rot & 3;
-    /* Level UPN is the highest floor; there is no UPN+1. Stale
-     * stairs from a damaged save cannot address uflr out of range. */
-    if ((!down && L >= UPN) || (down && L >= UPN) ||
+    int L = OBJ_LV(st), from_x, from_y, dest_x, dest_y, to_lv;
+    if (!ds_stairs_points(st->x, st->y, st->rot & 3,
+                          L, UPN, down, GN,
+                          &from_x, &from_y, &dest_x, &dest_y, &to_lv) ||
         slv[i] != (down ? L + 1 : L)) {
         stairs_cancel(i, "Those stairs don't reach this floor"); return;
     }
-    int from_x = (int)st->x + (down ? -SFX_[r] : SFX_[r]);
-    int from_y = (int)st->y + (down ? -SFY_[r] : SFY_[r]);
-    int dest_x = (int)st->x + (down ? SFX_[r] : -SFX_[r]);
-    int dest_y = (int)st->y + (down ? SFY_[r] : -SFY_[r]);
     if (m->x != from_x * 16 || m->y != from_y * 16) {
         stairs_cancel(i, "Stand by the stairs to use them"); return;
     }
-    int to_lv = down ? L : L + 1;
     int prev = LV; LV = to_lv;
-    int open = dest_x >= 0 && dest_y >= 0 && dest_x < GN && dest_y < GN &&
-               !obj_solid(dest_x, dest_y);
+    int open = !obj_solid(dest_x, dest_y);
     LV = prev;
     if (!open) {
         stairs_cancel(i, down ? "Something blocks the stairs below" :
@@ -3110,13 +3103,16 @@ static void start_act(Sim *m, int obj, int sim) {   // do the action beside furn
     if (obj < 0 || obj >= nobj) return;
     const Obj *o = &objs[obj]; int tx, ty;
     if (OBJ_ID(o) == ID_STAIRS) {
-        int actor = (int)(m - sims), r = o->rot & 3;
-        int fx = (int)o->x + SFX_[r], fy = (int)o->y + SFY_[r];
+        int actor = (int)(m - sims);
+        int fx, fy, gx, gy, to_lv;
         int old_lv = LV;
         LV = slv[actor];
-        int accessible = OBJ_LV(o) == LV && LV < UPN &&
-                         fx >= 0 && fy >= 0 && fx < GN && fy < GN &&
-                         !obj_solid(fx, fy) && edge_open(fx, fy, o->x, o->y);
+        int accessible = OBJ_LV(o) == LV &&
+                         ds_stairs_points(o->x, o->y, o->rot & 3,
+                                          OBJ_LV(o), UPN, 0, GN,
+                                          &fx, &fy, &gx, &gy, &to_lv);
+        if (accessible)
+            accessible = !obj_solid(fx, fy) && edge_open(fx, fy, o->x, o->y);
         LV = old_lv;
         if (!accessible) {
             if (m == &sims[ctl]) say("No open path to these stairs");
@@ -4346,12 +4342,13 @@ static void live_touch(int tx, int ty) {
                     say("Stairs are no longer there"); return;
                 }
                 Sim *m = &sims[ctl]; const Obj *st = &objs[idx];
-                int r = st->rot & 3;
-                int fx = (int)st->x - SFX_[r], fy = (int)st->y - SFY_[r];
+                int fx, fy, gx, gy, to_lv;
                 int prev = LV; LV = slv[ctl];
-                int accessible = OBJ_LV(st) < UPN && LV == OBJ_LV(st) + 1 &&
-                                 fx >= 0 && fy >= 0 && fx < GN && fy < GN &&
-                                 !obj_solid(fx, fy);
+                int accessible = LV == OBJ_LV(st) + 1 &&
+                                 ds_stairs_points(st->x, st->y, st->rot & 3,
+                                                  OBJ_LV(st), UPN, 1, GN,
+                                                  &fx, &fy, &gx, &gy, &to_lv);
+                if (accessible) accessible = !obj_solid(fx, fy);
                 LV = prev;
                 if (!accessible) { say("No clear upper stair landing"); return; }
                 m->tx = fx * 16; m->ty = fy * 16; m->act = 51;
