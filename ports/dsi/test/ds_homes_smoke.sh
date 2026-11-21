@@ -6,7 +6,7 @@ set -euo pipefail
 D=${1:-/tmp/bore_homes}
 RUN=${DSRUN:-/tmp/dsrun}
 test -x "$RUN" && test -s "$D/bore.nds" && test -s "$D/bore.elf"
-address=$(llvm-nm "$D/bore.elf" | awk '$3 == "ah" {print $1; exit}')
+address=$(llvm-nm "$D/bore.elf" | awk '$3 == "ah" && !found {print $1; found=1}')
 if [[ -z "$address" ]]; then echo "DS HOMES FAIL: missing test symbol ah"; exit 1; fi
 base=$((16#$address))
 addrs=()
