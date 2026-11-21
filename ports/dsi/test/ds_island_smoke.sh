@@ -6,7 +6,7 @@ set -euo pipefail
 D=${1:-/tmp/bore_ds_island}
 RUN=${DSRUN:-/tmp/dsrun}
 test -x "$RUN" && test -s "$D/bore.elf" && test -s "$D/bore.nds"
-sym() { llvm-nm "$D/bore.elf" | awk -v n="$1" '$3 == n {print $1; exit}'; }
+sym() { llvm-nm "$D/bore.elf" | awk -v n="$1" '$3 == n && !found {print $1; found=1}'; }
 mem() {
     local addr
     addr=$(sym "$1")
