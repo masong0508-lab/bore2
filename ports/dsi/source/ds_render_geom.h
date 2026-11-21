@@ -138,15 +138,23 @@ static int ds_l_garage_rect(int lot0, int body0, int body1,
     return a < b && *z0 < *z1;
 }
 
+/* In Cutaway mode, only the player/camera's *own* building loses
+ * its roof. A different member of the household entering another room
+ * must not make the viewed building vanish. Always/Hide override this. */
+static int ds_camera_roof_visible(int roof_mode, int camera_inside)
+{
+    return roof_mode == 1 || (roof_mode == 0 && !camera_inside);
+}
+
 /* Roof Hide hides the roof mesh, *not the upper storeys of an outdoor
  * house*. For an indoor Sim, both Hide and Cutaway continue to reveal the
  * active floor; Always retains every floor. This decision must remain
  * identical in static-list caching and in the actual draw pass. */
 static int ds_visible_storey_top(int top, int viewed, int live,
-                                  int roof_mode, int any_inside, int roof_tool)
+                                  int roof_mode, int camera_inside, int roof_tool)
 {
     int show = viewed;
-    if (live && top > 0 && (roof_mode == 1 || !any_inside)) show = top;
+    if (live && top > 0 && (roof_mode == 1 || !camera_inside)) show = top;
     if (roof_tool) show = top;
     if (show > top) show = top;
     if (show < viewed) show = viewed;
