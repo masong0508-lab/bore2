@@ -1470,7 +1470,22 @@ static void obj3d_in(int x, int y, const Item *it, int rot, int ghost) {   // ev
     if (it->nbox) {   // (D35) a PS1 model: its own boxes, converted by tools/dsbuild/mk_dsitems.py (PS1 units: 10 across, 7 up)
         int fch = id == PS1ID[0xDB] - 1 ? 0xDB : id == PS1ID[0xDC] - 1 ? 0xDC : 0, nb = fch == 0xDB ? 1 : it->nbox;   // (D38: a crop bed is its soil and what the farm has growing; a coop has its hens)
         if (dpass == 2 && !pv_cap && !ghost) { if (fch == 0xDC && o_det && !lod_force && !(mode == M_LIVE && lod_far())) farm_extras(fch, x, y, IBOX[it->box0].z1 * 7); return; }   // (D39: the moving pass draws only the hens)
-        if (!pv_cap && (!o_det || lod_force || (mode == M_LIVE && lod_far()))) {   // far off: one box, as big as the model (D38: was the item's nominal height, so a crop bed stood like a crate)
+        if (!pv_cap && (!o_det || lod_force || (mode == M_LIVE && lod_far()))) {   // far off: keep gameplay-critical stair silhouette, simplify the rest
+            if (id == ID_STAIRS) {
+                /* A floor-height solid box looked like a vertical wall
+                 * instead of a staircase in Simple or distant views.
+                 * Four paired risers preserve the full stair landing
+                 * height and its true rotation for half the detail cost. */
+                for (int k = 0; k < nb; k += 2) {
+                    const IBx *a = &IBOX[it->box0 + k];
+                    const IBx *b = &IBOX[it->box0 + (k + 1 < nb ? k + 1 : k)];
+                    int x0 = MIN(a->a0, b->a0), x1 = MAX(a->a1, b->a1);
+                    int z0 = MIN(a->b0, b->b0), z1 = MAX(a->b1, b->b1);
+                    int h = MAX(a->z1, b->z1) * 7;
+                    ob2(x0 * 10, z0 * 10, x1 * 10, z1 * 10, 0, h, b->side, b->top);
+                }
+                return;
+            }
             if (fch == 0xDB) { const IBx *b = &IBOX[it->box0]; ob(0, 0, 80, 80, 0, b->z1 * 7, b->side); farm_extras(fch | 0x100, x, y, b->z1 * 7); return; }
             int top = 0, a0 = 80, b0 = 80, a1 = 0, b1 = 0; for (int k = 0; k < nb; k++) { const IBx *b = &IBOX[it->box0 + k]; if (b->z1 * 7 > top) top = b->z1 * 7; if (b->a0 < a0) a0 = b->a0; if (b->b0 < b0) b0 = b->b0; if (b->a1 > a1) a1 = b->a1; if (b->b1 > b1) b1 = b->b1; }
             ob(a0 * 10, b0 * 10, a1 * 10, b1 * 10, 0, top, c); return; }
@@ -1936,6 +1951,10 @@ static void zone_block(int bx, int by, BInfo *b) {
 }
 static void blk(int bx, int by, BInfo *b) { if (bx >= ZB) zone_block(bx, by, b); else bm_block(bx, by, b); }
 static int z_put(int x, int y, int ch, int rot) {   // a PS1 thing by its letter, as the PS1's zone maps place them
+    /* '2' and '4' are PS1 fixed-facing kicker variants, not separate DS
+     * catalogue IDs. Map them onto the actual Kicker item with the same
+     * lip direction as PS1 so they render as a slope and are rideable. */
+    ch = ds_skate_ramp_alias(ch, &rot);
     int id = PS1ID[ch & 255] - 1, keep = LV; LV = (rot >> 2) & 3; int busy = id < 0 || nobj >= 400 || x < 0 || y < 0 || x >= GN || y >= GN || obj_at(x, y) >= 0; LV = keep; if (busy) return -1;
     objs[nobj].x = (u8)x; objs[nobj].y = (u8)y; objs[nobj].c = (u8)(id >> 2); objs[nobj].i = (u8)(id & 3); objs[nobj].rot = (u8)rot; nobj++; occ_ok = 0; return nobj - 1; }
 static void z_room(int x0, int y0, int x1, int y1, int fl, int wc) {   // a room: its floor, and walls round it on the cell edges
