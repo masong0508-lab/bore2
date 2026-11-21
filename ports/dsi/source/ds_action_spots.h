@@ -110,4 +110,16 @@ static int ds_action_reindex_after_delete(int index, int removed, int last)
     if (index == removed) return -1;
     return index == last ? removed : index;
 }
+/* Household members are stored densely too. When member k leaves or
+ * dies, an active conversation must not be redirected to whichever Sim
+ * shifted into their slot. Negative targets name world citizens. */
+static int ds_social_target_after_remove(int target, int removed,
+                                          int previous_count)
+{
+    if (target < 0) return target;
+    if (removed < 0 || removed >= previous_count ||
+        target >= previous_count) return -1;
+    if (target == removed) return -1;
+    return target > removed ? target - 1 : target;
+}
 #endif
