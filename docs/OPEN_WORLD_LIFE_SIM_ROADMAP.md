@@ -60,6 +60,12 @@ The [DS/DSi neighborhood audit](../ports/dsi/test/ds_town7_audit.sh) now fails i
 
 **OW-004 partial, not complete:** still compare identical map/street/lot and actual riding perspectives across PS1, DS/DSi and Dreamcast. In particular measure close-up field-of-view distortion, floor/camera clipping, shadow/occlusion, stair access under all facings, and rider landing/grind results on physical hardware. The DS polygon and frame numbers reflect an emulator run only; leave the broad Milestone 0 checklist open.
 
+### Milestone 0 checkpoint — PS1 orbit lens and near-perspective math merged (2026-11-21)
+
+[PR #8](https://github.com/masong0508-lab/bore2/pull/8) (squash `0a54fa9`) adds a measured narrower third-person PS1 GTE lens (**230→260 px**, ~69.6°→~63.2° horizontal FOV) and proportionally increases camera distance (**260/230**) to preserve the focal subject's size while reducing foreground/background perspective exaggeration on steps, ramps, rails and people. The impostor sprite pass now uses/restores the same world focal, and the GTE resets to baseline at the frame boundary for menus. **First person and Dreamcast are unchanged**. There are no new image/VRAM/save/heap allocations or polygon increases. Exact formulas, source files, repro and further acceptance work are in [PS1_CAMERA_PERSPECTIVE.md](PS1_CAMERA_PERSPECTIVE.md).
+
+**Verified:** [PS1 disc/host CI 44963154954](https://github.com/masong0508-lab/bore2/actions/runs/44963154954) passed disc packaging, existing seed/lot coherence and new PS1/DC C99 camera projection/parallax tests. [Dreamcast full compile 44963102464](https://github.com/masong0508-lab/bore2/actions/runs/44963102464) also passed for the affected shared source. **Still open (OW-004 / OW-003):** identical-seed native 320×240 DuckStation camera/lens screenshots, cramped-room/roof-cutaway tests, PS1 affine texture warp at near planes, and handheld/real-console FPS/camera validation. A mathematical parallax improvement is *not* proof that every rendered staircase is visually fixed; this remains a partial milestone.
+
 ## Milestone 1 — People with lives, not moving scenery (P1)
 
 - [ ] **OW-101 Stable citizen state:** home, household, location, needs, work or school commitment, personal schedule, relationships, relevant memories and current task remain consistent across travel, load and time skip.
