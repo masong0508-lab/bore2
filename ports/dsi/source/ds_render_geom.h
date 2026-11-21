@@ -29,6 +29,32 @@ static int ds_roof_eave_clear(const unsigned char *occupied, int size,
     }
     return 1;
 }
+/* True cutaway enclosure, not the bounding rectangle of the walls:
+ * an L's courtyard, a detached garage gap and an unfenced yard stay OUTSIDE.
+ * Flood at most 13x13 cells, all stack storage, no heap or save changes.
+ * Doors enclose an interior; fences (wall code 6) do not. */
+static int ds_cell_enclosed(const unsigned char *hw, const unsigned char *vw,
+                            int n, int x, int y)
+{
+    if (n < 1 || n > 13 || x < 0 || y < 0 || x >= n || y >= n) return 0;
+    unsigned char seen[13 * 13] = {0}, queue[13 * 13];
+    int head = 0, tail = 0, pos = y * n + x;
+    queue[tail++] = (unsigned char)pos; seen[pos] = 1;
+    while (head < tail) {
+        int c = queue[head++], cx = c % n, cy = c / n;
+        for (int dir = 0; dir < 4; ++dir) {
+            int nx = cx + (dir == 0) - (dir == 1);
+            int ny = cy + (dir == 2) - (dir == 3);
+            int wall = dir < 2 ? vw[cy * (n + 1) + cx + (dir == 0)]
+                               : hw[(cy + (dir == 2)) * n + cx];
+            if (wall && wall != 6) continue;
+            if (nx < 0 || ny < 0 || nx >= n || ny >= n) return 0;
+            int next = ny * n + nx;
+            if (!seen[next]) { seen[next] = 1; queue[tail++] = (unsigned char)next; }
+        }
+    }
+    return 1;
+}
 /* Stand on the surface that draw_build actually paints. The 2x2 checker
  * is raised only if every cell in its patch is empty; all other grass is at
  * height zero. Previously outdoor characters hovered 20 units above it. */
