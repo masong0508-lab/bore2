@@ -85,6 +85,30 @@ int main(void) {
       assert(!ds_stairs_points(6, 6, 0, 0, 3, 1, 2,
                                &ax, &ay, &bx, &by, &lv));
     }
+    { int acc = 90, need = 40;
+      ds_action_progress(&acc, &need, 100, 15);
+      assert(acc == 5 && need == 41);
+      ds_action_progress(&acc, &need, 100, 94);
+      assert(acc == 99 && need == 41);
+      ds_action_progress(&acc, &need, 100, 1);
+      assert(acc == 0 && need == 42);
+    }
+    { int acc = 2147483647, need = 95;
+      ds_action_progress(&acc, &need, 1, 10);
+      assert(acc == 0 && need == 100);
+      ds_action_progress(&acc, &need, 0, 10);
+      assert(acc == 0 && need == 100);
+    }
+    { int acc = -100, need = -3;
+      ds_action_progress(&acc, &need, 10, -2);
+      assert(acc == 0 && need == 0);
+      ds_action_progress(&acc, &need, 10, 11);
+      assert(acc == 1 && need == 1);
+    }
+    { int acc = 2147483647, need = 0;
+      ds_action_progress(&acc, &need, 2147483647, 2147483647);
+      assert(acc == 0 && need == 2);
+    }
     puts("ds_action_spots_test: PASS");
     return 0;
 }
