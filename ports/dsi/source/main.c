@@ -1623,7 +1623,59 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
     int tr = pl && ((k >= LOT_HOUSE && k <= LOT_TWO) || k == LOT_PARK) ? BT_GRASS : b->terrain;   // (D80: a home's yard and a park are lawn in a dry town, as the PS1)
     u16 grass = tr == BT_DESERT ? C15(24, 20, 10) : tr == BT_ROCKY ? C15(13, 13, 13) : tr == BT_BEACH ? C15(26, 24, 14) : seas(C15(11, 20, 8));
     tx_want = tr == BT_DESERT || tr == BT_BEACH ? TX_SAND : tr == BT_ROCKY ? TX_GRAVEL : TX_GRASS; ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), -20, grass); tx_want = -1;
-    if (!far_house7(b, pl)) { int n = (k == LOT_PARK || k == LOT_SQUARE) ? 4 : 2; for (int i = 0; i < n; i++) tree(ox + tl(3 + (int)((h >> (i * 4)) & 15) * 3 / 2 % 20), oz + tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 3 / 2 % 20), T * 2); return; }
+    if (!far_house7(b, pl)) {
+        /* A nearby public space should look like its actual use, not a
+         * random grove. Only the nearest ring gets these tiny landmarks.
+         * Keep older saved-world visuals and the distant low LOD unchanged. */
+        if (bm_gen >= 8 && !far_lod && polys < POLY7 - 80) {
+            if (k == LOT_FARM) {
+                /* Parallel crop beds with lanes: field lots have no barn. */
+                tx_want = TX_GRASS;
+                for (int row = 0; row < 4; row++)
+                    ground(ox + tl(3 + row * 5), oz + tl(4),
+                           ox + tl(5 + row * 5), oz + tl(22), -30,
+                           C15(19 + (row & 1), 24, 8));
+                tx_want = -1;
+                return;
+            }
+            if (k == LOT_PARK || k == LOT_SQUARE) {
+                /* Two intersecting footpaths and paired corner trees.
+                 * The plaza's paving and park's green are not identical. */
+                tx_want = TX_PAVING;
+                if (k == LOT_SQUARE)
+                    ground(ox + tl(2), oz + tl(2), ox + tl(24),
+                           oz + tl(24), -26, C15(21, 20, 17));
+                else {
+                    ground(ox + tl(11), oz + tl(1), ox + tl(15),
+                           oz + tl(25), -26, C15(22, 20, 15));
+                    ground(ox + tl(1), oz + tl(11), ox + tl(25),
+                           oz + tl(15), -26, C15(22, 20, 15));
+                }
+                tx_want = -1;
+                tree(ox + tl(5), oz + tl(5), T * 2);
+                tree(ox + tl(21), oz + tl(5), T * 2);
+                tree(ox + tl(5), oz + tl(21), T * 2);
+                tree(ox + tl(21), oz + tl(21), T * 2);
+                return;
+            }
+            if (k == LOT_SKATE) {
+                tx_want = TX_PAVING;
+                ground(ox + tl(2), oz + tl(2), ox + tl(24),
+                       oz + tl(24), -26, C15(20, 20, 22));
+                tx_want = -1;
+                block(ox + tl(5), oz + tl(10), ox + tl(9),
+                      oz + tl(16), -28, -T, C15(13, 16, 19),
+                      C15(22, 23, 25));
+                return;
+            }
+        }
+        if (bm_gen >= 8 && k == LOT_FARM) return;
+        int n = (k == LOT_PARK || k == LOT_SQUARE) ? 4 : 2;
+        for (int i = 0; i < n; i++)
+            tree(ox + tl(3 + (int)((h >> (i * 4)) & 15) * 3 / 2 % 20),
+                 oz + tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 3 / 2 % 20), T * 2);
+        return;
+    }
     int w = 10 + (int)(h & 3) * 2, d = 8 + (int)((h >> 2) & 3) * 2, x0 = 4 + (24 - w) / 2 / 2 * 2 - 4, z0 = 4;
     int st = bm_storeys(b); int hh = 2 * st + (st == 1 ? 2 : 0);
     u16 walls[6] = { C15(26, 22, 16), C15(24, 14, 10), C15(22, 24, 26), C15(26, 26, 18), C15(16, 22, 14), C15(24, 20, 22) }; u16 wall = walls[(h >> 8) % 6];
