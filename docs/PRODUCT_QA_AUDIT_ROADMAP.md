@@ -4,6 +4,12 @@ Established 2026-11-21. Companion to [OPEN_WORLD_LIFE_SIM_ROADMAP.md](OPEN_WORLD
 
 **Important:** this initial register comes from repository documentation and a general audit methodology. It is **not a fresh emulator playthrough**, static analyzer result, measured benchmark, or source-level proof. Older notes sometimes describe bugs that newer notes mark fixed. Every claimed present-day bug needs a reproduction on a named commit.
 
+## Recorded quality checkpoint — 2026-11-21 (PR #3)
+
+The [world-coherence CI gate](../test/world_coherence.py) and [DS town audit enforcement](../ports/dsi/test/ds_town7_audit.sh) are now merged into `main` via [PR #3](https://github.com/masong0508-lab/bore2/pull/3) (squash commit `63a2d2e`). Host checks compare real generated house walls, door and driveway coordinates with their LotPlan and compare actual non-home wall bounds with the `bm_lot_foot` outlines used by maps/far view. Six parser self-tests prevent passing on empty or malformed output. **12/12 host checks passed**, **11,557 lot-check instances**, 0 mismatches on world generations 7 and 8 at seeds `1`, `0x5EED1234`, `0xC0FFEE`. The initial audit reported 4 extra walls per intentional 2×2 garden shed; the checker was refined to accept only correctly placed, complete sheds, not arbitrary stray walls. The DS ROM + gameplay CI passed, including a required generated-home audit of **162 homes with 0 failures**. PS1 disc build/packaging passed.
+
+Evidence: [PS1 and host run](https://github.com/masong0508-lab/bore2/actions/runs/44956101766), [DS run](https://github.com/masong0508-lab/bore2/actions/runs/44955879489). **QA-009 is protected by an initial automated regression gate, not fully resolved:** native gameplay camera/roof/floor captures and shared world/lot render-state audits remain outstanding. Do not infer any change to the actual renderer or new hardware measurements from these tests.
+
 ## Severity and status
 
 | Severity | Meaning | Release rule |
