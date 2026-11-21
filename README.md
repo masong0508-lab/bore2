@@ -1,5 +1,8 @@
 # BORE 2 (PlayStation)
 
+**Living development roadmaps:** [Open-world life simulation](docs/OPEN_WORLD_LIFE_SIM_ROADMAP.md) · [Product bugs, rendering and QA](docs/PRODUCT_QA_AUDIT_ROADMAP.md) · [Research archive](docs/RESEARCH_AUDIT_NOTES_2026-11-21.md) · [Existing per-port checklist](docs/ROADMAP.md).
+
+
 The sequel to BORE (GBA), in true 3D. The voxel people (6x4x8 blocks, built by the GBA game's own buildLook), the items
 (the GBA's textured boxes), the 40x40 lots, 103 wallpapers and all 33 jukebox songs are on the disc.
 
