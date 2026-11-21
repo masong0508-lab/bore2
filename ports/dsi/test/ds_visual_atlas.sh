@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# OW-003 / QA-009: reproducible native-resolution DS screenshot comparison.
+# Usage: DSRUN=/tmp/dsrun bash ports/dsi/test/ds_visual_atlas.sh [outdir]
+# The supplied ROMs are test-only; this does not modify playable ROM assets,
+# game saves, procedural world versions, or the retail renderer.
+set -euo pipefail
+R=$(cd "$(dirname "$0")/../../.." && pwd)
+D=${1:-$R/out-visual}
+RUN=${DSRUN:-/tmp/dsrun}
+mkdir -p "$D"
+D=$(cd "$D" && pwd)
+test -x "$RUN" || { echo "Missing melonDS runner: $RUN" >&2; exit 2; }
+
+# A single seed and fixed controls are repeated for each roof mode. The
+# DS_TOUR hook moves through the same first three representative generated
+# houses (including their rooms/yard and street views) in both builds.
+# DS_TOUR_MID places the controlled Sim inside the house, so Cutaway and
+# Always should produce *different actual 3D frames*, not just UI text.
+LIVE='100-103:0:212,140;200-203:1:-1,-1'
+SHOTS='265,305,345'
+for mode in cutaway always; do
+    B="$D/rom-$mode"
+    mkdir -p "$B"
+    flags="-DDSTEST -DDS_TOUR -DDS_TOUR_ONE=0 -DDS_TOUR_MID=0"
+    if [ "$mode" = always ]; then flags="$flags -DDS_TOUR_ROOF"; fi
+    if ! OUT="$B" XTRA="$flags" bash "$R/tools/dsbuild/mkp.sh" >"$D/build-$mode.log" 2>&1; then
+        echo "$mode ROM build failed:" >&2
+        tail -90 "$D/build-$mode.log" >&2
+        exit 2
+    fi
+    test -s "$B/bore.nds" && test -s "$B/bore.elf" || {
+        echo "$mode ROM or ELF missing" >&2; exit 2;
+    }
+    # run.cpp's optional sixth argument accepts comma-separated frame
+    # numbers and saves "<base>_<frame>.ppm". One replay per mode suffices.
+    if ! "$RUN" "$B/bore.nds" 390 "$D/$mode.ppm" "$LIVE" "$SHOTS" >"$D/emulate-$mode.log" 2>&1; then
+        echo "$mode emulator failed:" >&2
+        tail -90 "$D/emulate-$mode.log" >&2
+        exit 2
+    fi
+done
+
+# No PIL dependency: validate raw PPM frame dimensions and compare just the
+# bottom 256x192 visual gameplay screen (the top 256x192 holds the HUD).
+# Nonempty and nonidentical snapshots are a minimal signal that the roof
+# toggle affected rendered world geometry in a repeatable real emulator run.
+python3 - "$D" <<'PY'
+import json
+import pathlib
+import sys
+root = pathlib.Path(sys.argv[1])
+frames = (265, 305, 345)
+header = b"P6\n256 384\n255\n"
+width, height = 256, 384
+screen_bytes = width * (height // 2) * 3
+results = []
+for frame in frames:
+    views = {}
+    for mode in ("cutaway", "always"):
+        path = root / f"{mode}_{frame}.ppm"
+        raw = path.read_bytes()
+        if not raw.startswith(header) or len(raw) != len(header) + width * height * 3:
+            raise SystemExit(f"FAIL invalid 256x384 PPM: {path}")
+        play = raw[len(header) + screen_bytes:]
+        if len(set(play)) < 20:
+            raise SystemExit(f"FAIL blank/low-detail gameplay image: {path}")
+        views[mode] = play
+    changed_channels = sum(a != b for a, b in zip(views["cutaway"], views["always"]))
+    results.append({"frame": frame, "changed_channels": changed_channels})
+    print(f"atlas frame {frame}: {changed_channels} gameplay RGB channels differ")
+if max(r["changed_channels"] for r in results) < 300:
+    raise SystemExit("FAIL: cutaway and always screenshots indistinguishable; verify camera and tour")
+summary = {"method": "melonDS native 256x384 PPM", "roof_modes": ["cutaway", "always"],
+           "world_region": "DS_TOUR first three planned houses",
+           "frames": results, "passed": True}
+(root / "visual_atlas_results.json").write_text(json.dumps(summary, indent=2) + "\n")
+print("DS VISUAL ATLAS PASS: screenshots saved in " + str(root))
+PY
