@@ -66,6 +66,12 @@ The [DS/DSi neighborhood audit](../ports/dsi/test/ds_town7_audit.sh) now fails i
 
 **Verified:** [PS1 disc/host CI 44963154954](https://github.com/masong0508-lab/bore2/actions/runs/44963154954) passed disc packaging, existing seed/lot coherence and new PS1/DC C99 camera projection/parallax tests. [Dreamcast full compile 44963102464](https://github.com/masong0508-lab/bore2/actions/runs/44963102464) also passed for the affected shared source. **Still open (OW-004 / OW-003):** identical-seed native 320×240 DuckStation camera/lens screenshots, cramped-room/roof-cutaway tests, PS1 affine texture warp at near planes, and handheld/real-console FPS/camera validation. A mathematical parallax improvement is *not* proof that every rendered staircase is visually fixed; this remains a partial milestone.
 
+### Milestone 0 checkpoint — DS horizon touch/3D camera target coherence (2026-11-21)
+
+[PR #9](https://github.com/masong0508-lab/bore2/pull/9), squash `8d3d3a7`, corrects a real Live-mode ray-plane picking bug: near-horizon or upward 3D screen touch rays could intersect the active floor **behind** the camera (`t<0`) yet be accepted as a walking/item target. The new `ds_touch_plane_hit` guard rejects negative, parallel and implausibly far intersections before any cell is selected; valid floors/stairs/upper storeys retain their old coordinate mapping. The 2D Build/Buy plan isn't altered; no per-frame computation, new assets or save changes. [Repro, code and limitations](DS_TOUCH_RAY.md).
+
+**Verified:** [DS ROM/emulator CI 44963841329](https://github.com/masong0508-lab/bore2/actions/runs/44963841329) passed the native C99 forward/reverse/upstairs/horizon tests, purchase/save, stairs/island, furnished-home interactions, **162-home audit**, skatepark playthrough and 3-house visual atlas. [PS1 host/disc run 44963841433](https://github.com/masong0508-lab/bore2/actions/runs/44963841433) passed. **Still needed:** explicit tap-on-horizon **emulator marker/coordinate screenshots**, and broader camera/perspective alignment across native DS, PS1 and Dreamcast. This addresses one OW-004 interaction failure, not full scene rendering quality.
+
 ## Milestone 1 — People with lives, not moving scenery (P1)
 
 - [ ] **OW-101 Stable citizen state:** home, household, location, needs, work or school commitment, personal schedule, relationships, relevant memories and current task remain consistent across travel, load and time skip.
