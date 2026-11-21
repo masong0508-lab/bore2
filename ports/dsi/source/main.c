@@ -3062,27 +3062,67 @@ static void day_roll(void) {
     sfx(4);
 }
 static const int SFX_[4] = { 0, 1, 0, -1 }, SFY_[4] = { 1, 0, -1, 0 };   // a flight's front (its open side) by its turn; it rises away from it
-static void stairs_go(int i, int o, int down) {   // (D36) the sim at the foot (or at the landing) changes storey
+/* Failed stair commands must release their action, or an actor standing
+ * at the foot/landing retries forever and never updates their needs. */
+static void stairs_cancel(int i, const char *why) {
     Sim *m = &sims[i];
-    /* A saved stair command can outlive the sale/rearrangement of its
-     * object. Never turn a stale index into a bad load or teleport. */
+    m->act = -1; m->act_left = 0;
+    m->tx = m->wx = m->x; m->ty = m->wy = m->y;
+    if (i == ctl) say(why);
+}
+static void stairs_go(int i, int o, int down) {   // move between the stair's actual approach and landing cells
+    Sim *m = &sims[i];
     if (o < 0 || o >= nobj || OBJ_ID(&objs[o]) != ID_STAIRS) {
-        m->act = -1; m->act_left = 0;
-        m->tx = m->wx = m->x; m->ty = m->wy = m->y;
-        if (i == ctl) say("Stairs are no longer there");
+        stairs_cancel(i, "Stairs are no longer there"); return;
+    }
+    const Obj *st = &objs[o];
+    int L = OBJ_LV(st), r = st->rot & 3;
+    /* Level UPN is the highest floor; there is no UPN+1. Stale
+     * stairs from a damaged save cannot address uflr out of range. */
+    if ((!down && L >= UPN) || (down && L >= UPN) ||
+        slv[i] != (down ? L + 1 : L)) {
+        stairs_cancel(i, "Those stairs don't reach this floor"); return;
+    }
+    int from_x = (int)st->x + (down ? -SFX_[r] : SFX_[r]);
+    int from_y = (int)st->y + (down ? -SFY_[r] : SFY_[r]);
+    int dest_x = (int)st->x + (down ? SFX_[r] : -SFX_[r]);
+    int dest_y = (int)st->y + (down ? SFY_[r] : -SFY_[r]);
+    if (m->x != from_x * 16 || m->y != from_y * 16) {
+        stairs_cancel(i, "Stand by the stairs to use them"); return;
+    }
+    int to_lv = down ? L : L + 1;
+    int prev = LV; LV = to_lv;
+    int open = dest_x >= 0 && dest_y >= 0 && dest_x < GN && dest_y < GN &&
+               !obj_solid(dest_x, dest_y);
+    LV = prev;
+    if (!open) {
+        stairs_cancel(i, down ? "Something blocks the stairs below" :
+                                "Build a clear landing upstairs");
         return;
     }
-    const Obj *st = &objs[o]; int L = OBJ_LV(st), r = st->rot & 3, tx = down ? st->x + SFX_[r] : st->x - SFX_[r], ty = down ? st->y + SFY_[r] : st->y - SFY_[r], tl_ = down ? L : L + 1;
-    int keep = LV; LV = tl_; int ok = tx >= 0 && ty >= 0 && tx < GN && ty < GN && !obj_solid(tx, ty); LV = keep;
-    if (!ok) { if (i == ctl) say(down ? "Something is in the way down there" : "Build a floor where the stairs come out"); return; }
-    slv[i] = (u8)tl_; m->x = m->tx = m->wx = tx * 16; m->y = m->ty = m->wy = ty * 16; m->act = -1; m->act_left = 0; sfx(0);
+    slv[i] = (u8)to_lv;
+    m->x = m->tx = m->wx = dest_x * 16;
+    m->y = m->ty = m->wy = dest_y * 16;
+    m->act = -1; m->act_left = 0; sfx(0);
 }
 static void start_act(Sim *m, int obj, int sim) {   // do the action beside furniture, not through it
     if (sim >= 0) { start_soc((int)(m - sims), sim, S_CHAT); return; }
     if (obj < 0 || obj >= nobj) return;
     const Obj *o = &objs[obj]; int tx, ty;
     if (OBJ_ID(o) == ID_STAIRS) {
-        m->tx = o->x * 16; m->ty = o->y * 16; m->act = 50;
+        int actor = (int)(m - sims), r = o->rot & 3;
+        int fx = (int)o->x + SFX_[r], fy = (int)o->y + SFY_[r];
+        int old_lv = LV;
+        LV = slv[actor];
+        int accessible = OBJ_LV(o) == LV && LV < UPN &&
+                         fx >= 0 && fy >= 0 && fx < GN && fy < GN &&
+                         !obj_solid(fx, fy) && edge_open(fx, fy, o->x, o->y);
+        LV = old_lv;
+        if (!accessible) {
+            if (m == &sims[ctl]) say("No open path to these stairs");
+            return;
+        }
+        m->tx = fx * 16; m->ty = fy * 16; m->act = 50;
         m->act_amt = 0; m->face = 1; m->act_obj = obj; m->act_left = 0;
         return;
     }
@@ -4299,8 +4339,26 @@ static void live_touch(int tx, int ty) {
             for (int k = 0; k < popup_n; k++) if (popup_n <= 3 ? hit(42, top + 26 + k * 24, 116, 22, tx, ty) : hit(9 + (k & 1) * 121, top2 + 26 + (k >> 1) * 24, 117, 22, tx, ty)) { popup_pick(k);
                 return; }
             if (popup_n <= 3 ? hit(162, top + 2 + popup_n * 24, 52, 22, tx, ty) : hit(196, top2 + 3, 50, 18, tx, ty)) popup = 0; return; }
-        if (popup == 5) { if (hit(42, 126, 116, 24, tx, ty)) { Sim *m = &sims[ctl]; const Obj *st = &objs[popup_i]; int r = st->rot & 3; m->tx = (st->x - SFX_[r]) * 16; m->ty = (st->y - SFY_[r]) * 16; m->act = 51; m->act_amt = 0; m->face = 1; m->act_obj = popup_i; m->act_left = 0; popup = 0; }   // (down: to the landing)
-                          else if (hit(162, 126, 52, 24, tx, ty)) popup = 0; return; }
+        if (popup == 5) {
+            if (hit(42, 126, 116, 24, tx, ty)) {
+                int idx = popup_i; popup = 0;
+                if (idx < 0 || idx >= nobj || OBJ_ID(&objs[idx]) != ID_STAIRS) {
+                    say("Stairs are no longer there"); return;
+                }
+                Sim *m = &sims[ctl]; const Obj *st = &objs[idx];
+                int r = st->rot & 3;
+                int fx = (int)st->x - SFX_[r], fy = (int)st->y - SFY_[r];
+                int prev = LV; LV = slv[ctl];
+                int accessible = OBJ_LV(st) < UPN && LV == OBJ_LV(st) + 1 &&
+                                 fx >= 0 && fy >= 0 && fx < GN && fy < GN &&
+                                 !obj_solid(fx, fy);
+                LV = prev;
+                if (!accessible) { say("No clear upper stair landing"); return; }
+                m->tx = fx * 16; m->ty = fy * 16; m->act = 51;
+                m->act_amt = 0; m->face = 1; m->act_obj = idx; m->act_left = 0;
+            } else if (hit(162, 126, 52, 24, tx, ty)) popup = 0;
+            return;
+        }
         { int tg = popup == 2 ? popup_i : -2 - popup_i, n = soc_list(tg); if (hit(212, 60, 22, 14, tx, ty)) popup = 0;
           else for (int k = 0; k < n; k++) if (hit(26 + (k & 1) * 104, 82 + (k >> 1) * 22, 100, 20, tx, ty)) { start_soc(ctl, tg, soc_pick[k]); popup = 0; break; } }
         return; }
