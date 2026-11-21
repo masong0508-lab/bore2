@@ -11,11 +11,11 @@ DSRUN=/tmp/dsrun bash ports/dsi/test/ds_visual_atlas.sh "$PWD/out-visual"
 
 On `build-ds` CI, the screenshot capture runs after the regular ROM, save/playthrough and generated-home audits. The `bore2_ds_visual_atlas` Actions artifact contains:
 
-- `cutaway_265.ppm`, `cutaway_305.ppm`, `cutaway_345.ppm` — first three generated homes in the same scripted tour, controlled Sim inside and Roofs: Cutaway.
-- `always_265.ppm`, `always_305.ppm`, `always_345.ppm` — the identical tour, seed, frames and cameras in Roofs: Always.
+- `cutaway_345.ppm`, `cutaway_385.ppm`, `cutaway_425.ppm` — first three generated homes in the same scripted tour, controlled Sim inside and Roofs: Cutaway.
+- `always_345.ppm`, `always_385.ppm`, `always_425.ppm` — the identical tour, seed, frames and cameras in Roofs: Always.
 - `visual_atlas_results.json` — 256×384 frame checks and the count of different RGB channels on the bottom 256×192 **gameplay** image; build/emulator logs accompany it.
 
-`DS_TOUR` selects the same representative generated-home sequence for both test builds. The same scripted touch/key sequence enters Live, and the camera is placed in the actual home footprint. Missing/blank frames or an indistinguishable Roofs: Always/Cutaway comparison **fail the workflow**. The test builds are temporary and do not change normal ROM assets, memory allocations or old saves.
+`DS_TOUR` selects the same representative generated-home sequence for both test builds. The same scripted touch/key sequence enters Live, and the camera is placed in the actual home footprint. Missing/blank frames, or fewer than two tour frames with materially different Roofs: Always/Cutaway images, **fail the workflow**. The initial timing (frames 265/305/345) only reached the scripted house tour by its final frame; the gate now samples later frames specifically to avoid claiming coverage from pre-tour captures. The test builds are temporary and do not change normal ROM assets, memory allocations or old saves.
 
 ## Evidence limitations and next targets
 
