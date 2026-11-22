@@ -197,7 +197,7 @@ static int rail_try(Sim *s, int from_ground) {   // TRIANGLE: a rail, a ledge or
     k.rax = ax; k.rtx = bmx; k.rty = bmy; k.rtop = btop * FX; k.rcop = cop;
     if (cop) { int d = cop - 1; k.rc = ax ? -(bmy * TILE + (d == 0 ? 0 : TILE)) : bmx * TILE + (d == 3 ? TILE : 0); }   // (the lip's edge)
     else k.rc = ax ? -(bmy * TILE + TILE / 2) : bmx * TILE + TILE / 2;
-    int along = ax ? isin(k.dir) : -icos(k.dir); k.rdir = along >= 0 ? 1 : -1;   // (y: south is +y, -z)
+    int along = ax ? isin(k.dir) : icos(k.dir); k.rdir = along >= 0 ? 1 : -1;   // (rail coordinates: +x east, +map-y south = -z; match ST_GRIND)
     int railyaw = ax ? (k.rdir > 0 ? 1024 : 3072) : (k.rdir > 0 ? 0 : 2048);
     int sp = MAX((k.st == ST_AIR ? k.vh : k.v) * ABS(along) >> 12, 7 * FX);
     int body = adiff(s->yaw, railyaw), side = ABS(body) > 600 && ABS(body) < 1450;   // side on to the rail: a slide
@@ -245,7 +245,8 @@ void skate_step(Sim *s, int wx, int wz) {
         int rate = 84 - k.v / (FX * 1); if (rate < 34) rate = 34; if (k.st == ST_MANUAL) rate /= 2;
         k.pushing = 0;
         if (want >= 0 && ABS(rel) < 1500) { int d = CLAMP(rel, -rate, rate); k.dir = (k.dir + d) & 4095; k.carve += (d * 12 - k.carve) / 6; } else k.carve -= k.carve / 6;   // carving (the stick far behind you does not spin you round)
-        if (want >= 0 && ABS(rel) >= 2300 && k.cosk > 3600) k.v -= 12;              // pulling back on the flat: the foot drags
+        // adiff is -2048..2047: the rear stick cone begins where carving ends.
+        if (want >= 0 && ABS(rel) >= 1500 && k.cosk > 3600) k.v -= 12;              // pulling back on the flat: the foot drags
         else if (want >= 0 && ABS(rel) < 1400 && k.st == ST_GROUND && k.v < VPUSH && k.cosk > 3600) { k.v += ACCEL * m >> 12; k.pushing = 1; }   // pushing (not on a steep slope)
         k.v -= 1 + k.v / 400;                                                       // rolling friction
         if (k.v < 0) k.v = 0;

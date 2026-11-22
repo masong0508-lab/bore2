@@ -55,6 +55,56 @@ static int ds_cell_enclosed(const unsigned char *hw, const unsigned char *vw,
     }
     return 1;
 }
+/* A stairwell has no floor tile, but it still belongs below its storey's
+ * roof when the surrounding walls enclose it. Inferring roofs from floor
+ * tiles alone cuts a hole in the roof and puts a lower roof inside the
+ * stairs. Flood OUTSIDE once per upper storey, then combine enclosure with
+ * the existing floor support. Open courtyards and lower garage wings stay
+ * low. Called only when rebuilding the static roof display list; the
+ * caller reuses its existing rectangle-visit grid for these heights. */
+static void ds_roof_height_map(unsigned char *height,
+                                const unsigned char *floors,
+                                const unsigned char *hw,
+                                const unsigned char *vw,
+                                int n, int levels)
+{
+    if (n < 1 || n > 13 || levels < 0 || levels > 3) return;
+    for (int c = 0; c < n * n; ++c) height[c] = 0;
+    for (int l = 0; l < levels; ++l) {
+        const unsigned char *fl = floors + l * n * n;
+        const unsigned char *h = hw + l * n * (n + 1);
+        const unsigned char *v = vw + l * n * (n + 1);
+        unsigned char outside[13 * 13] = {0}, queue[13 * 13];
+        int head = 0, tail = 0;
+        for (int y = 0; y < n; ++y) for (int x = 0; x < n; ++x) {
+            int west = v[y * (n + 1) + x];
+            int east = v[y * (n + 1) + x + 1];
+            int north = h[y * n + x], south = h[(y + 1) * n + x];
+            if ((x == 0 && (!west || west == 6)) ||
+                (x == n - 1 && (!east || east == 6)) ||
+                (y == 0 && (!north || north == 6)) ||
+                (y == n - 1 && (!south || south == 6))) {
+                int c = y * n + x;
+                outside[c] = 1; queue[tail++] = (unsigned char)c;
+            }
+        }
+        while (head < tail) {
+            int c = queue[head++], x = c % n, y = c / n;
+            for (int dir = 0; dir < 4; ++dir) {
+                int nx = x + (dir == 0) - (dir == 1);
+                int ny = y + (dir == 2) - (dir == 3);
+                if (nx < 0 || ny < 0 || nx >= n || ny >= n) continue;
+                int next = ny * n + nx;
+                int wall = dir < 2 ? v[y * (n + 1) + x + (dir == 0)]
+                                  : h[(y + (dir == 2)) * n + x];
+                if (outside[next] || (wall && wall != 6)) continue;
+                outside[next] = 1; queue[tail++] = (unsigned char)next;
+            }
+        }
+        for (int c = 0; c < n * n; ++c)
+            if (fl[c] || !outside[c]) height[c] = (unsigned char)(l + 1);
+    }
+}
 /* Stand on the surface that draw_build actually paints. The 2x2 checker
  * is raised only if every cell in its patch is empty; all other grass is at
  * height zero. Previously outdoor characters hovered 20 units above it. */

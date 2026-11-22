@@ -1,0 +1,50 @@
+{
+  "passed": true,
+  "method": "melonDS native 256x384 gameplay replay",
+  "scene": "Man Base upstairs bedroom and its open stairwell",
+  "capture_cameras_match": true,
+  "variants": {
+    "current": {
+      "stairwell_floor": 0,
+      "stairwell_roof_storey": 1,
+      "roof_sections": 3,
+      "roof_triangles": 54,
+      "frame_triangles_peak": 3600,
+      "fps_min": 30,
+      "fps_mean": 30.0,
+      "sample_count": 12,
+      "lot": [
+        2009,
+        2001
+      ]
+    },
+    "legacy": {
+      "stairwell_floor": 0,
+      "stairwell_roof_storey": 0,
+      "roof_sections": 7,
+      "roof_triangles": 126,
+      "frame_triangles_peak": 3602,
+      "fps_min": 30,
+      "fps_mean": 30.0,
+      "sample_count": 12,
+      "lot": [
+        2009,
+        2001
+      ]
+    }
+  },
+  "frames": [
+    {
+      "frame": 390,
+      "changed_gameplay_channels": 11758
+    },
+    {
+      "frame": 510,
+      "changed_gameplay_channels": 15402
+    },
+    {
+      "frame": 660,
+      "changed_gameplay_channels": 16353
+    }
+  ]
+}

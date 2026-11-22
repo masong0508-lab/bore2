@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "frame_samples": 17,
+  "fps_min": 30,
+  "fps_mean": 30.0,
+  "fps_max": 30,
+  "triangles_max": 3618,
+  "geometry_frame_samples": 25,
+  "steady_triangles_max": 3608,
+  "skate_position_range": [
+    3039,
+    2273
+  ],
+  "screenshots": [
+    520,
+    720,
+    900
+  ]
+}

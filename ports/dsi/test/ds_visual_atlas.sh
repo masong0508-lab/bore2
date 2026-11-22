@@ -9,6 +9,12 @@ D=${1:-$R/out-visual}
 RUN=${DSRUN:-/tmp/dsrun}
 mkdir -p "$D"
 D=$(cd "$D" && pwd)
+# Clear only this replay's evidence, including after an interrupted previous
+# run. A build or emulator failure must never leave an old passing report.
+for mode in cutaway always; do
+    rm -f "$D/$mode.ppm" "$D/${mode}_345.ppm" "$D/${mode}_385.ppm" "$D/${mode}_425.ppm"
+done
+rm -f "$D/visual_atlas_results.json"
 test -x "$RUN" || { echo "Missing melonDS runner: $RUN" >&2; exit 2; }
 
 # A single seed and fixed controls are repeated for each roof mode. The

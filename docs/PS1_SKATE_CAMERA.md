@@ -24,7 +24,7 @@ This uses the existing 8.8 fixed-point, VBLANK-aware `camera_apply` smoother for
 ## Follow-up
 
 - Pair this with the [PS1 camera perspective regression](PS1_CAMERA_PERSPECTIVE.md), keeping third-person lens/dolly and chase target distinct.
-- Save before/after *actual skateboarder* captures at near/mid camera pitch and the six scripted `AUTO_STORY=1, AUTO_SKATE=1` approaches. Verify rails, quarter-pipe lip, landings and tail visibility.
+- Save before/after *actual skateboarder* captures at near/mid camera pitch and the six scripted `AUTO_STORY=4, AUTO_SKATE=1` approaches. The [all-port playability pass](ALL_PORTS_PLAYABILITY_2026-11-21.md) preserves initial native PS1/DC runs and the correct replay commands; matched camera-pitch comparisons remain open. Verify rails, quarter-pipe lip, landings and tail visibility.
 - Compare DS/DSi `on_board` camera, check near/far scenery coherence, and profile PS1 2 MB / Dreamcast real frame times with and without the new framing.
 - Add a manual camera setting only if regular playtesting demonstrates a need; don't introduce more toggles without evidence.
 

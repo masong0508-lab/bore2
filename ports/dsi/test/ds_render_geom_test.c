@@ -98,6 +98,57 @@ int main(void) {
     /* A missing end wall opens the entire room to outdoors. */
     vw[2 * 9 + 1] = 0;
     assert(!ds_cell_enclosed(hw, vw, 8, 2, 2));
+    /* The actual Man Base bedroom (gen_zone): its north-facing stairs
+     * deliberately leave upper floor [3][9] open. That void must keep
+     * the same ceiling height as the rest of the enclosed 6x5 bedroom,
+     * not punch a roof hole or grow a lower roof through the stairs. */
+    { unsigned char fl[3][13 * 13] = {{0}};
+      unsigned char uh[3][14 * 13] = {{0}}, uv[3][13 * 14] = {{0}};
+      unsigned char height[13 * 13];
+      room(uh[0], uv[0], 13, 6, 1, 12, 6);
+      for (int y = 1; y < 6; ++y)
+          for (int x = 6; x < 12; ++x) fl[0][y * 13 + x] = 2;
+      fl[0][3 * 13 + 9] = 0;
+      ds_roof_height_map(height, &fl[0][0], &uh[0][0], &uv[0][0], 13, 3);
+      assert(fl[0][3 * 13 + 9] == 0); /* the stairs remain an open floor */
+      for (int y = 0; y < 13; ++y) for (int x = 0; x < 13; ++x)
+          assert(height[y * 13 + x] ==
+                 (unsigned)(x >= 6 && x < 12 && y >= 1 && y < 6));
+      /* A fully open upper courtyard is not an upstairs room. Opening
+       * that bedroom's outer wall makes only its missing tile low;
+       * floor-supported cells retain the existing roof behavior. */
+      uh[0][1 * 13 + 9] = 0;
+      ds_roof_height_map(height, &fl[0][0], &uh[0][0], &uv[0][0], 13, 3);
+      assert(height[3 * 13 + 9] == 0 && height[3 * 13 + 8] == 1);
+      uh[0][1 * 13 + 9] = 6; /* fences do not enclose a roofed room */
+      ds_roof_height_map(height, &fl[0][0], &uh[0][0], &uv[0][0], 13, 3);
+      assert(height[3 * 13 + 9] == 0);
+      uh[0][1 * 13 + 9] = 5; /* doors do */
+      ds_roof_height_map(height, &fl[0][0], &uh[0][0], &uv[0][0], 13, 3);
+      assert(height[3 * 13 + 9] == 1);
+      /* A smaller enclosed third storey can span the stairwell. The
+       * surrounding bedroom and its lower wing must keep their levels. */
+      room(uh[2], uv[2], 13, 8, 2, 11, 5);
+      ds_roof_height_map(height, &fl[0][0], &uh[0][0], &uv[0][0], 13, 3);
+      assert(height[3 * 13 + 9] == 3);
+      assert(height[3 * 13 + 7] == 1 && height[8 * 13 + 7] == 0);
+    }
+    /* Four boundary walls enclose a one-cell stairwell even at a lot
+     * corner; removing any one opens it. The queue also handles an
+     * entirely outside maximum-size lot without overflow. */
+    for (int side = 0; side < 4; ++side) {
+        unsigned char fl[1] = {0}, h[2] = {1, 1}, v[2] = {1, 1}, height[1];
+        ds_roof_height_map(height, fl, h, v, 1, 1);
+        assert(height[0] == 1);
+        if (side < 2) h[side] = 0; else v[side - 2] = 0;
+        ds_roof_height_map(height, fl, h, v, 1, 1);
+        assert(height[0] == 0);
+    }
+    { unsigned char fl[13 * 13] = {0}, h[14 * 13] = {0};
+      unsigned char v[13 * 14] = {0}, height[13 * 13];
+      ds_roof_height_map(height, fl, h, v, 13, 1);
+      for (int c = 0; c < 13 * 13; ++c) assert(height[c] == 0);
+    }
     /* The renderer counts two triangles per quad; reserve room for the
      * world in the object pass, and degrade details before full capacity. */
     assert(!ds_item_over_budget(3000, 0));

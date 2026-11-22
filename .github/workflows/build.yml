@@ -22,6 +22,8 @@ jobs:
         run: |
           cc -std=c99 -Wall -Wextra -Werror test/skate_camera_test.c -o /tmp/skate_camera_test
           /tmp/skate_camera_test
+      - name: Verify actual PS1 and Dreamcast skate braking and rail direction
+        run: bash test/skate_controls_regression.sh
       - name: Verify real near/far projections and cached sprites share the camera lens
         run: bash test/projection_regression.sh
       - name: Compare real lot walls, doors, drives and map/far footprints

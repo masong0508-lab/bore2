@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "frame": 990,
+  "results": {
+    "brake_0": 1,
+    "brake_1024": 1,
+    "brake_2048": 1,
+    "brake_3072": 1,
+    "rail_and_ollie_0": 1,
+    "rail_and_ollie_1024": 1,
+    "rail_and_ollie_2048": 1,
+    "rail_and_ollie_3072": 1,
+    "push_and_steer_0": 1,
+    "push_and_steer_1024": 1,
+    "push_and_steer_2048": 1,
+    "push_and_steer_3072": 1
+  },
+  "coast_speed": [
+    22,
+    22,
+    22,
+    22
+  ],
+  "brake_speed": [
+    0,
+    0,
+    0,
+    0
+  ]
+}

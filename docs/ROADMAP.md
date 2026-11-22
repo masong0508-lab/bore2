@@ -13,6 +13,7 @@ These living documents preserve the life-sim expansion research and the graphica
 - [PS1 Active-Lens Projection Consistency](PS1_PROJECTION_CONSISTENCY.md) — fixes close/far surface and cached-sprite projection disagreement; includes production-code regressions and native close/wide/first-person comparisons.
 - [PS1/Dreamcast Skate Chase Camera](PS1_SKATE_CAMERA.md) — merged PR #11 uses bounded speed-dependent look-ahead to reveal approaching ramps and rails while riding, with PS1/DC build and host tests.
 - [DS/DSi Live Touch Ray](DS_TOUCH_RAY.md) — merged PR #9 prevents rear-camera horizon taps selecting an invisible walking/object target; DS emulator and PS1 safeguards passed, dedicated tap screenshots still open.
+- [All-port Skating Controls and DS Rendering](ALL_PORTS_PLAYABILITY_2026-11-21.md) — reverse-stick braking and rail direction on PS1/DS/Dreamcast; continuous DS stairwell roofs, exact cached-character geometry costs and bounded scenery budgets, with native emulator regressions.
 
 The existing checklist and per-port history remain authoritative for previously completed work. Reconcile discrepancies with the *latest commit and current tests*, not the date of an older unchecked item.
 
