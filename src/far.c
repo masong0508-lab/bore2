@@ -210,6 +210,16 @@ static u16 fbc_cx[FBC_MAX], fbc_cy[FBC_MAX], fbc_lo[FBC_MAX], fbc_hi[FBC_MAX]; s
 static u16 fbs_lo[64], fbs_hi[64];           // each town's cells
 static const u8 wallc[10][3] = { { 226, 214, 190 }, { 176, 96, 76 }, { 236, 234, 226 }, { 214, 190, 150 }, { 160, 160, 164 },
                                  { 180, 200, 214 }, { 186, 206, 170 }, { 226, 180, 180 }, { 120, 140, 160 }, { 150, 120, 96 } };
+// The city plan's FB.col=10..15 encodes six neighborhood wall materials.
+// Medium box LOD already uses them, but the old far-card LOD used the
+// generic wallc[col%10], changing house colors abruptly at 300m.
+static const u8 *far_house_wall_rgb(const FB *f, u8 planned_rgb[3]) {
+    if (f->col >= 10) {
+        world_plan_wall_rgb(f->col - 10, planned_rgb);
+        return planned_rgb;
+    }
+    return wallc[f->col];
+}
 COLD void far_new_world(void) {
     nfb = 0; nfbc = 0;
     int ns = bm_nset();
@@ -719,8 +729,8 @@ static void far_dot(int x0, int z0, int x1, int z1, int sto, const u8 *wc) {   /
 }
 static void far_building(const FB *f, int x0, int z0, int x1, int z1) {
     int rs = FROOF(f) == 2 || FSTO(f) > 2 ? 0 : FROOF(f) == 0 ? 1 : FROOF(f) == 1 ? 2 : 3;   // (world_roof_of's flat, hip, gable, front gable)
-    u8 wcol[3]; const u8 *wc = wallc[f->col % 10], *rcol = world_roof_rgb(fb_sto[f - fb] >> 5);
-    if (f->col >= 10) { world_plan_wall_rgb(f->col - 10, wcol); wc = wcol; }
+    u8 wcol[3]; const u8 *wc = far_house_wall_rgb(f, wcol);
+    const u8 *rcol = world_roof_rgb(fb_sto[f - fb] >> 5);
     far_lift = world_gh_lot((x0 + x1) / 2, (z0 + z1) / 2);
     far_box(x0, z0, x1, z1, FSTO(f), wc, rs, 1 + f->pad, rcol, f->lot != LOT_HOUSE && f->lot != LOT_COTTAGE);
     far_lift = 0;
@@ -768,7 +778,12 @@ static void draw_buildings(int rx0, int ry0, int rx1, int ry1) {
             int hgt = FSTO(f) * WALL_FULL;
             if (gfx_focal * hgt < d * 2) continue;                      // under two pixels tall: lost in the haze
             if (far_detail == 0 && FSTO(f) < 3 && d > M2U(120)) continue;
-            if (d > M2U(far_lite ? 100 : 300)) { far_lift = world_gh_lot(cx, cz); far_dot(x0, z0, x1, z1, FSTO(f), wallc[f->col % 10]); far_lift = 0; }   // (far: one rectangle each)
+            if (d > M2U(far_lite ? 100 : 300)) {
+                u8 planned_rgb[3]; const u8 *wc = far_house_wall_rgb(f, planned_rgb);
+                far_lift = world_gh_lot(cx, cz);
+                far_dot(x0, z0, x1, z1, FSTO(f), wc);
+                far_lift = 0;
+            }   // (far: one rectangle each)
             else far_building(f, x0, z0, x1, z1);
           }
         }
