@@ -15,7 +15,7 @@ static void verify(void)
 {
     int close_f = bore_camera_focal(0), fp_f = bore_camera_focal(1);
     assert(fp_f == BORE_CAMERA_BASE_FOCAL);
-#ifdef BORE_DC
+#if defined(BORE_DC) || defined(BORE_LENS_LEGACY)
     assert(close_f == 230);
 #else
     assert(close_f == 260);
@@ -35,7 +35,7 @@ static void verify(void)
             int near_new = radius1000(close_f, eye, 200);
             int far_old = radius1000(230, dist, -200);
             int far_new = radius1000(close_f, eye, -200);
-#ifdef BORE_DC
+#if defined(BORE_DC) || defined(BORE_LENS_LEGACY)
             assert(near_old == near_new && far_old == far_new);
 #else
             /* A foreground rail should grow LESS, the rear of a

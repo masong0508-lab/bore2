@@ -18,7 +18,9 @@
 #define BORE_CAMERA_ORBIT_FOCAL 260
 static inline int bore_camera_focal(int first_person)
 {
-#if defined(BORE_DC)
+#if defined(BORE_DC) || defined(BORE_LENS_LEGACY)
+    /* A/B-only: reproduce the exact original 230 px orbit. Never set
+     * this in release builds; use it for pixel- and FPS-matched captures. */
     (void)first_person;
     return BORE_CAMERA_BASE_FOCAL;
 #else

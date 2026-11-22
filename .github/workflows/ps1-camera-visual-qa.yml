@@ -1,0 +1,66 @@
+name: ps1-camera-visual-qa
+# One close-home angle sampled three times, with matched final frozen state.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "src/main.c"
+      - "src/gfx.c"
+      - "src/gfx.h"
+      - "src/world.c"
+      - "src/far.c"
+      - "src/crowd.c"
+      - "src/citizens.c"
+      - "src/camera_lens.h"
+      - "test/camera_lens_test.c"
+      - "test/ps1_camera_visual.sh"
+      - ".github/workflows/ps1-camera-visual-qa.yml"
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+jobs:
+  ps1-camera:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Host camera tests (old, corrected, Dreamcast)
+        run: |
+          set -e
+          for setting in "" "-DBORE_LENS_LEGACY=1" "-DBORE_DC=1"; do
+            cc -std=c99 -Wall -Wextra -Werror $setting test/camera_lens_test.c -o /tmp/camera_math
+            /tmp/camera_math
+          done
+      - name: Restore legal PS1 compiler and headless emulator with OpenBIOS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4t64 ninja-build cmake xz-utils unzip python3-pil
+          sudo mkdir -p /home/claude/tools /opt/psn00bsdk
+          sudo chown -R "${USER}:${USER}" /home/claude/tools /opt/psn00bsdk
+          # restore.sh atomically replaces /opt/psn00bsdk, so the ephemeral
+          # runner needs write access to its parent during extraction.
+          sudo chown "${USER}:${USER}" /opt
+          bash tools/perf/restore.sh
+      - name: Capture native PS1 close-home lens comparison
+        timeout-minutes: 30
+        run: bash test/ps1_camera_visual.sh "$PWD/out-ps1-camera"
+      - name: Preserve lens comparison screenshots and emulator evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_ps1_camera_native_ab
+          path: |
+            out-ps1-camera/comparison_*.png
+            out-ps1-camera/camera_visual_results.json
+            out-ps1-camera/shots-legacy/**/*.png
+            out-ps1-camera/shots-corrected/**/*.png
+            out-ps1-camera/emulate-*.log
+            out-ps1-camera/build-*.log
+            out-ps1-camera/config-*.log
+            out-ps1-camera/final_state-*.json
+            out-ps1-camera/ram-*.bin
+            out-ps1-camera/symbols-*.txt
+            out-ps1-camera/script-*.txt
+          if-no-files-found: warn
