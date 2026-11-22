@@ -530,7 +530,8 @@ static void gallery_draw(void) {   // tests: AUTO_CUT=9999 six poses of the libr
 }
 // ---- the lens: graphic type, the flash cuts, the title plates, the flare ----
 extern int font_sub;   // (font.c: 1 takes the glyph away from what is under it, 0 adds it)
-// Film title treatment lives in ui.c; no GPU lens flares or additive ghost blobs.\nstatic void plate(int in, int out, const char *l1, const char *l2, const char *sub, int y0) { pl_plate(in, out, l1, l2, sub, y0, 106, 206, 239); }
+// Film title treatment lives in ui.c; no GPU lens flares or additive ghost blobs.
+static void plate(int in, int out, const char *l1, const char *l2, const char *sub, int y0) { pl_plate(in, out, l1, l2, sub, y0, 106, 206, 239); }
 #ifdef FILM_PROF      // test builds: a log of the film's cost per drawing (hblanks of CPU in each part, packet bytes, overflow); read from a RAM dump with test/ramsym.py
 u16 film_log[600][7]; u8 film_ps_log[600][5]; int film_log_n; static int fp[8];
 #define PROF(i) (fp[i] = VSync(1))
