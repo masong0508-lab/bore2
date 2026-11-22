@@ -34,6 +34,9 @@ jobs:
           sudo apt-get install -y libcurl4t64 ninja-build cmake xz-utils unzip python3-pil
           sudo mkdir -p /home/claude/tools /opt/psn00bsdk
           sudo chown -R "${USER}:${USER}" /home/claude/tools /opt/psn00bsdk
+          # restore.sh atomically replaces /opt/psn00bsdk, so the ephemeral
+          # runner needs write access to its parent during extraction.
+          sudo chown "${USER}:${USER}" /opt
           bash tools/perf/restore.sh
       - name: Capture actual native PS1 before/after camera scenes
         timeout-minutes: 30
