@@ -2513,6 +2513,20 @@ COLD static void roof_region(int x0, int y0, int x1, int y1) {
     }
     for (int l = 1; l < NLEVELS; l++) if (rbox[l][2] >= rbox[l][0])   // how tall each building is
         for (int y = rbox[l][1]; y <= rbox[l][3]; y++) for (int x = rbox[l][0]; x <= rbox[l][2]; x++) { int b = bld[y][x]; if (b && rm_get(l, x, y) && l > b_top[b]) b_top[b] = (u8)l; }
+    // A simplified upper-storey box across the ground-floor bounds would
+    // invent walls through a recessed upper terrace, missing wing or
+    // courtyard. Reject that LOD when any upper floor lacks perimeter
+    // support. Interior stairwell openings do NOT disqualify an otherwise
+    // intact outer wall ring. Cached in b_rect, so there is no frame cost.
+    for (int b = 1; b <= nbld; b++) if (b_x0[b] != 255 && b_top[b] && b_rect_get(b)) {
+        for (int l = 1; l <= b_top[b]; l++) {
+            Row upper = mp[l];
+            if (!upper || !house_lod_shell_ring(&upper[0][0], MW + 1,
+                                                b_x0[b], b_y0[b], b_x1[b], b_y1[b])) {
+                b_rect_set(b, 0); break;
+            }
+        }
+    }
     for (int b = 1; b <= nbld; b++) {                            // each building's roof
         if (b_x0[b] == 255) continue;
         if (world_zone == ZONE_CITY && world_wbx >= 0) {

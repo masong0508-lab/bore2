@@ -27,6 +27,25 @@ int main(void) {
     assert(!house_lod_box_safe(8, 1, 1, 3, 3));  // 3x3 L-shaped
     assert(!house_lod_box_safe(0, 1, 1, 3, 3));
     assert(!house_lod_box_safe(3, 6, 2, 5, 3));
-    puts("House upper-storey LOD: hysteresis, movement, and courtyard-safe geometry PASS");
+    // The second level of a rectangular home might cover only half of
+    // the ground footprint: a box there would add nonexistent walls.
+    // An interior stairwell void is safe when exterior walls remain.
+    {
+        char upper[5][6];
+        for (int y = 0; y < 5; ++y) {
+            for (int x = 0; x < 5; ++x) upper[y][x] = 'W';
+            upper[y][5] = 0;
+        }
+        assert(house_lod_shell_ring(&upper[0][0], 6, 0, 0, 4, 4));
+        upper[2][2] = ' ';  // staircase hole in the middle
+        assert(house_lod_shell_ring(&upper[0][0], 6, 0, 0, 4, 4));
+        upper[1][4] = ' ';  // exterior terrace, not a full upper storey
+        assert(!house_lod_shell_ring(&upper[0][0], 6, 0, 0, 4, 4));
+        upper[1][4] = 'W'; upper[0][0] = ' ';
+        assert(!house_lod_shell_ring(&upper[0][0], 6, 0, 0, 4, 4));
+        assert(!house_lod_shell_ring(0, 6, 0, 0, 4, 4));
+        assert(!house_lod_shell_ring(&upper[0][0], 6, 4, 0, 2, 4));
+    }
+    puts("House LOD: hysteresis, rectangular ground, and upper terrace/stairwell safety PASS");
     return 0;
 }
