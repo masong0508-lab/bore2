@@ -4,6 +4,7 @@
 #include "world.h"
 #include "bigmap.h"
 #include "house_footprint.h"
+#include "world_stream_models.h"
 #include "atlas.h"
 
 #ifndef FAR_VIEW0
@@ -731,7 +732,7 @@ void far_box_world(int x0, int z0, int x1, int z1, int sto, u16 wall15, int rs, 
     far_box(x0, z0, x1, z1, sto, wc, sto <= 2 ? rs : 0, pit, rc, sto >= 2);
     far_lift = 0;
 }
-static void draw_buildings(void) {
+static void draw_buildings(int rx0, int ry0, int rx1, int ry1) {
     int ns = bm_nset(); if (ns > 64) ns = 64;
     int far2 = max_bld;
     for (int i = 0; i < ns; i++) {
@@ -745,7 +746,10 @@ static void draw_buildings(void) {
             if (cd > 0 && gfx_focal * fbc_sto[c] * WALL_FULL < cd * 2) continue; }
           for (int k = fbc_lo[c]; k < fbc_hi[c]; k++) {
             const FB *f = &fb[k];
-            if (f->bx >= world_wbx && f->bx < world_wbx + MW / BM_BLK && f->by >= world_wby && f->by < world_wby + MH / BM_BLK) continue;   // (the map draws its own)
+            int inside_window = f->bx >= world_wbx && f->bx < world_wbx + MW / BM_BLK &&
+                                f->by >= world_wby && f->by < world_wby + MH / BM_BLK;
+            int pending = inside_window ? world_stream_block_model_state(f->bx, f->by) : STREAM_MODEL_READY;
+            if (inside_window && pending == STREAM_MODEL_READY) continue; // the map now owns this block
             u8 ft[4]; FT_GET(ft, fb_ft[k]);
             // bm_lot_foot stores the coordinates of the LAST WALL TILES (inclusive).
             // far_box takes an exclusive opposite edge. Omitting +1 shrank
@@ -753,6 +757,10 @@ static void draw_buildings(void) {
             int tx0 = f->bx * BM_BLK + ft[0] - fwx0, ty0 = f->by * BM_BLK + ft[1] - fwy0;
             int tx1 = house_foot_end_tile(f->bx, ft[2], fwx0, BM_BLK);
             int ty1 = house_foot_end_tile(f->by, ft[3], fwy0, BM_BLK);
+            if (inside_window) {
+                int overlaps_detail = tx1 > rx0 && tx0 <= rx1 && ty1 > ry0 && ty0 <= ry1;
+                if (!stream_house_proxy_needed(pending, overlaps_detail)) continue;
+            }
             int x0 = tx0 * TILE, x1 = tx1 * TILE, z0 = -ty0 * TILE, z1 = -ty1 * TILE;
             int cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
             int dx = ABS(cx - feye.vx), dz = ABS(cz - feye.vz), d = MAX(dx, dz) + MIN(dx, dz) / 2;
@@ -933,7 +941,7 @@ void far_draw(int rx0, int ry0, int rx1, int ry1) {
     if (!far_on_frame) return;
     far_gte();
     int t0 = gfx_hb(); draw_land(rx0, ry0, rx1, ry1); int t1 = gfx_hb(); int p1 = far_prims;
-    draw_buildings(); int t2 = gfx_hb(); int p2 = far_prims;
+    draw_buildings(rx0, ry0, rx1, ry1); int t2 = gfx_hb(); int p2 = far_prims;
     draw_trees(rx0, ry0, rx1, ry1); int t3 = gfx_hb();
     far_hb[0] = t1 - t0; far_hb[1] = t2 - t1; far_hb[2] = t3 - t2; far_np[0] = p1; far_np[1] = p2 - p1; far_np[2] = far_prims - p2;
     gfx_set_identity();

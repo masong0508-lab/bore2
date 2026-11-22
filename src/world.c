@@ -14,6 +14,7 @@
 #include "pop.h"
 #include "far.h"
 #include "house_lod.h"
+#include "world_stream_models.h"
 #include "nature.h"
 #include "island.h"
 #include "save.h"
@@ -1175,6 +1176,13 @@ extern int dbg_ws[8];
 // from you as they come in: past the full-detail range). The move itself only slides the maps. All four in the moving frame cost 180 hb
 // on top of the slide; one a frame is 45. Until it is made a block is open grass with nothing on it.
 static u8 gen_pend[WB][WB]; static int gen_npend;
+// Expose only whether an in-window block's planned far-house placeholder
+// is still needed. Blocks leaving the window remain far-owned as before.
+int world_stream_block_model_state(int bx, int by) {
+    if (world_zone != ZONE_CITY || world_wbx < 0 || world_wby < 0) return STREAM_MODEL_READY;
+    return stream_model_state(&gen_pend[0][0], &rq_dirty[0][0], WB,
+                              bx - world_wbx, by - world_wby);
+}
 static void gen_one(int wx, int wy) {
     int keep_r = roof_dirty, keep_a = ao_dirty;
     gen_block(wx, wy); gen_pend[wy][wx] = 0; gen_npend--;
@@ -2613,12 +2621,13 @@ static void roof_shift(int dx, int dy) {
     }
     // (no building's tiles may point at a freed one: a building is either kept whole or gone whole, so bld's gone parts left too)
 }
-static void roof_pending(int max) {                            // work out up to max of the blocks still waiting
-    for (int wy = 0; wy < WB && max > 0; wy++) for (int wx = 0; wx < WB && max > 0; wx++) {
-        if (!rq_dirty[wy][wx]) continue;
-        rq_dirty[wy][wx] = 0; rq_n--; max--;
-        roof_region(wx * BM_BLK, wy * BM_BLK, wx * BM_BLK + BM_BLK - 1, wy * BM_BLK + BM_BLK - 1);
-    }
+static void roof_pending(int picked) {                   // at most one roof region a frame
+    if (picked < 0 || picked >= WB * WB) return;
+    int wx = picked % WB, wy = picked / WB;
+    if (!rq_dirty[wy][wx]) return;
+    rq_dirty[wy][wx] = 0; rq_n--;
+    roof_region(wx * BM_BLK, wy * BM_BLK, wx * BM_BLK + BM_BLK - 1,
+                wy * BM_BLK + BM_BLK - 1);
 }
 #ifdef BORE_DC
 #define RTS 32
@@ -3071,9 +3080,20 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     frame_t = t; nc_tick++;
     if (ao_dirty) { int h = gfx_hb(); ao_update(); h = gfx_hb() - h; if (h > dbg_ao_hb) dbg_ao_hb = h; }
     if (roof_dirty) { int h = gfx_hb(); roof_rebuild(); h = gfx_hb() - h; if (h > dbg_roof_hb) dbg_roof_hb = h; }
-    else if (rq_n) {                                 // the blocks that came into the window (far off): in the frames' spare time
+    else if (rq_n) {
+        // Deferred blocks enter the local window without roof metadata.
+        // Prioritize the camera-facing end of the queue; never wait for a
+        // cheap frame if the missing block has reached the detail boundary.
         static int wait; extern int gfx_last_cpu;
-        if (gfx_last_cpu < 420 || ++wait >= 3) { roof_pending(1); wait = 0; }
+        int eye_x = cam.eye.vx / TILE, eye_y = -cam.eye.vz / TILE;
+        int next = stream_pick_roof(&rq_dirty[0][0], WB, BM_BLK,
+                                     fx, fy, eye_x, eye_y);
+        if (next >= 0) {
+            int near = stream_block_gap(fx, fy, next % WB, next / WB, BM_BLK) <= world_detail_r + 2;
+            if (near || gfx_last_cpu < 420 || ++wait >= 3) {
+                roof_pending(next); wait = 0;
+            }
+        }
     }
     const int R = world_detail_r;
     nat_on = world_zone == ZONE_ISLAND && world_nature;
