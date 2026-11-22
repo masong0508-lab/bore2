@@ -2215,6 +2215,14 @@ static void tile_row_span(const TileView *tv, int my, int tz, int kx, int ky, in
 static u8 bld[MH][MW];
 #define NBLD 251
 static u8 b_lod[NBLD];                           // (version 7: a house or block of flats past 9 tiles keeps its upper storeys as one box: see lod_up)
+// A rectangular box must NEVER cover an L-shaped house's open yard or court.
+// Keep just 251 bits derived from the roof-region flood (about 32 bytes).
+static u8 b_rect[(NBLD + 7) / 8];
+static inline int b_rect_get(int b) { return (b_rect[b >> 3] >> (b & 7)) & 1; }
+static inline void b_rect_set(int b, int yes) {
+    u8 m = (u8)(1u << (b & 7));
+    if (yes) b_rect[b >> 3] |= m; else b_rect[b >> 3] &= (u8)~m;
+}
 static u8 b_see[NBLD];                            // (see_through: the buildings looked into this frame)
 static int rx0, rx1, ry0, ry1, ex0, ex1, ey0, ey1;
 static inline int in_range(int x, int y);
@@ -2390,7 +2398,7 @@ static u8 lvl_bb[NLEVELS][4];                     // each storey's built-on box 
 static u32 lvl_edge[NLEVELS][MH][(MW + 31) / 32];  // each storey's tiles next to open air (a bit each)
 // Buildings sit inside their own blocks (a street runs along every block's top and left), so when the SAN BOREAS window moves,
 // what was worked out for the blocks that stay is moved with them and only the blocks coming in are worked out (a few a frame).
-static int bld_alloc(void) { for (int b = 1; b < NBLD; b++) if (b_x0[b] == 255) { b_lod[b] = 0; if (b > nbld) nbld = b; return b; } return NBLD - 1; }
+static int bld_alloc(void) { for (int b = 1; b < NBLD; b++) if (b_x0[b] == 255) { b_lod[b] = 0; b_rect_set(b, 0); if (b > nbld) nbld = b; return b; } return NBLD - 1; }
 static u8 rbox[NLEVELS][4];
 int dbg_rr_hb, dbg_rr_n, dbg_rr_blk, dbg_ws[8];
 // the roofs and buildings of the box [x0..x1] x [y0..y1] (the whole map, or a block that has just come in)
@@ -2488,7 +2496,11 @@ COLD static void roof_region(int x0, int y0, int x1, int y1) {
                     if (cy > Y0) NB(cx, cy - 1)
                     if (cy < Y1) NB(cx, cy + 1)
                     #undef NB
-                } }
+                }
+                // qt is the exact number of connected indoor tiles, counted
+                // as the region is generated; no per-frame shape scan needed.
+                b_rect_set(id, house_lod_box_safe(qt, b_x0[id], b_y0[id], b_x1[id], b_y1[id]));
+            }
         }
     }
     for (int l = 1; l < NLEVELS; l++) if (rbox[l][2] >= rbox[l][0])   // how tall each building is
@@ -2552,6 +2564,7 @@ COLD static void roof_region(int x0, int y0, int x1, int y1) {
 static void roof_rebuild(void) {
     for (int b = 0; b < NBLD; b++) b_x0[b] = 255;
     nbld = 0;
+    memset(b_rect, 0, sizeof b_rect);
     memset(bld, 0, sizeof bld);
     for (int l = 0; l < NLEVELS; l++) lvl_used[l] = 0;
     lvl_used[0] = 1; lvl_bb[0][0] = 0; lvl_bb[0][1] = 0; lvl_bb[0][2] = MW - 1; lvl_bb[0][3] = MH - 1;
@@ -3076,7 +3089,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         int inside = b_x0[b] >= rx0 && b_x1[b] <= rx1 && b_y0[b] >= ry0 && b_y1[b] <= ry1;
         int touch = b_x1[b] >= rx0 && b_x0[b] <= rx1 && b_y1[b] >= ry0 && b_y0[b] <= ry1;
         b_str[b] = (u8)(touch && !inside);
-        if (bm_gen >= 7 && world_zone == ZONE_CITY && world_wbx >= 0 && !world_view_lvl && b_top[b] >= 1 && b_top[b] <= 3 && touch && !b_see[b] && (b_x1[b] - b_x0[b] + 1) * (b_y1[b] - b_y0[b] + 1) <= 200) {
+        if (bm_gen >= 7 && world_zone == ZONE_CITY && world_wbx >= 0 && !world_view_lvl && b_top[b] >= 1 && b_top[b] <= 3 && touch && !b_see[b] && b_rect_get(b) && (b_x1[b] - b_x0[b] + 1) * (b_y1[b] - b_y0[b] + 1) <= 200) {
             int dx_ = MAX(MAX(b_x0[b] - fx, fx - b_x1[b]), 0), dy_ = MAX(MAX(b_y0[b] - fy, fy - b_y1[b]), 0);   // nearest wall to Sim, tiles
             int ex_ = MAX(MAX(b_x0[b] - etx_, etx_ - b_x1[b]), 0), ey_ = MAX(MAX(b_y0[b] - ety_, ety_ - b_y1[b]), 0); // nearest wall to eye
             b_lod[b] = (u8)house_lod_upper(b_lod[b], dx_ * dx_ + dy_ * dy_, ex_ * ex_ + ey_ * ey_ + eh_ * eh_);
