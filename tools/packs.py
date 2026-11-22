@@ -125,7 +125,8 @@ def cmd_ppf(basep, fullp, outd):
     print("(outside the slots only the disc maker's dates differ: sectors %s)" % out)
 
 def apply_ppf(img, path):
-    p = open(path, "rb").read()
+    with open(path, "rb") as f:
+        p = f.read()
     if len(p) < 60 or p[:5] != b"PPF30" or p[5] != 2:
         raise ValueError("%s: not a supported PPF 3.0 patch" % path)
     if p[57] not in (0, 1) or p[58] not in (0, 1):
