@@ -4198,7 +4198,7 @@ static void draw_pick_list(const char *title, int count, int sel, const char *(*
     }
     sprintf(b, "%d OF %d", sel + 1, count); ui_text_box(199, top + 83, 110, 12, TX_CENTER | TX_MID, 1, b, UI_SOFT);   // (was 86: the count sat on the card's bottom edge and the next card's top)
 }
-static int build_intro, build_last_frame = -99; static long build_last_cash, build_delta; static int build_delta_t;   // the BUILD MODE banner; the running +$ / -$
+static int build_last_frame = -99; static long build_last_cash, build_delta; static int build_delta_t;   // the running +$ / -$
 static int build_tile_state(void) {   // what X would do on the tile under the cursor: 0 not allowed (red), 1 go ahead (green), 2 take away or replace (orange)
     if (!build_ok(build_x, build_y)) return 0;
     int L = build_lvl; char c = world_at_l(L, build_x, build_y);
@@ -4222,11 +4222,10 @@ static void build_bar(int xmin, int zmax, int w, int h, int yy, int r, int g, in
 }
 static void build_update(void) {
     static int rep;
-    if (frame - build_last_frame > 4) { room_undo.on = 0; build_intro = 90; build_last_cash = cash; build_delta = 0; build_delta_t = 0; }   // (just came in)
+    if (frame - build_last_frame > 4) { room_undo.on = 0; build_last_cash = cash; build_delta = 0; build_delta_t = 0; }   // (just came in)
     build_last_frame = frame;
     if (cash != build_last_cash) { build_delta += cash - build_last_cash; build_last_cash = cash; build_delta_t = 80; }   // what the last buy or sale came to
     if (build_delta_t > 0 && --build_delta_t == 0) build_delta = 0;
-    if (build_intro > 0) build_intro--;
     int dx = 0, dy = 0;
     int l = HELD(PAD_LEFT) || ls_x < -40, r = HELD(PAD_RIGHT) || ls_x > 40, u = HELD(PAD_UP) || ls_y < -40, d = HELD(PAD_DOWN) || ls_y > 40;
     if (l || r || u || d) { if (rep == 0 || rep > 12) { if (l) dx = -1; if (r) dx = 1; if (u) dy = -1; if (d) dy = 1; if (rep > 12) rep = 9; } rep++; } else rep = 0;
@@ -4437,9 +4436,7 @@ static void build_draw(void) {
                ui_hints(160, 217, "SQ DOOR|TRI UNDO|SEL TOOL|L2 R2 STOREY|O DONE", 1); }
         else { ui_hints(160, 205, build_tool == BT_BUY ? "L1 R1 PICK|R3 TAB|X BUY OR MOVE|SQ SELL" : build_tool == BT_DOOR ? "L1 R1 PICK|X PUT IN|SQ TAKE OUT" : build_tool == BT_WALL ? "L1 R1 PICK|X PLACE, HOLD TO DRAW|SQ ERASE" : build_tool == BT_PAINT ? "L1 R1 PICK|X PAINT|TRI PAPER ROOM" : build_tool == BT_FLOOR ? "L1 R1 PICK|X PLACE|TRI FILL ROOM|SQ ERASE" : "L1 R1 PICK|X PLACE|SQ ERASE", 1);
                ui_hints(160, 217, build_tool == BT_BUY ? "TRI TURN|SEL TOOL|L2 R2 STOREY|O DONE" : "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
-        if (build_intro > 0) { int sl = build_intro > 80 ? (build_intro - 80) * 14 : build_intro < 12 ? (12 - build_intro) * 14 : 0;   // BUILD MODE: slides in, stays, slides out
-            ui_shadow(30, 92 - sl, 136, 30, 8); ui_round(30, 92 - sl, 136, 30, 8, UI_RGB(70, 176, 238), UI_BLUE2, 0);
-            ui_text_box(30, 94 - sl, 136, 16, TX_CENTER | TX_MID, 2, "BUILD MODE", UI_WHITE); ui_text_box(30, 110 - sl, 136, 11, TX_CENTER | TX_MID, 1, "O WHEN YOU ARE DONE", UI_WHITE); }
+        // No sliding banner over the build cursor; persistent footer hints already explain the controls.
     }
 }
 
