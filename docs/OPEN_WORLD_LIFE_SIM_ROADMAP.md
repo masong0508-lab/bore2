@@ -72,6 +72,12 @@ The [DS/DSi neighborhood audit](../ports/dsi/test/ds_town7_audit.sh) now fails i
 
 **Verified:** [DS ROM/emulator CI 44963841329](https://github.com/masong0508-lab/bore2/actions/runs/44963841329) passed the native C99 forward/reverse/upstairs/horizon tests, purchase/save, stairs/island, furnished-home interactions, **162-home audit**, skatepark playthrough and 3-house visual atlas. [PS1 host/disc run 44963841433](https://github.com/masong0508-lab/bore2/actions/runs/44963841433) passed. **Still needed:** explicit tap-on-horizon **emulator marker/coordinate screenshots**, and broader camera/perspective alignment across native DS, PS1 and Dreamcast. This addresses one OW-004 interaction failure, not full scene rendering quality.
 
+### Milestone 0 checkpoint — speed-aware PS1/Dreamcast skate chase framing (2026-11-21)
+
+[PR #11](https://github.com/masong0508-lab/bore2/pull/11) (squash `e809132`) improves actual skating playability framing on the shared **PS1 and Dreamcast** third-person camera. It now looks from 0 units ahead while stationary/manual, through **128 units** at skating speed 22, to a **240-unit maximum** at high speed (less than one 256-unit tile), aligned with the actual board travel direction. The existing frame-time-aware focus smoother manages acceleration/dismount; no new allocations, scenery omissions, ray casts, save fields or physics changes. First person and DS cameras are untouched. [Implementation and caveats](PS1_SKATE_CAMERA.md).
+
+**Verified:** [PS1 disc/world/host CI 44964964631](https://github.com/masong0508-lab/bore2/actions/runs/44964964631) and [Dreamcast full build 44964924189](https://github.com/masong0508-lab/bore2/actions/runs/44964924189) passed; the deterministic speed/cap function has a C99 regression. **Still open:** gameplay screenshot showing a kicker/rail earlier in the view at multiple pitches, physics landing/grind timing, ordinary PS1 and Dreamcast native frame times. This advances OW-004 but is not final camera/perspective certification.
+
 ## Milestone 1 — People with lives, not moving scenery (P1)
 
 - [ ] **OW-101 Stable citizen state:** home, household, location, needs, work or school commitment, personal schedule, relationships, relevant memories and current task remain consistent across travel, load and time skip.
