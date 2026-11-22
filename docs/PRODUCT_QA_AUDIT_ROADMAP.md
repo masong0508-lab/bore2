@@ -36,6 +36,12 @@ Evidence: [PS1 and host run](https://github.com/masong0508-lab/bore2/actions/run
 
 [DS CI run 44963841329](https://github.com/masong0508-lab/bore2/actions/runs/44963841329) **passed** full ROM/emulator input, save, stair/island, 162-home, skate and roof atlas tests. [PS1/host run 44963841433](https://github.com/masong0508-lab/bore2/actions/runs/44963841433) **passed**. QA-009/OW-004 **PARTIAL**: this fixes an identified interaction source issue, but explicit above-horizon gameplay touch captures and complete camera/geometry occlusion testing remain open. [DS touch and camera evidence](DS_TOUCH_RAY.md).
 
+## PS1 and Dreamcast skate chase-camera improvement — 2026-11-21 (PR #11)
+
+[PR #11](https://github.com/masong0508-lab/bore2/pull/11) (squash `e809132`) fixes a third-person skate camera *framing limitation*: the old orbit always targeted the rider, bringing rails and kicker lips toward the visual center only at the last moment while moving quickly. The new target leads by 0–240 world units along `skate_dir()` according to rolling speed, using the already-existing follow-camera smoothing; zero when stationary, 128 units at speed 22, and capped before a full tile. Does **not** change skating contact/physics, model geometry, camera field of view, first person or DS. No runtime allocations.
+
+**CI passed:** [PS1 host+disc](https://github.com/masong0508-lab/bore2/actions/runs/44964964631) and [Dreamcast build](https://github.com/masong0508-lab/bore2/actions/runs/44964924189), including C99 speed/limit regression. **QA-005/OW-004 still PARTIAL:** gameplay footage and direct same-route side-by-side verification of rider, lip, rail and near-camera obstacle visibility are outstanding, as are physical console performance timings. [Repro and open follow-ups](PS1_SKATE_CAMERA.md). Do not declare the entire skate visual/perspective overhaul finished.
+
 ## Severity and status
 
 | Severity | Meaning | Release rule |
