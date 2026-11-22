@@ -1175,15 +1175,20 @@ static void life_update(int steps) {
     if (isl_craft_asked) { isl_craft_asked = 0; craft_sel = 0; craft_msg_t = 0; state = ST_CRAFT; }   // the campfire: make something
 }
 
-static void big_flash(void) {   // the red / black / white cut on a big moment: half a second, at most once every 40 s, and any button ends it
+static void big_flash(void) {   // readable achievement toast, never a full-screen strobe during play
     static int ft_ = -1, cool;
     static const char *const W1[8] = { "", "PROMOTED", "I DO.", "NEW", "CHAPTER", "LEVEL", "NEW", "YOU ARE" }, *const W2[8] = { "", "BOSS!", "FOREVER", "BABY!", "DONE!", "UP!", "PRIZE!", "CHAMP!" };
     static int kind;
-    if (sim_flash_req) { if (cool <= 0 && ft_ < 0) { kind = sim_flash_req; ft_ = 0; cool = 2400; } sim_flash_req = 0; }
+    if (sim_flash_req) { if (cool <= 0 && ft_ < 0) { kind = CLAMP(sim_flash_req, 1, 7); ft_ = 0; cool = 2400; } sim_flash_req = 0; }
     if (cool > 0) cool--;
     if (ft_ < 0) return;
-    if (ft_ >= PL_FLASH_LEN || (~btn & 0xffff & (PAD_CROSS | PAD_CIRCLE | PAD_START))) { ft_ = -1; return; }
-    pl_flash(ft_, W1[kind], W2[kind], kind & 1); ft_++;
+    // Two seconds of vblanks, independent of frame rate. Short minimum display
+    // avoids dismissing a notification on the button that caused it.
+    if (ft_ >= 120 || (ft_ >= 18 && (~btn & 0xffff & (PAD_CROSS | PAD_CIRCLE | PAD_START)))) { ft_ = -1; return; }
+    gfx_rect(78, 18, 164, 39, 12, 17, 25, 0);
+    gfx_textc(160, 23, 2, W1[kind], 237, 240, 243);
+    gfx_textc(160, 40, 1, W2[kind], 190, 202, 214);
+    ft_ += cam_dt;
 }
 static void life_draw(void) {
 #ifdef AUTO_DAY
