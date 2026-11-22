@@ -65,6 +65,7 @@ typedef struct {
 } Camera;
 extern Camera cam;
 void gfx_camera_update(void);                 // after changing eye / at
+extern int gfx_focal;                        // active world lens; read only outside gfx.c, change through gfx_set_focal
 void gfx_set_focal(int focal);                // world GTE lens (230 default, third-person PS1 260); impostors follow it
 void gfx_set_object(const VECTOR *pos, int yaw);   // object space = rotate(yaw about Y) then translate(pos); sets the GTE
 void gfx_set_object_m(const MATRIX *world);        // any world matrix

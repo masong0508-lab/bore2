@@ -9,7 +9,8 @@ These living documents preserve the life-sim expansion research and the graphica
 - [Research and Product-Audit Notes, 2026-11-21](RESEARCH_AUDIT_NOTES_2026-11-21.md) — preserved rationale, comparison games, QA taxonomy, links and caveats about unverified issues.
 - [Native DS/DSi Visual Atlas](DS_VISUAL_ATLAS.md) — tested in-emulator screenshots comparing three generated-house roofs and furnished interiors, with a reproducible CI gate (PR #6).
 - [DS/DSi Skate Ramp & Stair Geometry](DS_SKATE_GEOMETRY.md) — verified PR #7 curved ramps, stair LOD, map/skatepark parity, moved-ramp collisions and a 30-fps emulated skating route with native screenshot artifacts.
-- [PS1 Camera & Perspective](PS1_CAMERA_PERSPECTIVE.md) — merged PR #8 narrows the live third-person lens with scale-preserving dolly, synchronizes billboard projection, and records PS1/DC CI evidence and unverified native screenshot tasks.
+- [PS1 Camera & Perspective](PS1_CAMERA_PERSPECTIVE.md) — merged PR #8 narrows the live third-person lens with scale-preserving dolly, synchronizes billboard projection, and records PS1/DC CI evidence, merged frozen native-camera QA, and the remaining visual acceptance matrix.
+- [PS1 Active-Lens Projection Consistency](PS1_PROJECTION_CONSISTENCY.md) — fixes close/far surface and cached-sprite projection disagreement; includes production-code regressions and native close/wide/first-person comparisons.
 - [PS1/Dreamcast Skate Chase Camera](PS1_SKATE_CAMERA.md) — merged PR #11 uses bounded speed-dependent look-ahead to reveal approaching ramps and rails while riding, with PS1/DC build and host tests.
 - [DS/DSi Live Touch Ray](DS_TOUCH_RAY.md) — merged PR #9 prevents rear-camera horizon taps selecting an invisible walking/object target; DS emulator and PS1 safeguards passed, dedicated tap screenshots still open.
 

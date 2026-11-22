@@ -18,7 +18,13 @@ Implementation: `src/camera_lens.h`, `src/main.c`, `src/gfx.c`, `src/gfx.h`. Ind
 
 - [PS1 disc + host world-coherence CI 44963154954](https://github.com/masong0508-lab/bore2/actions/runs/44963154954): both **success**. The host C99 camera tests passed at focal-subject distances 600–7000 units: distance-proportional lens framing, compressed near/far parallax, unchanged first person and unchanged Dreamcast behavior. PS1 base and pack discs compiled and were uploaded.
 - [Dreamcast full disc CI 44963102464](https://github.com/masong0508-lab/bore2/actions/runs/44963102464): **success** for the shared `gfx.c`, `gfx.h`, `main.c` source changes. That run was on the last commit touching Dreamcast-relevant source; subsequent PS1-workflow-only commits did not alter those files.
-- **Limits:** mathematical camera tests and compiling a disc do **not** prove that native in-game perspective, nearby walls, roof cutaways, collision camera, visibility or frame timing look correct. PS1 DuckStation close/mid/high before/after screenshots and ordinary PS1/PS2 hardware playthroughs are still pending. No DS lens change was made in this pass.
+- **Limits:** mathematical camera tests and compiling a disc do **not** prove that native in-game perspective, nearby walls, roof cutaways, collision camera, visibility or frame timing look correct. The initial native close-home lens comparison is now verified below; broader stair/ramp routes and ordinary PS1/PS2 hardware playthroughs remain pending. No DS lens change was made in this pass.
+
+## Native verification added after PR #8
+
+[PR #10](https://github.com/masong0508-lab/bore2/pull/10), squash `82f49a9`, adds a native 320×240 legacy/current lens comparison at one close-home angle sampled three times. Its final head passed [disc/world CI](https://github.com/masong0508-lab/bore2/actions/runs/44966694452) and [frozen native-camera CI](https://github.com/masong0508-lab/bore2/actions/runs/44966694552). Final RAM verifies matching seed, clock, camera and map data; all three CI image pairs match the manually inspected local captures exactly. This closes the initial screenshot gap, not the full matrix below.
+
+The subsequent [active-lens consistency correction](PS1_PROJECTION_CONSISTENCY.md) fixes nearby and distant software projection paths that still used 230 while the GTE used 260. It includes real-function regression tests and same-lens close/wide/first-person native controls.
 
 ## Visual acceptance matrix (OW-004 / QA-002 / QA-009)
 

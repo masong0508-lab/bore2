@@ -17,7 +17,7 @@ This uses the existing 8.8 fixed-point, VBLANK-aware `camera_apply` smoother for
 
 ## CI and evidence
 
-[PS1 build plus host C99 tests](https://github.com/masong0508-lab/bore2/actions/runs/44964964631) passed, including `test/skate_camera_test.c` (stationary threshold, monotonic response, maximum 240-unit lead). [Dreamcast compatibility build](https://github.com/masong0508-lab/bore2/actions/runs/44964924189) passed. The patch affects both PS1 and Dreamcast shared third-person cameras, not the DS renderer's independent camera.
+[PS1 build plus host C99 tests](https://github.com/masong0508-lab/bore2/actions/runs/44964964631) passed, including `test/skate_camera_test.c` (stationary threshold, monotonic response, maximum 240-unit lead). [Dreamcast compatibility build](https://github.com/masong0508-lab/bore2/actions/runs/44964942090) passed. The patch affects both PS1 and Dreamcast shared third-person cameras, not the DS renderer's independent camera.
 
 **Not yet established:** the practical improvement in player reaction time and the view of every kicker/rail has **not** been independently measured in a native PS1/Dreamcast skating screenshot or gameplay route for this new focus offset. Run the same-seed, same-speed route with the lead disabled/enabled and inspect whether the lip stays visible without hiding the rider. Don't infer FPS or hardware compatibility from the host function checks alone.
 
