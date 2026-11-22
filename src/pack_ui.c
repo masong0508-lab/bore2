@@ -12,6 +12,9 @@
 #include "ovl.h"
 #include "band.h"
 #include "dog.h"
+#include "pack_dog_progress.h"
+#include "pack_master.h"
+#include "pack_card_status.h"
 #include <psxgpu.h>
 #include <psxpad.h>
 #include <stdio.h>
@@ -21,12 +24,11 @@ extern int realm_mis, arcade_tix, fight_wins, fight_champ;   // (kept by the gam
 extern u32 gach;                                              // (the Boreagotchi achievements, a bit each)
 extern int dj_xp;
 
-enum { K_BASE, K_PACK, K_SOON };
-typedef struct { const char *nm; u8 kind, pk, ic; const char *what, *how, *slot, *item; } Card;
+ typedef struct { const char *nm; u8 kind, pk, ic; const char *what, *how, *slot, *item; } Card;
 // one per card of the shelf (main.c: moreNm), in the shelf's order. pk: the pack's number (0-11 are on the disc; 12 and up are kept for packs to come)
 static const Card C[25] = {
-    { "ISLAND CREATOR", K_BASE, 255, IC_SUN, "", "", "", "" },
-    { "STORY MISSIONS", K_BASE, 255, IC_BOOK, "", "", "", "" },
+    { "ISLAND CREATOR", K_BASE, 255, IC_SUN, "SHAPE ISLANDS, COASTS AND SETTLEMENTS IN CREATE A WORLD. THIS CREATOR IS ALREADY IN THE BASE GAME.", "", "", "" },
+    { "STORY MISSIONS", K_BASE, 255, IC_BOOK, "TEN STORIES WITH FIVE CHAPTERS EACH: JOBS, FAMILY, FRIENDS AND ADVENTURES. ALL INCLUDED IN THE BASE GAME.", "", "", "" },
     { "BORE-OUT MAN!", K_SOON, 18, IC_STAR, "THE SPACE-HOP ARCADE GAME FROM THE GBA. A DESK JOCKEY BECOMES AN ASTRONAUT: A NEW CABINET AT THE ARCADE, WITH TICKETS AND A TABLE OF HIGH SCORES.", "", "BOREOUT.OVL", "NONE" },
     { "BOREZIES!", K_SOON, 19, IC_PEOPLE, "THE TOWN GOES UNDEAD. BOARD UP THE WINDOWS, SHARE THE CANNED BEANS, KEEP THE FAMILY ALIVE UNTIL MORNING. A SCENARIO FOR A LIFE.", "", "BOREZIES.OVL", "NONE" },
     { "WORLD WAR BORE", K_SOON, 20, IC_HAMMER, "THE EASTERN ARMY CUT DOWN YOUR HEDGE. RALLY THE STREET, BUILD THE LINE AND HOLD IT: THE NEIGHBOURS FIGHT BESIDE YOU.", "", "WWBORE.OVL", "NONE" },
@@ -34,7 +36,7 @@ static const Card C[25] = {
     { "BOREAGOTCHI!", K_PACK, 2, IC_SMILE, "RAISE EIGHT PIXEL PETS ON EACH TOY: EGGS, FOOD, GAMES, FAMILIES, HATS AND A DEX. THE GUIDE IS ON THE SHELF.", "PAUSE, BOREAGOTCHI.", "GOTCHI.OVL", "" },
     { "BOREPILOGUE", K_SOON, 21, IC_HEART, "GROWN-UPS ONLY: RETIRE, WRITE YOUR WILL AND LEAVE A LEGACY. THE NEXT FAMILY INHERITS THE HOME, THE NAME AND A LETTER.", "", "BOREPILG.OVL", "NONE" },
     { "THE LAND BOREFORE TIME", K_PACK, 0, IC_TREE, "WAKE A GIANT IN A MUDDY FIELD AMONG THE NUBBINS. GATHER, LAY ROADS, RAISE HUTS AND WORKSHOPS AND CROWN A CASTLE. SIXTEEN MISSIONS PAY INTO YOUR LIFE.", "PAUSE, KINGDOM MODE.", "KINGDOM.OVL", "" },
-    { "SEASONS", K_BASE, 255, IC_SUN, "", "", "", "" },
+    { "SEASONS", K_BASE, 255, IC_SUN, "THE CALENDAR AND IN-GAME SEASONS ARE PART OF EVERY LIFE, WITH NO SEPARATE PATCH REQUIRED.", "", "", "" },
     { "ISLAND PARADISE", K_PACK, 9, IC_TREE, "A PRIVATE RESORT: BUILD TWELVE LUXURIES THAT PAY EVERY DAY, MOVE IT TO AN ISLE OUT AT SEA, AND JOIN THE CASTAWAY CLUB.", "PHONE, BOOK A RESORT.", "PARADISE.OVL", "" },
     { "SUPERSTAR", K_PACK, 3, IC_NOTE, "FORM A BAND OF UP TO FIFTEEN, GIVE EACH A ROLE, PICK FROM 25 SONGS, REHEARSE AND PLAY GIGS. GROW FAME AND FANS, BUY A TOUR BUS.", "PAUSE, SUPERSTAR BAND.", "SUPER.OVL", "" },
     { "CRIME AND LAW", K_PACK, 4, IC_EYE, "BREAK THE LAW AND FACE THE COURT: LAWYERS, A PLEA, A TRIAL, THEN HARD TIME DAY BY DAY. PAROLE, ESCAPE, OR RUN THE UNDERWORLD HEISTS.", "HEISTS: PHONE, UNDERWORLD.", "PRISON.OVL", "" },
@@ -64,13 +66,13 @@ static const Goal GL[12][5] = {
     { { "SERVE A SENTENCE", 200 }, { "EARN PAROLE", 500 }, { "BREAK OUT", 1000 }, { "PULL OFF A HEIST", 1500 }, { "KEEP A STOLEN BOAT OR PLANE", 3000 } },
     { { "THROW A PARTY", 200 }, { "FIVE PARTIES", 600 }, { "FIFTEEN PARTIES", 2000 }, { "A GREAT PARTY: SCORE 4", 500 }, { "A LEGENDARY PARTY: SCORE 8", 2500 } },
     { { "FLY A MISSION", 500 }, { "THREE MISSIONS DONE", 1500 }, { "ALL SIX MISSIONS DONE", 5000 }, { "A PERFECT ROCKET: ALL PARTS", 3000 }, { "REACH COMMANDER", 6000 } },
-    { { "HAVE A DOG", 200 }, { "NAME YOUR DOG", 200 }, { "A WELL FED DOG", 300 }, { "", 0 }, { "", 0 } },
+    { { "HAVE A DOG", 200 }, { "NAME YOUR DOG", 200 }, { "A WELL FED DOG", 300 }, { "PLAY WITH YOUR DOG 5 TIMES", 600 }, { "DRESS UP YOUR DOG", 700 } },
     { { "FIRST MIX", 150 }, { "A STEADY HAND: SKILL 100", 300 }, { "CROWD PLEASER: SKILL 350", 800 }, { "RESIDENT DJ: SKILL 650", 1500 }, { "MASTER OF THE DECKS", 4000 } },
     { { "BUILD A LUXURY", 300 }, { "SIX LUXURIES", 1000 }, { "ALL TWELVE LUXURIES", 5000 }, { "MOVE TO AN ISLE", 1500 }, { "A CASTAWAY CLUB GOAL", 800 } },
     { { "BUILD ON THE FARM", 300 }, { "THREE BUILDINGS", 800 }, { "ALL SIX BUILDINGS", 3000 }, { "THE FARM EARNS $1000", 1000 }, { "25 SALES AT THE STAND", 1500 } },
     { { "OWN A BOAT OR A PLANE", 300 }, { "FIRST JOB OR LANDING", 400 }, { "TEN JOBS AND LANDINGS", 1500 }, { "OWN FIVE CRAFT", 2500 }, { "OWN TEN CRAFT", 6000 } },
 };
-static const u8 NG[12] = { 5, 5, 5, 5, 5, 5, 5, 3, 5, 5, 5, 5 };
+static const u8 NG[12] = { 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5 };
 #define MASTER 3000
 static int pc(int v) { return __builtin_popcount((unsigned)v); }
 static int gdone(int pk, int g) {   // goal g of pack pk, read off what the pack keeps
@@ -83,7 +85,11 @@ static int gdone(int pk, int g) {   // goal g of pack pk, read off what the pack
     case 4: return g == 0 ? pk_ext[PKX_PRISON] >= 1 : g == 1 ? pk_ext[PKX_PRISON + 1] >= 1 : g == 2 ? pk_ext[PKX_PRISON + 2] >= 1 : g == 3 ? pk_ext[PKX_PRISON + 3] >= 1 : (pk_data[40] | pk_data[41] << 8) != 0;
     case 5: return g == 0 ? pk_ext[PKX_PARTY] >= 1 : g == 1 ? pk_ext[PKX_PARTY] >= 5 : g == 2 ? pk_ext[PKX_PARTY] >= 15 : g == 3 ? pk_ext[PKX_PARTY + 1] >= 4 : pk_ext[PKX_PARTY + 1] >= 8;
     case 6: return g == 0 ? pc(space_done) >= 1 : g == 1 ? pc(space_done) >= 3 : g == 2 ? pc(space_done) >= 6 : g == 3 ? space_tech[0] + space_tech[1] + space_tech[2] >= 12 : space_cert() >= 4;
-    case 7: return g == 0 ? pet_kind == 1 : g == 1 ? pet_kind == 1 && pet_dog.name[0] : pet_kind == 1 && pet_hun >= 70;
+    case 7: return g == 0 ? pet_kind == 1 :
+                g == 1 ? pet_kind == 1 && pet_dog.name[0] :
+                g == 2 ? pet_kind == 1 && pet_hun >= 70 :
+                g == 3 ? pack_dog_play_goal(pk_ext[PKX_DOG_PLAY]) :
+                         pack_dog_styled(pet_kind, pet_dog.look[DL_COLLAR], pet_dog.look[DL_HAT], pet_dog.look[DL_OUTFIT]);
     case 8: { static const u16 t[5] = { 1, 100, 350, 650, 1000 }; return dj_xp >= t[g]; }
     case 9: { int h = pk_data[0] | pk_data[1] << 8; return g == 0 ? pc(h) >= 1 : g == 1 ? pc(h) >= 6 : g == 2 ? pc(h) >= 12 : g == 3 ? pk_data[2] != 0 : (pk_data[5] | pk_data[6]) != 0; }
     case 10: { int b = pk_data[16] | pk_data[17] << 8; return g == 0 ? pc(b) >= 1 : g == 1 ? pc(b) >= 3 : g == 2 ? pc(b) >= 6 : g == 3 ? fm_earned >= 1000 : fm_buyers >= 25; }
@@ -92,19 +98,21 @@ static int gdone(int pk, int g) {   // goal g of pack pk, read off what the pack
     return 0;
 }
 static int gclaimed(int pk, int g) { return pk_ext[pk] >> g & 1; }
-static int nready(int pk) { int n = 0; for (int g = 0; g < NG[pk]; g++) if (gdone(pk, g) && !gclaimed(pk, g)) n++; return n; }
+static int nready(int pk) { int n = 0; for (int g = 0; g < NG[pk]; g++) if (gdone(pk, g) && !gclaimed(pk, g)) n++; return n + pack_master_due(pk_ext[pk], NG[pk]); }
 static int ndone(int pk) { int n = 0; for (int g = 0; g < NG[pk]; g++) n += gdone(pk, g); return n; }
 
 static int mode, card, lsel, live, anim, have[12], msgT; static char line[48];   // mode: 0 the list, 1 a page; live: opened in a life (PACK GOALS), so X can claim
 void pki_open(int a) {
     anim = 0; msgT = 0; line[0] = 0; live = a == 255; lsel = 0;
     for (int i = 0; i < 12; i++) have[i] = -1;   // (found out one a frame, the one on show first: each is a look at the disc)
-    if (a == 255) mode = 0; else { mode = 1; card = a % 25; }
+    if (a == 255) mode = 0; else { mode = 1; card = (a % 25 + 25) % 25; }
 }
 static int claim(int pk) {
-    int pay = 0, n = 0, all = 1;
-    for (int g = 0; g < NG[pk]; g++) { if (gdone(pk, g) && !gclaimed(pk, g)) { pay += GL[pk][g].pay; pk_ext[pk] |= (u8)(1 << g); n++; } if (!gclaimed(pk, g)) all = 0; }
-    if (all && !(pk_ext[pk] >> 7 & 1)) { pk_ext[pk] |= 0x80; pay += MASTER; n++; sims[player].mood = MIN(100, sims[player].mood + 40); snprintf(line, sizeof line, "PACK MASTER! +$%d", pay); }
+    int pay = 0, n = 0;
+    for (int g = 0; g < NG[pk]; g++) if (gdone(pk, g) && !gclaimed(pk, g)) {
+        pay += GL[pk][g].pay; pk_ext[pk] |= (u8)(1 << g); n++;
+    }
+    if (pack_master_due(pk_ext[pk], NG[pk])) { pk_ext[pk] |= 0x80; pay += MASTER; n++; sims[player].mood = MIN(100, sims[player].mood + 40); snprintf(line, sizeof line, "PACK MASTER! +$%d", pay); }
     else if (n) snprintf(line, sizeof line, "%d GOAL%s CLAIMED: +$%d", n, n > 1 ? "S" : "", pay);
     if (n) { cash += pay; sims[player].mood = MIN(100, sims[player].mood + 10); sim_note(line); audio_voice(VOICE_WIN); }
     return n;
@@ -142,22 +150,29 @@ static void list_draw(void) {
         ui_text(32, y + 1, 1, c->nm, have[i] <= 0 ? UI_SOFT : on ? UI_BLUE2 : UI_INK);
         if (have[i] < 0) ui_text(300 - ui_tw(1, "..."), y + 1, 1, "...", UI_SOFT);
         else if (!have[i]) ui_text(300 - ui_tw(1, "NOT ADDED"), y + 1, 1, "NOT ADDED", UI_SOFT);
-        else { ui_bar(190, y + 3, 60, 6, dn * 100 / NG[pk], pk_ext[pk] >> 7 & 1 ? UI_AMBER : UI_GREEN); sprintf(b, "%d OF %d", dn, NG[pk]); ui_text(256, y + 1, 1, b, UI_SOFT);
-               if (rd) ui_icon(292, y, IC_MONEY, UI_GOODT); else if (pk_ext[pk] >> 7 & 1) ui_icon(292, y, IC_STAR, UI_GOLDT); } }
+        else { ui_bar(190, y + 3, 60, 6, dn * 100 / NG[pk], pack_master_complete(pk_ext[pk], NG[pk]) ? UI_AMBER : UI_GREEN); sprintf(b, "%d OF %d", dn, NG[pk]); ui_text(256, y + 1, 1, b, UI_SOFT);
+               if (rd) ui_icon(292, y, IC_MONEY, UI_GOODT); else if (pack_master_complete(pk_ext[pk], NG[pk])) ui_icon(292, y, IC_STAR, UI_GOLDT); } }
     sprintf(b, "%d GOALS CLAIMED OF %d", got, tot); ui_text(14, top + 184, 1, b, UI_SOFT);
     ui_hints(160, 220, "X OPEN A PACK|UP DOWN CHOOSE|O BACK", 1);
 }
 static void page_draw(void) {
     const Card *c = &C[card]; char b[64]; int top = ui_window_s(6, 6, 308, 228, c->kind == K_SOON ? "COMING SOON" : "PACK PAGE");
-    int pk = c->pk, ok = c->kind == K_PACK && pk < 12 && have[pk] > 0, soon = c->kind == K_SOON;
+    int pk = c->pk, state = pack_card_status(c->kind, c->pk, have);
+    int ok = state == CARD_INSTALLED, soon = state == CARD_COMING, base = state == CARD_BASE;
     u32 dc = ok ? UI_RGB(255, 204, 70) : soon ? UI_RGB(206, 214, 228) : UI_LINE;
     ui_round(14, top + 1, 40, 40, 20, dc, dc, 0); ui_icon_disc(34, top + 21, 34, c->ic, ok ? UI_BLUE2 : UI_SOFT, UI_WHITE);
     ui_text(62, top + 3, 2, c->nm, UI_INK);
     if (ok) ui_badge_i(62, top + 22, IC_TICK, "ON THIS DISC", UI_GOODT, UI_WHITE);
+    else if (base) ui_badge_i(62, top + 22, IC_TICK, "BASE GAME", UI_GOODT, UI_WHITE);
     else if (soon) ui_badge_i(62, top + 22, IC_LOCK, "COMING SOON", UI_AMBER, UI_INK);
-    else if (have[pk] < 0) ui_badge_i(62, top + 22, IC_LOCK, "LOOKING AT THE DISC", UI_SOFT, UI_WHITE);
+    else if (state == CARD_CHECKING) ui_badge_i(62, top + 22, IC_LOCK, "LOOKING AT THE DISC", UI_SOFT, UI_WHITE);
     else ui_badge_i(62, top + 22, IC_LOCK, "NOT ADDED", UI_BADT, UI_WHITE);
     int y = top + 46; y += ui_wrap(14, y, 292, 4, c->what, UI_INK) * 10 + 4;
+    if (base) {
+        ui_section(14, y + 2, 292, "ALREADY INCLUDED");
+        ui_wrap(14, y + 20, 292, 4, "THIS IS PART OF THE BASE GAME. THERE IS NO EXTRA PATCH OR SAVE ADD-ON TO INSTALL.", UI_SOFT);
+        ui_hints(160, 220, "O BACK", 1); return;
+    }
     if (soon) {   // what is kept for it
         ui_section(14, y + 2, 292, "KEPT FOR IT");
         ui_text(14, y + 18, 1, "A SLOT ON THE DISC:", UI_SOFT); ui_text(130, y + 18, 1, c->slot, UI_INK);
@@ -166,14 +181,14 @@ static void page_draw(void) {
         ui_wrap(14, y + 58, 292, 3, "OLD SAVES LOAD AS THEY ARE AND NOTHING CHANGES IN THE GAME UNTIL IT COMES. WHEN IT DOES, IT IS A PATCH ON THE BASE DISC LIKE THE OTHER PACKS.", UI_SOFT);
         ui_hints(160, 220, "O BACK", 1); return; }
     if (c->how[0]) { ui_text(14, y, 1, "OPEN IT:", UI_BLUE2); ui_wrap(64, y, 242, 1, c->how, UI_INK); y += 14; }
-    if (!ok) { snprintf(b, sizeof b, "PATCH BORE2-%s.PPF ON TO ADD IT", PPPF[pk]); ui_wrap(14, y + 4, 292, 3, have[pk] < 0 ? "ONE MOMENT..." : b, UI_BADT);
+    if (!ok) { snprintf(b, sizeof b, "PATCH BORE2-%s.PPF ON TO ADD IT", PPPF[pk]); ui_wrap(14, y + 4, 292, 3, state == CARD_CHECKING ? "ONE MOMENT..." : b, UI_BADT);
                ui_wrap(14, y + 34, 292, 3, "A PACK WORKS ALONE, IN ANY ORDER, ON THE BASE DISC. THE FULL DISC HAS THEM ALL.", UI_SOFT); ui_hints(160, 220, live ? "LEFT RIGHT PACKS|O BACK" : "O BACK", 1); return; }
     ui_section(14, y, 292, "PACK GOALS"); y += 14;
     for (int g = 0; g < NG[pk]; g++) { int yy = y + g * 13, d = gdone(pk, g), cl = gclaimed(pk, g);
         if (cl) ui_icon_disc(20, yy + 5, 12, IC_TICK, UI_GREEN, UI_WHITE); else if (d) ui_icon_disc(20, yy + 5, 12, IC_MONEY, UI_AMBER, UI_WHITE); else ui_disc(20, yy + 5, 10, UI_RGB(186, 196, 210));
         ui_text(32, yy, 1, GL[pk][g].t, cl ? UI_GOODT : d ? UI_INK : UI_SOFT);
         sprintf(b, "$%d", GL[pk][g].pay); ui_text(304 - ui_tw(1, b), yy, 1, b, cl ? UI_GOODT : d ? UI_GOLDT : UI_SOFT); }
-    if (pk_ext[pk] >> 7 & 1) ui_badge_i(214, top + 22, IC_STAR, "PACK MASTER", UI_AMBER, UI_INK);
+    if (pack_master_complete(pk_ext[pk], NG[pk])) ui_badge_i(214, top + 22, IC_STAR, "PACK MASTER", UI_AMBER, UI_INK);
     if (line[0] && msgT > 0) ui_textc(160, 208, 1, line, UI_GOODT);
     else if (!live) ui_textc(160, 208, 1, "CLAIM GOALS IN A LIFE: PHONE, GOALS, R1", UI_SOFT);
     ui_hints(160, 220, live ? (nready(pk) ? "X CLAIM|LEFT RIGHT PACKS|O BACK" : "LEFT RIGHT PACKS|O BACK") : "O BACK", 1);
