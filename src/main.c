@@ -1067,6 +1067,11 @@ static void life_update(int steps) {
                     if (tg[k].in && hi >= 0) { const Home *hm = world_home(ZONE_CITY, hi); tx = (hm->x0 + hm->x1) / 2 - (bx - world_wbx) * BM_BLK; ty = (hm->y0 + hm->y1) / 2 - (by - world_wby) * BM_BLK; }
                     else if (tg[k].in) { tx = BM_LOT0 + 6; ty = BM_LOT0 + 4; }
                     else if (tg[k].lot == LOT_HOUSE) { tx = BM_LOT0 + 6; ty = BM_LOT0 + 11; }
+#ifdef AUTO_HOUSE_SWEEP
+                    // Unlike the indoor room tour, inspect the FULL two-storey
+                    // exterior from its front yard, with normal roofs visible.
+                    if (k == 6) { tx = BM_LOT0 + 6; ty = BM_LOT0 + 11; }
+#endif
                     hx_ = ((bx - world_wbx) * BM_BLK + tx) * TILE + TILE / 2; hz_ = -(((by - world_wby) * BM_BLK + ty) * TILE + TILE / 2);
                     cam_pitch = tg[k].pitch; cam_dist = tg[k].dist; cam_yaw = 2600;
 #ifdef BORE_DC
@@ -1082,10 +1087,14 @@ static void life_update(int steps) {
             // Test-only orbit/dolly at the logic clock, not the frame count.
             // No change to ordinary builds or the saved camera options.
             if (k_ >= 0 && fr_ > 130) {
-                int sweep = MIN(fr_ - 130, 480);
-                cam_yaw = (2600 + sweep * 7) & 4095;
-                cam_dist = 1100 + sweep * 8;
-                cam_pitch = 560 + sweep / 8;
+                // Previous test reached its 480-step cap before the first
+                // DuckStation screenshot: all views showed one fixed angle.
+                // Keep moving through the full capture window (with bounded
+                // live camera distance via camera_apply's normal clamp).
+                int sweep = MIN(fr_ - 130, 1900);
+                cam_yaw = (2600 + sweep * 3) & 4095;
+                cam_dist = 1000 + sweep * 2;
+                cam_pitch = 540 + sweep / 35;
             }
 #endif
           }

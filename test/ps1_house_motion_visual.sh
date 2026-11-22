@@ -25,11 +25,11 @@ test -s "$BD/bore2.cue" && test -s "$BD/bore2.bin" && test -s "$BD/bore2.elf"
 mipsel-none-elf-nm --defined-only --print-size "$BD/bore2.elf" >"$OUT/symbols.txt"
 mkdir -p "$OUT/shots"
 cat >"$OUT/route.txt" <<'ROUTE'
+2600 shot
+2800 shot
 3000 shot
 3200 shot
 3400 shot
-3600 shot
-3800 shot
 ROUTE
 (
  cd "$BD"
@@ -85,7 +85,7 @@ for i, path in enumerate(shots):
     pixels = scene.tobytes()
     changed = 0 if prev is None else sum(a != b for a, b in zip(pixels, prev))
     if prev is not None and changed < 3000:
-        raise SystemExit(f"FAIL: no camera/scene change at capture {i}")
+        raise SystemExit(f"FAIL: camera sweep not visible at capture {i}: {changed} changed RGB channels")
     prev = pixels
     dest = root / f"house_{i}.png"
     img.save(dest)
@@ -94,7 +94,7 @@ for i, path in enumerate(shots):
                         changed_scene_rgb_channels=changed))
 (root / "house_motion_results.json").write_text(json.dumps({
     "result":"PASS", "engine":"DuckStation/OpenBIOS", "resolution":"320x240",
-    "world":"generated version-8 two-storey home; seed 0x5EED1234",
+    "world":"generated version-8 two-storey home, seen from yard; seed 0x5EED1234",
     "camera":"test-only orbit and continuous dolly", "captures":results,
     "final_ram":state,
     "limits":"Five distinct 3D images; not complete flicker/performance/hardware proof."
