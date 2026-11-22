@@ -125,13 +125,33 @@ def cmd_ppf(basep, fullp, outd):
     print("(outside the slots only the disc maker's dates differ: sectors %s)" % out)
 
 def apply_ppf(img, path):
-    p = open(path, "rb").read(); assert p[:5] == b"PPF30", "not a PPF 3.0 patch"
-    i = 60                                      # "PPF30", method, 50 bytes of description, image type, block check, undo data, dummy
-    if p[57]: i += 1024                         # (a block-check block, if the patch has one)
+    p = open(path, "rb").read()
+    if len(p) < 60 or p[:5] != b"PPF30" or p[5] != 2:
+        raise ValueError("%s: not a supported PPF 3.0 patch" % path)
+    if p[57] not in (0, 1) or p[58] not in (0, 1):
+        raise ValueError("%s: invalid PPF block-check or undo flag" % path)
+    i = 60 + (1024 if p[57] else 0)
+    if i > len(p):
+        raise ValueError("%s: truncated PPF block-check data" % path)
     undo = p[58]
+    # Validate the ENTIRE file before writing. A truncated or out-of-bounds
+    # record must not partially modify the disc or resize a bytearray.
+    records = []
     while i < len(p):
-        off, n = struct.unpack_from("<QB", p, i); i += 9
-        img[off:off + n] = p[i:i + n]; i += n + (n if undo else 0)
+        if len(p) - i < 9:
+            raise ValueError("%s: truncated PPF record header" % path)
+        off, n = struct.unpack_from("<QB", p, i)
+        i += 9
+        if not n:
+            raise ValueError("%s: empty PPF record" % path)
+        if i + n * (1 + undo) > len(p):
+            raise ValueError("%s: truncated PPF record data" % path)
+        if off + n > len(img):
+            raise ValueError("%s: record outside the disc image" % path)
+        records.append((off, i, n))
+        i += n * (1 + undo)
+    for off, pos, n in records:
+        img[off:off + n] = p[pos:pos + n]
     return img
 
 def cmd_apply(inp, outp, *ppfs):
