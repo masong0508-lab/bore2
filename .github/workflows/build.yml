@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Test expansion PPF integrity (truncation, bounds, undo, round trips)
-        run: python3 -m unittest discover -s test -p 'test_packs.py' -v
+        run: python3 -W error::ResourceWarning -m unittest discover -s test -p 'test_packs.py' -v
       - name: Test Create a Dog progression (host C99)
         run: cc -std=c99 -Wall -Wextra -Werror test/pack_dog_progress_test.c -o /tmp/pack_dog_progress && /tmp/pack_dog_progress
       - name: Check that the audit cannot silently pass on bad output
