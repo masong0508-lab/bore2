@@ -9,6 +9,7 @@
 #include "common.h"
 #include "gfx.h"
 #include "camera_lens.h"
+#include "skate_camera.h"
 #include "pad.h"
 #include "crowd.h"
 #ifdef WALLS_DISC   // PS1: the title logo's 1057 rectangles are read from WALLS.BIN into the crowd's arena (nobody has models there at the title), 5.3 KB not resident
@@ -1235,7 +1236,22 @@ static void life_draw(void) {
 #endif
     Sim *s = &sims[player];
     gfx_set_fog(0, 0);                                   // (the title's fog stays on the title)
-    camera_apply(s->x, -200 - s->lvl * WALL_FULL - (on_board ? board_lift : 0) - (s->lvl ? 0 : world_gh(s->x, s->z)), s->z);   // (up with a rider in the air)
+    /* Look a little ahead of the board, not just at its rear wheels.
+     * It reveals approaching ramp transitions and rails while riding;
+     * the existing camera_apply smoother makes the lead rise/fall
+     * naturally as speed changes, and restores the normal view on foot.
+     * This is a camera-only target: player collision/world coordinates
+     * and ground elevation remain based on the rider's actual position. */
+    int follow_x = s->x, follow_z = s->z;
+    if (on_board && cam_view != 2) {
+        int lead = bore_skate_camera_lead(skate_speed());
+        if (lead) {
+            int dir = skate_dir();
+            follow_x += (isin(dir) * lead) >> 12;
+            follow_z -= (icos(dir) * lead) >> 12;
+        }
+    }
+    camera_apply(follow_x, -200 - s->lvl * WALL_FULL - (on_board ? board_lift : 0) - (s->lvl ? 0 : world_gh(s->x, s->z)), follow_z);   // (up with a rider in the air)
     world_view_lvl = s->lvl; world_roof_show = 0;
     { extern int world_fp; world_fp = cam_view == 2; }
     if (cam_view == 2) {   // FIRST PERSON: the eye in the Bore's head, looking the way it faces (fp_pitch up or down)
