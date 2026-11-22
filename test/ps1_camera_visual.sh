@@ -57,7 +57,9 @@ import sys
 root = Path(sys.argv[1])
 frames = []
 for mode in ("legacy", "corrected"):
-    ss = sorted((root / f"shots-{mode}").glob("frame_*.png"))
+    # DuckStation puts frames in a disc-title subfolder (e.g. bore2/).
+    # Keep that layout instead of mistaking successful captures for none.
+    ss = sorted((root / f"shots-{mode}").rglob("frame_*.png"))
     if len(ss) != 3:
         raise SystemExit(f"FAIL: expected 3 real PlayStation captures for {mode}, got {len(ss)}")
     frames.append(ss)
