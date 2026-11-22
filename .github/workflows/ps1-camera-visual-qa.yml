@@ -5,6 +5,8 @@ on:
   push:
     paths:
       - "src/main.c"
+      - "src/ui.c"
+      - "src/cutscene.c"
       - "src/gfx.c"
       - "src/gfx.h"
       - "src/world.c"
