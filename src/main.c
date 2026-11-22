@@ -4823,7 +4823,7 @@ static void title_draw(void) {
     Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (title_ph * 60) & 4095; g.amp = 4096;
     voxel_draw(&title_bore, &p, ((title_ph * 9) >> 1) & 4095, &g);
     gfx_shadow(&p, 70);
-    if (state == ST_TITLE) { pl_shafts(title_ph); pl_hexes(title_ph, 90, 30); }   // (the film's look: light shafts from the top, a row of ring panels drifting; by the vblank clock, so it never stutters)
+    // Let the 3D room and Bore speak for themselves; no drifting shafts or shiny title overlays.
     int logo = state == ST_TITLE || state == ST_MENU;   // (behind the options, the slots and the other screens the logo is left out: its 1057 rects used up the packet buffer, and the text on top was cut off)
 #ifdef WALLS_DISC
     if (logo && !crowd_logo_ok) {   // (first time, or the arena was used since: the disc into it. The music is stopped for the read, as it is when you quit to the title)
@@ -4840,9 +4840,9 @@ static void title_draw(void) {
     }
     if (logo) { int w = gfx_text_w(1, "DIPPINN PRODUCTIONS"); gfx_text_raw(161 - w / 2, 113, 1, "DIPPINN PRODUCTIONS", 40, 30, 30); }
     if (logo) gfx_textc(160, 112, 1, "DIPPINN PRODUCTIONS", 230, 230, 236);
-    if (state == ST_TITLE) {   // the tagline on a pattern plate that slashes in once (then it holds still), and what to press
-        int in = MIN(title_t, 9999) - 24;
-        pl_plate(in, -1, "VOXEL LIFE", "IN 3D", in > 30 ? "START  PLAY" : "", 112, 106, 206, 239);   // (steady: the ribbon used to blink)
+    if (state == ST_TITLE) {   // readable control prompt, without the oversized "VOXEL LIFE IN 3D" ribbon
+        gfx_rect(100, 208, 120, 21, 12, 16, 25, 0);
+        gfx_textc(160, 213, 1, "X OR START  PLAY", 235, 239, 243);
     }
 }
 // ---- THE WORLDS (STORY MODE): which SAN BOREAS to live in. Fresh dice, one of the presets, one you roll yourself on CREATE A
