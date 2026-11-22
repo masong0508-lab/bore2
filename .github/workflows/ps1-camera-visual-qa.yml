@@ -49,8 +49,8 @@ jobs:
           path: |
             out-ps1-camera/comparison_*.png
             out-ps1-camera/camera_visual_results.json
-            out-ps1-camera/shots-legacy/*.png
-            out-ps1-camera/shots-corrected/*.png
+            out-ps1-camera/shots-legacy/**/*.png
+            out-ps1-camera/shots-corrected/**/*.png
             out-ps1-camera/emulate-*.log
             out-ps1-camera/build-*.log
             out-ps1-camera/config-*.log
