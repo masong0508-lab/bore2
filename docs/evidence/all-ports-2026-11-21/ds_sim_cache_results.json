@@ -1,0 +1,76 @@
+{
+  "passed": true,
+  "method": "independent DS packed-FIFO vertex decoding",
+  "cache_bytes": 307488,
+  "entries_checked": 68,
+  "decoded_costs": [
+    226,
+    236,
+    386,
+    408,
+    426,
+    438,
+    448,
+    456,
+    478
+  ],
+  "frames": [
+    {
+      "dump": "ram_450.bin",
+      "entries": 21,
+      "decoded_costs": [
+        226,
+        236,
+        386,
+        408,
+        426,
+        438,
+        448,
+        456,
+        478
+      ],
+      "words_max": 1846,
+      "cache_misses": 21,
+      "frame_triangles": 3488,
+      "fps": 30
+    },
+    {
+      "dump": "ram_660.bin",
+      "entries": 23,
+      "decoded_costs": [
+        226,
+        236,
+        386,
+        408,
+        426,
+        438,
+        448,
+        456
+      ],
+      "words_max": 1766,
+      "cache_misses": 25,
+      "frame_triangles": 3608,
+      "fps": 30
+    },
+    {
+      "dump": "ram_900.bin",
+      "entries": 24,
+      "decoded_costs": [
+        226,
+        236,
+        386,
+        408,
+        426,
+        438,
+        448,
+        456
+      ],
+      "words_max": 1766,
+      "cache_misses": 25,
+      "frame_triangles": 3518,
+      "fps": 30
+    }
+  ],
+  "mismatch_count": 0,
+  "mismatches": []
+}

@@ -1,0 +1,60 @@
+{
+  "baseline_commit": "f4f038630a86508a7263f5a981856933fbcec07f",
+  "current_src_skate_sha256": "325eaa47b309a821714647dacf0b78ce9872fee786bedb47b2734feba72893bb",
+  "test_defines": [
+    "AUTO_STORY=4",
+    "AUTO_SKATE=1"
+  ],
+  "native_smoke": {
+    "ps1": {
+      "result": "PASS",
+      "engine": "DuckStation OpenBIOS 6000 frames",
+      "runs": 6,
+      "score": 350,
+      "max_air_world_units": 555,
+      "bails": 1,
+      "grind_steps": 0,
+      "vert_airs": 5,
+      "images": 8,
+      "evidence": "ps1_skate_state.json"
+    },
+    "dreamcast": {
+      "result": "PASS",
+      "engine": "Flycast HLE 4000 frames",
+      "runs": 6,
+      "score": 570,
+      "max_air_world_units": 563,
+      "bails": 1,
+      "grind_steps": 70,
+      "vert_airs": 5,
+      "images": 11,
+      "evidence": "dreamcast_skate_state.json"
+    }
+  },
+  "release_builds": {
+    "ps1": {
+      "result": "PASS",
+      "iso_bytes": 13498128,
+      "text_bytes": 1124020,
+      "data_bytes": 12536,
+      "bss_bytes": 865876,
+      "end_address": "0x801f8e14",
+      "headroom_to_2MiB_end_bytes": 29164,
+      "note": "End-of-image headroom includes runtime stack needs and is not a measured free-heap count."
+    },
+    "dreamcast": {
+      "result": "PASS"
+    }
+  },
+  "limits": [
+    "Native skate smoke route is mostly east/west; targeted north/south grind and reverse-brake assertions are in the separate real-engine host tests.",
+    "Frame-time logs include taxi/loading and diverging final locations. This is not a matched-scene FPS comparison or a stable-frame-rate claim.",
+    "No physical console tests."
+  ],
+  "source_sha256": {
+    "src/skate.c": "325eaa47b309a821714647dacf0b78ce9872fee786bedb47b2734feba72893bb",
+    "ports/dsi/source/main.c": "5468b90fb9605033a352b2e598251d5749e739c584e8d52d1172635567d5736b",
+    "ports/dsi/source/ds_games.c": "1db0e3d67f6f39dcd020b3156c58fea5ad3d0c7d97ace0532d45f30a06c1f74a",
+    "ports/dsi/source/ds_render_geom.h": "c241e5b34c1e4c45f599db0a2ce74a85766dc20d95a1843ec930675e6fefbb6e"
+  }
+}

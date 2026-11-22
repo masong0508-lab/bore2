@@ -182,7 +182,7 @@ static int rail_try(int from_ground) {
     k.rax = ax; k.rtx = bmx; k.rty = bmy; k.rtop = btop * FX; k.rcop = cop;
     if (cop) { int d = cop - 1; k.rc = ax ? -(bmy * 256 + (d == 0 ? 0 : 256)) : bmx * 256 + (d == 3 ? 256 : 0); }
     else k.rc = ax ? -(bmy * 256 + 128) : bmx * 256 + 128;
-    int along = ax ? isin(k.dir) : -icos(k.dir); k.rdir = along >= 0 ? 1 : -1;
+    int along = ax ? isin(k.dir) : icos(k.dir); k.rdir = along >= 0 ? 1 : -1;   // +map-y is -z, matching KS_GRIND's movement
     int railyaw = ax ? (k.rdir > 0 ? 1024 : 3072) : (k.rdir > 0 ? 0 : 2048);
     int sp = MAX((k.st == KS_AIR ? k.vh : k.v) * ABS(along) >> 12, 7 * FX);
     int body = adiff(skr.yaw, railyaw), side = ABS(body) > 600 && ABS(body) < 1450;
@@ -214,7 +214,8 @@ static void skate_step(int wx, int wz) {   // one 60 Hz step; (wx, wz) the stick
         int rate = 84 - k.v / FX; if (rate < 34) rate = 34; if (k.st == KS_MANUAL) rate /= 2;
         k.pushing = 0;
         if (want >= 0 && ABS(rel) < 1500) { int d = CLAMP(rel, -rate, rate); k.dir = (k.dir + d) & 4095; k.carve += (d * 12 - k.carve) / 6; } else k.carve -= k.carve / 6;
-        if (want >= 0 && ABS(rel) >= 2300 && k.cosk > 3600) k.v -= 12;
+        // adiff is -2048..2047: the rear stick cone begins where carving ends.
+        if (want >= 0 && ABS(rel) >= 1500 && k.cosk > 3600) k.v -= 12;
         else if (want >= 0 && ABS(rel) < 1400 && k.st == KS_GROUND && k.v < VPUSH && k.cosk > 3600) { k.v += ACCEL * m >> 12; k.pushing = 1; }
         k.v -= 1 + k.v / 400; if (k.v < 0) k.v = 0;
         if (k.st == KS_MANUAL) { int along = rel == -9999 ? 0 : (m * icos(rel)) >> 12;
@@ -276,6 +277,9 @@ static void skate_step(int wx, int wz) {   // one 60 Hz step; (wx, wz) the stick
     }
     if (k.st != KS_GRIND) board_lift = k.y / FX;
 }
+#ifdef DS_SKATE_CONTROLS_TEST
+#include "../test/ds_skate_controls.inc"
+#endif
 // ---- how it looks: the board under the rider (its flip, its grab), the rider side on, crouched by what it does ----
 static int skate_crouch(void) {   // how far the knees bend (0..4096), as skate_pose
     int cr = 900; if (k.crouch) cr = 2600 + MIN(k.charge, 30) * 50; else if (k.popsq) cr = 0; else if (k.landsq) cr = 900 + k.landsq * 180;
@@ -309,11 +313,14 @@ static void skate_draw_board(int ground) {   // (the moving pass) the deck, its 
     gx_mtx(sk_wx(), y, sk_wz(), R);
     bx(-80, 18, -270, 80, 42, 270, C15(30, 13, 5)); bx(-76, 42, -262, 76, 46, 262, C15(6, 6, 7));   // the deck and its grip tape
     for (int e = -1; e <= 1; e += 2) { bx(-60, 4, e * 170 - 20, 60, 18, e * 170 + 20, C15(20, 20, 22)); for (int sd = -1; sd <= 1; sd += 2) bx(sd * 60 - (sd > 0 ? 0 : 30), -24, e * 170 - 22, sd * 60 + (sd > 0 ? 30 : 0), 8, e * 170 + 22, C15(30, 30, 26)); }
-    gx_c1(0x12, 1); gx_lv = 0; gx_mat = gx_nrm = gx_col = ~0u; polys += 28;
+    gx_c1(0x12, 1); gx_lv = 0; gx_mat = gx_nrm = gx_col = ~0u;   // bx/qd already counted every submitted face
 }
 // ---- the controls: the DS's buttons as the PS1's, the D-pad as the stick (as the camera sees it) ----
 static void skate_frame(int held, int down, int steps) {
     if (!on_board) return;
+#ifdef DS_SKATE_CONTROLS_TEST
+    if (!sk_controls_done) ds_skate_controls_test();
+#endif
     Sim *m = &sims[ctl];
     if (m->x != sk_lx || m->y != sk_ly) skate_sync_in();   // (the patch moved under us: a walk into the next lot)
     int h = 0, p = 0;

@@ -1,0 +1,23 @@
+{
+  "method": "melonDS native 256x384 PPM",
+  "roof_modes": [
+    "cutaway",
+    "always"
+  ],
+  "world_region": "DS_TOUR first three planned houses",
+  "frames": [
+    {
+      "frame": 345,
+      "changed_channels": 42194
+    },
+    {
+      "frame": 385,
+      "changed_channels": 35284
+    },
+    {
+      "frame": 425,
+      "changed_channels": 57639
+    }
+  ],
+  "passed": true
+}

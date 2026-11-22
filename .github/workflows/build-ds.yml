@@ -4,7 +4,7 @@ name: build-ds
 on:
   workflow_dispatch:
   push:
-    paths: ["ports/dsi/**", "tools/dsbuild/**", "src/bigmap.*", "src/common.h", "assets/dsmusic.bin", ".github/workflows/build-ds.yml"]
+    paths: ["ports/dsi/**", "tools/dsbuild/**", "tools/dsemu/**", "src/bigmap.*", "src/common.h", "assets/dsmusic.bin", ".github/workflows/build-ds.yml"]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -53,6 +53,35 @@ jobs:
       - name: Emulate skate plaza geometry, riding, FPS and polygon budget
         timeout-minutes: 8
         run: DSRUN=/tmp/dsrun bash ports/dsi/test/ds_skate_smoke.sh "$PWD/out-skate"
+      - name: Emulate reverse-stick braking and rail direction in all four directions
+        timeout-minutes: 8
+        run: DSRUN=/tmp/dsrun bash ports/dsi/test/ds_skate_controls_smoke.sh "$PWD/out-skate-controls"
+      - name: Decode native cached character packets and verify exact geometry costs
+        timeout-minutes: 8
+        run: DSRUN=/tmp/dsrun bash ports/dsi/test/ds_sim_cache_smoke.sh "$PWD/out-sim-cache"
+      - name: Upload DS character-cache regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_ds_sim_cache
+          path: |
+            out-sim-cache/sim_cache_results.json
+            out-sim-cache/ram_*.bin
+            out-sim-cache/cache.ppm
+            out-sim-cache/emulate.log
+            out-sim-cache/build*.log
+          if-no-files-found: warn
+      - name: Upload DS controller regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_ds_skate_controls
+          path: |
+            out-skate-controls/controls_results.json
+            out-skate-controls/controls.log
+            out-skate-controls/controls.ppm
+            out-skate-controls/build.log
+          if-no-files-found: warn
       - name: Upload DS skate regression evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -67,6 +96,20 @@ jobs:
       - name: Capture generated-house roof and cutaway atlas at native DS resolution
         timeout-minutes: 10
         run: DSRUN=/tmp/dsrun bash ports/dsi/test/ds_visual_atlas.sh "$PWD/out-visual"
+      - name: Verify upstairs stairwell roofs with native camera rotations
+        timeout-minutes: 10
+        run: DSRUN=/tmp/dsrun bash ports/dsi/test/ds_roof_stair_smoke.sh "$PWD/out-roof-stairs"
+      - name: Upload native stairwell roof regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_ds_stairwell_roof
+          path: |
+            out-roof-stairs/*.ppm
+            out-roof-stairs/roof_stair_results.json
+            out-roof-stairs/build-*.log
+            out-roof-stairs/emulate-*.log
+          if-no-files-found: warn
       - name: Upload native DS visual atlas
         if: always()
         uses: actions/upload-artifact@v4

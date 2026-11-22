@@ -42,6 +42,14 @@ Evidence: [PS1 and host run](https://github.com/masong0508-lab/bore2/actions/run
 
 **CI passed:** [PS1 host+disc](https://github.com/masong0508-lab/bore2/actions/runs/44964964631) and [Dreamcast build](https://github.com/masong0508-lab/bore2/actions/runs/44964924189), including C99 speed/limit regression. **QA-005/OW-004 still PARTIAL:** gameplay footage and direct same-route side-by-side verification of rider, lip, rail and near-camera obstacle visibility are outstanding, as are physical console performance timings. [Repro and open follow-ups](PS1_SKATE_CAMERA.md). Do not declare the entire skate visual/perspective overhaul finished.
 
+## All-port controls and DS scene-budget checkpoint — 2026-11-21
+
+The [all-port playability pass](ALL_PORTS_PLAYABILITY_2026-11-21.md) reproduced and fixed two shared controller defects: an unreachable reverse-stick brake threshold and reversed north/south rail attachment. Actual PS1/DC controller tests and 12 native DS cases cover all four directions. Native PS1 and Dreamcast skating replays and release builds also passed.
+
+The DS pass fixes the roof over the Man Base's intentionally open upstairs stairwell, counts cached character geometry exactly once, invalidates scene caches when their geometry allowance changes, and budgets optional street decorations. Native packet decoding found real character costs of 226–478 counted triangles, so older whole-scene counts using a 120-triangle estimate are not exact comparisons. The updated skate replay passes 25 geometry samples including startup (peak 3,618); its 17 steady riding samples remain at 30 FPS in melonDS. Roof, cache, controls, and screenshot evidence is linked from the checkpoint.
+
+**QA-004/005/008/009 and OW-004 remain partial:** the fixed defects have targeted regression coverage; full cross-port location/camera parity and physical console measurements remain open.
+
 ## Severity and status
 
 | Severity | Meaning | Release rule |

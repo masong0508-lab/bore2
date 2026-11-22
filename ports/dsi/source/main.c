@@ -1866,11 +1866,14 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
 }
 static u16 land_col(int t) { return t == BT_BEACH || t == BT_DESERT ? C15(26, 23, 15) : t == BT_ROCKY ? C15(14, 16, 12) : t == BT_FOREST ? seas(C15(8, 17, 6)) : seas(C15(11, 20, 8)); }   // (D37; D50: by the season)
 static void lamp_kerb(int x, int z, int dx, int dz) {   // (D40, as the PS1's kerb_lamp) a street lamp on the pavement at the kerb, its arm out over the street (dx, dz: towards the road)
+    /* Conservatively reserve space for both boxes. Keep streets and neighboring
+     * ground intact when a busy household uses the remaining geometry. */
+    if (!ds_world_detail_budget(polys + 24)) return;
     u16 pc = C15(9, 10, 11); block(x - 12, z - 12, x + 12, z + 12, 0, -T * 5 / 2, pc, pc);
     int ax = x + dx * T / 2, az = z + dz * T / 2;   // (the arm and the lamp in one box: lamp-coloured underneath)
     block(dx ? (x < ax ? x : ax) - 22 * (dx < 0) : x - 22, dz ? (z < az ? z : az) - 22 * (dz < 0) : z - 22, dx ? (x > ax ? x : ax) + 22 * (dx > 0) : x + 22, dz ? (z > az ? z : az) + 22 * (dz > 0) : z + 22, -T * 5 / 2 + 30, -T * 5 / 2 - 6, C15(31, 29, 18), C15(12, 12, 13));
 }
-static void bin_at(int x, int z) { block(x - 30, z - 30, x + 30, z + 30, 0, -110, C15(6, 14, 8), C15(4, 8, 5)); }
+static void bin_at(int x, int z) { if (ds_world_detail_budget(polys + 12)) block(x - 30, z - 30, x + 30, z + 30, 0, -110, C15(6, 14, 8), C15(4, 8, 5)); }
 static void kerb_set(int ox, int oz) {   // (D40) a slot's street lamps (two a side, by the corner and half way, never within two cells of each other) and a bin in the pavement's corner square
     lamp_kerb(tl(ox + 14), tl(oz + 28) - 30, 0, 1); lamp_kerb(tl(ox + 4), tl(oz + 34) + 30, 0, -1); lamp_kerb(tl(ox + 28) - 30, tl(oz + 4), 1, 0); lamp_kerb(tl(ox + 34) + 30, tl(oz + 14), -1, 0);   // (half way on the lot's side, by the corner across the street)
     bin_at(tl(ox + 26) + 70, tl(oz + 26) + 70);
@@ -1902,7 +1905,10 @@ static void world7(void) {   // (D79) the 3x3 patch of slots with the streets th
     tx_want = -1;
     if (st_s(0, 0)) for (int x = 0; x < 26; x += 6) ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -30, C15(28, 26, 8));
     if (st_e(0, 0)) for (int x = 0; x < 26; x += 6) ground(tl(31) - 14, tl(x), tl(31) + 14, tl(x) + T * 2, -30, C15(28, 26, 8));
-    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { if (nb[j + 1][i + 1].terrain == BT_SEA) continue; int ox = 36 * i, oz = 36 * j, S = st_s(i, j), E = st_e(i, j), C = st_c(i, j);
+    /* Spend the street-detail budget beside the playable lot first. */
+    for (int pass = 0; pass < 9; ++pass) { int cell = !pass ? 4 : pass <= 4 ? pass - 1 : pass;
+        int i = cell % 3 - 1, j = cell / 3 - 1;
+        if (nb[j + 1][i + 1].terrain == BT_SEA) continue; int ox = 36 * i, oz = 36 * j, S = st_s(i, j), E = st_e(i, j), C = st_c(i, j);
         if (S) { lamp_kerb(tl(ox + 14), tl(oz + 28) - 30, 0, 1); lamp_kerb(tl(ox + 4), tl(oz + 34) + 30, 0, -1); }
         else if (nb[j + 1][i + 1].set != 255 && polys < 2300) tree(tl(ox + 8 + (i & 1) * 9), tl(oz + 31), T * 2);   // (the green strip between two back yards)
         if (E) { lamp_kerb(tl(ox + 28) - 30, tl(oz + 4), 1, 0); lamp_kerb(tl(ox + 34) + 30, tl(oz + 14), -1, 0); }
@@ -1920,7 +1926,9 @@ static void draw_world(int yaw) {   // LIVE: all round the lot, the lots next do
         ground(tl(ox + 26), tl(oz + 26), tl(ox + 28), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz + 26), tl(ox + 36), tl(oz + 28), -24, C15(22, 22, 22)); ground(tl(ox + 26), tl(oz + 34), tl(ox + 28), tl(oz + 36), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz + 34), tl(ox + 36), tl(oz + 36), -24, C15(22, 22, 22));
         ground(tl(ox + 26), tl(oz), tl(ox + 28), tl(oz + 26), -24, C15(22, 22, 22)); ground(tl(ox + 34), tl(oz), tl(ox + 36), tl(oz + 26), -24, C15(22, 22, 22)); }
     tx_want = -1; for (int x = 0; x < 36; x += 6) { ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -30, C15(28, 26, 8)); ground(tl(31) - 14, tl(x), tl(31) + 14, tl(x) + T * 2, -30, C15(28, 26, 8)); }   // lane dashes by this lot
-    if (!zone) for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) if (nb[j + 1][i + 1].terrain != BT_SEA) kerb_set(36 * i, 36 * j);   // (D40, as the PS1: lamps on the kerb facing the street, a bin by the corner)
+    if (!zone) for (int pass = 0; pass < 9; ++pass) { int cell = !pass ? 4 : pass <= 4 ? pass - 1 : pass;
+        int i = cell % 3 - 1, j = cell / 3 - 1;
+        if (nb[j + 1][i + 1].terrain != BT_SEA) kerb_set(36 * i, 36 * j); }   // playable lot's kerbs first, then the neighboring street decorations
 }
 static int ring_r = 1;   // (D40) how many slots out the land is drawn (Options > Draw distance, one more with the DSi's detail)
 static u16 horizon_col(void) { return zone == Z_ISLAND ? C15(5, 12, 24) : zone == Z_TOWN ? C15(24, 21, 13) : C15(7, 16, 6); }
@@ -2174,17 +2182,41 @@ static int bld_seen(const Bld *b) {   // (Cutaway) only the *controlled* Sim can
     return ds_camera_roof_visible(o_roof, inside);
 }
 static u32 roof_bits(void) { bld_scan(); u32 m = 0; for (int i = 0; i < nbld; i++) if (bld_seen(&blds[i])) m |= 1u << i; return m; }
-static int cell_top(int x, int y) { for (int L = UPN; L > 0; L--) if (uflr[L - 1][y][x]) return L; return 0; }   // the highest storey with a floor on that cell
+#if defined(DSTEST) && defined(DS_ROOF_STAIRS_TEST)
+int roof_stair_height, roof_stair_sections, roof_stair_floor, roof_stair_triangles;
+#endif
 static void roof_draw(int top) {   // (D82) a roof over each rectangle of the building that stands as high as its neighbours: an L's garage wing has its own roof (not the body's over the notch), a loft only covers its part
-    (void)top; bld_scan(); static const s16 PIT[3] = { 110, 170, 250 }; static u8 dn[GN][GN];
-    for (int i = 0; i < nbld; i++) { const Bld *b = &blds[i]; if (!bld_seen(b)) continue;
+    bld_scan(); static const s16 PIT[3] = { 110, 170, 250 }; static u8 dn[GN][GN];
+    unsigned visible = 0;
+    for (int i = 0; i < nbld; ++i) if (bld_seen(&blds[i])) visible |= 1u << i;
+    if (!visible) return;
+    /* Low bits are the ceiling's storey; bit 7 marks an emitted rectangle.
+     * Reuse the existing scratch grid: no new permanent render buffer.
+     * Enclosed upstairs stairwells must share the bedroom's roof even
+     * though their intentionally open floor tiles have value zero. */
+    ds_roof_height_map(&dn[0][0], &uflr[0][0][0], &uhwl[0][0][0],
+                       &uvwl[0][0][0], GN, top);
+#if defined(DSTEST) && defined(DS_ROOF_STAIRS_TEST)
+#ifdef DS_ROOF_STAIRS_LEGACY
+    /* Exact historical support rule, available only in this A/B replay. */
+    for (int y = 0; y < GN; ++y) for (int x = 0; x < GN; ++x) {
+        dn[y][x] = 0;
+        for (int L = UPN; L > 0; --L) if (uflr[L - 1][y][x]) { dn[y][x] = (u8)L; break; }
+    }
+#endif
+    roof_stair_height = dn[3][9]; roof_stair_floor = uflr[0][3][9];
+    roof_stair_sections = 0; int before_roof_polys = polys;
+#endif
+    for (int i = 0; i < nbld; i++) { const Bld *b = &blds[i]; if (!(visible & (1u << i))) continue;
         u16 wc = WALLC[0]; { int v = hwl[b->y0][b->x0]; if ((v >= 1 && v <= 4) || (v >= 7 && v <= 12)) wc = WALLC[v - 1]; }
-        for (int y = b->y0; y <= b->y1; y++) for (int x = b->x0; x <= b->x1; x++) dn[y][x] = 0;
-        for (int y = b->y0; y <= b->y1; y++) for (int x = b->x0; x <= b->x1; x++) { if (bld_id[y][x] != i + 1 || dn[y][x]) continue;
-            int lv = cell_top(x, y), w = 1, d = 1;
-            while (x + w <= b->x1 && bld_id[y][x + w] == i + 1 && !dn[y][x + w] && cell_top(x + w, y) == lv) w++;
-            for (;;) { if (y + d > b->y1) break; int ok = 1; for (int k = 0; k < w; k++) if (bld_id[y + d][x + k] != i + 1 || dn[y + d][x + k] || cell_top(x + k, y + d) != lv) ok = 0; if (!ok) break; d++; }
-            for (int j = 0; j < d; j++) for (int k = 0; k < w; k++) dn[y + j][x + k] = 1;
+        for (int y = b->y0; y <= b->y1; y++) for (int x = b->x0; x <= b->x1; x++) { if (bld_id[y][x] != i + 1 || (dn[y][x] & 0x80)) continue;
+            int lv = dn[y][x], w = 1, d = 1;
+            while (x + w <= b->x1 && bld_id[y][x + w] == i + 1 && dn[y][x + w] == lv) w++;
+            for (;;) { if (y + d > b->y1) break; int ok = 1; for (int k = 0; k < w; k++) if (bld_id[y + d][x + k] != i + 1 || dn[y + d][x + k] != lv) ok = 0; if (!ok) break; d++; }
+            for (int j = 0; j < d; j++) for (int k = 0; k < w; k++) dn[y + j][x + k] |= 0x80;
+#if defined(DSTEST) && defined(DS_ROOF_STAIRS_TEST)
+            roof_stair_sections++;
+#endif
             int X0, Z0, X1, Z1;
             ds_floor_bounds(x, y, w, d, T, LOTN, &X0, &Z0, &X1, &Z1);
             /* Eaves only on EXPOSED borders. Overhang on an internal
@@ -2196,6 +2228,9 @@ static void roof_draw(int top) {   // (D82) a roof over each rectangle of the bu
             int ry = -40 - WHF * (lv + 1);
             roof_shape(X0, Z0, X1, Z1, ry, b->sty,
                        PIT[b->pit < 3 ? b->pit : 1], ROOFC[b->col % 6], wc); } }
+#if defined(DSTEST) && defined(DS_ROOF_STAIRS_TEST)
+    roof_stair_triangles = polys - before_roof_polys;
+#endif
 }
 static void draw_floors(int L) {   // floors as the biggest same-type rectangles: no seams for the edge anti-aliasing to show the grass through (upstairs: slabs, so a storey has a thickness)
     static u8 dn[GN][GN]; memset(dn, 0, sizeof dn); u8 (*fl)[GN] = FLv(L);
@@ -3706,7 +3741,9 @@ static void hat_draw(int h, int m, int ox, int oz, int hw, int hz, int top, int 
 // (D39) A SIM'S MODEL IS RECORDED ONCE (for its looks, its stride and its detail) round its own feet, facing +z, and each frame placed and turned by one matrix (lighting turns with it)
 #define SML_N 24
 #define SML_W 3200
-typedef struct { u32 key, used; int n; u32 w[SML_W]; } SimL;
+/* Both fields fit in 16 bits (the list has at most SML_W words). Keep the
+ * existing cache footprint while storing its actual emitted geometry cost. */
+typedef struct { u32 key, used; u16 n, triangles; u32 w[SML_W]; } SimL;
 static SimL sml[SML_N] __attribute__((aligned(32))); static int sml_next; static volatile int sml_miss, sml_maxn, sml_full; static u32 gf_serial = 8;
 static void sim_emit(const SimL *e, int x, int y, int z, int q) {   // into the list being recorded: push, turn by q quarters and move to x,y,z, the model, pop
     static const s8 RC[4][4] = { { 1, 0, 0, 1 }, { 0, -1, 1, 0 }, { -1, 0, 0, -1 }, { 0, 1, -1, 0 } };   // (m00 m02 m20 m22: as sb() turns a part)
@@ -3716,6 +3753,7 @@ static void sim_emit(const SimL *e, int x, int y, int z, int q) {   // into the 
     if (em_R) for (int k = 0; k < 9; k++) o[k] = (u32)em_R[k];   // (D44: the rider on the board turns freely)
     gxn += 12;
     gx_c1(0x10, 1); if (gf_rec) { gf_cut(); gf_add(e->w, e->n); } else { gxk = 4; memcpy(&gxb[gxn], e->w, (size_t)e->n * 4); gxn += e->n; }   // (the model goes as a piece of its own: no copying)
+    polys += e->triangles;
     gxk = 4; gx_lv = 0; gx_mat = gx_nrm = gx_col = ~0u; gx_c1(0x12, 1);
 }
 static void sim3d(int i, int yaw) {
@@ -3733,7 +3771,7 @@ static void sim3d(int i, int yaw) {
         sw = 135 + (P[14] - 50), at = 50 + (P[21] - 50) / 2, lt = 90 + (P[23] - 50) / 2, bz = 85 + (P[24] - 50) * 2, al = 250 + (P[20] - 50) * 2, hb = base + 30;
     int sw_l = mv ? sinLerp(gframes * 1100 + i * 700) * 70 / 4096 : 0;
     int fx_e = lod ? 0 : expr_of(m), fx_b = lod || fx_e == EX_SLEEP ? 0 : (gframes + i * 41) % 130 < 5, fx_t = !lod && (m->act >= 100 || m->act == 3) && ((gframes >> 3) & 1);   // (D55) mood, blink, talking: part of the cached model's key
-    SimL *se = 0; int cached = 0, ox = x, oz = z, oq = sq_q, ogy = gy_off; u32 *sb_ = 0; int sn_ = 0, sh_ = 0, sk_ = 0, sc_ = 0; u32 sm_ = 0, snm_ = 0, scl_ = 0;
+    SimL *se = 0; int cached = 0, ox = x, oz = z, oq = sq_q, ogy = gy_off, model_start = polys; u32 *sb_ = 0; int sn_ = 0, sh_ = 0, sk_ = 0, sc_ = 0; u32 sm_ = 0, snm_ = 0, scl_ = 0;
     if (gxb && dpass == 2) {   // (D39) the cached model: the key is everything its shape and colours come from
         if (mv) sw_l = sinLerp((s16)(((gframes * 1100 + i * 700) & 32767) & ~4095)) * 70 / 4096;   // (the stride in eight steps)
         u32 key = 2166136261u; for (int q = 0; q < PMN; q++) key = (key ^ (u32)P[q]) * 16777619u;
@@ -3795,9 +3833,14 @@ static void sim3d(int i, int yaw) {
             sb(x, z, -mw - 26, my2 - 12, f, -mw + 4, my2 + 4, f + 9, bc); sb(x, z, mw - 4, my2 - 12, f, mw + 26, my2 + 4, f + 9, bc);   // round the corners of the mouth
             if (bd == 5) { sb(x, z, -hw + 30, hb - 70, f - 6, hw - 30, hb, f + 10, bc); sb(x, z, -hw + 80, hb - 140, f - 8, hw - 80, hb - 70, f + 10, bc); sb(x, z, -hw + 130, hb - 200, f - 10, hw - 130, hb - 140, f + 10, bc); } } } }
     }
-    if (se) { se->used = gf_serial; if (!cached) { se->n = gx_full ? 0 : gxn; if (gx_full) sml_full++; if (se->n > sml_maxn) sml_maxn = se->n; DC_FlushRange(se->w, (u32)se->n * 4); gxb = sb_; gxn = sn_; gxh = sh_; gxk = sk_; gx_cap = sc_; gx_mat = sm_; gx_nrm = snm_; gx_col = scl_; gx_full = 0; gy_off = ogy; x = ox; z = oz; sq_q = oq; }
+    if (se) { se->used = gf_serial; if (!cached) { se->n = gx_full ? 0 : gxn;
+        se->triangles = se->n ? (u16)(polys - model_start) : 0;
+        /* Recording is not a second draw. Charge exactly once when the
+         * cached list is submitted, on both misses and subsequent hits. */
+        polys = model_start;
+        if (gx_full) sml_full++; if (se->n > sml_maxn) sml_maxn = se->n; DC_FlushRange(se->w, (u32)se->n * 4); gxb = sb_; gxn = sn_; gxh = sh_; gxk = sk_; gx_cap = sc_; gx_mat = sm_; gx_nrm = snm_; gx_col = scl_; gx_full = 0; gy_off = ogy; x = ox; z = oz; sq_q = oq; }
         if (ride) em_R = sk_Rm;   // (D44) side on to the board (skate_frame turns it)
-        if (se->n) sim_emit(se, ox, -ogy + ground_lift(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), slv[i]) - (ride ? board_lift * 12 / 5 + 80 - sk_cr : 0), oz, oq); em_R = 0; polys += 120;
+        if (se->n) sim_emit(se, ox, -ogy + ground_lift(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), slv[i]) - (ride ? board_lift * 12 / 5 + 80 - sk_cr : 0), oz, oq); em_R = 0;
         if (ride) skate_draw_board(-ogy + ground_lift(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), 0)); }
     if (i == ctl) { int py = (hb + ht + 190) * sb_sc / 100; sb_sc = 100; sq_q = 0; bx(x - 40, py, z - 40, x + 40, py + 120, z + 40, C15(6, 30, 6)); bx(x - 30, py - 90, z - 30, x + 30, py, z + 30, C15(5, 22, 5)); }
 }
@@ -4751,6 +4794,26 @@ static void ds_isl_test(void) {
         isl_res[id - 189] = isl_sig() != s0 ? 1 : 3; }
     isl_tdone = 1; zone = 0; lot_enter(495, 414); }
 #endif
+#if defined(DSTEST) && defined(DS_ROOF_STAIRS_TEST)
+/* A fixed initial Man Base lot exposes the roof over its actual stairs.
+ * The clock and street traffic continue; the replay rotates the regular
+ * gameplay camera with R to exercise static-list invalidation too. */
+static void ds_roof_stairs_test(void) {
+    static int ready;
+    if (ready || mode != M_LIVE) return;
+    ready = 1; travel_go(Z_BASE); speed = 0; minutes = 12 * 60;
+    o_rt = 0; o_roof = 1; o_pm = 1; o_dirty = 1;
+    ctl = cur_sim = 0;
+    for (int q = 0; q < nsim; ++q) {
+        Sim *m = &sims[q];
+        m->x = m->tx = m->wx = (6 + q) * 16;
+        m->y = m->ty = m->wy = 8 * 16;
+        m->act = -1; m->act_left = 0; slv[q] = 0;
+    }
+    live_pitch = 6000; live_dist = 14000;
+    live_yaw = yaw_t = 8192; cam_free = 1; camx = camz = 0;
+}
+#endif
 #ifdef DS_TOUR
 #ifndef DS_TOUR_CAM
 #define DS_TOUR_CAM 7000
@@ -4940,6 +5003,9 @@ int main(void) {
 #endif
 #ifdef DS_ISL_TEST
         ds_isl_test();
+#endif
+#if defined(DSTEST) && defined(DS_ROOF_STAIRS_TEST)
+        ds_roof_stairs_test();
 #endif
 #ifdef DS_ACT_HOMES
         ds_act_homes();
@@ -5185,22 +5251,30 @@ int main(void) {
                 gx_cam(dist, pitch, yaw, mode == M_LIVE ? camx : 0, cam_y, mode == M_LIVE ? camz : 0);
                 dpass = 2; draw_build(yaw); int pd = polys; gf_cut(); gf_rec = 0; u32 *db = gxb; int dn = gxn, dh = gxh, dk = gxk; PROF(2);
                 static u32 b_sig = 1; static int b_n, b_polys, b_k; static u8 f_b[2];
-                int did = 0;   // (D41) at most one still list is recorded again a frame (the others next frame): a turn of the camera never costs a beat
+                int did = 0;   // Normally rebuild one still list per frame; an unsafe cached budget cannot wait.
                 { u32 bg = still_sig(yaw, 0) ^ (u32)mode; if (bg != b_sig) { did = 1; int k = b_k ^ 1; if (gf_busy && f_b[gf_fly] == k) while (gf_busy) {}   // (D41) the build and the things are recorded apart: turning the camera changes one or the other, rarely both
                     polys = pd; gx_begin(gx_blb[k], GXB_MAX); dpass = 1; draw_build(yaw); b_n = gx_end(); DC_FlushRange(gx_blb[k], (u32)b_n * 4); b_polys = polys - pd; b_sig = bg; b_k = k; st_rec++; } }
-                u32 sg = still_sig(yaw, 1) ^ (u32)mode;
-                if ((sg != st_sig && !did) || st_mode != mode) { did = 1; int k = st_k ^ 1; if (gf_busy && f_st[gf_fly] == k) while (gf_busy) {}
-                    polys = pd + b_polys; gx_begin(gx_slb[k], GXS_MAX); dpass = 4; draw_build(yaw); st_n = gx_end(); DC_FlushRange(gx_slb[k], (u32)st_n * 4); st_polys = polys - pd - b_polys; st_sig = sg; st_mode = (u8)mode; st_k = k; st_rec++; }
+                /* Build a cached list against the TOP of its budget bucket.
+                 * Animation changes within that bucket then remain safe on
+                 * cache hits. Geometry growth must also invalidate items,
+                 * whose old signature only tracked their looks/positions. */
+                int item_base = (pd + b_polys + 127) & ~127;
+                u32 sg = still_sig(yaw, 1) ^ (u32)mode ^ ((u32)(item_base / 128) * 2654435761u);
+                int item_over = pd + b_polys + st_polys > DS_RENDER_FRAME_TRI_LIMIT - DS_RENDER_WORLD_RESERVE;
+                if ((sg != st_sig && (!did || item_over)) || st_mode != mode) { did = 1; int k = st_k ^ 1; if (gf_busy && f_st[gf_fly] == k) while (gf_busy) {}
+                    polys = item_base; gx_begin(gx_slb[k], GXS_MAX); dpass = 4; draw_build(yaw); st_n = gx_end(); DC_FlushRange(gx_slb[k], (u32)st_n * 4); st_polys = polys - item_base; st_sig = sg; st_mode = (u8)mode; st_k = k; st_rec++; }
                 { /* World LOD uses the COMBINED frame budget, not a
                    * fresh zero in each cached display list. */
                   int base_tris = pd + b_polys + st_polys;
-                  u32 wg = world_sig() ^ ((u32)(base_tris / 256) * 2654435761u);
-                  if (wg != w_sig && (!did || w_n == 0)) {
+                  int world_base = (base_tris + 255) & ~255;
+                  u32 wg = world_sig() ^ ((u32)(world_base / 256) * 2654435761u);
+                  int world_over = base_tris + w_polys > DS_RENDER_FRAME_TRI_LIMIT;
+                  if (wg != w_sig && (!did || w_n == 0 || world_over)) {
                       int k = w_k ^ 1; if (gf_busy && f_w[gf_fly] == k) while (gf_busy) {}
-                      polys = base_tris; gx_begin(gx_wlb[k], GXW_MAX); dpass = 3;
+                      polys = world_base; gx_begin(gx_wlb[k], GXW_MAX); dpass = 3;
                       draw_build(yaw); w_n = gx_end();
                       DC_FlushRange(gx_wlb[k], (u32)w_n * 4);
-                      w_polys = polys - base_tris; w_sig = wg; w_k = k; st_rec++;
+                      w_polys = polys - world_base; w_sig = wg; w_k = k; st_rec++;
                   }
                 }
                 PROF(3); dpass = 0;

@@ -78,6 +78,12 @@ The [DS/DSi neighborhood audit](../ports/dsi/test/ds_town7_audit.sh) now fails i
 
 **Verified:** [PS1 disc/world/host CI 44964964631](https://github.com/masong0508-lab/bore2/actions/runs/44964964631) and [Dreamcast full build 44964924189](https://github.com/masong0508-lab/bore2/actions/runs/44964924189) passed; the deterministic speed/cap function has a C99 regression. **Still open:** gameplay screenshot showing a kicker/rail earlier in the view at multiple pitches, physics landing/grind timing, ordinary PS1 and Dreamcast native frame times. This advances OW-004 but is not final camera/perspective certification.
 
+### Milestone 0 checkpoint — all-port skating controls and DS render budgets (2026-11-21)
+
+[Implementation and evidence](ALL_PORTS_PLAYABILITY_2026-11-21.md): reverse-stick braking now works and north/south rail attachment preserves travel direction in PS1, Dreamcast and DS. The DS roof renderer covers enclosed upstairs stairwells while leaving their floors open. Exact character-cache costs, budget-aware cache invalidation and optional street-detail limits keep the tested skate scene within its existing geometry gate. Production controller tests, native per-port skating and native DS packet decoding verify these changes; the DS steady skating samples measure 30 FPS in the emulator.
+
+This advances OW-004 and adds safeguards for OW-002/003. It leaves the broad milestone open: complete map/near/far location parity, every building/camera case, physical consoles and enhanced DSi need further evidence.
+
 ## Milestone 1 — People with lives, not moving scenery (P1)
 
 - [ ] **OW-101 Stable citizen state:** home, household, location, needs, work or school commitment, personal schedule, relationships, relevant memories and current task remain consistent across travel, load and time skip.
