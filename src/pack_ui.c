@@ -13,6 +13,7 @@
 #include "band.h"
 #include "dog.h"
 #include "pack_dog_progress.h"
+#include "pack_master.h"
 #include "pack_card_status.h"
 #include <psxgpu.h>
 #include <psxpad.h>
@@ -97,7 +98,7 @@ static int gdone(int pk, int g) {   // goal g of pack pk, read off what the pack
     return 0;
 }
 static int gclaimed(int pk, int g) { return pk_ext[pk] >> g & 1; }
-static int nready(int pk) { int n = 0; for (int g = 0; g < NG[pk]; g++) if (gdone(pk, g) && !gclaimed(pk, g)) n++; return n; }
+static int nready(int pk) { int n = 0; for (int g = 0; g < NG[pk]; g++) if (gdone(pk, g) && !gclaimed(pk, g)) n++; return n + pack_master_due(pk_ext[pk], NG[pk]); }
 static int ndone(int pk) { int n = 0; for (int g = 0; g < NG[pk]; g++) n += gdone(pk, g); return n; }
 
 static int mode, card, lsel, live, anim, have[12], msgT; static char line[48];   // mode: 0 the list, 1 a page; live: opened in a life (PACK GOALS), so X can claim
@@ -107,9 +108,11 @@ void pki_open(int a) {
     if (a == 255) mode = 0; else { mode = 1; card = (a % 25 + 25) % 25; }
 }
 static int claim(int pk) {
-    int pay = 0, n = 0, all = 1;
-    for (int g = 0; g < NG[pk]; g++) { if (gdone(pk, g) && !gclaimed(pk, g)) { pay += GL[pk][g].pay; pk_ext[pk] |= (u8)(1 << g); n++; } if (!gclaimed(pk, g)) all = 0; }
-    if (all && !(pk_ext[pk] >> 7 & 1)) { pk_ext[pk] |= 0x80; pay += MASTER; n++; sims[player].mood = MIN(100, sims[player].mood + 40); snprintf(line, sizeof line, "PACK MASTER! +$%d", pay); }
+    int pay = 0, n = 0;
+    for (int g = 0; g < NG[pk]; g++) if (gdone(pk, g) && !gclaimed(pk, g)) {
+        pay += GL[pk][g].pay; pk_ext[pk] |= (u8)(1 << g); n++;
+    }
+    if (pack_master_due(pk_ext[pk], NG[pk])) { pk_ext[pk] |= 0x80; pay += MASTER; n++; sims[player].mood = MIN(100, sims[player].mood + 40); snprintf(line, sizeof line, "PACK MASTER! +$%d", pay); }
     else if (n) snprintf(line, sizeof line, "%d GOAL%s CLAIMED: +$%d", n, n > 1 ? "S" : "", pay);
     if (n) { cash += pay; sims[player].mood = MIN(100, sims[player].mood + 10); sim_note(line); audio_voice(VOICE_WIN); }
     return n;
@@ -147,8 +150,8 @@ static void list_draw(void) {
         ui_text(32, y + 1, 1, c->nm, have[i] <= 0 ? UI_SOFT : on ? UI_BLUE2 : UI_INK);
         if (have[i] < 0) ui_text(300 - ui_tw(1, "..."), y + 1, 1, "...", UI_SOFT);
         else if (!have[i]) ui_text(300 - ui_tw(1, "NOT ADDED"), y + 1, 1, "NOT ADDED", UI_SOFT);
-        else { ui_bar(190, y + 3, 60, 6, dn * 100 / NG[pk], pk_ext[pk] >> 7 & 1 ? UI_AMBER : UI_GREEN); sprintf(b, "%d OF %d", dn, NG[pk]); ui_text(256, y + 1, 1, b, UI_SOFT);
-               if (rd) ui_icon(292, y, IC_MONEY, UI_GOODT); else if (pk_ext[pk] >> 7 & 1) ui_icon(292, y, IC_STAR, UI_GOLDT); } }
+        else { ui_bar(190, y + 3, 60, 6, dn * 100 / NG[pk], pack_master_complete(pk_ext[pk], NG[pk]) ? UI_AMBER : UI_GREEN); sprintf(b, "%d OF %d", dn, NG[pk]); ui_text(256, y + 1, 1, b, UI_SOFT);
+               if (rd) ui_icon(292, y, IC_MONEY, UI_GOODT); else if (pack_master_complete(pk_ext[pk], NG[pk])) ui_icon(292, y, IC_STAR, UI_GOLDT); } }
     sprintf(b, "%d GOALS CLAIMED OF %d", got, tot); ui_text(14, top + 184, 1, b, UI_SOFT);
     ui_hints(160, 220, "X OPEN A PACK|UP DOWN CHOOSE|O BACK", 1);
 }
@@ -185,7 +188,7 @@ static void page_draw(void) {
         if (cl) ui_icon_disc(20, yy + 5, 12, IC_TICK, UI_GREEN, UI_WHITE); else if (d) ui_icon_disc(20, yy + 5, 12, IC_MONEY, UI_AMBER, UI_WHITE); else ui_disc(20, yy + 5, 10, UI_RGB(186, 196, 210));
         ui_text(32, yy, 1, GL[pk][g].t, cl ? UI_GOODT : d ? UI_INK : UI_SOFT);
         sprintf(b, "$%d", GL[pk][g].pay); ui_text(304 - ui_tw(1, b), yy, 1, b, cl ? UI_GOODT : d ? UI_GOLDT : UI_SOFT); }
-    if (pk_ext[pk] >> 7 & 1) ui_badge_i(214, top + 22, IC_STAR, "PACK MASTER", UI_AMBER, UI_INK);
+    if (pack_master_complete(pk_ext[pk], NG[pk])) ui_badge_i(214, top + 22, IC_STAR, "PACK MASTER", UI_AMBER, UI_INK);
     if (line[0] && msgT > 0) ui_textc(160, 208, 1, line, UI_GOODT);
     else if (!live) ui_textc(160, 208, 1, "CLAIM GOALS IN A LIFE: PHONE, GOALS, R1", UI_SOFT);
     ui_hints(160, 220, live ? (nready(pk) ? "X CLAIM|LEFT RIGHT PACKS|O BACK" : "LEFT RIGHT PACKS|O BACK") : "O BACK", 1);

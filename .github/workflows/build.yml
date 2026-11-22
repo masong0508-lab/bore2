@@ -16,6 +16,8 @@ jobs:
         run: cc -std=c99 -Wall -Wextra -Werror test/pack_dog_progress_test.c -o /tmp/pack_dog_progress && /tmp/pack_dog_progress
       - name: Test base-game and missing expansion card safety (host C99)
         run: cc -std=c99 -Wall -Wextra -Werror test/pack_card_status_test.c -o /tmp/pack_card_status && /tmp/pack_card_status
+      - name: Test pack-master bonuses and old-save badge migration (host C99)
+        run: cc -std=c99 -Wall -Wextra -Werror test/pack_master_test.c -o /tmp/pack_master && /tmp/pack_master
       - name: Check that the audit cannot silently pass on bad output
         run: python3 -m unittest discover -s test -p 'test_world_coherence.py' -v
       - name: Verify PS1 lens/dolly parallax and unchanged first-person and Dreamcast views
