@@ -19,7 +19,7 @@ the story screen's R1 PACK GOALS), with five goals that pay cash, kept in the sa
 | PRISON (Crime and Law + heist) | PRISON.OVL | finished | finished | counters kept in `pk_ext` (sentences, parole, breakouts, heists) |
 | PARTY (Family Fun) | PARTY.OVL | finished | finished | party count and best score now saved |
 | SPACE (Space Age) | SPACE.OVL | partly done | finished | panel layout fixed; a flawless flight pays a quarter more and adds astronaut XP |
-| DOG (Create a Dog) | DOG.OVL | finished | finished | |
+| DOG (Create a Dog) | DOG.OVL | finished | 5 goals + safer progression | Play with a dog five times and dress it up; existing three goals remain unchanged |
 | DJ (DJ Booth) | DJ.OVL | partly done | finished | tip lines shortened (one was clipped) |
 | PARADISE (Island Paradise) | PARADISE.OVL | finished | finished | |
 | FARM (Farm Life) | FARM.OVL | finished | finished | |
@@ -41,8 +41,13 @@ Placeholders (final name, icon, reserved slot, reserved save bytes, item codes; 
 | BOREPILOGUE | BOREPILG.OVL | 8 | none |
 
 There is no FAMILY TREE 2 pack: one family tree system, in the base game and GOTCHI. Its code F8 is a spare.
-Save layout: `pk_ext` is 24 live bytes (goals claimed, then counters) and 104 reserved bytes (written as zeros, read past), from save
+Save layout: `pk_ext` is 24 live bytes (goals claimed, then counters: party 12–13, prison 14–17, dog-play 18) and 104 reserved bytes (written as zeros, read past), from save
 version 47. Older saves load with the goals empty. Item codes F7 to FE are the only free ones: do not use them for anything else.
+
+## Pack verification and compatibility (November 2026)
+The Create a Dog page now has five claimable goals instead of three. The two added goals track five actual dog-play interactions (not cat play) and a worn collar, hat or outfit. Dog-play counts saturate at 255 in the pre-existing `pk_ext[18]` byte; the earlier claimed-goal bits are preserved. Save version 47, lengths, disc pack slots and reserved future-pack bytes remain unchanged, so old saves load with the new progress starting at zero.
+
+The patch applicator validates complete PPF3 records, image bounds, undo flags and truncation before changing an image. Independent host Python tests run as a build gate, in addition to the existing 12-pack forward/backward/shuffled order tests. Existing PPF3 files remain supported. This is **not** a claim that the DS/DSi has separately selectable packs or that every pack's gameplay has been fully emulator-tested.
 
 ## The rule for unfinished work (placeholders)
 Anything not finished ships as a proper placeholder, never as a half-working screen:
