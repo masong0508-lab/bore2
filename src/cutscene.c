@@ -288,8 +288,6 @@ int cut_update(int held, int pressed, int steps) {
 }
 
 // ---- the studio, drawn as a bright cartoon: a clean cyan-to-white backdrop in flat bands, ring-pattern panels, light shafts, sparkles; a chibi crowd ----
-static const u16 beat_t[] = { T(105), T(228), T(392), T(436), T(545) };      // the white flash cuts
-static const struct { u16 a, b; } line_w[] = { { T(226), T(240) }, { T(388), T(424) }, { T(436), T(452) }, { T(496), T(512) }, { T(545), T(558) } };   // the speed lines
 #define FL1 T(216)     // the two graphic flash cuts (red / black / white): "MISSY TELLER!" and "WATCH ME DANCE."
 #define FL2 T(470)
 #define RESERVE_PLATE (8*1024)  // (more with a title plate up: its type is a lot of pieces)
@@ -532,19 +530,7 @@ static void gallery_draw(void) {   // tests: AUTO_CUT=9999 six poses of the libr
 }
 // ---- the lens: graphic type, the flash cuts, the title plates, the flare ----
 extern int font_sub;   // (font.c: 1 takes the glyph away from what is under it, 0 adds it)
-static void blob2(int cx, int cy, int r, int c) {   // an additive round-ish glow: a plus and a box, an octagon
-    gfx_rect(cx - r, cy - r * 4 / 10, r * 2, r * 8 / 10, c, c, c, 1); gfx_rect(cx - r * 4 / 10, cy - r, r * 8 / 10, r * 2, c, c, c, 1); gfx_rect(cx - r * 75 / 100, cy - r * 75 / 100, r * 150 / 100, r * 150 / 100, c, c, c, 1);
-}
-static void flare_draw(int t) {   // the lens flare of a low sun: a bright core, a long streak, ghosts along the line to the middle
-    int sx = 262 - t / 6, sy = 40 + t / 12; gfx_ui_blend(1);
-    int a = MIN(t, 12) * 255 / 12 * (120 + (ABS(fsin(t * 3)) >> 2)) >> 8;   // (a slight shimmer)
-    gfx_grad(0, sy - 1, sx, 3, 0, a / 2 | a / 2 << 8 | a / 3 << 16, 0, a / 2 | a / 2 << 8 | a / 3 << 16, 1);
-    gfx_grad(sx, sy - 1, SCREEN_W - sx, 3, a / 2 | a / 2 << 8 | a / 3 << 16, 0, a / 2 | a / 2 << 8 | a / 3 << 16, 0, 1);
-    blob2(sx, sy, 14, a / 2); blob2(sx, sy, 7, a);
-    for (int k = 1; k <= 3; k++) { int gx = sx + (160 - sx) * k * 7 / 10, gy = sy + (120 - sy) * k * 7 / 10; blob2(gx, gy, 6 + k * 3, a / 9); }
-    gfx_ui_blend(1);
-}
-static void plate(int in, int out, const char *l1, const char *l2, const char *sub, int y0) { pl_plate(in, out, l1, l2, sub, y0, 106, 206, 239); }
+// Film title treatment lives in ui.c; no GPU lens flares or additive ghost blobs.\nstatic void plate(int in, int out, const char *l1, const char *l2, const char *sub, int y0) { pl_plate(in, out, l1, l2, sub, y0, 106, 206, 239); }
 #ifdef FILM_PROF      // test builds: a log of the film's cost per drawing (hblanks of CPU in each part, packet bytes, overflow); read from a RAM dump with test/ramsym.py
 u16 film_log[600][7]; u8 film_ps_log[600][5]; int film_log_n; static int fp[8];
 #define PROF(i) (fp[i] = VSync(1))
@@ -580,8 +566,7 @@ static void mini_draw(void) {
     for (int i = 0; i < A_N; i++) actor_draw(i);
 #endif
     gfx_set_reserve(0);
-    if (f2 >= 14 && f2 < 18) { int f = 255 - (f2 - 14) * 64; gfx_ui_blend(1); gfx_rect(0, 0, SCREEN_W, SCREEN_H, f, f, f, 1); }
-    int lb = MIN(24, MIN(ft / 2, (total - ft) / 2)); if (lb < 0) lb = 0;
+    // The dark editorial cut ends directly on the scene; no blinding white clearing.\n    int lb = MIN(24, MIN(ft / 2, (total - ft) / 2)); if (lb < 0) lb = 0;
     gfx_rect(0, 0, SCREEN_W, lb, 0, 0, 0, 0); gfx_rect(0, SCREEN_H - lb, SCREEN_W, lb, 0, 0, 0, 0);
     if (k >= 0 && k < 4 && !(f2 >= 0 && f2 < 18)) {   // the line of the beat, typed in
         const char *tx = mini == 1 ? F->open[k] : F->end[k]; int t0 = mini_base() + k * M_BEAT + T(3), t1 = mini_base() + (k + 1) * M_BEAT - T(2);
@@ -627,27 +612,9 @@ void cut_draw(void) {
     for (int i = 0; i < A_N; i++) actor_draw(i);
     gfx_set_reserve(0); PROF(4);
     gfx_set_identity(); glass_draw(fh);
-    // the lens: speed lines on the beats, a flash, the flare, the letterbox sliding in, the fade in and out, then the words
-    for (unsigned k = 0; k < sizeof line_w / sizeof line_w[0]; k++) if (ft >= line_w[k].a && ft < line_w[k].b) {
-        int seed = (ft / 6) * 7919 + k * 131;                    // (new lines every sixth of a second: on sixes)
-        int fade = MIN(MIN(ft - line_w[k].a, line_w[k].b - ft), 6);
-        for (int i = 0; i < 26; i++) {
-            u32 h = (u32)(seed + i * 2654435) * 2246822519u; h ^= h >> 15; h *= 3266489917u; h ^= h >> 13;
-            int a = h & 255, r0 = 70 + ((h >> 8) & 63) + (6 - fade) * 14, r1 = r0 + 50 + ((h >> 16) & 63), tx, ty;
-            int ux = fcos(a), uy = fsin(a), lum = 200 + ((h >> 24) & 55);
-            for (;;) { tx = 160 + ux * r1 * 4 / 3 / 256; ty = 120 + uy * r1 / 256; if ((tx >= 1 && tx < SCREEN_W - 1 && ty >= 24 && ty < SCREEN_H - 24) || r1 <= r0 + 6) break; r1 -= 8; }
-            int sx = 160 + ux * r0 * 4 / 3 / 256, sy = 120 + uy * r0 / 256;
-            gfx_line(sx, sy, tx, ty, lum, lum, lum); gfx_line(sx + 1, sy, tx + 1, ty, lum, lum, lum);
-        }
-    }
-    for (unsigned k = 0; k < sizeof beat_t / sizeof beat_t[0]; k++) if (ft >= beat_t[k] && ft < beat_t[k] + 5) {   // a flash cut on the beat
-        int f = 150 - (ft - beat_t[k]) * 30; gfx_ui_blend(1); gfx_rect(0, 0, SCREEN_W, SCREEN_H, f, f, f, 1); }
-    { int fa = ft - FL1 - FL_COVER, fb = ft - FL2 - FL_COVER, k = fa >= 0 && fa < 4 ? fa : fb >= 0 && fb < 4 ? fb : -1;   // the white clearing after a graphic cut
-      if (k >= 0) { int f = 255 - k * 64; gfx_ui_blend(1); gfx_rect(0, 0, SCREEN_W, SCREEN_H, f, f, f, 1); } }
-    if (hero) flare_draw(ft - FL2 - FL_COVER);
-    int lb = MIN(24, MIN(ft / 2, (FILM_END + T(8) - ft) / 2 + 0)); if (lb < 0) lb = 0;
+    // Camera choreography, actors and subtitles carry the scene; no overlay streaks,\n    // white beat-flashes, faux sun flares or full-screen clearing strobe.\n    int lb = MIN(24, MIN(ft / 2, (FILM_END + T(8) - ft) / 2 + 0)); if (lb < 0) lb = 0;
     gfx_rect(0, 0, SCREEN_W, lb, 0, 0, 0, 0); gfx_rect(0, SCREEN_H - lb, SCREEN_W, lb, 0, 0, 0, 0);
-    if (ft >= GLASS_BREAK && ft < GLASS_BREAK + 8) { int f = 255 - (ft - GLASS_BREAK) * 30; gfx_ui_blend(1); gfx_rect(0, 0, SCREEN_W, SCREEN_H, f, f, f, 1); }
+    // The glass break is conveyed by the prop action and sound, not a flash overlay.
     subtitle_draw();
     if (ft > T(2) && ft < T(46)) plate(ft - T(2), T(44) - ft, "TV SHOW", "& TELL", "STARRING MISSY TELLER", 40);          // the title plate over the opening crane
     if (ft > T(560)) plate(ft - T(560), 99999, "MISSY", "TELLER", "HERE TODAY...", 52);                                         // the final card
