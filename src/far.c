@@ -3,6 +3,8 @@
 #include "gfx.h"
 #include "world.h"
 #include "bigmap.h"
+#include "house_footprint.h"
+#include "world_stream_models.h"
 #include "atlas.h"
 
 #ifndef FAR_VIEW0
@@ -208,6 +210,16 @@ static u16 fbc_cx[FBC_MAX], fbc_cy[FBC_MAX], fbc_lo[FBC_MAX], fbc_hi[FBC_MAX]; s
 static u16 fbs_lo[64], fbs_hi[64];           // each town's cells
 static const u8 wallc[10][3] = { { 226, 214, 190 }, { 176, 96, 76 }, { 236, 234, 226 }, { 214, 190, 150 }, { 160, 160, 164 },
                                  { 180, 200, 214 }, { 186, 206, 170 }, { 226, 180, 180 }, { 120, 140, 160 }, { 150, 120, 96 } };
+// The city plan's FB.col=10..15 encodes six neighborhood wall materials.
+// Medium box LOD already uses them, but the old far-card LOD used the
+// generic wallc[col%10], changing house colors abruptly at 300m.
+static const u8 *far_house_wall_rgb(const FB *f, u8 planned_rgb[3]) {
+    if (f->col >= 10) {
+        world_plan_wall_rgb(f->col - 10, planned_rgb);
+        return planned_rgb;
+    }
+    return wallc[f->col];
+}
 COLD void far_new_world(void) {
     nfb = 0; nfbc = 0;
     int ns = bm_nset();
@@ -551,6 +563,18 @@ static void face_win(const XV *a, const XV *b, const XV *c, const XV *d, u32 col
 static inline int xv_good(const XV *v) { return v->z >= ZN && v->x > -1000 && v->x < 1320 && v->y > -1000 && v->y < 1240; }
 // a building as a box: x0 < x1, z0 > z1 (north, south), sto storeys; its walls' colour, a pitched roof (or flat) and its colour
 static int far_lift;   // the hills: how high the ground is under the building being drawn
+// Only the exceptional case of a building crossing the near or guard plane
+// uses these stack-only perimeter clips. The normal path keeps its fast quads.
+static void far_clip_quad(const FV *a, const FV *b, const FV *c, const FV *d, u32 col, int slot) {
+    FV q[4] = { *a, *b, *d, *c }; // TL TR BL BR -> perimeter
+    u32 colors[4] = { col, col, col, col };
+    emit_clipped(q, colors, 4, slot);
+}
+static void far_clip_tri(const FV *a, const FV *b, const FV *c, u32 col, int slot) {
+    FV q[3] = { *a, *b, *c };
+    u32 colors[3] = { col, col, col };
+    emit_clipped(q, colors, 3, slot);
+}
 static void far_card(int x0, int z0, int x1, int z1, int top, const u8 *wc) {   // far off: one face, the one most turned to you
     int ex = feye.vx, ey = feye.vy + far_lift, ez = feye.vz, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     int ax, az, bx, bz, L;
@@ -562,9 +586,72 @@ static void far_card(int x0, int z0, int x1, int z1, int top, const u8 *wc) {   
     SVECTOR v[4] SVEC_ALIGN = { { sc16(ax - ex), sc16(top - ey), sc16(az - ez), 0 }, { sc16(bx - ex), sc16(top - ey), sc16(bz - ez), 0 },
                                 { sc16(ax - ex), sc16(-ey), sc16(az - ez), 0 }, { sc16(bx - ex), sc16(-ey), sc16(bz - ez), 0 } };
     XV o[4]; gfx_xform(v, o, 4);
-    for (int i = 0; i < 4; i++) if (!xv_good(&o[i])) return;
+    int all_good = 1;
+    for (int i = 0; i < 4; i++) if (!xv_good(&o[i])) { all_good = 0; break; }
+    if (!all_good) {
+        // Any one corner crossing the guard band used to erase the whole card.
+        FV clip[4];
+        fxf(ax, top - far_lift, az, &clip[0]);
+        fxf(bx, top - far_lift, bz, &clip[1]);
+        fxf(ax, -far_lift, az, &clip[2]);
+        fxf(bx, -far_lift, bz, &clip[3]);
+        int zw = (clip[0].z + clip[1].z + clip[2].z + clip[3].z) / 4;
+        if (zw < ZN * 16) zw = ZN * 16;
+        far_clip_quad(&clip[0], &clip[1], &clip[2], &clip[3],
+                      lit(wc, L, haze_f(zw)), far_slot(zw));
+        return;
+    }
     int zw = ((o[0].z + o[3].z) >> 1) << 4;
     face_f4(&o[0], &o[1], &o[2], &o[3], lit(wc, L, haze_f(zw)), far_slot(zw));
+}
+// The fast box path must never discard an entire visible home because one
+// of its eight corners is behind the eye or outside the GTE guard band.
+// Reuse the existing polygon clipper with a small stack-local corner set.
+static void far_box_partial(int x0, int z0, int x1, int z1, const u8 *wc,
+                            int rs, int pit, const u8 *rc, int top) {
+    int ex = feye.vx, ey = feye.vy + far_lift, ez = feye.vz;
+    FV v[8];
+    for (int i = 0; i < 8; i++)
+        fxf((i & 1) ? x1 : x0, (i & 4) ? top - far_lift : -far_lift,
+            (i & 2) ? z1 : z0, &v[i]);
+    int zw = (v[0].z + v[3].z + v[4].z + v[7].z) / 4;
+    if (zw < ZN * 16) zw = ZN * 16;
+    int slot = far_slot(zw), hf = haze_f(zw);
+    if (ez < z1) far_clip_quad(&v[6], &v[7], &v[2], &v[3], lit(wc, Ls, hf), slot);
+    if (ez > z0) far_clip_quad(&v[5], &v[4], &v[1], &v[0], lit(wc, Ln, hf), slot);
+    if (ex < x0) far_clip_quad(&v[4], &v[6], &v[0], &v[2], lit(wc, Lw, hf), slot);
+    if (ex > x1) far_clip_quad(&v[7], &v[5], &v[3], &v[1], lit(wc, Le, hf), slot);
+    if (ey >= top) return; // camera below roof
+    if (!rs) {
+        static const u8 flat[3] = { 120, 118, 114 };
+        far_clip_quad(&v[4], &v[5], &v[6], &v[7], lit(flat, Ltop, hf), slot);
+        return;
+    }
+    int hip = rs == 1, alongx = rs == 2 && z0 - z1 <= x1 - x0;
+    int rise = world_roof_rise(pit, MIN(x1 - x0, z0 - z1) / 2);
+    int rx0 = alongx || hip ? x0 : (x0 + x1) / 2;
+    int rz0 = alongx || hip ? (z0 + z1) / 2 : z0;
+    int rx1 = alongx || hip ? x1 : (x0 + x1) / 2;
+    int rz1 = alongx || hip ? (z0 + z1) / 2 : z1;
+    if (hip) rx0 = rx1 = (x0 + x1) / 2;
+    FV ridge[2];
+    fxf(rx0, top - rise - far_lift, rz0, &ridge[0]);
+    fxf(rx1, top - rise - far_lift, rz1, &ridge[1]);
+    const FV *ring[4] = { &v[4], &v[5], &v[7], &v[6] };
+    static const u8 shade[4] = { 6, 7, 8, 7 };
+    int above = ey < top - rise, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    for (int k = 0; k < 4; k++) {
+        if (!above && !((k == 0 && ez > cz) || (k == 1 && ex > cx) ||
+                        (k == 2 && ez < cz) || (k == 3 && ex < cx))) continue;
+        const FV *a = ring[k], *b = ring[(k + 1) & 3];
+        int slope = !hip && (alongx ? !(k & 1) : (k & 1));
+        u32 col = hip || slope ? lit(rc, Lroof * shade[k] / 7, hf)
+                               : lit(wc, k == 0 ? Ln : k == 1 ? Le : k == 2 ? Ls : Lw, hf);
+        if (slope) {
+            int rev = alongx ? k == 2 : k == 3;
+            far_clip_quad(rev ? b : a, rev ? a : b, &ridge[0], &ridge[1], col, slot);
+        } else far_clip_tri(a, b, (k == 0 || k == 3) ? &ridge[0] : &ridge[1], col, slot);
+    }
 }
 // rs: the roof: 0 flat, 1 hip (four slopes up to a point), 2 gable with its ridge along the longer side, 3 gable with its ridge north to south (turned to the street); pit: 1 or 2 (how steep)
 static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int rs, int pit, const u8 *rc, int windows) {
@@ -577,7 +664,12 @@ static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int r
     SVECTOR v[8] SVEC_ALIGN = { { X0, Y0, Z0, 0 }, { X1, Y0, Z0, 0 }, { X0, Y0, Z1, 0 }, { X1, Y0, Z1, 0 },     // the foot: NW NE SW SE
                                 { X0, Y1, Z0, 0 }, { X1, Y1, Z0, 0 }, { X0, Y1, Z1, 0 }, { X1, Y1, Z1, 0 } };   // the top
     XV o[8]; gfx_xform(v, o, 8);
-    for (int i = 0; i < 8; i++) if (!xv_good(&o[i])) return;
+    int all_good = 1;
+    for (int i = 0; i < 8; i++) if (!xv_good(&o[i])) { all_good = 0; break; }
+    if (!all_good) {
+        far_box_partial(x0, z0, x1, z1, wc, rs, pit, rc, top);
+        return;
+    }
     int zmid = (o[0].z + o[3].z + o[4].z + o[7].z) >> 2, zw = zmid << 4;
     int slot = far_slot(zw), hf = haze_f(zw);
     int use_win = windows && far_detail >= 2 && tex_ok && gfx_focal * sto * WALL_FULL > zw * 20;   // (windows when it stands 20 px or more)
@@ -637,8 +729,8 @@ static void far_dot(int x0, int z0, int x1, int z1, int sto, const u8 *wc) {   /
 }
 static void far_building(const FB *f, int x0, int z0, int x1, int z1) {
     int rs = FROOF(f) == 2 || FSTO(f) > 2 ? 0 : FROOF(f) == 0 ? 1 : FROOF(f) == 1 ? 2 : 3;   // (world_roof_of's flat, hip, gable, front gable)
-    u8 wcol[3]; const u8 *wc = wallc[f->col % 10], *rcol = world_roof_rgb(fb_sto[f - fb] >> 5);
-    if (f->col >= 10) { world_plan_wall_rgb(f->col - 10, wcol); wc = wcol; }
+    u8 wcol[3]; const u8 *wc = far_house_wall_rgb(f, wcol);
+    const u8 *rcol = world_roof_rgb(fb_sto[f - fb] >> 5);
     far_lift = world_gh_lot((x0 + x1) / 2, (z0 + z1) / 2);
     far_box(x0, z0, x1, z1, FSTO(f), wc, rs, 1 + f->pad, rcol, f->lot != LOT_HOUSE && f->lot != LOT_COTTAGE);
     far_lift = 0;
@@ -650,7 +742,7 @@ void far_box_world(int x0, int z0, int x1, int z1, int sto, u16 wall15, int rs, 
     far_box(x0, z0, x1, z1, sto, wc, sto <= 2 ? rs : 0, pit, rc, sto >= 2);
     far_lift = 0;
 }
-static void draw_buildings(void) {
+static void draw_buildings(int rx0, int ry0, int rx1, int ry1) {
     int ns = bm_nset(); if (ns > 64) ns = 64;
     int far2 = max_bld;
     for (int i = 0; i < ns; i++) {
@@ -664,9 +756,21 @@ static void draw_buildings(void) {
             if (cd > 0 && gfx_focal * fbc_sto[c] * WALL_FULL < cd * 2) continue; }
           for (int k = fbc_lo[c]; k < fbc_hi[c]; k++) {
             const FB *f = &fb[k];
-            if (f->bx >= world_wbx && f->bx < world_wbx + MW / BM_BLK && f->by >= world_wby && f->by < world_wby + MH / BM_BLK) continue;   // (the map draws its own)
+            int inside_window = f->bx >= world_wbx && f->bx < world_wbx + MW / BM_BLK &&
+                                f->by >= world_wby && f->by < world_wby + MH / BM_BLK;
+            int pending = inside_window ? world_stream_block_model_state(f->bx, f->by) : STREAM_MODEL_READY;
+            if (inside_window && pending == STREAM_MODEL_READY) continue; // the map now owns this block
             u8 ft[4]; FT_GET(ft, fb_ft[k]);
-            int tx0 = f->bx * BM_BLK + ft[0] - fwx0, ty0 = f->by * BM_BLK + ft[1] - fwy0, tx1 = f->bx * BM_BLK + ft[2] - fwx0, ty1 = f->by * BM_BLK + ft[3] - fwy0;
+            // bm_lot_foot stores the coordinates of the LAST WALL TILES (inclusive).
+            // far_box takes an exclusive opposite edge. Omitting +1 shrank
+            // every home in the distant pass by a full tile on both axes.
+            int tx0 = f->bx * BM_BLK + ft[0] - fwx0, ty0 = f->by * BM_BLK + ft[1] - fwy0;
+            int tx1 = house_foot_end_tile(f->bx, ft[2], fwx0, BM_BLK);
+            int ty1 = house_foot_end_tile(f->by, ft[3], fwy0, BM_BLK);
+            if (inside_window) {
+                int overlaps_detail = tx1 > rx0 && tx0 <= rx1 && ty1 > ry0 && ty0 <= ry1;
+                if (!stream_house_proxy_needed(pending, overlaps_detail)) continue;
+            }
             int x0 = tx0 * TILE, x1 = tx1 * TILE, z0 = -ty0 * TILE, z1 = -ty1 * TILE;
             int cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
             int dx = ABS(cx - feye.vx), dz = ABS(cz - feye.vz), d = MAX(dx, dz) + MIN(dx, dz) / 2;
@@ -674,7 +778,12 @@ static void draw_buildings(void) {
             int hgt = FSTO(f) * WALL_FULL;
             if (gfx_focal * hgt < d * 2) continue;                      // under two pixels tall: lost in the haze
             if (far_detail == 0 && FSTO(f) < 3 && d > M2U(120)) continue;
-            if (d > M2U(far_lite ? 100 : 300)) { far_lift = world_gh_lot(cx, cz); far_dot(x0, z0, x1, z1, FSTO(f), wallc[f->col % 10]); far_lift = 0; }   // (far: one rectangle each)
+            if (d > M2U(far_lite ? 100 : 300)) {
+                u8 planned_rgb[3]; const u8 *wc = far_house_wall_rgb(f, planned_rgb);
+                far_lift = world_gh_lot(cx, cz);
+                far_dot(x0, z0, x1, z1, FSTO(f), wc);
+                far_lift = 0;
+            }   // (far: one rectangle each)
             else far_building(f, x0, z0, x1, z1);
           }
         }
@@ -847,7 +956,7 @@ void far_draw(int rx0, int ry0, int rx1, int ry1) {
     if (!far_on_frame) return;
     far_gte();
     int t0 = gfx_hb(); draw_land(rx0, ry0, rx1, ry1); int t1 = gfx_hb(); int p1 = far_prims;
-    draw_buildings(); int t2 = gfx_hb(); int p2 = far_prims;
+    draw_buildings(rx0, ry0, rx1, ry1); int t2 = gfx_hb(); int p2 = far_prims;
     draw_trees(rx0, ry0, rx1, ry1); int t3 = gfx_hb();
     far_hb[0] = t1 - t0; far_hb[1] = t2 - t1; far_hb[2] = t3 - t2; far_np[0] = p1; far_np[1] = p2 - p1; far_np[2] = far_prims - p2;
     gfx_set_identity();

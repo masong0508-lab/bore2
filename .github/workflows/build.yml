@@ -18,6 +18,12 @@ jobs:
           /tmp/camera_lens_ps1
           cc -std=c99 -Wall -Wextra -Werror -DBORE_DC test/camera_lens_test.c -o /tmp/camera_lens_dc
           /tmp/camera_lens_dc
+      - name: Verify whole-house LOD hysteresis and moving camera stability
+        run: cc -std=c99 -Wall -Wextra -Werror test/house_lod_test.c -o /tmp/house_lod && /tmp/house_lod
+      - name: Verify near/far house footprint edges match generated inclusive walls
+        run: cc -std=c99 -Wall -Wextra -Werror test/house_footprint_test.c -o /tmp/house_footprint && /tmp/house_footprint
+      - name: Verify pending-house proxy and prioritized roof handoff
+        run: cc -std=c99 -Wall -Wextra -Werror test/world_stream_models_test.c -o /tmp/world_stream_models && /tmp/world_stream_models
       - name: Verify speed-bounded skate chase camera focus
         run: |
           cc -std=c99 -Wall -Wextra -Werror test/skate_camera_test.c -o /tmp/skate_camera_test

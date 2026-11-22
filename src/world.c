@@ -13,6 +13,8 @@
 #include "mem8.h"
 #include "pop.h"
 #include "far.h"
+#include "house_lod.h"
+#include "world_stream_models.h"
 #include "nature.h"
 #include "island.h"
 #include "save.h"
@@ -1174,6 +1176,13 @@ extern int dbg_ws[8];
 // from you as they come in: past the full-detail range). The move itself only slides the maps. All four in the moving frame cost 180 hb
 // on top of the slide; one a frame is 45. Until it is made a block is open grass with nothing on it.
 static u8 gen_pend[WB][WB]; static int gen_npend;
+// Expose only whether an in-window block's planned far-house placeholder
+// is still needed. Blocks leaving the window remain far-owned as before.
+int world_stream_block_model_state(int bx, int by) {
+    if (world_zone != ZONE_CITY || world_wbx < 0 || world_wby < 0) return STREAM_MODEL_READY;
+    return stream_model_state(&gen_pend[0][0], &rq_dirty[0][0], WB,
+                              bx - world_wbx, by - world_wby);
+}
 static void gen_one(int wx, int wy) {
     int keep_r = roof_dirty, keep_a = ao_dirty;
     gen_block(wx, wy); gen_pend[wy][wx] = 0; gen_npend--;
@@ -2214,6 +2223,14 @@ static void tile_row_span(const TileView *tv, int my, int tz, int kx, int ky, in
 static u8 bld[MH][MW];
 #define NBLD 251
 static u8 b_lod[NBLD];                           // (version 7: a house or block of flats past 9 tiles keeps its upper storeys as one box: see lod_up)
+// A rectangular box must NEVER cover an L-shaped house's open yard or court.
+// Keep just 251 bits derived from the roof-region flood (about 32 bytes).
+static u8 b_rect[(NBLD + 7) / 8];
+static inline int b_rect_get(int b) { return (b_rect[b >> 3] >> (b & 7)) & 1; }
+static inline void b_rect_set(int b, int yes) {
+    u8 m = (u8)(1u << (b & 7));
+    if (yes) b_rect[b >> 3] |= m; else b_rect[b >> 3] &= (u8)~m;
+}
 static u8 b_see[NBLD];                            // (see_through: the buildings looked into this frame)
 static int rx0, rx1, ry0, ry1, ex0, ex1, ey0, ey1;
 static inline int in_range(int x, int y);
@@ -2389,7 +2406,7 @@ static u8 lvl_bb[NLEVELS][4];                     // each storey's built-on box 
 static u32 lvl_edge[NLEVELS][MH][(MW + 31) / 32];  // each storey's tiles next to open air (a bit each)
 // Buildings sit inside their own blocks (a street runs along every block's top and left), so when the SAN BOREAS window moves,
 // what was worked out for the blocks that stay is moved with them and only the blocks coming in are worked out (a few a frame).
-static int bld_alloc(void) { for (int b = 1; b < NBLD; b++) if (b_x0[b] == 255) { if (b > nbld) nbld = b; return b; } return NBLD - 1; }
+static int bld_alloc(void) { for (int b = 1; b < NBLD; b++) if (b_x0[b] == 255) { b_lod[b] = 0; b_rect_set(b, 0); if (b > nbld) nbld = b; return b; } return NBLD - 1; }
 static u8 rbox[NLEVELS][4];
 int dbg_rr_hb, dbg_rr_n, dbg_rr_blk, dbg_ws[8];
 // the roofs and buildings of the box [x0..x1] x [y0..y1] (the whole map, or a block that has just come in)
@@ -2487,11 +2504,29 @@ COLD static void roof_region(int x0, int y0, int x1, int y1) {
                     if (cy > Y0) NB(cx, cy - 1)
                     if (cy < Y1) NB(cx, cy + 1)
                     #undef NB
-                } }
+                }
+                // qt is the exact number of connected indoor tiles, counted
+                // as the region is generated; no per-frame shape scan needed.
+                b_rect_set(id, house_lod_box_safe(qt, b_x0[id], b_y0[id], b_x1[id], b_y1[id]));
+            }
         }
     }
     for (int l = 1; l < NLEVELS; l++) if (rbox[l][2] >= rbox[l][0])   // how tall each building is
         for (int y = rbox[l][1]; y <= rbox[l][3]; y++) for (int x = rbox[l][0]; x <= rbox[l][2]; x++) { int b = bld[y][x]; if (b && rm_get(l, x, y) && l > b_top[b]) b_top[b] = (u8)l; }
+    // A simplified upper-storey box across the ground-floor bounds would
+    // invent walls through a recessed upper terrace, missing wing or
+    // courtyard. Reject that LOD when any upper floor lacks perimeter
+    // support. Interior stairwell openings do NOT disqualify an otherwise
+    // intact outer wall ring. Cached in b_rect, so there is no frame cost.
+    for (int b = 1; b <= nbld; b++) if (b_x0[b] != 255 && b_top[b] && b_rect_get(b)) {
+        for (int l = 1; l <= b_top[b]; l++) {
+            Row upper = mp[l];
+            if (!upper || !house_lod_shell_ring(&upper[0][0], MW + 1,
+                                                b_x0[b], b_y0[b], b_x1[b], b_y1[b])) {
+                b_rect_set(b, 0); break;
+            }
+        }
+    }
     for (int b = 1; b <= nbld; b++) {                            // each building's roof
         if (b_x0[b] == 255) continue;
         if (world_zone == ZONE_CITY && world_wbx >= 0) {
@@ -2551,6 +2586,7 @@ COLD static void roof_region(int x0, int y0, int x1, int y1) {
 static void roof_rebuild(void) {
     for (int b = 0; b < NBLD; b++) b_x0[b] = 255;
     nbld = 0;
+    memset(b_rect, 0, sizeof b_rect);
     memset(bld, 0, sizeof bld);
     for (int l = 0; l < NLEVELS; l++) lvl_used[l] = 0;
     lvl_used[0] = 1; lvl_bb[0][0] = 0; lvl_bb[0][1] = 0; lvl_bb[0][2] = MW - 1; lvl_bb[0][3] = MH - 1;
@@ -2599,12 +2635,13 @@ static void roof_shift(int dx, int dy) {
     }
     // (no building's tiles may point at a freed one: a building is either kept whole or gone whole, so bld's gone parts left too)
 }
-static void roof_pending(int max) {                            // work out up to max of the blocks still waiting
-    for (int wy = 0; wy < WB && max > 0; wy++) for (int wx = 0; wx < WB && max > 0; wx++) {
-        if (!rq_dirty[wy][wx]) continue;
-        rq_dirty[wy][wx] = 0; rq_n--; max--;
-        roof_region(wx * BM_BLK, wy * BM_BLK, wx * BM_BLK + BM_BLK - 1, wy * BM_BLK + BM_BLK - 1);
-    }
+static void roof_pending(int picked) {                   // at most one roof region a frame
+    if (picked < 0 || picked >= WB * WB) return;
+    int wx = picked % WB, wy = picked / WB;
+    if (!rq_dirty[wy][wx]) return;
+    rq_dirty[wy][wx] = 0; rq_n--;
+    roof_region(wx * BM_BLK, wy * BM_BLK, wx * BM_BLK + BM_BLK - 1,
+                wy * BM_BLK + BM_BLK - 1);
 }
 #ifdef BORE_DC
 #define RTS 32
@@ -3057,9 +3094,20 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     frame_t = t; nc_tick++;
     if (ao_dirty) { int h = gfx_hb(); ao_update(); h = gfx_hb() - h; if (h > dbg_ao_hb) dbg_ao_hb = h; }
     if (roof_dirty) { int h = gfx_hb(); roof_rebuild(); h = gfx_hb() - h; if (h > dbg_roof_hb) dbg_roof_hb = h; }
-    else if (rq_n) {                                 // the blocks that came into the window (far off): in the frames' spare time
+    else if (rq_n) {
+        // Deferred blocks enter the local window without roof metadata.
+        // Prioritize the camera-facing end of the queue; never wait for a
+        // cheap frame if the missing block has reached the detail boundary.
         static int wait; extern int gfx_last_cpu;
-        if (gfx_last_cpu < 420 || ++wait >= 3) { roof_pending(1); wait = 0; }
+        int eye_x = cam.eye.vx / TILE, eye_y = -cam.eye.vz / TILE;
+        int next = stream_pick_roof(&rq_dirty[0][0], WB, BM_BLK,
+                                     fx, fy, eye_x, eye_y);
+        if (next >= 0) {
+            int near = stream_block_gap(fx, fy, next % WB, next / WB, BM_BLK) <= world_detail_r + 2;
+            if (near || gfx_last_cpu < 420 || ++wait >= 3) {
+                roof_pending(next); wait = 0;
+            }
+        }
     }
     const int R = world_detail_r;
     nat_on = world_zone == ZONE_ISLAND && world_nature;
@@ -3075,11 +3123,11 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         int inside = b_x0[b] >= rx0 && b_x1[b] <= rx1 && b_y0[b] >= ry0 && b_y1[b] <= ry1;
         int touch = b_x1[b] >= rx0 && b_x0[b] <= rx1 && b_y1[b] >= ry0 && b_y0[b] <= ry1;
         b_str[b] = (u8)(touch && !inside);
-        b_lod[b] = 0;
-        if (bm_gen >= 7 && world_zone == ZONE_CITY && world_wbx >= 0 && !world_view_lvl && b_top[b] >= 1 && b_top[b] <= 3 && touch && !b_see[b] && (b_x1[b] - b_x0[b] + 1) * (b_y1[b] - b_y0[b] + 1) <= 200) {
-            int dx_ = MAX(MAX(b_x0[b] - fx, fx - b_x1[b]), 0), dy_ = MAX(MAX(b_y0[b] - fy, fy - b_y1[b]), 0);   // (tiles from the nearest wall)
-            int ex_ = MAX(MAX(b_x0[b] - etx_, etx_ - b_x1[b]), 0), ey_ = MAX(MAX(b_y0[b] - ety_, ety_ - b_y1[b]), 0);   // (and from the camera: zoomed out, it is the eye's distance that counts)
-            b_lod[b] = (u8)(dx_ * dx_ + dy_ * dy_ > 9 * 9 || ex_ * ex_ + ey_ * ey_ + eh_ * eh_ > 22 * 22); }
+        if (bm_gen >= 7 && world_zone == ZONE_CITY && world_wbx >= 0 && !world_view_lvl && b_top[b] >= 1 && b_top[b] <= 3 && touch && !b_see[b] && b_rect_get(b) && (b_x1[b] - b_x0[b] + 1) * (b_y1[b] - b_y0[b] + 1) <= 200) {
+            int dx_ = MAX(MAX(b_x0[b] - fx, fx - b_x1[b]), 0), dy_ = MAX(MAX(b_y0[b] - fy, fy - b_y1[b]), 0);   // nearest wall to Sim, tiles
+            int ex_ = MAX(MAX(b_x0[b] - etx_, etx_ - b_x1[b]), 0), ey_ = MAX(MAX(b_y0[b] - ety_, ety_ - b_y1[b]), 0); // nearest wall to eye
+            b_lod[b] = (u8)house_lod_upper(b_lod[b], dx_ * dx_ + dy_ * dy_, ex_ * ex_ + ey_ * ey_ + eh_ * eh_);
+        } else b_lod[b] = 0;
         if (b_str[b]) { ex0 = MIN(ex0, b_x0[b]); ex1 = MAX(ex1, b_x1[b]); ey0 = MIN(ey0, b_y0[b]); ey1 = MAX(ey1, b_y1[b]); }
     }
     ex0 &= ~1; ey0 &= ~1;

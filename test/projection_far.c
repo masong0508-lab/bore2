@@ -28,6 +28,36 @@ void test_far_projection(void) {
         int h = packet_y(p[4]) - packet_y(p[2]);
         assert(ABS(h - focal * (2 * WALL_FULL + 40) / 9744) <= 1);
     }
+    /* Real GTE regression: one off-guard corner must not remove the house. */
+    {
+        static const u8 wall[3] = {128, 128, 128};
+        gfx_set_focal(260);
+        cam.eye = (VECTOR){0, 0, 0}; feye = cam.eye; far_gte();
+        u32 *p = projection_packets();
+        far_card(-12000, 2500, 12000, 2000, -800, wall);
+        assert(gfx_pk_next > (char *)p);
+        cam.eye = (VECTOR){0, -1200, -300}; feye = cam.eye; far_gte();
+        p = projection_packets();
+        far_box(-700, 600, 700, -200, 2, wall, 1, 1, wall, 0);
+        assert(gfx_pk_next > (char *)p);
+    }
+    /* Check every far-house material code using the real production lookup.
+     * A planned house must not turn into a generic color at card LOD. */
+    {
+        FB f = {0};
+        u8 tmp[3], expected[3];
+        for (int code = 0; code < 16; ++code) {
+            f.col = (unsigned)code;
+            const u8 *actual = far_house_wall_rgb(&f, tmp);
+            if (code < 10) {
+                assert(actual == wallc[code]);
+            } else {
+                world_plan_wall_rgb(code - 10, expected);
+                assert(actual == tmp);
+                for (int c = 0; c < 3; ++c) assert(actual[c] == expected[c]);
+            }
+        }
+    }
     /* The top-of-screen reach also follows the active vertical field of view. */
     cam.eye = (VECTOR){0, -2000, 0}; cam.at = (VECTOR){0, -1000, 1000};
     gfx_set_focal(230); assert(far_setup()); int wide_reach = max_ground;
