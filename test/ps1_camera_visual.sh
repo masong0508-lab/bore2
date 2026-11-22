@@ -37,14 +37,14 @@ for lens in legacy corrected; do
     # Script times are counted from GAMESTART in the emulator log.
     # The game has entered the deterministic live home camera by then.
     cat >"$OUT/script-$lens.txt" <<'ROUTE'
-1400 shot
-1700 shot
-2000 shot
+2300 shot
+2500 shot
+2700 shot
 ROUTE
     (
         cd "$BD"
         DSCROP=None DSRAW=1 DSSCRIPT="$OUT/script-$lens.txt" \
-          timeout 520 "$RUNNER" -log info -frames 2700 \
+          timeout 520 "$RUNNER" -log info -frames 3200 \
           -dumpdir "$OUT/shots-$lens" -dumpinterval 100000 \
           "$BD/bore2.cue" >"$OUT/emulate-$lens.log" 2>&1
     ) || { echo "$lens DuckStation playback failed" >&2; tail -80 "$OUT/emulate-$lens.log" >&2; exit 2; }
@@ -69,6 +69,11 @@ for idx, (old_path, new_path) in enumerate(zip(*frames)):
     new = Image.open(new_path).convert("RGB")
     if old.size != (320, 240) or new.size != (320, 240):
         raise SystemExit(f"FAIL: native 320x240 capture missing at pair {idx}: {old.size}/{new.size}")
+    # The first pre-tour attempt captured two loading screens; such
+    # frames have under 400 distinct RGB colours, versus >1400 once
+    # the furnished home renders. Require real, nontrivial 3D detail.
+    if min(len(set(old.getdata())), len(set(new.getdata()))) < 650:
+        raise SystemExit(f"FAIL: captured a loading/low-detail scene rather than the live home at pair {idx}")
     oa, na = old.tobytes(), new.tobytes()
     changed = sum(x != y for x, y in zip(oa, na))
     if max(oa) - min(oa) < 30 or max(na) - min(na) < 30:
