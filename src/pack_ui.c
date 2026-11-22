@@ -12,6 +12,7 @@
 #include "ovl.h"
 #include "band.h"
 #include "dog.h"
+#include "pack_dog_progress.h"
 #include <psxgpu.h>
 #include <psxpad.h>
 #include <stdio.h>
@@ -64,13 +65,13 @@ static const Goal GL[12][5] = {
     { { "SERVE A SENTENCE", 200 }, { "EARN PAROLE", 500 }, { "BREAK OUT", 1000 }, { "PULL OFF A HEIST", 1500 }, { "KEEP A STOLEN BOAT OR PLANE", 3000 } },
     { { "THROW A PARTY", 200 }, { "FIVE PARTIES", 600 }, { "FIFTEEN PARTIES", 2000 }, { "A GREAT PARTY: SCORE 4", 500 }, { "A LEGENDARY PARTY: SCORE 8", 2500 } },
     { { "FLY A MISSION", 500 }, { "THREE MISSIONS DONE", 1500 }, { "ALL SIX MISSIONS DONE", 5000 }, { "A PERFECT ROCKET: ALL PARTS", 3000 }, { "REACH COMMANDER", 6000 } },
-    { { "HAVE A DOG", 200 }, { "NAME YOUR DOG", 200 }, { "A WELL FED DOG", 300 }, { "", 0 }, { "", 0 } },
+    { { "HAVE A DOG", 200 }, { "NAME YOUR DOG", 200 }, { "A WELL FED DOG", 300 }, { "PLAY WITH YOUR DOG 5 TIMES", 600 }, { "DRESS UP YOUR DOG", 700 } },
     { { "FIRST MIX", 150 }, { "A STEADY HAND: SKILL 100", 300 }, { "CROWD PLEASER: SKILL 350", 800 }, { "RESIDENT DJ: SKILL 650", 1500 }, { "MASTER OF THE DECKS", 4000 } },
     { { "BUILD A LUXURY", 300 }, { "SIX LUXURIES", 1000 }, { "ALL TWELVE LUXURIES", 5000 }, { "MOVE TO AN ISLE", 1500 }, { "A CASTAWAY CLUB GOAL", 800 } },
     { { "BUILD ON THE FARM", 300 }, { "THREE BUILDINGS", 800 }, { "ALL SIX BUILDINGS", 3000 }, { "THE FARM EARNS $1000", 1000 }, { "25 SALES AT THE STAND", 1500 } },
     { { "OWN A BOAT OR A PLANE", 300 }, { "FIRST JOB OR LANDING", 400 }, { "TEN JOBS AND LANDINGS", 1500 }, { "OWN FIVE CRAFT", 2500 }, { "OWN TEN CRAFT", 6000 } },
 };
-static const u8 NG[12] = { 5, 5, 5, 5, 5, 5, 5, 3, 5, 5, 5, 5 };
+static const u8 NG[12] = { 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5 };
 #define MASTER 3000
 static int pc(int v) { return __builtin_popcount((unsigned)v); }
 static int gdone(int pk, int g) {   // goal g of pack pk, read off what the pack keeps
@@ -83,7 +84,11 @@ static int gdone(int pk, int g) {   // goal g of pack pk, read off what the pack
     case 4: return g == 0 ? pk_ext[PKX_PRISON] >= 1 : g == 1 ? pk_ext[PKX_PRISON + 1] >= 1 : g == 2 ? pk_ext[PKX_PRISON + 2] >= 1 : g == 3 ? pk_ext[PKX_PRISON + 3] >= 1 : (pk_data[40] | pk_data[41] << 8) != 0;
     case 5: return g == 0 ? pk_ext[PKX_PARTY] >= 1 : g == 1 ? pk_ext[PKX_PARTY] >= 5 : g == 2 ? pk_ext[PKX_PARTY] >= 15 : g == 3 ? pk_ext[PKX_PARTY + 1] >= 4 : pk_ext[PKX_PARTY + 1] >= 8;
     case 6: return g == 0 ? pc(space_done) >= 1 : g == 1 ? pc(space_done) >= 3 : g == 2 ? pc(space_done) >= 6 : g == 3 ? space_tech[0] + space_tech[1] + space_tech[2] >= 12 : space_cert() >= 4;
-    case 7: return g == 0 ? pet_kind == 1 : g == 1 ? pet_kind == 1 && pet_dog.name[0] : pet_kind == 1 && pet_hun >= 70;
+    case 7: return g == 0 ? pet_kind == 1 :
+                g == 1 ? pet_kind == 1 && pet_dog.name[0] :
+                g == 2 ? pet_kind == 1 && pet_hun >= 70 :
+                g == 3 ? pack_dog_play_goal(pk_ext[PKX_DOG_PLAY]) :
+                         pack_dog_styled(pet_kind, pet_dog.look[DL_COLLAR], pet_dog.look[DL_HAT], pet_dog.look[DL_OUTFIT]);
     case 8: { static const u16 t[5] = { 1, 100, 350, 650, 1000 }; return dj_xp >= t[g]; }
     case 9: { int h = pk_data[0] | pk_data[1] << 8; return g == 0 ? pc(h) >= 1 : g == 1 ? pc(h) >= 6 : g == 2 ? pc(h) >= 12 : g == 3 ? pk_data[2] != 0 : (pk_data[5] | pk_data[6]) != 0; }
     case 10: { int b = pk_data[16] | pk_data[17] << 8; return g == 0 ? pc(b) >= 1 : g == 1 ? pc(b) >= 3 : g == 2 ? pc(b) >= 6 : g == 3 ? fm_earned >= 1000 : fm_buyers >= 25; }
