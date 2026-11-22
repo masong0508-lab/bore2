@@ -1078,6 +1078,16 @@ static void life_update(int steps) {
                 }
             }
             if (k_ >= 0) { for (int i = 0; i < nsims; i++) { sims[i].x = hx_ + (i % 3) * 3; sims[i].z = hz_ - (i / 3) * 3; sims[i].path_n = 0; sims[i].lvl = 0; } cam_fx = hx_; cam_fz = hz_; }
+#ifdef AUTO_HOUSE_SWEEP
+            // Test-only orbit/dolly at the logic clock, not the frame count.
+            // No change to ordinary builds or the saved camera options.
+            if (k_ >= 0 && fr_ > 130) {
+                int sweep = MIN(fr_ - 130, 480);
+                cam_yaw = (2600 + sweep * 7) & 4095;
+                cam_dist = 1100 + sweep * 8;
+                cam_pitch = 560 + sweep / 8;
+            }
+#endif
           }
 #elif defined(AUTO_WALKAT)
           {   // (test builds, AUTO_CITY with AUTO_WALKAT=1 and AUTO_AT_BX/BY=block, AUTO_AT_TX/TY=tile: a taxi there, then the same stroll east as the plain route, for frame-pacing runs on a chosen street)
