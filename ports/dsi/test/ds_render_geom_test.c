@@ -48,6 +48,36 @@ int main(void) {
         assert(west[2] == east[0] && !overlaps(west,east));
         assert(north[3] == south[1] && !overlaps(north,south));
     }
+    /* Exhaust the 13x13 build-cell grid, not just a few chosen room splits.
+     * Every tile must meet its west/north neighbor without a coplanar overlap,
+     * so rectangular floor partitions remain crack-free at all lot edges. */
+    for (int y = 0; y < 13; ++y) for (int x = 0; x < 13; ++x) {
+        int tile[4], adjacent[4];
+        floor_rect(x, y, 1, 1, tile);
+        if (x) {
+            floor_rect(x - 1, y, 1, 1, adjacent);
+            assert(adjacent[2] == tile[0] && adjacent[1] == tile[1] &&
+                   adjacent[3] == tile[3] && !overlaps(tile, adjacent));
+        }
+        if (y) {
+            floor_rect(x, y - 1, 1, 1, adjacent);
+            assert(adjacent[3] == tile[1] && adjacent[0] == tile[0] &&
+                   adjacent[2] == tile[2] && !overlaps(tile, adjacent));
+        }
+    }
+    /* The 2x2 raised lawn checker is level across all four cells, but
+     * disappears beneath any supported floor; this avoids floating terrain
+     * next to a built room and does not depend on the camera. */
+    {
+        unsigned char checker[13 * 13] = {0};
+        for (int y = 0; y < 2; ++y) for (int x = 2; x < 4; ++x)
+            assert(ds_plot_ground_lift(checker, 13, x, y, 1) == 20);
+        checker[2] = 1;
+        assert(ds_plot_ground_lift(checker, 13, 2, 0, 1) == 40);
+        assert(ds_plot_ground_lift(checker, 13, 3, 0, 1) == 0);
+        assert(ds_plot_ground_lift(checker, 13, 2, 1, 1) == 0);
+        assert(ds_plot_ground_lift(checker, 13, 3, 1, 1) == 0);
+    }
     /* L-shaped house: the adjoining garage cannot receive overlapping
      * eaves across its shared edge, but exposed exterior edges still can. */
     unsigned char roof[6 * 6] = {0};
