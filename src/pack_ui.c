@@ -13,6 +13,7 @@
 #include "band.h"
 #include "dog.h"
 #include "pack_dog_progress.h"
+#include "pack_card_status.h"
 #include <psxgpu.h>
 #include <psxpad.h>
 #include <stdio.h>
@@ -22,12 +23,11 @@ extern int realm_mis, arcade_tix, fight_wins, fight_champ;   // (kept by the gam
 extern u32 gach;                                              // (the Boreagotchi achievements, a bit each)
 extern int dj_xp;
 
-enum { K_BASE, K_PACK, K_SOON };
-typedef struct { const char *nm; u8 kind, pk, ic; const char *what, *how, *slot, *item; } Card;
+ typedef struct { const char *nm; u8 kind, pk, ic; const char *what, *how, *slot, *item; } Card;
 // one per card of the shelf (main.c: moreNm), in the shelf's order. pk: the pack's number (0-11 are on the disc; 12 and up are kept for packs to come)
 static const Card C[25] = {
-    { "ISLAND CREATOR", K_BASE, 255, IC_SUN, "", "", "", "" },
-    { "STORY MISSIONS", K_BASE, 255, IC_BOOK, "", "", "", "" },
+    { "ISLAND CREATOR", K_BASE, 255, IC_SUN, "SHAPE ISLANDS, COASTS AND SETTLEMENTS IN CREATE A WORLD. THIS CREATOR IS ALREADY IN THE BASE GAME.", "", "", "" },
+    { "STORY MISSIONS", K_BASE, 255, IC_BOOK, "TEN STORIES WITH FIVE CHAPTERS EACH: JOBS, FAMILY, FRIENDS AND ADVENTURES. ALL INCLUDED IN THE BASE GAME.", "", "", "" },
     { "BORE-OUT MAN!", K_SOON, 18, IC_STAR, "THE SPACE-HOP ARCADE GAME FROM THE GBA. A DESK JOCKEY BECOMES AN ASTRONAUT: A NEW CABINET AT THE ARCADE, WITH TICKETS AND A TABLE OF HIGH SCORES.", "", "BOREOUT.OVL", "NONE" },
     { "BOREZIES!", K_SOON, 19, IC_PEOPLE, "THE TOWN GOES UNDEAD. BOARD UP THE WINDOWS, SHARE THE CANNED BEANS, KEEP THE FAMILY ALIVE UNTIL MORNING. A SCENARIO FOR A LIFE.", "", "BOREZIES.OVL", "NONE" },
     { "WORLD WAR BORE", K_SOON, 20, IC_HAMMER, "THE EASTERN ARMY CUT DOWN YOUR HEDGE. RALLY THE STREET, BUILD THE LINE AND HOLD IT: THE NEIGHBOURS FIGHT BESIDE YOU.", "", "WWBORE.OVL", "NONE" },
@@ -35,7 +35,7 @@ static const Card C[25] = {
     { "BOREAGOTCHI!", K_PACK, 2, IC_SMILE, "RAISE EIGHT PIXEL PETS ON EACH TOY: EGGS, FOOD, GAMES, FAMILIES, HATS AND A DEX. THE GUIDE IS ON THE SHELF.", "PAUSE, BOREAGOTCHI.", "GOTCHI.OVL", "" },
     { "BOREPILOGUE", K_SOON, 21, IC_HEART, "GROWN-UPS ONLY: RETIRE, WRITE YOUR WILL AND LEAVE A LEGACY. THE NEXT FAMILY INHERITS THE HOME, THE NAME AND A LETTER.", "", "BOREPILG.OVL", "NONE" },
     { "THE LAND BOREFORE TIME", K_PACK, 0, IC_TREE, "WAKE A GIANT IN A MUDDY FIELD AMONG THE NUBBINS. GATHER, LAY ROADS, RAISE HUTS AND WORKSHOPS AND CROWN A CASTLE. SIXTEEN MISSIONS PAY INTO YOUR LIFE.", "PAUSE, KINGDOM MODE.", "KINGDOM.OVL", "" },
-    { "SEASONS", K_BASE, 255, IC_SUN, "", "", "", "" },
+    { "SEASONS", K_BASE, 255, IC_SUN, "THE CALENDAR AND IN-GAME SEASONS ARE PART OF EVERY LIFE, WITH NO SEPARATE PATCH REQUIRED.", "", "", "" },
     { "ISLAND PARADISE", K_PACK, 9, IC_TREE, "A PRIVATE RESORT: BUILD TWELVE LUXURIES THAT PAY EVERY DAY, MOVE IT TO AN ISLE OUT AT SEA, AND JOIN THE CASTAWAY CLUB.", "PHONE, BOOK A RESORT.", "PARADISE.OVL", "" },
     { "SUPERSTAR", K_PACK, 3, IC_NOTE, "FORM A BAND OF UP TO FIFTEEN, GIVE EACH A ROLE, PICK FROM 25 SONGS, REHEARSE AND PLAY GIGS. GROW FAME AND FANS, BUY A TOUR BUS.", "PAUSE, SUPERSTAR BAND.", "SUPER.OVL", "" },
     { "CRIME AND LAW", K_PACK, 4, IC_EYE, "BREAK THE LAW AND FACE THE COURT: LAWYERS, A PLEA, A TRIAL, THEN HARD TIME DAY BY DAY. PAROLE, ESCAPE, OR RUN THE UNDERWORLD HEISTS.", "HEISTS: PHONE, UNDERWORLD.", "PRISON.OVL", "" },
@@ -104,7 +104,7 @@ static int mode, card, lsel, live, anim, have[12], msgT; static char line[48];  
 void pki_open(int a) {
     anim = 0; msgT = 0; line[0] = 0; live = a == 255; lsel = 0;
     for (int i = 0; i < 12; i++) have[i] = -1;   // (found out one a frame, the one on show first: each is a look at the disc)
-    if (a == 255) mode = 0; else { mode = 1; card = a % 25; }
+    if (a == 255) mode = 0; else { mode = 1; card = (a % 25 + 25) % 25; }
 }
 static int claim(int pk) {
     int pay = 0, n = 0, all = 1;
@@ -154,15 +154,22 @@ static void list_draw(void) {
 }
 static void page_draw(void) {
     const Card *c = &C[card]; char b[64]; int top = ui_window_s(6, 6, 308, 228, c->kind == K_SOON ? "COMING SOON" : "PACK PAGE");
-    int pk = c->pk, ok = c->kind == K_PACK && pk < 12 && have[pk] > 0, soon = c->kind == K_SOON;
+    int pk = c->pk, state = pack_card_status(c->kind, c->pk, have);
+    int ok = state == CARD_INSTALLED, soon = state == CARD_COMING, base = state == CARD_BASE;
     u32 dc = ok ? UI_RGB(255, 204, 70) : soon ? UI_RGB(206, 214, 228) : UI_LINE;
     ui_round(14, top + 1, 40, 40, 20, dc, dc, 0); ui_icon_disc(34, top + 21, 34, c->ic, ok ? UI_BLUE2 : UI_SOFT, UI_WHITE);
     ui_text(62, top + 3, 2, c->nm, UI_INK);
     if (ok) ui_badge_i(62, top + 22, IC_TICK, "ON THIS DISC", UI_GOODT, UI_WHITE);
+    else if (base) ui_badge_i(62, top + 22, IC_TICK, "BASE GAME", UI_GOODT, UI_WHITE);
     else if (soon) ui_badge_i(62, top + 22, IC_LOCK, "COMING SOON", UI_AMBER, UI_INK);
-    else if (have[pk] < 0) ui_badge_i(62, top + 22, IC_LOCK, "LOOKING AT THE DISC", UI_SOFT, UI_WHITE);
+    else if (state == CARD_CHECKING) ui_badge_i(62, top + 22, IC_LOCK, "LOOKING AT THE DISC", UI_SOFT, UI_WHITE);
     else ui_badge_i(62, top + 22, IC_LOCK, "NOT ADDED", UI_BADT, UI_WHITE);
     int y = top + 46; y += ui_wrap(14, y, 292, 4, c->what, UI_INK) * 10 + 4;
+    if (base) {
+        ui_section(14, y + 2, 292, "ALREADY INCLUDED");
+        ui_wrap(14, y + 20, 292, 4, "THIS IS PART OF THE BASE GAME. THERE IS NO EXTRA PATCH OR SAVE ADD-ON TO INSTALL.", UI_SOFT);
+        ui_hints(160, 220, "O BACK", 1); return;
+    }
     if (soon) {   // what is kept for it
         ui_section(14, y + 2, 292, "KEPT FOR IT");
         ui_text(14, y + 18, 1, "A SLOT ON THE DISC:", UI_SOFT); ui_text(130, y + 18, 1, c->slot, UI_INK);
@@ -171,7 +178,7 @@ static void page_draw(void) {
         ui_wrap(14, y + 58, 292, 3, "OLD SAVES LOAD AS THEY ARE AND NOTHING CHANGES IN THE GAME UNTIL IT COMES. WHEN IT DOES, IT IS A PATCH ON THE BASE DISC LIKE THE OTHER PACKS.", UI_SOFT);
         ui_hints(160, 220, "O BACK", 1); return; }
     if (c->how[0]) { ui_text(14, y, 1, "OPEN IT:", UI_BLUE2); ui_wrap(64, y, 242, 1, c->how, UI_INK); y += 14; }
-    if (!ok) { snprintf(b, sizeof b, "PATCH BORE2-%s.PPF ON TO ADD IT", PPPF[pk]); ui_wrap(14, y + 4, 292, 3, have[pk] < 0 ? "ONE MOMENT..." : b, UI_BADT);
+    if (!ok) { snprintf(b, sizeof b, "PATCH BORE2-%s.PPF ON TO ADD IT", PPPF[pk]); ui_wrap(14, y + 4, 292, 3, state == CARD_CHECKING ? "ONE MOMENT..." : b, UI_BADT);
                ui_wrap(14, y + 34, 292, 3, "A PACK WORKS ALONE, IN ANY ORDER, ON THE BASE DISC. THE FULL DISC HAS THEM ALL.", UI_SOFT); ui_hints(160, 220, live ? "LEFT RIGHT PACKS|O BACK" : "O BACK", 1); return; }
     ui_section(14, y, 292, "PACK GOALS"); y += 14;
     for (int g = 0; g < NG[pk]; g++) { int yy = y + g * 13, d = gdone(pk, g), cl = gclaimed(pk, g);
