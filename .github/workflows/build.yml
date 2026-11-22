@@ -18,6 +18,8 @@ jobs:
           /tmp/camera_lens_ps1
           cc -std=c99 -Wall -Wextra -Werror -DBORE_DC test/camera_lens_test.c -o /tmp/camera_lens_dc
           /tmp/camera_lens_dc
+      - name: Verify whole-house LOD hysteresis and moving camera stability
+        run: cc -std=c99 -Wall -Wextra -Werror test/house_lod_test.c -o /tmp/house_lod && /tmp/house_lod
       - name: Verify speed-bounded skate chase camera focus
         run: |
           cc -std=c99 -Wall -Wextra -Werror test/skate_camera_test.c -o /tmp/skate_camera_test

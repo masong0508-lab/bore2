@@ -13,6 +13,7 @@
 #include "mem8.h"
 #include "pop.h"
 #include "far.h"
+#include "house_lod.h"
 #include "nature.h"
 #include "island.h"
 #include "save.h"
@@ -2389,7 +2390,7 @@ static u8 lvl_bb[NLEVELS][4];                     // each storey's built-on box 
 static u32 lvl_edge[NLEVELS][MH][(MW + 31) / 32];  // each storey's tiles next to open air (a bit each)
 // Buildings sit inside their own blocks (a street runs along every block's top and left), so when the SAN BOREAS window moves,
 // what was worked out for the blocks that stay is moved with them and only the blocks coming in are worked out (a few a frame).
-static int bld_alloc(void) { for (int b = 1; b < NBLD; b++) if (b_x0[b] == 255) { if (b > nbld) nbld = b; return b; } return NBLD - 1; }
+static int bld_alloc(void) { for (int b = 1; b < NBLD; b++) if (b_x0[b] == 255) { b_lod[b] = 0; if (b > nbld) nbld = b; return b; } return NBLD - 1; }
 static u8 rbox[NLEVELS][4];
 int dbg_rr_hb, dbg_rr_n, dbg_rr_blk, dbg_ws[8];
 // the roofs and buildings of the box [x0..x1] x [y0..y1] (the whole map, or a block that has just come in)
@@ -3075,11 +3076,11 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         int inside = b_x0[b] >= rx0 && b_x1[b] <= rx1 && b_y0[b] >= ry0 && b_y1[b] <= ry1;
         int touch = b_x1[b] >= rx0 && b_x0[b] <= rx1 && b_y1[b] >= ry0 && b_y0[b] <= ry1;
         b_str[b] = (u8)(touch && !inside);
-        b_lod[b] = 0;
         if (bm_gen >= 7 && world_zone == ZONE_CITY && world_wbx >= 0 && !world_view_lvl && b_top[b] >= 1 && b_top[b] <= 3 && touch && !b_see[b] && (b_x1[b] - b_x0[b] + 1) * (b_y1[b] - b_y0[b] + 1) <= 200) {
-            int dx_ = MAX(MAX(b_x0[b] - fx, fx - b_x1[b]), 0), dy_ = MAX(MAX(b_y0[b] - fy, fy - b_y1[b]), 0);   // (tiles from the nearest wall)
-            int ex_ = MAX(MAX(b_x0[b] - etx_, etx_ - b_x1[b]), 0), ey_ = MAX(MAX(b_y0[b] - ety_, ety_ - b_y1[b]), 0);   // (and from the camera: zoomed out, it is the eye's distance that counts)
-            b_lod[b] = (u8)(dx_ * dx_ + dy_ * dy_ > 9 * 9 || ex_ * ex_ + ey_ * ey_ + eh_ * eh_ > 22 * 22); }
+            int dx_ = MAX(MAX(b_x0[b] - fx, fx - b_x1[b]), 0), dy_ = MAX(MAX(b_y0[b] - fy, fy - b_y1[b]), 0);   // nearest wall to Sim, tiles
+            int ex_ = MAX(MAX(b_x0[b] - etx_, etx_ - b_x1[b]), 0), ey_ = MAX(MAX(b_y0[b] - ety_, ety_ - b_y1[b]), 0); // nearest wall to eye
+            b_lod[b] = (u8)house_lod_upper(b_lod[b], dx_ * dx_ + dy_ * dy_, ex_ * ex_ + ey_ * ey_ + eh_ * eh_);
+        } else b_lod[b] = 0;
         if (b_str[b]) { ex0 = MIN(ex0, b_x0[b]); ex1 = MAX(ex1, b_x1[b]); ey0 = MIN(ey0, b_y0[b]); ey1 = MAX(ey1, b_y1[b]); }
     }
     ex0 &= ~1; ey0 &= ~1;
