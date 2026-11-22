@@ -20,6 +20,8 @@ jobs:
           /tmp/camera_lens_dc
       - name: Verify whole-house LOD hysteresis and moving camera stability
         run: cc -std=c99 -Wall -Wextra -Werror test/house_lod_test.c -o /tmp/house_lod && /tmp/house_lod
+      - name: Verify near/far house footprint edges match generated inclusive walls
+        run: cc -std=c99 -Wall -Wextra -Werror test/house_footprint_test.c -o /tmp/house_footprint && /tmp/house_footprint
       - name: Verify speed-bounded skate chase camera focus
         run: |
           cc -std=c99 -Wall -Wextra -Werror test/skate_camera_test.c -o /tmp/skate_camera_test

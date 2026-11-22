@@ -3,6 +3,7 @@
 #include "gfx.h"
 #include "world.h"
 #include "bigmap.h"
+#include "house_footprint.h"
 #include "atlas.h"
 
 #ifndef FAR_VIEW0
@@ -746,7 +747,12 @@ static void draw_buildings(void) {
             const FB *f = &fb[k];
             if (f->bx >= world_wbx && f->bx < world_wbx + MW / BM_BLK && f->by >= world_wby && f->by < world_wby + MH / BM_BLK) continue;   // (the map draws its own)
             u8 ft[4]; FT_GET(ft, fb_ft[k]);
-            int tx0 = f->bx * BM_BLK + ft[0] - fwx0, ty0 = f->by * BM_BLK + ft[1] - fwy0, tx1 = f->bx * BM_BLK + ft[2] - fwx0, ty1 = f->by * BM_BLK + ft[3] - fwy0;
+            // bm_lot_foot stores the coordinates of the LAST WALL TILES (inclusive).
+            // far_box takes an exclusive opposite edge. Omitting +1 shrank
+            // every home in the distant pass by a full tile on both axes.
+            int tx0 = f->bx * BM_BLK + ft[0] - fwx0, ty0 = f->by * BM_BLK + ft[1] - fwy0;
+            int tx1 = house_foot_end_tile(f->bx, ft[2], fwx0, BM_BLK);
+            int ty1 = house_foot_end_tile(f->by, ft[3], fwy0, BM_BLK);
             int x0 = tx0 * TILE, x1 = tx1 * TILE, z0 = -ty0 * TILE, z1 = -ty1 * TILE;
             int cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
             int dx = ABS(cx - feye.vx), dz = ABS(cz - feye.vz), d = MAX(dx, dz) + MIN(dx, dz) / 2;
