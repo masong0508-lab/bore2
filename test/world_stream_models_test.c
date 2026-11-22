@@ -29,9 +29,9 @@ int main(void) {
     roof[chosen] = roof[0] = 0;
     assert(stream_pick_roof(roof, 5, 16, 30, 30, 31, 31) == -1);
 
-    assert(stream_block_gap(80, 32, 4, 2, 16) == 0); // exact edge
-    assert(stream_block_gap(79, 32, 4, 2, 16) == 1);
-    assert(stream_block_gap(82, 46, 4, 2, 16) == 2);
+    assert(stream_block_gap(79, 32, 4, 2, 16) == 0); // last tile is inclusive
+    assert(stream_block_gap(80, 32, 4, 2, 16) == 1); // first outside tile
+    assert(stream_block_gap(82, 46, 4, 2, 16) == 3);
     puts("World streaming: pending house proxy and nearest-roof scheduling PASS");
     return 0;
 }
