@@ -45,6 +45,8 @@ Save layout: `pk_ext` is 24 live bytes (goals claimed, then counters: party 12â€
 version 47. Older saves load with the goals empty. Item codes F7 to FE are the only free ones: do not use them for anything else.
 
 ## Pack verification and compatibility (November 2026)
+The EXPANSIONS shelf also has three **base-game cards** (Island Creator, Story Missions, Seasons). They previously took the not-installed-pack path with sentinel pack ID 255, which could read beyond the 12-entry `have` and patch-name tables. They now have safe, readable pages saying the feature is already included, and a host test checks all card states and invalid pack IDs.
+
 The Create a Dog page now has five claimable goals instead of three. The two added goals track five actual dog-play interactions (not cat play) and a worn collar, hat or outfit. Dog-play counts saturate at 255 in the pre-existing `pk_ext[18]` byte; the earlier claimed-goal bits are preserved. Save version 47, lengths, disc pack slots and reserved future-pack bytes remain unchanged, so old saves load with the new progress starting at zero.
 
 The patch applicator validates complete PPF3 records, image bounds, undo flags and truncation before changing an image. Independent host Python tests run as a build gate, in addition to the existing 12-pack forward/backward/shuffled order tests. Existing PPF3 files remain supported. This is **not** a claim that the DS/DSi has separately selectable packs or that every pack's gameplay has been fully emulator-tested.
