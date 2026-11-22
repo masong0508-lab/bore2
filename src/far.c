@@ -549,6 +549,49 @@ static void face_win(const XV *a, const XV *b, const XV *c, const XV *d, u32 col
     lk(p, 11, slot);
 }
 static inline int xv_good(const XV *v) { return v->z >= ZN && v->x > -1000 && v->x < 1320 && v->y > -1000 && v->y < 1240; }
+// a building as a box: x0 < x1, z0 > z1 (north, south), sto storeys; its walls' colour, a pitched roof (or flat) and its colour
+static int far_lift;   // the hills: how high the ground is under the building being drawn
+// Only the exceptional case of a building crossing the near or guard plane
+// uses these stack-only perimeter clips. The normal path keeps its fast quads.
+static void far_clip_quad(const FV *a, const FV *b, const FV *c, const FV *d, u32 col, int slot) {
+    FV q[4] = { *a, *b, *d, *c }; // TL TR BL BR -> perimeter
+    u32 colors[4] = { col, col, col, col };
+    emit_clipped(q, colors, 4, slot);
+}
+static void far_clip_tri(const FV *a, const FV *b, const FV *c, u32 col, int slot) {
+    FV q[3] = { *a, *b, *c };
+    u32 colors[3] = { col, col, col };
+    emit_clipped(q, colors, 3, slot);
+}
+static void far_card(int x0, int z0, int x1, int z1, int top, const u8 *wc) {   // far off: one face, the one most turned to you
+    int ex = feye.vx, ey = feye.vy + far_lift, ez = feye.vz, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    int ax, az, bx, bz, L;
+    if (ABS(ex - cx) * (z0 - z1) > ABS(ez - cz) * (x1 - x0)) {   // an east or west face
+        if (ex > cx) { ax = x1; az = z1; bx = x1; bz = z0; L = Le; } else { ax = x0; az = z0; bx = x0; bz = z1; L = Lw; }
+    } else {
+        if (ez > cz) { ax = x1; az = z0; bx = x0; bz = z0; L = Ln; } else { ax = x0; az = z1; bx = x1; bz = z1; L = Ls; }
+    }
+    SVECTOR v[4] SVEC_ALIGN = { { sc16(ax - ex), sc16(top - ey), sc16(az - ez), 0 }, { sc16(bx - ex), sc16(top - ey), sc16(bz - ez), 0 },
+                                { sc16(ax - ex), sc16(-ey), sc16(az - ez), 0 }, { sc16(bx - ex), sc16(-ey), sc16(bz - ez), 0 } };
+    XV o[4]; gfx_xform(v, o, 4);
+    int all_good = 1;
+    for (int i = 0; i < 4; i++) if (!xv_good(&o[i])) { all_good = 0; break; }
+    if (!all_good) {
+        // Any one corner crossing the guard band used to erase the whole card.
+        FV clip[4];
+        fxf(ax, top - far_lift, az, &clip[0]);
+        fxf(bx, top - far_lift, bz, &clip[1]);
+        fxf(ax, -far_lift, az, &clip[2]);
+        fxf(bx, -far_lift, bz, &clip[3]);
+        int zw = (clip[0].z + clip[1].z + clip[2].z + clip[3].z) / 4;
+        if (zw < ZN * 16) zw = ZN * 16;
+        far_clip_quad(&clip[0], &clip[1], &clip[2], &clip[3],
+                      lit(wc, L, haze_f(zw)), far_slot(zw));
+        return;
+    }
+    int zw = ((o[0].z + o[3].z) >> 1) << 4;
+    face_f4(&o[0], &o[1], &o[2], &o[3], lit(wc, L, haze_f(zw)), far_slot(zw));
+}
 // The fast box path must never discard an entire visible home because one
 // of its eight corners is behind the eye or outside the GTE guard band.
 // Reuse the existing polygon clipper with a small stack-local corner set.
@@ -597,49 +640,6 @@ static void far_box_partial(int x0, int z0, int x1, int z1, const u8 *wc,
             far_clip_quad(rev ? b : a, rev ? a : b, &ridge[0], &ridge[1], col, slot);
         } else far_clip_tri(a, b, (k == 0 || k == 3) ? &ridge[0] : &ridge[1], col, slot);
     }
-}
-// a building as a box: x0 < x1, z0 > z1 (north, south), sto storeys; its walls' colour, a pitched roof (or flat) and its colour
-static int far_lift;   // the hills: how high the ground is under the building being drawn
-// Only the exceptional case of a building crossing the near or guard plane
-// uses these stack-only perimeter clips. The normal path keeps its fast quads.
-static void far_clip_quad(const FV *a, const FV *b, const FV *c, const FV *d, u32 col, int slot) {
-    FV q[4] = { *a, *b, *d, *c }; // TL TR BL BR -> perimeter
-    u32 colors[4] = { col, col, col, col };
-    emit_clipped(q, colors, 4, slot);
-}
-static void far_clip_tri(const FV *a, const FV *b, const FV *c, u32 col, int slot) {
-    FV q[3] = { *a, *b, *c };
-    u32 colors[3] = { col, col, col };
-    emit_clipped(q, colors, 3, slot);
-}
-static void far_card(int x0, int z0, int x1, int z1, int top, const u8 *wc) {   // far off: one face, the one most turned to you
-    int ex = feye.vx, ey = feye.vy + far_lift, ez = feye.vz, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-    int ax, az, bx, bz, L;
-    if (ABS(ex - cx) * (z0 - z1) > ABS(ez - cz) * (x1 - x0)) {   // an east or west face
-        if (ex > cx) { ax = x1; az = z1; bx = x1; bz = z0; L = Le; } else { ax = x0; az = z0; bx = x0; bz = z1; L = Lw; }
-    } else {
-        if (ez > cz) { ax = x1; az = z0; bx = x0; bz = z0; L = Ln; } else { ax = x0; az = z1; bx = x1; bz = z1; L = Ls; }
-    }
-    SVECTOR v[4] SVEC_ALIGN = { { sc16(ax - ex), sc16(top - ey), sc16(az - ez), 0 }, { sc16(bx - ex), sc16(top - ey), sc16(bz - ez), 0 },
-                                { sc16(ax - ex), sc16(-ey), sc16(az - ez), 0 }, { sc16(bx - ex), sc16(-ey), sc16(bz - ez), 0 } };
-    XV o[4]; gfx_xform(v, o, 4);
-    int all_good = 1;
-    for (int i = 0; i < 4; i++) if (!xv_good(&o[i])) { all_good = 0; break; }
-    if (!all_good) {
-        // Any one corner crossing the guard band used to erase the whole card.
-        FV clip[4];
-        fxf(ax, top - far_lift, az, &clip[0]);
-        fxf(bx, top - far_lift, bz, &clip[1]);
-        fxf(ax, -far_lift, az, &clip[2]);
-        fxf(bx, -far_lift, bz, &clip[3]);
-        int zw = (clip[0].z + clip[1].z + clip[2].z + clip[3].z) / 4;
-        if (zw < ZN * 16) zw = ZN * 16;
-        far_clip_quad(&clip[0], &clip[1], &clip[2], &clip[3],
-                      lit(wc, L, haze_f(zw)), far_slot(zw));
-        return;
-    }
-    int zw = ((o[0].z + o[3].z) >> 1) << 4;
-    face_f4(&o[0], &o[1], &o[2], &o[3], lit(wc, L, haze_f(zw)), far_slot(zw));
 }
 // rs: the roof: 0 flat, 1 hip (four slopes up to a point), 2 gable with its ridge along the longer side, 3 gable with its ridge north to south (turned to the street); pit: 1 or 2 (how steep)
 static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int rs, int pit, const u8 *rc, int windows) {
