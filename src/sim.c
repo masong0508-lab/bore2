@@ -1,5 +1,6 @@
 // sim.c - the household and the life: BORE's needs, clock, bills and job, with free 3D movement and a path finder for the others.
 #include "sim.h"
+#include "pack_dog_progress.h"
 #include "band.h"
 #include "wants.h"
 #include "arcade.h"
@@ -2369,7 +2370,7 @@ static void place_do(Sim *s, int code) {
             if (!pay(pr)) return; bus_pass = MAX(bus_pass, day_count) + n; char b_[40]; sprintf(b_, "BUS PASS: %d DAYS LEFT", bus_pass - day_count); sim_note(b_); audio_voice(VOICE_FINISHED); } break;
         case PC_DOG: case PC_CAT: { if (!pay(code == PC_DOG ? 150 : 120)) return; pet_kind = code == PC_DOG ? 1 : 2; pet_col = (int)(look_rand() % 6); if (code == PC_DOG) dog_random(&pet_dog, look_rand());   /* (a store's puppy: a ready-made one; the CREATE A DOG screen makes your own) */ pet_hun = 100; pet_zone = -1; pet_ph = 0; sim_note(pet_kind == 1 ? "YOU GOT A PUPPY!" : "YOU GOT A KITTEN!"); audio_voice(VOICE_YAHOO); wants_event(s, W_FUN, 0); } break;
         case PC_PETFEED: if (!pay(3)) return; pet_hun = 100; sim_say(s, "GOOD PET!"); sim_note("YUM! YOUR PET IS FED"); break;
-        case PC_PETPLAY: s->need[N_FUN] = MIN(s->need[N_FUN] + (12 << 10), 100 << 10); s->need[N_SOCIAL] = MIN(s->need[N_SOCIAL] + (6 << 10), 100 << 10); pet_hun = MAX(0, pet_hun - 4); pet_ph += 900; sim_say(s, "WHO'S A GOOD PET?"); break;
+        case PC_PETPLAY: pk_ext[PKX_DOG_PLAY] = (u8)pack_dog_play_next(pk_ext[PKX_DOG_PLAY], pet_kind); s->need[N_FUN] = MIN(s->need[N_FUN] + (12 << 10), 100 << 10); s->need[N_SOCIAL] = MIN(s->need[N_SOCIAL] + (6 << 10), 100 << 10); pet_hun = MAX(0, pet_hun - 4); pet_ph += 900; sim_say(s, "WHO'S A GOOD PET?"); break;
         case PC_ADMIRE: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 7; s->act_t = 200; break;
         case PC_PAINTING: if (!pay(300)) return; s->skill_creat += 60; shopped(s, "A PAINTING, JUST FOR YOU", ML_INSPIRED); break;
         case PC_ROOM: if (room_here()) { sim_note("YOUR ROOM IS PAID TILL NOON"); return; }
