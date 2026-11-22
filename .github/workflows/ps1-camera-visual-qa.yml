@@ -1,11 +1,16 @@
 name: ps1-camera-visual-qa
-# Real DuckStation pixels from matching generated house/camera settings.
+# One close-home angle sampled three times, with matched final frozen state.
 on:
   workflow_dispatch:
   push:
     paths:
       - "src/main.c"
       - "src/gfx.c"
+      - "src/gfx.h"
+      - "src/world.c"
+      - "src/far.c"
+      - "src/crowd.c"
+      - "src/citizens.c"
       - "src/camera_lens.h"
       - "test/camera_lens_test.c"
       - "test/ps1_camera_visual.sh"
@@ -38,7 +43,7 @@ jobs:
           # runner needs write access to its parent during extraction.
           sudo chown "${USER}:${USER}" /opt
           bash tools/perf/restore.sh
-      - name: Capture actual native PS1 before/after camera scenes
+      - name: Capture native PS1 close-home lens comparison
         timeout-minutes: 30
         run: bash test/ps1_camera_visual.sh "$PWD/out-ps1-camera"
       - name: Preserve lens comparison screenshots and emulator evidence
@@ -54,4 +59,8 @@ jobs:
             out-ps1-camera/emulate-*.log
             out-ps1-camera/build-*.log
             out-ps1-camera/config-*.log
+            out-ps1-camera/final_state-*.json
+            out-ps1-camera/ram-*.bin
+            out-ps1-camera/symbols-*.txt
+            out-ps1-camera/script-*.txt
           if-no-files-found: warn
