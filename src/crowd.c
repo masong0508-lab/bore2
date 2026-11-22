@@ -58,7 +58,7 @@ typedef struct {
     s16 cx, cy; u8 cw, ch;                      // the cell
     u8 tw, th;                                  // the texels used in it
     s8 shelf; u8 ok, clip, pose, meas;
-    s32 z; u16 ang, frame, drawn;
+    s32 z; u16 ang, frame, drawn, focal;         // focal occupies the old trailing padding; cached pixel sizes belong to that lens
 } Spr;
 #define SPR_MAX (CROWD_MAX + 8)                  // (the last 8: the household, as sprites when they are further off)
 static Spr spr[SPR_MAX];
@@ -311,11 +311,16 @@ static int view_angle(const VECTOR *pos, int yaw) {   // where the eye stands ro
     return (atan2_c(cam.eye.vx - pos->vx, -(cam.eye.vz - pos->vz)) - yaw) & 4095;
 }
 static int pose_of(const Gait *g) { return g->sleep ? 2 : g->sit ? 1 : 0; }
+static int sprite_depth(const Spr *s) {         // equivalent depth for a cached image's pixel sizes under this frame's lens
+    if (s->focal == gfx_focal || !s->focal) return s->z;
+    return (s->z * gfx_focal + s->focal / 2) / s->focal;
+}
 // the box a render must cover, from the anchor at depth z: the last measured one moved to this depth plus a margin (more
 // for someone moving their arms about), or (never measured, or since sat or lain down) a guess from the feet and the head
 static int want_box(const Spr *s, const VECTOR *pos, const Gait *g, int z, int ax, int ay, int *b) {
     if (s->meas && s->pose == pose_of(g)) {
-        int x0 = s->mx0 * s->z / z, y0 = s->my0 * s->z / z, x1 = s->mx1 * s->z / z, y1 = s->my1 * s->z / z;
+        int rz = sprite_depth(s);
+        int x0 = s->mx0 * rz / z, y0 = s->my0 * rz / z, x1 = s->mx1 * rz / z, y1 = s->my1 * rz / z;
         int h = y1 - y0, busy = g->amp > 600 || g->wave || g->talk;
         int mx = 2 + h / (busy ? 7 : 14), my = 2 + h / 20;
         b[0] = x0 - mx; b[1] = y0 - my; b[2] = x1 + mx; b[3] = y1 + my;
@@ -324,7 +329,7 @@ static int want_box(const Spr *s, const VECTOR *pos, const Gait *g, int z, int a
     int fx, fy, hx, hy;
     int zf = gfx_proj(pos->vx, pos->vy + 30, pos->vz, &fx, &fy), zh = gfx_proj(pos->vx, pos->vy - (g->sleep ? 200 : 470), pos->vz, &hx, &hy);
     if (!zf || !zh) return 0;
-    int zn = MIN(zf, zh), m = (70 * 230) / zn, hw = (((g->sleep ? 300 : 150) * 230) / zn) * (gfx_wide ? 3 : 4) / 4;
+    int zn = MIN(zf, zh), m = (70 * gfx_focal) / zn, hw = (((g->sleep ? 300 : 150) * gfx_focal) / zn) * (gfx_wide ? 3 : 4) / 4;
     b[0] = MIN(fx, hx) - hw - ax; b[2] = MAX(fx, hx) + hw - ax; b[1] = MIN(fy, hy) - m - ay; b[3] = MAX(fy, hy) + m / 2 - ay;
     return 1;
 }
@@ -332,7 +337,7 @@ int crowd_need_h(int id, const VECTOR *pos, const Gait *g) {   // how tall the p
     const Spr *s = &spr[id];
     if (!crowd_has(id) || !s->meas || s->pose != pose_of(g)) return 0;
     int ax, ay, z = gfx_proj(pos->vx, pos->vy, pos->vz, &ax, &ay); if (!z) return 0;
-    return (s->my1 - s->my0) * s->z / z;
+    return (s->my1 - s->my0) * sprite_depth(s) / z;
 }
 static int score_any(int id, const VECTOR *pos, int yaw, const Gait *g);
 int crowd_sprite_score(int id, const VECTOR *pos, int yaw, const Gait *g) { return crowd_has(id) ? score_any(id, pos, yaw, g) : 0; }
@@ -344,9 +349,9 @@ static int score_any(int id, const VECTOR *pos, int yaw, const Gait *g) {
     int sx, sy, z = gfx_proj(pos->vx, pos->vy, pos->vz, &sx, &sy); if (!z) return 0;
     int age = (u16)(fr - s->frame);
     int da = ((view_angle(pos, yaw) - s->ang + 6144) & 4095) - 2048; da = ABS(da);
-    int dz = (ABS(z - s->z) * 64) / MAX(1, s->z);
+    int rz = sprite_depth(s), dz = (ABS(z - rz) * 64) / MAX(1, rz);
     int busy = g->amp > 600 || g->wave || g->talk || g->sit;
-    int shown = (s->rh * s->z) / z;                                    // how tall it shows now
+    int shown = (s->rh * rz) / z;                                      // how tall it shows now
     int e = age * (busy ? 3 : 1) + da / 10 + dz + 1;
     if (s->clip) e += 60;                                              // a bit was cut off
     if (s->pose != pose_of(g)) e += 60;                                // sat down, got up: the old picture is wrong
@@ -384,7 +389,7 @@ static int render(int id, const VECTOR *pos, int yaw, const Gait *g) {
     gfx_bb_on = 0;
     gfx_imp_end();
     s->rx = (s16)b[0]; s->ry = (s16)b[1]; s->rw = (s16)bw; s->rh = (s16)bh; s->tw = (u8)tw; s->th = (u8)th;
-    s->z = z; s->ang = (u16)view_angle(pos, yaw); s->frame = fr; s->ok = 1; s->pose = (u8)pose_of(g);
+    s->z = z; s->focal = (u16)gfx_focal; s->ang = (u16)view_angle(pos, yaw); s->frame = fr; s->ok = 1; s->pose = (u8)pose_of(g);
     // what the person really covered (unscaled, from the anchor): the next render's box, and whether this one cut a bit off
     if (gfx_bb[0] <= gfx_bb[2]) {
         int m0 = CENTER_X + (((gfx_bb[0] - CENTER_X) << 12) / hs) - ax, m2 = CENTER_X + (((gfx_bb[2] - CENTER_X) << 12) / hs) - ax;
@@ -407,7 +412,7 @@ COLD static int sprite_any(int id, const VECTOR *pos, int yaw, const Gait *g, in
     Spr *s = &spr[id];
     if (!s->ok || s->shelf < 0) return 0;
     int ax, ay, z = gfx_proj(pos->vx, pos->vy, pos->vz, &ax, &ay); if (!z) return 0;
-    int kk = (s->z << 12) / z;                      // nearer or further than when it was rendered: scale with it
+    int kk = (sprite_depth(s) << 12) / z;            // scale with both depth and any first-person/orbit lens change
     int x = ax + ((s->rx * kk) >> 12), y = ay + ((s->ry * kk) >> 12), w = (s->rw * kk) >> 12, h = (s->rh * kk) >> 12;
     int dx = 0;
     if (g->amp > 600) y -= (ABS(isin(g->phase * 2)) * 3) >> 12;                 // a step's bob between renders

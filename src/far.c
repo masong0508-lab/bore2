@@ -91,7 +91,7 @@ static void emit_clipped(const FV *v, const u32 *col, int n, int slot) {
     for (int k = 0; k < 5 && m >= 3; k++) { m = clip1(a, m, b, k); memcpy(a, b, sizeof(CV) * m); }
     if (m < 3) return;
     s16 sx[12], sy[12];
-    for (int i = 0; i < m; i++) { sx[i] = (s16)(CENTER_X + 230 * a[i].x / a[i].z); sy[i] = (s16)(CENTER_Y + 230 * a[i].y / a[i].z); }
+    for (int i = 0; i < m; i++) { sx[i] = (s16)(CENTER_X + gfx_focal * a[i].x / a[i].z); sy[i] = (s16)(CENTER_Y + gfx_focal * a[i].y / a[i].z); }
     for (int i = 1; i + 1 < m; i++) {
         u32 *p = pk(6); if (!p) return;
         p[1] = 0x30000000u | (u32)a[0].r | ((u32)a[0].g << 8) | ((u32)a[0].b << 16); p[2] = FXY(sx[0], sy[0]);
@@ -310,11 +310,11 @@ static int far_setup(void) {
     fh = isqrt(ax * ax + az * az); if (fh < 1) fh = 1;
     fdx = (ax << 12) / fh; fdz = (az << 12) / fh;
     int far = M2U(far_metres());
-    // how far the ground shows: the top edge of the screen looks down at (pitch - 27.6 degrees); past where it meets the ground,
+    // how far the ground shows: the top edge looks down by the pitch less the active lens's vertical half-angle; past where it meets the ground,
     // nothing on the ground can show (tall things a little further)
     int h = -feye.vy; if (h < 64) h = 64;
     int tp = (ay << 12) / fh;                                   // tan(pitch) (4096; positive looking down)
-    int tv = 2137;                                              // tan(half the vertical view) = 120/230
+    int tv = (CENTER_Y * 4096) / gfx_focal;                     // tan(half the vertical view), in 4.12
     int num = tp - tv, den = 4096 + ((tp * tv) >> 12);
     if (num > 40) {                                             // the horizon is off the top of the screen
         int ta = (num << 12) / den;                             // tan(the top edge's angle down)
@@ -580,7 +580,7 @@ static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int r
     for (int i = 0; i < 8; i++) if (!xv_good(&o[i])) return;
     int zmid = (o[0].z + o[3].z + o[4].z + o[7].z) >> 2, zw = zmid << 4;
     int slot = far_slot(zw), hf = haze_f(zw);
-    int use_win = windows && far_detail >= 2 && tex_ok && 230 * sto * WALL_FULL > zw * 20;   // (windows when it stands 20 px or more)
+    int use_win = windows && far_detail >= 2 && tex_ok && gfx_focal * sto * WALL_FULL > zw * 20;   // (windows when it stands 20 px or more)
     int widx = (x1 - x0) / TILE, widz = (z0 - z1) / TILE;
     // the walls that face the eye (at most two), then the roof
     #define WALL(A, B, C, D, L, w) { u32 col = lit(wc, L, hf); \
@@ -625,7 +625,7 @@ static void far_dot(int x0, int z0, int x1, int z1, int sto, const u8 *wc) {   /
     int cx = (x0 + x1) / 2, cz = (z0 + z1) / 2; FV b; fxf(cx, -far_lift, cz, &b);
     if (b.vz < ZN * 4 || !fv_in(&b)) return;
     int zw = b.z; if (zw < 64) return;
-    int s16_ = (230 << 14) / zw;                                       // pixels a unit (1/16384)
+    int s16_ = (gfx_focal << 14) / zw;                                 // pixels a unit (1/16384), same lens as the anchor
     int wp = (MAX(x1 - x0, z0 - z1) * s16_) >> 14, hp = ((sto * WALL_FULL + 40) * s16_) >> 14;
     if (wp < 1) wp = 1; if (hp < 1) hp = 1;
     int xa = b.sx - wp / 2, xb = xa + wp, ya = b.sy - hp, yb = b.sy;
@@ -661,7 +661,7 @@ static void draw_buildings(void) {
           int ccx = ((fbc_cx[c] * 4 + 2) * BM_BLK - fwx0) * TILE, ccz = -(((fbc_cy[c] * 4 + 2) * BM_BLK - fwy0) * TILE);
           if (!in_cone(ccx, ccz, CELL_T * TILE * 3 / 4, far2)) continue;
           { int cdx = ABS(ccx - feye.vx), cdz = ABS(ccz - feye.vz), cd = MAX(cdx, cdz) + MIN(cdx, cdz) / 2 - CELL_T * TILE * 3 / 2;   // (the nearest any of its buildings can be: none of them tall enough to show)
-            if (cd > 0 && 230 * fbc_sto[c] * WALL_FULL < cd * 2) continue; }
+            if (cd > 0 && gfx_focal * fbc_sto[c] * WALL_FULL < cd * 2) continue; }
           for (int k = fbc_lo[c]; k < fbc_hi[c]; k++) {
             const FB *f = &fb[k];
             if (f->bx >= world_wbx && f->bx < world_wbx + MW / BM_BLK && f->by >= world_wby && f->by < world_wby + MH / BM_BLK) continue;   // (the map draws its own)
@@ -672,7 +672,7 @@ static void draw_buildings(void) {
             int dx = ABS(cx - feye.vx), dz = ABS(cz - feye.vz), d = MAX(dx, dz) + MIN(dx, dz) / 2;
             if (d > far2) continue;
             int hgt = FSTO(f) * WALL_FULL;
-            if (230 * hgt < d * 2) continue;                            // under two pixels tall: lost in the haze
+            if (gfx_focal * hgt < d * 2) continue;                      // under two pixels tall: lost in the haze
             if (far_detail == 0 && FSTO(f) < 3 && d > M2U(120)) continue;
             if (d > M2U(far_lite ? 100 : 300)) { far_lift = world_gh_lot(cx, cz); far_dot(x0, z0, x1, z1, FSTO(f), wallc[f->col % 10]); far_lift = 0; }   // (far: one rectangle each)
             else far_building(f, x0, z0, x1, z1);
@@ -705,7 +705,7 @@ static void tree_card(int x, int z, int k, int big) {
     FV b; fxf(x, -world_gh(x, z), z, &b);
     if (b.vz < ZN * 4 || !fv_in(&b)) return;
     int zw = b.z; if (zw < 64) return;
-    int s16_ = (230 << 14) / zw;                                 // pixels a unit (1/16384)
+    int s16_ = (gfx_focal << 14) / zw;                           // pixels a unit (1/16384), same lens as the anchor
     int hp = (tree_h[k] * big * s16_) >> 16; if (hp < 2) return;
     int wp = (tree_w[k] * big * s16_) >> 16; if (wp < 1) wp = 1;
     int x0 = b.sx - wp / 2, x1 = x0 + wp, y0 = b.sy - hp, y1 = b.sy;
@@ -800,7 +800,7 @@ void far_sky_sea(u32 top, u32 horizon, u32 sea) {   // (sea: below the horizon, 
             int yprev = SCREEN_H + 40;
             for (int k = 0; k < 21; k++) {
                 int bs = 700 << (k / 3), dd = bs + bs * ((k % 3) * 170 + ((ph * 170) >> 8)) / 510;   // (three bands to each doubling of distance)
-                int y = hy + (230 * hh) / dd;
+                int y = hy + (gfx_focal * hh) / dd;
                 if (y >= yprev) continue;
                 if (!(k & 1)) { int y0 = MAX(y, hy + 1), y1 = MIN(yprev, SCREEN_H);   // the lit bands
                     if (y1 > y0 && y0 < SCREEN_H) { int dl = 13 - k / 2; if (dl < 4) dl = 4;

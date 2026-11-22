@@ -1489,8 +1489,8 @@ int nc_loose;                           // 1 only on the speed helper's last ste
 typedef struct { int x, y, z, u, v, r, g, b, sx, sy; } NV;   // a corner: view-space position, texel, colour; and where it lands on the screen
 // (worked out once, when the corner is made, if it is in front of the cutting plane: a piece cut in two keeps its corners' places, so each is
 // projected once however often the pieces round it are split; it used to be every piece, every corner, two divisions each)
-static __attribute__((noinline)) void nc_proj(NV *o) {   // (the GTE's projection, H = 230, step for step: n = H / z in 16.16, then the offset plus x * n rounded DOWN. A plain C division rounds toward zero, which put every corner left of the middle a pixel off from the GTE's own: a cut piece beside an uncut quad swam against it, and a crack opened between them)
-    if (o->z >= NC_Z) { int n = ((230 << 17) / o->z + 1) >> 1; if (n > 0x1ffff) n = 0x1ffff; o->sx = CENTER_X + ((o->x * n) >> 16); o->sy = CENTER_Y + ((o->y * n) >> 16); } }
+static __attribute__((noinline)) void nc_proj(NV *o) {   // (the world GTE's active lens, including the third-person dolly: n = H / z in 16.16, then x * n rounded DOWN. A fixed 230 here made clipped walls/floors meet ordinary 260-focal geometry at different pixels. The impostor pass temporarily scales the GTE alone; it never uses this world-space path.)
+    if (o->z >= NC_Z) { int n = ((gfx_focal << 17) / o->z + 1) >> 1; if (n > 0x1ffff) n = 0x1ffff; o->sx = CENTER_X + ((o->x * n) >> 16); o->sy = CENTER_Y + ((o->y * n) >> 16); } }
 #ifdef NC_STAT
 int dbg_nc[64];
 #endif

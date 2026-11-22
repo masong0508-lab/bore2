@@ -1,0 +1,322 @@
+{
+  "result": "PASS",
+  "baseline_commit": "06735cb3304e8590d2b110135444da1e91fe1896",
+  "fixed_source_sha256": {
+    "src/gfx.c": "bd84afd67eb9b2d4522b02f9984e990f21788e73dcbe86fcf9ae8bf94eba880f",
+    "src/gfx.h": "bc6fa4371adf94569b43f970dc55bb100e83383eb80bd11a9a113fa8a81075c5",
+    "src/world.c": "4ab0fa56aab1b9749fc694c165d9999288eb907a3f0caac501a3e6b602a41f38",
+    "src/far.c": "6f5dfe3fc6061615bd5101715051fe6c2dfe8d225723caeb61014b92e4960215",
+    "src/crowd.c": "f952e5965722ba5b2c3fcf17299b2b44a55ea14913f824d122735a685af528a8",
+    "src/citizens.c": "6c97a580d9bcad89968d338d80469d3f21288c20809e4badc858fc3d41a2e7bf"
+  },
+  "engine": "DuckStation 0.1-5570-ga003832e-dirty / OpenBIOS",
+  "compiler": "PSn00bSDK 0.24 / GCC 12.3.0",
+  "resolution": [
+    320,
+    240
+  ],
+  "ram_bytes": 2097152,
+  "common_flags": "AUTO_CITY=1 AUTO_LOTS=0 AUTO_LOTS_K=6 AB_LOCK4=1 AB_FREEZE=150 AB_NOSHED=1",
+  "camera_modes": {
+    "close": 2,
+    "wide": 3,
+    "first-person": 4
+  },
+  "shots_from_bios_marker": [
+    3000,
+    3200,
+    3400
+  ],
+  "replay_frames": 3800,
+  "note": "Same production lens before and after: 260 in orbit, 230 first-person. Final RAM verifies world, logical camera, camera matrix, and map equality; animations are not synchronized. Locked pacing and final-frame counters are not a hardware benchmark.",
+  "comparisons": {
+    "close": {
+      "states": {
+        "before": {
+          "matched": {
+            "state": 3,
+            "wsalt": 1592594996,
+            "wseed": 1592594996,
+            "bm_gen": 8,
+            "world_zone": 3,
+            "world_wbx": 415,
+            "world_wby": 473,
+            "world_view_lvl": 0,
+            "clock_min": 510,
+            "clock_day": 0,
+            "nsims": 3,
+            "player": 0,
+            "cam_fx": 12672,
+            "cam_fy": -728,
+            "cam_fz": -11904,
+            "cam_yaw": 2600,
+            "cam_pitch": 380,
+            "cam_dist": 700,
+            "cam_view": 0,
+            "world_detail_r": 10,
+            "logic_steps": 450,
+            "data_sha256": {
+              "lifeMap": "84681b90791a817fb60bc16cf031e2fa2cc3d33e183ffa7c72c17cb424cfc224",
+              "floorMap": "f9f1e9098bc53c4ab450d0a178f07aac9e77560d8432585940bd69f1ebe20072",
+              "wallMap": "15cfa7d29a5b4abefae05d18ae695bd494a912448c9eb1223348ea3668e1bfa3",
+              "cam": "748a942d885be00efdfd6830e4b743e534901793f071bc97bc453c6ca1508e30"
+            }
+          },
+          "final_counters": {
+            "dbg_life_n": 425,
+            "gfx_last_overflow": 0,
+            "gfx_last_prims": 703,
+            "gfx_last_bytes": 40180,
+            "gfx_last_cpu": 1237,
+            "gfx_last_wait": 0
+          }
+        },
+        "fixed": {
+          "matched": {
+            "state": 3,
+            "wsalt": 1592594996,
+            "wseed": 1592594996,
+            "bm_gen": 8,
+            "world_zone": 3,
+            "world_wbx": 415,
+            "world_wby": 473,
+            "world_view_lvl": 0,
+            "clock_min": 510,
+            "clock_day": 0,
+            "nsims": 3,
+            "player": 0,
+            "cam_fx": 12672,
+            "cam_fy": -728,
+            "cam_fz": -11904,
+            "cam_yaw": 2600,
+            "cam_pitch": 380,
+            "cam_dist": 700,
+            "cam_view": 0,
+            "world_detail_r": 10,
+            "logic_steps": 450,
+            "data_sha256": {
+              "lifeMap": "84681b90791a817fb60bc16cf031e2fa2cc3d33e183ffa7c72c17cb424cfc224",
+              "floorMap": "f9f1e9098bc53c4ab450d0a178f07aac9e77560d8432585940bd69f1ebe20072",
+              "wallMap": "15cfa7d29a5b4abefae05d18ae695bd494a912448c9eb1223348ea3668e1bfa3",
+              "cam": "748a942d885be00efdfd6830e4b743e534901793f071bc97bc453c6ca1508e30"
+            }
+          },
+          "final_counters": {
+            "dbg_life_n": 490,
+            "gfx_last_overflow": 0,
+            "gfx_last_prims": 531,
+            "gfx_last_bytes": 29656,
+            "gfx_last_cpu": 1003,
+            "gfx_last_wait": 0
+          }
+        }
+      },
+      "pairs": [
+        {
+          "frame": 103034,
+          "changed_rgb_channels": 68276
+        },
+        {
+          "frame": 103234,
+          "changed_rgb_channels": 68643
+        },
+        {
+          "frame": 103434,
+          "changed_rgb_channels": 71344
+        }
+      ]
+    },
+    "wide": {
+      "states": {
+        "before": {
+          "matched": {
+            "state": 3,
+            "wsalt": 1592594996,
+            "wseed": 1592594996,
+            "bm_gen": 8,
+            "world_zone": 3,
+            "world_wbx": 415,
+            "world_wby": 473,
+            "world_view_lvl": 0,
+            "clock_min": 510,
+            "clock_day": 0,
+            "nsims": 3,
+            "player": 0,
+            "cam_fx": 12672,
+            "cam_fy": -728,
+            "cam_fz": -11904,
+            "cam_yaw": 2600,
+            "cam_pitch": 760,
+            "cam_dist": 3600,
+            "cam_view": 0,
+            "world_detail_r": 10,
+            "logic_steps": 450,
+            "data_sha256": {
+              "lifeMap": "84681b90791a817fb60bc16cf031e2fa2cc3d33e183ffa7c72c17cb424cfc224",
+              "floorMap": "f9f1e9098bc53c4ab450d0a178f07aac9e77560d8432585940bd69f1ebe20072",
+              "wallMap": "15cfa7d29a5b4abefae05d18ae695bd494a912448c9eb1223348ea3668e1bfa3",
+              "cam": "9d0151f7dc7763d4e5bea7f88ce2a05db6ab041b81af17dde10fe693ade899f3"
+            }
+          },
+          "final_counters": {
+            "dbg_life_n": 516,
+            "gfx_last_overflow": 0,
+            "gfx_last_prims": 581,
+            "gfx_last_bytes": 25972,
+            "gfx_last_cpu": 704,
+            "gfx_last_wait": 0
+          }
+        },
+        "fixed": {
+          "matched": {
+            "state": 3,
+            "wsalt": 1592594996,
+            "wseed": 1592594996,
+            "bm_gen": 8,
+            "world_zone": 3,
+            "world_wbx": 415,
+            "world_wby": 473,
+            "world_view_lvl": 0,
+            "clock_min": 510,
+            "clock_day": 0,
+            "nsims": 3,
+            "player": 0,
+            "cam_fx": 12672,
+            "cam_fy": -728,
+            "cam_fz": -11904,
+            "cam_yaw": 2600,
+            "cam_pitch": 760,
+            "cam_dist": 3600,
+            "cam_view": 0,
+            "world_detail_r": 10,
+            "logic_steps": 450,
+            "data_sha256": {
+              "lifeMap": "84681b90791a817fb60bc16cf031e2fa2cc3d33e183ffa7c72c17cb424cfc224",
+              "floorMap": "f9f1e9098bc53c4ab450d0a178f07aac9e77560d8432585940bd69f1ebe20072",
+              "wallMap": "15cfa7d29a5b4abefae05d18ae695bd494a912448c9eb1223348ea3668e1bfa3",
+              "cam": "9d0151f7dc7763d4e5bea7f88ce2a05db6ab041b81af17dde10fe693ade899f3"
+            }
+          },
+          "final_counters": {
+            "dbg_life_n": 518,
+            "gfx_last_overflow": 0,
+            "gfx_last_prims": 581,
+            "gfx_last_bytes": 25856,
+            "gfx_last_cpu": 701,
+            "gfx_last_wait": 0
+          }
+        }
+      },
+      "pairs": [
+        {
+          "frame": 103034,
+          "changed_rgb_channels": 0
+        },
+        {
+          "frame": 103234,
+          "changed_rgb_channels": 0
+        },
+        {
+          "frame": 103434,
+          "changed_rgb_channels": 0
+        }
+      ]
+    },
+    "first-person": {
+      "states": {
+        "before": {
+          "matched": {
+            "state": 3,
+            "wsalt": 1592594996,
+            "wseed": 1592594996,
+            "bm_gen": 8,
+            "world_zone": 3,
+            "world_wbx": 415,
+            "world_wby": 473,
+            "world_view_lvl": 1,
+            "clock_min": 510,
+            "clock_day": 0,
+            "nsims": 3,
+            "player": 0,
+            "cam_fx": 12672,
+            "cam_fy": -728,
+            "cam_fz": -11904,
+            "cam_yaw": 2048,
+            "cam_pitch": 640,
+            "cam_dist": 1300,
+            "cam_view": 2,
+            "world_detail_r": 10,
+            "logic_steps": 450,
+            "data_sha256": {
+              "lifeMap": "84681b90791a817fb60bc16cf031e2fa2cc3d33e183ffa7c72c17cb424cfc224",
+              "floorMap": "f9f1e9098bc53c4ab450d0a178f07aac9e77560d8432585940bd69f1ebe20072",
+              "wallMap": "15cfa7d29a5b4abefae05d18ae695bd494a912448c9eb1223348ea3668e1bfa3",
+              "cam": "c8014f6f99cba23b0b7027140557cc190d2baa8b4ba18a068b9fed62249d0603"
+            }
+          },
+          "final_counters": {
+            "dbg_life_n": 524,
+            "gfx_last_overflow": 0,
+            "gfx_last_prims": 159,
+            "gfx_last_bytes": 17700,
+            "gfx_last_cpu": 781,
+            "gfx_last_wait": 0
+          }
+        },
+        "fixed": {
+          "matched": {
+            "state": 3,
+            "wsalt": 1592594996,
+            "wseed": 1592594996,
+            "bm_gen": 8,
+            "world_zone": 3,
+            "world_wbx": 415,
+            "world_wby": 473,
+            "world_view_lvl": 1,
+            "clock_min": 510,
+            "clock_day": 0,
+            "nsims": 3,
+            "player": 0,
+            "cam_fx": 12672,
+            "cam_fy": -728,
+            "cam_fz": -11904,
+            "cam_yaw": 2048,
+            "cam_pitch": 640,
+            "cam_dist": 1300,
+            "cam_view": 2,
+            "world_detail_r": 10,
+            "logic_steps": 450,
+            "data_sha256": {
+              "lifeMap": "84681b90791a817fb60bc16cf031e2fa2cc3d33e183ffa7c72c17cb424cfc224",
+              "floorMap": "f9f1e9098bc53c4ab450d0a178f07aac9e77560d8432585940bd69f1ebe20072",
+              "wallMap": "15cfa7d29a5b4abefae05d18ae695bd494a912448c9eb1223348ea3668e1bfa3",
+              "cam": "c8014f6f99cba23b0b7027140557cc190d2baa8b4ba18a068b9fed62249d0603"
+            }
+          },
+          "final_counters": {
+            "dbg_life_n": 527,
+            "gfx_last_overflow": 0,
+            "gfx_last_prims": 159,
+            "gfx_last_bytes": 17700,
+            "gfx_last_cpu": 783,
+            "gfx_last_wait": 0
+          }
+        }
+      },
+      "pairs": [
+        {
+          "frame": 103034,
+          "changed_rgb_channels": 67
+        },
+        {
+          "frame": 103234,
+          "changed_rgb_channels": 132
+        },
+        {
+          "frame": 103434,
+          "changed_rgb_channels": 0
+        }
+      ]
+    }
+  }
+}

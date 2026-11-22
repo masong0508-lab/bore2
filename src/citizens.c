@@ -1745,7 +1745,7 @@ void citizens_draw(void) {
         setVector(&pp[k], c->x, vy - world_gh(c->x, c->z), c->z);   // (on the hills: up the slope they stand on)
         if (k >= mcap && !(k < mcap + 2 && crowd_has(order[k]))) { need[k] = 0; tier[k] = 3; continue; }   // (more people than models fit: the nearest keep theirs, the far ones are drawn plain)
         int h = crowd_need_h(order[k], &pp[k], &c->gait);
-        if (!h) { int sx, sy, z = gfx_proj(c->x, vy - 200, c->z, &sx, &sy); h = z ? (300 * 230) / z : 999; }   // (not measured yet: a guess)
+        if (!h) { int sx, sy, z = gfx_proj(c->x, vy - 200, c->z, &sx, &sy); h = z ? (300 * gfx_focal) / z : 999; }   // (not measured yet: a guess with the same lens as the model)
         need[k] = (s16)h; tier[k] = 1;
     }
     // live: the biggest on the screen (too big for a sprite cell at 1:1, or near enough that their sprite would go stale fast),

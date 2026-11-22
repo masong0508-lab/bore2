@@ -87,7 +87,7 @@ Camera cam;
 /* The GTE's projection focal length is a camera setting, not a fixed
  * literal: keep offscreen crowd/portrait sprite passes in the same lens
  * as the world and reset to the historical lens after each frame. */
-static int gfx_focal = 230;
+int gfx_focal = 230;
 void gfx_set_focal(int focal) {
     if (focal < 200) focal = 200;
     if (focal > 320) focal = 320;
@@ -562,8 +562,8 @@ int gfx_visible(int wx, int wy, int wz, int r) {
     ApplyMatrixLV(&cam.view, &d, &v);
     if (v.vz < Z_NEAR - r) return 0;
     int rr = r + (r >> 2);                                                 // the planes lean out: a sphere reaches a touch further
-    if (ABS(v.vx) > ((v.vz * CENTER_X) / 230) + rr) return 0;
-    if (ABS(v.vy) > ((v.vz * CENTER_Y) / 230) + rr) return 0;
+    if (ABS(v.vx) > ((v.vz * CENTER_X) / gfx_focal) + rr) return 0;
+    if (ABS(v.vy) > ((v.vz * CENTER_Y) / gfx_focal) + rr) return 0;
     return 1;
 }
 int gfx_project(const SVECTOR *v, int *sx, int *sy, int *sz) {
