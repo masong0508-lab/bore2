@@ -28,6 +28,19 @@ void test_far_projection(void) {
         int h = packet_y(p[4]) - packet_y(p[2]);
         assert(ABS(h - focal * (2 * WALL_FULL + 40) / 9744) <= 1);
     }
+    /* Real GTE regression: one off-guard corner must not remove the house. */
+    {
+        static const u8 wall[3] = {128, 128, 128};
+        gfx_set_focal(260);
+        cam.eye = (VECTOR){0, 0, 0}; feye = cam.eye; far_gte();
+        u32 *p = projection_packets();
+        far_card(-12000, 2500, 12000, 2000, -800, wall);
+        assert(gfx_pk_next > (char *)p);
+        cam.eye = (VECTOR){0, -1200, -300}; feye = cam.eye; far_gte();
+        p = projection_packets();
+        far_box(-700, 600, 700, -200, 2, wall, 1, 1, wall, 0);
+        assert(gfx_pk_next > (char *)p);
+    }
     /* The top-of-screen reach also follows the active vertical field of view. */
     cam.eye = (VECTOR){0, -2000, 0}; cam.at = (VECTOR){0, -1000, 1000};
     gfx_set_focal(230); assert(far_setup()); int wide_reach = max_ground;
