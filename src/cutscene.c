@@ -566,7 +566,8 @@ static void mini_draw(void) {
     for (int i = 0; i < A_N; i++) actor_draw(i);
 #endif
     gfx_set_reserve(0);
-    // The dark editorial cut ends directly on the scene; no blinding white clearing.\n    int lb = MIN(24, MIN(ft / 2, (total - ft) / 2)); if (lb < 0) lb = 0;
+    // The dark editorial cut ends directly on the scene; no blinding white clearing.
+    int lb = MIN(24, MIN(ft / 2, (total - ft) / 2)); if (lb < 0) lb = 0;
     gfx_rect(0, 0, SCREEN_W, lb, 0, 0, 0, 0); gfx_rect(0, SCREEN_H - lb, SCREEN_W, lb, 0, 0, 0, 0);
     if (k >= 0 && k < 4 && !(f2 >= 0 && f2 < 18)) {   // the line of the beat, typed in
         const char *tx = mini == 1 ? F->open[k] : F->end[k]; int t0 = mini_base() + k * M_BEAT + T(3), t1 = mini_base() + (k + 1) * M_BEAT - T(2);
@@ -612,7 +613,9 @@ void cut_draw(void) {
     for (int i = 0; i < A_N; i++) actor_draw(i);
     gfx_set_reserve(0); PROF(4);
     gfx_set_identity(); glass_draw(fh);
-    // Camera choreography, actors and subtitles carry the scene; no overlay streaks,\n    // white beat-flashes, faux sun flares or full-screen clearing strobe.\n    int lb = MIN(24, MIN(ft / 2, (FILM_END + T(8) - ft) / 2 + 0)); if (lb < 0) lb = 0;
+    // Camera choreography, actors and subtitles carry the scene; no overlay streaks,
+    // white beat-flashes, faux sun flares or full-screen clearing strobe.
+    int lb = MIN(24, MIN(ft / 2, (FILM_END + T(8) - ft) / 2 + 0)); if (lb < 0) lb = 0;
     gfx_rect(0, 0, SCREEN_W, lb, 0, 0, 0, 0); gfx_rect(0, SCREEN_H - lb, SCREEN_W, lb, 0, 0, 0, 0);
     // The glass break is conveyed by the prop action and sound, not a flash overlay.
     subtitle_draw();
