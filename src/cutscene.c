@@ -326,13 +326,20 @@ static void backdrop_draw(int tf) {
         wq(X0, y0, X1, y1, Z, (230 - (230 - 100) * u / 255) * lights >> 8, (247 - (247 - 200) * u / 255) * lights >> 8, (255 - (255 - 240) * u / 255) * lights >> 8, 0);
     }
     // Quiet, fixed studio panels instead of scrolling neon hexagons,
-    // wobbling fake spot beams and twinkling sparks. Each visible panel
-    // costs one flat quad; the actors, props and real 3D stage are retained.
+    // fake light beams and sparkles. Thin asymmetric edges give the flats
+    // an architectural recess, not a glossy moving decoration: four
+    // culled quads per visible panel, no textures or extra framebuffer.
     for (int k = -2; k <= 2; k++) {
         int cx = k * 980;
         if (!gfx_visible(cx, -430, -Z, 330)) continue;
         wq(cx - 260, 120, cx + 260, 790, Z - 3,
            170 * lights >> 8, 207 * lights >> 8, 230 * lights >> 8, 3);
+        wq(cx - 260, 120, cx - 246, 790, Z - 5,
+           114 * lights >> 8, 164 * lights >> 8, 190 * lights >> 8, 5); // shadow seam
+        wq(cx + 246, 120, cx + 260, 790, Z - 5,
+           207 * lights >> 8, 228 * lights >> 8, 236 * lights >> 8, 5); // pale edge
+        wq(cx - 260, 778, cx + 260, 790, Z - 6,
+           143 * lights >> 8, 183 * lights >> 8, 205 * lights >> 8, 6); // top molding
     }
     (void)tf;
     wq(X0, 0, X1, 26, Z - 12, 255, 255, 255, 12);    // the white skirting
