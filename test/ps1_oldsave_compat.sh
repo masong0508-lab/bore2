@@ -7,7 +7,11 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-"$ROOT/out-ps1-oldsave"}
 RUNNER=${PS1_REGTEST:-/home/claude/tools/ds/b/bin/duckstation-regtest}
 SDK=${PS1_SDK:-/opt/psn00bsdk}
-CASES=${PS1_OLD_CASES:-"53:b7fdf72221bd89840298b777f95a7d27cb19aa7d 50:747c9eed98f85680d0dfe79ca235a70f3635947b 41:ad56fbcba9b1e4cb81eee9793ed0fb727419bc15 40:9a7e273dd6c07bdd939fc9f758667b59677df1e8"}
+# v50 (commit 747c9eed...) is intentionally NOT a default passing fixture:
+# its exact historical ISO currently hangs in OpenBIOS before running the
+# test game's save code. Keep it available for explicit investigation via
+# PS1_OLD_CASES, and do not mistake that pre-boot failure for a load regression.
+CASES=${PS1_OLD_CASES:-"53:b7fdf72221bd89840298b777f95a7d27cb19aa7d 41:ad56fbcba9b1e4cb81eee9793ed0fb727419bc15 40:9a7e273dd6c07bdd939fc9f758667b59677df1e8"}
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
 test -x "$RUNNER" || { echo "PS1 OLDSAVE FAIL: missing patched DuckStation runner" >&2; exit 2; }
