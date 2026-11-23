@@ -4,12 +4,16 @@ name: build-dreamcast
 on:
   workflow_dispatch:
   push:
-    paths: ["ports/dreamcast/**", "src/**", "test/dc_film_smoke.sh", "test/dc_title_visual.sh", ".github/workflows/build-dreamcast.yml"]
+    paths: ["ports/dreamcast/**", "src/**", "test/dc_film_smoke.sh", "test/dc_title_visual.sh", "test/dc_pad_map_test.c", ".github/workflows/build-dreamcast.yml"]
 jobs:
   disc:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Validate native Dreamcast pad mapping and virtual shoulder buttons
+        run: |
+          cc -std=c99 -Wall -Wextra -Werror test/dc_pad_map_test.c -o /tmp/dc_pad_map_test
+          /tmp/dc_pad_map_test
       - name: Tools
         run: sudo apt-get update && sudo apt-get install -y python3 python3-pil xz-utils make libpng-dev libegl1 libgl1-mesa-dri
       - name: Get the saved Dreamcast toolchain (branch dc-toolchain)
