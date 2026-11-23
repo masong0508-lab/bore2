@@ -11,13 +11,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Tools
-        run: sudo apt-get update && sudo apt-get install -y python3 xz-utils make libpng-dev
+        run: sudo apt-get update && sudo apt-get install -y python3 python3-pil xz-utils make libpng-dev libegl1 libgl1-mesa-dri
       - name: Get the saved Dreamcast toolchain (branch dc-toolchain)
         run: ports/dreamcast/toolchain/restore.sh
       - name: Build the disc
         run: |
           source /tmp/dc/environ.sh
           cd ports/dreamcast && make disc
+      - name: Capture native Dreamcast title in Flycast
+        timeout-minutes: 12
+        run: |
+          source /tmp/dc/environ.sh
+          bash test/dc_title_visual.sh "$PWD/out-dc-title"
+      - name: Upload native Dreamcast title regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_dc_title_native
+          path: |
+            out-dc-title/title_*.ppm
+            out-dc-title/title_results.json
+            out-dc-title/emulate.log
+            out-dc-title/symbols.txt
+          if-no-files-found: warn
       - name: Check that the PS1 image is unchanged
         continue-on-error: true
         run: ports/dreamcast/ps1_check.sh
