@@ -287,11 +287,11 @@ int cut_update(int held, int pressed, int steps) {
     return 1;
 }
 
-// ---- the studio, drawn as a bright cartoon: a clean cyan-to-white backdrop in flat bands, ring-pattern panels, light shafts, sparkles; a chibi crowd ----
+// ---- the studio: matte cyan bands and fixed architectural panels behind the live cast and crowd ----
 #define FL1 T(216)     // the two graphic flash cuts (red / black / white): "MISSY TELLER!" and "WATCH ME DANCE."
 #define FL2 T(470)
 #define RESERVE_PLATE (8*1024)  // (more with a title plate up: its type is a lot of pieces)
-#define RESERVE_FILM (2*1024)   // kept back from the people for the type, the plate and the lens
+#define RESERVE_FILM (2*1024)   // kept back from the people for readable subtitles and editorial cards
 #define FL_COVER 14    // steps the flash covers the whole picture, then 4 more steps of white clearing
 static inline void V3(SVECTOR *v, int x, int y, int z) { v->vx = (short)x; v->vy = (short)-y; v->vz = (short)-z; }
 static u32 shade(int r, int g, int b, int k) { r = r * k >> 8; g = g * k >> 8; b = b * k >> 8; return UI_RGB(MIN(r, 255), MIN(g, 255), MIN(b, 255)); }
@@ -319,44 +319,22 @@ static void floor_draw(int tf) {
     gfx_floor_pass = 0;
     (void)tf;
 }
-static void wall_disc(int cx, int cy, int Z, int rad, int r, int g, int b, int bias) {   // a six-sided disc on the wall, in two quads
-    int hx = rad / 2, hy = rad * 7 / 8; SVECTOR a, bb, c, d;
-    gfx_set_zbias(bias);
-    V3(&a, cx - hx, cy + hy, Z); V3(&bb, cx + hx, cy + hy, Z); V3(&c, cx - rad, cy, Z); V3(&d, cx + rad, cy, Z); gfx_quad_f(&a, &bb, &c, &d, r, g, b, 0);
-    V3(&a, cx - rad, cy, Z); V3(&bb, cx + rad, cy, Z); V3(&c, cx - hx, cy - hy, Z); V3(&d, cx + hx, cy - hy, Z); gfx_quad_f(&a, &bb, &c, &d, r, g, b, 0);
-    gfx_set_zbias(0);
-}
-static void spark(int x, int y, int Z, int s, int r, int g, int b) {   // a four-point star
-    SVECTOR a, bb, c, d; int w = s / 4 + 1;
-    V3(&a, x, y + s, Z); V3(&bb, x + w, y, Z); V3(&c, x - w, y, Z); V3(&d, x, y - s, Z); gfx_set_zbias(10); gfx_quad_f(&a, &bb, &c, &d, r, g, b, 0);
-    V3(&a, x - s, y, Z); V3(&bb, x, y + w, Z); V3(&c, x, y - w, Z); V3(&d, x + s, y, Z); gfx_quad_f(&a, &bb, &c, &d, r, g, b, 0); gfx_set_zbias(0);
-}
 static void backdrop_draw(int tf) {
     const int Z = 1100, X0 = -2600, X1 = 2600, NB = 8;
     for (int i = 0; i < NB; i++) {   // the sky: eight flat bands from white at the floor to cyan at the top
         int y0 = i * 112, y1 = y0 + 112, u = i * 255 / (NB - 1);
         wq(X0, y0, X1, y1, Z, (230 - (230 - 100) * u / 255) * lights >> 8, (247 - (247 - 200) * u / 255) * lights >> 8, (255 - (255 - 240) * u / 255) * lights >> 8, 0);
     }
-    int sc = (tf / 4) % 960;   // ring panels drifting slowly sideways: white ring, cyan, white eye
-    for (int row = 0; row < 2; row++) for (int i = -6; i <= 6; i++) {
-        int cx = i * 480 + (row ? 240 : 0) + sc - 480, cy = row ? 600 : 230;
-        if (cx < -2500 || cx > 2500 || !gfx_visible(cx, -cy, -Z, 190)) continue;
-        wall_disc(cx, cy, Z - 2, 160, 255 * lights >> 8, 255 * lights >> 8, 255 * lights >> 8, 2);
-        wall_disc(cx, cy, Z - 3, 128, 120 * lights >> 8, 208 * lights >> 8, 246 * lights >> 8, 4);
+    // Quiet, fixed studio panels instead of scrolling neon hexagons,
+    // wobbling fake spot beams and twinkling sparks. Each visible panel
+    // costs one flat quad; the actors, props and real 3D stage are retained.
+    for (int k = -2; k <= 2; k++) {
+        int cx = k * 980;
+        if (!gfx_visible(cx, -430, -Z, 330)) continue;
+        wq(cx - 260, 120, cx + 260, 790, Z - 3,
+           170 * lights >> 8, 207 * lights >> 8, 230 * lights >> 8, 3);
     }
-    for (int k = 0; k < 4; k++) {   // light shafts from the rig: a wide pale one with a narrow bright core
-        int xt = -1500 + k * 600 + fsin(tf / 3 + k * 50) / 6, xb = xt + 420 + fsin(tf / 4 + k * 70) / 4, tw = 70, bw = 250;
-        SVECTOR a, bb, c, d;
-        V3(&a, xt - tw, 900, Z - 8); V3(&bb, xt + tw, 900, Z - 8); V3(&c, xb - bw, 0, Z - 8); V3(&d, xb + bw, 0, Z - 8); gfx_set_zbias(8);
-        gfx_quad_f(&a, &bb, &c, &d, 196 * lights >> 8, 232 * lights >> 8, 254 * lights >> 8, 0);
-        V3(&a, xt - tw / 3, 900, Z - 9); V3(&bb, xt + tw / 3, 900, Z - 9); V3(&c, xb - bw / 3, 0, Z - 9); V3(&d, xb + bw / 3, 0, Z - 9); gfx_set_zbias(10);
-        gfx_quad_f(&a, &bb, &c, &d, 226 * lights >> 8, 246 * lights >> 8, 255 * lights >> 8, 0); gfx_set_zbias(0);
-    }
-    for (int k = 0; k < 12; k++) {   // sparkles twinkling
-        int ph = (tf * 5 + k * 97) & 255, s = fsin(ph) > 0 ? fsin(ph) / 6 : 0; if (s < 4) continue;
-        int x = -1900 + ((k * 7919) % 3800), y = 140 + ((k * 4271) % 640);
-        if (gfx_visible(x, -y, -Z, 60)) spark(x, y, Z - 12, s, 255, k & 1 ? 250 : 255, k & 1 ? 190 : 255);
-    }
+    (void)tf;
     wq(X0, 0, X1, 26, Z - 12, 255, 255, 255, 12);    // the white skirting
 }
 static void desk_draw(void) {
