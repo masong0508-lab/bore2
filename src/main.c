@@ -4460,6 +4460,11 @@ static void juke_update(void) {
     }
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) state = prev_state == ST_LIFE ? BACK_TO() : ST_MENU;
 }
+#ifdef BORE_DC
+#define HELP_JUKE_PROMPT "SILENT. A PLAYS A SONG."
+#else
+#define HELP_JUKE_PROMPT "SILENT. X PLAYS A SONG."
+#endif
 static void juke_draw(void) {   // the song playing on its own card, every song in a list under it
     if (prev_state == ST_LIFE) menu_bg(0); else { title_draw(); ui_dim(); }
     int top = ui_window(10, 6, 300, 228, "JUKEBOX", IC_NOTE);
@@ -4478,7 +4483,7 @@ static void juke_draw(void) {   // the song playing on its own card, every song 
         sprintf(b + strlen(b), "%d:%02d / %d:%02d", e / 60, e % 60, l / 60, l % 60);
         ui_text(54, top + 16, 1, b, UI_SOFT);
         ui_bar(54, top + 27, 244, 6, l ? MIN(100, e * 100 / l) : 0, UI_BLUE);
-    } else ui_text(54, top + 15, 1, audio_cd_ok() ? "SILENT. X PLAYS A SONG." : "NO MUSIC ON THIS DISC", UI_SOFT);
+    } else ui_text(54, top + 15, 1, audio_cd_ok() ? HELP_JUKE_PROMPT : "NO MUSIC ON THIS DISC", UI_SOFT);
     if (juke_sel < juke_scroll) juke_scroll = juke_sel;
     if (juke_sel >= juke_scroll + 12) juke_scroll = juke_sel - 11;
     for (int i = juke_scroll; i < n && i < juke_scroll + 12; i++) {
@@ -4493,18 +4498,26 @@ static void juke_draw(void) {   // the song playing on its own card, every song 
     ui_hints(160, 218, "X PLAY|L1 R1 SKIP|SQ SHUFFLE|O BACK", 1);
 }
 
+#undef HELP_JUKE_PROMPT
 // ---- help ----
 typedef struct { s8 ic; const char *t; } HelpTip;
 #define NHELP 6
+// Compile only the help appropriate to this port's physical controller.
+// The Dreamcast maps the PlayStation semantics to A/B/X/Y and trigger chords.
+#ifdef BORE_DC
+#define HELP_BT(ps, dc) dc
+#else
+#define HELP_BT(ps, dc) ps
+#endif
 static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
-    { "HOW TO PLAY", { { IC_PLAY, "MOVE WITH THE STICK OR THE D-PAD. SQUARE RUNS." },
-        { IC_FOOD, "X USES THE THING IN FRONT OF YOU: THE FRIDGE, THE BED, THE SHOWER, THE SOFA, THE TV." },
-        { IC_CHAT, "X ON A PERSON TO TALK. O STOPS WHAT YOU ARE DOING." },
-        { IC_FAST, "TRIANGLE CHANGES HOW FAST TIME GOES." },
-        { IC_PEOPLE, "SELECT OPENS YOUR PHONE: CALL, PIZZA, PARTY, MAP AND MORE." } } },
-    { "THE CAMERA", { { IC_CAMERA, "L1 R1 TURN THE CAMERA. L2 R2 ZOOM. L1 + R1 TOGETHER: SWING ROUND BEHIND YOU." },
-        { IC_EYE, "L2 + R2 TOGETHER: SIMS CAMERA, BEHIND YOU, OR FIRST PERSON." },
-        { IC_PLAY, "FIRST PERSON: UP WALKS, LEFT AND RIGHT TURN, L2 R2 LOOK. L1 + R1 TURN ROUND. THE DOT SHOWS WHAT X DOES." },
+    { "HOW TO PLAY", { { IC_PLAY, HELP_BT("MOVE WITH THE STICK OR THE D-PAD. SQUARE RUNS.", "MOVE WITH STICK OR D-PAD. X RUNS.") },
+        { IC_FOOD, HELP_BT("X USES THE THING IN FRONT OF YOU: THE FRIDGE, THE BED, THE SHOWER, THE SOFA, THE TV.", "A USES THINGS IN FRONT OF YOU: FRIDGE, BED, SHOWER, SOFA, TV.") },
+        { IC_CHAT, HELP_BT("X ON A PERSON TO TALK. O STOPS WHAT YOU ARE DOING.", "A TALKS TO PEOPLE. B STOPS WHAT YOU ARE DOING.") },
+        { IC_FAST, HELP_BT("TRIANGLE CHANGES HOW FAST TIME GOES.", "Y CHANGES HOW FAST TIME GOES.") },
+        { IC_PEOPLE, HELP_BT("SELECT OPENS YOUR PHONE: CALL, PIZZA, PARTY, MAP AND MORE.", "HOLD LT+RT AND PRESS START FOR THE PHONE: CALL, PIZZA, MAP AND MORE.") } } },
+    { "THE CAMERA", { { IC_CAMERA, HELP_BT("L1 R1 TURN THE CAMERA. L2 R2 ZOOM. L1 + R1 TOGETHER: SWING ROUND BEHIND YOU.", "LT/RT TURN THE CAMERA. LT+RT WITH UP/DOWN ZOOMS. LT+RT ALONE RECENTERS.") },
+        { IC_EYE, HELP_BT("L2 + R2 TOGETHER: SIMS CAMERA, BEHIND YOU, OR FIRST PERSON.", "LT+RT+Y CYCLES SIMS, BEHIND-YOU AND FIRST-PERSON CAMERAS.") },
+        { IC_PLAY, HELP_BT("FIRST PERSON: UP WALKS, LEFT AND RIGHT TURN, L2 R2 LOOK. L1 + R1 TURN ROUND. THE DOT SHOWS WHAT X DOES.", "FIRST PERSON: UP WALKS, LEFT/RIGHT TURN. LT+RT+UP/DOWN LOOKS. THE DOT SHOWS WHAT A DOES.") },
         { IC_CASE, "WORK: PHONE, JOBS. BILLS ARE $800, EVERY MIDNIGHT." },
 #ifdef BORE_DC
         { IC_ARROW, "START: THE BORE PANEL, BUILD MODE, OPTIONS AND SAVE GAME (3 SLOTS ON THE VMU)." } } },
@@ -4512,25 +4525,26 @@ static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
         { IC_ARROW, "START: THE BORE PANEL, BUILD MODE, OPTIONS AND SAVE GAME (3 SLOTS ON THE MEMORY CARD)." } } },
 #endif
     { "BUILD AND CREATE", { { IC_HAMMER, "BUILD MODE: ITEMS, WALLS, FLOORS AND 103 WALLPAPERS." },
-        { IC_BRUSH, "SELECT PICKS THE TOOL. L1 R1 PICK THE THING. X PLACES IT, SQUARE TAKES IT AWAY." },
-        { IC_HOUSE, "L2 R2 CHANGE THE STOREY. L3 SHOWS THE ROOF." },
+        { IC_BRUSH, HELP_BT("SELECT PICKS THE TOOL. L1 R1 PICK THE THING. X PLACES IT, SQUARE TAKES IT AWAY.", "LT+RT+START CHANGES TOOL. LT/RT PICKS ITEMS. A PLACES, X SELLS.") },
+        { IC_HOUSE, HELP_BT("L2 R2 CHANGE THE STOREY. L3 SHOWS THE ROOF.", "LT+RT+UP/DOWN CHANGES STOREY. LT+RT+LEFT TOGGLES ROOF.") },
         { IC_STAR, "CREATE A BORE: EVERY BODY, FACE, HAIR, CLOTHES AND PART, IN 3D." },
-        { IC_DICE, "TRIANGLE ROLLS THE DICE FOR A RANDOM BORE." } } },
+        { IC_DICE, HELP_BT("TRIANGLE ROLLS THE DICE FOR A RANDOM BORE.", "Y ROLLS THE DICE FOR A RANDOM BORE.") } } },
     { "GROWING UP", { { IC_SPROUT, "BORES GROW UP: BABY, CHILD, TEEN, ADULT, ELDER. OPTIONS SETS HOW FAST." },
         { IC_CAKE, "A BIRTHDAY? BAKE A CAKE AT THE FRIDGE OR STOVE, THEN BLOW CANDLES." },
-        { IC_HEART, "TWO GROWN-UPS WHO GET ON: X ON ONE, START A FAMILY. OR ADOPT BY PHONE." },
+        { IC_HEART, HELP_BT("TWO GROWN-UPS WHO GET ON: X ON ONE, START A FAMILY. OR ADOPT BY PHONE.", "TWO GROWN-UPS WHO GET ON: A ON ONE, START A FAMILY. OR ADOPT BY PHONE.") },
         { IC_BABY, "A BABY CRIES WHEN IT NEEDS YOU: FEED, CHANGE, PLAY, CUDDLE. BUY A CRIB." },
         { IC_BOOK, "SCHOOL IS 8 AM TO 3 PM, MON - FRI. HOMEWORK AT A DESK OR SHELF." } } },
-    { "A HOME OF YOUR OWN", { { IC_HOUSE, "PHONE, HOMES: HOUSES AND EMPTY LOTS FOR SALE NEAR YOU. X BUYS ONE." },
+    { "A HOME OF YOUR OWN", { { IC_HOUSE, HELP_BT("PHONE, HOMES: HOUSES AND EMPTY LOTS FOR SALE NEAR YOU. X BUYS ONE.", "PHONE, HOMES: HOUSES AND EMPTY LOTS FOR SALE. A BUYS ONE.") },
         { IC_CAR, "THE FAMILY MOVES IN BY TAXI. A HOUSE COMES FURNISHED FOR THEM." },
-        { IC_ROOM, "BUILD MODE, ROOM: X ON ONE CORNER, X ON THE OTHER: WALLS AND A FLOOR." },
-        { IC_DOOR, "DOORS, WINDOWS: X ON A WALL. L2 R2 CHANGE THE STOREY TO BUILD UP." },
-        { IC_STAR, "A FOR SALE SIGN: X ON IT TO BUY THAT HOME. TRAVEL TAKES YOU HOME." } } },
-    { "CASTAWAY ISLAND", { { IC_WOOD, "X ON TREES, BUSHES AND ROCKS: WOOD, LEAVES, BERRIES AND STONE." },
+        { IC_ROOM, HELP_BT("BUILD MODE, ROOM: X ON ONE CORNER, X ON THE OTHER: WALLS AND A FLOOR.", "BUILD MODE, ROOM: A ON EACH CORNER BUILDS WALLS AND A FLOOR.") },
+        { IC_DOOR, HELP_BT("DOORS, WINDOWS: X ON A WALL. L2 R2 CHANGE THE STOREY TO BUILD UP.", "DOORS, WINDOWS: A ON A WALL. LT+RT+UP/DOWN CHANGES STOREY.") },
+        { IC_STAR, HELP_BT("A FOR SALE SIGN: X ON IT TO BUY THAT HOME. TRAVEL TAKES YOU HOME.", "A ON A FOR-SALE SIGN TO BUY A HOME. TRAVEL TAKES YOU HOME.") } } },
+    { "CASTAWAY ISLAND", { { IC_WOOD, HELP_BT("X ON TREES, BUSHES AND ROCKS: WOOD, LEAVES, BERRIES AND STONE.", "A ON TREES, BUSHES AND ROCKS: WOOD, LEAVES, BERRIES AND STONE.") },
         { IC_FOOD, "FISH OFF THE JETTY. COOK AND EAT AT THE CAMPFIRE. NO FOOD? FORAGE." },
-        { IC_HAMMER, "X ON THE CAMPFIRE, CRAFT: A TENT, A BENCH, A SPEAR, A SHELTER, A RAFT." },
+        { IC_HAMMER, HELP_BT("X ON THE CAMPFIRE, CRAFT: A TENT, A BENCH, A SPEAR, A SHELTER, A RAFT.", "A ON THE CAMPFIRE TO CRAFT TENTS, BENCHES, SPEARS, SHELTERS AND RAFTS.") },
         { IC_STAR, "8 SECRETS ARE HIDDEN ON THE ISLAND. THE MAP KEEPS COUNT AND GIVES HINTS." },
         { IC_CAR, "A RAFT SAILS OUT TO THE ISLET. WHAT IS OUT THERE?" } } } };
+#undef HELP_BT
 static void help_update(void) {
     if (PRESSED(PAD_R1) || PRESSED(PAD_CROSS)) help_page = (help_page + 1) % NHELP;
     if (PRESSED(PAD_L1)) help_page = (help_page + NHELP - 1) % NHELP;
@@ -4844,7 +4858,11 @@ static void title_draw(void) {
     if (logo) gfx_textc(160, 112, 1, "DIPPINN PRODUCTIONS", 230, 230, 236);
     if (state == ST_TITLE) {   // readable control prompt, without the oversized "VOXEL LIFE IN 3D" ribbon
         gfx_rect(100, 208, 120, 21, 12, 16, 25, 0);
+#ifdef BORE_DC
+        gfx_textc(160, 213, 1, "A OR START  PLAY", 235, 239, 243);
+#else
         gfx_textc(160, 213, 1, "X OR START  PLAY", 235, 239, 243);
+#endif
     }
 }
 // ---- THE WORLDS (STORY MODE): which SAN BOREAS to live in. Fresh dice, one of the presets, one you roll yourself on CREATE A
