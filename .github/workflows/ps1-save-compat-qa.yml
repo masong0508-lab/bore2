@@ -34,7 +34,7 @@ jobs:
           sudo chown -R "${USER}:${USER}" /home/claude/tools /opt/psn00bsdk
           sudo chown "${USER}:${USER}" /opt
           bash tools/perf/restore.sh
-      - name: Check real PS1 v53 and v40 memory-card save compatibility
+      - name: Check real PS1 v40, v41, v50, and v53 memory-card saves
         timeout-minutes: 37
         run: bash test/ps1_oldsave_compat.sh "$PWD/out-ps1-oldsave"
       - name: Upload historical save regression evidence
