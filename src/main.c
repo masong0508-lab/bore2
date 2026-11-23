@@ -5853,6 +5853,17 @@ int main(void) {
 #if defined(BORE_DC) && defined(DC_OPTS_TEST)
         if (frame == DC_OPTS_TEST && state == ST_LIFE) { opt_back = ST_LIFE; opt_tab = NOTAB; opt_sel = 0; state = ST_OPTS; }   // (a test build: the Dreamcast's options tab opens by itself)
 #endif
+#if defined(BORE_DC) && defined(DC_BUILD_UX_SMOKE)
+        // A test-only, reproducible jump to the real Build Mode UI. Let the
+        // emulated controller, not injected game actions, manipulate storeys,
+        // roof view and tools. It is excluded from every retail ROM build.
+        if (frame == 200 && state == ST_LIFE) {
+            build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]);
+            build_tool = BT_BUY; build_lvl = 0; build_peek = 0;
+            room_on = 0; room_undo.on = 0; build_carry = 0; build_msg_t = 0;
+            state = ST_BUILD;
+        }
+#endif
 #ifdef AUTO_ISLE
         isle_tick();
 #endif
