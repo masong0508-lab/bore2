@@ -28,6 +28,7 @@ int main(void) {
     check(0, 120, 0, 0x0400);          // LT alone = L1
     check(0, 0, 130, 0x0800);          // RT alone = R1
     check(0, 200, 200, 0x0c00);       // both, no direction = L1 + R1
+    check(DCI_Y, 200, 200, 0x0300); // both triggers + Y = L2 + R2 (cycle camera)
     check(DCI_UP, 200, 200, 0x0100);  // storey down / zoom in
     check(DCI_DOWN, 200, 200, 0x0200);// storey up / zoom out
     check(DCI_LEFT, 200, 200, 0x0002);// roof toggle (L3)
@@ -35,6 +36,6 @@ int main(void) {
     check(DCI_A | DCI_UP, 200, 200, 0x4100);
     check(DCI_UP, 100, 200, 0x0810); // threshold: single RT + ordinary UP
     check(DCI_RIGHT, 255, 50, 0x0420);
-    printf("Dreamcast physical pad translation PASS (20 cases)\n");
+    printf("Dreamcast physical pad translation PASS (21 cases)\n");
     return 0;
 }
