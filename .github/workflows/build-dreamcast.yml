@@ -4,7 +4,7 @@ name: build-dreamcast
 on:
   workflow_dispatch:
   push:
-    paths: ["ports/dreamcast/**", "src/**", "test/dc_film_smoke.sh", "test/dc_title_visual.sh", "test/dc_pad_map_test.c", ".github/workflows/build-dreamcast.yml"]
+    paths: ["ports/dreamcast/**", "src/**", "test/dc_film_smoke.sh", "test/dc_title_visual.sh", "test/dc_pad_map_test.c", "test/dc_build_ui_smoke.sh", ".github/workflows/build-dreamcast.yml"]
 jobs:
   disc:
     runs-on: ubuntu-24.04
@@ -56,6 +56,22 @@ jobs:
             out-dc-film/complete.log
             out-dc-film/build.log
             out-dc-film/*.route
+          if-no-files-found: warn
+      - name: Validate real Dreamcast Build Mode with trigger chords in Flycast
+        timeout-minutes: 15
+        run: |
+          source /tmp/dc/environ.sh
+          bash test/dc_build_ui_smoke.sh "$PWD/out-dc-build-ux"
+      - name: Preserve native Dreamcast Build Mode visuals and controller state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_dc_build_mode_ux
+          path: |
+            out-dc-build-ux/build_*.ppm
+            out-dc-build-ux/build_ux_results.json
+            out-dc-build-ux/*.log
+            out-dc-build-ux/*.route
           if-no-files-found: warn
       - name: Install the native PS1 compiler for independent cross-port compatibility
         run: |
