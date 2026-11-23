@@ -326,7 +326,14 @@ int ui_badge_i(int x, int y, int icon, const char *s, u32 bg, u32 ink) {
 // ---- the pad's buttons, the way the console shows them: the four shapes in their colours on a dark round button, the rest as
 // dark pills with their names. A hint line is "X PLACE|O BACK": each part is its buttons, then what they do ----
 static const char *const keyNm[] = { "X", "O", "TRI", "SQ", "L1", "R1", "L2", "R2", "L3", "R3", "START", "SEL", "DPAD", "RS" };
+#ifdef BORE_DC
+// Semantic PS1 tokens in hints are remapped to buttons actually present on
+// a standard Dreamcast pad. 2T means hold BOTH triggers, then the direction.
+// This remains a short legend even in the 304px-safe-area footer.
+static const char *const keyShow[] = { "", "", "", "", "LT", "RT", "2T+U", "2T+D", "2T+L", "2T+R", "START", "2T+ST", "D-PAD", "R-STICK" };
+#else
 static const char *const keyShow[] = { "", "", "", "", "L1", "R1", "L2", "R2", "L3", "R3", "START", "SELECT", "D-PAD", "R-STICK" };
+#endif
 #define NKEY ((int)(sizeof keyNm / sizeof *keyNm))
 static int key_of(const char *w, int n) {
     for (int i = 0; i < NKEY; i++) if ((int)strlen(keyNm[i]) == n && !memcmp(keyNm[i], w, n)) return i;
@@ -334,8 +341,22 @@ static int key_of(const char *w, int n) {
 }
 static int key_w(int k) { if (k < 4) return 13; font_raw = 1; int w = ui_tw(1, keyShow[k]) + 6; font_raw = 0; return w; }
 static int key_draw(int x, int y, int k) {
+#ifndef BORE_DC
     static const u32 kc[4] = { UI_RGB(130, 180, 250), UI_RGB(255, 112, 112), UI_RGB(80, 222, 172), UI_RGB(250, 136, 226) };
-    if (k < 4) { ui_disc(x + 6, y + 6, 13, UI_RGB(52, 60, 76)); ui_icon(x, y, IC_BX + k, kc[k]); return 13; }
+#endif
+    if (k < 4) {
+        ui_disc(x + 6, y + 6, 13, UI_RGB(52, 60, 76));
+#ifdef BORE_DC
+        // The physical Dreamcast face keys are A/B/Y/X, not PS1 shapes.
+        // Actual semantic mapping: CROSS=A, CIRCLE=B, TRIANGLE=Y, SQUARE=X.
+        static const char *const dc_btns[4] = { "A", "B", "Y", "X" };
+        static const u32 dc_col[4] = { UI_RGB(90, 232, 134), UI_RGB(248, 103, 103), UI_RGB(247, 218, 86), UI_RGB(111, 172, 253) };
+        font_raw = 1; ui_textc(x + 6, y + 3, 1, dc_btns[k], dc_col[k]); font_raw = 0;
+#else
+        ui_icon(x, y, IC_BX + k, kc[k]);
+#endif
+        return 13;
+    }
     int w = key_w(k);
     ui_round(x, y + 1, w, 11, 4, UI_RGB(76, 86, 104), UI_RGB(46, 54, 70), 0);
     font_raw = 1; ui_text(x + 3, y + 3, 1, keyShow[k], UI_WHITE); font_raw = 0;
