@@ -42,7 +42,7 @@ jobs:
           curl -fsSL "$BASE/PSn00bSDK-0.24-Linux.zip" -o sdk-ps1.zip
           sudo unzip -q sdk-ps1.zip -d /opt
           sudo mv /opt/PSn00bSDK-0.24-Linux /opt/psn00bsdk
-          sudo unzip -q gcc-ps1.zip -d /opt/psn00bsdk
+          sudo unzip -q -o gcc-ps1.zip -d /opt/psn00bsdk
           sudo chmod -R a+rx /opt/psn00bsdk
       - name: Verify the native PS1 target still builds after Dreamcast changes
         run: bash ports/dreamcast/ps1_check.sh "$PWD" "$PWD/out-ps1-dc-compat"
