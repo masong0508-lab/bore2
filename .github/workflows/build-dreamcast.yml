@@ -34,6 +34,24 @@ jobs:
             out-dc-title/emulate.log
             out-dc-title/symbols.txt
           if-no-files-found: warn
+      - name: Emulate the actual Dreamcast story film and START-to-skip route
+        timeout-minutes: 15
+        run: |
+          source /tmp/dc/environ.sh
+          bash test/dc_film_smoke.sh "$PWD/out-dc-film"
+      - name: Preserve native Dreamcast film and skip evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_dc_film_native
+          path: |
+            out-dc-film/film_*.ppm
+            out-dc-film/film_results.json
+            out-dc-film/normal.log
+            out-dc-film/skip.log
+            out-dc-film/build.log
+            out-dc-film/*.route
+          if-no-files-found: warn
       - name: Install the native PS1 compiler for independent cross-port compatibility
         run: |
           sudo apt-get install -y cmake ninja-build unzip
