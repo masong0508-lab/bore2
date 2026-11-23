@@ -31,6 +31,7 @@ jobs:
         timeout-minutes: 15
         run: |
           set -euo pipefail
+          sudo ln -sf /usr/bin/llvm-nm-18 /usr/local/bin/llvm-nm
           # D78 predates planned towns (legacy generation 3); D82 writes
           # generation 7. Both predate today's generation 8. Fetch exact
           # published commits so the baseline never silently moves.
