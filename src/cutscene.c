@@ -376,6 +376,16 @@ static void crowd_draw(int tf) {
             if (!gfx_visible(x, -(base + 150), -z, 130)) continue;
             int bob = ABS(fsin(tf / 2 + i * 31 + row * 17)) * ch >> 10, y0 = base + bob, bw = 128, bh = 128, rd = 38, yc = y0 + bh + rd + 4;      // (grown-ups: a head a sixth of the height, shoulders, a neck)
             const u8 *sh = shirt[(i + row * 2) % 6], *hr = hair[h];
+            // Far spectators are only ~8 pixels across at native PS1 resolution.
+            // Keep body, arms, head silhouette and hair, but omit subpixel eyes,
+            // highlights, cheeks and mouth; these flicker more than they help.
+            // The override is for paired native visual/performance A/B tests.
+#ifdef FILM_CROWD_FULL_DETAIL
+            const int face_detail = 1;
+#else
+            int fdx = x - cam.eye.vx, fdz = -z - cam.eye.vz;
+            const int face_detail = fdx * fdx + fdz * fdz <= 2200 * 2200;
+#endif
             pl4(x, z - bw / 2, y0 + bh, z + bw / 2, y0 + bh, z - bw / 2, y0 + 4, z + bw / 2, y0 + 4, sh[0] * kk >> 8, sh[1] * kk >> 8, sh[2] * kk >> 8, 4);
             if (ch > 90) {   // hands up
                 int up = (fsin(tf + i * 40) >> 4) + 24;
@@ -387,6 +397,7 @@ static void crowd_draw(int tf) {
             oct4(x, z, yc, rd + 3, 36 * kk >> 8, 16 * kk >> 8, 40 * kk >> 8, 8);      // the head: ink, then skin
             oct4(x, z, yc, rd, 255 * kk >> 8, 214 * kk >> 8, 182 * kk >> 8, 10);
             pl4(x, z - rd * 5 / 10, yc + rd * 12 / 10, z + rd * 5 / 10, yc + rd * 12 / 10, z - rd * 105 / 100, yc + rd * 20 / 100, z + rd * 105 / 100, yc + rd * 20 / 100, hr[0] * kk >> 8, hr[1] * kk >> 8, hr[2] * kk >> 8, 12);
+            if (face_detail) {  // fine facial shapes only when large enough to read
             for (int s = 0; s < 2; s++) { int zz = z + (s ? 1 : -1) * rd * 38 / 100;
                 pl4(x, zz - 5, yc + 2 + 6, zz + 5, yc + 2 + 6, zz - 5, yc - 9, zz + 5, yc - 9, 40 * kk >> 8, 24 * kk >> 8, 70 * kk >> 8, 14);                // the big eye
                 pl4(x, zz - 4, yc + 6, zz + 0, yc + 6, zz - 4, yc + 1, zz + 0, yc + 1, 255 * kk >> 8, 255 * kk >> 8, 255 * kk >> 8, 16);                    // its highlight
@@ -394,6 +405,7 @@ static void crowd_draw(int tf) {
                 pl4(x, zc - 7, yc - 10, zc + 7, yc - 10, zc - 7, yc - 17, zc + 7, yc - 17, 255 * kk >> 8, 176 * kk >> 8, 170 * kk >> 8, 12); }              // the cheek
             if (ch > 90) pl4(x, z - 8, yc - 17, z + 8, yc - 17, z - 6, yc - 27, z + 6, yc - 27, 150 * kk >> 8, 30 * kk >> 8, 50 * kk >> 8, 14);      // a shout
             else pl4(x, z - 7, yc - 19, z + 7, yc - 19, z - 5, yc - 22, z + 5, yc - 22, 150 * kk >> 8, 30 * kk >> 8, 50 * kk >> 8, 14);
+            }
         }
     }
 }
