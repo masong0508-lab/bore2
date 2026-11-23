@@ -49,7 +49,9 @@ cat >"$OUT/exit.route" <<'ROUTE'
 560 l2
 560 r2
 560 start
-720 b
+# RetroPad A is the EAST face button: Dreamcast B / PS1 CIRCLE.
+# RetroPad B is SOUTH: Dreamcast A / PS1 CROSS.
+720 a
 850 shot
 ROUTE
 
