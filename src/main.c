@@ -403,6 +403,19 @@ static void feed_draw(int y) {   // the notifications stack on the left, newest 
 }
 
 // ---- the life ----
+// The gameplay's direct prompts are separate from ui_hints() and must use
+// the physical Dreamcast A button, not a PlayStation CROSS glyph.
+#ifdef BORE_DC
+#define BORE_USE_LABEL "A"
+#define BORE_START_NOTE "WELCOME HOME. A USES THINGS."
+#define BORE_GATHER_NOTE "A ON TREES AND ROCKS: GATHER"
+#define BORE_JOB_PICK_NOTE "NO PAY, BUT NO BILLS EITHER. PICK ONE BELOW AND A TAKES IT. NEW ONES EVERY MORNING."
+#else
+#define BORE_USE_LABEL "X"
+#define BORE_START_NOTE "WELCOME HOME. X USES THINGS."
+#define BORE_GATHER_NOTE "X ON TREES AND ROCKS: GATHER"
+#define BORE_JOB_PICK_NOTE "NO PAY, BUT NO BILLS EITHER. PICK ONE BELOW AND X TAKES IT. NEW ONES EVERY MORNING."
+#endif
 static void start_life(void) {
     if (life_started) return;
     loading("MAKING A NEW LIFE", 20);
@@ -451,7 +464,7 @@ static void start_life(void) {
     life_started = 1;
     story_paid = 0; story_talks = 0; story_visit[0] = 1; story_visit[1] = 0; story_visit[2] = 0; story_visit[3] = 0;
     citizens_init();   // a hundred civilians out in the island, the town and the city
-    sim_note("WELCOME HOME. X USES THINGS.");
+    sim_note(BORE_START_NOTE);
     if (life_story) { story_begin(); life_story = 0; }
     game_music_check();
 }
@@ -730,7 +743,7 @@ static void hud_life(void) {
             ui_text(214, 196, 1, mood, moodt);
             ui_text(216 + ui_tw(1, mood) + 4, 196, 1, b, UI_SOFT);
             ui_bar(214, 208, 94, 5, 100 * s->asp_pts / ASP_MAX, UI_RGB(aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2]));   // (the aspiration meter, under the mood)
-            if (hint[0]) { char hb_[48]; sprintf(hb_, "X %s", hint); ui_round(184, 215, 124, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_textfit(189, 217, 114, hb_, UI_WHITE); }
+            if (hint[0]) { char hb_[48]; sprintf(hb_, "%s %s", BORE_USE_LABEL, hint); ui_round(184, 215, 124, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_textfit(189, 217, 114, hb_, UI_WHITE); }
             else if (veh_on) { ui_round(154, 215, 154, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_textfit(159, 217, 144, vh, UI_WHITE); }   // (at the wheel: what it is, and the fuel)
             else ui_hints(244, 214, "SEL PHONE", 1);
             gfx_keep_end(1);
@@ -738,7 +751,7 @@ static void hud_life(void) {
     }
     if (cam_view == 2 && (s->action == ACT_NONE || s->action == ACT_WALK)) {   // FIRST PERSON: a dot in the middle of the view; with something to use in front, it grows and says what X does
         if (hint[0]) { int w = ui_tw(1, hint) + 14; ui_disc(160, 120, 9, UI_WHITE); ui_disc(160, 120, 7, UI_BLUE);
-                       ui_round(160 - w / 2, 131, w, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(160 - w / 2 + 5, 133, 1, "X", UI_WHITE); ui_text(160 - w / 2 + 14, 133, 1, hint, UI_WHITE); }
+                       ui_round(160 - w / 2, 131, w, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(160 - w / 2 + 5, 133, 1, BORE_USE_LABEL, UI_WHITE); ui_text(160 - w / 2 + 14, 133, 1, hint, UI_WHITE); }
         else { ui_disc(160, 120, 5, UI_RGB(40, 40, 40)); ui_disc(160, 120, 3, UI_WHITE); } }
     HM(4)
     // the clock and the money, top right
@@ -1341,7 +1354,7 @@ static void travel_go(int z) {
     }
     citizens_enter(z);
     char b[40]; sprintf(b, "WELCOME TO %s", world_zone_name(z)); sim_note(b);
-    if (z == ZONE_ISLAND) { sim_note("FIND FOOD: BERRIES, FISH"); sim_note("X ON TREES AND ROCKS: GATHER"); sim_note("8 SECRETS ARE HIDDEN HERE"); }
+    if (z == ZONE_ISLAND) { sim_note("FIND FOOD: BERRIES, FISH"); sim_note(BORE_GATHER_NOTE); sim_note("8 SECRETS ARE HIDDEN HERE"); }
     audio_voice(VOICE_YAHOO);
 }
 static void travel_update(void) {   // (with a home in SAN BOREAS, the first row is HOME: travel_sel 0; the zones after it)
@@ -2252,7 +2265,7 @@ static void jobs_draw(void) {
         if (job_none) {   // no job yet: what to do about it
             ui_icon_disc(32, top + 19, 30, IC_CASE, UI_RGB(150, 156, 170), UI_WHITE);
             ui_text(54, top + 3, 2, "NO JOB YET", UI_INK);
-            ui_wrap(54, top + 20, 248, 3, "NO PAY, BUT NO BILLS EITHER. PICK ONE BELOW AND X TAKES IT. NEW ONES EVERY MORNING.", UI_SOFT);
+            ui_wrap(54, top + 20, 248, 3, BORE_JOB_PICK_NOTE, UI_SOFT);
         } else {
         ui_icon_disc(32, top + 19, 30, carIc[job_car], UI_BLUE, UI_WHITE);
         ui_text(54, top + 3, 2, job_title(), UI_INK);
