@@ -4,7 +4,17 @@ Style, technique and composition only. Nothing here is copied: no frame, charact
 The three reference openings are called **A** (bright comedy, sky blue and white), **B** (graphic action, red / black / white) and **C** (cute outdoor adventure, round faces) below.
 The film is "TV SHOW & TELL" (`src/cutscene.c`, `CUT.OVL`), the opening of Missy Teller's story. Its people are `src/film_toon.inc` + `src/film_cast.inc`.
 
-> **Current presentation direction (2026-11-22): restrained and readable.** The analysis below is a historical record, not an instruction to restore its effects. At the player's request, the large slashing "VOXEL LIFE / IN 3D" title ribbon, drifting title shafts and rings, red/white strobe cards, halftone/speed-line graphic transitions, additive film flares, and full-screen achievement flashes are retired. Keep the real 3D room, characters, camera, dialogue, actor motion and music; use small matte titles, normal scene cuts, subtitles and unobtrusive achievement toasts instead. The shared PS1/Dreamcast code is in `src/main.c`, `src/ui.c` and `src/cutscene.c`; the DS title already uses a different, static interface. **Do not reintroduce oversize, glossy, flashing retro motion graphics on any port.** Recheck native-resolution crops/legibility and packet budgets before declaring visual sign-off. This change does not alter any save format.\n\n## 1. How it was measured
+> **Current presentation direction (2026-11-22): restrained and readable.** The analysis below is a historical record, not an instruction to restore its effects. At the player's request, the large slashing "VOXEL LIFE / IN 3D" title ribbon, drifting title shafts and rings, red/white strobe cards, halftone/speed-line graphic transitions, additive film flares, and full-screen achievement flashes are retired. Keep the real 3D room, characters, camera, dialogue, actor motion and music; use small matte titles, normal scene cuts, subtitles and unobtrusive achievement toasts instead. The shared PS1/Dreamcast code is in `src/main.c`, `src/ui.c` and `src/cutscene.c`; the DS title already uses a different, static interface. **Do not reintroduce oversize, glossy, flashing retro motion graphics on any port.** Recheck native-resolution crops/legibility and packet budgets before declaring visual sign-off. This change does not alter any save format.
+
+## Current implementation and QA (November 22, 2026)
+
+The decorative scrolling wall hexagons, oscillating fake stage-light shafts and twinkling star quads have now been removed from the **3D film set itself**, not merely from the overlay effects. The camera, actors, audience, props, voices, subtitles and eight fixed backdrop color bands remain. Five static matte architectural panels replace the animated decorations; panels outside the visible camera frustum are not submitted. The retired backdrop could emit up to 104 ring quads, 8 beam quads and 24 sparkle quads before culling, compared with at most 5 matte panels now. This reduces optional drawing work, **not a measured FPS gain**.
+
+Native QA: `test/ps1_film_visual.sh` samples real CUT.OVL footage at 320×240 and rejects non-native or blank captures, then verifies the emulated game is still in `ST_CUT`. The subdued color palette means the historic 150-color title-screen rule must not be applied to cinematic shots. `test/dc_title_visual.sh` independently confirms native Dreamcast title rendering and actual title state in Flycast. Both report emulator evidence; physical PS1 and Dreamcast performance still needs direct testing.
+
+The tables below retain historical design research, including effects **no longer present in the game**. They do not describe instructions to reintroduce them.
+
+## 1. How it was measured
 Each opening was cut into 360p frames. Cut rhythm: ffmpeg scene detection (threshold 0.3), median shot length and number of cuts. Outline weight: dark run lengths along scan lines through
 faces at 360p (a 360p frame is 360 px high). Palettes: the dominant colours of 6 to 10 frames each, and the mean saturation. The rest (eyes, hair, camera, transitions, type) was read by eye from
 contact sheets of the frames. Numbers below are what was measured; the rest says "seen".
@@ -72,10 +82,6 @@ The Dreamcast build compiles the same `cutscene.c`; it only uses the engine call
 - Voice and subtitles: `tools/film_to_mp4.sh` (which runs `tools/film_verify.py`) finds all 13 lines (scores 0.68 to 0.97), 134 to 167 ms before their picture (the picture trails the clock by 8 to 10 frames in this build: it was 7), so the sound is moved by that in the MP4 and voice and subtitle meet. The subtitle windows (`subs[]`) are unchanged.
 - The storyboard (`tools/film_storyboard.py`) now reads 13 shots. Keep the `// N. text` comment above every shot's `CK_` lines.
 
-## 7. Where else in the game these styles could go next
-1. The story missions: every mission's opening and ending as a short film in the same plate / flash / hero-shot grammar (Missy's story first, with the voices).
-2. The title screen and the new-life screen: the ring-pattern wall, light shafts and a pop-in title plate.
-3. Chapter cards and "THE END" cards in the story missions: the pattern plate with the two-line type.
-4. Big moments in the game (a win, a wedding, a prize): the red / black / white flash cut with the speed lines for half a second.
-5. The Gotchi and the arcade: the chibi round-face eyes with highlights for pets and for the arcade's people.
-6. Photo mode and the end-of-life screen: the low-angle hero shot with rim light and flare.
+## 7. Future styling constraints
+
+Keep subsequent story, title and gameplay UI consistent with the restrained presentation: clear in-world camera moves, short matte chapter cards, readable subtitles, simple non-flashing cuts and unobtrusive toasts. Do **not** propagate the earlier research section's animated hex panels, drifting ribbons, strobing white-outs, speed lines, lens ghosts, or full-screen celebratory flashes to other modes or console ports.
