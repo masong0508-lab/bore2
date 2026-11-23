@@ -9,10 +9,10 @@ RUN=${DCRUN:-/tmp/dc/pack/bin/dcrun}
 CORE=${FLYCAST_CORE:-/tmp/dc/pack/bin/flycast_libretro.so}
 test -x "$RUN" && test -s "$CORE" || { echo "DC FILM FAIL: missing Flycast runner/core" >&2; exit 2; }
 command -v sh-elf-nm >/dev/null || { echo "DC FILM FAIL: missing sh-elf-nm" >&2; exit 2; }
-mkdir -p "$OUT/normal-system" "$OUT/skip-system"
+mkdir -p "$OUT/normal-system" "$OUT/skip-system" "$OUT/complete-system"
 OUT=$(cd "$OUT" && pwd)
 BUILD="$OUT/build"
-rm -f "$OUT"/film_normal_*.ppm "$OUT"/film_skip_*.ppm "$OUT"/film_*.bin "$OUT"/film_results.json
+rm -f "$OUT"/film_normal_*.ppm "$OUT"/film_skip_*.ppm "$OUT"/film_complete_*.ppm "$OUT"/film_*.bin "$OUT"/film_results.json
 if ! make -C "$ROOT/ports/dreamcast" O="$BUILD" AUTO="AUTO_CUT=1" disc >"$OUT/build.log" 2>&1; then
   tail -90 "$OUT/build.log" >&2; exit 2
 fi
@@ -30,6 +30,13 @@ printf '500 shot\n650 start\n780 shot\n' > "$OUT/skip.route"
 if ! DCRUN_SYS="$OUT/skip-system" DCRUN_RAM=1 timeout 420 "$RUN" "$CORE" \
   "$BUILD/bore2_dc.gdi" 900 "$OUT/film_skip" "$OUT/skip.route" >"$OUT/skip.log" 2>&1; then
   tail -80 "$OUT/skip.log" >&2; exit 2
+fi
+# Independently let the whole opening run to its natural end. A successful
+# skip does not prove the end-of-film state machine returns to the story menu.
+printf '1500 shot\n2600 shot\n3400 shot\n4300 shot\n' > "$OUT/complete.route"
+if ! DCRUN_SYS="$OUT/complete-system" DCRUN_RAM=1 timeout 560 "$RUN" "$CORE" \
+  "$BUILD/bore2_dc.gdi" 4400 "$OUT/film_complete" "$OUT/complete.route" >"$OUT/complete.log" 2>&1; then
+  tail -80 "$OUT/complete.log" >&2; exit 2
 fi
 python3 - "$OUT" <<'PY'
 from pathlib import Path
@@ -77,19 +84,24 @@ def screenshots(name, expected):
 
 normal, unique, rich = screenshots("film_normal", 5)
 skip, skip_unique, skip_rich = screenshots("film_skip", 3)
+complete, complete_unique, complete_rich = screenshots("film_complete", 5)
 normal_state = state_of("film_normal")
 skip_state = state_of("film_skip")
+complete_state = state_of("film_complete")
 # main.c: ST_CUT=40, ST_SPICK=25. After skipping, CUT.OVL releases
 # and title-mode story selection should be interactive, not soft-locked.
 if normal_state != 40:
     raise SystemExit(f"DC FILM FAIL: normal film did not remain in CUT.OVL (state {normal_state})")
 if skip_state != 25:
     raise SystemExit(f"DC FILM FAIL: START did not leave film for story selection (state {skip_state})")
-if rich < 3 or unique < 3 or skip_rich < 2 or skip_unique < 2:
+if complete_state != 25:
+    raise SystemExit(f"DC FILM FAIL: unskipped film did not return to story selection (state {complete_state})")
+if rich < 3 or unique < 3 or skip_rich < 2 or skip_unique < 2 or complete_rich < 3 or complete_unique < 2:
     raise SystemExit(f"DC FILM FAIL: repeated/blank film or skip images (normal {rich} rich, {unique} unique; skip {skip_rich} rich, {skip_unique} unique)")
 report = dict(result="PASS", emulator="Flycast HLE", normal_state=normal_state,
-              skipped_state=skip_state, normal_images=normal, skip_images=skip,
-              note="Real GDI, real renderer and START input, not a physical-console or FPS benchmark; review visual captures for text clipping and transitions.")
+              skipped_state=skip_state, completed_state=complete_state,
+              normal_images=normal, skip_images=skip, complete_images=complete,
+              note="Real GDI, real renderer, START input, and unskipped film completion. Not a physical-console or FPS benchmark; review visual captures for text clipping and transitions.")
 (out / "film_results.json").write_text(json.dumps(report, indent=2) + "\n")
-print(f"DC FILM PASS: still in cutscene at 1450 frames, START skips to story menu; {rich}/5 detailed normal frames")
+print(f"DC FILM PASS: playing at 1450 frames, START skips cleanly, and full film returns to story menu; {rich}/5 detailed normal frames")
 PY
