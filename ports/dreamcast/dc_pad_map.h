@@ -37,8 +37,11 @@ static inline uint16_t dc_pad_translate(uint32_t f, unsigned lt, unsigned rt) {
             if (!dirs) d |= (1u << 10) | (1u << 11);
         }
     } else {
-        if (lt > 100) d |= 1u << 10;
-        if (rt > 100) d |= 1u << 11;
+        // START+both triggers is SELECT alone: do not also turn the camera.
+        if (!(both && (f & DCI_START))) {
+            if (lt > 100) d |= 1u << 10;
+            if (rt > 100) d |= 1u << 11;
+        }
         if (f & DCI_UP) d |= 1u << 4;
         if (f & DCI_RIGHT) d |= 1u << 5;
         if (f & DCI_DOWN) d |= 1u << 6;
