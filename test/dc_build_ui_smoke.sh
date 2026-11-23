@@ -116,7 +116,7 @@ if actions != dict(state=5, build_lvl=1, build_peek=1, build_tool=1):
     raise SystemExit(f"DC BUILD FAIL: trigger+direction/START chords did not update actual Build Mode: {actions}")
 if leave["state"] != 3:
     raise SystemExit(f"DC BUILD FAIL: B did not exit Build Mode to playable life: {leave}")
-pictures = {m: shots(m, 4 if m == "exit" else 3) for m in ("baseline", "actions", "exit")}
+pictures = {m: shots(m, 3) for m in ("baseline", "actions", "exit")}
 report = dict(result="PASS", emulator="Flycast HLE", baseline=baseline,
               after_chords=actions, after_exit=leave, screenshots=pictures,
               note="Native Dreamcast rendering and libretro input replay; not physical controller/hardware or FPS certification.")
