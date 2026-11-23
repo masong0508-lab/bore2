@@ -326,7 +326,14 @@ int ui_badge_i(int x, int y, int icon, const char *s, u32 bg, u32 ink) {
 // ---- the pad's buttons, the way the console shows them: the four shapes in their colours on a dark round button, the rest as
 // dark pills with their names. A hint line is "X PLACE|O BACK": each part is its buttons, then what they do ----
 static const char *const keyNm[] = { "X", "O", "TRI", "SQ", "L1", "R1", "L2", "R2", "L3", "R3", "START", "SEL", "DPAD", "RS" };
+#ifdef BORE_DC
+// Semantic PS1 tokens in hints are remapped to buttons actually present on
+// a standard Dreamcast pad. 2T means hold BOTH triggers, then the direction.
+// This remains a short legend even in the 304px-safe-area footer.
+static const char *const keyShow[] = { "", "", "", "", "LT", "RT", "2T+U", "2T+D", "2T+L", "2T+R", "START", "2T+ST", "D-PAD", "R-STICK" };
+#else
 static const char *const keyShow[] = { "", "", "", "", "L1", "R1", "L2", "R2", "L3", "R3", "START", "SELECT", "D-PAD", "R-STICK" };
+#endif
 #define NKEY ((int)(sizeof keyNm / sizeof *keyNm))
 static int key_of(const char *w, int n) {
     for (int i = 0; i < NKEY; i++) if ((int)strlen(keyNm[i]) == n && !memcmp(keyNm[i], w, n)) return i;
@@ -334,8 +341,22 @@ static int key_of(const char *w, int n) {
 }
 static int key_w(int k) { if (k < 4) return 13; font_raw = 1; int w = ui_tw(1, keyShow[k]) + 6; font_raw = 0; return w; }
 static int key_draw(int x, int y, int k) {
+#ifndef BORE_DC
     static const u32 kc[4] = { UI_RGB(130, 180, 250), UI_RGB(255, 112, 112), UI_RGB(80, 222, 172), UI_RGB(250, 136, 226) };
-    if (k < 4) { ui_disc(x + 6, y + 6, 13, UI_RGB(52, 60, 76)); ui_icon(x, y, IC_BX + k, kc[k]); return 13; }
+#endif
+    if (k < 4) {
+        ui_disc(x + 6, y + 6, 13, UI_RGB(52, 60, 76));
+#ifdef BORE_DC
+        // The physical Dreamcast face keys are A/B/Y/X, not PS1 shapes.
+        // Actual semantic mapping: CROSS=A, CIRCLE=B, TRIANGLE=Y, SQUARE=X.
+        static const char *const dc_btns[4] = { "A", "B", "Y", "X" };
+        static const u32 dc_col[4] = { UI_RGB(90, 232, 134), UI_RGB(248, 103, 103), UI_RGB(247, 218, 86), UI_RGB(111, 172, 253) };
+        font_raw = 1; ui_textc(x + 6, y + 3, 1, dc_btns[k], dc_col[k]); font_raw = 0;
+#else
+        ui_icon(x, y, IC_BX + k, kc[k]);
+#endif
+        return 13;
+    }
     int w = key_w(k);
     ui_round(x, y + 1, w, 11, 4, UI_RGB(76, 86, 104), UI_RGB(46, 54, 70), 0);
     font_raw = 1; ui_text(x + 3, y + 3, 1, keyShow[k], UI_WHITE); font_raw = 0;
@@ -464,27 +485,30 @@ void pl_dots(int x0, int y0, int w, int h, int step, int vert, int r, int g, int
     }
 }
 static int pl_zoom(int z, const char *s) { while (z > 1 && font_w_zoom(z, s) > SCREEN_W - 12) z--; return z; }
-void pl_flash(int f, const char *w1, const char *w2, int inset) {   // the red / black / white graphic cut: 2 steps white, 7 red with the words, speed lines and a halftone, 5 black and white, then 4 of white clearing (PL_FLASH_LEN steps of 60 Hz); the first 14 cover the whole picture
-    int shk = (f & 1) ? 2 : -2, z1 = pl_zoom(4, w1), z2 = pl_zoom(3, w2);
-    if (f >= 14) { int k = f - 14, c = 255 - k * 64; if (k < 4) { gfx_ui_blend(1); gfx_rect(0, 0, SCREEN_W, SCREEN_H, c, c, c, 1); } return; }   // (the white clearing: the picture shows through)
-    if (f < 2) { gfx_rect(0, 0, SCREEN_W, SCREEN_H, 255, 255, 255, 0); return; }
-    int red = f < 9;
-    if (red) gfx_rect(0, 0, SCREEN_W, SCREEN_H, 214, 18, 32, 0); else gfx_rect(0, 0, SCREEN_W, SCREEN_H, 8, 8, 12, 0);
-    pl_rays(160, 120, (f / 2) * 7919 + inset * 131, 34, red ? 20 : 255, red ? 8 : 255, red ? 12 : 255, 1);
-    if (red) pl_dots(0, 178, SCREEN_W, 58, 8, 1, 20, 4, 8); else pl_dots(0, 0, SCREEN_W, 50, 8, 0, 255, 255, 255);
-    if (inset) { gfx_rect(228, 54, 84, 62, 255, 255, 255, 0); gfx_rect(231, 57, 78, 56, 40, 176, 190, 0); pl_dots(231, 57, 78, 56, 6, 0, 8, 40, 60); }
-    int wa = font_w_zoom(z1, w1), wb = font_w_zoom(z2, w2), y1 = inset ? 84 : 66, y2 = inset ? 130 : 128;
-    if (red) { pl_otext(160 - wa / 2 + shk, y1, z1, w1, 255, 255, 255, 3, -1, 0, 0); pl_otext(160 - wb / 2 - shk, y2, z2, w2, 255, 255, 255, 3, -1, 0, 0); }
-    else { pl_otext(160 - wa / 2 - shk, y1, z1, w1, 255, 255, 255, 3, 214, 18, 32); pl_otext(160 - wb / 2 + shk, y2, z2, w2, 255, 255, 255, 3, 214, 18, 32); }
+void pl_flash(int f, const char *w1, const char *w2, int inset) {
+    // A quiet editorial cut instead of white/red strobes, rays, halftone and shake.
+    // Preserve the 14-step beat and its text, so film timing and audio are unchanged.
+    (void)inset;
+    if (f < 0 || f >= 14) return;
+    gfx_rect(0, 0, SCREEN_W, SCREEN_H, 12, 17, 25, 0);
+    int z1 = pl_zoom(3, w1), z2 = pl_zoom(2, w2);
+    font_text_zoom((SCREEN_W - font_w_zoom(z1, w1)) / 2, 78, z1, w1, 238, 240, 242);
+    font_text_zoom((SCREEN_W - font_w_zoom(z2, w2)) / 2, 132, z2, w2, 190, 202, 214);
 }
-void pl_plate(int in, int out, const char *l1, const char *l2, const char *sub, int y0, int r, int g, int b) {   // a title plate: a slanted band slashes in, two lines of bold yellow type with a thick ink outline bounce in, a ribbon with the small line
-    pl_swoosh(in, out, y0, y0 + 100, 40, r, g, b);
-    if (in < 14 || (out >= 0 && out < 14)) return;
-    for (int x = -40; x < SCREEN_W; x += 26) gfx_line(x + 40, y0 + 4, x, y0 + 96, MIN(255, r + 44), MIN(255, g + 20), MIN(255, b + 11));   // diagonal stripes in the plate
-    int t = in - 14, bounce = t < 16 ? -(pl_cos(t * 14) * (16 - t) / 16) / 10 : 0, z1 = pl_zoom(3, l1), z2 = pl_zoom(3, l2);
-    pl_otext(160 - font_w_zoom(z1, l1) / 2, y0 + 12 + bounce, z1, l1, 255, 232, 70, 3, -1, 0, 0);
-    pl_otext(160 - font_w_zoom(z2, l2) / 2, y0 + 54 + bounce, z2, l2, 255, 232, 70, 3, -1, 0, 0);
-    if (sub && *sub) { int sw = ui_tw(1, sub) + 24; gfx_rect(160 - sw / 2, y0 + 104, sw, 14, 22, 30, 110, 0); gfx_rect(160 - sw / 2, y0 + 104, sw, 2, 255, 255, 255, 0); ui_textc(160, y0 + 107, 1, sub, UI_WHITE); }
+void pl_plate(int in, int out, const char *l1, const char *l2, const char *sub, int y0, int r, int g, int b) {
+    // Compact, still title card: no full-width diagonal ribbon, stripes, bouncing
+    // outlined letters or shiny accent bars. Keep story/pack text and timing intact.
+    (void)r; (void)g; (void)b;
+    if (in < 8 || (out >= 0 && out < 8)) return;
+    int z1 = pl_zoom(2, l1), z2 = pl_zoom(2, l2);
+    int w = MAX(font_w_zoom(z1, l1), font_w_zoom(z2, l2));
+    if (sub && *sub) w = MAX(w, ui_tw(1, sub));
+    w = CLAMP(w + 30, 130, SCREEN_W - 20);
+    int x = (SCREEN_W - w) / 2, y = CLAMP(y0 + 12, 24, SCREEN_H - 68);
+    gfx_rect(x, y, w, 64, 12, 17, 25, 0);
+    font_text_zoom((SCREEN_W - font_w_zoom(z1, l1)) / 2, y + 6, z1, l1, 237, 240, 243);
+    font_text_zoom((SCREEN_W - font_w_zoom(z2, l2)) / 2, y + 29, z2, l2, 237, 240, 243);
+    if (sub && *sub) ui_textc(SCREEN_W / 2, y + 52, 1, sub, UI_SOFT);
 }
 void pl_shafts(int t) {   // light shafts from the top, slanted, additive: three wide pale ones with a bright core, drifting
     gfx_ui_blend(1);

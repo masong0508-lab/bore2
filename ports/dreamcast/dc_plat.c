@@ -12,28 +12,37 @@
 #include "audio.h"
 #include "crowd.h"
 #include "citizens.h"
+#include "dc_pad_map.h"  // tested translation of standard Dreamcast physical controls
 
 KOS_INIT_FLAGS(INIT_DEFAULT);
 
 // ---------------------------------------------------------------- the pad: a Dreamcast controller read as a PS1 digital pad
 // PS1 bits (active low): 0 SELECT 3 START 4 UP 5 RIGHT 6 DOWN 7 LEFT 8 L2 9 R2 10 L1 11 R1 12 TRIANGLE 13 CIRCLE 14 CROSS 15 SQUARE.
-// A = CROSS, B = CIRCLE, X = SQUARE, Y = TRIANGLE, the triggers = L1 / R1; pulled all the way with the other one = L2 / R2;
-// SELECT = START with the triggers both held. The analog stick reads as the PS1's left stick.
+// A = CROSS, B = CIRCLE, X = SQUARE, Y = TRIANGLE; LT / RT = L1 / R1.
+// Both triggers plus D-pad UP/DOWN/LEFT/RIGHT = L2/R2/L3/R3;
+// both triggers alone = L1+R1 (recenter camera), START+both = SELECT.
+// Extra C/Z/D buttons retain legacy input mappings. The analog stick stays left stick.
 static uint16_t dc_btn_port(int port, int *ax, int *ay) {
     maple_device_t *c = port == 0 ? maple_enum_type(0, MAPLE_FUNC_CONTROLLER) : maple_enum_dev(port, 0);
     *ax = *ay = 128;
     if (!c || !(c->info.functions & MAPLE_FUNC_CONTROLLER)) return 0xffff;
     cont_state_t *s = (cont_state_t *)maple_dev_status(c);
     if (!s) return 0xffff;
-    uint16_t d = 0; uint32_t b = s->buttons;
-    int lt = s->ltrig > 100, rt = s->rtrig > 100;
-    if (b & CONT_START) d |= (lt && rt) ? 1 : 8;
-    if (b & CONT_DPAD_UP) d |= 1 << 4; if (b & CONT_DPAD_RIGHT) d |= 1 << 5; if (b & CONT_DPAD_DOWN) d |= 1 << 6; if (b & CONT_DPAD_LEFT) d |= 1 << 7;
-    if (lt && rt && !(b & CONT_START)) d |= (1 << 8) | (1 << 9); else { if (lt) d |= 1 << 10; if (rt) d |= 1 << 11; }
-    if (b & CONT_Y) d |= 1 << 12; if (b & CONT_B) d |= 1 << 13; if (b & CONT_A) d |= 1 << 14; if (b & CONT_X) d |= 1 << 15;
-    if (b & CONT_Z) d |= 1 << 8; if (b & CONT_C) d |= 1 << 9; if (b & CONT_D) d |= 1;
+    uint32_t b = s->buttons, f = 0;
+    if (b & CONT_START) f |= DCI_START;
+    if (b & CONT_DPAD_UP) f |= DCI_UP;
+    if (b & CONT_DPAD_RIGHT) f |= DCI_RIGHT;
+    if (b & CONT_DPAD_DOWN) f |= DCI_DOWN;
+    if (b & CONT_DPAD_LEFT) f |= DCI_LEFT;
+    if (b & CONT_A) f |= DCI_A;
+    if (b & CONT_B) f |= DCI_B;
+    if (b & CONT_X) f |= DCI_X;
+    if (b & CONT_Y) f |= DCI_Y;
+    if (b & CONT_Z) f |= DCI_Z;
+    if (b & CONT_C) f |= DCI_C;
+    if (b & CONT_D) f |= DCI_D;
     *ax = s->joyx + 128; *ay = s->joyy + 128;
-    return (uint16_t)~d;
+    return (uint16_t)~dc_pad_translate(f, s->ltrig, s->rtrig);
 }
 static uint16_t dc_btn(int *ax, int *ay) { return dc_btn_port(0, ax, ay); }
 // controllers B, C, D: held (active high, the game's own order) and newly pressed, for the fight's second player; 0 when nothing is plugged in

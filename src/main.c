@@ -403,6 +403,19 @@ static void feed_draw(int y) {   // the notifications stack on the left, newest 
 }
 
 // ---- the life ----
+// The gameplay's direct prompts are separate from ui_hints() and must use
+// the physical Dreamcast A button, not a PlayStation CROSS glyph.
+#ifdef BORE_DC
+#define BORE_USE_LABEL "A"
+#define BORE_START_NOTE "WELCOME HOME. A USES THINGS."
+#define BORE_GATHER_NOTE "A ON TREES AND ROCKS: GATHER"
+#define BORE_JOB_PICK_NOTE "NO PAY, BUT NO BILLS EITHER. PICK ONE BELOW AND A TAKES IT. NEW ONES EVERY MORNING."
+#else
+#define BORE_USE_LABEL "X"
+#define BORE_START_NOTE "WELCOME HOME. X USES THINGS."
+#define BORE_GATHER_NOTE "X ON TREES AND ROCKS: GATHER"
+#define BORE_JOB_PICK_NOTE "NO PAY, BUT NO BILLS EITHER. PICK ONE BELOW AND X TAKES IT. NEW ONES EVERY MORNING."
+#endif
 static void start_life(void) {
     if (life_started) return;
     loading("MAKING A NEW LIFE", 20);
@@ -451,7 +464,7 @@ static void start_life(void) {
     life_started = 1;
     story_paid = 0; story_talks = 0; story_visit[0] = 1; story_visit[1] = 0; story_visit[2] = 0; story_visit[3] = 0;
     citizens_init();   // a hundred civilians out in the island, the town and the city
-    sim_note("WELCOME HOME. X USES THINGS.");
+    sim_note(BORE_START_NOTE);
     if (life_story) { story_begin(); life_story = 0; }
     game_music_check();
 }
@@ -730,7 +743,7 @@ static void hud_life(void) {
             ui_text(214, 196, 1, mood, moodt);
             ui_text(216 + ui_tw(1, mood) + 4, 196, 1, b, UI_SOFT);
             ui_bar(214, 208, 94, 5, 100 * s->asp_pts / ASP_MAX, UI_RGB(aspLvCol[lv][0], aspLvCol[lv][1], aspLvCol[lv][2]));   // (the aspiration meter, under the mood)
-            if (hint[0]) { char hb_[48]; sprintf(hb_, "X %s", hint); ui_round(184, 215, 124, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_textfit(189, 217, 114, hb_, UI_WHITE); }
+            if (hint[0]) { char hb_[48]; sprintf(hb_, "%s %s", BORE_USE_LABEL, hint); ui_round(184, 215, 124, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_textfit(189, 217, 114, hb_, UI_WHITE); }
             else if (veh_on) { ui_round(154, 215, 154, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_textfit(159, 217, 144, vh, UI_WHITE); }   // (at the wheel: what it is, and the fuel)
             else ui_hints(244, 214, "SEL PHONE", 1);
             gfx_keep_end(1);
@@ -738,7 +751,7 @@ static void hud_life(void) {
     }
     if (cam_view == 2 && (s->action == ACT_NONE || s->action == ACT_WALK)) {   // FIRST PERSON: a dot in the middle of the view; with something to use in front, it grows and says what X does
         if (hint[0]) { int w = ui_tw(1, hint) + 14; ui_disc(160, 120, 9, UI_WHITE); ui_disc(160, 120, 7, UI_BLUE);
-                       ui_round(160 - w / 2, 131, w, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(160 - w / 2 + 5, 133, 1, "X", UI_WHITE); ui_text(160 - w / 2 + 14, 133, 1, hint, UI_WHITE); }
+                       ui_round(160 - w / 2, 131, w, 11, 4, UI_RGB(70, 176, 238), UI_BLUE2, 0); ui_text(160 - w / 2 + 5, 133, 1, BORE_USE_LABEL, UI_WHITE); ui_text(160 - w / 2 + 14, 133, 1, hint, UI_WHITE); }
         else { ui_disc(160, 120, 5, UI_RGB(40, 40, 40)); ui_disc(160, 120, 3, UI_WHITE); } }
     HM(4)
     // the clock and the money, top right
@@ -1175,15 +1188,20 @@ static void life_update(int steps) {
     if (isl_craft_asked) { isl_craft_asked = 0; craft_sel = 0; craft_msg_t = 0; state = ST_CRAFT; }   // the campfire: make something
 }
 
-static void big_flash(void) {   // the red / black / white cut on a big moment: half a second, at most once every 40 s, and any button ends it
+static void big_flash(void) {   // readable achievement toast, never a full-screen strobe during play
     static int ft_ = -1, cool;
     static const char *const W1[8] = { "", "PROMOTED", "I DO.", "NEW", "CHAPTER", "LEVEL", "NEW", "YOU ARE" }, *const W2[8] = { "", "BOSS!", "FOREVER", "BABY!", "DONE!", "UP!", "PRIZE!", "CHAMP!" };
     static int kind;
-    if (sim_flash_req) { if (cool <= 0 && ft_ < 0) { kind = sim_flash_req; ft_ = 0; cool = 2400; } sim_flash_req = 0; }
+    if (sim_flash_req) { if (cool <= 0 && ft_ < 0) { kind = CLAMP(sim_flash_req, 1, 7); ft_ = 0; cool = 2400; } sim_flash_req = 0; }
     if (cool > 0) cool--;
     if (ft_ < 0) return;
-    if (ft_ >= PL_FLASH_LEN || (~btn & 0xffff & (PAD_CROSS | PAD_CIRCLE | PAD_START))) { ft_ = -1; return; }
-    pl_flash(ft_, W1[kind], W2[kind], kind & 1); ft_++;
+    // Two seconds of vblanks, independent of frame rate. Short minimum display
+    // avoids dismissing a notification on the button that caused it.
+    if (ft_ >= 120 || (ft_ >= 18 && (~btn & 0xffff & (PAD_CROSS | PAD_CIRCLE | PAD_START)))) { ft_ = -1; return; }
+    gfx_rect(78, 18, 164, 39, 12, 17, 25, 0);
+    gfx_textc(160, 23, 2, W1[kind], 237, 240, 243);
+    gfx_textc(160, 40, 1, W2[kind], 190, 202, 214);
+    ft_ += cam_dt;
 }
 static void life_draw(void) {
 #ifdef AUTO_DAY
@@ -1336,7 +1354,7 @@ static void travel_go(int z) {
     }
     citizens_enter(z);
     char b[40]; sprintf(b, "WELCOME TO %s", world_zone_name(z)); sim_note(b);
-    if (z == ZONE_ISLAND) { sim_note("FIND FOOD: BERRIES, FISH"); sim_note("X ON TREES AND ROCKS: GATHER"); sim_note("8 SECRETS ARE HIDDEN HERE"); }
+    if (z == ZONE_ISLAND) { sim_note("FIND FOOD: BERRIES, FISH"); sim_note(BORE_GATHER_NOTE); sim_note("8 SECRETS ARE HIDDEN HERE"); }
     audio_voice(VOICE_YAHOO);
 }
 static void travel_update(void) {   // (with a home in SAN BOREAS, the first row is HOME: travel_sel 0; the zones after it)
@@ -2247,7 +2265,7 @@ static void jobs_draw(void) {
         if (job_none) {   // no job yet: what to do about it
             ui_icon_disc(32, top + 19, 30, IC_CASE, UI_RGB(150, 156, 170), UI_WHITE);
             ui_text(54, top + 3, 2, "NO JOB YET", UI_INK);
-            ui_wrap(54, top + 20, 248, 3, "NO PAY, BUT NO BILLS EITHER. PICK ONE BELOW AND X TAKES IT. NEW ONES EVERY MORNING.", UI_SOFT);
+            ui_wrap(54, top + 20, 248, 3, BORE_JOB_PICK_NOTE, UI_SOFT);
         } else {
         ui_icon_disc(32, top + 19, 30, carIc[job_car], UI_BLUE, UI_WHITE);
         ui_text(54, top + 3, 2, job_title(), UI_INK);
@@ -4198,7 +4216,7 @@ static void draw_pick_list(const char *title, int count, int sel, const char *(*
     }
     sprintf(b, "%d OF %d", sel + 1, count); ui_text_box(199, top + 83, 110, 12, TX_CENTER | TX_MID, 1, b, UI_SOFT);   // (was 86: the count sat on the card's bottom edge and the next card's top)
 }
-static int build_intro, build_last_frame = -99; static long build_last_cash, build_delta; static int build_delta_t;   // the BUILD MODE banner; the running +$ / -$
+static int build_last_frame = -99; static long build_last_cash, build_delta; static int build_delta_t;   // the running +$ / -$
 static int build_tile_state(void) {   // what X would do on the tile under the cursor: 0 not allowed (red), 1 go ahead (green), 2 take away or replace (orange)
     if (!build_ok(build_x, build_y)) return 0;
     int L = build_lvl; char c = world_at_l(L, build_x, build_y);
@@ -4222,11 +4240,10 @@ static void build_bar(int xmin, int zmax, int w, int h, int yy, int r, int g, in
 }
 static void build_update(void) {
     static int rep;
-    if (frame - build_last_frame > 4) { room_undo.on = 0; build_intro = 90; build_last_cash = cash; build_delta = 0; build_delta_t = 0; }   // (just came in)
+    if (frame - build_last_frame > 4) { room_undo.on = 0; build_last_cash = cash; build_delta = 0; build_delta_t = 0; }   // (just came in)
     build_last_frame = frame;
     if (cash != build_last_cash) { build_delta += cash - build_last_cash; build_last_cash = cash; build_delta_t = 80; }   // what the last buy or sale came to
     if (build_delta_t > 0 && --build_delta_t == 0) build_delta = 0;
-    if (build_intro > 0) build_intro--;
     int dx = 0, dy = 0;
     int l = HELD(PAD_LEFT) || ls_x < -40, r = HELD(PAD_RIGHT) || ls_x > 40, u = HELD(PAD_UP) || ls_y < -40, d = HELD(PAD_DOWN) || ls_y > 40;
     if (l || r || u || d) { if (rep == 0 || rep > 12) { if (l) dx = -1; if (r) dx = 1; if (u) dy = -1; if (d) dy = 1; if (rep > 12) rep = 9; } rep++; } else rep = 0;
@@ -4437,9 +4454,7 @@ static void build_draw(void) {
                ui_hints(160, 217, "SQ DOOR|TRI UNDO|SEL TOOL|L2 R2 STOREY|O DONE", 1); }
         else { ui_hints(160, 205, build_tool == BT_BUY ? "L1 R1 PICK|R3 TAB|X BUY OR MOVE|SQ SELL" : build_tool == BT_DOOR ? "L1 R1 PICK|X PUT IN|SQ TAKE OUT" : build_tool == BT_WALL ? "L1 R1 PICK|X PLACE, HOLD TO DRAW|SQ ERASE" : build_tool == BT_PAINT ? "L1 R1 PICK|X PAINT|TRI PAPER ROOM" : build_tool == BT_FLOOR ? "L1 R1 PICK|X PLACE|TRI FILL ROOM|SQ ERASE" : "L1 R1 PICK|X PLACE|SQ ERASE", 1);
                ui_hints(160, 217, build_tool == BT_BUY ? "TRI TURN|SEL TOOL|L2 R2 STOREY|O DONE" : "SEL TOOL|L2 R2 STOREY|L3 ROOF|O DONE", 1); }
-        if (build_intro > 0) { int sl = build_intro > 80 ? (build_intro - 80) * 14 : build_intro < 12 ? (12 - build_intro) * 14 : 0;   // BUILD MODE: slides in, stays, slides out
-            ui_shadow(30, 92 - sl, 136, 30, 8); ui_round(30, 92 - sl, 136, 30, 8, UI_RGB(70, 176, 238), UI_BLUE2, 0);
-            ui_text_box(30, 94 - sl, 136, 16, TX_CENTER | TX_MID, 2, "BUILD MODE", UI_WHITE); ui_text_box(30, 110 - sl, 136, 11, TX_CENTER | TX_MID, 1, "O WHEN YOU ARE DONE", UI_WHITE); }
+        // No sliding banner over the build cursor; persistent footer hints already explain the controls.
     }
 }
 
@@ -4458,6 +4473,11 @@ static void juke_update(void) {
     }
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) state = prev_state == ST_LIFE ? BACK_TO() : ST_MENU;
 }
+#ifdef BORE_DC
+#define HELP_JUKE_PROMPT "SILENT. A PLAYS A SONG."
+#else
+#define HELP_JUKE_PROMPT "SILENT. X PLAYS A SONG."
+#endif
 static void juke_draw(void) {   // the song playing on its own card, every song in a list under it
     if (prev_state == ST_LIFE) menu_bg(0); else { title_draw(); ui_dim(); }
     int top = ui_window(10, 6, 300, 228, "JUKEBOX", IC_NOTE);
@@ -4476,7 +4496,7 @@ static void juke_draw(void) {   // the song playing on its own card, every song 
         sprintf(b + strlen(b), "%d:%02d / %d:%02d", e / 60, e % 60, l / 60, l % 60);
         ui_text(54, top + 16, 1, b, UI_SOFT);
         ui_bar(54, top + 27, 244, 6, l ? MIN(100, e * 100 / l) : 0, UI_BLUE);
-    } else ui_text(54, top + 15, 1, audio_cd_ok() ? "SILENT. X PLAYS A SONG." : "NO MUSIC ON THIS DISC", UI_SOFT);
+    } else ui_text(54, top + 15, 1, audio_cd_ok() ? HELP_JUKE_PROMPT : "NO MUSIC ON THIS DISC", UI_SOFT);
     if (juke_sel < juke_scroll) juke_scroll = juke_sel;
     if (juke_sel >= juke_scroll + 12) juke_scroll = juke_sel - 11;
     for (int i = juke_scroll; i < n && i < juke_scroll + 12; i++) {
@@ -4491,18 +4511,26 @@ static void juke_draw(void) {   // the song playing on its own card, every song 
     ui_hints(160, 218, "X PLAY|L1 R1 SKIP|SQ SHUFFLE|O BACK", 1);
 }
 
+#undef HELP_JUKE_PROMPT
 // ---- help ----
 typedef struct { s8 ic; const char *t; } HelpTip;
 #define NHELP 6
+// Compile only the help appropriate to this port's physical controller.
+// The Dreamcast maps the PlayStation semantics to A/B/X/Y and trigger chords.
+#ifdef BORE_DC
+#define HELP_BT(ps, dc) dc
+#else
+#define HELP_BT(ps, dc) ps
+#endif
 static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
-    { "HOW TO PLAY", { { IC_PLAY, "MOVE WITH THE STICK OR THE D-PAD. SQUARE RUNS." },
-        { IC_FOOD, "X USES THE THING IN FRONT OF YOU: THE FRIDGE, THE BED, THE SHOWER, THE SOFA, THE TV." },
-        { IC_CHAT, "X ON A PERSON TO TALK. O STOPS WHAT YOU ARE DOING." },
-        { IC_FAST, "TRIANGLE CHANGES HOW FAST TIME GOES." },
-        { IC_PEOPLE, "SELECT OPENS YOUR PHONE: CALL, PIZZA, PARTY, MAP AND MORE." } } },
-    { "THE CAMERA", { { IC_CAMERA, "L1 R1 TURN THE CAMERA. L2 R2 ZOOM. L1 + R1 TOGETHER: SWING ROUND BEHIND YOU." },
-        { IC_EYE, "L2 + R2 TOGETHER: SIMS CAMERA, BEHIND YOU, OR FIRST PERSON." },
-        { IC_PLAY, "FIRST PERSON: UP WALKS, LEFT AND RIGHT TURN, L2 R2 LOOK. L1 + R1 TURN ROUND. THE DOT SHOWS WHAT X DOES." },
+    { "HOW TO PLAY", { { IC_PLAY, HELP_BT("MOVE WITH THE STICK OR THE D-PAD. SQUARE RUNS.", "MOVE WITH STICK OR D-PAD. X RUNS.") },
+        { IC_FOOD, HELP_BT("X USES THE THING IN FRONT OF YOU: THE FRIDGE, THE BED, THE SHOWER, THE SOFA, THE TV.", "A USES THINGS IN FRONT OF YOU: FRIDGE, BED, SHOWER, SOFA, TV.") },
+        { IC_CHAT, HELP_BT("X ON A PERSON TO TALK. O STOPS WHAT YOU ARE DOING.", "A TALKS TO PEOPLE. B STOPS WHAT YOU ARE DOING.") },
+        { IC_FAST, HELP_BT("TRIANGLE CHANGES HOW FAST TIME GOES.", "Y CHANGES HOW FAST TIME GOES.") },
+        { IC_PEOPLE, HELP_BT("SELECT OPENS YOUR PHONE: CALL, PIZZA, PARTY, MAP AND MORE.", "HOLD LT+RT AND PRESS START FOR THE PHONE: CALL, PIZZA, MAP AND MORE.") } } },
+    { "THE CAMERA", { { IC_CAMERA, HELP_BT("L1 R1 TURN THE CAMERA. L2 R2 ZOOM. L1 + R1 TOGETHER: SWING ROUND BEHIND YOU.", "LT/RT TURN THE CAMERA. LT+RT WITH UP/DOWN ZOOMS. LT+RT ALONE RECENTERS.") },
+        { IC_EYE, HELP_BT("L2 + R2 TOGETHER: SIMS CAMERA, BEHIND YOU, OR FIRST PERSON.", "LT+RT+Y CYCLES SIMS, BEHIND-YOU AND FIRST-PERSON CAMERAS.") },
+        { IC_PLAY, HELP_BT("FIRST PERSON: UP WALKS, LEFT AND RIGHT TURN, L2 R2 LOOK. L1 + R1 TURN ROUND. THE DOT SHOWS WHAT X DOES.", "FIRST PERSON: UP WALKS, LEFT/RIGHT TURN. LT+RT+UP/DOWN LOOKS. THE DOT SHOWS WHAT A DOES.") },
         { IC_CASE, "WORK: PHONE, JOBS. BILLS ARE $800, EVERY MIDNIGHT." },
 #ifdef BORE_DC
         { IC_ARROW, "START: THE BORE PANEL, BUILD MODE, OPTIONS AND SAVE GAME (3 SLOTS ON THE VMU)." } } },
@@ -4510,25 +4538,26 @@ static const struct { const char *title; HelpTip it[5]; } help_pg[NHELP] = {
         { IC_ARROW, "START: THE BORE PANEL, BUILD MODE, OPTIONS AND SAVE GAME (3 SLOTS ON THE MEMORY CARD)." } } },
 #endif
     { "BUILD AND CREATE", { { IC_HAMMER, "BUILD MODE: ITEMS, WALLS, FLOORS AND 103 WALLPAPERS." },
-        { IC_BRUSH, "SELECT PICKS THE TOOL. L1 R1 PICK THE THING. X PLACES IT, SQUARE TAKES IT AWAY." },
-        { IC_HOUSE, "L2 R2 CHANGE THE STOREY. L3 SHOWS THE ROOF." },
+        { IC_BRUSH, HELP_BT("SELECT PICKS THE TOOL. L1 R1 PICK THE THING. X PLACES IT, SQUARE TAKES IT AWAY.", "LT+RT+START CHANGES TOOL. LT/RT PICKS ITEMS. A PLACES, X SELLS.") },
+        { IC_HOUSE, HELP_BT("L2 R2 CHANGE THE STOREY. L3 SHOWS THE ROOF.", "LT+RT+UP/DOWN CHANGES STOREY. LT+RT+LEFT TOGGLES ROOF.") },
         { IC_STAR, "CREATE A BORE: EVERY BODY, FACE, HAIR, CLOTHES AND PART, IN 3D." },
-        { IC_DICE, "TRIANGLE ROLLS THE DICE FOR A RANDOM BORE." } } },
+        { IC_DICE, HELP_BT("TRIANGLE ROLLS THE DICE FOR A RANDOM BORE.", "Y ROLLS THE DICE FOR A RANDOM BORE.") } } },
     { "GROWING UP", { { IC_SPROUT, "BORES GROW UP: BABY, CHILD, TEEN, ADULT, ELDER. OPTIONS SETS HOW FAST." },
         { IC_CAKE, "A BIRTHDAY? BAKE A CAKE AT THE FRIDGE OR STOVE, THEN BLOW CANDLES." },
-        { IC_HEART, "TWO GROWN-UPS WHO GET ON: X ON ONE, START A FAMILY. OR ADOPT BY PHONE." },
+        { IC_HEART, HELP_BT("TWO GROWN-UPS WHO GET ON: X ON ONE, START A FAMILY. OR ADOPT BY PHONE.", "TWO GROWN-UPS WHO GET ON: A ON ONE, START A FAMILY. OR ADOPT BY PHONE.") },
         { IC_BABY, "A BABY CRIES WHEN IT NEEDS YOU: FEED, CHANGE, PLAY, CUDDLE. BUY A CRIB." },
         { IC_BOOK, "SCHOOL IS 8 AM TO 3 PM, MON - FRI. HOMEWORK AT A DESK OR SHELF." } } },
-    { "A HOME OF YOUR OWN", { { IC_HOUSE, "PHONE, HOMES: HOUSES AND EMPTY LOTS FOR SALE NEAR YOU. X BUYS ONE." },
+    { "A HOME OF YOUR OWN", { { IC_HOUSE, HELP_BT("PHONE, HOMES: HOUSES AND EMPTY LOTS FOR SALE NEAR YOU. X BUYS ONE.", "PHONE, HOMES: HOUSES AND EMPTY LOTS FOR SALE. A BUYS ONE.") },
         { IC_CAR, "THE FAMILY MOVES IN BY TAXI. A HOUSE COMES FURNISHED FOR THEM." },
-        { IC_ROOM, "BUILD MODE, ROOM: X ON ONE CORNER, X ON THE OTHER: WALLS AND A FLOOR." },
-        { IC_DOOR, "DOORS, WINDOWS: X ON A WALL. L2 R2 CHANGE THE STOREY TO BUILD UP." },
-        { IC_STAR, "A FOR SALE SIGN: X ON IT TO BUY THAT HOME. TRAVEL TAKES YOU HOME." } } },
-    { "CASTAWAY ISLAND", { { IC_WOOD, "X ON TREES, BUSHES AND ROCKS: WOOD, LEAVES, BERRIES AND STONE." },
+        { IC_ROOM, HELP_BT("BUILD MODE, ROOM: X ON ONE CORNER, X ON THE OTHER: WALLS AND A FLOOR.", "BUILD MODE, ROOM: A ON EACH CORNER BUILDS WALLS AND A FLOOR.") },
+        { IC_DOOR, HELP_BT("DOORS, WINDOWS: X ON A WALL. L2 R2 CHANGE THE STOREY TO BUILD UP.", "DOORS, WINDOWS: A ON A WALL. LT+RT+UP/DOWN CHANGES STOREY.") },
+        { IC_STAR, HELP_BT("A FOR SALE SIGN: X ON IT TO BUY THAT HOME. TRAVEL TAKES YOU HOME.", "A ON A FOR-SALE SIGN TO BUY A HOME. TRAVEL TAKES YOU HOME.") } } },
+    { "CASTAWAY ISLAND", { { IC_WOOD, HELP_BT("X ON TREES, BUSHES AND ROCKS: WOOD, LEAVES, BERRIES AND STONE.", "A ON TREES, BUSHES AND ROCKS: WOOD, LEAVES, BERRIES AND STONE.") },
         { IC_FOOD, "FISH OFF THE JETTY. COOK AND EAT AT THE CAMPFIRE. NO FOOD? FORAGE." },
-        { IC_HAMMER, "X ON THE CAMPFIRE, CRAFT: A TENT, A BENCH, A SPEAR, A SHELTER, A RAFT." },
+        { IC_HAMMER, HELP_BT("X ON THE CAMPFIRE, CRAFT: A TENT, A BENCH, A SPEAR, A SHELTER, A RAFT.", "A ON THE CAMPFIRE TO CRAFT TENTS, BENCHES, SPEARS, SHELTERS AND RAFTS.") },
         { IC_STAR, "8 SECRETS ARE HIDDEN ON THE ISLAND. THE MAP KEEPS COUNT AND GIVES HINTS." },
         { IC_CAR, "A RAFT SAILS OUT TO THE ISLET. WHAT IS OUT THERE?" } } } };
+#undef HELP_BT
 static void help_update(void) {
     if (PRESSED(PAD_R1) || PRESSED(PAD_CROSS)) help_page = (help_page + 1) % NHELP;
     if (PRESSED(PAD_L1)) help_page = (help_page + NHELP - 1) % NHELP;
@@ -4823,7 +4852,7 @@ static void title_draw(void) {
     Gait g = { 0 }; g.clock = frame; g.mood = 60; g.phase = (title_ph * 60) & 4095; g.amp = 4096;
     voxel_draw(&title_bore, &p, ((title_ph * 9) >> 1) & 4095, &g);
     gfx_shadow(&p, 70);
-    if (state == ST_TITLE) { pl_shafts(title_ph); pl_hexes(title_ph, 90, 30); }   // (the film's look: light shafts from the top, a row of ring panels drifting; by the vblank clock, so it never stutters)
+    // Let the 3D room and Bore speak for themselves; no drifting shafts or shiny title overlays.
     int logo = state == ST_TITLE || state == ST_MENU;   // (behind the options, the slots and the other screens the logo is left out: its 1057 rects used up the packet buffer, and the text on top was cut off)
 #ifdef WALLS_DISC
     if (logo && !crowd_logo_ok) {   // (first time, or the arena was used since: the disc into it. The music is stopped for the read, as it is when you quit to the title)
@@ -4840,9 +4869,13 @@ static void title_draw(void) {
     }
     if (logo) { int w = gfx_text_w(1, "DIPPINN PRODUCTIONS"); gfx_text_raw(161 - w / 2, 113, 1, "DIPPINN PRODUCTIONS", 40, 30, 30); }
     if (logo) gfx_textc(160, 112, 1, "DIPPINN PRODUCTIONS", 230, 230, 236);
-    if (state == ST_TITLE) {   // the tagline on a pattern plate that slashes in once (then it holds still), and what to press
-        int in = MIN(title_t, 9999) - 24;
-        pl_plate(in, -1, "VOXEL LIFE", "IN 3D", in > 30 ? "START  PLAY" : "", 112, 106, 206, 239);   // (steady: the ribbon used to blink)
+    if (state == ST_TITLE) {   // readable control prompt, without the oversized "VOXEL LIFE IN 3D" ribbon
+        gfx_rect(100, 208, 120, 21, 12, 16, 25, 0);
+#ifdef BORE_DC
+        gfx_textc(160, 213, 1, "A OR START  PLAY", 235, 239, 243);
+#else
+        gfx_textc(160, 213, 1, "X OR START  PLAY", 235, 239, 243);
+#endif
     }
 }
 // ---- THE WORLDS (STORY MODE): which SAN BOREAS to live in. Fresh dice, one of the presets, one you roll yourself on CREATE A
@@ -5819,6 +5852,17 @@ int main(void) {
 #endif
 #if defined(BORE_DC) && defined(DC_OPTS_TEST)
         if (frame == DC_OPTS_TEST && state == ST_LIFE) { opt_back = ST_LIFE; opt_tab = NOTAB; opt_sel = 0; state = ST_OPTS; }   // (a test build: the Dreamcast's options tab opens by itself)
+#endif
+#if defined(BORE_DC) && defined(DC_BUILD_UX_SMOKE)
+        // A test-only, reproducible jump to the real Build Mode UI. Let the
+        // emulated controller, not injected game actions, manipulate storeys,
+        // roof view and tools. It is excluded from every retail ROM build.
+        if (frame == 200 && state == ST_LIFE) {
+            build_x = sim_tile_x(&sims[player]); build_y = sim_tile_y(&sims[player]);
+            build_tool = BT_BUY; build_lvl = 0; build_peek = 0;
+            room_on = 0; room_undo.on = 0; build_carry = 0; build_msg_t = 0;
+            state = ST_BUILD;
+        }
 #endif
 #ifdef AUTO_ISLE
         isle_tick();

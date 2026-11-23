@@ -287,13 +287,11 @@ int cut_update(int held, int pressed, int steps) {
     return 1;
 }
 
-// ---- the studio, drawn as a bright cartoon: a clean cyan-to-white backdrop in flat bands, ring-pattern panels, light shafts, sparkles; a chibi crowd ----
-static const u16 beat_t[] = { T(105), T(228), T(392), T(436), T(545) };      // the white flash cuts
-static const struct { u16 a, b; } line_w[] = { { T(226), T(240) }, { T(388), T(424) }, { T(436), T(452) }, { T(496), T(512) }, { T(545), T(558) } };   // the speed lines
+// ---- the studio: matte cyan bands and fixed architectural panels behind the live cast and crowd ----
 #define FL1 T(216)     // the two graphic flash cuts (red / black / white): "MISSY TELLER!" and "WATCH ME DANCE."
 #define FL2 T(470)
 #define RESERVE_PLATE (8*1024)  // (more with a title plate up: its type is a lot of pieces)
-#define RESERVE_FILM (2*1024)   // kept back from the people for the type, the plate and the lens
+#define RESERVE_FILM (2*1024)   // kept back from the people for readable subtitles and editorial cards
 #define FL_COVER 14    // steps the flash covers the whole picture, then 4 more steps of white clearing
 static inline void V3(SVECTOR *v, int x, int y, int z) { v->vx = (short)x; v->vy = (short)-y; v->vz = (short)-z; }
 static u32 shade(int r, int g, int b, int k) { r = r * k >> 8; g = g * k >> 8; b = b * k >> 8; return UI_RGB(MIN(r, 255), MIN(g, 255), MIN(b, 255)); }
@@ -321,44 +319,29 @@ static void floor_draw(int tf) {
     gfx_floor_pass = 0;
     (void)tf;
 }
-static void wall_disc(int cx, int cy, int Z, int rad, int r, int g, int b, int bias) {   // a six-sided disc on the wall, in two quads
-    int hx = rad / 2, hy = rad * 7 / 8; SVECTOR a, bb, c, d;
-    gfx_set_zbias(bias);
-    V3(&a, cx - hx, cy + hy, Z); V3(&bb, cx + hx, cy + hy, Z); V3(&c, cx - rad, cy, Z); V3(&d, cx + rad, cy, Z); gfx_quad_f(&a, &bb, &c, &d, r, g, b, 0);
-    V3(&a, cx - rad, cy, Z); V3(&bb, cx + rad, cy, Z); V3(&c, cx - hx, cy - hy, Z); V3(&d, cx + hx, cy - hy, Z); gfx_quad_f(&a, &bb, &c, &d, r, g, b, 0);
-    gfx_set_zbias(0);
-}
-static void spark(int x, int y, int Z, int s, int r, int g, int b) {   // a four-point star
-    SVECTOR a, bb, c, d; int w = s / 4 + 1;
-    V3(&a, x, y + s, Z); V3(&bb, x + w, y, Z); V3(&c, x - w, y, Z); V3(&d, x, y - s, Z); gfx_set_zbias(10); gfx_quad_f(&a, &bb, &c, &d, r, g, b, 0);
-    V3(&a, x - s, y, Z); V3(&bb, x, y + w, Z); V3(&c, x, y - w, Z); V3(&d, x + s, y, Z); gfx_quad_f(&a, &bb, &c, &d, r, g, b, 0); gfx_set_zbias(0);
-}
 static void backdrop_draw(int tf) {
     const int Z = 1100, X0 = -2600, X1 = 2600, NB = 8;
     for (int i = 0; i < NB; i++) {   // the sky: eight flat bands from white at the floor to cyan at the top
         int y0 = i * 112, y1 = y0 + 112, u = i * 255 / (NB - 1);
         wq(X0, y0, X1, y1, Z, (230 - (230 - 100) * u / 255) * lights >> 8, (247 - (247 - 200) * u / 255) * lights >> 8, (255 - (255 - 240) * u / 255) * lights >> 8, 0);
     }
-    int sc = (tf / 4) % 960;   // ring panels drifting slowly sideways: white ring, cyan, white eye
-    for (int row = 0; row < 2; row++) for (int i = -6; i <= 6; i++) {
-        int cx = i * 480 + (row ? 240 : 0) + sc - 480, cy = row ? 600 : 230;
-        if (cx < -2500 || cx > 2500 || !gfx_visible(cx, -cy, -Z, 190)) continue;
-        wall_disc(cx, cy, Z - 2, 160, 255 * lights >> 8, 255 * lights >> 8, 255 * lights >> 8, 2);
-        wall_disc(cx, cy, Z - 3, 128, 120 * lights >> 8, 208 * lights >> 8, 246 * lights >> 8, 4);
+    // Quiet, fixed studio panels instead of scrolling neon hexagons,
+    // fake light beams and sparkles. Thin asymmetric edges give the flats
+    // an architectural recess, not a glossy moving decoration: four
+    // culled quads per visible panel, no textures or extra framebuffer.
+    for (int k = -2; k <= 2; k++) {
+        int cx = k * 980;
+        if (!gfx_visible(cx, -430, -Z, 330)) continue;
+        wq(cx - 260, 120, cx + 260, 790, Z - 3,
+           170 * lights >> 8, 207 * lights >> 8, 230 * lights >> 8, 3);
+        wq(cx - 260, 120, cx - 246, 790, Z - 5,
+           114 * lights >> 8, 164 * lights >> 8, 190 * lights >> 8, 5); // shadow seam
+        wq(cx + 246, 120, cx + 260, 790, Z - 5,
+           207 * lights >> 8, 228 * lights >> 8, 236 * lights >> 8, 5); // pale edge
+        wq(cx - 260, 778, cx + 260, 790, Z - 6,
+           143 * lights >> 8, 183 * lights >> 8, 205 * lights >> 8, 6); // top molding
     }
-    for (int k = 0; k < 4; k++) {   // light shafts from the rig: a wide pale one with a narrow bright core
-        int xt = -1500 + k * 600 + fsin(tf / 3 + k * 50) / 6, xb = xt + 420 + fsin(tf / 4 + k * 70) / 4, tw = 70, bw = 250;
-        SVECTOR a, bb, c, d;
-        V3(&a, xt - tw, 900, Z - 8); V3(&bb, xt + tw, 900, Z - 8); V3(&c, xb - bw, 0, Z - 8); V3(&d, xb + bw, 0, Z - 8); gfx_set_zbias(8);
-        gfx_quad_f(&a, &bb, &c, &d, 196 * lights >> 8, 232 * lights >> 8, 254 * lights >> 8, 0);
-        V3(&a, xt - tw / 3, 900, Z - 9); V3(&bb, xt + tw / 3, 900, Z - 9); V3(&c, xb - bw / 3, 0, Z - 9); V3(&d, xb + bw / 3, 0, Z - 9); gfx_set_zbias(10);
-        gfx_quad_f(&a, &bb, &c, &d, 226 * lights >> 8, 246 * lights >> 8, 255 * lights >> 8, 0); gfx_set_zbias(0);
-    }
-    for (int k = 0; k < 12; k++) {   // sparkles twinkling
-        int ph = (tf * 5 + k * 97) & 255, s = fsin(ph) > 0 ? fsin(ph) / 6 : 0; if (s < 4) continue;
-        int x = -1900 + ((k * 7919) % 3800), y = 140 + ((k * 4271) % 640);
-        if (gfx_visible(x, -y, -Z, 60)) spark(x, y, Z - 12, s, 255, k & 1 ? 250 : 255, k & 1 ? 190 : 255);
-    }
+    (void)tf;
     wq(X0, 0, X1, 26, Z - 12, 255, 255, 255, 12);    // the white skirting
 }
 static void desk_draw(void) {
@@ -400,6 +383,16 @@ static void crowd_draw(int tf) {
             if (!gfx_visible(x, -(base + 150), -z, 130)) continue;
             int bob = ABS(fsin(tf / 2 + i * 31 + row * 17)) * ch >> 10, y0 = base + bob, bw = 128, bh = 128, rd = 38, yc = y0 + bh + rd + 4;      // (grown-ups: a head a sixth of the height, shoulders, a neck)
             const u8 *sh = shirt[(i + row * 2) % 6], *hr = hair[h];
+            // Far spectators are only ~8 pixels across at native PS1 resolution.
+            // Keep body, arms, head silhouette and hair, but omit subpixel eyes,
+            // highlights, cheeks and mouth; these flicker more than they help.
+            // The override is for paired native visual/performance A/B tests.
+#ifdef FILM_CROWD_FULL_DETAIL
+            const int face_detail = 1;
+#else
+            int fdx = x - cam.eye.vx, fdz = -z - cam.eye.vz;
+            const int face_detail = fdx * fdx + fdz * fdz <= 2200 * 2200;
+#endif
             pl4(x, z - bw / 2, y0 + bh, z + bw / 2, y0 + bh, z - bw / 2, y0 + 4, z + bw / 2, y0 + 4, sh[0] * kk >> 8, sh[1] * kk >> 8, sh[2] * kk >> 8, 4);
             if (ch > 90) {   // hands up
                 int up = (fsin(tf + i * 40) >> 4) + 24;
@@ -411,6 +404,7 @@ static void crowd_draw(int tf) {
             oct4(x, z, yc, rd + 3, 36 * kk >> 8, 16 * kk >> 8, 40 * kk >> 8, 8);      // the head: ink, then skin
             oct4(x, z, yc, rd, 255 * kk >> 8, 214 * kk >> 8, 182 * kk >> 8, 10);
             pl4(x, z - rd * 5 / 10, yc + rd * 12 / 10, z + rd * 5 / 10, yc + rd * 12 / 10, z - rd * 105 / 100, yc + rd * 20 / 100, z + rd * 105 / 100, yc + rd * 20 / 100, hr[0] * kk >> 8, hr[1] * kk >> 8, hr[2] * kk >> 8, 12);
+            if (face_detail) {  // fine facial shapes only when large enough to read
             for (int s = 0; s < 2; s++) { int zz = z + (s ? 1 : -1) * rd * 38 / 100;
                 pl4(x, zz - 5, yc + 2 + 6, zz + 5, yc + 2 + 6, zz - 5, yc - 9, zz + 5, yc - 9, 40 * kk >> 8, 24 * kk >> 8, 70 * kk >> 8, 14);                // the big eye
                 pl4(x, zz - 4, yc + 6, zz + 0, yc + 6, zz - 4, yc + 1, zz + 0, yc + 1, 255 * kk >> 8, 255 * kk >> 8, 255 * kk >> 8, 16);                    // its highlight
@@ -418,6 +412,7 @@ static void crowd_draw(int tf) {
                 pl4(x, zc - 7, yc - 10, zc + 7, yc - 10, zc - 7, yc - 17, zc + 7, yc - 17, 255 * kk >> 8, 176 * kk >> 8, 170 * kk >> 8, 12); }              // the cheek
             if (ch > 90) pl4(x, z - 8, yc - 17, z + 8, yc - 17, z - 6, yc - 27, z + 6, yc - 27, 150 * kk >> 8, 30 * kk >> 8, 50 * kk >> 8, 14);      // a shout
             else pl4(x, z - 7, yc - 19, z + 7, yc - 19, z - 5, yc - 22, z + 5, yc - 22, 150 * kk >> 8, 30 * kk >> 8, 50 * kk >> 8, 14);
+            }
         }
     }
 }
@@ -532,18 +527,7 @@ static void gallery_draw(void) {   // tests: AUTO_CUT=9999 six poses of the libr
 }
 // ---- the lens: graphic type, the flash cuts, the title plates, the flare ----
 extern int font_sub;   // (font.c: 1 takes the glyph away from what is under it, 0 adds it)
-static void blob2(int cx, int cy, int r, int c) {   // an additive round-ish glow: a plus and a box, an octagon
-    gfx_rect(cx - r, cy - r * 4 / 10, r * 2, r * 8 / 10, c, c, c, 1); gfx_rect(cx - r * 4 / 10, cy - r, r * 8 / 10, r * 2, c, c, c, 1); gfx_rect(cx - r * 75 / 100, cy - r * 75 / 100, r * 150 / 100, r * 150 / 100, c, c, c, 1);
-}
-static void flare_draw(int t) {   // the lens flare of a low sun: a bright core, a long streak, ghosts along the line to the middle
-    int sx = 262 - t / 6, sy = 40 + t / 12; gfx_ui_blend(1);
-    int a = MIN(t, 12) * 255 / 12 * (120 + (ABS(fsin(t * 3)) >> 2)) >> 8;   // (a slight shimmer)
-    gfx_grad(0, sy - 1, sx, 3, 0, a / 2 | a / 2 << 8 | a / 3 << 16, 0, a / 2 | a / 2 << 8 | a / 3 << 16, 1);
-    gfx_grad(sx, sy - 1, SCREEN_W - sx, 3, a / 2 | a / 2 << 8 | a / 3 << 16, 0, a / 2 | a / 2 << 8 | a / 3 << 16, 0, 1);
-    blob2(sx, sy, 14, a / 2); blob2(sx, sy, 7, a);
-    for (int k = 1; k <= 3; k++) { int gx = sx + (160 - sx) * k * 7 / 10, gy = sy + (120 - sy) * k * 7 / 10; blob2(gx, gy, 6 + k * 3, a / 9); }
-    gfx_ui_blend(1);
-}
+// Film title treatment lives in ui.c; no GPU lens flares or additive ghost blobs.
 static void plate(int in, int out, const char *l1, const char *l2, const char *sub, int y0) { pl_plate(in, out, l1, l2, sub, y0, 106, 206, 239); }
 #ifdef FILM_PROF      // test builds: a log of the film's cost per drawing (hblanks of CPU in each part, packet bytes, overflow); read from a RAM dump with test/ramsym.py
 u16 film_log[600][7]; u8 film_ps_log[600][5]; int film_log_n; static int fp[8];
@@ -580,7 +564,7 @@ static void mini_draw(void) {
     for (int i = 0; i < A_N; i++) actor_draw(i);
 #endif
     gfx_set_reserve(0);
-    if (f2 >= 14 && f2 < 18) { int f = 255 - (f2 - 14) * 64; gfx_ui_blend(1); gfx_rect(0, 0, SCREEN_W, SCREEN_H, f, f, f, 1); }
+    // The dark editorial cut ends directly on the scene; no blinding white clearing.
     int lb = MIN(24, MIN(ft / 2, (total - ft) / 2)); if (lb < 0) lb = 0;
     gfx_rect(0, 0, SCREEN_W, lb, 0, 0, 0, 0); gfx_rect(0, SCREEN_H - lb, SCREEN_W, lb, 0, 0, 0, 0);
     if (k >= 0 && k < 4 && !(f2 >= 0 && f2 < 18)) {   // the line of the beat, typed in
@@ -627,27 +611,11 @@ void cut_draw(void) {
     for (int i = 0; i < A_N; i++) actor_draw(i);
     gfx_set_reserve(0); PROF(4);
     gfx_set_identity(); glass_draw(fh);
-    // the lens: speed lines on the beats, a flash, the flare, the letterbox sliding in, the fade in and out, then the words
-    for (unsigned k = 0; k < sizeof line_w / sizeof line_w[0]; k++) if (ft >= line_w[k].a && ft < line_w[k].b) {
-        int seed = (ft / 6) * 7919 + k * 131;                    // (new lines every sixth of a second: on sixes)
-        int fade = MIN(MIN(ft - line_w[k].a, line_w[k].b - ft), 6);
-        for (int i = 0; i < 26; i++) {
-            u32 h = (u32)(seed + i * 2654435) * 2246822519u; h ^= h >> 15; h *= 3266489917u; h ^= h >> 13;
-            int a = h & 255, r0 = 70 + ((h >> 8) & 63) + (6 - fade) * 14, r1 = r0 + 50 + ((h >> 16) & 63), tx, ty;
-            int ux = fcos(a), uy = fsin(a), lum = 200 + ((h >> 24) & 55);
-            for (;;) { tx = 160 + ux * r1 * 4 / 3 / 256; ty = 120 + uy * r1 / 256; if ((tx >= 1 && tx < SCREEN_W - 1 && ty >= 24 && ty < SCREEN_H - 24) || r1 <= r0 + 6) break; r1 -= 8; }
-            int sx = 160 + ux * r0 * 4 / 3 / 256, sy = 120 + uy * r0 / 256;
-            gfx_line(sx, sy, tx, ty, lum, lum, lum); gfx_line(sx + 1, sy, tx + 1, ty, lum, lum, lum);
-        }
-    }
-    for (unsigned k = 0; k < sizeof beat_t / sizeof beat_t[0]; k++) if (ft >= beat_t[k] && ft < beat_t[k] + 5) {   // a flash cut on the beat
-        int f = 150 - (ft - beat_t[k]) * 30; gfx_ui_blend(1); gfx_rect(0, 0, SCREEN_W, SCREEN_H, f, f, f, 1); }
-    { int fa = ft - FL1 - FL_COVER, fb = ft - FL2 - FL_COVER, k = fa >= 0 && fa < 4 ? fa : fb >= 0 && fb < 4 ? fb : -1;   // the white clearing after a graphic cut
-      if (k >= 0) { int f = 255 - k * 64; gfx_ui_blend(1); gfx_rect(0, 0, SCREEN_W, SCREEN_H, f, f, f, 1); } }
-    if (hero) flare_draw(ft - FL2 - FL_COVER);
+    // Camera choreography, actors and subtitles carry the scene; no overlay streaks,
+    // white beat-flashes, faux sun flares or full-screen clearing strobe.
     int lb = MIN(24, MIN(ft / 2, (FILM_END + T(8) - ft) / 2 + 0)); if (lb < 0) lb = 0;
     gfx_rect(0, 0, SCREEN_W, lb, 0, 0, 0, 0); gfx_rect(0, SCREEN_H - lb, SCREEN_W, lb, 0, 0, 0, 0);
-    if (ft >= GLASS_BREAK && ft < GLASS_BREAK + 8) { int f = 255 - (ft - GLASS_BREAK) * 30; gfx_ui_blend(1); gfx_rect(0, 0, SCREEN_W, SCREEN_H, f, f, f, 1); }
+    // The glass break is conveyed by the prop action and sound, not a flash overlay.
     subtitle_draw();
     if (ft > T(2) && ft < T(46)) plate(ft - T(2), T(44) - ft, "TV SHOW", "& TELL", "STARRING MISSY TELLER", 40);          // the title plate over the opening crane
     if (ft > T(560)) plate(ft - T(560), 99999, "MISSY", "TELLER", "HERE TODAY...", 52);                                         // the final card

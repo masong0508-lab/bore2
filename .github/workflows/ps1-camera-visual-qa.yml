@@ -5,6 +5,8 @@ on:
   push:
     paths:
       - "src/main.c"
+      - "src/ui.c"
+      - "src/cutscene.c"
       - "src/gfx.c"
       - "src/gfx.h"
       - "src/world.c"
@@ -14,6 +16,8 @@ on:
       - "src/camera_lens.h"
       - "test/camera_lens_test.c"
       - "test/ps1_camera_visual.sh"
+      - "test/ps1_title_visual.sh"
+      - "test/ps1_film_visual.sh"
       - ".github/workflows/ps1-camera-visual-qa.yml"
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -43,6 +47,38 @@ jobs:
           # runner needs write access to its parent during extraction.
           sudo chown "${USER}:${USER}" /opt
           bash tools/perf/restore.sh
+      - name: Capture native PS1 title and verify it really reaches the title scene
+        timeout-minutes: 15
+        run: bash test/ps1_title_visual.sh "$PWD/out-ps1-title"
+      - name: Preserve native title screenshots and verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_ps1_title_native
+          path: |
+            out-ps1-title/shots/**/*.png
+            out-ps1-title/title_results.json
+            out-ps1-title/config.log
+            out-ps1-title/build.log
+            out-ps1-title/emulate.log
+            out-ps1-title/script.txt
+          if-no-files-found: warn
+      - name: Capture actual PS1 story-film cuts and native subtitles
+        timeout-minutes: 15
+        run: bash test/ps1_film_visual.sh "$PWD/out-ps1-film"
+      - name: Preserve story-film visual QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_ps1_film_native
+          path: |
+            out-ps1-film/shots/**/*.png
+            out-ps1-film/film_results.json
+            out-ps1-film/config.log
+            out-ps1-film/build.log
+            out-ps1-film/emulate.log
+            out-ps1-film/script.txt
+          if-no-files-found: warn
       - name: Capture native PS1 close-home lens comparison
         timeout-minutes: 30
         run: bash test/ps1_camera_visual.sh "$PWD/out-ps1-camera"

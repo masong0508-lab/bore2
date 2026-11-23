@@ -1,0 +1,50 @@
+name: ps1-save-compat-qa
+# The historical format gate is deliberately separate from the general disc
+# build. It compiles REAL earlier revisions and boots their memory-card
+# images in the unchanged latest PS1 ROM, with strict RAM assertions.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "src/save.*"
+      - "src/sim.*"
+      - "src/world.*"
+      - "src/bigmap.*"
+      - "src/main.c"
+      - "src/mcard.*"
+      - "test/oldhook.py"
+      - "test/ps1_oldsave_compat.sh"
+      - ".github/workflows/ps1-save-compat-qa.yml"
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+jobs:
+  historical-cards:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Restore legal PS1 SDK and headless OpenBIOS emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4t64 ninja-build cmake xz-utils unzip python3-pil
+          sudo mkdir -p /home/claude/tools /opt/psn00bsdk
+          sudo chown -R "${USER}:${USER}" /home/claude/tools /opt/psn00bsdk
+          sudo chown "${USER}:${USER}" /opt
+          bash tools/perf/restore.sh
+      - name: Check real PS1 v40, v41, and v53 memory-card saves
+        timeout-minutes: 37
+        run: bash test/ps1_oldsave_compat.sh "$PWD/out-ps1-oldsave"
+      - name: Upload historical save regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_ps1_historical_memory_cards
+          path: |
+            out-ps1-oldsave/compatibility.jsonl
+            out-ps1-oldsave/*.log
+            out-ps1-oldsave/*.mcd
+            out-ps1-oldsave/*.route
+          if-no-files-found: warn

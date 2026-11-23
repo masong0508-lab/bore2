@@ -12,18 +12,18 @@ D=$(cd "$D" && pwd)
 # Clear only this replay's evidence, including after an interrupted previous
 # run. A build or emulator failure must never leave an old passing report.
 for mode in cutaway always; do
-    rm -f "$D/$mode.ppm" "$D/${mode}_345.ppm" "$D/${mode}_385.ppm" "$D/${mode}_425.ppm"
+    rm -f "$D/$mode.ppm" "$D/${mode}_"*.ppm
 done
 rm -f "$D/visual_atlas_results.json"
 test -x "$RUN" || { echo "Missing melonDS runner: $RUN" >&2; exit 2; }
 
 # A single seed and fixed controls are repeated for each roof mode. The
-# DS_TOUR hook moves through the same first three representative generated
-# houses (including their rooms/yard and street views) in both builds.
+# DS_TOUR hook moves through six representative planned lots, including
+# varied house types, orientations, rooms, yards and street views, in both builds.
 # DS_TOUR_MID places the controlled Sim inside the house, so Cutaway and
 # Always should produce *different actual 3D frames*, not just UI text.
 LIVE='100-103:0:212,140;200-203:1:-1,-1'
-SHOTS='345,385,425'
+SHOTS='345,385,425,465,505,545'
 for mode in cutaway always; do
     B="$D/rom-$mode"
     mkdir -p "$B"
@@ -39,7 +39,7 @@ for mode in cutaway always; do
     }
     # run.cpp's optional sixth argument accepts comma-separated frame
     # numbers and saves "<base>_<frame>.ppm". One replay per mode suffices.
-    if ! "$RUN" "$B/bore.nds" 480 "$D/$mode.ppm" "$LIVE" "$SHOTS" >"$D/emulate-$mode.log" 2>&1; then
+    if ! "$RUN" "$B/bore.nds" 650 "$D/$mode.ppm" "$LIVE" "$SHOTS" >"$D/emulate-$mode.log" 2>&1; then
         echo "$mode emulator failed:" >&2
         tail -90 "$D/emulate-$mode.log" >&2
         exit 2
@@ -55,7 +55,7 @@ import json
 import pathlib
 import sys
 root = pathlib.Path(sys.argv[1])
-frames = (345, 385, 425)
+frames = (345, 385, 425, 465, 505, 545)
 header = b"P6\n256 384\n255\n"
 width, height = 256, 384
 screen_bytes = width * (height // 2) * 3
@@ -74,10 +74,10 @@ for frame in frames:
     changed_channels = sum(a != b for a, b in zip(views["cutaway"], views["always"]))
     results.append({"frame": frame, "changed_channels": changed_channels})
     print(f"atlas frame {frame}: {changed_channels} gameplay RGB channels differ")
-if sum(r["changed_channels"] >= 300 for r in results) < 2:
-    raise SystemExit("FAIL: fewer than two generated-home views show roof differences; check tour frame timing")
+if sum(r["changed_channels"] >= 300 for r in results) < 3:
+    raise SystemExit("FAIL: fewer than three planned-lot views show roof differences; check tour frame timing")
 summary = {"method": "melonDS native 256x384 PPM", "roof_modes": ["cutaway", "always"],
-           "world_region": "DS_TOUR first three planned houses",
+           "world_region": "DS_TOUR first six planned lots",
            "frames": results, "passed": True}
 (root / "visual_atlas_results.json").write_text(json.dumps(summary, indent=2) + "\n")
 print("DS VISUAL ATLAS PASS: screenshots saved in " + str(root))

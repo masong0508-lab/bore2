@@ -5,6 +5,16 @@ import sys
 f, ver = sys.argv[1], int(sys.argv[2])
 s = open(f).read()
 if 'AUTO_OLD' in s: print('already'); raise SystemExit
+# Historical revisions changed the home-buy API when property ownership
+# arrived. Read the old checkout's header rather than forcing today's ABI.
+from pathlib import Path
+home_api = Path(f).with_name('home.h').read_text()
+if 'home_buy(int bx, int by, int how)' in home_api:
+    buy_home = 'home_buy(ad[0].bx, ad[0].by, HB_KEEP)'
+elif 'home_buy(int bx, int by)' in home_api:
+    buy_home = 'home_buy(ad[0].bx, ad[0].by)'
+else:
+    raise SystemExit('unknown historical home_buy API: refusing an incorrect test fixture')
 opts = ('opt[O_MUSIC] = 2; opt[O_CAMSPD] = 2; opt[O_TRAF] = 3; opt[O_GHOSTS] = 0;' +
         (' opt[O_MASTER] = 4; opt[O_MUSICV] = 3; opt[O_SFX] = 6; opt[O_NEEDS] = 2; opt[O_DAYLEN] = 3; opt[O_CLOCK] = 1; opt[O_SHUFFLE] = 0;' if ver >= 41 else ''))
 hook = r'''#ifdef AUTO_OLD
@@ -21,7 +31,7 @@ static void old_tick(void) {
         dbg_old[3] = save_game(0); dbg_old[4] = nsims; dbg_old[5] = home_city; dbg_old[6] = (int)cash; dbg_old[7] = day_count; dbg_old[8] = clock_min; }
 }
 #endif
-'''.replace('OPTS', opts)
+'''.replace('OPTS', opts).replace('home_buy(ad[0].bx, ad[0].by)', buy_home)
 a = 'static const char *const pauseNm[] = {'
 assert a in s
 s = s.replace(a, hook + a, 1)

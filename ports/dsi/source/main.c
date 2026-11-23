@@ -4445,7 +4445,7 @@ static void draw_logo(int x0, int y0, int num, int den) {   // the BORE 2 logo, 
         rect(x, y, w, h, LOGO_P[LOGO_R[i].c] | BIT(15)); }
 }
 static void draw_title(void) {
-    scr = hud; backdrop(); draw_logo(78, 3, 2, 3); panel(8, 64, 240, 120, "Household Occupants");
+    scr = hud; backdrop(); draw_logo(78, 3, 2, 3); panel(8, 64, 240, 120, "Your Bore");
     const Sim *m = &sims[0]; rect(110, 86, 36, 36, C15(31, 31, 31)); face(112, 88, 32, m);
     const char *nm = sname[0]; char t[40]; char fnm[20], lnm[20]; { const char *sp = strchr(sname[0], ' '); if (sp) { snprintf(fnm, sizeof fnm, "%.*s", (int)(sp - sname[0]), sname[0]); snprintf(lnm, sizeof lnm, "%s", sp + 1); } else { snprintf(fnm, sizeof fnm, "%s", sname[0]); lnm[0] = 0; } }
     text_c(128, 129, FS_HEAD, TXT, fnm); text_c(128, 140, FS_BODY, C15(24, 28, 31), lnm);   // (D65) first name above last name, both centred under the face
@@ -4454,7 +4454,7 @@ static void draw_title(void) {
     rect(194, 146, 20, 20, C15(31, 31, 31)); rect(196, 148, 16, 16, C15(22, 26, 31)); rect(204, 150, 1, 7, C15(2, 4, 12)); rect(204, 157, 5, 1, C15(2, 4, 12));
     { clk(t, minutes % 1440); text_c(204, 172, FS_NUM, TXT, t); } (void)nm;
     scr = scr_sub; rect(0, 0, 256, 192, C15(3, 3, 4));
-    rect(16, 40, 224, 118, PANB); rect(18, 42, 220, 114, C15(8, 16, 28)); rect(18, 42, 220, 16, PANH); text_box(20, 42, 216, 16, FS_HEAD, TXT, AL_L, "Start/Load profile");
+    rect(16, 40, 224, 118, PANB); rect(18, 42, 220, 114, C15(8, 16, 28)); rect(18, 42, 220, 16, PANH); text_box(20, 42, 216, 16, FS_HEAD, TXT, AL_L, "Start or load a life");
     for (int i = 0; i < 3; i++) { int x = 26 + i * 70, y = 66; rect(x - 2, y - 2, 68, 60, slot_sel == i ? C15(31, 31, 31) : C15(2, 4, 12)); rect(x, y, 64, 56, i == 0 ? C15(10, 24, 8) : C15(6, 12, 26));
         if (i == 0) house_icon(x + 12, y + 4, 40, C15(31, 31, 31)); else plumb_icon(x + 8, y + 0, 48, C15(28, 31, 31));
         { const char *lb = i == 0 ? (sav_have >= 0 ? "Continue" : "New game") : "New sim"; rect(x, y + 42, 64, 14, C15(2, 4, 12)); text_box(x, y + 42, 64, 14, FS_BODY, TXT, AL_C, lb); } }
