@@ -18,19 +18,24 @@ enum {
 // Both triggers with no d-pad direction retain L1+R1 (camera recenter).
 // Hold both triggers with a d-pad direction for one of four unavailable
 // PS1 buttons: UP=L2, DOWN=R2, LEFT=L3, RIGHT=R3.
-// START+both triggers is SELECT. C/Z/D extra face buttons still work.
+// Both triggers + Y is L2+R2 (cycle camera); START+both is SELECT.
+// C/Z/D extra face buttons still work.
 static inline uint16_t dc_pad_translate(uint32_t f, unsigned lt, unsigned rt) {
     uint16_t d = 0;
     const int both = lt > 100 && rt > 100;
     const int chord = both && !(f & DCI_START);
     if (f & DCI_START) d |= both ? 1u : (1u << 3);
+    const uint32_t dirs = f & (DCI_UP | DCI_DOWN | DCI_LEFT | DCI_RIGHT);
+    const int view_chord = chord && !dirs && (f & DCI_Y);
     if (chord) {
-        const uint32_t dirs = f & (DCI_UP | DCI_DOWN | DCI_LEFT | DCI_RIGHT);
-        if (dirs & DCI_UP) d |= 1u << 8;
-        if (dirs & DCI_DOWN) d |= 1u << 9;
-        if (dirs & DCI_LEFT) d |= 1u << 1;
-        if (dirs & DCI_RIGHT) d |= 1u << 2;
-        if (!dirs) d |= (1u << 10) | (1u << 11);
+        if (view_chord) d |= (1u << 8) | (1u << 9); // hold both triggers + Y: cycle camera
+        else {
+            if (dirs & DCI_UP) d |= 1u << 8;
+            if (dirs & DCI_DOWN) d |= 1u << 9;
+            if (dirs & DCI_LEFT) d |= 1u << 1;
+            if (dirs & DCI_RIGHT) d |= 1u << 2;
+            if (!dirs) d |= (1u << 10) | (1u << 11);
+        }
     } else {
         if (lt > 100) d |= 1u << 10;
         if (rt > 100) d |= 1u << 11;
@@ -39,7 +44,7 @@ static inline uint16_t dc_pad_translate(uint32_t f, unsigned lt, unsigned rt) {
         if (f & DCI_DOWN) d |= 1u << 6;
         if (f & DCI_LEFT) d |= 1u << 7;
     }
-    if (f & DCI_Y) d |= 1u << 12;  // triangle
+    if ((f & DCI_Y) && !view_chord) d |= 1u << 12; // triangle unless cycling camera
     if (f & DCI_B) d |= 1u << 13;  // circle
     if (f & DCI_A) d |= 1u << 14;  // cross
     if (f & DCI_X) d |= 1u << 15;  // square
