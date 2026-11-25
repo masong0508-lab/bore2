@@ -4,7 +4,7 @@ name: build-dreamcast
 on:
   workflow_dispatch:
   push:
-    paths: ["ports/dreamcast/**", "src/**", "tools/neighborhood_music.py", "tools/content_spu.c", "tools/dsmusic/**", "assets/SONGS.BIN", "assets/songs.inc", "assets/dsmusic.bin", ".github/workflows/build-dreamcast.yml"]
+    paths: ["ports/dreamcast/**", "src/**", "tools/neighborhood_music.py", "tools/living_score.py", "tools/content_spu.c", "tools/dsmusic/**", "assets/SONGS.BIN", "assets/songs.inc", "assets/dsmusic.bin", ".github/workflows/build-dreamcast.yml"]
 jobs:
   disc:
     runs-on: ubuntu-24.04

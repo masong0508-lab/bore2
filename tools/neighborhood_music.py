@@ -8,6 +8,7 @@ their existing BSQ2 or BDM2 player and fixed memory budgets.
 """
 from pathlib import Path
 import argparse, array, ctypes, hashlib, json, math, os, random, re, struct, subprocess, tempfile
+from living_score import ROLES, tracks as calendar_tracks, arrange as calendar_arrange
 
 ROOT = Path(__file__).resolve().parents[1]
 SR = 24000
@@ -42,6 +43,7 @@ TRACKS = (
  ("FIRST BELL", 118, 60, (0,7,9,5,0,2,5,7), (0,4,2,7,5,4,2,0), 1),
  ("VIEW FROM ORBIT", 86, 56, (0,8,10,5,3,0,7,5), (0,3,7,10,7,5,3,0), 3),
 )
+TRACKS = TRACKS + calendar_tracks(TRACKS)
 # Existing jukebox titles, not newly invented imitations. The build extracts
 # actual note events and the instrument's PCM from these original sequences.
 RIFF_SOURCES = ("WHISTLER MAN", "CLOSER TO THE END", "THE CYNICAL SYNDICATION",
@@ -214,6 +216,7 @@ def riff_pcm(dll,riff):
     return pcm
 
 def score(t,riff):
+    if t>=20: return calendar_arrange(t-20,riff,TRACKS[t])
     name,bpm,root,progression,motif,fx=TRACKS[t]
     rows=[[] for _ in range(BARS*BAR)]
     def hit(bar,step,ch,inst,n,vol,pan=3):
@@ -275,14 +278,16 @@ def score(t,riff):
 def sample(track,inst):
     """Ten original, velocity-ready patches per track, each with an actual
     decay/release and band-limited harmonics. No repeated byte padding."""
-    n=round(DURATIONS[inst]*SR)
+    duration=DURATIONS[inst]+({4:.15,5:.35,6:.35,8:.30}.get(inst,0) if track>=20 else 0)
+    n=round(duration*SR)
+    palette=track%20
     rng=random.Random(0xB0222026+track*1009+inst*37)
     freq=midi(BASE_NOTES[inst])
     out=array.array("h"); tau=2*math.pi
-    flavor=(track%8)/7
+    flavor=(track%8)/7 if track<20 else (track%17)/16
     for i in range(n):
-        t=i/SR; r=t/DURATIONS[inst]
-        fade=min(1,t/.006)*min(1,(DURATIONS[inst]-t)/.025)
+        t=i/SR; r=t/duration
+        fade=min(1,t/.006)*min(1,(duration-t)/.025)
         p=tau*freq*t
         noise=rng.uniform(-1,1) if inst in (0,1,2,3,9) else 0
         if inst==0:
@@ -291,9 +296,9 @@ def sample(track,inst):
         elif inst==1:
             v=(.69*noise+.25*math.sin(tau*(155+track*9)*t)+.06*math.sin(tau*390*t))*math.exp(-t/(.085+.045*flavor))
         elif inst==2:
-            v=(noise*.67+.33*math.sin(tau*(6380-track*170)*t))*math.exp(-t/(.026+.007*flavor))
+            v=(noise*.67+.33*math.sin(tau*(6380-palette*170)*t))*math.exp(-t/(.026+.007*flavor))
         elif inst==3:
-            v=(noise*.56+.21*math.sin(tau*(4760+track*90)*t)+.23*math.sin(tau*3190*t))*math.exp(-t/(.15+.09*flavor))
+            v=(noise*.56+.21*math.sin(tau*(4760+palette*90)*t)+.23*math.sin(tau*3190*t))*math.exp(-t/(.15+.09*flavor))
         elif inst==4:
             v=(.68*math.sin(p)+.21*math.sin(2*p)+(.07+.04*flavor)*math.sin(3*p)+.035*math.sin(5*p))*math.exp(-t/(.45+.3*flavor))
         elif inst==5:
@@ -308,6 +313,10 @@ def sample(track,inst):
             v=(.59*math.sin(p+vib)+.19*math.sin(2*p+2*vib)+.11*math.sin(3*p)+.07*math.sin(4*p)*math.exp(-t/.65))*math.exp(-t/(.78+.35*flavor))
         else:
             v=(.58*math.sin(tau*(470+track*28)*t)+.24*math.sin(tau*(790+track*38)*t)+.12*noise)*math.exp(-t/(.13+.04*flavor))
+        if track>=20 and inst in (4,5,6,8):
+            # Sustained second voice and a slow filter sweep, including the
+            # added release time; this is audible patch content, not padding.
+            v=.78*v+.18*math.sin(p*(1+.0006*(track-19)))*math.exp(-t/(duration*.8))*min(1,t/.04)
         # A small track-specific articulation, not a noise bed or file filler.
         if inst>=4 and inst<=8: v*=.93+.06*math.sin(tau*(1.4+.2*track)*t)
         out.append(max(-32768,min(32767,round(v*fade*30000))))
@@ -428,7 +437,7 @@ def append_console(base,out,blocks,meta):
 
 def append_handheld(base,out,blocks):
     old=(base/"dsmusic.bin").read_bytes();magic,n,ent,diroff=struct.unpack_from("<4sIII",old)
-    assert magic==b"BDM2" and ent==96 and diroff==16 and n==52 and n+len(blocks)<=80
+    assert magic==b"BDM2" and ent==96 and diroff==16 and n==52 and n+len(blocks)<=126
     entries=[bytearray(old[16+i*96:16+(i+1)*96]) for i in range(n)]
     start=min(u32(e) for e in entries);newstart=align(16+96*(n+len(blocks)),512)
     assert start>=16+96*n and start%512==0
@@ -447,7 +456,7 @@ def main():
     a.out.mkdir(parents=True,exist_ok=True)
     kinds=("console","handheld") if a.kind=="both" else (a.kind,)
     key=hashlib.sha256()
-    for file in (Path(__file__),ROOT/"tools/content_spu.c",ROOT/"tools/dsmusic/adpcm.c",ROOT/"src/band_roles.inc",*[a.base/x for x in ("SONGS.BIN","songs.inc","dsmusic.bin")]):
+    for file in (Path(__file__),ROOT/"tools/living_score.py",ROOT/"tools/content_spu.c",ROOT/"tools/dsmusic/adpcm.c",ROOT/"src/band_roles.inc",*[a.base/x for x in ("SONGS.BIN","songs.inc","dsmusic.bin")]):
         key.update(file.read_bytes())
     key.update(a.kind.encode());stamp=key.hexdigest();manifest=a.out/("manifest-"+a.kind+".json")
     expected=["SONGS.BIN","songs.inc"] if a.kind=="console" else ["dsmusic.bin"] if a.kind=="handheld" else ["SONGS.BIN","songs.inc","dsmusic.bin"]
@@ -458,11 +467,16 @@ def main():
     records={kind:[] for kind in kinds};meta=[]
     with tempfile.TemporaryDirectory() as tmp:
         dll=encoder(tmp)
+        riff_cache={}
+        def source_for(role):
+            if role not in riff_cache:
+                try: riff_cache[role]=decode_original(a.base,RIFF_SOURCES[role])
+                except NoSourcePhrase:
+                    if role<8: raise
+                    riff_cache[role]=decode_original(a.base,RIFF_ALTERNATIVES[role-8])
+            return riff_cache[role]
         for t,(name,bpm,*_) in enumerate(TRACKS):
-            try: riff=decode_original(a.base,RIFF_SOURCES[t])
-            except NoSourcePhrase:
-                if t<8: raise
-                riff=decode_original(a.base,RIFF_ALTERNATIVES[t-8])
+            riff=source_for(t if t<20 else ROLES[t-20])
             rows=score(t,riff);pcm=[sample(t,i) for i in range(10)]+[riff_pcm(dll,riff)]
             item={"name":name,"seconds":round(len(rows)*60/bpm/4),"notes":sum(map(len,rows)),"instruments":NINST,
                 "source_song":riff["source"],"source_artist":riff["artist"],"source_order":riff["source_order"],
@@ -483,9 +497,11 @@ def main():
         real=sum(x[kind+"_samples"]+ (len(records[kind][i][0]) if kind=="console" else records[kind][i][3]) for i,x in enumerate(meta))
         # Measure the new venue pack separately from the first eight themes.
         extra=sum(x[kind+"_samples"]+(len(records[kind][i][0]) if kind=="console" else records[kind][i][3]) for i,x in enumerate(meta) if i>=8)
+        calendar=sum(x[kind+"_samples"]+(len(records[kind][i][0]) if kind=="console" else records[kind][i][3]) for i,x in enumerate(meta) if i>=20)
         assert extra>=2*1048576,(kind,extra)
+        assert calendar>=10*1048576,(kind,"new calendar score under 10 MiB",calendar)
         delta=append_console(a.base,a.out,records[kind],meta) if kind=="console" else append_handheld(a.base,a.out,records[kind])
-        result[kind]={"new_playable_bytes":real,"venue_expansion_bytes":extra,"bank_growth_bytes":delta,"tracks":len(meta),"venue_tracks":len(meta)-8}
+        result[kind]={"new_playable_bytes":real,"venue_expansion_bytes":extra,"bank_growth_bytes":delta,"tracks":len(meta),"venue_tracks":len(meta)-8,"calendar_tracks":len(meta)-20,"calendar_playable_bytes":calendar}
     result["output_hashes"]={x:hashlib.sha256((a.out/x).read_bytes()).hexdigest() for x in expected}
     manifest.write_text(json.dumps(result,indent=2)+"\n");print(json.dumps(result,indent=2))
 if __name__=="__main__":main()

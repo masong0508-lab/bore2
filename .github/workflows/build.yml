@@ -24,11 +24,15 @@ jobs:
         run: cc -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc test/world_access_test.c -o /tmp/world_access_test && /tmp/world_access_test
       - name: Verify local venue consequences and same-block contact selection
         run: cc -std=c99 -Wall -Wextra -Werror test/outing_links_test.c -o /tmp/outing_links_test && /tmp/outing_links_test
-      - name: Verify all 24 local activities and completion gates
+      - name: Verify 54 distinct contextual arrangements and exact source notes
+        run: python3 test/living_score_test.py
+      - name: Verify living calendar and older music bank fallback
+        run: cc -std=c99 -Wall -Wextra -Werror test/living_calendar_test.c -o /tmp/living_calendar_test && /tmp/living_calendar_test
+      - name: Verify all 48 local activities and completion gates
         run: cc -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc test/outings_test.c -o /tmp/outings_test && /tmp/outings_test
       - name: Verify contextual music routing and transition stability
         run: cc -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc test/scene_music_test.c -o /tmp/scene_music_test && /tmp/scene_music_test
-      - name: Build and audit 1 MiB-plus playable original content on both formats
+      - name: Build and audit 10 MiB-plus new calendar score on each format
         run: python3 tools/neighborhood_music.py both assets /tmp/bore-content
       - uses: actions/upload-artifact@v4
         with:

@@ -21,7 +21,7 @@ $(GAME_OBJS): KOS_CFLAGS += -include dc_shared_pre.h
 # the PS1 sound code drives the SPU's key registers by writing them: here each write is an event for the software SPU (dc_spu.c)
 $(O)/audio.o: KOS_CFLAGS += -include dc_audio_pre.h
 $(O)/audio.o: $(O)/content/manifest-console.json
-$(O)/content/manifest-console.json: ../../tools/neighborhood_music.py ../../tools/content_spu.c ../../tools/dsmusic/adpcm.c ../../src/band_roles.inc ../../assets/SONGS.BIN ../../assets/songs.inc ../../assets/dsmusic.bin | $(O)
+$(O)/content/manifest-console.json: ../../tools/neighborhood_music.py ../../tools/living_score.py ../../tools/content_spu.c ../../tools/dsmusic/adpcm.c ../../src/band_roles.inc ../../assets/SONGS.BIN ../../assets/songs.inc ../../assets/dsmusic.bin | $(O)
 	python3 ../../tools/neighborhood_music.py console ../../assets $(O)/content
 # each overlay's table has the same name on the PS1 (it is its own file there): here they are told apart
 $(O)/realm.o: KOS_CFLAGS += -Dovl_head=ovl_head_kingdom
