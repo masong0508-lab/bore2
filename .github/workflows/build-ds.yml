@@ -4,7 +4,7 @@ name: build-ds
 on:
   workflow_dispatch:
   push:
-    paths: ["ports/dsi/**", "tools/dsbuild/**", "tools/dsemu/**", "src/bigmap.*", "src/common.h", "assets/dsmusic.bin", "assets/SONGS.BIN", "assets/songs.inc", "src/band_roles.inc", "src/scene_music.h", "test/scene_music_test.c", "tools/neighborhood_music.py", "tools/content_spu.c", "tools/dsmusic/**", "src/social_activity.h", "test/social_activity_test.c", ".github/workflows/build-ds.yml"]
+    paths: ["ports/dsi/**", "tools/dsbuild/**", "tools/dsemu/**", "src/bigmap.*", "src/common.h", "assets/dsmusic.bin", "assets/SONGS.BIN", "assets/songs.inc", "src/band_roles.inc", "src/scene_music.h", "src/audio_slice.h", "test/audio_slice_test.c", "test/scene_music_test.c", "tools/neighborhood_music.py", "tools/content_spu.c", "tools/dsmusic/**", "src/social_activity.h", "test/social_activity_test.c", ".github/workflows/build-ds.yml"]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -19,6 +19,8 @@ jobs:
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_render_geom_test.c -o /tmp/ds_render_geom_test && /tmp/ds_render_geom_test
       - name: Test handheld and console aspiration regressions
         run: python3 test/wants_regression.py
+      - name: Verify bounded audio transfers and stop acknowledgements
+        run: cc -std=c99 -Wall -Wextra -Werror test/audio_slice_test.c -o /tmp/audio_slice_test && /tmp/audio_slice_test
       - name: Verify contextual music routing and transition stability
         run: cc -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc test/scene_music_test.c -o /tmp/scene_music_test && /tmp/scene_music_test
       - name: Verify shared social activity costs and eligibility

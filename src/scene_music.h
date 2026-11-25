@@ -24,10 +24,13 @@ static inline int scene_music_role(int menu, int island, int riding, int driving
 typedef struct { int candidate, count, settled; } SceneMusicGate;
 #define SC_MUSIC_GATE_INIT {-1,0,-1}
 static inline int scene_music_settle(SceneMusicGate *g,int cue) {
-    if (cue < 0 || cue >= SC_N) return g->settled;
+    if (cue < 0 || cue >= SC_N) { g->candidate=-1;g->count=0;return g->settled; }
+    // Interior and street boundaries need longer dwell than the build,
+    // travel and skating activities. Fast initial entry remains responsive.
+    int need=g->settled<0 || cue==SC_BUILD || cue==SC_TRAVEL || cue==SC_SKATE || cue==SC_ISLAND ? 2 : 4;
     if (cue != g->candidate) { g->candidate=cue; g->count=1; }
-    else if (g->count < 2) g->count++;
-    if (g->count >= 2) g->settled=cue;
+    else if (g->count < need) g->count++;
+    if (g->count >= need) g->settled=cue;
     return g->settled;
 }
 static inline void scene_music_reset(SceneMusicGate *g) {

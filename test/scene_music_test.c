@@ -16,9 +16,15 @@ int main(void) {
     assert(scene_music_settle(&g,SC_NEIGHBORHOOD)==SC_NEIGHBORHOOD);
     assert(scene_music_settle(&g,SC_STREET)==SC_NEIGHBORHOOD);
     assert(scene_music_settle(&g,SC_NEIGHBORHOOD)==SC_NEIGHBORHOOD);
-    assert(scene_music_settle(&g,SC_MARKET)==SC_NEIGHBORHOOD);
+    for(int i=0;i<3;i++)assert(scene_music_settle(&g,SC_MARKET)==SC_NEIGHBORHOOD);
     assert(scene_music_settle(&g,SC_MARKET)==SC_MARKET);
+    assert(scene_music_settle(&g,SC_STREET)==SC_MARKET);
     assert(scene_music_settle(&g,-1)==SC_MARKET);
+    for(int i=0;i<3;i++)assert(scene_music_settle(&g,SC_STREET)==SC_MARKET);
+    assert(scene_music_settle(&g,SC_STREET)==SC_STREET);
+    assert(scene_music_settle(&g,SC_SKATE)==SC_STREET);
+    assert(scene_music_settle(&g,SC_SKATE)==SC_SKATE);
+    assert(scene_music_settle(&g,-1)==SC_SKATE);
     scene_music_reset(&g);assert(g.settled==-1);
     puts("Area music roles, precedence and debounce passed");return 0;
 }

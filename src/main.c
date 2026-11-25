@@ -2636,12 +2636,12 @@ static void title_music_resume(void) { if (opt[O_TITLEMUS]) audio_jukebox_play(0
 static void game_music_check(void) { area_manual = 0; area_attempt = -1; scene_music_reset(&area_gate); if (!opt[O_GAMEMUS]) audio_jukebox_stop(); }
 static void area_music_tick(void) {
     if (!life_started || !opt[O_GAMEMUS] || !opt[O_MUSICV] || !opt[O_MASTER] ||
-        area_manual || audio_station() >= 0 || audio_song_count() < SC_FIRST+SC_N) return;
+        area_manual || audio_station() >= 0 || !audio_cd_ok() || audio_song_count() < SC_FIRST+SC_N) return;
     if (frame & 31) return;
     int menu=SC_MENU_NONE, lot=LOT_HOUSE, terrain=BT_GRASS, street=0;
     if (state == ST_BUILD || state == ST_HOMES || state == ST_NHOOD || state == ST_NHED) menu=SC_MENU_BUILD;
     else if (state == ST_TRAVEL || state == ST_MAP) menu=SC_MENU_TRAVEL;
-    else if (state != ST_LIFE) { scene_music_reset(&area_gate); area_attempt=-1; return; }
+    else if (state != ST_LIFE) { scene_music_settle(&area_gate,-1); return; }
     if (menu==SC_MENU_NONE && world_zone==ZONE_CITY && world_wbx>=0) {
         int x=sim_tile_x(&sims[player]), y=sim_tile_y(&sims[player]);
         if (x>=0 && y>=0 && x<MW && y<MH) {

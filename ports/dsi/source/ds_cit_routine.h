@@ -40,3 +40,15 @@ static inline int ds_cit_incoming(int j, int dx, int dy) {
     int x = j % 3 - 1 + dx, y = j / 3 - 1 + dy;
     return x < -1 || x > 1 || y < -1 || y > 1;
 }
+
+// Visibility is queried by walking, rendering, traffic, social menus and
+// speech bubbles. A resident's schedule changes only at hourly boundaries,
+// or when a slot receives a different identity/stage.
+typedef struct { int hour_key; unsigned short id; unsigned char stage,activity,valid; } DsCitRoutineCache;
+static inline int ds_cit_activity_cached(DsCitRoutineCache *c,unsigned short id,int stage,int hour_key) {
+    if(!c->valid || c->hour_key!=hour_key || c->id!=id || c->stage!=stage) {
+        c->hour_key=hour_key;c->id=id;c->stage=(unsigned char)stage;
+        c->activity=(unsigned char)ds_cit_activity(id,stage,hour_key%24,(hour_key/24)%7);c->valid=1;
+    }
+    return c->activity;
+}
