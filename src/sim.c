@@ -2,6 +2,8 @@
 #include "sim.h"
 #include "band.h"
 #include "wants.h"
+#define OUTINGS_IMPLEMENTATION
+#include "outings.h"
 #include "arcade.h"
 #include "fight.h"
 #include "realm.h"
@@ -661,6 +663,45 @@ static void chat_done(Sim *s, Sim *o) {   // a finished chat: the relationship g
     wants_event(s, W_CHAT, 0); wants_event(s, W_CHAT_WITH, him); sim_moodlet(s, ML_GOOD_CHAT);
     if (was < 50 && now >= 50) { wants_event(s, W_FRIEND, him); if (me == player) { sim_note("YOU MADE A FRIEND"); } sim_moodlet(s, ML_FRIEND); sim_moodlet(o, ML_FRIEND); }
 }
+static int sim_outing_at(const Sim *s) {
+    if(world_zone!=ZONE_CITY||world_wbx<0)return -1;
+    int x=sim_tile_x(s),y=sim_tile_y(s);if(x<0||y<0||x>=MW||y>=MH)return -1;
+    BInfo b;bm_block(world_wbx+x/BM_BLK,world_wby+y/BM_BLK,&b);
+    return outing_group(b.lot,x%BM_BLK<BM_LOT0||y%BM_BLK<BM_LOT0);
+}
+int sim_outing_group(void){return sim_outing_at(&sims[player]);}
+int sim_outing_check(int id){
+    const Sim *s=&sims[player];
+    int age=s->bore.stage>=AG_ADULT?2:s->bore.stage>=AG_TEEN?1:s->bore.stage>=AG_CHILD?0:-1;
+    return outing_check(id,sim_outing_at(s),age,clock_min,cash,s->need[N_REST]>>10,
+        s->away||on_board||veh_on||(s->action!=ACT_NONE&&s->action!=ACT_WALK));
+}
+int sim_outing_start(int id){
+    int check=sim_outing_check(id);if(check!=OUT_OK){sim_note(outing_reason[check]);audio_voice(VOICE_NAH);return 0;}
+    Sim *s=&sims[player];const Outing *o=outing_get(id);
+    cash-=o->fee;
+    begin_action(s,ACT_OUTING,sim_tile_x(s),sim_tile_y(s));
+    s->act_var=(u8)id;s->act_t=o->duration;s->dest_x=(u8)sim_tile_x(s);s->dest_y=(u8)sim_tile_y(s);
+    s->need[N_REST]=MAX(0,s->need[N_REST]-(o->energy<<10));
+    sim_note(o->title);return 1;
+}
+static void outing_done(Sim *s){
+    int id=s->act_var;
+    if(s->act_t!=0||!outing_complete(id,sim_outing_at(s),s->act_t))return;
+    const Outing *o=outing_get(id);
+    s->need[N_FUN]=MIN(100<<10,s->need[N_FUN]+(o->fun<<10));
+    s->need[N_SOCIAL]=MIN(100<<10,s->need[N_SOCIAL]+(o->social<<10));
+    s->need[N_FOOD]=MIN(100<<10,s->need[N_FOOD]+(o->food<<10));
+    s->need[N_REST]=MIN(100<<10,s->need[N_REST]+(o->rest<<10));
+    int *skill=o->skill==OUT_SK_LOGIC?&s->skill_logic:o->skill==OUT_SK_BODY?&s->skill_body:o->skill==OUT_SK_CREAT?&s->skill_creat:o->skill==OUT_SK_COOK?&s->skill_cook:o->skill==OUT_SK_FARM?&s->skill_farm:o->skill==OUT_SK_CHAR?&s->skill_char:&s->skill_fun;
+    *skill=MIN(4400,*skill+o->gain);
+    if(o->kind==OUT_COMMUNITY)tr_ev(s->tr,EV_KIND,1);
+    sim_moodlet(s,o->kind==OUT_LEARN?ML_INSPIRED:ML_FUN_TIME);
+    if(s==&sims[player]){sim_note(o->done);audio_voice(VOICE_YAHOO);}
+    wants_event(s,W_OUTING,0);
+    if(o->kind==OUT_LEARN)wants_event(s,W_CLASS,0);
+    if(o->kind==OUT_COMMUNITY)wants_event(s,W_COMMUNITY,0);
+}
 static void end_action(Sim *s) {
     switch (s->action) {   // what just finished: the wants are watching
         case ACT_EAT: if (s->act_var == 8) { bake_done(s); break; }   // (act_var: 0 a snack, 1 cooked with good food, 2 eaten out, 3 cooked plain, 4 a treat, 5 fine dining,
@@ -688,6 +729,7 @@ static void end_action(Sim *s) {
         case ACT_SWIM: tr_ev(s->tr, EV_SWIMS, 1); wants_event(s, W_SWIM, 0); sim_moodlet(s, ML_SWAM); break;
         case ACT_PHONE: tr_ev(s->tr, EV_CALLS, 1); wants_event(s, W_PHONE, 0); if (s == &sims[player] && s->act_t <= 0 && (s->act_var == 0 || s->act_var == 3)) pop_call_friend(s->act_var == 3); if (s->act_var == 1) { tr_ev(s->tr, EV_PIZZAS, 1); sim_moodlet(s, ML_PIZZA); if (s == &sims[player]) story_event(E_PIZZA, 0); } break;
         case ACT_WORK: wants_event(s, W_WORK, 0); break;
+        case ACT_OUTING: outing_done(s); break;
         case ACT_TALK: tr_ev(s->tr, EV_CHATS, 1); if (s->talk_to >= 0 && s->talk_to < nsims) chat_done(s, &sims[s->talk_to]); break;
     }
     if (s->action == ACT_TALK && s->talk_to >= 0 && s->talk_to < nsims) {
@@ -745,6 +787,7 @@ static void run_action(Sim *s) {
             s->x = s->act_x * TILE + TILE / 2 + ((isin((t * 9) & 4095) * 70) >> 12); s->z = -(s->act_y * TILE + TILE / 2) + ((icos((t * 5) & 4095) * 50) >> 12);
             s->yaw = (t * 5) & 4095; s->gait.sleep = 1; break; }
         case ACT_PHONE: if (s->act_var == 1) s->need[N_FOOD] += 300; else if (s->act_var == 5) s->need[N_FUN] += (handheld & 2) ? 90 : 70; else s->need[N_SOCIAL] += GAIN_TALK; if (s->act_var != 5) s->gait.wave = 2; break;
+        case ACT_OUTING: if(!(s->act_t&63))s->gait.wave=24;break;
         case ACT_TALK: s->need[N_SOCIAL] += GAIN_TALK; s->need[N_FUN] += 40; if ((s->act_t & 63) == 0) s->gait.wave = 40; break;
         case ACT_WORK: if (is_work()) { s->need[N_FUN] -= 20; if (!(s->act_t & 63)) s->gait.wave = 24; if (job_car == CAR_FARM && !(s->act_t & 15)) s->skill_farm++; } else { s->act_t = 0; } break;   // (the minutes count in clock_tick)
         default: break;
@@ -2591,7 +2634,7 @@ __attribute__((optimize("Os"))) void sim_save(void) {
         sv_u16(s->asp_pts); sv_n(s->rel, MAX_SIMS); sv_u8(s->lvl);
         for (int k = 0; k < 6; k++) { sv_u8(s->ml[k].id); sv_u8(s->ml[k].val); sv_u16(s->ml[k].t); }
         sv_u8(s->uid); sv_n(s->par, 2); sv_u8(s->partner); sv_u8(s->age_days); sv_u8(s->bday); sv_u8(s->away); sv_u8(s->grade); sv_u8(s->homework);
-        { int act = s->action; if (act == ACT_WALK || act == ACT_TRAVEL || act == ACT_STAIRS || act == ACT_TALK || act == ACT_CARE || act == ACT_RUN) act = ACT_NONE;   // (what they were doing, if it stays put: asleep, eating, at work...)
+        { int act = s->action; if (act == ACT_WALK || act == ACT_TRAVEL || act == ACT_STAIRS || act == ACT_TALK || act == ACT_CARE || act == ACT_RUN || act == ACT_OUTING) act = ACT_NONE;   // (what they were doing, if it stays put: asleep, eating, at work...)
           sv_u8(act); sv_u16(MIN(s->act_t, 65535)); sv_u8(s->act_x); sv_u8(s->act_y); sv_u8(s->act_var); }
         sv_u8(s->tr != &tr_null); if (s->tr != &tr_null) { sv_u16(sizeof(TrState)); sv_rle(s->tr, sizeof(TrState)); for (int k = 0; k < TR_SLOTS; k++) sv_str(tr_names_of(s->tr)[k], TR_NLEN - 1); }   // (version 51: the names too)   // (version 50: the traits, their summed effects, the counters and the wish)
     }

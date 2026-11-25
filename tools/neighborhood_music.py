@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Eight original, hardware-sequenced BORE 2 arrangements and sample sets.
+"""Twenty hardware-sequenced BORE 2 area and venue arrangements and sample sets.
 
 Append new playable banks without rewriting existing music data. No third-party
 samples, dependencies, streamed PCM, or filler. All instruments are used by
@@ -29,12 +29,34 @@ TRACKS = (
  ("Rooftops After Rain".upper(), 90, 63, (0,8,10,5,3,0,5,7), (7,5,3,0,2,3,5,7), 2),
  ("NEON SKATE NIGHT", 138, 55, (0,3,5,10,0,7,8,5), (0,7,10,5,3,7,12,10), 0),
  ("ISLAND MORNING", 102, 60, (0,5,7,9,2,5,7,0), (0,4,7,9,7,4,2,5), 1),
+ ("THE MORNING CUP", 94, 59, (0,5,9,7,2,5,0,7), (0,2,4,7,4,2,5,4), 1),
+ ("BETWEEN THE SHELVES", 76, 60, (0,8,3,7,2,5,7,0), (0,3,5,7,5,2,0,7), 2),
+ ("ONE MORE LAP", 132, 55, (0,3,5,10,7,0,5,7), (0,7,3,5,7,10,5,3), 0),
+ ("POOL REFLECTIONS", 100, 62, (0,5,9,7,0,2,5,7), (0,4,7,9,5,4,2,7), 2),
+ ("AFTER THE CREDITS", 84, 57, (0,8,3,7,5,0,10,7), (0,3,5,7,10,7,5,3), 2),
+ ("THE HARVEST TABLE", 112, 60, (0,5,7,9,0,5,2,7), (0,4,7,9,7,4,5,2), 1),
+ ("GREENWAY AFTERNOON", 88, 64, (0,5,9,7,2,5,7,0), (0,2,4,7,9,7,4,2), 2),
+ ("TOKEN RUSH", 142, 57, (0,3,7,5,0,8,10,7), (0,3,7,10,12,7,5,3), 0),
+ ("GALLERY IN GOLD", 80, 61, (0,5,8,7,3,0,5,7), (0,3,5,7,4,2,5,7), 2),
+ ("QUIET CHECK IN", 92, 59, (0,9,5,7,0,2,5,7), (0,2,4,7,5,4,2,0), 2),
+ ("FIRST BELL", 118, 60, (0,7,9,5,0,2,5,7), (0,4,2,7,5,4,2,0), 1),
+ ("VIEW FROM ORBIT", 86, 56, (0,8,10,5,3,0,7,5), (0,3,7,10,7,5,3,0), 3),
 )
 # Existing jukebox titles, not newly invented imitations. The build extracts
 # actual note events and the instrument's PCM from these original sequences.
 RIFF_SOURCES = ("WHISTLER MAN", "CLOSER TO THE END", "THE CYNICAL SYNDICATION",
     "WORTHLESS CLOUDS", "GOTTCHO BARRACHO", "HERE TODAY (FULL VERSION)",
-    "HOT DAMN", "SUNMAN SUNRISE")
+    "HOT DAMN", "SUNMAN SUNRISE",
+    "EXCUSES", "NURSERY TIME", "AIM AND SHOOT", "AN ODE TO THE SPANISH FLEXICODE",
+    "STAGED THE FULL PERFORMANCE", "TREE-AGE IN ACTION (FAST)", "THE MAGIC ACT",
+    "EMERGENCY ON THE DANCE FLOOR", "CONDENSED MUSIC", "MISTER QUICKBULLET",
+    "THE TICKING BOMB", "MELTDOWN IN MARS")
+# Explicit alternative existing sources if a new venue's primary source
+# lacks a recoverable pitched phrase. Never replace it with invented notes.
+RIFF_ALTERNATIVES = ("WHISTLER MAN","CLOSER TO THE END","HOT DAMN","WORTHLESS CLOUDS",
+    "HERE TODAY (FULL VERSION)","GOTTCHO BARRACHO","SUNMAN SUNRISE","THE CYNICAL SYNDICATION",
+    "WORTHLESS CLOUDS","WHISTLER MAN","SUNMAN SUNRISE","CLOSER TO THE END")
+class NoSourcePhrase(Exception): pass
 ARTIST = "BORE 2 AREA ARRANGEMENT"
 RIFF_INST = 10
 RIFF_STEPS = 64
@@ -143,7 +165,7 @@ def decode_original(base,title):
             quality=(70 if role==3 else 35 if role==2 else 5)+min(distinct,12)*5+min(len(steps),24)+min(recurrence[order[oi]],8)*4
             if role==4:quality-=18
             candidate.append((quality,-oi,ch,ins,steps,notes,a,b))
-    assert candidate,(title,"no suitable pitched source phrase")
+    if not candidate: raise NoSourcePhrase(title)
     # Rank recurring pitch-and-rhythm signatures, even when a tracker
     # assigned different pattern numbers to identical musical material.
     def signature(c):
@@ -215,11 +237,14 @@ def score(t,riff):
         notes=[fit(chord,60,71),fit(chord+third,60,75),fit(chord+7,60,76)]
         # Every track has its own groove. Bridge has a half-time or
         # syncopated feel, then the full drum pattern returns.
-        kicks=((0,8),(0,6,8),(0,4,8,12),(0,10),(0,6,12),(0,8),(0,4,8,12),(0,7,10))[t]
+        kicks=((0,8),(0,6,8),(0,4,8,12),(0,10),(0,6,12),(0,8),(0,4,8,12),(0,7,10),
+               (0,7,12),(0,),(0,4,8,12),(0,5,10),(0,10),(0,6,10,14),
+               (0,8),(0,4,8,12),(0,),(0,7,11),(0,6,8,14),(0,11))[t]
         if section==1: kicks=(0,10) if t%2 else (0,8)
         for step in kicks: hit(bar,step,0,0,60,100 if step==0 else 83)
         for step in ((4,12) if section!=1 else (8,)): hit(bar,step,1,1,60,83)
-        for step in range(0,16,2 if t!=6 else 1): hit(bar,step,2,2,60,29+(step%4==0)*14,4)
+        for step in range(0,16,1 if t in (6,10,15) else 4 if t in (9,12,14,16,17,19) else 2):
+            hit(bar,step,2,2,60,29+(step%4==0)*14,4)
         for step in ((3,11) if t%2 else (7,15)): hit(bar,step,3,3,60,37,1)
         for step in ((0,6,10,14) if section!=1 else (0,8)):
             bass=fit(chord+(7 if step==10 else 12 if step==14 else 0),36,51)
@@ -254,7 +279,7 @@ def sample(track,inst):
     rng=random.Random(0xB0222026+track*1009+inst*37)
     freq=midi(BASE_NOTES[inst])
     out=array.array("h"); tau=2*math.pi
-    flavor=track/7
+    flavor=(track%8)/7
     for i in range(n):
         t=i/SR; r=t/DURATIONS[inst]
         fade=min(1,t/.006)*min(1,(DURATIONS[inst]-t)/.025)
@@ -403,7 +428,7 @@ def append_console(base,out,blocks,meta):
 
 def append_handheld(base,out,blocks):
     old=(base/"dsmusic.bin").read_bytes();magic,n,ent,diroff=struct.unpack_from("<4sIII",old)
-    assert magic==b"BDM2" and ent==96 and diroff==16 and n==52 and n+len(blocks)<=64
+    assert magic==b"BDM2" and ent==96 and diroff==16 and n==52 and n+len(blocks)<=80
     entries=[bytearray(old[16+i*96:16+(i+1)*96]) for i in range(n)]
     start=min(u32(e) for e in entries);newstart=align(16+96*(n+len(blocks)),512)
     assert start>=16+96*n and start%512==0
@@ -434,7 +459,10 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         dll=encoder(tmp)
         for t,(name,bpm,*_) in enumerate(TRACKS):
-            riff=decode_original(a.base,RIFF_SOURCES[t])
+            try: riff=decode_original(a.base,RIFF_SOURCES[t])
+            except NoSourcePhrase:
+                if t<8: raise
+                riff=decode_original(a.base,RIFF_ALTERNATIVES[t-8])
             rows=score(t,riff);pcm=[sample(t,i) for i in range(10)]+[riff_pcm(dll,riff)]
             item={"name":name,"seconds":round(len(rows)*60/bpm/4),"notes":sum(map(len,rows)),"instruments":NINST,
                 "source_song":riff["source"],"source_artist":riff["artist"],"source_order":riff["source_order"],
@@ -453,9 +481,11 @@ def main():
     result={"key":stamp,"tracks":meta,"seconds":sum(x["seconds"] for x in meta)}
     for kind in kinds:
         real=sum(x[kind+"_samples"]+ (len(records[kind][i][0]) if kind=="console" else records[kind][i][3]) for i,x in enumerate(meta))
-        assert real>=1048576,(kind,real)
+        # Measure the new venue pack separately from the first eight themes.
+        extra=sum(x[kind+"_samples"]+(len(records[kind][i][0]) if kind=="console" else records[kind][i][3]) for i,x in enumerate(meta) if i>=8)
+        assert extra>=2*1048576,(kind,extra)
         delta=append_console(a.base,a.out,records[kind],meta) if kind=="console" else append_handheld(a.base,a.out,records[kind])
-        result[kind]={"new_playable_bytes":real,"bank_growth_bytes":delta,"tracks":len(meta)}
+        result[kind]={"new_playable_bytes":real,"venue_expansion_bytes":extra,"bank_growth_bytes":delta,"tracks":len(meta),"venue_tracks":len(meta)-8}
     result["output_hashes"]={x:hashlib.sha256((a.out/x).read_bytes()).hexdigest() for x in expected}
     manifest.write_text(json.dumps(result,indent=2)+"\n");print(json.dumps(result,indent=2))
 if __name__=="__main__":main()

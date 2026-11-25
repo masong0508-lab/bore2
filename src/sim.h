@@ -9,7 +9,7 @@
 #define NEED_N 8
 enum { N_FOOD, N_WC, N_REST, N_CLEAN, N_COMFY, N_FUN, N_SOCIAL, N_ROOM };
 enum { ACT_NONE, ACT_EAT, ACT_WC, ACT_SLEEP, ACT_SHOWER, ACT_SIT, ACT_FUN, ACT_TALK, ACT_WORK, ACT_WALK, ACT_COFFEE, ACT_READ, ACT_RUN, ACT_PHONE, ACT_TRAVEL, ACT_STAIRS, ACT_SWIM, ACT_CARE,
-       ACT_GATHER };   // (GATHER: the island's wood, stone, leaves, food, and its secrets: act_var says which, island.h G_)
+       ACT_GATHER, ACT_OUTING };   // (GATHER: the island's wood, stone, leaves, food, and its secrets: act_var says which, island.h G_)
 
 typedef struct {
     Bore bore;
@@ -187,6 +187,9 @@ void sim_set_player(int i);   // SWITCH SIM: take over anyone playable
 int  sim_playable(int i);
 extern u8 sim_hold;           // bits: housemates told to wait (no free will)
 void sim_player_tank(int fwd, int turn, int run);   // first person: walk (4096 forward, negative back) and turn by turn
+int sim_outing_group(void);
+int sim_outing_check(int id);
+int sim_outing_start(int id);
 int  sim_cell(int what);               // the phone in your pocket: 0 call a friend, 1 order a pizza, 2 adopt. 1: done
 void sim_baby_coming(int p0, int p1, int minutes);   // (stories) a baby for those two (uids) comes home in that many minutes
 int  sim_play_as(int i);               // play as that one of the family. 1: done

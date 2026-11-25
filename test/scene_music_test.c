@@ -8,9 +8,13 @@ int main(void) {
     assert(scene_music_role(0,0,1,0,LOT_HOUSE,BT_GRASS,0)==SC_SKATE);
     assert(scene_music_role(0,0,0,1,LOT_HOUSE,BT_GRASS,1)==SC_TRAVEL);
     assert(scene_music_role(0,0,0,0,LOT_RIVER,BT_GRASS,1)==SC_WATER);
-    assert(scene_music_role(0,0,0,0,LOT_CAFE,BT_GRASS,0)==SC_MARKET);
+    assert(scene_music_role(0,0,0,0,LOT_CAFE,BT_GRASS,0)==SC_CAFE);
     assert(scene_music_role(0,0,0,0,LOT_HOUSE,BT_GRASS,1)==SC_STREET);
     assert(scene_music_role(0,0,0,0,LOT_HOUSE,BT_GRASS,0)==SC_NEIGHBORHOOD);
+    assert(SC_N==20&&SC_FIRST+SC_N==72);
+    assert(scene_music_role(0,0,0,0,LOT_LIBRARY,BT_GRASS,0)==SC_LIBRARY);
+    assert(scene_music_role(0,0,0,0,LOT_POOL,BT_GRASS,0)==SC_POOL);
+    assert(scene_music_role(0,0,0,0,LOT_GYM,BT_GRASS,1)==SC_STREET);
     SceneMusicGate g=SC_MUSIC_GATE_INIT;
     assert(scene_music_settle(&g,SC_NEIGHBORHOOD)==-1);
     assert(scene_music_settle(&g,SC_NEIGHBORHOOD)==SC_NEIGHBORHOOD);
