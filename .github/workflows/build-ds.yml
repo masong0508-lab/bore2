@@ -19,6 +19,8 @@ jobs:
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_render_geom_test.c -o /tmp/ds_render_geom_test && /tmp/ds_render_geom_test
       - name: Test handheld and console aspiration regressions
         run: python3 test/wants_regression.py
+      - name: Verify contextual music routing and transition stability
+        run: cc -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc test/scene_music_test.c -o /tmp/scene_music_test && /tmp/scene_music_test
       - name: Verify shared social activity costs and eligibility
         run: cc -std=c99 -Wall -Wextra -Werror test/social_activity_test.c -o /tmp/social_activity_test && /tmp/social_activity_test
       - name: Verify DS persistent contacts and collision handling

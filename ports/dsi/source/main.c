@@ -26,7 +26,7 @@ static const Opt OPT[] = {
     { "Music track", "Auto|Daydream|Evening|Bounce|Night", &o_trk, 1, 0 }, { "Tap clicks", "Off|On", &o_ckl, 1, 1 }, { "Chimes", "Off|On", &o_chm, 1, 1 }, { "Stereo", "Center|Spread", &o_pan, 1, 1 },
     { "Autosave", "Off|On", &o_auto, 2, 1 }, { "Clock", "12 hour|24 hour", &o_c24, 2, 0 },
     { "Reset graphics", "tap", 0, 3, 0 }, { "Reset audio", "tap", 0, 3, 1 }, { "Reset all", "tap", 0, 3, 255 },
-    { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Auto|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52|53|54|55|56|57|58|59|60", &o_song, 1, 0 },
+    { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Area|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52|53|54|55|56|57|58|59|60", &o_song, 1, 0 },
     { "Roofs", "Cutaway|Always|Hide", &o_roof, 0, 0 },
     // (D33, from the PS1 OPTIONS: these are saved in their own block after the others, so old saves load with the defaults)
     { "Needs speed", "Never fall|Slow|Normal|Fast", &o_need, 2, 2 }, { "Day length", "Short|Normal|Long|Epic", &o_day, 2, 1 }, { "Message time", "Short|Normal|Long", &o_msgt, 2, 1 },
@@ -51,6 +51,7 @@ static const char *opt_tok(int i, int n, char *b) { const char *p = OPT[i].vals;
 #include <stdarg.h>
 #include <string.h>
 #include "bigmap.h"
+#include "scene_music.h"
 
 int bsprintf(char *o, const char *f, ...) { va_list a; va_start(a, f); int r = vsprintf(o, f, a); va_end(a); return r; }
 int bsnprintf(char *o, unsigned cap, const char *f, ...) { va_list a; va_start(a, f); int r = vsnprintf(o, cap, f, a); va_end(a); return r; }
@@ -825,6 +826,7 @@ static void sfx(int n) {
     if (sfx_n >= 0 && (n == 0 || n == 7)) return; sfx_n = n; sfx_i = 0; sfx_t = 0; sfx_sh = 0; }
 static void sfx_p(int n, int sh) { sfx(n); if (sfx_n == n) sfx_sh = sh; }   // (D64) a pet's voice: the same jingle a few semitones up or down
 static void snd_apply(void) { snd_dirty = 1; }
+static int scene_music_context_ds(void);
 static int mus_ok = -1, mus_cur = -1, mus_n; static void mus_init(void), mus_stop(void), mus_tick(void); static int mus_start(int);
 static void snd_tick(void) {
     if (!snd_on) return;
@@ -835,11 +837,22 @@ static void snd_tick(void) {
       if (mus_ok < 0) mus_init();
       if (songs_on && mus_ok == 1) {
           if (o_song > mus_n || o_song < 0) o_song = 0;
-          int pick = o_song ? o_song - 1 : 0;
-          if (o_song == 0 && mode != M_TITLE && mode != M_CAS && (mus_cur < 0 || mus_cur == 0) && mus_n > 1) { static u32 rs = 12345; static int last; rs = rs * 1664525u + 1013904223u + (u32)minutes;   // (Shuffle songs: at random, or in order)
-              pick = o_shuf ? 1 + (int)((rs >> 8) % (u32)(mus_n - 1)) : last % (mus_n - 1) + 1; last = pick; }
-          if (mus_cur != pick && !(o_song == 0 && mode != M_TITLE && mode != M_CAS && mus_cur > 0)) mus_start(pick);
-          else if (mus_cur < 0) mus_start(pick);
+          static SceneMusicGate area = SC_MUSIC_GATE_INIT;
+          static unsigned area_poll;
+          int pick = -1;
+          if (title) { scene_music_reset(&area); pick=0; }
+          else if (o_song) { scene_music_reset(&area); pick=o_song-1; }
+          else if (mus_n >= SC_FIRST+SC_N) {
+              if (!(area_poll++ & 15u) || area.settled<0)
+                  scene_music_settle(&area,scene_music_context_ds());
+              if (area.settled>=0) pick=SC_FIRST+area.settled;
+          } else {
+              // Old song banks still work, without the area score.
+              if (mus_cur > 0) pick=mus_cur;
+              else if (mus_n>1) { static u32 rs=12345;static int last;rs=rs*1664525u+1013904223u+(u32)minutes;pick=o_shuf?1+(int)((rs>>8)%(u32)(mus_n-1)):last%(mus_n-1)+1;last=pick; }
+              else pick=0;
+          }
+          if (pick>=0 && mus_cur!=pick) mus_start(pick);
           if (mus_cur >= 0) mus_tick();
           want = -1; if (song >= 0) { vset(0, 0, 0); vset(1, 0, 0); vset(2, 0, 0); song = -1; }
       } else if (mus_cur >= 0) mus_stop(); }
@@ -913,7 +926,7 @@ static void mus_tick(void) {   // once a frame: load the next slice of a song be
     u32 vs = (u32)(o_vol * o_mus), st = (u32)(o_pan != 0);
     if (mus_ctl.vol != vs || mus_ctl.stereo != st) { mus_ctl.vol = vs; mus_ctl.stereo = st; DC_FlushRange(&mus_ctl, 32); }
     DC_InvalidateRange((void *)&mus_ctl.laps, 32); mus_laps = (int)mus_ctl.laps;
-    if (mus_laps > 0 && o_song == 0 && mus_cur != 0) mus_cur = -1;
+    if (mus_laps > 0 && o_song == 0 && mus_cur != 0 && mus_cur < SC_FIRST) mus_cur = -1;
 }
 static const char *clk(char *b, int mn) { int h = (mn / 60) % 24, m = mn % 60, h12 = h % 12 ? h % 12 : 12; if (o_c24) sprintf(b, "%02d:%02d", h, m); else sprintf(b, "%d:%02d %s", h12, m, h >= 12 ? "pm" : "am"); return b; }
 static void say(const char *m) { static const u8 MT[3] = { 45, 90, 150 }; msg = m; msg_t = MT[o_msgt % 3];   // (Options > Game > Message time)
@@ -2404,6 +2417,14 @@ enum { CS_BASICS, CS_LOOKS, CS_HAIR, CS_OUTFIT, CS_TRAITS, CS_DONE, CS_N };   //
 static int cas_step, cas_sub;
 
 
+static int scene_music_context_ds(void) {
+    if (mg_ui) return -1;
+    int menu=mode==M_BUY || mode==M_BUILD ? SC_MENU_BUILD : mode==M_MAP || travel_ui ? SC_MENU_TRAVEL : SC_MENU_NONE;
+    if (menu==SC_MENU_NONE && mode!=M_LIVE) return -1;
+    int lot=nb_ok ? nb[1][1].lot : LOT_HOUSE, terrain=nb_ok ? nb[1][1].terrain : BT_GRASS;
+    int street=nb_ok && zone==Z_CITY && (sims[ctl].x>=13*16 || sims[ctl].y>=13*16);
+    return scene_music_role(menu,zone==Z_ISLAND,on_board,0,lot,terrain,street);
+}
 static void lot_go(int bx, int by) {   // (D37) the household goes to a lot: the one it was on is kept, the new one entered, everyone at its arrival spot
     lot_save(); lot_enter(bx, by); place_sims(); city_spawn(); nb_ok = 1; popup = 0; menu_open = 0; travel_ui = craft_ui = farm_ui = 0; cam_free = 0; set_mode(M_LIVE); life_ver++; }
 // ---- CASTAWAY ISLAND (D37): gathering, the secrets, the crafts and the raft, as the PS1's (sim.c gather_done, island.c) ----
@@ -2897,7 +2918,7 @@ static void juke_draw(void) {
     sprintf(t, "Now: %.30s", mus_cur >= 0 ? mus_name(mus_cur) : "-"); text_box(10, 36, 190, 14, FS_BODY, C15(31, 31, 20), AL_L, t);
     int per = 6, pages = (mus_n + per - 1) / per; if (juke_pg >= pages) juke_pg = 0;
     for (int k = 0; k < per; k++) { int n = juke_pg * per + k; if (n >= mus_n) break; sprintf(t, "%d %.26s", n + 1, mus_name(n)); chip(12, 52 + k * 16, 232, 14, t, n == mus_cur); }
-    chip(12, 152, 40, 24, "<", 0); chip(56, 152, 40, 24, ">", 0); chip(100, 152, 44, 24, "Next", 0); chip(148, 152, 52, 24, "Mix", 0); sprintf(t, "%d/%d", juke_pg + 1, pages); text_box(202, 152, 46, 24, FS_NUM, TXT, AL_C, t);
+    chip(12, 152, 40, 24, "<", 0); chip(56, 152, 40, 24, ">", 0); chip(100, 152, 44, 24, "Next", 0); chip(148, 152, 52, 24, "Area", o_song==0); sprintf(t, "%d/%d", juke_pg + 1, pages); text_box(202, 152, 46, 24, FS_NUM, TXT, AL_C, t);
 }
 static void juke_touch(int tx, int ty) {
     if (hit(204, 22, 40, 14, tx, ty)) { juke = 0; return; }
