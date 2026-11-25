@@ -1,6 +1,7 @@
 // citizens: see citizens.h
 #include "citizens.h"
 #include "story.h"
+#include "wants.h"
 #include "ui.h"
 #include "sim.h"
 #include "world.h"
@@ -595,6 +596,9 @@ static int accept(const Cit *c, int base) {   // the dice: their mood towards yo
 static void rel_add(Cit *c, int d) { c->rel = (s8)CLAMP(c->rel + d, -100, 100); }
 static void rom_add(Cit *c, int d) { c->rom = (s8)CLAMP(c->rom + d, 0, 100); }
 static void chat_begin(Cit *c) {
+    Sim *p = &sims[player];
+    p->need[N_SOCIAL] = MIN(100 << 10, p->need[N_SOCIAL] + (4 << 10));
+    wants_event(p, W_CHAT, 0); wants_event(p, W_NEIGHBOR, 0);
     c->mode = CM_CHAT; c->t = 240;
     c->gait.wave = 40;
     c->yaw = (u16)yaw_to(sims[player].x - c->x, sims[player].z - c->z);
@@ -624,7 +628,7 @@ static void marry(Cit *c) { marry_as(c, 1); }
 static const char *const L_GOSS[] = { "THE MAYOR NAPS AT WORK", "SOMEONE'S DOG ATE A SHOE", "THE DINER CHANGED ITS SOUP", "I HEARD A FIGHT DOWNTOWN", "THEY SAY THE PARK IS HAUNTED", "A NEW SHOP IS OPENING", "THE BUS DRIVER QUIT AGAIN" };
 static const char *const L_ADV[] = { "DRINK MORE WATER", "SLEEP. JUST SLEEP.", "BE NICE TO PEOPLE", "SAVE SOME CASH", "CALL YOUR FRIENDS", "EAT A REAL MEAL", "GO FOR A WALK" };
 COLD int citizens_pie_do(int i) {
-    if (pie_c < 0 || i < 0) return 0;
+    if (pie_c < 0 || pie_c >= NCIT || i < 0 || i >= 8) return 0;
     Cit *c = &cits[pie_c];
     if (c->mode == CM_GONE || c->mode == CM_KO) return 0;
     Sim *p = &sims[player];
@@ -632,6 +636,7 @@ COLD int citizens_pie_do(int i) {
         c->mode = CM_IDLE; c->t = 60; c->gait.sleep = 0; c->sub = 0; rel_add(c, -6);
         say(c, "HUH? WHAT?"); sim_moodlet(p, CML_REJECTED); audio_voice(VOICE_GROAN); return 0;
     }
+    int old_rel = c->rel;
     switch (pie_code[i]) {
     case PO_SUB_CHAT: pie_lvl = 1; return 1;
     case PO_SUB_SOC:  pie_lvl = 2; return 1;
@@ -650,6 +655,7 @@ COLD int citizens_pie_do(int i) {
     case PO_ADVICE:
         if (accept(c, 40)) { rel_add(c, 3); say(c, L_ADV[rn(NL(L_ADV))]); chat_begin(c); sim_moodlet(p, CML_GOOD_CHAT); audio_voice(VOICE_AGREE); }
         else { say(c, "ASK SOMEONE ELSE"); audio_voice(VOICE_DISAGREE); }
+        if (c->mode == CM_CHAT && c->pid != NOPID) pop_seen(c->pid);
         break;
     case PO_JOB: {
         static char jb[40];
@@ -747,6 +753,9 @@ COLD int citizens_pie_do(int i) {
         if (rn(100) < 55) { c->mode = CM_IDLE; c->t = 60; say(c, "...FINE."); }
         else { say(c, "TOO LATE!"); audio_voice(VOICE_DISAGREE); }
         break;
+    }
+    if (c->mode != CM_GONE && old_rel < 50 && c->rel >= 50) {
+        wants_event(p, W_TOWNFRIEND, 0); sim_note("YOU MADE A TOWN FRIEND!");
     }
     return 0;
 }

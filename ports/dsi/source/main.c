@@ -757,7 +757,7 @@ static char sname[SIM_MAX][20] = { "Ashley Newbie", "Ronald Bacon", "Kit Farlow"
 static const char *const STGN[6] = { "Baby", "Toddler", "Child", "Teen", "Adult", "Elder" };   // the life stages: 0-2, 3-5, 6-12, 13-17, 18-59, 60+ years (a year is a day on the clock)
 // ============ LIFE (D31): careers, wants and fears, the dog, ghosts, roofs and storeys ============
 #define JOBN 6
-enum { WN_NONE, WN_EAT, WN_SLEEP, WN_SHOWER, WN_FUN, WN_CHAT, WN_FRIEND, WN_JOB, WN_WORK, WN_PAID, WN_PROMO, WN_CASH, WN_BUY, WN_VISIT, WN_BABY, WN_PET, WN_SONG, WN_PETFEED, WN_HARVEST, WN_FARMSELL, WN_ANIMALS, WN_SECRET, WN_N };
+enum { WN_NONE, WN_EAT, WN_SLEEP, WN_SHOWER, WN_FUN, WN_CHAT, WN_FRIEND, WN_JOB, WN_WORK, WN_PAID, WN_PROMO, WN_CASH, WN_BUY, WN_VISIT, WN_BABY, WN_PET, WN_SONG, WN_PETFEED, WN_HARVEST, WN_FARMSELL, WN_ANIMALS, WN_SECRET, WN_NEIGHBOR, WN_TOWNFRIEND, WN_N };
 enum { FR_NONE, FR_PASS, FR_WET, FR_BAD, FR_DEMOTE, FR_GHOST, FR_N };
 typedef struct { u8 job, lvl, prog, strike, fear, worked, wk[3]; s16 wa[3]; u16 pts, shifts; } Life;
 typedef struct { s16 bx, by; int x, y, tx, ty; u8 skin, hair, shirt, on; } Ghost;
@@ -1622,13 +1622,15 @@ ITCM_CODE static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, 
 #define CITN (o_trf * (prof_full ? 8 : 4))                          // (D40: twice the crowd with the DSi's detail)
 #define CARN (o_trf == 3 ? (prof_full ? 12 : 8) : o_trf * 3)
 typedef struct { int x, y, dir, stop; u8 on, stage, skin, shirt, hair, pants; u16 id; u32 ps; } Cit;
-typedef struct { u16 id; u8 rel, talks, taken; } CRel;
+#include "ds_contacts.h"
 typedef struct { int x, y, dx, dy; u16 col; int px, py, ang; s16 s, L, wt; s8 sg, lj, tx, ty; u8 on, st, tn, tj; } Car;   // (d83) x, y: its centre in 1/16 cells; dx, dy: its way (0, 0: not on the road); st: 0 straight, 1 in a turn (sg +1 right, -1 left, from px, py, s of L); lj: its street's slot; tj: the junction it has claimed (+1), tx ty its slot; tn: 0 straight 1 right 2 left; wt: steps held up
 static Cit cits[NCIT]; static CRel crt[64]; static Car cars[NCAR];
 static const char *const FNAMES[12] = { "Mia", "Leo", "Zoe", "Max", "Ivy", "Sam", "Ana", "Kai", "Eli", "Ola", "Dex", "Una" };
 static const char *const LNAMES[8] = { "Park", "Reyes", "Ford", "Nash", "Cole", "Vega", "Hart", "Lund" };
 static u32 hsh(u32 a) { a ^= a >> 16; a *= 0x7feb352dU; a ^= a >> 15; a *= 0x846ca68bU; a ^= a >> 16; return a; }
-static CRel *crel(u16 id) { int h = id & 63; for (int k = 0; k < 64; k++) { CRel *c = &crt[(h + k) & 63]; if (c->id == id) return c; if (!c->id) { c->id = id; return c; } } return &crt[h]; }
+static CRel *crel(u16 id) { return ds_contact_acquire(crt, id); }
+static int crel_peek(u16 id) { const CRel *c = ds_contact_find(crt, id); return c ? c->rel : 0; }
+static int crel_taken(u16 id) { const CRel *c = ds_contact_find(crt, id); return c && c->taken; }
 static void cit_name(const Cit *c, char *o) { sprintf(o, "%s %s", FNAMES[c->id % 12], LNAMES[(c->id / 12) % 8]); }
 static int cit_street(int x, int y) { int lx = ((x % SLC) + SLC) % SLC, ly = ((y % SLC) + SLC) % SLC;
     if (t7()) { int sx = fdiv(x, SLC), sy = fdiv(y, SLC); if (sx < -1 || sx > 1 || sy < -1 || sy > 1) return 0; int S = st_s(sx, sy), E = st_e(sx, sy), C = st_c(sx, sy); return (lx <= 12 ? ly >= 13 && S && (ly == 13 || ly == 17) : ly <= 12 ? E && (lx == 13 || lx == 17) : C != 0) && !far_solid(x, y); }
@@ -1676,7 +1678,7 @@ static int car_claim(Car *c, int d, int i) {   // the junction square of this st
 static void city_spawn(void) {
     int sl[9], ns = 0; for (int j = 0; j < 9; j++) if (nb[j / 3][j % 3].set != 255 && nb[j / 3][j % 3].terrain != BT_SEA) sl[ns++] = j;
     for (int k = 0; k < NCIT; k++) { Cit *c = &cits[k]; c->on = 0; c->stop = 0; if (!ns) continue; int j = (k < 6 && nb[1][1].set != 255) ? 4 : sl[k % ns], sy = j / 3 - 1, sx = j % 3 - 1;
-        u32 h = hsh((u32)(lot_bx + sx) * 73856093u ^ (u32)(lot_by + sy) * 19349663u ^ (u32)k * 83492791u ^ (town_legacy ? 0u : hsh((u32)seed ^ 0x70574E49u))); c->id = (u16)((h >> 8) | 1); c->ps = town_legacy ? 0u : persona_town_seed((u32)seed, c->id); if (crel(c->id)->taken) continue;   // (D76: their personality seed from the world seed and their unique id, as the PS1; an old save: 0, from the name)
+        u32 h = hsh((u32)(lot_bx + sx) * 73856093u ^ (u32)(lot_by + sy) * 19349663u ^ (u32)k * 83492791u ^ (town_legacy ? 0u : hsh((u32)seed ^ 0x70574E49u))); c->id = (u16)((h >> 8) | 1); c->ps = town_legacy ? 0u : persona_town_seed((u32)seed, c->id); if (crel_taken(c->id)) continue;   // (D76: their personality seed from the world seed and their unique id, as the PS1; an old save: 0, from the name)
        
         int r = (int)(h % 100); c->stage = (u8)(r < 16 ? 2 : r < 30 ? 3 : r < 86 ? 4 : 5);
         int lx = (h >> 8) & 1 ? 17 : 13, ly = (int)((h >> 12) % 18);   // (D40: on a pavement, not in a lane) if ((h >> 20) & 1) { int t = lx; lx = ly; ly = t; }
@@ -2757,8 +2759,8 @@ static const char *const JOBLV[JOBN][5] = {
     { "Aide", "Tutor", "Teacher", "Dept Head", "Principal" }, { "Intern", "Temp", "Analyst", "Manager", "Director" } };
 static const u8 JOBPAY[JOBN] = { 8, 7, 9, 7, 10, 12 };
 static int job_pay(const Life *L) { return L->job ? JOBPAY[L->job - 1] * 10 * (L->lvl + 1) : 0; }
-static const char *const WNM[WN_N] = { "", "Eat a meal", "Sleep in a bed", "Take a shower", "Have some fun", "Chat with someone", "Make a friend", "Get a job", "Go to work", "Get paid", "Get promoted", "Have $", "Buy something", "Visit another lot", "Have a baby", "Pet the dog", "Pick a song", "Feed the dog", "Harvest a crop", "Sell farm food", "Care for livestock", "Find an island secret" };
-static const u16 WPT[WN_N] = { 0, 300, 300, 300, 300, 400, 900, 800, 500, 500, 1500, 1200, 400, 500, 3000, 400, 300, 400, 600, 800, 500, 1000 };
+static const char *const WNM[WN_N] = { "", "Eat a meal", "Sleep in a bed", "Take a shower", "Have some fun", "Chat with someone", "Make a friend", "Get a job", "Go to work", "Get paid", "Get promoted", "Have $", "Buy something", "Visit another lot", "Have a baby", "Pet the dog", "Pick a song", "Feed the dog", "Harvest a crop", "Sell farm food", "Care for livestock", "Find an island secret", "Chat with a townie", "Make a town friend" };
+static const u16 WPT[WN_N] = { 0, 300, 300, 300, 300, 400, 900, 800, 500, 500, 1500, 1200, 400, 500, 3000, 400, 300, 400, 600, 800, 500, 1000, 500, 1200 };
 static const char *const FNM[FR_N] = { "", "Pass out", "Wet myself", "A bad day at work", "Get demoted", "Meet a ghost" };
 static const u16 FPT[FR_N] = { 0, 600, 500, 700, 1000, 400 };
 static int want_ok(int i, int w) {   // may this sim want that, now?
@@ -2771,6 +2773,7 @@ static int want_ok(int i, int w) {   // may this sim want that, now?
         case WN_FARMSELL: return fm_have(0) || fm_have(1) || fm_have(2) || fm_have(3) || fm_have(4) || fm_have(5) || fm_n[0] || fm_n[1] || fm_n[2] || fm_n[3] || fm_hens || fm_cows;
         case WN_ANIMALS: return fm_hens || fm_cows;
         case WN_SECRET: return zone == Z_ISLAND && (isl_secrets & ((1u << SEC_N) - 1)) != ((1u << SEC_N) - 1);
+        case WN_NEIGHBOR: case WN_TOWNFRIEND: return st >= 2 && o_trf > 0;
         case WN_FRIEND: case WN_VISIT: return st >= 2; case WN_SONG: return mus_ok == 1 && mus_n > 0;
         default: return 1; }
 }
@@ -2955,8 +2958,10 @@ static int soc_ok(int id, int sa, int sb, int rel, int cit) {
 }
 static int soc_pick[8];
 static int soc_list(int tgt) { int sa = stage_of(sims[ctl].age), sb, rel, cit = tgt <= -2, n = 0;
-    if (cit) { const Cit *c = &cits[-2 - tgt]; sb = c->stage; rel = crel(c->id)->rel; } else { sb = stage_of(sims[tgt].age); rel = sims[tgt].rel; }
-    for (int id = 0; id < S_N && n < 8; id++) if (soc_ok(id, sa, sb, rel, cit)) soc_pick[n++] = id; return n; }
+    if (cit) { const Cit *c = &cits[-2 - tgt]; sb = c->stage; rel = crel_peek(c->id); } else { sb = stage_of(sims[tgt].age); rel = sims[tgt].rel; }
+    // Keep progress actions reachable instead of truncating them behind arguments and teasing.
+    static const u8 order[S_N] = { S_CHAT, S_PLAY, S_HUG, S_JOKE, S_INVITE, S_BABY, S_KISS, S_FLIRT, S_FEED, S_TEACH, S_TUCK, S_ADVICE, S_TEASE, S_ARGUE };
+    for (int k = 0; k < S_N && n < 8; k++) { int id = order[k]; if (soc_ok(id, sa, sb, rel, cit)) soc_pick[n++] = id; } return n; }
 static void draw_hud_i(void) {
     scr = offbuf;
     if (mg_ui) { mg_bottom(); return; }   // (D46)
@@ -2990,7 +2995,7 @@ static void draw_hud_i(void) {
         chip(64, 118, 60, 20, "Pet", 0); chip(132, 118, 60, 20, "Play", 0); chip(64, 142, 60, 20, "Feed $5", 0); chip(132, 142, 60, 20, "Cancel", 0);
     } else if (popup >= 2) {
         char nm[40]; int tg = popup == 2 ? popup_i : -2 - popup_i, rel; if (popup == 2) { sprintf(nm, "%s - %s %d", sname[popup_i], STGN[stage_of(sims[popup_i].age)], sims[popup_i].age); rel = sims[popup_i].rel; }
-        else { char n2[24]; cit_name(&cits[popup_i], n2); sprintf(nm, "%s - %s", n2, STGN[cits[popup_i].stage]); rel = crel(cits[popup_i].id)->rel; }
+        else { char n2[24]; cit_name(&cits[popup_i], n2); sprintf(nm, "%s - %s", n2, STGN[cits[popup_i].stage]); rel = crel_peek(cits[popup_i].id); }
         int n = soc_list(tg);
         rect(20, 56, 216, 124, PANB); rect(21, 57, 214, 122, PAN); rect(21, 57, 214, 14, PANH); rect(20, 56, 2, 2, 0); rect(234, 56, 2, 2, 0); text_box(21, 57, 188, 14, FS_BODY, TXT, AL_L, nm); rect(213, 58, 20, 12, C15(24, 8, 8)); text_box(213, 58, 20, 12, FS_BODY, TXT, AL_C, "X");
         sprintf(nm, "%s", relname(rel)); text_box(21, 71, 214, 11, FS_SMALL, C15(24, 28, 31), AL_L, nm);
@@ -3053,8 +3058,9 @@ static void new_sim(int age, u8 skin, u8 hair, u8 hcol, u8 shirt, const char *nm
     memset(&life[nsim], 0, sizeof(Life)); memset(&csx[nsim], 0, sizeof(Cx)); slv[nsim] = (u8)LV; for (int n = 0; n < 6; n++) m->need[n] = 70; for (int q = 0; q < PMN; q++) m->pm[q] = 50; strncpy(sname[nsim], nm, 19); sname[nsim][19] = 0; psd[nsim] = 0; nsim++; ui_ver++; trg_newsim(nsim - 1);
 }
 static void apply_soc(int ai, int tgt, int id) {
+    if (ai < 0 || ai >= nsim || id < 0 || id >= S_N || (tgt > -2 && (tgt < 0 || tgt >= nsim || tgt == ai))) return;
     Sim *a = &sims[ai]; int cit = tgt <= -2, sb, rel; Sim *o = 0; CRel *cr = 0; Cit *ct = 0;
-    if (cit) { ct = &cits[-2 - tgt]; cr = crel(ct->id); sb = ct->stage; rel = cr->rel; if (cr->talks >= 4) { if (ai == ctl) say("Busy right now. Try later"); return; } cr->talks++; ct->stop = 100; }
+    if (cit) { int k = -2 - tgt; if (k < 0 || k >= CITN || !cits[k].on) return; ct = &cits[k]; cr = crel(ct->id); if (!cr) { if (ai == ctl) say("Contact list is full"); return; } sb = ct->stage; rel = cr->rel; if (cr->talks >= 4) { if (ai == ctl) say("Busy right now. Try later"); return; } cr->talks++; ct->stop = 100; }
     else { o = &sims[tgt]; sb = stage_of(o->age); rel = o->rel; if (ilim[ai][tgt] >= 6) { if (ai == ctl) say("Not feeling chatty today"); return; } ilim[ai][tgt]++; ilim[tgt][ai]++; }
     if (!soc_ok(id, stage_of(a->age), sb, rel, cit)) return;
     if (id == S_CHAT || id == S_JOKE || id == S_FLIRT || id == S_HUG) { int eh = id == S_CHAT ? E_CHAT_OK : id == S_JOKE ? E_JOKE_OK : id == S_FLIRT ? E_FLIRT_OK : E_HUG_OK, eb = id == S_JOKE || id == S_FLIRT ? 70 : 85;   // (D73) a talk can fall flat: the traits' chances
@@ -3070,7 +3076,9 @@ static void apply_soc(int ai, int tgt, int id) {
     if (id == S_INVITE) { if (nsim >= SIM_MAX) { if (ai == ctl) say("Household is full"); return; } char nm[20]; cit_name(ct, nm);
         new_sim(sb == 3 ? 15 : sb == 4 ? 28 : 65, ct->skin, (u8)((ct->id >> 3) % NHAIRD), ct->hair, ct->shirt, nm, a->x, a->y); psd[nsim - 1] = ct->ps; cr->taken = 1; ct->on = 0; if (ai == ctl) say("Moved in! Say hello"); return; }
     if (cit) { int r = (int)cr->rel + d; cr->rel = (u8)(r < 0 ? 0 : r > 10 ? 10 : r); } else { int r = o->rel + d; o->rel = r < 0 ? 0 : r > 10 ? 10 : r; r = a->rel + d; a->rel = r < 0 ? 0 : r > 10 ? 10 : r; }
-    { int nr = cit ? cr->rel : o->rel; life_ev(ai, WN_CHAT, 0); if (rel < 3 && nr >= 3) life_ev(ai, WN_FRIEND, 0);
+    { int nr = cit ? cr->rel : o->rel;
+      if (SREL[id] > 0) { life_ev(ai, WN_CHAT, 0); if (cit) life_ev(ai, WN_NEIGHBOR, 0); }
+      if (rel < 3 && nr >= 3) { life_ev(ai, WN_FRIEND, 0); if (cit) life_ev(ai, WN_TOWNFRIEND, 0); }
       if (ai == ctl) { trg_ev(EV_CHATS, 1); if (id == S_JOKE) trg_ev(EV_JOKES, 1); if (id == S_HUG) trg_ev(EV_HUGS, 1); if (id == S_FLIRT || id == S_KISS) trg_ev(EV_FLIRTS, 1); if (id == S_FEED || id == S_TUCK || id == S_TEACH) trg_ev(EV_CARES, 1); if (id == S_ADVICE || id == S_HUG || id == S_FEED || id == S_TUCK) trg_ev(EV_KIND, 1); } }
     if (ai == ctl && id != S_BABY) say(SOCN[id]);
 }
@@ -4676,7 +4684,7 @@ static void bub_init(void) {   // the sprites: 16 x 32 (a 16 x 16 bubble, two th
 }
 typedef struct { int wx, wz, y; int pr; s8 kind, urg; } BubC;
 static s8 bb_need[SIM_MAX]; static u32 bb_t0[SIM_MAX]; static u32 bb_cit0[NCIT], bb_citend[NCIT];
-static int crel_peek(u16 id) { int h = id & 63; for (int k = 0; k < 64; k++) { const CRel *c = &crt[(h + k) & 63]; if (c->id == id) return c->rel; if (!c->id) return 0; } return 0; }   // (a look, never a new entry: the save's table is left as it is)
+
 static int bub_blocked(int x, int y) {   // a bubble at x, y (16 x 25) over the HUD or a pop-up would hide it: where the HUD has something, none
     int x1 = x + 16, y1 = y + 25;
     if (x < 30 && y < 30) return 1;                                   // the Map button
@@ -5125,7 +5133,7 @@ int main(void) {
                     if (sc == 191) travel_go(Z_TOWN);
                     if (sc == 193) { for (int q = 0; q < nsim; q++) for (int n = 0; n < 6; n++) sims[q].need[n] = 80; }
                     else if (sc != 192) { sims[ctl].need[0] = 8; if (nsim > 1) sims[1].need[2] = 18; if (nsim > 2) sims[2].need[4] = 20; }
-                    if (sc == 192) { city_spawn(); int nn = 0; for (int k = 0; k < CITN && nn < 2; k++) { Cit *c = &cits[k]; c->on = 1; c->stage = 4; c->x = sims[ctl].x + (nn ? 48 : -40); c->y = sims[ctl].y + 24; c->id = (u16)(300 + k); crel(c->id)->rel = 5; if (nn) c->stop = 900; nn++; } minutes = 12 * 60; } }
+                    if (sc == 192) { city_spawn(); int nn = 0; for (int k = 0; k < CITN && nn < 2; k++) { Cit *c = &cits[k]; c->on = 1; c->stage = 4; c->x = sims[ctl].x + (nn ? 48 : -40); c->y = sims[ctl].y + 24; c->id = (u16)(300 + k); { CRel *cr = crel(c->id); if (cr) cr->rel = 5; } if (nn) c->stop = 900; nn++; } minutes = 12 * 60; } }
                 else if (sc == 5) { live_pitch = 1800; live_dist = 16000; yaw_t = live_yaw = 4096 * 2 + 1500; }   // (5: the horizon)
                 else if (sc >= 10 && sc < 13) { o_look = sc - 10; o_dirty = 1; }   // (10-12: Classic, Rich, Toon)
                 else if (sc >= 20 && sc < 23) { o_detl = sc - 20; o_dirty = 1; }

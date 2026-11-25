@@ -19,6 +19,8 @@ jobs:
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_render_geom_test.c -o /tmp/ds_render_geom_test && /tmp/ds_render_geom_test
       - name: Test handheld and console aspiration regressions
         run: python3 test/wants_regression.py
+      - name: Verify DS persistent contacts and collision handling
+        run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_contacts_test.c -o /tmp/ds_contacts_test && /tmp/ds_contacts_test
       - name: Test DS safe deletion confirmation
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_confirm_test.c -o /tmp/ds_confirm_test && /tmp/ds_confirm_test
       - name: Test DS furniture reachability and boundary walls
