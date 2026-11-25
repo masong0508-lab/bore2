@@ -947,6 +947,7 @@ static void nb_load(void) {
     for (int dy = 0; dy < 3; dy++) for (int dx = 0; dx < 3; dx++) nbf[dy + RING_MAX - 1][dx + RING_MAX - 1] = nb[dy][dx];
     if (t7()) nb7_load(); }
 static void city_spawn(void); static void city_shift(int dx, int dy); static void car_step(int frames);
+static int popup, popup_i;
 #ifdef DSTEST
 static void car_audit(void);
 #endif
@@ -1169,7 +1170,7 @@ static void lot_enter(int bx, int by) {   // the lot you walk into: what you bui
 static void lot_cross(void) {   // the sim you are playing left the lot's slot: the next lot becomes the middle one and everything slides back by one slot
     const Sim *m = &sims[ctl]; int dx = fdiv(m->x + 8, 16 * SLC), dy = fdiv(m->y + 8, 16 * SLC); if (!dx && !dy) return;
     int nx = lot_bx + dx, ny = lot_by + dy; if (zone) { BInfo zb_; zone_block(nx, ny, &zb_); if (zb_.terrain == BT_SEA) return; } else if (nx < 0 || ny < 0 || nx >= BM_N || ny >= BM_N) return;
-    lot_save(); lot_enter(nx, ny);
+    lot_save(); lot_enter(nx, ny); if (popup == 2 || popup == 3) popup = 0;
     /* Furniture and dialogue references refer to the PREVIOUS lot. On a
      * seamless neighborhood crossing they must not resolve against an
      * unrelated object or citizen slot in the next lot. Free walking
@@ -1177,7 +1178,7 @@ static void lot_cross(void) {   // the sim you are playing left the lot's slot: 
     for (int i = 0; i < nsim; i++) {
         Sim *s2 = &sims[i];
         if (s2->act >= 0 || s2->act_left > 0) {
-            s2->act = -1; s2->act_left = 0; s2->act_obj = -1;
+            s2->act = -1; s2->act_left = 0; s2->act_obj = -1; s2->tgt = -1; s2->soc = -1;
             s2->tx = s2->wx = s2->x;
             s2->ty = s2->wy = s2->y;
         }
@@ -1623,6 +1624,7 @@ ITCM_CODE static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, 
 #define CARN (o_trf == 3 ? (prof_full ? 12 : 8) : o_trf * 3)
 typedef struct { int x, y, dir, stop; u8 on, stage, skin, shirt, hair, pants; u16 id; u32 ps; } Cit;
 #include "ds_contacts.h"
+#include "ds_cit_routine.h"
 typedef struct { int x, y, dx, dy; u16 col; int px, py, ang; s16 s, L, wt; s8 sg, lj, tx, ty; u8 on, st, tn, tj; } Car;   // (d83) x, y: its centre in 1/16 cells; dx, dy: its way (0, 0: not on the road); st: 0 straight, 1 in a turn (sg +1 right, -1 left, from px, py, s of L); lj: its street's slot; tj: the junction it has claimed (+1), tx ty its slot; tn: 0 straight 1 right 2 left; wt: steps held up
 static Cit cits[NCIT]; static CRel crt[64]; static Car cars[NCAR];
 static const char *const FNAMES[12] = { "Mia", "Leo", "Zoe", "Max", "Ivy", "Sam", "Ana", "Kai", "Eli", "Ola", "Dex", "Una" };
@@ -1635,7 +1637,13 @@ static void cit_name(const Cit *c, char *o) { sprintf(o, "%s %s", FNAMES[c->id %
 static int cit_street(int x, int y) { int lx = ((x % SLC) + SLC) % SLC, ly = ((y % SLC) + SLC) % SLC;
     if (t7()) { int sx = fdiv(x, SLC), sy = fdiv(y, SLC); if (sx < -1 || sx > 1 || sy < -1 || sy > 1) return 0; int S = st_s(sx, sy), E = st_e(sx, sy), C = st_c(sx, sy); return (lx <= 12 ? ly >= 13 && S && (ly == 13 || ly == 17) : ly <= 12 ? E && (lx == 13 || lx == 17) : C != 0) && !far_solid(x, y); }
     return (lx == 13 || lx == 17 || ly == 13 || ly == 17 || (lx >= 13 && ly >= 13)) && !far_solid(x, y); }   // (D40: the pavements, and across the road only at the corners; it was the whole street, lanes too)
-static int cit_vis(const Cit *c) { int hr = (minutes / 60) % 24; return c->on && hr >= 6 && hr < 23 && ((hr * 5 + c->id) % 7) < 5; }   // asleep indoors at night, out and about by day
+static int cit_activity(const Cit *c) {
+    // Cache the clock, not the identity: test loads, travel and time skips stay correct.
+    static int last_min = -1, hour, weekday;
+    if (last_min != minutes) { last_min = minutes; hour = (minutes / 60) % 24; weekday = (minutes / 1440) % 7; }
+    return ds_cit_activity(c->id, c->stage, hour, weekday);
+}
+static int cit_vis(const Cit *c) { return c->on && (c->stop > 0 || cit_activity(c) == DS_CIT_OUT); }
 volatile unsigned town_sig, town_sig_seed = 777, pers_sig, pers_dist, pers_dup;   // (test readouts)
 static u8 town_legacy;   // (D75) 1: a save from before D75: its townies are made from the place alone, as they were (their relations and who moved in are kept by that id). Anything else: the save's world seed goes in as well, so another save has other people
 static u32 pers_key(const Cit *q) {   // (test builds) a townie's personality as one number: bars, sign, aspiration (from their seed; an old save's from the name)
@@ -1675,16 +1683,25 @@ static int car_claim(Car *c, int d, int i) {   // the junction square of this st
         if (ed & 1) ex = (jx * SLC + ln) * 16; else ey = (jy * SLC + ln) * 16;
         for (int k = 0; k < CARN; k++) { const Car *q = &cars[k]; if (q == c || !q->on || q->tj == ji + 1) continue; int a = q->x - ex, b = q->y - ey; if (a * a + b * b < 30 * 30) return 0; } }
     jcnt[ji]++; jax[ji] = (u8)(d & 1); if (tn) jtn[ji] = 1; c->tj = (u8)(ji + 1); c->tx = (s8)jx; c->ty = (s8)jy; c->tn = (u8)tn; return 1; }
-static void city_spawn(void) {
-    int sl[9], ns = 0; for (int j = 0; j < 9; j++) if (nb[j / 3][j % 3].set != 255 && nb[j / 3][j % 3].terrain != BT_SEA) sl[ns++] = j;
-    for (int k = 0; k < NCIT; k++) { Cit *c = &cits[k]; c->on = 0; c->stop = 0; if (!ns) continue; int j = (k < 6 && nb[1][1].set != 255) ? 4 : sl[k % ns], sy = j / 3 - 1, sx = j % 3 - 1;
-        u32 h = hsh((u32)(lot_bx + sx) * 73856093u ^ (u32)(lot_by + sy) * 19349663u ^ (u32)k * 83492791u ^ (town_legacy ? 0u : hsh((u32)seed ^ 0x70574E49u))); c->id = (u16)((h >> 8) | 1); c->ps = town_legacy ? 0u : persona_town_seed((u32)seed, c->id); if (crel_taken(c->id)) continue;   // (D76: their personality seed from the world seed and their unique id, as the PS1; an old save: 0, from the name)
+static void city_spawn_cit(int k, int j) {
+    Cit *c = &cits[k]; c->on = 0; c->stop = 0;
+    int sy = j / 3 - 1, sx = j % 3 - 1;
+        u32 h = hsh((u32)(lot_bx + sx) * 73856093u ^ (u32)(lot_by + sy) * 19349663u ^ (u32)k * 83492791u ^ (town_legacy ? 0u : hsh((u32)seed ^ 0x70574E49u))); c->id = (u16)((h >> 8) | 1); c->ps = town_legacy ? 0u : persona_town_seed((u32)seed, c->id); if (crel_taken(c->id)) return;
+        for (int n = 0; n < NCIT; n++) if (n != k && cits[n].on && cits[n].id == c->id) return;   // (D76: their personality seed from the world seed and their unique id, as the PS1; an old save: 0, from the name)
        
         int r = (int)(h % 100); c->stage = (u8)(r < 16 ? 2 : r < 30 ? 3 : r < 86 ? 4 : 5);
         int lx = (h >> 8) & 1 ? 17 : 13, ly = (int)((h >> 12) % 18);   // (D40: on a pavement, not in a lane) if ((h >> 20) & 1) { int t = lx; lx = ly; ly = t; }
-        int cx = sx * SLC + lx, cy = sy * SLC + ly; if (far_solid(cx, cy)) continue;
-        if (t7()) { int ok = 0; for (int t = 0; t < 8 && !ok; t++) { int a = (int)((h >> (t + 8)) & 1) ? 17 : 13, b = (int)((h >> (t * 3)) % 18), px = t & 1 ? b : a, py = t & 1 ? a : b; cx = sx * SLC + px; cy = sy * SLC + py; if (cit_street(cx, cy)) ok = 1; } if (!ok) continue; }
-        c->x = cx * 16; c->y = cy * 16; c->dir = (int)((h >> 24) & 3); c->skin = (u8)((h >> 5) % 6); c->shirt = (u8)((h >> 9) % 6); c->hair = (u8)((h >> 13) % 6); c->pants = (u8)((h >> 17) % 4); c->on = 1; }
+        int cx = sx * SLC + lx, cy = sy * SLC + ly; if (far_solid(cx, cy)) return;
+        if (t7()) { int ok = 0; for (int t = 0; t < 8 && !ok; t++) { int a = (int)((h >> (t + 8)) & 1) ? 17 : 13, b = (int)((h >> (t * 3)) % 18), px = t & 1 ? b : a, py = t & 1 ? a : b; cx = sx * SLC + px; cy = sy * SLC + py; if (cit_street(cx, cy)) ok = 1; } if (!ok) return; }
+        c->x = cx * 16; c->y = cy * 16; c->dir = (int)((h >> 24) & 3); c->skin = (u8)((h >> 5) % 6); c->shirt = (u8)((h >> 9) % 6); c->hair = (u8)((h >> 13) % 6); c->pants = (u8)((h >> 17) % 4); c->on = 1;
+}
+static void city_spawn(void) {
+    int sl[9], ns = 0; for (int j = 0; j < 9; j++) if (nb[j / 3][j % 3].set != 255 && nb[j / 3][j % 3].terrain != BT_SEA) sl[ns++] = j;
+    memset(cits, 0, sizeof cits);
+    for (int k = 0; k < NCIT && ns; k++) {
+        int j = (k < 6 && nb[1][1].set != 255 && nb[1][1].terrain != BT_SEA) ? 4 : sl[k % ns];
+        city_spawn_cit(k, j);
+    }
     car_lanes(); memset(jcnt, 0, sizeof jcnt); memset(jtn, 0, sizeof jtn);
     for (int k = 0; k < NCAR; k++) { Car *c = &cars[k]; memset(c, 0, sizeof *c); c->x = c->y = -9999; if (!ns || k >= CARN) continue;
         u32 h = hsh((u32)k * 977u + (u32)lot_bx * 31u + (u32)lot_by * 7u);
@@ -1733,7 +1750,17 @@ static void car_step(int frames) {
           if (c->x < lo || c->x >= hi || c->y < lo || c->y >= hi) { car_rel(c); c->on = 0; } } }   // (it drove out of the patch: it comes in again at the far edge, later)
 }
 static void city_shift(int dx, int dy) {
-    for (int k = 0; k < NCIT; k++) { cits[k].x -= dx * SLC * 16; cits[k].y -= dy * SLC * 16; }
+    // Retain actors inside the new 3x3 window. Only fill vacant slots from
+    // the incoming fringe, so people never teleport into the center lot.
+    int edge[9], ne = 0, span = SLC * 16;
+    for (int k = 0; k < NCIT; k++) if (cits[k].on) {
+        Cit *c = &cits[k]; c->x -= dx * span; c->y -= dy * span;
+        if (!ds_cit_in_patch(c->x, c->y, span)) { c->on = 0; c->stop = 0; }
+    }
+    for (int j = 0; j < 9; j++) if (ds_cit_incoming(j, dx, dy) && nb[j / 3][j % 3].set != 255 && nb[j / 3][j % 3].terrain != BT_SEA) edge[ne++] = j;
+    for (int k = 0; k < NCIT && ne; k++) if (!cits[k].on) {
+        for (int t = 0; t < ne && !cits[k].on; t++) city_spawn_cit(k, edge[(k + t) % ne]);
+    }
     car_lanes(); memset(jcnt, 0, sizeof jcnt); memset(jtn, 0, sizeof jtn);
     for (int k = 0; k < NCAR; k++) { Car *c = &cars[k]; if (!c->on) continue; int d = car_d(c); if (k >= CARN) { c->on = 0; continue; } if (c->st || c->tj || car_inj(c)) { c->on = 0; continue; }   // (a car in a junction when the lot changes: gone, it comes in again)
         c->x -= dx * SLC * 16; c->y -= dy * SLC * 16; int w = SLC * 3 * 16, lo = -SLC * 16;
@@ -2366,7 +2393,7 @@ static u32 still_sig(int yaw, int part) {   // (D39) everything a still list dep
 
 // ============ the Sims-style game: LIVE (status on the top screen, the lot and its icons on the bottom, touch to play) ============
 static const char *const NEEDN[6] = { "Hunger", "Fun", "Energy", "Social", "Bladder", "Hygiene" };
-static int menu_sel, menu_open, popup, popup_i, speed = 1, yaw_t = 4096, live_yaw = 4096, live_dist = 12000, camx, camz, cas_tab, cas_done, cas_stage, cas_page;
+static int menu_sel, menu_open, speed = 1, yaw_t = 4096, live_yaw = 4096, live_dist = 12000, camx, camz, cas_tab, cas_done, cas_stage, cas_page;
 enum { CS_BASICS, CS_LOOKS, CS_HAIR, CS_OUTFIT, CS_TRAITS, CS_DONE, CS_N };   // (D67) Create-a-Sim's six steps, as The Sims 3 has them
 static int cas_step, cas_sub;
 
@@ -2942,10 +2969,10 @@ static void draw_top_status(void) {   // the top screen while you live: the sim'
     }
 }
 static void hud_clear(void) { u32 *q = (u32 *)hud; for (int i = 0; i < 256 * 192 / 2; i++) q[i] = 0; ob_owner = 0; }
-enum { S_CHAT, S_PLAY, S_HUG, S_JOKE, S_TEASE, S_ARGUE, S_FLIRT, S_KISS, S_BABY, S_FEED, S_TEACH, S_TUCK, S_ADVICE, S_INVITE, S_N };
-static const char *const SOCN[S_N] = { "Chat", "Play", "Hug", "Joke", "Tease", "Argue", "Flirt", "Kiss", "Try for Baby", "Feed", "Teach", "Tuck In", "Advice", "Invite Home" };
-static const signed char SREL[S_N] = { 1, 1, 1, 1, -1, -2, 1, 2, 1, 0, 1, 0, 1, 0 };
-static const u8 SSOC[S_N] = { 25, 10, 20, 10, 0, 0, 15, 25, 10, 0, 5, 0, 15, 0 }, SFUN[S_N] = { 0, 30, 0, 20, 10, 0, 10, 0, 30, 0, 15, 0, 0, 0 };
+enum { S_CHAT, S_PLAY, S_HUG, S_JOKE, S_TEASE, S_ARGUE, S_FLIRT, S_KISS, S_BABY, S_FEED, S_TEACH, S_TUCK, S_ADVICE, S_INVITE, S_DAY, S_N };
+static const char *const SOCN[S_N] = { "Chat", "Play", "Hug", "Joke", "Tease", "Argue", "Flirt", "Kiss", "Try for Baby", "Feed", "Teach", "Tuck In", "Advice", "Invite Home", "Ask about day" };
+static const signed char SREL[S_N] = { 1, 1, 1, 1, -1, -2, 1, 2, 1, 0, 1, 0, 1, 0, 1 };
+static const u8 SSOC[S_N] = { 25, 10, 20, 10, 0, 0, 15, 25, 10, 0, 5, 0, 15, 0, 15 }, SFUN[S_N] = { 0, 30, 0, 20, 10, 0, 10, 0, 30, 0, 15, 0, 0, 0, 0 };
 static int rom_ok(int sa, int sb) { return (sa == 3 && sb == 3) || (sa >= 4 && sb >= 4); }   // romance: teens with teens, adults and elders with each other; never across the line
 static int soc_ok(int id, int sa, int sb, int rel, int cit) {
     switch (id) {
@@ -2953,15 +2980,15 @@ static int soc_ok(int id, int sa, int sb, int rel, int cit) {
         case S_TEASE: return sa >= 2 && sb >= 2; case S_ARGUE: return sa >= 3 && sb >= 2; case S_FLIRT: return sa >= 3 && sb >= 3 && rom_ok(sa, sb);
         case S_KISS: return sa >= 3 && sb >= 3 && rom_ok(sa, sb) && rel >= 4; case S_BABY: return !cit && sa == 4 && sb == 4 && rel >= 6;
         case S_FEED: return !cit && sa >= 2 && sb <= 1; case S_TEACH: return sa >= 3 && sb >= 1 && sb <= 2; case S_TUCK: return !cit && sa >= 2 && sb <= 1;
-        case S_ADVICE: return sa >= 2 && sb == 5; case S_INVITE: return cit && sa >= 3 && sb >= 3 && rel >= 3; }
+        case S_ADVICE: return sa >= 2 && sb == 5; case S_INVITE: return cit && sa >= 3 && sb >= 3 && rel >= 3; case S_DAY: return cit && sa >= 2 && sb >= 2; }
     return 0;
 }
-static int soc_pick[8];
+static int soc_pick[10];
 static int soc_list(int tgt) { int sa = stage_of(sims[ctl].age), sb, rel, cit = tgt <= -2, n = 0;
-    if (cit) { const Cit *c = &cits[-2 - tgt]; sb = c->stage; rel = crel_peek(c->id); } else { sb = stage_of(sims[tgt].age); rel = sims[tgt].rel; }
+    if (cit) { int k = -2 - tgt; if (k < 0 || k >= CITN || !cit_vis(&cits[k])) return 0; const Cit *c = &cits[k]; sb = c->stage; rel = crel_peek(c->id); } else { if (tgt < 0 || tgt >= nsim || tgt == ctl) return 0; sb = stage_of(sims[tgt].age); rel = sims[tgt].rel; }
     // Keep progress actions reachable instead of truncating them behind arguments and teasing.
-    static const u8 order[S_N] = { S_CHAT, S_PLAY, S_HUG, S_JOKE, S_INVITE, S_BABY, S_KISS, S_FLIRT, S_FEED, S_TEACH, S_TUCK, S_ADVICE, S_TEASE, S_ARGUE };
-    for (int k = 0; k < S_N && n < 8; k++) { int id = order[k]; if (soc_ok(id, sa, sb, rel, cit)) soc_pick[n++] = id; } return n; }
+    static const u8 order[S_N] = { S_CHAT, S_PLAY, S_HUG, S_JOKE, S_INVITE, S_BABY, S_KISS, S_FLIRT, S_DAY, S_FEED, S_TEACH, S_TUCK, S_ADVICE, S_TEASE, S_ARGUE };
+    for (int k = 0; k < S_N && n < 10; k++) { int id = order[k]; if (soc_ok(id, sa, sb, rel, cit)) soc_pick[n++] = id; } return n; }
 static void draw_hud_i(void) {
     scr = offbuf;
     if (mg_ui) { mg_bottom(); return; }   // (D46)
@@ -2997,7 +3024,7 @@ static void draw_hud_i(void) {
         char nm[40]; int tg = popup == 2 ? popup_i : -2 - popup_i, rel; if (popup == 2) { sprintf(nm, "%s - %s %d", sname[popup_i], STGN[stage_of(sims[popup_i].age)], sims[popup_i].age); rel = sims[popup_i].rel; }
         else { char n2[24]; cit_name(&cits[popup_i], n2); sprintf(nm, "%s - %s", n2, STGN[cits[popup_i].stage]); rel = crel_peek(cits[popup_i].id); }
         int n = soc_list(tg);
-        rect(20, 56, 216, 124, PANB); rect(21, 57, 214, 122, PAN); rect(21, 57, 214, 14, PANH); rect(20, 56, 2, 2, 0); rect(234, 56, 2, 2, 0); text_box(21, 57, 188, 14, FS_BODY, TXT, AL_L, nm); rect(213, 58, 20, 12, C15(24, 8, 8)); text_box(213, 58, 20, 12, FS_BODY, TXT, AL_C, "X");
+        rect(20, 56, 216, 136, PANB); rect(21, 57, 214, 134, PAN); rect(21, 57, 214, 14, PANH); rect(20, 56, 2, 2, 0); rect(234, 56, 2, 2, 0); text_box(21, 57, 188, 14, FS_BODY, TXT, AL_L, nm); rect(213, 58, 20, 12, C15(24, 8, 8)); text_box(213, 58, 20, 12, FS_BODY, TXT, AL_C, "X");
         sprintf(nm, "%s", relname(rel)); text_box(21, 71, 214, 11, FS_SMALL, C15(24, 28, 31), AL_L, nm);
         if (popup != 2) { char n3[24], f3[16], l3[16]; cit_name(&cits[popup_i], n3); { const char *sp = strchr(n3, ' '); int q = sp ? (int)(sp - n3) : (int)strlen(n3); if (q > 15) q = 15; memcpy(f3, n3, (size_t)q); f3[q] = 0; strncpy(l3, sp ? sp + 1 : "", 15); l3[15] = 0; }
             TrPers pp; if (cits[popup_i].ps) trf_pers_from_seed(cits[popup_i].ps, cits[popup_i].stage, &pp); else trf_pers_from_name(f3, l3, cits[popup_i].stage, &pp); int a3 = 0; for (int q = 1; q < 5; q++) if (pp.bar[q] > pp.bar[a3]) a3 = q;
@@ -3060,8 +3087,8 @@ static void new_sim(int age, u8 skin, u8 hair, u8 hcol, u8 shirt, const char *nm
 static void apply_soc(int ai, int tgt, int id) {
     if (ai < 0 || ai >= nsim || id < 0 || id >= S_N || (tgt > -2 && (tgt < 0 || tgt >= nsim || tgt == ai))) return;
     Sim *a = &sims[ai]; int cit = tgt <= -2, sb, rel; Sim *o = 0; CRel *cr = 0; Cit *ct = 0;
-    if (cit) { int k = -2 - tgt; if (k < 0 || k >= CITN || !cits[k].on) return; ct = &cits[k]; cr = crel(ct->id); if (!cr) { if (ai == ctl) say("Contact list is full"); return; } sb = ct->stage; rel = cr->rel; if (cr->talks >= 4) { if (ai == ctl) say("Busy right now. Try later"); return; } cr->talks++; ct->stop = 100; }
-    else { o = &sims[tgt]; sb = stage_of(o->age); rel = o->rel; if (ilim[ai][tgt] >= 6) { if (ai == ctl) say("Not feeling chatty today"); return; } ilim[ai][tgt]++; ilim[tgt][ai]++; }
+    if (cit) { int k = -2 - tgt; if (k < 0 || k >= CITN || !cit_vis(&cits[k])) return; ct = &cits[k]; if (!soc_ok(id, stage_of(a->age), ct->stage, crel_peek(ct->id), 1)) return; cr = crel(ct->id); if (!cr) { if (ai == ctl) say("Contact list is full"); return; } sb = ct->stage; rel = cr->rel; if (cr->talks >= 4) { if (ai == ctl) say("Busy right now. Try later"); return; } cr->talks++; ct->stop = 100; }
+    else { o = &sims[tgt]; sb = stage_of(o->age); rel = o->rel; if (!soc_ok(id, stage_of(a->age), sb, rel, 0)) return; if (ilim[ai][tgt] >= 6) { if (ai == ctl) say("Not feeling chatty today"); return; } ilim[ai][tgt]++; ilim[tgt][ai]++; }
     if (!soc_ok(id, stage_of(a->age), sb, rel, cit)) return;
     if (id == S_CHAT || id == S_JOKE || id == S_FLIRT || id == S_HUG) { int eh = id == S_CHAT ? E_CHAT_OK : id == S_JOKE ? E_JOKE_OK : id == S_FLIRT ? E_FLIRT_OK : E_HUG_OK, eb = id == S_JOKE || id == S_FLIRT ? 70 : 85;   // (D73) a talk can fall flat: the traits' chances
         if (!trf_works(&dtr[ai], eh, eb, trg_rnd())) { if (ai == ctl) say("Awkward... it did not land"); return; } }
@@ -3080,7 +3107,8 @@ static void apply_soc(int ai, int tgt, int id) {
       if (SREL[id] > 0) { life_ev(ai, WN_CHAT, 0); if (cit) life_ev(ai, WN_NEIGHBOR, 0); }
       if (rel < 3 && nr >= 3) { life_ev(ai, WN_FRIEND, 0); if (cit) life_ev(ai, WN_TOWNFRIEND, 0); }
       if (ai == ctl) { trg_ev(EV_CHATS, 1); if (id == S_JOKE) trg_ev(EV_JOKES, 1); if (id == S_HUG) trg_ev(EV_HUGS, 1); if (id == S_FLIRT || id == S_KISS) trg_ev(EV_FLIRTS, 1); if (id == S_FEED || id == S_TUCK || id == S_TEACH) trg_ev(EV_CARES, 1); if (id == S_ADVICE || id == S_HUG || id == S_FEED || id == S_TUCK) trg_ev(EV_KIND, 1); } }
-    if (ai == ctl && id != S_BABY) say(SOCN[id]);
+    if (ai == ctl && id == S_DAY && ct) say(ds_cit_day_line(ct->id, ct->stage, (minutes / 60) % 24, (minutes / 1440) % 7));
+    else if (ai == ctl && id != S_BABY) say(SOCN[id]);
 }
 /* The destination is a reachable CELL, not the exact fractional location
  * of a moving person. Validate citizen IDs, world bounds and storeys before
