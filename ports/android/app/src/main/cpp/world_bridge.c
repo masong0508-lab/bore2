@@ -12,6 +12,9 @@ int dbg_miss[4];
 void *xalloc(unsigned n){return malloc(n);}
 void boot(const char *s){(void)s;}
 void loading(const char *s,int p){(void)s;(void)p;}
+// The map-only bootstrap has no world.c geometry-height cache to invalidate.
+// bigmap.c still resets its own terrain cache and advances bm_edit_stamp.
+void world_gh_reset(void){}
 int bsprintf(char *o,const char *f,...){
     va_list ap;va_start(ap,f);int n=vsprintf(o,f,ap);va_end(ap);return n;
 }
