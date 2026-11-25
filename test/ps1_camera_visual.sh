@@ -62,11 +62,15 @@ for lens in legacy corrected; do
 ROUTE
     (
         cd "$BD"
+        # A boot exception can flood the emulator log indefinitely (one failed
+        # replay produced 25 GB). Bound individual evidence files to 64 MiB;
+        # SIGXFSZ remains a hard replay failure, never a passing capture.
+        ulimit -f 65536
         env -u DS8MB DSCROP=None DSRAW=1 DSSCRIPT="$OUT/script-$lens.txt" \
           DSRAM="$OUT/ram-$lens.bin" timeout 520 "$RUNNER" -log info -frames 3800 \
           -dumpdir "$OUT/shots-$lens" -dumpinterval 100000 \
           "$BD/bore2.cue" >"$OUT/emulate-$lens.log" 2>&1
-    ) || { echo "$lens DuckStation playback failed" >&2; tail -80 "$OUT/emulate-$lens.log" >&2; exit 2; }
+    ) || { echo "$lens DuckStation playback failed (timeout, file limit or emulator error)" >&2; head -40 "$OUT/emulate-$lens.log" >&2; tail -80 "$OUT/emulate-$lens.log" >&2; exit 2; }
 done
 python3 - "$OUT" <<'PY'
 import json
