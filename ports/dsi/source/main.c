@@ -54,6 +54,7 @@ static const char *opt_tok(int i, int n, char *b) { const char *p = OPT[i].vals;
 #include "scene_music.h"
 #define OUTINGS_IMPLEMENTATION
 #include "outings.h"
+#include "outing_links.h"
 #include "world_access.h"
 #include "audio_slice.h"
 
@@ -3178,12 +3179,33 @@ static void outing_start_ds(int id){
     m->tx=m->wx=m->x;m->ty=m->wy=m->y;
     popup=0;life_ver++;say(o->title);
 }
+// Handheld contacts use the existing persistent table and daily talk budget.
+static void outing_contact_ds(int i){
+    const Sim *m=&sims[i];if(i!=ctl||slv[i]||m->x<0||m->y<0)return;
+    int best=-1,bd=17;
+    for(int k=0;k<CITN;k++){
+        const Cit *c=&cits[k];if(!cit_vis(c)||!c->id||c->stage<2||c->x<0||c->y<0)continue;
+        const CRel *old=ds_contact_find(crt,c->id);
+        if(old&&(old->taken||old->rel>=10||(old->talks&DS_CONTACT_TALK_MASK)>=4))continue;
+        int d=outing_link_distance(m->x/16,m->y/16,c->x/16,c->y/16,SLC);
+        if(d>=0&&d<bd){best=k;bd=d;}
+    }
+    if(best<0)return;
+    CRel *cr=crel(cits[best].id);if(!cr)return;
+    int before=cr->rel;cr->rel++;cr->talks++;
+    life_ev(i,WN_NEIGHBOR,0);
+    if(before<3&&cr->rel>=3){life_ev(i,WN_FRIEND,0);life_ev(i,WN_TOWNFRIEND,0);}
+}
 static void outing_done_ds(int i,int id){
     if(!outing_complete(id,outing_group_ds(i),0))return;
     const Outing *o=outing_get(id);Sim *m=&sims[i];
     m->need[0]=cl100(m->need[0]+o->food);m->need[1]=cl100(m->need[1]+o->fun);
     m->need[2]=cl100(m->need[2]+o->rest);m->need[3]=cl100(m->need[3]+o->social);
-    if(i==ctl){if(o->kind==OUT_COMMUNITY)trg_ev(EV_KIND,1);say(o->done);sfx(3);}
+    if(o->skill==OUT_SK_FARM)fm_sk(i,o->gain);
+    if(i==ctl){
+        if(outing_link_social_gain(o->kind==OUT_COMMUNITY,o->social))outing_contact_ds(i);
+        if(o->kind==OUT_COMMUNITY)trg_ev(EV_KIND,1);say(o->done);sfx(3);
+    }
     life_ev(i,WN_OUTING,0);if(o->kind==OUT_LEARN)life_ev(i,WN_CLASS,0);if(o->kind==OUT_COMMUNITY)life_ev(i,WN_COMMUNITY,0);
     life_ver++;
 }

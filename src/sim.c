@@ -4,6 +4,7 @@
 #include "wants.h"
 #define OUTINGS_IMPLEMENTATION
 #include "outings.h"
+#include "outing_links.h"
 #include "world_access.h"
 #include "arcade.h"
 #include "fight.h"
@@ -724,6 +725,12 @@ static void outing_done(Sim *s){
     s->need[N_REST]=MIN(100<<10,s->need[N_REST]+(o->rest<<10));
     int *skill=o->skill==OUT_SK_LOGIC?&s->skill_logic:o->skill==OUT_SK_BODY?&s->skill_body:o->skill==OUT_SK_CREAT?&s->skill_creat:o->skill==OUT_SK_COOK?&s->skill_cook:o->skill==OUT_SK_FARM?&s->skill_farm:o->skill==OUT_SK_CHAR?&s->skill_char:&s->skill_fun;
     *skill=MIN(4400,*skill+o->gain);
+    s->grade=(u8)outing_link_grade(s->grade,id==(SC_SCHOOL-SC_VENUE_FIRST)*2,
+        s->bore.stage==AG_CHILD||s->bore.stage==AG_TEEN);
+    if(s==&sims[player]&&!s->lvl){
+        int bonus=outing_link_social_gain(o->kind==OUT_COMMUNITY,o->social);
+        if(bonus)citizens_outing_contact(sim_tile_x(s),sim_tile_y(s),bonus);
+    }
     if(o->kind==OUT_COMMUNITY)tr_ev(s->tr,EV_KIND,1);
     sim_moodlet(s,o->kind==OUT_LEARN?ML_INSPIRED:ML_FUN_TIME);
     if(s==&sims[player]){sim_note(o->done);audio_voice(VOICE_YAHOO);}

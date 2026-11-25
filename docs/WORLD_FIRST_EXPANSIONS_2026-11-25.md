@@ -37,3 +37,22 @@ first four previously unused hot-vehicle bits track stolen road vehicles.
 A theft conviction confiscates these vehicles and clears their parking
 records. Duplicate vehicles cannot be kept. DS retains its cash reward path
 because player-controlled road vehicles are not implemented there.
+
+## Persistent venue outcomes (follow-up)
+
+Design decision: ordinary venue sessions should change existing life-simulation
+state rather than add another independent activity progression system. On
+completion, community or high-social sessions can introduce or strengthen a
+relationship with one eligible real nearby resident. Same-block/range checks
+avoid awarding friendship with someone in the next neighborhood; absent
+residents do not generate fake contacts. PS1/DC use the live citizen and saved
+population record. DS/DSi use the existing contact table and daily talk limit.
+DS/DSi farming sessions grant the normal persistent farming skill; console
+children/teens completing the study workshop receive four school grade points,
+capped at 100. No extra save fields or per-frame resident scans are introduced.
+
+Host check: test/outing_links_test.c exercises social eligibility, exact range
+and block boundary, and the grade cap. Both native build workflows run it.
+Native playthrough verification remains outstanding: repeat a community
+session with a nearby and an absent citizen, save/reload contact and farming
+progress, and confirm the study workshop advances a child/teen grade only.
