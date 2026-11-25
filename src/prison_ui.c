@@ -131,6 +131,7 @@ static void verdict_go(void) {   // the jury: what the other side has, what your
     if (!guilty) { strcpy(tl[4], glt ? "NOT GUILTY! LUCKY, SOME WOULD SAY." : "NOT GUILTY! THE TRUTH WON."); vtxt = "NOT GUILTY"; }
     else if (verdict == 2) { strcpy(tl[4], "GUILTY. THE JUDGE SAYS DEATH."); vtxt = "DEATH SENTENCE"; }
     else { sprintf(tl[4], "GUILTY. %d DAYS%s.", sentence0, plea == 1 ? " (A DEAL)" : framed ? " (FOR NOTHING)" : ""); vtxt = "GUILTY"; }
+    if(guilty&&crime_n[CR_THEFT]&&sim_heist_confiscate()>0)strcpy(tl[3],"STOLEN ROAD VEHICLES IMPOUNDED.");
     if (guilty && plea != 1) { int fine = MIN((int)cash, cpts * 8); cash -= fine; }
 }
 static void court_next(void) {

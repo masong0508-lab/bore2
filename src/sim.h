@@ -103,6 +103,9 @@ const char *farm_customer(int *sold);      // (citizens.c) a townsperson at the 
 void farm_save(void); void farm_load(void);
 extern int  veh_own, veh_on, veh_sel, veh_fuel[VEH_N], veh_wph;   // owned (a bit each), ridden (0 none, else type + 1), the last one, tanks (quarter tiles), the wheels' turn
 int  veh_seat(int t); int veh_colour(int t); const char *veh_hud(void);   // how high the driver sits; the paint; "SEDAN  FUEL 73%" for the screen
+int  sim_heist_can_keep(int target);
+int  sim_heist_keep(int target);
+int  sim_heist_confiscate(void);
 int  sim_ride_after_board(void);     // stepped off the board: on to a vehicle you own (1) or onto your feet (0)
 extern int  has_board, on_board, board_lift;   // (board_lift: how high above the floor the rider is, on a ramp or in the air)
 //     // a skateboard owned / being ridden (O toggles)

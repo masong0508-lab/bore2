@@ -289,6 +289,34 @@ int sim_want_jobs;   // the computer's JOB BOARD was picked: main opens JOBS wit
 int veh_own, veh_on, veh_sel, veh_fuel[VEH_N], veh_wph; static int veh_odo, veh_lowfuel, veh_wacc; u8 veh_cond[VEH_N] = { 100, 100, 100, 100, 100, 100 };   // (condition: wears with use, fixed by a mechanic or by you)
 static const struct { const char *nm; short price, speed, tank, seat; } VT[VEH_N] = {   // tank: tiles of range (0: pedals); seat: how high the driver sits
     { "BIKE", 150, 3, 0, 0 }, { "SCOOTER", 600, 4, 500, 0 }, { "SEDAN", 3200, 7, 1500, 30 }, { "VAN", 4800, 6, 1800, 30 }, { "SPORTS CAR", 9500, 10, 1000, 24 }, { "PICKUP", 5600, 6, 2000, 30 } };
+// The first four heist targets use the ordinary, save-backed road vehicles.
+// Bits 0..3 in the existing hot-vehicle byte were previously unused; bits
+// 5..9 still belong to the Sky and Sea craft.
+static int heist_road_type(int target){
+    static const int map[4]={VEH_SEDAN,VEH_PICKUP,VEH_SPORTS,VEH_SCOOTER};
+    return target>=0&&target<4?map[target]:-1;
+}
+int sim_heist_can_keep(int target){
+    int t=heist_road_type(target);return t>=0&&!(veh_own&(1<<t));
+}
+int sim_heist_keep(int target){
+    if(!sim_heist_can_keep(target))return 0;
+    int t=heist_road_type(target);
+    traffic_unpark(t);veh_own|=1<<t;veh_fuel[t]=VT[t].tank*2;veh_cond[t]=70;veh_sel=t;
+    pk_data[40]|=(u8)(1<<target);
+    return 1;
+}
+int sim_heist_confiscate(void){
+    int count=0;
+    for(int k=0;k<4;k++)if(pk_data[40]&(1<<k)){
+        int t=heist_road_type(k);if(veh_own&(1<<t))count++;
+        veh_own&=~(1<<t);veh_fuel[t]=0;veh_cond[t]=100;traffic_unpark(t);
+        if(veh_on==t+1){veh_on=0;sims[player].gait.sit=0;sims[player].gait.amp=0;}
+    }
+    pk_data[40]&=0xF0;
+    if(!(veh_own&(1<<veh_sel))){veh_sel=0;for(int t=0;t<VEH_N;t++)if(veh_own&(1<<t)){veh_sel=t;break;}}
+    return count;
+}
 int veh_seat(int t) { return VT[t % VEH_N].seat * 7 / 4; }
 int veh_colour(int t) { return (t * 5 + 2 + (int)((world_seed() >> 8) & 7)) % 6; }
 int has_board, on_board, board_lift;   // the skateboard: owned, ridden, how high the rider is (skate.c rides it)

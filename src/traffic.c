@@ -341,6 +341,7 @@ void traffic_park(int t, int x, int z, int yaw) {
     if (t < 0 || t >= VEH_N || world_zone != ZONE_CITY || world_wbx < 0) return;
     Park *p = &park[t]; p->on = 1; p->x = x + bx_() * TILE; p->y = -z + by_() * TILE; p->yaw = yaw & 4095;
 }
+void traffic_unpark(int t) { if(t>=0&&t<VEH_N)park[t].on=0; }
 int traffic_parked(int t) { return t >= 0 && t < VEH_N && park[t].on; }
 int traffic_park_near(int t, int x, int z) {
     if (!traffic_parked(t)) return 0;

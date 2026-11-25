@@ -29,3 +29,11 @@ counter/coffee maker, library shelves/desks, gym apparatus, pool access,
 cinema seat, farm stand, park bench, arcade cabinet, gallery art, reception,
 spa furniture, school desks and science exhibits. Existing actions retain
 priority in the eight-entry interaction menu; the flag is the fallback.
+
+On PS1/DC, a successful road-vehicle heist now grants an actual usable sedan,
+pickup, sports car or scooter when the player chooses Keep. The ordinary
+vehicle inventory, fuel, condition, driving and save system are reused. The
+first four previously unused hot-vehicle bits track stolen road vehicles.
+A theft conviction confiscates these vehicles and clears their parking
+records. Duplicate vehicles cannot be kept. DS retains its cash reward path
+because player-controlled road vehicles are not implemented there.
