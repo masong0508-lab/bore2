@@ -1184,6 +1184,10 @@ static void remove_sim(int i) {   // gone from the household: everyone after mov
         Sim *o = &sims[j];
         for (int k = i; k < MAX_SIMS - 1; k++) o->rel[k] = o->rel[k + 1];
         o->rel[MAX_SIMS - 1] = 0;
+        for (int k = 0; k < 4; k++) if (o->want[k].kind == W_CHAT_WITH || o->want[k].kind == W_FRIEND) {
+            if (o->want[k].arg == i) memset(&o->want[k], 0, sizeof o->want[k]);
+            else if (o->want[k].arg > i) o->want[k].arg--;
+        }
         if (o->talk_to == i) { o->talk_to = -1; o->errand = 0; if (o->action == ACT_TALK || o->action == ACT_CARE || o->action == ACT_WALK) { o->action = ACT_NONE; o->path_n = 0; o->gait.wave = 0; } }
         else if (o->talk_to > i) o->talk_to--;
     }
@@ -2368,8 +2372,8 @@ static void place_do(Sim *s, int code) {
         case PC_PASS1: case PC_PASS7: case PC_PASS30: { int n = code == PC_PASS1 ? 1 : code == PC_PASS7 ? 7 : 30, pr = code == PC_PASS1 ? 10 : code == PC_PASS7 ? 30 : 90;
             if (!pay(pr)) return; bus_pass = MAX(bus_pass, day_count) + n; char b_[40]; sprintf(b_, "BUS PASS: %d DAYS LEFT", bus_pass - day_count); sim_note(b_); audio_voice(VOICE_FINISHED); } break;
         case PC_DOG: case PC_CAT: { if (!pay(code == PC_DOG ? 150 : 120)) return; pet_kind = code == PC_DOG ? 1 : 2; pet_col = (int)(look_rand() % 6); if (code == PC_DOG) dog_random(&pet_dog, look_rand());   /* (a store's puppy: a ready-made one; the CREATE A DOG screen makes your own) */ pet_hun = 100; pet_zone = -1; pet_ph = 0; sim_note(pet_kind == 1 ? "YOU GOT A PUPPY!" : "YOU GOT A KITTEN!"); audio_voice(VOICE_YAHOO); wants_event(s, W_FUN, 0); } break;
-        case PC_PETFEED: if (!pay(3)) return; pet_hun = 100; sim_say(s, "GOOD PET!"); sim_note("YUM! YOUR PET IS FED"); break;
-        case PC_PETPLAY: s->need[N_FUN] = MIN(s->need[N_FUN] + (12 << 10), 100 << 10); s->need[N_SOCIAL] = MIN(s->need[N_SOCIAL] + (6 << 10), 100 << 10); pet_hun = MAX(0, pet_hun - 4); pet_ph += 900; sim_say(s, "WHO'S A GOOD PET?"); break;
+        case PC_PETFEED: if (!pay(3)) return; pet_hun = 100; sim_say(s, "GOOD PET!"); sim_note("YUM! YOUR PET IS FED"); wants_event(s, W_PETFEED, 0); break;
+        case PC_PETPLAY: s->need[N_FUN] = MIN(s->need[N_FUN] + (12 << 10), 100 << 10); s->need[N_SOCIAL] = MIN(s->need[N_SOCIAL] + (6 << 10), 100 << 10); pet_hun = MAX(0, pet_hun - 4); pet_ph += 900; sim_say(s, "WHO'S A GOOD PET?"); wants_event(s, W_PETPLAY, 0); wants_event(s, W_FUN, 0); break;
         case PC_ADMIRE: begin_action(s, ACT_FUN, pie_mx, pie_my); s->act_var = 7; s->act_t = 200; break;
         case PC_PAINTING: if (!pay(300)) return; s->skill_creat += 60; shopped(s, "A PAINTING, JUST FOR YOU", ML_INSPIRED); break;
         case PC_ROOM: if (room_here()) { sim_note("YOUR ROOM IS PAID TILL NOON"); return; }
@@ -2429,7 +2433,7 @@ void sim_take_job(int car, int bx, int by, const char *place) {
     job_none = 0;
     job_take(car, bx, by, place);
     char b[40]; snprintf(b, sizeof b, "NEW JOB: %s", job_title()); sim_note(b);
-    sim_moodlet(&sims[player], ML_NEW_JOB); audio_voice(VOICE_YAHOO);
+    sim_moodlet(&sims[player], ML_NEW_JOB); audio_voice(VOICE_YAHOO); wants_event(&sims[player], W_JOB, 0);
 }
 static void sim_pie_do_(int i) {
     Sim *s = &sims[player];

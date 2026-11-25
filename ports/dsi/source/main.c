@@ -757,7 +757,7 @@ static char sname[SIM_MAX][20] = { "Ashley Newbie", "Ronald Bacon", "Kit Farlow"
 static const char *const STGN[6] = { "Baby", "Toddler", "Child", "Teen", "Adult", "Elder" };   // the life stages: 0-2, 3-5, 6-12, 13-17, 18-59, 60+ years (a year is a day on the clock)
 // ============ LIFE (D31): careers, wants and fears, the dog, ghosts, roofs and storeys ============
 #define JOBN 6
-enum { WN_NONE, WN_EAT, WN_SLEEP, WN_SHOWER, WN_FUN, WN_CHAT, WN_FRIEND, WN_JOB, WN_WORK, WN_PAID, WN_PROMO, WN_CASH, WN_BUY, WN_VISIT, WN_BABY, WN_PET, WN_SONG, WN_N };
+enum { WN_NONE, WN_EAT, WN_SLEEP, WN_SHOWER, WN_FUN, WN_CHAT, WN_FRIEND, WN_JOB, WN_WORK, WN_PAID, WN_PROMO, WN_CASH, WN_BUY, WN_VISIT, WN_BABY, WN_PET, WN_SONG, WN_PETFEED, WN_HARVEST, WN_FARMSELL, WN_ANIMALS, WN_SECRET, WN_N };
 enum { FR_NONE, FR_PASS, FR_WET, FR_BAD, FR_DEMOTE, FR_GHOST, FR_N };
 typedef struct { u8 job, lvl, prog, strike, fear, worked, wk[3]; s16 wa[3]; u16 pts, shifts; } Life;
 typedef struct { s16 bx, by; int x, y, tx, ty; u8 skin, hair, shirt, on; } Ghost;
@@ -2068,7 +2068,7 @@ static int travel_ui, craft_ui;
 static void lot_go(int bx, int by);
 static void isl_found(int sec) {
     if ((isl_secrets >> sec) & 1) return; isl_secrets |= (u16)(1 << sec); static char t[40]; int n = 0; for (int i = 0; i < SEC_N; i++) n += (isl_secrets >> i) & 1;
-    sprintf(t, "Secret found! %d of %d", n, SEC_N); say(n == SEC_N ? "Every secret of the island!" : t); sfx(5); life_ev(ctl, WN_VISIT, 0); }
+    sprintf(t, "Secret found! %d of %d", n, SEC_N); say(n == SEC_N ? "Every secret of the island!" : t); sfx(5); life_ev(ctl, WN_SECRET, 0); }
 static void travel_go(int z) {   // the whole household goes (the PS1's travel_go): to the zone's arrival lot, or home
     static char b[40];
     if (z == Z_CITY) { if (home_bx < 0) { say("No home yet: pick one on the Map"); return; } zone = Z_CITY; lot_go(home_bx, home_by); sprintf(b, "Welcome home"); say(b); return; }
@@ -2455,19 +2455,19 @@ static void farm_do(int code, int i, int o) {   // the PS1's PC_F... codes
         for (int k = 0; k < 4; k++) if (fm_n[k] && fm_g[k] >= fm_need(k)) { int y = fm_n[k] * (2 + lv / 3) + (int)(fm_rand() % (u32)(fm_n[k] + 1)); if ((fm_fz >> k) & 1) y = y * 3 / 2; if (fm_up & 8) y = y * 3 / 2;
             fm_fz &= ~(1 << k); fm_stock[k] = (u16)(fm_stock[k] + y > 999 ? 999 : fm_stock[k] + y); got += y; sprintf(b, "%d %s picked", y, FMN[k]); say(b); fm_n[k] = 0; fm_g[k] = 0; fm_dry[k] = 0; }
         if (!got) { say("Nothing is ready"); return; }
-        fm_work(i, o, 260, 1, 4); fm_sk(i, 30 + got * 3); s->need[2] = cl100(s->need[2] - 4); if (got >= 12) life_ev(i, WN_FUN, 0); return; }
+        fm_work(i, o, 260, 1, 4); fm_sk(i, 30 + got * 3); s->need[2] = cl100(s->need[2] - 4); life_ev(i, WN_HARVEST, 0); if (got >= 12) life_ev(i, WN_FUN, 0); return; }
     case FC_SPRAY: if (!fm_pest) { say("No pests"); return; } if (!fm_pay(3)) return; fm_pest = 0; fm_work(i, o, 120, 1, 2); fm_sk(i, 15); say("Sprayed: the pests are gone"); return;
     case FC_HEN: if (fm_hens >= 6) return; if (!fm_pay(40)) return; fm_hens++; say("A new hen! Feed it daily"); fm_sk(i, 15); return;
     case FC_COW: if (fm_cows >= 3) return; if (!fm_pay(250)) return; fm_cows++; say("A new cow! Moo"); fm_sk(i, 25); return;
-    case FC_FEEDH: if (!fm_pay(2)) return; fm_fed |= 1; fm_work(i, o, 120, 1, 3); fm_sk(i, 8); say("The hens are fed: eggs by morning"); return;
-    case FC_FEEDC: if (!fm_pay(5)) return; fm_fed |= 2; fm_work(i, o, 120, 1, 3); fm_sk(i, 10); say("The cows are fed: milk by morning"); return;
+    case FC_FEEDH: if (!fm_pay(2)) return; fm_fed |= 1; fm_work(i, o, 120, 1, 3); fm_sk(i, 8); say("The hens are fed: eggs by morning"); life_ev(i, WN_ANIMALS, 0); return;
+    case FC_FEEDC: if (!fm_pay(5)) return; fm_fed |= 2; fm_work(i, o, 120, 1, 3); fm_sk(i, 10); say("The cows are fed: milk by morning"); life_ev(i, WN_ANIMALS, 0); return;
     case FC_EGGS: fm_egg = (u16)(fm_egg + fm_pe > 999 ? 999 : fm_egg + fm_pe); fm_say("%d eggs collected", fm_pe); fm_pe = 0; fm_sk(i, 15); return;
     case FC_MILK: fm_milk = (u16)(fm_milk + fm_pm > 999 ? 999 : fm_milk + fm_pm); fm_say("%d milked", fm_pm); fm_pm = 0; fm_work(i, o, 200, 1, 6); fm_sk(i, 20); return;
     case FC_SELL: { int tot = 0; for (int k = 0; k < 6; k++) tot += fm_have(k) * FM_PR[k] * (k == 3 && fm_season() == 2 ? 3 : 2) / 2; if (!tot) { say("Nothing to sell"); return; }
-        tot = trf_farm_pay(&dtr[i], tot * (100 + fm_skl(i) * 4) / 100); funds += tot; memset(fm_stock, 0, sizeof fm_stock); fm_egg = fm_milk = 0; fm_say("Sold the produce: +$%d", tot); sfx(3); return; }   // (the PS1 adds charisma too: the DS has no such skill)
+        tot = trf_farm_pay(&dtr[i], tot * (100 + fm_skl(i) * 4) / 100); funds += tot; memset(fm_stock, 0, sizeof fm_stock); fm_egg = fm_milk = 0; fm_say("Sold the produce: +$%d", tot); sfx(3); life_ev(i, WN_FARMSELL, 0); return; }   // (the PS1 adds charisma too: the DS has no such skill)
     case FC_NOORDER: say("Not enough for the order"); return;
     case FC_ORDER: { if (!fm_ordq || fm_have(fm_ordk) < fm_ordq) { say("Not enough for the order"); return; }
-        int v = trf_farm_pay(&dtr[ctl], fm_ordq * FM_PR[fm_ordk] * 2); fm_take(fm_ordk, fm_ordq); funds += v; fm_ordq = 0; fm_ordt = 0; fm_sk(i, 25); fm_say("Order filled: +$%d", v); sfx(3); return; }
+        int v = trf_farm_pay(&dtr[ctl], fm_ordq * FM_PR[fm_ordk] * 2); fm_take(fm_ordk, fm_ordq); funds += v; fm_ordq = 0; fm_ordt = 0; fm_sk(i, 25); fm_say("Order filled: +$%d", v); sfx(3); life_ev(i, WN_FARMSELL, 0); return; }
     case FC_FAIR: { if (!fm_stock[3] || fm_fair) { say("You have already entered"); return; } fm_stock[3]--; fm_fair = 1;
         int sc = 20 + fm_skl(i) * 8 + (fm_up & 8 ? 8 : 0) + (int)(fm_rand() % 40u), pz = sc >= 85 ? 500 : sc >= 60 ? 200 : 40; funds += pz; fm_sk(i, 40);
         fm_say(sc >= 85 ? "Best in show! +$%d" : sc >= 60 ? "Second prize! +$%d" : "A ribbon for trying +$%d", pz); if (sc >= 85) { life_ev(i, WN_FUN, 0); sfx(5); } return; }
@@ -2757,26 +2757,31 @@ static const char *const JOBLV[JOBN][5] = {
     { "Aide", "Tutor", "Teacher", "Dept Head", "Principal" }, { "Intern", "Temp", "Analyst", "Manager", "Director" } };
 static const u8 JOBPAY[JOBN] = { 8, 7, 9, 7, 10, 12 };
 static int job_pay(const Life *L) { return L->job ? JOBPAY[L->job - 1] * 10 * (L->lvl + 1) : 0; }
-static const char *const WNM[WN_N] = { "", "Eat a meal", "Sleep in a bed", "Take a shower", "Have some fun", "Chat with someone", "Make a friend", "Get a job", "Go to work", "Get paid", "Get promoted", "Have $", "Buy something", "Visit another lot", "Have a baby", "Pet the dog", "Pick a song" };
-static const u16 WPT[WN_N] = { 0, 300, 300, 300, 300, 400, 900, 800, 500, 500, 1500, 1200, 400, 500, 3000, 400, 300 };
+static const char *const WNM[WN_N] = { "", "Eat a meal", "Sleep in a bed", "Take a shower", "Have some fun", "Chat with someone", "Make a friend", "Get a job", "Go to work", "Get paid", "Get promoted", "Have $", "Buy something", "Visit another lot", "Have a baby", "Pet the dog", "Pick a song", "Feed the dog", "Harvest a crop", "Sell farm food", "Care for livestock", "Find an island secret" };
+static const u16 WPT[WN_N] = { 0, 300, 300, 300, 300, 400, 900, 800, 500, 500, 1500, 1200, 400, 500, 3000, 400, 300, 400, 600, 800, 500, 1000 };
 static const char *const FNM[FR_N] = { "", "Pass out", "Wet myself", "A bad day at work", "Get demoted", "Meet a ghost" };
 static const u16 FPT[FR_N] = { 0, 600, 500, 700, 1000, 400 };
 static int want_ok(int i, int w) {   // may this sim want that, now?
     const Sim *m = &sims[i]; const Life *L = &life[i]; int st = stage_of(m->age);
-    if (st == 0) return 0;
+    if (st == 0 || w <= WN_NONE || w >= WN_N) return 0;
     switch (w) {
         case WN_JOB: return st >= 3 && !L->job; case WN_WORK: case WN_PAID: return st >= 3 && L->job; case WN_PROMO: return L->job && L->lvl < 4;
-        case WN_CASH: case WN_BUY: return st >= 3; case WN_BABY: return st == 4 && nsim < SIM_MAX; case WN_PET: return dog_have;
-        case WN_FRIEND: case WN_VISIT: return st >= 2; case WN_SONG: return mus_ok == 1;
+        case WN_CASH: case WN_BUY: return st >= 3; case WN_BABY: return st == 4 && nsim < SIM_MAX; case WN_PET: case WN_PETFEED: return dog_have;
+        case WN_HARVEST: return fm_n[0] | fm_n[1] | fm_n[2] | fm_n[3];
+        case WN_FARMSELL: return fm_have(0) || fm_have(1) || fm_have(2) || fm_have(3) || fm_have(4) || fm_have(5) || fm_n[0] || fm_n[1] || fm_n[2] || fm_n[3] || fm_hens || fm_cows;
+        case WN_ANIMALS: return fm_hens || fm_cows;
+        case WN_SECRET: return zone == Z_ISLAND && (isl_secrets & ((1u << SEC_N) - 1)) != ((1u << SEC_N) - 1);
+        case WN_FRIEND: case WN_VISIT: return st >= 2; case WN_SONG: return mus_ok == 1 && mus_n > 0;
         default: return 1; }
 }
 static void want_roll(int i, int k) {
-    Life *L = &life[i];
+    Life *L = &life[i]; L->wk[k] = 0; L->wa[k] = 0; life_ver++;
     for (int t = 0; t < 24; t++) {
         int w = 1 + (int)(hsh((u32)(minutes * 31 + i * 977 + k * 131 + t * 17 + life_ver)) % (WN_N - 1)); if (!want_ok(i, w)) continue;
         int dup = 0; for (int q = 0; q < 3; q++) if (L->wk[q] == w) dup = 1; if (dup) continue;
-        int arg = 0; if (w == WN_CASH) { arg = (funds / 1000 + 1) * 1000; if (arg > 30000) continue; }
+        int arg = 0; if (w == WN_CASH) { if (funds < 0 || funds >= 30000) continue; arg = (funds / 1000 + 1) * 1000; }
         L->wk[k] = (u8)w; L->wa[k] = (s16)arg; life_ver++; return; }
+    for (int w = WN_EAT; w <= WN_FUN; w++) { int dup = 0; for (int q = 0; q < 3; q++) if (L->wk[q] == w) dup = 1; if (!dup && want_ok(i,w)) { L->wk[k] = (u8)w; life_ver++; return; } }
 }
 static void fear_roll(int i) {
     Life *L = &life[i];
@@ -2784,16 +2789,26 @@ static void fear_roll(int i) {
 }
 static void life_gain(int i, int k) {
     Life *L = &life[i]; int w = L->wk[k], pts = trf_asp_gain(&dtr[i], WPT[w]), old = L->pts / 1500; L->pts = (u16)(L->pts + pts > 60000 ? 60000 : L->pts + pts); L->wk[k] = 0; life_ver++;
-    if (i == ctl) { static char b[40]; if (L->pts / 1500 > old) { int bonus = 250 * (L->pts / 1500); funds += bonus; sprintf(b, "Aspiration up! +$%d", bonus); } else sprintf(b, "Want done! +%d", pts); say(b); sfx(3); }
+    if (i == ctl) { static char b[40]; if (L->pts / 1500 > old) { int bonus = 250 * (L->pts / 1500 - old); funds += bonus; sprintf(b, "Aspiration up! +$%d", bonus); } else sprintf(b, "Want done! +%d", pts); say(b); sfx(3); }
 }
-static void life_ev(int i, int ev, int arg) { (void)arg; if (i < 0 || i >= nsim) return; Life *L = &life[i]; for (int k = 0; k < 3; k++) if (L->wk[k] == ev) { life_gain(i, k); break; } }
+static void life_ev(int i, int ev, int arg) {
+    (void)arg; if (i < 0 || i >= nsim || ev <= WN_NONE || ev >= WN_N) return;
+    Life *L = &life[i]; int paid = 0;
+    for (int k = 0; k < 3; k++) if (L->wk[k] == ev) {
+        if (ev == WN_CASH && (L->wa[k] <= 0 || funds < L->wa[k])) continue;
+        if (!paid) { life_gain(i, k); paid = 1; }
+        else { L->wk[k] = 0; L->wa[k] = 0; life_ver++; }
+    }
+}
 static void life_fear(int i, int fr) {
-    Life *L = &life[i]; if (i < 0 || i >= nsim || L->fear != fr) return;
+    if (i < 0 || i >= nsim || fr <= FR_NONE || fr >= FR_N) return;
+    Life *L = &life[i]; if (L->fear != fr) return;
     { int fp = trf_asp_loss(&dtr[i], FPT[fr]); L->pts = L->pts > fp ? (u16)(L->pts - fp) : 0; } if (i == ctl) say("A fear came true..."); fear_roll(i); life_ver++;
 }
 static void life_tick(void) {
     for (int i = 0; i < nsim; i++) { Life *L = &life[i]; if (stage_of(sims[i].age) == 0) continue;
-        for (int k = 0; k < 3; k++) { if (!L->wk[k]) want_roll(i, k); else if (L->wk[k] == WN_CASH && funds >= L->wa[k]) life_gain(i, k); else if (!want_ok(i, L->wk[k])) { L->wk[k] = 0; life_ver++; } }
+        for (int k = 0; k < 3; k++) { if (!L->wk[k]) want_roll(i, k); else if (L->wk[k] == WN_CASH && L->wa[k] > 0 && funds >= L->wa[k]) life_ev(i, WN_CASH, 0); else if (!want_ok(i, L->wk[k])) { L->wk[k] = 0; life_ver++; } }
+        if (L->fear >= FR_N || (!L->job && (L->fear == FR_BAD || L->fear == FR_DEMOTE))) { L->fear = 0; life_ver++; }
         if (!L->fear) fear_roll(i); }
 }
 static void life_reset(void) { memset(life, 0, sizeof life); memset(gh, 0, sizeof gh); ngh = gh_next = 0; dog_have = 0; dog.hun = 80; life_ver++; roof_st = up_st = 0; jobui = juke = 0; info_pg = 0; }
@@ -2846,7 +2861,7 @@ static void juke_draw(void) {
 }
 static void juke_touch(int tx, int ty) {
     if (hit(204, 22, 40, 14, tx, ty)) { juke = 0; return; }
-    if (mus_ok != 1) return; int per = 6, pages = (mus_n + per - 1) / per;
+    if (mus_ok != 1 || mus_n < 1) return; int per = 6, pages = (mus_n + per - 1) / per;
     for (int k = 0; k < per; k++) { int n = juke_pg * per + k; if (n < mus_n && hit(12, 52 + k * 16, 232, 14, tx, ty)) { o_song = n + 1; life_ev(ctl, WN_SONG, 0); } }
     if (hit(12, 152, 40, 24, tx, ty)) juke_pg = (juke_pg + pages - 1) % pages;
     if (hit(56, 152, 40, 24, tx, ty)) juke_pg = (juke_pg + 1) % pages;
@@ -2858,9 +2873,9 @@ static void life_panel(void) {   // the top screen's second page: job, aspiratio
     if (L->job) sprintf(t, "Job: %.14s  L%d  $%d", JOBLV[L->job - 1][L->lvl], L->lvl + 1, job_pay(L)); else strcpy(t, "Job: none (menu > Job)");
     text_box(11, 88, 236, 12, FS_BODY, TXT, AL_L, t);
     sprintf(t, "Aspiration: %d stars", L->pts / 1500); text_box(11, 101, 146, 12, FS_BODY, C15(31, 31, 20), AL_L, t); rect(158, 102, 84, 8, C15(2, 6, 14)); rect(159, 103, 82 * (L->pts % 1500) / 1500, 6, C15(31, 26, 6));
-    for (int k = 0; k < 3; k++) { if (!L->wk[k]) continue; if (L->wk[k] == WN_CASH) sprintf(t, "Have $%d", L->wa[k]); else strcpy(t, WNM[L->wk[k]]);
+    for (int k = 0; k < 3; k++) { if (!L->wk[k] || L->wk[k] >= WN_N) continue; if (L->wk[k] == WN_CASH) sprintf(t, "Have $%d", L->wa[k]); else strcpy(t, WNM[L->wk[k]]);
         rect(14, 118 + k * 13, 8, 8, C15(8, 22, 8)); text_box(23, 116 + k * 13, 160, 12, FS_BODY, TXT, AL_L, t); sprintf(t, "+%d", WPT[L->wk[k]]); text_box(190, 116 + k * 13, 56, 12, FS_NUM, C15(31, 31, 20), AL_R, t); }
-    if (L->fear) { text_box(11, 152, 40, 12, FS_BODY, C15(31, 14, 12), AL_L, "Fear:"); text_box(48, 152, 150, 12, FS_BODY, TXT, AL_L, FNM[L->fear]); }
+    if (L->fear && L->fear < FR_N) { text_box(11, 152, 40, 12, FS_BODY, C15(31, 14, 12), AL_L, "Fear:"); text_box(48, 152, 150, 12, FS_BODY, TXT, AL_L, FNM[L->fear]); }
     if (dog_have) { sprintf(t, "Rex: %s", dog.hun > 50 ? "happy" : dog.hun > 20 ? "peckish" : "hungry!"); text_box(150, 163, 98, 12, FS_BODY, TXT, AL_L, t); }
     { const TrState *tt = &dtr[ctl]; if (tt->wish) { char n[26]; trg_title(n, tr_wish_name[tt->wish], 26); sprintf(t, "Wish: %s", n); text_box(11, 163, 138, 12, FS_BODY, TXT, AL_L, t); }   // (D73) the wish and the first traits
       { char u[60]; u[0] = 0; for (int k = 0, c = 0; k < TR_SLOTS && c < 3; k++) if (tt->tid[k]) { char n[20]; trg_title(n, trg_tname(tt->tid[k]), 20); if (c) strcat(u, ", "); strcat(u, n); c++; } text_box(11, 174, 236, 9, FS_SMALL, C15(24, 28, 31), AL_L, u); } }
@@ -3055,7 +3070,7 @@ static void apply_soc(int ai, int tgt, int id) {
     if (id == S_INVITE) { if (nsim >= SIM_MAX) { if (ai == ctl) say("Household is full"); return; } char nm[20]; cit_name(ct, nm);
         new_sim(sb == 3 ? 15 : sb == 4 ? 28 : 65, ct->skin, (u8)((ct->id >> 3) % NHAIRD), ct->hair, ct->shirt, nm, a->x, a->y); psd[nsim - 1] = ct->ps; cr->taken = 1; ct->on = 0; if (ai == ctl) say("Moved in! Say hello"); return; }
     if (cit) { int r = (int)cr->rel + d; cr->rel = (u8)(r < 0 ? 0 : r > 10 ? 10 : r); } else { int r = o->rel + d; o->rel = r < 0 ? 0 : r > 10 ? 10 : r; r = a->rel + d; a->rel = r < 0 ? 0 : r > 10 ? 10 : r; }
-    { int nr = cit ? cr->rel : o->rel; life_ev(ai, WN_CHAT, 0); if (nr >= 3) life_ev(ai, WN_FRIEND, 0);
+    { int nr = cit ? cr->rel : o->rel; life_ev(ai, WN_CHAT, 0); if (rel < 3 && nr >= 3) life_ev(ai, WN_FRIEND, 0);
       if (ai == ctl) { trg_ev(EV_CHATS, 1); if (id == S_JOKE) trg_ev(EV_JOKES, 1); if (id == S_HUG) trg_ev(EV_HUGS, 1); if (id == S_FLIRT || id == S_KISS) trg_ev(EV_FLIRTS, 1); if (id == S_FEED || id == S_TUCK || id == S_TEACH) trg_ev(EV_CARES, 1); if (id == S_ADVICE || id == S_HUG || id == S_FEED || id == S_TUCK) trg_ev(EV_KIND, 1); } }
     if (ai == ctl && id != S_BABY) say(SOCN[id]);
 }
@@ -4555,7 +4570,7 @@ static void live_touch(int tx, int ty) {
     if (popup == 4) {
         if (hit(64, 118, 60, 20, tx, ty)) { Sim *m = &sims[ctl]; m->need[1] = cl100(m->need[1] + (dog.hun > 20 ? 25 : 8)); m->need[3] = cl100(m->need[3] + 8); say("Rex wags his tail. Good boy!"); life_ev(ctl, WN_PET, 0); life_ev(ctl, WN_FUN, 0); trg_ev(EV_CARES, 1); popup = 0; }
         else if (hit(132, 118, 60, 20, tx, ty)) { Sim *m = &sims[ctl]; m->need[1] = cl100(m->need[1] + 35); m->need[2] = cl100(m->need[2] - 8); say("Playing fetch"); life_ev(ctl, WN_PET, 0); life_ev(ctl, WN_FUN, 0); trg_ev(EV_CARES, 1); popup = 0; }
-        else if (hit(64, 142, 60, 20, tx, ty)) { if (funds >= 5) { funds -= 5; dog.hun = 100; trg_ev(EV_CARES, 1); say("Rex is fed. Yum!"); } else say("Your wallet says no!"); popup = 0; }
+        else if (hit(64, 142, 60, 20, tx, ty)) { if (funds >= 5) { funds -= 5; dog.hun = 100; trg_ev(EV_CARES, 1); say("Rex is fed. Yum!"); life_ev(ctl, WN_PETFEED, 0); } else say("Your wallet says no!"); popup = 0; }
         else if (hit(132, 142, 60, 20, tx, ty)) popup = 0;
         return; }
     if (popup) {
