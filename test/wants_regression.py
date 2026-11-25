@@ -84,6 +84,7 @@ int main(void) {
     assert(!want_ok(0,WN_PETFEED) && !want_ok(0,WN_HARVEST) && !want_ok(0,WN_ANIMALS));
     dog_have=1; fm_n[0]=1; fm_hens=1; assert(want_ok(0,WN_PETFEED) && want_ok(0,WN_HARVEST) && want_ok(0,WN_ANIMALS) && want_ok(0,WN_FARMSELL));
     assert(want_ok(0,WN_NEIGHBOR) && want_ok(0,WN_TOWNFRIEND)); o_trf=0; assert(!want_ok(0,WN_NEIGHBOR)); o_trf=1;
+    assert(want_ok(0,WN_HELP) && want_ok(0,WN_STORYTIME)); funds=4; assert(!want_ok(0,WN_SHARE)); funds=5; assert(want_ok(0,WN_SHARE)); funds=0;
     assert(!want_ok(0,WN_CALL)); known_friends=1; assert(want_ok(0,WN_CALL));
     assert(want_ok(0,WN_SECRET)); isl_secrets=255; assert(!want_ok(0,WN_SECRET));
     L->wk[0]=L->wk[1]=WN_EAT; L->wk[2]=0; L->pts=7400; funds=0; life_ev(0,WN_EAT,0);

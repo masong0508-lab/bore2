@@ -18,6 +18,14 @@ jobs:
           /tmp/camera_lens_ps1
           cc -std=c99 -Wall -Wextra -Werror -DBORE_DC test/camera_lens_test.c -o /tmp/camera_lens_dc
           /tmp/camera_lens_dc
+      - name: Build and audit 1 MiB-plus playable original content on both formats
+        run: python3 tools/neighborhood_music.py both assets /tmp/bore-content
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neighborhood-content-manifest
+          path: /tmp/bore-content/manifest-both.json
+      - name: Verify shared social activity costs and eligibility
+        run: cc -std=c99 -Wall -Wextra -Werror test/social_activity_test.c -o /tmp/social_activity_test && /tmp/social_activity_test
       - name: Verify everyday goals and aspiration rewards
         run: python3 test/wants_regression.py
       - name: Verify speed-bounded skate chase camera focus

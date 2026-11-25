@@ -4,7 +4,7 @@ name: build-ds
 on:
   workflow_dispatch:
   push:
-    paths: ["ports/dsi/**", "tools/dsbuild/**", "tools/dsemu/**", "src/bigmap.*", "src/common.h", "assets/dsmusic.bin", ".github/workflows/build-ds.yml"]
+    paths: ["ports/dsi/**", "tools/dsbuild/**", "tools/dsemu/**", "src/bigmap.*", "src/common.h", "assets/dsmusic.bin", "tools/neighborhood_music.py", "tools/content_spu.c", "tools/dsmusic/**", "src/social_activity.h", "test/social_activity_test.c", ".github/workflows/build-ds.yml"]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -19,6 +19,8 @@ jobs:
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_render_geom_test.c -o /tmp/ds_render_geom_test && /tmp/ds_render_geom_test
       - name: Test handheld and console aspiration regressions
         run: python3 test/wants_regression.py
+      - name: Verify shared social activity costs and eligibility
+        run: cc -std=c99 -Wall -Wextra -Werror test/social_activity_test.c -o /tmp/social_activity_test && /tmp/social_activity_test
       - name: Verify DS persistent contacts and collision handling
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_contacts_test.c -o /tmp/ds_contacts_test && /tmp/ds_contacts_test
       - name: Verify stable resident routines and streaming fringe

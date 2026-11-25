@@ -2,6 +2,7 @@
 # on a Dreamcast platform layer (dc_*.c, psx/*.h). Build:  source /tmp/dc/environ.sh && make
 #   make O=obj_city AUTO="AUTO_CITY=1 -DAB_LOCK4=1"   a test build in its own folder (the PS1 build's own test hooks)
 #   make disc                                          bore2_dc.gdi: a disc image (the ELF, the songs and voices) for flycast or a GD emulator
+.DEFAULT_GOAL := all
 O ?= obj
 TARGET = $(O)/bore2_dc.elf
 SRC = ../../src
@@ -10,7 +11,7 @@ GAME = main gfx atlas look persona voxel items world sim traits wants citizens f
 OVLS = realm arcade fight gotchi_ui gotchi_act party_ui dj_ui super_ui dog_ui prison_ui heist_ui space_ui paradise_ui farm_ui skysea_ui cutscene arc2 clock_ui create_ui traits_ui traits_auto pack_ui
 PLAT = dc_psx dc_gpu dc_plat dc_spu dc_cd dc_vmu dc_extra dc_prof
 OBJS = $(addprefix $(O)/,$(addsuffix .o,$(GAME) $(OVLS) $(PLAT)))
-KOS_CFLAGS += -DBORE_DC -Ipsx -I. -I$(SRC) -I../../assets -w -std=gnu11 -MMD \
+KOS_CFLAGS += -DBORE_DC -Ipsx -I. -I$(SRC) -I$(O)/content -I../../assets -w -std=gnu11 -MMD \
               -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=incompatible-pointer-types -fno-strict-aliasing
 KOS_CFLAGS += $(if $(AUTO),-D$(AUTO))
 KOS_CFLAGS += $(if $(PROF),-DDC_PROF=$(PROF))   # make PROF=600: the sampling profiler from frame 600 for 600 frames (dc_prof.c)
@@ -19,6 +20,9 @@ GAME_OBJS = $(addprefix $(O)/,$(addsuffix .o,$(GAME) $(OVLS)))
 $(GAME_OBJS): KOS_CFLAGS += -include dc_shared_pre.h
 # the PS1 sound code drives the SPU's key registers by writing them: here each write is an event for the software SPU (dc_spu.c)
 $(O)/audio.o: KOS_CFLAGS += -include dc_audio_pre.h
+$(O)/audio.o: $(O)/content/manifest-console.json
+$(O)/content/manifest-console.json: ../../tools/neighborhood_music.py ../../tools/content_spu.c ../../tools/dsmusic/adpcm.c ../../assets/SONGS.BIN ../../assets/songs.inc ../../assets/dsmusic.bin | $(O)
+	python3 ../../tools/neighborhood_music.py console ../../assets $(O)/content
 # each overlay's table has the same name on the PS1 (it is its own file there): here they are told apart
 $(O)/realm.o: KOS_CFLAGS += -Dovl_head=ovl_head_kingdom
 $(O)/arcade.o: KOS_CFLAGS += -Dovl_head=ovl_head_arcade
@@ -54,7 +58,7 @@ $(TARGET): $(OBJS)
 
 # the disc: IP.BIN (KOS makeip), 1ST_READ.BIN (the ELF as a plain binary, not scrambled: a GD-ROM image), the PS1 game's sound files
 disc: $(O)/bore2_dc.gdi
-$(O)/bore2_dc.gdi: $(TARGET) ../../assets/SONGS.BIN ../../assets/voices.bin ../../assets/FONTS.BIN ../../assets/GOTCHI.ART mkdisc.py
+$(O)/bore2_dc.gdi: $(TARGET) $(O)/content/manifest-console.json ../../assets/voices.bin ../../assets/FONTS.BIN ../../assets/GOTCHI.ART mkdisc.py
 	sh-elf-objcopy -O binary -R .stack $(TARGET) $(O)/1ST_READ.BIN
 	$(KOS_BASE)/utils/makeip/makeip -f -g "BORE 2" -c "BORE 2 TEAM" $(O)/IP.BIN > /dev/null
-	python3 mkdisc.py $(O) $(O)/IP.BIN 1ST_READ.BIN=$(O)/1ST_READ.BIN SONGS.BIN=../../assets/SONGS.BIN VOICES.BIN=../../assets/voices.bin FILMVOX.BIN=../../assets/FILMVOX.BIN FILMSFX.BIN=../../assets/FILMSFX.BIN FILMMUS.BIN=../../assets/FILMMUS.BIN FONTS.BIN=../../assets/FONTS.BIN GOTCHI.ART=../../assets/GOTCHI.ART
+	python3 mkdisc.py $(O) $(O)/IP.BIN 1ST_READ.BIN=$(O)/1ST_READ.BIN SONGS.BIN=$(O)/content/SONGS.BIN VOICES.BIN=../../assets/voices.bin FILMVOX.BIN=../../assets/FILMVOX.BIN FILMSFX.BIN=../../assets/FILMSFX.BIN FILMMUS.BIN=../../assets/FILMMUS.BIN FONTS.BIN=../../assets/FONTS.BIN GOTCHI.ART=../../assets/GOTCHI.ART

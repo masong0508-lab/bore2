@@ -8,23 +8,23 @@
 int wants_flash_t; char wants_flash[32];
 
 // ---- what each want is worth, and what it is called ----
-static const u16 wPts[W_N] = { 0, 500, 500, 500, 500, 800, 500, 800, 800, 1000, 1500, 3000, 1000, 1500, 5000, 3000, 1500, 1500, 1500, 1500, 3000, 3000, 1000, 1500, 1000, 1000, 1000, 1500, 1000, 4000, 1500, 5000, 800, 2000, 1500, 1500, 1000, 1000, 500, 600, 800, 2000 };
+static const u16 wPts[W_N] = { 0, 500, 500, 500, 500, 800, 500, 800, 800, 1000, 1500, 3000, 1000, 1500, 5000, 3000, 1500, 1500, 1500, 1500, 3000, 3000, 1000, 1500, 1000, 1000, 1000, 1500, 1000, 4000, 1500, 5000, 800, 2000, 1500, 1500, 1000, 1000, 500, 600, 800, 2000, 650, 900, 600 };
 static const u16 fPts[F_N] = { 0, 1500, 1000, 3000, 1000, 2000, 1000, 3000 };
 static const char *const wNm[W_N] = { "", "EAT A MEAL", "SLEEP IN A BED", "TAKE A SHOWER", "HAVE SOME FUN", "READ A BOOK", "DRINK A COFFEE", "GO FOR A RUN",
     "MAKE A PHONE CALL", "CHAT WITH SOMEONE", "CHAT WITH", "MAKE A FRIEND", "GO TO WORK", "GET PAID", "GET PROMOTED", "HAVE $", "BUY SOMETHING",
     "COOKING SKILL", "BODY SKILL", "FUN SKILL", "VISIT THE ISLAND", "VISIT THE TOWN", "EAT OUT", "GO FOR A SWIM", "WORK OUT AT A GYM", "GO SHOPPING", "SEE A FILM", "A NIGHT OUT", "DO HOMEWORK", "HAVE A BABY", "THROW A PARTY", "BUY A HOME", "RIDE A BOARD", "FIND A SECRET",
-    "PICK A CROP", "SELL FARM FOOD", "CARE FOR ANIMALS", "GET A JOB", "FEED THE PET", "PLAY WITH THE PET", "CHAT WITH A TOWNIE", "MAKE A TOWN FRIEND" };
+    "PICK A CROP", "SELL FARM FOOD", "CARE FOR ANIMALS", "GET A JOB", "FEED THE PET", "PLAY WITH THE PET", "CHAT WITH A TOWNIE", "MAKE A TOWN FRIEND", "SHARE A SNACK", "HELP A NEIGHBOR", "TELL A STORY" };
 static const char *const fNm[F_N] = { "", "PASS OUT", "WET MYSELF", "GET DEMOTED", "A BAD DAY AT WORK", "UNPAID BILLS", "BE TURNED DOWN", "LOSE SOMEONE" };
 
 // ---- who wants what: a weight per kind, per aspiration (FORTUNE KNOWLEDGE POPULARITY PLEASURE HOME GROW UP) ----
 static const u8 aspW[AS_N][W_N] = {
  //  -  eat slp shw fun rd cof run ph chat cw frnd work paid prm cash buy ck bd fn isl twn din swm gym shp flm ngt hw baby pty hom skt sec
-    { 0, 1,  1,  1,  1,  1, 1,  1,  1, 1,   1, 2,   4,   5,   5,  5,   4,  1, 1, 1, 1,  1,  1,  1,  1,  4,  1,  1,  3, 1, 1, 4, 1, 3, 2, 4, 1, 5, 1, 1, 2, 2 },   // FORTUNE
-    { 0, 1,  1,  1,  1,  5, 2,  2,  1, 1,   1, 1,   2,   1,   2,  1,   1,  4, 4, 4, 3,  3,  1,  1,  2,  1,  2,  0,  5, 1, 0, 1, 1, 5, 2, 1, 2, 2, 2, 2, 3, 2 },   // KNOWLEDGE
-    { 0, 1,  1,  2,  2,  1, 1,  1,  4, 5,   5, 5,   1,   1,   2,  1,   1,  1, 1, 2, 2,  2,  3,  3,  2,  2,  2,  5,  2, 2, 5, 1, 2, 1, 1, 2, 1, 1, 3, 4, 5, 5 },   // POPULARITY
-    { 0, 4,  2,  1,  5,  1, 4,  3,  1, 2,   2, 1,   0,   1,   1,  1,   2,  2, 1, 2, 3,  3,  5,  5,  1,  3,  4,  4,  1, 1, 4, 1, 4, 2, 2, 1, 3, 1, 3, 5, 4, 3 },   // PLEASURE
-    { 0, 3,  3,  1,  2,  1, 1,  1,  2, 2,   5, 3,   1,   2,   1,  2,   4,  3, 1, 1, 1,  1,  1,  1,  1,  3,  2,  1,  3, 5, 2, 5, 0, 1, 3, 2, 4, 2, 5, 4, 3, 3 },   // HOME
-    { 0, 2,  2,  1,  5,  4, 0,  3,  1, 3,   4, 3,   0,   0,   0,  0,   1,  1, 2, 3, 2,  2,  2,  4,  2,  1,  4,  0,  5, 0, 2, 0, 5, 4, 1, 0, 3, 0, 4, 5, 4, 4 },   // GROW UP
+    { 0, 1,  1,  1,  1,  1, 1,  1,  1, 1,   1, 2,   4,   5,   5,  5,   4,  1, 1, 1, 1,  1,  1,  1,  1,  4,  1,  1,  3, 1, 1, 4, 1, 3, 2, 4, 1, 5, 1, 1, 2, 2, 1, 2, 1 },   // FORTUNE
+    { 0, 1,  1,  1,  1,  5, 2,  2,  1, 1,   1, 1,   2,   1,   2,  1,   1,  4, 4, 4, 3,  3,  1,  1,  2,  1,  2,  0,  5, 1, 0, 1, 1, 5, 2, 1, 2, 2, 2, 2, 3, 2, 2, 3, 4 },   // KNOWLEDGE
+    { 0, 1,  1,  2,  2,  1, 1,  1,  4, 5,   5, 5,   1,   1,   2,  1,   1,  1, 1, 2, 2,  2,  3,  3,  2,  2,  2,  5,  2, 2, 5, 1, 2, 1, 1, 2, 1, 1, 3, 4, 5, 5, 5, 4, 5 },   // POPULARITY
+    { 0, 4,  2,  1,  5,  1, 4,  3,  1, 2,   2, 1,   0,   1,   1,  1,   2,  2, 1, 2, 3,  3,  5,  5,  1,  3,  4,  4,  1, 1, 4, 1, 4, 2, 2, 1, 3, 1, 3, 5, 4, 3, 4, 1, 4 },   // PLEASURE
+    { 0, 3,  3,  1,  2,  1, 1,  1,  2, 2,   5, 3,   1,   2,   1,  2,   4,  3, 1, 1, 1,  1,  1,  1,  1,  3,  2,  1,  3, 5, 2, 5, 0, 1, 3, 2, 4, 2, 5, 4, 3, 3, 4, 5, 4 },   // HOME
+    { 0, 2,  2,  1,  5,  4, 0,  3,  1, 3,   4, 3,   0,   0,   0,  0,   1,  1, 2, 3, 2,  2,  2,  4,  2,  1,  4,  0,  5, 0, 2, 0, 5, 4, 1, 0, 3, 0, 4, 5, 4, 4, 3, 0, 4 },   // GROW UP
 };
 static const u8 aspF[AS_N][F_N] = {
     { 0, 1, 1, 5, 4, 5, 1, 1 }, { 0, 2, 2, 2, 2, 1, 1, 1 }, { 0, 1, 2, 1, 1, 1, 5, 2 }, { 0, 3, 3, 1, 1, 1, 2, 1 }, { 0, 2, 2, 2, 2, 4, 2, 5 }, { 0, 2, 3, 0, 0, 0, 3, 3 } };
@@ -69,7 +69,9 @@ static void roll_want(Sim *s, int slot) {
         if ((w == W_WORK || w == W_PAID || w == W_PROMO) && job_none) weight = 0;
         if (w == W_JOB && (!job_none || stage <= AG_CHILD)) weight = 0;
         if ((w == W_PETFEED || w == W_PETPLAY) && !pet_kind) weight = 0;
-        if ((w == W_NEIGHBOR || w == W_TOWNFRIEND) && s != &sims[player]) weight = 0;
+        if (w >= W_NEIGHBOR && s != &sims[player]) weight = 0;
+        if (w == W_SHARE && cash < 5) weight = 0;
+        if (w == W_HELP && stage < AG_TEEN) weight = 0;
         if (stage == AG_BABY) weight = 0;                                              // (a baby wants nothing it could do itself)
         if (weight == 0 || (int)(look_rand() % 6) >= weight) continue;
         int arg = 0;
@@ -163,7 +165,7 @@ void wants_minute(Sim *s) {
     static const u8 dec[4] = { 90, 60, 190, 250 };
     int lv = wants_level(s);
     if (((clock_min + (int)(s - sims)) & 3) == 0) { int d = dec[lv]; if (s->asp_pts < 600) d = 20; s->asp_pts -= tr_scale(s->tr, E_ASP_KEEP, (d + 7) / 15); if (s->asp_pts < 0) s->asp_pts = 0; }
-    for (int i = 0; i < 4; i++) { if (s->want[i].age < 60000) s->want[i].age++; if (!s->want[i].kind || s->want[i].kind >= W_N || s->want[i].age >= 2 * 24 * 60) { s->want[i].kind = 0; roll_want(s, i); } }   // two days unfulfilled: forgotten
+    for (int i = 0; i < 4; i++) { if (s->want[i].age < 60000) s->want[i].age++; if (!s->want[i].kind || s->want[i].kind >= W_N || s->want[i].age >= 2 * 24 * 60 || (s != &sims[player] && s->want[i].kind >= W_NEIGHBOR)) { s->want[i].kind = 0; roll_want(s, i); } }   // two days unfulfilled: forgotten
     for (int i = 0; i < 2; i++) if (!s->fear[i].kind || s->fear[i].kind >= F_N || (job_none && (s->fear[i].kind == F_DEMOTED || s->fear[i].kind == F_BADDAY || s->fear[i].kind == F_BROKE))) roll_fear(s, i);
     // the wants the clock can see on its own
     for (int i = 0; i < 4; i++) {
