@@ -20,7 +20,9 @@ The build reads the real original BSQ2 sequences and instrument samples from
 assets/SONGS.BIN. It ranks two-order pitched phrases, favors keyboard/bass
 roles and repeated patterns, retains source pitches and relative rhythm on a
 64-step grid, and uses that instrument's decoded sample in the new A and A'
-sections. The bridge has the new instrumentation. The backing follows source
+sections. The bridge develops the source phrase with rhythmic fragments and
+new instrumentation instead of unrelated lead notes. Recurring note/rhythm
+signatures are favored in the source analysis. The backing follows source
 bass pitch classes where available. The bank manifest records source song,
 artist, order, channel, instrument, original onset count, quoted note count
 and a hash of the exact source phrase. The generator fails rather than silently

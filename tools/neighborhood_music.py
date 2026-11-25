@@ -144,7 +144,12 @@ def decode_original(base,title):
             if role==4:quality-=18
             candidate.append((quality,-oi,ch,ins,steps,notes,a,b))
     assert candidate,(title,"no suitable pitched source phrase")
-    _,neg,ch,ins,steps,notes,a,b=max(candidate,key=lambda c:c[:4])
+    # Rank recurring pitch-and-rhythm signatures, even when a tracker
+    # assigned different pattern numbers to identical musical material.
+    def signature(c):
+        return c[3],tuple((k,n) for k,(n,_) in sorted(c[4].items()))
+    phrase_frequency=Counter(signature(c) for c in candidate)
+    _,neg,ch,ins,steps,notes,a,b=max(candidate,key=lambda c:(c[0]+min(phrase_frequency[signature(c)],12)*6,*c[1:4]))
     so=offsets[ins];assert so+16<=len(sample)
     stop=min([o for o in offsets if o!=0xffffffff and o>so]+[len(sample)])
     # Keep the actual patch's attack and tone. Respect the audio budgets
@@ -200,13 +205,13 @@ def score(t,riff):
         chord=root+degree
         minor=(t in (1,3,5,6)) ^ (degree in (2,9))
         third=3 if minor else 4
-        if section!=1:
-            chroma=riff["roots"][bar%4]
-            chord=root+((chroma-root+6)%12-6)
-            phrase_classes={(nt-chroma)%12 for k,(nt,v) in riff["phrase"].items() if k//BAR==bar%4}
-            # Where the actual phrase does not imply a third, leave the
-            # accompaniment open (root/octave/fifth) rather than clash.
-            third=3 if 3 in phrase_classes and 4 not in phrase_classes else 4 if 4 in phrase_classes and 3 not in phrase_classes else 12
+        phrase_bar=(bar+(2 if section==1 else 0))%4
+        chroma=riff["roots"][phrase_bar]
+        chord=root+((chroma-root+6)%12-6)
+        phrase_classes={(nt-chroma)%12 for k,(nt,v) in riff["phrase"].items() if k//BAR==phrase_bar}
+        # Where the actual phrase does not imply a third, leave the
+        # accompaniment open (root/octave/fifth) rather than clash.
+        third=3 if 3 in phrase_classes and 4 not in phrase_classes else 4 if 4 in phrase_classes and 3 not in phrase_classes else 12
         notes=[fit(chord,60,71),fit(chord+third,60,75),fit(chord+7,60,76)]
         # Every track has its own groove. Bridge has a half-time or
         # syncopated feel, then the full drum pattern returns.
@@ -229,9 +234,10 @@ def score(t,riff):
             for k,(n,v) in sorted(riff["phrase"].items()):
                 if k//BAR==bar%4: hit(bar,k%BAR,8,RIFF_INST,n,min(100,max(40,v)),3)
         else:
+            fragment=[nt for k,(nt,_) in sorted(riff["phrase"].items()) if k//BAR==phrase_bar]
+            if not fragment:fragment=[nt for _,(nt,_) in sorted(riff["phrase"].items())]
             for j,step in enumerate((0,5,11)):
-                deg=motif[(bar*2+j+section*2)%len(motif)]
-                n=fit(root+deg,62,77)
+                n=fit(fragment[j%len(fragment)]+12,62,77)
                 hit(bar,step,8,7 if (bar+j+t)%4==0 else 8,n,63 if j==0 else 51,4)
         for step in ((5,13) if bar%4!=3 else (5,9,13,15)):
             hit(bar,step,9,9,60,36 if bar%4!=3 else 49,5)
@@ -332,7 +338,22 @@ def console_block(t,rows,patches,riff):
     put("pitch",pack(str(NINST*96)+"H",*[spu_pitch(note,i,riff) for i in range(NINST) for note in range(96)]))
     put("smpoff",pack(str(NINST)+"I",*smpoff))
     put("bus",bytes([108,102,89,77,64,44,24,24,44,64,77,89,102,108]))
-    ev=lzss_literals(raw);put("ev",ev);put("extra",pack("4I",0,o["ev"],len(raw),0))
+    ev=lzss_literals(raw)
+    # Verify the emitted BSQ2 stream, not merely the arrangement before encoding.
+    assert unpack_lzss(ev,len(raw))==raw
+    at=0
+    for ri,row in enumerate(rows):
+        count=raw[at];at+=1
+        if count&128:
+            assert count==0x81 and not row;continue
+        decoded=[]
+        for _ in range(count):
+            w=int.from_bytes(raw[at:at+3],"little");at+=3
+            v=vtab[(w&255)|((w>>22)<<8)]
+            decoded.append((v&15,(v>>4)&31,(w>>8)&127,(w>>15)&127,(v>>9)&7))
+        assert decoded==row,(t,ri)
+    assert at==len(raw)
+    put("ev",ev);put("extra",pack("4I",0,o["ev"],len(raw),0))
     sec=round(len(rows)*step)
     struct.pack_into("<20I",b,0,0x32515342,BARS,0,clock//256,clock%256,BARS,NINST,len(vtab),len(ev),len(blob),sec,
         *[o[k] for k in ("order","rows","patoff","vt","pitch","smpoff","bus","ev","extra")])
