@@ -29,6 +29,7 @@ static u32 *logo_buf(void) { extern void *crowd_arena(void); return (u32 *)crowd
 #include "wants.h"
 #include "audio.h"
 #include "scene_music.h"
+#include "living_calendar.h"
 #include "outings.h"
 #include "world_access.h"
 #include "font.h"
@@ -2658,7 +2659,8 @@ static void area_music_tick(void) {
     }
     int cue=scene_music_settle(&area_gate,scene_music_role(menu,world_zone==ZONE_ISLAND,on_board,veh_on,lot,terrain,street));
     if (cue<0) return;
-    int song=SC_FIRST+cue, current=audio_jukebox_current();
+    int song=living_score_index(cue,clock_min,clock_day,audio_song_count()), current=audio_jukebox_current();
+    if(song<0)return;
     if (current==song) { area_attempt=-1; return; }
     // Don't issue repeated synchronous CD requests if the content is missing.
     if (area_attempt==song && current<0) return;

@@ -12,7 +12,7 @@ psn00bsdk_add_executable(bore2 GPREL
 	src/main.c src/gfx.c src/atlas.c src/look.c src/voxel.c src/items.c src/world.c src/sim.c src/traits.c src/traits_auto.c src/persona.c src/wants.c src/citizens.c src/audio.c src/font.c src/fmt.c src/pad.c src/mcard.c src/save.c src/crowd.c src/mem8.c src/bigmap.c src/pop.c src/far.c src/ui.c src/places.c src/home.c src/island.c src/nature.c src/story.c src/skate.c src/traffic.c src/gotchi.c src/band.c src/dog.c src/ghost.c src/ovl.c src/realm_res.c src/arcade_res.c ${CMAKE_BINARY_DIR}/ovl_keep.c)
 set(BORE_CONTENT_DIR "${CMAKE_BINARY_DIR}/content")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-  "${CMAKE_SOURCE_DIR}/tools/neighborhood_music.py" "${CMAKE_SOURCE_DIR}/tools/content_spu.c"
+  "${CMAKE_SOURCE_DIR}/tools/neighborhood_music.py" "${CMAKE_SOURCE_DIR}/tools/living_score.py" "${CMAKE_SOURCE_DIR}/tools/content_spu.c"
   "${CMAKE_SOURCE_DIR}/src/band_roles.inc"
   "${CMAKE_SOURCE_DIR}/tools/dsmusic/adpcm.c" "${CMAKE_SOURCE_DIR}/assets/SONGS.BIN"
   "${CMAKE_SOURCE_DIR}/assets/songs.inc" "${CMAKE_SOURCE_DIR}/assets/dsmusic.bin")

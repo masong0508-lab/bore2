@@ -26,7 +26,7 @@ static const Opt OPT[] = {
     { "Music track", "Auto|Daydream|Evening|Bounce|Night", &o_trk, 1, 0 }, { "Tap clicks", "Off|On", &o_ckl, 1, 1 }, { "Chimes", "Off|On", &o_chm, 1, 1 }, { "Stereo", "Center|Spread", &o_pan, 1, 1 },
     { "Autosave", "Off|On", &o_auto, 2, 1 }, { "Clock", "12 hour|24 hour", &o_c24, 2, 0 },
     { "Reset graphics", "tap", 0, 3, 0 }, { "Reset audio", "tap", 0, 3, 1 }, { "Reset all", "tap", 0, 3, 255 },
-    { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Area|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52|53|54|55|56|57|58|59|60|61|62|63|64|65|66|67|68|69|70|71|72", &o_song, 1, 0 },
+    { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Area|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52|53|54|55|56|57|58|59|60|61|62|63|64|65|66|67|68|69|70|71|72|73|74|75|76|77|78|79|80|81|82|83|84|85|86|87|88|89|90|91|92|93|94|95|96|97|98|99|100|101|102|103|104|105|106|107|108|109|110|111|112|113|114|115|116|117|118|119|120|121|122|123|124|125|126", &o_song, 1, 0 },
     { "Roofs", "Cutaway|Always|Hide", &o_roof, 0, 0 },
     // (D33, from the PS1 OPTIONS: these are saved in their own block after the others, so old saves load with the defaults)
     { "Needs speed", "Never fall|Slow|Normal|Fast", &o_need, 2, 2 }, { "Day length", "Short|Normal|Long|Epic", &o_day, 2, 1 }, { "Message time", "Short|Normal|Long", &o_msgt, 2, 1 },
@@ -850,7 +850,7 @@ static void snd_tick(void) {
           else if (mus_n >= SC_FIRST+SC_N) {
               if (!(area_poll++ & 15u) || area.settled<0)
                   scene_music_settle(&area,scene_music_context_ds());
-              if (area.settled>=0) pick=SC_FIRST+area.settled;
+              if (area.settled>=0) pick=living_score_index(area.settled,minutes%1440,(minutes/1440)%7,mus_n);
           } else {
               // Old song banks still work, without the area score.
               if (mus_cur > 0) pick=mus_cur;
@@ -876,7 +876,7 @@ static void snd_tick(void) {
 // If the cartridge cannot be read (a loader that only gives us the game's code), the synth tunes play instead.
 #define MUS_BUFSZ 0x4A000
 static u8 mus_buf[MUS_BUFSZ] __attribute__((aligned(32)));
-static u8 mus_dir[8192] __attribute__((aligned(32)));
+static u8 mus_dir[12288] __attribute__((aligned(32)));
 typedef struct { volatile u32 gen, run, seq, loop_off, smp, tbl, vol, stereo; volatile u32 laps, ticks, pos, ack, pad[4]; } MusCtl;   // (the ARM7's view: first 32 bytes ours, last 32 its)
 static MusCtl mus_ctl __attribute__((aligned(32)));
 static int mus_ent, mus_laps, mus_next = -1, mus_play, mus_ld = -1; static volatile u32 mus_hello, mus_armed;   // (mus_armed: the ARM7 has been told to play and not to stop)
@@ -895,7 +895,7 @@ static void mus_init(void) {
     mus_ok = 0; static u32 blk[128]; const volatile u32 *loc = MUS_LOC; if (loc[0] != 0x41444D42u || !loc[1] || loc[3] != 0x2E4D4442u) return;   // (addmusic.py wrote where the songs start)
     mus_base = loc[1]; mus_size = loc[2]; if (mus_size < 8192 || (mus_base & 511) || mus_base + mus_size < mus_base) return; cart_blk(mus_base, blk); if (memcmp(blk, "BDM2", 4)) return;
     memcpy(mus_dir, blk, 512);
-    mus_n = (int)rd32(mus_dir + 4); mus_ent = (int)rd32(mus_dir + 8); if (mus_n < 1 || mus_n > 80 || mus_ent != 96 || rd32(mus_dir+12) != 16 || 16 + mus_n * mus_ent > (int)sizeof mus_dir) return;
+    mus_n = (int)rd32(mus_dir + 4); mus_ent = (int)rd32(mus_dir + 8); if (mus_n < 1 || mus_n > LIVING_BANK_COUNT || mus_ent != 96 || rd32(mus_dir+12) != 16 || 16 + mus_n * mus_ent > (int)sizeof mus_dir) return;
     u32 dir_bytes = (16 + mus_n * mus_ent + 511) & ~511u;
     if (dir_bytes > mus_size) return;
     if (dir_bytes > 512) cart_read(mus_base + 512, mus_dir + 512, dir_bytes - 512);
