@@ -1656,6 +1656,7 @@ typedef struct { int x, y, dir, stop; u8 on, stage, skin, shirt, hair, pants; u1
 #include "ds_contacts.h"
 #include "social_activity.h"
 #include "ds_cit_routine.h"
+#include "ds_city_budget.h"
 typedef struct { int x, y, dx, dy; u16 col; int px, py, ang; s16 s, L, wt; s8 sg, lj, tx, ty; u8 on, st, tn, tj; } Car;   // (d83) x, y: its centre in 1/16 cells; dx, dy: its way (0, 0: not on the road); st: 0 straight, 1 in a turn (sg +1 right, -1 left, from px, py, s of L); lj: its street's slot; tj: the junction it has claimed (+1), tx ty its slot; tn: 0 straight 1 right 2 left; wt: steps held up
 static Cit cits[NCIT]; static CRel crt[64]; static Car cars[NCAR];
 static const char *const FNAMES[12] = { "Mia", "Leo", "Zoe", "Max", "Ivy", "Sam", "Ana", "Kai", "Eli", "Ola", "Dex", "Una" };
@@ -1691,12 +1692,24 @@ static int car_lane(Car *c, u32 g, int edge) {   // puts the car on a lane picke
     int d = hz ? (fw ? 0 : 2) : (fw ? 1 : 3), ln = (row - 1) * SLC + (hz ? (fw ? 16 : 14) : (fw ? 14 : 16)); c->dx = CDX[d]; c->dy = CDY[d]; c->lj = (s8)(row - 1); c->st = 0; c->tj = 0; c->tn = 0; c->wt = 0; c->ang = d * 8192;
     if (hz) { c->y = ln * 16; if (edge) c->x = fw ? -SLC * 16 : SLC * 2 * 16 - 1; } else { c->x = ln * 16; if (edge) c->y = fw ? -SLC * 16 : SLC * 2 * 16 - 1; } return 1; }
 static int car_d(const Car *c) { return c->dx > 0 ? 0 : c->dy > 0 ? 1 : c->dx < 0 ? 2 : 3; }
-static int car_near(const Car *c, int r) { for (int k = 0; k < CARN; k++) { const Car *q = &cars[k]; if (q == c || !q->on) continue; int a = q->x - c->x, b = q->y - c->y; if (a * a + b * b < r * r) return 1; } return 0; }
+static int car_near(const Car *c, int r) { for (int k = 0; k < CARN; k++) { const Car *q = &cars[k]; if (q == c || !q->on) continue; int a = q->x - c->x, b = q->y - c->y; if (a>-r&&a<r&&b>-r&&b<r&&a*a+b*b<r*r) return 1; } return 0; }
 static int car_inj(const Car *c) { int cx = c->x, cy = c->y; for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int x0 = (i * SLC + 13) * 16 - 40, y0 = (j * SLC + 13) * 16 - 40; if (cx >= x0 && cx <= x0 + 160 && cy >= y0 && cy <= y0 + 160) return 1; } return 0; }
 static int car_ent(int d, int i) { return d < 2 ? (i * SLC + 13) * 16 : -((i * SLC + 17) * 16); }   // where, along its way, a car's turn starts in the junction square of slot i (the square is the 5 x 5 cells 13..17)
 static int car_a(const Car *c, int d) { return d == 0 ? c->x : d == 1 ? c->y : d == 2 ? -c->x : -c->y; }
-static int car_person(int px, int py, int r) { for (int k = 0; k < CITN; k++) { const Cit *q = &cits[k]; if (!cit_vis(q)) continue; int a = q->x - px, b = q->y - py; if (a * a + b * b < r * r) return 1; }
-    for (int k = 0; k < nsim && k < SIM_MAX; k++) { int a = sims[k].x - px, b = sims[k].y - py; if (a * a + b * b < r * r) return 1; } return 0; }
+static CityGrid traffic_people;
+static void traffic_people_build(void) {
+    city_grid_clear(&traffic_people);
+    int n=CITN;
+    for(int k=0;k<n;k++)if(cit_vis(&cits[k]))city_grid_put(&traffic_people,(unsigned)k,cits[k].x,cits[k].y);
+}
+static int car_person(int px, int py, int r) {
+    uint32_t mask=city_grid_query(&traffic_people,px,py,r);
+    while(mask){int k=__builtin_ctz(mask);mask&=mask-1;
+        const Cit *q=&cits[k];if(city_within(q->x,q->y,px,py,r))return 1;}
+    // People upstairs cannot block a car driving at street level.
+    for(int k=0;k<nsim&&k<SIM_MAX;k++)if(!slv[k]&&city_within(sims[k].x,sims[k].y,px,py,r))return 1;
+    return 0;
+}
 static int car_blocked(const Car *c) {   // something ahead: a person within a cell or two, or a car closer than a gap
     int fx = cosLerp(c->ang), fy = sinLerp(c->ang);
     for (int dd = 16; dd <= 32; dd += 16) { int px = c->x + ((fx * dd) >> 12), py = c->y + ((fy * dd) >> 12);
@@ -1747,7 +1760,7 @@ static void city_step(int frames) {
         if (!(c->x & 15) && !(c->y & 15)) { int cx = c->x / 16, cy = c->y / 16, d = c->dir; if (hsh((u32)(frames * 31 + k)) % 100 < 30) d = (d + (hsh((u32)frames + (u32)k) & 1 ? 1 : 3)) & 3;
             int found=0;for (int t = 0; t < 4; t++) { int dd = (d + t) & 3; if (cit_street(cx + DXs[dd], cy + DYs[dd])) { c->dir = dd; found=1;break; } } if(!found)continue; }
         c->x+=DXs[c->dir];c->y+=DYs[c->dir]; }
-    car_step(frames);
+    traffic_people_build(); car_step(frames);
 #ifdef DSTEST
     car_audit();
 #endif
@@ -1762,7 +1775,13 @@ static void car_audit(void) {
             if (c->tj && c->tj == e->tj && ((d & 1) != (car_d(e) & 1) || c->st || e->st)) car_flt[2]++; } } }
 #endif
 static void car_step(int frames) {
-    for (int n = 0; n < CARN; n++) { Car *c = &cars[(n + frames) % CARN];
+    int count=CARN;
+    // Changing traffic density must release junctions owned by actors no
+    // longer simulated. Otherwise a remaining car can wait for a ghost.
+    for(int k=count;k<NCAR;k++)if(cars[k].on||cars[k].tj){car_rel(&cars[k]);cars[k].on=0;}
+    if(!count)return;
+    int slot=(int)((unsigned)frames%(unsigned)count);
+    for (int n = 0; n < count; n++) { Car *c = &cars[slot];if(++slot>=count)slot=0;
         if (!c->on) { if (!(hsh((u32)(frames * 131 + n)) & 63)) { Car t; memset(&t, 0, sizeof t); if (car_lane(&t, hsh((u32)frames * 977u + (u32)n * 31u + 5u), 1) && !car_near(&t, 44)) { t.col = c->col; t.on = 1; *c = t; } } continue; }
         int d = car_d(c); if (c->st) {   // in a turn: along the arc
             int R = c->L == 25 ? 16 : 48, v = 2; if (car_blocked(c)) { if (++c->wt > 900) { car_rel(c); c->on = 0; } continue; } c->wt = 0;
@@ -1828,11 +1847,21 @@ static int pcar_solid(int cx, int cy) {   // (d83) a car parked on a drive is no
     if (mode != M_LIVE || !t7()) return 0; if (!pk_ok) pk_build(); if (cx == door_cx) return 0;
     for (int k = 0; k < npk_; k++) { const Car *c = &pkc[k]; int ox = MIN(cx * 16 + 8, c->x + 4) - MAX(cx * 16 - 8, c->x - 4), oy = MIN(cy * 16 + 8, c->y + 7) - MAX(cy * 16 - 8, c->y - 7); if (ox > 0 && oy > 0 && ox * oy >= 64) return 1; }
     return 0; }
-static void draw_city(void) {
+static int city_draw_distance(int x,int z) {int dx=(x-camx)>>4,dz=(z-camz)>>4;return dx*dx+dz*dz;}
+static void draw_city(int yaw) {
     static const u16 SK[6] = { C15(30, 24, 20), C15(27, 20, 15), C15(22, 15, 10), C15(16, 10, 6), C15(11, 7, 4), C15(29, 22, 17) };
     static const u16 SH[6] = { C15(26, 26, 26), C15(24, 8, 8), C15(8, 14, 26), C15(8, 22, 10), C15(28, 22, 8), C15(16, 8, 22) };
     static const u16 HR[6] = { C15(3, 3, 4), C15(14, 8, 4), C15(26, 20, 8), C15(24, 8, 4), C15(25, 25, 25), C15(10, 14, 28) };
-    for (int k = 0; k < CITN; k++) { const Cit *c = &cits[k]; if (polys > 2800) break; if (!cit_vis(c)) continue; int sc = STSC[c->stage], x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, sw = (((c->x + c->y) >> 3) & 1) ? 30 : -30;
+    CityView view={camx,cam_y,camz,cam_deff,cosLerp(yaw),sinLerp(yaw),cosLerp(pitch),sinLerp(pitch)};
+    CityDraw order[NCIT];int nc=0;
+    // Prioritize visible nearby residents, rather than their allocation
+    // order. A conservative sphere includes the complete head/feet/grade.
+    for(int k=0;k<CITN&&polys<=2800;k++) {
+        const Cit *c=&cits[k];if(!cit_vis(c))continue;
+        int x=c->x*2*T/16-GN*T+T,z=c->y*2*T/16-GN*T+T;
+        if(city_visible(&view,x,400,z,640))city_draw_insert(order,&nc,NCIT,k,city_draw_distance(x,z));
+    }
+    for(int j=0;j<nc;j++) { if(polys+30>2800)break; const Cit *c=&cits[order[j].id]; int sc=STSC[c->stage],x=c->x*2*T/16-GN*T+T,z=c->y*2*T/16-GN*T+T,sw=(((c->x+c->y)>>3)&1)?30:-30;
         gy_off = -ground_lift(fdiv(c->x + 8, 16), fdiv(c->y + 8, 16), 0);   // (D41: on the pavement, not sunk in it)
         u16 pn = c->pants == 0 ? C15(6, 7, 12) : c->pants == 1 ? C15(10, 10, 14) : c->pants == 2 ? C15(14, 10, 6) : C15(8, 12, 8);
         block(x - 70 * sc / 100, z - 40 * sc / 100 + sw, x + 70 * sc / 100, z + 40 * sc / 100 + sw, 0, -300 * sc / 100, pn, pn);
@@ -1840,9 +1869,16 @@ static void draw_city(void) {
         block(x - 60 * sc / 100, z - 60 * sc / 100, x + 60 * sc / 100, z + 60 * sc / 100, -590 * sc / 100, -800 * sc / 100, SK[c->skin], c->stage == 5 ? C15(25, 25, 26) : HR[c->hair]); }
     gy_off = 0;
     if (!pk_ok) pk_build(); Car *pk = pkc; int npk = (t7() && mode == M_LIVE) ? npk_ : 0;
-    for (int k = 0; k < CARN + npk; k++) { const Car *c = k < CARN ? &cars[k] : &pk[k - CARN]; if (polys > 2950) break; if (!c->dx && !c->dy) continue;   // (D49: a car with a hood, a set-back glass cabin and a roof, lamps at the right end, a dark skirt over the wheels, facing the way it drives)
+    CityDraw vehicles[NCAR+7];int nv=0,active=CARN;
+    for(int k=0;k<active+npk&&polys<=2950;k++) {
+        const Car *c=k<active?&cars[k]:&pk[k-active];
+        if((k<active&&!c->on)||(!c->dx&&!c->dy))continue;
+        int x=c->x*2*T/16-GN*T+T,z=c->y*2*T/16-GN*T+T;
+        if(city_visible(&view,x,125,z,420))city_draw_insert(vehicles,&nv,NCAR+7,k,city_draw_distance(x,z));
+    }
+    for(int j=0;j<nv;j++){if(polys+50>2950)break;int k=vehicles[j].id;const Car *c=k<active?&cars[k]:&pk[k-active];
         int ax = c->dx != 0, sg = (ax ? c->dx : c->dy) < 0 ? -1 : 1, x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, la = 300, lb = 140;   // (along its way, across)
-        int turning = k < CARN && c->st, cs = 0, sn = 0; if (turning) { cs = cosLerp(c->ang); sn = sinLerp(c->ang); }
+        int turning = k < active && c->st, cs = 0, sn = 0; if (turning) { cs = cosLerp(c->ang); sn = sinLerp(c->ang); }
 #define CARB(a0, b0, a1, b1, y0, y1, w, r) do { if (turning) rblock(x, z, cs, sn, a0, b0, a1, b1, y0, y1, w, r); else { int A0 = sg * (a0), A1 = sg * (a1); if (ax) block(x + A0, z + (b0), x + A1, z + (b1), y0, y1, w, r); else block(x + (b0), z + A0, x + (b1), z + A1, y0, y1, w, r); } } while (0)
         u16 col = c->col, glass = C15(13, 19, 25);
         CARB(-la + 20, -lb + 12, la - 20, lb - 12, -8, -48, C15(5, 5, 7), C15(6, 6, 8));                                 // (the skirt and the wheels)
@@ -2389,7 +2425,7 @@ world:
         } }
     if (mv) { gx_pid(6); dog_draw(); ghost_draw(); }
     if (st) { gy_off = 0; gx_pid(4); roof_draw(top); }   // (D42: each building's own roof over its own top storey)
-    if (mode == M_LIVE) { if (mv) { PROF(2); gx_pid(56); draw_city(); PROF(7); } if (wd) { gx_pid(3); draw_far_all(yaw); } }
+    if (mode == M_LIVE) { if (mv) { PROF(2); gx_pid(56); draw_city(yaw); PROF(7); } if (wd) { gx_pid(3); draw_far_all(yaw); } }
     gy_off = -WHF * vl;
     if (mv && mode == M_LIVE && mark_t > 0) { ground(tl(mark_x * 2), tl(mark_y * 2), tl(mark_x * 2 + 2), tl(mark_y * 2 + 2), -60, C15(31, 31, 12)); mark_t--; }
     if (mv && (mode == M_BUY || mode == M_BUILD)) {   // the cursor
