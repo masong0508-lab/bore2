@@ -186,7 +186,7 @@ def riff_pcm(dll,riff):
     for i in range(fade):pcm[n-fade+i]=round(pcm[n-fade+i]*(fade-i-1)/max(1,fade))
     return pcm
 
-def score(t,riff){
+def score(t,riff):
     name,bpm,root,progression,motif,fx=TRACKS[t]
     rows=[[] for _ in range(BARS*BAR)]
     def hit(bar,step,ch,inst,n,vol,pan=3):
