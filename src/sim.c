@@ -686,7 +686,7 @@ static void end_action(Sim *s) {
         case ACT_RUN: tr_ev(s->tr, EV_RUNS, 1); wants_event(s, W_RUN, 0); sim_moodlet(s, s->act_var == 2 ? ML_COACHED : ML_WORKOUT);
                       { PlaceInfo pi; if (place_at(s->act_x, s->act_y, &pi) && pi.lot == LOT_GYM) wants_event(s, W_GYM, 0); } break;
         case ACT_SWIM: tr_ev(s->tr, EV_SWIMS, 1); wants_event(s, W_SWIM, 0); sim_moodlet(s, ML_SWAM); break;
-        case ACT_PHONE: tr_ev(s->tr, EV_CALLS, 1); wants_event(s, W_PHONE, 0); if (s->act_var == 1) { tr_ev(s->tr, EV_PIZZAS, 1); sim_moodlet(s, ML_PIZZA); if (s == &sims[player]) story_event(E_PIZZA, 0); } break;
+        case ACT_PHONE: tr_ev(s->tr, EV_CALLS, 1); wants_event(s, W_PHONE, 0); if (s == &sims[player] && s->act_t <= 0 && (s->act_var == 0 || s->act_var == 3)) pop_call_friend(s->act_var == 3); if (s->act_var == 1) { tr_ev(s->tr, EV_PIZZAS, 1); sim_moodlet(s, ML_PIZZA); if (s == &sims[player]) story_event(E_PIZZA, 0); } break;
         case ACT_WORK: wants_event(s, W_WORK, 0); break;
         case ACT_TALK: tr_ev(s->tr, EV_CHATS, 1); if (s->talk_to >= 0 && s->talk_to < nsims) chat_done(s, &sims[s->talk_to]); break;
     }

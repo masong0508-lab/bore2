@@ -56,6 +56,7 @@ void pop_tick(void);                                        // once a frame in S
 int  pop_knows_you(int p);
 void pop_know(int p);                                       // (met, or feelings: onto the list)
 void pop_seen(int p);                                       // (seen today: no drifting apart)
+int  pop_call_friend(int text);                             // completed player call/text: maintain a known offscreen friendship
 void pop_hour(void);                                        // once a game hour (sim.c's clock)
 void pop_known_rebuild(void);                               // (after a load)
 extern int pop_kn_n;

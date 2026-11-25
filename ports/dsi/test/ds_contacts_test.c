@@ -17,6 +17,18 @@ int main(void) {
     CRel before[DS_CONTACT_CAP]; memcpy(before,table,sizeof table);
     assert(!ds_contact_acquire(table, 193)); assert(!memcmp(before,table,sizeof table));
     assert(ds_contact_find(table,1) == a); assert(!ds_contact_acquire(table,0));
-    puts("DS contact identity, read-only lookups, full capacity, protected contacts passed");
+    CRel phone[DS_CONTACT_CAP] = {{0}};
+    CRel *friend = ds_contact_acquire(phone, 101), *stranger = ds_contact_acquire(phone, 102);
+    assert(friend && stranger); friend->rel = 3; stranger->rel = 1;
+    assert(ds_contact_count(phone,0)==2 && ds_contact_count(phone,1)==1);
+    assert(ds_contact_slot(phone,0)>=0 && ds_contact_slot(phone,1)>=0 && ds_contact_slot(phone,2)<0);
+    assert(ds_contact_call(friend,7)==DS_CALL_CLOSED && friend->rel==3 && friend->talks==0);
+    assert(ds_contact_call(stranger,12)==DS_CALL_NOT_FRIEND);
+    assert(ds_contact_call(friend,12)==DS_CALL_OK && friend->rel==4 && (friend->talks & DS_CONTACT_TALK_MASK)==1);
+    assert(ds_contact_call(friend,12)==DS_CALL_ALREADY && friend->rel==4);
+    friend->talks=4; assert(ds_contact_call(friend,12)==DS_CALL_BUSY);
+    friend->talks=0; assert(ds_contact_call(friend,12)==DS_CALL_OK);
+    friend->talks=0; friend->taken=1; assert(ds_contact_call(friend,12)==DS_CALL_UNKNOWN);
+    puts("DS contacts: identity, lookup, capacity, protection and daily phone calls passed");
     return 0;
 }
