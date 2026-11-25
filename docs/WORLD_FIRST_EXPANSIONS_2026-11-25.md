@@ -1,0 +1,25 @@
+# World-first expansion access
+
+The Local Activities panel is removed from Pause and the handheld's general
+menu. Find a community flag at a venue, then choose its two paid/free sessions
+from the ordinary object menu. On handheld the chosen action queues a walk
+to the marker, and existing object reachability validates the arrival before
+fees or energy are spent. Already visited public lots are retrofitted without
+overwriting objects. The original 24 activities and rewards are preserved.
+
+Book trips at a hotel reception, transport stop or boat; island tickets $35,
+desert town $20, returns free. PS1/DC phone travel directs players to a venue.
+Existing destination unlocks, real location transitions and arrival goals
+remain. Hotel room rental and resort management are separate console desk actions.
+
+The existing fictional Grand Theft minigame is entered from a physical venue:
+gas station road vehicles, waterfront park boats or space-center aircraft on
+console; road vehicles on DS/DSi. Relevant selections are filtered to the
+site. Legacy automated scenarios retain the unrestricted debug selector.
+Existing persistent heat/crime record and fines remain; high heat or an
+active serious case blocks outbound paid trips. Handheld heat now cools each
+game day even without opening the minigame. Return home is never blocked by heat.
+
+No new save fields. Marker placement uses existing flags, not new models.
+Host tests verify access rules and filtering. Native world placement and
+controller/stylus playthroughs still need verification.

@@ -57,7 +57,7 @@ int heist_update(int hd, int pr, int steps) {
     if (hp == H_LIST) {
         if (pr & PAD_CIRCLE) return 0;
         if(pr&PAD_UP)hsel=world_heist_cycle(heist_site,hsel,-1);if(pr&PAD_DOWN)hsel=world_heist_cycle(heist_site,hsel,1);
-        if (pr & PAD_CROSS) { if (sims[player].bore.stage < AG_TEEN) { strcpy(line, "TOO YOUNG FOR THIS."); return 1; } begin(hsel); }
+        if (pr & PAD_CROSS) { if (!world_heist_valid(heist_site,hsel)) return 1; if (sims[player].bore.stage < AG_TEEN) { strcpy(line, "TOO YOUNG FOR THIS."); return 1; } begin(hsel); }
         return 1; }
     if (hp == H_GATE) {
         int sp = 2 + gate + TDF[tgt] / 2 - lg() / 4; if (sp < 1) sp = 1;

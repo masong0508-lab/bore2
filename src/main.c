@@ -1356,6 +1356,7 @@ static void travel_update(void) {   // (with a home in SAN BOREAS, the first row
         if (!zone_unlocked(z)) { audio_voice(VOICE_NAH); return; }
         if (z != world_zone) {
             int fare=world_trip_fare(z==ZONE_ISLAND,z==ZONE_TOWN);
+            if(fare&&crime_total()&&crime_evid>=80){sim_note("TRAVEL RESTRICTED: ACTIVE CASE");audio_voice(VOICE_NAH);return;}
             if(cash<fare){sim_note("NOT ENOUGH CASH FOR THE TICKET");audio_voice(VOICE_NAH);return;}
             cash-=fare;travel_go(z);story_visit[z]=1; for (int i = 0; i < nsims; i++) { if (z < 3) wants_event(&sims[i], z == 1 ? W_ISLAND : W_TOWN, 0); wants_reroll(&sims[i]); } }
         state = ST_LIFE;
