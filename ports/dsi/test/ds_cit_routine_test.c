@@ -3,6 +3,14 @@
 #include <string.h>
 #include "../source/ds_cit_routine.h"
 int main(void) {
+    DsCitRoutineCache cache={0};
+    for(int day=0;day<7;day++)for(int hour=0;hour<24;hour++)for(int stage=2;stage<=5;stage++) {
+        int key=day*24+hour;
+        for(unsigned id=1;id<=32;id++) {int want=ds_cit_activity(id,stage,hour,day);assert(ds_cit_activity_cached(&cache,(unsigned short)id,stage,key)==want);assert(ds_cit_activity_cached(&cache,(unsigned short)id,stage,key)==want);}
+    }
+    assert(ds_cit_activity_cached(&cache,1,2,10)==DS_CIT_SCHOOL);
+    assert(ds_cit_activity_cached(&cache,1,2,5*24+10)==DS_CIT_OUT);
+    assert(ds_cit_activity_cached(&cache,1,2,10)==DS_CIT_SCHOOL);
     assert(ds_cit_activity(1,2,10,0)==DS_CIT_SCHOOL);
     assert(ds_cit_activity(1,2,10,5)==DS_CIT_OUT);
     assert(ds_cit_activity(1,2,15,0)==DS_CIT_OUT);

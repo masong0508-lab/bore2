@@ -52,6 +52,7 @@ static const char *opt_tok(int i, int n, char *b) { const char *p = OPT[i].vals;
 #include <string.h>
 #include "bigmap.h"
 #include "scene_music.h"
+#include "audio_slice.h"
 
 int bsprintf(char *o, const char *f, ...) { va_list a; va_start(a, f); int r = vsprintf(o, f, a); va_end(a); return r; }
 int bsnprintf(char *o, unsigned cap, const char *f, ...) { va_list a; va_start(a, f); int r = vsnprintf(o, cap, f, a); va_end(a); return r; }
@@ -854,7 +855,7 @@ static void snd_tick(void) {
           }
           if (pick>=0 && mus_cur!=pick) mus_start(pick);
           if (mus_cur >= 0) mus_tick();
-          want = -1; if (song >= 0) { vset(0, 0, 0); vset(1, 0, 0); vset(2, 0, 0); song = -1; }
+          if(mus_ok==1 && mus_cur>=0) {want=-1;if(song>=0){vset(0,0,0);vset(1,0,0);vset(2,0,0);song=-1;}}
       } else if (mus_cur >= 0) mus_stop(); }
     if (want != song) { song = want; sstep = 0; stick = 0; vset(0, 0, 0); vset(1, 0, 0); vset(2, 0, 0); }
     if (song >= 0) { int f = SONGF[song];
@@ -902,19 +903,31 @@ static void mus_init(void) {
 static const u8 *mus_e(int n) { return mus_dir + 16 + n * mus_ent; }
 static const char *mus_name(int n) { return n >= 0 && n < mus_n ? (const char *)mus_e(n) + 40 : ""; }
 static void mus_cmd(int run) { mus_ctl.run = (u32)run; mus_ctl.stereo = (u32)(o_pan != 0); mus_ctl.vol = (u32)(o_vol * o_mus); mus_ctl.gen++; DC_FlushRange(&mus_ctl, 32); }
-static void mus_stop(void) {   // D77: tells the ARM7 to silence every voice and waits until it says so (the song's buffer is overwritten next: voices still reading it were the long shrill tone)
-    if (mus_ok == 1 && mus_armed) { mus_armed = 0; mus_cmd(0); for (int i = 0; i < 120; i++) { DC_InvalidateRange((void *)&mus_ctl.laps, 32); if (mus_ctl.ack == mus_ctl.gen) break; swiDelay(8000); } }   // (up to ~60 ms)
-    mus_cur = -1; mus_ld = -1; }
+static int mus_wait_stop;
+static unsigned mus_wait_polls;
+static void mus_stop(void) {
+    // Request stop once. The main loop continues while ARM7 acknowledges.
+    if (mus_armed) {mus_armed=0;mus_cmd(0);mus_wait_stop=1;mus_wait_polls=0;}
+    mus_cur=-1;mus_ld=-1;
+}
 static u32 mus_ld_off, mus_ld_len;   // the song being read off the cartridge, a slice a pass (D77)
 static void mus_psg_off(void) { for (int i = 0; i < 4; i++) vset(i, 0, 0); }
 static int mus_start(int n) {   // D77: silence everything, then read the song a slice at a time (mus_tick): the whole read (up to 300 KB, a good half second on a cartridge) used to freeze the loop, and the click's square-wave voice rang on for all of it
     mus_stop(); mus_ld = -1; if (mus_ok != 1 || n < 0 || n >= mus_n) return 0;
     const u8 *e = mus_e(n); u32 pos = rd32(e), len = rd32(e + 4), seq = rd32(e+24), tbl = rd32(e+8), smp = rd32(e+12), sz = rd32(e+16);
-    if (len > MUS_BUFSZ || !len || (pos & 511) || pos > mus_size || ((len+511)&~511u) > mus_size-pos || !seq || seq > tbl || tbl > smp || smp > len || sz > len-smp || rd32(e+20) >= seq) return 0;
+    unsigned ni=(unsigned)e[28]|(unsigned)e[29]<<8;
+    if (len > MUS_BUFSZ || !len || (pos & 511) || pos > mus_size || ((len+511)&~511u) > mus_size-pos || !seq || seq > tbl || tbl > smp || smp > len || sz > len-smp || rd32(e+20) >= seq || !ni || ni>32 || ni*8u>smp-tbl) {mus_ok=0;return 0;}
     mus_psg_off(); mus_ld = n; mus_ld_off = 0; mus_ld_len = (len + 511) & ~511u; if (mus_ld_len > MUS_BUFSZ) mus_ld_len = MUS_BUFSZ;
     mus_laps = 0; mus_cur = n; return 1;
 }
 static void mus_tick(void) {   // once a frame: load the next slice of a song being read; then the volume as it is now, and has the song played through (Auto: on to the next)?
+    if(mus_wait_stop) {
+        DC_InvalidateRange((void *)&mus_ctl.laps,32);
+        int ack=audio_wait_ack(mus_ctl.gen,mus_ctl.ack,&mus_wait_polls);
+        if(ack==AU_WAIT_PENDING)return;
+        if(ack==AU_WAIT_TIMEOUT){mus_ok=0;mus_cur=mus_ld=-1;return;}
+        mus_wait_stop=0;
+    }
     if (mus_ld >= 0) {
         const u8 *e = mus_e(mus_ld); u32 n = mus_ld_len - mus_ld_off; if (n > 16 * 512) n = 16 * 512;
         cart_read(mus_base + rd32(e) + mus_ld_off, mus_buf + mus_ld_off, n); mus_ld_off += n;
@@ -1657,10 +1670,10 @@ static int cit_street(int x, int y) { int lx = ((x % SLC) + SLC) % SLC, ly = ((y
     if (t7()) { int sx = fdiv(x, SLC), sy = fdiv(y, SLC); if (sx < -1 || sx > 1 || sy < -1 || sy > 1) return 0; int S = st_s(sx, sy), E = st_e(sx, sy), C = st_c(sx, sy); return (lx <= 12 ? ly >= 13 && S && (ly == 13 || ly == 17) : ly <= 12 ? E && (lx == 13 || lx == 17) : C != 0) && !far_solid(x, y); }
     return (lx == 13 || lx == 17 || ly == 13 || ly == 17 || (lx >= 13 && ly >= 13)) && !far_solid(x, y); }   // (D40: the pavements, and across the road only at the corners; it was the whole street, lanes too)
 static int cit_activity(const Cit *c) {
-    // Cache the clock, not the identity: test loads, travel and time skips stay correct.
-    static int last_min = -1, hour, weekday;
-    if (last_min != minutes) { last_min = minutes; hour = (minutes / 60) % 24; weekday = (minutes / 1440) % 7; }
-    return ds_cit_activity(c->id, c->stage, hour, weekday);
+    static int last_min=-1,hour_key;
+    static DsCitRoutineCache cache[NCIT];
+    if(last_min!=minutes){last_min=minutes;hour_key=minutes/60;}
+    return ds_cit_activity_cached(&cache[c-cits],c->id,c->stage,hour_key);
 }
 static int cit_vis(const Cit *c) { return c->on && (c->stop > 0 || cit_activity(c) == DS_CIT_OUT); }
 volatile unsigned town_sig, town_sig_seed = 777, pers_sig, pers_dist, pers_dup;   // (test readouts)
@@ -1730,10 +1743,10 @@ static void city_spawn(void) {
 }
 static void city_step(int frames) {
     static const int DXs[4] = { 1, 0, -1, 0 }, DYs[4] = { 0, 1, 0, -1 };
-    for (int k = 0; k < CITN; k++) { Cit *c = &cits[k]; if (!c->on) continue; if (c->stop > 0) { c->stop--; continue; } if (!cit_vis(c) || ((frames + k) & 1)) continue;
+    for (int k = 0; k < CITN; k++) { Cit *c = &cits[k]; if (!c->on) continue; if (c->stop > 0) { c->stop--; continue; } if (((frames + k) & 1) || !cit_vis(c)) continue;
         if (!(c->x & 15) && !(c->y & 15)) { int cx = c->x / 16, cy = c->y / 16, d = c->dir; if (hsh((u32)(frames * 31 + k)) % 100 < 30) d = (d + (hsh((u32)frames + (u32)k) & 1 ? 1 : 3)) & 3;
-            for (int t = 0; t < 4; t++) { int dd = (d + t) & 3; if (cit_street(cx + DXs[dd], cy + DYs[dd])) { c->dir = dd; break; } } }
-        { int nx = c->x + DXs[c->dir], ny = c->y + DYs[c->dir]; if (!(c->x & 15) && !(c->y & 15) && !cit_street(c->x / 16 + DXs[c->dir], c->y / 16 + DYs[c->dir])) continue; c->x = nx; c->y = ny; } }
+            int found=0;for (int t = 0; t < 4; t++) { int dd = (d + t) & 3; if (cit_street(cx + DXs[dd], cy + DYs[dd])) { c->dir = dd; found=1;break; } } if(!found)continue; }
+        c->x+=DXs[c->dir];c->y+=DYs[c->dir]; }
     car_step(frames);
 #ifdef DSTEST
     car_audit();
@@ -1819,7 +1832,7 @@ static void draw_city(void) {
     static const u16 SK[6] = { C15(30, 24, 20), C15(27, 20, 15), C15(22, 15, 10), C15(16, 10, 6), C15(11, 7, 4), C15(29, 22, 17) };
     static const u16 SH[6] = { C15(26, 26, 26), C15(24, 8, 8), C15(8, 14, 26), C15(8, 22, 10), C15(28, 22, 8), C15(16, 8, 22) };
     static const u16 HR[6] = { C15(3, 3, 4), C15(14, 8, 4), C15(26, 20, 8), C15(24, 8, 4), C15(25, 25, 25), C15(10, 14, 28) };
-    for (int k = 0; k < CITN; k++) { const Cit *c = &cits[k]; if (!cit_vis(c) || polys > 2800) continue; int sc = STSC[c->stage], x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, sw = (((c->x + c->y) >> 3) & 1) ? 30 : -30;
+    for (int k = 0; k < CITN; k++) { const Cit *c = &cits[k]; if (polys > 2800) break; if (!cit_vis(c)) continue; int sc = STSC[c->stage], x = c->x * 2 * T / 16 - GN * T + T, z = c->y * 2 * T / 16 - GN * T + T, sw = (((c->x + c->y) >> 3) & 1) ? 30 : -30;
         gy_off = -ground_lift(fdiv(c->x + 8, 16), fdiv(c->y + 8, 16), 0);   // (D41: on the pavement, not sunk in it)
         u16 pn = c->pants == 0 ? C15(6, 7, 12) : c->pants == 1 ? C15(10, 10, 14) : c->pants == 2 ? C15(14, 10, 6) : C15(8, 12, 8);
         block(x - 70 * sc / 100, z - 40 * sc / 100 + sw, x + 70 * sc / 100, z + 40 * sc / 100 + sw, 0, -300 * sc / 100, pn, pn);
