@@ -13,6 +13,7 @@ psn00bsdk_add_executable(bore2 GPREL
 set(BORE_CONTENT_DIR "${CMAKE_BINARY_DIR}/content")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${CMAKE_SOURCE_DIR}/tools/neighborhood_music.py" "${CMAKE_SOURCE_DIR}/tools/content_spu.c"
+  "${CMAKE_SOURCE_DIR}/src/band_roles.inc"
   "${CMAKE_SOURCE_DIR}/tools/dsmusic/adpcm.c" "${CMAKE_SOURCE_DIR}/assets/SONGS.BIN"
   "${CMAKE_SOURCE_DIR}/assets/songs.inc" "${CMAKE_SOURCE_DIR}/assets/dsmusic.bin")
 execute_process(COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/neighborhood_music.py" console

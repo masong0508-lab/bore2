@@ -28,6 +28,7 @@ static u32 *logo_buf(void) { extern void *crowd_arena(void); return (u32 *)crowd
 #include "citizens.h"
 #include "wants.h"
 #include "audio.h"
+#include "scene_music.h"
 #include "font.h"
 #include "mem8.h"
 #include "bigmap.h"
@@ -249,7 +250,9 @@ static int life_story, sp_sel = 1, sc_t, goals_old, sp_join;   // the story the 
 static int life_mode, mode_pending;   // 0 SAN BOREAS, 1 CASTAWAY (they begin on the island), 2 RAGS TO RICHES ($1,000 to start)
 static int craft_sel, craft_msg_t; static char craft_msg[32];   // the CRAFT list's pick; why it could not be made (a while)
 extern char _end[];
-static int juke_sel, juke_scroll;
+static int juke_sel, juke_scroll, area_manual;
+static SceneMusicGate area_gate = SC_MUSIC_GATE_INIT;
+static int area_attempt = -1;
 static int life_started;
 static const int wmFundsV[6] = { 1000, 5000, 20000, 50000, 100000, 500000 };
 static int go_funds = 2;   // the cash a new life starts with (an index into wmFundsV)
@@ -2630,7 +2633,30 @@ static int opt_selp[NOTAB + 1], opt_scr[NOTAB + 1];              // (each page r
 static int opt_live, opt_ask, opt_toast_until, opt_fps0; static char opt_toast[44];
 static void opt_say(const char *s) { strncpy(opt_toast, s, sizeof opt_toast - 1); opt_toast[sizeof opt_toast - 1] = 0; opt_toast_until = VSync(-1) + 110; }
 static void title_music_resume(void) { if (opt[O_TITLEMUS]) audio_jukebox_play(0); }   // (back at the title: its song again)
-static void game_music_check(void) { if (!opt[O_GAMEMUS]) audio_jukebox_stop(); }
+static void game_music_check(void) { area_manual = 0; area_attempt = -1; scene_music_reset(&area_gate); if (!opt[O_GAMEMUS]) audio_jukebox_stop(); }
+static void area_music_tick(void) {
+    if (!life_started || !opt[O_GAMEMUS] || !opt[O_MUSICV] || !opt[O_MASTER] ||
+        area_manual || audio_station() >= 0 || audio_song_count() < SC_FIRST+SC_N) return;
+    if (frame & 31) return;
+    int menu=SC_MENU_NONE, lot=LOT_HOUSE, terrain=BT_GRASS, street=0;
+    if (state == ST_BUILD || state == ST_HOMES || state == ST_NHOOD || state == ST_NHED) menu=SC_MENU_BUILD;
+    else if (state == ST_TRAVEL || state == ST_MAP) menu=SC_MENU_TRAVEL;
+    else if (state != ST_LIFE) { scene_music_reset(&area_gate); area_attempt=-1; return; }
+    if (menu==SC_MENU_NONE && world_zone==ZONE_CITY && world_wbx>=0) {
+        int x=sim_tile_x(&sims[player]), y=sim_tile_y(&sims[player]);
+        if (x>=0 && y>=0 && x<MW && y<MH) {
+            BInfo b;bm_block(world_wbx+x/BM_BLK,world_wby+y/BM_BLK,&b);
+            lot=b.lot;terrain=b.terrain;street=(x%BM_BLK<BM_LOT0 || y%BM_BLK<BM_LOT0);
+        }
+    }
+    int cue=scene_music_settle(&area_gate,scene_music_role(menu,world_zone==ZONE_ISLAND,on_board,veh_on,lot,terrain,street));
+    if (cue<0) return;
+    int song=SC_FIRST+cue, current=audio_jukebox_current();
+    if (current==song) { area_attempt=-1; return; }
+    // Don't issue repeated synchronous CD requests if the content is missing.
+    if (area_attempt==song && current<0) return;
+    area_attempt=song; audio_jukebox_play(song);
+}
 static void opts_after_reset(void) {
     static const s16 ph[4] = { 330, 520, 680, 940 }; cam_pitch = ph[opt[O_CAMH] & 3]; fp_pitch = 0;
     opts_apply();
@@ -4451,9 +4477,10 @@ static void juke_update(void) {
         if (NAVP(PAD_DOWN)) juke_sel = (juke_sel + 1) % n;
         if (NAVP(PAD_LEFT)) juke_sel = MAX(0, juke_sel - 12);   // (a page at a time)
         if (NAVP(PAD_RIGHT)) juke_sel = MIN(n - 1, juke_sel + 12);
-        if (PRESSED(PAD_CROSS)) { audio_station_play(-1); if (audio_jukebox_current() == juke_sel) audio_jukebox_stop(); else audio_jukebox_play(juke_sel); }
-        if (PRESSED(PAD_L1)) audio_jukebox_play((audio_jukebox_current() + n - 1) % n);
-        if (PRESSED(PAD_R1)) audio_jukebox_next();
+        if (PRESSED(PAD_TRIANGLE)) { area_manual=0; area_attempt=-1; scene_music_reset(&area_gate); audio_station_play(-1); }
+        if (PRESSED(PAD_CROSS)) { area_manual=1; int was=audio_jukebox_current(); audio_station_play(-1); if (was!=juke_sel) audio_jukebox_play(juke_sel); }
+        if (PRESSED(PAD_L1)) { area_manual=1; audio_jukebox_play((audio_jukebox_current() + n - 1) % n); }
+        if (PRESSED(PAD_R1)) { area_manual=1; audio_jukebox_next(); }
         if (PRESSED(PAD_SQUARE)) audio_jukebox_toggle_shuffle();
     }
     if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) state = prev_state == ST_LIFE ? BACK_TO() : ST_MENU;
@@ -4488,7 +4515,7 @@ static void juke_draw(void) {   // the song playing on its own card, every song 
     }
     ui_scrollbar(306, top + 43, 144, juke_scroll, 12, n);
     gfx_rect(16, 214, 288, 1, 200, 210, 222, 0);
-    ui_hints(160, 218, "X PLAY|L1 R1 SKIP|SQ SHUFFLE|O BACK", 1);
+    ui_hints(160, 218, "X PLAY|TRI AREA MUSIC|L1 R1 SKIP|O BACK", 1);
 }
 
 // ---- help ----
@@ -5807,7 +5834,8 @@ int main(void) {
         steps = CLAMP(steps, 1, 3);   // LAGFIX_APPLIED: fewer catch-up steps
         frame++;
         fps_frames++; if (now - fps_vb >= 60) { fps_val = fps_frames * 60 / (now - fps_vb); fps_frames = 0; fps_vb = now; }
-        audio_update();   // (the pad was read again here, microseconds after read_pad: a second serial exchange a frame for nothing; the waits between frames still poll it for taps)
+        audio_update();
+        area_music_tick();   // (the pad was read again here, microseconds after read_pad: a second serial exchange a frame for nothing; the waits between frames still poll it for taps)
 #ifdef AUTO_TOUR
         tour_tick();
 #endif
