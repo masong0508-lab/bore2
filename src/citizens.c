@@ -1754,18 +1754,17 @@ void citizens_draw(void) {
     cit_n_full = cit_n_lod = cit_n_spr = 0; cit_spare_hb = 0;
     if (world_zone == ZONE_HOME && !home_guests) { cit_end_hb = -1; return; }
     int order[MAXDRAW], od[MAXDRAW], n = 0;
+    int cap = MIN(cit_maxdraw, MAXDRAW);
     int pin = indoors_at(sims[player].x, sims[player].z);
-    for (int i = 0; i < NCIT; i++) {   // the nearest MAXDRAW to where the camera looks, nearest first
+    for (int i = 0; i < NCIT && cap > 0; i++) {   // the nearest MAXDRAW to where the camera looks, nearest first
         const Cit *c = &cits[i];
         if (c->zone != world_zone || c->mode == CM_GONE) continue;
         if (!c->built) continue;
         int dx = c->x - cam.at.vx, dz = c->z - cam.at.vz, d = dx * dx + dz * dz;
-        if (d > DRAW_DIST * DRAW_DIST) continue;
+        if (d > DRAW_DIST * DRAW_DIST || (n == cap && d >= od[cap - 1])) continue;
         if (!pin && d > 3 * TILE * 3 * TILE && indoors_at(c->x, c->z)) continue;   // behind walls: not worth the polygons
         if (!gfx_visible(c->x, -110, c->z, 150)) continue;                          // off the screen: nothing to draw
-        int cap = MIN(cit_maxdraw, MAXDRAW);
-        int pos = n < cap ? n++ : cap;
-        if (pos == cap) { if (d >= od[cap - 1]) continue; pos = cap - 1; }
+        int pos = n < cap ? n++ : cap - 1;
         while (pos > 0 && od[pos - 1] > d) { order[pos] = order[pos - 1]; od[pos] = od[pos - 1]; pos--; }
         order[pos] = i; od[pos] = d;
     }
