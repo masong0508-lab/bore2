@@ -38,7 +38,7 @@ enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME,
 enum { PE_FRIENDLY, PE_GRUFF, PE_FLIRTY, PE_SHY };
 enum { PO_TALK, PO_JOKE, PO_HUG, PO_FLIRT, PO_GIFT, PO_PROPOSE, PO_FIGHT, PO_SORRY, PO_FAMILY, PO_MOVEIN,
        PO_SUB_CHAT, PO_SUB_SOC, PO_SUB_ROM, PO_SUB_MEAN, PO_BACK,   // the pie's sub-menus
-       PO_COMPL, PO_GOSSIP, PO_JOB, PO_ADVICE, PO_HIGH5, PO_DANCE, PO_FLOWERS, PO_DRINK, PO_KISS, PO_DATE, PO_INSULT, PO_PRANK, PO_APOL };
+       PO_COMPL, PO_GOSSIP, PO_JOB, PO_ADVICE, PO_HIGH5, PO_DANCE, PO_FLOWERS, PO_DRINK, PO_KISS, PO_DATE, PO_INSULT, PO_PRANK, PO_APOL, PO_DAY };
 // the moodlet ids in sim.c's list
 enum { CML_GOOD_CHAT = 5, CML_EMBARRASSED = 9, CML_REJECTED = 12, CML_HUGGED = 14, CML_LAUGH = 16, CML_FLIRTY = 17 };
 
@@ -546,7 +546,7 @@ COLD static int pie_build(const Cit *c, char opt[8][24]) {
         if (c->hh != NONE) OPT("FAMILY", PO_FAMILY)
         break;
     case 1:
-        OPT("JOKE", PO_JOKE) OPT("ASK ABOUT JOB", PO_JOB) OPT("GOSSIP", PO_GOSSIP) OPT("ASK ADVICE", PO_ADVICE) OPT("COMPLIMENT", PO_COMPL)
+        OPT("JOKE", PO_JOKE) OPT("ASK ABOUT JOB", PO_JOB) OPT("ASK ABOUT DAY", PO_DAY) OPT("GOSSIP", PO_GOSSIP) OPT("ASK ADVICE", PO_ADVICE) OPT("COMPLIMENT", PO_COMPL)
         if (c->hh != NONE) OPT("FAMILY", PO_FAMILY)
         OPT("BACK", PO_BACK)
         break;
@@ -599,6 +599,7 @@ static void chat_begin(Cit *c) {
     Sim *p = &sims[player];
     p->need[N_SOCIAL] = MIN(100 << 10, p->need[N_SOCIAL] + (4 << 10));
     wants_event(p, W_CHAT, 0); wants_event(p, W_NEIGHBOR, 0);
+    if (c->pid != NOPID) pop_seen(c->pid);
     c->mode = CM_CHAT; c->t = 240;
     c->gait.wave = 40;
     c->yaw = (u16)yaw_to(sims[player].x - c->x, sims[player].z - c->z);
@@ -655,8 +656,17 @@ COLD int citizens_pie_do(int i) {
     case PO_ADVICE:
         if (accept(c, 40)) { rel_add(c, 3); say(c, L_ADV[rn(NL(L_ADV))]); chat_begin(c); sim_moodlet(p, CML_GOOD_CHAT); audio_voice(VOICE_AGREE); }
         else { say(c, "ASK SOMEONE ELSE"); audio_voice(VOICE_DISAGREE); }
-        if (c->mode == CM_CHAT && c->pid != NOPID) pop_seen(c->pid);
         break;
+    case PO_DAY: {
+        if (!accept(c, 65)) { say(c, "A LONG DAY. NOT NOW"); audio_voice(VOICE_DISAGREE); break; }
+        const char *line;
+        if (c->pid != NOPID) {
+            int place, activity = pop_where(c->pid, &place);
+            line = activity == AT_WORK ? "ON THE CLOCK TODAY" : activity == AT_SCHOOL ? "SCHOOL KEEPS ME BUSY" : activity == AT_OUT ? "OUT ENJOYING THE DAY" : activity == AT_SLEEP ? "IT IS PAST MY BEDTIME" : "TAKING IT EASY AT HOME";
+        } else if (c->stage <= AG_TEEN) line = clock_day < 5 && clock_min < 900 ? "LOTS TO LEARN TODAY" : "TIME TO GO AND PLAY";
+        else if (c->stage == AG_ELDER) line = "TAKING THE DAY SLOWLY";
+        else line = clock_min < 720 ? "A BUSY MORNING" : clock_min < 1080 ? "RUNNING A FEW ERRANDS" : "READY TO PUT MY FEET UP";
+        rel_add(c, 3); say(c, line); chat_begin(c); audio_voice(VOICE_AGREE); break; }
     case PO_JOB: {
         static char jb[40];
         if (c->pid != NOPID && accept(c, 50)) { pop_job_name(c->pid, jb); say(c, jb); rel_add(c, 3); chat_begin(c); audio_voice(VOICE_AGREE); }

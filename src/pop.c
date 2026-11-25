@@ -331,12 +331,13 @@ void pop_known_rebuild(void) {
 void pop_hour(void) {   // an hour of their lives: someone who knows you, not seen for a couple of days, may ring (a call every three hours at most)
     static int kc, quiet;
     if (quiet > 0) { quiet--; return; }
-    if (!pop_kn_n || clock_min < 8 * 60 || clock_min > 22 * 60 || sims[player].action == ACT_SLEEP) return;
+    if (!pop_kn_n || clock_min < 8 * 60 || clock_min > 22 * 60 || (sims[player].action == ACT_SLEEP || sims[player].action == ACT_WORK)) return;
     for (int t = 0; t < 16 && t < pop_kn_n; t++) {
         if (kc >= pop_kn_n) kc = 0;
         int i = kc++, p = kn_pid[i]; Per *q = &pop_per[p];
         if ((q->flags & PF_GONE) || q->slot != 255 || q->stage < AG_TEEN || q->rel < 40 || kn_unseen[i] < 2) continue;
-        int pl; if (look_rand() % 24 || pop_where(p, &pl) == AT_SLEEP) continue;
+        int pl, activity = pop_where(p, &pl);
+        if ((activity != AT_HOME && activity != AT_OUT) || look_rand() % 24) continue;
         char nm[24], b[48]; pop_first(p, nm);
         snprintf(b, sizeof b, q->rom >= 50 ? "%s CALLED: MISSES YOU" : q->rel >= 75 ? "%s CALLED FOR A LONG CHAT" : "%s CALLED TO CATCH UP", nm); sim_note(b);
         q->rel = (s8)MIN(100, q->rel + 2); kn_unseen[i] = 0; KN_DBG(0, dbg_kn[0] + 1); quiet = 2;
