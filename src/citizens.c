@@ -3,6 +3,7 @@
 #include "story.h"
 #include "wants.h"
 #include "social_activity.h"
+#include "outing_links.h"
 #include "ui.h"
 #include "sim.h"
 #include "world.h"
@@ -601,6 +602,26 @@ static int accept(const Cit *c, int base) {   // the dice: their mood towards yo
     return rn(100) < ch;
 }
 static void rel_add(Cit *c, int d) { c->rel = (s8)CLAMP(c->rel + d, -100, 100); }
+// One real resident, selected only on completion; no extra per-frame work.
+COLD void citizens_outing_contact(int tx,int ty,int bonus){
+    if(world_zone!=ZONE_CITY||bonus<=0)return;
+    int best=-1,bd=17;
+    for(int i=MAIN0;i<NCIT;i++){
+        const Cit *c=&cits[i];
+        if(c->zone!=world_zone||c->pid==NOPID||c->pid>=pop_nper||c->cop||c->vanish||
+           (pop_per[c->pid].flags&PF_GONE)||c->stage<AG_CHILD||c->rel>=100||
+           (c->mode!=CM_IDLE&&c->mode!=CM_WALK)||c->x<0||c->z>0)continue;
+        int d=outing_link_distance(tx,ty,c->x/TILE,(-c->z)/TILE,BM_BLK);
+        if(d>=0&&d<bd){bd=d;best=i;}
+    }
+    if(best<0)return;
+    Cit *c=&cits[best];int before=c->rel;
+    meet(c);rel_add(c,bonus);
+    pop_per[c->pid].rel=c->rel;pop_know(c->pid);pop_seen(c->pid);
+    say(c,"GOOD SESSION!");
+    wants_event(&sims[player],W_NEIGHBOR,0);
+    if(before<50&&c->rel>=50)wants_event(&sims[player],W_TOWNFRIEND,0);
+}
 static void rom_add(Cit *c, int d) { c->rom = (s8)CLAMP(c->rom + d, 0, 100); }
 static void chat_begin(Cit *c) {
     Sim *p = &sims[player];

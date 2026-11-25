@@ -54,6 +54,8 @@ static const char *opt_tok(int i, int n, char *b) { const char *p = OPT[i].vals;
 #include "scene_music.h"
 #define OUTINGS_IMPLEMENTATION
 #include "outings.h"
+#include "outing_links.h"
+#include "world_access.h"
 #include "audio_slice.h"
 
 int bsprintf(char *o, const char *f, ...) { va_list a; va_start(a, f); int r = vsprintf(o, f, a); va_end(a); return r; }
@@ -688,7 +690,7 @@ static int gframes, cam_on, cam_pan, cam_free, live_pitch = 4300, cam_deff = 900
 static void sim3d(int i, int yaw);
 static int has_board, on_board, board_lift; static long skate_score, skate_best; static const int *em_R; static int sk_x3, sk_z3, sk_cr, sk_Rm[9];   // (D44) the skateboard: owned, ridden, the rider's height (PS1 units); em_R: a free turn for the rider's model
 static void skate_draw_board(int ground); static void skate_top(void); static unsigned skate_sig(void); static void skate_on(void), skate_off(void); static void skate_frame(int held, int down, int steps);
-static int mg_ui, mg_ver, arcade_tix, fight_wins, fight_champ, fight_best; static void fight_3d(void), fight_cam(int *, int *, int *, int *, int *, int *); static unsigned mg_sig(void), mg_bsig(void); static void mg_top(void), mg_bottom(void), mg_frame(int held, int down, int steps, int tx, int ty); static void ag_open(int g), hs_open(void), gm_open(void), gt_minute(void); static int arcade_game_at(int x, int y), in_arcade(void), ag_price(int g); static const char *ag_title(int g);
+static int mg_ui, mg_ver, arcade_tix, fight_wins, fight_champ, fight_best; static void fight_3d(void), fight_cam(int *, int *, int *, int *, int *, int *); static unsigned mg_sig(void), mg_bsig(void); static void mg_top(void), mg_bottom(void), mg_frame(int held, int down, int steps, int tx, int ty); static void ag_open(int g), hs_open(void), hs_open_site(int site), hs_day_roll(void), gm_open(void), gt_minute(void); static int hs_travel_blocked(void); static int arcade_game_at(int x, int y), in_arcade(void), ag_price(int g); static const char *ag_title(int g);
 #define MG_SAVE 256   // (D45 on) the most the mini-games' save blocks take, after the farm's
 static int mg_pack(u8 *o); static int mg_unpack(const u8 *p, int left); static void mg_reset(void);
 typedef struct { u8 x, y, c, i, rot; } Obj;
@@ -979,7 +981,7 @@ static void nb_load(void) {
     for (int dy = 0; dy < 3; dy++) for (int dx = 0; dx < 3; dx++) nbf[dy + RING_MAX - 1][dx + RING_MAX - 1] = nb[dy][dx];
     if (t7()) nb7_load(); }
 static void city_spawn(void); static void city_shift(int dx, int dy); static void car_step(int frames);
-static int popup, popup_i, contact_sel, soc_page, outing_sel;
+static int popup, popup_i, contact_sel, soc_page;
 #ifdef DSTEST
 static void car_audit(void);
 #endif
@@ -1181,12 +1183,13 @@ static void prop_trade(void) {   // Buy or Sell on the Map
 #ifdef DS_TOUR
 int tour_ovr;   // (test) the lot kind the tour builds on the next lot_enter (0: what the map has)
 #endif
+static void ensure_world_marker_ds(int lot,int terrain);
 static void lot_enter(int bx, int by) {   // the lot you walk into: what you built there last time, or a new home from its own seed
     if (lot_bx >= 0 && (lot_bx != bx || lot_by != by)) life_ev(ctl, WN_VISIT, 0);
     yard_i0 = 0x7FFF; lot_bx = bx; lot_by = by; lot_dn = bm_gen >= 7 && bx >= 0 && bx < 2000 && bm_lot_face(bx, by) == LF_NORTH ? -1 : 1; lot_seed = (u32)(bx * 73856093 ^ by * 19349663); pick = -1; memset(slv, 0, sizeof slv); ed_lv = 0; int keep = LV; LV = 0;
     for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == bx && lsv[i].by == by) { LotSave *q = &lsv[i]; nobj = q->nobj; pcx = q->pcx; pcy = q->pcy; door_cx = q->dcx; door_cy = q->dcy; roof_st = q->roof; up_st = q->up; memcpy(flr, q->flr, sizeof flr); memcpy(hwl, q->hwl, sizeof hwl); memcpy(vwl, q->vwl, sizeof vwl); memcpy(objs, q->objs, sizeof objs); occ_ok = 0;
         if (q->hasup) { memcpy(uflr, q->ufl, sizeof uflr); memcpy(uhwl, q->uhw, sizeof uhwl); memcpy(uvwl, q->uvw, sizeof uvwl); } else { ups_clear(); shell_to_floors(up_st); }
-        bed_fix7(); nb_load(); LV = keep; return; }
+        bed_fix7();nb_load();if(bx>=0&&bx<2000)ensure_world_marker_ds(nb[1][1].lot,nb[1][1].terrain);LV=keep;return;}
     memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); ups_clear(); nobj = 0; occ_ok = 0; roof_st = up_st = 0;
     if (bx >= 2000) gen_zone(bx, by); else { BInfo bi; bm_block(bx, by, &bi);
 #ifdef DS_LOT
@@ -1197,7 +1200,7 @@ static void lot_enter(int bx, int by) {   // the lot you walk into: what you bui
 #endif
  LotPlan pl7; int g7 = bm_gen >= 7; if (g7) bm_lot_plan(bx, by, &bi, &pl7);   // (D79) world version 7: the town plan builds the home, and a lot that fronts north is turned over
  if (g7 && pl7.type && bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) { gen_two = bi.lot == LOT_TWO; gen_home7(&pl7, hsh(lot_seed), bi.terrain, bm_nb(bx, by)); gen_two = 0; }
- else { if (bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) { gen_two = bi.lot == LOT_TWO; gen_house(); gen_two = 0; } else g7_field = g7 && bi.lot == LOT_FARM && pl7.face == LF_NONE; gen_public(bi.lot, bi.h); g7_field = 0; if (g7 && pl7.face == LF_NORTH) flip7(); } } nb_load(); LV = keep;
+ else { if (bi.lot >= LOT_HOUSE && bi.lot <= LOT_APART) { gen_two = bi.lot == LOT_TWO; gen_house(); gen_two = 0; } else g7_field = g7 && bi.lot == LOT_FARM && pl7.face == LF_NONE; gen_public(bi.lot, bi.h); g7_field = 0; if (g7 && pl7.face == LF_NORTH) flip7(); } } nb_load();if(bx>=0&&bx<2000)ensure_world_marker_ds(nb[1][1].lot,nb[1][1].terrain);LV=keep;
 }
 static void lot_cross(void) {   // the sim you are playing left the lot's slot: the next lot becomes the middle one and everything slides back by one slot
     const Sim *m = &sims[ctl]; int dx = fdiv(m->x + 8, 16 * SLC), dy = fdiv(m->y + 8, 16 * SLC); if (!dx && !dy) return;
@@ -2643,9 +2646,28 @@ static int fm_sig(void) { int a = fm_wet + fm_hens * 3 + fm_cows * 5 + fm_fed * 
 static u8 ID2CH[NITEM];   // an item's PS1 letter (0: the DS's own)
 static int popup_n, popup_code[8]; static const char *popup_lab[8];   // (D38: up to eight, the farm stand has that many)
 static int in_shop(void); static int gtoy_of_(int si); static void gt_furn(int cd);   // (D53, ds_games.c)
+static void ensure_world_marker_ds(int lot,int terrain){
+    if(!world_marker_needed(lot,terrain))return;
+    int found=0;
+    for(int i=0;i<nobj;i++)if(!OBJ_LV(&objs[i])&&ID2CH[OBJ_ID(&objs[i])]=='a'){found=1;break;}
+    // Use an existing flag beside the entrance; retrofit visited lots.
+    if(!found)for(int y=0;y<3&&!found;y++){int yy=lot_dn>0?12-y:y;for(int x=1;x<=11;x++){
+        if(abs(x-door_cx)<3||obj_at(x,yy)>=0)continue;
+        if(z_put(x,yy,'a',0)>=0){found=1;break;}
+    }}
+}
 static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a thing offers: the PS1's choices on the island, else the item's own action
     int c = ID2CH[OBJ_ID(&objs[o])], n = 0, isl = zone == Z_ISLAND;
     #define AC(l, k) do { lab[n] = (l); code[n] = (k); n++; } while (0)
+    int lot=zone==Z_CITY&&nb_ok?nb[1][1].lot:-1,terrain=nb_ok?nb[1][1].terrain:BT_GRASS;
+    static char local_labels[2][32];
+    if(c=='a'&&world_outing_anchor(lot,(unsigned char)c)){
+        int g=outing_group(lot,0);
+        for(int k=0;k<2;k++){const Outing *a=outing_get(g*2+k);snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);AC(local_labels[k],WORLD_OUT_0+k);}
+    }
+    if(world_trip_anchor(lot,(unsigned char)c))AC("Book a trip",WORLD_TRIP);
+    if(world_heist_anchor(lot,terrain,(unsigned char)c)==SITE_ROAD&&stage_of(sims[ctl].age)>=3)AC("Grand theft (risk)",WORLD_HEIST);
+    if(n&&(c=='a'||c=='+'||c=='@'))return n;
     if (isl && c == 'g') { AC("A Coconut", 60 + G_COCONUT); AC("Chop Wood", 60 + G_WOOD); AC("Gather Leaves", 60 + G_LEAVES); }
     else if (isl && (c == '3' || c == '6')) { AC("Chop Wood", 60 + G_WOOD); AC("Gather Leaves", 60 + G_LEAVES); }
     else if (isl && c == '*') AC("Gather Stone", 60 + G_STONE);
@@ -2654,9 +2676,9 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     else if (c == 0x85) AC("Dig", 60 + G_DIG); else if (c == 0x87) AC("Search It", 60 + G_WRECK); else if (c == 0x84) AC("Read It", 60 + G_BOTTLE);
     else if (c == 0x8D) AC("Read It", 60 + G_JOURNAL); else if (c == 0x86) AC("Listen", 60 + G_IDOL); else if (c == 0x88) AC("Pick It Up", 60 + G_SHELL); else if (c == 0x8C) AC("Take It", 60 + G_GOLD);
     else if (isl && c == 's') { if (isl_food > 0) AC("Cook and Eat", 80); AC("Craft", 81); }
-    else if (c >= 0xDB && c <= 0xDE) return farm_acts(c, lab, code);
+    else if (c >= 0xDB && c <= 0xDE) n=farm_acts(c, lab, code);
     else if (c == 0x8B) { AC("Sail Across", 82); AC("Not Now", 84); }
-    else if (c == '@' || c == '+') AC(IT_OF(&objs[o])->lab, 83);
+    else if (c == '@' || c == '+') AC("Book a trip", WORLD_TRIP);
     else if (c == 'B') AC("Ride the Board", 85);   // (D44)
     else if (c == '!' && in_arcade()) { static char pl[28]; int g_ = arcade_game_at(objs[o].x, objs[o].y); snprintf(pl, sizeof pl, "%s $%d", ag_title(g_), ag_price(g_)); AC(pl, 86); }   // (D46: a cabinet)
     else if (c == 'y' && in_arcade()) { static char pz[28]; snprintf(pz, sizeof pz, "Prizes (%d tickets)", arcade_tix); AC(pz, 87); }   // (D46: the prize counter)
@@ -2665,6 +2687,10 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
         if (c == 0xBE) { AC("Open the Basket", 90); AC("The Toy Box", 91); } else if (c == 0xBF) { AC("The Toy Box", 91); AC("Open the Basket", 90); } else if (c == 0xC0) { AC("View the Blobdex", 92); AC("The Toy Box", 91); }
         else if (c == 0xC3) AC("Tuck Them In", 93); else if (c == 0xC4) AC("Feed Them All $5", 94); else if (c == 0xC5) AC("Lights For Them", 95); else AC(IT_OF(&objs[o])->lab, -1); }
     else AC(IT_OF(&objs[o])->lab, -1);
+    if(c!='a'&&world_outing_anchor(lot,(unsigned char)c)){
+        int g=outing_group(lot,0);
+        for(int k=0;k<2&&n<8;k++){const Outing *a=outing_get(g*2+k);snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);AC(local_labels[k],WORLD_OUT_0+k);}
+    }
     #undef AC
     return n;
 }
@@ -2735,14 +2761,19 @@ static void travel_draw(void) {   // where to: the PS1's rows, the locked ones g
         rect(12, y, 232, 25, open_ ? C15(5, 12, 26) : C15(10, 12, 18)); rect(12, y, 232, 1, C15(10, 18, 30));
         text_box(15, y + 1, 150, 12, FS_HEAD, open_ ? TXT : C15(20, 22, 26), AL_L, r == 0 ? "Home" : r == 4 ? "San Boreas" : ZNAME[z]);
         if (r == 4) { sprintf(t, "%d towns: the Map, a taxi anywhere", bm_nset()); text_box(15, y + 12, 226, 12, FS_BODY, C15(22, 26, 31), AL_L, t); }
-        else text_box(15, y + 12, 226, 12, FS_BODY, here ? C15(16, 31, 16) : open_ ? C15(22, 26, 31) : C15(31, 14, 12), AL_L, here ? "You are here" : r == 0 ? "Your house in San Boreas" : open_ ? blurb[z] : lock[z]); }
+        else {const char *sub=here?"You are here":r==0?"Your house in San Boreas":open_?blurb[z]:lock[z];if(open_&&!here&&(z==Z_ISLAND||z==Z_TOWN)){snprintf(t,sizeof t,"$%d ticket: %s",world_trip_fare(z==Z_ISLAND,z==Z_TOWN),z==Z_ISLAND?"Island":"Desert town");sub=t;}
+            text_box(15,y+12,226,12,FS_BODY,here?C15(16,31,16):open_?C15(22,26,31):C15(31,14,12),AL_L,sub);} }
 }
 static void travel_touch(int tx, int ty) {
     if (hit(204, 22, 40, 14, tx, ty)) { travel_ui = 0; return; }
     for (int r = 0; r < 5; r++) if (hit(12, 42 + r * 27, 232, 25, tx, ty)) { int z = r == 0 ? Z_CITY : r;
         if (r == 4) { travel_ui = 0; set_mode(M_MAP); return; }
         if (!zone_open(z)) { say(z == Z_ISLAND ? "Earn your first paycheck" : "Get promoted twice"); return; }
-        travel_ui = 0; if (z == zone && z != Z_CITY) { say("You are here"); return; } travel_go(z); return; }
+        if(z==zone&&z!=Z_CITY){say("You are here");return;}
+        int fare=world_trip_fare(z==Z_ISLAND,z==Z_TOWN);
+        if(fare&&hs_travel_blocked()){say("Travel restricted while heat is high");return;}
+        if(funds<fare){say("Not enough money for the ticket");return;}
+        funds-=fare;travel_ui=0;travel_go(z);return;}
 }
 static void craft_draw(void) {
     char t[56]; panel(6, 20, 244, 164, "Craft"); chip(204, 22, 40, 14, "X", 0);
@@ -3139,9 +3170,8 @@ static int outing_check_ds(int id){
     return outing_check(id,outing_group_ds(ctl),st>=4?2:st>=3?1:st>=2?0:-1,minutes%1440,
         funds,m->need[2],on_board||m->act_left>0||m->act>=0);
 }
-static void outing_start_ds(void){
-    int group=outing_group_ds(ctl);if(group<0){say(outing_reason[OUT_NO_VENUE]);return;}
-    int id=group*2+outing_sel,ck=outing_check_ds(id);
+static void outing_start_ds(int id){
+    int ck=outing_check_ds(id);
     if(ck!=OUT_OK){say(outing_reason[ck]);return;}
     const Outing *o=outing_get(id);Sim *m=&sims[ctl];
     funds-=o->fee;m->need[2]=cl100(m->need[2]-o->energy);
@@ -3149,38 +3179,35 @@ static void outing_start_ds(void){
     m->tx=m->wx=m->x;m->ty=m->wy=m->y;
     popup=0;life_ver++;say(o->title);
 }
+// Handheld contacts use the existing persistent table and daily talk budget.
+static void outing_contact_ds(int i){
+    const Sim *m=&sims[i];if(i!=ctl||slv[i]||m->x<0||m->y<0)return;
+    int best=-1,bd=17;
+    for(int k=0;k<CITN;k++){
+        const Cit *c=&cits[k];if(!cit_vis(c)||!c->id||c->stage<2||c->x<0||c->y<0)continue;
+        const CRel *old=ds_contact_find(crt,c->id);
+        if(old&&(old->taken||old->rel>=10||(old->talks&DS_CONTACT_TALK_MASK)>=4))continue;
+        int d=outing_link_distance(m->x/16,m->y/16,c->x/16,c->y/16,SLC);
+        if(d>=0&&d<bd){best=k;bd=d;}
+    }
+    if(best<0)return;
+    CRel *cr=crel(cits[best].id);if(!cr)return;
+    int before=cr->rel;cr->rel++;cr->talks++;
+    life_ev(i,WN_NEIGHBOR,0);
+    if(before<3&&cr->rel>=3){life_ev(i,WN_FRIEND,0);life_ev(i,WN_TOWNFRIEND,0);}
+}
 static void outing_done_ds(int i,int id){
     if(!outing_complete(id,outing_group_ds(i),0))return;
     const Outing *o=outing_get(id);Sim *m=&sims[i];
     m->need[0]=cl100(m->need[0]+o->food);m->need[1]=cl100(m->need[1]+o->fun);
     m->need[2]=cl100(m->need[2]+o->rest);m->need[3]=cl100(m->need[3]+o->social);
-    if(i==ctl){if(o->kind==OUT_COMMUNITY)trg_ev(EV_KIND,1);say(o->done);sfx(3);}
+    if(o->skill==OUT_SK_FARM)fm_sk(i,o->gain);
+    if(i==ctl){
+        if(outing_link_social_gain(o->kind==OUT_COMMUNITY,o->social))outing_contact_ds(i);
+        if(o->kind==OUT_COMMUNITY)trg_ev(EV_KIND,1);say(o->done);sfx(3);
+    }
     life_ev(i,WN_OUTING,0);if(o->kind==OUT_LEARN)life_ev(i,WN_CLASS,0);if(o->kind==OUT_COMMUNITY)life_ev(i,WN_COMMUNITY,0);
     life_ver++;
-}
-static void outings_draw_ds(void){
-    panel(6,20,244,164,"Local activities");chip(204,22,40,14,"X",0);
-    int group=outing_group_ds(ctl);char b[44];
-    if(group<0){
-        text_box(14,50,228,45,FS_BODY,TXT,AL_C,"Visit a cafe, library, gym, pool, cinema, farm, park, arcade, gallery, hotel, school or observatory.");
-        text_box(14,110,228,42,FS_BODY,TXT,AL_C,"Walk onto the venue's lot. Open Local activities to see its choices.");
-        return;
-    }
-    text_box(12,39,232,12,FS_SMALL,TXT,AL_C,outing_venue_names[group]);
-    for(int k=0;k<2;k++){
-        int id=group*2+k,y=54+k*52,ck=outing_check_ds(id);const Outing *o=outing_get(id);
-        chip(12,y,232,17,o->title,outing_sel==k);
-        text_box(15,y+18,226,17,FS_SMALL,TXT,AL_L,o->desc);
-        snprintf(b,sizeof b,"$%d  Energy -%d  Fun +%d",o->fee,o->energy,o->fun);
-        text_box(15,y+36,130,12,FS_SMALL,TXT,AL_L,b);
-        text_box(145,y+36,96,12,FS_SMALL,ck==OUT_OK?C15(17,31,17):TXT,AL_R,outing_reason[ck]);
-    }
-    chip(12,159,232,19,"Start selected activity",outing_check_ds(group*2+outing_sel)==OUT_OK);
-}
-static void outings_touch_ds(int x,int y){
-    if(hit(204,22,40,14,x,y)){popup=0;return;}
-    for(int k=0;k<2;k++)if(hit(12,54+k*52,232,50,x,y)){outing_sel=k;return;}
-    if(hit(12,159,232,19,x,y))outing_start_ds();
 }
 static void draw_hud_i(void) {
     scr = offbuf;
@@ -3195,10 +3222,10 @@ static void draw_hud_i(void) {
     rect(104, 178, 48, 14, PANB); rect(105, 179, 46, 13, PAN); for (int i = 0; i < 3; i++) rect(118 + i * 8, 184, 4, 4, TXT);
     if(!popup&&!menu_open&&!on_board&&sims[ctl].act==OUT_DS_ACTION&&sims[ctl].act_left>0){const Outing *o=outing_get(sims[ctl].act_amt);if(o){int d=o->duration-sims[ctl].act_left;rect(36,30,184,18,PANB);text_box(38,31,180,12,FS_SMALL,TXT,AL_C,o->title);rect(40,44,176,3,PAN);rect(40,44,176*MAX(0,d)/o->duration,3,C15(9,27,12));}}
     if (on_board) { rect(196, 168, 58, 22, PANB); rect(197, 169, 56, 20, C15(24, 8, 8)); text_box(197, 169, 56, 20, FS_BODY, TXT, AL_C, "Get Off"); }   // (D44)
-    if (menu_open) { static const char *const mn[12] = { "Buy", "Build", "Map", "Save", "Options", "Title", "Job", "Songs", "Life", "Travel", "Games", "Heist" };   // (D70) no big panel behind (it cost 8 ms to draw): the chips alone, a title strip and the hints bar
-        rect(14, 40, 226, 16, PANB); rect(15, 41, 224, 14, PANH); text_box(15,41,60,14,FS_HEAD,TXT,AL_C,"Menu");chip(78,40,80,16,"Contacts",menu_sel==12);chip(160,40,80,16,"Activities",menu_sel==13);
-        for (int i = 0; i < 12; i++) chip(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, mn[i], i == 9 && zone);
-        if (menu_sel >= 12) ui_focus(menu_sel==12?78:160,40,80,16); else ui_focus(14 + (menu_sel % 4) * 58, 60 + (menu_sel / 4) * 36, 54, 30); ui_hints(168, "Pad:Move|A:Pick|B:Close"); }
+    if (menu_open) { static const char *const mn[10]={"Buy","Build","Map","Save","Options","Title","Job","Songs","Life","Games"};   // (D70) no big panel behind (it cost 8 ms to draw): the chips alone, a title strip and the hints bar
+        rect(14, 40, 226, 16, PANB); rect(15, 41, 224, 14, PANH); text_box(15,41,140,14,FS_HEAD,TXT,AL_C,"Menu");chip(160,40,80,16,"Contacts",menu_sel==12);
+        for(int i=0;i<10;i++)chip(14+(i%4)*58,60+(i/4)*36,54,30,mn[i],0);
+        if(menu_sel==12)ui_focus(160,40,80,16); else ui_focus(14 + (menu_sel % 4) * 58, 60 + (menu_sel / 4) * 36, 54, 30); ui_hints(168, "Pad:Move|A:Pick|B:Close"); }
     if (popup == 1) {
         const Item *it = IT_OF(&objs[popup_i]); const char *nm = it->name;   // (D35: wide, for the PS1's words; D37: up to three choices; D38: up to eight, in two columns)
         if (popup_n <= 3) { int top = 150 - popup_n * 24;
@@ -3216,7 +3243,6 @@ static void draw_hud_i(void) {
         rect(56, 96, 144, 72, PANB); rect(57, 97, 142, 70, PAN); text_box(60, 99, 136, 16, FS_HEAD, TXT, AL_L, "Rex"); { char t2[24]; sprintf(t2, "Hunger %d", dog.hun); text_box(60, 99, 136, 16, FS_BODY, TXT, AL_R, t2); }
         chip(64, 118, 60, 20, "Pet", 0); chip(132, 118, 60, 20, "Play", 0); chip(64, 142, 60, 20, "Feed $5", 0); chip(132, 142, 60, 20, "Cancel", 0);
     } else if (popup == 6) { contacts_draw();
-    } else if (popup == 7) { outings_draw_ds();
     } else if (popup >= 2) {
         char nm[40]; int tg = popup == 2 ? popup_i : -2 - popup_i, rel; if (popup == 2) { sprintf(nm, "%s - %s %d", sname[popup_i], STGN[stage_of(sims[popup_i].age)], sims[popup_i].age); rel = sims[popup_i].rel; }
         else { char n2[24]; cit_name(&cits[popup_i], n2); sprintf(nm, "%s - %s", n2, STGN[cits[popup_i].stage]); rel = crel_peek(cits[popup_i].id); }
@@ -3485,7 +3511,7 @@ static int sav_apply(void) {   // 1 = loaded
 }
 static void gt_day(void);
 static void day_roll(void) {
-    st_days++; memset(ilim, 0, sizeof ilim); farm_midnight(); gt_day(); for (int k = 0; k < 64; k++) crt[k].talks = 0;
+    st_days++; hs_day_roll(); memset(ilim, 0, sizeof ilim); farm_midnight(); gt_day(); for (int k = 0; k < 64; k++) crt[k].talks = 0;
     for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; int s0 = stage_of(m->age); if (m->age < 99) { m->age += trf_age(&dtr[i]); if (m->age > 99) m->age = 99; } int s1 = stage_of(m->age); if (s0 != s1) { static char bf[40]; sprintf(bf, "%s is now a %s", sname[i], STGN[s1]); say(bf); } }
     for (int i = 0; i < nsim; i++) if (sims[i].age >= 80 && nsim > 1) { int alive = 0; for (int q = 0; q < nsim; q++) if (q != i && stage_of(sims[q].age) > 0) alive++; if (alive && (int)(hsh((u32)(minutes + i * 77)) % 100) < (sims[i].age - 79) * 7) { sim_die(i); break; } }
     if (o_auto && mode == M_LIVE && sav_ok() && lot_bx >= 0) { if (sav_write()) say("Saved. Sweet dreams!"); }
@@ -3770,6 +3796,18 @@ static int arrive(int i) {   // at the thing: start doing it (0: nothing to do a
             if (i == ctl) say("That item moved or is unreachable");
             return 0;
         }
+    }
+    if(m->act==WORLD_DS_PENDING){
+        int cd=m->act_amt,o=m->act_obj;m->act=-1;m->act_left=0;
+        if(i!=ctl||o<0||o>=nobj)return 0;
+        int c=ID2CH[OBJ_ID(&objs[o])],lot=zone==Z_CITY&&nb_ok?nb[1][1].lot:-1,terrain=nb_ok?nb[1][1].terrain:BT_GRASS;
+        if((cd==WORLD_OUT_0||cd==WORLD_OUT_1)&&world_outing_anchor(lot,(unsigned char)c)){
+            int g=outing_group_ds(i);if(g>=0)outing_start_ds(g*2+cd-WORLD_OUT_0);
+            else say("Step onto the venue lot");return 0;
+        }
+        if(cd==WORLD_TRIP&&world_trip_anchor(lot,(unsigned char)c)){travel_ui=1;return 0;}
+        if(cd==WORLD_HEIST&&world_heist_anchor(lot,terrain,(unsigned char)c)==SITE_ROAD&&stage_of(m->age)>=3){hs_open_site(SITE_ROAD);return 0;}
+        say("This service is not available here");return 0;
     }
     if (m->act == 80) { if (isl_food > 0) { isl_food--; m->act = 0; m->act_amt = 70; m->face = 150; life_ver++; } else { if (i == ctl) say("Tummy rumbles... try berries or fish"); m->act = -1; return 0; } }   // (the castaway's meal: from what was gathered)
     m->act_left = m->face; trg_arrive(i);
@@ -4771,10 +4809,7 @@ static void set_mode(int m) {
 }
 static void menu_do(int k) {   // (D70) the Live menu's choice k (touch or A): one place, so both do the same
         if (k == 12) { popup = 6; contact_sel = 0; cam_on = 0; return; }
-        if (k == 13) { popup=7;outing_sel=0;cam_on=0;return; }
-        if (k == 11) { if (stage_of(sims[ctl].age) < 3) say("Teens and up"); else hs_open(); return; }   // (D47: the underworld)
-        if (k == 10) { gm_open(); return; }   // (D48: the Games menu: the skateboard (D44) and the Boreagotchi)
-        if (k == 9) { travel_ui = 1; return; }
+        if(k==9||k==10){gm_open();return;} // Games; world services live on physical lots.
         if (k == 0) { set_mode(M_BUY); pick = -1; } else if (k == 1) set_mode(M_BUILD); else if (k == 2) set_mode(M_MAP);
         else if (k == 3) { if (!sav_ok()) say("No save chip found"); else say(sav_write() ? "Game saved" : "Save failed"); }
         else if (k == 4) open_opts();
@@ -4787,7 +4822,12 @@ static void popup_pick(int k) {   // (D82) a button of the thing's popup (touch,
         popup = 0; say("That item is no longer here"); return;
     }
     int cd = popup_code[k]; Sim *m = &sims[ctl]; const Obj *ob = &objs[popup_i]; popup = 0;
-                if (cd < 0) start_act(m, popup_i, -1);
+                if(cd==WORLD_OUT_0||cd==WORLD_OUT_1||cd==WORLD_TRIP||cd==WORLD_HEIST){
+                    int tx,ty;
+                    if(!act_stand(m,popup_i,&tx,&ty)){say("No clear way to reach that");return;}
+                    m->tx=tx;m->ty=ty;m->act=WORLD_DS_PENDING;m->act_amt=cd;m->face=1;m->act_obj=popup_i;m->act_left=0;
+                }
+                else if (cd < 0) start_act(m, popup_i, -1);
                 else if (cd >= 100) farm_do(cd, ctl, popup_i);   // (D38) the farm
                 else if (cd < 81) {
                     int tx, ty;
@@ -4807,7 +4847,6 @@ static void popup_pick(int k) {   // (D82) a button of the thing's popup (touch,
 static void live_touch(int tx, int ty) {
     if (mg_ui) return;   // (D46: the mini-game reads the stylus itself)
     if (popup == 6) { contacts_touch(tx, ty); return; }
-    if (popup == 7) { outings_touch_ds(tx,ty);return; }
     if (jobui) { job_touch(tx, ty); return; }
     if (travel_ui) { travel_touch(tx, ty); return; }
     if (craft_ui) { craft_touch(tx, ty); return; }
@@ -4849,7 +4888,7 @@ static void live_touch(int tx, int ty) {
           else if (n > 8 && hit(26,172,204,18,tx,ty)) soc_page=(soc_page+1)%((n+7)/8);
           else for (int k = 0; k < 8 && soc_page*8+k < n; k++) if (hit(26 + (k & 1) * 104, 82 + (k >> 1) * 22, 100, 20, tx, ty)) { start_soc(ctl, tg, soc_pick[soc_page*8+k]); popup = 0; break; } }
         return; }
-    if (menu_open) { menu_open = 0; int k = hit(78,40,80,16,tx,ty)?12:hit(160,40,80,16,tx,ty)?13:-1; for (int i = 0; i < 12; i++) if (hit(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, tx, ty)) k = i;
+    if (menu_open) { menu_open = 0; int k=hit(160,40,80,16,tx,ty)?12:-1;for(int i=0;i<10;i++) if (hit(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, tx, ty)) k = i;
         ui_snd(k >= 0 ? UI_OK : UI_BACK); menu_do(k); return; }
     if (hit(2, 2, 26, 26, tx, ty)) { set_mode(M_MAP); return; }
     if (hit(104, 178, 48, 14, tx, ty)) { menu_open = 1; return; }
@@ -5422,15 +5461,15 @@ int main(void) {
             } else if (down & KEY_TOUCH) live_touch(tp.px, tp.py);
             if ((down & KEY_B) && (menu_open || popup || jobui || juke || travel_ui || craft_ui || farm_ui)) { menu_open = popup = jobui = juke = travel_ui = craft_ui = farm_ui = 0; down &= ~KEY_B; ui_snd(UI_BACK); }   // (D44: that B is not the board's)
             else if ((down & KEY_START) && !jobui && !juke && !popup && !mg_ui) { menu_open ^= 1; ui_snd(menu_open ? UI_OK : UI_BACK); }            if (juke) { if (down & KEY_DOWN) juke_pg++; if (down & KEY_UP && juke_pg > 0) juke_pg--; if (down & KEY_RIGHT) { int c = mus_cur < 0 ? 0 : mus_cur; o_song = (c + 1) % (mus_n > 0 ? mus_n : 1) + 1; } }
-            if(popup==7&&!mg_ui){if(down&(KEY_UP|KEY_DOWN|KEY_LEFT|KEY_RIGHT))outing_sel^=1;if(down&KEY_A)outing_start_ds();}
-            else if (popup == 6 && !mg_ui) { if (down & KEY_UP) contact_sel--; if (down & KEY_DOWN) contact_sel++; if (down & KEY_LEFT) contact_sel -= 5; if (down & KEY_RIGHT) contact_sel += 5; contacts_clamp(); if (down & KEY_A) contacts_call(); }
+            if (popup == 6 && !mg_ui) { if (down & KEY_UP) contact_sel--; if (down & KEY_DOWN) contact_sel++; if (down & KEY_LEFT) contact_sel -= 5; if (down & KEY_RIGHT) contact_sel += 5; contacts_clamp(); if (down & KEY_A) contacts_call(); }
             else if (mg_ui) mg_frame(held, down, steps, tp.px, tp.py);   // (D46) a mini-game has the buttons and the stylus
             else if (on_board) { if (!menu_open && !popup && !jobui && !juke && !travel_ui && !craft_ui && !farm_ui) skate_frame(held, down, steps); }   // (D44) riding: the buttons are the board's
             else {
             if (down & KEY_L) yaw_t -= 4096; if (down & KEY_R) yaw_t += 4096;
             if (menu_open && !popup) { int r = ui_rep(held, down, vbl_n), ms = menu_sel;   // (D70) the menu by the d-pad: a 4 x 3 grid, A picks
-                if(ms>=12){if(r&(KEY_LEFT|KEY_RIGHT))ms=ms==12?13:12;else if(r&KEY_DOWN)ms=ms==12?1:3;else if(r&KEY_UP)ms=ms==12?9:11;}
-                else { if (r & KEY_LEFT) ms = ms % 4 ? ms - 1 : ms + 3; if (r & KEY_RIGHT) ms = ms % 4 < 3 ? ms + 1 : ms - 3; if(r&KEY_UP)ms=ms>=4?ms-4:12+(ms%4>=2);if(r&KEY_DOWN)ms=ms<8?ms+4:12+(ms%4>=2); }
+                if(ms==12){if(r&(KEY_DOWN|KEY_LEFT|KEY_RIGHT))ms=0;else if(r&KEY_UP)ms=9;}
+                else {if(r&KEY_LEFT)ms=ms%4?ms-1:MIN(ms+3,9);if(r&KEY_RIGHT)ms=(ms%4<3&&ms<9)?ms+1:ms-ms%4;
+                    if(r&KEY_UP)ms=ms>=4?ms-4:12;if(r&KEY_DOWN)ms=ms+4<10?ms+4:12;}
                 if (ms != menu_sel) { menu_sel = ms; ui_snd(UI_MOVE); } if (down & KEY_A) { menu_open = 0; ui_snd(UI_OK); menu_do(menu_sel); down &= ~KEY_A; } }
             if (info_pg >= 2 && !juke && !menu_open && !jobui && !popup && !mg_ui) { int dl = ((down & KEY_RIGHT) ? 1 : 0) - ((down & KEY_LEFT) ? 1 : 0); if (dl) { cur_sim = (cur_sim + dl + nsim) % nsim; life_ver++; ui_ver++; ui_snd(UI_MOVE); } }   // (D73) the traits page: the pad changes housemate
             else { if (!juke && !menu_open && !jobui && !popup && (held & KEY_LEFT)) { yaw_t -= 120; live_yaw = yaw_t; } if (held & KEY_RIGHT) { yaw_t += 120; live_yaw = yaw_t; } }
@@ -5458,7 +5497,7 @@ int main(void) {
             { int hd = dist * cosLerp(pitch) >> 12, r = (hd + (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500)) >> 2; lod_ex = camx - (hd * sinLerp(yaw) >> 12); lod_ez = camz + (hd * cosLerp(yaw) >> 12); lod_r2 = on_board ? 0x3FFFFFFF : r * r; }   // (D51: riding the skate plaza, the lot is all drawn in full, so the lists are not recorded again as the camera follows the rider) (D38) the level of detail goes by the distance from the eye
             { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)((on_board ? skate_sig() * 977 + 5 : 0) + (mg_ui ? mg_sig() * 983 + 3 : 0) + cur_sim * 7 + ctl * 3 + (minutes / 1440) * 13 + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_secrets * 23) * 31 * zone + o_pm * 977 + info_pg * 43 + life_ver * 53 + sims[cur_sim].age * 59 + (cur_sim != ctl ? minutes * 7 + funds : 0)); a = a * 31 + (unsigned)sims[cur_sim].rel;
               static unsigned tv; unsigned av = (unsigned)(minutes * 13 + funds + (o_pm ? polys_last / 64 + fps_now * 977 : 0) + mood(&sims[cur_sim]) * 5); for (int n = 0; n < 6; n++) av = av * 31 + (unsigned)sims[cur_sim].need[n];   // (D39: the values alone are redrawn on their own)
-              unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + (menu_open ? menu_sel * 139 : 0) + (popup == 6 ? contact_sel * 149 + life_ver * 151 + minutes / 60 * 157 : 0) + ((popup == 2 || popup == 3) ? soc_page * 163 : 0) + (popup==7?outing_sel*167+minutes/60*173+funds+sims[ctl].need[2]:0) + (sims[ctl].act==OUT_DS_ACTION?179+sims[ctl].act_left/32*181:0) + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + farm_ui * 97 + (popup || farm_ui ? fm_sig() * 107 : 0) + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + on_board * 113 + (mg_ui ? mg_bsig() * 127 + 1 : 0) + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
+              unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + (menu_open ? menu_sel * 139 : 0) + (popup == 6 ? contact_sel * 149 + life_ver * 151 + minutes / 60 * 157 : 0) + ((popup == 2 || popup == 3) ? soc_page * 163 : 0) + (sims[ctl].act==OUT_DS_ACTION?179+sims[ctl].act_left/32*181:0) + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + farm_ui * 97 + (popup || farm_ui ? fm_sig() * 107 : 0) + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + on_board * 113 + (mg_ui ? mg_bsig() * 127 + 1 : 0) + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
               if (forced) { ts = ~a; hs = ~b; } if (mode == M_LIVE) { if (a != ts) { DBGT(1, draw_top_status(); off_show(scr_sub)); ts = a; tv = av; ui_heavy = 1; } else if (av != tv) { scr = scr_sub; status_vals(1); tv = av; } if (b != hs) { DBGT(0, draw_hud(); hud_show()); ui_heavy = 1; hs = b; } } }   // (D35: not after a menu chip has just left Live, or the Live icons stayed over Buy's 3D view)
         } else {   // BUY / BUILD: the live lot on the top screen, the catalogue or plan on the bottom (drag to place, paint, draw walls, move)
             LV = ed_lv;

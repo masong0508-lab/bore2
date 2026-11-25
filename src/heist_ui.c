@@ -6,6 +6,7 @@
 #include "gfx.h"
 #include "ui.h"
 #include "sim.h"
+#include "world_access.h"
 #include "audio.h"
 #include "ovl.h"
 #include "wants.h"
@@ -16,19 +17,20 @@
 
 enum { H_LIST, H_GATE, H_CHOICE, H_CHASE, H_END };
 #define NT 10
-static const char *const TNM[NT] = { "HATCHBACK", "PICKUP TRUCK", "SPORTS CAR", "MOTORBIKE", "POLICE CRUISER", "SPEEDBOAT", "YACHT", "BIPLANE", "SEAPLANE", "JET" };
+static const char *const TNM[NT] = { "SEDAN", "PICKUP TRUCK", "SPORTS CAR", "SCOOTER", "POLICE CRUISER", "SPEEDBOAT", "YACHT", "BIPLANE", "SEAPLANE", "JET" };
 static const char *const TWH[NT] = { "CAR LOT", "CAR LOT", "CAR LOT", "CAR LOT", "POLICE YARD", "HARBOUR", "HARBOUR", "AIRFIELD", "AIRFIELD", "AIRFIELD" };
 static const u8 TDF[NT] = { 1, 1, 3, 2, 4, 3, 5, 4, 5, 6 }, TST[NT] = { 1, 1, 2, 2, 3, 2, 3, 3, 3, 5 };
 static const int TVAL[NT] = { 400, 700, 2500, 900, 1800, 3500, 12000, 6000, 9000, 30000 };
 static const char *const GNM[3] = { "THE FENCE", "THE GUARD", "THE LOCK" };
 static const char *const GHINT[3] = { "CLIMB WHEN THE LIGHT IS AWAY.", "SLIP PAST WHEN HE LOOKS OFF.", "PICK IT IN THE QUIET MOMENT." };
+static int heist_site;
 static int hp, hsel, gate, alarm, tgt, stars, round_, miss, mark, dir, zone, zw, tmr, anim, good; static char line[48], line2[48];
 static unsigned rs = 9;
 static int rnd(int n) { rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5; return (int)((rs >> 3) % (unsigned)n); }
 static int lg(void) { return wants_skill_level(sims[player].skill_logic); }
 static int stolen(void) { return pk_data[40] | pk_data[41] << 8; }
 static int heat(void) { return pk_data[42]; }
-void heist_open(void) { hp = H_LIST; hsel = 0; line[0] = line2[0] = 0; anim = 0; rs = (unsigned)(cash * 7 + day_count * 31 + 11);
+void heist_open(int site) { heist_site=site;hp=H_LIST;hsel=world_heist_first(site); line[0] = line2[0] = 0; anim = 0; rs = (unsigned)(cash * 7 + day_count * 31 + 11);
     if (pk_data[43] != (u8)day_count) { int d = (u8)day_count - pk_data[43]; if (d < 0) d += 256; pk_data[42] = (u8)MAX(0, heat() - d * 12); pk_data[43] = (u8)day_count; } }
 static void new_zone(int w) { zw = w; if (zw < 8) zw = 8; zone = 10 + rnd(80 - zw); mark = rnd(100); dir = rnd(2) ? 1 : -1; tmr = 0; }
 static void busted(const char *why) {
@@ -42,7 +44,7 @@ static void begin(int t) {
 }
 static void got_away(void) {
     sim_crime(CR_THEFT, 4 + stars * 2); pk_data[42] = (u8)MIN(100, heat() + 10 + stars * 6); pk_data[43] = (u8)day_count;
-    sims[player].skill_logic += 30 + TDF[tgt] * 10; hp = H_CHOICE; hsel = 0; line[0] = 0;
+    sims[player].skill_logic += 30 + TDF[tgt] * 10; hp = H_CHOICE; hsel = (tgt<5&&!sim_heist_can_keep(tgt))?1:0; line[0] = 0;
     if (pk_ext[PKX_PRISON + 3] < 255) pk_ext[PKX_PRISON + 3]++;   // (the PACK GOALS page: heists pulled off)
     sim_note("YOU GOT AWAY WITH IT!"); audio_voice(VOICE_WIN);
 }
@@ -54,8 +56,8 @@ int heist_update(int hd, int pr, int steps) {
     (void)hd; anim += steps;
     if (hp == H_LIST) {
         if (pr & PAD_CIRCLE) return 0;
-        if (pr & PAD_UP) hsel = (hsel + NT - 1) % NT; if (pr & PAD_DOWN) hsel = (hsel + 1) % NT;
-        if (pr & PAD_CROSS) { if (sims[player].bore.stage < AG_TEEN) { strcpy(line, "TOO YOUNG FOR THIS."); return 1; } begin(hsel); }
+        if(pr&PAD_UP)hsel=world_heist_cycle(heist_site,hsel,-1);if(pr&PAD_DOWN)hsel=world_heist_cycle(heist_site,hsel,1);
+        if (pr & PAD_CROSS) { if (!world_heist_valid(heist_site,hsel)) return 1; if (sims[player].bore.stage < AG_TEEN) { strcpy(line, "TOO YOUNG FOR THIS."); return 1; } begin(hsel); }
         return 1; }
     if (hp == H_GATE) {
         int sp = 2 + gate + TDF[tgt] / 2 - lg() / 4; if (sp < 1) sp = 1;
@@ -70,7 +72,11 @@ int heist_update(int hd, int pr, int steps) {
     if (hp == H_CHOICE) {
         if (pr & (PAD_UP | PAD_DOWN)) hsel ^= 1;
         if (pr & PAD_CROSS) {
-            if (hsel == 0) { if (tgt >= 5) { pk_data[40 + (tgt >> 3)] |= (u8)(1 << (tgt & 7)); sprintf(line, "KEPT: THE %s (HOT).", TNM[tgt]); } else { int pay = TVAL[tgt] * (100 + lg() * 3) / 200; cash += pay; sprintf(line, "A CAR CAN'T BE KEPT HERE. SOLD $%d", pay); } }
+            if (hsel == 0) {
+                if (tgt >= 5) { pk_data[40 + (tgt >> 3)] |= (u8)(1 << (tgt & 7)); sprintf(line, "KEPT: THE %s (HOT).", TNM[tgt]); }
+                else if(sim_heist_keep(tgt)){sprintf(line,"KEPT: THE %s (HOT).",TNM[tgt]);}
+                else {strcpy(line,"CANNOT KEEP THIS VEHICLE. SELL IT.");hsel=1;return 1;}
+            }
             else { int pay = TVAL[tgt] * (100 + lg() * 3) / 100; cash += pay; sprintf(line, "FENCED FOR $%d", pay); audio_voice(VOICE_WIN); }
             hp = H_END; strcpy(line2, heat() > 60 ? "THE HEAT IS ON. LAY LOW." : "QUIET, FOR NOW."); }
         return 1; }
@@ -90,12 +96,12 @@ void heist_draw(void) {
     int top = ui_window(30, 10, 260, 218, "UNDERWORLD", IC_LOCK);
     if (hp == H_LIST) {
         ui_text_box(36, top - 1, 150, 12, TX_LEFT | TX_MID, 1, "PICK A RIDE. ANY NIGHT.", UI_SOFT); sprintf(b, "HEAT %d", heat()); ui_text_box(190, top - 1, 94, 12, TX_RIGHT | TX_MID, 1, b, heat() > 50 ? UI_BADT : UI_GOODT);
-        int first = CLAMP(hsel - 4, 0, NT - 8);
-        for (int k = 0; k < 8; k++) { int i = first + k, y = top + 13 + k * 14, on = i == hsel; if (on) { ui_round(36, y, 248, 14, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(36, y + 3, 2, 8, 38, 146, 222, 0); }
+        int first=world_heist_first(heist_site),count=world_heist_count(heist_site);if(!heist_site){first=CLAMP(hsel-4,0,NT-8);count=8;}
+        for (int k = 0; k < count; k++) { int i = first + k, y = top + 13 + k * 14, on = i == hsel; if (on) { ui_round(36, y, 248, 14, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(36, y + 3, 2, 8, 38, 146, 222, 0); }
             ui_text_box(42, y, 100, 14, TX_LEFT | TX_MID, 1, TNM[i], on ? UI_BLUE2 : UI_INK); ui_text_box(140, y, 90, 14, TX_LEFT | TX_MID, 1, TWH[i], UI_SOFT);
             sprintf(b, "$%d", TVAL[i]); ui_text_box(200, y, 78, 14, TX_RIGHT | TX_MID, 1, b, UI_GOODT); }
         { int x = 36; sprintf(b, "SECURITY %d", TDF[hsel]); ui_badge(x, top + 129, b, UI_BLUE, UI_WHITE); x += ui_tw(1, b) + 14; sprintf(b, "WANTED %d", TST[hsel]); ui_badge(x, top + 129, b, UI_RED, UI_WHITE); x += ui_tw(1, b) + 14; sprintf(b, "YOUR LOGIC %d", lg()); ui_badge(x, top + 129, b, UI_LINE, UI_SOFT); }
-        ui_wrap(36, top + 144, 244, 2, hsel >= 5 ? "THE THING CAN BE KEPT: HOT. SKY AND SEA CAN TAKE IT OUT." : "A CAR OR BIKE GOES TO A CHOP SHOP FOR CASH.", UI_SOFT);
+        ui_wrap(36, top + 144, 244, 2, hsel >= 5 ? "KEEP IT FOR SKY AND SEA, OR SELL IT." : "KEEP A NEW VEHICLE TO DRIVE, OR SELL IT. COURT CAN IMPOUND IT.", UI_SOFT);
         ui_text_box(36, top + 166, 244, 12, TX_LEFT | TX_MID, 1, line, UI_RED); ui_hints(160, 214, "X CASE IT|O LEAVE", 1); return; }
     if (hp == H_GATE || hp == H_CHASE) {
         if (hp == H_GATE) { ui_text_box(36, top - 1, 244, 12, TX_LEFT | TX_MID, 1, TNM[tgt], UI_INK); sprintf(b, "GATE %d OF 3: %s", gate + 1, GNM[gate]); ui_text_box(36, top + 13, 244, 12, TX_LEFT | TX_MID, 1, b, UI_BLUE2); ui_wrap(36, top + 28, 244, 2, GHINT[gate], UI_SOFT); }
@@ -104,8 +110,8 @@ void heist_draw(void) {
         ui_round(40 + zone * 236 / 100, top + 66, zw * 236 / 100, 16, 4, UI_RGB(255, 235, 120), UI_RGB(240, 190, 40), 0); ui_round(38 + mark * 236 / 100, top + 62, 5, 24, 2, UI_RGB(60, 70, 200), UI_RGB(30, 40, 140), 0);
         for (int i = 0; i < 5; i++) ui_icon(40 + i * 16, top + 100, IC_STAR, i < stars ? UI_RGB(236, 170, 30) : UI_RGB(110, 110, 130));   // the wanted stars
         ui_wrap(36, top + 124, 244, 2, line, UI_INK); ui_hints(160, 214, "X NOW", 1); return; }
-    if (hp == H_CHOICE) { ui_text_box(36, top - 1, 244, 12, TX_LEFT | TX_MID, 1, "YOU'RE IN. NOW WHAT?", UI_INK); const char *o[2] = { tgt >= 5 ? "KEEP IT. IT IS HOT." : "SELL IT TO THE CHOP SHOP", "FENCE IT FOR CASH" };
+    if (hp == H_CHOICE) { ui_text_box(36, top - 1, 244, 12, TX_LEFT | TX_MID, 1, "YOU'RE IN. NOW WHAT?", UI_INK); const char *o[2] = { tgt >= 5 || sim_heist_can_keep(tgt) ? "KEEP IT. IT IS HOT." : "KEEP UNAVAILABLE", "FENCE IT FOR CASH" };
         for (int i = 0; i < 2; i++) { int y = top + 22 + i * 20; if (i == hsel) { ui_round(36, y, 248, 18, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(36, y + 3, 2, 12, 38, 146, 222, 0); } ui_text_box(44, y, 236, 18, TX_LEFT | TX_MID, 1, o[i], i == hsel ? UI_BLUE2 : UI_INK); }
-        ui_hints(160, 214, "X PICK", 1); return; }
+        ui_wrap(36, top + 76, 244, 2, line, UI_SOFT); ui_hints(160, 214, "X PICK", 1); return; }
     ui_wrap(36, top + 6, 244, 3, line, UI_INK); ui_wrap(36, top + 44, 244, 3, line2, UI_SOFT); sprintf(b, "CASH $%d   HEAT %d", (int)cash, heat()); ui_text_box(36, top + 98, 244, 12, TX_LEFT | TX_MID, 1, b, UI_GOODT); ui_hints(160, 214, "X OK", 1);
 }

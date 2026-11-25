@@ -30,6 +30,7 @@ static u32 *logo_buf(void) { extern void *crowd_arena(void); return (u32 *)crowd
 #include "audio.h"
 #include "scene_music.h"
 #include "outings.h"
+#include "world_access.h"
 #include "font.h"
 #include "mem8.h"
 #include "bigmap.h"
@@ -182,7 +183,7 @@ static int t_vb;
 
 // ---- states ----
 static void party_begin(void);
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ, ST_SUPER, ST_DOG, ST_PRISON, ST_SPACE, ST_MODE, ST_NHED, ST_CUT, ST_SWITCH, ST_RTSET, ST_OUTINGS };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ, ST_SUPER, ST_DOG, ST_PRISON, ST_SPACE, ST_MODE, ST_NHED, ST_CUT, ST_SWITCH, ST_RTSET };
 static void sw_open(int back);   // SWITCH SIM (below)
 #ifdef AUTO_GOTCHI
 static void opts_dbg(int tab, int sel, int back);
@@ -1353,7 +1354,11 @@ static void travel_update(void) {   // (with a home in SAN BOREAS, the first row
         if (home_city && travel_sel == 0) { state = ST_LIFE; if (!home_is_here()) home_go(); return; }
         int z = travel_sel - home_city;
         if (!zone_unlocked(z)) { audio_voice(VOICE_NAH); return; }
-        if (z != world_zone) { travel_go(z); story_visit[z] = 1; for (int i = 0; i < nsims; i++) { if (z < 3) wants_event(&sims[i], z == 1 ? W_ISLAND : W_TOWN, 0); wants_reroll(&sims[i]); } }
+        if (z != world_zone) {
+            int fare=world_trip_fare(z==ZONE_ISLAND,z==ZONE_TOWN);
+            if(fare&&crime_total()&&crime_evid>=80){sim_note("TRAVEL RESTRICTED: ACTIVE CASE");audio_voice(VOICE_NAH);return;}
+            if(cash<fare){sim_note("NOT ENOUGH CASH FOR THE TICKET");audio_voice(VOICE_NAH);return;}
+            cash-=fare;travel_go(z);story_visit[z]=1; for (int i = 0; i < nsims; i++) { if (z < 3) wants_event(&sims[i], z == 1 ? W_ISLAND : W_TOWN, 0); wants_reroll(&sims[i]); } }
         state = ST_LIFE;
     }
 }
@@ -1379,6 +1384,7 @@ static void travel_draw(void) {   // where to: the four places, each on a row wi
         ui_text(78, y + 6, 1, world_zone_name(i), !open_ ? UI_SOFT : sel ? UI_BLUE2 : UI_INK);
         const char *t = !open_ ? lockTxt[i] : blurb[i];
         if (i == ZONE_CITY) { int nf = 0; while (nf < pop_famcap && pop_fam[nf].n) nf++; sprintf(b, "%d TOWNS, %d HOUSEHOLDS", bm_nset(), nf); t = b; }
+        if(open_&&!here&&(i==ZONE_ISLAND||i==ZONE_TOWN)){snprintf(b,sizeof b,"$%d TICKET: %s",world_trip_fare(i==ZONE_ISLAND,i==ZONE_TOWN),i==ZONE_ISLAND?"CASTAWAY":"DESERT TOWN");t=b;}
         if (here) t = "YOU ARE HERE";
         ui_text(78, y + 18, 1, t, here ? UI_GOODT : open_ ? UI_SOFT : UI_BADT);
     }
@@ -3358,7 +3364,6 @@ static void pause_update(void) {
     if (NAVP(PAD_DOWN)) menu_sel = (menu_sel + 1) % NPAUSE;
     if (PRESSED(PAD_START) || PRESSED(PAD_CIRCLE)) { state = ST_LIFE; return; }
     if (PRESSED(PAD_SELECT)) { extern void phone_open(void); phone_open(); return; }
-    if (PRESSED(PAD_TRIANGLE)) { state=ST_OUTINGS; return; }
     if (PRESSED(PAD_CROSS)) {
         sub_back = ST_PAUSE;
         switch (menu_sel) {
@@ -3389,42 +3394,13 @@ static void pause_draw(void) {   // one short column: the game itself (the rest 
     menu_bg(0);
     int top = ui_window(70, 8, 180, 224, "PAUSED", IC_PAUSE);
     for (int i = 0; i < NPAUSE; i++) ui_button(78, top + i * 13, 164, 12, pauseNm[i], ic[i], i == menu_sel);
-    ui_hints(160, top + NPAUSE * 13 + 3, "X OK|TRI ACTIVITIES|O BACK", 1);
-}
-
-// ---- Local activities: the current public venue, not a remote job board.
-static int outing_sel;
-static void outings_update(void){
-    int g=sim_outing_group();
-    if(NAVP(PAD_UP)||NAVP(PAD_DOWN))outing_sel^=1;
-    if(PRESSED(PAD_CIRCLE)||PRESSED(PAD_START)){state=ST_PAUSE;return;}
-    if(PRESSED(PAD_CROSS)&&g>=0&&sim_outing_start(g*2+outing_sel))state=ST_LIFE;
-}
-static void outings_draw(void){
-    menu_bg(0);
-    int top=ui_window(8,8,304,224,"LOCAL ACTIVITIES",IC_STAR),g=sim_outing_group();
-    if(g<0){
-        ui_text_box(20,top+12,280,50,TX_LEFT|TX_MID,1,"VISIT A CAFE, LIBRARY, GYM, POOL, CINEMA, FARM, PARK, ARCADE, GALLERY, HOTEL, SCHOOL OR OBSERVATORY.",UI_INK);
-        ui_text_box(20,top+83,280,35,TX_LEFT|TX_MID,1,"WALK ONTO THE VENUE'S LOT, THEN OPEN THIS MENU. ACTIVITIES TAKE TIME AND REWARD YOUR BORE WHEN FINISHED.",UI_SOFT);
-    }else{
-        ui_section(16,top,288,outing_venue_names[g]);
-        for(int k=0;k<2;k++){
-            int id=g*2+k,y=top+22+k*72,check=sim_outing_check(id);
-            const Outing *o=outing_get(id);char b[48];
-            ui_button(16,y,288,20,o->title,IC_STAR,outing_sel==k);
-            ui_text_box(22,y+23,276,19,TX_LEFT|TX_MID,1,o->desc,UI_INK);
-            snprintf(b,sizeof b,"$%d  ENERGY -%d  FUN +%d",o->fee,o->energy,o->fun);
-            ui_text(22,y+44,1,b,UI_SOFT);
-            ui_text(22,y+55,1,outing_reason[check],check==OUT_OK?UI_GOODT:UI_SOFT);
-        }
-    }
-    ui_hints(160,216,"UP DOWN CHOOSE|X START|O BACK",1);
+    ui_hints(160, top + NPAUSE * 13 + 3, "X OK|SEL PHONE|O BACK", 1);
 }
 
 // ---- THE PHONE (SELECT): The Sims' cell phone. Twelve apps on a grid; the family's list for playing as someone else ----
 static const char *const phNm[PH_N] = { "CALL", "PIZZA", "PARTY", "MAP", "TRAVEL", "JOBS", "HOMES", "PEOPLE", "FAMILY", "ADOPT", "MUSIC", "GOALS", "TEXT", "PHOTO", "GAMES" };
 static const char *const phBlurb[PH_N] = { "CHAT WITH A FRIEND, RIGHT WHERE YOU ARE", "$40. A HOT MEAL, NO COOKING", "$100. GUESTS COME OVER TO DANCE",
-    "SAN BOREAS, AND A TAXI ANYWHERE IN IT", "THE ISLAND, THE DESERT TOWN, HOME", "FIND WORK, OR GET A RIDE TO WORK", "HOUSES AND LOTS FOR SALE NEAR YOU",
+    "SAN BOREAS, AND A TAXI ANYWHERE IN IT", "BOOK AT A HOTEL OR USE A BUS STOP / BOAT", "FIND WORK, OR GET A RIDE TO WORK", "HOUSES AND LOTS FOR SALE NEAR YOU",
     "EVERYONE IN SAN BOREAS, AND WHERE THEY ARE", "PLAY AS SOMEONE ELSE IN THE FAMILY", "$1000. A BABY OR A CHILD, HOME TOMORROW", "EVERY SONG THERE IS, WHEREVER YOU ARE", "THE STORY SO FAR: YOUR GOALS",
     "A QUICK HELLO TO A FRIEND. QUICKER THAN A CALL", "A SELFIE. SMILE!", "A GAME ON THE HANDHELD, OR ON THE PHONE ITSELF" };
 static const s8 phIc[PH_N] = { IC_CHAT, IC_FOOD, IC_PARTY, IC_PIN, IC_CAR, IC_CASE, IC_HOUSE, IC_PEOPLE, IC_ARROW, IC_BABY, IC_NOTE, IC_BOOK, IC_BUBBLES, IC_CAMERA, IC_STAR };
@@ -3480,7 +3456,7 @@ static void phone_update(void) {
         case PH_CALL: case PH_PIZZA: state = ST_LIFE; if (!sim_cell(ph_sel == PH_PIZZA)) audio_voice(VOICE_NAH); break;
         case PH_PARTY: state = ST_LIFE; throw_party(); break;
         case PH_MAP: map_t = -1; state = ST_MAP; break;   // (opened on the map's own first frame: this frame still draws the people, whose sprites share that VRAM)
-        case PH_TRAVEL: travel_sel = home_city && home_is_here() ? 0 : world_zone + home_city; state = ST_TRAVEL; break;
+        case PH_TRAVEL: sim_note("TRIPS: VISIT A HOTEL, BUS STOP OR BOAT"); state=ST_LIFE; break;
         case PH_JOBS: jobs_board = 0; jobs_open(); state = ST_JOBS; break;
         case PH_HOMES: nhood_open(0); break;
         case PH_PEOPLE: dir_open(); state = ST_DIR; break;
@@ -5979,8 +5955,7 @@ int main(void) {
                     life_draw(); break; } }   // (test builds: the city stands still after AB_FREEZE frames, still drawn: two builds' pictures can be laid over each other)
 #endif
                 { int t0 = hb_now(); life_update(steps_raw); t_upd = hb_now() - t0; } life_draw(); if (state == ST_LIFE) big_flash(); break;
-            case ST_PAUSE: pause_update(); if(state==ST_OUTINGS)outings_draw();else pause_draw(); break;
-            case ST_OUTINGS: outings_update(); if(state==ST_OUTINGS)outings_draw();else if(state==ST_LIFE)life_draw();else pause_draw();break;
+            case ST_PAUSE: pause_update(); pause_draw(); break;
             case ST_BUILD: build_update(); build_draw(); break;
             case ST_JUKEBOX: juke_update(); juke_draw(); break;
             case ST_HELP: help_update(); help_draw(); break;
