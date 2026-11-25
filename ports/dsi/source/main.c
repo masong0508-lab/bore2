@@ -26,7 +26,7 @@ static const Opt OPT[] = {
     { "Music track", "Auto|Daydream|Evening|Bounce|Night", &o_trk, 1, 0 }, { "Tap clicks", "Off|On", &o_ckl, 1, 1 }, { "Chimes", "Off|On", &o_chm, 1, 1 }, { "Stereo", "Center|Spread", &o_pan, 1, 1 },
     { "Autosave", "Off|On", &o_auto, 2, 1 }, { "Clock", "12 hour|24 hour", &o_c24, 2, 0 },
     { "Reset graphics", "tap", 0, 3, 0 }, { "Reset audio", "tap", 0, 3, 1 }, { "Reset all", "tap", 0, 3, 255 },
-    { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Auto|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52", &o_song, 1, 0 },
+    { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Auto|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52|53|54|55|56|57|58|59|60", &o_song, 1, 0 },
     { "Roofs", "Cutaway|Always|Hide", &o_roof, 0, 0 },
     // (D33, from the PS1 OPTIONS: these are saved in their own block after the others, so old saves load with the defaults)
     { "Needs speed", "Never fall|Slow|Normal|Fast", &o_need, 2, 2 }, { "Day length", "Short|Normal|Long|Epic", &o_day, 2, 1 }, { "Message time", "Short|Normal|Long", &o_msgt, 2, 1 },
@@ -834,7 +834,8 @@ static void snd_tick(void) {
     { int songs_on = o_msrc == 0 && o_mus && o_vol && !quiet && mus_ok != 0;
       if (mus_ok < 0) mus_init();
       if (songs_on && mus_ok == 1) {
-          int pick = o_song ? o_song - 1 : (mode == M_TITLE || mode == M_CAS) ? 0 : 0;
+          if (o_song > mus_n || o_song < 0) o_song = 0;
+          int pick = o_song ? o_song - 1 : 0;
           if (o_song == 0 && mode != M_TITLE && mode != M_CAS && (mus_cur < 0 || mus_cur == 0) && mus_n > 1) { static u32 rs = 12345; static int last; rs = rs * 1664525u + 1013904223u + (u32)minutes;   // (Shuffle songs: at random, or in order)
               pick = o_shuf ? 1 + (int)((rs >> 8) % (u32)(mus_n - 1)) : last % (mus_n - 1) + 1; last = pick; }
           if (mus_cur != pick && !(o_song == 0 && mode != M_TITLE && mode != M_CAS && mus_cur > 0)) mus_start(pick);
@@ -862,7 +863,7 @@ typedef struct { volatile u32 gen, run, seq, loop_off, smp, tbl, vol, stereo; vo
 static MusCtl mus_ctl __attribute__((aligned(32)));
 static int mus_ent, mus_laps, mus_next = -1, mus_play, mus_ld = -1; static volatile u32 mus_hello, mus_armed;   // (mus_armed: the ARM7 has been told to play and not to stop)
 static void mus_hi(u32 v, void *u) { (void)u; if (v == 0x4D555331u) mus_hello = v; }   // (the ARM7 answers 'MUS1' when it has the song player)
-static u32 mus_base;
+static u32 mus_base, mus_size;
 static volatile const u32 MUS_LOC[4] __attribute__((used, aligned(4))) = { 0x41444D42u, 0, 0, 0x2E4D4442u };   // 'BMDA', the songs' ROM address (patched in), the size, '.BDM'
 static int cart_blk(u32 addr, u32 *dst) {   // 512 bytes of the cartridge at addr (a multiple of 512)
     u32 rc = *(vu32 *)0x027FFE60; if (!rc) rc = 0x00586000;
@@ -874,7 +875,7 @@ static void cart_read(u32 addr, void *dst, u32 len) { u32 *d = (u32 *)dst; for (
 static u32 rd32(const u8 *p) { return p[0] | p[1] << 8 | p[2] << 16 | (u32)p[3] << 24; }
 static void mus_init(void) {
     mus_ok = 0; static u32 blk[128]; const volatile u32 *loc = MUS_LOC; if (loc[0] != 0x41444D42u || !loc[1] || loc[3] != 0x2E4D4442u) return;   // (addmusic.py wrote where the songs start)
-    mus_base = loc[1]; cart_blk(mus_base, blk); if (memcmp(blk, "BDM2", 4)) return;
+    mus_base = loc[1]; mus_size = loc[2]; if (mus_size < 8192 || (mus_base & 511) || mus_base + mus_size < mus_base) return; cart_blk(mus_base, blk); if (memcmp(blk, "BDM2", 4)) return;
     cart_read(mus_base, mus_dir, 4096); 
     mus_n = (int)rd32(mus_dir + 4); mus_ent = (int)rd32(mus_dir + 8); if (mus_n < 1 || mus_n > 64 || mus_ent != 96 || 16 + mus_n * mus_ent > (int)sizeof mus_dir) return;
     if (16 + mus_n * mus_ent > 4096) cart_read(mus_base + 4096, mus_dir + 4096, 4096);
@@ -893,7 +894,8 @@ static u32 mus_ld_off, mus_ld_len;   // the song being read off the cartridge, a
 static void mus_psg_off(void) { for (int i = 0; i < 4; i++) vset(i, 0, 0); }
 static int mus_start(int n) {   // D77: silence everything, then read the song a slice at a time (mus_tick): the whole read (up to 300 KB, a good half second on a cartridge) used to freeze the loop, and the click's square-wave voice rang on for all of it
     mus_stop(); mus_ld = -1; if (mus_ok != 1 || n < 0 || n >= mus_n) return 0;
-    const u8 *e = mus_e(n); u32 len = rd32(e + 4); if (len > MUS_BUFSZ || !len) return 0;
+    const u8 *e = mus_e(n); u32 pos = rd32(e), len = rd32(e + 4), seq = rd32(e+24), tbl = rd32(e+8), smp = rd32(e+12), sz = rd32(e+16);
+    if (len > MUS_BUFSZ || !len || (pos & 511) || pos > mus_size || ((len+511)&~511u) > mus_size-pos || !seq || seq > tbl || tbl > smp || smp > len || sz > len-smp || rd32(e+20) >= seq) return 0;
     mus_psg_off(); mus_ld = n; mus_ld_off = 0; mus_ld_len = (len + 511) & ~511u; if (mus_ld_len > MUS_BUFSZ) mus_ld_len = MUS_BUFSZ;
     mus_laps = 0; mus_cur = n; return 1;
 }

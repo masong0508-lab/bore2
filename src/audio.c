@@ -541,10 +541,10 @@ int  dj_pos(int d, int what) { Deck *k = &dk[d & 1]; return what == 0 ? k->ord -
 
 // ---- RADIO STATIONS: the songs grouped by feel; a radio, stereo or jukebox tunes one in ----
 static const char *const stNm[4] = { "BORE FM", "RAVE 101", "CHILL WAVE", "SPACE RADIO" };
-static const char *const stKey[4] = { "DIPPER|EXCUSES|CORA|BARRACHO|FLEXICODE|WINNER|CIGARETTE",
-                                      "HOT DAMN|COCAINE|CYNICAL|EMERGENCY|AIM AND|CONDENSED|OHIO|OVER MY VOICE",
-                                      "TREE|CLOUDS|SUNMAN|WHISTLER|CLOSER|HERE TODAY",
-                                      "SPACE|MARS|BOMB|MAGIC|NURSERY|STAGED|AMIGA|QUICKBULLET" };
+static const char *const stKey[4] = { "DIPPER|EXCUSES|CORA|BARRACHO|FLEXICODE|WINNER|CIGARETTE|ELM STREET|MARKET DAY",
+                                      "HOT DAMN|COCAINE|CYNICAL|EMERGENCY|AIM AND|CONDENSED|OHIO|OVER MY VOICE|SKATE NIGHT|PAVEMENT",
+                                      "TREE|CLOUDS|SUNMAN|WHISTLER|CLOSER|HERE TODAY|LAST BUS|ROOFTOPS|ISLAND MORNING",
+                                      "SPACE|MARS|BOMB|MAGIC|NURSERY|STAGED|AMIGA|QUICKBULLET|BLUE HOUR" };
 static int station = -1;
 static int in_station(int st, int i) {   // does song i's name hold one of the station's words
     const char *k = stKey[st], *n = songs[i].name;

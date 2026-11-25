@@ -4,7 +4,7 @@ name: build-ds
 on:
   workflow_dispatch:
   push:
-    paths: ["ports/dsi/**", "tools/dsbuild/**", "tools/dsemu/**", "src/bigmap.*", "src/common.h", "assets/dsmusic.bin", ".github/workflows/build-ds.yml"]
+    paths: ["ports/dsi/**", "tools/dsbuild/**", "tools/dsemu/**", "src/bigmap.*", "src/common.h", "assets/dsmusic.bin", "tools/neighborhood_music.py", "tools/content_spu.c", "tools/dsmusic/**", ".github/workflows/build-ds.yml"]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}

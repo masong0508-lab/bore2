@@ -23,3 +23,5 @@ build_hash/
 build_spd/
 build_spd2/
 build_ra/
+
+.bore2-generated/

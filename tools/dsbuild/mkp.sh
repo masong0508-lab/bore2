@@ -12,5 +12,7 @@ EXTRA="-I$R/ports/host/shim -I$R/src -I$R/ports/dsi/source" /tmp/dsb/cc9.sh $R/p
 ld.lld -z muldefs -T $C/dsi_arm9.mem -T ds.ld --gc-sections --no-check-sections --defsym=fake_heap_start=__end__ --defsym=fake_heap_end=__eheap_end -o bore.elf /tmp/dsb/ds_arm9_crt0.o bore_main.o bore_map.o bore_ag.o glue.o /tmp/dsb/libnds9.a /tmp/dsb/pl/lib/libc.a /tmp/dsb/libgcc.a
 llvm-objcopy -O binary bore.elf bore.full; tail -c +2049 bore.full > bore.bin
 /tmp/dsb/bin/ndstool -c bore.nds -g BR2D 01 BORE2 -h 0x4000 -9 bore.bin -7 a7.bin -r9 0x02000000 -e9 0x02000800 -r7 0x02380000 -e7 0x02380000 >/dev/null
-python3 $R/tools/dsbuild/addmusic.py bore.nds $R/assets/dsmusic.bin
+# Shared per-checkout cache: the seven emulator builds reuse the same generated bank.
+python3 "$R/tools/neighborhood_music.py" handheld "$R/assets" "$R/.bore2-generated/handheld"
+python3 "$R/tools/dsbuild/addmusic.py" bore.nds "$R/.bore2-generated/handheld/dsmusic.bin"
 ls -la bore.nds
