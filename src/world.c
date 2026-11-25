@@ -9,6 +9,7 @@
 #include "audio.h"
 #endif
 #include "bigmap.h"
+#include "world_access.h"
 #include "traffic.h"
 #include "mem8.h"
 #include "pop.h"
@@ -1112,6 +1113,18 @@ COLD static void gen_block0(int wx, int wy) {
         case LOT_OBS:     lot_obs(lx, ly, h); break;
         case LOT_RIVER:   lot_river(ox, oy, b.road & BR_MEGA, h, river_br(&b)); break;
         default: break;
+    }
+    // Use the real community flag as a physical service marker. Don't
+    // overwrite any furniture, door, road or main entrance path.
+    if (!mine && prop<0 && b.set!=255 && world_marker_needed(b.lot,b.terrain)) {
+        int found=0;
+        for(int y=ly;y<oy+BM_BLK&&!found;y++)for(int x=lx;x<ox+BM_BLK;x++)if(lifeMap[y][x]=='a'){found=1;break;}
+        if(!found)for(int y=ly+11;y>=ly+8&&!found;y--)for(int x=lx+1;x<=lx+11;x++){
+            if(x>=lx+4&&x<=lx+8)continue;
+            if(x<ox+BM_BLK&&y<oy+BM_BLK&&lifeMap[y][x]=='.'&&floorMap[y][x]!=FL_WATER&&!FL_IS_ROAD(floorMap[y][x])){
+                gFree(x,y,'a');found=1;break;
+            }
+        }
     }
     occ_on = 0; blk_bx = blk_by = 0xFFFF;
     if (pln) mirror7(ox, oy, hn0, ground);

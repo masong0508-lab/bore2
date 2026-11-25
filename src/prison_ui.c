@@ -47,9 +47,9 @@ static char chg[3][40];
 #ifdef AUTO_PRISON
 #define FORCE_CORRUPT 1
 #endif
-extern void heist_open(void); extern int heist_update(int, int, int); extern void heist_draw(void); static int heisting;   // (GRAND THEFT: heist_ui.c, the underworld, opened from the phone)
+extern void heist_open(int site); extern int heist_update(int, int, int); extern void heist_draw(void); static int heisting;   // (GRAND THEFT: heist_ui.c, the underworld, opened from the phone)
 void prison_open(int arg) {
-    heisting = arg == 3; if (heisting) { heist_open(); return; }
+    heisting = arg==3||(arg>=10&&arg<=12);if(heisting){heist_open(arg==3?0:arg-9);return;}
     (void)arg; phase = P_ARREST; sentence = 0; day = 0; slot = 0; sel = 0; health = 100; respect = 10 + rap_sheet * 5; heat = 10; behav = 55; plan = 0; earned = 0; solitary = 0; anim = 0; over = 0; outcome = 0;
     msg = 0; msgT = 0; memset(logl, 0, sizeof logl); rs = (unsigned)(cash + 1 + crime_evid * 31 + rap_sheet * 977 + day_count * 13); tdays = 0; lawyer = 0; corrupt = rnd(100) < 16; 
 #ifdef FORCE_CORRUPT

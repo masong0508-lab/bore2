@@ -4,6 +4,7 @@
 #include "wants.h"
 #define OUTINGS_IMPLEMENTATION
 #include "outings.h"
+#include "world_access.h"
 #include "arcade.h"
 #include "fight.h"
 #include "realm.h"
@@ -1791,7 +1792,17 @@ static int front_tile(const Sim *s, int *mx, int *my) {
     *mx = px / TILE; *my = (-pz) / TILE;
     return px >= 0 && pz <= 0;
 }
+static int world_service_lot(int tx,int ty,int *terrain){
+    if(world_zone!=ZONE_CITY||world_wbx<0||tx<0||ty<0||tx>=MW||ty>=MH||tx%BM_BLK<BM_LOT0||ty%BM_BLK<BM_LOT0)return -1;
+    BInfo b;bm_block(world_wbx+tx/BM_BLK,world_wby+ty/BM_BLK,&b);if(terrain)*terrain=b.terrain;return b.lot;
+}
+static int world_marker_at(int tx,int ty,char c){
+    if(c!='a')return 0;
+    int terrain=BT_GRASS,lot=world_service_lot(tx,ty,&terrain);
+    return lot>=0&&(world_outing_anchor(lot,(unsigned char)c)||world_trip_anchor(lot,(unsigned char)c)||world_heist_anchor(lot,terrain,(unsigned char)c));
+}
 static int usable_at(int tx, int ty, char c) {   // something X does something with
+    if(world_marker_at(tx,ty,c))return 1;
     if (action_for(c) != ACT_NONE) return 1;
     if ((u8)c >= 0xBE && (u8)c <= 0xEA && (u8)c != 0xDF && (u8)c != 0xE1) return 1;      // (the BOREAGOTCHI! pack's things)
     if (c == '8') return world_zone == ZONE_CITY;      // a FOR SALE sign
@@ -1846,6 +1857,7 @@ static const char *sim_hint_(void) {
     if (!target_of(s, &mx, &my, &who)) return "";
     if (who >= 0) return "TALK";
     char c = world_at(mx, my);
+    if(world_marker_at(mx,my,c))return "LOCAL SERVICES";
     int mine = job_here(mx, my, c);
     if (mine && is_work()) return "WORK";
     if (c == 'x') return mine ? "NOT WORK TIME" : "NOT YOUR JOB";
@@ -1879,8 +1891,8 @@ static const char *const soNm[SO_N] = { "TALK", "JOKE", "HUG", "COMPLIMENT", "FL
 static int pie_who, pie_mx, pie_my, pie_n; static u8 pie_code[8];   // what is open: a person (pie_who >= 0) or a tile
 static int pie_place; static PlaceInfo pie_pi;                         // the place that tile is at (pie_place 0: none)
 enum { PC_WORK = 40, PC_MEAL, PC_SNACK, PC_COFFEE, PC_BUY0, PC_BUY4 = PC_BUY0 + 4, PC_TRAINER, PC_SWIM, PC_PLAY, PC_ROOM, PC_BROWSE,   // (the codes past the things' own)
-       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_RESORT, PC_CAMP, PC_FARMBOOK, PC_SKYSEA, PC_HEIST, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_PAINT, PC_SELLART, PC_WRITE, PC_DIYFIX, PC_MECHFIX, PC_FPLANT0, PC_FPLANT_END = PC_FPLANT0 + 3, PC_FWATER, PC_FHARV, PC_FHEN, PC_FCOW, PC_FFEEDH, PC_FFEEDC, PC_FEGGS, PC_FMILK, PC_FSELL, PC_FEAT, PC_FSPRAY, PC_FFERT, PC_FORDER, PC_FUP, PC_FFAIR, PC_FDRINK, PC_FTALK, PC_FCURE, PC_FROOT, PC_FSPROUT, PC_MAIL, PC_SUN, PC_DIVE, PC_LAPS, PC_GRILL, PC_BIRDS, PC_SMELL, PC_BUYPROP, PC_FPET, PC_FBRUSH, PC_FSHOP, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N };
-_Static_assert(PC_VEH_END < 256, "pie codes are bytes");
+       PC_PARTY, PC_DJ, PC_LATTE, PC_CAKE, PC_DRINK, PC_ROUND, PC_FILM, PC_POPCORN, PC_HAIR, PC_LOOK, PC_DINE, PC_CHECKUP, PC_MASSAGE, PC_SOAK, PC_ADMIRE, PC_PAINTING, PC_BOARD, PC_PICKBOARD, PC_PHONE1, PC_PHONE2, PC_PHONE3, PC_HAND1, PC_HAND2, PC_JOBBOARD, PC_GIG, PC_WEB, PC_COOKNET, PC_CHATNET, PC_CLASS, PC_BAG, PC_BELT, PC_PRIZES, PC_FUEL, PC_CSNACK, PC_CDRINK, PC_GOT_OPEN, PC_GOT_BOX, PC_GOT_DEX, PC_GOT_BUY, PC_GOT_FEED, PC_GOT_LIGHT, PC_GOT_TUCK, PC_PRAC0, PC_PRAC_END = PC_PRAC0 + 4, PC_BUS, PC_PASS1, PC_PASS7, PC_PASS30, PC_DOG, PC_CAT, PC_PETFEED, PC_PETPLAY, PC_STEAL, PC_SPACE, PC_RESORT, PC_CAMP, PC_FARMBOOK, PC_SKYSEA, PC_HEIST, PC_ENR0, PC_ENR_END = PC_ENR0 + 3, PC_LECT, PC_STUDY, PC_REC, PC_SCOPE0, PC_SCOPE_END = PC_SCOPE0 + 4, PC_PAINT, PC_SELLART, PC_WRITE, PC_DIYFIX, PC_MECHFIX, PC_FPLANT0, PC_FPLANT_END = PC_FPLANT0 + 3, PC_FWATER, PC_FHARV, PC_FHEN, PC_FCOW, PC_FFEEDH, PC_FFEEDC, PC_FEGGS, PC_FMILK, PC_FSELL, PC_FEAT, PC_FSPRAY, PC_FFERT, PC_FORDER, PC_FUP, PC_FFAIR, PC_FDRINK, PC_FTALK, PC_FCURE, PC_FROOT, PC_FSPROUT, PC_MAIL, PC_SUN, PC_DIVE, PC_LAPS, PC_GRILL, PC_BIRDS, PC_SMELL, PC_BUYPROP, PC_FPET, PC_FBRUSH, PC_FSHOP, PC_VEH0, PC_VEH_END = PC_VEH0 + VEH_N, PC_LOCAL0, PC_LOCAL1, PC_TRIP };
+_Static_assert(PC_TRIP < 256, "pie codes are bytes");
 static int room_here(void) { return room_bx == pie_pi.bx && room_by == pie_pi.by && life_minutes() < room_until; }
 static char pie_title[24];
 const char *sim_pie_title(void) { return pie_title; }
@@ -1932,6 +1944,16 @@ static int sim_pie_open_(char opt[8][24]) {
         return pie_n;
     }
     char c = world_at(mx, my); int act = action_for(c);
+    if(world_marker_at(mx,my,c)){
+        int terrain=BT_GRASS,lot=world_service_lot(mx,my,&terrain),g=outing_group(lot,0);
+        pie_place=0;strcpy(pie_title,"LOCAL SERVICES");
+        if(g>=0){for(int k=0;k<2;k++){const Outing *o=outing_get(g*2+k);snprintf(opt[pie_n],24,"%.17s $%d",o->title,o->fee);pie_code[pie_n++]=PC_LOCAL0+k;}}
+        if(world_trip_anchor(lot,(unsigned char)c)){strcpy(opt[pie_n],"BOOK A TRIP");pie_code[pie_n++]=PC_TRIP;
+            if(world_hotel(lot)){strcpy(opt[pie_n],"RESORT MANAGEMENT");pie_code[pie_n++]=PC_RESORT;}}
+        if(world_heist_anchor(lot,terrain,(unsigned char)c)&&s->bore.stage>=AG_TEEN){strcpy(opt[pie_n],"GRAND THEFT (RISK)");pie_code[pie_n++]=PC_HEIST;}
+        if(world_heist_site(lot,terrain)>=SITE_WATER){strcpy(opt[pie_n],"SKY AND SEA");pie_code[pie_n++]=PC_SKYSEA;}
+        return pie_n;
+    }
     if (c == ' ') { strcpy(pie_title, "STAIRS"); strcpy(opt[0], "GO DOWN"); pie_code[0] = 1; pie_n = 1; return 1; }
     if (c == '8' && world_zone == ZONE_CITY && world_wbx >= 0) {   // a home for sale: buy it, and the family moves in
         int bx = world_wbx + mx / BM_BLK, by = world_wby + my / BM_BLK;
@@ -2034,7 +2056,7 @@ static int sim_pie_open_(char opt[8][24]) {
         case ACT_RUN: OPT("JOG", 0) OPT("SPRINT", 1) break;
         case ACT_COFFEE: OPT("A CUP", 0) OPT("ESPRESSO", 1) break;
         case ACT_READ: OPT("READ", 0) OPT("STUDY", 1) break;
-        case ACT_PHONE: OPT("CALL A FRIEND", 0) OPT("ORDER PIZZA", 1) OPT("THROW A PARTY", 2) OPT("BOOK A RESORT", PC_RESORT) OPT("FARM LEDGER", PC_FARMBOOK) OPT("HARBOUR AND SKY", PC_SKYSEA) if (s->bore.stage >= AG_TEEN) OPT("UNDERWORLD", PC_HEIST) if (s->bore.stage == AG_ADULT || s->bore.stage == AG_ELDER) OPT("ADOPT $1000", 35) break;
+        case ACT_PHONE: OPT("CALL A FRIEND", 0) OPT("ORDER PIZZA", 1) OPT("THROW A PARTY", 2) if (s->bore.stage == AG_ADULT || s->bore.stage == AG_ELDER) OPT("ADOPT $1000", 35) break;
         case ACT_TRAVEL: if (c == '+' && world_zone == ZONE_CITY) { OPT("BUS TO A TOWN", PC_BUS) OPT("TO THE COUNTRY, ISLAND", 0) OPT("DAY PASS $10", PC_PASS1) OPT("WEEK PASS $30", PC_PASS7) OPT("MONTH PASS $90", PC_PASS30) } else OPT(act_hint(act, c), 0) break;
         case ACT_STAIRS: OPT("GO UP", 0) break;
         case ACT_FUN: if (c == '[') {   // the COMPUTER (borrowed from BORE on the GBA): the job board, a paid gig, the web
@@ -2075,7 +2097,7 @@ static int sim_pie_open_(char opt[8][24]) {
                              else if (col_lvl < 3) OPT(col_lvl == 1 ? "MASTER'S COURSE $900" : "DOCTORATE $1600", PC_ENR0 + 3)
                              OPT("MY RECORD", PC_REC) } break;
         case LOT_POOL: if ((c == '~' || c == '>') && pie_n < 8) OPT("SWIM", PC_SWIM) break;
-        case LOT_INN: case LOT_HOTEL: if (c == 'y' || c == 'I') OPT(room_here() ? "MY ROOM: PAID" : "A ROOM $60", PC_ROOM) break;
+        case LOT_INN: case LOT_HOTEL: if (c == 'y' || c == 'I') { if(pie_n<8) OPT(room_here() ? "MY ROOM: PAID" : "A ROOM $60", PC_ROOM) if(pie_n<8) OPT("BOOK A TRIP", PC_TRIP) if(pie_n<8) OPT("RESORT MANAGEMENT", PC_RESORT) } break;
         case LOT_CAFE: if (c == 'y' || c == 'c') { OPT("A LATTE $5", PC_LATTE) if (c == 'y') OPT("A CAKE $6", PC_CAKE) } break;
         case LOT_BAR: if (c == 'y') { OPT("A DRINK $8", PC_DRINK) OPT("A ROUND $40", PC_ROUND) } break;
         case LOT_CINEMA: if (c == ';' && pie_n < 8) OPT("A FILM $12", PC_FILM) else if (c == 'y' || c == ':') OPT("POPCORN $4", PC_POPCORN) break;
@@ -2178,6 +2200,13 @@ static const char *const dj_day[7] = { "STANCE AND GUARD", "THE COMBO", "KICKS",
 static int dj_last = -1, dj_streak, dj_key = -1;
 static void place_do(Sim *s, int code) {
     switch (code) {
+        case PC_LOCAL0: case PC_LOCAL1: {
+            int lot=world_service_lot(pie_mx,pie_my,0),g=outing_group(lot,0);
+            if(g>=0&&world_outing_anchor(lot,(unsigned char)world_at(pie_mx,pie_my)))sim_outing_start(g*2+code-PC_LOCAL0);
+            else sim_note("VISIT THE VENUE'S COMMUNITY FLAG");break;}
+        case PC_TRIP:
+            if(world_trip_anchor(world_service_lot(pie_mx,pie_my,0),(unsigned char)world_at(pie_mx,pie_my)))travel_asked=1;
+            else sim_note("VISIT A HOTEL RECEPTION OR TRANSPORT STOP");break;
         case PC_WORK: if (job_none) { sim_note("YOU DO NOT WORK HERE (YET): PHONE, JOBS"); return; } begin_action(s, ACT_WORK, pie_mx, pie_my); { char b[40]; snprintf(b, sizeof b, "AT WORK: %s", job_title()); sim_note(b); } break;
         case PC_MEAL: if (!pay(15)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 2; s->act_t = 260; sim_say(s, "THE SPECIAL, PLEASE"); break;
         case PC_SNACK: if (!pay(6)) return; begin_action(s, ACT_EAT, pie_mx, pie_my); s->act_var = 0; break;
@@ -2361,11 +2390,11 @@ static void place_do(Sim *s, int code) {
             if (novel >= 100) { int adv = 300 + lv * 200 + (int)(look_rand() % 300) + SKL(s->skill_char) * 40; cash += adv; novel = 0; royalty = (u16)MIN(300, royalty + 4 + lv * 3);
                 snprintf(b_, sizeof b_, "NOVEL PUBLISHED! +$%d", adv); sim_note(b_); sim_note("AND ROYALTIES EVERY DAY"); sim_moodlet(s, ML_PROUD); audio_voice(VOICE_WIN); }
             else { snprintf(b_, sizeof b_, "THE NOVEL: %d%% WRITTEN", novel); sim_note(b_); } break; }
-        case PC_RESORT: sim_want_resort = 1; break;
+        case PC_RESORT: if(world_hotel(world_service_lot(pie_mx,pie_my,0)))sim_want_resort=1;else sim_note("VISIT A HOTEL RECEPTION");break;
         case PC_CAMP: sim_want_resort = 2; break;
-        case PC_HEIST: sim_want_prison = 3; break;
+        case PC_HEIST: {int terrain=BT_GRASS,lot=world_service_lot(pie_mx,pie_my,&terrain),site=world_heist_anchor(lot,terrain,(unsigned char)world_at(pie_mx,pie_my));if(site&&s->bore.stage>=AG_TEEN)sim_want_prison=9+site;else sim_note("NO LOCAL TARGET");break;}
         case PC_FARMBOOK: sim_want_resort = 5; break;
-        case PC_SKYSEA: sim_want_resort = 9; break;
+        case PC_SKYSEA: {int terrain=BT_GRASS,lot=world_service_lot(pie_mx,pie_my,&terrain);if(world_heist_site(lot,terrain)>=SITE_WATER)sim_want_resort=9;else sim_note("VISIT THE HARBOUR OR SPACE CENTRE");break;}
         case PC_SPACE: if (space_cert() < 1) { sim_note("NOT CERTIFIED: GREAT MARKS OR A DEGREE FIRST"); audio_voice(VOICE_NAH); return; } sim_want_space = 1; break;
         case PC_ENR0: case PC_ENR0 + 1: case PC_ENR0 + 2: case PC_ENR0 + 3: { char b_[48]; int nl = col_lvl;
             if (code == PC_ENR0 + 3) { if (col_lvl < 1 || col_lvl > 2) return; } else { if (col_lvl > 0) { sim_note("YOU ALREADY HAVE A DEGREE"); return; } col_major = (u8)(code - PC_ENR0); }
@@ -2467,7 +2496,7 @@ int sim_front_service(void) {   // right in front of you: a place's counter, she
     world_lvl = s->lvl;
     int r = front_tile(s, &fx, &fy);
     char c = r ? world_at(fx, fy) : 0;
-    r = c && (job_here(fx, fy, c) || (place_at(fx, fy, 0) && usable_at(fx, fy, c)));   // (at a place: whatever is right ahead)
+    r = c && (world_marker_at(fx,fy,c)||job_here(fx, fy, c) || (place_at(fx, fy, 0) && usable_at(fx, fy, c)));   // (at a place: whatever is right ahead)
     world_lvl = 0;
     return r;
 }
