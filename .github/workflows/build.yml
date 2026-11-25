@@ -18,6 +18,8 @@ jobs:
           /tmp/camera_lens_ps1
           cc -std=c99 -Wall -Wextra -Werror -DBORE_DC test/camera_lens_test.c -o /tmp/camera_lens_dc
           /tmp/camera_lens_dc
+      - name: Verify everyday goals and aspiration rewards
+        run: python3 test/wants_regression.py
       - name: Verify speed-bounded skate chase camera focus
         run: |
           cc -std=c99 -Wall -Wextra -Werror test/skate_camera_test.c -o /tmp/skate_camera_test

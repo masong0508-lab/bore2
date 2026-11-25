@@ -3231,7 +3231,7 @@ static void le_tick(void) {
         int n_; extern int sim_debug_goto(char c, int lot);
         for (int i = 0; i < N_ROOM; i++) p->need[i] = 100 << 10; alone_opt = 0;
         for (int i = 0; i < 6; i++) { const char *m = sim_moodlet_name(p->ml[i].id); dd |= !strcmp(m, "GOOD HARVEST") | !strcmp(m, "HAPPY ANIMALS") << 1 | !strcmp(m, "LOST A CROP") << 2 | !strcmp(m, "SOLD AT MARKET") << 3; } dbg_le[18] |= dd;
-        for (int i = 0; i < 4; i++) if (p->want[i].kind >= W_HARVEST) dbg_le[17] |= 1 << (p->want[i].kind - W_HARVEST);
+        for (int i = 0; i < 4; i++) if (p->want[i].kind >= W_HARVEST && p->want[i].kind <= W_ANIMALS) dbg_le[17] |= 1 << (p->want[i].kind - W_HARVEST);
         if (k == 0 && t >= 60) { k++; cash = 3000; clock_min = 5 * 60; jobs_board = 1; jobs_open();   // (the JOB BOARD: every job going, as a smartphone shows)
            
             for (int i = 0; i < jobs_n; i++) if (jobs_car[i] == CAR_FARM) { char nm[24]; dbg_le[0] = i + 1; sim_take_job(CAR_FARM, job_farm_bx, job_farm_by, farm_name(job_farm_bx, job_farm_by, nm)); break; }
@@ -3726,11 +3726,11 @@ static void panel_draw(void) {   // the Bore panel: who they are and how they fe
         sprintf(b, "%s%s", aspLvNm[lv], lv == 3 ? " - NOTHING CAN BRING THEM DOWN" : wants_desperate(s) ? " - DESPERATE" : "");
         ui_text(12, y0 + 24, 1, b, lvT[lv]);
         ui_section(12, y0 + 37, 294, "WANTS");
-        for (int i = 0; i < 4; i++) { int y = y0 + 49 + i * 13; wants_text(s, i, t);
+        for (int i = 0; i < 4; i++) { int y = y0 + 49 + i * 13; wants_text(s, i, t); if (!t[0]) continue;
             ui_icon(12, y - 2, IC_STAR, UI_AMBER); ui_text(28, y, 1, t, UI_INK);
             sprintf(b, "+%d", s->want[i].pts); ui_badge(306 - ui_tw(1, b) - 10, y - 2, b, UI_GREEN, UI_WHITE); }
         ui_section(12, y0 + 102, 294, "FEARS");
-        for (int i = 0; i < 2; i++) { int y = y0 + 114 + i * 13; fears_text(s, i, t);
+        for (int i = 0; i < 2; i++) { int y = y0 + 114 + i * 13; fears_text(s, i, t); if (!t[0]) continue;
             ui_icon(12, y - 2, IC_BOLT, UI_RED); ui_text(28, y, 1, t, UI_INK);
             sprintf(b, "-%d", s->fear[i].pts); ui_badge(306 - ui_tw(1, b) - 10, y - 2, b, UI_RED, UI_WHITE); }
     } else if (panel_tab == 2) {   // SKILLS and PERSONALITY

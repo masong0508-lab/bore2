@@ -8,23 +8,23 @@
 int wants_flash_t; char wants_flash[32];
 
 // ---- what each want is worth, and what it is called ----
-static const u16 wPts[W_N] = { 0, 500, 500, 500, 500, 800, 500, 800, 800, 1000, 1500, 3000, 1000, 1500, 5000, 3000, 1500, 1500, 1500, 1500, 3000, 3000, 1000, 1500, 1000, 1000, 1000, 1500, 1000, 4000, 1500, 5000, 800, 2000, 1500, 1500, 1000 };
+static const u16 wPts[W_N] = { 0, 500, 500, 500, 500, 800, 500, 800, 800, 1000, 1500, 3000, 1000, 1500, 5000, 3000, 1500, 1500, 1500, 1500, 3000, 3000, 1000, 1500, 1000, 1000, 1000, 1500, 1000, 4000, 1500, 5000, 800, 2000, 1500, 1500, 1000, 1000, 500, 600, 800, 2000 };
 static const u16 fPts[F_N] = { 0, 1500, 1000, 3000, 1000, 2000, 1000, 3000 };
 static const char *const wNm[W_N] = { "", "EAT A MEAL", "SLEEP IN A BED", "TAKE A SHOWER", "HAVE SOME FUN", "READ A BOOK", "DRINK A COFFEE", "GO FOR A RUN",
     "MAKE A PHONE CALL", "CHAT WITH SOMEONE", "CHAT WITH", "MAKE A FRIEND", "GO TO WORK", "GET PAID", "GET PROMOTED", "HAVE $", "BUY SOMETHING",
     "COOKING SKILL", "BODY SKILL", "FUN SKILL", "VISIT THE ISLAND", "VISIT THE TOWN", "EAT OUT", "GO FOR A SWIM", "WORK OUT AT A GYM", "GO SHOPPING", "SEE A FILM", "A NIGHT OUT", "DO HOMEWORK", "HAVE A BABY", "THROW A PARTY", "BUY A HOME", "RIDE A BOARD", "FIND A SECRET",
-    "PICK A CROP", "SELL FARM FOOD", "CARE FOR ANIMALS" };
+    "PICK A CROP", "SELL FARM FOOD", "CARE FOR ANIMALS", "GET A JOB", "FEED THE PET", "PLAY WITH THE PET", "CHAT WITH A TOWNIE", "MAKE A TOWN FRIEND" };
 static const char *const fNm[F_N] = { "", "PASS OUT", "WET MYSELF", "GET DEMOTED", "A BAD DAY AT WORK", "UNPAID BILLS", "BE TURNED DOWN", "LOSE SOMEONE" };
 
 // ---- who wants what: a weight per kind, per aspiration (FORTUNE KNOWLEDGE POPULARITY PLEASURE HOME GROW UP) ----
 static const u8 aspW[AS_N][W_N] = {
  //  -  eat slp shw fun rd cof run ph chat cw frnd work paid prm cash buy ck bd fn isl twn din swm gym shp flm ngt hw baby pty hom skt sec
-    { 0, 1,  1,  1,  1,  1, 1,  1,  1, 1,   1, 2,   4,   5,   5,  5,   4,  1, 1, 1, 1,  1,  1,  1,  1,  4,  1,  1,  3, 1, 1, 4, 1, 3, 2, 4, 1 },   // FORTUNE
-    { 0, 1,  1,  1,  1,  5, 2,  2,  1, 1,   1, 1,   2,   1,   2,  1,   1,  4, 4, 4, 3,  3,  1,  1,  2,  1,  2,  0,  5, 1, 0, 1, 1, 5, 2, 1, 2 },   // KNOWLEDGE
-    { 0, 1,  1,  2,  2,  1, 1,  1,  4, 5,   5, 5,   1,   1,   2,  1,   1,  1, 1, 2, 2,  2,  3,  3,  2,  2,  2,  5,  2, 2, 5, 1, 2, 1, 1, 2, 1 },   // POPULARITY
-    { 0, 4,  2,  1,  5,  1, 4,  3,  1, 2,   2, 1,   0,   1,   1,  1,   2,  2, 1, 2, 3,  3,  5,  5,  1,  3,  4,  4,  1, 1, 4, 1, 4, 2, 2, 1, 3 },   // PLEASURE
-    { 0, 3,  3,  1,  2,  1, 1,  1,  2, 2,   5, 3,   1,   2,   1,  2,   4,  3, 1, 1, 1,  1,  1,  1,  1,  3,  2,  1,  3, 5, 2, 5, 0, 1, 3, 2, 4 },   // HOME
-    { 0, 2,  2,  1,  5,  4, 0,  3,  1, 3,   4, 3,   0,   0,   0,  0,   1,  1, 2, 3, 2,  2,  2,  4,  2,  1,  4,  0,  5, 0, 2, 0, 5, 4, 1, 0, 3 },   // GROW UP
+    { 0, 1,  1,  1,  1,  1, 1,  1,  1, 1,   1, 2,   4,   5,   5,  5,   4,  1, 1, 1, 1,  1,  1,  1,  1,  4,  1,  1,  3, 1, 1, 4, 1, 3, 2, 4, 1, 5, 1, 1, 2, 2 },   // FORTUNE
+    { 0, 1,  1,  1,  1,  5, 2,  2,  1, 1,   1, 1,   2,   1,   2,  1,   1,  4, 4, 4, 3,  3,  1,  1,  2,  1,  2,  0,  5, 1, 0, 1, 1, 5, 2, 1, 2, 2, 2, 2, 3, 2 },   // KNOWLEDGE
+    { 0, 1,  1,  2,  2,  1, 1,  1,  4, 5,   5, 5,   1,   1,   2,  1,   1,  1, 1, 2, 2,  2,  3,  3,  2,  2,  2,  5,  2, 2, 5, 1, 2, 1, 1, 2, 1, 1, 3, 4, 5, 5 },   // POPULARITY
+    { 0, 4,  2,  1,  5,  1, 4,  3,  1, 2,   2, 1,   0,   1,   1,  1,   2,  2, 1, 2, 3,  3,  5,  5,  1,  3,  4,  4,  1, 1, 4, 1, 4, 2, 2, 1, 3, 1, 3, 5, 4, 3 },   // PLEASURE
+    { 0, 3,  3,  1,  2,  1, 1,  1,  2, 2,   5, 3,   1,   2,   1,  2,   4,  3, 1, 1, 1,  1,  1,  1,  1,  3,  2,  1,  3, 5, 2, 5, 0, 1, 3, 2, 4, 2, 5, 4, 3, 3 },   // HOME
+    { 0, 2,  2,  1,  5,  4, 0,  3,  1, 3,   4, 3,   0,   0,   0,  0,   1,  1, 2, 3, 2,  2,  2,  4,  2,  1,  4,  0,  5, 0, 2, 0, 5, 4, 1, 0, 3, 0, 4, 5, 4, 4 },   // GROW UP
 };
 static const u8 aspF[AS_N][F_N] = {
     { 0, 1, 1, 5, 4, 5, 1, 1 }, { 0, 2, 2, 2, 2, 1, 1, 1 }, { 0, 1, 2, 1, 1, 1, 5, 2 }, { 0, 3, 3, 1, 1, 1, 2, 1 }, { 0, 2, 2, 2, 2, 4, 2, 5 }, { 0, 2, 3, 0, 0, 0, 3, 3 } };
@@ -32,8 +32,9 @@ static const u8 aspF[AS_N][F_N] = {
 int wants_skill_level(int raw) { int l = raw / 400; return l > 10 ? 10 : l; }
 static int other_sim(const Sim *s) {
     if (nsims < 2) return -1;
-    int me = (int)(s - sims), k = (int)(look_rand() % (nsims - 1)); if (k >= me) k++;
-    return k;
+    int me = (int)(s - sims), start = (int)(look_rand() % nsims);
+    for (int j = 0; j < nsims; j++) { int k = (start + j) % nsims; if (k != me && sims[k].bore.stage != AG_BABY) return k; }
+    return -1;
 }
 static int has_want(const Sim *s, int kind, int arg) {
     for (int i = 0; i < 4; i++) if (s->want[i].kind == kind && (kind != W_CHAT_WITH || s->want[i].arg == arg)) return 1;
@@ -41,6 +42,8 @@ static int has_want(const Sim *s, int kind, int arg) {
 }
 static void roll_want(Sim *s, int slot) {
     int asp = s->bore.asp % AS_N, stage = s->bore.stage;
+    memset(&s->want[slot], 0, sizeof s->want[slot]);
+    if (stage == AG_BABY) return;
     for (int tries = 0; tries < 24; tries++) {
         int w = 1 + (int)(look_rand() % (W_N - 1)), weight = aspW[asp][w];
         // the personality's own wants, on top of the aspiration's
@@ -62,12 +65,15 @@ static void roll_want(Sim *s, int slot) {
         if (w == W_HOME && stage != AG_ADULT && stage != AG_ELDER) weight = 0;
         if (w == W_SKATE && stage == AG_ELDER) weight = 0;
         if (w == W_SECRET && isl_secret_count() >= SEC_N) weight = 0;
-        if (w >= W_HARVEST && (!farm_going() || (w == W_ANIMALS && !fm_hens && !fm_cows) || (w == W_HARVEST && !(fm_n[0] | fm_n[1] | fm_n[2] | fm_n[3])))) weight = 0;   // (FARM LIFE: only on a farm)
+        if (w >= W_HARVEST && w <= W_ANIMALS && (!farm_going() || (w == W_ANIMALS && !fm_hens && !fm_cows) || (w == W_HARVEST && !(fm_n[0] | fm_n[1] | fm_n[2] | fm_n[3])))) weight = 0;   // (FARM LIFE: only on a farm)
+        if ((w == W_WORK || w == W_PAID || w == W_PROMO) && job_none) weight = 0;
+        if (w == W_JOB && (!job_none || stage <= AG_CHILD)) weight = 0;
+        if ((w == W_PETFEED || w == W_PETPLAY) && !pet_kind) weight = 0;
+        if ((w == W_NEIGHBOR || w == W_TOWNFRIEND) && s != &sims[player]) weight = 0;
         if (stage == AG_BABY) weight = 0;                                              // (a baby wants nothing it could do itself)
         if (weight == 0 || (int)(look_rand() % 6) >= weight) continue;
         int arg = 0;
-        if (w == W_CHAT_WITH) arg = other_sim(s);
-        if (w == W_FRIEND) { arg = other_sim(s); if (arg >= 0 && s->rel[arg] >= 50) continue; }
+        if (w == W_CHAT_WITH || w == W_FRIEND) { arg = other_sim(s); if (arg < 0 || (w == W_FRIEND && s->rel[arg] >= 50)) continue; }
         if (w == W_CASH) { arg = (int)(cash / 5000) + 1; if (arg > 40) continue; }                 // in 5000s: the next step up
         if (w == W_SK_COOK) arg = wants_skill_level(s->skill_cook) + 1;
         if (w == W_SK_BODY) arg = wants_skill_level(s->skill_body) + 1;
@@ -78,23 +84,31 @@ static void roll_want(Sim *s, int slot) {
         s->want[slot].pts = (u16)(w == W_CASH ? 1500 + arg * 100 : (w >= W_SK_COOK && w <= W_SK_FUN) ? 800 + arg * 200 : wPts[w]);
         return;
     }
-    s->want[slot].kind = W_FUN; s->want[slot].arg = 0; s->want[slot].pts = wPts[W_FUN]; s->want[slot].age = 0;
+    // Four universal goals are enough for a deterministic, non-duplicating fallback.
+    for (int w = W_EAT; w <= W_FUN; w++) if (!has_want(s, w, 0)) {
+        s->want[slot].kind = (u8)w; s->want[slot].pts = wPts[w]; return;
+    }
 }
 static void roll_fear(Sim *s, int slot) {
     int asp = s->bore.asp % AS_N;
+    memset(&s->fear[slot], 0, sizeof s->fear[slot]);
+    if (s->bore.stage == AG_BABY) return;
     for (int tries = 0; tries < 24; tries++) {
         int f = 1 + (int)(look_rand() % (F_N - 1));
+        if ((f == F_DEMOTED || f == F_BADDAY || f == F_BROKE) && (job_none || s->bore.stage <= AG_CHILD)) continue;
         if ((int)(look_rand() % 6) >= aspF[asp][f]) continue;
         int dup = 0; for (int i = 0; i < 2; i++) if (i != slot && s->fear[i].kind == f) dup = 1;
         if (dup) continue;
         s->fear[slot].kind = (u8)f; s->fear[slot].pts = fPts[f]; s->fear[slot].age = 0; return;
     }
-    s->fear[slot].kind = F_PASSOUT; s->fear[slot].pts = fPts[F_PASSOUT];
+    int f = s->fear[1-slot].kind == F_PASSOUT ? F_PEE : F_PASSOUT;
+    s->fear[slot].kind = (u8)f; s->fear[slot].pts = fPts[f];
 }
 void wants_roll_all(Sim *s) {
     for (int i = 0; i < 4; i++) s->want[i].kind = 0;
     for (int i = 0; i < 4; i++) roll_want(s, i);
-    for (int i = 0; i < 2; i++) { s->fear[i].kind = 0; roll_fear(s, i); }
+    memset(s->fear, 0, sizeof s->fear);
+    for (int i = 0; i < 2; i++) roll_fear(s, i);
     s->asp_pts = 4000;
 }
 void wants_reroll(Sim *s) {   // the stale half rolls again
@@ -107,50 +121,57 @@ static void flash(const Sim *s, const char *what, int pts) {
     sprintf(wants_flash, "%s %d", what, pts); wants_flash_t = 200;
 }
 static void gain(Sim *s, int pts) {
+    if (pts > 0) pts = tr_scale(s->tr, E_ASP_GAIN, pts);
     if (pts > 0 && s->asp_pts < 10000 && s->asp_pts + pts >= 10000) {   // reaching PLATINUM: a proud moment
         sim_proud(s);
         if ((int)(s - sims) == player) sim_note("PLATINUM! NOTHING CAN BRING YOU DOWN");
     }
-    if (pts > 0) pts = tr_scale(s->tr, E_ASP_GAIN, pts);
     s->asp_pts += pts; if (s->asp_pts > ASP_MAX) s->asp_pts = ASP_MAX; if (s->asp_pts < 0) s->asp_pts = 0; }
 
 void wants_event(Sim *s, int kind, int arg) {
-    if (s == &sims[player]) story_event(kind, arg);   // (the story missions watch what you do too)
+    if (kind <= W_NONE || kind >= W_N) return;
+    if (s == &sims[player]) story_event(kind, arg);
+    int matched = 0, pts = 0;
     for (int i = 0; i < 4; i++) {
         int k = s->want[i].kind; if (k != kind) continue;
-        if (k == W_CHAT_WITH && s->want[i].arg != arg) continue;
-        if (k == W_FRIEND && s->want[i].arg != arg) continue;
-        if (k == W_CASH && cash < (long)s->want[i].arg * 5000) continue;
-        if ((k == W_SK_COOK || k == W_SK_BODY || k == W_SK_FUN) && arg < s->want[i].arg) continue;
-        int pts = s->want[i].pts;
-        gain(s, pts); flash(s, "WANT DONE", pts);
-        if (s == &sims[player]) story_event(E_WANT, 0);
-        if ((int)(s - sims) == player) audio_voice(VOICE_YAHOO);
-        s->want[i].kind = 0; roll_want(s, i);
-        if (k == W_CHAT) for (int j = 0; j < 4; j++) if (s->want[j].kind == W_CHAT) { s->want[j].kind = 0; roll_want(s, j); }   // (one chat is enough)
+        if ((k == W_CHAT_WITH || k == W_FRIEND) && s->want[i].arg != arg) continue;
+        if (k == W_CASH && (!s->want[i].arg || cash < (long)s->want[i].arg * 5000)) continue;
+        if (k >= W_SK_COOK && k <= W_SK_FUN && arg < s->want[i].arg) continue;
+        if (!matched) pts = s->want[i].pts;
+        matched |= 1 << i; memset(&s->want[i], 0, sizeof s->want[i]);
     }
+    if (!matched) return;
+    gain(s, pts); flash(s, "WANT DONE", pts);
+    if (s == &sims[player]) { story_event(E_WANT, 0); audio_voice(VOICE_YAHOO); }
+    for (int i = 0; i < 4; i++) if (matched & (1 << i)) roll_want(s, i);
 }
 void wants_fear(Sim *s, int kind) {
+    if (kind <= F_NONE || kind >= F_N) return;
+    int matched = 0, pts = 0;
     for (int i = 0; i < 2; i++) if (s->fear[i].kind == kind) {
-        int pts = s->fear[i].pts;
-        gain(s, -pts); flash(s, "FEAR CAME TRUE", -pts);
-        if ((int)(s - sims) == player) audio_voice(VOICE_CRY);
-        roll_fear(s, i);
+        if (!matched) pts = s->fear[i].pts;
+        matched |= 1 << i; memset(&s->fear[i], 0, sizeof s->fear[i]);
     }
+    if (!matched) return;
+    gain(s, -pts); flash(s, "FEAR CAME TRUE", -pts);
+    if ((int)(s - sims) == player) audio_voice(VOICE_CRY);
+    for (int i = 0; i < 2; i++) if (matched & (1 << i)) roll_fear(s, i);
 }
 void wants_minute(Sim *s) {
+    if (s->bore.stage == AG_BABY) { memset(s->want, 0, sizeof s->want); memset(s->fear, 0, sizeof s->fear); return; }
     // decay (per game hour: platinum 250, gold 190, green 60, red 90; it slows near the bottom)
     static const u8 dec[4] = { 90, 60, 190, 250 };
     int lv = wants_level(s);
     if (((clock_min + (int)(s - sims)) & 3) == 0) { int d = dec[lv]; if (s->asp_pts < 600) d = 20; s->asp_pts -= tr_scale(s->tr, E_ASP_KEEP, (d + 7) / 15); if (s->asp_pts < 0) s->asp_pts = 0; }
-    for (int i = 0; i < 4; i++) { if (s->want[i].age < 60000) s->want[i].age++; if (s->want[i].age >= 2 * 24 * 60) { s->want[i].kind = 0; roll_want(s, i); } }   // two days unfulfilled: forgotten
+    for (int i = 0; i < 4; i++) { if (s->want[i].age < 60000) s->want[i].age++; if (!s->want[i].kind || s->want[i].kind >= W_N || s->want[i].age >= 2 * 24 * 60) { s->want[i].kind = 0; roll_want(s, i); } }   // two days unfulfilled: forgotten
+    for (int i = 0; i < 2; i++) if (!s->fear[i].kind || s->fear[i].kind >= F_N || (job_none && (s->fear[i].kind == F_DEMOTED || s->fear[i].kind == F_BADDAY || s->fear[i].kind == F_BROKE))) roll_fear(s, i);
     // the wants the clock can see on its own
     for (int i = 0; i < 4; i++) {
         int k = s->want[i].kind;
         if (k == W_CASH && cash >= (long)s->want[i].arg * 5000) wants_event(s, W_CASH, 0);
-        if (k == W_SK_COOK && wants_skill_level(s->skill_cook) >= s->want[i].arg) wants_event(s, W_SK_COOK, 10);
-        if (k == W_SK_BODY && wants_skill_level(s->skill_body) >= s->want[i].arg) wants_event(s, W_SK_BODY, 10);
-        if (k == W_SK_FUN && wants_skill_level(s->skill_fun) >= s->want[i].arg) wants_event(s, W_SK_FUN, 10);
+        if (k == W_SK_COOK && wants_skill_level(s->skill_cook) >= s->want[i].arg) wants_event(s, W_SK_COOK, wants_skill_level(s->skill_cook));
+        if (k == W_SK_BODY && wants_skill_level(s->skill_body) >= s->want[i].arg) wants_event(s, W_SK_BODY, wants_skill_level(s->skill_body));
+        if (k == W_SK_FUN && wants_skill_level(s->skill_fun) >= s->want[i].arg) wants_event(s, W_SK_FUN, wants_skill_level(s->skill_fun));
     }
 }
 int wants_level(const Sim *s) { return s->asp_pts >= 10000 ? ASP_PLATINUM : s->asp_pts >= 7000 ? ASP_GOLD : s->asp_pts >= 3000 ? ASP_GREEN : ASP_RED; }
@@ -158,9 +179,10 @@ int wants_desperate(const Sim *s) { return s->asp_pts < 500; }
 
 void wants_text(const Sim *s, int slot, char *out) {
     int k = s->want[slot].kind, a = s->want[slot].arg;
+    if (k <= W_NONE || k >= W_N) { out[0] = 0; return; }
     if (k == W_CHAT_WITH || k == W_FRIEND) sprintf(out, "%s %s", k == W_FRIEND ? "BEFRIEND" : wNm[k], (a >= 0 && a < nsims) ? sims[a].bore.first : "SOMEONE");
     else if (k == W_CASH) sprintf(out, "HAVE $%d", a * 5000);
     else if (k >= W_SK_COOK && k <= W_SK_FUN) sprintf(out, "%s %d", wNm[k], a);
     else strcpy(out, wNm[k]);
 }
-void fears_text(const Sim *s, int slot, char *out) { strcpy(out, fNm[s->fear[slot].kind]); }
+void fears_text(const Sim *s, int slot, char *out) { int k = s->fear[slot].kind; strcpy(out, k > F_NONE && k < F_N ? fNm[k] : ""); }
