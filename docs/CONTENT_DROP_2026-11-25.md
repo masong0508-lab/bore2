@@ -20,3 +20,9 @@ The handheld's generated bank is cached by input digest across emulator builds.
 New cartridge bank bounds checks reject invalid reads rather than accessing unrelated
 ROM data. Original physical-device performance and subjective mix quality need
 verification. Do not treat a successful generator as native audio playback evidence.
+
+## Playable activities and reliability
+
+* Optional sharing a snack ($5, hunger and relationship gains), offering help (12 energy, relationship gains), and telling a story (fun and relationship gains) with new aspirations on both engines. DS household members can also share a snack and tell stories. The console uses an Activities submenu; DS social menus page rather than hide options. Failed affordability/energy checks do not spend interaction allowances.
+* DS song directory loads only the necessary 512-byte sectors instead of reading an extra 2 KiB; invalid bank offsets are rejected. Restore executable mode on the DS build script; keep Dreamcast default make target.
+* The first host build of the content audit (run 45621152349) measured 1,738,820 console and 1,547,016 handheld playable bytes, 883 seconds. The subsequent pitch-range adjustment avoids handheld upper-note clamping and retains all eight arrangements. Native CI must confirm the updated head and actual audio playback remains unverified.

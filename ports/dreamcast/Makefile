@@ -2,6 +2,7 @@
 # on a Dreamcast platform layer (dc_*.c, psx/*.h). Build:  source /tmp/dc/environ.sh && make
 #   make O=obj_city AUTO="AUTO_CITY=1 -DAB_LOCK4=1"   a test build in its own folder (the PS1 build's own test hooks)
 #   make disc                                          bore2_dc.gdi: a disc image (the ELF, the songs and voices) for flycast or a GD emulator
+.DEFAULT_GOAL := all
 O ?= obj
 TARGET = $(O)/bore2_dc.elf
 SRC = ../../src

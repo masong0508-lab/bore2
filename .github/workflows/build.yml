@@ -24,6 +24,8 @@ jobs:
         with:
           name: neighborhood-content-manifest
           path: /tmp/bore-content/manifest-both.json
+      - name: Verify shared social activity costs and eligibility
+        run: cc -std=c99 -Wall -Wextra -Werror test/social_activity_test.c -o /tmp/social_activity_test && /tmp/social_activity_test
       - name: Verify everyday goals and aspiration rewards
         run: python3 test/wants_regression.py
       - name: Verify speed-bounded skate chase camera focus

@@ -75,7 +75,7 @@ def score(t):
         # Separate pluck and lead instrument colors with a composed motif.
         for j,step in enumerate((2,6,10,14) if section!=1 else (0,5,11)):
             deg=motif[(bar*2+j+section*2)%len(motif)]
-            n=fit(root+deg+(12 if section==2 else 0),62,79)
+            n=fit(root+deg+(12 if section==2 else 0),62,77)
             hit(bar,step,8,7 if (bar+j+t)%4==0 else 8,n,63 if j==0 else 51,4)
         for step in ((5,13) if bar%4!=3 else (5,9,13,15)):
             hit(bar,step,9,9,60,36 if bar%4!=3 else 49,5)

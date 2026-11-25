@@ -2,6 +2,7 @@
 #include "citizens.h"
 #include "story.h"
 #include "wants.h"
+#include "social_activity.h"
 #include "ui.h"
 #include "sim.h"
 #include "world.h"
@@ -38,7 +39,7 @@ enum { CM_IDLE, CM_WALK, CM_CHAT, CM_CHASE, CM_KO, CM_GONE, CM_SLEEP, CM_GOHOME,
 enum { PE_FRIENDLY, PE_GRUFF, PE_FLIRTY, PE_SHY };
 enum { PO_TALK, PO_JOKE, PO_HUG, PO_FLIRT, PO_GIFT, PO_PROPOSE, PO_FIGHT, PO_SORRY, PO_FAMILY, PO_MOVEIN,
        PO_SUB_CHAT, PO_SUB_SOC, PO_SUB_ROM, PO_SUB_MEAN, PO_BACK,   // the pie's sub-menus
-       PO_COMPL, PO_GOSSIP, PO_JOB, PO_ADVICE, PO_HIGH5, PO_DANCE, PO_FLOWERS, PO_DRINK, PO_KISS, PO_DATE, PO_INSULT, PO_PRANK, PO_APOL, PO_DAY };
+       PO_COMPL, PO_GOSSIP, PO_JOB, PO_ADVICE, PO_HIGH5, PO_DANCE, PO_FLOWERS, PO_DRINK, PO_KISS, PO_DATE, PO_INSULT, PO_PRANK, PO_APOL, PO_DAY, PO_SUB_ACT, PO_SHARE, PO_HELP, PO_STORY };
 // the moodlet ids in sim.c's list
 enum { CML_GOOD_CHAT = 5, CML_EMBARRASSED = 9, CML_REJECTED = 12, CML_HUGGED = 14, CML_LAUGH = 16, CML_FLIRTY = 17 };
 
@@ -543,6 +544,7 @@ COLD static int pie_build(const Cit *c, char opt[8][24]) {
         OPT("TALK", PO_TALK) OPT("CHAT...", PO_SUB_CHAT) OPT("FRIENDLY...", PO_SUB_SOC)
         if (ad) OPT("ROMANCE...", PO_SUB_ROM)
         OPT("MEAN...", PO_SUB_MEAN)
+        if (c->stage >= AG_CHILD && sims[player].bore.stage >= AG_CHILD) OPT("ACTIVITIES...", PO_SUB_ACT)
         if (c->hh != NONE) OPT("FAMILY", PO_FAMILY)
         break;
     case 1:
@@ -564,6 +566,11 @@ COLD static int pie_build(const Cit *c, char opt[8][24]) {
         if (c->rel >= 40 && c->rom >= 40) OPT("KISS", PO_KISS)
         if (c->rom >= 60 && c->rel >= 60) OPT("PROPOSE $150", PO_PROPOSE)
         OPT("BACK", PO_BACK)
+        break;
+    case 5:
+        OPT("SHARE A SNACK $5", PO_SHARE)
+        if (sims[player].bore.stage >= AG_TEEN) OPT("OFFER TO HELP", PO_HELP)
+        OPT("TELL A STORY", PO_STORY) OPT("BACK", PO_BACK)
         break;
     default:
         OPT("INSULT", PO_INSULT) OPT("PRANK", PO_PRANK)
@@ -643,7 +650,19 @@ COLD int citizens_pie_do(int i) {
     case PO_SUB_SOC:  pie_lvl = 2; return 1;
     case PO_SUB_ROM:  pie_lvl = 3; return 1;
     case PO_SUB_MEAN: pie_lvl = 4; return 1;
+    case PO_SUB_ACT: pie_lvl = 5; return 1;
     case PO_BACK:     pie_lvl = 0; return 1;
+    case PO_SHARE: case PO_HELP: case PO_STORY: {
+        int act = pie_code[i] == PO_SHARE ? SA_SHARE : pie_code[i] == PO_HELP ? SA_HELP : SA_STORY;
+        if (p->bore.stage < AG_CHILD || c->stage < AG_CHILD || (act == SA_HELP && p->bore.stage < AG_TEEN)) break;
+        if (c->mode == CM_CHAT && c->t > 150) { sim_note("GIVE THEM A LITTLE SPACE"); break; }
+        int check = social_activity_check(act, cash, p->need[N_REST] >> 10);
+        if (check != SA_OK) { sim_note(check == SA_NO_MONEY ? "A SHARED SNACK IS $5" : "REST BEFORE HELPING OUT"); audio_voice(VOICE_NAH); break; }
+        if (!accept(c, 65)) { say(c, "MAYBE ANOTHER TIME"); audio_voice(VOICE_DISAGREE); break; }
+        if (act == SA_SHARE) { cash -= SA_SNACK_PRICE; p->need[N_FOOD] = MIN(100 << 10, p->need[N_FOOD] + (SA_SNACK_FOOD << 10)); rel_add(c, 7); say(c, "THANKS FOR THE SNACK!"); wants_event(p, W_SHARE, 0); tr_ev(p->tr, EV_KIND, 1); }
+        else if (act == SA_HELP) { p->need[N_REST] -= SA_HELP_REST << 10; rel_add(c, 10); say(c, "YOU MADE MY DAY EASIER"); wants_event(p, W_HELP, 0); tr_ev(p->tr, EV_KIND, 1); }
+        else { static const char *const lines[4] = { "THAT SOUNDS LIKE AN ADVENTURE", "TELL ME ANOTHER ONE!", "I REMEMBER THAT PLACE", "THAT IS QUITE A STORY" }; p->need[N_FUN] = MIN(100 << 10, p->need[N_FUN] + (SA_STORY_FUN << 10)); rel_add(c, 5); say(c, lines[rn(4)]); wants_event(p, W_STORYTIME, 0); }
+        chat_begin(c); sim_moodlet(p, CML_GOOD_CHAT); audio_voice(VOICE_AGREE); break; }
     case PO_COMPL:
         if (accept(c, 50)) { rel_add(c, 6); say(c, "AWW, YOU'RE SWEET"); chat_begin(c); sim_moodlet(p, CML_GOOD_CHAT); audio_voice(VOICE_AGREE); }
         else { rel_add(c, -1); say(c, "OKAY...?"); audio_voice(VOICE_DISAGREE); }
