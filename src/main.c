@@ -29,6 +29,7 @@ static u32 *logo_buf(void) { extern void *crowd_arena(void); return (u32 *)crowd
 #include "wants.h"
 #include "audio.h"
 #include "scene_music.h"
+#include "outings.h"
 #include "font.h"
 #include "mem8.h"
 #include "bigmap.h"
@@ -181,7 +182,7 @@ static int t_vb;
 
 // ---- states ----
 static void party_begin(void);
-enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ, ST_SUPER, ST_DOG, ST_PRISON, ST_SPACE, ST_MODE, ST_NHED, ST_CUT, ST_SWITCH, ST_RTSET };
+enum { ST_TITLE, ST_MENU, ST_CREATE, ST_LIFE, ST_PAUSE, ST_BUILD, ST_JUKEBOX, ST_HELP, ST_TRAVEL, ST_STORY, ST_WANTS, ST_PIE, ST_PANEL, ST_MAP, ST_DIR, ST_OPTS, ST_JOBS, ST_OVER, ST_HOMES, ST_CRAFT, ST_PHONE, ST_SLOTS, ST_NHOOD, ST_WORLDS, ST_NAME, ST_SPICK, ST_SCARD, ST_WMAKE, ST_CONFIRM, ST_ARCADE, ST_REALM, ST_GOTCHI, ST_PARTY, ST_DJ, ST_SUPER, ST_DOG, ST_PRISON, ST_SPACE, ST_MODE, ST_NHED, ST_CUT, ST_SWITCH, ST_RTSET, ST_OUTINGS };
 static void sw_open(int back);   // SWITCH SIM (below)
 #ifdef AUTO_GOTCHI
 static void opts_dbg(int tab, int sel, int back);
@@ -329,7 +330,7 @@ static const char *act_name(int a) {
         case ACT_SIT: return "RELAXING"; case ACT_FUN: return "HAVING FUN"; case ACT_TALK: return "CHATTING"; case ACT_WORK: return "WORKING";
         case ACT_WALK: return "WALKING"; case ACT_COFFEE: return "HAVING COFFEE"; case ACT_READ: return "READING"; case ACT_RUN: return "EXERCISING";
         case ACT_PHONE: return "ON THE PHONE"; case ACT_TRAVEL: return "TRAVELLING"; case ACT_STAIRS: return "ON THE STAIRS"; case ACT_SWIM: return "SWIMMING";
-        case ACT_CARE: return "LOOKING AFTER THE BABY";
+        case ACT_CARE: return "LOOKING AFTER THE BABY"; case ACT_OUTING: return "LOCAL ACTIVITY";
     }
     return "";
 }
@@ -3357,6 +3358,7 @@ static void pause_update(void) {
     if (NAVP(PAD_DOWN)) menu_sel = (menu_sel + 1) % NPAUSE;
     if (PRESSED(PAD_START) || PRESSED(PAD_CIRCLE)) { state = ST_LIFE; return; }
     if (PRESSED(PAD_SELECT)) { extern void phone_open(void); phone_open(); return; }
+    if (PRESSED(PAD_TRIANGLE)) { state=ST_OUTINGS; return; }
     if (PRESSED(PAD_CROSS)) {
         sub_back = ST_PAUSE;
         switch (menu_sel) {
@@ -3387,7 +3389,36 @@ static void pause_draw(void) {   // one short column: the game itself (the rest 
     menu_bg(0);
     int top = ui_window(70, 8, 180, 224, "PAUSED", IC_PAUSE);
     for (int i = 0; i < NPAUSE; i++) ui_button(78, top + i * 13, 164, 12, pauseNm[i], ic[i], i == menu_sel);
-    ui_hints(160, top + NPAUSE * 13 + 3, "X OK|SEL PHONE|O BACK", 1);
+    ui_hints(160, top + NPAUSE * 13 + 3, "X OK|TRI ACTIVITIES|O BACK", 1);
+}
+
+// ---- Local activities: the current public venue, not a remote job board.
+static int outing_sel;
+static void outings_update(void){
+    int g=sim_outing_group();
+    if(NAVP(PAD_UP)||NAVP(PAD_DOWN))outing_sel^=1;
+    if(PRESSED(PAD_CIRCLE)||PRESSED(PAD_START)){state=ST_PAUSE;return;}
+    if(PRESSED(PAD_CROSS)&&g>=0&&sim_outing_start(g*2+outing_sel))state=ST_LIFE;
+}
+static void outings_draw(void){
+    menu_bg(0);
+    int top=ui_window(8,8,304,224,"LOCAL ACTIVITIES",IC_STAR),g=sim_outing_group();
+    if(g<0){
+        ui_text_box(20,top+12,280,50,TX_LEFT|TX_MID,1,"VISIT A CAFE, LIBRARY, GYM, POOL, CINEMA, FARM, PARK, ARCADE, GALLERY, HOTEL, SCHOOL OR OBSERVATORY.",UI_INK);
+        ui_text_box(20,top+83,280,35,TX_LEFT|TX_MID,1,"WALK ONTO THE VENUE'S LOT, THEN OPEN THIS MENU. ACTIVITIES TAKE TIME AND REWARD YOUR BORE WHEN FINISHED.",UI_SOFT);
+    }else{
+        ui_section(16,top,288,outing_venue_names[g]);
+        for(int k=0;k<2;k++){
+            int id=g*2+k,y=top+22+k*72,check=sim_outing_check(id);
+            const Outing *o=outing_get(id);char b[48];
+            ui_button(16,y,288,20,o->title,IC_STAR,outing_sel==k);
+            ui_text_box(22,y+23,276,19,TX_LEFT|TX_MID,1,o->desc,UI_INK);
+            snprintf(b,sizeof b,"$%d  ENERGY -%d  FUN +%d",o->fee,o->energy,o->fun);
+            ui_text(22,y+44,1,b,UI_SOFT);
+            ui_text(22,y+55,1,outing_reason[check],check==OUT_OK?UI_GOODT:UI_SOFT);
+        }
+    }
+    ui_hints(160,216,"UP DOWN CHOOSE|X START|O BACK",1);
 }
 
 // ---- THE PHONE (SELECT): The Sims' cell phone. Twelve apps on a grid; the family's list for playing as someone else ----
@@ -5948,7 +5979,8 @@ int main(void) {
                     life_draw(); break; } }   // (test builds: the city stands still after AB_FREEZE frames, still drawn: two builds' pictures can be laid over each other)
 #endif
                 { int t0 = hb_now(); life_update(steps_raw); t_upd = hb_now() - t0; } life_draw(); if (state == ST_LIFE) big_flash(); break;
-            case ST_PAUSE: pause_update(); pause_draw(); break;
+            case ST_PAUSE: pause_update(); if(state==ST_OUTINGS)outings_draw();else pause_draw(); break;
+            case ST_OUTINGS: outings_update(); if(state==ST_OUTINGS)outings_draw();else if(state==ST_LIFE)life_draw();else pause_draw();break;
             case ST_BUILD: build_update(); build_draw(); break;
             case ST_JUKEBOX: juke_update(); juke_draw(); break;
             case ST_HELP: help_update(); help_draw(); break;

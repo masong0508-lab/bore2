@@ -26,7 +26,7 @@ static const Opt OPT[] = {
     { "Music track", "Auto|Daydream|Evening|Bounce|Night", &o_trk, 1, 0 }, { "Tap clicks", "Off|On", &o_ckl, 1, 1 }, { "Chimes", "Off|On", &o_chm, 1, 1 }, { "Stereo", "Center|Spread", &o_pan, 1, 1 },
     { "Autosave", "Off|On", &o_auto, 2, 1 }, { "Clock", "12 hour|24 hour", &o_c24, 2, 0 },
     { "Reset graphics", "tap", 0, 3, 0 }, { "Reset audio", "tap", 0, 3, 1 }, { "Reset all", "tap", 0, 3, 255 },
-    { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Area|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52|53|54|55|56|57|58|59|60", &o_song, 1, 0 },
+    { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Area|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52|53|54|55|56|57|58|59|60|61|62|63|64|65|66|67|68|69|70|71|72", &o_song, 1, 0 },
     { "Roofs", "Cutaway|Always|Hide", &o_roof, 0, 0 },
     // (D33, from the PS1 OPTIONS: these are saved in their own block after the others, so old saves load with the defaults)
     { "Needs speed", "Never fall|Slow|Normal|Fast", &o_need, 2, 2 }, { "Day length", "Short|Normal|Long|Epic", &o_day, 2, 1 }, { "Message time", "Short|Normal|Long", &o_msgt, 2, 1 },
@@ -52,6 +52,8 @@ static const char *opt_tok(int i, int n, char *b) { const char *p = OPT[i].vals;
 #include <string.h>
 #include "bigmap.h"
 #include "scene_music.h"
+#define OUTINGS_IMPLEMENTATION
+#include "outings.h"
 #include "audio_slice.h"
 
 int bsprintf(char *o, const char *f, ...) { va_list a; va_start(a, f); int r = vsprintf(o, f, a); va_end(a); return r; }
@@ -759,7 +761,7 @@ static char sname[SIM_MAX][20] = { "Ashley Newbie", "Ronald Bacon", "Kit Farlow"
 static const char *const STGN[6] = { "Baby", "Toddler", "Child", "Teen", "Adult", "Elder" };   // the life stages: 0-2, 3-5, 6-12, 13-17, 18-59, 60+ years (a year is a day on the clock)
 // ============ LIFE (D31): careers, wants and fears, the dog, ghosts, roofs and storeys ============
 #define JOBN 6
-enum { WN_NONE, WN_EAT, WN_SLEEP, WN_SHOWER, WN_FUN, WN_CHAT, WN_FRIEND, WN_JOB, WN_WORK, WN_PAID, WN_PROMO, WN_CASH, WN_BUY, WN_VISIT, WN_BABY, WN_PET, WN_SONG, WN_PETFEED, WN_HARVEST, WN_FARMSELL, WN_ANIMALS, WN_SECRET, WN_NEIGHBOR, WN_TOWNFRIEND, WN_CALL, WN_SHARE, WN_HELP, WN_STORYTIME, WN_N };
+enum { WN_NONE, WN_EAT, WN_SLEEP, WN_SHOWER, WN_FUN, WN_CHAT, WN_FRIEND, WN_JOB, WN_WORK, WN_PAID, WN_PROMO, WN_CASH, WN_BUY, WN_VISIT, WN_BABY, WN_PET, WN_SONG, WN_PETFEED, WN_HARVEST, WN_FARMSELL, WN_ANIMALS, WN_SECRET, WN_NEIGHBOR, WN_TOWNFRIEND, WN_CALL, WN_SHARE, WN_HELP, WN_STORYTIME, WN_OUTING, WN_CLASS, WN_COMMUNITY, WN_N };
 enum { FR_NONE, FR_PASS, FR_WET, FR_BAD, FR_DEMOTE, FR_GHOST, FR_N };
 typedef struct { u8 job, lvl, prog, strike, fear, worked, wk[3]; s16 wa[3]; u16 pts, shifts; } Life;
 typedef struct { s16 bx, by; int x, y, tx, ty; u8 skin, hair, shirt, on; } Ghost;
@@ -891,7 +893,7 @@ static void mus_init(void) {
     mus_ok = 0; static u32 blk[128]; const volatile u32 *loc = MUS_LOC; if (loc[0] != 0x41444D42u || !loc[1] || loc[3] != 0x2E4D4442u) return;   // (addmusic.py wrote where the songs start)
     mus_base = loc[1]; mus_size = loc[2]; if (mus_size < 8192 || (mus_base & 511) || mus_base + mus_size < mus_base) return; cart_blk(mus_base, blk); if (memcmp(blk, "BDM2", 4)) return;
     memcpy(mus_dir, blk, 512);
-    mus_n = (int)rd32(mus_dir + 4); mus_ent = (int)rd32(mus_dir + 8); if (mus_n < 1 || mus_n > 64 || mus_ent != 96 || rd32(mus_dir+12) != 16 || 16 + mus_n * mus_ent > (int)sizeof mus_dir) return;
+    mus_n = (int)rd32(mus_dir + 4); mus_ent = (int)rd32(mus_dir + 8); if (mus_n < 1 || mus_n > 80 || mus_ent != 96 || rd32(mus_dir+12) != 16 || 16 + mus_n * mus_ent > (int)sizeof mus_dir) return;
     u32 dir_bytes = (16 + mus_n * mus_ent + 511) & ~511u;
     if (dir_bytes > mus_size) return;
     if (dir_bytes > 512) cart_read(mus_base + 512, mus_dir + 512, dir_bytes - 512);
@@ -977,7 +979,7 @@ static void nb_load(void) {
     for (int dy = 0; dy < 3; dy++) for (int dx = 0; dx < 3; dx++) nbf[dy + RING_MAX - 1][dx + RING_MAX - 1] = nb[dy][dx];
     if (t7()) nb7_load(); }
 static void city_spawn(void); static void city_shift(int dx, int dy); static void car_step(int frames);
-static int popup, popup_i, contact_sel, soc_page;
+static int popup, popup_i, contact_sel, soc_page, outing_sel;
 #ifdef DSTEST
 static void car_audit(void);
 #endif
@@ -2862,8 +2864,8 @@ static const char *const JOBLV[JOBN][5] = {
     { "Aide", "Tutor", "Teacher", "Dept Head", "Principal" }, { "Intern", "Temp", "Analyst", "Manager", "Director" } };
 static const u8 JOBPAY[JOBN] = { 8, 7, 9, 7, 10, 12 };
 static int job_pay(const Life *L) { return L->job ? JOBPAY[L->job - 1] * 10 * (L->lvl + 1) : 0; }
-static const char *const WNM[WN_N] = { "", "Eat a meal", "Sleep in a bed", "Take a shower", "Have some fun", "Chat with someone", "Make a friend", "Get a job", "Go to work", "Get paid", "Get promoted", "Have $", "Buy something", "Visit another lot", "Have a baby", "Pet the dog", "Pick a song", "Feed the dog", "Harvest a crop", "Sell farm food", "Care for livestock", "Find an island secret", "Chat with a townie", "Make a town friend", "Call a friend", "Share a snack", "Help a neighbor", "Tell a story" };
-static const u16 WPT[WN_N] = { 0, 300, 300, 300, 300, 400, 900, 800, 500, 500, 1500, 1200, 400, 500, 3000, 400, 300, 400, 600, 800, 500, 1000, 500, 1200, 500, 450, 650, 400 };
+static const char *const WNM[WN_N] = { "", "Eat a meal", "Sleep in a bed", "Take a shower", "Have some fun", "Chat with someone", "Make a friend", "Get a job", "Go to work", "Get paid", "Get promoted", "Have $", "Buy something", "Visit another lot", "Have a baby", "Pet the dog", "Pick a song", "Feed the dog", "Harvest a crop", "Sell farm food", "Care for livestock", "Find an island secret", "Chat with a townie", "Make a town friend", "Call a friend", "Share a snack", "Help a neighbor", "Tell a story", "Go on a local outing", "Attend a workshop", "Help the community" };
+static const u16 WPT[WN_N] = { 0, 300, 300, 300, 300, 400, 900, 800, 500, 500, 1500, 1200, 400, 500, 3000, 400, 300, 400, 600, 800, 500, 1000, 500, 1200, 500, 450, 650, 400, 600, 900, 1000 };
 static const char *const FNM[FR_N] = { "", "Pass out", "Wet myself", "A bad day at work", "Get demoted", "Meet a ghost" };
 static const u16 FPT[FR_N] = { 0, 600, 500, 700, 1000, 400 };
 static int want_ok(int i, int w) {   // may this sim want that, now?
@@ -2881,6 +2883,7 @@ static int want_ok(int i, int w) {   // may this sim want that, now?
         case WN_SHARE: return st >= 2 && funds >= 5 && (nsim > 1 || o_trf > 0);
         case WN_HELP: return st >= 3 && o_trf > 0;
         case WN_STORYTIME: return st >= 2 && (nsim > 1 || o_trf > 0);
+        case WN_OUTING: case WN_CLASS: case WN_COMMUNITY: return st>=2&&i==ctl;
         case WN_FRIEND: case WN_VISIT: return st >= 2; case WN_SONG: return mus_ok == 1 && mus_n > 0;
         default: return 1; }
 }
@@ -3126,6 +3129,59 @@ static void contacts_touch(int tx, int ty) {
     else if (hit(100,144,78,22,tx,ty)) contacts_call();
     contacts_clamp();
 }
+static int outing_group_ds(int i){
+    if(i<0||i>=nsim||zone!=Z_CITY||!nb_ok||lot_bx<0)return -1;
+    const Sim *m=&sims[i];
+    return outing_group(nb[1][1].lot,m->x<0||m->y<0||m->x>=13*16||m->y>=13*16);
+}
+static int outing_check_ds(int id){
+    const Sim *m=&sims[ctl];int st=stage_of(m->age);
+    return outing_check(id,outing_group_ds(ctl),st>=4?2:st>=3?1:st>=2?0:-1,minutes%1440,
+        funds,m->need[2],on_board||m->act_left>0||m->act>=0);
+}
+static void outing_start_ds(void){
+    int group=outing_group_ds(ctl);if(group<0){say(outing_reason[OUT_NO_VENUE]);return;}
+    int id=group*2+outing_sel,ck=outing_check_ds(id);
+    if(ck!=OUT_OK){say(outing_reason[ck]);return;}
+    const Outing *o=outing_get(id);Sim *m=&sims[ctl];
+    funds-=o->fee;m->need[2]=cl100(m->need[2]-o->energy);
+    m->act=OUT_DS_ACTION;m->act_amt=id;m->act_left=m->face=o->duration;m->act_obj=-1;m->tgt=m->soc=-1;
+    m->tx=m->wx=m->x;m->ty=m->wy=m->y;
+    popup=0;life_ver++;say(o->title);
+}
+static void outing_done_ds(int i,int id){
+    if(!outing_complete(id,outing_group_ds(i),0))return;
+    const Outing *o=outing_get(id);Sim *m=&sims[i];
+    m->need[0]=cl100(m->need[0]+o->food);m->need[1]=cl100(m->need[1]+o->fun);
+    m->need[2]=cl100(m->need[2]+o->rest);m->need[3]=cl100(m->need[3]+o->social);
+    if(i==ctl){if(o->kind==OUT_COMMUNITY)trg_ev(EV_KIND,1);say(o->done);sfx(3);}
+    life_ev(i,WN_OUTING,0);if(o->kind==OUT_LEARN)life_ev(i,WN_CLASS,0);if(o->kind==OUT_COMMUNITY)life_ev(i,WN_COMMUNITY,0);
+    life_ver++;
+}
+static void outings_draw_ds(void){
+    panel(6,20,244,164,"Local activities");chip(204,22,40,14,"X",0);
+    int group=outing_group_ds(ctl);char b[44];
+    if(group<0){
+        text_box(14,50,228,45,FS_BODY,TXT,AL_C,"Visit a cafe, library, gym, pool, cinema, farm, park, arcade, gallery, hotel, school or observatory.");
+        text_box(14,110,228,42,FS_BODY,TXT,AL_C,"Walk onto the venue's lot. Open Local activities to see its choices.");
+        return;
+    }
+    text_box(12,39,232,12,FS_SMALL,TXT,AL_C,outing_venue_names[group]);
+    for(int k=0;k<2;k++){
+        int id=group*2+k,y=54+k*52,ck=outing_check_ds(id);const Outing *o=outing_get(id);
+        chip(12,y,232,17,o->title,outing_sel==k);
+        text_box(15,y+18,226,17,FS_SMALL,TXT,AL_L,o->desc);
+        snprintf(b,sizeof b,"$%d  Energy -%d  Fun +%d",o->fee,o->energy,o->fun);
+        text_box(15,y+36,130,12,FS_SMALL,TXT,AL_L,b);
+        text_box(145,y+36,96,12,FS_SMALL,ck==OUT_OK?C15(17,31,17):TXT,AL_R,outing_reason[ck]);
+    }
+    chip(12,159,232,19,"Start selected activity",outing_check_ds(group*2+outing_sel)==OUT_OK);
+}
+static void outings_touch_ds(int x,int y){
+    if(hit(204,22,40,14,x,y)){popup=0;return;}
+    for(int k=0;k<2;k++)if(hit(12,54+k*52,232,50,x,y)){outing_sel=k;return;}
+    if(hit(12,159,232,19,x,y))outing_start_ds();
+}
 static void draw_hud_i(void) {
     scr = offbuf;
     if (mg_ui) { mg_bottom(); return; }
@@ -3137,11 +3193,12 @@ static void draw_hud_i(void) {
     rect(62, 168, 30, 22, PANB); rect(63, 169, 28, 20, cam_on ? C15(8, 26, 8) : PAN); text_box(63, 169, 28, 20, FS_BODY, TXT, AL_C, "Cam");
     if (cam_on) { const char *cb[6] = { cam_pan ? "Pan" : "Turn", "In", "Out", cam_free ? "Free" : "Follow", "Reset", "Done" }; for (int k = 0; k < 6; k++) { rect(216, 36 + k * 22, 38, 20, PANB); rect(217, 37 + k * 22, 36, 18, k == 0 && cam_pan ? C15(8, 26, 8) : PANH); text_box(217, 37 + k * 22, 36, 18, FS_BODY, TXT, AL_C, cb[k]); } text_box(30, 34, 180, 14, FS_BODY, TXT, AL_C, "Drag to look round"); }
     rect(104, 178, 48, 14, PANB); rect(105, 179, 46, 13, PAN); for (int i = 0; i < 3; i++) rect(118 + i * 8, 184, 4, 4, TXT);
+    if(!popup&&!menu_open&&!on_board&&sims[ctl].act==OUT_DS_ACTION&&sims[ctl].act_left>0){const Outing *o=outing_get(sims[ctl].act_amt);if(o){int d=o->duration-sims[ctl].act_left;rect(36,30,184,18,PANB);text_box(38,31,180,12,FS_SMALL,TXT,AL_C,o->title);rect(40,44,176,3,PAN);rect(40,44,176*MAX(0,d)/o->duration,3,C15(9,27,12));}}
     if (on_board) { rect(196, 168, 58, 22, PANB); rect(197, 169, 56, 20, C15(24, 8, 8)); text_box(197, 169, 56, 20, FS_BODY, TXT, AL_C, "Get Off"); }   // (D44)
     if (menu_open) { static const char *const mn[12] = { "Buy", "Build", "Map", "Save", "Options", "Title", "Job", "Songs", "Life", "Travel", "Games", "Heist" };   // (D70) no big panel behind (it cost 8 ms to draw): the chips alone, a title strip and the hints bar
-        rect(14, 40, 226, 16, PANB); rect(15, 41, 224, 14, PANH); text_box(15, 41, 140, 14, FS_HEAD, TXT, AL_C, "Menu"); chip(160, 40, 80, 16, "Contacts", menu_sel == 12);
+        rect(14, 40, 226, 16, PANB); rect(15, 41, 224, 14, PANH); text_box(15,41,60,14,FS_HEAD,TXT,AL_C,"Menu");chip(78,40,80,16,"Contacts",menu_sel==12);chip(160,40,80,16,"Activities",menu_sel==13);
         for (int i = 0; i < 12; i++) chip(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, mn[i], i == 9 && zone);
-        if (menu_sel == 12) ui_focus(160, 40, 80, 16); else ui_focus(14 + (menu_sel % 4) * 58, 60 + (menu_sel / 4) * 36, 54, 30); ui_hints(168, "Pad:Move|A:Pick|B:Close"); }
+        if (menu_sel >= 12) ui_focus(menu_sel==12?78:160,40,80,16); else ui_focus(14 + (menu_sel % 4) * 58, 60 + (menu_sel / 4) * 36, 54, 30); ui_hints(168, "Pad:Move|A:Pick|B:Close"); }
     if (popup == 1) {
         const Item *it = IT_OF(&objs[popup_i]); const char *nm = it->name;   // (D35: wide, for the PS1's words; D37: up to three choices; D38: up to eight, in two columns)
         if (popup_n <= 3) { int top = 150 - popup_n * 24;
@@ -3159,6 +3216,7 @@ static void draw_hud_i(void) {
         rect(56, 96, 144, 72, PANB); rect(57, 97, 142, 70, PAN); text_box(60, 99, 136, 16, FS_HEAD, TXT, AL_L, "Rex"); { char t2[24]; sprintf(t2, "Hunger %d", dog.hun); text_box(60, 99, 136, 16, FS_BODY, TXT, AL_R, t2); }
         chip(64, 118, 60, 20, "Pet", 0); chip(132, 118, 60, 20, "Play", 0); chip(64, 142, 60, 20, "Feed $5", 0); chip(132, 142, 60, 20, "Cancel", 0);
     } else if (popup == 6) { contacts_draw();
+    } else if (popup == 7) { outings_draw_ds();
     } else if (popup >= 2) {
         char nm[40]; int tg = popup == 2 ? popup_i : -2 - popup_i, rel; if (popup == 2) { sprintf(nm, "%s - %s %d", sname[popup_i], STGN[stage_of(sims[popup_i].age)], sims[popup_i].age); rel = sims[popup_i].rel; }
         else { char n2[24]; cit_name(&cits[popup_i], n2); sprintf(nm, "%s - %s", n2, STGN[cits[popup_i].stage]); rel = crel_peek(cits[popup_i].id); }
@@ -3751,7 +3809,7 @@ static void sims_step(int frames) {
                 ds_action_progress(&m->acc[n], &m->need[n], m->face,
                                    trf_gain(&dtr[i], n, trg_ah[i], m->act_amt));
             }
-            m->act_left--; if (m->act_left == 0) { int an = m->act; m->act = -1; trg_act_end(i, an); if (i == ctl) say("Done"); if (an >= 60 && an < 80) isl_done(i, an - 60, m->act_obj); if (an == 0) life_ev(i, WN_EAT, 0); else if (an == 1) life_ev(i, WN_FUN, 0); else if (an == 2 && m->act_amt >= 80) life_ev(i, WN_SLEEP, 0); else if (an == 5 && m->act_amt >= 70) life_ev(i, WN_SHOWER, 0); }
+            m->act_left--; if (m->act_left == 0) { int an = m->act; m->act = -1; if(an==OUT_DS_ACTION){outing_done_ds(i,m->act_amt);continue;} trg_act_end(i, an); if (i == ctl) say("Done"); if (an >= 60 && an < 80) isl_done(i, an - 60, m->act_obj); if (an == 0) life_ev(i, WN_EAT, 0); else if (an == 1) life_ev(i, WN_FUN, 0); else if (an == 2 && m->act_amt >= 80) life_ev(i, WN_SLEEP, 0); else if (an == 5 && m->act_amt >= 70) life_ev(i, WN_SHOWER, 0); }
         } else if (m->x != m->tx || m->y != m->ty) {
             if ((m->x & 15) == 0 && (m->y & 15) == 0 && m->wx == m->x && m->wy == m->y) {   // on a cell centre: plan the next cell round the walls
                 int nx, ny; if (next_cell(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), fdiv(m->tx + 8, 16), fdiv(m->ty + 8, 16), &nx, &ny)) { m->wx = nx * 16; m->wy = ny * 16; }
@@ -4713,6 +4771,7 @@ static void set_mode(int m) {
 }
 static void menu_do(int k) {   // (D70) the Live menu's choice k (touch or A): one place, so both do the same
         if (k == 12) { popup = 6; contact_sel = 0; cam_on = 0; return; }
+        if (k == 13) { popup=7;outing_sel=0;cam_on=0;return; }
         if (k == 11) { if (stage_of(sims[ctl].age) < 3) say("Teens and up"); else hs_open(); return; }   // (D47: the underworld)
         if (k == 10) { gm_open(); return; }   // (D48: the Games menu: the skateboard (D44) and the Boreagotchi)
         if (k == 9) { travel_ui = 1; return; }
@@ -4748,6 +4807,7 @@ static void popup_pick(int k) {   // (D82) a button of the thing's popup (touch,
 static void live_touch(int tx, int ty) {
     if (mg_ui) return;   // (D46: the mini-game reads the stylus itself)
     if (popup == 6) { contacts_touch(tx, ty); return; }
+    if (popup == 7) { outings_touch_ds(tx,ty);return; }
     if (jobui) { job_touch(tx, ty); return; }
     if (travel_ui) { travel_touch(tx, ty); return; }
     if (craft_ui) { craft_touch(tx, ty); return; }
@@ -4789,7 +4849,7 @@ static void live_touch(int tx, int ty) {
           else if (n > 8 && hit(26,172,204,18,tx,ty)) soc_page=(soc_page+1)%((n+7)/8);
           else for (int k = 0; k < 8 && soc_page*8+k < n; k++) if (hit(26 + (k & 1) * 104, 82 + (k >> 1) * 22, 100, 20, tx, ty)) { start_soc(ctl, tg, soc_pick[soc_page*8+k]); popup = 0; break; } }
         return; }
-    if (menu_open) { menu_open = 0; int k = hit(160,40,80,16,tx,ty) ? 12 : -1; for (int i = 0; i < 12; i++) if (hit(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, tx, ty)) k = i;
+    if (menu_open) { menu_open = 0; int k = hit(78,40,80,16,tx,ty)?12:hit(160,40,80,16,tx,ty)?13:-1; for (int i = 0; i < 12; i++) if (hit(14 + (i % 4) * 58, 60 + (i / 4) * 36, 54, 30, tx, ty)) k = i;
         ui_snd(k >= 0 ? UI_OK : UI_BACK); menu_do(k); return; }
     if (hit(2, 2, 26, 26, tx, ty)) { set_mode(M_MAP); return; }
     if (hit(104, 178, 48, 14, tx, ty)) { menu_open = 1; return; }
@@ -5362,14 +5422,15 @@ int main(void) {
             } else if (down & KEY_TOUCH) live_touch(tp.px, tp.py);
             if ((down & KEY_B) && (menu_open || popup || jobui || juke || travel_ui || craft_ui || farm_ui)) { menu_open = popup = jobui = juke = travel_ui = craft_ui = farm_ui = 0; down &= ~KEY_B; ui_snd(UI_BACK); }   // (D44: that B is not the board's)
             else if ((down & KEY_START) && !jobui && !juke && !popup && !mg_ui) { menu_open ^= 1; ui_snd(menu_open ? UI_OK : UI_BACK); }            if (juke) { if (down & KEY_DOWN) juke_pg++; if (down & KEY_UP && juke_pg > 0) juke_pg--; if (down & KEY_RIGHT) { int c = mus_cur < 0 ? 0 : mus_cur; o_song = (c + 1) % (mus_n > 0 ? mus_n : 1) + 1; } }
-            if (popup == 6 && !mg_ui) { if (down & KEY_UP) contact_sel--; if (down & KEY_DOWN) contact_sel++; if (down & KEY_LEFT) contact_sel -= 5; if (down & KEY_RIGHT) contact_sel += 5; contacts_clamp(); if (down & KEY_A) contacts_call(); }
+            if(popup==7&&!mg_ui){if(down&(KEY_UP|KEY_DOWN|KEY_LEFT|KEY_RIGHT))outing_sel^=1;if(down&KEY_A)outing_start_ds();}
+            else if (popup == 6 && !mg_ui) { if (down & KEY_UP) contact_sel--; if (down & KEY_DOWN) contact_sel++; if (down & KEY_LEFT) contact_sel -= 5; if (down & KEY_RIGHT) contact_sel += 5; contacts_clamp(); if (down & KEY_A) contacts_call(); }
             else if (mg_ui) mg_frame(held, down, steps, tp.px, tp.py);   // (D46) a mini-game has the buttons and the stylus
             else if (on_board) { if (!menu_open && !popup && !jobui && !juke && !travel_ui && !craft_ui && !farm_ui) skate_frame(held, down, steps); }   // (D44) riding: the buttons are the board's
             else {
             if (down & KEY_L) yaw_t -= 4096; if (down & KEY_R) yaw_t += 4096;
             if (menu_open && !popup) { int r = ui_rep(held, down, vbl_n), ms = menu_sel;   // (D70) the menu by the d-pad: a 4 x 3 grid, A picks
-                if (ms == 12) { if (r & (KEY_DOWN|KEY_LEFT|KEY_RIGHT)) ms = 0; else if (r & KEY_UP) ms = 8; }
-                else { if (r & KEY_LEFT) ms = ms % 4 ? ms - 1 : ms + 3; if (r & KEY_RIGHT) ms = ms % 4 < 3 ? ms + 1 : ms - 3; if (r & KEY_UP) ms = ms >= 4 ? ms - 4 : 12; if (r & KEY_DOWN) ms = ms < 8 ? ms + 4 : 12; }
+                if(ms>=12){if(r&(KEY_LEFT|KEY_RIGHT))ms=ms==12?13:12;else if(r&KEY_DOWN)ms=ms==12?1:3;else if(r&KEY_UP)ms=ms==12?9:11;}
+                else { if (r & KEY_LEFT) ms = ms % 4 ? ms - 1 : ms + 3; if (r & KEY_RIGHT) ms = ms % 4 < 3 ? ms + 1 : ms - 3; if(r&KEY_UP)ms=ms>=4?ms-4:12+(ms%4>=2);if(r&KEY_DOWN)ms=ms<8?ms+4:12+(ms%4>=2); }
                 if (ms != menu_sel) { menu_sel = ms; ui_snd(UI_MOVE); } if (down & KEY_A) { menu_open = 0; ui_snd(UI_OK); menu_do(menu_sel); down &= ~KEY_A; } }
             if (info_pg >= 2 && !juke && !menu_open && !jobui && !popup && !mg_ui) { int dl = ((down & KEY_RIGHT) ? 1 : 0) - ((down & KEY_LEFT) ? 1 : 0); if (dl) { cur_sim = (cur_sim + dl + nsim) % nsim; life_ver++; ui_ver++; ui_snd(UI_MOVE); } }   // (D73) the traits page: the pad changes housemate
             else { if (!juke && !menu_open && !jobui && !popup && (held & KEY_LEFT)) { yaw_t -= 120; live_yaw = yaw_t; } if (held & KEY_RIGHT) { yaw_t += 120; live_yaw = yaw_t; } }
@@ -5397,7 +5458,7 @@ int main(void) {
             { int hd = dist * cosLerp(pitch) >> 12, r = (hd + (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500)) >> 2; lod_ex = camx - (hd * sinLerp(yaw) >> 12); lod_ez = camz + (hd * cosLerp(yaw) >> 12); lod_r2 = on_board ? 0x3FFFFFFF : r * r; }   // (D51: riding the skate plaza, the lot is all drawn in full, so the lists are not recorded again as the camera follows the rider) (D38) the level of detail goes by the distance from the eye
             { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)((on_board ? skate_sig() * 977 + 5 : 0) + (mg_ui ? mg_sig() * 983 + 3 : 0) + cur_sim * 7 + ctl * 3 + (minutes / 1440) * 13 + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_secrets * 23) * 31 * zone + o_pm * 977 + info_pg * 43 + life_ver * 53 + sims[cur_sim].age * 59 + (cur_sim != ctl ? minutes * 7 + funds : 0)); a = a * 31 + (unsigned)sims[cur_sim].rel;
               static unsigned tv; unsigned av = (unsigned)(minutes * 13 + funds + (o_pm ? polys_last / 64 + fps_now * 977 : 0) + mood(&sims[cur_sim]) * 5); for (int n = 0; n < 6; n++) av = av * 31 + (unsigned)sims[cur_sim].need[n];   // (D39: the values alone are redrawn on their own)
-              unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + (menu_open ? menu_sel * 139 : 0) + (popup == 6 ? contact_sel * 149 + life_ver * 151 + minutes / 60 * 157 : 0) + ((popup == 2 || popup == 3) ? soc_page * 163 : 0) + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + farm_ui * 97 + (popup || farm_ui ? fm_sig() * 107 : 0) + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + on_board * 113 + (mg_ui ? mg_bsig() * 127 + 1 : 0) + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
+              unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + (menu_open ? menu_sel * 139 : 0) + (popup == 6 ? contact_sel * 149 + life_ver * 151 + minutes / 60 * 157 : 0) + ((popup == 2 || popup == 3) ? soc_page * 163 : 0) + (popup==7?outing_sel*167+minutes/60*173+funds+sims[ctl].need[2]:0) + (sims[ctl].act==OUT_DS_ACTION?179+sims[ctl].act_left/32*181:0) + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + farm_ui * 97 + (popup || farm_ui ? fm_sig() * 107 : 0) + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + on_board * 113 + (mg_ui ? mg_bsig() * 127 + 1 : 0) + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
               if (forced) { ts = ~a; hs = ~b; } if (mode == M_LIVE) { if (a != ts) { DBGT(1, draw_top_status(); off_show(scr_sub)); ts = a; tv = av; ui_heavy = 1; } else if (av != tv) { scr = scr_sub; status_vals(1); tv = av; } if (b != hs) { DBGT(0, draw_hud(); hud_show()); ui_heavy = 1; hs = b; } } }   // (D35: not after a menu chip has just left Live, or the Live icons stayed over Buy's 3D view)
         } else {   // BUY / BUILD: the live lot on the top screen, the catalogue or plan on the bottom (drag to place, paint, draw walls, move)
             LV = ed_lv;
