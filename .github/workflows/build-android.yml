@@ -1,0 +1,37 @@
+name: build-android
+on:
+  workflow_dispatch:
+  push:
+    paths: ["ports/android/**", "src/bigmap.*", "src/common.h", "src/outings.h", "src/living_calendar.h", "src/scene_music.h", "ports/host/shim/**", ".github/workflows/build-android.yml"]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  bootstrap:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify window bounds and tile encoding
+        run: cc -std=c99 -Wall -Wextra -Werror ports/android/test/window_math_test.c -o /tmp/window_math && /tmp/window_math
+      - name: Exercise actual BORE 2 world generator through Android bridge
+        run: |
+          cc -std=gnu11 -O2 -Iports/host/shim -Isrc ports/android/test/world_bridge_test.c ports/android/app/src/main/cpp/world_bridge.c src/bigmap.c -o /tmp/android_world
+          /tmp/android_world
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Install pinned Android SDK and NDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Assemble world preview APK
+        working-directory: ports/android
+        run: gradle :app:assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BORE2-android-world-preview
+          path: ports/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
