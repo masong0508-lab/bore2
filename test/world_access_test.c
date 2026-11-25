@@ -3,8 +3,15 @@
 #define OUTINGS_IMPLEMENTATION
 #include "../src/world_access.h"
 int main(void){
-    for(int lot=0;lot<LOT_N;lot++){int g=outing_group(lot,0);assert(world_outing_anchor(lot,'a')==(g>=0));assert(!world_outing_anchor(lot,'y'));if(g>=0)assert(world_marker_needed(lot,BT_GRASS));}
+    for(int lot=0;lot<LOT_N;lot++){int g=outing_group(lot,0);assert(world_outing_anchor(lot,'a')==(g>=0));assert(!world_outing_anchor(lot,'8'));if(g>=0)assert(world_marker_needed(lot,BT_GRASS));}
     assert(!world_marker_needed(LOT_HOUSE,BT_GRASS));
+    assert(world_outing_anchor(LOT_CAFE,'c')&&world_outing_anchor(LOT_LIBRARY,'b'));
+    assert(world_outing_anchor(LOT_GYM,']')&&world_outing_anchor(LOT_POOL,'~'));
+    assert(world_outing_anchor(LOT_CINEMA,';')&&world_outing_anchor(LOT_FARM,0xDE));
+    assert(world_outing_anchor(LOT_PARK,'N')&&world_outing_anchor(LOT_ARCADE,'!'));
+    assert(world_outing_anchor(LOT_GALLERY,')')&&world_outing_anchor(LOT_HOTEL,'I'));
+    assert(world_outing_anchor(LOT_SCHOOL,'d')&&world_outing_anchor(LOT_OBS,0xD6));
+    assert(!world_outing_anchor(LOT_HOUSE,'b')&&!world_outing_anchor(LOT_GAS,'y')&&!world_outing_anchor(LOT_POOL,'b'));
     assert(world_trip_anchor(LOT_HOTEL,'y')&&world_trip_anchor(LOT_INN,'a'));
     assert(world_trip_anchor(LOT_SQUARE,'+')&&world_trip_anchor(-1,'@'));
     assert(!world_trip_anchor(LOT_HOUSE,'I')&&!world_trip_anchor(LOT_SHOP,'y'));

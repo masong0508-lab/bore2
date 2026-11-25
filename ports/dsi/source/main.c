@@ -2660,7 +2660,7 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     #define AC(l, k) do { lab[n] = (l); code[n] = (k); n++; } while (0)
     int lot=zone==Z_CITY&&nb_ok?nb[1][1].lot:-1,terrain=nb_ok?nb[1][1].terrain:BT_GRASS;
     static char local_labels[2][32];
-    if(world_outing_anchor(lot,(unsigned char)c)){
+    if(c=='a'&&world_outing_anchor(lot,(unsigned char)c)){
         int g=outing_group(lot,0);
         for(int k=0;k<2;k++){const Outing *a=outing_get(g*2+k);snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);AC(local_labels[k],WORLD_OUT_0+k);}
     }
@@ -2675,7 +2675,7 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     else if (c == 0x85) AC("Dig", 60 + G_DIG); else if (c == 0x87) AC("Search It", 60 + G_WRECK); else if (c == 0x84) AC("Read It", 60 + G_BOTTLE);
     else if (c == 0x8D) AC("Read It", 60 + G_JOURNAL); else if (c == 0x86) AC("Listen", 60 + G_IDOL); else if (c == 0x88) AC("Pick It Up", 60 + G_SHELL); else if (c == 0x8C) AC("Take It", 60 + G_GOLD);
     else if (isl && c == 's') { if (isl_food > 0) AC("Cook and Eat", 80); AC("Craft", 81); }
-    else if (c >= 0xDB && c <= 0xDE) return farm_acts(c, lab, code);
+    else if (c >= 0xDB && c <= 0xDE) n=farm_acts(c, lab, code);
     else if (c == 0x8B) { AC("Sail Across", 82); AC("Not Now", 84); }
     else if (c == '@' || c == '+') AC("Book a trip", WORLD_TRIP);
     else if (c == 'B') AC("Ride the Board", 85);   // (D44)
@@ -2686,6 +2686,10 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
         if (c == 0xBE) { AC("Open the Basket", 90); AC("The Toy Box", 91); } else if (c == 0xBF) { AC("The Toy Box", 91); AC("Open the Basket", 90); } else if (c == 0xC0) { AC("View the Blobdex", 92); AC("The Toy Box", 91); }
         else if (c == 0xC3) AC("Tuck Them In", 93); else if (c == 0xC4) AC("Feed Them All $5", 94); else if (c == 0xC5) AC("Lights For Them", 95); else AC(IT_OF(&objs[o])->lab, -1); }
     else AC(IT_OF(&objs[o])->lab, -1);
+    if(c!='a'&&world_outing_anchor(lot,(unsigned char)c)){
+        int g=outing_group(lot,0);
+        for(int k=0;k<2&&n<8;k++){const Outing *a=outing_get(g*2+k);snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);AC(local_labels[k],WORLD_OUT_0+k);}
+    }
     #undef AC
     return n;
 }

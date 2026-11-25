@@ -23,3 +23,9 @@ game day even without opening the minigame. Return home is never blocked by heat
 No new save fields. Marker placement uses existing flags, not new models.
 Host tests verify access rules and filtering. Native world placement and
 controller/stylus playthroughs still need verification.
+
+The same venue sessions also appear directly on relevant equipment: cafe
+counter/coffee maker, library shelves/desks, gym apparatus, pool access,
+cinema seat, farm stand, park bench, arcade cabinet, gallery art, reception,
+spa furniture, school desks and science exhibits. Existing actions retain
+priority in the eight-entry interaction menu; the flag is the fallback.

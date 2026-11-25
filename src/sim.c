@@ -1808,6 +1808,7 @@ static int usable_at(int tx, int ty, char c) {   // something X does something w
     if (c == '8') return world_zone == ZONE_CITY;      // a FOR SALE sign
     if (c == CH_RAFT) return 1;
     if (c == 'B') return !has_board;                   // a skateboard on the floor: pick it up
+    if(c&&world_zone==ZONE_CITY&&strchr("ybcd]m_~>;N!)IS",c)&&world_outing_anchor(world_service_lot(tx,ty,0),(unsigned char)c))return 1;
     if (!c || !strchr("y7d`it", c)) return 0;         // a counter, a shelf, a desk, a mirror, a rack, a table: at a place, to buy at or to work at
     if (job_here(tx, ty, c)) return 1;
     PlaceInfo pi; if (!place_at(tx, ty, &pi)) return 0;
@@ -2118,6 +2119,13 @@ static int sim_pie_open_(char opt[8][24]) {
             } else if (c == 'c') OPT("A COFFEE $3", PC_COFFEE)
             break;
     }
+    // Keep the original object choices first; the flag remains a fallback when
+    // a busy object's eight-option menu has no room for both activities.
+    if(!mine&&pie_n<8){
+        int lot=world_service_lot(mx,my,0),g=outing_group(lot,0);
+        if(g>=0&&world_outing_anchor(lot,(unsigned char)c))
+            for(int k=0;k<2&&pie_n<8;k++){const Outing *o=outing_get(g*2+k);snprintf(opt[pie_n],24,"%.17s $%d",o->title,o->fee);pie_code[pie_n++]=PC_LOCAL0+k;}
+    }
     #undef OPT
     if (!pie_n) { sim_note(pie_place ? "SORRY, STAFF ONLY BACK THERE" : "NOTHING TO DO HERE"); return 0; }
     return pie_n;
@@ -2203,7 +2211,7 @@ static void place_do(Sim *s, int code) {
         case PC_LOCAL0: case PC_LOCAL1: {
             int lot=world_service_lot(pie_mx,pie_my,0),g=outing_group(lot,0);
             if(g>=0&&world_outing_anchor(lot,(unsigned char)world_at(pie_mx,pie_my)))sim_outing_start(g*2+code-PC_LOCAL0);
-            else sim_note("VISIT THE VENUE'S COMMUNITY FLAG");break;}
+            else sim_note("USE A LOCAL VENUE OBJECT");break;}
         case PC_TRIP:
             if(world_trip_anchor(world_service_lot(pie_mx,pie_my,0),(unsigned char)world_at(pie_mx,pie_my)))travel_asked=1;
             else sim_note("VISIT A HOTEL RECEPTION OR TRANSPORT STOP");break;
