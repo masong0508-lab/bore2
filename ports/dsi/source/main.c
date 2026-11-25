@@ -2663,7 +2663,7 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     static char local_labels[2][32];
     if(c=='a'&&world_outing_anchor(lot,(unsigned char)c)){
         int g=outing_group(lot,0);
-        for(int k=0;k<2;k++){const Outing *a=outing_get(g*2+k);snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);AC(local_labels[k],WORLD_OUT_0+k);}
+        for(int k=0;k<2;k++){const Outing *a=outing_get(living_outing_index(g,k,(minutes/1440)%7));snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);AC(local_labels[k],WORLD_OUT_0+k);}
     }
     if(world_trip_anchor(lot,(unsigned char)c))AC("Book a trip",WORLD_TRIP);
     if(world_heist_anchor(lot,terrain,(unsigned char)c)==SITE_ROAD&&stage_of(sims[ctl].age)>=3)AC("Grand theft (risk)",WORLD_HEIST);
@@ -2689,7 +2689,7 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     else AC(IT_OF(&objs[o])->lab, -1);
     if(c!='a'&&world_outing_anchor(lot,(unsigned char)c)){
         int g=outing_group(lot,0);
-        for(int k=0;k<2&&n<8;k++){const Outing *a=outing_get(g*2+k);snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);AC(local_labels[k],WORLD_OUT_0+k);}
+        for(int k=0;k<2&&n<8;k++){const Outing *a=outing_get(living_outing_index(g,k,(minutes/1440)%7));snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);AC(local_labels[k],WORLD_OUT_0+k);}
     }
     #undef AC
     return n;
@@ -3801,9 +3801,13 @@ static int arrive(int i) {   // at the thing: start doing it (0: nothing to do a
         int cd=m->act_amt,o=m->act_obj;m->act=-1;m->act_left=0;
         if(i!=ctl||o<0||o>=nobj)return 0;
         int c=ID2CH[OBJ_ID(&objs[o])],lot=zone==Z_CITY&&nb_ok?nb[1][1].lot:-1,terrain=nb_ok?nb[1][1].terrain:BT_GRASS;
-        if((cd==WORLD_OUT_0||cd==WORLD_OUT_1)&&world_outing_anchor(lot,(unsigned char)c)){
-            int g=outing_group_ds(i);if(g>=0)outing_start_ds(g*2+cd-WORLD_OUT_0);
-            else say("Step onto the venue lot");return 0;
+        if((cd==WORLD_OUT_0||cd==WORLD_OUT_1||(cd>=128&&cd<128+OUT_N))&&world_outing_anchor(lot,(unsigned char)c)){
+            int g=outing_group_ds(i),day=(minutes/1440)%7;
+            int id=cd>=128?cd-128:living_outing_index(g,cd-WORLD_OUT_0,day);
+            if(g<0||living_outing_group(id)!=g)say("Step onto the venue lot");
+            else if(id!=living_outing_index(g,id%2,day))say("Schedule changed. Choose again.");
+            else outing_start_ds(id);
+            return 0;
         }
         if(cd==WORLD_TRIP&&world_trip_anchor(lot,(unsigned char)c)){travel_ui=1;return 0;}
         if(cd==WORLD_HEIST&&world_heist_anchor(lot,terrain,(unsigned char)c)==SITE_ROAD&&stage_of(m->age)>=3){hs_open_site(SITE_ROAD);return 0;}
@@ -4825,6 +4829,11 @@ static void popup_pick(int k) {   // (D82) a button of the thing's popup (touch,
                 if(cd==WORLD_OUT_0||cd==WORLD_OUT_1||cd==WORLD_TRIP||cd==WORLD_HEIST){
                     int tx,ty;
                     if(!act_stand(m,popup_i,&tx,&ty)){say("No clear way to reach that");return;}
+                    if(cd==WORLD_OUT_0||cd==WORLD_OUT_1){
+                        int g=outing_group(nb[1][1].lot,0),id=living_outing_index(g,cd-WORLD_OUT_0,(minutes/1440)%7);
+                        if(id<0){say("No session here");return;}
+                        cd=128+id;
+                    }
                     m->tx=tx;m->ty=ty;m->act=WORLD_DS_PENDING;m->act_amt=cd;m->face=1;m->act_obj=popup_i;m->act_left=0;
                 }
                 else if (cd < 0) start_act(m, popup_i, -1);
