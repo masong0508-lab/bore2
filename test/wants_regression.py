@@ -68,6 +68,8 @@ static int fm_n[4],fm_hens,fm_cows,stock[6],dtr[SIM_MAX]; static u16 isl_secrets
 static Life life[SIM_MAX];
 static int stage_of(int a) { return a < 3 ? 0 : a < 6 ? 1 : a < 13 ? 2 : a < 18 ? 3 : a < 60 ? 4 : 5; }
 static int fm_have(int k) { return stock[k]; }
+static int known_friends;
+static int contact_count(int friends) { (void)friends; return known_friends; }
 static u32 hsh(u32 x) { (void)x; return 0; }
 static int trf_asp_gain(int *p,int n) { (void)p; return n; }
 static int trf_asp_loss(int *p,int n) { (void)p; return n; }
@@ -82,6 +84,7 @@ int main(void) {
     assert(!want_ok(0,WN_PETFEED) && !want_ok(0,WN_HARVEST) && !want_ok(0,WN_ANIMALS));
     dog_have=1; fm_n[0]=1; fm_hens=1; assert(want_ok(0,WN_PETFEED) && want_ok(0,WN_HARVEST) && want_ok(0,WN_ANIMALS) && want_ok(0,WN_FARMSELL));
     assert(want_ok(0,WN_NEIGHBOR) && want_ok(0,WN_TOWNFRIEND)); o_trf=0; assert(!want_ok(0,WN_NEIGHBOR)); o_trf=1;
+    assert(!want_ok(0,WN_CALL)); known_friends=1; assert(want_ok(0,WN_CALL));
     assert(want_ok(0,WN_SECRET)); isl_secrets=255; assert(!want_ok(0,WN_SECRET));
     L->wk[0]=L->wk[1]=WN_EAT; L->wk[2]=0; L->pts=7400; funds=0; life_ev(0,WN_EAT,0);
     assert(L->pts==7700 && funds==250 && !L->wk[0] && !L->wk[1]);

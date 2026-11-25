@@ -328,6 +328,26 @@ void pop_known_rebuild(void) {
     pop_kn_n = 0;
     for (int p = 0; p < pop_nper; p++) { const Per *q = &pop_per[p]; if (!(q->flags & PF_GONE) && (q->met || q->rel || q->rom || pop_custom_look(p, 0, 0))) pop_know(p); }
 }
+int pop_call_friend(int text) {
+    if (clock_min < 8 * 60 || clock_min >= 21 * 60) return 0;
+    int best = -1, score = -1;
+    for (int i = 0; i < pop_kn_n; i++) {
+        int pid = kn_pid[i], pl;
+        Per *q = &pop_per[pid];
+        if ((q->flags & PF_GONE) || q->slot != 255 || q->stage < AG_CHILD || q->rel < 50 || !kn_unseen[i]) continue;
+        int activity = pop_where(pid, &pl);
+        if (activity != AT_HOME && activity != AT_OUT) continue;
+        int v = (int)kn_unseen[i] * 128 + q->rel;
+        if (v > score) { best = i; score = v; }
+    }
+    if (best < 0) return 0;
+    int pid = kn_pid[best]; Per *q = &pop_per[pid];
+    q->rel = (s8)MIN(100, q->rel + (text ? 1 : 3)); kn_unseen[best] = 0;
+    char name[24], note[32]; pop_first(pid, name);
+    snprintf(note, sizeof note, text ? "TEXTED %.12s: HI!" : "CAUGHT UP WITH %.12s", name);
+    sim_note(note);
+    return 1;
+}
 void pop_hour(void) {   // an hour of their lives: someone who knows you, not seen for a couple of days, may ring (a call every three hours at most)
     static int kc, quiet;
     if (quiet > 0) { quiet--; return; }
