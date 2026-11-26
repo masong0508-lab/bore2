@@ -4,6 +4,9 @@
 #include <stdio.h>
 int main(void) {
     unsigned char generation[25] = {0}, roof[25] = {0};
+    assert(stream_tile_valid(71,71,4,18));
+    assert(!stream_tile_valid(72,71,4,18)&&!stream_tile_valid(79,79,4,18));
+    assert(!stream_tile_valid(-1,0,4,18)&&!stream_tile_valid(0,72,4,18));
     assert(stream_model_state(generation, roof, 5, -1, 0) == STREAM_MODEL_READY);
     assert(stream_model_state(generation, roof, 5, 5, 0) == STREAM_MODEL_READY);
     assert(stream_model_state(generation, roof, 5, 4, 4) == STREAM_MODEL_READY);

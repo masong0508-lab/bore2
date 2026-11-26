@@ -24,3 +24,17 @@ static inline int render_cache_prefer(int pinned,int allocated,uint32_t age,
     return !pinned&&(!have_best||(!allocated&&best_alloc)||
                      (allocated==best_alloc&&age<best_age));
 }
+
+// Packet words are 32-bit. Align first, then check available room.
+static inline int render_packet_bytes(int bytes,int room){
+    if(bytes<=0||bytes>0x7ffffffc||room<0)return 0;
+    int aligned=(bytes+3)&~3;
+    return aligned<=room?aligned:0;
+}
+// GTE input for proxy vertices is 1/16 scale. The normal GTE's AVSZ4
+// uses 0x100 and AVSZ3 uses 0x155; recover exactly their local OT units.
+static inline int render_proxy_slot(int sum,int vertices,int shift,int limit){
+    int z=sum>0?(vertices==3?(sum*341)>>8:sum):0;
+    int slot=z>>shift;
+    return slot<1?1:slot>limit?limit:slot;
+}

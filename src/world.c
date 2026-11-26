@@ -63,22 +63,28 @@ int world_home_find(int zone, int bx, int by, int unit) {
 }
 static void town_homes(int want); static void island_homes(int want); static int is_wall(char c);
 static int world_zone_saved, world_wbx_saved, world_wby_saved;   // (world_load: where the save was; world_place goes there)
-static u8 wdirty[5][5];                             // the open world's window: blocks the player has built on
+#define WB 4
+#define CITY_TILES (WB*BM_BLK)
+_Static_assert(CITY_TILES<=MW&&CITY_TILES<=MH,"city window fits backing map");
+static u8 wdirty[WB][WB];
+static inline int city_tile_valid(int x,int y){
+    return world_zone!=ZONE_CITY||world_wbx<0||stream_tile_valid(x,y,WB,BM_BLK);
+}
 static u8 lvl_used[NLEVELS];
 static void levels_clear(u8 *own) {                 // every storey of a zone back to empty air (their pool slots freed)
     for (int k = 0; k < NUP; k++) { if (own[k]) lvbusy[own[k] - 1] = 0; own[k] = 0; }
     roof_dirty = 1;
 }
 char world_at_l(int l, int mx, int my) {
-    if (mx < 0 || my < 0 || mx >= MW || my >= MH) return l ? ' ' : 'W';
+    if(mx<0||my<0||mx>=MW||my>=MH||!city_tile_valid(mx,my))return l?' ':'W';
     if (l <= 0) return lifeMap[my][mx];
     const Level *L = lv_get(l - 1); return L ? L->map[my][mx] : ' ';
 }
 static char dummy_c; static u8 dummy_u;           // what a write lands on when no storey slot is left (it is lost)
 static void mark_dirty(int l, int mx, int my);
-char *world_cell(int l, int mx, int my) { mark_dirty(l, mx, my); if (l <= 0) return &lifeMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_c = ' '; return &dummy_c; } return &L->map[my][mx]; }
-u8 *world_floor_cell(int l, int mx, int my) { mark_dirty(l, mx, my); if (l <= 0) return &floorMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_u = 0; return &dummy_u; } return &L->fl[my][mx]; }
-u8 *world_wall_cell(int l, int mx, int my) { mark_dirty(l, mx, my); if (l <= 0) return &wallMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_u = 0; return &dummy_u; } return &L->wp[my][mx]; }
+char *world_cell(int l, int mx, int my) { if((unsigned)mx>=MW||(unsigned)my>=MH||!city_tile_valid(mx,my)){dummy_c=' ';return &dummy_c;}mark_dirty(l, mx, my); if (l <= 0) return &lifeMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_c = ' '; return &dummy_c; } return &L->map[my][mx]; }
+u8 *world_floor_cell(int l, int mx, int my) { if((unsigned)mx>=MW||(unsigned)my>=MH||!city_tile_valid(mx,my)){dummy_u=0;return &dummy_u;}mark_dirty(l, mx, my); if (l <= 0) return &floorMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_u = 0; return &dummy_u; } return &L->fl[my][mx]; }
+u8 *world_wall_cell(int l, int mx, int my) { if((unsigned)mx>=MW||(unsigned)my>=MH||!city_tile_valid(mx,my)){dummy_u=0;return &dummy_u;}mark_dirty(l, mx, my); if (l <= 0) return &wallMap[my][mx]; Level *L = lv_need(l - 1); if (!L) { dummy_u = 0; return &dummy_u; } return &L->wp[my][mx]; }
 static VECTOR cam_keep_eye, cam_keep_at; static int cam_pushed;
 void world_cam_push(int l) {
     if (cam_pushed || l <= 0) return;
@@ -641,7 +647,6 @@ static void island_homes(int want) {   // cottages (with a plank path) where the
 // and the window moves a block that way: everything slides over (the map, the storeys, the homes, the people), and the row of
 // blocks coming into view is built from the generator. A block you built on is kept aside when it leaves, and comes back as you
 // left it.
-#define WB 4
 static u8 gen_pend[WB][WB]; static int gen_npend;
 static void gen_one(int wx,int wy);
 int world_wbx = -1, world_wby = -1;                    // the window's top-left block in the open world (-1: not made yet)
@@ -672,7 +677,7 @@ static int edit_load(int wx, int wy) {
 extern int world_stamp;
 static void pb_touch(int mx, int my);
 static void mark_dirty(int l,int mx,int my){
-    if(world_zone==ZONE_CITY&&world_wbx>=0&&(unsigned)mx<MW&&(unsigned)my<MH){
+    if(world_zone==ZONE_CITY&&world_wbx>=0&&stream_tile_valid(mx,my,WB,BM_BLK)){
         int wx=mx/BM_BLK,wy=my/BM_BLK;
         // Never write an edit into a temporary grass placeholder.
         if(gen_pend[wy][wx])gen_one(wx,wy);
@@ -1231,14 +1236,14 @@ static void window_shift(int sx,int sy){
     }
     T = gfx_hb(); if (T - T0 > dbg_ws[4]) dbg_ws[4] = T - T0;
     int dx = sx * BM_BLK, dy = sy * BM_BLK;
-    shift2d((u8 *)lifeMap, MW + 1, MW, MH, dx, dy, '.');
-    shift2d((u8 *)floorMap, MW, MW, MH, dx, dy, FL_GRASS);
-    shift2d((u8 *)wallMap, MW, MW, MH, dx, dy, 0);
+    shift2d((u8 *)lifeMap,MW+1,CITY_TILES,CITY_TILES,dx,dy,'.');
+    shift2d((u8 *)floorMap,MW,CITY_TILES,CITY_TILES,dx,dy,FL_GRASS);
+    shift2d((u8 *)wallMap,MW,CITY_TILES,CITY_TILES,dx,dy,0);
     { int T2 = gfx_hb(); if (T2 - T > dbg_ws[5]) dbg_ws[5] = T2 - T; T = T2; }
     for (int k = 0; k < NUP; k++) { Level *L = lv_get(k); if (!L) continue;
-        shift2d((u8 *)L->map, MW + 1, MW, MH, dx, dy, ' '); shift2d((u8 *)L->fl, MW, MW, MH, dx, dy, 0); shift2d((u8 *)L->wp, MW, MW, MH, dx, dy, 0); dbg_ws[7]++; }
+        shift2d((u8 *)L->map,MW+1,CITY_TILES,CITY_TILES,dx,dy,' ');shift2d((u8 *)L->fl,MW,CITY_TILES,CITY_TILES,dx,dy,0);shift2d((u8 *)L->wp,MW,CITY_TILES,CITY_TILES,dx,dy,0); dbg_ws[7]++; }
     { int T2 = gfx_hb(); if (T2 - T > dbg_ws[6]) dbg_ws[6] = T2 - T; }
-    shift2d((u8 *)wdirty, WB, WB, WB, sx, sy, 0);
+    shift2d((u8 *)wdirty,sizeof wdirty[0],WB,WB,sx,sy,0);
     world_wbx += sx; world_wby += sy;
     int z = ZONE_CITY, n = 0;                                                     // the homes that stay, moved over
     for (int i = 0; i < nhomes[z]; i++) {
@@ -1252,7 +1257,7 @@ static void window_shift(int sx,int sy){
     T = gfx_hb(); if (T - T0 > dbg_ws[0]) dbg_ws[0] = T - T0; T0 = T;
     // what was worked out for the blocks that stay moves with them: the shading by the walls, the roofs and buildings
     { int keep_r = roof_dirty, keep_a = ao_dirty;
-      shift2d(&ao[0][0], MW + 1, MW + 1, MH + 1, dx, dy, 0);
+      shift2d(&ao[0][0],MW+1,CITY_TILES+1,CITY_TILES+1,dx,dy,0);
       if (!keep_r) roof_shift(dx, dy);
       keep_r|=roof_dirty; // a partially clipped user-built structure needs a full metadata rebuild
       T = gfx_hb(); if (T - T0 > dbg_ws[1]) dbg_ws[1] = T - T0; T0 = T;
@@ -1277,8 +1282,14 @@ COLD void world_open_at(int cbx, int cby) {          // the window round block (
     world_wbx = CLAMP(cbx - WB / 2, 0, BM_N - WB); world_wby = CLAMP(cby - WB / 2, 0, BM_N - WB);
     nhomes[ZONE_CITY] = 0;
     levels_clear(UP);
-    memset(wdirty, 0, sizeof wdirty); memset(gen_pend, 0, sizeof gen_pend); gen_npend = 0;
-    for (int y = 0; y < MH; y++) lifeMap[y][MW] = 0;
+    memset(wdirty,0,sizeof wdirty);memset(gen_pend,0,sizeof gen_pend);gen_npend=0;
+    // 80x80 is backing storage; only 4x18=72 tiles belong to this city.
+    // Erase the unused fringe left behind by other zones or old layouts.
+    for(int y=0;y<MH;y++){
+        int x=y<CITY_TILES?CITY_TILES:0;
+        memset(&lifeMap[y][x],'.',MW-x);memset(&floorMap[y][x],FL_GRASS,MW-x);
+        memset(&wallMap[y][x],0,MW-x);lifeMap[y][MW]=0;
+    }
     for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) gen_block(wx, wy);
     ao_dirty = 1; roof_dirty = 1;
 #ifdef ROAD_AUDIT
@@ -1294,7 +1305,7 @@ int world_stream_now(int ptx, int pty, int *dtx, int *dty, int now);
 int world_stream(int ptx, int pty, int *dtx, int *dty) { return world_stream_now(ptx, pty, dtx, dty, 0); }
 int world_stream_now(int ptx, int pty, int *dtx, int *dty, int now) {
     *dtx = *dty = 0; world_stream_want = 0;
-    if (world_zone != ZONE_CITY || world_wbx < 0 || ptx < 0 || pty < 0 || ptx >= MW || pty >= MH) return 0;
+    if(world_zone!=ZONE_CITY||world_wbx<0||!stream_tile_valid(ptx,pty,WB,BM_BLK))return 0;
     int bxp = ptx / BM_BLK, byp = pty / BM_BLK, sx = (bxp >= WB - 1) - (bxp <= 0), sy = (byp >= WB - 1) - (byp <= 0);   // (in one of the two middle blocks: the window stays; further out it moves)
     if (world_wbx + sx < 0 || world_wbx + sx > BM_N - WB) sx = 0;
     if (world_wby + sy < 0 || world_wby + sy > BM_N - WB) sy = 0;
@@ -1385,8 +1396,9 @@ static int world_covered0(int mx, int my) {   // a tile under the far end of a l
 static int world_walkable0(int mx, int my);
 // (the walkers, the route searches and the straight-line checks ask this for every tile they look at, every step: on the ground floor
 //  it reads the maps straight, and a bare floor tile's answer is world_covered's kept bit)
-int world_walkable(int mx, int my) {
-    if (world_lvl != 0 || (unsigned)mx >= MW || (unsigned)my >= MH) return world_walkable0(mx, my);
+int world_walkable(int mx,int my){
+    if(!city_tile_valid(mx,my))return 0;
+    if(world_lvl!=0||(unsigned)mx>=MW||(unsigned)my>=MH)return world_walkable0(mx,my);
     // No actor may enter a lot before its real collision map exists.
     if(world_zone==ZONE_CITY&&world_wbx>=0&&gen_pend[my/BM_BLK][mx/BM_BLK])return 0;
     char c = lifeMap[my][mx];
@@ -2277,6 +2289,8 @@ static inline void lift_to(int L) { if (gfx_lift != L) { gfx_lift = L; gfx_set_i
 static __attribute__((noinline)) int item_lift(int mx, int my, int lvl) {
     return lvl ? world_gh_c(mx, my) : world_gh(mx * TILE + TILE / 2, -(my * TILE + TILE / 2));
 }
+static int defer_city_props;
+static int dbg_prop_lite,dbg_prop_omitted;
 static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, int focus) {
     // the camera's forward on the ground (unit, 4096), to decide which walls stand between it and the focus
     int cdx = cam.at.vx - cam.eye.vx, cdz = cam.at.vz - cam.eye.vz;
@@ -2366,6 +2380,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
             { PROF_BEGIN(); ws_lite = bld[my][mx] && !b_see[bld[my][mx]] && !world_roof_show; wall_tile(mx, my, h, cut); ws_lite = 0; world_dbg_walls++; PROF_END(1); }
         } else if (c != '.') {
             if (c == 'D') { lift_to(hm ? gh_c(mx, my) : 0); int along = (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12); door_tile(mx, my, (cutaway && cut_here(mx, my) && along < -TILE / 4) ? WALL_LOW : WALL_FULL); continue; }   // (the doorway is its door: no mat on the floor)
+            if(defer_city_props)continue; // roofs/structure first; props have their own pass
             if (c == 'r') { lift_to(hm ? gh_c(mx, my) : 0); rug_tile(mx, my); continue; }
             lift_to(0);
             if (nat_on && !lvl && nat_plant_char(c)) {
@@ -2385,7 +2400,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
     // the street's things past the full-detail range (benches, fountains, lamps, bins: outdoors, not in a building): they stay in their
     // places out to the FULL DETAIL you picked, even when the speed helper pulls the range in (they used to blink in and out at its edge)
     extern int world_item_r, world_detail_r;
-    if (!lvl && !shell && world_item_r > world_detail_r) {
+    if (!defer_city_props&&!lvl&&!shell&&world_item_r>world_detail_r) {
         const int IR = world_item_r;
         int ix0 = MAX(0, fx - IR), ix1 = MIN(MW - 1, fx + IR), iy0 = MAX(0, fy - IR), iy1 = MIN(MH - 1, fy + IR);
         // (which tiles hold such a thing does not change from frame to frame: they are kept as a bit a tile, 800 bytes in the PlayStation's
@@ -2637,11 +2652,11 @@ static void roof_rebuild(void) {
 // most of the 870 hb the window's move cost in one frame)
 _Static_assert((MW + 31) / 32 == 3 && MW > 64, "bits_shift: a row is three words");
 static void bits_shift(u32 (*rows)[(MW + 31) / 32], int dx, int dy) {
-    const u32 top = (1u << (MW - 64)) - 1;
-    int y0 = dy >= 0 ? 0 : MH - 1, y1 = dy >= 0 ? MH : -1, st = dy >= 0 ? 1 : -1;   // (in place: rows read before they are written)
+    const u32 top=(1u<<(CITY_TILES-64))-1;
+    int y0=dy>=0?0:CITY_TILES-1,y1=dy>=0?CITY_TILES:-1,st=dy>=0?1:-1;   // (in place: rows read before they are written)
     for (int y = y0; y != y1; y += st) {
         int ys = y + dy; u32 *d = rows[y];
-        if (ys < 0 || ys >= MH) { d[0] = d[1] = d[2] = 0; continue; }
+        if(ys<0||ys>=CITY_TILES){d[0]=d[1]=d[2]=0;continue;}
         u32 a = rows[ys][0], b = rows[ys][1], c = rows[ys][2] & top; int k = dx;   // new bit x = old bit x + dx
         while (k >= 32) { a = b; b = c; c = 0; k -= 32; }
         while (k <= -32) { c = b; b = a; a = 0; k += 32; }
@@ -2653,24 +2668,24 @@ static void bits_shift(u32 (*rows)[(MW + 31) / 32], int dx, int dy) {
 static void roof_shift(int dx, int dy) {
     bld_gen++;
     for (int l = 0; l < NLEVELS; l++) {
-        shift2d(&roofH[l][0][0], RHW, RHW, MH + 1, dx / 2, dy, 0);   // (whole blocks of 16 tiles: 8 bytes of nibbles)
+        shift2d(&roofH[l][0][0],RHW,(CITY_TILES+2)/2,CITY_TILES+1,dx/2,dy,0);   // (whole blocks of 16 tiles: 8 bytes of nibbles)
         bits_shift(roofM[l], dx, dy);
         if (l) {
             bits_shift(lvl_edge[l], dx, dy);
             if (lvl_used[l]) {
                 int a = lvl_bb[l][0] - dx, b = lvl_bb[l][1] - dy, c = lvl_bb[l][2] - dx, d = lvl_bb[l][3] - dy;
-                a = MAX(a, 0); b = MAX(b, 0); c = MIN(c, MW - 1); d = MIN(d, MH - 1);
+                a=MAX(a,0);b=MAX(b,0);c=MIN(c,CITY_TILES-1);d=MIN(d,CITY_TILES-1);
                 if (c < a || d < b) lvl_used[l] = 0;
                 else { lvl_bb[l][0] = (u8)a; lvl_bb[l][1] = (u8)b; lvl_bb[l][2] = (u8)c; lvl_bb[l][3] = (u8)d; }
             }
         }
     }
-    shift2d(&bld[0][0], MW, MW, MH, dx, dy, 0);
+    shift2d(&bld[0][0],MW,CITY_TILES,CITY_TILES,dx,dy,0);
     for (int b = 1; b <= nbld; b++) {
         if (b_x0[b] == 255) continue;
         int a = b_x0[b] - dx, c = b_x1[b] - dx, e = b_y0[b] - dy, f = b_y1[b] - dy;
-        if(a<0||e<0||c>=MW||f>=MH){
-            if(c>=0&&f>=0&&a<MW&&e<MH)roof_dirty=1;
+        if(a<0||e<0||c>=CITY_TILES||f>=CITY_TILES){
+            if(c>=0&&f>=0&&a<CITY_TILES&&e<CITY_TILES)roof_dirty=1;
             b_x0[b]=255;b_see[b]=0;continue;
         }
         b_x0[b] = (u8)a; b_x1[b] = (u8)c; b_y0[b] = (u8)e; b_y1[b] = (u8)f;
@@ -3110,7 +3125,7 @@ static void nat_far(int px, int py) {
 // (the detailed floor is drawn over it). Cells inside the range, or reaching behind the eye, are left to the near floor.
 u32 far_haze_col(u32 col, int zw);
 COLD static void ground_win(int hz) {   // hz: the far view is on, so the corners fade into its haze
-    enum { G = 8, NG = MW / G, NC = (NG + 1) * (NG + 1) };
+    enum { G=8,NG=CITY_TILES/G,NC=(NG+1)*(NG+1) };
     extern s16 bfs_par[MH][MW]; SVECTOR *cv = (SVECTOR *)&bfs_par[0][0]; XV *xv = (XV *)&bfs_par[MH / 2][0];   // (the route finder's table, lent as the floor drawing and the roofs borrow it: they are done by now)
     int L = CLAMP(gfx_light(0, -ONE, 0), 40, 200);
     lift_to(0); gfx_set_identity();
@@ -3147,6 +3162,33 @@ COLD static void ground_win(int hz) {   // hz: the far view is on, so the corner
         q[0] = (5u << 24) | (*ot & 0xffffff); *ot = (u32)q & 0xffffff; gfx_frame_prims++;
     }
 }
+// Reuse the same spatial visibility rules, but visit only actual props.
+// Nearby interactive objects get first claim on the remaining packets.
+static void city_props(int fx,int fy,int t,int band,int l){
+    extern int world_item_r;
+    int ir=MAX(world_item_r,world_detail_r),x0=MAX(0,MIN(ex0,fx-ir)),x1=MIN(CITY_TILES-1,MAX(ex1,fx+ir));
+    int y0=MAX(0,MIN(ey0,fy-ir)),y1=MIN(CITY_TILES-1,MAX(ey1,fy+ir));
+    if(l){x0=MAX(x0,lvl_bb[l][0]);x1=MIN(x1,lvl_bb[l][2]);y0=MAX(y0,lvl_bb[l][1]);y1=MIN(y1,lvl_bb[l][3]);}
+    TileView tv;tile_view_init(&tv,TILE/2,-WALL_FULL/2,-TILE/2);
+    for(int y=y0;y<=y1;y++)for(int x=x0;x<=x1;x++){
+        char c=dm[y][x];
+        if(c=='.'||c==' '||c=='D'||is_wall(c))continue;
+        int b=bld[y][x],inside=x>=rx0&&x<=rx1&&y>=ry0&&y<=ry1;
+        if(b&&!b_see[b]&&!world_roof_show)continue;
+        if(!inside&&!(b&&b_see[b])&&(l||b||c=='r'||ABS(x-fx)>ir||ABS(y-fy)>ir))continue;
+        int close=MAX(ABS(x-fx),ABS(y-fy))<=5;
+        if(close!=(band==0))continue;
+        int vx,vy,vz;tile_view(&tv,x,y,&vx,&vy,&vz);
+        if(vz<-TILE||ABS(vx)>(vz*3)/4+TILE*2||ABS(vy)>(vz*5)/8+TILE*3+1500)continue;
+        if(gfx_room()<512){dbg_prop_omitted++;continue;}
+        lift_to(item_lift(x,y,l));
+        if(c=='r'){rug_tile(x,y);continue;}
+        int rot=items_rotates(c)?world_item_facing(x,y):0,along=items_along(c)?world_along(x,y,c):0;
+        int lite=items_draw_budgeted(c,x,y,rot,along,t,gfx_room());
+        dbg_prop_lite+=lite==1;dbg_prop_omitted+=lite==2;
+    }
+    lift_to(0);
+}
 int world_reserve = RESERVE_PEOPLE + RESERVE_UI;   // (what world_draw keeps back from the room: a screen with few people and little interface lowers it)
 void world_draw(int fx, int fy, int t, int cutaway) {
     gh_cache_clear(fx, fy);
@@ -3167,9 +3209,11 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     const int R = world_detail_r;
     nat_on = world_zone == ZONE_ISLAND && world_nature;
     { const int G = MIN(R, 8); ngx0 = fx - G; ngx1 = fx + G; ngy0 = fy - G; ngy1 = fy + G; }   // (the island's ground in full this far round you)
-    if (!nat_on) { ngx0 = rx0; ngx1 = rx1; ngy0 = ry0; ngy1 = ry1; }   // (elsewhere: the floors the range draws)
-    rx0 = MAX(0, fx - R) & ~1; rx1 = MIN(MW - 1, fx + R); ry0 = MAX(0, fy - R) & ~1; ry1 = MIN(MH - 1, fy + R);
-    ex0 = rx0; ex1 = rx1; ey0 = ry0; ey1 = ry1;
+    int edge=world_zone==ZONE_CITY&&world_wbx>=0?CITY_TILES:MW;
+    fx=CLAMP(fx,0,edge-1);fy=CLAMP(fy,0,edge-1);
+    rx0=MAX(0,fx-R)&~1;rx1=MIN(edge-1,fx+R);ry0=MAX(0,fy-R)&~1;ry1=MIN(edge-1,fy+R);
+    if(!nat_on){ngx0=rx0;ngx1=rx1;ngy0=ry0;ngy1=ry1;}
+    ex0=rx0;ex1=rx1;ey0=ry0;ey1=ry1;
     int focus = (fx >= 0 && fy >= 0 && fx < MW && fy < MH) ? bld[fy][fx] : 0;
     see_through(focus,fx,fy,cutaway);
     int etx_ = cam.eye.vx / TILE, ety_ = -cam.eye.vz / TILE, eh_ = -cam.eye.vy / TILE; if (eh_ < 0) eh_ = -eh_;
@@ -3187,7 +3231,9 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     }
     ex0 &= ~1; ey0 &= ~1;
     int keep_lvl = world_lvl; world_lvl = 0;
-    cut_all = cutaway;
+    cut_all=cutaway;
+    defer_city_props=world_zone==ZONE_CITY&&world_wbx>=0;
+    dbg_prop_lite=dbg_prop_omitted=0;
     // Establish the entire local ground before detail can exhaust packets.
     // Its OT slot stays behind floors/walls, irrespective of emission order.
     int use_far=world_zone==ZONE_CITY&&far_begin(world_horizon);
@@ -3238,11 +3284,27 @@ void world_draw(int fx, int fy, int t, int cutaway) {
             else far_box(b, d2 < 22 * 22);
         }
         world_hb_sky1 = gfx_hb() - sky_h0;
-        if (use_far) far_draw(rx0, ry0, rx1, ry1);   // the land, the towns and the trees, out to the horizon
+        gfx_set_identity();
+        if(defer_city_props){
+            // Retain a portion of the unused packet arena for horizon land.
+            int hold=use_far?MIN(3072,MAX(0,gfx_room()/4)):0;
+            gfx_set_reserve(world_reserve+hold);
+            for(int band=0;band<2;band++){
+                city_props(fx,fy,t,band,0);
+                for(int l=1;l<=world_view_lvl&&l<=NUP;l++){
+                    Level *Lv=lv_get(l-1);if(!Lv||!lvl_used[l])continue;
+                    dm=Lv->map;dfl=Lv->fl;dwp=Lv->wp;world_lvl=l;
+                    world_cam_push(l);city_props(fx,fy,t,band,l);world_cam_pop();
+                }
+                dm=lifeMap;dfl=floorMap;dwp=wallMap;world_lvl=0;
+            }
+            gfx_set_reserve(world_reserve);
+        }
+        if(use_far)far_draw(rx0,ry0,rx1,ry1);
         gfx_set_identity();
         PROF_END(3);
     }
-    world_lvl = keep_lvl; gh_live = 0;
+    world_lvl=keep_lvl;gh_live=0;defer_city_props=0;
     gfx_set_reserve(0);
     { extern int gfx_world_peak, gfx_bytes_used(void); int u = gfx_bytes_used(); if (u > gfx_world_peak) gfx_world_peak = u; }
 }

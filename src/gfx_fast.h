@@ -25,7 +25,7 @@ static inline int xv_vis3(const XV *a, const XV *b, const XV *c, int cull) {
 }
 static inline u32 *xv_alloc(int words) {
     u32 *p = (u32 *)gfx_pk_next;
-    if ((char *)(p + words) > gfx_pk_end) { gfx_overflow++; return 0; }
+    if(words<=0||words>(gfx_pk_end-gfx_pk_next)/4){gfx_overflow++;return 0;}
     gfx_pk_next = (char *)(p + words);
     return p;
 }

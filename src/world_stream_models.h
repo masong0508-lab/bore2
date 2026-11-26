@@ -6,6 +6,9 @@
 #define BORE2_WORLD_STREAM_MODELS_H
 
 enum { STREAM_MODEL_READY, STREAM_MODEL_ROOF_PENDING, STREAM_MODEL_GENERATING };
+static inline int stream_tile_valid(int x,int y,int blocks,int span){
+    return blocks>0&&span>0&&(unsigned)x<(unsigned)(blocks*span)&&(unsigned)y<(unsigned)(blocks*span);
+}
 
 static inline int stream_model_state(const unsigned char *generation,
                                      const unsigned char *roof, int n,

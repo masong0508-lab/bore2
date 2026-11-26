@@ -179,11 +179,12 @@ int main(void) {
     /* The renderer counts two triangles per quad; reserve room for the
      * world in the object pass, and degrade details before full capacity. */
     assert(!ds_item_over_budget(3000, 0));
-    assert(!ds_item_over_budget(3350, 0));
-    assert(ds_item_over_budget(3361, 0));
-    assert(ds_item_over_budget(3310, 1));
-    assert(ds_world_detail_budget(3600));
-    assert(!ds_world_detail_budget(3601));
+    assert(!ds_item_over_budget(3160, 0));
+    assert(ds_item_over_budget(3161, 0));
+    assert(!ds_item_over_budget(3080, 1));
+    assert(ds_item_over_budget(3081, 1));
+    assert(ds_world_detail_budget(3480));
+    assert(!ds_world_detail_budget(3481));
     assert(ds_world_far_budget(3710));
     assert(!ds_world_far_budget(3711));
     /* The preview must not invent streets in gen 7/8 low-density towns:

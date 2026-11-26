@@ -7,6 +7,7 @@
 #include "house_shape.h"
 #include "roof_profile.h"
 #include "world_stream_models.h"
+#include "frame_render_policy.h"
 #include "atlas.h"
 
 #ifndef FAR_VIEW0
@@ -34,6 +35,7 @@ static inline void lk(u32 *p, int words, int slot) { u32 *o = gfx_ot() + slot; p
 #define FXY(x, y) (((u32)(u16)(s16)(y) << 16) | (u16)(s16)(x))
 
 // ================================================================== the far world's own scale
+static int far_local;
 static VECTOR feye;                         // the eye (local units)
 static int fwx0, fwy0;                      // the window's corner in world tiles
 typedef struct { short sx, sy; int z; int vx, vy, vz; } FV;   // screen; depth (world units); view space (1/16 units)
@@ -101,7 +103,7 @@ static void emit_clipped(const FV *v, const u32 *col, int n, int slot) {
         p[1] = 0x30000000u | (u32)a[0].r | ((u32)a[0].g << 8) | ((u32)a[0].b << 16); p[2] = FXY(sx[0], sy[0]);
         p[3] = (u32)a[i].r | ((u32)a[i].g << 8) | ((u32)a[i].b << 16); p[4] = FXY(sx[i], sy[i]);
         p[5] = (u32)a[i + 1].r | ((u32)a[i + 1].g << 8) | ((u32)a[i + 1].b << 16); p[6] = FXY(sx[i + 1], sy[i + 1]);
-        lk(p, 6, slot);
+        lk(p,6,far_local?render_proxy_slot(a[0].z+a[i].z+a[i+1].z,3,OT_SHIFT,OT_NEAR-4):slot);
     }
 }
 // a flat piece of ground (x0..x1, z0..z1 local units, z0 > z1), its corners hazed by their distance
@@ -577,7 +579,7 @@ static inline u32 lit(const u8 *c, int L, int f) { return hazed((c[0] * L) >> 7,
 static void face_f4(const XV *a, const XV *b, const XV *c, const XV *d, u32 col, int slot) {   // a b c d = TL TR BL BR
     u32 *p = pk(5); if (!p) return;
     p[1] = 0x28000000u | col; p[2] = FXY(a->x, a->y); p[3] = FXY(b->x, b->y); p[4] = FXY(c->x, c->y); p[5] = FXY(d->x, d->y);
-    lk(p, 5, slot);
+    lk(p,5,far_local?render_proxy_slot(a->z+b->z+c->z+d->z,4,OT_SHIFT,OT_NEAR-4):slot);
 }
 static void face_win(const XV *a, const XV *b, const XV *c, const XV *d, u32 col, int uw, int vh, int slot) {   // windows, repeated
     u32 *p = pk(11); if (!p) return;
@@ -587,7 +589,7 @@ static void face_win(const XV *a, const XV *b, const XV *c, const XV *d, u32 col
     p[2] = 0x2C000000u | col; p[3] = FXY(a->x, a->y); p[4] = 0;                       p[5] = FXY(b->x, b->y); p[6] = (u32)uw | tp;
     p[7] = FXY(c->x, c->y);    p[8] = (u32)vh << 8;                                   p[9] = FXY(d->x, d->y); p[10] = (u32)uw | ((u32)vh << 8);
     p[11] = 0xE2000000u;
-    lk(p, 11, slot);
+    lk(p,11,far_local?render_proxy_slot(a->z+b->z+c->z+d->z,4,OT_SHIFT,OT_NEAR-4):slot);
 }
 static inline int xv_good(const XV *v) { return v->z >= ZN && v->x > -1000 && v->x < 1320 && v->y > -1000 && v->y < 1240; }
 // a building as a box: x0 < x1, z0 > z1 (north, south), sto storeys; its walls' colour, a pitched roof (or flat) and its colour
@@ -740,7 +742,7 @@ static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int r
             u32 col=sloped?lit(rc,Lroof*sh[k]/7,hf):lit(wc,k==0?Ln:k==1?Le:k==2?Ls:Lw,hf);
             if(ix[k]==ix[n]&&iz[k]==iz[n]){
                 u32 *p=pk(4);if(!p)return;
-                p[1]=0x20000000u|col;p[2]=FXY(a->x,a->y);p[3]=FXY(b->x,b->y);p[4]=FXY(R[k].x,R[k].y);lk(p,4,slot);
+                p[1]=0x20000000u|col;p[2]=FXY(a->x,a->y);p[3]=FXY(b->x,b->y);p[4]=FXY(R[k].x,R[k].y);lk(p,4,far_local?render_proxy_slot(a->z+b->z+R[k].z,3,OT_SHIFT,OT_NEAR-4):slot);
             }else face_f4(a,b,&R[k],&R[n],col,slot);
         }
         if(ey<top-rise&&ix[1]>ix[0]&&iz[0]>iz[3])
@@ -903,13 +905,13 @@ static void draw_trees(int rx0, int ry0, int rx1, int ry1) {
         int ctx = cx * CELL_T, cty = cy * CELL_T;
         int ccx = (ctx + CELL_T / 2 - fwx0) * TILE, ccz = -((cty + CELL_T / 2 - fwy0) * TILE);
         if (!in_cone(ccx, ccz, CELL_T * TILE * 3 / 4, max_tree)) continue;
-        int overlap = ctx < wx0 + MW && ctx + CELL_T > wx0 && cty < wy0 + MH && cty + CELL_T > wy0;
+        int overlap=ctx<wx0+(MW/BM_BLK)*BM_BLK&&ctx+CELL_T>wx0&&cty<wy0+(MH/BM_BLK)*BM_BLK&&cty+CELL_T>wy0;
         u32 seed = bm_seed() ^ 0x7E3Eu;
         for (int j = 0; j < n; j++) {
             if((t&8)&&!(t&(1<<(4+j))))continue;
             u32 hsh = bm_hash(cx * 61 + j, cy * 37 - j, seed);
             int tx = ctx + (int)(hsh % CELL_T), ty = cty + (int)((hsh >> 6) % CELL_T);
-            if (overlap && tx >= wx0 && tx < wx0 + MW && ty >= wy0 && ty < wy0 + MH) continue;   // (in the map: its own trees)
+            if(overlap&&tx>=wx0&&tx<wx0+(MW/BM_BLK)*BM_BLK&&ty>=wy0&&ty<wy0+(MH/BM_BLK)*BM_BLK)continue;   // (in the map: its own trees)
             int kk = k; if (t == BT_GRASS && (hsh >> 20) % 3u == 0) kk = 1;
             if (t == BT_FOREST && (hsh >> 21) % 4u == 0) kk = 0;
             tree_card((tx - fwx0) * TILE + TILE / 2, -((ty - fwy0) * TILE + TILE / 2), kk, 4 + (int)((hsh >> 24) & 1));
@@ -982,7 +984,7 @@ void far_sky(u32 top, u32 horizon) { far_sky_sea(top, horizon, 0); }
 // ================================================================== the frame
 static int far_on_frame;
 int far_begin(u32 horizon) {
-    far_prims = 0; far_on_frame = 0; far_nclip = far_ncone = far_nquad = 0; far_hb[0] = far_hb[1] = far_hb[2] = 0;   // (a frame without the far pass reads 0, not the last one's)
+    far_prims=0;far_on_frame=0;far_local=0; far_nclip = far_ncone = far_nquad = 0; far_hb[0] = far_hb[1] = far_hb[2] = 0;   // (a frame without the far pass reads 0, not the last one's)
     if (world_zone != ZONE_CITY || world_wbx < 0 || far_view <= 0) return 0;
     if (!tex_ok) far_tex();
     hz_r = horizon & 255; hz_g = (horizon >> 8) & 255; hz_b = (horizon >> 16) & 255;
@@ -997,6 +999,7 @@ int far_begin(u32 horizon) {
 int far_reach_m(void) { return far_on_frame ? far_reach_u / 213 : -1; }
 void far_resume(void){if(far_on_frame)far_gte();}
 void far_local_begin(u32 horizon){
+    far_local=1;
     if(!far_on_frame){
         // Even "near only" needs the same clipped, terrain-anchored boxes.
         hz_r=horizon&255;hz_g=(horizon>>8)&255;hz_b=(horizon>>16)&255;
@@ -1032,8 +1035,8 @@ void far_draw_pending(u32 horizon){
     }
 }
 void far_draw(int rx0, int ry0, int rx1, int ry1) {
-    if (!far_on_frame) return;
-    far_gte();
+    if(!far_on_frame){far_local=0;return;}
+    far_local=0;far_gte();
     int t0 = gfx_hb(); draw_land(rx0, ry0, rx1, ry1); int t1 = gfx_hb(); int p1 = far_prims;
     draw_buildings(rx0, ry0, rx1, ry1); int t2 = gfx_hb(); int p2 = far_prims;
     draw_trees(rx0, ry0, rx1, ry1); int t3 = gfx_hb();

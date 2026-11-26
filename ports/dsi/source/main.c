@@ -2151,20 +2151,24 @@ static void draw_world(int yaw) {   // LIVE: all round the lot, the lots next do
 static int ring_r = 1;   // (D40) how many slots out the land is drawn (Options > Draw distance, one more with the DSi's detail)
 static u16 horizon_col(void) { return zone == Z_ISLAND ? C15(5, 12, 24) : zone == Z_TOWN ? C15(24, 21, 13) : C15(7, 16, 6); }
 static void draw_far_all(int yaw) {   // last, so the lot, the sims and the citizens always get the polygons first
-    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { if (!i && !j) continue; const BInfo *b = &nb[j + 1][i + 1];
-        if (b->terrain == BT_SEA) { ground(tl(36 * i), tl(36 * j), tl(36 * i + 36), tl(36 * j + 36), -8, C15(5, 12, 24)); continue; }
-        if (!ds_world_detail_budget(polys)) {
-            /* Always draw terrain rather than leave missing neighboring lots. */
-            if (ds_world_far_budget(polys))
-                ground(tl(36 * i), tl(36 * j), tl(36 * i + 26),
-                       tl(36 * j + 26), 0, land_col(b->terrain));
-            continue;
+    // Prioritize complete adjacent building shells over optional parks,
+    // trees and furniture. At low budget keep a simple solid silhouette.
+    for(int pass=0;pass<2;pass++)for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
+        if(!i&&!j)continue;
+        const BInfo *b=&nb[j+1][i+1];
+        const LotPlan *pl=t7()?&nlp[j+RING_MAX][i+RING_MAX]:0;
+        int house=far_house7(b,pl);
+        if(house!=(pass==0))continue;
+        if(b->terrain==BT_SEA){ground(tl(36*i),tl(36*j),tl(36*i+36),tl(36*j+36),-8,C15(5,12,24));continue;}
+        if(!ds_world_far_budget(polys+12))continue;
+        int lite=!ds_world_detail_budget(polys+160);
+        if(!house&&lite){
+            ground(tl(36*i),tl(36*j),tl(36*i+26),tl(36*j+26),0,land_col(b->terrain));continue;
         }
-        r7_bx = !zone && lot_bx >= 0 && lot_bx < 2000 ? lot_bx + i : -1;
-        r7_by = lot_by + j;
-        far_lot(b, 36 * i * T, 36 * j * T, nb_pop[j + 1][i + 1], yaw,
-                t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0);
-        r7_bx = -1;
+        far_lod=lite;
+        r7_bx=!zone&&lot_bx>=0&&lot_bx<2000?lot_bx+i:-1;r7_by=lot_by+j;
+        far_lot(b,36*i*T,36*j*T,nb_pop[j+1][i+1],yaw,pl);
+        r7_bx=-1;far_lod=0;
     }
     // (D40) THE FAR RING: the slots past the 3x3, each drawn round its own corner (a matrix move: no 16-bit overflow): plain houses, streets, the land; then the
     // horizon, one big quad scaled up four times, under everything out to the far plane. The haze fades it all into the sky, so nothing pops in.
