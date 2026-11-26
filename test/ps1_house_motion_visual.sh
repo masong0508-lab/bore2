@@ -24,13 +24,7 @@ cmake --build "$BD" --target iso -j 4 >"$OUT/build.log" 2>&1 || {
 test -s "$BD/bore2.cue" && test -s "$BD/bore2.bin" && test -s "$BD/bore2.elf"
 mipsel-none-elf-nm --defined-only --print-size "$BD/bore2.elf" >"$OUT/symbols.txt"
 mkdir -p "$OUT/shots"
-cat >"$OUT/route.txt" <<'ROUTE'
-2600 shot
-2800 shot
-3000 shot
-3200 shot
-3400 shot
-ROUTE
+python3 "$ROOT/test/ps1_frame_flash.py" --route "$OUT/route.txt"
 (
  cd "$BD"
  # Bound replay logs even if a BIOS or CPU exception repeats indefinitely.
@@ -39,13 +33,14 @@ ROUTE
  DSRAM="$OUT/ram.bin" timeout 520 "$RUNNER" -log info -frames 4100 \
  -dumpdir "$OUT/shots" -dumpinterval 100000 "$BD/bore2.cue" >"$OUT/emulate.log" 2>&1
 ) || { echo "Moving-house DuckStation playback failed" >&2; tail -85 "$OUT/emulate.log" >&2; exit 2; }
-python3 - "$OUT" <<'PY'
+PYTHONPATH="$ROOT/test" python3 - "$OUT" <<'PY'
 from pathlib import Path
 from PIL import Image
 import hashlib
 import json
 import struct
 import sys
+from ps1_frame_flash import ANCHORS, BURSTS, TICKS, CROP, audit
 root = Path(sys.argv[1])
 symbols = {}
 for line in (root / "symbols.txt").read_text().splitlines():
@@ -73,15 +68,17 @@ if state["world_wbx"] < 0 or state["world_wby"] < 0 or state["dbg_life_n"] < 175
 if state["cam_yaw"] == 2600 or state["cam_dist"] <= 1300:
     raise SystemExit(f"FAIL: test camera did not move: {state}")
 shots = sorted((root / "shots").rglob("frame_*.png"))
-if len(shots) != 5:
-    raise SystemExit(f"FAIL: expected five real screenshots, got {len(shots)}")
+if len(shots) != len(TICKS):
+    raise SystemExit(f"FAIL: expected {len(TICKS)} real screenshots, got {len(shots)}")
+by_tick = dict(zip(TICKS, shots))
 results = []
 prev = None
-for i, path in enumerate(shots):
+for i, tick in enumerate(ANCHORS):
+    path = by_tick[tick]
     img = Image.open(path).convert("RGB")
     if img.size != (320, 240):
         raise SystemExit(f"FAIL: incorrect native screenshot {img.size}")
-    scene = img.crop((16, 12, 304, 180))
+    scene = img.crop(CROP)
     if len(set(scene.getdata())) < 500:
         raise SystemExit(f"FAIL: blank/low-detail 3D capture: {path}")
     pixels = scene.tobytes()
@@ -94,12 +91,24 @@ for i, path in enumerate(shots):
     results.append(dict(index=i, file=dest.name,
                         scene_sha256=hashlib.sha256(pixels).hexdigest(),
                         changed_scene_rgb_channels=changed))
+temporal = []
+for burst in BURSTS:
+    images = []
+    for tick in burst:
+        with Image.open(by_tick[tick]) as img:
+            if img.size != (320, 240):
+                raise SystemExit(f"FAIL: incorrect native burst screenshot {img.size}")
+            images.append(img.convert("RGB").crop(CROP))
+    temporal.append(dict(start=burst[0], end=burst[-1], **audit(images)))
+flashes = sum(len(b["flash_candidates"]) for b in temporal)
 (root / "house_motion_results.json").write_text(json.dumps({
-    "result":"PASS", "engine":"DuckStation/OpenBIOS", "resolution":"320x240",
+    "result":"FAIL" if flashes else "PASS", "engine":"DuckStation/OpenBIOS", "resolution":"320x240",
     "world":"generated version-8 two-storey home, seen from yard; seed 0x5EED1234",
     "camera":"test-only orbit and continuous dolly", "captures":results,
-    "final_ram":state,
-    "limits":"Five distinct 3D images; not complete flicker/performance/hardware proof."
+    "final_ram":state, "temporal_audit":temporal,
+    "limits":"Five motion anchors and two 25-vblank bursts; large isolated flashes only, not full flicker/performance/hardware proof."
 }, indent=2) + "\n")
-print("PS1 MOVING HOUSE PASS: 5 native screenshots, active camera orbit and 2 MiB RAM")
+if flashes:
+    raise SystemExit(f"FAIL: {flashes} large isolated flash candidates; see temporal_audit in results")
+print(f"PS1 MOVING HOUSE PASS: {len(TICKS)} native screenshots, two temporal bursts, active camera orbit and 2 MiB RAM")
 PY

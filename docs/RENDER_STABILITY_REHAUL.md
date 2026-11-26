@@ -6,3 +6,7 @@
 - Android: pool, paths, farm and skate surfaces belong to a single terrain mesh; fountain rims are disjoint. Prefer 24-bit depth with old-device fallback. This addresses depth fighting without deleting visible terrain.
 
 These are source-level corrections, not a claim of flicker-free play. Verify long moving-camera, lot-crossing, texture-pressure and dense-neighborhood runs on every platform before release. Save compatibility is no longer a design constraint for future changes, but intentionally deleting existing save files is unnecessary.
+
+## Temporal regression coverage
+
+The moving-house test now captures 53 native 320x240 images, including two 25-vblank bursts. A conservative A/B/A comparison at multiple time offsets flags large, brief flashes even when widely spaced screenshots appear normal. Ordinary gradual camera motion and constant images are exercised by synthetic detector self-tests. This is a PS1 emulator smoke test, not evidence that every kind of flicker has been eliminated; read the saved results and inspect the burst captures.
