@@ -1,6 +1,7 @@
 #include "scene_mesh.h"
 #include "mesh_footprint.h"
 #include "scene_surface.h"
+#include "park_plan.h"
 #include "window_math.h"
 #include "bigmap.h"
 #include <math.h>
@@ -234,8 +235,22 @@ static void block(Scene*s,int bx,int bz,int detail){
 #endif
     }
     memcpy(s->border+row_off,h[BM_BLK],sizeof h[0]);
-    for(int j=0;j<BM_BLK;j++)for(int i=0;i<BM_BLK;i++)mat[j][i]=(unsigned char)bore_surface(&b,i,j);
-    const Color surface[]={ground,C(0x555d61),C(0xb6b9af),C(0x5b91a2)};
+    int garden=(b.lot==LOT_PARK||b.lot==LOT_SQUARE)&&b.terrain!=BT_SEA;
+    int north=garden&&bm_gen>=7&&!(b.road&BR_MEGA)&&bm_lot_face(bx,bz)==LF_NORTH;
+    if(garden)ground=C(0x7e9b68);
+    // Park materials are part of the stitched mesh, not coplanar overlays.
+    for(int j=0;j<BM_BLK;j++)for(int i=0;i<BM_BLK;i++){
+        int m=bore_surface(&b,i,j);
+        if(garden&&m==BS_LAND&&i>=BM_LOT0&&j>=BM_LOT0){
+            int p=park_surface(b.h,b.lot==LOT_SQUARE,north,i-BM_LOT0,j-BM_LOT0);
+            if(p==PARK_PATH)m=BS_PAVING;
+            else if(p==PARK_WATER)m=BS_WATER;
+            else if(p==PARK_SOIL)m=4;
+            else if(p==PARK_PATIO)m=5;
+        }
+        mat[j][i]=(unsigned char)m;
+    }
+    const Color surface[]={ground,C(0x555d61),C(0xb6b9af),C(0x5b91a2),C(0x95764d),C(0xc8bda6)};
     for(int j=0;j<BM_BLK;j++)for(int i=0;i<BM_BLK;i++){
         if(done[j][i])continue;
         int w=1,d=1;float y=h[j][i];unsigned m=mat[j][i];
@@ -255,14 +270,24 @@ static void block(Scene*s,int bx,int bz,int detail){
     if(b.terrain==BT_SEA||b.lot==LOT_RIVER)return;
     building(s,&b,bx,bz,detail);
     if(b.lot==LOT_POOL){patch(s,x+7,z+7,x+16,z+15,C(0xc6c8bb),.018f);patch(s,x+8,z+8,x+15,z+14,C(0x66b6c1),.035f);}
-    else if(b.lot==LOT_SQUARE||b.lot==LOT_SKATE)patch(s,x+5,z+5,x+17,z+17,C(0xb4b6ae),.018f);
+    else if(b.lot==LOT_SKATE)patch(s,x+5,z+5,x+17,z+17,C(0xb4b6ae),.018f);
     else if(b.lot==LOT_FARM){
         for(int i=0;i<3;i++)patch(s,x+6+i*2,z+12,x+7+i*2,z+17,C((i&1)?0x9a7751:0x718a49),.02f);
     }
-    else if(b.lot==LOT_PARK||b.terrain==BT_FOREST&&b.lot==LOT_WILD){
-        if(b.lot==LOT_PARK)patch(s,x+5,z+10,x+17,z+11,C(0xc4bda7),.018f);
-        tree(s,x+7,z+7,b.h);tree(s,x+15,z+15,b.h>>3);
-        if(detail)tree(s,x+15,z+7,b.h>>7);
+    else if(garden){
+        for(int i=0,tx,tz;i<(detail?11:4)&&park_tree_at(b.h,b.lot==LOT_SQUARE,north,i,&tx,&tz);i++)
+            tree(s,x+BM_LOT0+tx,z+BM_LOT0+tz,b.h);
+        // A simple fountain silhouette marks formal gardens and squares.
+        if(b.lot==LOT_SQUARE||park_variant(b.h)==0){
+            float y=height_at(s,x+11,z+11);
+            box(s,x+10.2f,z+10.2f,x+11.8f,z+11.8f,y,y+.22f,C(0x969b98));
+            flat(s,x+10.4f,z+10.4f,x+11.6f,z+11.6f,y+.23f,C(0x68a8b8));
+        }
+    }else if(b.terrain==BT_FOREST&&b.lot==LOT_WILD){
+        // Coherent clusters rather than the same three locations per block.
+        int tx=7+(int)(b.h&3u),tz=7+(int)((b.h>>2)&3u);
+        tree(s,x+tx,z+tz,b.h);tree(s,x+tx+4,z+tz+4,b.h>>3);
+        if(detail)tree(s,x+tx+4,z+tz,b.h>>7);
     }
 }
 int bore_scene_build(int cx,int cy,int r,BoreMesh *out){

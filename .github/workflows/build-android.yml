@@ -2,7 +2,7 @@ name: build-android
 on:
   workflow_dispatch:
   push:
-    paths: ["ports/android/**", "src/bigmap.*", "src/common.h", "src/outings.h", "src/living_calendar.h", "src/scene_music.h", "ports/host/shim/**", ".github/workflows/build-android.yml"]
+    paths: ["ports/android/**", "src/bigmap.*", "src/park_plan.h", "src/neighborhood_life.h", "test/neighborhood_life_test.c", "src/common.h", "src/outings.h", "src/living_calendar.h", "src/scene_music.h", "ports/host/shim/**", ".github/workflows/build-android.yml"]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -20,6 +20,8 @@ jobs:
           /tmp/android_world
       - name: Test roof footprint union and exact geometry edges
         run: cc -std=c99 -Wall -Wextra -Werror -Iports/android/app/src/main/cpp ports/android/test/mesh_footprint_test.c -o /tmp/mesh_footprint && /tmp/mesh_footprint
+      - name: Test shared landscape plans and local resident preferences
+        run: cc -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc test/neighborhood_life_test.c -o /tmp/neighborhood_life && /tmp/neighborhood_life
       - name: Test exact street, river and mega-plaza surface routing
         run: cc -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc -Iports/android/app/src/main/cpp ports/android/test/scene_surface_test.c -o /tmp/scene_surface && /tmp/scene_surface
       - name: Test generated 3D scene geometry and bounds

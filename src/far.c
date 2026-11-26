@@ -80,7 +80,7 @@ static int clip1(const CV *in, int n, CV *out, int k) {
         int da = pdist(a, k), db = pdist(b, k);
         if (da >= 0) out[m++] = *a;
         if ((da >= 0) != (db >= 0)) {
-            int t = (da << 12) / (da - db);
+            int t = (da * 4096) / (da - db); // multiplication is defined for negative plane distances
             CV *c = &out[m++];
             c->x = a->x + (((b->x - a->x) * t) >> 12); c->y = a->y + (((b->y - a->y) * t) >> 12); c->z = a->z + (((b->z - a->z) * t) >> 12);
             c->r = a->r + (((b->r - a->r) * t) >> 12); c->g = a->g + (((b->g - a->g) * t) >> 12); c->b = a->b + (((b->b - a->b) * t) >> 12);
@@ -145,9 +145,24 @@ static int fc_unknown;                       // cells still to work out
 static int far_cell_type(int cx, int cy) {
     int bx = cx * FCB + FCB / 2, by = cy * FCB + FCB / 2;
     int t = bm_terrain(bx, by);
-    if (t != BT_SEA && bm_set_at(bx, by) != 255) t |= 8;
+    if (t != BT_SEA && bm_set_at(bx, by) != 255) {
+        t |= 8;
+        // Reuse the high nibble of the existing cell byte for four stable
+        // tree candidates. Query only on cell generation, not every frame.
+        u32 seed=bm_seed()^0x7E3Eu;
+        for(int j=0;j<4;j++){
+            u32 h=bm_hash(cx*61+j,cy*37-j,seed);
+            int tx=cx*CELL_T+(int)(h%CELL_T),ty=cy*CELL_T+(int)((h>>6)%CELL_T);
+            if(tx<0||ty<0||tx>=BM_N*BM_BLK||ty>=BM_N*BM_BLK)continue;
+            BInfo b;bm_block(tx/BM_BLK,ty/BM_BLK,&b);
+            if(b.terrain!=BT_SEA&&(b.lot==LOT_WILD||b.lot==LOT_PARK||b.lot==LOT_EMPTY)&&
+               tx%BM_BLK>BM_LOT0&&ty%BM_BLK>BM_LOT0&&
+               tx%BM_BLK<BM_BLK-1&&ty%BM_BLK<BM_BLK-1)t|=1<<(4+j);
+        }
+    }
     return t;
 }
+static int far_cell_land(int t){return t==0xFF?t:t&15;}
 static int pbx, pby;                         // the world block you are on
 static void cells_follow(int budget) {       // keep the cells centred on you; work out a few a frame (the nearest first)
     int want_x = pbx / FCB - FC / 2, want_y = pby / FCB - FC / 2;
@@ -510,7 +525,7 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
                 if (MAX(ABS(ax + g2 / 2 - feye.vx), ABS(bz - g2 / 2 - feye.vz)) <= thr) continue;
                 int ix = (gx0 + gx) * 2 - fc_x0 + S - 1, iy = (gy0 + gy) * 2 - fc_y0 + S - 1;
                 if (ix < 0 || iy < 0 || ix + 1 >= FC || iy + 1 >= FC) continue;
-                int a = fcell[iy][ix], b = fcell[iy][ix + 1], c = fcell[iy + 1][ix], d = fcell[iy + 1][ix + 1];
+                int a=far_cell_land(fcell[iy][ix]),b=far_cell_land(fcell[iy][ix+1]),c=far_cell_land(fcell[iy+1][ix]),d=far_cell_land(fcell[iy+1][ix+1]);
                 int t = (a == b || a == c || a == d) ? a : (b == c || b == d) ? b : c == d ? c : a;
                 for (int j = 0; j < S; j++) for (int i = 0; i < S; i++) vis2[gy + j][gx + i] = 2;
                 int R, G, B; cell_rgb(t, &R, &G, &B);
@@ -531,7 +546,7 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
             if (gx <= gn && vis2[gy][gx]) {
                 int ix = (gx0 + gx) * 2 - fc_x0, iy = (gy0 + gy) * 2 - fc_y0;
                 if (ix >= 0 && iy >= 0 && ix + 1 < FC && iy + 1 < FC) {
-                    int a = fcell[iy][ix], b = fcell[iy][ix + 1], c = fcell[iy + 1][ix], d = fcell[iy + 1][ix + 1];
+                    int a=far_cell_land(fcell[iy][ix]),b=far_cell_land(fcell[iy][ix+1]),c=far_cell_land(fcell[iy+1][ix]),d=far_cell_land(fcell[iy+1][ix+1]);
                     t = (a == b || a == c || a == d) ? a : (b == c || b == d) ? b : c == d ? c : a;
                     ok = 1;
                 }
@@ -882,7 +897,7 @@ static void draw_trees(int rx0, int ry0, int rx1, int ry1) {
         int ix = cx - fc_x0, iy = cy - fc_y0; if (ix < 0 || iy < 0 || ix >= FC || iy >= FC) continue;
         int t = fcell[iy][ix]; if (t == 0xFF) continue;
         int n = 0, k = 0;
-        if (t & 8) { n = 6; k = 0; } else switch (t) {
+        if (t & 8) { n = 4; k = 0; } else switch (t) {
             case BT_FOREST: n = 26; k = 1; break; case BT_GRASS: n = 7; k = 0; break; case BT_BEACH: n = 5; k = 2; break;
             case BT_DESERT: n = 4; k = 3; break; case BT_ROCKY: n = 4; k = 1; break; default: n = 0;
         }
@@ -893,6 +908,7 @@ static void draw_trees(int rx0, int ry0, int rx1, int ry1) {
         int overlap = ctx < wx0 + MW && ctx + CELL_T > wx0 && cty < wy0 + MH && cty + CELL_T > wy0;
         u32 seed = bm_seed() ^ 0x7E3Eu;
         for (int j = 0; j < n; j++) {
+            if((t&8)&&!(t&(1<<(4+j))))continue;
             u32 hsh = bm_hash(cx * 61 + j, cy * 37 - j, seed);
             int tx = ctx + (int)(hsh % CELL_T), ty = cty + (int)((hsh >> 6) % CELL_T);
             if (overlap && tx >= wx0 && tx < wx0 + MW && ty >= wy0 && ty < wy0 + MH) continue;   // (in the map: its own trees)

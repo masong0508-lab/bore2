@@ -17,6 +17,9 @@ int main(void){
     assert(bore_surface(&b,8,6)==BS_WATER);
     b.lot=LOT_RIVER;b.road=2;
     assert(bore_surface(&b,0,8)==BS_ROAD&&bore_surface(&b,6,8)==BS_WATER);
-    b.terrain=BT_SEA;assert(bore_surface(&b,0,0)==BS_WATER);
+    b.terrain=BT_SEA;assert(bore_surface(&b,0,0)==BS_ROAD);
+    assert(bore_surface(&b,4,17)==BS_ROAD&&bore_surface(&b,5,17)==BS_WATER);
+    b.road=1;assert(bore_surface(&b,17,4)==BS_ROAD&&bore_surface(&b,17,5)==BS_WATER);
+    b.road=0;assert(bore_surface(&b,0,0)==BS_WATER);
     puts("Android terrain: streets, curb, mega plazas and river crossings passed");
 }

@@ -2,6 +2,7 @@
 #include "pop.h"
 #include "save.h"
 #include "bigmap.h"
+#include "neighborhood_life.h"
 #include "look.h"
 #include "sim.h"
 #include "world.h"
@@ -208,14 +209,22 @@ static int leisure(int p, int f, int slot, int *place) {   // out for a couple o
     if (q->trait == 9) chance += 25; if (q->trait == 2 || q->trait == 8) chance -= 15;   // outgoing / lazy, loner
     if ((int)(h % 100u) >= chance) return 0;
     int set = fm->set; if (set >= 64 || !set_pn[set]) return 0;
-    for (int t = 0; t < 10; t++) {
-        int i = set_p0[set] + (int)((h >> (8 + t)) % set_pn[set]); int l = pop_place[i].lot;
-        if (t < 7 && ABS(pop_place[i].bx - fm->bx) + ABS(pop_place[i].by - fm->by) > 5) continue;   // somewhere in the neighbourhood, mostly
+    // A familiar local destination remains a plausible choice throughout
+    // its two-hour outing slot. Consider at most ten candidates, as before.
+    int best=-1,score=-32767,n=set_pn[set],start=(int)((h>>8)%n);
+    unsigned dice=h^0x9e3779b9u;
+    for(int t=0;t<10&&t<n;t++){
+        dice=dice*1664525u+1013904223u;
+        int i=set_p0[set]+(start+t*(1+(int)((h>>24)&3u)))%n,l=pop_place[i].lot;
+        int dist=ABS(pop_place[i].bx-fm->bx)+ABS(pop_place[i].by-fm->by);
         int ok = q->stage <= AG_TEEN ? (l == LOT_PARK || l == LOT_SKATE || l == LOT_POOL || l == LOT_ARCADE || l == LOT_SQUARE || l == LOT_DINER || l == LOT_CAFE || l == LOT_CINEMA || l == LOT_LIBRARY)
                : q->stage == AG_ELDER ? (l == LOT_PARK || l == LOT_SQUARE || l == LOT_DINER || l == LOT_SHOP || l == LOT_INN || l == LOT_CAFE || l == LOT_LIBRARY || l == LOT_GALLERY || l == LOT_RESTAURANT || l == LOT_CINEMA)
-               : (l != LOT_SCHOOL && l != LOT_OFFICE && l != LOT_TOWER && l != LOT_CLINIC);
-        if (ok) { *place = i; return 1; }
+               : (l != LOT_SCHOOL && l != LOT_OFFICE && l != LOT_TOWER && l != LOT_CLINIC&&l!=LOT_RIVER&&l!=LOT_EMPTY);
+        if(!ok||!neighborhood_open(l,slot*120+60))continue;
+        int v=neighborhood_score(q->trait,l,dist,dice>>24);
+        if(v>score){score=v;best=i;}
     }
+    if(best>=0){*place=best;return 1;}
     return 0;
 }
 static int where_f(int p, int f, int *place) {   // (f: their household when the caller knows it, else -1)
@@ -247,23 +256,23 @@ static const char *job_title(int lot, int late) {
     }
 }
 const char *pop_job_name(int p, char *out) {
-    const Per *q = &pop_per[p]; char nm[24];
+    const Per *q = &pop_per[p]; char nm[64];
     if (q->stage == AG_BABY) { strcpy(out, "BABY"); return out; }
-    if (q->stage <= AG_TEEN) { if (q->job != 0xFFFF) { const Place *pl = &pop_place[q->job]; sprintf(out, "STUDENT, %s", bm_place_name(pl->lot, bm_hash(pl->bx, pl->by, 3), nm)); } else strcpy(out, "STUDENT"); return out; }
+    if (q->stage <= AG_TEEN) { if (q->job != 0xFFFF) { const Place *pl = &pop_place[q->job]; snprintf(out,48, "STUDENT, %s", bm_place_name(pl->lot, bm_hash(pl->bx, pl->by, bm_seed() ^ 0xB10Cu), nm)); } else strcpy(out, "STUDENT"); return out; }
     if (q->job == 0xFFFF) { strcpy(out, q->stage == AG_ELDER ? "RETIRED" : (q->seed & 1) ? "BETWEEN JOBS" : "STAYS AT HOME"); return out; }
     const Place *pl = &pop_place[q->job];
-    sprintf(out, "%s, %s", job_title(pl->lot, shift_of(q) & 1), bm_place_name(pl->lot, bm_hash(pl->bx, pl->by, 3), nm));
+    snprintf(out,48, "%s, %s", job_title(pl->lot, shift_of(q) & 1), bm_place_name(pl->lot, bm_hash(pl->bx, pl->by, bm_seed() ^ 0xB10Cu), nm));
     return out;
 }
 const char *pop_doing(int p, char *out) {
     if (pop_per[p].flags & PF_GONE) { strcpy(out, pop_per[p].hp ? "MOVED AWAY" : "PASSED AWAY"); return out; }
-    int pl, w = pop_where(p, &pl); char nm[24];
+    int pl, w = pop_where(p, &pl); char nm[64];
     switch (w) {
         case AT_SLEEP: strcpy(out, "ASLEEP AT HOME"); break;
         case AT_HOME: strcpy(out, "AT HOME"); break;
-        case AT_WORK: sprintf(out, "AT WORK: %s", bm_place_name(pop_place[pl].lot, bm_hash(pop_place[pl].bx, pop_place[pl].by, 3), nm)); break;
-        case AT_SCHOOL: sprintf(out, "AT SCHOOL: %s", bm_place_name(pop_place[pl].lot, bm_hash(pop_place[pl].bx, pop_place[pl].by, 3), nm)); break;
-        default: sprintf(out, "OUT AT %s", bm_place_name(pop_place[pl].lot, bm_hash(pop_place[pl].bx, pop_place[pl].by, 3), nm)); break;
+        case AT_WORK: snprintf(out,48, "AT WORK: %s", bm_place_name(pop_place[pl].lot, bm_hash(pop_place[pl].bx, pop_place[pl].by, bm_seed() ^ 0xB10Cu), nm)); break;
+        case AT_SCHOOL: snprintf(out,48, "AT SCHOOL: %s", bm_place_name(pop_place[pl].lot, bm_hash(pop_place[pl].bx, pop_place[pl].by, bm_seed() ^ 0xB10Cu), nm)); break;
+        default: snprintf(out,48, "OUT AT %s", bm_place_name(pop_place[pl].lot, bm_hash(pop_place[pl].bx, pop_place[pl].by, bm_seed() ^ 0xB10Cu), nm)); break;
     }
     return out;
 }

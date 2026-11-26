@@ -514,32 +514,34 @@ static int pk_m;                                                                
 static int pk_x(int x) { return PLx + (pk_m ? 12 - x : x); }
 static void pk_put(int x, int y, char c) { gFree(pk_x(x), PLy + y, c); }
 static void pk_box(int x0, int y0, int x1, int y1, int fl) { int a = pk_x(x0), b = pk_x(x1); gBox(MIN(a, b), PLy + y0, MAX(a, b), PLy + y1, fl); }
-static void pk_tree(int x, int y) { pk_put(x, y, TREE); }
+#include "park_plan.h"
 static void lot_park(int lx, int ly, unsigned h) {
     PLx = lx; PLy = ly; pk_m = (int)(h & 1);
-    int v = (int)((h >> 2) % 5u), tp = (int)((h >> 6) & 1);
+    int v = park_variant(h), tp = (int)((h >> 6) & 1);
     pk_box(6, 0, 6, 12, FL_PAVING);                                                    // the walk up from the gate
     if (v == 0) {                                                                       // FORMAL: a cross of paths, a fountain on a plaza with a bench at each corner, a bed in each quarter
         pk_box(0, 6, 12, 6, FL_PAVING); pk_box(4, 4, 8, 8, FL_PAVING); gPut(pk_x(6), ly + 6, '}');
         pk_put(4, 4, 'N'); pk_put(8, 4, 'N'); pk_put(4, 8, 'N'); pk_put(8, 8, 'N');
         for (int q = 0; q < 4; q++) { int sx = (q & 1) ? 10 : 2, sy = (q & 2) ? 10 : 2; pk_box(sx - 1, sy - 1, sx + 1, sy + 1, FL_SOIL); pk_put(sx, sy, 'p'); }
-        pk_tree(1, 5); pk_tree(11, 5); pk_tree(1, 7); pk_tree(11, 7); pk_put(5, 11, 'Z'); pk_put(7, 11, 'Z');
+        pk_put(5, 11, 'Z'); pk_put(7, 11, 'Z');
     } else if (v == 1) {                                                                // THE POND: a path round the water, benches by it, a grove behind, a picnic table
         pk_box(1, 1, 5, 5, FL_PATIO); pk_box(2, 2, 4, 4, FL_WATER); pk_box(0, 6, 12, 6, FL_PAVING);
         pk_put(1, 7, 'N'); pk_put(4, 7, 'N'); pk_put(6, 4, 'N');
-        pk_tree(8, 1); pk_tree(10, 1); pk_tree(9, 2); pk_tree(11, 3); pk_tree(8, 4); pk_tree(0, 1); pk_tree(0, 3);
-        pk_box(8, 8, 10, 10, FL_PATIO); pk_put(9, 9, 'K'); pk_put(11, 9, 'Y'); pk_tree(11, 11); pk_tree(1, 11); pk_tree(2, 9); pk_tree(1, 8);
+        
+        pk_box(8, 8, 10, 10, FL_PATIO); pk_put(9, 9, 'K'); pk_put(11, 9, 'Y'); 
     } else if (v == 2) {                                                                // THE COURT: a paved court with a hoop at each end, benches along its side, trees round the edge
         pk_box(1, 2, 5, 9, FL_PAVING); pk_put(3, 2, '_'); pk_put(3, 9, '_'); pk_put(7, 4, 'N'); pk_put(7, 8, 'N'); pk_box(7, 6, 11, 6, FL_PAVING);
-        for (int y = 1; y <= 11; y += 2) pk_tree(11, y); pk_tree(8, 1); pk_tree(9, 1); pk_put(9, 9, 'K'); pk_put(10, 10, 'Y');
+        pk_put(9, 9, 'K'); pk_put(10, 10, 'Y');
     } else if (v == 3) {                                                                // THE GARDEN: beds of flowers in rows either side of the walk, a bird bath, benches at the end, trees in the corners
         for (int r = 0; r < 3; r++) { int y = 2 + r * 3; pk_box(1, y, 4, y, FL_SOIL); pk_box(8, y, 11, y, FL_SOIL); for (int x = 1; x <= 4; x++) { pk_put(x, y, 'p'); pk_put(12 - x, y, 'p'); } }
-        pk_put(6, 1, (char)0xE4); pk_put(5, 11, 'N'); pk_put(7, 11, 'N'); pk_tree(0, 0); pk_tree(12, 0); pk_tree(0, 12); pk_tree(12, 12); pk_put(0, 6, 'Z'); pk_put(12, 6, 'Z');
+        pk_put(6, 1, (char)0xE4); pk_put(5, 11, 'N'); pk_put(7, 11, 'N'); pk_put(0, 6, 'Z'); pk_put(12, 6, 'Z');
     } else {                                                                            // THE LAWN: an open lawn, a ring of trees, picnic tables, the benches along the walk
         pk_box(0, 6, 12, 6, FL_PAVING); pk_put(5, 5, 'N'); pk_put(7, 5, 'N'); pk_put(5, 7, 'N'); pk_put(7, 7, 'N');
-        pk_tree(1, 1); pk_tree(11, 1); pk_tree(3, 2); pk_tree(9, 2); pk_tree(1, 11); pk_tree(11, 11); pk_tree(2, 9); pk_tree(10, 9);
+        
         pk_put(9, 4, 'K'); pk_put(3, 4, 'K'); if (tp) pk_put(6, 2, '}');
     }
+    // Positions in park_tree_at already include the east/west mirror.
+    for(int i=0,x,y;park_tree_at(h,0,0,i,&x,&y);i++)gPut(lx+x,ly+y,TREE);
     gFree(lx + 5, ly + 12, 'Y'); gFree(lx + 7, ly + 12, 'a');                           // the bin and the flag at the gate
 }
 static void city_square(int lx, int ly) {

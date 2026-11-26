@@ -20,6 +20,8 @@ jobs:
           /tmp/camera_lens_dc
       - name: Verify whole-house LOD hysteresis and moving camera stability
         run: cc -std=c99 -Wall -Wextra -Werror test/house_lod_test.c -o /tmp/house_lod && /tmp/house_lod
+      - name: Verify shared landscape plans and local resident preferences
+        run: cc -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc test/neighborhood_life_test.c -o /tmp/neighborhood_life && /tmp/neighborhood_life
       - name: Verify shared capped roof profiles
         run: cc -std=c99 -Wall -Wextra -Werror -Isrc test/roof_profile_test.c -o /tmp/roof_profile && /tmp/roof_profile
       - name: Verify compact L-house skyline geometry cache

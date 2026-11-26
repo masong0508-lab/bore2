@@ -134,6 +134,7 @@ static void text_box(int x, int y, int w, int h, int s, u16 c, int al, const cha
 #define MH 20                 // blocks down (160 pixels; the text lines go below)
 #include "ds_mapview.h"
 #include "ds_render_geom.h"
+#include "park_plan.h"
 #include "roof_profile.h"
 #include "ds_lot_shell.h"
 #include "ds_action_spots.h"
@@ -680,6 +681,26 @@ static int ds_draw_planned_proxy(const BInfo*b,const LotPlan*p,int ox,int oz){
     ds_proxy_roof(s.wing,ox,oz,top,sty,pit,rc,wc);
     return 1;
 }
+static void ds_park_picture(const BInfo*b,const LotPlan*pl,int ox,int oz,int detail){
+    int square=b->lot==LOT_SQUARE,north=pl&&pl->face==LF_NORTH;
+    // Merge horizontal equal-material runs. Draw paths before trees;
+    // distant LOD keeps the first four real landmarks, never random ones.
+    for(int y=0;y<13;y++)for(int x=0;x<13;){
+        int m=park_surface(b->h,square,north,x,y),end=x+1;
+        while(end<13&&park_surface(b->h,square,north,end,y)==m)end++;
+        if(m!=PARK_GRASS&&ds_world_far_budget(polys+2)&&(!gxb||gxn+45<gx_cap)){
+            u16 c=m==PARK_WATER?C15(9,19,27):m==PARK_SOIL?C15(16,12,7):m==PARK_PATIO?C15(23,21,18):C15(21,20,17);
+            tx_want=m==PARK_SOIL?TX_GRAVEL:m==PARK_WATER?-1:TX_PAVING;
+            ground(ox+tl(x*2),oz+tl(y*2),ox+tl(end*2),oz+tl((y+1)*2),-26,c);
+        }
+        x=end;
+    }
+    tx_want=-1;
+    for(int i=0,x,y;i<(detail?11:4)&&park_tree_at(b->h,square,north,i,&x,&y);i++){
+        if(!ds_world_detail_budget(polys+32)||(gxb&&gxn+160>=gx_cap))break;
+        tree(ox+tl(2*x+1),oz+tl(2*y+1),T*2);
+    }
+}
 static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl, the town plan's home for the lot, when the world is version 7)
     u32 h = b->h; int k = b->lot;
     int tr = pl && ((k >= LOT_HOUSE && k <= LOT_TWO) || k == LOT_PARK) ? BT_GRASS : b->terrain;   // (D80: lawn in a dry town for homes and parks)
@@ -704,9 +725,14 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
           ground(tl(-2), tl(-2), tl(0), tl(0), 0, C15(8, 8, 9)); }
     if(b->terrain==BT_SEA)return;
     if(ds_draw_planned_proxy(b,pl,0,0))return;
-    if (k == LOT_WILD || k == LOT_EMPTY || k == LOT_RIVER) { for (int i = 0; i < 5; i++) tree(tl(3 + (int)((h >> (i * 4)) & 15) * 2 % 22), tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 2 % 22), T * 2); return; }
+    if(k==LOT_RIVER){
+        if(b->road&BR_MEGA){ground(tl(4),tl(0),tl(18),tl(26),-26,C15(5,12,24));}
+        else ground(tl(0),tl(4),tl(26),tl(18),-26,C15(5,12,24));
+        return;
+    }
+    if (k == LOT_WILD || k == LOT_EMPTY) { for (int i = 0; i < 5; i++) tree(tl(3 + (int)((h >> (i * 4)) & 15) * 2 % 22), tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 2 % 22), T * 2); return; }
     if (k == LOT_SKATE) { ds_skate_preview(0, 0); return; }
-    if (k == LOT_PARK || k == LOT_SQUARE) { for (int i = 0; i < 9; i++) tree(tl(3 + (int)((h >> (i * 3)) & 7) * 3), tl(3 + (int)((h >> (i * 3 + 1)) & 7) * 3), T * 2); return; }
+    if(k==LOT_PARK||k==LOT_SQUARE){ds_park_picture(b,pl,0,0,1);return;}
     if (pl && bm_gen >= 7 && k == LOT_POOL) { ground(tl(2), tl(2), tl(24), tl(24), 2, C15(24, 24, 23)); ground(tl(6), tl(6), tl(20), tl(18), 3, C15(8, 20, 30)); return; }   // (D81: a pool lot is a paved deck, no building)
     if (pl && bm_gen >= 7 && k == LOT_FARM && pl->face == LF_NONE) { for (int r = 1; r < 12; r += 2) ground(tl(2), tl(2 * r), tl(24), tl(2 * r + 2), 3, C15(14, 9, 5)); for (int r = 2; r < 11; r += 2) for (int c = 1; c < 12; c += 2) ground(tl(2 * c), tl(2 * r), tl(2 * c + 2), tl(2 * r + 2), 4, C15(20, 24, 6)); return; }   // (D81: a field: crop rows, no barn)
     int w = 10 + (int)(h & 3) * 2, d = 8 + (int)((h >> 2) & 3) * 2, x0 = 4 + (24 - w) / 2 / 2 * 2 - 4, z0 = 4;
@@ -1146,23 +1172,31 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
             for (int y = 5; y <= 6; y++) { z_put(1, y, 'M', 0); z_put(2, y, 'M', 0); }
             z_put(1, 8, '9', 3); z_put(2, 8, '9', 3); z_put(12, 0, 'Y', 0); z_put(12, 12, 'Y', 0); z_put(11, 0, 'Y', 0); z_put(0, 1, 'B', 0);
             door_cx = 0; door_cy = 6; for (int q = 0; q < 3; q++) { spawn_x[q] = 0; spawn_y[q] = 5 + q; } return; }
-        if (k == LOT_PARK || k == LOT_SQUARE) {   // (D68) a designed park, the PS1's five designs (src/lots.inc lot_park), mirrored half the time: the walk up from the gate, benches on the path side, trees in pairs, beds in rows, a bin and the flag at the gate
-            int pm = (int)(h & 1), v = (int)((h >> 2) % 5u), tp = (int)((h >> 6) & 1);
+        if(k==LOT_SQUARE){
+            for(int y=0;y<13;y++)for(int x=0;x<13;x++)flr[y][x]=2;
+            z_put(6,6,'}',0);z_put(4,6,'N',0);z_put(8,6,'N',0);z_put(6,4,'N',0);z_put(6,8,'N',0);
+            z_put(1,1,'Z',0);z_put(11,1,'Z',0);z_put(1,11,'Z',0);z_put(11,11,'Z',0);
+            for(int i=0,x,y;park_tree_at(h,1,0,i,&x,&y);i++)z_put(x,y,'3',0);
+            z_put(1,6,'a',0);z_put(11,6,'Y',0);
+        }
+        if (k == LOT_PARK) {   // (D68) a designed park, the PS1's five designs (src/lots.inc lot_park), mirrored half the time: the walk up from the gate, benches on the path side, trees in pairs, beds in rows, a bin and the flag at the gate
+            int pm = (int)(h & 1), v = park_variant(h), tp = (int)((h >> 6) & 1);
             #define PKX(xx) (pm ? 12 - (xx) : (xx))
             #define PK(xx, yy, cc) z_put(PKX(xx), (yy), (cc), 0)
             #define PKF(xa, ya, xb, yb) for (int yy = (ya); yy <= (yb); yy++) for (int xx = (xa); xx <= (xb); xx++) flr[yy][PKX(xx)] = 2
             PKF(6, 0, 6, 12);
             if (v == 0) { PKF(0, 6, 12, 6); PKF(4, 4, 8, 8); PK(6, 6, '}'); PK(4, 4, 'N'); PK(8, 4, 'N'); PK(4, 8, 'N'); PK(8, 8, 'N');
                 for (int q = 0; q < 4; q++) { int sx = (q & 1) ? 10 : 2, sy = (q & 2) ? 10 : 2; PK(sx, sy, 'p'); PK(sx - 1, sy, 'Z'); PK(sx + 1, sy, 'Z'); }
-                PK(1, 5, '3'); PK(11, 5, '3'); PK(1, 7, '3'); PK(11, 7, '3'); }
-            else if (v == 1) { PKF(0, 6, 12, 6); PK(3, 3, '}'); PK(1, 7, 'N'); PK(4, 7, 'N'); PK(6, 4, 'N'); PK(8, 1, '3'); PK(10, 1, '3'); PK(9, 2, '3'); PK(11, 3, '3'); PK(8, 4, '3'); PK(0, 1, '3'); PK(0, 3, '3');
-                PKF(8, 8, 10, 10); PK(9, 9, 'K'); PK(11, 9, 'Y'); PK(11, 11, '3'); PK(1, 11, '3'); PK(2, 9, '3'); PK(1, 8, '3'); }
+                }
+            else if (v == 1) { PKF(0, 6, 12, 6); PK(3, 3, '}'); PK(1, 7, 'N'); PK(4, 7, 'N'); PK(6, 4, 'N'); 
+                PKF(8, 8, 10, 10); PK(9, 9, 'K'); PK(11, 9, 'Y'); }
             else if (v == 2) { PKF(1, 2, 5, 9); PKF(7, 6, 11, 6); PK(3, 2, '_'); PK(3, 9, '_'); PK(7, 4, 'N'); PK(7, 8, 'N');
-                for (int y = 1; y <= 11; y += 2) PK(11, y, '3'); PK(8, 1, '3'); PK(9, 1, '3'); PK(9, 9, 'K'); PK(10, 10, 'Y'); }
+                PK(9, 9, 'K'); PK(10, 10, 'Y'); }
             else if (v == 3) { for (int r = 0; r < 3; r++) { int y = 2 + r * 3; for (int x = 1; x <= 4; x++) { PK(x, y, 'p'); PK(12 - x, y, 'p'); } }
-                PK(6, 1, (char)0xE4); PK(5, 11, 'N'); PK(7, 11, 'N'); PK(0, 0, '3'); PK(12, 0, '3'); PK(0, 12, '3'); PK(12, 12, '3'); PK(0, 6, 'Z'); PK(12, 6, 'Z'); }
+                PK(6, 1, (char)0xE4); PK(5, 11, 'N'); PK(7, 11, 'N'); PK(0, 6, 'Z'); PK(12, 6, 'Z'); }
             else { PKF(0, 6, 12, 6); PK(5, 5, 'N'); PK(7, 5, 'N'); PK(5, 7, 'N'); PK(7, 7, 'N');
-                PK(1, 1, '3'); PK(11, 1, '3'); PK(3, 2, '3'); PK(9, 2, '3'); PK(1, 11, '3'); PK(11, 11, '3'); PK(2, 9, '3'); PK(10, 9, '3'); PK(9, 4, 'K'); PK(3, 4, 'K'); if (tp) PK(6, 2, '}'); }
+                PK(9, 4, 'K'); PK(3, 4, 'K'); if (tp) PK(6, 2, '}'); }
+            for(int i=0,x,y;park_tree_at(h,0,0,i,&x,&y);i++)z_put(x,y,'3',0);
             PK(5, 12, 'Y');
             #undef PKX
             #undef PK
@@ -1173,7 +1207,6 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
             if (k == LOT_PARK || k == LOT_SQUARE) { if (pick == 0) PUTP(x, y, 0, 3, abs(x - 6) > abs(y - 6) ? 1 : 0);   // (D42, as the PS1: a bench lies along the walk by it, not at random)
                 else if (pick == 1) PUTP(x, y, 6, 1, 0); else if (pick == 2) PUTP(x, y, 6, 3, 0); else if (pick == 3) PUTP(x, y, 6, 2, 0); else PUTP(x, y, 3, 2, 0); }
             else if (k == LOT_FARM) continue; else PUTP(x, y, pick & 1 ? 3 : 6, pick & 1 ? 2 : 2, 0); }
-        if (k == LOT_SQUARE) PUTP(6, 6, 3, 3, 0);
         if (k == LOT_FARM && g7_field) {   // (D81) a field of a gen 7 town (no street to front on): crop rows across the lot, slim hedgerows down both sides with gaps (the PS1's field7), no barn
             for (int y = 2; y <= 10; y += 2) for (int x = 1; x <= 11; x += 2) z_put(x, y, 0xDB, 0);
             for (int y = 1; y <= 11; y++) { if (y % 3 == 0) continue; z_put(0, y, 0x8E, 1); z_put(12, y, 0x8E, 1); }
@@ -1978,6 +2011,12 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
     tx_want = tr == BT_DESERT || tr == BT_BEACH ? TX_SAND : tr == BT_ROCKY ? TX_GRAVEL : TX_GRASS; ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), 0, grass); tx_want = -1;
     if(ds_draw_planned_proxy(b,pl,ox,oz))return;
     if (!far_house7(b, pl)) {
+        if(k==LOT_RIVER){
+            if(b->road&BR_MEGA)ground(ox+tl(4),oz+tl(0),ox+tl(18),oz+tl(26),-26,C15(5,12,24));
+            else ground(ox+tl(0),oz+tl(4),ox+tl(26),oz+tl(18),-26,C15(5,12,24));
+            return;
+        }
+        if(k==LOT_PARK||k==LOT_SQUARE){ds_park_picture(b,pl,ox,oz,!far_lod);return;}
         /* At any distance or world generation, a skate plaza must remain
          * recognizable. Do not replace it with a random grove in far LOD;
          * the shared low-polygon bank/funbox silhouette is deterministic. */
@@ -1996,26 +2035,7 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
                 tx_want = -1;
                 return;
             }
-            if (k == LOT_PARK || k == LOT_SQUARE) {
-                /* Two intersecting footpaths and paired corner trees.
-                 * The plaza's paving and park's green are not identical. */
-                tx_want = TX_PAVING;
-                if (k == LOT_SQUARE)
-                    ground(ox + tl(2), oz + tl(2), ox + tl(24),
-                           oz + tl(24), -26, C15(21, 20, 17));
-                else {
-                    ground(ox + tl(11), oz + tl(1), ox + tl(15),
-                           oz + tl(25), -26, C15(22, 20, 15));
-                    ground(ox + tl(1), oz + tl(11), ox + tl(25),
-                           oz + tl(15), -26, C15(22, 20, 15));
-                }
-                tx_want = -1;
-                tree(ox + tl(5), oz + tl(5), T * 2);
-                tree(ox + tl(21), oz + tl(5), T * 2);
-                tree(ox + tl(5), oz + tl(21), T * 2);
-                tree(ox + tl(21), oz + tl(21), T * 2);
-                return;
-            }
+
         }
         if (bm_gen >= 8 && k == LOT_FARM) return;
         int n = (k == LOT_PARK || k == LOT_SQUARE) ? 4 : 2;
