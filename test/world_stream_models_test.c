@@ -38,6 +38,24 @@ int main(void) {
     assert(stream_pick_generation(generation,5,16,16,16,75,75)==0);
     generation[0]=generation[24]=0;
     assert(stream_pick_generation(generation,5,16,16,16,75,75)==-1);
-    puts("World streaming: pending house proxy, nearest-roof and collision-first generation PASS");
+    unsigned char q[16]={0};
+    q[0]=q[3]=q[5]=1;
+    assert(stream_shift_pending(q,4,1,0)==6);
+    assert(q[2]&&q[4]&&!q[0]&&q[3]&&q[7]&&q[11]&&q[15]);
+    assert(stream_shift_pending(q,4,0,1)==8);
+    assert(q[0]&&q[3]&&q[7]&&q[11]&&q[12]&&q[13]&&q[14]&&q[15]);
+    assert(stream_shift_pending(q,4,-1,-1)==8);
+    // Rapid reverse/diagonal moves agree with a reference by world identity.
+    for(int sx=-1;sx<=1;sx++)for(int sy=-1;sy<=1;sy++){
+        unsigned char a[16],b[16];
+        for(int i=0;i<16;i++)a[i]=b[i]=(unsigned char)((i%3)==0);
+        int n=stream_shift_pending(a,4,sx,sy),count=0;
+        for(int y=0;y<4;y++)for(int x=0;x<4;x++){
+            int X=x+sx,Y=y+sy,v=X<0||Y<0||X>=4||Y>=4?1:b[Y*4+X];
+            assert(a[y*4+x]==v);count+=v;
+        }
+        assert(n==count);
+    }
+    puts("World streaming: collision-first queue, retained pending blocks and proxy handoff PASS");
     return 0;
 }

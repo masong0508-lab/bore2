@@ -642,6 +642,8 @@ static void island_homes(int want) {   // cottages (with a plank path) where the
 // blocks coming into view is built from the generator. A block you built on is kept aside when it leaves, and comes back as you
 // left it.
 #define WB 4
+static u8 gen_pend[WB][WB]; static int gen_npend;
+static void gen_one(int wx,int wy);
 int world_wbx = -1, world_wby = -1;                    // the window's top-left block in the open world (-1: not made yet)
 typedef struct { u16 bx, by; char map[BM_BLK][BM_BLK]; u8 fl[BM_BLK][BM_BLK], wp[BM_BLK][BM_BLK]; } EditBlk;
 static EditBlk edit_small[12]; static EditBlk *edits = edit_small; static int nedit_max = 12, nedit, edit_next;
@@ -669,7 +671,16 @@ static int edit_load(int wx, int wy) {
 }
 extern int world_stamp;
 static void pb_touch(int mx, int my);
-static void mark_dirty(int l, int mx, int my) { if (l <= 0) world_stamp++; if (world_zone == ZONE_CITY && l <= 0 && mx >= 0 && my >= 0 && mx < MW && my < MH) wdirty[my / BM_BLK][mx / BM_BLK] = 1; pb_touch(mx, my); }
+static void mark_dirty(int l,int mx,int my){
+    if(world_zone==ZONE_CITY&&world_wbx>=0&&(unsigned)mx<MW&&(unsigned)my<MH){
+        int wx=mx/BM_BLK,wy=my/BM_BLK;
+        // Never write an edit into a temporary grass placeholder.
+        if(gen_pend[wy][wx])gen_one(wx,wy);
+        if(l<=0)wdirty[wy][wx]=1;
+    }
+    if(l<=0)world_stamp++;
+    pb_touch(mx,my);
+}
 static int own_in_window(int *wx, int *wy) {
     if (!own.used || world_zone != ZONE_CITY || world_wbx < 0) return 0;
     int x = own.bx - world_wbx, y = own.by - world_wby;
@@ -738,7 +749,8 @@ COLD static void pb_keep(int i, int wx, int wy) {   // a block of theirs leaving
     else if (wx >= 0) edit_save(wx, wy);                  // (no room: the ground floor, the usual way)
     pb[i] = b;
 }
-COLD static void blk_keep(int wx, int wy) {   // a block of the window about to go: what was built on it kept aside
+COLD static void blk_keep(int wx, int wy) {   // a block of the window about to go
+    if(gen_pend[wy][wx])return; // do not persist an unfinished placeholder
     int q = pb_in(wx, wy);
     if (q >= 0) { if (pb[q].touched) pb_keep(q, wx, wy); } else if (wdirty[wy][wx]) edit_save(wx, wy);
 }
@@ -748,7 +760,10 @@ static void homes_drop(int bx, int by) {   // a block made again: its homes are 
     nhomes[z] = n;
 }
 static void gen_block(int wx, int wy);
-COLD static void block_again(int wx, int wy) { homes_drop(world_wbx + wx, world_wby + wy); gen_block(wx, wy); ao_dirty = 1; roof_dirty = 1; world_stamp++; }
+COLD static void block_again(int wx,int wy){
+    if(gen_pend[wy][wx]){gen_pend[wy][wx]=0;gen_npend--;}
+    homes_drop(world_wbx+wx,world_wby+wy);gen_block(wx,wy);ao_dirty=roof_dirty=1;world_stamp++;
+}
 COLD static void own_rect(int wx, int wy) {   // where the home's house is, from the homes in the window (an empty lot: none)
     int hi = world_home_find(ZONE_CITY, own.bx, own.by, 0), ox = wx * BM_BLK, oy = wy * BM_BLK; own.home = hi >= 0;
     if (hi >= 0) { const Home *hm = &homes[ZONE_CITY][hi];
@@ -1186,10 +1201,8 @@ static void roof_shift(int dx, int dy); static void ao_region(int X0, int Y0, in
 static u8 rq_dirty[WB][WB]; static int rq_n;                  // the blocks that have come into the window, their roofs still to work out
 static u8 ao[MH + 1][MW + 1];
 extern int dbg_ws[8];
-// The blocks that come into the window are made one a frame, the nearest first, in the frames after the move (they are at least 16 tiles
-// from you as they come in: past the full-detail range). The move itself only slides the maps. All four in the moving frame cost 180 hb
-// on top of the slide; one a frame is 45. Until it is made a block is open grass with nothing on it.
-static u8 gen_pend[WB][WB]; static int gen_npend;
+// The window carries unfinished work across rebases. A proxy owns each
+// ungenerated block; its local geometry and metadata publish together.
 // Expose only whether an in-window block's planned far-house placeholder
 // is still needed. Blocks leaving the window remain far-owned as before.
 int world_stream_block_model_state(int bx, int by) {
@@ -1199,16 +1212,17 @@ int world_stream_block_model_state(int bx, int by) {
 }
 static void gen_one(int wx, int wy) {
     int keep_r = roof_dirty, keep_a = ao_dirty;
-    gen_block(wx, wy); gen_pend[wy][wx] = 0; gen_npend--;
+    if(!gen_pend[wy][wx])return;
+    gen_pend[wy][wx]=0;gen_npend--;
+    gen_block(wx,wy);
     roof_dirty = keep_r; ao_dirty = keep_a;                                       // (the lots' own builders flag the whole map)
     if (!rq_dirty[wy][wx]) { rq_dirty[wy][wx] = 1; rq_n++; }
     ao_region(wx * BM_BLK, wy * BM_BLK, wx * BM_BLK + BM_BLK, wy * BM_BLK + BM_BLK);
     for (int y = wy * BM_BLK; y < wy * BM_BLK + BM_BLK; y++) lifeMap[y][MW] = 0;
     world_stamp++;
 }
-static void gen_flush(void) { for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) if (gen_pend[wy][wx]) gen_one(wx, wy); gen_npend = 0; }
-static void window_shift(int sx, int sy) {
-    gen_flush();                                                                  // (a move before the last one's blocks were all made: make them now)
+static void window_shift(int sx,int sy){
+    // Preserve unfinished work for blocks that stay; no burst of wasted generation.
     int T0 = gfx_hb(), T; world_stamp++;
     for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks leaving: keep what was built on
         int nx = wx - sx, ny = wy - sy;
@@ -1240,12 +1254,12 @@ static void window_shift(int sx, int sy) {
     { int keep_r = roof_dirty, keep_a = ao_dirty;
       shift2d(&ao[0][0], MW + 1, MW + 1, MH + 1, dx, dy, 0);
       if (!keep_r) roof_shift(dx, dy);
+      keep_r|=roof_dirty; // a partially clipped user-built structure needs a full metadata rebuild
       T = gfx_hb(); if (T - T0 > dbg_ws[1]) dbg_ws[1] = T - T0; T0 = T;
       shift2d(&rq_dirty[0][0], WB, WB, WB, sx, sy, 0);
-      for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks coming into view: made in the frames that follow
-          int ox = wx + sx, oy = wy + sy;
-          if (ox < 0 || oy < 0 || ox >= WB || oy >= WB) { gen_pend[wy][wx] = 1; gen_npend++; rq_dirty[wy][wx] = 0; }
-      }
+      gen_npend=stream_shift_pending(&gen_pend[0][0],WB,sx,sy);
+      for(int wy=0;wy<WB;wy++)for(int wx=0;wx<WB;wx++)
+          if(gen_pend[wy][wx])rq_dirty[wy][wx]=0;
       T = gfx_hb(); if (T - T0 > dbg_ws[2]) dbg_ws[2] = T - T0; T0 = T;
       rq_n = 0; for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) rq_n += rq_dirty[wy][wx];
       for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) if (rq_dirty[wy][wx]) ao_region(wx * BM_BLK, wy * BM_BLK, wx * BM_BLK + BM_BLK, wy * BM_BLK + BM_BLK);
@@ -1284,14 +1298,14 @@ int world_stream_now(int ptx, int pty, int *dtx, int *dty, int now) {
     int bxp = ptx / BM_BLK, byp = pty / BM_BLK, sx = (bxp >= WB - 1) - (bxp <= 0), sy = (byp >= WB - 1) - (byp <= 0);   // (in one of the two middle blocks: the window stays; further out it moves)
     if (world_wbx + sx < 0 || world_wbx + sx > BM_N - WB) sx = 0;
     if (world_wby + sy < 0 || world_wby + sy > BM_N - WB) sy = 0;
-    if (!sx && !sy) {
-        if (gen_npend > 0) {                                                      // a block still to make: the nearest to you, this frame
-            int next=stream_pick_generation(&gen_pend[0][0],WB,BM_BLK,
-                ptx,pty,cam.eye.vx/TILE,-cam.eye.vz/TILE);
-            if(next>=0)gen_one(next%WB,next/WB);else gen_npend=0;
-        }
-        return 0;
+    // Service one pending lot per ordinary update, even while a rebase is
+    // waiting for spare time. The camera is still in the current origin.
+    if(!now&&gen_npend>0){
+        int next=stream_pick_generation(&gen_pend[0][0],WB,BM_BLK,
+            ptx,pty,cam.eye.vx/TILE,-cam.eye.vz/TILE);
+        if(next>=0)gen_one(next%WB,next/WB);else gen_npend=0;
     }
+    if(!sx&&!sy){ws_wait=0;return 0;}
     if (!now) {
         int edge = 1 << 20;                                                       // tiles left to the window's edge, the way it would move
         if (sx > 0) edge = MIN(edge, WB * BM_BLK - 1 - ptx); if (sx < 0) edge = MIN(edge, ptx);
@@ -1373,6 +1387,8 @@ static int world_walkable0(int mx, int my);
 //  it reads the maps straight, and a bare floor tile's answer is world_covered's kept bit)
 int world_walkable(int mx, int my) {
     if (world_lvl != 0 || (unsigned)mx >= MW || (unsigned)my >= MH) return world_walkable0(mx, my);
+    // No actor may enter a lot before its real collision map exists.
+    if(world_zone==ZONE_CITY&&world_wbx>=0&&gen_pend[my/BM_BLK][mx/BM_BLK])return 0;
     char c = lifeMap[my][mx];
     if (c == '.') return floorMap[my][mx] != FL_WATER && !world_covered(mx, my);
     if (is_wall(c) || c == ' ' || floorMap[my][mx] == FL_WATER) return 0;
@@ -2315,7 +2331,7 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
         int wx = mx * TILE + TILE / 2, wz = -(my * TILE + TILE / 2);
         char c = dm[my][mx];
         if (c == ' ') continue;                                       // open air (upper storeys)
-        int inR = mx >= rx0 && mx <= rx1 && my >= ry0 && my <= ry1;
+        int inR=(mx>=rx0&&mx<=rx1&&my>=ry0&&my<=ry1)||(bld[my][mx]&&b_see[bld[my][mx]]);
         if (!inR && !in_range(mx, my)) continue;                     // past the range (a building cut by it is drawn whole)
         if (shell || !inR) {                                         // a storey seen from outside, or a far part of a building: its outside walls only
             if (shell && bld[my][mx] && (b_see[bld[my][mx]] || b_lod[bld[my][mx]])) continue;
@@ -2428,7 +2444,7 @@ static u8 lvl_bb[NLEVELS][4];                     // each storey's built-on box 
 static u32 lvl_edge[NLEVELS][MH][(MW + 31) / 32];  // each storey's tiles next to open air (a bit each)
 // Buildings sit inside their own blocks (a street runs along every block's top and left), so when the SAN BOREAS window moves,
 // what was worked out for the blocks that stay is moved with them and only the blocks coming in are worked out (a few a frame).
-static int bld_alloc(void) { for (int b = 1; b < NBLD; b++) if (b_x0[b] == 255) { b_lod[b] = 0; b_rect_set(b, 0); if (b > nbld) nbld = b; return b; } return NBLD - 1; }
+static int bld_alloc(void) { for (int b = 1; b < NBLD; b++) if (b_x0[b] == 255) { b_lod[b] = b_see[b] = 0; b_rect_set(b, 0); if (b > nbld) nbld = b; return b; } return NBLD - 1; }
 static u8 rbox[NLEVELS][4];
 int dbg_rr_hb, dbg_rr_n, dbg_rr_blk, dbg_ws[8];
 // the roofs and buildings of the box [x0..x1] x [y0..y1] (the whole map, or a block that has just come in)
@@ -2609,6 +2625,7 @@ static void roof_rebuild(void) {
     for (int b = 0; b < NBLD; b++) b_x0[b] = 255;
     nbld = 0;
     memset(b_rect, 0, sizeof b_rect);
+    memset(b_see,0,sizeof b_see);
     memset(bld, 0, sizeof bld);
     for (int l = 0; l < NLEVELS; l++) lvl_used[l] = 0;
     lvl_used[0] = 1; lvl_bb[0][0] = 0; lvl_bb[0][1] = 0; lvl_bb[0][2] = MW - 1; lvl_bb[0][3] = MH - 1;
@@ -2652,7 +2669,10 @@ static void roof_shift(int dx, int dy) {
     for (int b = 1; b <= nbld; b++) {
         if (b_x0[b] == 255) continue;
         int a = b_x0[b] - dx, c = b_x1[b] - dx, e = b_y0[b] - dy, f = b_y1[b] - dy;
-        if (a < 0 || e < 0 || c >= MW || f >= MH) { b_x0[b] = 255; continue; }   // gone out of the window
+        if(a<0||e<0||c>=MW||f>=MH){
+            if(c>=0&&f>=0&&a<MW&&e<MH)roof_dirty=1;
+            b_x0[b]=255;b_see[b]=0;continue;
+        }
         b_x0[b] = (u8)a; b_x1[b] = (u8)c; b_y0[b] = (u8)e; b_y1[b] = (u8)f;
     }
     // (no building's tiles may point at a freed one: a building is either kept whole or gone whole, so bld's gone parts left too)
@@ -2941,34 +2961,45 @@ int world_hb_l0, world_hb_up, world_up_walls, world_up_wprims, world_up_fl;
 // the rooms shown (the walls on the camera's side are cut low as ever)
 static int slab1(int o, int d, int lo, int hi, int *t0, int *t1) {   // the ray o + d t (t 0..4096) through lo..hi: narrows t0..t1
     if (d == 0) return o >= lo && o <= hi;
-    int ta = ((lo - o) << 12) / d, tb = ((hi - o) << 12) / d;
+    int ta=((lo-o)*4096)/d,tb=((hi-o)*4096)/d;
     if (ta > tb) { int t = ta; ta = tb; tb = t; }
     if (ta > *t0) *t0 = ta; if (tb < *t1) *t1 = tb;
     return *t0 <= *t1;
 }
-static void see_through(int focus, int fx, int fy) {
-    memset(b_see, 0, sizeof b_see);
-    if (focus) b_see[focus] = 1;
-    if (world_fp) {                                                   // first person: nothing stands between the eye and you; the
-        for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {   // buildings round you (in a doorway too) open up inside
-            int x = fx + dx, y = fy + dy;
-            if (x >= 0 && y >= 0 && x < MW && y < MH && bld[y][x]) b_see[bld[y][x]] = 1;
+static void see_through(int focus,int fx,int fy,int cutaway){
+    if(world_fp){
+        memset(b_see,0,sizeof b_see);
+        for(int dy=-1;dy<=1;dy++)for(int dx=-1;dx<=1;dx++){
+            int x=fx+dx,y=fy+dy;
+            if((unsigned)x<MW&&(unsigned)y<MH&&bld[y][x])b_see[bld[y][x]]=1;
         }
         return;
     }
-    int ex = cam.eye.vx, ey = cam.eye.vy, ez = cam.eye.vz, dx = cam.at.vx - ex, dy = cam.at.vy - ey, dz = cam.at.vz - ez;
-    int tx0 = MIN(ex, cam.at.vx) / TILE - 1, tx1 = MAX(ex, cam.at.vx) / TILE + 1;            // the ray's box, in tiles
-    int ty0 = -MAX(ez, cam.at.vz) / TILE - 1, ty1 = -MIN(ez, cam.at.vz) / TILE + 1;
-    for (int b = 1; b <= nbld; b++) {
-        if (b_x0[b] == 255 || b == focus) continue;
-        if (b_x1[b] < tx0 || b_x0[b] > tx1 || b_y1[b] < ty0 || b_y0[b] > ty1) continue;
-        int t0 = 0, t1 = 4096 - 300;                                  // (short of your own spot)
-        if (!slab1(ex, dx, b_x0[b] * TILE - 40, (b_x1[b] + 1) * TILE + 40, &t0, &t1)) continue;
-        if (!slab1(ez, dz, -(b_y1[b] + 1) * TILE - 40, -b_y0[b] * TILE + 40, &t0, &t1)) continue;
-        if (!slab1(ey, dy, -(b_top[b] + 1) * WALL_FULL - 600, 0, &t0, &t1)) continue;
-        b_see[b] = 1;
+    if(!cutaway||world_roof_show){
+        memset(b_see,0,sizeof b_see);
+        if(focus&&!world_roof_show)b_see[focus]=1;
+        return;
+    }
+    int ex=cam.eye.vx,ey=cam.eye.vy,ez=cam.eye.vz;
+    int dx=cam.at.vx-ex,dy=cam.at.vy-ey,dz=cam.at.vz-ez;
+    int tx0=MIN(ex,cam.at.vx)/TILE-2,tx1=MAX(ex,cam.at.vx)/TILE+2;
+    int ty0=-MAX(ez,cam.at.vz)/TILE-2,ty1=-MIN(ez,cam.at.vz)/TILE+2;
+    b_see[0]=0;
+    for(int b=1;b<=nbld;b++){
+        if(b_x0[b]==255){b_see[b]=0;continue;}
+        if(b==focus){b_see[b]=1;continue;}
+        int pad=b_see[b]?112:24; // wider exit band, narrower entry band
+        b_see[b]=0;
+        if(b_x1[b]<tx0||b_x0[b]>tx1||b_y1[b]<ty0||b_y0[b]>ty1)continue;
+        int t0=0,t1=4096-300;
+        if(!slab1(ex,dx,b_x0[b]*TILE-pad,(b_x1[b]+1)*TILE+pad,&t0,&t1))continue;
+        if(!slab1(ez,dz,-(b_y1[b]+1)*TILE-pad,-b_y0[b]*TILE+pad,&t0,&t1))continue;
+        int lift=world_zone==ZONE_CITY&&world_wbx>=0?gh_c(b_x0[b],b_y0[b]):0;
+        if(!slab1(ey,dy,-lift-(b_top[b]+1)*WALL_FULL-600,-lift,&t0,&t1))continue;
+        b_see[b]=1;
     }
 }
+
 int world_detail_r = 12;                        // the full-detail range round you, tiles (the options menu)
 int world_item_r = 12;                          // the street's things are drawn this far round you, whatever the speed helper does (main: FULL DETAIL)
 int world_far_range = 34;                       // how far (tiles) the skyline reaches (more with 8 MB: everything in the window)
@@ -3126,21 +3157,12 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     frame_t = t; nc_tick++;
     if (ao_dirty) { int h = gfx_hb(); ao_update(); h = gfx_hb() - h; if (h > dbg_ao_hb) dbg_ao_hb = h; }
     if (roof_dirty) { int h = gfx_hb(); roof_rebuild(); h = gfx_hb() - h; if (h > dbg_roof_hb) dbg_roof_hb = h; }
-    else if (rq_n) {
-        // Deferred blocks enter the local window without roof metadata.
-        // Prioritize the camera-facing end of the queue; never wait for a
-        // cheap frame if the missing block has reached the detail boundary.
-        static int wait; extern int gfx_last_cpu;
-        int eye_x = cam.eye.vx / TILE, eye_y = -cam.eye.vz / TILE;
-        int next = stream_pick_roof(&rq_dirty[0][0], WB, BM_BLK,
-                                     fx, fy, eye_x, eye_y);
-        if (next >= 0) {
-            int near = stream_block_gap(fx, fy, next % WB, next / WB, BM_BLK) <= world_detail_r + 2 ||
-                       stream_block_gap(eye_x,eye_y,next%WB,next/WB,BM_BLK)<=2;
-            if (near || gfx_last_cpu < 420 || ++wait >= 3) {
-                roof_pending(next); wait = 0;
-            }
-        }
+    else while(rq_n){
+        // Never submit a wall-only frame from an already generated block.
+        // Ordinary streaming adds one item; a deliberate edit may add more.
+        int next=stream_pick_roof(&rq_dirty[0][0],WB,BM_BLK,fx,fy,cam.eye.vx/TILE,-cam.eye.vz/TILE);
+        if(next<0){rq_n=0;break;}
+        roof_pending(next);
     }
     const int R = world_detail_r;
     nat_on = world_zone == ZONE_ISLAND && world_nature;
@@ -3149,13 +3171,13 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     rx0 = MAX(0, fx - R) & ~1; rx1 = MIN(MW - 1, fx + R); ry0 = MAX(0, fy - R) & ~1; ry1 = MIN(MH - 1, fy + R);
     ex0 = rx0; ex1 = rx1; ey0 = ry0; ey1 = ry1;
     int focus = (fx >= 0 && fy >= 0 && fx < MW && fy < MH) ? bld[fy][fx] : 0;
-    see_through(focus, fx, fy);
+    see_through(focus,fx,fy,cutaway);
     int etx_ = cam.eye.vx / TILE, ety_ = -cam.eye.vz / TILE, eh_ = -cam.eye.vy / TILE; if (eh_ < 0) eh_ = -eh_;
     for (int b = 1; b <= nbld; b++) {               // buildings the range cuts through are drawn whole
         if (b_x0[b] == 255) { b_str[b] = 0; b_lod[b] = 0; continue; }
         int inside = b_x0[b] >= rx0 && b_x1[b] <= rx1 && b_y0[b] >= ry0 && b_y1[b] <= ry1;
         int touch = b_x1[b] >= rx0 && b_x0[b] <= rx1 && b_y1[b] >= ry0 && b_y0[b] <= ry1;
-        b_str[b]=(u8)(!inside&&(touch||render_eye_close(etx_,ety_,b_x0[b],b_y0[b],b_x1[b],b_y1[b])));
+        b_str[b]=(u8)(!inside&&(touch||b_see[b]||render_eye_close(etx_,ety_,b_x0[b],b_y0[b],b_x1[b],b_y1[b])));
         if (bm_gen >= 7 && world_zone == ZONE_CITY && world_wbx >= 0 && !world_view_lvl && b_top[b] >= 1 && b_top[b] <= 3 && (touch||b_str[b]) && !b_see[b] && b_rect_get(b) && (b_x1[b] - b_x0[b] + 1) * (b_y1[b] - b_y0[b] + 1) <= 200) {
             int dx_ = MAX(MAX(b_x0[b] - fx, fx - b_x1[b]), 0), dy_ = MAX(MAX(b_y0[b] - fy, fy - b_y1[b]), 0);   // nearest wall to Sim, tiles
             int ex_ = MAX(MAX(b_x0[b] - etx_, etx_ - b_x1[b]), 0), ey_ = MAX(MAX(b_y0[b] - ety_, ety_ - b_y1[b]), 0); // nearest wall to eye
@@ -3169,7 +3191,10 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     // Establish the entire local ground before detail can exhaust packets.
     // Its OT slot stays behind floors/walls, irrespective of emission order.
     int use_far=world_zone==ZONE_CITY&&far_begin(world_horizon);
-    if(world_zone==ZONE_CITY&&world_wbx>=0)ground_win(use_far);
+    if(world_zone==ZONE_CITY&&world_wbx>=0){
+        ground_win(use_far);
+        if(gen_npend){far_draw_pending(world_horizon);gfx_set_identity();}
+    }
     flc_frame(); flc_on = 1;   // (after the shading and the heights are brought up to date above)
     { int h0 = gfx_hb(); draw_layer(fx, fy, t, cutaway && world_view_lvl == 0, 0, 0, focus); world_hb_l0 = gfx_hb() - h0; }
     flc_on = 0;
@@ -3196,7 +3221,8 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     if (nat_on || world_zone == ZONE_HOME || world_zone == ZONE_TOWN) { PROF_BEGIN(); nat_far(fx, fy); PROF_END(7); }   // (the ground past the range, out to the map's edge and on)
     {   // the skyline: everything past the range, as boxes (windows on the nearer ones); in SAN BOREAS, on out to the horizon
         PROF_BEGIN(); int sky_h0 = gfx_hb(); gfx_set_identity();
-        if(use_far)far_resume();
+        int local_far=world_zone==ZONE_CITY&&world_wbx>=0;
+        if(local_far)far_local_begin(world_horizon);
         int far2 = world_far_range * world_far_range;
         for (int b = 1; b <= nbld; b++) {
             if (b_x0[b] == 255) continue;
@@ -3206,7 +3232,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
             { int hh = (b_top[b] + 1) * WALL_FULL, cx = (b_x0[b] + b_x1[b] + 1) * TILE / 2, cz = -(b_y0[b] + b_y1[b] + 1) * TILE / 2;   // (out of the view altogether: not even transformed)
               int rr = (MAX(b_x1[b] - b_x0[b], b_y1[b] - b_y0[b]) + 1) * TILE * 3 / 4 + hh / 2;
               if (!gfx_visible(cx, -hh / 2, cz, rr)) continue; }
-            if (use_far) { const u8 *rc = roofCol[b_col[b] % NROOF_COL];
+            if (local_far) { const u8 *rc = roofCol[b_col[b] % NROOF_COL];
                 far_box_world(b_x0[b] * TILE, -b_y0[b] * TILE, (b_x1[b] + 1) * TILE, -(b_y1[b] + 1) * TILE, b_top[b] + 1,
                               b_wall[b] ? b_wall[b] : RGB(24, 22, 19), b_sty[b] == 2 ? 0 : b_sty[b] == 0 ? 1 : (b_pit[b] & 16) ? 3 : 2, 1 + ((b_pit[b] & 15) >= 2), RGB(rc[0] >> 3, rc[1] >> 3, rc[2] >> 3)); }
             else far_box(b, d2 < 22 * 22);

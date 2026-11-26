@@ -788,7 +788,8 @@ void far_box_world(int x0, int z0, int x1, int z1, int sto, u16 wall15, int rs, 
     far_box(x0, z0, x1, z1, sto, wc, sto <= 2 ? rs : 0, pit, rc, sto >= 2);
     far_lift = 0;
 }
-static void draw_buildings(int rx0, int ry0, int rx1, int ry1) {
+static void draw_buildings(int rx0,int ry0,int rx1,int ry1){
+    (void)rx0;(void)ry0;(void)rx1;(void)ry1;
     int ns = bm_nset(); if (ns > 64) ns = 64;
     int far2 = max_bld;
     for (int i = 0; i < ns; i++) {
@@ -804,8 +805,7 @@ static void draw_buildings(int rx0, int ry0, int rx1, int ry1) {
             const FB *f = &fb[k];
             int inside_window = f->bx >= world_wbx && f->bx < world_wbx + MW / BM_BLK &&
                                 f->by >= world_wby && f->by < world_wby + MH / BM_BLK;
-            int pending = inside_window ? world_stream_block_model_state(f->bx, f->by) : STREAM_MODEL_READY;
-            if (inside_window && pending == STREAM_MODEL_READY) continue; // the map now owns this block
+            if(inside_window)continue; // local renderer owns the entire window, including pending proxies
             u8 ft[4]; FT_GET(ft, fb_ft[k]);
             // bm_lot_foot stores the coordinates of the LAST WALL TILES (inclusive).
             // far_box takes an exclusive opposite edge. Omitting +1 shrank
@@ -813,10 +813,6 @@ static void draw_buildings(int rx0, int ry0, int rx1, int ry1) {
             int tx0 = f->bx * BM_BLK + ft[0] - fwx0, ty0 = f->by * BM_BLK + ft[1] - fwy0;
             int tx1 = house_foot_end_tile(f->bx, ft[2], fwx0, BM_BLK);
             int ty1 = house_foot_end_tile(f->by, ft[3], fwy0, BM_BLK);
-            if (inside_window) {
-                int overlaps_detail = tx1 > rx0 && tx0 <= rx1 && ty1 > ry0 && ty0 <= ry1;
-                if (!stream_house_proxy_needed(pending, overlaps_detail)) continue;
-            }
             int x0 = tx0 * TILE, x1 = tx1 * TILE, z0 = -ty0 * TILE, z1 = -ty1 * TILE;
             int cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
             int dx = ABS(cx - feye.vx), dz = ABS(cz - feye.vz), d = MAX(dx, dz) + MIN(dx, dz) / 2;
@@ -1000,6 +996,41 @@ int far_begin(u32 horizon) {
 }
 int far_reach_m(void) { return far_on_frame ? far_reach_u / 213 : -1; }
 void far_resume(void){if(far_on_frame)far_gte();}
+void far_local_begin(u32 horizon){
+    if(!far_on_frame){
+        // Even "near only" needs the same clipped, terrain-anchored boxes.
+        hz_r=horizon&255;hz_g=(horizon>>8)&255;hz_b=(horizon>>16)&255;
+        int view=far_view;far_view=1;far_setup();far_view=view;hz_max=0;
+    }
+    far_gte();
+}
+void far_draw_pending(u32 horizon){
+    far_local_begin(horizon);
+    for(int wy=0;wy<MH/BM_BLK;wy++)for(int wx=0;wx<MW/BM_BLK;wx++){
+        int bx=world_wbx+wx,by=world_wby+wy;
+        if(world_stream_block_model_state(bx,by)!=STREAM_MODEL_GENERATING)continue;
+        BInfo b;LotPlan p;u8 ft[5],sty,col,pit,wc[3];
+        bm_block(bx,by,&b);
+        if(!bm_lot_foot(bx,by,&b,ft,&p))continue;
+        int x=wx*BM_BLK*TILE,z=-wy*BM_BLK*TILE;
+        int x0=x+ft[0]*TILE,x1=x+(ft[2]+1)*TILE,z0=z-ft[1]*TILE,z1=z-(ft[3]+1)*TILE;
+        int sto=bm_storeys(&b),cx=(x0+x1)/2,cz=(z0+z1)/2;
+        if(!in_cone(cx,cz,2*BM_BLK*TILE,M2U(150)))continue;
+        world_roof_of(bx,by,&b,ft,&p,&sty,&col,&pit);
+        const u8 *rc=world_roof_rgb(col);
+        if(ft[4]&&bm_gen>=7&&p.type)world_plan_wall_rgb((p.pal*2+p.wall)%6,wc);
+        else memcpy(wc,wallc[b.lot==LOT_TOWER?8:(b.h>>20)%8u],3);
+        int rs=sty==2||sto>2?0:sty==0?1:sty==3?3:2;
+        far_lift=world_gh_lot(cx,cz);
+        if(ft[4]&&p.type==HT_L&&p.wx1){
+            int a=p.wx0,bx1=p.wx1+1;
+            if(a<p.x0)bx1=p.x0;else a=p.x1+1;
+            far_box(x+p.x0*TILE,z-p.y0*TILE,x+(p.x1+1)*TILE,z-(p.y1+1)*TILE,sto,wc,rs,pit,rc,0);
+            if(a<bx1)far_box(x+a*TILE,z-p.wy0*TILE,x+bx1*TILE,z-(p.wy1+1)*TILE,1,wc,0,1,rc,0);
+        }else far_box(x0,z0,x1,z1,sto,wc,rs,pit,rc,0);
+        far_lift=0;
+    }
+}
 void far_draw(int rx0, int ry0, int rx1, int ry1) {
     if (!far_on_frame) return;
     far_gte();

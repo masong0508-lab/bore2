@@ -1,8 +1,7 @@
 // Open-world block handoff for PS1 far-house visibility and roof work.
 // No resident cache, dynamic allocation, geometry or save-format changes.
-// Pending-map bytes already live in world.c and are consulted only on
-// streamed blocks. A planned far-house proxy disappears once its real
-// roof/building metadata has been generated.
+// A planned house proxy disappears only when the local block and its
+// roof/building metadata are ready in the same rendered frame.
 #ifndef BORE2_WORLD_STREAM_MODELS_H
 #define BORE2_WORLD_STREAM_MODELS_H
 
@@ -65,5 +64,20 @@ static inline int stream_pick_generation(const unsigned char *dirty,int n,int sp
         if(dirty[y*n+x]&&d<dist){best=y*n+x;dist=d;}
     }
     return best>=0?best:stream_pick_roof(dirty,n,span,sx,sy,ex,ey);
+}
+// Preserve unfinished blocks that remain in the window, discard those
+// leaving it, and mark only newly entering blocks as pending. No forced
+// generation of the old fringe when the player crosses twice quickly.
+static inline int stream_shift_pending(unsigned char *pending,int n,int sx,int sy){
+    if(!pending||n<1||n>5)return 0;
+    unsigned char next[25];
+    int count=0;
+    for(int y=0;y<n;y++)for(int x=0;x<n;x++){
+        int ox=x+sx,oy=y+sy;
+        int p=ox<0||oy<0||ox>=n||oy>=n?1:!!pending[oy*n+ox];
+        next[y*n+x]=(unsigned char)p;count+=p;
+    }
+    for(int i=0;i<n*n;i++)pending[i]=next[i];
+    return count;
 }
 #endif

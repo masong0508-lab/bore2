@@ -1207,15 +1207,11 @@ static void life_update(int steps) {
     if (isl_craft_asked) { isl_craft_asked = 0; craft_sel = 0; craft_msg_t = 0; state = ST_CRAFT; }   // the campfire: make something
 }
 
-static void big_flash(void) {   // the red / black / white cut on a big moment: half a second, at most once every 40 s, and any button ends it
-    static int ft_ = -1, cool;
-    static const char *const W1[8] = { "", "PROMOTED", "I DO.", "NEW", "CHAPTER", "LEVEL", "NEW", "YOU ARE" }, *const W2[8] = { "", "BOSS!", "FOREVER", "BABY!", "DONE!", "UP!", "PRIZE!", "CHAMP!" };
-    static int kind;
-    if (sim_flash_req) { if (cool <= 0 && ft_ < 0) { kind = sim_flash_req; ft_ = 0; cool = 2400; } sim_flash_req = 0; }
-    if (cool > 0) cool--;
-    if (ft_ < 0) return;
-    if (ft_ >= PL_FLASH_LEN || (~btn & 0xffff & (PAD_CROSS | PAD_CIRCLE | PAD_START))) { ft_ = -1; return; }
-    pl_flash(ft_, W1[kind], W2[kind], kind & 1); ft_++;
+static void big_flash(void){
+    // Milestones must not blank or flash the whole live world.
+    static const char *const notices[]={"","Promoted!","Married!","A new baby!","Chapter complete!","Level up!","New prize!","You are the champion!"};
+    int kind=sim_flash_req;sim_flash_req=0;
+    if(kind>0&&kind<(int)(sizeof notices/sizeof notices[0]))sim_note(notices[kind]);
 }
 static void life_draw(void) {
 #ifdef AUTO_DAY

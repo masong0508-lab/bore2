@@ -4187,7 +4187,9 @@ static void sim3d(int i, int yaw) {
         sw = 135 + (P[14] - 50), at = 50 + (P[21] - 50) / 2, lt = 90 + (P[23] - 50) / 2, bz = 85 + (P[24] - 50) * 2, al = 250 + (P[20] - 50) * 2, hb = base + 30;
     int sw_l = mv ? sinLerp(gframes * 1100 + i * 700) * 70 / 4096 : 0;
     int fx_e = lod ? 0 : expr_of(m), fx_b = lod || fx_e == EX_SLEEP ? 0 : (gframes + i * 41) % 130 < 5, fx_t = !lod && (m->act >= 100 || m->act == 3) && ((gframes >> 3) & 1);   // (D55) mood, blink, talking: part of the cached model's key
-    SimL *se = 0; int cached = 0, ox = x, oz = z, oq = sq_q, ogy = gy_off, model_start = polys; u32 *sb_ = 0; int sn_ = 0, sh_ = 0, sk_ = 0, sc_ = 0; u32 sm_ = 0, snm_ = 0, scl_ = 0;
+    SimL *se = 0; int cached = 0, ox = x, oz = z, oq = sq_q, ogy = gy_off, model_start = polys; u32 *sb_ = 0; int sn_ = 0, sh_ = 0, sk_ = 0, sc_ = 0;
+    int saved_full=gx_full,saved_tx=tx_want,saved_tp=gx_txp;
+    u32 sm_ = 0, snm_ = 0, scl_ = 0;
     if (gxb && dpass == 2) {   // (D39) the cached model: the key is everything its shape and colours come from
         if (mv) sw_l = sinLerp((s16)(((gframes * 1100 + i * 700) & 32767) & ~4095)) * 70 / 4096;   // (the stride in eight steps)
         u32 key = 2166136261u; for (int q = 0; q < PMN; q++) key = (key ^ (u32)P[q]) * 16777619u;
@@ -4255,9 +4257,17 @@ static void sim3d(int i, int yaw) {
         /* Recording is not a second draw. Charge exactly once when the
          * cached list is submitted, on both misses and subsequent hits. */
         polys = model_start;
-        if (gx_full) sml_full++; if (se->n > sml_maxn) sml_maxn = se->n; DC_FlushRange(se->w, (u32)se->n * 4); gxb = sb_; gxn = sn_; gxh = sh_; gxk = sk_; gx_cap = sc_; gx_mat = sm_; gx_nrm = snm_; gx_col = scl_; gx_full = 0; gy_off = ogy; x = ox; z = oz; sq_q = oq; }
+        if (gx_full) sml_full++; if (se->n > sml_maxn) sml_maxn = se->n; DC_FlushRange(se->w, (u32)se->n * 4); gxb = sb_; gxn = sn_; gxh = sh_; gxk = sk_; gx_cap = sc_; gx_mat = sm_; gx_nrm = snm_; gx_col = scl_; gx_full=saved_full;tx_want=saved_tx;gx_txp=saved_tp;gx_lv=0;gy_off = ogy; x = ox; z = oz; sq_q = oq; }
         if (ride) em_R = sk_Rm;   // (D44) side on to the board (skate_frame turns it)
-        if (se->n) sim_emit(se, ox, -ogy + ground_lift(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), slv[i]) - (ride ? board_lift * 12 / 5 + 80 - sk_cr : 0), oz, oq); em_R = 0;
+        if(se->n)sim_emit(se,ox,-ogy+ground_lift(fdiv(m->x+8,16),fdiv(m->y+8,16),slv[i])-(ride?board_lift*12/5+80-sk_cr:0),oz,oq);
+        else { // valid low-cost silhouette on a cache miss that exceeds its slot
+            tx_want=-1;gx_lv=0;
+            sb(ox,oz,-100,0,-65,100,lh,65,pants);
+            sb(ox,oz,-sw,lh,-bz,sw,base,bz,sh);
+            sb(ox,oz,-hw,base,-hw,hw,base+ht,hw,sk);
+            tx_want=saved_tx;
+        }
+        em_R=0;
         if (ride) skate_draw_board(-ogy + ground_lift(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), 0)); }
     if (i == ctl) { int py = (hb + ht + 190) * sb_sc / 100; sb_sc = 100; sq_q = 0; bx(x - 40, py, z - 40, x + 40, py + 120, z + 40, C15(6, 30, 6)); bx(x - 30, py - 90, z - 30, x + 30, py, z + 30, C15(5, 22, 5)); }
 }

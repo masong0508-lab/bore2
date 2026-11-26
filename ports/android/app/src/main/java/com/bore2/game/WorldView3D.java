@@ -38,8 +38,8 @@ final class WorldView3D extends GLSurfaceView {
             }
         });
     }
-    void setScene(float[] v,int x,int y){
-        queueEvent(()->scene.setScene(v,x,y));requestRender();
+    void setScene(float[] v,int x,int y,Runnable failed){
+        queueEvent(()->scene.setScene(v,x,y,failed));requestRender();
     }
     void select(int x,int y){
         queueEvent(()->{scene.selX=x;scene.selY=y;});requestRender();
@@ -103,7 +103,9 @@ final class WorldView3D extends GLSurfaceView {
             "gl_FragColor=vec4(mix(c,uSky,f),1.);}";
         private final Picker picker;
         private final float[] projection=new float[16],view=new float[16],vp=new float[16],inverse=new float[16];
-        private float[] mesh=new float[0];
+        private float[] mesh=new float[0],pendingMesh;
+        private int pendingX,pendingY;
+        private Runnable pendingFailure;
         private int originX,originY,selX=Integer.MIN_VALUE,selY,width,height,program,vbo;
         private int aPosition,aColor,uVP,uEye,uSelection,uSelected,uSky,uPlayer,uPlayerVisible;
         private int playerX=Integer.MIN_VALUE,playerY=Integer.MIN_VALUE;
@@ -112,12 +114,41 @@ final class WorldView3D extends GLSurfaceView {
         private float targetY=0;
         float yaw=42,pitch=49,distance=48;
         SceneRenderer(Picker pick){picker=pick;}
-        void setScene(float[] v,int x,int y){
-            mesh=v!=null&&v.length%18==0?v:new float[0];originX=x;originY=y;dirty=true;validMatrix=false;
-            float low=Float.POSITIVE_INFINITY;
-            for(int i=0;i<mesh.length;i+=6)
-                if(Math.abs(mesh[i])<=10&&Math.abs(mesh[i+2])<=10)low=Math.min(low,mesh[i+1]);
-            targetY=Float.isFinite(low)?low+1.0f:1.0f;
+        void setScene(float[] v,int x,int y,Runnable failed){
+            if(v==null||v.length==0||v.length%18!=0){if(failed!=null)post(failed);return;}
+            pendingMesh=v;pendingX=x;pendingY=y;pendingFailure=failed;dirty=true;
+        }
+        private void uploadScene(){
+            float[] next=pendingMesh!=null?pendingMesh:mesh;
+            if(next.length==0){dirty=false;return;}
+            int[] buffers=new int[1];boolean ok=false;
+            // Never replace a valid GPU buffer until the new upload succeeds.
+            // The second buffer exists only for the duration of a scene swap.
+            try{
+                if(upload==null||upload.capacity()<next.length)
+                    upload=ByteBuffer.allocateDirect(next.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+                upload.clear();upload.put(next);upload.flip();
+                for(int i=0;i<8&&GLES20.glGetError()!=GLES20.GL_NO_ERROR;i++){}
+                GLES20.glGenBuffers(1,buffers,0);
+                GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,buffers[0]);
+                GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,next.length*4,upload,GLES20.GL_STATIC_DRAW);
+                ok=buffers[0]!=0&&GLES20.glGetError()==GLES20.GL_NO_ERROR;
+            }catch(OutOfMemoryError ex){ok=false;}
+            if(ok){
+                if(vbo!=0)GLES20.glDeleteBuffers(1,new int[]{vbo},0);
+                vbo=buffers[0];
+                if(pendingMesh!=null){
+                    mesh=next;originX=pendingX;originY=pendingY;validMatrix=false;
+                    float low=Float.POSITIVE_INFINITY;
+                    for(int i=0;i<mesh.length;i+=6)
+                        if(Math.abs(mesh[i])<=10&&Math.abs(mesh[i+2])<=10)low=Math.min(low,mesh[i+1]);
+                    targetY=Float.isFinite(low)?low+1f:1f;
+                }
+            }else{
+                if(buffers[0]!=0)GLES20.glDeleteBuffers(1,buffers,0);
+                if(pendingFailure!=null)post(pendingFailure);
+            }
+            pendingMesh=null;pendingFailure=null;dirty=false;
         }
         private int shader(int type,String source){
             int id=GLES20.glCreateShader(type);GLES20.glShaderSource(id,source);GLES20.glCompileShader(id);
@@ -136,7 +167,7 @@ final class WorldView3D extends GLSurfaceView {
             uSelection=GLES20.glGetUniformLocation(program,"uSelection");uSelected=GLES20.glGetUniformLocation(program,"uSelected");
             uSky=GLES20.glGetUniformLocation(program,"uSky");
             uPlayer=GLES20.glGetUniformLocation(program,"uPlayer");uPlayerVisible=GLES20.glGetUniformLocation(program,"uPlayerVisible");
-            int[] buffers=new int[1];GLES20.glGenBuffers(1,buffers,0);vbo=buffers[0];dirty=true;
+            vbo=0;dirty=true;validMatrix=false;
             GLES20.glEnable(GLES20.GL_DEPTH_TEST);GLES20.glDepthFunc(GLES20.GL_LEQUAL);
             GLES20.glDisable(GLES20.GL_BLEND);GLES20.glDisable(GLES20.GL_CULL_FACE);
         }
@@ -145,14 +176,10 @@ final class WorldView3D extends GLSurfaceView {
         }
         @Override public void onDrawFrame(GL10 gl){
             GLES20.glClearColor(.68f,.77f,.80f,1);GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT|GLES20.GL_DEPTH_BUFFER_BIT);
-            if(width<=0||height<=0||mesh.length==0)return;
+            if(width<=0||height<=0)return;
+            if(dirty)uploadScene();
+            if(vbo==0||mesh.length==0)return;
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,vbo);
-            if(dirty){
-                if(upload==null||upload.capacity()<mesh.length)
-                    upload=ByteBuffer.allocateDirect(mesh.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-                upload.clear();upload.put(mesh);upload.flip();
-                GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,mesh.length*4,upload,GLES20.GL_STATIC_DRAW);dirty=false;
-            }
             float yr=(float)Math.toRadians(yaw),pr=(float)Math.toRadians(pitch);
             float d=distance*(float)Math.cos(pr),ex=d*(float)Math.sin(yr),ez=d*(float)Math.cos(yr);
             float ey=targetY+distance*(float)Math.sin(pr);

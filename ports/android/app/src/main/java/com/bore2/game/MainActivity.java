@@ -180,7 +180,13 @@ public final class MainActivity extends Activity {
                 if(mesh==null||mesh.length==0){
                     in3d=false;showMode();hint.setText("3D scene unavailable — map remains usable");return;
                 }
-                meshX=x;meshY=y;meshSeed=key;world3d.setScene(mesh,x,y);world3d.select(selectedX,selectedY);
+                meshX=x;meshY=y;meshSeed=key;
+                world3d.setScene(mesh,x,y,()->{
+                    if(version!=serial||isFinishing()||isDestroyed())return;
+                    meshX=meshY=-1;in3d=false;showMode();
+                    hint.setText("3D upload did not fit — map remains usable");
+                });
+                world3d.select(selectedX,selectedY);
                 if(in3d)hint.setText("Drag to orbit · Pinch to zoom · Tap a lot");
             });
         });
