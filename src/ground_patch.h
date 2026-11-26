@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <string.h>
-enum { GROUND_PATCH_SIDE=18, GROUND_PATCH_MAX=324, GROUND_PATCH_CACHE=64 };
+enum { GROUND_PATCH_SIDE=18, GROUND_PATCH_MAX=324, GROUND_PATCH_CACHE=80 };
 static inline uint32_t ground_patch_pack(int x,int y,int w,int h,int mat){
     return (uint32_t)x|((uint32_t)y<<5)|((uint32_t)w<<10)|((uint32_t)h<<15)|((uint32_t)mat<<20);
 }

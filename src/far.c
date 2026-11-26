@@ -89,7 +89,8 @@ static int clip1(const CV *in, int n, CV *out, int k) {
         int da = pdist(a, k), db = pdist(b, k);
         if (da >= 0) out[m++] = *a;
         if ((da >= 0) != (db >= 0)) {
-            int t=(int)(((long long)da*4096)/((long long)da-db));
+            unsigned aa=(unsigned)ABS(da),bb=(unsigned)ABS(db),den=aa+bb;
+            int t=aa<=0xfffffu?(int)((aa<<12)/den):(int)(((unsigned long long)aa<<12)/den);
             CV *c = &out[m++];
             c->x = a->x + (((b->x - a->x) * t) >> 12); c->y = a->y + (((b->y - a->y) * t) >> 12); c->z = a->z + (((b->z - a->z) * t) >> 12);
             c->r = a->r + (((b->r - a->r) * t) >> 12); c->g = a->g + (((b->g - a->g) * t) >> 12); c->b = a->b + (((b->b - a->b) * t) >> 12);
@@ -101,7 +102,13 @@ static int clip1(const CV *in, int n, CV *out, int k) {
 static void emit_clipped(const FV *v, const u32 *col, int n, int slot) {
     CV a[12], b[12]; int m = n;
     for (int i = 0; i < n; i++) { a[i].x = v[i].vx; a[i].y = v[i].vy; a[i].z = v[i].vz; a[i].r = col[i] & 255; a[i].g = (col[i] >> 8) & 255; a[i].b = (col[i] >> 16) & 255; }
-    for (int k = 0; k < 5 && m >= 3; k++) { m = clip1(a, m, b, k); memcpy(a, b, sizeof(CV) * m); }
+    for(int k=0;k<5&&m>=3;k++){
+        int inside=0;
+        for(int i=0;i<m;i++)inside+=pdist(&a[i],k)>=0;
+        if(inside==m)continue; // already within this plane
+        if(!inside)return;   // no projected polygon can reach the viewport
+        m=clip1(a,m,b,k);memcpy(a,b,sizeof(CV)*m);
+    }
     if (m < 3) return;
     s16 sx[12], sy[12];
     for (int i = 0; i < m; i++) { sx[i] = (s16)(CENTER_X + gfx_focal * a[i].x / a[i].z); sy[i] = (s16)(CENTER_Y + gfx_focal * a[i].y / a[i].z); }
@@ -114,22 +121,38 @@ static void emit_clipped(const FV *v, const u32 *col, int n, int slot) {
     }
 }
 // a flat piece of ground (x0..x1, z0..z1 local units, z0 > z1), its corners hazed by their distance
+// A polygon may extend outside the viewport without needing software
+// clipping, provided its size stays inside the PS1 GPU's limits. Reject
+// fully off-screen front-facing projections before re-transforming them.
+static inline int far_outcode(const XV *v){
+    return (v->x<0?1:v->x>=SCREEN_W?2:0)|(v->y<0?4:v->y>=SCREEN_H?8:0);
+}
+static inline int far_vertex_safe(const XV *v){
+    const int gx=MIN(SCREEN_W,(1000-SCREEN_W)/2),gy=MIN(SCREEN_H/2,(480-SCREEN_H)/2);
+    return v->z>=ZN*2&&v->x>=-gx&&v->x<=SCREEN_W+gx&&v->y>=-gy&&v->y<=SCREEN_H+gy;
+}
 static void ground_quad(int x0, int x1, int z0, int z1, int r, int g, int b, int slot, const int *hh) {   // hh: the ground's height at the four corners (the hills), or 0
     FV v[4]; int h0 = hh ? hh[0] : 0, h1 = hh ? hh[1] : 0, h2 = hh ? hh[2] : 0, h3 = hh ? hh[3] : 0;
+    int direct=0;
     {   // the four corners (a ring), three at a time; good enough as they come unless one is near the eye or far off the screen
         short X0 = sc16(x0 - feye.vx), X1 = sc16(x1 - feye.vx), Z0 = sc16(z0 - feye.vz), Z1 = sc16(z1 - feye.vz), Y = sc16(-feye.vy);
         SVECTOR sv[4] SVEC_ALIGN = { { X0, (short)(Y - (h0 >> 4)), Z0, 0 }, { X1, (short)(Y - (h1 >> 4)), Z0, 0 }, { X1, (short)(Y - (h2 >> 4)), Z1, 0 }, { X0, (short)(Y - (h3 >> 4)), Z1, 0 } };
         XV o[4]; gfx_xform(sv, o, 4);
-        int good = 1;
+        int good=1,front=1,off=15;
         if(o[0].z<ZN&&o[1].z<ZN&&o[2].z<ZN&&o[3].z<ZN)return;
-        for(int i=0;i<4;i++){if(o[i].z<ZN*2||o[i].x< -24||o[i].x>SCREEN_W+24||o[i].y< -16||o[i].y>SCREEN_H+16)good=0;
-                                      v[i].sx = o[i].x; v[i].sy = o[i].y; v[i].z = o[i].z << 4; }
-        if (!good) { fxf(x0, -h0, z0, &v[0]); fxf(x1, -h1, z0, &v[1]); fxf(x1, -h2, z1, &v[2]); fxf(x0, -h3, z1, &v[3]); }
-        else for (int i = 0; i < 4; i++) { v[i].vz = ZN * 8; v[i].vx = v[i].vy = 0; }   // (in: no clipping)
+        for(int i=0;i<4;i++){
+            if(o[i].z<ZN)front=0;
+            if(!far_vertex_safe(&o[i]))good=0;
+            off&=far_outcode(&o[i]);
+            v[i].sx=o[i].x;v[i].sy=o[i].y;v[i].z=o[i].z<<4;
+        }
+        if(front&&off)return;
+        if(!good){fxf(x0,-h0,z0,&v[0]);fxf(x1,-h1,z0,&v[1]);fxf(x1,-h2,z1,&v[2]);fxf(x0,-h3,z1,&v[3]);}
+        else direct=1;
     }
-    int in = 0, behind = 0;
-    for(int i=0;i<4;i++){in+=fv_screen_safe(&v[i]);behind+=v[i].vz<ZN;}
-    if (behind == 4) return;
+    int in=direct?4:0,behind=0;
+    if(!direct)for(int i=0;i<4;i++){in+=fv_screen_safe(&v[i]);behind+=v[i].vz<ZN;}
+    if(behind==4)return;
     int sl = hh ? CLAMP(((h1 + h2 - h0 - h3) + (h3 + h2 - h0 - h1)) * 5 / ((x1 - x0 > 0 ? x1 - x0 : x0 - x1) / 8 + 1) , -70, 70) : 0;   // (the slope's light, from the north-west: the nearer to the sun a slope faces, the brighter)
     u32 c[4]; for (int i = 0; i < 4; i++) c[i] = hazed(CLAMP(r + (r * sl >> 8), 0, 255), CLAMP(g + (g * sl >> 8), 0, 255), CLAMP(b + (b * sl >> 8), 0, 255), haze_f(v[i].z));
     far_nquad++;
@@ -615,9 +638,7 @@ static void face_win(const XV *a, const XV *b, const XV *c, const XV *d, u32 col
     p[11] = 0xE2000000u;
     lk(p,11,face_slot(a->z+b->z+c->z+d->z,4,slot));
 }
-static inline int xv_good(const XV *v){
-    return v->z>=ZN&&v->x>=-24&&v->x<=SCREEN_W+24&&v->y>=-16&&v->y<=SCREEN_H+16;
-}
+static inline int xv_good(const XV *v){return far_vertex_safe(v);}
 // a building as a box: x0 < x1, z0 > z1 (north, south), sto storeys; its walls' colour, a pitched roof (or flat) and its colour
 static int far_lift;   // the hills: how high the ground is under the building being drawn
 // Only the exceptional case of a building crossing the near or guard plane
@@ -846,9 +867,9 @@ static void draw_buildings(int rx0,int ry0,int rx1,int ry1){
             int tx1 = house_foot_end_tile(f->bx, ft[2], fwx0, BM_BLK);
             int ty1 = house_foot_end_tile(f->by, ft[3], fwy0, BM_BLK);
             int x0 = tx0 * TILE, x1 = tx1 * TILE, z0 = -ty0 * TILE, z1 = -ty1 * TILE;
-            int cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-            int dx = ABS(cx - feye.vx), dz = ABS(cz - feye.vz), d = MAX(dx, dz) + MIN(dx, dz) / 2;
-            if (d > far2) continue;
+            int cx=(x0+x1)/2,cz=(z0+z1)/2;
+            int dx=ABS(cx-feye.vx),dz=ABS(cz-feye.vz),d=MAX(dx,dz)+MIN(dx,dz)/2;
+            if(d>far2||!in_cone(cx,cz,MAX(x1-x0,z0-z1)/2+TILE,far2))continue;
             int hgt = FSTO(f) * WALL_FULL;
             if (gfx_focal * hgt < d * 2) continue;                      // under two pixels tall: lost in the haze
             // Low detail changes the model, not whether the house exists.

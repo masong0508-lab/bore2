@@ -42,3 +42,7 @@ Manual review of native frame captures revealed huge material-blind color patche
 ## Handheld continuity and stronger motion evidence
 
 The adjacent DS lot pass now reserves pitched roof planes alongside the shell and submits the eight nearby buildings before optional street decorations. Closed exterior walls do not lower during outdoor camera rotations. The item budget leaves a larger reserve for the neighborhood; this trades optional furniture/decor detail for a coherent visible exterior. Stock PS1 traversal evidence now separately reports local A/B/A patch transitions and held identical images instead of allowing a whole-screen average alone to hide small disappearing objects. Local candidates are diagnostics, not proof of a renderer bug (HUD and simulation animation can also qualify).
+
+## Projection cost follow-up
+
+The first full reconstruction built on PS1 and Dreamcast, and the native 2 MiB traversal completed five rebases without packet overflow, but measured only 7.81 FPS (previous 11.87). The main extra work was world rendering. Keep the material mesh and continuity policies, while rejecting completely off-screen projections before the software clipper, allowing bounded off-viewport primitives that fit the PS1 GPU size limits, skipping clipping planes that need no clipping, using 32-bit interpolation for small plane distances, culling individual exterior houses and terrain patches, and grading each ground material once per frame. Re-run stock motion before claiming any performance recovery.

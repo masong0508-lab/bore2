@@ -3212,6 +3212,11 @@ COLD static void ground_win(int hz){
     far_local_begin(world_horizon);
     u32 fallback[GROUND_PATCH_MAX];
     int L=CLAMP(gfx_light(0,-ONE,0),40,200);
+    u32 colors[NFLOORS];
+    for(int fl=0;fl<NFLOORS;fl++){
+        u16 c=fl_avg[fl];
+        colors[fl]=gfx_grade_flat((u32)MIN(255,((C_R(c)<<3)*L)>>7)|((u32)MIN(255,((C_G(c)<<3)*L)>>7)<<8)|((u32)MIN(255,((C_B(c)<<3)*L)>>7)<<16));
+    }
     for(int wy=0;wy<WB;wy++)for(int wx=0;wx<WB;wx++){
         int ox=wx*BM_BLK,oy=wy*BM_BLK;
         if(!far_ground_visible(ox*TILE,-oy*TILE,(ox+BM_BLK)*TILE,-(oy+BM_BLK)*TILE))continue;
@@ -3226,10 +3231,14 @@ COLD static void ground_win(int hz){
             u32 p=patch[i];int x=ox+ground_patch_x(p),y=oy+ground_patch_y(p);
             int X=x+ground_patch_w(p),Y=y+ground_patch_h(p),fl=ground_patch_mat(p);
             if(!far_ground_visible(x*TILE,-y*TILE,X*TILE,-Y*TILE))continue;
-            u16 c=fl_avg[fl];
-            u32 col=gfx_grade_flat((u32)MIN(255,((C_R(c)<<3)*L)>>7)|((u32)MIN(255,((C_G(c)<<3)*L)>>7)<<8)|((u32)MIN(255,((C_B(c)<<3)*L)>>7)<<16));
             int hh[4]={gh_c(x,y),gh_c(X,y),gh_c(X,Y),gh_c(x,Y)};
-            far_ground_patch(x*TILE,-y*TILE,X*TILE,-Y*TILE,col,hh);
+            // Conservative sphere with actual terrain elevation. Cull
+            // off-screen patches before issuing any GTE or GPU work.
+            int low=MIN(MIN(hh[0],hh[1]),MIN(hh[2],hh[3]));
+            int high=MAX(MAX(hh[0],hh[1]),MAX(hh[2],hh[3]));
+            int rad=((X-x)+(Y-y))*TILE/2+(high-low)/2+64;
+            if(!gfx_visible((x+X)*TILE/2,-(low+high)/2,-(y+Y)*TILE/2,rad))continue;
+            far_ground_patch(x*TILE,-y*TILE,X*TILE,-Y*TILE,colors[fl],hh);
         }
     }
     gfx_set_identity();
