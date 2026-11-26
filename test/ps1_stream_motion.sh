@@ -20,11 +20,12 @@ cmake -S "$ROOT" -B "$BD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
 cmake --build "$BD" --target iso -j 4 >"$OUT/build.log" 2>&1 || { tail -90 "$OUT/build.log";exit 2; }
 test -s "$BD/bore2.cue" && test -s "$BD/bore2.bin" && test -s "$BD/bore2.elf"
 mipsel-none-elf-nm --defined-only --print-size "$BD/bore2.elf" >"$OUT/symbols.txt"
+python3 "$ROOT/test/ps1_stack_headroom.py" "$OUT/symbols.txt" | tee "$OUT/memory.txt"
 PYTHONPATH="$ROOT/test" python3 "$ROOT/test/ps1_stream_motion.py" route "$OUT"
 (
  cd "$BD"
- ulimit -f 65536
+ ulimit -c 0; ulimit -f 65536
  env -u DS8MB DSCROP=None DSRAW=1 DSSCRIPT="$OUT/route.txt" DSRAM="$OUT/ram.bin" \
    timeout 780 "$RUNNER" -log info -frames 7200 -dumpdir "$OUT/shots" -dumpinterval 100000 "$BD/bore2.cue" >"$OUT/emulate.log" 2>&1
-) || { echo "Stock-timing streaming replay failed";tail -85 "$OUT/emulate.log";exit 2; }
+) || { echo "Stock-timing streaming replay failed";head -60 "$OUT/emulate.log"; grep -am 5 -E "Exception|Unhandled instruction|GAMESTART|PCLOG" "$OUT/emulate.log" || true;tail -25 "$OUT/emulate.log";exit 2; }
 PYTHONPATH="$ROOT/test" python3 "$ROOT/test/ps1_stream_motion.py" audit "$OUT"

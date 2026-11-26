@@ -18,6 +18,7 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.ScrollView;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -27,6 +28,8 @@ public final class MainActivity extends Activity {
     private static final int BG=Color.rgb(23,32,34), INK=Color.rgb(236,242,236);
     private SharedPreferences prefs;
     private TextView title,detail,hint,lifeStatus;
+    private LinearLayout root,panel;
+    private FrameLayout pane;
     private MapView map;
     private WorldView3D world3d;
     private Button dayButton,modeButton;
@@ -63,9 +66,7 @@ public final class MainActivity extends Activity {
         lifeDay=Math.max(0,prefs.getInt("lifeDay",0));lastShiftDay=prefs.getInt("lastShiftDay",-1);
         for(int i=0;i<skills.length;i++)skills[i]=Math.max(0,Math.min(4400,prefs.getInt("skill"+i,0)));
 
-        boolean wide=getResources().getConfiguration().orientation==Configuration.ORIENTATION_LANDSCAPE;
-        LinearLayout root=new LinearLayout(this);
-        root.setOrientation(wide?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);
+        root=new LinearLayout(this);
         root.setBackgroundColor(BG);
         root.setOnApplyWindowInsetsListener((v,insets)->{
             if(Build.VERSION.SDK_INT>=30){
@@ -75,17 +76,14 @@ public final class MainActivity extends Activity {
                                insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());
             return insets;
         });
-        LinearLayout panel=new LinearLayout(this);
+        panel=new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);panel.setBackgroundColor(BG);
-        FrameLayout pane=new FrameLayout(this);
+        pane=new FrameLayout(this);
         pane.setBackgroundColor(Color.rgb(174,196,204));
-        if(wide){
-            root.addView(pane,new LinearLayout.LayoutParams(0,-1,1));
-            root.addView(panel,new LinearLayout.LayoutParams(dp(260),-1));
-        }else{
-            root.addView(panel,new LinearLayout.LayoutParams(-1,-2));
-            root.addView(pane,new LinearLayout.LayoutParams(-1,0,1));
-        }
+        // Keep the GLSurfaceView attached across rotation. Change only
+        // the two pane layout parameters, not the Activity or GL renderer.
+        root.addView(pane);root.addView(panel);
+        layoutPanes(getResources().getConfiguration());
         title=new TextView(this);title.setTextSize(18);title.setTextColor(INK);
         title.setPadding(dp(12),dp(8),dp(12),dp(2));panel.addView(title);
         hint=new TextView(this);hint.setTextColor(Color.rgb(180,201,190));hint.setTextSize(12);
@@ -97,9 +95,12 @@ public final class MainActivity extends Activity {
         map=new MapView();
         pane.addView(world3d,new FrameLayout.LayoutParams(-1,-1));
         pane.addView(map,new FrameLayout.LayoutParams(-1,-1));
-        LinearLayout lower=wide?panel:new LinearLayout(this);
+        ScrollView scroll=new ScrollView(this);
+        scroll.setFillViewport(false);
+        panel.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout lower=new LinearLayout(this);
         lower.setOrientation(LinearLayout.VERTICAL);
-        if(!wide)root.addView(lower,new LinearLayout.LayoutParams(-1,-2));
+        scroll.addView(lower,new ScrollView.LayoutParams(-1,-2));
         detail=new TextView(this);detail.setTextSize(14);detail.setTextColor(INK);
         detail.setMinLines(2);detail.setPadding(dp(12),dp(6),dp(12),dp(4));
         lower.addView(detail,new LinearLayout.LayoutParams(-1,-2));
@@ -137,6 +138,17 @@ public final class MainActivity extends Activity {
         addButton(work,"My location",()->{cx=lifeX;cy=lifeY;selectedX=lifeX;selectedY=lifeY;refresh();});
         setContentView(root);root.requestApplyInsets();showMode();refresh();
     }
+    private void layoutPanes(Configuration config){
+        boolean wide=config.orientation==Configuration.ORIENTATION_LANDSCAPE;
+        root.setOrientation(wide?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);
+        pane.setLayoutParams(wide?new LinearLayout.LayoutParams(0,-1,3):new LinearLayout.LayoutParams(-1,0,3));
+        panel.setLayoutParams(wide?new LinearLayout.LayoutParams(0,-1,2):new LinearLayout.LayoutParams(-1,0,2));
+    }
+    @Override public void onConfigurationChanged(Configuration config){
+        super.onConfigurationChanged(config);
+        if(root!=null){layoutPanes(config);root.requestApplyInsets();root.requestLayout();}
+        if(world3d!=null&&in3d)world3d.requestRender();
+    }
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
     private Button addButton(LinearLayout row,String label,Runnable action){
         Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextSize(12);
@@ -151,7 +163,9 @@ public final class MainActivity extends Activity {
     private void showMode(){
         world3d.setVisibility(in3d?View.VISIBLE:View.GONE);map.setVisibility(in3d?View.GONE:View.VISIBLE);
         modeButton.setText(in3d?"Map":"3D");
-        hint.setText(in3d?"Drag to orbit · Pinch to zoom · Tap a lot":"Drag to explore · Tap a lot · Center lot to travel");
+        hint.setText(!in3d?"Drag to explore · Tap a lot · Center lot to travel":
+                meshRevision==serial&&meshSeed==seed&&meshX==cx&&meshY==cy?
+                "Drag to orbit · Pinch to zoom · Tap a lot":"Loading 3D neighborhood…");
         world3d.select(selectedX,selectedY);
     }
     private void refresh(){
@@ -167,7 +181,8 @@ public final class MainActivity extends Activity {
     }
     private void requestScene(){
         if(meshX==cx&&meshY==cy&&meshSeed==seed&&meshRevision==serial){
-            world3d.select(selectedX,selectedY);return;
+            world3d.select(selectedX,selectedY);
+            hint.setText("Drag to orbit · Pinch to zoom · Tap a lot");return;
         }
         if(requestX==cx&&requestY==cy&&requestSeed==seed)return;
         final int version=++serial,x=cx,y=cy,key=seed;
@@ -271,7 +286,10 @@ public final class MainActivity extends Activity {
         world3d.setContentDescription("San Boreas 3D neighborhood. Selected lot: "+text);
         world3d.player(lifeX,lifeY);world3d.select(selectedX,selectedY);map.invalidate();
     }
-    @Override protected void onResume(){super.onResume();if(world3d!=null)world3d.onResume();}
+    @Override protected void onResume(){
+        super.onResume();
+        if(world3d!=null){world3d.onResume();if(in3d){requestScene();world3d.requestRender();}}
+    }
     @Override protected void onPause(){
         saveLife();
         prefs.edit().putInt("seed",seed).putInt("x",cx).putInt("y",cy)

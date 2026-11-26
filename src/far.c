@@ -240,9 +240,10 @@ typedef struct { u32 bx : 10, by : 10, lot : 6, col : 4, pad : 2; } FB;   // (4 
 static FB fb[FB_MAX]; static u8 fb_sto[FB_MAX], fb_ft[FB_MAX][3]; static int nfb;   // (fb_ft: each building's walls x0 y0 x1 y1 in block tiles, 5 bits each (FT_PUT, FT_GET), from bm_lot_foot: the town plan's body of a home, else its lot's)
 #define FSTO(f) (fb_sto[(f) - fb] & 7)               // (fb_sto: the storeys in bits 0-2, the roof's form in 3-4 (world_roof_of's sty: 0 hip, 1 gable, 2 flat, 3 front gable), its colour in 5-7; pad: bit 0 a steep roof)
 #define FROOF(f) ((fb_sto[(f) - fb] >> 3) & 3)
-static u16 fb_lo[64], fb_hi[64];             // each town's run in fb
 #define FBC_MAX 900
-static u16 fbc_cx[FBC_MAX], fbc_cy[FBC_MAX], fbc_lo[FBC_MAX], fbc_hi[FBC_MAX]; static u8 fbc_sto[FBC_MAX]; static int nfbc;   // (a cell's tallest building in fbc_sto: a cell too far for even that to show is passed over whole)   // the runs by cell (4x4 blocks)
+_Static_assert(BM_N<=1024,"four-block cell index must fit in u8");
+static u8 fbc_cx[FBC_MAX],fbc_cy[FBC_MAX];
+static u16 fbc_lo[FBC_MAX],fbc_hi[FBC_MAX];static u8 fbc_sto[FBC_MAX];static int nfbc;   // (a cell's tallest building in fbc_sto: a cell too far for even that to show is passed over whole)   // the runs by cell (4x4 blocks)
 static u16 fbs_lo[64], fbs_hi[64];           // each town's cells
 static const u8 wallc[10][3] = { { 226, 214, 190 }, { 176, 96, 76 }, { 236, 234, 226 }, { 214, 190, 150 }, { 160, 160, 164 },
                                  { 180, 200, 214 }, { 186, 206, 170 }, { 226, 180, 180 }, { 120, 140, 160 }, { 150, 120, 96 } };
@@ -261,7 +262,7 @@ COLD void far_new_world(void) {
     int ns = bm_nset();
     for (int i = 0; i < ns && i < 64; i++) {
         const Settle *s = bm_set(i);
-        fb_lo[i] = (u16)nfb;
+        int town_start=nfb;
         for (int by = s->y - s->r; by <= s->y + s->r; by++) for (int bx = s->x - s->r; bx <= s->x + s->r; bx++) {
             int dx = bx - s->x, dy = by - s->y; if (dx * dx + dy * dy > s->r * s->r) continue;
             BInfo b; bm_block(bx, by, &b);
@@ -285,19 +286,18 @@ COLD void far_new_world(void) {
             if (ft[4] && bm_gen >= 7 && b.set != 255) f->col = 10 + (pl.pal * 2 + pl.wall) % 6;   // (a plan home: its neighbourhood's two wall materials)
             f->pad = pit == 2;
         }
-        fb_hi[i] = (u16)nfb;
         // in cell order (a cell's buildings together: the view takes or leaves a whole cell at once)
-        for (int a = fb_lo[i] + 1; a < nfb; a++) {
+        for (int a = town_start + 1; a < nfb; a++) {
             FB t = fb[a]; u8 ts = fb_sto[a], tf[3]; memcpy(tf, fb_ft[a], 3); u32 kt = ((u32)(t.by >> 2) << 10) | (t.bx >> 2); int b = a - 1;
-            while (b >= fb_lo[i] && (((u32)(fb[b].by >> 2) << 10) | (fb[b].bx >> 2)) > kt) { fb[b + 1] = fb[b]; fb_sto[b + 1] = fb_sto[b]; memcpy(fb_ft[b + 1], fb_ft[b], 3); b--; }
+            while (b >= town_start && (((u32)(fb[b].by >> 2) << 10) | (fb[b].bx >> 2)) > kt) { fb[b + 1] = fb[b]; fb_sto[b + 1] = fb_sto[b]; memcpy(fb_ft[b + 1], fb_ft[b], 3); b--; }
             fb[b + 1] = t; fb_sto[b + 1] = ts; memcpy(fb_ft[b + 1], tf, 3);
         }
         fbs_lo[i] = (u16)nfbc;
-        for (int a = fb_lo[i]; a < nfb; ) {
+        for (int a = town_start; a < nfb; ) {
             int cx = fb[a].bx >> 2, cy = fb[a].by >> 2, b = a;
             while (b < nfb && (fb[b].bx >> 2) == cx && (fb[b].by >> 2) == cy) b++;
             if (nfbc < FBC_MAX) { int mx_ = 0; for (int q = a; q < b; q++) if ((fb_sto[q] & 7) > mx_) mx_ = fb_sto[q] & 7;
-                fbc_cx[nfbc] = (u16)cx; fbc_cy[nfbc] = (u16)cy; fbc_lo[nfbc] = (u16)a; fbc_hi[nfbc] = (u16)b; fbc_sto[nfbc] = (u8)mx_; nfbc++; }
+                fbc_cx[nfbc]=(u8)cx;fbc_cy[nfbc]=(u8)cy; fbc_lo[nfbc] = (u16)a; fbc_hi[nfbc] = (u16)b; fbc_sto[nfbc] = (u8)mx_; nfbc++; }
             a = b;
         }
         fbs_hi[i] = (u16)nfbc;

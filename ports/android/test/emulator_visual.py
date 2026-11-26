@@ -40,7 +40,14 @@ def wait_view(wide=None):
                 return r
         except (subprocess.CalledProcessError,ET.ParseError,OSError):pass
         time.sleep(1)
-    raise AssertionError("3D scene did not become ready")
+    # Preserve the failing view instead of reporting an unexplained timeout.
+    try:
+        (OUT/"timeout.png").write_bytes(adb("exec-out","screencap","-p"))
+        adb("shell","uiautomator","dump","/sdcard/bore-ui.xml")
+        (OUT/"timeout.xml").write_bytes(adb("exec-out","cat","/sdcard/bore-ui.xml"))
+        (OUT/"timeout-logcat.txt").write_bytes(adb("logcat","-d","-t","1000"))
+    except (subprocess.CalledProcessError,OSError): pass
+    raise AssertionError("3D scene did not become ready; see timeout evidence")
 
 def capture(name,box,xml):
     raw=adb("exec-out","screencap","-p")
@@ -88,6 +95,10 @@ def main():
     box,xml=wait_view(True)
     time.sleep(2)
     capture("landscape",box,xml)
-    print("Native Android renderer screenshot regression passed")
+    adb("shell","settings","put","system","user_rotation","0")
+    box,xml=wait_view(False)
+    time.sleep(1)
+    capture("portrait-return",box,xml)
+    print("Native Android renderer portrait/orbit/landscape/return regression passed")
 
 if __name__=="__main__":main()

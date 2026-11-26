@@ -15,6 +15,8 @@ on:
       - "src/bigmap.c"
       - "test/ps1_stream_motion*"
       - "test/ps1_frame_flash.py"
+      - "test/ps1_stack_headroom.py"
+      - "CMakeLists.txt"
       - ".github/workflows/ps1-stream-motion-qa.yml"
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -46,6 +48,8 @@ jobs:
             out-ps1-stream-motion/anchor_*.png
             out-ps1-stream-motion/shots/**/*.png
             out-ps1-stream-motion/route.txt
+            out-ps1-stream-motion/memory.txt
+            out-ps1-stream-motion/symbols.txt
             out-ps1-stream-motion/config.log
             out-ps1-stream-motion/build.log
             out-ps1-stream-motion/emulate.log

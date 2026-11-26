@@ -1,6 +1,8 @@
 package com.bore2.game;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.opengl.Matrix;
@@ -18,6 +20,7 @@ import javax.microedition.khronos.opengles.GL10;
 final class WorldView3D extends GLSurfaceView {
     interface Picker { void onPick(int x,int y,int originX,int originY,int revision); }
     private final SceneRenderer scene;
+    private final Handler ui=new Handler(Looper.getMainLooper());
     private final ScaleGestureDetector scale;
     private float startX,startY,lastX,lastY;
     private boolean dragged,multiple;
@@ -115,7 +118,7 @@ final class WorldView3D extends GLSurfaceView {
         float yaw=42,pitch=49,distance=48;
         SceneRenderer(Picker pick){picker=pick;}
         void setScene(float[] v,int x,int y,int id,Runnable ready,Runnable failed){
-            if(v==null||v.length==0||v.length%18!=0){if(failed!=null)post(failed);return;}
+            if(v==null||v.length==0||v.length%18!=0){if(failed!=null)ui.post(failed);return;}
             pendingMesh=v;pendingX=x;pendingY=y;pendingRevision=id;
             pendingReady=ready;pendingFailure=failed;dirty=true;
         }
@@ -145,12 +148,12 @@ final class WorldView3D extends GLSurfaceView {
                     for(int i=0;i<mesh.length;i+=6)
                         if(Math.abs(mesh[i])<=10&&Math.abs(mesh[i+2])<=10)low=Math.min(low,mesh[i+1]);
                     targetY=Float.isFinite(low)?low+1f:1f;
-                    if(pendingReady!=null)post(pendingReady);
+                    if(pendingReady!=null)ui.post(pendingReady);
                 }
             }else{
                 if(buffers[0]!=0)GLES20.glDeleteBuffers(1,buffers,0);
                 Runnable failure=pendingMesh!=null?pendingFailure:activeFailure;
-                if(failure!=null)post(failure);
+                if(failure!=null)ui.post(failure);
             }
             pendingMesh=null;pendingReady=null;pendingFailure=null;dirty=false;
         }
@@ -235,7 +238,7 @@ final class WorldView3D extends GLSurfaceView {
             int x=originX+(int)Math.floor((a[0]+best*dx+9)/18);
             int y=originY+(int)Math.floor((a[2]+best*dz+9)/18);
             int ox=originX,oy=originY,id=revision;
-            if(x>=0&&x<1024&&y>=0&&y<1024)post(()->picker.onPick(x,y,ox,oy,id));
+            if(x>=0&&x<1024&&y>=0&&y<1024)ui.post(()->picker.onPick(x,y,ox,oy,id));
         }
     }
 }
