@@ -1,0 +1,83 @@
+name: build-android
+on:
+  workflow_dispatch:
+  push:
+    paths: ["ports/android/**", "src/bigmap.*", "src/common.h", "src/outings.h", "src/living_calendar.h", "src/scene_music.h", "ports/host/shim/**", ".github/workflows/build-android.yml"]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  bootstrap:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify window bounds and tile encoding
+        run: cc -std=c99 -Wall -Wextra -Werror ports/android/test/window_math_test.c -o /tmp/window_math && /tmp/window_math
+      - name: Exercise actual BORE 2 world generator through Android bridge
+        run: |
+          cc -std=gnu11 -O2 -Iports/host/shim -Isrc ports/android/test/world_bridge_test.c ports/android/app/src/main/cpp/world_bridge.c src/bigmap.c -o /tmp/android_world
+          /tmp/android_world
+      - name: Test roof footprint union and exact geometry edges
+        run: cc -std=c99 -Wall -Wextra -Werror -Iports/android/app/src/main/cpp ports/android/test/mesh_footprint_test.c -o /tmp/mesh_footprint && /tmp/mesh_footprint
+      - name: Test exact street, river and mega-plaza surface routing
+        run: cc -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc -Iports/android/app/src/main/cpp ports/android/test/scene_surface_test.c -o /tmp/scene_surface && /tmp/scene_surface
+      - name: Test generated 3D scene geometry and bounds
+        run: |
+          cc -std=gnu11 -O2 -Iports/host/shim -Isrc -Iports/android/app/src/main/cpp ports/android/test/scene_mesh_test.c ports/android/app/src/main/cpp/scene_mesh.c ports/android/app/src/main/cpp/world_bridge.c src/bigmap.c -lm -o /tmp/scene_mesh
+          /tmp/scene_mesh
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+          log-accepted-android-sdk-licenses: false
+      - name: Install pinned Android SDK and NDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Assemble world preview APK
+        working-directory: ports/android
+        run: gradle :app:assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BORE2-android-world-preview
+          path: ports/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  render-qa:
+    needs: bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: BORE2-android-world-preview
+          path: /tmp/bore-apk
+      - name: Enable hardware-accelerated Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo apt-get update
+          sudo apt-get install -y python3-pil
+      - name: Capture native portrait, orbit and landscape rendering
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: adb install -r /tmp/bore-apk/app-debug.apk && /usr/bin/python3 ports/android/test/emulator_visual.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: BORE2-android-render-evidence
+          path: android-render-evidence/
+          if-no-files-found: warn

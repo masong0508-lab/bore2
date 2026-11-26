@@ -17,6 +17,8 @@ jobs:
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_mapview_test.c -o /tmp/ds_mapview_test && /tmp/ds_mapview_test
       - name: Test exact traffic broadphase and conservative camera culling
         run: cc -std=c99 -Wall -Wextra -Werror -Wno-misleading-indentation ports/dsi/test/ds_city_budget_test.c -lm -o /tmp/ds_city_budget_test && /tmp/ds_city_budget_test
+      - name: Test planned DS building shells against playable lot dimensions
+        run: cc -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc -Iports/dsi/source ports/dsi/test/ds_lot_shell_test.c -o /tmp/ds_lot_shell && /tmp/ds_lot_shell
       - name: Test DS floor and roof geometry
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_render_geom_test.c -o /tmp/ds_render_geom_test && /tmp/ds_render_geom_test
       - name: Test handheld and console aspiration regressions

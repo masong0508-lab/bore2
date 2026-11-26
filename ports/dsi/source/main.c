@@ -134,6 +134,7 @@ static void text_box(int x, int y, int w, int h, int s, u16 c, int al, const cha
 #define MH 20                 // blocks down (160 pixels; the text lines go below)
 #include "ds_mapview.h"
 #include "ds_render_geom.h"
+#include "ds_lot_shell.h"
 #include "ds_action_spots.h"
 #include "ds_confirm.h"
 static int map_x0 = -1, map_y0 = -1;   // moving map viewport, not a fixed window on the capital
@@ -622,6 +623,62 @@ static void ds_skate_preview(int ox, int oz)
           low, -T / 4, C15(10, 11, 12), C15(27, 27, 28));
 }
 static int r7_bx = -1, r7_by = -1;   // the block the lot being drawn (far_lot, draw_lot) stands on
+#ifdef DSTEST
+volatile unsigned ds_proxy_shells,ds_proxy_triangles;
+#endif
+#define DS_PROXY_HEIGHT (T * 21 / 5) // same as WHF, the actual playable storey
+static void ds_proxy_box(DsShellRect r,int ox,int oz,int bottom,int top,u16 wall,u16 roof,int tex){
+    if(!ds_shell_valid(r))return;
+    tx_want=tex;
+    int before=polys;
+    block(ox+tl(2*r.x0),oz+tl(2*r.z0),ox+tl(2*r.x1),oz+tl(2*r.z1),bottom,top,wall,roof);
+    tx_want=-1;
+#ifdef DSTEST
+    if(polys-before==10){ds_proxy_shells++;ds_proxy_triangles+=(unsigned)(polys-before);}
+#else
+    (void)before;
+#endif
+}
+static void ds_proxy_roof(DsShellRect r,int ox,int oz,int top,int sty,int pit,u16 rc,u16 wc){
+    if(!ds_shell_valid(r)||far_lod)return;
+    // Complete shell comes first; optional roof details must never eat the
+    // rest of the neighborhood's polygon/FIFO reserve.
+    if(!ds_world_detail_budget(polys+80)||(gxb&&gxn+1050>=gx_cap))return;
+    static const s16 PITCH[3]={110,170,250};
+    roof_shape(ox+tl(2*r.x0),oz+tl(2*r.z0),ox+tl(2*r.x1),oz+tl(2*r.z1),
+               top-4,sty,PITCH[pit>=0&&pit<3?pit:1],rc,wc);
+}
+static int ds_draw_planned_proxy(const BInfo*b,const LotPlan*p,int ox,int oz){
+    DsLotShell s;
+    if(bm_gen<7||r7_bx<0||!ds_lot_shell(b,p,r7_bx,r7_by,&s))return 0;
+    int boxes=1+ds_shell_valid(s.wing)+ds_shell_valid(s.loft);
+    if(!ds_world_far_budget(polys+boxes*10)||(gxb&&gxn+boxes*125+32>=gx_cap))return 1;
+    int sty,pit,col;roof_dice(r7_bx*BM_BLK+s.body.x0+BM_LOT0,
+        r7_by*BM_BLK+s.body.z0+BM_LOT0,s.body.x1-s.body.x0,s.body.z1-s.body.z0,
+        ds_shell_valid(s.loft),p,&sty,&pit,&col);
+    static const u16 PUBLIC[4]={C15(30,28,22),C15(28,20,16),C15(20,24,30),C15(30,30,30)};
+    int material=s.home&&p->type?(p->pal*2+p->wall)%6:-1;
+    u16 wc=material>=0?PWALL15[material]:PUBLIC[b->h&3u];
+    if(s.home&&!p->type){
+        unsigned h=((unsigned)r7_bx*73856093u^(unsigned)r7_by*19349663u)*2654435761u+12345u;
+        wc=PUBLIC[(h>>9)&3u];
+    }
+    static const s8 MAT[6]={TX_BRICK,TX_CLAPBOARD,TX_STUCCO,TX_SHINGLE_WALL,TX_BEADBOARD,TX_STONE_WALL};
+    int tex=s.home?(material>=0?MAT[material]:TX_CLAPBOARD):TX_WINDOWS;
+    u16 rc=ROOFC[col%6];
+    int top=-DS_PROXY_HEIGHT;
+    ds_proxy_box(s.body,ox,oz,0,top,wc,rc,tex);
+    ds_proxy_box(s.wing,ox,oz,0,top,wc,rc,tex);
+    ds_proxy_box(s.loft,ox,oz,top,2*top,wc,rc,tex);
+    DsShellRect lower=s.body;
+    if(ds_shell_valid(s.loft)){
+        if(s.north)lower.z1=s.loft.z0;else lower.z0=s.loft.z1;
+        ds_proxy_roof(s.loft,ox,oz,2*top,sty,pit,rc,wc);
+    }
+    ds_proxy_roof(lower,ox,oz,top,sty,pit,rc,wc);
+    ds_proxy_roof(s.wing,ox,oz,top,sty,pit,rc,wc);
+    return 1;
+}
 static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl, the town plan's home for the lot, when the world is version 7)
     u32 h = b->h; int k = b->lot;
     int tr = pl && ((k >= LOT_HOUSE && k <= LOT_TWO) || k == LOT_PARK) ? BT_GRASS : b->terrain;   // (D80: lawn in a dry town for homes and parks)
@@ -636,6 +693,8 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
       if (roads & 2) ground(tl(-2), tl(0), tl(0), tl(LOTN * 2 + 2), 0, C15(8, 8, 9));
       if ((roads & 6) && !(roads & 1))
           ground(tl(-2), tl(-2), tl(0), tl(0), 0, C15(8, 8, 9)); }
+    if(b->terrain==BT_SEA)return;
+    if(ds_draw_planned_proxy(b,pl,0,0))return;
     if (k == LOT_WILD || k == LOT_EMPTY || k == LOT_RIVER) { for (int i = 0; i < 5; i++) tree(tl(3 + (int)((h >> (i * 4)) & 15) * 2 % 22), tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 2 % 22), T * 2); return; }
     if (k == LOT_SKATE) { ds_skate_preview(0, 0); return; }
     if (k == LOT_PARK || k == LOT_SQUARE) { for (int i = 0; i < 9; i++) tree(tl(3 + (int)((h >> (i * 3)) & 7) * 3), tl(3 + (int)((h >> (i * 3 + 1)) & 7) * 3), T * 2); return; }
@@ -990,8 +1049,16 @@ static int far_house7(const BInfo *b, const LotPlan *pl) { return far_house(b) &
 static void far_foot(const BInfo *b, int *x0, int *z0, int *x1, int *z1) { int w = 10 + (int)(b->h & 3) * 2, d = 8 + (int)((b->h >> 2) & 3) * 2, t0 = 4 + (24 - w) / 2 / 2 * 2 - 4; *x0 = t0 / 2; *x1 = (t0 + w + 1) / 2; *z0 = 2; *z1 = (4 + d + 1) / 2; }
 static int far_solid(int wx, int wy) {   // a cell outside the plot: open street and grass, except the sea and the buildings of the lots round it
     int sx = fdiv(wx, SLC), sy = fdiv(wy, SLC); if (sx == 0 && sy == 0) return 0; if (sx < -1 || sx > 1 || sy < -1 || sy > 1) return 1;
-    const BInfo *b = &nb[sy + 1][sx + 1]; if (b->terrain == BT_SEA) return 1; if (!far_house7(b, t7() ? &nlp[sy + RING_MAX][sx + RING_MAX] : 0)) return 0;
-    int lx = wx - sx * SLC, ly = wy - sy * SLC, x0, z0, x1, z1; if (t7()) far_foot7(b, &nlp[sy + RING_MAX][sx + RING_MAX], &x0, &z0, &x1, &z1); else far_foot(b, &x0, &z0, &x1, &z1); return lx >= x0 && lx < x1 && ly >= z0 && ly < z1;
+    const BInfo *b = &nb[sy + 1][sx + 1]; if (b->terrain == BT_SEA) return 1;
+    int lx=wx-sx*SLC,ly=wy-sy*SLC;
+    if(t7()){
+        DsLotShell shell;
+        if(!ds_lot_shell(b,&nlp[sy+RING_MAX][sx+RING_MAX],lot_bx+sx,lot_by+sy,&shell))return 0;
+        return ds_shell_contains(&shell,lx,ly);
+    }
+    if(!far_house7(b,0))return 0;
+    int x0,z0,x1,z1;far_foot(b,&x0,&z0,&x1,&z1);
+    return lx>=x0&&lx<x1&&ly>=z0&&ly<z1;
 }
 static int z_put(int x, int y, int ch, int rot);
 static int gen_two;   // (D36) the lot is a TWO-STOREY: the house gets its loft
@@ -1900,6 +1967,7 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
     /* Neighbouring lots share the live plot's grade (0), not the old -20:
      * the old height buried walls/doors and left a step at lot boundaries. */
     tx_want = tr == BT_DESERT || tr == BT_BEACH ? TX_SAND : tr == BT_ROCKY ? TX_GRAVEL : TX_GRASS; ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), 0, grass); tx_want = -1;
+    if(ds_draw_planned_proxy(b,pl,ox,oz))return;
     if (!far_house7(b, pl)) {
         /* At any distance or world generation, a skate plaza must remain
          * recognizable. Do not replace it with a random grove in far LOD;
@@ -1957,7 +2025,12 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
             if (pl->wx1 && pl->type != HT_L) { int wa = pl->wx0 - BM_LOT0, wb = pl->wx1 - BM_LOT0 + 1; if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; X0 = X0 < ox + tl(2 * wa) ? X0 : ox + tl(2 * wa); X1 = X1 > ox + tl(2 * wb) ? X1 : ox + tl(2 * wb); }
             if (!far_lod && pl->drv) ground(ox + tl(2 * (pl->drv - BM_LOT0)), oz + tl(nth ? 0 : 2 * (pl->y1 - BM_LOT0 + 1)), ox + tl(2 * (pl->drv - BM_LOT0 + 2)), oz + tl(nth ? 2 * (pl->y0 - BM_LOT0) : 26), -26, C15(20, 20, 20)); }
         else if (nth) { Z0 = oz + tl(26 - z0 - d); Z1 = oz + tl(26 - z0); } }
-    tx_want = k != LOT_HOUSE && k != LOT_COTTAGE ? TX_WINDOWS : TX_CLAPBOARD;   // (D82: far.c: a window band on every storey of all but a plain house and a cottage: the neighbour is one box, the band a texture) block(X0, Z0, X1, Z1, 0, Y, wall, wall); tx_want = -1;   // (D43: shops and towers show storeys of windows)
+    // Restore the solid shell (the old block() call was swallowed by a line comment).
+    if(!ds_world_far_budget(polys+10)||(gxb&&gxn+157>=gx_cap))return;
+    tx_want=k!=LOT_HOUSE&&k!=LOT_COTTAGE?TX_WINDOWS:TX_CLAPBOARD;
+    block(X0,Z0,X1,Z1,0,Y,wall,wall);
+    tx_want=-1;
+    if(far_lod||!ds_world_detail_budget(polys+110)||(gxb&&gxn+1400>=gx_cap))return;
     if (!far_lod) { int wn = (X1 - X0) / 5, zf = nth ? Z0 - 14 : Z1, zg = nth ? Z0 : Z1 + 14; block(X0 + wn * 2, zf, X0 + wn * 2 + wn * 7 / 10, zg, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); block(X0 + wn, zf, X0 + wn + wn * 7 / 10, zg, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); block(X0 + wn * 3, zf, X0 + wn * 3 + wn * 7 / 10, zg, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); }
     { u32 rh = hsh(h ^ 0x500Fu); int sty = st >= 3 || k > LOT_APART ? 1 : 2 + ((rh >> 2) & 1), pt = 1 + (int)((rh >> 8) & 1), cl = (int)((rh >> 4) % 6); static const s16 PIT[3] = { 110, 170, 250 };   // (D42) hip, gable or flat, a colour and a pitch per building
       if (pl && pl->type && k <= LOT_APART) plan_roof(pl, &sty, &pt, &cl);   // (D80) the plan's roof

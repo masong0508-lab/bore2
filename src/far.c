@@ -607,20 +607,9 @@ static void far_card(int x0, int z0, int x1, int z1, int top, const u8 *wc) {   
 // The fast box path must never discard an entire visible home because one
 // of its eight corners is behind the eye or outside the GTE guard band.
 // Reuse the existing polygon clipper with a small stack-local corner set.
-static void far_box_partial(int x0, int z0, int x1, int z1, const u8 *wc,
-                            int rs, int pit, const u8 *rc, int top) {
-    int ex = feye.vx, ey = feye.vy + far_lift, ez = feye.vz;
-    FV v[8];
-    for (int i = 0; i < 8; i++)
-        fxf((i & 1) ? x1 : x0, (i & 4) ? top - far_lift : -far_lift,
-            (i & 2) ? z1 : z0, &v[i]);
-    int zw = (v[0].z + v[3].z + v[4].z + v[7].z) / 4;
-    if (zw < ZN * 16) zw = ZN * 16;
-    int slot = far_slot(zw), hf = haze_f(zw);
-    if (ez < z1) far_clip_quad(&v[6], &v[7], &v[2], &v[3], lit(wc, Ls, hf), slot);
-    if (ez > z0) far_clip_quad(&v[5], &v[4], &v[1], &v[0], lit(wc, Ln, hf), slot);
-    if (ex < x0) far_clip_quad(&v[4], &v[6], &v[0], &v[2], lit(wc, Lw, hf), slot);
-    if (ex > x1) far_clip_quad(&v[7], &v[5], &v[3], &v[1], lit(wc, Le, hf), slot);
+static void far_roof_partial(int x0,int z0,int x1,int z1,const u8 *wc,
+                            int rs,int pit,const u8 *rc,int top,const FV *v,int slot,int hf) {
+    int ex=feye.vx, ey=feye.vy+far_lift, ez=feye.vz;
     if (ey >= top) return; // camera below roof
     if (!rs) {
         static const u8 flat[3] = { 120, 118, 114 };
@@ -652,6 +641,22 @@ static void far_box_partial(int x0, int z0, int x1, int z1, const u8 *wc,
             far_clip_quad(rev ? b : a, rev ? a : b, &ridge[0], &ridge[1], col, slot);
         } else far_clip_tri(a, b, (k == 0 || k == 3) ? &ridge[0] : &ridge[1], col, slot);
     }
+}
+static void far_box_partial(int x0, int z0, int x1, int z1, const u8 *wc,
+                            int rs, int pit, const u8 *rc, int top) {
+    int ex = feye.vx, ez = feye.vz;
+    FV v[8];
+    for (int i = 0; i < 8; i++)
+        fxf((i & 1) ? x1 : x0, (i & 4) ? top - far_lift : -far_lift,
+            (i & 2) ? z1 : z0, &v[i]);
+    int zw = (v[0].z + v[3].z + v[4].z + v[7].z) / 4;
+    if (zw < ZN * 16) zw = ZN * 16;
+    int slot = far_slot(zw), hf = haze_f(zw);
+    if (ez < z1) far_clip_quad(&v[6], &v[7], &v[2], &v[3], lit(wc, Ls, hf), slot);
+    if (ez > z0) far_clip_quad(&v[5], &v[4], &v[1], &v[0], lit(wc, Ln, hf), slot);
+    if (ex < x0) far_clip_quad(&v[4], &v[6], &v[0], &v[2], lit(wc, Lw, hf), slot);
+    if (ex > x1) far_clip_quad(&v[7], &v[5], &v[3], &v[1], lit(wc, Le, hf), slot);
+    far_roof_partial(x0,z0,x1,z1,wc,rs,pit,rc,top,v,slot,hf);
 }
 // rs: the roof: 0 flat, 1 hip (four slopes up to a point), 2 gable with its ridge along the longer side, 3 gable with its ridge north to south (turned to the street); pit: 1 or 2 (how steep)
 static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int rs, int pit, const u8 *rc, int windows) {
@@ -690,7 +695,17 @@ static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int r
         if (hip) { rx0 = rx1 = (x0 + x1) / 2; }
         rp[0].vx = sc16(rx0 - ex); rp[0].vz = sc16(rz0 - ez); rp[1].vx = sc16(rx1 - ex); rp[1].vz = sc16(rz1 - ez);
         rp[0].vy = rp[1].vy = sc16(top - rise - ey); rp[0].pad = rp[1].pad = 0;
-        gfx_xform(rp, R, 2); if (!xv_good(&R[0]) || !xv_good(&R[1])) return;
+        gfx_xform(rp, R, 2);
+        if(!xv_good(&R[0])||!xv_good(&R[1])){
+            // Eaves can be inside the GTE guard while the higher ridge
+            // crosses it. Preserve the roof using clipped camera-space
+            // faces, without resubmitting the already visible walls.
+            FV clip[8];
+            for(int i=4;i<8;i++)
+                fxf((i&1)?x1:x0,top-far_lift,(i&2)?z1:z0,&clip[i]);
+            far_roof_partial(x0,z0,x1,z1,wc,rs,pit,rc,top,clip,slot,hf);
+            return;
+        }
         const XV *ring[4] = { &o[4], &o[5], &o[7], &o[6] };     // NW NE SE SW
         static const u8 sh[4] = { 6, 7, 8, 7 };
         for (int k = 0; k < 4; k++) {                           // the north, east, south, west sides: a slope (a gable's long ones) or a triangle (a hip's, a gable's end)
