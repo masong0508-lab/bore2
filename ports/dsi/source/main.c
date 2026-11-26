@@ -2749,7 +2749,7 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     static char local_labels[2][32];
     if(c=='a'&&world_outing_anchor(lot,(unsigned char)c)){
         int g=outing_group(lot,0);
-        for(int k=0;k<2;k++){const Outing *a=outing_get(living_outing_index(g,k,(minutes/1440)%7));snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);AC(local_labels[k],WORLD_OUT_0+k);}
+        for(int k=0;k<2;k++){const Outing *a=outing_get(living_outing_index(g,k,(minutes/1440)%7));if(outing_is_open(a,minutes%1440))snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);else snprintf(local_labels[k],sizeof local_labels[k],"%.20s %02d-%02d",a->title,a->from,a->to);AC(local_labels[k],WORLD_OUT_0+k);}
     }
     if(world_trip_anchor(lot,(unsigned char)c))AC("Book a trip",WORLD_TRIP);
     if(world_heist_anchor(lot,terrain,(unsigned char)c)==SITE_ROAD&&stage_of(sims[ctl].age)>=3)AC("Grand theft (risk)",WORLD_HEIST);
@@ -2775,7 +2775,7 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     else AC(IT_OF(&objs[o])->lab, -1);
     if(c!='a'&&world_outing_anchor(lot,(unsigned char)c)){
         int g=outing_group(lot,0);
-        for(int k=0;k<2&&n<8;k++){const Outing *a=outing_get(living_outing_index(g,k,(minutes/1440)%7));snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);AC(local_labels[k],WORLD_OUT_0+k);}
+        for(int k=0;k<2&&n<8;k++){const Outing *a=outing_get(living_outing_index(g,k,(minutes/1440)%7));if(outing_is_open(a,minutes%1440))snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);else snprintf(local_labels[k],sizeof local_labels[k],"%.20s %02d-%02d",a->title,a->from,a->to);AC(local_labels[k],WORLD_OUT_0+k);}
     }
     #undef AC
     return n;
@@ -5709,7 +5709,17 @@ int main(void) {
 #endif
         if (mode == M_CAS) draw_head(yaw);
         else if (fight_on) fight_3d();
-        else if (mode == M_MAP) { BInfo b; bm_block(sel_x, sel_y, &b); { LotPlan pl7; LotPlan *pp = 0; if (bm_gen >= 7) { bm_lot_plan(sel_x, sel_y, &b, &pl7); pp = &pl7; } r7_bx = sel_x; r7_by = sel_y; draw_lot(&b, yaw, pp); r7_bx = -1; } }
+        else if (mode == M_MAP) {
+            static DsPreviewKey old;
+            static BInfo b; static LotPlan pl;
+            DsPreviewKey key={sel_x,sel_y,bm_gen,bm_edit_stamp,1,bm_seed()};
+            if(!ds_preview_key_equal(old,key)){
+                bm_block(sel_x,sel_y,&b);
+                if(bm_gen>=7)bm_lot_plan(sel_x,sel_y,&b,&pl);
+                old=key;
+            }
+            r7_bx=sel_x;r7_by=sel_y;draw_lot(&b,yaw,bm_gen>=7?&pl:0);r7_bx=-1;
+        }
         glEnd();
         polys_last = polys; gf_shown++;
         glFlush(0);

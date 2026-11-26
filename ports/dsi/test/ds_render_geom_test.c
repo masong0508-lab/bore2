@@ -28,6 +28,14 @@ static void room(unsigned char *hw, unsigned char *vw, int n,
     }
 }
 int main(void) {
+    DsPreviewKey key={12,34,8,1,1,1234},other=key;
+    assert(ds_preview_key_equal(key,other));
+    other.x++;assert(!ds_preview_key_equal(key,other));other=key;
+    other.y++;assert(!ds_preview_key_equal(key,other));other=key;
+    other.seed++;assert(!ds_preview_key_equal(key,other));other=key;
+    other.gen--;assert(!ds_preview_key_equal(key,other));other=key;
+    other.edit++;assert(!ds_preview_key_equal(key,other));other=key;
+    other.valid=0;assert(!ds_preview_key_equal(key,other));
     int living[4], kitchen[4], hall[4];
     floor_rect(1, 1, 5, 5, living);
     floor_rect(6, 1, 5, 5, kitchen);

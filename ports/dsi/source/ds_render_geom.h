@@ -271,4 +271,10 @@ static inline int ds_preview_ground_end(int start,int step,int n){
     return start+step<n?start+step:n;
 }
 
+
+// The map preview rotates each frame, but its selected lot plan does not.
+typedef struct {int x,y,gen,edit,valid;unsigned seed;} DsPreviewKey;
+static inline int ds_preview_key_equal(DsPreviewKey a,DsPreviewKey b){
+    return a.valid&&b.valid&&a.x==b.x&&a.y==b.y&&a.gen==b.gen&&a.edit==b.edit&&a.seed==b.seed;
+}
 #endif

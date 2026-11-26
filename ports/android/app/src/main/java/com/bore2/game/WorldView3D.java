@@ -92,6 +92,7 @@ final class WorldView3D extends GLSurfaceView {
         private int originX,originY,selX=Integer.MIN_VALUE,selY,width,height,program,vbo;
         private int aPosition,aColor,uVP,uEye,uSelection,uSelected,uSky;
         private boolean dirty=true,validMatrix;
+        private FloatBuffer upload; // reuse direct staging storage between neighborhood meshes
         private float targetY=0;
         float yaw=42,pitch=49,distance=48;
         SceneRenderer(Picker pick){picker=pick;}
@@ -130,9 +131,10 @@ final class WorldView3D extends GLSurfaceView {
             if(width<=0||height<=0||mesh.length==0)return;
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,vbo);
             if(dirty){
-                FloatBuffer data=ByteBuffer.allocateDirect(mesh.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-                data.put(mesh).position(0);
-                GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,mesh.length*4,data,GLES20.GL_STATIC_DRAW);dirty=false;
+                if(upload==null||upload.capacity()<mesh.length)
+                    upload=ByteBuffer.allocateDirect(mesh.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+                upload.clear();upload.put(mesh);upload.flip();
+                GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,mesh.length*4,upload,GLES20.GL_STATIC_DRAW);dirty=false;
             }
             float yr=(float)Math.toRadians(yaw),pr=(float)Math.toRadians(pitch);
             float d=distance*(float)Math.cos(pr),ex=d*(float)Math.sin(yr),ez=d*(float)Math.cos(yr);

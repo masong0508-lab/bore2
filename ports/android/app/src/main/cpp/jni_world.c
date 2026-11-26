@@ -26,3 +26,17 @@ JNIEXPORT jfloatArray JNICALL Java_com_bore2_game_NativeWorld_mesh(JNIEnv *env,j
     if(a)(*env)->SetFloatArrayRegion(env,a,0,m.count*6,m.v);
     bore_scene_free(&m);return a;
 }
+
+JNIEXPORT jboolean JNICALL Java_com_bore2_game_NativeWorld_canVisit(JNIEnv *env,jclass cls,jint x,jint y){
+    (void)env;(void)cls;return bore_android_can_visit(x,y)?JNI_TRUE:JNI_FALSE;
+}
+JNIEXPORT jintArray JNICALL Java_com_bore2_game_NativeWorld_activity(JNIEnv *env,jclass cls,jint x,jint y,jint day,jint slot,jint minute,jint funds,jint rest){
+    (void)cls;int v[BORE_ANDROID_ACTIVITY_FIELDS];
+    if(!bore_android_activity(x,y,day,slot,minute,funds,rest,v))return NULL;
+    jintArray a=(*env)->NewIntArray(env,BORE_ANDROID_ACTIVITY_FIELDS);
+    if(a)(*env)->SetIntArrayRegion(env,a,0,BORE_ANDROID_ACTIVITY_FIELDS,(const jint *)v);
+    return a;
+}
+JNIEXPORT jstring JNICALL Java_com_bore2_game_NativeWorld_activityText(JNIEnv *env,jclass cls,jint id,jint field){
+    (void)cls;return (*env)->NewStringUTF(env,bore_android_activity_text(id,field));
+}

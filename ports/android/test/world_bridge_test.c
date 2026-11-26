@@ -30,9 +30,22 @@ int main(void){
         assert(bore_android_describe(ix,iy,5,weekend,sizeof weekend)>0);
         assert(strstr(weekday,outing_get(g*2)->title));
         assert(strstr(weekend,outing_get(24+g*2)->title));
-        assert(strcmp(weekday,weekend));found=1;
+        assert(strcmp(weekday,weekend));
+        int v[BORE_ANDROID_ACTIVITY_FIELDS];
+        const Outing *o=outing_get(g*2);
+        assert(bore_android_can_visit(ix,iy));
+        assert(bore_android_activity(ix,iy,0,0,o->from*60,100,100,v));
+        assert(v[0]==OUT_OK&&v[1]==g*2&&v[2]==o->fee&&v[3]==o->energy&&v[9]==o->gain&&v[10]>0);
+        assert(!strcmp(bore_android_activity_text(v[1],0),o->title));
+        assert(bore_android_activity(ix,iy,0,0,o->to*60,100,100,v)&&v[0]==OUT_CLOSED);
+        assert(bore_android_activity(ix,iy,0,0,o->from*60,100,0,v)&&v[0]==OUT_TIRED);
+        if(o->fee)assert(bore_android_activity(ix,iy,0,0,o->from*60,o->fee-1,100,v)&&v[0]==OUT_MONEY);
+        assert(bore_android_activity(ix,iy,5,0,600,100,100,v)&&v[1]==24+g*2);
+        assert(!bore_android_activity(ix,iy,0,2,600,100,100,v));found=1;
     }
     assert(found);
+    int invalid[BORE_ANDROID_ACTIVITY_FIELDS];
+    assert(!bore_android_can_visit(-1,0)&&!bore_android_activity(-1,0,0,0,600,100,100,invalid));
     assert(bore_android_window(-100,9999,8,a,289)==289);
     assert(!bore_android_describe(-1,0,0,(char*)b,sizeof b));
     puts("Android bridge: actual v8 map, stable seed and native weekday/weekend venues");

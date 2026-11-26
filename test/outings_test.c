@@ -11,6 +11,8 @@ int main(void){
         for(int k=0;k<4;k++){
             int id=g*2+(k%2)+(k>=2?24:0);const Outing *o=outing_get(id);kinds|=1u<<o->kind;
             assert(o->duration>=300&&o->duration<=720&&o->from<o->to&&o->to<=24);
+            assert(!outing_is_open(o,o->from*60-1)&&outing_is_open(o,o->from*60));
+            assert(outing_is_open(o,o->to*60-1)&&!outing_is_open(o,o->to*60));
             assert(outing_check(id,g,o->age,o->from*60,o->fee,o->energy+8,0)==OUT_OK);
             assert(outing_check(id,g,-1,o->from*60,100,100,0)==OUT_AGE);
             assert(outing_check(id,g,o->age,o->to*60,100,100,0)==OUT_CLOSED);

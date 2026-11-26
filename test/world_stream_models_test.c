@@ -32,6 +32,12 @@ int main(void) {
     assert(stream_block_gap(79, 32, 4, 2, 16) == 0); // last tile is inclusive
     assert(stream_block_gap(80, 32, 4, 2, 16) == 1); // first outside tile
     assert(stream_block_gap(82, 46, 4, 2, 16) == 3);
-    puts("World streaming: pending house proxy and nearest-roof scheduling PASS");
+    generation[0]=generation[24]=1;
+    assert(stream_pick_generation(generation,5,16,31,31,75,75)==24);
+    assert(stream_pick_generation(generation,5,16,15,15,75,75)==0);
+    assert(stream_pick_generation(generation,5,16,16,16,75,75)==0);
+    generation[0]=generation[24]=0;
+    assert(stream_pick_generation(generation,5,16,16,16,75,75)==-1);
+    puts("World streaming: pending house proxy, nearest-roof and collision-first generation PASS");
     return 0;
 }

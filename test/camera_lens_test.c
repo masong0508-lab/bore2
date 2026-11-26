@@ -50,6 +50,17 @@ static void verify(void)
 int main(void)
 {
     verify();
+    int a=0,b=0,x=0,y=0;
+    for(int i=0;i<40;i++){
+        x=bore_camera_follow_axis(x,&a,1000,2,18);
+        y=bore_camera_follow_axis(y,&b,-1000,2,18);
+        assert(a==-b&&x+y>=-1&&x+y<=0);
+    }
+    int before=a;bore_camera_rebase_axis(x,&a,-18*256);
+    assert(a==before-18*256*256);
+    x-=18*256;assert(bore_camera_floor256(a)==x);
+    assert(bore_camera_follow_axis(77,&a,77,1,18)==77);
+    assert(bore_camera_floor256(-1)==-1&&bore_camera_floor256(-256)==-1);
     puts("camera_lens_test: PASS (projection, parallax, focal scale)");
     return 0;
 }

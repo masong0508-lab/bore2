@@ -104,6 +104,9 @@ static void nav_update(int now) {   // (now: vblanks, so the pace is the same at
 // ---- camera ----
 static int cam_yaw = 2600, cam_pitch = 640, cam_dist = 1500;   // yaw 0 = looking north from the south
 static int cam_fx, cam_fy, cam_fz;                            // the focus (smoothed)
+#ifndef CAM_OLD
+static int cam_ax,cam_ay,cam_az; // fractional state survives whole-block rebases
+#endif
 static int cam_mode = 0;                                       // 0 follow, 1 high, 2 low chase, 3 free
 static int wall_view;                                          // WALL VIEW (options): 0 AUTO (cut away, but not in first person), 1 CUT AWAY, 2 FULL WALLS
 static int cam_view;                                           // CAMERA: 0 THE SIMS (it orbits you), 1 BEHIND (it swings round behind you), 2 FIRST PERSON
@@ -125,11 +128,10 @@ static void camera_apply(int fx, int fy, int fz) {
 #else
     {   // (the focus follows by a share of the gap for every VBLANK that passed, in 8.8. It was a sixth of the gap per drawn frame: a frame of 3 vblanks and
         //  one of 2 moved the camera by different amounts, and the whole-unit division stalled short of the target: a judder in every walk)
-        static int ax_, ay_, az_; int f_ = (on_board || veh_on || sims[player].gait.run) ? 38 : 18;   // (a rider: kept up with)
-        if (cam_fx != (ax_ >> 8)) ax_ = cam_fx << 8; if (cam_fy != (ay_ >> 8)) ay_ = cam_fy << 8; if (cam_fz != (az_ >> 8)) az_ = cam_fz << 8;
-        for (int n_ = cam_dt; n_ > 0; n_--) { ax_ += (((fx << 8) - ax_) >> 4) * f_ >> 4; ay_ += (((fy << 8) - ay_) >> 4) * f_ >> 4; az_ += (((fz << 8) - az_) >> 4) * f_ >> 4; }
-        if (ABS((fx << 8) - ax_) < 384) ax_ = fx << 8; if (ABS((fy << 8) - ay_) < 384) ay_ = fy << 8; if (ABS((fz << 8) - az_) < 384) az_ = fz << 8;
-        cam_fx = ax_ >> 8; cam_fy = ay_ >> 8; cam_fz = az_ >> 8;
+        int f_=(on_board||veh_on||sims[player].gait.run)?38:18;
+        cam_fx=bore_camera_follow_axis(cam_fx,&cam_ax,fx,cam_dt,f_);
+        cam_fy=bore_camera_follow_axis(cam_fy,&cam_ay,fy,cam_dt,f_);
+        cam_fz=bore_camera_follow_axis(cam_fz,&cam_az,fz,cam_dt,f_);
     }
 #endif
     cam_pitch = CLAMP(cam_pitch, 150, 1000);
@@ -819,7 +821,12 @@ static int alone_opt = 1;   // (OPTIONS > LIFE > YOUR BORE ALONE, from opts_appl
 // with time left before its vblank moves it (now 1)
 static void life_stream(int now) {
     const Sim *s = &sims[player]; int dtx, dty, ts_ = hb_now();
-    if (world_stream_now(sim_tile_x(s), sim_tile_y(s), &dtx, &dty, now)) { sim_shift(dtx, dty); citizens_shift(dtx, dty); cam_fx -= dtx * TILE; cam_fz += dty * TILE;
+    if (world_stream_now(sim_tile_x(s), sim_tile_y(s), &dtx, &dty, now)) { sim_shift(dtx, dty); citizens_shift(dtx, dty);
+#ifndef CAM_OLD
+        bore_camera_rebase_axis(cam_fx,&cam_ax,-dtx*TILE);
+        bore_camera_rebase_axis(cam_fz,&cam_az,dty*TILE);
+#endif
+        cam_fx -= dtx * TILE; cam_fz += dty * TILE;
         { extern int dbg_shift_hb, dbg_shifts; int d = hb_now() - ts_; if (d > dbg_shift_hb) dbg_shift_hb = d; dbg_shifts++; } }
 }
 static void life_update(int steps) {

@@ -53,4 +53,17 @@ static inline int stream_pick_roof(const unsigned char *dirty, int n, int span,
     }
     return best;
 }
+
+// Generation gives collision-critical blocks first refusal, then uses the
+// same camera/Sim score as roofs. Do not increase blocks generated per frame.
+static inline int stream_pick_generation(const unsigned char *dirty,int n,int span,
+                                        int sx,int sy,int ex,int ey){
+    int best=-1,dist=3;
+    if(!dirty||n<=0||span<=0)return -1;
+    for(int y=0;y<n;y++)for(int x=0;x<n;x++){
+        int d=stream_block_gap(sx,sy,x,y,span);
+        if(dirty[y*n+x]&&d<dist){best=y*n+x;dist=d;}
+    }
+    return best>=0?best:stream_pick_roof(dirty,n,span,sx,sy,ex,ey);
+}
 #endif

@@ -1285,9 +1285,9 @@ int world_stream_now(int ptx, int pty, int *dtx, int *dty, int now) {
     if (world_wby + sy < 0 || world_wby + sy > BM_N - WB) sy = 0;
     if (!sx && !sy) {
         if (gen_npend > 0) {                                                      // a block still to make: the nearest to you, this frame
-            int bw = -1, bh = 0, bd = 1 << 20;
-            for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) if (gen_pend[wy][wx]) { int d = ABS(wx - bxp) + ABS(wy - byp); if (d < bd) { bd = d; bw = wx; bh = wy; } }
-            if (bw >= 0) gen_one(bw, bh); else gen_npend = 0;
+            int next=stream_pick_generation(&gen_pend[0][0],WB,BM_BLK,
+                ptx,pty,cam.eye.vx/TILE,-cam.eye.vz/TILE);
+            if(next>=0)gen_one(next%WB,next/WB);else gen_npend=0;
         }
         return 0;
     }
@@ -3116,7 +3116,8 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         int next = stream_pick_roof(&rq_dirty[0][0], WB, BM_BLK,
                                      fx, fy, eye_x, eye_y);
         if (next >= 0) {
-            int near = stream_block_gap(fx, fy, next % WB, next / WB, BM_BLK) <= world_detail_r + 2;
+            int near = stream_block_gap(fx, fy, next % WB, next / WB, BM_BLK) <= world_detail_r + 2 ||
+                       stream_block_gap(eye_x,eye_y,next%WB,next/WB,BM_BLK)<=2;
             if (near || gfx_last_cpu < 420 || ++wait >= 3) {
                 roof_pending(next); wait = 0;
             }

@@ -57,3 +57,24 @@ int bore_android_describe(int x,int y,int weekday,char *out,unsigned cap){
     }
     return bsnprintf(out,cap,"%s | %s",name,s?s->name:"Countryside");
 }
+
+int bore_android_can_visit(int x,int y){
+    if(x<0||y<0||x>=BM_N||y>=BM_N)return 0;
+    BInfo b;bm_block(x,y,&b);
+    return b.terrain!=BT_SEA&&b.lot!=LOT_RIVER;
+}
+int bore_android_activity(int x,int y,int day,int slot,int minute,int funds,int rest,int *out){
+    if(!out||!bore_android_can_visit(x,y))return 0;
+    BInfo b;bm_block(x,y,&b);
+    int g=outing_group(b.lot,0),id=living_outing_index(g,slot,day);
+    const Outing *o=outing_get(id);if(!o)return 0;
+    int check=outing_check(id,g,2,minute,funds,rest,0);
+    int values[BORE_ANDROID_ACTIVITY_FIELDS]={check,id,o->fee,o->energy,o->fun,o->social,o->food,o->rest,o->skill,o->gain,(o->duration+11)/12};
+    for(int i=0;i<BORE_ANDROID_ACTIVITY_FIELDS;i++)out[i]=values[i];
+    return 1;
+}
+const char *bore_android_activity_text(int id,int field){
+    const Outing *o=outing_get(id);
+    if(field==2)return id>=OUT_OK&&id<=OUT_BUSY?outing_reason[id]:"Unavailable";
+    return !o?"":field==1?o->done:o->title;
+}
