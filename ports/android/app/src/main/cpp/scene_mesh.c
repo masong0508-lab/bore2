@@ -14,6 +14,9 @@ typedef struct {float r,g,b;} Color;
 typedef struct {
     BoreMesh *m; int ox,oz,bx,bz,hx,hz,hn;
     float ground[BM_BLK+1][BM_BLK+1];
+    // Rolling bottom boundary of the preceding block row; the right edge
+    // of ground itself supplies the next block's left edge.
+    float border[(2*BORE_SCENE_RADIUS+1)*BM_BLK+1];
     // The world generator's block-center samples already encode a town
     // pad flag. Cache the small halo once for all interpolated corners.
     u16 hills[HILL_SIDE][HILL_SIDE];
@@ -215,7 +218,22 @@ static void block(Scene*s,int bx,int bz,int detail){
     s->bx=x;s->bz=z;
     float (*h)[BM_BLK+1]=s->ground;
     unsigned char mat[BM_BLK][BM_BLK],done[BM_BLK][BM_BLK]={{0}};
-    for(int j=0;j<=BM_BLK;j++)for(int i=0;i<=BM_BLK;i++)h[j][i]=height_raw(s,x+i,z+j);
+    int has_left=bx>s->hx+1,has_top=bz>s->hz+1;
+    int row_off=(bx-s->hx-1)*BM_BLK;
+    for(int j=0;j<=BM_BLK;j++)for(int i=0;i<=BM_BLK;i++){
+        // Left-first at a shared corner: the previous block may already
+        // have overwritten that position of the rolling bottom boundary.
+        if(has_left&&i==0)h[j][i]=h[j][BM_BLK];
+        else if(has_top&&j==0)h[j][i]=s->border[row_off+i];
+        else {h[j][i]=height_raw(s,x+i,z+j);continue;}
+        s->m->border_hits++;
+#ifdef BORE_MESH_VERIFY_HILL_CACHE
+        // Verify every reused value against the exact uncached interpolation.
+        float check=height_raw(s,x+i,z+j);s->m->height_samples--;
+        if(check!=h[j][i])abort();
+#endif
+    }
+    memcpy(s->border+row_off,h[BM_BLK],sizeof h[0]);
     for(int j=0;j<BM_BLK;j++)for(int i=0;i<BM_BLK;i++)mat[j][i]=(unsigned char)bore_surface(&b,i,j);
     const Color surface[]={ground,C(0x555d61),C(0xb6b9af),C(0x5b91a2)};
     for(int j=0;j<BM_BLK;j++)for(int i=0;i<BM_BLK;i++){

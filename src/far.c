@@ -619,11 +619,16 @@ static void far_card(int x0, int z0, int x1, int z1, int top, const u8 *wc) {   
 // The fast box path must never discard an entire visible home because one
 // of its eight corners is behind the eye or outside the GTE guard band.
 // Reuse the existing polygon clipper with a small stack-local corner set.
+static int far_roof_visible(int side,BoreRoofRun r,int rise,int top,
+                            int x0,int z0,int x1,int z1,int ex,int ey,int ez){
+    int outside=side==0?ez-z0:side==1?ex-x1:side==2?z1-ez:x0-ex;
+    return bore_roof_face_visible(top-ey,outside,(side&1)?r.x:r.z,rise);
+}
 static void far_roof_partial(int x0,int z0,int x1,int z1,const u8 *wc,
                             int rs,int pit,const u8 *rc,int top,const FV *v,int slot,int hf) {
     int ex=feye.vx, ey=feye.vy+far_lift, ez=feye.vz;
-    if (ey >= top) return; // camera below roof
     if (!rs) {
+        if(ey>=top)return;
         static const u8 flat[3] = { 120, 118, 114 };
         far_clip_quad(&v[4], &v[5], &v[6], &v[7], lit(flat, Ltop, hf), slot);
         return;
@@ -636,9 +641,9 @@ static void far_roof_partial(int x0,int z0,int x1,int z1,const u8 *wc,
     for(int k=0;k<4;k++)fxf(ix[k],top-rise-far_lift,iz[k],&inner[k]);
     const FV *ring[4]={&v[4],&v[5],&v[7],&v[6]};
     static const u8 sh[4]={6,7,8,7};
-    int cx=(x0+x1)/2,cz=(z0+z1)/2,above=ey<top-rise;
+    int above=ey<top-rise;
     for(int k=0;k<4;k++){
-        if(!above&&!((k==0&&ez>cz)||(k==1&&ex>cx)||(k==2&&ez<cz)||(k==3&&ex<cx)))continue;
+        if(!far_roof_visible(k,r,rise,top,x0,z0,x1,z1,ex,ey,ez))continue;
         int n=(k+1)&3,sloped=(k&1)?r.x:r.z;
         u32 col=sloped?lit(rc,Lroof*sh[k]/7,hf):lit(wc,k==0?Ln:k==1?Le:k==2?Ls:Lw,hf);
         if(ix[k]==ix[n]&&iz[k]==iz[n])far_clip_tri(ring[k],ring[n],&inner[k],col,slot);
@@ -692,8 +697,7 @@ static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int r
     if (ex < x0) WALL(4, 6, 0, 2, Lw, widz)                     // west: NW SW
     if (ex > x1) WALL(7, 5, 3, 1, Le, widz)                     // east: SE NE
     #undef WALL
-    if (ey >= top) return;                                       // (looking up at it: no roof to see)
-    if (pitched) {                                               // the roof: a hip (four slopes up to a point, the ridge only a point) or a gable (two slopes up to a ridge, the walls at its ends carried up to it)
+    if (pitched) {                                               // capped hip or gable: shared plane test for both projection paths
         BoreRoofRun r=bore_roof_run(x1-x0,z0-z1,rs,3*TILE);
         int rise=world_roof_rise(pit,r.run);
         int ix[4]={x0+r.x,x1-r.x,x1-r.x,x0+r.x};
@@ -715,8 +719,7 @@ static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int r
         for(int k=0;k<4;k++){
             int n=(k+1)&3,sloped=(k&1)?r.x:r.z;
             const XV *a=ring[k],*b=ring[n];
-            int mx=(R[k].x+R[n].x)/2,my=(R[k].y+R[n].y)/2;
-            if((b->x-a->x)*(my-a->y)-(mx-a->x)*(b->y-a->y)<=0)continue;
+            if(!far_roof_visible(k,r,rise,top,x0,z0,x1,z1,ex,ey,ez))continue;
             u32 col=sloped?lit(rc,Lroof*sh[k]/7,hf):lit(wc,k==0?Ln:k==1?Le:k==2?Ls:Lw,hf);
             if(ix[k]==ix[n]&&iz[k]==iz[n]){
                 u32 *p=pk(4);if(!p)return;
@@ -725,7 +728,7 @@ static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int r
         }
         if(ey<top-rise&&ix[1]>ix[0]&&iz[0]>iz[3])
             face_f4(&R[0],&R[1],&R[3],&R[2],lit(rc,Ltop,hf),slot);
-    } else {
+    } else if(ey<top) {
         static const u8 flat[3] = { 120, 118, 114 };
         face_f4(&o[4], &o[5], &o[6], &o[7], lit(flat, Ltop, hf), slot);
     }

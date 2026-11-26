@@ -3,6 +3,6 @@
 // One bounded window, local coordinates measured in native BORE tiles.
 #define BORE_SCENE_RADIUS 4
 #define BORE_SCENE_MAX_VERTICES 400000
-typedef struct {float *v; int count,capacity,failed; unsigned height_samples,height_hits,roof_samples,hill_reads;} BoreMesh;
+typedef struct {float *v; int count,capacity,failed; unsigned height_samples,height_hits,roof_samples,hill_reads,border_hits;} BoreMesh;
 int bore_scene_build(int cx,int cy,int radius,BoreMesh *out);
 void bore_scene_free(BoreMesh *m);

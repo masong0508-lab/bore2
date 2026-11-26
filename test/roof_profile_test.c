@@ -16,5 +16,16 @@ int main(void){
         assert(ds.x*256==r.x*660&&ds.z*256==r.z*660);
     }
     assert(!bore_roof_run(12,8,0,3).run);
-    puts("Roof profiles: capped hip/gable/forced-front slopes agree across native units");
+    // Eye just above eaves but below the ridge: the near slope can show.
+    assert(bore_roof_face_visible(1,-1,3,2));
+    assert(!bore_roof_face_visible(2,-3,3,2)); // exactly edge on
+    // An outward view from below the eaves can still see the pitched face.
+    assert(bore_roof_face_visible(-2,5,3,2));
+    assert(!bore_roof_face_visible(-2,2,3,2));
+    // Vertical gable ends depend only on outward distance, not eye height.
+    assert(bore_roof_face_visible(-100,1,0,2));
+    assert(!bore_roof_face_visible(100,-1,0,2));
+    assert(bore_roof_face_visible(1,-100,3,0));
+    assert(!bore_roof_face_visible(-1,100,3,0));
+    puts("Roof profiles and world-space face visibility agree across native units");
 }

@@ -13,3 +13,10 @@ static inline BoreRoofRun bore_roof_run(int w,int d,int style,int cap){
     r.z=(style==1||along_x)?r.run:0;
     return r;
 }
+
+// Signed distance to a roof face plane (negative world Y is up).
+// Use the same world-space decision for the fast and clipped paths so
+// entering a projection guard band does not change visible roof faces.
+static inline int bore_roof_face_visible(int above,int outside,int inset,int rise){
+    return (long long)above*inset+(long long)outside*rise>0;
+}
