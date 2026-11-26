@@ -135,8 +135,11 @@ static int ds_street_ground_lift(int lx, int ly, int south, int east,
     if (ly <= 12) return east && (lx == 13 || lx == 17) ? 24 : 0;
     int h = corner & 1, v = corner & 2;
     if (corner && !h && !v) h = v = 1;
-    return ((h && (ly == 13 || ly == 17)) ||
-            (v && (lx == 13 || lx == 17))) ? 24 : 0;
+    const int xedge = lx == 13 || lx == 17, yedge = ly == 13 || ly == 17;
+    // At a two-way intersection the raised pavement exists only at the
+    // four corners. The crossing arms themselves are at road height.
+    if (h && v) return xedge && yedge ? 24 : 0;
+    return ((h && yedge) || (v && xedge)) ? 24 : 0;
 }
 /* The DS rasterizer accepts at most 2048 polygons per frame. This
  * renderer counts two triangles per quad although it emits one quad;

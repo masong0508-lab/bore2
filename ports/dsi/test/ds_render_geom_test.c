@@ -74,9 +74,16 @@ int main(void) {
     assert(ds_street_ground_lift(5, 13, 1, 0, 0, 1) == 24);
     assert(ds_street_ground_lift(5, 13, 0, 0, 0, 1) == 0);
     assert(ds_street_ground_lift(14, 14, 1, 1, 3, 1) == 0);
-    assert(ds_street_ground_lift(13, 14, 1, 1, 3, 1) == 24);
+    assert(ds_street_ground_lift(13, 14, 1, 1, 3, 1) == 0);
     assert(ds_street_ground_lift(14, 14, 1, 1, 4, 1) == 0);
-    assert(ds_street_ground_lift(14, 13, 1, 1, 4, 1) == 24);
+    assert(ds_street_ground_lift(14, 13, 1, 1, 4, 1) == 0);
+    /* The rendered crossing has four corner sidewalk cells and a level
+     * road everywhere else. Verify all 25 positions, including turns. */
+    for (int c = 0; c <= 7; ++c) for (int y = 13; y <= 17; ++y) for (int x = 13; x <= 17; ++x) {
+        int edge_x = x == 13 || x == 17, edge_y = y == 13 || y == 17;
+        int expected = c == 0 ? 0 : (c & 3) == 1 ? edge_y : (c & 3) == 2 ? edge_x : edge_x && edge_y;
+        assert(ds_street_ground_lift(x, y, 1, 1, c, 1) == expected * 24);
+    }
     assert(ds_street_ground_lift(8, 8, 1, 1, 3, 1) == 0);
     assert(ds_street_ground_lift(8, 8, 1, 1, 3, 0) == 0);
     /* The bounding box of two wings includes open air. The cutaway test

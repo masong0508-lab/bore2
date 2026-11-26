@@ -2065,7 +2065,10 @@ static void st7(int sx, int sy, int ox, int oz, int pass) {   // (D79) one slot'
         if (S) ground(tl(ox), tl(oz + 28), tl(ox + 26), tl(oz + 34), 0, AS);
         if (E) ground(tl(ox + 28), tl(oz), tl(ox + 34), tl(oz + 26), 0, AS);
         if (cH) ground(tl(ox + 26), tl(oz + 28), tl(ox + 36), tl(oz + 34), 0, AS);
-        if (cV) ground(tl(ox + 28), tl(oz + 26), tl(ox + 34), tl(oz + 36), 0, AS);
+        if (cV && cH) { // horizontal strip already owns the central crossing
+            ground(tl(ox + 28), tl(oz + 26), tl(ox + 34), tl(oz + 28), 0, AS);
+            ground(tl(ox + 28), tl(oz + 34), tl(ox + 34), tl(oz + 36), 0, AS);
+        } else if (cV) ground(tl(ox + 28), tl(oz + 26), tl(ox + 34), tl(oz + 36), 0, AS);
     } else {
         if (S) { ground(tl(ox), tl(oz + 26), tl(ox + 26), tl(oz + 28), -24, PV); ground(tl(ox), tl(oz + 34), tl(ox + 26), tl(oz + 36), -24, PV); }
         if (E) { ground(tl(ox + 26), tl(oz), tl(ox + 28), tl(oz + 26), -24, PV); ground(tl(ox + 34), tl(oz), tl(ox + 36), tl(oz + 26), -24, PV); }

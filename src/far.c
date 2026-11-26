@@ -4,6 +4,7 @@
 #include "world.h"
 #include "bigmap.h"
 #include "house_footprint.h"
+#include "house_shape.h"
 #include "world_stream_models.h"
 #include "atlas.h"
 
@@ -233,6 +234,16 @@ COLD void far_new_world(void) {
             if (b.set != i || nfb >= FB_MAX || !bm_lot_foot(bx, by, &b, ft, &pl)) continue;   // (what stands on the lot: the walls the world builds, a home's from the town plan, a place turned over when it faces north)
             FB *f = &fb[nfb++];
             f->bx = bx; f->by = by; f->lot = b.lot; FT_PUT(fb_ft[f - fb], ft);
+            // The unused upper nibble of the existing three-byte record
+            // preserves an L-house's real recess. No additional cache RAM.
+            if(ft[4]&&pl.type==HT_L&&pl.wx1){
+                HouseShapeRect a={ft[0],ft[1],ft[2]+1,ft[3]+1};
+                HouseShapeRect main={pl.x0,pl.y0,pl.x1+1,pl.y1+1};
+                HouseShapeRect wing={pl.wx0,pl.wy0,pl.wx1+1,pl.wy1+1};
+                if(wing.x0<main.x0)wing.x1=main.x0;else wing.x0=main.x1;
+                int code=house_shape_encode(a,main,wing);
+                fb_ft[f-fb][2]|=(u8)(code<<4);
+            }
             u8 sty, rcol, pit; world_roof_of(bx, by, &b, ft, &pl, &sty, &rcol, &pit);   // (the world's own roof rule: its form and colour)
             fb_sto[f - fb] = (u8)(MIN(bm_storeys(&b), 7) | sty << 3 | rcol << 5);
             f->col = b.lot == LOT_TOWER ? 8 : (b.h >> 20) % 8u;
@@ -747,7 +758,16 @@ static void far_building(const FB *f, int x0, int z0, int x1, int z1) {
     u8 wcol[3]; const u8 *wc = far_house_wall_rgb(f, wcol);
     const u8 *rcol = world_roof_rgb(fb_sto[f - fb] >> 5);
     far_lift = world_gh_lot((x0 + x1) / 2, (z0 + z1) / 2);
-    far_box(x0, z0, x1, z1, FSTO(f), wc, rs, 1 + f->pad, rcol, f->lot != LOT_HOUSE && f->lot != LOT_COTTAGE);
+    HouseShapeRect bounds={0,0,(x1-x0)/TILE,(z0-z1)/TILE},body,wing;
+    int code=fb_ft[f-fb][2]>>4;
+    if(house_shape_decode(bounds,code,&body,&wing)){
+        // Draw the two real, disjoint footprints on the same terrain pad.
+        // The garage uses a flat cap; never fill in the empty yard.
+        far_box(x0+body.x0*TILE,z0-body.z0*TILE,x0+body.x1*TILE,z0-body.z1*TILE,
+                FSTO(f),wc,rs,1+f->pad,rcol,0);
+        far_box(x0+wing.x0*TILE,z0-wing.z0*TILE,x0+wing.x1*TILE,z0-wing.z1*TILE,
+                1,wc,0,1,rcol,0);
+    }else far_box(x0, z0, x1, z1, FSTO(f), wc, rs, 1 + f->pad, rcol, f->lot != LOT_HOUSE && f->lot != LOT_COTTAGE);
     far_lift = 0;
 }
 // the map's own buildings past the detail (world.c's skyline), drawn the same way

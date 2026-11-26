@@ -10,7 +10,7 @@ extern void bm_hill_center(int bx,int by);
 
 typedef struct {float x,y,z;} Point;
 typedef struct {float r,g,b;} Color;
-typedef struct {BoreMesh *m; int ox,oz;} Scene;
+typedef struct {BoreMesh *m; int ox,oz,bx,bz; float ground[BM_BLK+1][BM_BLK+1];} Scene;
 static Point P(float x,float y,float z){return (Point){x,y,z};}
 static Color C(unsigned c){return (Color){((c>>16)&255)/255.f,((c>>8)&255)/255.f,(c&255)/255.f};}
 static Color lit(Color c,float s){return (Color){fminf(1,c.r*s),fminf(1,c.g*s),fminf(1,c.b*s)};}
@@ -45,7 +45,8 @@ static void slope(Scene*s,Point a,Point b,Point c,Point d,Color k){
 // Single world-coordinate height function: all adjacent blocks use the very
 // same corner values. Town lots are level pads, street strips blend them.
 // This follows world.c gh_raw0 rather than inventing a second elevation map.
-static float height(int ax,int az){
+static float height_raw(Scene*s,int ax,int az){
+    s->m->height_samples++;
     int bx=ax/BM_BLK,bz=az/BM_BLK,lx=ax%BM_BLK,lz=az%BM_BLK,town=0;
     int h=bm_hill_t(bx,bz,&town);
     if(town){
@@ -60,12 +61,19 @@ static float height(int ax,int az){
     int bot=bm_hill(bx-1+ex,bz+ez)*(n-u)+bm_hill(bx+ex,bz+ez)*u;
     return (top*(n-v)+bot*v)/(float)(n*n*TILE);
 }
-static Point land(int x,int z,float y){return P(x,height(x,z)+y,z);}
+static float height_at(Scene*s,int x,int z){
+    int dx=x-s->bx,dz=z-s->bz;
+    if((unsigned)dx<=BM_BLK&&(unsigned)dz<=BM_BLK){
+        s->m->height_hits++;return s->ground[dz][dx];
+    }
+    return height_raw(s,x,z);
+}
+static Point land(Scene*s,int x,int z,float y){return P(x,height_at(s,x,z)+y,z);}
 static void patch(Scene*s,int x,int z,int X,int Z,Color c,float offset){
     // Overlay follows the same tile triangulation as terrain. No large
     // diagonal surfaces that cut across the slopes under paths/pools.
     for(int zz=z;zz<Z;zz++)for(int xx=x;xx<X;xx++)
-        slope(s,land(xx,zz,offset),land(xx+1,zz,offset),land(xx+1,zz+1,offset),land(xx,zz+1,offset),c);
+        slope(s,land(s,xx,zz,offset),land(s,xx+1,zz,offset),land(s,xx+1,zz+1,offset),land(s,xx,zz+1,offset),c);
 }
 static void flat(Scene*s,float x,float z,float X,float Z,float y,Color c){
     quad(s,P(x,y,z),P(X,y,z),P(X,y,Z),P(x,y,Z),c);
@@ -78,7 +86,7 @@ static void box(Scene*s,float x,float z,float X,float Z,float base,float top,Col
     flat(s,x,z,X,Z,top,c);
 }
 static void tree(Scene*s,int x,int z,unsigned seed){
-    float h=height(x,z),r=.78f+(seed&3)*.12f,base=h+.95f;
+    float h=height_at(s,x,z),r=.78f+(seed&3)*.12f,base=h+.95f;
     box(s,x-.12f,z-.12f,x+.12f,z+.12f,h,base,C(0x67513e));
     Color c=C((seed&4)?0x456c45:0x527d4b);
     Point a=P(x-r,base,z-r),b=P(x+r,base,z-r),d=P(x+r,base,z+r),e=P(x-r,base,z+r),tip=P(x,base+1.8f,z);
@@ -97,14 +105,14 @@ static float roofy(const BoreFoot*f,int x,int z,int pitch,float y){
     return y+((pitch&4)?250.f:170.f)/256.f*bore_roof_height(f,x,z,pitch&3);
 }
 // Wall tiles have real edge positions; the common wall of a wing is omitted.
-static void wall(Scene*s,const BoreFoot*f,const LotPlan*p,int ix,int iz,int x,int z,int dx,int dz,float base,int floors,int pitch,Color c,int home,int detail){
+static void wall(Scene*s,const float roof_height[BM_BLK+1][BM_BLK+1],const LotPlan*p,int ix,int iz,int x,int z,int dx,int dz,float base,int floors,Color c,int home,int detail){
     int ax=ix+(dx>0),az=iz+(dz>0),bx=ax+(dz!=0),bz=az+(dx!=0);
-    float A=x+ax,B=z+az,X=x+bx,Z=z+bz,top=base+2.f*floors;
-    float f1=height(x+ax,z+az),f2=height(x+bx,z+bz);
+    float A=x+ax,B=z+az,X=x+bx,Z=z+bz;
+    float f1=height_at(s,x+ax,z+az),f2=height_at(s,x+bx,z+bz);
     Color k=lit(c,dx<0?.82f:dx>0?.70f:dz<0?.86f:1.f);
     if(base>f1+.02f||base>f2+.02f)
         quad(s,P(A,fminf(f1,base),B),P(X,fminf(f2,base),Z),P(X,base,Z),P(A,base,B),lit(c,.55f));
-    quad(s,P(A,base,B),P(X,base,Z),P(X,roofy(f,bx,bz,pitch,top),Z),P(A,roofy(f,ax,az,pitch,top),B),k);
+    quad(s,P(A,base,B),P(X,base,Z),P(X,roof_height[bz][bx],Z),P(A,roof_height[az][ax],B),k);
     if(!detail)return;
     // Frames are raised slightly from the solid wall, never coplanar.
     float off=.027f;
@@ -137,24 +145,31 @@ static void building(Scene*s,const BInfo*b,int bx,int bz,int detail){
     }
     // Each building is planted on one continuous foundation; the visible
     // outside skirt meets terrain even along sloped or irregular lots.
-    float base=height(x+BM_LOT0,z+BM_LOT0);
+    float base=height_at(s,x+BM_LOT0,z+BM_LOT0);
     for(int iz=BM_LOT0;iz<BM_BLK;iz++)for(int ix=BM_LOT0;ix<BM_BLK;ix++)if(bore_foot_has(&foot,ix,iz)){
-        base=fmaxf(base,height(x+ix,z+iz));base=fmaxf(base,height(x+ix+1,z+iz));
-        base=fmaxf(base,height(x+ix,z+iz+1));base=fmaxf(base,height(x+ix+1,z+iz+1));
+        base=fmaxf(base,height_at(s,x+ix,z+iz));base=fmaxf(base,height_at(s,x+ix+1,z+iz));
+        base=fmaxf(base,height_at(s,x+ix,z+iz+1));base=fmaxf(base,height_at(s,x+ix+1,z+iz+1));
     }
     base+=.018f;float y=base+floors*2.f;
     static const unsigned roofs[]={0xc45c40,0x687080,0x966842,0x5c8454,0x46568c,0xceb480};
     Color c=wallcolor(&p,b->lot,b->h),roof=C(f[4]?roofs[(p.pal+p.rcol*3u)%6]:0x788581);
+    // Each roof corner is evaluated once even when four roof tiles and
+    // an exterior wall meet there. Preserve the exact old geometry.
+    float rh[BM_BLK+1][BM_BLK+1]={{0}};
+    for(int iz=BM_LOT0;iz<=BM_BLK;iz++)for(int ix=BM_LOT0;ix<=BM_BLK;ix++)
+        if(bore_foot_has(&foot,ix,iz)||bore_foot_has(&foot,ix-1,iz)||
+           bore_foot_has(&foot,ix,iz-1)||bore_foot_has(&foot,ix-1,iz-1)){
+            rh[iz][ix]=roofy(&foot,ix,iz,pitch,y);s->m->roof_samples++;
+        }
     // Retain exact union for every view, including L-shaped and terrace lots.
     for(int iz=BM_LOT0;iz<BM_BLK;iz++)for(int ix=BM_LOT0;ix<BM_BLK;ix++)if(bore_foot_has(&foot,ix,iz)){
-        float a=roofy(&foot,ix,iz,pitch,y),b0=roofy(&foot,ix+1,iz,pitch,y),
-              d=roofy(&foot,ix,iz+1,pitch,y),e=roofy(&foot,ix+1,iz+1,pitch,y);
+        float a=rh[iz][ix],b0=rh[iz][ix+1],d=rh[iz+1][ix],e=rh[iz+1][ix+1];
         Color k=lit(roof,((ix+iz)&1)?.985f:1.f);
         slope(s,P(x+ix,a,z+iz),P(x+ix+1,b0,z+iz),P(x+ix+1,e,z+iz+1),P(x+ix,d,z+iz+1),k);
-        if(bore_foot_edge(&foot,ix,iz,-1,0))wall(s,&foot,&p,ix,iz,x,z,-1,0,base,floors,pitch,c,f[4],detail);
-        if(bore_foot_edge(&foot,ix,iz,1,0))wall(s,&foot,&p,ix,iz,x,z,1,0,base,floors,pitch,c,f[4],detail);
-        if(bore_foot_edge(&foot,ix,iz,0,-1))wall(s,&foot,&p,ix,iz,x,z,0,-1,base,floors,pitch,c,f[4],detail);
-        if(bore_foot_edge(&foot,ix,iz,0,1))wall(s,&foot,&p,ix,iz,x,z,0,1,base,floors,pitch,c,f[4],detail);
+        if(bore_foot_edge(&foot,ix,iz,-1,0))wall(s,rh,&p,ix,iz,x,z,-1,0,base,floors,c,f[4],detail);
+        if(bore_foot_edge(&foot,ix,iz,1,0))wall(s,rh,&p,ix,iz,x,z,1,0,base,floors,c,f[4],detail);
+        if(bore_foot_edge(&foot,ix,iz,0,-1))wall(s,rh,&p,ix,iz,x,z,0,-1,base,floors,c,f[4],detail);
+        if(bore_foot_edge(&foot,ix,iz,0,1))wall(s,rh,&p,ix,iz,x,z,0,1,base,floors,c,f[4],detail);
     }
     if(f[4]&&p.face!=LF_NONE){
         int zz=p.face==LF_NORTH?p.dy: p.dy+1,edge=p.face==LF_NORTH?BM_LOT0:BM_BLK;
@@ -169,9 +184,10 @@ static void block(Scene*s,int bx,int bz,int detail){
     // A single stitched mesh, including roads and water. Merge only flat
     // rectangles of identical material; all nonflat cells retain their
     // exact corner heights, so building foundations sit on the actual mesh.
-    float h[BM_BLK+1][BM_BLK+1];
+    s->bx=x;s->bz=z;
+    float (*h)[BM_BLK+1]=s->ground;
     unsigned char mat[BM_BLK][BM_BLK],done[BM_BLK][BM_BLK]={{0}};
-    for(int j=0;j<=BM_BLK;j++)for(int i=0;i<=BM_BLK;i++)h[j][i]=height(x+i,z+j);
+    for(int j=0;j<=BM_BLK;j++)for(int i=0;i<=BM_BLK;i++)h[j][i]=height_raw(s,x+i,z+j);
     for(int j=0;j<BM_BLK;j++)for(int i=0;i<BM_BLK;i++)mat[j][i]=(unsigned char)bore_surface(&b,i,j);
     const Color surface[]={ground,C(0x555d61),C(0xb6b9af),C(0x5b91a2)};
     for(int j=0;j<BM_BLK;j++)for(int i=0;i<BM_BLK;i++){
@@ -210,7 +226,7 @@ int bore_scene_build(int cx,int cy,int r,BoreMesh *out){
     cx=bore_window_center(cx,r,BM_N);cy=bore_window_center(cy,r,BM_N);
     if(cx<0||cy<0)return 0;
     bm_hill_center(cx,cy);
-    Scene s={out,cx*BM_BLK+BM_BLK/2,cy*BM_BLK+BM_BLK/2};
+    Scene s={.m=out,.ox=cx*BM_BLK+BM_BLK/2,.oz=cy*BM_BLK+BM_BLK/2};
     for(int z=-r;z<=r;z++)for(int x=-r;x<=r;x++)
         block(&s,cx+x,cy+z,ABS(x)<=2&&ABS(z)<=2);
     if(out->failed||!out->count){bore_scene_free(out);return 0;}
