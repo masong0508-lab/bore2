@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from PIL import Image
-from ps1_frame_flash import CROP, audit, self_test
+from ps1_frame_flash import CROP, audit, local_audit, self_test
 
 ANCHORS = (2600, 3600, 4600, 5600, 6600)
 BURSTS = tuple(tuple(range(t, t + 25)) for t in (2600, 3100, 3600, 4100, 4600, 5100, 5600, 6100, 6600))
@@ -51,8 +51,10 @@ def run(root):
     for tick in ANCHORS:
         with Image.open(by_tick[tick]) as im:
             im.save(root / f"anchor_{tick}.png")
-    temporal = [dict(start=b[0], end=b[-1], **audit([scene(t) for t in b]))
-                for b in BURSTS]
+    temporal = []
+    for b in BURSTS:
+        burst = [scene(t) for t in b]
+        temporal.append(dict(start=b[0],end=b[-1],**audit(burst),**local_audit(burst)))
     flashes = sum(len(b["flash_candidates"]) for b in temporal)
     issues = []
     if counters["dbg_shifts"] < 2:
@@ -82,9 +84,12 @@ def run(root):
         "packet_overflow_frames_all_game_states": counters["dbg_pk_ovf"],
         "packet_allocations_denied_all_game_states": counters["dbg_pk_ovf_n"],
         "peak_packet_bytes": counters["gfx_peak_bytes"],
-        "temporal_audit": temporal, "final_ram_counters": counters,
+        "temporal_audit": temporal,
+        "local_switch_candidates": sum(len(b["local_switch_candidates"]) for b in temporal),
+        "identical_adjacent_frames": sum(b["identical_adjacent_frames"] for b in temporal),
+        "final_ram_counters": counters,
         "issues": issues,
-        "limits": "Scripted movement, not player-input collision validation. FPS is reported, not gated at 30. Sparse bursts cannot prove no flicker. Emulator, not physical hardware."
+        "limits": "Scripted movement, not player-input collision validation. FPS is reported, not gated at 30. Local switch candidates require visual review; identical adjacent captures count held images. Bursts cannot prove no flicker. Emulator, not physical hardware."
     }
     (root / "stream_motion_results.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))

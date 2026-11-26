@@ -647,10 +647,10 @@ static void ds_proxy_box(DsShellRect r,int ox,int oz,int bottom,int top,u16 wall
 #endif
 }
 static void ds_proxy_roof(DsShellRect r,int ox,int oz,int top,int sty,int pit,u16 rc,u16 wc){
-    if(!ds_shell_valid(r)||far_lod)return;
-    // Complete shell comes first; optional roof details must never eat the
-    // rest of the neighborhood's polygon/FIFO reserve.
-    if(!ds_world_detail_budget(polys+80)||(gxb&&gxn+1050>=gx_cap))return;
+    if(!ds_shell_valid(r)||far_lod==1)return;
+    // Near-shell pass (far_lod==2) reserves all roof planes up front.
+    // The compact roof keeps its pitch; only parapets/eaves are omitted.
+    if(!far_lod&&(!ds_world_detail_budget(polys+80)||(gxb&&gxn+1050>=gx_cap)))return;
     static const s16 PITCH[3]={110,170,250};
     roof_shape(ox+tl(2*r.x0),oz+tl(2*r.z0),ox+tl(2*r.x1),oz+tl(2*r.z1),
                top-4,sty,PITCH[pit>=0&&pit<3?pit:1],rc,wc);
@@ -659,7 +659,8 @@ static int ds_draw_planned_proxy(const BInfo*b,const LotPlan*p,int ox,int oz){
     DsLotShell s;
     if(bm_gen<7||r7_bx<0||!ds_lot_shell(b,p,r7_bx,r7_by,&s))return 0;
     int boxes=1+ds_shell_valid(s.wing)+ds_shell_valid(s.loft);
-    if(!ds_world_far_budget(polys+boxes*10)||(gxb&&gxn+boxes*125+32>=gx_cap))return 1;
+    int perbox=far_lod==2?20:10;
+    if(!ds_world_far_budget(polys+boxes*perbox)||(gxb&&gxn+boxes*(far_lod==2?250:125)+32>=gx_cap))return 1;
     int sty,pit,col;roof_dice(r7_bx*BM_BLK+s.body.x0+BM_LOT0,
         r7_by*BM_BLK+s.body.z0+BM_LOT0,s.body.x1-s.body.x0,s.body.z1-s.body.z0,
         ds_shell_valid(s.loft),p,&sty,&pit,&col);
@@ -2066,11 +2067,11 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
             if (!far_lod && pl->drv) ground(ox + tl(2 * (pl->drv - BM_LOT0)), oz + tl(nth ? 0 : 2 * (pl->y1 - BM_LOT0 + 1)), ox + tl(2 * (pl->drv - BM_LOT0 + 2)), oz + tl(nth ? 2 * (pl->y0 - BM_LOT0) : 26), -26, C15(20, 20, 20)); }
         else if (nth) { Z0 = oz + tl(26 - z0 - d); Z1 = oz + tl(26 - z0); } }
     // Restore the solid shell (the old block() call was swallowed by a line comment).
-    if(!ds_world_far_budget(polys+10)||(gxb&&gxn+157>=gx_cap))return;
+    if(!ds_world_far_budget(polys+(far_lod==2?20:10))||(gxb&&gxn+(far_lod==2?300:157)>=gx_cap))return;
     tx_want=k!=LOT_HOUSE&&k!=LOT_COTTAGE?TX_WINDOWS:TX_CLAPBOARD;
     block(X0,Z0,X1,Z1,0,Y,wall,wall);
     tx_want=-1;
-    if(far_lod||!ds_world_detail_budget(polys+110)||(gxb&&gxn+1400>=gx_cap))return;
+    if(far_lod==1||(!far_lod&&(!ds_world_detail_budget(polys+110)||(gxb&&gxn+1400>=gx_cap))))return;
     if (!far_lod) { int wn = (X1 - X0) / 5, zf = nth ? Z0 - 14 : Z1, zg = nth ? Z0 : Z1 + 14; block(X0 + wn * 2, zf, X0 + wn * 2 + wn * 7 / 10, zg, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); block(X0 + wn, zf, X0 + wn + wn * 7 / 10, zg, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); block(X0 + wn * 3, zf, X0 + wn * 3 + wn * 7 / 10, zg, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); }
     { u32 rh = hsh(h ^ 0x500Fu); int sty = st >= 3 || k > LOT_APART ? 1 : 2 + ((rh >> 2) & 1), pt = 1 + (int)((rh >> 8) & 1), cl = (int)((rh >> 4) % 6); static const s16 PIT[3] = { 110, 170, 250 };   // (D42) hip, gable or flat, a colour and a pitch per building
       if (pl && pl->type && k <= LOT_APART) plan_roof(pl, &sty, &pt, &cl);   // (D80) the plan's roof
@@ -2150,19 +2151,32 @@ static void draw_world(int yaw) {   // LIVE: all round the lot, the lots next do
 }
 static int ring_r = 1;   // (D40) how many slots out the land is drawn (Options > Draw distance, one more with the DSi's detail)
 static u16 horizon_col(void) { return zone == Z_ISLAND ? C15(5, 12, 24) : zone == Z_TOWN ? C15(24, 21, 13) : C15(7, 16, 6); }
-static void draw_far_all(int yaw) {   // last, so the lot, the sims and the citizens always get the polygons first
-    // Prioritize complete adjacent building shells over optional parks,
-    // trees and furniture. At low budget keep a simple solid silhouette.
-    for(int pass=0;pass<2;pass++)for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
+static void draw_near_shells(int yaw) {
+    // Stable roof profile for the eight adjacent lots. Submit this before
+    // street lamps and optional outer-ring scenery; never toggle pitched
+    // roofs to flat because a resident added a few triangles.
+    for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
         if(!i&&!j)continue;
         const BInfo *b=&nb[j+1][i+1];
         const LotPlan *pl=t7()?&nlp[j+RING_MAX][i+RING_MAX]:0;
-        int house=far_house7(b,pl);
-        if(house!=(pass==0))continue;
+        if(!far_house7(b,pl))continue;
+        far_lod=2;
+        r7_bx=!zone&&lot_bx>=0&&lot_bx<2000?lot_bx+i:-1;r7_by=lot_by+j;
+        far_lot(b,36*i*T,36*j*T,0,yaw,pl);
+        r7_bx=-1;far_lod=0;
+    }
+}
+static void draw_far_all(int yaw) {
+    // Houses already own their geometry. Do not submit the same lot twice.
+    for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
+        if(!i&&!j)continue;
+        const BInfo *b=&nb[j+1][i+1];
+        const LotPlan *pl=t7()?&nlp[j+RING_MAX][i+RING_MAX]:0;
+        if(far_house7(b,pl))continue;
+        if(!ds_world_far_budget(polys+12)||(gxb&&gxn+160>=gx_cap))continue;
         if(b->terrain==BT_SEA){ground(tl(36*i),tl(36*j),tl(36*i+36),tl(36*j+36),-8,C15(5,12,24));continue;}
-        if(!ds_world_far_budget(polys+12))continue;
         int lite=!ds_world_detail_budget(polys+160);
-        if(!house&&lite){
+        if(lite&&b->lot!=LOT_RIVER){
             ground(tl(36*i),tl(36*j),tl(36*i+26),tl(36*j+26),0,land_col(b->terrain));continue;
         }
         far_lod=lite;
@@ -2322,6 +2336,7 @@ static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise
     int w = X1-X0,d=Z1-Z0;
     BoreRoofRun profile=bore_roof_run(w,d,sty==3?1:sty==2?2:sty==4?3:0,6*T);
     u16 fas = shade(rc, 5);
+    if(far_lod==2&&sty==1){tx_want=-1;return;} // cap is already present
     if (sty == 1) {   // FLAT: the slab, a parapet round it, a box on top (the PS1's towers and big blocks)
         u16 tc = shade(C15(18, 18, 19), 8), pc = shade(wc, 7); tx_want = TX_GRAVEL;
         block(X0, Z0, X1, Z1, ry + 40, ry - 40, fas, tc); tx_want = TX_STUCCO;
@@ -2330,7 +2345,7 @@ static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise
         tx_want = -1; if (w > 4 * T && d > 4 * T) { int cx = X0 + w * 2 / 3, cz = Z0 + d / 3; block(cx - T / 2, cz - T / 2, cx + T / 2, cz + T / 2, ry - 40, ry - 40 - T * 2 / 3, C15(20, 20, 21), C15(25, 25, 26)); }
         return; }
     int RH_=profile.run*rise/256,rtop=ry-RH_,rx=profile.x,rz=profile.z;
-    tx_want = -1; block(X0, Z0, X1, Z1, ry + 40, ry, fas, fas); tx_want = TX_SHINGLE_WALL;   // (the eaves' thickness; then the slopes in the PS1's shingles)
+    tx_want = -1; if(far_lod!=2)block(X0, Z0, X1, Z1, ry + 40, ry, fas, fas); tx_want = TX_SHINGLE_WALL;   // (the eaves' thickness; then the slopes in the PS1's shingles)
     u16 c0 = rc, c1 = shade(rc, 6), ce = rx ? shade(rc, 7) : wc, cf = rz ? rc : wc;   // (gable ends are the walls' plaster)
     qd(X0, ry, Z0, X1, ry, Z0, X1 - rx, rtop, Z0 + rz, X0 + rx, rtop, Z0 + rz, cf);
     qd(X0 + rx, rtop, Z1 - rz, X1 - rx, rtop, Z1 - rz, X1, ry, Z1, X0, ry, Z1, rz ? c1 : shade(wc, 7));
@@ -2474,16 +2489,22 @@ static void draw_floors(int L) {   // floors as the biggest same-type rectangles
 static u32 *wsig;          // (D39) set: draw_walls only mixes which walls are cut down into *wsig (the still list's signature)
 static void draw_walls(int L, int yaw) {   // thin walls (a skirting board, the wall, a pale cap) and proper doors
     u8 (*hw)[GN] = HWv(L); u8 (*vw)[GN + 1] = VWv(L);
+    int inside=0;
+    if(mode==M_LIVE&&o_roof!=1&&ctl>=0&&ctl<nsim&&slv[ctl]==L){
+        int cx=fdiv(sims[ctl].x+8,16),cy=fdiv(sims[ctl].y+8,16);
+        inside=ds_cell_enclosed(&hw[0][0],&vw[0][0],GN,cx,cy);
+    }
+    int allow_cut=ds_wall_cutaway_allowed(mode==M_LIVE,o_roof,inside);
     int th = T / 16, whf = WHF, whl = T * 2, cs = cosLerp(yaw), sn = sinLerp(yaw); int tx0 = mode == M_LIVE ? camx : 0, tz0 = mode == M_LIVE ? camz : 0;
     for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) { int v = hw[y][x]; if (!v) continue; int e = x + 1; if (v != 5 && v != 6) while (e < GN && hw[y][e] == v) e++;   // runs of the same wall are one piece (the polygon budget)
-        int mx = (tl(x * 2) + tl(e * 2)) / 2, mz = tl(y * 2); int near = (((mx - tx0) * -sn + (mz - tz0) * cs) >> 12) > 2000;
+        int mx = (tl(x * 2) + tl(e * 2)) / 2, mz = tl(y * 2); int near = allow_cut && (((mx - tx0) * -sn + (mz - tz0) * cs) >> 12) > 2000;
         if (wsig) { *wsig = (*wsig ^ (u32)(near + x * 2 + y * 64)) * 16777619u; x = e - 1; continue; }
         if (v == 5 ? (dpass != 0 && dpass != 2) : (dpass != 0 && dpass != 1)) { x = e - 1; continue; }   // (doors open and shut as the sims pass: they are drawn with what moves)
         if (v == 5) { door_open = 0; for (int q = 0; q < nsim; q++) if (slv[q] == L && abs(sims[q].x - x * 16) < 26 && abs(sims[q].y - (y * 16 - 8)) < 26) door_open = 1; }
         int through0 = v != 6 && y > 0 && y < GN && vw[y - 1][x] && vw[y][x], through1 = v != 6 && y > 0 && y < GN && e <= GN && vw[y - 1][e] && vw[y][e];   // does a wall run right across the end? then stop inside it (no poking out)
         wall_seg(tl(x * 2) - (through0 ? -6 : th + 4), tl(y * 2) - th, tl(e * 2) + (through1 ? -6 : th + 4), tl(y * 2) + th, v, 0, near ? whl : whf); x = e - 1; }
     for (int x = 0; x <= GN; x++) for (int y = 0; y < GN; y++) { int v = vw[y][x]; if (!v) continue; int e = y + 1; if (v != 5 && v != 6) while (e < GN && vw[e][x] == v) e++;
-        int mx = tl(x * 2), mz = (tl(y * 2) + tl(e * 2)) / 2; int near = (((mx - tx0) * -sn + (mz - tz0) * cs) >> 12) > 2000;
+        int mx = tl(x * 2), mz = (tl(y * 2) + tl(e * 2)) / 2; int near = allow_cut && (((mx - tx0) * -sn + (mz - tz0) * cs) >> 12) > 2000;
         if (wsig) { *wsig = (*wsig ^ (u32)(near + x * 4096 + y * 128)) * 16777619u; y = e - 1; continue; }
         if (v == 5 ? (dpass != 0 && dpass != 2) : (dpass != 0 && dpass != 1)) { y = e - 1; continue; }
         if (v == 5) { door_open = 0; for (int q = 0; q < nsim; q++) if (slv[q] == L && abs(sims[q].x - (x * 16 - 8)) < 26 && abs(sims[q].y - y * 16) < 26) door_open = 1; }
@@ -2541,7 +2562,7 @@ static void draw_build(int yaw) {   // (D39) dpass 1: the still part (recorded o
             gx_pid(16 + i % 40); obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); lod_force = lf_; } }
     gy_off = 0; lod_force = 0; if (dpass == 2) PROF(6);
 world:
-    if (wd) { gx_pid(3); if (mode == M_LIVE) draw_world(yaw); else {   // (D36: the street round the plot after the house, so the house is never what the DS's polygon list drops)
+    if (wd) { gx_pid(3); if (mode == M_LIVE) { draw_near_shells(yaw); draw_world(yaw); } else {   // (D36: the street round the plot after the house, so the house is never what the DS's polygon list drops)
         tx_want = TX_ASPHALT; ground(tl(-14), tl(-9), tl(40), tl(-2), 0, C15(7, 7, 9)); ground(tl(-14), tl(28), tl(40), tl(35), 0, C15(7, 7, 9)); tx_want = TX_PAVING;   // two proper streets, three cells wide
         block(tl(-14), tl(-2), tl(40), tl(0), 0, -14, C15(20, 20, 20), C15(24, 24, 24)); block(tl(-14), tl(26), tl(40), tl(28), 0, -14, C15(20, 20, 20), C15(24, 24, 24));   // pavements
         tx_want = -1; for (int x = -13; x < 40; x += 4) { ground(tl(x), tl(-6) - 14, tl(x) + T * 2, tl(-6) + 14, -6, C15(28, 26, 8)); ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -6, C15(28, 26, 8)); }   // lane dashes (flat: one quad each, not five)

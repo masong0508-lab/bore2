@@ -147,9 +147,14 @@ static int ds_street_ground_lift(int lx, int ly, int south, int east,
  * Houses, floors and Sims come first. Decorations and distant lots degrade
  * before they can starve the primary geometry. */
 enum { DS_RENDER_FRAME_TRI_LIMIT = 3800,
-       DS_RENDER_WORLD_RESERVE = 640,
+       DS_RENDER_WORLD_RESERVE = 920,
        DS_RENDER_NEAR_RESERVE = 320,
        DS_RENDER_FAR_RESERVE = 90 };
+/* Keep the house exterior intact during outdoor camera rotations. */
+static inline int ds_wall_cutaway_allowed(int live, int roofs, int inside)
+{
+    return !live || (roofs != 1 && inside);
+}
 static int ds_item_over_budget(int triangles, int yard)
 {
     return triangles > DS_RENDER_FRAME_TRI_LIMIT -

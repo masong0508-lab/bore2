@@ -178,11 +178,14 @@ int main(void) {
     }
     /* The renderer counts two triangles per quad; reserve room for the
      * world in the object pass, and degrade details before full capacity. */
-    assert(!ds_item_over_budget(3000, 0));
-    assert(!ds_item_over_budget(3160, 0));
-    assert(ds_item_over_budget(3161, 0));
-    assert(!ds_item_over_budget(3080, 1));
-    assert(ds_item_over_budget(3081, 1));
+    assert(!ds_item_over_budget(2880, 0));
+    assert(ds_item_over_budget(2881, 0));
+    assert(!ds_item_over_budget(2800, 1));
+    assert(ds_item_over_budget(2801, 1));
+    assert(!ds_wall_cutaway_allowed(1, 0, 0));
+    assert(!ds_wall_cutaway_allowed(1, 1, 1));
+    assert(ds_wall_cutaway_allowed(1, 0, 1));
+    assert(ds_wall_cutaway_allowed(0, 1, 0));
     assert(ds_world_detail_budget(3480));
     assert(!ds_world_detail_budget(3481));
     assert(ds_world_far_budget(3710));
