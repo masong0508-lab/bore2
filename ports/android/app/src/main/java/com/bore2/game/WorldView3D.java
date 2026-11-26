@@ -16,7 +16,7 @@ import javax.microedition.khronos.opengles.GL10;
 
 /** A depth-buffered, on-demand renderer for the native BORE neighborhood mesh. */
 final class WorldView3D extends GLSurfaceView {
-    interface Picker { void onPick(int x,int y,int originX,int originY); }
+    interface Picker { void onPick(int x,int y,int originX,int originY,int revision); }
     private final SceneRenderer scene;
     private final ScaleGestureDetector scale;
     private float startX,startY,lastX,lastY;
@@ -38,8 +38,8 @@ final class WorldView3D extends GLSurfaceView {
             }
         });
     }
-    void setScene(float[] v,int x,int y,Runnable failed){
-        queueEvent(()->scene.setScene(v,x,y,failed));requestRender();
+    void setScene(float[] v,int x,int y,int revision,Runnable ready,Runnable failed){
+        queueEvent(()->scene.setScene(v,x,y,revision,ready,failed));requestRender();
     }
     void select(int x,int y){
         queueEvent(()->{scene.selX=x;scene.selY=y;});requestRender();
@@ -104,8 +104,8 @@ final class WorldView3D extends GLSurfaceView {
         private final Picker picker;
         private final float[] projection=new float[16],view=new float[16],vp=new float[16],inverse=new float[16];
         private float[] mesh=new float[0],pendingMesh;
-        private int pendingX,pendingY;
-        private Runnable pendingFailure;
+        private int pendingX,pendingY,pendingRevision,revision;
+        private Runnable pendingReady,pendingFailure,activeFailure;
         private int originX,originY,selX=Integer.MIN_VALUE,selY,width,height,program,vbo;
         private int aPosition,aColor,uVP,uEye,uSelection,uSelected,uSky,uPlayer,uPlayerVisible;
         private int playerX=Integer.MIN_VALUE,playerY=Integer.MIN_VALUE;
@@ -114,9 +114,10 @@ final class WorldView3D extends GLSurfaceView {
         private float targetY=0;
         float yaw=42,pitch=49,distance=48;
         SceneRenderer(Picker pick){picker=pick;}
-        void setScene(float[] v,int x,int y,Runnable failed){
+        void setScene(float[] v,int x,int y,int id,Runnable ready,Runnable failed){
             if(v==null||v.length==0||v.length%18!=0){if(failed!=null)post(failed);return;}
-            pendingMesh=v;pendingX=x;pendingY=y;pendingFailure=failed;dirty=true;
+            pendingMesh=v;pendingX=x;pendingY=y;pendingRevision=id;
+            pendingReady=ready;pendingFailure=failed;dirty=true;
         }
         private void uploadScene(){
             float[] next=pendingMesh!=null?pendingMesh:mesh;
@@ -138,17 +139,20 @@ final class WorldView3D extends GLSurfaceView {
                 if(vbo!=0)GLES20.glDeleteBuffers(1,new int[]{vbo},0);
                 vbo=buffers[0];
                 if(pendingMesh!=null){
-                    mesh=next;originX=pendingX;originY=pendingY;validMatrix=false;
+                    mesh=next;originX=pendingX;originY=pendingY;revision=pendingRevision;
+                    activeFailure=pendingFailure;validMatrix=false;
                     float low=Float.POSITIVE_INFINITY;
                     for(int i=0;i<mesh.length;i+=6)
                         if(Math.abs(mesh[i])<=10&&Math.abs(mesh[i+2])<=10)low=Math.min(low,mesh[i+1]);
                     targetY=Float.isFinite(low)?low+1f:1f;
+                    if(pendingReady!=null)post(pendingReady);
                 }
             }else{
                 if(buffers[0]!=0)GLES20.glDeleteBuffers(1,buffers,0);
-                if(pendingFailure!=null)post(pendingFailure);
+                Runnable failure=pendingMesh!=null?pendingFailure:activeFailure;
+                if(failure!=null)post(failure);
             }
-            pendingMesh=null;pendingFailure=null;dirty=false;
+            pendingMesh=null;pendingReady=null;pendingFailure=null;dirty=false;
         }
         private int shader(int type,String source){
             int id=GLES20.glCreateShader(type);GLES20.glShaderSource(id,source);GLES20.glCompileShader(id);
@@ -230,8 +234,8 @@ final class WorldView3D extends GLSurfaceView {
             if(best>1)return;
             int x=originX+(int)Math.floor((a[0]+best*dx+9)/18);
             int y=originY+(int)Math.floor((a[2]+best*dz+9)/18);
-            int ox=originX,oy=originY;
-            if(x>=0&&x<1024&&y>=0&&y<1024)post(()->picker.onPick(x,y,ox,oy));
+            int ox=originX,oy=originY,id=revision;
+            if(x>=0&&x<1024&&y>=0&&y<1024)post(()->picker.onPick(x,y,ox,oy,id));
         }
     }
 }

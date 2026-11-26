@@ -26,16 +26,18 @@ int far_reach_m(void);                     // that in metres; -1 when the far vi
 #define GB 3                                // the guard band: the view's edges pushed out 3x (screen coordinates stay inside +-1023)
 
 // ================================================================== the ordering table: the ground first, then back to front
-static inline int far_slot(int zw) {        // zw: depth in world units
-    if (zw < 8192) { int i = zw >> OT_SHIFT; return CLAMP(i, 1, OT_NEAR - 1); }
-    int i = OT_NEAR + ((zw - 8192) >> 10); return MIN(i, OT_FAR_LAST);
+static inline int far_slot(int zw){
+    return render_world_depth_slot(zw/4,OT_SHIFT,OT_NEAR,OT_FAR_LAST);
+}
+static inline int face_slot(int sum,int vertices,int original){
+    if(original>=OT_GROUND_WIN)return original; // terrain has its own ordered layer
+    return render_world_depth_slot(render_proxy_depth(sum,vertices),OT_SHIFT,OT_NEAR,OT_FAR_LAST);
 }
 static inline u32 *pk(int words) { return (u32 *)gfx_alloc((words + 1) * 4); }
 static inline void lk(u32 *p, int words, int slot) { u32 *o = gfx_ot() + slot; p[0] = ((u32)words << 24) | (*o & 0xffffff); *o = (u32)p & 0xffffff; far_prims++; }
 #define FXY(x, y) (((u32)(u16)(s16)(y) << 16) | (u16)(s16)(x))
 
 // ================================================================== the far world's own scale
-static int far_local;
 static VECTOR feye;                         // the eye (local units)
 static int fwx0, fwy0;                      // the window's corner in world tiles
 typedef struct { short sx, sy; int z; int vx, vy, vz; } FV;   // screen; depth (world units); view space (1/16 units)
@@ -103,7 +105,7 @@ static void emit_clipped(const FV *v, const u32 *col, int n, int slot) {
         p[1] = 0x30000000u | (u32)a[0].r | ((u32)a[0].g << 8) | ((u32)a[0].b << 16); p[2] = FXY(sx[0], sy[0]);
         p[3] = (u32)a[i].r | ((u32)a[i].g << 8) | ((u32)a[i].b << 16); p[4] = FXY(sx[i], sy[i]);
         p[5] = (u32)a[i + 1].r | ((u32)a[i + 1].g << 8) | ((u32)a[i + 1].b << 16); p[6] = FXY(sx[i + 1], sy[i + 1]);
-        lk(p,6,far_local?render_proxy_slot(a[0].z+a[i].z+a[i+1].z,3,OT_SHIFT,OT_NEAR-4):slot);
+        lk(p,6,face_slot(a[0].z+a[i].z+a[i+1].z,3,slot));
     }
 }
 // a flat piece of ground (x0..x1, z0..z1 local units, z0 > z1), its corners hazed by their distance
@@ -144,27 +146,32 @@ static void ground_quad(int x0, int x1, int z0, int z1, int r, int g, int b, int
 static u8 fcell[FC][FC];                     // BT_ (0..5), +8 in a town; 0xFF: not worked out yet
 static int fc_x0 = -100000, fc_y0;          // the world cell at [0][0]
 static int fc_unknown;                       // cells still to work out
-static int far_cell_type(int cx, int cy) {
-    int bx = cx * FCB + FCB / 2, by = cy * FCB + FCB / 2;
-    int t = bm_terrain(bx, by);
-    if (t != BT_SEA && bm_set_at(bx, by) != 255) {
-        t |= 8;
-        // Reuse the high nibble of the existing cell byte for four stable
-        // tree candidates. Query only on cell generation, not every frame.
-        u32 seed=bm_seed()^0x7E3Eu;
-        for(int j=0;j<4;j++){
-            u32 h=bm_hash(cx*61+j,cy*37-j,seed);
-            int tx=cx*CELL_T+(int)(h%CELL_T),ty=cy*CELL_T+(int)((h>>6)%CELL_T);
-            if(tx<0||ty<0||tx>=BM_N*BM_BLK||ty>=BM_N*BM_BLK)continue;
-            BInfo b;bm_block(tx/BM_BLK,ty/BM_BLK,&b);
-            if(b.terrain!=BT_SEA&&(b.lot==LOT_WILD||b.lot==LOT_PARK||b.lot==LOT_EMPTY)&&
-               tx%BM_BLK>BM_LOT0&&ty%BM_BLK>BM_LOT0&&
-               tx%BM_BLK<BM_BLK-1&&ty%BM_BLK<BM_BLK-1)t|=1<<(4+j);
-        }
-    }
-    return t;
+// Land classification is cheap and independent of tree placement. Town
+// cells reserve bit 0 for the lazy candidate mask (high four bits).
+static int far_cell_type(int cx,int cy){
+    int bx=cx*FCB+FCB/2,by=cy*FCB+FCB/2;
+    int t=bm_terrain(bx,by);
+    return t!=BT_SEA&&bm_set_at(bx,by)!=255?8:t;
 }
-static int far_cell_land(int t){return t==0xFF?t:t&15;}
+static int far_cell_land(int t){return t==0xff?t:(t&8)?8:t&7;}
+static int far_tree_candidates(int cx,int cy){
+    int ix=cx-fc_x0,iy=cy-fc_y0;
+    if((unsigned)ix>=FC||(unsigned)iy>=FC)return 0xff;
+    u8 *v=&fcell[iy][ix];int t=*v;
+    if(t==0xff||!(t&8)||(t&1))return t;
+    u32 seed=bm_seed()^0x7E3Eu;
+    t|=1;
+    for(int j=0;j<4;j++){
+        u32 h=bm_hash(cx*61+j,cy*37-j,seed);
+        int tx=cx*CELL_T+(int)(h%CELL_T),ty=cy*CELL_T+(int)((h>>6)%CELL_T);
+        if(tx<0||ty<0||tx>=BM_N*BM_BLK||ty>=BM_N*BM_BLK||
+           tx%BM_BLK<=BM_LOT0||ty%BM_BLK<=BM_LOT0||
+           tx%BM_BLK>=BM_BLK-1||ty%BM_BLK>=BM_BLK-1)continue;
+        BInfo b;bm_block(tx/BM_BLK,ty/BM_BLK,&b);
+        if(b.terrain!=BT_SEA&&(b.lot==LOT_WILD||b.lot==LOT_PARK||b.lot==LOT_EMPTY))t|=1<<(4+j);
+    }
+    *v=(u8)t;return t;
+}
 static int pbx, pby;                         // the world block you are on
 static void cells_follow(int budget) {       // keep the cells centred on you; work out a few a frame (the nearest first)
     int want_x = pbx / FCB - FC / 2, want_y = pby / FCB - FC / 2;
@@ -197,7 +204,15 @@ static void cells_follow(int budget) {       // keep the cells centred on you; w
 void far_reset(void) {
     if (world_wbx < 0) return;
     pbx = world_wbx + 2; pby = world_wby + 2;
-    fc_x0 = -100000; cells_follow(FC * FC);
+    // Reuse the overlapping land cache on nearby travel. A world/edit
+    // stamp change still invalidates it. Prime only nearby tree cells.
+    cells_follow(FC*FC);
+    if(far_trees){
+        static const int metres[4]={0,100,200,350};
+        int r=M2U(metres[CLAMP(far_trees,0,3)])/(CELL_T*TILE)+1;
+        for(int y=pby/FCB-r;y<=pby/FCB+r;y++)
+            for(int x=pbx/FCB-r;x<=pbx/FCB+r;x++)far_tree_candidates(x,y);
+    }
 }
 int far_season, far_wet;   // the season (0..3) and the weather's wet (1): main sets them
 static void season_rgb(int kind, int *r, int *g, int *b) {   // kind: 0 grass, 1 forest, 2 hard ground (paving, road, rock, sand, soil), 3 water, 4 a town
@@ -441,6 +456,7 @@ static void rh_follow(int cbx, int cby) {
 }
 static inline int rh_get(int bx, int by, int k, int x, int z) {   // k: 0 the corner, 1 three tiles east, 2 three south; (x, z): that point
     if (ABS(bx - rh_cx) > RH_R || ABS(by - rh_cy) > RH_R) return world_gh(x, z);
+    if(bx<0||by<0)return world_gh(x,z);
     s16 *p = &rh_tab[by % RH_N][bx % RH_N][k]; if (*p == 0x7f7f) *p = (s16)world_gh(x, z);
     return *p;
 }
@@ -579,7 +595,7 @@ static inline u32 lit(const u8 *c, int L, int f) { return hazed((c[0] * L) >> 7,
 static void face_f4(const XV *a, const XV *b, const XV *c, const XV *d, u32 col, int slot) {   // a b c d = TL TR BL BR
     u32 *p = pk(5); if (!p) return;
     p[1] = 0x28000000u | col; p[2] = FXY(a->x, a->y); p[3] = FXY(b->x, b->y); p[4] = FXY(c->x, c->y); p[5] = FXY(d->x, d->y);
-    lk(p,5,far_local?render_proxy_slot(a->z+b->z+c->z+d->z,4,OT_SHIFT,OT_NEAR-4):slot);
+    lk(p,5,face_slot(a->z+b->z+c->z+d->z,4,slot));
 }
 static void face_win(const XV *a, const XV *b, const XV *c, const XV *d, u32 col, int uw, int vh, int slot) {   // windows, repeated
     u32 *p = pk(11); if (!p) return;
@@ -589,7 +605,7 @@ static void face_win(const XV *a, const XV *b, const XV *c, const XV *d, u32 col
     p[2] = 0x2C000000u | col; p[3] = FXY(a->x, a->y); p[4] = 0;                       p[5] = FXY(b->x, b->y); p[6] = (u32)uw | tp;
     p[7] = FXY(c->x, c->y);    p[8] = (u32)vh << 8;                                   p[9] = FXY(d->x, d->y); p[10] = (u32)uw | ((u32)vh << 8);
     p[11] = 0xE2000000u;
-    lk(p,11,far_local?render_proxy_slot(a->z+b->z+c->z+d->z,4,OT_SHIFT,OT_NEAR-4):slot);
+    lk(p,11,face_slot(a->z+b->z+c->z+d->z,4,slot));
 }
 static inline int xv_good(const XV *v) { return v->z >= ZN && v->x > -1000 && v->x < 1320 && v->y > -1000 && v->y < 1240; }
 // a building as a box: x0 < x1, z0 > z1 (north, south), sto storeys; its walls' colour, a pitched roof (or flat) and its colour
@@ -742,7 +758,7 @@ static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int r
             u32 col=sloped?lit(rc,Lroof*sh[k]/7,hf):lit(wc,k==0?Ln:k==1?Le:k==2?Ls:Lw,hf);
             if(ix[k]==ix[n]&&iz[k]==iz[n]){
                 u32 *p=pk(4);if(!p)return;
-                p[1]=0x20000000u|col;p[2]=FXY(a->x,a->y);p[3]=FXY(b->x,b->y);p[4]=FXY(R[k].x,R[k].y);lk(p,4,far_local?render_proxy_slot(a->z+b->z+R[k].z,3,OT_SHIFT,OT_NEAR-4):slot);
+                p[1]=0x20000000u|col;p[2]=FXY(a->x,a->y);p[3]=FXY(b->x,b->y);p[4]=FXY(R[k].x,R[k].y);lk(p,4,face_slot(a->z+b->z+R[k].z,3,slot));
             }else face_f4(a,b,&R[k],&R[n],col,slot);
         }
         if(ey<top-rise&&ix[1]>ix[0]&&iz[0]>iz[3])
@@ -876,6 +892,7 @@ static void tree_card(int x, int z, int k, int big) {
     lk(p, 9, far_slot(zw));
 }
 static void draw_trees(int rx0, int ry0, int rx1, int ry1) {
+    (void)rx0;(void)ry0;(void)rx1;(void)ry1;
     if (!far_trees || !tex_ok) return;
     light_tree = CLAMP(gfx_light(0, -ONE / 2, -ONE / 2), 60, 200);
     // the map's own trees past the detail (where they really stand)
@@ -884,7 +901,7 @@ static void draw_trees(int rx0, int ry0, int rx1, int ry1) {
         if (!wvis[c / (MW / 4)][c % (MW / 4)]) continue;
         for (int i = wt_lo[c]; i < wt_lo[c + 1]; i++) {
             int x = wt_x[i], y = wt_y[i];
-            if (x >= rx0 && x <= rx1 && y >= ry0 && y <= ry1) continue;   // (drawn as themselves)
+            if(world_tree_drawn(x,y))continue; // exact per-frame owner, including budget fallbacks
             int wx = x * TILE + TILE / 2, wz = -(y * TILE + TILE / 2);
             int ddx = ABS(wx - feye.vx), ddz = ABS(wz - feye.vz); if (MAX(ddx, ddz) > max_tree) continue;
             tree_card(wx, wz, wt_k[i], 4);
@@ -905,6 +922,7 @@ static void draw_trees(int rx0, int ry0, int rx1, int ry1) {
         int ctx = cx * CELL_T, cty = cy * CELL_T;
         int ccx = (ctx + CELL_T / 2 - fwx0) * TILE, ccz = -((cty + CELL_T / 2 - fwy0) * TILE);
         if (!in_cone(ccx, ccz, CELL_T * TILE * 3 / 4, max_tree)) continue;
+        if(t&8)t=far_tree_candidates(cx,cy); // only visible candidates need lot queries
         int overlap=ctx<wx0+(MW/BM_BLK)*BM_BLK&&ctx+CELL_T>wx0&&cty<wy0+(MH/BM_BLK)*BM_BLK&&cty+CELL_T>wy0;
         u32 seed = bm_seed() ^ 0x7E3Eu;
         for (int j = 0; j < n; j++) {
@@ -984,7 +1002,7 @@ void far_sky(u32 top, u32 horizon) { far_sky_sea(top, horizon, 0); }
 // ================================================================== the frame
 static int far_on_frame;
 int far_begin(u32 horizon) {
-    far_prims=0;far_on_frame=0;far_local=0; far_nclip = far_ncone = far_nquad = 0; far_hb[0] = far_hb[1] = far_hb[2] = 0;   // (a frame without the far pass reads 0, not the last one's)
+    far_prims=0;far_on_frame=0; far_nclip = far_ncone = far_nquad = 0; far_hb[0] = far_hb[1] = far_hb[2] = 0;   // (a frame without the far pass reads 0, not the last one's)
     if (world_zone != ZONE_CITY || world_wbx < 0 || far_view <= 0) return 0;
     if (!tex_ok) far_tex();
     hz_r = horizon & 255; hz_g = (horizon >> 8) & 255; hz_b = (horizon >> 16) & 255;
@@ -999,7 +1017,6 @@ int far_begin(u32 horizon) {
 int far_reach_m(void) { return far_on_frame ? far_reach_u / 213 : -1; }
 void far_resume(void){if(far_on_frame)far_gte();}
 void far_local_begin(u32 horizon){
-    far_local=1;
     if(!far_on_frame){
         // Even "near only" needs the same clipped, terrain-anchored boxes.
         hz_r=horizon&255;hz_g=(horizon>>8)&255;hz_b=(horizon>>16)&255;
@@ -1035,8 +1052,8 @@ void far_draw_pending(u32 horizon){
     }
 }
 void far_draw(int rx0, int ry0, int rx1, int ry1) {
-    if(!far_on_frame){far_local=0;return;}
-    far_local=0;far_gte();
+    if(!far_on_frame)return;
+    far_gte();
     int t0 = gfx_hb(); draw_land(rx0, ry0, rx1, ry1); int t1 = gfx_hb(); int p1 = far_prims;
     draw_buildings(rx0, ry0, rx1, ry1); int t2 = gfx_hb(); int p2 = far_prims;
     draw_trees(rx0, ry0, rx1, ry1); int t3 = gfx_hb();

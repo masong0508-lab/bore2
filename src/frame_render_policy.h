@@ -38,3 +38,24 @@ static inline int render_proxy_slot(int sum,int vertices,int shift,int limit){
     int slot=z>>shift;
     return slot<1?1:slot>limit?limit:slot;
 }
+
+// The near renderer orders GTE OTZ (roughly a quarter of world depth).
+// Continue that same scale into the far buckets; never reuse the three
+// reserved floor/shadow indices for geometry.
+static inline int render_world_depth_slot(int quarter,int shift,int near,int last){
+    int split=near<<shift;
+    if(quarter<split){
+        int i=quarter>0?quarter>>shift:1;
+        return i<1?1:i>near-4?near-4:i;
+    }
+    int i=near+((quarter-split)>>8);
+    return i>last?last:i;
+}
+static inline int render_proxy_depth(int sum,int vertices){
+    return sum>0?(vertices==3?(sum*341)>>8:sum):0;
+}
+// With a lifted GTE matrix the translation is rounded per axis. Use the
+// identical translation for the software clipper (not an unlifted point).
+static inline int render_lift_translation(int t,int lift,int y_column){
+    return t-((lift*y_column)>>12);
+}

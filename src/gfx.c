@@ -32,7 +32,7 @@ static int  db_active = 0;
 static int  alloc_reserve;        // bytes of the packet buffer gfx_alloc keeps back (gfx_set_reserve)
 char *gfx_pk_next, *gfx_pk_end;   // the packet cursor and its limit (the end, less the reserve): gfx_fast.h allocates inline
 u32 *gfx_ot_cur;                   // this frame's ordering table
-int gfx_zbias, gfx_fog_on, gfx_zbase, gfx_ot_max = OT_NEAR - 1;
+int gfx_zbias, gfx_fog_on, gfx_zbase, gfx_ot_max=OT_NEAR-4;
 int gfx_wide;
 int gfx_keep;
 int gfx_min_vsyncs = 1;   // (the options menu: 2 a steady 30 FPS, 3 a steady 20)
@@ -302,7 +302,7 @@ void gfx_set_object_m(const MATRIX *world) {
 }
 void gfx_set_identity(void) {
     GTE_FENCE(); gte_SetRotMatrix(&cam.view);
-    if (gfx_lift) { MATRIX v = cam.view; for (int i = 0; i < 3; i++) v.t[i] -= (gfx_lift * v.m[i][1]) >> 12; gte_SetTransMatrix(&v); } else
+    if (gfx_lift) { MATRIX v = cam.view; for(int i=0;i<3;i++)v.t[i]=render_lift_translation(v.t[i],gfx_lift,v.m[i][1]); gte_SetTransMatrix(&v); } else
     gte_SetTransMatrix(&cam.view);
     obj_yaw = 0; light_to_object();
 }

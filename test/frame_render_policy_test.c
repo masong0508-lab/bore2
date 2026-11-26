@@ -26,5 +26,20 @@ int main(void){
         assert(render_proxy_slot(scaled*3,3,shift,4096)==((tri>>shift)<1?1:tri>>shift));
     }
     assert(render_proxy_slot(100000,4,2,2044)==2044);
-    puts("Frame ownership, safe aligned packets, matching local proxy depth and texture protection PASS");
+    for(int sh=1;sh<=2;sh++){
+        int near=8192>>sh,last=near+252,prior=0;
+        for(int depth=0;depth<=450000;depth+=16){
+            int q=depth/4,i=render_world_depth_slot(q,sh,near,last);
+            assert(i>=prior&&i<=last&&i!=near-3&&i!=near-2&&i!=near-1);
+            if(q<8192)assert(i==render_proxy_slot(depth/4,4,sh,near-4));
+            assert(render_proxy_depth((depth/16)*4,4)==q);
+            prior=i;
+        }
+        assert(render_world_depth_slot(8191,sh,near,last)==near-4);
+        assert(render_world_depth_slot(8192,sh,near,last)==near);
+    }
+    assert(render_lift_translation(300,1000,4096)==-700);
+    assert(render_lift_translation(300,1000,-2048)==800);
+    assert(render_lift_translation(300,1000,0)==300);
+    puts("Frame ownership, aligned packets, unified near/far depth and lifted clipping PASS");
 }

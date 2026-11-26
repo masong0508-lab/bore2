@@ -1670,12 +1670,15 @@ static void nc_piece(const NV *p0, const NV *p1, const NV *p2, const NV *p3, int
 // a quad given as its corners a b / c d (world space), a colour and a texel for each, cut and drawn by the above
 static void nc_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d, const u32 *col, int tex, u16 tpage, u16 clut, const u32 *uv, int cull) {
     const SVECTOR *sv[4] = { a, b, c, d };
-    const MATRIX *m = &cam.view;
-    for (int i = 0; i < 4; i++) {
-        int x = sv[i]->vx, y = sv[i]->vy, z = sv[i]->vz; NV *n = &nq_c[i];
-        n->x = ((m->m[0][0] * x + m->m[0][1] * y + m->m[0][2] * z) >> 12) + m->t[0];
-        n->y = ((m->m[1][0] * x + m->m[1][1] * y + m->m[1][2] * z) >> 12) + m->t[1];
-        n->z = ((m->m[2][0] * x + m->m[2][1] * y + m->m[2][2] * z) >> 12) + m->t[2];
+    const MATRIX *m=&cam.view;
+    int tx=render_lift_translation(m->t[0],gfx_lift,m->m[0][1]);
+    int ty=render_lift_translation(m->t[1],gfx_lift,m->m[1][1]);
+    int tz=render_lift_translation(m->t[2],gfx_lift,m->m[2][1]);
+    for(int i=0;i<4;i++){
+        int x=sv[i]->vx,y=sv[i]->vy,z=sv[i]->vz;NV *n=&nq_c[i];
+        n->x=((m->m[0][0]*x+m->m[0][1]*y+m->m[0][2]*z)>>12)+tx;
+        n->y=((m->m[1][0]*x+m->m[1][1]*y+m->m[1][2]*z)>>12)+ty;
+        n->z=((m->m[2][0]*x+m->m[2][1]*y+m->m[2][2]*z)>>12)+tz;
         n->u = (int)(uv[i] & 255) << 8; n->v = (int)((uv[i] >> 8) & 255) << 8;
         n->r = (int)(col[i] & 255); n->g = (int)((col[i] >> 8) & 255); n->b = (int)((col[i] >> 16) & 255);
         nc_proj(n);
@@ -1700,9 +1703,7 @@ static void wquad_f(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const 
 // for items.c: a prop's face (corners a b / c d, world space) cut at the near plane and split so it holds its perspective
 int world_nc_need(const XV *a, const XV *b, const XV *c, const XV *d) { return nc_need4(a, b, c, d); }
 void world_nc_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const SVECTOR *d, const u32 *col, int tex, u16 tpage, const u32 *uv, int cull) {
-    SVECTOR s[4] SVEC_ALIGN; s[0] = *a; s[1] = *b; s[2] = *c; s[3] = *d;
-    for (int i = 0; i < 4; i++) s[i].vy = (short)(s[i].vy - gfx_lift);   // (the hills raise what is drawn: the GTE does it, so do it here too)
-    nc_quad(&s[0], &s[1], &s[2], &s[3], col, tex, tpage, 0, uv, cull);
+    nc_quad(a,b,c,d,col,tex,tpage,0,uv,cull); // nc_quad already applies the GTE's lift
 }
 // ---- the hills: the ground's height (units up) at a tile corner, from the land's block heights; towns are level ----
 static int gh_bx = -99999, gh_by, gh_h[4], gh_t[4];
@@ -2898,12 +2899,12 @@ static void roofs_draw(int fx, int fy) {
                 int lc = CLAMP(gfx_light_amb() * 2, 80, 190);
                 u32 pc = (u32)lc | ((u32)(lc - 4) << 8) | ((u32)(lc - 12) << 16);
                 if (nc_need4(A, B, C, DQ)) {   // (overhead and close: cut at the near plane, so the ceiling never has holes)
-                    SVECTOR s4[4] SVEC_ALIGN; roof_corner(l, x, y, &s4[0], base, pitch); roof_corner(l, x + 1, y, &s4[1], base, pitch); roof_corner(l, x, y + 1, &s4[2], base, pitch); roof_corner(l, x + 1, y + 1, &s4[3], base, pitch);
+                    SVECTOR s4[4] SVEC_ALIGN; roof_corner(l,x,y,&s4[0],base,pitch);roof_corner(l,x+sp,y,&s4[1],base,pitch);roof_corner(l,x,y+sp,&s4[2],base,pitch);roof_corner(l,x+sp,y+sp,&s4[3],base,pitch);
                     const u32 cc[4] = { pc, pc, pc, pc }, uv0[4] = { 0, 0, 0, 0 };
                     nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 0, 0, 0, uv0, 0);
                 } else gfx_emit_f4(A, B, C, DQ, pc, 0);
             } else if (nc_need4(A, B, C, DQ)) {   // (third person, close: the shingles are cut and split like the floor, so they hold their shape)
-                SVECTOR s4[4] SVEC_ALIGN; roof_corner(l, x, y, &s4[0], base, pitch); roof_corner(l, x + 1, y, &s4[1], base, pitch); roof_corner(l, x, y + 1, &s4[2], base, pitch); roof_corner(l, x + 1, y + 1, &s4[3], base, pitch);
+                SVECTOR s4[4] SVEC_ALIGN; roof_corner(l,x,y,&s4[0],base,pitch);roof_corner(l,x+sp,y,&s4[1],base,pitch);roof_corner(l,x,y+sp,&s4[2],base,pitch);roof_corner(l,x+sp,y+sp,&s4[3],base,pitch);
                 const u32 cc[4] = { c, c, c, c };
                 const u32 uvA[4] = { (u32)u0 | ((u32)v0 << 8), (u32)u1 | ((u32)v0 << 8), (u32)u0 | ((u32)v1 << 8), (u32)u1 | ((u32)v1 << 8) };   // (courses across the slope)
                 const u32 uvB[4] = { (u32)u0 | ((u32)v0 << 8), (u32)u0 | ((u32)v1 << 8), (u32)u1 | ((u32)v0 << 8), (u32)u1 | ((u32)v1 << 8) };   // (courses down it)
@@ -3134,7 +3135,8 @@ COLD static void ground_win(int hz) {   // hz: the far view is on, so the corner
     u32 *ot = gfx_ot_cur + OT_GROUND_WIN;
     for (int Y = 0; Y < NG; Y++) for (int X = 0; X < NG; X++) {
         int tx = X * G, ty = Y * G;
-        if (tx >= rx0 && tx + G - 1 <= rx1 && ty >= ry0 && ty + G - 1 <= ry1) continue;   // (all inside the range)
+        // Keep a continuous low-cost ground layer under the detailed tiles.
+        // A late packet shortage must not expose sky between local floors.
         const XV *a = &xv[Y * (NG + 1) + X], *b = a + 1, *c = a + NG + 1, *d = c + 1;
         int near=a->z<Z_NEAR||b->z<Z_NEAR||c->z<Z_NEAR||d->z<Z_NEAR;
         if (!near&&((a->x < 0 && b->x < 0 && c->x < 0 && d->x < 0) || (a->x >= SCREEN_W && b->x >= SCREEN_W && c->x >= SCREEN_W && d->x >= SCREEN_W) ||
@@ -3164,6 +3166,10 @@ COLD static void ground_win(int hz) {   // hz: the far view is on, so the corner
 }
 // Reuse the same spatial visibility rules, but visit only actual props.
 // Nearby interactive objects get first claim on the remaining packets.
+int world_tree_drawn(int x,int y){
+    return (unsigned)x<CITY_TILES&&(unsigned)y<CITY_TILES&&
+        ((oi_bits[y*OI_ROW+(x>>3)]>>(x&7))&1);
+}
 static void city_props(int fx,int fy,int t,int band,int l){
     extern int world_item_r;
     int ir=MAX(world_item_r,world_detail_r),x0=MAX(0,MIN(ex0,fx-ir)),x1=MIN(CITY_TILES-1,MAX(ex1,fx+ir));
@@ -3180,11 +3186,15 @@ static void city_props(int fx,int fy,int t,int band,int l){
         if(close!=(band==0))continue;
         int vx,vy,vz;tile_view(&tv,x,y,&vx,&vy,&vz);
         if(vz<-TILE||ABS(vx)>(vz*3)/4+TILE*2||ABS(vy)>(vz*5)/8+TILE*3+1500)continue;
-        if(gfx_room()<512){dbg_prop_omitted++;continue;}
+        int room=gfx_room(),tree=!l&&(c=='3'||c=='6'||c=='g'||c=='u');
+        // A tree card is preferable to a truncated trunk when the
+        // full model cannot fit. Only one pass may own this tree.
+        if(room<512||(tree&&far_view&&far_trees&&room<2048)){dbg_prop_omitted++;continue;}
         lift_to(item_lift(x,y,l));
         if(c=='r'){rug_tile(x,y);continue;}
         int rot=items_rotates(c)?world_item_facing(x,y):0,along=items_along(c)?world_along(x,y,c):0;
-        int lite=items_draw_budgeted(c,x,y,rot,along,t,gfx_room());
+        int lite=items_draw_budgeted(c,x,y,rot,along,t,room);
+        if(tree&&lite!=2)oi_bits[y*OI_ROW+(x>>3)]|=(u8)(1u<<(x&7));
         dbg_prop_lite+=lite==1;dbg_prop_omitted+=lite==2;
     }
     lift_to(0);
@@ -3286,6 +3296,9 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         world_hb_sky1 = gfx_hb() - sky_h0;
         gfx_set_identity();
         if(defer_city_props){
+            // Reuse the existing scratchpad bitset for this frame's exact
+            // tree ownership; the legacy non-city path is not active.
+            memset((void*)oi_bits,0,OI_ROW*MH);
             // Retain a portion of the unused packet arena for horizon land.
             int hold=use_far?MIN(3072,MAX(0,gfx_room()/4)):0;
             gfx_set_reserve(world_reserve+hold);

@@ -32,7 +32,8 @@ public final class MainActivity extends Activity {
     private Button dayButton,modeButton;
     private final ExecutorService meshWorker=Executors.newSingleThreadExecutor();
     private volatile int serial;
-    private int meshX=-1,meshY=-1,meshSeed;
+    private int meshX=-1,meshY=-1,meshSeed,meshRevision=-1;
+    private int requestX=-1,requestY=-1,requestSeed;
     private int seed,capitalX,capitalY,cx,cy,radius=8,selectedX,selectedY,weekday;
     private boolean in3d=true;
     private int[] tiles=new int[0];
@@ -89,8 +90,8 @@ public final class MainActivity extends Activity {
         title.setPadding(dp(12),dp(8),dp(12),dp(2));panel.addView(title);
         hint=new TextView(this);hint.setTextColor(Color.rgb(180,201,190));hint.setTextSize(12);
         hint.setPadding(dp(12),0,dp(12),dp(6));panel.addView(hint);
-        world3d=new WorldView3D(this,(x,y,ox,oy)->{
-            if(!in3d||ox!=cx||oy!=cy||meshSeed!=seed||meshX!=cx||meshY!=cy)return;
+        world3d=new WorldView3D(this,(x,y,ox,oy,id)->{
+            if(!in3d||id!=serial||id!=meshRevision||ox!=cx||oy!=cy||meshSeed!=seed||meshX!=cx||meshY!=cy)return;
             selectedX=x;selectedY=y;updateDetails();
         });
         map=new MapView();
@@ -119,7 +120,7 @@ public final class MainActivity extends Activity {
             advanceTime(1440-minute+480);energy=100;food=80;updateDetails();saveLife();
         });
         addButton(second,"New seed",()->{
-            serial++;meshX=meshY=-1;seed=(int)System.nanoTime();resetNative();
+            serial++;meshX=meshY=meshRevision=requestX=requestY=-1;seed=(int)System.nanoTime();resetNative();
             cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
             lifeX=cx;lifeY=cy;weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
             lifeDay=0;lastShiftDay=-1;lastRoute=new int[0];java.util.Arrays.fill(skills,0);world3d.resetCamera();refresh();saveLife();
@@ -165,29 +166,35 @@ public final class MainActivity extends Activity {
         updateDetails();map.invalidate();if(in3d)requestScene();
     }
     private void requestScene(){
-        if(meshX==cx&&meshY==cy&&meshSeed==seed){
+        if(meshX==cx&&meshY==cy&&meshSeed==seed&&meshRevision==serial){
             world3d.select(selectedX,selectedY);return;
         }
+        if(requestX==cx&&requestY==cy&&requestSeed==seed)return;
         final int version=++serial,x=cx,y=cy,key=seed;
-        meshX=meshY=-1;
+        requestX=x;requestY=y;requestSeed=key;
         hint.setText("Loading 3D neighborhood…");
         meshWorker.execute(()->{
             if(version!=serial)return;
-            float[] mesh=NativeWorld.mesh(x,y,4);
+            float[] next;
+            try{next=NativeWorld.mesh(x,y,4);}
+            catch(OutOfMemoryError ex){next=null;}
+            final float[] mesh=next;
             if(version!=serial)return;
             runOnUiThread(()->{
                 if(version!=serial||isFinishing()||isDestroyed())return;
-                if(mesh==null||mesh.length==0){
-                    in3d=false;showMode();hint.setText("3D scene unavailable — map remains usable");return;
-                }
-                meshX=x;meshY=y;meshSeed=key;
-                world3d.setScene(mesh,x,y,()->{
+                Runnable failure=()->{
                     if(version!=serial||isFinishing()||isDestroyed())return;
-                    meshX=meshY=-1;in3d=false;showMode();
-                    hint.setText("3D upload did not fit — map remains usable");
-                });
+                    requestX=requestY=meshX=meshY=meshRevision=-1;
+                    in3d=false;showMode();hint.setText("3D scene unavailable — map remains usable");
+                };
+                if(mesh==null||mesh.length==0){failure.run();return;}
+                world3d.setScene(mesh,x,y,version,()->{
+                    if(version!=serial||isFinishing()||isDestroyed())return;
+                    requestX=requestY=-1;meshX=x;meshY=y;meshSeed=key;meshRevision=version;
+                    world3d.select(selectedX,selectedY);
+                    if(in3d)hint.setText("Drag to orbit · Pinch to zoom · Tap a lot");
+                },failure);
                 world3d.select(selectedX,selectedY);
-                if(in3d)hint.setText("Drag to orbit · Pinch to zoom · Tap a lot");
             });
         });
     }
