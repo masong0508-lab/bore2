@@ -37,6 +37,8 @@ public final class MainActivity extends Activity {
     private boolean in3d=true;
     private int[] tiles=new int[0];
     private int lifeX,lifeY,minute=600,funds=250,energy=100,fun=50,social=50,food=100,sessions;
+    private int lifeDay,lastShiftDay=-1;
+    private int[] lastRoute=new int[0];
     private final int[] skills=new int[7];
     private static final String[] SKILL_NAMES={"Play","Logic","Fitness","Creativity","Cooking","Farming","Charisma"};
     private static int clamp100(int n){return Math.max(0,Math.min(100,n));}
@@ -57,6 +59,7 @@ public final class MainActivity extends Activity {
         funds=Math.max(0,prefs.getInt("funds",250));energy=clamp100(prefs.getInt("energy",100));
         fun=clamp100(prefs.getInt("fun",50));social=clamp100(prefs.getInt("social",50));food=clamp100(prefs.getInt("food",100));
         sessions=Math.max(0,prefs.getInt("sessions",0));
+        lifeDay=Math.max(0,prefs.getInt("lifeDay",0));lastShiftDay=prefs.getInt("lastShiftDay",-1);
         for(int i=0;i<skills.length;i++)skills[i]=Math.max(0,Math.min(4400,prefs.getInt("skill"+i,0)));
 
         boolean wide=getResources().getConfiguration().orientation==Configuration.ORIENTATION_LANDSCAPE;
@@ -119,13 +122,18 @@ public final class MainActivity extends Activity {
             serial++;meshX=meshY=-1;seed=(int)System.nanoTime();resetNative();
             cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
             lifeX=cx;lifeY=cy;weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
-            java.util.Arrays.fill(skills,0);world3d.resetCamera();refresh();saveLife();
+            lifeDay=0;lastShiftDay=-1;lastRoute=new int[0];java.util.Arrays.fill(skills,0);world3d.resetCamera();refresh();saveLife();
         });
         LinearLayout play=new LinearLayout(this);play.setGravity(Gravity.CENTER);
         lower.addView(play,new LinearLayout.LayoutParams(-1,-2));
         addButton(play,"Travel here",this::visitSelected);
         addButton(play,"Activities",this::showActivities);
         addButton(play,"Rest",()->{advanceTime(60);energy=clamp100(energy+20);food=clamp100(food-3);updateDetails();saveLife();});
+        LinearLayout work=new LinearLayout(this);work.setGravity(Gravity.CENTER);
+        lower.addView(work,new LinearLayout.LayoutParams(-1,-2));
+        addButton(work,"Work shift",this::workShift);
+        addButton(work,"Eat ($8)",this::eatMeal);
+        addButton(work,"My location",()->{cx=lifeX;cy=lifeY;selectedX=lifeX;selectedY=lifeY;refresh();});
         setContentView(root);root.requestApplyInsets();showMode();refresh();
     }
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
@@ -178,17 +186,35 @@ public final class MainActivity extends Activity {
         });
     }
     private void advanceTime(int elapsed){
-        int total=minute+Math.max(0,elapsed);weekday=(weekday+total/1440)%7;minute=total%1440;
+        int total=minute+Math.max(0,elapsed);lifeDay+=total/1440;weekday=(weekday+total/1440)%7;minute=total%1440;
     }
     private void notice(String message){Toast.makeText(this,message,Toast.LENGTH_SHORT).show();}
     private void visitSelected(){
         if(!NativeWorld.canVisit(selectedX,selectedY)){notice("Choose a land lot to visit");return;}
-        int blocks=Math.abs(lifeX-selectedX)+Math.abs(lifeY-selectedY);
+        int[] route=NativeWorld.route(lifeX,lifeY,selectedX,selectedY);
+        if(route==null){notice("No local land route. Try a nearer lot or a bridge.");return;}
+        int blocks=route.length;
         if(blocks==0){notice("Already at this lot");return;}
-        int elapsed=Math.min(360,blocks*3),cost=Math.min(20,(blocks+3)/4);
+        int elapsed=blocks*3,cost=(blocks+3)/4;
         if(energy<cost){notice("Rest before traveling");return;}
+        lastRoute=new int[blocks+1];lastRoute[0]=lifeX|(lifeY<<16);
+        System.arraycopy(route,0,lastRoute,1,blocks);
         lifeX=selectedX;lifeY=selectedY;energy-=cost;food=clamp100(food-elapsed/30);
         advanceTime(elapsed);cx=lifeX;cy=lifeY;refresh();saveLife();
+    }
+    private void workShift(){
+        if(lifeX!=selectedX||lifeY!=selectedY){notice("Travel to this workplace first");return;}
+        if(lastShiftDay==lifeDay){notice("You have already worked a shift today");return;}
+        int[] v=NativeWorld.shift(lifeX,lifeY,weekday,minute,energy,food);
+        if(v==null){notice("No work shifts at this location");return;}
+        if(v[0]!=0){notice(v[0]==1?"No shift fits the opening hours":v[0]==2?"Rest before working":"Eat before working");return;}
+        lastShiftDay=lifeDay;funds+=v[2];energy=clamp100(energy-v[3]);food=clamp100(food-v[4]);
+        if(v[5]>=0&&v[5]<skills.length)skills[v[5]]=Math.min(4400,skills[v[5]]+v[6]);
+        advanceTime(v[1]);updateDetails();saveLife();notice("Shift complete: earned $"+v[2]);
+    }
+    private void eatMeal(){
+        if(funds<8){notice("Not enough money for a meal");return;}
+        funds-=8;food=clamp100(food+35);advanceTime(30);updateDetails();saveLife();
     }
     private void showActivities(){
         if(lifeX!=selectedX||lifeY!=selectedY){notice("Travel to this lot first");return;}
@@ -216,7 +242,8 @@ public final class MainActivity extends Activity {
     private void saveLife(){
         SharedPreferences.Editor e=prefs.edit().putInt("seed",seed).putInt("lifeX",lifeX).putInt("lifeY",lifeY)
              .putInt("day",weekday).putInt("minute",minute).putInt("funds",funds).putInt("energy",energy)
-             .putInt("fun",fun).putInt("social",social).putInt("food",food).putInt("sessions",sessions);
+             .putInt("fun",fun).putInt("social",social).putInt("food",food).putInt("sessions",sessions)
+             .putInt("lifeDay",lifeDay).putInt("lastShiftDay",lastShiftDay);
         for(int i=0;i<skills.length;i++)e.putInt("skill"+i,skills[i]);e.apply();
     }
     private void updateDetails(){
@@ -229,7 +256,7 @@ public final class MainActivity extends Activity {
             lifeX==selectedX&&lifeY==selectedY?"At selected lot":"You: "+lifeX+", "+lifeY,SKILL_NAMES[best],skills[best]));
         map.setContentDescription("San Boreas map. Selected lot: "+text);
         world3d.setContentDescription("San Boreas 3D neighborhood. Selected lot: "+text);
-        world3d.select(selectedX,selectedY);
+        world3d.player(lifeX,lifeY);world3d.select(selectedX,selectedY);map.invalidate();
     }
     @Override protected void onResume(){super.onResume();if(world3d!=null)world3d.onResume();}
     @Override protected void onPause(){
@@ -275,6 +302,18 @@ public final class MainActivity extends Activity {
                 paint.setColor(0xff434b4a);
                 if((road&1)!=0)c.drawRect(x,y,x+step,y+step*.18f,paint);
                 if((road&2)!=0)c.drawRect(x,y,x+step*.18f,y+step,paint);
+            }
+            paint.setAntiAlias(true);paint.setColor(0xff80d9cd);paint.setStrokeWidth(Math.max(2,step*.12f));
+            for(int i=1;i<lastRoute.length;i++){
+                int a=lastRoute[i-1],b=lastRoute[i];
+                c.drawLine(lx+((a&65535)-cx+radius+.5f)*step+offsetX,ly+((a>>>16)-cy+radius+.5f)*step+offsetY,
+                    lx+((b&65535)-cx+radius+.5f)*step+offsetX,ly+((b>>>16)-cy+radius+.5f)*step+offsetY,paint);
+            }
+            int px=lifeX-cx+radius,py=lifeY-cy+radius;
+            if(px>=0&&py>=0&&px<side&&py<side){
+                float x=lx+(px+.5f)*step+offsetX,y=ly+(py+.5f)*step+offsetY;
+                paint.setColor(0xff142d2a);c.drawCircle(x,y,step*.35f,paint);
+                paint.setColor(0xff80d9cd);c.drawCircle(x,y,step*.23f,paint);
             }
             int sx=selectedX-cx+radius,sy=selectedY-cy+radius;
             if(sx>=0&&sy>=0&&sx<side&&sy<side){

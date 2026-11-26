@@ -40,7 +40,8 @@ int main(void){
         for(int i=0;i<a.count;i++){
             float *p=a.v+i*6;
             for(int j=0;j<6;j++)assert(isfinite(p[j]));
-            assert(fabsf(p[0])<=81.1f&&fabsf(p[2])<=81.1f);
+            // A boundary tree canopy may extend slightly beyond its terrain window.
+            assert(fabsf(p[0])<=82.0f&&fabsf(p[2])<=82.0f);
             for(int j=3;j<6;j++)assert(p[j]>=0&&p[j]<=1);
             lo=fminf(lo,p[1]);hi=fmaxf(hi,p[1]);
             if(i%3==0){

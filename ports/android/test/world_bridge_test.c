@@ -44,6 +44,34 @@ int main(void){
         assert(!bore_android_activity(ix,iy,0,2,600,100,100,v));found=1;
     }
     assert(found);
+    uint32_t route[BORE_ANDROID_ROUTE_MAX];
+    assert(bore_android_route(x,y,x,y,route,BORE_ANDROID_ROUTE_MAX)==0);
+    int routes=0,shifts=0;
+    for(int iy=y-6;iy<=y+6;iy++)for(int ix=x-6;ix<=x+6;ix++){
+        if(!bore_android_can_visit(ix,iy))continue;
+        int len=bore_android_route(x,y,ix,iy,route,BORE_ANDROID_ROUTE_MAX);
+        if(len>0){
+            int px=x,py=y;
+            for(int k=0;k<len;k++){
+                int nx=route[k]&65535,ny=route[k]>>16;
+                int dx=nx-px,dy=ny-py;assert(abs(dx)+abs(dy)==1);
+                BInfo q;bm_block(nx,ny,&q);
+                if(q.terrain==BT_SEA)assert(dx?(q.road&1):(q.road&2));
+                if(q.lot==LOT_RIVER)assert((q.road&BR_MEGA)?(dx&&(q.road&1)):(dy&&(q.road&2)));
+                px=nx;py=ny;
+            }
+            assert(px==ix&&py==iy);routes++;
+        }
+        int v[BORE_ANDROID_SHIFT_FIELDS];
+        if(bore_android_shift(ix,iy,0,600,100,100,v)){
+            assert(v[0]==SHIFT_OK&&v[1]>0&&v[2]>0);
+            assert(bore_android_shift(ix,iy,0,600,0,100,v)&&v[0]==SHIFT_TIRED);
+            assert(bore_android_shift(ix,iy,0,600,100,0,v)&&v[0]==SHIFT_HUNGRY);
+            assert(bore_android_shift(ix,iy,0,0,100,100,v)&&v[0]==SHIFT_CLOSED);shifts++;
+        }
+    }
+    assert(routes>0&&shifts>0);
+    assert(bore_android_route(x,y,-1,y,route,BORE_ANDROID_ROUTE_MAX)<0);
     int invalid[BORE_ANDROID_ACTIVITY_FIELDS];
     assert(!bore_android_can_visit(-1,0)&&!bore_android_activity(-1,0,0,0,600,100,100,invalid));
     assert(bore_android_window(-100,9999,8,a,289)==289);

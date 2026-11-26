@@ -9,5 +9,7 @@ final class NativeWorld {
     static synchronized native boolean canVisit(int x,int y);
     static synchronized native int[] activity(int x,int y,int day,int slot,int minute,int funds,int rest);
     static synchronized native String activityText(int id,int field);
+    static synchronized native int[] route(int x,int y,int X,int Y);
+    static synchronized native int[] shift(int x,int y,int day,int minute,int energy,int food);
     private NativeWorld() {}
 }

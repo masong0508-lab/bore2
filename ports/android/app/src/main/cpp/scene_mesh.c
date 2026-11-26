@@ -118,10 +118,11 @@ static void box(Scene*s,float x,float z,float X,float Z,float base,float top,Col
     flat(s,x,z,X,Z,top,c);
 }
 static void tree(Scene*s,int x,int z,unsigned seed){
-    float h=height_at(s,x,z),r=.78f+(seed&3)*.12f,base=h+.95f;
-    box(s,x-.12f,z-.12f,x+.12f,z+.12f,h,base,C(0x67513e));
+    float h=(height_at(s,x,z)+height_at(s,x+1,z+1))*.5f,r=.78f+(seed&3)*.12f,base=h+.95f;
+    float X=x+.5f,Z=z+.5f;
+    box(s,X-.12f,Z-.12f,X+.12f,Z+.12f,h,base,C(0x67513e));
     Color c=C((seed&4)?0x456c45:0x527d4b);
-    Point a=P(x-r,base,z-r),b=P(x+r,base,z-r),d=P(x+r,base,z+r),e=P(x-r,base,z+r),tip=P(x,base+1.8f,z);
+    Point a=P(X-r,base,Z-r),b=P(X+r,base,Z-r),d=P(X+r,base,Z+r),e=P(X-r,base,Z+r),tip=P(X,base+1.8f,Z);
     tri(s,a,b,tip,lit(c,.85f));tri(s,b,d,tip,lit(c,.67f));tri(s,d,e,tip,c);tri(s,e,a,tip,lit(c,.76f));
 }
 static Color wallcolor(const LotPlan*p,int lot,unsigned hash){

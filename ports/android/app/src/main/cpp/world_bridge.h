@@ -11,3 +11,11 @@ int bore_android_describe(int x,int y,int weekday,char *out,unsigned cap);
 int bore_android_can_visit(int x,int y);
 int bore_android_activity(int x,int y,int day,int slot,int minute,int funds,int rest,int *out);
 const char *bore_android_activity_text(int id,int field);
+
+// Local block travel: output excludes start, includes destination; -1 no route.
+#define BORE_ANDROID_ROUTE_MAX (33*33)
+int bore_android_route(int x,int y,int X,int Y,uint32_t *out,int cap);
+// Shift data: status, minutes, pay, energy cost, food cost, skill, gain.
+#define BORE_ANDROID_SHIFT_FIELDS 7
+enum { SHIFT_OK,SHIFT_CLOSED,SHIFT_TIRED,SHIFT_HUNGRY };
+int bore_android_shift(int x,int y,int day,int minute,int energy,int food,int *out);

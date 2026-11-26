@@ -689,8 +689,9 @@ static void ds_park_picture(const BInfo*b,const LotPlan*pl,int ox,int oz,int det
         int m=park_surface(b->h,square,north,x,y),end=x+1;
         while(end<13&&park_surface(b->h,square,north,end,y)==m)end++;
         if(m!=PARK_GRASS&&ds_world_far_budget(polys+2)&&(!gxb||gxn+45<gx_cap)){
-            u16 c=m==PARK_WATER?C15(9,19,27):m==PARK_SOIL?C15(16,12,7):m==PARK_PATIO?C15(23,21,18):C15(21,20,17);
-            tx_want=m==PARK_SOIL?TX_GRAVEL:m==PARK_WATER?-1:TX_PAVING;
+            // DS uses a paved fountain garden rather than the PS1 pond water.
+            u16 c=m==PARK_SOIL?C15(16,12,7):C15(21,20,17);
+            tx_want=m==PARK_SOIL?TX_GRAVEL:TX_PAVING;
             ground(ox+tl(x*2),oz+tl(y*2),ox+tl(end*2),oz+tl((y+1)*2),-26,c);
         }
         x=end;
@@ -1196,6 +1197,10 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
                 PK(6, 1, (char)0xE4); PK(5, 11, 'N'); PK(7, 11, 'N'); PK(0, 6, 'Z'); PK(12, 6, 'Z'); }
             else { PKF(0, 6, 12, 6); PK(5, 5, 'N'); PK(7, 5, 'N'); PK(5, 7, 'N'); PK(7, 7, 'N');
                 PK(9, 4, 'K'); PK(3, 4, 'K'); if (tp) PK(6, 2, '}'); }
+            for(int y=0;y<13;y++)for(int x=0;x<13;x++){
+                int m=park_surface(h,0,0,x,y);
+                if(m==PARK_PATH||m==PARK_PATIO||m==PARK_WATER)flr[y][x]=2;
+            }
             for(int i=0,x,y;park_tree_at(h,0,0,i,&x,&y);i++)z_put(x,y,'3',0);
             PK(5, 12, 'Y');
             #undef PKX

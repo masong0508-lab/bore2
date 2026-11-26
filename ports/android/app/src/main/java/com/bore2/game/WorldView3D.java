@@ -42,6 +42,7 @@ final class WorldView3D extends GLSurfaceView {
     void select(int x,int y){
         queueEvent(()->{scene.selX=x;scene.selY=y;});requestRender();
     }
+    void player(int x,int y){queueEvent(()->{scene.playerX=x;scene.playerY=y;});requestRender();}
     void zoomBy(float factor){
         queueEvent(()->scene.distance=Math.max(18,Math.min(105,scene.distance*factor)));requestRender();
     }
@@ -82,15 +83,16 @@ final class WorldView3D extends GLSurfaceView {
             "void main(){gl_Position=uVP*vec4(aPosition,1.);vColor=aColor;vDist=length(aPosition-uEye);vXZ=aPosition.xz;}";
         private static final String FS=
             "precision mediump float;varying mediump vec3 vColor;varying mediump float vDist;varying mediump vec2 vXZ;"+
-            "uniform vec2 uSelection;uniform float uSelected;uniform vec3 uSky;"+
+            "uniform vec2 uSelection;uniform float uSelected;uniform vec3 uSky;uniform vec2 uPlayer;uniform float uPlayerVisible;"+
             "void main(){vec2 q=abs(vXZ-uSelection);float sel=uSelected*(1.-step(9.,max(q.x,q.y)));"+
-            "vec3 c=mix(vColor,vec3(.99,.85,.49),sel*.14);float f=smoothstep(85.,172.,vDist);"+
+            "vec3 c=mix(vColor,vec3(.99,.85,.49),sel*.14);vec2 p=abs(vXZ-uPlayer);float d=max(p.x,p.y);float edge=uPlayerVisible*step(7.9,d)*(1.-step(9.,d));c=mix(c,vec3(.35,.95,.80),edge*.7);float f=smoothstep(85.,172.,vDist);"+
             "gl_FragColor=vec4(mix(c,uSky,f),1.);}";
         private final Picker picker;
         private final float[] projection=new float[16],view=new float[16],vp=new float[16],inverse=new float[16];
         private float[] mesh=new float[0];
         private int originX,originY,selX=Integer.MIN_VALUE,selY,width,height,program,vbo;
-        private int aPosition,aColor,uVP,uEye,uSelection,uSelected,uSky;
+        private int aPosition,aColor,uVP,uEye,uSelection,uSelected,uSky,uPlayer,uPlayerVisible;
+        private int playerX=Integer.MIN_VALUE,playerY=Integer.MIN_VALUE;
         private boolean dirty=true,validMatrix;
         private FloatBuffer upload; // reuse direct staging storage between neighborhood meshes
         private float targetY=0;
@@ -119,6 +121,7 @@ final class WorldView3D extends GLSurfaceView {
             uVP=GLES20.glGetUniformLocation(program,"uVP");uEye=GLES20.glGetUniformLocation(program,"uEye");
             uSelection=GLES20.glGetUniformLocation(program,"uSelection");uSelected=GLES20.glGetUniformLocation(program,"uSelected");
             uSky=GLES20.glGetUniformLocation(program,"uSky");
+            uPlayer=GLES20.glGetUniformLocation(program,"uPlayer");uPlayerVisible=GLES20.glGetUniformLocation(program,"uPlayerVisible");
             int[] buffers=new int[1];GLES20.glGenBuffers(1,buffers,0);vbo=buffers[0];dirty=true;
             GLES20.glEnable(GLES20.GL_DEPTH_TEST);GLES20.glDepthFunc(GLES20.GL_LEQUAL);
             GLES20.glDisable(GLES20.GL_BLEND);GLES20.glDisable(GLES20.GL_CULL_FACE);
@@ -150,6 +153,9 @@ final class WorldView3D extends GLSurfaceView {
             boolean selected=Math.abs((long)selX-originX)<=4&&Math.abs((long)selY-originY)<=4;
             GLES20.glUniform1f(uSelected,selected?1:0);
             GLES20.glUniform2f(uSelection,selected?(selX-originX)*18f:0,selected?(selY-originY)*18f:0);
+            boolean playerHere=Math.abs((long)playerX-originX)<=4&&Math.abs((long)playerY-originY)<=4;
+            GLES20.glUniform1f(uPlayerVisible,playerHere?1:0);
+            GLES20.glUniform2f(uPlayer,playerHere?(playerX-originX)*18f:0,playerHere?(playerY-originY)*18f:0);
             GLES20.glEnableVertexAttribArray(aPosition);GLES20.glEnableVertexAttribArray(aColor);
             GLES20.glVertexAttribPointer(aPosition,3,GLES20.GL_FLOAT,false,24,0);
             GLES20.glVertexAttribPointer(aColor,3,GLES20.GL_FLOAT,false,24,12);

@@ -166,6 +166,8 @@ static int far_cell_land(int t){return t==0xFF?t:t&15;}
 static int pbx, pby;                         // the world block you are on
 static void cells_follow(int budget) {       // keep the cells centred on you; work out a few a frame (the nearest first)
     int want_x = pbx / FCB - FC / 2, want_y = pby / FCB - FC / 2;
+    static int stamp=-1; extern int bm_edit_stamp;
+    if(stamp!=bm_edit_stamp){fc_x0=-100000;stamp=bm_edit_stamp;}
     int dx = want_x - fc_x0, dy = want_y - fc_y0;
     if (dx || dy) {
         if (ABS(dx) >= FC / 2 || ABS(dy) >= FC / 2) memset(fcell, 0xFF, sizeof fcell);

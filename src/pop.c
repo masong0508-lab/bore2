@@ -213,14 +213,15 @@ static int leisure(int p, int f, int slot, int *place) {   // out for a couple o
     // its two-hour outing slot. Consider at most ten candidates, as before.
     int best=-1,score=-32767,n=set_pn[set],start=(int)((h>>8)%n);
     unsigned dice=h^0x9e3779b9u;
-    for(int t=0;t<10&&t<n;t++){
+    int samples=MIN(10,n);
+    for(int t=0;t<samples;t++){
         dice=dice*1664525u+1013904223u;
-        int i=set_p0[set]+(start+t*(1+(int)((h>>24)&3u)))%n,l=pop_place[i].lot;
+        int i=set_p0[set]+(start+t*n/samples)%n,l=pop_place[i].lot;
         int dist=ABS(pop_place[i].bx-fm->bx)+ABS(pop_place[i].by-fm->by);
         int ok = q->stage <= AG_TEEN ? (l == LOT_PARK || l == LOT_SKATE || l == LOT_POOL || l == LOT_ARCADE || l == LOT_SQUARE || l == LOT_DINER || l == LOT_CAFE || l == LOT_CINEMA || l == LOT_LIBRARY)
                : q->stage == AG_ELDER ? (l == LOT_PARK || l == LOT_SQUARE || l == LOT_DINER || l == LOT_SHOP || l == LOT_INN || l == LOT_CAFE || l == LOT_LIBRARY || l == LOT_GALLERY || l == LOT_RESTAURANT || l == LOT_CINEMA)
                : (l != LOT_SCHOOL && l != LOT_OFFICE && l != LOT_TOWER && l != LOT_CLINIC&&l!=LOT_RIVER&&l!=LOT_EMPTY);
-        if(!ok||!neighborhood_open(l,slot*120+60))continue;
+        if(!ok||!neighborhood_open(l,slot*120)||!neighborhood_open(l,slot*120+119))continue;
         int v=neighborhood_score(q->trait,l,dist,dice>>24);
         if(v>score){score=v;best=i;}
     }

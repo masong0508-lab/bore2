@@ -40,3 +40,18 @@ JNIEXPORT jintArray JNICALL Java_com_bore2_game_NativeWorld_activity(JNIEnv *env
 JNIEXPORT jstring JNICALL Java_com_bore2_game_NativeWorld_activityText(JNIEnv *env,jclass cls,jint id,jint field){
     (void)cls;return (*env)->NewStringUTF(env,bore_android_activity_text(id,field));
 }
+
+JNIEXPORT jintArray JNICALL Java_com_bore2_game_NativeWorld_route(JNIEnv *env,jclass cls,jint x,jint y,jint X,jint Y){
+    (void)cls;uint32_t path[BORE_ANDROID_ROUTE_MAX];int n=bore_android_route(x,y,X,Y,path,BORE_ANDROID_ROUTE_MAX);
+    if(n<0)return NULL;
+    jintArray a=(*env)->NewIntArray(env,n);
+    if(a&&n)(*env)->SetIntArrayRegion(env,a,0,n,(const jint*)path);
+    return a;
+}
+JNIEXPORT jintArray JNICALL Java_com_bore2_game_NativeWorld_shift(JNIEnv *env,jclass cls,jint x,jint y,jint day,jint minute,jint energy,jint food){
+    (void)cls;int v[BORE_ANDROID_SHIFT_FIELDS];
+    if(!bore_android_shift(x,y,day,minute,energy,food,v))return NULL;
+    jintArray a=(*env)->NewIntArray(env,BORE_ANDROID_SHIFT_FIELDS);
+    if(a)(*env)->SetIntArrayRegion(env,a,0,BORE_ANDROID_SHIFT_FIELDS,(const jint*)v);
+    return a;
+}

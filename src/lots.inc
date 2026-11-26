@@ -541,7 +541,7 @@ static void lot_park(int lx, int ly, unsigned h) {
         pk_put(9, 4, 'K'); pk_put(3, 4, 'K'); if (tp) pk_put(6, 2, '}');
     }
     // Positions in park_tree_at already include the east/west mirror.
-    for(int i=0,x,y;park_tree_at(h,0,0,i,&x,&y);i++)gPut(lx+x,ly+y,TREE);
+    for(int i=0,x,y;park_tree_at(h,0,0,i,&x,&y);i++)gFree(lx+x,ly+y,TREE);
     gFree(lx + 5, ly + 12, 'Y'); gFree(lx + 7, ly + 12, 'a');                           // the bin and the flag at the gate
 }
 static void city_square(int lx, int ly) {
