@@ -5,6 +5,7 @@
 #include "bigmap.h"
 #include "house_footprint.h"
 #include "house_shape.h"
+#include "roof_profile.h"
 #include "world_stream_models.h"
 #include "atlas.h"
 
@@ -627,31 +628,24 @@ static void far_roof_partial(int x0,int z0,int x1,int z1,const u8 *wc,
         far_clip_quad(&v[4], &v[5], &v[6], &v[7], lit(flat, Ltop, hf), slot);
         return;
     }
-    int hip = rs == 1, alongx = rs == 2 && z0 - z1 <= x1 - x0;
-    int rise = world_roof_rise(pit, MIN(x1 - x0, z0 - z1) / 2);
-    int rx0 = alongx || hip ? x0 : (x0 + x1) / 2;
-    int rz0 = alongx || hip ? (z0 + z1) / 2 : z0;
-    int rx1 = alongx || hip ? x1 : (x0 + x1) / 2;
-    int rz1 = alongx || hip ? (z0 + z1) / 2 : z1;
-    if (hip) rx0 = rx1 = (x0 + x1) / 2;
-    FV ridge[2];
-    fxf(rx0, top - rise - far_lift, rz0, &ridge[0]);
-    fxf(rx1, top - rise - far_lift, rz1, &ridge[1]);
-    const FV *ring[4] = { &v[4], &v[5], &v[7], &v[6] };
-    static const u8 shade[4] = { 6, 7, 8, 7 };
-    int above = ey < top - rise, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-    for (int k = 0; k < 4; k++) {
-        if (!above && !((k == 0 && ez > cz) || (k == 1 && ex > cx) ||
-                        (k == 2 && ez < cz) || (k == 3 && ex < cx))) continue;
-        const FV *a = ring[k], *b = ring[(k + 1) & 3];
-        int slope = !hip && (alongx ? !(k & 1) : (k & 1));
-        u32 col = hip || slope ? lit(rc, Lroof * shade[k] / 7, hf)
-                               : lit(wc, k == 0 ? Ln : k == 1 ? Le : k == 2 ? Ls : Lw, hf);
-        if (slope) {
-            int rev = alongx ? k == 2 : k == 3;
-            far_clip_quad(rev ? b : a, rev ? a : b, &ridge[0], &ridge[1], col, slot);
-        } else far_clip_tri(a, b, (k == 0 || k == 3) ? &ridge[0] : &ridge[1], col, slot);
+    BoreRoofRun r=bore_roof_run(x1-x0,z0-z1,rs,3*TILE);
+    int rise=world_roof_rise(pit,r.run);
+    int ix[4]={x0+r.x,x1-r.x,x1-r.x,x0+r.x};
+    int iz[4]={z0-r.z,z0-r.z,z1+r.z,z1+r.z};
+    FV inner[4];
+    for(int k=0;k<4;k++)fxf(ix[k],top-rise-far_lift,iz[k],&inner[k]);
+    const FV *ring[4]={&v[4],&v[5],&v[7],&v[6]};
+    static const u8 sh[4]={6,7,8,7};
+    int cx=(x0+x1)/2,cz=(z0+z1)/2,above=ey<top-rise;
+    for(int k=0;k<4;k++){
+        if(!above&&!((k==0&&ez>cz)||(k==1&&ex>cx)||(k==2&&ez<cz)||(k==3&&ex<cx)))continue;
+        int n=(k+1)&3,sloped=(k&1)?r.x:r.z;
+        u32 col=sloped?lit(rc,Lroof*sh[k]/7,hf):lit(wc,k==0?Ln:k==1?Le:k==2?Ls:Lw,hf);
+        if(ix[k]==ix[n]&&iz[k]==iz[n])far_clip_tri(ring[k],ring[n],&inner[k],col,slot);
+        else far_clip_quad(ring[k],ring[n],&inner[k],&inner[n],col,slot);
     }
+    if(above&&ix[1]>ix[0]&&iz[0]>iz[3])
+        far_clip_quad(&inner[0],&inner[1],&inner[3],&inner[2],lit(rc,Ltop,hf),slot);
 }
 static void far_box_partial(int x0, int z0, int x1, int z1, const u8 *wc,
                             int rs, int pit, const u8 *rc, int top) {
@@ -700,40 +694,37 @@ static void far_box(int x0, int z0, int x1, int z1, int sto, const u8 *wc, int r
     #undef WALL
     if (ey >= top) return;                                       // (looking up at it: no roof to see)
     if (pitched) {                                               // the roof: a hip (four slopes up to a point, the ridge only a point) or a gable (two slopes up to a ridge, the walls at its ends carried up to it)
-        int hip = rs == 1, alongx = rs == 2 && z0 - z1 <= x1 - x0, rise = world_roof_rise(pit, MIN(x1 - x0, z0 - z1) / 2);
-        SVECTOR rp[2] SVEC_ALIGN; XV R[2];
-        int rx0 = alongx || hip ? x0 : (x0 + x1) / 2, rz0 = alongx || hip ? (z0 + z1) / 2 : z0, rx1 = alongx || hip ? x1 : (x0 + x1) / 2, rz1 = alongx || hip ? (z0 + z1) / 2 : z1;
-        if (hip) { rx0 = rx1 = (x0 + x1) / 2; }
-        rp[0].vx = sc16(rx0 - ex); rp[0].vz = sc16(rz0 - ez); rp[1].vx = sc16(rx1 - ex); rp[1].vz = sc16(rz1 - ez);
-        rp[0].vy = rp[1].vy = sc16(top - rise - ey); rp[0].pad = rp[1].pad = 0;
-        gfx_xform(rp, R, 2);
-        if(!xv_good(&R[0])||!xv_good(&R[1])){
-            // Eaves can be inside the GTE guard while the higher ridge
-            // crosses it. Preserve the roof using clipped camera-space
-            // faces, without resubmitting the already visible walls.
+        BoreRoofRun r=bore_roof_run(x1-x0,z0-z1,rs,3*TILE);
+        int rise=world_roof_rise(pit,r.run);
+        int ix[4]={x0+r.x,x1-r.x,x1-r.x,x0+r.x};
+        int iz[4]={z0-r.z,z0-r.z,z1+r.z,z1+r.z};
+        SVECTOR rp[4] SVEC_ALIGN; XV R[4];
+        for(int k=0;k<4;k++){
+            rp[k].vx=sc16(ix[k]-ex);rp[k].vz=sc16(iz[k]-ez);
+            rp[k].vy=sc16(top-rise-ey);rp[k].pad=0;
+        }
+        gfx_xform(rp,R,4);
+        for(int k=0;k<4;k++)if(!xv_good(&R[k])){
             FV clip[8];
-            for(int i=4;i<8;i++)
-                fxf((i&1)?x1:x0,top-far_lift,(i&2)?z1:z0,&clip[i]);
+            for(int i=4;i<8;i++)fxf((i&1)?x1:x0,top-far_lift,(i&2)?z1:z0,&clip[i]);
             far_roof_partial(x0,z0,x1,z1,wc,rs,pit,rc,top,clip,slot,hf);
             return;
         }
-        const XV *ring[4] = { &o[4], &o[5], &o[7], &o[6] };     // NW NE SE SW
-        static const u8 sh[4] = { 6, 7, 8, 7 };
-        for (int k = 0; k < 4; k++) {                           // the north, east, south, west sides: a slope (a gable's long ones) or a triangle (a hip's, a gable's end)
-            const XV *p0 = ring[k], *p1 = ring[(k + 1) & 3]; int slope = !hip && (alongx ? !(k & 1) : (k & 1));
-            XV M; M.x = (R[0].x + R[1].x) / 2; M.y = (R[0].y + R[1].y) / 2;
-            const XV *ap = slope ? &M : (k == 0 || k == 3 ? &R[0] : &R[1]);
-            if ((p1->x - p0->x) * (ap->y - p0->y) - (ap->x - p0->x) * (p1->y - p0->y) <= 0) continue;   // facing away
-            if (slope) {
-                int sw = alongx ? k == 2 : k == 3;   // (the base edge and the ridge, both running the same way)
-                face_f4(sw ? p1 : p0, sw ? p0 : p1, &R[0], &R[1], lit(rc, Lroof * sh[k] / 7, hf), slot);
-            } else {
-                u32 col = hip ? lit(rc, Lroof * sh[k] / 7, hf) : lit(wc, k == 0 ? Ln : k == 2 ? Ls : k == 1 ? Le : Lw, hf);
-                u32 *p = pk(4); if (!p) return;
-                p[1] = 0x20000000u | col; p[2] = FXY(p0->x, p0->y); p[3] = FXY(p1->x, p1->y); p[4] = FXY(ap->x, ap->y);
-                lk(p, 4, slot);
-            }
+        const XV *ring[4]={&o[4],&o[5],&o[7],&o[6]};
+        static const u8 sh[4]={6,7,8,7};
+        for(int k=0;k<4;k++){
+            int n=(k+1)&3,sloped=(k&1)?r.x:r.z;
+            const XV *a=ring[k],*b=ring[n];
+            int mx=(R[k].x+R[n].x)/2,my=(R[k].y+R[n].y)/2;
+            if((b->x-a->x)*(my-a->y)-(mx-a->x)*(b->y-a->y)<=0)continue;
+            u32 col=sloped?lit(rc,Lroof*sh[k]/7,hf):lit(wc,k==0?Ln:k==1?Le:k==2?Ls:Lw,hf);
+            if(ix[k]==ix[n]&&iz[k]==iz[n]){
+                u32 *p=pk(4);if(!p)return;
+                p[1]=0x20000000u|col;p[2]=FXY(a->x,a->y);p[3]=FXY(b->x,b->y);p[4]=FXY(R[k].x,R[k].y);lk(p,4,slot);
+            }else face_f4(a,b,&R[k],&R[n],col,slot);
         }
+        if(ey<top-rise&&ix[1]>ix[0]&&iz[0]>iz[3])
+            face_f4(&R[0],&R[1],&R[3],&R[2],lit(rc,Ltop,hf),slot);
     } else {
         static const u8 flat[3] = { 120, 118, 114 };
         face_f4(&o[4], &o[5], &o[6], &o[7], lit(flat, Ltop, hf), slot);

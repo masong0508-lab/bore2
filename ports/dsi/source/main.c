@@ -134,6 +134,7 @@ static void text_box(int x, int y, int w, int h, int s, u16 c, int al, const cha
 #define MH 20                 // blocks down (160 pixels; the text lines go below)
 #include "ds_mapview.h"
 #include "ds_render_geom.h"
+#include "roof_profile.h"
 #include "ds_lot_shell.h"
 #include "ds_action_spots.h"
 #include "ds_confirm.h"
@@ -684,7 +685,15 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
     int tr = pl && ((k >= LOT_HOUSE && k <= LOT_TWO) || k == LOT_PARK) ? BT_GRASS : b->terrain;   // (D80: lawn in a dry town for homes and parks)
     u16 grass = tr == BT_DESERT ? C15(24, 20, 10) : tr == BT_ROCKY ? C15(13, 13, 13) : tr == BT_BEACH ? C15(26, 24, 14) : C15(11, 20, 8);
     if (b->terrain == BT_SEA) { grass = C15(5, 12, 24); } else if (tr == BT_GRASS || tr == BT_FOREST) grass = seas(grass);
-    for (int z = 0; z < LOTN; z++) for (int x = 0; x < LOTN; x++) ground(tl(x * 2), tl(z * 2), tl(x * 2 + 2), tl(z * 2 + 2), 0, (((x + z) & 1) && o_chk) ? shade(grass, 7) : grass);
+    // The map preview does not need a quad per build cell. Match the
+    // larger lawn patches used in Live and use a single quad for plain
+    // ground/water. Each rectangle owns its cells exactly once.
+    int step=ds_preview_ground_step(LOTN,o_chk,b->terrain==BT_SEA);
+    for(int z=0;z<LOTN;z+=step)for(int x=0;x<LOTN;x+=step){
+        int X=ds_preview_ground_end(x,step,LOTN),Z=ds_preview_ground_end(z,step,LOTN);
+        u16 color=step==2&&((x/2+z/2)&1)?shade(grass,7):grass;
+        ground(tl(x*2),tl(z*2),tl(X*2),tl(Z*2),0,color);
+    }
     /* The map's lot picture must reflect this block's real planned
      * streets, not paint both sides as road on every rural/urban lot.
      * Older saves keep their original two-strip preview. */
@@ -2275,7 +2284,8 @@ static int lv_box(int L, int *x0, int *y0, int *x1, int *y1) {   // the outline 
 static int view_lv(void);
 static const u16 ROOFC[6] = { C15(24, 11, 8), C15(13, 14, 16), C15(19, 13, 8), C15(11, 16, 10), C15(9, 11, 17), C15(26, 22, 16) };   // the PS1's CLAY RED, SLATE, CEDAR, MOSS GREEN, NAVY, SANDSTONE
 static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise, u16 rc, u16 wc) {   // a roof over the box (eaves included), its foot at ry (up is negative)
-    int w = X1 - X0, d = Z1 - Z0, sh = sty == 4 ? w : w < d ? w : d, r = sh / 2; if (r > 6 * T) r = 6 * T;   // (D81: sty 4, a gable turned to the street: the ridge runs front to back)
+    int w = X1-X0,d=Z1-Z0;
+    BoreRoofRun profile=bore_roof_run(w,d,sty==3?1:sty==2?2:sty==4?3:0,6*T);
     u16 fas = shade(rc, 5);
     if (sty == 1) {   // FLAT: the slab, a parapet round it, a box on top (the PS1's towers and big blocks)
         u16 tc = shade(C15(18, 18, 19), 8), pc = shade(wc, 7); tx_want = TX_GRAVEL;
@@ -2284,7 +2294,7 @@ static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise
         block(X0, Z0 + 40, X0 + 40, Z1 - 40, ry - 40, ry - 110, pc, shade(pc, 10)); block(X1 - 40, Z0 + 40, X1, Z1 - 40, ry - 40, ry - 110, pc, shade(pc, 10));
         tx_want = -1; if (w > 4 * T && d > 4 * T) { int cx = X0 + w * 2 / 3, cz = Z0 + d / 3; block(cx - T / 2, cz - T / 2, cx + T / 2, cz + T / 2, ry - 40, ry - 40 - T * 2 / 3, C15(20, 20, 21), C15(25, 25, 26)); }
         return; }
-    int RH_ = r * rise / 256, rtop = ry - RH_, along_x = w >= d, rx = sty == 4 ? r : along_x ? (sty == 3 ? r : 0) : r, rz = sty == 4 ? 0 : along_x ? r : (sty == 3 ? r : 0);
+    int RH_=profile.run*rise/256,rtop=ry-RH_,rx=profile.x,rz=profile.z;
     tx_want = -1; block(X0, Z0, X1, Z1, ry + 40, ry, fas, fas); tx_want = TX_SHINGLE_WALL;   // (the eaves' thickness; then the slopes in the PS1's shingles)
     u16 c0 = rc, c1 = shade(rc, 6), ce = rx ? shade(rc, 7) : wc, cf = rz ? rc : wc;   // (gable ends are the walls' plaster)
     qd(X0, ry, Z0, X1, ry, Z0, X1 - rx, rtop, Z0 + rz, X0 + rx, rtop, Z0 + rz, cf);

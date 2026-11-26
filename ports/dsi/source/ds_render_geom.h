@@ -261,4 +261,14 @@ static int ds_visible_storey_top(int top, int viewed, int live,
     return show;
 }
 
+
+
+// Map preview ground: same 2x2 checker scale as live; no checker on sea.
+static inline int ds_preview_ground_step(int n,int checker,int water){
+    return checker&&!water?2:n;
+}
+static inline int ds_preview_ground_end(int start,int step,int n){
+    return start+step<n?start+step:n;
+}
+
 #endif

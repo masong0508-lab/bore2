@@ -156,6 +156,18 @@ int main(void) {
       ds_roof_height_map(height, fl, h, v, 13, 1);
       for (int c = 0; c < 13 * 13; ++c) assert(height[c] == 0);
     }
+    // Preview tessellation must cover each cell exactly once, including
+    // the odd final row/column. Check 49 checker patches versus 169.
+    for(int checker=0;checker<2;checker++)for(int sea=0;sea<2;sea++){
+        int cells[13][13]={{0}},n=0,step=ds_preview_ground_step(13,checker,sea);
+        for(int z=0;z<13;z+=step)for(int x=0;x<13;x+=step){
+            int X=ds_preview_ground_end(x,step,13),Z=ds_preview_ground_end(z,step,13);
+            assert(X>x&&Z>z&&X<=13&&Z<=13);n++;
+            for(int y=z;y<Z;y++)for(int i=x;i<X;i++)cells[y][i]++;
+        }
+        assert(n==(checker&&!sea?49:1));
+        for(int y=0;y<13;y++)for(int x=0;x<13;x++)assert(cells[y][x]==1);
+    }
     /* The renderer counts two triangles per quad; reserve room for the
      * world in the object pass, and degrade details before full capacity. */
     assert(!ds_item_over_budget(3000, 0));

@@ -10,7 +10,14 @@ extern void bm_hill_center(int bx,int by);
 
 typedef struct {float x,y,z;} Point;
 typedef struct {float r,g,b;} Color;
-typedef struct {BoreMesh *m; int ox,oz,bx,bz; float ground[BM_BLK+1][BM_BLK+1];} Scene;
+#define HILL_SIDE (2*BORE_SCENE_RADIUS+4)
+typedef struct {
+    BoreMesh *m; int ox,oz,bx,bz,hx,hz,hn;
+    float ground[BM_BLK+1][BM_BLK+1];
+    // The world generator's block-center samples already encode a town
+    // pad flag. Cache the small halo once for all interpolated corners.
+    u16 hills[HILL_SIDE][HILL_SIDE];
+} Scene;
 static Point P(float x,float y,float z){return (Point){x,y,z};}
 static Color C(unsigned c){return (Color){((c>>16)&255)/255.f,((c>>8)&255)/255.f,(c&255)/255.f};}
 static Color lit(Color c,float s){return (Color){fminf(1,c.r*s),fminf(1,c.g*s),fminf(1,c.b*s)};}
@@ -42,23 +49,44 @@ static float shade(Point a,Point b,Point c){
 static void slope(Scene*s,Point a,Point b,Point c,Point d,Color k){
     tri(s,a,b,c,lit(k,shade(a,b,c)));tri(s,a,c,d,lit(k,shade(a,c,d)));
 }
+static void scene_hills(Scene*s,int cx,int cy,int radius){
+    s->hx=cx-radius-1;s->hz=cy-radius-1;s->hn=2*radius+4;
+    for(int z=0;z<s->hn;z++)for(int x=0;x<s->hn;x++){
+        int town=0,h=bm_hill_t(s->hx+x,s->hz+z,&town);
+        s->hills[z][x]=(u16)(h|(town?0x8000:0));s->m->hill_reads++;
+    }
+}
+static int scene_hill(Scene*s,int bx,int bz,int*town){
+    int x=bx-s->hx,z=bz-s->hz;
+    if((unsigned)x>=(unsigned)s->hn||(unsigned)z>=(unsigned)s->hn){
+        s->m->hill_reads++;return bm_hill_t(bx,bz,town);
+    }
+    u16 packed=s->hills[z][x];int h=packed&0x7fff;
+    if(town)*town=packed>>15;
+#ifdef BORE_MESH_VERIFY_HILL_CACHE
+    // Host-only equivalence assertion; production avoids the extra call.
+    int check_town=0,check_h=bm_hill_t(bx,bz,&check_town);
+    if(check_h!=h||check_town!=(packed>>15))abort();
+#endif
+    return h;
+}
 // Single world-coordinate height function: all adjacent blocks use the very
 // same corner values. Town lots are level pads, street strips blend them.
 // This follows world.c gh_raw0 rather than inventing a second elevation map.
 static float height_raw(Scene*s,int ax,int az){
     s->m->height_samples++;
     int bx=ax/BM_BLK,bz=az/BM_BLK,lx=ax%BM_BLK,lz=az%BM_BLK,town=0;
-    int h=bm_hill_t(bx,bz,&town);
+    int h=scene_hill(s,bx,bz,&town);
     if(town){
         int u=MIN(lx,BM_LOT0),v=MIN(lz,BM_LOT0),n=BM_LOT0;
-        int top=bm_hill(bx-1,bz-1)*(n-u)+bm_hill(bx,bz-1)*u;
-        int bot=bm_hill(bx-1,bz)*(n-u)+h*u;
+        int top=scene_hill(s,bx-1,bz-1,0)*(n-u)+scene_hill(s,bx,bz-1,0)*u;
+        int bot=scene_hill(s,bx-1,bz,0)*(n-u)+h*u;
         return (top*(n-v)+bot*v)/(float)(n*n*TILE);
     }
     int px=lx-BM_BLK/2,pz=lz-BM_BLK/2,ex=px>=0,ez=pz>=0;
     int u=px<0?px+BM_BLK:px,v=pz<0?pz+BM_BLK:pz,n=BM_BLK;
-    int top=bm_hill(bx-1+ex,bz-1+ez)*(n-u)+bm_hill(bx+ex,bz-1+ez)*u;
-    int bot=bm_hill(bx-1+ex,bz+ez)*(n-u)+bm_hill(bx+ex,bz+ez)*u;
+    int top=scene_hill(s,bx-1+ex,bz-1+ez,0)*(n-u)+scene_hill(s,bx+ex,bz-1+ez,0)*u;
+    int bot=scene_hill(s,bx-1+ex,bz+ez,0)*(n-u)+scene_hill(s,bx+ex,bz+ez,0)*u;
     return (top*(n-v)+bot*v)/(float)(n*n*TILE);
 }
 static float height_at(Scene*s,int x,int z){
@@ -227,6 +255,7 @@ int bore_scene_build(int cx,int cy,int r,BoreMesh *out){
     if(cx<0||cy<0)return 0;
     bm_hill_center(cx,cy);
     Scene s={.m=out,.ox=cx*BM_BLK+BM_BLK/2,.oz=cy*BM_BLK+BM_BLK/2};
+    scene_hills(&s,cx,cy,r);
     for(int z=-r;z<=r;z++)for(int x=-r;x<=r;x++)
         block(&s,cx+x,cy+z,ABS(x)<=2&&ABS(z)<=2);
     if(out->failed||!out->count){bore_scene_free(out);return 0;}

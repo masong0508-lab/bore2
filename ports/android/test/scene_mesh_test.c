@@ -32,6 +32,7 @@ int main(void){
         assert(bore_scene_build(x,z,4,&a));
         assert(a.count>10000&&a.count<=BORE_SCENE_MAX_VERTICES&&a.count%3==0);
         assert(a.height_samples==81u*(BM_BLK+1)*(BM_BLK+1));
+        assert(a.hill_reads==144u);
         assert(a.height_hits>1000&&a.roof_samples>100);
         float lo=1e9f,hi=-1e9f;int walls=0;
         for(int i=0;i<a.count;i++){
@@ -51,11 +52,13 @@ int main(void){
         assert(!memcmp(a.v,b.v,(size_t)a.count*6*sizeof(float)));
         printf("seed %u: %d vertices, %d vertical triangles, height %.2f..%.2f\n",seeds[s],a.count,walls,lo,hi);
         assert(a.height_samples==b.height_samples&&a.height_hits==b.height_hits&&a.roof_samples==b.roof_samples);
-        printf("terrain samples %u; reused height lookups %u; unique roof corners %u\n",a.height_samples,a.height_hits,a.roof_samples);
+        printf("terrain samples %u; reused height lookups %u; unique roof corners %u; generator hill reads %u\n",a.height_samples,a.height_hits,a.roof_samples,a.hill_reads);
         bore_scene_free(&a);bore_scene_free(&b);
     }
     assert(shapes>0);printf("Verified packed skyline shape against %u actual generated L homes\n",shapes);
-    assert(bore_scene_build(-500,2000,4,&a)&&a.count>0);
+    assert(bore_scene_build(-500,2000,4,&a)&&a.count>0&&a.hill_reads==144u);
+    bore_scene_free(&a);
+    assert(bore_scene_build(512,512,1,&a)&&a.count>0&&a.hill_reads==36u);
     bore_scene_free(&a);
     puts("Native 3D mesh: deterministic, bounded, finite, volumetric");
     return 0;
