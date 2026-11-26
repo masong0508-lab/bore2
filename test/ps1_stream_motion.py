@@ -8,7 +8,7 @@ from PIL import Image
 from ps1_frame_flash import CROP, audit, self_test
 
 ANCHORS = (2600, 3600, 4600, 5600, 6600)
-BURSTS = tuple(tuple(range(t, t + 25)) for t in (3600, 5600))
+BURSTS = tuple(tuple(range(t, t + 25)) for t in (2600, 3100, 3600, 4100, 4600, 5100, 5600, 6100, 6600))
 TICKS = sorted(set(ANCHORS).union(*BURSTS))
 
 def run(root):

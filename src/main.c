@@ -1323,7 +1323,7 @@ static void life_draw(void) {
             tr += (((150 * day >> 8) - tr) * warm) >> 8; tg += (((120 * day >> 8) - tg) * warm) >> 8; tb += (((170 * day >> 8) - tb) * warm) >> 8; }
         u32 top = (u32)tr | ((u32)tg << 8) | ((u32)tb << 16), hor = (u32)br | ((u32)bg << 8) | ((u32)bb << 16);
         { extern u32 world_horizon; extern int world_far_range; world_horizon = hor; world_far_range = (world_zone == ZONE_CITY && far_view) ? 60 : 34; }
-        if (world_zone == ZONE_CITY && far_view) far_sky(top, hor);   // the sky meets the land at the real horizon
+        if(world_zone==ZONE_CITY)far_sky(top,hor);   // the sky meets the land at the real horizon
         else if (world_zone == ZONE_ISLAND) far_sky_sea(top, hor, (u32)((40 * day) >> 8) | ((u32)((112 * day) >> 8) << 8) | ((u32)((168 * day) >> 8) << 16));   // (the endless sea)
         else if (world_zone == ZONE_HOME) far_sky_sea(top, hor, (u32)((64 * day) >> 8) | ((u32)((120 * day) >> 8) << 8) | ((u32)((52 * day) >> 8) << 16));     // (the fields going on)
         else if (world_zone == ZONE_TOWN) far_sky_sea(top, hor, (u32)((196 * day) >> 8) | ((u32)((160 * day) >> 8) << 8) | ((u32)((108 * day) >> 8) << 16));  // (the desert going on)
@@ -1331,7 +1331,7 @@ static void life_draw(void) {
     }
     gfx_prim_count = 0;
     world_doors_reset(); for (int i = 0; i < nsims; i++) world_door_mark(sim_tile_x(&sims[i]), sim_tile_y(&sims[i])); citizens_door_marks();
-    { int t0 = hb_now(); world_draw(sim_tile_x(s), sim_tile_y(s), frame, wall_view == 1 || (wall_view == 0 && cam_view != 2)); t_world = hb_now() - t0;   // (WALL VIEW: AUTO cuts the walls between you and the camera, but not in first person; CUT AWAY always; FULL WALLS never)
+    { int t0 = hb_now(); world_draw(sim_tile_x(s),sim_tile_y(s),frame,wall_view==1?2:(wall_view==0&&cam_view!=2)); t_world = hb_now() - t0;   // (WALL VIEW: AUTO cuts the walls between you and the camera, but not in first person; CUT AWAY always; FULL WALLS never)
       t0 = hb_now(); gfx_prim_count = 0; draw_sims(); if (pet_kind && pet_zone == world_zone) { if (pet_kind == 1) items_draw_dog(pet_x, pet_z, pet_yaw, -sims[player].lvl * WALL_FULL, &pet_dog, pet_ph); else items_draw_pet(pet_x, pet_z, pet_yaw, -sims[player].lvl * WALL_FULL, pet_kind, pet_col, pet_ph); } ghost_draw(cam_yaw, frame); t_sims = hb_now() - t0; }
     { int t0 = hb_now(); draw_bubbles(); draw_streetsigns(); t_bub = hb_now() - t0; }
     prims_last = gfx_prim_count;
@@ -2495,11 +2495,11 @@ static void helper_apply(void) {
     //  the ground (no streets, no trees) and the buildings as boxes near, flat rectangles far, still fading into the haze; 5 is none of it)
     extern int far_lite;
     { extern int nc_loose; nc_loose = shed_lvl >= FSH; }   // (the texture-warp cutter relaxes, far from the eye, only on the very last step)
-    int v = opt[O_VIEW]; far_lite = shed_lvl == 4;
+    int v = opt[O_VIEW]; far_lite=shed_lvl>=4||!v;
     far_view = (v && shed_lvl < 5) ? (shed_lvl == 4 ? v : v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
     int tr = opt[O_TREES] - shed_lvl; far_trees = tr < 0 ? 0 : tr;
     int fd = opt[O_FARB] - (shed_lvl > 1 ? shed_lvl - 1 : 0); far_detail = fd < 0 ? 0 : fd;
-    far_haze = shed_lvl == 3 ? 0 : opt[O_HAZE];
+    far_haze=opt[O_HAZE]; // avoid a quality-triggered whole-world color flash
     if (shed_lvl >= 4) { far_trees = 0; far_detail = 0; }
     int c = ((opt[O_CROWD] & 3) + 1) * 16 >> crowd_lvl; cit_maxdraw = c < 8 ? 8 : c;
     cit_live_cap = crowd_lvl >= 2 ? 1 : 99; cit_fresh_max = crowd_lvl >= 1 ? 1 : 2; cit_stale_n = crowd_lvl >= 1 ? 12 : 6;   // (a render that does not fit costs ~140 hb: a frame past its vblank)

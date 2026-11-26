@@ -59,3 +59,23 @@ static inline int render_proxy_depth(int sum,int vertices){
 static inline int render_lift_translation(int t,int lift,int y_column){
     return t-((lift*y_column)>>12);
 }
+
+// A building has one complete exterior owner; retain the detailed owner
+// for two extra tiles. The radius is independent of per-frame load.
+static inline int render_house_detail(int previous,int sim_gap,int eye_gap,int radius,int reveal,int proxy_ok){
+    if(reveal||!proxy_ok)return 1;
+    return sim_gap<=radius+(previous?2:0)||eye_gap<=(previous?5:3);
+}
+static inline int render_box_gap(int x,int y,int x0,int y0,int x1,int y1){
+    int dx=x<x0?x0-x:x>x1?x-x1:0,dy=y<y0?y0-y:y>y1?y-y1:0;
+    return dx>dy?dx:dy;
+}
+// Bound emitted PS1 polygons to the viewport plus a small guard band.
+static inline int render_screen_plane(int x,int y,int z,int focal,int cx,int cy,int w,int h,int k){
+    switch(k){
+        case 1:return focal*x+(cx+24)*z;
+        case 2:return (w-cx+24)*z-focal*x;
+        case 3:return focal*y+(cy+16)*z;
+        default:return (h-cy+16)*z-focal*y;
+    }
+}

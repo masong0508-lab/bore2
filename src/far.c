@@ -74,8 +74,13 @@ u32 far_haze_col(u32 col, int zw) {   // a colour (r | g << 8 | b << 16) faded i
 
 // ================================================================== clipping (big ground pieces near the eye)
 typedef struct { int x, y, z, r, g, b; } CV;
-static inline int pdist(const CV *v, int k) {
-    switch (k) { case 0: return v->z - ZN; case 1: return v->x + GB * v->z; case 2: return GB * v->z - v->x; case 3: return v->y + GB * v->z; default: return GB * v->z - v->y; }
+static inline int pdist(const CV *v,int k){
+    return k==0?v->z-ZN:render_screen_plane(v->x,v->y,v->z,gfx_focal,CENTER_X,CENTER_Y,SCREEN_W,SCREEN_H,k);
+}
+static inline int fv_screen_safe(const FV *v){
+    if(v->vz<ZN)return 0;
+    for(int k=1;k<5;k++)if(render_screen_plane(v->vx,v->vy,v->vz,gfx_focal,CENTER_X,CENTER_Y,SCREEN_W,SCREEN_H,k)<0)return 0;
+    return 1;
 }
 static int clip1(const CV *in, int n, CV *out, int k) {
     int m = 0;
@@ -84,7 +89,7 @@ static int clip1(const CV *in, int n, CV *out, int k) {
         int da = pdist(a, k), db = pdist(b, k);
         if (da >= 0) out[m++] = *a;
         if ((da >= 0) != (db >= 0)) {
-            int t = (da * 4096) / (da - db); // multiplication is defined for negative plane distances
+            int t=(int)(((long long)da*4096)/((long long)da-db));
             CV *c = &out[m++];
             c->x = a->x + (((b->x - a->x) * t) >> 12); c->y = a->y + (((b->y - a->y) * t) >> 12); c->z = a->z + (((b->z - a->z) * t) >> 12);
             c->r = a->r + (((b->r - a->r) * t) >> 12); c->g = a->g + (((b->g - a->g) * t) >> 12); c->b = a->b + (((b->b - a->b) * t) >> 12);
@@ -116,13 +121,14 @@ static void ground_quad(int x0, int x1, int z0, int z1, int r, int g, int b, int
         SVECTOR sv[4] SVEC_ALIGN = { { X0, (short)(Y - (h0 >> 4)), Z0, 0 }, { X1, (short)(Y - (h1 >> 4)), Z0, 0 }, { X1, (short)(Y - (h2 >> 4)), Z1, 0 }, { X0, (short)(Y - (h3 >> 4)), Z1, 0 } };
         XV o[4]; gfx_xform(sv, o, 4);
         int good = 1;
-        for (int i = 0; i < 4; i++) { if (o[i].z < ZN * 2 || o[i].x < CENTER_X - 680 || o[i].x > CENTER_X + 680 || o[i].y < CENTER_Y - 680 || o[i].y > CENTER_Y + 680) good = 0;
+        if(o[0].z<ZN&&o[1].z<ZN&&o[2].z<ZN&&o[3].z<ZN)return;
+        for(int i=0;i<4;i++){if(o[i].z<ZN*2||o[i].x< -24||o[i].x>SCREEN_W+24||o[i].y< -16||o[i].y>SCREEN_H+16)good=0;
                                       v[i].sx = o[i].x; v[i].sy = o[i].y; v[i].z = o[i].z << 4; }
         if (!good) { fxf(x0, -h0, z0, &v[0]); fxf(x1, -h1, z0, &v[1]); fxf(x1, -h2, z1, &v[2]); fxf(x0, -h3, z1, &v[3]); }
         else for (int i = 0; i < 4; i++) { v[i].vz = ZN * 8; v[i].vx = v[i].vy = 0; }   // (in: no clipping)
     }
     int in = 0, behind = 0;
-    for (int i = 0; i < 4; i++) { in += fv_in(&v[i]); behind += v[i].vz < ZN; }
+    for(int i=0;i<4;i++){in+=fv_screen_safe(&v[i]);behind+=v[i].vz<ZN;}
     if (behind == 4) return;
     int sl = hh ? CLAMP(((h1 + h2 - h0 - h3) + (h3 + h2 - h0 - h1)) * 5 / ((x1 - x0 > 0 ? x1 - x0 : x0 - x1) / 8 + 1) , -70, 70) : 0;   // (the slope's light, from the north-west: the nearer to the sun a slope faces, the brighter)
     u32 c[4]; for (int i = 0; i < 4; i++) c[i] = hazed(CLAMP(r + (r * sl >> 8), 0, 255), CLAMP(g + (g * sl >> 8), 0, 255), CLAMP(b + (b * sl >> 8), 0, 255), haze_f(v[i].z));
@@ -362,12 +368,19 @@ static inline int in_cone(int x, int z, int rad, int dmax) {
     int lat = (dx * fdz - dz * fdx) >> 12; lat = ABS(lat);     // across it
     return lat * cone_c <= (fwd + rad) * cone_s + rad * 4096;
 }
+int far_ground_visible(int x0,int z0,int x1,int z1){
+    int rad=MAX(x1-x0,z0-z1)+2*TILE;
+    return in_cone((x0+x1)/2,(z0+z1)/2,rad,M2U(150));
+}
+void far_ground_patch(int x0,int z0,int x1,int z1,u32 color,const int *hh){
+    ground_quad(x0,x1,z0,z1,color&255,(color>>8)&255,(color>>16)&255,OT_GROUND_WIN,hh);
+}
 static int far_setup(void) {
     feye = cam.eye;
     int ax = cam.at.vx - cam.eye.vx, ay = cam.at.vy - cam.eye.vy, az = cam.at.vz - cam.eye.vz;
     fh = isqrt(ax * ax + az * az); if (fh < 1) fh = 1;
     fdx=(ax*4096)/fh;fdz=(az*4096)/fh;
-    int far = M2U(far_metres());
+    int far=M2U(far_view?far_metres():90); // minimum streaming skirt
     // how far the ground shows: the top edge looks down by the pitch less the active lens's vertical half-angle; past where it meets the ground,
     // nothing on the ground can show (tall things a little further)
     int h = -feye.vy; if (h < 64) h = 64;
@@ -466,7 +479,7 @@ static void draw_roads(int hills) {
     if (hills) rh_follow(cbx, cby);
     int rr = 70, rg = 70, rb_ = 74; season_rgb(2, &rr, &rg, &rb_); rr = rr * 3 / 4; rg = rg * 3 / 4; rb_ = rb_ * 3 / 4;   // (the bands' colour: the same all frame)
     { u32 *w = (u32 *)rdc; for (int k = 0; k < RD_W * RD_W / 4; k++) w[k] &= 0x07070707u; rdc[RD_W - 1][RD_W - 1] &= 7; }      // (the marks of last frame's runs off: four a time)
-    const int reach = MIN(max_ground, M2U(160)), RW = 3 * TILE, maxrun = hills ? 3 : 99;
+    const int reach=MIN(max_ground,M2U(160)),RW=BM_LOT0*TILE,maxrun=hills?3:99;
     #define IN_WIN(bx, by) (world_wbx >= 0 && (bx) >= world_wbx && (bx) < world_wbx + MW / BM_BLK && (by) >= world_wby && (by) < world_wby + MH / BM_BLK)
     // only the blocks within reach of the eye (the table holds 49 x 49: reach is usually a good deal less)
     const int rb = reach / (BM_BLK * TILE) + 2, ei = cbx - rdc_bx, ej = cby - rdc_by;
@@ -571,7 +584,7 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
         }
         row_end();
     }
-    if (!far_lite) { int t_ = gfx_hb(); draw_roads(hills); extern int dbg_roads_hb; dbg_roads_hb += gfx_hb() - t_; }
+    {int t_=gfx_hb();draw_roads(hills);extern int dbg_roads_hb;dbg_roads_hb+=gfx_hb()-t_;}
     for (int i = 0; i < nrect; i++) { const Rect *r = &rects[i]; int R, G, B; cell_rgb((int)r->key, &R, &G, &B);
         int x0 = ((gx0 + r->x0) * 2 * CELL_T - fwx0) * TILE, x1 = ((gx0 + r->x1) * 2 * CELL_T - fwx0) * TILE;
         int z0 = -(((gy0 + r->y0) * 2 * CELL_T - fwy0) * TILE), z1 = -(((gy0 + r->y1) * 2 * CELL_T - fwy0) * TILE);
@@ -602,7 +615,9 @@ static void face_win(const XV *a, const XV *b, const XV *c, const XV *d, u32 col
     p[11] = 0xE2000000u;
     lk(p,11,face_slot(a->z+b->z+c->z+d->z,4,slot));
 }
-static inline int xv_good(const XV *v) { return v->z >= ZN && v->x > -1000 && v->x < 1320 && v->y > -1000 && v->y < 1240; }
+static inline int xv_good(const XV *v){
+    return v->z>=ZN&&v->x>=-24&&v->x<=SCREEN_W+24&&v->y>=-16&&v->y<=SCREEN_H+16;
+}
 // a building as a box: x0 < x1, z0 > z1 (north, south), sto storeys; its walls' colour, a pitched roof (or flat) and its colour
 static int far_lift;   // the hills: how high the ground is under the building being drawn
 // Only the exceptional case of a building crossing the near or guard plane
@@ -795,11 +810,15 @@ static void far_building(const FB *f, int x0, int z0, int x1, int z1) {
     far_lift = 0;
 }
 // the map's own buildings past the detail (world.c's skyline), drawn the same way
-void far_box_world(int x0, int z0, int x1, int z1, int sto, u16 wall15, int rs, int pit, u16 roof15) {
+void far_box_world_shape(int x0,int z0,int x1,int z1,int sto,u16 wall15,int rs,int pit,u16 roof15,int shape){
     u8 wc[3] = { (u8)R8(wall15), (u8)G8(wall15), (u8)B8(wall15) }, rc[3] = { (u8)R8(roof15), (u8)G8(roof15), (u8)B8(roof15) };
     far_lift = world_gh_lot((x0 + x1) / 2, (z0 + z1) / 2);
-    far_box(x0, z0, x1, z1, sto, wc, sto <= 2 ? rs : 0, pit, rc, sto >= 2);
-    far_lift = 0;
+    HouseShapeRect bounds={0,0,(x1-x0)/TILE,(z0-z1)/TILE},body,wing;
+    if(house_shape_decode(bounds,shape,&body,&wing)){
+        far_box(x0+body.x0*TILE,z0-body.z0*TILE,x0+body.x1*TILE,z0-body.z1*TILE,sto,wc,sto<=2?rs:0,pit,rc,0);
+        far_box(x0+wing.x0*TILE,z0-wing.z0*TILE,x0+wing.x1*TILE,z0-wing.z1*TILE,1,wc,0,1,rc,0);
+    }else far_box(x0,z0,x1,z1,sto,wc,sto<=2?rs:0,pit,rc,sto>=2);
+    far_lift=0;
 }
 static void draw_buildings(int rx0,int ry0,int rx1,int ry1){
     (void)rx0;(void)ry0;(void)rx1;(void)ry1;
@@ -832,8 +851,8 @@ static void draw_buildings(int rx0,int ry0,int rx1,int ry1){
             if (d > far2) continue;
             int hgt = FSTO(f) * WALL_FULL;
             if (gfx_focal * hgt < d * 2) continue;                      // under two pixels tall: lost in the haze
-            if (far_detail == 0 && FSTO(f) < 3 && d > M2U(120)) continue;
-            if (d > M2U(far_lite ? 100 : 300)) {
+            // Low detail changes the model, not whether the house exists.
+            if(d>M2U(far_lite||far_detail==0?100:300)){
                 u8 planned_rgb[3]; const u8 *wc = far_house_wall_rgb(f, planned_rgb);
                 far_lift = world_gh_lot(cx, cz);
                 far_dot(x0, z0, x1, z1, FSTO(f), wc);
@@ -1013,7 +1032,6 @@ int far_begin(u32 horizon) {
     far_prims=0;far_on_frame=0;far_local_ready=0; far_nclip = far_ncone = far_nquad = 0; far_hb[0] = far_hb[1] = far_hb[2] = 0;   // (a frame without the far pass reads 0, not the last one's)
     if(world_zone!=ZONE_CITY||world_wbx<0)return 0;
     if(!tex_ok)far_tex(); // local vegetation also uses this atlas
-    if(far_view<=0)return 0;
     hz_r = horizon & 255; hz_g = (horizon >> 8) & 255; hz_b = (horizon >> 16) & 255;
     fwx0 = world_wbx * BM_BLK; fwy0 = world_wby * BM_BLK;
     { int ptx = (cam.at.vx >> 8) + fwx0, pty = (-cam.at.vz >> 8) + fwy0; pbx = ptx / BM_BLK; pby = pty / BM_BLK; }
