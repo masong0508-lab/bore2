@@ -2295,8 +2295,8 @@ static int dbg_prop_lite,dbg_prop_omitted;
 static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, int focus) {
     // the camera's forward on the ground (unit, 4096), to decide which walls stand between it and the focus
     int cdx = cam.at.vx - cam.eye.vx, cdz = cam.at.vz - cam.eye.vz;
-    int len = SquareRoot0(cdx * cdx + cdz * cdz); if (len < 1) len = 1;
-    int fdx = (cdx << 12) / len, fdz = (cdz << 12) / len;
+    int len=isqrt(cdx*cdx+cdz*cdz);if(len<1)len=1;
+    int fdx=(cdx*4096)/len,fdz=(cdz*4096)/len;
     int focx = fx * TILE + TILE / 2, focz = -(fy * TILE + TILE / 2);
     int x0 = rx0, x1 = rx1, y0 = ry0, y1 = ry1;
     extern s16 bfs_par[MH][MW]; u8 (*done)[MW] = (u8 (*)[MW])bfs_par;   // (scratch for this draw: the route finder's parents, lent. The roofs that also borrow it
@@ -2572,7 +2572,8 @@ COLD static void roof_region(int x0, int y0, int x1, int y1) {
     // courtyard. Reject that LOD when any upper floor lacks perimeter
     // support. Interior stairwell openings do NOT disqualify an otherwise
     // intact outer wall ring. Cached in b_rect, so there is no frame cost.
-    for (int b = 1; b <= nbld; b++) if (b_x0[b] != 255 && b_top[b] && b_rect_get(b)) {
+    for(int b=1;b<=nbld;b++)if(b_x0[b]!=255&&b_top[b]&&b_rect_get(b)){
+        if(!full&&(b_x1[b]<x0||b_x0[b]>x1||b_y1[b]<y0||b_y0[b]>y1))continue;
         for (int l = 1; l <= b_top[b]; l++) {
             Row upper = mp[l];
             if (!upper || !house_lod_shell_ring(&upper[0][0], MW + 1,
@@ -2581,8 +2582,9 @@ COLD static void roof_region(int x0, int y0, int x1, int y1) {
             }
         }
     }
-    for (int b = 1; b <= nbld; b++) {                            // each building's roof
-        if (b_x0[b] == 255) continue;
+    for(int b=1;b<=nbld;b++){ // only rebuilt houses need a new roof plan
+        if(b_x0[b]==255)continue;
+        if(!full&&(b_x1[b]<x0||b_x0[b]>x1||b_y1[b]<y0||b_y0[b]>y1))continue;
         if (world_zone == ZONE_CITY && world_wbx >= 0) {
             u8 sty, col, pit; int gx = (world_wbx * BM_BLK + b_x0[b]) / BM_BLK, gy = (world_wby * BM_BLK + b_y0[b]) / BM_BLK;
             roof_pick(world_wbx * BM_BLK + b_x0[b], world_wby * BM_BLK + b_y0[b], b_x1[b] - b_x0[b] + 1, b_y1[b] - b_y0[b] + 1, b_top[b], gx, gy, 0, &sty, &col, &pit);
@@ -2697,9 +2699,16 @@ static void roof_pending(int picked) {                   // at most one roof reg
     if (picked < 0 || picked >= WB * WB) return;
     int wx = picked % WB, wy = picked / WB;
     if (!rq_dirty[wy][wx]) return;
-    rq_dirty[wy][wx] = 0; rq_n--;
-    roof_region(wx * BM_BLK, wy * BM_BLK, wx * BM_BLK + BM_BLK - 1,
-                wy * BM_BLK + BM_BLK - 1);
+    int x0=wx*BM_BLK,y0=wy*BM_BLK,x1=x0+BM_BLK-1,y1=y0+BM_BLK-1;
+    // A cross-block custom house must never have only half its building
+    // ID invalidated. Fall back to a complete metadata rebuild in this
+    // exceptional case, before any altered geometry can be submitted.
+    for(int b=1;b<=nbld;b++){
+        if(b_x0[b]==255||b_x1[b]<x0||b_x0[b]>x1||b_y1[b]<y0||b_y0[b]>y1)continue;
+        if(b_x0[b]<x0||b_x1[b]>x1||b_y0[b]<y0||b_y1[b]>y1){roof_rebuild();return;}
+    }
+    rq_dirty[wy][wx]=0;rq_n--;
+    roof_region(x0,y0,x1,y1);
 }
 #ifdef BORE_DC
 #define RTS 32
@@ -2891,8 +2900,8 @@ static void roofs_draw(int fx, int fy) {
             static int last_key = -1, last_L, last_amb = -1; if (gfx_light_amb() != last_amb) { last_key = -1; last_amb = gfx_light_amb(); }
             int L;
             if (key == last_key) L = last_L;
-            else { int len = SquareRoot0(dhx * dhx + TILE * TILE + dhz * dhz); if (len < 1) len = 1;
-                   L = last_L = gfx_light((-dhx << 12) / len, (-TILE << 12) / len, (-dhz << 12) / len); last_key = key; }
+            else {int len=isqrt(dhx*dhx+TILE*TILE+dhz*dhz);if(len<1)len=1;
+                   L=last_L=gfx_light((-dhx*4096)/len,(-TILE*4096)/len,(-dhz*4096)/len);last_key=key;}
             u32 c = gfx_grade_tex((u32)MIN(255, (rc[0] * L) >> 7) | ((u32)MIN(255, (rc[1] * L) >> 7) << 8) | ((u32)MIN(255, (rc[2] * L) >> 7) << 16));
             int u0 = roof_tex.u, v0 = roof_tex.v, u1 = u0 + RTS - 1, v1 = v0 + RTS - 1;
             if (world_fp && b && b_see[b]) {   // first person, under your own roof: a plain plaster ceiling, not shingles
@@ -3138,6 +3147,7 @@ COLD static void ground_win(int hz) {   // hz: the far view is on, so the corner
         // Keep a continuous low-cost ground layer under the detailed tiles.
         // A late packet shortage must not expose sky between local floors.
         const XV *a = &xv[Y * (NG + 1) + X], *b = a + 1, *c = a + NG + 1, *d = c + 1;
+        if(a->z<Z_NEAR&&b->z<Z_NEAR&&c->z<Z_NEAR&&d->z<Z_NEAR)continue;
         int near=a->z<Z_NEAR||b->z<Z_NEAR||c->z<Z_NEAR||d->z<Z_NEAR;
         if (!near&&((a->x < 0 && b->x < 0 && c->x < 0 && d->x < 0) || (a->x >= SCREEN_W && b->x >= SCREEN_W && c->x >= SCREEN_W && d->x >= SCREEN_W) ||
             (a->y < 0 && b->y < 0 && c->y < 0 && d->y < 0) || (a->y >= SCREEN_H && b->y >= SCREEN_H && c->y >= SCREEN_H && d->y >= SCREEN_H))) continue;
@@ -3170,26 +3180,37 @@ int world_tree_drawn(int x,int y){
     return (unsigned)x<CITY_TILES&&(unsigned)y<CITY_TILES&&
         ((oi_bits[y*OI_ROW+(x>>3)]>>(x&7))&1);
 }
+int world_tree_visible(int x,int y){
+    if((unsigned)x>=CITY_TILES||(unsigned)y>=CITY_TILES)return 0;
+    int b=bld[y][x];
+    return !b||b_see[b]||world_roof_show;
+}
 static void city_props(int fx,int fy,int t,int band,int l){
     extern int world_item_r;
     int ir=MAX(world_item_r,world_detail_r),x0=MAX(0,MIN(ex0,fx-ir)),x1=MIN(CITY_TILES-1,MAX(ex1,fx+ir));
     int y0=MAX(0,MIN(ey0,fy-ir)),y1=MIN(CITY_TILES-1,MAX(ey1,fy+ir));
     if(l){x0=MAX(x0,lvl_bb[l][0]);x1=MIN(x1,lvl_bb[l][2]);y0=MAX(y0,lvl_bb[l][1]);y1=MIN(y1,lvl_bb[l][3]);}
+    if(!band){x0=MAX(x0,fx-5);x1=MIN(x1,fx+5);y0=MAX(y0,fy-5);y1=MIN(y1,fy+5);}
     TileView tv;tile_view_init(&tv,TILE/2,-WALL_FULL/2,-TILE/2);
+    int ex=cam.eye.vx/TILE,ey=-cam.eye.vz/TILE;
     for(int y=y0;y<=y1;y++)for(int x=x0;x<=x1;x++){
+        if(band&&ABS(y-fy)<=5&&x>=fx-5&&x<=fx+5){x=fx+5;continue;}
         char c=dm[y][x];
         if(c=='.'||c==' '||c=='D'||is_wall(c))continue;
         int b=bld[y][x],inside=x>=rx0&&x<=rx1&&y>=ry0&&y<=ry1;
         if(b&&!b_see[b]&&!world_roof_show)continue;
         if(!inside&&!(b&&b_see[b])&&(l||b||c=='r'||ABS(x-fx)>ir||ABS(y-fy)>ir))continue;
-        int close=MAX(ABS(x-fx),ABS(y-fy))<=5;
-        if(close!=(band==0))continue;
         int vx,vy,vz;tile_view(&tv,x,y,&vx,&vy,&vz);
         if(vz<-TILE||ABS(vx)>(vz*3)/4+TILE*2||ABS(vy)>(vz*5)/8+TILE*3+1500)continue;
         int room=gfx_room(),tree=!l&&(c=='3'||c=='6'||c=='g'||c=='u');
         // A tree card is preferable to a truncated trunk when the
         // full model cannot fit. Only one pass may own this tree.
-        if(room<512||(tree&&far_view&&far_trees&&room<2048)){dbg_prop_omitted++;continue;}
+#ifndef BORE_DC
+        // Preserve tree silhouettes while replacing expensive distant
+        // multi-box trees with a single anchored textured quad.
+        if(tree&&band&&MAX(ABS(x-ex),ABS(y-ey))>7)continue;
+#endif
+        if(room<512||(tree&&room<2048)){dbg_prop_omitted++;continue;}
         lift_to(item_lift(x,y,l));
         if(c=='r'){rug_tile(x,y);continue;}
         int rot=items_rotates(c)?world_item_facing(x,y):0,along=items_along(c)?world_along(x,y,c):0;
@@ -3313,6 +3334,7 @@ void world_draw(int fx, int fy, int t, int cutaway) {
             }
             gfx_set_reserve(world_reserve);
         }
+        if(defer_city_props)far_draw_local_trees(world_horizon,fx,fy,world_item_r);
         if(use_far)far_draw(rx0,ry0,rx1,ry1);
         gfx_set_identity();
         PROF_END(3);

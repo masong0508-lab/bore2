@@ -18,6 +18,7 @@ int  far_begin(u32 horizon);               // a frame's far view: set up (0: off
 void far_box_world(int x0, int z0, int x1, int z1, int sto, u16 wall15, int rs, int pit, u16 roof15);   // a map building past the detail
 void far_local_begin(u32 horizon);       // near-only mode still uses the correctly clipped boxes
 void far_draw_pending(u32 horizon);       // render only in-window lots not yet generated
+void far_draw_local_trees(u32 horizon,int fx,int fy,int radius);
 void far_resume(void);                     // restore far transforms after a near/ground pass
 void far_draw(int rx0, int ry0, int rx1, int ry1);   // the land, the towns and the trees (the detail box is left to the near world)
 void far_sky(u32 top, u32 horizon);        // the sky, its haze sitting on the real horizon

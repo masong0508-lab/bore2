@@ -61,12 +61,22 @@ def run(root):
         issues.append(f"{flashes} large isolated flash candidates")
     if any(len(set(scene(t).getdata())) < 500 for t in ANCHORS):
         issues.append("Blank or unusually low-detail native scene")
+    def means(name,keys):
+        return {k:round(v/n,2) for k,v in zip(keys,read(name,len(keys)))}
+    periods=read("dbg_per_hist",6)
     report = {
         "result": "FAIL" if issues else "PASS",
         "engine": "DuckStation/OpenBIOS, 2 MiB, default timing; AUTO_CITY scripted movement",
         "live_frames": n, "live_vblanks": vb,
         "mean_emulated_fps": round(60 * (n - 1) / vb, 2),
-        "frame_period_histogram": read("dbg_per_hist", 6),
+        "frame_period_histogram": periods,
+        "mean_cpu_hblanks": round(read("dbg_sum_cpu")/n,2),
+        "mean_frame_parts_hblanks": means("dbg_sum_part",["update","logic","world","people","bubbles","HUD"]),
+        "mean_world_parts_hblanks": means("dbg_sum_w",["ground_storey","upper_storeys","roofs","skyline","far_land","far_buildings","far_trees","unused"]),
+        "mean_primitive_counts": means("dbg_sum_pn",["floor","wall","prop","roof_far","household","crowd_live","crowd_lod","misc"]),
+        "mean_shed_level": round(read("dbg_sum_shed")/n,2),
+        "mean_detail_radius_tiles": round(read("dbg_sum_r")/n,2),
+        "speed_helper_counters": read("dbg_hl",6),
         "window_crossings": counters["dbg_shifts"],
         "worst_window_shift_hblanks": counters["dbg_shift_hb"],
         "packet_overflow_frames_all_game_states": counters["dbg_pk_ovf"],

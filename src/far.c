@@ -366,12 +366,12 @@ static int far_setup(void) {
     feye = cam.eye;
     int ax = cam.at.vx - cam.eye.vx, ay = cam.at.vy - cam.eye.vy, az = cam.at.vz - cam.eye.vz;
     fh = isqrt(ax * ax + az * az); if (fh < 1) fh = 1;
-    fdx = (ax << 12) / fh; fdz = (az << 12) / fh;
+    fdx=(ax*4096)/fh;fdz=(az*4096)/fh;
     int far = M2U(far_metres());
     // how far the ground shows: the top edge looks down by the pitch less the active lens's vertical half-angle; past where it meets the ground,
     // nothing on the ground can show (tall things a little further)
     int h = -feye.vy; if (h < 64) h = 64;
-    int tp = (ay << 12) / fh;                                   // tan(pitch) (4096; positive looking down)
+    int tp=(ay*4096)/fh;                                   // tan(pitch) (4096; positive looking down)
     int tv = (CENTER_Y * 4096) / gfx_focal;                     // tan(half the vertical view), in 4.12
     int num = tp - tv, den = 4096 + ((tp * tv) >> 12);
     if (num > 40) {                                             // the horizon is off the top of the screen
@@ -412,7 +412,6 @@ static void row_run(int y, int x0, int x1, u32 key) {
     nrect++;
 }
 static void row_end(void) { memcpy(open_, cur_, ncur * sizeof cur_[0]); nopen = ncur; }
-static u8 wvis[MH / 4][MW / 4];                  // window cells the view takes in (the land pass; the trees use it too)
 static u32 floor_key0(int fl);
 static u32 floor_key(int fl) {
     u32 k = floor_key0(fl); if (fl < FL_GRASS || (!far_season && !far_wet)) return k;
@@ -505,11 +504,7 @@ static inline int lat_h(int lx, int ly, int x, int z) {
 static void draw_land(int rx0, int ry0, int rx1, int ry1) {
     const int hills = world_zone == ZONE_CITY && world_wbx >= 0;
     far_hb_win0 = gfx_hb();
-    // 1. the window round you, past the detail: its own ground is world.c's ground_win now (corners transformed once, hazed), drawn just before this.
-    //    What is left here is which of its 4 x 4-tile cells the view takes in, for the trees.
-    if (far_trees && tex_ok)
-        for (int cy = 0; cy < MH / 4; cy++) for (int cx = 0; cx < MW / 4; cx++)
-            wvis[cy][cx] = (u8)in_cone(cx * 4 * TILE + 2 * TILE, -(cy * 4 * TILE + 2 * TILE), 3 * TILE, MAX(max_ground, max_tree));
+    // Local tree cards now have a single owner independent of far-view quality.
     far_hb_win = gfx_hb(); { extern int dbg_miss[4]; dbg_miss[3] += far_hb_win - far_hb_win0; }
     // 2. past the window: the land's cells (77 m)
     int reach = max_ground / (CELL_T * TILE) + 1;
@@ -891,22 +886,35 @@ static void tree_card(int x, int z, int k, int big) {
     p[8] = FXY(x1, y1); p[9] = (u32)(t->u + 15) | ((u32)(t->v + 31) << 8);
     lk(p, 9, far_slot(zw));
 }
-static void draw_trees(int rx0, int ry0, int rx1, int ry1) {
-    (void)rx0;(void)ry0;(void)rx1;(void)ry1;
-    if (!far_trees || !tex_ok) return;
-    light_tree = CLAMP(gfx_light(0, -ONE / 2, -ONE / 2), 60, 200);
-    // the map's own trees past the detail (where they really stand)
-    window_trees();
-    for (int c = 0; c < (MH / 4) * (MW / 4); c++) {
-        if (!wvis[c / (MW / 4)][c % (MW / 4)]) continue;
-        for (int i = wt_lo[c]; i < wt_lo[c + 1]; i++) {
-            int x = wt_x[i], y = wt_y[i];
-            if(world_tree_drawn(x,y))continue; // exact per-frame owner, including budget fallbacks
-            int wx = x * TILE + TILE / 2, wz = -(y * TILE + TILE / 2);
-            int ddx = ABS(wx - feye.vx), ddz = ABS(wz - feye.vz); if (MAX(ddx, ddz) > max_tree) continue;
-            tree_card(wx, wz, wt_k[i], 4);
+void far_draw_local_trees(u32 horizon,int fx,int fy,int radius){
+    // The configured local vegetation stays even when the speed helper
+    // turns off distant trees. Only the representation changes.
+    if(!tex_ok)return;
+    window_trees();if(!nwt)return;
+    far_local_begin(horizon);
+    light_tree=CLAMP(gfx_light(0,-ONE/2,-ONE/2),60,200);
+    int reach=MAX(radius*TILE,far_trees&&far_view?max_tree:0)+4*TILE;
+    for(int c=0;c<(MH/4)*(MW/4);c++){
+        if(wt_lo[c]==wt_lo[c+1])continue;
+        int cx=c%(MW/4),cy=c/(MW/4);
+        if(!in_cone((cx*4+2)*TILE,-(cy*4+2)*TILE,3*TILE,reach))continue;
+        for(int i=wt_lo[c];i<wt_lo[c+1];i++){
+            int x=wt_x[i],y=wt_y[i];
+            if(world_tree_drawn(x,y)||!world_tree_visible(x,y))continue;
+            int wx=x*TILE+TILE/2,wz=-(y*TILE+TILE/2);
+            int local=MAX(ABS(x-fx),ABS(y-fy))<=radius;
+            if(!local&&(!far_view||!far_trees||MAX(ABS(wx-feye.vx),ABS(wz-feye.vz))>max_tree))continue;
+            if(gfx_room()<96)goto local_trees_done;
+            tree_card(wx,wz,wt_k[i],4);
         }
     }
+local_trees_done:
+    gfx_set_identity();
+}
+static void draw_trees(int rx0,int ry0,int rx1,int ry1){
+    (void)rx0;(void)ry0;(void)rx1;(void)ry1;
+    if(!far_trees||!tex_ok)return;
+    light_tree=CLAMP(gfx_light(0,-ONE/2,-ONE/2),60,200);
     // past the map: woods and scattered trees, placed by each cell's dice
     int reach = max_tree / (CELL_T * TILE) + 1, pcx = pbx / FCB, pcy = pby / FCB;
     int wx0 = world_wbx * BM_BLK, wy0 = world_wby * BM_BLK;
@@ -1000,27 +1008,29 @@ void far_sky_sea(u32 top, u32 horizon, u32 sea) {   // (sea: below the horizon, 
 void far_sky(u32 top, u32 horizon) { far_sky_sea(top, horizon, 0); }
 
 // ================================================================== the frame
-static int far_on_frame;
+static int far_on_frame,far_local_ready;
 int far_begin(u32 horizon) {
-    far_prims=0;far_on_frame=0; far_nclip = far_ncone = far_nquad = 0; far_hb[0] = far_hb[1] = far_hb[2] = 0;   // (a frame without the far pass reads 0, not the last one's)
-    if (world_zone != ZONE_CITY || world_wbx < 0 || far_view <= 0) return 0;
-    if (!tex_ok) far_tex();
+    far_prims=0;far_on_frame=0;far_local_ready=0; far_nclip = far_ncone = far_nquad = 0; far_hb[0] = far_hb[1] = far_hb[2] = 0;   // (a frame without the far pass reads 0, not the last one's)
+    if(world_zone!=ZONE_CITY||world_wbx<0)return 0;
+    if(!tex_ok)far_tex(); // local vegetation also uses this atlas
+    if(far_view<=0)return 0;
     hz_r = horizon & 255; hz_g = (horizon >> 8) & 255; hz_b = (horizon >> 16) & 255;
     fwx0 = world_wbx * BM_BLK; fwy0 = world_wby * BM_BLK;
     { int ptx = (cam.at.vx >> 8) + fwx0, pty = (-cam.at.vz >> 8) + fwy0; pbx = ptx / BM_BLK; pby = pty / BM_BLK; }
     { extern void bm_hill_center(int bx, int by); bm_hill_center(pbx, pby); }
     cells_follow(24);
-    if (!far_setup()) return 0;
-    far_gte(); far_on_frame = 1;
+    if(!far_setup())return 0;
+    far_local_ready=1;far_gte();far_on_frame=1;
     return 1;
 }
 int far_reach_m(void) { return far_on_frame ? far_reach_u / 213 : -1; }
 void far_resume(void){if(far_on_frame)far_gte();}
 void far_local_begin(u32 horizon){
-    if(!far_on_frame){
+    if(!far_local_ready){
         // Even "near only" needs the same clipped, terrain-anchored boxes.
         hz_r=horizon&255;hz_g=(horizon>>8)&255;hz_b=(horizon>>16)&255;
         int view=far_view;far_view=1;far_setup();far_view=view;hz_max=0;
+        far_local_ready=1;
     }
     far_gte();
 }
