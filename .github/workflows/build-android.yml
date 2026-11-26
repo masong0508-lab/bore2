@@ -18,6 +18,12 @@ jobs:
         run: |
           cc -std=gnu11 -O2 -Iports/host/shim -Isrc ports/android/test/world_bridge_test.c ports/android/app/src/main/cpp/world_bridge.c src/bigmap.c -o /tmp/android_world
           /tmp/android_world
+      - name: Test roof footprint union and exact geometry edges
+        run: cc -std=c99 -Wall -Wextra -Werror -Iports/android/app/src/main/cpp ports/android/test/mesh_footprint_test.c -o /tmp/mesh_footprint && /tmp/mesh_footprint
+      - name: Test generated 3D scene geometry and bounds
+        run: |
+          cc -std=gnu11 -O2 -Iports/host/shim -Isrc -Iports/android/app/src/main/cpp ports/android/test/scene_mesh_test.c ports/android/app/src/main/cpp/scene_mesh.c ports/android/app/src/main/cpp/world_bridge.c src/bigmap.c -lm -o /tmp/scene_mesh
+          /tmp/scene_mesh
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

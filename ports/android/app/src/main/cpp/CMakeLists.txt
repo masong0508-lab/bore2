@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
 project(bore2_android C)
 set(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../..")
-add_library(bore2_world SHARED world_bridge.c jni_world.c "${ROOT}/src/bigmap.c")
+add_library(bore2_world SHARED world_bridge.c jni_world.c scene_mesh.c "${ROOT}/src/bigmap.c")
 target_include_directories(bore2_world PRIVATE "${ROOT}/ports/host/shim" "${ROOT}/src")
 target_compile_features(bore2_world PRIVATE c_std_99)
 target_compile_options(bore2_world PRIVATE -O2 -ffunction-sections -fdata-sections)
 target_link_options(bore2_world PRIVATE -Wl,--gc-sections)
+
+target_link_libraries(bore2_world PRIVATE m)

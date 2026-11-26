@@ -1,6 +1,7 @@
 #include <jni.h>
 #include "world_bridge.h"
 #include "window_math.h"
+#include "scene_mesh.h"
 
 JNIEXPORT jint JNICALL Java_com_bore2_game_NativeWorld_init(JNIEnv *env,jclass cls,jint seed){
     (void)env;(void)cls;return (jint)bore_android_init((uint32_t)seed);
@@ -16,4 +17,12 @@ JNIEXPORT jstring JNICALL Java_com_bore2_game_NativeWorld_describe(JNIEnv *env,j
     (void)cls;char line[256];
     if(!bore_android_describe(x,y,day,line,sizeof line))line[0]=0;
     return (*env)->NewStringUTF(env,line);
+}
+
+JNIEXPORT jfloatArray JNICALL Java_com_bore2_game_NativeWorld_mesh(JNIEnv *env,jclass cls,jint x,jint y,jint radius){
+    (void)cls;BoreMesh m;
+    if(!bore_scene_build(x,y,radius,&m))return NULL;
+    jfloatArray a=(*env)->NewFloatArray(env,m.count*6);
+    if(a)(*env)->SetFloatArrayRegion(env,a,0,m.count*6,m.v);
+    bore_scene_free(&m);return a;
 }
