@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <psxgpu.h>
+#include "frame_render_policy.h"
 
 #define SCALE 2.0f
 // a text log in RAM (tools/dcrun.c dumps the RAM: find "DCLOG{"), for looking at what the GPU was given
@@ -71,6 +72,8 @@ int ClearImage(const RECT *r, int rr, int gg, int bb) {
 #define NTEX 40
 typedef struct { uint32_t key, sig, clsig, used, vg; pvr_ptr_t ptr; int mode, px, py, cx, cy, var; uint32_t cg[16][16]; uint8_t fl[16][16]; } Tex;
 static Tex tex[NTEX]; static uint32_t tex_clock;
+static uint8_t tex_pinned[NTEX];
+static unsigned dc_tex_denied;
 static uint16_t conv[256 * 256] __attribute__((aligned(32)));
 int dc_tex_uploads, dc_tex_cells;          // (whole pages / cells converted this run: the readout)
 static uint32_t tex_sig(int mode, int px, int py) {
@@ -194,30 +197,39 @@ static void tex_update(Tex *t) {   // only the cells whose VRAM changed
     dc_tex_cells += n;
 }
 static int tex_last = -1;
-static int tex_get(int tpage, int clut, int var) {
-    int mode = (tpage >> 7) & 3; if (mode == 3) mode = 2;
-    int px = tpage & 15, py = (tpage >> 4) & 1, cx = (clut & 63) * 16, cy = (clut >> 6) & 511;
-    uint32_t key = (uint32_t)mode << 28 | (uint32_t)px << 24 | (uint32_t)py << 23 | (uint32_t)var << 21 | (mode < 2 ? (uint32_t)(clut & 0x7fff) : 0);
+static int tex_get(int tpage,int clut,int var){
+    int mode=(tpage>>7)&3;if(mode==3)mode=2;
+    int px=tpage&15,py=(tpage>>4)&1,cx=(clut&63)*16,cy=(clut>>6)&511;
+    uint32_t key=(uint32_t)mode<<28|(uint32_t)px<<24|(uint32_t)py<<23|(uint32_t)var<<21|(mode<2?(uint32_t)(clut&0x7fff):0);
     tex_clock++;
-    if (tex_last >= 0 && tex[tex_last].key == key && tex[tex_last].ptr && tex[tex_last].vg == vgen) { tex[tex_last].used = tex_clock; return tex_last; }
-    uint32_t sig = tex_sig(mode, px, py);
-    int lru = 0, i = tex_last;
-    if (i >= 0 && tex[i].key == key && tex[i].ptr) goto hit;
-    for (i = 0; i < NTEX; i++) {
-        if (tex[i].ptr && tex[i].key == key) goto hit;
-        if (!tex[i].ptr) { lru = i; break; }
-        if (tex[i].used < tex[lru].used) lru = i;
+    if(tex_last>=0&&tex[tex_last].key==key&&tex[tex_last].ptr&&tex[tex_last].vg==vgen){
+        tex[tex_last].used=tex_clock;return tex_last;
     }
-    if (!tex[lru].ptr) { tex[lru].ptr = pvr_mem_malloc(256 * 256 * 2); if (!tex[lru].ptr) { tex_last = -1; return -1; } }
-    {   Tex *t = &tex[lru];
-        t->key = key; t->sig = sig; t->clsig = clut_sig(mode, cx, cy); t->used = tex_clock;
-        t->mode = mode; t->px = px; t->py = py; t->cx = cx; t->cy = cy; t->var = var;
-        tex_full(t); t->vg = vgen; tex_last = lru; return lru; }
-hit:
-    {   Tex *t = &tex[i]; t->used = tex_clock; tex_last = i; t->vg = vgen;
-        if (t->sig != sig) { t->sig = sig; uint32_t cs = clut_sig(mode, cx, cy); if (cs != t->clsig) { t->clsig = cs; tex_full(t); } else tex_update(t); }
-        else if (mode < 2) { uint32_t cs = clut_sig(mode, cx, cy); if (cs != t->clsig) { t->clsig = cs; tex_full(t); } }
-        return i; }
+    uint32_t sig=tex_sig(mode,px,py),cs=clut_sig(mode,cx,cy);
+    int best=-1,reuse=-1;
+    for(int i=0;i<NTEX;i++){
+        Tex *t=&tex[i];
+        if(t->ptr&&t->key==key){
+            // A generation change elsewhere in VRAM is not a page change.
+            if(t->sig==sig&&t->clsig==cs){t->used=tex_clock;t->vg=vgen;tex_last=i;return i;}
+            if(!tex_pinned[i]){
+                if(t->clsig!=cs)tex_full(t);else tex_update(t);
+                t->sig=sig;t->clsig=cs;t->used=tex_clock;t->vg=vgen;tex_last=i;return i;
+            }
+        }
+        if(render_cache_prefer(tex_pinned[i],t->ptr!=0,t->used,best>=0,best>=0&&tex[best].ptr!=0,best>=0?tex[best].used:0))best=i;
+        if(!tex_pinned[i]&&t->ptr&&(reuse<0||t->used<tex[reuse].used))reuse=i;
+    }
+    if(best<0){dc_tex_denied++;return -1;}
+    if(!tex[best].ptr){
+        tex[best].ptr=pvr_mem_malloc(256*256*2);
+        if(!tex[best].ptr)best=reuse;
+    }
+    if(best<0){dc_tex_denied++;return -1;}
+    Tex *t=&tex[best];
+    t->key=key;t->sig=sig;t->clsig=cs;t->used=tex_clock;
+    t->mode=mode;t->px=px;t->py=py;t->cx=cx;t->cy=cy;t->var=var;
+    tex_full(t);t->vg=vgen;tex_last=best;return best;
 }
 static int tex_flags(int ti, const int *u, const int *v, int n) {   // the cells under a primitive's texels: 1 solid ones, 2 STP ones
     if (ti < 0) return 0;
@@ -334,13 +346,14 @@ static void emit_one(int n, const int *x, const int *y, const uint32_t *col, con
         if (ar > 0 && e2 > 16 && (int64_t)ar * ar * 100 < (int64_t)e2 * 49) return;   // (ar = twice the area: width = ar / longest edge < 0.7)
         if (ar == 0) return;
     }
-    if (L->n + 6 + (semi || !textured ? 0 : 5) > L->cap || vl_tr.n + 6 > vl_tr.cap) return;
+    if(L->n+6>L->cap)return; // a full translucent list must not suppress opaque walls
     int ti = textured ? tex_get(tpage, clut, var) : -1;
     if (textured && ti < 0) return;
+    if(ti>=0)tex_pinned[ti]=1;
     zseq += 1.0f / 4096.0f;
     float z = 1.0f + zseq;
     int blend = semi ? abr : -1;
-    float fx[4], fy[4], fu[4], fv[4]; uint32_t c4[4];
+    float fx[4],fy[4],fu[4]={0},fv[4]={0};uint32_t c4[4];
     uint32_t pc = 0;
     int boost = 0, a = abr == 0 ? 128 : abr == 3 ? 64 : 255;
     for (int k = 0; k < n; k++) {
@@ -382,7 +395,7 @@ static void emit_one(int n, const int *x, const int *y, const uint32_t *col, con
         o->x = fx[k]; o->y = fy[k]; o->z = z; o->u = fu[k]; o->v = fv[k]; o->argb = c4[k]; o->oargb = 0;
     }
     L->n += n;
-    if (boost && (!semi || abr != 2)) {   // the part above 1: added (for a blended primitive, at its own blend's share)
+    if(boost&&(!semi||abr!=2)&&vl_tr.n+6<=vl_tr.cap){   // the part above 1: added (for a blended primitive, at its own blend's share)
         VList *T = &vl_tr;
         hdr_put(T, ti, (!semi ? 1 : abr == 0 ? 4 : abr) + filt * 16);
         o = &T->v[T->n];
@@ -575,7 +588,7 @@ int DrawOTag(const uint32_t *ot) {
     if (env_set && cur_env.isbg) bg_rgb = cur_env.r0 | cur_env.g0 << 8 | (uint32_t)cur_env.b0 << 16;
     const uint32_t *p = ot;
     int guard = 0;
-    lists_reset(); zseq = 0;
+    lists_reset();memset(tex_pinned,0,sizeof tex_pinned);zseq=0;
     while (guard++ < 400000) {
         uint32_t hdrw = *p, n = hdrw >> 24, next = hdrw & 0xffffff;
         __builtin_prefetch((const void *)(0x8c000000u | next));   // (the next packet is fetched while this one is worked on)
@@ -599,7 +612,8 @@ int DrawOTag(const uint32_t *ot) {
             int dv = dc_vbl - last_vbl; last_vbl = dc_vbl;
             dc_logf("f%d fps %d.%d cpu %d max %d hb | verts %d/%d/%d pages %d cells %d pvrfree %d | snd on %d peak %d cull %d\n", dc_frames, dv ? 6000 / dv : 0, dv ? (60000 / dv) % 10 : 0,
                     cpu_sum / 100, cpu_max, vl_op.n, vl_pt.n, vl_tr.n, dc_tex_uploads, dc_tex_cells, (int)pvr_mem_available(), dc_spu_voices_on, dc_spu_peak, dc_cull_n);
-            dc_cull_n = 0;
+            if(dc_tex_denied)dc_logf("texture pressure: %u page requests denied to preserve queued geometry\n",dc_tex_denied);
+            dc_tex_denied=0;dc_cull_n=0;
             cpu_sum = cpu_max = 0;
         }
     }

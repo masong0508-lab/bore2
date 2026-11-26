@@ -100,13 +100,6 @@ static float height_at(Scene*s,int x,int z){
     }
     return height_raw(s,x,z);
 }
-static Point land(Scene*s,int x,int z,float y){return P(x,height_at(s,x,z)+y,z);}
-static void patch(Scene*s,int x,int z,int X,int Z,Color c,float offset){
-    // Overlay follows the same tile triangulation as terrain. No large
-    // diagonal surfaces that cut across the slopes under paths/pools.
-    for(int zz=z;zz<Z;zz++)for(int xx=x;xx<X;xx++)
-        slope(s,land(s,xx,zz,offset),land(s,xx+1,zz,offset),land(s,xx+1,zz+1,offset),land(s,xx,zz+1,offset),c);
-}
 static void flat(Scene*s,float x,float z,float X,float Z,float y,Color c){
     quad(s,P(x,y,z),P(X,y,z),P(X,y,Z),P(x,y,Z),c);
 }
@@ -204,11 +197,7 @@ static void building(Scene*s,const BInfo*b,int bx,int bz,int detail){
         if(bore_foot_edge(&foot,ix,iz,0,-1))wall(s,rh,&p,ix,iz,x,z,0,-1,base,floors,c,f[4],detail);
         if(bore_foot_edge(&foot,ix,iz,0,1))wall(s,rh,&p,ix,iz,x,z,0,1,base,floors,c,f[4],detail);
     }
-    if(f[4]&&p.face!=LF_NONE){
-        int zz=p.face==LF_NORTH?p.dy: p.dy+1,edge=p.face==LF_NORTH?BM_LOT0:BM_BLK;
-        int lo=MIN(zz,edge),hi=MAX(zz,edge);
-        if(hi>lo)patch(s,x+p.dx,z+lo,x+p.dx+1,z+hi,C(0xc4b9a6),.024f);
-    }
+
 }
 static void block(Scene*s,int bx,int bz,int detail){
     BInfo b;bm_block(bx,bz,&b);int x=bx*BM_BLK,z=bz*BM_BLK;
@@ -237,21 +226,24 @@ static void block(Scene*s,int bx,int bz,int detail){
     }
     memcpy(s->border+row_off,h[BM_BLK],sizeof h[0]);
     int garden=(b.lot==LOT_PARK||b.lot==LOT_SQUARE)&&b.terrain!=BT_SEA;
-    int north=garden&&bm_gen>=7&&!(b.road&BR_MEGA)&&bm_lot_face(bx,bz)==LF_NORTH;
+    LotPlan plan={0};
+    if(b.terrain!=BT_SEA&&(garden||b.lot==LOT_POOL||b.lot==LOT_FARM||(b.lot>=LOT_HOUSE&&b.lot<=LOT_TWO)))
+        bm_lot_plan(bx,bz,&b,&plan);
+    int north=garden&&bm_gen>=7&&!(b.road&BR_MEGA)&&plan.face==LF_NORTH;
     if(garden)ground=C(0x7e9b68);
     // Park materials are part of the stitched mesh, not coplanar overlays.
     for(int j=0;j<BM_BLK;j++)for(int i=0;i<BM_BLK;i++){
-        int m=bore_surface(&b,i,j);
+        int m=bore_lot_surface(&b,&plan,i,j);
         if(garden&&m==BS_LAND&&i>=BM_LOT0&&j>=BM_LOT0){
             int p=park_surface(b.h,b.lot==LOT_SQUARE,north,i-BM_LOT0,j-BM_LOT0);
             if(p==PARK_PATH)m=BS_PAVING;
             else if(p==PARK_WATER)m=BS_WATER;
-            else if(p==PARK_SOIL)m=4;
-            else if(p==PARK_PATIO)m=5;
+            else if(p==PARK_SOIL)m=BS_SOIL;
+            else if(p==PARK_PATIO)m=BS_PATIO;
         }
         mat[j][i]=(unsigned char)m;
     }
-    const Color surface[]={ground,C(0x555d61),C(0xb6b9af),C(0x5b91a2),C(0x95764d),C(0xc8bda6)};
+    const Color surface[]={ground,C(0x555d61),C(0xb6b9af),C(0x5b91a2),C(0x95764d),C(0xc8bda6),C(0x718a49),C(0x66b6c1)};
     for(int j=0;j<BM_BLK;j++)for(int i=0;i<BM_BLK;i++){
         if(done[j][i])continue;
         int w=1,d=1;float y=h[j][i];unsigned m=mat[j][i];
@@ -270,19 +262,18 @@ static void block(Scene*s,int bx,int bz,int detail){
     }
     if(b.terrain==BT_SEA||b.lot==LOT_RIVER)return;
     building(s,&b,bx,bz,detail);
-    if(b.lot==LOT_POOL){patch(s,x+7,z+7,x+16,z+15,C(0xc6c8bb),.018f);patch(s,x+8,z+8,x+15,z+14,C(0x66b6c1),.035f);}
-    else if(b.lot==LOT_SKATE)patch(s,x+5,z+5,x+17,z+17,C(0xb4b6ae),.018f);
-    else if(b.lot==LOT_FARM){
-        for(int i=0;i<3;i++)patch(s,x+6+i*2,z+12,x+7+i*2,z+17,C((i&1)?0x9a7751:0x718a49),.02f);
-    }
-    else if(garden){
+    if(garden){
         for(int i=0,tx,tz;i<(detail?11:4)&&park_tree_at(b.h,b.lot==LOT_SQUARE,north,i,&tx,&tz);i++)
             tree(s,x+BM_LOT0+tx,z+BM_LOT0+tz,b.h);
         // A simple fountain silhouette marks formal gardens and squares.
         if(b.lot==LOT_SQUARE||park_variant(b.h)==0){
             float y=height_at(s,x+11,z+11);
-            box(s,x+10.2f,z+10.2f,x+11.8f,z+11.8f,y,y+.22f,C(0x969b98));
-            flat(s,x+10.4f,z+10.4f,x+11.6f,z+11.6f,y+.23f,C(0x68a8b8));
+            Color rim=C(0x969b98);
+            box(s,x+10.2f,z+10.2f,x+11.8f,z+10.4f,y,y+.24f,rim);
+            box(s,x+10.2f,z+11.6f,x+11.8f,z+11.8f,y,y+.24f,rim);
+            box(s,x+10.2f,z+10.4f,x+10.4f,z+11.6f,y,y+.24f,rim);
+            box(s,x+11.6f,z+10.4f,x+11.8f,z+11.6f,y,y+.24f,rim);
+            flat(s,x+10.4f,z+10.4f,x+11.6f,z+11.6f,y+.19f,C(0x68a8b8));
         }
     }else if(b.terrain==BT_FOREST&&b.lot==LOT_WILD){
         // Coherent clusters rather than the same three locations per block.

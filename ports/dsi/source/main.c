@@ -134,6 +134,7 @@ static void text_box(int x, int y, int w, int h, int s, u16 c, int al, const cha
 #define MH 20                 // blocks down (160 pixels; the text lines go below)
 #include "ds_mapview.h"
 #include "ds_render_geom.h"
+#include "frame_render_policy.h"
 #include "park_plan.h"
 #include "roof_profile.h"
 #include "ds_lot_shell.h"
@@ -372,7 +373,7 @@ static u32 gx_slb[2][GXS_MAX + 64] __attribute__((aligned(32))), gx_dlb[2][GXD_M
 // A FRAME is a run of pieces (the moving list cut where a sim's cached model goes in, the still list, the swap), sent one after another by DMA (channel 0)
 // from the vblank interrupt: the 3D goes out on a steady beat whatever the game loop is doing.
 typedef struct { const u32 *p; int n; } GSeg;
-typedef struct { GSeg s[48]; int ns; } GFrm;
+typedef struct { GSeg s[48]; int ns,bad; } GFrm;
 static GFrm gfr[2]; static volatile int gf_ready = -1, gf_fly = -1, gf_busy, gf_on, gf_shown; static int gf_ss;   // (gf_ss: where the piece being written began)
 
 #ifdef DSTEST
@@ -405,7 +406,11 @@ static void gx_run(const u32 *b, int n) {   // send a list to the geometry FIFO 
     if (n <= 0) return; DC_FlushRange(b, n * 4); while (DMA_CR(0) & DMA_BUSY) {}
     DMA_SRC(0) = (u32)b; DMA_DEST(0) = 0x4000400; DMA_CR(0) = DMA_FIFO | n; while (DMA_CR(0) & DMA_BUSY) {} }
 static GFrm *gf_rec;   // the frame whose moving list is being written (0: none)
-static void gf_add(const u32 *p, int n) { if (gf_rec && n > 0 && gf_rec->ns < 48) { gf_rec->s[gf_rec->ns].p = p; gf_rec->s[gf_rec->ns].n = n; gf_rec->ns++; } }
+static void gf_add(const u32 *p,int n){
+    if(!gf_rec||n<=0)return;
+    if(!p||gf_rec->ns>=48){gf_rec->bad=1;return;}
+    gf_rec->s[gf_rec->ns].p=p;gf_rec->s[gf_rec->ns].n=n;gf_rec->ns++;
+}
 static void gf_cut(void) { if (gf_rec) { gf_add(gxb + gf_ss, gxn - gf_ss); gf_ss = gxn; gxk = 4; } }   // end the piece written so far (the next command starts a fresh packed word)
 // ---- (D85) THOUGHT BUBBLES over heads, as the PS1's: the need a sim is thinking about, in a bubble over its head. They are hardware sprites (the main engine's OBJ layer, VRAM bank E): no polygons,
 // nothing redrawn in the HUD, and the position goes out with the 3D frame it belongs to (gf_kick), so a bubble keeps to its head. bub_calc() (below, before the vblank handler) works out which sims get one.
@@ -1298,7 +1303,8 @@ static void prop_trade(void) {   // Buy or Sell on the Map
 int tour_ovr;   // (test) the lot kind the tour builds on the next lot_enter (0: what the map has)
 #endif
 static void ensure_world_marker_ds(int lot,int terrain);
-static void lot_enter(int bx, int by) {   // the lot you walk into: what you built there last time, or a new home from its own seed
+static void lot_enter(int bx, int by) {   // the lot you walk into
+    gf_stop(); // discard any queued frame for the previous coordinate origin
     if (lot_bx >= 0 && (lot_bx != bx || lot_by != by)) life_ev(ctl, WN_VISIT, 0);
     yard_i0 = 0x7FFF; lot_bx = bx; lot_by = by; lot_dn = bm_gen >= 7 && bx >= 0 && bx < 2000 && bm_lot_face(bx, by) == LF_NORTH ? -1 : 1; lot_seed = (u32)(bx * 73856093 ^ by * 19349663); pick = -1; memset(slv, 0, sizeof slv); ed_lv = 0; int keep = LV; LV = 0;
     for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == bx && lsv[i].by == by) { LotSave *q = &lsv[i]; nobj = q->nobj; pcx = q->pcx; pcy = q->pcy; door_cx = q->dcx; door_cy = q->dcy; roof_st = q->roof; up_st = q->up; memcpy(flr, q->flr, sizeof flr); memcpy(hwl, q->hwl, sizeof hwl); memcpy(vwl, q->vwl, sizeof vwl); memcpy(objs, q->objs, sizeof objs); occ_ok = 0;
@@ -4157,14 +4163,14 @@ typedef struct { u32 key, used; u16 n, triangles; u32 w[SML_W]; } SimL;
 static SimL sml[SML_N] __attribute__((aligned(32))); static int sml_next; static volatile int sml_miss, sml_maxn, sml_full; static u32 gf_serial = 8;
 static void sim_emit(const SimL *e, int x, int y, int z, int q) {   // into the list being recorded: push, turn by q quarters and move to x,y,z, the model, pop
     static const s8 RC[4][4] = { { 1, 0, 0, 1 }, { 0, -1, 1, 0 }, { -1, 0, 0, -1 }, { 0, 1, -1, 0 } };   // (m00 m02 m20 m22: as sb() turns a part)
-    if (gxn + e->n + 40 > gx_cap) { gx_full = 1; return; }
+    if (gxn + (gf_rec?0:e->n) + 40 > gx_cap) { gx_full = 1; return; }
     gx_c0(0x11); gx_c1(0x10, 2); gx_id(0x19); const s8 *r = RC[q & 3];
     u32 *o = &gxb[gxn]; o[0] = (u32)(r[0] * 4096); o[1] = 0; o[2] = (u32)(r[1] * 4096); o[3] = 0; o[4] = 4096; o[5] = 0; o[6] = (u32)(r[2] * 4096); o[7] = 0; o[8] = (u32)(r[3] * 4096); o[9] = (u32)x; o[10] = (u32)y; o[11] = (u32)z;
     if (em_R) for (int k = 0; k < 9; k++) o[k] = (u32)em_R[k];   // (D44: the rider on the board turns freely)
     gxn += 12;
     gx_c1(0x10, 1); if (gf_rec) { gf_cut(); gf_add(e->w, e->n); } else { gxk = 4; memcpy(&gxb[gxn], e->w, (size_t)e->n * 4); gxn += e->n; }   // (the model goes as a piece of its own: no copying)
     polys += e->triangles;
-    gxk = 4; gx_lv = 0; gx_mat = gx_nrm = gx_col = ~0u; gx_c1(0x12, 1);
+    gxk = 4; gx_lv = 0; gx_mat = gx_nrm = gx_col = ~0u;gx_txp=-2; gx_c1(0x12, 1);
 }
 static void sim3d(int i, int yaw) {
 #ifdef HAIRALL
@@ -4187,7 +4193,8 @@ static void sim3d(int i, int yaw) {
         u32 key = 2166136261u; for (int q = 0; q < PMN; q++) key = (key ^ (u32)P[q]) * 16777619u;
         key = (key ^ (u32)(fx_e | fx_b << 4 | fx_t << 5 | 1 << 6)) * 16777619u; key = (key ^ (u32)(stg | lod << 3 | (u32)m->hair << 4 | (u32)m->beard << 9 | (u32)lit_on << 13 | (u32)csx[i].hat << 14)) * 16777619u; key = (key ^ ((u32)sk | (u32)hc << 16)) * 16777619u; key = (key ^ ((u32)sh | (u32)pants << 16)) * 16777619u; key = (key ^ (u32)(sw_l + 1000)) * 16777619u;
         for (int q = 0; q < SML_N; q++) if (sml[q].key == key && sml[q].n) { se = &sml[q]; cached = 1; break; }
-        if (!se) { for (int t = 0; t < SML_N; t++) { se = &sml[sml_next]; sml_next = (sml_next + 1) % SML_N; if (se->used + 2 < gf_serial) break; }   // (never one the frame being sent still uses)
+        if(!se){for(int t=0;t<SML_N;t++){SimL *candidate=&sml[sml_next];sml_next=(sml_next+1)%SML_N;if(!candidate->n||gf_serial-candidate->used>2){se=candidate;break;}}}
+        if(se&&!cached){ // no free entry: draw directly rather than overwrite a queued model
             se->key = key; se->n = 0; sml_miss++;
             sb_ = gxb; sn_ = gxn; sh_ = gxh; sk_ = gxk; sc_ = gx_cap; sm_ = gx_mat; snm_ = gx_nrm; scl_ = gx_col; gx_begin(se->w, SML_W); x = 0; z = 0; sq_q = 0; gy_off = 0; } }
     if (!cached) {
@@ -5658,26 +5665,28 @@ int main(void) {
         dbg_pt[1] = prof_now();
 #endif
         { static int lm = -1; if ((mode == M_TITLE || mode == M_CAS) != lm) { lm = mode == M_TITLE || mode == M_CAS; o_dirty = 1; } }
-        if (o_dirty) apply_opts();
+        if(o_dirty){gf_stop();apply_opts();} // do not change global GPU settings beneath a queued frame
         if (sky_on) sky_update(pitch);
         // (D39) the 3D: a steady 30 frames a second (or up to 60, Options > System > Frame rate); the passes in between do the game and the 2D screens, so the touch screen answers at 60
         static u32 next3d; int fight_on = mode == M_LIVE && mg_ui == 6, is_lot = (mode == M_LIVE || mode == M_BUY || mode == M_BUILD) && !fight_on;
-        { static int aa = 1; int want = !fight_on; if (want != aa) { aa = want; if (want) glEnable(GL_ANTIALIAS); else glDisable(GL_ANTIALIAS); } }   // (D59: BORTUA FIGHTER's ring has no edge blending: it showed the sky along the mat's seams)
+        if(!is_lot&&gf_on)gf_stop();
+        { static int aa = 1; int want = !fight_on; if (want != aa) { gf_stop();aa = want; if (want) glEnable(GL_ANTIALIAS); else glDisable(GL_ANTIALIAS); } }   // (D59: BORTUA FIGHTER's ring has no edge blending: it showed the sky along the mat's seams)
         if (is_lot) {   // (D39) the lot: a new frame is written whenever the last one has been taken; the vblank interrupt sends it on the beat
             gf_on = 1;
             { int want = mode == M_LIVE ? slv[ctl] * WHF : (mode == M_BUY || mode == M_BUILD) ? ed_lv * WHF : 0; cam_y += (want - cam_y) / 6; if (want - cam_y > -8 && want - cam_y < 8) cam_y = want; }   // (D36) the camera rises to the storey
             if (gf_ready < 0 && !ui_heavy) {
                 static u32 st_sig = 1, w_sig = 1; static int st_n, st_polys, st_k, w_n, w_polys, w_k; static u8 st_mode = 255, f_st[2], f_w[2];
-                int b = gf_fly == 0 ? 1 : 0; GFrm *f = &gfr[b]; f->ns = 0; gf_serial++;
+                int b = gf_fly == 0 ? 1 : 0; GFrm *f = &gfr[b]; f->ns=f->bad=0; gf_serial++;
                 polys = 0; lit_on = o_lit;
                 gx_base = POLY_ALPHA(31) | POLY_CULL_FRONT | POLY_ID(1) | POLY_FOG | (lit_on ? (POLY_FORMAT_LIGHT0 | POLY_FORMAT_LIGHT1) : 0);
                 gx_begin(gx_dlb[b], GXD_MAX); gf_rec = f; gf_ss = 0;
                 gx_cam(dist, pitch, yaw, mode == M_LIVE ? camx : 0, cam_y, mode == M_LIVE ? camz : 0);
                 dpass = 2; draw_build(yaw); int pd = polys; gf_cut(); gf_rec = 0; u32 *db = gxb; int dn = gxn, dh = gxh, dk = gxk; PROF(2);
                 static u32 b_sig = 1; static int b_n, b_polys, b_k; static u8 f_b[2];
-                int did = 0;   // Normally rebuild one still list per frame; an unsafe cached budget cannot wait.
-                { u32 bg = still_sig(yaw, 0) ^ (u32)mode; if (bg != b_sig) { did = 1; int k = b_k ^ 1; if (gf_busy && f_b[gf_fly] == k) while (gf_busy) {}   // (D41) the build and the things are recorded apart: turning the camera changes one or the other, rarely both
-                    polys = pd; gx_begin(gx_blb[k], GXB_MAX); dpass = 1; draw_build(yaw); b_n = gx_end(); DC_FlushRange(gx_blb[k], (u32)b_n * 4); b_polys = polys - pd; b_sig = bg; b_k = k; st_rec++; } }
+                // All pieces must describe the same snapshot. Rebuild every
+                // invalid piece, not just one per frame (old origin flicker).
+                { u32 bg=still_sig(yaw,0)^(u32)mode; if(render_piece_dirty(b_sig,bg,b_n,0)){int k=b_k^1; if (gf_busy && f_b[gf_fly] == k) while (gf_busy) {}   // (D41) the build and the things are recorded apart: turning the camera changes one or the other, rarely both
+                    polys = pd; gx_begin(gx_blb[k], GXB_MAX);gx_fmt(gx_base);gx_c1(0x2A,0);gx_txp=-1; dpass = 1; draw_build(yaw); b_n = gx_end(); DC_FlushRange(gx_blb[k], (u32)b_n * 4); b_polys = polys - pd; b_sig = bg; b_k = k; st_rec++; } }
                 /* Build a cached list against the TOP of its budget bucket.
                  * Animation changes within that bucket then remain safe on
                  * cache hits. Geometry growth must also invalidate items,
@@ -5685,17 +5694,17 @@ int main(void) {
                 int item_base = (pd + b_polys + 127) & ~127;
                 u32 sg = still_sig(yaw, 1) ^ (u32)mode ^ ((u32)(item_base / 128) * 2654435761u);
                 int item_over = pd + b_polys + st_polys > DS_RENDER_FRAME_TRI_LIMIT - DS_RENDER_WORLD_RESERVE;
-                if ((sg != st_sig && (!did || item_over)) || st_mode != mode) { did = 1; int k = st_k ^ 1; if (gf_busy && f_st[gf_fly] == k) while (gf_busy) {}
-                    polys = item_base; gx_begin(gx_slb[k], GXS_MAX); dpass = 4; draw_build(yaw); st_n = gx_end(); DC_FlushRange(gx_slb[k], (u32)st_n * 4); st_polys = polys - item_base; st_sig = sg; st_mode = (u8)mode; st_k = k; st_rec++; }
+                if(render_piece_dirty(st_sig,sg,st_n,item_over)||st_mode!=mode){int k=st_k^1; if (gf_busy && f_st[gf_fly] == k) while (gf_busy) {}
+                    polys = item_base; gx_begin(gx_slb[k], GXS_MAX);gx_fmt(gx_base);gx_c1(0x2A,0);gx_txp=-1; dpass = 4; draw_build(yaw); st_n = gx_end(); DC_FlushRange(gx_slb[k], (u32)st_n * 4); st_polys = polys - item_base; st_sig = sg; st_mode = (u8)mode; st_k = k; st_rec++; }
                 { /* World LOD uses the COMBINED frame budget, not a
                    * fresh zero in each cached display list. */
                   int base_tris = pd + b_polys + st_polys;
                   int world_base = (base_tris + 255) & ~255;
                   u32 wg = world_sig() ^ ((u32)(world_base / 256) * 2654435761u);
                   int world_over = base_tris + w_polys > DS_RENDER_FRAME_TRI_LIMIT;
-                  if (wg != w_sig && (!did || w_n == 0 || world_over)) {
+                  if(render_piece_dirty(w_sig,wg,w_n,world_over)){
                       int k = w_k ^ 1; if (gf_busy && f_w[gf_fly] == k) while (gf_busy) {}
-                      polys = world_base; gx_begin(gx_wlb[k], GXW_MAX); dpass = 3;
+                      polys = world_base; gx_begin(gx_wlb[k], GXW_MAX);gx_fmt(gx_base);gx_c1(0x2A,0);gx_txp=-1; dpass = 3;
                       draw_build(yaw); w_n = gx_end();
                       DC_FlushRange(gx_wlb[k], (u32)w_n * 4);
                       w_polys = polys - world_base; w_sig = wg; w_k = k; st_rec++;
@@ -5705,7 +5714,10 @@ int main(void) {
                 gxb = db; gxn = dn; gxh = dh; gxk = dk; gf_rec = f; gf_ss = gxn;
                 gf_add(gx_blb[b_k], b_n); f_b[b] = (u8)b_k; gf_add(gx_slb[st_k], st_n); f_st[b] = (u8)st_k; gf_add(gx_wlb[w_k], w_n); f_w[b] = (u8)w_k; st_polys += 0;
                 gx_c1(0x50, 0); gf_cut(); gf_rec = 0; DC_FlushRange(gx_dlb[b], (u32)gxn * 4); gx_end();
-                polys = pd + b_polys + st_polys + w_polys; polys_last = polys; bub_calc(b); gf_ready = b; PROF(4); }
+                polys=pd+b_polys+st_polys+w_polys;
+                // An incomplete FIFO chain must never reach the geometry engine.
+                if(!f->bad){polys_last=polys;bub_calc(b);__asm__ volatile("" ::: "memory");gf_ready=b;}
+                PROF(4); }
         } else if ((int)(vbl_n - next3d) >= 0) {   // the title, Create-a-Sim and the Map: straight to the GPU, as before
         bub_hide();   // (D85: no sprite is left over from Live, a fight or a game)
         gf_stop(); u32 v3 = vbl_n; GFX_TEX_FORMAT = 0; imm_txp = -1;   // (D43: no texture left set by a list)

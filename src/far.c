@@ -999,6 +999,7 @@ int far_begin(u32 horizon) {
     return 1;
 }
 int far_reach_m(void) { return far_on_frame ? far_reach_u / 213 : -1; }
+void far_resume(void){if(far_on_frame)far_gte();}
 void far_draw(int rx0, int ry0, int rx1, int ry1) {
     if (!far_on_frame) return;
     far_gte();

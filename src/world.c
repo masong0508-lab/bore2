@@ -15,6 +15,7 @@
 #include "pop.h"
 #include "far.h"
 #include "house_lod.h"
+#include "frame_render_policy.h"
 #include "world_stream_models.h"
 #include "nature.h"
 #include "island.h"
@@ -1554,7 +1555,7 @@ static int nc_clip(const NV *const *in, NV *out) {   // the polygon (4 corners r
         const NV *p = in[i], *q = in[(i + 1) & 3];
         int pin = p->z >= NC_Z, qin = q->z >= NC_Z;
         if (pin) out[n++] = *p;
-        if (pin != qin) { nc_lerp(&out[n], p, q, ((NC_Z - p->z) << 12) / (q->z - p->z)); out[n].z = NC_Z; nc_proj(&out[n]); n++; }
+        if (pin != qin) { nc_lerp(&out[n], p, q, ((NC_Z - p->z) * 4096) / (q->z - p->z)); out[n].z = NC_Z; nc_proj(&out[n]); n++; }
     }
     return n;
 }
@@ -2280,11 +2281,19 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
       int bx0 = x0, bx1 = x1; tile_row_span(&tvF, my, TILE * 2 + 64, TILE * 3 + 64, TILE * 4 + hm + 64, &bx0, &bx1);   // (only the blocks the view can reach)
       if (((bx0 - x0) & 1) && bx0 <= bx1) bx0++;
       for (int mx = bx0; mx <= bx1; mx += 2) {
-        int ok = (mx + 1 < MW && my + 1 < MH);
+        // Never mark beyond the active rectangle or the allocated map.
+        if(!render_group_fits(mx,my,x1,y1,MW,MH))continue;
+        int ok=1;
         int f0 = dfl[my][mx];
         if (ok) ok = f0 != FL_WATER && !FL_NO4(f0) && dfl[my][mx + 1] == f0 && dfl[my + 1][mx] == f0 && dfl[my + 1][mx + 1] == f0 && !(nat_on && !lvl && nat_floor(f0));
         if (ok && lvl) ok = dm[my][mx] != ' ' && dm[my][mx + 1] != ' ' && dm[my + 1][mx] != ' ' && dm[my + 1][mx + 1] != ' ';
-        if (ok && ((bld[my][mx] && !b_see[bld[my][mx]]) || (bld[my + 1][mx + 1] && !b_see[bld[my + 1][mx + 1]]))) { done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 2; continue; }   // inside someone else's building: under its roof
+        int hidden=0;
+        if(ok&&!world_roof_show)for(int j=0;j<2;j++)for(int i=0;i<2;i++){
+            int b=bld[my+j][mx+i];if(b&&!b_see[b])hidden|=1<<(j*2+i);
+        }
+        int group=render_floor_group(hidden);
+        if(ok&&group==2){done[my][mx]=done[my][mx+1]=done[my+1][mx]=done[my+1][mx+1]=2;continue;}
+        if(!group)ok=0;
         done[my][mx] = done[my][mx + 1] = done[my + 1][mx] = done[my + 1][mx + 1] = 0;
         if (!ok) continue;
         int vx, vy, vz; tile_view(&tvF, mx, my, &vx, &vy, &vz);
@@ -2803,7 +2812,8 @@ static void roofs_draw(int fx, int fy) {
             int b = bld[y][x];
             if (b && b_see[b] && !world_fp && (!world_roof_show || l > world_view_lvl)) { if (!world_roof_show) continue; }   // the building you are in (or look through) shows its rooms (first person: its roof is the ceiling)
             if (b != cur_b) { cur_b = b; pitch = roofPitch[(b_pit[b] & 15) % NROOF_PITCH]; rc = roofCol[b_col[b] % NROOF_COL]; rc_sty = b_sty[b]; rc_pitch = pitch; }
-            int flat = rc_sty == 2 && b && b_top[b] == l;
+            // A rectangular slab must not cover a recessed wing or courtyard.
+            int flat = rc_sty == 2 && b && b_top[b] == l && b_rect_get(b);
             if (flat) lift_to(world_zone == ZONE_CITY && world_wbx >= 0 ? gh_c(b_x0[b], b_y0[b]) : 0);
             if (flat) {                // a flat roof: the building's whole top in one slab (drawn from its first tile)
                 if (x != b_x0[b] || y != b_y0[b]) { if (!rm_get(l, b_x0[b], b_y0[b])) {} else continue; }
@@ -3080,12 +3090,21 @@ COLD static void ground_win(int hz) {   // hz: the far view is on, so the corner
         int tx = X * G, ty = Y * G;
         if (tx >= rx0 && tx + G - 1 <= rx1 && ty >= ry0 && ty + G - 1 <= ry1) continue;   // (all inside the range)
         const XV *a = &xv[Y * (NG + 1) + X], *b = a + 1, *c = a + NG + 1, *d = c + 1;
-        if (a->z < Z_NEAR || b->z < Z_NEAR || c->z < Z_NEAR || d->z < Z_NEAR) continue;
-        if ((a->x < 0 && b->x < 0 && c->x < 0 && d->x < 0) || (a->x >= SCREEN_W && b->x >= SCREEN_W && c->x >= SCREEN_W && d->x >= SCREEN_W) ||
-            (a->y < 0 && b->y < 0 && c->y < 0 && d->y < 0) || (a->y >= SCREEN_H && b->y >= SCREEN_H && c->y >= SCREEN_H && d->y >= SCREEN_H)) continue;
-        if (ABS(a->x - d->x) > 1000 || ABS(b->x - c->x) > 1000 || ABS(a->y - d->y) > 500 || ABS(b->y - c->y) > 500) continue;   // (past the GPU's size: the near floor's job)
+        int near=a->z<Z_NEAR||b->z<Z_NEAR||c->z<Z_NEAR||d->z<Z_NEAR;
+        if (!near&&((a->x < 0 && b->x < 0 && c->x < 0 && d->x < 0) || (a->x >= SCREEN_W && b->x >= SCREEN_W && c->x >= SCREEN_W && d->x >= SCREEN_W) ||
+            (a->y < 0 && b->y < 0 && c->y < 0 && d->y < 0) || (a->y >= SCREEN_H && b->y >= SCREEN_H && c->y >= SCREEN_H && d->y >= SCREEN_H))) continue;
+        int large=ABS(a->x-d->x)>1000||ABS(b->x-c->x)>1000||ABS(a->y-d->y)>500||ABS(b->y-c->y)>500;
         u16 f = fl_avg[floorMap[ty + G / 2][tx + G / 2]];
         u32 col = gfx_grade_flat((u32)MIN(255, ((C_R(f) << 3) * L) >> 7) | ((u32)MIN(255, ((C_G(f) << 3) * L) >> 7) << 8) | ((u32)MIN(255, ((C_B(f) << 3) * L) >> 7) << 16));
+        if(near||large){
+            // Clip straddling ground cells rather than revealing the sky.
+            const SVECTOR *s=&cv[Y*(NG+1)+X];
+            u32 colors[4]={col,col,col,col},uv[4]={0,0,0,0};
+            int old=gfx_floor_pass;gfx_floor_pass=2;
+            nc_quad(s,s+1,s+NG+1,s+NG+2,colors,0,0,0,uv,0);
+            gfx_floor_pass=old;
+            continue;
+        }
         if (hz) {
             u32 *q = xv_alloc(9); if (!q) return;
             q[1] = far_haze_col(col, a->z) | 0x38000000u; q[2] = NXY(a); q[3] = far_haze_col(col, b->z); q[4] = NXY(b); q[5] = far_haze_col(col, c->z); q[6] = NXY(c); q[7] = far_haze_col(col, d->z); q[8] = NXY(d);
@@ -3136,8 +3155,8 @@ void world_draw(int fx, int fy, int t, int cutaway) {
         if (b_x0[b] == 255) { b_str[b] = 0; b_lod[b] = 0; continue; }
         int inside = b_x0[b] >= rx0 && b_x1[b] <= rx1 && b_y0[b] >= ry0 && b_y1[b] <= ry1;
         int touch = b_x1[b] >= rx0 && b_x0[b] <= rx1 && b_y1[b] >= ry0 && b_y0[b] <= ry1;
-        b_str[b] = (u8)(touch && !inside);
-        if (bm_gen >= 7 && world_zone == ZONE_CITY && world_wbx >= 0 && !world_view_lvl && b_top[b] >= 1 && b_top[b] <= 3 && touch && !b_see[b] && b_rect_get(b) && (b_x1[b] - b_x0[b] + 1) * (b_y1[b] - b_y0[b] + 1) <= 200) {
+        b_str[b]=(u8)(!inside&&(touch||render_eye_close(etx_,ety_,b_x0[b],b_y0[b],b_x1[b],b_y1[b])));
+        if (bm_gen >= 7 && world_zone == ZONE_CITY && world_wbx >= 0 && !world_view_lvl && b_top[b] >= 1 && b_top[b] <= 3 && (touch||b_str[b]) && !b_see[b] && b_rect_get(b) && (b_x1[b] - b_x0[b] + 1) * (b_y1[b] - b_y0[b] + 1) <= 200) {
             int dx_ = MAX(MAX(b_x0[b] - fx, fx - b_x1[b]), 0), dy_ = MAX(MAX(b_y0[b] - fy, fy - b_y1[b]), 0);   // nearest wall to Sim, tiles
             int ex_ = MAX(MAX(b_x0[b] - etx_, etx_ - b_x1[b]), 0), ey_ = MAX(MAX(b_y0[b] - ety_, ety_ - b_y1[b]), 0); // nearest wall to eye
             b_lod[b] = (u8)house_lod_upper(b_lod[b], dx_ * dx_ + dy_ * dy_, ex_ * ex_ + ey_ * ey_ + eh_ * eh_);
@@ -3147,6 +3166,10 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     ex0 &= ~1; ey0 &= ~1;
     int keep_lvl = world_lvl; world_lvl = 0;
     cut_all = cutaway;
+    // Establish the entire local ground before detail can exhaust packets.
+    // Its OT slot stays behind floors/walls, irrespective of emission order.
+    int use_far=world_zone==ZONE_CITY&&far_begin(world_horizon);
+    if(world_zone==ZONE_CITY&&world_wbx>=0)ground_win(use_far);
     flc_frame(); flc_on = 1;   // (after the shading and the heights are brought up to date above)
     { int h0 = gfx_hb(); draw_layer(fx, fy, t, cutaway && world_view_lvl == 0, 0, 0, focus); world_hb_l0 = gfx_hb() - h0; }
     flc_on = 0;
@@ -3173,15 +3196,13 @@ void world_draw(int fx, int fy, int t, int cutaway) {
     if (nat_on || world_zone == ZONE_HOME || world_zone == ZONE_TOWN) { PROF_BEGIN(); nat_far(fx, fy); PROF_END(7); }   // (the ground past the range, out to the map's edge and on)
     {   // the skyline: everything past the range, as boxes (windows on the nearer ones); in SAN BOREAS, on out to the horizon
         PROF_BEGIN(); int sky_h0 = gfx_hb(); gfx_set_identity();
-        int use_far = world_zone == ZONE_CITY && far_begin(world_horizon);
+        if(use_far)far_resume();
         int far2 = world_far_range * world_far_range;
-        int etx = cam.eye.vx / TILE, ety = -cam.eye.vz / TILE;
         for (int b = 1; b <= nbld; b++) {
             if (b_x0[b] == 255) continue;
-            if (b_x1[b] >= rx0 && b_x0[b] <= rx1 && b_y1[b] >= ry0 && b_y0[b] <= ry1) continue;   // in range: drawn properly
+            if (b_str[b]||(b_x1[b] >= rx0 && b_x0[b] <= rx1 && b_y1[b] >= ry0 && b_y0[b] <= ry1)) continue; // exactly one owner
             int dx = (b_x0[b] + b_x1[b]) / 2 - fx, dy = (b_y0[b] + b_y1[b]) / 2 - fy, d2 = dx * dx + dy * dy;
             if (d2 > far2) continue;
-            if (etx >= b_x0[b] - 3 && etx <= b_x1[b] + 3 && ety >= b_y0[b] - 3 && ety <= b_y1[b] + 3) continue;   // (beside the camera: it would fill the screen)
             { int hh = (b_top[b] + 1) * WALL_FULL, cx = (b_x0[b] + b_x1[b] + 1) * TILE / 2, cz = -(b_y0[b] + b_y1[b] + 1) * TILE / 2;   // (out of the view altogether: not even transformed)
               int rr = (MAX(b_x1[b] - b_x0[b], b_y1[b] - b_y0[b]) + 1) * TILE * 3 / 4 + hh / 2;
               if (!gfx_visible(cx, -hh / 2, cz, rr)) continue; }
@@ -3191,7 +3212,6 @@ void world_draw(int fx, int fy, int t, int cutaway) {
             else far_box(b, d2 < 22 * 22);
         }
         world_hb_sky1 = gfx_hb() - sky_h0;
-        if (world_zone == ZONE_CITY && world_wbx >= 0) ground_win(use_far);   // (the window's own ground: it never ends a few steps away; with the far view on it fades into the haze)
         if (use_far) far_draw(rx0, ry0, rx1, ry1);   // the land, the towns and the trees, out to the horizon
         gfx_set_identity();
         PROF_END(3);

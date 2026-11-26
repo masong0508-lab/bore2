@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Verify frame ownership and safe cache replacement
+        run: cc -std=c99 -Wall -Wextra -Werror -Isrc test/frame_render_policy_test.c -o /tmp/frame_policy && /tmp/frame_policy
       - name: Test DS neighborhood viewport (host C99)
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_mapview_test.c -o /tmp/ds_mapview_test && /tmp/ds_mapview_test
       - name: Test exact traffic broadphase and conservative camera culling

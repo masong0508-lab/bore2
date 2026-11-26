@@ -10,6 +10,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import javax.microedition.khronos.egl.EGLConfig;
+import javax.microedition.khronos.egl.EGL10;
+import javax.microedition.khronos.egl.EGLDisplay;
 import javax.microedition.khronos.opengles.GL10;
 
 /** A depth-buffered, on-demand renderer for the native BORE neighborhood mesh. */
@@ -22,7 +24,7 @@ final class WorldView3D extends GLSurfaceView {
     WorldView3D(Context context,Picker pick){
         super(context);
         setEGLContextClientVersion(2);
-        setEGLConfigChooser(8,8,8,0,16,0);
+        setEGLConfigChooser((egl,display)->chooseDepthConfig(egl,display));
         setPreserveEGLContextOnPause(true);
         scene=new SceneRenderer(pick);
         setRenderer(scene);
@@ -76,6 +78,18 @@ final class WorldView3D extends GLSurfaceView {
     }
     @Override public boolean performClick(){super.performClick();return true;}
 
+    private static EGLConfig chooseDepthConfig(EGL10 egl,EGLDisplay display){
+        // Prefer 24-bit depth on devices that support it; retain RGB565/16
+        // fallback instead of preventing older phones from starting.
+        int[][] choices={{8,8,8,24},{8,8,8,16},{5,6,5,16}};
+        for(int[] c:choices){
+            int[] attrs={EGL10.EGL_RED_SIZE,c[0],EGL10.EGL_GREEN_SIZE,c[1],EGL10.EGL_BLUE_SIZE,c[2],
+                EGL10.EGL_DEPTH_SIZE,c[3],0x3040,4,EGL10.EGL_SURFACE_TYPE,4,EGL10.EGL_NONE};
+            EGLConfig[] cfg=new EGLConfig[1];int[] n=new int[1];
+            if(egl.eglChooseConfig(display,attrs,cfg,1,n)&&n[0]>0)return cfg[0];
+        }
+        throw new IllegalArgumentException("No GLES2 configuration with a depth buffer");
+    }
     private final class SceneRenderer implements Renderer {
         private static final String VS=
             "attribute vec3 aPosition;attribute vec3 aColor;uniform mat4 uVP;uniform vec3 uEye;"+
@@ -143,7 +157,7 @@ final class WorldView3D extends GLSurfaceView {
             float d=distance*(float)Math.cos(pr),ex=d*(float)Math.sin(yr),ez=d*(float)Math.cos(yr);
             float ey=targetY+distance*(float)Math.sin(pr);
             float aspect=width/(float)height;
-            Matrix.perspectiveM(projection,0,46,aspect,1.4f,250);
+            Matrix.perspectiveM(projection,0,46,aspect,2.5f,220);
             Matrix.setLookAtM(view,0,ex,ey,ez,0,targetY,0,0,1,0);
             Matrix.multiplyMM(vp,0,projection,0,view,0);
             validMatrix=Matrix.invertM(inverse,0,vp,0);
