@@ -1,0 +1,41 @@
+# PS1 house continuity: first engine milestone (2026-11-22)
+
+Review branch: `improve/ps1-house-continuity-clipped-far-20261122`, draft PR #15.
+
+## Three source-level discontinuities addressed
+
+1. **Whole-house guard-plane rejection.** The former far-card and distant-box renderers discarded an entire visible house if *any* projected corner failed their guard test. The exceptional path now clips walls and roofs through the existing far-land polygon clipper; ordinary fully visible geometry retains the existing fast packets. Static allocation, save data, assets and procedural seed are unchanged.
+2. **Upper-storey LOD flicker.** Nearby and distant upper stories swapped between real tiles and simplified boxes at the same threshold in both directions. A compact hysteresis function now uses a deadband to prevent that rapid oscillation. Existing `b_lod` bytes are reused and reset when building IDs are recycled, so neither memory footprint nor save data grows.
+3. **Far-house boundary shrinkage.** The generator's `bm_lot_foot` stores inclusive wall bounds (`x1,y1` are occupied tiles). The prior `draw_buildings` far pass incorrectly treated those as exclusive box edges, making entire houses one tile too narrow in both axes, while the near skyline and the roof rule correctly used `x1 - x0 + 1`. Far houses now convert to the exact same half-open outer edge as the near renderer. The conversion is tested across all 16×16 wall pairs, 32 block locations and camera window origins.
+
+4. **L-shaped courtyard pop-through.** The former upper-storey box LOD used a connected building's bounding rectangle even when its actual indoor footprint was irregular. That could draw fake walls across a courtyard or behind adjacent rooms. The roof-region flood already counts enclosed tiles. Its tile count and the bounding-box area are now compared once when building geometry is generated; a 32-byte bitset marks which building IDs may safely use the fast rectangular LOD. Irregular homes keep their real exterior tile walls instead. The bit is invalidated when a building ID is reused and rederived after rebuild; no per-frame scan or save field is added. The host LOD regression verifies rectangular and incomplete shapes.
+
+## Safety and validation
+
+Tests: `test/house_lod_test.c`, `test/house_footprint_test.c`, and extended `test/projection_far.c`, run as mandatory PS1 `build` host steps (the last via `test/projection_regression.sh`). The existing world-coherence audit, PS1 disc packaging, Dreamcast build, and native PS1 close-home camera workflow remain the acceptance gates.
+
+**Not claimed:** This is not full multi-angle or moving-camera native screenshot validation, proof all houses retain identical silhouettes in every LOD, or a physical PS1 benchmark. Large irregular and edited buildings may still need a footprint-aware multi-mesh impostor. Polygon ordering on intersecting roofs and camera-inside-wall behavior remain high-priority visual work. Preserving the classic PS1 affine texture wobble is intentional; this pass focuses on incorrect world/geometry projection.
+
+## Second milestone — streaming handoff and deferred roof priority (2026-11-22)
+
+The original `window_shift` leaves entering blocks blank and generates them over subsequent updates. The far-town index knows their planned houses, but `far.c::draw_buildings` skipped **all** blocks inside the 5×5 local window. Thus an entering house could disappear entirely until the generator and the deferred `roof_region` happened to process that block. The new `world_stream_block_model_state` returns the actual two pending flags from the streaming queue, and `far.c` shows the already indexed planned-house proxy until the local block's roof/building metadata takes over. For a generated block missing only roof data, the proxy is suppressed when that building intersects the near-detail footprint, to prevent a solid far box drawing through real walls or furniture.
+
+Roof processing previously took pending blocks in raw top-left-to-bottom-right order, one every few frames regardless of view or distance. The scheduler now prioritizes the closest pending region to the camera and controlled Sim, processes at most one block per frame, and bypasses the existing budget wait only if a pending block approaches the near detail boundary. This retains the prior upper bound on roof work, removes gratuitous row-order latency, and allocates **no new permanent storage**.
+
+Checks: `test/world_stream_models_test.c` exercises the real shared proxy/scheduling rules; mandatory host and PS1 disc workflows also compile the production `world.c` and `far.c`. These are source/CI guards, not a substitute for motion screenshots. The fallback requires the far view to be enabled; with the far view disabled the prioritized scheduler still reduces roof delays but cannot draw far proxies. Edited/home lots may briefly use their original planned silhouette until local edits finish loading. Native 2 MB frame-time, peak packets and multi-seed camera sweeps remain the acceptance gate.
+
+## Native moving-camera evidence gate
+
+The `ps1-camera-visual-qa` workflow now additionally builds a test-only PS1 disc (`AUTO_HOUSE_SWEEP=1`) and records five 320×240 DuckStation/OpenBIOS gameplay views while the camera orbits and zooms around a deterministic two-storey home. The test checks active 3D image differences away from the fixed HUD, the actual seeded game state, camera motion and 2 MiB RAM, and uploads the raw screenshots and logs. This does not alter normal playable builds. It does not yet force the 5×5 city window to shift, and screenshot movement alone cannot guarantee zero one-frame pop-in.
+
+## Camera-motion QA correction after first failed run
+
+The first new moving-house CI run on `4e361ac7` **failed**, while PS1 and Dreamcast production builds passed. Its five real DuckStation captures between BIOS-relative frames 3000 and 3800 showed almost the same exterior angle: the test-only orbit reached its 480-logic-step clamp too early. The first scene-channel changes were only 2,214 and 2,129, below the 3,000 per-pair requirement. This is a **failed test design**, not proof that the normal PS1 renderer froze or crashed. The test-only camera sweep now runs throughout the capture window, the shots are earlier (2600–3400), and the Sim stands on the two-storey home's front yard so the roof/exterior, rather than only cutaway interiors, are exercised. The test remains strict: missing or insufficiently changing screenshots fail rather than being reported as visual validation.
+
+## Upper-storey footprint safety (next rendering pass)
+
+The former rectangular-box guard verified the building's **ground-level** flood fill only, leaving a narrower upper floor or recessed rooftop vulnerable to fake upper walls through open air. The roof-region rebuild now additionally checks each occupied upper storey's outer wall ring against the ground-level bounds, and disables rectangular upper-floor LOD if any perimeter tile is absent. This permits an enclosed inner stair opening without declaring the entire building irregular. The check runs during existing roof-generation work, reusing the pre-existing 32-byte shape bitset, and does not run in each draw frame. Host regressions cover a full ring, central stairwell void, recessed upper terrace, empty corner and invalid ranges. Some additional distant homes will use their exact upper walls instead of the cheapest box; compare packet/CPU budgets in crowded scenes before release.
+
+## Far-house wall color consistency
+
+The generator encodes neighborhood wall materials as `FB.col` 10–15. Medium-distance far boxes already used the matching `world_plan_wall_rgb` palette, but extremely distant single-face house cards incorrectly used `wallc[col % 10]`, producing a sudden generic wall color when LOD switched at 300 m (100 m with the far-lite helper). The two modes now call one palette selector, keeping the same source wall color at both distances. A host test covering all 16 packed material codes is included in the actual `test/projection_far.c` production-code suite. No new palette arrays or save fields; planned distant cards do a small extra material lookup when visible.
