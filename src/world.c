@@ -652,6 +652,7 @@ static void island_homes(int want) {   // cottages (with a plank path) where the
 // left it.
 static u8 gen_pend[WB][WB]; static int gen_npend;
 static void gen_one(int wx,int wy);
+static void ground_cache_note_local(int wx,int wy);
 int world_wbx = -1, world_wby = -1;                    // the window's top-left block in the open world (-1: not made yet)
 typedef struct { u16 bx, by; char map[BM_BLK][BM_BLK]; u8 fl[BM_BLK][BM_BLK], wp[BM_BLK][BM_BLK]; } EditBlk;
 static EditBlk edit_small[12]; static EditBlk *edits = edit_small; static int nedit_max = 12, nedit, edit_next;
@@ -686,7 +687,11 @@ static void mark_dirty(int l,int mx,int my){
         if(gen_pend[wy][wx])gen_one(wx,wy);
         if(l<=0)wdirty[wy][wx]=1;
     }
-    if(l<=0)world_stamp++;
+    if(l<=0){
+        world_stamp++;
+        if(world_zone==ZONE_CITY&&world_wbx>=0&&stream_tile_valid(mx,my,WB,BM_BLK))
+            ground_cache_note_local(mx/BM_BLK,my/BM_BLK);
+    }
     pb_touch(mx,my);
 }
 static int own_in_window(int *wx, int *wy) {
@@ -770,7 +775,7 @@ static void homes_drop(int bx, int by) {   // a block made again: its homes are 
 static void gen_block(int wx, int wy);
 COLD static void block_again(int wx,int wy){
     if(gen_pend[wy][wx]){gen_pend[wy][wx]=0;gen_npend--;}
-    homes_drop(world_wbx+wx,world_wby+wy);gen_block(wx,wy);ao_dirty=roof_dirty=1;world_stamp++;
+    homes_drop(world_wbx+wx,world_wby+wy);gen_block(wx,wy);ao_dirty=roof_dirty=1;world_stamp++;ground_cache_note_local(wx,wy);
 }
 COLD static void own_rect(int wx, int wy) {   // where the home's house is, from the homes in the window (an empty lot: none)
     int hi = world_home_find(ZONE_CITY, own.bx, own.by, 0), ox = wx * BM_BLK, oy = wy * BM_BLK; own.home = hi >= 0;
@@ -1241,11 +1246,11 @@ static void gen_one(int wx, int wy) {
     if (!rq_dirty[wy][wx]) { rq_dirty[wy][wx] = 1; rq_n++; }
     ao_region(wx * BM_BLK, wy * BM_BLK, wx * BM_BLK + BM_BLK, wy * BM_BLK + BM_BLK);
     for (int y = wy * BM_BLK; y < wy * BM_BLK + BM_BLK; y++) lifeMap[y][MW] = 0;
-    world_stamp++;
+    world_stamp++;ground_cache_note_local(wx,wy);
 }
 static void window_shift(int sx,int sy){
     // Preserve unfinished work for blocks that stay; no burst of wasted generation.
-    int T0 = gfx_hb(), T; world_stamp++;
+    int T0 = gfx_hb(), T; world_stamp++;ground_cache_note_local(-1,-1);
     for (int wy = 0; wy < WB; wy++) for (int wx = 0; wx < WB; wx++) {          // the blocks leaving: keep what was built on
         int nx = wx - sx, ny = wy - sy;
         if (nx >= 0 && ny >= 0 && nx < WB && ny < WB) continue;
@@ -3207,7 +3212,16 @@ u32 far_haze_col(u32 col, int zw);
 // rectangles. Dense custom layouts fall back to a complete temporary list.
 #define ground_cache (terrain_render_cache.city)
 static u8 ground_count[WB][WB];
-static int ground_stamp[WB][WB];
+static int ground_key[WB*WB],ground_seen_stamp=-1,ground_seen_edit=-1;
+/* Acknowledge only a known local mutation or origin rebase. Any unknown
+ * world_stamp change, terrain edit or zone/union switch still clears all
+ * keys before drawing, so saved or built-on ground cannot stay stale. */
+static void ground_cache_note_local(int wx,int wy){
+    if(terrain_cache_owner!=TERRAIN_CACHE_CITY||ground_seen_stamp!=world_stamp-1||
+       ground_seen_edit!=bm_edit_stamp)return;
+    if(wx>=0&&wy>=0)ground_cache_drop(ground_key,world_wbx+wx,world_wby+wy);
+    ground_seen_stamp=world_stamp;
+}
 static int ground_rebuild(int wx,int wy,u32 *out,int cap){
     u8 mat[GROUND_PATCH_MAX];int ox=wx*BM_BLK,oy=wy*BM_BLK;
     if(gen_pend[wy][wx]){
@@ -3231,7 +3245,11 @@ static int ground_rebuild(int wx,int wy,u32 *out,int cap){
 COLD static void ground_win(int hz){
     (void)hz;
     _Static_assert(BM_BLK==GROUND_PATCH_SIDE,"ground patch size matches city");
-    if(terrain_cache_claim(&terrain_cache_owner,TERRAIN_CACHE_CITY))memset(ground_stamp,0xff,sizeof ground_stamp);
+    if(terrain_cache_claim(&terrain_cache_owner,TERRAIN_CACHE_CITY)||
+       ground_seen_stamp!=world_stamp||ground_seen_edit!=bm_edit_stamp){
+        memset(ground_key,0,sizeof ground_key);
+        ground_seen_stamp=world_stamp;ground_seen_edit=bm_edit_stamp;
+    }
     far_local_begin(world_horizon);
     u32 fallback[GROUND_PATCH_MAX];
     int L=CLAMP(gfx_light(0,-ONE,0),40,200);
@@ -3243,14 +3261,16 @@ COLD static void ground_win(int hz){
     for(int wy=0;wy<WB;wy++)for(int wx=0;wx<WB;wx++){
         int ox=wx*BM_BLK,oy=wy*BM_BLK;
         if(!far_ground_visible(ox*TILE,-oy*TILE,(ox+BM_BLK)*TILE,-(oy+BM_BLK)*TILE))continue;
-        const u32 *patch=ground_cache[wy][wx];int n=ground_count[wy][wx];
-        if(ground_stamp[wy][wx]!=world_stamp){
+        int bx=world_wbx+wx,by=world_wby+wy,key=ground_cache_key(bx,by);
+        int slot=ground_cache_slot(bx,by),sx=slot&3,sy=slot>>2;
+        const u32 *patch=ground_cache[sy][sx];int n=ground_count[sy][sx];
+        if(ground_key[slot]!=key){
             /* Build a complete list once. Previously a dense block was
              * rasterized twice in its first frame after a map edit. */
             n=ground_rebuild(wx,wy,fallback,GROUND_PATCH_MAX);
-            if(n<=GROUND_PATCH_CACHE){memcpy(ground_cache[wy][wx],fallback,(unsigned)n*sizeof(u32));ground_count[wy][wx]=(u8)n;}
-            else {ground_count[wy][wx]=255;patch=fallback;}
-            ground_stamp[wy][wx]=world_stamp;
+            if(n<=GROUND_PATCH_CACHE){memcpy(ground_cache[sy][sx],fallback,(unsigned)n*sizeof(u32));ground_count[sy][sx]=(u8)n;}
+            else {ground_count[sy][sx]=255;patch=fallback;}
+            ground_key[slot]=key;
         }else if(n==255){n=ground_rebuild(wx,wy,fallback,GROUND_PATCH_MAX);patch=fallback;}
         for(int i=0;i<n;i++){
             u32 p=patch[i];int x=ox+ground_patch_x(p),y=oy+ground_patch_y(p);

@@ -273,7 +273,7 @@ void traffic_update(int steps) {
     }
     for (int i = 0; i < NCAR && n > want; i++) if (car[i].lim && off(&car[i], -14)) { KILL(&car[i], 5); n--; }   // (the dial turned down: the cars out of sight go)
 }
-static void put(const Car *c) { int x, y, yaw; pose(c, c->p >> 3, &x, &y, &yaw); items_draw_vehicle(x, -y, yaw, 0, c->type, c->col, c->wph); }
+/* Moving-car poses are evaluated once in traffic_draw. */
 #ifdef TRAF_DBG
 int traf_why; unsigned traf_dbg_jmask(int d, int m) { return jmask(d, m); }
 int traf_dbg_gen(int i) { return traf_g[i]; }   // (why the last car went: the audit tells the ones that go in sight)
@@ -359,14 +359,24 @@ void traffic_draw(void) {
         if(bore_vehicle_draw_distance(x,y,px,py)>18*TILE)continue;
         items_draw_vehicle(x,-y,p->yaw,0,t,veh_colour(t),0); }
     BoreVehicleDraw draw[14];int n=0;
+    /* Cache poses only for visible-range candidates; stack-local, no
+     * permanent memory and no stale pose after a stream rebase. */
+    int cx[NCAR],cy[NCAR];s16 ca[NCAR];
+    int bx=bx_(),by=by_(),tx=px/TILE,ty=py/TILE;
     for(int i=0;i<NCAR;i++){const Car *c=&car[i];if(!c->lim)continue;
         /* A six-tile left turn can be well away from its starting gate. */
-        if(ABS(c->gx-bx_()-px/TILE)+ABS(c->gy-by_()-py/TILE)>30)continue;
+        if(ABS(c->gx-bx-tx)+ABS(c->gy-by-ty)>30)continue;
         int x,y,a;pose(c,c->p>>3,&x,&y,&a);
         int d=bore_vehicle_draw_distance(x,y,px,py);
-        if(d<=18*TILE)bore_vehicle_draw_insert(draw,&n,14,i,d);
+        if(d<=18*TILE){
+            cx[i]=x;cy[i]=y;ca[i]=(s16)a;
+            bore_vehicle_draw_insert(draw,&n,14,i,d);
+        }
     }
-    for(int j=0;j<n;j++)put(&car[draw[j].id]);
+    for(int j=0;j<n;j++){
+        int i=draw[j].id;const Car *c=&car[i];
+        items_draw_vehicle(cx[i],-cy[i],ca[i],0,c->type,c->col,c->wph);
+    }
     pcars_draw();
 }
 void traffic_park(int t, int x, int z, int yaw) {

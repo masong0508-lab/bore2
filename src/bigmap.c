@@ -356,10 +356,12 @@ static int on_road(int bx, int by, int vert) {
 /* Regional agricultural clusters, rather than independent farms in
  * roadless wilderness. A working gate must face a real east-west road.
  * Use the same predicate when grading a farm's foundation. */
-static int rural_farm(int bx,int by){
-    if(bx<0||by<0||bx>=BM_N||by>=BM_N)return 0;
+static int rural_farm_score(int bx,int by){
     unsigned district=bm_hash(bx/6,by/3,wseed^0x4641524du);
-    if(district%5u>=2||bm_hash(bx,by,wseed^0xA6F1u)%4u==0)return 0;
+    return district%5u<2&&bm_hash(bx,by,wseed^0xA6F1u)%4u!=0;
+}
+static int rural_farm(int bx,int by){
+    if(bx<0||by<0||bx>=BM_N||by>=BM_N||!rural_farm_score(bx,by))return 0;
     if(bm_terrain(bx,by)!=BT_GRASS)return 0;
     return on_road(bx,by,0)||(by+1<BM_N&&on_road(bx,by+1,0));
 }
@@ -616,7 +618,7 @@ static void bm_block0(int bx, int by, BInfo *b) {
     }
     if (on_road(bx, by, 0)) b->road |= 1;
     if (on_road(bx, by, 1)) b->road |= 2;
-    if(bm_gen>=9){if(rural_farm(bx,by))b->lot=LOT_FARM;}
+    if(bm_gen>=9){if(b->terrain==BT_GRASS&&rural_farm_score(bx,by)&&((b->road&1)||(by+1<BM_N&&on_road(bx,by+1,0))))b->lot=LOT_FARM;}
     else if (b->terrain == BT_GRASS && (b->h % 100u) < 3) b->lot = LOT_FARM;
 }
 // ---- rivers and mega places ----

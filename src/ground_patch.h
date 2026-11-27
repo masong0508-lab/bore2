@@ -13,20 +13,24 @@ static inline int ground_patch_mat(uint32_t p){return (p>>20)&63;}
 // Disjoint material rectangles. Never replace a whole area by a sample
 // of one tile. Six-tile bound limits plane error on slopes.
 static inline int ground_patch_build(const uint8_t *mat,uint32_t *out,int cap){
-    uint8_t used[GROUND_PATCH_MAX];memset(used,0,sizeof used);
+    /* One bit per occupied cell. Preserve the exact scan order,
+     * 6x6 rectangle bound and material coverage of the old builder. */
+    uint32_t used[GROUND_PATCH_SIDE]={0};
     int n=0;
-    for(int y=0;y<18;y++)for(int x=0;x<18;x++){
-        int i=y*18+x;if(used[i])continue;
-        int k=mat[i],w=1,h=1;
-        while(w<6&&x+w<18&&!used[i+w]&&mat[i+w]==k)w++;
-        while(h<6&&y+h<18){
-            int ok=1;for(int a=0;a<w;a++)if(used[i+h*18+a]||mat[i+h*18+a]!=k){ok=0;break;}
-            if(!ok)break;
+    for(int y=0;y<18;y++)for(int x=0;x<18;){
+        unsigned bit=1u<<x;
+        if(used[y]&bit){x++;continue;}
+        int i=y*18+x,k=mat[i],w=1,h=1;
+        while(w<6&&x+w<18&&!(used[y]&(bit<<w))&&mat[i+w]==k)w++;
+        unsigned mask=((1u<<w)-1u)<<x;
+        while(h<6&&y+h<18&&!(used[y+h]&mask)){
+            int a=0;while(a<w&&mat[i+h*18+a]==k)a++;
+            if(a<w)break;
             h++;
         }
-        for(int b=0;b<h;b++)memset(used+i+b*18,1,w);
+        for(int b=0;b<h;b++)used[y+b]|=mask;
         if(n<cap)out[n]=ground_patch_pack(x,y,w,h,k);
-        n++;
+        n++;x+=w;
     }
     return n;
 }
@@ -42,4 +46,13 @@ typedef union {
 static inline int terrain_cache_claim(int *owner,int next){
     if(*owner==next)return 0;
     *owner=next;return 1;
+}
+
+/* The 4x4 city window has exactly one block for each pair of low
+ * coordinate bits. Retained blocks keep their cache slot across a rebase.
+ * Key 0 is invalid; real blocks at the origin are not confused with it. */
+static inline int ground_cache_slot(int bx,int by){return ((by&3)<<2)|(bx&3);}
+static inline int ground_cache_key(int bx,int by){return 1+bx+by*1024;}
+static inline void ground_cache_drop(int *keys,int bx,int by){
+    int i=ground_cache_slot(bx,by);if(keys[i]==ground_cache_key(bx,by))keys[i]=0;
 }
