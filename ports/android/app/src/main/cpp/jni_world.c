@@ -63,3 +63,11 @@ JNIEXPORT jintArray JNICALL Java_com_bore2_game_NativeWorld_interior(JNIEnv *env
     if(a)(*env)->SetIntArrayRegion(env,a,0,BORE_ANDROID_INTERIOR_FIELDS,(const jint*)v);
     return a;
 }
+
+JNIEXPORT jintArray JNICALL Java_com_bore2_game_NativeWorld_walkMask(JNIEnv *env,jclass cls,jint x,jint y){
+    (void)cls;int v[BORE_ANDROID_WALK_FIELDS];
+    if(!bore_android_walk_mask(x,y,v,BORE_ANDROID_WALK_FIELDS))return NULL;
+    jintArray a=(*env)->NewIntArray(env,BORE_ANDROID_WALK_FIELDS);
+    if(a)(*env)->SetIntArrayRegion(env,a,0,BORE_ANDROID_WALK_FIELDS,(const jint*)v);
+    return a;
+}

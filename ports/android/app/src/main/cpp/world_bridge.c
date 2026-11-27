@@ -1,6 +1,7 @@
 #include "world_bridge.h"
 #include "window_math.h"
 #include "mesh_footprint.h"
+#include "scene_surface.h"
 #include "bigmap.h"
 #define OUTINGS_IMPLEMENTATION
 #include "outings.h"
@@ -176,5 +177,39 @@ int bore_android_interior(int x,int y,int *out,int count){
     if(dx<0)return 0;
     out[0]=b.lot;out[1]=dx;out[2]=dy;
     for(int iy=0;iy<BM_BLK;iy++)for(int ix=0;ix<BM_BLK;ix++)out[3+iy*BM_BLK+ix]=bore_foot_has(&foot,ix,iy);
+    return 1;
+}
+
+/* 3x3 blocks, exact material/footprint collision with conservative tree
+ * and fountain exclusion. This is outdoor movement, not console tile AI. */
+int bore_android_walk_mask(int cx,int cy,int *out,int count){
+    if(!out||count!=BORE_ANDROID_WALK_FIELDS||cx<1||cy<1||cx>=BM_N-1||cy>=BM_N-1)return 0;
+    for(int by=0;by<3;by++)for(int bx=0;bx<3;bx++){
+        int wx=cx+bx-1,wy=cy+by-1;
+        BInfo b;bm_block(wx,wy,&b);
+        LotPlan p={0},fp={0};u8 f[5];
+        int garden=(b.lot==LOT_PARK||b.lot==LOT_SQUARE)&&b.terrain!=BT_SEA;
+        if(b.terrain!=BT_SEA&&(garden||b.lot==LOT_POOL||b.lot==LOT_FARM||(b.lot>=LOT_HOUSE&&b.lot<=LOT_TWO)))
+            bm_lot_plan(wx,wy,&b,&p);
+        int north=garden&&bm_gen>=7&&!(b.road&BR_MEGA)&&p.face==LF_NORTH;
+        int built=b.terrain!=BT_SEA&&b.lot!=LOT_RIVER&&bm_lot_foot(wx,wy,&b,f,&fp);
+        BoreFoot foot={0};
+        if(built){foot=(BoreFoot){f[0],f[1],f[2],f[3],0,0,0,0};if(f[4])foot=(BoreFoot){fp.x0,fp.y0,fp.x1,fp.y1,fp.wx0,fp.wy0,fp.wx1,fp.wy1};}
+        for(int y=0;y<18;y++)for(int x=0;x<18;x++){
+            int m=bore_lot_surface(&b,&p,x,y),open=m!=BS_WATER&&m!=BS_POOL&&m!=BS_CROP;
+            if(built&&bore_foot_has(&foot,x,y))open=0;
+            if(garden&&m==BS_LAND&&x>=BM_LOT0&&y>=BM_LOT0&&park_surface(b.h,b.lot==LOT_SQUARE,north,x-BM_LOT0,y-BM_LOT0)==PARK_WATER)open=0;
+            if(garden){
+                int tx,tz;
+                for(int i=0;park_tree_at(b.h,b.lot==LOT_SQUARE,north,i,&tx,&tz);i++)
+                    if(x==BM_LOT0+tx&&y==BM_LOT0+tz)open=0;
+                if((b.lot==LOT_SQUARE||park_variant(b.h)==0)&&x>=10&&x<=11&&y>=10&&y<=11)open=0;
+            }else if(b.terrain==BT_FOREST&&b.lot==LOT_WILD){
+                int tx=7+(b.h&3u),tz=7+((b.h>>2)&3u);
+                if((x==tx&&y==tz)||(x==tx+4&&(y==tz||y==tz+4)))open=0;
+            }
+            out[(by*18+y)*54+bx*18+x]=open;
+        }
+    }
     return 1;
 }

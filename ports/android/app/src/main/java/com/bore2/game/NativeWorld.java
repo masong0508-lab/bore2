@@ -12,5 +12,6 @@ final class NativeWorld {
     static synchronized native int[] route(int x,int y,int X,int Y);
     static synchronized native int[] shift(int x,int y,int day,int minute,int energy,int food);
     static synchronized native int[] interior(int x,int y);
+    static synchronized native int[] walkMask(int x,int y);
     private NativeWorld() {}
 }

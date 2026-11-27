@@ -23,3 +23,6 @@ int bore_android_shift(int x,int y,int day,int minute,int energy,int food,int *o
 // Residential interior: lot, entry x/y, exact 18x18 footprint.
 #define BORE_ANDROID_INTERIOR_FIELDS (3+18*18)
 int bore_android_interior(int x,int y,int *out,int count);
+
+#define BORE_ANDROID_WALK_FIELDS (54*54)
+int bore_android_walk_mask(int cx,int cy,int *out,int count);

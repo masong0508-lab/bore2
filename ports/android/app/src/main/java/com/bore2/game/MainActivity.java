@@ -38,7 +38,13 @@ public final class MainActivity extends Activity {
     private InteriorView interiorView;
     private InteriorPlan interiorPlan;
     private boolean inInterior;
-    private Button dayButton,modeButton,travelButton;
+    private Button dayButton,modeButton,travelButton,walkButton;
+    private boolean walkMode;
+    private int tileX,tileY,walkIndex,walkDone;
+    private int[] outdoorRoute;
+    private OutdoorPath outdoorMap;
+    private final Runnable outdoorTick=this::stepOutdoor;
+    private static final int WALK_MS=160;
     private final Handler travelHandler=new Handler(Looper.getMainLooper());
     private int[] travelRoute;
     private int travelIndex,travelCost,travelElapsed;
@@ -76,6 +82,8 @@ public final class MainActivity extends Activity {
         cx=clampCenter(prefs.getInt("x",capitalX));cy=clampCenter(prefs.getInt("y",capitalY));
         selectedX=cx;selectedY=cy;
         lifeX=clampBlock(prefs.getInt("lifeX",capitalX));lifeY=clampBlock(prefs.getInt("lifeY",capitalY));
+        tileX=prefs.getInt("tileX",lifeX*18+2);tileY=prefs.getInt("tileY",lifeY*18+2);
+        if(!OutdoorPath.valid(tileX,tileY)||tileX/18!=lifeX||tileY/18!=lifeY)resetOutdoorPosition();
         minute=Math.max(0,Math.min(1439,prefs.getInt("minute",600)));
         funds=LifeRules.credit(prefs.getInt("funds",250),0);energy=clamp100(prefs.getInt("energy",100));
         fun=clamp100(prefs.getInt("fun",50));social=clamp100(prefs.getInt("social",50));food=clamp100(prefs.getInt("food",100));
@@ -111,8 +119,9 @@ public final class MainActivity extends Activity {
         title.setPadding(dp(12),dp(8),dp(12),dp(2));panel.addView(title);
         hint=new TextView(this);hint.setTextColor(Color.rgb(180,201,190));hint.setTextSize(12);
         hint.setPadding(dp(12),0,dp(12),dp(6));panel.addView(hint);
-        world3d=new WorldView3D(this,(x,y,ox,oy,id)->{
+        world3d=new WorldView3D(this,(x,y,tx,ty,ox,oy,id)->{
             if(inInterior||travelRoute!=null||!in3d||id!=serial||id!=meshRevision||ox!=cx||oy!=cy||meshSeed!=seed||meshX!=cx||meshY!=cy)return;
+            if(walkMode){walkTo(tx,ty);return;}
             selectedX=x;selectedY=y;updateDetails();
         });
         map=new MapView();
@@ -142,7 +151,7 @@ public final class MainActivity extends Activity {
         });
         addButton(first,"Zoom −",()->{if(in3d)world3d.zoomBy(1.22f);else{radius=Math.min(16,radius+2);refresh();}});
         addButton(first,"Zoom +",()->{if(in3d)world3d.zoomBy(.82f);else{radius=Math.max(4,radius-2);refresh();}});
-        addButton(first,"Center lot",()->{cx=selectedX;cy=selectedY;refresh();});
+        walkButton=addButton(first,"Walk mode",this::toggleWalk);
         LinearLayout second=new LinearLayout(this);second.setGravity(Gravity.CENTER);
         lower.addView(second,new LinearLayout.LayoutParams(-1,-2));
         addButton(second,"Capital",()->{cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;refresh();});
@@ -164,6 +173,7 @@ public final class MainActivity extends Activity {
         lower.addView(progress,new LinearLayout.LayoutParams(-1,-2));
         addButton(progress,"Contacts",this::showContactList);
         addButton(progress,"Life goals",this::showGoals);
+        addButton(progress,"Center lot",()->{cx=selectedX;cy=selectedY;refresh();});
         setContentView(root);root.requestApplyInsets();showMode();refresh();
         if(atHome()&&prefs.getBoolean("insideHome",false))enterHome(prefs.getInt("roomCell",-1));
     }
@@ -171,7 +181,7 @@ public final class MainActivity extends Activity {
             if(inInterior)leaveHome();
             serial++;meshX=meshY=meshRevision=requestX=requestY=-1;seed=(int)System.nanoTime();resetNative();
             cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
-            lifeX=cx;lifeY=cy;weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
+            lifeX=cx;lifeY=cy;resetOutdoorPosition();weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
             lifeDay=0;lastShiftDay=-1;lastRoute=new int[0];homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
             java.util.Arrays.fill(skills,0);contacts.load("");world3d.resetCamera();refresh();saveLife();
     }
@@ -191,7 +201,7 @@ public final class MainActivity extends Activity {
         Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextSize(12);
         b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(0,0,0,0);
         row.addView(b,new LinearLayout.LayoutParams(0,dp(44),1));
-        b.setOnClickListener(v->{if(travelRoute!=null&&b!=travelButton){notice("Finish or cancel your trip first");return;}if(inInterior){notice("Use the furniture or leave your home first");return;}action.run();});return b;
+        b.setOnClickListener(v->{if(travelRoute!=null&&b!=travelButton){notice("Finish or cancel your trip first");return;}if(inInterior){notice("Use the furniture or leave your home first");return;}if(walkMode&&b!=walkButton){if(outdoorRoute!=null){notice("Finish or stop walking first");return;}endWalkMode(false);}action.run();});return b;
     }
     private void resetNative(){
         int center=NativeWorld.init(seed);capitalX=center&65535;capitalY=center>>>16;
@@ -202,7 +212,7 @@ public final class MainActivity extends Activity {
         homePane.setVisibility(View.GONE);
         world3d.setVisibility(in3d?View.VISIBLE:View.GONE);map.setVisibility(in3d?View.GONE:View.VISIBLE);
         modeButton.setText(in3d?"Map":"3D");
-        hint.setText(!in3d?"Drag to explore · Tap a lot · Center lot to travel":
+        hint.setText(walkMode?"Walk mode · Tap clear ground · Drag to orbit":!in3d?"Drag to explore · Tap a lot · Center lot to travel":
                 meshRevision==serial&&meshSeed==seed&&meshX==cx&&meshY==cy?
                 "Drag to orbit · Pinch to zoom · Tap a lot":"Loading 3D neighborhood…");
         world3d.select(selectedX,selectedY);
@@ -222,7 +232,7 @@ public final class MainActivity extends Activity {
         if(inInterior)return;
         if(meshX==cx&&meshY==cy&&meshSeed==seed&&meshRevision==serial){
             world3d.select(selectedX,selectedY);
-            hint.setText("Drag to orbit · Pinch to zoom · Tap a lot");return;
+            hint.setText(walkMode?"Walk mode · Tap clear ground · Drag to orbit":"Drag to orbit · Pinch to zoom · Tap a lot");return;
         }
         if(requestX==cx&&requestY==cy&&requestSeed==seed)return;
         final int version=++serial,x=cx,y=cy,key=seed;
@@ -247,7 +257,7 @@ public final class MainActivity extends Activity {
                     if(version!=serial||isFinishing()||isDestroyed())return;
                     requestX=requestY=-1;meshX=x;meshY=y;meshSeed=key;meshRevision=version;
                     world3d.select(selectedX,selectedY);
-                    if(in3d&&!inInterior)hint.setText("Drag to orbit · Pinch to zoom · Tap a lot");
+                    if(in3d&&!inInterior)hint.setText(walkMode?"Walk mode · Tap clear ground · Drag to orbit":"Drag to orbit · Pinch to zoom · Tap a lot");
                 },failure);
                 world3d.select(selectedX,selectedY);
             });
@@ -289,7 +299,7 @@ public final class MainActivity extends Activity {
         world3d.player(x,y);map.invalidate();
         lifeStatus.setText("Traveling · "+travelIndex+"/"+n+" blocks\n"+travelElapsed+" game minutes · "+travelCost+" energy");
         if(travelIndex<n){travelHandler.postDelayed(travelTick,115);return;}
-        lifeX=x;lifeY=y;energy=clamp100(energy-travelCost);food=clamp100(food-travelElapsed/30);
+        lifeX=x;lifeY=y;resetOutdoorPosition();energy=clamp100(energy-travelCost);food=clamp100(food-travelElapsed/30);
         advanceTime(travelElapsed);trips=LifeRules.credit(trips,1);
         travelRoute=null;travelIndex=0;travelButton.setText("Travel here");
         cx=lifeX;cy=lifeY;selectedX=lifeX;selectedY=lifeY;refresh();saveLife();notice("Arrived");
@@ -299,6 +309,59 @@ public final class MainActivity extends Activity {
         if(travelRoute==null)return;
         travelRoute=null;travelIndex=0;lastRoute=new int[0];travelButton.setText("Travel here");
         updateDetails();if(announce)notice("Trip canceled");
+    }
+    private void resetOutdoorPosition(){tileX=lifeX*18+2;tileY=lifeY*18+2;}
+    private OutdoorPath makeOutdoorMap(){
+        int bx=Math.max(1,Math.min(1022,lifeX)),by=Math.max(1,Math.min(1022,lifeY));
+        return OutdoorPath.create((bx-1)*18,(by-1)*18,NativeWorld.walkMask(bx,by));
+    }
+    private void toggleWalk(){
+        if(walkMode){endWalkMode(true);return;}
+        OutdoorPath p=makeOutdoorMap();
+        int spawn=p==null?-1:p.nearest(OutdoorPath.pack(tileX,tileY));
+        if(spawn<0||OutdoorPath.x(spawn)/18!=lifeX||OutdoorPath.y(spawn)/18!=lifeY){notice("No safe walking position on this lot");return;}
+        tileX=OutdoorPath.x(spawn);tileY=OutdoorPath.y(spawn);outdoorMap=p;
+        walkMode=true;in3d=true;cx=lifeX;cy=lifeY;selectedX=lifeX;selectedY=lifeY;
+        walkButton.setText("Stop walking");world3d.followPlayer(true);showMode();refresh();saveLife();
+    }
+    private void walkTo(int tx,int ty){
+        if(!walkMode||outdoorRoute!=null)return;
+        OutdoorPath p=makeOutdoorMap();
+        int[] route=p==null?null:p.route(OutdoorPath.pack(tileX,tileY),OutdoorPath.pack(tx,ty));
+        if(route==null){notice("Choose reachable ground, not a building or water");return;}
+        if(route.length==0)return;
+        outdoorMap=p;outdoorRoute=route;walkIndex=walkDone=0;
+        beginOutdoorStep();
+    }
+    private void beginOutdoorStep(){
+        if(outdoorRoute==null)return;
+        int next=outdoorRoute[walkIndex],at=OutdoorPath.pack(tileX,tileY);
+        if(!outdoorMap.open(next)||!OutdoorPath.adjacent(at,next)){finishOutdoor();return;}
+        world3d.playerTile(OutdoorPath.x(next),OutdoorPath.y(next),WALK_MS);
+        travelHandler.postDelayed(outdoorTick,WALK_MS);
+    }
+    private void stepOutdoor(){
+        if(outdoorRoute==null)return;
+        int next=outdoorRoute[walkIndex++];tileX=OutdoorPath.x(next);tileY=OutdoorPath.y(next);walkDone++;
+        if(walkIndex>=outdoorRoute.length)finishOutdoor();else beginOutdoorStep();
+    }
+    private void commitOutdoor(){
+        travelHandler.removeCallbacks(outdoorTick);
+        outdoorRoute=null;outdoorMap=null;
+        if(walkDone>0)advanceTime((walkDone+5)/6);
+        walkIndex=walkDone=0;
+        lifeX=tileX/18;lifeY=tileY/18;selectedX=lifeX;selectedY=lifeY;
+        world3d.playerTile(tileX,tileY,0);saveLife();
+    }
+    private void finishOutdoor(){
+        commitOutdoor();cx=lifeX;cy=lifeY;refresh();saveLife();
+    }
+    private void endWalkMode(boolean refreshView){
+        if(!walkMode)return;
+        commitOutdoor();walkMode=false;walkButton.setText("Walk mode");world3d.followPlayer(false);
+        if(refreshView){cx=lifeX;cy=lifeY;showMode();refresh();}
+        else {showMode();updateDetails();}
+        saveLife();
     }
     private int selectedLot(){
         int x=selectedX-cx+radius,y=selectedY-cy+radius,side=radius*2+1;
@@ -397,6 +460,7 @@ public final class MainActivity extends Activity {
         saveLife();
     }
     @Override public void onBackPressed(){
+        if(walkMode){endWalkMode(true);return;}
         if(inInterior){if(interiorView.busy()){interiorView.cancel();saveLife();}else interiorView.exit();return;}
         super.onBackPressed();
     }
@@ -528,7 +592,8 @@ public final class MainActivity extends Activity {
              .putInt("homeX",homeX).putInt("homeY",homeY).putInt("rentDebt",rentDebt)
              .putInt("careerShifts",careerShifts).putInt("trips",trips).putInt("homeNights",homeNights)
              .putInt("x",cx).putInt("y",cy).putString("contacts",contacts.save())
-             .putBoolean("insideHome",inInterior).putInt("roomCell",inInterior?interiorView.cell():-1);
+             .putBoolean("insideHome",inInterior).putInt("roomCell",inInterior?interiorView.cell():-1)
+             .putInt("tileX",tileX).putInt("tileY",tileY);
         for(int i=0;i<skills.length;i++)e.putInt("skill"+i,skills[i]);e.apply();
     }
     private void updateDetails(){
@@ -542,19 +607,19 @@ public final class MainActivity extends Activity {
             !hasHome()?"Find a home":(atHome()?"At home":"Home "+homeX+", "+homeY)+(rentDebt>0?" · Rent due $"+rentDebt:""),careerShifts,trips));
         map.setContentDescription("San Boreas map. Selected lot: "+text);
         world3d.setContentDescription("San Boreas 3D neighborhood. Selected lot: "+text);
-        world3d.player(lifeX,lifeY);world3d.select(selectedX,selectedY);map.invalidate();
+        world3d.playerTile(tileX,tileY,0);world3d.select(selectedX,selectedY);map.invalidate();
     }
     @Override protected void onResume(){
         super.onResume();
         if(world3d!=null){world3d.onResume();if(in3d){requestScene();world3d.requestRender();}}
     }
     @Override protected void onPause(){
-        cancelTravel(false);if(inInterior)interiorView.cancel();saveLife();
+        cancelTravel(false);if(walkMode)endWalkMode(false);if(inInterior)interiorView.cancel();saveLife();
         prefs.edit().putInt("seed",seed).putInt("x",cx).putInt("y",cy)
              .putInt("radius",radius).putBoolean("weekend",weekday==5).putBoolean("view3d",in3d).apply();
         if(world3d!=null)world3d.onPause();super.onPause();
     }
-    @Override protected void onDestroy(){if(interiorView!=null)interiorView.close();travelHandler.removeCallbacks(travelTick);serial++;meshWorker.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){if(interiorView!=null)interiorView.close();travelHandler.removeCallbacks(travelTick);travelHandler.removeCallbacks(outdoorTick);serial++;meshWorker.shutdownNow();super.onDestroy();}
     private final class MapView extends View {
         private final Paint paint=new Paint();
         private final int[] terrain={0xff2a6475,0xffb6a075,0xff76915d,0xff416c50,0xffb89b68,0xff777a73};

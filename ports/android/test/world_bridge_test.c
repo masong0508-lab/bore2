@@ -6,6 +6,7 @@
 #include "../app/src/main/cpp/world_bridge.h"
 #include "../app/src/main/cpp/window_math.h"
 #include "../app/src/main/cpp/mesh_footprint.h"
+#include "../app/src/main/cpp/scene_surface.h"
 
 int main(void){
     uint32_t center=bore_android_init(1234u),a[17*17],b[17*17];
@@ -98,6 +99,28 @@ int main(void){
         }
     }
     assert(homes>20&&not_homes>20);
+    int mask[BORE_ANDROID_WALK_FIELDS];
+    uint32_t cap=bore_android_init(1234u);
+    int wx=(int)(cap&65535),wy=(int)(cap>>16);
+    wx=MAX(1,MIN(BM_N-2,wx));wy=MAX(1,MIN(BM_N-2,wy));
+    assert(bore_android_walk_mask(wx,wy,mask,BORE_ANDROID_WALK_FIELDS));
+    int walk_open=0,walk_blocked=0;
+    for(int by=0;by<3;by++)for(int bx=0;bx<3;bx++){
+        BInfo b;LotPlan p={0};u8 f[5];bm_block(wx+bx-1,wy+by-1,&b);
+        int built=b.terrain!=BT_SEA&&b.lot!=LOT_RIVER&&bm_lot_foot(wx+bx-1,wy+by-1,&b,f,&p);
+        BoreFoot foot={0};
+        if(built){foot=(BoreFoot){f[0],f[1],f[2],f[3],0,0,0,0};if(f[4])foot=(BoreFoot){p.x0,p.y0,p.x1,p.y1,p.wx0,p.wy0,p.wx1,p.wy1};}
+        for(int y=0;y<18;y++)for(int x=0;x<18;x++){
+            int open=mask[(by*18+y)*54+bx*18+x];assert(open==0||open==1);
+            if(built&&bore_foot_has(&foot,x,y))assert(!open);
+            if(bore_surface(&b,x,y)==BS_WATER)assert(!open);
+            if(open)walk_open++;else walk_blocked++;
+        }
+    }
+    assert(walk_open>0&&walk_blocked>0);
+    assert(!bore_android_walk_mask(0,0,mask,BORE_ANDROID_WALK_FIELDS));
+    assert(!bore_android_walk_mask(wx,wy,mask,BORE_ANDROID_WALK_FIELDS-1));
+    puts("Android outdoor collision mask: native buildings, water and bounded window PASS");
     assert(!bore_android_interior(-1,0,room,BORE_ANDROID_INTERIOR_FIELDS));
     assert(!bore_android_interior(x,y,room,BORE_ANDROID_INTERIOR_FIELDS-1));
     printf("Android bridge: %d generated residential footprints and %d nonhomes checked\\n",homes,not_homes);
