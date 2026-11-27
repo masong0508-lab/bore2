@@ -15,6 +15,16 @@ public final class ResidentScheduleTest {
         ResidentSchedule.Entry morning=g.where(1234,home,0,540),afternoon=g.where(1234,home,0,840);
         check(morning.phase==ResidentSchedule.WORK&&morning.location!=home&&morning.location==afternoon.location,"stable work location");
         check(g.where(1234,home,0,740).phase==ResidentSchedule.LUNCH,"lunch schedule");
+        ResidentSchedule.Entry depart=g.located(1234,home,0,480);
+        check(depart.phase==ResidentSchedule.COMMUTE&&depart.location==home,"commute starts at home");
+        check(g.located(1234,home,0,516).location==morning.location,"commute reaches work");
+        for(int minute=480;minute<516;minute++){
+            ResidentSchedule.Entry moving=g.located(1234,home,0,minute);
+            check(g.lot(ResidentSchedule.x(moving.location),ResidentSchedule.y(moving.location))>=0,"commute uses land");
+            int n=0;for(int y=97;y<=103;y++)for(int x=97;x<=103;x++)
+                for(ResidentSchedule.Entry e:g.snapshot(1234,x,y,0,0,minute,-1))if(e.home==home)n++;
+            check(n==1,"commuter occupies exactly one block");
+        }
         check(g.where(1234,home,6,600).phase!=ResidentSchedule.WORK,"weekend off");
         int count=0;for(int y=97;y<=103;y++)for(int x=97;x<=103;x++)for(ResidentSchedule.Entry e:g.snapshot(1234,x,y,0,0,540,-1))if(e.home==home)count++;
         check(count==1,"one resident, exactly one destination across different camera centers");

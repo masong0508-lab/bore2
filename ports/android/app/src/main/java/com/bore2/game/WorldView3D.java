@@ -25,6 +25,9 @@ final class WorldView3D extends GLSurfaceView {
     private final ScaleGestureDetector scale;
     private float startX,startY,lastX,lastY;
     private boolean dragged,multiple;
+    private boolean crowdActive,crowdPresent;
+    private int lastClock=-1;
+    private final Runnable crowdTick=new Runnable(){public void run(){if(!crowdActive||!crowdPresent)return;requestRender();ui.postDelayed(this,125);}};
     WorldView3D(Context context,Picker pick){
         super(context);
         setEGLContextClientVersion(2);
@@ -51,7 +54,20 @@ final class WorldView3D extends GLSurfaceView {
     void player(int x,int y){playerTile(x*18+2,y*18+2,0);}
     void playerTile(int x,int y,int ms){queueEvent(()->scene.movePlayer(x,y,ms));requestRender();}
     void followPlayer(boolean follow){queueEvent(()->{scene.follow=follow;if(follow)scene.distance=22;});requestRender();}
-    void residents(int[] people,int revision){queueEvent(()->scene.setResidents(people,revision));requestRender();}
+    void residents(int[] people,int revision){
+        crowdPresent=people!=null&&people.length>0;
+        queueEvent(()->scene.setResidents(people,revision));refreshCrowdTimer();requestRender();
+    }
+    private void refreshCrowdTimer(){ui.removeCallbacks(crowdTick);if(crowdActive&&crowdPresent)ui.postDelayed(crowdTick,125);}
+    void setCrowdActive(boolean active){
+        if(crowdActive==active)return;
+        crowdActive=active;queueEvent(()->scene.crowdAnimation=active);refreshCrowdTimer();requestRender();
+    }
+    void setClock(int minute){
+        if(lastClock==minute)return;lastClock=minute;
+        float[] lighting=NeighborhoodMotion.light(minute);
+        queueEvent(()->scene.lighting=lighting);requestRender();
+    }
     void zoomBy(float factor){
         queueEvent(()->scene.distance=Math.max(10,Math.min(105,scene.distance*factor)));requestRender();
     }
@@ -113,6 +129,10 @@ final class WorldView3D extends GLSurfaceView {
         private final Picker picker;
         private final float[] projection=new float[16],view=new float[16],vp=new float[16],inverse=new float[16];
         private float[] mesh=new float[0],pendingMesh;
+        private GroundIndex groundIndex;
+        private float[] lighting=NeighborhoodMotion.light(600);
+        private boolean crowdAnimation;
+        private float groundAt(float x,float z){return groundIndex==null?ActorMesh.ground(mesh,x,z):groundIndex.height(x,z);}
         private int pendingX,pendingY,pendingRevision,revision;
         private Runnable pendingReady,pendingFailure,activeFailure;
         private int originX,originY,selX=Integer.MIN_VALUE,selY,width,height,program,vbo;
@@ -149,8 +169,8 @@ final class WorldView3D extends GLSurfaceView {
             if(actorRevision!=revision||actorX!=playerX||actorY!=playerY||actorFromX!=fromX||actorFromY!=fromY){
                 float old=groundTo;
                 boolean reuse=actorRevision==revision&&actorX==fromX&&actorY==fromY;
-                groundFrom=reuse?old:ActorMesh.ground(mesh,fromX-baseX+.5f,fromY-baseY+.5f);
-                groundTo=fromX==playerX&&fromY==playerY?groundFrom:ActorMesh.ground(mesh,playerX-baseX+.5f,playerY-baseY+.5f);
+                groundFrom=reuse?old:groundAt(fromX-baseX+.5f,fromY-baseY+.5f);
+                groundTo=fromX==playerX&&fromY==playerY?groundFrom:groundAt(playerX-baseX+.5f,playerY-baseY+.5f);
                 actorX=playerX;actorY=playerY;actorFromX=fromX;actorFromY=fromY;actorRevision=revision;
             }
             if(!Float.isFinite(groundFrom)||!Float.isFinite(groundTo)){actorVisible=false;return;}
@@ -191,6 +211,7 @@ final class WorldView3D extends GLSurfaceView {
                 vbo=buffers[0];
                 if(pendingMesh!=null){
                     mesh=next;originX=pendingX;originY=pendingY;revision=pendingRevision;
+                    groundIndex=null;groundIndex=GroundIndex.build(mesh);residentGroundRevision=-1;
                     activeFailure=pendingFailure;validMatrix=false;
                     float low=Float.POSITIVE_INFINITY;
                     for(int i=0;i<mesh.length;i+=6)
@@ -232,7 +253,7 @@ final class WorldView3D extends GLSurfaceView {
             width=w;height=h;GLES20.glViewport(0,0,w,h);validMatrix=false;
         }
         @Override public void onDrawFrame(GL10 gl){
-            GLES20.glClearColor(.68f,.77f,.80f,1);GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT|GLES20.GL_DEPTH_BUFFER_BIT);
+            GLES20.glClearColor(lighting[0],lighting[1],lighting[2],1);GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT|GLES20.GL_DEPTH_BUFFER_BIT);
             if(width<=0||height<=0)return;
             if(dirty)uploadScene();
             if(vbo==0||mesh.length==0)return;
@@ -248,8 +269,8 @@ final class WorldView3D extends GLSurfaceView {
             Matrix.multiplyMM(vp,0,projection,0,view,0);
             validMatrix=Matrix.invertM(inverse,0,vp,0);
             GLES20.glUseProgram(program);
-            GLES20.glUniformMatrix4fv(uVP,1,false,vp,0);GLES20.glUniform3f(uOffset,0,0,0);GLES20.glUniform3f(uPose,0,0,0);GLES20.glUniform3f(uTint,1,1,1);
-            GLES20.glUniform3f(uEye,ex,ey,ez);GLES20.glUniform3f(uSky,.68f,.77f,.80f);
+            GLES20.glUniformMatrix4fv(uVP,1,false,vp,0);GLES20.glUniform3f(uOffset,0,0,0);GLES20.glUniform3f(uPose,0,0,0);GLES20.glUniform3f(uTint,lighting[3],lighting[4],lighting[5]);
+            GLES20.glUniform3f(uEye,ex,ey,ez);GLES20.glUniform3f(uSky,lighting[0],lighting[1],lighting[2]);
             boolean selected=Math.abs((long)selX-originX)<=4&&Math.abs((long)selY-originY)<=4;
             GLES20.glUniform1f(uSelected,selected?1:0);
             GLES20.glUniform2f(uSelection,selected?(selX-originX)*18f:0,selected?(selY-originY)*18f:0);
@@ -276,7 +297,7 @@ final class WorldView3D extends GLSurfaceView {
         private void drawActor(){
             if(!actorVisible||actorBuffer==null)return;
             bindActor();GLES20.glUniform3f(uOffset,actorPX,actorPY+.035f,actorPZ);
-            GLES20.glUniform3f(uPose,1,swing,facing);GLES20.glUniform3f(uTint,1,1,1);
+            GLES20.glUniform3f(uPose,1,swing,facing);GLES20.glUniform3f(uTint,lighting[3],lighting[4],lighting[5]);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,actor.length/6);
         }
         private void drawResidents(){
@@ -284,17 +305,24 @@ final class WorldView3D extends GLSurfaceView {
             int baseX=originX*18+9,baseY=originY*18+9;
             if(residentGroundRevision!=revision){
                 for(int i=0;i<residents.length;i+=3)
-                    residentY[i/3]=ActorMesh.ground(mesh,residents[i]-baseX+.5f,residents[i+1]-baseY+.5f);
+                    residentY[i/3]=groundAt(residents[i]-baseX+.5f,residents[i+1]-baseY+.5f);
                 residentGroundRevision=revision;
             }
-            bindActor();
+            bindActor();long now=SystemClock.uptimeMillis();
             for(int i=0;i<residents.length;i+=3){
-                float x=residents[i]-baseX+.5f,z=residents[i+1]-baseY+.5f,h=residentY[i/3];
-                if(!Float.isFinite(h)||(actorVisible&&Math.abs(x-actorPX)<.7f&&Math.abs(z-actorPZ)<.7f))continue;
                 int key=residents[i+2],style=ResidentSchedule.mix(key);
+                float x=residents[i]-baseX+.5f,z=residents[i+1]-baseY+.5f,h=residentY[i/3];
+                float turn=(style&3)*1.5707963f,gait=0;
+                // Separate safe x lanes, no per-frame full-mesh searches. If
+                // index allocation failed, retain the static resident.
+                if(crowdAnimation&&groundIndex!=null){
+                    float nextZ=z-2f+NeighborhoodMotion.pace(key,now),nextH=groundAt(x,nextZ);
+                    if(Float.isFinite(nextH)){z=nextZ;h=nextH;turn=NeighborhoodMotion.facing(key,now);gait=NeighborhoodMotion.swing(key,now);}
+                }
+                if(!Float.isFinite(h))continue;
                 GLES20.glUniform3f(uOffset,x,h+.035f,z);
-                GLES20.glUniform3f(uPose,1,0,(style&3)*1.5707963f);
-                GLES20.glUniform3f(uTint,.80f+((style>>>2)&3)*.07f,.80f+((style>>>4)&3)*.07f,.80f+((style>>>6)&3)*.07f);
+                GLES20.glUniform3f(uPose,1,gait,turn);
+                GLES20.glUniform3f(uTint,lighting[3]*(.80f+((style>>>2)&3)*.07f),lighting[4]*(.80f+((style>>>4)&3)*.07f),lighting[5]*(.80f+((style>>>6)&3)*.07f));
                 GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,actor.length/6);
             }
         }

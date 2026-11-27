@@ -7,7 +7,7 @@ import java.util.HashMap;
 
 /** Bounded mobile resident schedule; every identity belongs to one generated home block. */
 final class ResidentSchedule {
-    static final int HOME=0,WORK=1,LUNCH=2,LEISURE=3,SLEEP=4,REACH=3,MAP=1024;
+    static final int HOME=0,WORK=1,LUNCH=2,LEISURE=3,SLEEP=4,COMMUTE=5,REACH=3,MAP=1024;
     static int pack(int x,int y){return x|(y<<16);}
     static int x(int key){return key&65535;}
     static int y(int key){return key>>>16;}
@@ -91,12 +91,23 @@ final class ResidentSchedule {
             }
             return new Entry(home,best,best==home?HOME:phase);
         }
+        Entry located(int seed,int home,int day,int minute){
+            Entry now=where(seed,home,day,minute);
+            if(now==null||minute<0||minute>=1440)return now;
+            int boundary=NeighborhoodMotion.boundary(minute),elapsed=minute-boundary;
+            if(boundary==0||elapsed>=2*REACH*NeighborhoodMotion.MINUTES_PER_BLOCK)return now;
+            Entry before=where(seed,home,day,boundary-1);
+            if(before==null||before.location==now.location)return now;
+            int[] path=NeighborhoodMotion.route(this::lot,home,before.location,now.location);
+            if(path==null||elapsed>=(path.length-1)*NeighborhoodMotion.MINUTES_PER_BLOCK)return now;
+            return new Entry(home,NeighborhoodMotion.blockAt(path,elapsed),COMMUTE);
+        }
         ArrayList<Entry> snapshot(int seed,int X,int Y,int radius,int day,int minute,int excluded){
             ArrayList<Entry> out=new ArrayList<>();
             if(radius<0||radius>4||!covers(X,Y,radius+2*REACH))return out;
             for(int y=Math.max(0,Y-radius-REACH);y<=Math.min(MAP-1,Y+radius+REACH);y++)for(int x=Math.max(0,X-radius-REACH);x<=Math.min(MAP-1,X+radius+REACH);x++){
                 int key=pack(x,y);if(key==excluded||!homeLot(lot(x,y)))continue;
-                Entry e=where(seed,key,day,minute);
+                Entry e=located(seed,key,day,minute);
                 if(e!=null&&Math.abs(x(e.location)-X)<=radius&&Math.abs(y(e.location)-Y)<=radius)out.add(e);
             }
             return out;

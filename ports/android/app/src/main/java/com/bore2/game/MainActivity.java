@@ -59,7 +59,8 @@ public final class MainActivity extends Activity {
     private int meshX=-1,meshY=-1,meshSeed,meshRevision=-1;
     private int requestX=-1,requestY=-1,requestSeed;
     private int seed,capitalX,capitalY,cx,cy,radius=8,selectedX,selectedY,weekday;
-    private boolean in3d=true;
+    private boolean in3d=true,resumed,crowdMotion=true;
+    private Button crowdButton;
     private int[] tiles=new int[0];
     private int lifeX,lifeY,minute=600,funds=250,energy=100,fun=50,social=50,food=100,sessions;
     private int lifeDay,lastShiftDay=-1;
@@ -85,7 +86,7 @@ public final class MainActivity extends Activity {
         seed=prefs.getInt("seed",1234);
         radius=Math.max(4,Math.min(16,prefs.getInt("radius",8)));
         weekday=Math.max(0,Math.min(6,prefs.getInt("day",prefs.getBoolean("weekend",false)?5:0)));
-        in3d=prefs.getBoolean("view3d",true);
+        in3d=prefs.getBoolean("view3d",true);crowdMotion=prefs.getBoolean("crowdMotion",true);
         resetNative();
         cx=clampCenter(prefs.getInt("x",capitalX));cy=clampCenter(prefs.getInt("y",capitalY));
         selectedX=cx;selectedY=cy;
@@ -182,6 +183,7 @@ public final class MainActivity extends Activity {
         lower.addView(progress,new LinearLayout.LayoutParams(-1,-2));
         addButton(progress,"Contacts",this::showContactList);
         addButton(progress,"Life goals",this::showGoals);
+        crowdButton=addButton(progress,crowdMotion?"Crowds: moving":"Crowds: still",this::toggleCrowds);
         setContentView(root);root.requestApplyInsets();showMode();refresh();
         if(atHome()&&prefs.getBoolean("insideHome",false))enterHome(prefs.getInt("roomCell",-1));
         else if(prefs.getBoolean("insideVenue",false)&&prefs.getInt("insideX",-1)==lifeX&&prefs.getInt("insideY",-1)==lifeY){
@@ -219,7 +221,9 @@ public final class MainActivity extends Activity {
         int center=NativeWorld.init(seed);capitalX=center&65535;capitalY=center>>>16;
     }
     private int clampCenter(int x){return Math.max(radius,Math.min(MAP_SIZE-radius-1,x));}
+    private void toggleCrowds(){crowdMotion=!crowdMotion;crowdButton.setText(crowdMotion?"Crowds: moving":"Crowds: still");world3d.setCrowdActive(resumed&&in3d&&!inInterior&&crowdMotion);saveLife();}
     private void showMode(){
+        world3d.setCrowdActive(resumed&&in3d&&!inInterior&&crowdMotion);
         walkButton.setVisibility(in3d&&!inInterior?View.VISIBLE:View.GONE);
         walkControls.setVisibility(walkMode&&!inInterior?View.VISIBLE:View.GONE);
         if(inInterior){world3d.setVisibility(View.GONE);map.setVisibility(View.GONE);homePane.setVisibility(View.VISIBLE);hint.setText(interiorPlan.commercial?"Venue · walk to a service station":"Home · tap a floor tile or use furniture");return;}
@@ -540,7 +544,7 @@ public final class MainActivity extends Activity {
     }
     private void updateStreetResidents(){
         if(!in3d||inInterior||meshRevision!=serial||meshSeed!=seed||meshX!=cx||meshY!=cy)return;
-        int bucket=minute/15,home=rentedKey();
+        int bucket=minute/6,home=rentedKey();
         if(residentRevision==meshRevision&&residentDay==weekday&&residentTime==bucket&&residentHome==home)return;
         ResidentSchedule.Grid grid=residentGridAt(cx,cy,8);
         if(grid==null)return;
@@ -554,7 +558,7 @@ public final class MainActivity extends Activity {
         if(!atSelected()||!(MobileContacts.isSocialLot(lot)||LifeRules.isWork(lot)))return people;
         ResidentSchedule.Grid grid=residentGridAt(lifeX,lifeY,6);if(grid==null)return people;
         for(ResidentSchedule.Entry e:grid.snapshot(seed,lifeX,lifeY,0,weekday,minute,rentedKey())){
-            if(e.phase!=ResidentSchedule.SLEEP&&people.size()<8)people.add(resident(e.home));
+            if(e.phase!=ResidentSchedule.SLEEP&&e.phase!=ResidentSchedule.COMMUTE&&people.size()<8)people.add(resident(e.home));
         }
         return people;
     }
@@ -679,7 +683,7 @@ public final class MainActivity extends Activity {
              .putBoolean("insideHome",inInterior&&!interiorPlan.commercial).putBoolean("insideVenue",inInterior&&interiorPlan.commercial)
              .putInt("insideX",interiorX).putInt("insideY",interiorY).putInt("insideLot",inInterior?interiorPlan.lot:-1)
              .putInt("roomCell",inInterior?interiorView.cell():-1)
-             .putInt("tileX",tileX).putInt("tileY",tileY);
+             .putInt("tileX",tileX).putInt("tileY",tileY).putBoolean("crowdMotion",crowdMotion);
         for(int i=0;i<skills.length;i++)e.putInt("skill"+i,skills[i]);e.apply();
     }
     private void updateDetails(){
@@ -693,19 +697,20 @@ public final class MainActivity extends Activity {
             !hasHome()?"Find a home":(atHome()?"At home":"Home "+homeX+", "+homeY)+(rentDebt>0?" · Rent due $"+rentDebt:""),careerShifts,trips));
         map.setContentDescription("San Boreas map. Selected lot: "+text);
         world3d.setContentDescription("San Boreas 3D neighborhood. Selected lot: "+text);
-        world3d.playerTile(tileX,tileY,0);world3d.select(selectedX,selectedY);updateStreetResidents();map.invalidate();
+        world3d.setClock(minute);world3d.playerTile(tileX,tileY,0);world3d.select(selectedX,selectedY);updateStreetResidents();map.invalidate();
     }
     @Override protected void onResume(){
-        super.onResume();
-        if(world3d!=null){world3d.onResume();if(in3d){requestScene();world3d.requestRender();}}
+        super.onResume();resumed=true;
+        if(world3d!=null){world3d.onResume();world3d.setCrowdActive(in3d&&!inInterior&&crowdMotion);if(in3d){requestScene();world3d.requestRender();}}
     }
     @Override protected void onPause(){
+        resumed=false;if(world3d!=null)world3d.setCrowdActive(false);
         cancelTravel(false);if(walkMode)endWalkMode(false);if(inInterior)interiorView.cancel();saveLife();
         prefs.edit().putInt("seed",seed).putInt("x",cx).putInt("y",cy)
              .putInt("radius",radius).putBoolean("weekend",weekday==5).putBoolean("view3d",in3d).apply();
         if(world3d!=null)world3d.onPause();super.onPause();
     }
-    @Override protected void onDestroy(){if(interiorView!=null)interiorView.close();travelHandler.removeCallbacks(travelTick);travelHandler.removeCallbacks(outdoorTick);serial++;meshWorker.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){if(world3d!=null)world3d.setCrowdActive(false);if(interiorView!=null)interiorView.close();travelHandler.removeCallbacks(travelTick);travelHandler.removeCallbacks(outdoorTick);serial++;meshWorker.shutdownNow();super.onDestroy();}
     private final class MapView extends View {
         private final Paint paint=new Paint();
         private final int[] terrain={0xff2a6475,0xffb6a075,0xff76915d,0xff416c50,0xffb89b68,0xff777a73};

@@ -35,7 +35,7 @@ jobs:
       - name: Verify mobile life rules and resident geometry (JDK only)
         run: |
           J=ports/android/app/src/main/java/com/bore2/game
-          javac -Xlint:all -d /tmp/bore-mobile "$J/LifeRules.java" "$J/ActorMesh.java" "$J/MobileContacts.java" "$J/InteriorPlan.java" "$J/VenueRules.java" "$J/OutdoorPath.java" "$J/ResidentSchedule.java" ports/android/test/VenueRulesTest.java ports/android/test/ResidentScheduleTest.java ports/android/test/OutdoorPathTest.java ports/android/test/InteriorPlanTest.java ports/android/test/LifeRulesTest.java ports/android/test/ActorMeshTest.java ports/android/test/MobileContactsTest.java
+          javac -Xlint:all -d /tmp/bore-mobile "$J/LifeRules.java" "$J/ActorMesh.java" "$J/MobileContacts.java" "$J/InteriorPlan.java" "$J/VenueRules.java" "$J/OutdoorPath.java" "$J/ResidentSchedule.java" "$J/NeighborhoodMotion.java" "$J/GroundIndex.java" ports/android/test/NeighborhoodMotionTest.java ports/android/test/GroundIndexTest.java ports/android/test/VenueRulesTest.java ports/android/test/ResidentScheduleTest.java ports/android/test/OutdoorPathTest.java ports/android/test/InteriorPlanTest.java ports/android/test/LifeRulesTest.java ports/android/test/ActorMeshTest.java ports/android/test/MobileContactsTest.java
           java -cp /tmp/bore-mobile com.bore2.game.LifeRulesTest
           java -cp /tmp/bore-mobile com.bore2.game.ActorMeshTest
           java -cp /tmp/bore-mobile com.bore2.game.MobileContactsTest
@@ -43,6 +43,8 @@ jobs:
           java -cp /tmp/bore-mobile com.bore2.game.VenueRulesTest
           java -cp /tmp/bore-mobile com.bore2.game.OutdoorPathTest
           java -cp /tmp/bore-mobile com.bore2.game.ResidentScheduleTest
+          java -cp /tmp/bore-mobile com.bore2.game.NeighborhoodMotionTest
+          java -cp /tmp/bore-mobile com.bore2.game.GroundIndexTest
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
