@@ -83,6 +83,8 @@ public final class MainActivity extends Activity {
     private int homeX=-1,homeY=-1,rentDebt,careerShifts,trips,homeNights;
     private final MobileContacts contacts=new MobileContacts();
     private final Household household=new Household();
+    private MeetupPlan meetup;
+    private int meetupsDone;
     private final HomeSupplies supplies=new HomeSupplies();
     private ResidentSchedule.Grid residentGrid;
     private int residentGridSeed, residentRevision=-1,residentDay=-1,residentTime=-1,residentHome=-2,residentRoommate=-2;
@@ -129,6 +131,9 @@ public final class MainActivity extends Activity {
         int previousMember=Household.savedMember(savedHousehold,seed,rentedKey());
         if(previousMember>=0)household.load(savedHousehold,seed,rentedKey(),contacts.affinity(previousMember),validRoommateResidence(previousMember));
         supplies.load(prefs.getInt("supplyStock",0),hasHome()&&prefs.getInt("upgradeHome",-1)==rentedKey()?prefs.getInt("furnitureUpgrades",0):0);
+        meetup=MeetupPlan.load(prefs.getString("meetup",""),seed,lifeDay,minute,contacts::affinity,this::lotAtKey);
+        if(meetup!=null&&(meetup.contact==rentedKey()||meetup.contact==household.member()))meetup=null;
+        meetupsDone=LifeRules.credit(prefs.getInt("meetupsDone",0),0);
 
         root=new LinearLayout(this);
         root.setBackgroundColor(BG);
@@ -223,7 +228,7 @@ public final class MainActivity extends Activity {
             serial++;meshX=meshY=meshRevision=requestX=requestY=-1;seed=(int)System.nanoTime();resetNative();
             cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
             lifeX=cx;lifeY=cy;resetOutdoorPosition();weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
-            lifeDay=0;career.reset();lastRoute=new int[0];savedDecor="";homeDecor=null;household.clear();supplies.clear();homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
+            lifeDay=0;career.reset();meetup=null;meetupsDone=0;lastRoute=new int[0];savedDecor="";homeDecor=null;household.clear();supplies.clear();homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
             java.util.Arrays.fill(skills,0);contacts.load("");world3d.residentSeed(seed);world3d.resetCamera();refresh();saveLife();
     }
     private void layoutPanes(Configuration config){
@@ -458,7 +463,7 @@ public final class MainActivity extends Activity {
                 .setMessage("$"+LifeRules.LEASE+" to move in, then $"+LifeRules.DAILY_RENT+" per game day. Sleep, cook and spend time at home.")
                 .setPositiveButton("Move in",(d,i)->{
                     if(lifeX!=x||lifeY!=y||funds<LifeRules.LEASE||rentDebt>0)return;
-                    funds-=LifeRules.LEASE;homeX=x;homeY=y;savedDecor="";homeDecor=null;household.clear();supplies.moveHome();updateDetails();saveLife();notice("Welcome home");
+                    funds-=LifeRules.LEASE;homeX=x;homeY=y;savedDecor="";homeDecor=null;household.clear();meetup=null;supplies.moveHome();updateDetails();saveLife();notice("Welcome home");
                 }).setNegativeButton("Cancel",null).show();return;
         }
         if(!hasHome()){findPlaces(LifeRules.HOMES);return;}
@@ -642,6 +647,7 @@ public final class MainActivity extends Activity {
             ResidentSchedule.Entry e=grid==null?null:grid.located(seed,key,weekday,minute);
             boolean free=e!=null&&(e.phase==ResidentSchedule.HOME||e.phase==ResidentSchedule.LEISURE);
             if(household.invite(key,rentedKey(),contacts.affinity(key),rentDebt,true,free)){
+                if(meetup!=null&&meetup.contact==key)meetup=null;
                 residentRevision=-1;updateDetails();saveLife();notice(resident(key).name+" accepted and moved in");
             }else notice("They are unavailable now, or the household is full");
         }).setNegativeButton("Cancel",null).show();
@@ -760,8 +766,13 @@ public final class MainActivity extends Activity {
         int lot=selectedLot();
         if(!atSelected()||!(MobileContacts.isSocialLot(lot)||LifeRules.isWork(lot)))return people;
         ResidentSchedule.Grid grid=residentGridAt(lifeX,lifeY,6);if(grid==null)return people;
-        for(ResidentSchedule.Entry e:grid.snapshot(seed,lifeX,lifeY,0,weekday,minute,rentedKey(),household.member())){
-            if(e.phase!=ResidentSchedule.SLEEP&&e.phase!=ResidentSchedule.COMMUTE&&people.size()<8)people.add(resident(e.home));
+        java.util.ArrayList<ResidentSchedule.Entry> present=grid.snapshot(seed,lifeX,lifeY,0,weekday,minute,rentedKey(),household.member());
+        int place=LifeRules.pack(lifeX,lifeY),priority=-1;
+        if(meetup!=null&&meetup.place==place&&meetup.state(lifeDay,minute)==MeetupPlan.READY){
+            for(ResidentSchedule.Entry e:present)if(MeetupPlan.available(e,meetup.contact,place)){priority=e.home;people.add(resident(e.home));break;}
+        }
+        for(ResidentSchedule.Entry e:present){
+            if(e.home!=priority&&e.phase!=ResidentSchedule.SLEEP&&e.phase!=ResidentSchedule.COMMUTE&&people.size()<8)people.add(resident(e.home));
         }
         return people;
     }
@@ -818,10 +829,72 @@ public final class MainActivity extends Activity {
         int[] keys=contacts.keys();if(keys.length==0){notice("Meet someone in the neighborhood to add a contact");return;}
         String[] labels=new String[keys.length];
         for(int i=0;i<keys.length;i++){MobileContacts.Resident r=resident(keys[i]);labels[i]=r.name+" · "+MobileContacts.TRAITS[r.trait]+" · "+contacts.affinity(r.key)+"/100";}
-        new AlertDialog.Builder(this).setTitle("Your contacts").setItems(labels,(d,i)->{
-            MobileContacts.Resident r=resident(keys[i]);
-            if(atHome())openConversation(r,true);else if(canSpeak(r,false))openConversation(r,false);else notice("Phone contacts from home, or meet them locally");
-        }).setNegativeButton("Close",null).show();
+        AlertDialog.Builder list=new AlertDialog.Builder(this).setTitle("Your contacts").setItems(labels,(d,i)->showContactActions(resident(keys[i])))
+            .setNegativeButton("Close",null);
+        if(meetup!=null)list.setNeutralButton("Meetup plan",(d,i)->showMeetup());
+        list.show();
+    }
+    private int lotAtKey(int key){
+        if(!Household.validKey(key))return -1;
+        int x=LifeRules.x(key),y=LifeRules.y(key);
+        ResidentSchedule.Grid grid=residentGridAt(x,y,0);
+        return grid==null?-1:grid.lot(x,y);
+    }
+    private void showContactActions(MobileContacts.Resident r){
+        new AlertDialog.Builder(this).setTitle(r.name+" · "+contacts.affinity(r.key)+"/100")
+            .setItems(new String[]{"Talk now","Arrange a meetup"},(d,i)->{
+                if(i==1){arrangeMeetup(r);return;}
+                if(atHome()&&r.key!=household.member())openConversation(r,true);
+                else if(canSpeak(r,false))openConversation(r,false);
+                else notice("Phone contacts from home, or meet them locally");
+            }).setNegativeButton("Back",(d,i)->showContactList()).show();
+    }
+    private static String clock(int t){return String.format(java.util.Locale.US,"%02d:%02d",t/60,t%60);}
+    private String meetupDescription(MeetupPlan p){
+        String place=NativeWorld.describe(LifeRules.x(p.place),LifeRules.y(p.place),weekday).split("\\n",2)[0];
+        String date=p.day==lifeDay?"Today":p.day==lifeDay+1?"Tomorrow":"Day "+(p.day+1);
+        return resident(p.contact).name+" · "+place+"\n"+date+", "+clock(p.start)+"–"+clock(p.start+MeetupPlan.ARRIVAL)+"\nBlock "+LifeRules.x(p.place)+", "+LifeRules.y(p.place);
+    }
+    private void arrangeMeetup(MobileContacts.Resident r){
+        if(r.key==rentedKey()||r.key==household.member()){notice("Talk to your roommate at home");return;}
+        if(contacts.affinity(r.key)<MeetupPlan.MIN_AFFINITY){notice("Build the relationship to 10 before arranging a meetup");return;}
+        if(meetup!=null&&meetup.state(lifeDay,minute)!=MeetupPlan.MISSED){showMeetup();return;}
+        int rx=LifeRules.x(r.key),ry=LifeRules.y(r.key),today=lifeDay,now=minute,world=seed,week=weekday;
+        ResidentSchedule.Grid grid=residentGridAt(rx,ry,3);
+        if(grid==null||!LifeRules.isHome(grid.lot(rx,ry))){notice("This resident's schedule is unavailable");return;}
+        MeetupPlan offer=MeetupPlan.find(r.key,contacts.affinity(r.key),today,now,
+            (day,m)->grid.located(seed,r.key,(week+day-today)%7,m),
+            key->grid.lot(LifeRules.x(key),LifeRules.y(key)),key->{
+                int x=LifeRules.x(key),y=LifeRules.y(key);
+                int[] route=NativeWorld.route(lifeX,lifeY,x,y);
+                return LifeRules.validRoute(lifeX,lifeY,x,y,route)?LifeRules.travelMinutes(route.length):-1;
+            });
+        if(offer==null){notice("No reachable free meetup window today or tomorrow. Try another time.");return;}
+        new AlertDialog.Builder(this).setTitle("Arrange a meetup").setMessage(meetupDescription(offer)+"\n\nTravel to this public lot and talk to your contact within the arrival window.")
+            .setPositiveButton("Confirm meetup",(d,i)->{
+                if(seed!=world||lifeDay!=today||minute!=now||contacts.affinity(r.key)<MeetupPlan.MIN_AFFINITY||
+                    (meetup!=null&&meetup.state(lifeDay,minute)!=MeetupPlan.MISSED))return;
+                meetup=offer;updateDetails();saveLife();notice("Meetup arranged");
+            }).setNegativeButton("Cancel",null).show();
+    }
+    private void showMeetup(){
+        MeetupPlan p=meetup;if(p==null){notice("No meetup planned");return;}
+        int state=p.state(lifeDay,minute);
+        String status=state==MeetupPlan.MISSED?"Missed — arrange another meetup.":state==MeetupPlan.READY?"Meeting window is open. Talk to your contact at the venue.":"Upcoming — plan your travel.";
+        AlertDialog.Builder dialog=new AlertDialog.Builder(this).setTitle("Meetup plan")
+            .setMessage(meetupDescription(p)+"\n\n"+status)
+            .setNegativeButton("Close",null).setNeutralButton("Cancel meetup",(d,i)->{
+                if(meetup==p){meetup=null;updateDetails();saveLife();}
+            });
+        if(state!=MeetupPlan.MISSED)dialog.setPositiveButton("Locate venue",(d,i)->{
+            if(meetup!=p)return;
+            if(inInterior){notice("Leave the building before locating the venue");return;}
+            int x=LifeRules.x(p.place),y=LifeRules.y(p.place);
+            selectedX=x;selectedY=y;
+            if(Math.abs(x-cx)>radius||Math.abs(y-cy)>radius){cx=x;cy=y;refresh();}else updateDetails();
+            notice("Meetup venue selected — tap Travel here");
+        });
+        dialog.show();
     }
     private void showPhone(){
         if(!atHome()){notice("Return home to call a contact");return;}
@@ -833,8 +906,12 @@ public final class MainActivity extends Activity {
         int gain=contacts.converse(r,topic,lifeDay,minute,phone,reaction);
         if(gain<=0){notice(gain==-1?"Give them some time before chatting again":gain==-2?"Meet them in person first":"Contact book is full");return;}
         social=clamp100(social+8+gain);fun=clamp100(fun+(gain>=8?5:1));energy-=2;
+        int place=LifeRules.pack(lifeX,lifeY);
+        boolean completed=!phone&&meetup!=null&&meetup.completeAt(r.key,place,lifeDay,minute)&&
+            MeetupPlan.available(currentResident(r),r.key,place)&&(!VenueRules.supported(selectedLot())||atService(VenueRules.MEET));
+        if(completed){meetup=null;meetupsDone=LifeRules.credit(meetupsDone,1);}
         skills[6]=Math.min(4400,skills[6]+gain);advanceTime(30);updateDetails();saveLife();
-        new AlertDialog.Builder(this).setTitle(r.name).setMessage(flow.close(topic,reaction)+"\n\nRelationship: "+contacts.affinity(r.key)+"/100")
+        new AlertDialog.Builder(this).setTitle(r.name).setMessage(flow.close(topic,reaction)+"\n\nRelationship: "+contacts.affinity(r.key)+"/100"+(completed?"\nMeetup completed!":""))
             .setPositiveButton("Goodbye",null).show();
     }
 
@@ -853,6 +930,7 @@ public final class MainActivity extends Activity {
             (trips>=3?"✓":"○")+" Explore three locations ("+Math.min(trips,3)+"/3)\n"+
             (careerShifts>=4?"✓":"○")+" Complete four shifts ("+Math.min(careerShifts,4)+"/4)\n"+
             (sessions>=3?"✓":"○")+" Join three local activities ("+Math.min(sessions,3)+"/3)\n\n"+
+            (meetupsDone>0?"✓":"○")+" Complete a planned meetup ("+meetupsDone+")\n\n"+
             "Experience bonus: $"+LifeRules.payBonus(careerShifts)+" per shift\n"+(career.employed()?"Employer rank: "+career.rank()+" · $"+career.bonus()+" extra at work\n":"")+"Rent overdue: $"+rentDebt+"\nContacts: "+contacts.keys().length;
         new AlertDialog.Builder(this).setTitle("Your life goals").setMessage(message).setPositiveButton("Keep playing",null).show();
     }
@@ -1019,6 +1097,7 @@ public final class MainActivity extends Activity {
              .putInt("homeX",homeX).putInt("homeY",homeY).putInt("rentDebt",rentDebt)
              .putInt("careerShifts",careerShifts).putInt("trips",trips).putInt("homeNights",homeNights)
              .putInt("x",cx).putInt("y",cy).putString("contacts",contacts.save())
+             .putString("meetup",meetup==null?"":meetup.save(seed)).putInt("meetupsDone",meetupsDone)
              .putBoolean("insideHome",inInterior&&!interiorPlan.commercial).putBoolean("insideVenue",inInterior&&interiorPlan.commercial)
              .putInt("insideX",interiorX).putInt("insideY",interiorY).putInt("insideLot",inInterior?interiorPlan.lot:-1)
              .putInt("roomCell",inInterior?interiorView.cell():-1).putInt("roomFloor",roomFloor)
@@ -1036,6 +1115,7 @@ public final class MainActivity extends Activity {
             day,minute/60,minute%60,funds,energy,food,fun,social,
             atSelected()?playerName+" · Here":playerName+": "+lifeX+", "+lifeY,SKILL_NAMES[best],skills[best],
             !hasHome()?"Find a home":(atHome()?"At home":"Home "+homeX+", "+homeY)+(rentDebt>0?" · Rent due $"+rentDebt:""),careerShifts,trips));
+        if(meetup!=null&&meetup.state(lifeDay,minute)!=MeetupPlan.MISSED)lifeStatus.append("\nMeetup: "+resident(meetup.contact).name+" · "+(meetup.day==lifeDay?"Today ":"Tomorrow ")+clock(meetup.start));
         if(career.employed())lifeStatus.append("\nCareer: "+career.rank()+" · "+career.shifts()+" shifts");
         if(supplies.stock()>0||supplies.upgrades()>0)lifeStatus.append("\nGroceries: "+supplies.stock()+" · Home upgrades: "+Integer.bitCount(supplies.upgrades())+"/3");
         if(household.member()>=0)lifeStatus.append("\nRoommate: "+resident(household.member()).name+" · Rent $"+household.dailyRent(rentedKey())+"/day");
