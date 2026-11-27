@@ -245,6 +245,41 @@ def main():
     assert mattress["supplyStock"]==2 and mattress["furnitureUpgrades"]==1,mattress
     (OUT/"life-upgraded-home.png").write_bytes(adb("exec-out","screencap","-p"))
     print("Android real UI shop purchase, pantry cooking and mattress recovery PASS",mattress)
+    ready=mattress
+    while ready["minute"]<480:
+        old=ready["minute"]
+        text_tap("Sofa")
+        ready=wait_state(lambda s:s["minute"]==(old+60)%1440)
+    assert ready["minute"]<=900,"career fixture needs an open shop"
+    text_tap("Exit home")
+    wait_state(lambda s:s.get("roomCell",0)==-1)
+    wait_view(False)
+    text_tap("Find places")
+    text_tap("Workplaces")
+    label=tap(lambda s:"shop" in s.casefold() and "blocks away" in s,"retail workplace")
+    distance=int(re.search(r"(\\d+) blocks away",label).group(1))
+    if distance:
+        text_tap("Travel here")
+        wait_state(lambda s:s.get("trips",0)>ready["trips"])
+        wait_view(False)
+    text_tap("Enter")
+    hired_at=wait_state(lambda s:s.get("insideLot",-1)==6 and s.get("roomFloor")==0)
+    text_tap("Work counter")
+    text_tap("Accept regular job")
+    employed=wait_state(lambda s:s.get("jobKey",-1)>=0 and s.get("jobShifts")==1)
+    assert employed["jobKey"]==employed["lifeX"]|(employed["lifeY"]<<16),employed
+    assert employed["jobLot"]==6 and employed["funds"]==hired_at["funds"]+70,employed
+    assert employed["minute"]==hired_at["minute"]+180 and employed["careerShifts"]==hired_at["careerShifts"]+1,employed
+    adb("shell","input","keyevent","3")
+    adb("shell","am","force-stop",PACKAGE)
+    adb("shell","am","start","-W","-n",PACKAGE+"/.MainActivity")
+    text_tap("Work counter")
+    time.sleep(1)
+    after=state()
+    for k in ("jobKey","jobLot","jobShifts","lastShiftDay","careerShifts","funds","minute"):
+        assert after[k]==employed[k],(k,after,employed)
+    (OUT/"life-career.png").write_bytes(adb("exec-out","screencap","-p"))
+    print("Android real UI hire, paid shift, employer reload and daily limit PASS",after)
     print("Android real UI rent/travel/sleep/cooking/relaunch PASS",loaded)
 
 if __name__=="__main__":

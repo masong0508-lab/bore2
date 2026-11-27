@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Capture actual APK-rendered pixels and reject a blank or static 3D surface."""
 import os
+import io
 import re
 import subprocess
 import time
@@ -33,7 +34,6 @@ def wait_view(wide=None):
             r=bounds()
             if r:
                 if wide is not None:
-                    import io
                     with Image.open(io.BytesIO(adb("exec-out","screencap","-p"))) as pic:
                         if (pic.width>pic.height)!=wide:
                             time.sleep(1);continue
@@ -71,11 +71,34 @@ def capture(name,box,xml):
     print(name,"viewport",pic.size,"material bins",colors,"dominant",round(dominant,3))
     return pic
 
+def set_rotation(rotation):
+    """Control the display itself; a settings database write alone can be ignored."""
+    adb("shell","settings","put","system","accelerometer_rotation","0")
+    adb("shell","settings","put","system","user_rotation",str(rotation))
+    for command in (("shell","wm","fixed-to-user-rotation","enabled"),
+                    ("shell","wm","user-rotation","lock",str(rotation))):
+        try:
+            print("rotation command",command,adb(*command).decode(errors="replace").strip())
+        except subprocess.CalledProcessError as exc:
+            print("optional rotation command unavailable",command,exc.stderr.decode(errors="replace"))
+    print("requested rotation",rotation)
+    deadline=time.monotonic()+20
+    while time.monotonic()<deadline:
+        try:
+            with Image.open(io.BytesIO(adb("exec-out","screencap","-p"))) as pic:
+                if (pic.width>pic.height)==(rotation%2==1):
+                    print("display rotation confirmed",pic.size);return
+        except (subprocess.CalledProcessError,OSError):pass
+        time.sleep(.5)
+    (OUT/"rotation-failure.png").write_bytes(adb("exec-out","screencap","-p"))
+    (OUT/"rotation-display.txt").write_bytes(adb("shell","dumpsys","window","displays"))
+    (OUT/"rotation-settings.txt").write_bytes(adb("shell","settings","get","system","user_rotation"))
+    raise AssertionError("Emulator display did not rotate to requested orientation; see rotation diagnostics")
+
 def main():
     adb("shell","am","force-stop",PACKAGE)
     adb("shell","pm","clear",PACKAGE)
-    adb("shell","settings","put","system","accelerometer_rotation","0")
-    adb("shell","settings","put","system","user_rotation","0")
+    set_rotation(0)
     adb("shell","am","start","-W","-n",PACKAGE+"/.MainActivity")
     box,xml=wait_view(False)
     time.sleep(2)
@@ -91,11 +114,11 @@ def main():
     changed=sum(max(pixel)>12 for pixel in diff.getdata())/(160*120)
     assert changed>.04,("orbit did not visibly move the scene",changed)
     print("orbit changed pixel fraction",round(changed,3))
-    adb("shell","settings","put","system","user_rotation","1")
+    set_rotation(1)
     box,xml=wait_view(True)
     time.sleep(2)
     capture("landscape",box,xml)
-    adb("shell","settings","put","system","user_rotation","0")
+    set_rotation(0)
     box,xml=wait_view(False)
     time.sleep(1)
     capture("portrait-return",box,xml)

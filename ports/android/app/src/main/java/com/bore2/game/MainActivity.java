@@ -78,7 +78,8 @@ public final class MainActivity extends Activity {
     private Button crowdButton;
     private int[] tiles=new int[0];
     private int lifeX,lifeY,minute=600,funds=250,energy=100,fun=50,social=50,food=100,sessions;
-    private int lifeDay,lastShiftDay=-1;
+    private int lifeDay;
+    private final Career career=new Career();
     private int homeX=-1,homeY=-1,rentDebt,careerShifts,trips,homeNights;
     private final MobileContacts contacts=new MobileContacts();
     private final Household household=new Household();
@@ -115,7 +116,8 @@ public final class MainActivity extends Activity {
         funds=LifeRules.credit(prefs.getInt("funds",250),0);energy=clamp100(prefs.getInt("energy",100));
         fun=clamp100(prefs.getInt("fun",50));social=clamp100(prefs.getInt("social",50));food=clamp100(prefs.getInt("food",100));
         sessions=Math.max(0,prefs.getInt("sessions",0));
-        lifeDay=LifeRules.credit(prefs.getInt("lifeDay",0),0);lastShiftDay=prefs.getInt("lastShiftDay",-1);
+        lifeDay=LifeRules.credit(prefs.getInt("lifeDay",0),0);
+        career.load(prefs.getString("career",""),seed,lifeDay,prefs.getInt("lastShiftDay",-1),this::actualJobSite);
         homeX=prefs.getInt("homeX",-1);homeY=prefs.getInt("homeY",-1);
         if(!hasHome()){homeX=homeY=-1;}
         rentDebt=LifeRules.credit(prefs.getInt("rentDebt",0),0);
@@ -201,6 +203,7 @@ public final class MainActivity extends Activity {
         LinearLayout work=new LinearLayout(this);work.setGravity(Gravity.CENTER);
         lower.addView(work,new LinearLayout.LayoutParams(-1,-2));
         addButton(work,"Work shift",this::workShift);
+        addButton(work,"Career",this::showCareer);
         addButton(work,"Eat / cook",()->{if(atHome())enterHome(-1);else eatMeal();});
         addButton(work,"My location",()->{cx=lifeX;cy=lifeY;selectedX=lifeX;selectedY=lifeY;refresh();});
         LinearLayout progress=new LinearLayout(this);progress.setGravity(Gravity.CENTER);
@@ -220,7 +223,7 @@ public final class MainActivity extends Activity {
             serial++;meshX=meshY=meshRevision=requestX=requestY=-1;seed=(int)System.nanoTime();resetNative();
             cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
             lifeX=cx;lifeY=cy;resetOutdoorPosition();weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
-            lifeDay=0;lastShiftDay=-1;lastRoute=new int[0];savedDecor="";homeDecor=null;household.clear();supplies.clear();homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
+            lifeDay=0;career.reset();lastRoute=new int[0];savedDecor="";homeDecor=null;household.clear();supplies.clear();homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
             java.util.Arrays.fill(skills,0);contacts.load("");world3d.residentSeed(seed);world3d.resetCamera();refresh();saveLife();
     }
     private void layoutPanes(Configuration config){
@@ -817,22 +820,68 @@ public final class MainActivity extends Activity {
             (trips>=3?"✓":"○")+" Explore three locations ("+Math.min(trips,3)+"/3)\n"+
             (careerShifts>=4?"✓":"○")+" Complete four shifts ("+Math.min(careerShifts,4)+"/4)\n"+
             (sessions>=3?"✓":"○")+" Join three local activities ("+Math.min(sessions,3)+"/3)\n\n"+
-            "Career bonus: $"+LifeRules.payBonus(careerShifts)+" per shift\nRent overdue: $"+rentDebt+"\nContacts: "+contacts.keys().length;
+            "Experience bonus: $"+LifeRules.payBonus(careerShifts)+" per shift\n"+(career.employed()?"Employer rank: "+career.rank()+" · $"+career.bonus()+" extra at work\n":"")+"Rent overdue: $"+rentDebt+"\nContacts: "+contacts.keys().length;
         new AlertDialog.Builder(this).setTitle("Your life goals").setMessage(message).setPositiveButton("Keep playing",null).show();
     }
-    private void workShift(){
-        if(lifeX!=selectedX||lifeY!=selectedY){notice("Travel to this workplace first");return;}
-        if(requestVenueService(VenueRules.WORK))return;
-        if(inInterior&&!atService(VenueRules.WORK))return;
-        if(lastShiftDay==lifeDay){notice("You have already worked a shift today");return;}
+    private boolean actualJobSite(int key,int lot){
+        if(!Career.validKey(key)||!Career.workLot(lot))return false;
+        int x=LifeRules.x(key),y=LifeRules.y(key),X=Math.max(1,Math.min(1022,x)),Y=Math.max(1,Math.min(1022,y));
+        int[] area=NativeWorld.tiles(X,Y,1);
+        if(area==null||area.length!=9)return false;
+        int code=area[(y-Y+1)*3+x-X+1];
+        return (code&7)!=0&&((code>>>3)&63)==lot&&NativeWorld.shift(x,y,0,600,100,100)!=null;
+    }
+    private void showCareer(){
+        if(!career.employed()){
+            new AlertDialog.Builder(this).setTitle("Career").setMessage("No regular job yet. Visit a workplace and use its work station. Accept a regular job or work a casual shift.\n\nYour past experience still counts.")
+                .setPositiveButton("Find workplaces",(d,i)->findPlaces(LifeRules.WORK)).setNegativeButton("Close",null).show();return;
+        }
+        int key=career.employer(),x=LifeRules.x(key),y=LifeRules.y(key);
+        String name=NativeWorld.describe(x,y,weekday).split("\\n",2)[0];
+        String progress=career.nextPromotion()==0?"Highest rank reached":career.nextPromotion()+" shifts to next promotion";
+        new AlertDialog.Builder(this).setTitle("Career · "+career.rank()).setMessage(name+"\nBlock "+x+", "+y+"\n"+career.shifts()+" employer shifts · "+progress+"\nEmployer bonus: $"+career.bonus()+" per shift\n"+(career.canWork(lifeDay)?"Available to work today":"Today's shift already completed"))
+            .setPositiveButton("Locate workplace",(d,i)->{
+                if(career.employer()!=key)return;
+                selectedX=x;selectedY=y;
+                if(Math.abs(x-cx)>radius||Math.abs(y-cy)>radius){cx=x;cy=y;refresh();}else updateDetails();
+                notice("Workplace selected — tap Travel here");
+            }).setNeutralButton("Quit job",(d,i)->new AlertDialog.Builder(this).setTitle("Leave regular job?")
+                .setMessage("Employer rank resets; your skills and overall work experience stay.")
+                .setPositiveButton("Confirm quit",(q,k)->{if(career.employer()==key){career.quit();updateDetails();saveLife();notice("Job ended");}})
+                .setNegativeButton("Cancel",null).show()).setNegativeButton("Close",null).show();
+    }
+    private int[] checkedShift(){
+        if(!atSelected()){notice("Travel to this workplace first");return null;}
+        if(VenueRules.supported(selectedLot())&&!atService(VenueRules.WORK)){notice("Use the workplace station first");return null;}
+        if(!career.canWork(lifeDay)){notice("You have already worked a shift today");return null;}
         int[] v=NativeWorld.shift(lifeX,lifeY,weekday,minute,energy,food);
-        if(v==null){notice("No work shifts at this location");return;}
-        if(v[0]!=0){notice(v[0]==1?"No shift fits the opening hours":v[0]==2?"Rest before working":"Eat before working");return;}
-        lastShiftDay=lifeDay;int pay=v[2]+LifeRules.payBonus(careerShifts);
+        if(v==null){notice("No work shifts at this location");return null;}
+        if(v[0]!=0){notice(v[0]==1?"No shift fits the opening hours":v[0]==2?"Rest before working":"Eat before working");return null;}
+        return v;
+    }
+    private void workShift(){
+        if(!atSelected()){notice("Travel to this workplace first");return;}
+        if(requestVenueService(VenueRules.WORK))return;
+        if(checkedShift()==null)return;
+        int key=LifeRules.pack(lifeX,lifeY),lot=selectedLot();
+        if(!career.employed()){
+            new AlertDialog.Builder(this).setTitle("Work here").setMessage("Accept a regular job to gain employer-specific promotions, or work a casual shift without committing to this location.")
+                .setPositiveButton("Accept regular job",(d,i)->performCareerShift(key,lot,true))
+                .setNeutralButton("Casual shift",(d,i)->performCareerShift(key,lot,false)).setNegativeButton("Cancel",null).show();
+        }else performCareerShift(key,lot,false);
+    }
+    private void performCareerShift(int key,int lot,boolean hire){
+        if(key!=LifeRules.pack(lifeX,lifeY)||lot!=selectedLot())return;
+        int[] v=checkedShift();if(v==null)return;
+        if(hire&&(!actualJobSite(key,lot)||!career.hire(key,lot)))return;
+        int previousLevel=career.level(),pay=career.work(key,lot,lifeDay,v[2],careerShifts);
+        if(pay<0){notice("Shift unavailable");return;}
+        boolean promoted=career.matches(key,lot)&&career.level()>previousLevel;
         funds=LifeRules.credit(funds,pay);careerShifts=LifeRules.credit(careerShifts,1);
         energy=clamp100(energy-v[3]);food=clamp100(food-v[4]);
         if(v[5]>=0&&v[5]<skills.length)skills[v[5]]=Math.min(4400,skills[v[5]]+v[6]);
-        advanceTime(v[1]);updateDetails();saveLife();notice("Shift complete: earned $"+pay);
+        advanceTime(v[1]);updateDetails();saveLife();
+        notice(promoted?"Promoted to "+career.rank()+"! Earned $"+pay:hire?"Job accepted · Earned $"+pay:"Shift complete: earned $"+pay);
     }
     private boolean roommateMealWindow(){
         int key=household.member();
@@ -932,7 +981,8 @@ public final class MainActivity extends Activity {
         SharedPreferences.Editor e=prefs.edit().putInt("seed",seed).putInt("lifeX",lifeX).putInt("lifeY",lifeY)
              .putInt("day",weekday).putInt("minute",minute).putInt("funds",funds).putInt("energy",energy)
              .putInt("fun",fun).putInt("social",social).putInt("food",food).putInt("sessions",sessions)
-             .putInt("lifeDay",lifeDay).putInt("lastShiftDay",lastShiftDay)
+             .putInt("lifeDay",lifeDay).putInt("lastShiftDay",career.lastDay())
+             .putString("career",career.save(seed)).putInt("jobKey",career.employer()).putInt("jobLot",career.lot()).putInt("jobShifts",career.shifts())
              .putInt("homeX",homeX).putInt("homeY",homeY).putInt("rentDebt",rentDebt)
              .putInt("careerShifts",careerShifts).putInt("trips",trips).putInt("homeNights",homeNights)
              .putInt("x",cx).putInt("y",cy).putString("contacts",contacts.save())
@@ -953,6 +1003,7 @@ public final class MainActivity extends Activity {
             day,minute/60,minute%60,funds,energy,food,fun,social,
             atSelected()?playerName+" · Here":playerName+": "+lifeX+", "+lifeY,SKILL_NAMES[best],skills[best],
             !hasHome()?"Find a home":(atHome()?"At home":"Home "+homeX+", "+homeY)+(rentDebt>0?" · Rent due $"+rentDebt:""),careerShifts,trips));
+        if(career.employed())lifeStatus.append("\nCareer: "+career.rank()+" · "+career.shifts()+" shifts");
         if(supplies.stock()>0||supplies.upgrades()>0)lifeStatus.append("\nGroceries: "+supplies.stock()+" · Home upgrades: "+Integer.bitCount(supplies.upgrades())+"/3");
         if(household.member()>=0)lifeStatus.append("\nRoommate: "+resident(household.member()).name+" · Rent $"+household.dailyRent(rentedKey())+"/day");
         map.setContentDescription("San Boreas map. Selected lot: "+text);
