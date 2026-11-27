@@ -33,5 +33,16 @@ int main(void){
         int a=bore_vehicle_box_overlap(0,0,0,4096,210,450,x,y,2896,2896,80,200);
         assert(a==bore_vehicle_box_overlap(x,y,2896,2896,80,200,0,0,0,4096,210,450));
     }
-    puts("vehicle stability: model footprints, rotational parity, non-wrapping rebases and junction ownership PASS");
+    BoreVehicleDraw q[3];int n=0;
+    bore_vehicle_draw_insert(q,&n,3,9,500);
+    bore_vehicle_draw_insert(q,&n,3,5,200);
+    bore_vehicle_draw_insert(q,&n,3,7,300);
+    bore_vehicle_draw_insert(q,&n,3,2,100);
+    bore_vehicle_draw_insert(q,&n,3,1,200);
+    bore_vehicle_draw_insert(q,&n,3,8,900);
+    assert(n==3&&q[0].id==2&&q[1].id==1&&q[2].id==5);
+    /* Rebased local coordinates have the same distance. */
+    assert(bore_vehicle_draw_distance(5000,6000,5200,6100)==
+           bore_vehicle_draw_distance(392,1392,592,1492));
+    puts("vehicle stability: footprints, rebases, junctions and nearest actual render poses PASS");
 }

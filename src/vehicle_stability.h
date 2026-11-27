@@ -33,3 +33,22 @@ static inline int bore_vehicle_box_overlap(int x,int y,int sn,int cs,int hw,int 
         bore_vehicle_axis_overlap(dx,dy,bc,-bs,bw,sn,cs,hw,hl)&&
         bore_vehicle_axis_overlap(dx,dy,bs,bc,bl,sn,cs,hw,hl);
 }
+
+/* Select the closest actual vehicle poses within a fixed render budget.
+ * Stable slot ID breaks exact ties independently of discovery order. */
+typedef struct { int id,dist; } BoreVehicleDraw;
+static inline void bore_vehicle_draw_insert(BoreVehicleDraw *q,int *n,int cap,int id,int dist){
+    if(cap<=0)return;
+    int at=*n;
+    if(at==cap){
+        if(dist>q[cap-1].dist||(dist==q[cap-1].dist&&id>=q[cap-1].id))return;
+        at--;
+    }else ++*n;
+    while(at>0&&(q[at-1].dist>dist||(q[at-1].dist==dist&&q[at-1].id>id))){
+        q[at]=q[at-1];at--;
+    }
+    q[at]=(BoreVehicleDraw){id,dist};
+}
+static inline int bore_vehicle_draw_distance(int x,int y,int px,int py){
+    return bore_vehicle_abs(x-px)+bore_vehicle_abs(y-py);
+}

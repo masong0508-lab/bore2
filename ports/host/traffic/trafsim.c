@@ -35,7 +35,11 @@ int sim_tile_y(const Sim *s) { return (-s->z) / TILE; }
 int veh_colour(int t) { return t % 6; }
 void sv_u8(int v) { (void)v; } void sv_u16(int v) { (void)v; } void sv_u32(unsigned v) { (void)v; }
 int ld_u8(void) { return 0; } int ld_u16(void) { return 0; } unsigned ld_u32(void) { return 0; }
-void items_draw_vehicle(int x, int z, int yaw, int y, int type, int ci, int wph) { (void)x; (void)z; (void)yaw; (void)y; (void)type; (void)ci; (void)wph; }
+static int capture_traffic,drawn_n,drawn_x[64],drawn_y[64];
+void items_draw_vehicle(int x, int z, int yaw, int y, int type, int ci, int wph) {
+    (void)yaw;(void)y;(void)type;(void)ci;(void)wph;
+    if(capture_traffic&&drawn_n<64){drawn_x[drawn_n]=x;drawn_y[drawn_n++]=-z;}
+}
 // the walking people the traffic must stop for (the townsfolk's own list in the game: citizens_walkers)
 #define NPED 10
 static int ped_x[NPED], ped_y[NPED], ped_dx[NPED], ped_dy[NPED], ped_n;   // (window units, 1/256 tile)
@@ -264,7 +268,20 @@ int main(int argc, char **argv) {
         assert(traffic_vehicle_blocked(VEH_VAN,x,z,yaw));
         traffic_unpark(VEH_SEDAN);
         assert(!traffic_vehicle_blocked(VEH_VAN,x,z,yaw));
-        puts("actual traffic parking and window rebase: PASS");return 0;
+        /* Exercise the real traffic_draw path with more candidates than
+         * the render cap: the nearest car must not vanish in a high slot. */
+        bm_gen=6;
+        sims[player].x=30*TILE;sims[player].z=-30*TILE;
+        for(int i=0;i<NCAR;i++){
+            memset(&car[i],0,sizeof car[i]);
+            car[i].lim=80;car[i].type=VEH_SEDAN;car[i].d=1;
+            car[i].gx=(s16)(bx_()+30+(i<NCAR-1?8+i%4:0));
+            car[i].gy=(s16)(by_()+30);
+        }
+        capture_traffic=1;drawn_n=0;traffic_draw();capture_traffic=0;
+        assert(drawn_n==14&&drawn_x[0]==30*TILE&&drawn_y[0]==30*TILE);
+        traffic_clear();
+        puts("actual traffic parking, rebase and nearest render priority: PASS");return 0;
     }
 #endif
     if (getenv("JM")) { for (int d = 0; d < 4; d++) { for (int m = 0; m < 3; m++) printf("0x%07xu, ", traf_dbg_jmask(d, m)); printf("\n"); } return 0; }

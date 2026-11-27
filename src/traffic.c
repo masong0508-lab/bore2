@@ -265,7 +265,10 @@ void traffic_update(int steps) {
     }
     for (int s = 0; s < steps; s++) {
         tk++;
-        for (int i = 0; i < NCAR; i++) if (car[i].lim) step_car(&car[i], i, tk);
+        for (int i = 0; i < NCAR; i++) if (car[i].lim) {
+            step_car(&car[i], i, tk);
+            if(!car[i].lim)n--; // account for cars retired at a road or stream boundary
+        }
         if (n < want) n += spawn();
     }
     for (int i = 0; i < NCAR && n > want; i++) if (car[i].lim && off(&car[i], -14)) { KILL(&car[i], 5); n--; }   // (the dial turned down: the cars out of sight go)
@@ -329,10 +332,15 @@ static void pcars_draw(void) {
     int px = ptx(), py = pty(), cbx = CLAMP(px / BLK, 0, 3), cby = CLAMP(py / BLK, 0, 3);
     if (pcar_key[0] != world_wbx || pcar_key[1] != world_wby || pcar_key[2] != cbx || pcar_key[3] != cby || pcar_key[4] != bm_edit_stamp || pcar_key[5] != bm_gen) {
         pcar_key[0] = world_wbx; pcar_key[1] = world_wby; pcar_key[2] = cbx; pcar_key[3] = cby; pcar_key[4] = bm_edit_stamp; pcar_key[5] = bm_gen; pcars_build(cbx, cby); }
-    int shown = 0;
-    for (int i = 0; i < pcar_n && shown < 5; i++) { const PCar *p = &pcar[i];
-        if (ABS(p->x / TILE - px) + ABS(-p->z / TILE - py) > 13) continue;
-        items_draw_vehicle(p->x, p->z, p->yaw, 0, p->t, p->c, 0); shown++; }
+    BoreVehicleDraw draw[5];int n=0;
+    const Sim *s=&sims[player];
+    for(int i=0;i<pcar_n;i++){const PCar *p=&pcar[i];
+        int d=bore_vehicle_draw_distance(p->x,-p->z,s->x,-s->z);
+        if(d<=13*TILE)bore_vehicle_draw_insert(draw,&n,5,i,d);
+    }
+    for(int j=0;j<n;j++){const PCar *p=&pcar[draw[j].id];
+        items_draw_vehicle(p->x,p->z,p->yaw,0,p->t,p->c,0);
+    }
 }
 void traffic_draw(void) {
     if (world_zone != ZONE_CITY || world_wbx < 0) return;
@@ -342,13 +350,23 @@ void traffic_draw(void) {
             items_draw_vehicle(s->x + ((fx * a + rx * b) >> 12), s->z + ((fz * a + rz * b) >> 12), VEH_SHOT_YAW, 0, t, veh_colour(t), veh_shot_f * 40); }
         items_draw_bus(s->x + ((fx * 1750 + rx * 300) >> 12), s->z + ((fz * 1750 + rz * 300) >> 12), VEH_SHOT_YAW, 0); }
 #endif
-    int px = ptx(), py = pty(), shown = 0;
-    for (int i = 0; i < NCAR && shown < 14; i++) { const Car *c = &car[i]; if (!c->lim) continue;
-        if (ABS(c->gx - bx_() - px) + ABS(c->gy - by_() - py) > 18) continue; put(c); shown++; }
+    const Sim *s=&sims[player];int px=s->x,py=-s->z;
+    /* Always offer the user's parked vehicles before ambient traffic.
+     * Render moving cars by actual interpolated position, not the gate
+     * where a long turn began. Preserve the existing traffic draw cap. */
     for (int t = 0; t < VEH_N; t++) { const Park *p = &park[t]; if (!p->on) continue;
-        int x = p->x - bx_() * TILE, y = p->y - by_() * TILE;
-        if (ABS(x / TILE - px) + ABS(y / TILE - py) > 18) continue;
-        items_draw_vehicle(x, -y, p->yaw, 0, t, veh_colour(t), 0); }
+        int x=p->x-bx_()*TILE,y=p->y-by_()*TILE;
+        if(bore_vehicle_draw_distance(x,y,px,py)>18*TILE)continue;
+        items_draw_vehicle(x,-y,p->yaw,0,t,veh_colour(t),0); }
+    BoreVehicleDraw draw[14];int n=0;
+    for(int i=0;i<NCAR;i++){const Car *c=&car[i];if(!c->lim)continue;
+        /* A six-tile left turn can be well away from its starting gate. */
+        if(ABS(c->gx-bx_()-px/TILE)+ABS(c->gy-by_()-py/TILE)>30)continue;
+        int x,y,a;pose(c,c->p>>3,&x,&y,&a);
+        int d=bore_vehicle_draw_distance(x,y,px,py);
+        if(d<=18*TILE)bore_vehicle_draw_insert(draw,&n,14,i,d);
+    }
+    for(int j=0;j<n;j++)put(&car[draw[j].id]);
     pcars_draw();
 }
 void traffic_park(int t, int x, int z, int yaw) {
