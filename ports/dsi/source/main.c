@@ -51,6 +51,7 @@ static const char *opt_tok(int i, int n, char *b) { const char *p = OPT[i].vals;
 #include <stdarg.h>
 #include <string.h>
 #include "bigmap.h"
+#include "world_surface.h"
 #include "scene_music.h"
 #define OUTINGS_IMPLEMENTATION
 #include "outings.h"
@@ -1123,9 +1124,20 @@ static void car_audit(void);
 static int far_house(const BInfo *b) { return b->terrain != BT_SEA && b->lot >= LOT_HOUSE && b->lot != LOT_PARK && b->lot != LOT_SQUARE && b->lot != LOT_SKATE && b->lot != LOT_EMPTY && b->lot != LOT_RIVER && !(bm_gen >= 7 && b->lot == LOT_POOL); }   // (D81: a pool lot is a paved deck, no building)
 static int far_house7(const BInfo *b, const LotPlan *pl) { return far_house(b) && !(bm_gen >= 7 && b->lot == LOT_FARM && pl && pl->face == LF_NONE); }   // (D81: a field has crops and hedgerows, no barn)
 static void far_foot(const BInfo *b, int *x0, int *z0, int *x1, int *z1) { int w = 10 + (int)(b->h & 3) * 2, d = 8 + (int)((b->h >> 2) & 3) * 2, t0 = 4 + (24 - w) / 2 / 2 * 2 - 4; *x0 = t0 / 2; *x1 = (t0 + w + 1) / 2; *z0 = 2; *z1 = (4 + d + 1) / 2; }
+/* Collision is expressed in the same shifted block coordinates as
+ * the live DS plot, including the southern/eastern street strips. */
+static int ds_water_at(int wx,int wy){
+    if(!t7()||!nb_ok)return 0;
+    int x,y,bx=bore_surface_slot(wx,&x),by=bore_surface_slot(wy,&y);
+    if(bx<-RING_MAX||bx>RING_MAX||by<-RING_MAX||by>RING_MAX)return 1;
+    const BInfo *b=&nbf[by+RING_MAX][bx+RING_MAX];
+    if(b->terrain!=BT_SEA&&b->lot!=LOT_RIVER&&!(b->road&BR_MEGA))return 0;
+    return bore_surface(b,x,y)==BS_WATER;
+}
 static int far_solid(int wx, int wy) {   // a cell outside the plot: open street and grass, except the sea and the buildings of the lots round it
+    if(ds_water_at(wx,wy))return 1;
     int sx = fdiv(wx, SLC), sy = fdiv(wy, SLC); if (sx == 0 && sy == 0) return 0; if (sx < -1 || sx > 1 || sy < -1 || sy > 1) return 1;
-    const BInfo *b = &nb[sy + 1][sx + 1]; if (b->terrain == BT_SEA) return 1;
+    const BInfo *b = &nb[sy + 1][sx + 1]; if (b->terrain == BT_SEA) return !t7();
     int lx=wx-sx*SLC,ly=wy-sy*SLC;
     if(t7()){
         DsLotShell shell;
@@ -1202,6 +1214,9 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
     int outdoor = k == LOT_WILD || k == LOT_PARK || k == LOT_SQUARE || k == LOT_SKATE || k == LOT_EMPTY || k == LOT_RIVER || k == LOT_FARM;
     door_cx = 6; pcx = 6; pcy = 11;
     if (outdoor) {
+        /* A river is not an empty park: its banks are rendered by the
+         * common surface owner, and its water is never walkable. */
+        if(k==LOT_RIVER){door_cy=12;return;}
         BoreTrail trail={0};
         if(k==LOT_WILD&&lot_bx>=0&&lot_bx<BM_N&&lot_by>=0&&lot_by<BM_N){
             BInfo b;bm_block(lot_bx,lot_by,&b);bm_trail_plan(lot_bx,lot_by,&b,&trail);
@@ -2101,6 +2116,7 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
     if(ds_draw_planned_proxy(b,pl,ox,oz))return;
     if (!far_house7(b, pl)) {
         if(k==LOT_RIVER){
+            if(t7()&&r7_bx>=0&&ABS(r7_bx-lot_bx)<=1&&ABS(r7_by-lot_by)<=1)return;
             if(b->road&BR_MEGA)ground(ox+tl(4),oz+tl(0),ox+tl(18),oz+tl(26),-26,C15(5,12,24));
             else ground(ox+tl(0),oz+tl(4),ox+tl(26),oz+tl(18),-26,C15(5,12,24));
             return;
@@ -2256,11 +2272,34 @@ static void ds_draw_relief(int first,int last){
 done:
     far_lod=old_lod;tx_want=-1;
 }
+/* Draw the exact visible water cells as row runs, not a sea-colored
+ * rectangle over the causeway. The street pass still owns road lanes. */
+static void ds_water_slot(int sx,int sy){
+    int needs=0;
+    for(int dy=0;dy<=1;dy++)for(int dx=0;dx<=1;dx++){
+        const BInfo *b=&nbf[sy+dy+RING_MAX][sx+dx+RING_MAX];
+        if(b->terrain==BT_SEA||b->lot==LOT_RIVER||((b->road&BR_MEGA)&&BR_PART(b->road)==3))needs=1;
+    }
+    if(!needs)return;
+    int ox=sx*SLC,oy=sy*SLC;
+    tx_want=-1;
+    for(int y=0;y<SLC;y++)for(int x=0;x<SLC;){
+        if(!ds_water_at(ox+x,oy+y)){x++;continue;}
+        int end=x+1;while(end<SLC&&ds_water_at(ox+end,oy+y))end++;
+        ground(tl(2*(ox+x)),tl(2*(oy+y)),tl(2*(ox+end)),tl(2*(oy+y+1)),-32,C15(5,12,24));
+        x=end;
+    }
+}
 static void draw_world(int yaw) {   // LIVE: all round the lot, the lots next door, the streets and the land (a 3x3 patch of slots)
     if(ds_relief_active()){ds_draw_relief(0,1);return;}
     if (zone == Z_ISLAND) { ground(tl(-40), tl(-40), tl(76), tl(76), 90, C15(25, 22, 14)); return; }   // (the island: sand between the lots, the sea is the neighbours')
     tx_want = zone == Z_TOWN ? TX_SAND : TX_GRASS; ground(tl(-40), tl(-40), tl(76), tl(76), 90, zone == Z_TOWN ? C15(24, 21, 13) : seas(C15(7, 16, 6))); tx_want = TX_ASPHALT;
-    if (t7()) { world7(); return; }
+    if(t7()){
+        /* Near waterways must be present even when the far scenery is shed. */
+        world7();
+        for(int sy=-1;sy<=1;sy++)for(int sx=-1;sx<=1;sx++)ds_water_slot(sx,sy);
+        return;
+    }
     for (int j = -1; j <= 1; j++) { int o = 36 * j;   // roads both ways
         ground(tl(-36), tl(28 + o), tl(72), tl(34 + o), 0, C15(7, 7, 9)); ground(tl(28 + o), tl(-36), tl(34 + o), tl(72), 0, C15(7, 7, 9)); }
     tx_want = TX_PAVING; for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int ox = 36 * i, oz = 36 * j;   // pavements in the stretches between the roads
@@ -2298,7 +2337,7 @@ static void draw_far_all(int yaw) {
         const LotPlan *pl=t7()?&nlp[j+RING_MAX][i+RING_MAX]:0;
         if(far_house7(b,pl))continue;
         if(!ds_world_far_budget(polys+12)||(gxb&&gxn+160>=gx_cap))continue;
-        if(b->terrain==BT_SEA){ground(tl(36*i),tl(36*j),tl(36*i+36),tl(36*j+36),-8,C15(5,12,24));continue;}
+        if(b->terrain==BT_SEA){if(!t7())ground(tl(36*i),tl(36*j),tl(36*i+36),tl(36*j+36),-8,C15(5,12,24));continue;}
         int lite=!ds_world_detail_budget(polys+160);
         if(lite&&b->lot!=LOT_RIVER){
             ground(tl(36*i),tl(36*j),tl(36*i+26),tl(36*j+26),0,land_col(b->terrain));continue;
@@ -3883,7 +3922,7 @@ static void start_act(Sim *m, int obj, int sim) {   // do the action beside furn
     m->face = a->dur > 0 ? a->dur : 1; m->act_obj = obj; m->act_left = 0;
 }
 static int pcar_solid(int cx, int cy);
-static int obj_solid(int cx, int cy) { if (cx < 0 || cy < 0 || cx >= GN || cy >= GN) return LV ? 1 : far_solid(cx, cy) || pcar_solid(cx, cy); if (LV && !uflr[LV - 1][cy][cx]) return 1; if (!occ_ok) occ_build(); return (occ[LV][cy][cx] >> 15) || (!LV && pcar_solid(cx, cy)); }   // (upstairs: only the floor there is; d83: a parked car is solid)
+static int obj_solid(int cx, int cy) { if(!LV&&ds_water_at(cx,cy))return 1; if (cx < 0 || cy < 0 || cx >= GN || cy >= GN) return LV ? 1 : far_solid(cx, cy) || pcar_solid(cx, cy); if (LV && !uflr[LV - 1][cy][cx]) return 1; if (!occ_ok) occ_build(); return (occ[LV][cy][cx] >> 15) || (!LV && pcar_solid(cx, cy)); }   // (upstairs: only the floor there is; d83: a parked car is solid)
 static int edge_open(int ax, int ay, int bx2, int by) {   // can a sim step between two neighbouring cells? walls block, doors do not
     int ina = ax >= 0 && ay >= 0 && ax < GN && ay < GN, inb = bx2 >= 0 && by >= 0 && bx2 < GN && by < GN;
     if (LV && (!ina || !inb)) return 0;   // (upstairs: the plot is all there is)

@@ -26,14 +26,15 @@ int bsnprintf(char *o,unsigned cap,const char *f,...){
     va_list ap;va_start(ap,f);int n=vsnprintf(o,cap,f,ap);va_end(ap);return n;
 }
 
-uint32_t bore_android_init(uint32_t seed){
+uint32_t bore_android_init_gen(uint32_t seed,int generation){
     bm_ovr_clear();bm_rename_clear();bm_dials_default();
-    bm_packed=0;bm_gen=8;bm_cap_name[0]=0;
+    bm_packed=0;bm_gen=generation==BM_GEN_CURRENT?BM_GEN_CURRENT:8;bm_cap_name[0]=0;
     bm_new(seed);
     const Settle *capital=bm_set(bm_capital());
     unsigned x=capital?capital->x:BM_N/2,y=capital?capital->y:BM_N/2;
     return x|(y<<16);
 }
+uint32_t bore_android_init(uint32_t seed){return bore_android_init_gen(seed,8);}
 int bore_android_window(int cx,int cy,int radius,uint32_t *out,int count){
     if(!out||!bore_window_valid(radius,count))return 0;
     cx=bore_window_center(cx,radius,BM_N);cy=bore_window_center(cy,radius,BM_N);

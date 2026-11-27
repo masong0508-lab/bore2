@@ -2,6 +2,7 @@
 #pragma once
 #include <stdint.h>
 uint32_t bore_android_init(uint32_t seed);
+uint32_t bore_android_init_gen(uint32_t seed,int generation);
 int bore_android_window(int cx,int cy,int radius,uint32_t *out,int count);
 int bore_android_describe(int x,int y,int weekday,char *out,unsigned cap);
 

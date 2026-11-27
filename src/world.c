@@ -19,6 +19,7 @@
 #include "ground_patch.h"
 #include "frame_render_policy.h"
 #include "world_stream_models.h"
+#include "world_surface.h"
 #include "nature.h"
 #include "island.h"
 #include "save.h"
@@ -3212,13 +3213,12 @@ static int ground_rebuild(int wx,int wy,u32 *out,int cap){
     if(gen_pend[wy][wx]){
         BInfo b;bm_block(world_wbx+wx,world_wby+wy,&b);
         static const u8 tfl[6]={FL_WATER,FL_SAND,FL_GRASS,FL_GRASS,FL_SAND,FL_ROCK};
-        int rd=b.road&7,town=b.set!=255&&b.terrain!=BT_SEA;
-        if(b.lot!=LOT_RIVER&&(b.road&BR_MEGA)){int part=BR_PART(b.road);if(part&1)rd&=~2;if(part&2)rd&=~1;}
+        int base=tfl[b.terrain],town=b.set!=255&&b.terrain!=BT_SEA;
+        if(town)base=b.terrain==BT_DESERT||b.terrain==BT_BEACH?FL_SAND:FL_GRASS;
+        BoreTrail trail;bm_trail_plan(world_wbx+wx,world_wby+wy,&b,&trail);
         for(int y=0;y<BM_BLK;y++)for(int x=0;x<BM_BLK;x++){
-            int fl=tfl[b.terrain];
-            if(b.lot==LOT_RIVER){int d=(b.road&BR_MEGA)?x:y;if(d>=5&&d<=11)fl=FL_WATER;}
-            if(((rd&1)&&y<BM_LOT0)||((rd&2)&&x<BM_LOT0)||((rd&4)&&x<BM_LOT0&&y<BM_LOT0))fl=FL_ASPHALT;
-            else if(town&&(((rd&1)&&y==BM_LOT0&&x>=BM_LOT0)||((rd&2)&&x==BM_LOT0&&y>=BM_LOT0)))fl=FL_PAVING;
+            int m=bore_surface(&b,x,y),fl=m==BS_ROAD?FL_ASPHALT:m==BS_WATER?FL_WATER:m==BS_PAVING?FL_PAVING:m==BS_PATIO?FL_ROCK:base;
+            if(m==BS_LAND&&bore_trail_cell(&trail,x,y))fl=FL_SOIL;
             mat[y*BM_BLK+x]=(u8)fl;
         }
     }else for(int y=0;y<BM_BLK;y++)for(int x=0;x<BM_BLK;x++){
