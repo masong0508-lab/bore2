@@ -516,7 +516,7 @@ __attribute__((noinline)) static void g8_block(const Settle *s, int bx, int by, 
     #define G8L(x, y) (g8_edge(s, 1, x, y) | G8CEN(x, y) | G8CEN((x) - 1, y))
     int t = G8T(dx, dy), l = G8L(dx, dy), cn = 0;
     static u8 busy;   // (the question below asks for a neighbour's whole block, which asks about big places, which ask for these blocks: those inner questions need no heads)
-    if (!(t | l) && !busy) {   // (a street's end, or its bend: the corner square is paved, a turning head; only where the street that arrives is really there: the plan can have it cut by a big place or the edge of the town)
+    if (bm_gen < 9 && !(t | l) && !busy) {   // (a street's end, or its bend: the corner square is paved, a turning head; only where the street that arrives is really there: the plan can have it cut by a big place or the edge of the town)
         BInfo q; busy = 1;
         if (G8T(dx - 1, dy) && set_at(bx - 1, by) == si) { bm_block1(bx - 1, by, &q); cn = q.set == si && q.terrain != BT_SEA && (rd_real(&q) & 1); }
         if (!cn && G8L(dx, dy - 1) && set_at(bx, by - 1) == si) { bm_block1(bx, by - 1, &q); cn = q.set == si && q.terrain != BT_SEA && (rd_real(&q) & 2); }
@@ -673,6 +673,15 @@ static int mega_kind(int gx, int gy, int si) {   // -1: not a group; else MK_ (a
 static void bm_block1(int bx, int by, BInfo *b);
 void bm_block(int bx, int by, BInfo *b) {
     bm_block1(bx, by, b);
+    /* v9 decides plaza membership from base street edges alone. Add
+     * turning heads afterwards, once both sides have their final edges.
+     * This avoids re-entering mega_kind while its one-entry cache is
+     * being populated. Preserve legacy worlds' generation rules. */
+    if(bm_gen>=9&&b->set!=255&&b->terrain!=BT_SEA&&!(b->road&BR_MEGA)&&!(b->road&3)){
+        BInfo q;bm_block1(bx-1,by,&q);
+        if(rd_real(&q)&1)b->road|=4;
+        else {bm_block1(bx,by-1,&q);if(rd_real(&q)&2)b->road|=4;}
+    }
     /* Only generated ordinary building lots need this rule. Don't erase
      * a user's explicit land-use edit; fields, parks and courts stay open. */
     if(bm_gen>=9&&b->set!=255&&b->terrain!=BT_SEA&&!(b->road&BR_MEGA)&&

@@ -2283,10 +2283,18 @@ static void ds_water_slot(int sx,int sy){
     if(!needs)return;
     int ox=sx*SLC,oy=sy*SLC;
     tx_want=-1;
+    /* Merge identical water spans vertically. Ocean tiles now use one
+     * quad instead of 18, without covering causeways or dry banks. */
+    u32 rows[SLC]={0};
+    for(int y=0;y<SLC;y++)for(int x=0;x<SLC;x++)
+        if(ds_water_at(ox+x,oy+y))rows[y]|=1u<<x;
     for(int y=0;y<SLC;y++)for(int x=0;x<SLC;){
-        if(!ds_water_at(ox+x,oy+y)){x++;continue;}
-        int end=x+1;while(end<SLC&&ds_water_at(ox+end,oy+y))end++;
-        ground(tl(2*(ox+x)),tl(2*(oy+y)),tl(2*(ox+end)),tl(2*(oy+y+1)),-32,C15(5,12,24));
+        if(!(rows[y]&(1u<<x))){x++;continue;}
+        int end=x+1;while(end<SLC&&(rows[y]&(1u<<end)))end++;
+        u32 mask=((1u<<(end-x))-1u)<<x;
+        int bottom=y+1;while(bottom<SLC&&(rows[bottom]&mask)==mask)bottom++;
+        for(int yy=y;yy<bottom;yy++)rows[yy]&=~mask;
+        ground(tl(2*(ox+x)),tl(2*(oy+y)),tl(2*(ox+end)),tl(2*(oy+bottom)),-32,C15(5,12,24));
         x=end;
     }
 }

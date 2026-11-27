@@ -48,7 +48,12 @@ int main(void){
             const Settle *s=bm_set(i);
             for(int y=s->y-s->r;y<=s->y+s->r;y++)for(int x=s->x-s->r;x<=s->x+s->r;x++){
                 BInfo b,q;bm_block(x,y,&b);if(b.set!=i)continue;
+                bm_block(x+3,y-2,&q);bm_block(x-2,y+3,&q);
                 bm_block(x,y,&q);assert(!memcmp(&b,&q,sizeof b));
+                if(b.terrain!=BT_SEA&&!(b.road&BR_MEGA)&&!(b.road&3)){
+                    BInfo w,n;bm_block(x-1,y,&w);bm_block(x,y-1,&n);
+                    assert(!!(b.road&4)==!!((real_roads(&w)&1)||(real_roads(&n)&2)));
+                }
                 if(b.lot==LOT_RIVER||b.terrain==BT_SEA)continue;
                 if(b.road&BR_MEGA){mega++;continue;}
                 u8 f[5];if(!bm_lot_foot(x,y,&b,f,0))continue;
