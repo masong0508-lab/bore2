@@ -245,7 +245,27 @@ def main():
     assert mattress["supplyStock"]==2 and mattress["furnitureUpgrades"]==1,mattress
     (OUT/"life-upgraded-home.png").write_bytes(adb("exec-out","screencap","-p"))
     print("Android real UI shop purchase, pantry cooking and mattress recovery PASS",mattress)
-    ready=mattress
+    # Cleaning is a real timed household action and must survive a reload.
+    assert mattress["homeDirt"]>0,mattress
+    text_tap("Home care")
+    text_tap("Clean home")
+    cleaned=wait_state(lambda s:s.get("homeDirt",100)<mattress["homeDirt"])
+    assert cleaned["minute"]==(mattress["minute"]+30)%1440,cleaned
+    assert cleaned["energy"]==mattress["energy"]-6 and cleaned["funds"]==mattress["funds"],cleaned
+    assert cleaned["supplyStock"]==mattress["supplyStock"],cleaned
+    adb("shell","input","keyevent","3")
+    adb("shell","am","force-stop",PACKAGE)
+    adb("shell","am","start","-W","-n",PACKAGE+"/.MainActivity")
+    deadline=time.monotonic()+35
+    while time.monotonic()<deadline:
+        if any(n.get("text")=="Home care" for n in nodes()):break
+        time.sleep(.3)
+    else:raise AssertionError("Home care view not restored")
+    restored_care=state()
+    for k in ("homeDirt","minute","energy","funds","supplyStock"):
+        assert restored_care[k]==cleaned[k],(k,restored_care,cleaned)
+    print("Android real UI cleaning, time cost and home care reload PASS",restored_care)
+    ready=restored_care
     while ready["minute"]<480:
         old=ready["minute"]
         text_tap("Sofa")

@@ -95,7 +95,8 @@ final class InteriorView extends View {
     boolean nearResident(int id){return !decorating&&!busy()&&crowd!=null&&crowd.adjacent(at,id);}
     private int[] route(int cell){return crowd==null?plan.route(at,cell):crowd.route(at,cell);}
     private boolean decorating;
-    private int selected=-1,theme,upgrades;
+    private int selected=-1,theme,upgrades,dirt;
+    void setDirt(int value){dirt=Math.max(0,Math.min(100,value));invalidate();}
     void setUpgrades(int mask){upgrades=mask&7;invalidate();}
     void setTheme(int value){theme=value;invalidate();}
     int selectedFurniture(){return selected;}
@@ -219,6 +220,10 @@ final class InteriorView extends View {
             int x=i%18,y=i/18;paint.setStyle(Paint.Style.FILL);
             paint.setColor(plan.commercial?(((x+y)&1)==0?0xffb8c4c3:0xffacb8b9):HomeDecor.color(theme,(x+y)&1));
             c.drawRect(X(x),Y(y),X(x+1)+.25f,Y(y+1)+.25f,paint);
+            // Sparse, subtle grime marks; never replace a tile or its collision.
+            if(!plan.commercial&&dirt>=15&&((i*37+11)%101)<dirt/3){
+                paint.setColor(0x284c3824);c.drawOval(X(x+.27f),Y(y+.36f),X(x+.62f),Y(y+.58f),paint);
+            }
         }
         paint.setStrokeWidth(Math.max(2,tile*.13f));paint.setStrokeCap(Paint.Cap.SQUARE);
         for(int i=0;i<InteriorPlan.N;i++)if(plan.floor(i)){

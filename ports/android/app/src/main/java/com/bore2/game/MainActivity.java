@@ -48,7 +48,7 @@ public final class MainActivity extends Activity {
     private String savedDecor="";
     private boolean decorating;
     private LinearLayout decorRow;
-    private Button decorateButton,nextSpotButton,themeButton,resetRoomButton,householdButton;
+    private Button decorateButton,nextSpotButton,themeButton,resetRoomButton,householdButton,careButton;
     private int roomFloor=-1;
     private LinearLayout stairsRow;
     private Button upstairsButton,downstairsButton;
@@ -86,6 +86,7 @@ public final class MainActivity extends Activity {
     private MeetupPlan meetup;
     private int meetupsDone;
     private final HomeSupplies supplies=new HomeSupplies();
+    private final HomeCare care=new HomeCare();
     private ResidentSchedule.Grid residentGrid;
     private int residentGridSeed, residentRevision=-1,residentDay=-1,residentTime=-1,residentHome=-2,residentRoommate=-2;
     private int rentedKey(){return hasHome()?LifeRules.pack(homeX,homeY):-1;}
@@ -131,6 +132,7 @@ public final class MainActivity extends Activity {
         int previousMember=Household.savedMember(savedHousehold,seed,rentedKey());
         if(previousMember>=0)household.load(savedHousehold,seed,rentedKey(),contacts.affinity(previousMember),validRoommateResidence(previousMember));
         supplies.load(prefs.getInt("supplyStock",0),hasHome()&&prefs.getInt("upgradeHome",-1)==rentedKey()?prefs.getInt("furnitureUpgrades",0):0);
+        care.load(prefs.getString("homeCare",""),seed,rentedKey(),household.member());
         meetup=MeetupPlan.load(prefs.getString("meetup",""),seed,lifeDay,minute,contacts::affinity,this::lotAtKey);
         if(meetup!=null&&(meetup.contact==rentedKey()||meetup.contact==household.member()))meetup=null;
         meetupsDone=LifeRules.credit(prefs.getInt("meetupsDone",0),0);
@@ -228,7 +230,7 @@ public final class MainActivity extends Activity {
             serial++;meshX=meshY=meshRevision=requestX=requestY=-1;seed=(int)System.nanoTime();resetNative();
             cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
             lifeX=cx;lifeY=cy;resetOutdoorPosition();weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
-            lifeDay=0;career.reset();meetup=null;meetupsDone=0;lastRoute=new int[0];savedDecor="";homeDecor=null;household.clear();supplies.clear();homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
+            lifeDay=0;career.reset();meetup=null;meetupsDone=0;lastRoute=new int[0];savedDecor="";homeDecor=null;household.clear();supplies.clear();care.clear();homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
             java.util.Arrays.fill(skills,0);contacts.load("");world3d.residentSeed(seed);world3d.resetCamera();refresh();saveLife();
     }
     private void layoutPanes(Configuration config){
@@ -316,6 +318,15 @@ public final class MainActivity extends Activity {
     }
     private void advanceTime(int elapsed){
         elapsed=Math.max(0,elapsed);
+        if(hasHome()&&minute%60+elapsed>=60){
+            final int member=household.member(),home=rentedKey();
+            final ResidentSchedule.Grid grid=member>=0?residentGridAt(homeX,homeY,6):null;
+            care.advance(weekday,minute,elapsed,true,member>=0,(day,m)->{
+                ResidentSchedule.Entry e=grid==null?null:grid.locatedAt(seed,member,home,day,m);
+                if(e==null)return HomeCare.AWAY;
+                return e.phase==ResidentSchedule.HOME&&e.location!=home?HomeCare.AWAY:e.phase;
+            });
+        }
         int total=minute+elapsed,days=total/1440;
         // Actions already account for their own energy and food costs.
         // Passive social/fun decay uses elapsed clock buckets so short trips
@@ -464,7 +475,7 @@ public final class MainActivity extends Activity {
                 .setMessage("$"+LifeRules.LEASE+" to move in, then $"+LifeRules.DAILY_RENT+" per game day. Sleep, cook and spend time at home.")
                 .setPositiveButton("Move in",(d,i)->{
                     if(lifeX!=x||lifeY!=y||funds<LifeRules.LEASE||rentDebt>0)return;
-                    funds-=LifeRules.LEASE;homeX=x;homeY=y;savedDecor="";homeDecor=null;household.clear();meetup=null;supplies.moveHome();updateDetails();saveLife();notice("Welcome home");
+                    funds-=LifeRules.LEASE;homeX=x;homeY=y;savedDecor="";homeDecor=null;household.clear();meetup=null;supplies.moveHome();care.clear();updateDetails();saveLife();notice("Welcome home");
                 }).setNegativeButton("Cancel",null).show();return;
         }
         if(!hasHome()){findPlaces(LifeRules.HOMES);return;}
@@ -519,6 +530,7 @@ public final class MainActivity extends Activity {
         decorRow=new LinearLayout(this);homePane.addView(decorRow);
         decorateButton=homeButton(decorRow,"Decorate home",()->setDecorating(!decorating));
         householdButton=homeButton(decorRow,"Household",this::showHousehold);
+        careButton=homeButton(decorRow,"Home care",this::showHomeCare);
         nextSpotButton=homeButton(decorRow,"Next spot",this::nextFurnitureSpot);
         themeButton=homeButton(decorRow,"Room style",this::chooseRoomStyle);
         resetRoomButton=homeButton(decorRow,"Reset room",this::confirmRoomReset);
@@ -591,6 +603,7 @@ public final class MainActivity extends Activity {
         decorRow.setVisibility(home?View.VISIBLE:View.GONE);
         decorateButton.setText(decorating?"Done decorating":"Decorate home");
         householdButton.setVisibility(home&&!decorating?View.VISIBLE:View.GONE);
+        careButton.setVisibility(home&&!decorating?View.VISIBLE:View.GONE);
         nextSpotButton.setVisibility(decorating?View.VISIBLE:View.GONE);
         themeButton.setVisibility(decorating?View.VISIBLE:View.GONE);
         resetRoomButton.setVisibility(decorating?View.VISIBLE:View.GONE);
@@ -614,6 +627,19 @@ public final class MainActivity extends Activity {
         int key=household.member();if(key<0||!hasHome())return null;
         ResidentSchedule.Grid grid=residentGridAt(homeX,homeY,6);
         return grid==null?null:grid.locatedAt(seed,key,rentedKey(),weekday,minute);
+    }
+    private void showHomeCare(){
+        if(!interiorCurrent()||!atHome()||decorating||interiorView.busy()){notice("Finish your current action first");return;}
+        String status="Cleanliness: "+(100-care.dirt())+"/100\n"+(care.restPenalty()>0?"A very untidy home reduces rest recovery by 5.":"Home comfort is normal.");
+        if(household.member()>=0)status+="\n\n"+resident(household.member()).name+"\nEnergy "+care.energy()+"/100 · Food "+care.food()+"/100\nChores completed: "+care.chores()+" · Meals: "+care.meals()+"\nLast task: "+care.lastTask()+"\nRoommates manage their own meals and contribute to cleaning while at home.";
+        AlertDialog.Builder dialog=new AlertDialog.Builder(this).setTitle("Home care").setMessage(status).setNegativeButton("Close",null);
+        if(care.dirt()>0)dialog.setPositiveButton("Clean home",(d,i)->{
+            if(!interiorCurrent()||!atHome()||decorating||interiorView.busy())return;
+            if(energy<6){notice("Rest before cleaning");return;}
+            if(!care.clean()){notice("Home is already clean");return;}
+            energy-=6;advanceTime(30);updateDetails();saveLife();notice("Home cleaned");
+        });
+        dialog.show();
     }
     private void showHousehold(){
         if(!interiorCurrent()||!atHome()||decorating||interiorView.busy()){notice("Finish your current action first");return;}
@@ -650,6 +676,7 @@ public final class MainActivity extends Activity {
             ResidentSchedule.Entry e=grid==null?null:grid.located(seed,key,weekday,minute);
             boolean free=e!=null&&(e.phase==ResidentSchedule.HOME||e.phase==ResidentSchedule.LEISURE);
             if(household.invite(key,rentedKey(),contacts.affinity(key),rentDebt,true,free)){
+                care.resetMember();
                 if(meetup!=null&&meetup.contact==key)meetup=null;
                 residentRevision=-1;updateDetails();saveLife();notice(resident(key).name+" accepted and moved in");
             }else notice("They are unavailable now, or the household is full");
@@ -659,7 +686,7 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("End shared household?").setMessage(resident(key).name+" will return to their original home. Your daily rent returns to $12.")
             .setPositiveButton("Confirm move out",(d,i)->{
                 if(!interiorCurrent()||!atHome()||household.member()!=key)return;
-                household.clear();residentRevision=-1;updateDetails();saveLife();notice("Household updated");
+                household.clear();care.resetMember();residentRevision=-1;updateDetails();saveLife();notice("Household updated");
             }).setNegativeButton("Cancel",null).show();
     }
     private void saveDecor(){
@@ -957,7 +984,7 @@ public final class MainActivity extends Activity {
         updateDetails();saveLife();notice("Well rested");
     }
     private void rest(){
-        int recovery=atHome()?(atService(InteriorPlan.SOFA)?supplies.restEnergy():20):12;
+        int recovery=atHome()?(atService(InteriorPlan.SOFA)?supplies.restEnergy():20)-care.restPenalty():12;
         advanceTime(60);energy=clamp100(energy+recovery);food=clamp100(food-3);
         updateDetails();saveLife();notice("Rested for one hour");
     }
@@ -1063,6 +1090,7 @@ public final class MainActivity extends Activity {
         if(left<0){notice("Not enough groceries or cash for the meal");return;}
         funds=left;food=clamp100(food+supplies.cookFood());skills[4]=Math.min(4400,skills[4]+supplies.cookSkill());
         if(shared){
+            care.sharedMeal();
             // Use the same relationship cooldown and daily cap as conversations.
             int gain=contacts.talk(resident(household.member()),3,lifeDay,minute,false);
             if(gain>0){social=clamp100(social+8+gain);skills[6]=Math.min(4400,skills[6]+gain);}
@@ -1139,7 +1167,8 @@ public final class MainActivity extends Activity {
              .putInt("roomCell",inInterior?interiorView.cell():-1).putInt("roomFloor",roomFloor)
              .putInt("tileX",tileX).putInt("tileY",tileY).putBoolean("crowdMotion",crowdMotion)
              .putInt("avatarStyle",appearance.encode()).putString("avatarName",playerName).putString("homeDecor",savedDecor).putString("household",household.save(seed)).putInt("roommate",household.member())
-             .putInt("supplyStock",supplies.stock()).putInt("furnitureUpgrades",supplies.upgrades()).putInt("upgradeHome",rentedKey());
+             .putInt("supplyStock",supplies.stock()).putInt("furnitureUpgrades",supplies.upgrades()).putInt("upgradeHome",rentedKey())
+             .putString("homeCare",care.save(seed,rentedKey(),household.member())).putInt("homeDirt",care.dirt());
         for(int i=0;i<skills.length;i++)e.putInt("skill"+i,skills[i]);e.apply();
     }
     private void updateDetails(){
@@ -1157,6 +1186,7 @@ public final class MainActivity extends Activity {
         if(household.member()>=0)lifeStatus.append("\nRoommate: "+resident(household.member()).name+" · Rent $"+household.dailyRent(rentedKey())+"/day");
         map.setContentDescription("San Boreas map. Selected lot: "+text);
         world3d.setContentDescription("San Boreas 3D neighborhood. Selected lot: "+text);
+        if(inInterior&&interiorPlan!=null&&!interiorPlan.commercial)interiorView.setDirt(care.dirt());
         world3d.setClock(minute);world3d.playerTile(tileX,tileY,0);world3d.select(selectedX,selectedY);updateStreetResidents();updateIndoorResidents();map.invalidate();
     }
     @Override protected void onResume(){
