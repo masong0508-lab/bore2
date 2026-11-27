@@ -11,5 +11,6 @@ final class NativeWorld {
     static synchronized native String activityText(int id,int field);
     static synchronized native int[] route(int x,int y,int X,int Y);
     static synchronized native int[] shift(int x,int y,int day,int minute,int energy,int food);
+    static synchronized native int[] interior(int x,int y);
     private NativeWorld() {}
 }

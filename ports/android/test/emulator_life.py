@@ -23,7 +23,7 @@ def tap(predicate,label):
         time.sleep(.4)
     raise AssertionError("Could not find tappable "+label)
 
-def text_tap(text):return tap(lambda s:s==text,text)
+def text_tap(text):return tap(lambda s:s.casefold()==text.casefold(),text)
 def state():
     raw=adb("shell","run-as",PACKAGE,"cat","shared_prefs/world_preview.xml")
     return {n.get("name"):int(n.get("value")) for n in ET.fromstring(raw) if n.tag=="int"}
@@ -56,22 +56,30 @@ def main():
     assert leased["homeX"]==leased["lifeX"] and leased["homeY"]==leased["lifeY"],leased
     assert leased["funds"]==175,leased
     text_tap("Home")
-    text_tap("Sleep 8 hours")
+    text_tap("Bed")
     slept=wait_state(lambda s:s.get("homeNights",0)==1)
     assert slept["energy"]==100 and slept["minute"]==(leased["minute"]+480)%1440,slept
     assert slept["funds"]==leased["funds"]-12*((leased["minute"]+480)//1440),slept
-    text_tap("Home")
-    text_tap("Cook a meal ($5)")
+    text_tap("Kitchen")
     cooked=wait_state(lambda s:s.get("skill4",0)>=12)
     assert cooked["food"]>=slept["food"] and cooked["funds"]==slept["funds"]-5-12*((slept["minute"]+30)//1440),cooked
     adb("shell","input","keyevent","3")
     adb("shell","am","force-stop",PACKAGE)
     adb("shell","am","start","-W","-n",PACKAGE+"/.MainActivity")
-    wait_view(False)
+    # Relaunch must restore the interior and its last committed walking cell.
+    deadline=time.monotonic()+35
+    while time.monotonic()<deadline:
+        if any(n.get("text")=="Exit home" for n in nodes()):break
+        time.sleep(.3)
+    else:raise AssertionError("Home view not restored")
     loaded=state()
-    for k in ("homeX","homeY","lifeX","lifeY","funds","food","energy","minute","homeNights","skill4"):
+    for k in ("homeX","homeY","lifeX","lifeY","funds","food","energy","minute","homeNights","skill4","roomCell"):
         assert loaded[k]==cooked[k],(k,loaded,cooked)
     (OUT/"life-home.png").write_bytes(adb("exec-out","screencap","-p"))
+    text_tap("Exit home")
+    wait_state(lambda s:s.get("roomCell",0)==-1)
+    wait_view(False)
+    (OUT/"life-exterior-return.png").write_bytes(adb("exec-out","screencap","-p"))
     print("Android real UI rent/travel/sleep/cooking/relaunch PASS",loaded)
 
 if __name__=="__main__":

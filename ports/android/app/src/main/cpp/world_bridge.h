@@ -19,3 +19,7 @@ int bore_android_route(int x,int y,int X,int Y,uint32_t *out,int cap);
 #define BORE_ANDROID_SHIFT_FIELDS 7
 enum { SHIFT_OK,SHIFT_CLOSED,SHIFT_TIRED,SHIFT_HUNGRY };
 int bore_android_shift(int x,int y,int day,int minute,int energy,int food,int *out);
+
+// Residential interior: lot, entry x/y, exact 18x18 footprint.
+#define BORE_ANDROID_INTERIOR_FIELDS (3+18*18)
+int bore_android_interior(int x,int y,int *out,int count);

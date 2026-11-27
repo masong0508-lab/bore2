@@ -1,5 +1,6 @@
 #include "world_bridge.h"
 #include "window_math.h"
+#include "mesh_footprint.h"
 #include "bigmap.h"
 #define OUTINGS_IMPLEMENTATION
 #include "outings.h"
@@ -149,5 +150,31 @@ int bore_android_shift(int x,int y,int day,int minute,int energy,int food,int *o
     int duration=180,status=minute<from||minute+duration>to?SHIFT_CLOSED:energy<24?SHIFT_TIRED:food<15?SHIFT_HUNGRY:SHIFT_OK;
     int v[BORE_ANDROID_SHIFT_FIELDS]={status,duration,pay,24,15,skill,40};
     for(int i=0;i<BORE_ANDROID_SHIFT_FIELDS;i++)out[i]=v[i];
+    return 1;
+}
+
+/* Exact residential footprint from the same native plan used by scene_mesh.
+ * Ground-floor walkable area only; Java furnishes and partitions this shape. */
+int bore_android_interior(int x,int y,int *out,int count){
+    if(!out||count!=BORE_ANDROID_INTERIOR_FIELDS||!bore_android_can_visit(x,y))return 0;
+    BInfo b;bm_block(x,y,&b);if(b.lot<LOT_HOUSE||b.lot>LOT_APART)return 0;
+    u8 f[5];LotPlan p;memset(&p,0,sizeof p);
+    if(!bm_lot_foot(x,y,&b,f,&p))return 0;
+    BoreFoot foot={f[0],f[1],f[2],f[3],0,0,0,0};
+    if(f[4])foot=(BoreFoot){p.x0,p.y0,p.x1,p.y1,p.wx0,p.wy0,p.wx1,p.wy1};
+    int dx=-1,dy=-1,front=p.face==LF_NORTH?-1:1;
+    if(f[4]&&p.dx<BM_BLK&&p.dy<BM_BLK&&bore_foot_has(&foot,p.dx,p.dy)&&
+       (!bore_foot_has(&foot,p.dx,p.dy-1)||!bore_foot_has(&foot,p.dx,p.dy+1))){dx=p.dx;dy=p.dy;}
+    if(dx<0){
+        int best=100000,middle=(f[0]+f[2])/2,edge=front<0?f[1]:f[3];
+        for(int iy=0;iy<BM_BLK;iy++)for(int ix=0;ix<BM_BLK;ix++)
+            if(bore_foot_has(&foot,ix,iy)&&!bore_foot_has(&foot,ix,iy+front)){
+                int score=4*abs(iy-edge)+abs(ix-middle);
+                if(score<best){best=score;dx=ix;dy=iy;}
+            }
+    }
+    if(dx<0)return 0;
+    out[0]=b.lot;out[1]=dx;out[2]=dy;
+    for(int iy=0;iy<BM_BLK;iy++)for(int ix=0;ix<BM_BLK;ix++)out[3+iy*BM_BLK+ix]=bore_foot_has(&foot,ix,iy);
     return 1;
 }

@@ -34,6 +34,10 @@ public final class MainActivity extends Activity {
     private FrameLayout pane;
     private MapView map;
     private WorldView3D world3d;
+    private LinearLayout homePane;
+    private InteriorView interiorView;
+    private InteriorPlan interiorPlan;
+    private boolean inInterior;
     private Button dayButton,modeButton,travelButton;
     private final Handler travelHandler=new Handler(Looper.getMainLooper());
     private int[] travelRoute;
@@ -108,12 +112,13 @@ public final class MainActivity extends Activity {
         hint=new TextView(this);hint.setTextColor(Color.rgb(180,201,190));hint.setTextSize(12);
         hint.setPadding(dp(12),0,dp(12),dp(6));panel.addView(hint);
         world3d=new WorldView3D(this,(x,y,ox,oy,id)->{
-            if(travelRoute!=null||!in3d||id!=serial||id!=meshRevision||ox!=cx||oy!=cy||meshSeed!=seed||meshX!=cx||meshY!=cy)return;
+            if(inInterior||travelRoute!=null||!in3d||id!=serial||id!=meshRevision||ox!=cx||oy!=cy||meshSeed!=seed||meshX!=cx||meshY!=cy)return;
             selectedX=x;selectedY=y;updateDetails();
         });
         map=new MapView();
         pane.addView(world3d,new FrameLayout.LayoutParams(-1,-1));
         pane.addView(map,new FrameLayout.LayoutParams(-1,-1));
+        buildHomePane();
         ScrollView scroll=new ScrollView(this);
         scroll.setFillViewport(false);
         panel.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
@@ -141,7 +146,7 @@ public final class MainActivity extends Activity {
         LinearLayout second=new LinearLayout(this);second.setGravity(Gravity.CENTER);
         lower.addView(second,new LinearLayout.LayoutParams(-1,-2));
         addButton(second,"Capital",()->{cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;refresh();});
-        dayButton=addButton(second,"Sleep",this::sleepAtHome);
+        dayButton=addButton(second,"Sleep",()->{if(atHome())enterHome(-1);else notice("Travel home and use the bed");});
         addButton(second,"New life",()->new AlertDialog.Builder(this).setTitle("Start a new life?")
             .setMessage("This replaces your current world, home, savings and progress on this device.")
             .setPositiveButton("Start over",(dialog,which)->newLife()).setNegativeButton("Keep playing",null).show());
@@ -153,15 +158,17 @@ public final class MainActivity extends Activity {
         LinearLayout work=new LinearLayout(this);work.setGravity(Gravity.CENTER);
         lower.addView(work,new LinearLayout.LayoutParams(-1,-2));
         addButton(work,"Work shift",this::workShift);
-        addButton(work,"Eat / cook",this::eatMeal);
+        addButton(work,"Eat / cook",()->{if(atHome())enterHome(-1);else eatMeal();});
         addButton(work,"My location",()->{cx=lifeX;cy=lifeY;selectedX=lifeX;selectedY=lifeY;refresh();});
         LinearLayout progress=new LinearLayout(this);progress.setGravity(Gravity.CENTER);
         lower.addView(progress,new LinearLayout.LayoutParams(-1,-2));
         addButton(progress,"Contacts",this::showContactList);
         addButton(progress,"Life goals",this::showGoals);
         setContentView(root);root.requestApplyInsets();showMode();refresh();
+        if(atHome()&&prefs.getBoolean("insideHome",false))enterHome(prefs.getInt("roomCell",-1));
     }
     private void newLife(){
+            if(inInterior)leaveHome();
             serial++;meshX=meshY=meshRevision=requestX=requestY=-1;seed=(int)System.nanoTime();resetNative();
             cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
             lifeX=cx;lifeY=cy;weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
@@ -184,13 +191,15 @@ public final class MainActivity extends Activity {
         Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextSize(12);
         b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(0,0,0,0);
         row.addView(b,new LinearLayout.LayoutParams(0,dp(44),1));
-        b.setOnClickListener(v->{if(travelRoute!=null&&b!=travelButton){notice("Finish or cancel your trip first");return;}action.run();});return b;
+        b.setOnClickListener(v->{if(travelRoute!=null&&b!=travelButton){notice("Finish or cancel your trip first");return;}if(inInterior){notice("Use the furniture or leave your home first");return;}action.run();});return b;
     }
     private void resetNative(){
         int center=NativeWorld.init(seed);capitalX=center&65535;capitalY=center>>>16;
     }
     private int clampCenter(int x){return Math.max(radius,Math.min(MAP_SIZE-radius-1,x));}
     private void showMode(){
+        if(inInterior){world3d.setVisibility(View.GONE);map.setVisibility(View.GONE);homePane.setVisibility(View.VISIBLE);hint.setText("Home · tap a floor tile or use furniture");return;}
+        homePane.setVisibility(View.GONE);
         world3d.setVisibility(in3d?View.VISIBLE:View.GONE);map.setVisibility(in3d?View.GONE:View.VISIBLE);
         modeButton.setText(in3d?"Map":"3D");
         hint.setText(!in3d?"Drag to explore · Tap a lot · Center lot to travel":
@@ -210,6 +219,7 @@ public final class MainActivity extends Activity {
         updateDetails();map.invalidate();if(in3d)requestScene();
     }
     private void requestScene(){
+        if(inInterior)return;
         if(meshX==cx&&meshY==cy&&meshSeed==seed&&meshRevision==serial){
             world3d.select(selectedX,selectedY);
             hint.setText("Drag to orbit · Pinch to zoom · Tap a lot");return;
@@ -237,7 +247,7 @@ public final class MainActivity extends Activity {
                     if(version!=serial||isFinishing()||isDestroyed())return;
                     requestX=requestY=-1;meshX=x;meshY=y;meshSeed=key;meshRevision=version;
                     world3d.select(selectedX,selectedY);
-                    if(in3d)hint.setText("Drag to orbit · Pinch to zoom · Tap a lot");
+                    if(in3d&&!inInterior)hint.setText("Drag to orbit · Pinch to zoom · Tap a lot");
                 },failure);
                 world3d.select(selectedX,selectedY);
             });
@@ -313,7 +323,7 @@ public final class MainActivity extends Activity {
             .setNegativeButton("Close",null).show();
     }
     private void homeAction(){
-        if(atHome()){showHome();return;}
+        if(atHome()){enterHome(-1);return;}
         if(atSelected()&&LifeRules.isHome(selectedLot())){
             if(rentDebt>0){notice("Clear your overdue rent before moving");return;}
             if(funds<LifeRules.LEASE){notice("A lease costs $"+LifeRules.LEASE+". Find work to earn it.");return;}
@@ -331,16 +341,64 @@ public final class MainActivity extends Activity {
         else updateDetails();
         notice("Home selected — tap Travel here");
     }
-    private void showHome(){
-        new AlertDialog.Builder(this).setTitle("At home · rent $"+LifeRules.DAILY_RENT+"/day")
-            .setItems(new String[]{"Sleep 8 hours","Cook a meal ($5)","Practice a hobby (1 hour)","Call a friend (30 min)"},(d,i)->{
-                if(!atHome())return;
-                if(i==0)sleepAtHome();else if(i==1)eatMeal();else if(i==2){
-                    if(energy<8){notice("Rest before practicing");return;}
-                    energy-=8;food=clamp100(food-3);fun=clamp100(fun+25);
-                    skills[3]=Math.min(4400,skills[3]+20);advanceTime(60);updateDetails();saveLife();notice("Creativity improved");
-                }else showPhone();
-            }).setNegativeButton("Close",null).show();
+    private void buildHomePane(){
+        homePane=new LinearLayout(this);homePane.setOrientation(LinearLayout.VERTICAL);homePane.setBackgroundColor(BG);
+        TextView caption=new TextView(this);caption.setText("YOUR HOME  ·  WALK & INTERACT");caption.setTextColor(INK);caption.setTextSize(13);
+        caption.setGravity(Gravity.CENTER);caption.setPadding(dp(8),dp(5),dp(8),dp(4));homePane.addView(caption);
+        interiorView=new InteriorView(this,new InteriorView.Listener(){
+            @Override public void arrived(int action,int cell){interiorArrived(action,cell);}
+            @Override public void message(String message){notice(message);}
+        });
+        homePane.addView(interiorView,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout row=new LinearLayout(this);homePane.addView(row);
+        homeButton(row,"Bed",()->interiorView.use(InteriorPlan.BED));
+        homeButton(row,"Kitchen",()->interiorView.use(InteriorPlan.KITCHEN));
+        homeButton(row,"Desk",()->interiorView.use(InteriorPlan.HOBBY));
+        LinearLayout row2=new LinearLayout(this);homePane.addView(row2);
+        homeButton(row2,"Phone",()->interiorView.use(InteriorPlan.PHONE));
+        homeButton(row2,"Sofa",()->interiorView.use(InteriorPlan.SOFA));
+        homeButton(row2,"Exit home",interiorView::exit);
+        pane.addView(homePane,new FrameLayout.LayoutParams(-1,-1));homePane.setVisibility(View.GONE);
+    }
+    private void homeButton(LinearLayout row,String title,Runnable action){
+        Button b=new Button(this);b.setAllCaps(false);b.setText(title);b.setTextSize(12);
+        b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(0,0,0,0);
+        row.addView(b,new LinearLayout.LayoutParams(0,dp(44),1));b.setOnClickListener(v->{if(inInterior)action.run();});
+    }
+    private void enterHome(int saved){
+        if(!atHome()||travelRoute!=null)return;
+        InteriorPlan p=InteriorPlan.create(NativeWorld.interior(homeX,homeY),seed^LifeRules.pack(homeX,homeY));
+        if(p==null){notice("This home has no accessible interior yet");return;}
+        selectedX=lifeX;selectedY=lifeY;interiorPlan=p;inInterior=true;
+        interiorView.open(p,saved);showMode();updateDetails();saveLife();
+    }
+    private void leaveHome(){
+        if(!inInterior)return;
+        inInterior=false;interiorView.close();interiorPlan=null;
+        cx=lifeX;cy=lifeY;selectedX=lifeX;selectedY=lifeY;
+        showMode();refresh();saveLife();
+    }
+    private void interiorArrived(int action,int cell){
+        if(!inInterior||!atHome()||interiorPlan==null)return;
+        if(action==InteriorView.EXIT){if(cell==interiorPlan.entry)leaveHome();return;}
+        if(action==InteriorView.WALK){saveLife();return;}
+        if(!interiorPlan.canUse(cell,action))return;
+        switch(action){
+            case InteriorPlan.BED:sleepAtHome();break;
+            case InteriorPlan.KITCHEN:eatMeal();break;
+            case InteriorPlan.HOBBY:
+                if(energy<8){notice("Rest before practicing");break;}
+                energy-=8;food=clamp100(food-3);fun=clamp100(fun+25);skills[3]=Math.min(4400,skills[3]+20);
+                advanceTime(60);updateDetails();saveLife();notice("Creativity improved");break;
+            case InteriorPlan.PHONE:showPhone();break;
+            case InteriorPlan.SOFA:rest();break;
+            default:break;
+        }
+        saveLife();
+    }
+    @Override public void onBackPressed(){
+        if(inInterior){if(interiorView.busy()){interiorView.cancel();saveLife();}else interiorView.exit();return;}
+        super.onBackPressed();
     }
     private MobileContacts.Resident resident(int key){return new MobileContacts.Resident(seed,key);}
     private java.util.ArrayList<MobileContacts.Resident> localResidents(){
@@ -469,7 +527,8 @@ public final class MainActivity extends Activity {
              .putInt("lifeDay",lifeDay).putInt("lastShiftDay",lastShiftDay)
              .putInt("homeX",homeX).putInt("homeY",homeY).putInt("rentDebt",rentDebt)
              .putInt("careerShifts",careerShifts).putInt("trips",trips).putInt("homeNights",homeNights)
-             .putInt("x",cx).putInt("y",cy).putString("contacts",contacts.save());
+             .putInt("x",cx).putInt("y",cy).putString("contacts",contacts.save())
+             .putBoolean("insideHome",inInterior).putInt("roomCell",inInterior?interiorView.cell():-1);
         for(int i=0;i<skills.length;i++)e.putInt("skill"+i,skills[i]);e.apply();
     }
     private void updateDetails(){
@@ -490,12 +549,12 @@ public final class MainActivity extends Activity {
         if(world3d!=null){world3d.onResume();if(in3d){requestScene();world3d.requestRender();}}
     }
     @Override protected void onPause(){
-        cancelTravel(false);saveLife();
+        cancelTravel(false);if(inInterior)interiorView.cancel();saveLife();
         prefs.edit().putInt("seed",seed).putInt("x",cx).putInt("y",cy)
              .putInt("radius",radius).putBoolean("weekend",weekday==5).putBoolean("view3d",in3d).apply();
         if(world3d!=null)world3d.onPause();super.onPause();
     }
-    @Override protected void onDestroy(){travelHandler.removeCallbacks(travelTick);serial++;meshWorker.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){if(interiorView!=null)interiorView.close();travelHandler.removeCallbacks(travelTick);serial++;meshWorker.shutdownNow();super.onDestroy();}
     private final class MapView extends View {
         private final Paint paint=new Paint();
         private final int[] terrain={0xff2a6475,0xffb6a075,0xff76915d,0xff416c50,0xffb89b68,0xff777a73};

@@ -5,6 +5,7 @@
 #include "outings.h"
 #include "../app/src/main/cpp/world_bridge.h"
 #include "../app/src/main/cpp/window_math.h"
+#include "../app/src/main/cpp/mesh_footprint.h"
 
 int main(void){
     uint32_t center=bore_android_init(1234u),a[17*17],b[17*17];
@@ -76,6 +77,30 @@ int main(void){
     assert(!bore_android_can_visit(-1,0)&&!bore_android_activity(-1,0,0,0,600,100,100,invalid));
     assert(bore_android_window(-100,9999,8,a,289)==289);
     assert(!bore_android_describe(-1,0,0,(char*)b,sizeof b));
+    int homes=0,not_homes=0,room[BORE_ANDROID_INTERIOR_FIELDS];
+    for(int seed=0;seed<3;seed++){
+        uint32_t c=bore_android_init((uint32_t)(1234+seed*313));
+        int cx=(int)(c&65535),cy=(int)(c>>16);
+        for(int y=cy-8;y<=cy+8;y++)for(int x=cx-8;x<=cx+8;x++){
+            if(x<0||y<0||x>=BM_N||y>=BM_N)continue;
+            BInfo b;bm_block(x,y,&b);
+            int yes=bore_android_interior(x,y,room,BORE_ANDROID_INTERIOR_FIELDS);
+            if(b.lot<LOT_HOUSE||b.lot>LOT_APART||b.terrain==BT_SEA){assert(!yes);not_homes++;continue;}
+            u8 f[5];LotPlan p;memset(&p,0,sizeof p);
+            if(!bm_lot_foot(x,y,&b,f,&p)){assert(!yes);continue;}
+            assert(yes&&room[0]==b.lot);
+            BoreFoot foot={f[0],f[1],f[2],f[3],0,0,0,0};
+            if(f[4])foot=(BoreFoot){p.x0,p.y0,p.x1,p.y1,p.wx0,p.wy0,p.wx1,p.wy1};
+            assert(room[1]>=0&&room[1]<18&&room[2]>=0&&room[2]<18);
+            assert(bore_foot_has(&foot,room[1],room[2]));
+            for(int y=0;y<18;y++)for(int x=0;x<18;x++)assert(room[3+y*18+x]==bore_foot_has(&foot,x,y));
+            homes++;
+        }
+    }
+    assert(homes>20&&not_homes>20);
+    assert(!bore_android_interior(-1,0,room,BORE_ANDROID_INTERIOR_FIELDS));
+    assert(!bore_android_interior(x,y,room,BORE_ANDROID_INTERIOR_FIELDS-1));
+    printf("Android bridge: %d generated residential footprints and %d nonhomes checked\\n",homes,not_homes);
     puts("Android bridge: actual v8 map, stable seed and native weekday/weekend venues");
     return 0;
 }

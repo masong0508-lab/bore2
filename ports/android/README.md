@@ -34,3 +34,7 @@ tile-level collisions, native console save interchange, full careers and
 audio remain to be ported. Host tests are not device performance measurements.
 
 The emulator life smoke test uses the public UI to select a generated home, travel, lease, sleep, cook and reload the app, checking the actual stored state. Resident identities are mobile-only proxies; this is not yet the console population engine.
+
+## 0.3 home life
+
+Home opens a playable cutaway of the native residential lot rather than an action list. Its floor cells follow bm_lot_foot exactly, including wings and the existing generated entrance where provided. Furnished rooms are deterministically laid out with wall edges, a connecting passage, and collision-safe cardinal routes. Tap a tile to walk or furniture to approach and use it; accessible controls trigger the same routes. Sleep, cook, practice a hobby, call a contact, and rest only after the resident reaches the corresponding furniture. Exit via the entry. Interrupted movements have no unfinished action reward. Save and restore the committed interior cell; the full neighborhood map/3D scene returns on exit. These are mobile-generated ground-floor cutaways, not the original console interior furniture/upper-floor system. Native geometry and standalone route tests plus the real APK housing smoke test cover the new path. Device visual and performance testing remains necessary.
