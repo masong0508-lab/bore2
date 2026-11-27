@@ -61,3 +61,21 @@ static inline int bore_land_brush_delta(int dx,int dy,int radius){
     if(!d)return 2;
     return radius>0&&d<=radius+1?1:0;
 }
+
+/* Pace in quarters, using height and horizontal run in the same units.
+ * Descending steep ground is careful too. Collision/gear remains separate. */
+static inline int bore_land_walk_pace(int rise,int run){
+    if(run<=0)return 4;
+    if(rise<0)rise=-rise;
+    if(rise*100<=run*10)return 4;
+    if(rise*100<=run*25)return 3;
+    if(rise*100<=run*40)return 2;
+    return 1;
+}
+static inline int bore_land_walk_tick(int pace,unsigned frame){return (int)(frame&3u)<pace;}
+static inline int bore_land_walk_step(int step,int pace){
+    if(!step||pace>=4)return step;
+    int mag=step<0?-step:step,scaled=(mag*pace+2)/4;
+    if(scaled<1)scaled=1;
+    return step<0?-scaled:scaled;
+}

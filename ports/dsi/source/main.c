@@ -4095,7 +4095,14 @@ static void sims_step(int frames) {
             if ((m->x & 15) == 0 && (m->y & 15) == 0 && m->wx == m->x && m->wy == m->y) {   // on a cell centre: plan the next cell round the walls
                 int nx, ny; if (next_cell(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), fdiv(m->tx + 8, 16), fdiv(m->ty + 8, 16), &nx, &ny)) { m->wx = nx * 16; m->wy = ny * 16; }
                 else { m->tx = m->x; m->ty = m->y; m->act = -1; if (i == ctl) say("Cannot get there"); continue; } }
-            { int ws = trf_walk(&dtr[i]); for (int rp = 0; rp < (ws < 0 ? 0 : 1 + ws); rp++) {   // (D73: E_WALK_SPEED, a step more or one skipped)
+            { int ws = trf_walk(&dtr[i]), pace = 4;
+              if(!LV&&ds_relief_active()){
+                  int tx=m->wx/16,ty=m->wy/16;
+                  int ox=tx+(m->x<m->wx?-1:m->x>m->wx?1:0);
+                  int oy=ty+(m->y<m->wy?-1:m->y>m->wy?1:0);
+                  pace=bore_land_walk_pace(ds_relief_grade(tx,ty)-ds_relief_grade(ox,oy),2*T);
+              }
+              for (int rp = 0; rp < (ws < 0 || !bore_land_walk_tick(pace,(unsigned)(frames+i*13)) ? 0 : 1 + ws); rp++) {   // (D73: E_WALK_SPEED, a step more or one skipped)
             if (m->x < m->wx) { m->x++; m->dirn = 8192; } else if (m->x > m->wx) { m->x--; m->dirn = 24576; } else if (m->y < m->wy) { m->y++; m->dirn = 0; } else if (m->y > m->wy) { m->y--; m->dirn = 16384; } } }
             if (m->x == m->tx && m->y == m->ty && (m->act == 50 || m->act == 51)) { stairs_go(i, m->act_obj, m->act == 51); continue; }
             if (m->x == m->tx && m->y == m->ty && m->act >= 0) { if (!arrive(i)) continue; }
