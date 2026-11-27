@@ -1943,7 +1943,12 @@ static u16 nat_base(int X, int Y, int *kind) {   // a corner of the ground, as i
     *kind = wet ? 1 : 0;
     return RGB(MIN(r, 255) >> 3, MIN(g, 255) >> 3, MIN(b, 255) >> 3);
 }
-static u16 nc_col[32][32], nc_tag[32][32]; static int nc_stamp = -1; static u32 nc_for;   // (the corners as they stand, kept while the map is unchanged)
+_Static_assert(WB==4,"terrain cache covers the city window");
+static TerrainRenderCache terrain_render_cache;
+static int terrain_cache_owner;
+#define nc_col (terrain_render_cache.island.col)
+#define nc_tag (terrain_render_cache.island.tag)
+static int nc_stamp = -1; static u32 nc_for;   // (the corners as they stand, kept while the map is unchanged)
 static u32 nat_colour(int X, int Y, int t, int Lg, int z) {   // a corner of the ground in this frame: the sea's shimmer, the foam, the light, the haze
     u16 *tg = &nc_tag[Y & 31][X & 31]; int want = 1 + (Y << 7) + X, kind;
     u16 c;
@@ -1964,7 +1969,7 @@ static void nat_ground(u8 (*done)[MW], int x0, int x1, int y0, int y1) {   // th
     x0 = MAX(x0, ngx0); x1 = MIN(x1, ngx1); y0 = MAX(y0, ngy0); y1 = MIN(y1, ngy1);
     if (x1 < x0 || y1 < y0) return;
     u32 S = wsalt * 2654435761u + 0x15ADu;
-    if (nc_stamp != world_stamp || nc_for != S) { memset(nc_tag, 0, sizeof nc_tag); nc_stamp = world_stamp; nc_for = S; }
+    if (terrain_cache_claim(&terrain_cache_owner,TERRAIN_CACHE_ISLAND)||nc_stamp != world_stamp || nc_for != S) { memset(nc_tag, 0, sizeof nc_tag); nc_stamp = world_stamp; nc_for = S; }
     if (ngr_for != S) { for (int y = 0; y < 10; y++) for (int x = 0; x < 10; x++) { ngr_j[y][x] = (u8)(bm_hash(x, y, S ^ 0x77u) & 255); ngr_d[y][x] = (u8)(bm_hash(x, y, S ^ 0x3C1u) & 255); } ngr_for = S; }
     static SVECTOR rs[2][32] SVEC_ALIGN; static XV rv[2][32]; static u32 rc[2][32]; static u8 rk[2][32];
     x1 = MIN(x1, x0 + 29); int nx = x1 - x0 + 2, t = frame_t;
@@ -3193,9 +3198,9 @@ static void nat_far(int px, int py) {
 u32 far_haze_col(u32 col, int zw);
 // Material-preserving low-detail ground, cached in compact block-local
 // rectangles. Dense custom layouts fall back to a complete temporary list.
-static u32 ground_cache[WB][WB][GROUND_PATCH_CACHE];
+#define ground_cache (terrain_render_cache.city)
 static u8 ground_count[WB][WB];
-static int ground_stamp[WB][WB],ground_cache_started;
+static int ground_stamp[WB][WB];
 static int ground_rebuild(int wx,int wy,u32 *out,int cap){
     u8 mat[GROUND_PATCH_MAX];int ox=wx*BM_BLK,oy=wy*BM_BLK;
     if(gen_pend[wy][wx]){
@@ -3220,7 +3225,7 @@ static int ground_rebuild(int wx,int wy,u32 *out,int cap){
 COLD static void ground_win(int hz){
     (void)hz;
     _Static_assert(BM_BLK==GROUND_PATCH_SIDE,"ground patch size matches city");
-    if(!ground_cache_started){memset(ground_stamp,0xff,sizeof ground_stamp);ground_cache_started=1;}
+    if(terrain_cache_claim(&terrain_cache_owner,TERRAIN_CACHE_CITY))memset(ground_stamp,0xff,sizeof ground_stamp);
     far_local_begin(world_horizon);
     u32 fallback[GROUND_PATCH_MAX];
     int L=CLAMP(gfx_light(0,-ONE,0),40,200);
@@ -3232,13 +3237,15 @@ COLD static void ground_win(int hz){
     for(int wy=0;wy<WB;wy++)for(int wx=0;wx<WB;wx++){
         int ox=wx*BM_BLK,oy=wy*BM_BLK;
         if(!far_ground_visible(ox*TILE,-oy*TILE,(ox+BM_BLK)*TILE,-(oy+BM_BLK)*TILE))continue;
-        if(ground_stamp[wy][wx]!=world_stamp){
-            int n=ground_rebuild(wx,wy,ground_cache[wy][wx],GROUND_PATCH_CACHE);
-            ground_count[wy][wx]=(u8)(n>GROUND_PATCH_CACHE?255:n);
-            ground_stamp[wy][wx]=world_stamp;
-        }
         const u32 *patch=ground_cache[wy][wx];int n=ground_count[wy][wx];
-        if(n==255){n=ground_rebuild(wx,wy,fallback,GROUND_PATCH_MAX);patch=fallback;}
+        if(ground_stamp[wy][wx]!=world_stamp){
+            /* Build a complete list once. Previously a dense block was
+             * rasterized twice in its first frame after a map edit. */
+            n=ground_rebuild(wx,wy,fallback,GROUND_PATCH_MAX);
+            if(n<=GROUND_PATCH_CACHE){memcpy(ground_cache[wy][wx],fallback,(unsigned)n*sizeof(u32));ground_count[wy][wx]=(u8)n;}
+            else {ground_count[wy][wx]=255;patch=fallback;}
+            ground_stamp[wy][wx]=world_stamp;
+        }else if(n==255){n=ground_rebuild(wx,wy,fallback,GROUND_PATCH_MAX);patch=fallback;}
         for(int i=0;i<n;i++){
             u32 p=patch[i];int x=ox+ground_patch_x(p),y=oy+ground_patch_y(p);
             int X=x+ground_patch_w(p),Y=y+ground_patch_h(p),fl=ground_patch_mat(p);

@@ -10,6 +10,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Verify mutually exclusive terrain cache ownership
+        run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/terrain_render_cache_test.c -o /tmp/terrain_render_cache && /tmp/terrain_render_cache
       - name: Verify vehicle footprints and non-wrapping traffic rebases
         run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/vehicle_stability_test.c -o /tmp/vehicle_stability && /tmp/vehicle_stability
       - name: Verify real traffic parking across world-window rebases

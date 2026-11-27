@@ -41,6 +41,7 @@ void items_draw_vehicle(int x, int z, int yaw, int y, int type, int ci, int wph)
 static int ped_x[NPED], ped_y[NPED], ped_dx[NPED], ped_dy[NPED], ped_n;   // (window units, 1/256 tile)
 int citizens_walkers(s16 *xy, int max, int cx, int cz) { int n = 0; for (int i = 1; i < ped_n && n < max; i++) { xy[2 * n] = (s16)ped_x[i]; xy[2 * n + 1] = (s16)(-ped_y[i]); n++; } return n; }
 #ifndef TRAF_SRC
+#define TRAF_NATIVE_TEST 1
 #define TRAF_SRC "../../../src/traffic.c"
 #endif
 #include TRAF_SRC
@@ -245,7 +246,7 @@ static void windows_for(int n, int *wb) {   // the first n windows of this world
 }
 extern unsigned traf_dbg_jmask(int, int);
 int main(int argc, char **argv) {
-#ifndef TRAF_SRC
+#ifdef TRAF_NATIVE_TEST
     if(argc==2&&!strcmp(argv[1],"--parking-test")){
         int x,z,yaw;
         world_wbx=100;world_wby=200;world_zone=ZONE_CITY;
