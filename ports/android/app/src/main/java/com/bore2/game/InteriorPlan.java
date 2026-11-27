@@ -9,15 +9,30 @@ final class InteriorPlan {
     static final int[] DX={1,0,-1,0},DY={0,1,0,-1};
     final boolean[] floors=new boolean[N];
     final int[] walls=new int[N],objects=new int[COUNT],occupied=new int[N];
-    final int entry;
-    private InteriorPlan(int[] raw){
+    final int entry,lot;
+    final boolean commercial;
+    private final int[] actions;
+    private InteriorPlan(int[] raw,boolean commercial,int[] actions){
+        this.lot=raw[0];this.commercial=commercial;this.actions=actions;
         entry=raw[2]*SIDE+raw[1];Arrays.fill(objects,-1);Arrays.fill(occupied,-1);
         for(int i=0;i<N;i++)floors[i]=raw[i+3]==1;
         for(int i=0;i<N;i++)if(floor(i))for(int d=0;d<4;d++)if(!floor(neighbor(i,d)))walls[i]|=1<<d;
     }
     static InteriorPlan create(int[] raw,int seed){
-        if(raw==null||raw.length!=N+3||!inside(raw[1],raw[2]))return null;
-        InteriorPlan p=new InteriorPlan(raw);
+        if(raw==null||raw.length!=N+3||raw[0]<1||raw[0]>5)return null;
+        return layout(raw,seed,false,new int[]{BED,KITCHEN,HOBBY,PHONE,SOFA});
+    }
+    static InteriorPlan createVenue(int[] raw,int seed){
+        if(raw==null||raw.length!=N+3||!VenueRules.supported(raw[0]))return null;
+        return layout(raw,seed,true,VenueRules.actions(raw[0]));
+    }
+    int actionCount(){return actions.length;}
+    int actionAt(int slot){return slot>=0&&slot<actions.length?actions[slot]:-1;}
+    int slotFor(int action){for(int i=0;i<actions.length;i++)if(actions[i]==action)return i;return -1;}
+    String labelAt(int slot){int action=actionAt(slot);return action<0?"":commercial?VenueRules.label(lot,action):LABEL[action];}
+    private static InteriorPlan layout(int[] raw,int seed,boolean commercial,int[] actions){
+        if(!inside(raw[1],raw[2]))return null;
+        InteriorPlan p=new InteriorPlan(raw,commercial,actions);
         if(!p.walkable(p.entry)||!p.connected())return null;
         int lo=SIDE,hi=-1,top=SIDE,bottom=-1;
         for(int i=0;i<N;i++)if(p.floor(i)){lo=Math.min(lo,i%SIDE);hi=Math.max(hi,i%SIDE);top=Math.min(top,i/SIDE);bottom=Math.max(bottom,i/SIDE);}
@@ -34,7 +49,7 @@ final class InteriorPlan {
         }
         int[][] anchors={{lo,top},{hi,bottom},{hi,top},{lo,bottom},{(lo+hi)/2,(top+bottom)/2}};
         if((seed&1)!=0)for(int[] anchor:anchors)anchor[0]=lo+hi-anchor[0];
-        for(int kind=0;kind<COUNT;kind++){
+        for(int kind=0;kind<p.actionCount();kind++){
             int choice=-1,score=Integer.MAX_VALUE;
             for(int i=0;i<N;i++)if(i!=p.entry&&p.walkable(i)){
                 int s=16*(Math.abs(i%SIDE-anchors[kind][0])+Math.abs(i/SIDE-anchors[kind][1]))+((i^seed)&7);

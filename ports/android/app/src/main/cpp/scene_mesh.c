@@ -1,5 +1,6 @@
 #include "scene_mesh.h"
 #include "mesh_footprint.h"
+#include "venue_footprint.h"
 #include "scene_surface.h"
 #include "park_plan.h"
 #include "window_math.h"
@@ -131,7 +132,7 @@ static float roofy(const BoreFoot*f,int x,int z,int pitch,float y){
     return y+((pitch&4)?250.f:170.f)/256.f*bore_roof_height(f,x,z,pitch&3);
 }
 // Wall tiles have real edge positions; the common wall of a wing is omitted.
-static void wall(Scene*s,const float roof_height[BM_BLK+1][BM_BLK+1],const LotPlan*p,int ix,int iz,int x,int z,int dx,int dz,float base,int floors,Color c,int home,int detail){
+static void wall(Scene*s,const float roof_height[BM_BLK+1][BM_BLK+1],const LotPlan*p,int ix,int iz,int x,int z,int dx,int dz,float base,int floors,Color c,int home,int detail,int venueFront){
     int ax=ix+(dx>0),az=iz+(dz>0),bx=ax+(dz!=0),bz=az+(dx!=0);
     float A=x+ax,B=z+az,X=x+bx,Z=z+bz;
     float f1=height_at(s,x+ax,z+az),f2=height_at(s,x+bx,z+bz);
@@ -139,11 +140,11 @@ static void wall(Scene*s,const float roof_height[BM_BLK+1][BM_BLK+1],const LotPl
     if(base>f1+.02f||base>f2+.02f)
         quad(s,P(A,fminf(f1,base),B),P(X,fminf(f2,base),Z),P(X,base,Z),P(A,base,B),lit(c,.55f));
     quad(s,P(A,base,B),P(X,base,Z),P(X,roof_height[bz][bx],Z),P(A,roof_height[az][ax],B),k);
-    if(!detail)return;
+    int door=(home&&dz&&iz==p->dy&&(ix==p->dx||(p->d2x&&ix==p->d2x)))||(!home&&venueFront&&dz==venueFront&&iz==p->dy&&ix==p->dx);
+    if(!detail&&!door)return;
     // Frames are raised slightly from the solid wall, never coplanar.
     float off=.027f;
     A+=dx*off;X+=dx*off;B+=dz*off;Z+=dz*off;
-    int door=home&&dz&&iz==p->dy&&(ix==p->dx||(p->d2x&&ix==p->d2x));
     float a=A+(X-A)*.16f,b=B+(Z-B)*.16f,x1=A+(X-A)*.84f,z1=B+(Z-B)*.84f;
     for(int level=0;level<floors;level++){
         int isDoor=door&&level==0;
@@ -161,6 +162,8 @@ static void building(Scene*s,const BInfo*b,int bx,int bz,int detail){
     BoreFoot foot={f[0],f[1],f[2],f[3],0,0,0,0};
     if(f[4])foot=(BoreFoot){p.x0,p.y0,p.x1,p.y1,p.wx0,p.wy0,p.wx1,p.wy1};
     int x=bx*BM_BLK,z=bz*BM_BLK;
+    int venueFront=0,doorX=0,doorY=0;
+    if(!f[4]&&bore_venue_supported(b->lot)){venueFront=bore_venue_entry(&foot,p.face,&doorX,&doorY);if(venueFront){p.dx=(u8)doorX;p.dy=(u8)doorY;}}
     int floors=CLAMP(bm_storeys(b),1,6);
     int pitch=-1;
     if(f[4]){
@@ -192,10 +195,10 @@ static void building(Scene*s,const BInfo*b,int bx,int bz,int detail){
         float a=rh[iz][ix],b0=rh[iz][ix+1],d=rh[iz+1][ix],e=rh[iz+1][ix+1];
         Color k=lit(roof,((ix+iz)&1)?.985f:1.f);
         slope(s,P(x+ix,a,z+iz),P(x+ix+1,b0,z+iz),P(x+ix+1,e,z+iz+1),P(x+ix,d,z+iz+1),k);
-        if(bore_foot_edge(&foot,ix,iz,-1,0))wall(s,rh,&p,ix,iz,x,z,-1,0,base,floors,c,f[4],detail);
-        if(bore_foot_edge(&foot,ix,iz,1,0))wall(s,rh,&p,ix,iz,x,z,1,0,base,floors,c,f[4],detail);
-        if(bore_foot_edge(&foot,ix,iz,0,-1))wall(s,rh,&p,ix,iz,x,z,0,-1,base,floors,c,f[4],detail);
-        if(bore_foot_edge(&foot,ix,iz,0,1))wall(s,rh,&p,ix,iz,x,z,0,1,base,floors,c,f[4],detail);
+        if(bore_foot_edge(&foot,ix,iz,-1,0))wall(s,rh,&p,ix,iz,x,z,-1,0,base,floors,c,f[4],detail,venueFront);
+        if(bore_foot_edge(&foot,ix,iz,1,0))wall(s,rh,&p,ix,iz,x,z,1,0,base,floors,c,f[4],detail,venueFront);
+        if(bore_foot_edge(&foot,ix,iz,0,-1))wall(s,rh,&p,ix,iz,x,z,0,-1,base,floors,c,f[4],detail,venueFront);
+        if(bore_foot_edge(&foot,ix,iz,0,1))wall(s,rh,&p,ix,iz,x,z,0,1,base,floors,c,f[4],detail,venueFront);
     }
 
 }

@@ -27,6 +27,7 @@ final class InteriorView extends View {
     }
     void open(InteriorPlan p,int saved){
         cancel();plan=p;at=p.walkable(saved)?saved:p.entry;
+        setContentDescription(p.commercial?"Venue cutaway. Tap a floor tile or service station.":"Home cutaway. Tap a floor tile to walk or furniture to interact.");
         lo=18;hi=-1;top=18;bottom=-1;
         for(int i=0;i<InteriorPlan.N;i++)if(p.floor(i)){lo=Math.min(lo,i%18);hi=Math.max(hi,i%18);top=Math.min(top,i/18);bottom=Math.max(bottom,i/18);}
         invalidate();
@@ -74,7 +75,18 @@ final class InteriorView extends View {
     private void furniture(Canvas c,int kind,int cell){
         float x=cell%18,y=cell/18;
         rect(c,x+.08f,y+.10f,.85f,.85f,0x55312218);
-        switch(kind){
+        switch(plan.actionAt(kind)){
+            case VenueRules.WORK:
+                rect(c,x+.08f,y+.12f,.84f,.66f,0xff9b724e);rect(c,x+.18f,y+.17f,.45f,.30f,0xff32484b);
+                rect(c,x+.23f,y+.21f,.35f,.22f,0xff98c6bf);rect(c,x+.65f,y+.20f,.18f,.38f,0xffe6d7b8);break;
+            case VenueRules.MEAL:
+                rect(c,x+.04f,y+.08f,.92f,.75f,0xff5d7c80);rect(c,x+.12f,y+.16f,.34f,.52f,0xffb9d0ce);
+                rect(c,x+.52f,y+.20f,.36f,.46f,0xffd1a678);rect(c,x+.60f,y+.29f,.20f,.18f,0xfff4e5c2);break;
+            case VenueRules.ACTIVITY:
+                rect(c,x+.09f,y+.10f,.82f,.80f,0xff60799b);rect(c,x+.18f,y+.16f,.64f,.45f,0xffbdd4dd);
+                rect(c,x+.26f,y+.68f,.48f,.14f,0xffd2ba80);break;
+            case VenueRules.MEET:
+                rect(c,x+.20f,y+.13f,.60f,.72f,0xff8b6c4e);rect(c,x+.30f,y+.20f,.40f,.48f,0xffa8c7b9);break;
             case InteriorPlan.BED:
                 rect(c,x+.08f,y+.05f,.78f,.85f,0xff805a43);rect(c,x+.14f,y+.11f,.66f,.73f,0xff82a6a3);
                 rect(c,x+.20f,y+.15f,.54f,.19f,0xfff4e9cf);break;
@@ -87,6 +99,7 @@ final class InteriorView extends View {
             case InteriorPlan.PHONE:
                 rect(c,x+.18f,y+.18f,.64f,.63f,0xffb08b64);rect(c,x+.33f,y+.25f,.32f,.46f,0xff263b40);
                 rect(c,x+.38f,y+.30f,.22f,.22f,0xff8bbdc6);break;
+            case VenueRules.WAIT:
             case InteriorPlan.SOFA:
                 rect(c,x+.08f,y+.11f,.84f,.72f,0xffa9654b);rect(c,x+.17f,y+.23f,.66f,.48f,0xffd89e71);
                 rect(c,x+.08f,y+.11f,.84f,.15f,0xff8b523d);break;
@@ -101,7 +114,7 @@ final class InteriorView extends View {
         left=(getWidth()-tile*(hi-lo+1))/2;upper=(getHeight()-tile*(bottom-top+1))/2;
         for(int i=0;i<InteriorPlan.N;i++)if(plan.floor(i)){
             int x=i%18,y=i/18;paint.setStyle(Paint.Style.FILL);
-            paint.setColor(((x+y)&1)==0?0xffd8c19c:0xffd0b58d);
+            paint.setColor(plan.commercial?(((x+y)&1)==0?0xffb8c4c3:0xffacb8b9):(((x+y)&1)==0?0xffd8c19c:0xffd0b58d));
             c.drawRect(X(x),Y(y),X(x+1)+.25f,Y(y+1)+.25f,paint);
         }
         paint.setStrokeWidth(Math.max(2,tile*.13f));paint.setStrokeCap(Paint.Cap.SQUARE);
@@ -120,7 +133,7 @@ final class InteriorView extends View {
         if(path!=null){
             paint.setColor(0xff688f80);for(int k=index;k<path.length;k++)c.drawCircle(X(path[k]%18+.5f),Y(path[k]/18+.5f),tile*.08f,paint);
         }
-        for(int k=0;k<InteriorPlan.COUNT;k++)furniture(c,k,plan.objects[k]);
+        for(int k=0;k<plan.actionCount();k++)furniture(c,k,plan.objects[k]);
         float px=at%18+.5f,py=at/18+.5f,phase=0;
         if(path!=null){
             float t=Math.min(1f,(SystemClock.uptimeMillis()-started)/(float)STEP_MS);
@@ -136,8 +149,8 @@ final class InteriorView extends View {
         paint.setColor(0xffdfb38e);c.drawCircle(cx,cy-tile*.25f,tile*.16f,paint);
         paint.setColor(0xff4d392c);c.drawArc(cx-tile*.17f,cy-tile*.42f,cx+tile*.17f,cy-tile*.11f,180,180,true,paint);
         if(tile>=27){
-            for(int k=0;k<InteriorPlan.COUNT;k++){
-                int p=plan.objects[k];text(c,InteriorPlan.LABEL[k],X(p%18+.5f),Y(p/18+.98f),Math.min(tile*.22f,14),0xff332f2b);
+            for(int k=0;k<plan.actionCount();k++){
+                int p=plan.objects[k];text(c,plan.labelAt(k),X(p%18+.5f),Y(p/18+.98f),Math.min(tile*.22f,14),0xff332f2b);
             }
         }
     }

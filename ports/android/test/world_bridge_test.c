@@ -6,6 +6,7 @@
 #include "../app/src/main/cpp/world_bridge.h"
 #include "../app/src/main/cpp/window_math.h"
 #include "../app/src/main/cpp/mesh_footprint.h"
+#include "../app/src/main/cpp/venue_footprint.h"
 #include "../app/src/main/cpp/scene_surface.h"
 
 int main(void){
@@ -99,6 +100,26 @@ int main(void){
         }
     }
     assert(homes>20&&not_homes>20);
+    int venues=0;
+    for(int seed=0;seed<3;seed++){
+        uint32_t c=bore_android_init((uint32_t)(1234+seed*313));
+        int cx=(int)(c&65535),cy=(int)(c>>16);
+        for(int y=cy-8;y<=cy+8;y++)for(int x=cx-8;x<=cx+8;x++){
+            if(x<0||y<0||x>=BM_N||y>=BM_N)continue;
+            BInfo b;bm_block(x,y,&b);u8 f[5];LotPlan p={0};
+            int has=b.terrain!=BT_SEA&&bore_venue_supported(b.lot)&&bm_lot_foot(x,y,&b,f,&p);
+            int yes=bore_android_place_interior(x,y,room,BORE_ANDROID_INTERIOR_FIELDS);
+            assert(yes==has);if(!yes)continue;
+            BoreFoot foot={f[0],f[1],f[2],f[3],0,0,0,0};
+            int ex=-1,ey=-1,front=bore_venue_entry(&foot,p.face,&ex,&ey);
+            assert(front&&room[0]==b.lot&&room[1]==ex&&room[2]==ey);
+            assert(!bore_foot_has(&foot,ex,ey+front));
+            for(int j=0;j<18;j++)for(int i=0;i<18;i++)assert(room[3+j*18+i]==bore_foot_has(&foot,i,j));
+            venues++;
+        }
+    }
+    assert(venues>20);assert(!bore_android_place_interior(-1,0,room,BORE_ANDROID_INTERIOR_FIELDS));
+    printf("Android commercial footprint/door alignment: %d venues PASS\\n",venues);
     int mask[BORE_ANDROID_WALK_FIELDS];
     uint32_t cap=bore_android_init(1234u);
     int wx=(int)(cap&65535),wy=(int)(cap>>16);

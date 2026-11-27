@@ -98,6 +98,36 @@ def main():
     for k in ("tileX","tileY","lifeX","lifeY","minute","funds"):
         assert restored[k]==walked[k],(k,restored,walked)
     print("Android real UI outdoor step and relaunch PASS",restored)
+    text_tap("Find places")
+    text_tap("Food and groceries")
+    label=tap(lambda s:"blocks away" in s,"food venue listing")
+    distance=int(re.search(r"(\d+) blocks away",label).group(1))
+    if distance:
+        text_tap("Travel here")
+        wait_state(lambda s:s.get("trips",0)>restored["trips"])
+        wait_view(False)
+    text_tap("Enter")
+    entered=wait_state(lambda s:s.get("insideLot",-1) in (6,7,10,15,21,25,30,31) and s.get("roomCell",-1)>=0)
+    assert entered["funds"]==restored["funds"],entered
+    text_tap("Order meal")
+    served=wait_state(lambda s:s.get("funds",0)==entered["funds"]-8)
+    assert served["minute"]==(entered["minute"]+30)%1440 and served["food"]>=entered["food"],served
+    (OUT/"life-venue-meal.png").write_bytes(adb("exec-out","screencap","-p"))
+    adb("shell","input","keyevent","3")
+    adb("shell","am","force-stop",PACKAGE)
+    adb("shell","am","start","-W","-n",PACKAGE+"/.MainActivity")
+    deadline=time.monotonic()+35
+    while time.monotonic()<deadline:
+        if any(n.get("text")=="Exit building" for n in nodes()):break
+        time.sleep(.3)
+    else:raise AssertionError("Commercial interior not restored")
+    reloaded=state()
+    for k in ("insideLot","insideX","insideY","roomCell","funds","minute"):
+        assert reloaded[k]==served[k],(k,reloaded,served)
+    text_tap("Exit building")
+    wait_state(lambda s:s.get("roomCell",0)==-1)
+    wait_view(False)
+    print("Android real UI venue counter service and reload PASS",served)
     print("Android real UI rent/travel/sleep/cooking/relaunch PASS",loaded)
 
 if __name__=="__main__":
