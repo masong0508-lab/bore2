@@ -450,7 +450,7 @@ public final class MainActivity extends Activity {
     }
     private void showFinder(){
         new AlertDialog.Builder(this).setTitle("Find nearby places")
-            .setItems(new String[]{"Homes to rent","Workplaces","Food and groceries","Local venues","Tall buildings"},(d,i)->findPlaces(i))
+            .setItems(new String[]{"Homes to rent","Workplaces","Food and groceries","Local venues","Tall buildings","Highlands to explore"},(d,i)->findPlaces(i))
             .setNegativeButton("Close",null).show();
     }
     private void findPlaces(int kind){
@@ -461,7 +461,7 @@ public final class MainActivity extends Activity {
             int x=LifeRules.x(found[i]),y=LifeRules.y(found[i]);
             labels[i]=NativeWorld.describe(x,y,weekday).split("\\n",2)[0]+(kind==LifeRules.TALL?" · "+NativeWorld.storeys(x,y)+" floors":"")+" · "+LifeRules.distance(lifeX,lifeY,x,y)+" blocks away";
         }
-        new AlertDialog.Builder(this).setTitle(kind==LifeRules.HOMES?"Homes to rent":kind==LifeRules.WORK?"Workplaces":kind==LifeRules.FOOD?"Food nearby":kind==LifeRules.TALL?"Tall buildings":"Local venues")
+        new AlertDialog.Builder(this).setTitle(kind==LifeRules.HOMES?"Homes to rent":kind==LifeRules.WORK?"Workplaces":kind==LifeRules.FOOD?"Food nearby":kind==LifeRules.TALL?"Tall buildings":kind==LifeRules.HIGHLANDS?"Highlands to explore":"Local venues")
             .setItems(labels,(d,i)->{selectedX=LifeRules.x(found[i]);selectedY=LifeRules.y(found[i]);updateDetails();notice("Selected — tap Travel here");})
             .setNegativeButton("Close",null).show();
     }

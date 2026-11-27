@@ -5,7 +5,7 @@ import java.util.Comparator;
 
 /** Platform-neutral mobile life rules; lot IDs match src/bigmap.h. */
 final class LifeRules {
-    static final int HOMES=0, WORK=1, FOOD=2, VENUES=3, TALL=4;
+    static final int HOMES=0, WORK=1, FOOD=2, VENUES=3, TALL=4, HIGHLANDS=5;
     static final int LEASE=75, DAILY_RENT=12, LIMIT=1_000_000;
     static boolean isHome(int lot){return lot>=1&&lot<=5;}
     static boolean isWork(int lot){switch(lot){case 6:case 7:case 8:case 9:case 14:case 20:case 21:case 25:case 27:case 29:case 30:case 31:return true;default:return false;}}
@@ -40,7 +40,7 @@ final class LifeRules {
         ArrayList<Integer> candidates=new ArrayList<>();
         for(int row=0;row<side;row++)for(int col=0;col<side;col++){
             int code=tiles[row*side+col],x=cx-radius+col,y=cy-radius+row;
-            if(inside(x,y)&&(code&7)!=0&&(kind==TALL?(((code>>>3)&63)==14||((code>>>3)&63)==15)&&((code>>>17)&7)>1:matches((code>>>3)&63,kind)))candidates.add(pack(x,y));
+            if(inside(x,y)&&(code&7)!=0&&(kind==TALL?(((code>>>3)&63)==14||((code>>>3)&63)==15)&&((code>>>17)&7)>1:kind==HIGHLANDS?((code&7)==5&&((code>>>3)&63)==0):matches((code>>>3)&63,kind)))candidates.add(pack(x,y));
         }
         candidates.sort(Comparator.comparingInt((Integer p)->distance(px,py,x(p),y(p))).thenComparingInt(p->p));
         int[] out=new int[Math.min(max,candidates.size())];for(int i=0;i<out.length;i++)out[i]=candidates.get(i);

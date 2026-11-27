@@ -4,7 +4,7 @@ name: build-ds
 on:
   workflow_dispatch:
   push:
-    paths: ["ports/dsi/**", "tools/dsbuild/**", "tools/dsemu/**", "src/bigmap.*", "src/park_plan.h", "src/neighborhood_life.h", "test/neighborhood_life_test.c", "src/native_life.h", "test/native_life_test.c", "src/common.h", "src/frame_render_policy.h", "test/frame_render_policy_test.c", "src/roof_profile.h", "test/roof_profile_test.c", "assets/dsmusic.bin", "assets/SONGS.BIN", "assets/songs.inc", "src/band_roles.inc", "src/scene_music.h", "src/living_calendar.h", "test/living_calendar_test.c", "src/outings.h", "src/outing_links.h", "test/outing_links_test.c", "src/world_access.h", "test/world_access_test.c", "test/outings_test.c", "src/audio_slice.h", "test/audio_slice_test.c", "test/scene_music_test.c", "tools/neighborhood_music.py", "tools/living_score.py", "test/living_score_test.py", "tools/content_spu.c", "tools/dsmusic/**", "src/social_activity.h", "test/social_activity_test.c", ".github/workflows/build-ds.yml"]
+    paths: ["ports/dsi/**", "tools/dsbuild/**", "tools/dsemu/**", "src/bigmap.*", "src/landscape.h", "test/landscape_test.c", "src/park_plan.h", "src/neighborhood_life.h", "test/neighborhood_life_test.c", "src/native_life.h", "test/native_life_test.c", "src/common.h", "src/frame_render_policy.h", "test/frame_render_policy_test.c", "src/roof_profile.h", "test/roof_profile_test.c", "assets/dsmusic.bin", "assets/SONGS.BIN", "assets/songs.inc", "src/band_roles.inc", "src/scene_music.h", "src/living_calendar.h", "test/living_calendar_test.c", "src/outings.h", "src/outing_links.h", "test/outing_links_test.c", "src/world_access.h", "test/world_access_test.c", "test/outings_test.c", "src/audio_slice.h", "test/audio_slice_test.c", "test/scene_music_test.c", "tools/neighborhood_music.py", "tools/living_score.py", "test/living_score_test.py", "tools/content_spu.c", "tools/dsmusic/**", "src/social_activity.h", "test/social_activity_test.c", ".github/workflows/build-ds.yml"]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Verify continuous terrain, flat lot pads and sculpt falloff
+        run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/landscape_test.c -o /tmp/landscape_test && /tmp/landscape_test
       - name: Verify contextual resident dialogue and bounded activity poses
         run: cc -std=c99 -Wall -Wextra -Werror -DARM9 -Isrc test/native_life_test.c -o /tmp/native_life && /tmp/native_life
       - name: Verify classic music rotation and hidden archive indexing

@@ -1708,30 +1708,12 @@ void world_nc_quad(const SVECTOR *a, const SVECTOR *b, const SVECTOR *c, const S
     nc_quad(a,b,c,d,col,tex,tpage,0,uv,cull); // nc_quad already applies the GTE's lift
 }
 // ---- the hills: the ground's height (units up) at a tile corner, from the land's block heights; towns are level ----
-static int gh_bx = -99999, gh_by, gh_h[4], gh_t[4];
 int world_hills_on(void) {
 #if EXP==1
     return 0;
 #endif
     return world_zone == ZONE_CITY && world_wbx >= 0 && world_lvl == 0; }
-static int gh_raw0(int ax, int ay) {   // a tile corner (world tiles; 0 where nothing rises). A town's lots stand on level pads, the streets slope between them; wild land rolls smoothly
-    int bx = ax / BM_BLK, by = ay / BM_BLK, lx = ax - bx * BM_BLK, ly = ay - by * BM_BLK;
-    if (bx != gh_bx || by != gh_by) {   // the block, its west, north and north-west neighbours (the street strip blends their pads)
-        gh_bx = bx; gh_by = by;
-        gh_h[0] = bm_hill_t(bx - 1, by - 1, &gh_t[0]); gh_h[1] = bm_hill_t(bx, by - 1, &gh_t[1]); gh_h[2] = bm_hill_t(bx - 1, by, &gh_t[2]); gh_h[3] = bm_hill_t(bx, by, &gh_t[3]);
-    }
-    if (gh_t[3]) {   // in a town block: the lot (tiles 5 on) is a level pad; the street strip along its north and west edges slopes down to the neighbours' pads
-        int u = lx < BM_LOT0 ? lx : BM_LOT0, v = ly < BM_LOT0 ? ly : BM_LOT0;
-        int top = gh_h[0] * (BM_LOT0 - u) + gh_h[1] * u, bot = gh_h[2] * (BM_LOT0 - u) + gh_h[3] * u;
-        return (top * (BM_LOT0 - v) + bot * v) / (BM_LOT0 * BM_LOT0);
-    }
-    // wild land: the corner's own square between four block middles (a block middle is its tile 9)
-    int px = lx - BM_BLK / 2, py = ly - BM_BLK / 2, ex = px < 0 ? 0 : 1, ey = py < 0 ? 0 : 1;   // (which side of its block's middle: the other middle is in the next block over)
-    int fx = px < 0 ? px + BM_BLK : px, fy = py < 0 ? py + BM_BLK : py;
-    int h00 = bm_hill(bx - 1 + ex, by - 1 + ey), h10 = bm_hill(bx + ex, by - 1 + ey), h01 = bm_hill(bx - 1 + ex, by + ey), h11 = bm_hill(bx + ex, by + ey);
-    int top = h00 * (BM_BLK - fx) + h10 * fx, bot = h01 * (BM_BLK - fx) + h11 * fx;
-    return (top * (BM_BLK - fy) + bot * fy) / (BM_BLK * BM_BLK);
-}
+static int gh_raw0(int ax,int ay){return bm_ground_corner(ax,ay);}
 // The land far past the window (the far view's ground quads, its roads, buildings and trees) asks for the same few hundred corners every
 // frame, each a stack of noise: kept in a small table by the corner's world tile (the land never changes unless it is edited or remade).
 #define GHF_N 1024
@@ -1767,7 +1749,7 @@ static inline int gh_c(int X, int Y) {   // (inline: asked for a thousand times 
 }
 int world_gh_c(int X, int Y) { return gh_c(X, Y); }
 int world_gh_epoch;   // (bumped when the land is different: what keeps heights elsewhere keys on it)
-void world_gh_reset(void) { gh_bx = -99999; gh_cok = 0; ghf_ok = 0; world_gh_epoch++; }   // (a new city: the land is different)
+void world_gh_reset(void) { gh_cok = 0; ghf_ok = 0; world_gh_epoch++; }   // (a new city: the land is different)
 int world_gh(int x, int z);
 int world_gh_lot(int x, int z) {   // world_gh, quicker for a point well inside a town's lot (a far building): the lot is a level pad at its block's height
     if (world_zone != ZONE_CITY || world_wbx < 0) return 0;

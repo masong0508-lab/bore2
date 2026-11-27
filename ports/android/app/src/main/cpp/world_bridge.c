@@ -52,6 +52,7 @@ int bore_android_describe(int x,int y,int weekday,char *out,unsigned cap){
     BInfo b;bm_block(x,y,&b);
     char name[64];
     bm_place_name(b.lot,b.h,name);
+    if(b.lot==LOT_WILD&&b.terrain!=BT_SEA){int h=bm_hill(x,y);if(b.terrain==BT_ROCKY)bsnprintf(name,sizeof name,"Highland ridge (%d tiles above sea)",h/TILE);else if(h>=TILE*3)bsnprintf(name,sizeof name,"Rolling countryside (%d tiles above sea)",h/TILE);}
     const Settle *s=bm_set(b.set);
     char district[24],where[96];
     const char *d=bm_nb_name(x,y,district);

@@ -5,6 +5,7 @@
 // A new life rolls a new seed, so every save is a new world.
 #pragma once
 #include "common.h"
+#include "landscape.h"
 
 #define BM_N    1024                  // blocks a side
 #define BM_BLK  18                    // tiles a block
@@ -57,7 +58,10 @@ enum { BO_NONE = 0, BO_GROUND = 1, BO_LOT = 2, BO_ROAD = 4, BO_TERR = 8, BO_ELEV
 void bm_ovr_clear(void);
 int  bm_ovr_set(int bx, int by, int what, int val);   // 0: the table is full
 void bm_ovr_unset(int bx, int by, int what);
+int  bm_ovr_sculpt(int bx,int by,int radius,int direction); // soft height brush, radius 0..2
 int  bm_ovr_delta(int bx, int by);   // the land raised (+) or lowered (-) there, in steps
+void bm_land_patch(int bx,int by,BoreLandPatch *out);
+int  bm_ground_corner(int ax,int ay); // absolute tile corner, shared physical surface
 int  bm_hill(int bx, int by);
 int  bm_hill_t(int bx, int by, int *town);   // ... and whether the block is built on (its lot is a level pad)        // the ground a block's middle stands at, in world units (the hills you walk on)
 int  bm_height(int bx, int by);      // the ground there for the 3D model: 0 sea level, up in elevation points (hills)

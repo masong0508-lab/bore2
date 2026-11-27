@@ -2,7 +2,7 @@ name: build-android
 on:
   workflow_dispatch:
   push:
-    paths: ["ports/android/**", "src/bigmap.*", "src/park_plan.h", "src/neighborhood_life.h", "test/neighborhood_life_test.c", "src/common.h", "src/outings.h", "src/living_calendar.h", "src/scene_music.h", "ports/host/shim/**", ".github/workflows/build-android.yml"]
+    paths: ["ports/android/**", "src/bigmap.*", "src/landscape.h", "test/landscape_test.c", "src/park_plan.h", "src/neighborhood_life.h", "test/neighborhood_life_test.c", "src/common.h", "src/outings.h", "src/living_calendar.h", "src/scene_music.h", "ports/host/shim/**", ".github/workflows/build-android.yml"]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -12,6 +12,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - name: Verify continuous terrain, flat lot pads and sculpt falloff
+        run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/landscape_test.c -o /tmp/landscape_test && /tmp/landscape_test
       - name: Verify window bounds and tile encoding
         run: cc -std=c99 -Wall -Wextra -Werror ports/android/test/window_math_test.c -o /tmp/window_math && /tmp/window_math
       - name: Exercise actual BORE 2 world generator through Android bridge

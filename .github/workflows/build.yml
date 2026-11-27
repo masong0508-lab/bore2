@@ -10,6 +10,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Verify continuous terrain, flat lot pads and sculpt falloff
+        run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/landscape_test.c -o /tmp/landscape_test && /tmp/landscape_test
       - name: Verify contextual resident dialogue and bounded activity poses
         run: cc -std=c99 -Wall -Wextra -Werror -Isrc test/native_life_test.c -o /tmp/native_life && /tmp/native_life
       - name: Verify classic music rotation and hidden archive indexing

@@ -5541,7 +5541,16 @@ static int ne_cell(int bx, int by) {   // the tool on one block: 0 if the table 
 }
 static void ne_use(void) {
     int n = ne_brush, ok = 1;
-    for (int y = -(n / 2); y <= n / 2; y++) for (int x = -(n / 2); x <= n / 2; x++) { int bx = ne_cx + x, by = ne_cy + y; if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) continue; ok &= ne_cell(bx, by); }
+    if(ne_tool==NT_RAISE||ne_tool==NT_LOWER){
+        for(int pass=0;pass<2;pass++){
+            if(pass)ok=bm_ovr_sculpt(ne_cx,ne_cy,n/2,ne_tool==NT_RAISE?1:-1);
+            for(int y=-n/2;y<=n/2;y++)for(int x=-n/2;x<=n/2;x++){
+                int bx=ne_cx+x,by=ne_cy+y;
+                if(!ne_in(bx,by)||bx<0||by<0||bx>=BM_N||by>=BM_N)continue;
+                BInfo b;bm_block(bx,by,&b);ne_stat(&b,pass?1:-1);
+            }
+        }
+    }else for (int y = -(n / 2); y <= n / 2; y++) for (int x = -(n / 2); x <= n / 2; x++) { int bx = ne_cx + x, by = ne_cy + y; if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) continue; ok &= ne_cell(bx, by); }
     if (!ok) { ne_msg = "TOO MANY CHANGES. UNDO SOME FIRST"; ne_msgt = 100; audio_voice(VOICE_NAH); }
     ne_dirty = 1; ne_changed = 1;
 }

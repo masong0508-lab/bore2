@@ -14,7 +14,8 @@ typedef struct {float x,y,z;} Point;
 typedef struct {float r,g,b;} Color;
 #define HILL_SIDE (2*BORE_SCENE_RADIUS+4)
 typedef struct {
-    BoreMesh *m; int ox,oz,bx,bz,hx,hz,hn;
+    BoreMesh *m; int ox,oz,bx,bz,hx,hz,hn,patch_x,patch_z,patch_valid;
+    BoreLandPatch patch;
     float ground[BM_BLK+1][BM_BLK+1];
     // Rolling bottom boundary of the preceding block row; the right edge
     // of ground itself supplies the next block's left edge.
@@ -80,19 +81,18 @@ static int scene_hill(Scene*s,int bx,int bz,int*town){
 // This follows world.c gh_raw0 rather than inventing a second elevation map.
 static float height_raw(Scene*s,int ax,int az){
     s->m->height_samples++;
-    int bx=ax/BM_BLK,bz=az/BM_BLK,lx=ax%BM_BLK,lz=az%BM_BLK,town=0;
-    int h=scene_hill(s,bx,bz,&town);
-    if(town){
-        int u=MIN(lx,BM_LOT0),v=MIN(lz,BM_LOT0),n=BM_LOT0;
-        int top=scene_hill(s,bx-1,bz-1,0)*(n-u)+scene_hill(s,bx,bz-1,0)*u;
-        int bot=scene_hill(s,bx-1,bz,0)*(n-u)+h*u;
-        return (top*(n-v)+bot*v)/(float)(n*n*TILE);
+    int bx=ax/BM_BLK,bz=az/BM_BLK,lx=ax%BM_BLK,lz=az%BM_BLK;
+    if(bx==BM_N){bx--;lx=BM_BLK;}
+    if(bz==BM_N){bz--;lz=BM_BLK;}
+    if(!s->patch_valid||bx!=s->patch_x||bz!=s->patch_z){
+        uint16_t h[9];
+        for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
+            int pad=0,z=scene_hill(s,bx+i,bz+j,&pad);
+            h[(j+1)*3+i+1]=(uint16_t)(z|(pad?BORE_LAND_PAD:0));
+        }
+        bore_land_build(&s->patch,h);s->patch_valid=1;s->patch_x=bx;s->patch_z=bz;
     }
-    int px=lx-BM_BLK/2,pz=lz-BM_BLK/2,ex=px>=0,ez=pz>=0;
-    int u=px<0?px+BM_BLK:px,v=pz<0?pz+BM_BLK:pz,n=BM_BLK;
-    int top=scene_hill(s,bx-1+ex,bz-1+ez,0)*(n-u)+scene_hill(s,bx+ex,bz-1+ez,0)*u;
-    int bot=scene_hill(s,bx-1+ex,bz+ez,0)*(n-u)+scene_hill(s,bx+ex,bz+ez,0)*u;
-    return (top*(n-v)+bot*v)/(float)(n*n*TILE);
+    return bore_land_sample(&s->patch,lx,lz)/(float)TILE;
 }
 static float height_at(Scene*s,int x,int z){
     int dx=x-s->bx,dz=z-s->bz;

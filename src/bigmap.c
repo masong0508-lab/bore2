@@ -43,7 +43,30 @@ int bm_ovr_set(int bx, int by, int what, int val) {   // what: BO_ (BO_NONE: und
     return 1;
 }
 void bm_ovr_unset(int bx, int by, int what) { bm_hill_reset(); int i = ov_find(bx, by, 0); if (i >= 0) ov[i].a &= ~((u32)what << 20); }   // take one kind of change back off a block
-int bm_ovr_delta(int bx, int by) { int i = ov_find(bx, by, 0); return i >= 0 && (OV_F(&ov[i]) & BO_ELEV) ? OV_D(&ov[i]) : 0; }
+int bm_ovr_delta(int bx, int by) { if(bx<0||by<0||bx>=BM_N||by>=BM_N)return 0;int i = ov_find(bx, by, 0); return i >= 0 && (OV_F(&ov[i]) & BO_ELEV) ? OV_D(&ov[i]) : 0; }
+/* Soft brush: reserve every required slot before changing anything. Keep
+ * the existing compact saved elevation values and invalidate caches once. */
+int bm_ovr_sculpt(int bx,int by,int radius,int direction){
+    if(bx<0||by<0||bx>=BM_N||by>=BM_N||radius<0||radius>2||(direction!=1&&direction!=-1))return 0;
+    int xs[25],ys[25],vals[25],n=0,need=0;
+    for(int dy=-radius;dy<=radius;dy++)for(int dx=-radius;dx<=radius;dx++){
+        int x=bx+dx,y=by+dy,amount=bore_land_brush_delta(dx,dy,radius);
+        if(!amount||x<0||y<0||x>=BM_N||y>=BM_N||(x==BM_N-1&&y==BM_N-1))continue;
+        int i=ov_find(x,y,0),old=i>=0&&(OV_F(&ov[i])&BO_ELEV)?OV_D(&ov[i]):0;
+        int next=CLAMP(old+direction*amount,-8,7);
+        if(next==old)continue;
+        xs[n]=x;ys[n]=y;vals[n++]=next;if(i<0)need++;
+    }
+    if(ov_n+need>OV_SLOTS*7/10)return 0;
+    for(int k=0;k<n;k++){
+        int i=ov_find(xs[k],ys[k],1);if(i<0)return 0;
+        OvE *e=&ov[i];
+        e->a=(e->a&~((u32)BO_GROUND<<20))|((u32)BO_ELEV<<20);
+        e->b=(u16)((e->b&~(15u<<12))|((u32)(vals[k]&15)<<12));
+    }
+    if(n)bm_hill_reset();
+    return 1;
+}
 int bm_ovr_n(void) { int n = 0; for (int i = 0; i < OV_SLOTS; i++) if (OV_KEY(&ov[i]) && OV_F(&ov[i])) n++; return n; }
 int bm_ovr_next(int *it, int *bx, int *by, int *f, u8 *v) {   // walk the changes: 1 while there is one
     for (; *it < OV_SLOTS; (*it)++) { const OvE *e = &ov[*it]; if (!OV_KEY(e) || !OV_F(e)) continue;
@@ -56,17 +79,25 @@ static Settle sets[NSET_MAX]; static int nset;
 typedef struct { s16 x, y, h; u8 town; } HillC;
 #define HC_N 128
 static HillC hcache[HC_N];
+static int land_patch_x=-99999,land_patch_y;
+static BoreLandPatch land_patch_cache;
 static int hg_cx = -99999;   // (the block-height table's middle: see bm_hill_center)
 void world_gh_reset(void);
 int bm_edit_stamp;   // (counts every change to the big map: a new world, the neighborhood editor; the far view's road table is rebuilt when it moves)
-void bm_hill_reset(void) { memset(hcache, 0x7F, sizeof hcache); hg_cx = -99999; world_gh_reset(); bm_edit_stamp++; }   // (world.c keeps the heights it worked out from these: they go too)
-static int hill_raw(int bx, int by) {
-    if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return 0;
-    if (bm_terrain(bx, by) == BT_SEA) return 0;
-    int base = bm_height(bx, by) - 9; if (base <= 0) return 0;
-    static const u8 K[5] = { 0, 6, 11, 16, 22 };   // HILLS: FLAT .. MOUNTAINS: how steep the land climbs
-    int v = base * K[bm_hills % 5]; if (bm_hills >= 3 && bm_terrain(bx, by) == BT_ROCKY) v += v / 2;   // (mountains: the rock climbs in cliffs)
-    return MIN(v, 4800);
+void bm_hill_reset(void) { memset(hcache, 0x7F, sizeof hcache); hg_cx = -99999; land_patch_x=-99999; world_gh_reset(); bm_edit_stamp++; }   // (world.c keeps the heights it worked out from these: they go too)
+static int elev(int bx,int by);
+static int hill_raw(int bx,int by){
+    if(bx<0||by<0||bx>=BM_N||by>=BM_N||bm_terrain(bx,by)==BT_SEA)return 0;
+    return bore_land_relief(elev(bx,by)-104,bm_hills);
+}
+static int hill_pad(int bx,int by,int h){
+    if(!h||bx<0||by<0||bx>=BM_N||by>=BM_N)return 0;
+    if(ov_live&&ov_n){
+        int i=ov_find(bx,by,0);
+        if(i>=0&&(OV_F(&ov[i])&BO_TERR))return OV_S(&ov[i])!=63;
+        if(i>=0&&(OV_F(&ov[i])&BO_LOT)&&OV_L(&ov[i])!=LOT_WILD)return 1;
+    }
+    return bm_set_at(bx,by)!=255;
 }
 // Round the eye, every block's height is kept in a square table (worked out the first time it is asked for): the far view asks for
 // thousands a frame as the view sweeps, each a stack of noise. 2 MB: 49 x 49 blocks (900 m across); 8 MB: 129 x 129 (2.5 km).
@@ -82,15 +113,33 @@ int bm_hill_t(int bx, int by, int *town) {   // a block's height (units) at its 
     { int i = bx - hg_cx + hg_r, j = by - hg_cy + hg_r;
       if (hg_cx != -99999 && (unsigned)i < (unsigned)hg_w && (unsigned)j < (unsigned)hg_w) {
           u16 *g = &hg[j * hg_w + i];
-          if (*g == HG_NONE) { int h = hill_raw(bx, by), t = bx >= 0 && by >= 0 && bx < BM_N && by < BM_N && bm_set_at(bx, by) != 255 && h > 0; *g = (u16)(h | t << 15); { extern int dbg_miss[4]; dbg_miss[1]++; } }
+          if (*g == HG_NONE) { int h = hill_raw(bx, by), t = hill_pad(bx,by,h); *g = (u16)(h | t << 15); { extern int dbg_miss[4]; dbg_miss[1]++; } }
           if (town) *town = *g >> 15;
           return *g & 0x7fff; } }
     HillC *c = &hcache[(((u32)bx * 0x9E3779B1u) ^ ((u32)by * 0x85EBCA6Bu)) >> 25];
-    if (c->x != bx || c->y != by) { { extern int dbg_miss[4]; dbg_miss[1]++; } c->x = (s16)bx; c->y = (s16)by; c->h = (s16)hill_raw(bx, by); c->town = (u8)(bx >= 0 && by >= 0 && bx < BM_N && by < BM_N && bm_set_at(bx, by) != 255 && c->h > 0); }
+    if (c->x != bx || c->y != by) { { extern int dbg_miss[4]; dbg_miss[1]++; } c->x = (s16)bx; c->y = (s16)by; c->h = (s16)hill_raw(bx, by); c->town = (u8)hill_pad(bx,by,c->h); }
     if (town) *town = c->town;
     return c->h;
 }
 int bm_hill(int bx, int by) { return bm_hill_t(bx, by, 0); }
+void bm_land_patch(int bx,int by,BoreLandPatch *out){
+    uint16_t h[9];
+    for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+        int pad=0,height=bm_hill_t(bx+x,by+y,&pad);
+        h[(y+1)*3+x+1]=(uint16_t)(height|(pad?BORE_LAND_PAD:0));
+    }
+    bore_land_build(out,h);
+}
+int bm_ground_corner(int ax,int ay){
+    if(ax<0||ay<0||ax>BM_N*BM_BLK||ay>BM_N*BM_BLK)return 0;
+    int bx=ax/BM_BLK,by=ay/BM_BLK,lx=ax%BM_BLK,ly=ay%BM_BLK;
+    if(bx==BM_N){bx--;lx=BM_BLK;}
+    if(by==BM_N){by--;ly=BM_BLK;}
+    if(bx!=land_patch_x||by!=land_patch_y){
+        bm_land_patch(bx,by,&land_patch_cache);land_patch_x=bx;land_patch_y=by;
+    }
+    return bore_land_sample(&land_patch_cache,lx,ly);
+}
 
 static char ren[NSET_MAX][18];                     // towns the player renamed ("": as made); kept across bm_new, so a save can set them first
 typedef struct { u16 c, a, b; u8 vert; } Seg;    // a highway along block edges: row (or column) c, from a to b
