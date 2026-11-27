@@ -17,6 +17,8 @@ on:
       - "src/sim.h"
       - "src/vehicle_stability.h"
       - "src/ground_patch.h"
+      - "src/arrival_plan.h"
+      - "src/world_surface.h"
       - "src/items.c"
       - "src/bigmap.c"
       - "test/ps1_stream_motion*"

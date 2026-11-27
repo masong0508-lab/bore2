@@ -268,6 +268,14 @@ int main(int argc, char **argv) {
         assert(traffic_vehicle_blocked(VEH_VAN,x,z,yaw));
         traffic_unpark(VEH_SEDAN);
         assert(!traffic_vehicle_blocked(VEH_VAN,x,z,yaw));
+        /* A save made during a ride must preserve its absolute parked
+         * location without dismounting or altering the live car. */
+        sims[player].x=x;sims[player].z=z;sims[player].yaw=yaw;
+        veh_on=VEH_SEDAN+1;Park saved=park_for_save(VEH_SEDAN);
+        assert(saved.on&&saved.x==bx_()*TILE+x&&saved.y==by_()*TILE-z&&saved.yaw==yaw);
+        assert(!traffic_parked(VEH_SEDAN)&&veh_on==VEH_SEDAN+1);
+        world_zone=ZONE_HOME;assert(!park_for_save(VEH_SEDAN).on);
+        world_zone=ZONE_CITY;veh_on=0;
         /* Exercise the real traffic_draw path with more candidates than
          * the render cap: the nearest car must not vanish in a high slot. */
         bm_gen=6;

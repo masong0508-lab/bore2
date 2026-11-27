@@ -62,7 +62,8 @@ public final class MainActivity extends Activity {
     private LinearLayout walkControls;
     private int tileX,tileY,walkIndex,walkDone;
     private int[] outdoorRoute;
-    private OutdoorPath outdoorMap;
+    private OutdoorPath outdoorMap,cachedOutdoorMap;
+    private int cachedOutdoorX=-1,cachedOutdoorY=-1;
     private final Runnable outdoorTick=this::stepOutdoor;
     private static final int WALK_MS=160;
     private final Handler travelHandler=new Handler(Looper.getMainLooper());
@@ -254,6 +255,7 @@ public final class MainActivity extends Activity {
         b.setOnClickListener(v->{if(travelRoute!=null&&b!=travelButton){notice("Finish or cancel your trip first");return;}if(inInterior){notice("Use a station or leave the building first");return;}if(walkMode&&b!=walkButton){if(outdoorRoute!=null){notice("Finish or stop walking first");return;}endWalkMode(false);}action.run();});return b;
     }
     private void resetNative(){
+        cachedOutdoorMap=null;cachedOutdoorX=cachedOutdoorY=-1;
         int center=NativeWorld.initGeneration(seed,generation);capitalX=center&65535;capitalY=center>>>16;
     }
     private int clampCenter(int x){return Math.max(radius,Math.min(MAP_SIZE-radius-1,x));}
@@ -391,12 +393,14 @@ public final class MainActivity extends Activity {
         Button b=new Button(this);b.setText(label);b.setTextSize(12);b.setAllCaps(false);
         b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(0,0,0,0);
         walkControls.addView(b,new LinearLayout.LayoutParams(0,-1,1));
-        b.setOnClickListener(v->{if(walkMode&&outdoorRoute==null)walkTo(tileX+dx,tileY+dy);});
+        b.setOnClickListener(v->{if(walkMode&&outdoorRoute==null)walkTo(tileX+dx,tileY+dy,true);});
     }
     private void resetOutdoorPosition(){tileX=lifeX*18+2;tileY=lifeY*18+2;}
     private OutdoorPath makeOutdoorMap(){
         int bx=Math.max(1,Math.min(1022,lifeX)),by=Math.max(1,Math.min(1022,lifeY));
-        return OutdoorPath.create((bx-1)*18,(by-1)*18,NativeWorld.walkMask(bx,by),NativeWorld.walkHeights(bx,by));
+        if(cachedOutdoorMap!=null&&cachedOutdoorX==bx&&cachedOutdoorY==by)return cachedOutdoorMap;
+        cachedOutdoorMap=OutdoorPath.create((bx-1)*18,(by-1)*18,NativeWorld.walkMask(bx,by),NativeWorld.walkHeights(bx,by));
+        cachedOutdoorX=bx;cachedOutdoorY=by;return cachedOutdoorMap;
     }
     private void toggleWalk(){
         if(walkMode){endWalkMode(true);return;}
@@ -407,11 +411,13 @@ public final class MainActivity extends Activity {
         walkMode=true;in3d=true;cx=lifeX;cy=lifeY;selectedX=lifeX;selectedY=lifeY;
         walkButton.setText("Stop walking");world3d.followPlayer(true);showMode();refresh();saveLife();
     }
-    private void walkTo(int tx,int ty){
+    private void walkTo(int tx,int ty){walkTo(tx,ty,false);}
+    private void walkTo(int tx,int ty,boolean direct){
         if(!walkMode||outdoorRoute!=null)return;
         if(!in3d||meshRevision!=serial||meshSeed!=seed||meshX!=cx||meshY!=cy){notice("Loading the current neighborhood");return;}
         OutdoorPath p=makeOutdoorMap();
-        int[] route=p==null?null:p.route(OutdoorPath.pack(tileX,tileY),OutdoorPath.pack(tx,ty));
+        int from=OutdoorPath.pack(tileX,tileY),to=OutdoorPath.pack(tx,ty);
+        int[] route=p==null||!OutdoorPath.valid(tx,ty)?null:direct?(p.canStep(from,to)?new int[]{to}:null):p.route(from,to);
         if(route==null){notice("Choose reachable ground, not a cliff, building or water");return;}
         if(route.length==0)return;
         outdoorMap=p;outdoorRoute=route;walkIndex=walkDone=0;
@@ -427,13 +433,15 @@ public final class MainActivity extends Activity {
     }
     private void stepOutdoor(){
         if(outdoorRoute==null)return;
-        int next=outdoorRoute[walkIndex++];tileX=OutdoorPath.x(next);tileY=OutdoorPath.y(next);walkDone++;
+        int next=outdoorRoute[walkIndex++];
+        walkDone+=outdoorMap.duration(OutdoorPath.pack(tileX,tileY),next,WALK_MS);
+        tileX=OutdoorPath.x(next);tileY=OutdoorPath.y(next);
         if(walkIndex>=outdoorRoute.length)finishOutdoor();else beginOutdoorStep();
     }
     private void commitOutdoor(){
         travelHandler.removeCallbacks(outdoorTick);
         outdoorRoute=null;outdoorMap=null;
-        if(walkDone>0)advanceTime((walkDone+5)/6);
+        if(walkDone>0)advanceTime((walkDone+6*WALK_MS-1)/(6*WALK_MS));
         walkIndex=walkDone=0;
         lifeX=tileX/18;lifeY=tileY/18;selectedX=lifeX;selectedY=lifeY;
         world3d.playerTile(tileX,tileY,0);saveLife();

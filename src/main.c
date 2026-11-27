@@ -25,6 +25,7 @@ static u32 *logo_buf(void) { extern void *crowd_arena(void); return (u32 *)crowd
 #include "native_life.h"
 #include "items.h"
 #include "world.h"
+#include "arrival_plan.h"
 #include "sim.h"
 #include "citizens.h"
 #include "wants.h"
@@ -212,6 +213,7 @@ extern u16 bfs_q[];
 static char build_msg[32]; static int build_msg_t;   // what build mode has to say (the life's notes are not on screen there)
 static void home_go(void);
 static void travel_go(int z);
+static void put_household(int px,int py);
 static void name_open(char *buf, int cap, const char *title, void (*done)(void));
 // ---- ARE YOU SURE: before anything that cannot be undone (a new life, quitting, moving house). NO is picked to start with ----
 static const char *cf_title; static char cf_body[160]; static void (*cf_yes)(void); static int cf_back, cf_sel, cf_t;
@@ -1383,12 +1385,7 @@ static void travel_go(int z) {
     int px, py;
     if (z == ZONE_CITY) { world_arrival(bm_capital(), &px, &py); far_reset(); }
     else { world_find('P', &px, &py); if (px < 0) { px = 20; py = 20; } }
-    for (int i = 0; i < nsims; i++) {
-        Sim *sm = &sims[i];
-        sim_player_cancel_sim(sm);
-        sm->x = (px + (i % 3)) * TILE + TILE / 2; sm->z = -((py + (i / 3)) * TILE + TILE / 2);
-        sm->path_n = 0;
-    }
+    put_household(px,py);
     citizens_enter(z);
     char b[40]; sprintf(b, "WELCOME TO %s", world_zone_name(z)); sim_note(b);
     if (z == ZONE_ISLAND) { sim_note("FIND FOOD: BERRIES, FISH"); sim_note("X ON TREES AND ROCKS: GATHER"); sim_note("8 SECRETS ARE HIDDEN HERE"); }
@@ -1446,15 +1443,21 @@ static void travel_draw(void) {   // where to: the four places, each on a row wi
 // The map is a 128x128 picture of the whole state (8x8 blocks a pixel), made from the generator when it is opened and put
 // in the VRAM the people's sprites use (they are rendered again after).
 static int map_sel;
-static void put_household(int px, int py) {     // everyone at home stands round (px, py)
+static void put_household(int px, int py) {     // arrival around an actual clear tile
     sim_park_for_travel();
-    for (int i = 0; i < nsims; i++) {
-        Sim *sm = &sims[i];
-        sim_player_cancel_sim(sm);
-        sm->x = (px + (i % 3)) * TILE + TILE / 2; sm->z = -((py + (i / 3)) * TILE + TILE / 2);
-        sm->path_n = 0; sm->lvl = 0;
+    world_lvl=0;
+    int w=world_zone==ZONE_CITY?4*BM_BLK:MW,h=world_zone==ZONE_CITY?4*BM_BLK:MH,n=0;
+    uint16_t used[MAX_SIMS];
+    for(int i=0;i<nsims;i++){
+        Sim *sm=&sims[i];sim_player_cancel_sim(sm);
+        int x=px+i%3,y=py+i/3;
+        int id=bore_arrival_cell(x,y,w,h,used,n,world_walkable);
+        if(id<0&&n)id=used[0]; // cramped edited property: share a safe cell, never a wall
+        if(id>=0){x=id%w;y=id/w;used[n++]=(uint16_t)id;}
+        sm->x=x*TILE+TILE/2;sm->z=-(y*TILE+TILE/2);
+        sm->path_n=0;sm->lvl=0;
     }
-    cam_fx = sims[player].x; cam_fz = sims[player].z;
+    cam_fx=sims[player].x;cam_fz=sims[player].z;
 }
 static void taxi_to_block(int bx, int by, int tx, int ty, const char *where) {   // tx, ty: the tile to stand on in that block (-1: its street)
     sim_park_for_travel();
@@ -1462,7 +1465,9 @@ static void taxi_to_block(int bx, int by, int tx, int ty, const char *where) {  
     if (world_zone != ZONE_CITY) world_switch(ZONE_CITY);
     world_open_at(bx, by);
     loading("TAKING A TAXI", 85); far_reset();                  // the land round you, out to the horizon
-    int px = (bx - world_wbx) * BM_BLK + (tx >= 0 ? tx : 9), py = (by - world_wby) * BM_BLK + (ty >= 0 ? ty : BM_LOT0 - 1);   // (the kerb beside the lot: not the lane, where the traffic has to stop for you)
+    int face=tx<0&&ty<0&&bm_gen>=9?bm_lot_face(bx,by):LF_NORTH;
+    int drop=face==LF_SOUTH?BM_BLK-1:face==LF_NORTH?BM_LOT0:9;
+    int px = (bx - world_wbx) * BM_BLK + (tx >= 0 ? tx : 9), py = (by - world_wby) * BM_BLK + (ty >= 0 ? ty : bm_gen>=9?drop:BM_LOT0-1);   // (the kerb beside the lot: not the lane, where the traffic has to stop for you)
     put_household(px, py);
     citizens_enter(ZONE_CITY);
     char b[48]; snprintf(b, sizeof b, "WELCOME TO %s", where); sim_note(b);

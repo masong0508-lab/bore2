@@ -52,6 +52,7 @@ static const char *opt_tok(int i, int n, char *b) { const char *p = OPT[i].vals;
 #include <string.h>
 #include "bigmap.h"
 #include "world_surface.h"
+#include "arrival_plan.h"
 #include "scene_music.h"
 #define OUTINGS_IMPLEMENTATION
 #include "outings.h"
@@ -1110,8 +1111,12 @@ static int ds_relief_grade(int cx,int cy){
     return ds_relief_units(bore_land_sample2(&ds_relief_patches[by+1][bx+1],2*(x-bx*BM_BLK)+1,2*(y-by*BM_BLK)+1));
 }
 static u8 pk_ok;   // (d83) the parked cars of the lots round this one are worked out (0: again)
+static int ds_surface_bx=-1,ds_surface_by=-1;
+static s8 ds_water_count[9];
+static u32 ds_water_rect[9][24];
 static void nb_load(void) {
-    pk_ok = 0;ds_relief_stamp=-1;
+    pk_ok = 0;ds_relief_stamp=-1;ds_surface_bx=-1;
+    memset(ds_water_count,-1,sizeof ds_water_count);
     for (int dy = -RING_MAX; dy <= RING_MAX; dy++) for (int dx = -RING_MAX; dx <= RING_MAX; dx++) { int x = lot_bx + dx, y = lot_by + dy; BInfo *b = &nbf[dy + RING_MAX][dx + RING_MAX];
         if (dx >= -1 && dx <= 1 && dy >= -1 && dy <= 1) continue;
         if (lot_bx >= 2000) zone_block(x, y, b); else if (x < 0 || y < 0 || x >= BM_N || y >= BM_N) { memset(b, 0, sizeof(BInfo)); b->terrain = BT_SEA; } else bm_block(x, y, b); }
@@ -1120,7 +1125,8 @@ static void nb_load(void) {
     if (x < 0 || y < 0 || x >= BM_N || y >= BM_N) { memset(&nb[dy][dx], 0, sizeof(BInfo)); nb[dy][dx].terrain = BT_SEA; nb_pop[dy][dx] = 0; nb_fam[dy][dx] = 0; }
     else { bm_block(x, y, &nb[dy][dx]); int f; nb_pop[dy][dx] = (u8)pop_at(x, y, &f); nb_fam[dy][dx] = (u8)f; } }
     for (int dy = 0; dy < 3; dy++) for (int dx = 0; dx < 3; dx++) nbf[dy + RING_MAX - 1][dx + RING_MAX - 1] = nb[dy][dx];
-    if (t7()) nb7_load(); }
+    if(t7()){nb7_load();ds_surface_bx=lot_bx;ds_surface_by=lot_by;}
+}
 static void city_spawn(void); static void city_shift(int dx, int dy); static void car_step(int frames);
 static int popup, popup_i, contact_sel, soc_page;
 #ifdef DSTEST
@@ -1132,7 +1138,7 @@ static void far_foot(const BInfo *b, int *x0, int *z0, int *x1, int *z1) { int w
 /* Collision is expressed in the same shifted block coordinates as
  * the live DS plot, including the southern/eastern street strips. */
 static int ds_water_at(int wx,int wy){
-    if(!t7()||!nb_ok)return 0;
+    if(!t7()||ds_surface_bx!=lot_bx||ds_surface_by!=lot_by)return 0;
     int x,y,bx=bore_surface_slot(wx,&x),by=bore_surface_slot(wy,&y);
     if(bx<-RING_MAX||bx>RING_MAX||by<-RING_MAX||by>RING_MAX)return 1;
     const BInfo *b=&nbf[by+RING_MAX][bx+RING_MAX];
@@ -1263,7 +1269,15 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
     if (outdoor) {
         /* A river is not an empty park: its banks are rendered by the
          * common surface owner, and its water is never walkable. */
-        if(k==LOT_RIVER){door_cy=12;return;}
+        if(k==LOT_RIVER){
+            BInfo b;bm_block(lot_bx,lot_by,&b);
+            door_cy=12;
+            for(int q=0;q<3;q++){
+                spawn_x[q]=(b.road&BR_MEGA)?0:5+q;
+                spawn_y[q]=(b.road&BR_MEGA)?5+q:0;
+            }
+            return;
+        }
         if(bm_gen>=9&&k==LOT_POOL){
             int w=6+(h&1),d=4+((h>>1)&1);
             for(int y=0;y<GN;y++)for(int x=0;x<GN;x++)
@@ -1367,7 +1381,21 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
     for (int q = 0; q < 3; q++) { spawn_x[q] = 5 + q; spawn_y[q] = y1 - 2; }
     #undef PUTP
 }
-static void place_sims(void) { memset(slv, 0, sizeof slv); for (int i = 0; i < nsim; i++) { Sim *m = &sims[i]; int cx = i < 3 ? spawn_x[i] : door_cx + (i % 3) - 1, cy = i < 3 ? spawn_y[i] : lot_dn > 0 ? door_cy + 1 + i / 3 : door_cy - 1 - i / 3; if (cy > GN - 1) cy = GN - 1; if (cy < 0) cy = 0; m->x = m->tx = m->wx = cx * 16; m->y = m->ty = m->wy = cy * 16; m->act = -1; m->act_left = 0; } }
+static int arrival_clear_ds(int x,int y){return !obj_solid(x,y);}
+static void place_sims(void){
+    memset(slv,0,sizeof slv);LV=0;
+    uint16_t used[SIM_MAX];int n=0;
+    for(int i=0;i<nsim;i++){
+        Sim *m=&sims[i];
+        int cx=i<3?spawn_x[i]:door_cx+i%3-1,cy=i<3?spawn_y[i]:door_cy+(lot_dn>0?1+i/3:-1-i/3);
+        int id=bore_arrival_cell(cx,cy,GN,GN,used,n,arrival_clear_ds);
+        if(id<0&&n)id=used[0];
+        if(id>=0){cx=id%GN;cy=id/GN;used[n++]=(uint16_t)id;}
+        else {cx=CLAMP(cx,0,GN-1);cy=CLAMP(cy,0,GN-1);}
+        m->x=m->tx=m->wx=cx*16;m->y=m->ty=m->wy=cy*16;
+        m->act=-1;m->act_left=0;
+    }
+}
 static void lot_reset(void) {
     memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); ups_clear(); memset(slv, 0, sizeof slv); ed_lv = 0; nobj = 0; occ_ok = 0; pick = -1; mode = M_LIVE;   /* (funds are the household's: set by new_household, not reset on every lot you walk into) */ cat = 0; tool = 0; pal = 1;
     gen_house();
@@ -1423,7 +1451,9 @@ static void lot_enter(int bx, int by) {   // the lot you walk into
     yard_i0 = 0x7FFF; lot_bx = bx; lot_by = by; lot_dn = bm_gen >= 7 && bx >= 0 && bx < 2000 && bm_lot_face(bx, by) == LF_NORTH ? -1 : 1; lot_seed = (u32)(bx * 73856093 ^ by * 19349663); pick = -1; memset(slv, 0, sizeof slv); ed_lv = 0; int keep = LV; LV = 0;
     for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == bx && lsv[i].by == by) { LotSave *q = &lsv[i]; nobj = q->nobj; pcx = q->pcx; pcy = q->pcy; door_cx = q->dcx; door_cy = q->dcy; roof_st = q->roof; up_st = q->up; memcpy(flr, q->flr, sizeof flr); memcpy(hwl, q->hwl, sizeof hwl); memcpy(vwl, q->vwl, sizeof vwl); memcpy(objs, q->objs, sizeof objs); occ_ok = 0;
         if (q->hasup) { memcpy(uflr, q->ufl, sizeof uflr); memcpy(uhwl, q->uhw, sizeof uhwl); memcpy(uvwl, q->uvw, sizeof uvwl); } else { ups_clear(); shell_to_floors(up_st); }
-        bed_fix7();nb_load();if(bx>=0&&bx<2000)ensure_world_marker_ds(nb[1][1].lot,nb[1][1].terrain);LV=keep;return;}
+        bed_fix7();nb_load();if(bx>=0&&bx<2000)ensure_world_marker_ds(nb[1][1].lot,nb[1][1].terrain);
+        for(int k=0;k<3;k++){spawn_x[k]=door_cx+k-1;spawn_y[k]=door_cy+(lot_dn>0?0:-1);}
+        LV=keep;return;}
     memset(flr, 0, sizeof flr); memset(hwl, 0, sizeof hwl); memset(vwl, 0, sizeof vwl); ups_clear(); nobj = 0; occ_ok = 0; roof_st = up_st = 0;
     if (bx >= 2000) gen_zone(bx, by); else { BInfo bi; bm_block(bx, by, &bi);
 #ifdef DS_LOT
@@ -2342,27 +2372,35 @@ done:
 /* Draw the exact visible water cells as row runs, not a sea-colored
  * rectangle over the causeway. The street pass still owns road lanes. */
 static void ds_water_slot(int sx,int sy){
-    int needs=0;
-    for(int dy=0;dy<=1;dy++)for(int dx=0;dx<=1;dx++){
-        const BInfo *b=&nbf[sy+dy+RING_MAX][sx+dx+RING_MAX];
-        if(b->terrain==BT_SEA||b->lot==LOT_RIVER||(bm_gen>=9&&b->lot==LOT_POOL)||((b->road&BR_MEGA)&&BR_PART(b->road)==3))needs=1;
+    int slot=(sy+1)*3+sx+1,ox=sx*SLC,oy=sy*SLC;
+    int n=ds_water_count[slot];u32 rows[SLC];
+    if(n<0){
+        int needs=0;
+        for(int dy=0;dy<=1;dy++)for(int dx=0;dx<=1;dx++){
+            const BInfo *b=&nbf[sy+dy+RING_MAX][sx+dx+RING_MAX];
+            if(b->terrain==BT_SEA||b->lot==LOT_RIVER||(bm_gen>=9&&b->lot==LOT_POOL)||((b->road&BR_MEGA)&&BR_PART(b->road)==3))needs=1;
+        }
+        if(!needs){ds_water_count[slot]=0;return;}
+        memset(rows,0,sizeof rows);
+        for(int y=0;y<SLC;y++)for(int x=0;x<SLC;x++)if(ds_water_at(ox+x,oy+y))rows[y]|=1u<<x;
+        n=bore_water_rects(rows,ds_water_rect[slot],24);
+        ds_water_count[slot]=(s8)(n>24?25:n);
     }
-    if(!needs)return;
-    int ox=sx*SLC,oy=sy*SLC;
     tx_want=-1;
-    /* Merge identical water spans vertically. Ocean tiles now use one
-     * quad instead of 18, without covering causeways or dry banks. */
-    u32 rows[SLC]={0};
-    for(int y=0;y<SLC;y++)for(int x=0;x<SLC;x++)
-        if(ds_water_at(ox+x,oy+y))rows[y]|=1u<<x;
-    for(int y=0;y<SLC;y++)for(int x=0;x<SLC;){
-        if(!(rows[y]&(1u<<x))){x++;continue;}
-        int end=x+1;while(end<SLC&&(rows[y]&(1u<<end)))end++;
-        u32 mask=((1u<<(end-x))-1u)<<x;
-        int bottom=y+1;while(bottom<SLC&&(rows[bottom]&mask)==mask)bottom++;
-        for(int yy=y;yy<bottom;yy++)rows[yy]&=~mask;
-        ground(tl(2*(ox+x)),tl(2*(oy+y)),tl(2*(ox+end)),tl(2*(oy+bottom)),-32,C15(5,12,24));
-        x=end;
+    if(n<=24){
+        for(int k=0;k<n;k++){
+            u32 r=ds_water_rect[slot][k];int x=r&31,y=(r>>5)&31,X=(r>>10)&31,Y=(r>>15)&31;
+            ground(tl(2*(ox+x)),tl(2*(oy+y)),tl(2*(ox+X)),tl(2*(oy+Y)),-32,C15(5,12,24));
+        }
+    }else{
+        /* Defensive overflow path: never drop water because the cache
+         * was too small. The normal canonical masks need far fewer rects. */
+        for(int y=0;y<SLC;y++)for(int x=0;x<SLC;){
+            if(!ds_water_at(ox+x,oy+y)){x++;continue;}
+            int X=x+1;while(X<SLC&&ds_water_at(ox+X,oy+y))X++;
+            ground(tl(2*(ox+x)),tl(2*(oy+y)),tl(2*(ox+X)),tl(2*(oy+y+1)),-32,C15(5,12,24));
+            x=X;
+        }
     }
 }
 static void draw_world(int yaw) {   // LIVE: all round the lot, the lots next door, the streets and the land (a 3x3 patch of slots)

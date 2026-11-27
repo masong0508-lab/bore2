@@ -36,6 +36,15 @@ public final class OutdoorPathTest {
         check(!p.canStep(a,c)&&p.duration(a,c,160)==0,"steep edge refused");
         check(p.route(a,c)==null,"isolated high tile unreachable");
         check(OutdoorPath.create(100,200,cells,new int[1])==null,"bad terrain array");
-        System.out.println("Outdoor routes: cardinal paths, safe spawn, bounds, slope pacing and cliff guards PASS");
+        Arrays.fill(slope,0);Arrays.fill(cells,1);
+        int start=OutdoorPath.pack(105,205),goal=OutdoorPath.pack(109,205);
+        slope[5*54+6]=110;slope[5*54+8]=110;
+        p=OutdoorPath.create(100,200,cells,slope);
+        path=p.route(start,goal);
+        check(path!=null&&path.length==6,"take flat six-step detour instead of four steep steps");
+        int total=0;prior=start;
+        for(int step:path){total+=p.duration(prior,step,160);prior=step;}
+        check(total==960&&prior==goal,"fastest walking time");
+        System.out.println("Outdoor routes: cardinal paths, safe spawn, slope costs and fastest-time detours PASS");
     }
 }

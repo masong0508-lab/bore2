@@ -412,7 +412,20 @@ int traffic_park_near(int t,int x,int z){
     int yaw;if(!traffic_park_pose_near(t,x,z,&x,&z,&yaw))return 0;
     traffic_unpark(t);return 1;
 }
-void traffic_save(void) { for (int t = 0; t < VEH_N; t++) { sv_u8(park[t].on); sv_u32((u32)park[t].x); sv_u32((u32)park[t].y); sv_u16(park[t].yaw); } }
+/* Loading returns the player to foot controls. Serialize a ridden car
+ * at the real world position as a parked car, without mutating play or
+ * adding bytes to the existing save format. */
+static Park park_for_save(int t){
+    Park p=park[t];
+    if(veh_on==t+1&&world_zone==ZONE_CITY&&world_wbx>=0){
+        const Sim *s=&sims[player];
+        p.x=bx_()*TILE+s->x;p.y=by_()*TILE-s->z;p.yaw=s->yaw&4095;p.on=1;
+    }
+    return p;
+}
+void traffic_save(void) {
+    for(int t=0;t<VEH_N;t++){Park p=park_for_save(t);sv_u8(p.on);sv_u32((u32)p.x);sv_u32((u32)p.y);sv_u16(p.yaw);}
+}
 void traffic_load(int ver) {
     traffic_clear();
     for (int t = 0; t < VEH_N; t++) { park[t].on = 0; if (ver >= 19) { park[t].on = ld_u8() & 1; park[t].x = (s32)ld_u32(); park[t].y = (s32)ld_u32(); park[t].yaw = ld_u16()&4095; if(park[t].x<0||park[t].y<0||park[t].x>=BM_N*BLK*TILE||park[t].y>=BM_N*BLK*TILE)park[t].on=0; } }
