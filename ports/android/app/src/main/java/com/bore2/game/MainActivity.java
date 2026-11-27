@@ -777,34 +777,67 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("People here").setItems(labels,(d,i)->showConversation(people.get(i)))
             .setNegativeButton("Close",null).show();
     }
-    private void showConversation(MobileContacts.Resident r){
-        new AlertDialog.Builder(this).setTitle(r.name+" · "+MobileContacts.TRAITS[r.trait])
-            .setItems(MobileContacts.TOPICS,(d,i)->{
-                boolean present=false;for(MobileContacts.Resident p:localResidents())if(p.key==r.key)present=true;
-                if(!present){notice("They have left");return;}talkTo(r,i,false);
-            }).setNegativeButton("Close",null).show();
+    private ResidentSchedule.Entry currentResident(MobileContacts.Resident r){
+        int home=r.key==household.member()?rentedKey():r.key;
+        if(!Household.validKey(home))return null;
+        ResidentSchedule.Grid grid=residentGridAt(LifeRules.x(home),LifeRules.y(home),3);
+        return grid==null?null:grid.locatedAt(seed,r.key,home,weekday,minute);
+    }
+    private boolean canSpeak(MobileContacts.Resident r,boolean phone){
+        if(phone){
+            if(!atHome()||contacts.affinity(r.key)<3)return false;
+            ResidentSchedule.Entry e=currentResident(r);
+            return e==null||(e.phase!=ResidentSchedule.SLEEP&&e.phase!=ResidentSchedule.COMMUTE&&e.phase!=ResidentSchedule.WORK);
+        }
+        for(MobileContacts.Resident p:localResidents())if(p.key==r.key)return true;
+        return false;
+    }
+    private void showConversation(MobileContacts.Resident r){openConversation(r,false);}
+    private void openConversation(MobileContacts.Resident r,boolean phone){
+        if(!canSpeak(r,phone)){notice(phone?"They are busy or unavailable right now":"They have left");return;}
+        ResidentSchedule.Entry e=currentResident(r);
+        String place=e==null?null:NativeWorld.describe(LifeRules.x(e.location),LifeRules.y(e.location),weekday).split("\\n",2)[0];
+        ResidentDialogue flow=new ResidentDialogue(r.trait,r.favorite,contacts.affinity(r.key),e==null?-1:e.phase,place,contacts.lastTopic(r.key),phone);
+        final int startedDay=lifeDay,startedMinute=minute;
+        String title=r.name+" · "+MobileContacts.TRAITS[r.trait];
+        new AlertDialog.Builder(this).setTitle(title).setItems(ResidentDialogue.TOPICS,(d,topic)->{
+            if(!canSpeak(r,phone)||lifeDay!=startedDay||minute!=startedMinute){notice("The conversation has ended");return;}
+            new AlertDialog.Builder(this).setTitle(r.name+": "+flow.reply(topic)).setItems(flow.followUps(topic),(q,reaction)->{
+                if(lifeDay!=startedDay||minute!=startedMinute||!canSpeak(r,phone)){notice("The conversation has ended");return;}
+                finishDialogue(r,topic,reaction,phone,flow);
+            }).setNegativeButton("Change topic",(q,k)->openConversation(r,phone)).show();
+        }).setCustomTitle(conversationHeader(title,flow.greeting())).setNegativeButton("Goodbye",null).show();
+    }
+    private View conversationHeader(String title,String message){
+        LinearLayout header=new LinearLayout(this);header.setOrientation(LinearLayout.VERTICAL);header.setPadding(dp(20),dp(16),dp(20),dp(8));
+        TextView name=new TextView(this);name.setText(title);name.setTextSize(18);header.addView(name);
+        TextView greeting=new TextView(this);greeting.setText(message);greeting.setTextSize(14);greeting.setPadding(0,dp(8),0,0);header.addView(greeting);
+        return header;
     }
     private void showContactList(){
         int[] keys=contacts.keys();if(keys.length==0){notice("Meet someone in the neighborhood to add a contact");return;}
         String[] labels=new String[keys.length];
         for(int i=0;i<keys.length;i++){MobileContacts.Resident r=resident(keys[i]);labels[i]=r.name+" · "+MobileContacts.TRAITS[r.trait]+" · "+contacts.affinity(r.key)+"/100";}
         new AlertDialog.Builder(this).setTitle("Your contacts").setItems(labels,(d,i)->{
-            if(atHome())talkTo(resident(keys[i]),0,true);else notice("Phone contacts from home, or meet them locally");
+            MobileContacts.Resident r=resident(keys[i]);
+            if(atHome())openConversation(r,true);else if(canSpeak(r,false))openConversation(r,false);else notice("Phone contacts from home, or meet them locally");
         }).setNegativeButton("Close",null).show();
     }
     private void showPhone(){
         if(!atHome()){notice("Return home to call a contact");return;}
         showContactList();
     }
-    private void talkTo(MobileContacts.Resident r,int topic,boolean phone){
-        if(phone&&!atHome())return;
+    private void finishDialogue(MobileContacts.Resident r,int topic,int reaction,boolean phone,ResidentDialogue flow){
+        if(!canSpeak(r,phone))return;
         if(energy<2){notice("Rest before talking");return;}
-        int gain=contacts.talk(r,topic,lifeDay,minute,phone);
+        int gain=contacts.converse(r,topic,lifeDay,minute,phone,reaction);
         if(gain<=0){notice(gain==-1?"Give them some time before chatting again":gain==-2?"Meet them in person first":"Contact book is full");return;}
         social=clamp100(social+8+gain);fun=clamp100(fun+(gain>=8?5:1));energy-=2;
         skills[6]=Math.min(4400,skills[6]+gain);advanceTime(30);updateDetails();saveLife();
-        notice(r.name+(gain>=8?" enjoyed that topic":" appreciated the chat"));
+        new AlertDialog.Builder(this).setTitle(r.name).setMessage(flow.close(topic,reaction)+"\n\nRelationship: "+contacts.affinity(r.key)+"/100")
+            .setPositiveButton("Goodbye",null).show();
     }
+
     private void sleepAtHome(){
         if(!atHome()){notice(hasHome()?"Travel home before sleeping":"Rent a home first");return;}
         advanceTime(supplies.sleepMinutes());energy=100;food=clamp100(food-12);homeNights=LifeRules.credit(homeNights,1);

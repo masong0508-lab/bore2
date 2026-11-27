@@ -20,6 +20,14 @@ public final class MobileContactsTest {
         check(loaded.talk(r,0,1,600,true)==4&&loaded.affinity(key)==19,"next day reset");
         check(loaded.talk(r,0,0,600,false)==-1,"clock cannot go backward");
         check(MobileContacts.isSocialLot(16)&&MobileContacts.isSocialLot(1)&&!MobileContacts.isSocialLot(32),"real lot categories");
+        check(loaded.lastTopic(key)==0,"last conversation topic saved");
+        MobileContacts legacy=new MobileContacts();legacy.load(key+",20,0,1,600");
+        check(legacy.affinity(key)==20&&legacy.lastTopic(key)==-1,"legacy contacts preserved");
+        check(legacy.converse(r,r.favorite,1,600,false,0)==10,"supportive response affects actual affinity");
+        check(legacy.converse(r,6,1,610,false,1)==-1,"reaction cannot bypass cooldown");
+        check(legacy.lastTopic(key)==r.favorite,"failed conversation does not replace memory");
+        MobileContacts resumed=new MobileContacts();resumed.load(legacy.save());
+        check(resumed.affinity(key)==30&&resumed.lastTopic(key)==r.favorite,"persist remembered topic");
         System.out.println("Android stable contacts and relationship progression PASS");
     }
 }

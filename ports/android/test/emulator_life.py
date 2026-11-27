@@ -257,7 +257,7 @@ def main():
     text_tap("Find places")
     text_tap("Workplaces")
     label=tap(lambda s:"shop" in s.casefold() and "blocks away" in s,"retail workplace")
-    distance=int(re.search(r"(\\d+) blocks away",label).group(1))
+    distance=int(re.search(r"(\d+) blocks away",label).group(1))
     if distance:
         text_tap("Travel here")
         wait_state(lambda s:s.get("trips",0)>ready["trips"])
