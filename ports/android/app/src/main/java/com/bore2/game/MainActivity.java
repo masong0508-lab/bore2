@@ -61,6 +61,9 @@ public final class MainActivity extends Activity {
     private int lifeDay,lastShiftDay=-1;
     private int homeX=-1,homeY=-1,rentDebt,careerShifts,trips,homeNights;
     private final MobileContacts contacts=new MobileContacts();
+    private ResidentSchedule.Grid residentGrid;
+    private int residentGridSeed, residentRevision=-1,residentDay=-1,residentTime=-1,residentHome=-2;
+    private int rentedKey(){return hasHome()?LifeRules.pack(homeX,homeY):-1;}
     private boolean hasHome(){return LifeRules.inside(homeX,homeY);}
     private boolean atHome(){return hasHome()&&lifeX==homeX&&lifeY==homeY;}
     private boolean atSelected(){return lifeX==selectedX&&lifeY==selectedY;}
@@ -234,7 +237,7 @@ public final class MainActivity extends Activity {
         if(inInterior)return;
         if(meshX==cx&&meshY==cy&&meshSeed==seed&&meshRevision==serial){
             world3d.select(selectedX,selectedY);
-            hint.setText(walkMode?"Walk mode · Tap clear ground · Drag to orbit":"Drag to orbit · Pinch to zoom · Tap a lot");return;
+            hint.setText(walkMode?"Walk mode · Tap clear ground · Drag to orbit":"Drag to orbit · Pinch to zoom · Tap a lot");updateStreetResidents();return;
         }
         if(requestX==cx&&requestY==cy&&requestSeed==seed)return;
         final int version=++serial,x=cx,y=cy,key=seed;
@@ -258,7 +261,7 @@ public final class MainActivity extends Activity {
                 world3d.setScene(mesh,x,y,version,()->{
                     if(version!=serial||isFinishing()||isDestroyed())return;
                     requestX=requestY=-1;meshX=x;meshY=y;meshSeed=key;meshRevision=version;
-                    world3d.select(selectedX,selectedY);
+                    world3d.select(selectedX,selectedY);updateStreetResidents();
                     if(in3d&&!inInterior)hint.setText(walkMode?"Walk mode · Tap clear ground · Drag to orbit":"Drag to orbit · Pinch to zoom · Tap a lot");
                 },failure);
                 world3d.select(selectedX,selectedY);
@@ -485,23 +488,29 @@ public final class MainActivity extends Activity {
         super.onBackPressed();
     }
     private MobileContacts.Resident resident(int key){return new MobileContacts.Resident(seed,key);}
+    private ResidentSchedule.Grid residentGridAt(int x,int y,int margin){
+        if(residentGrid!=null&&residentGridSeed==seed&&residentGrid.covers(x,y,margin))return residentGrid;
+        final int r=10,X=Math.max(r,Math.min(1023-r,x)),Y=Math.max(r,Math.min(1023-r,y));
+        residentGrid=ResidentSchedule.Grid.create(X,Y,r,NativeWorld.tiles(X,Y,r));residentGridSeed=seed;
+        return residentGrid;
+    }
+    private void updateStreetResidents(){
+        if(!in3d||inInterior||meshRevision!=serial||meshSeed!=seed||meshX!=cx||meshY!=cy)return;
+        int bucket=minute/15,home=rentedKey();
+        if(residentRevision==meshRevision&&residentDay==weekday&&residentTime==bucket&&residentHome==home)return;
+        ResidentSchedule.Grid grid=residentGridAt(cx,cy,8);
+        if(grid==null)return;
+        int[] people=grid.streetActors(seed,cx,cy,2,weekday,minute,home,16);
+        world3d.residents(people,meshRevision);
+        residentRevision=meshRevision;residentDay=weekday;residentTime=bucket;residentHome=home;
+    }
     private java.util.ArrayList<MobileContacts.Resident> localResidents(){
         java.util.ArrayList<MobileContacts.Resident> people=new java.util.ArrayList<>();
-        int lot=selectedLot();if(!atSelected()||!MobileContacts.isSocialLot(lot))return people;
-        if(LifeRules.isHome(lot)){
-            if(!atHome()){
-                MobileContacts.Resident r=resident(LifeRules.pack(lifeX,lifeY));
-                if(MobileContacts.available(r,true,weekday,minute))people.add(r);
-            }
-            return people;
-        }
-        // Identity follows actual generated home blocks, not the camera.
-        int[] homes=LifeRules.nearby(tiles,cx,cy,radius,lifeX,lifeY,LifeRules.HOMES,32);
-        for(int key:homes){
-            int x=LifeRules.x(key),y=LifeRules.y(key);
-            if((x==homeX&&y==homeY)||LifeRules.distance(lifeX,lifeY,x,y)>6)continue;
-            MobileContacts.Resident r=resident(key);
-            if(MobileContacts.available(r,false,weekday,minute)&&people.size()<4)people.add(r);
+        int lot=selectedLot();
+        if(!atSelected()||!(MobileContacts.isSocialLot(lot)||LifeRules.isWork(lot)))return people;
+        ResidentSchedule.Grid grid=residentGridAt(lifeX,lifeY,6);if(grid==null)return people;
+        for(ResidentSchedule.Entry e:grid.snapshot(seed,lifeX,lifeY,0,weekday,minute,rentedKey())){
+            if(e.phase!=ResidentSchedule.SLEEP&&people.size()<8)people.add(resident(e.home));
         }
         return people;
     }
@@ -509,7 +518,7 @@ public final class MainActivity extends Activity {
         if(!atSelected()){notice("Travel to this lot to meet people");return;}
         if(atHome()){showPhone();return;}
         java.util.ArrayList<MobileContacts.Resident> people=localResidents();
-        if(people.isEmpty()){notice("Nobody is available here now. Try a park, cafe or residential lot after work.");return;}
+        if(people.isEmpty()){notice("Nobody is here right now. Try a nearby workplace during the day, food venue at lunch or park in the evening.");return;}
         String[] labels=new String[people.size()];
         for(int i=0;i<labels.length;i++){MobileContacts.Resident r=people.get(i);labels[i]=r.name+" · "+MobileContacts.TRAITS[r.trait]+" · relationship "+contacts.affinity(r.key);}
         new AlertDialog.Builder(this).setTitle("People here").setItems(labels,(d,i)->showConversation(people.get(i)))
@@ -627,7 +636,7 @@ public final class MainActivity extends Activity {
             !hasHome()?"Find a home":(atHome()?"At home":"Home "+homeX+", "+homeY)+(rentDebt>0?" · Rent due $"+rentDebt:""),careerShifts,trips));
         map.setContentDescription("San Boreas map. Selected lot: "+text);
         world3d.setContentDescription("San Boreas 3D neighborhood. Selected lot: "+text);
-        world3d.playerTile(tileX,tileY,0);world3d.select(selectedX,selectedY);map.invalidate();
+        world3d.playerTile(tileX,tileY,0);world3d.select(selectedX,selectedY);updateStreetResidents();map.invalidate();
     }
     @Override protected void onResume(){
         super.onResume();
