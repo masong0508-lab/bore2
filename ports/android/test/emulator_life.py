@@ -80,6 +80,24 @@ def main():
     wait_state(lambda s:s.get("roomCell",0)==-1)
     wait_view(False)
     (OUT/"life-exterior-return.png").write_bytes(adb("exec-out","screencap","-p"))
+    text_tap("Walk mode")
+    started=wait_state(lambda s:s.get("tileX",-1)>=0 and s.get("tileY",-1)>=0)
+    # The home arrival spawns on the street/yard strip at local (2,2),
+    # one tile east is still outside the generated building footprint.
+    text_tap("East")
+    walked=wait_state(lambda s:s.get("tileX")==started["tileX"]+1 and s.get("tileY")==started["tileY"])
+    assert walked["minute"]==(started["minute"]+1)%1440,walked
+    assert walked["lifeX"]==walked["tileX"]//18 and walked["lifeY"]==walked["tileY"]//18,walked
+    (OUT/"life-outdoor-walk.png").write_bytes(adb("exec-out","screencap","-p"))
+    text_tap("Stop walking")
+    adb("shell","input","keyevent","3")
+    adb("shell","am","force-stop",PACKAGE)
+    adb("shell","am","start","-W","-n",PACKAGE+"/.MainActivity")
+    wait_view(False)
+    restored=state()
+    for k in ("tileX","tileY","lifeX","lifeY","minute","funds"):
+        assert restored[k]==walked[k],(k,restored,walked)
+    print("Android real UI outdoor step and relaunch PASS",restored)
     print("Android real UI rent/travel/sleep/cooking/relaunch PASS",loaded)
 
 if __name__=="__main__":

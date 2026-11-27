@@ -40,6 +40,7 @@ public final class MainActivity extends Activity {
     private boolean inInterior;
     private Button dayButton,modeButton,travelButton,walkButton;
     private boolean walkMode;
+    private LinearLayout walkControls;
     private int tileX,tileY,walkIndex,walkDone;
     private int[] outdoorRoute;
     private OutdoorPath outdoorMap;
@@ -127,7 +128,7 @@ public final class MainActivity extends Activity {
         map=new MapView();
         pane.addView(world3d,new FrameLayout.LayoutParams(-1,-1));
         pane.addView(map,new FrameLayout.LayoutParams(-1,-1));
-        buildHomePane();
+        buildWalkControls();buildHomePane();
         ScrollView scroll=new ScrollView(this);
         scroll.setFillViewport(false);
         panel.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
@@ -151,7 +152,7 @@ public final class MainActivity extends Activity {
         });
         addButton(first,"Zoom −",()->{if(in3d)world3d.zoomBy(1.22f);else{radius=Math.min(16,radius+2);refresh();}});
         addButton(first,"Zoom +",()->{if(in3d)world3d.zoomBy(.82f);else{radius=Math.max(4,radius-2);refresh();}});
-        walkButton=addButton(first,"Walk mode",this::toggleWalk);
+        addButton(first,"Center lot",()->{cx=selectedX;cy=selectedY;refresh();});
         LinearLayout second=new LinearLayout(this);second.setGravity(Gravity.CENTER);
         lower.addView(second,new LinearLayout.LayoutParams(-1,-2));
         addButton(second,"Capital",()->{cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;refresh();});
@@ -173,7 +174,6 @@ public final class MainActivity extends Activity {
         lower.addView(progress,new LinearLayout.LayoutParams(-1,-2));
         addButton(progress,"Contacts",this::showContactList);
         addButton(progress,"Life goals",this::showGoals);
-        addButton(progress,"Center lot",()->{cx=selectedX;cy=selectedY;refresh();});
         setContentView(root);root.requestApplyInsets();showMode();refresh();
         if(atHome()&&prefs.getBoolean("insideHome",false))enterHome(prefs.getInt("roomCell",-1));
     }
@@ -208,6 +208,8 @@ public final class MainActivity extends Activity {
     }
     private int clampCenter(int x){return Math.max(radius,Math.min(MAP_SIZE-radius-1,x));}
     private void showMode(){
+        walkButton.setVisibility(in3d&&!inInterior?View.VISIBLE:View.GONE);
+        walkControls.setVisibility(walkMode&&!inInterior?View.VISIBLE:View.GONE);
         if(inInterior){world3d.setVisibility(View.GONE);map.setVisibility(View.GONE);homePane.setVisibility(View.VISIBLE);hint.setText("Home · tap a floor tile or use furniture");return;}
         homePane.setVisibility(View.GONE);
         world3d.setVisibility(in3d?View.VISIBLE:View.GONE);map.setVisibility(in3d?View.GONE:View.VISIBLE);
@@ -277,6 +279,7 @@ public final class MainActivity extends Activity {
     private void notice(String message){Toast.makeText(this,message,Toast.LENGTH_SHORT).show();}
     private void visitSelected(){
         if(travelRoute!=null){cancelTravel(true);return;}
+        if(!NativeWorld.canVisit(lifeX,lifeY)){notice("Walk off the bridge onto land before starting a longer trip");return;}
         if(!NativeWorld.canVisit(selectedX,selectedY)){notice("Choose a land lot to visit");return;}
         int[] route=NativeWorld.route(lifeX,lifeY,selectedX,selectedY);
         if(!LifeRules.validRoute(lifeX,lifeY,selectedX,selectedY,route)){notice("No local land route. Try a nearer lot or a bridge.");return;}
@@ -309,6 +312,23 @@ public final class MainActivity extends Activity {
         if(travelRoute==null)return;
         travelRoute=null;travelIndex=0;lastRoute=new int[0];travelButton.setText("Travel here");
         updateDetails();if(announce)notice("Trip canceled");
+    }
+    private void buildWalkControls(){
+        walkButton=new Button(this);walkButton.setAllCaps(false);walkButton.setText("Walk mode");walkButton.setTextSize(12);
+        FrameLayout.LayoutParams toggle=new FrameLayout.LayoutParams(dp(122),dp(44),Gravity.TOP|Gravity.RIGHT);
+        toggle.setMargins(0,dp(4),dp(4),0);pane.addView(walkButton,toggle);
+        walkButton.setOnClickListener(v->{if(!inInterior&&travelRoute==null)toggleWalk();});
+        walkControls=new LinearLayout(this);walkControls.setOrientation(LinearLayout.HORIZONTAL);
+        FrameLayout.LayoutParams pad=new FrameLayout.LayoutParams(-1,dp(48),Gravity.BOTTOM);
+        pane.addView(walkControls,pad);
+        directionButton("North",0,-1);directionButton("West",-1,0);directionButton("East",1,0);directionButton("South",0,1);
+        walkControls.setVisibility(View.GONE);
+    }
+    private void directionButton(String label,int dx,int dy){
+        Button b=new Button(this);b.setText(label);b.setTextSize(12);b.setAllCaps(false);
+        b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(0,0,0,0);
+        walkControls.addView(b,new LinearLayout.LayoutParams(0,-1,1));
+        b.setOnClickListener(v->{if(walkMode&&outdoorRoute==null)walkTo(tileX+dx,tileY+dy);});
     }
     private void resetOutdoorPosition(){tileX=lifeX*18+2;tileY=lifeY*18+2;}
     private OutdoorPath makeOutdoorMap(){
