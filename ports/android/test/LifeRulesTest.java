@@ -26,6 +26,9 @@ public final class LifeRulesTest {
         int[] found=LifeRules.nearby(tiles,10,10,2,10,10,LifeRules.HOMES,3);
         check(Arrays.equals(found,new int[]{LifeRules.pack(9,10),LifeRules.pack(11,10),LifeRules.pack(8,8)}),"nearest homes, no water, deterministic ties");
         check(LifeRules.nearby(new int[0],10,10,2,10,10,LifeRules.HOMES,3).length==0,"incomplete map");
+        Arrays.fill(tiles,2);tiles[12]=2|(14<<3)|(4<<17);tiles[13]=2|(15<<3)|(3<<17);
+        tiles[11]=2|(14<<3)|(1<<17);tiles[7]=(15<<3)|(4<<17);tiles[0]=2|(5<<3)|(4<<17);
+        check(Arrays.equals(LifeRules.nearby(tiles,10,10,2,10,10,LifeRules.TALL,8),new int[]{LifeRules.pack(10,10),LifeRules.pack(11,10)}),"tall public buildings only");
         System.out.println("Android life rules PASS");
     }
 }

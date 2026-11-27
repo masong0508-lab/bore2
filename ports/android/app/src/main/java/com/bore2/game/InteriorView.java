@@ -11,11 +11,11 @@ import android.view.View;
 /** Interactive cutaway home. Only walkable routes can trigger furniture actions. */
 final class InteriorView extends View {
     interface Listener {void arrived(int action,int cell);void message(String message);}
-    static final int WALK=-1,EXIT=-2;
+    static final int WALK=-1,EXIT=-2,UP=-3,DOWN=-4;
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Listener listener;
     private InteriorPlan plan;
-    private int at,action=WALK,index,lo,hi,top,bottom;
+    private int at,action=WALK,index,lo,hi,top,bottom,landing=-1;
     private int[] path;
     private long started;
     private float tile,left,upper;
@@ -25,8 +25,8 @@ final class InteriorView extends View {
         super(context);this.listener=listener;setClickable(true);setFocusable(true);
         setContentDescription("Home cutaway. Tap a floor tile to walk or furniture to interact.");
     }
-    void open(InteriorPlan p,int saved){
-        cancel();plan=p;at=p.walkable(saved)?saved:p.entry;
+    void open(InteriorPlan p,int saved,int stair){
+        cancel();plan=p;landing=stair;at=p.walkable(saved)?saved:p.entry;
         setContentDescription(p.commercial?"Venue cutaway. Tap a floor tile or service station.":"Home cutaway. Tap a floor tile to walk or furniture to interact.");
         lo=18;hi=-1;top=18;bottom=-1;
         for(int i=0;i<InteriorPlan.N;i++)if(p.floor(i)){lo=Math.min(lo,i%18);hi=Math.max(hi,i%18);top=Math.min(top,i/18);bottom=Math.max(bottom,i/18);}
@@ -41,6 +41,7 @@ final class InteriorView extends View {
         begin(plan.routeToObject(at,kind),kind);
     }
     void exit(){if(plan!=null)begin(plan.route(at,plan.entry),EXIT);}
+    void climb(int direction){if(plan!=null&&plan.walkable(landing)&&(direction==1||direction==-1))begin(plan.route(at,landing),direction==1?UP:DOWN);}
     private void begin(int[] next,int what){
         if(next==null){listener.message("No clear path");return;}
         cancel();action=what;
@@ -49,7 +50,7 @@ final class InteriorView extends View {
     }
     private void finish(){
         int done=action;path=null;action=WALK;index=0;
-        if(plan!=null&&(done==WALK||(done==EXIT&&at==plan.entry)||(done>=0&&plan.canUse(at,done))))listener.arrived(done,at);
+        if(plan!=null&&(done==WALK||(done==EXIT&&at==plan.entry)||((done==UP||done==DOWN)&&at==landing)||(done>=0&&plan.canUse(at,done))))listener.arrived(done,at);
         invalidate();
     }
     private void step(){
@@ -87,6 +88,10 @@ final class InteriorView extends View {
                 rect(c,x+.26f,y+.68f,.48f,.14f,0xffd2ba80);break;
             case VenueRules.MEET:
                 rect(c,x+.20f,y+.13f,.60f,.72f,0xff8b6c4e);rect(c,x+.30f,y+.20f,.40f,.48f,0xffa8c7b9);break;
+            case BuildingPlan.STUDY:
+                rect(c,x+.07f,y+.08f,.86f,.78f,0xff8a6347);for(int i=0;i<4;i++)rect(c,x+.17f+i*.17f,y+.17f,.12f,.48f,0xff859ca9+i*0x000a0600);break;
+            case BuildingPlan.FITNESS:
+                rect(c,x+.12f,y+.08f,.76f,.84f,0xff536d77);rect(c,x+.22f,y+.21f,.56f,.55f,0xffa4c1bd);rect(c,x+.32f,y+.35f,.36f,.24f,0xff515e63);break;
             case InteriorPlan.BED:
                 rect(c,x+.08f,y+.05f,.78f,.85f,0xff805a43);rect(c,x+.14f,y+.11f,.66f,.73f,0xff82a6a3);
                 rect(c,x+.20f,y+.15f,.54f,.19f,0xfff4e9cf);break;
@@ -129,6 +134,10 @@ final class InteriorView extends View {
                 else if(d==2)c.drawLine(X(x),Y(y),X(x),Y(y+1),paint);
                 else c.drawLine(X(x),Y(y),X(x+1),Y(y),paint);
             }
+        }
+        if(landing>=0){
+            float x=landing%18,y=landing/18;rect(c,x+.10f,y+.10f,.80f,.80f,0xff6c8486);
+            for(int k=0;k<5;k++)rect(c,x+.17f,y+.18f+k*.12f,.66f,.06f,0xffd2ddd3);
         }
         if(path!=null){
             paint.setColor(0xff688f80);for(int k=index;k<path.length;k++)c.drawCircle(X(path[k]%18+.5f),Y(path[k]/18+.5f),tile*.08f,paint);

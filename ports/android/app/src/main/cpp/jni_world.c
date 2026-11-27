@@ -79,3 +79,7 @@ JNIEXPORT jintArray JNICALL Java_com_bore2_game_NativeWorld_placeInterior(JNIEnv
     if(a)(*env)->SetIntArrayRegion(env,a,0,BORE_ANDROID_INTERIOR_FIELDS,(const jint*)v);
     return a;
 }
+
+JNIEXPORT jint JNICALL Java_com_bore2_game_NativeWorld_storeys(JNIEnv *env,jclass cls,jint x,jint y){
+    (void)env;(void)cls;return bore_android_storeys(x,y);
+}

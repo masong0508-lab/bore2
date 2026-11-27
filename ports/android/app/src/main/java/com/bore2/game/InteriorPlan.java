@@ -29,8 +29,8 @@ final class InteriorPlan {
     int actionCount(){return actions.length;}
     int actionAt(int slot){return slot>=0&&slot<actions.length?actions[slot]:-1;}
     int slotFor(int action){for(int i=0;i<actions.length;i++)if(actions[i]==action)return i;return -1;}
-    String labelAt(int slot){int action=actionAt(slot);return action<0?"":commercial?VenueRules.label(lot,action):LABEL[action];}
-    private static InteriorPlan layout(int[] raw,int seed,boolean commercial,int[] actions){
+    String labelAt(int slot){int action=actionAt(slot);return action<0?"":action==BuildingPlan.STUDY?"Study":action==BuildingPlan.FITNESS?"Exercise":commercial?VenueRules.label(lot,action):LABEL[action];}
+    static InteriorPlan layout(int[] raw,int seed,boolean commercial,int[] actions){
         if(!inside(raw[1],raw[2]))return null;
         InteriorPlan p=new InteriorPlan(raw,commercial,actions);
         if(!p.walkable(p.entry)||!p.connected())return null;

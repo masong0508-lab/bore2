@@ -219,3 +219,12 @@ int bore_android_walk_mask(int cx,int cy,int *out,int count){
     }
     return 1;
 }
+
+/* Same number of storeys as the Android exterior renderer. */
+int bore_android_storeys(int x,int y){
+    if(!bore_android_can_visit(x,y))return 0;
+    BInfo b;LotPlan p;u8 f[5];bm_block(x,y,&b);
+    if(!((b.lot>=LOT_HOUSE&&b.lot<=LOT_APART)||bore_venue_supported(b.lot)))return 0;
+    if(!bm_lot_foot(x,y,&b,f,&p))return 0;
+    return CLAMP(bm_storeys(&b),1,6);
+}

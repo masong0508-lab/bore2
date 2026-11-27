@@ -128,6 +128,40 @@ def main():
     wait_state(lambda s:s.get("roomCell",0)==-1)
     wait_view(False)
     print("Android real UI venue counter service and reload PASS",served)
+    text_tap("Find places")
+    text_tap("Tall buildings")
+    label=tap(lambda s:"floors" in s and "blocks away" in s,"multi-storey public building")
+    distance=int(re.search(r"(\d+) blocks away",label).group(1))
+    before=state()
+    if distance:
+        text_tap("Travel here")
+        wait_state(lambda s:s.get("trips",0)>before["trips"])
+        wait_view(False)
+    text_tap("Enter")
+    ground=wait_state(lambda s:s.get("insideLot",-1) in (14,15) and s.get("roomFloor",-1)==0)
+    text_tap("Upstairs")
+    upstairs=wait_state(lambda s:s.get("roomFloor")==1)
+    assert upstairs["minute"]==(ground["minute"]+2)%1440,upstairs
+    assert upstairs["lifeX"]==ground["lifeX"] and upstairs["lifeY"]==ground["lifeY"],upstairs
+    (OUT/"life-upstairs.png").write_bytes(adb("exec-out","screencap","-p"))
+    adb("shell","input","keyevent","3")
+    adb("shell","am","force-stop",PACKAGE)
+    adb("shell","am","start","-W","-n",PACKAGE+"/.MainActivity")
+    deadline=time.monotonic()+35
+    while time.monotonic()<deadline:
+        if any(n.get("text")=="Downstairs" for n in nodes()):break
+        time.sleep(.3)
+    else:raise AssertionError("Upper floor not restored")
+    loaded_floor=state()
+    for k in ("insideX","insideY","insideLot","roomFloor","roomCell","minute"):
+        assert loaded_floor[k]==upstairs[k],(k,loaded_floor,upstairs)
+    text_tap("Downstairs")
+    down=wait_state(lambda s:s.get("roomFloor")==0)
+    assert down["roomCell"]==upstairs["roomCell"],down
+    text_tap("Exit building")
+    wait_state(lambda s:s.get("roomFloor",0)==-1 and s.get("roomCell",0)==-1)
+    wait_view(False)
+    print("Android real UI aligned stair transition and upper floor reload PASS",upstairs)
     print("Android real UI rent/travel/sleep/cooking/relaunch PASS",loaded)
 
 if __name__=="__main__":

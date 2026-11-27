@@ -37,6 +37,10 @@ public final class MainActivity extends Activity {
     private LinearLayout homePane;
     private InteriorView interiorView;
     private InteriorPlan interiorPlan;
+    private BuildingPlan buildingPlan;
+    private int roomFloor=-1;
+    private LinearLayout stairsRow;
+    private Button upstairsButton,downstairsButton;
     private TextView roomCaption;
     private final Button[] roomButtons=new Button[InteriorPlan.COUNT];
     private Button exitRoomButton;
@@ -185,10 +189,10 @@ public final class MainActivity extends Activity {
         addButton(progress,"Life goals",this::showGoals);
         crowdButton=addButton(progress,crowdMotion?"Crowds: moving":"Crowds: still",this::toggleCrowds);
         setContentView(root);root.requestApplyInsets();showMode();refresh();
-        if(atHome()&&prefs.getBoolean("insideHome",false))enterHome(prefs.getInt("roomCell",-1));
+        if(atHome()&&prefs.getBoolean("insideHome",false))enterHome(prefs.getInt("roomCell",-1),prefs.getInt("roomFloor",0));
         else if(prefs.getBoolean("insideVenue",false)&&prefs.getInt("insideX",-1)==lifeX&&prefs.getInt("insideY",-1)==lifeY){
             selectedX=lifeX;selectedY=lifeY;
-            enterVenue(prefs.getInt("roomCell",-1),-1,prefs.getInt("insideLot",-1));
+            enterVenue(prefs.getInt("roomCell",-1),-1,prefs.getInt("insideLot",-1),prefs.getInt("roomFloor",0));
         }
     }
     private void newLife(){
@@ -406,7 +410,7 @@ public final class MainActivity extends Activity {
     }
     private void showFinder(){
         new AlertDialog.Builder(this).setTitle("Find nearby places")
-            .setItems(new String[]{"Homes to rent","Workplaces","Food and groceries","Local venues"},(d,i)->findPlaces(i))
+            .setItems(new String[]{"Homes to rent","Workplaces","Food and groceries","Local venues","Tall buildings"},(d,i)->findPlaces(i))
             .setNegativeButton("Close",null).show();
     }
     private void findPlaces(int kind){
@@ -415,9 +419,9 @@ public final class MainActivity extends Activity {
         String[] labels=new String[found.length];
         for(int i=0;i<found.length;i++){
             int x=LifeRules.x(found[i]),y=LifeRules.y(found[i]);
-            labels[i]=NativeWorld.describe(x,y,weekday).split("\\n",2)[0]+" · "+LifeRules.distance(lifeX,lifeY,x,y)+" blocks away";
+            labels[i]=NativeWorld.describe(x,y,weekday).split("\\n",2)[0]+(kind==LifeRules.TALL?" · "+NativeWorld.storeys(x,y)+" floors":"")+" · "+LifeRules.distance(lifeX,lifeY,x,y)+" blocks away";
         }
-        new AlertDialog.Builder(this).setTitle(kind==LifeRules.HOMES?"Homes to rent":kind==LifeRules.WORK?"Workplaces":kind==LifeRules.FOOD?"Food nearby":"Local venues")
+        new AlertDialog.Builder(this).setTitle(kind==LifeRules.HOMES?"Homes to rent":kind==LifeRules.WORK?"Workplaces":kind==LifeRules.FOOD?"Food nearby":kind==LifeRules.TALL?"Tall buildings":"Local venues")
             .setItems(labels,(d,i)->{selectedX=LifeRules.x(found[i]);selectedY=LifeRules.y(found[i]);updateDetails();notice("Selected — tap Travel here");})
             .setNegativeButton("Close",null).show();
     }
@@ -455,6 +459,10 @@ public final class MainActivity extends Activity {
             final int slot=k;roomButtons[k]=homeButton(k<3?row:row2,"",()->interiorView.use(slot));
         }
         exitRoomButton=homeButton(row2,"Exit home",interiorView::exit);
+        stairsRow=new LinearLayout(this);homePane.addView(stairsRow);
+        downstairsButton=homeButton(stairsRow,"Downstairs",()->changeFloor(-1));
+        upstairsButton=homeButton(stairsRow,"Upstairs",()->changeFloor(1));
+        stairsRow.setVisibility(View.GONE);
         pane.addView(homePane,new FrameLayout.LayoutParams(-1,-1));homePane.setVisibility(View.GONE);
     }
     private Button homeButton(LinearLayout row,String title,Runnable action){
@@ -462,24 +470,29 @@ public final class MainActivity extends Activity {
         b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(0,0,0,0);
         row.addView(b,new LinearLayout.LayoutParams(0,dp(44),1));b.setOnClickListener(v->{if(inInterior)action.run();});return b;
     }
-    private void enterHome(int saved){
+    private void enterHome(int saved){enterHome(saved,0);}
+    private void enterHome(int saved,int floor){
         if(!atHome()||travelRoute!=null)return;
-        InteriorPlan p=InteriorPlan.create(NativeWorld.interior(homeX,homeY),seed^LifeRules.pack(homeX,homeY));
+        BuildingPlan p=BuildingPlan.create(NativeWorld.interior(homeX,homeY),seed^LifeRules.pack(homeX,homeY),NativeWorld.storeys(homeX,homeY),false);
         if(p==null){notice("This home has no accessible interior yet");return;}
-        openInterior(p,saved);
+        openInterior(p,saved,floor);
     }
     private void enterSelected(){
         if(!atSelected()){notice("Travel to the selected building first");return;}
         if(atHome()){enterHome(-1);return;}
         if(!enterVenue(-1,-1,-1))notice("No public interior at this location");
     }
-    private boolean enterVenue(int saved,int service,int expectedLot){
+    private boolean enterVenue(int saved,int service,int expectedLot){return enterVenue(saved,service,expectedLot,0);}
+    private boolean enterVenue(int saved,int service,int expectedLot,int floor){
         if(inInterior||travelRoute!=null||!atSelected()||atHome())return false;
-        InteriorPlan p=InteriorPlan.createVenue(NativeWorld.placeInterior(lifeX,lifeY),seed^LifeRules.pack(lifeX,lifeY));
-        if(p==null||(expectedLot>=0&&p.lot!=expectedLot))return false;
-        int slot=p.slotFor(service);if(service>=0&&slot<0)return false;
-        openInterior(p,saved);
-        if(slot>=0)interiorView.use(slot);
+        BuildingPlan p=BuildingPlan.create(NativeWorld.placeInterior(lifeX,lifeY),seed^LifeRules.pack(lifeX,lifeY),NativeWorld.storeys(lifeX,lifeY),true);
+        if(p==null||(expectedLot>=0&&p.floor(0).lot!=expectedLot))return false;
+        int serviceFloor=p.floorFor(service);if(service>=0&&serviceFloor<0)return false;
+        openInterior(p,saved,floor);
+        if(service>=0){
+            int slot=interiorPlan.slotFor(service);
+            if(slot>=0)interiorView.use(slot);else notice("Use the stairs to floor "+(serviceFloor+1)+" for "+VenueRules.label(interiorPlan.lot,service));
+        }
         return true;
     }
     private boolean requestVenueService(int service){
@@ -494,22 +507,41 @@ public final class MainActivity extends Activity {
         if(!interiorCurrent())return false;
         int slot=interiorPlan.slotFor(service);return !interiorView.busy()&&slot>=0&&interiorPlan.canUse(interiorView.cell(),slot);
     }
-    private void openInterior(InteriorPlan p,int saved){
-        selectedX=lifeX;selectedY=lifeY;interiorX=lifeX;interiorY=lifeY;interiorPlan=p;inInterior=true;
-        roomCaption.setText(p.commercial?NativeWorld.describe(lifeX,lifeY,weekday).split("\\n",2)[0]:"YOUR HOME · WALK & INTERACT");
+    private void openInterior(BuildingPlan p,int saved,int floor){
+        selectedX=lifeX;selectedY=lifeY;interiorX=lifeX;interiorY=lifeY;buildingPlan=p;inInterior=true;
+        showFloor(p.restoreFloor(floor),floor==p.restoreFloor(floor)?saved:-1);
+        showMode();updateDetails();saveLife();
+    }
+    private void showFloor(int floor,int saved){
+        roomFloor=floor;InteriorPlan p=buildingPlan.floor(floor);interiorPlan=p;
+        String name=p.commercial?NativeWorld.describe(lifeX,lifeY,weekday).split("\\n",2)[0]:"YOUR HOME";
+        roomCaption.setText(name+" · Floor "+(floor+1)+"/"+buildingPlan.count());
         for(int k=0;k<roomButtons.length;k++){roomButtons[k].setText(p.labelAt(k));roomButtons[k].setVisibility(k<p.actionCount()?View.VISIBLE:View.GONE);}
-        exitRoomButton.setText(p.commercial?"Exit building":"Exit home");
-        interiorView.open(p,saved);showMode();updateDetails();saveLife();
+        exitRoomButton.setText(p.commercial?"Exit building":"Exit home");exitRoomButton.setVisibility(floor==0?View.VISIBLE:View.GONE);
+        stairsRow.setVisibility(buildingPlan.count()>1?View.VISIBLE:View.GONE);
+        downstairsButton.setEnabled(floor>0);upstairsButton.setEnabled(floor+1<buildingPlan.count());
+        interiorView.open(p,saved,buildingPlan.landing);
+    }
+    private void changeFloor(int direction){
+        if(!interiorCurrent()||buildingPlan==null||buildingPlan.floor(roomFloor+direction)==null)return;
+        interiorView.climb(direction);
     }
     private void leaveHome(){
-        if(!inInterior)return;
-        inInterior=false;interiorView.close();interiorPlan=null;interiorX=interiorY=-1;
+        if(!inInterior||roomFloor!=0)return;
+        inInterior=false;interiorView.close();interiorPlan=null;buildingPlan=null;roomFloor=-1;interiorX=interiorY=-1;
         cx=lifeX;cy=lifeY;selectedX=lifeX;selectedY=lifeY;
         showMode();refresh();saveLife();
     }
     private void interiorArrived(int action,int cell){
         if(!interiorCurrent())return;
-        if(action==InteriorView.EXIT){if(cell==interiorPlan.entry)leaveHome();return;}
+        if(action==InteriorView.UP||action==InteriorView.DOWN){
+            int direction=action==InteriorView.UP?1:-1;
+            if(buildingPlan!=null&&buildingPlan.canChange(roomFloor,cell,direction)){
+                showFloor(roomFloor+direction,buildingPlan.landing);advanceTime(2);updateDetails();saveLife();
+            }
+            return;
+        }
+        if(action==InteriorView.EXIT){if(roomFloor==0&&cell==interiorPlan.entry)leaveHome();return;}
         if(action==InteriorView.WALK){saveLife();return;}
         if(!interiorPlan.canUse(cell,action))return;
         switch(interiorPlan.actionAt(action)){
@@ -524,6 +556,12 @@ public final class MainActivity extends Activity {
                 if(energy<8){notice("Rest before practicing");break;}
                 energy-=8;food=clamp100(food-3);fun=clamp100(fun+25);skills[3]=Math.min(4400,skills[3]+20);
                 advanceTime(60);updateDetails();saveLife();notice("Creativity improved");break;
+            case BuildingPlan.STUDY:
+                if(!atHome()||energy<6){notice("Rest before studying");break;}
+                energy-=6;food=clamp100(food-3);skills[1]=Math.min(4400,skills[1]+22);advanceTime(45);updateDetails();notice("Logic improved");break;
+            case BuildingPlan.FITNESS:
+                if(!atHome()||energy<12||food<8){notice("Eat and rest before exercising");break;}
+                energy-=12;food=clamp100(food-8);fun=clamp100(fun+8);skills[2]=Math.min(4400,skills[2]+24);advanceTime(45);updateDetails();notice("Fitness improved");break;
             case InteriorPlan.PHONE:showPhone();break;
             case InteriorPlan.SOFA:rest();break;
             default:break;
@@ -532,7 +570,7 @@ public final class MainActivity extends Activity {
     }
     @Override public void onBackPressed(){
         if(walkMode){endWalkMode(true);return;}
-        if(inInterior){if(interiorView.busy()){interiorView.cancel();saveLife();}else interiorView.exit();return;}
+        if(inInterior){if(interiorView.busy()){interiorView.cancel();saveLife();}else if(roomFloor>0)changeFloor(-1);else interiorView.exit();return;}
         super.onBackPressed();
     }
     private MobileContacts.Resident resident(int key){return new MobileContacts.Resident(seed,key);}
@@ -682,7 +720,7 @@ public final class MainActivity extends Activity {
              .putInt("x",cx).putInt("y",cy).putString("contacts",contacts.save())
              .putBoolean("insideHome",inInterior&&!interiorPlan.commercial).putBoolean("insideVenue",inInterior&&interiorPlan.commercial)
              .putInt("insideX",interiorX).putInt("insideY",interiorY).putInt("insideLot",inInterior?interiorPlan.lot:-1)
-             .putInt("roomCell",inInterior?interiorView.cell():-1)
+             .putInt("roomCell",inInterior?interiorView.cell():-1).putInt("roomFloor",roomFloor)
              .putInt("tileX",tileX).putInt("tileY",tileY).putBoolean("crowdMotion",crowdMotion);
         for(int i=0;i<skills.length;i++)e.putInt("skill"+i,skills[i]);e.apply();
     }

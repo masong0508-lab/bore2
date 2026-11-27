@@ -119,6 +119,21 @@ int main(void){
         }
     }
     assert(venues>20);assert(!bore_android_place_interior(-1,0,room,BORE_ANDROID_INTERIOR_FIELDS));
+    int tall=0;
+    for(int seed=0;seed<3;seed++){
+        uint32_t c=bore_android_init((uint32_t)(1234+seed*313));
+        int cx=(int)(c&65535),cy=(int)(c>>16);
+        for(int y=cy-8;y<=cy+8;y++)for(int x=cx-8;x<=cx+8;x++){
+            if(x<0||y<0||x>=BM_N||y>=BM_N)continue;
+            BInfo b;LotPlan p;u8 f[5];bm_block(x,y,&b);
+            int expected=0;
+            if(b.terrain!=BT_SEA&&((b.lot>=LOT_HOUSE&&b.lot<=LOT_APART)||bore_venue_supported(b.lot))&&bm_lot_foot(x,y,&b,f,&p))
+                expected=CLAMP(bm_storeys(&b),1,6);
+            assert(bore_android_storeys(x,y)==expected);
+            if(expected>1)tall++;
+        }
+    }
+    assert(tall>0);assert(bore_android_storeys(-1,0)==0);printf("Android native storey count: %d multi-storey lots PASS\n",tall);
     printf("Android commercial footprint/door alignment: %d venues PASS\\n",venues);
     int mask[BORE_ANDROID_WALK_FIELDS];
     uint32_t cap=bore_android_init(1234u);
