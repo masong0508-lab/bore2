@@ -1724,9 +1724,18 @@ int world_hills_on(void) {
 static int gh_raw0(int ax,int ay){return bm_ground_corner(ax,ay);}
 // The land far past the window (the far view's ground quads, its roads, buildings and trees) asks for the same few hundred corners every
 // frame, each a stack of noise: kept in a small table by the corner's world tile (the land never changes unless it is edited or remade).
+// The stock PS1 must retain at least 8 KiB of resident stack headroom.
+// Reduce only this exact-key memoization table; misses still evaluate the
+// same physical surface. Expanded RAM retains the existing 8192-entry path.
+#ifdef WALLS_DISC
+#define GHF_N 512
+#define GHF_SHIFT 23
+#else
 #define GHF_N 1024
+#define GHF_SHIFT 22
+#endif
 typedef struct { u16 x, y; s16 h; } GhF;
-static GhF ghf_small[GHF_N], *ghf = ghf_small; static int ghf_ok, ghf_n = GHF_N, ghf_sh = 22, ghf_up;   // (8 MB: 8192 of them)
+static GhF ghf_small[GHF_N], *ghf = ghf_small; static int ghf_ok, ghf_n = GHF_N, ghf_sh = GHF_SHIFT, ghf_up;   // (8 MB: 8192 of them)
 static int gh_raw(int X, int Y) {
     if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
     int ax = world_wbx * BM_BLK + X, ay = world_wby * BM_BLK + Y; if (ax < 0) ax = 0; if (ay < 0) ay = 0;
