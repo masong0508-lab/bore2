@@ -4,6 +4,7 @@
 // continuously across blocks, a sheen sits under the crown, the crown is a whorl, hanging cuts end in points, bangs hang
 // over the forehead, and it is lit per vertex as a rounded mass instead of a pile of bricks.
 #include "voxel.h"
+#include "native_life.h"
 #include "gfx.h"
 #include "atlas.h"
 #include "wear_models.inc"
@@ -867,6 +868,12 @@ void voxel_draw(const Bore *b, const VECTOR *pos, int yaw, const Gait *g) {
     if (g->sit) { knL = knR = 1024; elL = elR = -500; }
     if (g->skate && !lie) { knL = knR = 0; elL = elR = -200; }   // (on a board the legs splay instead: the board sits where the feet were)
     if (lie) { int keep = 4096 - sm; knL = (knL * keep) >> 12; knR = (knR * keep) >> 12; elL = (elL * keep) >> 12; elR = (elR * keep) >> 12; }
+    if (bore_task_active(g->activity,moving,lie,g->skate,g->pose!=0)) {
+        unsigned ph=bore_task_phase((unsigned)g->clock,(unsigned)g->seed);
+        BoreArm L=bore_task_arm(g->activity,ph,0), R=bore_task_arm(g->activity,ph,1);
+        armL=L.swing; armR=R.swing; elL=L.elbow; elR=R.elbow;
+        rollL=-105; rollR=105;
+    }
     if (g->pose && !lie) {   // a hand-set pose (the fighter): every joint as given
         const VPose *q = g->pose;
         armL = q->arm[0]; armR = q->arm[1]; rollL = q->aroll[0]; rollR = q->aroll[1]; elL = q->elbow[0]; elR = q->elbow[1];
@@ -1062,6 +1069,10 @@ void voxel_draw_lod(const LodBore *m, const VECTOR *pos, int yaw, const Gait *g)
     int swing = (ws * 300) >> 12;
     int legL = g->sit ? -1024 : swing, legR = g->sit ? -1024 : -swing;
     int armL = g->sit ? -200 : -swing * 3 / 4, armR = g->sit ? -200 : swing * 3 / 4;
+    if (bore_task_active(g->activity,g->amp>2000,lie,g->skate,g->pose!=0)) {
+        unsigned ph=bore_task_phase((unsigned)g->clock,(unsigned)g->seed);
+        armL=bore_task_arm(g->activity,ph,0).swing; armR=bore_task_arm(g->activity,ph,1).swing;
+    }
     if (lie) { int keep = 4096 - sm; legL = (legL * keep) >> 12; legR = (legR * keep) >> 12; armL = (armL * keep) >> 12; armR = (armR * keep) >> 12; if (g->bed) { legL += theta; legR += theta; } }
     { int dx = cam.eye.vx - p.vx, dy = cam.eye.vy - p.vy, dz = cam.eye.vz - p.vz, c = icos(yaw), sn = isin(yaw);
       cam_lx = (dx * c - dz * sn) >> 12; cam_lz = (dz * c + dx * sn) >> 12; cam_ly = dy; }

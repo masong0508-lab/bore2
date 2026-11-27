@@ -3,6 +3,7 @@
 #include "story.h"
 #include "wants.h"
 #include "social_activity.h"
+#include "native_life.h"
 #include "outing_links.h"
 #include "ui.h"
 #include "sim.h"
@@ -167,6 +168,38 @@ static const char *const L_KID[]     = { "I LIKE FROGS", "TAG! YOU'RE IT", "ARE 
 static const char *const L_ELD[]     = { "BACK IN MY DAY", "THESE KNEES...", "KIDS TODAY, HONESTLY", "SPEAK UP, DEAR", "I REMEMBER THE SEA", "HAVE A BISCUIT" };
 static const char *const L_HOME[]    = { "MAKE YOURSELF AT HOME", "MIND THE RUG", "WE LIVE HERE, YOU KNOW", "THE KETTLE'S ON", "NICE OF YOU TO DROP BY" };
 #define NL(a) ((int)(sizeof(a) / sizeof((a)[0])))
+/* Explicit questions use the real activity before a chat interrupts it.
+ * Keep the original quirky ambient greetings elsewhere. */
+COLD static int citizen_context(const Cit *c) {
+    switch(c->mode){
+    case CM_SLEEP:return BC_SLEEP;
+    case CM_GOHOME:case CM_LEAVE:case CM_AWAY:return BC_TRAVEL;
+    case CM_VISIT:return BC_VISIT;
+    case CM_CHORE:
+        if(!c->sub)return BC_HOME;
+        switch(c->chore){
+        case 'F':case '/':return BC_EAT;
+        case 'H':case ',':case '-':return BC_WASH;
+        default:return BC_REST;
+        }
+    default:break;
+    }
+    if(c->pid!=NOPID&&c->pid<pop_nper){
+        int place,act=pop_where(c->pid,&place);
+        switch(act){
+        case AT_WORK:return BC_WORK;
+        case AT_SCHOOL:return BC_SCHOOL;
+        case AT_SLEEP:return BC_SLEEP;
+        case AT_HOME:return indoors_at(c->x,c->z)?BC_HOME:BC_TRAVEL;
+        case AT_OUT:return BC_OUT;
+        default:break;
+        }
+    }
+    return indoors_at(c->x,c->z)?BC_HOME:BC_OUT;
+}
+COLD static const char *citizen_reply(const Cit *c,int ask_day){
+    return bore_context_line(citizen_context(c),c->pers,c->rel,ask_day,c->seed^(unsigned)(clock_min/30));
+}
 COLD static const char *chat_line(const Cit *c) {
     if (indoors_at(c->x, c->z) && !(crnd() & 1) && c->pers != PE_GRUFF) return L_HOME[rn(NL(L_HOME))];   // in their own house
     if (c->stage <= AG_TEEN) return L_KID[rn(NL(L_KID))];
@@ -629,7 +662,7 @@ static void chat_begin(Cit *c) {
     wants_event(p, W_CHAT, 0); wants_event(p, W_NEIGHBOR, 0);
     if (c->pid != NOPID) pop_seen(c->pid);
     c->mode = CM_CHAT; c->t = 240;
-    c->gait.wave = 40;
+    c->gait.wave = 40; c->gait.activity=BT_TALK;
     c->yaw = (u16)yaw_to(sims[player].x - c->x, sims[player].z - c->z);
 }
 
@@ -699,13 +732,7 @@ COLD int citizens_pie_do(int i) {
         break;
     case PO_DAY: {
         if (!accept(c, 65)) { say(c, "A LONG DAY. NOT NOW"); audio_voice(VOICE_DISAGREE); break; }
-        const char *line;
-        if (c->pid != NOPID) {
-            int place, activity = pop_where(c->pid, &place);
-            line = activity == AT_WORK ? "ON THE CLOCK TODAY" : activity == AT_SCHOOL ? "SCHOOL KEEPS ME BUSY" : activity == AT_OUT ? "OUT ENJOYING THE DAY" : activity == AT_SLEEP ? "IT IS PAST MY BEDTIME" : "TAKING IT EASY AT HOME";
-        } else if (c->stage <= AG_TEEN) line = clock_day < 5 && clock_min < 900 ? "LOTS TO LEARN TODAY" : "TIME TO GO AND PLAY";
-        else if (c->stage == AG_ELDER) line = "TAKING THE DAY SLOWLY";
-        else line = clock_min < 720 ? "A BUSY MORNING" : clock_min < 1080 ? "RUNNING A FEW ERRANDS" : "READY TO PUT MY FEET UP";
+        const char *line=citizen_reply(c,1);
         rel_add(c, 3); say(c, line); chat_begin(c); audio_voice(VOICE_AGREE); break; }
     case PO_JOB: {
         static char jb[40];
@@ -750,7 +777,7 @@ COLD int citizens_pie_do(int i) {
     case PO_TALK:
         story_talks++;
         if (c->pers == PE_GRUFF && c->rel < 10 && rn(100) < 45) { say(c, "WHAT."); rel_add(c, -2); audio_voice(VOICE_DISAGREE); break; }
-        rel_add(c, c->pers == PE_FRIENDLY ? 8 : 5); say(c, chat_line(c)); chat_begin(c); story_event(E_CITCHAT, 0);
+        say(c,citizen_reply(c,0)); rel_add(c, c->pers == PE_FRIENDLY ? 8 : 5); chat_begin(c); story_event(E_CITCHAT, 0);
         sim_moodlet(p, CML_GOOD_CHAT); audio_voice(VOICE_AGREE); break;
     case PO_FAMILY: {   // who do they live with?
         static char fam[32];
@@ -1547,6 +1574,13 @@ COLD static int step_core(Cit *c, int i, int n) {   // live up to n steps of thi
     if (c->gait.wave > 0) c->gait.wave = MAX(0, c->gait.wave - used);
     if (c->gait.squash < 0) c->gait.squash = MIN(0, c->gait.squash + used);
     c->gait.seed = i; c->gait.clock = tick;
+    c->gait.activity=c->mode==CM_CHAT?BT_TALK:BT_IDLE;
+    if(c->mode==CM_CHORE&&c->sub==1&&c->t)switch(c->chore){
+    case 'F':case '/':c->gait.activity=BT_EAT;break;
+    case '-':case 'H':case ',':c->gait.activity=BT_WASH;break;
+    case '[':c->gait.activity=BT_WORK;break;
+    default:break;
+    }
     return used;
 }
 COLD static void step_one(Cit *c, int i, int n) {   // n steps of their life: a few big strides through it (what is left goes to the next call)

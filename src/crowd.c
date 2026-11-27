@@ -1,5 +1,6 @@
 // crowd: see crowd.h
 #include "crowd.h"
+#include "native_life.h"
 #include "gfx.h"
 #include "atlas.h"
 #include "mem8.h"
@@ -310,7 +311,8 @@ static int atan2_c(int y, int x) {               // 0..4095 round the circle
 static int view_angle(const VECTOR *pos, int yaw) {   // where the eye stands round the person (their facing taken off)
     return (atan2_c(cam.eye.vx - pos->vx, -(cam.eye.vz - pos->vz)) - yaw) & 4095;
 }
-static int pose_of(const Gait *g) { return g->sleep ? 2 : g->sit ? 1 : 0; }
+static int active_task(const Gait *g) { return bore_task_active(g->activity,g->amp>2000,g->sleep||g->lie,g->skate,g->pose!=0); }
+static int pose_of(const Gait *g) { return (g->sleep ? 2 : g->sit ? 1 : 0) | (active_task(g)?g->activity<<2:0); }
 static int sprite_depth(const Spr *s) {         // equivalent depth for a cached image's pixel sizes under this frame's lens
     if (s->focal == gfx_focal || !s->focal) return s->z;
     return (s->z * gfx_focal + s->focal / 2) / s->focal;
@@ -321,7 +323,7 @@ static int want_box(const Spr *s, const VECTOR *pos, const Gait *g, int z, int a
     if (s->meas && s->pose == pose_of(g)) {
         int rz = sprite_depth(s);
         int x0 = s->mx0 * rz / z, y0 = s->my0 * rz / z, x1 = s->mx1 * rz / z, y1 = s->my1 * rz / z;
-        int h = y1 - y0, busy = g->amp > 600 || g->wave || g->talk;
+        int h = y1 - y0, busy = g->amp > 600 || g->wave || g->talk || active_task(g);
         int mx = 2 + h / (busy ? 7 : 14), my = 2 + h / 20;
         b[0] = x0 - mx; b[1] = y0 - my; b[2] = x1 + mx; b[3] = y1 + my;
         return 1;
@@ -350,7 +352,7 @@ static int score_any(int id, const VECTOR *pos, int yaw, const Gait *g) {
     int age = (u16)(fr - s->frame);
     int da = ((view_angle(pos, yaw) - s->ang + 6144) & 4095) - 2048; da = ABS(da);
     int rz = sprite_depth(s), dz = (ABS(z - rz) * 64) / MAX(1, rz);
-    int busy = g->amp > 600 || g->wave || g->talk || g->sit;
+    int busy = g->amp > 600 || g->wave || g->talk || g->sit || active_task(g);
     int shown = (s->rh * rz) / z;                                      // how tall it shows now
     int e = age * (busy ? 3 : 1) + da / 10 + dz + 1;
     if (s->clip) e += 60;                                              // a bit was cut off

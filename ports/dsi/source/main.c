@@ -1783,6 +1783,7 @@ ITCM_CODE static void wall_seg(int x0, int z0, int x1, int z1, int v, int vert, 
 typedef struct { int x, y, dir, stop; u8 on, stage, skin, shirt, hair, pants; u16 id; u32 ps; } Cit;
 #include "ds_contacts.h"
 #include "social_activity.h"
+#include "native_life.h"
 #include "ds_cit_routine.h"
 #include "ds_city_budget.h"
 typedef struct { int x, y, dx, dy; u16 col; int px, py, ang; s16 s, L, wt; s8 sg, lj, tx, ty; u8 on, st, tn, tj; } Car;   // (d83) x, y: its centre in 1/16 cells; dx, dy: its way (0, 0: not on the road); st: 0 straight, 1 in a turn (sg +1 right, -1 left, from px, py, s of L); lj: its street's slot; tj: the junction it has claimed (+1), tx ty its slot; tn: 0 straight 1 right 2 left; wt: steps held up
@@ -1803,6 +1804,19 @@ static int cit_activity(const Cit *c) {
     static DsCitRoutineCache cache[NCIT];
     if(last_min!=minutes){last_min=minutes;hour_key=minutes/60;}
     return ds_cit_activity_cached(&cache[c-cits],c->id,c->stage,hour_key);
+}
+static const char *cit_context_reply(const Cit *c,int affinity,int ask_day){
+    int status;
+    switch(cit_activity(c)){
+    case DS_CIT_SLEEP:status=BC_SLEEP;break;
+    case DS_CIT_HOME:status=BC_HOME;break;
+    case DS_CIT_WORK:status=BC_WORK;break;
+    case DS_CIT_SCHOOL:status=BC_SCHOOL;break;
+    case DS_CIT_OUT:status=BC_OUT;break;
+    default:status=BC_UNKNOWN;break;
+    }
+    unsigned identity=c->ps?c->ps:(unsigned)c->id;
+    return bore_context_line(status,(int)((identity>>1)&3u),affinity*10,ask_day,identity^(unsigned)(minutes/30));
 }
 static int cit_vis(const Cit *c) { return c->on && (c->stop > 0 || cit_activity(c) == DS_CIT_OUT); }
 volatile unsigned town_sig, town_sig_seed = 777, pers_sig, pers_dist, pers_dup;   // (test readouts)
@@ -3498,7 +3512,7 @@ static void apply_soc(int ai, int tgt, int id) {
       if (SREL[id] > 0) { life_ev(ai, WN_CHAT, 0); if (cit) life_ev(ai, WN_NEIGHBOR, 0); }
       if (rel < 3 && nr >= 3) { life_ev(ai, WN_FRIEND, 0); if (cit) life_ev(ai, WN_TOWNFRIEND, 0); }
       if (ai == ctl) { trg_ev(EV_CHATS, 1); if (id == S_JOKE) trg_ev(EV_JOKES, 1); if (id == S_HUG) trg_ev(EV_HUGS, 1); if (id == S_FLIRT || id == S_KISS) trg_ev(EV_FLIRTS, 1); if (id == S_FEED || id == S_TUCK || id == S_TEACH) trg_ev(EV_CARES, 1); if (id == S_ADVICE || id == S_HUG || id == S_FEED || id == S_TUCK || id == S_HELP || id == S_SHARE) trg_ev(EV_KIND, 1); } }
-    if (ai == ctl && id == S_DAY && ct) say(ds_cit_day_line(ct->id, ct->stage, (minutes / 60) % 24, (minutes / 1440) % 7));
+    if (ai == ctl && ct && (id == S_DAY || id == S_CHAT)) say(cit_context_reply(ct,rel,id==S_DAY));
     else if (ai == ctl && id == S_SHARE) say("Thanks for sharing!");
     else if (ai == ctl && id == S_HELP) say("You made their day easier.");
     else if (ai == ctl && id == S_STORY) say("Tell me another one!");
@@ -4217,6 +4231,17 @@ static void sim_emit(const SimL *e, int x, int y, int z, int q) {   // into the 
     polys += e->triangles;
     gxk = 4; gx_lv = 0; gx_mat = gx_nrm = gx_col = ~0u;gx_txp=-2; gx_c1(0x12, 1);
 }
+/* A requested action becomes a gesture only after its actual arrival.
+ * Catalog action labels are the same ones displayed to the player. */
+static int sim_task_pose(const Sim *m,int lod,int moving,int ride) {
+    if(lod||moving||ride||m->act_left<=0)return BT_IDLE;
+    const char *lab=m->act_obj>=0&&m->act_obj<nobj?IT_OF(&objs[m->act_obj])->lab:0;
+    if(m->act==0)return lab&&(!strcmp(lab,"Cook")||!strcmp(lab,"Bake"))?BT_COOK:BT_EAT;
+    if(m->act==3||m->act==103)return BT_TALK;
+    if(m->act==1&&lab){if(!strcmp(lab,"Read"))return BT_READ;if(!strcmp(lab,"Use Computer"))return BT_WORK;}
+    if(m->act==5&&lab&&(!strcmp(lab,"Wash Hands")||!strcmp(lab,"Wash")))return BT_WASH;
+    return BT_IDLE;
+}
 static void sim3d(int i, int yaw) {
 #ifdef HAIRALL
     sims[i].hair = (u8)HAIRALL;   // (test builds: -DHAIRALL=n gives every sim that style)
@@ -4232,13 +4257,14 @@ static void sim3d(int i, int yaw) {
         sw = 135 + (P[14] - 50), at = 50 + (P[21] - 50) / 2, lt = 90 + (P[23] - 50) / 2, bz = 85 + (P[24] - 50) * 2, al = 250 + (P[20] - 50) * 2, hb = base + 30;
     int sw_l = mv ? sinLerp(gframes * 1100 + i * 700) * 70 / 4096 : 0;
     int fx_e = lod ? 0 : expr_of(m), fx_b = lod || fx_e == EX_SLEEP ? 0 : (gframes + i * 41) % 130 < 5, fx_t = !lod && (m->act >= 100 || m->act == 3) && ((gframes >> 3) & 1);   // (D55) mood, blink, talking: part of the cached model's key
+    int task=sim_task_pose(m,lod,mv,ride);unsigned task_phase=task?bore_task_phase((unsigned)gframes,(unsigned)i):0;
     SimL *se = 0; int cached = 0, ox = x, oz = z, oq = sq_q, ogy = gy_off, model_start = polys; u32 *sb_ = 0; int sn_ = 0, sh_ = 0, sk_ = 0, sc_ = 0;
     int saved_full=gx_full,saved_tx=tx_want,saved_tp=gx_txp;
     u32 sm_ = 0, snm_ = 0, scl_ = 0;
     if (gxb && dpass == 2) {   // (D39) the cached model: the key is everything its shape and colours come from
         if (mv) sw_l = sinLerp((s16)(((gframes * 1100 + i * 700) & 32767) & ~4095)) * 70 / 4096;   // (the stride in eight steps)
         u32 key = 2166136261u; for (int q = 0; q < PMN; q++) key = (key ^ (u32)P[q]) * 16777619u;
-        key = (key ^ (u32)(fx_e | fx_b << 4 | fx_t << 5 | 1 << 6)) * 16777619u; key = (key ^ (u32)(stg | lod << 3 | (u32)m->hair << 4 | (u32)m->beard << 9 | (u32)lit_on << 13 | (u32)csx[i].hat << 14)) * 16777619u; key = (key ^ ((u32)sk | (u32)hc << 16)) * 16777619u; key = (key ^ ((u32)sh | (u32)pants << 16)) * 16777619u; key = (key ^ (u32)(sw_l + 1000)) * 16777619u;
+        key = (key ^ (u32)(fx_e | fx_b << 4 | fx_t << 5 | 1 << 6)) * 16777619u; key = (key ^ (u32)(stg | lod << 3 | (u32)m->hair << 4 | (u32)m->beard << 9 | (u32)lit_on << 13 | (u32)csx[i].hat << 14)) * 16777619u; key = (key ^ ((u32)sk | (u32)hc << 16)) * 16777619u; key = (key ^ ((u32)sh | (u32)pants << 16)) * 16777619u; key = (key ^ (u32)(sw_l + 1000)) * 16777619u; key = (key ^ ((u32)task*2u+task_phase)) * 16777619u;
         for (int q = 0; q < SML_N; q++) if (sml[q].key == key && sml[q].n) { se = &sml[q]; cached = 1; break; }
         if(!se){for(int t=0;t<SML_N;t++){SimL *candidate=&sml[sml_next];sml_next=(sml_next+1)%SML_N;if(!candidate->n||gf_serial-candidate->used>2){se=candidate;break;}}}
         if(se&&!cached){ // no free entry: draw directly rather than overwrite a queued model
@@ -4252,9 +4278,14 @@ static void sim3d(int i, int yaw) {
     // torso with a collar, neck, shoulders
     sb(x, z, -sw, lh + 40, -85, sw, base, bz, sh); sb(x, z, -sw - 6, base - 70, -90, sw + 6, base, bz + 6, shade(sh, 9));
     sb(x, z, -42, base - 55, bz + 2, 42, base + 2, bz + 8, skd); sb(x, z, -40, base, -40, 40, base + 40, 40, skd);
-    // arms: sleeve, forearm, hand; they swing against the legs
+    // arms: same three boxes per arm; raise the forearm/hand for active tasks.
     for (int sd = -1; sd <= 1; sd += 2) { int ax0 = sd > 0 ? sw : -sw - at, ax1 = sd > 0 ? sw + at : -sw, o = -sd * sw_l;
-        sb(x, z, ax0, base - al * 45 / 100, -at + o, ax1, base - 10, at + o, sh); sb(x, z, ax0 + 4, base - al, -at + 4 + o, ax1 - 4, base - al * 45 / 100, at - 4 + o, sk); sb(x, z, ax0 + 2, base - al - 45, -at + 2 + o, ax1 - 2, base - al, at + 4 + o, sk); }
+        BoreArm hand=bore_task_arm(task,task_phase,sd>0);
+        int lift=hand.lift*al/250, reach=hand.reach*al/250;
+        sb(x,z,ax0,base-al*45/100,-at+o,ax1,base-10,at+o,sh);
+        sb(x,z,ax0+4,base-al+lift,-at+4+o,ax1-4,base-al*45/100,at-4+o+reach,sk);
+        sb(x,z,ax0+2,base-al-45+lift,-at+2+o+reach,ax1-2,base-al+lift,at+4+o+reach,sk);
+    }
     // head
     sb(x, z, -hw, hb, -hw, hw, hb + ht, hw, sk); sb(x, z, -hw - 16, hb + ht * 35 / 100, -22, -hw, hb + ht * 65 / 100, 40, skd); sb(x, z, hw, hb + ht * 35 / 100, -22, hw + 16, hb + ht * 65 / 100, 40, skd);
     hair_pieces(m->hair, stg, x, z, sq_q, sb_sc, hw, hw, hb + ht, ht, hc);   // (D62) the PS1's hair pieces

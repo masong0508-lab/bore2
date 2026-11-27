@@ -22,6 +22,7 @@ static u32 *logo_buf(void) { extern void *crowd_arena(void); return (u32 *)crowd
 #include "atlas.h"
 #include "look.h"
 #include "voxel.h"
+#include "native_life.h"
 #include "items.h"
 #include "world.h"
 #include "sim.h"
@@ -510,6 +511,17 @@ static void draw_sims(void) {
         if (i == player && veh_on) p.vy -= veh_seat(veh_on - 1) + 10;               // up on the seat
         if (i == player && on_board) skate_pose(&s->gait); else s->gait.skate = 0;
         s->gait.mood = s->mood; s->gait.talk = s->action == ACT_TALK; s->gait.seed = i; s->gait.clock = frame;
+        s->gait.activity=BT_IDLE;
+        if(s->act_t>0 && !(i==player&&(on_board||veh_on))) switch(s->action){
+        case ACT_EAT:s->gait.activity=(s->act_var==1||s->act_var==8)?BT_COOK:BT_EAT;break;
+        case ACT_COFFEE:s->gait.activity=BT_EAT;break;
+        case ACT_READ:s->gait.activity=BT_READ;break;
+        case ACT_WORK:case ACT_GATHER:s->gait.activity=BT_WORK;break;
+        case ACT_SHOWER:s->gait.activity=BT_WASH;break;
+        case ACT_TALK:s->gait.activity=BT_TALK;break;
+        case ACT_PHONE:if(s->act_var!=5)s->gait.activity=BT_TALK;break;
+        default:break;
+        }
         p.vy -= s->lvl * WALL_FULL + (s->lvl ? 0 : world_gh(s->x, s->z));
         {   // far from where you are looking: the same person at half the voxel resolution (the crowd model); close up, the full model
             int fdx = s->x - cam.at.vx, fdz = s->z - cam.at.vz;
