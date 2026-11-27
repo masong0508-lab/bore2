@@ -16,6 +16,8 @@ jobs:
         run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/vehicle_stability_test.c -o /tmp/vehicle_stability && /tmp/vehicle_stability
       - name: Verify real traffic parking across world-window rebases
         run: make -C ports/host/traffic trafsim && ports/host/traffic/trafsim --parking-test
+      - name: Verify safe shaped garden borders and access gaps
+        run: cc -O2 -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc test/parcel_plan_test.c -o /tmp/parcel_plan && /tmp/parcel_plan
       - name: Verify shared river, causeway and courtyard surfaces
         run: cc -O2 -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc test/world_surface_test.c -o /tmp/world_surface && /tmp/world_surface
       - name: Verify regional road continuity, usable farm frontage and actual lot access

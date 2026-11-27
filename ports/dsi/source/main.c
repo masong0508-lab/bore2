@@ -735,6 +735,11 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
           ground(tl(-2), tl(-2), tl(0), tl(0), 0, C15(8, 8, 9)); }
     if(b->terrain==BT_SEA)return;
     if(ds_draw_planned_proxy(b,pl,0,0))return;
+    if(bm_gen>=9&&k==LOT_POOL){
+        int w=6+(h&1),d=4+((h>>1)&1),z=pl&&pl->face==LF_NORTH?13-3-d:3;
+        ground(tl(0),tl(0),tl(26),tl(26),-24,C15(24,24,23));
+        ground(tl(6),tl(2*z),tl(2*(3+w)),tl(2*(z+d)),-32,C15(5,12,24));return;
+    }
     if(k==LOT_RIVER){
         if(b->road&BR_MEGA){ground(tl(4),tl(0),tl(18),tl(26),-26,C15(5,12,24));}
         else ground(tl(0),tl(4),tl(26),tl(18),-26,C15(5,12,24));
@@ -1131,6 +1136,12 @@ static int ds_water_at(int wx,int wy){
     int x,y,bx=bore_surface_slot(wx,&x),by=bore_surface_slot(wy,&y);
     if(bx<-RING_MAX||bx>RING_MAX||by<-RING_MAX||by>RING_MAX)return 1;
     const BInfo *b=&nbf[by+RING_MAX][bx+RING_MAX];
+    if(bm_gen>=9&&b->lot==LOT_POOL&&x>=BM_LOT0&&y>=BM_LOT0){
+        const LotPlan *p=&nlp[by+RING_MAX][bx+RING_MAX];
+        int u=x-BM_LOT0,v=y-BM_LOT0;
+        if(p->face==LF_NORTH)v=12-v;
+        return u>=3&&u<9+(b->h&1)&&v>=3&&v<7+((b->h>>1)&1);
+    }
     if(b->terrain!=BT_SEA&&b->lot!=LOT_RIVER&&!(b->road&BR_MEGA))return 0;
     return bore_surface(b,x,y)==BS_WATER;
 }
@@ -1209,14 +1220,63 @@ static void farm_reset(void) { memset(fm_n, 0, 4); memset(fm_g, 0, 4); memset(fm
     memset(fm_stock, 0, sizeof fm_stock); fm_egg = fm_milk = fm_pe = fm_pm = fm_built = fm_last = 0; memset(fsk, 0, sizeof fsk); farm_ui = 0; }
 static int z_put(int x, int y, int ch, int rot); static void z_room(int x0, int y0, int x1, int y1, int fl, int wc);
 static int g7_field;   // (D81) 1 while a gen 7 field lot (no street, no barn) is built
+/* A venue's own floor plan, clear entry and purpose-specific equipment.
+ * z_put is the actual DS catalogue; check its full footprint, not just
+ * its anchor, before adding any object. */
+static int venue_put9(const DsVenuePlan *p,int x,int y,int ch,int rot){
+    int id=PS1ID[(u8)ch]-1;
+    if(id<0||id>=NITEM)return 0;
+    Obj o={(u8)x,(u8)y,(u8)(id>>2),(u8)(id&3),(u8)rot};
+    int w,h;obj_fp(&o,&w,&h);
+    if(!ds_venue_item_fits(p,x,y,w,h))return 0;
+    for(int yy=y;yy<y+h;yy++)for(int xx=x;xx<x+w;xx++)
+        if(obj_at(xx,yy)>=0)return 0;
+    return z_put(x,y,ch,rot)>=0;
+}
+static int gen_venue9(int lot,u32 h){
+    DsVenuePlan p;
+    if(!ds_venue_plan(lot,&p))return 0;
+    z_room(p.x0,p.y0,p.x1,p.y1,2+(h&1),1+((h>>3)&3));
+    hwl[p.y1][p.door]=5;door_cx=p.door;door_cy=p.y1;
+    pcx=p.door;pcy=p.y1-1;
+    for(int y=p.y1;y<GN;y++)flr[y][p.door]=5;
+    const char *items=ds_venue_catalogue(lot);
+    /* Rear-wall service groups, two wings and a reception. Leave the
+     * last two rows and a three-cell-wide central spine unobstructed. */
+    for(int side=0;side<2;side++){
+        int lo=side?p.door+2:p.x0,hi=side?p.x1:p.door-1;
+        for(int x=lo;x<hi;x+=2)venue_put9(&p,x,p.y0,items[(x-lo)&1],0);
+        for(int y=p.y0+2;y<p.y1-2;y+=3){
+            int x=side?hi-2:lo;
+            venue_put9(&p,x,y,items[2+side],side?3:1);
+            if(hi-lo>=3)venue_put9(&p,side?lo:hi-2,y+1,items[4+side],0);
+        }
+    }
+    for(int q=0;q<3;q++){spawn_x[q]=p.door+q-1;spawn_y[q]=p.y1-1;}
+    return 1;
+}
 static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squares, farms and wild land outdoors; shops, diners, gyms, schools, clinics... as one open hall
     #define PUTP(xx, yy, cc, ii, rr) do { if (nobj < 400) { objs[nobj].x = (u8)(xx); objs[nobj].y = (u8)(yy); objs[nobj].c = (cc); objs[nobj].i = (ii); objs[nobj].rot = (u8)(rr); nobj++; occ_ok = 0; } } while (0)
-    int outdoor = k == LOT_WILD || k == LOT_PARK || k == LOT_SQUARE || k == LOT_SKATE || k == LOT_EMPTY || k == LOT_RIVER || k == LOT_FARM;
+    int outdoor = k == LOT_WILD || k == LOT_PARK || k == LOT_SQUARE || k == LOT_SKATE || k == LOT_EMPTY || k == LOT_RIVER || k == LOT_FARM || (bm_gen>=9&&k==LOT_POOL);
     door_cx = 6; pcx = 6; pcy = 11;
+    if(bm_gen>=9&&!outdoor&&gen_venue9(k,h))return;
     if (outdoor) {
         /* A river is not an empty park: its banks are rendered by the
          * common surface owner, and its water is never walkable. */
         if(k==LOT_RIVER){door_cy=12;return;}
+        if(bm_gen>=9&&k==LOT_POOL){
+            int w=6+(h&1),d=4+((h>>1)&1);
+            for(int y=0;y<GN;y++)for(int x=0;x<GN;x++)
+                flr[y][x]=(x>=3&&x<3+w&&y>=3&&y<3+d)?0:2;
+            for(int x=0;x<GN;x++){hwl[0][x]=6;if(x!=5&&x!=6)hwl[GN][x]=6;}
+            for(int y=0;y<GN;y++)vwl[y][0]=vwl[y][GN]=6;
+            z_put(1,1,'H',0);z_put(11,1,'>',0);z_put(1,4,'Z',0);
+            z_put(11,10,'Y',0);z_put(10,8,0xE7,0);
+            z_put(2,3,0xE6,0);z_put(3+w,4,0xE6,0);
+            door_cy=GN;door_cx=6;
+            for(int q=0;q<3;q++){spawn_x[q]=5+q;spawn_y[q]=GN-1;}
+            return;
+        }
         BoreTrail trail={0};
         if(k==LOT_WILD&&lot_bx>=0&&lot_bx<BM_N&&lot_by>=0&&lot_by<BM_N){
             BInfo b;bm_block(lot_bx,lot_by,&b);bm_trail_plan(lot_bx,lot_by,&b,&trail);
@@ -2114,6 +2174,13 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
      * the old height buried walls/doors and left a step at lot boundaries. */
     tx_want = tr == BT_DESERT || tr == BT_BEACH ? TX_SAND : tr == BT_ROCKY ? TX_GRAVEL : TX_GRASS; ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), 0, grass); tx_want = -1;
     if(ds_draw_planned_proxy(b,pl,ox,oz))return;
+    if(bm_gen>=9&&k==LOT_POOL){
+        int w=6+(h&1),d=4+((h>>1)&1),z=pl&&pl->face==LF_NORTH?13-3-d:3;
+        ground(ox,oz,ox+tl(26),oz+tl(26),-24,C15(24,24,23));
+        if(!(t7()&&r7_bx>=0&&ABS(r7_bx-lot_bx)<=1&&ABS(r7_by-lot_by)<=1))
+            ground(ox+tl(6),oz+tl(2*z),ox+tl(2*(3+w)),oz+tl(2*(z+d)),-32,C15(5,12,24));
+        return;
+    }
     if (!far_house7(b, pl)) {
         if(k==LOT_RIVER){
             if(t7()&&r7_bx>=0&&ABS(r7_bx-lot_bx)<=1&&ABS(r7_by-lot_by)<=1)return;
@@ -2278,7 +2345,7 @@ static void ds_water_slot(int sx,int sy){
     int needs=0;
     for(int dy=0;dy<=1;dy++)for(int dx=0;dx<=1;dx++){
         const BInfo *b=&nbf[sy+dy+RING_MAX][sx+dx+RING_MAX];
-        if(b->terrain==BT_SEA||b->lot==LOT_RIVER||((b->road&BR_MEGA)&&BR_PART(b->road)==3))needs=1;
+        if(b->terrain==BT_SEA||b->lot==LOT_RIVER||(bm_gen>=9&&b->lot==LOT_POOL)||((b->road&BR_MEGA)&&BR_PART(b->road)==3))needs=1;
     }
     if(!needs)return;
     int ox=sx*SLC,oy=sy*SLC;
@@ -2347,7 +2414,7 @@ static void draw_far_all(int yaw) {
         if(!ds_world_far_budget(polys+12)||(gxb&&gxn+160>=gx_cap))continue;
         if(b->terrain==BT_SEA){if(!t7())ground(tl(36*i),tl(36*j),tl(36*i+36),tl(36*j+36),-8,C15(5,12,24));continue;}
         int lite=!ds_world_detail_budget(polys+160);
-        if(lite&&b->lot!=LOT_RIVER){
+        if(lite&&b->lot!=LOT_RIVER&&!(bm_gen>=9&&b->lot==LOT_POOL)){
             ground(tl(36*i),tl(36*j),tl(36*i+26),tl(36*j+26),0,land_col(b->terrain));continue;
         }
         far_lod=lite;

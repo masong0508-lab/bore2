@@ -3,6 +3,7 @@
 #include "venue_footprint.h"
 #include "scene_surface.h"
 #include "park_plan.h"
+#include "parcel_plan.h"
 #include "window_math.h"
 #include "bigmap.h"
 #include <math.h>
@@ -235,6 +236,13 @@ static void block(Scene*s,int bx,int bz,int detail){
         bm_lot_plan(bx,bz,&b,&plan);
     int north=garden&&bm_gen>=7&&!(b.road&BR_MEGA)&&plan.face==LF_NORTH;
     if(garden)ground=C(0x7e9b68);
+    LotPlan border=plan;int planted=0;
+    if(bm_gen>=9&&plan.type&&plan.type!=HT_TERRACE&&plan.face!=LF_NONE){
+        int kind=bm_nb(bx,bz);
+        planted=kind==NK_SUBURB||kind==NK_ESTATE||kind==NK_GREEN;
+        if(plan.face==LF_NORTH)border.dy=22-plan.dy;
+        if(border.dy>13)planted=0;
+    }
     // Park materials are part of the stitched mesh, not coplanar overlays.
     for(int j=0;j<BM_BLK;j++)for(int i=0;i<BM_BLK;i++){
         int m=bore_lot_surface(&b,&plan,i,j);
@@ -245,6 +253,8 @@ static void block(Scene*s,int bx,int bz,int detail){
             else if(p==PARK_SOIL)m=BS_SOIL;
             else if(p==PARK_PATIO)m=BS_PATIO;
         }
+        if(m==BS_LAND&&planted&&i>=6&&i<=17&&!bore_parcel_gate(&border,i)&&
+           (plan.face==LF_NORTH?22-j:j)==bore_parcel_row(&border,i))m=BS_SOIL;
         if(m==BS_LAND&&bore_trail_cell(&trail,i,j))m=BS_SOIL;
         mat[j][i]=(unsigned char)m;
     }

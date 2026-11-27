@@ -1,5 +1,6 @@
 // bigmap: see bigmap.h
 #include "bigmap.h"
+#include "lot_footprints.h"
 int bm_packed, bm_gen = 3; char bm_cap_name[18];
 int bm_land = BL_MAINLAND, bm_sea = 2, bm_clim = 2, bm_hills = 2, bm_ncity = 2, bm_ntown = 6, bm_nvil = 12, bm_capsz = 2;
 void bm_dials_default(void) { bm_land = BL_MAINLAND; bm_sea = 2; bm_clim = 2; bm_hills = 2; bm_ncity = 2; bm_ntown = 6; bm_nvil = 12; bm_capsz = 2; }
@@ -822,12 +823,6 @@ void bm_lot_plan(int bx, int by, const BInfo *b, LotPlan *p) {
     if (dv >= 0) p->drv = (u8)(BM_LOT0 + (mir ? M - dv - 1 : dv));
 }
 // ---- the building on a lot, for every map, model and far view (each lot kind's walls as its generator in src/lots.inc builds them: lot tiles x0 y0 x1 y1, facing south) ----
-static const u8 lfoot[LOT_N][4] = {
-    [LOT_SHOP] = { 1, 1, 11, 9 }, [LOT_DINER] = { 1, 2, 11, 9 }, [LOT_GYM] = { 1, 2, 11, 9 }, [LOT_OFFICE] = { 1, 2, 11, 9 }, [LOT_INN] = { 0, 1, 12, 11 },
-    [LOT_SCHOOL] = { 0, 1, 12, 8 }, [LOT_ARCADE] = { 1, 2, 11, 9 }, [LOT_TOWER] = { 1, 1, 11, 10 }, [LOT_HOTEL] = { 0, 0, 12, 12 }, [LOT_APART] = { 0, 1, 12, 10 },
-    [LOT_CAFE] = { 1, 2, 11, 9 }, [LOT_BAR] = { 1, 2, 11, 9 }, [LOT_CINEMA] = { 0, 0, 12, 11 }, [LOT_SALON] = { 1, 2, 11, 9 }, [LOT_RESTAURANT] = { 0, 1, 12, 10 },
-    [LOT_CLINIC] = { 1, 1, 11, 10 }, [LOT_LIBRARY] = { 0, 1, 12, 10 }, [LOT_SPA] = { 1, 1, 11, 10 }, [LOT_GALLERY] = { 1, 2, 11, 9 }, [LOT_GAS] = { 1, 1, 11, 5 },
-    [LOT_CONV] = { 2, 3, 10, 9 }, [LOT_FARM] = { 8, 1, 12, 6 }, [LOT_SPACE] = { 1, 1, 11, 6 }, [LOT_OBS] = { 1, 2, 11, 9 } };
 COLD int bm_lot_home(int bx, int by, const BInfo *b, LotPlan *p) {
     if (b->lot != LOT_HOUSE && b->lot != LOT_COTTAGE && b->lot != LOT_TOWN && b->lot != LOT_TWO) return 0;
     if (bm_gen >= 7 && b->set != 255 && b->terrain != BT_SEA) { bm_lot_plan(bx, by, b, p); return p->type != 0; }
@@ -860,9 +855,9 @@ COLD int bm_lot_foot(int bx, int by, const BInfo *b, u8 *f, LotPlan *pp) {
     }
     int g7 = bm_gen >= 7 && b->terrain != BT_SEA && (b->set != 255 || (bm_gen>=9&&b->lot==LOT_FARM));
     if (g7) bm_lot_plan(bx, by, b, p); else { memset(p, 0, sizeof *p); p->face = LF_SOUTH; }
-    if (b->lot >= LOT_N || !lfoot[b->lot][2]) return 0;
+    if (b->lot >= LOT_N || !bore_lot_footprints[b->lot][2]) return 0;
     if (g7 && b->lot == LOT_FARM && p->face == LF_NONE) return 0;   // (a field: crops and hedgerows, no barn)
-    for (int i = 0; i < 4; i++) f[i] = (u8)(lfoot[b->lot][i] + BM_LOT0);
+    for (int i = 0; i < 4; i++) f[i] = (u8)(bore_lot_footprints[b->lot][i] + BM_LOT0);
     if (g7 && p->face == LF_NORTH && !(b->road & BR_MEGA)) { u8 a = (u8)(2 * BM_LOT0 + 12 - f[3]), c = (u8)(2 * BM_LOT0 + 12 - f[1]); f[1] = a; f[3] = c; }   // (a lot that faces north is built looking south, then turned over: rows 5 .. 17)
     return 1;
 }

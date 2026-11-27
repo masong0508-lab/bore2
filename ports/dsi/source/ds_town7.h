@@ -4,6 +4,7 @@
 // A home is built as if it looked south (door on the front wall, the front yard below it), then the whole plot is turned over (flip7) if its plan faces north,
 // the way the PS1 builds south and mirrors (src/lots7.inc). The rooms follow docs/HOUSING_DESIGN.md 4b/4c: groups, not rows (a living group round the telly,
 // a dining set, a kitchen run with its clear tile, a bed with its nightstands, a bath along a wall), the tiles inside every door kept clear.
+#include "parcel_plan.h"
 static u8 g7o[GN][GN];                                    // cells taken (1) or kept clear (2) while a home is laid out
 static u8 g7f[GN][GN];                                    // cells with a flat thing (a rug) on them: other things may stand on it
 static u8 g7h[GN][GN];                                    // (D81) cells of the house body and wing
@@ -317,10 +318,13 @@ static void gen_home7(const LotPlan *p0, u32 h, int terrain, int kind) {   // a 
         if (hedge) for (int x = 1; x <= 12; x++) {
             if (abs(x - dxc) <= 1 || (dv >= 0 && x >= dv && x <= dv + 1) || (ty == HT_TERRACE && abs(x - (q.d2x - BM_LOT0)) <= 1)) continue;
             int pier = piers && (x == 1 || x == 12 || abs(x - dxc) == 2 || (dv >= 0 && (x == dv - 1 || x == dv + 2)));
-            h7_hedge(x, 11, x, 10, h7_let(fence ? (char)0xDF : pier ? (char)0x8F : (char)0x8E), 0); }
+            int row=bm_gen>=9?bore_parcel_row(&q,x+BM_LOT0)-BM_LOT0:11;
+            if(bm_gen>=9&&bore_parcel_gate(&q,x+BM_LOT0))continue;
+            h7_hedge(x,row,x,row-1,h7_let(fence ? (char)0xDF : pier ? (char)0x8F : (char)0x8E),0); }
     }
     if (sides) for (int sd = 0; sd < 2; sd++) { int c = sd ? 12 : 1; if (dv >= 0 && (c == dv || c == dv + 1)) continue;
-        for (int y = by1 + 1; y < 11; y++) h7_hedge(c, y, sd ? c - 1 : c + 1, y, h7_let((char)0x8E), 1); }
+        int end=bm_gen>=9?bore_parcel_row(&q,c+BM_LOT0)-BM_LOT0:11;
+        for (int y = by1 + 1; y < end; y++) h7_hedge(c, y, sd ? c - 1 : c + 1, y, h7_let((char)0x8E), 1); }
     if (ty == HT_MANSION) { h7_abs(bx0 + 1, fr + 1, TREE_, 0); h7_abs(bx1 - 1, fr + 1, TREE_, 0); }
     for (int i = 0; i < 3; i++) { int x = 3 + 4 * i; if (kind != NK_CORE && abs(x - dxc) > 1 && (dv < 0 || x < dv - 1 || x > dv + 2) && !flr[12][x]) h7_abs(x, 12, TREE_, 0); }   // the street's trees, one every four cells, on the verge
     if (by0 >= 2 && ty != HT_TERRACE) {   // the back yard: a patio at the back wall, then a barbecue, flower beds or swings
