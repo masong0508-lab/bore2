@@ -253,9 +253,10 @@ public final class MainActivity extends Activity {
         int center=NativeWorld.init(seed);capitalX=center&65535;capitalY=center>>>16;
     }
     private int clampCenter(int x){return Math.max(radius,Math.min(MAP_SIZE-radius-1,x));}
-    private void toggleCrowds(){crowdMotion=!crowdMotion;crowdButton.setText(crowdMotion?"Crowds: moving":"Crowds: still");world3d.setCrowdActive(resumed&&in3d&&!inInterior&&crowdMotion);saveLife();}
+    private void toggleCrowds(){crowdMotion=!crowdMotion;crowdButton.setText(crowdMotion?"Crowds: moving":"Crowds: still");world3d.setCrowdActive(resumed&&in3d&&!inInterior&&crowdMotion);interiorView.setMotionEnabled(resumed&&inInterior&&crowdMotion);saveLife();}
     private void showMode(){
         world3d.setCrowdActive(resumed&&in3d&&!inInterior&&crowdMotion);
+        interiorView.setMotionEnabled(resumed&&inInterior&&crowdMotion);
         walkButton.setVisibility(in3d&&!inInterior?View.VISIBLE:View.GONE);
         walkControls.setVisibility(walkMode&&!inInterior?View.VISIBLE:View.GONE);
         if(inInterior){world3d.setVisibility(View.GONE);map.setVisibility(View.GONE);homePane.setVisibility(View.VISIBLE);hint.setText(interiorPlan.commercial?"Venue · walk to a service station":"Home · tap a floor tile or use furniture");return;}
@@ -1142,10 +1143,12 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onResume(){
         super.onResume();resumed=true;
+        if(interiorView!=null)interiorView.setMotionEnabled(inInterior&&crowdMotion);
         if(world3d!=null){world3d.onResume();world3d.setCrowdActive(in3d&&!inInterior&&crowdMotion);if(in3d){requestScene();world3d.requestRender();}}
     }
     @Override protected void onPause(){
         resumed=false;if(world3d!=null)world3d.setCrowdActive(false);
+        if(interiorView!=null)interiorView.setMotionEnabled(false);
         cancelTravel(false);if(walkMode)endWalkMode(false);if(inInterior)interiorView.cancel();saveLife();
         prefs.edit().putInt("seed",seed).putInt("x",cx).putInt("y",cy)
              .putInt("radius",radius).putBoolean("weekend",weekday==5).putBoolean("view3d",in3d).apply();

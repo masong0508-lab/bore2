@@ -18,18 +18,59 @@ final class InteriorView extends View {
     private IndoorCrowd crowd;
     private AvatarStyle[] peopleStyles=new AvatarStyle[0];
     private int targetPerson=-1;
+    private int crowdSeed;
+    private int[] crowdKeys=new int[0];
+    private int[][] crowdStations;
+    private boolean motionEnabled;
+    private int motionCounter;
+    private IndoorCrowd.Step moving;
+    private long motionStart;
+    private static final long NPC_STEP_MS=320;
+    private final Runnable motionTick=this::moveResident;
+    private boolean canAnimate(){
+        return motionEnabled&&!decorating&&plan!=null&&crowd!=null&&crowd.size()>0&&!busy()&&isShown()&&hasWindowFocus();
+    }
+    private void stopMotion(){removeCallbacks(motionTick);moving=null;invalidate();}
+    private void restartMotion(){
+        stopMotion();if(canAnimate())postDelayed(motionTick,550);
+    }
+    void setMotionEnabled(boolean enabled){
+        if(motionEnabled!=enabled){motionEnabled=enabled;restartMotion();}
+    }
+    private float motionProgress(){
+        return Math.min(1f,Math.max(0f,(SystemClock.uptimeMillis()-motionStart)/(float)NPC_STEP_MS));
+    }
+    private void moveResident(){
+        if(!canAnimate()){stopMotion();return;}
+        if(moving!=null){
+            if(motionProgress()<1f){invalidate();postDelayed(motionTick,80);return;}
+            moving=null;invalidate();postDelayed(motionTick,550);return;
+        }
+        moving=crowd.advance(at,plan.entry,landing,crowdStations,motionCounter++);
+        if(moving!=null){motionStart=SystemClock.uptimeMillis();invalidate();postDelayed(motionTick,80);}
+        else postDelayed(motionTick,850);
+    }
+    @Override public void onWindowFocusChanged(boolean focused){
+        super.onWindowFocusChanged(focused);restartMotion();
+    }
+    @Override protected void onVisibilityChanged(View changed,int visibility){
+        super.onVisibilityChanged(changed,visibility);
+        if(motionTick!=null)restartMotion();
+    }
     private int[] stationGoals(int slot){
         int[] out=new int[4];for(int d=0;d<4;d++){int cell=InteriorPlan.neighbor(plan.objects[slot],d);out[d]=plan.canUse(cell,slot)?cell:-1;}return out;
     }
     void setPeople(int seed,int[] ids){
         if(plan==null||busy())return;
-        if(decorating||ids.length==0){crowd=null;peopleStyles=new AvatarStyle[0];invalidate();return;}
+        if(decorating||ids==null||ids.length==0){stopMotion();crowd=null;crowdKeys=new int[0];crowdStations=null;peopleStyles=new AvatarStyle[0];invalidate();return;}
+        if(crowd!=null&&crowdSeed==seed&&java.util.Arrays.equals(ids,crowdKeys))return;
+        stopMotion();crowdSeed=seed;crowdKeys=ids.clone();
         boolean[] floor=new boolean[InteriorPlan.N];for(int i=0;i<floor.length;i++)floor[i]=plan.walkable(i);
         int[][] stations=new int[plan.actionCount()][];for(int k=0;k<stations.length;k++)stations[k]=stationGoals(k);
         int slot=plan.slotFor(plan.commercial?VenueRules.MEET:InteriorPlan.SOFA);
         int preferred=slot>=0?plan.objects[slot]:plan.entry;
-        crowd=IndoorCrowd.create(floor,plan.walls,stations,plan.entry,landing,at,ids,preferred);
-        peopleStyles=new AvatarStyle[crowd.size()];for(int i=0;i<peopleStyles.length;i++)peopleStyles[i]=AvatarStyle.resident(seed,crowd.id(i));invalidate();
+        crowdStations=stations;crowd=IndoorCrowd.create(floor,plan.walls,stations,plan.entry,landing,at,ids,preferred);
+        peopleStyles=new AvatarStyle[crowd.size()];for(int i=0;i<peopleStyles.length;i++)peopleStyles[i]=AvatarStyle.resident(seed,crowd.id(i));restartMotion();
     }
     boolean nearResident(int id){return !decorating&&!busy()&&crowd!=null&&crowd.adjacent(at,id);}
     private int[] route(int cell){return crowd==null?plan.route(at,cell):crowd.route(at,cell);}
@@ -39,7 +80,7 @@ final class InteriorView extends View {
     void setTheme(int value){theme=value;invalidate();}
     int selectedFurniture(){return selected;}
     void setDecorating(boolean active){
-        if(decorating!=active){decorating=active;selected=-1;}
+        if(decorating!=active){decorating=active;selected=-1;restartMotion();}
         setContentDescription(active?"Decorate home. Select furniture, then choose a free floor tile.":plan!=null&&plan.commercial?"Venue cutaway. Tap a floor tile or service station.":"Home cutaway. Tap a floor tile to walk or furniture to interact.");invalidate();
     }
     private AvatarStyle style=AvatarStyle.defaults();
@@ -55,7 +96,7 @@ final class InteriorView extends View {
         setContentDescription("Home cutaway. Tap a floor tile to walk or furniture to interact.");
     }
     void open(InteriorPlan p,int saved,int stair){
-        cancel();plan=p;crowd=null;peopleStyles=new AvatarStyle[0];decorating=false;selected=-1;landing=stair;at=p.walkable(saved)?saved:p.entry;
+        cancel();stopMotion();plan=p;crowd=null;crowdKeys=new int[0];crowdStations=null;motionCounter=0;peopleStyles=new AvatarStyle[0];decorating=false;selected=-1;landing=stair;at=p.walkable(saved)?saved:p.entry;
         setContentDescription(p.commercial?"Venue cutaway. Tap a floor tile or service station.":"Home cutaway. Tap a floor tile to walk or furniture to interact.");
         lo=18;hi=-1;top=18;bottom=-1;
         for(int i=0;i<InteriorPlan.N;i++)if(p.floor(i)){lo=Math.min(lo,i%18);hi=Math.max(hi,i%18);top=Math.min(top,i/18);bottom=Math.max(bottom,i/18);}
@@ -63,8 +104,8 @@ final class InteriorView extends View {
     }
     int cell(){return at;}
     boolean busy(){return path!=null;}
-    void cancel(){removeCallbacks(tick);path=null;index=0;action=WALK;targetPerson=-1;invalidate();}
-    void close(){cancel();plan=null;crowd=null;peopleStyles=new AvatarStyle[0];decorating=false;selected=-1;}
+    void cancel(){removeCallbacks(tick);path=null;index=0;action=WALK;targetPerson=-1;restartMotion();}
+    void close(){cancel();stopMotion();plan=null;crowd=null;crowdKeys=new int[0];crowdStations=null;peopleStyles=new AvatarStyle[0];decorating=false;selected=-1;}
     void use(int kind){
         if(plan==null||kind<0||kind>=plan.actionCount())return;
         if(decorating){selected=kind;listener.message(plan.labelAt(kind)+" selected");invalidate();return;}
@@ -75,15 +116,15 @@ final class InteriorView extends View {
     private void begin(int[] next,int what){begin(next,what,-1);}
     private void begin(int[] next,int what,int person){
         if(next==null){listener.message("No clear path");return;}
-        cancel();action=what;targetPerson=person;
+        cancel();stopMotion();action=what;targetPerson=person;
         if(next.length==0){finish();return;}
         path=next;started=SystemClock.uptimeMillis();postOnAnimation(tick);invalidate();
     }
     private void finish(){
         int done=action,person=targetPerson;path=null;action=WALK;index=0;targetPerson=-1;
-        if(done==TALK){if(nearResident(person))listener.talkResident(person);invalidate();return;}
+        if(done==TALK){listener.arrived(WALK,at);if(nearResident(person))listener.talkResident(person);restartMotion();return;}
         if(plan!=null&&(done==WALK||(done==EXIT&&at==plan.entry)||((done==UP||done==DOWN)&&at==landing)||(done>=0&&plan.canUse(at,done))))listener.arrived(done,at);
-        invalidate();
+        restartMotion();
     }
     private void step(){
         if(path==null||plan==null)return;
@@ -96,7 +137,7 @@ final class InteriorView extends View {
         }
         invalidate();if(path!=null)postOnAnimation(tick);
     }
-    @Override protected void onDetachedFromWindow(){cancel();super.onDetachedFromWindow();}
+    @Override protected void onDetachedFromWindow(){cancel();stopMotion();super.onDetachedFromWindow();}
     private float X(float x){return left+(x-lo)*tile;}
     private float Y(float y){return upper+(y-top)*tile;}
     private void rect(Canvas c,float x,float y,float w,float h,int color){
@@ -192,7 +233,13 @@ final class InteriorView extends View {
             phase=(float)Math.sin((index+t)*Math.PI);
         }
         if(!decorating&&crowd!=null)for(int i=0;i<crowd.size();i++){
-            int cell=crowd.cell(i);drawPerson(c,cell%18+.5f,cell/18+.5f,0f,peopleStyles[i]);
+            int cell=crowd.cell(i);float x=cell%18+.5f,y=cell/18+.5f,walk=0f;
+            if(moving!=null&&moving.index==i){
+                float t=motionProgress();int from=moving.from;
+                x=from%18+.5f+(cell%18-from%18)*t;y=from/18+.5f+(cell/18-from/18)*t;
+                walk=(float)Math.sin(t*Math.PI)*(((cell+from)&2)==0?1f:-1f);
+            }
+            drawPerson(c,x,y,walk,peopleStyles[i]);
         }
         drawPerson(c,px,py,phase,style);
         if(tile>=27){
@@ -228,6 +275,7 @@ final class InteriorView extends View {
             return true;
         }
         int person=crowd==null?-1:crowd.personAt(cell);
+        if(person<0&&moving!=null&&cell==moving.from&&motionProgress()<.5f)person=crowd.id(moving.index);
         if(person>=0){begin(crowd.routeToPerson(at,person),TALK,person);return true;}
         if(plan.occupied[cell]>=0)use(plan.occupied[cell]);else begin(route(cell),WALK);
         return true;

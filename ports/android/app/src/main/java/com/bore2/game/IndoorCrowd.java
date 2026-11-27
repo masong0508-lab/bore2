@@ -34,6 +34,28 @@ final class IndoorCrowd {
         }
         return room;
     }
+    static final class Step {
+        final int index,from,to;
+        Step(int index,int from,int to){this.index=index;this.from=from;this.to=to;}
+    }
+    // Only one resident moves per tick. Validate the entire post-step room
+    // before committing occupancy; failed candidates leave everything intact.
+    Step advance(int player,int entry,int stairs,int[][] stations,int tick){
+        if(size==0||!clear(player)||!clear(entry)||stations==null)return null;
+        int first=Math.floorMod(tick,size);
+        for(int n=0;n<size;n++){
+            int i=(first+n)%size,from=cells[i],hash=(ids[i]*31)^(tick*0x9e3779b9);
+            int direction=(hash^(hash>>>16))&3;
+            for(int d=0;d<4;d++){
+                int to=neighbor(from,(direction+d)&3);
+                if(!clear(to)||to==player||to==entry||to==stairs||!edge(from,to))continue;
+                blocked[from]=false;blocked[to]=true;
+                if(safe(player,entry,stairs,stations)){cells[i]=to;return new Step(i,from,to);}
+                blocked[to]=false;blocked[from]=true;
+            }
+        }
+        return null;
+    }
     int size(){return size;}
     int id(int i){return i>=0&&i<size?ids[i]:-1;}
     int cell(int i){return i>=0&&i<size?cells[i]:-1;}
