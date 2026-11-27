@@ -10,6 +10,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Verify classic music rotation and hidden archive indexing
+        run: cc -std=c99 -Wall -Wextra -Werror -Isrc test/music_library_test.c -o /tmp/music_library && /tmp/music_library
       - name: Verify frame ownership and safe cache replacement
         run: cc -std=c99 -Wall -Wextra -Werror -Isrc test/frame_render_policy_test.c -o /tmp/frame_policy && /tmp/frame_policy
       - name: Check that the audit cannot silently pass on bad output

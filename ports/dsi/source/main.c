@@ -26,7 +26,7 @@ static const Opt OPT[] = {
     { "Music track", "Auto|Daydream|Evening|Bounce|Night", &o_trk, 1, 0 }, { "Tap clicks", "Off|On", &o_ckl, 1, 1 }, { "Chimes", "Off|On", &o_chm, 1, 1 }, { "Stereo", "Center|Spread", &o_pan, 1, 1 },
     { "Autosave", "Off|On", &o_auto, 2, 1 }, { "Clock", "12 hour|24 hour", &o_c24, 2, 0 },
     { "Reset graphics", "tap", 0, 3, 0 }, { "Reset audio", "tap", 0, 3, 1 }, { "Reset all", "tap", 0, 3, 255 },
-    { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Area|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52|53|54|55|56|57|58|59|60|61|62|63|64|65|66|67|68|69|70|71|72|73|74|75|76|77|78|79|80|81|82|83|84|85|86|87|88|89|90|91|92|93|94|95|96|97|98|99|100|101|102|103|104|105|106|107|108|109|110|111|112|113|114|115|116|117|118|119|120|121|122|123|124|125|126", &o_song, 1, 0 },
+    { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Auto|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52|53|54|55|56|57|58|59|60|61|62|63|64|65|66|67|68|69|70|71|72|73|74|75|76|77|78|79|80|81|82|83|84|85|86|87|88|89|90|91|92|93|94|95|96|97|98|99|100|101|102|103|104|105|106|107|108|109|110|111|112|113|114|115|116|117|118|119|120|121|122|123|124|125|126", &o_song, 1, 0 },
     { "Roofs", "Cutaway|Always|Hide", &o_roof, 0, 0 },
     // (D33, from the PS1 OPTIONS: these are saved in their own block after the others, so old saves load with the defaults)
     { "Needs speed", "Never fall|Slow|Normal|Fast", &o_need, 2, 2 }, { "Day length", "Short|Normal|Long|Epic", &o_day, 2, 1 }, { "Message time", "Short|Normal|Long", &o_msgt, 2, 1 },
@@ -871,6 +871,7 @@ typedef struct { s16 bx, by; int x, y, tx, ty; u8 skin, hair, shirt, on; } Ghost
 #define GH_MAX 4
 static Life life[SIM_MAX]; static Ghost gh[GH_MAX]; static int ngh, gh_next;
 static int life_ver, info_pg, jobui, juke, juke_pg, dog_have, roof_st, up_st;
+static int juke_archive, area_context;
 static struct { int x, y, tx, ty, wx, wy, hun, fx, fz; } dog;
 static void life_ev(int i, int ev, int arg), ghost_add(const Sim *m), dog_reset(void), dog_draw(void), ghost_draw(void), day_roll(void); static int cl100(int v);
 static int stage_of(int a) { return a < 3 ? 0 : a < 6 ? 1 : a < 13 ? 2 : a < 18 ? 3 : a < 60 ? 4 : 5; }
@@ -948,15 +949,16 @@ static void snd_tick(void) {
           int pick = -1;
           if (title) { scene_music_reset(&area); pick=0; }
           else if (o_song) { scene_music_reset(&area); pick=o_song-1; }
-          else if (mus_n >= SC_FIRST+SC_N) {
+          else if (area_context && mus_n >= SC_FIRST+SC_N) {
               if (!(area_poll++ & 15u) || area.settled<0)
                   scene_music_settle(&area,scene_music_context_ds());
               if (area.settled>=0) pick=living_score_index(area.settled,minutes%1440,(minutes/1440)%7,mus_n);
           } else {
-              // Old song banks still work, without the area score.
-              if (mus_cur > 0) pick=mus_cur;
-              else if (mus_n>1) { static u32 rs=12345;static int last;rs=rs*1664525u+1013904223u+(u32)minutes;pick=o_shuf?1+(int)((rs>>8)%(u32)(mus_n-1)):last%(mus_n-1)+1;last=pick; }
-              else pick=0;
+              // Classic background playback stays on a song until it ends;
+              // even old banks work and the appended score never enters shuffle.
+              scene_music_reset(&area);
+              if(music_classic_playing(mus_n,mus_cur))pick=mus_cur;
+              else {static u32 rs=12345;static int last;rs=rs*1664525u+1013904223u+(u32)minutes;pick=music_classic_next(mus_n,last,o_shuf,rs>>8);last=pick;}
           }
           if (pick>=0 && mus_cur!=pick) mus_start(pick);
           if (mus_cur >= 0) mus_tick();
@@ -3137,22 +3139,40 @@ static void job_touch(int tx, int ty) {
     if (!L->job) { for (int k = 0; k < JOBN; k++) if (hit(14 + (k & 1) * 118, 56 + (k >> 1) * 36, 112, 30, tx, ty)) { job_take(k); jobui = 0; } return; }
     if (hit(14, 108, 112, 28, tx, ty)) { job_work(); jobui = 0; } else if (hit(130, 108, 112, 28, tx, ty)) { L->job = 0; L->lvl = L->prog = L->strike = 0; life_ver++; say("You quit. Time for a nap?"); jobui = 0; }
 }
-static void juke_draw(void) {
-    char t[56]; panel(6, 20, 244, 164, "Jukebox"); chip(204, 22, 40, 14, "X", 0);
-    if (mus_ok != 1 || mus_n < 1) { text_box(12, 54, 232, 14, FS_BODY, TXT, AL_L, "Songs are not available here."); text_box(12, 70, 232, 14, FS_BODY, TXT, AL_L, "The synth tunes are playing."); return; }
-    sprintf(t, "Now: %.30s", mus_cur >= 0 ? mus_name(mus_cur) : "-"); text_box(10, 36, 190, 14, FS_BODY, C15(31, 31, 20), AL_L, t);
-    int per = 6, pages = (mus_n + per - 1) / per; if (juke_pg >= pages) juke_pg = 0;
-    for (int k = 0; k < per; k++) { int n = juke_pg * per + k; if (n >= mus_n) break; sprintf(t, "%d %.26s", n + 1, mus_name(n)); chip(12, 52 + k * 16, 232, 14, t, n == mus_cur); }
-    chip(12, 152, 40, 24, "<", 0); chip(56, 152, 40, 24, ">", 0); chip(100, 152, 44, 24, "Next", 0); chip(148, 152, 52, 24, "Area", o_song==0); sprintf(t, "%d/%d", juke_pg + 1, pages); text_box(202, 152, 46, 24, FS_NUM, TXT, AL_C, t);
+static void juke_archive_toggle(void){
+    if(music_library_size(mus_n,1)){juke_archive^=1;juke_pg=0;}
 }
-static void juke_touch(int tx, int ty) {
-    if (hit(204, 22, 40, 14, tx, ty)) { juke = 0; return; }
-    if (mus_ok != 1 || mus_n < 1) return; int per = 6, pages = (mus_n + per - 1) / per;
-    for (int k = 0; k < per; k++) { int n = juke_pg * per + k; if (n < mus_n && hit(12, 52 + k * 16, 232, 14, tx, ty)) { o_song = n + 1; life_ev(ctl, WN_SONG, 0); } }
-    if (hit(12, 152, 40, 24, tx, ty)) juke_pg = (juke_pg + pages - 1) % pages;
-    if (hit(56, 152, 40, 24, tx, ty)) juke_pg = (juke_pg + 1) % pages;
-    if (hit(100, 152, 44, 24, tx, ty)) { int c = mus_cur < 0 ? 0 : mus_cur; o_song = (c + 1) % mus_n + 1; life_ev(ctl, WN_SONG, 0); }
-    if (hit(148, 152, 52, 24, tx, ty)) o_song = 0;
+static void juke_skip(void){
+    int n=music_library_skip(mus_n,juke_archive,mus_cur,1);
+    if(n>=0){o_song=n+1;life_ev(ctl,WN_SONG,0);}
+}
+static void juke_draw(void) {
+    char t[56]; panel(6,20,244,164,juke_archive?"Music archive":"Jukebox");chip(204,22,40,14,"X",0);
+    if(mus_ok!=1||mus_n<1){text_box(12,54,232,14,FS_BODY,TXT,AL_L,"Songs are not available here.");return;}
+    sprintf(t,"Now: %.30s",mus_cur>=0?mus_name(mus_cur):"-");text_box(10,36,190,14,FS_BODY,C15(31,31,20),AL_L,t);
+    int per=6,n=music_library_size(mus_n,juke_archive),pages=(n+per-1)/per;
+    if(!pages)return;
+    if(juke_pg<0||juke_pg>=pages)juke_pg=0;
+    for(int k=0;k<per;k++){
+        int id=music_library_index(mus_n,juke_archive,juke_pg*per+k);if(id<0)break;
+        sprintf(t,"%d %.26s",id+1,mus_name(id));chip(12,52+k*16,232,14,t,id==mus_cur);
+    }
+    chip(12,152,40,24,"<",0);chip(56,152,40,24,">",0);chip(100,152,44,24,"Next",0);
+    chip(148,152,52,24,juke_archive?"Area":"Auto",o_song==0&&area_context==juke_archive);
+    sprintf(t,"%d/%d",juke_pg+1,pages);text_box(202,152,46,24,FS_NUM,TXT,AL_C,t);
+}
+static void juke_touch(int tx,int ty){
+    if(hit(204,22,40,14,tx,ty)){juke=0;return;}
+    if(mus_ok!=1||mus_n<1)return;
+    int per=6,n=music_library_size(mus_n,juke_archive),pages=(n+per-1)/per;if(!pages)return;
+    for(int k=0;k<per;k++){
+        int id=music_library_index(mus_n,juke_archive,juke_pg*per+k);
+        if(id>=0&&hit(12,52+k*16,232,14,tx,ty)){o_song=id+1;life_ev(ctl,WN_SONG,0);}
+    }
+    if(hit(12,152,40,24,tx,ty))juke_pg=(juke_pg+pages-1)%pages;
+    if(hit(56,152,40,24,tx,ty))juke_pg=(juke_pg+1)%pages;
+    if(hit(100,152,44,24,tx,ty))juke_skip();
+    if(hit(148,152,52,24,tx,ty)){o_song=0;area_context=juke_archive;}
 }
 static void life_panel(void) {   // the top screen's second page: job, aspiration, wants, fear, the dog
     const Life *L = &life[ctl]; char t[56]; panel(6, 72, 244, 114, "Life");
@@ -5622,7 +5642,7 @@ int main(void) {
                         else { live_yaw += ddx * 60; yaw_t = live_yaw; live_pitch += ddy * 30; if (live_pitch < 1800) live_pitch = 1800; if (live_pitch > 7600) live_pitch = 7600; } } }
             } else if (down & KEY_TOUCH) live_touch(tp.px, tp.py);
             if ((down & KEY_B) && (menu_open || popup || jobui || juke || travel_ui || craft_ui || farm_ui)) { menu_open = popup = jobui = juke = travel_ui = craft_ui = farm_ui = 0; down &= ~KEY_B; ui_snd(UI_BACK); }   // (D44: that B is not the board's)
-            else if ((down & KEY_START) && !jobui && !juke && !popup && !mg_ui) { menu_open ^= 1; ui_snd(menu_open ? UI_OK : UI_BACK); }            if (juke) { if (down & KEY_DOWN) juke_pg++; if (down & KEY_UP && juke_pg > 0) juke_pg--; if (down & KEY_RIGHT) { int c = mus_cur < 0 ? 0 : mus_cur; o_song = (c + 1) % (mus_n > 0 ? mus_n : 1) + 1; } }
+            else if ((down & KEY_START) && !jobui && !juke && !popup && !mg_ui) { menu_open ^= 1; ui_snd(menu_open ? UI_OK : UI_BACK); }            if (juke) { if (down & KEY_SELECT) juke_archive_toggle(); if (down & KEY_DOWN) juke_pg++; if (down & KEY_UP && juke_pg > 0) juke_pg--; if (down & KEY_RIGHT) juke_skip(); }
             if (popup == 6 && !mg_ui) { if (down & KEY_UP) contact_sel--; if (down & KEY_DOWN) contact_sel++; if (down & KEY_LEFT) contact_sel -= 5; if (down & KEY_RIGHT) contact_sel += 5; contacts_clamp(); if (down & KEY_A) contacts_call(); }
             else if (mg_ui) mg_frame(held, down, steps, tp.px, tp.py);   // (D46) a mini-game has the buttons and the stylus
             else if (on_board) { if (!menu_open && !popup && !jobui && !juke && !travel_ui && !craft_ui && !farm_ui) skate_frame(held, down, steps); }   // (D44) riding: the buttons are the board's
@@ -5659,7 +5679,7 @@ int main(void) {
             { int hd = dist * cosLerp(pitch) >> 12, r = (hd + (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500)) >> 2; lod_ex = camx - (hd * sinLerp(yaw) >> 12); lod_ez = camz + (hd * cosLerp(yaw) >> 12); lod_r2 = on_board ? 0x3FFFFFFF : r * r; }   // (D51: riding the skate plaza, the lot is all drawn in full, so the lists are not recorded again as the camera follows the rider) (D38) the level of detail goes by the distance from the eye
             { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)((on_board ? skate_sig() * 977 + 5 : 0) + (mg_ui ? mg_sig() * 983 + 3 : 0) + cur_sim * 7 + ctl * 3 + (minutes / 1440) * 13 + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_secrets * 23) * 31 * zone + o_pm * 977 + info_pg * 43 + life_ver * 53 + sims[cur_sim].age * 59 + (cur_sim != ctl ? minutes * 7 + funds : 0)); a = a * 31 + (unsigned)sims[cur_sim].rel;
               static unsigned tv; unsigned av = (unsigned)(minutes * 13 + funds + (o_pm ? polys_last / 64 + fps_now * 977 : 0) + mood(&sims[cur_sim]) * 5); for (int n = 0; n < 6; n++) av = av * 31 + (unsigned)sims[cur_sim].need[n];   // (D39: the values alone are redrawn on their own)
-              unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + (menu_open ? menu_sel * 139 : 0) + (popup == 6 ? contact_sel * 149 + life_ver * 151 + minutes / 60 * 157 : 0) + ((popup == 2 || popup == 3) ? soc_page * 163 : 0) + (sims[ctl].act==OUT_DS_ACTION?179+sims[ctl].act_left/32*181:0) + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + farm_ui * 97 + (popup || farm_ui ? fm_sig() * 107 : 0) + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + on_board * 113 + (mg_ui ? mg_bsig() * 127 + 1 : 0) + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
+              unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + (menu_open ? menu_sel * 139 : 0) + (popup == 6 ? contact_sel * 149 + life_ver * 151 + minutes / 60 * 157 : 0) + ((popup == 2 || popup == 3) ? soc_page * 163 : 0) + (sims[ctl].act==OUT_DS_ACTION?179+sims[ctl].act_left/32*181:0) + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + farm_ui * 97 + (popup || farm_ui ? fm_sig() * 107 : 0) + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + juke_archive * 269 + area_context * 271 + on_board * 113 + (mg_ui ? mg_bsig() * 127 + 1 : 0) + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
               if (forced) { ts = ~a; hs = ~b; } if (mode == M_LIVE) { if (a != ts) { DBGT(1, draw_top_status(); off_show(scr_sub)); ts = a; tv = av; ui_heavy = 1; } else if (av != tv) { scr = scr_sub; status_vals(1); tv = av; } if (b != hs) { DBGT(0, draw_hud(); hud_show()); ui_heavy = 1; hs = b; } } }   // (D35: not after a menu chip has just left Live, or the Live icons stayed over Buy's 3D view)
         } else {   // BUY / BUILD: the live lot on the top screen, the catalogue or plan on the bottom (drag to place, paint, draw walls, move)
             LV = ed_lv;
