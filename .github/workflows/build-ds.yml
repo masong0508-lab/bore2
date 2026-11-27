@@ -15,6 +15,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify continuous terrain, flat lot pads and sculpt falloff
         run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/landscape_test.c -o /tmp/landscape_test && /tmp/landscape_test
+      - name: Verify terrain editor capacity, edge coordinates and undo
+        run: cc -O2 -std=gnu11 -Iports/host/shim -Isrc test/terrain_editor_test.c src/bigmap.c -o /tmp/terrain_editor_test && /tmp/terrain_editor_test
       - name: Verify contextual resident dialogue and bounded activity poses
         run: cc -std=c99 -Wall -Wextra -Werror -DARM9 -Isrc test/native_life_test.c -o /tmp/native_life && /tmp/native_life
       - name: Verify classic music rotation and hidden archive indexing

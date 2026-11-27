@@ -8,9 +8,10 @@ static int packed(void) { return bm_packed || bm_gen < 3; }   // (PACKED towns: 
 static u32 wseed = 0x5A1B0E2Au;
 // ---- the neighbourhood editor's changes: blocks whose ground, roads, territory or building the player set (a small hash table) ----
 #define OV_SLOTS 768
-typedef struct { u32 a; u16 b; } __attribute__((packed, aligned(2))) OvE;   // a: block (20 bits), what (5), ground (3), road (2); b: building (6), territory (6, 63 = none), height change (4, signed)
+typedef struct { u32 a; u16 b; } __attribute__((packed, aligned(2))) OvE;   // a: block (20 bits), what (5), ground (3), road (2), occupied (bit 31); b: building (6), territory (6, 63 = none), height change (4, signed)
 static OvE ov[OV_SLOTS];
 static int ov_n, ov_live;
+#define OV_USED(e) ((e)->a & 0x80000000u)
 #define OV_KEY(e) ((e)->a & 0xFFFFFu)
 #define OV_F(e) (((e)->a >> 20) & 31u)
 #define OV_T(e) (((e)->a >> 25) & 7u)
@@ -20,20 +21,32 @@ static int ov_n, ov_live;
 #define OV_S(e) (((e)->b >> 6) & 63u)
 void bm_hill_reset(void);
 void bm_ovr_clear(void) { memset(ov, 0, sizeof ov); ov_n = 0; bm_hill_reset(); }
-static int ov_find(int bx, int by, int make) {   // the slot of that block (the key is the block + 1; a free slot has key 0)
-    u32 k = (u32)(by << 10 | bx) + 1, i = ((k * 2654435761u) >> 12) % OV_SLOTS;
+static unsigned ov_home(u32 k) { return ((k * 2654435761u) >> 12) % OV_SLOTS; }
+static int ov_find(int bx, int by, int make) {
+    if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return -1;
+    u32 k = (u32)(by << 10 | bx), i = ov_home(k);
     for (int n = 0; n < OV_SLOTS; n++, i = (i + 1) % OV_SLOTS) {
+        if (!OV_USED(&ov[i])) { if (!make || ov_n >= OV_SLOTS * 7 / 10) return -1; ov[i].a = k | 0x80000000u; ov[i].b = 63 << 6; ov_n++; return (int)i; }
         if (OV_KEY(&ov[i]) == k) return (int)i;
-        if (!OV_KEY(&ov[i])) { if (!make || ov_n >= OV_SLOTS * 7 / 10) return -1; ov[i].a = k; ov[i].b = 63 << 6; ov_n++; return (int)i; }
     }
     return -1;
+}
+/* Backward-shift deletion keeps every linear-probe chain reachable. */
+static void ov_drop(unsigned hole) {
+    for (unsigned j = (hole + 1) % OV_SLOTS; OV_USED(&ov[j]); j = (j + 1) % OV_SLOTS) {
+        unsigned home = ov_home(OV_KEY(&ov[j]));
+        if ((hole + OV_SLOTS - home) % OV_SLOTS < (j + OV_SLOTS - home) % OV_SLOTS) {
+            ov[hole] = ov[j]; hole = j;
+        }
+    }
+    ov[hole].a = 0; ov[hole].b = 0; ov_n--;
 }
 int bm_ovr_set(int bx, int by, int what, int val) {   // what: BO_ (BO_NONE: undo every change). 0: the table is full
     bm_hill_reset();
     if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) return 0;
     int i = ov_find(bx, by, what != BO_NONE); if (i < 0) return what == BO_NONE;
     OvE *e = &ov[i];
-    if (what == BO_NONE) { e->a &= 0xFFFFFu; return 1; }
+    if (what == BO_NONE) { ov_drop((unsigned)i); return 1; }
     e->a |= (u32)what << 20;
     if (what == BO_GROUND) e->a = (e->a & ~(7u << 25)) | ((u32)(val & 7) << 25);
     else if (what == BO_ELEV) e->b = (u16)((e->b & ~(15u << 12)) | ((u32)(val & 15) << 12));
@@ -42,23 +55,31 @@ int bm_ovr_set(int bx, int by, int what, int val) {   // what: BO_ (BO_NONE: und
     else e->b = (u16)((e->b & ~(63u << 6)) | ((u32)(val == 255 ? 63 : val & 63) << 6));
     return 1;
 }
-void bm_ovr_unset(int bx, int by, int what) { bm_hill_reset(); int i = ov_find(bx, by, 0); if (i >= 0) ov[i].a &= ~((u32)what << 20); }   // take one kind of change back off a block
+void bm_ovr_unset(int bx, int by, int what) { bm_hill_reset(); int i = ov_find(bx, by, 0); if (i >= 0) { ov[i].a &= ~((u32)what << 20); if (!OV_F(&ov[i])) ov_drop((unsigned)i); } }   // take one kind of change back off a block
 int bm_ovr_delta(int bx, int by) { if(bx<0||by<0||bx>=BM_N||by>=BM_N)return 0;int i = ov_find(bx, by, 0); return i >= 0 && (OV_F(&ov[i]) & BO_ELEV) ? OV_D(&ov[i]) : 0; }
 /* Soft brush: reserve every required slot before changing anything. Keep
  * the existing compact saved elevation values and invalidate caches once. */
 int bm_ovr_sculpt(int bx,int by,int radius,int direction){
     if(bx<0||by<0||bx>=BM_N||by>=BM_N||radius<0||radius>2||(direction!=1&&direction!=-1))return 0;
-    int xs[25],ys[25],vals[25],n=0,need=0;
+    int xs[25],ys[25],vals[25],n=0,need=0,release=0;
     for(int dy=-radius;dy<=radius;dy++)for(int dx=-radius;dx<=radius;dx++){
         int x=bx+dx,y=by+dy,amount=bore_land_brush_delta(dx,dy,radius);
-        if(!amount||x<0||y<0||x>=BM_N||y>=BM_N||(x==BM_N-1&&y==BM_N-1))continue;
+        if(!amount||x<0||y<0||x>=BM_N||y>=BM_N)continue;
         int i=ov_find(x,y,0),old=i>=0&&(OV_F(&ov[i])&BO_ELEV)?OV_D(&ov[i]):0;
         int next=CLAMP(old+direction*amount,-8,7);
         if(next==old)continue;
-        xs[n]=x;ys[n]=y;vals[n++]=next;if(i<0)need++;
+        xs[n]=x;ys[n]=y;vals[n++]=next;
+        if(i<0)need++;else if(!next&&!(OV_F(&ov[i])&~(BO_GROUND|BO_ELEV)))release++;
     }
-    if(ov_n+need>OV_SLOTS*7/10)return 0;
-    for(int k=0;k<n;k++){
+    if(ov_n+need-release>OV_SLOTS*7/10)return 0;
+    /* Free reverted edits first, so a full table can still accept an
+     * atomic stroke that returns enough cells to natural terrain. */
+    for(int k=0;k<n;k++)if(!vals[k]){
+        int i=ov_find(xs[k],ys[k],0);if(i<0)continue;
+        ov[i].a&=~((u32)(BO_GROUND|BO_ELEV)<<20);
+        if(!OV_F(&ov[i]))ov_drop((unsigned)i);
+    }
+    for(int k=0;k<n;k++)if(vals[k]){
         int i=ov_find(xs[k],ys[k],1);if(i<0)return 0;
         OvE *e=&ov[i];
         e->a=(e->a&~((u32)BO_GROUND<<20))|((u32)BO_ELEV<<20);
@@ -67,10 +88,10 @@ int bm_ovr_sculpt(int bx,int by,int radius,int direction){
     if(n)bm_hill_reset();
     return 1;
 }
-int bm_ovr_n(void) { int n = 0; for (int i = 0; i < OV_SLOTS; i++) if (OV_KEY(&ov[i]) && OV_F(&ov[i])) n++; return n; }
+int bm_ovr_n(void) { return ov_n; }
 int bm_ovr_next(int *it, int *bx, int *by, int *f, u8 *v) {   // walk the changes: 1 while there is one
-    for (; *it < OV_SLOTS; (*it)++) { const OvE *e = &ov[*it]; if (!OV_KEY(e) || !OV_F(e)) continue;
-        *bx = (int)((OV_KEY(e) - 1) & 1023); *by = (int)((OV_KEY(e) - 1) >> 10); *f = (int)OV_F(e); v[0] = (u8)OV_T(e); v[1] = (u8)OV_L(e); v[2] = (u8)OV_R(e); v[3] = (u8)(OV_S(e) == 63 ? 255 : OV_S(e)); v[4] = (u8)(OV_D(e) & 15); (*it)++; return 1; }
+    for (; *it < OV_SLOTS; (*it)++) { const OvE *e = &ov[*it]; if (!OV_USED(e) || !OV_F(e)) continue;
+        *bx = (int)(OV_KEY(e) & 1023); *by = (int)(OV_KEY(e) >> 10); *f = (int)OV_F(e); v[0] = (u8)OV_T(e); v[1] = (u8)OV_L(e); v[2] = (u8)OV_R(e); v[3] = (u8)(OV_S(e) == 63 ? 255 : OV_S(e)); v[4] = (u8)(OV_D(e) & 15); (*it)++; return 1; }
     return 0;
 }
 #define NSET_MAX 62

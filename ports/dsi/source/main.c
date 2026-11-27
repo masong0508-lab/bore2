@@ -217,7 +217,7 @@ static void own_remove(int bx, int by) { for (int i = 0; i < nown; i++) if (own[
 static int hit(int x, int y, int w, int h, int tx, int ty);
 static void prop_trade(void);
 static void say(const char *m); static int shop_lot(int p);
-static int map_enter, ne_on, ne_tool, ne_lot_i, ne_g_i, ne_road = 1, ne_last_x = -1, ne_last_y;
+static int map_enter, ne_on, ne_tool, ne_lot_i, ne_g_i, ne_road = 1, ne_radius = 1, ne_last_x = -1, ne_last_y;
 static const u8 NELOT[] = { LOT_HOUSE, LOT_COTTAGE, LOT_TOWN, LOT_TWO, LOT_APART, LOT_SHOP, LOT_DINER, LOT_OFFICE, LOT_PARK, LOT_SCHOOL, LOT_GYM, LOT_CAFE, LOT_TOWER, LOT_EMPTY, LOT_FARM };
 static const u8 NEG[] = { BT_GRASS, BT_FOREST, BT_DESERT, BT_ROCKY, BT_BEACH, BT_SEA };
 static const char *const NEGN[] = { "Grass", "Forest", "Desert", "Rocky", "Beach", "Sea" };
@@ -228,7 +228,7 @@ static void ne_cell(int bx, int by) {   // the tool on one block, the same chang
     BInfo b0; bm_block(bx, by, &b0);
     switch (ne_tool) {
         case 1: bm_ovr_set(bx, by, BO_GROUND, NEG[ne_g_i]); break;
-        case 3: case 4: if(!bm_ovr_sculpt(bx,by,1,ne_tool==3?1:-1))say("Terrain edit table full"); break;
+        case 3: case 4: if(!bm_ovr_sculpt(bx,by,ne_radius,ne_tool==3?1:-1))say("Terrain edit table full"); break;
         case 2: bm_ovr_set(bx, by, BO_ROAD, ne_road ? 3 : 0); break;
         case 0: { int lot = NELOT[ne_lot_i]; if (b0.set == 255) { bm_ovr_set(bx, by, BO_TERR, ne_near(bx, by)); bm_ovr_set(bx, by, BO_ROAD, 3); } bm_ovr_set(bx, by, BO_LOT, lot); } break;
         case 5: bm_ovr_set(bx, by, BO_TERR, 255); bm_ovr_set(bx, by, BO_ROAD, 0); bm_ovr_set(bx, by, BO_LOT, LOT_WILD); break;
@@ -246,7 +246,7 @@ static void map_chip(int px_, int py_) {   // a tap on the strip under the map
         else if (hit(2, 178, 52, 14, px_, py_) && lot_owned(sel_x, sel_y) && !is_home(sel_x, sel_y)) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot live at sea"); else { home_bx = sel_x; home_by = sel_y; say("Welcome home! Your new place"); map_enter = 1; } }   // (the old home stays yours, as a property)
         return; }
     for (int i = 0; i < 7; i++) if (hit(2 + i * 36, 162, 34, 13, px_, py_)) ne_tool = i;
-    if (hit(2, 177, 110, 13, px_, py_)) { if (ne_tool == 0) ne_lot_i = (ne_lot_i + 1) % (int)sizeof NELOT; else if (ne_tool == 1) ne_g_i = (ne_g_i + 1) % 6; else if (ne_tool == 2) ne_road ^= 1; }
+    if (hit(2, 177, 110, 13, px_, py_)) { if (ne_tool == 0) ne_lot_i = (ne_lot_i + 1) % (int)sizeof NELOT; else if (ne_tool == 1) ne_g_i = (ne_g_i + 1) % 6; else if (ne_tool == 2) ne_road ^= 1; else if (ne_tool == 3 || ne_tool == 4) ne_radius = (ne_radius + 1) % 3; }
     if (hit(212, 177, 40, 13, px_, py_)) ne_on = 0;
 }
 #define DS_POP_MAX 2000                // the most bores you can meet, talk to and take into a household on this map (the PS1 has 3700)
@@ -348,7 +348,7 @@ static void draw_map(void) {
         chip(202, 179, 25, 12, "Opt", 0); chip(229, 179, 25, 12, "Edit", 0);
     } else {
         for (int i = 0; i < 7; i++) chip(2 + i * 36, 162, 34, 13, NETN[i], ne_tool == i);
-        const char *v = ne_tool == 0 ? bm_lot_name(NELOT[ne_lot_i]) : ne_tool == 1 ? NEGN[ne_g_i] : ne_tool == 2 ? (ne_road ? "Add road" : "Remove road") : 0;
+        const char *v = ne_tool == 0 ? bm_lot_name(NELOT[ne_lot_i]) : ne_tool == 1 ? NEGN[ne_g_i] : ne_tool == 2 ? (ne_road ? "Add road" : "Remove road") : (ne_tool == 3 || ne_tool == 4) ? (ne_radius == 0 ? "Brush 1x1" : ne_radius == 1 ? "Brush 3x3" : "Brush 5x5") : 0;
         if (v) chip(2, 177, 110, 13, v, 0); else text_box(2, 177, 200, 13, FS_BODY, C15(24, 28, 31), AL_L, "Drag across the map");
         if (v) text_box(114, 177, 94, 13, FS_SMALL, C15(24, 28, 31), AL_L, "tap = next");
         chip(212, 177, 40, 13, "Done", 0);
