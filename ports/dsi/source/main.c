@@ -228,7 +228,7 @@ static void ne_cell(int bx, int by) {   // the tool on one block, the same chang
     BInfo b0; bm_block(bx, by, &b0);
     switch (ne_tool) {
         case 1: bm_ovr_set(bx, by, BO_GROUND, NEG[ne_g_i]); break;
-        case 3: case 4: { int dl = bm_ovr_delta(bx, by) + (ne_tool == 3 ? 2 : -2); dl = dl < -8 ? -8 : dl > 7 ? 7 : dl; bm_ovr_unset(bx, by, BO_GROUND); bm_ovr_set(bx, by, BO_ELEV, dl & 15); } break;
+        case 3: case 4: if(!bm_ovr_sculpt(bx,by,1,ne_tool==3?1:-1))say("Terrain edit table full"); break;
         case 2: bm_ovr_set(bx, by, BO_ROAD, ne_road ? 3 : 0); break;
         case 0: { int lot = NELOT[ne_lot_i]; if (b0.set == 255) { bm_ovr_set(bx, by, BO_TERR, ne_near(bx, by)); bm_ovr_set(bx, by, BO_ROAD, 3); } bm_ovr_set(bx, by, BO_LOT, lot); } break;
         case 5: bm_ovr_set(bx, by, BO_TERR, 255); bm_ovr_set(bx, by, BO_ROAD, 0); bm_ovr_set(bx, by, BO_LOT, LOT_WILD); break;
@@ -1071,9 +1071,39 @@ static LotPlan nlp[RING_MAX * 2 + 1][RING_MAX * 2 + 1];   // (D79) world version
 static u8 nrd[RING_MAX * 2 + 2][RING_MAX * 2 + 2];       // (D79) the streets of the blocks dx, dy = -3..4 round the lot (road bits: 1 along its top, 2 down its left, 4 its corner)
 static void nb7_load(void); static int far_foot7(const BInfo *b, const LotPlan *p, int *x0, int *z0, int *x1, int *z1);
 static int t7(void) { return bm_gen >= 7 && !zone && lot_bx >= 0 && lot_bx < 2000; }   // (D79) the lot you are on is in a world made by the town plan
+/* Keep the existing street and building renderer in mixed neighborhoods.
+   In uninterrupted wilderness, terrain, actor feet and camera share a patch. */
+static BoreLandPatch ds_relief_patches[3][3];
+static int ds_relief_stamp=-1,ds_relief_x=-1,ds_relief_y=-1,ds_relief_on,ds_relief_base;
+static int ds_relief_active(void){
+    if(mode!=M_LIVE||zone!=Z_CITY||!nb_ok||lot_bx<1||lot_by<1||lot_bx>=BM_N-1||lot_by>=BM_N-1||
+       nb[1][1].lot!=LOT_WILD||lot_owned(lot_bx,lot_by)||roof_st||up_st)return 0;
+    if(ds_relief_stamp==bm_edit_stamp&&ds_relief_x==lot_bx&&ds_relief_y==lot_by)return ds_relief_on;
+    ds_relief_stamp=bm_edit_stamp;ds_relief_x=lot_bx;ds_relief_y=lot_by;ds_relief_on=0;
+    for(int y=0;y<3;y++)for(int x=0;x<3;x++){
+        const BInfo *b=&nb[y][x];if(b->lot!=LOT_WILD||b->set!=255||b->road||b->terrain==BT_SEA)return 0;
+    }
+    for(unsigned k=0;k<sizeof flr;k++)if(((const u8*)flr)[k])return 0;
+    for(unsigned k=0;k<sizeof hwl;k++)if(((const u8*)hwl)[k])return 0;
+    for(unsigned k=0;k<sizeof vwl;k++)if(((const u8*)vwl)[k])return 0;
+    ds_relief_base=bm_hill(lot_bx,lot_by);
+    int lo=32767,hi=0;
+    for(int y=0;y<3;y++)for(int x=0;x<3;x++){
+        BoreLandPatch *p=&ds_relief_patches[y][x];bm_land_patch(lot_bx+x-1,lot_by+y-1,p);
+        for(int j=0;j<4;j++)for(int i=0;i<4;i++){lo=MIN(lo,p->h[j][i]);hi=MAX(hi,p->h[j][i]);}
+    }
+    ds_relief_on=hi-lo>=48;return ds_relief_on;
+}
+static int ds_relief_units(int h){return (h-ds_relief_base)*2*T/TILE;}
+static int ds_relief_grade(int cx,int cy){
+    if(!ds_relief_active())return 0;
+    int x=cx+BM_LOT0,y=cy+BM_LOT0,bx=fdiv(x,BM_BLK),by=fdiv(y,BM_BLK);
+    if(bx<-1||bx>1||by<-1||by>1)return 0;
+    return ds_relief_units(bore_land_sample2(&ds_relief_patches[by+1][bx+1],2*(x-bx*BM_BLK)+1,2*(y-by*BM_BLK)+1));
+}
 static u8 pk_ok;   // (d83) the parked cars of the lots round this one are worked out (0: again)
 static void nb_load(void) {
-    pk_ok = 0;
+    pk_ok = 0;ds_relief_stamp=-1;
     for (int dy = -RING_MAX; dy <= RING_MAX; dy++) for (int dx = -RING_MAX; dx <= RING_MAX; dx++) { int x = lot_bx + dx, y = lot_by + dy; BInfo *b = &nbf[dy + RING_MAX][dx + RING_MAX];
         if (dx >= -1 && dx <= 1 && dy >= -1 && dy <= 1) continue;
         if (lot_bx >= 2000) zone_block(x, y, b); else if (x < 0 || y < 0 || x >= BM_N || y >= BM_N) { memset(b, 0, sizeof(BInfo)); b->terrain = BT_SEA; } else bm_block(x, y, b); }
@@ -1645,6 +1675,7 @@ static void farm_extras(int ch, int x, int y, int base) {   // (D38) the PS1's f
 static u8 ID2CH[NITEM]; static void ramp3d(int x, int y, int ch, int r, int base);   // (D45)
 static int ground_lift(int cx, int cy, int L) {   // base of people, objects and shadows: use the SAME visible terrain grade as the mesh
     if (L > 0) return 40;
+    if (ds_relief_active())return ds_relief_grade(cx,cy);
     if (cx >= 0 && cy >= 0 && cx < GN && cy < GN)
         return ds_plot_ground_lift(&flr[0][0], GN, cx, cy, o_chk);
     int lx = ((cx % SLC) + SLC) % SLC, ly = ((cy % SLC) + SLC) % SLC;
@@ -2150,7 +2181,33 @@ static void world7(void) {   // (D79) the 3x3 patch of slots with the streets th
         else if (nb[j + 1][i + 1].set != 255 && polys < 2300) tree(tl(ox + 31), tl(oz + 8 + (j & 1) * 9), T * 2);
         if (C & 3) bin_at(tl(ox + 26) + 70, tl(oz + 26) + 70); }
 }
+/* 9 quads per block; do not spend the city polygon budget on mountains. */
+static void ds_draw_relief(int first,int last){
+    int old_lod=far_lod;
+    for(int r=first;r<=last;r++)for(int y=-r;y<=r;y++)for(int x=-r;x<=r;x++){
+        if(MAX(ABS(x),ABS(y))!=r)continue;
+        if((r>1&&!ds_world_far_budget(polys+18))||(gxb&&gxn+600>=gx_cap))goto done;
+        const BInfo *b=&nbf[y+RING_MAX][x+RING_MAX];
+        BoreLandPatch tmp;const BoreLandPatch *p;
+        if(r<=1)p=&ds_relief_patches[y+1][x+1];
+        else {bm_land_patch(lot_bx+x,lot_by+y,&tmp);p=&tmp;}
+        far_lod=r>1;
+        gx_push(x*36*T,0,y*36*T);
+        tx_want=-1;
+        u16 col=b->terrain==BT_SEA?C15(5,12,24):land_col(b->terrain);
+        for(int j=0;j<3;j++)for(int i=0;i<3;i++){
+            int x0=tl(2*(bore_land_knots[i]-BM_LOT0)),x1=tl(2*(bore_land_knots[i+1]-BM_LOT0));
+            int z0=tl(2*(bore_land_knots[j]-BM_LOT0)),z1=tl(2*(bore_land_knots[j+1]-BM_LOT0));
+            qd(x0,-ds_relief_units(p->h[j][i]),z0,x1,-ds_relief_units(p->h[j][i+1]),z0,
+               x1,-ds_relief_units(p->h[j+1][i+1]),z1,x0,-ds_relief_units(p->h[j+1][i]),z1,col);
+        }
+        gx_pop();
+    }
+done:
+    far_lod=old_lod;tx_want=-1;
+}
 static void draw_world(int yaw) {   // LIVE: all round the lot, the lots next door, the streets and the land (a 3x3 patch of slots)
+    if(ds_relief_active()){ds_draw_relief(0,1);return;}
     if (zone == Z_ISLAND) { ground(tl(-40), tl(-40), tl(76), tl(76), 90, C15(25, 22, 14)); return; }   // (the island: sand between the lots, the sea is the neighbours')
     tx_want = zone == Z_TOWN ? TX_SAND : TX_GRASS; ground(tl(-40), tl(-40), tl(76), tl(76), 90, zone == Z_TOWN ? C15(24, 21, 13) : seas(C15(7, 16, 6))); tx_want = TX_ASPHALT;
     if (t7()) { world7(); return; }
@@ -2183,6 +2240,7 @@ static void draw_near_shells(int yaw) {
     }
 }
 static void draw_far_all(int yaw) {
+    if(ds_relief_active()){ds_draw_relief(2,ring_r);return;}
     // Houses already own their geometry. Do not submit the same lot twice.
     for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
         if(!i&&!j)continue;
@@ -2555,7 +2613,7 @@ static void draw_build(int yaw) {   // (D39) dpass 1: the still part (recorded o
     u16 lawn = land_col(lawn7 ? BT_GRASS : nb[1][1].terrain);
     if (dpass == 3) goto world;
     int ltx = lawn7 ? TX_GRASS : nb[1][1].terrain == BT_BEACH || nb[1][1].terrain == BT_DESERT || zone == Z_ISLAND || zone == Z_TOWN ? TX_SAND : nb[1][1].terrain == BT_ROCKY ? TX_GRAVEL : TX_GRASS;
-    if (st) { gx_pid(1); tx_want = ltx; ground(tl(0), tl(0), tl(GN * 2), tl(GN * 2), 0, lawn);   // the lawn (sand on a beach): one quad and big darker squares (every polygon counts on the DS)
+    if (st&&!ds_relief_active()) { gx_pid(1); tx_want = ltx; ground(tl(0), tl(0), tl(GN * 2), tl(GN * 2), 0, lawn);   // the lawn (sand on a beach): one quad and big darker squares (every polygon counts on the DS)
         if (o_chk) for (int z = 0; z < GN; z += 2) for (int x = 0; x < GN; x += 2) if (((x + z) / 2) & 1) { int e = x + 2 > GN ? GN : x + 2, f = z + 2 > GN ? GN : z + 2; if (flr[z][x] || flr[z][e - 1] || flr[f - 1][x] || flr[f - 1][e - 1]) continue; ground(tl(x * 2), tl(z * 2), tl(e * 2), tl(f * 2), -20, shade(lawn, 7)); }
         if (!zone && !t7()) ground(tl(0), tl(26) - 30, tl(GN * 2), tl(26), -20, C15(14, 24, 10));   // a low hedge line along the back of the plot (no more posts sticking out)
         tx_want = TX_PAVING; if (!zone && !t7()) block(tl(door_cx * 2) + T / 2, tl(door_cy * 2 + 1), tl(door_cx * 2 + 2) - T / 2, tl(26), 0, -26, C15(19, 18, 16), C15(23, 22, 20)); tx_want = -1; }   // a path from the front door to the pavement
@@ -2590,7 +2648,7 @@ world:
     if (st) { gy_off = 0; gx_pid(4); roof_draw(top); }   // (D42: each building's own roof over its own top storey)
     if (mode == M_LIVE) { if (mv) { PROF(2); gx_pid(56); draw_city(yaw); PROF(7); } if (wd) { gx_pid(3); draw_far_all(yaw); } }
     gy_off = -WHF * vl;
-    if (mv && mode == M_LIVE && mark_t > 0) { ground(tl(mark_x * 2), tl(mark_y * 2), tl(mark_x * 2 + 2), tl(mark_y * 2 + 2), -60, C15(31, 31, 12)); mark_t--; }
+    if (mv && mode == M_LIVE && mark_t > 0) { ground(tl(mark_x * 2), tl(mark_y * 2), tl(mark_x * 2 + 2), tl(mark_y * 2 + 2), -60-ds_relief_grade(mark_x,mark_y), C15(31, 31, 12)); mark_t--; }
     if (mv && (mode == M_BUY || mode == M_BUILD)) {   // the cursor
         ground(tl(pcx * 2), tl(pcy * 2), tl(pcx * 2 + 2), tl(pcy * 2 + 2), -80, C15(31, 31, 31));
         if (mode == M_BUY && pick >= 0) obj3d(pcx, pcy, &ITEMS[pick], prot, 1);
@@ -2602,12 +2660,13 @@ static u32 world_sig(void) {   // (D41) what the world round the lot depends on
     h = (h ^ bm_seed()) * 16777619u;
     h = (h ^ (u32)bm_gen) * 16777619u;
     h = (h ^ (u32)bm_edit_stamp) * 16777619u;
+    h = (h ^ (u32)ds_relief_active()) * 16777619u;
     h = (h ^ (u32)(ring_r | gx_far << 4 | o_look << 10 | o_out << 12 | lit_on << 13 | o_det << 14 | o_chk << 15 | o_tex << 16)) * 16777619u;
     h = (h ^ (u32)fm_season()) * 16777619u; for (int j = 0; j < 3; j++) for (int i = 0; i < 3; i++) h = (h ^ nb_pop[j][i]) * 16777619u; return h; }
 static u32 still_sig(int yaw, int part) {   // (D39) everything a still list depends on: when this changes, it is recorded again (D41: part 0 the build, 1 the things)
     u32 h = 2166136261u + (u32)part;
     #define HM(v) h = (h ^ (u32)(v)) * 16777619u
-    HM(fm_season()); HM(mode); HM(zone); HM(bm_seed()); HM(bm_gen); HM(bm_edit_stamp); HM(lot_bx); HM(lot_by); HM(nb_ok); HM(nobj); HM(roof_st); HM(tool); HM(ed_lv); HM(view_lv()); HM(door_cx + door_cy * 32); HM(lit_on); HM(lit_sgn);
+    HM(fm_season()); HM(mode); HM(zone); HM(bm_seed()); HM(bm_gen); HM(bm_edit_stamp); HM(ds_relief_active()); HM(lot_bx); HM(lot_by); HM(nb_ok); HM(nobj); HM(roof_st); HM(tool); HM(ed_lv); HM(view_lv()); HM(door_cx + door_cy * 32); HM(lit_on); HM(lit_sgn);
     int show = show_lv(), top = top_lv(); HM(show); HM(top); if (part == 0) { HM(roof_bits()); HM(roof_st | lot_seed << 2); }
     HM(o_det | o_chk << 1 | o_shd << 2 | o_lit << 3 | o_roof << 4 | o_dd << 6 | o_sty << 8 | o_trf << 10 | o_look << 12 | o_out << 14 | ring_r << 16 | prof_full << 20 | o_tex << 22);
     { const u32 *w = (const u32 *)flr; for (unsigned k = 0; k < sizeof flr / 4; k++) HM(w[k]); }
@@ -3454,10 +3513,14 @@ static int pick_cell_h(int sx, int sy, int hgt, int *cx, int *cy) {   // the cel
     float ox = 0, oy = 0, oz = (float)cam_deff;
     float ay = dy * cp + dz * sp, az = -dy * sp + dz * cp, by = oy * cp + oz * sp, bz = -oy * sp + oz * cp;
     float ddx = dx * c - az * s, ddz = dx * s + az * c, oox = ox * c - bz * s + camx, ooz = ox * s + bz * c + camz;
-    float t;
-    if (!ds_touch_plane_hit(by, ay, (float)(hgt - cam_y), &t)) return 0;
-    float hx = oox + t * ddx, hz = ooz + t * ddz;
-    *cx = (int)((hx / T + GN) / 2.0f + 200) - 200; *cy = (int)((hz / T + GN) / 2.0f + 200) - 200;
+    int plane=hgt+cam_y*(ds_relief_active()!=0);
+    for(int k=0;k<(ds_relief_active()?3:1);k++){
+        float t;
+        if (!ds_touch_plane_hit(by, ay, (float)(plane - cam_y), &t)) return 0;
+        float hx = oox + t * ddx, hz = ooz + t * ddz;
+        *cx = (int)((hx / T + GN) / 2.0f + 200) - 200; *cy = (int)((hz / T + GN) / 2.0f + 200) - 200;
+        plane=hgt+ds_relief_grade(*cx,*cy);
+    }
     return 1;
 }
 
@@ -5759,7 +5822,7 @@ int main(void) {
         { static int aa = 1; int want = !fight_on; if (want != aa) { gf_stop();aa = want; if (want) glEnable(GL_ANTIALIAS); else glDisable(GL_ANTIALIAS); } }   // (D59: BORTUA FIGHTER's ring has no edge blending: it showed the sky along the mat's seams)
         if (is_lot) {   // (D39) the lot: a new frame is written whenever the last one has been taken; the vblank interrupt sends it on the beat
             gf_on = 1;
-            { int want = mode == M_LIVE ? slv[ctl] * WHF : (mode == M_BUY || mode == M_BUILD) ? ed_lv * WHF : 0; cam_y += (want - cam_y) / 6; if (want - cam_y > -8 && want - cam_y < 8) cam_y = want; }   // (D36) the camera rises to the storey
+            { int want = mode == M_LIVE ? slv[ctl] * WHF+ds_relief_grade(fdiv(sims[ctl].x+8,16),fdiv(sims[ctl].y+8,16)) : (mode == M_BUY || mode == M_BUILD) ? ed_lv * WHF : 0; cam_y += (want - cam_y) / 6; if (want - cam_y > -8 && want - cam_y < 8) cam_y = want; }   // (D36) the camera rises to the storey
             if (gf_ready < 0 && !ui_heavy) {
                 static u32 st_sig = 1, w_sig = 1; static int st_n, st_polys, st_k, w_n, w_polys, w_k; static u8 st_mode = 255, f_st[2], f_w[2];
                 int b = gf_fly == 0 ? 1 : 0; GFrm *f = &gfr[b]; f->ns=f->bad=0; gf_serial++;

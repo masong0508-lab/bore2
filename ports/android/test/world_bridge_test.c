@@ -161,5 +161,33 @@ int main(void){
     assert(!bore_android_interior(x,y,room,BORE_ANDROID_INTERIOR_FIELDS-1));
     printf("Android bridge: %d generated residential footprints and %d nonhomes checked\\n",homes,not_homes);
     puts("Android bridge: actual v8 map, stable seed and native weekday/weekend venues");
+    /* Exercise real generated terrain as well as the portable synthetic test. */
+    int pads=0,hillx=-1,hilly=-1;
+    for(int j=-8;j<=8;j++)for(int i=-8;i<=8;i++){
+        int bx=x+i,by=y+j,flag=0;
+        int h=bm_hill_t(bx,by,&flag);
+        if(flag){
+            pads++;
+            for(int v=BM_LOT0;v<BM_BLK;v++)for(int u=BM_LOT0;u<BM_BLK;u++)
+                assert(bm_ground_corner(bx*BM_BLK+u,by*BM_BLK+v)==h);
+        }
+        BoreLandPatch p,q,r;
+        bm_land_patch(bx,by,&p);bm_land_patch(bx+1,by,&q);bm_land_patch(bx,by+1,&r);
+        for(int v=0;v<=BM_BLK*2;v++){
+            assert(bore_land_sample2(&p,BM_BLK*2,v)==bore_land_sample2(&q,0,v));
+            assert(bore_land_sample2(&p,v,BM_BLK*2)==bore_land_sample2(&r,v,0));
+        }
+        if(hillx<0&&h>64&&h<3000){hillx=bx;hilly=by;}
+    }
+    assert(pads>0&&hillx>=0);
+    bm_ovr_clear();
+    int old=bm_hill(hillx,hilly);
+    assert(bm_ovr_sculpt(hillx,hilly,1,1));
+    assert(bm_ovr_delta(hillx,hilly)==2&&bm_ovr_delta(hillx+1,hilly)==1);
+    assert(bm_hill(hillx,hilly)>old);
+    assert(bm_ovr_sculpt(hillx,hilly,1,-1));
+    assert(bm_hill(hillx,hilly)==old&&bm_ovr_delta(hillx,hilly)==0);
+    bm_ovr_clear();
+    puts("Generated terrain foundations, shared seams and reversible sculpt: PASS");
     return 0;
 }

@@ -91,11 +91,11 @@ static int hill_raw(int bx,int by){
     return bore_land_relief(elev(bx,by)-104,bm_hills);
 }
 static int hill_pad(int bx,int by,int h){
-    if(!h||bx<0||by<0||bx>=BM_N||by>=BM_N)return 0;
+    if(bx<0||by<0||bx>=BM_N||by>=BM_N||(!h&&bm_terrain(bx,by)==BT_SEA))return 0;
     if(ov_live&&ov_n){
         int i=ov_find(bx,by,0);
-        if(i>=0&&(OV_F(&ov[i])&BO_TERR))return OV_S(&ov[i])!=63;
         if(i>=0&&(OV_F(&ov[i])&BO_LOT)&&OV_L(&ov[i])!=LOT_WILD)return 1;
+        if(i>=0&&(OV_F(&ov[i])&BO_TERR))return OV_S(&ov[i])!=63;
     }
     return bm_set_at(bx,by)!=255;
 }

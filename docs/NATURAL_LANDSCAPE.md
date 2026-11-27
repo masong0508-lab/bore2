@@ -12,11 +12,17 @@ locates rocky countryside within the current map window.
 
 The native map editor uses a soft height brush: center strength two, falloff
 one, capacity preflight and one cache reset. PS1/DC retain their 1/3/5 brush
-sizes. Saved override format is unchanged. Full Android editing is not included.
+sizes; DS/DSi uses the soft 3x3 brush. Saved override format is unchanged.
+Full Android editing is not included.
 
 The portable test covers 300 synthetic mixed-pad fields, all half-tile
 samples, every shared edge, plateau correctness, summit profile monotonicity,
 and brush falloff. Full native builds and actual terrain traversal visual
-verification remain required. DS live relief integration is a separate pass.
+verification remain required. DS/DSi now samples and draws the shared terrain
+in unowned, unbuilt, uninterrupted 3x3 wild-land neighborhoods. Actor feet,
+camera elevation and touch destination estimates use the local grade. The
+coarse mesh costs nine quads per block and far rings are budgeted. Mixed
+urban/coastal neighborhoods still use the existing flat handheld renderer;
+distant objects are not rendered in this experimental wilderness mode.
 No new climbing mechanic, arbitrary curved streets or expansion-pack gameplay
 is claimed by this pass.
