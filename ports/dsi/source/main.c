@@ -2205,16 +2205,23 @@ static void ds_draw_relief(int first,int last){
          * Distant patches retain nine quads; detail needs budget headroom. */
         BoreTrail trail={0};
         if(r==0)bm_trail_plan(lot_bx,lot_by,b,&trail);
-        if(trail.links&&ds_world_detail_budget(polys+648)&&(!gxb||gxn+10000<gx_cap)){
-            for(int j=0;j<BM_BLK;j++)for(int i=0;i<BM_BLK;i++){
-                int x0=tl(2*(i-BM_LOT0)),x1=x0+2*T,z0=tl(2*(j-BM_LOT0)),z1=z0+2*T;
-                u16 c=bore_trail_cell(&trail,i,j)?C15(22,17,10):col;
-                qd(x0,-ds_relief_units(bore_land_sample(p,i,j)),z0,x1,-ds_relief_units(bore_land_sample(p,i+1,j)),z0,
-                   x1,-ds_relief_units(bore_land_sample(p,i+1,j+1)),z1,x0,-ds_relief_units(bore_land_sample(p,i,j+1)),z1,c);
-            }
-            gx_pop();continue;
+        unsigned split=0;int cost=0;
+        if(trail.links)for(int j=0;j<3;j++)for(int i=0;i<3;i++){
+            int hit=0,a=bore_land_knots[i],b0=bore_land_knots[i+1],c=bore_land_knots[j],d=bore_land_knots[j+1];
+            for(int v=c;v<d&&!hit;v++)for(int u=a;u<b0;u++)if(bore_trail_cell(&trail,u,v)){hit=1;break;}
+            if(hit){split|=1u<<(j*3+i);cost+=(b0-a)*(d-c)-1;}
         }
+        if(split&&(!ds_world_detail_budget(polys+18+2*cost)||(gxb&&gxn+600+32*cost>=gx_cap)))split=0;
         for(int j=0;j<3;j++)for(int i=0;i<3;i++){
+            if(split&(1u<<(j*3+i))){
+                for(int v=bore_land_knots[j];v<bore_land_knots[j+1];v++)for(int u=bore_land_knots[i];u<bore_land_knots[i+1];u++){
+                    int x0=tl(2*(u-BM_LOT0)),x1=x0+2*T,z0=tl(2*(v-BM_LOT0)),z1=z0+2*T;
+                    u16 c=bore_trail_cell(&trail,u,v)?C15(22,17,10):col;
+                    qd(x0,-ds_relief_units(bore_land_sample(p,u,v)),z0,x1,-ds_relief_units(bore_land_sample(p,u+1,v)),z0,
+                       x1,-ds_relief_units(bore_land_sample(p,u+1,v+1)),z1,x0,-ds_relief_units(bore_land_sample(p,u,v+1)),z1,c);
+                }
+                continue;
+            }
             int x0=tl(2*(bore_land_knots[i]-BM_LOT0)),x1=tl(2*(bore_land_knots[i+1]-BM_LOT0));
             int z0=tl(2*(bore_land_knots[j]-BM_LOT0)),z1=tl(2*(bore_land_knots[j+1]-BM_LOT0));
             qd(x0,-ds_relief_units(p->h[j][i]),z0,x1,-ds_relief_units(p->h[j][i+1]),z0,

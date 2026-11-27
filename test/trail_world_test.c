@@ -16,13 +16,18 @@ void world_gh_reset(void){}
 static int eligible(const BInfo *b){return b->set==255&&b->lot==LOT_WILD&&(b->terrain==BT_GRASS||b->terrain==BT_FOREST||b->terrain==BT_ROCKY);}
 int main(void){
     const u32 seeds[]={1,0x5eed1234u,0xc0ffeeu};
-    int trails=0,joins=0,summits=0;
+    int trails=0,joins=0,summits=0,farms=0;
     assert(BM_BLK==TRAIL_SIDE);
     for(int k=0;k<3;k++){
         bm_ovr_clear();bm_dials_default();bm_gen=8;bm_hills=4;bm_new(seeds[k]);
         for(int y=24;y<BM_N-1;y+=11)for(int x=24;x<BM_N-1;x+=11){
             BInfo b;BoreTrail p,again;bm_block(x,y,&b);bm_trail_plan(x,y,&b,&p);bm_trail_plan(x,y,&b,&again);
             assert(!memcmp(&p,&again,sizeof p));
+            if(b.set==255&&b.lot==LOT_FARM){
+                LotPlan pl;u8 f[5];bm_lot_plan(x,y,&b,&pl);
+                assert(pl.face==LF_SOUTH&&bm_lot_face(x,y)==LF_SOUTH);
+                assert(bm_lot_foot(x,y,&b,f,0)&&f[0]==BM_LOT0+8&&f[3]==BM_LOT0+6);farms++;
+            }
             if(!eligible(&b)){assert(!p.links);continue;}
             if(p.links)trails++;
             if(p.kind==TRAIL_SUMMIT)summits++;
@@ -37,6 +42,7 @@ int main(void){
             }
         }
     }
-    assert(trails>0&&joins>0);
+    assert(trails>0&&joins>0&&farms>0);
+    printf("rural farms: %d consistent barn footprints and gate orientations\n",farms);
     printf("generated trails: %d trail blocks, %d matching edges, %d sampled summit lookouts\n",trails,joins,summits);
 }

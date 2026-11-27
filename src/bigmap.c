@@ -716,6 +716,9 @@ const char *bm_nb_name(int bx, int by, char *out) {
     return out;
 }
 static int g7_face(int bx, int by, const BInfo *b) {
+    /* A country farm has its own barn and gate even off the town street grid.
+     * Match the legacy console lot and bm_lot_foot, not a town's empty field. */
+    if(b->set==255&&b->lot==LOT_FARM)return LF_SOUTH;
     BInfo t;
     if (b->lot != LOT_RIVER && (b->road & BR_MEGA) && !(BR_PART(b->road) & 2)) return LF_SOUTH;   // (the back row of a big place opens onto its court)
     bm_block(bx, by + 1, &t);

@@ -855,6 +855,9 @@ static void wild(int ox, int oy, const BInfo *b, int bx, int by) {   // the open
     BoreTrail trail;bm_trail_plan(bx,by,b,&trail);
     for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) {
         { u8 f = floorMap[oy + y][ox + x]; if (f == FL_PAVING || f == FL_WATER || f >= FL_ASPHALT || lifeMap[oy + y][ox + x] != '.') continue; }
+        /* The working farm has a designed gate, crop aisles and barn access.
+         * Do not scatter blocking wilderness props inside its plot. */
+        if(b->lot==LOT_FARM&&b->set==255&&x>=BM_LOT0&&y>=BM_LOT0)continue;
         if(bore_trail_cell(&trail,x,y)){floorMap[oy+y][ox+x]=FL_SOIL;continue;}
         int r = (int)(bm_hash(bx * BM_BLK + x, by * BM_BLK + y, wsalt ^ 0x77u) % 1000u); char c = 0;
         switch (b->terrain) {
@@ -1143,9 +1146,12 @@ COLD static void gen_block0(int wx, int wy) {
     }
     // Use the real community flag as a physical service marker. Don't
     // overwrite any furniture, door, road or main entrance path.
-    if (!mine && prop<0 && b.set!=255 && world_marker_needed(b.lot,b.terrain)) {
+    if (!mine && prop<0 && world_marker_needed(b.lot,b.terrain)) {
         int found=0;
         for(int y=ly;y<oy+BM_BLK&&!found;y++)for(int x=lx;x<ox+BM_BLK;x++)if(lifeMap[y][x]=='a'){found=1;break;}
+        if(!found&&b.lot==LOT_FARM&&lifeMap[ly+11][lx+9]=='.'&&floorMap[ly+11][lx+9]!=FL_WATER&&!FL_IS_ROAD(floorMap[ly+11][lx+9])){
+            gFree(lx+9,ly+11,'a');found=1; // beside the produce stand, inside the front gate
+        }
         if(!found)for(int y=ly+11;y>=ly+8&&!found;y--)for(int x=lx+1;x<=lx+11;x++){
             if(x>=lx+4&&x<=lx+8)continue;
             if(x<ox+BM_BLK&&y<oy+BM_BLK&&lifeMap[y][x]=='.'&&floorMap[y][x]!=FL_WATER&&!FL_IS_ROAD(floorMap[y][x])){

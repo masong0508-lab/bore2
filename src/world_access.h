@@ -15,7 +15,7 @@ static inline int world_heist_site(int lot,int terrain){
     return SITE_NONE;
 }
 static inline int world_marker_needed(int lot,int terrain){
-    return scene_music_venue(lot)>=SC_VENUE_FIRST||world_heist_site(lot,terrain)!=SITE_NONE||lot==LOT_SQUARE;
+    return terrain!=BT_SEA&&(scene_music_venue(lot)>=SC_VENUE_FIRST||world_heist_site(lot,terrain)!=SITE_NONE||lot==LOT_SQUARE);
 }
 static inline int world_outing_anchor(int lot,unsigned char c){
     if(outing_group(lot,0)<0)return 0;
