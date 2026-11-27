@@ -79,3 +79,17 @@ static inline int render_screen_plane(int x,int y,int z,int focal,int cx,int cy,
         default:return (h-cy+16)*z-focal*y;
     }
 }
+
+// Roof lighting is exact for 3 pitches and the common 5x5 corner-delta
+// pairs. Other slopes are calculated normally, not clamped.
+static inline int render_roof_light_index(int pitch,int sx,int sz){
+    if((unsigned)pitch>=3u||sx < -2||sx > 2||sz < -2||sz > 2)return -1;
+    return pitch*25+(sx+2)*5+(sz+2);
+}
+static inline int render_roof_projection_changed(int old_lift,int old_pitch,int old_style,int lift,int pitch,int style){
+    return old_lift!=lift||old_pitch!=pitch||old_style!=style;
+}
+// Interior cells of a validated solid merged roof have no exposed gable.
+static inline int render_roof_perimeter(int x,int y,int span){
+    return x==0||y==0||x==span-1||y==span-1;
+}

@@ -70,5 +70,17 @@ int main(void){
         }
         for(int k=0;k<324;k++)assert(covered[k]);
     }
-    puts("Frame ownership, aligned packets, material-exact terrain and stable silhouettes PASS");
+    int used[75]={0};
+    for(int p=-1;p<=3;p++)for(int x=-30;x<=30;x++)for(int z=-30;z<=30;z++){
+        int i=render_roof_light_index(p,x,z);
+        if(p<0||p>=3||x<-2||x>2||z<-2||z>2)assert(i==-1);
+        else {assert(i>=0&&i<75&&!used[i]);used[i]=1;}
+    }
+    for(int i=0;i<75;i++)assert(used[i]);
+    assert(!render_roof_projection_changed(40,170,1,40,170,1));
+    assert(render_roof_projection_changed(40,170,1,41,170,1));
+    assert(render_roof_projection_changed(40,170,1,40,110,1));
+    assert(render_roof_projection_changed(40,170,1,40,170,2));
+    for(int n=1;n<=4;n*=2){int count=0;for(int y=0;y<n;y++)for(int x=0;x<n;x++)count+=render_roof_perimeter(x,y,n);assert(count==(n==1?1:4*n-4));}
+    puts("Frame ownership, roof cache context, aligned packets, material-exact terrain and stable silhouettes PASS");
 }

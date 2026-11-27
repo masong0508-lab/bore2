@@ -2359,9 +2359,9 @@ static void draw_layer(int fx, int fy, int t, int cutaway, int lvl, int shell, i
             if (shell && bld[my][mx] && (b_see[bld[my][mx]] || b_lod[bld[my][mx]])) continue;
             if (shell && cut_all && cut_here(mx, my) && (((wx - focx) * fdx) >> 12) + (((wz - focz) * fdz) >> 12) < -TILE / 4) continue;   // (over walls cut low: it would float)
             if(!lvl&&!is_wall(c)&&c!='D')continue;
-            if(!tile_seen(&tvT,mx,my))continue;
             if(city&&!lvl&&id&&mx>0&&my>0&&mx<MW-1&&my<MH-1&&
                 bld[my][mx-1]==id&&bld[my][mx+1]==id&&bld[my-1][mx]==id&&bld[my+1][mx]==id)continue;
+            if(!tile_seen(&tvT,mx,my))continue;
             lift_to(hm?gh_c(mx,my):0);
             if(c=='D'){door_tile(mx,my,WALL_FULL);if(lvl)fascia(mx,my);continue;}
             if (!is_wall(c) || !(open_air(mx - 1, my) || open_air(mx + 1, my) || open_air(mx, my - 1) || open_air(mx, my + 1) || !lvl)) { if (lvl && shell) fascia(mx, my); continue; }
@@ -2863,7 +2863,9 @@ static void roof_unit(int X, int Z, int Y, int w, int hgt) {   // (Dreamcast) a 
 #endif
 static void roofs_draw(int fx, int fy) {
     if (!roof_tex_ok) roof_tex_make();
-    int focus = (fx >= 0 && fy >= 0 && fx < MW && fy < MH) ? bld[fy][fx] : 0;
+    // The light is constant in this roof pass (world axes). A zero entry is
+    // unused; gfx_light always returns at least 16 for ordinary world shading.
+    u8 roof_light[75] = {0};
     gfx_set_identity();
     { static const signed char ex[4] = { 0, 1, 0, -1 }, ey[4] = { 1, 0, -1, 0 };
       for (int k = 0; k < 4; k++) { int Lw = gfx_light(ex[k] * ONE, 0, -ey[k] * ONE); gab_col[k] = (u32)MIN(255, (226 * Lw) >> 7) | ((u32)MIN(255, (214 * Lw) >> 7) << 8) | ((u32)MIN(255, (190 * Lw) >> 7) << 16); } }
@@ -2873,8 +2875,9 @@ static void roofs_draw(int fx, int fy) {
         u32 *skip_cur = skip_r[0]; memset(skip_r, 0, sizeof skip_r);
         int base = -(l + 1) * WALL_FULL;
         TileView tv; tile_view_init(&tv, TILE / 2, base - 170, -TILE / 2);
-        rc_l = l; rc_base = base; cc_begin(&cc_roof, ex0, ey0, base);
-        int cur_b = -1, pitch = 170; const u8 *rc = roofCol[0];
+        rc_l = l; rc_base = base;
+        int cache_lift = 0, cache_pitch = -1, cache_style = -1;
+        int cur_b = -1, pitch_idx = 1, pitch = 170; const u8 *rc = roofCol[0];
         int lx0 = ex0, ly0 = ey0, lx1 = ex1, ly1 = ey1;                // (an upper storey's roofs lie in its built-on box, a tile round)
         if (l) { lx0 = MAX(lx0, lvl_bb[l][0] - 1); ly0 = MAX(ly0, lvl_bb[l][1] - 1); lx1 = MIN(lx1, lvl_bb[l][2] + 1); ly1 = MIN(ly1, lvl_bb[l][3] + 1); }
         // (a flat roof is drawn from its first tile, wherever that is: so those tiles are always looked at; the rest only where the view reaches)
@@ -2890,7 +2893,7 @@ static void roofs_draw(int fx, int fy) {
             if (!in_range(x, y)) continue;
             int b = bld[y][x];
             if (b && b_see[b] && !world_fp && (!world_roof_show || l > world_view_lvl)) { if (!world_roof_show) continue; }   // the building you are in (or look through) shows its rooms (first person: its roof is the ceiling)
-            if (b != cur_b) { cur_b = b; pitch = roofPitch[(b_pit[b] & 15) % NROOF_PITCH]; rc = roofCol[b_col[b] % NROOF_COL]; rc_sty = b_sty[b]; rc_pitch = pitch; }
+            if (b != cur_b) { cur_b = b; pitch_idx = (b_pit[b] & 15) % NROOF_PITCH; pitch = roofPitch[pitch_idx]; rc = roofCol[b_col[b] % NROOF_COL]; rc_sty = b_sty[b]; rc_pitch = pitch; }
             // A rectangular slab must not cover a recessed wing or courtyard.
             int flat = rc_sty == 2 && b && b_top[b] == l && b_rect_get(b);
             if (flat) lift_to(world_zone == ZONE_CITY && world_wbx >= 0 ? gh_c(b_x0[b], b_y0[b]) : 0);
@@ -2927,15 +2930,25 @@ static void roofs_draw(int fx, int fy) {
 #ifdef BORE_DC
             if (!big && !world_fp && b && rc_sty != 2 && vz < TILE * 14) ridge_cap(l, x, y, base, pitch);
 #endif
+            // Adjacent roofs may share a grid corner but not a lifted matrix,
+            // pitch or overhang style. Never reuse a projection across those contexts.
+            if(render_roof_projection_changed(cache_lift,cache_pitch,cache_style,gfx_lift,pitch,rc_sty)){
+                cc_begin(&cc_roof,ex0,ey0,base);
+                cache_lift=gfx_lift;cache_pitch=pitch;cache_style=rc_sty;
+            }
             const XV *A = cc_roof_at(x, y), *B = cc_roof_at(x + sp, y), *C = cc_roof_at(x, y + sp), *DQ = cc_roof_at(x + sp, y + sp);
             int hA = rh_get(l, x, y), hB = rh_get(l, x + 1, y), hC = rh_get(l, x, y + 1), hD = rh_get(l, x + 1, y + 1);   // (a merged 2x2 has the same slope as its first tile)
-            int dhx = ((hB + hD - hA - hC) * pitch) / 2, dhz = ((hA + hB - hC - hD) * pitch) / 2;   // the slope across the tile
-            int key = (dhx + 2048) | ((dhz + 2048) << 12);                   // most tiles share a slope: keep the last one's light
-            static int last_key = -1, last_L, last_amb = -1; if (gfx_light_amb() != last_amb) { last_key = -1; last_amb = gfx_light_amb(); }
-            int L;
-            if (key == last_key) L = last_L;
-            else {int len=isqrt(dhx*dhx+TILE*TILE+dhz*dhz);if(len<1)len=1;
-                   L=last_L=gfx_light((-dhx*4096)/len,(-TILE*4096)/len,(-dhz*4096)/len);last_key=key;}
+            int sx=hB+hD-hA-hC, sz=hA+hB-hC-hD;
+            int dhx=(sx*pitch)/2, dhz=(sz*pitch)/2;
+            // Most hip/gable/flat tiles have one of 25 normals per pitch.
+            // Cache exact lighting for the whole pass, including changes in
+            // diffuse strength when ambient is unchanged. Exotic slopes fall back.
+            int li=render_roof_light_index(pitch_idx,sx,sz), L=li>=0?roof_light[li]:0;
+            if(!L){
+                int len=isqrt(dhx*dhx+TILE*TILE+dhz*dhz);if(len<1)len=1;
+                L=gfx_light((-dhx*4096)/len,(-TILE*4096)/len,(-dhz*4096)/len);
+                if(li>=0)roof_light[li]=(u8)L;
+            }
             u32 c = gfx_grade_tex((u32)MIN(255, (rc[0] * L) >> 7) | ((u32)MIN(255, (rc[1] * L) >> 7) << 8) | ((u32)MIN(255, (rc[2] * L) >> 7) << 16));
             int u0 = roof_tex.u, v0 = roof_tex.v, u1 = u0 + RTS - 1, v1 = v0 + RTS - 1;
             if (world_fp && b && b_see[b]) {   // first person, under your own roof: a plain plaster ceiling, not shingles
@@ -2954,7 +2967,7 @@ static void roofs_draw(int fx, int fy) {
                 nc_quad(&s4[0], &s4[1], &s4[2], &s4[3], cc, 1, roof_tex.tpage, 0, ABS(dhz) >= ABS(dhx) ? uvA : uvB, !world_fp);
             } else if (ABS(dhz) >= ABS(dhx)) gfx_emit_gt4(A, B, C, DQ, c, c, c, c, roof_tex.tpage, 0, u0, v0, u1, v1, !world_fp);   // courses run across the slope (first person: seen from under it too)
             else gfx_emit_ft4(A, B, C, DQ, c, roof_tex.tpage, 0, u0, v0, u0, v1, u1, v0, u1, v1, !world_fp, 0);
-            if (big) { for (int j = 0; j < sp; j++) for (int i = 0; i < sp; i++) { gables(l, x + i, y + j, base, pitch); if (j) skip_r[(y + j) & 3][(x + i) >> 5] |= 1u << ((x + i) & 31); }
+            if (big) { for (int j = 0; j < sp; j++) for (int i = 0; i < sp; i++) { if(render_roof_perimeter(i,j,sp))gables(l, x + i, y + j, base, pitch); if (j) skip_r[(y + j) & 3][(x + i) >> 5] |= 1u << ((x + i) & 31); }
                        x += sp - 1; }
             else gables(l, x, y, base, pitch);
         } }
