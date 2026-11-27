@@ -16,7 +16,8 @@ final class InteriorView extends View {
     private final Listener listener;
     private InteriorPlan plan;
     private boolean decorating;
-    private int selected=-1,theme;
+    private int selected=-1,theme,upgrades;
+    void setUpgrades(int mask){upgrades=mask&7;invalidate();}
     void setTheme(int value){theme=value;invalidate();}
     int selectedFurniture(){return selected;}
     void setDecorating(boolean active){
@@ -120,6 +121,11 @@ final class InteriorView extends View {
                 rect(c,x+.08f,y+.11f,.84f,.72f,0xffa9654b);rect(c,x+.17f,y+.23f,.66f,.48f,plan.commercial?0xffd89e71:HomeDecor.color(theme,3));
                 rect(c,x+.08f,y+.11f,.84f,.15f,0xff8b523d);break;
             default:break;
+        }
+        int action=plan.actionAt(kind),bit=action==InteriorPlan.BED?1:action==InteriorPlan.KITCHEN?2:action==InteriorPlan.SOFA?4:0;
+        if(!plan.commercial&&(upgrades&bit)!=0){
+            rect(c,x+.70f,y+.09f,.20f,.20f,0xffb88b38);
+            rect(c,x+.74f,y+.13f,.12f,.12f,0xffffe5a1);
         }
     }
     @Override protected void onDraw(Canvas c){

@@ -161,9 +161,22 @@ def main():
     entered=wait_state(lambda s:s.get("insideLot",-1) in (6,7,10,15,21,25,30,31) and s.get("roomCell",-1)>=0)
     assert entered["funds"]==restored["funds"],entered
     text_tap("Order meal")
+    if entered["insideLot"] in (6,31):text_tap("Eat here")
     served=wait_state(lambda s:s.get("funds",0)==entered["funds"]-8)
     assert served["minute"]==(entered["minute"]+30)%1440 and served["food"]>=entered["food"],served
     (OUT/"life-venue-meal.png").write_bytes(adb("exec-out","screencap","-p"))
+    # Seed 1234's nearest food shop at (500,423) is a real retail lot.
+    assert entered["insideLot"]==6,"fixed-world retail fixture changed"
+    text_tap("Order meal")
+    text_tap("Groceries ($12 / 3 portions)")
+    groceries=wait_state(lambda s:s.get("supplyStock")==3)
+    assert groceries["funds"]==served["funds"]-12 and groceries["minute"]==(served["minute"]+15)%1440,groceries
+    text_tap("Order meal")
+    text_tap("Comfort mattress ($30)")
+    bought=wait_state(lambda s:s.get("furnitureUpgrades")==1)
+    assert bought["funds"]==groceries["funds"]-30 and bought["minute"]==(groceries["minute"]+15)%1440,bought
+    assert bought["supplyStock"]==3,bought
+    served=bought
     adb("shell","input","keyevent","3")
     adb("shell","am","force-stop",PACKAGE)
     adb("shell","am","start","-W","-n",PACKAGE+"/.MainActivity")
@@ -173,7 +186,7 @@ def main():
         time.sleep(.3)
     else:raise AssertionError("Commercial interior not restored")
     reloaded=state()
-    for k in ("insideLot","insideX","insideY","roomCell","funds","minute"):
+    for k in ("insideLot","insideX","insideY","roomCell","funds","minute","supplyStock","furnitureUpgrades","upgradeHome"):
         assert reloaded[k]==served[k],(k,reloaded,served)
     text_tap("Exit building")
     wait_state(lambda s:s.get("roomCell",0)==-1)
@@ -213,6 +226,25 @@ def main():
     wait_state(lambda s:s.get("roomFloor",0)==-1 and s.get("roomCell",0)==-1)
     wait_view(False)
     print("Android real UI aligned stair transition and upper floor reload PASS",upstairs)
+    text_tap("Home")
+    prev=state()
+    if prev["lifeX"]!=prev["homeX"] or prev["lifeY"]!=prev["homeY"]:
+        text_tap("Travel here")
+        wait_state(lambda s:s["lifeX"]==s["homeX"] and s["lifeY"]==s["homeY"])
+        wait_view(False)
+    text_tap("Home")
+    before_cook=wait_state(lambda s:s.get("insideLot",-1) in (1,2,3,4,5) and s.get("roomFloor")==0)
+    text_tap("Kitchen")
+    pantry=wait_state(lambda s:s.get("supplyStock")==2)
+    assert pantry["funds"]==before_cook["funds"]-12*((before_cook["minute"]+30)//1440),pantry
+    assert pantry["skill4"]==before_cook["skill4"]+12,pantry
+    text_tap("Bed")
+    mattress=wait_state(lambda s:s.get("homeNights",0)==pantry["homeNights"]+1)
+    assert mattress["minute"]==(pantry["minute"]+420)%1440,mattress
+    assert mattress["energy"]==100,mattress
+    assert mattress["supplyStock"]==2 and mattress["furnitureUpgrades"]==1,mattress
+    (OUT/"life-upgraded-home.png").write_bytes(adb("exec-out","screencap","-p"))
+    print("Android real UI shop purchase, pantry cooking and mattress recovery PASS",mattress)
     print("Android real UI rent/travel/sleep/cooking/relaunch PASS",loaded)
 
 if __name__=="__main__":
