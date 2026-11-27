@@ -255,15 +255,22 @@ def main():
     wait_state(lambda s:s.get("roomCell",0)==-1)
     wait_view(False)
     text_tap("Find places")
-    text_tap("Workplaces")
-    label=tap(lambda s:"shop" in s.casefold() and "blocks away" in s,"retail workplace")
-    distance=int(re.search(r"(\d+) blocks away",label).group(1))
+    # Return to the same nearest food shop already verified as a retail lot.
+    # A substring match in the mixed workplace list can select another venue.
+    text_tap("Food and groceries")
+    label=tap(lambda s:re.search(r"(\d+) blocks away$",s) is not None,"verified retail workplace")
+    distance=int(re.search(r"(\d+) blocks away$",label).group(1))
+    target=(entered["insideX"],entered["insideY"])
+    print("Career fixture destination:",label,"expected",target,flush=True)
     if distance:
         text_tap("Travel here")
         wait_state(lambda s:s.get("trips",0)>ready["trips"])
         wait_view(False)
+    arrived=state()
+    assert (arrived["lifeX"],arrived["lifeY"])==target,("Wrong retail destination",label,arrived,target)
     text_tap("Enter")
     hired_at=wait_state(lambda s:s.get("insideLot",-1)==6 and s.get("roomFloor")==0)
+    assert (hired_at["insideX"],hired_at["insideY"])==target,hired_at
     text_tap("Work counter")
     text_tap("Accept regular job")
     employed=wait_state(lambda s:s.get("jobKey",-1)>=0 and s.get("jobShifts")==1)
