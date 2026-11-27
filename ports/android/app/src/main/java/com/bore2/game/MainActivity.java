@@ -44,6 +44,11 @@ public final class MainActivity extends Activity {
     private InteriorView interiorView;
     private InteriorPlan interiorPlan;
     private BuildingPlan buildingPlan;
+    private HomeDecor homeDecor;
+    private String savedDecor="";
+    private boolean decorating;
+    private LinearLayout decorRow;
+    private Button decorateButton,nextSpotButton,themeButton,resetRoomButton;
     private int roomFloor=-1;
     private LinearLayout stairsRow;
     private Button upstairsButton,downstairsButton;
@@ -115,7 +120,7 @@ public final class MainActivity extends Activity {
         careerShifts=LifeRules.credit(prefs.getInt("careerShifts",0),0);
         trips=LifeRules.credit(prefs.getInt("trips",0),0);homeNights=LifeRules.credit(prefs.getInt("homeNights",0),0);
         for(int i=0;i<skills.length;i++)skills[i]=Math.max(0,Math.min(4400,prefs.getInt("skill"+i,0)));
-        contacts.load(prefs.getString("contacts",""));
+        contacts.load(prefs.getString("contacts",""));savedDecor=prefs.getString("homeDecor","");
 
         root=new LinearLayout(this);
         root.setBackgroundColor(BG);
@@ -209,7 +214,7 @@ public final class MainActivity extends Activity {
             serial++;meshX=meshY=meshRevision=requestX=requestY=-1;seed=(int)System.nanoTime();resetNative();
             cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
             lifeX=cx;lifeY=cy;resetOutdoorPosition();weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
-            lifeDay=0;lastShiftDay=-1;lastRoute=new int[0];homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
+            lifeDay=0;lastShiftDay=-1;lastRoute=new int[0];savedDecor="";homeDecor=null;homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
             java.util.Arrays.fill(skills,0);contacts.load("");world3d.residentSeed(seed);world3d.resetCamera();refresh();saveLife();
     }
     private void layoutPanes(Configuration config){
@@ -444,7 +449,7 @@ public final class MainActivity extends Activity {
                 .setMessage("$"+LifeRules.LEASE+" to move in, then $"+LifeRules.DAILY_RENT+" per game day. Sleep, cook and spend time at home.")
                 .setPositiveButton("Move in",(d,i)->{
                     if(lifeX!=x||lifeY!=y||funds<LifeRules.LEASE||rentDebt>0)return;
-                    funds-=LifeRules.LEASE;homeX=x;homeY=y;updateDetails();saveLife();notice("Welcome home");
+                    funds-=LifeRules.LEASE;homeX=x;homeY=y;savedDecor="";homeDecor=null;updateDetails();saveLife();notice("Welcome home");
                 }).setNegativeButton("Cancel",null).show();return;
         }
         if(!hasHome()){findPlaces(LifeRules.HOMES);return;}
@@ -482,6 +487,7 @@ public final class MainActivity extends Activity {
         interiorView=new InteriorView(this,new InteriorView.Listener(){
             @Override public void arrived(int action,int cell){interiorArrived(action,cell);}
             @Override public void message(String message){notice(message);}
+            @Override public void moveFurniture(int slot,int cell){relocateFurniture(slot,cell);}
         });
         interiorView.appearance(appearance);homePane.addView(interiorView,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout row=new LinearLayout(this);homePane.addView(row);
@@ -494,6 +500,12 @@ public final class MainActivity extends Activity {
         downstairsButton=homeButton(stairsRow,"Downstairs",()->changeFloor(-1));
         upstairsButton=homeButton(stairsRow,"Upstairs",()->changeFloor(1));
         stairsRow.setVisibility(View.GONE);
+        decorRow=new LinearLayout(this);homePane.addView(decorRow);
+        decorateButton=homeButton(decorRow,"Decorate home",()->setDecorating(!decorating));
+        nextSpotButton=homeButton(decorRow,"Next spot",this::nextFurnitureSpot);
+        themeButton=homeButton(decorRow,"Room style",this::chooseRoomStyle);
+        resetRoomButton=homeButton(decorRow,"Reset room",this::confirmRoomReset);
+        decorRow.setVisibility(View.GONE);
         pane.addView(homePane,new FrameLayout.LayoutParams(-1,-1));homePane.setVisibility(View.GONE);
     }
     private Button homeButton(LinearLayout row,String title,Runnable action){
@@ -540,6 +552,8 @@ public final class MainActivity extends Activity {
     }
     private void openInterior(BuildingPlan p,int saved,int floor){
         selectedX=lifeX;selectedY=lifeY;interiorX=lifeX;interiorY=lifeY;buildingPlan=p;inInterior=true;
+        homeDecor=p.floor(0).commercial?null:HomeDecor.create(p,seed,rentedKey(),savedDecor);
+        if(homeDecor!=null)savedDecor=homeDecor.save();
         showFloor(p.restoreFloor(floor),floor==p.restoreFloor(floor)?saved:-1);
         showMode();updateDetails();saveLife();
     }
@@ -552,19 +566,72 @@ public final class MainActivity extends Activity {
         stairsRow.setVisibility(buildingPlan.count()>1?View.VISIBLE:View.GONE);
         downstairsButton.setEnabled(floor>0);upstairsButton.setEnabled(floor+1<buildingPlan.count());
         interiorView.open(p,saved,buildingPlan.landing);
+        decorating=false;interiorView.setTheme(homeDecor==null?0:homeDecor.theme(floor));refreshDecorControls();
+    }
+    private void refreshDecorControls(){
+        if(interiorPlan==null)return;
+        boolean home=homeDecor!=null&&!interiorPlan.commercial;
+        decorRow.setVisibility(home?View.VISIBLE:View.GONE);
+        decorateButton.setText(decorating?"Done decorating":"Decorate home");
+        nextSpotButton.setVisibility(decorating?View.VISIBLE:View.GONE);
+        themeButton.setVisibility(decorating?View.VISIBLE:View.GONE);
+        resetRoomButton.setVisibility(decorating?View.VISIBLE:View.GONE);
+        exitRoomButton.setVisibility(!decorating&&roomFloor==0?View.VISIBLE:View.GONE);
+        stairsRow.setVisibility(!decorating&&buildingPlan.count()>1?View.VISIBLE:View.GONE);
+        interiorView.setDecorating(decorating);
+        hint.setText(decorating?"Select furniture, then tap an open tile or Next spot":interiorPlan.commercial?"Venue · walk to a service station":"Home · tap a floor tile or use furniture");
+    }
+    private void setDecorating(boolean enabled){
+        if(!interiorCurrent()||homeDecor==null)return;
+        if(enabled&&interiorView.busy()){notice("Finish walking before decorating");return;}
+        decorating=enabled;refreshDecorControls();saveLife();
+    }
+    private void saveDecor(){
+        if(homeDecor==null)return;
+        savedDecor=homeDecor.save();interiorView.setTheme(homeDecor.theme(roomFloor));interiorView.invalidate();saveLife();
+    }
+    private void relocateFurniture(int slot,int target){
+        if(!decorating||!interiorCurrent()||homeDecor==null||interiorView.busy())return;
+        if(homeDecor.move(roomFloor,slot,target,interiorView.cell())){saveDecor();notice("Furniture moved");}
+        else notice("Keep the doorway, stairs, player and furniture routes clear");
+    }
+    private void nextFurnitureSpot(){
+        if(!decorating||!interiorCurrent()||homeDecor==null)return;
+        int slot=interiorView.selectedFurniture();
+        if(slot<0){notice("Select furniture first");return;}
+        if(homeDecor.nextSpot(roomFloor,slot,interiorView.cell())>=0){saveDecor();notice("Furniture moved");}
+        else notice("No alternative clear position");
+    }
+    private void chooseRoomStyle(){
+        if(!decorating||!interiorCurrent()||homeDecor==null)return;
+        final HomeDecor target=homeDecor;final int floor=roomFloor;
+        new AlertDialog.Builder(this).setTitle("Room style").setSingleChoiceItems(HomeDecor.THEMES,target.theme(floor),(dialog,which)->{
+            if(decorating&&homeDecor==target&&roomFloor==floor&&target.setTheme(floor,which))saveDecor();
+            dialog.dismiss();
+        }).setNegativeButton("Cancel",null).show();
+    }
+    private void confirmRoomReset(){
+        if(!decorating||!interiorCurrent()||homeDecor==null)return;
+        final HomeDecor target=homeDecor;final int floor=roomFloor;
+        new AlertDialog.Builder(this).setTitle("Reset this floor?").setMessage("Restore the original furniture positions and room colors on this floor only.")
+            .setPositiveButton("Reset",(dialog,which)->{
+                if(!decorating||homeDecor!=target||roomFloor!=floor)return;
+                if(target.reset(floor,interiorView.cell())){saveDecor();notice("Room restored");}
+                else notice("Move your character clear of the original furniture first");
+            }).setNegativeButton("Cancel",null).show();
     }
     private void changeFloor(int direction){
-        if(!interiorCurrent()||buildingPlan==null||buildingPlan.floor(roomFloor+direction)==null)return;
+        if(decorating||!interiorCurrent()||buildingPlan==null||buildingPlan.floor(roomFloor+direction)==null)return;
         interiorView.climb(direction);
     }
     private void leaveHome(){
         if(!inInterior||roomFloor!=0)return;
-        inInterior=false;interiorView.close();interiorPlan=null;buildingPlan=null;roomFloor=-1;interiorX=interiorY=-1;
+        inInterior=false;decorating=false;interiorView.close();interiorPlan=null;buildingPlan=null;homeDecor=null;roomFloor=-1;interiorX=interiorY=-1;
         cx=lifeX;cy=lifeY;selectedX=lifeX;selectedY=lifeY;
         showMode();refresh();saveLife();
     }
     private void interiorArrived(int action,int cell){
-        if(!interiorCurrent())return;
+        if(decorating||!interiorCurrent())return;
         if(action==InteriorView.UP||action==InteriorView.DOWN){
             int direction=action==InteriorView.UP?1:-1;
             if(buildingPlan!=null&&buildingPlan.canChange(roomFloor,cell,direction)){
@@ -601,7 +668,7 @@ public final class MainActivity extends Activity {
     }
     @Override public void onBackPressed(){
         if(walkMode){endWalkMode(true);return;}
-        if(inInterior){if(interiorView.busy()){interiorView.cancel();saveLife();}else if(roomFloor>0)changeFloor(-1);else interiorView.exit();return;}
+        if(inInterior){if(decorating){setDecorating(false);return;}if(interiorView.busy()){interiorView.cancel();saveLife();}else if(roomFloor>0)changeFloor(-1);else interiorView.exit();return;}
         super.onBackPressed();
     }
     private MobileContacts.Resident resident(int key){return new MobileContacts.Resident(seed,key);}
@@ -753,7 +820,7 @@ public final class MainActivity extends Activity {
              .putInt("insideX",interiorX).putInt("insideY",interiorY).putInt("insideLot",inInterior?interiorPlan.lot:-1)
              .putInt("roomCell",inInterior?interiorView.cell():-1).putInt("roomFloor",roomFloor)
              .putInt("tileX",tileX).putInt("tileY",tileY).putBoolean("crowdMotion",crowdMotion)
-             .putInt("avatarStyle",appearance.encode()).putString("avatarName",playerName);
+             .putInt("avatarStyle",appearance.encode()).putString("avatarName",playerName).putString("homeDecor",savedDecor);
         for(int i=0;i<skills.length;i++)e.putInt("skill"+i,skills[i]);e.apply();
     }
     private void updateDetails(){

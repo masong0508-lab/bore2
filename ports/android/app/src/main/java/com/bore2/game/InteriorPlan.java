@@ -64,6 +64,25 @@ final class InteriorPlan {
         }
         return p;
     }
+    // Replace all furniture atomically. Keep doors, stairs, player and every route clear.
+    boolean replaceObjects(int[] next,int landing,int player){
+        if(commercial||next==null||next.length!=COUNT||!walkable(entry))return false;
+        boolean[] used=new boolean[N];
+        for(int k=0;k<COUNT;k++){
+            int c=next[k];
+            if(k>=actionCount()){if(c!=-1)return false;continue;}
+            if(!floor(c)||c==entry||c==landing||c==player||used[c])return false;
+            used[c]=true;
+        }
+        int[] old=objects.clone();
+        installObjects(next);
+        if(connected()&&accessibleObjects()&&(landing<0||walkable(landing))&&(player<0||walkable(player)))return true;
+        installObjects(old);return false;
+    }
+    private void installObjects(int[] positions){
+        Arrays.fill(occupied,-1);System.arraycopy(positions,0,objects,0,COUNT);
+        for(int k=0;k<actionCount();k++)occupied[objects[k]]=k;
+    }
     static boolean inside(int x,int y){return x>=0&&y>=0&&x<SIDE&&y<SIDE;}
     static int neighbor(int i,int d){if(i<0||i>=N||d<0||d>=4)return -1;int x=i%SIDE+DX[d],y=i/SIDE+DY[d];return inside(x,y)?y*SIDE+x:-1;}
     boolean floor(int i){return i>=0&&i<N&&floors[i];}

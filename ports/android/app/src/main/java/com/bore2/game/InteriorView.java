@@ -10,11 +10,19 @@ import android.view.View;
 
 /** Interactive cutaway home. Only walkable routes can trigger furniture actions. */
 final class InteriorView extends View {
-    interface Listener {void arrived(int action,int cell);void message(String message);}
+    interface Listener {void arrived(int action,int cell);void message(String message);void moveFurniture(int slot,int cell);}
     static final int WALK=-1,EXIT=-2,UP=-3,DOWN=-4;
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Listener listener;
     private InteriorPlan plan;
+    private boolean decorating;
+    private int selected=-1,theme;
+    void setTheme(int value){theme=value;invalidate();}
+    int selectedFurniture(){return selected;}
+    void setDecorating(boolean active){
+        if(decorating!=active){decorating=active;selected=-1;}
+        setContentDescription(active?"Decorate home. Select furniture, then choose a free floor tile.":plan!=null&&plan.commercial?"Venue cutaway. Tap a floor tile or service station.":"Home cutaway. Tap a floor tile to walk or furniture to interact.");invalidate();
+    }
     private AvatarStyle style=AvatarStyle.defaults();
     void appearance(AvatarStyle next){style=next;invalidate();}
     private int at,action=WALK,index,lo,hi,top,bottom,landing=-1;
@@ -28,7 +36,7 @@ final class InteriorView extends View {
         setContentDescription("Home cutaway. Tap a floor tile to walk or furniture to interact.");
     }
     void open(InteriorPlan p,int saved,int stair){
-        cancel();plan=p;landing=stair;at=p.walkable(saved)?saved:p.entry;
+        cancel();plan=p;decorating=false;selected=-1;landing=stair;at=p.walkable(saved)?saved:p.entry;
         setContentDescription(p.commercial?"Venue cutaway. Tap a floor tile or service station.":"Home cutaway. Tap a floor tile to walk or furniture to interact.");
         lo=18;hi=-1;top=18;bottom=-1;
         for(int i=0;i<InteriorPlan.N;i++)if(p.floor(i)){lo=Math.min(lo,i%18);hi=Math.max(hi,i%18);top=Math.min(top,i/18);bottom=Math.max(bottom,i/18);}
@@ -37,13 +45,14 @@ final class InteriorView extends View {
     int cell(){return at;}
     boolean busy(){return path!=null;}
     void cancel(){removeCallbacks(tick);path=null;index=0;action=WALK;invalidate();}
-    void close(){cancel();plan=null;}
+    void close(){cancel();plan=null;decorating=false;selected=-1;}
     void use(int kind){
-        if(plan==null)return;
+        if(plan==null||kind<0||kind>=plan.actionCount())return;
+        if(decorating){selected=kind;listener.message(plan.labelAt(kind)+" selected");invalidate();return;}
         begin(plan.routeToObject(at,kind),kind);
     }
-    void exit(){if(plan!=null)begin(plan.route(at,plan.entry),EXIT);}
-    void climb(int direction){if(plan!=null&&plan.walkable(landing)&&(direction==1||direction==-1))begin(plan.route(at,landing),direction==1?UP:DOWN);}
+    void exit(){if(!decorating&&plan!=null)begin(plan.route(at,plan.entry),EXIT);}
+    void climb(int direction){if(!decorating&&plan!=null&&plan.walkable(landing)&&(direction==1||direction==-1))begin(plan.route(at,landing),direction==1?UP:DOWN);}
     private void begin(int[] next,int what){
         if(next==null){listener.message("No clear path");return;}
         cancel();action=what;
@@ -95,7 +104,7 @@ final class InteriorView extends View {
             case BuildingPlan.FITNESS:
                 rect(c,x+.12f,y+.08f,.76f,.84f,0xff536d77);rect(c,x+.22f,y+.21f,.56f,.55f,0xffa4c1bd);rect(c,x+.32f,y+.35f,.36f,.24f,0xff515e63);break;
             case InteriorPlan.BED:
-                rect(c,x+.08f,y+.05f,.78f,.85f,0xff805a43);rect(c,x+.14f,y+.11f,.66f,.73f,0xff82a6a3);
+                rect(c,x+.08f,y+.05f,.78f,.85f,0xff805a43);rect(c,x+.14f,y+.11f,.66f,.73f,HomeDecor.color(theme,3));
                 rect(c,x+.20f,y+.15f,.54f,.19f,0xfff4e9cf);break;
             case InteriorPlan.KITCHEN:
                 rect(c,x+.05f,y+.10f,.90f,.68f,0xff667e84);rect(c,x+.10f,y+.18f,.37f,.44f,0xffa9d0cd);
@@ -108,7 +117,7 @@ final class InteriorView extends View {
                 rect(c,x+.38f,y+.30f,.22f,.22f,0xff8bbdc6);break;
             case VenueRules.WAIT:
             case InteriorPlan.SOFA:
-                rect(c,x+.08f,y+.11f,.84f,.72f,0xffa9654b);rect(c,x+.17f,y+.23f,.66f,.48f,0xffd89e71);
+                rect(c,x+.08f,y+.11f,.84f,.72f,0xffa9654b);rect(c,x+.17f,y+.23f,.66f,.48f,plan.commercial?0xffd89e71:HomeDecor.color(theme,3));
                 rect(c,x+.08f,y+.11f,.84f,.15f,0xff8b523d);break;
             default:break;
         }
@@ -121,7 +130,7 @@ final class InteriorView extends View {
         left=(getWidth()-tile*(hi-lo+1))/2;upper=(getHeight()-tile*(bottom-top+1))/2;
         for(int i=0;i<InteriorPlan.N;i++)if(plan.floor(i)){
             int x=i%18,y=i/18;paint.setStyle(Paint.Style.FILL);
-            paint.setColor(plan.commercial?(((x+y)&1)==0?0xffb8c4c3:0xffacb8b9):(((x+y)&1)==0?0xffd8c19c:0xffd0b58d));
+            paint.setColor(plan.commercial?(((x+y)&1)==0?0xffb8c4c3:0xffacb8b9):HomeDecor.color(theme,(x+y)&1));
             c.drawRect(X(x),Y(y),X(x+1)+.25f,Y(y+1)+.25f,paint);
         }
         paint.setStrokeWidth(Math.max(2,tile*.13f));paint.setStrokeCap(Paint.Cap.SQUARE);
@@ -130,7 +139,7 @@ final class InteriorView extends View {
             for(int d=0;d<4;d++)if((plan.walls[i]&(1<<d))!=0){
                 if(i==plan.entry&&!plan.floor(InteriorPlan.neighbor(i,d))){
                     paint.setColor(0xff4fada0);
-                }else paint.setColor(0xff56473d);
+                }else paint.setColor(plan.commercial?0xff56473d:HomeDecor.color(theme,2));
                 if(d==0)c.drawLine(X(x+1),Y(y),X(x+1),Y(y+1),paint);
                 else if(d==1)c.drawLine(X(x),Y(y+1),X(x+1),Y(y+1),paint);
                 else if(d==2)c.drawLine(X(x),Y(y),X(x),Y(y+1),paint);
@@ -145,6 +154,11 @@ final class InteriorView extends View {
             paint.setColor(0xff688f80);for(int k=index;k<path.length;k++)c.drawCircle(X(path[k]%18+.5f),Y(path[k]/18+.5f),tile*.08f,paint);
         }
         for(int k=0;k<plan.actionCount();k++)furniture(c,k,plan.objects[k]);
+        if(decorating&&selected>=0&&selected<plan.actionCount()){
+            int q=plan.objects[selected];float x=q%18,y=q/18;
+            paint.setColor(0xfff2d77c);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(Math.max(2,tile*.07f));
+            c.drawRect(X(x)+2,Y(y)+2,X(x+1)-2,Y(y+1)-2,paint);paint.setStyle(Paint.Style.FILL);
+        }
         float px=at%18+.5f,py=at/18+.5f,phase=0;
         if(path!=null){
             float t=Math.min(1f,(SystemClock.uptimeMillis()-started)/(float)STEP_MS);
@@ -174,7 +188,14 @@ final class InteriorView extends View {
         int x=(int)Math.floor((event.getX()-left)/tile)+lo,y=(int)Math.floor((event.getY()-upper)/tile)+top;
         if(!InteriorPlan.inside(x,y))return true;
         int cell=y*18+x;if(!plan.floor(cell))return true;
-        performClick();if(plan.occupied[cell]>=0)use(plan.occupied[cell]);else begin(plan.route(at,cell),WALK);
+        performClick();
+        if(decorating){
+            if(plan.occupied[cell]>=0)use(plan.occupied[cell]);
+            else if(selected>=0)listener.moveFurniture(selected,cell);
+            else listener.message("Select a piece of furniture first");
+            return true;
+        }
+        if(plan.occupied[cell]>=0)use(plan.occupied[cell]);else begin(plan.route(at,cell),WALK);
         return true;
     }
     @Override public boolean performClick(){super.performClick();return true;}

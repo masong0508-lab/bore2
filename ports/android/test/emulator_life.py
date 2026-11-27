@@ -27,6 +27,19 @@ def text_tap(text):return tap(lambda s:s.casefold()==text.casefold(),text)
 def state():
     raw=adb("shell","run-as",PACKAGE,"cat","shared_prefs/world_preview.xml")
     return {n.get("name"):int(n.get("value")) for n in ET.fromstring(raw) if n.tag=="int"}
+def decor_state():
+    raw=adb("shell","run-as",PACKAGE,"cat","shared_prefs/world_preview.xml")
+    root=ET.fromstring(raw)
+    return next((n.text or "" for n in root if n.get("name")=="homeDecor"),"")
+def wait_decor(predicate):
+    deadline=time.monotonic()+25
+    while time.monotonic()<deadline:
+        try:
+            s=decor_state()
+            if predicate(s):return s
+        except (subprocess.CalledProcessError,ET.ParseError):pass
+        time.sleep(.3)
+    raise AssertionError("Home decoration was not saved")
 def wait_state(predicate):
     deadline=time.monotonic()+30
     while time.monotonic()<deadline:
@@ -76,6 +89,18 @@ def main():
     assert leased["homeX"]==leased["lifeX"] and leased["homeY"]==leased["lifeY"],leased
     assert leased["funds"]==175,leased
     text_tap("Home")
+    original_decor=wait_decor(lambda s:s.startswith("1,"))
+    text_tap("Decorate home")
+    text_tap("Bed")
+    text_tap("Next spot")
+    moved_decor=wait_decor(lambda s:s!=original_decor and s.startswith("1,"))
+    assert moved_decor.split(";")[1].split(",")[1]!=original_decor.split(";")[1].split(",")[1],"bed did not move"
+    text_tap("Room style")
+    text_tap("Sage")
+    decorated=wait_decor(lambda s:s.split(";")[1].startswith("2,") if ";" in s else False)
+    text_tap("Done decorating")
+    assert state()["funds"]==leased["funds"] and state()["minute"]==leased["minute"],"decorating changed money or time"
+    (OUT/"life-decorated-home.png").write_bytes(adb("exec-out","screencap","-p"))
     text_tap("Bed")
     slept=wait_state(lambda s:s.get("homeNights",0)==1)
     assert slept["energy"]==100 and slept["minute"]==(leased["minute"]+480)%1440,slept
@@ -93,6 +118,8 @@ def main():
         time.sleep(.3)
     else:raise AssertionError("Home view not restored")
     loaded=state()
+    assert decor_state()==decorated,"furniture or room style lost on relaunch"
+    print("Android real UI furniture relocation, theme and reload PASS")
     for k in ("homeX","homeY","lifeX","lifeY","funds","food","energy","minute","homeNights","skill4","roomCell"):
         assert loaded[k]==cooked[k],(k,loaded,cooked)
     (OUT/"life-home.png").write_bytes(adb("exec-out","screencap","-p"))
