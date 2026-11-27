@@ -50,6 +50,7 @@ extern int bm_ncity, bm_ntown, bm_nvil, bm_capsz;  // how many cities (besides t
 #define BM_MAXTOWN 20
 #define BM_MAXVIL 32
 void bm_dials_default(void);
+extern int bm_edit_stamp;             // monotonic world/terrain override invalidation
 extern int bm_gen;                    // saved procedural world generation; new worlds use BM_GEN_CURRENT
 void bm_rename_clear(void);           // towns renamed by the player: none (a new life)
 void bm_rename(int i, const char *nm); // town i (0 the capital) is called that from now on (set before bm_new: it takes then)
