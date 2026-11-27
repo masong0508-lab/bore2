@@ -106,6 +106,7 @@ int  veh_seat(int t); int veh_colour(int t); const char *veh_hud(void);   // how
 int  sim_heist_can_keep(int target);
 int  sim_heist_keep(int target);
 int  sim_heist_confiscate(void);
+void sim_park_for_travel(void);
 int  sim_ride_after_board(void);     // stepped off the board: on to a vehicle you own (1) or onto your feet (0)
 extern int  has_board, on_board, board_lift;   // (board_lift: how high above the floor the rider is, on a ramp or in the air)
 //     // a skateboard owned / being ridden (O toggles)

@@ -61,8 +61,10 @@ def run(root):
         issues.append("Replay did not exercise at least two world-window crossings")
     if flashes:
         issues.append(f"{flashes} large isolated flash candidates")
-    if any(len(set(scene(t).getdata())) < 500 for t in ANCHORS):
-        issues.append("Blank or unusually low-detail native scene")
+    anchor_colors = {str(t):len(set(scene(t).getdata())) for t in ANCHORS}
+    low_anchors = [int(t) for t,n in anchor_colors.items() if n < 500]
+    if low_anchors:
+        issues.append(f"Blank or unusually low-detail native scene at ticks {low_anchors}: {anchor_colors}")
     def means(name,keys):
         return {k:round(v/n,2) for k,v in zip(keys,read(name,len(keys)))}
     periods=read("dbg_per_hist",6)
@@ -84,6 +86,7 @@ def run(root):
         "packet_overflow_frames_all_game_states": counters["dbg_pk_ovf"],
         "packet_allocations_denied_all_game_states": counters["dbg_pk_ovf_n"],
         "peak_packet_bytes": counters["gfx_peak_bytes"],
+        "anchor_distinct_colors": anchor_colors,
         "temporal_audit": temporal,
         "local_switch_candidates": sum(len(b["local_switch_candidates"]) for b in temporal),
         "identical_adjacent_frames": sum(b["identical_adjacent_frames"] for b in temporal),

@@ -1823,6 +1823,7 @@ typedef struct { int x, y, dir, stop; u8 on, stage, skin, shirt, hair, pants; u1
 #include "native_life.h"
 #include "ds_cit_routine.h"
 #include "ds_city_budget.h"
+#include "vehicle_stability.h"
 typedef struct { int x, y, dx, dy; u16 col; int px, py, ang; s16 s, L, wt; s8 sg, lj, tx, ty; u8 on, st, tn, tj; } Car;   // (d83) x, y: its centre in 1/16 cells; dx, dy: its way (0, 0: not on the road); st: 0 straight, 1 in a turn (sg +1 right, -1 left, from px, py, s of L); lj: its street's slot; tj: the junction it has claimed (+1), tx ty its slot; tn: 0 straight 1 right 2 left; wt: steps held up
 static Cit cits[NCIT]; static CRel crt[64]; static Car cars[NCAR];
 static const char *const FNAMES[12] = { "Mia", "Leo", "Zoe", "Max", "Ivy", "Sam", "Ana", "Kai", "Eli", "Ola", "Dex", "Una" };
@@ -1902,7 +1903,7 @@ static int car_claim(Car *c, int d, int i) {   // the junction square of this st
         int nd = (d + 1) & 3, ld = (d + 3) & 3; int okr = (nd & 1 ? vt_on : hz_on)[(nd & 1) ? jx + 1 : jy + 1], okl = (ld & 1 ? vt_on : hz_on)[(ld & 1) ? jx + 1 : jy + 1];
         if (r < 2 && okr) tn = 1; else if (r < 4 && okl) tn = 2; }
     if (car_person(cx, cy, 29)) return 0;
-    if (jcnt[ji] && (jax[ji] != (d & 1) || tn || jtn[ji])) return 0;
+    if (!bore_vehicle_claim_ok(jcnt[ji],jax[ji],jtn[ji],d&1,tn)) return 0;
     { int ed = tn == 1 ? (d + 1) & 3 : tn == 2 ? (d + 3) & 3 : d, ex = cx + CDX[ed] * 56, ey = cy + CDY[ed] * 56; int ln = ed & 1 ? (ed == 1 ? 14 : 16) : (ed == 0 ? 16 : 14);   // (the way out must be clear for a car's length or two)
         if (ed & 1) ex = (jx * SLC + ln) * 16; else ey = (jy * SLC + ln) * 16;
         for (int k = 0; k < CARN; k++) { const Car *q = &cars[k]; if (q == c || !q->on || q->tj == ji + 1) continue; int a = q->x - ex, b = q->y - ey; if (a * a + b * b < 30 * 30) return 0; } }
@@ -1991,11 +1992,34 @@ static void city_shift(int dx, int dy) {
     for (int k = 0; k < NCIT && ne; k++) if (!cits[k].on) {
         for (int t = 0; t < ne && !cits[k].on; t++) city_spawn_cit(k, edge[(k + t) % ne]);
     }
-    car_lanes(); memset(jcnt, 0, sizeof jcnt); memset(jtn, 0, sizeof jtn);
-    for (int k = 0; k < NCAR; k++) { Car *c = &cars[k]; if (!c->on) continue; int d = car_d(c); if (k >= CARN) { c->on = 0; continue; } if (c->st || c->tj || car_inj(c)) { c->on = 0; continue; }   // (a car in a junction when the lot changes: gone, it comes in again)
-        c->x -= dx * SLC * 16; c->y -= dy * SLC * 16; int w = SLC * 3 * 16, lo = -SLC * 16;
-        if (c->x < lo) c->x += w; if (c->x >= lo + w) c->x -= w; if (c->y < lo) c->y += w; if (c->y >= lo + w) c->y -= w;
-        c->lj = (s8)((((c->lj + 1 - (d & 1 ? dx : dy)) % 3) + 3) % 3 - 1); if (!((d & 1) ? vt_on : hz_on)[c->lj + 1]) c->on = 0; else if (car_inj(c)) c->on = 0; }
+    /* Preserve in-flight turns and claims in the retained neighborhood.
+     * Leaving cars retire at the fringe; none wraps onto an unrelated road. */
+    u8 old_axis[9],old_turn[9];memcpy(old_axis,jax,9);memcpy(old_turn,jtn,9);
+    car_lanes();memset(jcnt,0,sizeof jcnt);memset(jax,0,sizeof jax);memset(jtn,0,sizeof jtn);
+    for(int k=0;k<NCAR;k++){
+        Car *c=&cars[k];if(!c->on)continue;
+        int d=car_d(c),old=c->tj,lj=c->lj-(d&1?dx:dy);
+        if(k>=CARN||!bore_vehicle_rebase(&c->x,&c->y,dx,dy,span)||lj<-1||lj>1){
+            c->on=c->tj=0;continue;
+        }
+        c->lj=(s8)lj;
+        c->px-=dx*span;c->py-=dy*span;
+        if(!((d&1)?vt_on:hz_on)[lj+1]){c->on=c->tj=0;continue;}
+        if(old){
+            int jx=c->tx-dx,jy=c->ty-dy,claim=bore_vehicle_junction(jx,jy);
+            if(!claim||old>9){
+                if(c->st){c->on=c->tj=0;continue;}
+                c->tj=c->tn=0;
+            }else{
+                int ji=claim-1,axis=old_axis[old-1],turn=old_turn[old-1];
+                if(!bore_vehicle_claim_ok(jcnt[ji],jax[ji],jtn[ji],axis,turn)){
+                    c->on=c->tj=0;continue;
+                }
+                c->tx=(s8)jx;c->ty=(s8)jy;c->tj=(u8)claim;
+                jcnt[ji]++;jax[ji]=(u8)axis;jtn[ji]=(u8)turn;
+            }
+        }
+    }
 }
 static void rblock(int x, int z, int cs, int sn, int a0, int b0, int a1, int b1, int y0, int y1, u16 wall, u16 roof) {   // (d83) a car's box turned (cs, sn: its heading, 4.12): a along it, b to its right
 #define RX(a, b) (x + (((a) * cs - (b) * sn) >> 12))

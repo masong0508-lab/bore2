@@ -17,6 +17,7 @@
 #include "bigmap.h"
 #include "crowd.h"
 #include "traffic.h"
+#include "vehicle_stability.h"
 #include "gotchi.h"
 #include "pop.h"
 #include "home.h"
@@ -1708,21 +1709,64 @@ void sim_step(void) {
 }
 
 int sim_walk(Sim *s, int dx, int dz) { return walk(s, dx, dz); }   // (skate.c: a step with the board's way over ramps and decks)
-static void veh_dismount(Sim *s, const char *why) { if (veh_on) traffic_park(veh_on - 1, s->x, s->z, s->yaw); veh_on = 0; s->gait.sit = 0; s->gait.amp = 0; s->gait.run = 0; if (why) sim_note(why); }
+/* Cars occupy a rotated body, not the pedestrian's four sample points.
+ * Every overlapped tile must be outdoors, generated and walkable. */
+static int veh_footprint_free(int type,int x,int z,int yaw) {
+    int y=-z,sn=isin(yaw),cs=icos(yaw),hw=bore_vehicle_half_width(type),hl=bore_vehicle_half_length(type);
+    int rx=(hw*ABS(cs)+hl*ABS(sn)+4095)/4096,ry=(hw*ABS(sn)+hl*ABS(cs)+4095)/4096;
+    if(x-rx<0||y-ry<0||x+rx>=MW*TILE||y+ry>=MH*TILE)return 0;
+    for(int my=(y-ry)/TILE;my<=(y+ry)/TILE;my++)for(int mx=(x-rx)/TILE;mx<=(x+rx)/TILE;mx++){
+        if(!bore_vehicle_cell_overlap(x,y,sn,cs,hw,hl,mx*TILE+TILE/2,my*TILE+TILE/2,TILE/2))continue;
+        if(floorMap[my][mx]<FL_GRASS||floorMap[my][mx]==FL_WATER||floorMap[my][mx]==FL_POOLTILE||!world_walkable(mx,my))return 0;
+    }
+    return 1;
+}
+static void veh_step_body(Sim *s,int dx,int dz,int type){
+    if(!land_walk_pace(s,dx,dz))return;
+    int span=MAX(ABS(dx),ABS(dz)),n=MAX(1,(span+95)/96),x=s->x,z=s->z;
+    for(int i=1;i<=n;i++){
+        int nx=x+dx*i/n,nz=z+dz*i/n;
+        if(!veh_footprint_free(type,nx,nz,s->yaw))break;
+        s->x=nx;s->z=nz;
+    }
+}
+void sim_park_for_travel(void){
+    if(!veh_on)return;
+    Sim *s=&sims[player];
+    traffic_park(veh_on-1,s->x,s->z,s->yaw);
+    veh_on=0;s->gait.sit=0;s->gait.amp=0;s->gait.run=0;
+}
+static int veh_dismount(Sim *s,const char *why){
+    if(!veh_on)return 1;
+    int type=veh_on-1,hw=bore_vehicle_half_width(type)+SIM_RADIUS+32;
+    int sn=isin(s->yaw),cs=icos(s->yaw),hl=bore_vehicle_half_length(type)+SIM_RADIUS+32;
+    int keep=world_lvl;world_lvl=0;
+    /* Step beside or behind the parked car. Do not strand the player in a wall. */
+    for(int k=0;k<4;k++){
+        int dx=k<2?cs*hw:-sn*hl,dz=k<2?sn*hw:cs*hl;
+        if(k&1){dx=-dx;dz=-dz;}
+        int x=s->x+dx/4096,z=s->z+dz/4096;
+        if(!footprint_free(x,z))continue;
+        sim_park_for_travel();s->x=x;s->z=z;world_lvl=keep;
+        if(why)sim_note(why);return 1;
+    }
+    world_lvl=keep;sim_note("NO ROOM TO GET OFF");return 0;
+}
 static int veh_back;   // backing up (down on the pad): no turning round, half speed
 static void veh_drive(Sim *s, int dx, int dz) {   // a step in a vehicle: it turns like a car (slowly) and goes at its speed, burning fuel by the distance
     world_lvl = s->lvl;
     int t = veh_on - 1; s->path_n = 0; s->action = ACT_NONE; s->gait.sit = VT[t].seat > 0; s->gait.amp = 0; s->gait.run = 0;
     if (dx || dz) {
-        int want = yaw_towards(dx, dz), diff = ((want - s->yaw + 2048) & 4095) - 2048;
+        int want = yaw_towards(dx, dz), diff = ((want - s->yaw + 2048) & 4095) - 2048,old_yaw=s->yaw;
         if (veh_back) diff = 0; else turn_to(s, want, 150 + (ABS(diff) >> 4));
+        if(s->yaw!=old_yaw&&!veh_footprint_free(t,s->x,s->z,s->yaw))s->yaw=old_yaw;
         int mag = SquareRoot0(dx * dx + dz * dz); if (mag > 4096) mag = 4096;
         int align = 4096 - ABS(diff) * 2; if (align < 0) align = 0;
         int mult = VT[t].speed; if (VT[t].tank && veh_fuel[t] <= 0) mult = 1; else if (veh_cond[t] <= 0) mult = 1; else if (veh_cond[t] < 25) mult = MAX(1, mult / 2);
         int sp = (((speed_of(s) * mult * mag) >> 12) * align) >> 12; if (veh_back) sp /= 2;
         { int vp = tr_pct(s->tr, E_VEH_SPEED); if (vp) sp = sp * (100 + CLAMP(vp, -60, 300)) / 100; }   // (TRAITS: E_VEH_SPEED)
         int x0 = s->x, z0 = s->z;
-        if (sp) walk(s, (isin(s->yaw) * (veh_back ? -sp : sp)) >> 12, -((icos(s->yaw) * (veh_back ? -sp : sp)) >> 12));
+        if (sp) veh_step_body(s, (isin(s->yaw) * (veh_back ? -sp : sp)) >> 12, -((icos(s->yaw) * (veh_back ? -sp : sp)) >> 12),t);
         int moved = ABS(s->x - x0) + ABS(s->z - z0);
         veh_wph = (veh_wph + moved * 18) & 4095;
         veh_odo += moved;
@@ -1758,7 +1802,10 @@ static int veh_mount(Sim *s, int t) {   // 1: you are on it
 #ifndef AUTO_VEH
     { int tx = sim_tile_x(s), ty = sim_tile_y(s); if (s->lvl || tx < 0 || ty < 0 || tx >= MW || ty >= MH || floorMap[ty][tx] < FL_GRASS) { sim_note("OUTSIDE ONLY: NO DRIVING INDOORS"); return 0; } }
 #endif
-    if (!traffic_park_near(t, s->x, s->z) && traffic_parked(t)) { char b[40]; snprintf(b, sizeof b, "YOUR %s IS PARKED ELSEWHERE", VT[t].nm); sim_note(b); return 0; }
+    int x=s->x,z=s->z,yaw=s->yaw;
+    if(traffic_parked(t)&&!traffic_park_pose_near(t,x,z,&x,&z,&yaw)){char b[40];snprintf(b,sizeof b,"YOUR %s IS PARKED ELSEWHERE",VT[t].nm);sim_note(b);return 0;}
+    if(!veh_footprint_free(t,x,z,yaw)){sim_note("NEED MORE SPACE TO DRIVE");return 0;}
+    traffic_unpark(t);s->x=x;s->z=z;s->yaw=yaw;
     veh_on = t + 1; veh_sel = t; veh_lowfuel = 0; s->gait.sit = VT[t].seat > 0; s->gait.amp = 0;
     { char b[40]; snprintf(b, sizeof b, "ON THE %s. O TO GET OFF", VT[t].nm); sim_note(b); }
     audio_voice(VOICE_YEHA); return 1;
@@ -1815,7 +1862,7 @@ void sim_player_tank(int fwd, int turn, int run) {   // first person: left and r
         end_action(s);
     }
     s->path_n = 0; s->action = ACT_NONE;
-    if (veh_on) { int w = (s->yaw + turn * 7) & 4095; if (fwd < 0) { veh_back = 1; veh_drive(s, (isin(s->yaw) * -fwd) >> 12, -((icos(s->yaw) * -fwd) >> 12)); veh_back = 0; s->yaw = (s->yaw + turn / 2) & 4095; return; } veh_drive(s, fwd > 0 ? (isin(w) * fwd) >> 12 : turn ? (isin(w) * 900) >> 12 : 0, fwd > 0 ? -((icos(w) * fwd) >> 12) : turn ? -((icos(w) * 900) >> 12) : 0); return; }   // (first person: up drives, left and right steer)
+    if (veh_on) { int w = (s->yaw + turn * 7) & 4095; if (fwd < 0) { veh_back = 1; veh_drive(s, (isin(s->yaw) * -fwd) >> 12, -((icos(s->yaw) * -fwd) >> 12)); veh_back = 0; if(veh_on){int a=(s->yaw+turn/2)&4095;if(veh_footprint_free(veh_on-1,s->x,s->z,a))s->yaw=a;} return; } veh_drive(s, fwd > 0 ? (isin(w) * fwd) >> 12 : turn ? (isin(w) * 900) >> 12 : 0, fwd > 0 ? -((icos(w) * fwd) >> 12) : turn ? -((icos(w) * 900) >> 12) : 0); return; }   // (first person: up drives, left and right steer)
     if (on_board) { int w = (s->yaw + turn * 6) & 4095; skate_step(s, fwd > 0 ? (isin(w) * fwd) >> 12 : turn ? (isin(w) * 1200) >> 12 : 0, fwd > 0 ? -((icos(w) * fwd) >> 12) : turn ? -((icos(w) * 1200) >> 12) : 0); world_lvl = 0; return; }   // (first person on a board: up pushes, left and right carve)
     s->yaw = (s->yaw + turn) & 4095;
     if (!fwd) { s->gait.amp = turn ? 1600 : (s->gait.amp > 300 ? s->gait.amp - 300 : 0); if (turn) s->gait.phase = (s->gait.phase + 90) & 4095; world_lvl = 0; return; }
@@ -2642,7 +2689,7 @@ static int sim_player_interact_(void) {
 void sim_player_cancel(void) {
     Sim *s = &sims[player];
     if (s->action != ACT_NONE) { end_action(s); return; }
-    if (veh_on) { int t = veh_on - 1; veh_dismount(s, 0); if (!ride_from(s, 2 + t)) sim_note("OFF AND ON YOUR FEET"); return; }
+    if (veh_on) { if(veh_dismount(s,0))sim_note("OFF AND ON YOUR FEET");return; }
     if (on_board) { skate_off(s); if (!ride_from(s, 1)) sim_note("OFF THE BOARD AND ON YOUR FEET"); return; }
     if (has_board || veh_own) ride_from(s, 0);
 }

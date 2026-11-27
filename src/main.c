@@ -492,7 +492,12 @@ static void draw_sims(void) {
         Sim *s = &sims[i];
         { Gait *g_ = &s->gait; int tg_ = g_->sleep ? 4096 : 0; g_->lie += CLAMP(tg_ - g_->lie, -170, 170); }   // lying down and getting up take about a second: lie follows where sleep is heading (voxel.c works the pose out from it)
         if (s->lvl > world_view_lvl || s->away) continue;           // upstairs, out of the floor view; at school
-        if (!gfx_visible(s->x, -110 - s->lvl * WALL_FULL - (s->lvl ? 0 : world_gh(s->x, s->z)), s->z, 150)) continue;   // off the screen
+        if (!gfx_visible(s->x, -110 - s->lvl * WALL_FULL - (s->lvl ? 0 : world_gh(s->x, s->z)), s->z, 150)) {
+            /* A car's body can still be on screen when its driver's tiny
+             * culling sphere is outside. The model has its own full bounds. */
+            if(i==player&&veh_on){extern int items_veh_open;items_veh_open=1;items_draw_vehicle(s->x,s->z,s->yaw,-s->lvl*WALL_FULL,veh_on-1,veh_colour(veh_on-1),veh_wph);items_veh_open=0;}
+            continue;
+        }
         VECTOR p; setVector(&p, s->x, 0, s->z);
         if (s->gait.lie > 0) {   // lying (or just getting up): on the bed, the bunk, the crib's mattress, or on the floor; the height eases in with the pose
             char bc = world_at(s->act_x, s->act_y); int sm = voxel_lie_ease(s->gait.lie), bed = (bc == 'S' || bc == CH_BED4 || bc == CH_BEDF || bc == CH_BEDL) ? 1 : (bc == '<' || bc == CH_BEDT) ? 2 : 0, to;
@@ -1372,6 +1377,7 @@ static void menu_bg(int live) {
 
 // ---- travel between the zones ----
 static void travel_go(int z) {
+    sim_park_for_travel();
     { char b[40]; sprintf(b, "TRAVELLING TO %s", world_zone_name(z)); loading(b, 50); }
     world_switch(z);
     int px, py;
@@ -1441,6 +1447,7 @@ static void travel_draw(void) {   // where to: the four places, each on a row wi
 // in the VRAM the people's sprites use (they are rendered again after).
 static int map_sel;
 static void put_household(int px, int py) {     // everyone at home stands round (px, py)
+    sim_park_for_travel();
     for (int i = 0; i < nsims; i++) {
         Sim *sm = &sims[i];
         sim_player_cancel_sim(sm);
@@ -1450,6 +1457,7 @@ static void put_household(int px, int py) {     // everyone at home stands round
     cam_fx = sims[player].x; cam_fz = sims[player].z;
 }
 static void taxi_to_block(int bx, int by, int tx, int ty, const char *where) {   // tx, ty: the tile to stand on in that block (-1: its street)
+    sim_park_for_travel();
     loading("TAKING A TAXI", 60);
     if (world_zone != ZONE_CITY) world_switch(ZONE_CITY);
     world_open_at(bx, by);

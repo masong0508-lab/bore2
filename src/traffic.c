@@ -343,11 +343,15 @@ void traffic_park(int t, int x, int z, int yaw) {
 }
 void traffic_unpark(int t) { if(t>=0&&t<VEH_N)park[t].on=0; }
 int traffic_parked(int t) { return t >= 0 && t < VEH_N && park[t].on; }
-int traffic_park_near(int t, int x, int z) {
-    if (!traffic_parked(t)) return 0;
-    Park *p = &park[t]; int dx = p->x - (x + bx_() * TILE), dy = p->y - (-z + by_() * TILE);
-    if (ABS(dx) > 3 * TILE || ABS(dy) > 3 * TILE) return 0;
-    p->on = 0; return 1;
+int traffic_park_pose_near(int t,int x,int z,int *outx,int *outz,int *yaw){
+    if(!traffic_parked(t)||world_zone!=ZONE_CITY||world_wbx<0)return 0;
+    const Park *p=&park[t];int px=p->x-bx_()*TILE,pz=by_()*TILE-p->y;
+    if(ABS(px-x)>3*TILE||ABS(pz-z)>3*TILE)return 0;
+    *outx=px;*outz=pz;*yaw=p->yaw&4095;return 1;
+}
+int traffic_park_near(int t,int x,int z){
+    int yaw;if(!traffic_park_pose_near(t,x,z,&x,&z,&yaw))return 0;
+    traffic_unpark(t);return 1;
 }
 void traffic_save(void) { for (int t = 0; t < VEH_N; t++) { sv_u8(park[t].on); sv_u32((u32)park[t].x); sv_u32((u32)park[t].y); sv_u16(park[t].yaw); } }
 void traffic_load(int ver) {
