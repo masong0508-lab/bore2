@@ -90,6 +90,10 @@ def main():
     assert leased["funds"]==175,leased
     text_tap("Home")
     original_decor=wait_decor(lambda s:s.startswith("1,"))
+    text_tap("Household")
+    assert any("You live alone" in n.get("text","") for n in nodes()),"new home has unexpected roommate"
+    text_tap("Cancel")
+    assert state().get("roommate",-1)==-1,"opening household changed membership"
     text_tap("Decorate home")
     text_tap("Bed")
     text_tap("Next spot")

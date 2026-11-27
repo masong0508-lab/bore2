@@ -7,8 +7,8 @@ android {
         applicationId 'com.bore2.game'
         minSdk 24
         targetSdk 35
-        versionCode 10
-        versionName '0.10-home-decor'
+        versionCode 11
+        versionName '0.11-shared-household'
         ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' }
     }
     externalNativeBuild {

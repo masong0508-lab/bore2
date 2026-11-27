@@ -63,20 +63,21 @@ final class ResidentSchedule {
             int code=cells[(Y-cy+radius)*side+X-cx+radius],lot=(code>>>3)&63;
             return (code&7)==0||lot==32?-1:lot;
         }
-        Entry where(int seed,int home,int day,int minute){
-            int hx=x(home),hy=y(home);
+        Entry where(int seed,int home,int day,int minute){return whereAt(seed,home,home,day,minute);}
+        Entry whereAt(int seed,int home,int residence,int day,int minute){
+            int hx=x(residence),hy=y(residence);
             if(!covers(hx,hy,REACH)||!homeLot(lot(hx,hy)))return null;
-            if(day<0||day>6||minute<0||minute>=1440||minute<420||minute>=1320)return new Entry(home,home,SLEEP);
+            if(day<0||day>6||minute<0||minute>=1440||minute<420||minute>=1320)return new Entry(home,residence,SLEEP);
             int t=trait(seed,home),phase=HOME;
             if(day<5&&minute>=480&&minute<1020)phase=minute>=720&&minute<780?LUNCH:WORK;
             else if((day>=5&&minute>=600&&minute<1260)||(day<5&&minute>=1020&&minute<1260)){
                 if(t!=8||(mix(seed^home^day)&3)==0)phase=LEISURE;
             }
-            if(phase==HOME)return new Entry(home,home,HOME);
+            if(phase==HOME)return new Entry(home,residence,HOME);
             // Search the same bounded diamond around the home for every query.
             // Water/river blocks are deliberately excluded (conservative travel).
             int[] queue=new int[49],dist=new int[49];Arrays.fill(dist,-1);
-            int head=0,tail=1,best=home,score=Integer.MIN_VALUE;queue[0]=24;dist[24]=0;
+            int head=0,tail=1,best=residence,score=Integer.MIN_VALUE;queue[0]=24;dist[24]=0;
             while(head<tail){
                 int at=queue[head++],u=at%7,v=at/7,d=dist[at],X=hx+u-3,Y=hy+v-3,lot=lot(X,Y);
                 boolean match=phase==WORK?workLot(lot):phase==LUNCH?foodLot(lot)&&openAt(lot,minute):leisureLot(lot)&&openAt(lot,minute);
@@ -89,32 +90,40 @@ final class ResidentSchedule {
                     dist[i]=d+1;queue[tail++]=i;
                 }
             }
-            return new Entry(home,best,best==home?HOME:phase);
+            return new Entry(home,best,best==residence?HOME:phase);
         }
-        Entry located(int seed,int home,int day,int minute){
-            Entry now=where(seed,home,day,minute);
+        Entry located(int seed,int home,int day,int minute){return locatedAt(seed,home,home,day,minute);}
+        Entry locatedAt(int seed,int home,int residence,int day,int minute){
+            Entry now=whereAt(seed,home,residence,day,minute);
             if(now==null||minute<0||minute>=1440)return now;
             int boundary=NeighborhoodMotion.boundary(minute),elapsed=minute-boundary;
             if(boundary==0||elapsed>=2*REACH*NeighborhoodMotion.MINUTES_PER_BLOCK)return now;
-            Entry before=where(seed,home,day,boundary-1);
+            Entry before=whereAt(seed,home,residence,day,boundary-1);
             if(before==null||before.location==now.location)return now;
-            int[] path=NeighborhoodMotion.route(this::lot,home,before.location,now.location);
+            int[] path=NeighborhoodMotion.route(this::lot,residence,before.location,now.location);
             if(path==null||elapsed>=(path.length-1)*NeighborhoodMotion.MINUTES_PER_BLOCK)return now;
             return new Entry(home,NeighborhoodMotion.blockAt(path,elapsed),COMMUTE);
         }
-        ArrayList<Entry> snapshot(int seed,int X,int Y,int radius,int day,int minute,int excluded){
+        ArrayList<Entry> snapshot(int seed,int X,int Y,int radius,int day,int minute,int excluded){return snapshot(seed,X,Y,radius,day,minute,excluded,-1);}
+        ArrayList<Entry> snapshot(int seed,int X,int Y,int radius,int day,int minute,int excluded,int roommate){
             ArrayList<Entry> out=new ArrayList<>();
+            boolean shared=Household.local(roommate,excluded);
             if(radius<0||radius>4||!covers(X,Y,radius+2*REACH))return out;
             for(int y=Math.max(0,Y-radius-REACH);y<=Math.min(MAP-1,Y+radius+REACH);y++)for(int x=Math.max(0,X-radius-REACH);x<=Math.min(MAP-1,X+radius+REACH);x++){
-                int key=pack(x,y);if(key==excluded||!homeLot(lot(x,y)))continue;
+                int key=pack(x,y);if(key==excluded||(shared&&key==roommate)||!homeLot(lot(x,y)))continue;
                 Entry e=located(seed,key,day,minute);
+                if(e!=null&&Math.abs(x(e.location)-X)<=radius&&Math.abs(y(e.location)-Y)<=radius)out.add(e);
+            }
+            if(shared){
+                Entry e=locatedAt(seed,roommate,excluded,day,minute);
                 if(e!=null&&Math.abs(x(e.location)-X)<=radius&&Math.abs(y(e.location)-Y)<=radius)out.add(e);
             }
             return out;
         }
-        int[] streetActors(int seed,int X,int Y,int radius,int day,int minute,int excluded,int limit){
+        int[] streetActors(int seed,int X,int Y,int radius,int day,int minute,int excluded,int limit){return streetActors(seed,X,Y,radius,day,minute,excluded,-1,limit);}
+        int[] streetActors(int seed,int X,int Y,int radius,int day,int minute,int excluded,int roommate,int limit){
             if(limit<=0)return new int[0];limit=Math.min(16,limit);
-            ArrayList<Entry> list=snapshot(seed,X,Y,radius,day,minute,excluded);
+            ArrayList<Entry> list=snapshot(seed,X,Y,radius,day,minute,excluded,roommate);
             list.sort(Comparator.comparingInt((Entry e)->distance(e.location,pack(X,Y))).thenComparingInt(e->e.home));
             HashMap<Integer,Integer> slots=new HashMap<>();int[] out=new int[limit*3];int n=0;
             for(Entry e:list){
