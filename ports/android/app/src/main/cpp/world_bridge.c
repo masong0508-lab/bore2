@@ -228,6 +228,20 @@ int bore_android_walk_mask(int cx,int cy,int *out,int count){
     return 1;
 }
 
+/* Tile centres on the same NW-SE diagonal as scene_mesh.c. Native
+ * collision and the visual terrain therefore agree at lot boundaries. */
+int bore_android_walk_heights(int cx,int cy,int *out,int count){
+    if(!out||count!=BORE_ANDROID_WALK_FIELDS||cx<1||cy<1||cx>=BM_N-1||cy>=BM_N-1)return 0;
+    for(int by=0;by<3;by++)for(int bx=0;bx<3;bx++){
+        BoreLandPatch p;bm_land_patch(cx+bx-1,cy+by-1,&p);
+        for(int y=0;y<18;y++)for(int x=0;x<18;x++){
+            int a=bore_land_sample(&p,x,y),b=bore_land_sample(&p,x+1,y+1);
+            out[(by*18+y)*54+bx*18+x]=(a+b+1)/2;
+        }
+    }
+    return 1;
+}
+
 /* Same number of storeys as the Android exterior renderer. */
 int bore_android_storeys(int x,int y){
     if(!bore_android_can_visit(x,y))return 0;

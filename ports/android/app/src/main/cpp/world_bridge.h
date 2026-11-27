@@ -27,5 +27,6 @@ int bore_android_place_interior(int x,int y,int *out,int count);
 
 #define BORE_ANDROID_WALK_FIELDS (54*54)
 int bore_android_walk_mask(int cx,int cy,int *out,int count);
+int bore_android_walk_heights(int cx,int cy,int *out,int count);
 
 int bore_android_storeys(int x,int y);

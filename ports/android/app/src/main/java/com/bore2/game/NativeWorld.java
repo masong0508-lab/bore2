@@ -15,5 +15,6 @@ final class NativeWorld {
     static synchronized native int[] placeInterior(int x,int y);
     static synchronized native int storeys(int x,int y);
     static synchronized native int[] walkMask(int x,int y);
+    static synchronized native int[] walkHeights(int x,int y);
     private NativeWorld() {}
 }

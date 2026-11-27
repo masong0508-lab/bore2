@@ -20,6 +20,22 @@ public final class OutdoorPathTest {
         check(!OutdoorPath.adjacent(OutdoorPath.pack(18431,0),OutdoorPath.pack(0,1)),"no row wrap");
         check(OutdoorPath.create(18400,0,cells)==null,"window beyond map");
         check(OutdoorPath.create(0,0,new int[1])==null,"bad mask");
-        System.out.println("Outdoor routes: exact cardinal shortest path, blocked cells, safe spawn, bounds PASS");
+        int[] slope=new int[54*54];Arrays.fill(cells,1);
+        for(int y=0;y<54;y++)for(int x=27;x<54;x++)slope[y*54+x]=200;
+        p=OutdoorPath.create(100,200,cells,slope);
+        check(p.route(OutdoorPath.pack(126,205),OutdoorPath.pack(127,205))==null,"cliff disconnects walking graph");
+        Arrays.fill(slope,0);slope[5*54+6]=64;
+        p=OutdoorPath.create(100,200,cells,slope);
+        int c=OutdoorPath.pack(106,205);
+        check(p.canStep(a,c)&&p.duration(a,c,160)==214,"moderate uphill slower");
+        check(p.duration(c,a,160)==214,"moderate downhill slower");
+        check(p.duration(a,OutdoorPath.pack(104,205),160)==160,"flat pace unchanged");
+        slope[5*54+6]=110;p=OutdoorPath.create(100,200,cells,slope);
+        check(p.duration(a,c,160)==640,"near-cliff careful step");
+        slope[5*54+6]=111;p=OutdoorPath.create(100,200,cells,slope);
+        check(!p.canStep(a,c)&&p.duration(a,c,160)==0,"steep edge refused");
+        check(p.route(a,c)==null,"isolated high tile unreachable");
+        check(OutdoorPath.create(100,200,cells,new int[1])==null,"bad terrain array");
+        System.out.println("Outdoor routes: cardinal paths, safe spawn, bounds, slope pacing and cliff guards PASS");
     }
 }

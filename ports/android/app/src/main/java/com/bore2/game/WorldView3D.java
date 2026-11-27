@@ -205,6 +205,9 @@ final class WorldView3D extends GLSurfaceView {
             float t=stepMs>0?Math.min(1f,Math.max(0f,(SystemClock.uptimeMillis()-stepStart)/(float)stepMs)):1f;
             actorPX=fromX-baseX+.5f+(playerX-fromX)*t;actorPZ=fromY-baseY+.5f+(playerY-fromY)*t;
             actorPY=groundFrom+(groundTo-groundFrom)*t;
+            // Follow the visible triangular ground during a stride, not
+            // an imaginary straight line between tile centre elevations.
+            if(stepMs>0&&groundIndex!=null){float h=groundAt(actorPX,actorPZ);if(Float.isFinite(h))actorPY=h;}
             animating=t<1f;swing=0f;
             if(animating)swing=(float)Math.sin(t*Math.PI)*(((playerX+playerY)&1)==0?.48f:-.48f);
         }

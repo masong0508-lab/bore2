@@ -303,6 +303,7 @@ public final class MainActivity extends Activity {
                 Runnable failure=()->{
                     if(version!=serial||isFinishing()||isDestroyed())return;
                     requestX=requestY=meshX=meshY=meshRevision=-1;
+                    if(walkMode)endWalkMode(false);
                     in3d=false;showMode();hint.setText("3D scene unavailable — map remains usable");
                 };
                 if(mesh==null||mesh.length==0){failure.run();return;}
@@ -393,7 +394,7 @@ public final class MainActivity extends Activity {
     private void resetOutdoorPosition(){tileX=lifeX*18+2;tileY=lifeY*18+2;}
     private OutdoorPath makeOutdoorMap(){
         int bx=Math.max(1,Math.min(1022,lifeX)),by=Math.max(1,Math.min(1022,lifeY));
-        return OutdoorPath.create((bx-1)*18,(by-1)*18,NativeWorld.walkMask(bx,by));
+        return OutdoorPath.create((bx-1)*18,(by-1)*18,NativeWorld.walkMask(bx,by),NativeWorld.walkHeights(bx,by));
     }
     private void toggleWalk(){
         if(walkMode){endWalkMode(true);return;}
@@ -406,9 +407,10 @@ public final class MainActivity extends Activity {
     }
     private void walkTo(int tx,int ty){
         if(!walkMode||outdoorRoute!=null)return;
+        if(!in3d||meshRevision!=serial||meshSeed!=seed||meshX!=cx||meshY!=cy){notice("Loading the current neighborhood");return;}
         OutdoorPath p=makeOutdoorMap();
         int[] route=p==null?null:p.route(OutdoorPath.pack(tileX,tileY),OutdoorPath.pack(tx,ty));
-        if(route==null){notice("Choose reachable ground, not a building or water");return;}
+        if(route==null){notice("Choose reachable ground, not a cliff, building or water");return;}
         if(route.length==0)return;
         outdoorMap=p;outdoorRoute=route;walkIndex=walkDone=0;
         beginOutdoorStep();
@@ -416,9 +418,10 @@ public final class MainActivity extends Activity {
     private void beginOutdoorStep(){
         if(outdoorRoute==null)return;
         int next=outdoorRoute[walkIndex],at=OutdoorPath.pack(tileX,tileY);
-        if(!outdoorMap.open(next)||!OutdoorPath.adjacent(at,next)){finishOutdoor();return;}
-        world3d.playerTile(OutdoorPath.x(next),OutdoorPath.y(next),WALK_MS);
-        travelHandler.postDelayed(outdoorTick,WALK_MS);
+        int ms=outdoorMap.duration(at,next,WALK_MS);
+        if(ms==0){finishOutdoor();return;}
+        world3d.playerTile(OutdoorPath.x(next),OutdoorPath.y(next),ms);
+        travelHandler.postDelayed(outdoorTick,ms);
     }
     private void stepOutdoor(){
         if(outdoorRoute==null)return;
