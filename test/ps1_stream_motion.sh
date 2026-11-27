@@ -27,5 +27,26 @@ PYTHONPATH="$ROOT/test" python3 "$ROOT/test/ps1_stream_motion.py" route "$OUT"
  ulimit -c 0; ulimit -f 65536
  env -u DS8MB DSCROP=None DSRAW=1 DSSCRIPT="$OUT/route.txt" DSRAM="$OUT/ram.bin" \
    timeout 780 "$RUNNER" -log info -frames 7200 -dumpdir "$OUT/shots" -dumpinterval 100000 "$BD/bore2.cue" >"$OUT/emulate.log" 2>&1
-) || { echo "Stock-timing streaming replay failed";head -60 "$OUT/emulate.log"; grep -am 5 -E "Exception|Unhandled instruction|GAMESTART|PCLOG" "$OUT/emulate.log" || true;tail -25 "$OUT/emulate.log";exit 2; }
+) || {
+    status=$?
+    echo "Stock-timing streaming replay failed (runner exit $status)"
+    if [ "$status" -eq 124 ]; then
+        echo "Runner exceeded the unchanged 780-second timeout"
+    fi
+    head -60 "$OUT/emulate.log"
+    grep -aE "Exception|Unhandled instruction|GAMESTART" "$OUT/emulate.log" | tail -20 || true
+    echo "Last sampled program counters and return addresses (exact replay ELF):"
+    grep -aE 'PCLOG [0-9]+ pc=[0-9a-fA-F]+ ra=[0-9a-fA-F]+' "$OUT/emulate.log" | tail -16 |
+        while read -r sample; do
+            printf '%s\n' "$sample"
+            pc=${sample#*pc=}; pc=${pc%% *}
+            ra=${sample#*ra=}; ra=${ra%% *}
+            printf '  PC: '
+            mipsel-none-elf-addr2line -f -C -e "$BD/bore2.elf" "0x$pc" || true
+            printf '  RA: '
+            mipsel-none-elf-addr2line -f -C -e "$BD/bore2.elf" "0x$ra" || true
+        done || true
+    tail -25 "$OUT/emulate.log"
+    exit 2
+}
 PYTHONPATH="$ROOT/test" python3 "$ROOT/test/ps1_stream_motion.py" audit "$OUT"
