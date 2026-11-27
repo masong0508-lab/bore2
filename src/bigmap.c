@@ -121,9 +121,16 @@ static int hill_pad(int bx,int by,int h){
     }
     return bm_set_at(bx,by)!=255||(bm_gen>=9&&rural_farm(bx,by));
 }
-// Round the eye, every block's height is kept in a square table (worked out the first time it is asked for): the far view asks for
-// thousands a frame as the view sweeps, each a stack of noise. 2 MB: 49 x 49 blocks (900 m across); 8 MB: 129 x 129 (2.5 km).
-static u16 hg_small[49 * 49]; static u16 *hg = hg_small; static int hg_r = 24, hg_w = 49, hg_cy, hg_up;
+// Round the eye, every block's height is kept in a square table (worked out the first time it is asked for).
+// The stock PS1 needs at least 8 KiB of resident stack headroom. Shrink only the
+// memoization window: misses still use the exact same hill calculation and fallback cache.
+// Expanded RAM continues to allocate its existing 129 x 129 window.
+#ifdef WALLS_DISC
+#define HG_SMALL_W 33
+#else
+#define HG_SMALL_W 49
+#endif
+static u16 hg_small[HG_SMALL_W * HG_SMALL_W]; static u16 *hg = hg_small; static int hg_r = HG_SMALL_W / 2, hg_w = HG_SMALL_W, hg_cy, hg_up;
 #define HG_NONE 0xFFFF
 void bm_hill_center(int bx, int by) {   // (the far view, each frame: where the eye is)
     extern int ram8; extern void *xalloc(unsigned);
