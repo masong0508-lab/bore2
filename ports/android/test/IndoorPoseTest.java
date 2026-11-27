@@ -12,6 +12,8 @@ public final class IndoorPoseTest {
         float[] standing=frame(IndoorPose.IDLE,0,0),rest=frame(IndoorPose.REST,1,0),eat=frame(IndoorPose.EAT,1,0);
         check(rest[IndoorPose.BODY_Y]>standing[IndoorPose.BODY_Y]+.08f,"rest lowers body");
         check(eat[IndoorPose.RIGHT_Y]<standing[IndoorPose.RIGHT_Y]-.15f,"eating lifts hand toward mouth");
+        float[] mirrorEat=frame(IndoorPose.EAT,-1,0);
+        check(mirrorEat[IndoorPose.LEFT_Y]==eat[IndoorPose.RIGHT_Y]&&mirrorEat[IndoorPose.RIGHT_Y]==eat[IndoorPose.LEFT_Y],"left-facing meal lifts the near arm rather than crossing both arms");
         check(!Arrays.equals(frame(IndoorPose.COOK,1,1),frame(IndoorPose.COOK,1,-1)),"cooking moves arms");
         check(!Arrays.equals(frame(IndoorPose.WALK,1,1),frame(IndoorPose.WALK,1,-1)),"walking alternates feet");
         float[] right=frame(IndoorPose.CLEAN,1,.6f),left=frame(IndoorPose.CLEAN,-1,.6f);

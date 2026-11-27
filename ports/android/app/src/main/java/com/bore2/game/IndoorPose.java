@@ -16,7 +16,7 @@ final class IndoorPose {
         switch(mode){
             case WALK:by=-.022f*Math.abs(w);hy+=by;ly+=w*.09f;ry-=w*.09f;lf+=w*.09f;rf-=w*.09f;break;
             case WORK:bx=.025f*side;hx=bx;ly=-.025f+w*.06f;ry=-.035f-w*.06f;lx=-.15f+side*.09f;rx=.15f+side*.09f;break;
-            case EAT:bx=.02f*side;hx=bx;lx=-.15f;ly=.01f;rx=.10f;ry=-.15f+w*.075f;if(side<0){rx=-.10f;lx=.15f;}break;
+            case EAT:bx=.02f*side;hx=bx;lx=-.15f;ly=.01f;rx=.10f;ry=-.15f+w*.075f;if(side<0){lx=-.10f;ly=ry;rx=.15f;ry=.01f;}break;
             case COOK:bx=.04f*side;hx=bx;lx=-.15f+.10f*side;rx=.15f+.10f*side;ly=.04f+w*.10f;ry=-.03f-w*.10f;break;
             case REST:by=.13f;hy=-.12f;lx=-.19f;rx=.19f;ly=ry=.22f;lf=rf=.34f;break;
             case READ:by=.035f;hy=-.20f;lx=-.095f;rx=.095f;ly=.025f;ry=.025f+w*.03f;break;

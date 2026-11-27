@@ -88,11 +88,11 @@ final class InteriorView extends View {
         // movement, window focus or a new population snapshot.
     }
     @Override public void onWindowFocusChanged(boolean focused){
-        super.onWindowFocusChanged(focused);if(!focused)stopPose();restartMotion();
+        super.onWindowFocusChanged(focused);if(!focused)stopPose();else wakePose();restartMotion();
     }
     @Override protected void onVisibilityChanged(View changed,int visibility){
         super.onVisibilityChanged(changed,visibility);
-        if(motionTick!=null)restartMotion();
+        if(motionTick!=null){if(!isShown())stopPose();else wakePose();restartMotion();}
     }
     private int[] stationGoals(int slot){
         int[] out=new int[4];for(int d=0;d<4;d++){int cell=InteriorPlan.neighbor(plan.objects[slot],d);out[d]=plan.canUse(cell,slot)?cell:-1;}return out;
@@ -357,7 +357,8 @@ final class InteriorView extends View {
             float x=p[IndoorPose.RIGHT_X],y=p[IndoorPose.RIGHT_Y];paint.setColor(0xff94734d);paint.setStrokeWidth(.028f);c.drawLine(x,y,x+.04f,.37f,paint);
             paint.setColor(0xffd8b971);c.drawRoundRect(x-.05f,.36f,x+.13f,.42f,.02f,.02f,paint);
         }else if(mode==IndoorPose.EAT||mode==IndoorPose.COOK){
-            float x=p[IndoorPose.RIGHT_X],y=p[IndoorPose.RIGHT_Y];paint.setColor(0xffe3e6dc);paint.setStrokeWidth(.022f);c.drawLine(x,y,x+.045f,y-.055f,paint);c.drawCircle(x+.045f,y-.055f,.022f,paint);
+            boolean left=mode==IndoorPose.EAT&&facing<0;
+            float x=p[left?IndoorPose.LEFT_X:IndoorPose.RIGHT_X],y=p[left?IndoorPose.LEFT_Y:IndoorPose.RIGHT_Y];paint.setColor(0xffe3e6dc);paint.setStrokeWidth(.022f);c.drawLine(x,y,x+.045f,y-.055f,paint);c.drawCircle(x+.045f,y-.055f,.022f,paint);
         }
         c.restore();
     }
