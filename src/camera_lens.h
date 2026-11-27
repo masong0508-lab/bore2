@@ -35,4 +35,21 @@ static inline int bore_camera_distance(int distance, int focal)
     return (distance * focal + BORE_CAMERA_BASE_FOCAL / 2) /
            BORE_CAMERA_BASE_FOCAL;
 }
+
+// Portable signed 8.8 follow, preserving subunit position in both directions.
+// The local map bounds keep products in int range; never left-shift negatives.
+static inline int bore_camera_floor256(int v){
+    return v/256-(v<0&&v%256!=0);
+}
+static inline int bore_camera_follow_axis(int current,int *acc,int target,int steps,int gain){
+    if(current!=bore_camera_floor256(*acc))*acc=current*256;
+    int goal=target*256;
+    for(int i=0;i<steps;i++)*acc+=((goal-*acc)/16)*gain/16;
+    int diff=goal-*acc;
+    if(diff>-384&&diff<384)*acc=goal;
+    return bore_camera_floor256(*acc);
+}
+static inline void bore_camera_rebase_axis(int current,int *acc,int delta){
+    if(current==bore_camera_floor256(*acc))*acc+=delta*256;
+}
 #endif

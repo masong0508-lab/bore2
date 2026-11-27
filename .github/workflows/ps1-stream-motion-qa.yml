@@ -1,0 +1,56 @@
+name: ps1-stream-motion-qa
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "src/world.c"
+      - "src/world_stream_models.h"
+      - "src/gfx.c"
+      - "src/gfx.h"
+      - "src/gfx_fast.h"
+      - "src/far.c"
+      - "src/frame_render_policy.h"
+      - "src/main.c"
+      - "src/items.c"
+      - "src/bigmap.c"
+      - "test/ps1_stream_motion*"
+      - "test/ps1_frame_flash.py"
+      - "test/ps1_stack_headroom.py"
+      - "CMakeLists.txt"
+      - ".github/workflows/ps1-stream-motion-qa.yml"
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+jobs:
+  stock-city:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore PS1 compiler and OpenBIOS emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4t64 ninja-build cmake xz-utils unzip python3-pil
+          sudo mkdir -p /home/claude/tools /opt/psn00bsdk
+          sudo chown -R "${USER}:${USER}" /home/claude/tools /opt/psn00bsdk
+          sudo chown "${USER}:${USER}" /opt
+          bash tools/perf/restore.sh
+      - name: Measure default-timing continuous city replay and temporal flashes
+        timeout-minutes: 22
+        run: bash test/ps1_stream_motion.sh "$PWD/out-ps1-stream-motion"
+      - name: Preserve compact traversal evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_ps1_stock_stream_motion
+          path: |
+            out-ps1-stream-motion/stream_motion_results.json
+            out-ps1-stream-motion/anchor_*.png
+            out-ps1-stream-motion/shots/**/*.png
+            out-ps1-stream-motion/route.txt
+            out-ps1-stream-motion/memory.txt
+            out-ps1-stream-motion/symbols.txt
+            out-ps1-stream-motion/config.log
+            out-ps1-stream-motion/build.log
+            out-ps1-stream-motion/emulate.log
+          if-no-files-found: warn

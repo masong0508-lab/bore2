@@ -593,11 +593,8 @@ void audio_station_play(int s) {
 }
 void audio_jukebox_next(void) {
     if (station >= 0) { audio_station_play(station); return; }
-    int library = NSONGS >= SC_FIRST + SC_N ? SC_FIRST : NSONGS;
-    if (!library) return;
-    int n = shuffle ? (int)(rand() % library) : (cur_song + 1) % library;
-    if (shuffle && n == cur_song) n = (n + 1) % library;
-    audio_jukebox_play(n);
+    int n=music_classic_next(NSONGS,cur_song,shuffle,(unsigned)rand());
+    if(n>=0)audio_jukebox_play(n);
 }
 void audio_update(void) {
     if(area_load_song>=0) {area_load_step();return;}

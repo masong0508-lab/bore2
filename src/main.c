@@ -104,6 +104,9 @@ static void nav_update(int now) {   // (now: vblanks, so the pace is the same at
 // ---- camera ----
 static int cam_yaw = 2600, cam_pitch = 640, cam_dist = 1500;   // yaw 0 = looking north from the south
 static int cam_fx, cam_fy, cam_fz;                            // the focus (smoothed)
+#ifndef CAM_OLD
+static int cam_ax,cam_ay,cam_az; // fractional state survives whole-block rebases
+#endif
 static int cam_mode = 0;                                       // 0 follow, 1 high, 2 low chase, 3 free
 static int wall_view;                                          // WALL VIEW (options): 0 AUTO (cut away, but not in first person), 1 CUT AWAY, 2 FULL WALLS
 static int cam_view;                                           // CAMERA: 0 THE SIMS (it orbits you), 1 BEHIND (it swings round behind you), 2 FIRST PERSON
@@ -125,11 +128,10 @@ static void camera_apply(int fx, int fy, int fz) {
 #else
     {   // (the focus follows by a share of the gap for every VBLANK that passed, in 8.8. It was a sixth of the gap per drawn frame: a frame of 3 vblanks and
         //  one of 2 moved the camera by different amounts, and the whole-unit division stalled short of the target: a judder in every walk)
-        static int ax_, ay_, az_; int f_ = (on_board || veh_on || sims[player].gait.run) ? 38 : 18;   // (a rider: kept up with)
-        if (cam_fx != (ax_ >> 8)) ax_ = cam_fx << 8; if (cam_fy != (ay_ >> 8)) ay_ = cam_fy << 8; if (cam_fz != (az_ >> 8)) az_ = cam_fz << 8;
-        for (int n_ = cam_dt; n_ > 0; n_--) { ax_ += (((fx << 8) - ax_) >> 4) * f_ >> 4; ay_ += (((fy << 8) - ay_) >> 4) * f_ >> 4; az_ += (((fz << 8) - az_) >> 4) * f_ >> 4; }
-        if (ABS((fx << 8) - ax_) < 384) ax_ = fx << 8; if (ABS((fy << 8) - ay_) < 384) ay_ = fy << 8; if (ABS((fz << 8) - az_) < 384) az_ = fz << 8;
-        cam_fx = ax_ >> 8; cam_fy = ay_ >> 8; cam_fz = az_ >> 8;
+        int f_=(on_board||veh_on||sims[player].gait.run)?38:18;
+        cam_fx=bore_camera_follow_axis(cam_fx,&cam_ax,fx,cam_dt,f_);
+        cam_fy=bore_camera_follow_axis(cam_fy,&cam_ay,fy,cam_dt,f_);
+        cam_fz=bore_camera_follow_axis(cam_fz,&cam_az,fz,cam_dt,f_);
     }
 #endif
     cam_pitch = CLAMP(cam_pitch, 150, 1000);
@@ -253,7 +255,7 @@ static int life_story, sp_sel = 1, sc_t, goals_old, sp_join;   // the story the 
 static int life_mode, mode_pending;   // 0 SAN BOREAS, 1 CASTAWAY (they begin on the island), 2 RAGS TO RICHES ($1,000 to start)
 static int craft_sel, craft_msg_t; static char craft_msg[32];   // the CRAFT list's pick; why it could not be made (a while)
 extern char _end[];
-static int juke_sel, juke_scroll, area_manual;
+static int juke_sel, juke_scroll, area_manual, juke_archive, area_context;
 static SceneMusicGate area_gate = SC_MUSIC_GATE_INIT;
 static int area_attempt = -1;
 static int life_started;
@@ -819,7 +821,12 @@ static int alone_opt = 1;   // (OPTIONS > LIFE > YOUR BORE ALONE, from opts_appl
 // with time left before its vblank moves it (now 1)
 static void life_stream(int now) {
     const Sim *s = &sims[player]; int dtx, dty, ts_ = hb_now();
-    if (world_stream_now(sim_tile_x(s), sim_tile_y(s), &dtx, &dty, now)) { sim_shift(dtx, dty); citizens_shift(dtx, dty); cam_fx -= dtx * TILE; cam_fz += dty * TILE;
+    if (world_stream_now(sim_tile_x(s), sim_tile_y(s), &dtx, &dty, now)) { sim_shift(dtx, dty); citizens_shift(dtx, dty);
+#ifndef CAM_OLD
+        bore_camera_rebase_axis(cam_fx,&cam_ax,-dtx*TILE);
+        bore_camera_rebase_axis(cam_fz,&cam_az,dty*TILE);
+#endif
+        cam_fx -= dtx * TILE; cam_fz += dty * TILE;
         { extern int dbg_shift_hb, dbg_shifts; int d = hb_now() - ts_; if (d > dbg_shift_hb) dbg_shift_hb = d; dbg_shifts++; } }
 }
 static void life_update(int steps) {
@@ -1073,6 +1080,11 @@ static void life_update(int steps) {
                     if (tg[k].in && hi >= 0) { const Home *hm = world_home(ZONE_CITY, hi); tx = (hm->x0 + hm->x1) / 2 - (bx - world_wbx) * BM_BLK; ty = (hm->y0 + hm->y1) / 2 - (by - world_wby) * BM_BLK; }
                     else if (tg[k].in) { tx = BM_LOT0 + 6; ty = BM_LOT0 + 4; }
                     else if (tg[k].lot == LOT_HOUSE) { tx = BM_LOT0 + 6; ty = BM_LOT0 + 11; }
+#ifdef AUTO_HOUSE_SWEEP
+                    // Unlike the indoor room tour, inspect the FULL two-storey
+                    // exterior from its front yard, with normal roofs visible.
+                    if (k == 6) { tx = BM_LOT0 + 6; ty = BM_LOT0 + 11; }
+#endif
                     hx_ = ((bx - world_wbx) * BM_BLK + tx) * TILE + TILE / 2; hz_ = -(((by - world_wby) * BM_BLK + ty) * TILE + TILE / 2);
                     cam_pitch = tg[k].pitch; cam_dist = tg[k].dist; cam_yaw = 2600;
 #ifdef BORE_DC
@@ -1084,6 +1096,20 @@ static void life_update(int steps) {
                 }
             }
             if (k_ >= 0) { for (int i = 0; i < nsims; i++) { sims[i].x = hx_ + (i % 3) * 3; sims[i].z = hz_ - (i / 3) * 3; sims[i].path_n = 0; sims[i].lvl = 0; } cam_fx = hx_; cam_fz = hz_; }
+#ifdef AUTO_HOUSE_SWEEP
+            // Test-only orbit/dolly at the logic clock, not the frame count.
+            // No change to ordinary builds or the saved camera options.
+            if (k_ >= 0 && fr_ > 130) {
+                // Previous test reached its 480-step cap before the first
+                // DuckStation screenshot: all views showed one fixed angle.
+                // Keep moving through the full capture window (with bounded
+                // live camera distance via camera_apply's normal clamp).
+                int sweep = MIN(fr_ - 130, 1900);
+                cam_yaw = (2600 + sweep * 3) & 4095;
+                cam_dist = 1000 + sweep * 2;
+                cam_pitch = 540 + sweep / 35;
+            }
+#endif
           }
 #elif defined(AUTO_WALKAT)
           {   // (test builds, AUTO_CITY with AUTO_WALKAT=1 and AUTO_AT_BX/BY=block, AUTO_AT_TX/TY=tile: a taxi there, then the same stroll east as the plain route, for frame-pacing runs on a chosen street)
@@ -1181,15 +1207,11 @@ static void life_update(int steps) {
     if (isl_craft_asked) { isl_craft_asked = 0; craft_sel = 0; craft_msg_t = 0; state = ST_CRAFT; }   // the campfire: make something
 }
 
-static void big_flash(void) {   // the red / black / white cut on a big moment: half a second, at most once every 40 s, and any button ends it
-    static int ft_ = -1, cool;
-    static const char *const W1[8] = { "", "PROMOTED", "I DO.", "NEW", "CHAPTER", "LEVEL", "NEW", "YOU ARE" }, *const W2[8] = { "", "BOSS!", "FOREVER", "BABY!", "DONE!", "UP!", "PRIZE!", "CHAMP!" };
-    static int kind;
-    if (sim_flash_req) { if (cool <= 0 && ft_ < 0) { kind = sim_flash_req; ft_ = 0; cool = 2400; } sim_flash_req = 0; }
-    if (cool > 0) cool--;
-    if (ft_ < 0) return;
-    if (ft_ >= PL_FLASH_LEN || (~btn & 0xffff & (PAD_CROSS | PAD_CIRCLE | PAD_START))) { ft_ = -1; return; }
-    pl_flash(ft_, W1[kind], W2[kind], kind & 1); ft_++;
+static void big_flash(void){
+    // Milestones must not blank or flash the whole live world.
+    static const char *const notices[]={"","Promoted!","Married!","A new baby!","Chapter complete!","Level up!","New prize!","You are the champion!"};
+    int kind=sim_flash_req;sim_flash_req=0;
+    if(kind>0&&kind<(int)(sizeof notices/sizeof notices[0]))sim_note(notices[kind]);
 }
 static void life_draw(void) {
 #ifdef AUTO_DAY
@@ -1301,7 +1323,7 @@ static void life_draw(void) {
             tr += (((150 * day >> 8) - tr) * warm) >> 8; tg += (((120 * day >> 8) - tg) * warm) >> 8; tb += (((170 * day >> 8) - tb) * warm) >> 8; }
         u32 top = (u32)tr | ((u32)tg << 8) | ((u32)tb << 16), hor = (u32)br | ((u32)bg << 8) | ((u32)bb << 16);
         { extern u32 world_horizon; extern int world_far_range; world_horizon = hor; world_far_range = (world_zone == ZONE_CITY && far_view) ? 60 : 34; }
-        if (world_zone == ZONE_CITY && far_view) far_sky(top, hor);   // the sky meets the land at the real horizon
+        if(world_zone==ZONE_CITY)far_sky(top,hor);   // the sky meets the land at the real horizon
         else if (world_zone == ZONE_ISLAND) far_sky_sea(top, hor, (u32)((40 * day) >> 8) | ((u32)((112 * day) >> 8) << 8) | ((u32)((168 * day) >> 8) << 16));   // (the endless sea)
         else if (world_zone == ZONE_HOME) far_sky_sea(top, hor, (u32)((64 * day) >> 8) | ((u32)((120 * day) >> 8) << 8) | ((u32)((52 * day) >> 8) << 16));     // (the fields going on)
         else if (world_zone == ZONE_TOWN) far_sky_sea(top, hor, (u32)((196 * day) >> 8) | ((u32)((160 * day) >> 8) << 8) | ((u32)((108 * day) >> 8) << 16));  // (the desert going on)
@@ -1309,7 +1331,7 @@ static void life_draw(void) {
     }
     gfx_prim_count = 0;
     world_doors_reset(); for (int i = 0; i < nsims; i++) world_door_mark(sim_tile_x(&sims[i]), sim_tile_y(&sims[i])); citizens_door_marks();
-    { int t0 = hb_now(); world_draw(sim_tile_x(s), sim_tile_y(s), frame, wall_view == 1 || (wall_view == 0 && cam_view != 2)); t_world = hb_now() - t0;   // (WALL VIEW: AUTO cuts the walls between you and the camera, but not in first person; CUT AWAY always; FULL WALLS never)
+    { int t0 = hb_now(); world_draw(sim_tile_x(s),sim_tile_y(s),frame,wall_view==1?2:(wall_view==0&&cam_view!=2)); t_world = hb_now() - t0;   // (WALL VIEW: AUTO cuts the walls between you and the camera, but not in first person; CUT AWAY always; FULL WALLS never)
       t0 = hb_now(); gfx_prim_count = 0; draw_sims(); if (pet_kind && pet_zone == world_zone) { if (pet_kind == 1) items_draw_dog(pet_x, pet_z, pet_yaw, -sims[player].lvl * WALL_FULL, &pet_dog, pet_ph); else items_draw_pet(pet_x, pet_z, pet_yaw, -sims[player].lvl * WALL_FULL, pet_kind, pet_col, pet_ph); } ghost_draw(cam_yaw, frame); t_sims = hb_now() - t0; }
     { int t0 = hb_now(); draw_bubbles(); draw_streetsigns(); t_bub = hb_now() - t0; }
     prims_last = gfx_prim_count;
@@ -2473,11 +2495,11 @@ static void helper_apply(void) {
     //  the ground (no streets, no trees) and the buildings as boxes near, flat rectangles far, still fading into the haze; 5 is none of it)
     extern int far_lite;
     { extern int nc_loose; nc_loose = shed_lvl >= FSH; }   // (the texture-warp cutter relaxes, far from the eye, only on the very last step)
-    int v = opt[O_VIEW]; far_lite = shed_lvl == 4;
+    int v = opt[O_VIEW]; far_lite=shed_lvl>=4||!v;
     far_view = (v && shed_lvl < 5) ? (shed_lvl == 4 ? v : v - shed_lvl < 1 ? 1 : v - shed_lvl) : 0;
     int tr = opt[O_TREES] - shed_lvl; far_trees = tr < 0 ? 0 : tr;
     int fd = opt[O_FARB] - (shed_lvl > 1 ? shed_lvl - 1 : 0); far_detail = fd < 0 ? 0 : fd;
-    far_haze = shed_lvl == 3 ? 0 : opt[O_HAZE];
+    far_haze=opt[O_HAZE]; // avoid a quality-triggered whole-world color flash
     if (shed_lvl >= 4) { far_trees = 0; far_detail = 0; }
     int c = ((opt[O_CROWD] & 3) + 1) * 16 >> crowd_lvl; cit_maxdraw = c < 8 ? 8 : c;
     cit_live_cap = crowd_lvl >= 2 ? 1 : 99; cit_fresh_max = crowd_lvl >= 1 ? 1 : 2; cit_stale_n = crowd_lvl >= 1 ? 12 : 6;   // (a render that does not fit costs ~140 hb: a frame past its vblank)
@@ -2641,15 +2663,25 @@ static int opt_selp[NOTAB + 1], opt_scr[NOTAB + 1];              // (each page r
 static int opt_live, opt_ask, opt_toast_until, opt_fps0; static char opt_toast[44];
 static void opt_say(const char *s) { strncpy(opt_toast, s, sizeof opt_toast - 1); opt_toast[sizeof opt_toast - 1] = 0; opt_toast_until = VSync(-1) + 110; }
 static void title_music_resume(void) { if (opt[O_TITLEMUS]) audio_jukebox_play(0); }   // (back at the title: its song again)
-static void game_music_check(void) { area_manual = 0; area_attempt = -1; scene_music_reset(&area_gate); if (!opt[O_GAMEMUS]) audio_jukebox_stop(); }
+static void game_music_check(void) { area_manual = 0; area_context = 0; area_attempt = -1; scene_music_reset(&area_gate); if (!opt[O_GAMEMUS]) audio_jukebox_stop(); }
 static void area_music_tick(void) {
     if (!life_started || !opt[O_GAMEMUS] || !opt[O_MUSICV] || !opt[O_MASTER] ||
-        area_manual || audio_station() >= 0 || !audio_cd_ok() || audio_song_count() < SC_FIRST+SC_N) return;
+        area_manual || audio_station() >= 0 || !audio_cd_ok() || !audio_song_count()) return;
     if (frame & 31) return;
     int menu=SC_MENU_NONE, lot=LOT_HOUSE, terrain=BT_GRASS, street=0;
     if (state == ST_BUILD || state == ST_HOMES || state == ST_NHOOD || state == ST_NHED) menu=SC_MENU_BUILD;
     else if (state == ST_TRAVEL || state == ST_MAP) menu=SC_MENU_TRAVEL;
     else if (state != ST_LIFE) { scene_music_settle(&area_gate,-1); return; }
+    // Normal play no longer restarts songs on street, menu or clock changes.
+    // The full contextual score is an opt-in in the hidden archive.
+    int bank=audio_song_count(), current=audio_jukebox_current();
+    if(!area_context || bank<SC_FIRST+SC_N){
+        if(music_classic_playing(bank,current)){area_attempt=-1;return;}
+        if(area_attempt>=0)return;
+        area_attempt=music_classic_next(bank,current,audio_jukebox_shuffle(),(unsigned)rand());
+        if(area_attempt>=0)audio_jukebox_play(area_attempt);
+        return;
+    }
     if (menu==SC_MENU_NONE && world_zone==ZONE_CITY && world_wbx>=0) {
         int x=sim_tile_x(&sims[player]), y=sim_tile_y(&sims[player]);
         if (x>=0 && y>=0 && x<MW && y<MH) {
@@ -2659,7 +2691,7 @@ static void area_music_tick(void) {
     }
     int cue=scene_music_settle(&area_gate,scene_music_role(menu,world_zone==ZONE_ISLAND,on_board,veh_on,lot,terrain,street));
     if (cue<0) return;
-    int song=living_score_index(cue,clock_min,clock_day,audio_song_count()), current=audio_jukebox_current();
+    int song=living_score_index(cue,clock_min,clock_day,bank);
     if(song<0)return;
     if (current==song) { area_attempt=-1; return; }
     // Don't issue repeated synchronous CD requests if the content is missing.
@@ -4480,24 +4512,37 @@ static void build_draw(void) {
 
 // ---- the jukebox ----
 static void juke_update(void) {
-    int n = audio_song_count();
-    if (n) {
-        if (NAVP(PAD_UP)) juke_sel = (juke_sel + n - 1) % n;
-        if (NAVP(PAD_DOWN)) juke_sel = (juke_sel + 1) % n;
-        if (NAVP(PAD_LEFT)) juke_sel = MAX(0, juke_sel - 12);   // (a page at a time)
-        if (NAVP(PAD_RIGHT)) juke_sel = MIN(n - 1, juke_sel + 12);
-        if (PRESSED(PAD_TRIANGLE)) { area_manual=0; area_attempt=-1; scene_music_reset(&area_gate); audio_station_play(-1); }
-        if (PRESSED(PAD_CROSS)) { area_manual=1; int was=audio_jukebox_current(); audio_station_play(-1); if (was!=juke_sel) audio_jukebox_play(juke_sel); }
-        if (PRESSED(PAD_L1)) { area_manual=1; audio_jukebox_play((audio_jukebox_current() + n - 1) % n); }
-        if (PRESSED(PAD_R1)) { area_manual=1; audio_jukebox_next(); }
-        if (PRESSED(PAD_SQUARE)) audio_jukebox_toggle_shuffle();
+    int bank=audio_song_count();
+    if(PRESSED(PAD_SELECT)&&music_library_size(bank,1)){
+        juke_archive^=1;juke_sel=juke_scroll=0;
     }
-    if (PRESSED(PAD_CIRCLE) || PRESSED(PAD_START)) state = prev_state == ST_LIFE ? BACK_TO() : ST_MENU;
+    int n=music_library_size(bank,juke_archive);
+    if(n){
+        if(juke_sel<0||juke_sel>=n)juke_sel=0;
+        if(NAVP(PAD_UP))juke_sel=(juke_sel+n-1)%n;
+        if(NAVP(PAD_DOWN))juke_sel=(juke_sel+1)%n;
+        if(NAVP(PAD_LEFT))juke_sel=MAX(0,juke_sel-12);
+        if(NAVP(PAD_RIGHT))juke_sel=MIN(n-1,juke_sel+12);
+        if(PRESSED(PAD_TRIANGLE)){
+            area_manual=0;area_context=juke_archive;area_attempt=-1;
+            scene_music_reset(&area_gate);audio_station_play(-1);
+        }
+        if(PRESSED(PAD_CROSS)){
+            int id=music_library_index(bank,juke_archive,juke_sel);
+            if(id>=0){area_manual=1;audio_station_play(-1);audio_jukebox_play(id);}
+        }
+        if(PRESSED(PAD_L1)||PRESSED(PAD_R1)){
+            int id=music_library_skip(bank,juke_archive,audio_jukebox_current(),PRESSED(PAD_L1)?-1:1);
+            if(id>=0){area_manual=1;audio_station_play(-1);audio_jukebox_play(id);}
+        }
+        if(PRESSED(PAD_SQUARE))audio_jukebox_toggle_shuffle();
+    }
+    if(PRESSED(PAD_CIRCLE)||PRESSED(PAD_START))state=prev_state==ST_LIFE?BACK_TO():ST_MENU;
 }
 static void juke_draw(void) {   // the song playing on its own card, every song in a list under it
     if (prev_state == ST_LIFE) menu_bg(0); else { title_draw(); ui_dim(); }
-    int top = ui_window(10, 6, 300, 228, "JUKEBOX", IC_NOTE);
-    int cur = audio_jukebox_current(), n = audio_song_count();
+    int top = ui_window(10, 6, 300, 228, juke_archive?"MUSIC ARCHIVE":"JUKEBOX", IC_NOTE);
+    int cur = audio_jukebox_current(), bank=audio_song_count(), n=music_library_size(bank,juke_archive);
     char b[64];
     { const char *m = audio_jukebox_shuffle() ? "SHUFFLE" : "IN ORDER"; ui_badge(304 - ui_tw(1, m) - 10, 10, m, UI_WHITE, UI_BLUE2); }
     ui_round(16, top, 288, 38, 6, UI_WHITE, UI_PANEL, 0);
@@ -4516,15 +4561,16 @@ static void juke_draw(void) {   // the song playing on its own card, every song 
     if (juke_sel < juke_scroll) juke_scroll = juke_sel;
     if (juke_sel >= juke_scroll + 12) juke_scroll = juke_sel - 11;
     for (int i = juke_scroll; i < n && i < juke_scroll + 12; i++) {
-        int y = top + 45 + (i - juke_scroll) * 12, sel = i == juke_sel, pl = i == cur;
+        int id=music_library_index(bank,juke_archive,i);
+        int y = top + 45 + (i - juke_scroll) * 12, sel = i == juke_sel, pl = id == cur;
         if (sel) { ui_round(16, y - 2, 288, 12, 4, UI_RGB(226, 242, 254), UI_HILITE, 0); gfx_rect(16, y, 2, 8, 38, 146, 222, 0); }
         if (pl) ui_icon(22, y - 2, IC_NOTE, UI_GREEN);
-        ui_text(38, y, 1, audio_song_name(i), pl ? UI_GOODT : sel ? UI_BLUE2 : UI_INK);
-        int l = audio_song_len(i); sprintf(b, "%d:%02d", l / 60, l % 60); ui_text(298 - ui_tw(1, b), y, 1, b, UI_SOFT);
+        ui_text(38, y, 1, audio_song_name(id), pl ? UI_GOODT : sel ? UI_BLUE2 : UI_INK);
+        int l = audio_song_len(id); sprintf(b, "%d:%02d", l / 60, l % 60); ui_text(298 - ui_tw(1, b), y, 1, b, UI_SOFT);
     }
     ui_scrollbar(306, top + 43, 144, juke_scroll, 12, n);
     gfx_rect(16, 214, 288, 1, 200, 210, 222, 0);
-    ui_hints(160, 218, "X PLAY|TRI AREA MUSIC|L1 R1 SKIP|O BACK", 1);
+    ui_hints(160, 218, juke_archive?"X PLAY|TRI AREA|L1 R1 SKIP|SEL BACK":"X PLAY|TRI AUTO|L1 R1 SKIP|O BACK", 1);
 }
 
 // ---- help ----

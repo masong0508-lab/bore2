@@ -39,7 +39,10 @@ for mode in cutaway always; do
     }
     # run.cpp's optional sixth argument accepts comma-separated frame
     # numbers and saves "<base>_<frame>.ppm". One replay per mode suffices.
-    if ! "$RUN" "$B/bore.nds" 480 "$D/$mode.ppm" "$LIVE" "$SHOTS" >"$D/emulate-$mode.log" 2>&1; then
+    sym() { llvm-nm "$B/bore.elf" | awk -v n="$1" '$3 == n && !found {print $1; found=1}'; }
+    M="$(sym ds_proxy_shells),$(sym ds_proxy_triangles),$(sym polys_last)"
+    test "${M//,/}" != "$M" && test -n "$(sym ds_proxy_shells)" && test -n "$(sym ds_proxy_triangles)" && test -n "$(sym polys_last)"
+    if ! DBGMEM="$M" "$RUN" "$B/bore.nds" 480 "$D/$mode.ppm" "$LIVE" "$SHOTS" >"$D/emulate-$mode.log" 2>&1; then
         echo "$mode emulator failed:" >&2
         tail -90 "$D/emulate-$mode.log" >&2
         exit 2
@@ -53,6 +56,7 @@ done
 python3 - "$D" <<'PY'
 import json
 import pathlib
+import re
 import sys
 root = pathlib.Path(sys.argv[1])
 frames = (345, 385, 425)
@@ -60,6 +64,22 @@ header = b"P6\n256 384\n255\n"
 width, height = 256, 384
 screen_bytes = width * (height // 2) * 3
 results = []
+shell_evidence = {}
+for mode in ("cutaway", "always"):
+    samples = []
+    for line in (root / f"emulate-{mode}.log").read_text().splitlines():
+        m = re.fullmatch(r"f(\d+):\s+(\d+)\s+(\d+)\s+(\d+)\s*", line)
+        if m and int(m[1]) >= 300:
+            samples.append(tuple(map(int, m.groups())))
+    if not samples:
+        raise SystemExit(f"FAIL no native shell counters: {mode}")
+    active = [r for r in samples if r[1] > 0]
+    if not active or any(r[2] != r[1] * 10 for r in active):
+        raise SystemExit(f"FAIL no completed solid far shells in {mode}: {samples}")
+    shell_evidence[mode] = {"complete_shells": active[-1][1],
+                            "shell_triangles": active[-1][2],
+                            "frame_triangles_peak": max(r[3] for r in samples)}
+    print("DS native shell evidence", mode, shell_evidence[mode])
 for frame in frames:
     views = {}
     for mode in ("cutaway", "always"):
@@ -78,7 +98,7 @@ if sum(r["changed_channels"] >= 300 for r in results) < 2:
     raise SystemExit("FAIL: fewer than two generated-home views show roof differences; check tour frame timing")
 summary = {"method": "melonDS native 256x384 PPM", "roof_modes": ["cutaway", "always"],
            "world_region": "DS_TOUR first three planned houses",
-           "frames": results, "passed": True}
+           "frames": results, "solid_neighbor_shells": shell_evidence, "passed": True}
 (root / "visual_atlas_results.json").write_text(json.dumps(summary, indent=2) + "\n")
 print("DS VISUAL ATLAS PASS: screenshots saved in " + str(root))
 PY

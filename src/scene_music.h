@@ -2,6 +2,7 @@
 // original 52 tracks. The generator asserts that order in both bank formats.
 #pragma once
 #include "bigmap.h"
+#include "music_library.h"
 enum { SC_NEIGHBORHOOD, SC_TRAVEL, SC_STREET, SC_WATER, SC_MARKET, SC_BUILD, SC_SKATE, SC_ISLAND, SC_CAFE, SC_LIBRARY, SC_GYM, SC_POOL, SC_CINEMA, SC_FARM, SC_PARK, SC_ARCADE, SC_GALLERY, SC_HOTEL, SC_SCHOOL, SC_SPACE, SC_N };
 #define SC_FIRST 52
 enum { SC_MENU_NONE, SC_MENU_TRAVEL, SC_MENU_BUILD };

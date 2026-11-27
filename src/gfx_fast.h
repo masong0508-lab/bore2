@@ -25,13 +25,13 @@ static inline int xv_vis3(const XV *a, const XV *b, const XV *c, int cull) {
 }
 static inline u32 *xv_alloc(int words) {
     u32 *p = (u32 *)gfx_pk_next;
-    if ((char *)(p + words) > gfx_pk_end) { gfx_overflow++; return 0; }
+    if(words<=0||words>(gfx_pk_end-gfx_pk_next)/4){gfx_overflow++;return 0;}
     gfx_pk_next = (char *)(p + words);
     return p;
 }
 static inline void xv_link(u32 *q, int n, int otz) {
     int i;
-    if (gfx_floor_pass) i = OT_FLOOR;
+    if (gfx_floor_pass) i = gfx_floor_pass==2?OT_GROUND_WIN:OT_FLOOR;
     else { i = (otz >> OT_SHIFT) - gfx_zbias - gfx_zbase; if (i < 1) i = 1; else if (i > gfx_ot_max) i = gfx_ot_max; }   // (zbase, ot_max: a person rendered into its own small table)
     u32 *o = gfx_ot_cur + i;
     q[0] = ((u32)n << 24) | (*o & 0xffffff); *o = (u32)q & 0xffffff;

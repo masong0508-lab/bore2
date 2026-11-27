@@ -4,7 +4,7 @@ name: build-ds
 on:
   workflow_dispatch:
   push:
-    paths: ["ports/dsi/**", "tools/dsbuild/**", "tools/dsemu/**", "src/bigmap.*", "src/common.h", "assets/dsmusic.bin", "assets/SONGS.BIN", "assets/songs.inc", "src/band_roles.inc", "src/scene_music.h", "src/living_calendar.h", "test/living_calendar_test.c", "src/outings.h", "src/outing_links.h", "test/outing_links_test.c", "src/world_access.h", "test/world_access_test.c", "test/outings_test.c", "src/audio_slice.h", "test/audio_slice_test.c", "test/scene_music_test.c", "tools/neighborhood_music.py", "tools/living_score.py", "test/living_score_test.py", "tools/content_spu.c", "tools/dsmusic/**", "src/social_activity.h", "test/social_activity_test.c", ".github/workflows/build-ds.yml"]
+    paths: ["ports/dsi/**", "tools/dsbuild/**", "tools/dsemu/**", "src/bigmap.*", "src/park_plan.h", "src/neighborhood_life.h", "test/neighborhood_life_test.c", "src/common.h", "src/frame_render_policy.h", "test/frame_render_policy_test.c", "src/roof_profile.h", "test/roof_profile_test.c", "assets/dsmusic.bin", "assets/SONGS.BIN", "assets/songs.inc", "src/band_roles.inc", "src/scene_music.h", "src/living_calendar.h", "test/living_calendar_test.c", "src/outings.h", "src/outing_links.h", "test/outing_links_test.c", "src/world_access.h", "test/world_access_test.c", "test/outings_test.c", "src/audio_slice.h", "test/audio_slice_test.c", "test/scene_music_test.c", "tools/neighborhood_music.py", "tools/living_score.py", "test/living_score_test.py", "tools/content_spu.c", "tools/dsmusic/**", "src/social_activity.h", "test/social_activity_test.c", ".github/workflows/build-ds.yml"]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -13,10 +13,20 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Verify classic music rotation and hidden archive indexing
+        run: cc -std=c99 -Wall -Wextra -Werror -Isrc test/music_library_test.c -o /tmp/music_library && /tmp/music_library
+      - name: Verify frame ownership and safe cache replacement
+        run: cc -std=c99 -Wall -Wextra -Werror -Isrc test/frame_render_policy_test.c -o /tmp/frame_policy && /tmp/frame_policy
       - name: Test DS neighborhood viewport (host C99)
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_mapview_test.c -o /tmp/ds_mapview_test && /tmp/ds_mapview_test
       - name: Test exact traffic broadphase and conservative camera culling
         run: cc -std=c99 -Wall -Wextra -Werror -Wno-misleading-indentation ports/dsi/test/ds_city_budget_test.c -lm -o /tmp/ds_city_budget_test && /tmp/ds_city_budget_test
+      - name: Test planned DS building shells against playable lot dimensions
+        run: cc -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc -Iports/dsi/source ports/dsi/test/ds_lot_shell_test.c -o /tmp/ds_lot_shell && /tmp/ds_lot_shell
+      - name: Test shared landscape plans and local resident preferences
+        run: cc -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc test/neighborhood_life_test.c -o /tmp/neighborhood_life && /tmp/neighborhood_life
+      - name: Test shared capped roof profiles
+        run: cc -std=c99 -Wall -Wextra -Werror -Isrc test/roof_profile_test.c -o /tmp/roof_profile && /tmp/roof_profile
       - name: Test DS floor and roof geometry
         run: cc -std=c99 -Wall -Wextra -Werror ports/dsi/test/ds_render_geom_test.c -o /tmp/ds_render_geom_test && /tmp/ds_render_geom_test
       - name: Test handheld and console aspiration regressions

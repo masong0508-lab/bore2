@@ -26,7 +26,7 @@ static const Opt OPT[] = {
     { "Music track", "Auto|Daydream|Evening|Bounce|Night", &o_trk, 1, 0 }, { "Tap clicks", "Off|On", &o_ckl, 1, 1 }, { "Chimes", "Off|On", &o_chm, 1, 1 }, { "Stereo", "Center|Spread", &o_pan, 1, 1 },
     { "Autosave", "Off|On", &o_auto, 2, 1 }, { "Clock", "12 hour|24 hour", &o_c24, 2, 0 },
     { "Reset graphics", "tap", 0, 3, 0 }, { "Reset audio", "tap", 0, 3, 1 }, { "Reset all", "tap", 0, 3, 255 },
-    { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Area|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52|53|54|55|56|57|58|59|60|61|62|63|64|65|66|67|68|69|70|71|72|73|74|75|76|77|78|79|80|81|82|83|84|85|86|87|88|89|90|91|92|93|94|95|96|97|98|99|100|101|102|103|104|105|106|107|108|109|110|111|112|113|114|115|116|117|118|119|120|121|122|123|124|125|126", &o_song, 1, 0 },
+    { "Music source", "Songs|Synth", &o_msrc, 1, 0 }, { "Song", "Auto|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45|46|47|48|49|50|51|52|53|54|55|56|57|58|59|60|61|62|63|64|65|66|67|68|69|70|71|72|73|74|75|76|77|78|79|80|81|82|83|84|85|86|87|88|89|90|91|92|93|94|95|96|97|98|99|100|101|102|103|104|105|106|107|108|109|110|111|112|113|114|115|116|117|118|119|120|121|122|123|124|125|126", &o_song, 1, 0 },
     { "Roofs", "Cutaway|Always|Hide", &o_roof, 0, 0 },
     // (D33, from the PS1 OPTIONS: these are saved in their own block after the others, so old saves load with the defaults)
     { "Needs speed", "Never fall|Slow|Normal|Fast", &o_need, 2, 2 }, { "Day length", "Short|Normal|Long|Epic", &o_day, 2, 1 }, { "Message time", "Short|Normal|Long", &o_msgt, 2, 1 },
@@ -134,6 +134,10 @@ static void text_box(int x, int y, int w, int h, int s, u16 c, int al, const cha
 #define MH 20                 // blocks down (160 pixels; the text lines go below)
 #include "ds_mapview.h"
 #include "ds_render_geom.h"
+#include "frame_render_policy.h"
+#include "park_plan.h"
+#include "roof_profile.h"
+#include "ds_lot_shell.h"
 #include "ds_action_spots.h"
 #include "ds_confirm.h"
 static int map_x0 = -1, map_y0 = -1;   // moving map viewport, not a fixed window on the capital
@@ -369,7 +373,7 @@ static u32 gx_slb[2][GXS_MAX + 64] __attribute__((aligned(32))), gx_dlb[2][GXD_M
 // A FRAME is a run of pieces (the moving list cut where a sim's cached model goes in, the still list, the swap), sent one after another by DMA (channel 0)
 // from the vblank interrupt: the 3D goes out on a steady beat whatever the game loop is doing.
 typedef struct { const u32 *p; int n; } GSeg;
-typedef struct { GSeg s[48]; int ns; } GFrm;
+typedef struct { GSeg s[48]; int ns,bad; } GFrm;
 static GFrm gfr[2]; static volatile int gf_ready = -1, gf_fly = -1, gf_busy, gf_on, gf_shown; static int gf_ss;   // (gf_ss: where the piece being written began)
 
 #ifdef DSTEST
@@ -402,7 +406,11 @@ static void gx_run(const u32 *b, int n) {   // send a list to the geometry FIFO 
     if (n <= 0) return; DC_FlushRange(b, n * 4); while (DMA_CR(0) & DMA_BUSY) {}
     DMA_SRC(0) = (u32)b; DMA_DEST(0) = 0x4000400; DMA_CR(0) = DMA_FIFO | n; while (DMA_CR(0) & DMA_BUSY) {} }
 static GFrm *gf_rec;   // the frame whose moving list is being written (0: none)
-static void gf_add(const u32 *p, int n) { if (gf_rec && n > 0 && gf_rec->ns < 48) { gf_rec->s[gf_rec->ns].p = p; gf_rec->s[gf_rec->ns].n = n; gf_rec->ns++; } }
+static void gf_add(const u32 *p,int n){
+    if(!gf_rec||n<=0)return;
+    if(!p||gf_rec->ns>=48){gf_rec->bad=1;return;}
+    gf_rec->s[gf_rec->ns].p=p;gf_rec->s[gf_rec->ns].n=n;gf_rec->ns++;
+}
 static void gf_cut(void) { if (gf_rec) { gf_add(gxb + gf_ss, gxn - gf_ss); gf_ss = gxn; gxk = 4; } }   // end the piece written so far (the next command starts a fresh packed word)
 // ---- (D85) THOUGHT BUBBLES over heads, as the PS1's: the need a sim is thinking about, in a bubble over its head. They are hardware sprites (the main engine's OBJ layer, VRAM bank E): no polygons,
 // nothing redrawn in the HUD, and the position goes out with the 3D frame it belongs to (gf_kick), so a bubble keeps to its head. bub_calc() (below, before the vblank handler) works out which sims get one.
@@ -622,12 +630,98 @@ static void ds_skate_preview(int ox, int oz)
           low, -T / 4, C15(10, 11, 12), C15(27, 27, 28));
 }
 static int r7_bx = -1, r7_by = -1;   // the block the lot being drawn (far_lot, draw_lot) stands on
+#ifdef DSTEST
+volatile unsigned ds_proxy_shells,ds_proxy_triangles;
+#endif
+#define DS_PROXY_HEIGHT (T * 21 / 5) // same as WHF, the actual playable storey
+static void ds_proxy_box(DsShellRect r,int ox,int oz,int bottom,int top,u16 wall,u16 roof,int tex){
+    if(!ds_shell_valid(r))return;
+    tx_want=tex;
+    int before=polys;
+    block(ox+tl(2*r.x0),oz+tl(2*r.z0),ox+tl(2*r.x1),oz+tl(2*r.z1),bottom,top,wall,roof);
+    tx_want=-1;
+#ifdef DSTEST
+    if(polys-before==10){ds_proxy_shells++;ds_proxy_triangles+=(unsigned)(polys-before);}
+#else
+    (void)before;
+#endif
+}
+static void ds_proxy_roof(DsShellRect r,int ox,int oz,int top,int sty,int pit,u16 rc,u16 wc){
+    if(!ds_shell_valid(r)||far_lod==1)return;
+    // Near-shell pass (far_lod==2) reserves all roof planes up front.
+    // The compact roof keeps its pitch; only parapets/eaves are omitted.
+    if(!far_lod&&(!ds_world_detail_budget(polys+80)||(gxb&&gxn+1050>=gx_cap)))return;
+    static const s16 PITCH[3]={110,170,250};
+    roof_shape(ox+tl(2*r.x0),oz+tl(2*r.z0),ox+tl(2*r.x1),oz+tl(2*r.z1),
+               top-4,sty,PITCH[pit>=0&&pit<3?pit:1],rc,wc);
+}
+static int ds_draw_planned_proxy(const BInfo*b,const LotPlan*p,int ox,int oz){
+    DsLotShell s;
+    if(bm_gen<7||r7_bx<0||!ds_lot_shell(b,p,r7_bx,r7_by,&s))return 0;
+    int boxes=1+ds_shell_valid(s.wing)+ds_shell_valid(s.loft);
+    int perbox=far_lod==2?20:10;
+    if(!ds_world_far_budget(polys+boxes*perbox)||(gxb&&gxn+boxes*(far_lod==2?250:125)+32>=gx_cap))return 1;
+    int sty,pit,col;roof_dice(r7_bx*BM_BLK+s.body.x0+BM_LOT0,
+        r7_by*BM_BLK+s.body.z0+BM_LOT0,s.body.x1-s.body.x0,s.body.z1-s.body.z0,
+        ds_shell_valid(s.loft),p,&sty,&pit,&col);
+    static const u16 PUBLIC[4]={C15(30,28,22),C15(28,20,16),C15(20,24,30),C15(30,30,30)};
+    int material=s.home&&p->type?(p->pal*2+p->wall)%6:-1;
+    u16 wc=material>=0?PWALL15[material]:PUBLIC[b->h&3u];
+    if(s.home&&!p->type){
+        unsigned h=((unsigned)r7_bx*73856093u^(unsigned)r7_by*19349663u)*2654435761u+12345u;
+        wc=PUBLIC[(h>>9)&3u];
+    }
+    static const s8 MAT[6]={TX_BRICK,TX_CLAPBOARD,TX_STUCCO,TX_SHINGLE_WALL,TX_BEADBOARD,TX_STONE_WALL};
+    int tex=s.home?(material>=0?MAT[material]:TX_CLAPBOARD):TX_WINDOWS;
+    u16 rc=ROOFC[col%6];
+    int top=-DS_PROXY_HEIGHT;
+    ds_proxy_box(s.body,ox,oz,0,top,wc,rc,tex);
+    ds_proxy_box(s.wing,ox,oz,0,top,wc,rc,tex);
+    ds_proxy_box(s.loft,ox,oz,top,2*top,wc,rc,tex);
+    DsShellRect lower=s.body;
+    if(ds_shell_valid(s.loft)){
+        if(s.north)lower.z1=s.loft.z0;else lower.z0=s.loft.z1;
+        ds_proxy_roof(s.loft,ox,oz,2*top,sty,pit,rc,wc);
+    }
+    ds_proxy_roof(lower,ox,oz,top,sty,pit,rc,wc);
+    ds_proxy_roof(s.wing,ox,oz,top,sty,pit,rc,wc);
+    return 1;
+}
+static void ds_park_picture(const BInfo*b,const LotPlan*pl,int ox,int oz,int detail){
+    int square=b->lot==LOT_SQUARE,north=pl&&pl->face==LF_NORTH;
+    // Merge horizontal equal-material runs. Draw paths before trees;
+    // distant LOD keeps the first four real landmarks, never random ones.
+    for(int y=0;y<13;y++)for(int x=0;x<13;){
+        int m=park_surface(b->h,square,north,x,y),end=x+1;
+        while(end<13&&park_surface(b->h,square,north,end,y)==m)end++;
+        if(m!=PARK_GRASS&&ds_world_far_budget(polys+2)&&(!gxb||gxn+45<gx_cap)){
+            // DS uses a paved fountain garden rather than the PS1 pond water.
+            u16 c=m==PARK_SOIL?C15(16,12,7):C15(21,20,17);
+            tx_want=m==PARK_SOIL?TX_GRAVEL:TX_PAVING;
+            ground(ox+tl(x*2),oz+tl(y*2),ox+tl(end*2),oz+tl((y+1)*2),-26,c);
+        }
+        x=end;
+    }
+    tx_want=-1;
+    for(int i=0,x,y;i<(detail?11:4)&&park_tree_at(b->h,square,north,i,&x,&y);i++){
+        if(!ds_world_detail_budget(polys+32)||(gxb&&gxn+160>=gx_cap))break;
+        tree(ox+tl(2*x+1),oz+tl(2*y+1),T*2);
+    }
+}
 static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl, the town plan's home for the lot, when the world is version 7)
     u32 h = b->h; int k = b->lot;
     int tr = pl && ((k >= LOT_HOUSE && k <= LOT_TWO) || k == LOT_PARK) ? BT_GRASS : b->terrain;   // (D80: lawn in a dry town for homes and parks)
     u16 grass = tr == BT_DESERT ? C15(24, 20, 10) : tr == BT_ROCKY ? C15(13, 13, 13) : tr == BT_BEACH ? C15(26, 24, 14) : C15(11, 20, 8);
     if (b->terrain == BT_SEA) { grass = C15(5, 12, 24); } else if (tr == BT_GRASS || tr == BT_FOREST) grass = seas(grass);
-    for (int z = 0; z < LOTN; z++) for (int x = 0; x < LOTN; x++) ground(tl(x * 2), tl(z * 2), tl(x * 2 + 2), tl(z * 2 + 2), 0, (((x + z) & 1) && o_chk) ? shade(grass, 7) : grass);
+    // The map preview does not need a quad per build cell. Match the
+    // larger lawn patches used in Live and use a single quad for plain
+    // ground/water. Each rectangle owns its cells exactly once.
+    int step=ds_preview_ground_step(LOTN,o_chk,b->terrain==BT_SEA);
+    for(int z=0;z<LOTN;z+=step)for(int x=0;x<LOTN;x+=step){
+        int X=ds_preview_ground_end(x,step,LOTN),Z=ds_preview_ground_end(z,step,LOTN);
+        u16 color=step==2&&((x/2+z/2)&1)?shade(grass,7):grass;
+        ground(tl(x*2),tl(z*2),tl(X*2),tl(Z*2),0,color);
+    }
     /* The map's lot picture must reflect this block's real planned
      * streets, not paint both sides as road on every rural/urban lot.
      * Older saves keep their original two-strip preview. */
@@ -636,9 +730,16 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
       if (roads & 2) ground(tl(-2), tl(0), tl(0), tl(LOTN * 2 + 2), 0, C15(8, 8, 9));
       if ((roads & 6) && !(roads & 1))
           ground(tl(-2), tl(-2), tl(0), tl(0), 0, C15(8, 8, 9)); }
-    if (k == LOT_WILD || k == LOT_EMPTY || k == LOT_RIVER) { for (int i = 0; i < 5; i++) tree(tl(3 + (int)((h >> (i * 4)) & 15) * 2 % 22), tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 2 % 22), T * 2); return; }
+    if(b->terrain==BT_SEA)return;
+    if(ds_draw_planned_proxy(b,pl,0,0))return;
+    if(k==LOT_RIVER){
+        if(b->road&BR_MEGA){ground(tl(4),tl(0),tl(18),tl(26),-26,C15(5,12,24));}
+        else ground(tl(0),tl(4),tl(26),tl(18),-26,C15(5,12,24));
+        return;
+    }
+    if (k == LOT_WILD || k == LOT_EMPTY) { for (int i = 0; i < 5; i++) tree(tl(3 + (int)((h >> (i * 4)) & 15) * 2 % 22), tl(3 + (int)((h >> (i * 4 + 2)) & 15) * 2 % 22), T * 2); return; }
     if (k == LOT_SKATE) { ds_skate_preview(0, 0); return; }
-    if (k == LOT_PARK || k == LOT_SQUARE) { for (int i = 0; i < 9; i++) tree(tl(3 + (int)((h >> (i * 3)) & 7) * 3), tl(3 + (int)((h >> (i * 3 + 1)) & 7) * 3), T * 2); return; }
+    if(k==LOT_PARK||k==LOT_SQUARE){ds_park_picture(b,pl,0,0,1);return;}
     if (pl && bm_gen >= 7 && k == LOT_POOL) { ground(tl(2), tl(2), tl(24), tl(24), 2, C15(24, 24, 23)); ground(tl(6), tl(6), tl(20), tl(18), 3, C15(8, 20, 30)); return; }   // (D81: a pool lot is a paved deck, no building)
     if (pl && bm_gen >= 7 && k == LOT_FARM && pl->face == LF_NONE) { for (int r = 1; r < 12; r += 2) ground(tl(2), tl(2 * r), tl(24), tl(2 * r + 2), 3, C15(14, 9, 5)); for (int r = 2; r < 11; r += 2) for (int c = 1; c < 12; c += 2) ground(tl(2 * c), tl(2 * r), tl(2 * c + 2), tl(2 * r + 2), 4, C15(20, 24, 6)); return; }   // (D81: a field: crop rows, no barn)
     int w = 10 + (int)(h & 3) * 2, d = 8 + (int)((h >> 2) & 3) * 2, x0 = 4 + (24 - w) / 2 / 2 * 2 - 4, z0 = 4;
@@ -770,6 +871,7 @@ typedef struct { s16 bx, by; int x, y, tx, ty; u8 skin, hair, shirt, on; } Ghost
 #define GH_MAX 4
 static Life life[SIM_MAX]; static Ghost gh[GH_MAX]; static int ngh, gh_next;
 static int life_ver, info_pg, jobui, juke, juke_pg, dog_have, roof_st, up_st;
+static int juke_archive, area_context;
 static struct { int x, y, tx, ty, wx, wy, hun, fx, fz; } dog;
 static void life_ev(int i, int ev, int arg), ghost_add(const Sim *m), dog_reset(void), dog_draw(void), ghost_draw(void), day_roll(void); static int cl100(int v);
 static int stage_of(int a) { return a < 3 ? 0 : a < 6 ? 1 : a < 13 ? 2 : a < 18 ? 3 : a < 60 ? 4 : 5; }
@@ -847,15 +949,16 @@ static void snd_tick(void) {
           int pick = -1;
           if (title) { scene_music_reset(&area); pick=0; }
           else if (o_song) { scene_music_reset(&area); pick=o_song-1; }
-          else if (mus_n >= SC_FIRST+SC_N) {
+          else if (area_context && mus_n >= SC_FIRST+SC_N) {
               if (!(area_poll++ & 15u) || area.settled<0)
                   scene_music_settle(&area,scene_music_context_ds());
               if (area.settled>=0) pick=living_score_index(area.settled,minutes%1440,(minutes/1440)%7,mus_n);
           } else {
-              // Old song banks still work, without the area score.
-              if (mus_cur > 0) pick=mus_cur;
-              else if (mus_n>1) { static u32 rs=12345;static int last;rs=rs*1664525u+1013904223u+(u32)minutes;pick=o_shuf?1+(int)((rs>>8)%(u32)(mus_n-1)):last%(mus_n-1)+1;last=pick; }
-              else pick=0;
+              // Classic background playback stays on a song until it ends;
+              // even old banks work and the appended score never enters shuffle.
+              scene_music_reset(&area);
+              if(music_classic_playing(mus_n,mus_cur))pick=mus_cur;
+              else {static u32 rs=12345;static int last;rs=rs*1664525u+1013904223u+(u32)minutes;pick=music_classic_next(mus_n,last,o_shuf,rs>>8);last=pick;}
           }
           if (pick>=0 && mus_cur!=pick) mus_start(pick);
           if (mus_cur >= 0) mus_tick();
@@ -990,8 +1093,16 @@ static int far_house7(const BInfo *b, const LotPlan *pl) { return far_house(b) &
 static void far_foot(const BInfo *b, int *x0, int *z0, int *x1, int *z1) { int w = 10 + (int)(b->h & 3) * 2, d = 8 + (int)((b->h >> 2) & 3) * 2, t0 = 4 + (24 - w) / 2 / 2 * 2 - 4; *x0 = t0 / 2; *x1 = (t0 + w + 1) / 2; *z0 = 2; *z1 = (4 + d + 1) / 2; }
 static int far_solid(int wx, int wy) {   // a cell outside the plot: open street and grass, except the sea and the buildings of the lots round it
     int sx = fdiv(wx, SLC), sy = fdiv(wy, SLC); if (sx == 0 && sy == 0) return 0; if (sx < -1 || sx > 1 || sy < -1 || sy > 1) return 1;
-    const BInfo *b = &nb[sy + 1][sx + 1]; if (b->terrain == BT_SEA) return 1; if (!far_house7(b, t7() ? &nlp[sy + RING_MAX][sx + RING_MAX] : 0)) return 0;
-    int lx = wx - sx * SLC, ly = wy - sy * SLC, x0, z0, x1, z1; if (t7()) far_foot7(b, &nlp[sy + RING_MAX][sx + RING_MAX], &x0, &z0, &x1, &z1); else far_foot(b, &x0, &z0, &x1, &z1); return lx >= x0 && lx < x1 && ly >= z0 && ly < z1;
+    const BInfo *b = &nb[sy + 1][sx + 1]; if (b->terrain == BT_SEA) return 1;
+    int lx=wx-sx*SLC,ly=wy-sy*SLC;
+    if(t7()){
+        DsLotShell shell;
+        if(!ds_lot_shell(b,&nlp[sy+RING_MAX][sx+RING_MAX],lot_bx+sx,lot_by+sy,&shell))return 0;
+        return ds_shell_contains(&shell,lx,ly);
+    }
+    if(!far_house7(b,0))return 0;
+    int x0,z0,x1,z1;far_foot(b,&x0,&z0,&x1,&z1);
+    return lx>=x0&&lx<x1&&ly>=z0&&ly<z1;
 }
 static int z_put(int x, int y, int ch, int rot);
 static int gen_two;   // (D36) the lot is a TWO-STOREY: the house gets its loft
@@ -1070,23 +1181,35 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
             for (int y = 5; y <= 6; y++) { z_put(1, y, 'M', 0); z_put(2, y, 'M', 0); }
             z_put(1, 8, '9', 3); z_put(2, 8, '9', 3); z_put(12, 0, 'Y', 0); z_put(12, 12, 'Y', 0); z_put(11, 0, 'Y', 0); z_put(0, 1, 'B', 0);
             door_cx = 0; door_cy = 6; for (int q = 0; q < 3; q++) { spawn_x[q] = 0; spawn_y[q] = 5 + q; } return; }
-        if (k == LOT_PARK || k == LOT_SQUARE) {   // (D68) a designed park, the PS1's five designs (src/lots.inc lot_park), mirrored half the time: the walk up from the gate, benches on the path side, trees in pairs, beds in rows, a bin and the flag at the gate
-            int pm = (int)(h & 1), v = (int)((h >> 2) % 5u), tp = (int)((h >> 6) & 1);
+        if(k==LOT_SQUARE){
+            for(int y=0;y<13;y++)for(int x=0;x<13;x++)flr[y][x]=2;
+            z_put(6,6,'}',0);z_put(4,6,'N',0);z_put(8,6,'N',0);z_put(6,4,'N',0);z_put(6,8,'N',0);
+            z_put(1,1,'Z',0);z_put(11,1,'Z',0);z_put(1,11,'Z',0);z_put(11,11,'Z',0);
+            for(int i=0,x,y;park_tree_at(h,1,0,i,&x,&y);i++)z_put(x,y,'3',0);
+            z_put(1,6,'a',0);z_put(11,6,'Y',0);
+        }
+        if (k == LOT_PARK) {   // (D68) a designed park, the PS1's five designs (src/lots.inc lot_park), mirrored half the time: the walk up from the gate, benches on the path side, trees in pairs, beds in rows, a bin and the flag at the gate
+            int pm = (int)(h & 1), v = park_variant(h), tp = (int)((h >> 6) & 1);
             #define PKX(xx) (pm ? 12 - (xx) : (xx))
             #define PK(xx, yy, cc) z_put(PKX(xx), (yy), (cc), 0)
             #define PKF(xa, ya, xb, yb) for (int yy = (ya); yy <= (yb); yy++) for (int xx = (xa); xx <= (xb); xx++) flr[yy][PKX(xx)] = 2
             PKF(6, 0, 6, 12);
             if (v == 0) { PKF(0, 6, 12, 6); PKF(4, 4, 8, 8); PK(6, 6, '}'); PK(4, 4, 'N'); PK(8, 4, 'N'); PK(4, 8, 'N'); PK(8, 8, 'N');
                 for (int q = 0; q < 4; q++) { int sx = (q & 1) ? 10 : 2, sy = (q & 2) ? 10 : 2; PK(sx, sy, 'p'); PK(sx - 1, sy, 'Z'); PK(sx + 1, sy, 'Z'); }
-                PK(1, 5, '3'); PK(11, 5, '3'); PK(1, 7, '3'); PK(11, 7, '3'); }
-            else if (v == 1) { PKF(0, 6, 12, 6); PK(3, 3, '}'); PK(1, 7, 'N'); PK(4, 7, 'N'); PK(6, 4, 'N'); PK(8, 1, '3'); PK(10, 1, '3'); PK(9, 2, '3'); PK(11, 3, '3'); PK(8, 4, '3'); PK(0, 1, '3'); PK(0, 3, '3');
-                PKF(8, 8, 10, 10); PK(9, 9, 'K'); PK(11, 9, 'Y'); PK(11, 11, '3'); PK(1, 11, '3'); PK(2, 9, '3'); PK(1, 8, '3'); }
+                }
+            else if (v == 1) { PKF(0, 6, 12, 6); PK(3, 3, '}'); PK(1, 7, 'N'); PK(4, 7, 'N'); PK(6, 4, 'N'); 
+                PKF(8, 8, 10, 10); PK(9, 9, 'K'); PK(11, 9, 'Y'); }
             else if (v == 2) { PKF(1, 2, 5, 9); PKF(7, 6, 11, 6); PK(3, 2, '_'); PK(3, 9, '_'); PK(7, 4, 'N'); PK(7, 8, 'N');
-                for (int y = 1; y <= 11; y += 2) PK(11, y, '3'); PK(8, 1, '3'); PK(9, 1, '3'); PK(9, 9, 'K'); PK(10, 10, 'Y'); }
+                PK(9, 9, 'K'); PK(10, 10, 'Y'); }
             else if (v == 3) { for (int r = 0; r < 3; r++) { int y = 2 + r * 3; for (int x = 1; x <= 4; x++) { PK(x, y, 'p'); PK(12 - x, y, 'p'); } }
-                PK(6, 1, (char)0xE4); PK(5, 11, 'N'); PK(7, 11, 'N'); PK(0, 0, '3'); PK(12, 0, '3'); PK(0, 12, '3'); PK(12, 12, '3'); PK(0, 6, 'Z'); PK(12, 6, 'Z'); }
+                PK(6, 1, (char)0xE4); PK(5, 11, 'N'); PK(7, 11, 'N'); PK(0, 6, 'Z'); PK(12, 6, 'Z'); }
             else { PKF(0, 6, 12, 6); PK(5, 5, 'N'); PK(7, 5, 'N'); PK(5, 7, 'N'); PK(7, 7, 'N');
-                PK(1, 1, '3'); PK(11, 1, '3'); PK(3, 2, '3'); PK(9, 2, '3'); PK(1, 11, '3'); PK(11, 11, '3'); PK(2, 9, '3'); PK(10, 9, '3'); PK(9, 4, 'K'); PK(3, 4, 'K'); if (tp) PK(6, 2, '}'); }
+                PK(9, 4, 'K'); PK(3, 4, 'K'); if (tp) PK(6, 2, '}'); }
+            for(int y=0;y<13;y++)for(int x=0;x<13;x++){
+                int m=park_surface(h,0,0,x,y);
+                if(m==PARK_PATH||m==PARK_PATIO||m==PARK_WATER)flr[y][x]=2;
+            }
+            for(int i=0,x,y;park_tree_at(h,0,0,i,&x,&y);i++)z_put(x,y,'3',0);
             PK(5, 12, 'Y');
             #undef PKX
             #undef PK
@@ -1097,7 +1220,6 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
             if (k == LOT_PARK || k == LOT_SQUARE) { if (pick == 0) PUTP(x, y, 0, 3, abs(x - 6) > abs(y - 6) ? 1 : 0);   // (D42, as the PS1: a bench lies along the walk by it, not at random)
                 else if (pick == 1) PUTP(x, y, 6, 1, 0); else if (pick == 2) PUTP(x, y, 6, 3, 0); else if (pick == 3) PUTP(x, y, 6, 2, 0); else PUTP(x, y, 3, 2, 0); }
             else if (k == LOT_FARM) continue; else PUTP(x, y, pick & 1 ? 3 : 6, pick & 1 ? 2 : 2, 0); }
-        if (k == LOT_SQUARE) PUTP(6, 6, 3, 3, 0);
         if (k == LOT_FARM && g7_field) {   // (D81) a field of a gen 7 town (no street to front on): crop rows across the lot, slim hedgerows down both sides with gaps (the PS1's field7), no barn
             for (int y = 2; y <= 10; y += 2) for (int x = 1; x <= 11; x += 2) z_put(x, y, 0xDB, 0);
             for (int y = 1; y <= 11; y++) { if (y % 3 == 0) continue; z_put(0, y, 0x8E, 1); z_put(12, y, 0x8E, 1); }
@@ -1184,7 +1306,8 @@ static void prop_trade(void) {   // Buy or Sell on the Map
 int tour_ovr;   // (test) the lot kind the tour builds on the next lot_enter (0: what the map has)
 #endif
 static void ensure_world_marker_ds(int lot,int terrain);
-static void lot_enter(int bx, int by) {   // the lot you walk into: what you built there last time, or a new home from its own seed
+static void lot_enter(int bx, int by) {   // the lot you walk into
+    gf_stop(); // discard any queued frame for the previous coordinate origin
     if (lot_bx >= 0 && (lot_bx != bx || lot_by != by)) life_ev(ctl, WN_VISIT, 0);
     yard_i0 = 0x7FFF; lot_bx = bx; lot_by = by; lot_dn = bm_gen >= 7 && bx >= 0 && bx < 2000 && bm_lot_face(bx, by) == LF_NORTH ? -1 : 1; lot_seed = (u32)(bx * 73856093 ^ by * 19349663); pick = -1; memset(slv, 0, sizeof slv); ed_lv = 0; int keep = LV; LV = 0;
     for (int i = 0; i < lsv_n; i++) if (lsv[i].bx == bx && lsv[i].by == by) { LotSave *q = &lsv[i]; nobj = q->nobj; pcx = q->pcx; pcy = q->pcy; door_cx = q->dcx; door_cy = q->dcy; roof_st = q->roof; up_st = q->up; memcpy(flr, q->flr, sizeof flr); memcpy(hwl, q->hwl, sizeof hwl); memcpy(vwl, q->vwl, sizeof vwl); memcpy(objs, q->objs, sizeof objs); occ_ok = 0;
@@ -1900,7 +2023,14 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
     /* Neighbouring lots share the live plot's grade (0), not the old -20:
      * the old height buried walls/doors and left a step at lot boundaries. */
     tx_want = tr == BT_DESERT || tr == BT_BEACH ? TX_SAND : tr == BT_ROCKY ? TX_GRAVEL : TX_GRASS; ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), 0, grass); tx_want = -1;
+    if(ds_draw_planned_proxy(b,pl,ox,oz))return;
     if (!far_house7(b, pl)) {
+        if(k==LOT_RIVER){
+            if(b->road&BR_MEGA)ground(ox+tl(4),oz+tl(0),ox+tl(18),oz+tl(26),-26,C15(5,12,24));
+            else ground(ox+tl(0),oz+tl(4),ox+tl(26),oz+tl(18),-26,C15(5,12,24));
+            return;
+        }
+        if(k==LOT_PARK||k==LOT_SQUARE){ds_park_picture(b,pl,ox,oz,!far_lod);return;}
         /* At any distance or world generation, a skate plaza must remain
          * recognizable. Do not replace it with a random grove in far LOD;
          * the shared low-polygon bank/funbox silhouette is deterministic. */
@@ -1919,26 +2049,7 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
                 tx_want = -1;
                 return;
             }
-            if (k == LOT_PARK || k == LOT_SQUARE) {
-                /* Two intersecting footpaths and paired corner trees.
-                 * The plaza's paving and park's green are not identical. */
-                tx_want = TX_PAVING;
-                if (k == LOT_SQUARE)
-                    ground(ox + tl(2), oz + tl(2), ox + tl(24),
-                           oz + tl(24), -26, C15(21, 20, 17));
-                else {
-                    ground(ox + tl(11), oz + tl(1), ox + tl(15),
-                           oz + tl(25), -26, C15(22, 20, 15));
-                    ground(ox + tl(1), oz + tl(11), ox + tl(25),
-                           oz + tl(15), -26, C15(22, 20, 15));
-                }
-                tx_want = -1;
-                tree(ox + tl(5), oz + tl(5), T * 2);
-                tree(ox + tl(21), oz + tl(5), T * 2);
-                tree(ox + tl(5), oz + tl(21), T * 2);
-                tree(ox + tl(21), oz + tl(21), T * 2);
-                return;
-            }
+
         }
         if (bm_gen >= 8 && k == LOT_FARM) return;
         int n = (k == LOT_PARK || k == LOT_SQUARE) ? 4 : 2;
@@ -1957,7 +2068,12 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
             if (pl->wx1 && pl->type != HT_L) { int wa = pl->wx0 - BM_LOT0, wb = pl->wx1 - BM_LOT0 + 1; if (wa < pl->x0 - BM_LOT0) wb = pl->x0 - BM_LOT0; else wa = pl->x1 - BM_LOT0 + 1; X0 = X0 < ox + tl(2 * wa) ? X0 : ox + tl(2 * wa); X1 = X1 > ox + tl(2 * wb) ? X1 : ox + tl(2 * wb); }
             if (!far_lod && pl->drv) ground(ox + tl(2 * (pl->drv - BM_LOT0)), oz + tl(nth ? 0 : 2 * (pl->y1 - BM_LOT0 + 1)), ox + tl(2 * (pl->drv - BM_LOT0 + 2)), oz + tl(nth ? 2 * (pl->y0 - BM_LOT0) : 26), -26, C15(20, 20, 20)); }
         else if (nth) { Z0 = oz + tl(26 - z0 - d); Z1 = oz + tl(26 - z0); } }
-    tx_want = k != LOT_HOUSE && k != LOT_COTTAGE ? TX_WINDOWS : TX_CLAPBOARD;   // (D82: far.c: a window band on every storey of all but a plain house and a cottage: the neighbour is one box, the band a texture) block(X0, Z0, X1, Z1, 0, Y, wall, wall); tx_want = -1;   // (D43: shops and towers show storeys of windows)
+    // Restore the solid shell (the old block() call was swallowed by a line comment).
+    if(!ds_world_far_budget(polys+(far_lod==2?20:10))||(gxb&&gxn+(far_lod==2?300:157)>=gx_cap))return;
+    tx_want=k!=LOT_HOUSE&&k!=LOT_COTTAGE?TX_WINDOWS:TX_CLAPBOARD;
+    block(X0,Z0,X1,Z1,0,Y,wall,wall);
+    tx_want=-1;
+    if(far_lod==1||(!far_lod&&(!ds_world_detail_budget(polys+110)||(gxb&&gxn+1400>=gx_cap))))return;
     if (!far_lod) { int wn = (X1 - X0) / 5, zf = nth ? Z0 - 14 : Z1, zg = nth ? Z0 : Z1 + 14; block(X0 + wn * 2, zf, X0 + wn * 2 + wn * 7 / 10, zg, 0, -T * 3 / 2, C15(12, 7, 4), C15(12, 7, 4)); block(X0 + wn, zf, X0 + wn + wn * 7 / 10, zg, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); block(X0 + wn * 3, zf, X0 + wn * 3 + wn * 7 / 10, zg, -T, -T * 2, C15(17, 24, 31), C15(17, 24, 31)); }
     { u32 rh = hsh(h ^ 0x500Fu); int sty = st >= 3 || k > LOT_APART ? 1 : 2 + ((rh >> 2) & 1), pt = 1 + (int)((rh >> 8) & 1), cl = (int)((rh >> 4) % 6); static const s16 PIT[3] = { 110, 170, 250 };   // (D42) hip, gable or flat, a colour and a pitch per building
       if (pl && pl->type && k <= LOT_APART) plan_roof(pl, &sty, &pt, &cl);   // (D80) the plan's roof
@@ -1992,7 +2108,10 @@ static void st7(int sx, int sy, int ox, int oz, int pass) {   // (D79) one slot'
         if (S) ground(tl(ox), tl(oz + 28), tl(ox + 26), tl(oz + 34), 0, AS);
         if (E) ground(tl(ox + 28), tl(oz), tl(ox + 34), tl(oz + 26), 0, AS);
         if (cH) ground(tl(ox + 26), tl(oz + 28), tl(ox + 36), tl(oz + 34), 0, AS);
-        if (cV) ground(tl(ox + 28), tl(oz + 26), tl(ox + 34), tl(oz + 36), 0, AS);
+        if (cV && cH) { // horizontal strip already owns the central crossing
+            ground(tl(ox + 28), tl(oz + 26), tl(ox + 34), tl(oz + 28), 0, AS);
+            ground(tl(ox + 28), tl(oz + 34), tl(ox + 34), tl(oz + 36), 0, AS);
+        } else if (cV) ground(tl(ox + 28), tl(oz + 26), tl(ox + 34), tl(oz + 36), 0, AS);
     } else {
         if (S) { ground(tl(ox), tl(oz + 26), tl(ox + 26), tl(oz + 28), -24, PV); ground(tl(ox), tl(oz + 34), tl(ox + 26), tl(oz + 36), -24, PV); }
         if (E) { ground(tl(ox + 26), tl(oz), tl(ox + 28), tl(oz + 26), -24, PV); ground(tl(ox + 34), tl(oz), tl(ox + 36), tl(oz + 26), -24, PV); }
@@ -2034,21 +2153,38 @@ static void draw_world(int yaw) {   // LIVE: all round the lot, the lots next do
 }
 static int ring_r = 1;   // (D40) how many slots out the land is drawn (Options > Draw distance, one more with the DSi's detail)
 static u16 horizon_col(void) { return zone == Z_ISLAND ? C15(5, 12, 24) : zone == Z_TOWN ? C15(24, 21, 13) : C15(7, 16, 6); }
-static void draw_far_all(int yaw) {   // last, so the lot, the sims and the citizens always get the polygons first
-    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { if (!i && !j) continue; const BInfo *b = &nb[j + 1][i + 1];
-        if (b->terrain == BT_SEA) { ground(tl(36 * i), tl(36 * j), tl(36 * i + 36), tl(36 * j + 36), -8, C15(5, 12, 24)); continue; }
-        if (!ds_world_detail_budget(polys)) {
-            /* Always draw terrain rather than leave missing neighboring lots. */
-            if (ds_world_far_budget(polys))
-                ground(tl(36 * i), tl(36 * j), tl(36 * i + 26),
-                       tl(36 * j + 26), 0, land_col(b->terrain));
-            continue;
+static void draw_near_shells(int yaw) {
+    // Stable roof profile for the eight adjacent lots. Submit this before
+    // street lamps and optional outer-ring scenery; never toggle pitched
+    // roofs to flat because a resident added a few triangles.
+    for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
+        if(!i&&!j)continue;
+        const BInfo *b=&nb[j+1][i+1];
+        const LotPlan *pl=t7()?&nlp[j+RING_MAX][i+RING_MAX]:0;
+        if(!far_house7(b,pl))continue;
+        far_lod=2;
+        r7_bx=!zone&&lot_bx>=0&&lot_bx<2000?lot_bx+i:-1;r7_by=lot_by+j;
+        far_lot(b,36*i*T,36*j*T,0,yaw,pl);
+        r7_bx=-1;far_lod=0;
+    }
+}
+static void draw_far_all(int yaw) {
+    // Houses already own their geometry. Do not submit the same lot twice.
+    for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
+        if(!i&&!j)continue;
+        const BInfo *b=&nb[j+1][i+1];
+        const LotPlan *pl=t7()?&nlp[j+RING_MAX][i+RING_MAX]:0;
+        if(far_house7(b,pl))continue;
+        if(!ds_world_far_budget(polys+12)||(gxb&&gxn+160>=gx_cap))continue;
+        if(b->terrain==BT_SEA){ground(tl(36*i),tl(36*j),tl(36*i+36),tl(36*j+36),-8,C15(5,12,24));continue;}
+        int lite=!ds_world_detail_budget(polys+160);
+        if(lite&&b->lot!=LOT_RIVER){
+            ground(tl(36*i),tl(36*j),tl(36*i+26),tl(36*j+26),0,land_col(b->terrain));continue;
         }
-        r7_bx = !zone && lot_bx >= 0 && lot_bx < 2000 ? lot_bx + i : -1;
-        r7_by = lot_by + j;
-        far_lot(b, 36 * i * T, 36 * j * T, nb_pop[j + 1][i + 1], yaw,
-                t7() ? &nlp[j + RING_MAX][i + RING_MAX] : 0);
-        r7_bx = -1;
+        far_lod=lite;
+        r7_bx=!zone&&lot_bx>=0&&lot_bx<2000?lot_bx+i:-1;r7_by=lot_by+j;
+        far_lot(b,36*i*T,36*j*T,nb_pop[j+1][i+1],yaw,pl);
+        r7_bx=-1;far_lod=0;
     }
     // (D40) THE FAR RING: the slots past the 3x3, each drawn round its own corner (a matrix move: no 16-bit overflow): plain houses, streets, the land; then the
     // horizon, one big quad scaled up four times, under everything out to the far plane. The haze fades it all into the sky, so nothing pops in.
@@ -2199,8 +2335,10 @@ static int lv_box(int L, int *x0, int *y0, int *x1, int *y1) {   // the outline 
 static int view_lv(void);
 static const u16 ROOFC[6] = { C15(24, 11, 8), C15(13, 14, 16), C15(19, 13, 8), C15(11, 16, 10), C15(9, 11, 17), C15(26, 22, 16) };   // the PS1's CLAY RED, SLATE, CEDAR, MOSS GREEN, NAVY, SANDSTONE
 static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise, u16 rc, u16 wc) {   // a roof over the box (eaves included), its foot at ry (up is negative)
-    int w = X1 - X0, d = Z1 - Z0, sh = sty == 4 ? w : w < d ? w : d, r = sh / 2; if (r > 6 * T) r = 6 * T;   // (D81: sty 4, a gable turned to the street: the ridge runs front to back)
+    int w = X1-X0,d=Z1-Z0;
+    BoreRoofRun profile=bore_roof_run(w,d,sty==3?1:sty==2?2:sty==4?3:0,6*T);
     u16 fas = shade(rc, 5);
+    if(far_lod==2&&sty==1){tx_want=-1;return;} // cap is already present
     if (sty == 1) {   // FLAT: the slab, a parapet round it, a box on top (the PS1's towers and big blocks)
         u16 tc = shade(C15(18, 18, 19), 8), pc = shade(wc, 7); tx_want = TX_GRAVEL;
         block(X0, Z0, X1, Z1, ry + 40, ry - 40, fas, tc); tx_want = TX_STUCCO;
@@ -2208,8 +2346,8 @@ static void roof_shape(int X0, int Z0, int X1, int Z1, int ry, int sty, int rise
         block(X0, Z0 + 40, X0 + 40, Z1 - 40, ry - 40, ry - 110, pc, shade(pc, 10)); block(X1 - 40, Z0 + 40, X1, Z1 - 40, ry - 40, ry - 110, pc, shade(pc, 10));
         tx_want = -1; if (w > 4 * T && d > 4 * T) { int cx = X0 + w * 2 / 3, cz = Z0 + d / 3; block(cx - T / 2, cz - T / 2, cx + T / 2, cz + T / 2, ry - 40, ry - 40 - T * 2 / 3, C15(20, 20, 21), C15(25, 25, 26)); }
         return; }
-    int RH_ = r * rise / 256, rtop = ry - RH_, along_x = w >= d, rx = sty == 4 ? r : along_x ? (sty == 3 ? r : 0) : r, rz = sty == 4 ? 0 : along_x ? r : (sty == 3 ? r : 0);
-    tx_want = -1; block(X0, Z0, X1, Z1, ry + 40, ry, fas, fas); tx_want = TX_SHINGLE_WALL;   // (the eaves' thickness; then the slopes in the PS1's shingles)
+    int RH_=profile.run*rise/256,rtop=ry-RH_,rx=profile.x,rz=profile.z;
+    tx_want = -1; if(far_lod!=2)block(X0, Z0, X1, Z1, ry + 40, ry, fas, fas); tx_want = TX_SHINGLE_WALL;   // (the eaves' thickness; then the slopes in the PS1's shingles)
     u16 c0 = rc, c1 = shade(rc, 6), ce = rx ? shade(rc, 7) : wc, cf = rz ? rc : wc;   // (gable ends are the walls' plaster)
     qd(X0, ry, Z0, X1, ry, Z0, X1 - rx, rtop, Z0 + rz, X0 + rx, rtop, Z0 + rz, cf);
     qd(X0 + rx, rtop, Z1 - rz, X1 - rx, rtop, Z1 - rz, X1, ry, Z1, X0, ry, Z1, rz ? c1 : shade(wc, 7));
@@ -2353,16 +2491,22 @@ static void draw_floors(int L) {   // floors as the biggest same-type rectangles
 static u32 *wsig;          // (D39) set: draw_walls only mixes which walls are cut down into *wsig (the still list's signature)
 static void draw_walls(int L, int yaw) {   // thin walls (a skirting board, the wall, a pale cap) and proper doors
     u8 (*hw)[GN] = HWv(L); u8 (*vw)[GN + 1] = VWv(L);
+    int inside=0;
+    if(mode==M_LIVE&&o_roof!=1&&ctl>=0&&ctl<nsim&&slv[ctl]==L){
+        int cx=fdiv(sims[ctl].x+8,16),cy=fdiv(sims[ctl].y+8,16);
+        inside=ds_cell_enclosed(&hw[0][0],&vw[0][0],GN,cx,cy);
+    }
+    int allow_cut=ds_wall_cutaway_allowed(mode==M_LIVE,o_roof,inside);
     int th = T / 16, whf = WHF, whl = T * 2, cs = cosLerp(yaw), sn = sinLerp(yaw); int tx0 = mode == M_LIVE ? camx : 0, tz0 = mode == M_LIVE ? camz : 0;
     for (int y = 0; y <= GN; y++) for (int x = 0; x < GN; x++) { int v = hw[y][x]; if (!v) continue; int e = x + 1; if (v != 5 && v != 6) while (e < GN && hw[y][e] == v) e++;   // runs of the same wall are one piece (the polygon budget)
-        int mx = (tl(x * 2) + tl(e * 2)) / 2, mz = tl(y * 2); int near = (((mx - tx0) * -sn + (mz - tz0) * cs) >> 12) > 2000;
+        int mx = (tl(x * 2) + tl(e * 2)) / 2, mz = tl(y * 2); int near = allow_cut && (((mx - tx0) * -sn + (mz - tz0) * cs) >> 12) > 2000;
         if (wsig) { *wsig = (*wsig ^ (u32)(near + x * 2 + y * 64)) * 16777619u; x = e - 1; continue; }
         if (v == 5 ? (dpass != 0 && dpass != 2) : (dpass != 0 && dpass != 1)) { x = e - 1; continue; }   // (doors open and shut as the sims pass: they are drawn with what moves)
         if (v == 5) { door_open = 0; for (int q = 0; q < nsim; q++) if (slv[q] == L && abs(sims[q].x - x * 16) < 26 && abs(sims[q].y - (y * 16 - 8)) < 26) door_open = 1; }
         int through0 = v != 6 && y > 0 && y < GN && vw[y - 1][x] && vw[y][x], through1 = v != 6 && y > 0 && y < GN && e <= GN && vw[y - 1][e] && vw[y][e];   // does a wall run right across the end? then stop inside it (no poking out)
         wall_seg(tl(x * 2) - (through0 ? -6 : th + 4), tl(y * 2) - th, tl(e * 2) + (through1 ? -6 : th + 4), tl(y * 2) + th, v, 0, near ? whl : whf); x = e - 1; }
     for (int x = 0; x <= GN; x++) for (int y = 0; y < GN; y++) { int v = vw[y][x]; if (!v) continue; int e = y + 1; if (v != 5 && v != 6) while (e < GN && vw[e][x] == v) e++;
-        int mx = tl(x * 2), mz = (tl(y * 2) + tl(e * 2)) / 2; int near = (((mx - tx0) * -sn + (mz - tz0) * cs) >> 12) > 2000;
+        int mx = tl(x * 2), mz = (tl(y * 2) + tl(e * 2)) / 2; int near = allow_cut && (((mx - tx0) * -sn + (mz - tz0) * cs) >> 12) > 2000;
         if (wsig) { *wsig = (*wsig ^ (u32)(near + x * 4096 + y * 128)) * 16777619u; y = e - 1; continue; }
         if (v == 5 ? (dpass != 0 && dpass != 2) : (dpass != 0 && dpass != 1)) { y = e - 1; continue; }
         if (v == 5) { door_open = 0; for (int q = 0; q < nsim; q++) if (slv[q] == L && abs(sims[q].x - (x * 16 - 8)) < 26 && abs(sims[q].y - y * 16) < 26) door_open = 1; }
@@ -2420,7 +2564,7 @@ static void draw_build(int yaw) {   // (D39) dpass 1: the still part (recorded o
             gx_pid(16 + i % 40); obj3d(objs[i].x, objs[i].y, IT_OF(&objs[i]), objs[i].rot, 0); lod_force = lf_; } }
     gy_off = 0; lod_force = 0; if (dpass == 2) PROF(6);
 world:
-    if (wd) { gx_pid(3); if (mode == M_LIVE) draw_world(yaw); else {   // (D36: the street round the plot after the house, so the house is never what the DS's polygon list drops)
+    if (wd) { gx_pid(3); if (mode == M_LIVE) { draw_near_shells(yaw); draw_world(yaw); } else {   // (D36: the street round the plot after the house, so the house is never what the DS's polygon list drops)
         tx_want = TX_ASPHALT; ground(tl(-14), tl(-9), tl(40), tl(-2), 0, C15(7, 7, 9)); ground(tl(-14), tl(28), tl(40), tl(35), 0, C15(7, 7, 9)); tx_want = TX_PAVING;   // two proper streets, three cells wide
         block(tl(-14), tl(-2), tl(40), tl(0), 0, -14, C15(20, 20, 20), C15(24, 24, 24)); block(tl(-14), tl(26), tl(40), tl(28), 0, -14, C15(20, 20, 20), C15(24, 24, 24));   // pavements
         tx_want = -1; for (int x = -13; x < 40; x += 4) { ground(tl(x), tl(-6) - 14, tl(x) + T * 2, tl(-6) + 14, -6, C15(28, 26, 8)); ground(tl(x), tl(31) - 14, tl(x) + T * 2, tl(31) + 14, -6, C15(28, 26, 8)); }   // lane dashes (flat: one quad each, not five)
@@ -2663,7 +2807,7 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     static char local_labels[2][32];
     if(c=='a'&&world_outing_anchor(lot,(unsigned char)c)){
         int g=outing_group(lot,0);
-        for(int k=0;k<2;k++){const Outing *a=outing_get(living_outing_index(g,k,(minutes/1440)%7));snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);AC(local_labels[k],WORLD_OUT_0+k);}
+        for(int k=0;k<2;k++){const Outing *a=outing_get(living_outing_index(g,k,(minutes/1440)%7));if(outing_is_open(a,minutes%1440))snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);else snprintf(local_labels[k],sizeof local_labels[k],"%.20s %02d-%02d",a->title,a->from,a->to);AC(local_labels[k],WORLD_OUT_0+k);}
     }
     if(world_trip_anchor(lot,(unsigned char)c))AC("Book a trip",WORLD_TRIP);
     if(world_heist_anchor(lot,terrain,(unsigned char)c)==SITE_ROAD&&stage_of(sims[ctl].age)>=3)AC("Grand theft (risk)",WORLD_HEIST);
@@ -2689,7 +2833,7 @@ static int obj_acts(int o, const char **lab, int *code) {   // what a tap on a t
     else AC(IT_OF(&objs[o])->lab, -1);
     if(c!='a'&&world_outing_anchor(lot,(unsigned char)c)){
         int g=outing_group(lot,0);
-        for(int k=0;k<2&&n<8;k++){const Outing *a=outing_get(living_outing_index(g,k,(minutes/1440)%7));snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);AC(local_labels[k],WORLD_OUT_0+k);}
+        for(int k=0;k<2&&n<8;k++){const Outing *a=outing_get(living_outing_index(g,k,(minutes/1440)%7));if(outing_is_open(a,minutes%1440))snprintf(local_labels[k],sizeof local_labels[k],"%s $%d",a->title,a->fee);else snprintf(local_labels[k],sizeof local_labels[k],"%.20s %02d-%02d",a->title,a->from,a->to);AC(local_labels[k],WORLD_OUT_0+k);}
     }
     #undef AC
     return n;
@@ -2995,22 +3139,40 @@ static void job_touch(int tx, int ty) {
     if (!L->job) { for (int k = 0; k < JOBN; k++) if (hit(14 + (k & 1) * 118, 56 + (k >> 1) * 36, 112, 30, tx, ty)) { job_take(k); jobui = 0; } return; }
     if (hit(14, 108, 112, 28, tx, ty)) { job_work(); jobui = 0; } else if (hit(130, 108, 112, 28, tx, ty)) { L->job = 0; L->lvl = L->prog = L->strike = 0; life_ver++; say("You quit. Time for a nap?"); jobui = 0; }
 }
-static void juke_draw(void) {
-    char t[56]; panel(6, 20, 244, 164, "Jukebox"); chip(204, 22, 40, 14, "X", 0);
-    if (mus_ok != 1 || mus_n < 1) { text_box(12, 54, 232, 14, FS_BODY, TXT, AL_L, "Songs are not available here."); text_box(12, 70, 232, 14, FS_BODY, TXT, AL_L, "The synth tunes are playing."); return; }
-    sprintf(t, "Now: %.30s", mus_cur >= 0 ? mus_name(mus_cur) : "-"); text_box(10, 36, 190, 14, FS_BODY, C15(31, 31, 20), AL_L, t);
-    int per = 6, pages = (mus_n + per - 1) / per; if (juke_pg >= pages) juke_pg = 0;
-    for (int k = 0; k < per; k++) { int n = juke_pg * per + k; if (n >= mus_n) break; sprintf(t, "%d %.26s", n + 1, mus_name(n)); chip(12, 52 + k * 16, 232, 14, t, n == mus_cur); }
-    chip(12, 152, 40, 24, "<", 0); chip(56, 152, 40, 24, ">", 0); chip(100, 152, 44, 24, "Next", 0); chip(148, 152, 52, 24, "Area", o_song==0); sprintf(t, "%d/%d", juke_pg + 1, pages); text_box(202, 152, 46, 24, FS_NUM, TXT, AL_C, t);
+static void juke_archive_toggle(void){
+    if(music_library_size(mus_n,1)){juke_archive^=1;juke_pg=0;}
 }
-static void juke_touch(int tx, int ty) {
-    if (hit(204, 22, 40, 14, tx, ty)) { juke = 0; return; }
-    if (mus_ok != 1 || mus_n < 1) return; int per = 6, pages = (mus_n + per - 1) / per;
-    for (int k = 0; k < per; k++) { int n = juke_pg * per + k; if (n < mus_n && hit(12, 52 + k * 16, 232, 14, tx, ty)) { o_song = n + 1; life_ev(ctl, WN_SONG, 0); } }
-    if (hit(12, 152, 40, 24, tx, ty)) juke_pg = (juke_pg + pages - 1) % pages;
-    if (hit(56, 152, 40, 24, tx, ty)) juke_pg = (juke_pg + 1) % pages;
-    if (hit(100, 152, 44, 24, tx, ty)) { int c = mus_cur < 0 ? 0 : mus_cur; o_song = (c + 1) % mus_n + 1; life_ev(ctl, WN_SONG, 0); }
-    if (hit(148, 152, 52, 24, tx, ty)) o_song = 0;
+static void juke_skip(void){
+    int n=music_library_skip(mus_n,juke_archive,mus_cur,1);
+    if(n>=0){o_song=n+1;life_ev(ctl,WN_SONG,0);}
+}
+static void juke_draw(void) {
+    char t[56]; panel(6,20,244,164,juke_archive?"Music archive":"Jukebox");chip(204,22,40,14,"X",0);
+    if(mus_ok!=1||mus_n<1){text_box(12,54,232,14,FS_BODY,TXT,AL_L,"Songs are not available here.");return;}
+    sprintf(t,"Now: %.30s",mus_cur>=0?mus_name(mus_cur):"-");text_box(10,36,190,14,FS_BODY,C15(31,31,20),AL_L,t);
+    int per=6,n=music_library_size(mus_n,juke_archive),pages=(n+per-1)/per;
+    if(!pages)return;
+    if(juke_pg<0||juke_pg>=pages)juke_pg=0;
+    for(int k=0;k<per;k++){
+        int id=music_library_index(mus_n,juke_archive,juke_pg*per+k);if(id<0)break;
+        sprintf(t,"%d %.26s",id+1,mus_name(id));chip(12,52+k*16,232,14,t,id==mus_cur);
+    }
+    chip(12,152,40,24,"<",0);chip(56,152,40,24,">",0);chip(100,152,44,24,"Next",0);
+    chip(148,152,52,24,juke_archive?"Area":"Auto",o_song==0&&area_context==juke_archive);
+    sprintf(t,"%d/%d",juke_pg+1,pages);text_box(202,152,46,24,FS_NUM,TXT,AL_C,t);
+}
+static void juke_touch(int tx,int ty){
+    if(hit(204,22,40,14,tx,ty)){juke=0;return;}
+    if(mus_ok!=1||mus_n<1)return;
+    int per=6,n=music_library_size(mus_n,juke_archive),pages=(n+per-1)/per;if(!pages)return;
+    for(int k=0;k<per;k++){
+        int id=music_library_index(mus_n,juke_archive,juke_pg*per+k);
+        if(id>=0&&hit(12,52+k*16,232,14,tx,ty)){o_song=id+1;life_ev(ctl,WN_SONG,0);}
+    }
+    if(hit(12,152,40,24,tx,ty))juke_pg=(juke_pg+pages-1)%pages;
+    if(hit(56,152,40,24,tx,ty))juke_pg=(juke_pg+1)%pages;
+    if(hit(100,152,44,24,tx,ty))juke_skip();
+    if(hit(148,152,52,24,tx,ty)){o_song=0;area_context=juke_archive;}
 }
 static void life_panel(void) {   // the top screen's second page: job, aspiration, wants, fear, the dog
     const Life *L = &life[ctl]; char t[56]; panel(6, 72, 244, 114, "Life");
@@ -4046,14 +4208,14 @@ typedef struct { u32 key, used; u16 n, triangles; u32 w[SML_W]; } SimL;
 static SimL sml[SML_N] __attribute__((aligned(32))); static int sml_next; static volatile int sml_miss, sml_maxn, sml_full; static u32 gf_serial = 8;
 static void sim_emit(const SimL *e, int x, int y, int z, int q) {   // into the list being recorded: push, turn by q quarters and move to x,y,z, the model, pop
     static const s8 RC[4][4] = { { 1, 0, 0, 1 }, { 0, -1, 1, 0 }, { -1, 0, 0, -1 }, { 0, 1, -1, 0 } };   // (m00 m02 m20 m22: as sb() turns a part)
-    if (gxn + e->n + 40 > gx_cap) { gx_full = 1; return; }
+    if (gxn + (gf_rec?0:e->n) + 40 > gx_cap) { gx_full = 1; return; }
     gx_c0(0x11); gx_c1(0x10, 2); gx_id(0x19); const s8 *r = RC[q & 3];
     u32 *o = &gxb[gxn]; o[0] = (u32)(r[0] * 4096); o[1] = 0; o[2] = (u32)(r[1] * 4096); o[3] = 0; o[4] = 4096; o[5] = 0; o[6] = (u32)(r[2] * 4096); o[7] = 0; o[8] = (u32)(r[3] * 4096); o[9] = (u32)x; o[10] = (u32)y; o[11] = (u32)z;
     if (em_R) for (int k = 0; k < 9; k++) o[k] = (u32)em_R[k];   // (D44: the rider on the board turns freely)
     gxn += 12;
     gx_c1(0x10, 1); if (gf_rec) { gf_cut(); gf_add(e->w, e->n); } else { gxk = 4; memcpy(&gxb[gxn], e->w, (size_t)e->n * 4); gxn += e->n; }   // (the model goes as a piece of its own: no copying)
     polys += e->triangles;
-    gxk = 4; gx_lv = 0; gx_mat = gx_nrm = gx_col = ~0u; gx_c1(0x12, 1);
+    gxk = 4; gx_lv = 0; gx_mat = gx_nrm = gx_col = ~0u;gx_txp=-2; gx_c1(0x12, 1);
 }
 static void sim3d(int i, int yaw) {
 #ifdef HAIRALL
@@ -4070,13 +4232,16 @@ static void sim3d(int i, int yaw) {
         sw = 135 + (P[14] - 50), at = 50 + (P[21] - 50) / 2, lt = 90 + (P[23] - 50) / 2, bz = 85 + (P[24] - 50) * 2, al = 250 + (P[20] - 50) * 2, hb = base + 30;
     int sw_l = mv ? sinLerp(gframes * 1100 + i * 700) * 70 / 4096 : 0;
     int fx_e = lod ? 0 : expr_of(m), fx_b = lod || fx_e == EX_SLEEP ? 0 : (gframes + i * 41) % 130 < 5, fx_t = !lod && (m->act >= 100 || m->act == 3) && ((gframes >> 3) & 1);   // (D55) mood, blink, talking: part of the cached model's key
-    SimL *se = 0; int cached = 0, ox = x, oz = z, oq = sq_q, ogy = gy_off, model_start = polys; u32 *sb_ = 0; int sn_ = 0, sh_ = 0, sk_ = 0, sc_ = 0; u32 sm_ = 0, snm_ = 0, scl_ = 0;
+    SimL *se = 0; int cached = 0, ox = x, oz = z, oq = sq_q, ogy = gy_off, model_start = polys; u32 *sb_ = 0; int sn_ = 0, sh_ = 0, sk_ = 0, sc_ = 0;
+    int saved_full=gx_full,saved_tx=tx_want,saved_tp=gx_txp;
+    u32 sm_ = 0, snm_ = 0, scl_ = 0;
     if (gxb && dpass == 2) {   // (D39) the cached model: the key is everything its shape and colours come from
         if (mv) sw_l = sinLerp((s16)(((gframes * 1100 + i * 700) & 32767) & ~4095)) * 70 / 4096;   // (the stride in eight steps)
         u32 key = 2166136261u; for (int q = 0; q < PMN; q++) key = (key ^ (u32)P[q]) * 16777619u;
         key = (key ^ (u32)(fx_e | fx_b << 4 | fx_t << 5 | 1 << 6)) * 16777619u; key = (key ^ (u32)(stg | lod << 3 | (u32)m->hair << 4 | (u32)m->beard << 9 | (u32)lit_on << 13 | (u32)csx[i].hat << 14)) * 16777619u; key = (key ^ ((u32)sk | (u32)hc << 16)) * 16777619u; key = (key ^ ((u32)sh | (u32)pants << 16)) * 16777619u; key = (key ^ (u32)(sw_l + 1000)) * 16777619u;
         for (int q = 0; q < SML_N; q++) if (sml[q].key == key && sml[q].n) { se = &sml[q]; cached = 1; break; }
-        if (!se) { for (int t = 0; t < SML_N; t++) { se = &sml[sml_next]; sml_next = (sml_next + 1) % SML_N; if (se->used + 2 < gf_serial) break; }   // (never one the frame being sent still uses)
+        if(!se){for(int t=0;t<SML_N;t++){SimL *candidate=&sml[sml_next];sml_next=(sml_next+1)%SML_N;if(!candidate->n||gf_serial-candidate->used>2){se=candidate;break;}}}
+        if(se&&!cached){ // no free entry: draw directly rather than overwrite a queued model
             se->key = key; se->n = 0; sml_miss++;
             sb_ = gxb; sn_ = gxn; sh_ = gxh; sk_ = gxk; sc_ = gx_cap; sm_ = gx_mat; snm_ = gx_nrm; scl_ = gx_col; gx_begin(se->w, SML_W); x = 0; z = 0; sq_q = 0; gy_off = 0; } }
     if (!cached) {
@@ -4137,9 +4302,17 @@ static void sim3d(int i, int yaw) {
         /* Recording is not a second draw. Charge exactly once when the
          * cached list is submitted, on both misses and subsequent hits. */
         polys = model_start;
-        if (gx_full) sml_full++; if (se->n > sml_maxn) sml_maxn = se->n; DC_FlushRange(se->w, (u32)se->n * 4); gxb = sb_; gxn = sn_; gxh = sh_; gxk = sk_; gx_cap = sc_; gx_mat = sm_; gx_nrm = snm_; gx_col = scl_; gx_full = 0; gy_off = ogy; x = ox; z = oz; sq_q = oq; }
+        if (gx_full) sml_full++; if (se->n > sml_maxn) sml_maxn = se->n; DC_FlushRange(se->w, (u32)se->n * 4); gxb = sb_; gxn = sn_; gxh = sh_; gxk = sk_; gx_cap = sc_; gx_mat = sm_; gx_nrm = snm_; gx_col = scl_; gx_full=saved_full;tx_want=saved_tx;gx_txp=saved_tp;gx_lv=0;gy_off = ogy; x = ox; z = oz; sq_q = oq; }
         if (ride) em_R = sk_Rm;   // (D44) side on to the board (skate_frame turns it)
-        if (se->n) sim_emit(se, ox, -ogy + ground_lift(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), slv[i]) - (ride ? board_lift * 12 / 5 + 80 - sk_cr : 0), oz, oq); em_R = 0;
+        if(se->n)sim_emit(se,ox,-ogy+ground_lift(fdiv(m->x+8,16),fdiv(m->y+8,16),slv[i])-(ride?board_lift*12/5+80-sk_cr:0),oz,oq);
+        else { // valid low-cost silhouette on a cache miss that exceeds its slot
+            tx_want=-1;gx_lv=0;
+            sb(ox,oz,-100,0,-65,100,lh,65,pants);
+            sb(ox,oz,-sw,lh,-bz,sw,base,bz,sh);
+            sb(ox,oz,-hw,base,-hw,hw,base+ht,hw,sk);
+            tx_want=saved_tx;
+        }
+        em_R=0;
         if (ride) skate_draw_board(-ogy + ground_lift(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), 0)); }
     if (i == ctl) { int py = (hb + ht + 190) * sb_sc / 100; sb_sc = 100; sq_q = 0; bx(x - 40, py, z - 40, x + 40, py + 120, z + 40, C15(6, 30, 6)); bx(x - 30, py - 90, z - 30, x + 30, py, z + 30, C15(5, 22, 5)); }
 }
@@ -5469,7 +5642,7 @@ int main(void) {
                         else { live_yaw += ddx * 60; yaw_t = live_yaw; live_pitch += ddy * 30; if (live_pitch < 1800) live_pitch = 1800; if (live_pitch > 7600) live_pitch = 7600; } } }
             } else if (down & KEY_TOUCH) live_touch(tp.px, tp.py);
             if ((down & KEY_B) && (menu_open || popup || jobui || juke || travel_ui || craft_ui || farm_ui)) { menu_open = popup = jobui = juke = travel_ui = craft_ui = farm_ui = 0; down &= ~KEY_B; ui_snd(UI_BACK); }   // (D44: that B is not the board's)
-            else if ((down & KEY_START) && !jobui && !juke && !popup && !mg_ui) { menu_open ^= 1; ui_snd(menu_open ? UI_OK : UI_BACK); }            if (juke) { if (down & KEY_DOWN) juke_pg++; if (down & KEY_UP && juke_pg > 0) juke_pg--; if (down & KEY_RIGHT) { int c = mus_cur < 0 ? 0 : mus_cur; o_song = (c + 1) % (mus_n > 0 ? mus_n : 1) + 1; } }
+            else if ((down & KEY_START) && !jobui && !juke && !popup && !mg_ui) { menu_open ^= 1; ui_snd(menu_open ? UI_OK : UI_BACK); }            if (juke) { if (down & KEY_SELECT) juke_archive_toggle(); if (down & KEY_DOWN) juke_pg++; if (down & KEY_UP && juke_pg > 0) juke_pg--; if (down & KEY_RIGHT) juke_skip(); }
             if (popup == 6 && !mg_ui) { if (down & KEY_UP) contact_sel--; if (down & KEY_DOWN) contact_sel++; if (down & KEY_LEFT) contact_sel -= 5; if (down & KEY_RIGHT) contact_sel += 5; contacts_clamp(); if (down & KEY_A) contacts_call(); }
             else if (mg_ui) mg_frame(held, down, steps, tp.px, tp.py);   // (D46) a mini-game has the buttons and the stylus
             else if (on_board) { if (!menu_open && !popup && !jobui && !juke && !travel_ui && !craft_ui && !farm_ui) skate_frame(held, down, steps); }   // (D44) riding: the buttons are the board's
@@ -5506,7 +5679,7 @@ int main(void) {
             { int hd = dist * cosLerp(pitch) >> 12, r = (hd + (o_dd == 0 ? 2600 : o_dd == 1 ? 3800 : 6500)) >> 2; lod_ex = camx - (hd * sinLerp(yaw) >> 12); lod_ez = camz + (hd * cosLerp(yaw) >> 12); lod_r2 = on_board ? 0x3FFFFFFF : r * r; }   // (D51: riding the skate plaza, the lot is all drawn in full, so the lists are not recorded again as the camera follows the rider) (D38) the level of detail goes by the distance from the eye
             { static unsigned ts = 1, hs = 1; unsigned a = (unsigned)((on_board ? skate_sig() * 977 + 5 : 0) + (mg_ui ? mg_sig() * 983 + 3 : 0) + cur_sim * 7 + ctl * 3 + (minutes / 1440) * 13 + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_secrets * 23) * 31 * zone + o_pm * 977 + info_pg * 43 + life_ver * 53 + sims[cur_sim].age * 59 + (cur_sim != ctl ? minutes * 7 + funds : 0)); a = a * 31 + (unsigned)sims[cur_sim].rel;
               static unsigned tv; unsigned av = (unsigned)(minutes * 13 + funds + (o_pm ? polys_last / 64 + fps_now * 977 : 0) + mood(&sims[cur_sim]) * 5); for (int n = 0; n < 6; n++) av = av * 31 + (unsigned)sims[cur_sim].need[n];   // (D39: the values alone are redrawn on their own)
-              unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + (menu_open ? menu_sel * 139 : 0) + (popup == 6 ? contact_sel * 149 + life_ver * 151 + minutes / 60 * 157 : 0) + ((popup == 2 || popup == 3) ? soc_page * 163 : 0) + (sims[ctl].act==OUT_DS_ACTION?179+sims[ctl].act_left/32*181:0) + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + farm_ui * 97 + (popup || farm_ui ? fm_sig() * 107 : 0) + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + on_board * 113 + (mg_ui ? mg_bsig() * 127 + 1 : 0) + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
+              unsigned b = (unsigned)(cam_on * 3 + cam_pan * 5 + cam_free * 7 + cur_sim * 11 + popup * 17 + popup_i * 19 + menu_open * 23 + (menu_open ? menu_sel * 139 : 0) + (popup == 6 ? contact_sel * 149 + life_ver * 151 + minutes / 60 * 157 : 0) + ((popup == 2 || popup == 3) ? soc_page * 163 : 0) + (sims[ctl].act==OUT_DS_ACTION?179+sims[ctl].act_left/32*181:0) + speed * 29 + (msg_t > 0) * 31 + jobui * 37 + juke * 41 + travel_ui * 83 + craft_ui * 89 + farm_ui * 97 + (popup || farm_ui ? fm_sig() * 107 : 0) + (isl_wood + isl_stone * 7 + isl_leaves * 13 + isl_food * 17 + isl_shells * 19 + isl_secrets * 23 + isl_spear * 29) * 101 + nobj * 103 + juke_pg * 47 + juke_archive * 269 + area_context * 271 + on_board * 113 + (mg_ui ? mg_bsig() * 127 + 1 : 0) + o_song * 59 + mus_cur * 61 + nsim * 71 + dog.hun * 73 + (unsigned)(size_t)msg); for (int q = 0; q < nsim; q++) b = b * 31 + (unsigned)(mood(&sims[q]) / 4);
               if (forced) { ts = ~a; hs = ~b; } if (mode == M_LIVE) { if (a != ts) { DBGT(1, draw_top_status(); off_show(scr_sub)); ts = a; tv = av; ui_heavy = 1; } else if (av != tv) { scr = scr_sub; status_vals(1); tv = av; } if (b != hs) { DBGT(0, draw_hud(); hud_show()); ui_heavy = 1; hs = b; } } }   // (D35: not after a menu chip has just left Live, or the Live icons stayed over Buy's 3D view)
         } else {   // BUY / BUILD: the live lot on the top screen, the catalogue or plan on the bottom (drag to place, paint, draw walls, move)
             LV = ed_lv;
@@ -5547,26 +5720,28 @@ int main(void) {
         dbg_pt[1] = prof_now();
 #endif
         { static int lm = -1; if ((mode == M_TITLE || mode == M_CAS) != lm) { lm = mode == M_TITLE || mode == M_CAS; o_dirty = 1; } }
-        if (o_dirty) apply_opts();
+        if(o_dirty){gf_stop();apply_opts();} // do not change global GPU settings beneath a queued frame
         if (sky_on) sky_update(pitch);
         // (D39) the 3D: a steady 30 frames a second (or up to 60, Options > System > Frame rate); the passes in between do the game and the 2D screens, so the touch screen answers at 60
         static u32 next3d; int fight_on = mode == M_LIVE && mg_ui == 6, is_lot = (mode == M_LIVE || mode == M_BUY || mode == M_BUILD) && !fight_on;
-        { static int aa = 1; int want = !fight_on; if (want != aa) { aa = want; if (want) glEnable(GL_ANTIALIAS); else glDisable(GL_ANTIALIAS); } }   // (D59: BORTUA FIGHTER's ring has no edge blending: it showed the sky along the mat's seams)
+        if(!is_lot&&gf_on)gf_stop();
+        { static int aa = 1; int want = !fight_on; if (want != aa) { gf_stop();aa = want; if (want) glEnable(GL_ANTIALIAS); else glDisable(GL_ANTIALIAS); } }   // (D59: BORTUA FIGHTER's ring has no edge blending: it showed the sky along the mat's seams)
         if (is_lot) {   // (D39) the lot: a new frame is written whenever the last one has been taken; the vblank interrupt sends it on the beat
             gf_on = 1;
             { int want = mode == M_LIVE ? slv[ctl] * WHF : (mode == M_BUY || mode == M_BUILD) ? ed_lv * WHF : 0; cam_y += (want - cam_y) / 6; if (want - cam_y > -8 && want - cam_y < 8) cam_y = want; }   // (D36) the camera rises to the storey
             if (gf_ready < 0 && !ui_heavy) {
                 static u32 st_sig = 1, w_sig = 1; static int st_n, st_polys, st_k, w_n, w_polys, w_k; static u8 st_mode = 255, f_st[2], f_w[2];
-                int b = gf_fly == 0 ? 1 : 0; GFrm *f = &gfr[b]; f->ns = 0; gf_serial++;
+                int b = gf_fly == 0 ? 1 : 0; GFrm *f = &gfr[b]; f->ns=f->bad=0; gf_serial++;
                 polys = 0; lit_on = o_lit;
                 gx_base = POLY_ALPHA(31) | POLY_CULL_FRONT | POLY_ID(1) | POLY_FOG | (lit_on ? (POLY_FORMAT_LIGHT0 | POLY_FORMAT_LIGHT1) : 0);
                 gx_begin(gx_dlb[b], GXD_MAX); gf_rec = f; gf_ss = 0;
                 gx_cam(dist, pitch, yaw, mode == M_LIVE ? camx : 0, cam_y, mode == M_LIVE ? camz : 0);
                 dpass = 2; draw_build(yaw); int pd = polys; gf_cut(); gf_rec = 0; u32 *db = gxb; int dn = gxn, dh = gxh, dk = gxk; PROF(2);
                 static u32 b_sig = 1; static int b_n, b_polys, b_k; static u8 f_b[2];
-                int did = 0;   // Normally rebuild one still list per frame; an unsafe cached budget cannot wait.
-                { u32 bg = still_sig(yaw, 0) ^ (u32)mode; if (bg != b_sig) { did = 1; int k = b_k ^ 1; if (gf_busy && f_b[gf_fly] == k) while (gf_busy) {}   // (D41) the build and the things are recorded apart: turning the camera changes one or the other, rarely both
-                    polys = pd; gx_begin(gx_blb[k], GXB_MAX); dpass = 1; draw_build(yaw); b_n = gx_end(); DC_FlushRange(gx_blb[k], (u32)b_n * 4); b_polys = polys - pd; b_sig = bg; b_k = k; st_rec++; } }
+                // All pieces must describe the same snapshot. Rebuild every
+                // invalid piece, not just one per frame (old origin flicker).
+                { u32 bg=still_sig(yaw,0)^(u32)mode; if(render_piece_dirty(b_sig,bg,b_n,0)){int k=b_k^1; if (gf_busy && f_b[gf_fly] == k) while (gf_busy) {}   // (D41) the build and the things are recorded apart: turning the camera changes one or the other, rarely both
+                    polys = pd; gx_begin(gx_blb[k], GXB_MAX);gx_fmt(gx_base);gx_c1(0x2A,0);gx_txp=-1; dpass = 1; draw_build(yaw); b_n = gx_end(); DC_FlushRange(gx_blb[k], (u32)b_n * 4); b_polys = polys - pd; b_sig = bg; b_k = k; st_rec++; } }
                 /* Build a cached list against the TOP of its budget bucket.
                  * Animation changes within that bucket then remain safe on
                  * cache hits. Geometry growth must also invalidate items,
@@ -5574,17 +5749,17 @@ int main(void) {
                 int item_base = (pd + b_polys + 127) & ~127;
                 u32 sg = still_sig(yaw, 1) ^ (u32)mode ^ ((u32)(item_base / 128) * 2654435761u);
                 int item_over = pd + b_polys + st_polys > DS_RENDER_FRAME_TRI_LIMIT - DS_RENDER_WORLD_RESERVE;
-                if ((sg != st_sig && (!did || item_over)) || st_mode != mode) { did = 1; int k = st_k ^ 1; if (gf_busy && f_st[gf_fly] == k) while (gf_busy) {}
-                    polys = item_base; gx_begin(gx_slb[k], GXS_MAX); dpass = 4; draw_build(yaw); st_n = gx_end(); DC_FlushRange(gx_slb[k], (u32)st_n * 4); st_polys = polys - item_base; st_sig = sg; st_mode = (u8)mode; st_k = k; st_rec++; }
+                if(render_piece_dirty(st_sig,sg,st_n,item_over)||st_mode!=mode){int k=st_k^1; if (gf_busy && f_st[gf_fly] == k) while (gf_busy) {}
+                    polys = item_base; gx_begin(gx_slb[k], GXS_MAX);gx_fmt(gx_base);gx_c1(0x2A,0);gx_txp=-1; dpass = 4; draw_build(yaw); st_n = gx_end(); DC_FlushRange(gx_slb[k], (u32)st_n * 4); st_polys = polys - item_base; st_sig = sg; st_mode = (u8)mode; st_k = k; st_rec++; }
                 { /* World LOD uses the COMBINED frame budget, not a
                    * fresh zero in each cached display list. */
                   int base_tris = pd + b_polys + st_polys;
                   int world_base = (base_tris + 255) & ~255;
                   u32 wg = world_sig() ^ ((u32)(world_base / 256) * 2654435761u);
                   int world_over = base_tris + w_polys > DS_RENDER_FRAME_TRI_LIMIT;
-                  if (wg != w_sig && (!did || w_n == 0 || world_over)) {
+                  if(render_piece_dirty(w_sig,wg,w_n,world_over)){
                       int k = w_k ^ 1; if (gf_busy && f_w[gf_fly] == k) while (gf_busy) {}
-                      polys = world_base; gx_begin(gx_wlb[k], GXW_MAX); dpass = 3;
+                      polys = world_base; gx_begin(gx_wlb[k], GXW_MAX);gx_fmt(gx_base);gx_c1(0x2A,0);gx_txp=-1; dpass = 3;
                       draw_build(yaw); w_n = gx_end();
                       DC_FlushRange(gx_wlb[k], (u32)w_n * 4);
                       w_polys = polys - world_base; w_sig = wg; w_k = k; st_rec++;
@@ -5594,7 +5769,10 @@ int main(void) {
                 gxb = db; gxn = dn; gxh = dh; gxk = dk; gf_rec = f; gf_ss = gxn;
                 gf_add(gx_blb[b_k], b_n); f_b[b] = (u8)b_k; gf_add(gx_slb[st_k], st_n); f_st[b] = (u8)st_k; gf_add(gx_wlb[w_k], w_n); f_w[b] = (u8)w_k; st_polys += 0;
                 gx_c1(0x50, 0); gf_cut(); gf_rec = 0; DC_FlushRange(gx_dlb[b], (u32)gxn * 4); gx_end();
-                polys = pd + b_polys + st_polys + w_polys; polys_last = polys; bub_calc(b); gf_ready = b; PROF(4); }
+                polys=pd+b_polys+st_polys+w_polys;
+                // An incomplete FIFO chain must never reach the geometry engine.
+                if(!f->bad){polys_last=polys;bub_calc(b);__asm__ volatile("" ::: "memory");gf_ready=b;}
+                PROF(4); }
         } else if ((int)(vbl_n - next3d) >= 0) {   // the title, Create-a-Sim and the Map: straight to the GPU, as before
         bub_hide();   // (D85: no sprite is left over from Live, a fight or a game)
         gf_stop(); u32 v3 = vbl_n; GFX_TEX_FORMAT = 0; imm_txp = -1;   // (D43: no texture left set by a list)
@@ -5623,7 +5801,17 @@ int main(void) {
 #endif
         if (mode == M_CAS) draw_head(yaw);
         else if (fight_on) fight_3d();
-        else if (mode == M_MAP) { BInfo b; bm_block(sel_x, sel_y, &b); { LotPlan pl7; LotPlan *pp = 0; if (bm_gen >= 7) { bm_lot_plan(sel_x, sel_y, &b, &pl7); pp = &pl7; } r7_bx = sel_x; r7_by = sel_y; draw_lot(&b, yaw, pp); r7_bx = -1; } }
+        else if (mode == M_MAP) {
+            static DsPreviewKey old;
+            static BInfo b; static LotPlan pl;
+            DsPreviewKey key={sel_x,sel_y,bm_gen,bm_edit_stamp,1,bm_seed()};
+            if(!ds_preview_key_equal(old,key)){
+                bm_block(sel_x,sel_y,&b);
+                if(bm_gen>=7)bm_lot_plan(sel_x,sel_y,&b,&pl);
+                old=key;
+            }
+            r7_bx=sel_x;r7_by=sel_y;draw_lot(&b,yaw,bm_gen>=7?&pl:0);r7_bx=-1;
+        }
         glEnd();
         polys_last = polys; gf_shown++;
         glFlush(0);

@@ -1205,3 +1205,27 @@ void items_draw(char ch, int mx, int my, int rot, int along, int t) {
 #endif
     if (ch == (char)0xDB || ch == (char)0xDC) farm_extras(ch, mx, my, t);
 }
+
+// Budget-aware world props. When a many-box model cannot fit, keep its
+// largest real component(s), not an invented full-lot bounding box.
+int items_draw_budgeted(char ch,int mx,int my,int rot,int along,int t,int room){
+    if(room<512)return 2;
+    const ItemDef*d=def_of(ch);
+    if(ch=='P')return 0;
+    if(ch=='|'||ch=='B'||ch=='+'||is_ramp_c(ch)||!d){
+        if(room<1536)return 2;
+        items_draw(ch,mx,my,rot,along,t);return 0;
+    }
+    const IBox *b=d->b;int n=d->n,base=box_base[d-defs][0];
+    if((d->flags&F_ALONG)&&!along&&d->bv){b=d->bv;n=d->nv;base=box_base[d-defs][1];}
+    if(room>=1024+n*240){items_draw(ch,mx,my,rot,along,t);return 0;}
+    if(n<=0)return 0;
+    shade6_update(t);
+    int r=(d->flags&F_ROT)?rot:0,best=0,score=-1;
+    for(int i=0;i<n;i++){
+        int v=(b[i].a1-b[i].a0)*(b[i].b1-b[i].b0)*MAX(1,b[i].z1-b[i].z0);
+        if(v>score){score=v;best=i;}
+    }
+    draw_box(&b[best],box_ref[base+best],r,mx*TILE,my*TILE,t);
+    return 1;
+}

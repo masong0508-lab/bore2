@@ -75,11 +75,14 @@ const Outing outing_table[OUT_N]={
 #endif
 static inline int outing_group(int lot,int street){int cue=scene_music_venue(lot);return street||cue<SC_VENUE_FIRST?-1:cue-SC_VENUE_FIRST;}
 static inline const Outing *outing_get(int id){return id>=0&&id<OUT_N?&outing_table[id]:0;}
+static inline int outing_is_open(const Outing *o,int minute){
+    return o&&minute>=o->from*60&&minute<o->to*60;
+}
 static inline int outing_check(int id,int group,int age,int minute,long money,int rest,int busy){
     const Outing *o=outing_get(id);
     if(!o||group<0||group>=SC_VENUE_COUNT||living_outing_group(id)!=group)return OUT_NO_VENUE;
     if(age<o->age)return OUT_AGE;
-    if(minute<o->from*60||minute>=o->to*60)return OUT_CLOSED;
+    if(!outing_is_open(o,minute))return OUT_CLOSED;
     if(money<o->fee)return OUT_MONEY;
     if(rest<(int)o->energy+8)return OUT_TIRED;
     return busy?OUT_BUSY:OUT_OK;

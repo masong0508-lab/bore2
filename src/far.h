@@ -15,7 +15,13 @@ int  far_reach_m(void);      // how far the last frame's far view really reached
 void far_new_world(void);                  // a new world (after bm_new): every town's buildings, worked out once
 void far_reset(void);                      // after a jump (arriving, a taxi): the land round you, worked out again
 int  far_begin(u32 horizon);               // a frame's far view: set up (0: off). The sky's colour at the horizon, for the haze
-void far_box_world(int x0, int z0, int x1, int z1, int sto, u16 wall15, int rs, int pit, u16 roof15);   // a map building past the detail
+void far_box_world_shape(int x0,int z0,int x1,int z1,int sto,u16 wall15,int rs,int pit,u16 roof15,int shape);
+int far_ground_visible(int x0,int z0,int x1,int z1);
+void far_ground_patch(int x0,int z0,int x1,int z1,u32 color,const int *hh);
+void far_local_begin(u32 horizon);       // near-only mode still uses the correctly clipped boxes
+void far_draw_pending(u32 horizon);       // render only in-window lots not yet generated
+void far_draw_local_trees(u32 horizon,int fx,int fy,int radius);
+void far_resume(void);                     // restore far transforms after a near/ground pass
 void far_draw(int rx0, int ry0, int rx1, int ry1);   // the land, the towns and the trees (the detail box is left to the near world)
 void far_sky(u32 top, u32 horizon);        // the sky, its haze sitting on the real horizon
 void far_sky_sea(u32 top, u32 horizon, u32 sea);   // the same over an endless sea (the island): the haze deepens into the sea's colour below the horizon

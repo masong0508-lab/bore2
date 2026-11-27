@@ -1,5 +1,6 @@
 // gfx.c - BORE 2 rendering core: double buffer, ordering table, camera, GTE quads, 2D overlay.
 #include "gfx.h"
+#include "frame_render_policy.h"
 #include "font.h"
 #undef TILE   // the GPU primitive, not the world tile size, in this file
 
@@ -31,7 +32,7 @@ static int  db_active = 0;
 static int  alloc_reserve;        // bytes of the packet buffer gfx_alloc keeps back (gfx_set_reserve)
 char *gfx_pk_next, *gfx_pk_end;   // the packet cursor and its limit (the end, less the reserve): gfx_fast.h allocates inline
 u32 *gfx_ot_cur;                   // this frame's ordering table
-int gfx_zbias, gfx_fog_on, gfx_zbase, gfx_ot_max = OT_NEAR - 1;
+int gfx_zbias, gfx_fog_on, gfx_zbase, gfx_ot_max=OT_NEAR-4;
 int gfx_wide;
 int gfx_keep;
 int gfx_min_vsyncs = 1;   // (the options menu: 2 a steady 30 FPS, 3 a steady 20)
@@ -50,10 +51,10 @@ int isqrt(int v) {
     return (int)r;
 }
 // a sampling profiler: the music timer (480 Hz) notes where the CPU was; the L3 readout lists the busiest 256-byte stretches of code
-#if defined(AUTO_CITY) || defined(PROF_FULL)
+#if defined(PROF_FULL)
 #define PH_N 1800   // (test builds: the histogram over the first 460 KB of code)
 #else
-#define PH_N 16     // (plain Release: 3.5 KB given back to the game; the L3 list then covers the first 4 KB only. Build with -DPROF_FULL=1 for the real thing)
+#define PH_N 16     // 3.5 KiB reclaimed on stock RAM, including normal scripted replays; opt in with PROF_FULL
 #endif
 u16 prof_hist[PH_N]; int prof_on, prof_total;
 void prof_sample(void) {
@@ -239,13 +240,18 @@ void gfx_flip(void) {
     gfx_set_focal(230);
 }
 
-void gfx_set_reserve(int bytes) { alloc_reserve = bytes; gfx_pk_end = db[db_active].p + PKL(db_active) - 64 - bytes - (bytes < RESERVE_PEOPLE ? KEEP_BYTES : 0); }   // (the kept pieces' room, KEEP_BYTES, is the last of the buffer: the world's and the land's limits do not count it, everyone after them does)
+void gfx_set_reserve(int bytes){
+    bytes=MAX(0,bytes);alloc_reserve=bytes;
+    int end=PKL(db_active)-64-bytes-(bytes<RESERVE_PEOPLE?KEEP_BYTES:0);
+    gfx_pk_end=db[db_active].p+MAX(0,end);
+}   // (the kept pieces' room, KEEP_BYTES, is the last of the buffer: the world's and the land's limits do not count it, everyone after them does)
 int gfx_room(void) { return (int)(gfx_pk_end - db_next); }   // (bytes left before the limit, the reserve counted out)
 int gfx_bytes_used(void) { return (int)(db_next - db[db_active].p); }
 void *gfx_alloc(int bytes) {
     char *p = db_next;
-    if (p + bytes > gfx_pk_end) { gfx_overflow++; return 0; }
-    db_next = p + ((bytes + 3) & ~3);
+    int n=render_packet_bytes(bytes,(int)(gfx_pk_end-p));
+    if(!n){gfx_overflow++;return 0;}
+    db_next=p+n;
     return p;
 }
 u32 *gfx_ot(void) { return gfx_ot_cur; }   // (the frame's table, or a person's while it is rendered into a sprite)
@@ -296,7 +302,7 @@ void gfx_set_object_m(const MATRIX *world) {
 }
 void gfx_set_identity(void) {
     GTE_FENCE(); gte_SetRotMatrix(&cam.view);
-    if (gfx_lift) { MATRIX v = cam.view; for (int i = 0; i < 3; i++) v.t[i] -= (gfx_lift * v.m[i][1]) >> 12; gte_SetTransMatrix(&v); } else
+    if (gfx_lift) { MATRIX v = cam.view; for(int i=0;i<3;i++)v.t[i]=render_lift_translation(v.t[i],gfx_lift,v.m[i][1]); gte_SetTransMatrix(&v); } else
     gte_SetTransMatrix(&cam.view);
     obj_yaw = 0; light_to_object();
 }
@@ -386,7 +392,7 @@ static inline int fog_scale(int otz) {   // 256 = as is
 void gfx_set_zbias(int b) { zbias = (b << 1) >> OT_SHIFT; }   // (b in the old 2-unit buckets)
 int gfx_floor_pass;                       // set while drawing the floor: it goes to the very back (nothing is ever under it), so shadows can lie on it
 static inline int ot_index(int otz) {
-    if (gfx_floor_pass) return OT_FLOOR;
+    if(gfx_floor_pass)return gfx_floor_pass==2?OT_GROUND_WIN:OT_FLOOR;
     int i = (otz >> OT_SHIFT) - zbias - gfx_zbase;
     if (i < 1) i = 1;
     if (i > gfx_ot_max) i = gfx_ot_max;

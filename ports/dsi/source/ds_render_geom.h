@@ -135,8 +135,11 @@ static int ds_street_ground_lift(int lx, int ly, int south, int east,
     if (ly <= 12) return east && (lx == 13 || lx == 17) ? 24 : 0;
     int h = corner & 1, v = corner & 2;
     if (corner && !h && !v) h = v = 1;
-    return ((h && (ly == 13 || ly == 17)) ||
-            (v && (lx == 13 || lx == 17))) ? 24 : 0;
+    const int xedge = lx == 13 || lx == 17, yedge = ly == 13 || ly == 17;
+    // At a two-way intersection the raised pavement exists only at the
+    // four corners. The crossing arms themselves are at road height.
+    if (h && v) return xedge && yedge ? 24 : 0;
+    return ((h && yedge) || (v && xedge)) ? 24 : 0;
 }
 /* The DS rasterizer accepts at most 2048 polygons per frame. This
  * renderer counts two triangles per quad although it emits one quad;
@@ -144,9 +147,14 @@ static int ds_street_ground_lift(int lx, int ly, int south, int east,
  * Houses, floors and Sims come first. Decorations and distant lots degrade
  * before they can starve the primary geometry. */
 enum { DS_RENDER_FRAME_TRI_LIMIT = 3800,
-       DS_RENDER_WORLD_RESERVE = 440,
-       DS_RENDER_NEAR_RESERVE = 200,
+       DS_RENDER_WORLD_RESERVE = 920,
+       DS_RENDER_NEAR_RESERVE = 320,
        DS_RENDER_FAR_RESERVE = 90 };
+/* Keep the house exterior intact during outdoor camera rotations. */
+static inline int ds_wall_cutaway_allowed(int live, int roofs, int inside)
+{
+    return !live || (roofs != 1 && inside);
+}
 static int ds_item_over_budget(int triangles, int yard)
 {
     return triangles > DS_RENDER_FRAME_TRI_LIMIT -
@@ -258,4 +266,20 @@ static int ds_visible_storey_top(int top, int viewed, int live,
     return show;
 }
 
+
+
+// Map preview ground: same 2x2 checker scale as live; no checker on sea.
+static inline int ds_preview_ground_step(int n,int checker,int water){
+    return checker&&!water?2:n;
+}
+static inline int ds_preview_ground_end(int start,int step,int n){
+    return start+step<n?start+step:n;
+}
+
+
+// The map preview rotates each frame, but its selected lot plan does not.
+typedef struct {int x,y,gen,edit,valid;unsigned seed;} DsPreviewKey;
+static inline int ds_preview_key_equal(DsPreviewKey a,DsPreviewKey b){
+    return a.valid&&b.valid&&a.x==b.x&&a.y==b.y&&a.gen==b.gen&&a.edit==b.edit&&a.seed==b.seed;
+}
 #endif

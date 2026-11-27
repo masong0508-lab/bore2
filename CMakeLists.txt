@@ -34,7 +34,9 @@ get_target_property(BORE_SRCS bore2 SOURCES)
 # Recover resident code space using the existing size-oriented compile policy;
 # retain save pools, overlay arena, geometry limits and packet buffers intact.
 # PS1 only; native camera and performance runs must revalidate this choice.
-set(BORE_SMALL src/world.c src/atlas.c src/main.c src/pop.c src/wants.c src/places.c src/look.c src/audio.c src/home.c src/island.c src/nature.c src/save.c src/mcard.c src/sim.c src/traits.c src/traits_auto.c src/persona.c src/story.c src/ui.c src/bigmap.c src/skate.c src/traffic.c src/gotchi.c src/band.c src/dog.c src/fmt.c src/font.c src/ovl.c src/realm_res.c src/arcade_res.c ${BORE_SMALL_EXTRA})
+# Size-optimize the far renderer on stock PS1 to restore resident stack
+# headroom without reducing the building cache or packet capacity.
+set(BORE_SMALL src/far.c src/world.c src/atlas.c src/main.c src/pop.c src/wants.c src/places.c src/look.c src/audio.c src/home.c src/island.c src/nature.c src/save.c src/mcard.c src/sim.c src/traits.c src/traits_auto.c src/persona.c src/story.c src/ui.c src/bigmap.c src/skate.c src/traffic.c src/gotchi.c src/band.c src/dog.c src/fmt.c src/font.c src/ovl.c src/realm_res.c src/arcade_res.c ${BORE_SMALL_EXTRA})
 foreach(f ${BORE_SRCS})
 	if(f MATCHES "\\.c$")
 		if(f IN_LIST BORE_SMALL)

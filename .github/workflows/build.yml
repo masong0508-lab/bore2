@@ -10,6 +10,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Verify classic music rotation and hidden archive indexing
+        run: cc -std=c99 -Wall -Wextra -Werror -Isrc test/music_library_test.c -o /tmp/music_library && /tmp/music_library
+      - name: Verify frame ownership and safe cache replacement
+        run: cc -std=c99 -Wall -Wextra -Werror -Isrc test/frame_render_policy_test.c -o /tmp/frame_policy && /tmp/frame_policy
       - name: Check that the audit cannot silently pass on bad output
         run: python3 -m unittest discover -s test -p 'test_world_coherence.py' -v
       - name: Verify PS1 lens/dolly parallax and unchanged first-person and Dreamcast views
@@ -18,6 +22,18 @@ jobs:
           /tmp/camera_lens_ps1
           cc -std=c99 -Wall -Wextra -Werror -DBORE_DC test/camera_lens_test.c -o /tmp/camera_lens_dc
           /tmp/camera_lens_dc
+      - name: Verify whole-house LOD hysteresis and moving camera stability
+        run: cc -std=c99 -Wall -Wextra -Werror test/house_lod_test.c -o /tmp/house_lod && /tmp/house_lod
+      - name: Verify shared landscape plans and local resident preferences
+        run: cc -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc test/neighborhood_life_test.c -o /tmp/neighborhood_life && /tmp/neighborhood_life
+      - name: Verify shared capped roof profiles
+        run: cc -std=c99 -Wall -Wextra -Werror -Isrc test/roof_profile_test.c -o /tmp/roof_profile && /tmp/roof_profile
+      - name: Verify compact L-house skyline geometry cache
+        run: cc -std=c99 -Wall -Wextra -Werror -Isrc test/house_shape_test.c -o /tmp/house_shape && /tmp/house_shape
+      - name: Verify near/far house footprint edges match generated inclusive walls
+        run: cc -std=c99 -Wall -Wextra -Werror test/house_footprint_test.c -o /tmp/house_footprint && /tmp/house_footprint
+      - name: Verify pending-house proxy and prioritized roof handoff
+        run: cc -std=c99 -Wall -Wextra -Werror test/world_stream_models_test.c -o /tmp/world_stream_models && /tmp/world_stream_models
       - name: Verify bounded audio transfers and stop acknowledgements
         run: cc -std=c99 -Wall -Wextra -Werror test/audio_slice_test.c -o /tmp/audio_slice_test && /tmp/audio_slice_test
       - name: Verify physical venue and transport access policy

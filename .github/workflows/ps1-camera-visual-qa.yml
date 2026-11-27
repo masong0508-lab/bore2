@@ -14,6 +14,14 @@ on:
       - "src/camera_lens.h"
       - "test/camera_lens_test.c"
       - "test/ps1_camera_visual.sh"
+      - "test/ps1_house_motion_visual.sh"
+      - "test/ps1_frame_flash.py"
+      - "src/frame_render_policy.h"
+      - "src/gfx_fast.h"
+      - "src/far.h"
+      - "src/world_stream_models.h"
+      - "src/house_lod.h"
+      - "src/house_footprint.h"
       - ".github/workflows/ps1-camera-visual-qa.yml"
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,7 +29,7 @@ concurrency:
 jobs:
   ps1-camera:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -63,4 +71,24 @@ jobs:
             out-ps1-camera/ram-*.bin
             out-ps1-camera/symbols-*.txt
             out-ps1-camera/script-*.txt
+          if-no-files-found: warn
+
+      - name: Capture real PS1 house geometry through moving orbit and dolly
+        timeout-minutes: 20
+        run: bash test/ps1_house_motion_visual.sh "$PWD/out-ps1-house-motion"
+      - name: Upload native moving-house screenshots and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore2_ps1_house_motion_native
+          path: |
+            out-ps1-house-motion/house_*.png
+            out-ps1-house-motion/shots/**/*.png
+            out-ps1-house-motion/house_motion_results.json
+            out-ps1-house-motion/ram.bin
+            out-ps1-house-motion/symbols.txt
+            out-ps1-house-motion/route.txt
+            out-ps1-house-motion/config.log
+            out-ps1-house-motion/build.log
+            out-ps1-house-motion/emulate.log
           if-no-files-found: warn

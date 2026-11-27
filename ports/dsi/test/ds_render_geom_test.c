@@ -28,6 +28,14 @@ static void room(unsigned char *hw, unsigned char *vw, int n,
     }
 }
 int main(void) {
+    DsPreviewKey key={12,34,8,1,1,1234},other=key;
+    assert(ds_preview_key_equal(key,other));
+    other.x++;assert(!ds_preview_key_equal(key,other));other=key;
+    other.y++;assert(!ds_preview_key_equal(key,other));other=key;
+    other.seed++;assert(!ds_preview_key_equal(key,other));other=key;
+    other.gen--;assert(!ds_preview_key_equal(key,other));other=key;
+    other.edit++;assert(!ds_preview_key_equal(key,other));other=key;
+    other.valid=0;assert(!ds_preview_key_equal(key,other));
     int living[4], kitchen[4], hall[4];
     floor_rect(1, 1, 5, 5, living);
     floor_rect(6, 1, 5, 5, kitchen);
@@ -74,9 +82,16 @@ int main(void) {
     assert(ds_street_ground_lift(5, 13, 1, 0, 0, 1) == 24);
     assert(ds_street_ground_lift(5, 13, 0, 0, 0, 1) == 0);
     assert(ds_street_ground_lift(14, 14, 1, 1, 3, 1) == 0);
-    assert(ds_street_ground_lift(13, 14, 1, 1, 3, 1) == 24);
+    assert(ds_street_ground_lift(13, 14, 1, 1, 3, 1) == 0);
     assert(ds_street_ground_lift(14, 14, 1, 1, 4, 1) == 0);
-    assert(ds_street_ground_lift(14, 13, 1, 1, 4, 1) == 24);
+    assert(ds_street_ground_lift(14, 13, 1, 1, 4, 1) == 0);
+    /* The rendered crossing has four corner sidewalk cells and a level
+     * road everywhere else. Verify all 25 positions, including turns. */
+    for (int c = 0; c <= 7; ++c) for (int y = 13; y <= 17; ++y) for (int x = 13; x <= 17; ++x) {
+        int edge_x = x == 13 || x == 17, edge_y = y == 13 || y == 17;
+        int expected = c == 0 ? 0 : (c & 3) == 1 ? edge_y : (c & 3) == 2 ? edge_x : edge_x && edge_y;
+        assert(ds_street_ground_lift(x, y, 1, 1, c, 1) == expected * 24);
+    }
     assert(ds_street_ground_lift(8, 8, 1, 1, 3, 1) == 0);
     assert(ds_street_ground_lift(8, 8, 1, 1, 3, 0) == 0);
     /* The bounding box of two wings includes open air. The cutaway test
@@ -149,14 +164,30 @@ int main(void) {
       ds_roof_height_map(height, fl, h, v, 13, 1);
       for (int c = 0; c < 13 * 13; ++c) assert(height[c] == 0);
     }
+    // Preview tessellation must cover each cell exactly once, including
+    // the odd final row/column. Check 49 checker patches versus 169.
+    for(int checker=0;checker<2;checker++)for(int sea=0;sea<2;sea++){
+        int cells[13][13]={{0}},n=0,step=ds_preview_ground_step(13,checker,sea);
+        for(int z=0;z<13;z+=step)for(int x=0;x<13;x+=step){
+            int X=ds_preview_ground_end(x,step,13),Z=ds_preview_ground_end(z,step,13);
+            assert(X>x&&Z>z&&X<=13&&Z<=13);n++;
+            for(int y=z;y<Z;y++)for(int i=x;i<X;i++)cells[y][i]++;
+        }
+        assert(n==(checker&&!sea?49:1));
+        for(int y=0;y<13;y++)for(int x=0;x<13;x++)assert(cells[y][x]==1);
+    }
     /* The renderer counts two triangles per quad; reserve room for the
      * world in the object pass, and degrade details before full capacity. */
-    assert(!ds_item_over_budget(3000, 0));
-    assert(!ds_item_over_budget(3350, 0));
-    assert(ds_item_over_budget(3361, 0));
-    assert(ds_item_over_budget(3310, 1));
-    assert(ds_world_detail_budget(3600));
-    assert(!ds_world_detail_budget(3601));
+    assert(!ds_item_over_budget(2880, 0));
+    assert(ds_item_over_budget(2881, 0));
+    assert(!ds_item_over_budget(2800, 1));
+    assert(ds_item_over_budget(2801, 1));
+    assert(!ds_wall_cutaway_allowed(1, 0, 0));
+    assert(!ds_wall_cutaway_allowed(1, 1, 1));
+    assert(ds_wall_cutaway_allowed(1, 0, 1));
+    assert(ds_wall_cutaway_allowed(0, 1, 0));
+    assert(ds_world_detail_budget(3480));
+    assert(!ds_world_detail_budget(3481));
     assert(ds_world_far_budget(3710));
     assert(!ds_world_far_budget(3711));
     /* The preview must not invent streets in gen 7/8 low-density towns:
