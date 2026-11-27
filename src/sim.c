@@ -1719,7 +1719,7 @@ static int veh_footprint_free(int type,int x,int z,int yaw) {
         if(!bore_vehicle_cell_overlap(x,y,sn,cs,hw,hl,mx*TILE+TILE/2,my*TILE+TILE/2,TILE/2))continue;
         if(floorMap[my][mx]<FL_GRASS||floorMap[my][mx]==FL_WATER||floorMap[my][mx]==FL_POOLTILE||!world_walkable(mx,my))return 0;
     }
-    return 1;
+    return !traffic_vehicle_blocked(type,x,z,yaw);
 }
 static void veh_step_body(Sim *s,int dx,int dz,int type){
     if(!land_walk_pace(s,dx,dz))return;
@@ -1804,7 +1804,20 @@ static int veh_mount(Sim *s, int t) {   // 1: you are on it
 #endif
     int x=s->x,z=s->z,yaw=s->yaw;
     if(traffic_parked(t)&&!traffic_park_pose_near(t,x,z,&x,&z,&yaw)){char b[40];snprintf(b,sizeof b,"YOUR %s IS PARKED ELSEWHERE",VT[t].nm);sim_note(b);return 0;}
-    if(!veh_footprint_free(t,x,z,yaw)){sim_note("NEED MORE SPACE TO DRIVE");return 0;}
+    if(!veh_footprint_free(t,x,z,yaw)){
+        int ok=0;
+        /* A newly summoned vehicle may need more room than the rider's
+           pedestrian position. Never move a previously parked vehicle. */
+        if(!traffic_parked(t)){
+            static const int dd[4][2]={{1,0},{-1,0},{0,1},{0,-1}};
+            for(int r=1;r<=2&&!ok;r++)for(int d=0;d<4&&!ok;d++){
+                int dx=dd[d][0]*TILE*r,dz=dd[d][1]*TILE*r,clear=1;
+                for(int k=1;k<=r*2;k++)if(!footprint_free(s->x+dx*k/(r*2),s->z+dz*k/(r*2))){clear=0;break;}
+                if(clear&&veh_footprint_free(t,s->x+dx,s->z+dz,yaw)){x=s->x+dx;z=s->z+dz;ok=1;}
+            }
+        }
+        if(!ok){sim_note("NEED MORE SPACE TO DRIVE");return 0;}
+    }
     traffic_unpark(t);s->x=x;s->z=z;s->yaw=yaw;
     veh_on = t + 1; veh_sel = t; veh_lowfuel = 0; s->gait.sit = VT[t].seat > 0; s->gait.amp = 0;
     { char b[40]; snprintf(b, sizeof b, "ON THE %s. O TO GET OFF", VT[t].nm); sim_note(b); }
@@ -2689,7 +2702,7 @@ static int sim_player_interact_(void) {
 void sim_player_cancel(void) {
     Sim *s = &sims[player];
     if (s->action != ACT_NONE) { end_action(s); return; }
-    if (veh_on) { if(veh_dismount(s,0))sim_note("OFF AND ON YOUR FEET");return; }
+    if (veh_on) { int t=veh_on-1; if(!veh_dismount(s,0))return; if(!ride_from(s,2+t))sim_note("OFF AND ON YOUR FEET");return; }
     if (on_board) { skate_off(s); if (!ride_from(s, 1)) sim_note("OFF THE BOARD AND ON YOUR FEET"); return; }
     if (has_board || veh_own) ride_from(s, 0);
 }

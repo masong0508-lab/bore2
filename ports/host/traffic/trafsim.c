@@ -6,6 +6,8 @@
 // river's bridge); nothing else is needed to know where a car may be. People: a few walkers who stroll the pavements and cross anywhere.
 // The audit looks at the pose the game draws (traf_dbg_get): where each car is, which way it faces, how fast it really moves.
 #include <stdio.h>
+#include <assert.h>
+#include "traffic.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
@@ -27,7 +29,7 @@ void world_gh_reset(void) {}
 // ---- what traffic.c needs of the rest of the game ----
 u8 floorMap[MH][MW];
 int world_zone = ZONE_CITY, world_wbx = -1, world_wby = -1;
-Sim sims[MAX_SIMS]; int nsims = 1, player = 0;
+Sim sims[MAX_SIMS]; int nsims = 1, player = 0, veh_on = 0;
 int sim_tile_x(const Sim *s) { return s->x / TILE; }
 int sim_tile_y(const Sim *s) { return (-s->z) / TILE; }
 int veh_colour(int t) { return t % 6; }
@@ -243,6 +245,27 @@ static void windows_for(int n, int *wb) {   // the first n windows of this world
 }
 extern unsigned traf_dbg_jmask(int, int);
 int main(int argc, char **argv) {
+#ifndef TRAF_SRC
+    if(argc==2&&!strcmp(argv[1],"--parking-test")){
+        int x,z,yaw;
+        world_wbx=100;world_wby=200;world_zone=ZONE_CITY;
+        traffic_clear();traffic_park(VEH_SEDAN,20*TILE,-20*TILE,1024);
+        assert(traffic_parked(VEH_SEDAN));
+        assert(traffic_park_pose_near(VEH_SEDAN,21*TILE,-20*TILE,&x,&z,&yaw));
+        assert(x==20*TILE&&z==-20*TILE&&yaw==1024);
+        assert(!traffic_park_pose_near(VEH_SEDAN,25*TILE,-20*TILE,&x,&z,&yaw));
+        assert(traffic_vehicle_blocked(VEH_VAN,20*TILE,-20*TILE,1024));
+        assert(!traffic_vehicle_blocked(VEH_SEDAN,20*TILE,-20*TILE,1024));
+        /* Local coordinates change with the window; absolute parking does not. */
+        world_wbx++;
+        assert(traffic_park_pose_near(VEH_SEDAN,(20-BM_BLK)*TILE,-20*TILE,&x,&z,&yaw));
+        assert(x==(20-BM_BLK)*TILE&&z==-20*TILE&&yaw==1024);
+        assert(traffic_vehicle_blocked(VEH_VAN,x,z,yaw));
+        traffic_unpark(VEH_SEDAN);
+        assert(!traffic_vehicle_blocked(VEH_VAN,x,z,yaw));
+        puts("actual traffic parking and window rebase: PASS");return 0;
+    }
+#endif
     if (getenv("JM")) { for (int d = 0; d < 4; d++) { for (int m = 0; m < 3; m++) printf("0x%07xu, ", traf_dbg_jmask(d, m)); printf("\n"); } return 0; }
     if (argc < 3) { fprintf(stderr, "usage: trafsim SEED GEN [LEVEL] [STEPS] [WINDOWS] [-v]\n"); return 1; }
     unsigned seed = (unsigned)strtoul(argv[1], 0, 0); int gen = atoi(argv[2]), level = argc > 3 ? atoi(argv[3]) : 2, steps = argc > 4 ? atoi(argv[4]) : 6000, nw = argc > 5 ? atoi(argv[5]) : 6;

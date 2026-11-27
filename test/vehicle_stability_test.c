@@ -25,5 +25,13 @@ int main(void){
     assert(!bore_vehicle_claim_ok(1,0,1,0,0));
     assert(!bore_vehicle_claim_ok(1,0,0,0,1));
     assert(bore_vehicle_claim_ok(0,0,1,1,1));
+    assert(bore_vehicle_box_overlap(0,0,0,4096,210,450,0,800,0,4096,210,450));
+    assert(!bore_vehicle_box_overlap(0,0,0,4096,210,450,0,901,0,4096,210,450));
+    assert(!bore_vehicle_box_overlap(0,0,0,4096,210,450,421,0,0,4096,210,450));
+    assert(bore_vehicle_box_overlap(0,0,0,4096,210,450,600,0,4096,0,210,450));
+    for(int y=-1000;y<=1000;y+=31)for(int x=-1000;x<=1000;x+=29){
+        int a=bore_vehicle_box_overlap(0,0,0,4096,210,450,x,y,2896,2896,80,200);
+        assert(a==bore_vehicle_box_overlap(x,y,2896,2896,80,200,0,0,0,4096,210,450));
+    }
     puts("vehicle stability: model footprints, rotational parity, non-wrapping rebases and junction ownership PASS");
 }

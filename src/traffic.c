@@ -10,6 +10,7 @@
 #include "items.h"
 #include "save.h"
 #include "traffic.h"
+#include "vehicle_stability.h"
 #include "bigmap.h"
 #include "citizens.h"
 
@@ -130,6 +131,16 @@ static int body(Circ *o, int n, int x, int y, int yaw) { int sx = (isin(yaw) * 1
 static int gather(const Car *c, Circ *o) {   // the cars, the vehicles parked in the road and the people within reach of this car
     int n = 0, x0, y0, y_;
     pose(c, c->p >> 3, &x0, &y0, &y_);
+    if(veh_on>0&&veh_on<=VEH_N&&nsims>0){
+        const Sim *s=&sims[player];
+        if(!s->away&&!s->lvl&&ABS(s->x-x0)+ABS(-s->z-y0)<3200){
+            int t=veh_on-1,r=bore_vehicle_half_width(t),a=bore_vehicle_half_length(t)-r;
+            for(int j=-1;j<=1;j++){
+                o[n].x=s->x+((isin(s->yaw)*a*j)>>12);
+                o[n].y=-s->z+((icos(s->yaw)*a*j)>>12);o[n++].r=r;
+            }
+        }
+    }
     for (int j = 0; j < NCAR && n < NOB - 2; j++) { const Car *k = &car[j]; if (k == c || !k->lim || ABS(k->gx - c->gx) + ABS(k->gy - c->gy) > 13) continue;
         int x, y, yaw; pose(k, k->p >> 3, &x, &y, &yaw); n = body(o, n, x, y, yaw); }
     for (int t = 0; t < VEH_N && n < NOB - 2; t++) { const Park *p = &park[t]; if (!p->on) continue;
@@ -239,7 +250,7 @@ static int spawn(void) {
 }
 static void people(void) {   // everyone on foot the cars must give way to: your household and the townsfolk
     npd = 0;
-    for (int i = 0; i < nsims && npd < 8; i++) { const Sim *s = &sims[i]; if (s->away || s->lvl) continue; pd[npd][0] = s->x; pd[npd][1] = -s->z; pdr[npd++] = i == player ? 75 : 45; }
+    for (int i = 0; i < nsims && npd < 8; i++) { const Sim *s = &sims[i]; if (s->away || s->lvl || (i==player&&veh_on)) continue; pd[npd][0] = s->x; pd[npd][1] = -s->z; pdr[npd++] = i == player ? 75 : 45; }
     { s16 xy[24]; int m = citizens_walkers(xy, 12, sims[player].x, -sims[player].z);
       for (int i = 0; i < m; i++) { pd[npd][0] = xy[2 * i]; pd[npd][1] = -xy[2 * i + 1]; pdr[npd++] = 45; } }
     for (int i = 0; i < npd; i++) { int tx = pd[i][0] >> 8, ty = pd[i][1] >> 8; if (tx >= 0 && ty >= 0 && tx < MW && ty < MH && floorMap[ty][tx] >= FL_ZEB_A && floorMap[ty][tx] <= FL_ZEB_B) pdr[i] = 110; }   // (on a crossing: a wide berth)
@@ -248,7 +259,10 @@ void traffic_update(int steps) {
     if (world_zone != ZONE_CITY || world_wbx < 0) return;
     int want = target(), n = 0; static u8 tk; if (honk_t > 0) honk_t -= steps;
     for (int i = 0; i < NCAR; i++) if (car[i].lim) n++;
-    if (!(tk & 4)) people();   // (the people on foot move slowly: not every frame)
+    static int pwx=-1,pwy=-1,pride=-1;
+    if(!(tk&4)||pwx!=world_wbx||pwy!=world_wby||pride!=veh_on){
+        people();pwx=world_wbx;pwy=world_wby;pride=veh_on;
+    }
     for (int s = 0; s < steps; s++) {
         tk++;
         for (int i = 0; i < NCAR; i++) if (car[i].lim) step_car(&car[i], i, tk);
@@ -343,6 +357,23 @@ void traffic_park(int t, int x, int z, int yaw) {
 }
 void traffic_unpark(int t) { if(t>=0&&t<VEH_N)park[t].on=0; }
 int traffic_parked(int t) { return t >= 0 && t < VEH_N && park[t].on; }
+int traffic_vehicle_blocked(int type,int x,int z,int yaw){
+    if(world_zone!=ZONE_CITY||world_wbx<0||type<0||type>=VEH_N)return 0;
+    int y=-z,sn=isin(yaw),cs=icos(yaw),hw=bore_vehicle_half_width(type),hl=bore_vehicle_half_length(type);
+    for(int j=0;j<NCAR;j++){
+        const Car *c=&car[j];if(!c->lim)continue;
+        int cx,cy,a;pose(c,c->p>>3,&cx,&cy,&a);
+        if(ABS(cx-x)+ABS(cy-y)>2400)continue;
+        if(bore_vehicle_box_overlap(x,y,sn,cs,hw,hl,cx,cy,isin(a),icos(a),bore_vehicle_half_width(c->type),bore_vehicle_half_length(c->type)))return 1;
+    }
+    for(int t=0;t<VEH_N;t++){
+        const Park *p=&park[t];if(t==type||!p->on)continue;
+        int cx=p->x-bx_()*TILE,cy=p->y-by_()*TILE;
+        if(ABS(cx-x)+ABS(cy-y)>2400)continue;
+        if(bore_vehicle_box_overlap(x,y,sn,cs,hw,hl,cx,cy,isin(p->yaw&4095),icos(p->yaw&4095),bore_vehicle_half_width(t),bore_vehicle_half_length(t)))return 1;
+    }
+    return 0;
+}
 int traffic_park_pose_near(int t,int x,int z,int *outx,int *outz,int *yaw){
     if(!traffic_parked(t)||world_zone!=ZONE_CITY||world_wbx<0)return 0;
     const Park *p=&park[t];int px=p->x-bx_()*TILE,pz=by_()*TILE-p->y;
@@ -356,5 +387,5 @@ int traffic_park_near(int t,int x,int z){
 void traffic_save(void) { for (int t = 0; t < VEH_N; t++) { sv_u8(park[t].on); sv_u32((u32)park[t].x); sv_u32((u32)park[t].y); sv_u16(park[t].yaw); } }
 void traffic_load(int ver) {
     traffic_clear();
-    for (int t = 0; t < VEH_N; t++) { park[t].on = 0; if (ver >= 19) { park[t].on = ld_u8() & 1; park[t].x = (s32)ld_u32(); park[t].y = (s32)ld_u32(); park[t].yaw = ld_u16(); } }
+    for (int t = 0; t < VEH_N; t++) { park[t].on = 0; if (ver >= 19) { park[t].on = ld_u8() & 1; park[t].x = (s32)ld_u32(); park[t].y = (s32)ld_u32(); park[t].yaw = ld_u16()&4095; if(park[t].x<0||park[t].y<0||park[t].x>=BM_N*BLK*TILE||park[t].y>=BM_N*BLK*TILE)park[t].on=0; } }
 }
