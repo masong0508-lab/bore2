@@ -771,26 +771,44 @@ public final class MainActivity extends Activity {
         int service=e.phase==ResidentSchedule.WORK?VenueRules.WORK:e.phase==ResidentSchedule.LUNCH?VenueRules.MEAL:VenueRules.MEET;
         int floor=buildingPlan.floorFor(service);return floor>=0?floor:Math.max(0,buildingPlan.floorFor(VenueRules.MEET));
     }
+    private int indoorRole(ResidentSchedule.Entry e){
+        if(!interiorPlan.commercial){
+            // Household members use the same home layout as the player.
+            if((minute>=420&&minute<480)||(minute>=1020&&minute<1140))return InteriorPlan.KITCHEN;
+            if(minute>=1140||minute<540)return InteriorPlan.SOFA;
+            return InteriorPlan.HOBBY;
+        }
+        if(meetup!=null&&e.home==meetup.contact&&e.location==meetup.place&&meetup.state(lifeDay,minute)==MeetupPlan.READY)return VenueRules.MEET;
+        if(e.phase==ResidentSchedule.WORK)return VenueRules.WORK;
+        if(e.phase==ResidentSchedule.LUNCH)return VenueRules.MEAL;
+        return interiorPlan.slotFor(VenueRules.ACTIVITY)>=0?VenueRules.ACTIVITY:VenueRules.MEET;
+    }
     private void updateIndoorResidents(){
         if(!inInterior||interiorPlan==null||interiorView==null||interiorView.busy())return;
-        if(decorating){interiorView.setPeople(seed,new int[0]);return;}
-        java.util.ArrayList<MobileContacts.Resident> people=localResidents();
-        int[] keys=new int[people.size()];for(int i=0;i<keys.length;i++)keys[i]=people.get(i).key;
-        interiorView.setPeople(seed,keys);
+        if(decorating){interiorView.setPeople(seed,new int[0],new int[0]);return;}
+        java.util.ArrayList<ResidentSchedule.Entry> people=localEntries();
+        int[] keys=new int[people.size()],roles=new int[people.size()];
+        for(int i=0;i<keys.length;i++){keys[i]=people.get(i).home;roles[i]=indoorRole(people.get(i));}
+        interiorView.setPeople(seed,keys,roles);
     }
-    private java.util.ArrayList<MobileContacts.Resident> localResidents(){
-        java.util.ArrayList<MobileContacts.Resident> people=new java.util.ArrayList<>();
+    private java.util.ArrayList<ResidentSchedule.Entry> localEntries(){
+        java.util.ArrayList<ResidentSchedule.Entry> people=new java.util.ArrayList<>();
         int lot=selectedLot();
         if(!atSelected()||!(MobileContacts.isSocialLot(lot)||LifeRules.isWork(lot)))return people;
         ResidentSchedule.Grid grid=residentGridAt(lifeX,lifeY,6);if(grid==null)return people;
         java.util.ArrayList<ResidentSchedule.Entry> present=grid.snapshot(seed,lifeX,lifeY,0,weekday,minute,rentedKey(),household.member());
         int place=LifeRules.pack(lifeX,lifeY),priority=-1;
         if(meetup!=null&&meetup.place==place&&meetup.state(lifeDay,minute)==MeetupPlan.READY){
-            for(ResidentSchedule.Entry e:present)if(MeetupPlan.available(e,meetup.contact,place)&&(!inInterior||residentFloor(e)==roomFloor)){priority=e.home;people.add(resident(e.home));break;}
+            for(ResidentSchedule.Entry e:present)if(MeetupPlan.available(e,meetup.contact,place)&&(!inInterior||residentFloor(e)==roomFloor)){priority=e.home;people.add(e);break;}
         }
         for(ResidentSchedule.Entry e:present){
-            if(e.home!=priority&&e.phase!=ResidentSchedule.SLEEP&&e.phase!=ResidentSchedule.COMMUTE&&(!inInterior||residentFloor(e)==roomFloor)&&people.size()<8)people.add(resident(e.home));
+            if(e.home!=priority&&e.phase!=ResidentSchedule.SLEEP&&e.phase!=ResidentSchedule.COMMUTE&&(!inInterior||residentFloor(e)==roomFloor)&&people.size()<8)people.add(e);
         }
+        return people;
+    }
+    private java.util.ArrayList<MobileContacts.Resident> localResidents(){
+        java.util.ArrayList<MobileContacts.Resident> people=new java.util.ArrayList<>();
+        for(ResidentSchedule.Entry e:localEntries())people.add(resident(e.home));
         return people;
     }
     private void showLocals(){

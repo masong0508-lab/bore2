@@ -19,8 +19,8 @@ final class InteriorView extends View {
     private AvatarStyle[] peopleStyles=new AvatarStyle[0];
     private int targetPerson=-1;
     private int crowdSeed;
-    private int[] crowdKeys=new int[0];
-    private int[][] crowdStations;
+    private int[] crowdKeys=new int[0],crowdRoles=new int[0];
+    private int[][] crowdStations,crowdGoals;
     private boolean motionEnabled;
     private int motionCounter;
     private IndoorCrowd.Step moving;
@@ -46,9 +46,10 @@ final class InteriorView extends View {
             if(motionProgress()<1f){invalidate();postDelayed(motionTick,80);return;}
             moving=null;invalidate();postDelayed(motionTick,550);return;
         }
-        moving=crowd.advance(at,plan.entry,landing,crowdStations,motionCounter++);
+        moving=crowd.advanceToward(at,plan.entry,landing,crowdStations,crowdGoals,motionCounter++);
         if(moving!=null){motionStart=SystemClock.uptimeMillis();invalidate();postDelayed(motionTick,80);}
-        else postDelayed(motionTick,850);
+        // Everyone arrived or is blocked. Wake only for new goals, player
+        // movement, window focus or a new population snapshot.
     }
     @Override public void onWindowFocusChanged(boolean focused){
         super.onWindowFocusChanged(focused);restartMotion();
@@ -60,17 +61,36 @@ final class InteriorView extends View {
     private int[] stationGoals(int slot){
         int[] out=new int[4];for(int d=0;d<4;d++){int cell=InteriorPlan.neighbor(plan.objects[slot],d);out[d]=plan.canUse(cell,slot)?cell:-1;}return out;
     }
-    void setPeople(int seed,int[] ids){
+    void setPeople(int seed,int[] ids,int[] roles){
         if(plan==null||busy())return;
-        if(decorating||ids==null||ids.length==0){stopMotion();crowd=null;crowdKeys=new int[0];crowdStations=null;peopleStyles=new AvatarStyle[0];invalidate();return;}
-        if(crowd!=null&&crowdSeed==seed&&java.util.Arrays.equals(ids,crowdKeys))return;
-        stopMotion();crowdSeed=seed;crowdKeys=ids.clone();
+        if(decorating||ids==null||ids.length==0||roles==null||roles.length!=ids.length){
+            stopMotion();crowd=null;crowdKeys=new int[0];crowdRoles=new int[0];crowdStations=crowdGoals=null;peopleStyles=new AvatarStyle[0];invalidate();return;
+        }
+        if(crowd!=null&&crowdSeed==seed&&java.util.Arrays.equals(ids,crowdKeys)){
+            if(!java.util.Arrays.equals(roles,crowdRoles)){
+                crowdRoles=roles.clone();refreshGoals();restartMotion();
+            }
+            return;
+        }
+        stopMotion();crowdSeed=seed;crowdKeys=ids.clone();crowdRoles=roles.clone();
         boolean[] floor=new boolean[InteriorPlan.N];for(int i=0;i<floor.length;i++)floor[i]=plan.walkable(i);
         int[][] stations=new int[plan.actionCount()][];for(int k=0;k<stations.length;k++)stations[k]=stationGoals(k);
         int slot=plan.slotFor(plan.commercial?VenueRules.MEET:InteriorPlan.SOFA);
         int preferred=slot>=0?plan.objects[slot]:plan.entry;
         crowdStations=stations;crowd=IndoorCrowd.create(floor,plan.walls,stations,plan.entry,landing,at,ids,preferred);
-        peopleStyles=new AvatarStyle[crowd.size()];for(int i=0;i<peopleStyles.length;i++)peopleStyles[i]=AvatarStyle.resident(seed,crowd.id(i));restartMotion();
+        peopleStyles=new AvatarStyle[crowd.size()];for(int i=0;i<peopleStyles.length;i++)peopleStyles[i]=AvatarStyle.resident(seed,crowd.id(i));
+        refreshGoals();restartMotion();
+    }
+    private void refreshGoals(){
+        if(crowd==null)return;
+        crowdGoals=new int[crowd.size()][];
+        for(int i=0;i<crowd.size();i++){
+            int slot=-1;
+            for(int k=0;k<crowdKeys.length;k++)if(crowdKeys[k]==crowd.id(i)){slot=plan.slotFor(crowdRoles[k]);break;}
+            if(slot<0)slot=plan.slotFor(plan.commercial?VenueRules.MEET:InteriorPlan.SOFA);
+            if(slot<0)slot=plan.slotFor(plan.commercial?VenueRules.WAIT:InteriorPlan.HOBBY);
+            crowdGoals[i]=slot>=0?stationGoals(slot):new int[0];
+        }
     }
     boolean nearResident(int id){return !decorating&&!busy()&&crowd!=null&&crowd.adjacent(at,id);}
     private int[] route(int cell){return crowd==null?plan.route(at,cell):crowd.route(at,cell);}
@@ -96,7 +116,7 @@ final class InteriorView extends View {
         setContentDescription("Home cutaway. Tap a floor tile to walk or furniture to interact.");
     }
     void open(InteriorPlan p,int saved,int stair){
-        cancel();stopMotion();plan=p;crowd=null;crowdKeys=new int[0];crowdStations=null;motionCounter=0;peopleStyles=new AvatarStyle[0];decorating=false;selected=-1;landing=stair;at=p.walkable(saved)?saved:p.entry;
+        cancel();stopMotion();plan=p;crowd=null;crowdKeys=new int[0];crowdRoles=new int[0];crowdStations=crowdGoals=null;motionCounter=0;peopleStyles=new AvatarStyle[0];decorating=false;selected=-1;landing=stair;at=p.walkable(saved)?saved:p.entry;
         setContentDescription(p.commercial?"Venue cutaway. Tap a floor tile or service station.":"Home cutaway. Tap a floor tile to walk or furniture to interact.");
         lo=18;hi=-1;top=18;bottom=-1;
         for(int i=0;i<InteriorPlan.N;i++)if(p.floor(i)){lo=Math.min(lo,i%18);hi=Math.max(hi,i%18);top=Math.min(top,i/18);bottom=Math.max(bottom,i/18);}
@@ -105,7 +125,7 @@ final class InteriorView extends View {
     int cell(){return at;}
     boolean busy(){return path!=null;}
     void cancel(){removeCallbacks(tick);path=null;index=0;action=WALK;targetPerson=-1;restartMotion();}
-    void close(){cancel();stopMotion();plan=null;crowd=null;crowdKeys=new int[0];crowdStations=null;peopleStyles=new AvatarStyle[0];decorating=false;selected=-1;}
+    void close(){cancel();stopMotion();plan=null;crowd=null;crowdKeys=new int[0];crowdRoles=new int[0];crowdStations=crowdGoals=null;peopleStyles=new AvatarStyle[0];decorating=false;selected=-1;}
     void use(int kind){
         if(plan==null||kind<0||kind>=plan.actionCount())return;
         if(decorating){selected=kind;listener.message(plan.labelAt(kind)+" selected");invalidate();return;}

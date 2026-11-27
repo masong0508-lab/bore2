@@ -56,6 +56,39 @@ final class IndoorCrowd {
         }
         return null;
     }
+    // Route residents toward actual activity cells, without pushing the player
+    // aside or committing a step that would break the room's reachability.
+    Step advanceToward(int player,int entry,int stairs,int[][] stations,int[][] goals,int tick){
+        if(size==0||!clear(player)||!clear(entry)||stations==null||goals==null||goals.length!=size)return null;
+        int first=Math.floorMod(tick,size);
+        for(int n=0;n<size;n++){
+            int i=(first+n)%size,from=cells[i];if(goals[i]==null||goals[i].length==0)continue;
+            blocked[from]=false;
+            int[] dist=goalDistances(goals[i],player,entry,stairs);
+            int direction=(ids[i]^(tick*31))&3;
+            if(dist[from]>0)for(int d=0;d<4;d++){
+                int to=neighbor(from,(direction+d)&3);
+                if(to<0||dist[to]<0||dist[to]>=dist[from]||!canStep(from,to))continue;
+                blocked[to]=true;
+                if(safe(player,entry,stairs,stations)){cells[i]=to;return new Step(i,from,to);}
+                blocked[to]=false;
+            }
+            blocked[from]=true;
+        }
+        return null;
+    }
+    private boolean npcClear(int at,int player,int entry,int stairs){
+        return at!=player&&at!=entry&&at!=stairs&&clear(at);
+    }
+    private int[] goalDistances(int[] goals,int player,int entry,int stairs){
+        int[] dist=new int[N],queue=new int[N];Arrays.fill(dist,-1);int head=0,tail=0;
+        for(int goal:goals)if(npcClear(goal,player,entry,stairs)&&dist[goal]<0){dist[goal]=0;queue[tail++]=goal;}
+        while(head<tail){int at=queue[head++];for(int d=0;d<4;d++){
+            int next=neighbor(at,d);
+            if(npcClear(next,player,entry,stairs)&&dist[next]<0&&edge(at,next)){dist[next]=dist[at]+1;queue[tail++]=next;}
+        }}
+        return dist;
+    }
     int size(){return size;}
     int id(int i){return i>=0&&i<size?ids[i]:-1;}
     int cell(int i){return i>=0&&i<size?cells[i]:-1;}
