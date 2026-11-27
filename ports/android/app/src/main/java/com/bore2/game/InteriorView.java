@@ -21,6 +21,40 @@ final class InteriorView extends View {
     private int crowdSeed;
     private int[] crowdKeys=new int[0],crowdRoles=new int[0];
     private int[][] crowdStations,crowdGoals;
+    private int[] crowdSlots=new int[0];
+    private final float[] poseBuffer=new float[IndoorPose.SIZE];
+    private long playerPoseUntil,npcPoseUntil;
+    private int playerPose=IndoorPose.IDLE,playerFacing;
+    private static final long ACTIVITY_MS=1200;
+    private final Runnable poseTick=this::tickPose;
+    private boolean poseVisible(){return isShown()&&hasWindowFocus()&&!busy()&&!decorating&&plan!=null;}
+    private void tickPose(){
+        invalidate();long now=SystemClock.uptimeMillis();
+        if(poseVisible()&&(playerPoseUntil>now||(motionEnabled&&npcPoseUntil>now)))postDelayed(poseTick,80);
+    }
+    private void wakePose(){removeCallbacks(poseTick);if(poseVisible())tickPose();}
+    private void stopPose(){removeCallbacks(poseTick);playerPoseUntil=npcPoseUntil=0;playerPose=IndoorPose.IDLE;invalidate();}
+    private int facingStation(int cell,int slot){
+        if(plan==null||slot<0||slot>=plan.actionCount())return 1;
+        int target=plan.objects[slot],dx=target%18-cell%18;return dx==0?1:Integer.signum(dx);
+    }
+    private int stationPose(int slot){
+        if(slot<0||plan==null)return IndoorPose.IDLE;
+        int action=plan.actionAt(slot);
+        if(action==VenueRules.ACTIVITY){if(plan.lot==8)return IndoorPose.EXERCISE;if(plan.lot==27)return IndoorPose.READ;}
+        return IndoorPose.forAction(action);
+    }
+    void playActivity(int mode,int service){
+        if(plan==null||busy()||decorating)return;
+        int slot=plan.slotFor(service);playerFacing=facingStation(at,slot);
+        playerPose=mode;playerPoseUntil=SystemClock.uptimeMillis()+ACTIVITY_MS;wakePose();
+    }
+    private void animateArrivals(){
+        if(!motionEnabled||crowd==null||crowdGoals==null)return;
+        for(int i=0;i<crowd.size();i++)if(IndoorPose.atGoal(crowd.cell(i),crowdGoals[i])){
+            npcPoseUntil=SystemClock.uptimeMillis()+ACTIVITY_MS;wakePose();return;
+        }
+    }
     private boolean motionEnabled;
     private int motionCounter;
     private IndoorCrowd.Step moving;
@@ -35,7 +69,7 @@ final class InteriorView extends View {
         stopMotion();if(canAnimate())postDelayed(motionTick,550);
     }
     void setMotionEnabled(boolean enabled){
-        if(motionEnabled!=enabled){motionEnabled=enabled;restartMotion();}
+        if(motionEnabled!=enabled){motionEnabled=enabled;if(!enabled){npcPoseUntil=0;wakePose();}restartMotion();if(enabled)animateArrivals();}
     }
     private float motionProgress(){
         return Math.min(1f,Math.max(0f,(SystemClock.uptimeMillis()-motionStart)/(float)NPC_STEP_MS));
@@ -44,7 +78,9 @@ final class InteriorView extends View {
         if(!canAnimate()){stopMotion();return;}
         if(moving!=null){
             if(motionProgress()<1f){invalidate();postDelayed(motionTick,80);return;}
-            moving=null;invalidate();postDelayed(motionTick,550);return;
+            int arrived=moving.index;moving=null;invalidate();
+            if(IndoorPose.atGoal(crowd.cell(arrived),crowdGoals[arrived]))animateArrivals();
+            postDelayed(motionTick,550);return;
         }
         moving=crowd.advanceToward(at,plan.entry,landing,crowdStations,crowdGoals,motionCounter++);
         if(moving!=null){motionStart=SystemClock.uptimeMillis();invalidate();postDelayed(motionTick,80);}
@@ -52,7 +88,7 @@ final class InteriorView extends View {
         // movement, window focus or a new population snapshot.
     }
     @Override public void onWindowFocusChanged(boolean focused){
-        super.onWindowFocusChanged(focused);restartMotion();
+        super.onWindowFocusChanged(focused);if(!focused)stopPose();restartMotion();
     }
     @Override protected void onVisibilityChanged(View changed,int visibility){
         super.onVisibilityChanged(changed,visibility);
@@ -68,7 +104,7 @@ final class InteriorView extends View {
         }
         if(crowd!=null&&crowdSeed==seed&&java.util.Arrays.equals(ids,crowdKeys)){
             if(!java.util.Arrays.equals(roles,crowdRoles)){
-                crowdRoles=roles.clone();refreshGoals();restartMotion();
+                crowdRoles=roles.clone();refreshGoals();restartMotion();animateArrivals();
             }
             return;
         }
@@ -79,17 +115,17 @@ final class InteriorView extends View {
         int preferred=slot>=0?plan.objects[slot]:plan.entry;
         crowdStations=stations;crowd=IndoorCrowd.create(floor,plan.walls,stations,plan.entry,landing,at,ids,preferred);
         peopleStyles=new AvatarStyle[crowd.size()];for(int i=0;i<peopleStyles.length;i++)peopleStyles[i]=AvatarStyle.resident(seed,crowd.id(i));
-        refreshGoals();restartMotion();
+        refreshGoals();restartMotion();animateArrivals();
     }
     private void refreshGoals(){
         if(crowd==null)return;
-        crowdGoals=new int[crowd.size()][];
+        crowdGoals=new int[crowd.size()][];crowdSlots=new int[crowd.size()];
         for(int i=0;i<crowd.size();i++){
             int slot=-1;
             for(int k=0;k<crowdKeys.length;k++)if(crowdKeys[k]==crowd.id(i)){slot=plan.slotFor(crowdRoles[k]);break;}
             if(slot<0)slot=plan.slotFor(plan.commercial?VenueRules.MEET:InteriorPlan.SOFA);
             if(slot<0)slot=plan.slotFor(plan.commercial?VenueRules.WAIT:InteriorPlan.HOBBY);
-            crowdGoals[i]=slot>=0?stationGoals(slot):new int[0];
+            crowdSlots[i]=slot;crowdGoals[i]=slot>=0?stationGoals(slot):new int[0];
         }
     }
     boolean nearResident(int id){return !decorating&&!busy()&&crowd!=null&&crowd.adjacent(at,id);}
@@ -101,7 +137,7 @@ final class InteriorView extends View {
     void setTheme(int value){theme=value;invalidate();}
     int selectedFurniture(){return selected;}
     void setDecorating(boolean active){
-        if(decorating!=active){decorating=active;selected=-1;restartMotion();}
+        if(decorating!=active){decorating=active;selected=-1;if(active)stopPose();restartMotion();}
         setContentDescription(active?"Decorate home. Select furniture, then choose a free floor tile.":plan!=null&&plan.commercial?"Venue cutaway. Tap a floor tile or service station.":"Home cutaway. Tap a floor tile to walk or furniture to interact.");invalidate();
     }
     private AvatarStyle style=AvatarStyle.defaults();
@@ -125,7 +161,7 @@ final class InteriorView extends View {
     }
     int cell(){return at;}
     boolean busy(){return path!=null;}
-    void cancel(){removeCallbacks(tick);path=null;index=0;action=WALK;targetPerson=-1;restartMotion();}
+    void cancel(){removeCallbacks(tick);path=null;index=0;action=WALK;targetPerson=-1;stopPose();restartMotion();}
     void close(){cancel();stopMotion();plan=null;crowd=null;crowdKeys=new int[0];crowdRoles=new int[0];crowdStations=crowdGoals=null;peopleStyles=new AvatarStyle[0];decorating=false;selected=-1;}
     void use(int kind){
         if(plan==null||kind<0||kind>=plan.actionCount())return;
@@ -257,34 +293,73 @@ final class InteriorView extends View {
             int next=path[index];px+=(next%18-at%18)*t;py+=(next/18-at/18)*t;
             phase=(float)Math.sin((index+t)*Math.PI);
         }
+        long now=SystemClock.uptimeMillis();
         if(!decorating&&crowd!=null)for(int i=0;i<crowd.size();i++){
-            int cell=crowd.cell(i);float x=cell%18+.5f,y=cell/18+.5f,walk=0f;
+            int cell=crowd.cell(i),mode=IndoorPose.IDLE,face=1;
+            float x=cell%18+.5f,y=cell/18+.5f,wave=0f;
             if(moving!=null&&moving.index==i){
                 float t=motionProgress();int from=moving.from;
                 x=from%18+.5f+(cell%18-from%18)*t;y=from/18+.5f+(cell/18-from/18)*t;
-                walk=(float)Math.sin(t*Math.PI)*(((cell+from)&2)==0?1f:-1f);
+                mode=IndoorPose.WALK;face=Integer.signum(cell%18-from%18);
+                wave=(float)Math.sin(t*Math.PI)*(((cell+from)&2)==0?1f:-1f);
+            }else if(crowdGoals!=null&&IndoorPose.atGoal(cell,crowdGoals[i])){
+                mode=stationPose(crowdSlots[i]);face=facingStation(cell,crowdSlots[i]);
+                if(motionEnabled&&npcPoseUntil>now)wave=(float)Math.sin((now+(crowd.id(i)&255))*Math.PI/320);
             }
-            drawPerson(c,x,y,walk,peopleStyles[i]);
+            drawPerson(c,x,y,mode,face,wave,peopleStyles[i],false);
         }
-        drawPerson(c,px,py,phase,style);
+        int mode=path!=null?IndoorPose.WALK:playerPoseUntil>now?playerPose:IndoorPose.IDLE;
+        float wave=path!=null?phase:playerPoseUntil>now?(float)Math.sin(now*Math.PI/300):0;
+        drawPerson(c,px,py,mode,playerFacing,wave,style,true);
         if(tile>=27){
             for(int k=0;k<plan.actionCount();k++){
                 int p=plan.objects[k];text(c,plan.labelAt(k),X(p%18+.5f),Y(p/18+.98f),Math.min(tile*.22f,14),0xff332f2b);
             }
         }
     }
-    private void drawPerson(Canvas c,float px,float py,float phase,AvatarStyle style){
-        float cx=X(px),cy=Y(py);
-        paint.setColor(0x55302010);c.drawOval(cx-tile*.25f,cy-tile*.15f,cx+tile*.25f,cy+tile*.2f,paint);
-        paint.setStrokeWidth(Math.max(2,tile*.10f));paint.setStrokeCap(Paint.Cap.ROUND);paint.setColor(0xff000000|style.color(3));
-        c.drawLine(cx-tile*.10f,cy+tile*.11f,cx-tile*.12f,cy+tile*(.26f+phase*.09f),paint);
-        c.drawLine(cx+tile*.10f,cy+tile*.11f,cx+tile*.12f,cy+tile*(.26f-phase*.09f),paint);
-        paint.setColor(0xff000000|style.color(2));c.drawRoundRect(cx-tile*.22f,cy-tile*.18f,cx+tile*.22f,cy+tile*.14f,tile*.13f,tile*.13f,paint);
-        paint.setColor(0xff000000|style.color(0));c.drawCircle(cx,cy-tile*.25f,tile*.16f,paint);
-        paint.setColor(0xff000000|style.color(1));
-        float hairTop=style.choice(4)==1?.46f:style.choice(4)==3?.38f:.42f;
-        if(style.choice(4)==2)c.drawRoundRect(cx-tile*.18f,cy-tile*.39f,cx+tile*.18f,cy-tile*.12f,tile*.12f,tile*.12f,paint);
-        c.drawArc(cx-tile*.17f,cy-tile*hairTop,cx+tile*.17f,cy-tile*.11f,180,180,true,paint);
+    private void drawArm(Canvas c,float sx,float sy,float hx,float hy,int shirt,int skin){
+        float ex=sx+(hx-sx)*.55f,ey=sy+(hy-sy)*.55f;
+        paint.setStrokeWidth(.105f);paint.setColor(shirt);c.drawLine(sx,sy,ex,ey,paint);
+        paint.setStrokeWidth(.076f);paint.setColor(skin);c.drawLine(ex,ey,hx,hy,paint);
+        c.drawCircle(hx,hy,.047f,paint);
+    }
+    private void drawPerson(Canvas c,float px,float py,int mode,int facing,float wave,AvatarStyle style,boolean player){
+        IndoorPose.sample(mode,facing,wave,poseBuffer);
+        float[] p=poseBuffer;float bx=p[IndoorPose.BODY_X],by=p[IndoorPose.BODY_Y],hx=p[IndoorPose.HEAD_X],hy=p[IndoorPose.HEAD_Y];
+        int skin=0xff000000|style.color(0),hair=0xff000000|style.color(1),shirt=0xff000000|style.color(2),pants=0xff000000|style.color(3);
+        c.save();c.translate(X(px),Y(py));c.scale(tile,tile);
+        paint.setStyle(Paint.Style.FILL);paint.setColor(0x55302010);c.drawOval(-.27f,.19f,.27f,.40f,paint);
+        if(player){paint.setColor(0x9950b7a0);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(.032f);c.drawOval(-.30f,.17f,.30f,.43f,paint);paint.setStyle(Paint.Style.FILL);}
+        paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeWidth(.115f);paint.setColor(pants);
+        c.drawLine(bx-.085f,by+.11f,-.105f,p[IndoorPose.LEFT_FOOT],paint);
+        c.drawLine(bx+.085f,by+.11f,.105f,p[IndoorPose.RIGHT_FOOT],paint);
+        paint.setColor(0xff353438);
+        c.drawRoundRect(-.18f,p[IndoorPose.LEFT_FOOT]-.025f,-.04f,p[IndoorPose.LEFT_FOOT]+.045f,.03f,.03f,paint);
+        c.drawRoundRect(.04f,p[IndoorPose.RIGHT_FOOT]-.025f,.18f,p[IndoorPose.RIGHT_FOOT]+.045f,.03f,.03f,paint);
+        drawArm(c,bx-.145f,by-.12f,p[IndoorPose.LEFT_X],p[IndoorPose.LEFT_Y],shirt,skin);
+        paint.setColor(shirt);c.drawRoundRect(bx-.18f,by-.175f,bx+.18f,by+.15f,.08f,.08f,paint);
+        paint.setColor(0x2288ffff);c.drawRoundRect(bx-.11f,by-.13f,bx+.08f,by+.04f,.04f,.04f,paint);
+        paint.setColor(skin);c.drawRoundRect(hx-.065f,hy+.08f,hx+.065f,hy+.17f,.03f,.03f,paint);
+        c.drawOval(hx-.139f,hy-.151f,hx+.139f,hy+.145f,paint);
+        paint.setColor(hair);
+        float top=style.choice(4)==1?.205f:style.choice(4)==3?.145f:.17f;
+        if(style.choice(4)==2)c.drawRoundRect(hx-.155f,hy-.16f,hx+.155f,hy+.12f,.08f,.08f,paint);
+        c.drawArc(hx-.15f,hy-top,hx+.15f,hy+.10f,180,180,true,paint);
+        if(tile>=19){
+            paint.setColor(0xff33333b);float look=facing<0?-.015f:facing>0?.015f:0;
+            c.drawCircle(hx-.048f+look,hy+.015f,.012f,paint);c.drawCircle(hx+.048f+look,hy+.015f,.012f,paint);
+        }
+        drawArm(c,bx+.145f,by-.12f,p[IndoorPose.RIGHT_X],p[IndoorPose.RIGHT_Y],shirt,skin);
+        if(mode==IndoorPose.READ){
+            paint.setColor(0xffe5d6af);c.drawRoundRect(-.115f,-.055f,.115f,.045f,.018f,.018f,paint);
+            paint.setColor(0xff807659);paint.setStrokeWidth(.016f);c.drawLine(0,-.045f,0,.035f,paint);
+        }else if(mode==IndoorPose.CLEAN){
+            float x=p[IndoorPose.RIGHT_X],y=p[IndoorPose.RIGHT_Y];paint.setColor(0xff94734d);paint.setStrokeWidth(.028f);c.drawLine(x,y,x+.04f,.37f,paint);
+            paint.setColor(0xffd8b971);c.drawRoundRect(x-.05f,.36f,x+.13f,.42f,.02f,.02f,paint);
+        }else if(mode==IndoorPose.EAT||mode==IndoorPose.COOK){
+            float x=p[IndoorPose.RIGHT_X],y=p[IndoorPose.RIGHT_Y];paint.setColor(0xffe3e6dc);paint.setStrokeWidth(.022f);c.drawLine(x,y,x+.045f,y-.055f,paint);c.drawCircle(x+.045f,y-.055f,.022f,paint);
+        }
+        c.restore();
     }
     @Override public boolean onTouchEvent(MotionEvent event){
         if(event.getActionMasked()!=MotionEvent.ACTION_UP)return true;

@@ -628,6 +628,7 @@ public final class MainActivity extends Activity {
         ResidentSchedule.Grid grid=residentGridAt(homeX,homeY,6);
         return grid==null?null:grid.locatedAt(seed,key,rentedKey(),weekday,minute);
     }
+    private void actionPose(int mode,int service){if(inInterior&&interiorView!=null)interiorView.playActivity(mode,service);}
     private void showHomeCare(){
         if(!interiorCurrent()||!atHome()||decorating||interiorView.busy()){notice("Finish your current action first");return;}
         String status="Cleanliness: "+(100-care.dirt())+"/100\n"+(care.restPenalty()>0?"A very untidy home reduces rest recovery by 5.":"Home comfort is normal.");
@@ -637,7 +638,7 @@ public final class MainActivity extends Activity {
             if(!interiorCurrent()||!atHome()||decorating||interiorView.busy())return;
             if(energy<6){notice("Rest before cleaning");return;}
             if(!care.clean()){notice("Home is already clean");return;}
-            energy-=6;advanceTime(30);updateDetails();saveLife();notice("Home cleaned");
+            energy-=6;advanceTime(30);updateDetails();saveLife();actionPose(IndoorPose.CLEAN,-1);notice("Home cleaned");
         });
         dialog.show();
     }
@@ -756,13 +757,13 @@ public final class MainActivity extends Activity {
             case InteriorPlan.HOBBY:
                 if(energy<8){notice("Rest before practicing");break;}
                 energy-=8;food=clamp100(food-3);fun=clamp100(fun+25);skills[3]=Math.min(4400,skills[3]+20);
-                advanceTime(60);updateDetails();saveLife();notice("Creativity improved");break;
+                advanceTime(60);updateDetails();saveLife();actionPose(IndoorPose.WORK,InteriorPlan.HOBBY);notice("Creativity improved");break;
             case BuildingPlan.STUDY:
                 if(!atHome()||energy<6){notice("Rest before studying");break;}
-                energy-=6;food=clamp100(food-3);skills[1]=Math.min(4400,skills[1]+22);advanceTime(45);updateDetails();notice("Logic improved");break;
+                energy-=6;food=clamp100(food-3);skills[1]=Math.min(4400,skills[1]+22);advanceTime(45);updateDetails();actionPose(IndoorPose.READ,BuildingPlan.STUDY);notice("Logic improved");break;
             case BuildingPlan.FITNESS:
                 if(!atHome()||energy<12||food<8){notice("Eat and rest before exercising");break;}
-                energy-=12;food=clamp100(food-8);fun=clamp100(fun+8);skills[2]=Math.min(4400,skills[2]+24);advanceTime(45);updateDetails();notice("Fitness improved");break;
+                energy-=12;food=clamp100(food-8);fun=clamp100(fun+8);skills[2]=Math.min(4400,skills[2]+24);advanceTime(45);updateDetails();actionPose(IndoorPose.EXERCISE,BuildingPlan.FITNESS);notice("Fitness improved");break;
             case InteriorPlan.PHONE:showPhone();break;
             case InteriorPlan.SOFA:rest();break;
             default:break;
@@ -981,12 +982,12 @@ public final class MainActivity extends Activity {
     private void sleepAtHome(){
         if(!atHome()){notice(hasHome()?"Travel home before sleeping":"Rent a home first");return;}
         advanceTime(supplies.sleepMinutes());energy=100;food=clamp100(food-12);homeNights=LifeRules.credit(homeNights,1);
-        updateDetails();saveLife();notice("Well rested");
+        updateDetails();saveLife();actionPose(IndoorPose.REST,InteriorPlan.BED);notice("Well rested");
     }
     private void rest(){
         int recovery=atHome()?(atService(InteriorPlan.SOFA)?supplies.restEnergy():20)-care.restPenalty():12;
         advanceTime(60);energy=clamp100(energy+recovery);food=clamp100(food-3);
-        updateDetails();saveLife();notice("Rested for one hour");
+        updateDetails();saveLife();actionPose(IndoorPose.REST,atHome()?InteriorPlan.SOFA:VenueRules.WAIT);notice("Rested for one hour");
     }
     private void showGoals(){
         String message=(hasHome()?"✓":"○")+" Lease a home\n"+(homeNights>0?"✓":"○")+" Sleep at home\n"+
@@ -1054,7 +1055,7 @@ public final class MainActivity extends Activity {
         funds=LifeRules.credit(funds,pay);careerShifts=LifeRules.credit(careerShifts,1);
         energy=clamp100(energy-v[3]);food=clamp100(food-v[4]);
         if(v[5]>=0&&v[5]<skills.length)skills[v[5]]=Math.min(4400,skills[v[5]]+v[6]);
-        advanceTime(v[1]);updateDetails();saveLife();
+        advanceTime(v[1]);updateDetails();saveLife();actionPose(IndoorPose.WORK,VenueRules.WORK);
         notice(promoted?"Promoted to "+career.rank()+"! Earned $"+pay:hire?"Job accepted · Earned $"+pay:"Shift complete: earned $"+pay);
     }
     private boolean roommateMealWindow(){
@@ -1096,13 +1097,13 @@ public final class MainActivity extends Activity {
             if(gain>0){social=clamp100(social+8+gain);skills[6]=Math.min(4400,skills[6]+gain);}
             fun=clamp100(fun+5);
         }
-        advanceTime(30);updateDetails();saveLife();notice(shared?"Shared a home-cooked meal":"Cooked a meal");
+        advanceTime(30);updateDetails();saveLife();actionPose(IndoorPose.COOK,InteriorPlan.KITCHEN);notice(shared?"Shared a home-cooked meal":"Cooked a meal");
     }
     private void eatPreparedMeal(){
         if(atHome()||!atSelected()||!LifeRules.isFood(selectedLot()))return;
         if(VenueRules.supported(selectedLot())&&(!atService(VenueRules.MEAL)||!VenueRules.mealOpen(selectedLot(),minute))){notice("Food service is closed or unavailable");return;}
         if(funds<8){notice("Not enough money for a meal");return;}
-        funds-=8;food=clamp100(food+35);advanceTime(30);updateDetails();saveLife();notice("Ate a meal");
+        funds-=8;food=clamp100(food+35);advanceTime(30);updateDetails();saveLife();actionPose(IndoorPose.EAT,VenueRules.MEAL);notice("Ate a meal");
     }
     private void showShopCounter(){
         if(!atService(VenueRules.MEAL)||!HomeSupplies.shop(selectedLot()))return;
@@ -1149,7 +1150,7 @@ public final class MainActivity extends Activity {
         funds-=v[2];energy=clamp100(energy-v[3]+v[7]);fun=clamp100(fun+v[4]);
         social=clamp100(social+v[5]);food=clamp100(food+v[6]);
         if(v[8]>=0&&v[8]<skills.length)skills[v[8]]=Math.min(4400,skills[v[8]]+v[9]);
-        advanceTime(v[10]);sessions=LifeRules.credit(sessions,1);updateDetails();saveLife();
+        advanceTime(v[10]);sessions=LifeRules.credit(sessions,1);updateDetails();saveLife();actionPose(selectedLot()==8?IndoorPose.EXERCISE:selectedLot()==27?IndoorPose.READ:IndoorPose.WORK,VenueRules.ACTIVITY);
         notice(NativeWorld.activityText(v[1],1));
     }
     private void saveLife(){
