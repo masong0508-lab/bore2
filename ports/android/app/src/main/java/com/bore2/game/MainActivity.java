@@ -49,6 +49,7 @@ public final class MainActivity extends Activity {
     private int lifeX,lifeY,minute=600,funds=250,energy=100,fun=50,social=50,food=100,sessions;
     private int lifeDay,lastShiftDay=-1;
     private int homeX=-1,homeY=-1,rentDebt,careerShifts,trips,homeNights;
+    private final MobileContacts contacts=new MobileContacts();
     private boolean hasHome(){return LifeRules.inside(homeX,homeY);}
     private boolean atHome(){return hasHome()&&lifeX==homeX&&lifeY==homeY;}
     private boolean atSelected(){return lifeX==selectedX&&lifeY==selectedY;}
@@ -82,6 +83,7 @@ public final class MainActivity extends Activity {
         careerShifts=LifeRules.credit(prefs.getInt("careerShifts",0),0);
         trips=LifeRules.credit(prefs.getInt("trips",0),0);homeNights=LifeRules.credit(prefs.getInt("homeNights",0),0);
         for(int i=0;i<skills.length;i++)skills[i]=Math.max(0,Math.min(4400,prefs.getInt("skill"+i,0)));
+        contacts.load(prefs.getString("contacts",""));
 
         root=new LinearLayout(this);
         root.setBackgroundColor(BG);
@@ -147,12 +149,16 @@ public final class MainActivity extends Activity {
         lower.addView(play,new LinearLayout.LayoutParams(-1,-2));
         addButton(play,"Activities",this::showActivities);
         addButton(play,"Rest 1h",this::rest);
-        addButton(play,"Life goals",this::showGoals);
+        addButton(play,"Meet locals",this::showLocals);
         LinearLayout work=new LinearLayout(this);work.setGravity(Gravity.CENTER);
         lower.addView(work,new LinearLayout.LayoutParams(-1,-2));
         addButton(work,"Work shift",this::workShift);
         addButton(work,"Eat / cook",this::eatMeal);
         addButton(work,"My location",()->{cx=lifeX;cy=lifeY;selectedX=lifeX;selectedY=lifeY;refresh();});
+        LinearLayout progress=new LinearLayout(this);progress.setGravity(Gravity.CENTER);
+        lower.addView(progress,new LinearLayout.LayoutParams(-1,-2));
+        addButton(progress,"Contacts",this::showContactList);
+        addButton(progress,"Life goals",this::showGoals);
         setContentView(root);root.requestApplyInsets();showMode();refresh();
     }
     private void newLife(){
@@ -160,7 +166,7 @@ public final class MainActivity extends Activity {
             cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
             lifeX=cx;lifeY=cy;weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
             lifeDay=0;lastShiftDay=-1;lastRoute=new int[0];homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
-            java.util.Arrays.fill(skills,0);world3d.resetCamera();refresh();saveLife();
+            java.util.Arrays.fill(skills,0);contacts.load("");world3d.resetCamera();refresh();saveLife();
     }
     private void layoutPanes(Configuration config){
         boolean wide=config.orientation==Configuration.ORIENTATION_LANDSCAPE;
@@ -333,8 +339,67 @@ public final class MainActivity extends Activity {
                     if(energy<8){notice("Rest before practicing");return;}
                     energy-=8;food=clamp100(food-3);fun=clamp100(fun+25);
                     skills[3]=Math.min(4400,skills[3]+20);advanceTime(60);updateDetails();saveLife();notice("Creativity improved");
-                }else{social=clamp100(social+18);advanceTime(30);updateDetails();saveLife();notice("Caught up with a friend");}
+                }else showPhone();
             }).setNegativeButton("Close",null).show();
+    }
+    private MobileContacts.Resident resident(int key){return new MobileContacts.Resident(seed,key);}
+    private java.util.ArrayList<MobileContacts.Resident> localResidents(){
+        java.util.ArrayList<MobileContacts.Resident> people=new java.util.ArrayList<>();
+        int lot=selectedLot();if(!atSelected()||!MobileContacts.isSocialLot(lot))return people;
+        if(LifeRules.isHome(lot)){
+            if(!atHome()){
+                MobileContacts.Resident r=resident(LifeRules.pack(lifeX,lifeY));
+                if(MobileContacts.available(r,true,weekday,minute))people.add(r);
+            }
+            return people;
+        }
+        // Identity follows actual generated home blocks, not the camera.
+        int[] homes=LifeRules.nearby(tiles,cx,cy,radius,lifeX,lifeY,LifeRules.HOMES,32);
+        for(int key:homes){
+            int x=LifeRules.x(key),y=LifeRules.y(key);
+            if((x==homeX&&y==homeY)||LifeRules.distance(lifeX,lifeY,x,y)>6)continue;
+            MobileContacts.Resident r=resident(key);
+            if(MobileContacts.available(r,false,weekday,minute)&&people.size()<4)people.add(r);
+        }
+        return people;
+    }
+    private void showLocals(){
+        if(!atSelected()){notice("Travel to this lot to meet people");return;}
+        if(atHome()){showPhone();return;}
+        java.util.ArrayList<MobileContacts.Resident> people=localResidents();
+        if(people.isEmpty()){notice("Nobody is available here now. Try a park, cafe or residential lot after work.");return;}
+        String[] labels=new String[people.size()];
+        for(int i=0;i<labels.length;i++){MobileContacts.Resident r=people.get(i);labels[i]=r.name+" · "+MobileContacts.TRAITS[r.trait]+" · relationship "+contacts.affinity(r.key);}
+        new AlertDialog.Builder(this).setTitle("People here").setItems(labels,(d,i)->showConversation(people.get(i)))
+            .setNegativeButton("Close",null).show();
+    }
+    private void showConversation(MobileContacts.Resident r){
+        new AlertDialog.Builder(this).setTitle(r.name+" · "+MobileContacts.TRAITS[r.trait])
+            .setItems(MobileContacts.TOPICS,(d,i)->{
+                boolean present=false;for(MobileContacts.Resident p:localResidents())if(p.key==r.key)present=true;
+                if(!present){notice("They have left");return;}talkTo(r,i,false);
+            }).setNegativeButton("Close",null).show();
+    }
+    private void showContactList(){
+        int[] keys=contacts.keys();if(keys.length==0){notice("Meet someone in the neighborhood to add a contact");return;}
+        String[] labels=new String[keys.length];
+        for(int i=0;i<keys.length;i++){MobileContacts.Resident r=resident(keys[i]);labels[i]=r.name+" · "+MobileContacts.TRAITS[r.trait]+" · "+contacts.affinity(r.key)+"/100";}
+        new AlertDialog.Builder(this).setTitle("Your contacts").setItems(labels,(d,i)->{
+            if(atHome())talkTo(resident(keys[i]),0,true);else notice("Phone contacts from home, or meet them locally");
+        }).setNegativeButton("Close",null).show();
+    }
+    private void showPhone(){
+        if(!atHome()){notice("Return home to call a contact");return;}
+        showContactList();
+    }
+    private void talkTo(MobileContacts.Resident r,int topic,boolean phone){
+        if(phone&&!atHome())return;
+        if(energy<2){notice("Rest before talking");return;}
+        int gain=contacts.talk(r,topic,lifeDay,minute,phone);
+        if(gain<=0){notice(gain==-1?"Give them some time before chatting again":gain==-2?"Meet them in person first":"Contact book is full");return;}
+        social=clamp100(social+8+gain);fun=clamp100(fun+(gain>=8?5:1));energy-=2;
+        skills[6]=Math.min(4400,skills[6]+gain);advanceTime(30);updateDetails();saveLife();
+        notice(r.name+(gain>=8?" enjoyed that topic":" appreciated the chat"));
     }
     private void sleepAtHome(){
         if(!atHome()){notice(hasHome()?"Travel home before sleeping":"Rent a home first");return;}
@@ -350,7 +415,7 @@ public final class MainActivity extends Activity {
             (trips>=3?"✓":"○")+" Explore three locations ("+Math.min(trips,3)+"/3)\n"+
             (careerShifts>=4?"✓":"○")+" Complete four shifts ("+Math.min(careerShifts,4)+"/4)\n"+
             (sessions>=3?"✓":"○")+" Join three local activities ("+Math.min(sessions,3)+"/3)\n\n"+
-            "Career bonus: $"+LifeRules.payBonus(careerShifts)+" per shift\nRent overdue: $"+rentDebt;
+            "Career bonus: $"+LifeRules.payBonus(careerShifts)+" per shift\nRent overdue: $"+rentDebt+"\nContacts: "+contacts.keys().length;
         new AlertDialog.Builder(this).setTitle("Your life goals").setMessage(message).setPositiveButton("Keep playing",null).show();
     }
     private void workShift(){
@@ -403,7 +468,8 @@ public final class MainActivity extends Activity {
              .putInt("fun",fun).putInt("social",social).putInt("food",food).putInt("sessions",sessions)
              .putInt("lifeDay",lifeDay).putInt("lastShiftDay",lastShiftDay)
              .putInt("homeX",homeX).putInt("homeY",homeY).putInt("rentDebt",rentDebt)
-             .putInt("careerShifts",careerShifts).putInt("trips",trips).putInt("homeNights",homeNights);
+             .putInt("careerShifts",careerShifts).putInt("trips",trips).putInt("homeNights",homeNights)
+             .putInt("x",cx).putInt("y",cy).putString("contacts",contacts.save());
         for(int i=0;i<skills.length;i++)e.putInt("skill"+i,skills[i]);e.apply();
     }
     private void updateDetails(){
@@ -414,7 +480,7 @@ public final class MainActivity extends Activity {
         lifeStatus.setText(String.format(java.util.Locale.US,"%s %02d:%02d · $%d · Energy %d\nFood %d · Fun %d · Social %d\n%s · %s %d\n%s · Shifts %d · Trips %d",
             day,minute/60,minute%60,funds,energy,food,fun,social,
             atSelected()?"At selected lot":"You: "+lifeX+", "+lifeY,SKILL_NAMES[best],skills[best],
-            !hasHome()?"Find a home":atHome()?"At home":rentDebt>0?"Rent overdue $"+rentDebt:"Home "+homeX+", "+homeY,careerShifts,trips));
+            !hasHome()?"Find a home":(atHome()?"At home":"Home "+homeX+", "+homeY)+(rentDebt>0?" · Rent due $"+rentDebt:""),careerShifts,trips));
         map.setContentDescription("San Boreas map. Selected lot: "+text);
         world3d.setContentDescription("San Boreas 3D neighborhood. Selected lot: "+text);
         world3d.player(lifeX,lifeY);world3d.select(selectedX,selectedY);map.invalidate();

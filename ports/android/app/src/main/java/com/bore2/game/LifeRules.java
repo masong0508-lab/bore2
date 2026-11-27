@@ -10,6 +10,7 @@ final class LifeRules {
     static boolean isHome(int lot){return lot>=1&&lot<=5;}
     static boolean isWork(int lot){switch(lot){case 6:case 7:case 8:case 9:case 14:case 20:case 21:case 25:case 27:case 29:case 30:case 31:return true;default:return false;}}
     static boolean isFood(int lot){switch(lot){case 6:case 7:case 10:case 15:case 21:case 25:case 30:case 31:return true;default:return false;}}
+    static boolean isVenue(int lot){switch(lot){case 8:case 10:case 11:case 12:case 13:case 15:case 16:case 20:case 21:case 23:case 27:case 28:case 29:case 33:case 34:return true;default:return false;}}
     static boolean inside(int x,int y){return x>=0&&x<1024&&y>=0&&y<1024;}
     static int pack(int x,int y){return x|(y<<16);}
     static int x(int pos){return pos&65535;}
@@ -31,7 +32,7 @@ final class LifeRules {
     static int elapsedBuckets(int minute,int elapsed,int interval){return (minute+elapsed)/interval-minute/interval;}
     static int payBonus(int shifts){return Math.min(50,Math.max(0,shifts)/4*10);}
     private static boolean matches(int lot,int kind){
-        switch(kind){case HOMES:return isHome(lot);case WORK:return isWork(lot);case FOOD:return isFood(lot);case VENUES:return lot>=6&&lot<=34&&lot!=19&&lot!=32;default:return false;}
+        switch(kind){case HOMES:return isHome(lot);case WORK:return isWork(lot);case FOOD:return isFood(lot);case VENUES:return isVenue(lot);default:return false;}
     }
     static int[] nearby(int[] tiles,int cx,int cy,int radius,int px,int py,int kind,int max){
         if(radius<0||radius>16||max<=0||tiles==null)return new int[0];

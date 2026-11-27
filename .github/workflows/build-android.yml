@@ -35,9 +35,10 @@ jobs:
       - name: Verify mobile life rules and resident geometry (JDK only)
         run: |
           J=ports/android/app/src/main/java/com/bore2/game
-          javac -Xlint:all -d /tmp/bore-mobile "$J/LifeRules.java" "$J/ActorMesh.java" ports/android/test/LifeRulesTest.java ports/android/test/ActorMeshTest.java
+          javac -Xlint:all -d /tmp/bore-mobile "$J/LifeRules.java" "$J/ActorMesh.java" "$J/MobileContacts.java" ports/android/test/LifeRulesTest.java ports/android/test/ActorMeshTest.java ports/android/test/MobileContactsTest.java
           java -cp /tmp/bore-mobile com.bore2.game.LifeRulesTest
           java -cp /tmp/bore-mobile com.bore2.game.ActorMeshTest
+          java -cp /tmp/bore-mobile com.bore2.game.MobileContactsTest
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
@@ -82,7 +83,7 @@ jobs:
           arch: x86_64
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: adb install -r /tmp/bore-apk/app-debug.apk && /usr/bin/python3 ports/android/test/emulator_visual.py
+          script: adb install -r /tmp/bore-apk/app-debug.apk && /usr/bin/python3 ports/android/test/emulator_visual.py && /usr/bin/python3 ports/android/test/emulator_life.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
