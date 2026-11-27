@@ -21,6 +21,10 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.ScrollView;
+import android.widget.EditText;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
+import android.widget.AdapterView;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -29,6 +33,8 @@ public final class MainActivity extends Activity {
     private static final int MAP_SIZE=1024;
     private static final int BG=Color.rgb(23,32,34), INK=Color.rgb(236,242,236);
     private SharedPreferences prefs;
+    private AvatarStyle appearance=AvatarStyle.defaults();
+    private String playerName="Bore";
     private TextView title,detail,hint,lifeStatus;
     private LinearLayout root,panel;
     private FrameLayout pane;
@@ -88,6 +94,7 @@ public final class MainActivity extends Activity {
         super.onCreate(state);
         prefs=getSharedPreferences("world_preview",MODE_PRIVATE);
         seed=prefs.getInt("seed",1234);
+        appearance=AvatarStyle.decode(prefs.getInt("avatarStyle",-1));playerName=AvatarStyle.cleanName(prefs.getString("avatarName","Bore"));
         radius=Math.max(4,Math.min(16,prefs.getInt("radius",8)));
         weekday=Math.max(0,Math.min(6,prefs.getInt("day",prefs.getBoolean("weekend",false)?5:0)));
         in3d=prefs.getBoolean("view3d",true);crowdMotion=prefs.getBoolean("crowdMotion",true);
@@ -137,6 +144,7 @@ public final class MainActivity extends Activity {
             if(walkMode){walkTo(tx,ty);return;}
             selectedX=x;selectedY=y;updateDetails();
         });
+        world3d.appearance(appearance);world3d.residentSeed(seed);
         map=new MapView();
         pane.addView(world3d,new FrameLayout.LayoutParams(-1,-1));
         pane.addView(map,new FrameLayout.LayoutParams(-1,-1));
@@ -153,6 +161,7 @@ public final class MainActivity extends Activity {
         addButton(primary,"Home",this::homeAction);
         addButton(primary,"Find places",this::showFinder);
         addButton(primary,"Enter",this::enterSelected);
+        addButton(primary,"Character",this::showCharacterEditor);
         detail=new TextView(this);detail.setTextSize(14);detail.setTextColor(INK);
         detail.setMinLines(2);detail.setPadding(dp(12),dp(6),dp(12),dp(4));
         lower.addView(detail,new LinearLayout.LayoutParams(-1,-2));
@@ -201,7 +210,7 @@ public final class MainActivity extends Activity {
             cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
             lifeX=cx;lifeY=cy;resetOutdoorPosition();weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
             lifeDay=0;lastShiftDay=-1;lastRoute=new int[0];homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
-            java.util.Arrays.fill(skills,0);contacts.load("");world3d.resetCamera();refresh();saveLife();
+            java.util.Arrays.fill(skills,0);contacts.load("");world3d.residentSeed(seed);world3d.resetCamera();refresh();saveLife();
     }
     private void layoutPanes(Configuration config){
         boolean wide=config.orientation==Configuration.ORIENTATION_LANDSCAPE;
@@ -444,6 +453,28 @@ public final class MainActivity extends Activity {
         else updateDetails();
         notice("Home selected — tap Travel here");
     }
+    private void showCharacterEditor(){
+        final AvatarStyle[] draft={appearance};
+        ScrollView scroll=new ScrollView(this);LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(16),dp(8),dp(16),dp(8));scroll.addView(content);
+        AvatarPreview preview=new AvatarPreview(this,draft[0]);content.addView(preview,new LinearLayout.LayoutParams(-1,dp(136)));
+        EditText name=new EditText(this);name.setSingleLine(true);name.setHint("Character name");name.setContentDescription("Character name");name.setText(playerName);name.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(40)});content.addView(name,new LinearLayout.LayoutParams(-1,-2));
+        for(int k=0;k<AvatarStyle.FIELDS.length;k++){
+            final int field=k;LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);content.addView(row,new LinearLayout.LayoutParams(-1,-2));
+            TextView label=new TextView(this);label.setText(AvatarStyle.FIELDS[k]);label.setTextSize(13);row.addView(label,new LinearLayout.LayoutParams(0,-2,1));
+            Spinner choice=new Spinner(this);choice.setContentDescription(AvatarStyle.FIELDS[k]);
+            ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_item,AvatarStyle.options(k));adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);choice.setAdapter(adapter);choice.setSelection(draft[0].choice(k));
+            row.addView(choice,new LinearLayout.LayoutParams(0,dp(42),1));
+            choice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
+                @Override public void onItemSelected(AdapterView<?> parent,View view,int position,long id){draft[0]=draft[0].with(field,position);preview.appearance(draft[0]);}
+                @Override public void onNothingSelected(AdapterView<?> parent){}
+            });
+        }
+        AlertDialog editor=new AlertDialog.Builder(this).setTitle("Customize character").setView(scroll)
+            .setPositiveButton("Save appearance",(dialog,which)->{
+                appearance=draft[0];playerName=AvatarStyle.cleanName(name.getText().toString());world3d.appearance(appearance);interiorView.appearance(appearance);updateDetails();saveLife();notice("Appearance saved");
+            }).setNegativeButton("Cancel",null).create();
+        editor.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);editor.show();
+    }
     private void buildHomePane(){
         homePane=new LinearLayout(this);homePane.setOrientation(LinearLayout.VERTICAL);homePane.setBackgroundColor(BG);
         roomCaption=new TextView(this);roomCaption.setTextColor(INK);roomCaption.setTextSize(13);
@@ -452,7 +483,7 @@ public final class MainActivity extends Activity {
             @Override public void arrived(int action,int cell){interiorArrived(action,cell);}
             @Override public void message(String message){notice(message);}
         });
-        homePane.addView(interiorView,new LinearLayout.LayoutParams(-1,0,1));
+        interiorView.appearance(appearance);homePane.addView(interiorView,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout row=new LinearLayout(this);homePane.addView(row);
         LinearLayout row2=new LinearLayout(this);homePane.addView(row2);
         for(int k=0;k<InteriorPlan.COUNT;k++){
@@ -721,7 +752,8 @@ public final class MainActivity extends Activity {
              .putBoolean("insideHome",inInterior&&!interiorPlan.commercial).putBoolean("insideVenue",inInterior&&interiorPlan.commercial)
              .putInt("insideX",interiorX).putInt("insideY",interiorY).putInt("insideLot",inInterior?interiorPlan.lot:-1)
              .putInt("roomCell",inInterior?interiorView.cell():-1).putInt("roomFloor",roomFloor)
-             .putInt("tileX",tileX).putInt("tileY",tileY).putBoolean("crowdMotion",crowdMotion);
+             .putInt("tileX",tileX).putInt("tileY",tileY).putBoolean("crowdMotion",crowdMotion)
+             .putInt("avatarStyle",appearance.encode()).putString("avatarName",playerName);
         for(int i=0;i<skills.length;i++)e.putInt("skill"+i,skills[i]);e.apply();
     }
     private void updateDetails(){
@@ -731,7 +763,7 @@ public final class MainActivity extends Activity {
         String day=new String[]{"Mon","Tue","Wed","Thu","Fri","Sat","Sun"}[weekday];
         lifeStatus.setText(String.format(java.util.Locale.US,"%s %02d:%02d · $%d · Energy %d\nFood %d · Fun %d · Social %d\n%s · %s %d\n%s · Shifts %d · Trips %d",
             day,minute/60,minute%60,funds,energy,food,fun,social,
-            atSelected()?"At selected lot":"You: "+lifeX+", "+lifeY,SKILL_NAMES[best],skills[best],
+            atSelected()?playerName+" · Here":playerName+": "+lifeX+", "+lifeY,SKILL_NAMES[best],skills[best],
             !hasHome()?"Find a home":(atHome()?"At home":"Home "+homeX+", "+homeY)+(rentDebt>0?" · Rent due $"+rentDebt:""),careerShifts,trips));
         map.setContentDescription("San Boreas map. Selected lot: "+text);
         world3d.setContentDescription("San Boreas 3D neighborhood. Selected lot: "+text);

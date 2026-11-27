@@ -54,6 +54,8 @@ final class WorldView3D extends GLSurfaceView {
     void player(int x,int y){playerTile(x*18+2,y*18+2,0);}
     void playerTile(int x,int y,int ms){queueEvent(()->scene.movePlayer(x,y,ms));requestRender();}
     void followPlayer(boolean follow){queueEvent(()->{scene.follow=follow;if(follow)scene.distance=22;});requestRender();}
+    void appearance(AvatarStyle style){queueEvent(()->scene.setAppearance(style));requestRender();}
+    void residentSeed(int seed){queueEvent(()->scene.setResidentSeed(seed));requestRender();}
     void residents(int[] people,int revision){
         crowdPresent=people!=null&&people.length>0;
         queueEvent(()->scene.setResidents(people,revision));refreshCrowdTimer();requestRender();
@@ -115,10 +117,10 @@ final class WorldView3D extends GLSurfaceView {
     }
     private final class SceneRenderer implements Renderer {
         private static final String VS=
-            "attribute vec3 aPosition;attribute vec3 aColor;uniform mat4 uVP;uniform vec3 uEye;uniform vec3 uOffset;uniform vec3 uPose;uniform vec3 uTint;"+
+            "attribute vec3 aPosition;attribute vec3 aColor;attribute float aLimb;uniform mat4 uVP;uniform vec3 uEye;uniform vec3 uOffset;uniform vec3 uPose;uniform vec3 uTint;"+
             "varying mediump vec3 vColor;varying mediump float vDist;varying mediump vec2 vXZ;"+
-            "void main(){vec3 p=aPosition;if(uPose.x>.5){float swing=uPose.y;float side=p.x<0.?-1.:1.;"+
-            "if(p.y<.73)p.z+=side*swing*max(0.,.72-p.y);else if(abs(p.x)>.265)p.z-=side*swing*max(0.,1.33-p.y);"+
+            "void main(){vec3 p=aPosition;if(uPose.x>.5){"+
+            "if(abs(aLimb)>.5){bool arm=abs(aLimb)>1.5;float pivot=arm?1.32:.76;float a=sign(aLimb)*uPose.y*(arm?-1.:1.);float c=cos(a),s=sin(a);p.y-=pivot;p.yz=vec2(c*p.y-s*p.z,s*p.y+c*p.z);p.y+=pivot;}"+
             "float cs=cos(uPose.z),sn=sin(uPose.z);p.xz=vec2(cs*p.x+sn*p.z,-sn*p.x+cs*p.z);}p+=uOffset;gl_Position=uVP*vec4(p,1.);vColor=aColor*uTint;vDist=length(p-uEye);vXZ=p.xz;}";
         private static final String FS=
             "precision mediump float;varying mediump vec3 vColor;varying mediump float vDist;varying mediump vec2 vXZ;"+
@@ -136,16 +138,42 @@ final class WorldView3D extends GLSurfaceView {
         private int pendingX,pendingY,pendingRevision,revision;
         private Runnable pendingReady,pendingFailure,activeFailure;
         private int originX,originY,selX=Integer.MIN_VALUE,selY,width,height,program,vbo;
-        private int aPosition,aColor,uVP,uEye,uSelection,uSelected,uSky,uPlayer,uPlayerVisible,uOffset,uPose,uTint;
-        private final float[] actor=ActorMesh.create();
-        private FloatBuffer actorBuffer;
+        private int aPosition,aColor,aLimb,uVP,uEye,uSelection,uSelected,uSky,uPlayer,uPlayerVisible,uOffset,uPose,uTint;
+        private final class AvatarModel {
+            final FloatBuffer buffer;final int count;
+            AvatarModel(AvatarStyle appearance,boolean detailed){
+                float[] data=AvatarMesh.create(appearance,detailed);
+                buffer=ByteBuffer.allocateDirect(data.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+                buffer.put(data).flip();count=data.length/AvatarMesh.STRIDE;
+            }
+        }
+        private AvatarModel playerModel;
+        private int playerStyle=-1,residentSeed;
+        private AvatarModel[] residentModels=new AvatarModel[0];
+        private java.util.HashMap<Integer,AvatarModel> residentCache=new java.util.HashMap<>();
+        void setAppearance(AvatarStyle style){
+            if(playerModel!=null&&playerStyle==style.encode())return;
+            try{AvatarModel next=new AvatarModel(style,true);playerModel=next;playerStyle=style.encode();}
+            catch(OutOfMemoryError ex){/* Keep the last valid character. */}
+        }
+        void setResidentSeed(int seed){if(residentSeed!=seed){residentSeed=seed;rebuildResidents();}}
+        private void rebuildResidents(){
+            java.util.HashMap<Integer,AvatarModel> next=new java.util.HashMap<>();AvatarModel[] models=new AvatarModel[residents.length/3];
+            for(int i=0;i<models.length;i++){
+                AvatarStyle style=AvatarStyle.resident(residentSeed,residents[i*3+2]);int key=style.encode();
+                AvatarModel model=next.get(key);if(model==null)model=residentCache.get(key);
+                if(model==null)try{model=new AvatarModel(style,false);}catch(OutOfMemoryError ex){continue;}
+                next.put(key,model);models[i]=model;
+            }
+            residentCache=next;residentModels=models;
+        }
         private int[] residents=new int[0];
         private final float[] residentY=new float[16];
         private int residentsRevision=-1,residentGroundRevision=-1;
         void setResidents(int[] people,int id){
             if(people==null||people.length%3!=0||people.length>48)return;
             if(residentsRevision==id&&java.util.Arrays.equals(residents,people))return;
-            residents=people;residentsRevision=id;residentGroundRevision=-1;
+            residents=people;residentsRevision=id;residentGroundRevision=-1;rebuildResidents();
         }
         private int actorX=-1,actorY=-1,actorRevision=-1,actorFromX=-1,actorFromY=-1;
         private float groundFrom=Float.POSITIVE_INFINITY,groundTo=Float.POSITIVE_INFINITY;
@@ -238,13 +266,13 @@ final class WorldView3D extends GLSurfaceView {
             int[] ok=new int[1];GLES20.glGetProgramiv(program,GLES20.GL_LINK_STATUS,ok,0);
             GLES20.glDeleteShader(vs);GLES20.glDeleteShader(fs);
             if(ok[0]==0)throw new IllegalStateException(GLES20.glGetProgramInfoLog(program));
-            aPosition=GLES20.glGetAttribLocation(program,"aPosition");aColor=GLES20.glGetAttribLocation(program,"aColor");
+            aPosition=GLES20.glGetAttribLocation(program,"aPosition");aColor=GLES20.glGetAttribLocation(program,"aColor");aLimb=GLES20.glGetAttribLocation(program,"aLimb");
             uVP=GLES20.glGetUniformLocation(program,"uVP");uEye=GLES20.glGetUniformLocation(program,"uEye");
             uSelection=GLES20.glGetUniformLocation(program,"uSelection");uSelected=GLES20.glGetUniformLocation(program,"uSelected");
             uSky=GLES20.glGetUniformLocation(program,"uSky");
             uPlayer=GLES20.glGetUniformLocation(program,"uPlayer");uPlayerVisible=GLES20.glGetUniformLocation(program,"uPlayerVisible");
             uOffset=GLES20.glGetUniformLocation(program,"uOffset");uPose=GLES20.glGetUniformLocation(program,"uPose");uTint=GLES20.glGetUniformLocation(program,"uTint");
-            if(actorBuffer==null){actorBuffer=ByteBuffer.allocateDirect(actor.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();actorBuffer.put(actor).flip();}
+            if(playerModel==null)setAppearance(AvatarStyle.defaults());
             vbo=0;dirty=true;validMatrix=false;actorRevision=-1;
             GLES20.glEnable(GLES20.GL_DEPTH_TEST);GLES20.glDepthFunc(GLES20.GL_LEQUAL);
             GLES20.glDisable(GLES20.GL_BLEND);GLES20.glDisable(GLES20.GL_CULL_FACE);
@@ -277,6 +305,7 @@ final class WorldView3D extends GLSurfaceView {
             boolean playerHere=actorVisible;
             GLES20.glUniform1f(uPlayerVisible,playerHere&&!follow?1:0);
             GLES20.glUniform2f(uPlayer,playerHere?(playerX/18-originX)*18f:0,playerHere?(playerY/18-originY)*18f:0);
+            GLES20.glDisableVertexAttribArray(aLimb);GLES20.glVertexAttrib1f(aLimb,0);
             GLES20.glEnableVertexAttribArray(aPosition);GLES20.glEnableVertexAttribArray(aColor);
             GLES20.glVertexAttribPointer(aPosition,3,GLES20.GL_FLOAT,false,24,0);
             GLES20.glVertexAttribPointer(aColor,3,GLES20.GL_FLOAT,false,24,12);
@@ -284,31 +313,32 @@ final class WorldView3D extends GLSurfaceView {
             if(playerHere)drawActor();
             drawResidents();
             if(animating)WorldView3D.this.requestRender();
-            GLES20.glDisableVertexAttribArray(aPosition);GLES20.glDisableVertexAttribArray(aColor);
+            GLES20.glDisableVertexAttribArray(aPosition);GLES20.glDisableVertexAttribArray(aColor);GLES20.glDisableVertexAttribArray(aLimb);
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,0);
         }
-        private void bindActor(){
+        private void bindActor(AvatarModel model){
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,0);
             GLES20.glUniform1f(uPlayerVisible,0);GLES20.glUniform1f(uSelected,0);
-            actorBuffer.position(0);GLES20.glVertexAttribPointer(aPosition,3,GLES20.GL_FLOAT,false,24,actorBuffer);
-            actorBuffer.position(3);GLES20.glVertexAttribPointer(aColor,3,GLES20.GL_FLOAT,false,24,actorBuffer);
-            actorBuffer.position(0);
+            FloatBuffer b=model.buffer;int stride=AvatarMesh.STRIDE*4;
+            b.position(0);GLES20.glVertexAttribPointer(aPosition,3,GLES20.GL_FLOAT,false,stride,b);
+            b.position(3);GLES20.glVertexAttribPointer(aColor,3,GLES20.GL_FLOAT,false,stride,b);
+            GLES20.glEnableVertexAttribArray(aLimb);b.position(6);GLES20.glVertexAttribPointer(aLimb,1,GLES20.GL_FLOAT,false,stride,b);b.position(0);
         }
         private void drawActor(){
-            if(!actorVisible||actorBuffer==null)return;
-            bindActor();GLES20.glUniform3f(uOffset,actorPX,actorPY+.035f,actorPZ);
+            if(!actorVisible||playerModel==null)return;
+            bindActor(playerModel);GLES20.glUniform3f(uOffset,actorPX,actorPY+.035f,actorPZ);
             GLES20.glUniform3f(uPose,1,swing,facing);GLES20.glUniform3f(uTint,lighting[3],lighting[4],lighting[5]);
-            GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,actor.length/6);
+            GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,playerModel.count);
         }
         private void drawResidents(){
-            if(residentsRevision!=revision||residents.length==0||actorBuffer==null)return;
+            if(residentsRevision!=revision||residents.length==0||residentModels.length!=residents.length/3)return;
             int baseX=originX*18+9,baseY=originY*18+9;
             if(residentGroundRevision!=revision){
                 for(int i=0;i<residents.length;i+=3)
                     residentY[i/3]=groundAt(residents[i]-baseX+.5f,residents[i+1]-baseY+.5f);
                 residentGroundRevision=revision;
             }
-            bindActor();long now=SystemClock.uptimeMillis();
+            long now=SystemClock.uptimeMillis();
             for(int i=0;i<residents.length;i+=3){
                 int key=residents[i+2],style=ResidentSchedule.mix(key);
                 float x=residents[i]-baseX+.5f,z=residents[i+1]-baseY+.5f,h=residentY[i/3];
@@ -319,11 +349,11 @@ final class WorldView3D extends GLSurfaceView {
                     float nextZ=z-2f+NeighborhoodMotion.pace(key,now),nextH=groundAt(x,nextZ);
                     if(Float.isFinite(nextH)){z=nextZ;h=nextH;turn=NeighborhoodMotion.facing(key,now);gait=NeighborhoodMotion.swing(key,now);}
                 }
-                if(!Float.isFinite(h))continue;
-                GLES20.glUniform3f(uOffset,x,h+.035f,z);
+                AvatarModel model=residentModels[i/3];if(!Float.isFinite(h)||model==null)continue;
+                bindActor(model);GLES20.glUniform3f(uOffset,x,h+.035f,z);
                 GLES20.glUniform3f(uPose,1,gait,turn);
-                GLES20.glUniform3f(uTint,lighting[3]*(.80f+((style>>>2)&3)*.07f),lighting[4]*(.80f+((style>>>4)&3)*.07f),lighting[5]*(.80f+((style>>>6)&3)*.07f));
-                GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,actor.length/6);
+                GLES20.glUniform3f(uTint,lighting[3],lighting[4],lighting[5]);
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,model.count);
             }
         }
         // Pick the nearest actual visible triangle, including roof and wall

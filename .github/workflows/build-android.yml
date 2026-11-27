@@ -35,9 +35,11 @@ jobs:
       - name: Verify mobile life rules and resident geometry (JDK only)
         run: |
           J=ports/android/app/src/main/java/com/bore2/game
-          javac -Xlint:all -d /tmp/bore-mobile "$J/LifeRules.java" "$J/ActorMesh.java" "$J/MobileContacts.java" "$J/InteriorPlan.java" "$J/BuildingPlan.java" "$J/VenueRules.java" "$J/OutdoorPath.java" "$J/ResidentSchedule.java" "$J/NeighborhoodMotion.java" "$J/GroundIndex.java" ports/android/test/BuildingPlanTest.java ports/android/test/NeighborhoodMotionTest.java ports/android/test/GroundIndexTest.java ports/android/test/VenueRulesTest.java ports/android/test/ResidentScheduleTest.java ports/android/test/OutdoorPathTest.java ports/android/test/InteriorPlanTest.java ports/android/test/LifeRulesTest.java ports/android/test/ActorMeshTest.java ports/android/test/MobileContactsTest.java
+          javac -Xlint:all -d /tmp/bore-mobile "$J/LifeRules.java" "$J/ActorMesh.java" "$J/AvatarStyle.java" "$J/AvatarMesh.java" "$J/MobileContacts.java" "$J/InteriorPlan.java" "$J/BuildingPlan.java" "$J/VenueRules.java" "$J/OutdoorPath.java" "$J/ResidentSchedule.java" "$J/NeighborhoodMotion.java" "$J/GroundIndex.java" ports/android/test/BuildingPlanTest.java ports/android/test/NeighborhoodMotionTest.java ports/android/test/GroundIndexTest.java ports/android/test/VenueRulesTest.java ports/android/test/ResidentScheduleTest.java ports/android/test/OutdoorPathTest.java ports/android/test/InteriorPlanTest.java ports/android/test/LifeRulesTest.java ports/android/test/ActorMeshTest.java ports/android/test/AvatarStyleTest.java ports/android/test/AvatarMeshTest.java ports/android/test/MobileContactsTest.java
           java -cp /tmp/bore-mobile com.bore2.game.LifeRulesTest
           java -cp /tmp/bore-mobile com.bore2.game.ActorMeshTest
+          java -cp /tmp/bore-mobile com.bore2.game.AvatarStyleTest
+          java -cp /tmp/bore-mobile com.bore2.game.AvatarMeshTest
           java -cp /tmp/bore-mobile com.bore2.game.MobileContactsTest
           java -cp /tmp/bore-mobile com.bore2.game.InteriorPlanTest
           java -cp /tmp/bore-mobile com.bore2.game.BuildingPlanTest

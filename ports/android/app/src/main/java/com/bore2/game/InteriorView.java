@@ -15,6 +15,8 @@ final class InteriorView extends View {
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Listener listener;
     private InteriorPlan plan;
+    private AvatarStyle style=AvatarStyle.defaults();
+    void appearance(AvatarStyle next){style=next;invalidate();}
     private int at,action=WALK,index,lo,hi,top,bottom,landing=-1;
     private int[] path;
     private long started;
@@ -151,12 +153,15 @@ final class InteriorView extends View {
         }
         float cx=X(px),cy=Y(py);
         paint.setColor(0x55302010);c.drawOval(cx-tile*.25f,cy-tile*.15f,cx+tile*.25f,cy+tile*.2f,paint);
-        paint.setStrokeWidth(Math.max(2,tile*.10f));paint.setStrokeCap(Paint.Cap.ROUND);paint.setColor(0xff2a3949);
+        paint.setStrokeWidth(Math.max(2,tile*.10f));paint.setStrokeCap(Paint.Cap.ROUND);paint.setColor(0xff000000|style.color(3));
         c.drawLine(cx-tile*.10f,cy+tile*.11f,cx-tile*.12f,cy+tile*(.26f+phase*.09f),paint);
         c.drawLine(cx+tile*.10f,cy+tile*.11f,cx+tile*.12f,cy+tile*(.26f-phase*.09f),paint);
-        paint.setColor(0xff297c78);c.drawRoundRect(cx-tile*.22f,cy-tile*.18f,cx+tile*.22f,cy+tile*.14f,tile*.13f,tile*.13f,paint);
-        paint.setColor(0xffdfb38e);c.drawCircle(cx,cy-tile*.25f,tile*.16f,paint);
-        paint.setColor(0xff4d392c);c.drawArc(cx-tile*.17f,cy-tile*.42f,cx+tile*.17f,cy-tile*.11f,180,180,true,paint);
+        paint.setColor(0xff000000|style.color(2));c.drawRoundRect(cx-tile*.22f,cy-tile*.18f,cx+tile*.22f,cy+tile*.14f,tile*.13f,tile*.13f,paint);
+        paint.setColor(0xff000000|style.color(0));c.drawCircle(cx,cy-tile*.25f,tile*.16f,paint);
+        paint.setColor(0xff000000|style.color(1));
+        float hairTop=style.choice(4)==1?.46f:style.choice(4)==3?.38f:.42f;
+        if(style.choice(4)==2)c.drawRoundRect(cx-tile*.18f,cy-tile*.39f,cx+tile*.18f,cy-tile*.12f,tile*.12f,tile*.12f,paint);
+        c.drawArc(cx-tile*.17f,cy-tile*hairTop,cx+tile*.17f,cy-tile*.11f,180,180,true,paint);
         if(tile>=27){
             for(int k=0;k<plan.actionCount();k++){
                 int p=plan.objects[k];text(c,plan.labelAt(k),X(p%18+.5f),Y(p/18+.98f),Math.min(tile*.22f,14),0xff332f2b);
