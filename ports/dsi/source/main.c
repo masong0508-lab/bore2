@@ -333,7 +333,9 @@ static void draw_map(void) {
     char t[48];
     if (!ne_on) {
         int own_ = lot_owned(sel_x, sel_y), price = shop_lot(lot_price(&b)), fm, pp = pop_at(sel_x, sel_y, &fm), home = is_home(sel_x, sel_y), mv = own_ && !home;
-        sprintf(t, "%.15s", bm_lot_name(b.lot)); text_box(2, 159, 146, 11, FS_HEAD, C15(31, 31, 22), AL_L, t);   // (D65) row A: the lot and what it is; row B (small): the town, who lives there, where; row C: the buttons
+        BoreTrail trail;bm_trail_plan(sel_x,sel_y,&b,&trail);
+        const char *trailname=bm_trail_label(trail.kind);
+        sprintf(t, "%.15s", trailname?trailname:bm_lot_name(b.lot)); text_box(2, 159, 146, 11, FS_HEAD, C15(31, 31, 22), AL_L, t);   // (D65) row A: the lot and what it is; row B (small): the town, who lives there, where; row C: the buttons
         if (own_) { int tw_ = home ? 44 : 64; rect(150, 160, tw_, 10, home ? C15(31, 24, 2) : C15(8, 26, 31)); text_box(150, 160, tw_, 10, FS_BODY, C15(8, 4, 0), AL_C, home ? "HOME" : "PROPERTY"); }
         else if (price && pp) text_box(150, 159, 104, 11, FS_BODY, C15(20, 22, 28), AL_L, "Family home");   // (someone lives there: not for sale)
         else if (price) { sprintf(t, "FOR SALE  %d", price); text_box(150, 159, 104, 11, FS_BODY, C15(31, 24, 10), AL_L, t); }
@@ -1200,6 +1202,10 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
     int outdoor = k == LOT_WILD || k == LOT_PARK || k == LOT_SQUARE || k == LOT_SKATE || k == LOT_EMPTY || k == LOT_RIVER || k == LOT_FARM;
     door_cx = 6; pcx = 6; pcy = 11;
     if (outdoor) {
+        BoreTrail trail={0};
+        if(k==LOT_WILD&&lot_bx>=0&&lot_bx<BM_N&&lot_by>=0&&lot_by<BM_N){
+            BInfo b;bm_block(lot_bx,lot_by,&b);bm_trail_plan(lot_bx,lot_by,&b,&trail);
+        }
         door_cy = 12;
         if (k == LOT_SQUARE || k == LOT_SKATE) for (int y = 2; y < 11; y++) for (int x = 2; x < 11; x++) flr[y][x] = 2;
         if (k == LOT_SKATE) {   // (D44) the PS1's SKATE PLAZA (world.c city_skate): quarter pipes round three sides, a funbox with a kicker either side, a rail, a ledge, a manual pad, a launch ramp
@@ -1245,7 +1251,7 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
             #undef PK
             #undef PKF
         }
-        for (int i = 0; i < 14 && k != LOT_PARK && k != LOT_SQUARE; i++) { int x = (int)((h >> (i * 2)) & 15) % 13, y = (int)((h >> (i * 2 + 1)) % 11) % 13; if (y > 10 || obj_at(x, y) >= 0) continue;
+        for (int i = 0; i < 14 && k != LOT_PARK && k != LOT_SQUARE; i++) { int x = (int)((h >> (i * 2)) & 15) % 13, y = (int)((h >> (i * 2 + 1)) % 11) % 13; if (y > 10 || obj_at(x, y) >= 0 || bore_trail_cell(&trail,x+BM_LOT0,y+BM_LOT0)) continue;
             int pick = (int)((h >> (i + 3)) % 5);
             if (k == LOT_PARK || k == LOT_SQUARE) { if (pick == 0) PUTP(x, y, 0, 3, abs(x - 6) > abs(y - 6) ? 1 : 0);   // (D42, as the PS1: a bench lies along the walk by it, not at random)
                 else if (pick == 1) PUTP(x, y, 6, 1, 0); else if (pick == 2) PUTP(x, y, 6, 3, 0); else if (pick == 3) PUTP(x, y, 6, 2, 0); else PUTP(x, y, 3, 2, 0); }
@@ -2195,6 +2201,19 @@ static void ds_draw_relief(int first,int last){
         gx_push(x*36*T,0,y*36*T);
         tx_want=-1;
         u16 col=b->terrain==BT_SEA?C15(5,12,24):land_col(b->terrain);
+        /* Local path is part of the ground, not a coplanar decal.
+         * Distant patches retain nine quads; detail needs budget headroom. */
+        BoreTrail trail={0};
+        if(r==0)bm_trail_plan(lot_bx,lot_by,b,&trail);
+        if(trail.links&&ds_world_detail_budget(polys+648)&&(!gxb||gxn+10000<gx_cap)){
+            for(int j=0;j<BM_BLK;j++)for(int i=0;i<BM_BLK;i++){
+                int x0=tl(2*(i-BM_LOT0)),x1=x0+2*T,z0=tl(2*(j-BM_LOT0)),z1=z0+2*T;
+                u16 c=bore_trail_cell(&trail,i,j)?C15(22,17,10):col;
+                qd(x0,-ds_relief_units(bore_land_sample(p,i,j)),z0,x1,-ds_relief_units(bore_land_sample(p,i+1,j)),z0,
+                   x1,-ds_relief_units(bore_land_sample(p,i+1,j+1)),z1,x0,-ds_relief_units(bore_land_sample(p,i,j+1)),z1,c);
+            }
+            gx_pop();continue;
+        }
         for(int j=0;j<3;j++)for(int i=0;i<3;i++){
             int x0=tl(2*(bore_land_knots[i]-BM_LOT0)),x1=tl(2*(bore_land_knots[i+1]-BM_LOT0));
             int z0=tl(2*(bore_land_knots[j]-BM_LOT0)),z1=tl(2*(bore_land_knots[j+1]-BM_LOT0));

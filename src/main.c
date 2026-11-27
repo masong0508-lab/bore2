@@ -851,8 +851,17 @@ static void life_update(int steps) {
 #endif
     ghost_tick(steps, frame);
     if (!(frame & 31) && bm_gen >= 7 && world_zone == ZONE_CITY && world_wbx >= 0 && state == ST_LIFE) {   // (world version 7: walking into another neighbourhood: its name on the feed)
-        static char nbl[24]; char nn[24]; const char *nb = bm_nb_name(world_wbx + sim_tile_x(&sims[player]) / BM_BLK, world_wby + sim_tile_y(&sims[player]) / BM_BLK, nn);
-        if (nb && strcmp(nb, nbl)) { sim_note(nb); strcpy(nbl, nb); } }
+        extern int bm_edit_stamp;
+        static char nbl[24]; static int lastx=-1,lasty=-1,lastedit=-1;
+        int bx=world_wbx+sim_tile_x(&sims[player])/BM_BLK,by=world_wby+sim_tile_y(&sims[player])/BM_BLK;
+        char nn[24]; const char *nb=bm_nb_name(bx,by,nn);
+        if(!nb&&(lastx!=bx||lasty!=by||lastedit!=bm_edit_stamp)){
+            BInfo info;BoreTrail trail;bm_block(bx,by,&info);bm_trail_plan(bx,by,&info,&trail);
+            nb=bm_trail_label(trail.kind);
+            if(!nb)nbl[0]=0;
+        }
+        if(nb&&strcmp(nb,nbl)){sim_note(nb);strcpy(nbl,nb);}
+        lastx=bx;lasty=by;lastedit=bm_edit_stamp; }
 #ifdef AUTO_REALM
     { static int ar; if (++ar == 40 && (ovl = ovl_load("KINGDOM.OVL"))) { ovl->open(0); state = ST_REALM; return; } }   // (test builds: straight into KINGDOM MODE)
 #endif

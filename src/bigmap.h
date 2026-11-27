@@ -6,6 +6,7 @@
 #pragma once
 #include "common.h"
 #include "landscape.h"
+#include "trail_plan.h"
 
 #define BM_N    1024                  // blocks a side
 #define BM_BLK  18                    // tiles a block
@@ -70,6 +71,8 @@ int  bm_ovr_next(int *it, int *bx, int *by, int *f, u8 *v);   // *it starts at 0
 void bm_new(u32 seed);                // a new world
 u32  bm_seed(void);
 void bm_block(int bx, int by, BInfo *b);
+void bm_trail_plan(int bx,int by,const BInfo *b,BoreTrail *out);
+const char *bm_trail_label(int kind);
 int  bm_terrain(int bx, int by);
 int  bm_units(const BInfo *b);        // homes on that block
 int  bm_storeys(const BInfo *b);      // how tall what stands there is (1 .. 5)

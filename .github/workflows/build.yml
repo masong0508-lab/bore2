@@ -10,6 +10,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Verify connected trail masks and generated world boundaries
+        run: |
+          cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/trail_test.c -o /tmp/trail_test && /tmp/trail_test
+          cc -O2 -std=gnu11 -Iports/host/shim -Isrc test/trail_world_test.c src/bigmap.c -o /tmp/trail_world_test && /tmp/trail_world_test
       - name: Verify continuous terrain, flat lot pads and sculpt falloff
         run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/landscape_test.c -o /tmp/landscape_test && /tmp/landscape_test
       - name: Verify terrain editor capacity, edge coordinates and undo

@@ -52,7 +52,13 @@ int bore_android_describe(int x,int y,int weekday,char *out,unsigned cap){
     BInfo b;bm_block(x,y,&b);
     char name[64];
     bm_place_name(b.lot,b.h,name);
-    if(b.lot==LOT_WILD&&b.terrain!=BT_SEA){int h=bm_hill(x,y);if(b.terrain==BT_ROCKY)bsnprintf(name,sizeof name,"Highland ridge (%d tiles above sea)",h/TILE);else if(h>=TILE*3)bsnprintf(name,sizeof name,"Rolling countryside (%d tiles above sea)",h/TILE);}
+    if(b.lot==LOT_WILD&&b.terrain!=BT_SEA){
+        BoreTrail trail;bm_trail_plan(x,y,&b,&trail);
+        const char *label=bm_trail_label(trail.kind);int h=bm_hill(x,y);
+        if(label)bsnprintf(name,sizeof name,"%s (%d tiles above sea)",label,h/TILE);
+        else if(b.terrain==BT_ROCKY)bsnprintf(name,sizeof name,"Highland ridge (%d tiles above sea)",h/TILE);
+        else if(h>=TILE*3)bsnprintf(name,sizeof name,"Rolling countryside (%d tiles above sea)",h/TILE);
+    }
     const Settle *s=bm_set(b.set);
     char district[24],where[96];
     const char *d=bm_nb_name(x,y,district);
@@ -194,6 +200,7 @@ int bore_android_walk_mask(int cx,int cy,int *out,int count){
     for(int by=0;by<3;by++)for(int bx=0;bx<3;bx++){
         int wx=cx+bx-1,wy=cy+by-1;
         BInfo b;bm_block(wx,wy,&b);
+        BoreTrail trail;bm_trail_plan(wx,wy,&b,&trail);
         LotPlan p={0},fp={0};u8 f[5];
         int garden=(b.lot==LOT_PARK||b.lot==LOT_SQUARE)&&b.terrain!=BT_SEA;
         if(b.terrain!=BT_SEA&&(garden||b.lot==LOT_POOL||b.lot==LOT_FARM||(b.lot>=LOT_HOUSE&&b.lot<=LOT_TWO)))
@@ -213,7 +220,7 @@ int bore_android_walk_mask(int cx,int cy,int *out,int count){
                 if((b.lot==LOT_SQUARE||park_variant(b.h)==0)&&x>=10&&x<=11&&y>=10&&y<=11)open=0;
             }else if(b.terrain==BT_FOREST&&b.lot==LOT_WILD){
                 int tx=7+(b.h&3u),tz=7+((b.h>>2)&3u);
-                if((x==tx&&y==tz)||(x==tx+4&&(y==tz||y==tz+4)))open=0;
+                if(!bore_trail_cell(&trail,x,y)&&((x==tx&&y==tz)||(x==tx+4&&(y==tz||y==tz+4))))open=0;
             }
             out[(by*18+y)*54+bx*18+x]=open;
         }

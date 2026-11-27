@@ -852,8 +852,10 @@ static int blk_roads(int bx, int by) {   // which streets a block has (bit 0 alo
     return rd;
 }
 static void wild(int ox, int oy, const BInfo *b, int bx, int by) {   // the open country: trees, rocks, cacti, palms
+    BoreTrail trail;bm_trail_plan(bx,by,b,&trail);
     for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) {
         { u8 f = floorMap[oy + y][ox + x]; if (f == FL_PAVING || f == FL_WATER || f >= FL_ASPHALT || lifeMap[oy + y][ox + x] != '.') continue; }
+        if(bore_trail_cell(&trail,x,y)){floorMap[oy+y][ox+x]=FL_SOIL;continue;}
         int r = (int)(bm_hash(bx * BM_BLK + x, by * BM_BLK + y, wsalt ^ 0x77u) % 1000u); char c = 0;
         switch (b->terrain) {
             case BT_GRASS:  c = r < 22 ? '3' : r < 40 ? '*' : r < 44 ? (char)0xE2 : r < 46 ? '6' : 0; break;

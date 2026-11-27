@@ -670,6 +670,33 @@ static void bm_block1(int bx, int by, BInfo *b) {
     b->lot = (u8)(k == MK_PARK ? LOT_PARK : pick(b->h >> 4, k == MK_MALL ? mallMix : k == MK_CAMPUS ? campusMix : plazaMix));
     if (k == MK_MALL && part == 0) b->lot = LOT_SHOP;
 }
+/* Derive trails from unbuilt wilderness without changing the saved lot map.
+ * Opposite boundaries use the same hash, height and road predicate. */
+static int trail_land(const BInfo *b){
+    return b->set==255&&b->lot==LOT_WILD&&(b->terrain==BT_GRASS||b->terrain==BT_FOREST||b->terrain==BT_ROCKY);
+}
+void bm_trail_plan(int bx,int by,const BInfo *b,BoreTrail *out){
+    memset(out,0,sizeof *out);
+    if(bm_gen<8||bx<0||by<0||bx>=BM_N||by>=BM_N||!trail_land(b))return;
+    static const int dx[4]={0,1,0,-1},dy[4]={-1,0,1,0};
+    uint32_t edge[4];unsigned links=0,roadlinks=0;
+    int h=bm_hill(bx,by),summit=h>=TRAIL_HIGH*2;
+    for(int d=0;d<4;d++){
+        int x=bx+dx[d],y=by+dy[d];
+        edge[d]=bm_hash(bx+(d==TRAIL_E),by+(d==TRAIL_S),wseed^((d&1)?0x42FA17u:0x7BD903u));
+        if(x<0||y<0||x>=BM_N||y>=BM_N){summit=0;continue;}
+        BInfo near;bm_block(x,y,&near);
+        int nh=bm_hill(x,y);
+        if(nh>=h)summit=0;
+        int road=d==TRAIL_N?(b->road&1):d==TRAIL_W?(b->road&2):d==TRAIL_S?(near.road&1):(near.road&2);
+        if(road){links|=1u<<d;roadlinks|=1u<<d;}
+        else if(trail_land(&near)&&bore_trail_join(h,nh,edge[d]))links|=1u<<d;
+    }
+    bore_trail_build(out,links,summit?TRAIL_SUMMIT:roadlinks?TRAIL_HEAD:TRAIL_WALK,b->h,edge);
+}
+const char *bm_trail_label(int kind){
+    return kind==TRAIL_SUMMIT?"SUMMIT LOOKOUT":kind==TRAIL_HEAD?"TRAILHEAD":kind==TRAIL_WALK?"HIKING TRAIL":0;
+}
 // ---- the town plan's answers for the ones that build and draw a lot (bigmap.h) ----
 int bm_nb(int bx, int by) {
     BInfo b; if (bm_gen < 7) return NK_NONE;
