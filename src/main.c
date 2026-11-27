@@ -426,7 +426,7 @@ static void start_life(void) {
 #endif
 #endif
 #ifndef GEN_NEW
-#define GEN_NEW 8                                              // (a test build can start an older world version: -DGEN_NEW=6)
+#define GEN_NEW BM_GEN_CURRENT                                              // (a test build can start an older world version: -DGEN_NEW=6)
 #endif
         bm_gen = GEN_NEW; bm_new(seed); world_new_seed(seed);
         loading("PEOPLING SAN BOREAS", 45);
@@ -2938,7 +2938,7 @@ static void rt_test_tick(void) {   // (test builds: REAL TIME on, the clock set 
 // ---- the memory card: SAVE GAME in the pause menu, CONTINUE on the title ----
 static const char *save_msg;                                 // why the last load failed (the title shows it)
 static void save_body(void) {
-    sv_u32(world_seed()); sv_u8(bm_packed);
+    sv_u32(world_seed()); sv_u8(bm_packed); sv_u8(bm_gen); // v56: retain the exact generator on re-save
     sv_u8(traffic_level); sv_u8(bm_land); sv_u8(bm_sea); sv_u8(bm_clim); sv_u8(bm_hills); sv_u8(bm_ncity); sv_u8(bm_ntown); sv_u8(bm_nvil); sv_u8(bm_capsz); sv_u8(pop_people); sv_u8(pop_famsize); sv_u8(isl_size); sv_u8(isl_wild); sv_u8(isl_jungle); sv_u8(isl_rocks);   // (CREATE A WORLD's dials: version 7)
     { int n = 0; for (int i = 0; i < BM_NSET_MAX; i++) if (bm_renamed(i)[0]) n++;   // (the towns renamed)
       sv_u8(n); for (int i = 0; i < BM_NSET_MAX; i++) if (bm_renamed(i)[0]) { sv_u8(i); sv_str(bm_renamed(i), 17); } }
@@ -2953,7 +2953,7 @@ static void save_body(void) {
 }
 static void load_body(void) {
     u32 seed = ld_u32();
-    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 55 ? 8 : save_ver >= 54 ? 7 : save_ver >= 38 ? 6 : save_ver >= 31 ? 5 : save_ver >= 17 ? 4 : 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
+    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 56 ? ld_u8() : save_ver >= 55 ? 8 : save_ver >= 54 ? 7 : save_ver >= 38 ? 6 : save_ver >= 31 ? 5 : save_ver >= 17 ? 4 : 3; bm_gen=CLAMP(bm_gen,2,BM_GEN_CURRENT); wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
     bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2;
     traffic_level = 2; if (save_ver >= 19) traffic_level = ld_u8() % 5;
     if (save_ver >= 7) { bm_land = ld_u8() % BL_N; bm_sea = ld_u8() % 5; bm_clim = ld_u8() % 5; bm_hills = ld_u8() % 5;

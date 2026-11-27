@@ -16,6 +16,8 @@ jobs:
         run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/vehicle_stability_test.c -o /tmp/vehicle_stability && /tmp/vehicle_stability
       - name: Verify real traffic parking across world-window rebases
         run: make -C ports/host/traffic trafsim && ports/host/traffic/trafsim --parking-test
+      - name: Verify regional road continuity, usable farm frontage and actual lot access
+        run: cc -O2 -std=gnu11 -Iports/host/shim -Isrc test/world_frontage_test.c src/bigmap.c -o /tmp/world_frontage && /tmp/world_frontage
       - name: Verify connected trail masks and generated world boundaries
         run: |
           cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/trail_test.c -o /tmp/trail_test && /tmp/trail_test

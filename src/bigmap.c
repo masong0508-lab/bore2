@@ -111,6 +111,7 @@ static int hill_raw(int bx,int by){
     if(bx<0||by<0||bx>=BM_N||by>=BM_N||bm_terrain(bx,by)==BT_SEA)return 0;
     return bore_land_relief(elev(bx,by)-104,bm_hills);
 }
+static int rural_farm(int bx,int by);
 static int hill_pad(int bx,int by,int h){
     if(bx<0||by<0||bx>=BM_N||by>=BM_N||(!h&&bm_terrain(bx,by)==BT_SEA))return 0;
     if(ov_live&&ov_n){
@@ -118,7 +119,7 @@ static int hill_pad(int bx,int by,int h){
         if(i>=0&&(OV_F(&ov[i])&BO_LOT)&&OV_L(&ov[i])!=LOT_WILD)return 1;
         if(i>=0&&(OV_F(&ov[i])&BO_TERR))return OV_S(&ov[i])!=63;
     }
-    return bm_set_at(bx,by)!=255;
+    return bm_set_at(bx,by)!=255||(bm_gen>=9&&rural_farm(bx,by));
 }
 // Round the eye, every block's height is kept in a square table (worked out the first time it is asked for): the far view asks for
 // thousands a frame as the view sweeps, each a stack of noise. 2 MB: 49 x 49 blocks (900 m across); 8 MB: 129 x 129 (2.5 km).
@@ -344,6 +345,16 @@ static int on_road(int bx, int by, int vert) {
         if (vert ? (s->c == bx && by >= s->a && by <= s->b) : (s->c == by && bx >= s->a && bx <= s->b)) return 1; }
     return 0;
 }
+/* Regional agricultural clusters, rather than independent farms in
+ * roadless wilderness. A working gate must face a real east-west road.
+ * Use the same predicate when grading a farm's foundation. */
+static int rural_farm(int bx,int by){
+    if(bx<0||by<0||bx>=BM_N||by>=BM_N)return 0;
+    unsigned district=bm_hash(bx/6,by/3,wseed^0x4641524du);
+    if(district%5u>=2||bm_hash(bx,by,wseed^0xA6F1u)%4u==0)return 0;
+    if(bm_terrain(bx,by)!=BT_GRASS)return 0;
+    return on_road(bx,by,0)||(by+1<BM_N&&on_road(bx,by+1,0));
+}
 static int pick(u32 r, const u8 *tab) {          // tab: lot, weight, ... 0,0 (weights sum to 100)
     int v = (int)(r % 100u);
     for (; tab[1]; tab += 2) { if (v < tab[1]) return tab[0]; v -= tab[1]; }
@@ -564,7 +575,13 @@ static void bm_block0(int bx, int by, BInfo *b) {
         int dx = bx - s->x, dy = by - s->y, q = (dx * dx + dy * dy) * 256 / (s->r * s->r);
         int lm = landmark(s, dx, dy);
         if (lm >= 0) { b->lot = (u8)lm; return; }
-        if (bm_gen >= 7) { g7_block(s, bx, by, b); return; }   // (worlds from now on: the town plan)
+        if (bm_gen >= 7) {
+            g7_block(s,bx,by,b);
+            /* Inter-town highways are the structural spine, not a second
+             * map that vanishes when the local street template takes over. */
+            if(bm_gen>=9){if(on_road(bx,by,0))b->road|=1;if(on_road(bx,by,1))b->road|=2;}
+            return;
+        }   // (worlds from now on: the town plan)
         if (bm_gen >= 6 && q >= 90) {   // out from the centre the streets thin out: an avenue every fourth line, the rest by a throw of the dice per line, and some of those stop short (a cul-de-sac, a lane)
             int pct = q < 170 ? 62 : 42;
             int n = !(by % 4) || (int)(bm_hash(7, by, wseed ^ 0xA11Au) % 100u) < pct, w = !(bx % 4) || (int)(bm_hash(bx, 7, wseed ^ 0xB22Bu) % 100u) < pct;
@@ -591,7 +608,8 @@ static void bm_block0(int bx, int by, BInfo *b) {
     }
     if (on_road(bx, by, 0)) b->road |= 1;
     if (on_road(bx, by, 1)) b->road |= 2;
-    if (b->terrain == BT_GRASS && (b->h % 100u) < 3) b->lot = LOT_FARM;
+    if(bm_gen>=9){if(rural_farm(bx,by))b->lot=LOT_FARM;}
+    else if (b->terrain == BT_GRASS && (b->h % 100u) < 3) b->lot = LOT_FARM;
 }
 // ---- rivers and mega places ----
 static u8 rvOn[NSET_MAX], rvV[NSET_MAX]; static s8 rvOff[NSET_MAX];
@@ -636,6 +654,17 @@ static int mega_kind(int gx, int gy, int si) {   // -1: not a group; else MK_ (a
         int x = gx + (k & 1), y = gy + (k >> 1); BInfo t; bm_block0(x, y, &t);
         if (t.set != si || t.terrain == BT_SEA || landmark(s, x - s->x, y - s->y) >= 0 || river_at(x, y, si)) return ck;
     }
+    if(bm_gen>=9){
+        /* A plaza may absorb local internal streets, never a regional
+         * road or a perimeter connection needed to get around the site. */
+        for(int q=0;q<2;q++){
+            if(on_road(gx+1,gy+q,1)||on_road(gx+q,gy+1,0))return ck;
+            BInfo a,b,c,d;
+            bm_block0(gx+q,gy,&a);bm_block0(gx+q,gy+2,&b);
+            bm_block0(gx,gy+q,&c);bm_block0(gx+2,gy+q,&d);
+            if(!(a.road&1)||!(b.road&1)||!(c.road&2)||!(d.road&2))return ck;
+        }
+    }
     if (k7 >= 0) return ck = k7;
     int k = (int)((h >> 8) % 100u);
     ck = s->kind == ST_CITY ? (packed() ? (k < 8 ? MK_PARK : k < 40 ? MK_MALL : k < 68 ? MK_PLAZA : MK_CAMPUS) : (k < 50 ? MK_PARK : k < 66 ? MK_MALL : k < 82 ? MK_PLAZA : MK_CAMPUS)) : (k < 50 ? MK_PARK : MK_MALL);
@@ -644,6 +673,13 @@ static int mega_kind(int gx, int gy, int si) {   // -1: not a group; else MK_ (a
 static void bm_block1(int bx, int by, BInfo *b);
 void bm_block(int bx, int by, BInfo *b) {
     bm_block1(bx, by, b);
+    /* Only generated ordinary building lots need this rule. Don't erase
+     * a user's explicit land-use edit; fields, parks and courts stay open. */
+    if(bm_gen>=9&&b->set!=255&&b->terrain!=BT_SEA&&!(b->road&BR_MEGA)&&
+       b->lot!=LOT_WILD&&b->lot!=LOT_PARK&&b->lot!=LOT_SQUARE&&b->lot!=LOT_SKATE&&b->lot!=LOT_EMPTY&&b->lot!=LOT_FARM&&b->lot!=LOT_RIVER&&!(rd_real(b)&1)){
+        BInfo south;bm_block1(bx,by+1,&south);
+        if(!(rd_real(&south)&1))b->lot=(u8)((b->h&3)?LOT_PARK:LOT_WILD);
+    }
     if (!ov_live || !ov_n) return;
     int i = ov_find(bx, by, 0); if (i < 0 || !OV_F(&ov[i])) return;
     const OvE *e = &ov[i]; int f = (int)OV_F(e), st = (int)(OV_S(e) == 63 ? 255 : OV_S(e));
@@ -688,7 +724,8 @@ void bm_trail_plan(int bx,int by,const BInfo *b,BoreTrail *out){
         BInfo near;bm_block(x,y,&near);
         int nh=bm_hill(x,y);
         if(nh>=h)summit=0;
-        int road=d==TRAIL_N?(b->road&1):d==TRAIL_W?(b->road&2):d==TRAIL_S?(near.road&1):(near.road&2);
+        int a=bm_gen>=9?rd_real(b):b->road,n=bm_gen>=9?rd_real(&near):near.road;
+        int road=d==TRAIL_N?(a&1):d==TRAIL_W?(a&2):d==TRAIL_S?(n&1):(n&2);
         if(road){links|=1u<<d;roadlinks|=1u<<d;}
         else if(trail_land(&near)&&bore_trail_join(h,nh,edge[d]))links|=1u<<d;
     }
@@ -718,10 +755,11 @@ const char *bm_nb_name(int bx, int by, char *out) {
 static int g7_face(int bx, int by, const BInfo *b) {
     /* A country farm has its own barn and gate even off the town street grid.
      * Match the legacy console lot and bm_lot_foot, not a town's empty field. */
-    if(b->set==255&&b->lot==LOT_FARM)return LF_SOUTH;
+    if(bm_gen<9&&b->set==255&&b->lot==LOT_FARM)return LF_SOUTH;
     BInfo t;
     if (b->lot != LOT_RIVER && (b->road & BR_MEGA) && !(BR_PART(b->road) & 2)) return LF_SOUTH;   // (the back row of a big place opens onto its court)
     bm_block(bx, by + 1, &t);
+    if(bm_gen>=9)return (rd_real(&t)&1)?LF_SOUTH:(rd_real(b)&1)?LF_NORTH:LF_NONE;
     return (t.road & 1) ? LF_SOUTH : (b->road & 1) ? LF_NORTH : LF_NONE;
 }
 int bm_lot_face(int bx, int by) { BInfo b; if (bm_gen < 7) return LF_SOUTH; bm_block(bx, by, &b); return g7_face(bx, by, &b); }
@@ -804,7 +842,7 @@ COLD int bm_lot_foot(int bx, int by, const BInfo *b, u8 *f, LotPlan *pp) {
         if (p->wx1) { if (p->wx0 < f[0]) f[0] = p->wx0; if (p->wx1 > f[2]) f[2] = p->wx1; if (p->type == HT_TERRACE) { if (p->wy0 < f[1]) f[1] = p->wy0; if (p->wy1 > f[3]) f[3] = p->wy1; } }
         return 1;
     }
-    int g7 = bm_gen >= 7 && b->set != 255 && b->terrain != BT_SEA;
+    int g7 = bm_gen >= 7 && b->terrain != BT_SEA && (b->set != 255 || (bm_gen>=9&&b->lot==LOT_FARM));
     if (g7) bm_lot_plan(bx, by, b, p); else { memset(p, 0, sizeof *p); p->face = LF_SOUTH; }
     if (b->lot >= LOT_N || !lfoot[b->lot][2]) return 0;
     if (g7 && b->lot == LOT_FARM && p->face == LF_NONE) return 0;   // (a field: crops and hedgerows, no barn)

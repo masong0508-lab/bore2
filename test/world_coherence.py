@@ -57,8 +57,8 @@ def check_foot(output):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--gens", nargs="+", type=int, default=[7, 8],
-                    help="planned world generations to audit (default 7 8)")
+    ap.add_argument("--gens", nargs="+", type=int, default=[7, 8, 9],
+                    help="planned world generations to audit (default 7 8 9)")
     ap.add_argument("--seeds", nargs="+", default=["1", "0x5EED1234", "0xC0FFEE"],
                     help="deterministic world seeds")
     ap.add_argument("--skip-build", action="store_true", help="reuse compiled lotsim")

@@ -3719,7 +3719,7 @@ static void fm_unpack(const FarmSave *f) { memcpy(fm_n, f->b, 4); memcpy(fm_g, f
 #define MGBUF_N 4096   // (D64) the mini-games' save blocks (the Boreagotchi's v48 extras need the room)
 static int sav_pack(int big) {   // returns the packed size in sav_buf (header included), or 0 if even the basics do not fit
     if (lot_bx >= 0) lot_save();
-    SavCore c; memset(&c, 0, sizeof c); c.opt[39] = 0x5E; c.opt[38] = bm_gen >= 8 ? 8 : bm_gen >= 7 ? 7 : 0;
+    SavCore c; memset(&c, 0, sizeof c); c.opt[39] = 0x5E; c.opt[38] = bm_gen >= 7 ? bm_gen : 0;
 #ifdef DS_OLDSAVE
     c.opt[38] = 0;   // (test builds: write the save as a d78 did, to see it load as a world of version 3)
 #endif
@@ -3786,7 +3786,7 @@ static int sav_apply(void) {   // 1 = loaded
     if (n + 20 <= rl) { s16 zs[10]; memcpy(zs, sav_raw + n, 20); if (zs[0] == 0x4E5A && zs[1] == 16 && zs[2] >= 0 && zs[2] < Z_N) { zone = zs[2]; isl_wood = zs[3]; isl_stone = zs[4]; isl_leaves = zs[5]; isl_food = zs[6]; isl_spear = zs[7]; isl_shells = zs[8]; isl_secrets = (u16)zs[9]; n += 20; } }   // (D37)
     farm_reset(); if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x4D46 && th[1] == sizeof(FarmSave) && n + 4 + (int)sizeof(FarmSave) <= rl) { FarmSave f; memcpy(&f, sav_raw + n + 4, sizeof f); fm_unpack(&f); n += 4 + (int)sizeof f; } }   // (D38; before: no farm)
     n += mg_unpack(sav_raw + n, rl - n);   // (D44 on; before: none of it)
-    town_legacy = c.opt[39] != 0x5E; seed = c.seed; bm_gen = c.opt[38] == 8 ? 8 : c.opt[38] == 7 ? 7 : 3; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
+    town_legacy = c.opt[39] != 0x5E; seed = c.seed; bm_gen = c.opt[38]>=7&&c.opt[38]<=BM_GEN_CURRENT ? c.opt[38] : 3; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
     st_days = c.days; st_born = c.born; st_died = c.died; minutes = c.minutes; funds = c.funds; nsim = c.nsim; ctl = c.ctl; cur_sim = c.cur_sim >= 0 && c.cur_sim < nsim ? c.cur_sim : ctl;
     for (int i = 0; i < NOPT && i < OPT_OLD; i++) if (OPT[i].v && c.opt[i] < opt_cnt(i)) *OPT[i].v = c.opt[i];
     for (int i = OPT_OLD; i < NOPT; i++) if (OPT[i].v) *OPT[i].v = ox_have && i - OPT_OLD < ox_n && ox[i - OPT_OLD] < opt_cnt(i) ? ox[i - OPT_OLD] : OPT[i].def;   // (a save from before D33: the new ones at their defaults)
@@ -5091,7 +5091,7 @@ static void draw_title(void) {
 #include "ds_trui.h"    // (D73) the trait and wish pickers, the traits page
 static void new_household(void) {
     zone = 0; isl_wood = isl_stone = isl_leaves = isl_spear = isl_shells = 0; isl_food = 3; isl_secrets = 0; farm_reset();
-    if (bm_gen != 8) { bm_gen = 8; seed = seed * 1103515245u + 12345 + minutes; town_legacy = 0; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; cur_set = bm_capital(); town_pick(cur_set); }   // (D79: a new life after an old save is a new world of the plan)
+    if (bm_gen != BM_GEN_CURRENT) { bm_gen = BM_GEN_CURRENT; seed = seed * 1103515245u + 12345 + minutes; town_legacy = 0; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; cur_set = bm_capital(); town_pick(cur_set); }   // (D79: a new life after an old save is a new world of the plan)
     st_days = st_born = st_died = 0; nown = 0; home_bx = home_by = -1; funds = 3500; life_reset(); rt_jump = 1; mg_reset();
     lot_seed = (u32)minutes * 7919u + 17; lot_reset(); lot_bx = -1; lot_by = -1; Sim *m = &sims[0]; m->skin = (u8)(minutes % 6); m->hair = (u8)(minutes % NHAIRD); m->hcol = (u8)(minutes % 6); m->shirt = (u8)(minutes % 6); m->beard = BEARDV; m->fc = 0;
     for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0; memset(csx, 0, sizeof csx); trg_begin();
@@ -5603,7 +5603,7 @@ int main(void) {
     glInit(); glEnable(GL_TEXTURE_2D); bub_init();   // (D85) the bubbles' sprites
     vramSetBankA(VRAM_A_LCD); for (int k = 0; k < NDSTEX; k++) for (int i = 0; i < 64; i++) VRAM_A[k * 64 + i] = DSTEX[k][i]; vramSetBankA(VRAM_A_TEXTURE);   // (D43) the textures, 128 bytes each at the start of bank A
     glEnable(GL_ANTIALIAS); glClearColor(14, 20, 31, 31); glClearPolyID(63); glClearDepth(0x7FFF); glViewport(0, 0, 255, 191); REG_BG0CNT = BG_PRIORITY(1);
-    snd_init(); tabs_init(); for (int c = 0; c < 256; c++) if (PS1ID[c]) ID2CH[PS1ID[c] - 1] = (u8)c; bm_dials_default(); bm_gen = 8; bm_new(seed); pop_build();   // (D79: new lives are world version 7, the town plan; D84: version 8, with its street variety)
+    snd_init(); tabs_init(); for (int c = 0; c < 256; c++) if (PS1ID[c]) ID2CH[PS1ID[c] - 1] = (u8)c; bm_dials_default(); bm_gen = BM_GEN_CURRENT; bm_new(seed); pop_build();   // (D79: new lives are world version 7, the town plan; D84: version 8, with its street variety)
     cur_set = bm_capital(); town_pick(cur_set);
 #ifdef DS_AT_BX
     sel_x = DS_AT_BX; sel_y = DS_AT_BY;   // (test builds: the lot the shot rig starts on)
@@ -5694,7 +5694,7 @@ int main(void) {
         } else if (mode == M_MAP) {
             if (forced) { dist = 13000; ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 1); }
             if (down & (KEY_L | KEY_R)) { cur_set = (cur_set + ((down & KEY_R) ? 1 : bm_nset() - 1)) % bm_nset(); town_pick(cur_set); ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 1); dirty = 1; }
-            if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; town_legacy = 0; bm_gen = 8; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; nown = 0; life_reset(); nb_ok = 0; lot_bx = -1; cur_set = bm_capital(); town_pick(cur_set); ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 1); dirty = 1; }
+            if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; town_legacy = 0; bm_gen = BM_GEN_CURRENT; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; nown = 0; life_reset(); nb_ok = 0; lot_bx = -1; cur_set = bm_capital(); town_pick(cur_set); ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 1); dirty = 1; }
             /* Repeat after the first key press, as in the menus. A world can be
              * hundreds of blocks wide; walking one cell per press felt stuck. */
             int nav = ui_rep(held, down, vbl_n);

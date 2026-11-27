@@ -806,6 +806,7 @@ static void lot_farm(int lx, int ly, unsigned h) {   // rows of crops, a barn, a
     gPut(lx + 10, ly + 6, 'D'); gFree(lx + 9, ly + 2, (char)0xDC); gFree(lx + 9, ly + 4, (char)0xDC); gFree(lx + 11, ly + 2, (char)0xDD); gFree(lx + 11, ly + 4, (char)0xDD); gFree(lx + 11, ly + 3, 'O');
     gLine(lx, ly + 12, lx + 12, ly + 12, 'w', 9); lifeMap[ly + 12][lx + 7] = '.';
     gFree(lx + 9, ly + 9, 'K'); gFree(lx + 11, ly + 10, TREE); gFree(lx + 8, ly + 11, (char)0xDE);
+    if(bm_gen>=9){gBox(lx+7,ly+7,lx+7,ly+12,FL_GRAVEL);gBox(lx+7,ly+7,lx+10,ly+7,FL_GRAVEL);}
 }
 // ---- the tall ones: blocks of flats, office towers, hotels (storeys of them, stairs up through each) ----
 static void stairs_up(int l, int st, int x, const int *ys, int nys) {   // flights alternate between the spots in ys: storey l's goes up, the one from below arrives

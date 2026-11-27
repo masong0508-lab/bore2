@@ -1045,7 +1045,9 @@ COLD static void gen_block(int wx, int wy) {
 COLD static void gen_block0(int wx, int wy) {
     int bx = world_wbx + wx, by = world_wby + wy, ox = wx * BM_BLK, oy = wy * BM_BLK;
     BInfo b; bm_block(bx, by, &b);
-    LotPlan pl; int g7 = bm_gen >= 7 && b.set != 255 && b.terrain != BT_SEA; if (g7) bm_lot_plan(bx, by, &b, &pl); else pl.face = LF_SOUTH;   // (version 7: this lot's plan, and which way it faces)
+    LotPlan pl; int g7 = bm_gen >= 7 && b.set != 255 && b.terrain != BT_SEA;
+    int farm_plan=bm_gen>=9&&b.set==255&&b.lot==LOT_FARM;
+    if (g7||farm_plan) bm_lot_plan(bx, by, &b, &pl); else pl.face = LF_SOUTH;   // (version 7: this lot's plan, and which way it faces)
     static const u8 tfl[6] = { FL_WATER, FL_SAND, FL_GRASS, FL_GRASS, FL_SAND, FL_ROCK };
     int ground = tfl[b.terrain];
     if (b.set != 255 && b.terrain != BT_SEA) ground = (b.terrain == BT_DESERT || b.terrain == BT_BEACH) ? FL_SAND : FL_GRASS;
@@ -1105,7 +1107,7 @@ COLD static void gen_block0(int wx, int wy) {
 #ifdef AUTO_HOUSES
     if (b.lot != LOT_WILD && b.lot != LOT_SQUARE && b.lot != LOT_PARK && b.lot != LOT_RIVER) b.lot = LOT_HOUSE;   // (test builds: every lot a house)
 #endif
-    int hn0 = nhomes[world_zone % ZONE_N], pln = g7 && pl.face == LF_NORTH && !mg && b.lot != LOT_WILD && b.lot != LOT_RIVER;   // (pln: the lot is built looking south and turned over after)
+    int hn0 = nhomes[world_zone % ZONE_N], pln = (g7||farm_plan) && pl.face == LF_NORTH && !mg && b.lot != LOT_WILD && b.lot != LOT_RIVER;   // (pln: the lot is built looking south and turned over after)
     if (g7 && (b.lot == LOT_HOUSE || b.lot == LOT_COTTAGE || b.lot == LOT_TOWN || b.lot == LOT_TWO)) house7(lx, ly, h, &b, &pl);
     else switch (b.lot) {
         case LOT_HOUSE:   city_house(lx, ly, h); break;
@@ -1124,7 +1126,7 @@ COLD static void gen_block0(int wx, int wy) {
         case LOT_SQUARE:  city_square(lx, ly); break;
         case LOT_SKATE:   city_skate(lx, ly); break;
         case LOT_EMPTY:   if (g7) empty7(lx, ly, h); else lot_empty(lx, ly, h); break;
-        case LOT_FARM:    if (g7 && pl.face == LF_NONE) field7(lx, ly, h); else lot_farm(lx, ly, h); break;
+        case LOT_FARM:    if ((g7||farm_plan) && pl.face == LF_NONE) field7(lx, ly, h); else lot_farm(lx, ly, h); break;
         case LOT_APART:   lot_apart(lx, ly, h, st); break;
         case LOT_TOWER:   lot_tower(lx, ly, h, st); break;
         case LOT_HOTEL:   lot_hotel(lx, ly, h, st); break;
@@ -1161,6 +1163,10 @@ COLD static void gen_block0(int wx, int wy) {
     }
     occ_on = 0; blk_bx = blk_by = 0xFFFF;
     if (pln) mirror7(ox, oy, hn0, ground);
+    if(farm_plan&&pl.face==LF_NORTH){
+        /* The street reaches the front gate, not the barn's back wall. */
+        gBox(lx,ly,ox+BM_BLK-1,ly,FL_PAVING);
+    }
     if (g7 && ground == FL_SAND && (b.lot == LOT_PARK || (!mg && b.lot >= LOT_HOUSE && b.lot <= LOT_TWO))) { int q = mg ? 0 : BM_LOT0; for (int y = oy + q; y < oy + BM_BLK; y++) for (int x = ox + q; x < ox + BM_BLK; x++) if (floorMap[y][x] == FL_SAND) floorMap[y][x] = FL_GRASS; }   // (version 7: a home's yard and a park are lawn even in a dry town: the town waters them)
     if (g7) { if (blk_roads(bx, by + 1) & 1) for (int x = ox + BM_LOT0; x < ox + BM_BLK; x++) { floorMap[oy + BM_BLK - 1][x] = FL_PAVING; if (lifeMap[oy + BM_BLK - 1][x] == '3' || lifeMap[oy + BM_BLK - 1][x] == '6') lifeMap[oy + BM_BLK - 1][x] = '.'; }   // (the far side's pavement, where the next block has its street)
               if (blk_roads(bx + 1, by) & 2) for (int y = oy + BM_LOT0; y < oy + BM_BLK; y++) floorMap[y][ox + BM_BLK - 1] = FL_PAVING; }

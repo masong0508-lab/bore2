@@ -8,6 +8,7 @@
 #include "landscape.h"
 #include "trail_plan.h"
 
+#define BM_GEN_CURRENT 9
 #define BM_N    1024                  // blocks a side
 #define BM_BLK  18                    // tiles a block
 #define BM_LOT0 5                     // a block's lot starts 3 tiles in (the street runs along its top and left)
@@ -49,7 +50,7 @@ extern int bm_ncity, bm_ntown, bm_nvil, bm_capsz;  // how many cities (besides t
 #define BM_MAXTOWN 20
 #define BM_MAXVIL 32
 void bm_dials_default(void);
-extern int bm_gen;                    // how worlds are made: 3 now (2: as before the roomy towns, for older saves)
+extern int bm_gen;                    // saved procedural world generation; new worlds use BM_GEN_CURRENT
 void bm_rename_clear(void);           // towns renamed by the player: none (a new life)
 void bm_rename(int i, const char *nm); // town i (0 the capital) is called that from now on (set before bm_new: it takes then)
 const char *bm_renamed(int i);        // its new name ("": not renamed)
