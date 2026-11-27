@@ -10,11 +10,29 @@ import android.view.View;
 
 /** Interactive cutaway home. Only walkable routes can trigger furniture actions. */
 final class InteriorView extends View {
-    interface Listener {void arrived(int action,int cell);void message(String message);void moveFurniture(int slot,int cell);}
-    static final int WALK=-1,EXIT=-2,UP=-3,DOWN=-4;
+    interface Listener {void arrived(int action,int cell);void message(String message);void moveFurniture(int slot,int cell);void talkResident(int key);}
+    static final int WALK=-1,EXIT=-2,UP=-3,DOWN=-4,TALK=-5;
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Listener listener;
     private InteriorPlan plan;
+    private IndoorCrowd crowd;
+    private AvatarStyle[] peopleStyles=new AvatarStyle[0];
+    private int targetPerson=-1;
+    private int[] stationGoals(int slot){
+        int[] out=new int[4];for(int d=0;d<4;d++){int cell=InteriorPlan.neighbor(plan.objects[slot],d);out[d]=plan.canUse(cell,slot)?cell:-1;}return out;
+    }
+    void setPeople(int seed,int[] ids){
+        if(plan==null||busy())return;
+        if(decorating||ids.length==0){crowd=null;peopleStyles=new AvatarStyle[0];invalidate();return;}
+        boolean[] floor=new boolean[InteriorPlan.N];for(int i=0;i<floor.length;i++)floor[i]=plan.walkable(i);
+        int[][] stations=new int[plan.actionCount()][];for(int k=0;k<stations.length;k++)stations[k]=stationGoals(k);
+        int slot=plan.slotFor(plan.commercial?VenueRules.MEET:InteriorPlan.SOFA);
+        int preferred=slot>=0?plan.objects[slot]:plan.entry;
+        crowd=IndoorCrowd.create(floor,plan.walls,stations,plan.entry,landing,at,ids,preferred);
+        peopleStyles=new AvatarStyle[crowd.size()];for(int i=0;i<peopleStyles.length;i++)peopleStyles[i]=AvatarStyle.resident(seed,crowd.id(i));invalidate();
+    }
+    boolean nearResident(int id){return !decorating&&!busy()&&crowd!=null&&crowd.adjacent(at,id);}
+    private int[] route(int cell){return crowd==null?plan.route(at,cell):crowd.route(at,cell);}
     private boolean decorating;
     private int selected=-1,theme,upgrades;
     void setUpgrades(int mask){upgrades=mask&7;invalidate();}
@@ -37,7 +55,7 @@ final class InteriorView extends View {
         setContentDescription("Home cutaway. Tap a floor tile to walk or furniture to interact.");
     }
     void open(InteriorPlan p,int saved,int stair){
-        cancel();plan=p;decorating=false;selected=-1;landing=stair;at=p.walkable(saved)?saved:p.entry;
+        cancel();plan=p;crowd=null;peopleStyles=new AvatarStyle[0];decorating=false;selected=-1;landing=stair;at=p.walkable(saved)?saved:p.entry;
         setContentDescription(p.commercial?"Venue cutaway. Tap a floor tile or service station.":"Home cutaway. Tap a floor tile to walk or furniture to interact.");
         lo=18;hi=-1;top=18;bottom=-1;
         for(int i=0;i<InteriorPlan.N;i++)if(p.floor(i)){lo=Math.min(lo,i%18);hi=Math.max(hi,i%18);top=Math.min(top,i/18);bottom=Math.max(bottom,i/18);}
@@ -45,23 +63,25 @@ final class InteriorView extends View {
     }
     int cell(){return at;}
     boolean busy(){return path!=null;}
-    void cancel(){removeCallbacks(tick);path=null;index=0;action=WALK;invalidate();}
-    void close(){cancel();plan=null;decorating=false;selected=-1;}
+    void cancel(){removeCallbacks(tick);path=null;index=0;action=WALK;targetPerson=-1;invalidate();}
+    void close(){cancel();plan=null;crowd=null;peopleStyles=new AvatarStyle[0];decorating=false;selected=-1;}
     void use(int kind){
         if(plan==null||kind<0||kind>=plan.actionCount())return;
         if(decorating){selected=kind;listener.message(plan.labelAt(kind)+" selected");invalidate();return;}
-        begin(plan.routeToObject(at,kind),kind);
+        begin(crowd==null?plan.routeToObject(at,kind):crowd.routeToAny(at,stationGoals(kind)),kind);
     }
-    void exit(){if(!decorating&&plan!=null)begin(plan.route(at,plan.entry),EXIT);}
-    void climb(int direction){if(!decorating&&plan!=null&&plan.walkable(landing)&&(direction==1||direction==-1))begin(plan.route(at,landing),direction==1?UP:DOWN);}
-    private void begin(int[] next,int what){
+    void exit(){if(!decorating&&plan!=null)begin(route(plan.entry),EXIT);}
+    void climb(int direction){if(!decorating&&plan!=null&&plan.walkable(landing)&&(direction==1||direction==-1))begin(route(landing),direction==1?UP:DOWN);}
+    private void begin(int[] next,int what){begin(next,what,-1);}
+    private void begin(int[] next,int what,int person){
         if(next==null){listener.message("No clear path");return;}
-        cancel();action=what;
+        cancel();action=what;targetPerson=person;
         if(next.length==0){finish();return;}
         path=next;started=SystemClock.uptimeMillis();postOnAnimation(tick);invalidate();
     }
     private void finish(){
-        int done=action;path=null;action=WALK;index=0;
+        int done=action,person=targetPerson;path=null;action=WALK;index=0;targetPerson=-1;
+        if(done==TALK){if(nearResident(person))listener.talkResident(person);invalidate();return;}
         if(plan!=null&&(done==WALK||(done==EXIT&&at==plan.entry)||((done==UP||done==DOWN)&&at==landing)||(done>=0&&plan.canUse(at,done))))listener.arrived(done,at);
         invalidate();
     }
@@ -70,7 +90,7 @@ final class InteriorView extends View {
         long now=SystemClock.uptimeMillis();
         while(path!=null&&now-started>=STEP_MS){
             int next=path[index];
-            if(!plan.canStep(at,next)){cancel();listener.message("Path blocked");return;}
+            if(!plan.canStep(at,next)||(crowd!=null&&!crowd.canStep(at,next))){cancel();listener.message("Path blocked");return;}
             at=next;index++;started+=STEP_MS;
             if(index==path.length){finish();return;}
         }
@@ -171,6 +191,17 @@ final class InteriorView extends View {
             int next=path[index];px+=(next%18-at%18)*t;py+=(next/18-at/18)*t;
             phase=(float)Math.sin((index+t)*Math.PI);
         }
+        if(!decorating&&crowd!=null)for(int i=0;i<crowd.size();i++){
+            int cell=crowd.cell(i);drawPerson(c,cell%18+.5f,cell/18+.5f,0f,peopleStyles[i]);
+        }
+        drawPerson(c,px,py,phase,style);
+        if(tile>=27){
+            for(int k=0;k<plan.actionCount();k++){
+                int p=plan.objects[k];text(c,plan.labelAt(k),X(p%18+.5f),Y(p/18+.98f),Math.min(tile*.22f,14),0xff332f2b);
+            }
+        }
+    }
+    private void drawPerson(Canvas c,float px,float py,float phase,AvatarStyle style){
         float cx=X(px),cy=Y(py);
         paint.setColor(0x55302010);c.drawOval(cx-tile*.25f,cy-tile*.15f,cx+tile*.25f,cy+tile*.2f,paint);
         paint.setStrokeWidth(Math.max(2,tile*.10f));paint.setStrokeCap(Paint.Cap.ROUND);paint.setColor(0xff000000|style.color(3));
@@ -182,11 +213,6 @@ final class InteriorView extends View {
         float hairTop=style.choice(4)==1?.46f:style.choice(4)==3?.38f:.42f;
         if(style.choice(4)==2)c.drawRoundRect(cx-tile*.18f,cy-tile*.39f,cx+tile*.18f,cy-tile*.12f,tile*.12f,tile*.12f,paint);
         c.drawArc(cx-tile*.17f,cy-tile*hairTop,cx+tile*.17f,cy-tile*.11f,180,180,true,paint);
-        if(tile>=27){
-            for(int k=0;k<plan.actionCount();k++){
-                int p=plan.objects[k];text(c,plan.labelAt(k),X(p%18+.5f),Y(p/18+.98f),Math.min(tile*.22f,14),0xff332f2b);
-            }
-        }
     }
     @Override public boolean onTouchEvent(MotionEvent event){
         if(event.getActionMasked()!=MotionEvent.ACTION_UP)return true;
@@ -201,7 +227,9 @@ final class InteriorView extends View {
             else listener.message("Select a piece of furniture first");
             return true;
         }
-        if(plan.occupied[cell]>=0)use(plan.occupied[cell]);else begin(plan.route(at,cell),WALK);
+        int person=crowd==null?-1:crowd.personAt(cell);
+        if(person>=0){begin(crowd.routeToPerson(at,person),TALK,person);return true;}
+        if(plan.occupied[cell]>=0)use(plan.occupied[cell]);else begin(route(cell),WALK);
         return true;
     }
     @Override public boolean performClick(){super.performClick();return true;}

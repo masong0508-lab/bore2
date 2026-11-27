@@ -502,6 +502,7 @@ public final class MainActivity extends Activity {
             @Override public void arrived(int action,int cell){interiorArrived(action,cell);}
             @Override public void message(String message){notice(message);}
             @Override public void moveFurniture(int slot,int cell){relocateFurniture(slot,cell);}
+            @Override public void talkResident(int key){if(interiorCurrent()&&interiorView.nearResident(key))showConversation(resident(key));}
         });
         interiorView.appearance(appearance);homePane.addView(interiorView,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout row=new LinearLayout(this);homePane.addView(row);
@@ -594,7 +595,7 @@ public final class MainActivity extends Activity {
         resetRoomButton.setVisibility(decorating?View.VISIBLE:View.GONE);
         exitRoomButton.setVisibility(!decorating&&roomFloor==0?View.VISIBLE:View.GONE);
         stairsRow.setVisibility(!decorating&&buildingPlan.count()>1?View.VISIBLE:View.GONE);
-        interiorView.setDecorating(decorating);
+        interiorView.setDecorating(decorating);updateIndoorResidents();
         hint.setText(decorating?"Select furniture, then tap an open tile or Next spot":interiorPlan.commercial?"Venue · walk to a service station":"Home · tap a floor tile or use furniture");
     }
     private void setDecorating(boolean enabled){
@@ -627,7 +628,8 @@ public final class MainActivity extends Activity {
         String[] phases={"At home","Working","Lunch","Leisure","Sleeping","Traveling"};
         String status=e==null?"Away":phases[e.phase];
         if(e!=null&&e.location!=rentedKey())status+=" · Block "+LifeRules.x(e.location)+", "+LifeRules.y(e.location);
-        boolean together=e!=null&&e.phase==ResidentSchedule.HOME&&e.location==rentedKey();
+        boolean together=e!=null&&e.phase==ResidentSchedule.HOME&&e.location==rentedKey()&&roomFloor==0;
+        if(e!=null&&e.phase==ResidentSchedule.HOME&&e.location==rentedKey()&&roomFloor>0)status+=" · Downstairs";
         new AlertDialog.Builder(this).setTitle("Household")
             .setMessage(r.name+" · "+MobileContacts.TRAITS[r.trait]+"\n"+status+"\nRelationship "+contacts.affinity(key)+"/100\n\nRent: $8/day after roommate contribution.")
             .setPositiveButton(together?"Chat together":"Close",(d,i)->{if(together&&household.member()==key)showConversation(r);})
@@ -761,6 +763,20 @@ public final class MainActivity extends Activity {
         world3d.residents(people,meshRevision);
         residentRevision=meshRevision;residentDay=weekday;residentTime=bucket;residentHome=home;residentRoommate=roommate;
     }
+    private int residentFloor(ResidentSchedule.Entry e){
+        if(!inInterior||buildingPlan==null||interiorPlan==null)return 0;
+        if(!interiorPlan.commercial)return 0;
+        if(meetup!=null&&e.home==meetup.contact&&e.location==meetup.place&&meetup.state(lifeDay,minute)==MeetupPlan.READY){int floor=buildingPlan.floorFor(VenueRules.MEET);return Math.max(0,floor);}
+        int service=e.phase==ResidentSchedule.WORK?VenueRules.WORK:e.phase==ResidentSchedule.LUNCH?VenueRules.MEAL:VenueRules.MEET;
+        int floor=buildingPlan.floorFor(service);return floor>=0?floor:Math.max(0,buildingPlan.floorFor(VenueRules.MEET));
+    }
+    private void updateIndoorResidents(){
+        if(!inInterior||interiorPlan==null||interiorView==null||interiorView.busy())return;
+        if(decorating){interiorView.setPeople(seed,new int[0]);return;}
+        java.util.ArrayList<MobileContacts.Resident> people=localResidents();
+        int[] keys=new int[people.size()];for(int i=0;i<keys.length;i++)keys[i]=people.get(i).key;
+        interiorView.setPeople(seed,keys);
+    }
     private java.util.ArrayList<MobileContacts.Resident> localResidents(){
         java.util.ArrayList<MobileContacts.Resident> people=new java.util.ArrayList<>();
         int lot=selectedLot();
@@ -769,10 +785,10 @@ public final class MainActivity extends Activity {
         java.util.ArrayList<ResidentSchedule.Entry> present=grid.snapshot(seed,lifeX,lifeY,0,weekday,minute,rentedKey(),household.member());
         int place=LifeRules.pack(lifeX,lifeY),priority=-1;
         if(meetup!=null&&meetup.place==place&&meetup.state(lifeDay,minute)==MeetupPlan.READY){
-            for(ResidentSchedule.Entry e:present)if(MeetupPlan.available(e,meetup.contact,place)){priority=e.home;people.add(resident(e.home));break;}
+            for(ResidentSchedule.Entry e:present)if(MeetupPlan.available(e,meetup.contact,place)&&(!inInterior||residentFloor(e)==roomFloor)){priority=e.home;people.add(resident(e.home));break;}
         }
         for(ResidentSchedule.Entry e:present){
-            if(e.home!=priority&&e.phase!=ResidentSchedule.SLEEP&&e.phase!=ResidentSchedule.COMMUTE&&people.size()<8)people.add(resident(e.home));
+            if(e.home!=priority&&e.phase!=ResidentSchedule.SLEEP&&e.phase!=ResidentSchedule.COMMUTE&&(!inInterior||residentFloor(e)==roomFloor)&&people.size()<8)people.add(resident(e.home));
         }
         return people;
     }
@@ -800,6 +816,7 @@ public final class MainActivity extends Activity {
             ResidentSchedule.Entry e=currentResident(r);
             return e==null||(e.phase!=ResidentSchedule.SLEEP&&e.phase!=ResidentSchedule.COMMUTE&&e.phase!=ResidentSchedule.WORK);
         }
+        if(inInterior&&interiorPlan.commercial&&!atService(VenueRules.MEET)&&!interiorView.nearResident(r.key))return false;
         for(MobileContacts.Resident p:localResidents())if(p.key==r.key)return true;
         return false;
     }
@@ -908,7 +925,7 @@ public final class MainActivity extends Activity {
         social=clamp100(social+8+gain);fun=clamp100(fun+(gain>=8?5:1));energy-=2;
         int place=LifeRules.pack(lifeX,lifeY);
         boolean completed=!phone&&meetup!=null&&meetup.completeAt(r.key,place,lifeDay,minute)&&
-            MeetupPlan.available(currentResident(r),r.key,place)&&(!VenueRules.supported(selectedLot())||atService(VenueRules.MEET));
+            MeetupPlan.available(currentResident(r),r.key,place)&&(!VenueRules.supported(selectedLot())||atService(VenueRules.MEET)||(inInterior&&interiorView.nearResident(r.key)));
         if(completed){meetup=null;meetupsDone=LifeRules.credit(meetupsDone,1);}
         skills[6]=Math.min(4400,skills[6]+gain);advanceTime(30);updateDetails();saveLife();
         new AlertDialog.Builder(this).setTitle(r.name).setMessage(flow.close(topic,reaction)+"\n\nRelationship: "+contacts.affinity(r.key)+"/100"+(completed?"\nMeetup completed!":""))
@@ -1121,7 +1138,7 @@ public final class MainActivity extends Activity {
         if(household.member()>=0)lifeStatus.append("\nRoommate: "+resident(household.member()).name+" · Rent $"+household.dailyRent(rentedKey())+"/day");
         map.setContentDescription("San Boreas map. Selected lot: "+text);
         world3d.setContentDescription("San Boreas 3D neighborhood. Selected lot: "+text);
-        world3d.setClock(minute);world3d.playerTile(tileX,tileY,0);world3d.select(selectedX,selectedY);updateStreetResidents();map.invalidate();
+        world3d.setClock(minute);world3d.playerTile(tileX,tileY,0);world3d.select(selectedX,selectedY);updateStreetResidents();updateIndoorResidents();map.invalidate();
     }
     @Override protected void onResume(){
         super.onResume();resumed=true;
