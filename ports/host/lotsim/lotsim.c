@@ -127,7 +127,7 @@ static int make_block(int bx, int by, BInfo *bo) {   // block (bx,by) of the wor
     synth_occ(b.h);
     int ox = BM_BLK, oy = BM_BLK, lx = ox + BM_LOT0, ly = oy + BM_LOT0;
     int st = bm_storeys(&b);
-    if (bm_gen >= 7 && b.set != 255) {   // world version 7: the plan, the homes from it, a north-facing lot turned over (as world.c gen_block0)
+    if (bm_gen >= 7 && (b.set != 255||(bm_gen>=9&&b.lot==LOT_FARM))) {   // world version 7: the plan, the homes from it, a north-facing lot turned over (as world.c gen_block0)
         LotPlan pl; bm_lot_plan(bx, by, &b, &pl); int n0 = nhomes[ZONE_CITY], north = pl.face == LF_NORTH && b.lot != LOT_WILD && b.lot != LOT_RIVER && !(b.lot != LOT_RIVER && (b.road & BR_MEGA));
         if (pl.face == LF_NORTH || (b.road & 1)) for (int x = ox + BM_LOT0; x < ox + BM_BLK; x++) if (north || (b.road & 1)) floorMap[oy + BM_LOT0][x] = FL_PAVING;   // (the street's pavement)
         if (b.road & 2) for (int y = oy + BM_LOT0; y < oy + BM_BLK; y++) floorMap[y][ox + BM_LOT0] = FL_PAVING;

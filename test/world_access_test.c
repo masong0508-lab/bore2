@@ -5,6 +5,8 @@
 int main(void){
     for(int lot=0;lot<LOT_N;lot++){int g=outing_group(lot,0);assert(world_outing_anchor(lot,'a')==(g>=0));assert(!world_outing_anchor(lot,'8'));if(g>=0)assert(world_marker_needed(lot,BT_GRASS));}
     assert(!world_marker_needed(LOT_HOUSE,BT_GRASS));
+    assert(world_marker_needed(LOT_FARM,BT_GRASS)&&!world_marker_needed(LOT_FARM,BT_SEA));
+    assert(world_marker_needed(LOT_INN,BT_GRASS)&&!world_marker_needed(LOT_INN,BT_SEA));
     assert(world_outing_anchor(LOT_CAFE,'c')&&world_outing_anchor(LOT_LIBRARY,'b'));
     assert(world_outing_anchor(LOT_GYM,']')&&world_outing_anchor(LOT_POOL,'~'));
     assert(world_outing_anchor(LOT_CINEMA,';')&&world_outing_anchor(LOT_FARM,0xDE));

@@ -19,6 +19,7 @@
 #include "ground_patch.h"
 #include "frame_render_policy.h"
 #include "world_stream_models.h"
+#include "world_surface.h"
 #include "nature.h"
 #include "island.h"
 #include "save.h"
@@ -852,8 +853,13 @@ static int blk_roads(int bx, int by) {   // which streets a block has (bit 0 alo
     return rd;
 }
 static void wild(int ox, int oy, const BInfo *b, int bx, int by) {   // the open country: trees, rocks, cacti, palms
+    BoreTrail trail;bm_trail_plan(bx,by,b,&trail);
     for (int y = 0; y < BM_BLK; y++) for (int x = 0; x < BM_BLK; x++) {
         { u8 f = floorMap[oy + y][ox + x]; if (f == FL_PAVING || f == FL_WATER || f >= FL_ASPHALT || lifeMap[oy + y][ox + x] != '.') continue; }
+        /* The working farm has a designed gate, crop aisles and barn access.
+         * Do not scatter blocking wilderness props inside its plot. */
+        if(b->lot==LOT_FARM&&b->set==255&&x>=BM_LOT0&&y>=BM_LOT0)continue;
+        if(bore_trail_cell(&trail,x,y)){floorMap[oy+y][ox+x]=FL_SOIL;continue;}
         int r = (int)(bm_hash(bx * BM_BLK + x, by * BM_BLK + y, wsalt ^ 0x77u) % 1000u); char c = 0;
         switch (b->terrain) {
             case BT_GRASS:  c = r < 22 ? '3' : r < 40 ? '*' : r < 44 ? (char)0xE2 : r < 46 ? '6' : 0; break;
@@ -1040,7 +1046,9 @@ COLD static void gen_block(int wx, int wy) {
 COLD static void gen_block0(int wx, int wy) {
     int bx = world_wbx + wx, by = world_wby + wy, ox = wx * BM_BLK, oy = wy * BM_BLK;
     BInfo b; bm_block(bx, by, &b);
-    LotPlan pl; int g7 = bm_gen >= 7 && b.set != 255 && b.terrain != BT_SEA; if (g7) bm_lot_plan(bx, by, &b, &pl); else pl.face = LF_SOUTH;   // (version 7: this lot's plan, and which way it faces)
+    LotPlan pl; int g7 = bm_gen >= 7 && b.set != 255 && b.terrain != BT_SEA;
+    int farm_plan=bm_gen>=9&&b.set==255&&b.lot==LOT_FARM;
+    if (g7||farm_plan) bm_lot_plan(bx, by, &b, &pl); else pl.face = LF_SOUTH;   // (version 7: this lot's plan, and which way it faces)
     static const u8 tfl[6] = { FL_WATER, FL_SAND, FL_GRASS, FL_GRASS, FL_SAND, FL_ROCK };
     int ground = tfl[b.terrain];
     if (b.set != 255 && b.terrain != BT_SEA) ground = (b.terrain == BT_DESERT || b.terrain == BT_BEACH) ? FL_SAND : FL_GRASS;
@@ -1100,7 +1108,7 @@ COLD static void gen_block0(int wx, int wy) {
 #ifdef AUTO_HOUSES
     if (b.lot != LOT_WILD && b.lot != LOT_SQUARE && b.lot != LOT_PARK && b.lot != LOT_RIVER) b.lot = LOT_HOUSE;   // (test builds: every lot a house)
 #endif
-    int hn0 = nhomes[world_zone % ZONE_N], pln = g7 && pl.face == LF_NORTH && !mg && b.lot != LOT_WILD && b.lot != LOT_RIVER;   // (pln: the lot is built looking south and turned over after)
+    int hn0 = nhomes[world_zone % ZONE_N], pln = (g7||farm_plan) && pl.face == LF_NORTH && !mg && b.lot != LOT_WILD && b.lot != LOT_RIVER;   // (pln: the lot is built looking south and turned over after)
     if (g7 && (b.lot == LOT_HOUSE || b.lot == LOT_COTTAGE || b.lot == LOT_TOWN || b.lot == LOT_TWO)) house7(lx, ly, h, &b, &pl);
     else switch (b.lot) {
         case LOT_HOUSE:   city_house(lx, ly, h); break;
@@ -1119,7 +1127,7 @@ COLD static void gen_block0(int wx, int wy) {
         case LOT_SQUARE:  city_square(lx, ly); break;
         case LOT_SKATE:   city_skate(lx, ly); break;
         case LOT_EMPTY:   if (g7) empty7(lx, ly, h); else lot_empty(lx, ly, h); break;
-        case LOT_FARM:    if (g7 && pl.face == LF_NONE) field7(lx, ly, h); else lot_farm(lx, ly, h); break;
+        case LOT_FARM:    if ((g7||farm_plan) && pl.face == LF_NONE) field7(lx, ly, h); else lot_farm(lx, ly, h); break;
         case LOT_APART:   lot_apart(lx, ly, h, st); break;
         case LOT_TOWER:   lot_tower(lx, ly, h, st); break;
         case LOT_HOTEL:   lot_hotel(lx, ly, h, st); break;
@@ -1141,9 +1149,12 @@ COLD static void gen_block0(int wx, int wy) {
     }
     // Use the real community flag as a physical service marker. Don't
     // overwrite any furniture, door, road or main entrance path.
-    if (!mine && prop<0 && b.set!=255 && world_marker_needed(b.lot,b.terrain)) {
+    if (!mine && prop<0 && world_marker_needed(b.lot,b.terrain)) {
         int found=0;
         for(int y=ly;y<oy+BM_BLK&&!found;y++)for(int x=lx;x<ox+BM_BLK;x++)if(lifeMap[y][x]=='a'){found=1;break;}
+        if(!found&&b.lot==LOT_FARM&&lifeMap[ly+11][lx+9]=='.'&&floorMap[ly+11][lx+9]!=FL_WATER&&!FL_IS_ROAD(floorMap[ly+11][lx+9])){
+            gFree(lx+9,ly+11,'a');found=1; // beside the produce stand, inside the front gate
+        }
         if(!found)for(int y=ly+11;y>=ly+8&&!found;y--)for(int x=lx+1;x<=lx+11;x++){
             if(x>=lx+4&&x<=lx+8)continue;
             if(x<ox+BM_BLK&&y<oy+BM_BLK&&lifeMap[y][x]=='.'&&floorMap[y][x]!=FL_WATER&&!FL_IS_ROAD(floorMap[y][x])){
@@ -1153,6 +1164,10 @@ COLD static void gen_block0(int wx, int wy) {
     }
     occ_on = 0; blk_bx = blk_by = 0xFFFF;
     if (pln) mirror7(ox, oy, hn0, ground);
+    if(farm_plan&&pl.face==LF_NORTH){
+        /* The street reaches the front gate, not the barn's back wall. */
+        gBox(lx,ly,ox+BM_BLK-1,ly,FL_PAVING);
+    }
     if (g7 && ground == FL_SAND && (b.lot == LOT_PARK || (!mg && b.lot >= LOT_HOUSE && b.lot <= LOT_TWO))) { int q = mg ? 0 : BM_LOT0; for (int y = oy + q; y < oy + BM_BLK; y++) for (int x = ox + q; x < ox + BM_BLK; x++) if (floorMap[y][x] == FL_SAND) floorMap[y][x] = FL_GRASS; }   // (version 7: a home's yard and a park are lawn even in a dry town: the town waters them)
     if (g7) { if (blk_roads(bx, by + 1) & 1) for (int x = ox + BM_LOT0; x < ox + BM_BLK; x++) { floorMap[oy + BM_BLK - 1][x] = FL_PAVING; if (lifeMap[oy + BM_BLK - 1][x] == '3' || lifeMap[oy + BM_BLK - 1][x] == '6') lifeMap[oy + BM_BLK - 1][x] = '.'; }   // (the far side's pavement, where the next block has its street)
               if (blk_roads(bx + 1, by) & 2) for (int y = oy + BM_LOT0; y < oy + BM_BLK; y++) floorMap[y][ox + BM_BLK - 1] = FL_PAVING; }
@@ -1716,9 +1731,18 @@ int world_hills_on(void) {
 static int gh_raw0(int ax,int ay){return bm_ground_corner(ax,ay);}
 // The land far past the window (the far view's ground quads, its roads, buildings and trees) asks for the same few hundred corners every
 // frame, each a stack of noise: kept in a small table by the corner's world tile (the land never changes unless it is edited or remade).
+// The stock PS1 must retain at least 8 KiB of resident stack headroom.
+// Reduce only this exact-key memoization table; misses still evaluate the
+// same physical surface. Expanded RAM retains the existing 8192-entry path.
+#ifdef WALLS_DISC
+#define GHF_N 512
+#define GHF_SHIFT 23
+#else
 #define GHF_N 1024
+#define GHF_SHIFT 22
+#endif
 typedef struct { u16 x, y; s16 h; } GhF;
-static GhF ghf_small[GHF_N], *ghf = ghf_small; static int ghf_ok, ghf_n = GHF_N, ghf_sh = 22, ghf_up;   // (8 MB: 8192 of them)
+static GhF ghf_small[GHF_N], *ghf = ghf_small; static int ghf_ok, ghf_n = GHF_N, ghf_sh = GHF_SHIFT, ghf_up;   // (8 MB: 8192 of them)
 static int gh_raw(int X, int Y) {
     if (world_zone != ZONE_CITY || world_wbx < 0) return 0;
     int ax = world_wbx * BM_BLK + X, ay = world_wby * BM_BLK + Y; if (ax < 0) ax = 0; if (ay < 0) ay = 0;
@@ -1926,7 +1950,12 @@ static u16 nat_base(int X, int Y, int *kind) {   // a corner of the ground, as i
     *kind = wet ? 1 : 0;
     return RGB(MIN(r, 255) >> 3, MIN(g, 255) >> 3, MIN(b, 255) >> 3);
 }
-static u16 nc_col[32][32], nc_tag[32][32]; static int nc_stamp = -1; static u32 nc_for;   // (the corners as they stand, kept while the map is unchanged)
+_Static_assert(WB==4,"terrain cache covers the city window");
+static TerrainRenderCache terrain_render_cache;
+static int terrain_cache_owner;
+#define nc_col (terrain_render_cache.island.col)
+#define nc_tag (terrain_render_cache.island.tag)
+static int nc_stamp = -1; static u32 nc_for;   // (the corners as they stand, kept while the map is unchanged)
 static u32 nat_colour(int X, int Y, int t, int Lg, int z) {   // a corner of the ground in this frame: the sea's shimmer, the foam, the light, the haze
     u16 *tg = &nc_tag[Y & 31][X & 31]; int want = 1 + (Y << 7) + X, kind;
     u16 c;
@@ -1947,7 +1976,7 @@ static void nat_ground(u8 (*done)[MW], int x0, int x1, int y0, int y1) {   // th
     x0 = MAX(x0, ngx0); x1 = MIN(x1, ngx1); y0 = MAX(y0, ngy0); y1 = MIN(y1, ngy1);
     if (x1 < x0 || y1 < y0) return;
     u32 S = wsalt * 2654435761u + 0x15ADu;
-    if (nc_stamp != world_stamp || nc_for != S) { memset(nc_tag, 0, sizeof nc_tag); nc_stamp = world_stamp; nc_for = S; }
+    if (terrain_cache_claim(&terrain_cache_owner,TERRAIN_CACHE_ISLAND)||nc_stamp != world_stamp || nc_for != S) { memset(nc_tag, 0, sizeof nc_tag); nc_stamp = world_stamp; nc_for = S; }
     if (ngr_for != S) { for (int y = 0; y < 10; y++) for (int x = 0; x < 10; x++) { ngr_j[y][x] = (u8)(bm_hash(x, y, S ^ 0x77u) & 255); ngr_d[y][x] = (u8)(bm_hash(x, y, S ^ 0x3C1u) & 255); } ngr_for = S; }
     static SVECTOR rs[2][32] SVEC_ALIGN; static XV rv[2][32]; static u32 rc[2][32]; static u8 rk[2][32];
     x1 = MIN(x1, x0 + 29); int nx = x1 - x0 + 2, t = frame_t;
@@ -3176,21 +3205,20 @@ static void nat_far(int px, int py) {
 u32 far_haze_col(u32 col, int zw);
 // Material-preserving low-detail ground, cached in compact block-local
 // rectangles. Dense custom layouts fall back to a complete temporary list.
-static u32 ground_cache[WB][WB][GROUND_PATCH_CACHE];
+#define ground_cache (terrain_render_cache.city)
 static u8 ground_count[WB][WB];
-static int ground_stamp[WB][WB],ground_cache_started;
+static int ground_stamp[WB][WB];
 static int ground_rebuild(int wx,int wy,u32 *out,int cap){
     u8 mat[GROUND_PATCH_MAX];int ox=wx*BM_BLK,oy=wy*BM_BLK;
     if(gen_pend[wy][wx]){
         BInfo b;bm_block(world_wbx+wx,world_wby+wy,&b);
         static const u8 tfl[6]={FL_WATER,FL_SAND,FL_GRASS,FL_GRASS,FL_SAND,FL_ROCK};
-        int rd=b.road&7,town=b.set!=255&&b.terrain!=BT_SEA;
-        if(b.lot!=LOT_RIVER&&(b.road&BR_MEGA)){int part=BR_PART(b.road);if(part&1)rd&=~2;if(part&2)rd&=~1;}
+        int base=tfl[b.terrain],town=b.set!=255&&b.terrain!=BT_SEA;
+        if(town)base=b.terrain==BT_DESERT||b.terrain==BT_BEACH?FL_SAND:FL_GRASS;
+        BoreTrail trail;bm_trail_plan(world_wbx+wx,world_wby+wy,&b,&trail);
         for(int y=0;y<BM_BLK;y++)for(int x=0;x<BM_BLK;x++){
-            int fl=tfl[b.terrain];
-            if(b.lot==LOT_RIVER){int d=(b.road&BR_MEGA)?x:y;if(d>=5&&d<=11)fl=FL_WATER;}
-            if(((rd&1)&&y<BM_LOT0)||((rd&2)&&x<BM_LOT0)||((rd&4)&&x<BM_LOT0&&y<BM_LOT0))fl=FL_ASPHALT;
-            else if(town&&(((rd&1)&&y==BM_LOT0&&x>=BM_LOT0)||((rd&2)&&x==BM_LOT0&&y>=BM_LOT0)))fl=FL_PAVING;
+            int m=bore_surface(&b,x,y),fl=m==BS_ROAD?FL_ASPHALT:m==BS_WATER?FL_WATER:m==BS_PAVING?FL_PAVING:m==BS_PATIO?FL_ROCK:base;
+            if(m==BS_LAND&&bore_trail_cell(&trail,x,y))fl=FL_SOIL;
             mat[y*BM_BLK+x]=(u8)fl;
         }
     }else for(int y=0;y<BM_BLK;y++)for(int x=0;x<BM_BLK;x++){
@@ -3203,7 +3231,7 @@ static int ground_rebuild(int wx,int wy,u32 *out,int cap){
 COLD static void ground_win(int hz){
     (void)hz;
     _Static_assert(BM_BLK==GROUND_PATCH_SIDE,"ground patch size matches city");
-    if(!ground_cache_started){memset(ground_stamp,0xff,sizeof ground_stamp);ground_cache_started=1;}
+    if(terrain_cache_claim(&terrain_cache_owner,TERRAIN_CACHE_CITY))memset(ground_stamp,0xff,sizeof ground_stamp);
     far_local_begin(world_horizon);
     u32 fallback[GROUND_PATCH_MAX];
     int L=CLAMP(gfx_light(0,-ONE,0),40,200);
@@ -3215,13 +3243,15 @@ COLD static void ground_win(int hz){
     for(int wy=0;wy<WB;wy++)for(int wx=0;wx<WB;wx++){
         int ox=wx*BM_BLK,oy=wy*BM_BLK;
         if(!far_ground_visible(ox*TILE,-oy*TILE,(ox+BM_BLK)*TILE,-(oy+BM_BLK)*TILE))continue;
-        if(ground_stamp[wy][wx]!=world_stamp){
-            int n=ground_rebuild(wx,wy,ground_cache[wy][wx],GROUND_PATCH_CACHE);
-            ground_count[wy][wx]=(u8)(n>GROUND_PATCH_CACHE?255:n);
-            ground_stamp[wy][wx]=world_stamp;
-        }
         const u32 *patch=ground_cache[wy][wx];int n=ground_count[wy][wx];
-        if(n==255){n=ground_rebuild(wx,wy,fallback,GROUND_PATCH_MAX);patch=fallback;}
+        if(ground_stamp[wy][wx]!=world_stamp){
+            /* Build a complete list once. Previously a dense block was
+             * rasterized twice in its first frame after a map edit. */
+            n=ground_rebuild(wx,wy,fallback,GROUND_PATCH_MAX);
+            if(n<=GROUND_PATCH_CACHE){memcpy(ground_cache[wy][wx],fallback,(unsigned)n*sizeof(u32));ground_count[wy][wx]=(u8)n;}
+            else {ground_count[wy][wx]=255;patch=fallback;}
+            ground_stamp[wy][wx]=world_stamp;
+        }else if(n==255){n=ground_rebuild(wx,wy,fallback,GROUND_PATCH_MAX);patch=fallback;}
         for(int i=0;i<n;i++){
             u32 p=patch[i];int x=ox+ground_patch_x(p),y=oy+ground_patch_y(p);
             int X=x+ground_patch_w(p),Y=y+ground_patch_h(p),fl=ground_patch_mat(p);

@@ -51,6 +51,7 @@ static const char *opt_tok(int i, int n, char *b) { const char *p = OPT[i].vals;
 #include <stdarg.h>
 #include <string.h>
 #include "bigmap.h"
+#include "world_surface.h"
 #include "scene_music.h"
 #define OUTINGS_IMPLEMENTATION
 #include "outings.h"
@@ -217,7 +218,7 @@ static void own_remove(int bx, int by) { for (int i = 0; i < nown; i++) if (own[
 static int hit(int x, int y, int w, int h, int tx, int ty);
 static void prop_trade(void);
 static void say(const char *m); static int shop_lot(int p);
-static int map_enter, ne_on, ne_tool, ne_lot_i, ne_g_i, ne_road = 1, ne_last_x = -1, ne_last_y;
+static int map_enter, ne_on, ne_tool, ne_lot_i, ne_g_i, ne_road = 1, ne_radius = 1, ne_last_x = -1, ne_last_y;
 static const u8 NELOT[] = { LOT_HOUSE, LOT_COTTAGE, LOT_TOWN, LOT_TWO, LOT_APART, LOT_SHOP, LOT_DINER, LOT_OFFICE, LOT_PARK, LOT_SCHOOL, LOT_GYM, LOT_CAFE, LOT_TOWER, LOT_EMPTY, LOT_FARM };
 static const u8 NEG[] = { BT_GRASS, BT_FOREST, BT_DESERT, BT_ROCKY, BT_BEACH, BT_SEA };
 static const char *const NEGN[] = { "Grass", "Forest", "Desert", "Rocky", "Beach", "Sea" };
@@ -228,7 +229,7 @@ static void ne_cell(int bx, int by) {   // the tool on one block, the same chang
     BInfo b0; bm_block(bx, by, &b0);
     switch (ne_tool) {
         case 1: bm_ovr_set(bx, by, BO_GROUND, NEG[ne_g_i]); break;
-        case 3: case 4: if(!bm_ovr_sculpt(bx,by,1,ne_tool==3?1:-1))say("Terrain edit table full"); break;
+        case 3: case 4: if(!bm_ovr_sculpt(bx,by,ne_radius,ne_tool==3?1:-1))say("Terrain edit table full"); break;
         case 2: bm_ovr_set(bx, by, BO_ROAD, ne_road ? 3 : 0); break;
         case 0: { int lot = NELOT[ne_lot_i]; if (b0.set == 255) { bm_ovr_set(bx, by, BO_TERR, ne_near(bx, by)); bm_ovr_set(bx, by, BO_ROAD, 3); } bm_ovr_set(bx, by, BO_LOT, lot); } break;
         case 5: bm_ovr_set(bx, by, BO_TERR, 255); bm_ovr_set(bx, by, BO_ROAD, 0); bm_ovr_set(bx, by, BO_LOT, LOT_WILD); break;
@@ -246,7 +247,7 @@ static void map_chip(int px_, int py_) {   // a tap on the strip under the map
         else if (hit(2, 178, 52, 14, px_, py_) && lot_owned(sel_x, sel_y) && !is_home(sel_x, sel_y)) { BInfo b; bm_block(sel_x, sel_y, &b); if (b.terrain == BT_SEA) say("Cannot live at sea"); else { home_bx = sel_x; home_by = sel_y; say("Welcome home! Your new place"); map_enter = 1; } }   // (the old home stays yours, as a property)
         return; }
     for (int i = 0; i < 7; i++) if (hit(2 + i * 36, 162, 34, 13, px_, py_)) ne_tool = i;
-    if (hit(2, 177, 110, 13, px_, py_)) { if (ne_tool == 0) ne_lot_i = (ne_lot_i + 1) % (int)sizeof NELOT; else if (ne_tool == 1) ne_g_i = (ne_g_i + 1) % 6; else if (ne_tool == 2) ne_road ^= 1; }
+    if (hit(2, 177, 110, 13, px_, py_)) { if (ne_tool == 0) ne_lot_i = (ne_lot_i + 1) % (int)sizeof NELOT; else if (ne_tool == 1) ne_g_i = (ne_g_i + 1) % 6; else if (ne_tool == 2) ne_road ^= 1; else if (ne_tool == 3 || ne_tool == 4) ne_radius = (ne_radius + 1) % 3; }
     if (hit(212, 177, 40, 13, px_, py_)) ne_on = 0;
 }
 #define DS_POP_MAX 2000                // the most bores you can meet, talk to and take into a household on this map (the PS1 has 3700)
@@ -333,7 +334,9 @@ static void draw_map(void) {
     char t[48];
     if (!ne_on) {
         int own_ = lot_owned(sel_x, sel_y), price = shop_lot(lot_price(&b)), fm, pp = pop_at(sel_x, sel_y, &fm), home = is_home(sel_x, sel_y), mv = own_ && !home;
-        sprintf(t, "%.15s", bm_lot_name(b.lot)); text_box(2, 159, 146, 11, FS_HEAD, C15(31, 31, 22), AL_L, t);   // (D65) row A: the lot and what it is; row B (small): the town, who lives there, where; row C: the buttons
+        BoreTrail trail;bm_trail_plan(sel_x,sel_y,&b,&trail);
+        const char *trailname=bm_trail_label(trail.kind);
+        sprintf(t, "%.15s", trailname?trailname:bm_lot_name(b.lot)); text_box(2, 159, 146, 11, FS_HEAD, C15(31, 31, 22), AL_L, t);   // (D65) row A: the lot and what it is; row B (small): the town, who lives there, where; row C: the buttons
         if (own_) { int tw_ = home ? 44 : 64; rect(150, 160, tw_, 10, home ? C15(31, 24, 2) : C15(8, 26, 31)); text_box(150, 160, tw_, 10, FS_BODY, C15(8, 4, 0), AL_C, home ? "HOME" : "PROPERTY"); }
         else if (price && pp) text_box(150, 159, 104, 11, FS_BODY, C15(20, 22, 28), AL_L, "Family home");   // (someone lives there: not for sale)
         else if (price) { sprintf(t, "FOR SALE  %d", price); text_box(150, 159, 104, 11, FS_BODY, C15(31, 24, 10), AL_L, t); }
@@ -348,7 +351,7 @@ static void draw_map(void) {
         chip(202, 179, 25, 12, "Opt", 0); chip(229, 179, 25, 12, "Edit", 0);
     } else {
         for (int i = 0; i < 7; i++) chip(2 + i * 36, 162, 34, 13, NETN[i], ne_tool == i);
-        const char *v = ne_tool == 0 ? bm_lot_name(NELOT[ne_lot_i]) : ne_tool == 1 ? NEGN[ne_g_i] : ne_tool == 2 ? (ne_road ? "Add road" : "Remove road") : 0;
+        const char *v = ne_tool == 0 ? bm_lot_name(NELOT[ne_lot_i]) : ne_tool == 1 ? NEGN[ne_g_i] : ne_tool == 2 ? (ne_road ? "Add road" : "Remove road") : (ne_tool == 3 || ne_tool == 4) ? (ne_radius == 0 ? "Brush 1x1" : ne_radius == 1 ? "Brush 3x3" : "Brush 5x5") : 0;
         if (v) chip(2, 177, 110, 13, v, 0); else text_box(2, 177, 200, 13, FS_BODY, C15(24, 28, 31), AL_L, "Drag across the map");
         if (v) text_box(114, 177, 94, 13, FS_SMALL, C15(24, 28, 31), AL_L, "tap = next");
         chip(212, 177, 40, 13, "Done", 0);
@@ -732,6 +735,11 @@ static void draw_lot(const BInfo *b, int yaw, const LotPlan *pl) {   // (D79: pl
           ground(tl(-2), tl(-2), tl(0), tl(0), 0, C15(8, 8, 9)); }
     if(b->terrain==BT_SEA)return;
     if(ds_draw_planned_proxy(b,pl,0,0))return;
+    if(bm_gen>=9&&k==LOT_POOL){
+        int w=6+(h&1),d=4+((h>>1)&1),z=pl&&pl->face==LF_NORTH?13-3-d:3;
+        ground(tl(0),tl(0),tl(26),tl(26),-24,C15(24,24,23));
+        ground(tl(6),tl(2*z),tl(2*(3+w)),tl(2*(z+d)),-32,C15(5,12,24));return;
+    }
     if(k==LOT_RIVER){
         if(b->road&BR_MEGA){ground(tl(4),tl(0),tl(18),tl(26),-26,C15(5,12,24));}
         else ground(tl(0),tl(4),tl(26),tl(18),-26,C15(5,12,24));
@@ -1121,9 +1129,26 @@ static void car_audit(void);
 static int far_house(const BInfo *b) { return b->terrain != BT_SEA && b->lot >= LOT_HOUSE && b->lot != LOT_PARK && b->lot != LOT_SQUARE && b->lot != LOT_SKATE && b->lot != LOT_EMPTY && b->lot != LOT_RIVER && !(bm_gen >= 7 && b->lot == LOT_POOL); }   // (D81: a pool lot is a paved deck, no building)
 static int far_house7(const BInfo *b, const LotPlan *pl) { return far_house(b) && !(bm_gen >= 7 && b->lot == LOT_FARM && pl && pl->face == LF_NONE); }   // (D81: a field has crops and hedgerows, no barn)
 static void far_foot(const BInfo *b, int *x0, int *z0, int *x1, int *z1) { int w = 10 + (int)(b->h & 3) * 2, d = 8 + (int)((b->h >> 2) & 3) * 2, t0 = 4 + (24 - w) / 2 / 2 * 2 - 4; *x0 = t0 / 2; *x1 = (t0 + w + 1) / 2; *z0 = 2; *z1 = (4 + d + 1) / 2; }
+/* Collision is expressed in the same shifted block coordinates as
+ * the live DS plot, including the southern/eastern street strips. */
+static int ds_water_at(int wx,int wy){
+    if(!t7()||!nb_ok)return 0;
+    int x,y,bx=bore_surface_slot(wx,&x),by=bore_surface_slot(wy,&y);
+    if(bx<-RING_MAX||bx>RING_MAX||by<-RING_MAX||by>RING_MAX)return 1;
+    const BInfo *b=&nbf[by+RING_MAX][bx+RING_MAX];
+    if(bm_gen>=9&&b->lot==LOT_POOL&&x>=BM_LOT0&&y>=BM_LOT0){
+        const LotPlan *p=&nlp[by+RING_MAX][bx+RING_MAX];
+        int u=x-BM_LOT0,v=y-BM_LOT0;
+        if(p->face==LF_NORTH)v=12-v;
+        return u>=3&&u<9+(b->h&1)&&v>=3&&v<7+((b->h>>1)&1);
+    }
+    if(b->terrain!=BT_SEA&&b->lot!=LOT_RIVER&&!(b->road&BR_MEGA))return 0;
+    return bore_surface(b,x,y)==BS_WATER;
+}
 static int far_solid(int wx, int wy) {   // a cell outside the plot: open street and grass, except the sea and the buildings of the lots round it
+    if(ds_water_at(wx,wy))return 1;
     int sx = fdiv(wx, SLC), sy = fdiv(wy, SLC); if (sx == 0 && sy == 0) return 0; if (sx < -1 || sx > 1 || sy < -1 || sy > 1) return 1;
-    const BInfo *b = &nb[sy + 1][sx + 1]; if (b->terrain == BT_SEA) return 1;
+    const BInfo *b = &nb[sy + 1][sx + 1]; if (b->terrain == BT_SEA) return !t7();
     int lx=wx-sx*SLC,ly=wy-sy*SLC;
     if(t7()){
         DsLotShell shell;
@@ -1195,11 +1220,67 @@ static void farm_reset(void) { memset(fm_n, 0, 4); memset(fm_g, 0, 4); memset(fm
     memset(fm_stock, 0, sizeof fm_stock); fm_egg = fm_milk = fm_pe = fm_pm = fm_built = fm_last = 0; memset(fsk, 0, sizeof fsk); farm_ui = 0; }
 static int z_put(int x, int y, int ch, int rot); static void z_room(int x0, int y0, int x1, int y1, int fl, int wc);
 static int g7_field;   // (D81) 1 while a gen 7 field lot (no street, no barn) is built
+/* A venue's own floor plan, clear entry and purpose-specific equipment.
+ * z_put is the actual DS catalogue; check its full footprint, not just
+ * its anchor, before adding any object. */
+static int venue_put9(const DsVenuePlan *p,int x,int y,int ch,int rot){
+    int id=PS1ID[(u8)ch]-1;
+    if(id<0||id>=NITEM)return 0;
+    Obj o={(u8)x,(u8)y,(u8)(id>>2),(u8)(id&3),(u8)rot};
+    int w,h;obj_fp(&o,&w,&h);
+    if(!ds_venue_item_fits(p,x,y,w,h))return 0;
+    for(int yy=y;yy<y+h;yy++)for(int xx=x;xx<x+w;xx++)
+        if(obj_at(xx,yy)>=0)return 0;
+    return z_put(x,y,ch,rot)>=0;
+}
+static int gen_venue9(int lot,u32 h){
+    DsVenuePlan p;
+    if(!ds_venue_plan(lot,&p))return 0;
+    z_room(p.x0,p.y0,p.x1,p.y1,2+(h&1),1+((h>>3)&3));
+    hwl[p.y1][p.door]=5;door_cx=p.door;door_cy=p.y1;
+    pcx=p.door;pcy=p.y1-1;
+    for(int y=p.y1;y<GN;y++)flr[y][p.door]=5;
+    const char *items=ds_venue_catalogue(lot);
+    /* Rear-wall service groups, two wings and a reception. Leave the
+     * last two rows and a three-cell-wide central spine unobstructed. */
+    for(int side=0;side<2;side++){
+        int lo=side?p.door+2:p.x0,hi=side?p.x1:p.door-1;
+        for(int x=lo;x<hi;x+=2)venue_put9(&p,x,p.y0,items[(x-lo)&1],0);
+        for(int y=p.y0+2;y<p.y1-2;y+=3){
+            int x=side?hi-2:lo;
+            venue_put9(&p,x,y,items[2+side],side?3:1);
+            if(hi-lo>=3)venue_put9(&p,side?lo:hi-2,y+1,items[4+side],0);
+        }
+    }
+    for(int q=0;q<3;q++){spawn_x[q]=p.door+q-1;spawn_y[q]=p.y1-1;}
+    return 1;
+}
 static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squares, farms and wild land outdoors; shops, diners, gyms, schools, clinics... as one open hall
     #define PUTP(xx, yy, cc, ii, rr) do { if (nobj < 400) { objs[nobj].x = (u8)(xx); objs[nobj].y = (u8)(yy); objs[nobj].c = (cc); objs[nobj].i = (ii); objs[nobj].rot = (u8)(rr); nobj++; occ_ok = 0; } } while (0)
-    int outdoor = k == LOT_WILD || k == LOT_PARK || k == LOT_SQUARE || k == LOT_SKATE || k == LOT_EMPTY || k == LOT_RIVER || k == LOT_FARM;
+    int outdoor = k == LOT_WILD || k == LOT_PARK || k == LOT_SQUARE || k == LOT_SKATE || k == LOT_EMPTY || k == LOT_RIVER || k == LOT_FARM || (bm_gen>=9&&k==LOT_POOL);
     door_cx = 6; pcx = 6; pcy = 11;
+    if(bm_gen>=9&&!outdoor&&gen_venue9(k,h))return;
     if (outdoor) {
+        /* A river is not an empty park: its banks are rendered by the
+         * common surface owner, and its water is never walkable. */
+        if(k==LOT_RIVER){door_cy=12;return;}
+        if(bm_gen>=9&&k==LOT_POOL){
+            int w=6+(h&1),d=4+((h>>1)&1);
+            for(int y=0;y<GN;y++)for(int x=0;x<GN;x++)
+                flr[y][x]=(x>=3&&x<3+w&&y>=3&&y<3+d)?0:2;
+            for(int x=0;x<GN;x++){hwl[0][x]=6;if(x!=5&&x!=6)hwl[GN][x]=6;}
+            for(int y=0;y<GN;y++)vwl[y][0]=vwl[y][GN]=6;
+            z_put(1,1,'H',0);z_put(11,1,'>',0);z_put(1,4,'Z',0);
+            z_put(11,10,'Y',0);z_put(10,8,0xE7,0);
+            z_put(2,3,0xE6,0);z_put(3+w,4,0xE6,0);
+            door_cy=GN;door_cx=6;
+            for(int q=0;q<3;q++){spawn_x[q]=5+q;spawn_y[q]=GN-1;}
+            return;
+        }
+        BoreTrail trail={0};
+        if(k==LOT_WILD&&lot_bx>=0&&lot_bx<BM_N&&lot_by>=0&&lot_by<BM_N){
+            BInfo b;bm_block(lot_bx,lot_by,&b);bm_trail_plan(lot_bx,lot_by,&b,&trail);
+        }
         door_cy = 12;
         if (k == LOT_SQUARE || k == LOT_SKATE) for (int y = 2; y < 11; y++) for (int x = 2; x < 11; x++) flr[y][x] = 2;
         if (k == LOT_SKATE) {   // (D44) the PS1's SKATE PLAZA (world.c city_skate): quarter pipes round three sides, a funbox with a kicker either side, a rail, a ledge, a manual pad, a launch ramp
@@ -1245,7 +1326,7 @@ static void gen_public(int k, u32 h) {   // lots that are not homes: parks, squa
             #undef PK
             #undef PKF
         }
-        for (int i = 0; i < 14 && k != LOT_PARK && k != LOT_SQUARE; i++) { int x = (int)((h >> (i * 2)) & 15) % 13, y = (int)((h >> (i * 2 + 1)) % 11) % 13; if (y > 10 || obj_at(x, y) >= 0) continue;
+        for (int i = 0; i < 14 && k != LOT_PARK && k != LOT_SQUARE; i++) { int x = (int)((h >> (i * 2)) & 15) % 13, y = (int)((h >> (i * 2 + 1)) % 11) % 13; if (y > 10 || obj_at(x, y) >= 0 || bore_trail_cell(&trail,x+BM_LOT0,y+BM_LOT0)) continue;
             int pick = (int)((h >> (i + 3)) % 5);
             if (k == LOT_PARK || k == LOT_SQUARE) { if (pick == 0) PUTP(x, y, 0, 3, abs(x - 6) > abs(y - 6) ? 1 : 0);   // (D42, as the PS1: a bench lies along the walk by it, not at random)
                 else if (pick == 1) PUTP(x, y, 6, 1, 0); else if (pick == 2) PUTP(x, y, 6, 3, 0); else if (pick == 3) PUTP(x, y, 6, 2, 0); else PUTP(x, y, 3, 2, 0); }
@@ -1817,6 +1898,7 @@ typedef struct { int x, y, dir, stop; u8 on, stage, skin, shirt, hair, pants; u1
 #include "native_life.h"
 #include "ds_cit_routine.h"
 #include "ds_city_budget.h"
+#include "vehicle_stability.h"
 typedef struct { int x, y, dx, dy; u16 col; int px, py, ang; s16 s, L, wt; s8 sg, lj, tx, ty; u8 on, st, tn, tj; } Car;   // (d83) x, y: its centre in 1/16 cells; dx, dy: its way (0, 0: not on the road); st: 0 straight, 1 in a turn (sg +1 right, -1 left, from px, py, s of L); lj: its street's slot; tj: the junction it has claimed (+1), tx ty its slot; tn: 0 straight 1 right 2 left; wt: steps held up
 static Cit cits[NCIT]; static CRel crt[64]; static Car cars[NCAR];
 static const char *const FNAMES[12] = { "Mia", "Leo", "Zoe", "Max", "Ivy", "Sam", "Ana", "Kai", "Eli", "Ola", "Dex", "Una" };
@@ -1896,7 +1978,7 @@ static int car_claim(Car *c, int d, int i) {   // the junction square of this st
         int nd = (d + 1) & 3, ld = (d + 3) & 3; int okr = (nd & 1 ? vt_on : hz_on)[(nd & 1) ? jx + 1 : jy + 1], okl = (ld & 1 ? vt_on : hz_on)[(ld & 1) ? jx + 1 : jy + 1];
         if (r < 2 && okr) tn = 1; else if (r < 4 && okl) tn = 2; }
     if (car_person(cx, cy, 29)) return 0;
-    if (jcnt[ji] && (jax[ji] != (d & 1) || tn || jtn[ji])) return 0;
+    if (!bore_vehicle_claim_ok(jcnt[ji],jax[ji],jtn[ji],d&1,tn)) return 0;
     { int ed = tn == 1 ? (d + 1) & 3 : tn == 2 ? (d + 3) & 3 : d, ex = cx + CDX[ed] * 56, ey = cy + CDY[ed] * 56; int ln = ed & 1 ? (ed == 1 ? 14 : 16) : (ed == 0 ? 16 : 14);   // (the way out must be clear for a car's length or two)
         if (ed & 1) ex = (jx * SLC + ln) * 16; else ey = (jy * SLC + ln) * 16;
         for (int k = 0; k < CARN; k++) { const Car *q = &cars[k]; if (q == c || !q->on || q->tj == ji + 1) continue; int a = q->x - ex, b = q->y - ey; if (a * a + b * b < 30 * 30) return 0; } }
@@ -1985,11 +2067,34 @@ static void city_shift(int dx, int dy) {
     for (int k = 0; k < NCIT && ne; k++) if (!cits[k].on) {
         for (int t = 0; t < ne && !cits[k].on; t++) city_spawn_cit(k, edge[(k + t) % ne]);
     }
-    car_lanes(); memset(jcnt, 0, sizeof jcnt); memset(jtn, 0, sizeof jtn);
-    for (int k = 0; k < NCAR; k++) { Car *c = &cars[k]; if (!c->on) continue; int d = car_d(c); if (k >= CARN) { c->on = 0; continue; } if (c->st || c->tj || car_inj(c)) { c->on = 0; continue; }   // (a car in a junction when the lot changes: gone, it comes in again)
-        c->x -= dx * SLC * 16; c->y -= dy * SLC * 16; int w = SLC * 3 * 16, lo = -SLC * 16;
-        if (c->x < lo) c->x += w; if (c->x >= lo + w) c->x -= w; if (c->y < lo) c->y += w; if (c->y >= lo + w) c->y -= w;
-        c->lj = (s8)((((c->lj + 1 - (d & 1 ? dx : dy)) % 3) + 3) % 3 - 1); if (!((d & 1) ? vt_on : hz_on)[c->lj + 1]) c->on = 0; else if (car_inj(c)) c->on = 0; }
+    /* Preserve in-flight turns and claims in the retained neighborhood.
+     * Leaving cars retire at the fringe; none wraps onto an unrelated road. */
+    u8 old_axis[9],old_turn[9];memcpy(old_axis,jax,9);memcpy(old_turn,jtn,9);
+    car_lanes();memset(jcnt,0,sizeof jcnt);memset(jax,0,sizeof jax);memset(jtn,0,sizeof jtn);
+    for(int k=0;k<NCAR;k++){
+        Car *c=&cars[k];if(!c->on)continue;
+        int d=car_d(c),old=c->tj,lj=c->lj-(d&1?dx:dy);
+        if(k>=CARN||!bore_vehicle_rebase(&c->x,&c->y,dx,dy,span)||lj<-1||lj>1){
+            c->on=c->tj=0;continue;
+        }
+        c->lj=(s8)lj;
+        c->px-=dx*span;c->py-=dy*span;
+        if(!((d&1)?vt_on:hz_on)[lj+1]){c->on=c->tj=0;continue;}
+        if(old){
+            int jx=c->tx-dx,jy=c->ty-dy,claim=bore_vehicle_junction(jx,jy);
+            if(!claim||old>9){
+                if(c->st){c->on=c->tj=0;continue;}
+                c->tj=c->tn=0;
+            }else{
+                int ji=claim-1,axis=old_axis[old-1],turn=old_turn[old-1];
+                if(!bore_vehicle_claim_ok(jcnt[ji],jax[ji],jtn[ji],axis,turn)){
+                    c->on=c->tj=0;continue;
+                }
+                c->tx=(s8)jx;c->ty=(s8)jy;c->tj=(u8)claim;
+                jcnt[ji]++;jax[ji]=(u8)axis;jtn[ji]=(u8)turn;
+            }
+        }
+    }
 }
 static void rblock(int x, int z, int cs, int sn, int a0, int b0, int a1, int b1, int y0, int y1, u16 wall, u16 roof) {   // (d83) a car's box turned (cs, sn: its heading, 4.12): a along it, b to its right
 #define RX(a, b) (x + (((a) * cs - (b) * sn) >> 12))
@@ -2069,8 +2174,16 @@ static void far_lot(const BInfo *b, int ox, int oz, int pop, int yaw, const LotP
      * the old height buried walls/doors and left a step at lot boundaries. */
     tx_want = tr == BT_DESERT || tr == BT_BEACH ? TX_SAND : tr == BT_ROCKY ? TX_GRAVEL : TX_GRASS; ground(ox + tl(0), oz + tl(0), ox + tl(26), oz + tl(26), 0, grass); tx_want = -1;
     if(ds_draw_planned_proxy(b,pl,ox,oz))return;
+    if(bm_gen>=9&&k==LOT_POOL){
+        int w=6+(h&1),d=4+((h>>1)&1),z=pl&&pl->face==LF_NORTH?13-3-d:3;
+        ground(ox,oz,ox+tl(26),oz+tl(26),-24,C15(24,24,23));
+        if(!(t7()&&r7_bx>=0&&ABS(r7_bx-lot_bx)<=1&&ABS(r7_by-lot_by)<=1))
+            ground(ox+tl(6),oz+tl(2*z),ox+tl(2*(3+w)),oz+tl(2*(z+d)),-32,C15(5,12,24));
+        return;
+    }
     if (!far_house7(b, pl)) {
         if(k==LOT_RIVER){
+            if(t7()&&r7_bx>=0&&ABS(r7_bx-lot_bx)<=1&&ABS(r7_by-lot_by)<=1)return;
             if(b->road&BR_MEGA)ground(ox+tl(4),oz+tl(0),ox+tl(18),oz+tl(26),-26,C15(5,12,24));
             else ground(ox+tl(0),oz+tl(4),ox+tl(26),oz+tl(18),-26,C15(5,12,24));
             return;
@@ -2195,7 +2308,27 @@ static void ds_draw_relief(int first,int last){
         gx_push(x*36*T,0,y*36*T);
         tx_want=-1;
         u16 col=b->terrain==BT_SEA?C15(5,12,24):land_col(b->terrain);
+        /* Local path is part of the ground, not a coplanar decal.
+         * Distant patches retain nine quads; detail needs budget headroom. */
+        BoreTrail trail={0};
+        if(r==0)bm_trail_plan(lot_bx,lot_by,b,&trail);
+        unsigned split=0;int cost=0;
+        if(trail.links)for(int j=0;j<3;j++)for(int i=0;i<3;i++){
+            int hit=0,a=bore_land_knots[i],b0=bore_land_knots[i+1],c=bore_land_knots[j],d=bore_land_knots[j+1];
+            for(int v=c;v<d&&!hit;v++)for(int u=a;u<b0;u++)if(bore_trail_cell(&trail,u,v)){hit=1;break;}
+            if(hit){split|=1u<<(j*3+i);cost+=(b0-a)*(d-c)-1;}
+        }
+        if(split&&(!ds_world_detail_budget(polys+18+2*cost)||(gxb&&gxn+600+32*cost>=gx_cap)))split=0;
         for(int j=0;j<3;j++)for(int i=0;i<3;i++){
+            if(split&(1u<<(j*3+i))){
+                for(int v=bore_land_knots[j];v<bore_land_knots[j+1];v++)for(int u=bore_land_knots[i];u<bore_land_knots[i+1];u++){
+                    int x0=tl(2*(u-BM_LOT0)),x1=x0+2*T,z0=tl(2*(v-BM_LOT0)),z1=z0+2*T;
+                    u16 c=bore_trail_cell(&trail,u,v)?C15(22,17,10):col;
+                    qd(x0,-ds_relief_units(bore_land_sample(p,u,v)),z0,x1,-ds_relief_units(bore_land_sample(p,u+1,v)),z0,
+                       x1,-ds_relief_units(bore_land_sample(p,u+1,v+1)),z1,x0,-ds_relief_units(bore_land_sample(p,u,v+1)),z1,c);
+                }
+                continue;
+            }
             int x0=tl(2*(bore_land_knots[i]-BM_LOT0)),x1=tl(2*(bore_land_knots[i+1]-BM_LOT0));
             int z0=tl(2*(bore_land_knots[j]-BM_LOT0)),z1=tl(2*(bore_land_knots[j+1]-BM_LOT0));
             qd(x0,-ds_relief_units(p->h[j][i]),z0,x1,-ds_relief_units(p->h[j][i+1]),z0,
@@ -2206,11 +2339,42 @@ static void ds_draw_relief(int first,int last){
 done:
     far_lod=old_lod;tx_want=-1;
 }
+/* Draw the exact visible water cells as row runs, not a sea-colored
+ * rectangle over the causeway. The street pass still owns road lanes. */
+static void ds_water_slot(int sx,int sy){
+    int needs=0;
+    for(int dy=0;dy<=1;dy++)for(int dx=0;dx<=1;dx++){
+        const BInfo *b=&nbf[sy+dy+RING_MAX][sx+dx+RING_MAX];
+        if(b->terrain==BT_SEA||b->lot==LOT_RIVER||(bm_gen>=9&&b->lot==LOT_POOL)||((b->road&BR_MEGA)&&BR_PART(b->road)==3))needs=1;
+    }
+    if(!needs)return;
+    int ox=sx*SLC,oy=sy*SLC;
+    tx_want=-1;
+    /* Merge identical water spans vertically. Ocean tiles now use one
+     * quad instead of 18, without covering causeways or dry banks. */
+    u32 rows[SLC]={0};
+    for(int y=0;y<SLC;y++)for(int x=0;x<SLC;x++)
+        if(ds_water_at(ox+x,oy+y))rows[y]|=1u<<x;
+    for(int y=0;y<SLC;y++)for(int x=0;x<SLC;){
+        if(!(rows[y]&(1u<<x))){x++;continue;}
+        int end=x+1;while(end<SLC&&(rows[y]&(1u<<end)))end++;
+        u32 mask=((1u<<(end-x))-1u)<<x;
+        int bottom=y+1;while(bottom<SLC&&(rows[bottom]&mask)==mask)bottom++;
+        for(int yy=y;yy<bottom;yy++)rows[yy]&=~mask;
+        ground(tl(2*(ox+x)),tl(2*(oy+y)),tl(2*(ox+end)),tl(2*(oy+bottom)),-32,C15(5,12,24));
+        x=end;
+    }
+}
 static void draw_world(int yaw) {   // LIVE: all round the lot, the lots next door, the streets and the land (a 3x3 patch of slots)
     if(ds_relief_active()){ds_draw_relief(0,1);return;}
     if (zone == Z_ISLAND) { ground(tl(-40), tl(-40), tl(76), tl(76), 90, C15(25, 22, 14)); return; }   // (the island: sand between the lots, the sea is the neighbours')
     tx_want = zone == Z_TOWN ? TX_SAND : TX_GRASS; ground(tl(-40), tl(-40), tl(76), tl(76), 90, zone == Z_TOWN ? C15(24, 21, 13) : seas(C15(7, 16, 6))); tx_want = TX_ASPHALT;
-    if (t7()) { world7(); return; }
+    if(t7()){
+        /* Near waterways must be present even when the far scenery is shed. */
+        world7();
+        for(int sy=-1;sy<=1;sy++)for(int sx=-1;sx<=1;sx++)ds_water_slot(sx,sy);
+        return;
+    }
     for (int j = -1; j <= 1; j++) { int o = 36 * j;   // roads both ways
         ground(tl(-36), tl(28 + o), tl(72), tl(34 + o), 0, C15(7, 7, 9)); ground(tl(28 + o), tl(-36), tl(34 + o), tl(72), 0, C15(7, 7, 9)); }
     tx_want = TX_PAVING; for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { int ox = 36 * i, oz = 36 * j;   // pavements in the stretches between the roads
@@ -2248,9 +2412,9 @@ static void draw_far_all(int yaw) {
         const LotPlan *pl=t7()?&nlp[j+RING_MAX][i+RING_MAX]:0;
         if(far_house7(b,pl))continue;
         if(!ds_world_far_budget(polys+12)||(gxb&&gxn+160>=gx_cap))continue;
-        if(b->terrain==BT_SEA){ground(tl(36*i),tl(36*j),tl(36*i+36),tl(36*j+36),-8,C15(5,12,24));continue;}
+        if(b->terrain==BT_SEA){if(!t7())ground(tl(36*i),tl(36*j),tl(36*i+36),tl(36*j+36),-8,C15(5,12,24));continue;}
         int lite=!ds_world_detail_budget(polys+160);
-        if(lite&&b->lot!=LOT_RIVER){
+        if(lite&&b->lot!=LOT_RIVER&&!(bm_gen>=9&&b->lot==LOT_POOL)){
             ground(tl(36*i),tl(36*j),tl(36*i+26),tl(36*j+26),0,land_col(b->terrain));continue;
         }
         far_lod=lite;
@@ -3669,7 +3833,7 @@ static void fm_unpack(const FarmSave *f) { memcpy(fm_n, f->b, 4); memcpy(fm_g, f
 #define MGBUF_N 4096   // (D64) the mini-games' save blocks (the Boreagotchi's v48 extras need the room)
 static int sav_pack(int big) {   // returns the packed size in sav_buf (header included), or 0 if even the basics do not fit
     if (lot_bx >= 0) lot_save();
-    SavCore c; memset(&c, 0, sizeof c); c.opt[39] = 0x5E; c.opt[38] = bm_gen >= 8 ? 8 : bm_gen >= 7 ? 7 : 0;
+    SavCore c; memset(&c, 0, sizeof c); c.opt[39] = 0x5E; c.opt[38] = bm_gen >= 7 ? bm_gen : 0;
 #ifdef DS_OLDSAVE
     c.opt[38] = 0;   // (test builds: write the save as a d78 did, to see it load as a world of version 3)
 #endif
@@ -3736,7 +3900,7 @@ static int sav_apply(void) {   // 1 = loaded
     if (n + 20 <= rl) { s16 zs[10]; memcpy(zs, sav_raw + n, 20); if (zs[0] == 0x4E5A && zs[1] == 16 && zs[2] >= 0 && zs[2] < Z_N) { zone = zs[2]; isl_wood = zs[3]; isl_stone = zs[4]; isl_leaves = zs[5]; isl_food = zs[6]; isl_spear = zs[7]; isl_shells = zs[8]; isl_secrets = (u16)zs[9]; n += 20; } }   // (D37)
     farm_reset(); if (n + 4 <= rl) { u16 th[2]; memcpy(th, sav_raw + n, 4); if (th[0] == 0x4D46 && th[1] == sizeof(FarmSave) && n + 4 + (int)sizeof(FarmSave) <= rl) { FarmSave f; memcpy(&f, sav_raw + n + 4, sizeof f); fm_unpack(&f); n += 4 + (int)sizeof f; } }   // (D38; before: no farm)
     n += mg_unpack(sav_raw + n, rl - n);   // (D44 on; before: none of it)
-    town_legacy = c.opt[39] != 0x5E; seed = c.seed; bm_gen = c.opt[38] == 8 ? 8 : c.opt[38] == 7 ? 7 : 3; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
+    town_legacy = c.opt[39] != 0x5E; seed = c.seed; bm_gen = c.opt[38]>=7&&c.opt[38]<=BM_GEN_CURRENT ? c.opt[38] : 3; bm_new((u32)seed); pop_build(); cur_set = c.cur_set >= 0 && c.cur_set < BM_N * BM_N ? c.cur_set : bm_capital();
     st_days = c.days; st_born = c.born; st_died = c.died; minutes = c.minutes; funds = c.funds; nsim = c.nsim; ctl = c.ctl; cur_sim = c.cur_sim >= 0 && c.cur_sim < nsim ? c.cur_sim : ctl;
     for (int i = 0; i < NOPT && i < OPT_OLD; i++) if (OPT[i].v && c.opt[i] < opt_cnt(i)) *OPT[i].v = c.opt[i];
     for (int i = OPT_OLD; i < NOPT; i++) if (OPT[i].v) *OPT[i].v = ox_have && i - OPT_OLD < ox_n && ox[i - OPT_OLD] < opt_cnt(i) ? ox[i - OPT_OLD] : OPT[i].def;   // (a save from before D33: the new ones at their defaults)
@@ -3833,7 +3997,7 @@ static void start_act(Sim *m, int obj, int sim) {   // do the action beside furn
     m->face = a->dur > 0 ? a->dur : 1; m->act_obj = obj; m->act_left = 0;
 }
 static int pcar_solid(int cx, int cy);
-static int obj_solid(int cx, int cy) { if (cx < 0 || cy < 0 || cx >= GN || cy >= GN) return LV ? 1 : far_solid(cx, cy) || pcar_solid(cx, cy); if (LV && !uflr[LV - 1][cy][cx]) return 1; if (!occ_ok) occ_build(); return (occ[LV][cy][cx] >> 15) || (!LV && pcar_solid(cx, cy)); }   // (upstairs: only the floor there is; d83: a parked car is solid)
+static int obj_solid(int cx, int cy) { if(!LV&&ds_water_at(cx,cy))return 1; if (cx < 0 || cy < 0 || cx >= GN || cy >= GN) return LV ? 1 : far_solid(cx, cy) || pcar_solid(cx, cy); if (LV && !uflr[LV - 1][cy][cx]) return 1; if (!occ_ok) occ_build(); return (occ[LV][cy][cx] >> 15) || (!LV && pcar_solid(cx, cy)); }   // (upstairs: only the floor there is; d83: a parked car is solid)
 static int edge_open(int ax, int ay, int bx2, int by) {   // can a sim step between two neighbouring cells? walls block, doors do not
     int ina = ax >= 0 && ay >= 0 && ax < GN && ay < GN, inb = bx2 >= 0 && by >= 0 && bx2 < GN && by < GN;
     if (LV && (!ina || !inb)) return 0;   // (upstairs: the plot is all there is)
@@ -4095,7 +4259,14 @@ static void sims_step(int frames) {
             if ((m->x & 15) == 0 && (m->y & 15) == 0 && m->wx == m->x && m->wy == m->y) {   // on a cell centre: plan the next cell round the walls
                 int nx, ny; if (next_cell(fdiv(m->x + 8, 16), fdiv(m->y + 8, 16), fdiv(m->tx + 8, 16), fdiv(m->ty + 8, 16), &nx, &ny)) { m->wx = nx * 16; m->wy = ny * 16; }
                 else { m->tx = m->x; m->ty = m->y; m->act = -1; if (i == ctl) say("Cannot get there"); continue; } }
-            { int ws = trf_walk(&dtr[i]); for (int rp = 0; rp < (ws < 0 ? 0 : 1 + ws); rp++) {   // (D73: E_WALK_SPEED, a step more or one skipped)
+            { int ws = trf_walk(&dtr[i]), pace = 4;
+              if(!LV&&ds_relief_active()){
+                  int tx=m->wx/16,ty=m->wy/16;
+                  int ox=tx+(m->x<m->wx?-1:m->x>m->wx?1:0);
+                  int oy=ty+(m->y<m->wy?-1:m->y>m->wy?1:0);
+                  pace=bore_land_walk_pace(ds_relief_grade(tx,ty)-ds_relief_grade(ox,oy),2*T);
+              }
+              for (int rp = 0; rp < (ws < 0 || !bore_land_walk_tick(pace,(unsigned)(frames+i*13)) ? 0 : 1 + ws); rp++) {   // (D73: E_WALK_SPEED, a step more or one skipped)
             if (m->x < m->wx) { m->x++; m->dirn = 8192; } else if (m->x > m->wx) { m->x--; m->dirn = 24576; } else if (m->y < m->wy) { m->y++; m->dirn = 0; } else if (m->y > m->wy) { m->y--; m->dirn = 16384; } } }
             if (m->x == m->tx && m->y == m->ty && (m->act == 50 || m->act == 51)) { stairs_go(i, m->act_obj, m->act == 51); continue; }
             if (m->x == m->tx && m->y == m->ty && m->act >= 0) { if (!arrive(i)) continue; }
@@ -5034,7 +5205,7 @@ static void draw_title(void) {
 #include "ds_trui.h"    // (D73) the trait and wish pickers, the traits page
 static void new_household(void) {
     zone = 0; isl_wood = isl_stone = isl_leaves = isl_spear = isl_shells = 0; isl_food = 3; isl_secrets = 0; farm_reset();
-    if (bm_gen != 8) { bm_gen = 8; seed = seed * 1103515245u + 12345 + minutes; town_legacy = 0; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; cur_set = bm_capital(); town_pick(cur_set); }   // (D79: a new life after an old save is a new world of the plan)
+    if (bm_gen != BM_GEN_CURRENT) { bm_gen = BM_GEN_CURRENT; seed = seed * 1103515245u + 12345 + minutes; town_legacy = 0; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; cur_set = bm_capital(); town_pick(cur_set); }   // (D79: a new life after an old save is a new world of the plan)
     st_days = st_born = st_died = 0; nown = 0; home_bx = home_by = -1; funds = 3500; life_reset(); rt_jump = 1; mg_reset();
     lot_seed = (u32)minutes * 7919u + 17; lot_reset(); lot_bx = -1; lot_by = -1; Sim *m = &sims[0]; m->skin = (u8)(minutes % 6); m->hair = (u8)(minutes % NHAIRD); m->hcol = (u8)(minutes % 6); m->shirt = (u8)(minutes % 6); m->beard = BEARDV; m->fc = 0;
     for (int q = 0; q < PMN; q++) m->pm[q] = 50; m->cc[0] = m->cc[1] = m->cc[2] = 0; memset(csx, 0, sizeof csx); trg_begin();
@@ -5546,7 +5717,7 @@ int main(void) {
     glInit(); glEnable(GL_TEXTURE_2D); bub_init();   // (D85) the bubbles' sprites
     vramSetBankA(VRAM_A_LCD); for (int k = 0; k < NDSTEX; k++) for (int i = 0; i < 64; i++) VRAM_A[k * 64 + i] = DSTEX[k][i]; vramSetBankA(VRAM_A_TEXTURE);   // (D43) the textures, 128 bytes each at the start of bank A
     glEnable(GL_ANTIALIAS); glClearColor(14, 20, 31, 31); glClearPolyID(63); glClearDepth(0x7FFF); glViewport(0, 0, 255, 191); REG_BG0CNT = BG_PRIORITY(1);
-    snd_init(); tabs_init(); for (int c = 0; c < 256; c++) if (PS1ID[c]) ID2CH[PS1ID[c] - 1] = (u8)c; bm_dials_default(); bm_gen = 8; bm_new(seed); pop_build();   // (D79: new lives are world version 7, the town plan; D84: version 8, with its street variety)
+    snd_init(); tabs_init(); for (int c = 0; c < 256; c++) if (PS1ID[c]) ID2CH[PS1ID[c] - 1] = (u8)c; bm_dials_default(); bm_gen = BM_GEN_CURRENT; bm_new(seed); pop_build();   // (D79: new lives are world version 7, the town plan; D84: version 8, with its street variety)
     cur_set = bm_capital(); town_pick(cur_set);
 #ifdef DS_AT_BX
     sel_x = DS_AT_BX; sel_y = DS_AT_BY;   // (test builds: the lot the shot rig starts on)
@@ -5637,7 +5808,7 @@ int main(void) {
         } else if (mode == M_MAP) {
             if (forced) { dist = 13000; ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 1); }
             if (down & (KEY_L | KEY_R)) { cur_set = (cur_set + ((down & KEY_R) ? 1 : bm_nset() - 1)) % bm_nset(); town_pick(cur_set); ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 1); dirty = 1; }
-            if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; town_legacy = 0; bm_gen = 8; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; nown = 0; life_reset(); nb_ok = 0; lot_bx = -1; cur_set = bm_capital(); town_pick(cur_set); ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 1); dirty = 1; }
+            if (down & KEY_START) { seed = seed * 1103515245u + 12345 + frames; town_legacy = 0; bm_gen = BM_GEN_CURRENT; bm_new((u32)seed); pop_build(); lsv_n = 0; lsv_next = 0; nown = 0; life_reset(); nb_ok = 0; lot_bx = -1; cur_set = bm_capital(); town_pick(cur_set); ds_mapview_follow(&map_x0, &map_y0, sel_x, sel_y, MW, MH, BM_N, 1); dirty = 1; }
             /* Repeat after the first key press, as in the menus. A world can be
              * hundreds of blocks wide; walking one cell per press felt stuck. */
             int nav = ui_rep(held, down, vbl_n);

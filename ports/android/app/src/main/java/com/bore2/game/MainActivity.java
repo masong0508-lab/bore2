@@ -73,6 +73,7 @@ public final class MainActivity extends Activity {
     private volatile int serial;
     private int meshX=-1,meshY=-1,meshSeed,meshRevision=-1;
     private int requestX=-1,requestY=-1,requestSeed;
+    private int generation=9;
     private int seed,capitalX,capitalY,cx,cy,radius=8,selectedX,selectedY,weekday;
     private boolean in3d=true,resumed,crowdMotion=true;
     private Button crowdButton;
@@ -105,6 +106,7 @@ public final class MainActivity extends Activity {
         super.onCreate(state);
         prefs=getSharedPreferences("world_preview",MODE_PRIVATE);
         seed=prefs.getInt("seed",1234);
+        generation=prefs.getInt("worldGeneration",prefs.contains("seed")?8:9)==9?9:8;
         appearance=AvatarStyle.decode(prefs.getInt("avatarStyle",-1));playerName=AvatarStyle.cleanName(prefs.getString("avatarName","Bore"));
         radius=Math.max(4,Math.min(16,prefs.getInt("radius",8)));
         weekday=Math.max(0,Math.min(6,prefs.getInt("day",prefs.getBoolean("weekend",false)?5:0)));
@@ -227,7 +229,7 @@ public final class MainActivity extends Activity {
     }
     private void newLife(){
             if(inInterior)leaveHome();
-            serial++;meshX=meshY=meshRevision=requestX=requestY=-1;seed=(int)System.nanoTime();resetNative();
+            serial++;meshX=meshY=meshRevision=requestX=requestY=-1;seed=(int)System.nanoTime();generation=9;resetNative();
             cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
             lifeX=cx;lifeY=cy;resetOutdoorPosition();weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
             lifeDay=0;career.reset();meetup=null;meetupsDone=0;lastRoute=new int[0];savedDecor="";homeDecor=null;household.clear();supplies.clear();care.clear();homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
@@ -252,7 +254,7 @@ public final class MainActivity extends Activity {
         b.setOnClickListener(v->{if(travelRoute!=null&&b!=travelButton){notice("Finish or cancel your trip first");return;}if(inInterior){notice("Use a station or leave the building first");return;}if(walkMode&&b!=walkButton){if(outdoorRoute!=null){notice("Finish or stop walking first");return;}endWalkMode(false);}action.run();});return b;
     }
     private void resetNative(){
-        int center=NativeWorld.init(seed);capitalX=center&65535;capitalY=center>>>16;
+        int center=NativeWorld.initGeneration(seed,generation);capitalX=center&65535;capitalY=center>>>16;
     }
     private int clampCenter(int x){return Math.max(radius,Math.min(MAP_SIZE-radius-1,x));}
     private void toggleCrowds(){crowdMotion=!crowdMotion;crowdButton.setText(crowdMotion?"Crowds: moving":"Crowds: still");world3d.setCrowdActive(resumed&&in3d&&!inInterior&&crowdMotion);interiorView.setMotionEnabled(resumed&&inInterior&&crowdMotion);saveLife();}
@@ -303,6 +305,7 @@ public final class MainActivity extends Activity {
                 Runnable failure=()->{
                     if(version!=serial||isFinishing()||isDestroyed())return;
                     requestX=requestY=meshX=meshY=meshRevision=-1;
+                    if(walkMode)endWalkMode(false);
                     in3d=false;showMode();hint.setText("3D scene unavailable — map remains usable");
                 };
                 if(mesh==null||mesh.length==0){failure.run();return;}
@@ -393,7 +396,7 @@ public final class MainActivity extends Activity {
     private void resetOutdoorPosition(){tileX=lifeX*18+2;tileY=lifeY*18+2;}
     private OutdoorPath makeOutdoorMap(){
         int bx=Math.max(1,Math.min(1022,lifeX)),by=Math.max(1,Math.min(1022,lifeY));
-        return OutdoorPath.create((bx-1)*18,(by-1)*18,NativeWorld.walkMask(bx,by));
+        return OutdoorPath.create((bx-1)*18,(by-1)*18,NativeWorld.walkMask(bx,by),NativeWorld.walkHeights(bx,by));
     }
     private void toggleWalk(){
         if(walkMode){endWalkMode(true);return;}
@@ -406,9 +409,10 @@ public final class MainActivity extends Activity {
     }
     private void walkTo(int tx,int ty){
         if(!walkMode||outdoorRoute!=null)return;
+        if(!in3d||meshRevision!=serial||meshSeed!=seed||meshX!=cx||meshY!=cy){notice("Loading the current neighborhood");return;}
         OutdoorPath p=makeOutdoorMap();
         int[] route=p==null?null:p.route(OutdoorPath.pack(tileX,tileY),OutdoorPath.pack(tx,ty));
-        if(route==null){notice("Choose reachable ground, not a building or water");return;}
+        if(route==null){notice("Choose reachable ground, not a cliff, building or water");return;}
         if(route.length==0)return;
         outdoorMap=p;outdoorRoute=route;walkIndex=walkDone=0;
         beginOutdoorStep();
@@ -416,9 +420,10 @@ public final class MainActivity extends Activity {
     private void beginOutdoorStep(){
         if(outdoorRoute==null)return;
         int next=outdoorRoute[walkIndex],at=OutdoorPath.pack(tileX,tileY);
-        if(!outdoorMap.open(next)||!OutdoorPath.adjacent(at,next)){finishOutdoor();return;}
-        world3d.playerTile(OutdoorPath.x(next),OutdoorPath.y(next),WALK_MS);
-        travelHandler.postDelayed(outdoorTick,WALK_MS);
+        int ms=outdoorMap.duration(at,next,WALK_MS);
+        if(ms==0){finishOutdoor();return;}
+        world3d.playerTile(OutdoorPath.x(next),OutdoorPath.y(next),ms);
+        travelHandler.postDelayed(outdoorTick,ms);
     }
     private void stepOutdoor(){
         if(outdoorRoute==null)return;
@@ -1154,7 +1159,7 @@ public final class MainActivity extends Activity {
         notice(NativeWorld.activityText(v[1],1));
     }
     private void saveLife(){
-        SharedPreferences.Editor e=prefs.edit().putInt("seed",seed).putInt("lifeX",lifeX).putInt("lifeY",lifeY)
+        SharedPreferences.Editor e=prefs.edit().putInt("seed",seed).putInt("worldGeneration",generation).putInt("lifeX",lifeX).putInt("lifeY",lifeY)
              .putInt("day",weekday).putInt("minute",minute).putInt("funds",funds).putInt("energy",energy)
              .putInt("fun",fun).putInt("social",social).putInt("food",food).putInt("sessions",sessions)
              .putInt("lifeDay",lifeDay).putInt("lastShiftDay",career.lastDay())
@@ -1199,7 +1204,7 @@ public final class MainActivity extends Activity {
         resumed=false;if(world3d!=null)world3d.setCrowdActive(false);
         if(interiorView!=null)interiorView.setMotionEnabled(false);
         cancelTravel(false);if(walkMode)endWalkMode(false);if(inInterior)interiorView.cancel();saveLife();
-        prefs.edit().putInt("seed",seed).putInt("x",cx).putInt("y",cy)
+        prefs.edit().putInt("seed",seed).putInt("worldGeneration",generation).putInt("x",cx).putInt("y",cy)
              .putInt("radius",radius).putBoolean("weekend",weekday==5).putBoolean("view3d",in3d).apply();
         if(world3d!=null)world3d.onPause();super.onPause();
     }

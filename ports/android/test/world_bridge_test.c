@@ -154,6 +154,15 @@ int main(void){
         }
     }
     assert(walk_open>0&&walk_blocked>0);
+    /* Keep mask ABI unchanged; heights are a separate native tile grid. */
+    assert(bore_android_walk_heights(wx,wy,mask,BORE_ANDROID_WALK_FIELDS));
+    for(int j=0;j<54;j++)for(int i=0;i<54;i++){
+        int ax=(wx-1)*BM_BLK+i,ay=(wy-1)*BM_BLK+j;
+        int a=bm_ground_corner(ax,ay),b=bm_ground_corner(ax+1,ay+1);
+        assert(mask[j*54+i]==(a+b+1)/2);
+    }
+    assert(!bore_android_walk_heights(0,0,mask,BORE_ANDROID_WALK_FIELDS));
+    assert(!bore_android_walk_heights(wx,wy,mask,BORE_ANDROID_WALK_FIELDS-1));
     assert(!bore_android_walk_mask(0,0,mask,BORE_ANDROID_WALK_FIELDS));
     assert(!bore_android_walk_mask(wx,wy,mask,BORE_ANDROID_WALK_FIELDS-1));
     puts("Android outdoor collision mask: native buildings, water and bounded window PASS");

@@ -6,6 +6,9 @@
 JNIEXPORT jint JNICALL Java_com_bore2_game_NativeWorld_init(JNIEnv *env,jclass cls,jint seed){
     (void)env;(void)cls;return (jint)bore_android_init((uint32_t)seed);
 }
+JNIEXPORT jint JNICALL Java_com_bore2_game_NativeWorld_initGeneration(JNIEnv *env,jclass cls,jint seed,jint generation){
+    (void)env;(void)cls;return (jint)bore_android_init_gen((uint32_t)seed,generation);
+}
 JNIEXPORT jintArray JNICALL Java_com_bore2_game_NativeWorld_tiles(JNIEnv *env,jclass cls,jint cx,jint cy,jint r){
     (void)cls;uint32_t cells[33*33];int n=bore_android_window(cx,cy,r,cells,33*33);
     if(!n)return NULL;
@@ -67,6 +70,14 @@ JNIEXPORT jintArray JNICALL Java_com_bore2_game_NativeWorld_interior(JNIEnv *env
 JNIEXPORT jintArray JNICALL Java_com_bore2_game_NativeWorld_walkMask(JNIEnv *env,jclass cls,jint x,jint y){
     (void)cls;int v[BORE_ANDROID_WALK_FIELDS];
     if(!bore_android_walk_mask(x,y,v,BORE_ANDROID_WALK_FIELDS))return NULL;
+    jintArray a=(*env)->NewIntArray(env,BORE_ANDROID_WALK_FIELDS);
+    if(a)(*env)->SetIntArrayRegion(env,a,0,BORE_ANDROID_WALK_FIELDS,(const jint*)v);
+    return a;
+}
+
+JNIEXPORT jintArray JNICALL Java_com_bore2_game_NativeWorld_walkHeights(JNIEnv *env,jclass cls,jint x,jint y){
+    (void)cls;int v[BORE_ANDROID_WALK_FIELDS];
+    if(!bore_android_walk_heights(x,y,v,BORE_ANDROID_WALK_FIELDS))return NULL;
     jintArray a=(*env)->NewIntArray(env,BORE_ANDROID_WALK_FIELDS);
     if(a)(*env)->SetIntArrayRegion(env,a,0,BORE_ANDROID_WALK_FIELDS,(const jint*)v);
     return a;

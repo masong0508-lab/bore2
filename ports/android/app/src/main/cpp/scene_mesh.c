@@ -3,6 +3,7 @@
 #include "venue_footprint.h"
 #include "scene_surface.h"
 #include "park_plan.h"
+#include "parcel_plan.h"
 #include "window_math.h"
 #include "bigmap.h"
 #include <math.h>
@@ -204,6 +205,7 @@ static void building(Scene*s,const BInfo*b,int bx,int bz,int detail){
 }
 static void block(Scene*s,int bx,int bz,int detail){
     BInfo b;bm_block(bx,bz,&b);int x=bx*BM_BLK,z=bz*BM_BLK;
+    BoreTrail trail;bm_trail_plan(bx,bz,&b,&trail);
     static const unsigned terrain[]={0x548a9d,0xdac5a0,0x7e9b68,0x537749,0xb8a078,0x8f958a};
     Color ground=C(terrain[MIN(b.terrain,5)]);
     // A single stitched mesh, including roads and water. Merge only flat
@@ -234,6 +236,13 @@ static void block(Scene*s,int bx,int bz,int detail){
         bm_lot_plan(bx,bz,&b,&plan);
     int north=garden&&bm_gen>=7&&!(b.road&BR_MEGA)&&plan.face==LF_NORTH;
     if(garden)ground=C(0x7e9b68);
+    LotPlan border=plan;int planted=0;
+    if(bm_gen>=9&&plan.type&&plan.type!=HT_TERRACE&&plan.face!=LF_NONE){
+        int kind=bm_nb(bx,bz);
+        planted=kind==NK_SUBURB||kind==NK_ESTATE||kind==NK_GREEN;
+        if(plan.face==LF_NORTH)border.dy=22-plan.dy;
+        if(border.dy>13)planted=0;
+    }
     // Park materials are part of the stitched mesh, not coplanar overlays.
     for(int j=0;j<BM_BLK;j++)for(int i=0;i<BM_BLK;i++){
         int m=bore_lot_surface(&b,&plan,i,j);
@@ -244,6 +253,9 @@ static void block(Scene*s,int bx,int bz,int detail){
             else if(p==PARK_SOIL)m=BS_SOIL;
             else if(p==PARK_PATIO)m=BS_PATIO;
         }
+        if(m==BS_LAND&&planted&&i>=6&&i<=17&&!bore_parcel_gate(&border,i)&&
+           (plan.face==LF_NORTH?22-j:j)==bore_parcel_row(&border,i))m=BS_SOIL;
+        if(m==BS_LAND&&bore_trail_cell(&trail,i,j))m=BS_SOIL;
         mat[j][i]=(unsigned char)m;
     }
     const Color surface[]={ground,C(0x555d61),C(0xb6b9af),C(0x5b91a2),C(0x95764d),C(0xc8bda6),C(0x718a49),C(0x66b6c1)};
@@ -281,8 +293,9 @@ static void block(Scene*s,int bx,int bz,int detail){
     }else if(b.terrain==BT_FOREST&&b.lot==LOT_WILD){
         // Coherent clusters rather than the same three locations per block.
         int tx=7+(int)(b.h&3u),tz=7+(int)((b.h>>2)&3u);
-        tree(s,x+tx,z+tz,b.h);tree(s,x+tx+4,z+tz+4,b.h>>3);
-        if(detail)tree(s,x+tx+4,z+tz,b.h>>7);
+        if(!bore_trail_cell(&trail,tx,tz))tree(s,x+tx,z+tz,b.h);
+        if(!bore_trail_cell(&trail,tx+4,tz+4))tree(s,x+tx+4,z+tz+4,b.h>>3);
+        if(detail&&!bore_trail_cell(&trail,tx+4,tz))tree(s,x+tx+4,z+tz,b.h>>7);
     }
 }
 int bore_scene_build(int cx,int cy,int r,BoreMesh *out){

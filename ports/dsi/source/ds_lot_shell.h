@@ -2,6 +2,7 @@
 // half-open build-cell boundaries, not the console skyline's full box.
 #pragma once
 #include "bigmap.h"
+#include "ds_venue_plan.h"
 typedef struct { int x0,z0,x1,z1; } DsShellRect;
 typedef struct { DsShellRect body,wing,loft; int home,north; } DsLotShell;
 static inline int ds_shell_valid(DsShellRect r){return r.x1>r.x0&&r.z1>r.z0;}
@@ -44,6 +45,15 @@ static inline int ds_lot_shell(const BInfo *b,const LotPlan *p,int bx,int by,DsL
             if(b->lot==LOT_TWO)out->loft=(DsShellRect){x,1,x+w,5};
         }
         return ds_shell_valid(out->body);
+    }
+    if(bm_gen>=9){
+        if(b->lot==LOT_POOL)return 0;
+        DsVenuePlan v;
+        if(ds_venue_plan(b->lot,&v)){
+            out->body=(DsShellRect){v.x0,v.y0,v.x1,v.y1};
+            if(out->north)out->body=ds_shell_flip(out->body);
+            return 1;
+        }
     }
     switch(b->lot){
     case LOT_WILD:case LOT_PARK:case LOT_SQUARE:case LOT_SKATE:case LOT_EMPTY:case LOT_RIVER:return 0;

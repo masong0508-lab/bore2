@@ -426,7 +426,7 @@ static void start_life(void) {
 #endif
 #endif
 #ifndef GEN_NEW
-#define GEN_NEW 8                                              // (a test build can start an older world version: -DGEN_NEW=6)
+#define GEN_NEW BM_GEN_CURRENT                                              // (a test build can start an older world version: -DGEN_NEW=6)
 #endif
         bm_gen = GEN_NEW; bm_new(seed); world_new_seed(seed);
         loading("PEOPLING SAN BOREAS", 45);
@@ -492,7 +492,12 @@ static void draw_sims(void) {
         Sim *s = &sims[i];
         { Gait *g_ = &s->gait; int tg_ = g_->sleep ? 4096 : 0; g_->lie += CLAMP(tg_ - g_->lie, -170, 170); }   // lying down and getting up take about a second: lie follows where sleep is heading (voxel.c works the pose out from it)
         if (s->lvl > world_view_lvl || s->away) continue;           // upstairs, out of the floor view; at school
-        if (!gfx_visible(s->x, -110 - s->lvl * WALL_FULL - (s->lvl ? 0 : world_gh(s->x, s->z)), s->z, 150)) continue;   // off the screen
+        if (!gfx_visible(s->x, -110 - s->lvl * WALL_FULL - (s->lvl ? 0 : world_gh(s->x, s->z)), s->z, 150)) {
+            /* A car's body can still be on screen when its driver's tiny
+             * culling sphere is outside. The model has its own full bounds. */
+            if(i==player&&veh_on){extern int items_veh_open;items_veh_open=1;items_draw_vehicle(s->x,s->z,s->yaw,-s->lvl*WALL_FULL,veh_on-1,veh_colour(veh_on-1),veh_wph);items_veh_open=0;}
+            continue;
+        }
         VECTOR p; setVector(&p, s->x, 0, s->z);
         if (s->gait.lie > 0) {   // lying (or just getting up): on the bed, the bunk, the crib's mattress, or on the floor; the height eases in with the pose
             char bc = world_at(s->act_x, s->act_y); int sm = voxel_lie_ease(s->gait.lie), bed = (bc == 'S' || bc == CH_BED4 || bc == CH_BEDF || bc == CH_BEDL) ? 1 : (bc == '<' || bc == CH_BEDT) ? 2 : 0, to;
@@ -851,8 +856,17 @@ static void life_update(int steps) {
 #endif
     ghost_tick(steps, frame);
     if (!(frame & 31) && bm_gen >= 7 && world_zone == ZONE_CITY && world_wbx >= 0 && state == ST_LIFE) {   // (world version 7: walking into another neighbourhood: its name on the feed)
-        static char nbl[24]; char nn[24]; const char *nb = bm_nb_name(world_wbx + sim_tile_x(&sims[player]) / BM_BLK, world_wby + sim_tile_y(&sims[player]) / BM_BLK, nn);
-        if (nb && strcmp(nb, nbl)) { sim_note(nb); strcpy(nbl, nb); } }
+        extern int bm_edit_stamp;
+        static char nbl[24]; static int lastx=-1,lasty=-1,lastedit=-1;
+        int bx=world_wbx+sim_tile_x(&sims[player])/BM_BLK,by=world_wby+sim_tile_y(&sims[player])/BM_BLK;
+        char nn[24]; const char *nb=bm_nb_name(bx,by,nn);
+        if(!nb&&(lastx!=bx||lasty!=by||lastedit!=bm_edit_stamp)){
+            BInfo info;BoreTrail trail;bm_block(bx,by,&info);bm_trail_plan(bx,by,&info,&trail);
+            nb=bm_trail_label(trail.kind);
+            if(!nb)nbl[0]=0;
+        }
+        if(nb&&strcmp(nb,nbl)){sim_note(nb);strcpy(nbl,nb);}
+        lastx=bx;lasty=by;lastedit=bm_edit_stamp; }
 #ifdef AUTO_REALM
     { static int ar; if (++ar == 40 && (ovl = ovl_load("KINGDOM.OVL"))) { ovl->open(0); state = ST_REALM; return; } }   // (test builds: straight into KINGDOM MODE)
 #endif
@@ -1363,6 +1377,7 @@ static void menu_bg(int live) {
 
 // ---- travel between the zones ----
 static void travel_go(int z) {
+    sim_park_for_travel();
     { char b[40]; sprintf(b, "TRAVELLING TO %s", world_zone_name(z)); loading(b, 50); }
     world_switch(z);
     int px, py;
@@ -1432,6 +1447,7 @@ static void travel_draw(void) {   // where to: the four places, each on a row wi
 // in the VRAM the people's sprites use (they are rendered again after).
 static int map_sel;
 static void put_household(int px, int py) {     // everyone at home stands round (px, py)
+    sim_park_for_travel();
     for (int i = 0; i < nsims; i++) {
         Sim *sm = &sims[i];
         sim_player_cancel_sim(sm);
@@ -1441,6 +1457,7 @@ static void put_household(int px, int py) {     // everyone at home stands round
     cam_fx = sims[player].x; cam_fz = sims[player].z;
 }
 static void taxi_to_block(int bx, int by, int tx, int ty, const char *where) {   // tx, ty: the tile to stand on in that block (-1: its street)
+    sim_park_for_travel();
     loading("TAKING A TAXI", 60);
     if (world_zone != ZONE_CITY) world_switch(ZONE_CITY);
     world_open_at(bx, by);
@@ -2921,7 +2938,7 @@ static void rt_test_tick(void) {   // (test builds: REAL TIME on, the clock set 
 // ---- the memory card: SAVE GAME in the pause menu, CONTINUE on the title ----
 static const char *save_msg;                                 // why the last load failed (the title shows it)
 static void save_body(void) {
-    sv_u32(world_seed()); sv_u8(bm_packed);
+    sv_u32(world_seed()); sv_u8(bm_packed); sv_u8(bm_gen); // v56: retain the exact generator on re-save
     sv_u8(traffic_level); sv_u8(bm_land); sv_u8(bm_sea); sv_u8(bm_clim); sv_u8(bm_hills); sv_u8(bm_ncity); sv_u8(bm_ntown); sv_u8(bm_nvil); sv_u8(bm_capsz); sv_u8(pop_people); sv_u8(pop_famsize); sv_u8(isl_size); sv_u8(isl_wild); sv_u8(isl_jungle); sv_u8(isl_rocks);   // (CREATE A WORLD's dials: version 7)
     { int n = 0; for (int i = 0; i < BM_NSET_MAX; i++) if (bm_renamed(i)[0]) n++;   // (the towns renamed)
       sv_u8(n); for (int i = 0; i < BM_NSET_MAX; i++) if (bm_renamed(i)[0]) { sv_u8(i); sv_str(bm_renamed(i), 17); } }
@@ -2936,7 +2953,7 @@ static void save_body(void) {
 }
 static void load_body(void) {
     u32 seed = ld_u32();
-    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 55 ? 8 : save_ver >= 54 ? 7 : save_ver >= 38 ? 6 : save_ver >= 31 ? 5 : save_ver >= 17 ? 4 : 3; wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
+    if (save_ver >= 3) { bm_packed = ld_u8(); bm_gen = save_ver >= 56 ? ld_u8() : save_ver >= 55 ? 8 : save_ver >= 54 ? 7 : save_ver >= 38 ? 6 : save_ver >= 31 ? 5 : save_ver >= 17 ? 4 : 3; bm_gen=CLAMP(bm_gen,2,BM_GEN_CURRENT); wo_name_for(seed); } else { bm_packed = 1; bm_gen = 2; bm_cap_name[0] = 0; }   // (a save from before the TOWNS option: its world as it was made)
     bm_dials_default(); isl_dials_default(); pop_people = 3; pop_famsize = 1; traffic_level = 2;
     traffic_level = 2; if (save_ver >= 19) traffic_level = ld_u8() % 5;
     if (save_ver >= 7) { bm_land = ld_u8() % BL_N; bm_sea = ld_u8() % 5; bm_clim = ld_u8() % 5; bm_hills = ld_u8() % 5;

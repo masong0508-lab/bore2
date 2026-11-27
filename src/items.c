@@ -796,9 +796,9 @@ COLD void items_draw_vehicle(int x, int z, int yaw, int y, int type, int ci, int
     int ang = (2048 - yaw) & 4095;
     { int ex = cam.eye.vx - x, ez = cam.eye.vz - z, c = icos(ang), s = isin(ang);   // the camera in the model's frame: which side's wheels show, and how far off it is
       int ox = (ex * c - ez * s) >> 12; veh_cs = ox > 120 ? 1 : ox < -120 ? -1 : 0;
-      int ey = (cam.eye.vy + y - up) >> 4; ex >>= 4; ez >>= 4; veh_lod = ex * ex + ez * ez + ey * ey > (2800 >> 4) * (2800 >> 4) && !items_veh_open; }
+      int ey = (cam.eye.vy - y + up + 220) >> 4; ex >>= 4; ez >>= 4; veh_lod = ex * ex + ez * ez + ey * ey > (2800 >> 4) * (2800 >> 4) && !items_veh_open; }
     int pi = 0, ro = 0;
-    if (type >= 2 && gfx_lift_fn && !veh_lod && veh_pitch_roll(x, z, ang, 260, 190, &pi, &ro)) {   // on a slope: tipped to follow it, about the middle
+    if (type >= 2 && gfx_lift_fn && veh_pitch_roll(x, z, ang, 260, 190, &pi, &ro)) {   // on a slope: tipped to follow it, about the middle
         MATRIX my_, mf, m; SVECTOR ry = { 0, (short)ang, 0, 0 }, rf = { (short)pi, 0, (short)ro, 0 };
         RotMatrix(&ry, &my_); RotMatrix(&rf, &mf); MulMatrix0(&my_, &mf, &m);
         m.t[0] = x; m.t[1] = y - up; m.t[2] = z; sk_k = 28; gfx_set_object_m(&m); gfx_set_light_yaw(ang); dbg_vpitch = pi * 1000 + ro;

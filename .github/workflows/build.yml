@@ -10,8 +10,26 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Verify mutually exclusive terrain cache ownership
+        run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/terrain_render_cache_test.c -o /tmp/terrain_render_cache && /tmp/terrain_render_cache
+      - name: Verify vehicle footprints and non-wrapping traffic rebases
+        run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/vehicle_stability_test.c -o /tmp/vehicle_stability && /tmp/vehicle_stability
+      - name: Verify real traffic parking across world-window rebases
+        run: make -C ports/host/traffic trafsim && ports/host/traffic/trafsim --parking-test
+      - name: Verify safe shaped garden borders and access gaps
+        run: cc -O2 -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc test/parcel_plan_test.c -o /tmp/parcel_plan && /tmp/parcel_plan
+      - name: Verify shared river, causeway and courtyard surfaces
+        run: cc -O2 -std=c99 -Wall -Wextra -Werror -Iports/host/shim -Isrc test/world_surface_test.c -o /tmp/world_surface && /tmp/world_surface
+      - name: Verify regional road continuity, usable farm frontage and actual lot access
+        run: cc -O2 -std=gnu11 -Iports/host/shim -Isrc test/world_frontage_test.c src/bigmap.c -o /tmp/world_frontage && /tmp/world_frontage
+      - name: Verify connected trail masks and generated world boundaries
+        run: |
+          cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/trail_test.c -o /tmp/trail_test && /tmp/trail_test
+          cc -O2 -std=gnu11 -Iports/host/shim -Isrc test/trail_world_test.c src/bigmap.c -o /tmp/trail_world_test && /tmp/trail_world_test
       - name: Verify continuous terrain, flat lot pads and sculpt falloff
         run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/landscape_test.c -o /tmp/landscape_test && /tmp/landscape_test
+      - name: Verify terrain editor capacity, edge coordinates and undo
+        run: cc -O2 -std=gnu11 -Iports/host/shim -Isrc test/terrain_editor_test.c src/bigmap.c -o /tmp/terrain_editor_test && /tmp/terrain_editor_test
       - name: Verify contextual resident dialogue and bounded activity poses
         run: cc -std=c99 -Wall -Wextra -Werror -Isrc test/native_life_test.c -o /tmp/native_life && /tmp/native_life
       - name: Verify classic music rotation and hidden archive indexing

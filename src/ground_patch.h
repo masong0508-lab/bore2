@@ -30,3 +30,16 @@ static inline int ground_patch_build(const uint8_t *mat,uint32_t *out,int cap){
     }
     return n;
 }
+
+/* Island corner colours and city surface rectangles are mutually exclusive
+ * render paths. Keep their full cache sizes while sharing resident RAM.
+ * Claim returns true on a switch: callers invalidate the new owner's tags. */
+enum { TERRAIN_CACHE_NONE, TERRAIN_CACHE_CITY, TERRAIN_CACHE_ISLAND };
+typedef union {
+    uint32_t city[4][4][GROUND_PATCH_CACHE];
+    struct {uint16_t col[32][32],tag[32][32];} island;
+} TerrainRenderCache;
+static inline int terrain_cache_claim(int *owner,int next){
+    if(*owner==next)return 0;
+    *owner=next;return 1;
+}

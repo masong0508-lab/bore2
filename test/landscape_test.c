@@ -30,5 +30,22 @@ int main(void){
     assert(bore_land_relief(150,4)>4800);
     assert(bore_land_brush_delta(0,0,2)==2&&bore_land_brush_delta(1,1,2)==1&&bore_land_brush_delta(2,2,2)==0);
     assert(bore_land_brush_delta(2,0,2)==1&&bore_land_brush_delta(0,0,0)==2);
+    assert(bore_land_walk_pace(0,256)==4);
+    assert(bore_land_walk_pace(25,256)==4);
+    assert(bore_land_walk_pace(26,256)==3);
+    assert(bore_land_walk_pace(65,256)==2);
+    assert(bore_land_walk_pace(103,256)==1);
+    assert(bore_land_walk_pace(-103,256)==1);
+    assert(bore_land_walk_pace(6000,256)==1);
+    assert(bore_land_walk_pace(1,0)==4);
+    for(int p=1;p<=4;p++){
+        int ticks=0;for(int f=0;f<400;f++)ticks+=bore_land_walk_tick(p,(unsigned)f);
+        assert(ticks==p*100);
+        for(int d=1;d<=32;d++){
+            int step=bore_land_walk_step(d,p);assert(step>=1&&step<=d);
+            assert(bore_land_walk_step(-d,p)==-step);
+            if(p==4)assert(step==d);
+        }
+    }
     printf("landscape: %d shared edge samples, %d foundation samples, %d bounded surface points; relief and brush PASS\n",seams,pads,points);
 }

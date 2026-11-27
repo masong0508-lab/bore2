@@ -9,6 +9,10 @@ int main(void){
     assert(bore_surface(&b,2,2)==BS_ROAD&&bore_surface(&b,2,7)==BS_LAND);
     b.road=BR_MEGA|(1<<4)|(MK_PLAZA<<6)|3;
     assert(bore_surface(&b,2,8)==BS_PAVING&&bore_surface(&b,8,2)==BS_ROAD);
+    b.road=BR_MEGA|(3<<4)|(MK_PARK<<6)|3;
+    assert(bore_surface(&b,2,2)==BS_WATER&&bore_surface(&b,2,10)==BS_PAVING);
+    b.road=BR_MEGA|(3<<4)|(MK_PLAZA<<6)|3;
+    assert(bore_surface(&b,2,2)==BS_WATER&&bore_surface(&b,0,0)==BS_PATIO);
     b.lot=LOT_RIVER;b.road=BR_MEGA;
     assert(bore_surface(&b,8,0)==BS_WATER&&bore_surface(&b,6,8)==BS_PAVING);
     assert(bore_surface(&b,14,10)==BS_PAVING);

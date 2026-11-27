@@ -2,6 +2,7 @@
 // A lot is always BUILT as if it looked south (its door on the south wall, its path running down to the lot's last row, 17); a lot that faces north
 // is then turned over (mirror7: every row of the lot, ground and storeys, the homes it registered) so its door looks at the block's own street.
 // Included after lots.inc (the furnishing and the old builders are used as they are).
+#include "parcel_plan.h"
 static int wp7(const LotPlan *q) { return NWP + NWX + (int)((q->pal * 2u + q->wall) % NWPNEW); }   // the neighbourhood's two wall materials
 static void flip7(LotPlan *q) {   // a north-facing plan seen from the south (rows 5..17 turned over)
     u8 a = (u8)(22 - q->y1), b = (u8)(22 - q->y0); q->y0 = a; q->y1 = b; q->dy = (u8)(22 - q->dy);
@@ -42,13 +43,16 @@ __attribute__((noinline)) static void yard7(int ox, int oy, const LotPlan *q, in
         if (hedge) for (int x = PLx + 1; x <= PLx + 12; x++) {                          // a slim hedge (or pickets) on the boundary row, a gap at the walk and the drive; piers at the corners and the gaps
             if (ABS(x - dx) <= 1 || (dv && x >= dv && x <= dv + 1)) continue;
             int pier = piers && (x == PLx + 1 || x == PLx + 12 || ABS(x - dx) == 2 || (dv && (x == dv - 1 || x == dv + 2)));
-            hedge7(x, oy + 16, x, oy + 15, fence ? (char)0xDF : pier ? CH_PIER7 : CH_HEDGE7);
+            int row=bm_gen>=9?oy+bore_parcel_row(q,x-ox):oy+16;
+            if(bm_gen>=9&&bore_parcel_gate(q,x-ox))continue;
+            hedge7(x,row,x,row-1,fence ? (char)0xDF : pier ? CH_PIER7 : CH_HEDGE7);
         }
     }
     if (sides) for (int s = 0; s < 2; s++) {                                           // short side hedges on the boundary columns, the front garden only (the back yard stays open)
         int c = s ? PLx + 12 : PLx + 1;
         if (dv && (c == dv || c == dv + 1)) continue;
-        for (int y = hy1 + 1; y < oy + 16; y++) hedge7(c, y, s ? c - 1 : c + 1, y, CH_HEDGE7);
+        int end=bm_gen>=9?oy+bore_parcel_row(q,c-ox):oy+16;
+        for (int y = hy1 + 1; y < end; y++) hedge7(c, y, s ? c - 1 : c + 1, y, CH_HEDGE7);
     }
 }
 static void garage7(int ox, int oy, const LotPlan *q, int fl, int wp) {   // the garage wing (L houses): a solid block with its door to the drive
