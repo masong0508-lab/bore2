@@ -10,6 +10,8 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -22,7 +24,7 @@ import android.widget.ScrollView;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Native 3D neighborhood preview; map mode remains available for navigation. */
+/** Mobile neighborhood life: native world generation, local travel, housing and venue gameplay. */
 public final class MainActivity extends Activity {
     private static final int MAP_SIZE=1024;
     private static final int BG=Color.rgb(23,32,34), INK=Color.rgb(236,242,236);
@@ -32,7 +34,11 @@ public final class MainActivity extends Activity {
     private FrameLayout pane;
     private MapView map;
     private WorldView3D world3d;
-    private Button dayButton,modeButton;
+    private Button dayButton,modeButton,travelButton;
+    private final Handler travelHandler=new Handler(Looper.getMainLooper());
+    private int[] travelRoute;
+    private int travelIndex,travelCost,travelElapsed;
+    private final Runnable travelTick=this::stepTravel;
     private final ExecutorService meshWorker=Executors.newSingleThreadExecutor();
     private volatile int serial;
     private int meshX=-1,meshY=-1,meshSeed,meshRevision=-1;
@@ -42,6 +48,12 @@ public final class MainActivity extends Activity {
     private int[] tiles=new int[0];
     private int lifeX,lifeY,minute=600,funds=250,energy=100,fun=50,social=50,food=100,sessions;
     private int lifeDay,lastShiftDay=-1;
+    private int homeX=-1,homeY=-1,rentDebt,careerShifts,trips,homeNights;
+    private boolean hasHome(){return LifeRules.inside(homeX,homeY);}
+    private boolean atHome(){return hasHome()&&lifeX==homeX&&lifeY==homeY;}
+    private boolean atSelected(){return lifeX==selectedX&&lifeY==selectedY;}
+    private int visualX(){return travelRoute!=null&&travelIndex>0?LifeRules.x(travelRoute[travelIndex-1]):lifeX;}
+    private int visualY(){return travelRoute!=null&&travelIndex>0?LifeRules.y(travelRoute[travelIndex-1]):lifeY;}
     private int[] lastRoute=new int[0];
     private final int[] skills=new int[7];
     private static final String[] SKILL_NAMES={"Play","Logic","Fitness","Creativity","Cooking","Farming","Charisma"};
@@ -60,10 +72,15 @@ public final class MainActivity extends Activity {
         selectedX=cx;selectedY=cy;
         lifeX=clampBlock(prefs.getInt("lifeX",capitalX));lifeY=clampBlock(prefs.getInt("lifeY",capitalY));
         minute=Math.max(0,Math.min(1439,prefs.getInt("minute",600)));
-        funds=Math.max(0,prefs.getInt("funds",250));energy=clamp100(prefs.getInt("energy",100));
+        funds=LifeRules.credit(prefs.getInt("funds",250),0);energy=clamp100(prefs.getInt("energy",100));
         fun=clamp100(prefs.getInt("fun",50));social=clamp100(prefs.getInt("social",50));food=clamp100(prefs.getInt("food",100));
         sessions=Math.max(0,prefs.getInt("sessions",0));
-        lifeDay=Math.max(0,prefs.getInt("lifeDay",0));lastShiftDay=prefs.getInt("lastShiftDay",-1);
+        lifeDay=LifeRules.credit(prefs.getInt("lifeDay",0),0);lastShiftDay=prefs.getInt("lastShiftDay",-1);
+        homeX=prefs.getInt("homeX",-1);homeY=prefs.getInt("homeY",-1);
+        if(!hasHome()){homeX=homeY=-1;}
+        rentDebt=LifeRules.credit(prefs.getInt("rentDebt",0),0);
+        careerShifts=LifeRules.credit(prefs.getInt("careerShifts",0),0);
+        trips=LifeRules.credit(prefs.getInt("trips",0),0);homeNights=LifeRules.credit(prefs.getInt("homeNights",0),0);
         for(int i=0;i<skills.length;i++)skills[i]=Math.max(0,Math.min(4400,prefs.getInt("skill"+i,0)));
 
         root=new LinearLayout(this);
@@ -89,7 +106,7 @@ public final class MainActivity extends Activity {
         hint=new TextView(this);hint.setTextColor(Color.rgb(180,201,190));hint.setTextSize(12);
         hint.setPadding(dp(12),0,dp(12),dp(6));panel.addView(hint);
         world3d=new WorldView3D(this,(x,y,ox,oy,id)->{
-            if(!in3d||id!=serial||id!=meshRevision||ox!=cx||oy!=cy||meshSeed!=seed||meshX!=cx||meshY!=cy)return;
+            if(travelRoute!=null||!in3d||id!=serial||id!=meshRevision||ox!=cx||oy!=cy||meshSeed!=seed||meshX!=cx||meshY!=cy)return;
             selectedX=x;selectedY=y;updateDetails();
         });
         map=new MapView();
@@ -101,6 +118,11 @@ public final class MainActivity extends Activity {
         LinearLayout lower=new LinearLayout(this);
         lower.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(lower,new ScrollView.LayoutParams(-1,-2));
+        LinearLayout primary=new LinearLayout(this);primary.setGravity(Gravity.CENTER);
+        lower.addView(primary,new LinearLayout.LayoutParams(-1,-2));
+        travelButton=addButton(primary,"Travel here",this::visitSelected);
+        addButton(primary,"Home",this::homeAction);
+        addButton(primary,"Find places",this::showFinder);
         detail=new TextView(this);detail.setTextSize(14);detail.setTextColor(INK);
         detail.setMinLines(2);detail.setPadding(dp(12),dp(6),dp(12),dp(4));
         lower.addView(detail,new LinearLayout.LayoutParams(-1,-2));
@@ -117,26 +139,28 @@ public final class MainActivity extends Activity {
         LinearLayout second=new LinearLayout(this);second.setGravity(Gravity.CENTER);
         lower.addView(second,new LinearLayout.LayoutParams(-1,-2));
         addButton(second,"Capital",()->{cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;refresh();});
-        dayButton=addButton(second,"Next day",()->{
-            advanceTime(1440-minute+480);energy=100;food=80;updateDetails();saveLife();
-        });
-        addButton(second,"New seed",()->{
-            serial++;meshX=meshY=meshRevision=requestX=requestY=-1;seed=(int)System.nanoTime();resetNative();
-            cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
-            lifeX=cx;lifeY=cy;weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
-            lifeDay=0;lastShiftDay=-1;lastRoute=new int[0];java.util.Arrays.fill(skills,0);world3d.resetCamera();refresh();saveLife();
-        });
+        dayButton=addButton(second,"Sleep",this::sleepAtHome);
+        addButton(second,"New life",()->new AlertDialog.Builder(this).setTitle("Start a new life?")
+            .setMessage("This replaces your current world, home, savings and progress on this device.")
+            .setPositiveButton("Start over",(dialog,which)->newLife()).setNegativeButton("Keep playing",null).show());
         LinearLayout play=new LinearLayout(this);play.setGravity(Gravity.CENTER);
         lower.addView(play,new LinearLayout.LayoutParams(-1,-2));
-        addButton(play,"Travel here",this::visitSelected);
         addButton(play,"Activities",this::showActivities);
-        addButton(play,"Rest",()->{advanceTime(60);energy=clamp100(energy+20);food=clamp100(food-3);updateDetails();saveLife();});
+        addButton(play,"Rest 1h",this::rest);
+        addButton(play,"Life goals",this::showGoals);
         LinearLayout work=new LinearLayout(this);work.setGravity(Gravity.CENTER);
         lower.addView(work,new LinearLayout.LayoutParams(-1,-2));
         addButton(work,"Work shift",this::workShift);
-        addButton(work,"Eat ($8)",this::eatMeal);
+        addButton(work,"Eat / cook",this::eatMeal);
         addButton(work,"My location",()->{cx=lifeX;cy=lifeY;selectedX=lifeX;selectedY=lifeY;refresh();});
         setContentView(root);root.requestApplyInsets();showMode();refresh();
+    }
+    private void newLife(){
+            serial++;meshX=meshY=meshRevision=requestX=requestY=-1;seed=(int)System.nanoTime();resetNative();
+            cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
+            lifeX=cx;lifeY=cy;weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
+            lifeDay=0;lastShiftDay=-1;lastRoute=new int[0];homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
+            java.util.Arrays.fill(skills,0);world3d.resetCamera();refresh();saveLife();
     }
     private void layoutPanes(Configuration config){
         boolean wide=config.orientation==Configuration.ORIENTATION_LANDSCAPE;
@@ -154,7 +178,7 @@ public final class MainActivity extends Activity {
         Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextSize(12);
         b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(0,0,0,0);
         row.addView(b,new LinearLayout.LayoutParams(0,dp(44),1));
-        b.setOnClickListener(v->action.run());return b;
+        b.setOnClickListener(v->{if(travelRoute!=null&&b!=travelButton){notice("Finish or cancel your trip first");return;}action.run();});return b;
     }
     private void resetNative(){
         int center=NativeWorld.init(seed);capitalX=center&65535;capitalY=center>>>16;
@@ -214,21 +238,120 @@ public final class MainActivity extends Activity {
         });
     }
     private void advanceTime(int elapsed){
-        int total=minute+Math.max(0,elapsed);lifeDay+=total/1440;weekday=(weekday+total/1440)%7;minute=total%1440;
+        elapsed=Math.max(0,elapsed);
+        int total=minute+elapsed,days=total/1440;
+        // Actions already account for their own energy and food costs.
+        // Passive social/fun decay uses elapsed clock buckets so short trips
+        // cannot reset the fractional portion of the timer.
+        fun=clamp100(fun-LifeRules.elapsedBuckets(minute,elapsed,120));
+        social=clamp100(social-LifeRules.elapsedBuckets(minute,elapsed,180));
+        lifeDay=LifeRules.credit(lifeDay,days);weekday=(weekday+days)%7;minute=total%1440;
+        int[] bill=LifeRules.rent(funds,rentDebt,days,hasHome());funds=bill[0];rentDebt=bill[1];
     }
     private void notice(String message){Toast.makeText(this,message,Toast.LENGTH_SHORT).show();}
     private void visitSelected(){
+        if(travelRoute!=null){cancelTravel(true);return;}
         if(!NativeWorld.canVisit(selectedX,selectedY)){notice("Choose a land lot to visit");return;}
         int[] route=NativeWorld.route(lifeX,lifeY,selectedX,selectedY);
-        if(route==null){notice("No local land route. Try a nearer lot or a bridge.");return;}
+        if(!LifeRules.validRoute(lifeX,lifeY,selectedX,selectedY,route)){notice("No local land route. Try a nearer lot or a bridge.");return;}
         int blocks=route.length;
         if(blocks==0){notice("Already at this lot");return;}
-        int elapsed=blocks*3,cost=(blocks+3)/4;
+        int elapsed=LifeRules.travelMinutes(blocks),cost=LifeRules.travelEnergy(blocks);
         if(energy<cost){notice("Rest before traveling");return;}
-        lastRoute=new int[blocks+1];lastRoute[0]=lifeX|(lifeY<<16);
+        // Show the real native route. The trip commits once on arrival, never
+        // saves the player halfway across a bridge, and cancels without cost.
+        travelRoute=route;travelIndex=0;travelCost=cost;travelElapsed=elapsed;
+        lastRoute=new int[blocks+1];lastRoute[0]=LifeRules.pack(lifeX,lifeY);
         System.arraycopy(route,0,lastRoute,1,blocks);
-        lifeX=selectedX;lifeY=selectedY;energy-=cost;food=clamp100(food-elapsed/30);
-        advanceTime(elapsed);cx=lifeX;cy=lifeY;refresh();saveLife();
+        travelButton.setText("Cancel trip");stepTravel();
+    }
+    private void stepTravel(){
+        if(travelRoute==null)return;
+        int n=travelRoute.length;
+        travelIndex=Math.min(n,travelIndex+Math.max(1,(n+23)/24));
+        int x=visualX(),y=visualY();
+        world3d.player(x,y);map.invalidate();
+        lifeStatus.setText("Traveling · "+travelIndex+"/"+n+" blocks\n"+travelElapsed+" game minutes · "+travelCost+" energy");
+        if(travelIndex<n){travelHandler.postDelayed(travelTick,115);return;}
+        lifeX=x;lifeY=y;energy=clamp100(energy-travelCost);food=clamp100(food-travelElapsed/30);
+        advanceTime(travelElapsed);trips=LifeRules.credit(trips,1);
+        travelRoute=null;travelIndex=0;travelButton.setText("Travel here");
+        cx=lifeX;cy=lifeY;selectedX=lifeX;selectedY=lifeY;refresh();saveLife();notice("Arrived");
+    }
+    private void cancelTravel(boolean announce){
+        travelHandler.removeCallbacks(travelTick);
+        if(travelRoute==null)return;
+        travelRoute=null;travelIndex=0;lastRoute=new int[0];travelButton.setText("Travel here");
+        updateDetails();if(announce)notice("Trip canceled");
+    }
+    private int selectedLot(){
+        int x=selectedX-cx+radius,y=selectedY-cy+radius,side=radius*2+1;
+        if(x<0||y<0||x>=side||y>=side||tiles.length!=side*side)return -1;
+        int code=tiles[y*side+x];return (code&7)==0?-1:(code>>>3)&63;
+    }
+    private void showFinder(){
+        new AlertDialog.Builder(this).setTitle("Find nearby places")
+            .setItems(new String[]{"Homes to rent","Workplaces","Food and groceries","Local venues"},(d,i)->findPlaces(i))
+            .setNegativeButton("Close",null).show();
+    }
+    private void findPlaces(int kind){
+        int[] found=LifeRules.nearby(tiles,cx,cy,radius,lifeX,lifeY,kind,12);
+        if(found.length==0){notice("No matching places in this map area. Explore or zoom out.");return;}
+        String[] labels=new String[found.length];
+        for(int i=0;i<found.length;i++){
+            int x=LifeRules.x(found[i]),y=LifeRules.y(found[i]);
+            labels[i]=NativeWorld.describe(x,y,weekday).split("\\n",2)[0]+" · "+LifeRules.distance(lifeX,lifeY,x,y)+" blocks away";
+        }
+        new AlertDialog.Builder(this).setTitle(kind==LifeRules.HOMES?"Homes to rent":kind==LifeRules.WORK?"Workplaces":kind==LifeRules.FOOD?"Food nearby":"Local venues")
+            .setItems(labels,(d,i)->{selectedX=LifeRules.x(found[i]);selectedY=LifeRules.y(found[i]);updateDetails();notice("Selected — tap Travel here");})
+            .setNegativeButton("Close",null).show();
+    }
+    private void homeAction(){
+        if(atHome()){showHome();return;}
+        if(atSelected()&&LifeRules.isHome(selectedLot())){
+            if(rentDebt>0){notice("Clear your overdue rent before moving");return;}
+            if(funds<LifeRules.LEASE){notice("A lease costs $"+LifeRules.LEASE+". Find work to earn it.");return;}
+            final int x=lifeX,y=lifeY;
+            new AlertDialog.Builder(this).setTitle("Lease this home?")
+                .setMessage("$"+LifeRules.LEASE+" to move in, then $"+LifeRules.DAILY_RENT+" per game day. Sleep, cook and spend time at home.")
+                .setPositiveButton("Move in",(d,i)->{
+                    if(lifeX!=x||lifeY!=y||funds<LifeRules.LEASE||rentDebt>0)return;
+                    funds-=LifeRules.LEASE;homeX=x;homeY=y;updateDetails();saveLife();notice("Welcome home");
+                }).setNegativeButton("Cancel",null).show();return;
+        }
+        if(!hasHome()){findPlaces(LifeRules.HOMES);return;}
+        selectedX=homeX;selectedY=homeY;
+        if(Math.abs(selectedX-cx)>radius||Math.abs(selectedY-cy)>radius){cx=homeX;cy=homeY;refresh();}
+        else updateDetails();
+        notice("Home selected — tap Travel here");
+    }
+    private void showHome(){
+        new AlertDialog.Builder(this).setTitle("At home · rent $"+LifeRules.DAILY_RENT+"/day")
+            .setItems(new String[]{"Sleep 8 hours","Cook a meal ($5)","Practice a hobby (1 hour)","Call a friend (30 min)"},(d,i)->{
+                if(!atHome())return;
+                if(i==0)sleepAtHome();else if(i==1)eatMeal();else if(i==2){
+                    if(energy<8){notice("Rest before practicing");return;}
+                    energy-=8;food=clamp100(food-3);fun=clamp100(fun+25);
+                    skills[3]=Math.min(4400,skills[3]+20);advanceTime(60);updateDetails();saveLife();notice("Creativity improved");
+                }else{social=clamp100(social+18);advanceTime(30);updateDetails();saveLife();notice("Caught up with a friend");}
+            }).setNegativeButton("Close",null).show();
+    }
+    private void sleepAtHome(){
+        if(!atHome()){notice(hasHome()?"Travel home before sleeping":"Rent a home first");return;}
+        advanceTime(480);energy=100;food=clamp100(food-12);homeNights=LifeRules.credit(homeNights,1);
+        updateDetails();saveLife();notice("Well rested");
+    }
+    private void rest(){
+        advanceTime(60);energy=clamp100(energy+(atHome()?20:12));food=clamp100(food-3);
+        updateDetails();saveLife();notice("Rested for one hour");
+    }
+    private void showGoals(){
+        String message=(hasHome()?"✓":"○")+" Lease a home\n"+(homeNights>0?"✓":"○")+" Sleep at home\n"+
+            (trips>=3?"✓":"○")+" Explore three locations ("+Math.min(trips,3)+"/3)\n"+
+            (careerShifts>=4?"✓":"○")+" Complete four shifts ("+Math.min(careerShifts,4)+"/4)\n"+
+            (sessions>=3?"✓":"○")+" Join three local activities ("+Math.min(sessions,3)+"/3)\n\n"+
+            "Career bonus: $"+LifeRules.payBonus(careerShifts)+" per shift\nRent overdue: $"+rentDebt;
+        new AlertDialog.Builder(this).setTitle("Your life goals").setMessage(message).setPositiveButton("Keep playing",null).show();
     }
     private void workShift(){
         if(lifeX!=selectedX||lifeY!=selectedY){notice("Travel to this workplace first");return;}
@@ -236,13 +359,20 @@ public final class MainActivity extends Activity {
         int[] v=NativeWorld.shift(lifeX,lifeY,weekday,minute,energy,food);
         if(v==null){notice("No work shifts at this location");return;}
         if(v[0]!=0){notice(v[0]==1?"No shift fits the opening hours":v[0]==2?"Rest before working":"Eat before working");return;}
-        lastShiftDay=lifeDay;funds+=v[2];energy=clamp100(energy-v[3]);food=clamp100(food-v[4]);
+        lastShiftDay=lifeDay;int pay=v[2]+LifeRules.payBonus(careerShifts);
+        funds=LifeRules.credit(funds,pay);careerShifts=LifeRules.credit(careerShifts,1);
+        energy=clamp100(energy-v[3]);food=clamp100(food-v[4]);
         if(v[5]>=0&&v[5]<skills.length)skills[v[5]]=Math.min(4400,skills[v[5]]+v[6]);
-        advanceTime(v[1]);updateDetails();saveLife();notice("Shift complete: earned $"+v[2]);
+        advanceTime(v[1]);updateDetails();saveLife();notice("Shift complete: earned $"+pay);
     }
     private void eatMeal(){
-        if(funds<8){notice("Not enough money for a meal");return;}
-        funds-=8;food=clamp100(food+35);advanceTime(30);updateDetails();saveLife();
+        boolean cooking=atHome();
+        if(!cooking&&(!atSelected()||!LifeRules.isFood(selectedLot()))){notice("Eat at home or travel to a food venue");return;}
+        int price=cooking?5:8;
+        if(funds<price){notice("Not enough money for a meal");return;}
+        funds-=price;food=clamp100(food+(cooking?45:35));
+        if(cooking)skills[4]=Math.min(4400,skills[4]+12);
+        advanceTime(30);updateDetails();saveLife();notice(cooking?"Cooked a meal":"Ate a meal");
     }
     private void showActivities(){
         if(lifeX!=selectedX||lifeY!=selectedY){notice("Travel to this lot first");return;}
@@ -264,14 +394,16 @@ public final class MainActivity extends Activity {
         funds-=v[2];energy=clamp100(energy-v[3]+v[7]);fun=clamp100(fun+v[4]);
         social=clamp100(social+v[5]);food=clamp100(food+v[6]);
         if(v[8]>=0&&v[8]<skills.length)skills[v[8]]=Math.min(4400,skills[v[8]]+v[9]);
-        advanceTime(v[10]);sessions++;updateDetails();saveLife();
+        advanceTime(v[10]);sessions=LifeRules.credit(sessions,1);updateDetails();saveLife();
         notice(NativeWorld.activityText(v[1],1));
     }
     private void saveLife(){
         SharedPreferences.Editor e=prefs.edit().putInt("seed",seed).putInt("lifeX",lifeX).putInt("lifeY",lifeY)
              .putInt("day",weekday).putInt("minute",minute).putInt("funds",funds).putInt("energy",energy)
              .putInt("fun",fun).putInt("social",social).putInt("food",food).putInt("sessions",sessions)
-             .putInt("lifeDay",lifeDay).putInt("lastShiftDay",lastShiftDay);
+             .putInt("lifeDay",lifeDay).putInt("lastShiftDay",lastShiftDay)
+             .putInt("homeX",homeX).putInt("homeY",homeY).putInt("rentDebt",rentDebt)
+             .putInt("careerShifts",careerShifts).putInt("trips",trips).putInt("homeNights",homeNights);
         for(int i=0;i<skills.length;i++)e.putInt("skill"+i,skills[i]);e.apply();
     }
     private void updateDetails(){
@@ -279,9 +411,10 @@ public final class MainActivity extends Activity {
         detail.setText(text+"\nBlock "+selectedX+", "+selectedY+"  ·  Seed "+Integer.toUnsignedString(seed));
         int best=0;for(int i=1;i<skills.length;i++)if(skills[i]>skills[best])best=i;
         String day=new String[]{"Mon","Tue","Wed","Thu","Fri","Sat","Sun"}[weekday];
-        lifeStatus.setText(String.format(java.util.Locale.US,"%s %02d:%02d  ·  $%d  ·  Energy %d\nFood %d · Fun %d · Social %d · Visits %d\n%s · %s %d",
-            day,minute/60,minute%60,funds,energy,food,fun,social,sessions,
-            lifeX==selectedX&&lifeY==selectedY?"At selected lot":"You: "+lifeX+", "+lifeY,SKILL_NAMES[best],skills[best]));
+        lifeStatus.setText(String.format(java.util.Locale.US,"%s %02d:%02d · $%d · Energy %d\nFood %d · Fun %d · Social %d\n%s · %s %d\n%s · Shifts %d · Trips %d",
+            day,minute/60,minute%60,funds,energy,food,fun,social,
+            atSelected()?"At selected lot":"You: "+lifeX+", "+lifeY,SKILL_NAMES[best],skills[best],
+            !hasHome()?"Find a home":atHome()?"At home":rentDebt>0?"Rent overdue $"+rentDebt:"Home "+homeX+", "+homeY,careerShifts,trips));
         map.setContentDescription("San Boreas map. Selected lot: "+text);
         world3d.setContentDescription("San Boreas 3D neighborhood. Selected lot: "+text);
         world3d.player(lifeX,lifeY);world3d.select(selectedX,selectedY);map.invalidate();
@@ -291,12 +424,12 @@ public final class MainActivity extends Activity {
         if(world3d!=null){world3d.onResume();if(in3d){requestScene();world3d.requestRender();}}
     }
     @Override protected void onPause(){
-        saveLife();
+        cancelTravel(false);saveLife();
         prefs.edit().putInt("seed",seed).putInt("x",cx).putInt("y",cy)
              .putInt("radius",radius).putBoolean("weekend",weekday==5).putBoolean("view3d",in3d).apply();
         if(world3d!=null)world3d.onPause();super.onPause();
     }
-    @Override protected void onDestroy(){serial++;meshWorker.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){travelHandler.removeCallbacks(travelTick);serial++;meshWorker.shutdownNow();super.onDestroy();}
     private final class MapView extends View {
         private final Paint paint=new Paint();
         private final int[] terrain={0xff2a6475,0xffb6a075,0xff76915d,0xff416c50,0xffb89b68,0xff777a73};
@@ -340,7 +473,15 @@ public final class MainActivity extends Activity {
                 c.drawLine(lx+((a&65535)-cx+radius+.5f)*step+offsetX,ly+((a>>>16)-cy+radius+.5f)*step+offsetY,
                     lx+((b&65535)-cx+radius+.5f)*step+offsetX,ly+((b>>>16)-cy+radius+.5f)*step+offsetY,paint);
             }
-            int px=lifeX-cx+radius,py=lifeY-cy+radius;
+            if(hasHome()){
+                int hx=homeX-cx+radius,hy=homeY-cy+radius;
+                if(hx>=0&&hy>=0&&hx<side&&hy<side){
+                    float x=lx+(hx+.5f)*step+offsetX,y=ly+(hy+.5f)*step+offsetY;
+                    paint.setColor(0xfff5bd79);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(Math.max(2,step*.09f));
+                    c.drawRect(x-step*.38f,y-step*.38f,x+step*.38f,y+step*.38f,paint);paint.setStyle(Paint.Style.FILL);
+                }
+            }
+            int px=visualX()-cx+radius,py=visualY()-cy+radius;
             if(px>=0&&py>=0&&px<side&&py<side){
                 float x=lx+(px+.5f)*step+offsetX,y=ly+(py+.5f)*step+offsetY;
                 paint.setColor(0xff142d2a);c.drawCircle(x,y,step*.35f,paint);
@@ -357,6 +498,7 @@ public final class MainActivity extends Activity {
             c.restore();
         }
         @Override public boolean onTouchEvent(MotionEvent event){
+            if(travelRoute!=null)return true;
             float x=event.getX(),y=event.getY();
             switch(event.getActionMasked()){
                 case MotionEvent.ACTION_DOWN:

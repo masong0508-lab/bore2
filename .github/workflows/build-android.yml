@@ -32,6 +32,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Verify mobile life rules and resident geometry (JDK only)
+        run: |
+          J=ports/android/app/src/main/java/com/bore2/game
+          javac -Xlint:all -d /tmp/bore-mobile "$J/LifeRules.java" "$J/ActorMesh.java" ports/android/test/LifeRulesTest.java ports/android/test/ActorMeshTest.java
+          java -cp /tmp/bore-mobile com.bore2.game.LifeRulesTest
+          java -cp /tmp/bore-mobile com.bore2.game.ActorMeshTest
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
