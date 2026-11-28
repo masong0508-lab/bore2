@@ -348,6 +348,18 @@ static int set_at(int bx, int by) {
     return 255;
 }
 int bm_set_at(int bx, int by) { return set_at(bx, by); }
+/* Far classification needs the edited territory, not a second full lot
+ * generation for each of the 4096 land cells. Caller handles sea first. */
+int bm_render_territory(int bx,int by){
+    if((unsigned)bx>=BM_N||(unsigned)by>=BM_N)return 255;
+    if(ov_live&&ov_n){
+        int i=ov_find(bx,by,0);
+        if(i>=0&&(OV_F(&ov[i])&BO_TERR)){
+            int s=(int)OV_S(&ov[i]);return s==63?255:s;
+        }
+    }
+    return set_at(bx,by);
+}
 static int on_road(int bx, int by, int vert) {
     for (int i = 0; i < nseg; i++) { const Seg *s = &segs[i]; if (s->vert != vert) continue;
         if (vert ? (s->c == bx && by >= s->a && by <= s->b) : (s->c == by && bx >= s->a && bx <= s->b)) return 1; }

@@ -137,7 +137,11 @@ def main():
     # one tile east is still outside the generated building footprint.
     text_tap("East")
     walked=wait_state(lambda s:s.get("tileX")==started["tileX"]+1 and s.get("tileY")==started["tileY"])
-    assert walked["minute"]==(started["minute"]+1)%1440,walked
+    # This deterministic home-yard step is flat (160 ms); short walks now
+    # retain fractional game minutes rather than rounding each step up.
+    total=started.get("walkRemainder",0)+160
+    assert walked["minute"]==(started["minute"]+total//1200)%1440,walked
+    assert walked["walkRemainder"]==total%1200,walked
     assert walked["lifeX"]==walked["tileX"]//18 and walked["lifeY"]==walked["tileY"]//18,walked
     (OUT/"life-outdoor-walk.png").write_bytes(adb("exec-out","screencap","-p"))
     text_tap("Stop walking")
@@ -146,7 +150,7 @@ def main():
     adb("shell","am","start","-W","-n",PACKAGE+"/.MainActivity")
     wait_view(False)
     restored=state()
-    for k in ("tileX","tileY","lifeX","lifeY","minute","funds"):
+    for k in ("tileX","tileY","lifeX","lifeY","minute","funds","walkRemainder"):
         assert restored[k]==walked[k],(k,restored,walked)
     print("Android real UI outdoor step and relaunch PASS",restored)
     text_tap("Find places")

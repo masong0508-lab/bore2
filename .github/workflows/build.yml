@@ -2,7 +2,7 @@ name: build
 on: [push, workflow_dispatch]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/improve/coherent-world-release-pass-') }}
 jobs:
   world-coherence:
     name: Generated-world map/lot coherence
@@ -12,6 +12,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify safe household arrival without duplicate or blocked cells
         run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/arrival_plan_test.c -o /tmp/arrival_plan && /tmp/arrival_plan
+      - name: Verify far terrain cache and fine/coarse coverage
+        run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/far_land_cache_test.c -o /tmp/far_land_cache && /tmp/far_land_cache
+      - name: Verify compact rendering cache equivalence
+        run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/render_cache_compact_test.c -o /tmp/render_cache_compact && /tmp/render_cache_compact
       - name: Verify mutually exclusive terrain cache ownership
         run: cc -O2 -std=c99 -Wall -Wextra -Werror -Isrc test/terrain_render_cache_test.c -o /tmp/terrain_render_cache && /tmp/terrain_render_cache
       - name: Verify vehicle footprints and non-wrapping traffic rebases

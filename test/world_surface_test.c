@@ -20,6 +20,14 @@ int main(void){
     b.terrain=BT_GRASS;b.road=BR_MEGA|(3<<4)|(MK_PARK<<6);
     for(int y=0;y<18;y++)for(int x=0;x<18;x++)
         assert((bore_surface(&b,x,y)==BS_WATER)==(x<5&&y<5));
+    for(int part=0;part<4;part++)for(int kind=0;kind<4;kind++)for(int rd=0;rd<4;rd++){
+        BInfo m={.terrain=BT_GRASS,.lot=LOT_SQUARE,.set=0,.road=(u8)(BR_MEGA|(part<<4)|(kind<<6)|rd)};
+        assert(bore_surface_road_edges(&m)==(rd&~((part&1?2:0)|(part&2?1:0))));
+    }
+    for(int rd=0;rd<4;rd++){
+        BInfo sea={.terrain=BT_SEA,.lot=LOT_WILD,.set=255,.road=(u8)rd};
+        assert(bore_surface_road_edges(&sea)==rd);
+    }
     for(int x=-72;x<=72;x++){
         int local;int slot=bore_surface_slot(x,&local);
         assert(local>=0&&local<BM_BLK&&slot*BM_BLK+local==x+BM_LOT0);
