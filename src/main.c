@@ -2504,7 +2504,7 @@ static void opts_apply(void) {
     show_fps = 1;
 #endif
     audio_volumes(opt[O_MASTER], opt[O_MUSICV], opt[O_SFX]); if (audio_jukebox_shuffle() != opt[O_SHUFFLE]) audio_jukebox_toggle_shuffle();
-    { extern int sim_need_pct, sim_day_pct, sim_msg_t; static const u8 np[4] = { 0, 50, 100, 150 }, dp[4] = { 66, 100, 150, 250 }; static const short mt[3] = { 90, 180, 300 };
+    { extern int sim_need_pct, sim_day_pct, sim_msg_t; static const u8 np[4] = { 0, 25, 50, 100 }; static const u16 dp[4] = { 50, 100, 200, 400 }; static const short mt[3] = { 90, 180, 300 };
       sim_need_pct = np[opt[O_NEEDS] & 3]; sim_day_pct = dp[opt[O_DAYLEN] & 3]; sim_msg_t = mt[opt[O_MSGT] % 3]; sim_rt_set(opt[O_REALTIME] & 1); }
     ui_clock12 = opt[O_CLOCK]; ui_thoughts = opt[O_THINK]; font_look = opt[O_TEXT] % 3; sim_cheat_opt(opt[O_CHEAT] & 1);
     aging = opt[O_AGING]; old_age = opt[O_OLDAGE]; pop_aging = opt[O_TOWNAGE];

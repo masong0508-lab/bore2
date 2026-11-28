@@ -29,6 +29,12 @@ final class LifeRules {
         int cash=Math.max(0,Math.min(LIMIT,funds)),paid=(int)Math.min(bill,cash);
         return new int[]{cash-paid,(int)bill-paid};
     }
+    // Retain sub-minute travel time across separate short walks and saves.
+    static final int WALK_CLOCK_MS=1200;
+    static int[] walkClock(int remainder,int elapsed){
+        long total=(long)Math.max(0,Math.min(WALK_CLOCK_MS-1,remainder))+Math.max(0,elapsed);
+        return new int[]{(int)(total/WALK_CLOCK_MS),(int)(total%WALK_CLOCK_MS)};
+    }
     static int elapsedBuckets(int minute,int elapsed,int interval){return (minute+elapsed)/interval-minute/interval;}
     static int payBonus(int shifts){return Math.min(50,Math.max(0,shifts)/4*10);}
     private static boolean matches(int lot,int kind){

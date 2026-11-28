@@ -37,7 +37,7 @@ int  sim_speed = 1;
 int  bills_due = 800;
 int  job_none;   // no job yet (a new life starts so, as on the GBA): no shifts, no pay, and no bills until you are hired
 char last_note[32]; int last_note_t;
-int sim_need_pct = 100, sim_day_pct = 100, sim_msg_t = 180;   // OPTIONS > GAME: how fast the needs fall, how long a day lasts, how long a message stays (percent, percent, steps)
+int sim_need_pct = 50, sim_day_pct = 100, sim_msg_t = 180;   // OPTIONS > GAME: how fast the needs fall, how long a day lasts, how long a message stays (percent, percent, steps)
 int  travel_asked;
 int  story_paid, story_talks;
 u8   story_visit[4];
@@ -58,7 +58,7 @@ static void gather_done(Sim *s); static void raft_sail(void);
 int  life_minutes(void) { return day_count * 1440 + clock_min; }
 
 // BORE tuning (sims.h), per logic step in 1/1024 points
-#define STEPS_MIN 15
+#define STEPS_MIN 30
 #define RATE_FOOD 6
 #define RATE_WC 5
 #define RATE_REST 7
@@ -830,7 +830,7 @@ static void run_action(Sim *s) {
         case ACT_PHONE: if (s->act_var == 1) s->need[N_FOOD] += 300; else if (s->act_var == 5) s->need[N_FUN] += (handheld & 2) ? 90 : 70; else s->need[N_SOCIAL] += GAIN_TALK; if (s->act_var != 5) s->gait.wave = 2; break;
         case ACT_OUTING: if(!(s->act_t&63))s->gait.wave=24;break;
         case ACT_TALK: s->need[N_SOCIAL] += GAIN_TALK; s->need[N_FUN] += 40; if ((s->act_t & 63) == 0) s->gait.wave = 40; break;
-        case ACT_WORK: if (is_work()) { s->need[N_FUN] -= 20; if (!(s->act_t & 63)) s->gait.wave = 24; if (job_car == CAR_FARM && !(s->act_t & 15)) s->skill_farm++; } else { s->act_t = 0; } break;   // (the minutes count in clock_tick)
+        case ACT_WORK: if (is_work()) { s->need[N_FUN] -= 20 * sim_need_pct / 100; if (!(s->act_t & 63)) s->gait.wave = 24; if (job_car == CAR_FARM && !(s->act_t & 15)) s->skill_farm++; } else { s->act_t = 0; } break;   // (the minutes count in clock_tick)
         default: break;
     }
     need_gains(s, snap);   // (TRAITS: E_GAIN_*, E_ACT_*)
@@ -1012,7 +1012,7 @@ static void arrive(Sim *s) {   // an AI sim reached the end of its path
 
 #include "traits_glue.inc"
 static void tick_needs(Sim *s) {
-    int sleeping = s->action == ACT_SLEEP, np = rt_on && walk_tick % 120 ? 0 : sim_need_pct;   // (REAL TIME: a real minute takes what two of a normal day's game minutes do)
+    int sleeping = s->action == ACT_SLEEP, np = rt_on ? (walk_tick % 120 ? 0 : (sim_need_pct == 100 ? 150 : sim_need_pct * 2)) : sim_need_pct;   // (REAL TIME: a real minute takes what two of a normal day's game minutes do)
     #define NR(r) ((r) * np / 100)   // (OPTIONS > GAME > NEEDS: off, slow, normal, fast)
     #define ND(r, n) need_fall(s, n, r, np)   // (TRAITS: the same fall, scaled by E_DEC_*)
     s->need[N_FOOD] -= sleeping ? ND(RATE_FOOD / 3, N_FOOD) : ND(RATE_FOOD, N_FOOD);

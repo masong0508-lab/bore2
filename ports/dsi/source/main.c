@@ -3387,7 +3387,7 @@ static void job_work(void) {
     if (L->worked == dn) { say("You worked today. Rest up!"); return; }
     const Sim *m = &sims[ctl]; int perf = trf_perf(&dtr[ctl], (m->need[0] + m->need[1] + m->need[2] + m->need[5]) / 4 + trg_mp[ctl]), good = perf >= 45, pay = trf_pay(&dtr[ctl], L->job - 1, job_pay(L)), old = minutes;
     L->worked = (u8)dn; L->shifts++; if (!o_rt) minutes += 360;   // (Real time: the shift goes by in a blink, the clock stays real)
-    static const u8 NPCT[4] = { 0, 50, 100, 150 };   // (a shift tires them as the Needs speed says)
+    static const u8 NPCT[4] = { 0, 25, 50, 100 };   // (a shift tires them as the Needs speed says)
     for (int q = 0; q < nsim; q++) { static const u8 dd[6] = { 35, 20, 30, 0, 30, 20 }; for (int n = 0; n < 6; n++) { int v = sims[q].need[n] - (q == ctl ? dd[n] : 12) * NPCT[o_need & 3] / 100; sims[q].need[n] = v < 4 ? 4 : v; } }
     if (minutes / 1440 != old / 1440) day_roll();
     trg_ev(EV_PAYDAYS, 1); if (good) { funds += pay; L->prog += (u8)trf_promo(&dtr[ctl]); L->strike = 0; sprintf(b, "Good shift! +$%d", pay); }
@@ -4310,7 +4310,7 @@ static void sims_step(int frames) {
             if (m->x == m->tx && m->y == m->ty && m->act >= 0) { if (!arrive(i)) continue; }
         } else if (m->act >= 0 && m->act != 50 && m->act != 51) { if (!arrive(i)) continue;   // (already there)
         } else if (i != ctl && stage_of(m->age) > 0 && ((frames + i * 37) & 127) == 0) { m->tx = (1 + (frames * 7 + i * 5) % 11) * 16; m->ty = (1 + (frames * 3 + i * 9) % 12) * 16; m->act = -1; }
-        { static const u8 NP[4] = { 0, 140, 70, 47 }; int np = NP[o_need & 3] * (o_rt ? 225 : 1);   // (Options > Game > Needs speed: never fall, slow, normal, fast = frames per point; Real time: a real minute takes what two of a normal day's game minutes do)
+        { static const u16 NP[4] = { 0, 280, 140, 70 }, NP_RT[4] = { 0, 140, 70, 47 }; int np = o_rt ? NP_RT[o_need & 3] * 225 : NP[o_need & 3];   // (Options > Game > Needs speed: never fall, slow, normal, fast = frames per point; Real time: a real minute takes what two of a normal day's game minutes do)
           if (np && ((frames + i * 9) % np) == 0) for (int n = 0; n < 6; n++) if (m->need[n] > 4 && n != 3) { m->need[n] -= trf_fall(&dtr[i], n, night_now()); if (m->need[n] < 4) m->need[n] = 4; }   // (D73: the traits change how fast a need falls)
           if (np && ((frames + i * 9) % (np * 2)) == 0 && m->need[3] > 4) { m->need[3] -= trf_fall(&dtr[i], 3, 0); if (m->need[3] < 4) m->need[3] = 4; } }
         if (((frames + i * 9) % 70) == 5 && !m->act_left) {
@@ -4320,7 +4320,7 @@ static void sims_step(int frames) {
     LV = 0; dog_step(frames); ghost_step(frames); LV = keep_lv; if ((frames & 63) == 0) life_tick(); trg_funds(); if ((frames & 7) == 0) trg_tick(frames);
     { static int was; if (o_rt && !was) rt_jump = 1; was = o_rt; }   // (just switched on: straight to the real time)
     if (o_rt) { if (rt_jump || (frames & 63) == 0) rt_sync(); }
-    else { static const u8 DP[4] = { 66, 100, 150, 250 }; static int dacc; int per = 8 * DP[o_day & 3];   // (Options > Game > Day length: a game minute every 5.3, 8, 12 or 20 steps)
+    else { static const u16 DP[4] = { 50, 100, 200, 400 }; static int dacc; int per = 30 * DP[o_day & 3];   // day length: 15, 30, 60 or 120 logic steps per game minute
       dacc += 100; if (dacc >= per) { dacc -= per; if (dacc >= per) dacc = 0; minutes++; gt_minute(); if (minutes % 1440 == 0) day_roll(); } }
 }
 // ---- smooth shaded 3D: ellipsoids with a colour on every vertex, so a head is round and lit instead of a box ----
