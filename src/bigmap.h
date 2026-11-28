@@ -50,6 +50,7 @@ extern int bm_ncity, bm_ntown, bm_nvil, bm_capsz;  // how many cities (besides t
 #define BM_MAXTOWN 20
 #define BM_MAXVIL 32
 void bm_dials_default(void);
+extern int bm_edit_stamp;             // monotonic world/terrain override invalidation
 extern int bm_gen;                    // saved procedural world generation; new worlds use BM_GEN_CURRENT
 void bm_rename_clear(void);           // towns renamed by the player: none (a new life)
 void bm_rename(int i, const char *nm); // town i (0 the capital) is called that from now on (set before bm_new: it takes then)
@@ -84,7 +85,8 @@ int  bm_nseg(void);                   // the highways (for the map)
 void bm_seg(int i, int *c, int *a, int *b, int *vert);
 const Settle *bm_set(int i);
 int  bm_capital(void);
-int  bm_set_at(int bx, int by);       // the town that block is in (255: open country)                // BORE CITY's index
+int  bm_set_at(int bx, int by);       // the generated town that block is in (255: open country)
+int  bm_render_territory(int bx,int by); // effective non-sea territory including editor overrides                // BORE CITY's index
 const char *bm_street(int set, int bx, int by, int unit, char *out);   // "214 MAPLE ST"
 const char *bm_street_line(int set, int vert, int bx, int by, char *out);   // (version 8) the street along the top (vert 0) / down the left (vert 1) of that block: "MAPLE ST"
 int bm_junction(int bx, int by, char *hn, char *vn);   // (version 8) the streets meeting at that block's north-west corner: bit 0 one along x, bit 1 along y, their names (18 bytes each)

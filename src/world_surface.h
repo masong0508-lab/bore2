@@ -1,5 +1,6 @@
 #pragma once
 #include "bigmap.h"
+#include <stdint.h>
 /* Coarse but exact ownership of roads, water, banks and public courts,
  * before buildings or detailed plot furnishing. Console stream proxies,
  * Android and DS collision use these same absolute block tile coordinates. */
@@ -28,8 +29,32 @@ static inline int bore_surface(const BInfo *b,int x,int y){
     if(b->set!=255&&(((rd&1)&&y==5&&x>=5)||((rd&2)&&x==5&&y>=5)))return BS_PAVING;
     return BS_LAND;
 }
+/* The full north/west road bands end at the opposite edge of the
+ * block. Sample the same surface used by streaming and collision, so
+ * internal mega-plaza strips do not become roads at distant LOD and
+ * real sea causeways survive the transition. */
+static inline int bore_surface_road_edges(const BInfo *b){
+    return (bore_surface(b,BM_BLK-1,0)==BS_ROAD?1:0)|
+           (bore_surface(b,0,BM_BLK-1)==BS_ROAD?2:0);
+}
 /* DS plots start five cells after the canonical north-west block corner. */
 static inline int bore_surface_slot(int x,int *local){
     int a=x+BM_LOT0,q=a>=0?a/BM_BLK:-((-a+BM_BLK-1)/BM_BLK);
     *local=a-q*BM_BLK;return q;
+}
+
+/* Build disjoint half-open water rectangles once per streamed slot.
+ * A count above cap signals that the caller must use the exact fallback. */
+static inline int bore_water_rects(uint32_t rows[18],uint32_t *out,int cap){
+    int n=0;
+    for(int y=0;y<18;y++)for(int x=0;x<18;){
+        if(!(rows[y]&(1u<<x))){x++;continue;}
+        int X=x+1;while(X<18&&(rows[y]&(1u<<X)))X++;
+        uint32_t mask=((1u<<(X-x))-1u)<<x;
+        int Y=y+1;while(Y<18&&(rows[Y]&mask)==mask)Y++;
+        for(int j=y;j<Y;j++)rows[j]&=~mask;
+        if(n<cap)out[n]=(uint32_t)x|((uint32_t)y<<5)|((uint32_t)X<<10)|((uint32_t)Y<<15);
+        n++;x=X;
+    }
+    return n;
 }

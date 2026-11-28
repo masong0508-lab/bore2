@@ -4,11 +4,18 @@ on:
   push:
     paths:
       - "src/world.c"
+      - "src/bigmap.h"
       - "src/world_stream_models.h"
       - "src/gfx.c"
       - "src/gfx.h"
       - "src/gfx_fast.h"
       - "src/far.c"
+      - "src/voxel.c"
+      - "src/render_cache_compact.h"
+      - "src/far_land_cache.h"
+      - "src/world_surface.h"
+      - "test/far_land_cache_test.c"
+      - "test/render_cache_compact_test.c"
       - "src/frame_render_policy.h"
       - "src/main.c"
       - "src/traffic.c"
@@ -17,6 +24,7 @@ on:
       - "src/sim.h"
       - "src/vehicle_stability.h"
       - "src/ground_patch.h"
+      - "src/arrival_plan.h"
       - "src/items.c"
       - "src/bigmap.c"
       - "test/ps1_stream_motion*"
@@ -26,7 +34,7 @@ on:
       - ".github/workflows/ps1-stream-motion-qa.yml"
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/improve/coherent-world-release-pass-') }}
 jobs:
   stock-city:
     runs-on: ubuntu-24.04

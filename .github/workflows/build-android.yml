@@ -2,10 +2,10 @@ name: build-android
 on:
   workflow_dispatch:
   push:
-    paths: ["ports/android/**", "src/bigmap.*", "src/landscape.h", "src/trail_plan.h", "test/trail_test.c", "test/trail_world_test.c", "test/landscape_test.c", "src/park_plan.h", "src/neighborhood_life.h", "test/neighborhood_life_test.c", "src/common.h", "src/outings.h", "src/living_calendar.h", "src/scene_music.h", "ports/host/shim/**", ".github/workflows/build-android.yml"]
+    paths: ["ports/android/**", "src/bigmap.*", "src/landscape.h", "src/trail_plan.h", "test/trail_test.c", "test/trail_world_test.c", "test/landscape_test.c", "src/park_plan.h", "src/neighborhood_life.h", "test/neighborhood_life_test.c", "src/common.h", "src/render_cache_compact.h", "test/render_cache_compact_test.c", "src/outings.h", "src/living_calendar.h", "src/scene_music.h", "ports/host/shim/**", ".github/workflows/build-android.yml"]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/heads/improve/coherent-world-release-pass-') }}
 jobs:
   bootstrap:
     runs-on: ubuntu-24.04

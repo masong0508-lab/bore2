@@ -273,7 +273,7 @@ void traffic_update(int steps) {
     }
     for (int i = 0; i < NCAR && n > want; i++) if (car[i].lim && off(&car[i], -14)) { KILL(&car[i], 5); n--; }   // (the dial turned down: the cars out of sight go)
 }
-static void put(const Car *c) { int x, y, yaw; pose(c, c->p >> 3, &x, &y, &yaw); items_draw_vehicle(x, -y, yaw, 0, c->type, c->col, c->wph); }
+/* Moving-car poses are evaluated once in traffic_draw. */
 #ifdef TRAF_DBG
 int traf_why; unsigned traf_dbg_jmask(int d, int m) { return jmask(d, m); }
 int traf_dbg_gen(int i) { return traf_g[i]; }   // (why the last car went: the audit tells the ones that go in sight)
@@ -359,14 +359,24 @@ void traffic_draw(void) {
         if(bore_vehicle_draw_distance(x,y,px,py)>18*TILE)continue;
         items_draw_vehicle(x,-y,p->yaw,0,t,veh_colour(t),0); }
     BoreVehicleDraw draw[14];int n=0;
+    /* Cache poses only for visible-range candidates; stack-local, no
+     * permanent memory and no stale pose after a stream rebase. */
+    int cx[NCAR],cy[NCAR];s16 ca[NCAR];
+    int bx=bx_(),by=by_(),tx=px/TILE,ty=py/TILE;
     for(int i=0;i<NCAR;i++){const Car *c=&car[i];if(!c->lim)continue;
         /* A six-tile left turn can be well away from its starting gate. */
-        if(ABS(c->gx-bx_()-px/TILE)+ABS(c->gy-by_()-py/TILE)>30)continue;
+        if(ABS(c->gx-bx-tx)+ABS(c->gy-by-ty)>30)continue;
         int x,y,a;pose(c,c->p>>3,&x,&y,&a);
         int d=bore_vehicle_draw_distance(x,y,px,py);
-        if(d<=18*TILE)bore_vehicle_draw_insert(draw,&n,14,i,d);
+        if(d<=18*TILE){
+            cx[i]=x;cy[i]=y;ca[i]=(s16)a;
+            bore_vehicle_draw_insert(draw,&n,14,i,d);
+        }
     }
-    for(int j=0;j<n;j++)put(&car[draw[j].id]);
+    for(int j=0;j<n;j++){
+        int i=draw[j].id;const Car *c=&car[i];
+        items_draw_vehicle(cx[i],-cy[i],ca[i],0,c->type,c->col,c->wph);
+    }
     pcars_draw();
 }
 void traffic_park(int t, int x, int z, int yaw) {
@@ -402,7 +412,20 @@ int traffic_park_near(int t,int x,int z){
     int yaw;if(!traffic_park_pose_near(t,x,z,&x,&z,&yaw))return 0;
     traffic_unpark(t);return 1;
 }
-void traffic_save(void) { for (int t = 0; t < VEH_N; t++) { sv_u8(park[t].on); sv_u32((u32)park[t].x); sv_u32((u32)park[t].y); sv_u16(park[t].yaw); } }
+/* Loading returns the player to foot controls. Serialize a ridden car
+ * at the real world position as a parked car, without mutating play or
+ * adding bytes to the existing save format. */
+static Park park_for_save(int t){
+    Park p=park[t];
+    if(veh_on==t+1&&world_zone==ZONE_CITY&&world_wbx>=0){
+        const Sim *s=&sims[player];
+        p.x=bx_()*TILE+s->x;p.y=by_()*TILE-s->z;p.yaw=s->yaw&4095;p.on=1;
+    }
+    return p;
+}
+void traffic_save(void) {
+    for(int t=0;t<VEH_N;t++){Park p=park_for_save(t);sv_u8(p.on);sv_u32((u32)p.x);sv_u32((u32)p.y);sv_u16(p.yaw);}
+}
 void traffic_load(int ver) {
     traffic_clear();
     for (int t = 0; t < VEH_N; t++) { park[t].on = 0; if (ver >= 19) { park[t].on = ld_u8() & 1; park[t].x = (s32)ld_u32(); park[t].y = (s32)ld_u32(); park[t].yaw = ld_u16()&4095; if(park[t].x<0||park[t].y<0||park[t].x>=BM_N*BLK*TILE||park[t].y>=BM_N*BLK*TILE)park[t].on=0; } }
