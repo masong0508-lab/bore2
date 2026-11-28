@@ -3,6 +3,7 @@
 // 3D parts. HAIR gets its own treatment: the hull is rounded (outer corners pulled in and down), strands run on
 // continuously across blocks, a sheen sits under the crown, the crown is a whorl, hanging cuts end in points, bangs hang
 // over the forehead, and it is lit per vertex as a rounded mass instead of a pile of bricks.
+#include "render_cache_compact.h"
 #include "voxel.h"
 #include "native_life.h"
 #include "gfx.h"
@@ -109,17 +110,17 @@ static u32 slot_lut[32][64];               // 1..8 the person's colour slots, 9.
 static u8  slot_lut_ok[32];
 static const Bore *lut_bore;
 // filled lazily: a slot's shade is worked out (lit, then graded for the fast path) the first time a face asks for it this draw
-static u8 lut_stamp[32][64], lut_gen = 1;
+static BoreShadeValid lut_valid;
 static u16 lut_c15[32]; static u8 lut_tx[32];
-static void slot_lut_fill(int slot, u16 col, int textured) { lut_c15[slot] = col; lut_tx[slot] = (u8)textured; memset(lut_stamp[slot], 0, 64); slot_lut_ok[slot] = 1; }
-static void lut_next_person(void) { if (++lut_gen == 0) { memset(lut_stamp, 0, sizeof lut_stamp); lut_gen = 1; } }
+static void slot_lut_fill(int slot, u16 col, int textured) { lut_c15[slot] = col; lut_tx[slot] = (u8)textured; bore_shade_drop(&lut_valid, slot); slot_lut_ok[slot] = 1; }
+static void lut_next_person(void) { bore_shade_reset(&lut_valid); }
 static u32 slot_col_make(int slot, int i) {
     int L = i * 4 + 2; u16 col = lut_c15[slot];
     u32 c = lut_tx[slot] ? gfx_grade_tex(lit_tex(col, L)) : gfx_grade_flat(lit(col, L));
-    slot_lut[slot][i] = c; lut_stamp[slot][i] = lut_gen;
+    slot_lut[slot][i] = c; bore_shade_mark(&lut_valid, slot, i);
     return c;
 }
-static inline u32 slot_col(int slot, int L) { int i = CLAMP(L, 0, 255) >> 2; return lut_stamp[slot][i] == lut_gen ? slot_lut[slot][i] : slot_col_make(slot, i); }
+static inline u32 slot_col(int slot, int L) { int i = CLAMP(L, 0, 255) >> 2; return bore_shade_has(&lut_valid, slot, i) ? slot_lut[slot][i] : slot_col_make(slot, i); }
 static void face4(const XV *a, const XV *b, const XV *c, const XV *d, int slot, int L0, int L1, int L2, int L3, int kind) {
     if (gfx_cel) { L0 = L1 = L2 = L3 = gfx_cel_tone((L0 + L1 + L2 + L3) >> 2); kind = 0; }   // (a drawing: one flat tone to a face, no weave)
 

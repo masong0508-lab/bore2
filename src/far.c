@@ -1,4 +1,5 @@
 // far: see far.h
+#include "render_cache_compact.h"
 #include "far.h"
 #include "gfx.h"
 #include "world.h"
@@ -272,7 +273,8 @@ static FB fb[FB_MAX]; static u8 fb_sto[FB_MAX], fb_ft[FB_MAX][3]; static int nfb
 #define FBC_MAX 900
 _Static_assert(BM_N<=1024,"four-block cell index must fit in u8");
 static u8 fbc_cx[FBC_MAX],fbc_cy[FBC_MAX];
-static u16 fbc_lo[FBC_MAX],fbc_hi[FBC_MAX];static u8 fbc_sto[FBC_MAX];static int nfbc;   // (a cell's tallest building in fbc_sto: a cell too far for even that to show is passed over whole)   // the runs by cell (4x4 blocks)
+_Static_assert(FCB==4,"packed building cell assumes four-by-four blocks");
+static u16 fbc_lo[FBC_MAX];static u8 fbc_info[FBC_MAX];static int nfbc;   // exact run length and tallest building packed into one byte
 static u16 fbs_lo[64], fbs_hi[64];           // each town's cells
 static const u8 wallc[10][3] = { { 226, 214, 190 }, { 176, 96, 76 }, { 236, 234, 226 }, { 214, 190, 150 }, { 160, 160, 164 },
                                  { 180, 200, 214 }, { 186, 206, 170 }, { 226, 180, 180 }, { 120, 140, 160 }, { 150, 120, 96 } };
@@ -326,7 +328,7 @@ COLD void far_new_world(void) {
             int cx = fb[a].bx >> 2, cy = fb[a].by >> 2, b = a;
             while (b < nfb && (fb[b].bx >> 2) == cx && (fb[b].by >> 2) == cy) b++;
             if (nfbc < FBC_MAX) { int mx_ = 0; for (int q = a; q < b; q++) if ((fb_sto[q] & 7) > mx_) mx_ = fb_sto[q] & 7;
-                fbc_cx[nfbc]=(u8)cx;fbc_cy[nfbc]=(u8)cy; fbc_lo[nfbc] = (u16)a; fbc_hi[nfbc] = (u16)b; fbc_sto[nfbc] = (u8)mx_; nfbc++; }
+                fbc_cx[nfbc]=(u8)cx;fbc_cy[nfbc]=(u8)cy; fbc_lo[nfbc] = (u16)a; fbc_info[nfbc] = bore_far_cell_pack(b-a,mx_); nfbc++; }
             a = b;
         }
         fbs_hi[i] = (u16)nfbc;
@@ -853,8 +855,8 @@ static void draw_buildings(int rx0,int ry0,int rx1,int ry1){
           int ccx = ((fbc_cx[c] * 4 + 2) * BM_BLK - fwx0) * TILE, ccz = -(((fbc_cy[c] * 4 + 2) * BM_BLK - fwy0) * TILE);
           if (!in_cone(ccx, ccz, CELL_T * TILE * 3 / 4, far2)) continue;
           { int cdx = ABS(ccx - feye.vx), cdz = ABS(ccz - feye.vz), cd = MAX(cdx, cdz) + MIN(cdx, cdz) / 2 - CELL_T * TILE * 3 / 2;   // (the nearest any of its buildings can be: none of them tall enough to show)
-            if (cd > 0 && gfx_focal * fbc_sto[c] * WALL_FULL < cd * 2) continue; }
-          for (int k = fbc_lo[c]; k < fbc_hi[c]; k++) {
+            if (cd > 0 && gfx_focal * bore_far_cell_storeys(fbc_info[c]) * WALL_FULL < cd * 2) continue; }
+          for (int k = fbc_lo[c]; k < fbc_lo[c]+bore_far_cell_count(fbc_info[c]); k++) {
             const FB *f = &fb[k];
             int inside_window = f->bx >= world_wbx && f->bx < world_wbx + MW / BM_BLK &&
                                 f->by >= world_wby && f->by < world_wby + MH / BM_BLK;
