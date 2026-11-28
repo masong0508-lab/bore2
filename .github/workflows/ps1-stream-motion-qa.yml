@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "src/world.c"
+      - "src/bigmap.h"
       - "src/world_stream_models.h"
       - "src/gfx.c"
       - "src/gfx.h"

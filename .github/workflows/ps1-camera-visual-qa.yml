@@ -8,6 +8,7 @@ on:
       - "src/gfx.c"
       - "src/gfx.h"
       - "src/world.c"
+      - "src/bigmap.h"
       - "src/far.c"
       - "src/crowd.c"
       - "src/citizens.c"
