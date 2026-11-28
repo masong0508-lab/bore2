@@ -44,6 +44,22 @@ int main(void){
     assert(bm_ovr_sculpt(800,800,0,-1));
     it=0;seen=0;while(bm_ovr_next(&it,&x,&y,&f,v))if(x==800&&y==800){assert(f==BO_ROAD&&v[2]==3);seen++;}
     assert(seen==1);
-    puts("terrain editor: corners, undo reuse, collision chains, atomic capacity and reversible brush PASS");
+    bm_ovr_clear();bm_gen=BM_GEN_CURRENT;bm_new(0x12345678u);
+    const Settle *s=bm_set(0);assert(s);
+    int cx=s->x,cy=s->y;
+    assert(bm_render_territory(cx,cy)==0);
+    assert(bm_ovr_set(cx,cy,BO_TERR,255));
+    assert(bm_render_territory(cx,cy)==255);
+    assert(bm_ovr_set(cx,cy,BO_NONE,0));
+    assert(bm_render_territory(cx,cy)==0);
+    int found=0;
+    for(int yy=0;yy<BM_N&&!found;yy+=7)for(int xx=0;xx<BM_N&&!found;xx+=7){
+        if(bm_terrain(xx,yy)==BT_SEA||bm_set_at(xx,yy)!=255)continue;
+        assert(bm_ovr_set(xx,yy,BO_TERR,0));assert(bm_render_territory(xx,yy)==0);
+        BInfo b;bm_block(xx,yy,&b);assert(b.set==0);
+        assert(bm_ovr_set(xx,yy,BO_NONE,0));assert(bm_render_territory(xx,yy)==255);found=1;
+    }
+    assert(found&&bm_render_territory(-1,0)==255);
+    puts("terrain editor: corners, undo reuse, collision chains, atomic capacity, reversible brush and visible territory PASS");
     return 0;
 }

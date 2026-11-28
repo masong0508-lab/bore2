@@ -8,6 +8,8 @@
 #include "house_shape.h"
 #include "roof_profile.h"
 #include "world_stream_models.h"
+#include "world_surface.h"
+#include "far_land_cache.h"
 #include "frame_render_policy.h"
 #include "atlas.h"
 
@@ -181,9 +183,11 @@ static int fc_unknown;                       // cells still to work out
 static int far_cell_type(int cx,int cy){
     int bx=cx*FCB+FCB/2,by=cy*FCB+FCB/2;
     int t=bm_terrain(bx,by);
-    return t!=BT_SEA&&bm_set_at(bx,by)!=255?8:t;
+    return t!=BT_SEA&&bm_render_territory(bx,by)!=255?8:t;
 }
-static int far_cell_land(int t){return t==0xff?t:(t&8)?8:t&7;}
+static int far_cell_sample(int ix,int iy){
+    return bore_far_sample(&fcell[iy][ix],&fc_unknown,fc_x0+ix,fc_y0+iy,far_cell_type);
+}
 static int far_tree_candidates(int cx,int cy){
     int ix=cx-fc_x0,iy=cy-fc_y0;
     if((unsigned)ix>=FC||(unsigned)iy>=FC)return 0xff;
@@ -434,22 +438,7 @@ static int far_setup(void) {
 }
 
 // ================================================================== the land
-// The land is laid in rectangles: each row's runs of one colour, and a run the same as the one above it carries that one on down
-// (a field, a wood, the sea: one piece each, not one a row).
-typedef struct { short x0, x1, y0, y1; u32 key; } Rect;
-#define NRECT 360
-static Rect rects[NRECT]; static int nrect;
-static u16 open_[48], nopen, cur_[48], ncur;
-static void rows_begin(void) { nrect = 0; nopen = 0; }
-static void row_begin(void) { ncur = 0; }
-static void row_run(int y, int x0, int x1, u32 key) {
-    for (int i = 0; i < nopen; i++) { Rect *r = &rects[open_[i]]; if (r->x0 == x0 && r->x1 == x1 && r->key == key) { r->y1 = (short)(y + 1); if (ncur < 48) cur_[ncur++] = open_[i]; return; } }
-    if (nrect >= NRECT) return;
-    Rect *r = &rects[nrect]; r->x0 = (short)x0; r->x1 = (short)x1; r->y0 = (short)y; r->y1 = (short)(y + 1); r->key = key;
-    if (ncur < 48) cur_[ncur++] = (u16)nrect;
-    nrect++;
-}
-static void row_end(void) { memcpy(open_, cur_, ncur * sizeof cur_[0]); nopen = ncur; }
+// Every visible non-LOD group is submitted exactly once. City terrain always has heights; a rectangular staging list cannot reduce its geometry.
 static u32 floor_key0(int fl);
 static u32 floor_key(int fl) {
     u32 k = floor_key0(fl); if (fl < FL_GRASS || (!far_season && !far_wet)) return k;
@@ -474,7 +463,7 @@ static void roads_fill(int cbx, int cby) {
     for (int j = 0; j <= 2 * RD_R; j++) for (int i = 0; i <= 2 * RD_R; i++) {
         int bx = rdc_bx + i, by = rdc_by + j; rdc[j][i] = 0;
         if (bx < 0 || by < 0 || bx >= BM_N || by >= BM_N) continue;
-        BInfo b; bm_block(bx, by, &b); if (b.terrain != BT_SEA) rdc[j][i] = (u8)(b.road & 7);
+        BInfo b; bm_block(bx, by, &b); rdc[j][i] = (u8)bore_surface_road_edges(&b);
     }
 }
 // The bands' corner heights, kept by block (the block's own corner, 3 tiles east of it, 3 tiles south of it: every band starts and ends
@@ -578,8 +567,8 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
                 if (MAX(ABS(ax + g2 / 2 - feye.vx), ABS(bz - g2 / 2 - feye.vz)) <= thr) continue;
                 int ix = (gx0 + gx) * 2 - fc_x0 + S - 1, iy = (gy0 + gy) * 2 - fc_y0 + S - 1;
                 if (ix < 0 || iy < 0 || ix + 1 >= FC || iy + 1 >= FC) continue;
-                int a=far_cell_land(fcell[iy][ix]),b=far_cell_land(fcell[iy][ix+1]),c=far_cell_land(fcell[iy+1][ix]),d=far_cell_land(fcell[iy+1][ix+1]);
-                int t = (a == b || a == c || a == d) ? a : (b == c || b == d) ? b : c == d ? c : a;
+                int a=far_cell_sample(ix,iy),b=far_cell_sample(ix+1,iy),c=far_cell_sample(ix,iy+1),d=far_cell_sample(ix+1,iy+1);
+                int t=bore_far_majority(a,b,c,d);
                 for (int j = 0; j < S; j++) for (int i = 0; i < S; i++) vis2[gy + j][gx + i] = 2;
                 int R, G, B; cell_rgb(t, &R, &G, &B);
                 if (hills) { int hq[4] = { lat_h(gx, gy, ax, bz), lat_h(gx + S, gy, ax + g2, bz), lat_h(gx + S, gy + S, ax + g2, bz - g2), lat_h(gx, gy + S, ax, bz - g2) };
@@ -588,39 +577,27 @@ static void draw_land(int rx0, int ry0, int rx1, int ry1) {
             }
         }
     }
-    for (int gy = 0; gy <= gn; gy++) for (int gx = 0; gx <= gn; gx++) vis2[gy][gx] &= 1;   // (taken groups: not again)
-    // in 2x2 groups (154 m: the window's own floor covers the first 50 m round you): each the colour most of its four cells are
-    rows_begin();
-    for (int gy = 0; gy <= gn; gy++) {
-        row_begin();
-        int run0 = -1, rt = -1;
-        for (int gx = 0; gx <= gn + 1; gx++) {
-            int ok = 0, t = -1;
-            if (gx <= gn && vis2[gy][gx]) {
-                int ix = (gx0 + gx) * 2 - fc_x0, iy = (gy0 + gy) * 2 - fc_y0;
-                if (ix >= 0 && iy >= 0 && ix + 1 < FC && iy + 1 < FC) {
-                    int a=far_cell_land(fcell[iy][ix]),b=far_cell_land(fcell[iy][ix+1]),c=far_cell_land(fcell[iy+1][ix]),d=far_cell_land(fcell[iy+1][ix+1]);
-                    t = (a == b || a == c || a == d) ? a : (b == c || b == d) ? b : c == d ? c : a;
-                    ok = 1;
-                }
-            }
-            if (run0 >= 0 && (!ok || t != rt)) { row_run(gy, run0, gx, (u32)rt); run0 = -1; }
-            if (ok && run0 < 0) { run0 = gx; rt = t; }
-        }
-        row_end();
-    }
+    // Keep road ordering unchanged: the OT links in reverse submission
+    // order, so these bands stay above terrain, below the local window.
     {int t_=gfx_hb();draw_roads(hills);extern int dbg_roads_hb;dbg_roads_hb+=gfx_hb()-t_;}
-    for (int i = 0; i < nrect; i++) { const Rect *r = &rects[i]; int R, G, B; cell_rgb((int)r->key, &R, &G, &B);
-        int x0 = ((gx0 + r->x0) * 2 * CELL_T - fwx0) * TILE, x1 = ((gx0 + r->x1) * 2 * CELL_T - fwx0) * TILE;
-        int z0 = -(((gy0 + r->y0) * 2 * CELL_T - fwy0) * TILE), z1 = -(((gy0 + r->y1) * 2 * CELL_T - fwy0) * TILE);
-        if (hills) { int gs = 2 * CELL_T * TILE, nx = (x1 - x0) / gs, nz = (z0 - z1) / gs;   // (hills: a quad a group of cells)
-            for (int j = 0; j < nz; j++) for (int i = 0; i < nx; i++) {
-                int ax = x0 + i * gs, bz = z0 - j * gs;
-                int lx = r->x0 + i, ly = r->y0 + j;
-                int hh[4] = { lat_h(lx, ly, ax, bz), lat_h(lx + 1, ly, ax + gs, bz), lat_h(lx + 1, ly + 1, ax + gs, bz - gs), lat_h(lx, ly + 1, ax, bz - gs) };
-                ground_quad(ax, ax + gs, bz, bz - gs, R, G, B, OT_GROUND_FAR, hh); } }
-        else
-        ground_quad(x0, x1, z0, z1, R, G, B, OT_GROUND_FAR, 0); }
+    const int gs=2*CELL_T*TILE;
+    // The old 360-rectangle staging buffer silently dropped later runs,
+    // even though hills required one quad per group anyway. No cap, no
+    // geometry reduction, no wasted merge pass. LOD groups marked 2
+    // above already own their full footprint and are skipped here.
+    for(int gy=0;gy<=gn;gy++)for(int gx=0;gx<=gn;gx++){
+        if(!bore_far_group_needed(vis2[gy][gx]))continue;
+        int ix=(gx0+gx)*2-fc_x0,iy=(gy0+gy)*2-fc_y0;
+        if(ix<0||iy<0||ix+1>=FC||iy+1>=FC)continue;
+        int a=far_cell_sample(ix,iy),b=far_cell_sample(ix+1,iy),c=far_cell_sample(ix,iy+1),d=far_cell_sample(ix+1,iy+1);
+        int R,G,B;cell_rgb(bore_far_majority(a,b,c,d),&R,&G,&B);
+        int ax=((gx0+gx)*2*CELL_T-fwx0)*TILE,bz=-((gy0+gy)*2*CELL_T-fwy0)*TILE;
+        if(hills){
+            int hh[4]={lat_h(gx,gy,ax,bz),lat_h(gx+1,gy,ax+gs,bz),
+                lat_h(gx+1,gy+1,ax+gs,bz-gs),lat_h(gx,gy+1,ax,bz-gs)};
+            ground_quad(ax,ax+gs,bz,bz-gs,R,G,B,OT_GROUND_FAR,hh);
+        }else ground_quad(ax,ax+gs,bz,bz-gs,R,G,B,OT_GROUND_FAR,0);
+    }
 }
 
 // ================================================================== the buildings past the map

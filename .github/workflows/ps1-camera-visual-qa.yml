@@ -12,6 +12,9 @@ on:
       - "src/far.c"
       - "src/voxel.c"
       - "src/render_cache_compact.h"
+      - "src/far_land_cache.h"
+      - "src/world_surface.h"
+      - "test/far_land_cache_test.c"
       - "test/render_cache_compact_test.c"
       - "src/crowd.c"
       - "src/citizens.c"
@@ -29,7 +32,7 @@ on:
       - ".github/workflows/ps1-camera-visual-qa.yml"
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/improve/coherent-world-release-pass-') }}
 jobs:
   ps1-camera:
     runs-on: ubuntu-24.04
