@@ -60,7 +60,7 @@ public final class MainActivity extends Activity {
     private Button dayButton,modeButton,travelButton,walkButton;
     private boolean walkMode;
     private LinearLayout walkControls;
-    private int tileX,tileY,walkIndex,walkDone;
+    private int tileX,tileY,walkIndex,walkDone,walkRemainder;
     private int[] outdoorRoute;
     private OutdoorPath outdoorMap,cachedOutdoorMap;
     private int cachedOutdoorX=-1,cachedOutdoorY=-1;
@@ -119,6 +119,7 @@ public final class MainActivity extends Activity {
         tileX=prefs.getInt("tileX",lifeX*18+2);tileY=prefs.getInt("tileY",lifeY*18+2);
         if(!OutdoorPath.valid(tileX,tileY)||tileX/18!=lifeX||tileY/18!=lifeY)resetOutdoorPosition();
         minute=Math.max(0,Math.min(1439,prefs.getInt("minute",600)));
+        walkRemainder=Math.max(0,Math.min(LifeRules.WALK_CLOCK_MS-1,prefs.getInt("walkRemainder",0)));
         funds=LifeRules.credit(prefs.getInt("funds",250),0);energy=clamp100(prefs.getInt("energy",100));
         fun=clamp100(prefs.getInt("fun",50));social=clamp100(prefs.getInt("social",50));food=clamp100(prefs.getInt("food",100));
         sessions=Math.max(0,prefs.getInt("sessions",0));
@@ -233,7 +234,7 @@ public final class MainActivity extends Activity {
             serial++;meshX=meshY=meshRevision=requestX=requestY=-1;seed=(int)System.nanoTime();generation=9;resetNative();
             cx=capitalX;cy=capitalY;selectedX=cx;selectedY=cy;
             lifeX=cx;lifeY=cy;resetOutdoorPosition();weekday=0;minute=600;funds=250;energy=food=100;fun=social=50;sessions=0;
-            lifeDay=0;career.reset();meetup=null;meetupsDone=0;lastRoute=new int[0];savedDecor="";homeDecor=null;household.clear();supplies.clear();care.clear();homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
+            lifeDay=0;walkRemainder=0;career.reset();meetup=null;meetupsDone=0;lastRoute=new int[0];savedDecor="";homeDecor=null;household.clear();supplies.clear();care.clear();homeX=homeY=-1;rentDebt=careerShifts=trips=homeNights=0;
             java.util.Arrays.fill(skills,0);contacts.load("");world3d.residentSeed(seed);world3d.resetCamera();refresh();saveLife();
     }
     private void layoutPanes(Configuration config){
@@ -441,7 +442,7 @@ public final class MainActivity extends Activity {
     private void commitOutdoor(){
         travelHandler.removeCallbacks(outdoorTick);
         outdoorRoute=null;outdoorMap=null;
-        if(walkDone>0)advanceTime((walkDone+6*WALK_MS-1)/(6*WALK_MS));
+        if(walkDone>0){int[] elapsed=LifeRules.walkClock(walkRemainder,walkDone);walkRemainder=elapsed[1];if(elapsed[0]>0)advanceTime(elapsed[0]);}
         walkIndex=walkDone=0;
         lifeX=tileX/18;lifeY=tileY/18;selectedX=lifeX;selectedY=lifeY;
         world3d.playerTile(tileX,tileY,0);saveLife();
@@ -1168,7 +1169,7 @@ public final class MainActivity extends Activity {
     }
     private void saveLife(){
         SharedPreferences.Editor e=prefs.edit().putInt("seed",seed).putInt("worldGeneration",generation).putInt("lifeX",lifeX).putInt("lifeY",lifeY)
-             .putInt("day",weekday).putInt("minute",minute).putInt("funds",funds).putInt("energy",energy)
+             .putInt("day",weekday).putInt("minute",minute).putInt("walkRemainder",walkRemainder).putInt("funds",funds).putInt("energy",energy)
              .putInt("fun",fun).putInt("social",social).putInt("food",food).putInt("sessions",sessions)
              .putInt("lifeDay",lifeDay).putInt("lastShiftDay",career.lastDay())
              .putString("career",career.save(seed)).putInt("jobKey",career.employer()).putInt("jobLot",career.lot()).putInt("jobShifts",career.shifts())
